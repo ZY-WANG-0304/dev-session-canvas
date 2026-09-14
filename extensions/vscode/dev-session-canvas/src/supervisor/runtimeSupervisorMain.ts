@@ -4,15 +4,32 @@ import * as net from 'net';
 import * as path from 'path';
 
 import {
+  confirmAgentInterrupt,
+  consumeAgentInstructionSubmission,
+  createAgentProviderLifecycleState,
+  isAgentHeuristicWaitingInputRecoverable,
+  recordAgentAttentionWaitingInput,
+  recordAgentHeuristicRunning,
+  recordAgentHeuristicWaitingInput,
+  recordAgentInterruptRequest,
+  recordAgentSubmission,
+  type AgentProviderLifecycleState
+} from '../common/agentProviderLifecycle';
+import {
   AGENT_WAITING_INPUT_POLL_INTERVAL_MS,
   createAgentActivityHeuristicState,
   evaluateAgentWaitingInputTransition,
+  recordAgentBottomScreenActivity,
+  recordAgentInputHeuristics,
   recordAgentOutputHeuristics,
   resetAgentActivityHeuristics,
+  resetAgentBottomScreenActivityHeuristics,
   type AgentActivityHeuristicState
 } from '../common/agentActivityHeuristics';
 import {
   type AgentNodeStatus,
+  type AgentActivitySource,
+  type AgentInputIntent,
   type AgentProviderKind,
   type AgentResumeStrategy,
   type ExecutionNodeKind,
@@ -25,12 +42,15 @@ import { resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/run
 import {
   SERIALIZED_TERMINAL_CHECKPOINT_PROFILES,
   SerializedTerminalStateTracker,
+  type SerializedTerminalCheckpointRejectionReason,
+  type SerializedTerminalCheckpointValidationResult,
   type SerializedTerminalState
 } from '../common/serializedTerminalState';
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../common/terminalScrollback';
 import {
   TERMINAL_SESSION_STREAM_VERSION,
   buildTerminalStreamAttachPayload,
+  cloneTerminalStreamCheckpoint,
   normalizeTerminalStreamAttachPayload,
   normalizeTerminalStreamCheckpoint,
   normalizeTerminalStreamRevision,
@@ -50,23 +70,27 @@ import {
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorDeleteSessionParams,
   type RuntimeSupervisorEvent,
+  type RuntimeSupervisorGetTerminalProjectionCheckpointParams,
   type RuntimeSupervisorGetSessionSnapshotParams,
   type RuntimeSupervisorMessageDescriptor,
   type RuntimeSupervisorMessage,
   type RuntimeSupervisorPaths,
+  type RuntimeSupervisorRecoveryState,
   type RuntimeSupervisorRequest,
   type RuntimeSupervisorResizeSessionParams,
   type RuntimeSupervisorSessionSnapshot,
   type RuntimeSupervisorStopSessionParams,
   type RuntimeSupervisorSubscribeSessionParams,
   type RuntimeSupervisorSubscribeSessionResult,
+  type RuntimeSupervisorTerminalCheckpointDiagnostics,
+  type RuntimeSupervisorTerminalProjectionCheckpoint,
   type RuntimeSupervisorUpdateSessionScrollbackParams,
   type RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
 import {
+  readTerminalSessionJournalMetadata,
   resolveTerminalJournalSessionDirectory,
-  TerminalSessionJournal,
-  type TerminalJournalRecoveryCandidate
+  TerminalSessionJournal
 } from './terminalSessionJournal';
 import {
   createExecutionSessionProcess,
@@ -90,6 +114,8 @@ const AGENT_GRACEFUL_STOP_INPUT = '\u0003';
 // Codex/Claude can take a few extra seconds after Ctrl-C to flush token usage and resume hints.
 // Give the CLI a longer grace window before we escalate to kill, so the stopped snapshot is authoritative.
 const AGENT_GRACEFUL_STOP_FORCE_KILL_TIMEOUT_MS = 5000;
+const TEST_RECOVERY_GATE_PATH_ENV = 'DEV_SESSION_CANVAS_TEST_RUNTIME_SUPERVISOR_RECOVERY_GATE_PATH';
+const TEST_RECOVERY_GATE_POLL_INTERVAL_MS = 50;
 
 function normalizeRuntimeSupervisorOutputSequence(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
@@ -122,9 +148,14 @@ interface SupervisorSession {
   outputSequence: number;
   terminalAuthorityId?: string;
   terminalJournal?: TerminalSessionJournal;
+  /** A restarted Supervisor cannot own the original PTY, so never project replayed Journal output. */
+  recoveredFromDeadPty?: boolean;
   terminalJournalError?: Error;
   terminalCheckpoint?: TerminalStreamCheckpoint;
   terminalCheckpointValidationAttemptAtMs?: number;
+  terminalCheckpointLastRejectionReason?: SerializedTerminalCheckpointRejectionReason;
+  terminalCheckpointConsecutiveRejectionCount: number;
+  terminalCheckpointRejectionStartedAtMs?: number;
   terminalStateTracker: SerializedTerminalStateTracker;
   terminalOperationChain: Promise<void>;
   terminalMutationAdmissionOpen: boolean;
@@ -141,19 +172,11 @@ interface SupervisorSession {
   lastExitMessageDescriptor?: RuntimeSupervisorMessageDescriptor;
   stopRequested: boolean;
   agentActivity?: AgentActivityHeuristicState;
+  agentProviderLifecycle?: AgentProviderLifecycleState;
   process?: ExecutionSessionProcess;
   outputSubscription?: DisposableLike;
   exitSubscription?: DisposableLike;
   lifecycleTimer?: NodeJS.Timeout;
-}
-
-interface RestoredTerminalJournalCandidate {
-  terminalStateTracker: SerializedTerminalStateTracker;
-  terminalCheckpoint: TerminalStreamCheckpoint;
-  cols: number;
-  rows: number;
-  scrollback: number;
-  output: string;
 }
 
 type SupervisorSubscriptionMode = 'legacy' | 'terminal-stream-v1';
@@ -172,6 +195,13 @@ class RuntimeSupervisorServer {
   private persistRegistryError: Error | undefined;
   private idleShutdownTimer: NodeJS.Timeout | undefined;
   private server: net.Server | undefined;
+  private recoveryComplete = true;
+  private recoveryFailureCount = 0;
+  private readonly pendingRecoverySessionIds = new Set<string>();
+  private recoveryState: RuntimeSupervisorRecoveryState = {
+    phase: 'ready',
+    pendingSessionCount: 0
+  };
 
   public constructor(
     private readonly paths: RuntimeSupervisorPaths,
@@ -182,9 +212,22 @@ class RuntimeSupervisorServer {
   public async start(): Promise<void> {
     fs.mkdirSync(this.paths.storageDir, { recursive: true });
     ensureSocketDirectoryReady(this.paths);
-    await this.loadRegistry();
+    const recoveredSnapshots = this.readRegistrySnapshots();
+    for (const snapshot of recoveredSnapshots) {
+      this.pendingRecoverySessionIds.add(snapshot.sessionId);
+    }
+    this.recoveryComplete = this.pendingRecoverySessionIds.size === 0;
+    this.recoveryState = {
+      phase: this.recoveryComplete ? 'ready' : 'recovering',
+      pendingSessionCount: this.pendingRecoverySessionIds.size
+    };
     await this.listen();
-    this.scheduleIdleShutdownIfNeeded();
+    if (this.recoveryComplete) {
+      this.scheduleIdleShutdownIfNeeded();
+      return;
+    }
+
+    void this.recoverRegistryInBackground(recoveredSnapshots);
   }
 
   private async listen(): Promise<void> {
@@ -263,10 +306,13 @@ class RuntimeSupervisorServer {
               pid: process.pid,
               runtimeBackend: this.runtimeBackend,
               runtimeGuarantee: this.runtimeGuarantee,
+              recovery: this.recoveryState,
               capabilities: {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
-                terminalAppliedRevisionAckV1: true
+                terminalProjectionCheckpointV1: true,
+                terminalAppliedRevisionAckV1: true,
+                agentSubmissionIntentV1: true
               }
             }
           });
@@ -298,6 +344,16 @@ class RuntimeSupervisorServer {
             id: request.id,
             ok: true,
             result: snapshot
+          });
+          return;
+        }
+        case 'getTerminalProjectionCheckpoint': {
+          const checkpoint = await this.getTerminalProjectionCheckpoint(request.params);
+          this.writeMessage(socket, {
+            type: 'response',
+            id: request.id,
+            ok: true,
+            result: checkpoint
           });
           return;
         }
@@ -365,7 +421,6 @@ class RuntimeSupervisorServer {
         }
       }, RUNTIME_SUPERVISOR_ERROR_CODES.sessionAlreadyExists);
     }
-
     const lifecycle: AgentNodeStatus | TerminalNodeStatus =
       params.kind === 'agent'
         ? params.launchMode === 'resume'
@@ -395,8 +450,19 @@ class RuntimeSupervisorServer {
       process = createExecutionSessionProcess(launchSpec);
     } catch (error) {
       await terminalJournal.delete();
-      throw error;
+      throw createExecutionSpawnProtocolError(error, launchSpec.file, launchSpec.cwd);
     }
+    if (this.sessions.has(sessionId)) {
+      process.kill();
+      await terminalJournal.delete();
+      throw createRuntimeSupervisorProtocolError({
+        id: 'sessionAlreadyExists',
+        params: {
+          sessionId
+        }
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.sessionAlreadyExists);
+    }
+    this.claimRecoveredSessionIdForCreate(sessionId);
     const terminalStateTracker = new SerializedTerminalStateTracker(params.launchSpec.cols, params.launchSpec.rows, {
       scrollback,
       initialOutputSequence: 0
@@ -432,6 +498,7 @@ class RuntimeSupervisorServer {
       terminalAuthorityId: terminalJournal.getAuthorityId(),
       terminalJournal,
       terminalCheckpoint,
+      terminalCheckpointConsecutiveRejectionCount: 0,
       terminalStateTracker,
       terminalOperationChain: Promise.resolve(),
       terminalMutationAdmissionOpen: true,
@@ -443,6 +510,10 @@ class RuntimeSupervisorServer {
       resumeStoragePath: params.resumeStoragePath,
       stopRequested: false,
       agentActivity: params.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
+      agentProviderLifecycle:
+        params.kind === 'agent' && params.provider
+          ? createAgentProviderLifecycleState(params.provider, false)
+          : undefined,
       process
     };
     this.sessions.set(sessionId, session);
@@ -519,6 +590,30 @@ class RuntimeSupervisorServer {
     params: RuntimeSupervisorGetSessionSnapshotParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
     return this.toFreshSnapshot(this.requireSession(params.sessionId));
+  }
+
+  private getTerminalProjectionCheckpoint(
+    params: RuntimeSupervisorGetTerminalProjectionCheckpointParams
+  ): Promise<RuntimeSupervisorTerminalProjectionCheckpoint> {
+    const session = this.requireSession(params.sessionId);
+    return this.enqueueTerminalOperation(session, async () => {
+      await this.createFreshSnapshot(session, 'always', false);
+      const journal = session.terminalJournal;
+      const checkpoint = session.terminalCheckpoint;
+      if (session.terminalJournalError || !journal || !session.terminalAuthorityId || !checkpoint) {
+        throw createRuntimeSupervisorProtocolError({
+          id: 'terminalJournalUnavailable',
+          params: { sessionId: params.sessionId }
+        }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalJournalUnavailable);
+      }
+      return {
+        sessionId: session.sessionId,
+        authorityId: session.terminalAuthorityId,
+        revision: journal.getRevision(),
+        checkpoint: cloneTerminalStreamCheckpoint(checkpoint),
+        terminalCheckpointDiagnostics: this.getTerminalCheckpointDiagnostics(session)
+      };
+    });
   }
 
   private subscribeSession(
@@ -672,16 +767,45 @@ class RuntimeSupervisorServer {
     }
 
     if (session.kind === 'agent') {
-      const submittedInstruction = isAgentInstructionSubmission(params.data);
+      const inputAtMs = Date.now();
+      recordAgentInputHeuristics(this.ensureAgentActivityState(session), inputAtMs);
+      const providerLifecycle = session.agentProviderLifecycle;
+      const submittedInstruction = providerLifecycle
+        ? consumeAgentInstructionSubmission(providerLifecycle, params.data, params.intent)
+        : isAgentInstructionSubmission(params.data, params.intent);
       if (session.lifecycleTimer) {
         clearTimeout(session.lifecycleTimer);
         session.lifecycleTimer = undefined;
       }
-      if (submittedInstruction) {
-        resetAgentActivityHeuristics(this.ensureAgentActivityState(session), session.output);
+      if (
+        params.intent === 'interrupt' &&
+        providerLifecycle &&
+        session.lifecycle === 'running'
+      ) {
+        const interruptResult = recordAgentInterruptRequest(providerLifecycle);
+        if (interruptResult.accepted) {
+          session.terminalStateTracker.disableBottomScreenActivityTracking();
+          resetAgentActivityHeuristics(
+            this.ensureAgentActivityState(session),
+            session.output,
+            inputAtMs
+          );
+          this.queueAgentWaitingInput(session.sessionId);
+        }
+      } else if (submittedInstruction) {
+        if (providerLifecycle) {
+          recordAgentSubmission(providerLifecycle);
+        }
+        session.terminalStateTracker.disableBottomScreenActivityTracking();
+        resetAgentActivityHeuristics(
+          this.ensureAgentActivityState(session),
+          session.output,
+          inputAtMs
+        );
         session.lifecycle = 'running';
         session.resumePhaseActive = false;
         this.emitSessionState(session);
+        this.queueAgentWaitingInput(session.sessionId);
       }
     } else if (session.lifecycle === 'launching') {
       session.lifecycle = 'live';
@@ -852,12 +976,14 @@ class RuntimeSupervisorServer {
           });
         }
         if (session.kind === 'agent') {
-          if (
-            session.lifecycle === 'starting' ||
-            session.lifecycle === 'resuming' ||
-            session.lifecycle === 'running'
-          ) {
-            recordAgentOutputHeuristics(this.ensureAgentActivityState(session), chunk, session.output, session.provider);
+          if (shouldRecordSupervisorAgentOutputHeuristics(session)) {
+            const snapshot = recordAgentOutputHeuristics(
+              this.ensureAgentActivityState(session),
+              chunk,
+              session.output,
+              session.provider
+            );
+            this.applySupervisorAgentOutputActivityEvidence(session, snapshot);
             this.queueAgentWaitingInput(session.sessionId);
           }
         } else if (session.lifecycle === 'launching') {
@@ -1277,14 +1403,66 @@ class RuntimeSupervisorServer {
     return session.agentActivity;
   }
 
-  private queueAgentWaitingInput(sessionId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (!session || session.kind !== 'agent') {
+  private applySupervisorAgentOutputActivityEvidence(
+    session: SupervisorSession,
+    snapshot: ReturnType<typeof recordAgentOutputHeuristics>
+  ): void {
+    if (!session.agentProviderLifecycle) {
       return;
     }
 
+    let transition: 'running' | 'waiting-input' | undefined;
+    if (snapshot.sawAttentionSignal) {
+      const result = recordAgentAttentionWaitingInput(session.agentProviderLifecycle);
+      if (result.accepted && result.changed && result.lifecycle) {
+        transition = result.lifecycle;
+      }
+    }
+    if (snapshot.sawTerminalTitleActivity) {
+      const result = recordAgentHeuristicRunning(session.agentProviderLifecycle, 'terminal-title');
+      if (result.accepted && result.changed && result.lifecycle) {
+        transition = result.lifecycle;
+      }
+    }
+    if (!transition) {
+      return;
+    }
+
+    if (transition === 'running') {
+      session.terminalStateTracker.disableBottomScreenActivityTracking();
+      resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
+      session.resumePhaseActive = false;
+    } else {
+      resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(session));
+      session.terminalStateTracker.enableBottomScreenActivityTracking();
+      recordAgentBottomScreenActivity(
+        this.ensureAgentActivityState(session),
+        session.terminalStateTracker.getBottomScreenActivityToken()
+      );
+    }
+    session.lifecycle = transition;
+    this.emitSessionState(session);
+  }
+
+  private queueAgentWaitingInput(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (
+      !session ||
+      session.kind !== 'agent' ||
+      !shouldEvaluateSupervisorAgentInteractiveState(session)
+    ) {
+      return;
+    }
+    if (
+      session.lifecycle === 'waiting-input' &&
+      isAgentHeuristicWaitingInputRecoverable(session.agentProviderLifecycle)
+    ) {
+      session.terminalStateTracker.enableBottomScreenActivityTracking();
+    } else {
+      session.terminalStateTracker.disableBottomScreenActivityTracking();
+    }
     if (session.lifecycleTimer) {
-      clearTimeout(session.lifecycleTimer);
+      return;
     }
 
     session.lifecycleTimer = setTimeout(() => {
@@ -1292,19 +1470,69 @@ class RuntimeSupervisorServer {
       if (
         !current ||
         current.kind !== 'agent' ||
-        !current.live ||
-        !isAgentLifecycleAwaitingInteractiveState(current.lifecycle)
+        !current.live
       ) {
         return;
       }
+      current.lifecycleTimer = undefined;
+      if (!shouldEvaluateSupervisorAgentInteractiveState(current)) {
+        return;
+      }
 
-      const evaluation = evaluateAgentWaitingInputTransition(this.ensureAgentActivityState(current));
+      const now = Date.now();
+      if (current.lifecycle === 'waiting-input') {
+        const bottomActivity = recordAgentBottomScreenActivity(
+          this.ensureAgentActivityState(current),
+          current.terminalStateTracker.getBottomScreenActivityToken(),
+          now
+        );
+        const recovery =
+          bottomActivity.strongRunningEvidence && current.agentProviderLifecycle
+            ? recordAgentHeuristicRunning(current.agentProviderLifecycle)
+            : undefined;
+        if (recovery?.accepted) {
+          current.terminalStateTracker.disableBottomScreenActivityTracking();
+          resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(current));
+          current.lifecycle = 'running';
+          current.resumePhaseActive = false;
+          this.emitSessionState(current);
+          this.queueAgentWaitingInput(sessionId);
+          return;
+        }
+      }
+
+      const interruptRequested = current.agentProviderLifecycle?.interruptRequested === true;
+      const evaluation = evaluateAgentWaitingInputTransition(
+        this.ensureAgentActivityState(current),
+        now
+      );
       if (evaluation.shouldTransition) {
-        current.lifecycleTimer = undefined;
+        if (current.lifecycle === 'waiting-input') {
+          return;
+        }
+        if (current.agentProviderLifecycle) {
+          const transitionResult = interruptRequested
+            ? confirmAgentInterrupt(current.agentProviderLifecycle)
+            : recordAgentHeuristicWaitingInput(current.agentProviderLifecycle);
+          if (interruptRequested && !transitionResult.accepted) {
+            return;
+          }
+        }
         if (current.lifecycle === 'resuming') {
           current.resumePhaseActive = false;
         }
         current.lifecycle = 'waiting-input';
+        resetAgentBottomScreenActivityHeuristics(this.ensureAgentActivityState(current));
+        if (isAgentHeuristicWaitingInputRecoverable(current.agentProviderLifecycle)) {
+          current.terminalStateTracker.enableBottomScreenActivityTracking();
+          recordAgentBottomScreenActivity(
+            this.ensureAgentActivityState(current),
+            current.terminalStateTracker.getBottomScreenActivityToken(),
+            now
+          );
+        } else {
+          current.terminalStateTracker.disableBottomScreenActivityTracking();
+        }
         void this.maybeDiscoverAgentResumeSessionIdFromFiles(sessionId, 'waiting-input');
         this.emitSessionState(current);
         return;
@@ -1315,7 +1543,6 @@ class RuntimeSupervisorServer {
         return;
       }
 
-      current.lifecycleTimer = undefined;
     }, AGENT_WAITING_INPUT_POLL_INTERVAL_MS);
   }
 
@@ -1356,9 +1583,15 @@ class RuntimeSupervisorServer {
     if (checkpointValidation === 'if-compaction-due' && shouldValidateCheckpoint) {
       session.terminalCheckpointValidationAttemptAtMs = now;
     }
-    const validatedCheckpoint = shouldValidateCheckpoint
-      ? await session.terminalStateTracker.flushValidatedCheckpoint().catch(() => undefined)
-      : undefined;
+    let validatedCheckpoint: SerializedTerminalCheckpointValidationResult | undefined;
+    if (shouldValidateCheckpoint) {
+      try {
+        validatedCheckpoint = await session.terminalStateTracker.flushValidatedCheckpoint();
+      } catch {
+        validatedCheckpoint = { eligible: false, reason: 'validation-failed' };
+      }
+      this.recordTerminalCheckpointValidation(session, validatedCheckpoint);
+    }
     const serializedTerminalState = validatedCheckpoint?.eligible
       ? validatedCheckpoint.state
       : session.terminalCheckpoint?.serializedState;
@@ -1414,6 +1647,53 @@ class RuntimeSupervisorServer {
       : undefined;
   }
 
+  private recordTerminalCheckpointValidation(
+    session: SupervisorSession,
+    result: SerializedTerminalCheckpointValidationResult
+  ): void {
+    if (result.eligible) {
+      session.terminalCheckpointLastRejectionReason = undefined;
+      session.terminalCheckpointConsecutiveRejectionCount = 0;
+      session.terminalCheckpointRejectionStartedAtMs = undefined;
+      return;
+    }
+
+    session.terminalCheckpointLastRejectionReason = result.reason;
+    session.terminalCheckpointConsecutiveRejectionCount += 1;
+    session.terminalCheckpointRejectionStartedAtMs ??= Date.now();
+  }
+
+  private getTerminalCheckpointDiagnostics(
+    session: SupervisorSession,
+    terminalStream?: TerminalStreamAttachPayload
+  ): RuntimeSupervisorTerminalCheckpointDiagnostics | undefined {
+    if (!session.terminalJournal && !session.terminalCheckpoint) {
+      return undefined;
+    }
+
+    const snapshotEventBytes = terminalStream
+      ? terminalStream.events.reduce((total, event) => total + Buffer.byteLength(JSON.stringify(event), 'utf8'), 0)
+      : undefined;
+    return {
+      ...(session.terminalCheckpointLastRejectionReason
+        ? { lastRejectionReason: session.terminalCheckpointLastRejectionReason }
+        : {}),
+      consecutiveRejectionCount: session.terminalCheckpointConsecutiveRejectionCount,
+      ...(session.terminalCheckpointRejectionStartedAtMs !== undefined
+        ? { rejectionStartedAtMs: session.terminalCheckpointRejectionStartedAtMs }
+        : {}),
+      ...(session.terminalCheckpoint?.createdAtMs !== undefined
+        ? { checkpointCreatedAtMs: session.terminalCheckpoint.createdAtMs }
+        : {}),
+      ...(terminalStream
+        ? {
+            snapshotEventCount: terminalStream.events.length,
+            snapshotEventBytes
+          }
+        : {})
+    };
+  }
+
   private toSnapshot(
     session: SupervisorSession,
     serializedTerminalState = session.terminalJournal
@@ -1421,7 +1701,8 @@ class RuntimeSupervisorServer {
       : session.terminalStateTracker.getSerializedState(),
     includeTerminalProjection = true
   ): RuntimeSupervisorSessionSnapshot {
-    const terminalStream = includeTerminalProjection
+    const includeRecoveredTerminalProjection = includeTerminalProjection && !session.recoveredFromDeadPty;
+    const terminalStream = includeRecoveredTerminalProjection
       ? this.buildTerminalStreamAttachPayload(session)
       : undefined;
     return {
@@ -1439,27 +1720,37 @@ class RuntimeSupervisorServer {
       scrollback: session.scrollback,
       output: session.output,
       outputSequence: session.outputSequence,
-      serializedTerminalState: includeTerminalProjection
+      serializedTerminalState: includeRecoveredTerminalProjection
         ? this.getFreshSerializedTerminalState(session, serializedTerminalState)
         : undefined,
       terminalAuthorityId: session.terminalJournalError ? undefined : session.terminalAuthorityId,
       terminalRevision: session.terminalJournalError ? undefined : session.terminalJournal?.getRevision(),
       terminalStream,
+      terminalCheckpointDiagnostics: this.getTerminalCheckpointDiagnostics(session, terminalStream),
       displayLabel: session.displayLabel,
       launchMode: session.launchMode,
       provider: session.provider,
       resumeStrategy: session.resumeStrategy,
       resumeSessionId: session.resumeSessionId,
       resumeStoragePath: session.resumeStoragePath,
+      agentActivitySource: session.agentProviderLifecycle?.activitySource,
+      agentActivityAuthority: session.agentProviderLifecycle?.activityAuthority,
+      providerLifecycleEnabled: session.agentProviderLifecycle?.lifecycleEnabled,
+      providerSessionId: session.agentProviderLifecycle?.providerSessionId,
+      providerTurnId:
+        session.agentProviderLifecycle?.activeProviderTurnId ??
+        session.agentProviderLifecycle?.lastProviderTurnId,
+      lastTurnOutcome: session.agentProviderLifecycle?.lastTurnOutcome,
+      lastTurnError: session.agentProviderLifecycle?.lastTurnError,
       lastExitCode: session.lastExitCode,
       lastExitSignal: session.lastExitSignal,
       lastExitMessage: session.lastExitMessage,
-      lastExitMessageDescriptor: session.lastExitMessageDescriptor,
+      lastExitMessageDescriptor: session.lastExitMessageDescriptor
     };
   }
 
   private buildTerminalStreamAttachPayload(session: SupervisorSession): TerminalStreamAttachPayload | undefined {
-    if (session.terminalJournalError) {
+    if (session.recoveredFromDeadPty || session.terminalJournalError) {
       return undefined;
     }
     const journal = session.terminalJournal;
@@ -1664,7 +1955,6 @@ class RuntimeSupervisorServer {
     session.exitSubscription?.dispose();
     session.outputSubscription = undefined;
     session.exitSubscription = undefined;
-
     if (options.terminateProcess) {
       session.process?.kill();
     }
@@ -1741,20 +2031,76 @@ class RuntimeSupervisorServer {
     this.persistRegistryError = undefined;
   }
 
-  private async loadRegistry(): Promise<void> {
+  private readRegistrySnapshots(): RuntimeSupervisorSessionSnapshot[] {
     if (!fs.existsSync(this.paths.registryPath)) {
-      return;
+      return [];
     }
 
-    let registry: SupervisorRegistry;
     try {
-      registry = JSON.parse(fs.readFileSync(this.paths.registryPath, 'utf8')) as SupervisorRegistry;
+      const registry = JSON.parse(fs.readFileSync(this.paths.registryPath, 'utf8')) as SupervisorRegistry;
+      return Array.isArray(registry.sessions) ? registry.sessions : [];
     } catch {
+      return [];
+    }
+  }
+
+  private async recoverRegistryInBackground(snapshots: RuntimeSupervisorSessionSnapshot[]): Promise<void> {
+    try {
+      await waitForTestRecoveryGate();
+      for (const snapshot of snapshots) {
+        if (!this.pendingRecoverySessionIds.has(snapshot.sessionId)) {
+          continue;
+        }
+
+        let recoveredSession: SupervisorSession | undefined;
+        try {
+          recoveredSession = await this.normalizeRecoveredSession(snapshot);
+          if (recoveredSession.terminalJournalError) {
+            this.recoveryFailureCount += 1;
+          }
+          if (this.pendingRecoverySessionIds.delete(snapshot.sessionId) && !this.sessions.has(snapshot.sessionId)) {
+            this.sessions.set(snapshot.sessionId, recoveredSession);
+          } else {
+            recoveredSession.terminalStateTracker.dispose();
+          }
+        } catch (error) {
+          this.pendingRecoverySessionIds.delete(snapshot.sessionId);
+          this.recoveryFailureCount += 1;
+          console.error(`Failed to recover runtime session ${snapshot.sessionId}:`, error);
+        } finally {
+          this.publishRecoveryState();
+        }
+      }
+    } finally {
+      this.pendingRecoverySessionIds.clear();
+      this.recoveryComplete = true;
+      this.publishRecoveryState();
+      this.schedulePersist();
+      this.scheduleIdleShutdownIfNeeded();
+    }
+  }
+
+  private claimRecoveredSessionIdForCreate(sessionId: string): void {
+    if (!this.pendingRecoverySessionIds.delete(sessionId)) {
       return;
     }
 
-    for (const rawSession of registry.sessions ?? []) {
-      this.sessions.set(rawSession.sessionId, await this.normalizeRecoveredSession(rawSession));
+    this.publishRecoveryState();
+  }
+
+  private publishRecoveryState(): void {
+    this.recoveryState = {
+      phase: this.recoveryComplete ? 'ready' : 'recovering',
+      pendingSessionCount: this.pendingRecoverySessionIds.size,
+      ...(this.recoveryFailureCount > 0 ? { failureCount: this.recoveryFailureCount } : {})
+    };
+    const message: RuntimeSupervisorEvent = {
+      type: 'event',
+      event: 'recoveryState',
+      payload: this.recoveryState
+    };
+    for (const socket of this.connections) {
+      this.writeMessage(socket, message);
     }
   }
 
@@ -1775,87 +2121,42 @@ class RuntimeSupervisorServer {
     const scrollback = normalizeTerminalScrollback(snapshot.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
 
     const normalizedTerminalStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
-    let recoveredAuthorityId = snapshot.terminalAuthorityId?.trim() || normalizedTerminalStream?.authorityId;
-    let terminalJournal: TerminalSessionJournal | undefined;
-    let terminalJournalError: Error | undefined;
-    let terminalStateTracker: SerializedTerminalStateTracker | undefined;
-    let terminalCheckpoint: TerminalStreamCheckpoint | undefined;
-    let recoveredOutputSequence = normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence);
-    let recoveredOutput = snapshot.output;
-    let recoveredCols = snapshot.cols;
-    let recoveredRows = snapshot.rows;
-    let recoveredScrollback = scrollback;
+    const recoveredAuthorityId = snapshot.terminalAuthorityId?.trim() || normalizedTerminalStream?.authorityId;
+    const recoveredOutputSequence = normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence);
     if (recoveredAuthorityId) {
       try {
-        terminalJournal = await TerminalSessionJournal.open({
-          storageDir: this.paths.storageDir,
-          sessionId: snapshot.sessionId,
-          authorityId: recoveredAuthorityId,
-          checkpointProfiles: SERIALIZED_TERMINAL_CHECKPOINT_PROFILES
-        });
-        recoveredAuthorityId = terminalJournal.getAuthorityId();
-        const initialTerminalState = terminalJournal.getInitialTerminalState();
-        const recoveryCandidates = await terminalJournal.getRecoveryCandidates();
-        let restoredCandidate: RestoredTerminalJournalCandidate | undefined;
-        let lastCandidateError: Error | undefined;
-        for (const candidate of recoveryCandidates) {
-          try {
-            restoredCandidate = await this.restoreTerminalJournalCandidate(
-              snapshot.sessionId,
-              recoveredAuthorityId,
-              terminalJournal.getRevision(),
-              initialTerminalState,
-              candidate
-            );
-            break;
-          } catch (error) {
-            lastCandidateError = error instanceof Error ? error : new Error(String(error));
-          }
-        }
-        if (!restoredCandidate) {
-          throw lastCandidateError ?? new Error(
-            `No trusted terminal journal recovery candidate is available for session ${snapshot.sessionId}.`
-          );
-        }
-        terminalStateTracker = restoredCandidate.terminalStateTracker;
-        terminalCheckpoint = restoredCandidate.terminalCheckpoint;
-        recoveredCols = restoredCandidate.cols;
-        recoveredRows = restoredCandidate.rows;
-        recoveredScrollback = restoredCandidate.scrollback;
-        recoveredOutput = restoredCandidate.output;
-        recoveredOutputSequence = terminalJournal.getRevision();
-        terminalJournal.releaseMemoryThrough(terminalCheckpoint.revision);
+        // Manifest revision is Journal audit metadata, not the sequence of the saved display
+        // projection. Keep validating the Journal without breaking the screen/sequence pair.
+        await readTerminalSessionJournalMetadata(
+          this.paths.storageDir,
+          snapshot.sessionId,
+          recoveredAuthorityId
+        );
       } catch (error) {
-        terminalJournalError = error instanceof Error ? error : new Error(String(error));
-        console.error(`Failed to recover terminal journal for session ${snapshot.sessionId}:`, terminalJournalError);
-        terminalJournal = undefined;
-        terminalStateTracker?.dispose();
-        terminalStateTracker = undefined;
-        recoveredOutput = '';
-        recoveredOutputSequence = 0;
-        lifecycle = 'error';
-        lastExitMessageDescriptor = {
-          id: 'terminalJournalPersistenceFailed',
-          params: {
-            sessionId: snapshot.sessionId
-          }
-        };
-        lastExitMessage = formatRuntimeSupervisorMessageDescriptor(lastExitMessageDescriptor);
+        // The original PTY is already gone. Retain the saved canvas projection even when the
+        // optional raw Journal cannot be indexed; never turn this into a transcript replay.
+        console.error(`Failed to inspect terminal journal metadata for session ${snapshot.sessionId}:`, error);
       }
     }
-    if (!terminalJournal || !terminalCheckpoint) {
-      terminalStateTracker = new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
-        scrollback,
-        initialState: recoveredAuthorityId ? undefined : snapshot.serializedTerminalState,
-        initialOutput: recoveredAuthorityId ? undefined : snapshot.output,
-        initialOutputSequence: recoveredAuthorityId
-          ? 0
-          : normalizeRuntimeSupervisorOutputSequence(snapshot.outputSequence)
-      });
-    }
-    if (!terminalStateTracker) {
-      throw new Error(`Could not restore terminal state tracker for session ${snapshot.sessionId}.`);
-    }
+    const terminalStateTracker = new SerializedTerminalStateTracker(snapshot.cols, snapshot.rows, {
+      scrollback,
+      initialState: snapshot.serializedTerminalState,
+      initialOutput: snapshot.serializedTerminalState ? undefined : snapshot.output,
+      initialOutputSequence: recoveredOutputSequence
+    });
+    const recoveredProviderLifecycle =
+      snapshot.kind === 'agent' && snapshot.provider
+        ? {
+            ...createAgentProviderLifecycleState(snapshot.provider, false),
+            activitySource: normalizeAgentActivitySource(snapshot.agentActivitySource) ?? 'heuristic',
+            activityAuthority: snapshot.agentActivityAuthority ?? 'best-effort',
+            providerSessionId: snapshot.providerSessionId,
+            activeProviderTurnId: snapshot.providerTurnId,
+            lastProviderTurnId: snapshot.providerTurnId,
+            lastTurnOutcome: snapshot.lastTurnOutcome,
+            lastTurnError: snapshot.lastTurnError
+          }
+        : undefined;
 
     return {
       ...snapshot,
@@ -1874,15 +2175,15 @@ class RuntimeSupervisorServer {
       lastExitMessageDescriptor,
       stopRequested: false,
       agentActivity: snapshot.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
-      cols: recoveredCols,
-      rows: recoveredRows,
-      scrollback: recoveredScrollback,
-      output: recoveredOutput,
+      agentProviderLifecycle: recoveredProviderLifecycle,
+      cols: snapshot.cols,
+      rows: snapshot.rows,
+      scrollback,
+      output: snapshot.output,
       outputSequence: recoveredOutputSequence,
-      terminalAuthorityId: terminalJournal?.getAuthorityId() ?? recoveredAuthorityId,
-      terminalJournal,
-      terminalJournalError,
-      terminalCheckpoint,
+      terminalAuthorityId: recoveredAuthorityId,
+      recoveredFromDeadPty: true,
+      terminalCheckpointConsecutiveRejectionCount: 0,
       terminalStateTracker,
       terminalOperationChain: Promise.resolve(),
       terminalMutationAdmissionOpen: false,
@@ -1894,128 +2195,12 @@ class RuntimeSupervisorServer {
     };
   }
 
-  private async restoreTerminalJournalCandidate(
-    sessionId: string,
-    authorityId: string,
-    journalRevision: number,
-    initialTerminalState: { cols: number; rows: number; scrollback: number },
-    candidate: TerminalJournalRecoveryCandidate
-  ): Promise<RestoredTerminalJournalCandidate> {
-    const checkpoint = candidate.checkpoint
-      ? normalizeTerminalStreamCheckpoint(candidate.checkpoint)
-      : undefined;
-    if (
-      candidate.checkpoint &&
-      (
-        !checkpoint ||
-        checkpoint.sessionId !== sessionId ||
-        checkpoint.authorityId !== authorityId ||
-        checkpoint.revision > journalRevision
-      )
-    ) {
-      throw new Error(`Invalid ${candidate.source} terminal checkpoint for session ${sessionId}.`);
-    }
-
-    const terminalStateTracker = checkpoint
-      ? new SerializedTerminalStateTracker(checkpoint.cols, checkpoint.rows, {
-          scrollback: checkpoint.scrollback,
-          initialState: checkpoint.serializedState,
-          initialOutputSequence: checkpoint.revision
-        })
-      : new SerializedTerminalStateTracker(initialTerminalState.cols, initialTerminalState.rows, {
-          scrollback: initialTerminalState.scrollback,
-          initialOutputSequence: 0
-        });
-    const baseCheckpoint = checkpoint ?? normalizeTerminalStreamCheckpoint({
-      version: TERMINAL_SESSION_STREAM_VERSION,
-      sessionId,
-      authorityId,
-      revision: 0,
-      cols: initialTerminalState.cols,
-      rows: initialTerminalState.rows,
-      scrollback: initialTerminalState.scrollback,
-      createdAtMs: Date.now(),
-      serializedState: terminalStateTracker.getSerializedState()
-    });
-    if (!baseCheckpoint) {
-      terminalStateTracker.dispose();
-      throw new Error(`Could not create a genesis terminal checkpoint for session ${sessionId}.`);
-    }
-
-    let cols = baseCheckpoint.cols;
-    let rows = baseCheckpoint.rows;
-    let scrollback = baseCheckpoint.scrollback;
-    let expectedRevision = baseCheckpoint.revision + 1;
-    let output = candidate.outputTail;
-    try {
-      for (const event of candidate.events) {
-        if (event.revision !== expectedRevision || event.revision > journalRevision) {
-          throw new Error(
-            `Terminal journal ${candidate.source} recovery has a revision gap at ${expectedRevision}.`
-          );
-        }
-        expectedRevision += 1;
-        if (event.type === 'output') {
-          output = appendOutputTail(output, event.data);
-          terminalStateTracker.write(event.data, {
-            outputSequence: event.revision
-          });
-          continue;
-        }
-        if (event.type === 'resize') {
-          cols = event.cols;
-          rows = event.rows;
-          terminalStateTracker.resize(event.cols, event.rows, {
-            outputSequence: event.revision
-          });
-          continue;
-        }
-        scrollback = event.scrollback;
-        await terminalStateTracker.setScrollback(event.scrollback, {
-          outputSequence: event.revision
-        });
-      }
-      if (expectedRevision !== journalRevision + 1) {
-        throw new Error(
-          `Terminal journal ${candidate.source} recovery stops before revision ${journalRevision}.`
-        );
-      }
-
-      const validation = await terminalStateTracker.flushValidatedCheckpoint();
-      let trustedCheckpoint = baseCheckpoint;
-      if (validation.eligible) {
-        const headCheckpoint = normalizeTerminalStreamCheckpoint({
-          version: TERMINAL_SESSION_STREAM_VERSION,
-          sessionId,
-          authorityId,
-          revision: journalRevision,
-          cols,
-          rows,
-          scrollback,
-          createdAtMs: Date.now(),
-          serializedState: validation.state
-        });
-        if (!headCheckpoint) {
-          throw new Error(`Could not validate recovered terminal head for session ${sessionId}.`);
-        }
-        trustedCheckpoint = headCheckpoint;
-      }
-      return {
-        terminalStateTracker,
-        terminalCheckpoint: trustedCheckpoint,
-        cols,
-        rows,
-        scrollback,
-        output
-      };
-    } catch (error) {
-      terminalStateTracker.dispose();
-      throw error;
-    }
-  }
-
   private scheduleIdleShutdownIfNeeded(): void {
-    if (this.connections.size > 0 || Array.from(this.sessions.values()).some((session) => session.live)) {
+    if (
+      !this.recoveryComplete ||
+      this.connections.size > 0 ||
+      Array.from(this.sessions.values()).some((session) => session.live)
+    ) {
       this.clearIdleShutdownTimer();
       return;
     }
@@ -2185,14 +2370,36 @@ function isAgentResumePhaseActive(status: AgentNodeStatus): boolean {
   return status === 'starting' || status === 'resuming';
 }
 
+function normalizeAgentActivitySource(value: unknown): AgentActivitySource | undefined {
+  return value === 'provider-lifecycle' ||
+    value === 'submission-intent' ||
+    value === 'terminal-title' ||
+    value === 'attention' ||
+    value === 'heuristic'
+    ? value
+    : undefined;
+}
+
 function isAgentLifecycleAwaitingInteractiveState(
   status: AgentNodeStatus | TerminalNodeStatus
 ): boolean {
   return status === 'starting' || status === 'resuming' || status === 'running';
 }
 
-function isAgentInstructionSubmission(data: string): boolean {
-  return /[\r\n]/.test(data);
+function shouldEvaluateSupervisorAgentInteractiveState(session: SupervisorSession): boolean {
+  return (
+    isAgentLifecycleAwaitingInteractiveState(session.lifecycle) ||
+    (session.lifecycle === 'waiting-input' &&
+      isAgentHeuristicWaitingInputRecoverable(session.agentProviderLifecycle))
+  );
+}
+
+function shouldRecordSupervisorAgentOutputHeuristics(session: SupervisorSession): boolean {
+  return shouldEvaluateSupervisorAgentInteractiveState(session);
+}
+
+function isAgentInstructionSubmission(data: string, intent?: AgentInputIntent): boolean {
+  return intent === 'submit' || (intent === undefined && /[\r\n]/.test(data));
 }
 
 function containsTerminalSuspendInput(data: string): boolean {
@@ -2222,6 +2429,46 @@ function createErrorResponse(
       descriptor
     }
   };
+}
+
+function createExecutionSpawnProtocolError(error: unknown, file: string, cwd: string): Error {
+  const cause = error instanceof Error ? error : new Error(String(error));
+  const errno = readErrorCode(cause);
+  return createRuntimeSupervisorProtocolError({
+    id: 'executionSpawnFailed',
+    params: {
+      file,
+      cwd,
+      detail: cause.message
+    }
+  }, RUNTIME_SUPERVISOR_ERROR_CODES.executionSpawnFailed, {
+    origin: 'execution-spawn',
+    errno,
+    file,
+    cwd
+  });
+}
+
+async function waitForTestRecoveryGate(): Promise<void> {
+  const gatePath = process.env[TEST_RECOVERY_GATE_PATH_ENV]?.trim();
+  if (!gatePath) {
+    return;
+  }
+
+  while (fs.existsSync(gatePath)) {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, TEST_RECOVERY_GATE_POLL_INTERVAL_MS);
+    });
+  }
+}
+
+function readErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) {
+    return undefined;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && code.trim() ? code.trim() : undefined;
 }
 
 function ensureSocketDirectoryReady(paths: RuntimeSupervisorPaths): void {

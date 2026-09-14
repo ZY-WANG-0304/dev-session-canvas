@@ -1117,7 +1117,6 @@ function normalizeRuntimeContext(
         }
       ).strongTerminalAttentionReminderEnabled
     : undefined;
-
   return {
     workspaceTrusted: runtimeContext?.workspaceTrusted ?? false,
     surfaceLocation: runtimeContext?.surfaceLocation === 'editor' ? 'editor' : 'panel',
@@ -2898,6 +2897,7 @@ function App(): JSX.Element {
           nodeId,
           kind,
           data,
+          intent: metadata?.intent,
           ...(metadata
             ? {
                 sequence: metadata.sequence,

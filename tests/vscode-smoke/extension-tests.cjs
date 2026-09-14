@@ -7308,6 +7308,95 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         payload: {
           nodeId: claudeAgent.id,
           kind: 'agent',
+          data: 'sleep 3\r'
+        }
+      });
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgent.id);
+        return Boolean(
+          currentAgent?.status === 'running' &&
+            currentAgent?.metadata?.agent?.activitySource === 'provider-lifecycle' &&
+            currentAgent?.metadata?.agent?.activityAuthority === 'authoritative'
+        );
+      }, 20000);
+      await sleep(2000);
+      snapshot = await getDebugSnapshot();
+      assert.strictEqual(
+        findNodeById(snapshot, claudeAgent.id).status,
+        'running',
+        'Expected an ordinary Claude turn to remain running while its silent task is still active.'
+      );
+      snapshot = await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgent.id);
+        return Boolean(
+          currentAgent?.status === 'waiting-input' &&
+            currentAgent?.metadata?.agent?.lastTurnOutcome === 'completed' &&
+            typeof currentAgent?.metadata?.agent?.providerSessionId === 'string' &&
+          typeof currentAgent?.metadata?.agent?.providerTurnId === 'string'
+        );
+      }, 20000);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+      await dispatchWebviewMessage({
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: claudeAgent.id,
+          kind: 'agent',
+          data: 'failturn API unavailable\r'
+        }
+      });
+      const claudeTurnFailureDiagnostics = await waitForDiagnosticEvents(
+        (events) =>
+          events.some(
+            (event) =>
+              event.kind === 'execution/attentionNotificationPosted' &&
+              event.detail?.trigger === 'agent-turn-failure' &&
+              event.detail?.nodeId === claudeAgent.id &&
+              event.detail?.provider === 'claude' &&
+              event.detail?.error === 'API unavailable'
+          ),
+        20000
+      );
+      snapshot = await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgent.id);
+        return Boolean(
+          currentAgent?.status === 'waiting-input' &&
+            currentAgent?.metadata?.agent?.lastTurnOutcome === 'failed' &&
+            currentAgent?.metadata?.agent?.lastTurnError === 'API unavailable' &&
+            currentAgent?.metadata?.agent?.attentionPending === true
+        );
+      }, 20000);
+      assert.ok(
+        claudeTurnFailureDiagnostics.some(
+          (event) =>
+            event.kind === 'execution/attentionNotificationPosted' &&
+            typeof event.detail?.providerTurnId === 'string'
+        ),
+        'Expected Claude StopFailure to retain provider turn identity in the attention diagnostic.'
+      );
+      await waitForInterceptedInformationMessage(
+        calls,
+        (call) => /Claude Code turn failed: API unavailable/.test(call.message),
+        'Expected Claude StopFailure to surface a workbench attention notification.'
+      );
+      await performWebviewDomAction({
+        kind: 'selectNode',
+        nodeId: claudeAgent.id
+      });
+      await waitForSnapshot((currentSnapshot) => {
+        const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgent.id);
+        return currentAgent?.metadata?.agent?.attentionPending === false;
+      }, 20000);
+
+      await clearDiagnosticEvents();
+      calls.length = 0;
+
+      await dispatchWebviewMessage({
+        type: 'webview/executionInput',
+        payload: {
+          nodeId: claudeAgent.id,
+          kind: 'agent',
           data: 'exit 33\r'
         }
       });

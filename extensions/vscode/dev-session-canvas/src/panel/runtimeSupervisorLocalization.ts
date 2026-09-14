@@ -144,8 +144,18 @@ export function localizeRuntimeSupervisorMessageDescriptor(
       return vscode.l10n.t('Could not connect to the runtime supervisor.');
     case 'clientConnectionClosed':
       return vscode.l10n.t('Runtime supervisor connection closed.');
+    case 'clientSocketUnavailable':
+      return vscode.l10n.t('The runtime supervisor socket is unavailable. It may be restarting or recovering history.');
+    case 'clientSocketRefused':
+      return vscode.l10n.t('The runtime supervisor is not accepting connections yet. It may still be starting or recovering history.');
     case 'clientReadyTimeout':
       return vscode.l10n.t('Timed out waiting for the runtime supervisor to start.');
+    case 'executionSpawnFailed':
+      return vscode.l10n.t('Could not start runtime process {file} in {cwd}: {detail}', {
+        file: params.file ?? vscode.l10n.t('<unknown>'),
+        cwd: params.cwd ?? vscode.l10n.t('<unknown>'),
+        detail: params.detail ?? vscode.l10n.t('Unknown spawn failure.')
+      });
     case 'systemdBackendMissingPaths':
       return vscode.l10n.t('The systemd-user backend is missing unit or controlDir paths.');
     case 'systemdCommandFailed':

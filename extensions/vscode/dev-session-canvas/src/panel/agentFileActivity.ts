@@ -17,8 +17,7 @@ export interface AgentFileActivityEvent {
 }
 
 export interface AgentFileActivitySession {
-  extraArgs: string[];
-  extraEnv: NodeJS.ProcessEnv;
+  configureLaunch(args: string[], env: NodeJS.ProcessEnv, cwd: string): string[];
   start(onEvent: (event: AgentFileActivityEvent) => void): void;
   dispose(): Promise<void>;
 }
@@ -28,6 +27,7 @@ interface AgentFileActivitySessionParams {
   command: string;
   extensionRootPath: string;
   storageRootPath: string;
+  fileActivityEnabled: boolean;
 }
 
 interface ParsedAgentFileActivityEvent {
@@ -41,25 +41,16 @@ export function createAgentFileActivitySession(
 ): AgentFileActivitySession {
   if (looksLikeFakeAgentProviderCommand(params.command)) {
     return createNdjsonFileActivitySession({
-      mode: 'fake-provider',
-      storageRootPath: params.storageRootPath
+      storageRootPath: params.storageRootPath,
+      fileActivityEnabled: params.fileActivityEnabled
     });
   }
 
   if (params.provider === 'claude') {
-    return createNdjsonFileActivitySession({
-      mode: 'claude',
-      storageRootPath: params.storageRootPath,
-      extensionRootPath: params.extensionRootPath
-    });
+    return createClaudeFileActivitySession(params);
   }
 
-  return {
-    extraArgs: [],
-    extraEnv: {},
-    start: () => {},
-    dispose: async () => {}
-  };
+  return createPassiveAgentFileActivitySession();
 }
 
 export function looksLikeFakeAgentProviderCommand(command: string): boolean {
@@ -68,61 +59,29 @@ export function looksLikeFakeAgentProviderCommand(command: string): boolean {
 }
 
 function createNdjsonFileActivitySession(params: {
-  mode: 'claude' | 'fake-provider';
   storageRootPath: string;
-  extensionRootPath?: string;
+  fileActivityEnabled: boolean;
 }): AgentFileActivitySession {
   const sessionRootPath = path.join(params.storageRootPath, randomUUID());
   fs.mkdirSync(sessionRootPath, { recursive: true });
   const eventStreamPath = path.join(sessionRootPath, 'events.ndjson');
   fs.writeFileSync(eventStreamPath, '', 'utf8');
 
-  const disposer = new NdjsonFileActivityWatcher(eventStreamPath);
-  const extraArgs: string[] = [];
-  const extraEnv: NodeJS.ProcessEnv = {};
-
-  if (params.mode === 'fake-provider') {
-    extraEnv[FAKE_AGENT_PROVIDER_FILE_EVENTS_ENV_KEY] = eventStreamPath;
-  }
-
-  if (params.mode === 'claude') {
-    const extensionRootPath = params.extensionRootPath;
-    if (!extensionRootPath) {
-      throw new Error('Claude 文件活动会话缺少 extension root。');
-    }
-
-    const hookScriptPath = path.join(extensionRootPath, 'scripts', 'runtime', 'claude-file-event-hook.cjs');
-    const settingsPath = path.join(sessionRootPath, 'claude-file-activity-settings.json');
-    const hookCommand = `${shellQuote(process.execPath)} ${shellQuote(hookScriptPath)}`;
-    const settings = {
-      hooks: {
-        PostToolUse: [
-          {
-            matcher: 'Read|Edit|MultiEdit|Write',
-            hooks: [
-              {
-                type: 'command',
-                command: hookCommand
-              }
-            ]
-          }
-        ]
-      }
-    };
-
-    fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
-    extraArgs.push('--settings', settingsPath);
-    extraEnv[AGENT_FILE_EVENT_STREAM_ENV_KEY] = eventStreamPath;
-  }
-
+  const disposer = params.fileActivityEnabled
+    ? new NdjsonFileActivityWatcher(eventStreamPath)
+    : undefined;
   return {
-    extraArgs,
-    extraEnv,
+    configureLaunch(args, env) {
+      if (params.fileActivityEnabled) {
+        env[FAKE_AGENT_PROVIDER_FILE_EVENTS_ENV_KEY] = eventStreamPath;
+      }
+      return [...args];
+    },
     start(onEvent) {
-      disposer.start(onEvent);
+      disposer?.start(onEvent);
     },
     async dispose() {
-      await disposer.dispose();
+      await disposer?.dispose();
       try {
         fs.rmSync(sessionRootPath, { recursive: true, force: true });
       } catch {
@@ -130,6 +89,191 @@ function createNdjsonFileActivitySession(params: {
       }
     }
   };
+}
+
+function createPassiveAgentFileActivitySession(): AgentFileActivitySession {
+  return {
+    configureLaunch: (args) => [...args],
+    start: () => {},
+    dispose: async () => {}
+  };
+}
+
+function createClaudeFileActivitySession(
+  params: AgentFileActivitySessionParams
+): AgentFileActivitySession {
+  const sessionRootPath = path.join(params.storageRootPath, randomUUID());
+  fs.mkdirSync(sessionRootPath, { recursive: true });
+  const eventStreamPath = path.join(sessionRootPath, 'events.ndjson');
+  fs.writeFileSync(eventStreamPath, '', 'utf8');
+  const disposer = params.fileActivityEnabled
+    ? new NdjsonFileActivityWatcher(eventStreamPath)
+    : undefined;
+
+  return {
+    configureLaunch(args, env, cwd) {
+      if (!params.fileActivityEnabled) {
+        return [...args];
+      }
+      const configured = prepareClaudeFileActivitySettings({
+        args,
+        env,
+        cwd,
+        extensionRootPath: params.extensionRootPath,
+        sessionRootPath
+      });
+      if (configured.configured) {
+        env[AGENT_FILE_EVENT_STREAM_ENV_KEY] = eventStreamPath;
+      }
+      return configured.args;
+    },
+    start(onEvent) {
+      disposer?.start(onEvent);
+    },
+    async dispose() {
+      await disposer?.dispose();
+      try {
+        fs.rmSync(sessionRootPath, { recursive: true, force: true });
+      } catch {
+        // Best effort cleanup only.
+      }
+    }
+  };
+}
+
+function prepareClaudeFileActivitySettings(params: {
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  cwd: string;
+  extensionRootPath: string;
+  sessionRootPath: string;
+}): { args: string[]; configured: boolean } {
+  if (findClaudeHooksDisabledReason(params.args, params.env)) {
+    return { args: [...params.args], configured: false };
+  }
+  const extracted = extractClaudeAdditionalSettings(params.args);
+  if (!extracted.ok) {
+    return { args: [...params.args], configured: false };
+  }
+  const baseSettings = extracted.value
+    ? readClaudeAdditionalSettings(extracted.value, params.cwd)
+    : {};
+  if (!baseSettings || (baseSettings.hooks !== undefined && !isRecord(baseSettings.hooks))) {
+    return { args: [...params.args], configured: false };
+  }
+  const baseHooks = baseSettings.hooks as Record<string, unknown> | undefined;
+  if (baseHooks?.PostToolUse !== undefined && !Array.isArray(baseHooks.PostToolUse)) {
+    return { args: [...params.args], configured: false };
+  }
+  const fileHookScriptPath = path.join(
+    params.extensionRootPath,
+    'scripts',
+    'runtime',
+    'claude-file-event-hook.cjs'
+  );
+  if (!isRegularFile(fileHookScriptPath)) {
+    return { args: [...params.args], configured: false };
+  }
+
+  const hooks = { ...baseHooks };
+  hooks.PostToolUse = appendClaudeCommandHook(
+    hooks.PostToolUse,
+    `${shellQuote(process.execPath)} ${shellQuote(fileHookScriptPath)}`,
+    'Read|Edit|MultiEdit|Write'
+  );
+  const settingsPath = path.join(params.sessionRootPath, 'claude-file-activity-settings.json');
+  fs.writeFileSync(settingsPath, `${JSON.stringify({ ...baseSettings, hooks }, null, 2)}\n`, 'utf8');
+  return {
+    args: [...extracted.argsWithoutSettings, '--settings', settingsPath],
+    configured: true
+  };
+}
+
+function findClaudeHooksDisabledReason(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv
+): string | undefined {
+  if (args.includes('--safe-mode')) {
+    return 'claude-hooks-disabled-by-safe-mode';
+  }
+  if (args.includes('--bare')) {
+    return 'claude-hooks-disabled-by-bare';
+  }
+  if (env.CLAUDE_CODE_SAFE_MODE === '1') {
+    return 'claude-hooks-disabled-by-safe-mode-env';
+  }
+  if (env.CLAUDE_CODE_SIMPLE === '1') {
+    return 'claude-hooks-disabled-by-simple-mode-env';
+  }
+  return undefined;
+}
+
+function isRegularFile(targetPath: string): boolean {
+  try {
+    return fs.statSync(targetPath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function appendClaudeCommandHook(existing: unknown, command: string, matcher: string): unknown[] {
+  const existingHooks = Array.isArray(existing) ? [...existing] : [];
+  return [
+    ...existingHooks,
+    {
+      matcher,
+      hooks: [
+        {
+          type: 'command',
+          command
+        }
+      ]
+    }
+  ];
+}
+
+function extractClaudeAdditionalSettings(args: readonly string[]):
+  | { ok: true; argsWithoutSettings: string[]; value?: string }
+  | { ok: false } {
+  const argsWithoutSettings: string[] = [];
+  let value: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    if (token === '--settings') {
+      const next = args[index + 1];
+      if (!next) {
+        return { ok: false };
+      }
+      value = next;
+      index += 1;
+      continue;
+    }
+    if (token.startsWith('--settings=')) {
+      const inlineValue = token.slice('--settings='.length);
+      if (!inlineValue) {
+        return { ok: false };
+      }
+      value = inlineValue;
+      continue;
+    }
+    argsWithoutSettings.push(token);
+  }
+  return { ok: true, argsWithoutSettings, value };
+}
+
+function readClaudeAdditionalSettings(value: string, cwd: string): Record<string, unknown> | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const parsed = trimmed.startsWith('{')
+      ? JSON.parse(trimmed)
+      : JSON.parse(fs.readFileSync(path.resolve(cwd, trimmed), 'utf8'));
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 class NdjsonFileActivityWatcher {
@@ -285,11 +429,33 @@ function parseAgentFileActivityEvent(line: string): ParsedAgentFileActivityEvent
 }
 
 function shellQuote(value: string): string {
+  if (process.platform === 'win32') {
+    return quoteWindowsCommandArgument(value);
+  }
   if (value.length === 0) {
     return "''";
   }
 
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function quoteWindowsCommandArgument(value: string): string {
+  let result = '"';
+  let backslashCount = 0;
+  for (const character of value) {
+    if (character === '\\') {
+      backslashCount += 1;
+      continue;
+    }
+    if (character === '"') {
+      result += `${'\\'.repeat(backslashCount * 2 + 1)}"`;
+      backslashCount = 0;
+      continue;
+    }
+    result += `${'\\'.repeat(backslashCount)}${character}`;
+    backslashCount = 0;
+  }
+  return `${result}${'\\'.repeat(backslashCount * 2)}"`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

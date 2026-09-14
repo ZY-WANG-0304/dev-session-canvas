@@ -16,8 +16,6 @@ try {
   const protocolOutfile = path.join(tempDir, 'runtimeSupervisorProtocol.cjs');
   const clientOutfile = path.join(tempDir, 'runtimeSupervisorClient.cjs');
   const terminalSessionStreamOutfile = path.join(tempDir, 'terminalSessionStream.cjs');
-  const terminalSessionJournalOutfile = path.join(tempDir, 'terminalSessionJournal.cjs');
-  const serializedTerminalStateOutfile = path.join(tempDir, 'serializedTerminalState.cjs');
   const supervisorOutfile = path.join(tempDir, 'runtimeSupervisorMain.cjs');
   await Promise.all([
     esbuild.build({
@@ -45,22 +43,6 @@ try {
       target: 'node18'
     }),
     esbuild.build({
-      entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts')],
-      bundle: true,
-      format: 'cjs',
-      outfile: terminalSessionJournalOutfile,
-      platform: 'node',
-      target: 'node18'
-    }),
-    esbuild.build({
-      entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts')],
-      bundle: true,
-      format: 'cjs',
-      outfile: serializedTerminalStateOutfile,
-      platform: 'node',
-      target: 'node18'
-    }),
-    esbuild.build({
       entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts')],
       bundle: true,
       format: 'cjs',
@@ -76,21 +58,15 @@ try {
     createRuntimeSupervisorError,
     createRuntimeSupervisorProtocolError,
     formatRuntimeSupervisorMessageDescriptor,
+    getRuntimeSupervisorErrorDetails,
     getRuntimeSupervisorErrorDescriptor,
+    isRuntimeSupervisorExecutionSpawnError,
     serializeRuntimeSupervisorError
   } = require(protocolOutfile);
   const { RuntimeSupervisorClient } = require(clientOutfile);
   const { mergeTerminalStreamProjectionWithLiveTail } = require(terminalSessionStreamOutfile);
-  const {
-    TerminalSessionJournal,
-    resolveTerminalJournalSessionDirectory
-  } = require(terminalSessionJournalOutfile);
-  const {
-    SERIALIZED_TERMINAL_CHECKPOINT_PROFILES,
-    SerializedTerminalStateTracker
-  } = require(serializedTerminalStateOutfile);
-
   await assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClient, tempDir);
+  await assertRuntimeSupervisorClientClassifiesStartupFailures(RuntimeSupervisorClient, tempDir);
   assertTerminalProjectionMergePreservesConcurrentLiveTail(mergeTerminalStreamProjectionWithLiveTail);
 
   const spawnError = new Error('spawn /missing/codex ENOENT');
@@ -104,6 +80,7 @@ try {
   const restoredError = createRuntimeSupervisorError(payload);
   assert.equal(restoredError.message, 'spawn /missing/codex ENOENT');
   assert.equal(restoredError.code, 'ENOENT');
+  assert.deepEqual(getRuntimeSupervisorErrorDetails(restoredError), { origin: 'protocol' });
 
   const genericPayload = serializeRuntimeSupervisorError(new Error('generic failure'));
   assert.deepEqual(genericPayload, {
@@ -125,12 +102,43 @@ try {
   assert.deepEqual(typedPayload, {
     message: 'Runtime session missing-session was not found.',
     code: 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_FOUND',
-    descriptor: sessionNotFoundDescriptor
+    descriptor: sessionNotFoundDescriptor,
+    details: {
+      origin: 'protocol'
+    }
   });
   const restoredTypedError = createRuntimeSupervisorError(typedPayload);
   assert.equal(restoredTypedError.message, 'Runtime session missing-session was not found.');
   assert.equal(restoredTypedError.code, 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_FOUND');
   assert.deepEqual(getRuntimeSupervisorErrorDescriptor(restoredTypedError), sessionNotFoundDescriptor);
+  assert.deepEqual(getRuntimeSupervisorErrorDetails(restoredTypedError), { origin: 'protocol' });
+  const executionSpawnError = createRuntimeSupervisorProtocolError(
+    {
+      id: 'executionSpawnFailed',
+      params: {
+        file: '/missing/codex',
+        cwd: '/workspace',
+        detail: 'spawn /missing/codex ENOENT'
+      }
+    },
+    'DEV_SESSION_CANVAS_RUNTIME_EXECUTION_SPAWN_FAILED',
+    {
+      origin: 'execution-spawn',
+      errno: 'ENOENT',
+      file: '/missing/codex',
+      cwd: '/workspace'
+    }
+  );
+  const executionSpawnPayload = serializeRuntimeSupervisorError(executionSpawnError);
+  assert.deepEqual(executionSpawnPayload.details, {
+    origin: 'execution-spawn',
+    errno: 'ENOENT',
+    file: '/missing/codex',
+    cwd: '/workspace'
+  });
+  const restoredExecutionSpawnError = createRuntimeSupervisorError(executionSpawnPayload);
+  assert.equal(isRuntimeSupervisorExecutionSpawnError(restoredExecutionSpawnError), true);
+  assert.equal(getRuntimeSupervisorErrorDetails(restoredExecutionSpawnError)?.errno, 'ENOENT');
   assert.equal(
     formatRuntimeSupervisorMessageDescriptor({
       id: 'agentSessionStopped',
@@ -198,8 +206,18 @@ try {
   );
   assert.match(
     supervisorSource,
-    /TerminalSessionJournal\.open\([\s\S]*const recoveryCandidates = await terminalJournal\.getRecoveryCandidates\(\);[\s\S]*for \(const candidate of recoveryCandidates\)[\s\S]*restoreTerminalJournalCandidate\([\s\S]*?candidate[\s\S]*?break;/u,
-    '带 authority 的 registry 恢复必须按 journal 提供的候选链逐个验证，不能从 registry checkpoint 或 raw tail 猜测状态。'
+    /const recoveredOutputSequence = normalizeRuntimeSupervisorOutputSequence\(snapshot\.outputSequence\);[\s\S]*await readTerminalSessionJournalMetadata\([\s\S]*recoveredFromDeadPty: true/u,
+    '重启后的 Supervisor 必须只读取有界 Journal metadata，保留已保存的显示序列并标记原 PTY 已死亡。'
+  );
+  assert.doesNotMatch(
+    supervisorSource,
+    /recoveredOutputSequence = Math\.max\([\s\S]*metadata\.lastRevision/u,
+    'Journal manifest revision 不能被当作死亡 PTY 的显示序列。'
+  );
+  assert.doesNotMatch(
+    supervisorSource,
+    /TerminalSessionJournal\.open\(|getRecoveryCandidates\(|restoreTerminalJournalCandidate/u,
+    '死亡 PTY 的 registry 恢复不得打开、解析或回放完整 Journal。'
   );
   assert.match(
     terminalJournalSource,
@@ -208,8 +226,13 @@ try {
   );
   assert.match(
     supervisorSource,
-    /initialState: recoveredAuthorityId \? undefined : snapshot\.serializedTerminalState,[\s\S]*initialOutput: recoveredAuthorityId \? undefined : snapshot\.output/u,
-    'authority journal 恢复失败时必须拒绝 serialized/raw tail fallback。'
+    /initialState: snapshot\.serializedTerminalState,[\s\S]*initialOutput: snapshot\.serializedTerminalState \? undefined : snapshot\.output/u,
+    '死亡 PTY 恢复只能初始化有界保存快照或最近输出，不能按 authority 回放 Journal。'
+  );
+  assert.match(
+    supervisorSource,
+    /includeRecoveredTerminalProjection = includeTerminalProjection && !session\.recoveredFromDeadPty/u,
+    '死亡 PTY 的 Supervisor snapshot 不得覆盖 Host 已保存的完整 terminal projection。'
   );
   assert.match(
     supervisorSource,
@@ -223,15 +246,7 @@ try {
   );
 
   const runtimeEvidence = await assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supervisorOutfile, tempDir);
-  await assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, tempDir, runtimeEvidence.marker);
-  await assertRuntimeSupervisorV2CheckpointFallback(
-    supervisorOutfile,
-    tempDir,
-    TerminalSessionJournal,
-    resolveTerminalJournalSessionDirectory,
-    SerializedTerminalStateTracker,
-    SERIALIZED_TERMINAL_CHECKPOINT_PROFILES
-  );
+  await assertRuntimeSupervisorRestartUsesSavedSnapshot(supervisorOutfile, tempDir, runtimeEvidence.marker);
   const capacityMetrics = await assertTenAgentRuntimeCapacity(supervisorOutfile, tempDir);
 
   console.log(`[10-agent-supervisor-capacity] ${JSON.stringify(capacityMetrics)}`);
@@ -296,7 +311,9 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
               capabilities: {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
-                terminalAppliedRevisionAckV1: true
+                terminalAppliedRevisionAckV1: true,
+                agentSubmissionIntentV1: true,
+                agentProviderLifecycleV1: true
               }
             }
           })}\n`);
@@ -361,6 +378,8 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
     assert.equal(client.supportsTerminalSessionStream(), true);
     assert.equal(client.supportsTerminalProjectionSnapshot(), true);
     assert.equal(client.supportsTerminalAppliedRevisionAck(), true);
+    assert.equal(client.supportsAgentSubmissionIntent(), true);
+    assert.equal(client.supportsAgentProviderLifecycle(), true);
     assert.equal(connectionCount, 1, 'Concurrent readiness callers must share one socket connection.');
     assert.equal(helloRequestCount, 1, 'Concurrent readiness callers must share one hello handshake.');
   } finally {
@@ -375,6 +394,55 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
       socket.destroy();
     }
     await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+async function assertRuntimeSupervisorClientClassifiesStartupFailures(RuntimeSupervisorClient, tempDir) {
+  const socketPath =
+    process.platform === 'win32'
+      ? `\\\\.\\pipe\\dsc-runtime-client-missing-${process.pid}-${Date.now()}`
+      : path.join(tempDir, `runtime-client-missing-${Date.now()}.sock`);
+  const client = new RuntimeSupervisorClient({
+    backend: {
+      kind: 'legacy-detached',
+      guarantee: 'best-effort',
+      label: 'Missing Test Supervisor',
+      paths: {
+        storageDir: tempDir,
+        socketPath,
+        registryPath: path.join(tempDir, 'runtime-client-missing-registry.json'),
+        socketLocation: process.platform === 'win32' ? 'named-pipe' : 'storage'
+      },
+      startSupervisor: async () => undefined
+    },
+    supervisorScriptPath: '/unused/runtimeSupervisorMain.js',
+    supervisorLauncherScriptPath: '/unused/runtimeSupervisorLauncher.js',
+    startupTimeoutMs: 120
+  });
+
+  try {
+    await assert.rejects(
+      client.ensureConnected({ allowRestart: false }),
+      (error) => {
+        assert.equal(error.code, 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_SOCKET_UNAVAILABLE');
+        assert.deepEqual(error.details, {
+          origin: 'transport',
+          errno: 'ENOENT'
+        });
+        return true;
+      }
+    );
+    await assert.rejects(
+      client.ensureConnected(),
+      (error) => {
+        assert.equal(error.code, 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_READY_TIMEOUT');
+        assert.equal(error.details?.origin, 'readiness');
+        assert.equal(error.details?.errno, 'ENOENT');
+        return true;
+      }
+    );
+  } finally {
+    client.dispose();
   }
 }
 
@@ -433,7 +501,100 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     const hello = await sendRuntimeSupervisorRequest(socket, messages, 'hello');
     assert.equal(hello.capabilities?.terminalSessionStreamV1, true);
     assert.equal(hello.capabilities?.terminalProjectionSnapshotV1, true);
+    assert.equal(hello.capabilities?.terminalProjectionCheckpointV1, true);
     assert.equal(hello.capabilities?.terminalAppliedRevisionAckV1, true);
+    assert.equal(hello.capabilities?.agentSubmissionIntentV1, true);
+    assert.equal(
+      hello.capabilities?.agentProviderLifecycleV1,
+      undefined,
+      'New Supervisors must not advertise a callback lifecycle transport.'
+    );
+
+    const missingSignalAgentScriptPath = path.join(tempDir, 'runtime-agent-missing-provider-signal.js');
+    await writeFile(
+      missingSignalAgentScriptPath,
+      `let turnScheduled = false;\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (data) => {\n  if (turnScheduled || !/[\\r\\n]/u.test(data)) return;\n  turnScheduled = true;\n  process.stdout.write('working\\r\\n');\n  setTimeout(() => process.stdout.write('> '), 2300);\n  setTimeout(() => {\n    process.stdout.write('\\u001b]0;⠂ Claude Code\\u0007');\n    setTimeout(() => process.stdout.write('\\u001b]0;⠐ Claude Code\\u0007'), 120);\n  }, 8000);\n});\nsetInterval(() => undefined, 1000);\n`,
+      'utf8'
+    );
+    const missingSignalAgentSnapshot = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'agent',
+      sessionId: 'provider-signal-missing-agent',
+      displayLabel: 'Claude Code',
+      launchMode: 'start',
+      scrollback: 1000,
+      provider: 'claude',
+      launchSpec: {
+        file: process.execPath,
+        args: [missingSignalAgentScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: 'provider-signal-missing-agent',
+      data: 'silent prompt',
+      intent: 'text'
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: 'provider-signal-missing-agent',
+      data: '\r',
+      intent: 'submit'
+    });
+    await delay(1900);
+    const missingSignalRunningSnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: 'provider-signal-missing-agent' }
+    );
+    assert.equal(
+      missingSignalRunningSnapshot.lifecycle,
+      'running',
+      'The non-invasive submit path must not enter waiting-input before the quiet fallback.'
+    );
+    assert.equal(missingSignalRunningSnapshot.agentActivitySource, 'submission-intent');
+    await delay(800);
+    const promptGlyphSnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: 'provider-signal-missing-agent' }
+    );
+    assert.equal(
+      promptGlyphSnapshot.lifecycle,
+      'running',
+      'A prompt glyph must be treated as ordinary PTY output, not completion evidence.'
+    );
+    const heuristicCompletionSnapshot = await waitForRuntimeSupervisorMessage(
+      messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionState' &&
+        message.payload?.sessionId === 'provider-signal-missing-agent' &&
+        message.payload.lifecycle === 'waiting-input' &&
+        message.payload.agentActivitySource === 'heuristic',
+      'provider-signal-missing heuristic completion',
+      6000
+    );
+    assert.equal(heuristicCompletionSnapshot.payload.agentActivityAuthority, 'best-effort');
+    const heuristicRecoverySnapshot = await waitForRuntimeSupervisorMessage(
+      messages,
+      (message) =>
+        message.type === 'event' &&
+        message.event === 'sessionState' &&
+        message.payload?.sessionId === 'provider-signal-missing-agent' &&
+        message.payload.lifecycle === 'running' &&
+        message.payload.agentActivitySource === 'terminal-title',
+      'terminal-title waiting recovery',
+      4000
+    );
+    assert.equal(heuristicRecoverySnapshot.payload.agentActivityAuthority, 'best-effort');
+    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
+      sessionId: 'provider-signal-missing-agent'
+    });
 
     const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');
     const gapMarker = `attach-gap-marker-${Date.now()}`;
@@ -1051,8 +1212,142 @@ setInterval(() => undefined, 1000);
         .includes(`${unsafeSplitPrefix}\u001b[31`),
       'the split CSI must remain losslessly available in the journal suffix.'
     );
+    assert.equal(
+      unsafeCheckpointSnapshot.terminalCheckpointDiagnostics?.lastRejectionReason,
+      'parser-not-ground',
+      'a rejected checkpoint must expose the fail-closed reason without terminal content.'
+    );
+    assert.ok(
+      unsafeCheckpointSnapshot.terminalCheckpointDiagnostics?.consecutiveRejectionCount >= 1,
+      'a rejected checkpoint must expose its rejection streak.'
+    );
+    assert.equal(
+      unsafeCheckpointSnapshot.terminalCheckpointDiagnostics?.snapshotEventCount,
+      unsafeCheckpointSnapshot.terminalStream.events.length,
+      'snapshot diagnostics must report replay scale without copying event content into diagnostics.'
+    );
+    assert.ok(unsafeCheckpointSnapshot.terminalCheckpointDiagnostics?.snapshotEventBytes > 0);
+    const unsafeBoundedCheckpoint = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getTerminalProjectionCheckpoint',
+      { sessionId: unsafeCheckpointSessionId }
+    );
+    assert.equal(
+      unsafeBoundedCheckpoint.terminalStream,
+      undefined,
+      'a rejected checkpoint refresh must remain bounded and omit the journal suffix.'
+    );
+    assert.equal(unsafeBoundedCheckpoint.terminalCheckpointDiagnostics?.lastRejectionReason, 'parser-not-ground');
     await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
       sessionId: unsafeCheckpointSessionId
+    });
+
+    const codexColorQueryMarker = `CODEX-COLOR-QUERY-${Date.now()}`;
+    const codexColorQueryFollowUpMarker = `CODEX-COLOR-FOLLOW-UP-${Date.now()}`;
+    const codexColorQueryScriptPath = path.join(tempDir, 'codex-color-query-checkpoint.js');
+    await writeFile(
+      codexColorQueryScriptPath,
+      `const readline = require('node:readline');
+const reader = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+reader.on('line', (line) => {
+  if (line === 'emit-query') {
+    process.stdout.write(${JSON.stringify(`\u001b]10;?\u001b\\\u001b]11;?\u001b\\${codexColorQueryMarker}\\r\\n`)});
+    return;
+  }
+  if (line === 'follow-up') {
+    process.stdout.write(${JSON.stringify(`${codexColorQueryFollowUpMarker}\\r\\n`)});
+  }
+});
+setInterval(() => undefined, 1000);
+`,
+      'utf8'
+    );
+    const codexColorQuerySessionId = 'codex-color-query-checkpoint';
+    const codexColorQueryInitial = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind: 'agent',
+      sessionId: codexColorQuerySessionId,
+      displayLabel: 'Codex color query checkpoint fixture',
+      launchMode: 'start',
+      scrollback: 1000,
+      deferSubscription: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [codexColorQueryScriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
+      sessionId: codexColorQuerySessionId,
+      authorityId: codexColorQueryInitial.terminalAuthorityId,
+      afterRevision: codexColorQueryInitial.terminalRevision
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: codexColorQuerySessionId,
+      data: 'emit-query\n'
+    });
+    await waitForRuntimeSupervisorOutput(
+      messages,
+      codexColorQuerySessionId,
+      codexColorQueryMarker,
+      'Codex color-query output',
+      5000
+    );
+    const codexColorQuerySnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: codexColorQuerySessionId }
+    );
+    assertTerminalStreamSnapshot(codexColorQuerySnapshot, 'Codex color-query checkpoint snapshot');
+    assert.ok(codexColorQuerySnapshot.serializedTerminalState, 'Codex OSC 10/11 REPORT queries must publish a fresh checkpoint.');
+    assert.ok(
+      codexColorQuerySnapshot.terminalStream.checkpoint.revision > 0,
+      'Codex OSC 10/11 REPORT queries must advance the initial checkpoint.'
+    );
+    assert.ok(
+      codexColorQuerySnapshot.terminalStream.events.length < codexColorQuerySnapshot.terminalStream.revision,
+      'a fresh checkpoint must prevent a complete journal suffix from being replayed.'
+    );
+    assert.equal(codexColorQuerySnapshot.terminalCheckpointDiagnostics?.consecutiveRejectionCount, 0);
+    const boundedCheckpoint = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getTerminalProjectionCheckpoint',
+      { sessionId: codexColorQuerySessionId }
+    );
+    assert.equal(boundedCheckpoint.terminalStream, undefined, 'bounded refresh must not return the journal suffix.');
+    assert.equal(boundedCheckpoint.checkpoint.revision, codexColorQuerySnapshot.terminalStream.checkpoint.revision);
+    assert.equal(boundedCheckpoint.terminalCheckpointDiagnostics?.consecutiveRejectionCount, 0);
+
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', {
+      sessionId: codexColorQuerySessionId,
+      data: 'follow-up\n'
+    });
+    await waitForRuntimeSupervisorOutput(
+      messages,
+      codexColorQuerySessionId,
+      codexColorQueryFollowUpMarker,
+      'Codex color-query follow-up output',
+      5000
+    );
+    const codexColorQueryFollowUpSnapshot = await sendRuntimeSupervisorRequest(
+      socket,
+      messages,
+      'getSessionSnapshot',
+      { sessionId: codexColorQuerySessionId }
+    );
+    assert.ok(
+      codexColorQueryFollowUpSnapshot.terminalStream.checkpoint.revision >=
+        codexColorQuerySnapshot.terminalStream.checkpoint.revision,
+      'later normal output must retain or advance the trusted checkpoint.'
+    );
+    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
+      sessionId: codexColorQuerySessionId
     });
 
     const marker = `runtime-final-marker-${Date.now()}`;
@@ -1466,7 +1761,7 @@ async function readProcessCpuTimeMs(processId) {
   return ((userTicks + systemTicks) * 1000) / linuxClockTicksPerSecond;
 }
 
-async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, tempDir, marker) {
+async function assertRuntimeSupervisorRestartUsesSavedSnapshot(supervisorOutfile, tempDir, marker) {
   const storageDir = path.join(tempDir, 'runtime-storage');
   const socketPath =
     process.platform === 'win32'
@@ -1475,132 +1770,43 @@ async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, temp
   const registryPath = path.join(storageDir, 'registry.json');
   const registry = JSON.parse(await readFile(registryPath, 'utf8'));
   const storedSession = registry.sessions.find((candidate) => candidate.sessionId === 'immediate-exit-terminal');
-  assert.ok(storedSession?.terminalAuthorityId, 'restart fixture should retain its terminal authority.');
+  assert.ok(storedSession?.terminalAuthorityId, 'restart fixture should retain its terminal authority for metadata lookup.');
   delete storedSession.terminalStream;
   delete storedSession.serializedTerminalState;
   await writeFile(registryPath, JSON.stringify(registry, null, 2), 'utf8');
 
-  const firstRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
-  try {
-    const rebuiltSnapshot = await sendRuntimeSupervisorRequest(
-      firstRestart.socket,
-      firstRestart.messages,
-      'attachSession',
-      {
-        sessionId: 'immediate-exit-terminal',
-        deferSubscription: true
-      }
-    );
-    assertTerminalStreamSnapshot(rebuiltSnapshot, 'journal-only restart snapshot');
-    assert.match(
-      rebuiltSnapshot.terminalStream.checkpoint.serializedState.data,
-      new RegExp(marker, 'u'),
-      'a missing checkpoint cache must rebuild from the complete journal.'
-    );
-  } finally {
-    await closeRuntimeSupervisorForTest(firstRestart);
-  }
-
-  const untrustedRegistryMarker = `UNTRUSTED-REGISTRY-CHECKPOINT-${Date.now()}`;
-  const registryWithUntrustedCache = JSON.parse(await readFile(registryPath, 'utf8'));
-  const cachedSession = registryWithUntrustedCache.sessions.find(
-    (candidate) => candidate.sessionId === 'immediate-exit-terminal'
-  );
-  assert.ok(cachedSession?.terminalAuthorityId);
-  assert.ok(Number.isSafeInteger(cachedSession.terminalRevision));
-  const untrustedSerializedState = {
-    format: 'xterm-serialize-v1',
-    data: untrustedRegistryMarker,
-    outputSequence: cachedSession.terminalRevision
+  const attachAndAssertSavedSnapshot = async (label) => {
+    const runtime = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
+    try {
+      const hello = await sendRuntimeSupervisorRequest(runtime.socket, runtime.messages, 'hello');
+      const snapshot = await attachRecoveredRuntimeSupervisorSession(
+        runtime.socket,
+        runtime.messages,
+        'immediate-exit-terminal'
+      );
+      assert.equal(hello.recovery?.failureCount ?? 0, 0, `${label} must not fail Journal recovery.`);
+      assert.equal(snapshot.live, false, `${label} must not pretend that a dead PTY is live.`);
+      assert.equal(snapshot.terminalStream, undefined, `${label} must not replay a terminal stream.`);
+      assert.equal(snapshot.serializedTerminalState, undefined, `${label} must preserve the Host-saved projection.`);
+      assert.match(snapshot.output, new RegExp(marker, 'u'), `${label} must retain the bounded registry tail.`);
+      return snapshot;
+    } finally {
+      await closeRuntimeSupervisorForTest(runtime);
+    }
   };
-  cachedSession.output = untrustedRegistryMarker;
-  cachedSession.outputSequence = cachedSession.terminalRevision;
-  cachedSession.serializedTerminalState = untrustedSerializedState;
-  cachedSession.terminalStream = {
-    version: 1,
-    sessionId: cachedSession.sessionId,
-    authorityId: cachedSession.terminalAuthorityId,
-    revision: cachedSession.terminalRevision,
-    checkpoint: {
-      version: 1,
-      sessionId: cachedSession.sessionId,
-      authorityId: cachedSession.terminalAuthorityId,
-      revision: cachedSession.terminalRevision,
-      cols: cachedSession.cols,
-      rows: cachedSession.rows,
-      scrollback: cachedSession.scrollback,
-      createdAtMs: Date.now(),
-      serializedState: untrustedSerializedState
-    },
-    events: []
-  };
-  await writeFile(registryPath, JSON.stringify(registryWithUntrustedCache, null, 2), 'utf8');
 
-  const registryCacheRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
-  try {
-    const journalAuthoritySnapshot = await sendRuntimeSupervisorRequest(
-      registryCacheRestart.socket,
-      registryCacheRestart.messages,
-      'attachSession',
-      {
-        sessionId: 'immediate-exit-terminal',
-        deferSubscription: true
-      }
-    );
-    assertTerminalStreamSnapshot(journalAuthoritySnapshot, 'untrusted registry cache restart snapshot');
-    assert.match(journalAuthoritySnapshot.terminalStream.checkpoint.serializedState.data, new RegExp(marker, 'u'));
-    assert.doesNotMatch(
-      journalAuthoritySnapshot.terminalStream.checkpoint.serializedState.data,
-      new RegExp(untrustedRegistryMarker, 'u'),
-      'a registry checkpoint must never override a journal authority.'
-    );
-    assert.doesNotMatch(
-      journalAuthoritySnapshot.output,
-      new RegExp(untrustedRegistryMarker, 'u'),
-      'a registry raw tail must never override a journal authority.'
-    );
-  } finally {
-    await closeRuntimeSupervisorForTest(registryCacheRestart);
-  }
-
-  const registryBeforeAuthorityMismatch = JSON.parse(await readFile(registryPath, 'utf8'));
-  const authorityMismatchRegistry = JSON.parse(JSON.stringify(registryBeforeAuthorityMismatch));
-  const authorityMismatchSession = authorityMismatchRegistry.sessions.find(
-    (candidate) => candidate.sessionId === 'immediate-exit-terminal'
-  );
-  assert.ok(authorityMismatchSession?.terminalAuthorityId);
-  authorityMismatchSession.terminalAuthorityId = `${authorityMismatchSession.terminalAuthorityId}-registry-mismatch`;
-  await writeFile(registryPath, JSON.stringify(authorityMismatchRegistry, null, 2), 'utf8');
-
-  const authorityMismatchRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
-  try {
-    const failedClosedSnapshot = await sendRuntimeSupervisorRequest(
-      authorityMismatchRestart.socket,
-      authorityMismatchRestart.messages,
-      'attachSession',
-      {
-        sessionId: 'immediate-exit-terminal',
-        deferSubscription: true
-      }
-    );
-    assert.equal(failedClosedSnapshot.terminalStream, undefined);
-    assert.equal(failedClosedSnapshot.terminalAuthorityId, undefined);
-    assert.equal(failedClosedSnapshot.output, '');
-    assert.doesNotMatch(failedClosedSnapshot.serializedTerminalState?.data ?? '', new RegExp(marker, 'u'));
-    assert.equal(failedClosedSnapshot.lastExitMessageDescriptor?.id, 'terminalJournalPersistenceFailed');
-  } finally {
-    await closeRuntimeSupervisorForTest(authorityMismatchRestart);
-    await writeFile(registryPath, JSON.stringify(registryBeforeAuthorityMismatch, null, 2), 'utf8');
-  }
+  await attachAndAssertSavedSnapshot('metadata-only restart snapshot');
 
   const journalRoot = path.join(storageDir, 'terminal-journals');
   const journalDirectories = await readdir(journalRoot);
+  let journalManifestPath;
   let journalSegmentPath;
   for (const directory of journalDirectories) {
     const sessionDirectory = path.join(journalRoot, directory);
     try {
       const manifest = JSON.parse(await readFile(path.join(sessionDirectory, 'manifest.json'), 'utf8'));
       if (manifest.sessionId === 'immediate-exit-terminal') {
+        journalManifestPath = path.join(sessionDirectory, 'manifest.json');
         journalSegmentPath = path.join(sessionDirectory, manifest.segments[0].file);
         break;
       }
@@ -1608,226 +1814,16 @@ async function assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, temp
       // Ignore unrelated or incomplete test directories.
     }
   }
-  assert.ok(journalSegmentPath, 'restart fixture journal segment should exist.');
-  const journalData = await readFile(journalSegmentPath, 'utf8');
-  assert.match(journalData, new RegExp(marker, 'u'));
-  await writeFile(journalSegmentPath, journalData.replace(marker, 'x'.repeat(marker.length)), 'utf8');
+  assert.ok(journalManifestPath && journalSegmentPath, 'restart fixture Journal should exist on disk.');
+  const originalManifest = await readFile(journalManifestPath, 'utf8');
+  const originalSegment = await readFile(journalSegmentPath, 'utf8');
+  assert.match(originalSegment, new RegExp(marker, 'u'));
+  await writeFile(journalSegmentPath, originalSegment.replace(marker, 'x'.repeat(marker.length)), 'utf8');
+  await attachAndAssertSavedSnapshot('corrupt-segment metadata-only restart snapshot');
 
-  const corruptedRestart = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
-  try {
-    const failedClosedSnapshot = await sendRuntimeSupervisorRequest(
-      corruptedRestart.socket,
-      corruptedRestart.messages,
-      'attachSession',
-      {
-        sessionId: 'immediate-exit-terminal',
-        deferSubscription: true
-      }
-    );
-    assert.equal(failedClosedSnapshot.terminalStream, undefined);
-    assert.equal(failedClosedSnapshot.terminalAuthorityId, undefined);
-    assert.equal(failedClosedSnapshot.output, '');
-    assert.doesNotMatch(failedClosedSnapshot.serializedTerminalState?.data ?? '', new RegExp(marker, 'u'));
-    assert.equal(failedClosedSnapshot.lastExitMessageDescriptor?.id, 'terminalJournalPersistenceFailed');
-  } finally {
-    await closeRuntimeSupervisorForTest(corruptedRestart);
-  }
-}
-
-async function assertRuntimeSupervisorV2CheckpointFallback(
-  supervisorOutfile,
-  tempDir,
-  TerminalSessionJournal,
-  resolveTerminalJournalSessionDirectory,
-  SerializedTerminalStateTracker,
-  checkpointProfiles
-) {
-  const storageDir = path.join(tempDir, 'runtime-v2-checkpoint-fallback-storage');
-  const socketPath =
-    process.platform === 'win32'
-      ? `\\\\.\\pipe\\dsc-runtime-supervisor-v2-fallback-${process.pid}-${Date.now()}`
-      : path.join(storageDir, 'supervisor.sock');
-  const registryPath = path.join(storageDir, 'registry.json');
-  const sessionId = 'v2-checkpoint-fallback-terminal';
-  const authorityId = 'v2-checkpoint-fallback-authority';
-  const previousMarker = `V2-PREVIOUS-${Date.now()}`;
-  const currentMarker = `V2-CURRENT-${Date.now()}`;
-  const registryMarker = `V2-UNTRUSTED-REGISTRY-${Date.now()}`;
-  const journal = await TerminalSessionJournal.create({
-    storageDir,
-    sessionId,
-    authorityId,
-    initialCols: 80,
-    initialRows: 24,
-    initialScrollback: 1000,
-    segmentMaxBytes: 1,
-    flushDelayMs: 60_000,
-    compactionMinBytes: 0,
-    checkpointProfiles
-  });
-  const tracker = new SerializedTerminalStateTracker(80, 24, {
-    scrollback: 1000,
-    initialOutputSequence: 0
-  });
-
-  const appendAndCommitCheckpoint = async (data, retainAfterRevision) => {
-    const event = journal.appendOutput(data);
-    tracker.write(data, { outputSequence: event.revision });
-    const validation = await tracker.flushValidatedCheckpoint();
-    assert.equal(validation.eligible, true, `fixture checkpoint ${event.revision} should be eligible.`);
-    const checkpoint = {
-      version: 1,
-      sessionId,
-      authorityId,
-      revision: event.revision,
-      cols: 80,
-      rows: 24,
-      scrollback: 1000,
-      createdAtMs: Date.now(),
-      serializedState: validation.state
-    };
-    const result = await journal.commitCheckpoint(checkpoint, {
-      force: true,
-      ...(retainAfterRevision === undefined ? {} : { retainAfterRevision })
-    });
-    assert.equal(result.committed, true);
-    return checkpoint;
-  };
-
-  try {
-    await appendAndCommitCheckpoint(`${previousMarker}\r\n`);
-    await appendAndCommitCheckpoint(`${currentMarker}\r\n`, 1);
-    await journal.flush();
-    assert.equal(
-      journal.getRetainedStartRevision(),
-      2,
-      'the v2 fixture must remove genesis so two invalid generations cannot silently replay from revision 1.'
-    );
-
-    const sessionDirectory = resolveTerminalJournalSessionDirectory(storageDir, sessionId);
-    const manifest = JSON.parse(await readFile(path.join(sessionDirectory, 'manifest.json'), 'utf8'));
-    assert.equal(manifest.version, 2);
-    assert.ok(manifest.currentCheckpoint?.file);
-    assert.ok(manifest.previousCheckpoint?.file);
-
-    await writeFile(
-      registryPath,
-      JSON.stringify(
-        {
-          version: 1,
-          sessions: [
-            {
-              sessionId,
-              kind: 'terminal',
-              live: false,
-              lifecycle: 'exited',
-              runtimeBackend: 'legacy-detached',
-              runtimeGuarantee: 'best-effort',
-              shellPath: process.execPath,
-              cwd: tempDir,
-              cols: 80,
-              rows: 24,
-              scrollback: 1000,
-              output: registryMarker,
-              outputSequence: 2,
-              serializedTerminalState: {
-                format: 'xterm-serialize-v1',
-                data: registryMarker,
-                outputSequence: 2
-              },
-              terminalAuthorityId: authorityId,
-              terminalRevision: 2,
-              displayLabel: 'V2 checkpoint fallback fixture',
-              launchMode: 'start',
-              lastExitMessage: 'Terminal session ended.',
-              lastExitMessageDescriptor: {
-                id: 'terminalSessionEnded'
-              }
-            }
-          ]
-        },
-        null,
-        2
-      ),
-      'utf8'
-    );
-
-    await writeFile(
-      path.join(sessionDirectory, manifest.currentCheckpoint.file),
-      '{"corrupt":true}\n',
-      'utf8'
-    );
-    const previousFallbackRuntime = await launchRuntimeSupervisorForTest(
-      supervisorOutfile,
-      storageDir,
-      socketPath
-    );
-    try {
-      const snapshot = await sendRuntimeSupervisorRequest(
-        previousFallbackRuntime.socket,
-        previousFallbackRuntime.messages,
-        'attachSession',
-        {
-          sessionId,
-          deferSubscription: true
-        }
-      );
-      assertTerminalStreamSnapshot(snapshot, 'v2 previous-checkpoint fallback snapshot');
-      assert.equal(snapshot.terminalRevision, 2);
-      assert.match(snapshot.terminalStream.checkpoint.serializedState.data, new RegExp(previousMarker, 'u'));
-      assert.match(snapshot.terminalStream.checkpoint.serializedState.data, new RegExp(currentMarker, 'u'));
-      assert.doesNotMatch(snapshot.terminalStream.checkpoint.serializedState.data, new RegExp(registryMarker, 'u'));
-      assert.match(snapshot.output, new RegExp(previousMarker, 'u'));
-      assert.match(snapshot.output, new RegExp(currentMarker, 'u'));
-      assert.doesNotMatch(
-        snapshot.output,
-        new RegExp(registryMarker, 'u'),
-        'recent raw output is advisory journal metadata and must not fall back to the registry tail.'
-      );
-    } finally {
-      await closeRuntimeSupervisorForTest(previousFallbackRuntime);
-    }
-
-    await writeFile(
-      path.join(sessionDirectory, manifest.previousCheckpoint.file),
-      '{"corrupt":true}\n',
-      'utf8'
-    );
-    const failedClosedRuntime = await launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath);
-    try {
-      const snapshot = await sendRuntimeSupervisorRequest(
-        failedClosedRuntime.socket,
-        failedClosedRuntime.messages,
-        'attachSession',
-        {
-          sessionId,
-          deferSubscription: true
-        }
-      );
-      assert.equal(snapshot.terminalStream, undefined);
-      assert.equal(snapshot.terminalAuthorityId, undefined);
-      assert.equal(snapshot.output, '');
-      assert.doesNotMatch(snapshot.serializedTerminalState?.data ?? '', new RegExp(previousMarker, 'u'));
-      assert.doesNotMatch(snapshot.serializedTerminalState?.data ?? '', new RegExp(currentMarker, 'u'));
-      assert.doesNotMatch(snapshot.serializedTerminalState?.data ?? '', new RegExp(registryMarker, 'u'));
-      assert.equal(snapshot.lastExitMessageDescriptor?.id, 'terminalJournalPersistenceFailed');
-      await sendRuntimeSupervisorRequest(
-        failedClosedRuntime.socket,
-        failedClosedRuntime.messages,
-        'deleteSession',
-        { sessionId }
-      );
-      await assert.rejects(
-        stat(sessionDirectory),
-        (error) => error?.code === 'ENOENT',
-        'deleting a fail-closed session must remove its otherwise orphaned journal directory.'
-      );
-    } finally {
-      await closeRuntimeSupervisorForTest(failedClosedRuntime);
-    }
-  } finally {
-    tracker.dispose();
-  }
+  await writeFile(journalManifestPath, '{"invalid":true}\n', 'utf8');
+  await attachAndAssertSavedSnapshot('invalid-manifest metadata-only restart snapshot');
+  await writeFile(journalManifestPath, originalManifest, 'utf8');
 }
 
 async function launchRuntimeSupervisorForTest(supervisorOutfile, storageDir, socketPath) {
@@ -1906,6 +1902,26 @@ async function sendRuntimeSupervisorRequest(socket, messages, method, params) {
   const response = await sendRuntimeSupervisorRawRequest(socket, messages, method, params);
   assert.equal(response.ok, true, response.error?.message);
   return response.result;
+}
+
+async function attachRecoveredRuntimeSupervisorSession(socket, messages, sessionId) {
+  const deadline = Date.now() + 5000;
+  let lastResponse;
+  while (Date.now() < deadline) {
+    lastResponse = await sendRuntimeSupervisorRawRequest(socket, messages, 'attachSession', {
+      sessionId,
+      deferSubscription: true
+    });
+    if (lastResponse.ok) {
+      return lastResponse.result;
+    }
+    if (lastResponse.error?.descriptor?.id !== 'sessionNotFound') {
+      assert.fail(lastResponse.error?.message ?? 'Recovered session attach failed.');
+    }
+    await delay(20);
+  }
+
+  assert.fail(`Timed out waiting for recovered runtime session ${sessionId}: ${JSON.stringify(lastResponse)}`);
 }
 
 async function sendRuntimeSupervisorRawRequest(socket, messages, method, params) {

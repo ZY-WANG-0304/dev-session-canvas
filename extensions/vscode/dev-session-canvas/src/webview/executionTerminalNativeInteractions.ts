@@ -85,6 +85,7 @@ interface ExecutionTerminalNativeInteractionsOptions {
     kind: ExecutionNodeKind,
     text: string
   ) => void;
+  onKeyEvent?: (event: KeyboardEvent) => void;
   onClipboardDiagnostic?: (payload: ExecutionTerminalClipboardDiagnosticPayload) => void;
   resolveFileLinks: (
     nodeId: string,
@@ -456,6 +457,8 @@ export function setupExecutionTerminalNativeInteractions(
     if (event.type !== 'keydown') {
       return true;
     }
+
+    options.onKeyEvent?.(event);
 
     const selection = terminal.getSelection();
     const action = resolveExecutionTerminalClipboardShortcut(clipboardPlatform, event, selection.length > 0);
