@@ -127,7 +127,7 @@
     },
     "form-data": "4.0.6",
     "tmp": "0.2.7",
-    "qs": "6.15.2",
+    "qs": "6.16.0",
     "@azure/msal-node": "5.2.5"
   },
   "devDependencies": {
@@ -149,7 +149,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "5.0.4",
     "vite": "^7.3.5",
-    "vitest": "^3.2.6",
+    "vitest": "^4.1.11",
     "wrangler": "^4.104.0"
   }
 }
