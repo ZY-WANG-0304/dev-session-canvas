@@ -22,7 +22,8 @@
 - [x] (2026-09-15 10:20 +0800) 补齐 parser、Host/Supervisor 协议、真实 node-pty Supervisor 和 Webview 回归测试。
 - [x] (2026-09-15 10:40 +0800) 运行类型检查、相关测试、构建和 `git diff --check`，同步正式设计文档、索引和本计划。
 - [x] (2026-09-15 14:40 +0800) 复核最终代码与文档引用；定向测试、构建、Webview 回归和 `git diff --check` 再次通过。完整 `npm test` 在既有 Marketplace VS Code fixture 阶段因 worktree 绝对路径过长导致 Unix socket 超过 107 字符而停止，未进入本功能的后续测试。
-- [ ] 按仓库提交规范提交仅包含本任务的变更。
+- [x] (2026-09-15 15:00 +0800) 根据 PR review 更新 `test-execution-output-sequence` 的 Supervisor source-level assertion，补充 terminal title/query 脱敏边界断言，并通过 `npm run test:execution-output-sequence`。
+- [x] (2026-09-15 15:10 +0800) 按仓库提交规范提交仅包含本任务的变更。
 
 ## 意外与发现
 
@@ -175,6 +176,8 @@ Webview reload 和跨 VS Code 生命周期 live-runtime reattach；这些不应�
     execution terminal title tests passed
     npm run test:runtime-supervisor-protocol
     runtimeSupervisorProtocol tests passed
+    npm run test:execution-output-sequence
+    execution output sequence tests passed
     node scripts/test/run-playwright-webview.mjs --grep "PTY terminal titles"
     1 passed
 
