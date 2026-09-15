@@ -372,5 +372,6 @@ export function stripTerminalControlSequences(value: string): string {
     .replace(/(?:\u001b\]|\u009d)[^\u0007\u001b\u009c]*(?:\u0007|\u001b\\|\u009c)?/g, '')
     .replace(/(?:\u001b\[|\u009b)[0-?]*[ -/]*[@-~]/g, '')
     .replace(/\u001b[@-Z\\-_]/g, '')
-    .replace(/[\u0080-\u009f]/g, '');
+    .replace(/[\u0080-\u009f]/g, '')
+    .replace(/\u0000/g, '');
 }

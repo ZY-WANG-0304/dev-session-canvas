@@ -21,6 +21,12 @@ import {
   type RuntimePersistenceGuarantee,
   type TerminalNodeStatus
 } from '../common/protocol';
+import {
+  formatExecutionTerminalTitleReport,
+  processExecutionTerminalTitleControls,
+  stripExecutionTerminalTitleMarkers,
+  type ExecutionTerminalTitleRedactionState
+} from '../common/executionTerminalTitle';
 import { resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
 import {
   SERIALIZED_TERMINAL_CHECKPOINT_PROFILES,
@@ -119,6 +125,9 @@ interface SupervisorSession {
   rows: number;
   scrollback: number;
   output: string;
+  terminalTitle?: string;
+  terminalTitleCarryover?: string;
+  terminalTitleRedactionState?: ExecutionTerminalTitleRedactionState;
   outputSequence: number;
   terminalAuthorityId?: string;
   terminalJournal?: TerminalSessionJournal;
@@ -799,6 +808,9 @@ class RuntimeSupervisorServer {
         });
       }
       session.live = false;
+      session.terminalTitle = undefined;
+      session.terminalTitleCarryover = undefined;
+      session.terminalTitleRedactionState = undefined;
       const message: RuntimeSupervisorEvent = {
         type: 'event',
         event: 'sessionState',
@@ -833,18 +845,28 @@ class RuntimeSupervisorServer {
       }
 
       void this.enqueueTerminalOperation(session, () => {
+        const titleUpdate = updateSupervisorTerminalTitle(session, chunk);
+        const terminalOutput = titleUpdate.terminalOutput;
         let terminalEvent: TerminalStreamEvent | undefined;
         try {
-          terminalEvent = session.terminalJournal?.appendOutput(chunk);
+          terminalEvent = session.terminalJournal?.appendOutput(terminalOutput);
         } catch (error) {
           this.failSessionForTerminalJournal(session, error);
           throw error;
         }
         session.outputSequence = terminalEvent?.revision ?? session.outputSequence + 1;
-        session.output = appendOutputTail(session.output, chunk);
-        session.terminalStateTracker.write(chunk, {
+        session.output = appendOutputTail(session.output, terminalOutput);
+        for (const report of titleUpdate.titleReports) {
+          try {
+            session.process?.write(report);
+          } catch {
+            // The process may exit between its output query and the reply.
+          }
+        }
+        session.terminalStateTracker.write(terminalOutput, {
           outputSequence: session.outputSequence
         });
+        const observableTerminalOutput = stripExecutionTerminalTitleMarkers(terminalOutput);
         if (session.kind === 'agent') {
           this.maybeSyncAgentResumeSessionIdFromOutput(session, {
             allowOverwriteExisting: session.stopRequested,
@@ -857,7 +879,12 @@ class RuntimeSupervisorServer {
             session.lifecycle === 'resuming' ||
             session.lifecycle === 'running'
           ) {
-            recordAgentOutputHeuristics(this.ensureAgentActivityState(session), chunk, session.output, session.provider);
+            recordAgentOutputHeuristics(
+              this.ensureAgentActivityState(session),
+              observableTerminalOutput,
+              session.output,
+              session.provider
+            );
             this.queueAgentWaitingInput(session.sessionId);
           }
         } else if (session.lifecycle === 'launching') {
@@ -869,7 +896,12 @@ class RuntimeSupervisorServer {
           this.emitSessionState(session);
         }
 
-        this.emitSessionOutput(session, chunk, terminalEvent);
+        this.emitSessionOutput(
+          session,
+          terminalOutput,
+          terminalEvent,
+          titleUpdate.titleUpdated ? session.terminalTitle ?? null : undefined
+        );
         this.schedulePersist();
       }).catch((error) => {
         if (!session.terminalJournalError) {
@@ -897,6 +929,9 @@ class RuntimeSupervisorServer {
     const normalizedError = error instanceof Error ? error : new Error(String(error));
     session.terminalJournalError = normalizedError;
     console.error(`Terminal journal failed for session ${session.sessionId}:`, normalizedError);
+    session.terminalTitle = undefined;
+    session.terminalTitleCarryover = undefined;
+    session.terminalTitleRedactionState = undefined;
     session.live = false;
     session.lifecycle = 'error';
     setSessionLastExitMessage(session, {
@@ -934,6 +969,9 @@ class RuntimeSupervisorServer {
       session.exitSubscription = undefined;
       session.process = undefined;
       session.live = false;
+      session.terminalTitle = undefined;
+      session.terminalTitleCarryover = undefined;
+      session.terminalTitleRedactionState = undefined;
 
       if (session.kind === 'agent') {
         this.finalizeAgentResumeSessionIdFromOutput(session);
@@ -1200,7 +1238,8 @@ class RuntimeSupervisorServer {
   private emitSessionOutput(
     session: SupervisorSession,
     chunk: string,
-    terminalEvent?: TerminalStreamEvent
+    terminalEvent?: TerminalStreamEvent,
+    terminalTitle?: string | null
   ): void {
     const legacyMessage: RuntimeSupervisorEvent = {
       type: 'event',
@@ -1211,7 +1250,8 @@ class RuntimeSupervisorServer {
         chunk,
         outputSequence: session.outputSequence,
         terminalAuthorityId: session.terminalAuthorityId,
-        terminalRevision: terminalEvent?.revision
+        terminalRevision: terminalEvent?.revision,
+        terminalTitle
       }
     };
     for (const [socket, subscriptions] of this.subscriptions.entries()) {
@@ -1220,7 +1260,7 @@ class RuntimeSupervisorServer {
         continue;
       }
       if (mode === 'terminal-stream-v1' && terminalEvent) {
-        this.writeTerminalStreamEvent(socket, session, terminalEvent);
+        this.writeTerminalStreamEvent(socket, session, terminalEvent, terminalTitle);
       } else {
         this.writeMessage(socket, legacyMessage);
       }
@@ -1236,7 +1276,12 @@ class RuntimeSupervisorServer {
     }
   }
 
-  private writeTerminalStreamEvent(socket: net.Socket, session: SupervisorSession, event: TerminalStreamEvent): void {
+  private writeTerminalStreamEvent(
+    socket: net.Socket,
+    session: SupervisorSession,
+    event: TerminalStreamEvent,
+    terminalTitle?: string | null
+  ): void {
     this.writeMessage(socket, {
       type: 'event',
       event: 'sessionTerminalEvent',
@@ -1244,7 +1289,8 @@ class RuntimeSupervisorServer {
         sessionId: session.sessionId,
         kind: session.kind,
         authorityId: session.terminalAuthorityId ?? '',
-        event
+        event,
+        terminalTitle
       }
     });
   }
@@ -1438,6 +1484,7 @@ class RuntimeSupervisorServer {
       rows: session.rows,
       scrollback: session.scrollback,
       output: session.output,
+      terminalTitle: session.live ? session.terminalTitle ?? null : undefined,
       outputSequence: session.outputSequence,
       serializedTerminalState: includeTerminalProjection
         ? this.getFreshSerializedTerminalState(session, serializedTerminalState)
@@ -1860,6 +1907,7 @@ class RuntimeSupervisorServer {
     return {
       ...snapshot,
       live: false,
+      terminalTitle: undefined,
       startedAtMs: Date.now(),
       lifecycle,
       runtimeBackend: normalizeRuntimeHostBackend(snapshot.runtimeBackend),
@@ -2051,6 +2099,26 @@ function appendOutputTail(existing: string, chunk: string): string {
   return combined.length > OUTPUT_TAIL_LIMIT ? combined.slice(-OUTPUT_TAIL_LIMIT) : combined;
 }
 
+function updateSupervisorTerminalTitle(
+  session: SupervisorSession,
+  chunk: string
+): { terminalOutput: string; titleReports: string[]; titleUpdated: boolean } {
+  const processed = processExecutionTerminalTitleControls(
+    chunk,
+    session.terminalTitle,
+    session.terminalTitleCarryover,
+    session.terminalTitleRedactionState
+  );
+  session.terminalTitleCarryover = processed.carryover;
+  session.terminalTitleRedactionState = processed.redactionState;
+  session.terminalTitle = processed.terminalTitle;
+  return {
+    terminalOutput: processed.terminalOutput,
+    titleReports: processed.titleQueries.map((terminalTitle) => formatExecutionTerminalTitleReport(terminalTitle)),
+    titleUpdated: processed.titleUpdated
+  };
+}
+
 function normalizeSignal(signal: string | undefined): string | undefined {
   const normalized = signal?.trim();
   return normalized && normalized !== '0' ? normalized : undefined;
@@ -2059,7 +2127,8 @@ function normalizeSignal(signal: string | undefined): string | undefined {
 function stripControlSequences(value: string): string {
   return value
     .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, '')
-    .replace(/\u001b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
+    .replace(/\u001b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '')
+    .replace(/\u0000/g, '');
 }
 
 function summarizeLastLine(value: string): string {

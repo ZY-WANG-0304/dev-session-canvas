@@ -248,6 +248,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     );
     const cwdLabel = formatExecutionCwdLabel(agentMetadata.cwd, data.workspaceFolders, deps.t('execution.cwd.unknown'));
     const cwdTooltip = formatExecutionCwdTooltip(agentMetadata.cwd, cwdLabel);
+    const contextLabel = data.terminalTitle ? `${data.terminalTitle} · ${cwdLabel}` : cwdLabel;
+    const contextTooltip = data.terminalTitle ? `${data.terminalTitle} · ${cwdTooltip}` : cwdTooltip;
     const frameRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const resizeFrameRef = useRef<number | undefined>(undefined);
@@ -759,8 +761,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         >
           <ChromeTitleEditor
             value={data.title}
-            contextLabel={cwdLabel}
-            contextTooltip={cwdTooltip}
+            contextLabel={contextLabel}
+            contextTooltip={contextTooltip}
             subtitle={launchCommandSubtitle}
             subtitleTooltip={launchCommandSubtitle}
             subtitleAccessory={<deps.ExecutionHelpTrigger help={deps.executionNodeHelpTips} variant="inline" />}
@@ -946,6 +948,14 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     }
 
     const overviewInteractionsDisabled = data.overviewInteractionsDisabled;
+    const cwdLabel = formatExecutionCwdLabel(
+      terminalMetadata.cwd,
+      data.workspaceFolders,
+      deps.t('execution.cwd.unknown')
+    );
+    const cwdTooltip = formatExecutionCwdTooltip(terminalMetadata.cwd, cwdLabel);
+    const contextLabel = data.terminalTitle ? `${data.terminalTitle} · ${cwdLabel}` : cwdLabel;
+    const contextTooltip = data.terminalTitle ? `${data.terminalTitle} · ${cwdTooltip}` : cwdTooltip;
     const executionBlocked = !data.workspaceTrusted;
     const lifecycle = terminalMetadata.lifecycle;
     const displayStatus = data.status;
@@ -1441,7 +1451,10 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         >
           <ChromeTitleEditor
             value={data.title}
+            contextLabel={contextLabel}
+            contextTooltip={contextTooltip}
             subtitle={terminalMetadata.shellPath}
+            subtitleTooltip={terminalMetadata.shellPath}
             subtitleAccessory={<deps.ExecutionHelpTrigger help={deps.executionNodeHelpTips} variant="inline" />}
             placeholder={deps.t('terminal.title.placeholder')}
             className="terminal-window-title"

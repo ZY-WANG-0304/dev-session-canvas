@@ -89,6 +89,8 @@ export interface CanvasNodeData {
   title: string;
   status: string;
   summary: string;
+  /** Read-only title emitted by the execution PTY. */
+  terminalTitle?: string;
   selected: boolean;
   documentHasFocus: boolean;
   workspaceTrusted: boolean;
