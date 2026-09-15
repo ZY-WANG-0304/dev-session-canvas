@@ -5,6 +5,16 @@
 - 与主扩展 `0.25.0` 对齐：本轮主扩展重新实现 PTY title 展示，并明确相对 `0.24.5` 的 Runtime Supervisor 恢复、checkpoint 和输入调度边界；notifier companion 不引入新的通知投递行为、协议、后端选择、点击回跳语义或本地化边界变化。
 - 继续沿用主扩展通过 `extensionPack` 自动带上 notifier、notifier 通过单向 `extensionDependencies` 补齐主扩展的安装拓扑；两个扩展保持同版本发布。
 
+## 0.24.5
+
+- 与主扩展 `0.24.5` 对齐：本轮主扩展将已死亡 PTY 的恢复收口为有界历史快照和显式 Agent `Resume`，并修复 checkpoint 拒绝时健康 live stream 与终端输入互相竞争的问题；notifier companion 不引入新的通知投递行为、协议、后端选择、点击回跳或本地化变化。
+- 继续沿用 companion 自动安装关系与版本对齐策略，保持 notifier 与主扩展共享同一发布输入。
+
+## 0.24.4
+
+- Aligns with the `0.24.4` main-extension patch: Supervisor restart recovery now remains available while historical journals hydrate, error attribution is more accurate, Pane Gallery bottom-thumbnail titles are visible again, the public multi-root Preview media is refreshed, and audited dependencies are updated. The notifier companion itself adds no notification-delivery behavior, protocol, backend-selection, click-return, or localization change.
+- Keeps the companion auto-install relationship and version-alignment policy, so both extensions continue to share one release input.
+
 ## 0.24.3
 
 - 与主扩展 `0.24.3` 对齐：本轮主扩展修复 execution 媒体文件链接的原生编辑器打开路径，并把 Agent / Terminal 节点 resize 收口为稳定最终尺寸；notifier companion 不引入新的通知投递行为变更。
