@@ -13,10 +13,21 @@ related_plans:
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
   - docs/exec-plans/active/publish-tag-release-flow.md
   - docs/exec-plans/completed/github-release-assets-flow.md
-updated_at: 2026-07-15
+  - docs/exec-plans/active/release-0-25-0-prep.md
+updated_at: 2026-09-16
 ---
 
 # 公开平台发布准备
+
+> 2026-09-15 初始范围审计（目标版本随后于 2026-09-16 按用户更正为 `0.25.0`）：已从最新 `origin/main` 创建 `release-0-25-0-prep`，当前基线为 `44c025056f3e63019b53f528951ea1d15ce1539d`。审计开始时根 workspace、主扩展和 notifier manifest 仍为 `0.24.3`，正式发布手册与 README 也仍停留在 `0.24.3`；后续版本同步已将当前发布准备分支统一更新为 `0.25.0`。远端存在 `v0.24.5` tag（`a9e27873aa01c1d1f1e43b4303ff697ce618c8cf`），但它不是当前 `origin/main` 的祖先；两条线从 `7eb3864b855d85b7c18d0162b99d5896d13af4d6` 分叉。
+>
+> 2026-09-16 lineage 决策：用户确认从 `0.24.5` 到 `0.25.0` 有意回滚了一系列变更；因此当前 `origin/main` 是本轮 `0.25.0` 的 release input，不重新接回 `v0.24.5` release line。发布记录需要把两者差异拆为“有意回滚”“当前保留”“PTY title 重新实现”，不能把 `v0.24.5` 独有的 Runtime Supervisor recovery 能力自动写成 `0.25.0` 能力。
+
+> 当前 `origin/main` 已重新实现 PTY title：`7fc63a7e` 新增解析、Host / Supervisor 协议接入和 Webview 展示，`e04e295b` 补充输出顺序断言，最终由 `44c02505` 合入。该能力是 `0.25.0` 的主要用户可见候选，但真实 Extension Development Host、provider spinner、Webview reload 与跨生命周期 reattach 仍须在发布前补充或明确标记为验证中。
+
+> 当前 `origin/main` 可纳入候选范围的内容分为：PTY terminal title 展示 / `CSI 21 t` 查询 / 控制序列脱敏与旧 session 消息隔离；Pane Gallery 缩略图标题栏可见性与层叠修复；多根 workspace Marketplace 双语宣传素材；以及依赖审计告警收口。前三项需要按用户可见性和最终验证决定如何进入 release notes，Marketplace 素材属于 listing 资产更新，依赖升级属于维护与验证证据，不能混写成统一功能亮点。远端尚未发现 `v0.25.0` tag，正式发布记录仍需以最终 release input 为准。
+
+> 2026-09-16 目标版本确认与同步：用户确认本轮目标为 `0.25.0`；当前分支为 `release-0-25-0-prep`，根 workspace、主扩展、notifier 和 lockfile 已统一同步到 `0.25.0`。正式 `publish/v0.25.0`、`v0.25.0` 与 GitHub Release 仍未创建。
 
 > 2026-06-07 补充：本文主体保留公开 Marketplace Preview 首发准备与后续双市场同步机制的历史决策背景；上一轮 `0.13.0` 已完成双市场发布并在 `main` 上打 `v0.13.0` tag。当前新版本发布准备目标为 `0.14.0`，发布输入、release notes、安装/升级、回退、验证记录与 tag 命令以 `docs/public-preview-release-playbook.md` 和 `docs/notifier-preview-release-playbook.md` 为准。`0.14.0` 不改变本文已选定的渠道策略、Preview 定位、README 打包入口、双市场同版本同步和最终 `main` ref 发布 / tag 约束。
 
@@ -110,6 +121,58 @@ updated_at: 2026-07-15
 > 2026-06-13 流程更新：当前自动化发布路线在继续执行 Visual Studio Marketplace / Open VSX 发布与验证的基础上，增加 GitHub Release assets 镜像。`publish/vX.Y.Z` 仍固定 release input；workflow 在 Release 不存在时先打包主扩展与 notifier VSIX、生成 release manifest、创建或确认正式 `vX.Y.Z` tag，并把两个 VSIX 与 manifest 上传到该 tag 对应的 GitHub Release assets；同版本重跑时如果 Release 已有完整 assets，则下载并校验既有 manifest / VSIX，不重新打包或覆盖 VSIX，若 Release assets 不完整则 fail closed。GitHub 不支持裸 tag assets，因此对外口径必须写成“`vX.Y.Z` 对应 GitHub Release 的 Assets”。随后 workflow 复用同一批 VSIX 发布并验证 Visual Studio Marketplace / Open VSX；只有这些 marketplace 目标成功后才删除临时 `publish/` tag。由于 Release assets 需要先绑定正式 tag，单看 `vX.Y.Z` 存在不再足以判断整轮发布完成，完整完成条件还包括 marketplace 验证成功、最终 manifest 更新和临时 tag 删除。
 
 > 2026-06-14 流程更新：`0.15.2` 真实发布中 Visual Studio Marketplace 出现 `VSID Concurrency` 限流，证明两个 marketplace 的失败域不能串行绑定。后续 workflow 改为先准备 / 上传 GitHub Release assets，再并行执行 Open VSX 与 Visual Studio Marketplace 两个发布 job；两个 job 均使用同一批 VSIX 和 `--no-create-final-tag`，任一失败都不阻断另一方。finalize job 在两个 marketplace job 成功、失败或缺 secret 后都会合并可用 manifest、覆盖 GitHub Release manifest，并用 `CHANGELOG.md` 当前版本段落与 manifest 重新生成 GitHub Release notes；Release notes 必须包含版本亮点、渠道状态、残余风险和发布证据。自 2026-06-15 起，`0.16.0` release-day 完成门禁调整为 GitHub Release assets 已上传且 Open VSX 主扩展 / notifier 均 verified；Visual Studio Marketplace 仍会尝试发布和验证，但其 public gallery 不可见状态被记录为 deferred channel，不阻塞本轮完成。达到当前完成门禁后 workflow 可删除 `publish/vX.Y.Z`；若 Open VSX 失败则保留临时 tag 供同一 release input 重跑。失败的 Open VSX job 会在上传自身 result manifest 后标红，使 GitHub Actions 的 Re-run failed jobs 能实际重试失败渠道，而不是只重跑 finalize。
+
+## 0. 0.25.0 当前范围（审计初稿）
+
+本节是当前发布准备的正式范围记录。它描述当前 `origin/main` 的真实输入和相对 `v0.24.5` 的行为差异，不把未完成宿主验证写成已完成结论；版本同步后的 repo-local release gate 已完成，最终合入 `main` 的 release ref、渠道状态和 release-day dry-run 仍待后续收口。
+
+### 发布基线与版本定位
+
+- `0.25.0` 以 `origin/main` 当前最终候选 ref `44c025056f3e63019b53f528951ea1d15ce1539d` 为输入，准备分支为 `release-0-25-0-prep`。
+- 上一公开 tag 是 `v0.24.5`（`a9e27873aa01c1d1f1e43b4303ff697ce618c8cf`），但它不是当前 `origin/main` 的祖先；共同祖先是 `7eb3864b855d85b7c18d0162b99d5896d13af4d6`。这是有意的版本演进 / 回滚策略，不是发布前要自动修复的历史分叉。
+- 版本同步前根 workspace、主扩展和 notifier manifest 均为 `0.24.3`；当前发布准备分支已将它们和 lockfile 统一更新为 `0.25.0`。这次版本同步不代表已创建或推送 `publish/v0.25.0`、`v0.25.0`，正式 tag 仍必须等待发布 gate 和最终 `main` ref。
+
+### 相对 v0.24.5 的有意回滚
+
+当前主线没有纳入 v0.24.5 release line 的以下发布承诺：Supervisor 先监听并后台恢复、`recovering / ready` 状态与恢复进度通知；死亡 PTY 只读取有界 metadata、保留有界历史显示并要求用户显式 Resume；checkpoint 拒绝诊断与 bounded projection refresh；以及严格 FIFO / 单在途输入 RPC。当前代码分别体现为恢复前先 `loadRegistry()`、恢复时仍读取 journal candidates、协议没有 recovery / bounded checkpoint 类型、Host projection refresh 仍请求完整 snapshot，输入路径仍直接写 PTY / 发起 RPC。
+
+因此，0.25.0 的 release notes 必须把这些内容作为“相对 v0.24.5 不再承诺的运行时边界”单独说明，而不能复用 0.24.5 的安全恢复、恢复期间新建会话不受影响、显式 Resume 或输入响应优化文案。`systemd-user` 的 `WorkingDirectory=` 专用序列化和 transport / readiness / execution-spawn 错误分层也需要在 Linux / Remote SSH 发布验证中重新确认。
+
+v0.24.5 中的依赖声明修复没有原样保留在当前 manifest，但当前 lockfile 的 resolved packages 在本地 `npm audit` 和 `npm audit --omit=dev` 均为零漏洞。依赖部分按安全门禁和维护记录处理，不作为用户功能亮点；最终 clean install 仍需重跑。
+
+### PTY title 重新实现
+
+当前主线通过 `7fc63a7e` 和 `e04e295b` 引入并合入了新的 PTY title 实现（最终合并提交 `44c02505`）。`extensions/vscode/dev-session-canvas/src/common/executionTerminalTitle.ts` 提供共享解析和脱敏；Local Host / Runtime Supervisor 处理 OSC 0 / OSC 2，支持 `CSI 21 t` 查询并由 PTY owner 回写 `OSC l`；Webview 在 Agent / Terminal context row 展示动态 title，同时保留节点标题、Agent 命令副标题、Terminal shell 副标题和 workspace root。
+
+title 控制序列和 payload 不进入终端可见输出、recent output、terminal stream、checkpoint 或 journal；title 只作为 live session 投影，会话结束清除；新 execution session 建立后，旧 session 的迟到 title / output / 终态消息不能覆盖新 session。当前 parser、Supervisor protocol、Webview Playwright 和 `node-pty` fixture 已有定向证据，但真实 Extension Development Host 手工设置 / 清空、真实 provider spinner、Webview reload 和跨 VS Code 生命周期 reattach 仍为验证中。
+
+### 对外 release notes 的固定结构
+
+0.25.0 的主扩展和 notifier CHANGELOG、Marketplace listing、根 README 与发布手册按以下结构保持一致：
+
+1. 版本定位：公开 `Preview`、当前 release input、与 `v0.24.5` 的有意回滚关系；不要写成线性累积升级。
+2. PTY title：动态展示、支持的控制序列、TUI 查询回包、输出脱敏、session 隔离和验证状态。
+3. 运行时边界：明确不承诺的 v0.24.5 recovery / checkpoint / input 优化，以及 Linux / Remote SSH 的复验状态。
+4. 保留能力与升级：现有 Agent / Terminal、journal、扩展 ID、notifier 自动安装和配置沿用规则；只有最终回归通过的行为才能列为已保留。
+5. 渠道和限制：Marketplace / Open VSX / GitHub Release assets 实际状态、Preview 支持矩阵、已知风险、升级与回退建议。
+
+### 0.25.0 发布说明矩阵（当前审计版）
+
+| 范围 | 应该怎么写 | 对外分类 | 当前证据与缺口 |
+| --- | --- | --- | --- |
+| PTY title 重新实现 | Agent / Terminal 节点可展示 PTY 通过 OSC 0 / OSC 2 设置的动态标题；支持 `CSI 21 t` 查询并由实际 PTY owner 回写 `OSC l`；标题控制序列和 payload 不进入可见输出、recent output、stream、checkpoint 或 journal；新旧 execution session 保持隔离。 | 主要用户可见亮点 | `executionTerminalTitle.ts`、Host / Supervisor 接入和 Webview 定向测试已存在；真实 Extension Development Host、真实 provider spinner、Webview reload、跨生命周期 reattach 仍需补证或保留为已知限制。 |
+| 相对 `v0.24.5` 的 Runtime Supervisor 回滚 | 明确 0.25.0 不延续 `v0.24.5` release line 中的后台恢复 / `recovering` 状态、恢复进度通知、死亡 PTY 有界恢复与显式 Resume-only、bounded projection / checkpoint 诊断、严格 FIFO 输入等承诺；不要把这些内容写成 0.25.0 能力。 | 必须说明的行为边界 | `runtimeSupervisorMain.ts`、`protocol.ts`、`runtimeSupervisorProtocol.ts`、`CanvasPanelManager.ts` 和已删除的对应测试/设计文档能证明当前边界；Linux / Remote SSH 的 systemd `WorkingDirectory` 与运行时失败分层仍需发布前复验。 |
+| 当前仍保留的基础能力 | 只在最终回归通过后说明 Agent / Terminal 生命周期、terminal stream、authority / revision、journal / checkpoint 基础机制、Fork、resize、multi-root、notifier 安装拓扑和既有配置沿用。 | 兼容性与无回归说明 | 版本同步后的 repo-local 分层 gate 和 packaged-payload smoke 已通过；这些能力不能因重新打包就全部算作 0.25.0 新增，最终合入 `main` 的 release ref 仍需复验。 |
+| Pane Gallery 视觉修复 | 底部缩略图标题栏可见性、层叠或定位修复如果相对最终公开 `v0.24.5` 没有新的行为差异，不单列为 0.25.0 runtime 亮点；只在视觉回归或素材说明中记录。 | 非新增功能 | 当前主线包含相关修复，但 `v0.24.5` 侧已有对应输入，不能仅按 commit 新旧判断为本版本新增。 |
+| 多根 workspace Marketplace 素材 | 说明 listing 素材已更新、包含双形态多根 workspace 展示；不暗示扩展运行时因此新增 multi-root 能力。 | 发布资产 | 素材和剧本位于 Marketplace media 相关提交；它们不改变 VSIX runtime 行为。 |
+| 依赖审计与 lockfile | 记录为维护 / 安全门禁：当前 `npm audit` 与 `npm audit --omit=dev` 为零漏洞，不作为用户功能宣传。 | 维护与验证证据 | 版本同步后的本地审计和隔离 clean-checkout 的 `npm ci` 均报告 0 vulnerabilities；最终安装、打包和审计结果仍需绑定到合入 `main` 的 0.25.0 release ref。 |
+| 升级、回退与渠道 | 主扩展和 notifier 同版本；继续保持 Preview、`extensionPack` / `extensionDependencies` 拓扑和无新增设置（需最终 manifest 复核）；升级重要会话前先停止/备份；不承诺 Preview journal 的跨版本回退兼容。Marketplace、Open VSX、GitHub Release assets 的状态必须写 release-day 实际结果。 | 安装与支持说明 | 发布手册、双 changelog、README 和 manifest 已同步到 0.25.0；VSM deferred / Open VSX / GitHub Release 状态仍不能提前写成已完成。 |
+
+### 0.25.0 发布准备验证补充（2026-09-16）
+
+版本同步后的 repo-local release gate 已通过：主扩展 / notifier typecheck、PTY title parser / protocol / Webview 定向测试、manifest / package / publish workflow 守卫、双扩展 build、notifier source / companion / locale smoke、PTY title Playwright 定向回归、两次 npm audit、生产模板市场 workflow 守卫和 packaged-payload smoke 均通过；PTY title Playwright 定向回归为 `1 passed`，两次 audit 均为 `0 vulnerabilities`。`npm run validate:clean-checkout:vsix -- --source working-tree` 还在隔离目录中完成独立 `npm ci`、117-file 主扩展 VSIX 打包和 packaged-payload smoke，并在完成后清理临时目录。
+
+当前 working-tree 候选工件仅用于分支验证，不是最终 Release assets：主扩展为 `3,933,659` bytes、`sha256=a1c23550467b002c3abfce1672f1586a6e1a195691eedd6a6d0ed2f78de488eb`；notifier 为 `159,279` bytes、`sha256=ac3f8fb59681fa081f52fd25907d8030797029f1578495fa3b8b375b175553d8`；README doc ref 为 `44c025056f3e63019b53f528951ea1d15ce1539d`。当前尚未创建或推送 `publish/v0.25.0`，因此 package-only dry-run 仍应在发布准备 MR 合入最终 `main` release ref 后执行。
 
 ## 1. 背景
 
@@ -259,7 +322,7 @@ updated_at: 2026-07-15
 
 ### 7.5 发布流水线最小 CI 化
 
-当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口；自 2026-06-08 起，release-day 的发布动作迁入最小 GitHub Actions wrapper：`publish/vX.Y.Z` tag 固定发布输入，workflow 负责 checkout、`npm ci`、调用本地 `release:publish-tag` 和上传发布产物。自 2026-06-13 起，workflow 在 Visual Studio Marketplace / Open VSX 发布与验证之外增加 GitHub Release assets：首次运行时用 `--package-only` 打包并生成 manifest，创建或确认正式 tag，创建 / 更新对应 GitHub Release 并上传两个 VSIX 与 manifest；同版本重跑时若 Release 已有完整 assets，则下载并用 `--skip-package --package-only` 校验既有 manifest / VSIX，不重新打包或覆盖 VSIX。自 2026-06-14 起，Open VSX 与 Visual Studio Marketplace 在 workflow 中拆成两个独立目标步骤：任一 marketplace 发布或验证失败都不阻断另一 marketplace 尝试发布和验证；两个目标都跑完后，workflow 根据最终 manifest 上传 release manifest 并重新生成 GitHub Release notes。GitHub Release 创建、assets 上传、最终 manifest / Release notes 覆盖和临时 tag 删除由 workflow 负责；当前完成门禁是 GitHub Release assets 已上传且 Open VSX 主扩展 / notifier 均发布验证成功；`0.24.3` 沿用该门禁。Visual Studio Marketplace 仍会尝试发布 / 验证并写入 manifest，但当前允许延期补发，不阻塞临时 tag 删除；Open VSX 失败时保留 `publish/vX.Y.Z` 供同一 release input 重跑。失败的 Open VSX job 会在上传自身 result manifest 后标红，使 GitHub Actions 的 Re-run failed jobs 能实际重试失败渠道，而不是只重跑 finalize。workflow 触发范围必须保持收窄：只响应 `publish/v*` tag push 与手动 `workflow_dispatch`，不响应普通分支、普通 tag 或 release 分支创建，避免 Actions 列表出现 skipped publish run 并干扰发布判断。
+当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口；自 2026-06-08 起，release-day 的发布动作迁入最小 GitHub Actions wrapper：`publish/vX.Y.Z` tag 固定发布输入，workflow 负责 checkout、`npm ci`、调用本地 `release:publish-tag` 和上传发布产物。自 2026-06-13 起，workflow 在 Visual Studio Marketplace / Open VSX 发布与验证之外增加 GitHub Release assets：首次运行时用 `--package-only` 打包并生成 manifest，创建或确认正式 tag，创建 / 更新对应 GitHub Release 并上传两个 VSIX 与 manifest；同版本重跑时若 Release 已有完整 assets，则下载并用 `--skip-package --package-only` 校验既有 manifest / VSIX，不重新打包或覆盖 VSIX。自 2026-06-14 起，Open VSX 与 Visual Studio Marketplace 在 workflow 中拆成两个独立目标步骤：任一 marketplace 发布或验证失败都不阻断另一 marketplace 尝试发布和验证；两个目标都跑完后，workflow 根据最终 manifest 上传 release manifest 并重新生成 GitHub Release notes。GitHub Release 创建、assets 上传、最终 manifest / Release notes 覆盖和临时 tag 删除由 workflow 负责；当前完成门禁是 GitHub Release assets 已上传且 Open VSX 主扩展 / notifier 均发布验证成功；`0.25.0` 沿用该门禁。Visual Studio Marketplace 仍会尝试发布 / 验证并写入 manifest，但当前允许延期补发，不阻塞临时 tag 删除；Open VSX 失败时保留 `publish/vX.Y.Z` 供同一 release input 重跑。失败的 Open VSX job 会在上传自身 result manifest 后标红，使 GitHub Actions 的 Re-run failed jobs 能实际重试失败渠道，而不是只重跑 finalize。workflow 触发范围必须保持收窄：只响应 `publish/v*` tag push 与手动 `workflow_dispatch`，不响应普通分支、普通 tag 或 release 分支创建，避免 Actions 列表出现 skipped publish run 并干扰发布判断。
 
 当前轮次仍需保留的最小手工 gate 是：
 
@@ -271,7 +334,7 @@ updated_at: 2026-07-15
 
 ## 8. 风险与取舍
 
-- GitHub Release assets 是 marketplace 同批 VSIX 的镜像与兜底下载入口；`0.16.0` 起的当前完成门禁允许在 Visual Studio Marketplace public gallery 仍不可见时，仅以 GitHub Release assets + Open VSX verified 作为可完成状态；`0.24.3` 沿用该门禁。因为 workflow 会先创建正式 tag 以绑定 Release assets，单看 `vX.Y.Z` 存在不再足以证明整轮发布完成；必须结合最终 manifest、Open VSX verified 状态、Visual Studio Marketplace 是否 deferred，以及 `publish/vX.Y.Z` 是否已删除判断。同版本重跑必须复用并校验既有 Release assets，不能重新打包覆盖 VSIX，因为当前 VSIX 打包不承诺 byte-for-byte 可复现。Release notes 也必须随最终 manifest 更新，显式展示版本亮点、渠道状态、残余风险和发布证据，不能只保留通用安装模板。
+- GitHub Release assets 是 marketplace 同批 VSIX 的镜像与兜底下载入口；`0.16.0` 起的当前完成门禁允许在 Visual Studio Marketplace public gallery 仍不可见时，仅以 GitHub Release assets + Open VSX verified 作为可完成状态；`0.25.0` 沿用该门禁。因为 workflow 会先创建正式 tag 以绑定 Release assets，单看 `vX.Y.Z` 存在不再足以证明整轮发布完成；必须结合最终 manifest、Open VSX verified 状态、Visual Studio Marketplace 是否 deferred，以及 `publish/vX.Y.Z` 是否已删除判断。同版本重跑必须复用并校验既有 Release assets，不能重新打包覆盖 VSIX，因为当前 VSIX 打包不承诺 byte-for-byte 可复现。Release notes 也必须随最终 manifest 更新，显式展示版本亮点、渠道状态、残余风险和发布证据，不能只保留通用安装模板。
 - 若后续版本在许可证、公开链接和支持口径失配时贸然上架，商店页面会把仓库内部事实包装成外部承诺，后续回收成本更高。
 - 若只解决 publisher / PAT 而不先治理发布包，公开发布过程会被包体污染、内容漂移和不可重复打包持续阻断。
 
@@ -280,7 +343,7 @@ updated_at: 2026-07-15
 ### 9.1 方案说明
 
 - `0.5.0` 的公开 `Marketplace Preview` 正式发布输入固定为当前候选 release 输入快照（即当前 `release-v0-5-0-prep` 最新 head 对应、且已通过 clean-checkout 复核的工作树内容）验证通过的最小 VSIX 工件：`dev-session-canvas-0.5.0.vsix`。当前仓库内证据为 `49 files`、约 `2.17 MB`，生成入口是 `scripts/release/package-vsix.mjs`，隔离复核入口是 `npm run validate:clean-checkout:vsix -- --source working-tree`。
-- 首发渠道正式收敛为 `Visual Studio Marketplace`；该历史决策仍适用于 `0.5.0` 首发复盘。自 2026-05-15 起，后续公开发布默认将 `Open VSX` 作为补充渠道同步发布同版本 VSIX；自 2026-06-13 起，当前自动化发布在继续分发并验证 Visual Studio Marketplace / Open VSX 的同时，把同一批 VSIX 作为 GitHub Release assets 归档，供 marketplace 访问、审核或同步暂时不可用时手动安装。自 2026-06-15 的 `0.16.0` release-day 起，当 Visual Studio Marketplace public gallery 持续不可见且 Open VSX 可验证时，允许把 Visual Studio Marketplace 作为 deferred channel 补发，不再阻塞本轮 GitHub Release assets + Open VSX 兜底完成；`0.24.3` 继续沿用该完成门禁，除非 VSM 可见性恢复。
+- 首发渠道正式收敛为 `Visual Studio Marketplace`；该历史决策仍适用于早期 `0.5.0` 首发复盘。自 2026-05-15 起，后续公开发布默认将 `Open VSX` 作为补充渠道同步发布同版本 VSIX；自 2026-06-13 起，当前自动化发布在继续分发并验证 Visual Studio Marketplace / Open VSX 的同时，把同一批 VSIX 作为 GitHub Release assets 归档，供 marketplace 访问、审核或同步暂时不可用时手动安装。自 2026-06-15 的 `0.16.0` release-day 起，当 Visual Studio Marketplace public gallery 持续不可见且 Open VSX 可验证时，允许把 Visual Studio Marketplace 作为 deferred channel 补发，不再阻塞本轮 GitHub Release assets + Open VSX 兜底完成；`0.25.0` 继续沿用该完成门禁，除非 VSM 可见性恢复。
 - 对外发布口径以 `README.md`、`extensions/vscode/dev-session-canvas/README.marketplace.md`、`extensions/vscode/dev-session-canvas/CHANGELOG.md`、`docs/public-preview-release-playbook.md`、`docs/notifier-preview-release-playbook.md` 与 `docs/support.md` 为唯一仓库内正式来源。主扩展子包内 `README.marketplace.md` 是 Marketplace 打包入口和默认英文 listing，中文对应文案只保留在 `extensions/vscode/dev-session-canvas/README.marketplace.zh-CN.md`。`0.5.0` 对外内容聚焦 `Dev Session Canvas Notifier` companion 的公开发布与自动安装关系、attention signal 的 `system` 桥接路径，以及嵌入式 `Terminal` shell 的动态探测 / 精确路径持久化 / workspace 级覆盖能力，同时继续保留“`Remote SSH` 与桌面三平台主路径已验证”以及“Windows 下 `Codex` 无法向上翻页”的已知限制。
 
 ### 9.2 适用范围与边界
@@ -305,7 +368,7 @@ updated_at: 2026-07-15
 核心不变量如下：
 
 - `publish/vX.Y.Z` 只表示发布意图和固定输入，可以在发布失败时保留并重跑；它不是正式 release tag。若 GitHub Release 已有完整 assets，重跑必须复用并校验这批 assets；若 Release assets 不完整，workflow 必须失败并等待人工修复。
-- `vX.Y.Z` 是正式 lightweight release tag，也是 GitHub Release 绑定的 tag；workflow 会在首次打包后、marketplace 发布验证前创建或确认它，以便先上传 Release assets；后续同版本重跑会复用并校验该 Release 上的既有 VSIX / manifest。单看该 tag 存在不再足以证明整轮发布完成；当前完成条件是 Release assets 已上传、Open VSX 已发布并验证、Visual Studio Marketplace 状态已明确记录为 verified 或 deferred、最终 manifest 已更新，且 `publish/vX.Y.Z` 已删除；`0.24.3` 继续沿用该条件。
+- `vX.Y.Z` 是正式 lightweight release tag，也是 GitHub Release 绑定的 tag；workflow 会在首次打包后、marketplace 发布验证前创建或确认它，以便先上传 Release assets；后续同版本重跑会复用并校验该 Release 上的既有 VSIX / manifest。单看该 tag 存在不再足以证明整轮发布完成；当前完成条件是 Release assets 已上传、Open VSX 已发布并验证、Visual Studio Marketplace 状态已明确记录为 verified 或 deferred、最终 manifest 已更新，且 `publish/vX.Y.Z` 已删除；`0.25.0` 继续沿用该条件。
 - `release-artifacts/release-manifest-X.Y.Z.json` 由发布脚本生成，记录 `version`、`releaseRef`、`triggerTag`、`finalTag`、VSIX sha256、README doc ref、GitHub Release assets 状态、marketplace 发布 / 验证状态和 tag 状态；它必须作为 GitHub Release asset 保存，不提交回仓库。
 - 打包时必须显式把 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` 和 `DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF` 绑定到 `publish/vX.Y.Z` 指向的 commit；`--skip-package` 恢复发布必须验证已有 manifest 与 VSIX sha256 匹配，避免复用旧包。
 - 发布成功后，workflow 可以删除远端和本地 `publish/vX.Y.Z`，前提是正式 `vX.Y.Z` 已存在且指向同一 release ref、GitHub Release assets 已上传成功、Open VSX 发布与验证均已成功，且 Visual Studio Marketplace 已写入 verified 或 deferred 状态。

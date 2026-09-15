@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.0
+
+- 与主扩展 `0.25.0` 对齐：本轮主扩展重新实现 PTY title 展示，并明确相对 `0.24.5` 的 Runtime Supervisor 恢复、checkpoint 和输入调度边界；notifier companion 不引入新的通知投递行为、协议、后端选择、点击回跳语义或本地化边界变化。
+- 继续沿用主扩展通过 `extensionPack` 自动带上 notifier、notifier 通过单向 `extensionDependencies` 补齐主扩展的安装拓扑；两个扩展保持同版本发布。
+
 ## 0.24.3
 
 - 与主扩展 `0.24.3` 对齐：本轮主扩展修复 execution 媒体文件链接的原生编辑器打开路径，并把 Agent / Terminal 节点 resize 收口为稳定最终尺寸；notifier companion 不引入新的通知投递行为变更。

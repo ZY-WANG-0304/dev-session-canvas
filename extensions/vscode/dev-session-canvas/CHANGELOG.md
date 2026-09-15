@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.25.0 - PTY Terminal Title and Runtime Boundary Update
+
+相对 `0.24.5`，`0.25.0` 是新的公开 `Preview` 里程碑。当前 release input 有意回滚了 `0.24.5` release line 中的一部分 Runtime Supervisor 恢复、checkpoint 和输入调度变更，并在当前主线上重新实现 PTY title；本版本不把 `0.24.5` 的全部运行时承诺视为线性继承。
+
+### 本版本聚焦
+
+- 主扩展与 `Dev Session Canvas Notifier` 继续保持同版本发布，扩展仍处于公开 `Preview`
+- Agent / Terminal 节点现在可以展示 PTY 通过 OSC 0 / OSC 2 设置的动态标题，同时保留用户可编辑的节点标题、Agent 启动命令、Terminal shell path 和 workspace context
+- 支持 TUI 通过 `CSI 21 t` 查询当前标题，并由实际 PTY owner 回写 `OSC l` 标题报告；标题控制序列和 payload 不进入终端可见输出、recent output、terminal stream、checkpoint 或 journal
+- PTY title 只属于当前 live execution session；会话结束时清除，新 execution session 建立后旧 session 的迟到 output、title 和终态消息不能覆盖新 session
+- title payload 会移除控制字符、折叠空白并限制长度；malformed 或超长未闭合 payload 按 fail-closed 规则处理
+- 本版本不新增用户设置；现有 Agent / Terminal 生命周期、基础 journal / checkpoint、Fork、resize、multi-root 和 notifier 安装拓扑继续按最终 release gate 复验
+
+### 相对 `0.24.5` 的运行时边界
+
+- `0.25.0` 不延续 `0.24.5` release line 中的后台恢复 / `recovering` 状态、恢复进度通知、死亡 PTY 有界恢复与显式 Resume-only、bounded projection / checkpoint 拒绝诊断，以及严格 FIFO / 单在途输入 RPC 承诺
+- Runtime Supervisor、journal 和跨 Host 恢复仍受 Preview 定位、`runtimePersistence.enabled` 和后端可用性约束；本版本不承诺 Preview journal 的跨版本回退兼容
+- 真实 Extension Development Host 中手工设置 / 清空 title、真实 Codex / Claude provider spinner、Webview reload 和跨 VS Code 生命周期 live-runtime reattach 仍需继续验证，不能视为已完成的宿主级验收
+
+### 安装与升级
+
+- 首次安装与从 `0.24.5` 升级到 `0.25.0` 应通过当前宿主配置的公开扩展市场完成；Open VSX 应同步发布，GitHub Release assets 作为手动安装兜底
+- 安装主扩展时会继续自动带上 `Dev Session Canvas Notifier`；notifier 单独安装时会继续补齐主扩展
+- 升级重要工作区前建议先停止重要运行会话并备份画布状态；若必须回退，请重新安装目标版本并重新验证工作区状态
+
+### 已知边界与验证说明
+
+- PTY title parser、Runtime Supervisor protocol、Webview projection 和 `node-pty` fixture 已有定向自动化覆盖；发布准备分支仍需重新执行版本同步后的完整分层 gate
+- `0.24.5` 已登记的无固定 journal 磁盘上限、极端大输出尾部短读、Fork 视觉验收和跨平台真实升级矩阵风险不会因 title 定向测试通过而自动关闭
+
 ## 0.24.3 - Media Link Opening and Stable Terminal Resize Update
 
 相对 `0.24.2`，`0.24.3` 是同一公开 `Preview` 线内的修复更新，解决执行节点中的图片、视频等媒体文件链接无法交给 VS Code 原生编辑器打开的问题，并把 Agent / Terminal 节点拖拽缩放期间的连续 PTY resize 收口为稳定最终尺寸，减少 Codex / Claude TUI 因逐帧重排产生的重复全屏重绘和画面叠字。它保留 `0.24.2` 的安全 journal compact、跨 Node 终态门禁、Fork 定向落位和生成节点创建时避碰能力。
