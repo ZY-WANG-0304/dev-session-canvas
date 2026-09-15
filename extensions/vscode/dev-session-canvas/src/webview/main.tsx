@@ -271,6 +271,14 @@ interface PendingExecutionInputAck {
   bytes: number;
 }
 
+interface ExecutionTerminalTitleProjection {
+  executionSessionId?: string;
+  title?: string;
+  ended?: boolean;
+  /** Session ids superseded by a later projection; late messages for them are ignored. */
+  supersededExecutionSessionIds?: string[];
+}
+
 type EmbeddedTerminalOptions = NonNullable<ConstructorParameters<typeof Terminal>[0]>;
 type EmbeddedTerminalTheme = NonNullable<EmbeddedTerminalOptions['theme']>;
 type WorkbenchThemeKind = 'light' | 'dark' | 'hcDark' | 'hcLight';
@@ -1201,8 +1209,234 @@ function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | nu
   };
 }
 
+function terminalTitleProjectionsFromState(
+  state: CanvasPrototypeState
+): Record<string, ExecutionTerminalTitleProjection> {
+  return Object.fromEntries(
+    state.nodes.flatMap((node) => {
+      if (node.kind !== 'agent' && node.kind !== 'terminal') {
+        return [];
+      }
+      const metadata = node.kind === 'agent' ? node.metadata?.agent : node.metadata?.terminal;
+      if (!metadata) {
+        return [];
+      }
+      return [[node.id, {
+        executionSessionId: metadata.runtimeSessionId,
+        title: metadata.liveSession ? metadata.terminalTitle : undefined,
+        ended: !metadata.liveSession
+      }]];
+    })
+  );
+}
+
+function mergeTerminalTitleProjectionsFromState(
+  current: Record<string, ExecutionTerminalTitleProjection>,
+  state: CanvasPrototypeState
+): Record<string, ExecutionTerminalTitleProjection> {
+  const incoming = terminalTitleProjectionsFromState(state);
+  const next: Record<string, ExecutionTerminalTitleProjection> = {};
+
+  for (const [nodeId, projection] of Object.entries(incoming)) {
+    const existing = current[nodeId];
+    if (!existing) {
+      next[nodeId] = projection;
+      continue;
+    }
+
+    const sessionChanged =
+      existing.executionSessionId !== undefined &&
+      projection.executionSessionId !== undefined &&
+      existing.executionSessionId !== projection.executionSessionId;
+    if (
+      projection.executionSessionId !== undefined &&
+      isSupersededExecutionTerminalTitleSession(existing, projection.executionSessionId)
+    ) {
+      next[nodeId] = existing;
+      continue;
+    }
+    if (projection.ended) {
+      const isCurrentSessionEnd =
+        !sessionChanged &&
+        (projection.executionSessionId === undefined ||
+          existing.executionSessionId === undefined ||
+          projection.executionSessionId === existing.executionSessionId);
+      next[nodeId] = isCurrentSessionEnd ? projection : existing;
+      continue;
+    }
+
+    if (sessionChanged || existing.ended) {
+      next[nodeId] = supersedeExecutionTerminalTitleProjection(existing, projection);
+    } else if (projection.title !== undefined) {
+      next[nodeId] = {
+        ...existing,
+        executionSessionId: projection.executionSessionId ?? existing.executionSessionId,
+        title: projection.title,
+        ended: false
+      };
+    } else {
+      next[nodeId] = {
+        ...existing,
+        executionSessionId: projection.executionSessionId ?? existing.executionSessionId,
+        ended: false
+      };
+    }
+  }
+
+  return next;
+}
+
+function mergeTerminalTitleProjectionFromSnapshot(
+  current: Record<string, ExecutionTerminalTitleProjection>,
+  payload: Extract<HostToWebviewMessage, { type: 'host/executionSnapshot' }>['payload']
+): Record<string, ExecutionTerminalTitleProjection> {
+  const existing = current[payload.nodeId];
+  const sessionChanged =
+    existing?.executionSessionId !== undefined &&
+    payload.executionSessionId !== undefined &&
+    existing.executionSessionId !== payload.executionSessionId;
+  if (
+    payload.executionSessionId !== undefined &&
+    isSupersededExecutionTerminalTitleSession(existing, payload.executionSessionId)
+  ) {
+    return current;
+  }
+
+  if (!payload.liveSession) {
+    if (
+      sessionChanged ||
+      (payload.executionSessionId === undefined && existing?.executionSessionId !== undefined)
+    ) {
+      return current;
+    }
+    return {
+      ...current,
+      [payload.nodeId]: {
+        executionSessionId: payload.executionSessionId ?? existing?.executionSessionId,
+        ended: true
+      }
+    };
+  }
+
+  if (sessionChanged || existing?.ended) {
+    return {
+      ...current,
+      [payload.nodeId]: supersedeExecutionTerminalTitleProjection(existing, {
+          executionSessionId: payload.executionSessionId,
+          title: payload.terminalTitle ?? undefined,
+          ended: false
+        })
+    };
+  }
+
+  return {
+    ...current,
+    [payload.nodeId]: {
+      executionSessionId: payload.executionSessionId ?? existing?.executionSessionId,
+      title:
+        payload.terminalTitle !== undefined
+          ? payload.terminalTitle ?? undefined
+          : existing?.title,
+      ended: false
+    }
+  };
+}
+
+function mergeTerminalTitleProjectionFromOutput(
+  current: Record<string, ExecutionTerminalTitleProjection>,
+  payload: Extract<HostToWebviewMessage, { type: 'host/executionOutput' }>['payload']
+): Record<string, ExecutionTerminalTitleProjection> {
+  if (payload.terminalTitle === undefined) {
+    return current;
+  }
+
+  const existing = current[payload.nodeId];
+  const sessionChanged =
+    existing?.executionSessionId !== undefined &&
+    payload.executionSessionId !== undefined &&
+    existing.executionSessionId !== payload.executionSessionId;
+  if (
+    payload.executionSessionId !== undefined &&
+    isSupersededExecutionTerminalTitleSession(existing, payload.executionSessionId)
+  ) {
+    return current;
+  }
+  if (
+    (existing?.ended &&
+      (payload.executionSessionId === undefined ||
+        payload.executionSessionId === existing.executionSessionId)) ||
+    (!existing?.ended && sessionChanged)
+  ) {
+    return current;
+  }
+
+  return {
+    ...current,
+    [payload.nodeId]: supersedeExecutionTerminalTitleProjection(existing, {
+        executionSessionId: payload.executionSessionId ?? existing?.executionSessionId,
+        title: payload.terminalTitle ?? undefined,
+        ended: false
+      })
+  };
+}
+
+function mergeTerminalTitleProjectionFromExit(
+  current: Record<string, ExecutionTerminalTitleProjection>,
+  payload: Extract<HostToWebviewMessage, { type: 'host/executionExit' }>['payload']
+): Record<string, ExecutionTerminalTitleProjection> {
+  const existing = current[payload.nodeId];
+  if (
+    payload.executionSessionId !== undefined &&
+    isSupersededExecutionTerminalTitleSession(existing, payload.executionSessionId)
+  ) {
+    return current;
+  }
+  if (
+    payload.executionSessionId !== undefined &&
+    existing?.executionSessionId !== undefined &&
+    payload.executionSessionId !== existing.executionSessionId
+  ) {
+    return current;
+  }
+
+  return {
+    ...current,
+    [payload.nodeId]: {
+      executionSessionId: payload.executionSessionId ?? existing?.executionSessionId,
+      ended: true
+    }
+  };
+}
+
+function isSupersededExecutionTerminalTitleSession(
+  projection: ExecutionTerminalTitleProjection | undefined,
+  executionSessionId: string
+): boolean {
+  return projection?.supersededExecutionSessionIds?.includes(executionSessionId) === true;
+}
+
+function supersedeExecutionTerminalTitleProjection(
+  existing: ExecutionTerminalTitleProjection | undefined,
+  next: ExecutionTerminalTitleProjection
+): ExecutionTerminalTitleProjection {
+  const superseded = new Set(existing?.supersededExecutionSessionIds ?? []);
+  if (
+    existing?.executionSessionId !== undefined &&
+    existing.executionSessionId !== next.executionSessionId
+  ) {
+    superseded.add(existing.executionSessionId);
+  }
+  return {
+    ...next,
+    ...(superseded.size > 0 ? { supersededExecutionSessionIds: Array.from(superseded) } : {})
+  };
+}
+
 function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
+  const [executionTerminalTitles, setExecutionTerminalTitles] = useState<
+    Record<string, ExecutionTerminalTitleProjection>
+  >({});
   const [templateMenuEntries, setTemplateMenuEntries] = useState<CanvasTemplateMenuEntry[]>([]);
   const [runtimeContext, setRuntimeContext] = useState<CanvasRuntimeContext>({
     workspaceTrusted: false,
@@ -1339,6 +1573,11 @@ function App(): JSX.Element {
           latestHostNodeIdsRef.current = new Set(normalizedState.nodes.map((node) => node.id));
           latestRuntimeContext = normalizedRuntime;
           setHostState(normalizedState);
+          setExecutionTerminalTitles((current) =>
+            message.type === 'host/bootstrap'
+              ? terminalTitleProjectionsFromState(normalizedState)
+              : mergeTerminalTitleProjectionsFromState(current, normalizedState)
+          );
           setRuntimeContext(normalizedRuntime);
           setNodeLayoutDrafts((current) => {
             // Host layout wins after a move/resize has been submitted.
@@ -1408,6 +1647,9 @@ function App(): JSX.Element {
         requestGroupFocus(message.payload.groupId);
         break;
       case 'host/executionSnapshot':
+        setExecutionTerminalTitles((current) =>
+          mergeTerminalTitleProjectionFromSnapshot(current, message.payload)
+        );
         routeExecutionTerminalSnapshot({
           type: 'snapshot',
           nodeId: message.payload.nodeId,
@@ -1416,6 +1658,7 @@ function App(): JSX.Element {
           cols: message.payload.cols,
           rows: message.payload.rows,
           liveSession: message.payload.liveSession,
+          terminalTitle: message.payload.terminalTitle,
           requestId: message.payload.requestId,
           executionSessionId: message.payload.executionSessionId,
           outputSequence: message.payload.outputSequence,
@@ -1424,11 +1667,15 @@ function App(): JSX.Element {
         });
         break;
       case 'host/executionOutput':
+        setExecutionTerminalTitles((current) =>
+          mergeTerminalTitleProjectionFromOutput(current, message.payload)
+        );
         queueExecutionTerminalOutput({
           type: 'output',
           nodeId: message.payload.nodeId,
           kind: message.payload.kind,
           chunk: message.payload.chunk,
+          terminalTitle: message.payload.terminalTitle,
           executionSessionId: message.payload.executionSessionId,
           persisted: message.payload.persisted,
           outputStartSequence: message.payload.outputStartSequence,
@@ -1452,10 +1699,14 @@ function App(): JSX.Element {
         handleExecutionInputAck(message.payload);
         break;
       case 'host/executionExit':
+        setExecutionTerminalTitles((current) =>
+          mergeTerminalTitleProjectionFromExit(current, message.payload)
+        );
         routeExecutionTerminalExit({
           type: 'exit',
           nodeId: message.payload.nodeId,
           kind: message.payload.kind,
+          executionSessionId: message.payload.executionSessionId,
           message: message.payload.message
         });
         break;
@@ -2796,6 +3047,7 @@ function App(): JSX.Element {
 
   const baseNodes = toFlowNodes({
     nodes: hostState?.nodes ?? [],
+    terminalTitles: executionTerminalTitles,
     selectedNodeId: localUiState.selectedNodeId,
     selectedNodeIds: localUiState.selectedNodeIds,
     documentHasFocus,
@@ -6098,6 +6350,7 @@ const CanvasContextMenu = React.forwardRef<
 
 function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
+  terminalTitles: Record<string, ExecutionTerminalTitleProjection>;
   selectedNodeId: string | undefined;
   selectedNodeIds: readonly string[] | undefined;
   documentHasFocus: boolean;
@@ -6232,6 +6485,7 @@ function toFlowNodes(params: {
         title: node.title,
         status: node.status,
         summary: node.summary,
+        terminalTitle: params.terminalTitles[node.id]?.title,
         selected: selectedNodeIds.has(node.id),
         documentHasFocus: params.documentHasFocus,
         workspaceTrusted: params.workspaceTrusted,
@@ -6860,7 +7114,7 @@ function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type
 }
 
 function routeExecutionTerminalExit(detail: Extract<ExecutionHostEvent, { type: 'exit' }>): void {
-  executionTerminalRegistry.get(detail.nodeId)?.controller.showExit(detail.message);
+  executionTerminalRegistry.get(detail.nodeId)?.controller.showExit(detail.message, detail.executionSessionId);
 }
 
 function scheduleExecutionTerminalSnapshotWrite(entry: PendingExecutionTerminalSnapshotWrite): void {
@@ -7262,6 +7516,7 @@ function createExecutionTerminalController(
   let queuedWriteCount = 0;
   let writeChain: Promise<void> = Promise.resolve();
   let currentExecutionSessionId: string | undefined;
+  const supersededExecutionSessionIds = new Set<string>();
   let projectedExecutionSessionId: string | undefined;
   let currentLocalOutputSequence = 0;
   let currentTerminalAuthorityId: string | undefined;
@@ -7364,6 +7619,12 @@ function createExecutionTerminalController(
   };
 
   const beginExecutionSessionGeneration = (executionSessionId: string): void => {
+    if (
+      currentExecutionSessionId !== undefined &&
+      currentExecutionSessionId !== executionSessionId
+    ) {
+      supersededExecutionSessionIds.add(currentExecutionSessionId);
+    }
     pendingOutput = '';
     pendingOutputBoundaries = [];
     pendingPersistBarrier = false;
@@ -7520,6 +7781,12 @@ function createExecutionTerminalController(
     kind,
     applySnapshot(detail) {
       if (disposed) {
+        return;
+      }
+      if (
+        detail.executionSessionId !== undefined &&
+        supersededExecutionSessionIds.has(detail.executionSessionId)
+      ) {
         return;
       }
       const snapshotSequence = normalizeOutputSequence(detail.outputSequence);
@@ -7715,6 +7982,12 @@ function createExecutionTerminalController(
       const terminalRevision = normalizeOutputSequence(outputOptions?.terminalRevision);
       const terminalAuthorityId = outputOptions?.terminalAuthorityId;
       const outputExecutionSessionId = outputOptions?.executionSessionId;
+      if (
+        outputExecutionSessionId !== undefined &&
+        supersededExecutionSessionIds.has(outputExecutionSessionId)
+      ) {
+        return;
+      }
       if (outputExecutionSessionId !== undefined && currentExecutionSessionId !== outputExecutionSessionId) {
         beginExecutionSessionGeneration(outputExecutionSessionId);
       }
@@ -7857,8 +8130,15 @@ function createExecutionTerminalController(
         }
       });
     },
-    showExit(message) {
+    showExit(message, executionSessionId) {
       if (disposed) {
+        return;
+      }
+      if (
+        executionSessionId !== undefined &&
+        currentExecutionSessionId !== undefined &&
+        executionSessionId !== currentExecutionSessionId
+      ) {
         return;
       }
 

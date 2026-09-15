@@ -49,6 +49,8 @@ export interface RuntimeSupervisorSessionSnapshot {
   rows: number;
   scrollback: number;
   output: string;
+  /** Current title; null explicitly confirms that the live PTY has no title. */
+  terminalTitle?: string | null;
   outputSequence?: number;
   serializedTerminalState?: SerializedTerminalState;
   terminalAuthorityId?: string;
@@ -325,6 +327,8 @@ export type RuntimeSupervisorEvent =
         outputSequence?: number;
         terminalAuthorityId?: string;
         terminalRevision?: number;
+        /** Present only when this output batch changed the current title. */
+        terminalTitle?: string | null;
       };
     }
   | {
@@ -335,6 +339,8 @@ export type RuntimeSupervisorEvent =
         kind: ExecutionNodeKind;
         authorityId: string;
         event: TerminalStreamEvent;
+        /** Present only for the stream event that changed the current title. */
+        terminalTitle?: string | null;
       };
     }
   | {

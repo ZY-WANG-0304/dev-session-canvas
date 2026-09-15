@@ -15,6 +15,7 @@ export type ExecutionHostEvent =
       cols: number;
       rows: number;
       liveSession: boolean;
+      terminalTitle?: string | null;
       requestId?: string;
       executionSessionId?: string;
       outputSequence?: number;
@@ -26,6 +27,7 @@ export type ExecutionHostEvent =
       nodeId: string;
       kind: ExecutionNodeKind;
       chunk: string;
+      terminalTitle?: string | null;
       executionSessionId?: string;
       persisted?: boolean;
       outputStartSequence?: number;
@@ -46,6 +48,7 @@ export type ExecutionHostEvent =
       type: 'exit';
       nodeId: string;
       kind: ExecutionNodeKind;
+      executionSessionId?: string;
       message: string;
     };
 
@@ -67,7 +70,7 @@ export interface ExecutionTerminalController {
     }
   ): void;
   applyTerminalEvent(detail: Extract<ExecutionHostEvent, { type: 'terminal-event' }>): void;
-  showExit(message: string): void;
+  showExit(message: string, executionSessionId?: string): void;
   refreshVisibleRows(): void;
   flushPendingOutput(maxCharacters?: number): number;
   getPendingOutputLength(): number;

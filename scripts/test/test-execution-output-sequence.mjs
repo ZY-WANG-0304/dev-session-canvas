@@ -14,8 +14,13 @@ assert.ok(previousGenerationClientRetirementSource, '应能定位旧 generation 
 
 assert.match(
   supervisorSource,
-  /terminalEvent = session\.terminalJournal\?\.appendOutput\(chunk\);[\s\S]*?session\.outputSequence = terminalEvent\?\.revision[\s\S]*?session\.terminalStateTracker\.write\(chunk,[\s\S]*?outputSequence: session\.outputSequence[\s\S]*?this\.emitSessionOutput\(session, chunk, terminalEvent\)/u,
-  'runtime supervisor 必须先由 journal 分配 output revision，再更新 tracker 和广播。'
+  /const titleUpdate = updateSupervisorTerminalTitle\(session, chunk\);[\s\S]*?const terminalOutput = titleUpdate\.terminalOutput;[\s\S]*?terminalEvent = session\.terminalJournal\?\.appendOutput\(terminalOutput\);[\s\S]*?session\.outputSequence = terminalEvent\?\.revision[\s\S]*?session\.output = appendOutputTail\(session\.output, terminalOutput\);[\s\S]*?session\.terminalStateTracker\.write\(terminalOutput,[\s\S]*?outputSequence: session\.outputSequence[\s\S]*?this\.emitSessionOutput\([\s\S]*?terminalOutput,[\s\S]*?terminalEvent/u,
+  'runtime supervisor 必须先脱敏，再由 journal 分配 output revision，然后用同一安全输出更新 tail、tracker 和广播。'
+);
+assert.match(
+  supervisorSource,
+  /function updateSupervisorTerminalTitle\([\s\S]*?processExecutionTerminalTitleControls\([\s\S]*?session\.terminalTitle[\s\S]*?session\.terminalTitleCarryover[\s\S]*?session\.terminalTitleRedactionState[\s\S]*?titleReports: processed\.titleQueries\.map\([\s\S]*?formatExecutionTerminalTitleReport/u,
+  'runtime supervisor 必须在 raw PTY owner 边界解析 OSC title/query；query 只能生成独立的 title report，不能回流到 terminal output。'
 );
 assert.match(
   supervisorSource,
@@ -129,8 +134,8 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /postState: session\.terminalProjectionMode === 'legacy-interactive'[\s\S]*?this\.queueExecutionOutput\(kind, nodeId, chunk\)/u,
-  '旧 Supervisor output 必须进入兼容 xterm 队列，同时持续同步降级状态摘要。'
+  /postState: session\.terminalProjectionMode === 'legacy-interactive'[\s\S]*?this\.queueExecutionOutput\([\s\S]*?kind,[\s\S]*?nodeId,[\s\S]*?terminalOutput/u,
+  '旧 Supervisor output 必须先使用安全输出进入兼容 xterm 队列，同时持续同步降级状态摘要。'
 );
 assert.doesNotMatch(
   managerSource,
