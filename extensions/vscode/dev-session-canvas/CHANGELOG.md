@@ -27,7 +27,7 @@
 
 ### 已知边界与验证说明
 
-- PTY title parser、Runtime Supervisor protocol、Webview projection 和 `node-pty` fixture 已有定向自动化覆盖；发布准备分支仍需重新执行版本同步后的完整分层 gate
+- PTY title parser、Runtime Supervisor protocol、Webview projection 和 `node-pty` fixture 已有定向自动化覆盖；最终 release ref 已完成版本同步后的分层 gate、clean-checkout VSIX 验证与发布后复核
 - `0.24.5` 已登记的无固定 journal 磁盘上限、极端大输出尾部短读、Fork 视觉验收和跨平台真实升级矩阵风险不会因 title 定向测试通过而自动关闭
 
 ## 0.24.5 - Bounded Recovery and Responsive Terminal Input
