@@ -72,8 +72,8 @@
 - 决策：将此前误记的发布准备目标改回 0.25.0。
   理由：用户再次确认 0.25.0 才是本轮目标；后续版本说明应围绕 0.24.5 到 0.25.0 的有意回滚与 PTY title 重新实现展开。
   日期/作者：2026-09-16 / 用户确认，Codex 执行
-- 已确认决策：0.25.0 是当前 `origin/main` 的新公开 Preview 里程碑；相对 `v0.24.5` 的有意回滚和 PTY title 重新实现必须在 release notes / 发布设计记录中单独说明。
-  剩余工作：枚举具体被回滚的变更与保留行为，并为每项建立代码、测试或手工验证证据。
+- 已完成决策：0.25.0 是当前 `origin/main` 的新公开 Preview 里程碑；相对 `v0.24.5` 的有意回滚和 PTY title 重新实现已在 release notes / 发布设计记录中单独说明。
+  完成记录：具体被回滚的变更、保留行为和 PTY title 重新实现已在本计划与 `docs/design-docs/public-marketplace-release-readiness.md` 中建立代码、测试或验证证据；真实宿主 / provider / reload / reattach 与跨平台矩阵仍按已知风险保留。
 
 ## 结果与复盘
 
@@ -299,9 +299,10 @@ release notes、Marketplace listing 和支持文档必须说明：
     origin/main subject: Merge pull request #290 from ZY-WANG-0304/execution-terminal-title-support
     remote v0.24.5 tag: a9e27873aa01c1d1f1e43b4303ff697ce618c8cf
     root/main/notifier manifest version: 0.25.0
-    remote v0.25.0 tag: 4d7f07e55461f414c570365136cc06ece6f18c64
 
 发布后事实：
+
+    remote v0.25.0 tag: 4d7f07e55461f414c570365136cc06ece6f18c64
 
     actions run: 35040928600
     final release ref: 4d7f07e55461f414c570365136cc06ece6f18c64
