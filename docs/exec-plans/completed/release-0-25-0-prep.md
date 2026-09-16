@@ -30,7 +30,8 @@
 - [x] (2026-09-16) 完成版本号、lockfile、双扩展 CHANGELOG、Marketplace listing、根 README、中文版 README、两份发布手册和正式发布设计记录的 0.25.0 口径同步；历史发布复盘章节保持不改。
 - [x] (2026-09-16 03:19 +0800) 完成版本同步后的 repo-local 分层验证：主扩展 / notifier typecheck、PTY title parser / protocol / Webview 定向测试、manifest / package / publish workflow 守卫、双扩展 build、notifier source / companion / locale smoke、Playwright PTY title 回归、`npm audit` 与 `npm audit --omit=dev` 均通过；Runtime Supervisor 10-agent 样本仍保持既有通过结果。
 - [x] (2026-09-16 03:19 +0800) 完成当前 working tree 快照的隔离 clean-checkout 验证：独立 `npm ci` 安装 639 packages 且报告 0 vulnerabilities，主扩展 117-file VSIX 打包成功，packaged-payload smoke 通过，临时目录已清理。
-- [ ] 在最终合入 `main` 的 release ref 上重跑 release gate 和 `publish/v0.25.0` dry-run，准备只包含发布收口内容的 MR。
+- [x] (2026-09-16) 在最终合入 `main` 的 release ref `4d7f07e55461f414c570365136cc06ece6f18c64` 上完成 release gate、clean clone package-only dry-run 和 GitHub Actions 发布收口；发布 MR `#291` 已合入。
+- [x] (2026-09-16) 完成 `v0.25.0` 发布后复核：GitHub Release assets、Open VSX verified、Visual Studio Marketplace deferred、正式 tag 和临时 tag 状态均与最终 manifest 一致。
 
 ## 意外与发现
 
@@ -38,8 +39,8 @@
   证据：两者的 merge-base 是 `7eb3864b855d85b7c18d0162b99d5896d13af4d6`；`v0.24.5` 侧包含 Runtime Supervisor recovery 变更，而当前 `origin/main` 侧回退了这组变更并继续包含 Pane Gallery / Marketplace media、依赖审计和 PTY title 提交。
 - 观察：版本同步前当前 `origin/main` 的根 workspace、主扩展和 notifier manifest 均为 `0.24.3`；现在发布准备分支已统一更新为 `0.25.0`，发布手册与 README 的当前章节也已同步。
   证据：`package.json`、`extensions/vscode/dev-session-canvas/package.json`、`extensions/vscode/dev-session-canvas-notifier/package.json`、`package-lock.json` 和当前发布物料。
-- 观察：远端没有发现 `v0.25.0` tag；因此本轮 0.25.0 尚未发布，不能把目标版本当作升级前提。
-  证据：`git ls-remote --tags origin 'refs/tags/v0.2[45]*'` 只返回到 `v0.24.5` 的远端 release tag。
+- 观察：`v0.25.0` 已发布，正式 tag 与 GitHub Release assets 均指向最终 release ref；临时 `publish/v0.25.0` 已按完成门禁删除。
+  证据：`git ls-remote --tags origin refs/tags/v0.25.0` 指向 `4d7f07e55461f414c570365136cc06ece6f18c64`，最终 manifest 的 `tags.triggerTagStatus` 为 `deleted`。
 - 观察：PTY Terminal Title 功能已经在当前 `origin/main` 中合入，但正式设计文档仍把 Extension Development Host 手工设置/清空、真实 provider spinner、Webview reload 和跨生命周期 reattach 标为未完成宿主级验证。
   证据：`docs/design-docs/execution-terminal-title-display.md` 的“当前验证证据”章节。
 - 观察：完整 `git fetch origin main --tags` 因本地已有不同内容的 tag 被拒绝更新若干 tag，但 `origin/main` 的远端分支指针已经成功更新。
@@ -76,7 +77,7 @@
 
 ## 结果与复盘
 
-当前阶段已完成分支创建、版本目标纠正、release input lineage 决策、代码级范围审计、版本同步、当前发布物料同步、分层验证和 clean-checkout packaged-payload smoke。最重要的结果是确认当前主线是有意回滚后的 0.25.0 输入，并在这条主线上重新实现了 PTY title；同时确认 v0.24.5 的 recovery / bounded checkpoint / FIFO input 等承诺不能直接沿用。当前剩余工作不再是 repo-local 构建或包体验证，而是发布准备 MR 合入后的最终 `main` ref 复验、`publish/v0.25.0` dry-run 和 release-day 渠道状态确认；本分支生成的 working-tree 工件仍不能直接当作最终 Release asset。
+当前阶段已完成分支创建、版本目标纠正、release input lineage 决策、代码级范围审计、版本同步、当前发布物料同步、分层验证、clean-checkout packaged-payload smoke、最终 release ref dry-run 和 GitHub Actions 发布收口。最重要的结果是确认当前主线是有意回滚后的 0.25.0 输入，并在这条主线上重新实现了 PTY title；同时确认 v0.24.5 的 recovery / bounded checkpoint / FIFO input 等承诺不能直接沿用。正式 `v0.25.0` 已完成 GitHub Release assets + Open VSX 兜底发布，Visual Studio Marketplace 仍是 deferred channel；当前剩余事项是保留真实宿主验证、跨平台矩阵和发布 action Node.js deprecation 等已知风险，不把它们误写成已完成结论。
 
 本阶段的经验是：不能仅按版本号推断当前主线包含哪些发布能力；应同时核对 `origin/main`、远端 release tag、manifest 版本、CHANGELOG 顶部条目和实际代码路径。
 
@@ -84,12 +85,13 @@
 
 当前仓库是一个包含主扩展和 notifier companion 的 VS Code monorepo。主扩展 manifest 位于 `extensions/vscode/dev-session-canvas/package.json`，notifier manifest 位于 `extensions/vscode/dev-session-canvas-notifier/package.json`，根 `package.json` 是 workspace 编排入口。两份扩展必须以同一个版本和同一个最终 release ref 发布。
 
-当前分支基线：
+计划执行时的分支基线：
 
 - 分支：`release-0-25-0-prep`
 - 基线：`origin/main` / `44c025056f3e63019b53f528951ea1d15ce1539d`
 - 当前 manifest 版本：根 workspace、主扩展和 notifier 均为 `0.25.0`
-- 当前远端最新 release tag：`v0.24.5`，其提交为 `a9e27873aa01c1d1f1e43b4303ff697ce618c8cf`
+- 计划开始时远端最新 release tag：`v0.24.5`，其提交为 `a9e27873aa01c1d1f1e43b4303ff697ce618c8cf`
+- 计划完成后的正式 release tag：`v0.25.0`，其提交为 `4d7f07e55461f414c570365136cc06ece6f18c64`
 
 当前主线中需要进入候选范围审计的变更分为四类：
 
@@ -100,7 +102,7 @@
 
 ## 0.24.5 到 0.25.0 的范围审计初稿
 
-以下内容是基于 commit、当前代码和现有测试入口整理出的内部发布口径，不等同于已经完成的最终 CHANGELOG。最终对外文字仍要以本分支版本同步后的测试和宿主验证为准。
+以下内容是基于 commit、当前代码和现有测试入口整理出的内部发布口径；最终对外文字已按最终 release ref 的测试证据和已知宿主验证边界同步。
 
 ### 有意回滚的能力
 
@@ -110,13 +112,13 @@
 - `#276` 的“死亡 PTY 只有用户点击 Resume 才启动新的 provider 进程”也没有作为当前主线的发布承诺。当前 Host/Webview 仍存在 `pendingLaunch: 'resume'` 自动启动路径；发布说明必须明确当前实际是自动恢复 / resume 语义，或在发布前补测试把它收口为显式动作。
 - `#277` 的 VS Code 不可取消进度通知、已完成 / 剩余 session 计数和 Webview recovery banner 移除后的完整协议链没有进入当前主线。0.25.0 不应声称存在恢复进度通知。
 - `#278` 的 checkpoint 拒绝诊断、bounded projection checkpoint RPC、健康 live stream 避免周期性完整 projection，以及每节点严格 FIFO / 单在途 input RPC 没有进入当前主线。当前 Host 的 projection refresh 仍会请求完整 session snapshot，`writeExecutionInput()` 仍直接写 local PTY 或发起 Supervisor write RPC；当前 tracker 对颜色控制事件仍采用整体 `color-state` fail-closed 语义。0.25.0 不应复用 0.24.5 的输入响应和 checkpoint 拒绝优化承诺。
-- `#274` 的依赖声明版本没有原样保留在当前 manifest，但当前 lockfile 解析出的 `js-yaml`、`linkify-it` 和 `markdown-it` 仍需以最终 `npm ci` 和 audit 结果为准。它属于依赖维护 / 安全门禁，不应包装成用户功能；本地当前 `npm audit` 与 `npm audit --omit=dev` 均为 0 vulnerabilities。
+- `#274` 的依赖声明版本没有原样保留在当前 manifest，但最终 release ref 的 `npm ci` 和 audit 已确认通过。它属于依赖维护 / 安全门禁，不应包装成用户功能；`npm audit` 与 `npm audit --omit=dev` 均为 0 vulnerabilities。
 
 ### 当前仍保留、但不应误写成 0.25.0 新增的能力
 
-- 0.24.3 之前已经成立的执行节点生命周期、terminal stream / authority / revision、journal 与 checkpoint 基础机制，以及现有 Agent / Terminal、Fork、媒体链接和 resize 行为仍存在于当前主线；它们需要在版本同步后按发布 gate 复验，但不能因为这次重新打包就全部算作新功能。
+- 0.24.3 之前已经成立的执行节点生命周期、terminal stream / authority / revision、journal 与 checkpoint 基础机制，以及现有 Agent / Terminal、Fork、媒体链接和 resize 行为仍存在于当前主线；最终 release ref 的分层 gate 已复验，但不能因为这次重新打包就全部算作新功能。
 - Pane Gallery 底部缩略图标题栏和多根 workspace 宣传素材在 `v0.24.5` 与当前主线都已有对应输入。它们可作为最终 listing 资产和视觉回归记录，但除非当前 ref 相对上一公开版本确有新的用户可见差异，否则不应作为 0.25.0 的主要 runtime 亮点。
-- 当前 `#289` 依赖审计收口以及 lockfile / 开发工具版本变化应放入维护与验证记录。发布前要确认生产依赖、开发依赖、主扩展和模板市场的 audit 均通过，且没有因为回滚 `#274` 引入新的安全回归。
+- 当前 `#289` 依赖审计收口以及 lockfile / 开发工具版本变化应放入维护与验证记录。最终 release ref 已确认生产依赖、开发依赖、主扩展和模板市场相关审计门禁通过，且没有发现因回滚 `#274` 引入的安全回归。
 
 ### PTY title 的重新实现
 
@@ -142,7 +144,7 @@
 
 - 采用的上一发布基线是哪个最终 release ref，而不是只写一个版本号。
 - `v0.24.5` release line 的 Runtime Supervisor 恢复内容哪些被当前主线回滚、哪些基础行为仍然保留；当前发布输入不重新接回该 release line。
-- `v0.25.0` 没有在当前远端 tag 中出现，因此不能用“0.25.0 已发布”作为升级前提。
+- 正式 `v0.25.0` tag 已指向最终 release ref；升级与安装应以 GitHub Release assets、Open VSX verified 状态和发布手册记录为准，不能把 Visual Studio Marketplace deferred channel 写成已可用。
 - 0.25.0 仍然是公开 `Preview`，不改变 `docs/workflows/VERSION.md` 的单轨 SemVer 和 `preview: true` 约束。
 
 ### 2. 用户可见亮点
@@ -225,27 +227,28 @@ release notes、Marketplace listing 和支持文档必须说明：
 - `npm run test:vsix-smoke`
 - `git diff --check`
 
-上述命令均通过；PTY title Playwright 定向回归为 `1 passed`，两次 audit 均为 `0 vulnerabilities`，packaged-payload smoke 输出 `VSIX packaged-payload smoke passed`。`npm run validate:clean-checkout:vsix -- --source working-tree` 进一步在隔离目录执行独立 `npm ci`、117-file 主扩展打包和 packaged-payload smoke，并在完成后清理临时目录。当前 working-tree 候选工件为主扩展 `3,933,659` bytes / `sha256=a1c23550467b002c3abfce1672f1586a6e1a195691eedd6a6d0ed2f78de488eb`、notifier `159,279` bytes / `sha256=ac3f8fb59681fa081f52fd25907d8030797029f1578495fa3b8b375b175553d8`；打包日志中的 README doc ref 为 `44c025056f3e63019b53f528951ea1d15ce1539d`。这些工件来自 dirty working tree，不能直接作为最终 Release assets。
+上述命令均通过；PTY title Playwright 定向回归为 `1 passed`，两次 audit 均为 `0 vulnerabilities`，packaged-payload smoke 输出 `VSIX packaged-payload smoke passed`。`npm run validate:clean-checkout:vsix -- --source working-tree` 进一步在隔离目录执行独立 `npm ci`、117-file 主扩展打包和 packaged-payload smoke，并在完成后清理临时目录。发布前 working-tree 候选工件为主扩展 `3,933,659` bytes / `sha256=a1c23550467b002c3abfce1672f1586a6e1a195691eedd6a6d0ed2f78de488eb`、notifier `159,279` bytes / `sha256=ac3f8fb59681fa081f52fd25907d8030797029f1578495fa3b8b375b175553d8`；打包日志中的 README doc ref 为 `44c025056f3e63019b53f528951ea1d15ce1539d`。这些工件来自 dirty working tree，仅保留为历史证据，不能直接作为最终 Release assets。
 
-尚未执行的发布级步骤：
+已执行的发布级步骤：
 
     npm run release:publish-tag -- --trigger-tag publish/v0.25.0 --dry-run --package-only
+    gh run watch 35040928600 --exit-status
 
-原因是当前发布准备分支尚未合入最终 `main` release ref，且按发布流程约束不能提前创建或推送 `publish/v0.25.0`；该命令必须在最终 release commit 上固定临时 tag 后执行。
+前一命令在无历史 tag 冲突的 clean clone 中通过；后一命令对应的真实发布 workflow 以 success 结束。正式工件以 GitHub Release assets 和最终 manifest 为准，不使用 working-tree 候选包的 SHA。
 
 完整 `npm test` 如果受当前 worktree 深路径 Unix socket 或既有 fixture 漂移阻断，必须保留准确失败原因，并以分层测试和独立 clean-checkout 证据替代，不能写成完整清洁通过。
 
 ## 工作计划
 
-第一阶段已收口 release lineage。下一步对比当前 `origin/main`、远端 `v0.24.5` tag 和相关代码路径，列出 0.25.0 的“有意回滚 / 当前保留 / PTY title 重新实现”清单；若发现确有需要恢复的代码，必须另开独立实现计划，不能在发布文案阶段隐式补功能。
+第一阶段已收口 release lineage：对比当前 `origin/main`、远端 `v0.24.5` tag 和相关代码路径后，已列出 0.25.0 的“有意回滚 / 当前保留 / PTY title 重新实现”清单；没有在发布文案阶段隐式恢复被回滚的代码。
 
-第二阶段按最终输入整理“用户功能 / 发布素材 / 内部维护 / 未纳入能力”四类清单，并把已确认的 release notes 口径写入 `docs/design-docs/public-marketplace-release-readiness.md`、主扩展设计文档和相关正式文档。所有未完成验证继续标记为“验证中”。
+第二阶段已按最终输入整理“用户功能 / 发布素材 / 内部维护 / 未纳入能力”四类清单，并把已确认的 release notes 口径写入 `docs/design-docs/public-marketplace-release-readiness.md`、主扩展设计文档和相关正式文档；所有未完成验证仍标记为“验证中”。
 
-第三阶段在发布准备分支同步版本号和对外物料。主扩展和 notifier 必须保持同版本；Marketplace listing 默认使用英文文件，中文文件作为仓库内对应版本；根 README 继续保持英文主文件和中文对应文件。
+第三阶段已在发布准备分支同步版本号和对外物料。主扩展和 notifier 保持同版本；Marketplace listing 使用英文文件，中文文件作为仓库内对应版本；根 README 保持英文主文件和中文对应文件。
 
-第四阶段执行分层测试、打包和 clean-checkout 验证。候选 working tree 工件只作为分支证据，不能直接当成最终 Release assets；最终工件必须在发布准备 MR 合入后的 clean `main` ref 上重新生成或验证。
+第四阶段已执行分层测试、打包和 clean-checkout 验证。候选 working-tree 工件仅作为分支证据；最终工件已在发布准备 MR 合入后的 clean `main` ref 上重新生成并写入 GitHub Release assets。
 
-第五阶段按 `docs/exec-plans/active/publish-tag-release-flow.md` 与发布手册执行 package-only dry-run，确认 `publish/v0.25.0`、正式 tag、Release assets、Open VSX、Visual Studio Marketplace deferred / verified 状态和临时 tag 删除条件。
+第五阶段已按 `docs/exec-plans/active/publish-tag-release-flow.md` 与发布手册执行 package-only dry-run 和真实 workflow，确认 `publish/v0.25.0`、正式 tag、Release assets、Open VSX、Visual Studio Marketplace deferred 状态和临时 tag 删除条件。
 
 ## 具体步骤
 
@@ -260,7 +263,7 @@ release notes、Marketplace listing 和支持文档必须说明：
 
     rg -n '0\.24\.3|0\.24\.5|v0\.24\.5|0\.25\.0|0\.26\.0' README.md README.zh-CN.md docs extensions/vscode package.json package-lock.json .github scripts
 
-版本同步和文案收口已完成，分层验证和当前 working-tree 的 clean-checkout / packaged-payload 验证也已完成；每条命令的实际结果和未覆盖路径已写回本计划和对应正式发布文档。`publish/v0.25.0` 的 dry-run 仍必须等发布准备 MR 合入最终 `main` ref 后执行，因此当前仍不要创建或推送该临时 tag。
+版本同步和文案收口已完成，分层验证、最终 release ref 的 clean-checkout / packaged-payload 验证、package-only dry-run 和 release-day Actions 发布也已完成；实际 release ref、VSIX SHA-256、GitHub Release、Open VSX / VSM 状态和临时 tag 状态已写回本计划与对应正式发布文档。
 
 ## 验证与验收
 
@@ -283,20 +286,31 @@ release notes、Marketplace listing 和支持文档必须说明：
 
 分支、计划和范围审计可以重复执行。若本地 tag 与远端 tag 冲突，不覆盖或强制更新用户已有 tag；使用临时 refs 读取远端 tag，仅把远端 tag 的 commit 作为审计输入。
 
-在发布准备 MR 合入最终 `main` ref、发布验证和 release-day 复核完成前不要创建正式 tag 或推送临时 publish tag。若后续发现需要重新纳入 `v0.24.5` release line 的代码，应先在独立主题变更中合入真实代码，再重新生成 release notes 和验证计划。
+以下规则适用于发布前阶段：在发布准备 MR 合入最终 `main` ref、发布验证和 release-day 复核完成前不要创建正式 tag 或推送临时 publish tag。若后续发现需要重新纳入 `v0.24.5` release line 的代码，应先在独立主题变更中合入真实代码，再重新生成 release notes 和验证计划；本轮未触发该恢复路径。
 
-发布失败时保留同一 `publish/v0.25.0` 作为重试输入，复用并校验既有 GitHub Release assets；不要重新打包覆盖已有同版本工件，也不要在 Open VSX 或 Release assets 未满足删除条件前删除临时 tag。
+发布失败时应保留同一 `publish/v0.25.0` 作为重试输入，复用并校验既有 GitHub Release assets；不要重新打包覆盖已有同版本工件，也不要在 Open VSX 或 Release assets 未满足删除条件前删除临时 tag。本轮完成门禁满足后，远端和本地临时 tag 均已删除。
 
 ## 证据与备注
 
-当前已确认的基线证据：
+计划执行时的基线证据：
 
     branch: release-0-25-0-prep
     origin/main: 44c025056f3e63019b53f528951ea1d15ce1539d
     origin/main subject: Merge pull request #290 from ZY-WANG-0304/execution-terminal-title-support
     remote v0.24.5 tag: a9e27873aa01c1d1f1e43b4303ff697ce618c8cf
     root/main/notifier manifest version: 0.25.0
-    remote v0.25.0 tag: not found
+    remote v0.25.0 tag: 4d7f07e55461f414c570365136cc06ece6f18c64
+
+发布后事实：
+
+    actions run: 35040928600
+    final release ref: 4d7f07e55461f414c570365136cc06ece6f18c64
+    main VSIX: 3,936,447 bytes / sha256=88eeef48707f69f760b65713f7571841161d7eb4742057dfdf3fcf3117a6b811
+    notifier VSIX: 159,757 bytes / sha256=862e0b90cc9c70fca0ef0053e9a6fd2cbc5e69f208efecc11162576449ebc543
+    release manifest: complete-with-deferred-visual-studio
+    Open VSX: main and notifier verified
+    Visual Studio Marketplace: main and notifier publish-failed / deferred
+    remote publish/v0.25.0: deleted
 
 版本同步后的 repo-local release gate 已通过：
 
@@ -323,13 +337,14 @@ release notes、Marketplace listing 和支持文档必须说明：
     npm run test:vsix-smoke
     git diff --check
 
-上述命令均通过；PTY title Playwright 定向回归为 `1 passed`，两次 audit 均为 `0 vulnerabilities`，packaged-payload smoke 输出 `VSIX packaged-payload smoke passed`。`npm run validate:clean-checkout:vsix -- --source working-tree` 进一步在隔离目录执行独立 `npm ci`、117-file 主扩展打包和 packaged-payload smoke，并在完成后清理临时目录。当前 working-tree 候选工件为主扩展 `3,933,659` bytes / `sha256=a1c23550467b002c3abfce1672f1586a6e1a195691eedd6a6d0ed2f78de488eb`、notifier `159,279` bytes / `sha256=ac3f8fb59681fa081f52fd25907d8030797029f1578495fa3b8b375b175553d8`；打包日志中的 README doc ref 为 `44c025056f3e63019b53f528951ea1d15ce1539d`。这些工件来自 dirty working tree，不能直接作为最终 Release assets。
+上述命令均通过；PTY title Playwright 定向回归为 `1 passed`，两次 audit 均为 `0 vulnerabilities`，packaged-payload smoke 输出 `VSIX packaged-payload smoke passed`。`npm run validate:clean-checkout:vsix -- --source working-tree` 进一步在隔离目录执行独立 `npm ci`、117-file 主扩展打包和 packaged-payload smoke，并在完成后清理临时目录。发布前 working-tree 候选工件为主扩展 `3,933,659` bytes / `sha256=a1c23550467b002c3abfce1672f1586a6e1a195691eedd6a6d0ed2f78de488eb`、notifier `159,279` bytes / `sha256=ac3f8fb59681fa081f52fd25907d8030797029f1578495fa3b8b375b175553d8`；打包日志中的 README doc ref 为 `44c025056f3e63019b53f528951ea1d15ce1539d`。这些工件来自 dirty working tree，仅保留为历史证据，不能直接作为最终 Release assets。
 
-尚未执行的发布级步骤：
+已执行的发布级步骤：
 
     npm run release:publish-tag -- --trigger-tag publish/v0.25.0 --dry-run --package-only
+    gh run watch 35040928600 --exit-status
 
-原因是当前发布准备分支尚未合入最终 `main` release ref，且按发布流程约束不能提前创建或推送 `publish/v0.25.0`；该命令必须在最终 release commit 上固定临时 tag 后执行。
+前一命令在无历史 tag 冲突的 clean clone 中通过；后一命令对应的真实发布 workflow 以 success 结束。正式工件以 GitHub Release assets 和最终 manifest 为准，不使用 working-tree 候选包的 SHA。
 
 ## 接口与依赖
 
@@ -345,3 +360,5 @@ release notes、Marketplace listing 和支持文档必须说明：
 计划更新记录：2026-09-16，用户确认目标版本恢复为 0.25.0，并确认从 0.24.5 到 0.25.0 的差异包含有意回滚，且 PTY title 在当前主线上重新实现；计划改为审计“回滚 / 保留 / 重新实现”范围，不再把 release lineage 作为待定事项。
 计划更新记录：2026-09-16，完成 0.25.0 版本号、双 changelog、Marketplace listing、英中文 README、两份发布手册和正式发布设计记录的当前章节同步；历史 0.24.x 发布后复盘保留原样，下一步转入版本同步后的验证。
 计划更新记录：2026-09-16，完成版本同步后的 repo-local release gate、working-tree 双 VSIX 复核和隔离 clean-checkout / packaged-payload smoke；保留 dirty-tree 工件仅作分支证据，并将最终 `main` ref / `publish/v0.25.0` dry-run 留到发布准备 MR 合入后。
+计划更新记录：2026-09-16，PR `#291` 合入后的最终 release ref `4d7f07e55461f414c570365136cc06ece6f18c64` 已通过 package-only dry-run；Actions run `35040928600` 完成 GitHub Release assets、Open VSX verified、VSM deferred 记录、正式 tag 创建和临时 tag 删除。
+计划更新记录：2026-09-16，发布后文档复核完成；发布前候选工件已明确标为历史证据，计划归档至 `docs/exec-plans/completed/release-0-25-0-prep.md`，后续仅保留真实宿主验证、跨平台矩阵、VSM deferred 和 Actions Node.js deprecation 等已登记风险。

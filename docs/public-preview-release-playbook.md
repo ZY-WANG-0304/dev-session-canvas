@@ -140,22 +140,32 @@
 
 ## 当前验证备注
 
-截至 `2026-09-16`，本轮发布输入已锁定为当前 `origin/main` 基线 `44c025056f3e63019b53f528951ea1d15ce1539d` 的 `0.25.0` 发布准备分支；上一公开基线为 `v0.24.5`（`a9e27873aa01c1d1f1e43b4303ff697ce618c8cf`）。当前分支尚未创建或推送 `publish/v0.25.0`、`v0.25.0`，也没有可直接作为 Release asset 的 `0.25.0` VSIX。
+截至 `2026-09-16`，本轮发布输入锁定为最终 `main` release ref `4d7f07e55461f414c570365136cc06ece6f18c64`；上一公开基线为 `v0.24.5`（`a9e27873aa01c1d1f1e43b4303ff697ce618c8cf`）。`v0.25.0` 已完成 GitHub Release assets + Open VSX 兜底发布，远端 `publish/v0.25.0` 临时 tag 已删除。
 
 本轮已完成的 repo-local 同步：
 
 - 版本号同步：根 `package.json`、主扩展 manifest、notifier manifest、`package-lock.json` 根版本、主扩展 package entry 与 notifier package entry 均更新为 `0.25.0`
 - release notes 同步：主扩展与 notifier changelog 已新增 `0.25.0` 顶部条目，明确 PTY title、Runtime Supervisor 回滚边界、安装 / 升级 / 回退口径与 notifier 仅对齐版本
-- Marketplace / README 文案同步：主扩展 Marketplace 中英文 listing、仓库中英文 README 已更新为 `0.25.0` 发布准备口径；已区分 PTY title 运行时能力、`0.24.5` 不再承诺的恢复边界、发布素材与维护证据
-- 发布设计与执行计划已同步：`docs/design-docs/public-marketplace-release-readiness.md` 与 `docs/exec-plans/active/release-0-25-0-prep.md` 已记录 release input lineage、回滚 / 保留 / 重新实现分类和验证缺口
+- Marketplace / README 文案同步：主扩展 Marketplace 中英文 listing、仓库中英文 README 已更新为 `0.25.0` 发布口径；已区分 PTY title 运行时能力、`0.24.5` 不再承诺的恢复边界、发布素材与维护证据
+- 发布设计与执行计划已同步：`docs/design-docs/public-marketplace-release-readiness.md` 与已归档的 `docs/exec-plans/completed/release-0-25-0-prep.md` 已记录 release input lineage、回滚 / 保留 / 重新实现分类和验证缺口
 
 版本同步后的 repo-local 分层验证已完成：主扩展 / notifier typecheck、PTY title parser / protocol / Webview 定向测试、manifest / package / publish workflow 守卫、双扩展 build、notifier source / companion / locale smoke、PTY title Playwright 回归、`npm audit`、`npm audit --omit=dev`、生产模板市场 workflow 守卫和 working-tree packaged-payload smoke 均通过。PTY title Playwright 定向回归为 `1 passed`，两次 audit 均为 `0 vulnerabilities`；`npm run test:vsix-smoke` 输出 `VSIX packaged-payload smoke passed`。
 
-`npm run validate:clean-checkout:vsix -- --source working-tree` 进一步在隔离目录完成独立 `npm ci`、117-file 主扩展 VSIX 打包和 packaged-payload smoke，临时目录已清理。该验证证明当前 working-tree 快照可打包，但不替代发布准备 MR 合入后的最终 `main` ref 验证。当前 dirty-tree 候选工件仅作分支证据：主扩展 `3,933,659` bytes / `sha256=a1c23550467b002c3abfce1672f1586a6e1a195691eedd6a6d0ed2f78de488eb`，notifier `159,279` bytes / `sha256=ac3f8fb59681fa081f52fd25907d8030797029f1578495fa3b8b375b175553d8`；README doc ref 为 `44c025056f3e63019b53f528951ea1d15ce1539d`。
+`npm run validate:clean-checkout:vsix -- --source working-tree` 进一步在隔离目录完成独立 `npm ci`、117-file 主扩展 VSIX 打包和 packaged-payload smoke，临时目录已清理。该验证证明 working-tree 快照可打包；最终 workflow 又在 release ref 上重新生成了正式工件，不能混用两组 SHA。正式工件、README doc ref 与 release ref 均已记录在下方的 0.25.0 发布后复核中。
 
-`publish/v0.25.0` dry-run 尚未执行。按发布流程，当前发布准备分支不能提前创建或推送临时 tag；该 dry-run 必须在发布准备 MR 合入最终 `main` release ref 后，使用该最终 commit 固定 `publish/v0.25.0` 再执行。
+在最终 release ref 的无历史 tag 冲突 clean clone 中，已按原样执行 `npm run release:publish-tag -- --trigger-tag publish/v0.25.0 --dry-run --package-only` 并通过；实际 GitHub Actions run `35040928600` 也已完成正式打包、发布和收口。
 
-当前残余风险与 release-day 复核项：Visual Studio Marketplace 与 Open VSX 的实时可见 / verified 状态必须在 release-day 重新查询，不能沿用旧版本结果；真实 Extension Development Host 中手工设置 / 清空 title、真实 Codex / Claude provider spinner、Webview reload、跨 VS Code 生命周期 reattach、Linux / Remote SSH systemd `WorkingDirectory` 与运行时失败分层仍需按实际证据表达；journal 无固定磁盘上限、90000 行尾部短读、Fork 视觉 / footprint、跨平台真实升级矩阵和跨节点 / 跨 surface 多指边界继续保留。
+当前残余风险：Visual Studio Marketplace 仍为 deferred channel，不能对外宣称 public gallery 已可用；真实 Extension Development Host 中手工设置 / 清空 title、真实 Codex / Claude provider spinner、Webview reload、跨 VS Code 生命周期 reattach、Linux / Remote SSH systemd `WorkingDirectory` 与运行时失败分层仍需按实际证据表达；journal 无固定磁盘上限、90000 行尾部短读、Fork 视觉 / footprint、跨平台真实升级矩阵和跨节点 / 跨 surface 多指边界继续保留。
+
+### 0.25.0 发布后复核
+
+截至 `2026-09-16`，GitHub Actions run [`35040928600`](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35040928600) 已从最终 `main` release ref `4d7f07e55461f414c570365136cc06ece6f18c64` 完成发布。正式 tag `v0.25.0` 指向同一 ref；对应 [GitHub Release](https://github.com/ZY-WANG-0304/dev-session-canvas/releases/tag/v0.25.0) 为非 draft、非 prerelease，远端 `publish/v0.25.0` 已删除。最终 manifest 状态为 `complete-with-deferred-visual-studio`，`releaseCompletion.requiredTargets` 为 `github-release-assets` + `open-vsx`，`tags.triggerTagStatus=deleted`。
+
+正式 GitHub Release assets 为主扩展 `dev-session-canvas-0.25.0.vsix`（`3,936,447` bytes，`sha256=88eeef48707f69f760b65713f7571841161d7eb4742057dfdf3fcf3117a6b811`）、notifier `dev-session-canvas-notifier-0.25.0.vsix`（`159,757` bytes，`sha256=862e0b90cc9c70fca0ef0053e9a6fd2cbc5e69f208efecc11162576449ebc543`）与 `release-manifest-0.25.0.json`（`3,104` bytes，`sha256=1441435bacee8df647ca8d6c361f8c594cae4cb9154e4663e029aa19e50b961b`）。两个 VSIX 的 `packagingDocRef` / `readmeDocRef` 均为 `4d7f07e55461f414c570365136cc06ece6f18c64`。
+
+Open VSX 主扩展与 notifier 的 `0.25.0` 均发布并验证为 `verified`。Visual Studio Marketplace 两个扩展在最终 manifest 中均为 `publish-failed` / deferred；本轮不得对外宣称 VSM public gallery 已可用。GitHub Release assets + Open VSX verified 已满足本轮完成门禁。
+
+发布 workflow 的四个 job 均以 success 结束：prepare `104620391035`、Open VSX `104620556496`、Visual Studio Marketplace `104620556404`、finalize `104623088764`。Actions 仍报告 checkout/setup/upload/download action 使用 Node.js 20 的 deprecation annotation；该 annotation 未改变本轮发布结论，后续应按技术债跟踪升级 action 版本。
 
 ### 0.24.2 发布后复核
 
