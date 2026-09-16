@@ -114,3 +114,20 @@
 - Dev Container / Codespaces 何时进入 `live-runtime` 正式支持范围。
 - 日志持久化应该保留到什么粒度，才能既支持回放，又不让本地存储无限增长。
 - 当监督器进程崩溃、丢失或留下孤儿会话时，UI 应如何暴露问题并提供清理路径。
+
+## 9. 容量与 completed 历史的待重评边界
+
+2026-09-16，用户确认当前完整 journal 后缀的内存/恢复传输成本，以及 completed 恢复数据进入画板 JSON 后的反复重写，是需要优先重新评估的架构问题，分别对应 `docs/design-docs/webview-host-supervisor-architecture-review.md` 的 F-04/F-05。这不等于现有实现已被证明违反本文的完整性语义，也不表示本轮接受截断历史或新存储格式；实现仍遵循现行 lossless 设计。
+
+后续设计必须分别说明原进程延续、有限终端屏幕/scrollback、未消费输出、completed 可读历史和 provider resume 的保证。tmux / WezTerm 的 daemon 保活、tmux-resurrect 的命令重建、VS Code 的 reconnect/revive 可作为比较输入，但重启命令不等于 Agent 原执行继续存在，有限 buffer 也不自动替代本产品要求的完整恢复材料。
+
+待确认的产品决策包括历史保留范围/期限、磁盘配额与满盘行为、首次终端可交互的时间预算，以及明确删除历史的用户操作。在这些决策明确前，不得为了缓存上限丢未消费内容，或用 recent tail 冒充完整恢复；本轮也不新增机器/Supervisor 重启后恢复原进程的承诺。
+
+建议后续验收同时覆盖以下结果，具体预算与实现尚未确定，不能标记为已通过：
+
+- checkpoint 长期不能推进时，增加历史不再要求所有历史常驻每层内存或进入一个恢复消息；同时测总恢复耗时，不能只把大消息拆小就宣称恢复性能收口。
+- 已结束会话的历史可在原 Supervisor 退役后读取；移动节点、修改 Note 等普通画板操作不重写这些历史。
+- 归档、画板引用提交、删除/回收及旧内联迁移遇到失败时，至少一个完整来源继续可读；多窗口或多 root 的有效引用不能被提前清除。
+- Agent / Terminal 在持续输出、客户端离线重建和多窗口读取期间继续满足原进程身份、内容顺序与输入公平性；任何保证变化先明确产品边界。
+
+候选比较、可重跑基线与建议矩阵见 `docs/design-docs/runtime-persistence-storage-reevaluation.md`，原始上游证据见 `docs/references/terminal-persistence-open-source-survey.md`。运行时改造另行规划。

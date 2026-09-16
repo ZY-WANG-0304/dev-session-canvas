@@ -335,9 +335,9 @@ docs/                           根目录正式文档知识库
 - 在宿主之外维持执行会话存活。
 - 通过 `runtimeSupervisorProtocol.ts` 提供 create / attach / get snapshot / subscribe / applied-revision ACK / write / resize / scrollback / stop / delete 等请求。
 - 为每个新会话分配稳定 authority，按同一连续 revision 记录 output、resize 与 scrollback。
-- 完整保留分段 journal；checkpoint 只作为恢复加速缓存，不删除旧 journal segment。
+- 保留可恢复的分段 journal；只有通过 eligibility、producer profile、双代回退与 retention 门禁的 checkpoint 才允许回收完整前缀 segment，不能按缓存大小直接删历史。
 - 以静态 checkpoint+journal 和延迟订阅的两阶段切点补齐 Host attach 间隙，再切换到 live event。
-- 按 `socket + session + consumerId` 分别保存 panel/editor 的 applied-revision 水位；该水位不推进 authority revision，也不触发 journal compact。
+- 按 `socket + session + consumerId` 分别保存 panel/editor 的 applied-revision 水位；该水位不推进 authority revision、不授予 checkpoint 资格，只收紧 compact 的删除上界。
 
 架构不变量：
 
@@ -476,7 +476,9 @@ docs/                           根目录正式文档知识库
 
 ### 恢复与持久化
 
-当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、完整 terminal journal 和 checkpoint cache。Reload Window 后的新 Host 必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。Host 的 `terminalStream` 只是恢复缓存：新投影 attach 前和无 attach 的 10–12 秒错峰周期内可通过只读 snapshot RPC 收敛，并把 RPC 期间的连续 live tail 无损合并；任何失败都保留旧健康缓存，不能按大小丢弃事件。
+当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、可校验 terminal journal 和 checkpoint。Reload Window 后的新 Host 必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。live 会话的 Host `terminalStream` 是恢复缓存：新投影 attach 前和无 attach 的 10–12 秒错峰周期内可通过只读 snapshot RPC 刷新，并把 RPC 期间的连续 live tail 无损合并；任何失败都保留旧健康缓存，不能按大小丢弃事件。当前 completed 会话则在最终 stream 写入窗口与实际 root-local 画板成功后，解除 runtime 绑定并请求删除 Supervisor journal，后续从节点 metadata 恢复。
+
+待重评：checkpoint 长期拒绝时，当前全后缀缓存/传输不能保证资源有界；completed stream 内联画板又让普通保存重写历史。这两项是审核 F-04/F-05 的高优先级设计问题。`docs/design-docs/runtime-persistence-storage-reevaluation.md` 正在比较独立会话存储与轻量画板引用，以及 checkpoint 回放、权威终端状态同步和成熟 mux backend；新方案未选定、未实施，不改变现行无损和旧 live session 原绑定契约。
 
 ### Remote / Local 拓扑
 

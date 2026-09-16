@@ -19,12 +19,15 @@ related_plans:
   - docs/exec-plans/completed/agent-terminal-lossless-io-redesign.md
   - docs/exec-plans/completed/agent-supervisor-parallel-drain.md
   - docs/exec-plans/completed/terminal-journal-safe-compaction.md
+  - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/active/execution-input-responsiveness.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
-updated_at: 2026-07-13
+updated_at: 2026-09-16
 ---
 
 # Agent / Terminal 无损输入输出与恢复
+
+2026-09-16 架构审核补充：第 10.10、10.11、10.13–10.15 节的现行实现保持不变，但 checkpoint 长期拒绝后的全后缀内存/传输，以及 completed 恢复数据内联画板，已分别登记为高优先级架构重评 F-04/F-05。候选与 tmux、VS Code、WezTerm 对照见 `docs/design-docs/runtime-persistence-storage-reevaluation.md`。本文“已选定”表示当前仍适用的方案，不代表上述容量/归档边界已被认可为长期最终架构；新方案保持“比较中”，本轮未放宽无损保证。
 
 ## 1. 背景
 
@@ -374,6 +377,8 @@ Host 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 
 
 ### 10.10 无 attach 时的周期性 Host cache 收敛
 
+待重评边界（F-04）：本节刷新能在 eligible checkpoint 推进时缩短缓存，但持续拒绝时仍反复读取完整后缀，并不能保证 Host/Supervisor 内存、单次消息或总回放工作有上限。下一阶段需比较持久存储游标与权威终端状态同步，不以延长刷新间隔替代容量设计。
+
 健康 authority session 即使长期没有新 Webview attach，Host 也按固定周期检查 `terminalStream.checkpoint.revision < terminalStream.revision` 的缓存。`extensions/vscode/dev-session-canvas/src/common/terminalProjectionRefreshScheduler.ts` 提供可清理、永久可 dispose 的确定性错峰 timer；`CanvasPanelManager.scheduleExecutionTerminalProjectionRefresh()` 以 10 秒基础周期加 0–2 秒 session hash spread 调度检查。存在 checkpoint 后事件时，Host 复用 capability-gated `getSessionSnapshot` 刷新；同 session 的 attach refresh、周期 refresh 和并发 tick 共用 `pendingTerminalProjectionRefreshes` 中的同一 in-flight 请求。没有新事件时不发 RPC，旧 Supervisor 不启动周期刷新。
 
 刷新仍使用第 10.6 节的同 authority 无损合并：Supervisor 最新权威 payload 的最后一份 eligible checkpoint 覆盖到 revision `C`，其内部 journal suffix 与 RPC 期间已经到达 Host、严格连续的更晚 live tail共同覆盖到 `R`。只有完整 payload 重新通过 `buildTerminalStreamAttachPayload()` 校验后，才替换 Host 的恢复缓存；失败、authority 变化、会话替换或尾部 gap 都保留原健康缓存并等待下一周期。周期收敛不删除已经进入 Host output scheduler 或 Webview `pendingOutput` 的投递项，因此即使 Webview ACK 暂时落后也不会清空其 live backlog。
@@ -381,6 +386,8 @@ Host 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 
 每个 session 的 timer 在 session replacement、stop/delete、Host boundary、Host dispose 或 capability 降级时清理。scheduler 的 disposed 状态不可逆，因此 Host dispose 后才返回的 in-flight refresh 也不能重新创建 timer。周期刷新使用分散调度，避免 10 个 Agent 同时序列化 checkpoint；失败只记录诊断并重试，不设置事件数/字符数丢弃阈值。applied ACK 用于记录当前投影落后量和证明消费进度，但无 Webview attach 时本来就没有 ACK，不能把 ACK 作为 cache 收敛的前置条件。
 
 ### 10.11 completed terminal stream 的 durable handoff
+
+待重评边界（F-05）：以下内联 `metadata.terminalStream` 是现行实现，完整历史会参与后续全画板保存。候选方向是独立会话归档与轻量引用，尚未选定；迁移仍必须保留本节“新来源写入确认前不清理旧 journal”的保护，不能仅把字段改成路径就宣称归档完成。
 
 Supervisor 的 `live=false` snapshot 若携带与 snapshot 的 `sessionId`、`terminalAuthorityId`、`terminalRevision`、`outputSequence` 全部一致的 `terminalStream`，该 stream 是 completed session 的权威最终恢复表示。Host 必须优先处理这份完整 stream，不能因为重连选项包含 `historyOnUnavailable` 就先降级成 recent-tail `history-restored`。最后一个合法 checkpoint 可以早于 final revision；其后的完整 journal suffix 继续随 stream 持久化，因此超过 5 MiB normalizer 上限的 monolithic serialized state 也不能成为丢失内容的理由。
 
@@ -533,4 +540,6 @@ PR #255 相关 12 个 Webview 终端用例和曾在全量中超时的 canvas edg
 - 90000 行 completed 终态已间歇性出现 89861、89960 与 89877 三次尾部截断；标准严格场景也有通过样本，但重复压力与原始 PTY/bridge/journal/finalization 分层诊断尚未完成，不能把极端 completed stream 的最终内容保证写成已验证。
 - local PTY 跨 Host 生命周期的独立恢复语义、永久 transcript 与 Agent 结构化内容投影不属于本阶段实现。
 
-本设计最后于 2026-07-14 根据并行 drain、final-state 协议门禁、里程碑 4–6 与 PR #263 authority review 更新：current-generation storage namespace、旧会话 `legacy-interactive`、新旧 client 精确路由和真实旧二进制迁移 smoke 已落地；同时补入保守 eligibility、codec 无关 generation、双代/隐式 genesis 回退、metadata-only registry、registry/manifest authority 绑定、完整 journal transaction 与无可用 fallback 时继续增长的规则。Linux 真实迁移证明两代 Supervisor 可同时运行，定向 compact 测试、容量基准、`trusted` 和两阶段 `real-reopen` 也已通过；但真实旧二进制迁移 smoke 仍只运行在 Linux/Unix socket 路径，90000 行终态尾部截断已间歇性出现三次。方案继续保持“已选定”，验证状态保持“验证中”；只有完成 final-state 分层诊断、重复压力并在最终 release ref 获得严格 packaged smoke 清洁结果后，才能重新升级为“已验证”。
+2026-07-14 的并行 drain、final-state 协议门禁、里程碑 4–6 与 PR #263 authority review 更新确认：current-generation storage namespace、旧会话 `legacy-interactive`、新旧 client 精确路由和真实旧二进制迁移 smoke 已落地；同时补入保守 eligibility、codec 无关 generation、双代/隐式 genesis 回退、metadata-only registry、registry/manifest authority 绑定、完整 journal transaction 与无可用 fallback 时继续增长的规则。Linux 真实迁移证明两代 Supervisor 可同时运行，定向 compact 测试、容量基准、`trusted` 和两阶段 `real-reopen` 也已通过；但真实旧二进制迁移 smoke 仍只运行在 Linux/Unix socket 路径，90000 行终态尾部截断已间歇性出现三次。方案保持“已选定”，验证状态保持“验证中”，final-state 分层诊断、重复压力与严格 packaged smoke 仍是验证缺口。
+
+2026-09-16 的补充审核进一步确认长期容量不是仅有磁盘增长的退化：受控样本的屏幕约 80 KiB，而 snapshot 达到约 19.35 MiB；相同 completed stream 内联后，最小画板仅改位置仍重写约 19.56 MiB。指标、脚本、限制及后续验收见重评设计第 3、8 节。本轮只重新打开容量/归档决策，不废弃已有 authority、顺序、eligibility 和 durable handoff 正确性约束，也不把普通 correctness 测试通过当作长期容量已验证。

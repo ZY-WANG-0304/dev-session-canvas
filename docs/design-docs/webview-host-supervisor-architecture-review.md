@@ -18,6 +18,7 @@ related_specs:
   - docs/product-specs/canvas-multi-root-workspace-support.md
 related_plans:
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
+  - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
 updated_at: 2026-09-16
 ---
 
@@ -30,6 +31,30 @@ updated_at: 2026-09-16
 这不是某个待合并 MR 的差异审查，因此下列问题描述的是当前主线基线。严重度表示对当前架构和用户主路径的影响，不等同于仓库 Code Review 流程中的“必须拒绝合并”标签。
 
 ## 2. Findings
+
+2026-09-16 的补充审核将 Runtime Persistence 容量与 completed 归档提升为优先重评项。以下按本轮优先级排列，保留原有编号以便追踪；F-04/F-05 对应讨论中的问题 2、3，是用户确认需要重评的设计决策，不是已证明违反现行规格的实现回归。
+
+### F-04 高：checkpoint 不能推进时，完整 journal 后缀同时成为常驻内存和反复全量传输的恢复材料
+
+位置：`extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts:512`、`extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts:503`、`extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts:558`、`extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts:1508`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:10811`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:16388`。
+
+当前已经实现安全 compact，但只有可证明恢复的 checkpoint 才能推进。超过 `256 * 1024` 字符的 serialized state、OSC 颜色副作用等会拒绝资格；此时 `TerminalSessionJournal.events` 保留完整后缀，`getEventsAfter()` 复制全部所需事件，`buildTerminalStreamAttachPayload()` 放入单次 snapshot，Host 又在 `session.terminalStream.events` 累积同一后缀。10–12 秒周期刷新仍拉完整 snapshot，不能在 checkpoint 长期拒绝时收敛成本。
+
+这不是只影响磁盘容量的保守退化：历史越长，内存保留、JSON 编解码、IPC 和新投影总回放工作越多，多会话时共同占用 Supervisor/Host 的资源。安全拒绝 checkpoint 本身是正确性保护，问题是持久历史、缓存和读取边界没有解耦；不能靠放宽 eligibility 或丢未消费数据修复。
+
+受控诊断 `node scripts/diagnostics/audit-runtime-persistence-capacity.mjs` 使用当前真实 tracker/journal/snapshot 方法，在 1000 行 scrollback 与一次 OSC 默认颜色变更后分三批追加输出：屏幕保持 `81840` 字节，单次 snapshot 从 `6763684` 增到 `20290369` 字节，checkpoint revision 始终是 0；第三批已满足 compact 触发条件，仍返回 1921 个事件。10000 行 scrollback 下的普通文本样本也触发尺寸拒绝，不只特殊 TUI 才会遇到。该证据不等于已测 RSS、OOM 或真实 Agent 延迟。
+
+建议：以独立会话存储、有界缓存和分批读取为候选，同时参考 tmux/WezTerm 比较权威终端状态同步。分页能限制单次资源，不能自动消除旧 checkpoint 的全后缀回放时间。具体 codec、状态协议、容量/保留策略仍待比较，见 `docs/design-docs/runtime-persistence-storage-reevaluation.md` 第 5–8 节。
+
+### F-05 高：completed handoff 将完整会话恢复数据内联画板，使普通画板操作持续承担历史成本
+
+位置：`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:11194`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:11256`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:11280`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:6481`。
+
+`applyCompletedRuntimeSupervisorSnapshot()` 将最终 `checkpoint + events` 保存到节点 `metadata.terminalStream`，等待窗口与实际 root-local 快照写入成功，才解除绑定并请求删除 Supervisor journal。这个顺序保护了旧来源，不存在本轮已证明的“写入前删除”缺陷；但 handoff 把恢复材料的所有权交回画板，`persistState()` 后续保存整个图时仍同步序列化、写入和 rename 全量 JSON。即使只是移动节点，已结束会话的大历史也参与重写；root 与窗口快照通常各保存一份。
+
+F-04 的同一最终 stream 放入最小内联画板后，调用实际 Host writer 写入 `20509666` 字节；仅修改位置再次写入仍是 `20509666` 字节。这个样本只测内联体积和 writer，不是完整 handoff/多 root 端到端测试。`workspaceState`、普通 bootstrap 和 `host/stateUpdated` 已排除大 payload，不应误报它们同样全量发送；问题落在完整画板的加载/保存以及显式终端恢复路径。即使 live compact 改善，大量 completed 会话仍会扩大该成本。
+
+建议：重新评估 completed 是否应只是会话存储中的终态，画板保存稳定引用与摘要。保留“归档校验及引用提交成功之前不删除旧来源”的不变量，明确原 Supervisor 退役后如何读取、旧内联迁移、多窗口引用与 GC。tmux 的 dead pane、tmux-resurrect 的重建和 VS Code 的有限 buffer revive 均不能直接替代完整归档协议。此项与 F-04 联合设计，但不要求接受某种数据库或永久常驻归档服务。
 
 ### F-01 高：Supervisor hello 没有响应超时，5 秒 ready 上限无法覆盖已连接但无响应的 socket
 
@@ -91,7 +116,7 @@ updated_at: 2026-09-16
 
 ## 3. 其余审查范围
 
-F-01 是连接可靠性缺陷，F-02 是共享层依赖漂移，F-03 是需要修订的 runtime 归属设计。其余已检查路径中，本轮没有证明新的 Webview 生命周期、terminal journal 顺序、authority/revision 或 Supervisor 删除竞态缺陷。已有 lifecycle、协议、journal、输出调度测试均通过；这不等价于真实 VS Code、多平台、Remote SSH 或高负载终态无损行为已经全部验证。
+F-04/F-05 是本轮高优先级的容量与归档架构重评，F-01 是连接可靠性缺陷，F-02 是共享层依赖漂移，F-03 是需要修订的 runtime 归属设计。其余已检查路径中，本轮没有证明新的 Webview 生命周期、terminal journal 顺序、authority/revision 或 Supervisor 删除竞态缺陷。已有 lifecycle、协议、journal、输出调度测试通过与长期容量不足可以同时成立；测试通过不等价于真实 VS Code、多平台、Remote SSH 或高负载终态无损行为已经全部验证。已有 90000 行 completed 间歇性短读技术债仍独立跟踪，不用本轮容量诊断替代其定位。
 
 ## 4. 验证记录
 
@@ -109,9 +134,15 @@ F-01 是连接可靠性缺陷，F-02 是共享层依赖漂移，F-03 是需要�
 
 F-03 补充审核只复核代码调用、现行第 6.8 节和产品规格，并检查文档链接及 `git diff --check`；没有修改运行时代码，没有重跑首次审核的运行时测试。第 6 节全部是后续改造的建议验收场景，尚未执行，不能作为 root 稳定 runtime 已实现的证据。
 
+F-04/F-05 的受控证据及限制见重评设计第 3 节，可通过诊断脚本重跑。上游对照只核对固定 commit 的文档与源码，未运行 tmux、VS Code 或 WezTerm 的跨平台持久化实验；原始链接见 `docs/references/terminal-persistence-open-source-survey.md`。
+
+2026-09-16 本轮重跑容量诊断、`test:serialized-terminal-state-tracker`、`test:terminal-session-journal` 和 `test:runtime-supervisor-protocol` 均通过。协议测试的 10-Agent 短样本为 input RPC 20.29ms、echo 30.35ms、全部输出 294.31ms；它不覆盖长期拒绝场景。另完成本次变更的仓库引用、三份设计 frontmatter/索引、29 个固定版本上游源码链接与 `git diff --check` 检查；未运行新的真实 VS Code 或全量测试。
+
 ## 5. 后续决策与边界
 
 本审核不直接改动运行时代码。F-01 应作为 live-runtime 连接可靠性修复单独设计和实现；F-02 应作为共享层依赖收口任务处理。两项都需要在实现时补充针对性验证，完成前不要把“Supervisor 已能启动”表述成“Supervisor 连接在所有异常情况下都有界”。
+
+F-04/F-05 已进入 `docs/design-docs/runtime-persistence-storage-reevaluation.md` 的首轮比较：分别评估会话存储/画板职责、checkpoint 回放/权威状态同步/成熟 mux backend。用户确认问题严重性不等于批准截断历史、降低 live 无损保证或选定 tmux。现行 lossless 设计第 10.10、10.11、10.13–10.15 节保留实现事实并标注待重评；具体协议、预算与迁移实现另开计划。建议验收矩阵见该重评设计第 8 节，覆盖持续 checkpoint 拒绝、恢复耗时、输入公平性、大 completed 画板保存、旧 owner 退役、归档/引用失败、GC、迁移和满盘，均不是已执行的新架构验收。
 
 F-03 的产品方向已由用户确认；具体设计与运行时改造另开 ExecPlan，覆盖单根和多根新建、稳定 root identity、Supervisor 发现与并发启动、backend 选择、旧 session 原绑定恢复及退役。现有设计第 6.8 节与产品规格已标出待修订边界；改造时再将新建归属正式收口为 root 语义，并保留旧 slot 恢复契约，不能把整份设计直接标成 root 稳定 runtime 已实现或已验证。
 

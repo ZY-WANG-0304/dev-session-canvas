@@ -34,6 +34,8 @@
 
 审核及补充完成：确认一项 live-runtime 连接可靠性缺陷（hello 无响应时客户端无限等待）、一项共享层依赖方向漂移，并登记画板/root 与新建 runtime/窗口归属不一致的设计问题 F-03。首次审核的定向测试全部通过；F-03 补充仅复核代码与文档、检查链接及 diff，未重跑运行时测试。报告列出单根/多根双向创建、不同 slot、跨 root 隔离、并发创建、身份边界、新旧归属共存、generation 和重开恢复的待执行验收。运行时改造另行规划。
 
+2026-09-16 后续：用户进一步要求优先重评 Runtime Persistence 的全后缀容量与 completed 内联历史，并参考 tmux 等开源实现。该研究由 `docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md` 单独推进，结论写入同名设计文档，审核报告新增 F-04/F-05；不将新方案候选误写为本计划已实现的修复。
+
 ## 上下文与定向
 
 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 持有 workspace 画布与节点到会话的映射，称为 Host。`src/webview/main.tsx` 及相邻组件在 VS Code Webview 中渲染画布和 xterm 终端。`src/supervisor/runtimeSupervisorMain.ts` 是独立进程，仅为 live-runtime 模式托管执行会话；terminal journal 是记录输出、尺寸与 scrollback 变更的顺序日志，authority 标识日志所属会话代次，revision 是该日志的连续序号。
