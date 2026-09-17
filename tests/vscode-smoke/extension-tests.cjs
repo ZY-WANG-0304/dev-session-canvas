@@ -239,26 +239,22 @@ async function runRuntimeCheckpointRefreshSmoke() {
     await clearHostMessages();
     await requestExecutionSnapshot('terminal', terminalNode.id, 'editor');
     await requestExecutionSnapshot('agent', agentNode.id, 'editor');
-    await waitForDiagnosticEvents((events) => events.some((event) =>
-      event.kind === 'runtime/terminalCheckpointUnchanged' && event.detail?.nodeId === terminalNode.id
-    ), 20000);
-    await waitForDiagnosticEvents((events) => events.some((event) =>
-      event.detail?.nodeId === agentNode.id &&
-      (event.kind === 'runtime/terminalCheckpointUnchanged' ||
-        (event.kind === 'runtime/terminalProjectionRefreshed' && event.detail?.mode === 'checkpoint-only'))
-    ), 20000);
+    for (const node of [terminalNode, agentNode]) {
+      await waitForDiagnosticEvents((events) => events.some((event) =>
+        event.kind === 'runtime/terminalPagedReadOpened' && event.detail?.nodeId === node.id &&
+        event.detail?.hostCachedEvents === 0
+      ), 20000);
+    }
     await waitForHostMessages((messages) => messages.some((message) =>
       message.type === 'host/executionSnapshot' && message.payload.nodeId === terminalNode.id &&
-      hasCompleteEvictedHistory(message.payload.terminalStream)
+      message.payload.terminalRead && !message.payload.terminalStream
     ), 20000);
     await waitForWebviewProbe((probe) =>
       readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
     20000);
 
     await clearDiagnosticEvents();
-    await waitForDiagnosticEvents((events) => events.some((event) =>
-      event.kind === 'runtime/terminalCheckpointUnchanged' && event.detail?.nodeId === terminalNode.id
-    ), 20000);
+    await clearHostMessages();
     await simulateRuntimeReload();
     await waitForSnapshot((snapshot) => {
       const terminal = findNodeById(snapshot, terminalNode.id).metadata.terminal;
@@ -267,13 +263,22 @@ async function runRuntimeCheckpointRefreshSmoke() {
         terminal.runtimeSessionId === terminalSessionId && agent.runtimeSessionId === agentSessionId;
     }, 20000);
     await ensureEditorCanvasReady();
-    await clearHostMessages();
     await requestExecutionSnapshot('terminal', terminalNode.id, 'editor');
     await waitForHostMessages((messages) => messages.some((message) =>
       message.type === 'host/executionSnapshot' && message.payload.nodeId === terminalNode.id &&
       message.payload.executionSessionId === terminalSessionId &&
-      hasCompleteEvictedHistory(message.payload.terminalStream)
+      message.payload.terminalRead && !message.payload.terminalStream
     ), 20000);
+    await waitForHostMessages((messages) => {
+      const pages = messages.filter((message) => message.type === 'host/executionTerminalPage' &&
+        message.payload.nodeId === terminalNode.id && message.payload.page).map((message) => message.payload.page);
+      const byRevision = new Map(pages.flatMap((page) => page.events).map((event) => [event.revision, event]));
+      const text = [...byRevision.values()].sort((a, b) => a.revision - b.revision)
+        .filter((event) => event.type === 'output').map((event) => event.data).join('');
+      assert.ok(pages.every((page) => page.events.length <= 256 &&
+        (page.events.length <= 1 || Buffer.byteLength(JSON.stringify(page.events)) <= 256 * 1024)));
+      return text.includes(marker) && (text.match(/DSC_CACHE_ROW_\d{5}_/gu) ?? []).length === rowCount;
+    }, 30000);
     await waitForWebviewProbe((probe) =>
       readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
     20000);

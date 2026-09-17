@@ -112,6 +112,7 @@ import type {
   ExecutionTerminalController,
   ExecutionTerminalRegistry
 } from './executionTerminalTypes';
+import { TerminalPagedProjection } from './terminalPagedProjection';
 import { createCanvasNodeChrome } from './canvasNodeChrome';
 import { createExecutionSessionNodeTypes } from './executionSessionNodes';
 import {
@@ -1663,8 +1664,21 @@ function App(): JSX.Element {
           executionSessionId: message.payload.executionSessionId,
           outputSequence: message.payload.outputSequence,
           serializedTerminalState: message.payload.serializedTerminalState,
-          terminalStream: message.payload.terminalStream
+          terminalStream: message.payload.terminalStream,
+          terminalRead: message.payload.terminalRead
         });
+        break;
+      case 'host/executionTerminalAvailable':
+        setExecutionTerminalTitles((current) => mergeTerminalTitleProjectionFromOutput(current, { ...message.payload, chunk: '' }));
+        executionTerminalRegistry.get(message.payload.nodeId)?.controller.terminalAvailable(
+          message.payload.executionSessionId, message.payload.authorityId, message.payload.revision,
+          message.payload.completed
+        );
+        break;
+      case 'host/executionTerminalPage':
+        executionTerminalRegistry.get(message.payload.nodeId)?.controller.applyTerminalPage(
+          message.payload.readId, message.payload.requestId, message.payload.page
+        );
         break;
       case 'host/executionOutput':
         setExecutionTerminalTitles((current) =>
@@ -7779,8 +7793,28 @@ function createExecutionTerminalController(
   const controller: ExecutionTerminalController = {
     nodeId,
     kind,
+    terminalAvailable(sessionId, authorityId, revision, completed) {
+      pagedProjection.available(sessionId, authorityId, revision, completed);
+    },
+    applyTerminalPage(readId, requestId, page) {
+      pagedProjection.accept(readId, requestId, page);
+    },
     applySnapshot(detail) {
       if (disposed) {
+        return;
+      }
+      if (detail.terminalRead !== undefined) {
+        if (detail.terminalRead.sessionId !== detail.executionSessionId ||
+            (detail.executionSessionId && supersededExecutionSessionIds.has(detail.executionSessionId))) {
+          return;
+        }
+        if (currentExecutionSessionId !== detail.executionSessionId && detail.executionSessionId) {
+          beginExecutionSessionGeneration(detail.executionSessionId);
+        }
+        if (pagedProjection.start(detail.terminalRead)) {
+          projectionRecoveryRequested = false;
+          projectionRecoveryEpoch += 1;
+        }
         return;
       }
       if (
@@ -7801,6 +7835,9 @@ function createExecutionTerminalController(
         // A malformed authoritative payload must not fall back to a raw tail.
         return;
       }
+      if (pagedProjection.active && !detail.liveSession && hasValidTerminalStream) {
+        pagedProjection.stop();
+      }
 
       const sessionChanged =
         currentExecutionSessionId !== undefined &&
@@ -7812,6 +7849,7 @@ function createExecutionTerminalController(
         return;
       }
       if (sessionChanged && detail.executionSessionId !== undefined) {
+        pagedProjection.stop();
         beginExecutionSessionGeneration(detail.executionSessionId);
       }
       const projectionSessionChanged =
@@ -7968,11 +8006,14 @@ function createExecutionTerminalController(
       if (disposed) {
         return;
       }
-
+      pagedProjection.stop();
       postAttachSnapshotRequest();
     },
     enqueueOutput(chunk, outputOptions) {
       if (disposed) {
+        return;
+      }
+      if (pagedProjection.active && outputOptions?.executionSessionId === currentExecutionSessionId) {
         return;
       }
 
@@ -8134,6 +8175,10 @@ function createExecutionTerminalController(
       if (disposed) {
         return;
       }
+      if (pagedProjection.active) {
+        pagedProjection.showExit(message, executionSessionId);
+        return;
+      }
       if (
         executionSessionId !== undefined &&
         currentExecutionSessionId !== undefined &&
@@ -8215,6 +8260,7 @@ function createExecutionTerminalController(
       return pendingPersistBarrier || pendingProjectionBarrier;
     },
     dispose() {
+      pagedProjection.stop();
       disposed = true;
       pendingOutput = '';
       pendingOutputBoundaries = [];
@@ -8242,7 +8288,88 @@ function createExecutionTerminalController(
     }
   };
 
+  const pagedProjection = new TerminalPagedProjection({
+    request: (read, afterRevision, requestId) => postMessage({
+      type: 'webview/readExecutionTerminalPage', payload: {
+        nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId,
+        readId: read.readId, requestId, afterRevision
+      }
+    }),
+    close: (read) => postMessage({ type: 'webview/closeExecutionTerminalRead', payload: {
+      nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId
+    } }),
+    checkpoint: (read, current, applied) => {
+      const detail: Extract<ExecutionHostEvent, { type: 'snapshot' }> = {
+        type: 'snapshot', nodeId, kind, output: '', cols: read.checkpoint.cols, rows: read.checkpoint.rows,
+        liveSession: true, executionSessionId: read.sessionId, outputSequence: read.checkpoint.revision,
+        terminalStream: { version: 1, sessionId: read.sessionId, authorityId: read.authorityId,
+          checkpoint: read.checkpoint, revision: read.checkpoint.revision, events: [] }
+      };
+      options?.onContentWillChange?.('snapshot');
+      options?.onSnapshotApplied?.(detail);
+      queueTerminalWrite((done) => {
+        if (!current()) { done(false); return; }
+        const release = options?.beginSnapshotRestoreDiagnosticsSuppression?.();
+        restoreExecutionTerminalSnapshot(terminal, detail, () => { release?.(); done(current()); });
+      }, { reason: 'paged-checkpoint', checkpointRevision: read.checkpoint.revision }, (success) => {
+        if (success && current()) { applied(); }
+      });
+    },
+    events: (events, current, applied) => {
+      options?.onContentWillChange?.('output');
+      queueTerminalWrite((done) => {
+        applyTerminalStreamEvents(terminal, events, () => done(current()), current);
+      }, { reason: 'paged-events', replayEventCount: events.length,
+        replayOutputCharacters: events.reduce((size, event) => size + (event.type === 'output' ? event.data.length : 0), 0)
+      }, (success) => {
+        if (success && current()) { applied(); }
+      });
+    },
+    exit: queueExitWrite
+  });
+
   return controller;
+}
+
+function applyTerminalStreamEvents(
+  terminal: Terminal,
+  events: readonly import('../common/terminalSessionStream').TerminalStreamEvent[],
+  done: () => void,
+  current: () => boolean = () => true
+): void {
+  const apply = (start: number): void => {
+    if (!current()) {
+      done();
+      return;
+    }
+    let index = start;
+    while (index < events.length) {
+      const event = events[index];
+      if (event.type === 'output') {
+        let outputBatch = '';
+        while (index < events.length) {
+          const outputEvent = events[index];
+          if (outputEvent.type !== 'output' || (outputBatch.length > 0 &&
+              outputBatch.length + outputEvent.data.length > EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS)) {
+            break;
+          }
+          outputBatch += outputEvent.data;
+          index += 1;
+        }
+        // Resize/options changes must run after xterm leaves its parser callback.
+        terminal.write(outputBatch, () => window.setTimeout(() => apply(index), 0));
+        return;
+      }
+      if (event.type === 'resize') {
+        terminal.resize(event.cols, event.rows);
+      } else {
+        terminal.options.scrollback = event.scrollback;
+      }
+      index += 1;
+    }
+    done();
+  };
+  apply(0);
 }
 
 function restoreExecutionTerminalSnapshot(
@@ -8278,44 +8405,12 @@ function restoreExecutionTerminalSnapshot(
     }
     terminal.reset();
 
-    const applyEvent = (startIndex: number): void => {
-      let index = startIndex;
-      while (index < events.length) {
-        const event = events[index];
-        if (event.type === 'output') {
-          let outputBatch = '';
-          while (index < events.length) {
-            const outputEvent = events[index];
-            if (outputEvent.type !== 'output') {
-              break;
-            }
-            if (
-              outputBatch.length > 0 &&
-              outputBatch.length + outputEvent.data.length > EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS
-            ) {
-              break;
-            }
-            outputBatch += outputEvent.data;
-            index += 1;
-          }
-          // Resize/options changes must run after xterm leaves its parser callback.
-          terminal.write(outputBatch, () => window.setTimeout(() => applyEvent(index), 0));
-          return;
-        }
-        if (event.type === 'resize') {
-          terminal.resize(event.cols, event.rows);
-        } else {
-          terminal.options.scrollback = event.scrollback;
-        }
-        index += 1;
-      }
-      finishRestore();
-    };
+    const applyEvents = (): void => applyTerminalStreamEvents(terminal, events, finishRestore);
 
     if (checkpoint.serializedState.data) {
-      terminal.write(checkpoint.serializedState.data, () => applyEvent(0));
+      terminal.write(checkpoint.serializedState.data, () => window.setTimeout(applyEvents, 0));
     } else {
-      applyEvent(0);
+      applyEvents();
     }
     return;
   }

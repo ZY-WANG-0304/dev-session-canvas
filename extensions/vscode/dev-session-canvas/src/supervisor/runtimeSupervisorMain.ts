@@ -46,6 +46,17 @@ import {
   type TerminalStreamEvent
 } from '../common/terminalSessionStream';
 import {
+  TERMINAL_STREAM_PAGE_MAX_BYTES,
+  TERMINAL_STREAM_PAGE_MAX_EVENTS,
+  type TerminalStreamPage,
+  type TerminalStreamReadDescriptor
+} from '../common/terminalStreamPaging';
+import type {
+  RuntimeSupervisorOpenTerminalReadParams,
+  RuntimeSupervisorReadTerminalPageParams,
+  RuntimeSupervisorCloseTerminalReadParams
+} from '../common/runtimeSupervisorProtocol';
+import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
   deserializeExecutionSessionLaunchSpec,
   createRuntimeSupervisorProtocolError,
@@ -168,13 +179,24 @@ interface RestoredTerminalJournalCandidate {
   output: string;
 }
 
-type SupervisorSubscriptionMode = 'legacy' | 'terminal-stream-v1';
+type SupervisorSubscriptionMode = 'legacy' | 'terminal-stream-v1' | 'terminal-stream-paged';
+
+interface TerminalReadCursor {
+  readId: string;
+  sessionId: string;
+  authorityId: string;
+  consumerId: 'editor' | 'panel';
+  appliedRevision: number;
+  sentRevision: number;
+  checkpoint: TerminalStreamCheckpoint;
+}
 
 class RuntimeSupervisorServer {
   private readonly sessions = new Map<string, SupervisorSession>();
   private readonly connections = new Set<net.Socket>();
   private readonly subscriptions = new Map<net.Socket, Map<string, SupervisorSubscriptionMode>>();
   private readonly deferredSubscriptionRevisions = new Map<net.Socket, Map<string, number>>();
+  private readonly terminalReads = new Map<net.Socket, Map<string, TerminalReadCursor>>();
   private readonly appliedRevisionAcks = new Map<
     net.Socket,
     Map<string, RuntimeSupervisorAckSessionRevisionResult>
@@ -208,6 +230,7 @@ class RuntimeSupervisorServer {
       this.connections.add(socket);
       this.subscriptions.set(socket, new Map());
       this.deferredSubscriptionRevisions.set(socket, new Map());
+      this.terminalReads.set(socket, new Map());
       this.appliedRevisionAcks.set(socket, new Map());
       this.clearIdleShutdownTimer();
       socket.setEncoding('utf8');
@@ -279,7 +302,8 @@ class RuntimeSupervisorServer {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
                 terminalAppliedRevisionAckV1: true,
-                terminalCheckpointRefreshV1: true
+                terminalCheckpointRefreshV1: true,
+                terminalPagedReadV1: true
               }
             }
           });
@@ -292,6 +316,21 @@ class RuntimeSupervisorServer {
             ok: true,
             result: snapshot
           });
+          return;
+        }
+        case 'openTerminalRead': {
+          const result = await this.openTerminalRead(socket, request.params);
+          this.writeMessage(socket, { type: 'response', id: request.id, ok: true, result });
+          return;
+        }
+        case 'readTerminalPage': {
+          const result = await this.readTerminalPage(socket, request.params);
+          this.writeMessage(socket, { type: 'response', id: request.id, ok: true, result });
+          return;
+        }
+        case 'closeTerminalRead': {
+          this.closeTerminalRead(socket, request.params);
+          this.writeOkResponse(socket, request.id);
           return;
         }
         case 'attachSession': {
@@ -470,7 +509,7 @@ class RuntimeSupervisorServer {
     };
     this.sessions.set(sessionId, session);
     if (params.deferSubscription !== true) {
-      this.subscribeSocket(socket, sessionId, 'legacy');
+      this.subscribeSocket(socket, sessionId, params.terminalStreamMode === 'paged' ? 'terminal-stream-paged' : 'legacy');
     }
     this.bindSessionProcess(session);
 
@@ -503,9 +542,9 @@ class RuntimeSupervisorServer {
     }
 
     this.schedulePersist();
-    const snapshot = await this.toFreshSnapshot(session);
-    if (params.deferSubscription === true && snapshot.terminalStream) {
-      this.deferSocketSubscription(socket, sessionId, snapshot.terminalStream.revision);
+    const snapshot = await this.toAttachSnapshot(session, params.terminalStreamMode === 'paged');
+    if (params.deferSubscription === true && snapshot.terminalRevision !== undefined) {
+      this.deferSocketSubscription(socket, sessionId, snapshot.terminalRevision);
     }
     return snapshot;
   }
@@ -526,14 +565,18 @@ class RuntimeSupervisorServer {
 
     if (params.deferSubscription === true && session.terminalJournal && session.terminalCheckpoint) {
       this.subscriptions.get(socket)?.delete(params.sessionId);
-      const snapshot = await this.toFreshSnapshot(session);
-      if (snapshot.terminalStream) {
-        this.deferSocketSubscription(socket, params.sessionId, snapshot.terminalStream.revision);
+      const snapshot = await this.toAttachSnapshot(session, params.terminalStreamMode === 'paged');
+      if (snapshot.terminalRevision !== undefined) {
+        this.deferSocketSubscription(socket, params.sessionId, snapshot.terminalRevision);
       }
       return snapshot;
     }
 
     this.clearDeferredSubscription(socket, params.sessionId);
+    if (params.terminalStreamMode === 'paged') {
+      this.subscribeSocket(socket, params.sessionId, 'terminal-stream-paged');
+      return this.toAttachSnapshot(session, true);
+    }
     this.subscribeSocket(socket, params.sessionId, 'legacy');
     return this.toFreshSnapshot(session);
   }
@@ -542,6 +585,98 @@ class RuntimeSupervisorServer {
     params: RuntimeSupervisorGetSessionSnapshotParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
     return this.toFreshSnapshot(this.requireSession(params.sessionId));
+  }
+
+  private toAttachSnapshot(session: SupervisorSession, paged: boolean): Promise<RuntimeSupervisorSessionSnapshot> {
+    return this.enqueueTerminalOperation(session, async () => {
+      const snapshot = await this.createFreshSnapshot(session, 'always', !paged || !session.live);
+      return paged && snapshot.live && !session.terminalJournalError
+        ? { ...snapshot, terminalStreamPaged: true }
+        : snapshot;
+    });
+  }
+
+  private requireReadableJournal(session: SupervisorSession, authorityId: string): TerminalSessionJournal {
+    if (authorityId !== session.terminalAuthorityId) {
+      throw createRuntimeSupervisorProtocolError({ id: 'terminalAuthorityMismatch',
+        params: { sessionId: session.sessionId } }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalAuthorityMismatch);
+    }
+    if (!session.terminalJournal || !session.terminalCheckpoint || session.terminalJournalError) {
+      throw createRuntimeSupervisorProtocolError({ id: 'terminalJournalUnavailable',
+        params: { sessionId: session.sessionId } }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalJournalUnavailable);
+    }
+    return session.terminalJournal;
+  }
+
+  private openTerminalRead(
+    socket: net.Socket,
+    params: RuntimeSupervisorOpenTerminalReadParams
+  ): Promise<TerminalStreamReadDescriptor> {
+    const session = this.requireSession(params.sessionId);
+    return this.enqueueTerminalOperation(session, async () => {
+      const journal = this.requireReadableJournal(session, params.authorityId);
+      const reads = this.terminalReads.get(socket);
+      if (!reads || socket.destroyed || (params.consumerId !== 'editor' && params.consumerId !== 'panel')) {
+        throw new Error('Invalid terminal reader connection or consumer.');
+      }
+      await this.createFreshSnapshot(session, 'always', false);
+      const checkpoint = session.terminalCheckpoint!;
+      const readId = randomUUID();
+      // A socket owns at most one reader per session and surface.
+      for (const [id, read] of reads) {
+        if (read.sessionId === session.sessionId && read.consumerId === params.consumerId) {
+          reads.delete(id);
+        }
+      }
+      reads.set(readId, { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
+        consumerId: params.consumerId, appliedRevision: checkpoint.revision, sentRevision: checkpoint.revision,
+        checkpoint: cloneTerminalStreamCheckpoint(checkpoint) });
+      return { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
+        checkpoint: cloneTerminalStreamCheckpoint(checkpoint), headRevision: journal.getRevision() };
+    });
+  }
+
+  private readTerminalPage(socket: net.Socket, params: RuntimeSupervisorReadTerminalPageParams): Promise<TerminalStreamPage> {
+    const session = this.requireSession(params.sessionId);
+    return this.enqueueTerminalOperation(session, async () => {
+      const journal = this.requireReadableJournal(session, params.authorityId);
+      const read = this.terminalReads.get(socket)?.get(params.readId);
+      const afterRevision = normalizeTerminalStreamRevision(params.afterRevision);
+      if (!read || read.sessionId !== params.sessionId || read.authorityId !== params.authorityId ||
+          afterRevision === undefined ||
+          (afterRevision !== read.appliedRevision && afterRevision !== read.sentRevision)) {
+        throw createRuntimeSupervisorProtocolError({ id: 'terminalRevisionInvalid',
+          params: { sessionId: params.sessionId, revision: String(params.afterRevision) }
+        }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalRevisionInvalid);
+      }
+      const headRevision = journal.getRevision();
+      let events: TerminalStreamEvent[] = [];
+      for await (const page of journal.readEventPagesAfter(afterRevision, {
+        throughRevision: headRevision,
+        pageMaxBytes: TERMINAL_STREAM_PAGE_MAX_BYTES,
+        pageMaxEvents: TERMINAL_STREAM_PAGE_MAX_EVENTS
+      })) {
+        events = page;
+        break;
+      }
+      const revision = events[events.length - 1]?.revision ?? afterRevision;
+      read.appliedRevision = afterRevision;
+      read.sentRevision = revision;
+      if (session.terminalCheckpoint && session.terminalCheckpoint.revision <= afterRevision &&
+          session.terminalCheckpoint.revision > read.checkpoint.revision) {
+        read.checkpoint = cloneTerminalStreamCheckpoint(session.terminalCheckpoint);
+      }
+      return { readId: read.readId, sessionId: session.sessionId, authorityId: read.authorityId,
+        afterRevision, revision, headRevision, events };
+    });
+  }
+
+  private closeTerminalRead(socket: net.Socket, params: RuntimeSupervisorCloseTerminalReadParams): void {
+    const reads = this.terminalReads.get(socket);
+    const read = reads?.get(params.readId);
+    if (read?.sessionId === params.sessionId && read.authorityId === params.authorityId) {
+      reads?.delete(params.readId);
+    }
   }
 
   private getSessionCheckpoint(
@@ -640,16 +775,25 @@ class RuntimeSupervisorServer {
       }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalRevisionInvalid);
     }
 
-    const replayEvents = await journal.getEventsAfter(afterRevision);
-    const snapshot = await this.createFreshSnapshot(session, 'never');
-    this.subscribeSocket(socket, params.sessionId, 'terminal-stream-v1');
-    for (const event of replayEvents) {
-      this.writeTerminalStreamEvent(socket, session, event);
+    const paged = params.terminalStreamMode === 'paged';
+    const snapshot = await this.createFreshSnapshot(session, 'never', !paged || !session.live);
+    if (paged) {
+      for await (const page of journal.readEventPagesAfter(afterRevision)) {
+        for (const event of page) {
+          this.writeTerminalStreamEvent(socket, session, event);
+        }
+        await this.waitForSocketDrain(socket);
+      }
+    } else {
+      for (const event of await journal.getEventsAfter(afterRevision)) {
+        this.writeTerminalStreamEvent(socket, session, event);
+      }
     }
+    this.subscribeSocket(socket, params.sessionId, paged ? 'terminal-stream-paged' : 'terminal-stream-v1');
     this.writeMessage(socket, {
       type: 'event',
       event: 'sessionState',
-      payload: snapshot
+      payload: paged && snapshot.live ? { ...snapshot, terminalStreamPaged: true } : snapshot
     });
     this.clearDeferredSubscription(socket, params.sessionId);
     this.releaseTerminalJournalMemoryThroughCheckpoint(session);
@@ -1319,7 +1463,7 @@ class RuntimeSupervisorServer {
       if (!mode || socket.destroyed) {
         continue;
       }
-      if (mode === 'terminal-stream-v1' && terminalEvent) {
+      if ((mode === 'terminal-stream-v1' || mode === 'terminal-stream-paged') && terminalEvent) {
         this.writeTerminalStreamEvent(socket, session, terminalEvent, terminalTitle);
       } else {
         this.writeMessage(socket, legacyMessage);
@@ -1329,7 +1473,8 @@ class RuntimeSupervisorServer {
 
   private emitTerminalStreamEvent(session: SupervisorSession, event: TerminalStreamEvent): void {
     for (const [socket, subscriptions] of this.subscriptions.entries()) {
-      if (subscriptions.get(session.sessionId) !== 'terminal-stream-v1' || socket.destroyed) {
+      const mode = subscriptions.get(session.sessionId);
+      if ((mode !== 'terminal-stream-v1' && mode !== 'terminal-stream-paged') || socket.destroyed) {
         continue;
       }
       this.writeTerminalStreamEvent(socket, session, event);
@@ -1366,7 +1511,7 @@ class RuntimeSupervisorServer {
         event: 'sessionState',
         payload: session.terminalJournalError
           ? this.toSnapshot(session)
-          : await this.createFreshSnapshot(session, 'never')
+          : await this.createFreshSnapshot(session, 'never', this.needsFullLiveProjection(session))
       };
       this.broadcastToSessionSubscribers(session.sessionId, message);
       this.schedulePersist();
@@ -1377,7 +1522,7 @@ class RuntimeSupervisorServer {
     const message: RuntimeSupervisorEvent = {
       type: 'event',
       event: 'sessionState',
-      payload: await this.toFreshSnapshot(session)
+      payload: await this.toFreshSnapshot(session, 'always', this.needsFullLiveProjection(session))
     };
     this.broadcastToSessionSubscribers(session.sessionId, message);
     this.schedulePersist();
@@ -1582,7 +1727,17 @@ class RuntimeSupervisorServer {
       return undefined;
     }
     const journal = session.terminalJournal;
-    const checkpoint = session.terminalCheckpoint;
+    let checkpoint = session.terminalCheckpoint;
+    if (!session.live) {
+      for (const reads of this.terminalReads.values()) {
+        for (const read of reads.values()) {
+          if (read.sessionId === session.sessionId && read.authorityId === session.terminalAuthorityId &&
+              checkpoint && read.checkpoint.revision < checkpoint.revision) {
+            checkpoint = read.checkpoint;
+          }
+        }
+      }
+    }
     if (!journal || !checkpoint || checkpoint.authorityId !== journal.getAuthorityId()) {
       return undefined;
     }
@@ -1669,6 +1824,13 @@ class RuntimeSupervisorServer {
   }
 
   private clearSessionSubscriptions(sessionId: string): void {
+    for (const reads of this.terminalReads.values()) {
+      for (const [id, read] of reads) {
+        if (read.sessionId === sessionId) {
+          reads.delete(id);
+        }
+      }
+    }
     for (const subscriptions of this.subscriptions.values()) {
       subscriptions.delete(sessionId);
     }
@@ -1705,6 +1867,13 @@ class RuntimeSupervisorServer {
         ? revision
         : Math.min(retentionRevision, revision);
     };
+    for (const reads of this.terminalReads.values()) {
+      for (const read of reads.values()) {
+        if (read.sessionId === session.sessionId && read.authorityId === session.terminalAuthorityId) {
+          retainAfter(read.checkpoint.revision);
+        }
+      }
+    }
     for (const deferredRevisions of this.deferredSubscriptionRevisions.values()) {
       const deferredRevision = deferredRevisions.get(session.sessionId);
       if (deferredRevision !== undefined) {
@@ -1726,13 +1895,45 @@ class RuntimeSupervisorServer {
 
   private broadcastToSessionSubscribers(sessionId: string, message: RuntimeSupervisorEvent): void {
     const payload = `${JSON.stringify(message)}\n`;
+    const pagedPayload = message.event === 'sessionState' && message.payload.live
+      ? `${JSON.stringify({ ...message, payload: { ...message.payload, terminalStream: undefined,
+          serializedTerminalState: undefined, terminalStreamPaged: true } })}\n`
+      : payload;
     for (const [socket, subscriptions] of this.subscriptions.entries()) {
       if (!subscriptions.has(sessionId) || socket.destroyed) {
         continue;
       }
 
-      socket.write(payload);
+      socket.write(subscriptions.get(sessionId) === 'terminal-stream-paged' ? pagedPayload : payload);
     }
+  }
+
+  private needsFullLiveProjection(session: SupervisorSession): boolean {
+    return !session.live || [...this.subscriptions.values()].some((subscriptions) => {
+      const mode = subscriptions.get(session.sessionId);
+      return mode !== undefined && mode !== 'terminal-stream-paged';
+    });
+  }
+
+  private waitForSocketDrain(socket: net.Socket): Promise<void> {
+    if (socket.destroyed) {
+      return Promise.reject(new Error('Terminal subscription connection closed.'));
+    }
+    if (!socket.writableNeedDrain) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const cleanup = (): void => {
+        socket.removeListener('drain', drained);
+        socket.removeListener('close', closed);
+        socket.removeListener('error', closed);
+      };
+      const drained = (): void => { cleanup(); resolve(); };
+      const closed = (): void => { cleanup(); reject(new Error('Terminal subscription connection closed.')); };
+      socket.once('drain', drained);
+      socket.once('close', closed);
+      socket.once('error', closed);
+    });
   }
 
   private writeMessage(socket: net.Socket, message: RuntimeSupervisorMessage): void {
@@ -1762,6 +1963,7 @@ class RuntimeSupervisorServer {
     this.connections.delete(socket);
     this.subscriptions.delete(socket);
     this.deferredSubscriptionRevisions.delete(socket);
+    this.terminalReads.delete(socket);
     this.appliedRevisionAcks.delete(socket);
     for (const sessionId of affectedSessionIds) {
       const session = this.sessions.get(sessionId);

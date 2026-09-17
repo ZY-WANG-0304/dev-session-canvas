@@ -139,3 +139,5 @@
 第二个增量将 Supervisor 事件缓存与日志保留分离：缓存限制为 1 MiB 编码字节及 2048 条事件，淘汰部分通过原 journal 按需校验读取，正常恢复和结束不丢内容。完整恢复协议暂未分页到 Host/Webview，完整响应、Host 缓存及 completed 内联仍可能增长；这不是进程总内存上限，也不改变历史保留承诺。设计与阶段验证见 `docs/design-docs/runtime-journal-bounded-cache.md`。
 
 候选比较、可重跑基线与建议矩阵见 `docs/design-docs/runtime-persistence-storage-reevaluation.md`，原始上游证据见 `docs/references/terminal-persistence-open-source-survey.md`。其余运行时改造分阶段规划。
+
+第三个增量将分页真正接入新协议 live Host/Webview：Host 不保留完整后缀，Webview 应用 checkpoint 后每次读取并应用一页，慢读者所需来源不会被 compact。正常结束仍完整保存历史，已打开读者继续分页读完最终 revision 后才显示退出。新模式暂时断线重试原 Supervisor，不把连接失败当作进程死亡。Linux 真实宿主与协议/浏览器回归已验证，旧 Supervisor 保持兼容；总回放时间、所有在途队列、整体 RSS 与 completed 独立保存尚未完成验收。具体边界见 `docs/design-docs/runtime-paged-terminal-projection.md`。

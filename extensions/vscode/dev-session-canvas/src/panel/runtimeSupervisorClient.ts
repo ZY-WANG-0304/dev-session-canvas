@@ -27,6 +27,12 @@ import type {
   RuntimeSupervisorUpdateSessionScrollbackParams,
   RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
+import type {
+  RuntimeSupervisorOpenTerminalReadParams,
+  RuntimeSupervisorReadTerminalPageParams,
+  RuntimeSupervisorCloseTerminalReadParams
+} from '../common/runtimeSupervisorProtocol';
+import type { TerminalStreamPage, TerminalStreamReadDescriptor } from '../common/terminalStreamPaging';
 import type { RuntimeHostBackend } from './runtimeHostBackend';
 
 interface PendingSupervisorRequest<T> {
@@ -93,6 +99,26 @@ export class RuntimeSupervisorClient {
     return this.helloResult?.capabilities?.terminalCheckpointRefreshV1 === true;
   }
 
+  public supportsTerminalPagedRead(): boolean {
+    return this.helloResult?.capabilities?.terminalPagedReadV1 === true;
+  }
+
+  public async openTerminalRead(params: RuntimeSupervisorOpenTerminalReadParams): Promise<TerminalStreamReadDescriptor> {
+    await this.ensureConnected({ allowRestart: false });
+    return this.requestOnConnectedSocket('openTerminalRead', params);
+  }
+
+  public async readTerminalPage(params: RuntimeSupervisorReadTerminalPageParams): Promise<TerminalStreamPage> {
+    await this.ensureConnected({ allowRestart: false });
+    return this.requestOnConnectedSocket('readTerminalPage', params);
+  }
+
+  public async closeTerminalRead(params: RuntimeSupervisorCloseTerminalReadParams): Promise<void> {
+    if (this.socket && !this.socket.destroyed && this.helloResult) {
+      await this.requestOnConnectedSocket('closeTerminalRead', params);
+    }
+  }
+
   public supportsTerminalSessionStream(): boolean {
     return this.helloResult?.capabilities?.terminalSessionStreamV1 === true;
   }
@@ -114,6 +140,10 @@ export class RuntimeSupervisorClient {
   public async attachSession(
     params: RuntimeSupervisorAttachSessionParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
+    if (params.terminalStreamMode === 'paged') {
+      await this.ensureConnected({ allowRestart: false });
+      return this.requestOnConnectedSocket('attachSession', params);
+    }
     return this.request('attachSession', params);
   }
 
@@ -132,6 +162,10 @@ export class RuntimeSupervisorClient {
   public async subscribeSession(
     params: RuntimeSupervisorSubscribeSessionParams
   ): Promise<RuntimeSupervisorSubscribeSessionResult> {
+    if (params.terminalStreamMode === 'paged') {
+      await this.ensureConnected({ allowRestart: false });
+      return this.requestOnConnectedSocket('subscribeSession', params);
+    }
     return this.request('subscribeSession', params);
   }
 
@@ -175,6 +209,9 @@ export class RuntimeSupervisorClient {
 
   private async request<T>(
     method:
+      | 'openTerminalRead'
+      | 'readTerminalPage'
+      | 'closeTerminalRead'
       | 'createSession'
       | 'attachSession'
       | 'getSessionSnapshot'
@@ -187,6 +224,9 @@ export class RuntimeSupervisorClient {
       | 'stopSession'
       | 'deleteSession',
     params:
+      | RuntimeSupervisorOpenTerminalReadParams
+      | RuntimeSupervisorReadTerminalPageParams
+      | RuntimeSupervisorCloseTerminalReadParams
       | RuntimeSupervisorCreateSessionParams
       | RuntimeSupervisorAttachSessionParams
       | RuntimeSupervisorGetSessionSnapshotParams

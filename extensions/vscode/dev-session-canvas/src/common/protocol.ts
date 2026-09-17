@@ -1,5 +1,6 @@
 import type { SerializedTerminalState } from './serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
+import type { TerminalStreamPage, TerminalStreamReadDescriptor } from './terminalStreamPaging';
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
@@ -897,6 +898,28 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
+      type: 'webview/readExecutionTerminalPage';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        readId: string;
+        requestId: string;
+        afterRevision: number;
+      };
+    }
+  | {
+      type: 'webview/closeExecutionTerminalRead';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        readId: string;
+      };
+    }
+  | {
       type: 'webview/executionInput';
       payload: {
         nodeId: string;
@@ -1244,6 +1267,32 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         outputSequence?: number;
         serializedTerminalState?: SerializedTerminalState;
         terminalStream?: TerminalStreamAttachPayload;
+        terminalRead?: TerminalStreamReadDescriptor;
+      };
+    }
+  | {
+      type: 'host/executionTerminalAvailable';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        revision: number;
+        terminalTitle?: string | null;
+        completed?: true;
+      };
+    }
+  | {
+      type: 'host/executionTerminalPage';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        readId: string;
+        requestId: string;
+        page?: TerminalStreamPage;
+        error?: string;
       };
     }
   | {
@@ -1729,6 +1778,27 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
           : {})
       }
     };
+  }
+
+  if (value.type === 'webview/readExecutionTerminalPage' || value.type === 'webview/closeExecutionTerminalRead') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string' || !isExecutionNodeKind(payload.kind) ||
+        typeof payload.executionSessionId !== 'string' || !payload.executionSessionId ||
+        typeof payload.authorityId !== 'string' || !payload.authorityId ||
+        typeof payload.readId !== 'string' || !payload.readId || payload.readId.length > 256) {
+      return null;
+    }
+    const identity = { nodeId: payload.nodeId, kind: payload.kind, executionSessionId: payload.executionSessionId,
+      authorityId: payload.authorityId, readId: payload.readId };
+    if (value.type === 'webview/closeExecutionTerminalRead') {
+      return { type: value.type, payload: identity };
+    }
+    const afterRevision = payload.afterRevision;
+    if (typeof payload.requestId !== 'string' || !payload.requestId || payload.requestId.length > 256 ||
+        typeof afterRevision !== 'number' || !Number.isSafeInteger(afterRevision) || afterRevision < 0) {
+      return null;
+    }
+    return { type: value.type, payload: { ...identity, requestId: payload.requestId, afterRevision } };
   }
 
   if (value.type === 'webview/executionTerminalApplied') {

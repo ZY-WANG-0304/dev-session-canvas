@@ -40,8 +40,8 @@ CanvasPanelManager
   -> runtimeSupervisorClient（可选；升级退役窗口可按 runtimeStoragePath 路由多个实例）
   -> runtimeSupervisorMain
   -> supervisor 按 authority + revision 持久化 output / resize / scrollback journal
-  -> checkpoint + 连续 journal / live event 回流到 Host
-  -> Host 校验、调度并投影到 Webview
+  -> 新能力使用 checkpoint + 消费驱动 journal 分页，旧能力保持完整 stream
+  -> Host 转发有界页面，Webview 应用后继续读取；live event 服务 Host 派生状态
 ```
 
 这意味着当前项目不是“前端自己维护数据的 Web 白板”，也不是“独立桌面 app”。它的核心架构前提始终是：**VSCode 宿主掌握 workspace 绑定状态，Webview 负责呈现与交互；`live-runtime` 会话的进程与终端历史权威下沉到生命周期更长的 supervisor。**
@@ -476,11 +476,11 @@ docs/                           根目录正式文档知识库
 
 ### 恢复与持久化
 
-当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、可校验 terminal journal 和 checkpoint。Reload Window 后的新 Host 必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。live 会话的 Host `terminalStream` 是恢复缓存：健康 stream 的新投影 attach 前和 10–12 秒错峰周期内优先通过 `terminalCheckpointRefreshV1` 查询新的 checkpoint，复用 Host 已收到的连续尾部；无新 checkpoint 时不重传或扫描完整后缀。旧 Supervisor 继续使用原 snapshot RPC。任何失败都保留旧健康缓存，不能按大小丢弃事件。当前 completed 会话则在最终 stream 写入窗口与实际 root-local 画板成功后，解除 runtime 绑定并请求删除 Supervisor journal，后续从节点 metadata 恢复。
+当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、可校验 terminal journal 和 checkpoint。Reload Window 后的新 Host 必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。支持 `terminalPagedReadV1` 时，live Host 只保留身份、head 和有限摘要，不复制完整 `terminalStream`；Webview 从 checkpoint 开始逐页读取，应用完上一页才请求下一页，读者的安全恢复基点参与 journal 保留。只支持旧 stream 能力时，Host 继续维护完整后缀，并在投影 attach 前和 10–12 秒错峰周期内优先用 `terminalCheckpointRefreshV1` 查询新的 checkpoint；更旧 Supervisor 继续原 snapshot RPC。当前 completed 会话仍在最终 stream 写入窗口与实际 root-local 画板成功后解除 runtime 绑定并删除 Supervisor journal，未消费完的分页读者从同一 metadata 历史续读。
 
-待重评：checkpoint 长期拒绝时，Host 全后缀缓存和首次 attach 仍不能保证资源有界；completed stream 内联画板又让普通保存重写历史。这两项是审核 F-04/F-05 的高优先级设计问题。首个协议增量见 `docs/design-docs/runtime-checkpoint-only-refresh.md`，消除支持新能力时的周期后缀重传。第二个增量见 `docs/design-docs/runtime-journal-bounded-cache.md`：Supervisor 事件缓存独立限制为 1 MiB 编码字节和 2048 条，被淘汰事件从现有 journal 按需校验读取；完整 projection 异步构建，磁盘保留仍受原 compact/消费约束。该预算不是进程总内存上限，完整响应、open/compact 扫描和在途队列仍可能有大分配。`docs/design-docs/runtime-persistence-storage-reevaluation.md` 继续比较权威终端状态同步及独立历史存储，整体替代方案未选定，不改变旧 live session 原绑定契约。
+待重评：checkpoint 长期拒绝后的总回放与在途成本，以及 completed stream 内联画板引起的历史重写，仍是审核 F-04/F-05 的高优先级设计问题。首个增量 `docs/design-docs/runtime-checkpoint-only-refresh.md` 消除周期后缀重传，第二个增量 `docs/design-docs/runtime-journal-bounded-cache.md` 将 Supervisor 事件缓存限制为 1 MiB 编码字节和 2048 条，被淘汰事件从原 journal 校验读取。第三个增量 `docs/design-docs/runtime-paged-terminal-projection.md` 替换新能力 live Host 的完整后缀缓存和首次恢复单消息，每页最多 256 KiB 事件数组 JSON / 256 条，单个超大事件例外。这些预算不是进程总内存上限；旧协议、完整 completed、open/compact 扫描和在途队列仍可能有大分配。`docs/design-docs/runtime-persistence-storage-reevaluation.md` 继续比较权威终端状态同步及独立历史存储，整体替代方案未选定，不改变旧 live session 原绑定契约。
 
-2026-09-17 确认的运行时故障边界：Supervisor 崩溃或执行机器重启后，不要求恢复原进程或终端历史；这不取消画板保存，也不授权删除可读的已存历史。Supervisor 存活期间的 Host/Webview 重建、关闭再打开 VS Code 和连接中断仍需维持原会话，通信失败本身不证明 Supervisor 已崩溃。后续优先验证现有 Supervisor 内的权威终端状态和受控缓存，不预设另建 server 或强制 durable journal；需要落盘和正常 completed 归档时再明确存储协议。首个协议增量不改变当前磁盘格式和正常 handoff。
+2026-09-17 确认的运行时故障边界：Supervisor 崩溃或执行机器重启后，不要求恢复原进程或终端历史；这不取消画板保存，也不授权删除可读的已存历史。Supervisor 存活期间的 Host/Webview 重建、关闭再打开 VS Code 和连接中断仍需维持原会话，通信失败本身不证明 Supervisor 已崩溃。后续优先验证现有 Supervisor 内的权威终端状态和受控缓存，不预设另建 server 或强制 durable journal；需要落盘和正常 completed 归档时再明确存储协议。前三个协议与缓存增量不改变当前磁盘格式和正常 handoff。
 
 ### Remote / Local 拓扑
 

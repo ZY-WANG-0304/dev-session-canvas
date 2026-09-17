@@ -29,12 +29,12 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /sessionOutputSequence = hasAuthoritativeTerminalStream[\s\S]*?\? terminalStream\.revision[\s\S]*?: Math\.max\(snapshotOutputSequence \?\? 0, outputSequenceFloor\)/u,
+  /sessionOutputSequence = paged \? snapshot\.terminalRevision! : hasAuthoritativeTerminalStream[\s\S]*?\? terminalStream\.revision[\s\S]*?: Math\.max\(snapshotOutputSequence \?\? 0, outputSequenceFloor\)/u,
   '新 authority session 必须直接采用 supervisor revision；metadata floor 只保留给 legacy session。'
 );
 assert.match(
   managerSource,
-  /terminalAuthorityId: hasAuthoritativeTerminalStream \? terminalStream\.authorityId : undefined,[\s\S]*?terminalStreamHealthy: hasAuthoritativeTerminalStream[\s\S]*?terminalStateTrusted: canTrustSupervisorTerminalState/u,
+  /terminalAuthorityId: hasAuthoritativeTerminalStream \? terminalStream\.authorityId : paged \? snapshot\.terminalAuthorityId : undefined,[\s\S]*?terminalStreamHealthy: hasAuthoritativeTerminalStream \|\| paged[\s\S]*?terminalStateTrusted: canTrustSupervisorTerminalState/u,
   'Host 必须把 authority stream 与 legacy Host tracker 的信任状态分开。'
 );
 assert.match(

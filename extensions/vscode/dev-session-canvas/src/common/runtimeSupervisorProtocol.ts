@@ -10,6 +10,7 @@ import type {
 } from './protocol';
 import type { SerializedTerminalState } from './serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamCheckpoint, TerminalStreamEvent } from './terminalSessionStream';
+import type { TerminalStreamPage, TerminalStreamReadDescriptor } from './terminalStreamPaging';
 import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
 
 export interface RuntimeSupervisorPaths {
@@ -33,6 +34,7 @@ export interface RuntimeSupervisorHelloResult {
     terminalProjectionSnapshotV1?: true;
     terminalAppliedRevisionAckV1?: true;
     terminalCheckpointRefreshV1?: true;
+    terminalPagedReadV1?: true;
   };
 }
 
@@ -57,6 +59,7 @@ export interface RuntimeSupervisorSessionSnapshot {
   terminalAuthorityId?: string;
   terminalRevision?: number;
   terminalStream?: TerminalStreamAttachPayload;
+  terminalStreamPaged?: true;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
   provider?: AgentProviderKind;
@@ -168,11 +171,29 @@ export interface RuntimeSupervisorCreateSessionParams {
   resumeStoragePath?: string;
   launchSpec: SerializedExecutionSessionLaunchSpec;
   deferSubscription?: boolean;
+  terminalStreamMode?: 'paged';
 }
 
 export interface RuntimeSupervisorAttachSessionParams {
   sessionId: string;
   deferSubscription?: boolean;
+  terminalStreamMode?: 'paged';
+}
+
+export interface RuntimeSupervisorOpenTerminalReadParams {
+  sessionId: string;
+  authorityId: string;
+  consumerId: 'editor' | 'panel';
+}
+
+export interface RuntimeSupervisorCloseTerminalReadParams {
+  sessionId: string;
+  authorityId: string;
+  readId: string;
+}
+
+export interface RuntimeSupervisorReadTerminalPageParams extends RuntimeSupervisorCloseTerminalReadParams {
+  afterRevision: number;
 }
 
 export interface RuntimeSupervisorGetSessionSnapshotParams {
@@ -196,6 +217,7 @@ export interface RuntimeSupervisorSubscribeSessionParams {
   sessionId: string;
   authorityId: string;
   afterRevision: number;
+  terminalStreamMode?: 'paged';
 }
 
 export interface RuntimeSupervisorSubscribeSessionResult {
@@ -243,6 +265,24 @@ export interface RuntimeSupervisorDeleteSessionParams {
 }
 
 export type RuntimeSupervisorRequest =
+  | {
+      type: 'request';
+      id: string;
+      method: 'openTerminalRead';
+      params: RuntimeSupervisorOpenTerminalReadParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'readTerminalPage';
+      params: RuntimeSupervisorReadTerminalPageParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'closeTerminalRead';
+      params: RuntimeSupervisorCloseTerminalReadParams;
+    }
   | {
       type: 'request';
       id: string;
@@ -322,6 +362,8 @@ export type RuntimeSupervisorResponse =
       ok: true;
       result:
         | RuntimeSupervisorHelloResult
+        | TerminalStreamReadDescriptor
+        | TerminalStreamPage
         | RuntimeSupervisorSessionSnapshot
         | RuntimeSupervisorSessionCheckpointResult
         | RuntimeSupervisorSubscribeSessionResult

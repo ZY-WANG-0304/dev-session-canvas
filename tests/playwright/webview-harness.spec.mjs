@@ -16510,6 +16510,98 @@ test('terminal batches thousands of contiguous journal events without losing the
   expect(await readPostedMessagesByType(page, 'webview/attachExecutionSession')).toHaveLength(0);
 });
 
+test('terminal paged recovery handles completion before the first page request', async ({ page }) => {
+  const nodeId = 'terminal-zoom';
+  await openHarness(page);
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  const terminal = await waitForExecutionTerminalReady(page, nodeId);
+  const stream = await createTerminalStreamPayload({
+    sessionId: 'early-completed', authorityId: 'early-authority', checkpointRevision: 1,
+    checkpointOutput: 'EARLY-CHECKPOINT\r\n', checkpointCols: terminal.terminalCols, checkpointRows: terminal.terminalRows,
+    events: [{ type: 'output', revision: 2, data: 'EARLY-COMPLETED-FINAL\r\n' }]
+  });
+  await clearPostedMessages(page);
+  await page.evaluate(({ nodeId, stream }) => {
+    const payload = { nodeId, kind: 'terminal', executionSessionId: stream.sessionId, output: '',
+      cols: stream.checkpoint.cols, rows: stream.checkpoint.rows, liveSession: true };
+    window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionSnapshot', payload: {
+      ...payload, outputSequence: 1, terminalRead: { readId: 'early-reader', sessionId: stream.sessionId,
+        authorityId: stream.authorityId, checkpoint: stream.checkpoint, headRevision: 2 }
+    } });
+    window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionSnapshot', payload: {
+      ...payload, liveSession: false, outputSequence: 2, terminalStream: stream
+    } });
+  }, { nodeId, stream });
+  await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('EARLY-COMPLETED-FINAL');
+  const text = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+  expect((text.match(/EARLY-COMPLETED-FINAL/gu) ?? [])).toHaveLength(1);
+  expect(await readPostedMessagesByType(page, 'webview/readExecutionTerminalPage')).toHaveLength(0);
+  expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(1);
+});
+
+test('terminal consumes paged recovery through ANSI boundaries and drains the final page before exit', async ({ page }) => {
+  const nodeId = 'terminal-zoom';
+  const executionSessionId = 'paged-session';
+  const authorityId = 'paged-authority';
+  const readId = 'paged-reader';
+  await openHarness(page);
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  const terminal = await waitForExecutionTerminalReady(page, nodeId);
+  const stream = await createTerminalStreamPayload({
+    sessionId: executionSessionId, authorityId, checkpointOutput: 'PAGED-CHECKPOINT\r\n', checkpointRevision: 1,
+    checkpointCols: terminal.terminalCols, checkpointRows: terminal.terminalRows,
+    events: [
+      { type: 'output', revision: 2, data: '\u001b[31' },
+      { type: 'output', revision: 3, data: 'mPAGED-ANSI\u001b[0m\r\n' },
+      { type: 'output', revision: 4, data: '\ud83d' },
+      { type: 'output', revision: 5, data: '\ude80\r\n' },
+      { type: 'resize', revision: 6, cols: terminal.terminalCols, rows: terminal.terminalRows },
+      { type: 'scrollback', revision: 7, scrollback: 1000 },
+      { type: 'output', revision: 8, data: '\u001b[?1049hALT-PAGED\u001b[?1049lPAGED-TAIL\r\n' }
+    ]
+  });
+  await clearPostedMessages(page);
+  await dispatchExecutionSnapshot(page, {
+    nodeId, kind: 'terminal', output: 'RAW-TAIL-MUST-NOT-APPLY', executionSessionId, outputSequence: 1,
+    terminalRead: { readId, sessionId: executionSessionId, authorityId, checkpoint: stream.checkpoint, headRevision: 8 }
+  });
+  for (const event of stream.events) {
+    const requests = await waitForPostedMessagesByTypeMatch(page, 'webview/readExecutionTerminalPage',
+      (messages) => messages.some((message) => message.payload.afterRevision === event.revision - 1));
+    const request = requests.find((message) => message.payload.afterRevision === event.revision - 1);
+    if (event.revision === 8) {
+      await page.evaluate((payload) => {
+        window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable',
+          payload: { ...payload, revision: 8, completed: true } });
+        window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionExit',
+          payload: { ...payload, message: 'PAGED-EXIT' } });
+      }, { nodeId, kind: 'terminal', executionSessionId, authorityId });
+      await settleWebview(page, 2);
+      expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).not.toContain('PAGED-EXIT');
+    }
+    await page.evaluate((payload) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload });
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload });
+    }, { nodeId, kind: 'terminal', executionSessionId, authorityId, readId,
+      requestId: request.payload.requestId, page: {
+        readId, sessionId: executionSessionId, authorityId, afterRevision: event.revision - 1,
+        revision: event.revision, headRevision: 8, events: [event]
+      } });
+  }
+  await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('PAGED-EXIT');
+  const text = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+  expect(text).toContain('PAGED-CHECKPOINT');
+  expect(text).toContain('PAGED-ANSI');
+  expect(text).toContain('\ud83d\ude80');
+  expect(text).toContain('PAGED-TAIL');
+  expect(text).not.toContain('RAW-TAIL-MUST-NOT-APPLY');
+  expect(text).not.toContain('ALT-PAGED');
+  expect(text).not.toContain('\ufffd');
+  expect(text.indexOf('PAGED-TAIL')).toBeLessThan(text.indexOf('PAGED-EXIT'));
+  expect((text.match(/PAGED-TAIL/gu) ?? [])).toHaveLength(1);
+  expect(await readPostedMessagesByType(page, 'webview/readExecutionTerminalPage')).toHaveLength(stream.events.length);
+});
+
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} xterm selection stays aligned under zoomed React Flow`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -17793,7 +17885,8 @@ async function dispatchExecutionSnapshot(
     terminalTitle,
     outputSequence,
     serializedTerminalState,
-    terminalStream
+    terminalStream,
+    terminalRead
   }
 ) {
   await page.evaluate(
@@ -17815,7 +17908,8 @@ async function dispatchExecutionSnapshot(
       terminalTitle,
       outputSequence,
       serializedTerminalState,
-      terminalStream
+      terminalStream,
+      terminalRead
     }
   );
 }

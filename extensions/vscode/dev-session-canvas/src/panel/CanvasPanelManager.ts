@@ -286,6 +286,7 @@ import {
 import { getWebviewHtml, getWebviewHtmlSnapshotForTest as buildWebviewHtmlSnapshotForTest } from './getWebviewHtml';
 import { openCanvasExternalLink } from './linkOpenMode';
 import { RuntimeSupervisorClient } from './runtimeSupervisorClient';
+import { RuntimeTerminalReadRelay } from './runtimeTerminalReadRelay';
 import {
   CanvasTemplateStore,
   type CanvasStoredTemplate,
@@ -452,6 +453,7 @@ interface ExecutionCwdValidationOptions {
 }
 
 interface ExecutionSnapshotAttachOptions {
+  surface?: CanvasSurfaceLocation;
   requestId?: string;
   executionSessionId?: string;
   minOutputSequence?: number;
@@ -564,6 +566,9 @@ interface SupervisorExecutionSession extends ManagedExecutionSessionBase {
   terminalAuthorityId?: string;
   terminalStream?: TerminalStreamAttachPayload;
   terminalStreamHealthy: boolean;
+  terminalStreamPaged?: boolean;
+  reconnectTimer?: NodeJS.Timeout;
+  reconnectPending?: boolean;
   terminalAppliedRevisions: Partial<Record<CanvasSurfaceLocation, number>>;
   outputSubscription: undefined;
   exitSubscription: undefined;
@@ -1249,6 +1254,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   >();
   private readonly pendingRuntimeSupervisorOperations = new Set<Promise<unknown>>();
   private readonly pendingTerminalProjectionRefreshes = new Map<string, Promise<void>>();
+  private readonly terminalReadRelay = new RuntimeTerminalReadRelay();
   private readonly terminalProjectionRefreshScheduler = new TerminalProjectionRefreshScheduler({
     intervalMs: EXECUTION_TERMINAL_PROJECTION_CACHE_REFRESH_INTERVAL_MS,
     spreadMs: EXECUTION_TERMINAL_PROJECTION_CACHE_REFRESH_SPREAD_MS
@@ -9770,6 +9776,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private disposeRuntimeSupervisorClients(): void {
+    this.terminalReadRelay.closeMatching(() => true);
     for (const client of this.runtimeSupervisorClients.values()) {
       client.dispose();
     }
@@ -10075,7 +10082,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         terminalStreamSupported
           ? {
               sessionId,
-              deferSubscription: true
+              deferSubscription: true,
+              ...(client.supportsTerminalPagedRead() ? { terminalStreamMode: 'paged' as const } : {})
             }
           : {
               sessionId
@@ -10178,17 +10186,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
     const terminalStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
+    const paged = snapshot.terminalStreamPaged === true && snapshot.terminalAuthorityId !== undefined &&
+      normalizeTerminalStreamRevision(snapshot.terminalRevision) !== undefined;
     if (
-      !terminalStream ||
-      terminalStream.sessionId !== snapshot.sessionId ||
-      terminalStream.authorityId !== snapshot.terminalAuthorityId ||
-      terminalStream.revision !== snapshot.terminalRevision
+      !paged && (
+        !terminalStream ||
+        terminalStream.sessionId !== snapshot.sessionId ||
+        terminalStream.authorityId !== snapshot.terminalAuthorityId ||
+        terminalStream.revision !== snapshot.terminalRevision
+      )
     ) {
       return;
     }
     const client = await this.getRuntimeSupervisorClientForKind(
       snapshot.runtimeBackend,
-      {},
+      paged ? { allowRestart: false } : {},
       runtimeStoragePath
     );
     if (!client.supportsTerminalSessionStream()) {
@@ -10196,8 +10208,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     await client.subscribeSession({
       sessionId: snapshot.sessionId,
-      authorityId: terminalStream.authorityId,
-      afterRevision: terminalStream.revision
+      authorityId: paged ? snapshot.terminalAuthorityId! : terminalStream!.authorityId,
+      afterRevision: paged ? snapshot.terminalRevision! : terminalStream!.revision,
+      ...(paged ? { terminalStreamMode: 'paged' as const } : {})
     });
   }
 
@@ -10569,9 +10582,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       terminalStream?.sessionId === snapshot.sessionId &&
       terminalStream.authorityId === snapshot.terminalAuthorityId &&
       terminalStream.revision === snapshot.terminalRevision;
+    const paged = snapshot.terminalStreamPaged === true && snapshot.terminalAuthorityId !== undefined &&
+      normalizeTerminalStreamRevision(snapshot.terminalRevision) !== undefined;
     const snapshotOutputSequence = normalizeExecutionOutputSequence(snapshot.outputSequence);
     const outputSequenceFloor = normalizeExecutionOutputSequence(options.outputSequenceFloor) ?? 0;
-    const sessionOutputSequence = hasAuthoritativeTerminalStream
+    const sessionOutputSequence = paged ? snapshot.terminalRevision! : hasAuthoritativeTerminalStream
       ? terminalStream.revision
       : Math.max(snapshotOutputSequence ?? 0, outputSequenceFloor);
     const freshSupervisorSerializedTerminalState = cloneFreshSerializedTerminalState(
@@ -10579,6 +10594,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       sessionOutputSequence
     );
     const canTrustSupervisorTerminalState =
+      !paged &&
       terminalProjectionMode === 'terminal-stream-v1' &&
       !hasAuthoritativeTerminalStream &&
       (freshSupervisorSerializedTerminalState !== undefined ||
@@ -10593,11 +10609,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       runtimeStoragePath: this.resolveRuntimeStoragePath(runtimeStoragePath),
       runtimeSessionId: snapshot.sessionId,
       terminalProjectionMode,
-      terminalAuthorityId: hasAuthoritativeTerminalStream ? terminalStream.authorityId : undefined,
+      terminalAuthorityId: hasAuthoritativeTerminalStream ? terminalStream.authorityId : paged ? snapshot.terminalAuthorityId : undefined,
       terminalStream: hasAuthoritativeTerminalStream
         ? cloneTerminalStreamAttachPayload(terminalStream)
         : undefined,
-      terminalStreamHealthy: hasAuthoritativeTerminalStream,
+      terminalStreamHealthy: hasAuthoritativeTerminalStream || paged,
+      terminalStreamPaged: paged,
       terminalAppliedRevisions: {},
       shellPath: snapshot.shellPath,
       cwd: snapshot.cwd,
@@ -10680,6 +10697,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       session.terminalProjectionMode === terminalProjectionMode &&
       (
         terminalProjectionMode === 'legacy-interactive' ||
+        (session.terminalStreamHealthy && session.terminalStreamPaged === true && snapshot.terminalStreamPaged === true &&
+          snapshot.terminalAuthorityId === session.terminalAuthorityId) ||
         canPreserveTerminalStream ||
         (freshSnapshotState === undefined && session.terminalStateTrusted)
       ) &&
@@ -10770,6 +10789,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!session) {
       return;
     }
+    if (session.owner === 'supervisor' && session.reconnectTimer) {
+      clearTimeout(session.reconnectTimer);
+    }
 
     session.terminalStateTracker.dispose();
     session.lineContextTracker.dispose();
@@ -10833,7 +10855,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       !authorityMatches ||
       !session.terminalStreamHealthy ||
       event.revision !== session.outputSequence + 1 ||
-      !session.terminalStream
+      (!session.terminalStream && !session.terminalStreamPaged)
     ) {
       this.flushExecutionOutputImmediately(binding.kind, binding.nodeId);
       session.terminalStreamHealthy = false;
@@ -10850,6 +10872,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         expectedRevision: session.outputSequence + 1,
         actualRevision: event.revision
       });
+      if (session.terminalStreamPaged) {
+        this.reconnectPagedRuntimeSession(binding.kind, binding.nodeId, session);
+        return;
+      }
       this.postMessage({
         type: 'host/executionTerminalEvent',
         payload: {
@@ -10865,8 +10891,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (event.type === 'output') {
       session.outputSequence = event.revision;
-      session.terminalStream.revision = event.revision;
-      session.terminalStream.events.push(event);
+      if (session.terminalStream) {
+        session.terminalStream.revision = event.revision;
+        session.terminalStream.events.push(event);
+      }
       this.applyRuntimeSupervisorOutputChunk(
         binding.kind,
         binding.nodeId,
@@ -10881,8 +10909,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     // Preserve PTY event order across the Host output scheduler boundary.
     this.flushExecutionOutputImmediately(binding.kind, binding.nodeId);
     session.outputSequence = event.revision;
-    session.terminalStream.revision = event.revision;
-    session.terminalStream.events.push(event);
+    if (session.terminalStream) {
+      session.terminalStream.revision = event.revision;
+      session.terminalStream.events.push(event);
+    }
     if (event.type === 'resize') {
       session.cols = event.cols;
       session.rows = event.rows;
@@ -10891,6 +10921,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       void session.lineContextTracker.setScrollback(event.scrollback);
     }
     this.queueExecutionStateSync(binding.kind, binding.nodeId);
+    if (session.terminalStreamPaged) {
+      this.postTerminalAvailable(binding.kind, binding.nodeId, session);
+      return;
+    }
     this.postMessage({
       type: 'host/executionTerminalEvent',
       payload: {
@@ -11041,6 +11075,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         session.runtimeBackend === backendKind &&
         this.resolveRuntimeStoragePath(session.runtimeStoragePath) === runtimeStoragePath
       ) {
+        if (session.terminalStreamPaged) {
+          this.reconnectPagedRuntimeSession('agent', nodeId, session, error);
+          continue;
+        }
         if (this.maybeFallbackAgentLiveRuntimeToResume(nodeId, error?.message)) {
           continue;
         }
@@ -11054,9 +11092,72 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         session.runtimeBackend === backendKind &&
         this.resolveRuntimeStoragePath(session.runtimeStoragePath) === runtimeStoragePath
       ) {
+        if (session.terminalStreamPaged) {
+          this.reconnectPagedRuntimeSession('terminal', nodeId, session, error);
+          continue;
+        }
         this.markExecutionNodeAsHistoryRestored(nodeId, 'terminal', error?.message);
       }
     }
+  }
+
+  private reconnectPagedRuntimeSession(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    session: SupervisorExecutionSession,
+    error?: Error
+  ): void {
+    if (session.reconnectTimer || session.reconnectPending || this.getExecutionSessions(kind).get(nodeId) !== session) {
+      return;
+    }
+    session.terminalStreamHealthy = false;
+    this.terminalReadRelay.closeMatching((key) => key.endsWith(`:${kind}:${nodeId}`));
+    const node = this.requireNode(nodeId, kind);
+    this.state = updateExecutionNode(this.state, nodeId, kind, {
+      status: node.status,
+      summary: node.summary,
+      metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+        attachmentState: 'reattaching', lastRuntimeError: error?.message
+      })
+    });
+    this.postState('host/stateUpdated');
+    session.reconnectTimer = setTimeout(() => {
+      session.reconnectTimer = undefined;
+      if (this.getExecutionSessions(kind).get(nodeId) !== session || this.getLiveRuntimeReconnectBlockReason()) {
+        return;
+      }
+      session.reconnectPending = true;
+      const operation = (async () => {
+        try {
+          const client = await this.getRuntimeSupervisorClientForKind(
+            session.runtimeBackend ?? 'legacy-detached', { allowRestart: false }, session.runtimeStoragePath
+          );
+          const result = await this.requestRuntimeSupervisorSessionAttach(client, session.runtimeSessionId);
+          if (this.getExecutionSessions(kind).get(nodeId) !== session) {
+            return;
+          }
+          await this.applyRuntimeSupervisorSnapshot(nodeId, kind, result.snapshot, {
+            postSnapshot: true, historyOnUnavailable: false, terminalProjectionMode: result.terminalProjectionMode
+          });
+          await this.subscribeRuntimeSupervisorTerminalStream(result.snapshot, session.runtimeStoragePath);
+        } catch (failure) {
+          const current = this.getExecutionSessions(kind).get(nodeId);
+          if (current?.owner !== 'supervisor' || current.runtimeSessionId !== session.runtimeSessionId ||
+              current.runtimeStoragePath !== session.runtimeStoragePath || !current.terminalStreamPaged) {
+            return;
+          }
+          session.reconnectPending = false;
+          if ((failure as { code?: string }).code === RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound) {
+            this.markExecutionNodeAsHistoryRestored(nodeId, kind, formatUnknownError(failure));
+          } else {
+            this.reconnectPagedRuntimeSession(kind, nodeId, current, failure instanceof Error ? failure : undefined);
+          }
+        } finally {
+          session.reconnectPending = false;
+        }
+      })();
+      this.trackRuntimeSupervisorOperation(operation);
+    }, 500);
   }
 
   private async applyRuntimeSupervisorSnapshot(
@@ -11571,6 +11672,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private invalidateSurfaceLifecycle(surface: CanvasSurfaceLocation, mode?: CanvasSurfaceMode): void {
+    this.terminalReadRelay.closeMatching((key) => key.startsWith(`${surface}:`));
     this.rejectPendingWebviewProbeRequests(
       surface,
       vscode.l10n.t('{surface} Webview lifecycle is no longer valid.', {
@@ -11598,6 +11700,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     surface: CanvasSurfaceLocation,
     mode: CanvasSurfaceMode
   ): WebviewLifecycleIdentity {
+    this.terminalReadRelay.closeMatching((key) => key.startsWith(`${surface}:`));
     this.rejectPendingWebviewProbeRequests(
       surface,
       vscode.l10n.t('{surface} Webview is rerendering.', { surface: formatSurfaceForDiagnostics(surface) })
@@ -11642,6 +11745,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private markSurfaceReady(surface: CanvasSurfaceLocation, lifecycle?: WebviewLifecycleIdentity): void {
+    if (this.surfaceLifecycle[surface].frameId !== lifecycle?.frameId) {
+      this.terminalReadRelay.closeMatching((key) => key.startsWith(`${surface}:`));
+    }
     this.clearPendingBootstrapHostMessages(surface);
     this.surfaceReady[surface] = true;
     this.surfaceLifecycle[surface] = {
@@ -12498,10 +12604,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/attachExecutionSession':
         this.attachExecutionSession(parsedMessage.payload.kind, parsedMessage.payload.nodeId, {
+          surface: sourceSurface,
           requestId: parsedMessage.payload.requestId,
           executionSessionId: parsedMessage.payload.executionSessionId,
           minOutputSequence: parsedMessage.payload.minOutputSequence
         });
+        return;
+      case 'webview/readExecutionTerminalPage':
+        this.trackRuntimeSupervisorOperation(this.readExecutionTerminalPage(sourceSurface, parsedMessage.payload));
+        return;
+      case 'webview/closeExecutionTerminalRead':
+        this.terminalReadRelay.close(
+          `${sourceSurface}:${parsedMessage.payload.kind}:${parsedMessage.payload.nodeId}`, parsedMessage.payload.readId
+        );
         return;
       case 'webview/executionTerminalApplied':
         this.handleExecutionTerminalApplied(sourceSurface, parsedMessage.payload);
@@ -14151,6 +14266,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         resumeSessionId: resumeContext.sessionId,
         resumeStoragePath: resumeContext.storagePath,
         deferSubscription: true,
+        ...(client.supportsTerminalPagedRead() ? { terminalStreamMode: 'paged' as const } : {}),
         launchSpec: serializeExecutionSessionLaunchSpec(launchSpec)
       });
     } catch (error) {
@@ -14296,6 +14412,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       launchMode: 'start',
       scrollback: this.getTerminalScrollback(),
       deferSubscription: true,
+      ...(client.supportsTerminalPagedRead() ? { terminalStreamMode: 'paged' as const } : {}),
       launchSpec: serializeExecutionSessionLaunchSpec(
         this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows, executionEnv)
       )
@@ -16278,6 +16395,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
     const activeSession = this.getExecutionSessions(kind).get(nodeId);
     if (activeSession?.owner === 'supervisor' && activeSession.terminalStreamHealthy) {
+      if (activeSession.terminalStreamPaged) {
+        this.trackRuntimeSupervisorOperation(this.postExecutionSnapshot(kind, nodeId, options));
+        return;
+      }
       const operation = this.refreshExecutionTerminalProjection(kind, nodeId, activeSession)
         .catch((error) => {
           this.recordDiagnosticEvent('runtime/terminalProjectionRefreshFailed', {
@@ -16298,6 +16419,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       metadata.runtimeSessionId === activeSession.runtimeSessionId &&
       this.getLiveRuntimeReconnectBlockReason() === undefined
     ) {
+      if (activeSession.terminalStreamPaged) {
+        this.reconnectPagedRuntimeSession(kind, nodeId, activeSession);
+        return;
+      }
       const backendKind = normalizeRuntimeHostBackendKind(activeSession.runtimeBackend) ?? 'legacy-detached';
       const backend = this.getRuntimeHostBackend(backendKind, activeSession.runtimeStoragePath);
       const runtimeSessionId = activeSession.runtimeSessionId;
@@ -16394,6 +16519,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): void {
     if (
       expectedSession.terminalProjectionMode !== 'terminal-stream-v1' ||
+      expectedSession.terminalStreamPaged ||
       !expectedSession.terminalStreamHealthy
     ) {
       this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId, expectedSession.runtimeSessionId);
@@ -17934,6 +18060,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!session || !chunk) {
       return;
     }
+    if (session.owner === 'supervisor' && session.terminalStreamPaged) {
+      this.postTerminalAvailable(kind, nodeId, session, terminalTitle);
+      return;
+    }
 
     if (!session.pendingOutput) {
       session.pendingOutputStartSequence = session.outputSequence;
@@ -18585,6 +18715,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options: ExecutionSnapshotAttachOptions = {}
   ): Promise<void> {
     const session = this.getExecutionSessions(kind).get(nodeId);
+    if (session?.owner === 'supervisor' && session.terminalStreamPaged && session.terminalAuthorityId) {
+      try {
+        await this.postPagedExecutionSnapshot(kind, nodeId, session, options);
+      } catch (error) {
+        this.recordDiagnosticEvent('runtime/terminalPagedReadFailed', {
+          nodeId, kind, sessionId: session.sessionId, message: formatUnknownError(error)
+        });
+        this.reconnectPagedRuntimeSession(kind, nodeId, session, error instanceof Error ? error : undefined);
+      }
+      return;
+    }
+    const surface = options.surface ?? this.activeSurface;
+    if (!session && surface) {
+      const node = this.state.nodes.find((entry) => entry.id === nodeId && entry.kind === kind);
+      const stream = node && (kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node)).terminalStream;
+      if (stream && this.terminalReadRelay.has(`${surface}:${kind}:${nodeId}`, stream.sessionId)) {
+        this.postMessage({ type: 'host/executionTerminalAvailable', payload: {
+          nodeId, kind, executionSessionId: stream.sessionId, authorityId: stream.authorityId,
+          revision: stream.revision, completed: true, terminalTitle: null
+        } }, surface);
+        return;
+      }
+    }
     const serializedTerminalState = session?.terminalStateTrusted
       ? await session.terminalStateTracker.flush().catch(() => session.terminalStateTracker.getSerializedState())
       : undefined;
@@ -18639,6 +18792,97 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       liveSession: Boolean(session),
       outputSequence
     });
+  }
+
+  private postTerminalAvailable(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    session: SupervisorExecutionSession,
+    terminalTitle?: string | null
+  ): void {
+    if (!session.terminalAuthorityId) {
+      return;
+    }
+    this.postMessage({ type: 'host/executionTerminalAvailable', payload: {
+      nodeId, kind, executionSessionId: session.sessionId, authorityId: session.terminalAuthorityId,
+      revision: session.outputSequence, terminalTitle
+    } });
+  }
+
+  private async postPagedExecutionSnapshot(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    session: SupervisorExecutionSession,
+    options: ExecutionSnapshotAttachOptions
+  ): Promise<void> {
+    const surface = options.surface ?? this.activeSurface;
+    if (!surface || !this.isInteractiveSurface(surface) || !this.getSurfaceMessageWebview(surface) ||
+        !session.terminalAuthorityId || !session.terminalStreamHealthy) {
+      return;
+    }
+    const lifecycle = this.getSurfaceLifecycleIdentity(surface);
+    const isCurrent = (): boolean => this.getExecutionSessions(kind).get(nodeId) === session &&
+      JSON.stringify(this.getSurfaceLifecycleIdentity(surface)) === JSON.stringify(lifecycle);
+    const client = await this.getRuntimeSupervisorClientForKind(
+      session.runtimeBackend ?? 'legacy-detached', { allowRestart: false }, session.runtimeStoragePath
+    );
+    if (!isCurrent()) {
+      return;
+    }
+    const descriptor = await this.terminalReadRelay.open(
+      `${surface}:${kind}:${nodeId}`, client, session.sessionId, session.terminalAuthorityId, surface
+    );
+    if (!descriptor) {
+      return;
+    }
+    if (!isCurrent()) {
+      // An acknowledged reader survives normal completion to consume persisted history.
+      if (!this.terminalReadRelay.has(`${surface}:${kind}:${nodeId}`, session.sessionId) ||
+          JSON.stringify(this.getSurfaceLifecycleIdentity(surface)) !== JSON.stringify(lifecycle)) {
+        this.terminalReadRelay.close(`${surface}:${kind}:${nodeId}`, descriptor.readId);
+      }
+      return;
+    }
+    this.postMessage({ type: 'host/executionSnapshot', lifecycle, payload: {
+      nodeId, kind, requestId: options.requestId, executionSessionId: session.sessionId,
+      output: '', cols: descriptor.checkpoint.cols, rows: descriptor.checkpoint.rows,
+      liveSession: true, terminalTitle: session.terminalTitle ?? null,
+      outputSequence: descriptor.checkpoint.revision, terminalRead: descriptor
+    } }, surface);
+    this.recordDiagnosticEvent('runtime/terminalPagedReadOpened', {
+      nodeId, kind, sessionId: session.sessionId, checkpointRevision: descriptor.checkpoint.revision,
+      headRevision: descriptor.headRevision, hostCachedEvents: session.terminalStream?.events.length ?? 0
+    });
+  }
+
+  private async readExecutionTerminalPage(
+    surface: CanvasSurfaceLocation,
+    payload: Extract<WebviewToHostMessage, { type: 'webview/readExecutionTerminalPage' }>['payload']
+  ): Promise<void> {
+    const lifecycle = this.getSurfaceLifecycleIdentity(surface);
+    const { nodeId, kind, executionSessionId, authorityId, readId, requestId, afterRevision } = payload;
+    try {
+      const page = await this.terminalReadRelay.read(`${surface}:${kind}:${nodeId}`, {
+        sessionId: executionSessionId, authorityId, readId, afterRevision
+      }, () => {
+        const node = this.state.nodes.find((entry) => entry.id === nodeId && entry.kind === kind);
+        const metadata = node && (kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node));
+        return metadata?.persistenceMode === 'snapshot-only' ? metadata.terminalStream : undefined;
+      });
+      if (page) {
+        this.postMessage({ type: 'host/executionTerminalPage', lifecycle, payload: {
+          nodeId, kind, executionSessionId, authorityId, readId, requestId, page
+        } }, surface);
+        this.recordDiagnosticEvent('runtime/terminalPagePosted', {
+          nodeId, kind, sessionId: executionSessionId, afterRevision, revision: page.revision,
+          headRevision: page.headRevision, events: page.events.length, bytes: Buffer.byteLength(JSON.stringify(page.events))
+        });
+      }
+    } catch (error) {
+      this.postMessage({ type: 'host/executionTerminalPage', lifecycle, payload: {
+        nodeId, kind, executionSessionId, authorityId, readId, requestId, error: formatUnknownError(error)
+      } }, surface);
+    }
   }
 
   private async postExecutionExitWithFinalSnapshot(

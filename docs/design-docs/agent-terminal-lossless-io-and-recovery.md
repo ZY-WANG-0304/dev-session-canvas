@@ -17,6 +17,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/completed/runtime-journal-bounded-cache.md
+  - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-checkpoint-only-refresh.md
   - docs/exec-plans/completed/agent-terminal-lossless-io-redesign.md
   - docs/exec-plans/completed/agent-supervisor-parallel-drain.md
@@ -33,7 +34,7 @@ updated_at: 2026-09-17
 
 2026-09-17 产品边界补充：用户确认 Supervisor 崩溃或机器重启后不要求恢复原进程，也可以不恢复终端历史；不能据此放弃 Supervisor 存活时的 Host/Webview 重建、暂时断连或正常 completed handoff。本文 journal、双代与磁盘恢复仍描述当前实现，不再作为新候选必须照搬的灾备需求；重评优先验证 server 生命周期内的权威状态与受控缓存，磁盘存储/归档按实际容量和正常历史需求决定。本轮只更新设计边界，未删除现有保护或历史。
 
-2026-09-17 实施补充：独立 checkpoint 刷新后，Supervisor 又将长期事件缓存与日志保留分离，按需校验读取被淘汰后缀，见第 10.16 节及 `runtime-journal-bounded-cache.md`。这些增量不改变 eligibility、正常 handoff 或原会话绑定；Host/完整恢复响应及 completed 内联仍未收口。
+2026-09-17 实施补充：独立 checkpoint 刷新后，Supervisor 将长期缓存与日志保留分离，第 10.16 节描述该增量。第 10.17 节进一步把按需读取贯穿 live Host/Webview，新模式不再驻留完整 Host 后缀或发送单个完整 live 恢复消息。这些增量不改变 eligibility、正常 handoff 或原会话绑定；总回放、在途队列与 completed 内联仍未收口。
 
 ## 1. 背景
 
@@ -383,7 +384,7 @@ Host 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 
 
 ### 10.10 无 attach 时的周期性 Host cache 收敛
 
-待重评边界（F-04）：新 capability 已消除本节周期刷新时的完整后缀重传，第 10.16 节又限制了 Supervisor 事件缓存，但 Host 全后缀、首次 attach 消息、全量临时分配与总回放工作仍没有统一上限。旧 Supervisor 保留原行为。下一阶段需比较存储游标与权威终端状态同步，不以延长刷新间隔替代容量设计。
+待重评边界（F-04）：新 capability 已消除本节周期刷新时的完整后缀重传，第 10.16 节限制 Supervisor 事件缓存，第 10.17 节替换新模式的 Host 后缀与首次 live 恢复单消息；全量临时分配、总回放与在途队列仍没有统一上限。旧 Supervisor 保留原行为。后续需继续比较权威终端状态同步与正常历史保留，不以延长刷新间隔替代容量设计。
 
 健康 authority session 即使长期没有新 Webview attach，Host 也按固定周期检查 `terminalStream.checkpoint.revision < terminalStream.revision` 的缓存，不在检查阶段 normalize 全部事件。`extensions/vscode/dev-session-canvas/src/common/terminalProjectionRefreshScheduler.ts` 提供可清理、永久可 dispose 的确定性错峰 timer；`CanvasPanelManager.scheduleExecutionTerminalProjectionRefresh()` 以 10 秒基础周期加 0–2 秒 session hash spread 调度检查。存在 checkpoint 后事件时优先使用 capability-gated `getSessionCheckpoint`，未支持该能力但支持 projection snapshot 的旧 Supervisor 才使用 `getSessionSnapshot`。同 session 的 attach refresh、周期 refresh 和并发 tick 共用同一 in-flight 请求；没有新事件时不发 RPC。
 
@@ -446,6 +447,16 @@ deferred attach revision 在 `subscribeSession(afterRevision)` 完成前收紧 r
 删除前快照、实际 journal 文件清理、订阅和 session map 移除都在同一队列内完成，已接受的重复删除在首个完成后直接成功。不能在异步读取启用后仍把文件移除放到队列外；先排队的完整恢复读取必须在清理前完成。
 
 该改造只限制长期事件缓存，不覆盖段索引、pending/write chain、xterm、完整响应、Host 缓存或 open/compact 的全量扫描，不是整体 RSS 保证或端到端分页。2026-09-17 容量样本的 19.66 MB output 对应 99 条、约 1.046 MB 缓存，全部 1921 个事件仍恢复；真实 PTY 与 Linux VS Code 大输出 reload/completed 和旧协议兼容验证通过，详见 `docs/design-docs/runtime-journal-bounded-cache.md`。
+
+### 10.17 live 投影的消费驱动分页
+
+`runtimeSupervisorMain.ts` 发布 `terminalPagedReadV1`，新 Host 在 create/attach/subscribe 协商分页模式。live 快照与普通生命周期消息只包含有限摘要、authority/head，不构造完整 stream；显式旧 `getSessionSnapshot` 和正常 completed 保持完整协议。`CanvasPanelManager.ts` 不为分页会话积累完整 events，也不把实时 body 推送到 Webview 的恢复队列。
+
+Supervisor 的 open/read/close RPC 将读者绑定到 socket/session/surface。每页沿用 256 KiB 事件数组 JSON / 256 条预算，单个大事件例外。`runtimeTerminalReadRelay.ts` 只转发一页；`webview/terminalPagedProjection.ts` 只有在 xterm 应用整页后才请求下一页，以相同游标衔接恢复与实时。head 通知不是消费证明，失败重试不推进位置，重复/旧代际响应不能二次应用。关闭 surface、替换读者或断开 socket 释放其保留资格，不结束 PTY。
+
+读者保留下界是已消费位置之前最近的安全 checkpoint；它参与原 compact 的 retention floor。正常终态取仍活动读者中最早的 checkpoint，保证 Host 完整 handoff 包含各读者剩余事件。保存成功后，读者从 metadata 中同 session/authority 的历史继续读页，消费到 final revision 才显示退出；保存失败继续保留 Supervisor 来源。
+
+分页模式断线保持原绑定、进入重连中并重试原 endpoint，不因传输失败自动恢复 Agent 或启动新 Supervisor。页面 RPC 无响应期限仍属于 F-01；正常 completed 全量、Supervisor 到 Host 的实时在途队列、总回放与全量 open/compact 分配仍属于 F-04/F-05。完整协议及 `snapshot-only` 不变。具体接口、证据及边界见 `docs/design-docs/runtime-paged-terminal-projection.md`。
 
 ## 11. 正式方案必须满足的不变量
 

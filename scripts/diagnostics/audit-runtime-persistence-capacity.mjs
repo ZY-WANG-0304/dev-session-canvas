@@ -113,6 +113,8 @@ try {
     }
   };
   server.sessions.set(session.sessionId, session);
+  const readSocket = { destroyed: false };
+  server.terminalReads.set(readSocket, new Map());
   const append = (data) => {
     const event = journal.appendOutput(data);
     tracker.write(data, { outputSequence: event.revision });
@@ -150,6 +152,29 @@ try {
     });
     const checkpointRefreshBytes = Buffer.byteLength(JSON.stringify(checkpointResult));
     assert.ok(checkpointRefreshBytes < 1024);
+    const pagedSnapshot = await server.toAttachSnapshot(session, true);
+    assert.equal(pagedSnapshot.terminalStream, undefined);
+    const reader = await server.openTerminalRead(readSocket, {
+      sessionId: session.sessionId, authorityId: session.terminalAuthorityId, consumerId: 'editor'
+    });
+    let pageRevision = reader.checkpoint.revision;
+    let pageCount = 0;
+    let pagedEventCount = 0;
+    let maxPageBytes = 0;
+    while (pageRevision < reader.headRevision) {
+      const page = await server.readTerminalPage(readSocket, {
+        sessionId: session.sessionId, authorityId: session.terminalAuthorityId,
+        readId: reader.readId, afterRevision: pageRevision
+      });
+      assert.equal(page.events[0].revision, pageRevision + 1);
+      pageCount += 1;
+      pagedEventCount += page.events.length;
+      maxPageBytes = Math.max(maxPageBytes, Buffer.byteLength(JSON.stringify(page.events)));
+      pageRevision = page.revision;
+    }
+    assert.equal(pagedEventCount, snapshot.terminalStream.events.length);
+    assert.ok(maxPageBytes <= 256 * 1024);
+    server.closeTerminalRead(readSocket, reader);
     const retained = await journal.getEventsAfter(0);
     const cache = journal.getCacheStats();
     assert.ok(cache.encodedBytes <= cache.maxBytes);
@@ -166,6 +191,11 @@ try {
       journalDiskBytes: directoryBytes(path.join(tempDir, 'terminal-journals')),
       snapshotBytes: Buffer.byteLength(JSON.stringify(snapshot)),
       checkpointRefreshBytes,
+      pagedSnapshotBytes: Buffer.byteLength(JSON.stringify(pagedSnapshot)),
+      readDescriptorBytes: Buffer.byteLength(JSON.stringify(reader)),
+      maxPageBytes,
+      pageCount,
+      pagedEventCount,
       checkpointRevision: snapshot.terminalStream.checkpoint.revision,
       compactionDue: journal.shouldCommitCheckpoint(journal.getRevision())
     };
@@ -209,7 +239,7 @@ try {
     inlineCanvasWriteBytes: firstWriteBytes,
     subsequentPositionOnlyWriteBytes: moveWriteBytes
   }));
-  console.log('Supervisor event cache and checkpoint-only refresh stay bounded; full attach, Host cache and completed-inline limits remain. No production runtime was started or modified.');
+  console.log('Supervisor cache, paged live attach and each page stay bounded; total replay, legacy full attach and completed-inline limits remain. No production runtime was started or modified.');
 } finally {
   tracker.dispose();
   oversizedTracker.dispose();

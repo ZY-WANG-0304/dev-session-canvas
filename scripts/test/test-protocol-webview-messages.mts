@@ -25,6 +25,19 @@ assert.equal(
 );
 
 const hardwrapLinkText = 'src/webview/executionTerminalNativeInteractions.ts:1600:12';
+const terminalReadPayload = {
+  nodeId: 'terminal', kind: 'terminal', executionSessionId: 'session', authorityId: 'authority',
+  readId: 'reader', requestId: 'page-request', afterRevision: 0
+};
+assert.deepEqual(parseWebviewMessage({ type: 'webview/readExecutionTerminalPage', payload: terminalReadPayload }), {
+  type: 'webview/readExecutionTerminalPage', payload: terminalReadPayload
+});
+for (const patch of [{ readId: '' }, { requestId: '' }, { afterRevision: -1 }, { afterRevision: 0.5 },
+  { afterRevision: Number.MAX_SAFE_INTEGER + 1 }, { kind: 'note' }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/readExecutionTerminalPage', payload: { ...terminalReadPayload, ...patch } }), null);
+}
+assert.equal(parseWebviewMessage({ type: 'webview/closeExecutionTerminalRead', payload: terminalReadPayload })?.type,
+  'webview/closeExecutionTerminalRead');
 const hardwrapPath = 'src/webview/executionTerminalNativeInteractions.ts';
 
 const hardwrapResolveMessage = {

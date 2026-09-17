@@ -4,6 +4,7 @@ import type { Terminal } from '@xterm/xterm';
 import type { ExecutionNodeKind } from '../common/protocol';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from '../common/terminalSessionStream';
+import type { TerminalStreamPage, TerminalStreamReadDescriptor } from '../common/terminalStreamPaging';
 import type { ExecutionTerminalNativeInteractionsHandle } from './executionTerminalNativeInteractions';
 
 export type ExecutionHostEvent =
@@ -21,6 +22,7 @@ export type ExecutionHostEvent =
       outputSequence?: number;
       serializedTerminalState?: SerializedTerminalState;
       terminalStream?: TerminalStreamAttachPayload;
+      terminalRead?: TerminalStreamReadDescriptor;
     }
   | {
       type: 'output';
@@ -56,6 +58,8 @@ export interface ExecutionTerminalController {
   nodeId: string;
   kind: ExecutionNodeKind;
   applySnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void;
+  terminalAvailable(sessionId: string, authorityId: string, revision: number, completed?: boolean): void;
+  applyTerminalPage(readId: string, requestId: string, page?: TerminalStreamPage): void;
   requestAttachSnapshot(): void;
   enqueueOutput(
     chunk: string,
