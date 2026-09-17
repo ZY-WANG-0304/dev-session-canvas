@@ -480,6 +480,8 @@ docs/                           根目录正式文档知识库
 
 待重评：checkpoint 长期拒绝时，当前全后缀缓存/传输不能保证资源有界；completed stream 内联画板又让普通保存重写历史。这两项是审核 F-04/F-05 的高优先级设计问题。`docs/design-docs/runtime-persistence-storage-reevaluation.md` 正在比较独立会话存储与轻量画板引用，以及 checkpoint 回放、权威终端状态同步和成熟 mux backend；新方案未选定、未实施，不改变现行无损和旧 live session 原绑定契约。
 
+2026-09-17 确认的运行时故障边界：Supervisor 崩溃或执行机器重启后，不要求恢复原进程或终端历史；这不取消画板保存，也不授权删除可读的已存历史。Supervisor 存活期间的 Host/Webview 重建、关闭再打开 VS Code 和连接中断仍需维持原会话，通信失败本身不证明 Supervisor 已崩溃。后续优先验证现有 Supervisor 内的权威终端状态和受控缓存，不预设另建 server 或强制 durable journal；需要落盘和正常 completed 归档时再明确存储协议。当前代码和正常 handoff 不变。
+
 ### Remote / Local 拓扑
 
 当前扩展是 `workspace` extension。远程工作区下，Extension Host 可以在远端，而 Webview 仍在本机或浏览器侧。任何依赖“前后端同机”的实现都需要先经过这个约束检查。

@@ -22,12 +22,14 @@ related_plans:
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/active/execution-input-responsiveness.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
-updated_at: 2026-09-16
+updated_at: 2026-09-17
 ---
 
 # Agent / Terminal 无损输入输出与恢复
 
 2026-09-16 架构审核补充：第 10.10、10.11、10.13–10.15 节的现行实现保持不变，但 checkpoint 长期拒绝后的全后缀内存/传输，以及 completed 恢复数据内联画板，已分别登记为高优先级架构重评 F-04/F-05。候选与 tmux、VS Code、WezTerm 对照见 `docs/design-docs/runtime-persistence-storage-reevaluation.md`。本文“已选定”表示当前仍适用的方案，不代表上述容量/归档边界已被认可为长期最终架构；新方案保持“比较中”，本轮未放宽无损保证。
+
+2026-09-17 产品边界补充：用户确认 Supervisor 崩溃或机器重启后不要求恢复原进程，也可以不恢复终端历史；不能据此放弃 Supervisor 存活时的 Host/Webview 重建、暂时断连或正常 completed handoff。本文 journal、双代与磁盘恢复仍描述当前实现，不再作为新候选必须照搬的灾备需求；重评优先验证 server 生命周期内的权威状态与受控缓存，磁盘存储/归档按实际容量和正常历史需求决定。本轮只更新设计边界，未删除现有保护或历史。
 
 ## 1. 背景
 

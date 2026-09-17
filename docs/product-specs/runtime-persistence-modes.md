@@ -27,7 +27,7 @@
 5. 用户重新打开 VSCode 后：
    - 若节点处于 `live-runtime` 模式且带有可附着的持久化会话身份，系统先显示 `重连中`。
    - 若之前的真实进程仍活着，节点会重新附着到原会话，并切回真实生命周期状态。
-   - 若真实进程不再存在、已自然结束、监督器不可达，或重新附着失败，节点会进入 `历史恢复`，明确告诉用户这是恢复的历史状态，而不是仍在运行的同一进程。
+   - 若真实进程不再存在、已自然结束、监督器不可达，或重新附着失败，有可用历史时进入 `历史恢复`，否则明确表达运行时不可用；不能伪装成同一进程仍在运行。Supervisor 崩溃或机器重启后不要求一定能恢复历史。
 6. 当扩展升级且旧版 Supervisor 仍持有 live 会话时：
    - 旧会话继续由旧 Supervisor 承载，允许降级 output、input、resize、stop 与 delete；界面明确提示旧协议不能证明完整终端历史。
    - 升级后新建的 Agent / Terminal 立即由当前协议代 Supervisor 承载，不等待旧会话结束。
@@ -50,6 +50,7 @@
 
 ## 5. 不在范围内
 
+- Supervisor 自身崩溃或机器重启（含断电）后的原进程恢复与终端历史恢复，2026-09-17 由用户确认不作保证；不要求为此新增灾备服务
 - 多机同步、跨设备漫游或云端托管运行时
 - 无限制地长期保留后台进程而没有任何用户可见治理能力
 - 第一版就覆盖 Dev Container / Codespaces 场景
@@ -92,11 +93,13 @@
 
 ## 7. 验收标准
 
+以下 `live-runtime` 进程连续性与输出重连验收以 Supervisor 仍存活为前提；Supervisor 自身崩溃或执行机器重启后，可以没有可恢复的进程和终端历史，此时只需准确表达原运行时已丢失，不能伪装成原 live 会话。这个例外不改变画板节点、布局及用户文档的保存语义，也不要求主动清除已可读的历史。`strong` backend 不额外承诺机器/监督器故障后的恢复，`snapshot-only` 的现行保证不在本轮调整。
+
 - 在 `snapshot-only` 与 `live-runtime` 两档模式下，关闭画布、切换 surface 或 Webview reload 都不会无声终止当前 `Agent` / `Terminal` 会话。
 - 当系统选中 `systemd-user` backend 时，关闭 VSCode 或断开 Remote SSH 后，真实 `Agent` / `Terminal` 进程仍可继续存在；重新打开 VSCode 后，系统会优先重新附着到原会话，而不是只恢复一个静态快照。
 - 在 Linux 本地或 Remote SSH workspace 中，如果 `systemd-user` backend 不可用，系统会自动降级到 `legacy-detached`，并把 guarantee 标成 `best-effort`，而不是继续把它伪装成强保证。
 - 当运行时持久化开关开启且节点带有持久化 live 会话身份时，VSCode 重开后节点先显示 `重连中`；只有在重新附着成功后，才恢复为 `运行中`、`等待输入`、`live` 等真实生命周期状态。
-- 当系统无法重新附着到 live runtime 时，`Terminal` 会明确进入 `历史恢复`；`Agent` 则会先检查是否已持有 provider 原生显式 session identity，若有则自动降级到 provider resume，否则才进入 `历史恢复` 或 `interrupted`。
+- 当系统无法重新附着到 live runtime 时，有可用历史的 `Terminal` 会明确进入 `历史恢复`；`Agent` 的 provider 原生显式 session resume 仍遵循既有策略。Supervisor 崩溃或机器重启后不要求一定存在历史或触发 provider 恢复；任何新启动进程都不能伪装成原进程延续。
 - 当运行时持久化开关关闭时，关闭 VSCode 后系统会在刷盘最后状态后结束现有 `Agent` / `Terminal` 进程；重新打开时，系统至少恢复节点、标题、位置、尺寸、最后状态、最近输出摘要和恢复入口。
 - 当系统恢复的是历史状态而不是 live 进程时，用户能明确识别这一点，系统不会把它伪装成“仍在运行的同一会话”。
 - 当节点处于 `live-runtime` 时，系统会把当前 runtime backend 与 guarantee 写入日志与诊断信息；节点默认 UI 只保留与当前操作直接相关的状态，不直接暴露 `systemd-user / best-effort` 这类调试字段。
@@ -121,13 +124,14 @@
 
 后续设计必须分别说明原进程延续、有限终端屏幕/scrollback、未消费输出、completed 可读历史和 provider resume 的保证。tmux / WezTerm 的 daemon 保活、tmux-resurrect 的命令重建、VS Code 的 reconnect/revive 可作为比较输入，但重启命令不等于 Agent 原执行继续存在，有限 buffer 也不自动替代本产品要求的完整恢复材料。
 
-待确认的产品决策包括历史保留范围/期限、磁盘配额与满盘行为、首次终端可交互的时间预算，以及明确删除历史的用户操作。在这些决策明确前，不得为了缓存上限丢未消费内容，或用 recent tail 冒充完整恢复；本轮也不新增机器/Supervisor 重启后恢复原进程的承诺。
+待确认的产品决策包括正常 completed 的历史保留范围/期限、必要时的磁盘配额与满盘行为、首次终端可交互的时间预算，以及明确删除历史的用户操作。2026-09-17 用户确认 Supervisor 自身崩溃或机器重启后不要求恢复进程或终端历史；因此持久 journal、跨重启 checkpoint 和独立归档不是天然必需，内存终端模型加受控缓存/按需临时存储可以进入比较，具体实现未选定。该例外不适用于 Supervisor 存活时的 Host/Webview 重建或连接断开，也不授权无条件覆盖未消费内容；连接失败本身不能证明 Supervisor 已崩溃。
 
 建议后续验收同时覆盖以下结果，具体预算与实现尚未确定，不能标记为已通过：
 
 - checkpoint 长期不能推进时，增加历史不再要求所有历史常驻每层内存或进入一个恢复消息；同时测总恢复耗时，不能只把大消息拆小就宣称恢复性能收口。
-- 已结束会话的历史可在原 Supervisor 退役后读取；移动节点、修改 Note 等普通画板操作不重写这些历史。
-- 归档、画板引用提交、删除/回收及旧内联迁移遇到失败时，至少一个完整来源继续可读；多窗口或多 root 的有效引用不能被提前清除。
+- 正常 completed 保留规则明确后，历史读取独立于画板保存；移动节点、修改 Note 等普通画板操作不重写历史。用户此次没有取消当前正常 handoff 的行为；Supervisor 崩溃或机器重启后的历史不在保证范围内。
+- 若采用独立归档，在 Supervisor 仍存活时发生写入/引用错误或 Host 在 handoff 期间退出，至少一个完整来源继续可读；多窗口或多 root 的有效引用不能被提前清除。Supervisor 崩溃/断电后不再要求通过该恢复验收。
 - Agent / Terminal 在持续输出、客户端离线重建和多窗口读取期间继续满足原进程身份、内容顺序与输入公平性；任何保证变化先明确产品边界。
+- Supervisor 崩溃、机器重启或断电后，节点明确显示运行时丢失/中断，不把重新启动的进程或残留文件显示成原 live session。
 
 候选比较、可重跑基线与建议矩阵见 `docs/design-docs/runtime-persistence-storage-reevaluation.md`，原始上游证据见 `docs/references/terminal-persistence-open-source-survey.md`。运行时改造另行规划。

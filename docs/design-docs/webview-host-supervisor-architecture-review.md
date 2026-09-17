@@ -19,7 +19,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
-updated_at: 2026-09-16
+updated_at: 2026-09-17
 ---
 
 # Webview、Host 与 Runtime Supervisor 架构审核
@@ -54,7 +54,7 @@ updated_at: 2026-09-16
 
 F-04 的同一最终 stream 放入最小内联画板后，调用实际 Host writer 写入 `20509666` 字节；仅修改位置再次写入仍是 `20509666` 字节。这个样本只测内联体积和 writer，不是完整 handoff/多 root 端到端测试。`workspaceState`、普通 bootstrap 和 `host/stateUpdated` 已排除大 payload，不应误报它们同样全量发送；问题落在完整画板的加载/保存以及显式终端恢复路径。即使 live compact 改善，大量 completed 会话仍会扩大该成本。
 
-建议：重新评估 completed 是否应只是会话存储中的终态，画板保存稳定引用与摘要。保留“归档校验及引用提交成功之前不删除旧来源”的不变量，明确原 Supervisor 退役后如何读取、旧内联迁移、多窗口引用与 GC。tmux 的 dead pane、tmux-resurrect 的重建和 VS Code 的有限 buffer revive 均不能直接替代完整归档协议。此项与 F-04 联合设计，但不要求接受某种数据库或永久常驻归档服务。
+建议：重新评估 completed 是否应只是会话状态域中的终态，画板保存引用与摘要。若选择保留正常退役后的历史，仍要验证 handoff、旧内联迁移、读取与 GC；当前 handoff 未改，不能提前删除旧来源。2026-09-17 用户确认 Supervisor 崩溃或机器重启后可以不恢复进程及终端历史，因此持久归档不再是所有候选的前提，也不要求灾备服务；正常结束后的保留期限/形式仍待设计。F-05 约束历史与画板写入的耦合，不强制某种数据库、永久服务或磁盘格式。
 
 ### F-01 高：Supervisor hello 没有响应超时，5 秒 ready 上限无法覆盖已连接但无响应的 socket
 
@@ -142,7 +142,7 @@ F-04/F-05 的受控证据及限制见重评设计第 3 节，可通过诊断脚�
 
 本审核不直接改动运行时代码。F-01 应作为 live-runtime 连接可靠性修复单独设计和实现；F-02 应作为共享层依赖收口任务处理。两项都需要在实现时补充针对性验证，完成前不要把“Supervisor 已能启动”表述成“Supervisor 连接在所有异常情况下都有界”。
 
-F-04/F-05 已进入 `docs/design-docs/runtime-persistence-storage-reevaluation.md` 的首轮比较：分别评估会话存储/画板职责、checkpoint 回放/权威状态同步/成熟 mux backend。用户确认问题严重性不等于批准截断历史、降低 live 无损保证或选定 tmux。现行 lossless 设计第 10.10、10.11、10.13–10.15 节保留实现事实并标注待重评；具体协议、预算与迁移实现另开计划。建议验收矩阵见该重评设计第 8 节，覆盖持续 checkpoint 拒绝、恢复耗时、输入公平性、大 completed 画板保存、旧 owner 退役、归档/引用失败、GC、迁移和满盘，均不是已执行的新架构验收。
+F-04/F-05 已进入 `docs/design-docs/runtime-persistence-storage-reevaluation.md` 的比较：分别评估会话状态/画板职责、checkpoint 回放/权威状态同步/成熟 mux backend。2026-09-17 用户确认 Supervisor 崩溃或机器重启后不要求恢复进程及终端历史；因此优先验证该文第 6.3 节的 server 生命周期模型，不预设 durable journal 或独立归档为必需。此次例外不授权丢弃 Supervisor 存活期间的未消费内容，也不取消正常结束/有序退役行为；暂时断连不能直接认定为进程崩溃。现行 lossless 设计继续保留实现事实，协议、预算、正常历史策略与迁移另行设计。第 8 节矩阵已区分 Host 退出与 Supervisor 故障，后者只要求不伪装原 live 会话，不验收历史恢复；候选均未实施或验证。
 
 F-03 的产品方向已由用户确认；具体设计与运行时改造另开 ExecPlan，覆盖单根和多根新建、稳定 root identity、Supervisor 发现与并发启动、backend 选择、旧 session 原绑定恢复及退役。现有设计第 6.8 节与产品规格已标出待修订边界；改造时再将新建归属正式收口为 root 语义，并保留旧 slot 恢复契约，不能把整份设计直接标成 root 稳定 runtime 已实现或已验证。
 

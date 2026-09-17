@@ -79,6 +79,8 @@ tmux 的 [man page](https://github.com/tmux/tmux/blob/e880cf63e0a9fe095d7c5d3137
 | scrollback 限制普遍存在 | 不丢未消费输出、保持终端语义、永久保存原始事件是三种保证，必须分别决定；不能以开源先例直接修改本产品承诺。 |
 | VS Code 也使用 workspace JSON | 存储介质不是核心判断，是否有容量边界以及布局是否耦合历史重写才是。 |
 | tmux-resurrect / VS Code revive 重新创建进程 | 恢复画面、重建命令、Agent provider resume 与原进程重连必须分别标识。 |
-| 保留 pane 不等于磁盘归档 | 本产品 completed 内容在 owner 退役后仍可读的需求，需要独立证明，不能只换成 mux backend 就宣称解决。 |
+| 保留 pane 不等于磁盘归档 | 若选择保留正常退役后的 completed 历史，仍需验证其存储/读取，不能只换 mux backend 就宣称解决；归档不是进程保活的必备机制。 |
+
+2026-09-17 产品边界更新：用户确认 Supervisor 崩溃或机器重启后可以不恢复进程及终端历史，因此本轮未建立上游 crash recovery 证据不再是采用候选的缺口。仍需核对正常运行期的重连、内容和容量，正常 completed 的保留形式/期限另行决定；源码核对日期和上游事实不变，具体结论见重评设计第 6.3 节。
 
 未执行上游 detach/attach、daemon crash、Windows、Remote SSH 或 Agent provider 测试，也未建立这些项目的性能排名。本文只提供可追溯的文档/源码事实；采用方案前仍需受控对照与真实平台验证。
