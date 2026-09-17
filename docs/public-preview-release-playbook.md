@@ -2,6 +2,17 @@
 
 本文用于收口当前公开 `Marketplace Preview` 版本的发布素材、发布前复核、安装/升级说明、验证记录、发布命令与回退口径；当前发布准备目标为 `0.25.0`，上一已发布版本为 `0.24.5`。本轮范围是“相对 `0.24.5` 有意回滚部分 Runtime Supervisor 恢复、checkpoint 和输入调度承诺，并在当前 release input 上重新实现 PTY title 展示”。它不是对外宣传页，而是 release-day 执行与复核手册。
 
+## 后续版本标准流程
+
+`0.25.0` 的记录保留在本文作为历史证据；下一次版本开始，以本节为准。发布准备分支必须同步版本、两个 CHANGELOG、Marketplace 文案和 `docs/release-contracts/vX.Y.Z.md`。契约列出发布范围、用户 release notes、已复核文档、已知限制和验证范围，全部都必须在发布前定稿。
+
+主扩展与 notifier CHANGELOG 只面向用户，描述功能、安装升级、回退与用户可见限制。不要写发布准备待办、内部 gate、候选或最终 ref、workflow run、VSIX SHA、渠道状态或“门禁已通过”；这些不是用户 release notes。完整命令为：
+
+    npm run release:preflight -- --version X.Y.Z
+    npm run release:verify -- --version X.Y.Z
+
+发布准备 PR 的 `Release Preflight / Verify release contract` 必须针对由最新 PR head 与基准分支生成的预合并结果通过，并作为 required status check。PR 合入后，在最终 `main` release commit 创建 `publish/vX.Y.Z`；workflow 会在 tag checkout 上再次运行 `release:verify`，通过前不会打包、创建 GitHub Release 或发布 Marketplace。工件 SHA、最终 ref、workflow run、渠道结果和 deferred 原因只写入 release manifest、GitHub Release assets 与 Release notes，不为“记录发布门禁通过”再修改同版本 CHANGELOG 或契约。
+
 ## 当前发布素材
 
 - Marketplace listing 正文：`extensions/vscode/dev-session-canvas/README.marketplace.md`（引用主扩展子包内 `images/marketplace/canvas-overview.png` + `images/marketplace/canvas-overview.mp4`）
@@ -91,7 +102,7 @@
 
 若来不及补截图，不阻塞当前公开 `Preview` 更新。
 
-## 发布前检查
+## v0.25.0 发布前检查（历史记录）
 
 以下步骤默认建立在一个前提上：当前版本对应的 feature 均已经先合入 `main`，发布物料也已经通过独立发布准备分支 review 并回到 `main`。真正执行 `publish` 和打 tag 时，应站在 `main` 上对应的最终发布 commit，而不是仍停留在未合并的发布准备分支 head。
 
@@ -189,7 +200,7 @@ Open VSX API 已分别确认主扩展与 notifier 均为 `version=0.24.2`、`ver
 
 ## 发布命令
 
-后续发布默认使用临时 `publish/vX.Y.Z` tag 固定发布输入，而不是在本地 shell 中把“当前 `HEAD`”临时认定为 release ref。前提仍然不变：发布准备 MR 必须已经 review 并合入 `main`，且 `publish/vX.Y.Z` 必须指向本次 release commit。
+后续发布默认使用临时 `publish/vX.Y.Z` tag 固定发布输入，而不是在本地 shell 中把“当前 `HEAD`”临时认定为 release ref。前提仍然不变：发布准备 MR 必须已经 review 并合入 `main`，且 `publish/vX.Y.Z` 必须指向本次 release commit。创建 tag 前，发布准备 PR 已通过 `release:verify`；tag workflow 会在相同 ref 上再次执行该命令。
 
 发布者先在最终 release commit 上创建并推送临时 tag；若当前 shell 已 checkout 到最终 release commit，可执行：
 
@@ -205,7 +216,10 @@ Open VSX API 已分别确认主扩展与 notifier 均为 `version=0.24.2`、`ver
 推送 `publish/v0.25.0` 会触发 `.github/workflows/publish-marketplace-release.yml`。该 workflow checkout 临时 tag 指向的 commit，先执行：
 
     npm ci
+    npm run release:verify -- --version X.Y.Z
     npm run release:publish-tag -- --trigger-tag publish/v0.25.0 --package-only
+
+历史 tag checkout 不包含 `release:verify` 时，workflow 只保留原有 immutable-artifact 补发路径；新版本缺少发布契约或完整 verify 不能走这个兼容分支。
 
 该 workflow 只响应 `publish/v*` tag push 与手动 `workflow_dispatch`；创建普通分支、普通 tag 或 release 分支不应再生成 skipped publish run。若 Actions 列表出现非 `publish/v*` 引起的 `Publish Marketplace Release` run，应先修正 workflow 触发条件，不要把 skipped run 当作真实发布动作。
 

@@ -32,6 +32,12 @@ try {
   assert.notEqual(versionMismatch.status, 0);
   assert.match(versionMismatch.stderr, /版本 1\.2\.3/u);
 
+  await rm(path.join(tempDir, 'docs', 'release-contracts', `v${version}.md`));
+  const missingContract = runRelease(['--trigger-tag', `publish/v${version}`, '--dry-run']);
+  assert.notEqual(missingContract.status, 0);
+  assert.match(missingContract.stderr, /缺少发布契约/u);
+  await writeFixture(tempDir, version);
+
   const packageOnly = runRelease([
     '--trigger-tag', `publish/v${version}`,
     '--dry-run',
@@ -294,6 +300,16 @@ async function writeFixture(root, fixtureVersion) {
       'publish:marketplaces': 'node fake-publish-marketplaces.js'
     }
   });
+  await writeJson(path.join(root, 'package-lock.json'), {
+    lockfileVersion: 3,
+    name: 'dev-session-canvas-workspace',
+    packages: {
+      '': {
+        name: 'dev-session-canvas-workspace',
+        version: fixtureVersion
+      }
+    }
+  });
   await writeJson(path.join(root, 'extensions', 'vscode', 'dev-session-canvas', 'package.json'), {
     name: 'dev-session-canvas',
     publisher: 'devsessioncanvas',
@@ -309,11 +325,55 @@ async function writeFixture(root, fixtureVersion) {
     `# Changelog\n\n## ${fixtureVersion}\n\n- fixture\n`,
     'utf8'
   );
+  await mkdir(path.join(root, 'docs', 'release-contracts'), { recursive: true });
+  await writeFile(
+    path.join(root, 'docs', 'release-contracts', `v${fixtureVersion}.md`),
+    `# v${fixtureVersion} 发布契约
+
+## 发布范围
+
+- fixture scope
+
+## 用户 release notes
+
+- fixture note
+
+## 文档清单
+
+- \`extensions/vscode/dev-session-canvas/README.marketplace.md\`
+- \`extensions/vscode/dev-session-canvas-notifier/README.marketplace.md\`
+- \`docs/public-preview-release-playbook.md\`
+- \`docs/notifier-preview-release-playbook.md\`
+- \`docs/support.md\`
+- \`docs/design-docs/public-marketplace-release-readiness.md\`
+
+## 已知限制
+
+- fixture limit
+
+## 验证范围
+
+- fixture validation
+`,
+    'utf8'
+  );
   await writeFile(
     path.join(root, 'extensions', 'vscode', 'dev-session-canvas-notifier', 'CHANGELOG.md'),
     `# Changelog\n\n## ${fixtureVersion}\n\n- fixture\n`,
     'utf8'
   );
+  for (const documentPath of [
+    'extensions/vscode/dev-session-canvas/README.marketplace.md',
+    'extensions/vscode/dev-session-canvas-notifier/README.marketplace.md',
+    'docs/public-preview-release-playbook.md',
+    'docs/notifier-preview-release-playbook.md',
+    'docs/support.md',
+    'docs/design-docs/public-marketplace-release-readiness.md'
+  ]) {
+    const filePath = path.join(root, documentPath);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, 'fixture documentation\n', 'utf8');
+  }
   await writeFile(path.join(root, 'fake-publish-marketplaces.js'), 'process.exit(0);\n', 'utf8');
 
   const binDir = path.join(root, 'bin');
