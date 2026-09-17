@@ -7835,6 +7835,9 @@ function createExecutionTerminalController(
         // A malformed authoritative payload must not fall back to a raw tail.
         return;
       }
+      if (pagedProjection.active && !detail.liveSession && !hasValidTerminalStream) {
+        return;
+      }
       if (pagedProjection.active && !detail.liveSession && hasValidTerminalStream) {
         pagedProjection.stop();
       }
@@ -8884,7 +8887,7 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         const actualLines: string[] = [];
         for (let index = 0; index < entry.terminal.buffer.active.length; index += 1) {
           const line = entry.terminal.buffer.active.getLine(index)?.translateToString(true) ?? '';
-          if (line.length > 0) {
+          if (line.length > 0 && (action.linePrefix === undefined || line.startsWith(action.linePrefix))) {
             actualLines.push(line);
           }
         }

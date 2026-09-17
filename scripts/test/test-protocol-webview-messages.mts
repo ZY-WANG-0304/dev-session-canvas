@@ -1679,4 +1679,9 @@ assert.equal(
   'xterm buffer 断言必须拒绝非字符串行。'
 );
 
+assert.equal(isWebviewDomAction({ kind: 'assertExecutionTerminalBuffer', nodeId: 'terminal',
+  expectedLines: ['ROW_1', 'ROW_2'], linePrefix: 'ROW_' }), true);
+assert.equal(isWebviewDomAction({ kind: 'assertExecutionTerminalBuffer', nodeId: 'terminal',
+  expectedLines: ['ROW_1'], linePrefix: 1 }), false);
+
 console.log('protocol webview message tests passed');

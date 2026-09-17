@@ -21,7 +21,7 @@ updated_at: 2026-09-17
 
 ## 问题与取舍
 
-这是 F-04 第三个增量。Supervisor 有界缓存已落地，但 Host 完整 suffix 和首次恢复单消息仍随历史增长。本次选择 journal 消费驱动读取，不修改 checkpoint 的证明，不引入另一台 server，也不把分页等同于 tmux 式权威屏幕同步。总回放时间、completed 内联 F-05、root/runtime 归属与进程总内存仍在后续范围。
+这是 F-04 第三个增量。Supervisor 有界缓存已落地，但 Host 完整 suffix 和首次恢复单消息仍随历史增长。本次选择 journal 消费驱动读取，不修改 checkpoint 的证明，不引入另一台 server，也不把分页等同于 tmux 式权威屏幕同步。总回放时间、root/runtime 归属与进程总内存仍在后续范围。其后 `runtime-completed-no-history.md` 已取消 completed 内联 F-05；本文终态描述同步为当前轻量保存规则，原阶段验证保留为历史证据。
 
 ## 正式方案
 
@@ -47,9 +47,9 @@ Webview 应用 checkpoint 后串行请求页面，一次最多一个读取/写�
 
 ### 正常终态与兼容
 
-`applyCompletedRuntimeSupervisorSnapshot()` 继续先完整保存 root-local/窗口 metadata，再释放 Supervisor。Supervisor 构建终态时选择所有仍活动读者中最早的保留 checkpoint，保证它们的未消费范围包含在同一完整后缀。已开读者可从同 session/authority 的 completed `terminalStream` 分页读取余下内容，追到 final revision 才显示退出。保存失败不删 journal。后续 F-05 再调整历史所有权和回收，本轮不建临时归档文件。
+`applyCompletedRuntimeSupervisorSnapshot()` 保存轻量 root-local/窗口终态，不再内联正文，再释放 Supervisor。Supervisor 构建终态时仍选择活动读者中最早的保留 checkpoint，保证未消费范围包含在完整后缀。relay 仅为已确认的当前读者临时持有同 session/authority 的终态，追到 final revision 后显示退出并关闭读者；关闭、换代或 Host dispose 也释放。保存失败不删 journal，新页面不复用临时来源。这个临时完整对象仍是 F-04 的内存风险，不是独立归档。
 
-仅分配读取 ID 不证明 Webview 收到描述符。只有首个合法 read 请求证明 checkpoint 已应用，Host 才将正常终态通知转换为“继续分页”。若会话更早结束，仍发送完整终态；Webview 取消尚未确立的分页投影再应用完整历史。异步 open 的旧代际响应不能遗留读者，正常结束也不能关闭仍在续读的已确认读者。
+仅分配读取 ID 不证明 Webview 收到描述符。只有首个合法 read 请求证明 checkpoint 已应用，Host 才将正常终态通知转换为“继续分页”。若会话更早结束，仅向同一 Webview 生命周期发送一次完整终态，取消尚未确立的分页投影再应用。保存开始后不新建旧会话读者，异步 open 及最终快照均检查生命周期；旧响应不能进入重开的页面，也不能关闭仍在续读的已确认读者。
 
 旧 capability 保持原 checkpoint/完整 stream 路径，旧 live 会话不改地址。Supervisor 崩溃/重启不保证历史，正常存活不得截断未消费内容。`snapshot-only` 不变。
 
@@ -57,7 +57,9 @@ Webview 应用 checkpoint 后串行请求页面，一次最多一个读取/写�
 
 协议/消费测试覆盖页顺序、错误身份、双消费者、取消、终态。真实 Agent/Terminal 超缓存并拒绝 checkpoint，页拼接等于完整快照；慢写入最多一页 body，恢复后仍可输入/resize。Linux VS Code 与旧 Supervisor smoke 结果回写 ExecPlan。
 
-预算只约束 live 事件缓存与页，不涵盖 Supervisor 写队列、Host 启发式 tracker、完整 completed、旧协议、段索引和全量 open/compact 扫描，也不是 RSS。总回放仍与 checkpoint 后历史成正比，不宣称 F-04/F-05 已解决。
+预算只约束 live 事件缓存与页，不涵盖 Supervisor 写队列、Host 启发式 tracker、完整终态及临时聚合、旧协议、段索引和全量 open/compact 扫描，也不是 RSS。总回放仍与 checkpoint 后历史成正比，不宣称 F-04 已解决；F-05 的取消历史决策及本批验证见 `runtime-completed-no-history.md`。
+
+以下是分页增量当时的历史证据，completed 内联数值不代表当前 Host 保存行为。
 
 2026-09-17 阶段证据：同一容量负载累计 output 为 6553613 / 13107213 / 19660813 字节时，分页 live snapshot 为 425 / 427 / 427 字节，读取描述符为 431 / 432 / 432 字节，每页事件数组最大 253669 字节；全部事件分别通过 27 / 54 / 80 页读取。这个小描述符来自空 genesis，不是所有 checkpoint 都小于 1 KiB 的保证。正常 completed 内联仍为 20509666 字节。真实 Agent/Terminal 各 18000 行协议测试、慢读者压缩保护、Host 断线重试方法、Linux VS Code 1.117.0 的实际渲染/Host 重建/正常退出/旧 generation 兼容，以及 4 个 Playwright 终端回归通过；未测全平台、长期压力、端到端 RSS 或首次交互延迟上限。
 

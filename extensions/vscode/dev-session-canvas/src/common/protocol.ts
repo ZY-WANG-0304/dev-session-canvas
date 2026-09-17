@@ -242,6 +242,8 @@ export interface ExecutionSessionMetadata {
   lastRows?: number;
   serializedTerminalState?: SerializedTerminalState;
   terminalStream?: TerminalStreamAttachPayload;
+  /** The runtime ended; reopening keeps the node, not terminal content or an automatic launch. */
+  terminalHistoryDiscarded?: true;
   attentionPending: boolean;
 }
 
@@ -632,6 +634,7 @@ export type WebviewDomAction =
       kind: 'assertExecutionTerminalBuffer';
       nodeId: string;
       expectedLines: string[];
+      linePrefix?: string;
       delayMs?: number;
     }
   | {
@@ -2864,7 +2867,8 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
   }
 
   if (value.kind === 'assertExecutionTerminalBuffer') {
-    return Array.isArray(value.expectedLines) && value.expectedLines.every((line) => typeof line === 'string');
+    return Array.isArray(value.expectedLines) && value.expectedLines.every((line) => typeof line === 'string') &&
+      (value.linePrefix === undefined || typeof value.linePrefix === 'string');
   }
 
   if (value.kind === 'dropExecutionResources') {

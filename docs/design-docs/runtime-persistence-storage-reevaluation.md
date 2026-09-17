@@ -18,6 +18,7 @@ related_plans:
   - docs/exec-plans/completed/runtime-checkpoint-only-refresh.md
   - docs/exec-plans/completed/runtime-journal-bounded-cache.md
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
+  - docs/exec-plans/completed/runtime-completed-no-history.md
 updated_at: 2026-09-17
 ---
 
@@ -27,11 +28,11 @@ updated_at: 2026-09-17
 
 2026-09-16，用户确认 Runtime Persistence 审核中的问题 2（完整日志后缀在内存和恢复消息中增长）与问题 3（completed 会话恢复数据内联画板）是当前更严重的问题，需要重新评估架构决策。本次将它们登记为 `docs/design-docs/webview-host-supervisor-architecture-review.md` 的 F-04、F-05，作为高优先级架构重评，而不是普通画板写文件优化。
 
-用户确认的是问题和优先级，不是已经选定独立数据库、存储协议或迁移方案。本文给出已核实事实、候选比较及推荐验证方向；替代方案尚未实施或验证。现行 `docs/design-docs/agent-terminal-lossless-io-and-recovery.md` 第 10.10、10.11、10.13–10.15 节继续描述当前实现，但其中的全后缀缓存/传输及 completed 内联 handoff 不再被视为已经收口的长期架构。
+用户最初确认的是问题和优先级，并未选定独立数据库或整体替代模型。本文保留审核基线与候选比较，第 9 节记录已实施增量；`agent-terminal-lossless-io-and-recovery.md` 描述当前实现。整体终端状态模型仍在比较，但缓存、分页及取消 completed 内联已分阶段实施，不再把“尚未选定整体路线”等同于没有运行时代码变化。
 
 代码基线是 `origin/main@4d7f07e55461f414c570365136cc06ece6f18c64`，位于审核分支 `architecture-review-webview-host-supervisor`。本轮不调整异常断连恢复策略、不修普通画板并发保存、不实施 F-03 的 root 稳定 Supervisor 归属，也不修改 snapshot-only/local PTY 的产品保证。
 
-2026-09-17，用户进一步确认：Supervisor 自身崩溃或机器重启后，不要求恢复原进程，也可以不恢复终端历史；断电导致的该类丢失同样不要求恢复。这是产品保证的收窄，不是选定了纯内存实现，也不是要求主动删除已保存历史。第 6.3 节据此重新评估方案复杂度，当前 journal 与 handoff 代码仍保持不变。
+2026-09-17，用户确认 Supervisor 自身崩溃或机器重启后不要求恢复进程和终端历史，随后又确认正常结束的节点重开也无需进程或历史。后一项已选定为 `runtime-completed-no-history.md`：不再内联/归档 completed 正文，只保存轻量终态，当前视图仍收齐尾部。第 6.3 节的 server 生命周期方向不要求新增 server；运行期 journal 格式与保护暂不变。第 7 节独立归档契约保留为未采用候选，不是当前实施要求。
 
 ## 2. 已核实的审核基线
 
@@ -91,10 +92,11 @@ authority 表示会话的唯一终端事件权威，revision 表示事件顺序�
 
 | 生命周期边界 | 当前确认的保证 |
 | --- | --- |
-| Webview reload/隐藏、Host reload、关闭再打开 VS Code，Supervisor 仍存活 | 继续原 PTY，恢复约定范围内的终端内容并无损接到 live；不能把 Host 重建当作允许丢历史的故障。 |
+| Webview reload/隐藏、Host reload、关闭再打开 VS Code，Supervisor 与 PTY 仍存活 | 继续原 PTY，恢复约定范围内的终端内容并无损接到 live；不能把 Host 重建当作允许丢历史的故障。 |
 | Remote SSH 或本地通信暂时中断，Supervisor 仍存活 | 不因连接消失而放弃原运行时。单次 RPC 失败或 socket 断开不能证明 Supervisor 已崩溃。 |
 | Supervisor 自身崩溃、执行机器重启或断电 | 不要求恢复原进程，也不要求恢复终端历史；界面不能把新进程或残留元数据伪装成原 live 会话。 |
-| 会话正常结束、正常升级与有序退役 | 用户此次未取消这些路径的历史行为；当前 handoff 保留，后续 completed 保留期限/形式仍需设计，不能借崩溃例外主动丢弃。 |
+| 会话正常结束、用户停止或退出错误 | 保存轻量节点和退出状态，不保留重开历史、不自动 start/resume；仅当前读者临时收齐尾部。等待输入但 PTY 存活不是结束。 |
+| 正常升级与有序退役 | 旧 live 继续原 Supervisor，不能改写地址冒充迁移；其会话真正结束后再按轻量终态规则退役。 |
 
 该例外只涉及运行时进程与终端历史，不是取消画板节点、布局和用户文档的既有保存语义。`strong` backend 也不意味着必须实现 Supervisor/机器故障后的灾备；provider 显式 resume 若可用仍是独立能力，不等于原进程恢复。
 
@@ -124,6 +126,7 @@ authority 表示会话的唯一终端事件权威，revision 表示事件顺序�
 | A：保持现有模型，提高 checkpoint 资格覆盖、调整阈值或刷新间隔 | 可降低部分正常会话成本，但 checkpoint 持续拒绝时仍是完整后缀；延长周期只减少频率，不限制单次大小 | 不改变 completed 大对象进入画板 | 不能作为两个问题的主解决方案；codec 改善可以是独立的增量优化。提高 256 KiB 门槛还会增加验证成本。 |
 | B：独立会话存储，live/completed 共用存储身份，Host/Webview 按需分批读取，画板只保存引用与摘要 | 把历史与内存缓存、单次消息解耦；慢消费者可按存储游标追赶 | completed 只提交最终版本和归档状态，不搬入画板 JSON | 当正常 completed 保留或运行期容量需要落盘时评估；不再预设为所有候选必需。需要解决读写切点、引用提交和 GC，不能只新增一个 history 文件夹。 |
 | C：只把 completed stream 移到单独文件，其他链路不变 | live 完整后缀、周期刷新、重连大消息仍存在 | 能减少画板重写，但若归档仍是一次性大 JSON，读取仍全量 | 可以作为有明确退出条件的中间步骤，不能宣称完成整个重评目标。仍需可靠引用与迁移。 |
+| D：取消 completed 重开历史，只持久化节点与退出状态 | 仍需处理当前读者的尾部与临时终态成本，不解决全部 F-04 | 不再有正文归档及其画板重写 | 2026-09-17 用户明确选择，已实施；不能顺势裁剪仍运行会话或当前页未消费输出。 |
 
 B 的存储介质与架构职责是两个不同决策。复用现有 immutable segment/checkpoint + manifest，可减少格式迁移，但索引、跨文件提交和 GC 需要可靠协议；SQLite 可以帮助事务性索引，但引入 native/打包/跨平台与大对象读取约束，整块 BLOB 或全量 SELECT 同样会复制历史。两者均未选定。也不预设新增一个永久运行的归档服务。
 
@@ -143,13 +146,13 @@ B 的存储介质与架构职责是两个不同决策。复用现有 immutable s
 
 建议优先验证“现有 Supervisor 持有 PTY 和权威终端模型，Host/Webview 只保留有限缓存并按需同步”的 server 生命周期模型。这里仍由现有 Supervisor 承担每个会话的唯一运行时 owner，不要求新增云服务、第二个后台 server 或灾备服务；具体 root 归属仍需兼容 F-03 的目标。终端模型本体可以在内存，正常运行期需要的状态、增量和 completed 内容仍必须有明确预算与读取能力；把无限 journal 从磁盘搬进内存不是简化方案。
 
-磁盘可作为慢消费者或大历史的临时存储，也可按正常 completed 的产品需求提供独立归档，但不再为了 Supervisor 崩溃/机器重启而强制每条输出 durable commit、崩溃日志重放或跨重启 checkpoint generation。这不意味着现有双代/校验可立即删除：运行期的一致性、attach 交接、损坏识别，以及已采用磁盘方案的事务保护仍须由所选模型证明。
+磁盘可作为慢消费者或运行期大历史的临时存储，但正常 completed 已明确不保留重开历史，不再为它设计独立归档。Supervisor 崩溃/机器重启也不要求每条输出 durable commit、崩溃日志重放或跨重启 checkpoint generation。这不意味着现有双代/校验可立即删除：运行期的一致性、attach 交接、损坏识别，以及已采用磁盘方案的事务保护仍须由所选模型证明。
 
-该方向更接近 tmux/WezTerm 的进程连续性模型，但尚未选定纯内存存储或有限 scrollback 数值。要验证 xterm 状态兼容、慢消费者和输出持续高于消费速度时的策略；不能以“不承诺崩溃恢复”为理由掩盖运行中 OOM、清空 backlog 或正常关闭时的数据丢失。正常 completed 的保存形式/保留期限也不能从这次故障例外推导出来。
+该方向更接近 tmux/WezTerm 的进程连续性模型，但尚未选定纯内存存储或有限 scrollback 数值。要验证 xterm 状态兼容、慢消费者和输出持续高于消费速度时的策略；不能以“不承诺崩溃恢复”为理由掩盖运行中 OOM 或清空当前页面 backlog。正常 completed 取消历史来自用户的额外明确决定，不是从故障例外推导。
 
-## 7. 独立会话存储的待验证契约
+## 7. 独立归档候选契约（当前不采用）
 
-本节只约束选择候选 B 时需要验证的行为，不是所有候选都必须实现的归档服务。具体终端恢复表示还要经 S1/S2/S3 比较；第 7.2 节的 checkpoint/journal 分页是其中一路，不排除第 6.3 节的 server 生命周期模型。
+本节保留用户确认无 completed 历史之前的 B 候选研究，不是当前的迁移或验收要求。当前选择 D，旧 completed 按 `runtime-completed-no-history.md` 清理可明确识别的内联正文，不先创建独立归档。只有将来产品重新明确要求保留正常结束历史，才重新评审本节引用、handoff 和 GC 契约；运行期分页/校验的适用规则仍可独立复用。
 
 ### 7.1 所有权与稳定引用
 
@@ -191,15 +194,19 @@ Supervisor、Host、Webview 各自需要每会话及全局缓存/在途预算；
 | 至少 10 个 Agent/Terminal，一处输入，其他会话高输出/慢消费/隐藏 | 输入、ACK、可见输出延迟与公平性达标；慢消费者按所选状态/增量读取协议追赶，采用磁盘时验证游标读取，不能把全部未消费历史重新塞回某一层内存。 |
 | attach 回放期间继续 output/resize/scrollback，跨 segment、跨 UTF-8/ANSI 分片，并并发 compact | 内容及终端语义一致，revision 无 gap/重复；read lease 有效，切到 live 的明确 revision 可验证，取消不会推进消费水位。 |
 | S1/S2 在相同终端状态下累积不同长度原始历史，随后重建客户端 | 分别记录画板首屏、终端可交互和完整追赶耗时，不能只报消息大小。S2 需证明恢复后接同一 future suffix 的终端语义等价；尚未消费的 live output 不因状态同步被静默覆盖。 |
-| 多个大 completed 会话，移动节点、修改 Note、保存另一个 root | 画板保存/克隆体积不再随历史 payload 总量线性增长；会话历史不被重写，首屏可先加载轻量图，终端按需恢复。 |
+| 多个大 completed 会话，移动节点、修改 Note、保存另一个 root | 画板保存/克隆体积不再随历史 payload 总量线性增长；终态没有正文，新页面不重放也不自动执行。当前读者可读完尾部后释放来源。 |
 | 若保留正常退役后的历史：Host 离线时结束，Supervisor 完成有序 handoff 后退役、generation 升级后重开 | 能通过持久化引用读取完整 final revision，无需保持旧 Supervisor 存活；不能用 recent tail 代替归档。 |
 | Supervisor 崩溃、机器重启或断电后重开 | 不要求原进程或终端历史恢复；允许明确显示运行时已丢失，具体状态/文案待设计，不把新启动进程伪装成原会话。此例外不要求删除已经可读的历史或重置画板。 |
 | 采用独立归档时，注入写入/引用错误或 Host 在 handoff 期间退出，Supervisor 仍存活 | 至少一个旧/新来源可读；重试幂等，不出现提前删除。Supervisor 崩溃和断电不再验收历史恢复，不能与 Host 退出混为一谈。 |
 | 单根/多根多窗口引用相同归档，删除一个节点、清空一个 root、读取中 GC | 不误删其他有效引用或读者仍需要的数据；全部引用满足回收条件后能实际回收，不能以永久不删作为唯一解法。 |
-| 旧内联 completed、旧 live Supervisor、v1/v2 journal 混合存在 | 旧来源继续可用；迁移可中断重试；旧协议容量边界如实标识，新旧 authority 不串线。 |
+| 旧内联 completed、旧 live Supervisor、v1/v2 journal 混合存在 | 可明确识别的旧 completed 变为轻量终态，模糊 serialized-only 记录保留兼容；旧 live 继续原绑定，旧协议容量边界如实标识，新旧 authority 不串线。 |
 | 采用磁盘/journal 时：磁盘满、权限失败、损坏 segment/checkpoint、长时间无法 compact | 遵循明确容量与 fail-closed 策略；不静默丢数据、不返回伪完整历史，不以无限增加内存规避写入失败。 |
 
 ## 9. 当前结论与下一阶段
+
+第四个增量已实施：`runtime-completed-no-history.md` 将 completed 正文从画板持久化中移除，当前读者由 relay 临时引用最终 stream，消费完成即关闭。实际 Host completion + writer fixture 的 Terminal/Agent 分别为 781/812 字节，小输出与约 3.8 MB stream 相同；容量诊断保留 20509666 字节旧最小内联基线，迁移后同类最小容器为 505 字节，仅改位置仍为 505 字节。这些不是完整生产画板/RSS 指标。F-05 的新 completed 内联问题收口，F-04 的完整终态响应、临时聚合、总回放、在途队列与全量扫描继续开放。
+
+以下前三个增量及其 completed 数值为当时的过程记录，不代表当前保存路径。后续先明确运行期预算与首次可交互时间，比较 S1/S2/S3，不再把正常 completed 归档作为下一阶段前提。F-03 的旧 live 原绑定与未来 root 稳定归属仍是独立改造。
 
 当前第三个增量 `docs/design-docs/runtime-paged-terminal-projection.md` 已把消费驱动分页贯穿新协议 live Host/Webview。Host 不保留完整后缀，Webview 写完一页才读下一页；慢读者保留、取消、原 endpoint 重连与正常终态续读已有定向证据。同一三阶段负载的 live snapshot 为 425 / 427 / 427 字节，页面事件数组最多 253669 字节，全部历史通过 27 / 54 / 80 页恢复。空 genesis 描述符只是当前样本，不代表任意 checkpoint 都很小。正常 completed 内联仍为 20509666 字节，旧协议、总回放、在途队列和全量扫描仍开放。以下前两阶段记录是过程证据，不再代表 Host 的当前 live 路径；整体终端状态模型与正常历史策略仍未最终选定。
 
@@ -207,6 +214,6 @@ Supervisor、Host、Webview 各自需要每会话及全局缓存/在途预算；
 
 第二个增量见 `docs/design-docs/runtime-journal-bounded-cache.md`：Supervisor 的长期事件缓存不再由 checkpoint 推进决定，按 1 MiB 编码字节及 2048 条限制，被淘汰部分从既有 journal 校验读取。同一三阶段样本的缓存始终 99 条，字节为 1046034 / 1046133 / 1046133；累计 output 仍增长到 19660813 字节，全部 1921 条事件可恢复。真实 Agent/Terminal PTY 和 Linux VS Code 的超缓存输出、重连及正常结束测试通过。它复用原存储而不增加归档或迁移；内部分页仍由 wire v1 聚合为完整响应，Host 后缀、恢复时间、pending/in-flight、open/compact 全量分配与 F-05 继续开放，不把缓存计量称为实际 RSS。
 
-F-04/F-05 仍需联合重评，因为两项成本发生在 Supervisor 正常运行期间。2026-09-17 的确认使首选验证方向收敛为第 6.3 节的 server 生命周期模型：不预设 durable journal/归档为前提，再根据正常保留和容量需要评估 B；B+S1 可作为兼容路线对照。候选 C 只能是阶段性措施，候选 A 不能代替职责分离。当前 `decision_status` 保持“比较中”，并未接受某个新文件格式、mux backend、纯内存实现或服务拓扑。
+F-04 继续重评。首选验证方向为第 6.3 节的 server 生命周期模型，不预设 durable journal/归档，运行期落盘需要由容量证明；B+S1 可作为存储兼容路线对照。C 不再是 completed 默认下一步，A 不能代替职责分离。本文整体 `decision_status` 保持“比较中”，D 的局部已选定决策见独立设计，并未接受某个新文件格式、mux backend、纯内存实现或服务拓扑。
 
-下一阶段先明确运行期终端状态、未消费事件和正常 completed 历史的边界，以相同拒绝样本验证最小模型与 B+S1 的恢复正确性、交互时间和资源预算，并核对 S3 的能力矩阵。只有确实需要落盘/归档时再确定提交、GC、迁移和事务索引需求；Supervisor 崩溃/机器重启后的历史恢复不再作为门槛。重评不要求等待 F-03 才能开始，但身份与迁移必须兼容其已确认方向。未通过验证前，不把当前正式设计整份标为废弃，也不声称新模型已实现。
+下一阶段以相同拒绝样本验证运行期状态、未消费事件及最小模型的恢复正确性、交互时间和资源预算，并核对 S3 能力矩阵。只有确实需要运行期落盘时再确定相应提交/回收协议；不重新引入已取消的 completed 归档或故障恢复门槛。重评不必等待 F-03，但身份与迁移必须兼容其方向。不把部分优化当作整体终端模型替换完成。

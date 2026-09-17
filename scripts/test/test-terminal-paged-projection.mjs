@@ -73,18 +73,27 @@ try {
   writes.shift().done();
   assert.deepEqual(exits, ['ended']);
   assert.equal(requests.length, 3, 'caught-up reader must not poll');
-  projection.available('session', 'authority', 6);
-  projection.accept('reader', requests[3].requestId, undefined);
+  assert.equal(closes.length, 1, 'final consumption must release the transient completed source');
+  projection.start({ ...descriptor, readId: 'retry-reader', headRevision: 5 });
+  writes.shift().done();
+  projection.accept('retry-reader', requests[3].requestId, page(0, [event(1), event(2), event(3), event(4), event(5)], 5));
+  // The response identity must match the newly opened reader.
   await new Promise((resolve) => setTimeout(resolve, 300));
-  assert.equal(requests[4].afterRevision, 5, 'failed page must retry the same applied position');
-  projection.accept('reader', requests[4].requestId, page(5, [event(6)], 6));
+  projection.accept('retry-reader', requests[4].requestId, { ...page(0,
+    [event(1), event(2), event(3), event(4), event(5)], 5), readId: 'retry-reader' });
+  writes.shift().done();
+  projection.available('session', 'authority', 6);
+  projection.accept('retry-reader', requests[5].requestId, undefined);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(requests[6].afterRevision, 5, 'failed page must retry the same applied position');
+  projection.accept('retry-reader', requests[6].requestId, { ...page(5, [event(6)], 6), readId: 'retry-reader' });
   const stale = writes.shift();
   projection.start({ ...descriptor, readId: 'replacement' });
   assert.equal(stale.current(), false);
   stale.done();
-  assert.equal(requests.length, 5, 'cancelled write must not acknowledge');
+  assert.equal(requests.length, 7, 'cancelled write must not acknowledge');
   projection.stop();
-  assert.equal(closes.length, 2);
+  assert.equal(closes.length, 3);
 
   const relay = new RuntimeTerminalReadRelay();
   let opens = 0;
@@ -103,19 +112,22 @@ try {
   await relay.open('editor:terminal:n', client, 'session', 'authority', 'editor');
   assert.equal(opens, 1);
   const params = { sessionId: 'session', authorityId: 'authority', readId: 'reader', afterRevision: 0 };
-  const firstPage = await relay.read('editor:terminal:n', params, () => undefined);
+  const firstPage = await relay.read('editor:terminal:n', params);
   assert.equal(relay.has('editor:terminal:n', 'session'), true, 'the first request proves checkpoint consumption');
   assert.equal(firstPage.revision, 2);
-  await assert.rejects(relay.read('editor:terminal:n', { ...params, afterRevision: 1 }, () => undefined));
-  await assert.rejects(relay.read('panel:terminal:n', params, () => undefined));
+  await assert.rejects(relay.read('editor:terminal:n', { ...params, afterRevision: 1 }));
+  await assert.rejects(relay.read('panel:terminal:n', params));
   remoteFailure = true;
   const stream = { version: 1, ...descriptor, revision: 4, events: [1, 2, 3, 4].map((revision) => event(revision)) };
-  const completedPage = await relay.read('editor:terminal:n', { ...params, afterRevision: 2 }, () => stream);
+  relay.complete('editor:terminal:n', stream);
+  assert.equal(relay.getCompleted('editor:terminal:n').revision, 4);
+  const completedPage = await relay.read('editor:terminal:n', { ...params, afterRevision: 2 });
   assert.deepEqual(completedPage.events, [event(3), event(4)]);
   assert.equal(completedPage.headRevision, 4);
   relay.close('editor:terminal:n', 'wrong');
   assert.equal(relay.has('editor:terminal:n', 'session'), true);
   relay.closeMatching(() => true);
+  assert.equal(relay.getCompleted('editor:terminal:n'), undefined, 'closing a reader releases its history');
   assert.deepEqual(released, ['reader']);
   let finishOpen;
   const lateOpen = relay.open('editor:terminal:late', {
@@ -128,7 +140,7 @@ try {
   await verifyClientReconnectPolicy(modules.RuntimeSupervisorClient);
   await verifySupervisorRetention(directory);
   await verifyHostReconnect();
-  console.log('terminal paged projection: validation, one-page backpressure, cancellation, retry and completed handoff passed');
+  console.log('terminal paged projection: validation, backpressure, cancellation, retry and ephemeral completion passed');
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

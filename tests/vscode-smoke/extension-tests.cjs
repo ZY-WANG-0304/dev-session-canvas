@@ -189,6 +189,12 @@ async function runSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await clearHostMessages();
   await clearDiagnosticEvents();
+  if (smokeScenario === 'runtime-completed-no-history') {
+    const { terminalNode } = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
+    await verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(terminalNode.id);
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    return;
+  }
   if (smokeScenario === 'runtime-checkpoint-refresh') {
     await runRuntimeCheckpointRefreshSmoke();
     return;
@@ -207,11 +213,6 @@ async function runRuntimeCheckpointRefreshSmoke() {
   const { agentNode, terminalNode } = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
   const marker = 'DSC_CHECKPOINT_ONLY_REFRESH';
   const rowCount = 18000;
-  const hasCompleteEvictedHistory = (stream) => {
-    const text = readTerminalStreamProjectionText(stream);
-    return text.includes(marker) && text.length > 1024 * 1024 &&
-      (text.match(/DSC_CACHE_ROW_\d{5}_/gu) ?? []).length === rowCount;
-  };
   try {
     await waitForAgentLive(agentNode.id);
     const initial = await waitForTerminalLive(terminalNode.id);
@@ -283,13 +284,68 @@ async function runRuntimeCheckpointRefreshSmoke() {
       readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
     20000);
     await ensureTerminalStopped(terminalNode.id);
-    await waitForSnapshot((snapshot) =>
-      hasCompleteEvictedHistory(findNodeById(snapshot, terminalNode.id).metadata.terminal.terminalStream),
+    await ensureAgentStopped(agentNode.id);
+    await waitForWebviewProbe((probe) =>
+      readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
     20000);
+    const ended = await waitForSnapshot((snapshot) => [agentNode, terminalNode].every(node =>
+      findNodeById(snapshot, node.id).metadata[node.kind].terminalHistoryDiscarded === true), 20000);
+    const persisted = await flushPersistedStateSnapshot();
+    for (const node of [agentNode, terminalNode]) {
+      assertCompletedRuntimeWithoutHistory(findNodeById(ended, node.id).metadata[node.kind]);
+      const stored = persisted.state.nodes.find(candidate => candidate.id === node.id);
+      assertCompletedRuntimeWithoutHistory(stored.metadata[node.kind]);
+    }
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await clearHostMessages();
+    await simulateRuntimeReload();
+    await ensureEditorCanvasReady();
+    for (const node of [agentNode, terminalNode]) {
+      await requestExecutionSnapshot(node.kind, node.id, 'editor');
+      await waitForHostMessages(messages => messages.some(message => message.type === 'host/executionSnapshot' &&
+        message.payload.nodeId === node.id && message.payload.liveSession === false && message.payload.output === '' &&
+        !message.payload.terminalStream && !message.payload.terminalRead && !message.payload.serializedTerminalState), 20000);
+      assertCompletedRuntimeWithoutHistory(findNodeById(await getDebugSnapshot(), node.id).metadata[node.kind]);
+    }
+    const reopened = await captureWebviewProbe('editor', 2000);
+    assert.ok(!readProbeTerminalVisibleLines(reopened, terminalNode.id).join('\n').includes(marker));
+
+    // Old stream-backed completions migrate without reusing their pending launch or transcript.
+    const legacy = structuredClone((await getDebugSnapshot()).state);
+    for (const node of legacy.nodes.filter(node => node.id === agentNode.id || node.id === terminalNode.id)) {
+      const metadata = node.metadata[node.kind];
+      metadata.terminalHistoryDiscarded = undefined;
+      metadata.pendingLaunch = 'start';
+      metadata.recentOutput = 'OLD_COMPLETED_HISTORY';
+      node.summary = 'OLD_COMPLETED_HISTORY';
+      metadata.outputSequence = 1;
+      metadata.terminalStream = { version: 1, sessionId: `old-${node.id}`, authorityId: `old-${node.id}`, revision: 1,
+        checkpoint: { version: 1, sessionId: `old-${node.id}`, authorityId: `old-${node.id}`, revision: 0,
+          cols: 80, rows: 24, scrollback: 1000, createdAtMs: 1,
+          serializedState: { format: 'xterm-serialize-v1', data: '', outputSequence: 0 } },
+        events: [{ type: 'output', revision: 1, createdAtMs: 1, data: 'OLD_COMPLETED_HISTORY\r\n' }] };
+    }
+    await setPersistedState(legacy);
+    const migrated = await getDebugSnapshot();
+    for (const node of [agentNode, terminalNode]) {
+      const restored = findNodeById(migrated, node.id);
+      assertCompletedRuntimeWithoutHistory(restored.metadata[node.kind]);
+      assert.ok(!restored.summary.includes('OLD_COMPLETED_HISTORY'));
+    }
+    const migratedDisk = await flushPersistedStateSnapshot();
+    assert.ok(!JSON.stringify(migratedDisk.state).includes('OLD_COMPLETED_HISTORY'));
   } finally {
     await ensureAgentStopped(agentNode.id);
     await ensureTerminalStopped(terminalNode.id);
     await setRuntimePersistenceEnabled(false);
+  }
+}
+
+function assertCompletedRuntimeWithoutHistory(metadata) {
+  assert.strictEqual(metadata.terminalHistoryDiscarded, true);
+  assert.strictEqual(metadata.liveSession, false);
+  for (const key of ['terminalStream', 'serializedTerminalState', 'recentOutput', 'runtimeSessionId', 'pendingLaunch']) {
+    assert.strictEqual(metadata[key], undefined, `Completed runtime must not retain ${key}.`);
   }
 }
 
@@ -1277,7 +1333,7 @@ async function runTrustedSmoke() {
   let runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
   await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);
-  await verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(runtimePersistenceNodes.terminalNode.id);
+  await verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReconnectFallbackToResume(
     runtimePersistenceNodes.agentNode.id,
     runtimePersistenceNodes.terminalNode.id
@@ -10356,15 +10412,13 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
   }
 }
 
-async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminalNodeId) {
+async function verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(terminalNodeId) {
   const baselineSnapshot = await getDebugSnapshot();
   const terminalConfiguration = vscode.workspace.getConfiguration('terminal.integrated');
   const originalScrollback = terminalConfiguration.get('scrollback', 1000);
   const configuredScrollback = 100000;
   const lineCount = 90000;
   const markerPrefix = 'DSC_COMPLETED_STREAM';
-  const earliestMarker = `${markerPrefix}_00001_`;
-  const middleMarker = `${markerPrefix}_45000_`;
   const latestMarker = `${markerPrefix}_90000_`;
 
   await setRuntimePersistenceEnabled(true);
@@ -10428,31 +10482,29 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
       if (!node || node.metadata?.terminal?.liveSession || node.status !== 'closed') {
         return false;
       }
-      const terminalStream = node.metadata.terminal.terminalStream;
-      const streamText = readTerminalStreamProjectionText(terminalStream);
-      return Boolean(
-        terminalStream &&
-          node.metadata.terminal.serializedTerminalState === undefined &&
-          terminalStream.checkpoint.revision < terminalStream.revision &&
-          streamText.length > 5 * 1024 * 1024 &&
-          streamText.includes(earliestMarker) &&
-          streamText.includes(middleMarker) &&
-          streamText.includes(latestMarker)
-      );
+      return node.metadata.terminal.terminalHistoryDiscarded === true;
     }, 120000);
     const completedNode = findNodeById(snapshot, terminalNodeId);
-    const completedStreamText = readTerminalStreamProjectionText(
-      completedNode.metadata.terminal.terminalStream
-    );
-    assert.ok(
-      completedStreamText.length > 5 * 1024 * 1024,
-      'The fixture must exceed the validated checkpoint size limit and remain journal-backed.'
-    );
-    assert.strictEqual(
-      completedNode.metadata.terminal.serializedTerminalState,
-      undefined,
-      'An oversized unsafe head must not publish a misleading fresh serialized terminal state.'
-    );
+    assertCompletedRuntimeWithoutHistory(completedNode.metadata.terminal);
+    const expectedLines = Array.from({ length: lineCount }, (_, index) =>
+      `${markerPrefix}_${String(index + 1).padStart(5, '0')}_${'0'.repeat(32)}`);
+    assert.ok(Buffer.byteLength(expectedLines.join('\n')) > 5 * 1024 * 1024);
+    let bufferError;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        await performWebviewDomAction({ kind: 'assertExecutionTerminalBuffer', nodeId: terminalNodeId,
+          linePrefix: `${markerPrefix}_`, expectedLines }, 'editor', 30000);
+        bufferError = undefined;
+        break;
+      } catch (error) {
+        bufferError = error;
+        await sleep(1000);
+      }
+    }
+    if (bufferError) throw bufferError;
+    await performWebviewDomAction({ kind: 'scrollTerminalViewport', nodeId: terminalNodeId, lines: 1000000 });
+    await waitForWebviewProbe(probe =>
+      readProbeTerminalVisibleLines(probe, terminalNodeId).some(line => line.includes(latestMarker)), 30000);
     await waitForRuntimeSupervisorState(
       (runtimeState) =>
         !listRuntimeSupervisorSessions(runtimeState).some(
@@ -10461,19 +10513,15 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
       20000
     );
 
-    snapshot = await reloadPersistedState();
+    const persisted = await flushPersistedStateSnapshot();
+    assertCompletedRuntimeWithoutHistory(persisted.state.nodes.find(node => node.id === terminalNodeId).metadata.terminal);
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    snapshot = await simulateRuntimeReload();
+    await ensureEditorCanvasReady();
     const reloadedNode = findNodeById(snapshot, terminalNodeId);
     assert.strictEqual(reloadedNode.metadata.terminal.liveSession, false);
     assert.strictEqual(reloadedNode.status, 'closed');
-    assert.strictEqual(
-      reloadedNode.metadata.terminal.serializedTerminalState,
-      undefined,
-      'Reload must preserve the journal-backed projection without inventing a monolithic serialized state.'
-    );
-    assert.ok(
-      reloadedNode.metadata.terminal.terminalStream,
-      'Completed history must retain the trusted checkpoint plus its full journal suffix.'
-    );
+    assertCompletedRuntimeWithoutHistory(reloadedNode.metadata.terminal);
 
     await clearHostMessages();
     await requestExecutionSnapshot('terminal', terminalNodeId, 'editor');
@@ -10488,12 +10536,7 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
           ) {
             return false;
           }
-          const streamText = readTerminalStreamProjectionText(message.payload.terminalStream);
-          return (
-            streamText.includes(earliestMarker) &&
-            streamText.includes(middleMarker) &&
-            streamText.includes(latestMarker)
-          );
+          return message.payload.output === '' && !message.payload.terminalStream && !message.payload.serializedTerminalState;
         }),
       30000
     );
@@ -10502,12 +10545,9 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
         message.type === 'host/executionSnapshot' &&
         message.payload.kind === 'terminal' &&
         message.payload.nodeId === terminalNodeId &&
-        message.payload.liveSession === false &&
-        readTerminalStreamProjectionText(message.payload.terminalStream).includes(earliestMarker) &&
-        readTerminalStreamProjectionText(message.payload.terminalStream).includes(middleMarker) &&
-        readTerminalStreamProjectionText(message.payload.terminalStream).includes(latestMarker)
+        message.payload.liveSession === false && message.payload.output === '' && !message.payload.terminalStream
     );
-    assert.ok(completedSnapshot, 'Reloaded completed terminal must expose the full terminal stream projection.');
+    assert.ok(completedSnapshot, 'Reopened completed terminal must not restore its history.');
   } finally {
     await clearHostMessages();
     await setRuntimePersistenceEnabled(false);

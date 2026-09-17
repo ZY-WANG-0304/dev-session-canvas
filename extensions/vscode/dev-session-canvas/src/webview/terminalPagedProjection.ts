@@ -23,6 +23,7 @@ export class TerminalPagedProjection {
   private requestSequence = 0;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private completed = false;
+  private closed = false;
   private exitMessage: string | undefined;
 
   public constructor(private readonly callbacks: TerminalPagedProjectionCallbacks) {}
@@ -105,18 +106,19 @@ export class TerminalPagedProjection {
       clearTimeout(this.retryTimer);
       this.retryTimer = undefined;
     }
-    if (this.read) {
+    if (this.read && !this.closed) {
       this.callbacks.close(this.read);
     }
     this.read = undefined;
     this.requestId = undefined;
     this.busy = false;
     this.completed = false;
+    this.closed = false;
     this.exitMessage = undefined;
   }
 
   private pull(force = false): void {
-    if (!this.read || this.busy || this.retryTimer !== undefined || (!force && this.revision >= this.headRevision)) {
+    if (!this.read || this.closed || this.busy || this.retryTimer !== undefined || (!force && this.revision >= this.headRevision)) {
       return;
     }
     this.busy = true;
@@ -128,6 +130,10 @@ export class TerminalPagedProjection {
     if (this.completed && !this.busy && this.revision >= this.headRevision && this.exitMessage !== undefined) {
       const message = this.exitMessage;
       this.exitMessage = undefined;
+      if (this.read && !this.closed) {
+        this.closed = true;
+        this.callbacks.close(this.read);
+      }
       this.callbacks.exit(message);
     }
   }

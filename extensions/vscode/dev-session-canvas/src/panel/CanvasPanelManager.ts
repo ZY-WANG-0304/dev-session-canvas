@@ -287,6 +287,7 @@ import { getWebviewHtml, getWebviewHtmlSnapshotForTest as buildWebviewHtmlSnapsh
 import { openCanvasExternalLink } from './linkOpenMode';
 import { RuntimeSupervisorClient } from './runtimeSupervisorClient';
 import { RuntimeTerminalReadRelay } from './runtimeTerminalReadRelay';
+import { normalizeCompletedRuntimeHistory } from '../common/completedRuntimeHistory';
 import {
   CanvasTemplateStore,
   type CanvasStoredTemplate,
@@ -10141,7 +10142,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       );
       await this.applyRuntimeSupervisorSnapshot(nodeId, kind, snapshot, {
         postSnapshot: true,
-        historyOnUnavailable: true,
         terminalProjectionMode
       });
       await this.subscribeRuntimeSupervisorTerminalStream(
@@ -11011,12 +11011,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const previousSession = this.getExecutionSessions(binding.kind).get(binding.nodeId);
     const wasLive = Boolean(previousSession);
+    const finalSurface = this.activeSurface;
+    const finalLifecycle = finalSurface ? this.getSurfaceLifecycleIdentity(finalSurface) : undefined;
     if (wasLive && !snapshot.live) {
       this.flushExecutionOutputImmediately(binding.kind, binding.nodeId);
     }
     await this.applyRuntimeSupervisorSnapshot(binding.nodeId, binding.kind, snapshot, {
-      postSnapshot: false,
-      historyOnUnavailable: false
+      postSnapshot: false
     });
 
     if (wasLive && !snapshot.live) {
@@ -11025,7 +11026,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         binding.kind,
         binding.nodeId,
         snapshotExitMessage ?? vscode.l10n.t('Session ended.'),
-        snapshot.sessionId
+        snapshot.sessionId,
+        { snapshot, surface: finalSurface, lifecycle: finalLifecycle }
       );
       if (binding.kind === 'agent' && previousSession && snapshot.lifecycle === 'error') {
         await this.markAndNotifyAgentAbnormalInterruption(
@@ -11137,7 +11139,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             return;
           }
           await this.applyRuntimeSupervisorSnapshot(nodeId, kind, result.snapshot, {
-            postSnapshot: true, historyOnUnavailable: false, terminalProjectionMode: result.terminalProjectionMode
+            postSnapshot: true, terminalProjectionMode: result.terminalProjectionMode
           });
           await this.subscribeRuntimeSupervisorTerminalStream(result.snapshot, session.runtimeStoragePath);
         } catch (failure) {
@@ -11166,7 +11168,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     snapshot: RuntimeSupervisorSessionSnapshot,
     options: {
       postSnapshot: boolean;
-      historyOnUnavailable: boolean;
       terminalProjectionMode?: RuntimeTerminalProjectionMode;
     }
   ): Promise<void> {
@@ -11288,12 +11289,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const completedTerminalStream = getCompleteRuntimeSupervisorTerminalStream(snapshot);
-    if (options.historyOnUnavailable && !completedTerminalStream) {
-      this.markExecutionNodeAsHistoryRestored(nodeId, kind, snapshotExitMessage, snapshot);
-      return;
-    }
-
     await this.applyCompletedRuntimeSupervisorSnapshot(nodeId, kind, snapshot);
   }
 
@@ -11315,27 +11310,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const runtimeStoragePath = this.getPersistedRuntimeStoragePath(currentMetadata);
     const runtimeBackend =
       normalizeRuntimeHostBackendKind(currentMetadata.runtimeBackend) ?? snapshot.runtimeBackend;
-    const outputSequence = completedTerminalStream?.revision ?? maxExecutionOutputSequence(
-      snapshot.outputSequence,
-      existingSession?.outputSequence,
-      currentMetadata.outputSequence
-    );
     const snapshotExitMessage = localizeRuntimeSupervisorSnapshotExitMessage(snapshot);
-    const serializedTerminalState =
-      cloneFreshSerializedTerminalState(snapshot.serializedTerminalState, outputSequence) ??
-      (existingSession?.terminalStateTrusted === false
-        ? undefined
-        : cloneFreshSerializedTerminalState(currentMetadata.serializedTerminalState, outputSequence));
+    this.flushExecutionStateSyncTimer(kind, nodeId);
     const stateBeforeCompleted = this.state;
     const rootLocalStatesBeforeCompleted = this.lastLoadedRootLocalStates;
     const multiRootOverlayBeforeCompleted = this.multiRootOverlay;
     this.state = updateExecutionNode(this.state, nodeId, kind, {
       status: snapshot.lifecycle,
-      summary:
-        snapshotExitMessage ||
-        (kind === 'agent'
-          ? summarizeAgentSessionOutput(snapshot.output, snapshot.lifecycle as AgentNodeStatus, snapshot.displayLabel)
-          : summarizeEmbeddedTerminalOutput(snapshot.output, snapshot.lifecycle as TerminalNodeStatus)),
+      summary: snapshotExitMessage || vscode.l10n.t('Session ended.'),
       metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
         persistenceMode: 'snapshot-only',
         attachmentState: 'history-restored',
@@ -11345,19 +11327,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         runtimeStoragePath: undefined,
         liveSession: false,
         runtimeSessionId: undefined,
+        pendingLaunch: undefined,
+        terminalHistoryDiscarded: true,
         lastRuntimeError: undefined,
         shellPath: snapshot.shellPath,
         cwd: snapshot.cwd,
-        recentOutput: extractRecentTerminalOutput(stripTerminalControlSequences(snapshot.output)) || currentMetadata.recentOutput,
+        recentOutput: undefined,
         terminalTitle: undefined,
-        outputSequence,
+        outputSequence: undefined,
         lastExitCode: snapshot.lastExitCode,
         lastExitSignal: snapshot.lastExitSignal,
         lastExitMessage: snapshotExitMessage,
         lastCols: snapshot.cols,
         lastRows: snapshot.rows,
-        serializedTerminalState,
-        terminalStream: completedTerminalStream,
+        serializedTerminalState: undefined,
+        terminalStream: undefined,
         ...(kind === 'agent'
           ? {
               lifecycle: snapshot.lifecycle as AgentNodeStatus,
@@ -11390,6 +11374,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.lastLoadedRootLocalStates = rootLocalStatesBeforeCompleted;
       this.multiRootOverlay = multiRootOverlayBeforeCompleted;
       throw error;
+    }
+    if (completedTerminalStream) {
+      for (const surface of ['editor', 'panel'] as const) {
+        this.terminalReadRelay.complete(`${surface}:${kind}:${nodeId}`, completedTerminalStream);
+      }
     }
     this.unbindRuntimeSession(
       snapshot.sessionId,
@@ -14302,8 +14291,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       runtimeGuarantee: backend.guarantee
     });
     await this.applyRuntimeSupervisorSnapshot(nodeId, 'agent', snapshot, {
-      postSnapshot: true,
-      historyOnUnavailable: true
+      postSnapshot: true
     });
     await this.subscribeRuntimeSupervisorTerminalStream(snapshot, runtimeStoragePath);
   }
@@ -14436,8 +14424,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       runtimeGuarantee: backend.guarantee
     });
     await this.applyRuntimeSupervisorSnapshot(nodeId, 'terminal', snapshot, {
-      postSnapshot: true,
-      historyOnUnavailable: true
+      postSnapshot: true
     });
     await this.subscribeRuntimeSupervisorTerminalStream(snapshot, runtimeStoragePath);
   }
@@ -18636,7 +18623,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options: { postState?: boolean; persistMode?: CanvasStatePersistMode; persistReason?: string } = {}
   ): void {
     const session = this.getExecutionSessions(kind).get(nodeId);
-    if (!session) {
+    const metadata = this.state.nodes.find((node) => node.id === nodeId)?.metadata?.[kind];
+    if (!session || metadata?.terminalHistoryDiscarded) {
       return;
     }
 
@@ -18714,7 +18702,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     options: ExecutionSnapshotAttachOptions = {}
   ): Promise<void> {
-    const session = this.getExecutionSessions(kind).get(nodeId);
+    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
+    const metadata = node ? kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node) : undefined;
+    // The old session stays registered while the ended node is being saved, but must not open new readers.
+    const session = metadata?.terminalHistoryDiscarded ? undefined : this.getExecutionSessions(kind).get(nodeId);
     if (session?.owner === 'supervisor' && session.terminalStreamPaged && session.terminalAuthorityId) {
       try {
         await this.postPagedExecutionSnapshot(kind, nodeId, session, options);
@@ -18728,9 +18719,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const surface = options.surface ?? this.activeSurface;
     if (!session && surface) {
-      const node = this.state.nodes.find((entry) => entry.id === nodeId && entry.kind === kind);
-      const stream = node && (kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node)).terminalStream;
-      if (stream && this.terminalReadRelay.has(`${surface}:${kind}:${nodeId}`, stream.sessionId)) {
+      const stream = this.terminalReadRelay.getCompleted(`${surface}:${kind}:${nodeId}`);
+      if (stream) {
         this.postMessage({ type: 'host/executionTerminalAvailable', payload: {
           nodeId, kind, executionSessionId: stream.sessionId, authorityId: stream.authorityId,
           revision: stream.revision, completed: true, terminalTitle: null
@@ -18741,15 +18731,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const serializedTerminalState = session?.terminalStateTrusted
       ? await session.terminalStateTracker.flush().catch(() => session.terminalStateTracker.getSerializedState())
       : undefined;
-    const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
-    const metadata =
-      kind === 'agent'
-        ? node
-          ? ensureAgentMetadata(node)
-          : undefined
-        : node
-          ? ensureTerminalMetadata(node)
-          : undefined;
     const persistedTerminalStream = normalizeTerminalStreamAttachPayload(metadata?.terminalStream);
     const terminalStream =
       session?.owner === 'supervisor' && session.terminalStreamHealthy
@@ -18822,6 +18803,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const lifecycle = this.getSurfaceLifecycleIdentity(surface);
     const isCurrent = (): boolean => this.getExecutionSessions(kind).get(nodeId) === session &&
+      !this.state.nodes.find((node) => node.id === nodeId)?.metadata?.[kind]?.terminalHistoryDiscarded &&
       JSON.stringify(this.getSurfaceLifecycleIdentity(surface)) === JSON.stringify(lifecycle);
     const client = await this.getRuntimeSupervisorClientForKind(
       session.runtimeBackend ?? 'legacy-detached', { allowRestart: false }, session.runtimeStoragePath
@@ -18836,7 +18818,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
     if (!isCurrent()) {
-      // An acknowledged reader survives normal completion to consume persisted history.
+      // An acknowledged reader survives completion only to drain the current projection.
       if (!this.terminalReadRelay.has(`${surface}:${kind}:${nodeId}`, session.sessionId) ||
           JSON.stringify(this.getSurfaceLifecycleIdentity(surface)) !== JSON.stringify(lifecycle)) {
         this.terminalReadRelay.close(`${surface}:${kind}:${nodeId}`, descriptor.readId);
@@ -18864,10 +18846,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     try {
       const page = await this.terminalReadRelay.read(`${surface}:${kind}:${nodeId}`, {
         sessionId: executionSessionId, authorityId, readId, afterRevision
-      }, () => {
-        const node = this.state.nodes.find((entry) => entry.id === nodeId && entry.kind === kind);
-        const metadata = node && (kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node));
-        return metadata?.persistenceMode === 'snapshot-only' ? metadata.terminalStream : undefined;
       });
       if (page) {
         this.postMessage({ type: 'host/executionTerminalPage', lifecycle, payload: {
@@ -18889,20 +18867,43 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     kind: ExecutionNodeKind,
     nodeId: string,
     message: string,
-    executionSessionId?: string
+    executionSessionId?: string,
+    finalRuntime?: {
+      snapshot: RuntimeSupervisorSessionSnapshot;
+      surface: CanvasSurfaceLocation | undefined;
+      lifecycle: WebviewLifecycleIdentity | undefined;
+    }
   ): Promise<void> {
-    await this.postExecutionSnapshot(kind, nodeId, {
-      executionSessionId
-    });
+    if (finalRuntime) {
+      const { snapshot, surface, lifecycle } = finalRuntime;
+      if (!surface || !this.isInteractiveSurface(surface) || !this.getSurfaceMessageWebview(surface) ||
+          JSON.stringify(this.getSurfaceLifecycleIdentity(surface)) !== JSON.stringify(lifecycle)) {
+        return;
+      }
+      if (this.terminalReadRelay.getCompleted(`${surface}:${kind}:${nodeId}`)) {
+        await this.postExecutionSnapshot(kind, nodeId, { surface, executionSessionId });
+      } else {
+        this.terminalReadRelay.close(`${surface}:${kind}:${nodeId}`);
+        this.postMessage({ type: 'host/executionSnapshot', lifecycle, payload: {
+          nodeId, kind, executionSessionId, liveSession: false, terminalTitle: null,
+          output: snapshot.output, cols: snapshot.cols, rows: snapshot.rows,
+          outputSequence: snapshot.outputSequence, serializedTerminalState: snapshot.serializedTerminalState,
+          terminalStream: snapshot.terminalStream
+        } }, surface);
+      }
+    } else {
+      await this.postExecutionSnapshot(kind, nodeId, { executionSessionId });
+    }
     this.postMessage({
       type: 'host/executionExit',
+      lifecycle: finalRuntime?.lifecycle,
       payload: {
         nodeId,
         kind,
         executionSessionId,
         message
       }
-    });
+    }, finalRuntime?.surface);
   }
 
   private applyCreateNode(
@@ -24384,6 +24385,9 @@ function normalizeNode(
     value.metadata,
     defaultAgentProvider
   );
+  const completedMetadata = normalizedMetadata?.agent?.terminalHistoryDiscarded
+    ? normalizedMetadata.agent
+    : normalizedMetadata?.terminal?.terminalHistoryDiscarded ? normalizedMetadata.terminal : undefined;
 
   return {
     id: value.id,
@@ -24391,7 +24395,9 @@ function normalizeNode(
     title: typeof value.title === 'string' ? value.title : `${capitalize(value.kind)} ${sequence}`,
     status: typeof value.status === 'string' ? value.status : defaultStatusForKind(value.kind),
     summary:
-      typeof value.summary === 'string'
+      completedMetadata
+        ? completedMetadata.lastExitMessage || vscode.l10n.t('Session ended.')
+        : typeof value.summary === 'string'
         ? value.summary
         : defaultSummaryForKind(value.kind),
     position: normalizePosition(value.position, sequence),
@@ -25483,7 +25489,7 @@ function normalizeMetadata(
 ): CanvasNodeMetadata | undefined {
   const record = isRecord(value) ? value : {};
   if (kind === 'agent') {
-    const agent = isRecord(record.agent) ? record.agent : {};
+    const agent = normalizeCompletedRuntimeHistory('agent', isRecord(record.agent) ? record.agent : {}, nodeStatus);
     const provider =
       agent.provider === 'claude' || agent.provider === 'codex'
         ? agent.provider
@@ -25588,6 +25594,7 @@ function normalizeMetadata(
             ? trimStoredTerminalText(agent.lastRuntimeError)
             : undefined,
         pendingLaunch: normalizePendingLaunch(agent.pendingLaunch ?? agent.autoStartPending),
+        terminalHistoryDiscarded: agent.terminalHistoryDiscarded === true ? true : undefined,
         recentOutput:
           typeof agent.recentOutput === 'string'
             ? trimStoredTerminalText(agent.recentOutput)
@@ -25657,7 +25664,7 @@ function normalizeMetadata(
   }
 
   if (kind === 'terminal') {
-    const terminal = isRecord(record.terminal) ? record.terminal : {};
+    const terminal = normalizeCompletedRuntimeHistory('terminal', isRecord(record.terminal) ? record.terminal : {}, nodeStatus);
     const fallback = createTerminalMetadata(nodeId);
     const liveSession =
       typeof terminal.liveSession === 'boolean'
@@ -25715,6 +25722,7 @@ function normalizeMetadata(
             ? trimStoredTerminalText(terminal.lastRuntimeError)
             : undefined,
         pendingLaunch: normalizePendingLaunch(terminal.pendingLaunch ?? terminal.autoStartPending),
+        terminalHistoryDiscarded: terminal.terminalHistoryDiscarded === true ? true : undefined,
         recentOutput:
           typeof terminal.recentOutput === 'string'
             ? trimStoredTerminalText(terminal.recentOutput)
@@ -25937,6 +25945,9 @@ function reconcileAgentNodesInArray(
     }
 
     const metadata = ensureAgentMetadata(node);
+    if (metadata.terminalHistoryDiscarded) {
+      return node;
+    }
     const liveSession = agentSessions.get(node.id);
     if (liveSession) {
       const cleanedOutput = stripTerminalControlSequences(liveSession.buffer);
@@ -26133,6 +26144,9 @@ function reconcileTerminalNodesInArray(
     }
 
     const metadata = ensureTerminalMetadata(node);
+    if (metadata.terminalHistoryDiscarded) {
+      return node;
+    }
     const liveSession = terminalSessions.get(node.id);
     if (liveSession) {
       const cleanedOutput = stripTerminalControlSequences(liveSession.buffer);
@@ -27025,7 +27039,9 @@ function buildAgentMetadataPatch(
     ...currentNode?.metadata,
     agent: {
       ...(currentNode ? ensureAgentMetadata(currentNode) : createAgentMetadata()),
-      ...patch
+      ...patch,
+      ...(patch.liveSession || patch.lifecycle === 'starting' || patch.lifecycle === 'resuming'
+        ? { terminalHistoryDiscarded: undefined } : {})
     }
   };
 }
@@ -27041,7 +27057,9 @@ function buildTerminalMetadataPatch(
     ...currentNode?.metadata,
     terminal: {
       ...(currentNode ? ensureTerminalMetadata(currentNode) : createTerminalMetadata(nodeId)),
-      ...patch
+      ...patch,
+      ...(patch.liveSession || patch.lifecycle === 'launching'
+        ? { terminalHistoryDiscarded: undefined } : {})
     }
   };
 }

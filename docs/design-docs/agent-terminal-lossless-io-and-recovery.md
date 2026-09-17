@@ -18,6 +18,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/runtime-journal-bounded-cache.md
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
+  - docs/exec-plans/completed/runtime-completed-no-history.md
   - docs/exec-plans/completed/runtime-checkpoint-only-refresh.md
   - docs/exec-plans/completed/agent-terminal-lossless-io-redesign.md
   - docs/exec-plans/completed/agent-supervisor-parallel-drain.md
@@ -34,7 +35,7 @@ updated_at: 2026-09-17
 
 2026-09-17 产品边界补充：用户确认 Supervisor 崩溃或机器重启后不要求恢复原进程，也可以不恢复终端历史；不能据此放弃 Supervisor 存活时的 Host/Webview 重建、暂时断连或正常 completed handoff。本文 journal、双代与磁盘恢复仍描述当前实现，不再作为新候选必须照搬的灾备需求；重评优先验证 server 生命周期内的权威状态与受控缓存，磁盘存储/归档按实际容量和正常历史需求决定。本轮只更新设计边界，未删除现有保护或历史。
 
-2026-09-17 实施补充：独立 checkpoint 刷新后，Supervisor 将长期缓存与日志保留分离，第 10.16 节描述该增量。第 10.17 节进一步把按需读取贯穿 live Host/Webview，新模式不再驻留完整 Host 后缀或发送单个完整 live 恢复消息。这些增量不改变 eligibility、正常 handoff 或原会话绑定；总回放、在途队列与 completed 内联仍未收口。
+2026-09-17 实施补充：第 10.16 节拆开 Supervisor 缓存与日志保留，第 10.17 节将分页贯穿 live Host/Webview。用户随后确认正常结束重开也不需要进程或历史，`runtime-completed-no-history.md` 修订 completed 保留决策，第 10.11 节据此改为轻量终态保存和当前页面临时收尾。该决定覆盖前述阶段记录的正常 handoff 保留要求；运行中 eligibility、原会话绑定、当前页面未消费输出不变，总回放与在途成本仍未收口。
 
 ## 1. 背景
 
@@ -314,7 +315,7 @@ journal 不能因为达到内存阈值直接丢弃。PR #255 的第一阶段完�
 
 `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts` 为每个新 live-runtime session 创建稳定 `authorityId`。同一 session 的 output、resize 与 scrollback 变化都由 supervisor 按一个连续 revision 序列记录；只有 supervisor 在实际接收事件时能推进 revision。`CanvasPanelManager` 与 Webview 只能验证、转发、排队和本地追踪 applied revision，不得再用 metadata floor、`minOutputSequence` 或无数据 `markOutputSequence()` 提高 supervisor revision。跨 Webview、Host 与 Supervisor 的 applied-revision ACK 已按第 10.9 节实现，但它只记录消费水位，不改变 authority revision。
 
-每个 session 的 output、resize、scrollback、finalization 与 delete 共用一条 `terminalOperationChain`。revision 分配、tracker mutation 和对外 publication 必须在同一串行操作中完成，不能只保证 journal append 顺序。PTY exit 会同步关闭 `terminalMutationAdmissionOpen`，等待此前已接受操作收敛，再用最后一份合法 checkpoint 加连续 journal suffix 发布唯一的非 live snapshot；finalization 不为了结束会话启动新的昂贵 eligibility/compact，exit 后 resize 被拒绝。delete 同样先关闭 admission，等待已有 finalization 或已接受 output，并且只在 final stream 已完成 Host durable handoff 或用户显式删除后清理 journal/session。`node-pty` bridge 的契约是 `onExit` 只在 output stream 关闭且全部 data event 排空后触发；若底层 provider 不满足该契约，不能把竞态猜测性隐藏在 revision 修账中。
+每个 session 的 output、resize、scrollback、finalization 与 delete 共用一条 `terminalOperationChain`。revision 分配、tracker mutation 和对外 publication 必须在同一串行操作中完成，不能只保证 journal append 顺序。PTY exit 会同步关闭 `terminalMutationAdmissionOpen`，等待此前已接受操作收敛，再用最后一份合法 checkpoint 加连续 journal suffix 发布唯一的非 live snapshot；finalization 不为了结束会话启动新的昂贵 eligibility/compact，exit 后 resize 被拒绝。delete 同样先关闭 admission，等待已有 finalization 或已接受 output，只在第 10.11 节轻量终态保存及当前读者临时交接后，或用户显式删除时清理 journal/session。`node-pty` bridge 的契约是 `onExit` 只在 output stream 关闭且全部 data event 排空后触发；若底层 provider 不满足该契约，不能把竞态猜测性隐藏在 revision 修账中。
 
 新协议字段保持可选，以便识别旧 supervisor。缺少 authority/journal capability 的旧会话继续走明确的 legacy/历史恢复路径，但不能把 6000 字符 tail 升级成新 checkpoint，也不能为它补造过去的 journal。
 
@@ -322,7 +323,7 @@ Host-owned local PTY 没有 Supervisor `authorityId`，但仍需要可对账的�
 
 ### 10.3 完整、分段、可校验 journal
 
-`extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts` 在 supervisor storage 下为每个 session 建立独立目录、原子 manifest 和 NDJSON segment。journal record 至少包含 session、authority、revision、事件类型、事件数据、前一 record checksum 与当前 checksum；事件类型覆盖 output、resize 和 scrollback。segment 可以轮转；PR #255 阶段不删除已完成 segment，里程碑 4–6 只允许在第 10.13–10.15 节的证明、双代和 retention 条件同时成立后删除完整 prefix segment。用户显式删除 session，或 completed final stream 已成功完成 Host durable handoff 并解除 runtime binding 时，才删除整份 journal 目录；handoff 失败必须保留。
+`extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts` 在 supervisor storage 下为每个 session 建立独立目录、原子 manifest 和 NDJSON segment。journal record 至少包含 session、authority、revision、事件类型、事件数据、前一 record checksum 与当前 checksum；事件类型覆盖 output、resize 和 scrollback。segment 可以轮转；PR #255 阶段不删除已完成 segment，里程碑 4–6 只允许在第 10.13–10.15 节的证明、双代和 retention 条件同时成立后删除完整 prefix segment。用户显式删除 session，或第 10.11 节的轻量终态保存及临时收尾来源交接成功并解除 runtime binding 后，才删除整份 journal；保存失败保留来源。这不是继续持久化 completed 正文。
 
 append 在内存中同步分配 revision 并进入单 writer 队列，磁盘写入按序批处理，避免在 PTY output callback 中做每 chunk `fsync`。registry 写入、final session state 与 supervisor 正常退出边界必须先 flush journal；写盘失败必须保留错误并让后续 flush fail closed，不能静默继续声称内容已持久化。读取时按 manifest、segment 字节数、连续 revision 与 checksum chain 校验；损坏记录不能被跳过后继续伪装成完整历史。
 
@@ -392,15 +393,15 @@ Host 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 
 
 每个 session 的 timer 在 session replacement、stop/delete、Host boundary、Host dispose 或 capability 降级时清理。scheduler 的 disposed 状态不可逆，因此 Host dispose 后才返回的 in-flight refresh 也不能重新创建 timer。周期刷新使用分散调度，避免 10 个 Agent 同时序列化 checkpoint；失败只记录诊断并重试，不设置事件数/字符数丢弃阈值。applied ACK 用于记录当前投影落后量和证明消费进度，但无 Webview attach 时本来就没有 ACK，不能把 ACK 作为 cache 收敛的前置条件。
 
-### 10.11 completed terminal stream 的 durable handoff
+### 10.11 completed 轻量终态与当前页面收尾
 
-待重评边界（F-05）：以下内联 `metadata.terminalStream` 是现行实现，完整历史会参与后续全画板保存。候选方向是独立会话归档与轻量引用，尚未选定；迁移仍必须保留本节“新来源写入确认前不清理旧 journal”的保护，不能仅把字段改成路径就宣称归档完成。
+2026-09-17 用户确认正常结束的 Runtime 节点重开无需进程和历史，因此取消原有完整 stream 内联画板的方案，不另建归档。新 completed 只保存节点、布局、启动配置、生命周期和退出结果，移除终端正文、runtime 绑定与自动启动意图；直接 snapshot-only 执行和 provider 自己的会话文件不变。仍活着的 Agent 等待输入不属于 completed。
 
-Supervisor 的 `live=false` snapshot 若携带与 snapshot 的 `sessionId`、`terminalAuthorityId`、`terminalRevision`、`outputSequence` 全部一致的 `terminalStream`，该 stream 是 completed session 的权威最终恢复表示。Host 必须优先处理这份完整 stream，不能因为重连选项包含 `historyOnUnavailable` 就先降级成 recent-tail `history-restored`。最后一个合法 checkpoint 可以早于 final revision；其后的完整 journal suffix 继续随 stream 持久化，因此超过 5 MiB normalizer 上限的 monolithic serialized state 也不能成为丢失内容的理由。
+Supervisor 当前仍返回完整 `live=false` snapshot。`CanvasPanelManager.applyCompletedRuntimeSupervisorSnapshot()` 验证 stream 的 session、authority、revision 与 output sequence 一致，但不把正文写入 metadata。已有读者经 `runtimeTerminalReadRelay.ts` 临时引用完整来源，继续消费到 final revision；当前尚未确认读者的页面只收一次最终快照。只在同一 Webview generation/frame 收尾，新页面不重放临时数据，保存开始后也不能建立旧会话的新读者。完整终态消息及临时聚合继续属于 F-04，不是内存有界声明。
 
-`ExecutionSessionMetadata.terminalStream` 保存 completed recovery payload。Host 先更新内存状态，再以 `workspaceStateMode: 'skip'` 等待主磁盘 snapshot 和当前 root-local snapshot 加载源都写入成功；只有该 durable barrier 完成后，才解绑 runtime session、清理 Host session 并请求 Supervisor 删除 journal。任一持久化失败都回滚内存 state、root-local cache 与 multi-root overlay，并保留 Supervisor binding/journal 以便重试。`workspaceState`、Webview bootstrap 和普通 `host/stateUpdated` 不复制这份大 payload；无 live Host session 时，显式 `host/executionSnapshot` 仍从 persisted metadata 发送 checkpoint+journal 给新 Webview 投影。
+Host 以 `workspaceStateMode: 'skip'` 等待窗口和实际 root-local 加载源的轻量终态保存成功，再解绑并删除 Supervisor 来源。失败回滚 state、root-local cache 与 overlay，保留原绑定及来源。`terminalHistoryDiscarded` 标记无历史终态；新页面得到空内容且不会自动 start/resume。读者完成、关闭、生命周期失效或 Host dispose 释放临时来源，已渲染 xterm 可继续显示当前内容。
 
-Host 完全离线期间结束的 Agent/Terminal 也遵循相同 handoff：新 Host 从 Supervisor 获取 `live=false + terminalStream`，完成 durable 收敛后把节点转为 `snapshot-only/history-restored`、清除 `runtimeSessionId`，再删除 Supervisor session。recent output 只保留摘要用途，不能取代或覆盖 final stream。
+Host 离线期间结束也只恢复轻量终态，不重放 offline completed stream。`common/completedRuntimeHistory.ts` 对可明确证明来自 Supervisor 的旧 completed stream 做幂等清理，不推断 serialized-only 记录来源，也不误清运行中/reattaching 绑定。显式启动新执行会清除结束标记。
 
 ### 10.12 PR #255 阶段退出条件（历史）
 
@@ -454,9 +455,9 @@ deferred attach revision 在 `subscribeSession(afterRevision)` 完成前收紧 r
 
 Supervisor 的 open/read/close RPC 将读者绑定到 socket/session/surface。每页沿用 256 KiB 事件数组 JSON / 256 条预算，单个大事件例外。`runtimeTerminalReadRelay.ts` 只转发一页；`webview/terminalPagedProjection.ts` 只有在 xterm 应用整页后才请求下一页，以相同游标衔接恢复与实时。head 通知不是消费证明，失败重试不推进位置，重复/旧代际响应不能二次应用。关闭 surface、替换读者或断开 socket 释放其保留资格，不结束 PTY。
 
-读者保留下界是已消费位置之前最近的安全 checkpoint；它参与原 compact 的 retention floor。正常终态取仍活动读者中最早的 checkpoint，保证 Host 完整 handoff 包含各读者剩余事件。保存成功后，读者从 metadata 中同 session/authority 的历史继续读页，消费到 final revision 才显示退出；保存失败继续保留 Supervisor 来源。
+读者保留下界是已消费位置之前最近的安全 checkpoint；它参与原 compact 的 retention floor。正常终态取仍活动读者中最早的 checkpoint，包含各读者剩余事件。轻量终态保存后，既有读者从 relay 临时来源继续读页，消费到 final revision 才显示退出并关闭读取；不再从 metadata 恢复已结束历史，保存失败继续保留 Supervisor 来源。
 
-分页模式断线保持原绑定、进入重连中并重试原 endpoint，不因传输失败自动恢复 Agent 或启动新 Supervisor。页面 RPC 无响应期限仍属于 F-01；正常 completed 全量、Supervisor 到 Host 的实时在途队列、总回放与全量 open/compact 分配仍属于 F-04/F-05。完整协议及 `snapshot-only` 不变。具体接口、证据及边界见 `docs/design-docs/runtime-paged-terminal-projection.md`。
+分页模式断线保持原绑定、进入重连中并重试原 endpoint，不因传输失败自动恢复 Agent 或启动新 Supervisor。页面 RPC 无响应期限仍属于 F-01；完整终态响应及临时聚合、Supervisor 到 Host 的实时在途队列、总回放与全量 open/compact 分配仍属于 F-04。F-05 已取消新 completed 内联；旧完整 wire 协议及直接 `snapshot-only` 不变。具体接口、证据及边界见 `docs/design-docs/runtime-paged-terminal-projection.md`。
 
 ## 11. 正式方案必须满足的不变量
 
@@ -466,10 +467,10 @@ Supervisor 的 open/read/close RPC 将读者绑定到 socket/session/surface。�
 2. 唯一处于输入状态的节点获得最高调度优先级；其他 session 仍保持单会话顺序、无损交付和跨会话有界公平。
 3. persistent 路径以 `sessionId + authorityId + revision` 唯一标识输出历史；local 路径以 `executionSessionId + outputSequence` 标识同一 Host 生命周期内的 output。相同身份只应用一次，不同 revision/sequence 即使文本相同也必须全部保留；两种序号都只能在实际接收 terminal event/output 时推进。
 4. 可跨 VS Code 生命周期运行的 Agent authority 必须长于 Extension Host；Host/Webview snapshot 只能是缓存或投影，不能证明后台输出完整。
-5. Reload Window 后，新 Host 必须从持久执行权威恢复连续历史；Host 离线期间产生的 output 不能形成 gap、重复或跨 session 混入。
+5. Reload Window 后，仍在运行的会话必须从原执行权威恢复连续历史；Host 离线期间产生的 output 不能形成 gap、重复或跨 session 混入。已确认结束的会话按第 10.11 节只恢复轻量终态。
 6. checkpoint 自身记录覆盖 revision、尺寸、格式和生成 authority；消费者不能补写 freshness，checkpoint 也不能用于清空 live backlog。
 7. transcript、摘要和诊断永远不 hydrate 成可继续交互的 terminal state。
-8. 会话退出前必须生成覆盖 final revision 的可恢复表示；Host 必须把最后合法 checkpoint 加连续 journal suffix 持久化到实际加载源，完成 durable barrier 后才能删除 Supervisor journal，并保留产品承诺范围内的完整 scrollback/content。
+8. 已打开页面仍须收齐 final revision 后才显示退出；Host 先保存轻量退出状态，再清理 Supervisor，并为当前读者保留临时来源。重开不需要已结束历史，不能因此为新页面恢复正文或自动重启，也不能丢弃仍在当前页面消费的尾部。
 9. 旧 supervisor / 旧 snapshot 的升级行为必须用户可解释，且不能伪造 live 或完整恢复；Agent 与 local Terminal 的恢复承诺分别定义。
 10. applied-revision 只能在终端操作真正完成后单调推进，不能被 Host/Supervisor 当作 authority revision 或内容覆盖的替代声明。
 11. Host cache 只能由同 authority 的权威 checkpoint 和连续 live tail 收敛；周期刷新失败必须保留旧健康缓存，不能按内存阈值丢事件。
@@ -507,7 +508,7 @@ Supervisor 的 open/read/close RPC 将读者绑定到 socket/session/surface。�
 - 2026-07-06 至 2026-07-07 的 checkpoint/delta 方向包含正确的不变量雏形，但现有实现没有迁移闭环、单一 authority 和完整宿主级验证；degraded transcript 只是止血，不是终端恢复。
 - 基线 `origin/main@5355e6a` 仍保留 raw tail hydrate fallback；它是本分支要替换的基线行为，不是新方案的事实源。
 
-2026-07-11 已完成用户指定的前三项实现，并继续完成旧 Supervisor 退役迁移、applied-revision ACK 与周期 Host cache 收敛：
+以下 2026-07 的实现/验证是历史证据，completed durable handoff 与离线结束历史恢复已于 2026-09-17 被第 10.11 节替换，不再作为当前产品承诺；当时发现的内容短读风险仍保留。2026-07-11 已完成用户指定的前三项实现，并继续完成旧 Supervisor 退役迁移、applied-revision ACK 与周期 Host cache 收敛：
 
 - Runtime Supervisor 为新 `live-runtime` session 分配稳定 `authorityId`，并为 output、resize、scrollback 统一分配连续 revision。Host 对 authority session 不再使用 metadata floor 或 Webview `minOutputSequence` 推进 revision。
 - `terminalSessionJournal.ts` 以每 session 独立目录、原子 manifest、分段 NDJSON 和 checksum chain 完整保存所有事件。PR #255 当时只让 checkpoint 释放已覆盖事件的内存副本，磁盘 segment 仍只在显式删除 session 时删除；后续 compact 见第 10.13–10.15 节。
@@ -572,3 +573,5 @@ PR #255 相关 12 个 Webview 终端用例和曾在全量中超时的 canvas edg
 2026-07-14 的并行 drain、final-state 协议门禁、里程碑 4–6 与 PR #263 authority review 更新确认：current-generation storage namespace、旧会话 `legacy-interactive`、新旧 client 精确路由和真实旧二进制迁移 smoke 已落地；同时补入保守 eligibility、codec 无关 generation、双代/隐式 genesis 回退、metadata-only registry、registry/manifest authority 绑定、完整 journal transaction 与无可用 fallback 时继续增长的规则。Linux 真实迁移证明两代 Supervisor 可同时运行，定向 compact 测试、容量基准、`trusted` 和两阶段 `real-reopen` 也已通过；但真实旧二进制迁移 smoke 仍只运行在 Linux/Unix socket 路径，90000 行终态尾部截断已间歇性出现三次。方案保持“已选定”，验证状态保持“验证中”，final-state 分层诊断、重复压力与严格 packaged smoke 仍是验证缺口。
 
 2026-09-16 的补充审核进一步确认长期容量不是仅有磁盘增长的退化：受控样本的屏幕约 80 KiB，而 snapshot 达到约 19.35 MiB；相同 completed stream 内联后，最小画板仅改位置仍重写约 19.56 MiB。指标、脚本、限制及后续验收见重评设计第 3、8 节。本轮只重新打开容量/归档决策，不废弃已有 authority、顺序、eligibility 和 durable handoff 正确性约束，也不把普通 correctness 测试通过当作长期容量已验证。
+
+2026-09-17 后续增量取消 completed 历史持久化，保存失败仍保留来源，正常保存只交接轻量节点和当前页面临时尾部。协议/4 项 Playwright、Linux Agent/Terminal 18000 行 live reload、完成重开、旧 generation、Host 离线结束与单根转多根重开通过。90000 行首次样本到 final revision 11628 时仅第 89850 行及半个 marker；后续直接逐行核对实际 xterm 的两轮样本为 90000/90000。继续登记既有短读，不把 F-05 的取消归档当作其修复；本批日志与全部限制见 `docs/exec-plans/completed/runtime-completed-no-history.md`。

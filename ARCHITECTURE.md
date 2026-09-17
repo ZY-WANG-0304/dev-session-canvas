@@ -476,11 +476,13 @@ docs/                           根目录正式文档知识库
 
 ### 恢复与持久化
 
-当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、可校验 terminal journal 和 checkpoint。Reload Window 后的新 Host 必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。支持 `terminalPagedReadV1` 时，live Host 只保留身份、head 和有限摘要，不复制完整 `terminalStream`；Webview 从 checkpoint 开始逐页读取，应用完上一页才请求下一页，读者的安全恢复基点参与 journal 保留。只支持旧 stream 能力时，Host 继续维护完整后缀，并在投影 attach 前和 10–12 秒错峰周期内优先用 `terminalCheckpointRefreshV1` 查询新的 checkpoint；更旧 Supervisor 继续原 snapshot RPC。当前 completed 会话仍在最终 stream 写入窗口与实际 root-local 画板成功后解除 runtime 绑定并删除 Supervisor journal，未消费完的分页读者从同一 metadata 历史续读。
+当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、可校验 terminal journal 和 checkpoint。仍运行的会话在 Reload Window 后必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。支持 `terminalPagedReadV1` 时，live Host 只保留身份、head 和有限摘要，不复制完整 `terminalStream`；Webview 从 checkpoint 开始逐页读取，应用完上一页才请求下一页，读者的安全恢复基点参与 journal 保留。只支持旧 stream 能力时，Host 继续维护完整后缀，并在投影 attach 前和 10–12 秒错峰周期内优先用 `terminalCheckpointRefreshV1` 查询新的 checkpoint；更旧 Supervisor 继续原 snapshot RPC。
 
-待重评：checkpoint 长期拒绝后的总回放与在途成本，以及 completed stream 内联画板引起的历史重写，仍是审核 F-04/F-05 的高优先级设计问题。首个增量 `docs/design-docs/runtime-checkpoint-only-refresh.md` 消除周期后缀重传，第二个增量 `docs/design-docs/runtime-journal-bounded-cache.md` 将 Supervisor 事件缓存限制为 1 MiB 编码字节和 2048 条，被淘汰事件从原 journal 校验读取。第三个增量 `docs/design-docs/runtime-paged-terminal-projection.md` 替换新能力 live Host 的完整后缀缓存和首次恢复单消息，每页最多 256 KiB 事件数组 JSON / 256 条，单个超大事件例外。这些预算不是进程总内存上限；旧协议、完整 completed、open/compact 扫描和在途队列仍可能有大分配。`docs/design-docs/runtime-persistence-storage-reevaluation.md` 继续比较权威终端状态同步及独立历史存储，整体替代方案未选定，不改变旧 live session 原绑定契约。
+已确认结束的 Runtime 节点只保存布局、配置与退出状态，不保存终端正文或自动启动意图。`CanvasPanelManager.applyCompletedRuntimeSupervisorSnapshot()` 等轻量节点写入窗口及实际 root-local 加载源后再解除绑定并删除 Supervisor；失败保留来源。`runtimeTerminalReadRelay.ts` 仅为已有当前读者临时持有终态，Webview 读完、关闭或失效即释放；新页面不读取该来源。`common/completedRuntimeHistory.ts` 加载时迁移可明确识别的旧 Supervisor completed stream。Provider 自己的会话文件和直接 snapshot-only 模式不变。
 
-2026-09-17 确认的运行时故障边界：Supervisor 崩溃或执行机器重启后，不要求恢复原进程或终端历史；这不取消画板保存，也不授权删除可读的已存历史。Supervisor 存活期间的 Host/Webview 重建、关闭再打开 VS Code 和连接中断仍需维持原会话，通信失败本身不证明 Supervisor 已崩溃。后续优先验证现有 Supervisor 内的权威终端状态和受控缓存，不预设另建 server 或强制 durable journal；需要落盘和正常 completed 归档时再明确存储协议。前三个协议与缓存增量不改变当前磁盘格式和正常 handoff。
+待重评：checkpoint 长期拒绝后的总回放与在途成本仍是审核 F-04 的高优先级设计问题。首个增量 `docs/design-docs/runtime-checkpoint-only-refresh.md` 消除周期后缀重传，第二个增量 `docs/design-docs/runtime-journal-bounded-cache.md` 将 Supervisor 事件缓存限制为 1 MiB 编码字节和 2048 条。第三个增量 `docs/design-docs/runtime-paged-terminal-projection.md` 替换新能力 live Host 的完整后缀缓存和首次恢复单消息，每页最多 256 KiB 事件数组 JSON / 256 条，单个超大事件例外。第四个增量 `docs/design-docs/runtime-completed-no-history.md` 取消新 completed 内联，F-05 不再要求独立归档。这些预算不是进程总内存上限；旧协议、完整终态及其临时 Host 聚合、open/compact 扫描和在途队列仍可能有大分配。整体终端状态替代方案未选定，不改变旧 live session 原绑定契约。
+
+2026-09-17 确认的运行时边界：Supervisor 崩溃或执行机器重启后，不要求恢复原进程或终端历史；正常结束重开同样不保留正文，不取消画板保存。Supervisor 与 PTY 均存活时的 Host/Webview 重建、关闭再打开 VS Code 和连接中断仍需维持原会话，通信失败本身不证明进程已结束。后续优先验证现有 Supervisor 内的权威终端状态和受控缓存，不预设另建 server、强制 durable journal 或 completed 归档；前三个增量的日志磁盘格式和运行中正确性保护不变。
 
 ### Remote / Local 拓扑
 

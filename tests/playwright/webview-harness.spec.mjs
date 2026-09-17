@@ -16600,6 +16600,9 @@ test('terminal consumes paged recovery through ANSI boundaries and drains the fi
   expect(text.indexOf('PAGED-TAIL')).toBeLessThan(text.indexOf('PAGED-EXIT'));
   expect((text.match(/PAGED-TAIL/gu) ?? [])).toHaveLength(1);
   expect(await readPostedMessagesByType(page, 'webview/readExecutionTerminalPage')).toHaveLength(stream.events.length);
+  const closes = await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead');
+  expect(closes).toHaveLength(1);
+  expect(closes[0].payload.readId).toBe(readId);
 });
 
 for (const executionKind of ['agent', 'terminal']) {

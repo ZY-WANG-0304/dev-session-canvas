@@ -16,6 +16,7 @@ interface ReadBinding {
   appliedRevision: number;
   sentRevision: number;
   acknowledged: boolean;
+  completed?: TerminalStreamAttachPayload;
 }
 
 /** Keeps identities and one in-flight page, never a copy of the live journal. */
@@ -62,10 +63,31 @@ export class RuntimeTerminalReadRelay {
     return read?.descriptor?.sessionId === sessionId && read.acknowledged;
   }
 
+  public complete(key: string, stream: TerminalStreamAttachPayload): void {
+    const binding = this.reads.get(key);
+    if (binding?.descriptor?.sessionId !== stream.sessionId ||
+        binding.descriptor.authorityId !== stream.authorityId) {
+      return;
+    }
+    if (!binding.acknowledged) {
+      this.close(key);
+      return;
+    }
+    if (stream.checkpoint.revision > binding.appliedRevision || stream.revision < binding.sentRevision) {
+      throw new Error('Completed terminal stream does not cover its reader.');
+    }
+    // Shared only by already established readers; never used to open a new projection.
+    binding.completed = stream;
+  }
+
+  public getCompleted(key: string): Pick<TerminalStreamAttachPayload, 'sessionId' | 'authorityId' | 'revision'> | undefined {
+    const stream = this.reads.get(key)?.completed;
+    return stream && { sessionId: stream.sessionId, authorityId: stream.authorityId, revision: stream.revision };
+  }
+
   public async read(
     key: string,
-    params: RuntimeSupervisorReadTerminalPageParams,
-    completed: () => TerminalStreamAttachPayload | undefined
+    params: RuntimeSupervisorReadTerminalPageParams
   ): Promise<TerminalStreamPage | undefined> {
     const binding = this.reads.get(key);
     if (!binding?.descriptor || binding.descriptor.readId !== params.readId ||
@@ -76,7 +98,7 @@ export class RuntimeTerminalReadRelay {
     // The first page request proves the Webview received and applied the checkpoint.
     binding.acknowledged = true;
     const readCompleted = (): TerminalStreamPage | undefined => {
-      const stream = completed();
+      const stream = binding.completed;
       if (!stream || stream.sessionId !== params.sessionId || stream.authorityId !== params.authorityId ||
           params.afterRevision < stream.checkpoint.revision || params.afterRevision > stream.revision) {
         return undefined;

@@ -21,7 +21,8 @@ const mainCall = mainCalls[0];
 
 // Export the actual classes only in the in-memory bundle; never start a daemon or PTY.
 const diagnosticSource = supervisorSource.slice(0, mainCall.pos) + supervisorSource.slice(mainCall.end) +
-  '\nexport { RuntimeSupervisorServer, TerminalSessionJournal, SerializedTerminalStateTracker };\n';
+  '\nexport { RuntimeSupervisorServer, TerminalSessionJournal, SerializedTerminalStateTracker };\n' +
+  "export { normalizeCompletedRuntimeHistory } from '../common/completedRuntimeHistory';\n";
 const bundle = await esbuild.build({
   stdin: {
     contents: diagnosticSource,
@@ -42,7 +43,8 @@ new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(
   bundledModule.exports,
   createRequire(import.meta.url)
 );
-const { RuntimeSupervisorServer, TerminalSessionJournal, SerializedTerminalStateTracker } = bundledModule.exports;
+const { RuntimeSupervisorServer, TerminalSessionJournal, SerializedTerminalStateTracker,
+  normalizeCompletedRuntimeHistory } = bundledModule.exports;
 
 const hostFile = path.join(sourceRoot, 'panel/CanvasPanelManager.ts');
 const hostSource = fs.readFileSync(hostFile, 'utf8');
@@ -218,7 +220,7 @@ try {
   assert.equal(completed.terminalStream.revision, journal.getRevision());
   assert.equal(completed.terminalStream.events.length, last.readableHistoryEvents);
 
-  // This minimal canvas measures inline bytes, not the full Host handoff workflow.
+  // Keep the old minimal inline canvas as a baseline, not the current Host completion workflow.
   const node = {
     id: 'completed-terminal',
     kind: 'terminal',
@@ -234,12 +236,26 @@ try {
   assert.ok(firstWriteBytes > last.retainedOutputBytes);
   assert.equal(moveWriteBytes, firstWriteBytes);
   console.log(JSON.stringify({
-    scenario: 'completed-inline-canvas',
+    scenario: 'legacy-completed-inline-canvas-baseline',
     completedSnapshotBytes: Buffer.byteLength(JSON.stringify(completed)),
     inlineCanvasWriteBytes: firstWriteBytes,
     subsequentPositionOnlyWriteBytes: moveWriteBytes
   }));
-  console.log('Supervisor cache, paged live attach and each page stay bounded; total replay, legacy full attach and completed-inline limits remain. No production runtime was started or modified.');
+  node.metadata.terminal = normalizeCompletedRuntimeHistory('terminal', {
+    ...node.metadata.terminal, lifecycle: 'closed', persistenceMode: 'snapshot-only', liveSession: false
+  });
+  const lightweightBytes = writer.writePersistedCanvasSnapshotToDisk(snapshotPath, canvas);
+  node.position.x = 2;
+  const lightweightMoveBytes = writer.writePersistedCanvasSnapshotToDisk(snapshotPath, canvas);
+  assert.ok(lightweightBytes < 1024);
+  assert.equal(lightweightMoveBytes, lightweightBytes);
+  assert.equal(node.metadata.terminal.terminalStream, undefined);
+  console.log(JSON.stringify({
+    scenario: 'migrated-completed-lightweight-canvas',
+    canvasWriteBytes: lightweightBytes,
+    subsequentPositionOnlyWriteBytes: lightweightMoveBytes
+  }));
+  console.log('Completed history no longer belongs in canvas storage. This minimal migration/writer comparison is complemented by test:runtime-completed-history using the actual Host completion method. Total replay, legacy full attach and transient final snapshot costs remain. No production runtime was started or modified.');
 } finally {
   tracker.dispose();
   oversizedTracker.dispose();

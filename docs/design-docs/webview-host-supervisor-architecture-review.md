@@ -19,6 +19,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
+  - docs/exec-plans/completed/runtime-completed-no-history.md
 updated_at: 2026-09-17
 ---
 
@@ -48,7 +49,7 @@ updated_at: 2026-09-17
 
 2026-09-17 实施进展：首批独立 checkpoint 查询消除周期后缀重传，第二批把 Supervisor 长期缓存限制为 1 MiB 编码字节及 2048 条，第三批 `docs/design-docs/runtime-paged-terminal-projection.md` 将按需读取贯穿新协议 live Host/Webview。Host 不驻留完整事件后缀，Webview 应用一页才继续读取。相同样本累计 19.66 MB output 时，缓存约 1.046 MB、轻量 live snapshot 427 字节、最大页事件数组 253669 字节，80 页完整恢复 1921 个事件。F-04 仍开放：总回放、旧协议完整响应、正常 completed、在途队列和全量扫描未收口，预算不是 RSS 上限。本文代码行号和原始描述对应审核基线，不把部分修复写成整体解决。
 
-### F-05 高：completed handoff 将完整会话恢复数据内联画板，使普通画板操作持续承担历史成本
+### F-05 高（新路径已收口）：completed 历史内联画板，使普通操作承担历史成本
 
 位置：`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:11194`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:11256`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:11280`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:6481`。
 
@@ -56,7 +57,9 @@ updated_at: 2026-09-17
 
 F-04 的同一最终 stream 放入最小内联画板后，调用实际 Host writer 写入 `20509666` 字节；仅修改位置再次写入仍是 `20509666` 字节。这个样本只测内联体积和 writer，不是完整 handoff/多 root 端到端测试。`workspaceState`、普通 bootstrap 和 `host/stateUpdated` 已排除大 payload，不应误报它们同样全量发送；问题落在完整画板的加载/保存以及显式终端恢复路径。即使 live compact 改善，大量 completed 会话仍会扩大该成本。
 
-建议：重新评估 completed 是否应只是会话状态域中的终态，画板保存引用与摘要。若选择保留正常退役后的历史，仍要验证 handoff、旧内联迁移、读取与 GC；当前 handoff 未改，不能提前删除旧来源。2026-09-17 用户确认 Supervisor 崩溃或机器重启后可以不恢复进程及终端历史，因此持久归档不再是所有候选的前提，也不要求灾备服务；正常结束后的保留期限/形式仍待设计。F-05 约束历史与画板写入的耦合，不强制某种数据库、永久服务或磁盘格式。
+原建议是比较轻量引用与独立历史存储。2026-09-17 用户先取消 Supervisor/机器故障后的历史保证，随后明确正常结束重开也不需要进程或历史；这是修订产品/设计决策，不是追认旧实现违反当时规格。`runtime-completed-no-history.md` 已落实为只保存配置、布局及退出结果，不再创建归档或自动 start/resume。当前页面由临时来源收齐尾部后释放，保存失败仍保留原 Supervisor；可明确识别的旧 completed stream 加载时清理，serialized-only 模糊记录不擅自推断来源。
+
+新 Host completion + writer fixture 的 Terminal/Agent 保存为 781/812 字节，小输出与约 3.8 MB stream 体积相同；原 20509666 字节最小内联容器作为诊断基线保留，同类迁移容器仅 505 字节。真实 Linux Agent/Terminal 结束重开、Host 离线结束、单根转多根及严格当前 xterm 90000 行测试已有通过样本。F-05 的新 completed 画板内联问题收口；完整终态消息/临时 Host 聚合继续属于 F-04，90000 行间歇性尾部短读继续独立跟踪，不能借取消历史宣称修复。
 
 ### F-01 高：Supervisor hello 没有响应超时，5 秒 ready 上限无法覆盖已连接但无响应的 socket
 
@@ -144,7 +147,7 @@ F-04/F-05 的受控证据及限制见重评设计第 3 节，可通过诊断脚�
 
 本审核不直接改动运行时代码。F-01 应作为 live-runtime 连接可靠性修复单独设计和实现；F-02 应作为共享层依赖收口任务处理。两项都需要在实现时补充针对性验证，完成前不要把“Supervisor 已能启动”表述成“Supervisor 连接在所有异常情况下都有界”。
 
-F-04/F-05 已进入 `docs/design-docs/runtime-persistence-storage-reevaluation.md` 的比较：分别评估会话状态/画板职责、checkpoint 回放/权威状态同步/成熟 mux backend。2026-09-17 用户确认 Supervisor 崩溃或机器重启后不要求恢复进程及终端历史；因此优先验证该文第 6.3 节的 server 生命周期模型，不预设 durable journal 或独立归档为必需。此次例外不授权丢弃 Supervisor 存活期间的未消费内容，也不取消正常结束/有序退役行为；暂时断连不能直接认定为进程崩溃。现行 lossless 设计继续保留实现事实，协议、预算、正常历史策略与迁移另行设计。第 8 节矩阵已区分 Host 退出与 Supervisor 故障，后者只要求不伪装原 live 会话，不验收历史恢复；候选均未实施或验证。
+F-04/F-05 已按 `runtime-persistence-storage-reevaluation.md` 分阶段推进。用户确认故障后不要求进程/历史恢复，随后明确正常结束重开也无需历史，F-05 已按 `runtime-completed-no-history.md` 取消内联和归档；当前页未消费尾部仍需收齐。F-04 已实施 checkpoint 独立查询、有界 Supervisor 缓存和 live 消费驱动分页，整体权威终端模型仍在比较，不预设第二个 server。下一阶段聚焦完整终态响应、临时聚合、在途预算与总恢复时间；暂时断连不能直接认定为进程崩溃，也不改变旧 live 原绑定。
 
 F-03 的产品方向已由用户确认；具体设计与运行时改造另开 ExecPlan，覆盖单根和多根新建、稳定 root identity、Supervisor 发现与并发启动、backend 选择、旧 session 原绑定恢复及退役。现有设计第 6.8 节与产品规格已标出待修订边界；改造时再将新建归属正式收口为 root 语义，并保留旧 slot 恢复契约，不能把整份设计直接标成 root 稳定 runtime 已实现或已验证。
 
