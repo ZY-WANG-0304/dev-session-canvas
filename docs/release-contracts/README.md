@@ -46,4 +46,4 @@ npm run release:preflight -- --version X.Y.Z
 npm run release:verify -- --version X.Y.Z
 ```
 
-`release:preflight` 适合快速定位版本或文档输入错误；`release:verify` 还会运行完整测试和 clean-checkout VSIX 验证。PR 合入后，publish workflow 会在相同版本的最终 tag ref 上再次运行 `release:verify`，成功前不会开始打包或对外发布。
+`release:preflight` 适合快速定位版本或文档输入错误；`release:verify` 还会运行完整测试和 clean-checkout VSIX 验证。创建或更新发布准备 PR 时，PR check 针对由最新 PR head 与基准分支生成的预合并结果运行完整验证。PR 合入后，publish workflow 会在相同版本的最终 tag ref 上再次运行 `release:verify`，成功前不会开始打包或对外发布。

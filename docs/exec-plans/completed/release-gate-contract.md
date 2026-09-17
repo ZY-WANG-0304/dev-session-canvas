@@ -6,7 +6,7 @@
 
 ## 目标与全局图景
 
-下一次 VS Code 扩展发布时，维护者会在发布准备 PR 中提交一个版本化的发布契约。契约列出本版本的用户范围、文档清单、已知限制和验证范围；主扩展与 notifier 的 CHANGELOG 只保留用户可见的 release notes。PR 和最终 `main` release ref 都会运行同一份可执行发布验证，验证未通过时 workflow 不会打包或发布。发布完成后，SHA、渠道状态、VSIX hash 和运行信息只进入 GitHub Release manifest / assets，不再通过后续 PR 回写已发布版本的 CHANGELOG。
+下一次 VS Code 扩展发布时，维护者会在发布准备 PR 中提交一个版本化的发布契约。契约列出本版本的用户范围、文档清单、已知限制和验证范围；主扩展与 notifier 的 CHANGELOG 只保留用户可见的 release notes。由最新 PR head 与基准分支生成的预合并结果和最终 `main` release ref 都会运行同一份可执行发布验证，验证未通过时 workflow 不会打包或发布。发布完成后，SHA、渠道状态、VSIX hash 和运行信息只进入 GitHub Release manifest / assets，不再通过后续 PR 回写已发布版本的 CHANGELOG。
 
 完成后，新手可以在仓库根目录运行 `npm run release:preflight -- --version X.Y.Z` 检查发布输入，或运行 `npm run release:verify -- --version X.Y.Z` 执行静态检查、完整测试和 clean-checkout VSIX 验证。发布 workflow 会在发布 tag checkout 的最终 ref 上执行同一条验证命令。
 
@@ -21,6 +21,7 @@
 - [x] (2026-09-17) 已通过发布流程专用测试、现有发布脚本 / workflow 守卫、Node 语法检查与 diff 检查。
 - [x] (2026-09-17) 已撤出为消除既有完整回归失败而临时混入的产品源码、既有测试和截图基线改动；这些问题必须在独立修复 PR 中处理。
 - [x] (2026-09-17) 已记录完整 `npm test` 的真实阻塞项：trusted VS Code smoke 的 90,000 行 completed terminal 终态短读。`release:verify` 应继续传播此失败，直到独立修复合入。
+- [x] (2026-09-17) 已处理 #293 review：两个 CHANGELOG 与发布契约共用发布后事实禁用规则，并为 VSIX SHA、渠道状态补充负例；同步修正 ExecPlan 链接和 PR 阶段的预合并结果表述。
 
 ## 意外与发现
 
@@ -56,7 +57,7 @@
 
 ## 结果与复盘
 
-已完成发布输入和执行流程的改造。下一次发布准备 PR 必须带入 `docs/release-contracts/vX.Y.Z.md`；PR head 与最终 tag checkout 都会在对外写入之前运行相同的 `release:verify`。CHANGELOG 只允许用户 release notes，发布后 evidence 只进入 GitHub Release manifest / assets。
+已完成发布输入和执行流程的改造。下一次发布准备 PR 必须带入 `docs/release-contracts/vX.Y.Z.md`；由最新 PR head 与基准分支生成的预合并结果和最终 tag checkout 都会在对外写入之前运行相同的 `release:verify`。CHANGELOG 只允许用户 release notes，发布后 evidence 只进入 GitHub Release manifest / assets。
 
 定向发布流程验证已通过：`test:release-preflight`、`test:release-preflight-workflow`、`test:publish-tag-release`、`test:publish-marketplace-workflow`、新旧 release 脚本的 Node 语法检查和 `git diff --check`。历史 `v0.25.0` 的 preflight 按预期失败，原因是其已发布 CHANGELOG 含内部 gate 文字；本方案不追溯改写历史 tag。
 
@@ -76,7 +77,7 @@
 
 随后在根 `package.json` 注册 `release:preflight`、`release:verify` 和对应测试。`publish-tag-release.mjs` 在解析 tag version 后调用静态验证，因此新版本即使绕过 workflow 也不能只凭版本标题开始发布。
 
-接着新增 release PR workflow：它只在 PR 修改 `docs/release-contracts/v*.md` 时运行，定位唯一的契约版本并在 PR 最新 head 上运行完整 verify。现有 publish workflow 在 tag checkout 后、打包前运行完整 verify；它检测脚本存在性，从而不影响历史 tag 的补发。完成后更新 workflow tests，确保两个位置均有命令和兼容 guard。
+接着新增 release PR workflow：它在所有非草稿 PR 创建稳定 check，只有 PR 修改 `docs/release-contracts/v*.md` 时才定位唯一的契约版本，并在由最新 PR head 与基准分支生成的预合并结果上运行完整 verify。现有 publish workflow 在 tag checkout 后、打包前运行完整 verify；它检测脚本存在性，从而不影响历史 tag 的补发。完成后更新 workflow tests，确保两个位置均有命令和兼容 guard。
 
 最后更新 `docs/WORKFLOW.md`、两份发布手册、公开发布设计文档、设计索引和核心信念。文档会明确 branch protection 必须把 release PR workflow 设为 required status check；仓库内代码能提供检查，GitHub repository setting 仍需维护者在外部启用。
 
@@ -94,9 +95,9 @@
 
 ## 验证与验收
 
-静态测试必须证明：缺少 `docs/release-contracts/vX.Y.Z.md` 会失败；任一 manifest 或 lockfile 版本不一致会失败；两个 CHANGELOG 之一未包含目标版本段、为空或包含“发布准备”“分层 gate”等内部执行内容会失败；有完整契约、必列文档和用户 release notes 的 fixture 会通过。`release:verify` 测试必须断言它按顺序执行 gate 自身测试、完整测试和 clean-checkout 验证。`publish-tag-release` 测试必须继续通过，且增加断言证明它因缺少发布契约而拒绝新式 release input。workflow 测试必须验证 PR workflow 对普通 PR 成功跳过、对 release PR 调用 `release:verify`，publish workflow 在打包前调用同一命令并保留 legacy guard。
+静态测试必须证明：缺少 `docs/release-contracts/vX.Y.Z.md` 会失败；任一 manifest 或 lockfile 版本不一致会失败；两个 CHANGELOG 之一未包含目标版本段、为空或包含“发布准备”“分层 gate”、VSIX SHA 或渠道状态等内部执行内容与发布后事实会失败；有完整契约、必列文档和用户 release notes 的 fixture 会通过。`release:verify` 测试必须断言它按顺序执行 gate 自身测试、完整测试和 clean-checkout 验证。`publish-tag-release` 测试必须继续通过，且增加断言证明它因缺少发布契约而拒绝新式 release input。workflow 测试必须验证 PR workflow 对普通 PR 成功跳过、对 release PR 的预合并结果调用 `release:verify`，publish workflow 在打包前调用同一命令并保留 legacy guard。
 
-人类可观察的验收是：下一次发布准备 PR 新增契约后，PR check 会针对它的 head 运行完整验证；若 CHANGELOG 写入内部待办，preflight 会显示明确错误并阻止合并。该 PR 合并后，发布 tag job 在相同 final ref 再运行一次完整验证；失败时没有 VSIX、Release asset 或 marketplace publish 动作发生。成功后发布 evidence 只存在于 GitHub Release manifest / notes。
+人类可观察的验收是：下一次发布准备 PR 新增契约后，PR check 会针对由它的最新 head 与基准分支生成的预合并结果运行完整验证；若 CHANGELOG 写入内部待办、VSIX SHA 或渠道状态，preflight 会显示明确错误并阻止合并。该 PR 合并后，发布 tag job 在相同 final ref 再运行一次完整验证；失败时没有 VSIX、Release asset 或 marketplace publish 动作发生。成功后发布 evidence 只存在于 GitHub Release manifest / notes。
 
 ## 幂等性与恢复
 
@@ -150,3 +151,4 @@
 计划更新记录：2026-09-17，创建计划并记录 v0.25.0 的不追溯原则、双阶段验证方案和历史 tag 兼容边界。
 计划更新记录：2026-09-17，已实现发布契约、双阶段 verify、历史 tag 兼容和 branch-protection 可用的 no-op PR check；待运行完整回归并收口证据。
 计划更新记录：2026-09-17，完整回归暴露既有 90,000 行 completed terminal 终态短读；依据用户决定，撤出所有为消除该类回归而混入的产品源码、既有测试和截图改动，保持它作为独立修复 PR 的发布阻塞，并完成发布流程专用验证记录。
+计划更新记录：2026-09-17，处理 #293 review：将发布后事实禁用规则抽为共享集合，补齐两个 CHANGELOG 的 VSIX SHA / 渠道状态负例，修正已完成计划链接，并明确 PR 验证针对预合并结果。

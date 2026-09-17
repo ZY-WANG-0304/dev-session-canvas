@@ -15,14 +15,11 @@ const requiredDocumentationPaths = [
 const releaseNoteInternalPatterns = [
   { label: '发布准备', pattern: /发布准备/i },
   { label: '内部 gate', pattern: /(?:完整|分层)\s*gate/i },
-  { label: '发布后复核', pattern: /发布后复核/i },
-  { label: '最终或候选 release ref', pattern: /(?:最终|候选)\s*(?:release\s*)?ref/i },
-  { label: 'GitHub Actions run', pattern: /GitHub Actions run/i },
   { label: '候选或最终工件', pattern: /(?:候选|最终)工件/i },
   { label: 'working tree', pattern: /working[- ]tree/i },
-  { label: '门禁状态', pattern: /(?:gate\s*已通过|门禁已通过|仍需重新执行.*(?:gate|门禁|验证))/i }
+  { label: '待执行门禁状态', pattern: /仍需重新执行.*(?:gate|门禁|验证)/i }
 ];
-const contractPostReleasePatterns = [
+const postReleaseEvidencePatterns = [
   { label: '最终或候选 release ref', pattern: /(?:最终|候选)\s*(?:release\s*)?ref/i },
   { label: 'GitHub Actions run', pattern: /GitHub Actions run/i },
   { label: 'VSIX SHA', pattern: /\b(?:sha256|sha-256)\b/i },
@@ -30,6 +27,7 @@ const contractPostReleasePatterns = [
   { label: '门禁已通过', pattern: /(?:gate\s*已通过|门禁已通过)/i },
   { label: '最终渠道状态', pattern: /(?:渠道状态|渠道已(?:发布|验证)|Open VSX.*verified)/i }
 ];
+const releaseNoteForbiddenPatterns = [...releaseNoteInternalPatterns, ...postReleaseEvidencePatterns];
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -138,7 +136,7 @@ function assertUserReleaseNotes(filePath, version, label) {
     throw new Error(`${label} 的 ${version} 版本段不能为空。`);
   }
 
-  assertNoForbiddenContent(section.body, `${label} 的 ${version} 版本段`, releaseNoteInternalPatterns);
+  assertNoForbiddenContent(section.body, `${label} 的 ${version} 版本段`, releaseNoteForbiddenPatterns);
 }
 
 function assertReleaseContract(projectRoot, version) {
@@ -161,7 +159,7 @@ function assertReleaseContract(projectRoot, version) {
     sections.set(sectionTitle, section);
   }
   assertDocumentInventory(projectRoot, sections.get('文档清单').body);
-  assertNoForbiddenContent(contents, `发布契约 v${version}`, contractPostReleasePatterns);
+  assertNoForbiddenContent(contents, `发布契约 v${version}`, postReleaseEvidencePatterns);
 }
 
 function assertDocumentInventory(projectRoot, documentList) {

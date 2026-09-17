@@ -13,7 +13,7 @@ notifier CHANGELOG 只写用户可见的 companion 行为、安装升级和限�
     npm run release:preflight -- --version X.Y.Z
     npm run release:verify -- --version X.Y.Z
 
-PR check 是 required status check。tag workflow 的第二次 verify 在成功前不生成 VSIX、GitHub Release asset 或 Marketplace 写入；最终渠道事实只保存在 release manifest、GitHub Release assets 和 Release notes，不能通过发布后 PR 回写同版本 notifier CHANGELOG。
+PR check 针对由最新 PR head 与基准分支生成的预合并结果运行，并作为 required status check。tag workflow 的第二次 verify 在成功前不生成 VSIX、GitHub Release asset 或 Marketplace 写入；最终渠道事实只保存在 release manifest、GitHub Release assets 和 Release notes，不能通过发布后 PR 回写同版本 notifier CHANGELOG。
 
 ## 当前发布素材
 

@@ -14,7 +14,7 @@ related_plans:
   - docs/exec-plans/active/publish-tag-release-flow.md
   - docs/exec-plans/completed/github-release-assets-flow.md
   - docs/exec-plans/completed/release-0-25-0-prep.md
-  - docs/exec-plans/active/release-gate-contract.md
+  - docs/exec-plans/completed/release-gate-contract.md
 updated_at: 2026-09-17
 ---
 
@@ -333,7 +333,7 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 
 每次新版本必须和 `docs/release-contracts/vX.Y.Z.md` 一同进入发布准备 PR。发布契约是静态输入：它写本版本的发布范围、用户 release notes、已审阅的文档清单、已知限制和验证范围，但不写任何发布后事实。主扩展与 notifier 的 `CHANGELOG.md` 同样只写用户可见的版本说明；内部待办、候选 SHA、workflow run、工件 hash、渠道状态和“gate 已通过 / 待执行”都不属于 release note。
 
-`npm run release:preflight -- --version X.Y.Z` 只做无副作用的输入检查：根 workspace、主扩展、notifier 和 lockfile 版本一致，两个 CHANGELOG 都有非空目标版本段且不含内部执行语句，发布契约存在且结构完整。`npm run release:verify -- --version X.Y.Z` 在这些检查后运行 `npm test` 和 `npm run validate:clean-checkout:vsix -- --ref HEAD`。release PR 的 `Release Preflight` workflow 与 `publish/vX.Y.Z` checkout 都必须运行完整 verify；仓库 branch protection 必须将 PR workflow 设为 required status check。
+`npm run release:preflight -- --version X.Y.Z` 只做无副作用的输入检查：根 workspace、主扩展、notifier 和 lockfile 版本一致，两个 CHANGELOG 都有非空目标版本段且不含内部执行语句，发布契约存在且结构完整。`npm run release:verify -- --version X.Y.Z` 在这些检查后运行 `npm test` 和 `npm run validate:clean-checkout:vsix -- --ref HEAD`。release PR 的 `Release Preflight` workflow 必须针对由最新 PR head 与基准分支生成的预合并结果运行完整 verify，`publish/vX.Y.Z` checkout 也必须运行完整 verify；仓库 branch protection 必须将 PR workflow 设为 required status check。
 
 完整 verify 成功前，publish workflow 不得打包、创建 `vX.Y.Z`、上传 GitHub Release assets 或调用 Marketplace。这样发布准备 PR 与最终 release ref 都具备同一条可观察的验证证据，而不是在发布后用文档声明门禁已经通过。
 
@@ -373,8 +373,8 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 - `scripts/release/publish-marketplaces.mjs` 仍是 Marketplace / Open VSX 的底层发布入口；当前 GitHub Actions 首次运行通过 `scripts/release/publish-tag-release.mjs --package-only` 先打包并准备 GitHub Release assets，同版本重跑先下载并校验既有 Release assets，再通过 `--skip-package` 复用同一批 VSIX 调用 marketplace 发布与验证逻辑。
 - `npm run validate:clean-checkout:vsix` 与 `npm run test:vsix-smoke` 是发布前必须保留的最小证据链；只要工件大小、文件数或 packaged payload 内容发生变化，就必须同步刷新本设计文档与相关发布文档中的证据。
 - 发布准备 PR 必须同时提交 `docs/release-contracts/vX.Y.Z.md`。该契约与版本、CHANGELOG、Marketplace 文案同属 release input，不能在 tag 后补写；`scripts/release/release-preflight.mjs` 是它们的唯一静态校验入口。
-- 主扩展与 notifier CHANGELOG 的目标版本段只面向用户。任何内部发布待办、完整门禁状态、候选 / 最终 ref、workflow run、工件 hash 和渠道状态必须移到发布契约的验证范围（仅限发布前计划）或发布后的 release manifest，不能进入 CHANGELOG。
-- `release:verify` 必须在发布准备 PR 的最新 head 和 `publish/vX.Y.Z` 指向的最终 release ref 各运行一次；第二次成功前，`.github/workflows/publish-marketplace-release.yml` 不得产生外部发布写入。PR workflow 应被 GitHub branch protection 标记为 required status check。
+- 主扩展与 notifier CHANGELOG 的目标版本段只面向用户。内部发布待办只能在发布契约的验证范围中写为发布前计划；完整门禁状态、候选 / 最终 ref、workflow run、工件 hash 和渠道状态属于发布后事实，必须写入 release manifest，不能进入 CHANGELOG 或发布契约。
+- `release:verify` 必须在由最新发布准备 PR head 与基准分支生成的预合并结果和 `publish/vX.Y.Z` 指向的最终 release ref 各运行一次；第二次成功前，`.github/workflows/publish-marketplace-release.yml` 不得产生外部发布写入。PR workflow 应被 GitHub branch protection 标记为 required status check。
 - `release-artifacts/release-manifest-X.Y.Z.json`、GitHub Release assets 和 GitHub Release notes 是唯一的发布后证据。它们可记录最终 ref、SHA、workflow run 和渠道状态，但不回写到该版本的仓库输入文档。
 - 正式安装真相必须继续保持为“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”，且两侧都保持 `"api": "none"`；这样才能继续兼顾主扩展安装时自动带上 companion、notifier 单独安装时自动补齐主扩展，以及跨 host 场景下只靠 commands 完成协作。
 - `.debug/`、`.playwright-browsers/`、`.github/`、`node-pty` 的源码/脚本/PDB/重复依赖等冗余内容必须继续留在 VSIX 之外，避免包体回涨或引入不可追溯内容；相关内容守卫继续由 `scripts/smoke/run-vscode-vsix-smoke.mjs` 负责。

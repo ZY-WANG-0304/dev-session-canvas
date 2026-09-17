@@ -15,6 +15,10 @@ assert.doesNotMatch(workflowText, /^\s+paths:/mu, 'the required check must run o
 assert.equal(job.if, '${{ github.event.pull_request.draft == false }}');
 assert.equal(job['timeout-minutes'], 90);
 
+const checkoutStep = job.steps.find((entry) => entry.name === 'Checkout PR merge result');
+assert.ok(checkoutStep, 'workflow must validate the pull request merge result');
+assert.equal(checkoutStep.uses, 'actions/checkout@v4');
+
 const resolveStep = job.steps.find((entry) => entry.name === 'Resolve release contract version');
 assert.ok(resolveStep, 'workflow must resolve the version from the changed release contract');
 assert.match(resolveStep.run, /exactly one docs\/release-contracts\/vX\.Y\.Z\.md/u);

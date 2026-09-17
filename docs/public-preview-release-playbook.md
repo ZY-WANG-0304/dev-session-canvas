@@ -11,7 +11,7 @@
     npm run release:preflight -- --version X.Y.Z
     npm run release:verify -- --version X.Y.Z
 
-发布准备 PR 的 `Release Preflight / Verify release contract` 必须通过并作为 required status check。PR 合入后，在最终 `main` release commit 创建 `publish/vX.Y.Z`；workflow 会在 tag checkout 上再次运行 `release:verify`，通过前不会打包、创建 GitHub Release 或发布 Marketplace。工件 SHA、最终 ref、workflow run、渠道结果和 deferred 原因只写入 release manifest、GitHub Release assets 与 Release notes，不为“记录发布门禁通过”再修改同版本 CHANGELOG 或契约。
+发布准备 PR 的 `Release Preflight / Verify release contract` 必须针对由最新 PR head 与基准分支生成的预合并结果通过，并作为 required status check。PR 合入后，在最终 `main` release commit 创建 `publish/vX.Y.Z`；workflow 会在 tag checkout 上再次运行 `release:verify`，通过前不会打包、创建 GitHub Release 或发布 Marketplace。工件 SHA、最终 ref、workflow run、渠道结果和 deferred 原因只写入 release manifest、GitHub Release assets 与 Release notes，不为“记录发布门禁通过”再修改同版本 CHANGELOG 或契约。
 
 ## 当前发布素材
 

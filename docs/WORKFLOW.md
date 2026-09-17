@@ -45,7 +45,7 @@
 1. 当准备一次对外发布时，先确认当前版本对应的 feature 均已经合入 `main`；不要把尚未合并的功能分支 head 直接当成发布输入。
 2. 从最新 `main` 单独切出发布准备分支，在这条分支上集中处理版本号、`package.json`、`package-lock.json`、主扩展与 notifier `CHANGELOG.md`、Marketplace 文案、发布手册，以及 `docs/release-contracts/vX.Y.Z.md`。契约必须列出发布范围、用户 release notes、已复核文档、已知限制和验证范围；它们全部是发布前的静态输入。
 3. CHANGELOG 只写用户可见的功能、安装升级、回退和产品限制。不要写发布准备待办、gate 状态、候选 SHA、workflow run、VSIX hash 或渠道结果；这些属于发布后证据，不能等发布完成后再回写进同版本 CHANGELOG。
-4. 发布准备 PR 在创建和每次更新时运行 `npm run release:preflight -- --version X.Y.Z` 与 `npm run release:verify -- --version X.Y.Z`。`Release Preflight / Verify release contract` 会在所有非草稿 PR 上创建：没有发布契约时明确成功跳过，有契约时执行完整 verify；因此它可以由 GitHub branch protection 设为 required status check，而不会阻断普通 PR。发布契约验证未通过时不得合并。
+4. 发布准备 PR 在创建和每次更新时，针对由最新 PR head 与基准分支生成的预合并结果运行 `npm run release:preflight -- --version X.Y.Z` 与 `npm run release:verify -- --version X.Y.Z`。`Release Preflight / Verify release contract` 会在所有非草稿 PR 上创建：没有发布契约时明确成功跳过，有契约时执行完整 verify；因此它可以由 GitHub branch protection 设为 required status check，而不会阻断普通 PR。发布契约验证未通过时不得合并。
 5. 发布准备 PR 完成 review 并合并后，才在最终 `main` release commit 创建 `publish/vX.Y.Z`。publish workflow 会在 tag checkout 的同一 ref 上再次执行 `release:verify`；它通过前不得打包、创建 Release、发布渠道或删除临时 tag。不要在未合入 `main` 的发布准备分支 head 上直接发布或打 tag。
 6. workflow 生成的 release manifest、GitHub Release assets 和 GitHub Release notes 是发布后事实的唯一权威记录，可包含最终 ref、VSIX SHA、workflow run、渠道状态与 deferred 原因。它们不提交回仓库；发布完成后不因“记录门禁通过”再建 PR 修改该版本的 CHANGELOG 或发布契约。
 7. 已存在的历史 tag 继续按其 tag 内的发布逻辑补发渠道；发布契约和双阶段 verify 只约束包含新文件的后续版本，不追溯改写历史 release input。

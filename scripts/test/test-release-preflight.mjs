@@ -41,6 +41,26 @@ try {
   assert.match(internalReleaseNote.stderr, /发布准备/u);
 
   await writeFixture(tempDir, version);
+  await writeFile(
+    path.join(tempDir, 'extensions', 'vscode', 'dev-session-canvas', 'CHANGELOG.md'),
+    `# Changelog\n\n## ${version}\n\n- VSIX sha256: ${'a'.repeat(64)}\n`,
+    'utf8'
+  );
+  const mainChangelogPostReleaseEvidence = runPreflight();
+  assert.notEqual(mainChangelogPostReleaseEvidence.status, 0);
+  assert.match(mainChangelogPostReleaseEvidence.stderr, /VSIX SHA/u);
+
+  await writeFixture(tempDir, version);
+  await writeFile(
+    path.join(tempDir, 'extensions', 'vscode', 'dev-session-canvas-notifier', 'CHANGELOG.md'),
+    `# Changelog\n\n## ${version}\n\n- 渠道状态：Open VSX verified\n`,
+    'utf8'
+  );
+  const notifierChangelogPostReleaseEvidence = runPreflight();
+  assert.notEqual(notifierChangelogPostReleaseEvidence.status, 0);
+  assert.match(notifierChangelogPostReleaseEvidence.stderr, /最终渠道状态/u);
+
+  await writeFixture(tempDir, version);
   await rm(path.join(tempDir, 'docs', 'release-contracts', `v${version}.md`));
   const missingContract = runPreflight();
   assert.notEqual(missingContract.status, 0);
