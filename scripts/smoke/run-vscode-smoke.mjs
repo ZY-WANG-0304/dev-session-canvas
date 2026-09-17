@@ -38,6 +38,11 @@ const scenarioFilter = parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_
 
 const scenarios = [
   {
+    name: 'runtime-checkpoint-refresh',
+    description: 'Runtime checkpoint-only refresh smoke',
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'trusted',
     description: 'Trusted workspace smoke',
     disableWorkspaceTrust: true

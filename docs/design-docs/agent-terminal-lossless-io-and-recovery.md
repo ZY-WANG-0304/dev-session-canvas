@@ -16,6 +16,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/completed/runtime-checkpoint-only-refresh.md
   - docs/exec-plans/completed/agent-terminal-lossless-io-redesign.md
   - docs/exec-plans/completed/agent-supervisor-parallel-drain.md
   - docs/exec-plans/completed/terminal-journal-safe-compaction.md
@@ -341,9 +342,9 @@ local Agent / Terminal 使用同一条覆盖原则，但身份是 `(executionSes
 
 ### 10.6 新显示投影的权威恢复 payload 刷新与回放调度
 
-Pane Gallery 的 thumbnail 与 main、Webview recreate 后的节点都是独立 xterm 投影。它们不能复用旧实例的 buffer；健康 authority session 收到 `webview/attachExecutionSession` 时，Host 必须先通过 `terminalProjectionSnapshotV1` 的只读 `getSessionSnapshot(sessionId)` 从 Supervisor 获取最新权威恢复 payload，再向新投影发布 snapshot。该 payload 由最后一份 eligible checkpoint 加连续 journal suffix组成，不要求当前 head 产生新的 checkpoint。该 RPC 不撤销或切换当前 socket subscription，也不建立 deferred pin；旧 Supervisor 未声明 capability 时 Host 不发送未知 method。
+Pane Gallery 的 thumbnail 与 main、Webview recreate 后的节点都是独立 xterm 投影。它们不能复用旧实例的 buffer；健康 authority session 收到 `webview/attachExecutionSession` 时，Host 先刷新 Supervisor checkpoint，再向新投影发布最后一份 eligible checkpoint 加连续 journal suffix。2026-09-17 起，声明 `terminalCheckpointRefreshV1` 的 Supervisor 通过 `getSessionCheckpoint` 只返回新的 checkpoint，Host 复用已有连续后缀；无新 checkpoint 时保留现有恢复 payload。只有旧 Supervisor 才走 `terminalProjectionSnapshotV1` 的完整 `getSessionSnapshot(sessionId)` 路径。两种查询都不切换 socket subscription 或建立 deferred pin；新能力未声明时不发送未知 method。细节见 `docs/design-docs/runtime-checkpoint-only-refresh.md`。
 
-Supervisor 刷新 checkpoint 期间，live subscription 仍可把更晚 revision 送到 Host。Host 以 fresh payload 的 revision 为切点，保留当前缓存中严格更新且连续的尾部 events，并用 `buildTerminalStreamAttachPayload()` 重新验证 `sessionId + authorityId + revision` 全区间。authority 不同、尾部不连续或会话已经替换时，不覆盖原健康缓存；不能为了得到较短 payload 丢弃并发增量。同一节点和 session 的并发 attach 共享一次 refresh。
+Supervisor 刷新 checkpoint 期间，live subscription 仍可把更晚 revision 送到 Host。新查询通过 `mergeTerminalStreamCheckpoint()` 验证 checkpoint 不早于当前 checkpoint、不晚于 Host 已收到 revision，保留其后的所有连续事件；响应中的 server revision 不得无数据推进 Host。旧完整 snapshot 路径仍以 fresh payload 的 revision 为切点，通过 `buildTerminalStreamAttachPayload()` 验证并合并更晚的 Host 尾部。authority 不同、尾部不连续或会话已经替换时，不覆盖原健康缓存；不能为了得到较短 payload 丢弃并发增量。同一节点和 session 的并发 attach 共享一次 refresh。
 
 Webview hydrate checkpoint 后，连续 output events 可以通过直接拼接 payload 等价合并；单批目标上限为 256 Ki 个 JavaScript UTF-16 code unit，且不会拆分单个 event，因此超大单 event 可以超过该目标。resize 和 scrollback 是硬顺序边界，必须等前一 output write 完成再应用。批量回放不改变 event 顺序或 revision，只消除“每 revision 一个 `setTimeout(0)`”的恢复放大。诊断分别记录 checkpoint 字符数、replay event 数、replay output 字符数、checkpoint revision 和 target revision。
 
@@ -379,11 +380,11 @@ Host 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 
 
 ### 10.10 无 attach 时的周期性 Host cache 收敛
 
-待重评边界（F-04）：本节刷新能在 eligible checkpoint 推进时缩短缓存，但持续拒绝时仍反复读取完整后缀，并不能保证 Host/Supervisor 内存、单次消息或总回放工作有上限。下一阶段需比较持久存储游标与权威终端状态同步，不以延长刷新间隔替代容量设计。
+待重评边界（F-04）：新 capability 已消除本节周期刷新时的完整后缀重传，但不能保证 Host/Supervisor 后缀内存、首次 attach 消息或总回放工作有上限。旧 Supervisor 保留完整 snapshot 刷新。下一阶段需比较持久存储游标与权威终端状态同步，不以延长刷新间隔替代容量设计。
 
-健康 authority session 即使长期没有新 Webview attach，Host 也按固定周期检查 `terminalStream.checkpoint.revision < terminalStream.revision` 的缓存。`extensions/vscode/dev-session-canvas/src/common/terminalProjectionRefreshScheduler.ts` 提供可清理、永久可 dispose 的确定性错峰 timer；`CanvasPanelManager.scheduleExecutionTerminalProjectionRefresh()` 以 10 秒基础周期加 0–2 秒 session hash spread 调度检查。存在 checkpoint 后事件时，Host 复用 capability-gated `getSessionSnapshot` 刷新；同 session 的 attach refresh、周期 refresh 和并发 tick 共用 `pendingTerminalProjectionRefreshes` 中的同一 in-flight 请求。没有新事件时不发 RPC，旧 Supervisor 不启动周期刷新。
+健康 authority session 即使长期没有新 Webview attach，Host 也按固定周期检查 `terminalStream.checkpoint.revision < terminalStream.revision` 的缓存，不在检查阶段 normalize 全部事件。`extensions/vscode/dev-session-canvas/src/common/terminalProjectionRefreshScheduler.ts` 提供可清理、永久可 dispose 的确定性错峰 timer；`CanvasPanelManager.scheduleExecutionTerminalProjectionRefresh()` 以 10 秒基础周期加 0–2 秒 session hash spread 调度检查。存在 checkpoint 后事件时优先使用 capability-gated `getSessionCheckpoint`，未支持该能力但支持 projection snapshot 的旧 Supervisor 才使用 `getSessionSnapshot`。同 session 的 attach refresh、周期 refresh 和并发 tick 共用同一 in-flight 请求；没有新事件时不发 RPC。
 
-刷新仍使用第 10.6 节的同 authority 无损合并：Supervisor 最新权威 payload 的最后一份 eligible checkpoint 覆盖到 revision `C`，其内部 journal suffix 与 RPC 期间已经到达 Host、严格连续的更晚 live tail共同覆盖到 `R`。只有完整 payload 重新通过 `buildTerminalStreamAttachPayload()` 校验后，才替换 Host 的恢复缓存；失败、authority 变化、会话替换或尾部 gap 都保留原健康缓存并等待下一周期。周期收敛不删除已经进入 Host output scheduler 或 Webview `pendingOutput` 的投递项，因此即使 Webview ACK 暂时落后也不会清空其 live backlog。
+刷新使用第 10.6 节的同 authority 无损合并。checkpoint-only 响应没有新 checkpoint 时直接返回，不扫描当前 events，也不自动退回完整 snapshot；推进时验证 checkpoint 与 Host 已收到的连续尾部，失败时保留旧缓存。旧 snapshot 路径继续重新校验完整 payload。周期收敛不删除已经进入 Host output scheduler 或 Webview `pendingOutput` 的投递项，因此即使 Webview ACK 暂时落后也不会清空其 live backlog。
 
 每个 session 的 timer 在 session replacement、stop/delete、Host boundary、Host dispose 或 capability 降级时清理。scheduler 的 disposed 状态不可逆，因此 Host dispose 后才返回的 in-flight refresh 也不能重新创建 timer。周期刷新使用分散调度，避免 10 个 Agent 同时序列化 checkpoint；失败只记录诊断并重试，不设置事件数/字符数丢弃阈值。applied ACK 用于记录当前投影落后量和证明消费进度，但无 Webview attach 时本来就没有 ACK，不能把 ACK 作为 cache 收敛的前置条件。
 

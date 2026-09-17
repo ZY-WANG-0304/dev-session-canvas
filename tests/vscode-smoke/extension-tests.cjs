@@ -189,6 +189,10 @@ async function runSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await clearHostMessages();
   await clearDiagnosticEvents();
+  if (smokeScenario === 'runtime-checkpoint-refresh') {
+    await runRuntimeCheckpointRefreshSmoke();
+    return;
+  }
   await verifyWebviewLifecycleRaceDiagnostics();
 
   if (smokeScenario === 'restricted') {
@@ -197,6 +201,83 @@ async function runSmoke() {
   }
 
   await runTrustedSmoke();
+}
+
+async function runRuntimeCheckpointRefreshSmoke() {
+  const { agentNode, terminalNode } = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
+  const marker = 'DSC_CHECKPOINT_ONLY_REFRESH';
+  try {
+    await waitForAgentLive(agentNode.id);
+    const initial = await waitForTerminalLive(terminalNode.id);
+    const terminalSessionId = findNodeById(initial, terminalNode.id).metadata.terminal.runtimeSessionId;
+    const agentSessionId = findNodeById(initial, agentNode.id).metadata.agent.runtimeSessionId;
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: { nodeId: agentNode.id, kind: 'agent', data: 'burst 3\r' }
+    });
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: terminalNode.id,
+        kind: 'terminal',
+        data: `printf '\\033]10;#ff0000\\007\\n${marker}\\n'\r`
+      }
+    });
+    await waitForSnapshot((snapshot) =>
+      findNodeById(snapshot, terminalNode.id).metadata.terminal.recentOutput?.includes(marker) &&
+      findNodeById(snapshot, agentNode.id).metadata.agent.recentOutput?.includes('[fake-agent] burst 003'),
+    20000);
+    await clearDiagnosticEvents();
+    await clearHostMessages();
+    await requestExecutionSnapshot('terminal', terminalNode.id, 'editor');
+    await requestExecutionSnapshot('agent', agentNode.id, 'editor');
+    await waitForDiagnosticEvents((events) => events.some((event) =>
+      event.kind === 'runtime/terminalCheckpointUnchanged' && event.detail?.nodeId === terminalNode.id
+    ), 20000);
+    await waitForDiagnosticEvents((events) => events.some((event) =>
+      event.detail?.nodeId === agentNode.id &&
+      (event.kind === 'runtime/terminalCheckpointUnchanged' ||
+        (event.kind === 'runtime/terminalProjectionRefreshed' && event.detail?.mode === 'checkpoint-only'))
+    ), 20000);
+    await waitForHostMessages((messages) => messages.some((message) =>
+      message.type === 'host/executionSnapshot' && message.payload.nodeId === terminalNode.id &&
+      readTerminalStreamProjectionText(message.payload.terminalStream).includes(marker)
+    ), 20000);
+    await waitForWebviewProbe((probe) =>
+      readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
+    20000);
+
+    await clearDiagnosticEvents();
+    await waitForDiagnosticEvents((events) => events.some((event) =>
+      event.kind === 'runtime/terminalCheckpointUnchanged' && event.detail?.nodeId === terminalNode.id
+    ), 20000);
+    await simulateRuntimeReload();
+    await waitForSnapshot((snapshot) => {
+      const terminal = findNodeById(snapshot, terminalNode.id).metadata.terminal;
+      const agent = findNodeById(snapshot, agentNode.id).metadata.agent;
+      return terminal.liveSession && agent.liveSession &&
+        terminal.runtimeSessionId === terminalSessionId && agent.runtimeSessionId === agentSessionId;
+    }, 20000);
+    await ensureEditorCanvasReady();
+    await clearHostMessages();
+    await requestExecutionSnapshot('terminal', terminalNode.id, 'editor');
+    await waitForHostMessages((messages) => messages.some((message) =>
+      message.type === 'host/executionSnapshot' && message.payload.nodeId === terminalNode.id &&
+      message.payload.executionSessionId === terminalSessionId &&
+      readTerminalStreamProjectionText(message.payload.terminalStream).includes(marker)
+    ), 20000);
+    await waitForWebviewProbe((probe) =>
+      readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
+    20000);
+    await ensureTerminalStopped(terminalNode.id);
+    await waitForSnapshot((snapshot) =>
+      readTerminalStreamProjectionText(findNodeById(snapshot, terminalNode.id).metadata.terminal.terminalStream).includes(marker),
+    20000);
+  } finally {
+    await ensureAgentStopped(agentNode.id);
+    await ensureTerminalStopped(terminalNode.id);
+    await setRuntimePersistenceEnabled(false);
+  }
 }
 
 async function createBaseNodes() {

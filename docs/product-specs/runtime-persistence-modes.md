@@ -134,4 +134,6 @@
 - Agent / Terminal 在持续输出、客户端离线重建和多窗口读取期间继续满足原进程身份、内容顺序与输入公平性；任何保证变化先明确产品边界。
 - Supervisor 崩溃、机器重启或断电后，节点明确显示运行时丢失/中断，不把重新启动的进程或残留文件显示成原 live session。
 
-候选比较、可重跑基线与建议矩阵见 `docs/design-docs/runtime-persistence-storage-reevaluation.md`，原始上游证据见 `docs/references/terminal-persistence-open-source-survey.md`。运行时改造另行规划。
+首个实施增量已支持健康 live stream 独立刷新 checkpoint：无新 checkpoint 时不反复传输完整后缀，旧 Supervisor 保持兼容。它不改变首次恢复、正常 completed 保存或旧会话归属，也不代表整体容量验收通过。具体协议见 `docs/design-docs/runtime-checkpoint-only-refresh.md`。
+
+候选比较、可重跑基线与建议矩阵见 `docs/design-docs/runtime-persistence-storage-reevaluation.md`，原始上游证据见 `docs/references/terminal-persistence-open-source-survey.md`。其余运行时改造分阶段规划。

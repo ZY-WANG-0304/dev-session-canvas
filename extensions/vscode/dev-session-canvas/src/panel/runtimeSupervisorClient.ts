@@ -14,10 +14,12 @@ import type {
   RuntimeSupervisorCreateSessionParams,
   RuntimeSupervisorDeleteSessionParams,
   RuntimeSupervisorEvent,
+  RuntimeSupervisorGetSessionCheckpointParams,
   RuntimeSupervisorGetSessionSnapshotParams,
   RuntimeSupervisorHelloResult,
   RuntimeSupervisorMessage,
   RuntimeSupervisorResizeSessionParams,
+  RuntimeSupervisorSessionCheckpointResult,
   RuntimeSupervisorSessionSnapshot,
   RuntimeSupervisorStopSessionParams,
   RuntimeSupervisorSubscribeSessionParams,
@@ -87,6 +89,10 @@ export class RuntimeSupervisorClient {
     return this.helloResult?.capabilities?.terminalProjectionSnapshotV1 === true;
   }
 
+  public supportsTerminalCheckpointRefresh(): boolean {
+    return this.helloResult?.capabilities?.terminalCheckpointRefreshV1 === true;
+  }
+
   public supportsTerminalSessionStream(): boolean {
     return this.helloResult?.capabilities?.terminalSessionStreamV1 === true;
   }
@@ -115,6 +121,12 @@ export class RuntimeSupervisorClient {
     params: RuntimeSupervisorGetSessionSnapshotParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
     return this.request('getSessionSnapshot', params);
+  }
+
+  public async getSessionCheckpoint(
+    params: RuntimeSupervisorGetSessionCheckpointParams
+  ): Promise<RuntimeSupervisorSessionCheckpointResult> {
+    return this.request('getSessionCheckpoint', params);
   }
 
   public async subscribeSession(
@@ -166,6 +178,7 @@ export class RuntimeSupervisorClient {
       | 'createSession'
       | 'attachSession'
       | 'getSessionSnapshot'
+      | 'getSessionCheckpoint'
       | 'subscribeSession'
       | 'ackSessionRevision'
       | 'writeInput'
@@ -177,6 +190,7 @@ export class RuntimeSupervisorClient {
       | RuntimeSupervisorCreateSessionParams
       | RuntimeSupervisorAttachSessionParams
       | RuntimeSupervisorGetSessionSnapshotParams
+      | RuntimeSupervisorGetSessionCheckpointParams
       | RuntimeSupervisorSubscribeSessionParams
       | RuntimeSupervisorAckSessionRevisionParams
       | RuntimeSupervisorWriteInputParams

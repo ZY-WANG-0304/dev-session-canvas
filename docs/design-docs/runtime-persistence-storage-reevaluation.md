@@ -15,6 +15,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
+  - docs/exec-plans/completed/runtime-checkpoint-only-refresh.md
 updated_at: 2026-09-17
 ---
 
@@ -195,6 +196,8 @@ Supervisor、Host、Webview 各自需要每会话及全局缓存/在途预算；
 | 采用磁盘/journal 时：磁盘满、权限失败、损坏 segment/checkpoint、长时间无法 compact | 遵循明确容量与 fail-closed 策略；不静默丢数据、不返回伪完整历史，不以无限增加内存规避写入失败。 |
 
 ## 9. 当前结论与下一阶段
+
+2026-09-17 开始实施后的首个增量见 `docs/design-docs/runtime-checkpoint-only-refresh.md`：支持新 capability 时，Host 健康 stream 只查询新 checkpoint，不再周期性重传完整后缀。诊断中同一持续颜色状态拒绝样本的刷新响应为 98/99/99 字节，完整 snapshot 仍为 6763684/13526849/20290369 字节，completed 内联画板仍重写 20509666 字节。该增量保留 eligibility 和旧协议，未解决首次 attach、全后缀内存或 F-05，也不意味着选定整个 B/S1/S2 路线。
 
 F-04/F-05 仍需联合重评，因为两项成本发生在 Supervisor 正常运行期间。2026-09-17 的确认使首选验证方向收敛为第 6.3 节的 server 生命周期模型：不预设 durable journal/归档为前提，再根据正常保留和容量需要评估 B；B+S1 可作为兼容路线对照。候选 C 只能是阶段性措施，候选 A 不能代替职责分离。当前 `decision_status` 保持“比较中”，并未接受某个新文件格式、mux backend、纯内存实现或服务拓扑。
 

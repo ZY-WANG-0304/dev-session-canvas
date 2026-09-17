@@ -91,6 +91,7 @@ try {
   } = require(serializedTerminalStateOutfile);
 
   await assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClient, tempDir);
+  await assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClient, tempDir, true);
   assertTerminalProjectionMergePreservesConcurrentLiveTail(mergeTerminalStreamProjectionWithLiveTail);
 
   const spawnError = new Error('spawn /missing/codex ENOENT');
@@ -240,7 +241,7 @@ try {
   await rm(tempDir, { recursive: true, force: true });
 }
 
-async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClient, tempDir) {
+async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClient, tempDir, checkpointCapability = false) {
   const socketPath =
     process.platform === 'win32'
       ? `\\\\.\\pipe\\dsc-runtime-client-${process.pid}-${Date.now()}`
@@ -275,6 +276,15 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
           continue;
         }
         const message = JSON.parse(line);
+        if (message.type === 'request' && message.method === 'getSessionCheckpoint') {
+          assert.equal(checkpointCapability, true, 'Old servers must not receive checkpoint-only requests.');
+          assert.deepEqual(message.params, { sessionId: 'client-session', authorityId: 'client-authority', afterCheckpointRevision: 7 });
+          socket.write(`${JSON.stringify({
+            type: 'response', id: message.id, ok: true,
+            result: { sessionId: 'client-session', authorityId: 'client-authority', revision: 7 }
+          })}\n`);
+          continue;
+        }
         if (message.type !== 'request' || message.method !== 'hello') {
           continue;
         }
@@ -296,7 +306,8 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
               capabilities: {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
-                terminalAppliedRevisionAckV1: true
+                terminalAppliedRevisionAckV1: true,
+                ...(checkpointCapability ? { terminalCheckpointRefreshV1: true } : {})
               }
             }
           })}\n`);
@@ -361,6 +372,12 @@ async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClien
     assert.equal(client.supportsTerminalSessionStream(), true);
     assert.equal(client.supportsTerminalProjectionSnapshot(), true);
     assert.equal(client.supportsTerminalAppliedRevisionAck(), true);
+    assert.equal(client.supportsTerminalCheckpointRefresh(), checkpointCapability);
+    if (checkpointCapability) {
+      assert.deepEqual(await client.getSessionCheckpoint({
+        sessionId: 'client-session', authorityId: 'client-authority', afterCheckpointRevision: 7
+      }), { sessionId: 'client-session', authorityId: 'client-authority', revision: 7 });
+    }
     assert.equal(connectionCount, 1, 'Concurrent readiness callers must share one socket connection.');
     assert.equal(helloRequestCount, 1, 'Concurrent readiness callers must share one hello handshake.');
   } finally {
@@ -434,6 +451,7 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     assert.equal(hello.capabilities?.terminalSessionStreamV1, true);
     assert.equal(hello.capabilities?.terminalProjectionSnapshotV1, true);
     assert.equal(hello.capabilities?.terminalAppliedRevisionAckV1, true);
+    assert.equal(hello.capabilities?.terminalCheckpointRefreshV1, true);
 
     const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');
     const gapMarker = `attach-gap-marker-${Date.now()}`;
@@ -469,6 +487,43 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
       'attach-gap-terminal',
       (session) => session.terminalRevision > attachGapSnapshot.terminalRevision
     );
+    const checkpointParams = {
+      sessionId: 'attach-gap-terminal',
+      authorityId: attachGapSnapshot.terminalAuthorityId,
+      afterCheckpointRevision: attachGapSnapshot.terminalStream.checkpoint.revision
+    };
+    const checkpointResult = await sendRuntimeSupervisorRequest(socket, messages, 'getSessionCheckpoint', checkpointParams);
+    assert.equal(checkpointResult.sessionId, checkpointParams.sessionId);
+    assert.equal(checkpointResult.authorityId, checkpointParams.authorityId);
+    assert.ok(checkpointResult.checkpoint, 'A safe terminal checkpoint should advance after the marker.');
+    assert.ok(checkpointResult.checkpoint.revision > checkpointParams.afterCheckpointRevision);
+    assert.ok(checkpointResult.checkpoint.revision <= checkpointResult.revision);
+    assert.equal(checkpointResult.terminalStream, undefined);
+    assert.equal(checkpointResult.events, undefined);
+    assert.equal(checkpointResult.output, undefined);
+    assert.equal(
+      messages.some((message) => message.event === 'sessionTerminalEvent' && message.payload?.sessionId === checkpointParams.sessionId),
+      false,
+      'Checkpoint refresh must not implicitly subscribe a deferred client.'
+    );
+    const unchangedCheckpoint = await sendRuntimeSupervisorRequest(socket, messages, 'getSessionCheckpoint', {
+      ...checkpointParams,
+      afterCheckpointRevision: checkpointResult.revision
+    });
+    assert.equal(unchangedCheckpoint.checkpoint, undefined);
+    assert.ok(Buffer.byteLength(JSON.stringify(unchangedCheckpoint)) < 1024);
+    for (const invalidParams of [
+      { ...checkpointParams, authorityId: 'wrong-authority' },
+      { ...checkpointParams, afterCheckpointRevision: -1 },
+      { ...checkpointParams, afterCheckpointRevision: 0.5 },
+      { ...checkpointParams, afterCheckpointRevision: Number.MAX_SAFE_INTEGER },
+      { ...checkpointParams, afterCheckpointRevision: '0' }
+    ]) {
+      const response = await sendRuntimeSupervisorErrorRequest(socket, messages, 'getSessionCheckpoint', invalidParams);
+      assert.equal(response.error.code, invalidParams.authorityId === checkpointParams.authorityId
+        ? 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_REVISION_INVALID'
+        : 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_AUTHORITY_MISMATCH');
+    }
     const subscribeResult = await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
       sessionId: 'attach-gap-terminal',
       authorityId: attachGapSnapshot.terminalAuthorityId,

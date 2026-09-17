@@ -129,6 +129,27 @@ try {
     const snapshot = await server.toFreshSnapshot(session);
     assert.equal(snapshot.terminalStream.checkpoint.revision, 0);
     assert.deepEqual(await tracker.flushValidatedCheckpoint(), { eligible: false, reason: 'color-state' });
+    const buildFullProjection = server.buildTerminalStreamAttachPayload;
+    server.buildTerminalStreamAttachPayload = () => {
+      throw new Error('Checkpoint-only refresh must never collect the full journal suffix.');
+    };
+    let checkpointResult;
+    try {
+      checkpointResult = await server.getSessionCheckpoint({
+        sessionId: session.sessionId,
+        authorityId: session.terminalAuthorityId,
+        afterCheckpointRevision: 0
+      });
+    } finally {
+      server.buildTerminalStreamAttachPayload = buildFullProjection;
+    }
+    assert.deepEqual(checkpointResult, {
+      sessionId: session.sessionId,
+      authorityId: session.terminalAuthorityId,
+      revision: journal.getRevision()
+    });
+    const checkpointRefreshBytes = Buffer.byteLength(JSON.stringify(checkpointResult));
+    assert.ok(checkpointRefreshBytes < 1024);
     const retained = journal.getEventsAfter(0);
     const metric = {
       scenario: 'live-suffix',
@@ -139,6 +160,7 @@ try {
         sum + (event.type === 'output' ? Buffer.byteLength(event.data) : 0), 0),
       journalDiskBytes: directoryBytes(path.join(tempDir, 'terminal-journals')),
       snapshotBytes: Buffer.byteLength(JSON.stringify(snapshot)),
+      checkpointRefreshBytes,
       checkpointRevision: snapshot.terminalStream.checkpoint.revision,
       compactionDue: journal.shouldCommitCheckpoint(journal.getRevision())
     };
@@ -150,6 +172,7 @@ try {
   assert.ok(last.retainedOutputBytes > 16 * 1024 * 1024);
   assert.ok(last.screenStateBytes < 100000);
   assert.equal(last.compactionDue, true);
+  assert.ok(metrics.every((metric) => Math.abs(metric.checkpointRefreshBytes - metrics[0].checkpointRefreshBytes) <= 3));
   const refreshed = await server.toFreshSnapshot(session);
   assert.equal(refreshed.terminalStream.events.length, last.retainedMemoryEvents);
 
@@ -181,7 +204,7 @@ try {
     inlineCanvasWriteBytes: firstWriteBytes,
     subsequentPositionOnlyWriteBytes: moveWriteBytes
   }));
-  console.log('Current persistence capacity behavior reproduced; no production runtime was started or modified.');
+  console.log('Checkpoint-only refresh stays small; full attach and completed-inline capacity limits remain. No production runtime was started or modified.');
 } finally {
   tracker.dispose();
   oversizedTracker.dispose();

@@ -37,6 +37,7 @@ import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../com
 import {
   TERMINAL_SESSION_STREAM_VERSION,
   buildTerminalStreamAttachPayload,
+  cloneTerminalStreamCheckpoint,
   normalizeTerminalStreamAttachPayload,
   normalizeTerminalStreamCheckpoint,
   normalizeTerminalStreamRevision,
@@ -56,12 +57,14 @@ import {
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorDeleteSessionParams,
   type RuntimeSupervisorEvent,
+  type RuntimeSupervisorGetSessionCheckpointParams,
   type RuntimeSupervisorGetSessionSnapshotParams,
   type RuntimeSupervisorMessageDescriptor,
   type RuntimeSupervisorMessage,
   type RuntimeSupervisorPaths,
   type RuntimeSupervisorRequest,
   type RuntimeSupervisorResizeSessionParams,
+  type RuntimeSupervisorSessionCheckpointResult,
   type RuntimeSupervisorSessionSnapshot,
   type RuntimeSupervisorStopSessionParams,
   type RuntimeSupervisorSubscribeSessionParams,
@@ -275,7 +278,8 @@ class RuntimeSupervisorServer {
               capabilities: {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
-                terminalAppliedRevisionAckV1: true
+                terminalAppliedRevisionAckV1: true,
+                terminalCheckpointRefreshV1: true
               }
             }
           });
@@ -312,6 +316,16 @@ class RuntimeSupervisorServer {
         }
         case 'subscribeSession': {
           const result = await this.subscribeSession(socket, request.params);
+          this.writeMessage(socket, {
+            type: 'response',
+            id: request.id,
+            ok: true,
+            result
+          });
+          return;
+        }
+        case 'getSessionCheckpoint': {
+          const result = await this.getSessionCheckpoint(request.params);
           this.writeMessage(socket, {
             type: 'response',
             id: request.id,
@@ -528,6 +542,49 @@ class RuntimeSupervisorServer {
     params: RuntimeSupervisorGetSessionSnapshotParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
     return this.toFreshSnapshot(this.requireSession(params.sessionId));
+  }
+
+  private getSessionCheckpoint(
+    params: RuntimeSupervisorGetSessionCheckpointParams
+  ): Promise<RuntimeSupervisorSessionCheckpointResult> {
+    const session = this.requireSession(params.sessionId);
+    return this.enqueueTerminalOperation(session, async () => {
+      const journal = session.terminalJournal;
+      if (session.terminalJournalError || !journal || !session.terminalCheckpoint) {
+        throw createRuntimeSupervisorProtocolError({
+          id: 'terminalJournalUnavailable',
+          params: { sessionId: session.sessionId }
+        }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalJournalUnavailable);
+      }
+      if (params.authorityId !== session.terminalAuthorityId) {
+        throw createRuntimeSupervisorProtocolError({
+          id: 'terminalAuthorityMismatch',
+          params: { sessionId: session.sessionId }
+        }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalAuthorityMismatch);
+      }
+      const afterRevision = normalizeTerminalStreamRevision(params.afterCheckpointRevision);
+      if (afterRevision === undefined || afterRevision > journal.getRevision()) {
+        throw createRuntimeSupervisorProtocolError({
+          id: 'terminalRevisionInvalid',
+          params: { sessionId: session.sessionId, revision: String(params.afterCheckpointRevision) }
+        }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalRevisionInvalid);
+      }
+
+      // Refresh the verified checkpoint without collecting the journal suffix.
+      await this.createFreshSnapshot(session, 'always', false);
+      if (session.terminalJournalError) {
+        throw session.terminalJournalError;
+      }
+      const checkpoint = session.terminalCheckpoint;
+      return {
+        sessionId: session.sessionId,
+        authorityId: journal.getAuthorityId(),
+        revision: journal.getRevision(),
+        ...(checkpoint.revision > afterRevision
+          ? { checkpoint: cloneTerminalStreamCheckpoint(checkpoint) }
+          : {})
+      };
+    });
   }
 
   private subscribeSession(

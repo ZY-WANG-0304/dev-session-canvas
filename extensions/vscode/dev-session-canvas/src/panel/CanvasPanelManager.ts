@@ -218,8 +218,10 @@ import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from '../com
 import {
   cloneTerminalStreamAttachPayload,
   cloneTerminalStreamEvent,
+  mergeTerminalStreamCheckpoint,
   mergeTerminalStreamProjectionWithLiveTail,
   normalizeTerminalStreamAttachPayload,
+  normalizeTerminalStreamRevision,
   type TerminalStreamAttachPayload,
   type TerminalStreamEvent
 } from '../common/terminalSessionStream';
@@ -16419,7 +16421,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return;
         }
 
-        const currentStream = normalizeTerminalStreamAttachPayload(currentSession.terminalStream);
+        const currentStream = currentSession.terminalStream;
         if (currentStream && currentStream.checkpoint.revision < currentStream.revision) {
           try {
             await this.refreshExecutionTerminalProjection(kind, nodeId, currentSession);
@@ -16474,6 +16476,77 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       {},
       expectedSession.runtimeStoragePath
     );
+    if (client.supportsTerminalCheckpointRefresh()) {
+      const previousStream = expectedSession.terminalStream;
+      if (!previousStream || this.getExecutionSessions(kind).get(nodeId) !== expectedSession) {
+        return;
+      }
+      const result = await client.getSessionCheckpoint({
+        sessionId: expectedSession.runtimeSessionId,
+        authorityId: previousStream.authorityId,
+        afterCheckpointRevision: previousStream.checkpoint.revision
+      });
+      const currentSession = this.getExecutionSessions(kind).get(nodeId);
+      if (
+        currentSession !== expectedSession ||
+        currentSession.owner !== 'supervisor' ||
+        !currentSession.terminalStreamHealthy
+      ) {
+        return;
+      }
+      const currentStream = currentSession.terminalStream;
+      const resultRevision = normalizeTerminalStreamRevision(result.revision);
+      if (
+        result.sessionId !== currentSession.runtimeSessionId ||
+        result.authorityId !== currentSession.terminalAuthorityId ||
+        resultRevision === undefined ||
+        !currentStream ||
+        resultRevision < currentStream.checkpoint.revision
+      ) {
+        this.recordDiagnosticEvent('runtime/terminalProjectionRefreshRejected', {
+          kind,
+          nodeId,
+          sessionId: currentSession.runtimeSessionId,
+          reason: 'invalid-checkpoint-response'
+        });
+        return;
+      }
+      if (!result.checkpoint) {
+        this.recordDiagnosticEvent('runtime/terminalCheckpointUnchanged', {
+          kind,
+          nodeId,
+          sessionId: currentSession.runtimeSessionId,
+          checkpointRevision: currentStream.checkpoint.revision,
+          revision: resultRevision
+        });
+        return;
+      }
+
+      const mergedStream = result.checkpoint.revision <= resultRevision
+        ? mergeTerminalStreamCheckpoint(result.checkpoint, currentStream)
+        : undefined;
+      if (!mergedStream) {
+        this.recordDiagnosticEvent('runtime/terminalProjectionRefreshRejected', {
+          kind,
+          nodeId,
+          sessionId: currentSession.runtimeSessionId,
+          reason: 'invalid-checkpoint-or-live-tail'
+        });
+        return;
+      }
+      currentSession.terminalStream = mergedStream;
+      this.recordDiagnosticEvent('runtime/terminalProjectionRefreshed', {
+        kind,
+        nodeId,
+        sessionId: currentSession.runtimeSessionId,
+        mode: 'checkpoint-only',
+        previousCheckpointRevision: currentStream.checkpoint.revision,
+        checkpointRevision: mergedStream.checkpoint.revision,
+        revision: mergedStream.revision,
+        replayEventCount: mergedStream.events.length
+      });
+      return;
+    }
     if (!client.supportsTerminalProjectionSnapshot()) {
       this.recordDiagnosticEvent('runtime/terminalProjectionRefreshSkipped', {
         kind,
