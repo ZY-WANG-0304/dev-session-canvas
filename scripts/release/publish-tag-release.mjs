@@ -5,6 +5,7 @@ import { spawnSync } from 'child_process';
 import https from 'https';
 
 import JSZip from 'jszip';
+import { validateReleasePreflight } from './release-preflight.mjs';
 
 const projectRoot = process.cwd();
 const mainExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas');
@@ -241,16 +242,7 @@ function validateReleaseInputs({ context, mainPackageJson, notifierPackageJson }
   if (mainPackageJson.version !== notifierPackageJson.version) {
     throw new Error(`主扩展版本 ${mainPackageJson.version} 与 notifier 版本 ${notifierPackageJson.version} 不一致。`);
   }
-  assertChangelogHasVersion(
-    path.join(mainExtensionRoot, 'CHANGELOG.md'),
-    context.version,
-    '主扩展 CHANGELOG'
-  );
-  assertChangelogHasVersion(
-    path.join(notifierRoot, 'CHANGELOG.md'),
-    context.version,
-    'notifier CHANGELOG'
-  );
+  validateReleasePreflight({ projectRoot, version: context.version });
 
   const head = resolveGitRevision('HEAD');
   if (head !== context.releaseRef) {

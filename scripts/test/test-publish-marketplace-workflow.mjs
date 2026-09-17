@@ -32,6 +32,19 @@ assert.match(
   'workflow must keep release concurrency at workflow level'
 );
 
+assert.equal(prepareJob['timeout-minutes'], 90, 'release verification needs enough time for the full test and clean-checkout gates');
+const releaseVerificationStep = step('prepare', 'Verify release input');
+assert.match(releaseVerificationStep.run, /npm run release:verify -- --version/u);
+assert.match(
+  releaseVerificationStep.run,
+  /Legacy release ref does not contain release:verify/u,
+  'workflow_dispatch must preserve a clear legacy path for historical tag reruns'
+);
+assert.ok(
+  prepareJob.steps.indexOf(releaseVerificationStep) < prepareJob.steps.indexOf(step('prepare', 'Detect existing GitHub Release assets')),
+  'the full gate must run before any Release asset lookup, package, tag, or publish action'
+);
+
 const safeLookup = 'local_ref="$(git rev-parse --verify --quiet "$final_tag^{}" 2>/dev/null || true)"';
 const unsafeLookup = 'local_ref="$(git rev-parse "$final_tag^{}" 2>/dev/null || true)"';
 

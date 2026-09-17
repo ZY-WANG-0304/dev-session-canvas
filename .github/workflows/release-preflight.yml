@@ -1,0 +1,66 @@
+name: Release Preflight
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-preflight-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify-release-contract:
+    name: Verify release contract
+    if: ${{ github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release contract version
+        id: contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t contracts < <(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- docs/release-contracts | grep -E '^docs/release-contracts/v[0-9]+\.[0-9]+\.[0-9]+\.md$' || true)
+          if [[ "${#contracts[@]}" -eq 0 ]]; then
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "No release contract changed in this PR; release verification is not required."
+            exit 0
+          fi
+          if [[ "${#contracts[@]}" -ne 1 ]]; then
+            echo "A release PR must add or update exactly one docs/release-contracts/vX.Y.Z.md file." >&2
+            printf 'Found contracts:\n%s\n' "${contracts[*]:-<none>}" >&2
+            exit 1
+          fi
+          if [[ ! "${contracts[0]}" =~ ^docs/release-contracts/v([0-9]+\.[0-9]+\.[0-9]+)\.md$ ]]; then
+            echo "Invalid release contract path: ${contracts[0]}" >&2
+            exit 1
+          fi
+          echo "is_release=true" >> "$GITHUB_OUTPUT"
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        if: steps.contract.outputs.is_release == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.contract.outputs.is_release == 'true'
+        run: npm ci
+
+      - name: Verify release contract
+        if: steps.contract.outputs.is_release == 'true'
+        run: npm run release:verify -- --version "${{ steps.contract.outputs.version }}"

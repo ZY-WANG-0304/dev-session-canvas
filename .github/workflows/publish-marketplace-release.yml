@@ -23,7 +23,7 @@ jobs:
     name: Prepare GitHub Release Assets
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.event.deleted != true && startsWith(github.ref, 'refs/tags/publish/v')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     outputs:
       final_tag: ${{ steps.release.outputs.final_tag }}
       manifest_path: ${{ steps.release.outputs.manifest_path }}
@@ -72,6 +72,16 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Verify release input
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f scripts/release/release-preflight.mjs ]]; then
+            npm run release:verify -- --version "${{ steps.release.outputs.version }}"
+          else
+            echo "Legacy release ref does not contain release:verify; retaining its existing artifact-validation path."
+          fi
 
       - name: Detect existing GitHub Release assets
         id: existing_assets

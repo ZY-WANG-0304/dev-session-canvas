@@ -4,6 +4,17 @@
 
 当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。本轮 `0.25.0` 需要保持两侧 manifest / changelog / 产物名同版本；notifier 本轮不引入新的通知投递行为、协议、后端选择、点击回跳语义或本地化边界变化。
 
+## 后续版本标准流程
+
+`0.25.0` 的发布记录是历史证据；下一次随主扩展发布时，notifier 必须进入同一份 `docs/release-contracts/vX.Y.Z.md`。该契约在发布准备 PR 合入前确认 notifier 的用户 release notes、Marketplace 文案、支持 / 设计文档和已知限制已经完成，不能在发布后补写实际渠道结果或 gate 结论。
+
+notifier CHANGELOG 只写用户可见的 companion 行为、安装升级和限制，不能包含发布准备待办、内部 gate、候选 / 最终 ref、workflow run、工件 SHA、渠道状态或“门禁已通过”。发布准备 PR 与最终 `publish/vX.Y.Z` tag ref 都必须通过：
+
+    npm run release:preflight -- --version X.Y.Z
+    npm run release:verify -- --version X.Y.Z
+
+PR check 是 required status check。tag workflow 的第二次 verify 在成功前不生成 VSIX、GitHub Release asset 或 Marketplace 写入；最终渠道事实只保存在 release manifest、GitHub Release assets 和 Release notes，不能通过发布后 PR 回写同版本 notifier CHANGELOG。
+
 ## 当前发布素材
 
 - Marketplace listing 英文默认正文：`extensions/vscode/dev-session-canvas-notifier/README.marketplace.md`
@@ -36,7 +47,7 @@
 - 缺少主扩展时，本扩展不会单独提供画布、节点执行或 attention 判定能力。
 - `Remote SSH`、WSL、Dev Container 等“主扩展在 workspace 侧、通知需要回到本机桌面”的场景，仍是最能体现 companion 价值的主推荐路径。
 
-## 发布前检查
+## v0.25.0 发布前检查（历史记录）
 
 以下步骤默认建立在一个前提上：notifier 对应的 feature 均已经先合入 `main`，发布物料也已经通过独立发布准备分支 review 并回到 `main`。真正执行 `publish` 时，应站在 `main` 上对应的最终发布 commit，而不是仍停留在未合并的发布准备分支 head。
 
@@ -82,7 +93,10 @@
 
 推送临时 tag 后，`.github/workflows/publish-marketplace-release.yml` 会先执行：
 
+    npm run release:verify -- --version X.Y.Z
     npm run release:publish-tag -- --trigger-tag publish/v0.25.0 --package-only
+
+历史 tag checkout 缺少 `release:verify` 时只保留原有的 immutable-artifact 补发路径；后续版本不能以该兼容行为绕过发布契约和完整门禁。
 
 workflow 只应由 `publish/v*` tag push 或手动 `workflow_dispatch` 触发；创建普通分支、普通 tag 或 release 分支不应产生 skipped publish run。若 Actions 列表出现这类噪音，应优先修正 workflow 触发条件，而不是把 skipped run 当作真实 notifier 发布动作。
 
