@@ -175,7 +175,7 @@ try {
   assert.match(
     supervisorSource,
     /deferSocketSubscription\([\s\S]*deferredSubscriptionRevisions[\s\S]*releaseTerminalJournalMemoryThroughCheckpoint/u,
-    'deferred attach 必须 pin 静态 revision，避免 checkpoint 刷新提前释放 attach gap 事件。'
+    'deferred attach 必须 pin 静态 revision，避免 checkpoint compact 提前删除 attach gap 事件。'
   );
   assert.match(
     supervisorSource,
@@ -452,6 +452,8 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     assert.equal(hello.capabilities?.terminalProjectionSnapshotV1, true);
     assert.equal(hello.capabilities?.terminalAppliedRevisionAckV1, true);
     assert.equal(hello.capabilities?.terminalCheckpointRefreshV1, true);
+
+    await assertEvictedJournalRecovery(socket, messages, registryPath, tempDir);
 
     const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');
     const gapMarker = `attach-gap-marker-${Date.now()}`;
@@ -1292,6 +1294,105 @@ setInterval(() => undefined, 1000);
       supervisor.once('close', resolve);
       setTimeout(resolve, 1000);
     });
+  }
+}
+
+async function assertEvictedJournalRecovery(socket, messages, registryPath, tempDir) {
+  const row = `CACHE_HISTORY_ROW ${'x'.repeat(64)}\r\n`;
+  const rowCount = 18000;
+  const scriptPath = path.join(tempDir, 'runtime-evicted-journal.js');
+  await writeFile(scriptPath, `
+const readline = require('readline');
+const input = readline.createInterface({ input: process.stdin });
+input.on('line', (line) => {
+  if (line === 'burst') {
+    process.stdout.write('\\x1b]10;#ff0000\\x07CACHE_HISTORY_BEGIN\\r\\n' +
+      ${JSON.stringify(row)}.repeat(${rowCount}) + 'CACHE_HISTORY_END\\r\\n');
+  } else if (line === 'exit') {
+    process.stdout.write('CACHE_HISTORY_FINAL\\r\\n', () => process.exit(0));
+  } else {
+    process.stdout.write('CACHE_HISTORY_LIVE:' + line + '\\r\\n');
+  }
+});
+`, 'utf8');
+
+  for (const kind of ['terminal', 'agent']) {
+    const sessionId = `evicted-journal-${kind}`;
+    const initial = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
+      kind,
+      sessionId,
+      displayLabel: 'Node cache recovery fixture',
+      launchMode: 'start',
+      scrollback: 1000,
+      deferSubscription: true,
+      launchSpec: {
+        file: process.execPath,
+        args: [scriptPath],
+        cwd: tempDir,
+        cols: 80,
+        rows: 24,
+        env: process.env,
+        terminalName: 'xterm-256color'
+      }
+    });
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', { sessionId, data: 'burst\n' });
+    await waitForRuntimeSupervisorRegistrySession(registryPath, sessionId,
+      (snapshot) => snapshot.output.includes('CACHE_HISTORY_END'));
+    const recovered = await sendRuntimeSupervisorRequest(socket, messages, 'getSessionSnapshot', { sessionId });
+    assertTerminalStreamSnapshot(recovered, `${kind} evicted journal snapshot`);
+    assert.equal(recovered.terminalStream.checkpoint.revision, initial.terminalStream.checkpoint.revision,
+      'color state must keep the checkpoint behind the entire burst.');
+    const recoverText = (events) => events.filter((event) => event.type === 'output').map((event) => event.data).join('');
+    const history = recoverText(recovered.terminalStream.events);
+    assert.ok(Buffer.byteLength(history) > 1024 * 1024, 'history must exceed the production event cache budget.');
+    assert.equal(history.split('CACHE_HISTORY_ROW ').length - 1, rowCount);
+    assert.match(history, /CACHE_HISTORY_BEGIN/u);
+    assert.match(history, /CACHE_HISTORY_END/u);
+
+    const subscribed = await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
+      sessionId, authorityId: initial.terminalAuthorityId, afterRevision: initial.terminalRevision
+    });
+    const replay = messages.filter((message) => message.event === 'sessionTerminalEvent' &&
+      message.payload?.sessionId === sessionId && message.payload.event.revision <= subscribed.revision)
+      .map((message) => message.payload.event);
+    assert.deepEqual(replay, recovered.terminalStream.events,
+      'deferred subscription must replay the same evicted events, once and in order.');
+
+    const reattached = await sendRuntimeSupervisorRequest(socket, messages, 'attachSession', {
+      sessionId, deferSubscription: true
+    });
+    assertTerminalStreamSnapshot(reattached, `${kind} reattach after eviction`);
+    assert.equal(reattached.sessionId, initial.sessionId);
+    assert.equal(reattached.terminalAuthorityId, initial.terminalAuthorityId);
+    assert.equal(recoverText(reattached.terminalStream.events).split('CACHE_HISTORY_ROW ').length - 1, rowCount);
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', { sessionId, data: 'after-reattach\n' });
+    await waitForRuntimeSupervisorRegistrySession(registryPath, sessionId,
+      (snapshot) => snapshot.output.includes('CACHE_HISTORY_LIVE:after-reattach'));
+    await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
+      sessionId, authorityId: initial.terminalAuthorityId, afterRevision: reattached.terminalRevision
+    });
+    const liveTail = messages.filter((message) => message.event === 'sessionTerminalEvent' &&
+      message.payload?.sessionId === sessionId && message.payload.event.revision > reattached.terminalRevision)
+      .map((message) => message.payload.event);
+    assert.equal(recoverText(liveTail).split('CACHE_HISTORY_LIVE:after-reattach').length - 1, 1);
+    assert.equal(liveTail[0].revision, reattached.terminalRevision + 1);
+
+    await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', { sessionId, data: 'exit\n' });
+    const final = await waitForRuntimeSupervisorMessage(messages, (message) =>
+      message.event === 'sessionState' && message.payload?.sessionId === sessionId && !message.payload.live,
+    `${kind} completed evicted journal`);
+    assertTerminalStreamSnapshot(final.payload, `${kind} completed snapshot after eviction`);
+    const completed = recoverText(final.payload.terminalStream.events);
+    assert.equal(completed.split('CACHE_HISTORY_ROW ').length - 1, rowCount);
+    assert.match(completed, /CACHE_HISTORY_BEGIN/u);
+    assert.match(completed, /CACHE_HISTORY_FINAL/u);
+    const [beforeDelete] = await Promise.all([
+      sendRuntimeSupervisorRequest(socket, messages, 'getSessionSnapshot', { sessionId }),
+      sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', { sessionId }),
+      sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', { sessionId })
+    ]);
+    assertTerminalStreamSnapshot(beforeDelete, `${kind} queued read before concurrent deletes`);
+    assert.equal(recoverText(beforeDelete.terminalStream.events), completed);
   }
 }
 

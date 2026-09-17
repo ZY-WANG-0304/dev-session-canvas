@@ -46,7 +46,7 @@ updated_at: 2026-09-17
 
 建议：以独立会话存储、有界缓存和分批读取为候选，同时参考 tmux/WezTerm 比较权威终端状态同步。分页能限制单次资源，不能自动消除旧 checkpoint 的全后缀回放时间。具体 codec、状态协议、容量/保留策略仍待比较，见 `docs/design-docs/runtime-persistence-storage-reevaluation.md` 第 5–8 节。
 
-2026-09-17 实施进展：`docs/design-docs/runtime-checkpoint-only-refresh.md` 的首个协议增量已消除支持新 capability 时的周期完整后缀重传；相同诊断样本的新响应只有 98/99/99 字节。F-04 仍开放，因为 Supervisor/Host 全后缀内存、首次 attach 和总回放成本未改变，旧 Supervisor 也继续走原兼容路径。本文代码行号和问题原始描述对应审核基线，不把部分修复写成整体解决。
+2026-09-17 实施进展：`docs/design-docs/runtime-checkpoint-only-refresh.md` 的首个协议增量已消除支持新 capability 时的周期完整后缀重传；相同诊断样本的新响应只有 98/99/99 字节。第二个增量 `docs/design-docs/runtime-journal-bounded-cache.md` 将 Supervisor 长期事件缓存限制为 1 MiB 编码字节及 2048 条，从既有 journal 校验读取被淘汰内容；同一负载累计约 19.66 MB output 时缓存约 1.046 MB，全部 1921 个事件仍可恢复。F-04 仍开放：Host 全后缀、首次 attach/完整响应、总回放和全量临时分配未收口，缓存预算不是 RSS 上限；旧 Supervisor 继续原行为。本文代码行号和问题原始描述对应审核基线，不把部分修复写成整体解决。
 
 ### F-05 高：completed handoff 将完整会话恢复数据内联画板，使普通画板操作持续承担历史成本
 

@@ -150,12 +150,17 @@ try {
     });
     const checkpointRefreshBytes = Buffer.byteLength(JSON.stringify(checkpointResult));
     assert.ok(checkpointRefreshBytes < 1024);
-    const retained = journal.getEventsAfter(0);
+    const retained = await journal.getEventsAfter(0);
+    const cache = journal.getCacheStats();
+    assert.ok(cache.encodedBytes <= cache.maxBytes);
+    assert.ok(cache.eventCount <= cache.maxEvents);
     const metric = {
       scenario: 'live-suffix',
       phase,
       screenStateBytes: Buffer.byteLength(tracker.getSerializedState().data),
-      retainedMemoryEvents: retained.length,
+      readableHistoryEvents: retained.length,
+      cachedEvents: cache.eventCount,
+      cachedEventBytes: cache.encodedBytes,
       retainedOutputBytes: retained.reduce((sum, event) =>
         sum + (event.type === 'output' ? Buffer.byteLength(event.data) : 0), 0),
       journalDiskBytes: directoryBytes(path.join(tempDir, 'terminal-journals')),
@@ -174,14 +179,14 @@ try {
   assert.equal(last.compactionDue, true);
   assert.ok(metrics.every((metric) => Math.abs(metric.checkpointRefreshBytes - metrics[0].checkpointRefreshBytes) <= 3));
   const refreshed = await server.toFreshSnapshot(session);
-  assert.equal(refreshed.terminalStream.events.length, last.retainedMemoryEvents);
+  assert.equal(refreshed.terminalStream.events.length, last.readableHistoryEvents);
 
   session.live = false;
   session.lifecycle = 'closed';
   session.terminalMutationAdmissionOpen = false;
   const completed = await server.toFreshSnapshot(session, 'never');
   assert.equal(completed.terminalStream.revision, journal.getRevision());
-  assert.equal(completed.terminalStream.events.length, last.retainedMemoryEvents);
+  assert.equal(completed.terminalStream.events.length, last.readableHistoryEvents);
 
   // This minimal canvas measures inline bytes, not the full Host handoff workflow.
   const node = {
@@ -204,7 +209,7 @@ try {
     inlineCanvasWriteBytes: firstWriteBytes,
     subsequentPositionOnlyWriteBytes: moveWriteBytes
   }));
-  console.log('Checkpoint-only refresh stays small; full attach and completed-inline capacity limits remain. No production runtime was started or modified.');
+  console.log('Supervisor event cache and checkpoint-only refresh stay bounded; full attach, Host cache and completed-inline limits remain. No production runtime was started or modified.');
 } finally {
   tracker.dispose();
   oversizedTracker.dispose();

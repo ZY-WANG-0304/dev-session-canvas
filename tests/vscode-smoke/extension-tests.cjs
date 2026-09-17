@@ -206,6 +206,12 @@ async function runSmoke() {
 async function runRuntimeCheckpointRefreshSmoke() {
   const { agentNode, terminalNode } = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
   const marker = 'DSC_CHECKPOINT_ONLY_REFRESH';
+  const rowCount = 18000;
+  const hasCompleteEvictedHistory = (stream) => {
+    const text = readTerminalStreamProjectionText(stream);
+    return text.includes(marker) && text.length > 1024 * 1024 &&
+      (text.match(/DSC_CACHE_ROW_\d{5}_/gu) ?? []).length === rowCount;
+  };
   try {
     await waitForAgentLive(agentNode.id);
     const initial = await waitForTerminalLive(terminalNode.id);
@@ -220,7 +226,9 @@ async function runRuntimeCheckpointRefreshSmoke() {
       payload: {
         nodeId: terminalNode.id,
         kind: 'terminal',
-        data: `printf '\\033]10;#ff0000\\007\\n${marker}\\n'\r`
+        data: `printf '\\033]10;#ff0000\\007'; i=1; while [ "$i" -le ${rowCount} ]; do ` +
+          `printf 'DSC_CACHE_ROW_%05d_%064d\\r\\n' "$i" 0; i=$((i+1)); done; ` +
+          `printf '%s%s\\n' 'DSC_CHECKPOINT_' 'ONLY_REFRESH'\r`
       }
     });
     await waitForSnapshot((snapshot) =>
@@ -241,7 +249,7 @@ async function runRuntimeCheckpointRefreshSmoke() {
     ), 20000);
     await waitForHostMessages((messages) => messages.some((message) =>
       message.type === 'host/executionSnapshot' && message.payload.nodeId === terminalNode.id &&
-      readTerminalStreamProjectionText(message.payload.terminalStream).includes(marker)
+      hasCompleteEvictedHistory(message.payload.terminalStream)
     ), 20000);
     await waitForWebviewProbe((probe) =>
       readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
@@ -264,14 +272,14 @@ async function runRuntimeCheckpointRefreshSmoke() {
     await waitForHostMessages((messages) => messages.some((message) =>
       message.type === 'host/executionSnapshot' && message.payload.nodeId === terminalNode.id &&
       message.payload.executionSessionId === terminalSessionId &&
-      readTerminalStreamProjectionText(message.payload.terminalStream).includes(marker)
+      hasCompleteEvictedHistory(message.payload.terminalStream)
     ), 20000);
     await waitForWebviewProbe((probe) =>
       readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
     20000);
     await ensureTerminalStopped(terminalNode.id);
     await waitForSnapshot((snapshot) =>
-      readTerminalStreamProjectionText(findNodeById(snapshot, terminalNode.id).metadata.terminal.terminalStream).includes(marker),
+      hasCompleteEvictedHistory(findNodeById(snapshot, terminalNode.id).metadata.terminal.terminalStream),
     20000);
   } finally {
     await ensureAgentStopped(agentNode.id);

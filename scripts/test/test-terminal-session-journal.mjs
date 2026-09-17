@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -56,6 +57,8 @@ try {
     verifyTerminalSessionJournal
   } = require(outfile);
 
+  await verifyBoundedCacheAndPagedReads(TerminalSessionJournal, resolveTerminalJournalSessionDirectory);
+
   const storageDir = path.join(tempDir, 'runtime-storage');
   const sessionId = 'journal-test-session';
   const authorityId = 'journal-test-authority';
@@ -89,7 +92,7 @@ try {
 
   journal.releaseMemoryThrough(2);
   assert.deepEqual(
-    journal.getEventsAfter(2).map((event) => event.revision),
+    (await journal.getEventsAfter(2)).map((event) => event.revision),
     [3, 4],
     'checkpoint cache may release memory without deleting persisted journal records.'
   );
@@ -821,4 +824,136 @@ try {
   console.log('terminalSessionJournal tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+async function verifyBoundedCacheAndPagedReads(Journal, resolveDirectory) {
+  const storageDir = path.join(tempDir, 'bounded-cache');
+  const options = {
+    storageDir,
+    sessionId: 'bounded-history',
+    authorityId: 'bounded-authority',
+    initialCols: 80,
+    initialRows: 24,
+    initialScrollback: 1000,
+    eventCacheMaxBytes: 1000,
+    eventCacheMaxEvents: 3,
+    segmentMaxBytes: 1200,
+    flushDelayMs: 60000,
+    checkpointProfiles
+  };
+  const journal = await Journal.create(options);
+  const expected = [];
+  for (let index = 0; index < 30; index += 1) {
+    expected.push(index % 3 === 0
+      ? journal.appendOutput(`output-${index}:${'\u4e2d'.repeat(index === 15 ? 2000 : 160)}\r\n`)
+      : index % 3 === 1 ? journal.appendResize(80 + index, 24) : journal.appendScrollback(1000 + index));
+    const cache = journal.getCacheStats();
+    assert.ok(cache.encodedBytes <= cache.maxBytes);
+    assert.ok(cache.eventCount <= cache.maxEvents);
+  }
+  assert.ok(journal.getCacheStats().eventCount < expected.length);
+  assert.equal(journal.getRetainedStartRevision(), 1, 'cache eviction must not compact the journal.');
+  assert.deepEqual(await journal.getEventsAfter(0), expected, 'unflushed evicted data must remain recoverable.');
+  const cache = journal.getCacheStats();
+  const cachedEvents = await journal.getEventsAfter(expected.length - cache.eventCount);
+  assert.equal(cache.encodedBytes, cachedEvents.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0));
+  assert.deepEqual(cachedEvents, expected.slice(-cache.eventCount));
+  cachedEvents[0].data = 'caller-mutation';
+  assert.deepEqual(await journal.getEventsAfter(0), expected, 'read results must not mutate the journal.');
+
+  const pages = [];
+  for await (const page of journal.readEventPagesAfter(2, {
+    throughRevision: 26, pageMaxBytes: 400, pageMaxEvents: 2
+  })) {
+    const bytes = Buffer.byteLength(JSON.stringify(page));
+    assert.ok(page.length <= 2);
+    assert.ok(bytes <= 400 || page.length === 1, 'oversized events must occupy their own page.');
+    pages.push(...page);
+  }
+  assert.deepEqual(pages, expected.slice(2, 26));
+
+  const reopened = await Journal.open(options);
+  assert.ok(reopened.getCacheStats().encodedBytes <= 1000);
+  assert.ok(reopened.getCacheStats().eventCount <= 3);
+  reopened.releaseMemoryThrough(reopened.getRevision());
+  assert.deepEqual(reopened.getCacheStats(), { eventCount: 0, encodedBytes: 0, maxEvents: 3, maxBytes: 1000 });
+  assert.deepEqual(await reopened.getEventsAfter(0), expected, 'open must rebuild trusted segment anchors.');
+
+  const iterator = journal.readEventPagesAfter(0, { pageMaxEvents: 1 });
+  const firstPage = await iterator.next();
+  assert.deepEqual(firstPage.value, expected.slice(0, 1));
+  const appended = journal.appendOutput('later-live-output\r\n');
+  await journal.flush();
+  await assert.rejects(journal.commitCheckpoint(
+    createCheckpoint(options.sessionId, options.authorityId, appended.revision), { force: true }
+  ), /active readers/u);
+  await assert.rejects(journal.delete(), /active readers/u);
+  const pinnedEvents = [...firstPage.value];
+  for await (const page of iterator) {
+    pinnedEvents.push(...page);
+  }
+  assert.deepEqual(pinnedEvents, expected, 'a reader must not include output appended after its frozen head.');
+  expected.push(appended);
+  assert.deepEqual(await journal.getEventsAfter(0), expected);
+
+  const cancelled = journal.readEventPagesAfter(0, { pageMaxEvents: 1 });
+  await cancelled.next();
+  await cancelled.return();
+  assert.equal((await journal.commitCheckpoint(
+    createCheckpoint(options.sessionId, options.authorityId, appended.revision), { force: true }
+  )).committed, true, 'cancelled reads must release their compaction pin.');
+  const next = journal.appendOutput('after-checkpoint\r\n');
+  await journal.commitCheckpoint(createCheckpoint(options.sessionId, options.authorityId, next.revision), { force: true });
+  assert.ok(journal.getRetainedStartRevision() > 1);
+  await assert.rejects(journal.getEventsAfter(0), /Invalid terminal journal revision/u);
+  journal.releaseMemoryThrough(next.revision);
+  assert.deepEqual(await journal.getEventsAfter(appended.revision), [next], 'retained anchors survive compaction.');
+  await assert.rejects(journal.getEventsAfter(-1), /Invalid terminal journal revision/u);
+  await assert.rejects(journal.getEventsAfter(next.revision + 1), /Invalid terminal journal revision/u);
+  await assert.rejects(journal.readEventPagesAfter(next.revision, { pageMaxEvents: 0 }).next(), /page limits/u);
+  const deleting = journal.delete();
+  await assert.rejects(journal.getEventsAfter(next.revision), /deleted/u);
+  assert.throws(() => journal.appendOutput('after-delete'), /deleted/u);
+  await deleting;
+  await journal.delete();
+  await assert.rejects(journal.getEventsAfter(next.revision), /deleted/u);
+
+  const corrupt = await Journal.create({ ...options, sessionId: 'corrupt-page', eventCacheMaxBytes: 0 });
+  corrupt.appendOutput('original-content\r\n');
+  await corrupt.flush();
+  const directory = resolveDirectory(storageDir, 'corrupt-page');
+  const manifest = await readManifest(directory);
+  const file = path.join(directory, manifest.segments[0].file);
+  const original = await readFile(file, 'utf8');
+  for (const replacement of [
+    original.slice(0, -5),
+    original.replace('original-content', 'modified-content'),
+    original.replace('bounded-authority', 'foreign-authority')
+  ]) {
+    await writeFile(file, replacement);
+    await assert.rejects(corrupt.readEventPagesAfter(0).next(), /truncated|checksum or revision mismatch/u);
+  }
+  const tampered = JSON.parse(original);
+  tampered.data = tampered.data.replace('original', 'modified');
+  const { checksum: _checksum, ...tamperedBody } = tampered;
+  tampered.checksum = createHash('sha256').update(JSON.stringify(tamperedBody)).digest('hex');
+  await writeFile(file, `${JSON.stringify(tampered)}\n`);
+  await assert.rejects(corrupt.readEventPagesAfter(0).next(), /checksum anchor mismatch/u,
+    'self-consistent rewritten data must fail the trusted writer checksum anchor before yielding.');
+  await writeFile(file, `${original}uncommitted-garbage`);
+  assert.equal((await corrupt.getEventsAfter(0))[0].data, 'original-content\r\n',
+    'reads must be limited to the frozen committed byte prefix.');
+  await rm(file);
+  await assert.rejects(corrupt.getEventsAfter(0), /ENOENT/u);
+  await corrupt.delete();
+
+  const failed = await Journal.create({ ...options, sessionId: 'write-failure', eventCacheMaxBytes: 0 });
+  failed.appendOutput('only-in-pending-write\r\n');
+  const failedDirectory = resolveDirectory(storageDir, 'write-failure');
+  await rm(failedDirectory, { recursive: true });
+  await writeFile(failedDirectory, 'not-a-directory');
+  await assert.rejects(failed.getEventsAfter(0), /ENOTDIR|ENOENT/u,
+    'eviction plus write failure must never become an empty successful read.');
+  await assert.rejects(failed.flush(), /ENOTDIR|ENOENT/u);
+  await failed.delete();
 }

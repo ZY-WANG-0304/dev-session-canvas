@@ -16,6 +16,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/completed/runtime-journal-bounded-cache.md
   - docs/exec-plans/completed/runtime-checkpoint-only-refresh.md
   - docs/exec-plans/completed/agent-terminal-lossless-io-redesign.md
   - docs/exec-plans/completed/agent-supervisor-parallel-drain.md
@@ -31,6 +32,8 @@ updated_at: 2026-09-17
 2026-09-16 架构审核补充：第 10.10、10.11、10.13–10.15 节的现行实现保持不变，但 checkpoint 长期拒绝后的全后缀内存/传输，以及 completed 恢复数据内联画板，已分别登记为高优先级架构重评 F-04/F-05。候选与 tmux、VS Code、WezTerm 对照见 `docs/design-docs/runtime-persistence-storage-reevaluation.md`。本文“已选定”表示当前仍适用的方案，不代表上述容量/归档边界已被认可为长期最终架构；新方案保持“比较中”，本轮未放宽无损保证。
 
 2026-09-17 产品边界补充：用户确认 Supervisor 崩溃或机器重启后不要求恢复原进程，也可以不恢复终端历史；不能据此放弃 Supervisor 存活时的 Host/Webview 重建、暂时断连或正常 completed handoff。本文 journal、双代与磁盘恢复仍描述当前实现，不再作为新候选必须照搬的灾备需求；重评优先验证 server 生命周期内的权威状态与受控缓存，磁盘存储/归档按实际容量和正常历史需求决定。本轮只更新设计边界，未删除现有保护或历史。
+
+2026-09-17 实施补充：独立 checkpoint 刷新后，Supervisor 又将长期事件缓存与日志保留分离，按需校验读取被淘汰后缀，见第 10.16 节及 `runtime-journal-bounded-cache.md`。这些增量不改变 eligibility、正常 handoff 或原会话绑定；Host/完整恢复响应及 completed 内联仍未收口。
 
 ## 1. 背景
 
@@ -380,7 +383,7 @@ Host 在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 
 
 ### 10.10 无 attach 时的周期性 Host cache 收敛
 
-待重评边界（F-04）：新 capability 已消除本节周期刷新时的完整后缀重传，但不能保证 Host/Supervisor 后缀内存、首次 attach 消息或总回放工作有上限。旧 Supervisor 保留完整 snapshot 刷新。下一阶段需比较持久存储游标与权威终端状态同步，不以延长刷新间隔替代容量设计。
+待重评边界（F-04）：新 capability 已消除本节周期刷新时的完整后缀重传，第 10.16 节又限制了 Supervisor 事件缓存，但 Host 全后缀、首次 attach 消息、全量临时分配与总回放工作仍没有统一上限。旧 Supervisor 保留原行为。下一阶段需比较存储游标与权威终端状态同步，不以延长刷新间隔替代容量设计。
 
 健康 authority session 即使长期没有新 Webview attach，Host 也按固定周期检查 `terminalStream.checkpoint.revision < terminalStream.revision` 的缓存，不在检查阶段 normalize 全部事件。`extensions/vscode/dev-session-canvas/src/common/terminalProjectionRefreshScheduler.ts` 提供可清理、永久可 dispose 的确定性错峰 timer；`CanvasPanelManager.scheduleExecutionTerminalProjectionRefresh()` 以 10 秒基础周期加 0–2 秒 session hash spread 调度检查。存在 checkpoint 后事件时优先使用 capability-gated `getSessionCheckpoint`，未支持该能力但支持 projection snapshot 的旧 Supervisor 才使用 `getSessionSnapshot`。同 session 的 attach refresh、周期 refresh 和并发 tick 共用同一 in-flight 请求；没有新事件时不发 RPC。
 
@@ -431,6 +434,18 @@ deferred attach revision 在 `subscribeSession(afterRevision)` 完成前收紧 r
 第一次 generation 只有 current checkpoint；`retainedStartRevision === 1` 使 revision 0 genesis 作为隐式 full-journal fallback，而不是伪造一份 previous checkpoint。后续晋升把经过重读验证的旧 current 作为 previous；若旧 current 损坏，则可继续保留更早且仍可验证的 previous，并停止推进删除边界。正常恢复顺序固定为 `current -> previous -> genesis`，每个候选都重放自身 revision 后的连续 journal suffix 到最新 revision。
 
 候选重放到 head 后如果新 head 暂时不具备 eligibility，Supervisor 保留候选的可信 base checkpoint 加完整 suffix，并且不发布误导性的 fresh `serializedTerminalState`；这不是切换到更旧候选的理由。current/previous checkpoint 都不可用但 revision 1 起的完整 journal仍在时，从 genesis重建；prefix 已经删除且两代均不可用时 fail closed。双代回退保护 checkpoint 文件损坏、format/profile 不兼容与 compact 提交崩溃，不承诺抵抗共享 suffix 自身的位腐坏；suffix checksum失败时所有候选都拒绝恢复，不回退到陈旧 revision，也不使用 registry raw tail。
+
+### 10.16 Supervisor 按需 journal 读取与有限事件缓存
+
+`terminalSessionJournal.ts` 将事件缓存限制为 1 MiB 事件 JSON UTF-8 编码字节及 2048 条事件；缓存淘汰不改变 disk retained revision、checkpoint、ACK 或 compact 删除边界。既有待写队列继续持有未落盘材料，读取先等待写入，失败时拒绝伪完整恢复。没有新 checkpoint 时也可以释放已缓存副本，因为异步 `readEventPagesAfter()` 可以从现有 journal 校验读取同一连续范围；`getEventsAfter()` 聚合页面以兼容当前完整 stream 协议。
+
+新 reader 开始迭代时冻结 head、段字节前缀与可信首尾 checksum，读取整段并验证身份、revision 与链式 checksum 后才返回该段事件。页默认最多 256 KiB 事件数组 JSON 字节及 256 条，单条超大事件独占一页；段临时分配受原段大小约束，默认 4 MiB，单条大事件例外。读期间阻止 compact/delete，取消或异常释放 pin，删除开始后阻止新读取/追加。open 时的原有完整验证重建内存 checksum 索引，不新增磁盘格式。
+
+`runtimeSupervisorMain.ts` 在原 `terminalOperationChain` 中异步构建完整 projection，显式 attach/snapshot、订阅补偿和正常 finalization 不依赖缓存命中。普通生命周期通知同样排队读取；已正常结束或删除的排队通知不再广播，由 finalization 发布正常终态。错误状态不依赖损坏日志。订阅补偿与状态快照都读取成功才启用订阅并发送，避免读取错误留下半激活状态。
+
+删除前快照、实际 journal 文件清理、订阅和 session map 移除都在同一队列内完成，已接受的重复删除在首个完成后直接成功。不能在异步读取启用后仍把文件移除放到队列外；先排队的完整恢复读取必须在清理前完成。
+
+该改造只限制长期事件缓存，不覆盖段索引、pending/write chain、xterm、完整响应、Host 缓存或 open/compact 的全量扫描，不是整体 RSS 保证或端到端分页。2026-09-17 容量样本的 19.66 MB output 对应 99 条、约 1.046 MB 缓存，全部 1921 个事件仍恢复；真实 PTY 与 Linux VS Code 大输出 reload/completed 和旧协议兼容验证通过，详见 `docs/design-docs/runtime-journal-bounded-cache.md`。
 
 ## 11. 正式方案必须满足的不变量
 

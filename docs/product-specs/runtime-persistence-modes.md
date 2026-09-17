@@ -136,4 +136,6 @@
 
 首个实施增量已支持健康 live stream 独立刷新 checkpoint：无新 checkpoint 时不反复传输完整后缀，旧 Supervisor 保持兼容。它不改变首次恢复、正常 completed 保存或旧会话归属，也不代表整体容量验收通过。具体协议见 `docs/design-docs/runtime-checkpoint-only-refresh.md`。
 
+第二个增量将 Supervisor 事件缓存与日志保留分离：缓存限制为 1 MiB 编码字节及 2048 条事件，淘汰部分通过原 journal 按需校验读取，正常恢复和结束不丢内容。完整恢复协议暂未分页到 Host/Webview，完整响应、Host 缓存及 completed 内联仍可能增长；这不是进程总内存上限，也不改变历史保留承诺。设计与阶段验证见 `docs/design-docs/runtime-journal-bounded-cache.md`。
+
 候选比较、可重跑基线与建议矩阵见 `docs/design-docs/runtime-persistence-storage-reevaluation.md`，原始上游证据见 `docs/references/terminal-persistence-open-source-survey.md`。其余运行时改造分阶段规划。

@@ -16,6 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-checkpoint-only-refresh.md
+  - docs/exec-plans/completed/runtime-journal-bounded-cache.md
 updated_at: 2026-09-17
 ---
 
@@ -31,7 +32,9 @@ updated_at: 2026-09-17
 
 2026-09-17，用户进一步确认：Supervisor 自身崩溃或机器重启后，不要求恢复原进程，也可以不恢复终端历史；断电导致的该类丢失同样不要求恢复。这是产品保证的收窄，不是选定了纯内存实现，也不是要求主动删除已保存历史。第 6.3 节据此重新评估方案复杂度，当前 journal 与 handoff 代码仍保持不变。
 
-## 2. 已核实的现状
+## 2. 已核实的审核基线
+
+本节事实与行号保留原审核基线。第 9 节记录已实施增量：周期后缀重传与 Supervisor 长期事件缓存已分别缩小，Host/完整恢复/归档边界仍未完成替代。
 
 ### 2.1 live 恢复依赖完整后缀
 
@@ -198,6 +201,8 @@ Supervisor、Host、Webview 各自需要每会话及全局缓存/在途预算；
 ## 9. 当前结论与下一阶段
 
 2026-09-17 开始实施后的首个增量见 `docs/design-docs/runtime-checkpoint-only-refresh.md`：支持新 capability 时，Host 健康 stream 只查询新 checkpoint，不再周期性重传完整后缀。诊断中同一持续颜色状态拒绝样本的刷新响应为 98/99/99 字节，完整 snapshot 仍为 6763684/13526849/20290369 字节，completed 内联画板仍重写 20509666 字节。该增量保留 eligibility 和旧协议，未解决首次 attach、全后缀内存或 F-05，也不意味着选定整个 B/S1/S2 路线。
+
+第二个增量见 `docs/design-docs/runtime-journal-bounded-cache.md`：Supervisor 的长期事件缓存不再由 checkpoint 推进决定，按 1 MiB 编码字节及 2048 条限制，被淘汰部分从既有 journal 校验读取。同一三阶段样本的缓存始终 99 条，字节为 1046034 / 1046133 / 1046133；累计 output 仍增长到 19660813 字节，全部 1921 条事件可恢复。真实 Agent/Terminal PTY 和 Linux VS Code 的超缓存输出、重连及正常结束测试通过。它复用原存储而不增加归档或迁移；内部分页仍由 wire v1 聚合为完整响应，Host 后缀、恢复时间、pending/in-flight、open/compact 全量分配与 F-05 继续开放，不把缓存计量称为实际 RSS。
 
 F-04/F-05 仍需联合重评，因为两项成本发生在 Supervisor 正常运行期间。2026-09-17 的确认使首选验证方向收敛为第 6.3 节的 server 生命周期模型：不预设 durable journal/归档为前提，再根据正常保留和容量需要评估 B；B+S1 可作为兼容路线对照。候选 C 只能是阶段性措施，候选 A 不能代替职责分离。当前 `decision_status` 保持“比较中”，并未接受某个新文件格式、mux backend、纯内存实现或服务拓扑。
 
