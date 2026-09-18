@@ -45,4 +45,6 @@ updated_at: 2026-09-18
 
 2026-09-18 定向证据：协议验证 Agent/Terminal 各 18000 行在退役后继续读完整尾部；实际 Supervisor 方法禁止完整聚合的故障注入覆盖双 socket、首个 read 前结束、关闭/断连、强制删除和旧订阅混用，journal 文件按最后读者实际删除。Host 方法验证在途 open、保存失败、错误 authority/revision、读者关闭 RPC 之前不退役旧客户端，以及终态页面失败明确关闭。6 项 Playwright 和首轮 5 项 Linux VS Code 场景通过，包含严格 90000 行实际 xterm 和空白重开。约 6.55/13.11/19.66 MB output 的最小诊断终态编码为 405/407/407 字节，不是任意生产消息上限或 RSS。
 
-第二轮真实宿主在第一项失败：实际 xterm 为 89969/90000，最后一页发送记录为 `revision=headRevision=12654`。测试 finally 清空消息正文，不能凭分页 revision 确定缺失发生在 PTY、journal 还是 Webview；本轮不改 exit drain、不加等待绕过断言。补清理前失败目录和首末行诊断后，后续 90000 行逐行校验与空白重开通过，仍不能否定失败。现场 `.debug/runtime-paged-completion-short-read-failure/`，验证命令和完整轮次见执行计划。完整套件、packaged smoke、非 Linux/Remote SSH、长期压力与 RSS 未跑；尾部短读未定位，因此保持“验证中”。
+第二轮真实宿主在第一项失败：实际 xterm 为 89969/90000，最后一页发送记录为 `revision=headRevision=12654`。测试 finally 清空消息正文，不能凭分页 revision 确定缺失发生在 PTY、journal 还是 Webview；本轮不改 exit drain、不加等待绕过断言。补清理前失败目录和首末行诊断后，后续 90000 行逐行校验与空白重开通过，仍不能否定失败。现场 `.debug/runtime-paged-completion-short-read-failure/`，验证命令和完整轮次见执行计划。完整套件、packaged smoke、非 Linux/Remote SSH、长期压力与 RSS 未跑；当时尾部短读未定位，因此保持“验证中”。
+
+2026-09-18 后续独立定位见 `docs/design-docs/runtime-terminal-tail-diagnosis.md`：实际 Supervisor 的自然失败中 raw、bridge、journal 和 page 正文完全一致，raw 已缺尾部；socket EOF 后同一 fd 仍可读出剩余字节，拼接后完整。裸 PTY 的 syscall 对照定位到 Linux Node/libuv 在 HUP/partial read 时过早 EOF，VS Code 内置 Node 22 也有受控复现。旧 89969 样本缺原始 PTY 证据，不能追认全部历史同因；本轮只增加诊断，不改业务代码，不关闭无损验收或把分页视为源完整性的证明。

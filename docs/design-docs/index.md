@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/runtime-terminal-tail-diagnosis.md` | 90000 行退出短读定位：Linux PTY HUP/partial read 过早 EOF，原始回调已缺尾部；仅诊断，修复待决策 | 执行编排域 / 宿主集成层、适配与基础设施层 | 比较中 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-terminal-tail-diagnosis.md` | 2026-09-18 |
 | `docs/design-docs/runtime-paged-completion.md` | 第五个增量：退出轻量通知、当前读者从原 Supervisor 分页收尾、最后读者关闭后退役来源 | 执行编排域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-paged-completion.md` | 2026-09-18 |
 | `docs/design-docs/runtime-paged-terminal-projection.md` | 第三个增量：live 终端消费驱动分页，Host 不驻留完整后缀，Webview 应用后继续读取 | 执行编排域、画布交互域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-paged-terminal-projection.md` | 2026-09-18 |
 | `docs/design-docs/runtime-completed-no-history.md` | 第四个增量：Runtime 结束后只保存节点与退出状态，当前页面临时收尾，重开不恢复进程或历史 | 执行编排域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-completed-no-history.md` | 2026-09-18 |

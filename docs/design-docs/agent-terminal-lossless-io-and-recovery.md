@@ -16,6 +16,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/completed/runtime-terminal-tail-diagnosis.md
   - docs/exec-plans/completed/runtime-journal-bounded-cache.md
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
@@ -316,6 +317,8 @@ journal 不能因为达到内存阈值直接丢弃。PR #255 的第一阶段完�
 `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts` 为每个新 live-runtime session 创建稳定 `authorityId`。同一 session 的 output、resize 与 scrollback 变化都由 supervisor 按一个连续 revision 序列记录；只有 supervisor 在实际接收事件时能推进 revision。`CanvasPanelManager` 与 Webview 只能验证、转发、排队和本地追踪 applied revision，不得再用 metadata floor、`minOutputSequence` 或无数据 `markOutputSequence()` 提高 supervisor revision。跨 Webview、Host 与 Supervisor 的 applied-revision ACK 已按第 10.9 节实现，但它只记录消费水位，不改变 authority revision。
 
 每个 session 的 output、resize、scrollback、finalization 与 delete 共用一条 `terminalOperationChain`。revision 分配、tracker mutation 和对外 publication 必须在同一串行操作中完成，不能只保证 journal append 顺序。PTY exit 会同步关闭 `terminalMutationAdmissionOpen`，等待此前已接受操作收敛，再用最后一份合法 checkpoint 加连续 journal suffix 发布唯一的非 live snapshot；finalization 不为了结束会话启动新的昂贵 eligibility/compact，exit 后 resize 被拒绝。delete 同样先关闭 admission，等待已有 finalization 或已接受 output，只在第 10.11 节轻量终态保存及当前读者临时交接后，或用户显式删除时清理 journal/session。`node-pty` bridge 的契约是 `onExit` 只在 output stream 关闭且全部 data event 排空后触发；若底层 provider 不满足该契约，不能把竞态猜测性隐藏在 revision 修账中。
+
+2026-09-18 契约核实：`docs/design-docs/runtime-terminal-tail-diagnosis.md` 已捕获 Linux Node/libuv 在 PTY HUP/partial read 时过早 EOF，原始 `onData` 缺尾部而同一 fd 仍可补读。该路径中已交付的 data callbacks 可以全部排空，仍不能保证进程已写入字节全部进入 journal；final revision 只证明已接收事件的位置。当前 bridge 注释及业务实现未改，源读取完整性的契约缺口继续开放，不用增加 Supervisor 等待或放宽终态断言替代修复。
 
 新协议字段保持可选，以便识别旧 supervisor。缺少 authority/journal capability 的旧会话继续走明确的 legacy/历史恢复路径，但不能把 6000 字符 tail 升级成新 checkpoint，也不能为它补造过去的 journal。
 
