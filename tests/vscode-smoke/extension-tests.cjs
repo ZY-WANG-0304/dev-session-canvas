@@ -10548,6 +10548,12 @@ async function verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(terminalNodeI
         message.payload.liveSession === false && message.payload.output === '' && !message.payload.terminalStream
     );
     assert.ok(completedSnapshot, 'Reopened completed terminal must not restore its history.');
+  } catch (error) {
+    if (artifactDir) {
+      // Preserve the completed reader before resetting storage and clearing the message ring.
+      await writeFailureArtifacts(error, path.join(artifactDir, 'completed-before-cleanup'));
+    }
+    throw error;
   } finally {
     await clearHostMessages();
     await setRuntimePersistenceEnabled(false);
@@ -13554,18 +13560,18 @@ async function verifyRestrictedDiagnostics(agentNodeId, terminalNodeId) {
   );
 }
 
-async function writeFailureArtifacts(error) {
-  if (!artifactDir) {
+async function writeFailureArtifacts(error, outputDir = artifactDir) {
+  if (!outputDir) {
     return;
   }
 
-  await fs.mkdir(artifactDir, { recursive: true });
-  await fs.writeFile(path.join(artifactDir, 'failure-error.txt'), formatError(error), 'utf8');
+  await fs.mkdir(outputDir, { recursive: true });
+  await fs.writeFile(path.join(outputDir, 'failure-error.txt'), formatError(error), 'utf8');
 
   const snapshot = await safeGet(() => getDebugSnapshot());
   if (snapshot !== undefined) {
     await fs.writeFile(
-      path.join(artifactDir, 'failure-snapshot.json'),
+      path.join(outputDir, 'failure-snapshot.json'),
       `${JSON.stringify(snapshot, null, 2)}\n`,
       'utf8'
     );
@@ -13574,7 +13580,7 @@ async function writeFailureArtifacts(error) {
   const hostMessages = await safeGet(() => getHostMessages());
   if (hostMessages !== undefined) {
     await fs.writeFile(
-      path.join(artifactDir, 'failure-host-messages.json'),
+      path.join(outputDir, 'failure-host-messages.json'),
       `${JSON.stringify(hostMessages, null, 2)}\n`,
       'utf8'
     );
@@ -13583,7 +13589,7 @@ async function writeFailureArtifacts(error) {
   const diagnosticEvents = await safeGet(() => getDiagnosticEvents());
   if (diagnosticEvents !== undefined) {
     await fs.writeFile(
-      path.join(artifactDir, 'failure-diagnostic-events.json'),
+      path.join(outputDir, 'failure-diagnostic-events.json'),
       `${JSON.stringify(diagnosticEvents, null, 2)}\n`,
       'utf8'
     );
@@ -13591,7 +13597,7 @@ async function writeFailureArtifacts(error) {
 
   if (lastWebviewProbe !== undefined) {
     await fs.writeFile(
-      path.join(artifactDir, 'failure-webview-probe.json'),
+      path.join(outputDir, 'failure-webview-probe.json'),
       `${JSON.stringify(lastWebviewProbe, null, 2)}\n`,
       'utf8'
     );
@@ -13602,7 +13608,7 @@ async function writeFailureArtifacts(error) {
   );
   if (hostDiagnosticsDump !== undefined) {
     await fs.writeFile(
-      path.join(artifactDir, 'failure-host-diagnostics-dump.json'),
+      path.join(outputDir, 'failure-host-diagnostics-dump.json'),
       `${JSON.stringify(hostDiagnosticsDump, null, 2)}\n`,
       'utf8'
     );

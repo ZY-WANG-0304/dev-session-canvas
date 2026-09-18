@@ -149,7 +149,7 @@ try {
   );
   assert.match(
     supervisorSource,
-    /private async deleteSession\([\s\S]*?terminalMutationAdmissionOpen = false;[\s\S]*?await this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*?payload:[\s\S]*?await this\.createFreshSnapshot\(session, 'never'\)[\s\S]*?this\.sessions\.delete\(params\.sessionId\);/u,
+    /private async deleteSession\([\s\S]*?terminalMutationAdmissionOpen = false;[\s\S]*?await this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*?payload:[\s\S]*?await this\.createFreshSnapshot\(session, 'never', this\.needsFullProjection\(session\)\)[\s\S]*?await this\.removeSession\(session\);/u,
     'deleteSession 必须先关闭 mutation admission，并在串行链路收敛 fresh 非 live 终态后再删除共享 backend session。'
   );
   assert.match(
@@ -179,7 +179,7 @@ try {
   );
   assert.match(
     supervisorSource,
-    /private async finalizeSession\([\s\S]*this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*payload: await this\.createFreshSnapshot\(session, 'never'\)/u,
+    /private async finalizeSession\([\s\S]*this\.enqueueTerminalOperation\(session, async \(\) => \{[\s\S]*payload: await this\.createFreshSnapshot\(session, 'never', this\.needsFullProjection\(session\)\)/u,
     'runtime supervisor final sessionState 必须在串行边界内发布 checkpoint+journal suffix，且 exit 后不再启动昂贵 compact。'
   );
   assert.match(
@@ -452,9 +452,11 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     assert.equal(hello.capabilities?.terminalProjectionSnapshotV1, true);
     assert.equal(hello.capabilities?.terminalAppliedRevisionAckV1, true);
     assert.equal(hello.capabilities?.terminalCheckpointRefreshV1, true);
+    assert.equal(hello.capabilities?.terminalPagedCompletionV1, true);
 
     await assertEvictedJournalRecovery(socket, messages, registryPath, tempDir);
     await assertPagedTerminalRecovery(socket, messages, registryPath, tempDir);
+    await assertPagedTerminalRecovery(socket, messages, registryPath, tempDir, 'paged-until-exit');
 
     const echoScriptPath = path.join(tempDir, 'runtime-attach-gap.js');
     const gapMarker = `attach-gap-marker-${Date.now()}`;
@@ -1397,12 +1399,12 @@ input.on('line', (line) => {
   }
 }
 
-async function assertPagedTerminalRecovery(socket, messages, registryPath, tempDir) {
+async function assertPagedTerminalRecovery(socket, messages, registryPath, tempDir, terminalStreamMode = 'paged') {
   for (const kind of ['terminal', 'agent']) {
-    const sessionId = `paged-${kind}`;
+    const sessionId = `${terminalStreamMode}-${kind}`;
     const initial = await sendRuntimeSupervisorRequest(socket, messages, 'createSession', {
       kind, sessionId, displayLabel: 'Paged fixture', launchMode: 'start', scrollback: 1000,
-      deferSubscription: true, terminalStreamMode: 'paged',
+      deferSubscription: true, terminalStreamMode,
       launchSpec: { file: process.execPath, args: [path.join(tempDir, 'runtime-evicted-journal.js')],
         cwd: tempDir, cols: 80, rows: 24, env: process.env, terminalName: 'xterm-256color' }
     });
@@ -1410,19 +1412,19 @@ async function assertPagedTerminalRecovery(socket, messages, registryPath, tempD
     assert.equal(initial.terminalStream, undefined);
     await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
       sessionId, authorityId: initial.terminalAuthorityId, afterRevision: initial.terminalRevision,
-      terminalStreamMode: 'paged'
+      terminalStreamMode
     });
     const identity = { sessionId, authorityId: initial.terminalAuthorityId };
     const slow = await sendRuntimeSupervisorRequest(socket, messages, 'openTerminalRead', { ...identity, consumerId: 'panel' });
     await sendRuntimeSupervisorRequest(socket, messages, 'writeInput', { sessionId, data: 'burst\n' });
     await waitForRuntimeSupervisorRegistrySession(registryPath, sessionId, (snapshot) => snapshot.output.includes('CACHE_HISTORY_END'));
     const attached = await sendRuntimeSupervisorRequest(socket, messages, 'attachSession', {
-      sessionId, deferSubscription: true, terminalStreamMode: 'paged'
+      sessionId, deferSubscription: true, terminalStreamMode
     });
     assert.equal(attached.terminalStream, undefined);
     assert.equal(attached.terminalStreamPaged, true);
     await sendRuntimeSupervisorRequest(socket, messages, 'subscribeSession', {
-      ...identity, afterRevision: attached.terminalRevision, terminalStreamMode: 'paged'
+      ...identity, afterRevision: attached.terminalRevision, terminalStreamMode
     });
     const fast = await sendRuntimeSupervisorRequest(socket, messages, 'openTerminalRead', { ...identity, consumerId: 'editor' });
     assert.notEqual(fast.readId, slow.readId);
@@ -1480,15 +1482,39 @@ async function assertPagedTerminalRecovery(socket, messages, registryPath, tempD
     const final = await waitForRuntimeSupervisorMessage(messages, (message) =>
       message.event === 'sessionState' && message.payload?.sessionId === sessionId && !message.payload.live,
     `${kind} paged final state`);
-    assertTerminalStreamSnapshot(final.payload, `${kind} paged completed`);
-    assert.ok(final.payload.terminalStream.checkpoint.revision <= slow.checkpoint.revision);
-    assert.match(final.payload.terminalStream.events.filter((event) => event.type === 'output').map((event) => event.data).join(''), /CACHE_HISTORY_FINAL/u);
+    if (terminalStreamMode === 'paged-until-exit') {
+      assert.equal(final.payload.terminalStreamPaged, true);
+      assert.equal(final.payload.terminalStream, undefined);
+      assert.equal(final.payload.serializedTerminalState, undefined);
+      assert.equal(final.payload.output, '');
+      assert.ok(Buffer.byteLength(JSON.stringify(final.payload)) < 2048);
+      await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', { sessionId, preserveTerminalReads: true });
+      const finalEvents = [...slowPage.events];
+      let finalRevision = slowPage.revision;
+      while (finalRevision < final.payload.terminalRevision) {
+        const page = await sendRuntimeSupervisorRequest(socket, messages, 'readTerminalPage', {
+          ...identity, readId: slow.readId, afterRevision: finalRevision
+        });
+        assert.equal(page.events[0].revision, finalRevision + 1);
+        finalEvents.push(...page.events);
+        finalRevision = page.revision;
+      }
+      const finalText = finalEvents.filter(event => event.type === 'output').map(event => event.data).join('');
+      assert.equal(finalText.split('CACHE_HISTORY_ROW ').length - 1, 18000);
+      assert.match(finalText, /CACHE_HISTORY_FINAL/u);
+      await sendRuntimeSupervisorRequest(socket, messages, 'closeTerminalRead', { ...identity, readId: slow.readId });
+      await sendRuntimeSupervisorErrorRequest(socket, messages, 'attachSession', { sessionId, terminalStreamMode });
+    } else {
+      assertTerminalStreamSnapshot(final.payload, `${kind} paged completed`);
+      assert.ok(final.payload.terminalStream.checkpoint.revision <= slow.checkpoint.revision);
+      assert.match(final.payload.terminalStream.events.filter((event) => event.type === 'output').map((event) => event.data).join(''), /CACHE_HISTORY_FINAL/u);
+      await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', { sessionId });
+    }
     const states = messages.filter((message) => message.event === 'sessionState' &&
       message.payload?.sessionId === sessionId && message.payload.live);
     assert.ok(states.length > 0);
     assert.ok(states.every((message) => message.payload.terminalStream === undefined && message.payload.terminalStreamPaged === true));
-    await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', { sessionId });
-    console.log('paged terminal protocol', { kind, pages, maxBytes, events: recovered.length });
+    console.log('paged terminal protocol', { kind, terminalStreamMode, pages, maxBytes, events: recovered.length });
   }
 }
 

@@ -11,12 +11,17 @@ import type { RuntimeSupervisorClient } from './runtimeSupervisorClient';
 
 interface ReadBinding {
   client: RuntimeSupervisorClient;
+  sessionId: string;
+  authorityId: string;
+  opening?: Promise<TerminalStreamReadDescriptor>;
+  onReleased?: () => void;
   descriptor?: TerminalStreamReadDescriptor;
   pending: boolean;
   appliedRevision: number;
   sentRevision: number;
   acknowledged: boolean;
   completed?: TerminalStreamAttachPayload;
+  remoteCompletion?: { sessionId: string; authorityId: string; revision: number };
 }
 
 /** Keeps identities and one in-flight page, never a copy of the live journal. */
@@ -28,17 +33,20 @@ export class RuntimeTerminalReadRelay {
     client: RuntimeSupervisorClient,
     sessionId: string,
     authorityId: string,
-    consumerId: 'editor' | 'panel'
+    consumerId: 'editor' | 'panel',
+    onReleased?: () => void
   ): Promise<TerminalStreamReadDescriptor | undefined> {
     const existing = this.reads.get(key)?.descriptor;
     if (existing?.sessionId === sessionId && existing.authorityId === authorityId) {
       return existing;
     }
     this.close(key);
-    const binding: ReadBinding = { client, pending: false, appliedRevision: 0, sentRevision: 0, acknowledged: false };
+    const binding: ReadBinding = { client, sessionId, authorityId, onReleased,
+      pending: false, appliedRevision: 0, sentRevision: 0, acknowledged: false };
     this.reads.set(key, binding);
     try {
-      const descriptor = normalizeTerminalStreamRead(await client.openTerminalRead({ sessionId, authorityId, consumerId }));
+      binding.opening = client.openTerminalRead({ sessionId, authorityId, consumerId });
+      const descriptor = normalizeTerminalStreamRead(await binding.opening);
       if (!descriptor || descriptor.sessionId !== sessionId || descriptor.authorityId !== authorityId) {
         throw new Error('Invalid terminal read descriptor.');
       }
@@ -81,8 +89,37 @@ export class RuntimeTerminalReadRelay {
   }
 
   public getCompleted(key: string): Pick<TerminalStreamAttachPayload, 'sessionId' | 'authorityId' | 'revision'> | undefined {
-    const stream = this.reads.get(key)?.completed;
+    const binding = this.reads.get(key);
+    const stream = binding?.remoteCompletion ?? binding?.completed;
     return stream && { sessionId: stream.sessionId, authorityId: stream.authorityId, revision: stream.revision };
+  }
+
+  public async completeRemote(key: string, head: { sessionId: string; authorityId: string; revision: number }): Promise<void> {
+    const binding = this.reads.get(key);
+    if (!binding || binding.sessionId !== head.sessionId || binding.authorityId !== head.authorityId) {
+      return;
+    }
+    if (!Number.isSafeInteger(head.revision) || head.revision < binding.sentRevision) {
+      throw new Error('Completed terminal revision does not cover its reader.');
+    }
+    // Preserve even an in-flight open, but never create a reader for a completed session.
+    binding.remoteCompletion = head;
+    await binding.opening?.catch(() => undefined);
+    if (binding.descriptor && head.revision < Math.max(binding.descriptor.checkpoint.revision, binding.sentRevision)) {
+      binding.remoteCompletion = undefined;
+      throw new Error('Completed terminal revision does not cover its opened reader.');
+    }
+  }
+
+  public getUnacknowledgedCompletedRead(key: string): TerminalStreamReadDescriptor | undefined {
+    const binding = this.reads.get(key);
+    return binding?.remoteCompletion && !binding.acknowledged && binding.descriptor
+      ? { ...binding.descriptor, headRevision: binding.remoteCompletion.revision }
+      : undefined;
+  }
+
+  public usesClient(client: RuntimeSupervisorClient): boolean {
+    return [...this.reads.values()].some((binding) => binding.client === client);
   }
 
   public async read(
@@ -154,7 +191,7 @@ export class RuntimeTerminalReadRelay {
 
   private release(binding: ReadBinding): void {
     if (binding.descriptor) {
-      void binding.client.closeTerminalRead(binding.descriptor).catch(() => undefined);
+      void binding.client.closeTerminalRead(binding.descriptor).catch(() => undefined).finally(binding.onReleased);
     }
   }
 }

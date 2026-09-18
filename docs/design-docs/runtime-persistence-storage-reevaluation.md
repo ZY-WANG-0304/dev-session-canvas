@@ -19,7 +19,7 @@ related_plans:
   - docs/exec-plans/completed/runtime-journal-bounded-cache.md
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
-updated_at: 2026-09-17
+updated_at: 2026-09-18
 ---
 
 # Runtime Persistence 容量与会话归档架构重评
@@ -204,7 +204,9 @@ Supervisor、Host、Webview 各自需要每会话及全局缓存/在途预算；
 
 ## 9. 当前结论与下一阶段
 
-第四个增量已实施：`runtime-completed-no-history.md` 将 completed 正文从画板持久化中移除，当前读者由 relay 临时引用最终 stream，消费完成即关闭。实际 Host completion + writer fixture 的 Terminal/Agent 分别为 781/812 字节，小输出与约 3.8 MB stream 相同；容量诊断保留 20509666 字节旧最小内联基线，迁移后同类最小容器为 505 字节，仅改位置仍为 505 字节。这些不是完整生产画板/RSS 指标。F-05 的新 completed 内联问题收口，F-04 的完整终态响应、临时聚合、总回放、在途队列与全量扫描继续开放。
+第五个增量 `runtime-paged-completion.md` 延续原 Supervisor 分页到 final revision。新能力的退出/attach/subscribe 不聚合完整终态；Host 保存轻量节点后请求退役，新 attach/open 被拒绝，原 socket/readId 读完或关闭后才物理删除。未 ACK 和在途 open 在原页面生命周期继续，旧 generation 客户端等读者关闭 RPC 收敛后退役。旧模式/混合订阅仍保留完整兼容，不改变 root 归属。受控三阶段新终态样本为 405/407/407 字节，而旧完整 snapshot 仍从约 6.76 MB 增长到约 20.29 MB；这里只测同一最小 fixture 的编码字节，不是实际 RSS 或任意终态大小上限。
+
+第四个增量 `runtime-completed-no-history.md` 已将 completed 正文从画板持久化中移除，当时的 relay 完整临时来源现只用于旧协议。实际 Host completion + writer fixture 的 Terminal/Agent 分别为 781/812 字节，小输出与约 3.8 MB stream 相同；容量诊断保留 20509666 字节旧最小内联基线，迁移后同类最小容器为 505 字节，仅改位置仍为 505 字节。这些不是完整生产画板/RSS 指标。F-05 的新 completed 内联问题收口，F-04 的旧完整协议、总回放、在途队列与全量扫描继续开放。
 
 以下前三个增量及其 completed 数值为当时的过程记录，不代表当前保存路径。后续先明确运行期预算与首次可交互时间，比较 S1/S2/S3，不再把正常 completed 归档作为下一阶段前提。F-03 的旧 live 原绑定与未来 root 稳定归属仍是独立改造。
 

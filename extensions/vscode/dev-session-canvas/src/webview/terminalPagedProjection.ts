@@ -66,9 +66,14 @@ export class TerminalPagedProjection {
     this.finishExit();
   }
 
-  public accept(readId: string, requestId: string, value: TerminalStreamPage | undefined): void {
+  public accept(readId: string, requestId: string, value: TerminalStreamPage | undefined, closedError?: string): void {
     const read = this.read;
     if (!read || read.readId !== readId || this.requestId !== requestId) {
+      return;
+    }
+    if (closedError !== undefined) {
+      this.stop();
+      this.callbacks.exit(closedError);
       return;
     }
     this.requestId = undefined;

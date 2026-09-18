@@ -14,7 +14,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
-updated_at: 2026-09-17
+updated_at: 2026-09-18
 ---
 
 # Runtime live 终端的消费驱动分页投影
@@ -27,7 +27,7 @@ updated_at: 2026-09-17
 
 ### 能力与归属
 
-`common/runtimeSupervisorProtocol.ts` 增加 `terminalPagedReadV1`。Host 在 capability 存在时在 create/attach/subscribe 选择分页。`supervisor/runtimeSupervisorMain.ts` 为该模式 live 会话返回身份、head、几何及有限摘要，不生成完整 `terminalStream`。老客户端继续完整协议。正常终态保留完整 handoff。
+`common/runtimeSupervisorProtocol.ts` 增加 `terminalPagedReadV1`。Host 在 capability 存在时在 create/attach/subscribe 选择分页。`supervisor/runtimeSupervisorMain.ts` 为该模式 live 会话返回身份、head、几何及有限摘要，不生成完整 `terminalStream`。老客户端继续完整协议。第五批 `runtime-paged-completion.md` 增加 `terminalPagedCompletionV1`，以显式 `paged-until-exit` 把新模式延伸到终态；原 `paged` 继续完整终态兼容。
 
 `panel/CanvasPanelManager.ts` 保存身份、head 和有限摘要，不复制完整后缀。Supervisor 给 Host 的事件仍用于标题、活动判断；Host 给 Webview 的通知只唤醒读取，不缓存恢复期间 live body。
 
@@ -47,9 +47,9 @@ Webview 应用 checkpoint 后串行请求页面，一次最多一个读取/写�
 
 ### 正常终态与兼容
 
-`applyCompletedRuntimeSupervisorSnapshot()` 保存轻量 root-local/窗口终态，不再内联正文，再释放 Supervisor。Supervisor 构建终态时仍选择活动读者中最早的保留 checkpoint，保证未消费范围包含在完整后缀。relay 仅为已确认的当前读者临时持有同 session/authority 的终态，追到 final revision 后显示退出并关闭读者；关闭、换代或 Host dispose 也释放。保存失败不删 journal，新页面不复用临时来源。这个临时完整对象仍是 F-04 的内存风险，不是独立归档。
+`applyCompletedRuntimeSupervisorSnapshot()` 保存轻量 root-local/窗口终态，不再内联正文。支持退出分页时，relay 只持有 final identity/revision，Supervisor 在保留现有读者的退役请求后关闭新 attach/open，现有读者读到 final revision 并关闭后才删除 journal。旧能力仍选择活动读者中最早的保留 checkpoint，Host 临时持有完整终态供已确认读者继续分页。关闭、换代或 Host dispose 释放读者，保存失败不删 journal，新页面不复用临时来源。旧兼容对象仍属于 F-04，不是独立归档。
 
-仅分配读取 ID 不证明 Webview 收到描述符。只有首个合法 read 请求证明 checkpoint 已应用，Host 才将正常终态通知转换为“继续分页”。若会话更早结束，仅向同一 Webview 生命周期发送一次完整终态，取消尚未确立的分页投影再应用。保存开始后不新建旧会话读者，异步 open 及最终快照均检查生命周期；旧响应不能进入重开的页面，也不能关闭仍在续读的已确认读者。
+仅分配读取 ID 不证明 Webview 收到描述符。旧终态路径仍以首个合法 read 请求为分页继续的条件，否则只向当前生命周期发送一次完整终态。新退出分页路径可等待已发起 open 收敛，并在原生命周期重发未确认 descriptor，再通知最终 revision 和 exit，无需退回完整消息。保存开始后不新建旧会话读者；异步 open 及终态消息均检查生命周期，旧响应不能进入重开的页面。完成读者已失效时明确报告中断，不无休止重试。
 
 旧 capability 保持原 checkpoint/完整 stream 路径，旧 live 会话不改地址。Supervisor 崩溃/重启不保证历史，正常存活不得截断未消费内容。`snapshot-only` 不变。
 
@@ -57,7 +57,7 @@ Webview 应用 checkpoint 后串行请求页面，一次最多一个读取/写�
 
 协议/消费测试覆盖页顺序、错误身份、双消费者、取消、终态。真实 Agent/Terminal 超缓存并拒绝 checkpoint，页拼接等于完整快照；慢写入最多一页 body，恢复后仍可输入/resize。Linux VS Code 与旧 Supervisor smoke 结果回写 ExecPlan。
 
-预算只约束 live 事件缓存与页，不涵盖 Supervisor 写队列、Host 启发式 tracker、完整终态及临时聚合、旧协议、段索引和全量 open/compact 扫描，也不是 RSS。总回放仍与 checkpoint 后历史成正比，不宣称 F-04 已解决；F-05 的取消历史决策及本批验证见 `runtime-completed-no-history.md`。
+预算只约束事件缓存与页，不涵盖 Supervisor 写队列、Host 启发式 tracker、旧协议/混合订阅的完整终态、段索引和全量 open/compact 扫描，也不是 RSS。新模式终态分页见 `runtime-paged-completion.md`；总回放仍与 checkpoint 后历史成正比，不宣称 F-04 已解决；F-05 的取消历史决策见 `runtime-completed-no-history.md`。
 
 以下是分页增量当时的历史证据，completed 内联数值不代表当前 Host 保存行为。
 

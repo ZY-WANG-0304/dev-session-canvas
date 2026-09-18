@@ -154,8 +154,24 @@ try {
     });
     const checkpointRefreshBytes = Buffer.byteLength(JSON.stringify(checkpointResult));
     assert.ok(checkpointRefreshBytes < 1024);
-    const pagedSnapshot = await server.toAttachSnapshot(session, true);
+    const pagedSnapshot = await server.toAttachSnapshot(session, 'paged-until-exit');
     assert.equal(pagedSnapshot.terminalStream, undefined);
+    let pagedCompletionSnapshotBytes;
+    session.live = false;
+    server.buildTerminalStreamAttachPayload = () => {
+      throw new Error('Paged completion must never collect the full journal suffix.');
+    };
+    try {
+      const finalSnapshot = await server.toAttachSnapshot(session, 'paged-until-exit');
+      assert.equal(finalSnapshot.terminalStream, undefined);
+      assert.equal(finalSnapshot.serializedTerminalState, undefined);
+      assert.equal(finalSnapshot.terminalStreamPaged, true);
+      assert.equal(finalSnapshot.terminalRevision, journal.getRevision());
+      pagedCompletionSnapshotBytes = Buffer.byteLength(JSON.stringify(finalSnapshot));
+    } finally {
+      session.live = true;
+      server.buildTerminalStreamAttachPayload = buildFullProjection;
+    }
     const reader = await server.openTerminalRead(readSocket, {
       sessionId: session.sessionId, authorityId: session.terminalAuthorityId, consumerId: 'editor'
     });
@@ -176,7 +192,7 @@ try {
     }
     assert.equal(pagedEventCount, snapshot.terminalStream.events.length);
     assert.ok(maxPageBytes <= 256 * 1024);
-    server.closeTerminalRead(readSocket, reader);
+    await server.closeTerminalRead(readSocket, reader);
     const retained = await journal.getEventsAfter(0);
     const cache = journal.getCacheStats();
     assert.ok(cache.encodedBytes <= cache.maxBytes);
@@ -194,6 +210,7 @@ try {
       snapshotBytes: Buffer.byteLength(JSON.stringify(snapshot)),
       checkpointRefreshBytes,
       pagedSnapshotBytes: Buffer.byteLength(JSON.stringify(pagedSnapshot)),
+      pagedCompletionSnapshotBytes,
       readDescriptorBytes: Buffer.byteLength(JSON.stringify(reader)),
       maxPageBytes,
       pageCount,
@@ -210,6 +227,7 @@ try {
   assert.ok(last.screenStateBytes < 100000);
   assert.equal(last.compactionDue, true);
   assert.ok(metrics.every((metric) => Math.abs(metric.checkpointRefreshBytes - metrics[0].checkpointRefreshBytes) <= 3));
+  assert.ok(metrics.every((metric) => Math.abs(metric.pagedCompletionSnapshotBytes - metrics[0].pagedCompletionSnapshotBytes) <= 3));
   const refreshed = await server.toFreshSnapshot(session);
   assert.equal(refreshed.terminalStream.events.length, last.readableHistoryEvents);
 
@@ -255,7 +273,7 @@ try {
     canvasWriteBytes: lightweightBytes,
     subsequentPositionOnlyWriteBytes: lightweightMoveBytes
   }));
-  console.log('Completed history no longer belongs in canvas storage. This minimal migration/writer comparison is complemented by test:runtime-completed-history using the actual Host completion method. Total replay, legacy full attach and transient final snapshot costs remain. No production runtime was started or modified.');
+  console.log('Completed history no longer belongs in canvas storage. New paged completion snapshots do not aggregate the journal. This minimal migration/writer comparison is complemented by actual Host completion tests. Total replay, legacy full snapshots, queues and RSS remain outside these byte budgets. No production runtime was started or modified.');
 } finally {
   tracker.dispose();
   oversizedTracker.dispose();

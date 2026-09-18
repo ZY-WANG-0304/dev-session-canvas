@@ -1677,7 +1677,8 @@ function App(): JSX.Element {
         break;
       case 'host/executionTerminalPage':
         executionTerminalRegistry.get(message.payload.nodeId)?.controller.applyTerminalPage(
-          message.payload.readId, message.payload.requestId, message.payload.page
+          message.payload.readId, message.payload.requestId, message.payload.page,
+          message.payload.readClosed ? message.payload.error : undefined
         );
         break;
       case 'host/executionOutput':
@@ -7796,8 +7797,8 @@ function createExecutionTerminalController(
     terminalAvailable(sessionId, authorityId, revision, completed) {
       pagedProjection.available(sessionId, authorityId, revision, completed);
     },
-    applyTerminalPage(readId, requestId, page) {
-      pagedProjection.accept(readId, requestId, page);
+    applyTerminalPage(readId, requestId, page, closedError) {
+      pagedProjection.accept(readId, requestId, page, closedError);
     },
     applySnapshot(detail) {
       if (disposed) {
@@ -8893,7 +8894,8 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         }
         if (actualLines.length !== action.expectedLines.length) {
           throw new Error(
-            `Execution terminal ${action.nodeId} has ${actualLines.length} non-empty lines; expected ${action.expectedLines.length}.`
+            `Execution terminal ${action.nodeId} has ${actualLines.length} non-empty lines; expected ${action.expectedLines.length}. ` +
+            `First lines: ${JSON.stringify(actualLines.slice(0, 2))}; last lines: ${JSON.stringify(actualLines.slice(-3))}.`
           );
         }
         const mismatchIndex = actualLines.findIndex((line, index) => line !== action.expectedLines[index]);

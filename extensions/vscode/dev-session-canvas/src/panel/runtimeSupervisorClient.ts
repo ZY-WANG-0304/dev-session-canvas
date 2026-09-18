@@ -103,6 +103,10 @@ export class RuntimeSupervisorClient {
     return this.helloResult?.capabilities?.terminalPagedReadV1 === true;
   }
 
+  public supportsTerminalPagedCompletion(): boolean {
+    return this.supportsTerminalPagedRead() && this.helloResult?.capabilities?.terminalPagedCompletionV1 === true;
+  }
+
   public async openTerminalRead(params: RuntimeSupervisorOpenTerminalReadParams): Promise<TerminalStreamReadDescriptor> {
     await this.ensureConnected({ allowRestart: false });
     return this.requestOnConnectedSocket('openTerminalRead', params);
@@ -140,7 +144,7 @@ export class RuntimeSupervisorClient {
   public async attachSession(
     params: RuntimeSupervisorAttachSessionParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
-    if (params.terminalStreamMode === 'paged') {
+    if (params.terminalStreamMode) {
       await this.ensureConnected({ allowRestart: false });
       return this.requestOnConnectedSocket('attachSession', params);
     }
@@ -162,7 +166,7 @@ export class RuntimeSupervisorClient {
   public async subscribeSession(
     params: RuntimeSupervisorSubscribeSessionParams
   ): Promise<RuntimeSupervisorSubscribeSessionResult> {
-    if (params.terminalStreamMode === 'paged') {
+    if (params.terminalStreamMode) {
       await this.ensureConnected({ allowRestart: false });
       return this.requestOnConnectedSocket('subscribeSession', params);
     }
@@ -192,6 +196,11 @@ export class RuntimeSupervisorClient {
   }
 
   public async deleteSession(params: RuntimeSupervisorDeleteSessionParams): Promise<void> {
+    if (params.preserveTerminalReads) {
+      await this.ensureConnected({ allowRestart: false });
+      await this.requestOnConnectedSocket('deleteSession', params);
+      return;
+    }
     await this.request('deleteSession', params);
   }
 

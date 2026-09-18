@@ -9827,6 +9827,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (
       !client ||
       client.hasPendingRequests() ||
+      this.terminalReadRelay.usesClient(client) ||
       (expectedClient && client !== expectedClient)
     ) {
       return;
@@ -10084,7 +10085,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           ? {
               sessionId,
               deferSubscription: true,
-              ...(client.supportsTerminalPagedRead() ? { terminalStreamMode: 'paged' as const } : {})
+              ...(client.supportsTerminalPagedRead() ? { terminalStreamMode:
+                client.supportsTerminalPagedCompletion() ? 'paged-until-exit' as const : 'paged' as const } : {})
             }
           : {
               sessionId
@@ -10210,7 +10212,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       sessionId: snapshot.sessionId,
       authorityId: paged ? snapshot.terminalAuthorityId! : terminalStream!.authorityId,
       afterRevision: paged ? snapshot.terminalRevision! : terminalStream!.revision,
-      ...(paged ? { terminalStreamMode: 'paged' as const } : {})
+      ...(paged ? { terminalStreamMode:
+        client.supportsTerminalPagedCompletion() ? 'paged-until-exit' as const : 'paged' as const } : {})
     });
   }
 
@@ -10439,7 +10442,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async deleteRuntimeSupervisorSessionStrict(
     session: PersistedLiveRuntimeSession,
-    options: { allowRestart: boolean }
+    options: { allowRestart: boolean; preserveTerminalReads?: true }
   ): Promise<void> {
     const backend = this.getRuntimeHostBackend(session.backendKind, session.runtimeStoragePath);
     let client: RuntimeSupervisorClient | undefined;
@@ -10448,7 +10451,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         allowRestart: options.allowRestart
       });
       await client.deleteSession({
-        sessionId: session.sessionId
+        sessionId: session.sessionId,
+        ...(options.preserveTerminalReads ? { preserveTerminalReads: true } : {})
       });
     } catch (error) {
       if (this.isMissingRuntimeSupervisorSessionError(error)) {
@@ -11304,7 +11308,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       existingSession?.owner === 'supervisor' &&
       existingSession.terminalProjectionMode === 'terminal-stream-v1';
     const completedTerminalStream = getCompleteRuntimeSupervisorTerminalStream(snapshot);
-    if (requiresAuthoritativeTerminalStream && !completedTerminalStream) {
+    const remoteCompletion = snapshot.terminalStreamPaged === true &&
+      typeof snapshot.terminalAuthorityId === 'string' && snapshot.terminalAuthorityId.length > 0 &&
+      normalizeTerminalStreamRevision(snapshot.terminalRevision) !== undefined &&
+      snapshot.outputSequence === snapshot.terminalRevision
+      ? { sessionId: snapshot.sessionId, authorityId: snapshot.terminalAuthorityId, revision: snapshot.terminalRevision! }
+      : undefined;
+    if ((snapshot.terminalStreamPaged && !remoteCompletion) ||
+        (remoteCompletion && existingSession?.owner === 'supervisor' &&
+          ((existingSession.terminalAuthorityId && existingSession.terminalAuthorityId !== remoteCompletion.authorityId) ||
+           remoteCompletion.revision < existingSession.outputSequence))) {
+      throw new Error(`Runtime session ${snapshot.sessionId} ended with an inconsistent terminal identity or revision.`);
+    }
+    if (requiresAuthoritativeTerminalStream && !completedTerminalStream && !remoteCompletion) {
       throw new Error(`Runtime session ${snapshot.sessionId} ended without a complete terminal stream.`);
     }
     const runtimeStoragePath = this.getPersistedRuntimeStoragePath(currentMetadata);
@@ -11364,6 +11380,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       })
     });
     try {
+      if (remoteCompletion) {
+        await Promise.all((['editor', 'panel'] as const).map((surface) =>
+          this.terminalReadRelay.completeRemote(`${surface}:${kind}:${nodeId}`, remoteCompletion)));
+      }
       await this.persistState({
         reason: 'runtime-supervisor-completed-snapshot',
         workspaceStateMode: 'skip',
@@ -11400,7 +11420,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           sessionId: snapshot.sessionId,
           runtimeStoragePath
         },
-        { allowRestart: false }
+        { allowRestart: false, ...(remoteCompletion ? { preserveTerminalReads: true as const } : {}) }
       );
     } catch (error) {
       this.recordDiagnosticEvent('runtime/completedSessionCleanupFailed', {
@@ -14255,7 +14275,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         resumeSessionId: resumeContext.sessionId,
         resumeStoragePath: resumeContext.storagePath,
         deferSubscription: true,
-        ...(client.supportsTerminalPagedRead() ? { terminalStreamMode: 'paged' as const } : {}),
+        ...(client.supportsTerminalPagedRead() ? { terminalStreamMode:
+          client.supportsTerminalPagedCompletion() ? 'paged-until-exit' as const : 'paged' as const } : {}),
         launchSpec: serializeExecutionSessionLaunchSpec(launchSpec)
       });
     } catch (error) {
@@ -14400,7 +14421,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       launchMode: 'start',
       scrollback: this.getTerminalScrollback(),
       deferSubscription: true,
-      ...(client.supportsTerminalPagedRead() ? { terminalStreamMode: 'paged' as const } : {}),
+      ...(client.supportsTerminalPagedRead() ? { terminalStreamMode:
+        client.supportsTerminalPagedCompletion() ? 'paged-until-exit' as const : 'paged' as const } : {}),
       launchSpec: serializeExecutionSessionLaunchSpec(
         this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows, executionEnv)
       )
@@ -18721,6 +18743,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!session && surface) {
       const stream = this.terminalReadRelay.getCompleted(`${surface}:${kind}:${nodeId}`);
       if (stream) {
+        const terminalRead = this.terminalReadRelay.getUnacknowledgedCompletedRead(`${surface}:${kind}:${nodeId}`);
+        if (terminalRead) {
+          this.postMessage({ type: 'host/executionSnapshot', payload: {
+            nodeId, kind, executionSessionId: stream.sessionId, liveSession: false, terminalTitle: null,
+            output: '', cols: terminalRead.checkpoint.cols, rows: terminalRead.checkpoint.rows,
+            outputSequence: terminalRead.checkpoint.revision, terminalRead
+          } }, surface);
+        }
         this.postMessage({ type: 'host/executionTerminalAvailable', payload: {
           nodeId, kind, executionSessionId: stream.sessionId, authorityId: stream.authorityId,
           revision: stream.revision, completed: true, terminalTitle: null
@@ -18812,14 +18842,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
     const descriptor = await this.terminalReadRelay.open(
-      `${surface}:${kind}:${nodeId}`, client, session.sessionId, session.terminalAuthorityId, surface
+      `${surface}:${kind}:${nodeId}`, client, session.sessionId, session.terminalAuthorityId, surface,
+      this.retireLegacyRuntimeSupervisorClientIfUnused.bind(this,
+        this.getRuntimeHostBackend(session.runtimeBackend ?? 'legacy-detached', session.runtimeStoragePath), client)
     );
     if (!descriptor) {
       return;
     }
     if (!isCurrent()) {
-      // An acknowledged reader survives completion only to drain the current projection.
-      if (!this.terminalReadRelay.has(`${surface}:${kind}:${nodeId}`, session.sessionId) ||
+      // Existing readers, including a completing open, may drain only the original projection.
+      if ((!this.terminalReadRelay.has(`${surface}:${kind}:${nodeId}`, session.sessionId) &&
+          this.terminalReadRelay.getCompleted(`${surface}:${kind}:${nodeId}`)?.sessionId !== session.sessionId) ||
           JSON.stringify(this.getSurfaceLifecycleIdentity(surface)) !== JSON.stringify(lifecycle)) {
         this.terminalReadRelay.close(`${surface}:${kind}:${nodeId}`, descriptor.readId);
       }
@@ -18857,8 +18890,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         });
       }
     } catch (error) {
+      const readClosed = this.terminalReadRelay.getCompleted(`${surface}:${kind}:${nodeId}`) !== undefined;
+      if (readClosed) {
+        this.terminalReadRelay.close(`${surface}:${kind}:${nodeId}`, readId);
+      }
       this.postMessage({ type: 'host/executionTerminalPage', lifecycle, payload: {
-        nodeId, kind, executionSessionId, authorityId, readId, requestId, error: formatUnknownError(error)
+        nodeId, kind, executionSessionId, authorityId, readId, requestId, error: formatUnknownError(error),
+        ...(readClosed ? { readClosed: true as const } : {})
       } }, surface);
     }
   }
@@ -18886,7 +18924,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.terminalReadRelay.close(`${surface}:${kind}:${nodeId}`);
         this.postMessage({ type: 'host/executionSnapshot', lifecycle, payload: {
           nodeId, kind, executionSessionId, liveSession: false, terminalTitle: null,
-          output: snapshot.output, cols: snapshot.cols, rows: snapshot.rows,
+          output: snapshot.terminalStreamPaged ? '' : snapshot.output, cols: snapshot.cols, rows: snapshot.rows,
           outputSequence: snapshot.outputSequence, serializedTerminalState: snapshot.serializedTerminalState,
           terminalStream: snapshot.terminalStream
         } }, surface);

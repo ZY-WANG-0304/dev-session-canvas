@@ -16539,6 +16539,55 @@ test('terminal paged recovery handles completion before the first page request',
   expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(1);
 });
 
+for (const readClosed of [false, true]) {
+  test(`terminal paged recovery handles early remote completion${readClosed ? ' with a disconnected reader' : ''}`, async ({ page }) => {
+    const nodeId = 'terminal-zoom';
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState('terminal'));
+    const terminal = await waitForExecutionTerminalReady(page, nodeId);
+    const stream = await createTerminalStreamPayload({
+      sessionId: 'early-remote', authorityId: 'remote-authority', checkpointRevision: 1,
+      checkpointOutput: 'REMOTE-CHECKPOINT\r\n', checkpointCols: terminal.terminalCols, checkpointRows: terminal.terminalRows,
+      events: [{ type: 'output', revision: 2, data: 'REMOTE-FINAL-OUTPUT\r\n' }]
+    });
+    await clearPostedMessages(page);
+    await page.evaluate(({ nodeId, stream }) => {
+      const payload = { nodeId, kind: 'terminal', executionSessionId: stream.sessionId,
+        authorityId: stream.authorityId, output: '', cols: stream.checkpoint.cols, rows: stream.checkpoint.rows };
+      const snapshot = { ...payload, liveSession: false, outputSequence: 1,
+        terminalRead: { readId: 'remote-reader', sessionId: stream.sessionId, authorityId: stream.authorityId,
+          checkpoint: stream.checkpoint, headRevision: 2 } };
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionSnapshot', payload: snapshot });
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionSnapshot', payload: snapshot });
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable',
+        payload: { ...payload, revision: 2, completed: true } });
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionExit',
+        payload: { ...payload, message: 'REMOTE-EXIT' } });
+    }, { nodeId, stream });
+    const requests = await waitForPostedMessagesByTypeMatch(page, 'webview/readExecutionTerminalPage', messages => messages.length > 0);
+    const request = requests[0].payload;
+    expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).not.toContain('REMOTE-EXIT');
+    await page.evaluate(payload => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload });
+    }, { ...request, ...(readClosed ? { readClosed: true, error: 'REMOTE-READ-INTERRUPTED' } : { page: {
+      readId: request.readId, sessionId: stream.sessionId, authorityId: stream.authorityId,
+      afterRevision: 1, revision: 2, headRevision: 2, events: stream.events
+    } }) });
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText(readClosed ? 'REMOTE-READ-INTERRUPTED' : 'REMOTE-EXIT');
+    const text = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect(text).toContain('REMOTE-CHECKPOINT');
+    if (readClosed) {
+      expect(text).not.toContain('REMOTE-EXIT');
+      await page.waitForTimeout(500);
+    } else {
+      expect((text.match(/REMOTE-FINAL-OUTPUT/gu) ?? [])).toHaveLength(1);
+      expect(text.indexOf('REMOTE-FINAL-OUTPUT')).toBeLessThan(text.indexOf('REMOTE-EXIT'));
+    }
+    expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(1);
+    expect(await readPostedMessagesByType(page, 'webview/readExecutionTerminalPage')).toHaveLength(1);
+  });
+}
+
 test('terminal consumes paged recovery through ANSI boundaries and drains the final page before exit', async ({ page }) => {
   const nodeId = 'terminal-zoom';
   const executionSessionId = 'paged-session';

@@ -20,7 +20,7 @@ related_plans:
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
-updated_at: 2026-09-17
+updated_at: 2026-09-18
 ---
 
 # Webview、Host 与 Runtime Supervisor 架构审核
@@ -48,6 +48,10 @@ updated_at: 2026-09-17
 建议：以独立会话存储、有界缓存和分批读取为候选，同时参考 tmux/WezTerm 比较权威终端状态同步。分页能限制单次资源，不能自动消除旧 checkpoint 的全后缀回放时间。具体 codec、状态协议、容量/保留策略仍待比较，见 `docs/design-docs/runtime-persistence-storage-reevaluation.md` 第 5–8 节。
 
 2026-09-17 实施进展：首批独立 checkpoint 查询消除周期后缀重传，第二批把 Supervisor 长期缓存限制为 1 MiB 编码字节及 2048 条，第三批 `docs/design-docs/runtime-paged-terminal-projection.md` 将按需读取贯穿新协议 live Host/Webview。Host 不驻留完整事件后缀，Webview 应用一页才继续读取。相同样本累计 19.66 MB output 时，缓存约 1.046 MB、轻量 live snapshot 427 字节、最大页事件数组 253669 字节，80 页完整恢复 1921 个事件。F-04 仍开放：总回放、旧协议完整响应、正常 completed、在途队列和全量扫描未收口，预算不是 RSS 上限。本文代码行号和原始描述对应审核基线，不把部分修复写成整体解决。
+
+2026-09-18 第五批进展：`runtime-paged-completion.md` 消除新能力完成时的完整 journal 聚合及 Host relay 全量临时对象。当前读者沿原 Supervisor 身份分页，轻量节点保存后先封闭新 attach/open，最后读者关闭或断连才删除来源。三阶段最小诊断终态为 405/407/407 字节；旧客户端和混合订阅仍可能需要完整对象。F-04 剩余总回放、队列、全量扫描和总 RSS，不能把本批传输字节证据写成全部容量问题解决。
+
+本批真实宿主仍复现严格 90000 行用例只见 89969 行，最后一页发送到 revision 12654，但失败清理覆盖正文，尚不能确定缺失层。其他通过样本不能排除尾部短读；该风险继续独立登记，详见 `runtime-paged-completion.md` 和技术债表，不把架构成本下降当作无损保证已验证。
 
 ### F-05 高（新路径已收口）：completed 历史内联画板，使普通操作承担历史成本
 
@@ -147,7 +151,7 @@ F-04/F-05 的受控证据及限制见重评设计第 3 节，可通过诊断脚�
 
 本审核不直接改动运行时代码。F-01 应作为 live-runtime 连接可靠性修复单独设计和实现；F-02 应作为共享层依赖收口任务处理。两项都需要在实现时补充针对性验证，完成前不要把“Supervisor 已能启动”表述成“Supervisor 连接在所有异常情况下都有界”。
 
-F-04/F-05 已按 `runtime-persistence-storage-reevaluation.md` 分阶段推进。用户确认故障后不要求进程/历史恢复，随后明确正常结束重开也无需历史，F-05 已按 `runtime-completed-no-history.md` 取消内联和归档；当前页未消费尾部仍需收齐。F-04 已实施 checkpoint 独立查询、有界 Supervisor 缓存和 live 消费驱动分页，整体权威终端模型仍在比较，不预设第二个 server。下一阶段聚焦完整终态响应、临时聚合、在途预算与总恢复时间；暂时断连不能直接认定为进程崩溃，也不改变旧 live 原绑定。
+F-04/F-05 已按 `runtime-persistence-storage-reevaluation.md` 分阶段推进。用户确认故障后不要求进程/历史恢复，随后明确正常结束重开也无需历史，F-05 已按 `runtime-completed-no-history.md` 取消内联和归档；当前页未消费尾部仍需收齐。F-04 已实施 checkpoint 独立查询、有界 Supervisor 缓存、live 消费驱动分页及新模式退出分页，整体权威终端模型仍在比较，不预设第二个 server。下一阶段聚焦在途预算、总恢复时间、全量扫描及旧协议容量；暂时断连不能直接认定为进程崩溃，也不改变旧 live 原绑定。
 
 F-03 的产品方向已由用户确认；具体设计与运行时改造另开 ExecPlan，覆盖单根和多根新建、稳定 root identity、Supervisor 发现与并发启动、backend 选择、旧 session 原绑定恢复及退役。现有设计第 6.8 节与产品规格已标出待修订边界；改造时再将新建归属正式收口为 root 语义，并保留旧 slot 恢复契约，不能把整份设计直接标成 root 稳定 runtime 已实现或已验证。
 

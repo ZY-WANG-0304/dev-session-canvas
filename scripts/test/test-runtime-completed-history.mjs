@@ -13,6 +13,7 @@ const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
 const manager = ast.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'CanvasPanelManager');
 const methods = ['applyCompletedRuntimeSupervisorSnapshot', 'postExecutionExitWithFinalSnapshot',
   'flushLiveExecutionState', 'flushExecutionStateSyncTimer',
+  'readExecutionTerminalPage', 'retireLegacyRuntimeSupervisorClientIfUnused',
   'postExecutionSnapshot', 'postPagedExecutionSnapshot', 'writePersistedCanvasSnapshotToDisk'].map(name => {
   const method = manager.members.find(node => ts.isMethodDeclaration(node) && node.name.getText(ast) === name);
   assert.ok(method, name);
@@ -28,7 +29,7 @@ const bundle = await esbuild.build({ stdin: { contents: `
   import fs from 'node:fs';
   import path from 'node:path';
   import { normalizeCompletedRuntimeHistory } from './common/completedRuntimeHistory';
-  import { cloneTerminalStreamAttachPayload, normalizeTerminalStreamAttachPayload } from './common/terminalSessionStream';
+  import { cloneTerminalStreamAttachPayload, normalizeTerminalStreamAttachPayload, normalizeTerminalStreamRevision } from './common/terminalSessionStream';
   import { RuntimeTerminalReadRelay } from './panel/runtimeTerminalReadRelay';
   const vscode = { l10n: { t: (text) => text } };
   const ensureAgentMetadata = (node) => node.metadata.agent;
@@ -96,6 +97,8 @@ try {
   }
   await verifyTransientReaders();
   await verifyReopenDuringSave();
+  await verifyRemoteCompletion();
+  await verifyReaderClientRetirement();
   console.log('runtime completed history tests passed (production handoff, save failure, migration, lifecycle and transient drain)');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
@@ -137,7 +140,11 @@ function harness(kind, stream) {
   host.disposeAgentFileActivitySession = async () => {};
   host.postState = () => {};
   host.recordDiagnosticEvent = () => {};
-  host.deleteRuntimeSupervisorSessionStrict = async () => { assert.equal(calls.saved, true); calls.deleted = true; };
+  host.getRuntimeHostBackend = () => ({});
+  host.retireLegacyRuntimeSupervisorClientIfUnused = () => {};
+  host.deleteRuntimeSupervisorSessionStrict = async (session, options) => {
+    assert.equal(calls.saved, true); calls.deleted = true; calls.deleteOptions = options;
+  };
   host.isInteractiveSurface = () => true;
   host.getSurfaceMessageWebview = () => ({});
   host.getSurfaceLifecycleIdentity = () => ({ generation: 1, frameId: 'current' });
@@ -246,4 +253,131 @@ async function verifyReopenDuringSave() {
   finishSave();
   await save;
   assert.equal(host.terminalReadRelay.getCompleted(key), undefined);
+}
+
+async function verifyRemoteCompletion() {
+  for (const kind of ['terminal', 'agent']) {
+    for (const pendingOpen of [false, true]) {
+      const { host, snapshot, calls } = harness(kind, makeStream('remote-only'));
+      const checkpoint = snapshot.terminalStream.checkpoint;
+      snapshot.terminalStream = undefined;
+      snapshot.terminalStreamPaged = true;
+      snapshot.output = '';
+      const session = host.getExecutionSessions().get('node');
+      Object.assign(session, { sessionId: 'session', terminalStreamPaged: true,
+        terminalStreamHealthy: true, terminalAuthorityId: 'authority' });
+      let finishOpen;
+      let reads = 0;
+      let closes = 0;
+      const client = {
+        openTerminalRead: () => new Promise(resolve => {
+          finishOpen = () => resolve({ readId: 'remote-reader', sessionId: 'session', authorityId: 'authority',
+            checkpoint, headRevision: 2 });
+          if (!pendingOpen) finishOpen();
+        }),
+        readTerminalPage: async params => {
+          reads += 1;
+          return { ...params, events: makeStream('remote-only').events, revision: 2, headRevision: 2 };
+        },
+        closeTerminalRead: async () => { closes += 1; }
+      };
+      host.getRuntimeSupervisorClientForKind = async () => client;
+      host.postExecutionSnapshot = Harness.prototype.postExecutionSnapshot;
+      const opening = host.postPagedExecutionSnapshot(kind, 'node', session, { surface: 'editor' });
+      await Promise.resolve();
+      if (!pendingOpen) await opening;
+      calls.messages.length = 0;
+      const completion = host.applyCompletedRuntimeSupervisorSnapshot('node', kind, snapshot);
+      assert.equal(host.terminalReadRelay.usesClient(client), true, 'reader keeps the original client alive');
+      if (pendingOpen) {
+        assert.equal(calls.deleted, false, 'cleanup waits for the in-flight open to settle');
+        finishOpen();
+        await opening;
+      }
+      await completion;
+      assert.equal(calls.deleteOptions.preserveTerminalReads, true);
+      assert.equal(reads, 0, 'completion must not eagerly collect pages');
+      assertNoHistory(host.state.nodes[0].metadata[kind]);
+      const key = `editor:${kind}:node`;
+      assert.equal(host.terminalReadRelay.reads.get(key).completed, undefined, 'no Host full-stream fallback');
+      await host.postExecutionExitWithFinalSnapshot(kind, 'node', 'ended', 'session', {
+        snapshot, surface: 'editor', lifecycle: host.getSurfaceLifecycleIdentity()
+      });
+      assert.deepEqual(calls.messages.map(message => message.type),
+        ['host/executionSnapshot', 'host/executionTerminalAvailable', 'host/executionExit']);
+      assert.equal(calls.messages[0].payload.terminalRead.readId, 'remote-reader');
+      assert.equal(calls.messages[0].payload.terminalStream, undefined);
+      const page = await host.terminalReadRelay.read(key,
+        { sessionId: 'session', authorityId: 'authority', readId: 'remote-reader', afterRevision: 0 });
+      assert.equal(page.events.length, 2);
+      assert.equal(reads, 1);
+      if (pendingOpen) {
+        client.readTerminalPage = async () => { throw new Error('completed reader disconnected'); };
+        await host.readExecutionTerminalPage('editor', { nodeId: 'node', kind, executionSessionId: 'session',
+          authorityId: 'authority', readId: 'remote-reader', requestId: 'failed-read', afterRevision: 2 });
+        assert.equal(calls.messages.at(-1).payload.readClosed, true);
+        assert.match(calls.messages.at(-1).payload.error, /completed reader disconnected/u);
+      } else {
+        host.terminalReadRelay.close(key);
+      }
+      await Promise.resolve();
+      assert.equal(closes, 1);
+      assert.equal(host.terminalReadRelay.usesClient(client), false);
+    }
+    const failed = harness(kind, makeStream('not saved'));
+    failed.snapshot.terminalStream = undefined;
+    failed.snapshot.terminalStreamPaged = true;
+    failed.host.persistState = async () => { throw new Error('disk full'); };
+    await assert.rejects(failed.host.applyCompletedRuntimeSupervisorSnapshot('node', kind, failed.snapshot), /disk full/u);
+    assert.equal(failed.calls.deleted, false);
+    for (const invalid of [
+      { terminalRevision: 1 },
+      { terminalAuthorityId: 'different-authority' },
+      { terminalRevision: -1, outputSequence: -1 }
+    ]) {
+      const rejected = harness(kind, makeStream('invalid'));
+      rejected.host.getExecutionSessions().get('node').terminalAuthorityId = 'authority';
+      await assert.rejects(rejected.host.applyCompletedRuntimeSupervisorSnapshot('node', kind,
+        { ...rejected.snapshot, terminalStream: undefined, terminalStreamPaged: true, ...invalid }), /inconsistent/u);
+      assert.equal(rejected.calls.saved, false);
+      assert.equal(rejected.calls.deleted, false);
+    }
+  }
+}
+
+async function verifyReaderClientRetirement() {
+  const { host } = harness('terminal', makeStream('reader'));
+  host.state = { nodes: [] };
+  host.agentSessions = new Map();
+  host.terminalSessions = new Map();
+  host.getRuntimeStoragePathFromBackend = () => '/old-generation';
+  host.getRuntimeHostBaseStoragePath = () => '/current-generation';
+  host.resolveRuntimeStoragePath = value => value;
+  host.buildRuntimeSupervisorClientKey = () => 'old-client';
+  let pending = false;
+  let disposed = false;
+  let finishClose;
+  const client = {
+    hasPendingRequests: () => pending,
+    dispose: () => { disposed = true; },
+    openTerminalRead: async () => ({ readId: 'reader', sessionId: 'session', authorityId: 'authority',
+      checkpoint: makeStream('').checkpoint, headRevision: 2 }),
+    closeTerminalRead: () => new Promise(resolve => {
+      pending = true;
+      finishClose = () => { pending = false; resolve(); };
+    })
+  };
+  host.runtimeSupervisorClients = new Map([['old-client', client]]);
+  const retire = () => Harness.prototype.retireLegacyRuntimeSupervisorClientIfUnused.call(host,
+    { kind: 'legacy-detached' }, client);
+  await host.terminalReadRelay.open('editor:terminal:node', client, 'session', 'authority', 'editor', retire);
+  retire();
+  assert.equal(disposed, false, 'an existing terminal reader pins the old generation client');
+  host.terminalReadRelay.close('editor:terminal:node');
+  retire();
+  assert.equal(disposed, false, 'reader close RPC must settle before disconnecting');
+  finishClose();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(disposed, true);
+  assert.equal(host.runtimeSupervisorClients.size, 0);
 }

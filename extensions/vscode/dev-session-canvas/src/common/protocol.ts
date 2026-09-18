@@ -1296,6 +1296,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         requestId: string;
         page?: TerminalStreamPage;
         error?: string;
+        readClosed?: true;
       };
     }
   | {

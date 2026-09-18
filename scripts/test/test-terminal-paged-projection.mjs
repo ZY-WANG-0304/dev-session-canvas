@@ -95,6 +95,19 @@ try {
   projection.stop();
   assert.equal(closes.length, 3);
 
+  writes.length = 0;
+  projection.start({ ...descriptor, readId: 'closed-reader' });
+  writes.shift().done();
+  const closedRequest = requests.at(-1);
+  projection.accept('stale-reader', closedRequest.requestId, undefined, 'must be ignored');
+  assert.equal(projection.active, true);
+  projection.accept('closed-reader', closedRequest.requestId, undefined, 'Terminal reader disconnected.');
+  assert.equal(projection.active, false);
+  assert.equal(exits.at(-1), 'Terminal reader disconnected.');
+  const requestCount = requests.length;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(requests.length, requestCount, 'closed completed readers must not retry forever');
+
   const relay = new RuntimeTerminalReadRelay();
   let opens = 0;
   let remoteFailure = false;
@@ -157,13 +170,16 @@ async function verifyClientReconnectPolicy(RuntimeSupervisorClient) {
     ['openTerminalRead', { ...identity, consumerId: 'editor' }],
     ['readTerminalPage', { ...identity, afterRevision: 0 }],
     ['attachSession', { sessionId: 'session', terminalStreamMode: 'paged' }],
-    ['subscribeSession', { ...identity, afterRevision: 0, terminalStreamMode: 'paged' }]
+    ['subscribeSession', { ...identity, afterRevision: 0, terminalStreamMode: 'paged' }],
+    ['attachSession', { sessionId: 'session', terminalStreamMode: 'paged-until-exit' }],
+    ['subscribeSession', { ...identity, afterRevision: 0, terminalStreamMode: 'paged-until-exit' }],
+    ['deleteSession', { sessionId: 'session', preserveTerminalReads: true }]
   ]) {
     await assert.rejects(client[method](params), /original endpoint unavailable/u);
     assert.equal(attempts.at(-1), false, `${method} must not restart a paged runtime`);
   }
   await client.closeTerminalRead(identity);
-  assert.equal(attempts.length, 4, 'reader cleanup must not reconnect a closed socket');
+  assert.equal(attempts.length, 7, 'reader cleanup must not reconnect a closed socket');
   await assert.rejects(client.attachSession({ sessionId: 'legacy' }), /original endpoint unavailable/u);
   assert.equal(attempts.at(-1), true, 'legacy attach retains its existing connection policy');
   client.dispose();
@@ -272,6 +288,7 @@ async function verifyHostReconnect() {
     assert.equal(storage, '/same-runtime');
     return {
       supportsTerminalSessionStream: () => true,
+      supportsTerminalPagedCompletion: () => false,
       subscribeSession: async (params) => {
         assert.equal(params.terminalStreamMode, 'paged');
         assert.equal(params.sessionId, 'original');

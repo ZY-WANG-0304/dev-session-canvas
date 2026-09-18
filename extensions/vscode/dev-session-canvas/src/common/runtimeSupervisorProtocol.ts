@@ -35,6 +35,7 @@ export interface RuntimeSupervisorHelloResult {
     terminalAppliedRevisionAckV1?: true;
     terminalCheckpointRefreshV1?: true;
     terminalPagedReadV1?: true;
+    terminalPagedCompletionV1?: true;
   };
 }
 
@@ -159,6 +160,8 @@ export interface RuntimeSupervisorMessageDescriptor {
   params?: Record<string, string>;
 }
 
+export type RuntimeTerminalStreamMode = 'paged' | 'paged-until-exit';
+
 export interface RuntimeSupervisorCreateSessionParams {
   kind: ExecutionNodeKind;
   sessionId?: string;
@@ -171,13 +174,13 @@ export interface RuntimeSupervisorCreateSessionParams {
   resumeStoragePath?: string;
   launchSpec: SerializedExecutionSessionLaunchSpec;
   deferSubscription?: boolean;
-  terminalStreamMode?: 'paged';
+  terminalStreamMode?: RuntimeTerminalStreamMode;
 }
 
 export interface RuntimeSupervisorAttachSessionParams {
   sessionId: string;
   deferSubscription?: boolean;
-  terminalStreamMode?: 'paged';
+  terminalStreamMode?: RuntimeTerminalStreamMode;
 }
 
 export interface RuntimeSupervisorOpenTerminalReadParams {
@@ -217,7 +220,7 @@ export interface RuntimeSupervisorSubscribeSessionParams {
   sessionId: string;
   authorityId: string;
   afterRevision: number;
-  terminalStreamMode?: 'paged';
+  terminalStreamMode?: RuntimeTerminalStreamMode;
 }
 
 export interface RuntimeSupervisorSubscribeSessionResult {
@@ -262,6 +265,8 @@ export interface RuntimeSupervisorStopSessionParams {
 
 export interface RuntimeSupervisorDeleteSessionParams {
   sessionId: string;
+  /** Retire an ended session while existing socket-bound readers drain. */
+  preserveTerminalReads?: true;
 }
 
 export type RuntimeSupervisorRequest =

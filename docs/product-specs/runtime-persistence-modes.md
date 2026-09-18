@@ -147,4 +147,6 @@
 
 第三个增量将分页真正接入新协议 live Host/Webview：Host 不保留完整后缀，Webview 应用 checkpoint 后每次读取并应用一页，慢读者所需来源不会被 compact。正常结束仍完整保存历史，已打开读者继续分页读完最终 revision 后才显示退出。新模式暂时断线重试原 Supervisor，不把连接失败当作进程死亡。Linux 真实宿主与协议/浏览器回归已验证，旧 Supervisor 保持兼容；总回放时间、所有在途队列、整体 RSS 与 completed 独立保存尚未完成验收。具体边界见 `docs/design-docs/runtime-paged-terminal-projection.md`。
 
-第四个增量 `docs/design-docs/runtime-completed-no-history.md` 取消已结束历史落盘。Host 保存退出结果后清理原来源，当前生命周期读者只临时消费最终快照，读完或关闭即释放；保存时禁止为重开的页面新建旧会话读者。F-05 的新 completed 内联问题收口，完整终态临时聚合、总回放与整体 RSS 继续作为 F-04 验证，不新增历史 server。
+第四个增量 `docs/design-docs/runtime-completed-no-history.md` 取消已结束历史落盘。Host 保存退出结果后清理原来源，当前生命周期读者只临时消费尾部，读完或关闭即释放；保存时禁止为重开的页面新建旧会话读者。F-05 的新 completed 内联问题收口，不新增历史 server。
+
+第五个增量 `docs/design-docs/runtime-paged-completion.md` 将新能力会话的退出收尾也接入分页，不再全量传输或在 Host 聚合最终历史。保存成功后先停止新 attach/open，已有读者读完或关闭后才删除临时来源；其他窗口尚存的读者不能被一个窗口的清理截断。已结束读者因 socket 失效而不可继续时明确显示读取中断，不自动重开历史或新进程。旧协议保留兼容，运行中会话仍按原绑定重连；总回放、旧模式全量数据、队列和整体 RSS 继续作为 F-04 验证。
