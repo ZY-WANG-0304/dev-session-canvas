@@ -218,3 +218,11 @@ driver 在写调用已进入后，用编译后的 helper 对继承的 master fd 
 三类都独立核对实际 headless 消费者的内容/最终状态、每个 enqueue/applied/completed、decoder尾部、fd close/EBADF 和 driver 自然退出；单次释放不等于长期资源零增长。driver 使用本次独立进程组，父硬 watchdog 清理该组内的 helper 与 driver，并另行清理 fixture 的独立进程组；失败路径也结束仍在运行的 helper，不允许额外 master 引用掩盖 EOF/释放。watchdog 自校验需包含 helper 子进程持有资源的故障注入，范围仍明确为非 PTY 控制，不能冒充全部原生故障回收证明。
 
 新入口支持 `--self-test`、`--output NEW_DIR` 与 `--verify-saved DIR`。运行前编译 helper（Linux 用 gcc、macOS 用 clang，C99、警告视为错误），编译失败保存工具链错误且不启动样本；不增加产品依赖。自校验应拒绝坏可读性报告、错误 fd 身份/未退出 helper、假 EOF、提前 audit、丢掉 owned bytes、缺成功回执、错误分账和损坏 raw，并验证所有失败工件继续完整遍历。原生运行全矩阵、失败不筛选，保存完整 schedule、源码/native/helper 快照、原始读数据和事件。旧 64/1984 断言未放宽，新 n/2048-n 是单独命名的实际 read 所有权契约；新成功不追认旧六个失败，生产选型仍比较中/验证中。
+
+## 16. 可读性握手本地验证与输入
+
+执行前只读审查补齐三类离线互证：自然EOF/EIO必须来自对应owner最后真实read callback，而非只相信source标签；每次成功callback与交付按唯一read id/count/hash一一对应；全部helper尝试须逐项核对spawn/close/decision，最后一个helper也必须先于候选首读退出。增加假EAGAIN EOF、多helper晚close和重复audit id等负例，不改变冻结矩阵或期限。workflow提前指定自测证据目录，即使自测异常/超时也保留已生成工件。
+
+Linux Node25.6.0本地 `.debug/unix-cancel-handshake-v1-local/` 完整9项通过；复审随后补唯一read id一一交付的断言，另在 `.debug/unix-cancel-handshake-v2-local/` 完整再跑9项并复算通过。两版均6次明确中断，候选实际64/audit1984 bytes；3次control候选完整2048、audit0及EIO，单次fd/consumer/driver结算成立。v1脚本SHA256 `64b8ff4124fd7b42018b82339fe282ea0e8bef685216049e0c51f2a7e483587c`、最终v2 `1875495f6dc4d0b60d6de21247cdea9de2f808ff90fb04049c3f35d579212559`；每版源码及全部原始工件保留，不用新验证器追溯重判旧版本。C helper SHA256 `0e17361b809fc1d05bd8261446ac4421755d297c170bf18c41e01c83648528b5`，工具链及binary hash保存在各目录。
+
+最新非PTY自校验工件 `/tmp/dsc-unix-cancel-handshake-selftest-Z717VS`：合成9个合法失败全部复核；再破坏一份raw仍完整尝试9项，8份有效、1个evidenceError，未跳过其余失败；两组driver/helper进程组watchdog停止资源持有helper，并单独清理fixture。僵尸不算仍运行的资源owner，也不把此非PTY控制称为全部原生异常回收。此前自测证据 `/tmp/dsc-unix-cancel-handshake-selftest-AI8KNX` 保留。helper另通过编译及非TTY普通文件fd身份/共享offset不变检查，不是新PTY验收。语法、workflow只读两平台范围、既有bridge测试及diff检查通过；远端18项尚待执行，不由Linux本地外推macOS。

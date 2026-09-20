@@ -1,0 +1,73 @@
+name: Runtime Unix Cancel Handshake
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [runtime-exit-integrity-native-candidates]
+    paths:
+      - .github/workflows/runtime-unix-cancel-handshake.yml
+      - scripts/diagnostics/diagnose-unix-cancel-handshake.mjs
+      - scripts/diagnostics/unix-pty-readiness.c
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-unix-cancel-handshake-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  unix-cancel-handshake:
+    name: Cancel handshake / ${{ matrix.os }} / Node 22
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check syntax
+        run: node --check scripts/diagnostics/diagnose-unix-cancel-handshake.mjs
+      - name: Check ownership assertions and process-group watchdog
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import path from "node:path";
+            import { spawnSync } from "node:child_process";
+            const evidence = path.resolve("cancel-handshake-selftest/evidence");
+            fs.mkdirSync("cancel-handshake-selftest", { recursive: true });
+            const r = spawnSync(process.execPath, ["scripts/diagnostics/diagnose-unix-cancel-handshake.mjs", "--self-test"], {
+              encoding: "utf8", timeout: 30000,
+              env: { ...process.env, DSC_CANCEL_SELFTEST_EVIDENCE: evidence }
+            });
+            process.stdout.write(r.stdout || "");
+            process.stderr.write(r.stderr || "");
+            fs.writeFileSync("cancel-handshake-selftest/result.json", JSON.stringify(r, null, 2));
+            if (r.status !== 0) process.exit(1);
+            const report = JSON.parse(r.stdout.trim());
+            if (report.evidence !== evidence || !fs.existsSync(evidence)) process.exit(1);
+          '
+      - name: Run full 9-sample schedule
+        run: node scripts/diagnostics/diagnose-unix-cancel-handshake.mjs --output cancel-handshake-evidence
+      - name: Verify all saved results including failures
+        if: always()
+        run: node scripts/diagnostics/diagnose-unix-cancel-handshake.mjs --verify-saved cancel-handshake-evidence
+      - name: Upload complete first evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-unix-cancel-handshake-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            cancel-handshake-evidence/
+            cancel-handshake-selftest/
+          if-no-files-found: warn
+          retention-days: 14
