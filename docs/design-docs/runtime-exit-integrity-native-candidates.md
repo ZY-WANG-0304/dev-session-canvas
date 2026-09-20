@@ -246,3 +246,9 @@ Linux Node25.6.0本地 `.debug/unix-cancel-handshake-v1-local/` 完整9项通过
 master组原样启动旧C helper，stdio为 `[master, 'pipe', 'pipe']`；null组使用同一helper但stdin为ignore，PTY master不传给它。等待helper自然退出及stdio close后再连续inspect两次，核对同一fd身份/TTY及观察稳定性。master组的复现预期是仅清除O_NONBLOCK，其他flags保持；null组flags应全部保持。null组helper对非TTY的既有报告/退出行为如实记录，不把它当PTY可读性成功。任一初始前提、身份、差分或helper退出不符都报失败，不在执行后改变预期以获得绿色。模块错误或编译失败也留证，不静默换实现。
 
 最后通过文件gate让fixture自然结束，driver关闭master并验证EBADF，自然退出独立留证。每样本10s截止、父15s硬watchdog；失败时只清理本次driver/helper组及fixture组，事后清理不能替代自然结算。全schedule继续执行，保存环境、输入SHA、事件、helper报告、所有flags观察、自然退出和cleanup；完整离线复核应区分有效失败和证据损坏。只支持新输出目录，不覆盖工件。先语法/非PTY断言负例，再Linux本地6项，最后原生两平台12项。成功只证明在该组合下的启动副作用，不追认旧失败通过，也不推出历史挂起的唯一因果。后续可另行设计不经子进程stdio的原位readiness探针，但本轮不选定或接入生产reader。
+
+### 本地验证与远端输入前检查
+
+第18节由 `9ae1d7f7` 先行冻结。新模块通过N-API/C语法检查和独立只读审查；运行前补native-owner清理回退、缺summary合法失败重建以及原始事件/summary/gate/退出结果互证。Linux Node25.6.0/libuv1.51.0的 `.debug/unix-helper-fd-flags-v1-local/` 与最终v2各完整6项通过及离线复核：master组三次flags从34818到32770，恰好清2048位，null组三次34818不变；四次身份/TTY一致、主体和driver自然退出及fd EBADF成立。v1后仅补gate文件写入失败的合法失败分类，另跑全v2留证，不覆盖v1。
+
+最终脚本SHA256 `3ce60fc6806d9b3a5752d52a4e5c96fbf700d624a44afbf64abd8f184d8c9928`，N-API C为 `b816790632e98cbb7137eb7320c572e4ea4e2ebac6023c89acc17f7dc2497768`。合成标志负例自测 `/tmp/dsc-unix-fd-flags-selftest-u5o6eJ` 通过，原agent预检证据另存 `/tmp/dsc-unix-fd-flags-selftest-aUhBXM`；均不启动PTY。派生离线负对照 `.debug/fd-flags-verifier-control-pZPCEB/` 把六个driver标为退出失败，全部6项核对、failures=6/evidenceErrors=0/exit1；再损坏一份events仍attempted6、verified5、其余5个failure加1个evidenceError/exit1。原生工件不改，负对照不计新原生样本。新workflow只读权限/两平台范围及YAML检查通过；远端原生12项仍待运行。

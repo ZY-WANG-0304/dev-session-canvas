@@ -1,0 +1,58 @@
+name: Runtime Unix Helper FD Flags
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [runtime-exit-integrity-native-candidates]
+    paths:
+      - .github/workflows/runtime-unix-helper-fd-flags.yml
+      - scripts/diagnostics/diagnose-unix-helper-fd-flags.mjs
+      - scripts/diagnostics/unix-fd-inspect.c
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-unix-helper-fd-flags-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  unix-helper-fd-flags:
+    name: Helper fd flags / ${{ matrix.os }} / Node 22
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check syntax
+        run: node --check scripts/diagnostics/diagnose-unix-helper-fd-flags.mjs
+      - name: Check flag difference assertions
+        env:
+          DSC_FD_FLAGS_SELFTEST_EVIDENCE: helper-fd-flags-selftest
+        run: node scripts/diagnostics/diagnose-unix-helper-fd-flags.mjs --self-test
+      - name: Run full 6-sample flag schedule
+        run: node scripts/diagnostics/diagnose-unix-helper-fd-flags.mjs --output helper-fd-flags-evidence
+      - name: Verify all saved results including failures
+        if: always()
+        run: node scripts/diagnostics/diagnose-unix-helper-fd-flags.mjs --verify-saved helper-fd-flags-evidence
+      - name: Upload complete first evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-unix-helper-fd-flags-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            helper-fd-flags-evidence/
+            helper-fd-flags-selftest/
+          if-no-files-found: warn
+          retention-days: 14

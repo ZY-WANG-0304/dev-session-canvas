@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-20 可读性握手阶段：输入931e8e22 / run35510798036全18项及离线复核完成，Ubuntu9/9、macOS8/9，总run失败。macOS control-3收齐2048却第4次read不回调、gate未打开，最终父watchdog清理。源码审计进一步发现helper启动链会清共享O_NONBLOCK，风险跨Linux/macOS，整轮及本地同helper样本暂停作为非阻塞reader验收依据，原17绿/1红不改。新增原位F_GETFL与不继承PTY对照先核实副作用；旧样本未记录flags/精确回执时序，不能冒称完整因果已native闭环。此为诊断有效性问题，不是新增业务缺陷；Windows在途取消、长驻资源、真实provider/宿主/packaged及生产选型继续开放。见候选设计第15–18节及active计划。
+
 2026-09-20 写入控制run35508235734全54项已下载复算：Ubuntu27/27、macOS21/27，总失败保持。新v2探针的正容量暂停与缺回执完整verifier修复已验证；六个macOS原取消仍因先等写完才读的夹具循环等待而未进入待测路径，不是生产reader丢字节证据。下一增量冻结无循环等待握手，保留2048负载，候选/audit/最终writer receipt分别对账；原控制组成功不替代取消验收。Windows在途取消、同进程native资源增长、真实provider/宿主/packaged和生产选型继续开放，不关闭产品债务。详见候选设计第13–14节及active计划，原入口/断言/失败不改。
 
 2026-09-20 新矩阵 run 35506150727 全84项已留证，总结果失败。Linux21项/Windows候选21项达标，actual bridge受控启动链通过，但三次主进程Unicode TAIL缺失、21次自然资源guard失败仍在。macOS12通过/9失败：3项为新探针零长度read冒充EOF，6项未建立2048-byte成功写入前提，需修诊断和失败verifier、先做write-enter/return/errno与受控放行控制组。audit不补算候选输出。Apple退出监听创建kqueue未见close仅为待长驻计数的源码风险；Windows在途取消、长驻句柄、输入预算、真实provider/宿主/packaged继续开放，旧失败不重判。详见候选设计第10–12节及active计划。
