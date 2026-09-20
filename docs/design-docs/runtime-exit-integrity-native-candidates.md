@@ -177,3 +177,7 @@ Windows 环境 Server 2025 x64 build 26100，Node 22.23.2 / libuv 1.51.0；conpt
 两个新控制组使用相同2048 ASCII bytes。driver观察到write-enter后继续不读100ms，保存该时刻的写入进度、成功回执有无、主体存活/退出状态，再分流：write-no-read不提交任何read，明确记diagnostic interruption并关闭master，观察主进程退出及资源；write-release从此时才开始正容量读取，精确收齐2048bytes并观察成功回执后放行fixture退出，直到真实EOF/EIO及consumer/fd/driver结算。fixture在成功写完后仍等待driver gate，因此早已写完的Linux也有相同存活观察窗口。控制组既不减少数据，也不把100ms当产品取消预算；无读组只证明该观察窗口内状态，不预设每个平台都必须阻塞，不将主动关闭称为EOF。
 
 原六个取消案例若仍未建立前提，仍按原门槛失败；新控制组有独立classification，不能用其成功替代取消验收。验证器逐样本容许成功回执缺失为null、核对与失败判定相符，并继续复核全schedule；任何原生失败或工件损坏最终仍返回非零。自校验注入缺回执/篡改raw及零容量场景，保存报告，不能把完整离线审计成功写成原生通过。所有输出新目录，完整首次运行保留；本阶段不选定生产方案或预算，也不顺手修改Apple kqueue等native资源实现。
+
+运行前本地验证：Linux Node25.6.0 的 `.debug/unix-write-control-v1-local/` 完整27项通过，原七类21项结果不变，新无读组三次明确中断、放行组三次精确2048字节及自然EIO。完整保存结果验证为attempted=27、verified=27，无失败或工件错误。脚本SHA256 `d82ba9d05d0575a887933a4598dade38910ce711861b739aeb2e62fe9c6d4c3d`，原生快照已保存。确定性重复CR/正容量断言及非PTY watchdog自校验通过，后者原始证据 `/tmp/dsc-unix-tail-watchdog-OdZmTH`。
+
+派生的离线负对照 `.debug/unix-write-verifier-check-481Y8t/` 不修改任何原样本：缺回执并保持相符失败状态时完整核对27项、报告1个失败且exit1；篡改一份raw时尝试27项、26项工件有效、1项损坏且exit1，未提前跳过余下样本。这些不是新原生样本。新workflow只读权限/两平台边界、语法和diff检查通过，远端结果待执行。
