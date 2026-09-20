@@ -14,7 +14,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-20
+updated_at: 2026-09-21
 ---
 
 # 执行会话退出完整性交付
@@ -454,3 +454,17 @@ Windows两轮native各23条自然会话的内容/消费者/pipe EOF/worker退出
 Ubuntu工件ID10607847565、服务端ZIP digest `eb823e1d70d32eda91c0792a0e1d15955b5ee153523c9a481260aaf889a7b758`；macOS ID10606879826、digest `caebc9712910c175088e242b50315c6ece77393cec71c629c599184af3819ca5`；Windows ID10607308818、digest `6899bb032da0d2070d1019146b19399817b054ab29e55b8e733340adcce98c66`，非本地ZIP独立复算。LF脚本/worker/C SHA256分别 `4c2e3decf149c120c06faa9fcb3f997aa6f6dc2990dcad7cedece7b622cfb09d`、`8630eab630bb085c843e92467d578b59f3f4480cccef4c6b56e5b3a75ebc1489`、`fcd2cc8d55d8033b53c5e23e647e8ce7bb8b39f2c8931bcd50a302cb06b72adb`。Windows checkout CRLF导致原始hash不同，只读归一LF后逐字匹配，未改工件；完整native/hash/编译及自测记录在工件和独立候选设计第24节保留。
 
 架构判断：仅替换JS输出reader不足以收口本次退出完整性，原生PTY创建、退出监听和释放必须作为同一资源生命周期设计。下一增量先冻结macOS kqueue干预构建与Windows句柄身份/创建回收对照，再补Windows正长度readable-buffer取消场景；隔离候选不直接修改业务或依赖安装树。生产reader/API、自然结束/取消政策和预算、异常终止与真实provider/Host/Webview/packaged仍开放，全部旧实验/失败不变，两份计划保持active。
+
+## 29. 原生资源归因对照（运行前冻结）
+
+本增量只验证资源归因，不选定生产reader/API或取消预算。新增 `diagnose-macos-kqueue-release.mjs`、`diagnose-windows-handle-inventory.mjs`、`windows-handle-inventory.c` 及独立 `runtime-native-resource-attribution.yml`。旧owned-lifecycle脚本/worker/C/workflow、冻结断言和失败工件不改；新入口可在新输出目录机械生成隔离副本，必须保存原文、变换清单、差异和hash，拒绝非预期输入。依赖安装树、业务代码和旧live绑定均不改。
+
+macOS固定按prebuilt、rebuilt-baseline、rebuilt-close三个arm顺序运行，每arm沿用旧control-1/native-1/control-2/native-2完整schedule、每native driver三次预热加二十次测量，共十二driver、一百三十八条PTY。两个重编译arm使用相同Node头、工具链和node-pty包副本，正确解析node-pty自己依赖的node-addon-api；不能以仓库顶层另一版本代替。仅close arm在Apple退出等待分支结束、生成ExitEvent之前加入 `if (kq >= 0) { close(kq); }`，不重试close，不顺手修复原有异常wait/stat_loc路径。基线源码LF SHA256必须为19210adfdaba3cd09809b56bb3281b14e74a8e5efc1f35d467d3c423c30856db，锚点唯一；保存patch和前后源码。三个arm实际运行的spawn-helper固定为原prebuilt版本，构建产生的新helper另存而不使用，排除启动器变更。必须从每arm environment证明实际加载的native路径/hash，禁止回退prebuilt后误认候选已运行。
+
+旧会话完整性与资源oracle保持原样，每窗口100ms收尾后五次20ms间隔采样，原会话30s/guard2s/driver150s不变。外层分别记录旧verifier结果：两基线预期各两个native资源失败并逐测量+1 kqueue，close arm预期全部内容/生命周期及资源无持续增长。只有三arm前提、完整schedule和上述对照均成立，才支持“该隔离close消除本组合中的kqueue增长”；基线红项仍红，不称生产已修复。任一构建失败、前提不符、缺工件、watchdog或对照不符均保留且整体非通过，尽可能继续其余arm，不用重跑到绿覆盖首轮。
+
+Windows仅做原位只读句柄类型取证，不在本轮新增HPCON释放API。机械派生旧入口，唯一行为变换为schedule只保留四个资源driver及替换资源观察器；payload、worker、consumer、退出和旧资源断言不变，共四driver、四十六条PTY。新N-API模块用GetModuleHandle/GetProcAddress获取NT查询函数，NtQueryInformationProcess类51读取本进程句柄表，NtQueryObject类2查询类型，内存分配/重试有界；记录槽位hex、类型/index、访问权/属性、引用计数和原始status。Process类型补GetProcessId、GetProcessTimes、GetExitCodeProcess和可用时QueryFullProcessImageName的结果/错误；File仅GetFileType。不查询ObjectName、不读pipe、不DuplicateHandle、不关闭未知句柄，不用额外外部观察进程继承受测资源。
+
+每次观察保存前后完整表和GetProcessHandleCount；槽位/type/access/属性集合变化或查询失败显式报告observer-race/inconclusive，不能默默丢项。数字槽位不是稳定内核对象ID，Process的PID+creation time只能加强该类型的身份，匿名File不能据此唯一归因。原计数失败照常输出，外层另报取证完整性、每个窗口的类型差分和跨窗口存留槽位；全部控制稳定、native持续File/Process配对且Process路径指向OpenConsole时也只算HPCON候选的支持证据，不冒称已完成释放干预。观察器自测用三个自己打开/关闭的普通文件验证类型和+3/-3；保留原parent watchdog防御无有限执行保证的系统查询。
+
+先执行语法、机械变换/离线verifier负例及本地可运行控制，再将固定输入仅推独立诊断分支，在macOS/Windows各执行一次完整矩阵。全量工件下载完成后再离线复核，损坏样本不阻止其余样本检查；冻结与实际输入SHA、Node/头文件/工具链/源/binary哈希、命令输出和首轮失败均保存。生产资源回收设计、Windows正长度JS readable-buffer取消控制、异常退出、真实Agent启动链及Host/Webview/packaged继续开放。本轮把正缓冲控制独立排到资源归因之后，避免同时改变读取行为和原生资源实验。

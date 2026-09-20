@@ -14,6 +14,9 @@
 
 ## 进度
 
+- [x] (2026-09-21) 按设计第29节冻结macOS三arm最小close对照和Windows只读类型取证，保留原资源失败；正readable控制另列后续。
+- [ ] 实现新独立入口及workflow，先本地自测/机械变换负例，再执行macOS十二driver与Windows四driver首次原生矩阵，下载完整离线复核。
+
 - [x] (2026-09-20) 按设计第28节承接Windows12项取消所有权与三平台同进程资源冻结协议；各driver3预热/20测量，与无PTY对照分开，业务不改。
 - [x] (2026-09-20) 新诊断/worker/OS观察器/workflow完成，自测与Linux本地v1/v2各46条PTY通过；输入b031b598的run35519226627三平台首次运行完整复核，Windows12项局部所有权/自然对照通过，macOS/Windows各两个同进程资源组失败保留，无工件损坏。
 - [x] (2026-09-20) 两工作树设计/计划/索引/原则/债务同步，元数据/引用/全部计划章节/diff与范围检查通过；核对Windows CRLF原始输入和全部cleanup/guard，bridge回归通过，业务/依赖/旧实验未改。
@@ -61,6 +64,8 @@
 
 ## 意外与发现
 
+本轮源码审计发现macOS需要同工具链rebuilt-baseline，且node-pty嵌套node-addon-api版本不同于仓库顶层，不能混用。Windows固定DLL的Release只释放部分成员、Close另释放其余成员，支持继续取证，但尚未原生确认积累句柄类型和归属。均是实验输入，不是生产修复。
+
 本轮首次三平台证据直接区分单次退出与长期资源：macOS两轮每会话新增一个kqueue，fd15到35；Windows两轮每次+2 handles，197到237；无PTY控制稳定、所有内容/消费者/单次退出通过。Windows12项局部对照通过但九次readableLength均0，不能覆盖正缓冲分支。Apple风险已有native证据，Windows对象身份与HPCON归属尚未证明，详见设计第28节。
 
 run35516170917两平台24项直接证明新观察不改变flags，六个receipt-held控制在真实EAGAIN回调逻辑结果held时完成gate；macOS自然源真实read0、Linux EIO。取消candidate64/audit1984仍分账，audit不补算候选输出。每样本自然释放不是同进程长期资源证明，具体证据/下载传输重试边界见设计第27节。
@@ -94,6 +99,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 真实链路只有 Windows .cmd/.bat 会被 bridge 包 cmd /d /s /c，POSIX Agent 不由扩展另加运行 shell。本机 Codex npm JS 源码会等待 child，而旧 fake-provider 多是 exec；新增等待/非等待启动器对照补齐了这一层受控证据，不等于真实 provider 通过。首次启动诊断因错误要求 Linux spawn-helper 而在 spawn 前失败，0 个原生样本，已保留；12 s 进程内 timer 不能约束同步 probe 阻塞，外部 watchdog 与新增 fatal handler 故障注入仍缺。
 
 ## 决策记录
+
+- 决策：资源归因与正长度JS缓冲取消分阶段交付；Windows本轮只读取证、不增加HPCON释放API，macOS只在隔离副本插入close并固定spawn-helper。理由：保持原读取协议，区分工具链、观察器和唯一释放变更；Windows句柄总量尚不能唯一证明资源所有者。日期/作者：2026-09-21 / Codex。
 
 - 决策：下一步转native资源归属/释放的隔离受控验证，不能把仅替换JS reader选为完整修复。理由：macOS/Windows同进程资源积累在本轮直接复现，源EOF和driver退出仍可同时通过；Windows正readable分支另补，原失败不靠调阈值消除。日期/作者：2026-09-20 / Codex。
 
@@ -133,6 +140,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
+2026-09-21本增量目前仅冻结资源归因协议，原生结果待采集；不能将拟议close或Windows类型预期写成验证结果。旧run35519226627的四个资源失败保持，整体退出完整性仍未交付。
+
 第28节已完成Windows局部所有权与三平台同进程资源首次验证，24个driver/150条真实会话完整留证；20个driver通过、macOS和Windows各两个资源失败，全部离线复核有效。资源增长不能被内容/自然退出成功掩盖；Windows正长度readable和句柄身份、macOS干预构建仍待验证。只新增诊断及文档，既有局部成功和历史失败均保留，未修改业务或选定生产方案。
 
 历史第27节原位观察/独立gate增量完成本地、自校验及两平台24项原生/下载复核，Unix这组前提和局部取消所有权已验证；当时提出的Windows与同进程资源由第28节承接，首次两个诊断时间前提失败及旧18项解释不改，不将隔离诊断作为生产完成。
@@ -152,6 +161,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 平台 provider 的现状见安装的 `node_modules/node-pty/lib/unixTerminal.js`、`windowsPtyAgent.js`、`windowsTerminal.js` 和 native 源码。已有证据位于 `docs/design-docs/runtime-terminal-tail-diagnosis.md`、`docs/design-docs/runtime-terminal-cross-platform-diagnosis.md`；固定版本来源已在文档摘录，不要求接手者依赖本机 `.debug/` 才理解问题。不能直接编辑 node_modules 作为生产修复。
 
 ## 工作计划
+
+当前增量以设计第29节为冻结契约。独立工作树新增macOS三arm入口和Windows句柄模块/入口及两平台workflow。派生副本记录冻结输入hash和精确差异，原入口不变。macOS先prebuilt再同工具链baseline/close，每arm四driver；Windows只保留旧四资源driver并替换观察器。保留原资源oracle，外层分别判因果对照或取证有效性。正readable-buffer、生产API/预算和真实宿主不在本增量。
 
 第28节增量已完整执行。下一阶段先冻结macOS退出监听kqueue生命周期的隔离干预构建，以及Windows+2句柄的类型/身份和创建回收边界，不能预设其唯一来自HPCON；再补Windows取消时readableLength实际大于0的控制，继续分别核对已拥有数据与消费者应用。实验只在隔离构建，不改业务或依赖安装树；须用新证据选定native资源与reader共同的生产生命周期，不能仅以源EOF/JS关闭宣布完成。
 
@@ -180,6 +191,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+独立工作树新入口 `node scripts/diagnostics/diagnose-macos-kqueue-release.mjs --self-test` 和 `node scripts/diagnostics/diagnose-windows-handle-inventory.mjs --self-test` 先做可用平台自测；采集用各自 `--output <全新目录>`，完成后 `--verify-saved <目录>` 复核。macOS需同版本Node头/node-gyp，Windows需MSVC/Node import library；非本机只跑纯逻辑自测，不冒称native通过。全部失败工件上传，原生执行和下载分别留证。
 
 本轮复核在独立工作树执行 `node scripts/diagnostics/diagnose-runtime-owned-lifecycle.mjs --verify-saved .debug/github-owned-lifecycle-35519226627-ubuntu/owned-lifecycle-evidence`，预期4项有效/无失败/exit0；换macos为4项有效、两个native资源失败/exit1，换windows为16项有效、两个native资源失败/exit1，均无evidenceErrors。可用NODE_PATH指向相同锁文件依赖；不以预期exit1为由重跑试绿。下一阶段先冻结资源归属/正缓冲协议，不改本次输入。以下旧步骤只作历史复核入口，当前下一步以工作计划首段为准；仅推独立诊断分支，不推运行时历史。
 
