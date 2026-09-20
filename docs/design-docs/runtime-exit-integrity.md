@@ -77,7 +77,7 @@ updated_at: 2026-09-20
 
 ## 6. 下一步与状态
 
-执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–8 节记录 Linux 隔离 reader 实验，第 9–11 节给出候选与平台缺口，第 12–14 节承接 runner 和可执行收尾契约验证。下一步在已有 runner 上补 macOS/Windows 候选 reader 与生命周期对照，明确 native 资源释放和源结束边界，再选定生产 reader、wire API 与预算；不能把基线或内存模型通过当作里程碑一完成。实现与产品验收仍未勾选。
+执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–8 节记录 Linux 隔离 reader 实验，第 9–11 节给出候选与平台缺口，第 12–14 节承接 runner 和可执行收尾契约，第 15–17 节记录两轮三平台原生候选。下一步先隔离 macOS 后代场景的终端所有者与原始写入边界，再选定生产 reader、wire API 与预算；不能把基线、内存模型或局部候选通过当作里程碑一完成。实现与产品验收仍未勾选。
 
 ## 7. 第一轮候选实验协议（运行前冻结）
 
@@ -152,11 +152,11 @@ Supervisor/local Host 在 adapter 最终事件后才封闭 admission，先收敛
 | --- | --- | --- |
 | Linux x64，Node 25.6.0 / Electron-as-Node 39.8.7 | 冻结的 84 项裸 PTY 候选对照 | 自然 HUP 旧失败/新通过对照、正式 reader、公平性/并发、实际 Host 两种模式、真实 provider 和 packaged。 |
 | Linux Remote SSH | 无本轮候选实测 | 记录实际执行端版本，不用本地 Electron 代替远程 extension host；验证断连与当前读者结算。 |
-| macOS 原生 | PR #294：arm64 / Darwin 25.6.0 / Node 22.23.2，公共接口 15 项基线；首轮 CRCRLF oracle 误报已修正 | 固定宿主与候选版本，验证 slave close、后代、90000 行、可信源终止与取消回收；小样本成功不外推 Linux EIO 或全部 macOS 架构。 |
-| Windows 原生 | PR #294：Server 2025 x64 / build 26100 / Node 22.23.2，builtin ConPTY 15 项；首次自然退出资源 guard 失败，新版显式 fixture 清理后通过 | 验证 builtin/DLL、实际 VS Code、原生源终止、worker drain、关闭死锁与停止路径；事后 public kill 不等于自然退出自动释放或可信排空。 |
+| macOS 原生 | arm64 / Darwin 25.6.0 / Node 22.23.2：公共接口 15 项基线；新增 42 项 reader 对照，候选 15 项达标、后代两组 6 项未达标 | 先隔离 session leader 与 slave 生命周期、真实 write 返回值、EOF 后保持 master 对照；不能把 Linux EIO 或取消策略直接推广，也没有本轮暂停缺尾复现。 |
+| Windows 原生 | Server 2025 x64 / Node 22.23.2：两轮各 63 项；修订 Job 夹具并验证存活/TTY 后候选 18 次完整、3 次明确取消；原 worker 每轮 42 次资源 guard 失败 | 补 native handle 释放/增长、并发输入、真正 stop/强制停止与实际 VS Code。独立 worker 自然退出不等于全部 OS 句柄归零或完整生产候选已选定。 |
 | 声明支持的宿主范围 | `^1.80.0` 仍未改变 | 选型时明确最低支持宿主与代表性矩阵；在验证前不能将 1.117.0 的结果泛化到全部支持版本。 |
 
-里程碑一还未结束：生产 reader、后代期限、资源/输入预算、原生 Windows/macOS 候选和具体 wire API 尚未选定或验证。当前实验可以支持继续投入受控 adapter 候选，不能据此直接修改业务、去掉旧兼容、宣布全平台已修复或关闭退出完整性债务。
+里程碑一还未结束：生产 reader、后代期限、资源/输入预算和具体 wire API 尚未选定。原生 Windows/macOS 候选已执行，Windows 修订夹具后达标，macOS 后代场景仍没有满足冻结门槛；下一步是缩小这些开放问题，不再把“没有平台 runner”作为原因。不能据此直接修改业务、去掉旧兼容、宣布全平台已修复或关闭退出完整性债务。
 
 ## 12. 独立 Runner 合入后的证据承接
 
@@ -189,3 +189,33 @@ PR #294 已合入 `main@5965adb8`，运行时分支的 13 个提交 rebase 后�
 `scripts/diagnostics/diagnose-runtime-exit-admission.mjs` 在同两种运行时各执行 17 项：原有 11 项公共 Supervisor 特征断言保持不变，另加 6 项把源模型的 final 转接给实际 Supervisor 的 onExit。Agent/Terminal 各覆盖进程先退后有异步尾部、源先结束和 stop 后排空；6 项均完整保留 `BEFORE\r\nTAIL\r\n`、final revision 2、exit 7 和唯一终态。工件为 `.debug/exit-admission-contract-v1-node25.json` 与 `.debug/exit-admission-contract-v1-electron39.json`。这些 source EOF 是注入的，不是 PTY 读取证明；此适配也没有把源状态传入生产 wire，不能视为 Supervisor 完整集成已交付。local Host 两路径、provider 原生实现和完整消费者确认链路仍未接通。
 
 rebase 回归通过 `typecheck`、`build`、`test:execution-session-bridge`、`test:terminal-session-journal` 和 `test:runtime-supervisor-protocol`（含 checkpoint refresh、paged projection、completed-history、paged completion）。相对 rebase 前业务及原有测试无差异，本轮增量限诊断和文档；没有执行完整 VS Code UI、真实 Agent、packaged 或新的 macOS/Windows 候选测试。固定等待、旧 onExit 或事后 public kill 均未升格为生产完整性方案。
+
+## 15. 原生候选阶段（运行前边界）
+
+下一轮诊断在 `origin/main@5965adb8` 的独立分支 `runtime-exit-integrity-native-candidates` 开展，避免把未完成的运行时分支推到 runner。沿用已合并公共接口基线，不改变它的门槛。新增候选 workflow 和独立设计/计划；运行前固定完整 schedule、重复次数及预算，保存首次失败和修订原因，不触碰业务代码。
+
+新核查的 Windows 源码事实：固定 node-pty `1.2.0-beta.12` 的 `src/win/conpty.cc::SetupExitCallback()` 在 native 退出回调到 JS 前关闭 shell handle 并移除 baton，而 `PtyKill()` 按该 baton 查找 HPCON；builtin 自然退出后再 kill 不能据此证明执行了 `ClosePseudoConsole`。DLL connect 则调用 `ConptyReleasePseudoConsole`。此处为源码顺序证据，尚不等于原生泄漏计数或完整生命周期证明。需要实际观测 DLL 源 EOF 与 worker 结束，不能只把 `useConptyDll` 置为 true 宣称完成。
+
+## 16. 三平台原生候选首轮结果
+
+独立诊断输入为 `runtime-exit-integrity-native-candidates@afb2497440d22ee088d8bd3a65766dcec008e322`，不含当前分支的未完成运行时历史。[run 35498026812](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35498026812) attempt 1 完整执行 147 个样本：Linux 42、macOS 42、Windows 63。Ubuntu job 成功，另两个失败；所有首次结果保留，没有扩大等待或调低内容门槛取得绿色。独立分支的设计和 ExecPlan 记录运行前冻结参数，工具位于该分支 `scripts/diagnostics/compare-runtime-exit-readers.mjs`、`compare-windows-exit-readers.mjs` 和 `runtime-exit-conout-worker.mjs`，没有修改业务或 node_modules。
+
+Linux 候选 18 次精确 read EIO、3 次后代保持时明确取消；stock 暂停三轮均在 89800 行结束且 writer 成功，后代尾部三轮写失败。macOS 候选自然 exit 0/7、暂停、分片、TERM 共 15 次完整 read 0，stock 这些场景也完整；本轮未复现 macOS 暂停丢尾。macOS 后代尾部三个候选只收到 `PARENT`，receipt 为 `CHILD_TAIL\ncomplete:1`，不是成功写入凭证；保持组三次约 10 ms 即 read 0，没有进入预期的 1000 ms 取消。不能将这 6 个失败称为已证明的 HUP 同因或已写成功后丢失。session leader 退出导致 terminal 撤销是待验证假设，还需要真实 write errno、保持 master 打开及 leader 存活的控制组。
+
+公开 [XNU kern_exit.c@f6217f891ac0bb64f3d375211650a4c1ff8ca1ea](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/bsd/kern/kern_exit.c) 的 leader 退出分支有 SIGHUP、ttywait、`VNOP_REVOKE(REVOKEALL)`，提供源码旁证；没有对应 runner 精确构建的 syscall 轨迹，不代替控制组。
+
+Windows 原 builtin 暂停三轮的 90000 行文字哈希都匹配，但末尾 `cursorLine=89999` 而非预期 `90000`，writer 均成功；是末尾换行/光标状态不完整，不是丢了编号文字。原 DLL 暂停完整，但两条原路径各 21 个样本都未在 2 s 资源 guard 内自然退出。候选直接读取 DLL conout pipe，取消原转发 server/timer，普通五类共 15 次完整内容/光标、pipe EOF、worker 与诊断进程自然退出；后代尾部三次不匹配、保持组三次收到 EOF 而非预期取消，均保留失败。内容完成和自然 Node 退出不证明 HPCON/系统句柄长期无增长。
+
+Windows 后代工件复核：tail 九次均无 writer receipt，PID 已消失。固定 [libuv v1.51.0 win/process.c](https://github.com/libuv/libuv/blob/v1.51.0/src/win/process.c) 将普通 Node spawn 的子进程放入父进程私有 kill-on-close Job，父退出会杀掉夹具后代。因此这六个候选门槛失败不证明 reader 丢弃存活后代；不能只凭 spawn/ready 文件认定输出所有权。第二轮冻结为由 `cmd start /b` 中间进程创建真实后代，额外断言主进程回调时仍存活且 stdout 为 TTY，不改 reader、重复次数、90000 行或等待预算，也不修改 macOS 的失败判断。
+
+三平台为 Node 22.23.2 / libuv 1.51.0 / node-pty 1.2.0-beta.12，Linux x64 与 macOS arm64 分别为 kernel 6.17.0-1022-azure、Darwin 25.6.0；Windows 为 Server 2025 x64。不是实际 VS Code UI、最低宿主、Remote SSH、真实 Agent 或 packaged 验收。下一轮优先验证后代的真实输出所有权与写入/EOF 边界，同时评估长驻资源；当前没有选定统一 reader，更没有把新路径接入 Host/Supervisor。
+
+## 17. Windows 夹具修订后的完整对照
+
+第二轮 [run 35498732353](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35498732353) 输入 `4ac3ad156ae7cec3bf649a656b2eb437149040e4`、attempt 1，完整再执行 147 项，不改 reader、轮次、内容或等待预算。Windows 与 Ubuntu job 成功，macOS job 失败；总 run 保持失败，不修改 macOS 门槛来获得全绿。
+
+Windows 候选 21/21 达标：自然零/非零、暂停、分片、后代尾部和合作退出共 18 次内容/光标匹配、pipe EOF、worker 和诊断进程自然退出；后代保持三次在固定 2500 ms 后明确取消并清理。六个后代样本同时满足父 native 退出回调时真实后代仍存活、stdout 为 TTY，因此这次才有效验证存活后代。原 builtin 的后代尾部三次仍缺失；原 DLL 内容完整，但两条 stock 仍共 42 次资源 guard 失败。两轮 stock 资源失败共 84 次，未用事后 public kill 掩盖。
+
+完整工件确认 builtin 后代尾部三轮在 onExit 观察时 receipt 为 null，但随后保存的 writer receipt 都为 `written: true, code: 0`，呈现仍只有 `PARENT`；候选完整呈现 `CHILD_TAIL`。这是原生 Windows 提前关闭后漏掉成功写入的后代输出证据，与首轮夹具被 Node Job 杀掉及 Unix 后代写失败分开统计。两轮全部工件已下载到独立工作树 `.debug/github-candidates-{run}-{platform}/`，核对完整 schedule/raw 哈希、Windows 内容/光标和实际输入 commit（Windows CRLF 差异已验证）。每轮 Unix 进程组和 Windows fixture PID 清理均无残留，不代表 OS 句柄长期零增长。
+
+第二轮 Linux 与 macOS 结果类型不变：前者候选 18 次完整、3 次明确取消；后者普通 15 项完整、后代两组 6 项仍未达标。下一增量先补 macOS 原始 write 返回值、leader 存活/退出及首次 EOF 后保持 master 的控制实验。Windows 独立 worker 已有原生可行性依据，仍需 native 句柄长期增长、并发输入、真正 stop/强制停止、实际宿主与共享契约集成验证；不能因这 21 项通过就定为生产默认路径。运行时业务、旧 live 绑定和 root 归属均未修改。

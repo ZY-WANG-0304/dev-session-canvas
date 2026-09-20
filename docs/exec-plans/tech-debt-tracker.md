@@ -23,6 +23,10 @@
 
 ## 技术债列表
 
+2026-09-20 夹具修订后续：第二轮 run 35498732353 再完成全量 147 项，Windows 后代实际存活/TTY 断言成立后候选 18 次完整、3 次明确取消，原 worker 仍 42 次资源失败；macOS 六项后代失败继续开放。下一步优先补 macOS leader/原始 write/EOF 后持有 master 控制组及跨平台长驻资源预算，不将第二轮成功写成整体生产修复。证据见退出完整性设计第 17 节。
+
+2026-09-20 原生候选补充：独立诊断分支 run 35498026812 完整执行 147 项。Linux 独占 reader 18 次完整、3 次明确取消；macOS 普通场景 15 次完整，但后代两组 6 次不满足原先保留假设，需要 session leader/原始 write/EOF 后持有 master 对照。Windows builtin 三次暂停末尾光标少一行（90000 行文字完整），两条原 worker 路径共 42 次资源 guard 失败；独立 worker 普通 15 项同时内容、pipe EOF 和自然退出通过。Windows 首轮后代夹具受父 Node kill-on-close Job 影响，六项门槛失败不能直接归为 reader 缺陷；修订夹具并新增真实后代存活/TTY 断言另跑，不改 reader 或预算。生产集成、长驻句柄/输入预算、实际宿主/packaged 继续开放，详见 `docs/design-docs/runtime-exit-integrity.md` 第 15–16 节。
+
 2026-09-20 runner 合并后续：PR #294 已提供三平台最小原生基线，运行时分支已 rebase；不能再将“没有 runner”当成未验证原因，但 macOS/Windows 候选 reader、真实宿主与资源生命周期仍未验收。Windows 首次自然退出资源 guard 失败保留，事后 public kill 的诊断成功不关闭该问题。新隔离契约在 Node 25/Electron-as-Node 39 各 39 项通过，实际 Supervisor 注入各 17 项通过；真实分页投影证实旧 close 无法区分已应用与取消，尚未修改生产 wire。下一步按退出完整性 active 计划验证跨平台候选并选定接口/预算；F-03 root 归属、F-04 整体容量模型和本项退出完整性均未因此关闭。证据见 `docs/design-docs/runtime-exit-integrity.md` 第 12–14 节与 `scripts/diagnostics/diagnose-runtime-exit-contract.mjs`。
 
 2026-09-17 终态短读补充：本轮第一次 90000 行用例的最后页已到 `revision=head=11628`，末尾仅第 89850 行和半个 marker，证据保存在 `.debug/runtime-completed-90000-first-failure/`；根因仍未定位。后续改为直接逐行核对实际 xterm 后通过 90000/90000，不能据此关闭原有间歇性风险。测试观测也独立修正：200 条 test-only 消息环不能拼完整历史，保留的 viewport 不能代表 buffer 尾部。取消 completed 归档不改变当前页面的完整性要求。
