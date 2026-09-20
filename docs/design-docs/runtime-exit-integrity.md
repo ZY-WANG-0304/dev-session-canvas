@@ -338,3 +338,25 @@ macOS 暂停失败根因由原始事件确定：额外 CR 使 `89800 × 27` 原�
 Windows 本轮三个基线暂停样本的编号 1–90000 均逐项完整，但 raw callback 文本精确结束于 `DSC_MAIN_LINE_90000\r`；该行 LF、主进程额外写入的带 Unicode/ANSI 的整段 TAIL 及最终 CRLF 缺失，不是 VT 覆盖。writer receipt 的 token/PID/成功写入与 exit 0 已互核；实际 cursorLine 90000，预期 90002。候选三次全文与最终光标精确匹配。baseline native 退出后约 1002–1004 ms public 退出，再约 489 ms 才恢复读取。这是实际 bridge 的受控主进程尾部反例，与旧矩阵“仅末尾光标少一行”和后代诊断分开记录。
 
 Windows 36 个正例 READY hold 为 100–116 ms，gate 前主体存活且 native/public 未退出，cmd/bat 的 main → wrapper → subject PID 链和 0/7 传播成立。6 个负控在 native 退出时主体仍活着，3 个 actual-bridge 在 public 退出时也仍活；owned 的三个负控为 cancel-applied → pipe-close(ended=false,cancelled=true) → worker exit 0，没有 pipe EOF。21 个基线资源 guard 都留下 PipeWrap/MessagePort 并 driver exit 3；候选21个driver自然exit0。所有样本无硬超时、日志截断或cleanup异常，但负控在cleanup时已无存活PID，不宣称由父清理主动杀死，也不由这些短命进程证明native长期无增长。设计仍比较中/验证中，生产选型未完成。
+
+## 24. Unix 写入前提控制阶段
+
+独立分支先以 `9cacfc49` 冻结候选设计第13节，再以 `7d832d3e84f09d50ea1934db17d88962eb0d09fb` 提交新 `diagnose-unix-exit-tail-v2.mjs` 和 `runtime-unix-write-control.yml`，触发 [run 35508235734](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35508235734)。旧入口、断言、三平台首次失败和业务均不改；Windows矩阵不重跑、不重新解释。
+
+修订版保留原七类各三次共21项，暂停预算改按ASCII夹具非CR逻辑字节计数，每次read要求正容量，保留90000行/89800标记/350ms及完整内容/状态门槛。原取消2048-byte预置、64-byte在途read、100ms延迟和10/1/15s采集/资源/独立watchdog预算不变。新增无读和受控放行两类各三次，共27项/平台，Linux/macOS共54项；它们是写入前提控制，不替代原取消验收。
+
+新写入进度只走独立文件，记录同步fs.writeSync的enter、returned及实际count，或error/code/errno。控制组观察enter后至少100ms不读，再记录进度/receipt/存活状态；无读组明确中断并关闭master，从不宣称EOF；放行组此时才读，完整收齐2048bytes且取得成功receipt后让fixture退出，再等真实源结束及消费者/资源结算。不预设所有平台都应阻塞，也不把100ms当生产期限。原六个取消案例若前提仍不成立，继续失败，不降低负载或增加等待。
+
+本地Linux Node25.6.0完整27项及离线复算通过，证据在独立工作树 `.debug/unix-write-control-v1-local/`，脚本SHA256 `d82ba9d05d0575a887933a4598dade38910ce711861b739aeb2e62fe9c6d4c3d`。新验证器逐项继续：派生缺receipt对照完整核对27项、保留1失败且exit1；篡改raw对照尝试27项、26份有效/1份损坏且exit1，目录 `.debug/unix-write-verifier-check-481Y8t/`，不修改原工件、不新增原生样本。确定性重复CR/零长read、自校验watchdog、既有bridge测试和workflow检查通过；远端结果仍待复核，不由Linux外推macOS。
+
+### 原生结果与前提根因
+
+run `35508235734` attempt 1 已完整执行并下载两平台 54 项，Ubuntu 27/27，macOS 21/27，macOS job 和总 run 保持失败。原七类中的 15 个自然/暂停/分片/消费者样本在 macOS 全部完整，包括三个修正后的暂停案例：所有 read capacity 至少 35，实际暂停后各另收 5402 bytes，全文 90000 行、最终光标/title 和真实正容量 read EOF 均成立。旧输入的零长度 read 假 EOF 仍是失败，不追认通过。
+
+macOS 原六个取消案例的原始写进度均只有 `enter(requested=2048)`，无 returned/error/成功回执、readCalls=0，仍在 10 s 前提截止后经 1 s 资源 guard 以 driver exit 3 结束。三个无读控制在观察 enter 后至少 100 ms 仍无回执、主体存活，随后主动关闭 master、signal 1，没有 EOF。三个放行控制具有相同的无读窗口状态，开始读取后同步写一次返回 2048、成功回执成立，各以两次 1024-byte read 精确收齐，再放行主体 exit 0，取得真实 EOF、消费者结算及 fd/driver 自然释放。Linux 六个新控制则在观察前已经返回 2048 并有成功回执；原六个取消仍是候选 64 / audit 1984 bytes 分账。
+
+因此原 macOS 取消夹具存在已定位的循环等待：driver 等全量写回执才读，当前同步写路径却需要读者进展才完成。此为本原生配置下的背压/进展依赖证据，不是 candidate 在成功写入后丢弃数据；六个取消测试未进入待测路径，既不算通过，也不能当作业务取消缺陷。记录位于应用层 fs.writeSync 两侧，没有 syscall 轨迹，不能由两个 1024-byte 块推定内核总容量或推广所有 macOS。下一增量须先冻结无循环等待的握手，以写调用进度/实际持有 read 建立前提，候选、audit 和最终写回执单独对账；不缩小 2048、不加超时、不改旧失败。本轮不决定具体生产取消条件和时间预算。
+
+完整工件在独立工作树 `.debug/github-write-control-35508235734-{ubuntu,macos}/`。两边新 `--verify-saved` 均 attempted=27、verified=27、evidenceErrors=[]；Ubuntu exit 0，macOS 保留六个取消 failure、exit 1，解决了新验证器对合法缺回执提前停止的问题。源码/native/input SHA、schedule、raw/audit 和消费者记录全部核对，原生版本与第 23 节相同；更多环境/hash/工件 ID 见独立候选设计第 14 节。所有 cleanup remaining/errors 为空、无父 watchdog 硬超时，但六个失败仍无自然 fd close，不以事后清理或短命 driver 退出证明资源完整回收。
+
+新探针修复和前提定位已完成，不代表退出完整性重构完成。macOS 在途取消、Windows 在途取消、同进程长期 native 资源增长、真实 provider/VS Code/packaged 及生产契约接入仍开放；本轮未重跑 Windows，既有主进程 TAIL 与自然资源反例不变。设计仍比较中/验证中，两份计划保持 active，业务及旧 live 绑定未修改。

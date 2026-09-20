@@ -14,6 +14,11 @@
 
 ## 进度
 
+- [x] (2026-09-20) 写入前提阶段基于fbcc94ee，独立分支冻结第13节并新增v2入口，旧探针不动；本地27项与缺回执/篡改raw的完整失败复核通过。
+- [x] (2026-09-20) 收取7d832d3e / run35508235734两平台54项，完整复算各27项无工件错误；Ubuntu27通过、macOS21通过/6失败，写入进度与受控读放行定位夹具循环等待，保留原取消门槛及失败。
+- [x] (2026-09-20) 两工作树共10份文档同步，frontmatter/索引/关联路径/计划章节及diff检查通过；核对新脚本/原生快照和全部cleanup/driver，业务、依赖、旧脚本/workflow零改动，未执行新的真实provider/UI/packaged验收。
+- [ ] 冻结不要求首读前全量写完的新取消握手，验证实际在途read/回调所有权及候选/audit/最终writer receipt分账；原2048负载与所有失败保留，不把控制组通过替代取消验收。
+
 - [x] (2026-09-20) 用户确认独立交付范围，建立设计/规格入口并明确不在本次立项中修改业务代码。
 - [x] (2026-09-20) 承接两轮诊断，记录 Linux 实证、Windows 条件性反例、macOS/Windows 原生证据缺口和公共契约依赖。
 - [x] (2026-09-20) 同步产品规格第 10 节、架构审核、容量重评、技术债和索引；完成文档元数据、本地引用及业务零改动检查。
@@ -31,13 +36,15 @@
 - [ ] 冻结完成/取消/中断契约、旧版本能力边界、候选对照及原生平台矩阵，登记固定重复轮次和等待/资源预算。
 - [x] (2026-09-20) 在独立诊断分支设计第 10 节冻结新原生矩阵：Unix 各 21 项、Windows 42 项，主线设计第 22 节同步边界；仍不选定生产预算或 reader API。
 - [x] (2026-09-20) 实现并复核独立分支新84项，run35506150727总失败原样保留：Linux21项、Windows候选21项达标；实际bridge受控启动链通过但3个主进程尾部/21个资源失败仍在；macOS12通过/9失败，诊断假EOF与取消前提未成立已分开归类。
-- [ ] 修正新Unix探针零容量read和缺receipt时验证器提前停止，先冻结并执行macOS write-enter/return/errno与无读取/受控放行最小控制组，再补完整产品矩阵；不直接缩负载或增等待求绿。
+- [x] (2026-09-20) 新v2探针修正零容量read和失败verifier，两平台控制组完成；macOS修订暂停三项通过，六项原取消的写读循环等待已定位，但取消路径尚未验收，不将控制组追认为取消通过。
 - [ ] 补跨平台主进程尾部/最终状态、reader 长驻资源和实际 Agent 启动链证据，再选定实现与接口；macOS leader/write/EOF 后 master 对照保留为诊断，不以普通后代续跑门槛阻塞产品选型。
 - [ ] 实施源读取/排空边界及 Host/Supervisor 共用生命周期契约，保留旧 live 绑定与明确降级。
 - [ ] 补自动化回归、真实 provider/VS Code、packaged 和资源回收验收；保留失败证据并收敛开放项。
 - [ ] 同步最终文档与技术债，符合完整完成定义后归档计划；不能因 Linux 或局部夹具通过就勾选全平台完成。
 
 ## 意外与发现
+
+新控制run35508235734确认macOS取消夹具循环等待：首读之前等待2048-byte全量回执，但同步写在无读取时只有enter；相同100ms观察后放行读取，三次均返回2048并完整取得EOF。不是candidate丢弃已写成功字节，也不是全平台生产缺陷；应用层记录不足以推定内核容量。新暂停案例均真实恢复后另收5402bytes，read容量始终为正。六个取消失败仍保留，原生和离线验证均完成全部27项、macOS正确exit1。详见设计第24节。
 
 新原生 Unix 取消负对照显示：候选已发起 read 的 64 bytes 可以全部保住，但同一次主进程成功写入的 1984 bytes 仍留在系统缓冲，需要独立 audit 才读到。因此“取消诚实标注 interrupted”不能代替主进程自然尾部保证。单次 master fd 的 EBADF 也不证明 native 全资源无增长：锁定 node-pty 的 Apple `SetupExitCallback` 创建 kqueue 后未见对应 close，尚须长驻原生计数，不作为本轮实测泄漏。跨进程 JSON 夹具发布和父 watchdog 有界日志结算等取证加固分别留存版本，不覆盖旧成功或失败。
 
@@ -59,6 +66,10 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+- 决策：以完整54项及原始写读轨迹收口本阶段，下一步先冻结可同时推进读写的取消握手，不改原取消失败或以控制组替代通过。理由：先等同步全量写完才读在目标macOS环境形成循环等待；需修夹具前提而非放宽数据/时间门槛，生产取消政策仍须独立设计。日期/作者：2026-09-20 / Codex。
+
+- 决策：以新增修订版探针保留旧入口冻结，原21项门槛不降，追加无读/受控放行两类对照并记录原始写调用进度；不立即用较小预置数据试绿。理由：需要先定位2048-byte成功写入前提是否成立，控制组成功不能替代取消路径验收。日期/作者：2026-09-20 / Codex。
+
 - 决策：本轮以新84项首次证据和失败归类收口，不修改冻结脚本或调参覆盖失败；macOS新探针问题先补最小前提控制组，Windows实际bridge主进程TAIL缺失作为独立产品反例保留。理由：9个macOS失败并非同一根因，取消甚至未进入read路径；局部候选通过不足以选定生产取消/资源方案。日期/作者：2026-09-20 / Codex。
 
 - 决策：新原生阶段按 Unix 在途取消/系统残留与 Windows cmd/bat 等待链分工，84 项 runner 矩阵使用新文件和新 workflow。理由：避免改旧诊断取得绿色，也避免用模型、普通 pipes 或 POSIX 结果代替目标平台证据。Windows worker 在途取消与长驻资源仍为独立缺口，所有固定数值只作诊断预算。日期/作者：2026-09-20 / Codex。
@@ -79,7 +90,9 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
-已承接模型阶段完成新原生84项及本地Linux三版各21项，完整保留首次失败。run35506150727中Linux21项达标，Windows候选21项达标且actual bridge受控cmd/bat主体等待/0与7传播有证据；基线主进程TAIL确实缺失、自然资源guard继续失败。macOS12项通过/9项失败，三项是新诊断零长read误认EOF，六项是2048-byte成功写入前提未成立，不能当作产品reader同因反例。工件均下载，原始验证器/补充只读审计的范围分别说明。下一步修诊断不变量、以原始写入和受控放行定位前提，再继续Windows在途取消、长驻资源、真实provider/信号/宿主/packaged及生产API选型。旧两轮294项原始断言和失败不变，业务未修改，设计比较中/验证中、计划active，里程碑一和技术债均不关闭。
+本次写入控制阶段新增本地27项和run35508235734两平台54项，完整下载复算，无工件错误。Ubuntu27/27、macOS21/27，总run失败：新暂停探针修复已验证，六个原取消仍因写读循环等待未进入待测路径；读放行控制定位了前提根因，不替代取消验收。下一步先冻结新取消握手，再继续Windows在途取消、同进程长驻资源和生产契约选型。旧入口/断言/失败不变，业务未修改，不宣布全平台或完整重构完成。
+
+此前已承接模型阶段完成新原生84项及本地Linux三版各21项，完整保留首次失败。run35506150727中Linux21项达标，Windows候选21项达标且actual bridge受控cmd/bat主体等待/0与7传播有证据；基线主进程TAIL确实缺失、自然资源guard继续失败。macOS12项通过/9项失败，三项新诊断零长read误认EOF、六项2048-byte写入前提未成立的原结果不变，本次只用新实验定位。真实provider/信号/宿主/packaged及资源/API仍开放；旧两轮294项原始断言和失败不变，设计比较中/验证中、计划active，里程碑一和技术债均不关闭。
 
 ## 上下文与定向
 
@@ -113,9 +126,13 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 具体步骤
 
+最新阶段已完成，设计第24节承接独立分支设计第14节。独立工作树根执行 `node scripts/diagnostics/diagnose-unix-exit-tail-v2.mjs --verify-saved .debug/github-write-control-35508235734-ubuntu/write-control-evidence` 预期27项有效/无失败/exit0；将ubuntu换成macos预期27项有效/六个原取消failure/exit1，均无evidenceErrors。后续先在独立分支冻结无循环等待的取消握手，明确实际read/回调所有权、候选与audit分账及最终成功写回执；不改旧入口/原失败，不推运行时历史，也不直接把控制组结果接入业务。
+
+本次写入前提阶段在独立工作树使用 `node scripts/diagnostics/diagnose-unix-exit-tail-v2.mjs --self-test`、`--output NEW_DIR` 和 `--verify-saved DIR`；各27项，专用workflow只跑Linux/macOS，不改旧84项入口。运行前协议见本设计第24节及独立候选设计第13节；成功回执缺失作为失败事实复核，整体仍返回非零，并检查完其余样本。原工件不能覆盖，原取消六项不能改标成功。
+
 本次进入设计第 22 节的新原生阶段，在独立 `runtime-exit-integrity-native-candidates` 工作树按其自包含 active 计划执行。Unix 用 `node scripts/diagnostics/diagnose-unix-exit-tail.mjs --output .debug/unix-exit-tail-v1-local`，Windows runner 用 `node scripts/diagnostics/diagnose-windows-launch-tail.mjs --output exit-tail-evidence`；先语法和 `--self-test`、后完整固定 schedule、最后 `--verify-saved`。GitHub 三平台全量 84 项，首次失败保留，不触碰旧脚本或业务；仅推送独立诊断分支。
 
-上述首轮已执行，结果/源hash/工件在设计第23节；重跑不得再用已有目录。Ubuntu和Windows原验证器下载后完整复算通过；macOS原验证器遇缺回执提前失败，补充审计使用 `node .debug/mac-exit-tail-35506150727-supplemental-audit/audit.mjs` 从独立工作树根运行，成功只说明完整工件对账，报告仍保留9个原生失败。下一阶段不要直接重跑期待绿色，先冻结正容量read修订和write-enter/returned/errno、无读取与受控放行两组，保持原2048字节/原预算，以新证据确定夹具前提失败原因。
+上述首轮已执行，结果/源hash/工件在设计第23节；重跑不得再用已有目录。Ubuntu和Windows原验证器下载后完整复算通过；macOS原验证器遇缺回执提前失败，补充审计使用 `node .debug/mac-exit-tail-35506150727-supplemental-audit/audit.mjs` 从独立工作树根运行，成功只说明完整工件对账，报告仍保留9个原生失败。当时安排的正容量read修订和write-enter/returned/errno、无读取与受控放行两组现已完成，结果见第24节；本轮之后的步骤以本节开头为准，不重跑旧实验期待绿色。
 
 最新原生候选在独立 `runtime-exit-integrity-native-candidates` 工作树执行，不要求把当前运行时历史推到 GitHub。首轮输入 `afb24974`，修订 Windows Job 夹具的第二轮输入 `4ac3ad15`；复核入口为该分支 `compare-runtime-exit-readers.mjs --verify-saved DIR` 和 `compare-windows-exit-readers.mjs --verify-saved DIR`。Unix 验证器遇已保存的候选失败会非零，另对完整 schedule/全部 raw 哈希核对，不能跳过其余工件。第一轮下载目录在独立工作树 `.debug/github-candidates-35498026812-{ubuntu,macos,windows}/`，不要覆盖。若继续 macOS 原始 write 与 leader 诊断，应先冻结新实验，不改既有首轮判定；Windows 后代诊断仍须证明真实后代在主进程回调时存活且 stdout 为 TTY，但不以此替代实际 Agent 启动链证据。
 
@@ -221,3 +238,7 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 修订记录：2026-09-20 完成本阶段屏障、真实 tracker 和 POSIX 启动链验证，补独立 consumer 对账、诊断拒绝捕获及保存结果非零判定；保留首次预检失败和原始源码/结果，记录同步阻塞 watchdog 与原生/真实 provider 缺口。下一步转原生取消/尾部/资源与 Windows 启动链验证，不修改业务或宣布选型完成。
 
 修订记录：2026-09-20 完成独立诊断分支新84项及本地三版Unix采样，记录Windows受控启动链/主进程TAIL缺失、Unix在途与系统残留分账、macOS探针假EOF和取消前提未成立；保留首次失败与补充审计，下一步修诊断并以最小写入控制组补证，不选定生产实现或取消预算。
+
+修订记录：2026-09-20 冻结并实施写入前提控制阶段，新增修订版入口保留旧脚本，本地27项与完整失败工件验证已完成，推进两平台54项；未选择生产reader、取消条件或预算。
+
+修订记录：2026-09-20 完成54项原生控制和完整离线复核，定位macOS夹具的写读循环等待，新探针暂停/失败复核已验证；保留六个原取消失败和调用级证据边界，将无循环等待握手、Windows在途取消和长驻资源移交后续，不选定生产政策或关闭计划。
