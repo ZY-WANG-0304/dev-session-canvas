@@ -226,3 +226,23 @@ driver 在写调用已进入后，用编译后的 helper 对继承的 master fd 
 Linux Node25.6.0本地 `.debug/unix-cancel-handshake-v1-local/` 完整9项通过；复审随后补唯一read id一一交付的断言，另在 `.debug/unix-cancel-handshake-v2-local/` 完整再跑9项并复算通过。两版均6次明确中断，候选实际64/audit1984 bytes；3次control候选完整2048、audit0及EIO，单次fd/consumer/driver结算成立。v1脚本SHA256 `64b8ff4124fd7b42018b82339fe282ea0e8bef685216049e0c51f2a7e483587c`、最终v2 `1875495f6dc4d0b60d6de21247cdea9de2f808ff90fb04049c3f35d579212559`；每版源码及全部原始工件保留，不用新验证器追溯重判旧版本。C helper SHA256 `0e17361b809fc1d05bd8261446ac4421755d297c170bf18c41e01c83648528b5`，工具链及binary hash保存在各目录。
 
 最新非PTY自校验工件 `/tmp/dsc-unix-cancel-handshake-selftest-Z717VS`：合成9个合法失败全部复核；再破坏一份raw仍完整尝试9项，8份有效、1个evidenceError，未跳过其余失败；两组driver/helper进程组watchdog停止资源持有helper，并单独清理fixture。僵尸不算仍运行的资源owner，也不把此非PTY控制称为全部原生异常回收。此前自测证据 `/tmp/dsc-unix-cancel-handshake-selftest-AI8KNX` 保留。helper另通过编译及非TTY普通文件fd身份/共享offset不变检查，不是新PTY验收。语法、workflow只读两平台范围、既有bridge测试及diff检查通过；远端18项尚待执行，不由Linux本地外推macOS。
+
+## 17. 握手首次结果与观察器干扰风险
+
+输入 `931e8e22c4f857ae1b795f661d54cc6ab6666dec` 的 [run 35510798036](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35510798036) attempt 1 完整运行18项，Ubuntu9/9、macOS8/9，总run失败且未重试。两边六个取消均候选64/audit1984、候选interrupted；macOS第三个 `read-through-control` 收齐2048、headless内容/光标匹配，却没有自然源结束、主体退出或fd释放。其第4次正容量read提交后始终无callback，10s采集截止时pendingOwner仍为candidate，1s资源guard记录FSReqCallback/PipeWrap；15s父watchdog最终SIGKILL driver并清理fixture。成功writer receipt最终存在，但没有exit-gate文件/事件；不是缺字节，也不能把事后cleanup无残留当自然退出通过。
+
+完整下载目录 `.debug/github-cancel-handshake-35510798036-{ubuntu,macos}/`，两边 `--verify-saved` 均attempted=9、verified=9、evidenceErrors=[]，macOS精确保留control-3失败并exit1。均Node22.23.2/libuv1.51.0/node-pty1.2.0-beta.12。Ubuntu工件ID `10605985681`、服务端ZIP digest `83a426accf523ed7809ffa033c322bb3989852aba5c8bfb0a564ba11a15a205f`；macOS ID `10605331473`、digest `60c6e946b5a712644fc82d89437fc94da15935bb216625f3b054431257e27a73`。这是服务端归档标识，非本地ZIP独立复算。
+
+结果后发现第15节的“不改fd配置”前提只审查了C helper正文，遗漏其启动链。Node把数值stdio映射为UV_INHERIT_FD；固定 [libuv v1.51.0 process.c](https://github.com/libuv/libuv/blob/v1.51.0/src/unix/process.c) 的fork路径375-376对继承的标准fd执行 `uv__nonblock_fcntl(fd, 0)`，Apple posix_spawn路径629-631在parent的use_fd上执行同样操作。[core.c](https://github.com/libuv/libuv/blob/v1.51.0/src/unix/core.c) 669-690明确将0解释为清除O_NONBLOCK；dup2的文件状态标志共享，故风险同时涉及Linux和macOS，不仅是此次失败平台。锁定node-pty的unix/pty.cc原先将master设置为O_NONBLOCK。helper自身不read/write、已退出、fd身份相同、普通文件offset未改变，均不能证明共享flags没变化。
+
+旧工件未记录F_GETFL，不能追补成原样本已测到flags变化。源码与事件支持新的循环等待解释：收齐数据后若回执尚未发布，openExitGate不放行，driver又提交read；一旦master被改为阻塞，reader等更多输出，fixture等gate，回执发布也不再触发检查。该精确时序尚缺原样本系统调用/flags轨迹，不写成全部已实证。**整轮18项及本地同helper样本暂停作为保持非阻塞reader的验收依据**，不只排除那个红项；已有字节及取消顺序观察继续保留，原始17绿/1红结果不改。此为诊断有效性问题，不是新确认的产品缺陷。下一步用第18节窄控制实验核对标志副作用，暂不另跑全取消矩阵。
+
+## 18. helper 启动的 fd 标志对照（运行前冻结）
+
+新增 `scripts/diagnostics/diagnose-unix-helper-fd-flags.mjs`、只读N-API模块 `unix-fd-inspect.c` 与独立workflow `runtime-unix-helper-fd-flags.yml`。旧脚本/helper/workflow、断言和工件全部不改。本矩阵只有 `helper-stdin-master`、`helper-stdin-null` 两类各三次，Linux/macOS每平台6项、总12项。它验证观察器是否改变被观察对象，不验证取消、终端尾部或产品资源零增长。
+
+每个独立driver用相同node-pty native fork创建新PTY及安静fixture；fixture仅用独立文件发布带token/PID的ready并等待文件gate，无受测PTY读写。原位N-API `inspect(fd)` 仅调用F_GETFL、fstat、isatty，返回完整flags、nonblocking、dev/ino/rdev字符串和TTY；模块另导出平台O_NONBLOCK位值，不硬编码数值。不得dup、设置flags/termios、read/write或poll；编译记录Node头文件来源和hash、编译器/参数/源码/binary哈希。helper启动前连续inspect两次须完全一致，初始master必须非阻塞且为TTY。
+
+master组原样启动旧C helper，stdio为 `[master, 'pipe', 'pipe']`；null组使用同一helper但stdin为ignore，PTY master不传给它。等待helper自然退出及stdio close后再连续inspect两次，核对同一fd身份/TTY及观察稳定性。master组的复现预期是仅清除O_NONBLOCK，其他flags保持；null组flags应全部保持。null组helper对非TTY的既有报告/退出行为如实记录，不把它当PTY可读性成功。任一初始前提、身份、差分或helper退出不符都报失败，不在执行后改变预期以获得绿色。模块错误或编译失败也留证，不静默换实现。
+
+最后通过文件gate让fixture自然结束，driver关闭master并验证EBADF，自然退出独立留证。每样本10s截止、父15s硬watchdog；失败时只清理本次driver/helper组及fixture组，事后清理不能替代自然结算。全schedule继续执行，保存环境、输入SHA、事件、helper报告、所有flags观察、自然退出和cleanup；完整离线复核应区分有效失败和证据损坏。只支持新输出目录，不覆盖工件。先语法/非PTY断言负例，再Linux本地6项，最后原生两平台12项。成功只证明在该组合下的启动副作用，不追认旧失败通过，也不推出历史挂起的唯一因果。后续可另行设计不经子进程stdio的原位readiness探针，但本轮不选定或接入生产reader。
