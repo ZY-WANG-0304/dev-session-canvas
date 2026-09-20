@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-20 同进程native资源实证：输入b031b598 / run35519226627 attempt1完整三平台及离线复核，24个driver/150条真实会话，全部工件有效，四个资源失败保留。Windows12项局部取消/自然对照通过，各平台46条自然会话内容/消费者/单次退出也通过；但macOS两轮每次新增一个kqueue（fd15→35、kqueue6→26），Windows DLL候选两轮每次+2 handles（197→237），无PTY控制均稳定。driver自然exit0、JS关闭、pipe EOF不能消除长驻服务资源积累，单换JS reader不足以完成退出完整性交付。Apple kqueue从源码风险升级为native积累证据，尚待隔离close干预；Windows句柄类型/身份未知，不能唯一归因于HPCON或外推builtin。九次Windows取消readableLength均0，正长度缓冲分支须另验；下一增量先冻结资源归属/回收和该控制，业务/依赖/旧实验不改，真实provider/宿主/packaged及生产政策仍开放。见 `docs/design-docs/runtime-exit-integrity-native-candidates.md` 第23–24节及active计划，退出完整性债务不关闭。
+
 2026-09-20 原位观察与独立退出放行收口：输入697ee3f0 / run35516170917 attempt1的Linux/macOS各12项及下载复核全部通过。观察全程flags不变，取消candidate64/audit1984分账且candidate仍为interrupted；六个receipt-held控制在真实EAGAIN回调逻辑结果持有期间独立发布gate，最终状态、consumer顺序及每样本自然释放分别达标。新24项只建立这组Unix前提和局部所有权证据，不恢复旧18项非阻塞reader验收资格；本地v1两个不足原100ms持有门槛的失败也不改判。下一阶段先冻结Windows独立worker在途取消与同进程长期native资源计数，不能以单样本进程退出代替无增长证明。业务、依赖、旧实验均未修改；真实provider/Host/Webview/packaged及生产reader/API、取消政策和预算仍开放，退出完整性债务不关闭。见 `docs/design-docs/runtime-exit-integrity-native-candidates.md` 第20–22节及active计划。
 
 2026-09-20 标志控制收口：输入951724c2 / run35511736807两平台12项均精确复现副作用，下载复核无失败或工件损坏。Linux继承master组三次仅清2048位、macOS三次仅清4位，null组各三次不变；全部自然退出/EBADF，无事后kill。原helper启动的共享O_NONBLOCK干扰已有两平台实证，旧18项及本地同helper样本仍不能作为非阻塞reader验收，原17绿/1红不改；新安静控制没有重演历史回执时序。下一增量先冻结原位readiness与独立gate推进，不静默改flags、不以fd3/dup规避、不选定生产API或预算。Windows主进程TAIL/资源反例及在途取消、长期native资源、真实provider/宿主/packaged债务不关闭；见候选设计第19节。

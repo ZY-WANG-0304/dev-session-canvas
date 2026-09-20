@@ -330,4 +330,30 @@ Windows四类各三次，共12项：`cancel-idle`让真实主体就绪但不写�
 
 最终自测 `/tmp/dsc-owned-selftest-VtmAS6` 保存当前脚本/C输入，真实普通文件+3/-3计数、四类TCP worker所有权、丢交付/假EOF/零容量EOF与增长计数负例通过；四份合成缺结果失败全部复核，破坏首份后仍尝试四份、三有效一损坏，末项失败仍报告。早期预检 `/tmp/dsc-owned-selftest-lkHdUs`、`/tmp/dsc-owned-selftest-wTkaBs` 保留。非PTY watchdog、自校验、C warnings-as-errors、JS语法、bridge回归及三平台只读workflow检查通过。计数等待使用单调截止点核对，不把提前触发的timer当已满100ms。
 
-推送输入的主脚本SHA256 `4c2e3decf149c120c06faa9fcb3f997aa6f6dc2990dcad7cedece7b622cfb09d`，worker `8630eab630bb085c843e92467d578b59f3f4480cccef4c6b56e5b3a75ebc1489`，C `fcd2cc8d55d8033b53c5e23e647e8ce7bb8b39f2c8931bcd50a302cb06b72adb`。远端三平台尚未执行，不能用本地结果补算通过；冻结参数和所有旧实验保持不变。
+推送输入的主脚本SHA256 `4c2e3decf149c120c06faa9fcb3f997aa6f6dc2990dcad7cedece7b622cfb09d`，worker `8630eab630bb085c843e92467d578b59f3f4480cccef4c6b56e5b3a75ebc1489`，C `fcd2cc8d55d8033b53c5e23e647e8ce7bb8b39f2c8931bcd50a302cb06b72adb`。本节为推送前预检，随后三平台首次结果见第24节；冻结参数和所有旧实验保持不变。
+
+## 24. 取消所有权与同进程资源原生结果
+
+冻结输入 `b031b5981af6d009455d172e6c727d0b8a56ee67` 的 [run35519226627](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35519226627) attempt1保留首次原生结果，不重跑job或放宽计数断言。Linux/macOS已完整执行各四个driver，并下载到 `.debug/github-owned-lifecycle-35519226627-{ubuntu,macos}/owned-lifecycle-evidence/`。各自46条真实会话均通过writer、字节/消费者、内容、源结束和单次生命周期检查，driver自然退出、无watchdog或事后kill；资源组独立判定如下。
+
+Linux四组均通过。native两组各20个测量窗口保持fd23/thread11，无PTY控制fd23/thread7；不能把预热后libuv线程池的四线程当逐会话增长。macOS两组无PTY控制通过，fd12/thread7、kqueue3不变；两组native均失败：预热后fd15/thread11、kqueue6，每完成一条会话就新增一个kqueue，20次后fd35/thread11、kqueue26。各窗口五次观察都确认这些fd持续存在，原有kqueue没有消失，新增长并非master未关闭；所有master均有close/EBADF和真实read0证据。
+
+macOS第一次native测量的新kqueue fd为17/15/16/18/19/20/21/22/25/23/24/26/27/28/29/30/31/32/33/34，第二次为15到34；这些身份逐窗口保留，不只是总计数偶然抖动。同一工件内 `source-snapshot/4-pty.cc` 第174行创建退出监听kqueue，其后等待与回调路径无close(kq)，与每次fork的实测增长一致。此轮已把Apple kqueue从纯源码风险提升为当前native路径的资源积累实证；还没有用修正native构建做因果干预对照，不能宣称生产修复或所有macOS版本已验收。
+
+两边离线复核均attempted4/verified4、evidenceErrors=[]；Linux无failure/exit0，macOS完整保留native-1/native-2两个资源失败/exit1。这是有效失败证据，不是工件损坏。Node与编译头22.23.2、libuv1.51.0、node-pty1.2.0-beta.12；Linux x64 kernel6.17.0-1022-azure/image20260907.300.1，macOS arm64 Darwin25.6.0/image20260907.0351.1。两平台源码/native输入哈希和C编译记录完整保留。
+
+Ubuntu工件ID10607847565、服务端ZIP digest `eb823e1d70d32eda91c0792a0e1d15955b5ee153523c9a481260aaf889a7b758`；macOS ID10606879826、digest `caebc9712910c175088e242b50315c6ece77393cec71c629c599184af3819ca5`，不是本地ZIP独立复算。
+
+### Windows 取消与句柄结果
+
+同一run的Windows完整16个driver执行并下载到 `.debug/github-owned-lifecycle-35519226627-windows/owned-lifecycle-evidence/`；12项取消/自然对照全部通过。idle三次虽无应用写入，仍收到并交付23字节ConPTY初始化数据；worker-held与parent-held各三次真实持有2082字节，累计观察与交付均2105字节，最终明确interrupted。自然对照三次均交付2121字节，实际pipe end、headless文字/光标、消费者逐块hash和自然主体/worker退出均通过。取消不与自然对照比总量来宣称完整EOF，不把未承诺的系统尾部计入已交付。
+
+九个取消样本的JS readableLength快照全部为0，因而只验证了真实held callback、MessagePort/逻辑消费者和空readable快照的结算。新增代码的正长度readable-buffer分支尚无本轮原生覆盖，不能把全部已实现分支都写成已验收；也没有证明内核中具体ReadFile的挂起/取消。这一缺口须在新控制场景中单独冻结和验证，不改当前12项结果或追认旧测试。
+
+Windows两组native各23条自然会话全部内容/消费者/pipe EOF/worker/input close通过，但资源oracle均失败：预热后handles197，每个测量会话+2，20次后237；线程12降至8，没有本轮线程增长。无PTY控制两组handles180/thread12不变。四组driver均自然exit0，没有guard或事后kill，仍不能解除40个持续句柄增量。源码显示 `pty_baton` 持有HPCON，connect调用 `ConptyReleasePseudoConsole`，退出回调关闭hShell并移除baton，而ClosePseudoConsole在另一路PtyKill；这只是进一步归属调查的候选链路，本次没有句柄类型/对象身份，不能仅凭+2将其唯一归因于HPCON或外推builtin。
+
+Windows离线复核attempted16/verified16、evidenceErrors=[]，完整报告native-1/native-2两个资源失败/exit1。Windows x64 kernel10.0.26100/image20260907.229.1，Node/编译头22.23.2、libuv1.51.0、node-pty1.2.0-beta.12。工件ID10607308818、服务端ZIP digest `6899bb032da0d2070d1019146b19399817b054ab29e55b8e733340adcce98c66`。Windows checkout为CRLF，主脚本raw hash `b46c379d1eb3e8ee721dd4dee3f6417d9398d3b345339a0f1c3d9fbf9cc0d6e4`、worker `5b5d2731769d54402679707814bc65eb5d6eab68845cd26c229358d8262d0478`、C `e58e356dd2018ad6650cd35ac4afada33a558c030c2d7bac738af01fd053df8b`；只读归一LF后逐字等于提交输入，原工件不修改。conpty.node SHA256 `2d1fb89aa74b692ad026807e78f90d970ef4e4b5b4b0254f94854f0f3f442306`，conpty.dll `3319b484b80bb53d1f4d0a9eb0ea60fd0f61da69db7280ca43b84215f19245ff`。
+
+三平台观察器自测均准确记录普通文件+3/-3，四类TCP、假EOF/所有权/增长负例及全失败遍历通过。全run为failure：24个driver中20通过/4资源失败，全部完整复核；共150条真实会话（每平台资源组46条，加Windows12条），这些计数不等于150项完整产品验收。首次原生输入、所有失败和旧实验均保留，没有通过重跑或放宽阈值变绿。
+
+本阶段收口的是Windows局部已拥有数据结算证据，以及macOS/Windows同进程资源积累的实证。单独替换JS reader不足以完成退出完整性交付，原生PTY创建、退出监听与资源释放必须共同设计。下一增量先冻结资源归属/释放的受控对照：macOS kqueue生命周期干预构建、Windows句柄类型/身份与创建/回收边界，并补Windows正长度JS readable-buffer取消控制。所有候选修改只在隔离构建验证，不直接改业务或依赖安装树；生产API、取消政策/预算、异常终止和真实provider/宿主/packaged仍未选定或验收，两份计划保持active。

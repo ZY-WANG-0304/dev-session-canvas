@@ -12,7 +12,9 @@
 
 - [x] (2026-09-20) 按设计第23节冻结Windows四类各三次取消所有权与三平台同进程资源矩阵；独立driver各3预热/20测量，完整保留旧证据，不改业务。
 - [x] (2026-09-20) 新worker/资源观察器/诊断/workflow实现，最终自测涵盖真实+3/-3文件计数、TCP四类、所有权/EOF/增长负例及全失败/单损坏遍历；Linux v1/v2各四driver、46条PTY及完整复核通过，原输入保留。
-- [ ] 推独立输入运行三平台完整schedule，下载全量复核，分别登记Windows取消与native资源结果；不将Linux证据外推其他平台。
+- [x] (2026-09-20) 输入b031b598的run35519226627 attempt1三平台完整运行并下载复核：Windows12项取消/自然对照通过，三平台各46条自然会话内容通过；macOS两组kqueue各+20、Windows两组handles各+40，四个资源失败保留，全部24个driver工件有效。
+- [x] (2026-09-20) 两工作树各五份文档同步，设计状态/索引/关联路径/计划章节与diff检查通过，Windows CRLF输入只读归一核对、所有cleanup/guard审计通过；bridge回归通过，业务/依赖/旧入口零修改。
+- [ ] 下一增量先冻结macOS kqueue生命周期干预构建、Windows句柄类型/身份及创建回收对照，并补Windows正长度JS readable-buffer取消控制；仍不接入业务或选定生产预算。
 
 - [x] (2026-09-20) 设计第20节冻结新原位观察/独立gate矩阵，两平台24项，增加receipt-held控制，不改旧入口/结果。
 - [x] (2026-09-20) 新N-API/诊断/workflow及非PTY负例完成；本地v1全12项10通过/2个不足100ms的诊断持有失败保留，按单调截止点修正后v2及最终v3各12项/复核通过，未改门槛或期限。
@@ -54,7 +56,9 @@
 
 ## 意外与发现
 
-同进程Linux两版均可稳定区分无PTY thread7与native reader预热后的thread11，fd均21；libuv线程池预热不能当会话逐次泄漏。Windows和macOS必须各自建立基线，当前尚无本轮原生结果。
+run35519226627首次结果证实自然driver退出可掩盖native积累：macOS每测量会话+1 kqueue、两轮均fd15到35，Windows每次+2 handles、两轮197到237；无PTY对照稳定，全部会话内容和worker/进程退出通过。Windows12项局部取消/自然对照通过，但九次取消readableLength均0，正长度缓冲分支未原生覆盖；句柄类型仍待取证，不把源码HPCON候选当唯一根因。见设计第24节。
+
+同进程Linux两版均可稳定区分无PTY thread7与native reader预热后的thread11，fd均21；libuv线程池预热不能当会话逐次泄漏。三平台随后各自建立基线，不能直接比较不同OS的绝对计数。
 
 run35516170917两平台原位观察全过程保持Linux34818/macOS6，六个receipt-held控制在真实EAGAIN callback结果held时完成gate。源结束分别为Linux EIO/macOS read0；取消中的自然来源属于audit，candidate仍interrupted。Ubuntu工件第一次传输停滞，仅换新目录重传同artifact，提前ENOENT不是原生失败；见设计第22节。
 
@@ -79,6 +83,8 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 通用后代实验测的是 PTY/ConPTY 的退出、挂断、EOF 与取消行为，不直接证明真实 Agent 已发生同类缺陷。macOS 后代失败在澄清后的产品范围之外不能单独构成交付阻塞；Windows 最终光标和自然资源释放问题仍在范围内。父先退出不等于交互式 shell 后台作业，启动器的实际 CLI 子进程也不能按普通工具后代排除。
 
 ## 决策记录
+
+- 决策：本轮以完整首次失败收口，下一步转native资源归属/回收的受控对照，不再只调整JS reader。理由：Windows局部所有权已验证，但macOS/Windows都有跨会话持续资源增量，驱动退出和源EOF不足以关闭债务；正长度readable分支另补，不放宽原断言。日期/作者：2026-09-20 / Codex。
 
 - 决策：新增独立Windows取消worker，先结算held/JS readable/MessagePort/consumer拥有的数据；同进程以OS计数另判资源。理由：旧socket.destroy测试未覆盖这些归属，driver自然退出也可掩盖native泄漏；不声称取消内核挂起读取或收齐系统缓冲，保留旧脚本。日期/作者：2026-09-20 / Codex。
 
@@ -116,9 +122,9 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 ## 工作计划
 
-当前执行第23节：新增跨平台资源观察器及隔离入口，Windows新增带独立观察/交付记录的worker；先TCP/计数负例与Linux资源组，后专用三平台workflow。每个native driver内部连续创建23条会话，按20个测量窗口与预热基线比较；Windows额外12项取消/自然对照。全部采集和离线结果保留，失败不改旧结论，不接入业务。
+第23–24节增量已完成本地、三平台首次运行和全工件复核。下一增量先明确native资源所有权与回收边界，再冻结隔离干预协议：macOS验证退出监听kqueue是否在各等待/错误分支关闭，Windows先识别+2句柄的类型/身份及创建/回收来源，不预设就是HPCON。另设计Windows取消时JS readableLength实际大于0的控制，继续逐层核对数据；现有worker-held/parent-held成功不覆盖该分支。只有隔离native构建对照，不直接修改业务或安装树，不将此计划作为生产API授权。
 
-当前第20–22节原位观察/独立gate增量已完成两平台24项及复核。下一增量先冻结Windows独立worker请求/回调/缓冲/取消控制，以及同进程多会话创建结束时的句柄/线程/监听资源计数，区分自然收敛与异常清理后再实施。Unix实验可行性/局部取消所有权不能直接外推ConPTY或长期资源，不接入业务。
+第20–22节原位观察/独立gate历史增量已完成两平台24项及复核，当时提出的Windows局部所有权与同进程计数已由第23–24节承接；新资源失败不能被此前单次释放通过覆盖。Unix局部结果不能直接外推ConPTY或生产，业务不改。
 
 第17–19节历史里程碑保留18项首次结果及12项helper共享flags副作用实证；当时提出的原位readiness/独立gate下一步已由第20–22节完成，不再列为当前未冻结项。仍不把fd3/dup或静默恢复flags当生产修复，不接入业务、不关闭整体退出或长期资源债务。
 
@@ -132,7 +138,9 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 ## 具体步骤
 
-新入口从本工作树执行 `node scripts/diagnostics/diagnose-runtime-owned-lifecycle.mjs --self-test`、`--output NEW_DIR` 和 `--verify-saved DIR`。本地依赖可由NODE_PATH指向相同锁文件的主工作树，C观察器需当前Node头文件及gcc/clang；Windows runner使用MSVC与匹配版本的官方Node头和node.lib。编译记录保存所有输入与结果，输出目录必须不存在。三平台完整执行，失败工件仍上传并复核，仅推本诊断分支。
+当前复核入口为 `node scripts/diagnostics/diagnose-runtime-owned-lifecycle.mjs --verify-saved .debug/github-owned-lifecycle-35519226627-ubuntu/owned-lifecycle-evidence`，预期4项有效/无失败/exit0；换macos预期4项有效、native-1/native-2资源失败/exit1，换windows为16项有效、同名两个资源失败/exit1，三者evidenceErrors均空。依赖可通过NODE_PATH指向相同锁文件的主工作树。重跑采集只用新目录，不重判首次失败；下一次实验必须先写新的资源归属/正缓冲协议，不改当前冻结入口。
+
+历史采集从本工作树执行同入口 `--self-test`、`--output NEW_DIR`，C观察器需当前Node头文件及gcc/clang；Windows runner使用MSVC与匹配版本的官方Node头和node.lib。编译记录保存所有输入与结果，输出目录必须不存在，失败工件仍上传并复核。以下旧步骤仅作历史复核入口，当前下一步以工作计划首段为准，仅推本诊断分支。
 
 当前从本工作树根执行 `node scripts/diagnostics/diagnose-unix-inplace-cancel.mjs --verify-saved .debug/github-inplace-cancel-35516170917-macos/inplace-cancel-evidence` 或把macos换成ubuntu-retry1，均预期12项有效/无失败/exit0。依赖按锁文件安装，本地可用NODE_PATH指向相同锁文件的主工作树node_modules；不复用已有v1/v2/v3输出目录重跑。两平台24项输入已经完成，下一阶段先设计Windows取消/长期资源协议；不推运行时分支。
 
@@ -166,9 +174,9 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 结果与复盘
 
-本轮第23节协议已冻结并完成新实现、自测及Linux本地两版各46条PTY与四driver完整复核，未发现本地有界资源增长；远端三平台尚待执行，不能提前判断Windows所有权或macOS资源是否通过。旧24项结论保持，新增结果必须以完整工件登记。
+本轮第23–24节已完成新实现、自测、Linux本地两版各46条PTY与三平台首次原生全量复核。run35519226627共24个driver/150条真实会话，20个driver通过、macOS与Windows各两个资源组失败，全部工件有效；不能将会话内容通过当资源或产品通过。Windows九次取消的正长度readable分支未覆盖，后续补受控场景；Apple kqueue已有native积累证据，Windows+2句柄身份尚待定位。旧24项及全部历史失败不改，生产方案仍未选定。
 
-当前原位矩阵已完成本地v1/v2/v3、自校验及远端24项/完整离线复核。首次两个诊断持有失败保留，新Unix这组前提/所有权有有效证据；不外推生产验收。详细hash/目录/负例与首次传输重试边界见设计第21–22节，下一增量为Windows在途取消和同进程长期资源。
+历史原位矩阵已完成本地v1/v2/v3、自校验及远端24项/完整离线复核，首次两个诊断持有失败保留，Unix这组前提/所有权有有效证据；不外推生产验收。当时提出的Windows与同进程资源已由第23–24节承接，旧hash/目录/负例与传输重试边界仍见第21–22节。
 
 新18项与窄12项均完整运行/下载/离线复核，前者总run失败，后者精确复现两平台helper清O_NONBLOCK；旧矩阵需限定为受干扰观察。实验有效性根因已定位，但旧回执竞态没有补造原始证据，不能用修正探针或局部绿色收口生产取消。Windows在途取消、长驻资源、真实provider/宿主/packaged仍开放。
 
@@ -184,7 +192,9 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 证据与备注
 
-本阶段固定原生输入为697ee3f0012aa9d68f1774fa9a43ba3836e165d7，run35516170917 attempt1的Ubuntu和macOS分别12/12通过。两个下载目录的独立离线复核均输出：
+本次输入b031b5981af6d009455d172e6c727d0b8a56ee67、run35519226627 attempt1完整失败保留。Linux/macOS/Windows分别4/4、4/4、16/16工件有效，后两平台各报告两个资源失败，非工件损坏；目录、环境、原始hash与服务端工件digest见设计第24节。Windows CRLF源码只读归一后与LF提交逐字相同，原工件没有改写。各平台观察器真实+3/-3自测通过，无driver watchdog或事后kill。
+
+前一阶段固定原生输入为697ee3f0012aa9d68f1774fa9a43ba3836e165d7，run35516170917 attempt1的Ubuntu和macOS分别12/12通过。两个下载目录的独立离线复核均输出：
 
     {"attempted":12,"verified":12,"failures":[],"evidenceErrors":[],"note":"Offline verification, not new native execution."}
 
@@ -211,3 +221,5 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 修订记录（2026-09-20，原位矩阵收口）：先冻结新24项，再完成本地三版和两平台首次原生运行/下载复核；保留本地两个不足100ms的失败及所有旧结果。Unix前提/独立gate/局部取消证据已建立，转Windows在途取消及同进程长期资源；未选定生产方案、未修改业务或归档总计划。最终文档检查补齐独立计划的上下文导航与证据章节，并标明旧步骤的历史性质，避免重复执行已完成阶段。
 
 修订记录（2026-09-20，所有权与资源冻结）：运行前固定Windows12项与三平台各四个同进程driver、计数oracle和全部失败规则，区分JS已拥有数据、系统缓冲及有界资源证据；只新增诊断，不改业务或旧实验。
+
+修订记录（2026-09-20，所有权与资源结果）：完成本地和三平台首次原生/全工件复核，明确Windows局部数据结算通过但正readable分支未覆盖，macOS kqueue与Windows句柄持续积累。保留四个资源失败及所有旧证据，转native资源归属/隔离干预对照，不将JS reader替换当完整修复，计划仍active。
