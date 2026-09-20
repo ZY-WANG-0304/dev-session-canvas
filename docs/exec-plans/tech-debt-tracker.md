@@ -33,6 +33,8 @@
 
 2026-09-20 交付范围确认：用户同意将退出完整性作为本次 Runtime Persistence 重构的独立交付项，已建立 `docs/design-docs/runtime-exit-integrity.md` 与 `docs/exec-plans/active/runtime-exit-integrity.md`。本次仅同步范围、契约目标与验收门槛；具体实现未选定、业务未修改、原生矩阵未完成，债务继续开放，不因立项或其他容量增量完成而关闭。
 
+2026-09-20 方案阶段：首轮 Linux Node 25 与 Electron-as-Node 39 的 84 个隔离样本已完整留存。独占异步 reader 候选 36 次完整读取、6 次明确取消；原 reader 暂停组 6 次成功写入后缺尾，后代延迟组 6 次因提前关闭导致写失败，不能混为同一种丢失。自然 HUP 对照、macOS/Windows 原生和实际 Host/packaged 均未完成，轮询原型不是生产方案。另确认 closeTerminalRead 不能区分页面完成与取消，需要纳入消费者应用契约；这是设计证明缺口，不是新增已复现的页面丢失。候选、版本/资源限制和工具回归见退出完整性设计第 7–11 节；不关闭债务。
+
 | 日期 | 主题 | 背景与触发条件 | 影响范围 | 当前临时处理 | 建议修复时机 | 关联文档或代码路径 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 2026-09-16 | 画板归属与新建 runtime 归属不一致（F-03，设计待修订） | 画板内容按 root 保存，但 `startAgentSessionWithSupervisor()` / `startTerminalSessionWithSupervisor()` 不传 root，默认从窗口 workspace storage 派生 Supervisor；同窗口不同 root 可共享进程，同 root 不同窗口的新会话可分散到不同进程。当前设计第 6.8 节和规格保留 slot，这不是已证明违反规格的实现 bug。 | root 会话分散增加发现、诊断、清理与升级退役复杂度；共用 Supervisor 的进程故障影响其托管的多个 root，不等于单会话 stop/delete 跨 root 生效。 | 已有会话继续按 backend/storage/session/kind 原绑定恢复。用户已确认按运行环境、用户存储范围、root 身份及 generation 稳定归属的方向；本轮仅登记文档，具体方案未落地，不改地址冒充迁移。 | 单独规划归属改造，同时覆盖单根/多根 Agent/Terminal 新建；新会话进新 root runtime，旧 Supervisor 待其全部旧会话及相关引用/RPC 收敛后退役。按审核报告第 6 节验证双向新建、不同 slot、并发、跨 root 故障隔离和新旧共存。 | `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`、`docs/design-docs/webview-host-supervisor-architecture-review.md`、`docs/design-docs/canvas-multi-root-workspace-support.md`、`docs/product-specs/canvas-multi-root-workspace-support.md`、`docs/exec-plans/completed/webview-host-supervisor-architecture-review.md` |

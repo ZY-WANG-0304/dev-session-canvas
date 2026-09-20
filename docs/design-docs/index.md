@@ -23,7 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `docs/design-docs/runtime-exit-integrity.md` | 本次重构独立交付：跨平台源输出排空与消费者完成；范围和验收已确认，具体实现未选定、未验收 | 执行编排域、VSCode 集成域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 未验证 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-exit-integrity.md` | 2026-09-20 |
+| `docs/design-docs/runtime-exit-integrity.md` | 本次重构独立交付：Linux 独占 reader 候选对照、三事实收尾契约与平台矩阵；未选定生产实现，未改业务 | 执行编排域、VSCode 集成域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-exit-integrity.md` | 2026-09-20 |
 | `docs/design-docs/runtime-terminal-cross-platform-diagnosis.md` | 退出完整性契约跨平台复核：Unix/Windows 强制关闭与公共 onExit 假设；原生 macOS/Windows 验证仍缺，未修业务 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 比较中 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-terminal-cross-platform-diagnosis.md` | 2026-09-20 |
 | `docs/design-docs/runtime-terminal-tail-diagnosis.md` | 首轮 Linux PTY HUP/partial read 过早 EOF 定位；仅代表已捕获样本，跨平台后续另文核查 | 执行编排域 / 宿主集成层、适配与基础设施层 | 比较中 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-terminal-tail-diagnosis.md` | 2026-09-20 |
 | `docs/design-docs/runtime-paged-completion.md` | 第五个增量：退出轻量通知、当前读者从原 Supervisor 分页收尾、最后读者关闭后退役来源 | 执行编排域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-paged-completion.md` | 2026-09-18 |

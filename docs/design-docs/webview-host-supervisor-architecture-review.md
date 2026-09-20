@@ -159,6 +159,8 @@ F-04/F-05 已按 `runtime-persistence-storage-reevaluation.md` 分阶段推进�
 
 2026-09-20，用户同意将退出完整性作为本次重构独立交付项，范围与验收见 `docs/design-docs/runtime-exit-integrity.md` 和 `docs/product-specs/runtime-persistence-modes.md` 第 10 节，推进见 `docs/exec-plans/active/runtime-exit-integrity.md`。它覆盖两类执行节点、Runtime/snapshot-only 及 Linux/macOS/Windows；与 F-04/F-05 分别验收，不等待 F-03，也不因取消兼容而自动解决。自然零/非零退出都要收齐当前读者尾部，取消和强制截断不能冒充完整排空；旧 live 保留原绑定和实际能力限制。本次只登记文档，技术方案未选定、业务未修复、原生平台缺口未关闭；不能将范围批准写成已交付。
 
+随后方案验证已有 Linux 独占 reader 的隔离对照，详见退出完整性设计第 8 节；推荐继续比较受控 provider 与共享收尾 adapter，尚未接入业务。消费者侧还需区分应用到 final revision 与取消：当前 closeTerminalRead 同时用于两者，释放来源不能自证页面已应用。此项与原始输出已缺失是不同边界，不把局部 reader 通过扩大为整条链路已修复。
+
 F-03 的产品方向已由用户确认；具体设计与运行时改造另开 ExecPlan，覆盖单根和多根新建、稳定 root identity、Supervisor 发现与并发启动、backend 选择、旧 session 原绑定恢复及退役。现有设计第 6.8 节与产品规格已标出待修订边界；改造时再将新建归属正式收口为 root 语义，并保留旧 slot 恢复契约，不能把整份设计直接标成 root 稳定 runtime 已实现或已验证。
 
 ## 6. F-03 建议验收场景（待实现、待执行）
