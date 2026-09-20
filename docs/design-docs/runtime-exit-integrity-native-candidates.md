@@ -165,3 +165,15 @@ Windows 42 项全部留证，owned-DLL 21/21 达到冻结门槛：18 次完整 p
 Windows 环境 Server 2025 x64 build 26100，Node 22.23.2 / libuv 1.51.0；conpty.node/DLL hash 仍分别为 `2d1fb89aa74b692ad026807e78f90d970ef4e4b5b4b0254f94854f0f3f442306` / `3319b484b80bb53d1f4d0a9eb0ea60fd0f61da69db7280ca43b84215f19245ff`。下载后三平台完整 schedule/hash/结果已互核，Windows 原验证器完整 42 项复算通过，三个仓库源码快照与实际输入 commit 在仅规范化 CRLF 后相同，不将 checkout 换行误报成源码漂移。
 
 下载目录为 `.debug/github-exit-tail-35506150727-{ubuntu,macos,windows}/`。macOS 补充审计单独保存于 `.debug/mac-exit-tail-35506150727-supplemental-audit/`，`audit.mjs` SHA256 `839982b46ac47593d7f60b670bd458b545b39ca084b245fff25d0dfde4e2232e`、`report.json` SHA256 `e7b2be1e756be85def845a4c8cb8745119cadc8e0874e9574a03cd7185b95323`；退出 0 表示工件对账完成，报告仍是 12 通过/9 失败，不追认原验证器或原生矩阵通过。三平台首次失败完整保留，本阶段收口为原生证据增量，不是全平台 reader 选定或生产修复。
+
+## 13. Unix 写入前提控制组（运行前冻结）
+
+本阶段基于独立分支 `7974206f`，新增 `diagnose-unix-exit-tail-v2.mjs`，显式保留第 12 节输入的原脚本、workflow、断言、源码快照和失败，不改业务。修订版承接相同七类每类三次共21项，额外增加 write-no-read / write-release 两组各三次，共27项/平台；Linux与macOS共54项，单独 workflow `runtime-unix-write-control.yml`，不重复或重判Windows42项。
+
+暂停预算改按本ASCII夹具的非CR逻辑字节计数，保留90000行、89800标记、350ms暂停和最大64KiB读取；所有 fs.read 必须提交正容量，read0只有对应正容量请求才可能作为源结束证据。新增确定性回放覆盖重复CR和跨chunk标记，不能靠把0钳成任意值掩盖错误。完整文本、光标、title、恢复后实际收到尾部等原断言不降低。
+
+七类原矩阵的2048-byte预置/64-byte在途读取、100ms回调/消费者通知延迟、10s采集/1s资源/15s独立父watchdog均保持。取消两类和新控制组在每次同步fs.writeSync前后向独立文件记录enter、returned（实际count/累计量）或error（code/errno），带token/PID/调用序号；记录不走受测TTY，错误也先落文件，避免stderr阻塞掩盖证据。成功写入回执仍只在全部2048字节返回后发布，不能用enter替代成功回执。
+
+两个新控制组使用相同2048 ASCII bytes。driver观察到write-enter后继续不读100ms，保存该时刻的写入进度、成功回执有无、主体存活/退出状态，再分流：write-no-read不提交任何read，明确记diagnostic interruption并关闭master，观察主进程退出及资源；write-release从此时才开始正容量读取，精确收齐2048bytes并观察成功回执后放行fixture退出，直到真实EOF/EIO及consumer/fd/driver结算。fixture在成功写完后仍等待driver gate，因此早已写完的Linux也有相同存活观察窗口。控制组既不减少数据，也不把100ms当产品取消预算；无读组只证明该观察窗口内状态，不预设每个平台都必须阻塞，不将主动关闭称为EOF。
+
+原六个取消案例若仍未建立前提，仍按原门槛失败；新控制组有独立classification，不能用其成功替代取消验收。验证器逐样本容许成功回执缺失为null、核对与失败判定相符，并继续复核全schedule；任何原生失败或工件损坏最终仍返回非零。自校验注入缺回执/篡改raw及零容量场景，保存报告，不能把完整离线审计成功写成原生通过。所有输出新目录，完整首次运行保留；本阶段不选定生产方案或预算，也不顺手修改Apple kqueue等native资源实现。
