@@ -143,3 +143,25 @@ v1/v2/v3 脚本 SHA256 分别为 `e3776ec01ab759e4e890e4c92d7a2b1f6348615bfb3664
 最终 Unix watchdog 自校验工件 `/tmp/dsc-unix-tail-watchdog-eMhxGy` 仅为普通子进程故障注入，父进程直接 own/reap 的 fixture 清理不能冒充 native fork 故障下孤儿回收证明。Windows 本地自校验覆盖失败 oracle、真实 TCP worker EOF/pause/cancel 和同步死循环 watchdog，未启动 ConPTY 或 provider。三个新脚本语法、既有 `test:execution-session-bridge`、workflow YAML/只读分支边界及 `git diff --check` 通过，独立只读审查无本轮执行 blocker；基线生命周期或基础设施失败会让新 Windows run 失败，基线内容/资源观察与 owned 候选分别报告。
 
 三平台 runner 尚待执行，本地 63 项不替代新 84 项原生矩阵。生产代码、依赖和旧脚本/workflow 均未变；设计仍为比较中/验证中，资源增长与真实 provider 等缺口按第 10 节保留。
+
+## 12. 新矩阵首轮结果及失败分类
+
+[run 35506150727](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35506150727)，输入 `f46008442a1c2637c0a0306501f53dde4f49b293`、attempt 1，完整执行新 84 项。Ubuntu / Windows job 成功，macOS job 失败，总 run 失败。不修改首次结果、不重跑筛选绿色，也不将旧两轮后代失败与本轮产品矩阵混算。
+
+Ubuntu 21 项均满足新冻结门槛：15 次自然 read EIO 的完整内容/最终状态、6 次明确中断的 64/1984-byte 候选/audit 分账。原生和下载后完整 `--verify-saved` 均通过。环境 Node 22.23.2 / libuv 1.51.0、Linux x64 kernel `6.17.0-1022-azure`。
+
+macOS 完整执行 21 项，12 项达标、9 项失败。零/非零自然尾部、Unicode/控制序列和延迟消费者各三次，共 12 项完整取得真实正容量 read 后的 read 0。三个 paused-tail 并未完成有效的暂停对照：Darwin 的额外 CR 使固定字节预算先于第 89800 行标记用尽，事件明确为 `read-submit capacity=0 → read-callback count=0 → fd-close-request → native-exit signal=1`。总接收量均为 2424600 bytes，writer receipt 缺失。这是本轮新探针把零长度 read 误当 EOF 后主动关闭终端的确定缺陷，不能归为产品原生 reader 缺尾，也不能把这三个 `source=read-eof` 算作可信 EOF。原始假分类字段不改，按本节重新解释其证据意义。
+
+六个取消案例在 10 s 到期时已有匹配的 fixture owner/TTY，但没有 writer receipt、没有 candidate read 提交或收到字节，也没有 native 主进程退出事件；1 s 资源 guard 后 driver exit 3。只能确认“2048-byte 成功写入后再开始读取”的前提未建立，尚不能证明阻塞在 write syscall、缓冲容量不足或候选在途数据丢失。缺少 write-enter/return/errno 记录及受控 reader 放行对照，不能直接减小 2048 或增加等待使其变绿。macOS 为 arm64 / Darwin `25.6.0`，node/libuv 与 Ubuntu 相同，native `pty.node` SHA256 为 `30ac36647725b2402585781c8e81be39d76962bf79d03620a9763539d0fdbec8`。
+
+macOS 原 `--verify-saved` 在读取失败样本缺失的 writer-receipt.json 时抛 ENOENT，未完成 21 项复算，这是失败工件验证器的独立缺口，不能写成该命令成功。独立补充只读审计已对完整 21 项 schedule、五份源码/native 快照、raw/audit hash、逐块解码与消费者事件、headless 全文/光标/title、可缺失的 receipt、PID/driver/cleanup 互核，仍保留 12 通过、9 失败，不新增原生样本。暂停三例分别有 181/182/182 个额外 CR，预算耗尽时只有 89793 完整行及下一行残片，没有 reader-pause 事件。六个取消组 fd 未自然关闭且 resource-timeout 留有 PipeWrap；事后 cleanup remaining/errors 空不代替自然 reader 释放。后续失败验证器需继续返回非零而不提前跳过其余样本。
+
+下一增量先修复新探针的正容量读取不变量，以逻辑行/字符进度计算暂停边界，保持 90000/89800/350 ms 与原完整性断言；对取消前提另冻结 write-enter/return/errno 和无读取/受控放行对照，不以猜测缩小负载。更正脚本须新输入、新目录、保留本轮首次工件和失败。生产 reader/API/取消预算仍不选定，Windows 在途取消及同进程 native 资源增长也仍未由这轮证明。
+
+Windows 42 项全部留证，owned-DLL 21/21 达到冻结门槛：18 次完整 pipe EOF、3 个不等待负控明确取消，均消费者完成、worker 与 driver 自然退出。实际 bridge 21 项生命周期全部通过，涵盖直接程序、cmd/bat 等待启动器的 0/7 退出传播和不等待负控；不是实际 provider 验收。基线 18 项内容匹配、3 个暂停内容失败，21 项自然资源 guard 均失败。两条路径 cleanup remaining 均空、基础设施门槛成立，Windows job 成功不等于基线无问题。
+
+本轮三个基线暂停样本均完整呈现 90000 编号行，但原始 callback 文本精确结束于 `DSC_MAIN_LINE_90000\r`，未交付该行 LF、随后 ANSI 彩色 Unicode TAIL 整段及最终 CRLF；不是 VT 覆盖，也不是只差光标。subject writer receipt 的 token/PID/成功标记与主进程相符，退出码 0，public onExit 在 native 退出后约 1002–1004 ms、受控 reader 恢复前约 489 ms 已发生。最终 cursorLine 为 90000，预期 90002；候选三次包括全部正文/Unicode/最终换行，cursorLine 90002。它是实际 bridge 在受控慢读取下的主进程尾部反例，与旧矩阵仅最终光标少一行及普通后代实验分别记录，不把旧结果追认为同一表现。
+
+Windows 环境 Server 2025 x64 build 26100，Node 22.23.2 / libuv 1.51.0；conpty.node/DLL hash 仍分别为 `2d1fb89aa74b692ad026807e78f90d970ef4e4b5b4b0254f94854f0f3f442306` / `3319b484b80bb53d1f4d0a9eb0ea60fd0f61da69db7280ca43b84215f19245ff`。下载后三平台完整 schedule/hash/结果已互核，Windows 原验证器完整 42 项复算通过，三个仓库源码快照与实际输入 commit 在仅规范化 CRLF 后相同，不将 checkout 换行误报成源码漂移。
+
+下载目录为 `.debug/github-exit-tail-35506150727-{ubuntu,macos,windows}/`。macOS 补充审计单独保存于 `.debug/mac-exit-tail-35506150727-supplemental-audit/`，`audit.mjs` SHA256 `839982b46ac47593d7f60b670bd458b545b39ca084b245fff25d0dfde4e2232e`、`report.json` SHA256 `e7b2be1e756be85def845a4c8cb8745119cadc8e0874e9574a03cd7185b95323`；退出 0 表示工件对账完成，报告仍是 12 通过/9 失败，不追认原验证器或原生矩阵通过。三平台首次失败完整保留，本阶段收口为原生证据增量，不是全平台 reader 选定或生产修复。
