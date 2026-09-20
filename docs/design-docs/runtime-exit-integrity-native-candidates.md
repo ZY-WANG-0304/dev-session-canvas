@@ -323,3 +323,11 @@ Windows四类各三次，共12项：`cancel-idle`让真实主体就绪但不写�
 冻结每会话采集30s、会话完成后资源guard2s、取消样本父watchdog35s、资源driver父watchdog150s；观察间隔只用于诊断，不是生产预算。每个平台完整执行其schedule，失败也继续其余独立driver；同一driver遇会话失败停止该串行组并标明未执行项，不能跳过失败继续作为全组成功。工件含完整schedule、环境、源码/native/编译头哈希、fixture身份/TTY/写回执、原始字节/事件、计数与自然退出；失败和缺失证据分开，离线验证遍历所有条目。首次失败不覆盖，新修订另目录/输入留证。
 
 下一步先实现自校验（丢交付、假EOF、增长计数、缺结果/损坏工件全遍历）、Linux本地资源组与TCP worker控制，再独立分支推送三平台原生。没有选定生产reader、取消条件或预算，不修改旧live绑定；Windows系统缓冲、异常终止、真实provider/Host/Webview/packaged与更长资源压力仍须另验。
+
+### 本地实现与预检
+
+协议由b98f1067运行前冻结。Linux Node25.6.0本地 `.debug/owned-lifecycle-v1-local/` 与消费者逐块hash/取消事件顺序加固后的 `.debug/owned-lifecycle-v2-local/` 均完成四个driver和完整离线复核，各有两轮23条真实PTY会话；native各20窗口fd21/thread11不增长，无PTY控制fd21/thread7不增长，全部writer/内容/真实EIO/消费者/close及自然driver退出通过，无guard/事后kill。不是Windows、macOS或无限期资源验收。
+
+最终自测 `/tmp/dsc-owned-selftest-VtmAS6` 保存当前脚本/C输入，真实普通文件+3/-3计数、四类TCP worker所有权、丢交付/假EOF/零容量EOF与增长计数负例通过；四份合成缺结果失败全部复核，破坏首份后仍尝试四份、三有效一损坏，末项失败仍报告。早期预检 `/tmp/dsc-owned-selftest-lkHdUs`、`/tmp/dsc-owned-selftest-wTkaBs` 保留。非PTY watchdog、自校验、C warnings-as-errors、JS语法、bridge回归及三平台只读workflow检查通过。计数等待使用单调截止点核对，不把提前触发的timer当已满100ms。
+
+推送输入的主脚本SHA256 `4c2e3decf149c120c06faa9fcb3f997aa6f6dc2990dcad7cedece7b622cfb09d`，worker `8630eab630bb085c843e92467d578b59f3f4480cccef4c6b56e5b3a75ebc1489`，C `fcd2cc8d55d8033b53c5e23e647e8ce7bb8b39f2c8931bcd50a302cb06b72adb`。远端三平台尚未执行，不能用本地结果补算通过；冻结参数和所有旧实验保持不变。
