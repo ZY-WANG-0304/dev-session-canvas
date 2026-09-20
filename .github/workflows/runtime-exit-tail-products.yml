@@ -1,0 +1,85 @@
+name: Runtime Exit Tail And Launch Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [runtime-exit-integrity-native-candidates]
+    paths:
+      - .github/workflows/runtime-exit-tail-products.yml
+      - scripts/diagnostics/diagnose-unix-exit-tail.mjs
+      - scripts/diagnostics/diagnose-windows-launch-tail.mjs
+      - scripts/diagnostics/runtime-exit-tail-*.mjs
+      - scripts/diagnostics/runtime-launch-tail-*.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-exit-tail-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-tail:
+    name: Tail and launch / ${{ matrix.os }} / Node 22
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check Unix probe syntax
+        run: node --check scripts/diagnostics/diagnose-unix-exit-tail.mjs
+      - name: Check Windows probe syntax
+        run: node --check scripts/diagnostics/diagnose-windows-launch-tail.mjs
+      - name: Check Windows output worker syntax
+        run: node --check scripts/diagnostics/runtime-launch-tail-conout-worker.mjs
+      - name: Check Unix oracle and independent watchdog
+        if: runner.os != 'Windows'
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import { spawnSync } from "node:child_process";
+            const r = spawnSync(process.execPath, ["scripts/diagnostics/diagnose-unix-exit-tail.mjs", "--self-test"], { encoding: "utf8", timeout: 30000 });
+            process.stdout.write(r.stdout || "");
+            process.stderr.write(r.stderr || "");
+            fs.mkdirSync("exit-tail-selftest-evidence", { recursive: true });
+            fs.writeFileSync("exit-tail-selftest-evidence/result.json", JSON.stringify(r, null, 2));
+            if (r.status !== 0) process.exit(1);
+            const report = JSON.parse(r.stdout.trim());
+            fs.cpSync(report.watchdogEvidence, "exit-tail-selftest-evidence/unix-watchdog", { recursive: true });
+          '
+      - name: Check Windows oracle and independent watchdog
+        if: runner.os == 'Windows'
+        run: node scripts/diagnostics/diagnose-windows-launch-tail.mjs --self-test
+      - name: Probe Unix main-process tail and cancellation
+        if: runner.os != 'Windows'
+        run: node scripts/diagnostics/diagnose-unix-exit-tail.mjs --output exit-tail-evidence
+      - name: Probe Windows launch chain and reader lifecycle
+        if: runner.os == 'Windows'
+        run: node scripts/diagnostics/diagnose-windows-launch-tail.mjs --output exit-tail-evidence
+      - name: Verify saved Unix evidence
+        if: always() && runner.os != 'Windows'
+        run: node scripts/diagnostics/diagnose-unix-exit-tail.mjs --verify-saved exit-tail-evidence
+      - name: Verify saved Windows evidence
+        if: always() && runner.os == 'Windows'
+        run: node scripts/diagnostics/diagnose-windows-launch-tail.mjs --verify-saved exit-tail-evidence
+      - name: Upload all evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-exit-tail-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            exit-tail-evidence/
+            exit-tail-selftest-evidence/
+          if-no-files-found: warn
+          retention-days: 14

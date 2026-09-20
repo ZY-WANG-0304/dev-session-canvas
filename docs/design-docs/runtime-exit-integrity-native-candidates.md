@@ -124,4 +124,22 @@ Windows 主体写 READY 后持有 gate；正例观察至少 100 ms 主体存活�
 
 每个平台执行全 schedule，新目录拒绝覆盖，保存源码快照/hash、native/environment 指纹、原始数据、writer receipt、事件、消费者结果、清理与父进程退出记录。独立 watchdog 及失败断言需自校验；GitHub fail-fast 关闭，所有失败上传和下载，修订先记录原因再完整新跑，不筛选成功。Linux/macOS 各 21 项，Windows 42 项，共 84 项；本地 Linux 另记，不与 runner 样本混算。
 
+Windows 首次原生运行前的夹具细化：nonwait 由 driver 已实际收到 READY 后再放行包装程序提前退出，确保负对照满足就绪前提；不扩大输出或等待门槛。owned-DLL 保存原始 Buffer，actual-bridge 只能提供 onData 字符串，二者分别标记 native bytes 与 callback 文本，不假称后者为原始 ConPTY 字节。
+
+本地 Unix v1 之后、v2 之前的取证补强：driver exit 后最多再等待 100 ms 接收 stdio，不以等待 close 延长独立 watchdog；缺少 fixture owner 时明确记录清理未证明；consumer hold 增加 barrier 等待时仍有 pending 操作的断言。暂停案例在 89800 附近将下一次读取限制在不超过 64 KiB 的边界量，并要求恢复后确实收到尾部，防止已经全读完才空暂停。90000 行、89800 位置、350 ms 暂停及所有自然收尾/取消期限不变；v1 工件及源码快照不改，v2 完整新跑。v1 三个暂停样本原事件已分别显示恢复后收到 1655/5043/2612 bytes，不将此次加强误写成修复了 v1 假阳性。
+
+Unix v2 完成后、v3 与 Windows 首次原生之前，跨进程 JSON receipt/config 改用同目录临时文件加 rename 原子发布，避免另一进程在 exists 与 JSON.parse 之间看到空文件/半文件。前两轮未观测到该竞态，这是夹具可靠性补强，不调整案例/重复数/内容/期限；v3 仍完整运行 21 项，保留此前两轮原始快照。离线复核旧轮次按其快照中的原验证器执行，不能用新增取证字段追溯重判历史。
+
 这一轮不是全产品验收：Windows worker 取消时在途消息与 OS 未读数据的交接、长驻 OS 句柄增长、输入公平性、信号/强停、真实 provider/VS Code、最低宿主及 packaged 仍未覆盖。自然子进程退出和单次 fd/worker 释放不能升级成长驻无增长结论。范围收窄不取消主进程尾部门槛，也不要求普通后代延迟输出作为产品门禁；旧诊断仍按原条件失败。
+
+本轮只读审查发现锁定 `node-pty@1.2.0-beta.12` 的 `src/unix/pty.cc::SetupExitCallback()` 在 Apple 分支创建 `kqueue()`，函数返回前未见 `close(kq)`。这是待原生计数验证的资源风险，不是本轮新增的 macOS 实测失败；更说明只检查 PTY master fd 的 EBADF 和短命 driver 退出不足以证明 native 资源全部释放。后续长驻同进程对照应单独计量退出监听的 kqueue 等资源，并核对实际二进制来源，不用 OS 在 driver 退出时回收资源冒充 provider 正确释放。
+
+## 11. 新矩阵本地结果与 runner 输入
+
+Linux Node 25.6.0 / kernel `5.19.17-saturnv01` 的 `.debug/unix-exit-tail-v{1,2,3}-local/` 各完整执行 21 项，三版均通过其对应门槛。每版 15 次自然 read EIO；6 个取消对照每次交付 64 bytes，audit 另收 1984 bytes，不记为完整排空。完整内容、最终光标/title、消费者结算、master fd close/EBADF 与 driver 自然退出均留证。v2/v3 暂停后均另收到 5400 bytes，未用空暂停代替慢读取。
+
+v1/v2/v3 脚本 SHA256 分别为 `e3776ec01ab759e4e890e4c92d7a2b1f6348615bfb3664decab4db2dce4ed2cd`、`5c0a922880a787029077c8606edac5621e22a180f287149d58bed67fd9c7423d`、`23e87e52e3bd51ef860e245a24404442296a3ba6e00ad3c9d1bd4c40a810d585`。每版完整源码/native snapshot 和实际事件保留；v1 以其旧验证器复算，不用新增 `stdioClosed` 字段重判。最终 native SHA256 为 `ab01eb7d31a5b6202e2a51339ad2cbe3f2a73e3a679e88195011e28f3160d5a7`。
+
+最终 Unix watchdog 自校验工件 `/tmp/dsc-unix-tail-watchdog-eMhxGy` 仅为普通子进程故障注入，父进程直接 own/reap 的 fixture 清理不能冒充 native fork 故障下孤儿回收证明。Windows 本地自校验覆盖失败 oracle、真实 TCP worker EOF/pause/cancel 和同步死循环 watchdog，未启动 ConPTY 或 provider。三个新脚本语法、既有 `test:execution-session-bridge`、workflow YAML/只读分支边界及 `git diff --check` 通过，独立只读审查无本轮执行 blocker；基线生命周期或基础设施失败会让新 Windows run 失败，基线内容/资源观察与 owned 候选分别报告。
+
+三平台 runner 尚待执行，本地 63 项不替代新 84 项原生矩阵。生产代码、依赖和旧脚本/workflow 均未变；设计仍为比较中/验证中，资源增长与真实 provider 等缺口按第 10 节保留。
