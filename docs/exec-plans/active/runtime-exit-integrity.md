@@ -15,12 +15,13 @@
 ## 进度
 
 - [x] (2026-09-21) 按设计第29节冻结macOS三arm最小close对照和Windows只读类型取证，保留原资源失败；正readable控制另列后续。
-- [ ] 实现新独立入口及workflow，先本地自测/机械变换负例，再执行macOS十二driver与Windows四driver首次原生矩阵，下载完整离线复核。
+- [x] (2026-09-21) 新独立入口及两平台workflow、本地机械变换/合成负例/完整失败遍历和Linux隔离构建布局预检完成；补构建链接归档、跨平台路径及有效负结果分类。
+- [x] (2026-09-21) 固定944fe103的run35527241793与仅修诊断C命名的5a7ed5c4/run35527528410，完整下载并离线复核。macOS两轮各138条PTY建立最小close因果证据；Windows首轮0PTY编译失败保留，次轮46条完整、逐会话File+Process增长已确认，具体归属仍inconclusive。
 
 - [x] (2026-09-20) 按设计第28节承接Windows12项取消所有权与三平台同进程资源冻结协议；各driver3预热/20测量，与无PTY对照分开，业务不改。
 - [x] (2026-09-20) 新诊断/worker/OS观察器/workflow完成，自测与Linux本地v1/v2各46条PTY通过；输入b031b598的run35519226627三平台首次运行完整复核，Windows12项局部所有权/自然对照通过，macOS/Windows各两个同进程资源组失败保留，无工件损坏。
 - [x] (2026-09-20) 两工作树设计/计划/索引/原则/债务同步，元数据/引用/全部计划章节/diff与范围检查通过；核对Windows CRLF原始输入和全部cleanup/guard，bridge回归通过，业务/依赖/旧实验未改。
-- [ ] 下一增量冻结native资源归属与回收对照：macOS kqueue隔离干预构建、Windows句柄类型/身份/创建回收，并补正长度JS readable-buffer取消控制；业务及生产政策仍不改。
+- [ ] 下一增量先冻结Windows已知HPCON owner的隔离释放/可用身份取证，保持本轮inconclusive；正长度JS readable-buffer取消控制另验，仍不接入业务或选定生产预算。
 
 - [x] (2026-09-20) 按设计第27节冻结原位readiness/独立gate新24项，增加receipt-held控制验证读取循环暂停时仍能发布gate，不改旧结果或业务。
 - [x] (2026-09-20) 独立分支新模块/入口/workflow完成，Linux本地v1的两个不足100ms持有失败原样保留；按原单调截止点修正后v2/最终v3各12项与复核通过，非PTY所有权/gate/失败遍历负例和bridge回归通过。
@@ -64,7 +65,11 @@
 
 ## 意外与发现
 
-本轮源码审计发现macOS需要同工具链rebuilt-baseline，且node-pty嵌套node-addon-api版本不同于仓库顶层，不能混用。Windows固定DLL的Release只释放部分成员、Close另释放其余成员，支持继续取证，但尚未原生确认积累句柄类型和归属。均是实验输入，不是生产修复。
+第二run35527528410 Windows全46条内容/自然退出通过而handles逐次+2；840次前后表和83685次类型查询成功，唯一错误是2730次QueryFullProcessImageNameW返回31。增长细化为PIPE类型File与已退出的非fixture Process，但未证明OpenConsole/signal pipe归属，也未证明错误31的查询时机原因。macOS两轮同工具链close对照均消除kqueue增长，基线红项保留。详见设计第30节。
+
+首次run35527241793中macOS三arm/138条PTY及完整离线对照达标，但Windows新增观察器的boolean辅助函数与SDK typedef冲突，零PTY。这是Linux纯逻辑自测不能覆盖的原生编译问题；保留原输入/失败，按设计仅重命名新增诊断辅助函数，另采新输入，不改变原oracle或产品结论。
+
+运行前源码审计发现macOS需要同工具链rebuilt-baseline，且node-pty嵌套node-addon-api版本不同于仓库顶层，不能混用。Windows固定DLL的Release只释放部分成员、Close另释放其余成员，支持继续取证，但当时尚未原生确认类型/归属，现类型已由本轮取证补齐、具体归属仍开放。均是实验输入，不是生产修复。
 
 本轮首次三平台证据直接区分单次退出与长期资源：macOS两轮每会话新增一个kqueue，fd15到35；Windows两轮每次+2 handles，197到237；无PTY控制稳定、所有内容/消费者/单次退出通过。Windows12项局部对照通过但九次readableLength均0，不能覆盖正缓冲分支。Apple风险已有native证据，Windows对象身份与HPCON归属尚未证明，详见设计第28节。
 
@@ -99,6 +104,10 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 真实链路只有 Windows .cmd/.bat 会被 bridge 包 cmd /d /s /c，POSIX Agent 不由扩展另加运行 shell。本机 Codex npm JS 源码会等待 child，而旧 fake-provider 多是 exec；新增等待/非等待启动器对照补齐了这一层受控证据，不等于真实 provider 通过。首次启动诊断因错误要求 Linux spawn-helper 而在 spawn 前失败，0 个原生样本，已保留；12 s 进程内 timer 不能约束同步 probe 阻塞，外部 watchdog 与新增 fatal handler 故障注入仍缺。
 
 ## 决策记录
+
+- 决策：本轮按“macOS自然路径局部因果已建立、Windows类型积累已证实而归属未闭合”收口，不改原身份门槛求绿。下一步优先已知资源owner的受控干预，正缓冲控制分列。理由：内容/进程结束不代替原生资源回收，类型事实也不等于精确对象所有权或生产验收。日期/作者：2026-09-21 / Codex。
+
+- 决策：首次Windows编译命名冲突只以dsc_boolean局部重命名修正，使用新输入/新run保留旧失败。理由：查询逻辑和所有资源断言不变，不能把工具未编译当产品通过或失败，也不放宽/WX。日期/作者：2026-09-21 / Codex。
 
 - 决策：资源归因与正长度JS缓冲取消分阶段交付；Windows本轮只读取证、不增加HPCON释放API，macOS只在隔离副本插入close并固定spawn-helper。理由：保持原读取协议，区分工具链、观察器和唯一释放变更；Windows句柄总量尚不能唯一证明资源所有者。日期/作者：2026-09-21 / Codex。
 
@@ -140,9 +149,9 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
-2026-09-21本增量目前仅冻结资源归因协议，原生结果待采集；不能将拟议close或Windows类型预期写成验证结果。旧run35519226627的四个资源失败保持，整体退出完整性仍未交付。
+2026-09-21资源归因增量完成实现、本地自测、两次新输入原生执行和全量离线复核，共322条实际PTY。macOS原包/重编译基线增长、唯一close候选不增长的局部因果证据成立。Windows修名后46条会话完整，资源仍+1 PIPE类型File/+1已退出的非fixture Process；全部image查询31，故整体归属inconclusive且不改判。首次编译失败、各基线资源红项及所有旧证据保留；生产退出完整性仍未交付，设计比较中/验证中。
 
-第28节已完成Windows局部所有权与三平台同进程资源首次验证，24个driver/150条真实会话完整留证；20个driver通过、macOS和Windows各两个资源失败，全部离线复核有效。资源增长不能被内容/自然退出成功掩盖；Windows正长度readable和句柄身份、macOS干预构建仍待验证。只新增诊断及文档，既有局部成功和历史失败均保留，未修改业务或选定生产方案。
+历史第28节已完成Windows局部所有权与三平台同进程资源首次验证，24个driver/150条真实会话完整留证；20个driver通过、macOS和Windows各两个资源失败，全部离线复核有效。资源增长不能被内容/自然退出成功掩盖；当时开放的macOS隔离干预已由第30节完成自然路径因果对照；Windows正长度readable和具体资源归属仍开放。只新增诊断及文档，既有局部成功和历史失败均保留，未修改业务或选定生产方案。
 
 历史第27节原位观察/独立gate增量完成本地、自校验及两平台24项原生/下载复核，Unix这组前提和局部取消所有权已验证；当时提出的Windows与同进程资源由第28节承接，首次两个诊断时间前提失败及旧18项解释不改，不将隔离诊断作为生产完成。
 
@@ -162,9 +171,9 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 工作计划
 
-当前增量以设计第29节为冻结契约。独立工作树新增macOS三arm入口和Windows句柄模块/入口及两平台workflow。派生副本记录冻结输入hash和精确差异，原入口不变。macOS先prebuilt再同工具链baseline/close，每arm四driver；Windows只保留旧四资源driver并替换观察器。保留原资源oracle，外层分别判因果对照或取证有效性。正readable-buffer、生产API/预算和真实宿主不在本增量。
+资源归因实现及结果已在设计第30节收口，不重复执行冻结矩阵以筛选绿色。下一里程碑先明确Windows已知HPCON owner跨主体退出、输出结束、消费者完成和释放的诊断生命周期，设计最小隔离释放对照及必要的早期身份取证；不盲关未知句柄、不把退出后对已移除baton id调用kill当释放证明。具体新API/干预顺序需另冻结再实现。正readable-buffer取消、macOS异常路径、真实Agent/宿主/packaged与生产契约仍单列开放；旧脚本和业务不改。
 
-第28节增量已完整执行。下一阶段先冻结macOS退出监听kqueue生命周期的隔离干预构建，以及Windows+2句柄的类型/身份和创建回收边界，不能预设其唯一来自HPCON；再补Windows取消时readableLength实际大于0的控制，继续分别核对已拥有数据与消费者应用。实验只在隔离构建，不改业务或依赖安装树；须用新证据选定native资源与reader共同的生产生命周期，不能仅以源EOF/JS关闭宣布完成。
+历史资源计数阶段提出的macOS最小干预和Windows类型取证，现已由设计第30节完成本轮验证；异常分支、Windows具体资源归属与正长度readable控制仍开放，以工作计划首段为后续顺序。不能以源EOF/JS关闭宣布资源完成，也不把隔离实验当生产API授权。
 
 历史第27节的两平台flags/gate/取消分账前提已达成，其后Windows局部所有权及同进程计数由第28节完成；macOS/Windows新资源失败不能被旧单次退出通过覆盖。不能以每样本退出进程掩盖长期增长，也不能把Unix协议直接外推ConPTY；生产选型依然开放。
 
@@ -192,9 +201,11 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 具体步骤
 
+本阶段复核目录是独立工作树的 `.debug/github-resource-attribution-35527241793-{macos,windows}/native-resource-evidence` 与 `.debug/github-resource-attribution-35527528410-{macos,windows}/native-resource-evidence`。各用对应新入口的 `--verify-saved <目录>`，依赖可通过NODE_PATH指向同锁文件主工作树。两次macOS均三arm有效/外层exit0，但原四基线资源失败仍在；首次Windows因编译失败零driver，次轮旧verifier和inventory完整4/4、无损坏，两个native资源failure与身份inconclusive/exit1。不得改oracle追认通过；下一原生实验另冻输入。
+
 独立工作树新入口 `node scripts/diagnostics/diagnose-macos-kqueue-release.mjs --self-test` 和 `node scripts/diagnostics/diagnose-windows-handle-inventory.mjs --self-test` 先做可用平台自测；采集用各自 `--output <全新目录>`，完成后 `--verify-saved <目录>` 复核。macOS需同版本Node头/node-gyp，Windows需MSVC/Node import library；非本机只跑纯逻辑自测，不冒称native通过。全部失败工件上传，原生执行和下载分别留证。
 
-本轮复核在独立工作树执行 `node scripts/diagnostics/diagnose-runtime-owned-lifecycle.mjs --verify-saved .debug/github-owned-lifecycle-35519226627-ubuntu/owned-lifecycle-evidence`，预期4项有效/无失败/exit0；换macos为4项有效、两个native资源失败/exit1，换windows为16项有效、两个native资源失败/exit1，均无evidenceErrors。可用NODE_PATH指向相同锁文件依赖；不以预期exit1为由重跑试绿。下一阶段先冻结资源归属/正缓冲协议，不改本次输入。以下旧步骤只作历史复核入口，当前下一步以工作计划首段为准；仅推独立诊断分支，不推运行时历史。
+历史同进程资源计数复核： `node scripts/diagnostics/diagnose-runtime-owned-lifecycle.mjs --verify-saved .debug/github-owned-lifecycle-35519226627-ubuntu/owned-lifecycle-evidence`，预期4项有效/无失败/exit0；换macos为4项有效、两个native资源失败/exit1，换windows为16项有效、两个native资源失败/exit1，均无evidenceErrors。可用NODE_PATH指向相同锁文件依赖；不以预期exit1为由重跑试绿。资源归因的新阶段见本节首段。以下旧步骤只作历史复核入口，当前下一步以工作计划首段为准；仅推独立诊断分支，不推运行时历史。
 
 当前可在独立工作树运行 `node scripts/diagnostics/diagnose-unix-inplace-cancel.mjs --verify-saved .debug/github-inplace-cancel-35516170917-macos/inplace-cancel-evidence`，预期12项有效/无失败/exit0；换为 `github-inplace-cancel-35516170917-ubuntu-retry1` 同样通过。依赖未安装时先按锁文件安装，或本地设置NODE_PATH指向相同锁文件主工作树的node_modules。重跑原生只用新输出目录，不能覆盖v1/v2/v3或下载工件。下一阶段先写Windows在途取消/长驻资源协议，不直接复用Unix结果宣称通过。
 
@@ -269,6 +280,8 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
+本轮已核对完整schedule、每条会话内容/消费/自然退出、原始OS资源序列、固定helper/实际加载native、类型查询错误、前后快照与工件hash。两平台原生结果不得合并为产品验收；Windows映像未知保留其不确定性，macOS不外推错误路径或其他版本。后续新干预必须保持这些原断言和失败记录。
+
 交付以 `docs/design-docs/runtime-exit-integrity.md` 第 5、18 节和规格第 10 节为准。需要证明主进程尾部与已有内容完整、最终状态正确、资源释放，并证明取消/强制截断不会冒充完整 EOF；实际 CLI 启动链需另行验证。原生产品矩阵每格均有可复核证据和明确结果，未执行即未完成；普通后代诊断保留旧失败，不单独阻塞交付，也不增加产品通过计数。当前方案阶段验证独立诊断及 YAML/索引/本地引用、git diff 范围和计划状态；相对 `a5112fb5`，只允许诊断和文档变化，不把它们冒充 Host/Webview 或业务修复验收。
 
 ## 幂等性与恢复
@@ -330,3 +343,7 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 修订记录：2026-09-20 按第28节先冻结Windows12项所有权及三平台同进程3预热/20测量资源对照，明确已拥有数据不等于系统缓冲、资源计数不被driver退出掩盖；本轮仍只诊断与设计。
 
 修订记录：2026-09-20 完成本地和三平台首次运行及全工件复核，Windows局部所有权通过，macOS每会话+1 kqueue/Windows+2句柄已有实证；保留四个资源失败及正readable未覆盖边界。下一步转native资源归属与隔离生命周期干预，不直接改业务，整体退出完整性交付未完成。
+
+修订记录（2026-09-21，资源归因冻结）：将macOS三arm因果对照与Windows只读类型取证固定为本增量，正readable控制另列后续。保留原schedule、资源断言及历史失败，只新增独立入口；原生结果待采集。
+
+修订记录（2026-09-21，资源归因收口）：两次新输入共322条PTY及全量下载复核完成，macOS自然路径close因果证据成立，Windows类型增长已明确但映像查询31使具体归属仍inconclusive。首次编译失败、基线资源红项、旧断言不改；下一增量先设计已知HPCON资源owner干预，生产契约和正缓冲分支继续开放。

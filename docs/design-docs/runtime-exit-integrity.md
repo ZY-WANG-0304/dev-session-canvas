@@ -468,3 +468,45 @@ Windows仅做原位只读句柄类型取证，不在本轮新增HPCON释放API�
 每次观察保存前后完整表和GetProcessHandleCount；槽位/type/access/属性集合变化或查询失败显式报告observer-race/inconclusive，不能默默丢项。数字槽位不是稳定内核对象ID，Process的PID+creation time只能加强该类型的身份，匿名File不能据此唯一归因。原计数失败照常输出，外层另报取证完整性、每个窗口的类型差分和跨窗口存留槽位；全部控制稳定、native持续File/Process配对且Process路径指向OpenConsole时也只算HPCON候选的支持证据，不冒称已完成释放干预。观察器自测用三个自己打开/关闭的普通文件验证类型和+3/-3；保留原parent watchdog防御无有限执行保证的系统查询。
 
 先执行语法、机械变换/离线verifier负例及本地可运行控制，再将固定输入仅推独立诊断分支，在macOS/Windows各执行一次完整矩阵。全量工件下载完成后再离线复核，损坏样本不阻止其余样本检查；冻结与实际输入SHA、Node/头文件/工具链/源/binary哈希、命令输出和首轮失败均保存。生产资源回收设计、Windows正长度JS readable-buffer取消控制、异常退出、真实Agent启动链及Host/Webview/packaged继续开放。本轮把正缓冲控制独立排到资源归因之后，避免同时改变读取行为和原生资源实验。
+
+### 实现前提与本地预检
+
+协议由独立分支d70e6e1c、主分支15baf15a先行冻结。新macOS入口对node-gyp生成的隔离build工具链接保存target后移除链接本身，避免工件归档跟随机器外部路径；不处理安装树。构建日志、compiler实际路径/hash、node-gyp版本/源码与独立tooling lockfile、完整headers保留；spawn-helper固定、无prebuilt回退分别校验。有效反结果（基线不增长或候选仍增长）属于对照失败，不归为工件损坏。
+
+两入口的Linux纯逻辑自测覆盖机械变换拒绝未知源、假的完整性/绿色结论、计数或类型竞争、Process槽位复用、缺工件及损坏首样本后继续末样本；新Windows路径复核使用可移植snapshot键，不依赖本机path.basename解释Windows绝对路径。独立工具布局smoke用node-gyp11.5.0、Node25.6.0同版本headers和嵌套node-addon-api7.1.1成功重编译Linux隔离副本，只证明布局/工具调用可用，不算macOS验证。既有executionSessionBridge回归、workflow YAML/两平台只读范围、文档链接和diff检查通过。实际runner固定Node22.23.2，macOS使用node-gyp11.5.0，尚待首次原生矩阵。
+
+### 首次执行与诊断编译修正
+
+固定输入944fe103f3f6d497c94b6575fabef6be69bc2929的run35527241793 attempt1总失败保持。macOS三arm完整138条PTY及下载离线复核通过外层对照：原包/重编译基线均kqueue6→26、fd15→35，close候选kqueue3不增长；旧四个基线资源失败仍为失败。Windows在新C模块编译阶段因辅助函数boolean与SDK rpcndr.h同名typedef冲突（C2365）失败，零条PTY，不是被测产品行为的新证据；编译日志和缺环境/四driver缺工件的离线结果原样保留。
+
+后续仅将本轮新增C的辅助函数及七个调用标识符统一改名dsc_boolean，不改变查询、采样、比较、超时或断言。使用新的提交输入和新run，绝不覆盖首次工件或重判首次通过；同workflow会再次执行未变的macOS矩阵，首轮macOS因果证据独立保留。旧owned入口、worker、C、workflow和更早失败均不改。此为诊断工具编译修正，不是资源释放实现。
+
+## 30. 原生资源归因结果
+
+首次输入944fe103f3f6d497c94b6575fabef6be69bc2929的 [run35527241793](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35527241793) attempt1保留总failure：macOS外层三arm因果对照通过，Windows新观察器编译失败、零PTY。两个完整工件已下载至独立工作树 `.debug/github-resource-attribution-35527241793-{macos,windows}/`；本地复核macOS attempted3/verified3、无failure/evidenceError、exit0，Windows明确inconclusive/exit1、四driver均未执行，不能将缺失的运行证据改判通过。
+
+macOS首轮12个driver、138条真实会话全部内容、消费者、真实正容量read0、master关闭/EBADF、native主体及driver自然退出成立；无watchdog、resource-timeout或cleanup kill。独立逐文件复核4759个manifest hash、1260次资源快照，原始观察与交付合计287316字节一致。两个基线arm的四个native driver均每次测量新增一个kqueue：fd15→35、kqueue6→26、线程11恒定；六个无PTY控制fd12/kqueue3/线程7稳定；close arm两个native driver均fd12/kqueue3/线程11稳定。旧verifier在prebuilt和rebuilt-baseline仍分别exit1并保留两个资源失败，在rebuilt-close为exit0；外层通过只表示预先冻结的因果对照成立。
+
+三arm共用原spawn-helper SHA256 `2ee9dcf5337b78a258f20ed2872265ea5f7849eb82fc49a8e9d75e958168ae46`。实际加载pty.node的prebuilt/rebuilt-baseline/rebuilt-close哈希依次为 `30ac36647725b2402585781c8e81be39d76962bf79d03620a9763539d0fdbec8`、`4d497c1b21b5d8af9f50769c02aca0999629a7bb4c84d0fdf4b11f7082cc889c`、`4a9bb06cc321fdb500262112a9ce2780c1b00ccd60084762d769210d8201c9f1`，实际加载路径和require cache均匹配，未回退prebuilt。两基线源SHA为19210adf...，唯一close补丁源为 `3d92f41bab8e368b5b8dec8f4ecc931963969332c384ed552cad7f695270cab5`。环境Node/头22.23.2、libuv1.51.0、node-pty1.2.0-beta.12、node-addon-api7.1.1、node-gyp11.5.0，macOS26.6.2 arm64/Darwin25.6.0、Apple clang21.0.0/Xcode26.6、Python3.14.7、Make3.81，runner image20260907.0351.1；完整tool lock/headers/日志另存。
+
+因此，Apple退出监听创建的kqueue缺少释放，在本原生组合的自然结束路径上已有最小干预因果证据，不再仅是源码风险或计数相关性。这不验证异常kqueue/kevent/waitpid、未初始化stat_loc、信号/EINTR、TSFN关闭或真实VS Code/provider路径，不直接将隔离补丁升级为正式生产方案。
+
+首轮macOS工件ID10610476506、服务端ZIP digest `65eb6d9a03a3928368a18a5236e240cfa45eb777b87a7759b8d57457707ea06f`；Windows ID10609608936、digest `0b3aa80225d689e7f908c68075da1157d00be2ba7eae32ab1297ce534d9e9728`。这些是服务端归档摘要，不是本地ZIP独立复算。新macOS入口SHA256为faab85a8...、Windows入口15919b50...，完整输入在提交与工件中；Windows首次C的LF hash为b2da8ee7...，重命名后为84900ec7...，原CRLF文件和所有编译失败原样保留。
+
+### Windows类型证据与归属缺口
+
+局部重命名输入5a7ed5c45ba80319506705eac87bd09563090196的 [run35527528410](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35527528410) attempt1完整运行，仍保留总failure。Windows观察器/W4/WX编译及真实普通文件200→203→200、File类型+3/-3控制通过；四driver和46条PTY全部完成，旧verifier attempted4/verified4、两个native资源失败、evidenceErrors为空。所有会话内容/consumer/真实pipe EOF/worker exit/input close通过、driver自然退出、无watchdog或cleanup kill，资源却仍逐次增加：native-1 handles200→240、native-2 197→237，线程12→8，无PTY两组handles180/线程12稳定。两native预热绝对计数差3对应EtwRegistration80/77，不应误作会话增量。
+
+全部420次观察的前后表、计数和槽位/type/access/属性集合一致，observerRace为0，所有NT类型查询成功。两个native组每个测量窗口均新增一个File（GetFileType=3，即PIPE）和一个Process，旧槽位保持、无移除或可见身份变更；File26→46、Process3→23，其他类型不增长。Process的PID、creationTime和exitCode=0均可取得，且各driver内这23个PID与自身23条fixture主体PID不相交。它们是已退出进程对象的句柄，不是实证有46个进程仍在运行；PID跨driver存在复用，更不能只以PID判断长期身份。
+
+唯一查询失败为QueryFullProcessImageNameW的Win32 31（ERROR_GEN_FAILURE），两个native组各1365次、共2730次，不能改写成已证实权限不足。没有早期身份查询或专门API对照，也不能把退出后查询时机当作错误31的已证明原因。全部Process映像路径缺失，所以冻结的全身份取证依旧inconclusive，candidateSupport=false，离线exit1；全局输入检查和四driver工件均有效，不是归档损坏。**已确认的类型增长不等于已确认OpenConsole/HPCON对象归属**，不降低原门槛使其变绿。现有源码与固定DLL的Release/Close行为仍支持该调查方向，但本轮没有已知owner的释放干预，匿名File也没有稳定内核对象ID；不外推builtin或生产验收。
+
+同run未改macOS输入的三arm另完成138条PTY及完整离线复核，结果再次与首轮一致，旧四个基线资源失败仍保留；这是另一份证据，不替换首轮。两次run共实际322条PTY（首轮138、次轮184），不是完整产品验收。下载目录 `.debug/github-resource-attribution-35527528410-{macos,windows}/`；macOS离线3/3无failure/evidenceError，Windows旧verifier与inventory都完整遍历4/4，两个native身份归因inconclusive，未修改oracle。Mac工件ID10610393210/digest `a1d5d20cb82880cc03ad313685309fafd571a26bfb72a664d419bd477d9cfc9d`，Windows ID10610243667/digest `3108dc19711292e503df7a286c169aaaa6f6c741c4ac8cda2d5b0363da3b25c0`，均为服务端ZIP摘要。
+
+Windows环境为Node/headers22.23.2、libuv1.51.0、node-pty1.2.0-beta.12、x64/10.0.26100、image20260907.229.1；实际conpty.node SHA256 `2d1fb89aa74b692ad026807e78f90d970ef4e4b5b4b0254f94854f0f3f442306`、DLL `3319b484b80bb53d1f4d0a9eb0ea60fd0f61da69db7280ca43b84215f19245ff` 与前轮一致。新C修名后的LF hash `84900ec72f34344963944e34aae0621fb383a539ecf69003be9783d1e92ecd7b`，Windows原始CRLF文件只读归一校验，不改工件。完整本地自测、工具/原始源/hash和两次原生失败均保留。
+
+### 阶段判断与下一边界
+
+本阶段收口的是macOS自然退出kqueue增长的最小干预因果证据，以及Windows增长类型的进一步定位，不是退出完整性的生产交付。下一增量应先冻结Windows已知HPCON资源所有者的生命周期/释放对照，必要时在实际对象仍可查询阶段记录进程身份；不能盲关句柄表中的陌生槽位，也不能只对已经移除baton的id再调用kill宣称回收成功。该候选尚未选定具体API或预算，本轮不实施。
+
+正长度JS readable-buffer取消控制独立保留，macOS异常wait/error/TSFN路径、真实Agent启动链、Host/Webview/packaged、生产自然结束/取消/资源owner契约仍未验收。业务代码、依赖安装树、旧live绑定和上一阶段冻结脚本/断言均未修改；两份计划保持active，设计仍为比较中/验证中。macOS本轮已得到的因果证据不需继续用同矩阵反复试绿，Windows也不因局部类型事实而取消剩余归属门槛。
