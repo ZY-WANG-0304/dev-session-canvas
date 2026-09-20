@@ -426,3 +426,31 @@ fixture一次同步write2048个ASCII C，短写才继续，独立记录调用前
 Node运行时与编译头均22.23.2、libuv1.51.0、node-pty1.2.0-beta.12；Linux x64 kernel6.17.0-1022-azure，macOS arm64 Darwin25.6.0。最终JS SHA256 `714bf40f2de43e46cb9219ed4546b7d93cac1c4a349dc1bf724de55f5f28335e`，C SHA256 `1428850a154a8bc6ad3202871c0c94bb63d86cb28bca02c56077075240e10371`。Ubuntu工件ID `10607250891`、服务端ZIP digest `dfc89206fb04cb63f47554ddc5b942aa8225ef6cc8ba66420fce7557e873688a`；macOS ID `10606379037`、digest `2018754a69597355644f7cced2b1f9b6d805af4dd51a85627b85763d9175f7f3`，不是本地ZIP独立复算。完整环境/编译器/头文件/源码/native快照及自测证据保留。
 
 本阶段已完成Unix这组前提与局部取消所有权验证，后续不再围绕旧helper重复试绿；原18项无效验收解释、本地v1两个失败均不改判。下一增量转Windows独立worker在途取消及同进程长期native资源（含Apple kqueue风险），运行前另冻结矩阵。本轮单样本进程自然退出不等于长期资源无增长，没有重跑90000行/Unicode全矩阵或真实provider/Host/Webview/packaged；生产reader/API、结束/取消政策与预算仍未选定。业务、依赖、旧live绑定和既有诊断均未修改，两份计划保持active。
+
+## 28. Windows 取消所有权与同进程资源（运行前冻结）
+
+独立诊断分支基于db6104d8，在候选设计第23节冻结新 `diagnose-runtime-owned-lifecycle.mjs`、`runtime-owned-cancel-worker.mjs`、`native-runtime-resources.c` 及专用三平台workflow，旧实验与业务不变。Windows四类各三次：主体就绪但未写应用数据时取消、worker持有真实data时取消、跨线程收到但消费者未应用时取消、自然EOF对照。payload为起始marker、2048个ASCII C及结束marker，idle写0；真实TTY主体保留写回执并等待独立退出gate。取消结算held callback、当时JS readable buffer与MessagePort队列，消费者按序应用后结束，始终interrupted；不承诺系统缓冲已排空，不将socket已连接或JS held冒称内核ReadFile挂起。
+
+三平台分别以control-1/native-1/control-2/native-2四个driver做同进程对照，每driver3次预热加20次测量，不在每会话后重启进程。native Unix独占fs.read至真实0/EIO、close/EBADF并等待native exit；Windows独立DLL reader至真实pipe end、worker exit和input close。control运行相同采样但不创建PTY。只读OS观察器记录Linux fd/task、macOS fd类型（含kqueue）/线程、Windows handle/线程，观察器自有临时资源在返回前关闭，不关闭未知fd；用打开/关闭3个普通文件的控制验证其灵敏度。
+
+每次会话收尾100ms后取5个间隔20ms快照，预热后同样建立基线；任一测量窗口的资源min高于预热max即报持续增量，全部20窗口及内容/消费者/生命周期达标才判该driver通过。保留原始序列和资源类型，不从单次差异推断唯一泄漏根因；这是23次有界实验，不是无限期无增长或生产验收。固定会话30s、资源guard2s、取消父watchdog35s、资源driver父watchdog150s，均非生产预算。失败仍采集其余独立driver，同driver会话失败则标注后续未执行，不跳过失败改判成功。
+
+运行前先自测所有权/假EOF/计数增长与失败工件遍历，Linux本地资源组和TCP worker控制后再推三平台原生；全schedule、环境、源码/编译头/native哈希、原始数据/回执/消费事件、资源序列及首次失败均保存并完整离线复核。此时尚无本轮结果，不选定生产API或预算、不更改旧live绑定，真实provider/Host/Webview/packaged和异常终止仍开放。
+
+### 首次原生结果与资源归属判断
+
+协议由独立提交b98f1067冻结；Linux Node25.6.0本地v1及消费者逐块hash加固后的v2各完成四driver、46条PTY和全量复核，native fd21/thread11、控制fd21/thread7均稳定。原目录 `.debug/owned-lifecycle-v{1,2}-local/` 保留。最终自测 `/tmp/dsc-owned-selftest-VtmAS6` 完成真实普通文件+3/-3计数、四类TCP worker、丢交付/假EOF/计数增长负例与四份缺结果失败全遍历、首份损坏后继续验证其余三份；这些不是原生PTY样本。
+
+输入 `b031b5981af6d009455d172e6c727d0b8a56ee67` 的 [run35519226627](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35519226627) attempt1完整执行三平台，最终failure，未重跑job。每平台资源组46条自然会话，另有Windows12项取消/自然对照，共150条真实会话；24个driver中20通过、macOS/Windows各两个native资源组失败。全部下载与离线复核完成，无evidenceErrors；原失败不改判，不把150条会话算作完整产品验收。
+
+Linux四组通过，native fd23/thread11、无PTY控制fd23/thread7均不增长。macOS无PTY控制fd12/thread7、kqueue3稳定；两轮native的46条会话均有完整内容/消费者/真实read0、master close/EBADF和自然退出证据，但每个测量会话新增一个kqueue：每轮从fd15/kqueue6到fd35/kqueue26，线程11不变。逐窗口保留fd身份和五次观测确认旧kqueue仍在、新增20个，并非只有总数变化。同工件 `source-snapshot/4-pty.cc` 第174行的退出监听创建kqueue，等待/回调路径没有close(kq)，与实测增长一致。Apple kqueue不再只是源码风险，但尚未做隔离修正构建的因果干预对照，也未验收正式宿主。
+
+Windows12项取消/自然对照全部通过：idle无应用写入时仍交付23字节ConPTY初始化数据；worker-held/parent-held各三次真实持有2082字节，观察与交付总量2105，最终interrupted；自然对照三次2121字节、真实pipe end及headless文字/光标完整。已观察字节、跨线程交付与消费者逐块hash/顺序一致，主体/worker/input均自然收尾。九次取消的JS readableLength均0，正长度readable-buffer分支尚未原生覆盖；不能称全部取消路径已验证，亦未证明内核ReadFile挂起或系统缓冲完整排空。
+
+Windows两轮native各23条自然会话的内容/消费者/pipe EOF/worker退出都通过，但handles每次增加2：预热197，20次后237；线程12降至8，没有本轮线程增长。两轮无PTY控制handles180/thread12稳定。驱动进程最终exit0且无guard/事后kill，不能解除进程存活期间的40个额外句柄。源码中baton持有HPCON，connect调用ConptyReleasePseudoConsole，退出回调关闭hShell并移除baton，ClosePseudoConsole在另一路PtyKill；这只是归属调查候选，尚无句柄类型/对象身份，不把+2唯一归因于HPCON，也不外推builtin。
+
+工件位于独立工作树 `.debug/github-owned-lifecycle-35519226627-{ubuntu,macos,windows}/owned-lifecycle-evidence/`，复核分别attempted/verified=4/4、4/4、16/16；Linux exit0，另外两平台各保留两个资源failure/exit1。所有driver自然退出、cleanup为空、无hard/resource watchdog。三平台Node及编译头22.23.2、libuv1.51.0、node-pty1.2.0-beta.12；Linux x64 kernel6.17.0-1022-azure/image20260907.300.1、macOS arm64 Darwin25.6.0/image20260907.0351.1、Windows x64 kernel10.0.26100/image20260907.229.1。三平台观察器自测均正确识别普通文件+3/-3。
+
+Ubuntu工件ID10607847565、服务端ZIP digest `eb823e1d70d32eda91c0792a0e1d15955b5ee153523c9a481260aaf889a7b758`；macOS ID10606879826、digest `caebc9712910c175088e242b50315c6ece77393cec71c629c599184af3819ca5`；Windows ID10607308818、digest `6899bb032da0d2070d1019146b19399817b054ab29e55b8e733340adcce98c66`，非本地ZIP独立复算。LF脚本/worker/C SHA256分别 `4c2e3decf149c120c06faa9fcb3f997aa6f6dc2990dcad7cedece7b622cfb09d`、`8630eab630bb085c843e92467d578b59f3f4480cccef4c6b56e5b3a75ebc1489`、`fcd2cc8d55d8033b53c5e23e647e8ce7bb8b39f2c8931bcd50a302cb06b72adb`。Windows checkout CRLF导致原始hash不同，只读归一LF后逐字匹配，未改工件；完整native/hash/编译及自测记录在工件和独立候选设计第24节保留。
+
+架构判断：仅替换JS输出reader不足以收口本次退出完整性，原生PTY创建、退出监听和释放必须作为同一资源生命周期设计。下一增量先冻结macOS kqueue干预构建与Windows句柄身份/创建回收对照，再补Windows正长度readable-buffer取消场景；隔离候选不直接修改业务或依赖安装树。生产reader/API、自然结束/取消政策和预算、异常终止与真实provider/Host/Webview/packaged仍开放，全部旧实验/失败不变，两份计划保持active。
