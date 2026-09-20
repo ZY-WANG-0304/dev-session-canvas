@@ -371,3 +371,9 @@ Windows仅做原位只读句柄类型取证，不在本轮新增HPCON释放API�
 每次观察保存前后完整表和GetProcessHandleCount；槽位/type/access/属性集合变化或查询失败显式报告observer-race/inconclusive，不能默默丢项。数字槽位不是稳定内核对象ID，Process的PID+creation time只能加强该类型的身份，匿名File不能据此唯一归因。原计数失败照常输出，外层另报取证完整性、每个窗口的类型差分和跨窗口存留槽位；全部控制稳定、native持续File/Process配对且Process路径指向OpenConsole时也只算HPCON候选的支持证据，不冒称已完成释放干预。观察器自测用三个自己打开/关闭的普通文件验证类型和+3/-3；保留原parent watchdog防御无有限执行保证的系统查询。
 
 先执行语法、机械变换/离线verifier负例及本地可运行控制，再将固定输入仅推独立诊断分支，在macOS/Windows各执行一次完整矩阵。全量工件下载完成后再离线复核，损坏样本不阻止其余样本检查；冻结与实际输入SHA、Node/头文件/工具链/源/binary哈希、命令输出和首轮失败均保存。生产资源回收设计、Windows正长度JS readable-buffer取消控制、异常退出、真实Agent启动链及Host/Webview/packaged继续开放。本轮把正缓冲控制独立排到资源归因之后，避免同时改变读取行为和原生资源实验。
+
+### 实现前提与本地预检
+
+协议由独立分支d70e6e1c、主分支15baf15a先行冻结。新macOS入口对node-gyp生成的隔离build工具链接保存target后移除链接本身，避免工件归档跟随机器外部路径；不处理安装树。构建日志、compiler实际路径/hash、node-gyp版本/源码与独立tooling lockfile、完整headers保留；spawn-helper固定、无prebuilt回退分别校验。有效反结果（基线不增长或候选仍增长）属于对照失败，不归为工件损坏。
+
+两入口的Linux纯逻辑自测覆盖机械变换拒绝未知源、假的完整性/绿色结论、计数或类型竞争、Process槽位复用、缺工件及损坏首样本后继续末样本；新Windows路径复核使用可移植snapshot键，不依赖本机path.basename解释Windows绝对路径。独立工具布局smoke用node-gyp11.5.0、Node25.6.0同版本headers和嵌套node-addon-api7.1.1成功重编译Linux隔离副本，只证明布局/工具调用可用，不算macOS验证。既有executionSessionBridge回归、workflow YAML/两平台只读范围、文档链接和diff检查通过。实际runner固定Node22.23.2，macOS使用node-gyp11.5.0，尚待首次原生矩阵。

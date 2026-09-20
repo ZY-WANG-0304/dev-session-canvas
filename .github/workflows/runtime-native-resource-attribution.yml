@@ -1,0 +1,97 @@
+name: Runtime Native Resource Attribution
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [runtime-exit-integrity-native-candidates]
+    paths:
+      - .github/workflows/runtime-native-resource-attribution.yml
+      - scripts/diagnostics/diagnose-macos-kqueue-release.mjs
+      - scripts/diagnostics/diagnose-windows-handle-inventory.mjs
+      - scripts/diagnostics/windows-handle-inventory.c
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-native-resource-attribution-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  attribution:
+    name: Native resource attribution / ${{ matrix.os }} / Node 22.23.2
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: diagnose-macos-kqueue-release.mjs
+          - os: windows-latest
+            script: diagnose-windows-handle-inventory.mjs
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Prepare isolated macOS build tools and matching headers
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p process.versions.node)"
+          root="$RUNNER_TEMP/resource-attribution-node-$version"
+          mkdir "$root"
+          curl --fail --location --retry 2 "https://nodejs.org/dist/v$version/node-v$version-headers.tar.gz" --output "$root/headers.tar.gz"
+          tar -xzf "$root/headers.tar.gz" -C "$root"
+          npm install --prefix "$root/tools" --no-audit --no-fund --ignore-scripts node-gyp@11.5.0
+          printf 'DSC_NODE_INCLUDE_DIR=%s\n' "$root/node-v$version/include/node" >> "$GITHUB_ENV"
+          printf 'DSC_NODE_GYP=%s\n' "$root/tools/node_modules/node-gyp/bin/node-gyp.js" >> "$GITHUB_ENV"
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - name: Fetch matching Windows compilation inputs
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = node -p process.versions.node
+          $root = Join-Path $env:RUNNER_TEMP "resource-attribution-node-$version"
+          New-Item -ItemType Directory -Path $root | Out-Null
+          curl.exe --fail --location --retry 2 "https://nodejs.org/dist/v$version/node-v$version-headers.tar.gz" --output "$root/headers.tar.gz"
+          if ($LASTEXITCODE -ne 0) { throw 'Node headers download failed' }
+          tar -xzf "$root/headers.tar.gz" -C $root
+          if ($LASTEXITCODE -ne 0) { throw 'Node headers extraction failed' }
+          curl.exe --fail --location --retry 2 "https://nodejs.org/dist/v$version/win-x64/node.lib" --output "$root/node.lib"
+          if ($LASTEXITCODE -ne 0) { throw 'Node import library download failed' }
+          "DSC_NODE_INCLUDE_DIR=$root/node-v$version/include/node" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DSC_NODE_LIB=$root/node.lib" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Check entry syntax
+        run: node --check scripts/diagnostics/${{ matrix.script }}
+      - name: Run transformation and observer controls
+        env:
+          DSC_ATTRIBUTION_SELFTEST_EVIDENCE: native-resource-selftest
+        run: node scripts/diagnostics/${{ matrix.script }} --self-test
+      - name: Run complete native resource attribution schedule
+        if: ${{ !cancelled() }}
+        run: node scripts/diagnostics/${{ matrix.script }} --output native-resource-evidence
+      - name: Verify complete saved evidence including failures
+        if: always()
+        run: node scripts/diagnostics/${{ matrix.script }} --verify-saved native-resource-evidence
+      - name: Upload full evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-native-resource-attribution-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            native-resource-evidence/
+            native-resource-selftest/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
