@@ -285,4 +285,23 @@ Linux Node25.6.0/libuv1.51.0首次 `.debug/unix-inplace-cancel-v1-local/` 完整
 
 另跑v2全12项及复核通过，脚本hash `6e80ea5b5f8e6c1f31f651e1b56ccfb5e9e0b3301b1f531d31ee767879da6f10`；随后仅加固无summary/缺回执负例、控制组无audit与最终状态按实际parser-applied事件复核，最终v3全12项及复核通过。目录 `.debug/unix-inplace-cancel-v{2,3}-local/`，每版快照独立保留，不用新verifier回判v1。六次取消candidate64/audit1984且interrupted，两种无取消控制共六次candidate2048/audit0、真实EIO；receipt-held三次均有完整因果事件链，gate在held逻辑read释放前发布。所有原位观察flags均34818不变，fd关闭/EBADF与driver自然退出，无事后kill或cleanup残留；这不是长期native资源无增长证明。
 
-最终JS SHA256 `714bf40f2de43e46cb9219ed4546b7d93cac1c4a349dc1bf724de55f5f28335e`，C SHA256 `1428850a154a8bc6ad3202871c0c94bb63d86cb28bca02c56077075240e10371`。最终非PTY自校验 `/tmp/dsc-inplace-selftest-QEuVeJ`：四类合成正例及flags/丢交付/提前audit/假EOF/gate晚于held释放等负例通过；合成12份有效失败（含缺回执、无summary）完整复核，损坏1份callback原始数据后仍尝试12项、11有效且继续报告末项失败。普通文件只读观察及非PTY阻塞driver硬watchdog通过，不冒称全部原生异常清理已验收。此前预检 `/tmp/dsc-inplace-selftest-{O1dqD8,bFfzwi,nzsHF3}` 保留。C编译/JS语法、只读两平台workflow YAML、bridge回归、diff检查通过，远端24项仍待执行。
+最终JS SHA256 `714bf40f2de43e46cb9219ed4546b7d93cac1c4a349dc1bf724de55f5f28335e`，C SHA256 `1428850a154a8bc6ad3202871c0c94bb63d86cb28bca02c56077075240e10371`。最终非PTY自校验 `/tmp/dsc-inplace-selftest-QEuVeJ`：四类合成正例及flags/丢交付/提前audit/假EOF/gate晚于held释放等负例通过；合成12份有效失败（含缺回执、无summary）完整复核，损坏1份callback原始数据后仍尝试12项、11有效且继续报告末项失败。普通文件只读观察及非PTY阻塞driver硬watchdog通过，不冒称全部原生异常清理已验收。此前预检 `/tmp/dsc-inplace-selftest-{O1dqD8,bFfzwi,nzsHF3}` 保留。C编译/JS语法、只读两平台workflow YAML、bridge回归、diff检查通过；本节记录推送前的本地结果，随后远端24项结果见第22节。
+
+## 22. 原位取消与独立 gate 的原生结果
+
+固定输入 `697ee3f0012aa9d68f1774fa9a43ba3836e165d7` 的 [run 35516170917](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35516170917) attempt1完整执行24项，Ubuntu12/12、macOS12/12，总run成功，原生执行未重试。两平台全部初始/read提交/read回调/关闭前观察均保持原flags：Linux34818、macOS6。没有继承master的观察helper，也没有F_SETFL恢复操作；新readiness前提在这些样本中成立。
+
+| 分组（每平台各三次） | 原始证据与边界 |
+| --- | --- |
+| request-pending取消 | read提交后、JS回调未交付时取消；每次candidate完整交付实际64、audit另收1984，candidate始终interrupted。不是内核阻塞read的取消证明。 |
+| callback-held取消 | 真实成功callback持有至少100ms后完整交付64，audit1984；无新增candidate read，candidate先结算再移交audit，不将audit EOF升级为完整。 |
+| read-through对照 | candidate独自完整2048、audit0，真实源结束及headless最终状态成立。 |
+| receipt-held对照 | candidate先收齐2048，再取得真实正容量EAGAIN/0 callback并持有逻辑结果；独立循环发布release、观察回执及发布gate后才释放held结果。Linux三次held→gate约4.09–5.04ms，macOS约5.44–9.17ms；这些是观测值，不是生产预算。 |
+
+所有样本完整writer receipt和源数据分别对账，Linux自然源为EIO、macOS为真实read0；取消中的自然来源属于audit，候选仍中断。全部consumer顺序/最终状态、控制循环结算、fd close/EBADF、主体及driver自然exit0分别留证；无硬watchdog、无事后kill，cleanup remaining/errors均空。这里只证明这些独立短生命周期driver的释放，不证明长驻服务native资源无增长。原18项受干扰矩阵及本地v1两个不足100ms的失败保留；新通过不追认旧实验有效，也不重演历史挂起的唯一因果。
+
+完整下载目录为 `.debug/github-inplace-cancel-35516170917-macos/` 和 `.debug/github-inplace-cancel-35516170917-ubuntu-retry1/`，两边 `--verify-saved` 均attempted12/verified12、failures=[]、evidenceErrors=[]。Ubuntu首次工件传输停滞并被终止，未完成目录 `.debug/github-inplace-cancel-35516170917-ubuntu/` 保留；在下载完成前的离线读取曾ENOENT，不是原生或verifier语义失败。仅在新目录重试同一个artifact传输，没有重跑job或覆盖首次原生结果。
+
+两平台Node运行时/编译头均22.23.2、libuv1.51.0、node-pty1.2.0-beta.12。Linux x64 kernel6.17.0-1022-azure/image20260907.300.1，macOS arm64 Darwin25.6.0/image20260907.0351.1；JS/C哈希与第21节最终版一致。pty.node分别为 `ab01eb7d31a5b6202e2a51339ad2cbe3f2a73e3a679e88195011e28f3160d5a7`、`30ac36647725b2402585781c8e81be39d76962bf79d03620a9763539d0fdbec8`。Ubuntu工件ID `10607250891`、服务端ZIP digest `dfc89206fb04cb63f47554ddc5b942aa8225ef6cc8ba66420fce7557e873688a`；macOS ID `10606379037`、digest `2018754a69597355644f7cced2b1f9b6d805af4dd51a85627b85763d9175f7f3`，非本地ZIP独立复算。
+
+本增量完成Unix原位握手、独立gate及局部取消所有权验证，不再以旧helper前提问题阻塞后续。下一阶段优先Windows独立worker的在途取消/已拥有数据结算，并开展同进程长驻native资源对照（Apple kqueue仍为待实测源码风险）；具体矩阵仍须运行前冻结。本轮不是90000行/Unicode全矩阵重跑、真实provider/Host/Webview/packaged验收，也没有选定生产reader API、自然结束/取消政策或时间预算。所有新增实现均为隔离诊断，业务/依赖/旧入口和旧live绑定不变，设计比较中/验证中、计划active。

@@ -12,7 +12,9 @@
 
 - [x] (2026-09-20) 设计第20节冻结新原位观察/独立gate矩阵，两平台24项，增加receipt-held控制，不改旧入口/结果。
 - [x] (2026-09-20) 新N-API/诊断/workflow及非PTY负例完成；本地v1全12项10通过/2个不足100ms的诊断持有失败保留，按单调截止点修正后v2及最终v3各12项/复核通过，未改门槛或期限。
-- [ ] 推独立输入跑Linux/macOS24项，下载全量复核，区分新局部证据与旧无效矩阵并同步主线。
+- [x] (2026-09-20) 输入697ee3f0的run35516170917 attempt1两平台24项通过并完整下载复核，flags/分账/真实EOF/gate/consumer/单次资源均有证据；Ubuntu仅重试同artifact传输，原生job未重跑。
+- [x] (2026-09-20) 主线及独立分支五份文档各自同步，旧脚本/断言/失败未变，元数据/引用/范围/diff及bridge回归检查通过；生产未修改。
+- [ ] 下一增量冻结Windows独立worker在途取消与同进程长期native资源的控制矩阵，继续生产选型，不以本轮短生命周期释放替代长期计数。
 
 - [x] (2026-09-20) 按设计第15节冻结新可读性握手：一次2048同步写、只读poll helper、实际成功read所有权与独立audit分账，三类各三次/两平台18项，不改旧实验。
 - [x] (2026-09-20) 新入口/helper/workflow实现并经独立只读审查，补EOF真实回调/唯一read id交付/全部helper退出的互证；Linux本地v1/v2各9项与完整复算通过，所有原工件保留。
@@ -21,7 +23,7 @@
 - [x] (2026-09-20) 新原位inspect/窄控制及独立审查完成，Linux本地v1/v2各6项精确复现master仅清O_NONBLOCK/null不变；合成负例和全6项有效失败/单损坏复核通过，原工件保留。
 - [x] (2026-09-20) 输入951724c2的run35511736807两平台12项及下载复核完成，Linux/macOS均实测master组仅清O_NONBLOCK/null组不变，无hard watchdog/事后kill，全部自然退出与EBADF成立。
 - [x] (2026-09-20) 两工作树设计/计划/索引/原则/债务同步，保留原18项受干扰的结论及全部历史结果，核对元数据、原始快照、输入/环境/cleanup，bridge既有回归和diff检查通过。
-- [ ] 下一增量先冻结原位readiness、独立回执/gate推进与flags不变断言，再运行新取消矩阵；不静默恢复flags或重判旧失败，不接入业务。
+- [x] (2026-09-20) 原位readiness/独立gate/flags不变由第20–22节新24项完成；不静默恢复flags或重判旧失败，不接入业务。
 
 - [x] (2026-09-20) 冻结设计第13节：新v2入口保留旧七类21项及其失败判定，追加两组写入前提控制各三次；Linux/macOS共54项，原脚本和旧workflow不改。
 - [x] (2026-09-20) 新v2入口、专用workflow和正容量/重复CR回放实现；Linux27项与完整离线复核通过，缺回执和篡改raw的派生验证器负对照均完整尝试27项并exit1。
@@ -48,6 +50,8 @@
 
 ## 意外与发现
 
+run35516170917两平台原位观察全过程保持Linux34818/macOS6，六个receipt-held控制在真实EAGAIN callback结果held时完成gate。源结束分别为Linux EIO/macOS read0；取消中的自然来源属于audit，candidate仍interrupted。Ubuntu工件第一次传输停滞，仅换新目录重传同artifact，提前ENOENT不是原生失败；见设计第22节。
+
 原位新矩阵首次setTimeout(100)的两次实际持有不足100ms，属于诊断未建立冻结时间前提，不是丢字节；失败原样保留，按单调时钟原截止点重查后新v2/v3达标。新控制循环用原子writer状态而不是实时解析追加日志尾部，源事件与发布文件再独立互核。见设计第21节。
 
 窄控制run35511736807直接观测两平台共享flags变化：Linux三次34818→32770、mask2048；macOS三次6→2、mask4。null组每平台三次完全不变。helper/fixture/driver自然退出、EBADF和无事后kill分别有证据；这不是旧control回执竞态重演或长期资源零增长，详见设计第19节。
@@ -69,6 +73,8 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 通用后代实验测的是 PTY/ConPTY 的退出、挂断、EOF 与取消行为，不直接证明真实 Agent 已发生同类缺陷。macOS 后代失败在澄清后的产品范围之外不能单独构成交付阻塞；Windows 最终光标和自然资源释放问题仍在范围内。父先退出不等于交互式 shell 后台作业，启动器的实际 CLI 子进程也不能按普通工具后代排除。
 
 ## 决策记录
+
+- 决策：收口Unix原位握手/独立gate与局部取消所有权的24项证据，下一阶段转Windows在途取消和同进程资源计数，不继续反复扩展旧helper前提实验。理由：新样本已验证这些前提，但并未覆盖实际宿主或长期native增长，不能宣布生产完成。旧结果、原生首次输入与业务边界保留。日期/作者：2026-09-20 / Codex。
 
 - 决策：原位F_GETFL/poll观察不传master给子进程，回执/gate由独立控制循环推进；增加真实EAGAIN回调结果held的受控场景，验证read循环未恢复时gate先完成。理由：同时排除共享flags干扰与循环推进依赖，不用延时或恢复flags试绿，不冒称旧失败完整因果。日期/作者：2026-09-20 / Codex。
 
@@ -94,11 +100,17 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 
 2026-09-20：按用户确认的职责，Terminal / Agent 均不承诺实际主进程退出后的普通后代持续输出；将该类场景从独立产品门禁改列为底层诊断，保留两轮冻结实验和失败，不追认通过。原因是产品管理的是执行会话及终端资源，不是任意后代；这不改变主进程尾部、最终状态、资源释放和结束/取消区分的要求。下一增量优先这些保留契约与真实 Agent 启动链验证，具体收尾和预算待设计。macOS 控制组不再是无条件交付或归档前置项；设计仍比较中、验证中，计划仍 active，不宣布平台验收完成。
 
+## 上下文与定向
+
+本工作树的 `runtime-exit-integrity-native-candidates` 分支基于 `origin/main@5965adb8`，只承载隔离诊断与文档；尚未完成的运行时改造在另一个本地分支，不随此分支推送。`scripts/diagnostics/diagnose-unix-inplace-cancel.mjs` 编排当前四类各三次场景及离线复核，`scripts/diagnostics/unix-pty-observer.c` 是运行在同一Node进程内的只读原生观察模块，`.github/workflows/runtime-unix-inplace-cancel.yml` 在Linux/macOS各运行12项并保留完整工件。
+
+candidate指被验证的读取器，audit指candidate结算后才接管残留数据的诊断读取器，两者不能合并计算候选交付量。gate是允许夹具主进程退出的文件信号；独立控制循环根据成功写入回执和完整字节对账发布gate，不依赖读取循环恢复。readiness只表示当前可读，EOF必须来自真实正容量读取的结束结果，取消则明确记录interrupted。后续Windows独立worker是专门读取ConPTY输出的工作线程，现有入口为 `scripts/diagnostics/compare-windows-exit-readers.mjs` 和 `scripts/diagnostics/runtime-exit-conout-worker.mjs`；不能直接套用Unix的fd/EOF语义，须先冻结新的取消与同进程长期资源协议。
+
 ## 工作计划
 
-当前执行设计第20节的新诊断增量：先实现原位只读N-API模块、独立控制循环和四类各三次schedule，完成flags/gate/所有权/假EOF负例及Linux本地完整12项，再专用workflow两平台24项、下载完整复核。只收口实验可行性/局部取消所有权，不接入业务，不覆盖Windows或长驻资源。
+当前第20–22节原位观察/独立gate增量已完成两平台24项及复核。下一增量先冻结Windows独立worker请求/回调/缓冲/取消控制，以及同进程多会话创建结束时的句柄/线程/监听资源计数，区分自然收敛与异常清理后再实施。Unix实验可行性/局部取消所有权不能直接外推ConPTY或长期资源，不接入业务。
 
-当前增量里程碑已完成：设计第17节保留18项首次结果，第19节用12项原生控制实证helper启动链的共享flags副作用。下一增量先冻结不传master给子进程的原位readiness观察、回执发布/gate与read相对时序及独立推进，并持续检查flags不变，再另跑新取消矩阵；不把fd3/dup或静默恢复flags当修复，不接入业务、不关闭退出完整性或长驻资源债务。
+第17–19节历史里程碑保留18项首次结果及12项helper共享flags副作用实证；当时提出的原位readiness/独立gate下一步已由第20–22节完成，不再列为当前未冻结项。仍不把fd3/dup或静默恢复flags当生产修复，不接入业务、不关闭整体退出或长期资源债务。
 
 第一里程碑：加入 `scripts/diagnostics/compare-runtime-exit-readers.mjs`（Unix）、`compare-windows-exit-readers.mjs` 和 `runtime-exit-conout-worker.mjs`。前者从已验证 Linux 诊断承接，只扩展 Darwin 和严格换行归一。Windows 分离主诊断、单样本子进程与读取 worker。进程退出、源结束和资源退出分别记录，不使用假 EOF。先执行 syntax、自校验和本地完整 Unix schedule。
 
@@ -110,9 +122,9 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 
 ## 具体步骤
 
-新入口从本独立工作树根执行 `node --check scripts/diagnostics/diagnose-unix-inplace-cancel.mjs`、同入口 `--self-test`，再 `--output .debug/unix-inplace-cancel-v1-local` 及对应 `--verify-saved`；本地允许NODE_PATH指向相同锁文件的主工作树依赖。原生workflow `runtime-unix-inplace-cancel.yml` 使用Node22、Linux/macOS全24项、失败也上传并复核，推送前fetch/rebase，不推运行时分支。
+当前从本工作树根执行 `node scripts/diagnostics/diagnose-unix-inplace-cancel.mjs --verify-saved .debug/github-inplace-cancel-35516170917-macos/inplace-cancel-evidence` 或把macos换成ubuntu-retry1，均预期12项有效/无失败/exit0。依赖按锁文件安装，本地可用NODE_PATH指向相同锁文件的主工作树node_modules；不复用已有v1/v2/v3输出目录重跑。两平台24项输入已经完成，下一阶段先设计Windows取消/长期资源协议；不推运行时分支。
 
-本阶段已收口，独立工作树执行 `node scripts/diagnostics/diagnose-unix-helper-fd-flags.mjs --verify-saved .debug/github-helper-fd-flags-35511736807-macos/helper-fd-flags-evidence` 应attempted6/verified6、无失败/exit0；换ubuntu相同。旧握手同入口 `diagnose-unix-cancel-handshake.mjs --verify-saved .debug/github-cancel-handshake-35510798036-macos/cancel-handshake-evidence` 应9项有效、control-3失败/exit1。以下旧阶段命令必须改新输出目录才可重跑，不覆盖工件；下一readiness协议先写设计、再新增入口和验证，不立即重复旧矩阵筛绿。
+历史标志控制阶段已收口，独立工作树执行 `node scripts/diagnostics/diagnose-unix-helper-fd-flags.mjs --verify-saved .debug/github-helper-fd-flags-35511736807-macos/helper-fd-flags-evidence` 应attempted6/verified6、无失败/exit0；换ubuntu相同。旧握手同入口 `diagnose-unix-cancel-handshake.mjs --verify-saved .debug/github-cancel-handshake-35510798036-macos/cancel-handshake-evidence` 应9项有效、control-3失败/exit1。以下旧阶段步骤保留当时安排，命令必须改新输出目录才可重跑，不覆盖工件；当时提出的readiness协议已由第20–22节完成，当前下一步以本节首段为准，不重复旧矩阵筛绿。
 
 当前在独立工作树根执行 `node --check scripts/diagnostics/diagnose-unix-helper-fd-flags.mjs`、同入口 `--self-test`，然后 `--output .debug/unix-helper-fd-flags-v1-local` 与对应 `--verify-saved`。新增 `runtime-unix-helper-fd-flags.yml` 只运行Linux/macOS各6项，失败仍上传并完整复核。编译时优先显式DSC_NODE_INCLUDE_DIR，其次Node安装include/node，再使用系统Node头；记录实际来源，不隐式下载或改依赖。预期master组三次仅清O_NONBLOCK、null组三次不变；这是假设复现实验，非产品通过。结果后同步设计第18节后续记录、主线设计/计划/索引/原则/债务，保留active状态。
 
@@ -142,7 +154,7 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 结果与复盘
 
-当前原位矩阵已完成本地v1/v2/v3及自校验，首次两个诊断持有失败保留，最终12项局部通过；完整远端24项尚待执行，不外推macOS或生产验收。详细hash/目录/负例边界见设计第21节。
+当前原位矩阵已完成本地v1/v2/v3、自校验及远端24项/完整离线复核。首次两个诊断持有失败保留，新Unix这组前提/所有权有有效证据；不外推生产验收。详细hash/目录/负例与首次传输重试边界见设计第21–22节，下一增量为Windows在途取消和同进程长期资源。
 
 新18项与窄12项均完整运行/下载/离线复核，前者总run失败，后者精确复现两平台helper清O_NONBLOCK；旧矩阵需限定为受干扰观察。实验有效性根因已定位，但旧回执竞态没有补造原始证据，不能用修正探针或局部绿色收口生产取消。Windows在途取消、长驻资源、真实provider/宿主/packaged仍开放。
 
@@ -155,6 +167,14 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 已完成冻结、脚本和本地 42 样本；两轮远端各 147 项，总计 294 项原生候选对照，完整保留失败。Windows 初轮后代夹具前提失效，修订后候选 21/21 达标，但原 worker 的每轮 42 次资源失败仍在；Linux 两轮候选均 21/21；macOS 两轮均有六项后代失败，继续由此计划保存为诊断开放项，不再独立阻塞产品交付。本轮只重评职责和优先级，主进程尾部、最终状态、资源释放、真实启动链以及收尾/取消设计仍待推进，不归档为跨平台选型完成。两入口自校验、真实 TCP worker 和三个脚本语法通过；最终证据哈希/文档核对另记进度。不宣称生产、真实宿主或 packaged 已修复。
 
 证据收口检查：第二轮 builtin 三个后代在 public onExit 后留下成功 writer receipt，但呈现只有 `PARENT`；候选完整收到 `CHILD_TAIL`。两轮 Windows 保存结果复算分别报告 6/0 个候选失败，不把离线验证当新增原生轮次。元数据/索引/related paths、workflow 只读权限与分支边界、`git diff --check` 通过；业务、package/lockfile、已有 baseline 入口/workflow 无差异。未执行完整 UI/Agent/packaged，资源预算仍未完成；macOS 控制组保留但不是无条件交付前置项。
+
+## 证据与备注
+
+本阶段固定原生输入为697ee3f0012aa9d68f1774fa9a43ba3836e165d7，run35516170917 attempt1的Ubuntu和macOS分别12/12通过。两个下载目录的独立离线复核均输出：
+
+    {"attempted":12,"verified":12,"failures":[],"evidenceErrors":[],"note":"Offline verification, not new native execution."}
+
+原始工件位于 `.debug/github-inplace-cancel-35516170917-macos/inplace-cancel-evidence/` 和 `.debug/github-inplace-cancel-35516170917-ubuntu-retry1/inplace-cancel-evidence/`，完整输入哈希、环境、工件ID和传输重试边界已写入设计第22节。本地v1两个不足100ms的失败和全部旧原生失败保留，复核成功不是新增原生样本或生产通过。
 
 ## 接口与依赖
 
@@ -173,3 +193,5 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 修订记录（2026-09-20，观察器有效性）：完整18项首次结果和离线复核已保留；helper启动链的共享flags风险使整个矩阵需要限定解释，新增12项原位标志控制先证明前提，不改旧脚本或失败、不接入业务。
 
 修订记录（2026-09-20，标志控制收口）：两平台12项及下载复核完整通过副作用复现预期，将共享flags变化记录为目标组合的native事实，不补造历史回执时序；下一增量先设计原位readiness/独立gate，旧结果与生产边界不变，计划保持active。
+
+修订记录（2026-09-20，原位矩阵收口）：先冻结新24项，再完成本地三版和两平台首次原生运行/下载复核；保留本地两个不足100ms的失败及所有旧结果。Unix前提/独立gate/局部取消证据已建立，转Windows在途取消及同进程长期资源；未选定生产方案、未修改业务或归档总计划。最终文档检查补齐独立计划的上下文导航与证据章节，并标明旧步骤的历史性质，避免重复执行已完成阶段。
