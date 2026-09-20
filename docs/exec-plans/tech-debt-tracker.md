@@ -22,6 +22,10 @@
 
 ## 技术债列表
 
+2026-09-20 第二轮后续：run 35498732353 再执行 147 项，Windows 候选在真实后代存活/TTY 门槛下 18 次完整、3 次明确取消，原两路径仍共 42 次资源失败。macOS 两轮均有六项后代门槛失败，下一增量需原始 write、leader 控制组与 EOF 后保持 master 观测。跨平台生产选型和资源预算仍开放，见候选设计第 8 节与 active ExecPlan。
+
+2026-09-20 原生候选补充：run 35498026812 的完整 147 样本已保留，不能据 Linux 候选成功推广到其他平台。macOS 后代两组没有满足存活输出假设，需要 session leader/原始 write/EOF 后持有 master 对照；Windows 原 worker 两路径共 42 次资源退出失败，builtin 暂停时文字完整但末尾光标不完整，独立 worker 普通 15 项通过。Windows 首轮后代由父 Node Job 自动终止，六项门槛失败不是存活后代短读证明，修订夹具另跑且增加存活/TTY 断言。生产 provider、长驻句柄增长、并发输入、真实 Host/Webview/packaged 和最低宿主矩阵仍未验收；不关闭原资源与短读债务。固定参数、首轮证据和修订依据见 `docs/design-docs/runtime-exit-integrity-native-candidates.md`。
+
 | 日期 | 主题 | 背景与触发条件 | 影响范围 | 当前临时处理 | 建议修复时机 | 关联文档或代码路径 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 2026-09-20 | 原生退出基线覆盖与 Windows 自然退出资源生命周期 | 新增 runner 只覆盖 Node 下 5 个公共 node-pty 场景；首次 run 35491608835 的 Windows 内容/取消 15 项通过但 2 秒资源 guard 失败，源码自然 onExit 不进入 worker dispose，不能把内容匹配等同资源自动释放。 | 源排空保证、正常 stop/后代持有输出、90000 行压力、候选 reader、Windows DLL/worker、Host/Webview/真实 Agent/packaged 与全部支持 OS/架构均未由最小基线证明；Windows Server 不代表所有客户端。 | run 35492043484 三平台各 15 项及进程 guard 通过，Windows 只在内容结算后用公共 kill 显式回收 fixture；观察和清理资源分别保存，首次失败不覆盖。该通过不证明自然退出自动清理、资源计数为零或产品已修复；不修改生产、不放宽 guard。 | 扩展正式退出完整性矩阵及生产生命周期方案时分别收口；独立 runner 基础设施已验收，不替代这些后续交付。 | `docs/design-docs/runtime-exit-integrity-native-runners.md`、`docs/exec-plans/completed/runtime-exit-integrity-native-runners.md`、`scripts/diagnostics/diagnose-native-pty-exit-integrity.mjs` |

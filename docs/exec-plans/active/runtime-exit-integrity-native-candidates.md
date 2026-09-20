@@ -11,8 +11,9 @@
 - [x] (2026-09-20) 从 `origin/main@5965adb8` 建立独立诊断分支，冻结设计、案例和预算。
 - [x] (2026-09-20) 实现独立候选、自校验与真实 socket worker 测试；本地 Node 25 完整 42 样本、保存结果复核通过。
 - [x] (2026-09-20) 首轮 run 35498026812 完整执行 147 项，保留 macOS/Windows 各 6 个候选失败与 Windows 42 个原 worker 资源失败。
-- [ ] 修订 Windows Job 自动杀子进程的夹具前提，增加实际后代存活/TTY 断言后执行第二轮完整 schedule；不改变 reader、轮次或等待预算。
-- [ ] 回写结论、限制和技术债，提交可复核结果。
+- [x] (2026-09-20) 修订 Windows Job 夹具并加强存活/TTY 断言；run 35498732353 再执行完整 147 项，Windows 候选 18 次完整、3 次明确取消，macOS 六项失败继续保留。
+- [x] (2026-09-20) 下载两轮全部六份工件，核对 schedule/raw 哈希、Windows 全量内容/光标与输入源码 CRLF 哈希；更新设计、索引、原则与技术债，保留 macOS 开放项。
+- [ ] 下一增量补 macOS 原始 write、leader 存活/退出和 EOF 后保持 master 的控制实验；不得把本轮读到 0 直接判为产品完整性已满足。
 
 ## 意外与发现
 
@@ -28,6 +29,8 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 
 2026-09-20：第二轮只改变 Windows 后代由 cmd start /b 创建以避开父 Node 的私有 Job，同时断言实际后代仍活着且 stdout 为 TTY；不使用会改变 console 的 detached 开关。冻结参数保持，原首轮失败不可覆盖，macOS 原失败不改判定。
 
+2026-09-20：本计划保持 active，下一增量继续 macOS 控制实验；本轮诊断已形成可复核提交，但没有选定生产 reader 或将候选接入业务。不因为 Windows 局部成功就移除 macOS 门槛或提前归档跨平台研究。
+
 ## 工作计划
 
 第一里程碑：加入 `scripts/diagnostics/compare-runtime-exit-readers.mjs`（Unix）、`compare-windows-exit-readers.mjs` 和 `runtime-exit-conout-worker.mjs`。前者从已验证 Linux 诊断承接，只扩展 Darwin 和严格换行归一。Windows 分离主诊断、单样本子进程与读取 worker。进程退出、源结束和资源退出分别记录，不使用假 EOF。先执行 syntax、自校验和本地完整 Unix schedule。
@@ -35,6 +38,8 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 第二里程碑：新增 `.github/workflows/runtime-exit-integrity-candidates.yml`，分别运行 Unix 或 Windows 命令，保留所有基线失败及候选失败。每平台 Node 22，各 Unix 42 样本、Windows 63 样本，参数不得在失败后为了变绿调整。工件含整个 schedule、脚本及 native 哈希和环境；下载后独立核对。
 
 第三里程碑：正式设计记录结论与首次失败分类，未复现与未测试明确写出。更新技术债并把此计划归档；生产方案仍需要宿主、真实 provider、资源预算和完整契约集成，不以诊断计划完成关闭产品债务。
+
+首轮发现后的扩展里程碑：在归档前继续用本独立分支补 macOS 控制实验，避免未经验证的后代假设进入 reader 选型。使用真正记录 write 返回值/errno 的 fixture，比较 leader 退出与保持存活；首次 EOF 后持有 master 的观测与原关闭路径分开。该增量尚未实现，正式执行前另冻结轮次、期限和结果分类，不调整已有两轮原始判断。
 
 ## 具体步骤
 
@@ -52,7 +57,9 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 结果与复盘
 
-已完成冻结、脚本和本地验证。Linux Node 25 的 42 样本中候选 18 次精确 read EIO、3 次明确取消，原 reader 三次暂停缺尾与三次后代写失败完整保存于 `.debug/native-candidate-v1-local/`。两个入口自校验、三个脚本语法、保存哈希复核和 diff whitespace 检查通过。远端三平台结果待执行，不宣称其他平台健康或生产已修复。
+已完成冻结、脚本和本地 42 样本；两轮远端各 147 项，总计 294 项原生候选对照，完整保留失败。Windows 初轮后代夹具前提失效，修订后候选 21/21 达标，但原 worker 的 42 次资源失败仍在；Linux 两轮候选均 21/21；macOS 两轮均有六项后代失败，下一步控制实验继续由此计划承接，不归档为跨平台选型完成。两入口自校验、真实 TCP worker 和三个脚本语法通过；最终证据哈希/文档核对另记进度。不宣称生产、真实宿主或 packaged 已修复。
+
+收口检查：第二轮 builtin 三个后代在 public onExit 后留下成功 writer receipt，但呈现只有 `PARENT`；候选完整收到 `CHILD_TAIL`。两轮 Windows 保存结果复算分别报告 6/0 个候选失败，不把离线验证当新增原生轮次。元数据/索引/related paths、workflow 只读权限与分支边界、`git diff --check` 通过；业务、package/lockfile、已有 baseline 入口/workflow 无差异。未执行完整 UI/Agent/packaged，后续 macOS 控制组和资源预算仍未完成。
 
 ## 接口与依赖
 
