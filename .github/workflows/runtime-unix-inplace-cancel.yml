@@ -1,0 +1,58 @@
+name: Runtime Unix Inplace Cancel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [runtime-exit-integrity-native-candidates]
+    paths:
+      - .github/workflows/runtime-unix-inplace-cancel.yml
+      - scripts/diagnostics/diagnose-unix-inplace-cancel.mjs
+      - scripts/diagnostics/unix-pty-observer.c
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-unix-inplace-cancel-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  unix-inplace-cancel:
+    name: Inplace cancel / ${{ matrix.os }} / Node 22
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check syntax
+        run: node --check scripts/diagnostics/diagnose-unix-inplace-cancel.mjs
+      - name: Check observer, ownership, gate and verifier negatives
+        env:
+          DSC_INPLACE_SELFTEST_EVIDENCE: inplace-cancel-selftest
+        run: node scripts/diagnostics/diagnose-unix-inplace-cancel.mjs --self-test
+      - name: Run full 12-sample schedule
+        run: node scripts/diagnostics/diagnose-unix-inplace-cancel.mjs --output inplace-cancel-evidence
+      - name: Verify complete saved schedule including failures
+        if: always()
+        run: node scripts/diagnostics/diagnose-unix-inplace-cancel.mjs --verify-saved inplace-cancel-evidence
+      - name: Upload first complete evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-unix-inplace-cancel-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            inplace-cancel-evidence/
+            inplace-cancel-selftest/
+          if-no-files-found: warn
+          retention-days: 14

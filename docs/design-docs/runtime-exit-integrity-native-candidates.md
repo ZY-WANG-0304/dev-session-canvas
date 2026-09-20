@@ -276,3 +276,13 @@ fixture仍一次同步write请求写2048个ASCII C，仅真实短写时继续剩
 `receipt-held-control` 是新命名的调度负载控制，不重演历史挂起：fixture写完后暂不发布回执，等待独立release文件。driver收齐2048后继续一次正容量read；在非阻塞PTY、主体仍活着且无新输出时，必须真实返回EAGAIN/EWOULDBLOCK。driver记录这个空read的callback后持有其逻辑返回值，暂停读取循环；控制循环观察到该held状态才发receipt-release，fixture发布最终回执；同一个独立控制循环核对回执与精确字节并发布退出gate，随后才释放held回调、继续读取真实EOF。严格核对“full bytes→空read callback held→release→回执观察→gate发布→held返回释放”的因果事件链；EAGAIN不是EOF，逻辑回调持有也不是OS read仍阻塞。这样直接验证gate不依赖读取循环恢复，而非只等一个随机延时；writer receipt在其他三类不人为延迟。
 
 原10s采集、1s资源guard、15s独立父watchdog、2ms重查不变。控制循环在成功/错误/取消样本收尾时显式停止并结算；deadline只表示中断，不补造EOF。close前必须无未结算read/held结果，父watchdog仅清理本次driver进程组及另一个fixture组。无summary、缺回执等有效失败仍完整复核，其余样本继续执行；原始工件损坏单列evidenceErrors。记录Node/libuv/node-pty、头文件/编译器/源/binary哈希及输入SHA，输出目录不得存在。先编译/非PTY契约负例/本地全12项，再推独立分支跑原生24项并下载完整复核。新通过不追认旧18项有效，不替代Windows在途取消、长驻native资源或真实宿主验收。
+
+## 21. 原位矩阵本地验证与首次失败
+
+第20节由 `758efccf` 在实现前冻结。新writer同时保存原始追加事件与原子替换的完整状态，运行中控制循环读取后者，避免解析未发布完的日志尾部；退出后再将二者互核。原位观察前后flags、逐read观察/实际callback/唯一交付、source真实EOF、consumer已应用内容、自然退出与关闭证据分别校验；缺summary或回执的合法失败不阻止全schedule复核。
+
+Linux Node25.6.0/libuv1.51.0首次 `.debug/unix-inplace-cancel-v1-local/` 完整12项中10通过、2失败；两次held回调实际仅99.682653/99.837933ms，未达到冻结100ms。它们的64/1984分账、flags不变、自然退出均成立，但原失败保持，离线复核attempted12/verified12、精确保留两失败/exit1。直接setTimeout(100)未保证单调时钟经过100ms，修正为按原100ms截止点重查，不增长采集期限、不降低断言。v1源码hash `36e6c38c79a613526dadf00884f236ac190b664cca7b48213fe370391b3a4966` 及全部原工件保留。
+
+另跑v2全12项及复核通过，脚本hash `6e80ea5b5f8e6c1f31f651e1b56ccfb5e9e0b3301b1f531d31ee767879da6f10`；随后仅加固无summary/缺回执负例、控制组无audit与最终状态按实际parser-applied事件复核，最终v3全12项及复核通过。目录 `.debug/unix-inplace-cancel-v{2,3}-local/`，每版快照独立保留，不用新verifier回判v1。六次取消candidate64/audit1984且interrupted，两种无取消控制共六次candidate2048/audit0、真实EIO；receipt-held三次均有完整因果事件链，gate在held逻辑read释放前发布。所有原位观察flags均34818不变，fd关闭/EBADF与driver自然退出，无事后kill或cleanup残留；这不是长期native资源无增长证明。
+
+最终JS SHA256 `714bf40f2de43e46cb9219ed4546b7d93cac1c4a349dc1bf724de55f5f28335e`，C SHA256 `1428850a154a8bc6ad3202871c0c94bb63d86cb28bca02c56077075240e10371`。最终非PTY自校验 `/tmp/dsc-inplace-selftest-QEuVeJ`：四类合成正例及flags/丢交付/提前audit/假EOF/gate晚于held释放等负例通过；合成12份有效失败（含缺回执、无summary）完整复核，损坏1份callback原始数据后仍尝试12项、11有效且继续报告末项失败。普通文件只读观察及非PTY阻塞driver硬watchdog通过，不冒称全部原生异常清理已验收。此前预检 `/tmp/dsc-inplace-selftest-{O1dqD8,bFfzwi,nzsHF3}` 保留。C编译/JS语法、只读两平台workflow YAML、bridge回归、diff检查通过，远端24项仍待执行。
