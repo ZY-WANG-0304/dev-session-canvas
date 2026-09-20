@@ -23,6 +23,10 @@
 
 ## 技术债列表
 
+2026-09-20 标志控制收口：输入951724c2 / run35511736807两平台12项均精确复现副作用，下载复核无失败或工件损坏。Linux继承master组三次仅清2048位、macOS三次仅清4位，null组各三次不变；全部自然退出/EBADF，无事后kill。原helper启动的共享O_NONBLOCK干扰已有两平台实证，旧18项及本地同helper样本仍不能作为非阻塞reader验收，原17绿/1红不改；新安静控制没有重演历史回执时序。下一增量先冻结原位readiness与独立gate推进，不静默改flags、不以fd3/dup规避、不选定生产API或预算。Windows主进程TAIL/资源反例及在途取消、长期native资源、真实provider/宿主/packaged债务不关闭；见退出完整性设计第26节。
+
+2026-09-20 可读性握手阶段：输入931e8e22 / run35510798036全18项及离线复核完成，Ubuntu9/9、macOS8/9，总run失败。macOS control-3收齐2048却第4次read不回调、gate未打开，最终父watchdog清理。源码审计进一步发现helper启动链会清共享O_NONBLOCK，风险跨Linux/macOS，整轮及本地同helper样本暂停作为非阻塞reader验收依据，原17绿/1红不改。新增原位F_GETFL与不继承PTY对照先核实副作用；旧样本未记录flags/精确回执时序，不能冒称完整因果已native闭环。此为诊断有效性问题，不是新增业务缺陷；Windows在途取消、长驻资源、真实provider/宿主/packaged及生产选型继续开放。见退出完整性设计第25–26节及active计划。
+
 2026-09-20 写入控制阶段：独立输入7d832d3e / run35508235734完整54项及下载复算完成，Ubuntu27/27、macOS21/27，总run失败。新v2探针的正容量暂停与失败工件完整验证已通过；macOS六个原取消仍失败，写入控制定位先等全量回执才读的夹具循环等待，不是candidate丢弃已写成功数据。下一步冻结无循环等待握手，保留2048负载、独立candidate/audit/最终receipt对账及旧失败；控制组不替代取消验收。Windows在途取消、同进程native资源增长（含Apple kqueue）、真实provider/宿主/packaged与生产API仍开放，不关闭退出完整性债务。见设计第24节及active计划。
 
 2026-09-20 新原生阶段：独立分支 f4600844 的 run 35506150727 完整执行 84 项，总结果失败；Linux 21 项及 Windows 候选 21 项达标，真实 bridge cmd/bat 受控生命周期已有原生证据，但基线三个暂停尾部及 21 次自然资源退出仍失败。macOS 12 项通过、9 失败：3 项是新探针零容量读取冒充 EOF，6 项取消未建立 2048-byte 成功写入前提，需修诊断并做原始写入/受控放行控制组，不能视为产品缺陷或验收通过。Unix 64-byte 在途数据与 1984-byte audit 说明取消不能代替自然排空。Apple kqueue 未见 close 是待长驻计数的源码风险；Windows 在途取消、长驻资源、真实 provider/宿主/packaged 继续开放。业务及旧实验不改，完整证据/下一步见设计第 22–23 节。

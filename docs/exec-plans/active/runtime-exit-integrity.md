@@ -14,10 +14,16 @@
 
 ## 进度
 
+- [x] (2026-09-20) 承接独立分支8d442c7b冻结的18项可读握手矩阵，一次2048写/poll非消费观察/实际read所有权分账，主线设计第25节同步；不改旧断言或业务。
+- [x] (2026-09-20) 新helper/入口/workflow、本地v1/v2各9项与独立审查完成；输入931e8e22的run35510798036完整18项/下载复核，总run失败，macOS control-3收齐后挂起。
+- [x] (2026-09-20) 独立审计发现helper启动链清共享O_NONBLOCK的两平台风险，暂停全部同helper样本的非阻塞reader验收解释；新12项原位flags控制已在设计第26节冻结。
+- [x] (2026-09-20) 输入951724c2的run35511736807两平台12项及下载复核完成，Linux/macOS均实测master组仅清O_NONBLOCK/null组不变；本地两版各6项、失败verifier负控及bridge回归通过，设计/索引/原则/债务同步。
+- [ ] 下一增量先冻结原位readiness、独立回执/gate推进和flags不变断言，再运行新取消矩阵；旧18项不恢复验收资格，不接入业务reader。
+
 - [x] (2026-09-20) 写入前提阶段基于fbcc94ee，独立分支冻结第13节并新增v2入口，旧探针不动；本地27项与缺回执/篡改raw的完整失败复核通过。
 - [x] (2026-09-20) 收取7d832d3e / run35508235734两平台54项，完整复算各27项无工件错误；Ubuntu27通过、macOS21通过/6失败，写入进度与受控读放行定位夹具循环等待，保留原取消门槛及失败。
 - [x] (2026-09-20) 两工作树共10份文档同步，frontmatter/索引/关联路径/计划章节及diff检查通过；核对新脚本/原生快照和全部cleanup/driver，业务、依赖、旧脚本/workflow零改动，未执行新的真实provider/UI/packaged验收。
-- [ ] 冻结不要求首读前全量写完的新取消握手，验证实际在途read/回调所有权及候选/audit/最终writer receipt分账；原2048负载与所有失败保留，不把控制组通过替代取消验收。
+- [x] (2026-09-20) 新取消握手已按第25节冻结，不要求首读前全量写完；执行结果与helper有效性限制见第26节，原2048负载与所有失败保留，不把控制组通过替代取消验收。
 
 - [x] (2026-09-20) 用户确认独立交付范围，建立设计/规格入口并明确不在本次立项中修改业务代码。
 - [x] (2026-09-20) 承接两轮诊断，记录 Linux 实证、Windows 条件性反例、macOS/Windows 原生证据缺口和公共契约依赖。
@@ -44,6 +50,12 @@
 
 ## 意外与发现
 
+窄控制run35511736807将helper共享flags副作用从源码风险提升为两平台实测：Linux三次34818→32770（mask2048），macOS三次6→2（mask4）；两边null对照各三次均不变。全部自然退出/EBADF成立，无事后kill。新实验无PTY读写，不能补造旧control的回执时序或证明唯一挂起因果，也不证明生产资源长期无增长。
+
+新run35510798036完整18项为Ubuntu9/9、macOS8/9，失败control已收齐2048却pending read到父watchdog。更重要的是helper启动链遗漏共享O_NONBLOCK影响：libuv fork与Apple posix_spawn均清继承标准fd的非阻塞标志。旧工件无flags轨迹，整个同helper矩阵暂不能作为非阻塞reader验收，包括绿色项；已冻结新12项原位F_GETFL/不继承PTY对照，保留原实验与结果。见设计第26节。
+
+第25节当时的候选不将FIONREAD当作未经验证的跨Unix PTY master输出计数，而用poll建立非消费可读观察，再由真实read回调证明成功。helper额外持有master引用，要求首读前释放并纳入watchdog组清理；这些条件未覆盖启动时改flags，其无侵入前提现已由第26节否定，不是当前下一步方案。实际read可短于64、真实n须完整交付的所有权边界仍保留，不重判旧64/1984固定断言。
+
 新控制run35508235734确认macOS取消夹具循环等待：首读之前等待2048-byte全量回执，但同步写在无读取时只有enter；相同100ms观察后放行读取，三次均返回2048并完整取得EOF。不是candidate丢弃已写成功字节，也不是全平台生产缺陷；应用层记录不足以推定内核容量。新暂停案例均真实恢复后另收5402bytes，read容量始终为正。六个取消失败仍保留，原生和离线验证均完成全部27项、macOS正确exit1。详见设计第24节。
 
 新原生 Unix 取消负对照显示：候选已发起 read 的 64 bytes 可以全部保住，但同一次主进程成功写入的 1984 bytes 仍留在系统缓冲，需要独立 audit 才读到。因此“取消诚实标注 interrupted”不能代替主进程自然尾部保证。单次 master fd 的 EBADF 也不证明 native 全资源无增长：锁定 node-pty 的 Apple `SetupExitCallback` 创建 kqueue 后未见对应 close，尚须长驻原生计数，不作为本轮实测泄漏。跨进程 JSON 夹具发布和父 watchdog 有界日志结算等取证加固分别留存版本，不覆盖旧成功或失败。
@@ -65,6 +77,12 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 真实链路只有 Windows .cmd/.bat 会被 bridge 包 cmd /d /s /c，POSIX Agent 不由扩展另加运行 shell。本机 Codex npm JS 源码会等待 child，而旧 fake-provider 多是 exec；新增等待/非等待启动器对照补齐了这一层受控证据，不等于真实 provider 通过。首次启动诊断因错误要求 Linux spawn-helper 而在 spawn 前失败，0 个原生样本，已保留；12 s 进程内 timer 不能约束同步 probe 阻塞，外部 watchdog 与新增 fatal handler 故障注入仍缺。
 
 ## 决策记录
+
+- 决策：本阶段以完整18项首次结果和12项flags控制收口，保留原矩阵验收解释无效的结论；下一次先冻结原位readiness与独立gate推进，不立即扩大本轮实验。理由：观察器启动副作用已在两平台证实，但旧回执竞态没有原始时间证据，产品reader/取消/资源选型仍需有效实验。日期/作者：2026-09-20 / Codex。
+
+- 决策：先完成helper共享fd标志副作用的窄控制，暂停18项作为非阻塞reader验收依据，不立即重跑全取消矩阵。理由：只读helper正文不保证其Node/libuv启动无侵入，Linux绿色也不能排除共同风险；新原位inspect不启动持有受测fd的观察器。原样本精确因果仍须区分源码推断与native证据，不修改业务。日期/作者：2026-09-20 / Codex。
+
+- 决策：用独立只读poll helper和实际成功read所有权冻结新18项，不拆小写入或提高原等待上限。理由：保留2048写请求而解除写回执与首读的循环等待，且避免以跨平台不可靠的FIONREAD输出计数代替原生证据；新n/2048-n分账契约独立于旧失败。日期/作者：2026-09-20 / Codex。
 
 - 决策：以完整54项及原始写读轨迹收口本阶段，下一步先冻结可同时推进读写的取消握手，不改原取消失败或以控制组替代通过。理由：先等同步全量写完才读在目标macOS环境形成循环等待；需修夹具前提而非放宽数据/时间门槛，生产取消政策仍须独立设计。日期/作者：2026-09-20 / Codex。
 
@@ -90,6 +108,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
+当前可读性握手18项及窄控制12项均完整执行、下载复核。前者总run失败，后者在两平台实证helper启动会清共享O_NONBLOCK，使原矩阵不能用于非阻塞reader验收。只收口诊断有效性问题的定位，不改判旧失败；下一增量先设计原位readiness/独立gate推进再跑新取消对照，生产方案仍未选定。
+
 本次写入控制阶段新增本地27项和run35508235734两平台54项，完整下载复算，无工件错误。Ubuntu27/27、macOS21/27，总run失败：新暂停探针修复已验证，六个原取消仍因写读循环等待未进入待测路径；读放行控制定位了前提根因，不替代取消验收。下一步先冻结新取消握手，再继续Windows在途取消、同进程长驻资源和生产契约选型。旧入口/断言/失败不变，业务未修改，不宣布全平台或完整重构完成。
 
 此前已承接模型阶段完成新原生84项及本地Linux三版各21项，完整保留首次失败。run35506150727中Linux21项达标，Windows候选21项达标且actual bridge受控cmd/bat主体等待/0与7传播有证据；基线主进程TAIL确实缺失、自然资源guard继续失败。macOS12项通过/9项失败，三项新诊断零长read误认EOF、六项2048-byte写入前提未成立的原结果不变，本次只用新实验定位。真实provider/信号/宿主/packaged及资源/API仍开放；旧两轮294项原始断言和失败不变，设计比较中/验证中、计划active，里程碑一和技术债均不关闭。
@@ -103,6 +123,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 平台 provider 的现状见安装的 `node_modules/node-pty/lib/unixTerminal.js`、`windowsPtyAgent.js`、`windowsTerminal.js` 和 native 源码。已有证据位于 `docs/design-docs/runtime-terminal-tail-diagnosis.md`、`docs/design-docs/runtime-terminal-cross-platform-diagnosis.md`；固定版本来源已在文档摘录，不要求接手者依赖本机 `.debug/` 才理解问题。不能直接编辑 node_modules 作为生产修复。
 
 ## 工作计划
+
+当前下一增量先按设计第26节后续边界冻结不传递master给子进程的原位readiness协议，记录flags前后及回执发布/观察/gate与read的时序，使gate推进不依赖下一次read回调。具体新入口和断言须运行前设计；不以fd3/dup或静默恢复flags当作已确认修复。本轮证据已收口，不继续重复执行旧18项来筛选绿色，产品尾部/资源与Windows开放项不变。
 
 ### 里程碑一：选定可验证的契约与实现
 
@@ -125,6 +147,10 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+当前证据在独立 `runtime-exit-integrity-native-candidates` 工作树复核：`node scripts/diagnostics/diagnose-unix-cancel-handshake.mjs --verify-saved .debug/github-cancel-handshake-35510798036-macos/cancel-handshake-evidence` 应全9项有效、control-3失败/exit1；`node scripts/diagnostics/diagnose-unix-helper-fd-flags.mjs --verify-saved .debug/github-helper-fd-flags-35511736807-macos/helper-fd-flags-evidence` 应全6项有效、无失败/exit0。将macos换成ubuntu，分别应9项/6项无失败；这些均是离线审计，不是新原生样本。以下旧阶段命令只作历史重跑入口，必须使用新目录且不得覆盖首次工件。新readiness诊断先在正式设计冻结后再实施，不由本计划擅自选择生产方案。
+
+本阶段在独立工作树按候选设计第15节执行 `node scripts/diagnostics/diagnose-unix-cancel-handshake.mjs --self-test`、`--output .debug/unix-cancel-handshake-v1-local` 和对应 `--verify-saved`，helper随新入口在工件目录编译，Linux需gcc、macOS需clang。新专用workflow仅两平台各9项，先本地完整验证与只读审查再推送运行；禁止改旧入口、筛选成功案例或推未完成运行时历史。源码/构建/原始字节及所有失败都留证，结果后续写入第25节。
 
 最新阶段已完成，设计第24节承接独立分支设计第14节。独立工作树根执行 `node scripts/diagnostics/diagnose-unix-exit-tail-v2.mjs --verify-saved .debug/github-write-control-35508235734-ubuntu/write-control-evidence` 预期27项有效/无失败/exit0；将ubuntu换成macos预期27项有效/六个原取消failure/exit1，均无evidenceErrors。后续先在独立分支冻结无循环等待的取消握手，明确实际read/回调所有权、候选与audit分账及最终成功写回执；不改旧入口/原失败，不推运行时历史，也不直接把控制组结果接入业务。
 
@@ -242,3 +268,9 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 修订记录：2026-09-20 冻结并实施写入前提控制阶段，新增修订版入口保留旧脚本，本地27项与完整失败工件验证已完成，推进两平台54项；未选择生产reader、取消条件或预算。
 
 修订记录：2026-09-20 完成54项原生控制和完整离线复核，定位macOS夹具的写读循环等待，新探针暂停/失败复核已验证；保留六个原取消失败和调用级证据边界，将无循环等待握手、Windows在途取消和长驻资源移交后续，不选定生产政策或关闭计划。
+
+修订记录：2026-09-20 冻结并进入可读性握手阶段，用不消费数据的poll观察解除全量写回执先于首读的循环等待，新增18项窄矩阵并严格区分实际read所有权/audit/最终回执；业务与旧实验仍不变。
+
+修订记录：2026-09-20 完成18项首次运行及完整复核，记录macOS收齐后挂起和两平台helper启动链共享flags风险；暂停整轮非阻塞reader验收解释，冻结12项原位标志控制，保留所有旧结果，不将诊断缺陷冒称产品根因。
+
+修订记录：2026-09-20 完成12项两平台原生flags控制及完整下载复核，共享O_NONBLOCK副作用已有两平台直接证据；同步源码/观测/历史因果的限制，将原位readiness和独立gate推进留待新协议，旧失败不变、业务未改、计划仍active。
