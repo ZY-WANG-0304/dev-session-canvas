@@ -252,3 +252,13 @@ master组原样启动旧C helper，stdio为 `[master, 'pipe', 'pipe']`；null组
 第18节由 `9ae1d7f7` 先行冻结。新模块通过N-API/C语法检查和独立只读审查；运行前补native-owner清理回退、缺summary合法失败重建以及原始事件/summary/gate/退出结果互证。Linux Node25.6.0/libuv1.51.0的 `.debug/unix-helper-fd-flags-v1-local/` 与最终v2各完整6项通过及离线复核：master组三次flags从34818到32770，恰好清2048位，null组三次34818不变；四次身份/TTY一致、主体和driver自然退出及fd EBADF成立。v1后仅补gate文件写入失败的合法失败分类，另跑全v2留证，不覆盖v1。
 
 最终脚本SHA256 `3ce60fc6806d9b3a5752d52a4e5c96fbf700d624a44afbf64abd8f184d8c9928`，N-API C为 `b816790632e98cbb7137eb7320c572e4ea4e2ebac6023c89acc17f7dc2497768`。合成标志负例自测 `/tmp/dsc-unix-fd-flags-selftest-u5o6eJ` 通过，原agent预检证据另存 `/tmp/dsc-unix-fd-flags-selftest-aUhBXM`；均不启动PTY。派生离线负对照 `.debug/fd-flags-verifier-control-pZPCEB/` 把六个driver标为退出失败，全部6项核对、failures=6/evidenceErrors=0/exit1；再损坏一份events仍attempted6、verified5、其余5个failure加1个evidenceError/exit1。原生工件不改，负对照不计新原生样本。新workflow只读权限/两平台范围及YAML检查通过；远端原生12项仍待运行。
+
+## 19. 共享标志副作用的两平台原生证据
+
+输入 `951724c2d9893f93ddf882ba1ac0226ca36b1beb` 的 [run 35511736807](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35511736807) attempt1完整执行12项，两平台各6项符合第18节冻结的**副作用复现**预期，总run成功，未重试。master组每个平台三次均只清O_NONBLOCK，null组三次均全部flags不变。Linux flags为34818→32770、mask2048；macOS为6→2、mask4。每次前后双观察稳定、fd身份与TTY一致，helper/fixture/driver自然退出、master关闭后EBADF；没有硬watchdog、cleanup signalled=false、remaining/errors均空。
+
+这将“helper启动改变共享文件状态”的两平台结论从源码风险提升为目标原生组合的实测事实。Node/libuv启动时的继承标准fd处理，而非C正文poll/fstat操作，构成观察器干扰。它否定了第15节及本地同helper样本的无侵入前提，包括原来的绿色项；原始17绿/1红仍保留，不能用这12项绿色恢复取消验收资格。此实验安静、无PTY读写，没有重演旧control的writer receipt时序，故不把旧挂起的完整因果链或唯一根因冒称native闭环，也不将其转成产品缺陷。
+
+下载目录 `.debug/github-helper-fd-flags-35511736807-{ubuntu,macos}/`，两边离线复核均attempted=6、verified=6、failures=[]、evidenceErrors=[]。脚本和C哈希与第18节一致，旧helper源码hash仍为 `0e17361b809fc1d05bd8261446ac4421755d297c170bf18c41e01c83648528b5`。Node运行时与编译头均22.23.2，libuv1.51.0、node-pty1.2.0-beta.12；Linux x64 kernel6.17.0-1022-azure/image20260907.300.1，macOS arm64 Darwin25.6.0/image20260907.0351.1。pty.node哈希分别 `ab01eb7d31a5b6202e2a51339ad2cbe3f2a73e3a679e88195011e28f3160d5a7`、`30ac36647725b2402585781c8e81be39d76962bf79d03620a9763539d0fdbec8`。Ubuntu工件ID `10605812206`、服务端ZIP digest `0e15b05412ef86c24586f08c35138354eec8f65f2383babc11d3f0053609a846`；macOS ID `10605791331`、digest `3ff7e11650e4655abbd63409be166006564f00d689ec5655658c75753a16fddd`，非本地ZIP独立复算。
+
+本阶段收口为实验有效性问题的定位，不再扩大矩阵。下一增量应先冻结不经子进程stdio传递master的原位readiness路径，并将回执/gate推进与等待read callback解耦，记录相对时序，持续断言flags未变；再用新入口运行完整取消/无取消对照。不能简单改传fd3（Apple启动路径仍涉及所有继承槽），也不能用dup/dup2假定隔离文件状态，或静默恢复flags掩盖改变过前提。具体新诊断协议需先行设计，尚不是生产reader/取消API或预算。Windows在途取消、同进程native长期资源（含Apple kqueue风险）、真实provider/宿主/packaged继续开放。业务、依赖和旧实验零修改，bridge既有回归、元数据/索引/关联路径/计划及diff检查通过；设计保持比较中/验证中，计划active。
