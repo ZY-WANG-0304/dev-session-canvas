@@ -26,6 +26,8 @@
 - [x] (2026-09-20) 修正 Windows 父 Node Job 自动杀子进程的夹具前提并加严存活/TTY 断言；run 35498732353 再执行 147 项，Windows 候选 18 次完整、3 次明确取消，macOS 六项失败保留。
 - [x] (2026-09-20) 按用户澄清拆分产品验收与普通后代诊断，重新登记阻塞理由；保留主进程尾部/最终状态/资源及启动链义务，不改旧测试或追认历史失败为通过。
 - [x] (2026-09-20) 本次 10 份文档完成 YAML/索引/新增引用、计划状态和历史协议/证据不变检查；独立只读复审无实质阻塞，修正主进程与后代退出的措辞歧义，不执行新实验或业务测试。
+- [x] (2026-09-20) 按设计第 19 节冻结并验证新屏障模型，Node/Electron 首轮及 consumer 对账加固后各 25/25；实际 tracker 四项两版均通过。POSIX 启动器各 12 项达标，保留启动前预检失败及源码快照；仅新增隔离诊断，不改业务或旧实验。
+- [x] (2026-09-20) 独立复审并加固诊断取证；4 个新文件语法、既有 bridge/tracker 回归、旧契约两组 39 项、完整工件 schedule/hash/结果/清理及文档一致性检查通过，业务/依赖/旧测试零改动。
 - [ ] 冻结完成/取消/中断契约、旧版本能力边界、候选对照及原生平台矩阵，登记固定重复轮次和等待/资源预算。
 - [ ] 补跨平台主进程尾部/最终状态、reader 长驻资源和实际 Agent 启动链证据，再选定实现与接口；macOS leader/write/EOF 后 master 对照保留为诊断，不以普通后代续跑门槛阻塞产品选型。
 - [ ] 实施源读取/排空边界及 Host/Supervisor 共用生命周期契约，保留旧 live 绑定与明确降级。
@@ -46,8 +48,14 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 职责澄清后，普通后代在实际主进程退出后的未来输出不属于默认持续服务承诺；“原断言失败”和“产品是否违规”必须分别判断。两轮 macOS 后代各六项失败继续保留，不证明真实 Agent 有同样缺陷，也不证明 macOS 产品收尾通过。Linux 主进程尾部、Windows 最终光标与 reader 资源问题不受影响，实际 CLI 启动器的生命周期是单独待验证项。阻塞重评和每项理由见设计第 18 节。
 
+本阶段发现原源模型没有在途 read、decoder/异步队列和真实资源回执；取消不能直接等于 source end。新模型在取消生效后仍交付在途成功字节，独立 consumer 对账加固后两运行时各 25/25；实际 tracker 的最终应用通知也通过四项正/负对照。旧 Linux reader 实验的取消分支可能跳过在途回调数据和 decoder.end，这是实验升格的证明缺口，不是新复现业务缺陷。模型也不能证明尚未读取的 OS 缓冲尾部。
+
+真实链路只有 Windows .cmd/.bat 会被 bridge 包 cmd /d /s /c，POSIX Agent 不由扩展另加运行 shell。本机 Codex npm JS 源码会等待 child，而旧 fake-provider 多是 exec；新增等待/非等待启动器对照补齐了这一层受控证据，不等于真实 provider 通过。首次启动诊断因错误要求 Linux spawn-helper 而在 spawn 前失败，0 个原生样本，已保留；12 s 进程内 timer 不能约束同步 probe 阻塞，外部 watchdog 与新增 fatal handler 故障注入仍缺。
+
 ## 决策记录
 
+- 决策：在修改业务前，先新增而非重写旧诊断，用可控 read/decoder/consumer/资源屏障和实际 bridge/tracker 对照验证候选顺序；取消请求和生效分开，已拥有数据不被取消意图清空。理由：旧模型不能证明在途数据保留，普通后代职责收窄也不豁免已有内容。生产取消条件、原生源结束证据、API/数值预算仍未选定。日期/作者：2026-09-20 / Codex。
+- 决策：本阶段只跑受控 POSIX 启动器，不执行真实 Agent；记录本机真实入口的静态证据，并将 Windows cmd/npm shim 原生等待链另列下一阶段。理由：受控不等待负对照只能说明启动器契约需要验证，不能直接归因为真实 provider 缺陷；避免访问凭据和扩张普通后代承诺。日期/作者：2026-09-20 / Codex。
 - 决策：按用户澄清将实际主进程退出后普通后代继续运行/产生未来输出列为底层诊断，不作为独立产品门槛；主进程尾部、已有内容、最终状态、资源释放和实际 Agent 启动链仍需验收，具体收尾/取消/预算仍待选定。理由：产品托管会话及终端资源，不逐个托管其内部后代；包装程序下的实际 CLI 是主体，不在排除项内。原实验和失败原样保留，撤销 macOS 后代控制实验的无条件前置地位，而非重判为通过。日期/作者：2026-09-20 / 用户确认，Codex 记录。
 - 决策（历史优先级，已被上一条范围澄清取代）：保留两个失败的原生 job，不扩大期限或改 held 断言使其变绿；当时要求下一阶段先缩小终端所有者边界，再决定 reader/launcher 方案。理由：单纯换 reader 没有满足当时的跨平台后代假设，且“创建后代”和“后代实际持有可写终端”不是同一事实。保留失败原则继续有效。日期/作者：2026-09-20 / Codex。
 - 决策：下一阶段使用基于 `origin/main@5965adb8` 的独立 `runtime-exit-integrity-native-candidates` 工作树推送诊断输入，不推送尚未完成的运行时历史。Unix 沿用固定 7 案例各 3 轮，对 macOS 只扩展平台和终端换行 oracle；Windows 对照 builtin/DLL 公共 reader 与 DLL 独立 worker，在运行前冻结案例和预算。诊断分支自带设计/计划，业务代码不改。日期/作者：2026-09-20 / Codex。
@@ -62,7 +70,7 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
-当前已完成立项、Linux 隔离 reader 对照、三平台最小基线、rebase 回归和两运行时契约验证。两轮原生候选各 147 样本，共 294 项，保留所有首次失败；Windows 后代夹具修订后候选 18 次完整、3 次明确取消，补到原 builtin 末尾状态与原 worker 资源失败的真实对照。本次文档增量将普通后代诊断与产品门槛分开，macOS 六项后代失败不再独立阻塞交付，但没有新增平台通过证据。下一步收敛主进程尾部/消费者完成/资源释放和取消边界，验证实际 Agent 启动链，再冻结生产接口与预算；macOS 原始 write、leader 与 EOF 后 master 控制组按诊断需要推进。业务未修改，设计比较中/验证中，本计划 active，里程碑一和技术债均未关闭。
+已完成职责澄清后的隔离验证：新屏障模型、真实 tracker/headless 和实际 bridge 的受控 POSIX 启动链均在 Linux 两种运行时留证；首轮与加固回归、负对照和预检失败全部保留。模型支持“取消未来读取但仍消费在途成功字节”的候选规则，却不能证明 OS/ConPTY 缓冲排空或生产完整退役。下一步把候选屏障接到隔离原生 reader 验证，重点补未读取尾部/资源、Windows cmd/npm shim 和 macOS 主进程产品场景；真实 provider、信号/停止、实际 UI/packaged 仍开放，不继续靠增加注入 EOF 的模型冒充原生进展。旧两轮 294 项原生候选及 macOS 后代失败原样保留，普通后代控制实验按诊断需要推进。业务未修改，设计比较中/验证中，本计划 active，里程碑一和技术债均未关闭。
 
 ## 上下文与定向
 
@@ -98,7 +106,20 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 最新原生候选在独立 `runtime-exit-integrity-native-candidates` 工作树执行，不要求把当前运行时历史推到 GitHub。首轮输入 `afb24974`，修订 Windows Job 夹具的第二轮输入 `4ac3ad15`；复核入口为该分支 `compare-runtime-exit-readers.mjs --verify-saved DIR` 和 `compare-windows-exit-readers.mjs --verify-saved DIR`。Unix 验证器遇已保存的候选失败会非零，另对完整 schedule/全部 raw 哈希核对，不能跳过其余工件。第一轮下载目录在独立工作树 `.debug/github-candidates-35498026812-{ubuntu,macos,windows}/`，不要覆盖。若继续 macOS 原始 write 与 leader 诊断，应先冻结新实验，不改既有首轮判定；Windows 后代诊断仍须证明真实后代在主进程回调时存活且 stdout 为 TTY，但不以此替代实际 Agent 启动链证据。
 
-当前下一步是先在设计第 18 节的职责边界内完善主进程尾部/资源/消费者收尾及启动链验证方案，登记新矩阵的场景与预算后再执行。本次仅做文档同步与一致性检查，不启动新原生实验，不修改既有脚本、测试、业务或保存结果。
+本阶段从 `92ddb48f` 继续设计第 19 节的隔离验证：新增取消/在途 read/decoder/已接受队列/资源屏障模型及诊断入口，另用真实 bridge 隔离构建运行直接主体、shell exec、Node 等待启动器和不等待负对照。每种 POSIX 启动路径固定 3 次，Node 25 与 Electron-as-Node 39 各 12 项；每项采集/清理/硬截止为 8/2/12 s，正对照放行前观察至少 100 ms，这些不是生产预算。模型确定性用例各一次，运行前保存完整 schedule。新输出目录保留全部失败，不修改业务、原模型/实验/断言或历史结果；Windows 和真实 provider 的原生验证不由本轮替代。
+
+本阶段已完成，结果和限制见设计第 20–21 节。下一次重跑使用不存在的新目录；以下 `next` 路径只作可执行重跑入口，成功也不代表完整生产验收。实际完成的目录名和首次预检失败均记录在设计中。每条命令也可加 `env ELECTRON_RUN_AS_NODE=1 .vscode-test/vscode-linux-x64-1.117.0/code` 替换开头 `node`，同时换输出目录，验证内置 Node 路径；这不是实际 VS Code UI。启动链的 12 s 当前只是进程内 timer，不具有阻塞同步 probe 时的独立硬上界。
+
+    node --check scripts/diagnostics/runtime-exit-barrier-model.mjs
+    node --check scripts/diagnostics/diagnose-runtime-exit-barriers.mjs
+    node --check scripts/diagnostics/diagnose-terminal-final-apply.mjs
+    node --check scripts/diagnostics/diagnose-agent-launch-lifecycle.mjs
+    node scripts/diagnostics/diagnose-runtime-exit-barriers.mjs --output .debug/exit-barriers-next-node25
+    node scripts/diagnostics/diagnose-terminal-final-apply.mjs --output .debug/terminal-final-apply-next-node25
+    node scripts/diagnostics/diagnose-agent-launch-lifecycle.mjs --output .debug/agent-launch-next-node25
+    node scripts/diagnostics/diagnose-agent-launch-lifecycle.mjs --verify-saved .debug/agent-launch-v2-node25
+
+旧模型/runner/reader 的命令与记录继续保留，不能将其后代门槛改成新产品门槛。下一阶段先在独立诊断分支冻结原生收尾和 Windows 实际启动链矩阵，再执行跨平台候选，不推送未完成运行时历史。
 
 runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution-session-bridge`、`npm run test:terminal-session-journal` 和 `npm run test:runtime-supervisor-protocol`。新增 `scripts/diagnostics/runtime-exit-contract-model.mjs` 与 `scripts/diagnostics/diagnose-runtime-exit-contract.mjs`，只运行内存模型与实际分页投影类，不创建 PTY 或修改业务模块。运行前固定源事件排列、重复/违约、UTF-8 解码尾片、stop/取消/读取错误/旧能力、读者身份/最终位置/在途 open/双读者结算及实际投影完成/取消对照；每个确定性用例执行一次，不以反复随机运行筛选成功。`--output` 必须是新目录，保存每项结果、断言错误、脚本/实际投影哈希与运行环境。模型不引入生产超时，资源/等待预算仍由平台候选阶段选定。
 
@@ -150,6 +171,10 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 证据与备注
 
+2026-09-20 本阶段结果：屏障模型 Node/Electron 首轮各 25 项，加固独立 consumer 对账后各 25 项，共 100 项模型检查；实际 tracker 首轮及拒绝捕获加固后各 4 项，共 16 项；启动链两组各 12 项，共 24 个原生 POSIX fixture，其中 6 个是故意不等待的负对照。原契约回归两组各 39 项，bridge/tracker 现有测试通过。模型、headless、裸 PTY 和离线 verifier 分开计数，不合成全平台产品通过率。全量 raw/schedule/trace/hash 保留；Windows/macOS、真实 Agent、UI/packaged 未执行。首次 Linux spawn-helper 预检失败没有原生样本，后续成功不覆盖它；启动链 fatal handler 新增但未故障注入，独立进程 watchdog 仍未实现。
+
+收口校验：相对 `92ddb48f` 仅 5 份文档和 4 个新诊断文件变化，4 个新文件 `node --check` 通过；YAML、索引、架构标签、关联路径和 7 处新增完整本地引用可解析，5 项生产选型/实施/验收任务仍未勾选。全部模型/应用工件的 schedule、结果计数及对应源码 snapshot 哈希逐项复核；两组启动链复算均 12 项、无 live/zombie 残留。`git diff --check` 通过。独立复审发现的拒绝捕获、consumer 对账和 verifier 非零判定已加固，不覆盖首次证据；其余原生/生产限制继续记录。
+
 2026-09-20 职责澄清检查：相对 `cab496e2` 仅 10 份文档变化，`git diff --check` 通过；4 份设计的 YAML 元数据、标题、架构标签、索引状态及关联路径均校验，25 处新增完整本地文档引用可解析。主设计第 7 节除新增范围注记外冻结协议逐字不变，第 8、13–16 节逐字不变，第 17 节只标注旧优先级被替代，原结果不变。计划仍 active，5 项生产选型/实施/验收任务未完成；业务、脚本、旧测试、workflow、依赖和原始工件未修改，未运行新原生或业务验证。独立诊断分支同步提交 `bb39c7a5` 也仅改 5 份文档，本地保留、未推送；不能把本次文档检查视为缺陷修复证据。
 
 2026-09-20 原生候选阶段：main-based 独立分支两轮各 147 项，本地 Linux 另 42 项。全部六份远端工件下载并核对 schedule/raw 哈希，Windows 两轮各 63 项内容/光标离线复算分别保留 6/0 个候选失败；第二轮 builtin 成功写入但已关闭 reader 的后代反例已确认。文档元数据/索引/related paths、workflow 权限/分支范围与 whitespace 检查通过。主重构分支本阶段只有文档变化，业务与旧 live 绑定不改；未执行全量 UI、真实 provider、packaged 或新增业务集成测试。两份相关计划均保持 active；当时的“下一步 macOS 控制实验”优先级已由本次职责澄清取代，不将 run 失败隐藏为全部通过。
@@ -166,7 +191,7 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 接口与依赖
 
-本次不新增业务类型、协议字段、依赖或业务模块；独立诊断直接加载现有 native fork，仅用于创建全新 fixture。契约提案要求 provider 分开 process result/source end，共享 adapter 只发一次最终事件，并区分各读者 applied/cancelled/lost。具体命名、扩展 close receipt 还是独立 ACK、native 构建路径与旧版本能力协商仍未选定。里程碑一结束必须把精确类型/签名、文件和失败语义回写本节及正式设计；不能仅凭本轮 Linux 异步 read 通过直接成为生产默认路径。
+本次不新增业务类型、协议字段、依赖或业务模块；独立诊断直接加载现有 native fork，仅用于创建全新 fixture。新增 `runtime-exit-barrier-model.mjs` 的 `ExitBarrierModel` 使用 `beginRead/completeRead`、`requestCancel/applyCancel`、`processExit` 与异步 `releaseResources`，仅用于注入顺序验证，不是拟定生产 API；其退役判断不包含轻量保存、journal 删除与旧 RPC，整数 exitCode 也不涵盖 signal-only/native wait 错误。契约提案要求 provider 分开 process result/source end，共享 adapter 只发一次最终事件，并区分各读者 applied/cancelled/lost。具体命名、扩展 close receipt 还是独立 ACK、native 构建路径与旧版本能力协商仍未选定。里程碑一结束必须把精确类型/签名、文件和失败语义回写本节及正式设计；不能仅凭局部 reader 或模型通过直接成为生产默认路径。
 
 修订记录：2026-09-20 根据用户确认建立独立交付计划；范围与验收已登记，方案选择、业务实施和原生平台验收仍待推进。
 
@@ -177,3 +202,7 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 修订记录：2026-09-20 完成 rebase 回归和两种运行时的隔离契约/实际 Supervisor 注入验证，记录旧 close 的实测歧义与候选收尾结果；下一步仍为跨平台 reader/资源候选选型，不把模型成功计为生产集成。
 
 修订记录：2026-09-20 根据用户侧对话结论，收窄实际主进程退出后普通后代的持续服务范围；同步产品、设计与阻塞判断，保留尾部/最终状态/资源/启动链义务，撤销 macOS 后代诊断的无条件选型前置。历史协议、脚本、断言和失败不改，具体收尾与预算仍待确认，计划继续 active。
+
+修订记录：2026-09-20 进入职责澄清后的下一阶段，运行前冻结收尾屏障模型与 POSIX 启动链正/负对照；所有新增实现仅为隔离诊断，生产取消/收尾方案和跨平台选型仍待验证。
+
+修订记录：2026-09-20 完成本阶段屏障、真实 tracker 和 POSIX 启动链验证，补独立 consumer 对账、诊断拒绝捕获及保存结果非零判定；保留首次预检失败和原始源码/结果，记录同步阻塞 watchdog 与原生/真实 provider 缺口。下一步转原生取消/尾部/资源与 Windows 启动链验证，不修改业务或宣布选型完成。

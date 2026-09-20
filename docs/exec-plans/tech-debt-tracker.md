@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-20 收尾屏障与启动链：新注入模型在 Node25/Electron39 各 25 项通过，实际 tracker/headless 四项在首次和取证加固后均通过；实际 bridge 的 POSIX 四类各三次在两运行时共 24 项达标，含故意不等待主体的六个负对照，非真实 Agent 缺陷。真实本机 Codex npm 入口源码会等待 child，不能继续以泛化后代实验推断其正常提前退出。生产取消仍缺 OS/ConPTY 缓冲尾部和资源证据；Windows `.cmd/.bat` 实际启动链、macOS 产品场景、signal/stop、真实 provider/UI/packaged 均未由本轮验收。新模型的退役布尔值不涵盖轻量终态保存、journal 或旧 RPC，不可直接接入业务。首次预检失败与取证工具加固原因均保留，具体证据/下一步见 `docs/design-docs/runtime-exit-integrity.md` 第 19–21 节；退出完整性债务不关闭。
+
 2026-09-20 职责澄清与阻塞重评：Terminal/Agent 管理会话及终端资源，不默认在实际主进程退出后等待普通后代或接收未来输出；主进程仍运行时收到的后代输出不被忽略。macOS 普通后代六项失败及 Linux/Windows 后代反例保留为 PTY/EOF/挂断/取消诊断，不再独立阻塞产品选型或交付，也不证明真实 Agent 缺陷或 macOS 验收通过。Linux 主进程尾部、Windows 最终光标及自然 reader 资源问题仍须收口，已接收/排队/消费内容仍受保护。`cmd.exe`/启动器下实际 Agent CLI 是执行主体，需单独验证生命周期；具体收尾/取消/预算未定。当前优先级以 `docs/design-docs/runtime-exit-integrity.md` 第 18 节和 active 计划为准；旧实验/断言/失败不改，退出完整性债务未关闭。
 
 2026-09-20 夹具修订后续（历史优先级已由上述职责澄清取代）：第二轮 run 35498732353 再完成全量 147 项，Windows 后代实际存活/TTY 断言成立后候选 18 次完整、3 次明确取消，原 worker 仍 42 次资源失败；macOS 六项后代失败继续开放。当时提出优先补 macOS leader/原始 write/EOF 后持有 master 控制组及跨平台长驻资源预算，不将第二轮成功写成整体生产修复。证据见退出完整性设计第 17 节。

@@ -86,7 +86,7 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 ## 6. 下一步与状态
 
-执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–8 节记录 Linux 隔离 reader 实验，第 9–11 节给出候选与平台缺口，第 12–14 节承接 runner 和可执行收尾契约，第 15–17 节记录两轮三平台原生候选，第 18 节收口本次职责澄清。下一步优先明确主进程尾部、消费者完成、资源释放和主动取消的收尾边界，验证实际 Agent 启动链，再选定生产 reader、wire API 与预算；macOS 普通后代控制实验仅作诊断，不再是无条件前置。不能把范围收窄、基线或局部候选通过当作里程碑一完成，实现与产品验收仍未勾选。
+执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–8 节记录 Linux 隔离 reader 实验，第 9–11 节给出候选与平台缺口，第 12–14 节承接 runner 和可执行收尾契约，第 15–17 节记录两轮三平台原生候选，第 18 节收口职责澄清，第 19–21 节记录收尾屏障与启动链验证。下一步将已验证的候选屏障与原生 provider 读取/取消/资源释放对接，重点证明 OS 缓冲尾部和 Windows 实际启动链，而不是继续增加仅注入 EOF 的模型；具体 reader、wire API 与生产预算仍待选定。macOS 普通后代控制实验仅作诊断，不再是无条件前置。不能把范围收窄、基线或局部候选通过当作里程碑一完成，实现与产品验收仍未勾选。
 
 ## 7. 第一轮候选实验协议（运行前冻结）
 
@@ -248,3 +248,59 @@ Windows 候选 21/21 达标：自然零/非零、暂停、分片、后代尾部�
 下一增量先按第 5 节分别冻结产品验证与诊断对照，明确主进程尾部和已有数据的处理边界、真实源结束/主动取消的区分、消费者结算及资源释放条件；对实际 Agent 启动链单独留证。若后续选择取消策略，必须说明触发条件与时间预算及其如何保留上述义务，不能直接沿用实验中的 1000/2500 ms。本次不选定 reader/API，不修改业务。
 
 两轮原生 run `35498026812`、`35498732353` 的冻结案例、断言、原始工件、失败与总 run 状态原样保留。新的产品验收应使用单独命名、运行前冻结的矩阵，关联旧诊断证据并写清门槛为何不同，不修改旧测试求绿或把历史失败追认成通过。仅职责调整不产生任何新的平台通过证据；设计仍为 `比较中 / 验证中`，计划 active，退出完整性债务未关闭。
+
+## 19. 收尾屏障与启动链验证（本阶段运行前冻结）
+
+本阶段基于 `92ddb48f`，只新增隔离诊断与文档，不改生产代码、旧诊断、原断言或历史工件。两项工作并行：将取消时的在途读取与已有数据收尾分开建模；核查并验证实际 bridge 启动路径中的主体生命周期。它们不选定生产 reader、wire API 或时间预算。
+
+收尾候选将取消请求与生效分开：请求后不发起新 read，但已在途 read 返回的成功字节仍须进入 decoder 和既有输出队列；之后才封闭源接收。decoder 结束产生的尾片和已经接受的异步操作必须完成或明确失败，不能用取消请求清空它们。取消生效先于真实 EOF 时，不因迟到的 read 0 把主动取消追认为完整 EOF；只有请求而未生效时，仍允许先取得可信 EOF。原生 reader 资源释放、会话输出队列收敛及每个页面应用完成分别记录，彼此不代证；具体错误合并与 API 保持候选。PTY 是混合字节流，不能依靠识别每个 chunk 的写入进程来实现这条边界。
+
+新增屏障模型与验证入口独立于原 `runtime-exit-contract-model.mjs`，保留旧 39 项用例不变。运行前固定以下确定性排列：process exit 后在途 read 成功；取消后成功 read/EOF/error；decoder 跨 read 尾片及取消时不完整尾片；下游慢应用/拒绝；取消重复/原因冲突；迟到 read/新 read 拒绝；资源提前释放/释放失败/成功；源 final 与页面 applied/cancelled 分离。每项一次，不随机筛选；分别在 Node 25 与 Electron-as-Node 39 执行，保存完整 schedule、trace、源码哈希和失败。没有原生 PTY 与真实 xterm 的模型成功，只证明候选屏障逻辑，不是生产集成或跨平台验收。
+
+另用 `SerializedTerminalStateTracker` 的真实隔离构建和 headless xterm 验证应用屏障，入口为新增 `scripts/diagnostics/diagnose-terminal-final-apply.mjs`。固定四项、每项一次：延迟 write callback 的最终 CRLF、跨 write 的 CSI 光标定位、跨 write 的 OSC title 与末尾正文，以及在 flush 前 dispose 的负对照。前三项只在实际 parser callback 放行后取得最终 outputSequence、正文/光标/title，再 dispose；负对照只说明主动提前 dispose 不能当作已应用证明，不据此声称业务自然退出存在新缺陷。用可控 callback 而非延长时间等待，每项另设 10 s 诊断硬截止保存未完成证据，不是生产期限；同样在两种运行时分别留证，不替代 Webview UI 或原生 PTY。
+
+上述屏障保护已经归 reader/decoder/队列所有的数据，仍不能证明取消前留在 OS/ConPTY 内、尚未被读取的主进程成功写入尾部已收齐。不能把“已明确记录 interrupted”当作自然退出完整性交付；生产取消触发条件、源结束证明和数值预算仍需原生候选阶段决定。
+
+启动链诊断使用真实 `executionSessionBridge.ts` 的隔离构建，但只创建受控 CLI fixture，不启动真实 Agent 或访问其凭据。本地 POSIX 固定四类：直接主体、shell exec 替换、Node 等待型启动器、故意不等待主体的启动器负对照，每类 3 次；Node 25 与 Electron-as-Node 39 各 12 项。主体先写 READY 并保存 PID/TTY/就绪凭证，在测试端放行前保持运行；正对照等待至少 100 ms 确认主体仍存活且 bridge 未退出，随后放行并验证尾部及 exit 7。负对照的启动器在主体就绪后先退出，主体不再向终端写未来输出，只验证 bridge 退出时主体是否仍活着；它说明启动器可不代表主体，不证明真实 Agent 存在同样问题。
+
+每个启动样本采集上限 8 s、清理上限 2 s、独立硬截止 12 s，全部只是诊断防挂起预算。工件保存在新的输出目录，记录 launch spec、PID、桥接退出事件、主体凭证、完整回调内容/哈希、fixture 清理与 Node/libuv/node-pty 版本；保存全量计划与首次失败，不按成功重跑。清理仅针对本次 fixture，不接管用户进程。Windows `.cmd/.bat` 的 `cmd /d /s /c` 原生等待/退出语义及真实 provider 仍需独立 runner/实际入口证据，不能由 POSIX 或命令字符串断言代替。
+
+## 20. 启动路径与屏障核查
+
+当前仓库的真实 Agent 链路是 `CanvasPanelManager.resolveAgentCli()` → `buildAgentLaunchSpec()` → 直接 Host 或 Supervisor → `createExecutionSessionProcess()`；没有 `resolveAgentCliLaunchInvocation` 或独立 `agentRuntime` 实现。`CanvasPanelManager.ts:14255` 为 Supervisor 构造与 local 路径 `:14765` 相同的 launch spec，`:15802` 直接使用解析后的 `file: spec.command`；`runtimeSupervisorMain.ts:439` 反序列化并于 `:459` 调用共享 bridge，不增加 CLI 包装层。
+
+| 实际入口 | 已核实行为 | 尚未证明 |
+| --- | --- | --- |
+| Linux/macOS 原生程序或 shebang wrapper | `executionSessionBridge.ts:139` 保持 file/argv，实际启动无扩展附加 shell；`agentCliResolver.ts:367` 的 login shell 只是查找命令 | shebang/wrapper 自身是否 exec 或等待主体，需要入口证据；POSIX 相同代码不代替 macOS 原生验证。 |
+| Windows `.exe` | bridge 直接 spawn 并启用 ConPTY | 原生资源与退出顺序仍须按目标 OS/宿主验证。 |
+| Windows `.cmd/.bat` | `executionSessionBridge.ts:181`、`:200` 选择 ComSpec 并构造 `/d /s /c` 转义串，没有添加 `start` 或后台选项 | 不能仅据构造字符串证明 cmd/shim/实际 CLI 的等待与退出传递。其他扩展名也没有自动转换为 `node script.js`。 |
+| 现有 fake-provider | `tests/vscode-smoke/fixtures/fake-codex-provider`、`fake-claude-provider` 均用 exec 替换壳 | 不覆盖 Node wrapper spawn CLI 并等待的额外一层。 |
+
+本机只读安装证据：`@openai/codex` 0.155.1 的 `bin/codex.js` SHA256 为 `61b0194f3bb6534439c8d26a3ed57d0805f84b884588b761795323eeb92fcf70`；第 241 行 spawn 原生 CLI 且 `stdio: inherit`，第 270 行注册 SIGINT/SIGTERM/SIGHUP 转发，第 279 行等待 child exit，第 294 行按结果处理退出。正常等待路径不是“包装程序先退”的证据；信号路径、强杀和其他安装版本仍未运行验证。Claude 本机入口指向版本目录 `2.1.209` 的 ELF x86-64 文件，版本来自路径而非执行 `--version`。本阶段不调用真实 Agent，不访问其凭据；这些本机源码/文件证据不能升级为跨平台真实 provider 验收。
+
+已有 `scripts/test/test-execution-session-bridge.mjs` 的 Windows 分支用 `spawnSync` 和普通 pipes 验证转义，不是 ConPTY 生命周期证明。Supervisor 在 `runtimeSupervisorMain.ts:1149` 只监听一个 PTY 对象的 onExit，没有 wrapper/实际 CLI 的额外身份协议；架构因此依赖启动入口正确代表主体，具体如何约束自定义 wrapper 仍待方案明确，不能将它们统一称为普通工具后代。
+
+收尾核查也发现候选证明边界：原 `SourceCompletionModel` 只有字符串 data、process result、source result，资源释放仅是布尔值。旧 Linux 隔离 `compare-runtime-exit-readers.mjs:185` 在已设置 source 后直接结束在途回调，`:168` 附近仅在 EOF/EIO 时执行 decoder.end；这说明原实验不能直接升格为生产取消实现，但不是本轮复现的业务丢失，也不改其原断言或历史结果。新屏障诊断专门验证这些尚未建模的排列。
+
+本阶段诊断自身的首次记录同样保留：启动链 Node 25 的 v1 预检错误要求 Linux prebuild 必有 macOS 使用的 spawn-helper，在任何 PTY 创建前失败；修正平台条件与失败落盘后，Node 改用 v2 新目录，不计原 v1 为通过。终端应用 v1 在两运行时各 4/4 通过后，只读审查指出 flush 提前拒绝可能形成未处理 Promise rejection；新入口以 race 立即捕获提前失败/完成，另加三个纯 Promise 自校验，原四项内容和门槛不变。加固回归使用新的 v2 目录，不覆盖首次工件。
+
+## 21. 本阶段结果与生产选型限制
+
+运行时均为当前 Linux x64：Node 25.6.0 / libuv 1.51.0，及 VS Code 1.117.0 的 Electron-as-Node 39.8.7 / Node 22.22.1 / libuv 1.51.0。没有启动真实 VS Code UI、真实 Agent 或其他 OS。本阶段未修改生产 bridge、Host/Supervisor、Webview、依赖、旧诊断和旧断言，也未推送或触发远端 runner。
+
+| 验证 | 结果与证据范围 |
+| --- | --- |
+| 新收尾屏障模型 | Node/Electron 首轮各 25/25，增加独立 consumer 调用/完成/拒绝对账后各 25/25；固定 25 项场景不变，全部是注入 read、取消生效、队列与资源回执。覆盖在途正字节、decoder 尾片、慢消费、拒绝、资源失败与两读者结算；不能据此证明原生源 EOF 或尚留 OS 缓冲的尾部。 |
+| 实际 tracker/headless xterm | Node/Electron 首轮各 4/4，加固后各 4/4；前三项最终 CRLF、CSI 光标和 OSC title/正文匹配，缓存序号在 parser 完成通知放行前仍为 1，之后为 2。第四项主动提前 dispose 未应用排队正文，是负对照而非业务缺陷复现。 |
+| 实际 bridge 的 POSIX 启动链 | Node/Electron 各 12/12：总共 18 个正例精确 READY/TAIL、native/public exit 7；6 个不等待负对照在两个退出观察点主体仍活着，只输出 READY，未要求任何退出后未来输出。每组及最终清理 live=0、zombie=0。 |
+| 既有回归 | `test:execution-session-bridge`、`test:serialized-terminal-state-tracker` 通过；原契约诊断在两运行时各 39/39，旧入口/模型未变，均为新目录回归，不覆盖原证据。 |
+
+工件目录为 `.debug/exit-barriers-v{1,2}-{node25,electron39}/`、`.debug/terminal-final-apply-v{1,2}-{node25,electron39}/`、`.debug/agent-launch-v2-node25/`、`.debug/agent-launch-v1-electron39/` 和 `.debug/exit-contract-scope-regression-{node25,electron39}/`。启动链 `.debug/agent-launch-v1-node25/` 保留预检失败，原始脚本哈希当时未落盘；补录错误明确标为事后记录，不补造原生样本。终端应用四组精确源码 snapshot 后补并核对原哈希，v1 是从加固差异重建且哈希一致，来源说明一并留存；屏障 v1 和启动链采样版也在加固前保存了对应精确源码。
+
+模型 SHA256 为 `e3d6d393d89c29ec9766c20418b63691bb7a409e07899155c64953397a034cc4`；屏障入口首次/加固版为 `d2b3938f23affa541d5df3a9e9ea779672bf4d4816a2dfbc91d52e2b7364b5e1` / `be93f8b26159dc9c2c91267540d4988d209466315f83bbb967a4cc6617537416`。终端应用入口首次/加固版为 `32cc42db69958db8f72a069b701cb7c33aa6e07b660acfbff720a6ee9be65d00` / `53b667689c6b4b70f27759252e0688764e96f745ad22a24f8fc011fc08e3b17b`。实际原生启动链采样版为 `00b0b50b92d9c82a714bdbf12b535e28c7b0e9100aae66658306240ded60326a`，执行的 bridge 为 `455105120d7cea571c795bbb6b6923a94e365ab341b963ea696f53f13171c635`。
+
+启动链验证器加固后，两个真实目录各 12 项复算通过；派生 `.debug/agent-launch-verifier-offline-zqUzsp/` 的正对照 exit 0，assessment 失败、总 cleanup 仍有活进程、scope 错误、cleanup 缺失均 exit 1，没有新增原生样本。增加的 fatal handler 尝试保存当前失败并仅清理自有 fixture，尚未故障注入验证。第 19 节原拟的 12 s 硬截止当前实际是进程内定时器，不能克服 bridge 的同步 compatibility probe 阻塞，不能宣称有独立进程硬上界；外部 watchdog 仍是诊断加固缺口，不以成功采样消除这一限制。
+
+候选逻辑现在可具体表述为：停止发起未来读取不等于丢弃已拥有的数据；read 回调、decoder、会话队列、页面应用与 provider 释放各自有屏障。`ExitBarrierModel` 只是隔离模型，其 finalRevision 是操作计数，不是生产 journal revision；`canRetire()` 仅组合模型 final、注入释放成功和可选读者结算，不包含轻量终态持久化、journal 删除及旧 generation RPC，不能直接成为生产整体退役判断。模型仅用整数 exitCode，signal-only/native wait 错误尚未建模；启动链本轮也没有验证 stop/信号透传。headless 对照延迟的是 parser 已执行后的完成通知，不是模拟原生写入或真实页面渲染。
+
+下一阶段需要在独立原生诊断分支冻结产品矩阵，验证受控 Unix reader 和 Windows DLL reader 在取消发生时如何结算在途 read、保留 OS/ConPTY 中的主进程尾部并释放资源；对 macOS 复核主进程产品场景，对 Windows 使用实际 bridge 的 `.cmd/.bat → Node 启动器 → 主体` 链路，不能只跑 argv/pipes 测试。启动包装链还需零退出、信号/停止及真实 provider 证据。禁止用固定静默、一次 EAGAIN 或“标记 interrupted”代替自然收尾证明；本轮不选定取消触发条件、数值预算或生产接口，里程碑一继续开放。
