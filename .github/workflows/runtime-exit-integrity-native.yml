@@ -1,0 +1,56 @@
+name: Runtime Exit Integrity Native Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - runtime-exit-integrity-platform-runners
+      - runtime-exit-integrity-platform-runners-agent
+    paths:
+      - .github/workflows/runtime-exit-integrity-native.yml
+      - scripts/diagnostics/diagnose-native-pty-exit-integrity.mjs
+      - package-lock.json
+      - extensions/vscode/dev-session-canvas/package.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-exit-native-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-node-pty:
+    name: Native node-pty / ${{ matrix.os }} / Node 22
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout diagnostic source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check diagnostic syntax
+        run: node --check scripts/diagnostics/diagnose-native-pty-exit-integrity.mjs
+      - name: Check diagnostic assertions
+        run: node scripts/diagnostics/diagnose-native-pty-exit-integrity.mjs --self-test
+      - name: Run native PTY or builtin ConPTY baseline
+        run: node scripts/diagnostics/diagnose-native-pty-exit-integrity.mjs --runs 3 --timeout-ms 30000 --output native-pty-evidence
+      - name: Upload raw output and environment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-exit-native-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: native-pty-evidence/
+          if-no-files-found: warn
+          retention-days: 14
