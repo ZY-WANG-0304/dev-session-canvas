@@ -304,3 +304,37 @@ Windows 候选 21/21 达标：自然零/非零、暂停、分片、后代尾部�
 候选逻辑现在可具体表述为：停止发起未来读取不等于丢弃已拥有的数据；read 回调、decoder、会话队列、页面应用与 provider 释放各自有屏障。`ExitBarrierModel` 只是隔离模型，其 finalRevision 是操作计数，不是生产 journal revision；`canRetire()` 仅组合模型 final、注入释放成功和可选读者结算，不包含轻量终态持久化、journal 删除及旧 generation RPC，不能直接成为生产整体退役判断。模型仅用整数 exitCode，signal-only/native wait 错误尚未建模；启动链本轮也没有验证 stop/信号透传。headless 对照延迟的是 parser 已执行后的完成通知，不是模拟原生写入或真实页面渲染。
 
 下一阶段需要在独立原生诊断分支冻结产品矩阵，验证受控 Unix reader 和 Windows DLL reader 在取消发生时如何结算在途 read、保留 OS/ConPTY 中的主进程尾部并释放资源；对 macOS 复核主进程产品场景，对 Windows 使用实际 bridge 的 `.cmd/.bat → Node 启动器 → 主体` 链路，不能只跑 argv/pipes 测试。启动包装链还需零退出、信号/停止及真实 provider 证据。禁止用固定静默、一次 EAGAIN 或“标记 interrupted”代替自然收尾证明；本轮不选定取消触发条件、数值预算或生产接口，里程碑一继续开放。
+
+## 22. 新原生收尾阶段（运行前冻结）
+
+独立分支 `runtime-exit-integrity-native-candidates` 已 fetch/rebase，仍基于 `origin/main@5965adb8`。该分支的候选设计第 10 节与 active ExecPlan 在运行前冻结新矩阵，新增 `diagnose-unix-exit-tail.mjs`、`diagnose-windows-launch-tail.mjs` 与独立 `runtime-exit-tail-products.yml`，不修改原三平台实验、失败或业务，也不推送当前运行时历史。
+
+Linux/macOS 各固定 7 类、3 次共 21 项：90000 行自然零/非零退出、89800 附近暂停 350 ms、Unicode/CSI/OSC 分片、实际 headless 完成通知延迟 100 ms，以及两种真实在途 read 的取消对照。两个取消案例先成功写 2048 ASCII bytes，候选仅拥有 64-byte read；取消后在途成功数据仍交付，原 reader 停止新 read 后独立 audit reader 才接管其余系统字节。audit 数据不能计入候选已交付量，更不能将 interrupted 升格 completed。这是主动截断负对照，不是推荐的自然退出策略。每项采集/资源/父独立 watchdog 为 10/1/15 s。
+
+Windows 固定 7 类、3 次、两条路径共 42 项：直接主体 exit 0/7、90000 行暂停 1500 ms、cmd 等待启动器 exit 0/7、bat 等待启动器 exit 7、不等待负对照。实际 bridge 保持默认 builtin；owned-DLL 候选使用实际 spawn spec 解析加独占 worker，不代表业务已接通。正例主体 READY 后至少持有 100 ms 再放 gate、写 Unicode 尾部与最终 CRLF，验证真实主体和包装程序退出时序/退出码。public onExit 不当作源 EOF；负对照不要求主体退出后未来输出，随后明确取消。每项采集/退出观察/资源/父硬截止为 30/2.5/2/35 s。
+
+上述都是诊断参数，不是生产预算。每个平台全量运行，新目录保存原始 bytes、writer receipt、源码快照/哈希、真实事件和资源结果。Linux 本地与 GitHub 三平台结果分开统计，初次失败保留。Windows worker 在途取消、长驻 native 句柄增长、信号/强停、真实 provider/宿主/packaged 尚未由这 84 项覆盖，不能由 Unix 对照外推；独立 watchdog 也需要自校验。当前先冻结并实施诊断，尚无本阶段原生通过结论。
+
+## 23. 原生收尾的新证据
+
+独立分支以 `41779127` 先提交冻结协议，以 `f46008442a1c2637c0a0306501f53dde4f49b293` 提交新诊断/workflow 并触发 [run 35506150727](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35506150727)。attempt 1 完整执行 84 项，Ubuntu / Windows job 成功、macOS job 失败，总 run 失败，未重试筛选。运行时历史未推送，生产/旧实验/依赖未变。新工具、取证加固及首轮失败分类见独立分支候选设计第 10–12 节。
+
+本地 Linux Node 25.6.0 的三版各完整 21 项均通过：每版 15 次自然 read EIO，6 次取消保留在途 64 bytes、audit 另取 1984 bytes。audit 不进入候选消费者、不补算完整输出；这实证取消所有在途操作结算后仍可能留下主进程成功写入的数据，不能只依靠前一阶段屏障模型选定生产自然收尾策略。最终 v3 脚本 SHA256 `23e87e52e3bd51ef860e245a24404442296a3ba6e00ad3c9d1bd4c40a810d585`，目录 `.debug/unix-exit-tail-v{1,2,3}-local/` 位于独立工作树，快照按版保留。v2 加强真实暂停后仍有尾部/消费者等待断言、watchdog exit 后有界日志排空及缺 owner 不误判清理；v3 改原子 JSON 回执发布以消除未触发的夹具竞态，所有内容及等待门槛不变。
+
+Windows 初次原生前增加 nonwait 的 driver 已收到 READY 握手，明确是同形受控启动链，不是真实 provider。候选保存原始 native Buffer，实际 bridge 只有 onData 文本，分别标记。三个新文件语法、自校验、现有 bridge 单测和独立审查通过；watchdog 故障注入仅普通子进程，不扩称 native fork 孤儿清理证明。
+
+新的源码资源风险：`node-pty@1.2.0-beta.12/src/unix/pty.cc::SetupExitCallback()` 的 Apple 分支创建 `kqueue()` 后，该函数未见对应 `close(kq)`。当前未做长驻计数及二进制溯源对照，不宣称原生 macOS 泄漏已经实测；单次 master fd close/EBADF 和 driver 退出不能覆盖此类退出监听资源。生产选型前必须补同进程资源增长证据，Windows 在途取消、输入预算、信号/强停、真实 provider/宿主/packaged 继续开放。
+
+| 新原生矩阵 | 首轮结果与证据边界 |
+| --- | --- |
+| Ubuntu，21 项 | 15 次自然 EIO、6 次明确取消，全部达到冻结断言；在途 64 bytes 与 audit 1984 bytes 分开，内容/最终状态及单次 master fd/consumer/driver 释放有证据，不代表长驻资源无增长。 |
+| macOS，21 项 | 12 项自然零/非零、分片、延迟消费者通过；3 个暂停探针误提交零容量 read 后误认 EOF；6 个取消未建立写入成功前提。完整保留 9 失败，不计为产品 reader 缺陷或全平台通过。 |
+| Windows，42 项 | actual-bridge 21 项生命周期通过，含 cmd/bat 等待主体及非等待负控；owned-DLL 18 次完整 pipe EOF + 3 次明确取消，内容/消费者/worker/driver 均达标。基线三个暂停尾部/最终状态失败、21 次自然资源 guard 失败，仍未修复。 |
+
+macOS 暂停失败根因由原始事件确定：额外 CR 使 `89800 × 27` 原始字节预算先于逻辑标记耗尽，三例均 `capacity=0 → count=0 → fd close → native signal=1`，没有 reader-pause。实际只有 89793 完整行及下一行残片；这种零长度 read 的 0 返回不是可信 PTY EOF，诊断不能转为生产 adapter。取消六例有有效 PID/TTY，却没有 receipt、read 提交、取消或 native-exit 事件；10 s 前提建立失败、随后资源 guard 退出 3。尚缺 write-enter/return/errno 与受控读取放行，不能认定同步写背压为已证实原因，不能直接缩小 2048 或扩大期限。下一增量修诊断正容量不变量并单独冻结这个最小控制组，保留首轮脚本快照和失败。
+
+三平台工件下载至独立工作树 `.debug/github-exit-tail-35506150727-{ubuntu,macos,windows}/`。Ubuntu 原验证器完整复算通过；macOS 原验证器遇缺失 writer receipt 提前 ENOENT，不冒称成功，另用只读补充审计完整互核 21 项，保留 12/9 分类。补充脚本/结果位于 `.debug/mac-exit-tail-35506150727-supplemental-audit/`，脚本 SHA256 `839982b46ac47593d7f60b670bd458b545b39ca084b245fff25d0dfde4e2232e`，不新增原生样本。三平台 Node 22.23.2 / libuv 1.51.0；Linux x64 kernel 6.17.0-1022-azure、macOS arm64 Darwin 25.6.0、Windows x64 Server 2025 build 26100。Windows 完整 42 项下载后复算通过，源码快照与输入 commit 仅有已核实的 CRLF checkout 差异；仍非真实 provider/VS Code 或完整产品验收。
+
+Windows 本轮三个基线暂停样本的编号 1–90000 均逐项完整，但 raw callback 文本精确结束于 `DSC_MAIN_LINE_90000\r`；该行 LF、主进程额外写入的带 Unicode/ANSI 的整段 TAIL 及最终 CRLF 缺失，不是 VT 覆盖。writer receipt 的 token/PID/成功写入与 exit 0 已互核；实际 cursorLine 90000，预期 90002。候选三次全文与最终光标精确匹配。baseline native 退出后约 1002–1004 ms public 退出，再约 489 ms 才恢复读取。这是实际 bridge 的受控主进程尾部反例，与旧矩阵“仅末尾光标少一行”和后代诊断分开记录。
+
+Windows 36 个正例 READY hold 为 100–116 ms，gate 前主体存活且 native/public 未退出，cmd/bat 的 main → wrapper → subject PID 链和 0/7 传播成立。6 个负控在 native 退出时主体仍活着，3 个 actual-bridge 在 public 退出时也仍活；owned 的三个负控为 cancel-applied → pipe-close(ended=false,cancelled=true) → worker exit 0，没有 pipe EOF。21 个基线资源 guard 都留下 PipeWrap/MessagePort 并 driver exit 3；候选21个driver自然exit0。所有样本无硬超时、日志截断或cleanup异常，但负控在cleanup时已无存活PID，不宣称由父清理主动杀死，也不由这些短命进程证明native长期无增长。设计仍比较中/验证中，生产选型未完成。

@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，当前阶段基线为 `28055e13`。本阶段只做设计与隔离诊断，不直接修改业务代码，不推送运行时分支。后续实施开始前必须先选定方案并更新正式设计，不把本计划视为私有 fd 补读或某种新 API 的授权。
+本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，当前原生收尾阶段基线为 `10d40e63`。本阶段只做设计与隔离诊断，不直接修改业务代码，不推送运行时分支。后续实施开始前必须先选定方案并更新正式设计，不把本计划视为私有 fd 补读或某种新 API 的授权。
 
 ## 目标与全局图景
 
@@ -29,12 +29,17 @@
 - [x] (2026-09-20) 按设计第 19 节冻结并验证新屏障模型，Node/Electron 首轮及 consumer 对账加固后各 25/25；实际 tracker 四项两版均通过。POSIX 启动器各 12 项达标，保留启动前预检失败及源码快照；仅新增隔离诊断，不改业务或旧实验。
 - [x] (2026-09-20) 独立复审并加固诊断取证；4 个新文件语法、既有 bridge/tracker 回归、旧契约两组 39 项、完整工件 schedule/hash/结果/清理及文档一致性检查通过，业务/依赖/旧测试零改动。
 - [ ] 冻结完成/取消/中断契约、旧版本能力边界、候选对照及原生平台矩阵，登记固定重复轮次和等待/资源预算。
+- [x] (2026-09-20) 在独立诊断分支设计第 10 节冻结新原生矩阵：Unix 各 21 项、Windows 42 项，主线设计第 22 节同步边界；仍不选定生产预算或 reader API。
+- [x] (2026-09-20) 实现并复核独立分支新84项，run35506150727总失败原样保留：Linux21项、Windows候选21项达标；实际bridge受控启动链通过但3个主进程尾部/21个资源失败仍在；macOS12通过/9失败，诊断假EOF与取消前提未成立已分开归类。
+- [ ] 修正新Unix探针零容量read和缺receipt时验证器提前停止，先冻结并执行macOS write-enter/return/errno与无读取/受控放行最小控制组，再补完整产品矩阵；不直接缩负载或增等待求绿。
 - [ ] 补跨平台主进程尾部/最终状态、reader 长驻资源和实际 Agent 启动链证据，再选定实现与接口；macOS leader/write/EOF 后 master 对照保留为诊断，不以普通后代续跑门槛阻塞产品选型。
 - [ ] 实施源读取/排空边界及 Host/Supervisor 共用生命周期契约，保留旧 live 绑定与明确降级。
 - [ ] 补自动化回归、真实 provider/VS Code、packaged 和资源回收验收；保留失败证据并收敛开放项。
 - [ ] 同步最终文档与技术债，符合完整完成定义后归档计划；不能因 Linux 或局部夹具通过就勾选全平台完成。
 
 ## 意外与发现
+
+新原生 Unix 取消负对照显示：候选已发起 read 的 64 bytes 可以全部保住，但同一次主进程成功写入的 1984 bytes 仍留在系统缓冲，需要独立 audit 才读到。因此“取消诚实标注 interrupted”不能代替主进程自然尾部保证。单次 master fd 的 EBADF 也不证明 native 全资源无增长：锁定 node-pty 的 Apple `SetupExitCallback` 创建 kqueue 后未见对应 close，尚须长驻原生计数，不作为本轮实测泄漏。跨进程 JSON 夹具发布和父 watchdog 有界日志结算等取证加固分别留存版本，不覆盖旧成功或失败。
 
 原 bridge 对 node-pty onExit 的完整排空假设早于本次重构，bridge 和锁文件未由本轮容量改造改变。裸 PTY 不经兼容协议也能短读，故删除旧协议不会自动解决。Linux 的 HUP/partial read 可提前 EOF；另有 Unix 200 ms timer 和 Windows 默认 ConPTY 1000 ms 无 data destroy，不能合并为一个平台 bug。固定 libuv v1.52.1 包含一个相关修正，但未覆盖已核查的后续修正及 node-pty 强制关闭路径。
 
@@ -54,6 +59,10 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+- 决策：本轮以新84项首次证据和失败归类收口，不修改冻结脚本或调参覆盖失败；macOS新探针问题先补最小前提控制组，Windows实际bridge主进程TAIL缺失作为独立产品反例保留。理由：9个macOS失败并非同一根因，取消甚至未进入read路径；局部候选通过不足以选定生产取消/资源方案。日期/作者：2026-09-20 / Codex。
+
+- 决策：新原生阶段按 Unix 在途取消/系统残留与 Windows cmd/bat 等待链分工，84 项 runner 矩阵使用新文件和新 workflow。理由：避免改旧诊断取得绿色，也避免用模型、普通 pipes 或 POSIX 结果代替目标平台证据。Windows worker 在途取消与长驻资源仍为独立缺口，所有固定数值只作诊断预算。日期/作者：2026-09-20 / Codex。
+
 - 决策：在修改业务前，先新增而非重写旧诊断，用可控 read/decoder/consumer/资源屏障和实际 bridge/tracker 对照验证候选顺序；取消请求和生效分开，已拥有数据不被取消意图清空。理由：旧模型不能证明在途数据保留，普通后代职责收窄也不豁免已有内容。生产取消条件、原生源结束证据、API/数值预算仍未选定。日期/作者：2026-09-20 / Codex。
 - 决策：本阶段只跑受控 POSIX 启动器，不执行真实 Agent；记录本机真实入口的静态证据，并将 Windows cmd/npm shim 原生等待链另列下一阶段。理由：受控不等待负对照只能说明启动器契约需要验证，不能直接归因为真实 provider 缺陷；避免访问凭据和扩张普通后代承诺。日期/作者：2026-09-20 / Codex。
 - 决策：按用户澄清将实际主进程退出后普通后代继续运行/产生未来输出列为底层诊断，不作为独立产品门槛；主进程尾部、已有内容、最终状态、资源释放和实际 Agent 启动链仍需验收，具体收尾/取消/预算仍待选定。理由：产品托管会话及终端资源，不逐个托管其内部后代；包装程序下的实际 CLI 是主体，不在排除项内。原实验和失败原样保留，撤销 macOS 后代控制实验的无条件前置地位，而非重判为通过。日期/作者：2026-09-20 / 用户确认，Codex 记录。
@@ -70,7 +79,7 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
-已完成职责澄清后的隔离验证：新屏障模型、真实 tracker/headless 和实际 bridge 的受控 POSIX 启动链均在 Linux 两种运行时留证；首轮与加固回归、负对照和预检失败全部保留。模型支持“取消未来读取但仍消费在途成功字节”的候选规则，却不能证明 OS/ConPTY 缓冲排空或生产完整退役。下一步把候选屏障接到隔离原生 reader 验证，重点补未读取尾部/资源、Windows cmd/npm shim 和 macOS 主进程产品场景；真实 provider、信号/停止、实际 UI/packaged 仍开放，不继续靠增加注入 EOF 的模型冒充原生进展。旧两轮 294 项原生候选及 macOS 后代失败原样保留，普通后代控制实验按诊断需要推进。业务未修改，设计比较中/验证中，本计划 active，里程碑一和技术债均未关闭。
+已承接模型阶段完成新原生84项及本地Linux三版各21项，完整保留首次失败。run35506150727中Linux21项达标，Windows候选21项达标且actual bridge受控cmd/bat主体等待/0与7传播有证据；基线主进程TAIL确实缺失、自然资源guard继续失败。macOS12项通过/9项失败，三项是新诊断零长read误认EOF，六项是2048-byte成功写入前提未成立，不能当作产品reader同因反例。工件均下载，原始验证器/补充只读审计的范围分别说明。下一步修诊断不变量、以原始写入和受控放行定位前提，再继续Windows在途取消、长驻资源、真实provider/信号/宿主/packaged及生产API选型。旧两轮294项原始断言和失败不变，业务未修改，设计比较中/验证中、计划active，里程碑一和技术债均不关闭。
 
 ## 上下文与定向
 
@@ -103,6 +112,10 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+本次进入设计第 22 节的新原生阶段，在独立 `runtime-exit-integrity-native-candidates` 工作树按其自包含 active 计划执行。Unix 用 `node scripts/diagnostics/diagnose-unix-exit-tail.mjs --output .debug/unix-exit-tail-v1-local`，Windows runner 用 `node scripts/diagnostics/diagnose-windows-launch-tail.mjs --output exit-tail-evidence`；先语法和 `--self-test`、后完整固定 schedule、最后 `--verify-saved`。GitHub 三平台全量 84 项，首次失败保留，不触碰旧脚本或业务；仅推送独立诊断分支。
+
+上述首轮已执行，结果/源hash/工件在设计第23节；重跑不得再用已有目录。Ubuntu和Windows原验证器下载后完整复算通过；macOS原验证器遇缺回执提前失败，补充审计使用 `node .debug/mac-exit-tail-35506150727-supplemental-audit/audit.mjs` 从独立工作树根运行，成功只说明完整工件对账，报告仍保留9个原生失败。下一阶段不要直接重跑期待绿色，先冻结正容量read修订和write-enter/returned/errno、无读取与受控放行两组，保持原2048字节/原预算，以新证据确定夹具前提失败原因。
 
 最新原生候选在独立 `runtime-exit-integrity-native-candidates` 工作树执行，不要求把当前运行时历史推到 GitHub。首轮输入 `afb24974`，修订 Windows Job 夹具的第二轮输入 `4ac3ad15`；复核入口为该分支 `compare-runtime-exit-readers.mjs --verify-saved DIR` 和 `compare-windows-exit-readers.mjs --verify-saved DIR`。Unix 验证器遇已保存的候选失败会非零，另对完整 schedule/全部 raw 哈希核对，不能跳过其余工件。第一轮下载目录在独立工作树 `.debug/github-candidates-35498026812-{ubuntu,macos,windows}/`，不要覆盖。若继续 macOS 原始 write 与 leader 诊断，应先冻结新实验，不改既有首轮判定；Windows 后代诊断仍须证明真实后代在主进程回调时存活且 stdout 为 TTY，但不以此替代实际 Agent 启动链证据。
 
@@ -206,3 +219,5 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 修订记录：2026-09-20 进入职责澄清后的下一阶段，运行前冻结收尾屏障模型与 POSIX 启动链正/负对照；所有新增实现仅为隔离诊断，生产取消/收尾方案和跨平台选型仍待验证。
 
 修订记录：2026-09-20 完成本阶段屏障、真实 tracker 和 POSIX 启动链验证，补独立 consumer 对账、诊断拒绝捕获及保存结果非零判定；保留首次预检失败和原始源码/结果，记录同步阻塞 watchdog 与原生/真实 provider 缺口。下一步转原生取消/尾部/资源与 Windows 启动链验证，不修改业务或宣布选型完成。
+
+修订记录：2026-09-20 完成独立诊断分支新84项及本地三版Unix采样，记录Windows受控启动链/主进程TAIL缺失、Unix在途与系统残留分账、macOS探针假EOF和取消前提未成立；保留首次失败与补充审计，下一步修诊断并以最小写入控制组补证，不选定生产实现或取消预算。
