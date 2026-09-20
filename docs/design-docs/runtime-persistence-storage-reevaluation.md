@@ -209,6 +209,8 @@ Supervisor、Host、Webview 各自需要每会话及全局缓存/在途预算；
 
 退出完整性按 `docs/exec-plans/active/runtime-exit-integrity.md` 独立推进：先选定可验证的读取/生命周期契约并补齐原生候选对照，再实施和验收。自然非零退出同样需要完整尾部，stop/delete/强制中断与正常排空分别表达，旧 live 继续原绑定且不追授新完整性保证。该项未完成不能宣布本次重构的退出完整性收口；F-04 的容量比较可独立推进，F-05 的无历史决定也不因此撤销。
 
+2026-09-20 补充职责边界：Terminal/Agent 不默认在实际主进程退出后继续等待普通后代或接收未来输出；这不豁免主进程尾部、已有内容、最终状态和 reader 资源释放，也不排除启动器下实际 Agent CLI 的生命周期。普通后代实验和失败保留为诊断，不单独阻塞产品选型；具体收尾/取消/预算仍待确认，重评理由见 `docs/design-docs/runtime-exit-integrity.md` 第 18 节。
+
 第五个增量 `runtime-paged-completion.md` 延续原 Supervisor 分页到 final revision。新能力的退出/attach/subscribe 不聚合完整终态；Host 保存轻量节点后请求退役，新 attach/open 被拒绝，原 socket/readId 读完或关闭后才物理删除。未 ACK 和在途 open 在原页面生命周期继续，旧 generation 客户端等读者关闭 RPC 收敛后退役。旧模式/混合订阅仍保留完整兼容，不改变 root 归属。受控三阶段新终态样本为 405/407/407 字节，而旧完整 snapshot 仍从约 6.76 MB 增长到约 20.29 MB；这里只测同一最小 fixture 的编码字节，不是实际 RSS 或任意终态大小上限。
 
 第四个增量 `runtime-completed-no-history.md` 已将 completed 正文从画板持久化中移除，当时的 relay 完整临时来源现只用于旧协议。实际 Host completion + writer fixture 的 Terminal/Agent 分别为 781/812 字节，小输出与约 3.8 MB stream 相同；容量诊断保留 20509666 字节旧最小内联基线，迁移后同类最小容器为 505 字节，仅改位置仍为 505 字节。这些不是完整生产画板/RSS 指标。F-05 的新 completed 内联问题收口，F-04 的旧完整协议、总回放、在途队列与全量扫描继续开放。

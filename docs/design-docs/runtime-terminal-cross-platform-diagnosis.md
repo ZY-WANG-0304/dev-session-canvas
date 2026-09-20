@@ -100,6 +100,8 @@ stop/kill 还有独立的 worker 清理边界：`windowsPtyAgent.js:130` 和 `wi
 
 ## 后续原生验收
 
+2026-09-20 职责澄清：下段保留调查结束时的矩阵建议，其中“主进程先退出但普通后代持有输出”现单列为 PTY 生命周期、EOF、挂断与取消诊断，不再独立阻塞产品选型/交付；冻结断言与失败结果不改，也不据此推断真实 Agent 缺陷或 macOS 已全部通过。主进程尾部、已接收/排队/消费内容、最终终端状态和资源释放仍需验收，运行中不按后代来源过滤输出；启动包装程序下的实际 Agent CLI 是执行主体，生命周期须另行验证。具体收尾/取消/预算待设计确认，当前产品矩阵与优先级以 `docs/design-docs/runtime-exit-integrity.md` 第 5、18 节为准。
+
 Windows 和 macOS 的尾部丢失不能因为未实测就排除，也不能因为夹具失败就宣称自然复现。下一阶段必须在对应原生 runner 运行同一契约矩阵，至少覆盖自然退出、慢消费、Unicode 尾片、stop、delete 与主进程先退出但后代持有输出；同时分别验证 Node 与实际 VS Code/Electron 的 Agent/Terminal、Runtime 和 snapshot-only。Windows 需要记录 builtin/DLL 选择、worker 到主 reader 的交付及关闭原因；macOS 需要记录 child exit 与 slave/master 排空顺序，不预设与 Linux 相同。
 
 每个样本同时保留独立 writer 完成凭证、原始回调、bridge、journal/分页、实际 xterm、native exit、end、destroy 原因和缓冲水位。对 ASCII 编号流逐行核对，对 Windows ConPTY 的 VT 转换还需终端语义对照，不能只要求原始字节等同于 POSIX PTY。不得只凭 final revision、socket close、exit code 0 或一次压力通过升级为“无损已验证”。这些原生验证尚未执行，继续登记为开放技术债。
