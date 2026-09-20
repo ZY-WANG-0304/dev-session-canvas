@@ -10,6 +10,9 @@
 
 ## 进度
 
+- [x] (2026-09-20) 设计第20节冻结新原位观察/独立gate矩阵，两平台24项，增加receipt-held控制，不改旧入口/结果。
+- [ ] 实现新N-API观察/诊断/workflow，完成非PTY负例和本地12项，再推独立输入运行24项，下载全量复核并同步主线。
+
 - [x] (2026-09-20) 按设计第15节冻结新可读性握手：一次2048同步写、只读poll helper、实际成功read所有权与独立audit分账，三类各三次/两平台18项，不改旧实验。
 - [x] (2026-09-20) 新入口/helper/workflow实现并经独立只读审查，补EOF真实回调/唯一read id交付/全部helper退出的互证；Linux本地v1/v2各9项与完整复算通过，所有原工件保留。
 - [x] (2026-09-20) 输入931e8e22的run35510798036完整18项及下载复核：Ubuntu9/9、macOS8/9，control-3收齐后pending read挂起；原结果保留，未重试。
@@ -64,6 +67,8 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 
 ## 决策记录
 
+- 决策：原位F_GETFL/poll观察不传master给子进程，回执/gate由独立控制循环推进；增加真实EAGAIN回调结果held的受控场景，验证read循环未恢复时gate先完成。理由：同时排除共享flags干扰与循环推进依赖，不用延时或恢复flags试绿，不冒称旧失败完整因果。日期/作者：2026-09-20 / Codex。
+
 - 决策：以18项首次结果及12项flags控制收口本阶段，下一增量先设计原位readiness和不依赖read callback的回执/gate推进。理由：helper启动副作用已两平台实证，不能恢复旧矩阵的非阻塞reader验收资格，也不能把安静fixture误称旧挂起时序的完整因果验证。旧脚本/断言/结果不变，生产选型仍开放。日期/作者：2026-09-20 / Codex。
 
 - 决策：暂停可读性helper矩阵的非阻塞reader验收解释，新增原位F_GETFL及同helper无PTY继承对照，不立即重跑取消矩阵。理由：观察器启动本身可能改变共享文件状态；必须先核对实验有效性，不能用17个绿项掩盖这一前提缺口。第18节冻结两平台12项，旧结果不变，不修改业务。日期/作者：2026-09-20 / Codex。
@@ -88,6 +93,8 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 
 ## 工作计划
 
+当前执行设计第20节的新诊断增量：先实现原位只读N-API模块、独立控制循环和四类各三次schedule，完成flags/gate/所有权/假EOF负例及Linux本地完整12项，再专用workflow两平台24项、下载完整复核。只收口实验可行性/局部取消所有权，不接入业务，不覆盖Windows或长驻资源。
+
 当前增量里程碑已完成：设计第17节保留18项首次结果，第19节用12项原生控制实证helper启动链的共享flags副作用。下一增量先冻结不传master给子进程的原位readiness观察、回执发布/gate与read相对时序及独立推进，并持续检查flags不变，再另跑新取消矩阵；不把fd3/dup或静默恢复flags当修复，不接入业务、不关闭退出完整性或长驻资源债务。
 
 第一里程碑：加入 `scripts/diagnostics/compare-runtime-exit-readers.mjs`（Unix）、`compare-windows-exit-readers.mjs` 和 `runtime-exit-conout-worker.mjs`。前者从已验证 Linux 诊断承接，只扩展 Darwin 和严格换行归一。Windows 分离主诊断、单样本子进程与读取 worker。进程退出、源结束和资源退出分别记录，不使用假 EOF。先执行 syntax、自校验和本地完整 Unix schedule。
@@ -99,6 +106,8 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 职责澄清后的扩展里程碑：先把验收分类写入正式设计第 9 节，并在运行时主线设计中确认主进程尾部、已进入链路的内容、最终状态、资源释放和取消语义；启动器到实际 Agent CLI 的生命周期单独验证，不用通用后代实验替代。只有保留产品问题需要进一步底层解释时，再用本独立分支推进 macOS 控制组：真正记录 write 返回值/errno，比较 leader 退出与保持存活，将首次 EOF 后持有 master 的观测与原关闭路径分开。新诊断执行前仍须另冻结轮次、期限和分类，不调整已有两轮原始判断；尚未确定具体实现或预算。
 
 ## 具体步骤
+
+新入口从本独立工作树根执行 `node --check scripts/diagnostics/diagnose-unix-inplace-cancel.mjs`、同入口 `--self-test`，再 `--output .debug/unix-inplace-cancel-v1-local` 及对应 `--verify-saved`；本地允许NODE_PATH指向相同锁文件的主工作树依赖。原生workflow `runtime-unix-inplace-cancel.yml` 使用Node22、Linux/macOS全24项、失败也上传并复核，推送前fetch/rebase，不推运行时分支。
 
 本阶段已收口，独立工作树执行 `node scripts/diagnostics/diagnose-unix-helper-fd-flags.mjs --verify-saved .debug/github-helper-fd-flags-35511736807-macos/helper-fd-flags-evidence` 应attempted6/verified6、无失败/exit0；换ubuntu相同。旧握手同入口 `diagnose-unix-cancel-handshake.mjs --verify-saved .debug/github-cancel-handshake-35510798036-macos/cancel-handshake-evidence` 应9项有效、control-3失败/exit1。以下旧阶段命令必须改新输出目录才可重跑，不覆盖工件；下一readiness协议先写设计、再新增入口和验证，不立即重复旧矩阵筛绿。
 

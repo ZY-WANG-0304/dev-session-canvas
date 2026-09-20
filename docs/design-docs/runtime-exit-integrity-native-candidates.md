@@ -262,3 +262,17 @@ master组原样启动旧C helper，stdio为 `[master, 'pipe', 'pipe']`；null组
 下载目录 `.debug/github-helper-fd-flags-35511736807-{ubuntu,macos}/`，两边离线复核均attempted=6、verified=6、failures=[]、evidenceErrors=[]。脚本和C哈希与第18节一致，旧helper源码hash仍为 `0e17361b809fc1d05bd8261446ac4421755d297c170bf18c41e01c83648528b5`。Node运行时与编译头均22.23.2，libuv1.51.0、node-pty1.2.0-beta.12；Linux x64 kernel6.17.0-1022-azure/image20260907.300.1，macOS arm64 Darwin25.6.0/image20260907.0351.1。pty.node哈希分别 `ab01eb7d31a5b6202e2a51339ad2cbe3f2a73e3a679e88195011e28f3160d5a7`、`30ac36647725b2402585781c8e81be39d76962bf79d03620a9763539d0fdbec8`。Ubuntu工件ID `10605812206`、服务端ZIP digest `0e15b05412ef86c24586f08c35138354eec8f65f2383babc11d3f0053609a846`；macOS ID `10605791331`、digest `3ff7e11650e4655abbd63409be166006564f00d689ec5655658c75753a16fddd`，非本地ZIP独立复算。
 
 本阶段收口为实验有效性问题的定位，不再扩大矩阵。下一增量应先冻结不经子进程stdio传递master的原位readiness路径，并将回执/gate推进与等待read callback解耦，记录相对时序，持续断言flags未变；再用新入口运行完整取消/无取消对照。不能简单改传fd3（Apple启动路径仍涉及所有继承槽），也不能用dup/dup2假定隔离文件状态，或静默恢复flags掩盖改变过前提。具体新诊断协议需先行设计，尚不是生产reader/取消API或预算。Windows在途取消、同进程native长期资源（含Apple kqueue风险）、真实provider/宿主/packaged继续开放。业务、依赖和旧实验零修改，bridge既有回归、元数据/索引/关联路径/计划及diff检查通过；设计保持比较中/验证中，计划active。
+
+## 20. 原位观察与独立 gate 矩阵（运行前冻结）
+
+本阶段基于 `06cde336`，新增 `diagnose-unix-inplace-cancel.mjs`、原位N-API模块 `unix-pty-observer.c` 和专用workflow `runtime-unix-inplace-cancel.yml`，均在scripts/diagnostics或.github/workflows下，不改旧入口/模块/workflow或历史结果。原请求未交付时取消、成功回调持有时取消、无取消完整读取三类各三次，另增加 `receipt-held-control` 三次；Linux/macOS各12项、共24项，失败不筛选、不重跑到绿色。不运行Windows，不选择生产reader或取消预算。
+
+模块 `observe(fd)` 在原driver内调用F_GETFL、fstat、isatty、poll(timeout=0)，并再次F_GETFL；不dup、不设置flags/termios、不读写PTY、不启动携带master的观察子进程。返回前后完整flags、平台O_NONBLOCK与poll位值、TTY和dev/ino/rdev。driver初始、每次read提交/回调、关闭前及readiness重查均记录观察，要求完整flags等于初始值、两次F_GETFL一致、始终非阻塞、身份不变。首读前等待writer-enter，再要求poll可读且无HUP/ERR/NVAL；readiness只证明观测时可读，成功首读仍须无error且0<n<=64。异常前提直接失败，不恢复flags或取消后重试挑绿。
+
+fixture仍一次同步write请求写2048个ASCII C，仅真实短写时继续剩余量；独立文件记录enter/returned/error、最终回执发布、gate观察，含token/PID及monotonic时间。普通三类写完立即发布回执后等文件退出gate。driver以独立控制循环每2ms观察回执，不由read循环调用gate判断；只有候选与audit合计精确2048、身份/长度/hash正确的回执及写入进度成立，才发布gate。观察时记录回执、已交付字节、pending read/held状态；文件发布前后分别记录事件，不假定跨进程日志完全有序，gate含driver发布时间、fixture另存观察时间。
+
+两个取消场景仍保持64-byte首读、100ms成功回调持有、关闭新read准入；request-pending只指JS callback未交付，不声称内核仍阻塞。已拥有成功字节n完整交付，decoder与candidate source结算为interrupted后，audit才获得唯一读取权；audit为2048-n，与candidate严格分账，audit的真实EOF/EIO不升级candidate为完整。无取消组candidate独自完整2048、audit0，最终来源必须由正容量read真实0或EIO支持；四类均核对原始字节、实际headless最终状态、enqueue/applied/complete顺序及fd/driver自然释放。
+
+`receipt-held-control` 是新命名的调度负载控制，不重演历史挂起：fixture写完后暂不发布回执，等待独立release文件。driver收齐2048后继续一次正容量read；在非阻塞PTY、主体仍活着且无新输出时，必须真实返回EAGAIN/EWOULDBLOCK。driver记录这个空read的callback后持有其逻辑返回值，暂停读取循环；控制循环观察到该held状态才发receipt-release，fixture发布最终回执；同一个独立控制循环核对回执与精确字节并发布退出gate，随后才释放held回调、继续读取真实EOF。严格核对“full bytes→空read callback held→release→回执观察→gate发布→held返回释放”的因果事件链；EAGAIN不是EOF，逻辑回调持有也不是OS read仍阻塞。这样直接验证gate不依赖读取循环恢复，而非只等一个随机延时；writer receipt在其他三类不人为延迟。
+
+原10s采集、1s资源guard、15s独立父watchdog、2ms重查不变。控制循环在成功/错误/取消样本收尾时显式停止并结算；deadline只表示中断，不补造EOF。close前必须无未结算read/held结果，父watchdog仅清理本次driver进程组及另一个fixture组。无summary、缺回执等有效失败仍完整复核，其余样本继续执行；原始工件损坏单列evidenceErrors。记录Node/libuv/node-pty、头文件/编译器/源/binary哈希及输入SHA，输出目录不得存在。先编译/非PTY契约负例/本地全12项，再推独立分支跑原生24项并下载完整复核。新通过不追认旧18项有效，不替代Windows在途取消、长驻native资源或真实宿主验收。
