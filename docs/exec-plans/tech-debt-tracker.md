@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-20 runner 合并后续：PR #294 已提供三平台最小原生基线，运行时分支已 rebase；不能再将“没有 runner”当成未验证原因，但 macOS/Windows 候选 reader、真实宿主与资源生命周期仍未验收。Windows 首次自然退出资源 guard 失败保留，事后 public kill 的诊断成功不关闭该问题。新隔离契约在 Node 25/Electron-as-Node 39 各 39 项通过，实际 Supervisor 注入各 17 项通过；真实分页投影证实旧 close 无法区分已应用与取消，尚未修改生产 wire。下一步按退出完整性 active 计划验证跨平台候选并选定接口/预算；F-03 root 归属、F-04 整体容量模型和本项退出完整性均未因此关闭。证据见 `docs/design-docs/runtime-exit-integrity.md` 第 12–14 节与 `scripts/diagnostics/diagnose-runtime-exit-contract.mjs`。
+
 2026-09-17 终态短读补充：本轮第一次 90000 行用例的最后页已到 `revision=head=11628`，末尾仅第 89850 行和半个 marker，证据保存在 `.debug/runtime-completed-90000-first-failure/`；根因仍未定位。后续改为直接逐行核对实际 xterm 后通过 90000/90000，不能据此关闭原有间歇性风险。测试观测也独立修正：200 条 test-only 消息环不能拼完整历史，保留的 viewport 不能代表 buffer 尾部。取消 completed 归档不改变当前页面的完整性要求。
 
 2026-09-18 退出分页补充：首轮 5 项 Linux 宿主场景通过，第二轮第一项实际 xterm 仅 89969/90000，最后一页发送记录 `revision=headRevision=12654`。失败清理覆盖消息正文，尚不能判定缺失层；保留 `.debug/runtime-paged-completion-short-read-failure/`，新增 `completed-before-cleanup/` 独立现场及首末行诊断。补强观测后的 90000 行逐行校验与空白重开通过，但严格完整性断言不变，短读债务继续开放，不用本批取消终态聚合宣称修复。

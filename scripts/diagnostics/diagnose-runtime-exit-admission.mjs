@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import esbuild from 'esbuild';
 import ts from 'typescript';
+import { SourceCompletionModel } from './runtime-exit-contract-model.mjs';
 
 // Controlled provider ordering, not evidence that an OS naturally emits late data.
 const filename = path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts');
@@ -31,6 +32,9 @@ try {
     results.push(await verifyStop(kind));
     if (kind === 'agent') results.push(await verifyStop(kind, 'claude'));
     results.push(await verifyDelete(kind));
+    for (const ordering of ['process-tail-source', 'source-before-process', 'stop-process-tail-source']) {
+      results.push(await verifySourceContract(kind, ordering));
+    }
   }
   console.log(JSON.stringify({
     diagnostic: 'provider-exit-admission-contract',
@@ -39,13 +43,15 @@ try {
     node: process.version,
     uv: process.versions.uv,
     supervisorSha256: createHash('sha256').update(source).digest('hex'),
+    contractModelSha256: createHash('sha256').update(await readFile(
+      new URL('./runtime-exit-contract-model.mjs', import.meta.url))).digest('hex'),
     results
   }, null, 2));
 } finally {
   await rm(directory, { recursive: true, force: true });
 }
 
-async function fixture(kind, provider = 'codex') {
+async function fixture(kind, provider = 'codex', useSourceContract = false) {
   const sessionId = `admission-${++sequence}`;
   const storageDir = path.join(directory, sessionId);
   const tracker = new SerializedTerminalStateTracker(80, 24, { scrollback: 100, initialOutputSequence: 0 });
@@ -58,6 +64,11 @@ async function fixture(kind, provider = 'codex') {
   server.scheduleIdleShutdownIfNeeded = () => {};
   const dataListeners = new Set();
   const exitListeners = new Set();
+  const emitData = chunk => { for (const listener of [...dataListeners]) listener(chunk); };
+  const emitExit = result => { for (const listener of [...exitListeners]) listener(result); };
+  const contract = useSourceContract ? new SourceCompletionModel({
+    onData: emitData, onFinal: result => emitExit(result.process)
+  }) : undefined;
   const process = {
     backend: 'node-pty', pid: 0, processName: 'injected-provider', kills: 0, writes: [],
     onData(listener) { dataListeners.add(listener); return { dispose: () => dataListeners.delete(listener) }; },
@@ -79,15 +90,22 @@ async function fixture(kind, provider = 'codex') {
   server.subscriptions.set(socket, new Map([[sessionId, 'terminal-stream-v1']]));
   server.bindSessionProcess(session);
   const trace = [];
-  return { server, session, process, journal, tracker, socket, trace,
+  return { server, session, process, journal, tracker, socket, trace, contract,
     data(chunk) {
       trace.push({ event: 'data', chunk, listenerCount: dataListeners.size,
         admissionOpen: session.terminalMutationAdmissionOpen });
-      for (const listener of [...dataListeners]) listener(chunk);
+      if (contract) contract.data(chunk);
+      else emitData(chunk);
     },
-    exit() {
+    exit(exitCode = 0) {
       trace.push({ event: 'exit', listenerCount: exitListeners.size });
-      for (const listener of [...exitListeners]) listener({ exitCode: 0 });
+      if (contract) contract.processExit({ exitCode });
+      else emitExit({ exitCode });
+    },
+    sourceEnd() {
+      assert(contract);
+      trace.push({ event: 'source-end', kind: 'eof' });
+      contract.sourceEnd({ kind: 'eof' });
     },
     async cleanup() {
       if (server.sessions.has(sessionId)) await server.deleteSession({ sessionId });
@@ -187,6 +205,44 @@ async function verifyDelete(kind) {
     assert.equal(f.process.kills, 1);
     return { kind, ordering: 'explicit-delete', acceptedOutput: output,
       interpretation: 'Intentional cancellation, not a natural-exit drain failure.', trace: f.trace };
+  } finally {
+    release();
+    await f.cleanup();
+  }
+}
+
+async function verifySourceContract(kind, ordering) {
+  const f = await fixture(kind, 'codex', true);
+  const release = gate(f);
+  try {
+    f.data('BEFORE\r\n');
+    if (ordering.startsWith('stop-')) f.server.stopSession({ sessionId: f.session.sessionId });
+    if (ordering === 'source-before-process') {
+      f.data('TAIL\r\n');
+      f.sourceEnd();
+      assert.equal(f.session.finalizationPromise, undefined, 'source end cannot invent a process result');
+      f.exit(7);
+    } else {
+      f.exit(7);
+      assert.equal(f.session.terminalMutationAdmissionOpen, true, 'process result is not source completion');
+      await new Promise(resolve => setImmediate(resolve));
+      f.data('TAIL\r\n');
+      assert.equal(f.session.finalizationPromise, undefined);
+      f.sourceEnd();
+    }
+    assert.equal(f.session.terminalMutationAdmissionOpen, false);
+    assert.equal(f.journal.getRevision(), 0, 'accepted operations remain behind the gate');
+    release();
+    await f.session.finalizationPromise;
+    await f.session.terminalOperationChain;
+    assert.equal(f.session.terminalJournalError, undefined);
+    assert.equal(finalOutput(f), 'BEFORE\r\nTAIL\r\n');
+    assert.equal(f.session.lastExitCode, 7, 'do not replace nonzero results with successful exits');
+    assert.equal(f.contract.final.source.kind, 'eof');
+    assert.throws(() => f.contract.data('AFTER-SOURCE'), /data after source end/);
+    return { kind, ordering, candidate: 'injected-source-completion-model', exitCode: 7,
+      acceptedOutput: finalOutput(f), finalRevision: f.journal.getRevision(), trace: f.trace,
+      scope: 'Actual Supervisor with a model adapter; not native source proof or a production integration.' };
   } finally {
     release();
     await f.cleanup();

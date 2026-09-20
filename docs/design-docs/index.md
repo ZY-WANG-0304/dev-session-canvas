@@ -23,7 +23,8 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `docs/design-docs/runtime-exit-integrity.md` | 本次重构独立交付：Linux 独占 reader 候选对照、三事实收尾契约与平台矩阵；未选定生产实现，未改业务 | 执行编排域、VSCode 集成域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-exit-integrity.md` | 2026-09-20 |
+| `docs/design-docs/runtime-exit-integrity-native-runners.md` | 三平台原生 PTY/ConPTY 最小基线已跑通，保留首轮 oracle/资源失败；Windows 显式事后清理不代表自然退出或产品完整性验收 | 执行编排域、VSCode 集成域 / 适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-exit-integrity-native-runners.md` | 2026-09-20 |
+| `docs/design-docs/runtime-exit-integrity.md` | 本次重构独立交付：承接三平台基线，验证源/进程/读者结算模型及实际 Supervisor 注入；原生 reader、生产接口和资源预算仍未选定 | 执行编排域、VSCode 集成域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-exit-integrity.md` | 2026-09-20 |
 | `docs/design-docs/runtime-terminal-cross-platform-diagnosis.md` | 退出完整性契约跨平台复核：Unix/Windows 强制关闭与公共 onExit 假设；原生 macOS/Windows 验证仍缺，未修业务 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 比较中 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-terminal-cross-platform-diagnosis.md` | 2026-09-20 |
 | `docs/design-docs/runtime-terminal-tail-diagnosis.md` | 首轮 Linux PTY HUP/partial read 过早 EOF 定位；仅代表已捕获样本，跨平台后续另文核查 | 执行编排域 / 宿主集成层、适配与基础设施层 | 比较中 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-terminal-tail-diagnosis.md` | 2026-09-20 |
 | `docs/design-docs/runtime-paged-completion.md` | 第五个增量：退出轻量通知、当前读者从原 Supervisor 分页收尾、最后读者关闭后退役来源 | 执行编排域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-paged-completion.md` | 2026-09-18 |
@@ -84,8 +85,6 @@
 | `docs/design-docs/execution-session-platform-compatibility.md` | 执行会话后端从 Linux 原型收口到 Linux/macOS/Windows 统一 PTY 路线，并补宿主侧 CLI 命令发现策略与剩余平台差异记录 | VSCode 集成域、执行编排域、协作对象域 / 宿主集成层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/execution-session-platform-compatibility.md`、`docs/exec-plans/active/agent-shell-environment-inheritance.md` | 2026-05-09 |
 | `docs/design-docs/task-note-editable-nodes.md` | Task 与 Note 从占位卡片升级为可编辑真实节点的字段与状态分层设计 | 画布交互域、协作对象域、项目状态域 / 画布呈现层、共享模型与编排层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/task-note-editable-nodes.md` | 2026-03-28 |
 | `docs/design-docs/vscode-canvas-runtime-architecture.md` | VSCode 内无限画布的运行时边界、技术路线与初步选型 | VSCode 集成域、画布交互域、协作对象域、执行编排域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 验证中 | `docs/exec-plans/completed/canvas-architecture-research.md`、`docs/exec-plans/completed/agent-session-surface-alignment.md`、`docs/exec-plans/completed/agent-special-terminal.md`、`docs/exec-plans/completed/execution-session-platform-compatibility.md`、`docs/exec-plans/completed/canvas-surface-configurable-host.md` | 2026-04-28 |
-
-| `docs/design-docs/runtime-exit-integrity-native-runners.md` | 三平台原生 PTY/ConPTY 最小基线已跑通，保留首轮 oracle/资源失败；Windows 显式事后清理不代表自然退出或产品完整性验收 | 执行编排域、VSCode 集成域 / 适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-exit-integrity-native-runners.md` | 2026-09-20 |
 
 ## 维护约定
 

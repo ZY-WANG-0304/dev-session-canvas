@@ -29,7 +29,7 @@ updated_at: 2026-09-20
 
 ## 2. 问题与证据基础
 
-`docs/design-docs/runtime-terminal-tail-diagnosis.md` 确认 Linux PTY 过早 EOF，原始 onData 已缺字节。`docs/design-docs/runtime-terminal-cross-platform-diagnosis.md` 又区分 Unix 200 ms 强制关闭、Windows 默认 ConPTY 1000 ms 静默关闭及公共业务的退出假设。Linux 有真实自然/受控证据；Windows 有实际 JS/reader 夹具证据，但没有原生 ConPTY 实测；macOS 有源码边界核查但尚无原生证据。不能把三种证据级别混为全平台复现。
+`docs/design-docs/runtime-terminal-tail-diagnosis.md` 确认 Linux PTY 过早 EOF，原始 onData 已缺字节。`docs/design-docs/runtime-terminal-cross-platform-diagnosis.md` 又区分 Unix 200 ms 强制关闭、Windows 默认 ConPTY 1000 ms 静默关闭及公共业务的退出假设。该轮 Windows 为实际 JS/reader 夹具、macOS 为源码核查。随后 PR #294 的三平台最小原生基线补充见第 12 节；它没有重现或消除所有上述机制，不能将不同证据层级混为全平台修复。
 
 `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts` 直接转发 node-pty onExit，却假定输出已完整排空。`src/supervisor/runtimeSupervisorMain.ts` 的 `bindSessionProcess()` / `finalizeSession()` 在 exit 后封闭新事件，只收敛已接受操作；`src/panel/CanvasPanelManager.ts` 的 local Agent/Terminal finalize 同样取消输出监听。公共队列尚未发现丢失退出前已接受数据，但它无法补回未进入回调的字节。分页与 final revision 也不能证明源完整性。
 
@@ -77,7 +77,7 @@ updated_at: 2026-09-20
 
 ## 6. 下一步与状态
 
-执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–8 节记录冻结后的 Linux 隔离实验，第 9–11 节给出候选、生命周期契约提案与平台缺口。下一步仍需补原生平台和上游/自维护方案对照，再选定生产 reader 与接口；不能把局部 Linux 通过当作整个里程碑一完成。实现与产品验收仍未勾选。
+执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–8 节记录 Linux 隔离 reader 实验，第 9–11 节给出候选与平台缺口，第 12–14 节承接 runner 和可执行收尾契约验证。下一步在已有 runner 上补 macOS/Windows 候选 reader 与生命周期对照，明确 native 资源释放和源结束边界，再选定生产 reader、wire API 与预算；不能把基线或内存模型通过当作里程碑一完成。实现与产品验收仍未勾选。
 
 ## 7. 第一轮候选实验协议（运行前冻结）
 
@@ -152,8 +152,40 @@ Supervisor/local Host 在 adapter 最终事件后才封闭 admission，先收敛
 | --- | --- | --- |
 | Linux x64，Node 25.6.0 / Electron-as-Node 39.8.7 | 冻结的 84 项裸 PTY 候选对照 | 自然 HUP 旧失败/新通过对照、正式 reader、公平性/并发、实际 Host 两种模式、真实 provider 和 packaged。 |
 | Linux Remote SSH | 无本轮候选实测 | 记录实际执行端版本，不用本地 Electron 代替远程 extension host；验证断连与当前读者结算。 |
-| macOS 原生 | 仍只有既有源码核查 | 取得 runner 后、运行前冻结 OS/架构/VS Code/Node 版本；验证 slave close、后代、正常 read 终止与取消回收，不外推 Linux EIO。 |
-| Windows 原生 | 仍只有既有 Windows JS/reader 夹具 | 取得 runner 后、运行前冻结 OS build/架构/宿主版本与 builtin/DLL；验证真实 ConPTY、worker drain、关闭死锁及停止路径。 |
+| macOS 原生 | PR #294：arm64 / Darwin 25.6.0 / Node 22.23.2，公共接口 15 项基线；首轮 CRCRLF oracle 误报已修正 | 固定宿主与候选版本，验证 slave close、后代、90000 行、可信源终止与取消回收；小样本成功不外推 Linux EIO 或全部 macOS 架构。 |
+| Windows 原生 | PR #294：Server 2025 x64 / build 26100 / Node 22.23.2，builtin ConPTY 15 项；首次自然退出资源 guard 失败，新版显式 fixture 清理后通过 | 验证 builtin/DLL、实际 VS Code、原生源终止、worker drain、关闭死锁与停止路径；事后 public kill 不等于自然退出自动释放或可信排空。 |
 | 声明支持的宿主范围 | `^1.80.0` 仍未改变 | 选型时明确最低支持宿主与代表性矩阵；在验证前不能将 1.117.0 的结果泛化到全部支持版本。 |
 
-里程碑一还未结束：生产 reader、后代期限、资源/输入预算、原生 Windows/macOS 和具体 wire API 尚未选定或验证。当前实验可以支持继续投入受控 adapter 候选，不能据此直接修改业务、去掉旧兼容、宣布全平台已修复或关闭退出完整性债务。
+里程碑一还未结束：生产 reader、后代期限、资源/输入预算、原生 Windows/macOS 候选和具体 wire API 尚未选定或验证。当前实验可以支持继续投入受控 adapter 候选，不能据此直接修改业务、去掉旧兼容、宣布全平台已修复或关闭退出完整性债务。
+
+## 12. 独立 Runner 合入后的证据承接
+
+PR #294 已合入 `main@5965adb8`，运行时分支的 13 个提交 rebase 后为 `28055e13`；备份 `backup/runtime-persistence-before-runner-rebase-7202298c` 保留。业务代码与 rebase 前相同，runner 的 workflow、诊断和证据文档保持已审核版本。
+
+`docs/design-docs/runtime-exit-integrity-native-runners.md` 记录原生 run `35491608835` 的首次失败与 `35492043484` 的修正版结果。后一轮在 Node 22.23.2 / libuv 1.51.0 / node-pty 1.2.0-beta.12 下每平台 12 次内容匹配、3 次主动取消，共 45 项。macOS 原失败是 LF 前重复 CR 被误判为多行，非短读证据。Windows 原失败是内容匹配但诊断资源未退出；新版在内容观察结算后显式 public kill 才结束，不能关闭自然退出的资源债务。两个 run 和首次工件均保留。
+
+由此把资源所有权纳入选型：provider 应明确提供幂等的资源释放路径，说明它是否破坏仍在读取的数据以及与主进程退出的顺序。释放 worker/native handle 不应靠复用用户 stop 的进程树信号语义来推断；本轮只确认该证明义务，不新建生产 dispose API，也不把诊断 public kill 当作最终实现。源完成、页面应用完成和资源回收须独立验证。
+
+## 13. 可执行收尾契约模型（隔离候选）
+
+模型位于 `scripts/diagnostics/runtime-exit-contract-model.mjs`，用例入口为 `scripts/diagnostics/diagnose-runtime-exit-contract.mjs`。它们是设计阶段的受控验证，只使用内存状态和既有 `TerminalPagedProjection` 类；不创建原生 PTY、不更改 bridge、Supervisor、Host 或 Webview，也不意味着新 API 已投入生产。
+
+源模型分别接收字符串 data、process result 和 source end。process result 可先于最后 data；source end 可先于 process result；两者都存在时只发布一次 final。source end 状态为 `eof`、`interrupted`、`error` 或 `legacy-unknown`，由测试输入提供，不由模型检测 native EOF。非零 exit 不改变 `eof`；stop 意图不结算源；解码器尾片须先交付再结束。重复相同终态幂等，冲突终态或 source end 后 data 显式报违约，不静默改变已发布的 final。资源释放不为缺少的 process/source 结果补造成功。
+
+消费者模型只固定验证规则，优先比较独立结算消息，不直接扩展现有 close。实验结算为 `applied(finalRevision)` / `cancelled`，断连为服务端 `lost`，旧 close 为 `legacy-released`；后三者释放读者但不证明已应用。应用确认要求连接 owner、sessionId、authorityId、readId 全部匹配，最终 revision 已知且等于确认位置，且该位置已送给该读者。服务器仍需信任有效 Webview 只在 xterm write callback 后发送 applied；仅模型中的数值相等不能证明 UI 实际渲染。
+
+主进程退出不关闭新读者入口；源 final 固定位置后停止接受新的 open，已接收但未返回的 open 仍占用来源。已存在读者各自应用、取消或失联，最后一个结算后才允许来源退役；一个读者取消不得结束另一个。取消后的迟到 open 回复不得复活读者，旧 authority/read/owner 的迟到结算不得释放新读者。同一结算重试幂等，冲突重试拒绝。轻量的去重记录只属于模型；生产记录的数量、期限与清理预算尚待选定。
+
+候选能力分别描述“协议能理解结算”与“该 session 的 provider 能证明源结束”。只有双方 opt-in 才发送新结算，旧 `terminalAppliedRevisionAckV1` 仅证明已有增量能力，不能冒充新的终态能力。新协议连接旧 provider 时源仍为 `legacy-unknown`；不搬迁旧 live session，不更改既有绑定。
+
+运行前冻结的用例覆盖事件排列、重复与违约、解码尾片、stop/强制中断/错误/旧能力，以及消费者最终位置、错误身份、双读者、在途 open、重试和真实投影完成/取消的对照。确定性用例每项一次，并保存全部结果与实际投影源码哈希。模型通过只能支持上述逻辑规则自洽；Supervisor/local Host 接入、原生候选、并发/资源预算和真实 xterm/packaged 仍须独立验证。
+
+## 14. 收尾契约验证结果与剩余边界
+
+在 Linux Node 25.6.0 与 Electron-as-Node 39.8.7 / Node 22.22.1 分别完成同一组 39 个用例，各 39/39 通过；能力用例另遍历 18 个组合，不额外记为 18 次原生验证。工件在 `.debug/exit-contract-v1-node25/`、`.debug/exit-contract-v1-electron39/`，包含固定 schedule、全部 results、summary 和源码哈希。模型哈希为 `e23befc9272d10354501d62bb09ac9ee46eb6b48b9756c1a5518d56a94afba70`；验证入口哈希为 `2eaf510bf0dc9fa3b9875abc3068759e4d4b6fc2b83c84a26d92b94802e57d1f`。
+
+实际 `TerminalPagedProjection` 的对照分别让最后一页 write callback 完成、或在 callback 前 stop：前者显示退出，后者不显示自然完成，两者旧 close 载荷却完全相同。这实证了完成凭证缺失，未证明当前页面有新的丢字节 bug。候选模型把 applied/cancelled/lost/legacy-released 分开，并拒绝提前确认、错误身份和错误 final revision；现有生产 wire 尚未改变。
+
+`scripts/diagnostics/diagnose-runtime-exit-admission.mjs` 在同两种运行时各执行 17 项：原有 11 项公共 Supervisor 特征断言保持不变，另加 6 项把源模型的 final 转接给实际 Supervisor 的 onExit。Agent/Terminal 各覆盖进程先退后有异步尾部、源先结束和 stop 后排空；6 项均完整保留 `BEFORE\r\nTAIL\r\n`、final revision 2、exit 7 和唯一终态。工件为 `.debug/exit-admission-contract-v1-node25.json` 与 `.debug/exit-admission-contract-v1-electron39.json`。这些 source EOF 是注入的，不是 PTY 读取证明；此适配也没有把源状态传入生产 wire，不能视为 Supervisor 完整集成已交付。local Host 两路径、provider 原生实现和完整消费者确认链路仍未接通。
+
+rebase 回归通过 `typecheck`、`build`、`test:execution-session-bridge`、`test:terminal-session-journal` 和 `test:runtime-supervisor-protocol`（含 checkpoint refresh、paged projection、completed-history、paged completion）。相对 rebase 前业务及原有测试无差异，本轮增量限诊断和文档；没有执行完整 VS Code UI、真实 Agent、packaged 或新的 macOS/Windows 候选测试。固定等待、旧 onExit 或事后 public kill 均未升格为生产完整性方案。
