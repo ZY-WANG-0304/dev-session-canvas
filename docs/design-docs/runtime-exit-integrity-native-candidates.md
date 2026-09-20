@@ -109,3 +109,19 @@ Windows 候选 21/21 达到冻结门槛：18 次完整内容/光标、真实 pip
 下一增量优先明确保留的产品收尾契约和验收场景，并验证真实启动链、主进程尾部、最终状态及资源释放。macOS 原始 write、leader 存活/退出、EOF 后保持 master 的控制实验继续登记为诊断开放项，仅在需要回答保留的产品契约问题时再纳入相应门禁，不作为先完成才能选型或归档的无条件前置工作。生产 reader/API、取消方案和预算均未选定，设计保持“比较中 / 验证中”，计划保持 active。
 
 本次只修改文档中的职责与阻塞判断，不修改旧脚本、断言、冻结参数、两轮工件或结果。历史失败仍按原实验条件失败；不删除证据、不追认绿色，也不因范围缩小宣布退出完整性已经解决。
+
+## 10. 主进程收尾与启动链新矩阵（运行前冻结）
+
+本增量另建 `diagnose-unix-exit-tail.mjs`、`diagnose-windows-launch-tail.mjs` 及专用 helper/worker，新 workflow 为 `runtime-exit-tail-products.yml`。旧三脚本、workflow、147 项矩阵及两轮失败均不变。独立分支在运行前 fetch/rebase 后仍基于 `origin/main@5965adb8`；不推送运行时重构历史、不修改业务或依赖。所有参数只用于诊断，生产取消触发、预算和 reader API 均未选定。
+
+Unix 固定独占异步 fd reader，7 案例各 3 次，共 21 项：90000 行自然 exit 0、90000 行自然 exit 7、89800 附近停读 350 ms 后继续的尾部、UTF-8/CSI/OSC 分片与最终 CRLF、实际 headless parser 完成通知延迟 100 ms、真实 read 在途时请求取消、真实成功 read 回调的交付延迟 100 ms 时取消。常规 read 为 64 KiB，EAGAIN 等 2 ms 后继续，不将它认定为 EOF。终端文本、光标及相关 title/控制序列均按完整 oracle 核对；消费者结束、fd close 回调、fstat EBADF 和样本进程自然结束分别记录，不互相替代。
+
+两个 Unix 取消案例让主进程先同步成功写 2048 ASCII 字节并保存 receipt，继续存活；候选提交真实 64-byte read 后关闭新读取准入，必须交付已拥有 read 的成功结果。原在途 read 完成后，另一个明确标为 audit 的诊断 reader 才接管 fd，采集剩余系统字节，要求候选交付与 audit 数据严格拼接为 writer 数据。audit 不是候选输出，不将后续 EOF 追认为候选 completed。这是主动截断负对照，旨在证明“保住在途 read”仍不足以证明 OS 尾部收齐，不是产品取消策略。每项子进程采集截止 10 s、自然退出 guard 1 s，父进程独立 watchdog 15 s，覆盖同步 native 初始化阻塞；只清理本次 fixture PID/进程组。
+
+Windows 固定 7 案例、每项 3 次、两条路径，共 42 项：direct-zero、direct-nonzero、direct-paused-tail、cmd-wait-zero、cmd-wait-nonzero、bat-wait-nonzero、cmd-nonwait-control。实际 bridge 路径隔离构建 `createExecutionSessionProcess()`，默认 builtin ConPTY；候选 owned-dll 使用同一真实 `resolveExecutionSessionSpawnSpec()` 的结果及独占新 worker，它不是生产 bridge 已换 reader。public onExit 只记为旧能力观察，不能叫 source EOF。
+
+Windows 主体写 READY 后持有 gate；正例观察至少 100 ms 主体存活且启动器未退出，放行后写带 UTF-8 的 TAIL 和最终 CRLF，再退出 0/7。cmd/bat fixture 调用 Node 等待型启动器，启动器继承终端并等待实际主体、传播退出码。它覆盖同形启动链，不运行真实 provider 或访问其凭据。direct-paused-tail 用 90000 编号行、89800 附近暂停 1500 ms，对完整文字与最终光标严格核对。nonwait 用 `cmd start /b` 建立故意不等待的负对照，要求包装程序退出时真实主体仍存活且 stdout 为 TTY；主体此后不再写未来输出，明确取消并清理，不当作自然排空成功。每项采集 30 s、退出观察 2500 ms、自然资源 guard 2 s，独立父进程硬截止 35 s；基线资源失败原样报告，候选单独判定。
+
+每个平台执行全 schedule，新目录拒绝覆盖，保存源码快照/hash、native/environment 指纹、原始数据、writer receipt、事件、消费者结果、清理与父进程退出记录。独立 watchdog 及失败断言需自校验；GitHub fail-fast 关闭，所有失败上传和下载，修订先记录原因再完整新跑，不筛选成功。Linux/macOS 各 21 项，Windows 42 项，共 84 项；本地 Linux 另记，不与 runner 样本混算。
+
+这一轮不是全产品验收：Windows worker 取消时在途消息与 OS 未读数据的交接、长驻 OS 句柄增长、输入公平性、信号/强停、真实 provider/VS Code、最低宿主及 packaged 仍未覆盖。自然子进程退出和单次 fd/worker 释放不能升级成长驻无增长结论。范围收窄不取消主进程尾部门槛，也不要求普通后代延迟输出作为产品门禁；旧诊断仍按原条件失败。
