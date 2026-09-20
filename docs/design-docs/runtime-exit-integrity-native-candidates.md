@@ -202,3 +202,19 @@ Windows 环境 Server 2025 x64 build 26100，Node 22.23.2 / libuv 1.51.0；conpt
 两平台所有 cleanup remaining/errors 为空，无独立父 watchdog 硬超时；macOS 六个前提失败样本仍没有自然 fd close，且依赖 driver 资源 guard 退出，不以事后无残留覆盖自然释放失败。其余案例的 fd close/EBADF、消费者 barrier 与自然 driver 退出分别留证；不证明长驻进程内 native 资源无增长，Apple kqueue 风险未关闭。工件 ID 为 Ubuntu `10603998209`、macOS `10604043029`，GitHub 返回的 ZIP digest 分别为 `21dc50cfa862aa38dcc804fa628690e2c0693c871d890bdcd0fa906aa71725c7`、`92803c186611545b01fc676b0008174042640ce0562fc9c3744545f65cf5fca5`，这是服务端归档标识，不冒称已对下载 ZIP 独立复算。
 
 下一增量重新冻结无循环等待的取消握手，允许 writer 与 reader 取得进展，以原始调用进度和候选实际拥有的 read/回调建立前提；候选交付、audit 字节与最终 writer receipt 分别对账。保留 2048-byte 负载及旧失败，不靠减小负载、增长期限或将控制组改名解决取消验收。确切握手、断言与矩阵需运行前设计，不在本轮选定生产取消政策。随后继续 Windows 在途取消、同进程长驻资源及真实 provider/宿主/packaged，旧 Windows 主进程尾部与资源反例不受本轮影响。业务、依赖及旧脚本/workflow 未变，设计仍比较中/验证中，计划 active。
+
+## 15. 可读性握手取消矩阵（运行前冻结）
+
+本增量基于 `51b8c33e`，新增 `scripts/diagnostics/diagnose-unix-cancel-handshake.mjs`、只读原生 helper `scripts/diagnostics/unix-pty-readiness.c` 和专用 workflow `runtime-unix-cancel-handshake.yml`。原两个 Unix 入口、旧 workflow、所有原始断言和失败不改。冻结三类各三次：`cancel-request-pending`、`cancel-callback-held`、`read-through-control`，Linux/macOS 各 9 项、共 18 项。此窄矩阵专门补取消所有权，不重复宣称自然尾部、Windows或长驻资源已验收。
+
+fixture 保持一次同步写入 2048 个 ASCII `C`，记录调用前后状态、实际返回值/错误、最终成功回执与 token/PID/TTY。短写时才继续剩余量，不人为拆分成较小预置块。成功后等待独立退出 gate，始终由实际主进程持有终端；driver 不再要求首读之前已有全量成功回执。每个样本仍为 10 s 采集、1 s 自然资源 guard、15 s 独立父 watchdog，非可读/暂不可读的重查间隔为 2 ms，候选单次 read 请求容量 64、audit/普通读取上限 64 KiB，held 成功回调交付延迟仍为 100 ms。这些均是诊断参数，不是生产取消政策。
+
+driver 在写调用已进入后，用编译后的 helper 对继承的 master fd 执行一次 `poll(timeout=0)`、`fstat` 和 `isatty`，仅输出 JSON，不执行 read/write、不改 O_NONBLOCK/termios。每次等待 helper 自然退出且 stdio close，核对设备/inode/rdev 身份和 TTY，再判定 POLLIN 且无 HUP/ERR/NVAL；尚不可读则在原样本期限内重查。不用 FIONREAD 推断跨平台 master 输出字节数，也不以 sleep、writer-enter 或超时当可读证据。helper 不是并发消费者，它的 fd 副本在候选 read 前已释放；helper PID、报告、退出状态和编译器/源码/二进制 hash 全部留证。不支持/错误/提前挂断都使前提失败，不静默替换实现。
+
+可读性不保证 read 填满请求，因此新契约按实际成功 read 的 `n` 验收，要求无 error 且 `0 < n <= 64`。`cancel-request-pending` 在唯一候选 read 提交后、同一 JS 调用栈立即取消，要求当时请求未交付回调；它不声称内核系统调用仍阻塞。`cancel-callback-held` 在真实成功回调后先持有 Buffer、再取消，100 ms 后才交付。两者均关闭新 read 准入，完整交付已拥有的 n 字节、结束 decoder 和候选源，明确标 interrupted；不得用随后 audit EOF 将候选追认为完整结束。零字节/EAGAIN 或错误不冒充成功取消，也不取消后重试挑选成功。
+
+只有候选 read 和 held callback 都已结算、候选源已结束，audit 才取得唯一读取权。audit 字节不进入候选消费者；候选应精确等于原始成功回调，audit 应为 `2048-n`，二者严格拼接为完整 writer payload。audit 继续推进尚未完成的写入；不把它收到的全部字节称为“取消瞬间已经在 OS 缓冲中”。只有合计收齐 2048 且身份/长度/hash 正确的最终成功回执存在，才放行主体退出，继续读取到真实 EOF/EIO；早 EOF、超时、错误均失败。`read-through-control` 使用同一可读握手但不取消，候选独自完整接收 2048、audit 为零，并取得自然源结束、主体 exit 0。
+
+三类都独立核对实际 headless 消费者的内容/最终状态、每个 enqueue/applied/completed、decoder尾部、fd close/EBADF 和 driver 自然退出；单次释放不等于长期资源零增长。driver 使用本次独立进程组，父硬 watchdog 清理该组内的 helper 与 driver，并另行清理 fixture 的独立进程组；失败路径也结束仍在运行的 helper，不允许额外 master 引用掩盖 EOF/释放。watchdog 自校验需包含 helper 子进程持有资源的故障注入，范围仍明确为非 PTY 控制，不能冒充全部原生故障回收证明。
+
+新入口支持 `--self-test`、`--output NEW_DIR` 与 `--verify-saved DIR`。运行前编译 helper（Linux 用 gcc、macOS 用 clang，C99、警告视为错误），编译失败保存工具链错误且不启动样本；不增加产品依赖。自校验应拒绝坏可读性报告、错误 fd 身份/未退出 helper、假 EOF、提前 audit、丢掉 owned bytes、缺成功回执、错误分账和损坏 raw，并验证所有失败工件继续完整遍历。原生运行全矩阵、失败不筛选，保存完整 schedule、源码/native/helper 快照、原始读数据和事件。旧 64/1984 断言未放宽，新 n/2048-n 是单独命名的实际 read 所有权契约；新成功不追认旧六个失败，生产选型仍比较中/验证中。
