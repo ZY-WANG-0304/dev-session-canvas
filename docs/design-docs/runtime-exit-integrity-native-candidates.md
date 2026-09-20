@@ -42,4 +42,28 @@ Windows 比较 `stock-builtin`、`stock-dll`、`owned-dll`。候选直接使用�
 
 本地 Linux Node 25.6.0 / libuv 1.51.0 完整执行 42 样本，候选 18 次精确 read EIO、3 次明确取消；stock 三次暂停缺尾（writer 成功）、三次后代写失败分别保存。自然零/非零退出本轮无缺失，不声称已取得自然 HUP 的新对照。工件 `.debug/native-candidate-v1-local/` 已复核完整 schedule、内容哈希和候选门槛。两个入口自校验和三个脚本语法通过；Windows 的 TCP worker 自校验不是原生 ConPTY。
 
-远端候选尚未执行。PR #294 的最小基线不是本阶段通过记录。生产 reader、wire API、取消期限和资源预算均未选定。
+首轮远端 run [35498026812](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35498026812)，输入 `afb2497440d22ee088d8bd3a65766dcec008e322`，attempt 1，执行完整 147 样本。Ubuntu job 成功，macOS/Windows job 失败；未通过放宽断言、增加等待或重跑筛选改成绿色。
+
+| 平台 | 原 reader | 独占 reader 候选 |
+| --- | --- | --- |
+| Ubuntu，42 样本 | 暂停三轮均只有 89800 行，writer 成功；后代尾部三轮写失败；其余内容匹配 | 18 次内容精确且 read EIO，3 次后代保持时明确取消，21/21 符合冻结门槛 |
+| macOS，42 样本 | 自然大输出、暂停、分片、TERM 均完整；后代尾部三轮写失败；保持组很快结束 | 普通五类共 15 次精确 read 0；后代尾部 3 次缺失、保持组 3 次提前 read 0 而非预期取消，15/21 达标 |
+| Windows，63 样本 | builtin 暂停三轮内容缺失；DLL 暂停完整；两个 stock 各 21 个样本均未在资源 guard 内自然退出 | 普通五类共 15 次内容/光标匹配、pipe EOF、worker 和诊断进程自然退出；后代两类 6 次未达冻结门槛，15/21 达标 |
+
+三个平台均为 Node 22.23.2 / libuv 1.51.0 / node-pty 1.2.0-beta.12。Linux x64 kernel `6.17.0-1022-azure`，image `20260907.300.1`；macOS arm64 Darwin `25.6.0`，image `20260907.0351.1`。这是托管 runner 的特定原生组合，不代表所有 OS build/架构或实际 VS Code/Electron。Unix 脚本 SHA256 为 `7e258eb3135f4cfe07c621ae2d989e9733139b376f4c78f800d814e1ac87bf45`。
+
+## 6. 结论与下一步
+
+本轮没有选定完整的跨平台生产 reader。Linux 独占 fd 的局部成功不能直接外推 macOS；Windows 单改 DLL 不能解决原 worker 资源生命周期。独立 Windows worker 的普通场景同时给出内容、源 end 和自然资源退出证据，但还不是零 OS 句柄/长驻服务无增长证明。
+
+macOS 后代尾部组只收到 `PARENT`，候选真实 read 0 后关闭 master，writer receipt 为 `CHILD_TAIL\ncomplete:1`。因此不能把它写成“成功写入后丢字节”：旧 bash 的输出/receipt 缓冲行为也需隔离。保持组在约 10 ms 结束，不是 1000 ms 取消。可能涉及 session leader 退出时的终端撤销，但本轮没有 syscall errno、保持 master 打开的对照或 session leader 存活对照，不将该假设写成已证实根因。Windows 后代场景同样需确认子进程实际拥有可用的 console 输出，而非仅创建了进程。
+
+下一轮应先补有/无存活 session leader 的控制组、原始写入返回值及 EOF 后保持 master 的隔离探针，明确每个平台的终端所有者边界。不能简单把这 12 个失败改标为正常完成，也不能将写入失败与已写成功后缺尾合并统计。生产协议和共享 Host/Supervisor 接入须等待源边界选型；资源增长、输入/并发预算、真正停止与强制停止、真实 provider/UI/packaged 和最低宿主矩阵继续开放。
+
+## 7. 首轮工件复核与 Windows 夹具修订（第二轮前冻结）
+
+Windows builtin 暂停三轮的 90000 行可打印文本哈希与预期一致，实际 `cursorLine=89999`，预期为 `90000`；writer receipt 均成功。故准确结论是末尾换行/终端光标状态不完整，不是缺少某行文字。对应原 DLL/候选均为 `90000`，候选在暂停后真实 pipe end 且 worker exit 0。保持光标断言，不因文本哈希相同放宽门槛。
+
+后代首轮 9 个 tail 样本均无 writer receipt，结束后该 PID 已不存在。夹具通过普通 Node `spawn(..., {stdio: 'inherit'})` 创建子进程；固定 [libuv v1.51.0 win/process.c](https://github.com/libuv/libuv/blob/v1.51.0/src/win/process.c) 明确将非 detached 的子进程分配给父进程私有 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` Job。这违背“父退出后后代仍存活”的夹具前提；六个候选失败不能用来证明 ConPTY reader 截断存活后代。不能只切 detached，因为它同时改变 console 归属。
+
+第二轮仅修订 Windows 后代启动：由 Node 启动 `cmd.exe /d /s /c start "" /b ...` 中间进程；cmd 创建的实际后代不由父 Node 直接加入上述 Job，并继承当前 console。记录实际后代 PID（不是 cmd PID）、`stdout.isTTY` 和主进程回调时的后代存活探测；候选后代门槛额外要求这两项成立。原先 7 案例、3 reader、每项 3 轮、90000 行、所有等待/资源预算均保持不变，完整运行而非只重跑失败项。Unix 脚本和所有 reader 均不变，macOS 的六个失败继续保留，不期待因本次夹具修订而变绿。第二轮运行前已冻结以上差异，结果须另存新 run。

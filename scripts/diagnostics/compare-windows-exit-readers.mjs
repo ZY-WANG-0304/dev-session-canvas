@@ -139,7 +139,10 @@ async function runSample(config) {
   };
   const onProcess = code => {
     exit = { code };
-    mark('native-process-exit', exit);
+    const childPid = readJSON(path.join(dir, 'child-pid.json'))?.pid;
+    let childAlive = false;
+    if (childPid) { try { process.kill(childPid, 0); childAlive = true; } catch { /* recorded as not alive */ } }
+    mark('native-process-exit', { ...exit, childPid, childAlive });
     if (reader === 'owned-dll' && !source) exitTimer = setTimeout(() => interrupt('exit-deadline'), settings.exitDeadlineMs);
     settle();
   };
@@ -221,7 +224,8 @@ async function runSample(config) {
   const expected = await render(expectedText(scenario));
   const result = { ...config, exit, source, paused, stopped, timedOut, events,
     rawHash: hash(content), rawBytes: Buffer.byteLength(content),
-    receipt: readJSON(receiptPath), contentMatched: JSON.stringify(actual) === JSON.stringify(expected),
+    receipt: readJSON(receiptPath), childReady: readJSON(path.join(dir, 'child-ready.json')),
+    contentMatched: JSON.stringify(actual) === JSON.stringify(expected),
     rendered: { hash: hash(actual.text), cursorX: actual.cursorX, cursorLine: actual.cursorLine },
     expected: { hash: hash(expected.text), cursorX: expected.cursorX, cursorLine: expected.cursorLine },
     resourcesAfterObservation: resources(), elapsedMs: Math.round(performance.now() - started) };
@@ -261,12 +265,14 @@ function fixture(scenario, dir) {
   if (scenario.startsWith('descendant-')) {
     const childScript = path.join(dir, 'descendant.cjs');
     const childReady = path.join(dir, 'child-ready.json');
-    const childBody = preamble + `fs.writeFileSync(${JSON.stringify(childReady)}, JSON.stringify({pid: process.pid}));\n` +
+    const childBody = preamble + `fs.writeFileSync(${JSON.stringify(childReady)}, JSON.stringify({pid: process.pid, stdoutIsTTY: process.stdout.isTTY === true}));\n` +
       (scenario === 'descendant-tail' ? `setTimeout(() => process.stdout.write('CHILD_TAIL\\n', done), ${settings.descendantTailMs});\n` :
         `setTimeout(() => process.exit(0), ${settings.heldMs});\n`);
     return preamble + `fs.writeFileSync(${JSON.stringify(childScript)}, ${JSON.stringify(childBody)});\n` +
-      `process.stdout.write('PARENT\\n', () => { const child = require('node:child_process').spawn(process.execPath, [${JSON.stringify(childScript)}], {stdio: 'inherit'});\n` +
-      `child.on('spawn', () => { fs.writeFileSync(${JSON.stringify(path.join(dir, 'child-pid.json'))}, JSON.stringify({pid: child.pid})); function ready() { if (fs.existsSync(${JSON.stringify(childReady)})) process.exit(0); else setTimeout(ready, 5); } ready(); }); });\n`;
+      // Node's Windows Job kills directly spawned children when this parent exits.
+      `process.stdout.write('PARENT\\n', () => { const command = 'start "" /b "' + process.execPath + '" "' + ${JSON.stringify(childScript)} + '"';\n` +
+      `const launcher = require('node:child_process').spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command], {stdio: 'inherit', windowsVerbatimArguments: true});\n` +
+      `launcher.on('error', done); function ready() { if (fs.existsSync(${JSON.stringify(childReady)})) { const child = JSON.parse(fs.readFileSync(${JSON.stringify(childReady)}, 'utf8')); fs.writeFileSync(${JSON.stringify(path.join(dir, 'child-pid.json'))}, JSON.stringify({pid: child.pid})); process.exit(0); } else setTimeout(ready, 5); } ready(); });\n`;
   }
   return preamble + "process.stdin.setRawMode(true); process.stdin.resume(); process.stdin.once('data', () => process.stdout.write('STOP_TAIL\\n', done)); process.stdout.write('READY\\n');\n";
 }
@@ -277,11 +283,13 @@ function assess(result) {
   const workerExited = result.naturalExit?.events.some(e => e.event === 'worker-exit' && e.code === 0);
   const sourceOK = held ? result.source === 'exit-deadline' : result.source === 'pipe-eof';
   const exitCode = ['natural-nonzero', 'cooperative-stop'].includes(result.scenario) ? 7 : 0;
+  const descendantAlive = !result.scenario.startsWith('descendant-') ||
+    (result.childReady?.stdoutIsTTY === true && result.events.some(e => e.event === 'native-process-exit' && e.childAlive));
   return { pass: !result.error && !result.timedOut && !result.driver.hardTimeout && result.driver.code === 0 &&
     Boolean(result.naturalExit) && !result.resourceTimeout && workerExited && sourceOK && result.contentMatched &&
     result.exit?.code === exitCode && (held || result.receipt?.written === true) &&
     (result.scenario !== 'paused-tail' || result.paused) && (result.scenario !== 'cooperative-stop' || result.stopped) &&
-    result.cleanup.remaining.length === 0,
+    result.cleanup.remaining.length === 0 && descendantAlive,
   note: held ? 'explicit interruption, not drained' : 'content + process + pipe end + natural worker/driver exit' };
 }
 
@@ -347,6 +355,11 @@ async function selfTest() {
     { naturalExit: null }, { resourceTimeout: {} }, { receipt: { written: false } }, { exit: { code: 7 } }]) {
     assert.equal(Boolean(assess({ ...complete, ...change }).pass), false);
   }
+  const held = { ...complete, scenario: 'descendant-held', source: 'exit-deadline',
+    childReady: { stdoutIsTTY: true }, events: [{ event: 'native-process-exit', childAlive: true }] };
+  assert.equal(assess(held).pass, true);
+  assert.equal(assess({ ...held, childReady: { stdoutIsTTY: false } }).pass, false);
+  assert.equal(assess({ ...held, events: [{ event: 'native-process-exit', childAlive: false }] }).pass, false);
   for (const mode of ['eof', 'pause', 'cancel']) await testWorker(mode);
   console.log('Windows candidate oracle/fixture self-test passed; no native ConPTY launched');
 }
