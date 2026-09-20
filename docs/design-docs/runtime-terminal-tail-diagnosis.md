@@ -11,10 +11,12 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/completed/runtime-terminal-tail-diagnosis.md
-updated_at: 2026-09-18
+updated_at: 2026-09-20
 ---
 
 # Runtime Terminal 退出尾部短读定位
+
+2026-09-20 跨平台复核：本文保留上一轮 Linux 捕获样本的具体根因，不代表问题只发生在 Linux。后续 `docs/design-docs/runtime-terminal-cross-platform-diagnosis.md` 已补充 Unix 200 ms 强制关闭的真实受控复现、Windows 默认 ConPTY 静默超时的实际 JS 反例，以及公共 onExit 契约缺口；macOS/Windows 原生验收仍未执行，不能仅修 Linux EOF 就关闭整个问题。
 
 ## 问题与范围
 

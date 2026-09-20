@@ -16,6 +16,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/completed/runtime-terminal-cross-platform-diagnosis.md
   - docs/exec-plans/completed/runtime-terminal-tail-diagnosis.md
   - docs/exec-plans/completed/runtime-journal-bounded-cache.md
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
@@ -27,7 +28,7 @@ related_plans:
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/active/execution-input-responsiveness.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
-updated_at: 2026-09-18
+updated_at: 2026-09-20
 ---
 
 # Agent / Terminal 无损输入输出与恢复
@@ -319,6 +320,8 @@ journal 不能因为达到内存阈值直接丢弃。PR #255 的第一阶段完�
 每个 session 的 output、resize、scrollback、finalization 与 delete 共用一条 `terminalOperationChain`。revision 分配、tracker mutation 和对外 publication 必须在同一串行操作中完成，不能只保证 journal append 顺序。PTY exit 会同步关闭 `terminalMutationAdmissionOpen`，等待此前已接受操作收敛，再用最后一份合法 checkpoint 加连续 journal suffix 发布唯一的非 live snapshot；finalization 不为了结束会话启动新的昂贵 eligibility/compact，exit 后 resize 被拒绝。delete 同样先关闭 admission，等待已有 finalization 或已接受 output，只在第 10.11 节轻量终态保存及当前读者临时交接后，或用户显式删除时清理 journal/session。`node-pty` bridge 的契约是 `onExit` 只在 output stream 关闭且全部 data event 排空后触发；若底层 provider 不满足该契约，不能把竞态猜测性隐藏在 revision 修账中。
 
 2026-09-18 契约核实：`docs/design-docs/runtime-terminal-tail-diagnosis.md` 已捕获 Linux Node/libuv 在 PTY HUP/partial read 时过早 EOF，原始 `onData` 缺尾部而同一 fd 仍可补读。该路径中已交付的 data callbacks 可以全部排空，仍不能保证进程已写入字节全部进入 journal；final revision 只证明已接收事件的位置。当前 bridge 注释及业务实现未改，源读取完整性的契约缺口继续开放，不用增加 Supervisor 等待或放宽终态断言替代修复。
+
+2026-09-20 跨平台复核：`docs/design-docs/runtime-terminal-cross-platform-diagnosis.md` 区分 Linux 合成 EOF、Unix 共用 200 ms destroy、Windows 默认 ConPTY 1000 ms 无 data destroy。后两者也不是完整排空证明；Unix timer 已在 Linux 真 PTY 受控复现，Windows 已用安装的 JS 及真实 TCP reader 验证条件性丢失，未冒充 macOS/Windows 原生实测。公共实际 Supervisor 的 11 项人工 provider 夹具证明退出前已接受操作可收齐，但退出后新 data 被拒绝；这是平台无关的契约依赖，不是串行队列已证明额外丢数据。snapshot-only Host 同样依赖该退出契约，后续评估不得仅覆盖 Runtime 路径。本轮仍未修改业务或选择修复方案。
 
 新协议字段保持可选，以便识别旧 supervisor。缺少 authority/journal capability 的旧会话继续走明确的 legacy/历史恢复路径，但不能把 6000 字符 tail 升级成新 checkpoint，也不能为它补造过去的 journal。
 

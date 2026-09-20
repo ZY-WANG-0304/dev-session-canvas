@@ -17,10 +17,11 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
   - docs/product-specs/canvas-multi-root-workspace-support.md
 related_plans:
+  - docs/exec-plans/completed/runtime-terminal-cross-platform-diagnosis.md
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
-updated_at: 2026-09-18
+updated_at: 2026-09-20
 ---
 
 # Webview、Host 与 Runtime Supervisor 架构审核
@@ -52,6 +53,8 @@ updated_at: 2026-09-18
 2026-09-18 第五批进展：`runtime-paged-completion.md` 消除新能力完成时的完整 journal 聚合及 Host relay 全量临时对象。当前读者沿原 Supervisor 身份分页，轻量节点保存后先封闭新 attach/open，最后读者关闭或断连才删除来源。三阶段最小诊断终态为 405/407/407 字节；旧客户端和混合订阅仍可能需要完整对象。F-04 剩余总回放、队列、全量扫描和总 RSS，不能把本批传输字节证据写成全部容量问题解决。
 
 本批真实宿主仍复现严格 90000 行用例只见 89969 行，最后一页发送到 revision 12654，但失败清理覆盖正文，尚不能确定缺失层。其他通过样本不能排除尾部短读；该风险继续独立登记，详见 `runtime-paged-completion.md` 和技术债表，不把架构成本下降当作无损保证已验证。
+
+2026-09-20 独立完整性调查补充：`runtime-terminal-cross-platform-diagnosis.md` 将上一轮 Linux 过早 EOF 扩展为平台退出契约审核。Unix 共用的 200 ms 强制销毁在 Linux 受控实验中丢弃已有数据；Windows 默认 ConPTY 的 1 秒静默计时关闭也由实际 JS/reader 夹具确认不能证明排空，原生 Windows/macOS 仍待验。共同缺口是 bridge 将 onExit 当成完整交付证明，Runtime 与 snapshot-only 均依赖它；公共 Supervisor 已接受操作的串行收敛未发现额外丢失。本轮只诊断，不把此项混入 F-04 容量修复或宣称历史失败全部同因。
 
 ### F-05 高（新路径已收口）：completed 历史内联画板，使普通操作承担历史成本
 

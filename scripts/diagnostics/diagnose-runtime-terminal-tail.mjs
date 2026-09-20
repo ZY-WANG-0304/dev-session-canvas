@@ -18,6 +18,7 @@ const { values } = parseArgs({ options: {
   'data-delay-ms': { type: 'string', default: '0' },
   'writer-receipt': { type: 'boolean', default: false },
   'probe-after-end': { type: 'boolean', default: false },
+  'probe-before-destroy': { type: 'boolean', default: false },
   'pause-near-exit-ms': { type: 'string', default: '0' }
 } });
 assert.ok(['bare', 'supervisor'].includes(values.mode));
@@ -68,6 +69,24 @@ pty.spawn = function (...args) {
   const destroy = socket.destroy;
   socket.destroy = function (...destroyArgs) {
     trace.mark('socket-destroy', { stack: new Error().stack, readableLength: socket.readableLength });
+    if (values['probe-before-destroy'] && !trace.destroyProbe && !socket.destroyed) {
+      // Snapshot queued chunks without read(), which would emit data into business listeners.
+      const buffered = Array.from(socket.readableBuffer ?? []).map(chunk => Buffer.from(chunk));
+      const residual = [];
+      const buffer = Buffer.alloc(65536);
+      for (let attempt = 0; attempt < 256; attempt++) {
+        try {
+          const count = fs.readSync(terminal._fd, buffer, 0, buffer.length, null);
+          trace.mark('pre-destroy-read', { count });
+          if (!count) break;
+          residual.push(Buffer.from(buffer.subarray(0, count)));
+        } catch (error) {
+          trace.mark('pre-destroy-read-error', { code: error.code });
+          break;
+        }
+      }
+      trace.destroyProbe = { buffered: Buffer.concat(buffered), residual: Buffer.concat(residual) };
+    }
     return destroy.apply(this, destroyArgs);
   };
   socket.prependListener('error', error => trace.mark('socket-error', { code: error.code, message: error.message }));
@@ -102,12 +121,13 @@ pty.spawn = function (...args) {
       trace.paused = true;
       trace.mark('injected-read-pause', { durationMs: pauseNearExitMs });
       terminal.pause();
-      setTimeout(() => { trace.mark('injected-read-resume'); terminal.resume(); }, pauseNearExitMs);
+      trace.resumeTimer = setTimeout(() => { trace.mark('injected-read-resume'); terminal.resume(); }, pauseNearExitMs);
     }
     if (dataDelayMs) block(dataDelayMs);
   });
   trace.exit = new Promise(resolve => registerExit(event => {
     trace.mark('pty-exit', event);
+    clearTimeout(trace.resumeTimer);
     trace.exited = true;
     resolve(event);
   }));
@@ -130,7 +150,7 @@ try {
     platform: process.platform, arch: process.arch,
     kernel: os.release(), ptyVersion: require('node-pty/package.json').version,
     mode: values.mode, runs, dataDelayMs, writerReceipt: values['writer-receipt'],
-    probeAfterEnd: values['probe-after-end'], pauseNearExitMs, lineCount
+    probeAfterEnd: values['probe-after-end'], probeBeforeDestroy: values['probe-before-destroy'], pauseNearExitMs, lineCount
   }, null, 2));
   for (let run = 1; run <= runs; run++) {
     const dir = path.join(outputDir, `run-${run}`);
@@ -208,6 +228,13 @@ async function diagnose(run, dir) {
       summary.residualBytes = residual.length;
       summary.rawPlusResidual = inspect(raw + residual.toString('utf8'));
       fs.writeFileSync(path.join(dir, 'post-end-residual.txt'), residual);
+    }
+    if (trace.destroyProbe) {
+      const { buffered, residual } = trace.destroyProbe;
+      summary.destroyProbe = { bufferedBytes: buffered.length, residualBytes: residual.length,
+        rawPlusPending: inspect(raw + buffered.toString('utf8') + residual.toString('utf8')) };
+      fs.writeFileSync(path.join(dir, 'buffered-at-destroy.txt'), buffered);
+      fs.writeFileSync(path.join(dir, 'residual-at-destroy.txt'), residual);
     }
     fs.writeFileSync(path.join(dir, 'raw.txt'), raw);
     fs.writeFileSync(path.join(dir, 'trace.json'), JSON.stringify({ pid: trace.pid, events: trace.events, data: trace.dataEvents }, null, 2));
