@@ -181,3 +181,24 @@ Windows 环境 Server 2025 x64 build 26100，Node 22.23.2 / libuv 1.51.0；conpt
 运行前本地验证：Linux Node25.6.0 的 `.debug/unix-write-control-v1-local/` 完整27项通过，原七类21项结果不变，新无读组三次明确中断、放行组三次精确2048字节及自然EIO。完整保存结果验证为attempted=27、verified=27，无失败或工件错误。脚本SHA256 `d82ba9d05d0575a887933a4598dade38910ce711861b739aeb2e62fe9c6d4c3d`，原生快照已保存。确定性重复CR/正容量断言及非PTY watchdog自校验通过，后者原始证据 `/tmp/dsc-unix-tail-watchdog-OdZmTH`。
 
 派生的离线负对照 `.debug/unix-write-verifier-check-481Y8t/` 不修改任何原样本：缺回执并保持相符失败状态时完整核对27项、报告1个失败且exit1；篡改一份raw时尝试27项、26项工件有效、1项损坏且exit1，未提前跳过余下样本。这些不是新原生样本。新workflow只读权限/两平台边界、语法和diff检查通过，远端结果待执行。
+
+## 14. Unix 写入控制结果与夹具循环等待
+
+第 13 节协议先由 `9cacfc49` 冻结，输入 `7d832d3e84f09d50ea1934db17d88962eb0d09fb` 的 [run 35508235734](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35508235734) attempt 1 完整执行 54 项。Ubuntu 27/27，macOS 21/27；macOS job 和总 run 均失败，未重试筛选。新旧入口分别留证，不把第 12 节的暂停失败追认为通过，也不把六个新控制组替代六个原取消验收。
+
+| 平台与分组 | 原生证据与结论 |
+| --- | --- |
+| Linux 原 21 项 | 15 次完整 EIO、6 次明确取消；取消仍交付 64 bytes，audit 另收 1984 bytes，不能合算候选完整输出。 |
+| Linux 新控制 6 项 | 观察前已一次返回 2048 且有成功回执；无读组三次明确中断，放行组三次完整 2048、EIO、exit 0。 |
+| macOS 自然/暂停/分片/消费者 15 项 | 全部完整文本/光标/title、正容量请求后的真实 read 0、消费者结算及单次 master fd/driver 退出。三个暂停样本所有 read capacity 至少 35，真实暂停后各另收 5402 bytes，全文含 90000 行；不再发生零长度 read 假 EOF。 |
+| macOS 原取消 6 项 | 每次只有同步写调用的 `enter(requested=2048)`，没有 returned/error/成功回执，candidate readCalls=0。10 s 前提截止、1 s 资源 guard 后 driver exit 3；未进入取消路径，按原断言继续失败。 |
+| macOS 无读控制 3 项 | 观察到 enter 后至少 100 ms，进度仍为 enter、回执 null、主体存活且无退出事件；从不提交 read，主动关闭 master 后 signal 1。没有取得写成功或 EOF，不是产品取消验收。 |
+| macOS 放行控制 3 项 | 同一无读观察窗口内仍为 enter/回执 null/主体存活；放行正容量 read 后写调用一次 returned 2048 并发布成功回执，每次两个 1024-byte read 精确收齐 2048，之后放行主体 exit 0，得到真实 EOF、消费者及 fd/driver 结算。 |
+
+由此将 macOS 原取消前提失败定位为**夹具的循环等待**：driver 要等全量同步写回执才开始读取，而本环境下这次 2048-byte 同步写需要读取进展才能完成。控制组改变的正是是否放行读取，支持同步写路径的背压/进展依赖，不支持“成功写入后被 candidate 丢弃”。`enter/returned` 是应用层 `fs.writeSync` 两侧记录，没有 syscall tracing；不能据两个 1024-byte 读取推定内核 PTY 精确总容量，也不外推所有 macOS/TTY 配置。原失败及总 run 状态不变，macOS 在途取消仍未验收；这不是已经复现的业务取消 bug。
+
+下载目录为 `.debug/github-write-control-35508235734-{ubuntu,macos}/`。两个平台使用相同脚本 SHA256 `d82ba9d05d0575a887933a4598dade38910ce711861b739aeb2e62fe9c6d4c3d`、Node 22.23.2 / libuv 1.51.0 / node-pty 1.2.0-beta.12；Linux x64 kernel 6.17.0-1022-azure，macOS arm64 Darwin 25.6.0。native pty.node SHA256 分别为 `ab01eb7d31a5b6202e2a51339ad2cbe3f2a73e3a679e88195011e28f3160d5a7`、`30ac36647725b2402585781c8e81be39d76962bf79d03620a9763539d0fdbec8`。源码/native 快照、输入 SHA、全部 schedule/raw/audit/消费者和 writer 身份已互核。下载后 `--verify-saved` 两边均 attempted=27、verified=27、evidenceErrors=[]；Ubuntu failures=[] / exit 0，macOS 精确保留六个原取消 failure / exit 1，验证器不再因缺回执提前停止。两边非 PTY watchdog 自校验通过，不扩称原生孤儿回收证明。
+
+两平台所有 cleanup remaining/errors 为空，无独立父 watchdog 硬超时；macOS 六个前提失败样本仍没有自然 fd close，且依赖 driver 资源 guard 退出，不以事后无残留覆盖自然释放失败。其余案例的 fd close/EBADF、消费者 barrier 与自然 driver 退出分别留证；不证明长驻进程内 native 资源无增长，Apple kqueue 风险未关闭。工件 ID 为 Ubuntu `10603998209`、macOS `10604043029`，GitHub 返回的 ZIP digest 分别为 `21dc50cfa862aa38dcc804fa628690e2c0693c871d890bdcd0fa906aa71725c7`、`92803c186611545b01fc676b0008174042640ce0562fc9c3744545f65cf5fca5`，这是服务端归档标识，不冒称已对下载 ZIP 独立复算。
+
+下一增量重新冻结无循环等待的取消握手，允许 writer 与 reader 取得进展，以原始调用进度和候选实际拥有的 read/回调建立前提；候选交付、audit 字节与最终 writer receipt 分别对账。保留 2048-byte 负载及旧失败，不靠减小负载、增长期限或将控制组改名解决取消验收。确切握手、断言与矩阵需运行前设计，不在本轮选定生产取消政策。随后继续 Windows 在途取消、同进程长驻资源及真实 provider/宿主/packaged，旧 Windows 主进程尾部与资源反例不受本轮影响。业务、依赖及旧脚本/workflow 未变，设计仍比较中/验证中，计划 active。
