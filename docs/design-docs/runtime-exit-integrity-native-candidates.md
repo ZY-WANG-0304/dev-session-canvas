@@ -305,3 +305,21 @@ Linux Node25.6.0/libuv1.51.0首次 `.debug/unix-inplace-cancel-v1-local/` 完整
 两平台Node运行时/编译头均22.23.2、libuv1.51.0、node-pty1.2.0-beta.12。Linux x64 kernel6.17.0-1022-azure/image20260907.300.1，macOS arm64 Darwin25.6.0/image20260907.0351.1；JS/C哈希与第21节最终版一致。pty.node分别为 `ab01eb7d31a5b6202e2a51339ad2cbe3f2a73e3a679e88195011e28f3160d5a7`、`30ac36647725b2402585781c8e81be39d76962bf79d03620a9763539d0fdbec8`。Ubuntu工件ID `10607250891`、服务端ZIP digest `dfc89206fb04cb63f47554ddc5b942aa8225ef6cc8ba66420fce7557e873688a`；macOS ID `10606379037`、digest `2018754a69597355644f7cced2b1f9b6d805af4dd51a85627b85763d9175f7f3`，非本地ZIP独立复算。
 
 本增量完成Unix原位握手、独立gate及局部取消所有权验证，不再以旧helper前提问题阻塞后续。下一阶段优先Windows独立worker的在途取消/已拥有数据结算，并开展同进程长驻native资源对照（Apple kqueue仍为待实测源码风险）；具体矩阵仍须运行前冻结。本轮不是90000行/Unicode全矩阵重跑、真实provider/Host/Webview/packaged验收，也没有选定生产reader API、自然结束/取消政策或时间预算。所有新增实现均为隔离诊断，业务/依赖/旧入口和旧live绑定不变，设计比较中/验证中、计划active。
+
+## 23. Windows 取消所有权与同进程资源矩阵（运行前冻结）
+
+本增量基线为db6104d8，只新增 `scripts/diagnostics/diagnose-runtime-owned-lifecycle.mjs`、`runtime-owned-cancel-worker.mjs`、`native-runtime-resources.c` 和专用workflow，旧脚本、依赖、业务及历史失败不改。先验证暴露在JavaScript中的所有权，再测跨会话资源，不把net.Socket连接或暂停等同于证明内核中有某个挂起ReadFile，也不承诺取消时收齐ConPTY尚未交付的系统缓冲。Windows只验证当前DLL独立reader候选，不能外推builtin或真实Agent。
+
+Windows四类各三次，共12项：`cancel-idle`让真实主体就绪但不写应用输出后取消；`cancel-worker-held`持有包含起始marker的真实data回调，待完整写回执后取消；`cancel-parent-held`让worker正常发送但Host侧逻辑消费者暂缓应用，在取得起始marker及写回执后取消；`read-through`自然结束对照。夹具写 `DSC_OWNED_BEGIN\n`、2048个ASCII C和 `\nDSC_OWNED_END\n`，idle写0字节，所有夹具持有退出gate；写入和回执推进不依赖读取循环。Windows VT按headless最终文字/光标语义对比，不强求pipe字节等于应用写入字节。若成功写回执或真实持有前提未成立，记前提失败，不降低负载或试绿。
+
+取消时先暂停socket，记录held callback和readableLength快照，仅取走当时已经在JS readable buffer中的确定字节，按观察顺序交付，再销毁socket；不增加第二个pipe reader。全部worker观察原始字节、交付序号/字节、跨线程收到与消费者实际应用记录独立保存，必须完全对账。parent-held队列在取消确认后按原序结算，StringDecoder结束与headless最终应用完成后才算消费者完成。取消始终interrupted，close或后续end不升级为EOF；自然对照必须真实pipe end、主体exit0、worker exit0、输入流close。取消后才放行主体退出，普通后代不在矩阵内。
+
+资源组在Linux/macOS/Windows分别运行 `control-1/native-1/control-2/native-2` 四个driver，每个driver始终是同一进程：先3次预热，再20次测量循环。native每次创建并自然结束一条真实PTY/ConPTY会话，Unix使用独占fs.read直到真实read0/EIO、master close/EBADF与native exit；Windows使用上述独立worker自然EOF路径。control使用同一采样/记录循环但不创建PTY，隔离观测器自身开销。每个driver共23次，native两轮每平台46条会话；不是每会话重启driver，也不调用事后kill伪造资源收敛。
+
+资源观察器在driver内以只读OS API采样：Linux `/proc/self/fd`（排除观察器目录fd）与task计数；macOS `proc_pidinfo(PROC_PIDLISTFDS/PROC_PIDTASKINFO)`保留fd类型及线程数，尤其kqueue；Windows `GetProcessHandleCount`和Toolhelp线程计数，关闭本次snapshot后再取handle数。JS active resources、worker退出、源结束和native计数分开记录。观察器自测应识别同时打开3个普通文件的增量，并在关闭后恢复；禁止通过关闭未知fd来修复测量结果。
+
+固定在预热后、每次测量循环收尾100ms后各取5个间隔20ms的快照。按每个资源维度保存min/max：任一测量组的min高于预热组max即报告持续增量，不能用最终driver退出消除失败；所有20组均无超额且会话/消费者/资源完整才判本组通过。连续增长的fd类型和序列支持归因，但单个计数差异不能未经控制就宣称具体泄漏根因。这个23次有界实验不是无限期无增长或真实宿主验收。
+
+冻结每会话采集30s、会话完成后资源guard2s、取消样本父watchdog35s、资源driver父watchdog150s；观察间隔只用于诊断，不是生产预算。每个平台完整执行其schedule，失败也继续其余独立driver；同一driver遇会话失败停止该串行组并标明未执行项，不能跳过失败继续作为全组成功。工件含完整schedule、环境、源码/native/编译头哈希、fixture身份/TTY/写回执、原始字节/事件、计数与自然退出；失败和缺失证据分开，离线验证遍历所有条目。首次失败不覆盖，新修订另目录/输入留证。
+
+下一步先实现自校验（丢交付、假EOF、增长计数、缺结果/损坏工件全遍历）、Linux本地资源组与TCP worker控制，再独立分支推送三平台原生。没有选定生产reader、取消条件或预算，不修改旧live绑定；Windows系统缓冲、异常终止、真实provider/Host/Webview/packaged与更长资源压力仍须另验。
