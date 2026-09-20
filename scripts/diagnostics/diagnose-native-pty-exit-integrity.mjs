@@ -27,7 +27,9 @@ if (values['self-test']) {
     console.error(error);
     process.exitCode = 1;
   } finally {
+    writeShutdownEvidence(values.output, 'shutdown-start.json');
     const watchdog = setTimeout(() => {
+      writeShutdownEvidence(values.output, 'shutdown-timeout.json');
       console.error('Diagnostic resources did not close within the final 2-second guard');
       process.exit(1);
     }, 2000);
@@ -61,7 +63,11 @@ function assertInteger(value, name, minimum) {
 }
 
 async function runSelfTest() {
-  assert.equal(normalizeTerminalText('a\r\nb\rc'), 'a\nb\nc');
+  assert.equal(normalizeTerminalText('a\r\nb\rc'), 'a\nb\rc');
+  assert.equal(normalizeTerminalText('a\r\r\nb\r\n'), 'a\nb\n');
+  for (const invalid of ['HE\rAD\r\nTAIL\r\n', 'HEAD\r\n\r\nTAIL\r\n', 'HEA\r\nTAIL\r\n', 'HEAD\r\nTAIL']) {
+    assert.notEqual(normalizeTerminalText(invalid), 'HEAD\nTAIL\n');
+  }
   assert.deepEqual(inspectText(''), { bytes: 0, sha256: sha256(''), length: 0 });
   assert.equal(makeExpected('natural-nonzero'), 'DSC_NATIVE_HEAD\nDSC_NATIVE_EXIT_7\n');
   assert.match(makeExpected('large-output'), /DSC_NATIVE_LINE_00001/);
@@ -70,6 +76,7 @@ async function runSelfTest() {
   const { Terminal } = require('@xterm/headless');
   const expected = await renderTerminalText(Terminal, 'HEAD\r\nTAIL\r\n');
   assert.deepEqual(await renderTerminalText(Terminal, '\x1b[?25lHEAD\r\nTAIL\r\n\x1b[?25h'), expected);
+  assert.deepEqual(await renderTerminalText(Terminal, 'HEAD\r\r\nTAIL\r\n'), expected);
   assert.notDeepEqual(await renderTerminalText(Terminal, 'HEAD\r\nTAIL'), expected);
   assert.equal((await renderTerminalText(Terminal, 'DSC_NATIVE_SPLIT_\u2603_TAIL\r\n')).text,
     makeExpected('split-utf8-tail').trimEnd());
@@ -99,7 +106,7 @@ async function runDiagnostic(options) {
     }
   }
   writeFileSync(path.join(outputDir, 'summary.json'), `${JSON.stringify(summaries, null, 2)}\n`);
-  const failures = summaries.filter(summary => !summary.passed);
+  const failures = summaries.filter(summary => !summary.passed || summary.cleanup.error);
   if (failures.length > 0) {
     throw new Error(`${failures.length} native PTY diagnostic case(s) failed`);
   }
@@ -156,6 +163,8 @@ async function runCase(pty, Terminal, testCase, runDir, timeoutMs) {
   let hardTimeout;
   let outputBytesAtExit;
   let postExitDataBytes = 0;
+  let dataSubscription;
+  let exitSubscription;
   const events = [];
   const mark = (event, details = {}) => events.push({ atMs: Date.now() - startedAt, event, ...details });
   const killFixture = () => {
@@ -174,13 +183,15 @@ async function runCase(pty, Terminal, testCase, runDir, timeoutMs) {
     terminal.on('error', error => mark('terminal-error', { message: error.message }));
     terminal._socket?.on('end', () => mark('socket-end'));
     terminal._socket?.on('close', () => mark('socket-close'));
-    const exitPromise = new Promise(resolve => terminal.onExit(event => {
-      exit = { exitCode: event.exitCode, signal: event.signal };
-      outputBytesAtExit = Buffer.byteLength(output);
-      mark('onExit', exit);
-      resolve(exit);
-    }));
-    terminal.onData(data => {
+    const exitPromise = new Promise(resolve => {
+      exitSubscription = terminal.onExit(event => {
+        exit = { exitCode: event.exitCode, signal: event.signal };
+        outputBytesAtExit = Buffer.byteLength(output);
+        mark('onExit', { ...exit, pid: terminal.pid });
+        resolve(exit);
+      });
+    });
+    dataSubscription = terminal.onData(data => {
       output += data;
       if (exit) postExitDataBytes += Buffer.byteLength(data);
       mark('onData', { bytes: Buffer.byteLength(data) });
@@ -218,8 +229,12 @@ async function runCase(pty, Terminal, testCase, runDir, timeoutMs) {
     if (terminal && !exit) {
       try { terminal.kill(); } catch { /* best effort cleanup for a failed fixture */ }
     }
+    dataSubscription?.dispose();
+    exitSubscription?.dispose();
   }
 
+  const observedEvents = [...events];
+  const resourcesAfterObservation = collectResources();
   const normalized = normalizeTerminalText(output);
   const rendered = await renderTerminalText(Terminal, output);
   const renderedExpected = expected ? await renderTerminalText(Terminal, expected.replaceAll('\n', '\r\n')) : null;
@@ -230,6 +245,14 @@ async function runCase(pty, Terminal, testCase, runDir, timeoutMs) {
     (process.platform === 'win32' || normalized === expected);
   const canceled = testCase.kind === 'cancel' && !timedOut &&
     events.some(event => event.event === 'cancel-request') && Boolean(exit);
+  const cleanup = { resourcesAfterObservation, publicKillRequested: false };
+  // Content observation has ended; this releases Windows fixture workers, not a source-drain guarantee.
+  if (process.platform === 'win32' && terminal && exit && testCase.kind !== 'cancel') {
+    cleanup.publicKillRequested = true;
+    cleanup.requestedAtMs = Date.now() - startedAt;
+    try { terminal.kill(); } catch (error) { cleanup.error = error.message; }
+    cleanup.resourcesAfterRequest = collectResources();
+  }
   const summary = {
     case: testCase.name,
     run: Number(path.basename(runDir).slice(4)),
@@ -247,7 +270,8 @@ async function runCase(pty, Terminal, testCase, runDir, timeoutMs) {
     renderedExpected: renderedExpected ? {
       ...inspectText(renderedExpected.text), cursorX: renderedExpected.cursorX, cursorLine: renderedExpected.cursorLine
     } : undefined,
-    events,
+    events: observedEvents,
+    cleanup,
     elapsedMs: Date.now() - startedAt
   };
   writeFileSync(path.join(runDir, 'output.txt'), output);
@@ -308,7 +332,20 @@ async function renderTerminalText(Terminal, text) {
 }
 
 function normalizeTerminalText(text) {
-  return text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  return text.replace(/\r+\n/g, '\n');
+}
+
+function collectResources() {
+  const counts = {};
+  for (const name of process.getActiveResourcesInfo()) counts[name] = (counts[name] ?? 0) + 1;
+  return counts;
+}
+
+function writeShutdownEvidence(outputDir, filename) {
+  if (!outputDir || !existsSync(outputDir)) return;
+  writeFileSync(path.join(outputDir, filename), `${JSON.stringify({
+    capturedAt: new Date().toISOString(), activeResources: collectResources(), exitCode: process.exitCode ?? 0
+  }, null, 2)}\n`);
 }
 
 function inspectText(text) {
