@@ -1,12 +1,12 @@
 ---
 title: 原生 PTY 退出基线与托管 Runner
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [适配与基础设施层]
 related_specs: []
 related_plans:
-  - docs/exec-plans/active/runtime-exit-integrity-native-runners.md
+  - docs/exec-plans/completed/runtime-exit-integrity-native-runners.md
 updated_at: 2026-09-20
 ---
 
@@ -60,8 +60,18 @@ Terminal / Agent 的退出完整性需要原生平台证据。仅在 Linux 检�
 
 首次 macOS 3 轮均为 raw 276125 字节，比预期多 125 个行末 CR，每轮 125 处 CRCRLF；完整 xterm 内容、光标、writer receipt、exit 7 都匹配。只将 `CR+LF` 转为 LF 后与 12000 行逐字一致且无独立 CR。此前把每个独立 CR 都映射成新行的 oracle 误判了重复回车，这是确定性诊断错误，不是短读证据。修正同时增加独立 CR、额外行、丢字和缺末尾换行负例，原失败工件保持不变。
 
-首次 Windows 资源失败单独保留。node-pty `WindowsPtyAgent._cleanUpProcess()` 只销毁输出 socket，自然 `onExit` 不调用 worker dispose；公共 `kill()` 才走 worker 清理，IPty 没有独立 dispose。新诊断在内容结算后显式清理并记录资源，尚待原生重跑确认；这不修改或证明产品自然退出清理。首次 macOS/Windows 原始证据已分别下载到 `.debug/github-native-35491608835-attempt1-macos/` 与 `.debug/github-native-35491608835-attempt1-windows/`。修正后本地 Node 25 的 15 项再次通过，工件 `.debug/native-pty-oracle-cleanup-v2/`，原生新证据待 review 后执行。
+首次 Windows 资源失败单独保留。node-pty `WindowsPtyAgent._cleanUpProcess()` 只销毁输出 socket，自然 `onExit` 不调用 worker dispose；公共 `kill()` 才走 worker 清理，IPty 没有独立 dispose。新诊断在内容结算后显式清理并记录资源；这不修改或证明产品自然退出清理。首次三平台原始证据已分别下载到 `.debug/github-native-35491608835-attempt1-{ubuntu,macos,windows}/`。修正后本地 Node 25 的 15 项再次通过，工件 `.debug/native-pty-oracle-cleanup-v2/`；主代理独立另 15 项通过，工件 `.debug/native-pty-review-v2-root/`。
+
+第二次 Actions 为 [run 35492043484 / attempt 1](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35492043484)，输入 `6e864e25`，三 job 全部 success。每平台 12 项 `content-matched`、3 项 `cancelled`，共 45 项，均无 cleanup error 或 `shutdown-timeout.json`；首次失败没有被覆盖。实际环境如下，版本只对应本轮 runner，不冻结未来的产品支持范围：
+
+| 平台 | 实际 OS / 架构 | Image | 执行环境 |
+| --- | --- | --- | --- |
+| Ubuntu | Linux 6.17.0-1022-azure / x64 | ubuntu24 / 20260907.300.1 | Node 22.23.2 / libuv 1.51.0 / node-pty 1.2.0-beta.12 |
+| macOS | Darwin 25.6.0 / arm64 | macos26 / 20260907.0351.1 | 同上，非 Electron |
+| Windows | Server 2025 build 26100 / x64 | win25-vs2026 / 20260907.229.1 | 同上，builtin ConPTY |
+
+第二轮 Windows 12 个自然完成样本都显式事后 kill，3 个取消样本不重复 kill。首个自然观察结束时仍有 1 个 MessagePort；`shutdown-start.json` 仍记录 17 个 PipeWrap、4 个 MessagePort、7 个 Timeout 在途，随后诊断在未延长的 2 秒 guard 内自然退出 0。该结果证明含显式 fixture 清理的诊断可执行，不证明自然退出自动清理、所有资源计数为零或 OS 句柄无泄漏。第二轮工件保留于 `.debug/github-native-35492043484-attempt1-{ubuntu,macos,windows}/`。Windows 检出为 CRLF，raw 脚本 SHA 与 Unix 不同，已核实等于同一 git blob 作 LF 到 CRLF 转换后的哈希，不是脚本逻辑差异。本设计的“已验证”仅限本专项基础设施和固定已知内容基线，完整运行时契约仍未验收。
 
 ## 后续收口
 
-已创建面向 main 的 [PR #294](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/294)。首轮暴露的诊断 oracle 和 Windows fixture 清理修正须经主代理复审后原生重跑，保留首次失败与后续工件；若仍有原生库失败则登记为诊断发现，不降低内容、光标或退出门槛。完整运行时修复及宿主验收仍由独立工作推进，不在本 PR 中顺带实现；覆盖和生命周期缺口见 `docs/exec-plans/tech-debt-tracker.md`。
+已创建面向 main 的 [PR #294](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/294)，未合并。首轮诊断 oracle 和 Windows fixture 清理修正经复审后完成原生重跑，基础设施专项计划归档；保留首次失败和新版结果，不降低完整内容、光标或退出门槛。完整运行时修复及宿主验收仍由独立工作推进，不在本 PR 中顺带实现；覆盖和自然退出生命周期缺口仍在 `docs/exec-plans/tech-debt-tracker.md` 开放。

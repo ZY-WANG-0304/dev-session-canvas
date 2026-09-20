@@ -14,8 +14,8 @@
 - [x] (2026-09-20) 主代理复审 `dfd23b22` 未发现确定性 blocker，授权推送和创建 PR。
 - [x] (2026-09-20) 重新 fetch/rebase main 后推送，创建 main PR #294，未合并。
 - [x] (2026-09-20) 首次 Actions `35491608835` 三平台均产出工件：Ubuntu 通过，macOS large-output oracle 误报，Windows 内容通过但资源 guard 失败；首次证据保留。
-- [ ] 复审仅诊断范围的 CR+LF oracle 和 Windows 事后公共 kill 清理修正，重新运行原生三平台并核查资源证据。
-- [ ] 完成基础设施范围验收、登记后续覆盖缺口，将计划移入 completed 并同步设计索引。
+- [x] (2026-09-20) 主代理复审 `6e864e25` 后，第二次 Actions `35492043484` 三平台全部 success，各 15 项，显式 fixture 清理与首次失败分别记录。
+- [x] (2026-09-20) 核查全部第二轮工件、cleanup 与 guard，完成基础设施范围验收；后续覆盖和自然退出资源缺口留在技术债，本计划归档并同步设计索引。
 
 ## 意外与发现
 
@@ -37,7 +37,7 @@ Windows 的 ConPTY 输出是终端控制序列流，不等于 Unix 上写入的�
 
 ## 结果与复盘
 
-runner 增量已与重构隔离并创建 PR #294。首次三平台 Actions 取得真实证据，Ubuntu 通过，macOS 诊断 oracle 误报与 Windows 资源 guard 失败已分类，不能宣称三平台全部通过。诊断修正完成本地 Node 25 的 15 项回归，待主代理 review 后原生重跑，计划保持 active。剩余 source-drain、Host/Webview、真实 Agent、packaged、平台矩阵及自然退出资源生命周期均在设计与技术债中保留。
+runner 增量已与重构隔离并创建 PR #294，未合并。首次 macOS 诊断 oracle 误报与 Windows 资源 guard 失败已分类保留；经主代理复审的 `6e864e25` 在第二次三平台 Actions 全部 success，各 12 个内容匹配和 3 个取消结果。包含显式 Windows fixture 事后清理的最小诊断基础设施已验证，本计划归档。剩余 source-drain、Host/Webview、真实 Agent、packaged、平台矩阵及自然退出资源生命周期均在设计与技术债中保留，不能以本次归档宣称完整运行时交付完成。
 
 ## 上下文与定向
 
@@ -88,7 +88,11 @@ PTY 是类 Unix 伪终端，ConPTY 是 Windows 伪控制台。仓库 main 的现
 
 主代理另用 VS Code 1.117.0 的 Electron 39.8.7 / Node 22.22.1，以 `ELECTRON_RUN_AS_NODE=1` 执行同样 15 项，12 `content-matched`、3 `cancelled`，工件 `.debug/native-pty-review-electron22/`。该结果验证同版脚本可在本地 Electron-as-Node 运行，不是完整 Extension Host/Webview 或托管普通 Node 22 证据。
 
-首轮托管 run `35491608835` / attempt 1，输入 `dfd23b22`，三个平台均 Node 22.23.2 / libuv 1.51.0 / node-pty 1.2.0-beta.12。macOS arm64/Darwin25.6.0，Windows x64/Server2025 build26100 的首次证据保留于 `.debug/github-native-35491608835-attempt1-macos/` 和 `.debug/github-native-35491608835-attempt1-windows/`。macOS 3 个 large-output raw 各多 125 个 CR，只有行末 CRCRLF，xterm 内容/光标与 receipt/exit 都匹配；Windows 15 项内容/取消通过但最终 2 秒 guard 失败。详情和环境 image 见设计。修正后本地 `.debug/native-pty-oracle-cleanup-v2/` 15 项通过，Windows 公共 kill 与新资源记录仍待原生执行。
+首轮托管 run `35491608835` / attempt 1，输入 `dfd23b22`，三个平台均 Node 22.23.2 / libuv 1.51.0 / node-pty 1.2.0-beta.12。macOS arm64/Darwin25.6.0，Windows x64/Server2025 build26100 的首次证据保留于 `.debug/github-native-35491608835-attempt1-macos/` 和 `.debug/github-native-35491608835-attempt1-windows/`。macOS 3 个 large-output raw 各多 125 个 CR，只有行末 CRCRLF，xterm 内容/光标与 receipt/exit 都匹配；Windows 15 项内容/取消通过但最终 2 秒 guard 失败。详情和环境 image 见设计。修正后本地 `.debug/native-pty-oracle-cleanup-v2/` 15 项通过，才进入第二次原生执行。
+
+第二次 run `35492043484` / attempt 1、输入 `6e864e25` 的 3 job 全部 success，共 45 项。Ubuntu x64/Linux6.17.0-1022-azure/image20260907.300.1、macOS arm64/Darwin25.6.0/image20260907.0351.1、Windows x64/Server2025 build26100/image20260907.229.1，均 Node22.23.2/libuv1.51.0/node-pty1.2.0-beta.12。工件 `.debug/github-native-35492043484-attempt1-{ubuntu,macos,windows}/` 均无 cleanup error 或 shutdown-timeout。Windows 12 个自然样本事后公共 kill，3 个取消不重复 kill；其第一个自然观察结束仍有 MessagePort，shutdown-start 有 17 PipeWrap、4 MessagePort、7 Timeout 在途，之后在原 2 秒 guard 内自然退出 0。不能把这解释为自然退出自动清理或资源计数为零。
+
+收口提交只更新文档；诊断和 workflow 与已跑的 `6e864e25` 保持相同 blob，不重复声称在最终文档 HEAD 重新跑过原生矩阵。首次失败和第二次成功的 run/attempt 均保留，工件已另行下载，不只依赖 14 天远端保留。
 
 ## 接口与依赖
 
@@ -97,3 +101,5 @@ CLI 提供 `--self-test`，或 `--runs N --timeout-ms N --output DIR`。结果�
 修订记录：2026-09-20 将 runner 基础设施从未合运行时重构中抽离，登记自包含 main 增量和真实验证边界；等待最新 HEAD 复审、推送及托管首轮证据。
 
 修订记录：2026-09-20 创建 PR #294 并记录首次三平台工件；修正已确认的 macOS oracle 误报和诊断 Windows 事后清理，保持首轮失败与资源问题单独可追溯，待复审原生重跑。
+
+修订记录：2026-09-20 第二次三平台原生入口与工件验证完成，仅将独立 runner 专项归档；保留首次失败、显式清理边界和完整运行时验收缺口，不混入生产修复。
