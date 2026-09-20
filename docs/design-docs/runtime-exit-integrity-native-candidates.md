@@ -377,3 +377,9 @@ Windows仅做原位只读句柄类型取证，不在本轮新增HPCON释放API�
 协议由独立分支d70e6e1c、主分支15baf15a先行冻结。新macOS入口对node-gyp生成的隔离build工具链接保存target后移除链接本身，避免工件归档跟随机器外部路径；不处理安装树。构建日志、compiler实际路径/hash、node-gyp版本/源码与独立tooling lockfile、完整headers保留；spawn-helper固定、无prebuilt回退分别校验。有效反结果（基线不增长或候选仍增长）属于对照失败，不归为工件损坏。
 
 两入口的Linux纯逻辑自测覆盖机械变换拒绝未知源、假的完整性/绿色结论、计数或类型竞争、Process槽位复用、缺工件及损坏首样本后继续末样本；新Windows路径复核使用可移植snapshot键，不依赖本机path.basename解释Windows绝对路径。独立工具布局smoke用node-gyp11.5.0、Node25.6.0同版本headers和嵌套node-addon-api7.1.1成功重编译Linux隔离副本，只证明布局/工具调用可用，不算macOS验证。既有executionSessionBridge回归、workflow YAML/两平台只读范围、文档链接和diff检查通过。实际runner固定Node22.23.2，macOS使用node-gyp11.5.0，尚待首次原生矩阵。
+
+### 首次执行与诊断编译修正
+
+固定输入944fe103f3f6d497c94b6575fabef6be69bc2929的run35527241793 attempt1总失败保持。macOS三arm完整138条PTY及下载离线复核通过外层对照：原包/重编译基线均kqueue6→26、fd15→35，close候选kqueue3不增长；旧四个基线资源失败仍为失败。Windows在新C模块编译阶段因辅助函数boolean与SDK rpcndr.h同名typedef冲突（C2365）失败，零条PTY，不是被测产品行为的新证据；编译日志和缺环境/四driver缺工件的离线结果原样保留。
+
+后续仅将本轮新增C的辅助函数及七个调用标识符统一改名dsc_boolean，不改变查询、采样、比较、超时或断言。使用新的提交输入和新run，绝不覆盖首次工件或重判首次通过；同workflow会再次执行未变的macOS矩阵，首轮macOS因果证据独立保留。旧owned入口、worker、C、workflow和更早失败均不改。此为诊断工具编译修正，不是资源释放实现。

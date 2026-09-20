@@ -38,7 +38,7 @@ static void number(napi_env env, napi_value object, const char *key, double valu
   napi_create_double(env, value, &item);
   napi_set_named_property(env, object, key, item);
 }
-static void boolean(napi_env env, napi_value object, const char *key, int value) {
+static void dsc_boolean(napi_env env, napi_value object, const char *key, int value) {
   napi_value item;
   napi_get_boolean(env, value != 0, &item);
   napi_set_named_property(env, object, key, item);
@@ -127,7 +127,7 @@ static void process_details(napi_env env, napi_value item, HANDLE handle, query_
   } else error_record(env, errors, error_count, "GetProcessTimes", "query-failed", GetLastError(), handle);
   if (GetExitCodeProcess(handle, &code)) number(env, process, "exitCode", code);
   else error_record(env, errors, error_count, "GetExitCodeProcess", "query-failed", GetLastError(), handle);
-  boolean(env, process, "imageApiAvailable", image != NULL);
+  dsc_boolean(env, process, "imageApiAvailable", image != NULL);
   if (image) {
     image_path = (WCHAR *)calloc(image_size, sizeof(WCHAR));
     if (!image_path) error_record(env, errors, error_count, "QueryFullProcessImageNameW", "allocation-failed", ERROR_NOT_ENOUGH_MEMORY, handle);
@@ -179,7 +179,7 @@ static void query_type(napi_env env, napi_value item, HANDLE handle, query_objec
   status(env, item, "typeStatus", result);
   number(env, item, "typeAttempts", attempts);
   number(env, item, "typeReturnedBytes", returned);
-  boolean(env, item, "typeValid", valid);
+  dsc_boolean(env, item, "typeValid", valid);
   if (!valid) error_record(env, errors, error_count, "NtQueryObject(2)", "status-or-shape", 0, handle);
   free(buffer);
 }
@@ -191,7 +191,7 @@ static napi_value table_json(napi_env env, const table_result *result, query_obj
   napi_create_object(env, &object);
   napi_create_array(env, &entries);
   status(env, object, "status", result->status);
-  boolean(env, object, "valid", result->valid);
+  dsc_boolean(env, object, "valid", result->valid);
   number(env, object, "capacity", result->capacity);
   number(env, object, "returnedBytes", result->used);
   number(env, object, "attempts", result->attempts);
@@ -269,9 +269,9 @@ static napi_value observe(napi_env env, napi_callback_info info) {
   number(env, result, "handles", count_after_ok ? (double)handles_after : -1);
   number(env, inventory, "schema", 1);
   number(env, inventory, "handleCountBefore", handles_before); number(env, inventory, "handleCountAfter", handles_after);
-  boolean(env, inventory, "countBeforeValid", count_before_ok); boolean(env, inventory, "countAfterValid", count_after_ok);
-  boolean(env, inventory, "observerRace", race);
-  boolean(env, inventory, "valid", !race && error_count == 0 && count_before_ok && count_after_ok);
+  dsc_boolean(env, inventory, "countBeforeValid", count_before_ok); dsc_boolean(env, inventory, "countAfterValid", count_after_ok);
+  dsc_boolean(env, inventory, "observerRace", race);
+  dsc_boolean(env, inventory, "valid", !race && error_count == 0 && count_before_ok && count_after_ok);
   napi_set_named_property(env, inventory, "before", before_json); napi_set_named_property(env, inventory, "after", after_json);
   napi_set_named_property(env, inventory, "errors", errors);
   napi_get_named_property(env, before_json, "entries", &descriptors);
