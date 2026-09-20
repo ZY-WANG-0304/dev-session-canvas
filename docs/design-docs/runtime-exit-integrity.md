@@ -404,3 +404,25 @@ helper前后均连续两次inspect检验观察稳定性。master组按旧路径�
 此前Linux Node25.6.0本地v1/v2各6项也精确复现；v1后仅加固gate文件写失败的合法失败分类，完整另跑v2而不覆盖旧工件。目录 `.debug/unix-helper-fd-flags-v{1,2}-local/`，非PTY标志负例 `/tmp/dsc-unix-fd-flags-selftest-u5o6eJ`。派生 `.debug/fd-flags-verifier-control-pZPCEB/` 先验证6份有效失败全部遍历、无evidenceErrors，再破坏1份events后仍尝试6份、5有效+1损坏，均exit1。两轮原生18项/12项、离线审计和既有bridge回归均留证，未修改业务、依赖或旧测试。
 
 本阶段只收口观察器干扰的定位：原握手矩阵仍不能证明非阻塞reader验收，旧17绿/1红不改，Windows已知主进程TAIL/资源反例不变。下一步先设计不经子进程stdio传master的原位readiness观察，并让回执/gate推进不依赖下一次read回调，记录相对时序并验证flags始终不变，再用新入口跑完整取消对照。改传fd3或dup/dup2并不保证隔离共享状态，不能静默改flags使旧实验变绿。生产reader/API、取消预算、Windows在途取消、同进程长期资源及真实provider/宿主/packaged仍开放，两份计划保持active。
+
+## 27. 原位 readiness 与独立 gate（运行前冻结）
+
+独立分支以 `06cde336` 为基线，在候选设计第20节冻结新入口 `scripts/diagnostics/diagnose-unix-inplace-cancel.mjs`、N-API模块 `unix-pty-observer.c` 及专用workflow。保留旧三类各三次，加 `receipt-held-control` 三次，Linux/macOS各12项/共24项；业务、依赖、旧脚本/断言/失败均不改。原10s采集/1s资源/15s父watchdog、2ms重查、2048总负载、64首读及100ms成功回调持有不变，仍非生产预算。
+
+原位模块只F_GETFL/fstat/isatty/poll(0)/再次F_GETFL，不dup、不设置flags/termios、不读写PTY，不通过子进程stdio传master。初始、每次read提交/回调、关闭前和readiness检查均保存完整flags/身份，要求前后相同、与初始一致且非阻塞。writer-enter后以poll可读且无挂断/错误建立首读前提，真实回调无error且0<n<=64才可接受；不能用readiness代替成功读取或恢复flags掩盖干扰。
+
+fixture一次同步write2048个ASCII C，短写才继续，独立记录调用前后及回执/gate事件。driver独立控制循环观察回执，仅在候选+audit精确收齐2048且回执身份/hash和写入进度相符时发布退出gate；不再由read循环驱动这一判断。取消仍仅交付已拥有的n字节、明确interrupted，candidate所有操作结算后audit接管2048-n，不能将audit EOF算作candidate完成。无取消对照独自收齐、真实EOF/EIO、最终headless状态及资源分别验收。
+
+新增receipt-held控制将写入完成与回执发布分开：fixture写完后等待release文件；driver收齐后一次正容量read必须实际EAGAIN/EWOULDBLOCK，持有该回调结果以暂停读取循环。独立控制循环此时才发布release、观察最终回执并发布gate，随后释放held结果，读取循环才恢复并观察EOF。核对完整因果事件链，不将空读当EOF、逻辑回调持有当内核阻塞，也不把该受控场景冒充旧失败时序重演。控制循环需显式停止/结算，失败全量留证及离线复核；编译来源、原始读数据、consumer、fd close/EBADF及自然driver退出独立记录。本阶段仍只验证诊断前提与取消所有权，生产选型、Windows在途取消、长驻资源、真实provider/宿主/packaged继续开放。
+
+### 本地首次失败与原生结果
+
+协议由独立提交 `758efccf` 先行冻结。本地Linux Node25.6.0首次v1完整12项中10通过/2失败：held回调实际仅99.682653/99.837933ms，未达到原100ms门槛；原失败、源码和工件全部保留，不是内容或flags缺陷。随后按单调时钟原截止点重查，不增长采集期限、不改断言；v2及最终取证加固v3各12项/离线复核通过，目录为独立工作树 `.debug/unix-inplace-cancel-v{1,2,3}-local/`。最终自测 `/tmp/dsc-inplace-selftest-QEuVeJ` 覆盖四类合成正例、flags/所有权/假EOF/gate负例、12份合法失败（含缺回执/无summary）全遍历及单份raw损坏后继续；普通文件观察和非PTYwatchdog不算原生PTY验收。writer运行中状态原子发布，退出后与原始追加事件互核，不实时解析可能未写完的日志。
+
+固定输入 `697ee3f0012aa9d68f1774fa9a43ba3836e165d7` 的 [run 35516170917](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35516170917) attempt1全24项通过，Ubuntu12/12、macOS12/12，未重跑原生job。两平台全部观察保持非阻塞flags不变（Linux34818、macOS6）。每个平台六个取消样本均candidate64/audit1984、candidate明确interrupted；两种无取消控制共六次candidate2048/audit0。Linux自然源为EIO、macOS为真实read0，取消时这是audit的来源，不升级candidate为完整。六个receipt-held样本均有“收齐→真实EAGAIN结果held→release→回执→gate→held释放”的证据，gate不依赖read循环恢复。
+
+全部最终headless状态、consumer顺序、控制循环结算、fd关闭/EBADF、主体及driver自然exit0分别达标；无hard watchdog/事后kill/cleanup残留。下载完成后两边复核attempted12/verified12、无failure/evidenceError。目录 `.debug/github-inplace-cancel-35516170917-macos/` 与 `.debug/github-inplace-cancel-35516170917-ubuntu-retry1/`；Ubuntu首个下载连接停滞且提前离线读取ENOENT，仅重试同artifact传输到新目录，未重跑job，未完成原目录保留。
+
+Node运行时与编译头均22.23.2、libuv1.51.0、node-pty1.2.0-beta.12；Linux x64 kernel6.17.0-1022-azure，macOS arm64 Darwin25.6.0。最终JS SHA256 `714bf40f2de43e46cb9219ed4546b7d93cac1c4a349dc1bf724de55f5f28335e`，C SHA256 `1428850a154a8bc6ad3202871c0c94bb63d86cb28bca02c56077075240e10371`。Ubuntu工件ID `10607250891`、服务端ZIP digest `dfc89206fb04cb63f47554ddc5b942aa8225ef6cc8ba66420fce7557e873688a`；macOS ID `10606379037`、digest `2018754a69597355644f7cced2b1f9b6d805af4dd51a85627b85763d9175f7f3`，不是本地ZIP独立复算。完整环境/编译器/头文件/源码/native快照及自测证据保留。
+
+本阶段已完成Unix这组前提与局部取消所有权验证，后续不再围绕旧helper重复试绿；原18项无效验收解释、本地v1两个失败均不改判。下一增量转Windows独立worker在途取消及同进程长期native资源（含Apple kqueue风险），运行前另冻结矩阵。本轮单样本进程自然退出不等于长期资源无增长，没有重跑90000行/Unicode全矩阵或真实provider/Host/Webview/packaged；生产reader/API、结束/取消政策与预算仍未选定。业务、依赖、旧live绑定和既有诊断均未修改，两份计划保持active。
