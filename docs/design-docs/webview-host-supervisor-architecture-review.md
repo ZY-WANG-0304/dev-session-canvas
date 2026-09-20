@@ -17,6 +17,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
   - docs/product-specs/canvas-multi-root-workspace-support.md
 related_plans:
+  - docs/exec-plans/active/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-terminal-cross-platform-diagnosis.md
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
@@ -155,6 +156,8 @@ F-04/F-05 的受控证据及限制见重评设计第 3 节，可通过诊断脚�
 本审核不直接改动运行时代码。F-01 应作为 live-runtime 连接可靠性修复单独设计和实现；F-02 应作为共享层依赖收口任务处理。两项都需要在实现时补充针对性验证，完成前不要把“Supervisor 已能启动”表述成“Supervisor 连接在所有异常情况下都有界”。
 
 F-04/F-05 已按 `runtime-persistence-storage-reevaluation.md` 分阶段推进。用户确认故障后不要求进程/历史恢复，随后明确正常结束重开也无需历史，F-05 已按 `runtime-completed-no-history.md` 取消内联和归档；当前页未消费尾部仍需收齐。F-04 已实施 checkpoint 独立查询、有界 Supervisor 缓存、live 消费驱动分页及新模式退出分页，整体权威终端模型仍在比较，不预设第二个 server。下一阶段聚焦在途预算、总恢复时间、全量扫描及旧协议容量；暂时断连不能直接认定为进程崩溃，也不改变旧 live 原绑定。
+
+2026-09-20，用户同意将退出完整性作为本次重构独立交付项，范围与验收见 `docs/design-docs/runtime-exit-integrity.md` 和 `docs/product-specs/runtime-persistence-modes.md` 第 10 节，推进见 `docs/exec-plans/active/runtime-exit-integrity.md`。它覆盖两类执行节点、Runtime/snapshot-only 及 Linux/macOS/Windows；与 F-04/F-05 分别验收，不等待 F-03，也不因取消兼容而自动解决。自然零/非零退出都要收齐当前读者尾部，取消和强制截断不能冒充完整排空；旧 live 保留原绑定和实际能力限制。本次只登记文档，技术方案未选定、业务未修复、原生平台缺口未关闭；不能将范围批准写成已交付。
 
 F-03 的产品方向已由用户确认；具体设计与运行时改造另开 ExecPlan，覆盖单根和多根新建、稳定 root identity、Supervisor 发现与并发启动、backend 选择、旧 session 原绑定恢复及退役。现有设计第 6.8 节与产品规格已标出待修订边界；改造时再将新建归属正式收口为 root 语义，并保留旧 slot 恢复契约，不能把整份设计直接标成 root 稳定 runtime 已实现或已验证。
 

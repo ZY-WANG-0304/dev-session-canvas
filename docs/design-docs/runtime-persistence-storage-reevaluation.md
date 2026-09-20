@@ -19,7 +19,8 @@ related_plans:
   - docs/exec-plans/completed/runtime-journal-bounded-cache.md
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
-updated_at: 2026-09-18
+  - docs/exec-plans/active/runtime-exit-integrity.md
+updated_at: 2026-09-20
 ---
 
 # Runtime Persistence 容量与会话归档架构重评
@@ -30,9 +31,11 @@ updated_at: 2026-09-18
 
 用户最初确认的是问题和优先级，并未选定独立数据库或整体替代模型。本文保留审核基线与候选比较，第 9 节记录已实施增量；`agent-terminal-lossless-io-and-recovery.md` 描述当前实现。整体终端状态模型仍在比较，但缓存、分页及取消 completed 内联已分阶段实施，不再把“尚未选定整体路线”等同于没有运行时代码变化。
 
-代码基线是 `origin/main@4d7f07e55461f414c570365136cc06ece6f18c64`，位于审核分支 `architecture-review-webview-host-supervisor`。本轮不调整异常断连恢复策略、不修普通画板并发保存、不实施 F-03 的 root 稳定 Supervisor 归属，也不修改 snapshot-only/local PTY 的产品保证。
+代码基线是 `origin/main@4d7f07e55461f414c570365136cc06ece6f18c64`，位于审核分支 `architecture-review-webview-host-supervisor`。容量重评不调整异常断连恢复策略、不修普通画板并发保存、不实施 F-03 的 root 稳定 Supervisor 归属，也不修改 snapshot-only/local PTY 的持久化与关闭语义。
 
 2026-09-17，用户确认 Supervisor 自身崩溃或机器重启后不要求恢复进程和终端历史，随后又确认正常结束的节点重开也无需进程或历史。后一项已选定为 `runtime-completed-no-history.md`：不再内联/归档 completed 正文，只保存轻量终态，当前视图仍收齐尾部。第 6.3 节的 server 生命周期方向不要求新增 server；运行期 journal 格式与保护暂不变。第 7 节独立归档契约保留为未采用候选，不是当前实施要求。
+
+2026-09-20，用户确认将退出完整性纳入本次重构独立交付，设计见 `docs/design-docs/runtime-exit-integrity.md`。它覆盖 Agent/Terminal、Runtime 与 snapshot-only 的共同退出路径及 Linux/macOS/Windows，不改变前述持久化与关闭边界。退出码、源输出排空与消费者完成不能相互替代；此项不是 F-04 容量优化或删除兼容路径的自然副产物。本次仅登记交付范围与 active ExecPlan，具体实现待选定，业务代码未改，原生平台验收仍开放。
 
 ## 2. 已核实的审核基线
 
@@ -203,6 +206,8 @@ Supervisor、Host、Webview 各自需要每会话及全局缓存/在途预算；
 | 采用磁盘/journal 时：磁盘满、权限失败、损坏 segment/checkpoint、长时间无法 compact | 遵循明确容量与 fail-closed 策略；不静默丢数据、不返回伪完整历史，不以无限增加内存规避写入失败。 |
 
 ## 9. 当前结论与下一阶段
+
+退出完整性按 `docs/exec-plans/active/runtime-exit-integrity.md` 独立推进：先选定可验证的读取/生命周期契约并补齐原生候选对照，再实施和验收。自然非零退出同样需要完整尾部，stop/delete/强制中断与正常排空分别表达，旧 live 继续原绑定且不追授新完整性保证。该项未完成不能宣布本次重构的退出完整性收口；F-04 的容量比较可独立推进，F-05 的无历史决定也不因此撤销。
 
 第五个增量 `runtime-paged-completion.md` 延续原 Supervisor 分页到 final revision。新能力的退出/attach/subscribe 不聚合完整终态；Host 保存轻量节点后请求退役，新 attach/open 被拒绝，原 socket/readId 读完或关闭后才物理删除。未 ACK 和在途 open 在原页面生命周期继续，旧 generation 客户端等读者关闭 RPC 收敛后退役。旧模式/混合订阅仍保留完整兼容，不改变 root 归属。受控三阶段新终态样本为 405/407/407 字节，而旧完整 snapshot 仍从约 6.76 MB 增长到约 20.29 MB；这里只测同一最小 fixture 的编码字节，不是实际 RSS 或任意终态大小上限。
 
