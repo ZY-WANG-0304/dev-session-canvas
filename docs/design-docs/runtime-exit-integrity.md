@@ -88,7 +88,7 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
 
-下一步先设计 provider/adapter 生命周期与失败契约，明确主进程退出、源结束、消费完成和 owner 释放，再以新版本诊断冻结取消/异常路径及真正返回预算。Windows builtin、正长度 readable-buffer、并发与真实 Agent/Host/Webview/packaged 仍待验证，具体 reader、wire API、生产取消和预算未选定。macOS 普通后代控制实验仅作诊断，不是无条件前置。不能把局部自然路径证据当作里程碑一或产品验收完成，业务仍不直接修改，设计保持比较中/验证中。
+第35节承接本阶段的 provider/adapter 生命周期与失败契约，当前候选统一记录在 `docs/design-docs/runtime-execution-lifecycle-contract.md`。已冻结下一轮D1的24组37个模型子案例，以及D2三平台共72条零PTY控制（54条真实进程/启动控制、18条synthetic）；下一步实施新诊断并分别验证，不直接接入业务。Windows builtin、正长度 readable-buffer、并发与真实 Agent/Host/Webview/packaged 仍待验证，具体 reader、wire API、生产取消和预算未选定。macOS 普通后代控制实验仅作诊断，不是无条件前置。不能把局部证据或契约冻结当作里程碑一/产品验收完成，设计保持比较中/验证中。
 
 ## 7. 第一轮候选实验协议（运行前冻结）
 
@@ -660,3 +660,17 @@ artifact ID `10633047821`，ZIP 19,738,089 字节；本地下载完整 ZIP 并�
 新增入口的 `guarded()` 只等 `child.close`，150 s 定时器只请求 `child.kill('SIGKILL')`，没有独立返回分支；若 driver 已退出但 stdio 被其他进程引用，不能保证在该预算内返回。另建 Linux 纯 Node 控制已复现：自有 driver exit 0 后，150 ms watchdog 的 kill 返回 false，close 晚于 watchdog 884.470223 ms；外层 5 s 硬截止和 1 s 最终兜底未触发，自有 driver/后代结束后 `/proc` 均不存在。独立诊断树 `.debug/hpcon-guarded-budget-control-v1/` 保存 11 个工件，manifest SHA256 `e053adf6b94787879ed8d8f08a9911b512bb422510d3ec8ece5028a991df6560`。这是工具预算缺口，不是本轮 Windows 失败原因：全部 12 个 driver 已自然返回且 `timedOut:false`，没有命中此路径的证据。后续另建版本修正返回预算，不能修改本次冻结入口或将 stdio EOF、JS exit、OS 进程终止与 session ConPTY EOF 混为一谈。
 
 本阶段只在独立诊断分支新增 transformer、入口和 workflow，主重构分支仅更新文档；安装依赖、业务、旧 live 绑定和所有历史实验均不改。已不需要继续以“消除正常 Process 对象存续”为目标排查。下一阶段先将已建立的 Unix/Windows 自然路径证据转为 provider/adapter 候选生命周期及错误语义设计，明确 owner 移交、自然完成与取消/失败的边界，并在新诊断入口冻结异常路径和返回预算；Windows builtin、正长度 JS readable-buffer、并发、实际 Agent/Host/Webview/packaged 仍需独立验证。旧版 Windows 的 Close 行为也不由 build 26100 外推。生产 API、取消条件和时间预算仍未选定，设计保持比较中/验证中，ExecPlan active，退出完整性交付未完成。
+
+## 35. Provider/Adapter 生命周期与失败契约阶段
+
+本阶段从主分支0518dcc4、独立诊断分支4504ae18继续，只做设计、代码核查与既有回归。当前候选全文为 `docs/design-docs/runtime-execution-lifecycle-contract.md`，不把本设计第7–34节的历史实验改写成新的生产方案。新增明确的职责边界、结果类型、偏序、读者结算候选与D1/D2运行前协议，整体仍比较中/验证中；新模型、异常native矩阵和新guard尚未实现或运行。
+
+关键取舍是继续验证“平台provider分离事实、共享adapter统一输出封口、authority和页面分别结算”，而不是两个业务owner各自等待旧onExit。实际主体退出、源eof/中断/错误、authority异步解析、每读者应用结果和native释放分别记录。已证明终止但退出码未知不等于未证明终止；超时unknown可以接纳同一次操作的迟到证明，不重试Close、不改首次报告或已公布seal。Windows正常对象引用语义和已知owner最终释放继续分开，native释放不等待全部Webview，但新的内容移交偏序必须另验，不能从自然实验直接外推。
+
+只读核查补齐接入事实：Supervisor的操作链/journal.flush不能替代tracker异步解析完成；Webview已有真实xterm callback屏障，缺口在跨层结算表达，本地退出提示也不属于authority revision。当前close参数在各跳被重建为identity，新增outcome必须全链路保留和校验；不能扩展一处类型就宣称读者凭证已接通。候选比较后以opt-in close outcome作为D1模型路线，独立ACK仍为对照，服务端幂等回执的有界政策留作接入前门槛。
+
+Windows隔离候选的自然gate不能直接成为生产错误回收策略：CreateProcess成功到hShell登记之间存在可失败操作；固定node-addon-api的env-null TSFN路径不执行callback内部RAII。macOS的自然close(kq)对照也没有覆盖kevent/waitpid/TSFN失败。这些是新增静态失败窗口，不是已复现native异常或对正常138条证据的否定。部分初始化、在途读取、线程/通知/consumer/Close失败与同会话并发必须有分项owner账本和安全处置；永久未返回/unknown的隔离与容量方案仍阻塞生产默认接入。
+
+D1冻结24组37个独立子案例，覆盖进程/源顺序、取消所有权、authority失败、资源迟到补证、读者竞争及三种能力八组合；预期计数只说明模型约束。D2冻结每平台8子项各3次，三平台共72条、零PTY，54条真实进程/启动控制和18条synthetic分账；从spawn前计时，1000ms工作预算、另1000ms清理/返回、外层5000ms加1000ms观测，均不是产品预算。G04受控helper继承stdio、有限TTL与协作结束的前提必须在各平台成立，尤其Windows父Job不能提前终止它；不成立记precondition-failure，不强杀陌生PID或以模型代替。完整规范及未验证项见新设计第8节。
+
+下一步仅在独立诊断分支新增D1/D2入口与工件，主分支继续只承接文档。现有业务/安装依赖/旧脚本和所有历史结果不改，不推运行时分支；D1/D2通过也不等于原生取消、builtin、正缓冲、真实Agent/Host/Webview/packaged通过。完成这些前提后再逐平台冻结实际故障注入，保持退出完整性计划active。
