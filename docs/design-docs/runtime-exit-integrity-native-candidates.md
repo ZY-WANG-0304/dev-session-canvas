@@ -439,3 +439,5 @@ driver最初、预热后、每次测量结束及最终释放后，均先等待�
 ### 下一边界
 
 本控制仅校准正常对象语义和调用方引用释放；完成后才另冻已知HPCON owner自然收尾的隔离干预，不能从无PTY控制推导旧+2的确切根因。正长度JS readable-buffer取消、真实Agent启动链、异常路径、Host/Webview/packaged与生产API/预算继续开放，设计保持比较中/验证中，计划active，业务代码和旧live绑定不变。
+
+实现前补记：GetProcessTimes在进程未退出时的exitTime未定义，暂停态只记录不要求为零。父JS watchdog只可结束自己spawn的driver，不能拿日志PID当所有权清理child；若driver尚持有暂停child，必须记录未结算/可能存活而非宣称清理完成，runner销毁环境也不是owner验收成功。原生C失败路径只凭本次CreateProcess返回且仍持有的HANDLE处理自己的child。上述限制不改变冻结次数、断言或预算。

@@ -1,0 +1,56 @@
+name: Runtime Windows Process Objects
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [runtime-exit-integrity-native-candidates]
+    paths:
+      - .github/workflows/runtime-windows-process-objects.yml
+      - scripts/diagnostics/diagnose-windows-process-objects.mjs
+      - scripts/diagnostics/windows-process-object-control.c
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-windows-process-objects-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  process-objects:
+    name: Normal process object semantics / Windows / Node 22.23.2
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Check diagnostic entry syntax
+        run: node --check scripts/diagnostics/diagnose-windows-process-objects.mjs
+      - name: Run synthetic verifier controls
+        env:
+          DSC_PROCESS_OBJECT_SELFTEST_EVIDENCE: process-object-selftest
+        run: node scripts/diagnostics/diagnose-windows-process-objects.mjs --self-test
+      - name: Run the complete normal object semantics schedule
+        if: ${{ !cancelled() }}
+        run: node scripts/diagnostics/diagnose-windows-process-objects.mjs --output process-object-evidence
+      - name: Verify all saved drivers including failures
+        if: always()
+        run: node scripts/diagnostics/diagnose-windows-process-objects.mjs --verify-saved process-object-evidence
+      - name: Upload full evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-windows-process-objects-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            process-object-evidence/
+            process-object-selftest/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
