@@ -88,7 +88,7 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
 
-第35–37节承接 provider/adapter 生命周期契约及D1/D2新诊断，当前候选和分版证据统一记录在 `docs/design-docs/runtime-execution-lifecycle-contract.md`。D1本地及三平台模型通过，D2原校验器三平台各24条及全部下载复核通过，但独立审计发现Windows G07三条真实提前关闭前提未建立；原绿色结果、首版缺口及历史失败均保留。下一步先另冻Windows G07真实stdio关闭/主体存活控制，再推进原生失败矩阵和unknown owner的有界隔离，不直接接入业务。Windows builtin、正长度 readable-buffer、并发与真实 Agent/Host/Webview/packaged 仍待验证，具体 reader、wire API、生产取消和预算未选定。macOS 普通后代控制实验仅作诊断，不是无条件前置。不能把局部证据当作里程碑一/产品验收完成，设计保持比较中/验证中。
+第35–38节承接 provider/adapter 生命周期契约及D1/D2新诊断，当前候选和分版证据统一记录在 `docs/design-docs/runtime-execution-lifecycle-contract.md`。D1本地及三平台模型通过，D2原校验器三平台各24条及全部下载复核通过，但独立审计发现Windows G07三条真实提前关闭前提未建立；原绿色结果、首版缺口及历史失败均保留。第38节及新契约第14节已另冻Windows-only三模式各三次的真实stdio关闭/主体存活补证，当前实施中、尚无本轮Windows原生结果；复用原guard及预算，不重跑旧矩阵求绿。该补证完成并全量复核后，再推进原生失败矩阵和unknown owner的有界隔离，不直接接入业务。Windows builtin、正长度 readable-buffer、并发与真实 Agent/Host/Webview/packaged 仍待验证，具体 reader、wire API、生产取消和预算未选定。macOS 普通后代控制实验仅作诊断，不是无条件前置。不能把局部证据当作里程碑一/产品验收完成，设计保持比较中/验证中。
 
 ## 7. 第一轮候选实验协议（运行前冻结）
 
@@ -690,3 +690,15 @@ D1在本地Node25.6.0与Electron39.8.7各37项及离线复核通过，含真实P
 D1共111模型子案例，D2原validator共72控制通过（54真实进程/启动控制、18synthetic，零PTY），各平台37/37和24/24，两个validator均完整遍历且无工件错误。最大guard原始时钟观察分别为Linux1951.046799ms、macOS1980.999041ms、Windows1960.969100ms，全部小于原2000ms门槛；outer均自然结束且未命中5000ms截止。三平台G04的driver真实退出后helper仍响应私有nonce并持有两stdio前提成立；G07原断言只证明流通知先于exit通知，Windows三条的真实提前关闭前提未成立。不能由helper协作回执补造OS退出wait，更不能由这些普通进程控制推断PTY资源全部回收。
 
 所有raw结果保留原分类，尤其每平台12个deadline及3个spawn-error没有改成自然成功。独立Windows审计确认Node22.23.2的libuv对标准fd0/1/2的fs close直接返回成功而不关闭，G07使用fs.closeSync(1/2)没有制造目标前提；250ms后接近进程退出时的通知顺序不能补证。详见生命周期契约第13节，原workflow/validator绿色结果不修改，但Windows这三条不能列为完整前提验收。下一步优先另冻新Windows G07夹具及独立主体存活证明，再推进原生失败和unknown owner隔离；其他69条控制依据保留。此为诊断夹具的平台假设问题，不是Windows系统bug，也不是已证明的Terminal/Agent缺陷；业务、依赖、旧脚本和正常对象语义判断均不变。
+
+## 38. Windows G07 补证协议冻结与实施边界（2026-09-22）
+
+本增量只补第37节的Windows夹具前提，不改变旧D2的72条工件、原始绿色报告和Windows G07三条not-established结论。完整冻结协议为 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第14节；独立诊断树按此实施 `scripts/diagnostics/windows-stdio-close-control.c`、`scripts/diagnostics/diagnose-windows-stdio-close.mjs` 与专用workflow。本树继续只承接设计和验证记录，业务、依赖、旧live绑定及旧诊断均不改。本节是运行前约束，尚无本轮Windows原生结果。
+
+新C程序本身是guard直接创建的主体，不加启动器或后代；只登记并关闭本进程继承的两路pipe写端，以实际Win32关闭结果和父端真实EOF交叉验证，不再借fs.closeSync标准fd的返回值证明关闭。控制通道与stdio分离，身份须匹配本次nonce、mode及直接ChildProcess。父端在双EOF/close、完整marker和native关闭回执齐备后，才生成首个新challenge；收到有效pong后按自身单调时钟持有至少100ms，再发送第二个不同challenge。两次pong与退出许可须在原t0+1000ms前，guard在许可退出前不得返回；PID可查询、提前准备的回执或通知先后都不替代这段实际可执行窗口。
+
+矩阵固定Windows x64/MSVC、Node22.23.2，close-wait、keep-open、close-exit各3次，共9个真实child，零PTY；D1及Linux/macOS旧控制不重复。close-wait要求真实关闭后双挑战成立并自然exit0；keep-open必须保持写端至deadline且不能建立双EOF后的挑战前提；close-exit真实关闭后立即exit0、不回复挑战，也必须被拒绝存活前提。负控通过只表示oracle按预期拒绝，`preconditionEstablished`和guard raw结果分账，不能把任意启动、控制或工件错误当成负控成功。
+
+原样复用冻结guard-v2和1000ms工作/总2000ms返回预算，外层独立5000ms截止加1000ms观测，fixture自限3000ms；超时、主动销毁、迟到回复和自限/外层干预均按原失败/不完整语义保存，不扩预算、不靠事件循环巧合制造100ms持有。新目录保存完整schedule、编译日志、源码及实际EXE指纹、双通道原字节、native回执、guard/outer trace和首次结果；编译失败须保留九项not-run及实际创建数零，逐项失败仍遍历九项。合成自测和离线validator独立重算身份、时序、内容、预算并拒绝篡改，不将其算作Windows原生通过。
+
+只有首次Windows矩阵及完整工件复核完成后，才能判断本增量是否建立真实提前关闭且主体仍活的前提；即使新九项达标，也不追认旧三条或宣布PTY/产品退出完整性完成。后续partial-create、wait/通知、取消/正长度buffer、release失败/挂起、并发与unknown owner有界隔离另冻；builtin、旧Windows、真实Agent/Host/Webview/packaged及生产API/预算继续开放。设计仍比较中/验证中，退出完整性和旧工具移交债务不关闭。

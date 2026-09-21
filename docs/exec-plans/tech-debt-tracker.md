@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-22 Windows G07补证冻结：生命周期契约第14节及退出完整性设计第38节另冻Windows-only close-wait/keep-open/close-exit各3次，共9个真实child、零PTY，当前实施中、尚无本轮原生结果。新fixture用真实Win32关闭本身拥有的stdio，在父端双EOF后经独立通道响应两次fresh challenge，中间持有至少100ms；两负控必须按预定轨迹被拒绝，不以任意错误求绿。原样复用guard-v2与1000/2000、外层5000+1000ms门槛，原72条、Windows旧三条not-established及所有失败不改。首次编译/运行和完整离线复核后才评估此缺口；旧guarded移交、原生异常/正缓冲/builtin/并发、unknown有界隔离及实际宿主仍开放，总债务不关闭，主树只同步文档。
+
 2026-09-22 D1/D2首次远端收口：d173c099/run35620967433 attempt1三平台执行、完整ZIP及原verifier复核完成，D1合计111模型通过，D2原72控制pass保留。Windows独立审计确认G07三项未建立stdio真实提前关闭前提，固定Node22.23.2的libuv对标准fd close为no-op；通知先后不能证明主体仍可执行，不是OS或产品bug。原工具/断言/绿色结果及raw失败不改，其他69条控制依据保留，不宣布D2全组或退出完整性完成。下一阶段先另冻真实关闭+独立主体存活控制，之后再推进原生异常/正缓冲/builtin/并发/unknown有界隔离及实际宿主验收。见生命周期契约第12–13节、退出完整性设计第37节和active计划，主树仅文档，总债务不关闭。
 
 2026-09-21 D1/D2本地实施：独立诊断分支已新增模型、guard-v2、两个入口及三平台workflow。本地D1的Node25/Electron39各37项、D2新版Linux24条控制与完整离线复核通过；D1初稿Promise自证和D2首轮deadline后capture仍complete的缺口已分别收口，原工件保留，不追认新证明。新版超时保留deadline-incomplete/truncated及raw失败，旧冻结guarded入口没有追溯替换；三平台结果尚待运行。下一步完整runner矩阵及下载复核，随后才逐平台另冻原生失败、正缓冲、builtin、并发和实际宿主验收，未知owner有界隔离/生产预算继续开放。见生命周期契约第10–11节和退出完整性设计第36节，总债务不关闭。
