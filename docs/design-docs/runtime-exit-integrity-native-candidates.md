@@ -441,3 +441,40 @@ driver最初、预热后、每次测量结束及最终释放后，均先等待�
 本控制仅校准正常对象语义和调用方引用释放；完成后才另冻已知HPCON owner自然收尾的隔离干预，不能从无PTY控制推导旧+2的确切根因。正长度JS readable-buffer取消、真实Agent启动链、异常路径、Host/Webview/packaged与生产API/预算继续开放，设计保持比较中/验证中，计划active，业务代码和旧live绑定不变。
 
 实现前补记：GetProcessTimes在进程未退出时的exitTime未定义，暂停态只记录不要求为零。父JS watchdog只可结束自己spawn的driver，不能拿日志PID当所有权清理child；若driver尚持有暂停child，必须记录未结算/可能存活而非宣称清理完成，runner销毁环境也不是owner验收成功。原生C失败路径只凭本次CreateProcess返回且仍持有的HANDLE处理自己的child。上述限制不改变冻结次数、断言或预算。
+
+## 28. Windows 对象语义首轮结果
+
+输入cbbba0961595bcb0538a562ff183d2ef1abf15c9的[run35560063334](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35560063334) attempt1已完整执行，最终failure，未重跑或放宽断言。MSVC /W4 /WX编译、13类合成自测通过；六个driver全部执行，92个普通child、零PTY、690次快照。完整工件下载至独立工作树.debug/github-process-objects-35560063334-windows/后，原入口离线复核attempted6/verified6、evidenceErrors为空，但只有两个control通过，四个创建child的driver均保留计数失败。
+
+### 正常语义已经确认的事实
+
+本轮92个child均按暂停创建、恢复、关闭hThread、有界等待、退出后查询、最终关闭hProcess的顺序执行；48个自然exit0、44个自然exit7。六个driver全部自然exit0，没有watchdog、TerminateProcess、cleanup或未结算owner。已退出hProcess在持有期间仍signaled、可读正确退出码及稳定PID/creation time；这是正常对象引用语义，不是进程仍在运行。
+
+共460次process-inspection中，92次暂停态image查询全部成功；92次立即退出态加276次保留态查询全部返回ERROR_GEN_FAILURE31，而wait/PID/exitCode/times所需查询成功。因而“已退出但仍可查询部分属性，映像查询失败31”在本普通进程控制中直接复现，不应单凭这一组合推断Windows或终端故障。这没有把31提升成所有版本必然行为，也不能据此补造旧2730次查询失败的精确原因、进程映像或HPCON归属；旧identity结果仍inconclusive。
+
+### 计数反结果原样保留
+
+| driver | 初始 | 三次预热后 | 二十次测量末尾 | 最终关闭后 | 冻结oracle |
+| --- | --- | --- | --- | --- | --- |
+| control-1 | 61 | 61 | 61 | 61 | 通过 |
+| release-each-1 / release-each-2 | 55 | 60 | 60 | 60 | 失败 |
+| retain-until-end-1 / retain-until-end-2 | 55 | 63 | 83 | 60 | 失败 |
+| control-2 | 55 | 55 | 55 | 55 | 通过 |
+
+每个窗口五次计数均一致。release-each在整个二十次测量中不再增长；retain每新增一个故意持有的hProcess增加1，最后关闭23个已知hProcess后83降至60，精确减少23。这支持“自身正常引用被逐个保留、显式关闭释放引用”，不代表系统中不存在其他引用或对象已经全局销毁。
+
+四个child driver另有相对初始的+5，在三次预热期间形成，后续测量及最终关闭后保持。前两次预热没有独立计数窗口，不能断言+5恰在第一次CreateProcess发生；本轮没有类型表、模块加载或调用栈，不能确认为lazy初始化、ETW、安全软件、OS bug或应用泄漏。control之间61与55的差异也不直接归因。冻结要求最终回到初始区间未满足，因此四个失败不改判，不用事后减5或把基线移到预热后换取绿色。
+
+这与旧PTY实验在预热后每会话增加2的观测不同，不能用本轮+5解释或撤销旧结果。
+
+### 输入、验证与后续边界
+
+原verifier在各driver首个计数反例处停止行为断言，因此另按原始事件完成只读补充审计，不调用或修改旧evaluate、不改raw：36份manifest成员哈希、2176事件、全部92child/690快照及单次关闭顺序逐项核对，未发现新增异常。保留440个计数快照超出原初始区间、四个失败，补充审计自身exit1；它不是替代验收器或新原生运行。最小retained间隔50.1474ms、三次跨度101.4829ms、快照间隔20.0723ms、settle100.1387ms均达到原冻结前提。
+
+补充脚本与结果只保存在新.debug/process-objects-supplemental-audit-35560063334/，原下载目录未修改；audit.cjs/result.json SHA256分别d2bb1fec27172e8674072035be088ee9ff2e09ab69ff0c2176da4b8cd273c6ef、a5b49af16adddb676c6e95783f5ac2fc170c720bccb71123b0ba1aacc8b298d3。最终本地13类自测在.debug/windows-process-object-selftest-v4-local，早期自测目录均保留；既有executionSessionBridge回归、文档元数据/索引/关联路径、workflow YAML和diff检查通过，不能计为生产退出完整性验收。
+
+环境为Windows x64 kernel10.0.26100、runner image20260907.229.1、Node22.23.2、Windows SDK10.0.26100.0、MSVC工具目录14.51.36231/compiler19.51.36256.0。实际exe SHA256为23657470f9708a84131ce948d5b62c97dc9d61bbc23fb59a241ab58140069b22；六个driver路径/hash与编译输出对应。JS/C的LF SHA256分别5656610bee07d05c978be656bdd3143405c9257555c85a18c9499eaeca53fee2、3388fca1675d2aefeaf542ee302a84f92edd243c0ea32ecd6a44d6e56765d1e7；Windows原始CRLF快照只读归一核对，不修改下载工件。artifact ID10621662744，服务端ZIP digest为08f518d1286d95eedc7b7a55ed44add24a99a19a1e02adc7a2b5e0d7a65d4c02，不冒称本地ZIP独立复算。
+
+本阶段确认用户提醒成立，并将OS正常对象语义与调用方最终释放责任分开。ReleasePseudoConsole不免除最终Close是官方API契约；node-pty自然退出路径未显式Close仍是调用方owner设计问题的线索，但本轮无PTY控制不能证明旧File/Process配对就是HPCON成员，也不修改业务或生产生命周期策略。
+
+下一阶段只对已知HPCON owner设计自然收尾后的隔离释放对照，先明确其保留用途、所有权及调用时机，不能复用kill、直接CloseHandle(hpc)或关闭陌生槽位。资源验收须同时分开owner账本、稳定背景与逐会话增长，+5归属留作受控取证开放项，不机械套入PTY矩阵或把普通对象存续当产品阻塞。Windows正长度JS缓冲取消、异常路径、实际Agent/Host/Webview/packaged和生产API/预算继续开放，设计比较中/验证中，计划active。

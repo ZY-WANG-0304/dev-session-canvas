@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-21正常对象首轮结果：cbbba096/run35560063334 attempt1六driver/92普通child/690快照完整执行与下载复核，两个control通过、四个初始计数失败不改判，非PTY/产品验收。92个child退出后仍可查PID/time/exitCode，368次image31与正常引用存续一致；retain最终关闭23个已知句柄精确减少23。四个child driver预热后另有+5保持不变，尚无类型/创建来源，不确认为lazy初始化、OS bug或owner泄漏。HPCON最终Close契约独立存在，旧File/Process配对归属仍inconclusive；下一步另冻已知owner干预，正缓冲/异常/真实宿主/生产契约继续开放。见当前设计第28节及active计划，债务不关闭。
+
 2026-09-21对象语义控制冻结：已退出Process被引用而存续是Windows正常语义；HPCON Release仍需最终Close是调用方独立职责，不能把旧+2直接叫OS bug。新增六driver/92普通child、零PTY的retain/close/no-child对照，先校准语义再另冻HPCON干预。image错误31、旧资源失败和具体归属inconclusive均保留；assert移除baton的副作用受NDEBUG限制，历史无条件表述不作为binary事实。见当前退出完整性设计与active计划，尚无本轮原生结果，不关闭债务。
 
 2026-09-21资源归因结果：run35527241793首轮与5a7ed5c4/run35527528410完整下载复核。macOS两轮各138条PTY通过最小close因果对照，原包/重编译基线kqueue6→26、候选kqueue3稳定，基线失败不改判；Windows首次新观察器命名冲突零PTY失败保留，仅重命名后46条内容/生命周期通过，但逐会话+1 PIPE类型File/+1已退出非fixture Process仍积累。NT类型查询全成功，Process映像查询2730次ERROR_GEN_FAILURE31，归属仍inconclusive，不认定OpenConsole/signal pipe已确认。下一步另冻已知HPCON owner生命周期/释放干预，正readable取消、异常路径/真实宿主和生产契约继续开放。业务/依赖及旧实验不改，退出完整性债务不关闭。见 `docs/design-docs/runtime-exit-integrity-native-candidates.md` 第26节与active计划。
