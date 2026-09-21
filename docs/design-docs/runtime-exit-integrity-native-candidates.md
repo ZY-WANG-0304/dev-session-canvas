@@ -492,7 +492,7 @@ driver最初、预热后、每次测量结束及最终释放后，均先等待�
 
 ### 收尾顺序和证据层级
 
-每个 native session 必须依次记录`native-connected/owner-token`、writer receipt/gate、native exit、真实 worker`pipe-eof`、pipe close 无错误、input close、worker exit、decoder end、consumer complete/final terminal state，再发`close-request`、`close-invoked`、`owner-closed`。`BlockingCall` 的 exit-event-enqueued、exit-callback-delivered、native-exit-thread-done、TSFN closing/queue failure 也必须单独记录；不能把事件排队当作 callback delivered 或 consumer complete。Close 前不得关闭 reader 以换取 EOF；Close 是 void，只记录调用及本地 owner 状态，不虚构返回成功。Close 后继续短窗口观察，任何新 worker bytes、pipe 错误、终态变化、重复操作、watchdog 或强制终止均为失败或不确定。若自然主体已退出但真实 pipe EOF、consumer 完成等前提缺失，则标记`precondition-failure`，不调用 Close、不宣称修复。
+每个 native session 必须记录`native-connected/owner-token`、writer receipt/gate、native exit、真实 worker`pipe-eof`、pipe close 无错误、input close、worker exit、decoder end、consumer complete/final terminal state，并满足偏序 gate 后再发`close-request`、`close-invoked`、`owner-closed`；不假设 native exit、pipe-end、worker close/exit、decoder end 和 consumer ack 的相对先后。`BlockingCall` 的 exit-event-enqueued、exit-callback-delivered、native-exit-thread-done、TSFN closing/queue failure 也必须单独记录；不能把事件排队当作 callback delivered 或 consumer complete。Close 前不得关闭 reader 以换取 EOF；Close 是 void，只记录调用及本地 owner 状态，不虚构返回成功。Close 后继续短窗口观察，任何新 worker bytes、pipe 错误、终态变化、重复操作、watchdog 或强制终止均为失败或不确定。若自然主体已退出但真实 pipe EOF、消费者已处理全部 data sequence 等前提缺失，则标记`precondition-failure`，不调用 Close、不宣称修复。
 
 三类事实分开验收：原始字节/消费者/最终终端状态和自然主体、worker/input 生命周期；已知 owner ledger 的创建、Release、单次 Close、清空和不再使用；同进程 OS handle/thread/JS active resource 的稳定背景、每会话轨迹和 Close 后窗口。`no-close`的 owner 增长是有意正对照，不叫泄漏；`explicit-close`首先要求 owner ledger 每会话回到零、无继续逐会话增长及自然收尾完整，不强求 OS 总句柄立即回到 control baseline。若仍有残余背景，按`resource-failure`或`inconclusive`记录，不能把全局对象消失当作 owner 契约。
 
