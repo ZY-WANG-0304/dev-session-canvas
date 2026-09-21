@@ -14,7 +14,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity-native-candidates.md
-updated_at: 2026-09-21
+updated_at: 2026-09-22
 ---
 
 # 执行会话 Provider 与 Adapter 生命周期契约
@@ -247,3 +247,55 @@ D2的 `.debug/process-guard-v2-local-first` 原24项control-pass、最长1952.56
 D2最终自测25项通过，含有效G01/G07基线、9类重新计算manifest后的语义篡改、首项损坏后继续检查末项，以及超时后EOF不晋升完整。初版/增强版自测、两次开发矩阵及两份正式本地输入均保留。独立只读复审已收口Promise自证、capture-error缺维度、outer自然截止宽限和deadline完整性表达问题，没有放宽冻结协议。主运行时树本轮bridge、tracker、Supervisor协议聚合回归再次通过，workflow YAML/内嵌脚本及精确Node版本拒绝检查通过。
 
 本节收口时三平台runner尚未运行，不能将本地Linux、Electron注入模型或静态Windows审查记为macOS/Windows已通过。下一步推送独立输入，运行完整三平台D1/D2并下载全部工件复算；新原生异常、builtin、正缓冲、并发、真实Agent/Host/Webview/packaged及生产预算仍开放。新guard也没有追溯替换旧冻结入口中的guarded等待。
+
+## 12. 三平台首次矩阵与完整复核（2026-09-21）
+
+独立输入 `d173c099d37f83bb3178d280a6a6d8b80d984b92` 经fetch/rebase后推送，workflow run `35620967433`、attempt1三平台全部success，没有重跑。三个完整ZIP均下载到主运行时工作树 `.debug/lifecycle-contract-35620967433/`，逐包校验API声明的大小和SHA256，各1280成员；解压后使用当前同版本入口分别复核D1/D2，并将四个脚本、workflow及冻结契约共六份源码快照与该commit对账。Windows换行仅在比较Git文本时只读规范化，原字节/ZIP/指纹不改。补充复核在同目录 `offline-review-v1.json`，不覆盖原工件。
+
+| 实际runner环境，均Node22.23.2 | D1模型 | D2原校验器结果，前提另审 | 最大guard返回 / 原始时钟观察，ms | 最大outer返回，ms |
+| --- | --- | --- | --- | --- |
+| Ubuntu24 x64，kernel6.17.0-1022-azure，image20260907.300.1 | 37/37 | 24/24 | 1950.919840 / 1951.046799 | 2004.825633 |
+| macOS26 arm64，Darwin25.6.0，image20260907.0351.1 | 37/37 | 24/24 | 1980.901916 / 1980.999041 | 2103.605875 |
+| Windows Server2025 Datacenter x64，10.0.26100，image20260907.229.1 | 37/37 | 24/24 | 1960.830200 / 1960.969100 | 2150.444700 |
+
+D1合计111个独立模型子案例，D2原校验器合计72条通过，其中54条真实进程/启动控制、18条synthetic，零PTY；两个原离线校验器均完整遍历且未报语义失败或工件错误。这不等于D2所有冻结前提都已成立：后续独立源码/时间审计发现Windows G07三项夹具未执行真实提前关闭，见第13节。每个平台另外运行D1的37正例/12类负对照自测和D2的25项自测，额外自测夹具不计入上述主矩阵。
+
+每个平台的raw结果仍为9条natural-exit（包括G02的exit7）、3条spawn-error及12条deadline-exceeded；捕获字段为12条complete、6条deadline-incomplete、6条truncated。complete中的G03只是失败启动后的空日志管道完成，不代表创建了进程或自然exit0。控制pass只表示原校验器接受观察结果，不能将12个deadline和3个spawn-error改成被测路径自然成功。三平台G04均取得helper-ready、driver真实exit0、exit后nonce ping/pong以及deadline前两stdio仍持有的证据；helper完成仍是协作回执，`osExit=unobserved`、`cleanup=os-exit-unknown`保持不变。G07原校验器在三平台均看到两流end/close通知先于child-exit通知，guard未提前返回；这仅是通知偏序，Windows真实提前关闭前提尚未成立。外层均自然完成、没有命中5000ms硬截止。
+
+| 平台 / artifact ID | 完整ZIP SHA256 |
+| --- | --- |
+| Linux / 10648081653 | `8fcf2607481a9b498991d850208928e0ad380fa5dafaa320ed5ec2a91c116a2f` |
+| macOS / 10649965248 | `28b7d77edcef6e35e4b71df6af8de79ed912ddcd4e9b8bdfdffb81f2554ab56a` |
+| Windows / 10649136626 | `1d05a7dcbdca16d71019b8b5910ca9dc45cb023b0256060e9582080ec4343268` |
+
+本轮建立D1有限模型及D2各平台有界返回的证据，Windows G07三项的特定前提仍未建立，不能将D2整组标为无缺口验收完成。其他69条控制的证据不因这个夹具缺口被抹去，但也不是原生PTY/EOF、终端资源释放、实际Agent/Host/Webview或packaged验收；不覆盖其他Windows客户端/旧版本、macOS架构和生产并发。Windows正常退出对象被引用的语义不变，本轮不关闭未知句柄或按PID强杀。旧冻结guarded入口仍保留原实现，新guard未追溯替换它。
+
+下一阶段优先另冻Windows G07真实stdio提前关闭与关闭后主体仍可执行的独立证明，使用新版本/新入口，不修改本轮冻结脚本或通过改旧断言求绿。该缺口收口后，再逐平台设计和冻结partial-create、wait/通知失败、在途取消与正长度已读缓冲、最终release失败/挂起、两个并发会话的原生矩阵，并明确unknown owner的有界隔离与处置门槛。这里不选定生产取消预算、不接入业务，设计继续比较中/验证中，退出完整性总计划保持active。
+
+## 13. Windows G07 夹具前提缺口与复核结论（2026-09-22）
+
+本节追加独立审计结论，不改第8节冻结输入、第12节原校验器结果或run35620967433的工件。Windows G07-1/2/3的“stdio先真实关闭、主体仍继续运行”前提未建立，分类为前提未建立（not-established）；这三条不能计作该场景已验收。原72条control-pass及其他69条控制的依据保留，不以新的解释覆盖历史记录。
+
+固定输入的 `scripts/diagnostics/diagnose-process-guard-v2.mjs:131` 和 `:132` 调用 `fs.closeSync(1)`、`fs.closeSync(2)`，随后在250ms定时器中自然退出。固定Node22.23.2的官方调用链为 `lib/fs.js:516` 的closeSync，经 `src/node_file.cc:1007` 的uv_fs_close，到 `deps/uv/src/win/fs.c:681` 的fs__close。该Windows分支只在 `fd > 2` 时调用 `_close(fd)`，标准fd0/1/2直接返回成功，没有实际关闭。因此不能从JS调用不抛错推导此夹具已关闭标准输出。这里确认的是固定libuv平台实现语义，不是Windows系统bug，也不是Terminal/Agent业务缺陷证据。
+
+| Windows案例 | 首个stdout块，ms | stdout end，ms | stdout close，ms | child-exit通知，ms |
+| --- | --- | --- | --- | --- |
+| G07-1 | 58.5962 | 314.1353 | 316.3174 | 316.5896 |
+| G07-2 | 61.0528 | 315.3610 | 317.5805 | 317.8744 |
+| G07-3 | 61.2261 | 315.9397 | 318.7246 | 319.0809 |
+
+表中时间来自guard的spawn前单调t0，不跨进程拼接时钟。两路管道结束均接近250ms等待后的退出通知，而非夹具发起close后立即结束。原verifier在 `diagnose-process-guard-v2.mjs:385`、`:389`、`:391` 只检查父端流通知先于child-exit通知及guard未提前返回；通知顺序不证明两通知之间主体仍可执行。macOS三项在两流结束后约250ms才收到exit，支持当地提前关闭控制，但也不能替Windows补证或外推PTY。
+
+完整独立审计另存主运行时树 `.debug/lifecycle-contract-35620967433/windows-independent-audit-v1.json`，SHA256为 `4d46bb38ee69dd575dfe6ee0e4010af2dda7033660d400bf04cf0efa26d1a2d1`，含六输入快照对账、24条raw时间、G04/G07及官方源带行号摘录。macOS独立审计为同目录 `macos-independent-audit-v1.json`，SHA256为 `7c6166f810c7ea3b2ff4df9254543bffac963a6f75d4cfbb3c8c7522548a3eac`。原始ZIP和源字节指纹保持不变，审计JSON不是替换后的测试结果。
+
+官方固定版本来源及下载字节SHA256如下，不用浮动main分支推断本次runner：
+
+| 来源 | SHA256 |
+| --- | --- |
+| https://raw.githubusercontent.com/nodejs/node/v22.23.2/lib/fs.js | `7ce17b5a74abfe1b988222f62522a70958bac154f1828a11b047379648c688b6` |
+| https://raw.githubusercontent.com/nodejs/node/v22.23.2/src/node_file.cc | `d9bd85b74171f392d96217ca5e1fbf522b504c2cb94f0f84965ebd4ceee9ef06` |
+| https://raw.githubusercontent.com/nodejs/node/v22.23.2/deps/uv/src/win/fs.c | `60c76976514f427fa0be21c1c7986c2ab1d9e2e77b9d5bcf8c7ab99ed36b0693` |
+
+下一阶段先另冻新入口/版本：由明确owner真实关闭两路stdio，父端确认两路结束后，使用独立控制通道取得同一主体仍可执行的nonce响应，再允许主体退出。关闭操作的具体平台实现、身份与资源所有权、控制通道和失败分类须在运行前设计并审查；当前没有选定新API。只看到EOF先于exit通知、PID仍可查询或已退出Process对象仍被引用，均不能替代存活前提。缺前提就报告未建立，不修改原G07、放宽断言或重新运行本轮筛绿。
+
+本轮D1的111个模型子案例和D2有界返回观察成立，但D2尚有三条场景覆盖缺口；缺口关闭前不越过原生异常矩阵的前置门槛。后续仍需partial-create、wait/通知失败、在途取消与正长度缓冲、release失败/挂起、并发及unknown owner有界隔离的独立设计，生产取消预算、业务接入和完整产品验收不在本节宣称完成。

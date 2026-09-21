@@ -11,7 +11,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity-native-candidates.md
-updated_at: 2026-09-21
+updated_at: 2026-09-22
 ---
 # 退出完整性原生候选对照
 
@@ -63,7 +63,7 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 第30节已完成Windows bundled-DLL三臂首次原生矩阵及全量复核：138条会话完整，46次已知HPCON最终Close消除同native/no-close的逐会话+2总句柄增量，四个no-close资源失败保留。这是正常自然路径的窄因果证据，不是Windows对象语义缺陷或生产退出完整性已修复；旧类型/内核对象身份归属不确定不改判。
 
-第31节及 `docs/design-docs/runtime-execution-lifecycle-contract.md` 冻结的 D1/D2 已在本独立分支实现，本地结果见第32节与共享契约第11节。D1在Node25与Electron-as-Node各37/37；D2新的deadline完整性版本本地24/24控制及离线复核通过，但raw仍含12条deadline-exceeded、3条spawn-error，零PTY。首轮完整性表达不足的工件原样保留，不追认新增证明。下一步推送独立输入，由已新增workflow在三平台固定Node22.23.2运行完整D1/D2并下载复核；当前尚无remote结果。之后才逐平台另冻取消/异常/builtin/正readable原生矩阵。并发、旧Windows版本、实际Agent启动链、Host/Webview与packaged继续单列。生产reader、wire/API及取消条件和预算尚未选定，设计比较中/验证中，计划active，业务不改。
+第31节冻结的D1/D2已完成本地及三平台首次runner，结果见第32–33节和 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第11–13节。输入d173c099/run35620967433 attempt1的D1三平台各37项已验证；D2三平台各24项按原verifier通过，但Windows G07三项因fs.closeSync(1/2)在固定Windows libuv中不实际关闭stdio，未建立“流先关闭、主体仍活”前提。旧success/24pass及其余69条控制依据保留，不宣布D2整组验收或产品通过。下一步优先另冻Windows G07真实提前关闭stdio和独立主体存活证明，再进入逐平台失败矩阵及unknown owner有界隔离；不直接接入业务。取消/异常/builtin/正readable、并发、旧Windows、真实Agent/Host/Webview/packaged和生产API/预算仍开放，设计比较中/验证中、计划active。
 
 ### 首轮阶段的历史讨论
 
@@ -611,3 +611,15 @@ D2正式首轮 `.debug/process-guard-v2-local-first` 的24项control-pass和最�
 独立只读复审已收口D1 Promise自证、D2 capture-error缺维度、outer自然截止宽限和deadline完整性分类，不放宽冻结协议。主运行时工作树本轮既有bridge、tracker、Supervisor协议聚合再次通过，仅作为原有回归记录。新增 `.github/workflows/runtime-lifecycle-contract-v1.yml` 在Linux/macOS/Windows固定Node22.23.2，不安装依赖、不加载PTY；D1/D2各自执行、各自复核，一组失败不跳过另一组，完整上传全部工件。本节收口时尚未推送本轮输入，没有remote运行结果。
 
 下一步仅提交并推送独立诊断输入，执行三平台D1各37项、D2各24项，下载全部工件后按原schedule离线复核。控制正确识别失败可以通过，但不能改写raw失败、首次结果或历史结论；本地Linux与Electron模型不外推macOS/Windows。新guard没有替换旧入口的guarded等待，工具债务尚待三平台验证；partial-create、wait/通知、取消/正长度buffer、释放失败/挂起、并发、builtin、旧Windows及真实Agent/Host/Webview/packaged仍需另冻原生矩阵。生产API和预算未选定，设计比较中/验证中、计划active，退出完整性债务不关闭。
+
+## 33. D1/D2 三平台首次结果与 Windows G07 证据边界（2026-09-21）
+
+固定输入 `d173c099d37f83bb3178d280a6a6d8b80d984b92` 的run35620967433 attempt1在Linux/macOS/Windows均success。三平台固定Node22.23.2，每个平台完整D1 37项和D2 24项按既有verifier运行及离线复核通过，全部无failures/evidenceErrors；合计111条注入模型、72条guard控制，后者为54条真实进程/启动控制和18条synthetic，零PTY。这是原工具报告，不自动证明校验器未覆盖的前提；Windows G07的三项限制另列于本节。每平台自测另有D1 37正例/12类负对照和D2 25项，不计入主矩阵。首次本地/开发工件及历史失败均保留。
+
+三个ZIP各1280成员，完整下载、解压及本地SHA256核对保存在主运行时树 `.debug/lifecycle-contract-35620967433/`。`offline-review-v1.json` 保存全部平台两个verifier的完整结果，以及各平台六份源码/配置快照对固定Git输入的核对；artifact为Linux10648081653、macOS10649965248、Windows10649136626。完整ZIP摘要、环境、输入和分平台时间见共享契约第12节。此次环境为Ubuntu24 x64/kernel6.17.0-1022-azure、macos26 arm64/Darwin25.6.0、Windows Server2025 x64/10.0.26100，不外推其他系统版本或架构。
+
+每平台raw仍为9条natural-exit（含自然exit7）、3条spawn-error、12条deadline-exceeded；captureIntegrity分别12条complete、6条deadline-incomplete、6条truncated。complete包括启动失败后的空捕获通道结束，不代表进程创建成功；控制套件通过不改变这些原始结果。原始单调时钟测得最长guard返回分别为Linux1951.046799ms、macOS1980.999041ms、Windows1960.9691ms，均未超过冻结2000ms；外层最长分别2004.825633/2103.605875/2150.4447ms，未使用5000ms后的观测预算冒充自然完成。G04前提三平台均成立，但helper协作完成仍不是独立OS退出wait或原生资源释放证明。
+
+追加Windows只读审计定位到确定的夹具根因：官方Node v22.23.2的 `deps/uv/src/win/fs.c::fs__close` 第681–684行只对fd>2调用_close，否则直接设置result=0，因此本轮fs.closeSync(1/2)没有实际关闭标准句柄。Windows G07两条stdio的end/close通知只比child-exit通知早约0.27–4ms，不是“流先关闭、主体仍活”的证明；Linux/macOS约250ms的间隔也不用于补造Windows事实。Windows G07三项前提未建立，旧success/24pass、冻结断言、源码及工件均不改写，其余69条控制依据和D1三平台模型结果保留，不否定已观测的guard有界返回，也不宣布D2整组完成。此为诊断夹具及校验器前提不足，不是Windows对象语义或产品缺陷，详细源码与原始时序证据见共享契约第13节。
+
+下一步优先另冻Windows G07的真实stdio提前关闭及独立主体存活证明控制，使用全新输入/工件，不修改旧脚本或预算以追认通过；之后再另冻partial-create、wait/通知、取消/正长度buffer、释放失败/挂起、两个并发会话，以及unknown owner如何有界隔离的逐平台方案。不能以超时当释放，或靠未限制数量的隔离对象掩盖积累。旧入口的guarded等待没有被替换，新证据不追溯应用到旧工具或失败，也不是PTY、实际Agent/Host/Webview或生产退出完整性验收。builtin、旧Windows、真实启动链和packaged继续开放，生产API/取消预算未选定，设计比较中/验证中、计划active，业务不改。

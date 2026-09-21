@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-21 D1/D2三平台原始结果与Windows G07缺口：固定d173c099/run35620967433 attempt1的D1三平台111模型已验证；D2原verifier72pass及完整ZIP/输入/离线复核保留，54real启动控制/18synthetic、零PTY。每平台raw仍9natural-exit（含exit7）/3spawn-error/12deadline，12complete含空capture、6deadline-incomplete、6truncated，不以control-pass改判。固定Node22.23.2的Windows libuv对fd<=2不调用_close，fs.closeSync(1/2)为no-op，使Windows G07三项未建立真实stdio先关/主体仍活前提；其余69条控制依据保留，不称D2整组验收完成，也不认定OS或产品缺陷。下一步优先另冻Windows真实提前关闭和独立存活控制，再进入原生partial-create/wait/通知/取消/正buffer/释放失败或挂起/并发矩阵及unknown owner有界隔离。旧guarded入口、原脚本/门槛/工件不改，builtin、旧Windows、真实Agent/Host/Webview/packaged与生产API/预算继续开放，退出完整性债务不关闭。详见候选设计第33节、生命周期契约第12–13节与active计划；以下记录保留历史时点。
+
 2026-09-21 D1/D2本地实施收口：四个独立新脚本及三平台Node22.23.2 workflow已实现，不安装依赖、零PTY，尚未推送本轮输入或取得remote结果。D1正式Node25/Electron39各37/37及离线复核通过，v2自测37正例/12类负对照，v1保留不补造Promise引用证明。D2正式local-first的24项控制及其captureIntegrity表达不足原样保留，用旧快照复核；新local-v2-deadline-integrity完整24项及离线通过，raw仍9natural-exit/3spawn-error/12deadline-exceeded，超时后真实end仍标deadline-incomplete，18real/6synthetic分账，最终自测25项。工具硬返回债务已获得Linux本地证据，三平台完整验证与旧guarded入口移交仍未完成，不关闭该债务或退出完整性。下一步运行完整runner再另冻原生异常/取消/正buffer/并发矩阵，builtin、旧Windows、真实Agent/Host/Webview/packaged和生产API/预算继续开放。见原生候选第32节、生命周期契约第11节及对应active计划；以下同日冻结记录保留其当时状态。
 
 2026-09-21 生命周期候选契约冻结：新增 `docs/design-docs/runtime-execution-lifecycle-contract.md`，将进程结果、可信源结束、authority解析、页面结算和原生资源分开；terminated/unconfirmed、同操作迟到补证及逐项owner不再混成lifecycleFailed。读者候选为opt-in close outcome，全链校验、final固定时关闭新open，源/资源/结算三能力独立；生产握手、回执上限/期限、未知owner隔离、reader/API和取消预算未选定，不能直接接入业务。D1固定24组37独立子例，下一阶段实施后才有模型证据；TSFN环境销毁排队payload及hShell登记前失败仍只是静态窗口，原生异常、builtin、旧Windows及真实Agent/Host/Webview/packaged继续开放。业务锚点来自主运行时分支0518dcc4，本树尚未包含该改造。见原生候选第31节及对应active计划，退出完整性债务不关闭。
