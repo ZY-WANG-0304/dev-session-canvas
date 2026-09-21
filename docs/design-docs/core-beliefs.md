@@ -52,6 +52,8 @@ Windows已退出进程被句柄引用而继续保留对象是正常语义，不�
 
 资源总量应区分显式owner引用、预热期间形成的背景和逐会话增量。普通进程控制中的退出后image31、释放23个引用后总数下降23与未知背景+5可以同时成立；保留原计数失败，不以事后换基线替代归属证据。
 
+HPCON 是 opaque owner token，不是可用 CloseHandle 释放的普通 Win32 HANDLE。只有同一诊断模块创建并仍持有的 token，才允许在真实 pipe EOF、消费者完成和 shell 退出后由唯一主线程调用一次 ClosePseudoConsole；PtyKill、TerminateProcess、陌生句柄和过早 Close 都不能作为自然收尾。
+
 ## 8. 不属于空间关系的信息应优先离开画布
 
 
