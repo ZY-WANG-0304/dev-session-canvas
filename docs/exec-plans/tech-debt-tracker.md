@@ -23,6 +23,10 @@
 
 ## 技术债列表
 
+2026-09-22 D1/D2首次远端收口：d173c099/run35620967433 attempt1三平台执行、完整ZIP及原verifier复核完成，D1合计111模型通过，D2原72控制pass保留。Windows独立审计确认G07三项未建立stdio真实提前关闭前提，固定Node22.23.2的libuv对标准fd close为no-op；通知先后不能证明主体仍可执行，不是OS或产品bug。原工具/断言/绿色结果及raw失败不改，其他69条控制依据保留，不宣布D2全组或退出完整性完成。下一阶段先另冻真实关闭+独立主体存活控制，之后再推进原生异常/正缓冲/builtin/并发/unknown有界隔离及实际宿主验收。见生命周期契约第12–13节、退出完整性设计第37节和active计划，主树仅文档，总债务不关闭。
+
+2026-09-21 D1/D2本地实施：独立诊断分支已新增模型、guard-v2、两个入口及三平台workflow。本地D1的Node25/Electron39各37项、D2新版Linux24条控制与完整离线复核通过；D1初稿Promise自证和D2首轮deadline后capture仍complete的缺口已分别收口，原工件保留，不追认新证明。新版超时保留deadline-incomplete/truncated及raw失败，旧冻结guarded入口没有追溯替换；三平台结果尚待运行。下一步完整runner矩阵及下载复核，随后才逐平台另冻原生失败、正缓冲、builtin、并发和实际宿主验收，未知owner有界隔离/生产预算继续开放。见生命周期契约第10–11节和退出完整性设计第36节，总债务不关闭。
+
 2026-09-21 生命周期失败契约：新增 `docs/design-docs/runtime-execution-lifecycle-contract.md`，明确进程/源/authority/页面/资源分别结算，unknown迟到补证与单次Close、adapter序号与journal revision分开，opt-in close outcome须全链路保留。静态复核指出Windows CreateProcess后登记owner前可失败、TSFN env-null不进入callback RAII；Unix kqueue自然关闭不覆盖waiter错误。这些尚非新原生异常复现，旧138条及全部失败不改。生产仍缺partial-create、取消/正缓冲、TSFN/线程/Close失败、unknown有界隔离、并发及真实宿主证据，不能原样使用自然诊断fail-closed gate造成常驻资源积累。D1冻结24组37模型子案例、D2三平台72零PTY控制（54真实/18synthetic），尚未实现运行；新guard修订也另用新入口，业务与依赖不改，退出完整性债务继续开放。
 
 2026-09-21 HPCON原生收口：d0f0be88/run35586906307 attempt1完整12 driver/138 PTY与工件复核，四个no-close resource-failure原样保留、无evidenceErrors。同一rebuilt native中retain每测量会话+2，explicit Close两轮191→191，46次Close各193→191且owner归零；138内容/真实EOF/消费者和自然退出均完整。固定bundled DLL自然路径的最终释放责任已有窄因果证据，不将Windows正常Process引用存续当bug，也不要求稳定背景差额4归零；旧具体句柄身份仍inconclusive。下一阶段转provider/adapter生命周期与失败契约设计，builtin、正长度readable-buffer、取消/异常/并发、真实Agent/Host/Webview/packaged及生产API/预算仍开放。主树仅文档，业务/安装依赖/旧实验不改，退出完整性债务不关闭。见设计第34节及active计划。
