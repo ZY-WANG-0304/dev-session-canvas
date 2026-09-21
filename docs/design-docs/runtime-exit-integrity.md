@@ -88,7 +88,7 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
 
-第35–38节承接 provider/adapter 生命周期契约及D1/D2新诊断，当前候选和分版证据统一记录在 `docs/design-docs/runtime-execution-lifecycle-contract.md`。D1本地及三平台模型通过，D2原校验器三平台各24条及全部下载复核通过，但独立审计发现Windows G07三条真实提前关闭前提未建立；原绿色结果、首版缺口及历史失败均保留。第38节及新契约第14节已另冻Windows-only三模式各三次的真实stdio关闭/主体存活补证，当前实施中、尚无本轮Windows原生结果；复用原guard及预算，不重跑旧矩阵求绿。该补证完成并全量复核后，再推进原生失败矩阵和unknown owner的有界隔离，不直接接入业务。Windows builtin、正长度 readable-buffer、并发与真实 Agent/Host/Webview/packaged 仍待验证，具体 reader、wire API、生产取消和预算未选定。macOS 普通后代控制实验仅作诊断，不是无条件前置。不能把局部证据当作里程碑一/产品验收完成，设计保持比较中/验证中。
+第35–39节承接 provider/adapter 生命周期契约及D1/D2新诊断，当前候选和分版证据统一记录在 `docs/design-docs/runtime-execution-lifecycle-contract.md`。D1本地及三平台模型通过，D2原校验器三平台各24条及全部下载复核通过，但独立审计发现Windows G07三条真实提前关闭前提未建立；原绿色结果、首版缺口及历史失败均保留。第38节冻结的新Windows-only三模式各三次补证已按cf359040/run35631266321 attempt1完成，九项原verifier及独立原始审计通过，结果见第39节；只补新样本的真实关闭/存活与负控证据，不追认旧三条、不修改guard及预算。下一阶段转原生异常路径和unknown owner有界隔离的设计与矩阵冻结，不直接接入业务。Windows builtin、正长度 readable-buffer、并发与真实 Agent/Host/Webview/packaged 仍待验证，具体 reader、wire API、生产取消和预算未选定。macOS 普通后代控制实验仅作诊断，不是无条件前置。不能把局部证据当作里程碑一/产品验收完成，设计保持比较中/验证中。
 
 ## 7. 第一轮候选实验协议（运行前冻结）
 
@@ -702,3 +702,13 @@ D1共111模型子案例，D2原validator共72控制通过（54真实进程/启�
 原样复用冻结guard-v2和1000ms工作/总2000ms返回预算，外层独立5000ms截止加1000ms观测，fixture自限3000ms；超时、主动销毁、迟到回复和自限/外层干预均按原失败/不完整语义保存，不扩预算、不靠事件循环巧合制造100ms持有。新目录保存完整schedule、编译日志、源码及实际EXE指纹、双通道原字节、native回执、guard/outer trace和首次结果；编译失败须保留九项not-run及实际创建数零，逐项失败仍遍历九项。合成自测和离线validator独立重算身份、时序、内容、预算并拒绝篡改，不将其算作Windows原生通过。
 
 只有首次Windows矩阵及完整工件复核完成后，才能判断本增量是否建立真实提前关闭且主体仍活的前提；即使新九项达标，也不追认旧三条或宣布PTY/产品退出完整性完成。后续partial-create、wait/通知、取消/正长度buffer、release失败/挂起、并发与unknown owner有界隔离另冻；builtin、旧Windows、真实Agent/Host/Webview/packaged及生产API/预算继续开放。设计仍比较中/验证中，退出完整性和旧工具移交债务不关闭。
+
+## 39. Windows G07 新控制首次结果（2026-09-22）
+
+固定独立输入 `cf35904055a840e6e5b3189eb8551beba17d7163` 的run35631266321 attempt1完成Windows-only首次矩阵，九个新真实child全部按原verifier通过，无工件错误，零synthetic主样本、零PTY。实际环境为Windows Server 2025 Datacenter x64/build10.0.26100、image win25-vs2026/20260907.229.1、Node22.23.2；MSVC19.51.36256.0以 `/W4 /WX /O2 /TC` 编译成功，实际EXE SHA256为 `a472e116c449c457d75d6ec5ba53689cb86dc08014f62d084b214c781b465dd7`。完整证据保存在主树 `.debug/stdio-close-35631266321/`，`offline-review-v1.json` 核对五份输入快照与固定commit的LF指纹、实际编译及九项原始结果；不外推其他Windows版本或架构。
+
+三次close-wait均在两流真实EOF/close、native成功关闭与精确marker之后才生成fresh challenge。首个有效pong到第二次challenge的实际持有分别为101.7934、101.1616、100.8252ms，均达到未放宽的100ms门槛；第二次pong后才放行主体自然exit0，guard未因stdio提前关闭而提前返回。三次keep-open按预期不能建立该前提，保留 `deadline-exceeded / deadline-incomplete`；三次close-exit真实关闭后自然exit0且无pong，也全部拒绝存活前提，raw仍为自然完成。故九项控制通过不等于九项前提成立，正例3条、拒绝控制6条分别记账。
+
+独立Windows原始审计 `independent-native-audit-v1.json` 完成836项检查，九条预定控制均成立，无失败；文件SHA256为 `133b9fc9ed673cf23637837517e1b140e56266daed4a3af701545eeb9c80a20f`。其中close-exit-3最晚stream close为20.7513ms，父端challenge为21.1521ms、观察控制通道不可用为21.4268ms、child-exit通知为21.7708ms，但始终无pong；这直接说明流先关闭和exit通知尚未来到不能代替主体仍可执行的证明。全组`guard-returned`事件记录最大1011.7495ms，另从调用方await后事件补证最大1012.3385ms，九项均在原2000ms内。outer-returned事件最大1112.4939ms，controller已退出/两流已close且未命中5000ms；但之后仍写盘再resolve，没有外层await后记录，不能将该事件当完整外层返回预算证明。补充计时在timing-observation-audit-v1.json，原审计不改，工具缺口由下一新入口承接；超时后EOF仍不晋升完整。
+
+新样本补足的是固定环境中“真实stdio关闭后主体仍能响应、guard继续等待真实退出”的局部前提及oracle负控，不改第37节旧72pass、Windows G07三条not-established或任何历史失败，也不将Windows正常对象引用存续认定为OS bug。旧guarded入口移交、PTY原生异常/取消/正长度buffer、builtin、并发、真实Agent/Host/Webview/packaged及生产API/预算继续开放。下一阶段仅冻结原生异常路径与unknown owner有界隔离的设计和矩阵；本树仍只更新文档，退出完整性交付未完成。

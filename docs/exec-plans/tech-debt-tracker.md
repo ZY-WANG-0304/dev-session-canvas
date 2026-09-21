@@ -23,6 +23,10 @@
 
 ## 技术债列表
 
+2026-09-22 G07收口计时边界：新九项guard的调用方await后事件已补算，最大1012.3385ms、均在2000ms内；原审计1011.7495ms是resolve前的guard-returned事件。外层1112.4939ms同样仅为outer-returned事件，其后尚有同步writeJSON及resolve，九份trace没有外层await后时间。故本轮不能宣布完整外层返回预算已独立证明；下一新诊断需补调用方/结算I/O观察，不改本轮输入、工件或三个新G07正例与六负控判定。补充证据为主树.debug/stdio-close-35631266321/timing-observation-audit-v1.json，详见生命周期契约第16节。
+
+2026-09-22 Windows G07新控制结果：cf359040/run35631266321 attempt1的9个真实child、零PTY完成原verifier与完整离线复核，独立原始审计836项检查无失败。三次close-wait以双EOF/close后fresh challenge及100.8252–101.7934ms实际持有证明主体可执行；三keep-open拒绝前提并保留deadline-exceeded/deadline-incomplete，三close-exit无pong被拒绝但raw自然完成。close-exit-3流通知先于exit通知仍无响应，不能据通知顺序补证。新样本仅补固定Windows环境的夹具前提，原72pass与旧G07三条not-established/全部失败不改，不认定正常Windows对象语义为bug。完整证据在主树.debug/stdio-close-35631266321，见退出完整性设计第39节；下一阶段原生异常及unknown owner有界隔离设计/矩阵冻结，旧guarded移交、builtin/正缓冲/并发/真实宿主与生产预算继续开放，总债务不关闭。
+
 2026-09-22 Windows G07补证冻结：生命周期契约第14节及退出完整性设计第38节另冻Windows-only close-wait/keep-open/close-exit各3次，共9个真实child、零PTY，当前实施中、尚无本轮原生结果。新fixture用真实Win32关闭本身拥有的stdio，在父端双EOF后经独立通道响应两次fresh challenge，中间持有至少100ms；两负控必须按预定轨迹被拒绝，不以任意错误求绿。原样复用guard-v2与1000/2000、外层5000+1000ms门槛，原72条、Windows旧三条not-established及所有失败不改。首次编译/运行和完整离线复核后才评估此缺口；旧guarded移交、原生异常/正缓冲/builtin/并发、unknown有界隔离及实际宿主仍开放，总债务不关闭，主树只同步文档。
 
 2026-09-22 D1/D2首次远端收口：d173c099/run35620967433 attempt1三平台执行、完整ZIP及原verifier复核完成，D1合计111模型通过，D2原72控制pass保留。Windows独立审计确认G07三项未建立stdio真实提前关闭前提，固定Node22.23.2的libuv对标准fd close为no-op；通知先后不能证明主体仍可执行，不是OS或产品bug。原工具/断言/绿色结果及raw失败不改，其他69条控制依据保留，不宣布D2全组或退出完整性完成。下一阶段先另冻真实关闭+独立主体存活控制，之后再推进原生异常/正缓冲/builtin/并发/unknown有界隔离及实际宿主验收。见生命周期契约第12–13节、退出完整性设计第37节和active计划，主树仅文档，总债务不关闭。
