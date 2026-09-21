@@ -21,7 +21,7 @@ updated_at: 2026-09-22
 
 2026-09-20 用户澄清后的产品范围以第 9 节为准：画板管理 Terminal / Agent 执行会话及其终端资源，不默认承诺实际主进程退出后继续保留节点或终端以等待普通后代及其未来输出。第 2 节冻结协议、两轮原始断言和失败结果全部保留；它们描述诊断实验是否达到原门槛，不自动等于产品验收结论。
 
-当前进展入口见第6节，最新原生结果与后续边界见第30节。第2–5节及第7–29节保留各阶段当时的协议、结果和判断，其中“下一步”按所属阶段理解，不覆盖最新状态。
+当前进展入口见第6节，最新PTY原生结果见第30节，D1/D2证据与Windows G07补证冻结见第31–34节。第2–5节及第7–29节保留各阶段当时的协议、结果和判断，其中“下一步”按所属阶段理解，不覆盖最新状态。
 
 ## 2. 运行前冻结
 
@@ -59,11 +59,11 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 ## 6. 结论与下一步
 
-### 当前状态（2026-09-21）
+### 当前状态（2026-09-22）
 
 第30节已完成Windows bundled-DLL三臂首次原生矩阵及全量复核：138条会话完整，46次已知HPCON最终Close消除同native/no-close的逐会话+2总句柄增量，四个no-close资源失败保留。这是正常自然路径的窄因果证据，不是Windows对象语义缺陷或生产退出完整性已修复；旧类型/内核对象身份归属不确定不改判。
 
-第31节冻结的D1/D2已完成本地及三平台首次runner，结果见第32–33节和 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第11–13节。输入d173c099/run35620967433 attempt1的D1三平台各37项已验证；D2三平台各24项按原verifier通过，但Windows G07三项因fs.closeSync(1/2)在固定Windows libuv中不实际关闭stdio，未建立“流先关闭、主体仍活”前提。旧success/24pass及其余69条控制依据保留，不宣布D2整组验收或产品通过。下一步优先另冻Windows G07真实提前关闭stdio和独立主体存活证明，再进入逐平台失败矩阵及unknown owner有界隔离；不直接接入业务。取消/异常/builtin/正readable、并发、旧Windows、真实Agent/Host/Webview/packaged和生产API/预算仍开放，设计比较中/验证中、计划active。
+第31节冻结的D1/D2已完成本地及三平台首次runner，结果见第32–33节和 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第11–13节。输入d173c099/run35620967433 attempt1的D1三平台各37项已验证；D2三平台各24项按原verifier通过，但Windows G07三项因fs.closeSync(1/2)在固定Windows libuv中不实际关闭stdio，未建立“流先关闭、主体仍活”前提。旧success/24pass及其余69条控制依据保留，不宣布D2整组验收或产品通过。第34节及契约第14节已另冻Windows-only三模式各三次的真实关闭/独立存活控制，当前实施中、尚无本轮原生结果；复用冻结guard-v2与原预算，不重跑旧矩阵求绿。该补证完成并完整复核后，再进入逐平台失败矩阵及unknown owner有界隔离，不直接接入业务。取消/异常/builtin/正readable、并发、旧Windows、真实Agent/Host/Webview/packaged和生产API/预算仍开放，设计比较中/验证中、计划active。
 
 ### 首轮阶段的历史讨论
 
@@ -623,3 +623,17 @@ D2正式首轮 `.debug/process-guard-v2-local-first` 的24项control-pass和最�
 追加Windows只读审计定位到确定的夹具根因：官方Node v22.23.2的 `deps/uv/src/win/fs.c::fs__close` 第681–684行只对fd>2调用_close，否则直接设置result=0，因此本轮fs.closeSync(1/2)没有实际关闭标准句柄。Windows G07两条stdio的end/close通知只比child-exit通知早约0.27–4ms，不是“流先关闭、主体仍活”的证明；Linux/macOS约250ms的间隔也不用于补造Windows事实。Windows G07三项前提未建立，旧success/24pass、冻结断言、源码及工件均不改写，其余69条控制依据和D1三平台模型结果保留，不否定已观测的guard有界返回，也不宣布D2整组完成。此为诊断夹具及校验器前提不足，不是Windows对象语义或产品缺陷，详细源码与原始时序证据见共享契约第13节。
 
 下一步优先另冻Windows G07的真实stdio提前关闭及独立主体存活证明控制，使用全新输入/工件，不修改旧脚本或预算以追认通过；之后再另冻partial-create、wait/通知、取消/正长度buffer、释放失败/挂起、两个并发会话，以及unknown owner如何有界隔离的逐平台方案。不能以超时当释放，或靠未限制数量的隔离对象掩盖积累。旧入口的guarded等待没有被替换，新证据不追溯应用到旧工具或失败，也不是PTY、实际Agent/Host/Webview或生产退出完整性验收。builtin、旧Windows、真实启动链和packaged继续开放，生产API/取消预算未选定，设计比较中/验证中、计划active，业务不改。
+
+## 34. Windows G07 真实关闭与存活补证冻结（2026-09-22）
+
+本阶段按 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第14节实施新的Windows-only前提控制，拟新增 `scripts/diagnostics/windows-stdio-close-control.c`、`scripts/diagnostics/diagnose-windows-stdio-close.mjs` 与 `.github/workflows/runtime-windows-stdio-close.yml`。不修改旧D2入口、guard-v2、原断言或72条工件；旧Windows G07三条仍为not-established，其余69条和D1模型依据保留。当前是运行前冻结与实施阶段，尚无本轮Windows原生成功或失败结论。
+
+被测C程序就是guard直接拥有的child，不依赖启动器或后代。它先登记自身继承的stdout/stderr pipe写端，保存marker与实际WriteFile字节数，再单次执行真实标准槽位解除和CloseHandle；控制管道独立建立，不重新打开旧标准槽位、不借CRT退出清理重复关闭。父端真实EOF/close、完整内容与native关闭回执缺一不可，单看Win32调用返回或PID并不足以建立前提。
+
+在上述证据齐备后，父端才生成新的私有challenge，要求匹配同一nonce/mode/主体身份的pong；从首个有效pong的父端单调时刻起持有至少100ms，再生成第二个不同challenge并取得响应，最后放行exit。两次pong与许可均必须在原spawn前t0+1000ms内，期间guard不能提前返回；迟到回执不能补正首次失败。控制与受测stdio分离，原始事件先落盘再异步推进握手，定时器触发后重查实际持有时间，不以回调通知顺序替代主体可执行性。
+
+固定Node22.23.2、Windows x64/MSVC，close-wait、keep-open、close-exit各3次，共9个真实child、零PTY。close-wait应建立提前关闭后持续存活并自然exit0；keep-open须持有两路写端至deadline且不建立挑战前提；close-exit真实关闭后直接exit0、不响应挑战，也必须拒绝存活前提。原始guard结果与 `preconditionEstablished` 分开，负控按预期被拒绝不升级为自然成功，任意启动/控制错误也不算预定负控成立。Linux本地只做工具逻辑及合成自测，不计Windows样本，旧D1/Linux/macOS矩阵不重复。
+
+预算继续为1000ms工作截止、总2000ms返回上限、1950ms最终结算起点，外层独立5000ms截止加1000ms观测，fixture3000ms自限；不改guard源码或扩大等待。完整schedule预先保存，保留编译日志、实际EXE及全部输入指纹、原始字节、控制消息、guard/outer trace和首次结果，逐项失败仍遍历全部九项。编译失败单列九项not-run及实际创建数零；离线校验从原始身份/时序/字节/预算重算，并与固定commit/源码交叉复核，不执行归档代码或只信pass。具体wire和自测负例以契约第14节为准。
+
+首次Windows运行及完整ZIP离线复核后，才判断新前提是否成立；新正例即使通过，也不追认旧G07或宣称生产修复。后续逐平台partial-create、wait/通知、取消/正缓冲、release失败/挂起、并发和unknown owner有界隔离仍待另冻。旧guarded入口移交、builtin、旧Windows、真实Agent/Host/Webview/packaged与生产API/预算继续开放；设计比较中/验证中，ExecPlan active，退出完整性债务不关闭。

@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-22 Windows G07补证冻结：生命周期契约第14节与原生候选设计第34节固定Windows-only close-wait/keep-open/close-exit各3次，共9个真实child、零PTY，当前实施中、原生结果尚待。新fixture只关闭自身确切拥有的stdio句柄，父双EOF后fresh challenge/pong、至少100ms持有与第二挑战证明主体可执行；两负控须按预定轨迹被拒绝，不把任意失败算通过。复用冻结guard-v2、1000/2000和外层5000+1000ms门槛，原72条结果、Windows G07三条not-established及历史失败不改。首次编译/运行失败及九项完整schedule必须保留，实际创建数与not-run分账；全量离线复核后才评估此缺口。旧guarded移交、原生异常/正缓冲/builtin/并发、unknown owner有界隔离与实际宿主继续开放，不关闭退出完整性债务。
+
 2026-09-21 D1/D2三平台原始结果与Windows G07缺口：固定d173c099/run35620967433 attempt1的D1三平台111模型已验证；D2原verifier72pass及完整ZIP/输入/离线复核保留，54real启动控制/18synthetic、零PTY。每平台raw仍9natural-exit（含exit7）/3spawn-error/12deadline，12complete含空capture、6deadline-incomplete、6truncated，不以control-pass改判。固定Node22.23.2的Windows libuv对fd<=2不调用_close，fs.closeSync(1/2)为no-op，使Windows G07三项未建立真实stdio先关/主体仍活前提；其余69条控制依据保留，不称D2整组验收完成，也不认定OS或产品缺陷。下一步优先另冻Windows真实提前关闭和独立存活控制，再进入原生partial-create/wait/通知/取消/正buffer/释放失败或挂起/并发矩阵及unknown owner有界隔离。旧guarded入口、原脚本/门槛/工件不改，builtin、旧Windows、真实Agent/Host/Webview/packaged与生产API/预算继续开放，退出完整性债务不关闭。详见候选设计第33节、生命周期契约第12–13节与active计划；以下记录保留历史时点。
 
 2026-09-21 D1/D2本地实施收口：四个独立新脚本及三平台Node22.23.2 workflow已实现，不安装依赖、零PTY，尚未推送本轮输入或取得remote结果。D1正式Node25/Electron39各37/37及离线复核通过，v2自测37正例/12类负对照，v1保留不补造Promise引用证明。D2正式local-first的24项控制及其captureIntegrity表达不足原样保留，用旧快照复核；新local-v2-deadline-integrity完整24项及离线通过，raw仍9natural-exit/3spawn-error/12deadline-exceeded，超时后真实end仍标deadline-incomplete，18real/6synthetic分账，最终自测25项。工具硬返回债务已获得Linux本地证据，三平台完整验证与旧guarded入口移交仍未完成，不关闭该债务或退出完整性。下一步运行完整runner再另冻原生异常/取消/正buffer/并发矩阵，builtin、旧Windows、真实Agent/Host/Webview/packaged和生产API/预算继续开放。见原生候选第32节、生命周期契约第11节及对应active计划；以下同日冻结记录保留其当时状态。

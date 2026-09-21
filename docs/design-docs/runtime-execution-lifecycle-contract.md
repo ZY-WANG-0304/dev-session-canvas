@@ -299,3 +299,47 @@ D1合计111个独立模型子案例，D2原校验器合计72条通过，其中54
 下一阶段先另冻新入口/版本：由明确owner真实关闭两路stdio，父端确认两路结束后，使用独立控制通道取得同一主体仍可执行的nonce响应，再允许主体退出。关闭操作的具体平台实现、身份与资源所有权、控制通道和失败分类须在运行前设计并审查；当前没有选定新API。只看到EOF先于exit通知、PID仍可查询或已退出Process对象仍被引用，均不能替代存活前提。缺前提就报告未建立，不修改原G07、放宽断言或重新运行本轮筛绿。
 
 本轮D1的111个模型子案例和D2有界返回观察成立，但D2尚有三条场景覆盖缺口；缺口关闭前不越过原生异常矩阵的前置门槛。后续仍需partial-create、wait/通知失败、在途取消与正长度缓冲、release失败/挂起、并发及unknown owner有界隔离的独立设计，生产取消预算、业务接入和完整产品验收不在本节宣称完成。
+
+## 14. Windows G07 独立前提控制协议（2026-09-22，运行前冻结）
+
+本增量只补第13节缺失的Windows G07前提，不修改旧D2脚本、guard-v2、断言或原72条结果。独立诊断树新增 `scripts/diagnostics/windows-stdio-close-control.c`、`scripts/diagnostics/diagnose-windows-stdio-close.mjs` 和 `.github/workflows/runtime-windows-stdio-close.yml`。固定Node22.23.2、Windows x64/MSVC，零PTY、不安装业务依赖；Linux本地只做工具逻辑/合成校验，不计Windows原生样本。旧模型D1和Linux/macOS控制不重复运行。
+
+### 所有权与观察方式
+
+新C程序就是guard直接创建的被测主体，没有启动器或后代。它仅取得本进程继承的stdout/stderr写端，检查两者有效、互异且类型为pipe，写入带本次身份的短marker，并记录WriteFile实际字节数。关闭使用真实Win32句柄操作，不通过已知会跳过标准fd的fs.closeSync；先登记owner，再单次解除标准句柄槽位与CloseHandle，分别记录调用结果。私有控制管道在关闭前建立，不复用或重新打开旧stdout/stderr槽位；不调用CRT stdio、不在关闭后重新打开CRT fd，终止采用ExitProcess避免CRT退出清理再次操作旧fd。这里只关闭确切属于该fixture的句柄，不关闭Supervisor、OS或其他进程的资源。
+
+控制通道使用父进程创建的随机命名管道，与受测两路stdio分开。每项全新身份和连接，验证一次hello中的nonce、mode及主体PID与直接ChildProcess一致；身份报告本身不是存活证明。父端只有在两路真实end/close、完整marker和native关闭回执均已观察到后，才生成新的随机challenge。主体经控制管道返回匹配pong，随后父端按自身单调时钟持有至少100ms，再生成第二个不同challenge并取得pong，最后发出退出许可。两次challenge不能提前放进argv/config或通过受测stdio传输，收到旧token、重复连接、身份不符或提前退出许可均失败；关闭后的新响应证明同一受控主体仍可执行，而不是由PID可查询或JS通知排序推断存活。
+
+所有事件在父端用连续序号和同一单调时钟记录；native序号只用于核对主体内的操作顺序，不与父端时钟数值拼接。真实EOF、native关闭回执、控制响应及guard Promise尚未返回分别核验。100ms是诊断持有窗口，不是产品收尾预算；计时器触发后须重查单调截止点，不能靠调度碰巧顺序证明。
+
+第二次challenge的100ms起点是父端观察首个有效pong的时刻，两次pong及退出许可均须在原guard t0+1000ms前。控制server须在spawn前ready，record先将原事件落盘、再异步推进握手；不能等待guard返回才开始控制。deadline、捕获主动销毁或guard已返回后不再启动挑战，迟到响应只追加证据，不补正首次失败。
+
+两次pong证明主体在两个响应时刻仍执行，第二次距父端观察首次至少100ms；这不是对整个间隔每个瞬间的OS调度或wait测量。自限watchdog使用独立线程，线程仅等待3000ms后ExitProcess非零，创建所得线程HANDLE由创建方立即单次关闭；线程仍运行的语义不与句柄关闭混淆。管道阻塞读写也受该自限约束，watchdog触发永远不是自然成功。
+
+夹具argv固定为 `--pipe <\\.\pipe\dsc-g07-32hex> --run <32hex> --mode <close-wait|keep-open|close-exit>`。控制行采用ASCII、TAB分隔、LF结束，含LF最多512字节，拒绝CR/NUL/多余字段；不引入通用C JSON parser。C到父公共字段是 `DSCG07/1 TYPE RUN SEQ PID QPC FREQ`，SEQ从1连续，QPC/FREQ十进制字符串只作主体内序号/时钟核验。HELLO后缀为MODE；WRITTEN后缀为两路实际字节数、两路GetFileType和distinct，正常为 `40 40 3 3 1`；CLOSED后缀依次是stdout的SetStdHandle/CloseHandle各自BOOL与错误、stderr同四项，正常为 `1 0 1 0 1 0 1 0`。成功时错误归零，失败时立即取得GetLastError，不把陈旧last-error当失败。
+
+PONG后缀为PHASE、TOKEN；EXITING后缀为 `2 TOKEN2`；ERROR后缀为固定OP枚举和WIN32ERR。父到C严格为 `DSCG07/1 PING RUN PHASE TOKEN` 或 `DSCG07/1 EXIT RUN 2 TOKEN2`（字段实际以TAB分隔）。phase顺序1再2，两个token为不同的32位hex，EXIT必须匹配已响应phase2。stdout/stderr的原始marker精确为 `stdout:<RUN>\n`、`stderr:<RUN>\n`，各40字节，各一次WriteFile且记录实际写入数；短写/API错误/非法协议均明确失败、非零退出。关闭回执本身不替代父端EOF和控制响应。
+
+### 固定矩阵与预算
+
+| 新模式 | 次数 | 预期前提与结果 |
+| --- | --- | --- |
+| close-wait | 3 | 两路真实关闭、双EOF后两次新challenge/pong与100ms持有成立；guard在主体获准exit0且捕获结算后自然返回，不提前返回，不超时，不截断。 |
+| keep-open | 3 | 两路marker后保持写端，不能进入双EOF后challenge；由guard到deadline终止其直接拥有的主体。必须拒绝目标前提，raw保留deadline/不完整，不当作自然成功。 |
+| close-exit | 3 | 两路真实关闭后主体直接exit0，不读取或回复challenge；即使父端先见流结束再见exit，也必须拒绝存活前提。guard可自然完成，不能因此把前提标为已建立。 |
+
+合计9个新真实进程控制，无synthetic主样本、无PTY。两个负控“按预期被拒绝”可使控制套件通过，但每项的 `preconditionEstablished`、guard原始结果和失败/未知须独立保存，不把前提失败改成正例通过。缺hello/marker/关闭回执、启动/控制错误、意外早退、超时和工件缺失均不能算作有意负控成立。
+
+close-exit的预期对端退出可能使父端挑战写入遇到EPIPE/ECONNRESET，或收到控制end/close早于child-exit通知。只在完整HELLO/WRITTEN/成功CLOSED、精确marker/双EOF、自然exit0且没有PONG/native ERROR等预定轨迹全部成立时，将这类已退出对端的传输结果单列为预期观察；仍保留原错误，不推广为忽略所有channel-error，更不能让它建立活进程前提。其他错误及正例控制通道错误仍失败。
+
+原样导入 `diagnostic-process-guard-v2.mjs`，固定spawn前t0、1000ms工作截止、总2000ms返回上限、1950ms开始最终结算；本阶段不修改该实现或扩大门槛。每项由另一个独立Node进程观察controller，5000ms硬截止加1000ms最终观察，外层只能终止自己直接拥有的controller。fixture另有3000ms自限寿命，控制断开不无限等待；自限/外层干预必须记录为失败，不能算自然完成。私有控制server、socket、定时器与日志也须有界收口；编译及平台预检有独立工具预算，不计作guard启动后的宽限。
+
+### 工件、校验与进入下一阶段的门槛
+
+完整schedule在执行前保存，每项保存config、源码/原guard/编译工具与参数、实际EXE字节指纹、运行时/OS/runner输入commit、stdout/stderr原字节、native控制消息、父guard/outer原始trace、首次返回和独立结果。所有文件写新目录，失败继续全部9项并完整上传；校验器独立重算时序、身份、字节数、原始capture分类和预算，不执行归档代码，也不只读取pass。manifest摘要核对需与固定输入commit/源码快照交叉复核，不仅检查摘要自洽。
+
+编译失败应保留完整编译日志及九项not-run，实际创建数为零，不伪造九个原生样本；逐项错误仍遍历全部schedule。负控通过必须分别满足保留两路写端直到deadline、或确实关闭并自然退出但无有效pong的预定轨迹，不能将任意失败都当作负控成功。
+
+CLI支持 `--self-test`、`--output NEW_DIRECTORY` 和 `--verify-saved DIRECTORY`。合成自测至少拒绝：缺一个EOF、close仅自报而父无EOF、错误身份/token、复用第一次challenge、未满100ms放行、guard提前返回、将负控伪装正例、deadline后补EOF升级完整、缺EXE/改输入指纹、破坏首项后仍遍历末项。自测不是原生成功；首次Windows编译/运行失败也须保存，不以放宽门槛或修改旧实验求绿。
+
+本阶段成功仅表示新正例建立Windows真实关闭后的活进程窗口，且原guard没有因stdio先关闭而提前返回；两个负控证明新oracle拒绝不足前提。旧Windows G07三项仍记not-established，不追认通过。完成原生首次运行和全工件离线复核后，才进入原生partial-create、wait/通知、取消/正长度缓冲、release失败/挂起、并发及unknown owner有界隔离的设计；这里不交付PTY、真实Agent/Host/Webview、生产API或预算。
