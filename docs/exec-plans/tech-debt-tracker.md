@@ -22,6 +22,10 @@
 
 ## 技术债列表
 
+2026-09-21 生命周期候选契约冻结：新增 `docs/design-docs/runtime-execution-lifecycle-contract.md`，将进程结果、可信源结束、authority解析、页面结算和原生资源分开；terminated/unconfirmed、同操作迟到补证及逐项owner不再混成lifecycleFailed。读者候选为opt-in close outcome，全链校验、final固定时关闭新open，源/资源/结算三能力独立；生产握手、回执上限/期限、未知owner隔离、reader/API和取消预算未选定，不能直接接入业务。D1固定24组37独立子例，下一阶段实施后才有模型证据；TSFN环境销毁排队payload及hShell登记前失败仍只是静态窗口，原生异常、builtin、旧Windows及真实Agent/Host/Webview/packaged继续开放。业务锚点来自主运行时分支0518dcc4，本树尚未包含该改造。见原生候选第31节及对应active计划，退出完整性债务不关闭。
+
+2026-09-21 guarded新版本验收冻结：D2另建两个v2诊断文件，原入口和150s等待不修改；八子项各三次/平台，三平台72条含18条synthetic、54条真实进程或启动控制，全部零PTY。1000ms采集+最多1000ms返回及独立5000ms+1000ms观测仅是工具预算；从spawn前计时，kill false/抛错不能继续无限等close。G04用受控继承helper的私有nonce/3000ms自限期证明前提，不按PID强杀；无法证明Windows Job下stdio持有则未覆盖，guard返回与fixture清理各自验收。本阶段尚无新入口或运行通过，硬返回工具债务仍开放，不能以run35586906307自然完成替代；下一阶段先实施D1/D2再另冻原生失败矩阵，见新契约第8节和 `docs/exec-plans/active/runtime-exit-integrity-native-candidates.md`。
+
 2026-09-21 HPCON正常路径因果收口：输入d0f0be882bf5f99d0dcaa90c94b7a3d6b0023790/run35586906307 attempt1完成12driver/138会话/1260快照及完整ZIP复核，原verifier12/12有效、四个no-close resource-failure、evidenceErrors为空。两个no-close臂每会话+2，explicit-close共用同一native的两轮191稳定，46次Close均193至191且owner归零；全部内容/真实EOF及自然生命周期完整。这证明固定bundled DLL已知owner最终Close的窄因果作用，不把正常Process对象引用叫OS bug，也不要求稳定背景回到control187。旧+5、四个no-close失败、类型/内核对象身份和image31归属inconclusive保留；下一阶段设计API/adapter，分别验证取消/异常/builtin/正readable、实际Agent/Host/Webview/packaged与生产预算，业务和旧入口不改，退出完整性债务不关闭。见 `docs/design-docs/runtime-exit-integrity-native-candidates.md` 第30节和对应active计划。
 
 2026-09-21 诊断guarded硬返回预算债务：`scripts/diagnostics/diagnose-windows-hpcon-owner.mjs::guarded()`的150s timer只发送kill，Promise仍只等child.close；driver先退出而继承stdio仍被持有时，无法保证在硬截止返回。独立Linux/Node25.6.0纯Node控制已复现：150ms预算前driver退出，kill返回false，close仍比watchdog触发晚884.470223ms，总等待1043.413464ms；本树 `.debug/hpcon-guarded-budget-control-v1/` 的manifest SHA256为 `e053adf6b94787879ed8d8f08a9911b512bb422510d3ec8ece5028a991df6560`。影响是诊断失控路径的返回/完整失败遍历保证，不是 Windows 终端或生产故障证据；本次Windows12driver均未触发，不撤销正常完成结果。临时边界是保留冻结入口与工件、不宣称硬截止已验收；下轮取消/异常矩阵前在新版本入口独立结算超时并验证已退出driver/stdio仍持有控制，另记已知资源清理，不伪造EOF或清理未知PID。关联设计第30节与 `docs/exec-plans/active/runtime-exit-integrity-native-candidates.md`。

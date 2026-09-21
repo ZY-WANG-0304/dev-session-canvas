@@ -1,0 +1,229 @@
+---
+title: 执行会话 Provider 与 Adapter 生命周期契约
+decision_status: 比较中
+validation_status: 验证中
+domains:
+  - 执行编排域
+  - VSCode 集成域
+architecture_layers:
+  - 适配与基础设施层
+  - 共享模型与编排层
+  - 宿主集成层
+  - 画布呈现层
+related_specs:
+  - docs/product-specs/runtime-persistence-modes.md
+related_plans:
+  - docs/exec-plans/active/runtime-exit-integrity-native-candidates.md
+updated_at: 2026-09-21
+---
+
+# 执行会话 Provider 与 Adapter 生命周期契约
+
+## 1. 状态、目的与非目标
+
+本设计是 `docs/design-docs/runtime-exit-integrity-native-candidates.md` 第30节之后的候选契约 v1，不是已部署接口，也不授权直接接入业务。已有证据支持 Unix 独占读取、macOS 自然路径 kqueue 关闭和 Windows bundled HPCON 最终 Close 的局部可行性；没有证明取消、异常、并发或全部支持环境的生产完整性。本文将这些证据转换为明确的职责、结果和可检验偏序，整体仍比较中/验证中。
+
+Provider 指持有原生进程、PTY/pipe、reader、worker 与退出等待资源的平台实现；adapter 指把平台事实转换为统一事件的共享适配层。Authority 指按顺序应用终端操作并生成最终 revision 的运行时权威，在 live-runtime 中是 Supervisor，在直接 snapshot-only 中是 Host。页面读者是 Webview 的一次终端投影，既不是进程 owner，也不是源输出结束的判定者。
+
+继续遵守已确认产品范围：管理 Terminal/Agent 会话与终端资源，不逐个托管普通后代；实际 Agent CLI 即使位于启动包装程序之下仍是会话主体。主体退出后普通后代未来输出不形成独立服务承诺，但主进程尾部、自身已接收/排队/消费内容、最终终端状态和资源释放仍须保证。Runtime 正常结束重开无进程/正文、Supervisor 崩溃或机器重启无需恢复的边界不变。root runtime 归属、容量整体模型、历史归档和新增独立 server 不属于本增量。
+
+## 2. 现有接口与候选选择
+
+本节及第4/6节的业务函数、分页链路和旧契约/屏障模型锚点基于运行时主分支 `0518dcc4fdbc0b233e2bb4bd1c27511aea85be88`。本独立 main-based 诊断分支尚未包含该运行时改造和两个旧模型，不将这些锚点视为本树已实现接口或可直接执行的旧模型入口；新候选模块也尚未实现。诊断结果沿用本树第30节，后续仅新增 D1/D2 隔离入口。
+
+`extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts` 的 `ExecutionSessionProcess` 目前只有 `onData/onExit/kill` 等操作；`onExit` 注释将它解释为输出已经排空。`src/supervisor/runtimeSupervisorMain.ts::bindSessionProcess()` 收到此事件立即关闭 `terminalMutationAdmissionOpen`，`finalizeSession()` 才排空已接受操作。`src/panel/CanvasPanelManager.ts` 的直接 Agent/Terminal 路径也依赖此接口。现有队列不能补回 provider 未交付的尾部，调整上层等待并不能使旧 onExit 获得源 EOF 证明。
+
+`src/webview/terminalPagedProjection.ts::finishExit()` 与 `stop()` 都调用同一个 `close`；`src/common/runtimeSupervisorProtocol.ts::RuntimeSupervisorCloseTerminalReadParams` 只有身份。现有 revision/分页基础可保留，但关闭读者不能证明页面应用完成。已做过的契约与屏障模型分别在 `scripts/diagnostics/runtime-exit-contract-model.mjs` 和 `scripts/diagnostics/runtime-exit-barrier-model.mjs`，它们是注入模型，不是拟定生产实现；后者的进程结果只接受整数 exitCode，资源释放 promise 也没有 unknown/未返回分支。
+
+| 路线 | 判断 |
+| --- | --- |
+| 两个业务 owner 各自等待/解释 node-pty onExit | 不采用。复制平台竞态处理，不能取得旧接口没有提供的事实。 |
+| 给旧 onExit 加 timer，统一改名 complete | 不采用。时间过去不是 EOF、消费完成或资源回收证据。 |
+| 平台 provider 分离事实，共享 adapter 统一封口，authority 与读者分别结算 | 作为本轮待验证候选。单一平台资源 owner，复用现有 authority 队列与分页，避免全部 wire 重写。 |
+| 立即替换整个终端引擎或新增外部服务 | 暂不选定。正常路径局部证据不足以决定新的构建、取消、分发和失效隔离成本。 |
+
+“共享”指同一实现可在 Supervisor 或 Host 进程内实例化，不共享它们之间的内存，不引入全局会话注册表。生产文件候选为 `src/panel/executionSessionLifecycle.ts`（新共享 adapter）和 bridge 内的平台 provider 接入点；只在设计中登记这些待建位置，本阶段不创建业务模块。
+
+## 3. 五类独立事实
+
+不能用单一 `closed`、`lifecycleFailed` 或退出码覆盖以下结果。pending 是尚未观察到，不是超时后的成功；unconfirmed/unknown 是明确缺少证明，不等于已确认进程存活、尾部丢失或资源泄漏。
+
+| 事实及唯一判定者 | 结算含义 | 不能据此推导 |
+| --- | --- | --- |
+| 进程结果，provider | native wait 得到的 exit code/signal；wait/通信失败则 unconfirmed 并保留原因 | 源结束、页面已应用；信号发送成功也不等于退出 |
+| 源结果，provider 经 adapter 校验 | 真实 eof；主动截断 interrupted；读取失败 error；旧能力或 owner 丢失 unknown | 进程一定已退、reader 已释放、输出来自哪个后代 |
+| authority 应用结果，Supervisor/Host | 所有已接受操作与终端解析完成后固定最终 revision；失败明确记录已应用前缀和错误 | 每个页面已应用、源原始字节一定完整 |
+| 每个读者结果，Webview/读者 owner | applied 到确切最终 revision；cancelled；连接/页面失效 lost；旧 close 仅 legacy-released | 其他读者完成、整个 PTY 应取消 |
+| 资源处置，provider | 已知 owner 单次释放；仍持有；已知释放失败；是否完成无法确认 | OS 所有关联对象全局消失、内容完整 |
+
+以下 TypeScript 仅定义下一轮诊断使用的结果格式，生产名称、导出位置和 wire 编码仍需集成评审。`executionId` 是一次创建的不可复用身份，不是 PID/root/readId；generation 使旧回调不能命中新执行。data sequence 是 adapter 已接受文本块序号，不是 authority revision。
+
+```ts
+type ExecutionIdentity = { executionId: string; generation: string };
+type ProcessResult =
+  | { kind: 'exited'; exitCode: number; signal?: string }
+  | { kind: 'signaled'; signal: string }
+  | { kind: 'terminated'; reason: string }
+  | { kind: 'unconfirmed'; reason: string };
+type SourceResult =
+  | { kind: 'eof'; lastDataSequence: number }
+  | { kind: 'interrupted' | 'error' | 'unknown'; lastDataSequence: number; reason: string };
+type ResourceResult =
+  | { kind: 'released' }
+  | { kind: 'retained' | 'failed' | 'unknown'; reason: string };
+type OutputSeal = ExecutionIdentity & {
+  process: ProcessResult;
+  source: SourceResult;
+  lastDataSequence: number;
+};
+type AuthorityResult =
+  | { kind: 'applied'; finalRevision: number; throughDataSequence: number }
+  | { kind: 'failed'; throughDataSequence: number; reason: string };
+```
+
+每个结果必须带执行身份；表内 payload 可由外层统一封装，不重复引入第二套身份权威。空输出 `lastDataSequence=0`；非空文本每次接受递增1，严格连续。解码最后尾片也占一个序号；序号溢出、跨 generation、跳号、冲突重复均为协议失败，不静默补零。合法非零退出与 eof 可同时成立；signal-only 不捏造 exitCode0。terminated 专指已由 wait 证明终止但取不到退出状态，reason记录查询失败，不能降格成未证明终止的unconfirmed；Windows wait已成功时退出码259也不能机械判成仍运行。原始字节计数、平台 VT 转换与解码序号分开，不能用字符串长度冒充源字节数。
+
+ResourceResult是对本次执行所有已登记资源的摘要，底层必须另留逐项owner及释放尝试台账：reader/input、waiter、thread/TSFN、PTY/HPCON分别记录 `not-invoked / in-flight / returned / failed / unknown`、操作id和错误。只有全部属于自身的必需owner均已结算才能汇总released；仍在执行的正常操作是pending而非unknown。unknown仅表示观察/控制失效或预算到点后无法确认，不撤销其他已经证实的释放结果。每个具体资源只有一个已进入的释放操作，不禁止对其他已证明安全的资源分段回收。
+
+retained/unknown和process unconfirmed是带时间的观察，不是不可变最终事实。相同execution/generation/operation的迟到证据可以把当前unknown推进为released，或把unconfirmed推进为已证明终止；不重新调用Close，不覆盖历史超时报告，不追认当时通过。已经公布的OutputSeal是当时事实的快照，不回写或重发；新证明用独立进程/资源更新传递，不能把后来audit的EOF补为旧source完整。相互矛盾的两个确切退出/释放结果才是协议违约。
+
+## 4. 接口职责和偏序
+
+### Provider 到共享 adapter
+
+创建采用候选 `openExecution(spec, observer)`，必须先安装 observer 再启动可产生事件的源，避免 create 后注册 listener 丢失快速退出/首块。平台实现持有一个 owner 记录，创建每项资源立即登记；传给 JS 的 token 只定位自身记录，绝不把外部 PID 或数值句柄当作所有权证明。公开返回的是受控操作，不暴露 raw fd/HPCON。
+
+这个无缺口要求覆盖整个provider→adapter→authority链，不只覆盖native到adapter：业务工厂须在spawn前建好authority的session、tracker、串行队列并绑定完整sink，或采用已经验证的prepare/bind/start屏障，不能沿用“启动后再注册onData/onOutputSeal”而依赖事件循环碰巧未调度。保留onData形式不免除创建接线调整，也不能用无限启动缓存掩盖晚订阅。当前创建后绑定的代码顺序尚不构成旧实现已经丢失首块的证据；D1的M01在open返回前同步注入首块/进程事件以检查新候选要求。
+
+最小 observer 包含 `data(identity, text)`、`processResult(identity, result)`、`sourceEnd(identity, disposition)`、`resourceResult(identity, result)` 和独立 `fault(identity, detail)`。data由adapter的串行接受入口唯一分配sequence并同步返回给provider作为移交回执；provider不另建竞争序号。sourceEnd的原始disposition只有原因/证据，adapter在所有先前数据接受后补上lastDataSequence；平台内部read/message编号只作独立所有权审计。解码和在途read的buffer在消费方取得独立所有权前不得复用。重复的相同确切最终事实幂等，冲突确切事实报告fault；观察更新遵守第3节的补证规则。最终封口后迟到data是provider违约，留下序号和可用内容证据，不静默追加到已公布的最终revision。
+
+允许 `processResult` 先于或后于 `sourceEnd`；进程退出只关闭该执行的输入/原生 resize，不封闭输出 admission。主体身份未经验证的 launcher 路径不能自报可信完成。`sourceEnd` 必须位于所有成功 read 回调、已取得的 worker 消息及 decoder 尾片交付之后；没有待处理所有权才能宣告不再输出。只观察到 socket close/worker exit 而没有真实 end/read0/平台已验证的 EOF，不得写 eof。
+
+### Adapter 到 authority
+
+adapter 在进程观察已结算、源已封口且连续数据全部交给 authority 队列后发布一次 `OutputSeal`。这不是“全部交付成功”，只是输出流不再增长的带原因边界；名称不得缩写为无法区分语义的 onExit。进程 unconfirmed 不能成为正常 completed/stopped 节点的依据，也不能触发旧 live 绑定迁移或宣称进程已结束。若 waiter 失效但读取仍正常，报告进程未知并保持输出服务，不因缺退出结果而提前截断。
+
+OutputSeal.lastDataSequence、其中source.lastDataSequence与adapter连续接受尾值必须相等；下一轮模型保留这个冗余字段只用于核对跨边界封口不一致，不把两个水位当两份权威。生产序列化可消除冗余，但不可消除对连续数据尾值的校验。
+
+`lastDataSequence` 与 journal revision 没有一一对应：标题处理、过滤、resize/scrollback 操作都会影响映射。authority 记录接受/应用的序列水位，收到 seal 后关闭新的会话终端变更 admission，等待既有串行操作和 tracker 的异步解析完成，再固定 final revision。应用失败记录已应用前缀与错误，不将最后一个入队位置包装成成功最终状态。journal/持久化失败继续沿现有错误语义处理，但不能冒充 provider 正常源完成。
+
+`runtimeSupervisorMain.ts::enqueueTerminalOperation()` 只保证已提交操作保序，tracker.write仍是异步；当前finalize使用createFreshSnapshot的never策略，不等于tracker.flush已完成。候选必须使用真实解析屏障，不能以journal.flush代证；现有journal仍可能向页面重放，不能由此直接宣称已发生页面缺尾。adapter不得在authority操作链中等待一个必须由同一条链继续消费data才能完成的provider promise，防止自等待。
+
+候选对现有 `ExecutionSessionProcess` 的最小扩展是 capability-gated 的 `onProcessResult`、`onOutputSeal`、`onResourceResult`，以及分开的 stop/cancel 操作；`onData` 可保留，adapter 内部关联序号。旧 onExit 仅供旧能力分支，不能同时作为新会话第二条 finalize 入口。最终生产名称在模型和接入评审后收口，不在本阶段改 bridge、Host 或 Supervisor。
+
+### 原生释放与终端/页面消费
+
+native 回收等待的是自身读写、waiter/thread 和 buffer 所有权安全，不等待所有 Webview 完成。adapter 已转移到 authority 的独立文本允许在 native 释放后继续解析；authority 来源须保留到合法读者结算。候选诊断先 consumerComplete 再 Close 是本次安全对照门槛，不应原封不动升级为“页面挂起永远占着 HPCON”的生产规则。
+
+输出封口和资源报告可以分别完成；Close 阻塞/失败不能让已经收到的尾部和进程结果不可见，也不能被吞掉写成 released。未知资源留在不可复用的 owner 记录中，禁止 resize/clear/重复 close；后续是否隔离到专用 native worker、允许何种恢复或停止新建，仍需异常路径与有界性验证。不能无限累积未知 owner，也不能为了清理一个 owner 重启整个共享 Supervisor、结束其他 live 会话。该隔离/容量策略未选定，是生产接入阻塞项。
+
+## 5. 停止、取消与预算
+
+候选控制操作分为 `requestStop(requestId, mode)`、`cancelOutput(requestId, reason)` 与 provider 内部的 `releaseOwnedResources`；相同 requestId/参数重复共享一个操作结果，冲突参数拒绝，generation 不匹配拒绝。发出请求和实际生效分别留证，不把 Promise resolve 当作进程退出、EOF 或页面应用凭证。
+
+`requestStop` 只请求结束实际会话主体，graceful/force 的平台可用性如实返回 accepted/unsupported/failed；正常读取继续，stop 后真实排空仍可是 eof。若具体强制操作同时破坏 pipe，则源为 interrupted/error，而不是因为用户点过 Stop 就预先指定结果。不能未经实现证据假定所有平台都有 Unix signal 或可靠的进程树终止。
+
+`cancelOutput` 是会话 owner 决定停止继续获取输出，不是页面读者 close；适用 delete、已批准的收尾期限或 source 故障处置。取消请求后不启动下一次 read，但已在途 read/消息、已读成功的正长度 readable-buffer、decoder 和已接受操作仍要按所有权结算。取消生效导致截断时结果为 interrupted；若真实 EOF 先完成且取消没有实际截断，保留 eof。追加 audit reader 取得的系统残留不能混入 candidate 交付。
+
+取消或超时期间尚有无法结算的 read，不能立即生成虚假 sourceEnd 或 lastDataSequence。等待 API 可以返回“仍未结算”的观察报告，同时保留 owner/在途责任并继续接收安全的迟到回调；只有来源确已终止或不可恢复地失联、已有可用内容已移交时，才以 interrupted/error/unknown 封口。失联后的不可恢复丢失必须明确记录，不能以“未知”免除已确认收到内容的保留义务。生产如何隔离永久未返回操作仍是接入前阻塞项。
+
+本阶段不决定主进程退出到收尾的毫秒数，不从普通后代职责边界推导“立即关闭 PTY”。生产预算需兼顾已成功写入尾部、所有权边界、事件循环响应、并发和支持版本；后文诊断预算只约束测试工具，不能写成产品超时。
+
+## 6. 读者结算与兼容
+
+保留现有 `sessionId/authorityId/readId`、连接 owner、surface 生命周期和分页 revision。候选新能力 `terminalReadSettlementV1` 扩展 close 的 outcome，而非新建第二套消费水位：`applied(finalRevision)` 仅由真实 xterm/control callback 完成后提交；`cancelled(reason)` 由页面放弃读者提交；连接失效由服务器登记 lost，不信任客户端自报其他连接的结果。旧 close 的 outcome 缺失即 legacy-released，不默认为 applied。
+
+选择扩展close作为本轮模型候选，是为了让结算和读者释放在同一次服务端处理完成；独立ACK是可选对照，但需要定义ACK与旧close/断连竞态及保存期限。若实现无法在同一事务内保留幂等结果，必须重评，不能先删除read再默默丢掉结果。现有terminalAppliedRevisionAckV1是增量应用水位，不自动代表终态结算；生产wire字段和能力握手仍未批准。
+
+服务端校验完整身份、读者归属、最终 revision 已固定、该读者获得的内容覆盖目标；同一结果重复幂等，冲突结果拒绝。服务端只能核验声明与已交付范围一致，不能仅凭发出页面或收到数字证明 xterm 已执行，因此实际 Webview callback 测试不可省略。authority固定finalRevision的同一串行边界关闭新open准入，不等节点保存或retiring标记才关闭；此前已获准但回包仍在途的open须计入既有读者。一个读者取消不改变其他读者结果。
+
+协商新结算能力后，Webview协议解析、CanvasPanelManager、relay/client和Supervisor每一跳都必须校验并保留outcome；非法/未知outcome拒绝，不能被重建identity时丢弃后降成旧close。旧消息没有outcome才适用legacy-released。服务端删除读者前保留同一连接内的幂等结算回执，过期后只能报告不可确认/已释放，不能捏造第二次applied；回执是有界内存元数据，不保存正文或形成completed历史。数量/期限和断连行为须在接入前确定，未定时不能启用生产能力。
+
+当前TerminalPagedProjection.finishExit已经等待真实写队列/xterm回调，缺口在跨层结果表达，不是页面完全没有应用屏障。applied(finalRevision)只证明权威stream的终端操作；随后本地追加的退出提示不属于该revision，须另验证显示顺序，不倒推为源数据。relay的onReleased只释放连接引用，RPC失败或断连要可观测，不能被当作应用成功或未经证实的数据丢失。
+
+源能力、资源跟踪能力、读者结算能力分开判定，不凭 transport 协议版本替旧 provider 补能力。新 Host 接旧 Supervisor/session 保留原 backend/storage/session/generation 绑定，源结果 unknown、旧 close 仍可释放但不报告应用成功；旧 Host 接新 Supervisor 走已验证旧分支，不收到必须理解的新 mandatory 字段。新能力只有双方 opt-in 后启用，旧会话不被迁移、重启或改写 storage。
+
+正常来源物理退役仍需轻量节点保存成功、禁止新读者、既有读者结算及已知资源职责完成。错误/unknown 不能伪装成这一成功门槛，但保存/页面/原生资源可分别报告和清理各自安全部分。不得以等待用户重开或保存 completed 正文补偿未知结果；snapshot-only 的快照保留语义不在这里改变。
+
+## 7. 平台失败表与证据限制
+
+本表定义需要报告的事实，不保证所有失败已经存在安全回收实现。后续原生注入须固定真实故障点、控制组、仍持有的 owner 和可观测前提；不能用合成异常替代实际 API 的失败证明。
+
+| 边界 | 必须保留的事实与后续约束 |
+| --- | --- |
+| create/pipe/input/reader 部分初始化 | 每取得一项即登记，失败仅释放确切拥有且不被使用的资源。尚无子进程不伪造 exit0；已有 HPCON 不因 create 整体失败而遗漏。 |
+| CreateProcess 成功但 connect 后半失败 | 先保留 hProcess/主体身份再做可能失败的 Release/TSFN/thread 初始化；启动请求失败不等于主体不存在。安全停止/等待及输出结算必须单列，不依赖 JS 没收到返回值来清理 PID。 |
+| bundled Release 缺符号/失败 HRESULT | 不报 releaseSucceeded；Release 与最终 Close 是不同动作，调用位置/次数及真实错误保留。失败后是否可继续读/Close另做原生验证，不能重复 Release 求成功。 |
+| wait 失败或退出码查询失败 | 前者不能证明已退出；后者若 wait 已成功，可保留终止事实但 exitCode未知。下一轮结果格式需容纳这个事实，不将两种错误都映射为 exit0。 |
+| TSFN 排队拒绝、callback抛错、Release/线程启动失败、环境销毁 | native wait 与 JS 通知分别结算；必须有无需 JS callback 成功也能管理自身 payload/线程的 owner 路径。正常92次成功不证明这些路径安全。 |
+| reader error/worker失联/close无end/无EOF | 已读内容移交，源 error/unknown；原生资源依据独立前提处置，不用销毁 reader 后产生的 close 冒充 EOF。 |
+| authority拒绝/挂起、页面取消/断连 | authority失败与读者结算区分；已拥有独立内容不能被 native 清理清空，也不因某一页面失效阻止其他读者收尾。 |
+| 最终 Close缺导出/不返回/返回后重复调用 | 未调用、已调用未确认、已返回分别记录；同 owner 只有一个已接受的释放尝试。void API无HRESULT；未确认状态禁止盲重试或重用 token。 |
+| 多会话/取消/resize/Close交错 | generation和单owner同步必须真实覆盖所有入口；关闭后拒绝原生操作，旧回调不污染新会话，某会话失败不隐式结束其他会话。 |
+
+Windows 当前诊断 `windows-hpcon-owner-patch.mjs` 将 lifecycleFailed、TSFN callback、consumer gate 等都作为自然 Close 的前提，故意 fail-closed 以避免污染对照；它没有交付失败路径的长期回收策略。正常对象引用语义、旧具体句柄身份不确定及本轮四个 no-close 失败继续保留。builtin 可能需要不同的 Close/读取协调，不能套用 bundled DLL 的先 EOF gate 宣称支持；同步 Close 不返回也不能由同线程 JS timer 兜底。
+
+只读复核还发现固定node-addon-api7.1.1的 `node_modules/node-pty/node_modules/node-addon-api/napi-inl.h::ThreadSafeFunction::CallJS()` 在env与callback均为空时直接返回，不执行CallbackWrapper。因此诊断patch里放在callback内部的ExitEvent RAII不能证明环境销毁时的排队payload已释放。`conpty.cc`的CreateProcess成功后也先执行DLL/Release再登记hShell。二者都是需覆盖的静态失败窗口，不是本轮已复现native异常；保留正常92次TSFN成功证据，不借此推断其已发生泄漏。
+
+Unix 不再通过继承 master 的 helper 观察 readiness，以免改变共享 O_NONBLOCK；不假定 poll ready 就是 EOF，不在 read 未完成时 close/复用 fd。Linux EIO 和 macOS read0 的平台映射保留，kqueue/control fd/reader/waiter 各有 owner，成功关闭一个不证明全部回收；关闭失败不能不加区分地按数值 fd 重试，防止误关复用槽位。轮询候选的公平性、CPU、并发成本还未成为生产预算。
+
+## 8. 下一轮诊断冻结：模型与工具先行
+
+本阶段只冻结下列 D1/D2，不运行这两组新矩阵或新增原生失败注入。生产不读取诊断模型的类型或状态机。独立诊断分支新增文件，旧39项契约、25项屏障及全部原生脚本/断言/工件逐字保留；新失败保存新目录，禁止覆盖或反复重跑筛绿。
+
+### D1：有限契约模型
+
+候选新文件 `scripts/diagnostics/runtime-provider-lifecycle-model-v1.mjs` 与 `scripts/diagnostics/diagnose-runtime-provider-lifecycle-v1.mjs`。模型只注入上述事实，不制造可信 EOF；固定下列24组、37个独立子案例，每个一次，schedule运行前落盘。M07四例、M18两例、M21三例、M24八例，其余各一例；每个子案例用全新状态和独立trace，首个fault不能掩盖其他分支。读取旧模型是对照，不重写它们以满足新契约。
+
+| ID | 单项输入与期望 |
+| --- | --- |
+| M01 | open返回前process先到、随后首块data/eof；sink已绑定、不提前封口，非零退出保留 |
+| M02 | eof先到、随后process；空输出sequence0，只封口一次 |
+| M03 | signal-only退出；不补造整数exit0 |
+| M04 | wait失败且源继续，随后同owner取得退出证明；不提前关闭admission，不覆盖未知观察 |
+| M05 | wait证明终止、exitCode查询失败；与未证明终止分开 |
+| M06 | 连续块与decoder尾片；最后序号在sourceEnd前交付 |
+| M07 | 缺序号/重复冲突/封口后data/seal水位不一致，四个独立负例逐个拒绝并留fault |
+| M08 | 相同process/source重复；幂等且没有第二次seal |
+| M09 | stop请求后真实EOF；命令与源结果分开 |
+| M10 | 取消请求但EOF先结算；未生效取消不改写EOF |
+| M11 | 取消生效时在途read有data；移交全部拥有数据再interrupted |
+| M12 | read永久未回调；截止只返回未结算观察，不伪造sourceEnd |
+| M13 | worker失联且已有独立消息排队；保留可用前缀，源unknown |
+| M14 | authority异步解析尚未完成；无成功finalRevision |
+| M15 | authority写入拒绝；已应用前缀及失败单列，不宣称applied |
+| M16 | native释放先于页面应用；独立队列和读者仍可完成 |
+| M17 | Close已调用但超时后才返回；先unknown后同操作released，保留首次观察、不重复调用或重发seal |
+| M18 | 同requestId释放重复/冲突参数；共享结果或拒绝冲突 |
+| M19 | 两个execution同序号/旧generation回调；状态不串会话 |
+| M20 | 双读者一applied一cancelled；互不取消，结算各自身份 |
+| M21 | final目标未到/未交付/旧readId的applied；分别拒绝 |
+| M22 | open在途与来源退役竞争；已获准读者计入，新的拒绝 |
+| M23 | 页面lost及legacy close；释放不计applied，不补新页面 |
+| M24 | source可信/资源可跟踪/读者结算协商三能力各开关，共八例；可applied且source未知，也可eof且reader仅legacy-released |
+
+本地先以 Node25.6.0 与 Electron-as-Node39.8.7 各运行37子案例，输出到两个全新目录；runner阶段三平台固定 Node22.23.2各37子案例。预期37/37仅证明确定性状态约束，不计为原生资源或真实Host验证。validator必须按完整schedule独立重算，不只信任模型的pass字段；自测包括删事件、改序号/身份、丢终态、缺工件及第一项损坏后继续验证。
+
+### D2：诊断父进程的有界返回
+
+候选新增 `scripts/diagnostics/diagnostic-process-guard-v2.mjs` 与 `scripts/diagnostics/diagnose-process-guard-v2.mjs`，不修改HPCON原入口。guard分别记录 child的exit、stdio close、计时截止和控制调用；到预算后必须独立结算自己的Promise，不能只kill后继续无限等close。超时输出为截断/不完整工件，绝不是自然EOF。原生同步操作仍在隔离driver中，父timer不得与被测同步调用处于同一阻塞线程。
+
+固定每项deadline1000ms、截止后清理/返回最多1000ms、外层独立driver hard cutoff5000ms加1000ms最终观测；这些是诊断参数。t0是控制器调用spawn之前的单调时间，包含启动与ready握手，不因ready/exit或kill重置；G04在截止前未建立ready/主体退出前提即precondition-failure，不能无限等待setup。早期返回以真实exit+stdio关闭/工件结算为准，deadline按单调时钟检查；所有路径共享一次性结算，kill返回false或抛错也不能取消绝对返回期限。硬截止是独立活着的观察进程约束，不宣称在操作系统无法调度时提供实时保证。只允许对当前控制器确切拥有的ChildProcess做强制控制，不从日志PID取得清理权限；G04的受控继承helper是下面单列的观察例外，不使用被测PTY fd。本矩阵零PTY。
+
+固定 G01正常exit0/stdio关闭、G02自然exit7、G03 spawn失败、G04 driver先exit0但受控helper仍持有stdio、G05 driver在deadline时仍运行、G06a/G06b分别注入kill抛错/返回false且close一直缺失、G07 stdio先关闭但driver仍运行后自然退出。八个子项各连续3次，共24条/平台；Linux/macOS/Windows固定Node22.23.2共72条，其中G06两类是明确synthetic的18条，真实进程/启动控制共54条，均零PTY。本地先跑本平台24条，不替代其他平台。G04–G06达到截止的返回必须是显式失败/不确定；控制套件可以验证“正确识别失败”而成功，但raw结果不得标为自然成功。G07不能因stdio先关就提前报告进程已退出。
+
+G04不能假定公有Node API能取得driver stdio的子侧写端并转给兄弟helper。采用driver创建一个继承stdout/stderr的受控helper，helper提供私有nonce控制/完成回执及3000ms自限生存期；driver在helper-ready后退出。运行前必须证明确实保持stdio、主体已在deadline前退出，且helper不被Windows父Node Job提前结束；前提不成立记precondition-failure，不换成普通pipe模型或隐藏失败。控制器可协作请求helper自退，不按其PID强杀；仅有helper回执/stdio结束不冒称OS退出已独立wait确认，无法证明的清理状态保留unknown。该控制只证明guard不被stdio拖住，不成为后代托管或原生资源释放验收。
+
+已知driver的控制结果、G04协作回执与可观察的helper状态独立保存，缺回执/超出自限期保留fixture清理失败，不阻止guard按预算返回；不得以runner销毁环境当作回收成功。断开监听/销毁自身日志管道必须注明截断，保留此前stdout/stderr，迟到事实追加而不改首次返回报告，不能让未结算ChildProcess引用重新拖住整个父进程。外层仅能终止它直接拥有的测试driver；若G04预检不能满足上述限定，在设计中登记未覆盖，先收口其他控制而不宣称全部硬返回矩阵通过。
+
+### 原生异常验证的下一门槛
+
+D1/D2完成后才逐平台另冻原生失败矩阵，不在本轮虚构fixture或结果。每个平台至少要把第7节中的partial-create、wait/通知失败、reader取消与正长度已读缓冲、最终release失败/挂起、两个并发会话分开验证，并有同版本自然正对照。Windows TSFN环境销毁/已排队payload和hShell登记前失败、Unix在途read/control-fd生命周期都是必须覆盖的输入；无法安全注入的API点标未覆盖，不用JS抛异常声称已经原生覆盖。builtin、旧Windows版本、真实Agent/Host/Webview/packaged仍独立开放。
+
+## 9. 接入门槛与验证记录
+
+进入业务实施前须同时满足：结果格式与实际native证据对应；平台所有权失败路径有明确处置且不会无限累积；取消和生产预算有设计依据；bridge/authority/读者协议的能力分流及两个运行模式接入方案通过评审；分发与支持版本矩阵已明确。新adapter不能仅根据当前隔离候选通过就成为默认provider，也不能把诊断的轮询、删除kill导出或静默失败策略直接带入生产。
+
+本阶段交付物是契约提案、有限故障分类和D1/D2冻结协议；不是新模型或原生矩阵的通过记录。正式运行须记录输入commit、运行时/OS、schedule、原始trace、结果及源码hash，并完整下载离线复核。现有自然路径结果与旧失败引用本树原生候选设计第30节，新增结论只按实际证据更新，不追认任何历史失败为通过。
+
+设计复审分别核查Windows/native、Unix/guard与authority/页面三条边界，修订M05类型、唯一序号、迟到补证、新读者准入、outcome各跳保留及G04可行性限制。运行时主工作树 `dev-session-canvas2` 的既有bridge、tracker、Supervisor协议聚合回归与该树 `.debug/lifecycle-contract-design-v1-node25` 的旧39项契约通过；不将它们计为D1/D2或生产失败路径验证。

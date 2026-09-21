@@ -60,6 +60,14 @@ HPCON 是 opaque owner token，不是可用 CloseHandle 释放的普通 Win32 HA
 
 诊断的硬返回必须独立于被等待对象的stdio生命周期。向child发送kill不保证child.close按时发生，已经退出的driver仍可能留下被其他进程持有的stdio；应分别记录exit、close、超时分类与已知资源清理。没有触发watchdog的自然成功样本不能证明硬截止有效，工具预算控制也不能冒充对应平台的产品故障复现。
 
+跨层收尾应分开实际主体终止、可信源结束、权威终端解析、各读者应用及资源处置。共享adapter串行接受数据并唯一分配序号，authority的journal入队/flush不能替代异步tracker解析，Webview的最终revision只覆盖权威stream而非其后追加的本地退出提示。源水位、命令退出码和页面完成互不代证。
+
+unknown/unconfirmed是带时间的观察；同一执行/代际/操作的迟到证据可补足当前状态，但不能覆盖首次超时报告、重发旧封口或重复释放。native逐项owner与页面/journal寿命分离，所有权移交尚未验证时，不把诊断consumer-before-Close门槛直接改写成已证明的生产偏序。
+
+读者释放只有携带有效最终应用凭证才证明applied；协商后的outcome必须贯穿每跳校验，非法值不能静默降级为旧close。旧close、取消和失联分别结算，source、资源跟踪和读者能力独立，不改写旧live绑定或以新协议版本替旧provider补证。能力及幂等回执边界未定时不启用生产接口。
+
+有限模型的每个负例与能力组合须独立状态/trace，不能首个fault后跳过剩余分支仍报整组通过。诊断预算从spawn前单调时钟计入setup，显式分开synthetic和真实进程证据；受控后代私有回执和有限TTL只用于夹具观察，不提供按日志PID强杀权限，也不新增产品后代托管义务。
+
 ## 8. 不属于空间关系的信息应优先离开画布
 
 

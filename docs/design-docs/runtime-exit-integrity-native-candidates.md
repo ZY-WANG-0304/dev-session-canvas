@@ -63,7 +63,7 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 第30节已完成Windows bundled-DLL三臂首次原生矩阵及全量复核：138条会话完整，46次已知HPCON最终Close消除同native/no-close的逐会话+2总句柄增量，四个no-close资源失败保留。这是正常自然路径的窄因果证据，不是Windows对象语义缺陷或生产退出完整性已修复；旧类型/内核对象身份归属不确定不改判。
 
-下一阶段先定义生产API/adapter候选的生命周期与失败契约，包含已登记的诊断硬返回边界，再冻结新版本取消/异常/builtin/正readable的独立验证；并发、旧Windows版本、实际Agent启动链、Host/Webview与packaged继续单列。生产取消条件和预算尚未确认，设计比较中/验证中，计划active，业务不改。后续不得以重跑本轮或清理未知句柄获取全绿。
+第31节及 `docs/design-docs/runtime-execution-lifecycle-contract.md` 已完成下一阶段的候选契约与 D1/D2 运行前冻结，尚未新增脚本或取得新模型/原生运行结果。下一步只在本独立分支实施 D1 的24组37个独立子案例和 D2 的8个子项各3次硬返回控制；D1/D2验证后再逐平台另冻取消/异常/builtin/正readable原生矩阵。并发、旧Windows版本、实际Agent启动链、Host/Webview与packaged继续单列。生产reader、wire/API及取消条件和预算尚未选定，设计比较中/验证中，计划active，业务不改。后续不得以重跑本轮或清理未知句柄获取全绿。
 
 ### 首轮阶段的历史讨论
 
@@ -581,3 +581,19 @@ native 入口必须一次性占有 connect，拒绝同一 owner 重复启动；�
 独立 Linux/Node `25.6.0` 的纯 Node 控制位于本工作树 `.debug/hpcon-guarded-budget-control-v1/`，manifest SHA256 为 `e053adf6b94787879ed8d8f08a9911b512bb422510d3ec8ece5028a991df6560`。driver在150ms预算前退出，watchdog对已退出child调用kill返回false；`close`仍比watchdog触发晚 `884.470223 ms`，总等待 `1043.413464 ms`，所有已知控制进程最终结束。这只证明 `exit`、stdio生命周期与 `close`/硬返回是不同事实，不是Windows/PTY/产品原生证据。
 
 该债务在下一轮新版本诊断入口中优先修复并加入已退出driver、stdio仍持有的控制；独立约束返回预算与已知资源清理，超时保持失败或不确定，不能伪造EOF或用任意PID清理。原入口、旧断言、工件和本次首次结果不修改，也不通过重跑本矩阵筛选绿色。
+
+## 31. Provider/Adapter 候选契约与下一轮诊断冻结（2026-09-21）
+
+第30节正常自然路径的窄因果证据已转入 `docs/design-docs/runtime-execution-lifecycle-contract.md`，本阶段仅设计和冻结，不增加业务、模型或诊断脚本，不运行新的原生矩阵。新契约的业务及旧模型锚点来自运行时主分支 `0518dcc4fdbc0b233e2bb4bd1c27511aea85be88`，不代表本 main-based 独立分支已接入该改造。前30节的冻结协议、原断言及失败结果均保留，第6节仅更新当前导航。
+
+候选将实际主体的进程结果、可信源结束、authority 应用结果、各页面读者结算和原生资源处置分开。进程结果容纳 signal-only、已由 wait 证明终止但退出码未知，以及尚未证实终止；adapter 唯一分配连续 data sequence，decoder 尾片在 sourceEnd 前移交，OutputSeal 的两个水位必须与已接受尾值一致。authority 是 Supervisor 或直接 Host 的终端事实维护者，需要真实 tracker 解析屏障，不能以 journal.flush 或现有 onExit 代证完整。正常 native 释放不依赖所有页面完成，但独立内容所有权移交仍须验证；逐项 owner 的迟到释放证据只能更新同一次操作的观察，不重复 Close、不重写历史超时或旧 seal。
+
+读者候选在协商 `terminalReadSettlementV1` 后扩展 close outcome，以同一次服务端处理完成结算和释放；applied 到最终 revision、cancelled、服务器登记 lost 和旧 legacy-released 分开。Webview/Host/relay/client/Supervisor 每跳都校验并保留 outcome，非法值不能被静默降级；finalRevision 固定的同一串行边界关闭新 open，既有在途 open 仍计入。source、资源跟踪和读者协商能力分别判断，旧 live 绑定不迁移。生产握手、回执数量/期限及隔离容量策略仍是接入前待定项，不把选择模型候选写成已批准生产 wire。
+
+D1 冻结24组、37个独立子案例，每例独立状态/trace：进程与源先后、signal-only、wait/状态查询失败、解码尾片、序号/身份/封口违约、取消与在途数据、authority 解析/失败、资源超时后的同操作补证、双读者和三类能力八种组合。只注入事实，不制造原生 EOF；本地 Node25.6.0 与 Electron-as-Node39.8.7 各37例，后续三平台 Node22.23.2 各37例。新入口及验证器必须独立重算全部 schedule，损坏首项仍继续；当前没有37/37通过记录。
+
+D2 冻结八个子项各3次，每平台24条、三平台72条，其中 G06a/G06b 的18条为 synthetic，其余54条为真实进程/启动控制，全部零PTY。分别记录 exit、stdio close、deadline 与已知控制结果；t0 为 spawn 前单调时间，1000ms采集预算、截止后最多1000ms返回、外层5000ms加1000ms观测仅是诊断参数。G04由 driver 创建继承stdio的受控helper，以私有nonce回执和3000ms自限期建立前提，不按日志PID强杀；无法证明Windows Job下的存活/持有前提则标未覆盖。guard按预算返回与fixture清理分别验收，超时不伪造EOF，晚到事实不改首次结果。完整细则以新契约第8节为准。
+
+后续先实施 D1/D2 新入口，再另冻每个平台的 partial-create、wait/通知、reader取消及正长度buffer、最终释放失败/挂起与两个并发会话的原生对照。TSFN 环境销毁时已排队payload、hShell登记前失败和Unix在途read/control-fd属于静态待验证窗口，不由正常92次TSFN成功或现有自然资源结果覆盖。builtin、旧Windows、真实Agent/Host/Webview/packaged及生产取消预算继续开放。本阶段只检查文档元数据/索引/关联路径、计划章节与历史证据不变，不关闭退出完整性和诊断硬返回债务。
+
+三条边界只读复审已补进程类型、唯一序号、迟到补证、读者准入及各跳outcome，创建前provider/adapter/authority的sink须全部绑定或受显式start屏障保护，不能留下open返回后才订阅onData的缺口。M01在原组内覆盖同步首块/退出，D1仍37子例。主运行时树dev-session-canvas2的既有bridge、tracker、Supervisor协议聚合回归及该树.debug/lifecycle-contract-design-v1-node25的旧39项契约通过；这些不是本树新D1/D2或原生失败路径验收。下一轮workflow候选为 `.github/workflows/runtime-lifecycle-contract-v1.yml`，尚未创建。
