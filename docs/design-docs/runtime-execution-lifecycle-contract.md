@@ -353,3 +353,43 @@ CLI支持 `--self-test`、`--output NEW_DIRECTORY` 和 `--verify-saved DIRECTORY
 新目录 `.debug/windows-stdio-close-selftest-v2-oracle` 完成27/27合成断言，含九项oracle夹具、首项损坏后继续末项、outer缺事件/提前返回、双EOF/身份/token/持有窗口及完整性篡改。全部是工具自测，真实native创建数零，不追认v1已有新增证明。JS语法、workflow YAML/内嵌脚本、两树文档metadata/引用和历史协议保留检查通过，主树既有bridge回归通过。两份独立源码复审收口后才准备首次runner，不反复执行旧矩阵。
 
 本地源码SHA256：JS为 `1bf7bbfcb7d760374305ba99540219a8fc0ae6bbfeb9095ec304734a6e81bf36`，C为 `d803d2a0bfe57e0d4442833ebc289002dab080318bf20a505fc02e9a47342668`，原guard为 `efb430fc16d1c673cf0ad88fc7b2df2d3649c60922b9cf0288ec7d146f241ade`，workflow为 `c3956642fe6c61bf523db02e26a776481f795d46b23e12814ee022b440b5eb49`。自测输入是eb37902c工作树加归档源码，不写成未来runner commit；Windows换行可能不同，须同时保存原字节摘要并只读LF归一对账。下一步固定新输入一次运行全部九项并完整下载复核；本节没有Windows结果或生产验收结论。
+
+## 16. G07 首次 Windows 原生结果与完整复核（2026-09-22）
+
+第14节冻结协议、第15节实现对应的独立输入为 `cf35904055a840e6e5b3189eb8551beba17d7163`；首次 [run35631266321](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35631266321) attempt1完成且workflow成功，没有重跑。本节仅补新的九项零PTY进程控制，不改run35620967433原72条pass或Windows G07三个not-established记录，也不是PTY或产品退出完整性验收。
+
+### 固定输入与工件
+
+实际环境是Windows Server 2025 Datacenter 10.0.26100 / x64，runner image为 `win25-vs2026 / 20260907.229.1`，Node22.23.2、libuv1.51.0、MSVC Tools14.51.36231（编译器报告19.51.36256.0）、SDK10.0.26100.0。C以 `/W4 /WX /O2 /TC /Bv` 编译成功；stderr为版本列表，没有编译警告。实际EXE SHA256为 `a472e116c449c457d75d6ec5ba53689cb86dc08014f62d084b214c781b465dd7`，编译器字节指纹为 `e6d57100c82ae0310c18b16abfe52bc0df8fbb272ca6c5fb287d485807cfce91`。编译参数、SDK环境和源码快照完整保留，未安装业务依赖。
+
+artifact `runtime-windows-stdio-close-35631266321-1` 的ID为10653794664，完整ZIP为1422720字节、1449成员，SHA256为 `64376d0c6c68521594b137e5f09bda636ea4445f67defa7fc243cdd257fe79ef`，与API size/digest一致。主运行时树 `.debug/stdio-close-35631266321/` 保存run/jobs/artifacts API元数据、ZIP及全部解压内容。五份runner输入快照分别保留原字节摘要，并仅在内存中LF归一后与固定commit对账；C/JS/guard/workflow的LF摘要与第15节一致，工件原字节未修改。
+
+runner合成自测27/27且nativeProcesses为0；实际矩阵checked9、actualCreated9、synthetic:false、pty:false，可信入口离线复算pass:true、无errors/evidenceErrors。两组计数分开，不把合成自测当原生样本。
+
+### 原生判定
+
+| 模式 | 实际次数 | 新前提判定 | guard原始分类 |
+| --- | --- | --- | --- |
+| close-wait | 3 | 三项均建立：实际双写端关闭，双EOF/close后两次fresh pong及至少100ms持有。 | 三项natural-exit / complete；第二次pong后获准exit0，guard随后返回。 |
+| keep-open | 3 | 三项均按预期拒绝：保持写端至deadline，没有challenge/pong或退出许可。 | 三项deadline-exceeded / deadline-incomplete；guard终止自己直接拥有的主体，迟到EOF不改为自然完整。 |
+| close-exit | 3 | 三项均按预期拒绝：真实关闭后直接exit0，没有pong或退出许可。 | 三项natural-exit / complete；捕获完整不代表关闭后的存活前提成立。 |
+
+正例各自精确收到stdout/stderr的40字节marker，两路SetStdHandle/CloseHandle均单次成功；native顺序为HELLO、WRITTEN、CLOSED、PONG、PONG、EXITING。下表全部为父端spawn前t0的毫秒值，不拼接native QPC时钟；guard列为父端记录`guard-returned`事件的时刻，不是内部自报时间，也不是调用方await续体时间。
+
+| 正例 | stdout EOF | stderr EOF | challenge1 | pong1 | challenge2 | pong2 | challenge2-pong1 | child-exit | guard-returned事件 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| close-wait-1 | 22.6284 | 23.1980 | 24.6204 | 26.3205 | 128.1139 | 128.8659 | 101.7934 | 130.8163 | 131.2240 |
+| close-wait-2 | 19.1609 | 19.6807 | 21.1135 | 22.8479 | 124.0095 | 124.7468 | 101.1616 | 127.0241 | 127.4555 |
+| close-wait-3 | 18.6984 | 19.8407 | 21.3026 | 23.0531 | 123.8783 | 124.5995 | 100.8252 | 126.8343 | 127.3604 |
+
+三项keep-open的`guard-returned`事件记录分别为1006.8106、1009.5670、1011.7495ms。另从九份trace的`controller-guard-observed`核对真正await后观察：正例分别132.1465、128.5959、128.6105ms，keep-open分别1007.1812、1009.9730、1012.3385ms，close-exit分别23.9235、22.8170、22.6008ms，均在原总2000ms内，超时仍保留不完整分类。全部九项的最大外层结果构造时间为1112.4883ms，`outer-returned`事件记录为1112.4939ms，controller退出/两流close均已观察，且没有命中5000ms截止。该事件后仍执行同步writeJSON再resolve，本轮没有外层调用方await后时间，不能把事件计时当作完整外层返回预算已经独立证明；此工具观察缺口留待新入口补充，不改本轮工件或G07前提结论。九项无主动截断、native ERROR或控制传输错误；keep-open预期直接主体终止仍保留，不能把无外层干预误写成所有样本都自然退出。
+
+close-exit-1/2先观察到child-exit再见流结束；close-exit-3的双流最晚close为20.7513ms，父端21.1521ms尝试challenge，21.4268ms记录`control-unavailable`（观察控制通道已不可用，并非原生关闭时刻），child-exit通知21.7708ms才到，仍没有pong。因此其前提正确拒绝；流关闭先于退出通知不能独立证明主体尚可执行。第14节允许的有限EPIPE/ECONNRESET例外本轮未发生，只在合成测试中验证，不能计作已原生覆盖。
+
+### 独立审计、结论与后续
+
+可信入口的 `--verify-saved` 从原始事件重算全部九项；另存 `offline-review-v1.json` 对账五输入、实际EXE、完整分类和outer时序。独立审计 `independent-native-audit-v1.json` 为836项检查、九条预定轨迹成立，SHA256为 `133b9fc9ed673cf23637837517e1b140e56266daed4a3af701545eeb9c80a20f`；审计同时核对PE x64、源码commit绑定、双EOF/close、控制原字节、两次token、持有时长、许可/退出及预算。审计脚本和JSON单独保存在主树证据父目录，未执行归档代码、未改原工件或用保存的pass替代事件复核。另存`timing-observation-audit-v1.json`从九份原始trace补充guard调用方await后时间，并限定outer计时及`control-unavailable`的含义；原审计数值和文件不改。
+
+本次新证据补齐了固定Windows环境下“输出确实关闭而主体仍可执行、guard不因此提前返回”的窄前提；两个负控均验证新oracle按预定原因拒绝不足证据。旧G07三项仍not-established，不能追认原矩阵无缺口通过。正常已退出Process对象被其他句柄引用仍是Windows正常语义，不需要消除；本轮没有关闭未知句柄、按日志PID强杀或新增产品缺陷结论。
+
+下一阶段可进入逐平台原生异常路径与unknown owner有界隔离设计，另冻partial-create、wait/通知失败、在途取消/正长度已读缓冲、release失败/挂起及两个并发会话的矩阵。需要先明确已知owner、不可确认状态、允许隔离的边界与观测预算，并补诊断外层调用方返回及结算I/O的独立观察，再实施新诊断；当前没有这批异常原生结果。builtin、其他Windows版本、真实Agent启动链/Host/Webview/packaged、生产API/取消预算和总退出完整性仍未验收。业务、依赖、旧live绑定和所有旧实验不改，设计继续比较中/验证中，ExecPlan保持active。

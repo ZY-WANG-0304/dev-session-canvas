@@ -6,14 +6,15 @@
 
 用户需要正常结束时完整看到终端尾部，而不是把进程退出当成输出已结束。本阶段只验证隔离 reader 和资源生命周期，不改变生产会话。PR #294 已提供公共接口基线；本阶段通过 macOS 独占 fd、Windows 独立 pipe worker 等原生对照，证明或否定候选可行性。
 
-已有局部自然路径证据已转成 provider/adapter 候选契约，有限模型D1与诊断硬返回工具D2已实现并完成本地及三平台首次运行。provider指原生进程/终端资源的持有者，adapter指统一进程、源和资源事实的共享适配层，authority指Supervisor或直接Host的终端事实维护者。D1三平台111条注入模型已验证；D2原verifier72pass保留，但Windows G07三项因标准句柄close未实际生效而前提未建立。下一步先另冻该夹具的真实提前关闭和独立主体存活控制，不提前改变用户会话或声称D2整组、原生或产品修复已通过。
+已有局部自然路径证据已转成 provider/adapter 候选契约，有限模型D1与诊断硬返回工具D2已实现并完成本地及三平台首次运行。provider指原生进程/终端资源的持有者，adapter指统一进程、源和资源事实的共享适配层，authority指Supervisor或直接Host的终端事实维护者。D1三平台111条注入模型已验证；D2原verifier72pass保留，旧Windows G07三项因标准句柄close未实际生效继续not-established。新的cf359040/run35631266321九项独立控制已补真实关闭后存活的窄前提，详见共享契约第16节；下一步原生异常路径与unknown owner有界隔离设计，不追认旧矩阵或提前改变用户会话、宣称产品修复已通过。
 
 两轮原生对照已经完成。2026-09-20 用户进一步明确：画板管理 Terminal / Agent 执行会话与终端资源，不默认在实际主进程退出后维持终端等待普通后代未来输出；这不以父子关系判断前后台。主进程仍运行时，同一终端收到的输出正常处理。退出时仍必须处理主进程尾部及自身已接收、排队、消费中的内容，应用最终终端状态并释放资源；实际退出、真实源结束、消费完成和主动取消不得混淆。具体收尾边界、取消条件和预算仍待确认。启动器启动的实际 Agent CLI 是执行主体，不适用普通工具后代的排除条款，需独立验证启动链生命周期。本计划下一增量以这些保留要求为先，不再把 macOS 普通后代延迟输出实验当作独立产品门禁。
 
 ## 进度
 
+- [ ] 下一新诊断补外层调用方await后与结算I/O预算观察；本轮outer-returned仅为resolve前事件，不能替代完整返回证明，不改旧工具/工件。guard九项调用方时间已另行补算通过。
 - [x] (2026-09-22) 新C/JS/workflow已实现，v1合成21项保留，v2独立oracle27/27，零native；源码/协议/outer原始事件和语义负例复审已收口，JS/workflow/文档检查及主树bridge回归通过。详见生命周期契约第15节。
-- [ ] 固定输入的首次Windows/MSVC九项矩阵与完整下载复核；当前未有本轮原生结果，不追认旧Windows G07三条。
+- [x] (2026-09-22) 固定cf359040/run35631266321 attempt1完成Windows/MSVC九项矩阵、完整ZIP下载、可信入口复算及836项独立raw检查；三个正例建立前提，六个负控按预期拒绝，原始分类保留。旧Windows G07三条仍not-established，详见契约第16节。
 - [x] (2026-09-22) 生命周期契约第14节冻结Windows G07补证：close-wait、keep-open、close-exit各3次，真实关闭自身stdio后双fresh challenge证明主体仍执行，零PTY、原guard-v2及预算不改。
 - [x] (2026-09-22) 新C/JS/workflow、完整离线校验与负控自测及复审已完成；首次Windows九项及下载复核单列待办，未验证不宣称缺口已闭合。
 - [x] (2026-09-21) 根据用户提醒核对Windows正常对象语义与HPCON最终释放契约，设计第27节先冻结无PTY的六driver/92child控制；既有资源失败与具体归属inconclusive不改判。
@@ -36,7 +37,7 @@
 - [x] (2026-09-21) 固定d173c099/run35620967433 attempt1完成三平台D1各37项、D2各24项，三个ZIP各1280成员完整下载及源码输入/离线复核；D1共111条已验证，D2原verifier72pass，无工件错误，54real启动控制/18synthetic、零PTY。
 - [x] (2026-09-21) 追加Windows审计定位G07前提缺口：固定Node22.23.2的libuv对fd<=2不实际_close，fs.closeSync(1/2)没有提前关闭stdio；三项仅观察到相邻的关闭/退出JS通知。原success/24pass、其余69项依据与全部工件不改，D2不宣布整组完成。
 - [x] (2026-09-22) Windows G07真实stdio提前关闭及独立主体存活控制已在契约第14节冻结；新入口/输入/工件实施与原生执行单列当前待办，不修改旧冻结脚本、门槛或重跑求绿。
-- [ ] G07补证后逐平台另冻partial-create、wait/通知、取消/正长度readable、释放失败/挂起、两个并发会话和unknown owner有界隔离；builtin、旧Windows及实际Agent/宿主/packaged继续开放，不直接接入业务或选定生产预算。
+- [ ] 新G07补证完成，下一步逐平台设计并另冻partial-create、wait/通知、取消/正长度readable、释放失败/挂起、两个并发会话和unknown owner有界隔离；builtin、旧Windows及实际Agent/宿主/packaged继续开放，不直接接入业务或选定生产预算。
 
 - [x] (2026-09-21) 按设计第25节冻结本增量：macOS三arm最小close对照和Windows只读类型取证，保留原资源失败；正readable控制另列后续。
 - [x] (2026-09-21) 新独立入口及两平台workflow、本地机械变换/合成负例/完整失败遍历和Linux隔离构建布局预检完成；补构建链接归档、跨平台路径及有效负结果分类。
@@ -87,6 +88,10 @@
 - [ ] macOS 原始 write、leader 存活/退出和 EOF 后保持 master 的控制实验作为诊断开放项保留；按保留的产品契约需要决定是否推进，不独立阻塞交付或计划归档，不把现有 read 0 直接判为产品完整性已满足。
 
 ## 意外与发现
+
+收口复审区分了guard-returned与调用方await后事件：前者在resolve之前，九项真正controller-guard-observed最大1012.3385ms、均在2000ms内。outer-returned之后尚有同步写盘和resolve，九份outer trace没有await后时间；只能证明controller已退出/捕获已close且事件在5000ms内，不能宣称完整外层返回预算已独立证明。此为诊断观察缺口，不改变G07前提判定；原审计保留，补充计时另存timing-observation-audit-v1.json，下一新工具承接。
+
+新close-exit-3原始轨迹中双流最晚close为20.7513ms，父端21.1521ms尝试challenge，21.4268ms观察到控制通道不可用，child-exit通知21.7708ms才到，但没有pong。其前提正确拒绝，直接说明通知偏序不能证明主体仍可执行；正例才以双EOF后两次fresh响应建立窄前提。keep-open三个预期超时仍为deadline-incomplete，不能因为迟到EOF或整个控制套件通过而升级自然完整。
 
 新工具初稿的native ERROR大小写、outer结果自报及只改冗余字段的token负例已在独立复审中修正；v1自测保留，v2才有增强证明。native EXITING与child-exit的父端通知顺序不能代表主体操作顺序，新oracle保留两路原时序，只要求许可先于退出及主体内序号/回执一致，未放宽第14节的双fresh挑战前提。
 
@@ -147,6 +152,8 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 通用后代实验测的是 PTY/ConPTY 的退出、挂断、EOF 与取消行为，不直接证明真实 Agent 已发生同类缺陷。macOS 后代失败在澄清后的产品范围之外不能单独构成交付阻塞；Windows 最终光标和自然资源释放问题仍在范围内。父先退出不等于交互式 shell 后台作业，启动器的实际 CLI 子进程也不能按普通工具后代排除。
 
 ## 决策记录
+
+- 决策：以cf359040/run35631266321首次九项及全工件独立复核收口本轮G07补证，进入原生异常/unknown owner有界隔离设计，但不追认旧三条G07通过或选择生产API/预算。理由：三个新正例真实关闭与独立存活证据成立，六个负控按预定原因拒绝；零PTY控制只补诊断前提，不覆盖native释放异常或产品链路。正常Windows对象引用语义不是待消除的系统bug。日期/作者：2026-09-22 / Codex。
 
 - 决策：新Windows-only三模式各三次独立补证，原guard-v2原样导入，原G07和工件不改。理由：真实CloseHandle与父端EOF、关闭后的两次fresh响应共同证明前提，keep-open/close-exit负控分别拒绝不足证据；避免把平台正常语义当产品问题。日期/作者：2026-09-22 / Codex。
 - 决策：保留三平台原workflow success和D2原verifier72pass，单列Windows G07三项前提未建立；下一步优先另冻真实stdio提前关闭和独立主体存活控制，暂不进入业务或宣称D2整组完成。理由：固定libuv的标准fd特殊处理使fixture操作无效，JS事件通知顺序不是OS生命周期证明；不能改旧断言追认绿色或否定其余69项依据。日期/作者：2026-09-21 / Codex。
@@ -211,11 +218,13 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 
 本工作树的 `runtime-exit-integrity-native-candidates` 分支基于 `origin/main@5965adb8`，只承载隔离诊断与文档；尚未完成的运行时改造在另一个本地分支，不随此分支推送。`scripts/diagnostics/diagnose-unix-inplace-cancel.mjs` 编排当前四类各三次场景及离线复核，`scripts/diagnostics/unix-pty-observer.c` 是运行在同一Node进程内的只读原生观察模块，`.github/workflows/runtime-unix-inplace-cancel.yml` 在Linux/macOS各运行12项并保留完整工件。
 
-最新已完成的Windows原生入口是 `scripts/diagnostics/diagnose-windows-hpcon-owner.mjs`，由 `scripts/diagnostics/windows-hpcon-owner-patch.mjs` 在隔离目录生成诊断native，专用workflow为 `.github/workflows/runtime-windows-hpcon-owner.yml`。上述Unix入口属于已完成的原位观察阶段；全部旧入口冻结。当前第32–33节与独立生命周期文档第11–13节记录D1/D2四个新Node诊断文件、本地/远端结果及Windows G07缺口；下一工作是另冻G07真实操作补证，不是复跑旧矩阵或开始业务接入。生命周期文档的业务及旧contract/barrier模型引用基于主运行时分支0518dcc4；本独立树没有这些改造和旧模型，不可将其路径作为本树现成执行入口。
+最新已完成的Windows原生入口是 `scripts/diagnostics/diagnose-windows-stdio-close.mjs`，直接构建 `scripts/diagnostics/windows-stdio-close-control.c` 并用原guard-v2采集九项零PTY控制；workflow为 `.github/workflows/runtime-windows-stdio-close.yml`。候选设计第35节及共享契约第16节记录首次运行与独立复核，旧G07三项不追认通过。此前HPCON与Unix原位观察入口仍冻结；下一工作是原生异常路径/unknown owner有界隔离设计，不是复跑旧矩阵或开始业务接入。生命周期文档的业务及旧contract/barrier模型引用基于主运行时分支0518dcc4；本独立树没有这些改造和旧模型，不可将其路径作为本树现成执行入口。
 
 candidate指被验证的读取器，audit指candidate结算后才接管残留数据的诊断读取器，两者不能合并计算候选交付量。gate是允许夹具主进程退出的文件信号；独立控制循环根据成功写入回执和完整字节对账发布gate，不依赖读取循环恢复。readiness只表示当前可读，EOF必须来自真实正容量读取的结束结果，取消则明确记录interrupted。后续Windows独立worker是专门读取ConPTY输出的工作线程，现有入口为 `scripts/diagnostics/compare-windows-exit-readers.mjs` 和 `scripts/diagnostics/runtime-exit-conout-worker.mjs`；不能直接套用Unix的fd/EOF语义，须先冻结新的取消与同进程长期资源协议。
 
 ## 工作计划
+
+当前里程碑已由契约第16节收口。下一里程碑是原生异常路径及unknown owner有界隔离的设计与运行前矩阵冻结：逐平台列出partial-create、wait/通知失败、在途取消/正长度已读缓冲、release失败/挂起和两个并发会话，明确每个注入点、已知资源owner、可证结果和允许的隔离边界。对无法确认的owner保留unknown及操作账本，不重复Close、不关闭未知句柄、不按日志PID强杀，不把超时当完整EOF。新工具还需补外层调用方await后及同步结算I/O预算观察，不能把resolve前事件当完整返回证明。只有新协议独立审查后才实施新诊断和一次完整首次采集；具体预算尚未选定，不能直接复制本轮控制参数成为生产政策。当前不推运行时分支、不改业务或重复旧矩阵；下列安排保留历史，不覆盖本段当前顺序。
 
 本阶段按生命周期契约第14节新增 `scripts/diagnostics/windows-stdio-close-control.c`、`scripts/diagnostics/diagnose-windows-stdio-close.mjs` 和 `.github/workflows/runtime-windows-stdio-close.yml`。C主体用独立命名管道传操作结果，实际WriteFile/CloseHandle自己的两stdio并ExitProcess，父controller在原guard pending时推进双EOF/两次fresh challenge/100ms持有/退出许可。先工具自测、native与JS独立审查，再固定输入的Windows Node22.23.2/MSVC首次九项运行和完整离线审计。失败也继续全部schedule，编译失败记零child/九项not-run；不改旧guard、workflow、断言或业务。以下已有安排保留历史，当前顺序以本段为准。
 
@@ -248,6 +257,8 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 职责澄清后的扩展里程碑：先把验收分类写入正式设计第 9 节，并在运行时主线设计中确认主进程尾部、已进入链路的内容、最终状态、资源释放和取消语义；启动器到实际 Agent CLI 的生命周期单独验证，不用通用后代实验替代。只有保留产品问题需要进一步底层解释时，再用本独立分支推进 macOS 控制组：真正记录 write 返回值/errno，比较 leader 退出与保持存活，将首次 EOF 后持有 master 的观测与原关闭路径分开。新诊断执行前仍须另冻结轮次、期限和分类，不调整已有两轮原始判断；尚未确定具体实现或预算。
 
 ## 具体步骤
+
+本轮证据已完整下载到主运行时树。从独立诊断树执行 `node scripts/diagnostics/diagnose-windows-stdio-close.mjs --verify-saved /home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2/.debug/stdio-close-35631266321/runtime-windows-stdio-close-35631266321-1/stdio-close-evidence`，预期checked9、actualCreated9、pass:true、synthetic:false、pty:false、无工件错误，且仅三个close-wait前提为true。原始guard分类必须另核对为六natural-exit/complete及三deadline-exceeded/deadline-incomplete；离线复核不新增原生样本。下一输入先补正式设计和冻结矩阵，不改本轮脚本或工件。
 
 从本树运行 `node --check scripts/diagnostics/diagnose-windows-stdio-close.mjs` 与 `node scripts/diagnostics/diagnose-windows-stdio-close.mjs --self-test`，已完成本地工具验证；Windows x64/MSVC环境运行 `--output stdio-close-evidence`，然后 `--verify-saved stdio-close-evidence`，只允许全新目录。workflow固定Node22.23.2，不安装依赖，始终上传完整输出；下载后在Linux也可离线复核，但不是新增Windows样本。push前fetch/rebase main，仅推诊断分支，不能将编译失败或原生前提失败藏入重跑。
 
@@ -293,6 +304,8 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 验证与验收
 
+本轮九项已按冻结第14节完成，具体环境/输入/时间/审计见第16节；旧三条G07不追认通过，产品与原生异常矩阵仍未验收。收口须确认两树文档状态/索引/关联路径/计划四活章节一致，主树只改文档；独立树本轮结果提交仅文档，C/JS/guard/workflow与cf359040输入字节不变。历史主设计第7–38节、独立设计第2–5及7–34节、契约第1–15节正文不改写；只允许当前导航及新增结果变化。用户image.png不纳入提交。
+
 本轮G07三个close-wait正例须真实关闭、完整marker、双EOF/close后两次fresh challenge/pong、至少100ms持有且guard未提前返回；许可、主体exit0与自然捕获结算在原预算内。keep-open及close-exit各三项分别按预定轨迹拒绝目标前提，不能把意外失败都计成负控通过。九项全部遍历，manifest/输入commit/EXE/原guard和原始时钟交叉核验，坏首项不阻止末项检查。合成自测、旧72pass与新原生矩阵分开报告，旧Windows G07仍not-established。
 
 本轮D1三平台各37项、共111条模型已验证；D2三平台完整72条按原verifier通过，其中18条synthetic/54条真实进程或启动控制分别统计，零PTY。Windows G07三项未建立真实stdio先关/主体仍活前提，须独立补证后才能宣布D2整组验收；其余69条控制依据不因该缺口改判。成功识别预期失败不改变raw失败分类，超时后真实end不晋升完整；前提不成立、已要求的driver控制或fixture协作/期限未达不得通过，缺helper回执或TTL超限仍为fixture失败。G04 helper的OS退出未被外层独立wait观察属于已声明的证据边界，应单列not-observed而非自动否定有效guard/协作控制，也不能充当原生资源释放通过。完整schedule及首项损坏后继续校验、文档元数据/索引/路径/计划章节/历史文本检查仍必需；真实PTY/Host/Webview与生产验收不由本轮替代。
@@ -315,7 +328,9 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 结果与复盘
 
-G07新工具实施及本地复审已完成，详见契约第15节；独立诊断分支新增三个文件，旧guard和业务不改。本地27项全为合成自测，Windows实际编译/九项及离线审计尚待，不能将此实施收口写成前提缺口已经关闭。
+本轮G07补证已完成实施、自测、首次Windows运行及完整下载/离线审计，详见契约第14–16节。固定cf359040/run35631266321 attempt1的九项控制成立：三个close-wait正例持有100.8252–101.7934ms，keep-open与close-exit各三项按预期拒绝前提；raw仍分别是超时不完整与自然完整，两个负控不当正例。runner的27项合成自测与九项真实控制分开，独立raw审计836项通过，没有重跑。
+
+新证据只补固定Windows环境下真实stdio关闭后的主体存活前提；旧run35620967433的Windows G07三项继续not-established，原72pass和所有历史失败保留。下一阶段转原生异常路径/unknown owner有界隔离设计与矩阵冻结，不调查正常Process引用存续来代替推进，不接入业务；生产reader/API/预算及完整产品矩阵未验收，设计比较中/验证中，计划active。以下为历史阶段记录，其中当时的下一步由本段取代。
 
 当前进入G07独立补证阶段，第14节运行前协议已落盘，尚无本轮原生结果。新实现只新增隔离诊断，不修改旧输入；完整首次Windows矩阵和下载复核后再评估缺口是否闭合，暂不进入原生异常或生产接入。以下上一阶段结果保留原范围。
 
@@ -344,6 +359,10 @@ HPCON阶段首次原生矩阵、完整ZIP下载与独立复核已完成，见设
 证据收口检查：第二轮 builtin 三个后代在 public onExit 后留下成功 writer receipt，但呈现只有 `PARENT`；候选完整收到 `CHILD_TAIL`。两轮 Windows 保存结果复算分别报告 6/0 个候选失败，不把离线验证当新增原生轮次。元数据/索引/related paths、workflow 只读权限与分支边界、`git diff --check` 通过；业务、package/lockfile、已有 baseline 入口/workflow 无差异。未执行完整 UI/Agent/packaged，资源预算仍未完成；macOS 控制组保留但不是无条件交付前置项。
 
 ## 证据与备注
+
+2026-09-22 收口检查：两工作树本增量各5份文档，metadata/索引/关联路径/架构标签/计划必要章节及106项历史/一致性检查通过；共享契约第14–16节两树一致，旧正文不改。可信入口再次离线复算九项通过，runner合成27项单列，bridge回归通过。独立文档复审发现的resolve前事件/await后观察和control-unavailable命名已收紧，新增计时补充保留外层未观察边界；未修改业务、冻结C/JS/guard/workflow或原工件，用户image.png排除。
+
+本轮输入cf35904055a840e6e5b3189eb8551beba17d7163/run35631266321 attempt1。主树 `.debug/stdio-close-35631266321/` 保存全部API元数据、artifact10653794664的完整ZIP（1422720字节/1449成员）、解压工件及两个离线审计。ZIP SHA256为64376d0c6c68521594b137e5f09bda636ea4445f67defa7fc243cdd257fe79ef；独立raw审计JSON为133b9fc9ed673cf23637837517e1b140e56266daed4a3af701545eeb9c80a20f。固定输入、编译环境、EXE指纹、27合成与9真实控制、五份输入快照只读CRLF/LF对账详见契约第16节。guard-returned事件最大1011.7495ms，调用方await后观察最大1012.3385ms，九项均在2000ms内；outer-returned事件最大1112.4939ms，但事件后仍写盘/resolve，未记录外层await后时间，不据此宣布外层完整返回预算已证。另存timing-observation-audit-v1.json限定这三类计时，原预算不改；未运行新PTY、真实Agent或产品验收。
 
 G07本地证据位于独立树 `.debug/windows-stdio-close-selftest-v1-first` 与 `.debug/windows-stdio-close-selftest-v2-oracle`，分别21/27合成断言，后者源码/编译前输入快照与当前C/JS/workflow一致。JS/C/guard/workflow摘要见契约第15节；JS语法、workflow解析和内嵌模块语法、metadata/路径/历史保留、主树bridge回归通过。候选设计当前导航第1/6节已更新，历史实验协议及结果不变；未执行Windows本地编译。
 
@@ -424,3 +443,5 @@ G07本地证据位于独立树 `.debug/windows-stdio-close-selftest-v1-first` �
 修订记录（2026-09-22，G07补证冻结）：第14节固定三个模式各三次的Windows已知写端关闭/独立双challenge协议，复用原guard-v2及原预算；新增工具实现和首次原生矩阵待执行，不以旧pass、合成自测或正常对象语义替代前提证据。
 
 修订记录（2026-09-22，G07工具实施）：完成隔离C/JS/workflow和27项增强合成自测，保留21项首稿记录；收口native错误枚举、outer事件独立派生、通知偏序及语义负例缺口，更新实际可用命令和源指纹。下一步只运行固定输入首次Windows矩阵，不改旧实验或声明产品完成。
+
+修订记录（2026-09-22，G07首次原生收口）：固定cf359040的首次Windows九项控制、完整ZIP及可信入口/836项独立raw审计完成；三个新正例补齐真实关闭后存活前提，六负控按预期拒绝且raw分类不改。更新全部活章节和证据入口，旧三条G07仍not-established、旧失败与原始工件不变；下一步原生异常/unknown owner有界隔离设计与矩阵冻结，业务和生产预算未改，计划active。
