@@ -21,7 +21,7 @@ updated_at: 2026-09-22
 
 2026-09-20 用户澄清后的产品范围以第 9 节为准：画板管理 Terminal / Agent 执行会话及其终端资源，不默认承诺实际主进程退出后继续保留节点或终端以等待普通后代及其未来输出。第 2 节冻结协议、两轮原始断言和失败结果全部保留；它们描述诊断实验是否达到原门槛，不自动等于产品验收结论。
 
-当前进展入口见第6节，最新PTY原生结果见第30节，D1/D2证据与Windows G07补证冻结/首次结果见第31–35节。第2–5节及第7–29节保留各阶段当时的协议、结果和判断，其中“下一步”按所属阶段理解，不覆盖最新状态。
+当前进展入口见第6节，最新PTY原生结果见第30节，D1/D2证据与Windows G07补证冻结/首次结果见第31–35节。第36节及 `docs/design-docs/runtime-native-failure-isolation.md` 记录原生失败/隔离第一批设计冻结，尚未实施或取得新结果。第2–5节及第7–35节保留各阶段当时的协议、结果和判断，其中“下一步”按所属阶段理解，不覆盖最新状态。
 
 ## 2. 运行前冻结
 
@@ -63,7 +63,7 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 第30节已完成Windows bundled-DLL三臂首次原生矩阵及全量复核：138条会话完整，46次已知HPCON最终Close消除同native/no-close的逐会话+2总句柄增量，四个no-close资源失败保留。这是正常自然路径的窄因果证据，不是Windows对象语义缺陷或生产退出完整性已修复；旧类型/内核对象身份归属不确定不改判。
 
-第31节冻结的D1/D2已完成本地及三平台首次runner，结果见第32–33节和 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第11–13节。输入d173c099/run35620967433 attempt1的D1三平台各37项已验证；D2三平台各24项按原verifier通过，但Windows G07三项因fs.closeSync(1/2)在固定Windows libuv中不实际关闭stdio，未建立“流先关闭、主体仍活”前提。旧success/24pass及其余69条控制依据保留，不宣布旧三条补验或产品通过。第34节另冻的Windows-only补证已以cf359040/run35631266321 attempt1完成九个新真实child，原verifier及独立原始审计通过，详情见第35节；三close-wait建立新前提、六负控正确拒绝，原guard与预算不改。下一阶段转原生异常路径和unknown owner有界隔离的设计与矩阵冻结，不直接接入业务。取消/异常/builtin/正readable、并发、旧Windows、真实Agent/Host/Webview/packaged和生产API/预算仍开放，设计比较中/验证中、计划active。
+第31节冻结的D1/D2已完成本地及三平台首次runner，结果见第32–33节和 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第11–13节。输入d173c099/run35620967433 attempt1的D1三平台各37项已验证；D2三平台各24项按原verifier通过，但Windows G07三项因fs.closeSync(1/2)在固定Windows libuv中不实际关闭stdio，未建立“流先关闭、主体仍活”前提。旧success/24pass及其余69条控制依据保留，不宣布旧三条补验或产品通过。第34节另冻的Windows-only补证已以cf359040/run35631266321 attempt1完成九个新真实child，原verifier及独立原始审计通过，详情见第35节；三close-wait建立新前提、六负控正确拒绝，原guard与预算不改。第36节及 `docs/design-docs/runtime-native-failure-isolation.md` 已冻结原生失败/unknown owner隔离第一批设计，尚无新工具或原生结果；下一步先实施D3/D4，完整验收后才推进W1/U1，不直接接入业务。其余通知/环境销毁、正缓冲取消、在途waiter/control fd、真正Close挂起和双会话第二批尚未冻结，builtin、旧Windows、真实Agent/Host/Webview/packaged和生产API/预算仍开放，设计比较中/验证中、计划active。
 
 ### 首轮阶段的历史讨论
 
@@ -647,3 +647,15 @@ D2正式首轮 `.debug/process-guard-v2-local-first` 的24项control-pass和最�
 独立原始审计 `independent-native-audit-v1.json` 的836项检查与九条预定控制均通过，SHA256为 `133b9fc9ed673cf23637837517e1b140e56266daed4a3af701545eeb9c80a20f`。close-exit-3双流close最晚20.7513ms、challenge21.1521ms、观察控制通道不可用21.4268ms、child-exit通知21.7708ms，仍未出现pong；此负控直接支持“不从通知顺序推断主体可执行”。全组guard-returned事件最大1011.7495ms，调用方await后观察最大1012.3385ms，九项均在冻结2000ms内。outer-returned事件最大1112.4939ms，controller已退出/两流已close且未命中5000ms，但事件后仍写盘再resolve，没有外层await后记录，不能将其当完整外层返回预算证明。补充计时在timing-observation-audit-v1.json，原审计不改，工具观察缺口由下一新入口承接；keep-open仍不完整。
 
 本增量仅补足新Windows样本的真实关闭后存活前提及新oracle负控，旧72pass、旧Windows G07三条not-established、D1模型结论与全部历史失败均原样保留。不以此证明PTY资源释放、实际Agent/Host/Webview或生产退出完整性，也不把Windows正常对象引用语义叫作系统缺陷。下一阶段冻结原生partial-create、wait/通知、取消/正长度buffer、release失败/挂起、并发和unknown owner有界隔离的设计与矩阵；旧guarded移交、builtin、旧Windows、packaged和生产API/预算继续开放，退出完整性债务不关闭。
+
+## 36. 原生失败与资源隔离第一批设计冻结（2026-09-22）
+
+本轮输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。新增 `docs/design-docs/runtime-native-failure-isolation.md`，状态比较中/未验证；当前只冻结源码依据、故障层级、owner台账、准入与隔离候选及第一批协议，没有新增工具、workflow或原生结果。旧D1/D2/G07、PTY矩阵及全部失败不改，不把诊断fork当生产实现。
+
+真实API受控输入失败、跳过native调用的合成替身、真实调用后的通知扣留、调用前gate与有限模型分别计账。资源取得后立即登记，释放只接受自身owner的单次操作；同operation迟到证据只能追加，不能改首报、重复Close或追认旧EOF。有限策略固定N=2总槽/Q=1未知熔断，已准入的A/B仍可同时unknown；封禁新建不保护共享native进程免于卡死/崩溃，独立进程必须在创建前布局，生产拓扑尚未选定。
+
+第一步D3三平台各24项，共72个零PTY进程控制场景，独立验证实际after-await、进程结算和writer封存；D4三平台各8项，共24个零native准入模型。先新增独立工具、完成本地校验和首次三平台运行/完整工件复核，再进入W1/U1。resolve前事件不能替代调用方续体，同步落盘和CI超时也不属于等待API返回证明；预算详见新设计，不追溯改旧guard。
+
+第二步W1 Windows八项各三次共24、U1 Linux六项各三次共18、macOS八项各三次共24，共66个driver尝试，并非66个成功PTY。第一批覆盖创建后的部分初始化、wait事实分离、Unix合成通知拒绝与释放回执延迟；原生调用是否实际进入、取得哪些资源、实际执行主体数量、前提不足和not-run均独立统计。尚未运行时不能因矩阵已冻结而宣布这些错误路径安全。
+
+其余通知/环境销毁、正长度已读缓冲取消、在途waiter/control fd、真正Close挂起和双会话仍属未冻结第二批，继续阻塞生产接入。builtin、其他Windows版本、实际Agent启动链、VS Code/Electron、Host/Webview/packaged、生产容量/停止预算及旧guarded移交仍开放。下一阶段只实施D3/D4，不改业务、依赖、旧live绑定或旧实验；原生候选总体比较中/验证中，ExecPlan active，退出完整性债务未关闭。
