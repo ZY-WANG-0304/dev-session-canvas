@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-21对象语义控制冻结：已退出Process被引用而存续是Windows正常语义；HPCON Release仍需最终Close是调用方独立职责，不能把旧+2直接叫OS bug。新增六driver/92普通child、零PTY的retain/close/no-child对照，先校准语义再另冻HPCON干预。image错误31、旧资源失败和具体归属inconclusive均保留；assert移除baton的副作用受NDEBUG限制，历史无条件表述不作为binary事实。见当前退出完整性设计与active计划，尚无本轮原生结果，不关闭债务。
+
 2026-09-21资源归因结果：run35527241793首轮与5a7ed5c4/run35527528410完整下载复核。macOS两轮各138条PTY通过最小close因果对照，原包/重编译基线kqueue6→26、候选kqueue3稳定，基线失败不改判；Windows首次新观察器命名冲突零PTY失败保留，仅重命名后46条内容/生命周期通过，但逐会话+1 PIPE类型File/+1已退出非fixture Process仍积累。NT类型查询全成功，Process映像查询2730次ERROR_GEN_FAILURE31，归属仍inconclusive，不认定OpenConsole/signal pipe已确认。下一步另冻已知HPCON owner生命周期/释放干预，正readable取消、异常路径/真实宿主和生产契约继续开放。业务/依赖及旧实验不改，退出完整性债务不关闭。见 `docs/design-docs/runtime-exit-integrity-native-candidates.md` 第26节与active计划。
 
 2026-09-21资源归因协议已冻结：macOS原包/重编译基线/最小close三arm固定spawn-helper，Windows只读本进程句柄类型与Process身份取证。待执行首次原生矩阵，不把源码候选当因果结论；正长度JS readable-buffer取消控制分列下一增量。原四个资源失败、业务/依赖和所有历史实验保持不变，生产生命周期/API/预算及真实宿主验收仍开放。见退出完整性设计与active计划，债务不关闭。

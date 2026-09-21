@@ -413,3 +413,29 @@ Windows环境为Node/headers22.23.2、libuv1.51.0、node-pty1.2.0-beta.12、x64/
 本阶段收口的是macOS自然退出kqueue增长的最小干预因果证据，以及Windows增长类型的进一步定位，不是退出完整性的生产交付。下一增量应先冻结Windows已知HPCON资源所有者的生命周期/释放对照，必要时在实际对象仍可查询阶段记录进程身份；不能盲关句柄表中的陌生槽位，也不能只对已经移除baton的id再调用kill宣称回收成功。该候选尚未选定具体API或预算，本轮不实施。
 
 正长度JS readable-buffer取消控制独立保留，macOS异常wait/error/TSFN路径、真实Agent启动链、Host/Webview/packaged、生产自然结束/取消/资源owner契约仍未验收。业务代码、依赖安装树、旧live绑定和上一阶段冻结脚本/断言均未修改；两份计划保持active，设计仍为比较中/验证中。macOS本轮已得到的因果证据不需继续用同矩阵反复试绿，Windows也不因局部类型事实而取消剩余归属门槛。
+
+## 27. Windows 正常进程对象语义控制（运行前冻结）
+
+### 正常语义与调用方责任
+
+按用户本次要求，先确认正常对象语义，不把已退出Process仍可查询或仍占句柄视为Windows系统缺陷。[PROCESS_INFORMATION](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ns-processthreadsapi-process_information)明确要求调用方在不再使用时关闭hProcess/hThread；子进程退出但父进程仍持有这些句柄时，系统仍保留有关结构。[CloseHandle](https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle)明确关闭Process句柄不等于终止执行，移除对象还需要进程已终止且全部引用释放。本轮只证明自身owner引用释放，不声称所有系统引用消失，也不主动终止正常已退出对象。
+
+[ReleasePseudoConsole](https://learn.microsoft.com/en-us/windows/console/releasepseudoconsole)明确它不释放HPCON内存，调用方结束使用后仍必须ClosePseudoConsole；固定文档输入为[MicrosoftDocs d297f582](https://github.com/MicrosoftDocs/Console-Docs/blob/d297f58259a48a2ce5d77b427bc2b5dc6a573b00/docs/releasepseudoconsole.md)。[ClosePseudoConsole](https://learn.microsoft.com/en-us/windows/console/closepseudoconsole)可能影响仍连接的客户端与输出，Windows build26100前后返回行为不同。因此系统允许引用存续与应用最终释放职责并不矛盾，但不能用强杀或提前关闭换取计数下降。既有File/Process增长仍未精确绑定到HPCON成员，QueryFullProcessImageNameW的31原因也未证实。
+
+源码限定补记：固定node-pty的conpty.cc:106实际为assert(remove_pty_baton(baton->id))，若NDEBUG生效，移除副作用也不执行。历史文档关于“已移除baton”的无条件表述以本限定为准；未经固定binary配置或反汇编不能作为运行事实。可靠源码事实是自然退出路径关闭hShell而未显式Close HPCON，hShell未置空；复用kill可能触及失效或复用的句柄值。HPCON是opaque token，不能直接CloseHandle(hpc)，也不能盲关枚举得到的陌生句柄。
+
+### 新独立控制的冻结协议
+
+新增scripts/diagnostics/windows-process-object-control.c、scripts/diagnostics/diagnose-windows-process-objects.mjs及.github/workflows/runtime-windows-process-objects.yml，不加载node-pty、不创建PTY、不修改旧工具或依赖。固定顺序control-1、release-each-1、retain-until-end-1、control-2、release-each-2、retain-until-end-2，每个原生driver自身连续3次预热加20次测量。control执行同样观测时序但不创建child；其余四driver共92个child，退出码按sessionIndex从0起交替0/7。总数为92个普通进程、零PTY，不计入产品验收。
+
+每个child由CreateProcessW启动同一exe的child模式，CREATE_SUSPENDED|CREATE_NO_WINDOW、bInheritHandles=false。暂停时记录wait0、PID、创建/退出时间、退出码与image查询结果；ResumeThread后关闭本次返回的hThread，以5s有界wait确认自然退出。随后同一已退出hProcess查询三次、间隔至少50ms，总跨度至少100ms；要求signaled、正确退出码及PID/creation time一致。image成功或确切错误只作观察，不以必须成功或必须31作为门槛。release-each随后关闭自己的hProcess；retain保留全部23个至末尾逐一关闭。每次关闭记API结果并清空owner，不再操作已关闭数值槽位，不从数值槽位推定跨时间对象身份。
+
+driver最初、预热后、每次测量结束及最终释放后，均先等待至少100ms，再取5次间隔至少20ms的GetProcessHandleCount，保存单调时钟与完整序列。control/release-each预期相对自身初始基线稳定；retain预热后相对初始+3、后续每次+1至+23，末尾释放后回到初始基线。取初始窗口[min,max]作为允许范围，每个预期偏移后的窗口所有计数均须在同样范围内；任何背景变化保留为对照未成立，不事后扩阈值求绿。受控retain的增长是实验故意持有的正常引用，不叫资源泄漏。
+
+保存完整NDJSON owner/API/采样事件、stdout/stderr、退出状态、源码与工具/SDK/系统/Node/binary指纹，运行前保存schedule。每driver独立父watchdog30s，child wait5s；失败后清理只限本轮确切拥有的child，任何TerminateProcess、watchdog或非自然收尾都单列失败，不算通过。其余独立driver仍尝试执行；不会以driver退出后OS代收句柄冒充逐会话释放。
+
+先做合成正例、假退出/重复关闭/未释放/错误计数/强杀负例，以及缺工件与首份损坏后继续复核的自测；Linux自测不算Windows验证。仅推独立诊断分支的新固定输入，Windows runner完整执行一次，首轮失败保留；工件下载完成再全量离线复核，区分有效反结果和工件损坏。此时尚无新原生结果，既有四个资源红项及映像inconclusive不改判。
+
+### 下一边界
+
+本控制仅校准正常对象语义和调用方引用释放；完成后才另冻已知HPCON owner自然收尾的隔离干预，不能从无PTY控制推导旧+2的确切根因。正长度JS readable-buffer取消、真实Agent启动链、异常路径、Host/Webview/packaged与生产API/预算继续开放，设计保持比较中/验证中，计划active，业务代码和旧live绑定不变。
