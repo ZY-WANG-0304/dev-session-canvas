@@ -22,6 +22,10 @@
 
 ## 技术债列表
 
+2026-09-21 HPCON正常路径因果收口：输入d0f0be882bf5f99d0dcaa90c94b7a3d6b0023790/run35586906307 attempt1完成12driver/138会话/1260快照及完整ZIP复核，原verifier12/12有效、四个no-close resource-failure、evidenceErrors为空。两个no-close臂每会话+2，explicit-close共用同一native的两轮191稳定，46次Close均193至191且owner归零；全部内容/真实EOF及自然生命周期完整。这证明固定bundled DLL已知owner最终Close的窄因果作用，不把正常Process对象引用叫OS bug，也不要求稳定背景回到control187。旧+5、四个no-close失败、类型/内核对象身份和image31归属inconclusive保留；下一阶段设计API/adapter，分别验证取消/异常/builtin/正readable、实际Agent/Host/Webview/packaged与生产预算，业务和旧入口不改，退出完整性债务不关闭。见 `docs/design-docs/runtime-exit-integrity-native-candidates.md` 第30节和对应active计划。
+
+2026-09-21 诊断guarded硬返回预算债务：`scripts/diagnostics/diagnose-windows-hpcon-owner.mjs::guarded()`的150s timer只发送kill，Promise仍只等child.close；driver先退出而继承stdio仍被持有时，无法保证在硬截止返回。独立Linux/Node25.6.0纯Node控制已复现：150ms预算前driver退出，kill返回false，close仍比watchdog触发晚884.470223ms，总等待1043.413464ms；本树 `.debug/hpcon-guarded-budget-control-v1/` 的manifest SHA256为 `e053adf6b94787879ed8d8f08a9911b512bb422510d3ec8ece5028a991df6560`。影响是诊断失控路径的返回/完整失败遍历保证，不是 Windows 终端或生产故障证据；本次Windows12driver均未触发，不撤销正常完成结果。临时边界是保留冻结入口与工件、不宣称硬截止已验收；下轮取消/异常矩阵前在新版本入口独立结算超时并验证已退出driver/stdio仍持有控制，另记已知资源清理，不伪造EOF或清理未知PID。关联设计第30节与 `docs/exec-plans/active/runtime-exit-integrity-native-candidates.md`。
+
 2026-09-21 HPCON 实现前复核：stock 与新增 owner API 隔离、候选共用编译产物和实际 DLL/OpenConsole.exe 输入、单次 connect、原生退出与 TSFN 完成 gate 已列入运行前要求；Release 按同包头文件的真实 HRESULT 签名记录，不将原 void 调用类型当 API 契约。新工具的静态/合成自测不替代 Windows 原生 owner/内容/资源证据，不修改历史失败或关闭退出完整性债务。
 
 2026-09-21 HPCON owner 对照冻结：下一增量固定 `useConptyDll=true`，只比较 stock、owner-retain/no-close 与 owner-retain/explicit-close；保持原 Release 时机，Close 仅在真实 pipe EOF、consumer complete、input/worker 收尾和 shellExited 后由已知 owner 单次调用。不得复用 PtyKill、TerminateProcess、CloseHandle(HPCON) 或关闭陌生句柄；builtin、业务和生产 API/预算另验。旧 +2、普通对象 +5 与全部历史失败不改判，退出完整性债务不关闭。见设计第29节和 active 计划。

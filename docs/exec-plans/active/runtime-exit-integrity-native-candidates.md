@@ -14,10 +14,12 @@
 - [x] (2026-09-21) 新C/JS/workflow与独立只读审查完成，合成自测覆盖正常对象、错误计数/假退出/重复关闭/未释放/强杀、二进制绑定、活动owner槽位冲突及损坏/缺工件后继续；Linux仅验证工具逻辑。
 - [x] (2026-09-21) cbbba096/run35560063334 attempt1完整执行六driver/92child/690快照并下载复核，MSVC编译成功，两个control通过、四个初始计数失败保留；正常保留/释放和退出后image31有原生证据，+5背景归属未知。
 - [x] (2026-09-21) 按设计第29节冻结 Windows bundled-DLL 已知 HPCON owner 的三臂隔离释放协议：stock、owner-retain/no-close、owner-retain/explicit-close；builtin、业务和旧实验排除在本增量外。
-- [x] (2026-09-21) 独立分支 e8740f53 / 7c29404e 实现候选 native transformer 和三臂入口；静态复审及本地 v1/v2 合成自测通过，最终覆盖真实 Release HRESULT、owner/EOF/consumer 缺前提、工件损坏后继续和有意资源失败。新 workflow 已准备，尚无原生结果。
-- [ ] 冻结并推送完整输入，执行一次 Windows 原生矩阵；下载后逐项复核，不把 Linux 合成自测视为原生通过。
+- [x] (2026-09-21) 独立分支 e8740f53 / 7c29404e 实现候选 native transformer 和三臂入口；静态复审及本地 v1/v2 合成自测通过，最终覆盖真实 Release HRESULT、owner/EOF/consumer 缺前提、工件损坏后继续和有意资源失败。当时新 workflow 已准备、尚无原生结果，后续首次运行见下一项。
+- [x] (2026-09-21) 输入d0f0be882bf5f99d0dcaa90c94b7a3d6b0023790执行run35586906307 attempt1，完整下载artifact10633047821并本地复算ZIP；12driver/138会话/1260快照均复核，四个no-close资源失败保留且无evidenceErrors。
 - [x] (2026-09-21) 实现前复核补充 stock API 隔离、两候选共用产物、实际 OpenConsole.exe 绑定、Release 的实际 HRESULT 签名和 native 单次 connect/退出失败门控；这些是新诊断的有效性要求，不是 Windows 产品缺陷结论。
-- [ ] 完成 Windows HPCON 首次矩阵、全工件下载和独立复核后再判断 owner 释放及残余资源；不把正常引用存续当 OS bug，不复用 kill 或关闭陌生句柄。
+- [x] (2026-09-21) 首次HPCON矩阵建立正常自然路径的窄因果证据：两no-close臂每会话+2，explicit-close两轮191稳定，46次单次Close均193至191且owner归零；138条内容/真实EOF成立，不外推生产或具体内核对象身份。
+- [x] (2026-09-21) 独立Linux纯Node控制确认guarded只等child.close不是硬返回预算：150ms watchdog后close仍晚884.470223ms；本次Windows无命中，原工具/工件不改，登记下轮新版本修复。
+- [ ] 下一里程碑先定义生产API/adapter候选的生命周期与失败契约，再冻结新版本硬返回和取消/异常/builtin/正readable诊断；并发、旧Windows与实际Agent/宿主/packaged分层验收继续开放，本阶段不改业务、不选定生产预算。
 
 - [x] (2026-09-21) 按设计第25节冻结本增量：macOS三arm最小close对照和Windows只读类型取证，保留原资源失败；正readable控制另列后续。
 - [x] (2026-09-21) 新独立入口及两平台workflow、本地机械变换/合成负例/完整失败遍历和Linux隔离构建布局预检完成；补构建链接归档、跨平台路径及有效负结果分类。
@@ -27,7 +29,7 @@
 - [x] (2026-09-20) 新worker/资源观察器/诊断/workflow实现，最终自测涵盖真实+3/-3文件计数、TCP四类、所有权/EOF/增长负例及全失败/单损坏遍历；Linux v1/v2各四driver、46条PTY及完整复核通过，原输入保留。
 - [x] (2026-09-20) 输入b031b598的run35519226627 attempt1三平台完整运行并下载复核：Windows12项取消/自然对照通过，三平台各46条自然会话内容通过；macOS两组kqueue各+20、Windows两组handles各+40，四个资源失败保留，全部24个driver工件有效。
 - [x] (2026-09-20) 两工作树各五份文档同步，设计状态/索引/关联路径/计划章节与diff检查通过，Windows CRLF输入只读归一核对、所有cleanup/guard审计通过；bridge回归通过，业务/依赖/旧入口零修改。
-- [ ] 下一增量先冻结Windows已知HPCON owner的隔离释放/可用身份取证，保持本轮inconclusive；正长度JS readable-buffer取消控制另验，仍不接入业务或选定生产预算。
+- [x] (2026-09-21) 历史资源矩阵提出的已知HPCON owner隔离释放已由第29–30节完成；旧具体对象身份inconclusive不改判，正长度JS readable-buffer取消与生产验收仍在当前下一里程碑。
 
 - [x] (2026-09-20) 设计第20节冻结新原位观察/独立gate矩阵，两平台24项，增加receipt-held控制，不改旧入口/结果。
 - [x] (2026-09-20) 新N-API/诊断/workflow及非PTY负例完成；本地v1全12项10通过/2个不足100ms的诊断持有失败保留，按单调截止点修正后v2及最终v3各12项/复核通过，未改门槛或期限。
@@ -69,7 +71,11 @@
 
 ## 意外与发现
 
-新诊断草稿的静态复审发现重复 connect、stock 调用候选接口、移除 owner 后访问、TSFN/等待状态未核验及机械转换破坏定义等问题；因此 runner 尚未启动，必须先修正并自测。Windows 实际配套程序为 OpenConsole.exe，Unix spawn-helper 不在本路径。原 conpty.cc 将 Release 当作 void 调用，但同包 conpty.h 声明真实导出返回 HRESULT；应按该头文件记录结果，而不是伪造成功或把 Release 与 void Close 混淆。该组发现属于新增诊断工具，不自动外推到业务缺陷。
+首次HPCON原生运行中，stock与同工具链owner-retain两轮均每会话+2，而共用同一native的explicit-close两轮191不增长；46次Close前后均193至191。92次真实Release HRESULT为0，138条内容/EOF/消费和自然生命周期完整，不能把Windows正常对象引用当OS bug。新矩阵只有总量，没有类型或内核对象ID，因此旧File/Process配对与image31的具体归属仍未补齐，见设计第30节。
+
+guarded()的150s timer只发送kill，Promise仍只等child.close；driver退出不代表stdio已关闭。独立Linux纯Node控制复现driver在150ms前退出、kill返回false后close仍晚884.470223ms，总等待1043.413464ms。本次Windows12driver均无watchdog命中，这项新工具债务不改变正常完成证据，但下轮新入口必须独立约束返回预算并保留真实取消分类。
+
+运行前草稿的静态复审曾发现重复 connect、stock 调用候选接口、移除 owner 后访问、TSFN/等待状态未核验及机械转换破坏定义等问题；当时先修正并自测，之后才执行第30节首次runner。Windows 实际配套程序为 OpenConsole.exe，Unix spawn-helper 不在本路径。原 conpty.cc 将 Release 当作 void 调用，但同包 conpty.h 声明真实导出返回 HRESULT；应按该头文件记录结果，而不是伪造成功或把 Release 与 void Close 混淆。该组发现属于新增诊断工具，不自动外推到业务缺陷。
 
 官方 ClosePseudoConsole 是 void，且旧版本可能等待客户端断开；候选必须在真实 pipe EOF、worker/input close、decoder/consumer complete 后调用，不能把 Close 调用本身写成成功返回。PtyKill 混合 Close 与 TerminateProcess，不能复用。退出线程中的 baton erase 还可能与主线程查询竞态，因此候选必须显式同步 shellExited/hShell=NULL 与 HPCON owner 转移。
 
@@ -110,6 +116,9 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 通用后代实验测的是 PTY/ConPTY 的退出、挂断、EOF 与取消行为，不直接证明真实 Agent 已发生同类缺陷。macOS 后代失败在澄清后的产品范围之外不能单独构成交付阻塞；Windows 最终光标和自然资源释放问题仍在范围内。父先退出不等于交互式 shell 后台作业，启动器的实际 CLI 子进程也不能按普通工具后代排除。
 
 ## 决策记录
+
+- 决策：以首次完整三臂结果收口正常自然路径，保留四个no-close资源失败并转API/adapter及缺口矩阵设计，不继续重跑求全绿。理由：已知HPCON最终Close消除本轮逐会话+2的窄因果证据成立，但对象类型/身份、异常/取消、builtin和实际宿主仍未验收；稳定背景差4不等于全局对象必须归零。日期/作者：2026-09-21 / Codex。
+- 决策：guarded硬返回缺口另列工具债务，在下轮新版本入口修复并验证，不修改本轮冻结入口或追溯改判。理由：Linux独立stdio控制已经证明kill不保证child.close及时发生，本次Windows却未命中，不能混淆工具潜在失效与已完整自然结束的原生证据。日期/作者：2026-09-21 / Codex。
 
 - 决策：先通过新工具的结构、自测与完整证据链审查，之后才运行原生矩阵；stock 不调用 owner API，两候选只共享一个编译产物，未知 PID 不参与清理。
   理由：避免新增诊断自身的启动、API 或构建差异污染 owner Close 的因果比较，同时落实正常 Windows 对象引用不等于进程存活的边界。
@@ -161,9 +170,15 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 
 本工作树的 `runtime-exit-integrity-native-candidates` 分支基于 `origin/main@5965adb8`，只承载隔离诊断与文档；尚未完成的运行时改造在另一个本地分支，不随此分支推送。`scripts/diagnostics/diagnose-unix-inplace-cancel.mjs` 编排当前四类各三次场景及离线复核，`scripts/diagnostics/unix-pty-observer.c` 是运行在同一Node进程内的只读原生观察模块，`.github/workflows/runtime-unix-inplace-cancel.yml` 在Linux/macOS各运行12项并保留完整工件。
 
+最新已完成的Windows入口是 `scripts/diagnostics/diagnose-windows-hpcon-owner.mjs`，由 `scripts/diagnostics/windows-hpcon-owner-patch.mjs` 在隔离目录生成诊断native，专用workflow为 `.github/workflows/runtime-windows-hpcon-owner.yml`。上述Unix入口属于已完成的原位观察阶段；全部旧入口冻结。当前工作从第30节原生结果进入生命周期/失败契约设计，不是复跑旧资源矩阵或开始业务接入。
+
 candidate指被验证的读取器，audit指candidate结算后才接管残留数据的诊断读取器，两者不能合并计算候选交付量。gate是允许夹具主进程退出的文件信号；独立控制循环根据成功写入回执和完整字节对账发布gate，不依赖读取循环恢复。readiness只表示当前可读，EOF必须来自真实正容量读取的结束结果，取消则明确记录interrupted。后续Windows独立worker是专门读取ConPTY输出的工作线程，现有入口为 `scripts/diagnostics/compare-windows-exit-readers.mjs` 和 `scripts/diagnostics/runtime-exit-conout-worker.mjs`；不能直接套用Unix的fd/EOF语义，须先冻结新的取消与同进程长期资源协议。
 
 ## 工作计划
+
+当前下一里程碑以第30节正常自然路径结果为输入，先设计生产API与adapter（将平台原生操作接入统一会话生命周期的适配层）候选的生命周期与失败契约，分开实际主体退出、真实输出结束、消费者完成、主动取消和最终owner释放。明确诊断硬返回、已知资源清理与失败保存边界，具体产品取消条件/时间预算仍待设计确认；不能直接把bundled DLL的正常Close结果推广到其他路径。
+
+设计冻结后再使用新命名诊断入口验证已退出driver但stdio仍被持有的硬返回控制，以及取消/异常、Windows builtin、正长度JS readable-buffer各自的原生矩阵和完整失败遍历。原guarded入口、150s参数和历史工件保留；修复不能把超时标成EOF或改用未知PID清理。并发、旧Windows版本、实际Agent CLI启动链、Host/Webview与packaged继续单列验收；不在本次结果收口中修改业务或安装依赖。以下为已执行的历史阶段步骤，第29–30节HPCON阶段已完成，不按其“下一步”重复执行。
 
 本增量新增独立 Windows workflow 和诊断 fork。机械复制现有 owned-lifecycle 的 payload/worker/consumer/resource schedule；只在候选 native 源增加受保护 owner 状态、shellExited 发布和主线程 `closeAfterExit`，保存 source before/after/patch、native/helper/DLL/toolchain hash。三臂均固定 DLL，stock 不回退到候选 binary；C 臂按偏序 gate 在 pipe EOF、全部 data sequence 已交付、consumer complete 和 shellExited 均成立后记录 close-request/invoked/owner-closed，并继续短窗口观察副作用，不强行规定 worker/decoder 相对顺序。自测覆盖 double-close、close-before-exit、unknown id、owner removed、缺 EOF/consumer、增长和损坏工件；然后一次 Windows runner 原生执行，首轮失败不覆盖。
 
@@ -188,6 +203,8 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 职责澄清后的扩展里程碑：先把验收分类写入正式设计第 9 节，并在运行时主线设计中确认主进程尾部、已进入链路的内容、最终状态、资源释放和取消语义；启动器到实际 Agent CLI 的生命周期单独验证，不用通用后代实验替代。只有保留产品问题需要进一步底层解释时，再用本独立分支推进 macOS 控制组：真正记录 write 返回值/errno，比较 leader 退出与保持存活，将首次 EOF 后持有 master 的观测与原关闭路径分开。新诊断执行前仍须另冻结轮次、期限和分类，不调整已有两轮原始判断；尚未确定具体实现或预算。
 
 ## 具体步骤
+
+本轮复核已完成。从本独立诊断工作树根目录，使用锁文件对应的已安装依赖运行 `node scripts/diagnostics/diagnose-windows-hpcon-owner.mjs --verify-saved ../dev-session-canvas2/.debug/hpcon-owner-35586906307/runtime-windows-hpcon-owner-35586906307-1/hpcon-owner-evidence`；本地共享主树既有依赖时可先设置 `NODE_PATH=../dev-session-canvas2/node_modules`。预期12/12有效、四个resource-failure、evidenceErrors为空及exit1。离线复核不是新原生运行。下一步只先撰写新版本硬返回控制和API/adapter设计，按新目录保存证据，参数与矩阵必须另行冻结，不覆盖首次输入或直接接入生产。
 
 从独立诊断工作树运行node --check scripts/diagnostics/diagnose-windows-process-objects.mjs和node scripts/diagnostics/diagnose-windows-process-objects.mjs --self-test；Windows x64的MSVC developer环境运行同入口--output process-object-evidence，要求新目录。完成后使用--verify-saved process-object-evidence复核全部六driver（失败也继续）；原始目录不可覆盖，任何修订以新输入/新目录保留首轮。新workflow使用Node22.23.2，只需MSVC/Windows SDK和Node标准库，不安装或加载node-pty。
 
@@ -221,9 +238,11 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 验证与验收
 
+第30节本轮验收按原门槛保留12/12有效、四个no-close资源失败且无evidenceErrors；另外独立对账138条完整内容/真实EOF、92次Release HRESULT0、46次Close和owner归零、1260份原始计数。ZIP完整本地哈希与source/header/patch/实际native及配套文件链一致。只证明固定Windows bundled DLL正常自然路径，不能替代取消、异常、builtin、实际Agent/宿主/packaged验收；本轮无watchdog命中不证明guarded具备硬返回能力。
+
 验收分层：自然内容/终端状态/pipe 与进程生命周期必须完整；owner ledger 必须每个 session 只 Close 一次且关闭后不再操作；resource snapshot 仅报告背景和逐会话增长，不把总数归零作为必要条件。`PtyKill`、`TerminateProcess`、未知句柄关闭、Close 前提缺失、Close 阻塞/watchdog 都是失败或不确定。builtin、真实 Agent/Host/Webview/packaged 和生产 API/预算不由本轮验收。
 
-本轮原verifier保留attempted6/verified6、两个通过/四个failure且无evidenceErrors；已退出对象被引用以及image31不作为产品bug门槛。按原始owner/API事件和快照补充完整审计，不能通过改raw计数或跳过warmup断言将失败变绿。具体输入/环境/工件与局限见设计第28节。
+此前普通对象控制的原verifier保留attempted6/verified6、两个通过/四个failure且无evidenceErrors；已退出对象被引用以及image31不作为产品bug门槛。按原始owner/API事件和快照补充完整审计，不能通过改raw计数或跳过warmup断言将失败变绿。具体输入/环境/工件与局限见设计第28节。
 
 本轮完整schedule、每会话内容/消费/自然退出、OS资源序列、固定helper/实际加载native、查询错误、前后快照与工件hash均已核对。结果不能合并为产品验收；Windows映像未知保留不确定性，macOS不外推错误路径或其他版本。后续干预保持原断言和失败记录。
 
@@ -237,7 +256,7 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 结果与复盘
 
-HPCON 阶段当前仅完成运行前协议与实现草稿复核，尚无 Windows 原生结果；安装依赖、旧实验和业务代码未改，已有 +5/+2 失败不变。后续须以新 workflow 的首次输入和完整工件为准，不以 Linux 自测或编译通过代替原生 owner/内容/资源验收。
+HPCON阶段首次原生矩阵、完整ZIP下载与独立复核已完成，见设计第30节。46次已知owner最终Close消除了同native/no-close对照中的逐会话+2总句柄增长，全部138条自然内容与生命周期完整；四个no-close资源失败、旧普通对象+5失败及旧身份inconclusive不改判。结果不是OS对象语义缺陷，也不是生产已修复；稳定191不强求回control187。新发现的guarded硬返回债务在下轮新入口收口，API/adapter、取消/异常/builtin/正readable和实际Agent/Host/Webview/packaged继续开放。设计比较中/验证中，计划active，业务、安装依赖与历史证据不改。
 
 本增量已完成首次原生和完整下载复核，见设计第28节：六driver全部运行，92child自然退出，两个control通过而四个计数失败保留；无工件错误/强杀/watchdog。已确认普通进程的引用存续与释放事实，额外5和旧PTY +2的具体来源未闭合，不能称OS bug；未选定生产方案或修改业务，计划继续active。
 
@@ -260,6 +279,10 @@ HPCON 阶段当前仅完成运行前协议与实现草稿复核，尚无 Windows
 证据收口检查：第二轮 builtin 三个后代在 public onExit 后留下成功 writer receipt，但呈现只有 `PARENT`；候选完整收到 `CHILD_TAIL`。两轮 Windows 保存结果复算分别报告 6/0 个候选失败，不把离线验证当新增原生轮次。元数据/索引/related paths、workflow 只读权限与分支边界、`git diff --check` 通过；业务、package/lockfile、已有 baseline 入口/workflow 无差异。未执行完整 UI/Agent/packaged，资源预算仍未完成；macOS 控制组保留但不是无条件交付前置项。
 
 ## 证据与备注
+
+2026-09-21 HPCON首次原生收口：输入d0f0be882bf5f99d0dcaa90c94b7a3d6b0023790，run35586906307 attempt1，artifact10633047821；ZIP19738089bytes完整本地SHA256为4d60975924e1b6c3ff75421535ff7f9efd2413ad639419fbb4c81cfd52fd83e2。完整工件在主运行时工作树dev-session-canvas2/.debug/hpcon-owner-35586906307/runtime-windows-hpcon-owner-35586906307-1/hpcon-owner-evidence/；输入与编译fingerprints、原verifier及全部计数见设计第30节。补充只读审计在主树.debug/hpcon-owner-supplemental-audit-35586906307/，没有改写原工件。
+
+本树.debug/hpcon-guarded-budget-control-v1/保留Linux纯Node语义控制，manifest SHA256为e053adf6b94787879ed8d8f08a9911b512bb422510d3ec8ece5028a991df6560；150ms watchdog后close额外晚884.470223ms。它不含PTY或Windows产品执行，也不证明本次原生run超时；相关工具债务已登记，旧入口不修改。
 
 2026-09-21 HPCON 运行前检查：独立分支新增 windows-hpcon-owner-patch.mjs、diagnose-windows-hpcon-owner.mjs 和 Windows-only workflow；主重构分支仅文档。固定源/header SHA256 为 d502cce570552c7a1bea373c7672975eeb330c3025dd151cf9c180ca2a1becc2 / 32b74fe493b4435bc2f8362cfa4bcb4f49a290438002cc4a369e9379c7728d3c；生成源 cb0ab01aa21eceeb06eac88306f4cf8980c15ede94303810a44df9b724c40e58，patch a7093eb560c76ac596892ab8d262f138fa3521d0b38162c4e6e6c4e7595a627b。主树 .debug/hpcon-owner-selftest-local-v1 与 v2 均保留，v2 保存输入快照；这些只有合成会话，无原生 PTY。bridge 回归及文档元数据/关联路径/计划章节、workflow YAML 校验通过。
 
@@ -310,3 +333,5 @@ HPCON 阶段当前仅完成运行前协议与实现草稿复核，尚无 Windows
 修订记录（2026-09-21，对象语义收口）：完成首次原生矩阵和全工件复核，官方与正常对象实验支持用户提醒；保留四个+5初始计数失败、旧PTY具体归属未闭合及全部旧结果，不改业务/依赖/断言，下一步仅另冻已知HPCON owner干预。
 
 修订记录（2026-09-21，HPCON 运行前审查）：开始实现已冻结的三臂对照，补齐单次连接、真实 HRESULT、TSFN/owner 生命周期、stock API 隔离和实际二进制输入的审查要求；保留新工具草稿缺陷的原因记录，待独立自测和 Windows 原生矩阵后另记结果，不改业务或旧证据。
+
+修订记录（2026-09-21，HPCON原生收口）：记录首次12driver/138会话/1260快照、46次Close的窄因果证据及完整ZIP复核，四个no-close原资源失败保留；更新当前里程碑为硬返回工具债务和生产API/adapter及缺口验收设计。新增Linux child.close控制只限定诊断预算保证，不修改业务、旧入口或原始失败，计划继续active。
