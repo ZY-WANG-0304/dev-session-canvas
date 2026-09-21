@@ -86,7 +86,9 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 ## 6. 下一步与状态
 
-执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–8 节记录 Linux 隔离 reader 实验，第 9–11 节给出候选与平台缺口，第 12–14 节承接 runner 和可执行收尾契约，第 15–17 节记录两轮三平台原生候选，第 18 节收口职责澄清，第 19–21 节记录收尾屏障与启动链验证。下一步将已验证的候选屏障与原生 provider 读取/取消/资源释放对接，重点证明 OS 缓冲尾部和 Windows 实际启动链，而不是继续增加仅注入 EOF 的模型；具体 reader、wire API 与生产预算仍待选定。macOS 普通后代控制实验仅作诊断，不再是无条件前置。不能把范围收窄、基线或局部候选通过当作里程碑一完成，实现与产品验收仍未勾选。
+执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
+
+下一步先设计 provider/adapter 生命周期与失败契约，明确主进程退出、源结束、消费完成和 owner 释放，再以新版本诊断冻结取消/异常路径及真正返回预算。Windows builtin、正长度 readable-buffer、并发与真实 Agent/Host/Webview/packaged 仍待验证，具体 reader、wire API、生产取消和预算未选定。macOS 普通后代控制实验仅作诊断，不是无条件前置。不能把局部自然路径证据当作里程碑一或产品验收完成，业务仍不直接修改，设计保持比较中/验证中。
 
 ## 7. 第一轮候选实验协议（运行前冻结）
 
@@ -608,3 +610,53 @@ driver最初、预热后、每次测量结束及最终释放后，均先等待�
 native 入口必须一次性占有 connect，拒绝同一 owner 重复启动；退出状态只有在等待结果和退出码查询均有效时才发布。TSFN 投递请求、实际接受、callback delivered、Release 状态和线程完成分别记录；callback 的日志可能早于 BlockingCall 返回，不人为规定这两个日志的全序。任何失败都阻止最终 Close。诊断 fork 不开放 legacy resize/clear/kill 入口，owner 表的全部访问受同步保护；这不是对生产 API 的修改或生产异常路径验收。
 
 运行前审查和 Linux 自测只确认输入转换、校验器与拒绝路径的结构，不计为 Windows 原生通过。构建、语法或自测未通过时不启动矩阵；原生 driver 中的独立失败仍保存并继续其余 driver。离线复核必须重新验证 schedule、source/patch/binary/DLL 工件哈希、实际加载绑定、内容与资源原始证据，不能只信任保存的 pass 字段。
+
+## 34. Windows HPCON owner 首次原生结果
+
+固定输入 `d0f0be882bf5f99d0dcaa90c94b7a3d6b0023790` 的 [run 35586906307](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/35586906307) attempt 1 已完成。MSVC 构建和 Windows 自测通过，三臂全部 12 个 driver、138 条 PTY 会话执行并完整下载。原 verifier 在 runner 和本地均为 `attempted:12 / verified:12 / failures:4 / evidenceErrors:[] / synthetic:false / pass:false`，退出码 1；四个 `no-close` 资源失败原样保留，workflow 总结果仍为 failure，不通过改断言或重跑取得绿色。
+
+### 自然收尾与 owner 台账
+
+138 条会话均收到真实 `pipe-eof`，native 主体和 worker 均自然 exit 0；每条实际观察与交付的 2121 字节一致，4 个数据块按序全部消费，最终光标 `(0,24)` 与终端内容符合冻结断言。12 个 driver 全部自然 exit 0，无 signal、stderr、resource-timeout 或父 watchdog 超时。这些是顺序 fixture 的结果，不代表真实 Agent 或生产宿主已验收。
+
+两条 rebuilt 臂共 92 个 owner，各有一次 bundled Release、实际 `HRESULT=0`；等待/退出码查询、`hShell` 关闭、TSFN enqueue/Release/callback delivered 和 finalizer 实际 join 都有成功记录。46 个 retain owner 按协议保留，不请求 Close，每个 driver 末尾 23 个。46 个 explicit-close owner 均在 shell/TSFN、真实 EOF、consumer 和 JS 收尾 gate 全部满足后调用一次 Close，随后 owner/baton 移除、台账归零，无重复或拒绝操作。Close 调用耗时 0.0785 至 0.1847 ms；观察窗口中没有新输出、pipe 错误或终态变化。Close 为 void，此处证明调用返回及自身状态结算，不伪造 HRESULT 或全局对象销毁证明。
+
+### 同进程资源对照
+
+表中数值为三次预热后至二十次测量末尾的句柄数，每个 driver 内独立比较，不跨 PID 抵消背景。
+
+| 臂 | native-1 | native-2 | 原资源判定 |
+| --- | --- | --- | --- |
+| `prebuilt-stock/no-close` | 200 → 240 | 197 → 237 | 两个失败，每会话 +2 |
+| `rebuilt-owner-retain/no-close` | 200 → 240 | 197 → 237 | 两个失败，每会话 +2 |
+| `rebuilt-owner-retain/explicit-close` | 191 → 191 | 191 → 191 | 两个通过，无持续增长 |
+
+六个无 PTY control 全部 187 → 187。全部 46 次 Close 前后窗口均为 193 → 191，恰好减少 2；1260 个批次资源样本逐项核对，最短采样间隔 27.9056 ms、最短 Close 观察窗口 109.5266 ms，达到冻结前提。native driver 的线程基线为 12、最终为 8，没有持续增长；线程下降不能归因于 Close。191 相对 control 187 的稳定差额 4 不要求归零，也不是旧普通对象实验的 +5，不凭总数宣称新泄漏或进行机械扣减。
+
+两条 rebuilt 臂共用同一 native 产物，只改变是否调用最终 Close，因而建立了窄因果证据：在本固定 bundled DLL 自然退出路径中，调用方对已知 HPCON 最终 Close 消除了逐会话 +2 总句柄增量。这支持最终释放责任，不否定 Windows 正常对象引用语义，也不把有意 retain 的正对照叫作系统泄漏。本轮没有句柄类型或内核对象 ID 枚举，不能逐槽认定减少的两个句柄就是旧实验的 File/Process 对，旧具体身份问题仍 inconclusive。
+
+### 固定输入与完整工件
+
+环境为 Windows x64 kernel `10.0.26100`、runner image `20260907.229.1`、Node `22.23.2`、SDK `10.0.26100.0`、MSVC tools `14.51.36231` / compiler `19.51.36256.0`、node-addon-api `7.1.1`。独立复核重算 root manifest 的 5739 个文件及 build/driver manifests，并用冻结 transformer 精确重生实际编译 source、patch 和 header。Windows CRLF 快照只读归一核对输入，不改工件。
+
+| 输入或产物 | SHA256 |
+| --- | --- |
+| 原 `conpty.cc` | `d502cce570552c7a1bea373c7672975eeb330c3025dd151cf9c180ca2a1becc2` |
+| 原 `conpty.h` | `32b74fe493b4435bc2f8362cfa4bcb4f49a290438002cc4a369e9379c7728d3c` |
+| 生成 source | `cb0ab01aa21eceeb06eac88306f4cf8980c15ede94303810a44df9b724c40e58` |
+| 生成 patch | `a7093eb560c76ac596892ab8d262f138fa3521d0b38162c4e6e6c4e7595a627b` |
+| 新诊断 JS（LF） | `57a20c2d327aa30718a25a62d2869d08d0ec49d410376bf3856f24aaeb3b9e72` |
+| stock native | `2d1fb89aa74b692ad026807e78f90d970ef4e4b5b4b0254f94854f0f3f442306` |
+| 两候选共用 native | `484f580d2ec3a08a6f972611692d26f6cf0fb9e4ca0d49398bda8c14a2baad50` |
+| 配套 `conpty.dll` | `3319b484b80bb53d1f4d0a9eb0ea60fd0f61da69db7280ca43b84215f19245ff` |
+| 配套 `OpenConsole.exe` | `7f68c840226505004215c0b82d4e502c24b5bc3f4b93c4baaaa19bd679c0def8` |
+
+`loaded-native` 核对实际 require 的路径与 hash；DLL/OpenConsole 是同目录 loader 对应文件的指纹链，未额外采集运行中 OS 映像枚举或 OpenConsole 进程身份，不能升级为新增内核身份取证。Windows 此路径没有 Unix spawn-helper。
+
+artifact ID `10633047821`，ZIP 19,738,089 字节；本地下载完整 ZIP 并独立复算 SHA256 `4d60975924e1b6c3ff75421535ff7f9efd2413ad639419fbb4c81cfd52fd83e2`，与 GitHub digest 一致。主工作树完整工件位于 `.debug/hpcon-owner-35586906307/runtime-windows-hpcon-owner-35586906307-1/hpcon-owner-evidence`，ZIP 校验记录为 `.debug/hpcon-owner-35586906307-zip-verification.json`。独立生命周期审计保存在 `.debug/hpcon-owner-native-audit-35586906307.{mjs,json}`，输入/资源审计在 `.debug/hpcon-owner-supplemental-audit-35586906307/`；后者 `audit.mjs` / `result.json` SHA256 分别为 `25d478efb813ade44607bb62906a807f592d50f95e3b4aebcaecba4f141d3f31` / `304fdcbd5503509b467e6e7a13d206fafb8fbb082c03bdd25ba6840ec43ec8ad`。补充审计通过只表示原始证据一致，不改原矩阵四个失败。
+
+### 诊断预算限制与下一阶段
+
+新增入口的 `guarded()` 只等 `child.close`，150 s 定时器只请求 `child.kill('SIGKILL')`，没有独立返回分支；若 driver 已退出但 stdio 被其他进程引用，不能保证在该预算内返回。另建 Linux 纯 Node 控制已复现：自有 driver exit 0 后，150 ms watchdog 的 kill 返回 false，close 晚于 watchdog 884.470223 ms；外层 5 s 硬截止和 1 s 最终兜底未触发，自有 driver/后代结束后 `/proc` 均不存在。独立诊断树 `.debug/hpcon-guarded-budget-control-v1/` 保存 11 个工件，manifest SHA256 `e053adf6b94787879ed8d8f08a9911b512bb422510d3ec8ece5028a991df6560`。这是工具预算缺口，不是本轮 Windows 失败原因：全部 12 个 driver 已自然返回且 `timedOut:false`，没有命中此路径的证据。后续另建版本修正返回预算，不能修改本次冻结入口或将 stdio EOF、JS exit、OS 进程终止与 session ConPTY EOF 混为一谈。
+
+本阶段只在独立诊断分支新增 transformer、入口和 workflow，主重构分支仅更新文档；安装依赖、业务、旧 live 绑定和所有历史实验均不改。已不需要继续以“消除正常 Process 对象存续”为目标排查。下一阶段先将已建立的 Unix/Windows 自然路径证据转为 provider/adapter 候选生命周期及错误语义设计，明确 owner 移交、自然完成与取消/失败的边界，并在新诊断入口冻结异常路径和返回预算；Windows builtin、正长度 JS readable-buffer、并发、实际 Agent/Host/Webview/packaged 仍需独立验证。旧版 Windows 的 Close 行为也不由 build 26100 外推。生产 API、取消条件和时间预算仍未选定，设计保持比较中/验证中，ExecPlan active，退出完整性交付未完成。

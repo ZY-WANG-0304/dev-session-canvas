@@ -23,6 +23,10 @@
 
 ## 技术债列表
 
+2026-09-21 HPCON原生收口：d0f0be88/run35586906307 attempt1完整12 driver/138 PTY与工件复核，四个no-close resource-failure原样保留、无evidenceErrors。同一rebuilt native中retain每测量会话+2，explicit Close两轮191→191，46次Close各193→191且owner归零；138内容/真实EOF/消费者和自然退出均完整。固定bundled DLL自然路径的最终释放责任已有窄因果证据，不将Windows正常Process引用存续当bug，也不要求稳定背景差额4归零；旧具体句柄身份仍inconclusive。下一阶段转provider/adapter生命周期与失败契约设计，builtin、正长度readable-buffer、取消/异常/并发、真实Agent/Host/Webview/packaged及生产API/预算仍开放。主树仅文档，业务/安装依赖/旧实验不改，退出完整性债务不关闭。见设计第34节及active计划。
+
+2026-09-21 诊断工具返回预算债务：独立分支diagnose-windows-hpcon-owner.mjs的guarded()在150s只发child.kill而仍等child.close，不能保证硬返回；自有driver退出但stdio被后代引用时，Linux纯Node控制复现150ms watchdog后再等待884.470223ms。Windows本轮12 driver全部自然返回/timedOut:false，不能据此补造原生超时或否定内容/owner证据。后续另建版本/入口，在只控制自有进程的前提下区分exit、stdio close和最终返回；超时/取消必须显式失败，不冒充自然EOF。旧入口与工件冻结，设计第34节记录控制证据及限制，该工具债务继续开放。
+
 2026-09-21 HPCON 实现前复核：stock 与新增 owner API 隔离、候选共用编译产物和实际 DLL/OpenConsole.exe 输入、单次 connect、原生退出与 TSFN 完成 gate 已列入运行前要求；Release 按同包头文件的真实 HRESULT 签名记录，不将原 void 调用类型当 API 契约。新工具的静态/合成自测不替代 Windows 原生 owner/内容/资源证据，不修改历史失败或关闭退出完整性债务。
 
 2026-09-21 HPCON owner 对照冻结：下一增量固定 `useConptyDll=true`，只比较 stock、owner-retain/no-close 与 owner-retain/explicit-close；保持原 Release 时机，Close 仅在真实 pipe EOF、consumer complete、input/worker 收尾和 shellExited 后由已知 owner 单次调用。不得复用 PtyKill、TerminateProcess、CloseHandle(HPCON) 或关闭陌生句柄；builtin、业务和生产 API/预算另验。旧 +2、普通对象 +5 与全部历史失败不改判，退出完整性债务不关闭。见设计第33节和 active 计划。
