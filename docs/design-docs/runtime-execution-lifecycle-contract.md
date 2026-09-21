@@ -343,3 +343,13 @@ close-exit的预期对端退出可能使父端挑战写入遇到EPIPE/ECONNRESET
 CLI支持 `--self-test`、`--output NEW_DIRECTORY` 和 `--verify-saved DIRECTORY`。合成自测至少拒绝：缺一个EOF、close仅自报而父无EOF、错误身份/token、复用第一次challenge、未满100ms放行、guard提前返回、将负控伪装正例、deadline后补EOF升级完整、缺EXE/改输入指纹、破坏首项后仍遍历末项。自测不是原生成功；首次Windows编译/运行失败也须保存，不以放宽门槛或修改旧实验求绿。
 
 本阶段成功仅表示新正例建立Windows真实关闭后的活进程窗口，且原guard没有因stdio先关闭而提前返回；两个负控证明新oracle拒绝不足前提。旧Windows G07三项仍记not-established，不追认通过。完成原生首次运行和全工件离线复核后，才进入原生partial-create、wait/通知、取消/正长度缓冲、release失败/挂起、并发及unknown owner有界隔离的设计；这里不交付PTY、真实Agent/Host/Webview、生产API或预算。
+
+## 15. G07 新工具实施与本地复审（2026-09-22）
+
+第14节协议已由独立分支eb37902c、主运行时文档fb99eed9提交冻结。独立诊断树新增C夹具、JS入口和Windows-only workflow，原guard-v2、原G07及全部旧实验不改。C直接操作两路继承owner，控制与受测输出分开，MSVC构建使用/W4 /WX /O2 /TC并归档编译器、SDK环境、参数、日志及实际EXE；本地没有Windows编译器，不能提前声明原生编译通过。
+
+本地 `.debug/windows-stdio-close-selftest-v1-first` 的21项原结果保留。只读复审发现ERROR操作名大小写不匹配、outer捕获仅信快照及token负例只改冗余字段等工具缺口；新版补固定native错误枚举，从原始outer end/close/exit派生结果，token负例同步raw wire/解析值/原字节并明确检查语义拒绝。另去除对native EXITING回执与child-exit两路通知到达顺序的额外假设：退出许可必须早于主体退出，native操作序号/匹配回执仍核验，但不同通道通知不强行排序。keep-open继续拒绝任何控制错误；close-exit有限传输例外严格受第14节完整轨迹约束。
+
+新目录 `.debug/windows-stdio-close-selftest-v2-oracle` 完成27/27合成断言，含九项oracle夹具、首项损坏后继续末项、outer缺事件/提前返回、双EOF/身份/token/持有窗口及完整性篡改。全部是工具自测，真实native创建数零，不追认v1已有新增证明。JS语法、workflow YAML/内嵌脚本、两树文档metadata/引用和历史协议保留检查通过，主树既有bridge回归通过。两份独立源码复审收口后才准备首次runner，不反复执行旧矩阵。
+
+本地源码SHA256：JS为 `1bf7bbfcb7d760374305ba99540219a8fc0ae6bbfeb9095ec304734a6e81bf36`，C为 `d803d2a0bfe57e0d4442833ebc289002dab080318bf20a505fc02e9a47342668`，原guard为 `efb430fc16d1c673cf0ad88fc7b2df2d3649c60922b9cf0288ec7d146f241ade`，workflow为 `c3956642fe6c61bf523db02e26a776481f795d46b23e12814ee022b440b5eb49`。自测输入是eb37902c工作树加归档源码，不写成未来runner commit；Windows换行可能不同，须同时保存原字节摘要并只读LF归一对账。下一步固定新输入一次运行全部九项并完整下载复核；本节没有Windows结果或生产验收结论。

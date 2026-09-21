@@ -1,0 +1,91 @@
+name: Runtime Windows Stdio Close
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [runtime-exit-integrity-native-candidates]
+    paths:
+      - .github/workflows/runtime-windows-stdio-close.yml
+      - scripts/diagnostics/diagnose-windows-stdio-close.mjs
+      - scripts/diagnostics/windows-stdio-close-control.c
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-windows-stdio-close-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  stdio-close:
+    name: Owned stdio close and live subject / Windows / Node 22.23.2
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Record runner and exact inputs
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import crypto from 'node:crypto';
+          import { execFileSync } from 'node:child_process';
+          fs.mkdirSync('stdio-close-runner-evidence');
+          const files = [
+            '.github/workflows/runtime-windows-stdio-close.yml',
+            'scripts/diagnostics/diagnose-windows-stdio-close.mjs',
+            'scripts/diagnostics/windows-stdio-close-control.c',
+            'scripts/diagnostics/diagnostic-process-guard-v2.mjs',
+            'docs/design-docs/runtime-execution-lifecycle-contract.md',
+          ];
+          const inputs = files.map(path => {
+            const bytes = fs.readFileSync(path);
+            const destination = `stdio-close-runner-evidence/inputs/${path}`;
+            fs.mkdirSync(destination.slice(0, destination.lastIndexOf('/')), { recursive: true });
+            fs.writeFileSync(destination, bytes, { flag: 'wx' });
+            return { path, sha256: crypto.createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length };
+          });
+          fs.writeFileSync('stdio-close-runner-evidence/runner.json', JSON.stringify({
+            commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+            run: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
+            node: process.versions, platform: process.platform, arch: process.arch,
+            release: os.release(), version: os.version(), image: process.env.ImageOS,
+            imageVersion: process.env.ImageVersion, inputs,
+          }, null, 2) + '\n', { flag: 'wx' });
+          if (process.platform !== 'win32' || process.arch !== 'x64' || process.versions.node !== '22.23.2') {
+            throw new Error('Expected Windows x64 and exact Node 22.23.2');
+          }
+          NODE
+      - name: Check diagnostic entry syntax
+        run: node --check scripts/diagnostics/diagnose-windows-stdio-close.mjs
+      - name: Run synthetic verifier controls
+        env:
+          DSC_STDIO_CLOSE_SELFTEST_EVIDENCE: stdio-close-selftest
+        run: node scripts/diagnostics/diagnose-windows-stdio-close.mjs --self-test
+      - name: Run all nine owned stdio controls
+        if: ${{ !cancelled() }}
+        run: node scripts/diagnostics/diagnose-windows-stdio-close.mjs --output stdio-close-evidence
+      - name: Verify complete saved schedule including failures
+        if: always()
+        run: node scripts/diagnostics/diagnose-windows-stdio-close.mjs --verify-saved stdio-close-evidence
+      - name: Upload complete evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-windows-stdio-close-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            stdio-close-runner-evidence/
+            stdio-close-evidence/
+            stdio-close-selftest/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
