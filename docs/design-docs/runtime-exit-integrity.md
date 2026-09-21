@@ -88,7 +88,7 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
 
-第35–39节承接 provider/adapter 生命周期契约及D1/D2新诊断，当前候选和分版证据统一记录在 `docs/design-docs/runtime-execution-lifecycle-contract.md`。D1本地及三平台模型通过，D2原校验器三平台各24条及全部下载复核通过，但独立审计发现Windows G07三条真实提前关闭前提未建立；原绿色结果、首版缺口及历史失败均保留。第38节冻结的新Windows-only三模式各三次补证已按cf359040/run35631266321 attempt1完成，九项原verifier及独立原始审计通过，结果见第39节；只补新样本的真实关闭/存活与负控证据，不追认旧三条、不修改guard及预算。下一阶段转原生异常路径和unknown owner有界隔离的设计与矩阵冻结，不直接接入业务。Windows builtin、正长度 readable-buffer、并发与真实 Agent/Host/Webview/packaged 仍待验证，具体 reader、wire API、生产取消和预算未选定。macOS 普通后代控制实验仅作诊断，不是无条件前置。不能把局部证据当作里程碑一/产品验收完成，设计保持比较中/验证中。
+第35–39节承接 provider/adapter 生命周期契约及D1/D2新诊断，分版证据记录在 `docs/design-docs/runtime-execution-lifecycle-contract.md`。D1本地及三平台模型通过，D2原校验器三平台各24条及全部下载复核通过，但独立审计发现Windows G07三条真实提前关闭前提未建立；原绿色结果、首版缺口及历史失败均保留。第38节冻结的新Windows-only三模式各三次补证已按cf359040/run35631266321 attempt1完成，九项原verifier及独立原始审计通过，结果见第39节；只补新样本的真实关闭/存活与负控证据，不追认旧三条、不修改guard及预算。第40节与 `docs/design-docs/runtime-native-failure-isolation.md` 冻结原生异常和unknown owner有界隔离的第一批设计，尚未实施或取得新原生结果；下一步先实现D3/D4工具与模型，再按门槛推进W1/U1。Windows builtin、其余通知/环境销毁、正长度 readable-buffer、真正Close挂起、并发与真实 Agent/Host/Webview/packaged 仍待验证，具体 reader、wire API、生产取消和预算未选定。macOS 普通后代控制实验仅作诊断，不是无条件前置。不能把局部证据当作里程碑一/产品验收完成，设计保持比较中/验证中。
 
 ## 7. 第一轮候选实验协议（运行前冻结）
 
@@ -712,3 +712,15 @@ D1共111模型子案例，D2原validator共72控制通过（54真实进程/启�
 独立Windows原始审计 `independent-native-audit-v1.json` 完成836项检查，九条预定控制均成立，无失败；文件SHA256为 `133b9fc9ed673cf23637837517e1b140e56266daed4a3af701545eeb9c80a20f`。其中close-exit-3最晚stream close为20.7513ms，父端challenge为21.1521ms、观察控制通道不可用为21.4268ms、child-exit通知为21.7708ms，但始终无pong；这直接说明流先关闭和exit通知尚未来到不能代替主体仍可执行的证明。全组`guard-returned`事件记录最大1011.7495ms，另从调用方await后事件补证最大1012.3385ms，九项均在原2000ms内。outer-returned事件最大1112.4939ms，controller已退出/两流已close且未命中5000ms；但之后仍写盘再resolve，没有外层await后记录，不能将该事件当完整外层返回预算证明。补充计时在timing-observation-audit-v1.json，原审计不改，工具缺口由下一新入口承接；超时后EOF仍不晋升完整。
 
 新样本补足的是固定环境中“真实stdio关闭后主体仍能响应、guard继续等待真实退出”的局部前提及oracle负控，不改第37节旧72pass、Windows G07三条not-established或任何历史失败，也不将Windows正常对象引用存续认定为OS bug。旧guarded入口移交、PTY原生异常/取消/正长度buffer、builtin、并发、真实Agent/Host/Webview/packaged及生产API/预算继续开放。下一阶段仅冻结原生异常路径与unknown owner有界隔离的设计和矩阵；本树仍只更新文档，退出完整性交付未完成。
+
+## 40. 原生失败与资源隔离第一批设计冻结（2026-09-22）
+
+主树f318579a、独立诊断树7fb4ae9e为本轮输入锚点。新增 `docs/design-docs/runtime-native-failure-isolation.md`，状态为比较中/未验证；当前只完成源码依据、故障分类、owner责任、隔离候选和第一批协议设计，没有新增工具、workflow、原生运行结果或业务修复。D1/D2、G07及所有原生失败仍保留原冻结输入和判断。
+
+设计分别标记真实API受控输入失败、native调用点替身、真实调用后的通知扣留、调用前gate和有限模型；真实进程执行合成故障不因此成为真实syscall失败。各资源在取得后立即登记，单次释放与同operation迟到补证分别记录；unknown不是EOF、释放成功或可重复Close的许可。N=2总槽与Q=1熔断仅用于诊断准入模型，两个已准入owner仍可能同时unknown；停止新建不等于隔离共享进程卡死/崩溃，每会话独立进程也必须在创建前安排，尚未选定生产拓扑。
+
+第一步冻结D3三平台各24项、合计72个零PTY进程控制场景，以及D4三平台各8项、合计24个零native策略模型。D3独立观察调用方真正after-await，将等待API返回、caller退出和writer封存分开；resolve前日志、同步写盘完成或CI总timeout均不能替代返回证明。工具实施、本地校验、首次三平台运行和全工件复核完成后，才进入W1/U1。
+
+第二步固定W1 Windows八项各三次共24、U1 Linux六项各三次共18、macOS八项各三次共24，总66个driver尝试，不是66个成功PTY或全部故障验收。范围包括部分初始化、wait结果分离、Unix的合成通知拒绝和释放回执延迟；真实启动数、native进入/返回、前提不足和not-run逐条记账。当前只冻结输入、分类、预算与工件要求，尚无这些矩阵的运行证据。
+
+其余通知失败/环境销毁、正长度已读缓冲取消、在途waiter/control fd、真正Close挂起和双会话故障域第二批尚未冻结，仍阻塞生产接入。builtin、其他Windows版本、实际Agent启动链、Host/Webview/VS Code/Electron/packaged及生产容量/停止预算继续开放。下一阶段只实施独立D3/D4工具，不修改运行时代码、依赖、旧live绑定或旧实验；退出完整性总体保持比较中/验证中、ExecPlan active、债务未关闭。

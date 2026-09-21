@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-22 原生失败/资源隔离第一批设计：新增 `docs/design-docs/runtime-native-failure-isolation.md`（比较中/未验证），按真实API受控输入、native替身、通知扣留、gate和模型分别分类；owner逐项登记，N=2/Q=1仅冻结有限准入策略，不证明共享进程阻塞/崩溃隔离。D3三平台72个零PTY进程控制、D4三平台24个零native模型先实施验收；之后才运行W1 Windows24、U1 Linux18/macOS24，共66个driver尝试，不是66次成功PTY。当前纯设计、尚无新增工具或原生结果，旧D1/D2/G07与全部失败不改。其余通知/环境销毁、正缓冲取消、在途control fd、真正Close挂起、双会话、builtin/其他Windows及真实Agent/Host/Webview/packaged仍未闭合，生产API/容量/停止预算继续开放；after-await与证据封存预算需由新D3实测，旧guarded入口未移交，总退出完整性债务不关闭。详见退出完整性设计第40节及active计划。
+
 2026-09-22 G07收口计时边界：新九项guard的调用方await后事件已补算，最大1012.3385ms、均在2000ms内；原审计1011.7495ms是resolve前的guard-returned事件。外层1112.4939ms同样仅为outer-returned事件，其后尚有同步writeJSON及resolve，九份trace没有外层await后时间。故本轮不能宣布完整外层返回预算已独立证明；下一新诊断需补调用方/结算I/O观察，不改本轮输入、工件或三个新G07正例与六负控判定。补充证据为主树.debug/stdio-close-35631266321/timing-observation-audit-v1.json，详见生命周期契约第16节。
 
 2026-09-22 Windows G07新控制结果：cf359040/run35631266321 attempt1的9个真实child、零PTY完成原verifier与完整离线复核，独立原始审计836项检查无失败。三次close-wait以双EOF/close后fresh challenge及100.8252–101.7934ms实际持有证明主体可执行；三keep-open拒绝前提并保留deadline-exceeded/deadline-incomplete，三close-exit无pong被拒绝但raw自然完成。close-exit-3流通知先于exit通知仍无响应，不能据通知顺序补证。新样本仅补固定Windows环境的夹具前提，原72pass与旧G07三条not-established/全部失败不改，不认定正常Windows对象语义为bug。完整证据在主树.debug/stdio-close-35631266321，见退出完整性设计第39节；下一阶段原生异常及unknown owner有界隔离设计/矩阵冻结，旧guarded移交、builtin/正缓冲/并发/真实宿主与生产预算继续开放，总债务不关闭。
