@@ -478,3 +478,26 @@ driver最初、预热后、每次测量结束及最终释放后，均先等待�
 本阶段确认用户提醒成立，并将OS正常对象语义与调用方最终释放责任分开。ReleasePseudoConsole不免除最终Close是官方API契约；node-pty自然退出路径未显式Close仍是调用方owner设计问题的线索，但本轮无PTY控制不能证明旧File/Process配对就是HPCON成员，也不修改业务或生产生命周期策略。
 
 下一阶段只对已知HPCON owner设计自然收尾后的隔离释放对照，先明确其保留用途、所有权及调用时机，不能复用kill、直接CloseHandle(hpc)或关闭陌生槽位。资源验收须同时分开owner账本、稳定背景与逐会话增长，+5归属留作受控取证开放项，不机械套入PTY矩阵或把普通对象存续当产品阻塞。Windows正长度JS缓冲取消、异常路径、实际Agent/Host/Webview/packaged和生产API/预算继续开放，设计比较中/验证中，计划active。
+## 29. Windows 已知 HPCON owner 隔离释放对照（运行前冻结）
+
+本增量只验证 bundled ConPTY DLL 后端中已知`HPCON`owner 的最终释放责任，不选择生产 API、取消预算或异常终止策略，也不修改业务代码、安装依赖或旧诊断。`useConptyDll=false`的 Windows builtin 后端另开独立矩阵，不能与本增量合并解释；macOS kqueue close 因果已单独收口。
+
+### 候选臂和固定边界
+
+固定三臂：`prebuilt-stock/no-close`使用现有 node-pty 预构建 native；`rebuilt-owner-retain/no-close`使用同一 bundled DLL、同一 spawn-helper 和重编译工具链，只加入 owner 保留状态但不调用 Close；`rebuilt-owner-retain/explicit-close`与上一臂共享全部 native 输入，只增加诊断专用`closeAfterExit(id)`单次 Close。三臂都固定`useConptyDll=true`，不能把 builtin/DLL 切换与 Close 变化混入因果结论。每臂沿用`control-1/native-1/control-2/native-2`，每个 driver 3 次预热加 20 次测量；共 12 个 driver、138 条 native PTY 会话。旧 payload、worker、consumer、终端状态、pipe/输入收尾和资源断言机械复用，首次失败与原始工件不覆盖。
+
+`PtyConnect`中原有`ConptyReleasePseudoConsole(hpc)`时机保持不变。候选 source 在`SetupExitCallback`中等待并读取 shell 退出码后关闭`hShell`、置空并发布受保护的`shellExited`状态，但不在退出线程删除 baton；`closeAfterExit`只接受本模块确实持有、已发布`shellExited`、尚未关闭的`ptyId`，在主线程受保护地转移 HPCON owner，调用 DLL 的`ConptyClosePseudoConsole`一次，清空 owner 并移除 baton。调用失败、不支持或状态前提不成立均记录独立结果，不重试，不调用`PtyKill`，不调用`TerminateProcess`，不把`HPCON`传给`CloseHandle`，也不关闭句柄表中的陌生对象。关闭后不得继续 resize、clear、close 或复用该 id；普通后代不纳入托管。
+
+`ptyHandles`的跨线程状态必须有明确的同步保护：退出等待线程不能无锁 erase，而应发布`hShell=null`与`shellExited`；主线程的`closeAfterExit`在锁内检查并取走 owner、锁外调用 Close、再在锁内完成移除。若实现采用其他同步方式，必须在源码快照中证明同一 owner 不会双重 Close、悬挂指针或竞态 erase；不得以`assert(remove_pty_baton(...))`的副作用承载生命周期。为防止 JS 序列门控被绕过，诊断 fork 还应提供带 generation/nonce 的`markPipeEof`与`markConsumerComplete`，`closeAfterExit`自身拒绝未满足这两个前提的调用；shellExited、exit worker/thread 完成、pipe EOF、consumer complete 和 owner 状态必须在同一 ledger 中核对。
+
+### 收尾顺序和证据层级
+
+每个 native session 必须依次记录`native-connected/owner-token`、writer receipt/gate、native exit、真实 worker`pipe-eof`、pipe close 无错误、input close、worker exit、decoder end、consumer complete/final terminal state，再发`close-request`、`close-invoked`、`owner-closed`。`BlockingCall` 的 exit-event-enqueued、exit-callback-delivered、native-exit-thread-done、TSFN closing/queue failure 也必须单独记录；不能把事件排队当作 callback delivered 或 consumer complete。Close 前不得关闭 reader 以换取 EOF；Close 是 void，只记录调用及本地 owner 状态，不虚构返回成功。Close 后继续短窗口观察，任何新 worker bytes、pipe 错误、终态变化、重复操作、watchdog 或强制终止均为失败或不确定。若自然主体已退出但真实 pipe EOF、consumer 完成等前提缺失，则标记`precondition-failure`，不调用 Close、不宣称修复。
+
+三类事实分开验收：原始字节/消费者/最终终端状态和自然主体、worker/input 生命周期；已知 owner ledger 的创建、Release、单次 Close、清空和不再使用；同进程 OS handle/thread/JS active resource 的稳定背景、每会话轨迹和 Close 后窗口。`no-close`的 owner 增长是有意正对照，不叫泄漏；`explicit-close`首先要求 owner ledger 每会话回到零、无继续逐会话增长及自然收尾完整，不强求 OS 总句柄立即回到 control baseline。若仍有残余背景，按`resource-failure`或`inconclusive`记录，不能把全局对象消失当作 owner 契约。
+
+### 工件、预算和分类
+
+每臂保存 source before/after/patch、实际 native/helper/DLL 路径和 hash、Node/headers/compiler/SDK、完整 schedule、session NDJSON、raw observed/delivered bytes、consumer/terminal state、owner ledger、Close 前后资源快照、driver stdout/stderr、watchdog 和首次失败。分类必须区分`precondition-failure`、`close-failure`、`natural-lifecycle-failure`、`resource-failure`、`evidence-error`与`inconclusive`。Close 阻塞、超时、`TerminateProcess`、未知句柄操作或 owner 重复操作不计通过；失败继续其余独立 driver，首轮目录不可覆盖。
+
+自测先覆盖 owner 状态机、double-close/close-before-exit/unknown-id/close-after-owner-removed、Close 副作用输出、缺失自然 EOF/consumer、资源逐会话增长、缺工件与首项损坏后继续。Linux 自测不算 Windows 原生证据；Windows runner 只执行新独立 workflow，一次固定输入，原有资源失败和普通对象首轮结果保持不变。
