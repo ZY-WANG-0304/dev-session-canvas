@@ -501,3 +501,13 @@ driver最初、预热后、每次测量结束及最终释放后，均先等待�
 每臂保存 source before/after/patch、实际 native/helper/DLL 路径和 hash、Node/headers/compiler/SDK、完整 schedule、session NDJSON、raw observed/delivered bytes、consumer/terminal state、owner ledger、Close 前后资源快照、driver stdout/stderr、watchdog 和首次失败。分类必须区分`precondition-failure`、`close-failure`、`natural-lifecycle-failure`、`resource-failure`、`evidence-error`与`inconclusive`。Close 阻塞、超时、`TerminateProcess`、未知句柄操作或 owner 重复操作不计通过；失败继续其余独立 driver，首轮目录不可覆盖。
 
 自测先覆盖 owner 状态机、double-close/close-before-exit/unknown-id/close-after-owner-removed、Close 副作用输出、缺失自然 EOF/consumer、资源逐会话增长、缺工件与首项损坏后继续。Linux 自测不算 Windows 原生证据；Windows runner 只执行新独立 workflow，一次固定输入，原有资源失败和普通对象首轮结果保持不变。
+
+### 实现前复核补充（2026-09-21）
+
+候选仅在隔离构建目录生成，不写入安装中的 `node_modules`。stock 臂不调用候选新增接口；两条 rebuilt 臂共享同一编译产物，只改变是否请求最终 Close。Windows ConPTY 路径直接启动客户端，没有 Unix 的 `spawn-helper`；记录实际加载的 `conpty.node`、`conpty.dll` 及其配套 `OpenConsole.exe`，不能用不存在的 helper 证明输入一致性。
+
+冻结源 `conpty.cc` 的 `PFNRELEASEPSEUDOCONSOLE` 调用类型为 void，但同包 `conpty.h` 明确声明 bundled `ConptyReleasePseudoConsole` 返回 HRESULT；不能把原调用方忽略返回值误写成实际 DLL 导出为 void。候选在不改变原调用位置和次数的前提下，使用与该头文件一致的函数指针签名记录 HRESULT，只有 SUCCEEDED 才发布 `releaseSucceeded`。最终 Close 才是 void，只记录调用和返回，不推断全局对象已经销毁。原有普通对象 +5、旧 PTY 每会话 +2 和新 owner 台账继续分开核对。
+
+native 入口必须一次性占有 connect，拒绝同一 owner 重复启动；退出状态只有在等待结果和退出码查询均有效时才发布。TSFN 投递请求、实际接受、callback delivered、Release 状态和线程完成分别记录；callback 的日志可能早于 BlockingCall 返回，不人为规定这两个日志的全序。任何失败都阻止最终 Close。诊断 fork 不开放 legacy resize/clear/kill 入口，owner 表的全部访问受同步保护；这不是对生产 API 的修改或生产异常路径验收。
+
+运行前审查和 Linux 自测只确认输入转换、校验器与拒绝路径的结构，不计为 Windows 原生通过。构建、语法或自测未通过时不启动矩阵；原生 driver 中的独立失败仍保存并继续其余 driver。离线复核必须重新验证 schedule、source/patch/binary/DLL 工件哈希、实际加载绑定、内容与资源原始证据，不能只信任保存的 pass 字段。

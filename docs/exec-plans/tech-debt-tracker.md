@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-21 HPCON 实现前复核：stock 与新增 owner API 隔离、候选共用编译产物和实际 DLL/OpenConsole.exe 输入、单次 connect、原生退出与 TSFN 完成 gate 已列入运行前要求；Release 按同包头文件的真实 HRESULT 签名记录，不将原 void 调用类型当 API 契约。新工具的静态/合成自测不替代 Windows 原生 owner/内容/资源证据，不修改历史失败或关闭退出完整性债务。
+
 2026-09-21 HPCON owner 对照冻结：下一增量固定 `useConptyDll=true`，只比较 stock、owner-retain/no-close 与 owner-retain/explicit-close；保持原 Release 时机，Close 仅在真实 pipe EOF、consumer complete、input/worker 收尾和 shellExited 后由已知 owner 单次调用。不得复用 PtyKill、TerminateProcess、CloseHandle(HPCON) 或关闭陌生句柄；builtin、业务和生产 API/预算另验。旧 +2、普通对象 +5 与全部历史失败不改判，退出完整性债务不关闭。见设计第29节和 active 计划。
 
 2026-09-21正常对象首轮结果：cbbba096/run35560063334 attempt1六driver/92普通child/690快照完整执行与下载复核，两个control通过、四个初始计数失败不改判，非PTY/产品验收。92个child退出后仍可查PID/time/exitCode，368次image31与正常引用存续一致；retain最终关闭23个已知句柄精确减少23。四个child driver预热后另有+5保持不变，尚无类型/创建来源，不确认为lazy初始化、OS bug或owner泄漏。HPCON最终Close契约独立存在，旧File/Process配对归属仍inconclusive；下一步另冻已知owner干预，正缓冲/异常/真实宿主/生产契约继续开放。见当前设计第28节及active计划，债务不关闭。

@@ -1,0 +1,77 @@
+name: Runtime Windows HPCON Owner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [runtime-exit-integrity-native-candidates]
+    paths:
+      - .github/workflows/runtime-windows-hpcon-owner.yml
+      - scripts/diagnostics/diagnose-windows-hpcon-owner.mjs
+      - scripts/diagnostics/windows-hpcon-owner-patch.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-windows-hpcon-owner-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  hpcon-owner:
+    name: Known HPCON owner close / Windows / Node 22.23.2
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Fetch matching Node headers and import library
+        shell: pwsh
+        run: |
+          $version = node -p process.versions.node
+          $root = Join-Path $env:RUNNER_TEMP "hpcon-owner-node-$version"
+          New-Item -ItemType Directory -Path $root | Out-Null
+          curl.exe --fail --location --retry 2 "https://nodejs.org/dist/v$version/node-v$version-headers.tar.gz" --output "$root/headers.tar.gz"
+          if ($LASTEXITCODE -ne 0) { throw 'Node headers download failed' }
+          tar -xzf "$root/headers.tar.gz" -C $root
+          if ($LASTEXITCODE -ne 0) { throw 'Node headers extraction failed' }
+          curl.exe --fail --location --retry 2 "https://nodejs.org/dist/v$version/win-x64/node.lib" --output "$root/node.lib"
+          if ($LASTEXITCODE -ne 0) { throw 'Node import library download failed' }
+          "DSC_NODE_INCLUDE_DIR=$root/node-v$version/include/node" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DSC_NODE_LIB=$root/node.lib" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Check diagnostic entry syntax
+        shell: pwsh
+        run: |
+          node --check scripts/diagnostics/windows-hpcon-owner-patch.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Native transformer syntax check failed' }
+          node --check scripts/diagnostics/diagnose-windows-hpcon-owner.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Diagnostic entry syntax check failed' }
+      - name: Run source transformer and lifecycle self-tests
+        env:
+          DSC_HPCON_OWNER_SELFTEST_EVIDENCE: hpcon-owner-selftest
+        run: node scripts/diagnostics/diagnose-windows-hpcon-owner.mjs --self-test
+      - name: Run complete HPCON owner schedule
+        run: node scripts/diagnostics/diagnose-windows-hpcon-owner.mjs --output hpcon-owner-evidence
+      - name: Verify all saved arms including failures
+        if: always()
+        run: node scripts/diagnostics/diagnose-windows-hpcon-owner.mjs --verify-saved hpcon-owner-evidence
+      - name: Upload complete evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-windows-hpcon-owner-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            hpcon-owner-evidence/
+            hpcon-owner-selftest/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
