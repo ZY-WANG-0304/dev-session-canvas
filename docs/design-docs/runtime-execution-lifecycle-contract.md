@@ -227,3 +227,23 @@ D1/D2完成后才逐平台另冻原生失败矩阵，不在本轮虚构fixture�
 本阶段交付物是契约提案、有限故障分类和D1/D2冻结协议；不是新模型或原生矩阵的通过记录。正式运行须记录输入commit、运行时/OS、schedule、原始trace、结果及源码hash，并完整下载离线复核。现有自然路径结果与旧失败引用本树原生候选设计第30节，新增结论只按实际证据更新，不追认任何历史失败为通过。
 
 设计复审分别核查Windows/native、Unix/guard与authority/页面三条边界，修订M05类型、唯一序号、迟到补证、新读者准入、outcome各跳保留及G04可行性限制。运行时主工作树 `dev-session-canvas2` 的既有bridge、tracker、Supervisor协议聚合回归与该树 `.debug/lifecycle-contract-design-v1-node25` 的旧39项契约通过；不将它们计为D1/D2或生产失败路径验证。
+
+## 10. D1/D2 实施约束（2026-09-21）
+
+第8节的运行前冻结协议保持不变，本阶段开始实现四个新诊断文件及 `.github/workflows/runtime-lifecycle-contract-v1.yml`。D1、D2分别执行并离线复核，一组失败不跳过另一组；三平台固定Node22.23.2，仅用Node标准库、不安装依赖、不加载PTY。每组schedule在执行前保存，源码快照/指纹、实际Node/OS/架构、输入commit与runner run/attempt全部留证；旧脚本、断言、历史工件与业务不改。
+
+D2在t0+1950ms开始最终本地capture清理和一次性返回，预留50ms调度开销，但验收上限仍是t0+2000ms，不增加宽限。t0在spawn之前，ready不能重置预算。G04的Windows helper拟以detached模式避免父Node自身Job在driver退出时提前终止它，同时显式继承stdio；这不能静态保证runner外层Job行为，仍必须观察driver退出后的私有nonce响应及stdio持有，缺前提就保留precondition-failure。helper内核退出未经独立wait证明时保留unknown，不拿协作回执冒充资源全部回收，也不因此否定已证明的guard返回控制。
+
+实现与校验器分别检查原始事实；自测删除事件、改序号/身份、缺终态/工件及第一项损坏后继续遍历全部schedule。控制测试正确识别预期失败可以通过，但raw的超时、截断、非零退出、未知和前提失败不能改写为自然成功。新结果应在本节之后追加，首次失败和修订原因均保留；这里没有提前声明新矩阵通过。
+
+## 11. 本地实施与首轮证据（2026-09-21）
+
+四个新脚本和workflow仅位于 `runtime-exit-integrity-native-candidates` 独立分支。主运行时分支只同步文档。D1模型有真实deferred parser Promise、重复释放返回Promise引用和完成值的驱动侧观察，以及明确标记的异步消费者callback模拟；不是实际xterm/Host。D2把进程exit、管道end/close、捕获错误、deadline和首次返回分别留证，父观察进程独立执行5000ms截止，额外1000ms不是自然成功宽限。source字节指纹与只读LF规范化核对同时保留，离线校验不执行保存的源码、不相信pass字段，并遍历完整schedule。
+
+D1的 `.debug/provider-lifecycle-v1-node25-first` 与 `.debug/provider-lifecycle-v1-electron39-first` 各37/37，完整离线复核无failures或evidenceErrors；实际运行时分别为Node25.6.0及Electron39.8.7内嵌Node22.22.1。两个本地输入以独立分支9824f166工作区及归档源码指纹为准，不谎称在尚未创建的新commit运行。开发自测v1原样保留；复审发现M18初版仅由模型自报同Promise，v2改由harness比较真实返回引用及两个fulfilled值，同时观察解析Promise的pending/fulfilled/rejected和消费者callback。v2自测37正例、12类负对照通过，不追认v1具备新增证明。
+
+D2的 `.debug/process-guard-v2-local-first` 原24项control-pass、最长1952.568317ms返回保留，并用其归档版本独立复核。末审发现G04/G05在deadline后协作或强制结束、收到真实管道end时仍写captureIntegrity=complete，整体完整性表达不足；不能把这些首轮输出当作新分类已验证。修订不改期限或案例，将整体采集标记为deadline-incomplete，保留真实endObserved；error/truncated优先于该分类。新目录 `.debug/process-guard-v2-local-v2-deadline-integrity` 在Linux/Node25.6.0再次完整24项及离线复核通过，最长1952.428426ms；raw为9条natural-exit、3条spawn-error、12条deadline-exceeded，含18条真实进程/启动控制和6条synthetic，零PTY。G04三次主体已退出但stdio仍被helper持有的前提均成立；helper仍只确认协作回执，不补造OS退出wait。
+
+D2最终自测25项通过，含有效G01/G07基线、9类重新计算manifest后的语义篡改、首项损坏后继续检查末项，以及超时后EOF不晋升完整。初版/增强版自测、两次开发矩阵及两份正式本地输入均保留。独立只读复审已收口Promise自证、capture-error缺维度、outer自然截止宽限和deadline完整性表达问题，没有放宽冻结协议。主运行时树本轮bridge、tracker、Supervisor协议聚合回归再次通过，workflow YAML/内嵌脚本及精确Node版本拒绝检查通过。
+
+本节收口时三平台runner尚未运行，不能将本地Linux、Electron注入模型或静态Windows审查记为macOS/Windows已通过。下一步推送独立输入，运行完整三平台D1/D2并下载全部工件复算；新原生异常、builtin、正缓冲、并发、真实Agent/Host/Webview/packaged及生产预算仍开放。新guard也没有追溯替换旧冻结入口中的guarded等待。

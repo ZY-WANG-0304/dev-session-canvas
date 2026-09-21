@@ -63,7 +63,7 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 第30节已完成Windows bundled-DLL三臂首次原生矩阵及全量复核：138条会话完整，46次已知HPCON最终Close消除同native/no-close的逐会话+2总句柄增量，四个no-close资源失败保留。这是正常自然路径的窄因果证据，不是Windows对象语义缺陷或生产退出完整性已修复；旧类型/内核对象身份归属不确定不改判。
 
-第31节及 `docs/design-docs/runtime-execution-lifecycle-contract.md` 已完成下一阶段的候选契约与 D1/D2 运行前冻结，尚未新增脚本或取得新模型/原生运行结果。下一步只在本独立分支实施 D1 的24组37个独立子案例和 D2 的8个子项各3次硬返回控制；D1/D2验证后再逐平台另冻取消/异常/builtin/正readable原生矩阵。并发、旧Windows版本、实际Agent启动链、Host/Webview与packaged继续单列。生产reader、wire/API及取消条件和预算尚未选定，设计比较中/验证中，计划active，业务不改。后续不得以重跑本轮或清理未知句柄获取全绿。
+第31节及 `docs/design-docs/runtime-execution-lifecycle-contract.md` 冻结的 D1/D2 已在本独立分支实现，本地结果见第32节与共享契约第11节。D1在Node25与Electron-as-Node各37/37；D2新的deadline完整性版本本地24/24控制及离线复核通过，但raw仍含12条deadline-exceeded、3条spawn-error，零PTY。首轮完整性表达不足的工件原样保留，不追认新增证明。下一步推送独立输入，由已新增workflow在三平台固定Node22.23.2运行完整D1/D2并下载复核；当前尚无remote结果。之后才逐平台另冻取消/异常/builtin/正readable原生矩阵。并发、旧Windows版本、实际Agent启动链、Host/Webview与packaged继续单列。生产reader、wire/API及取消条件和预算尚未选定，设计比较中/验证中，计划active，业务不改。
 
 ### 首轮阶段的历史讨论
 
@@ -597,3 +597,17 @@ D2 冻结八个子项各3次，每平台24条、三平台72条，其中 G06a/G06
 后续先实施 D1/D2 新入口，再另冻每个平台的 partial-create、wait/通知、reader取消及正长度buffer、最终释放失败/挂起与两个并发会话的原生对照。TSFN 环境销毁时已排队payload、hShell登记前失败和Unix在途read/control-fd属于静态待验证窗口，不由正常92次TSFN成功或现有自然资源结果覆盖。builtin、旧Windows、真实Agent/Host/Webview/packaged及生产取消预算继续开放。本阶段只检查文档元数据/索引/关联路径、计划章节与历史证据不变，不关闭退出完整性和诊断硬返回债务。
 
 三条边界只读复审已补进程类型、唯一序号、迟到补证、读者准入及各跳outcome，创建前provider/adapter/authority的sink须全部绑定或受显式start屏障保护，不能留下open返回后才订阅onData的缺口。M01在原组内覆盖同步首块/退出，D1仍37子例。主运行时树dev-session-canvas2的既有bridge、tracker、Supervisor协议聚合回归及该树.debug/lifecycle-contract-design-v1-node25的旧39项契约通过；这些不是本树新D1/D2或原生失败路径验收。下一轮workflow候选为 `.github/workflows/runtime-lifecycle-contract-v1.yml`，尚未创建。
+
+## 32. D1/D2 本地实施与 runner 前收口（2026-09-21）
+
+第31节的冻结输入、原断言与历史结果不变。本独立分支新增 `scripts/diagnostics/runtime-provider-lifecycle-model-v1.mjs`、`scripts/diagnostics/diagnose-runtime-provider-lifecycle-v1.mjs`、`scripts/diagnostics/diagnostic-process-guard-v2.mjs` 和 `scripts/diagnostics/diagnose-process-guard-v2.mjs`，只使用Node标准库，不修改业务、安装依赖或旧诊断入口。两个CLI支持self-test、全新目录采集和保存结果离线复核；完整schedule先落盘，源码快照/字节指纹、单调事件、实际运行环境与Git输入一起归档。离线验证不执行保存的模型，不依赖pass字段，首项损坏仍检查完整37项或24项。详细分版证据见 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第11节。
+
+D1正式本地目录 `.debug/provider-lifecycle-v1-node25-first` 和 `.debug/provider-lifecycle-v1-electron39-first` 各37/37，完整离线复核无failures或evidenceErrors。运行时分别为Node25.6.0、Electron39.8.7内嵌Node22.22.1，输入为9824f166工作区及归档源码指纹，不补造尚未创建的提交。开发自测v1保留；v2的37正例和12类负对照通过，并由harness比较M18的真实Promise引用及两个完成值，不再相信模型自报。authority使用实际deferred parser Promise，页面应用是明确标记的异步consumer callback模拟，均不等同真实xterm、Host或native EOF。
+
+D2正式首轮 `.debug/process-guard-v2-local-first` 的24项control-pass和最长1952.568317ms返回原样保留，已用当时归档源码复核。末审发现G04/G05在deadline后协作或强制结束并收到真实管道end时仍写captureIntegrity=complete，整体采集完整性表达不足。后续只修正分类为deadline-incomplete，保留真实endObserved及error/truncated优先级，不修改冻结期限/案例，不覆盖首轮，也不追认首轮具备新增证明。
+
+新目录 `.debug/process-guard-v2-local-v2-deadline-integrity` 在Linux/Node25.6.0完成24项控制及完整离线复核，最长1952.428426ms返回，无evidenceErrors。raw仍为9条natural-exit、3条spawn-error、12条deadline-exceeded；18条真实进程/启动控制与6条synthetic分开，全部零PTY。G04三次均证明driver退出后helper仍响应私有nonce并持有stdio，返回分别为1019.281081/1019.788213/1019.804538ms且captureIntegrity均为deadline-incomplete；协作完成回执不是helper独立OS退出wait。最终D2自测25项通过，含有效G01/G07基线、9类重算manifest后的语义篡改、首项损坏后继续检查末项，以及超时后EOF不晋升完整；此前开发自测和矩阵均保留。
+
+独立只读复审已收口D1 Promise自证、D2 capture-error缺维度、outer自然截止宽限和deadline完整性分类，不放宽冻结协议。主运行时工作树本轮既有bridge、tracker、Supervisor协议聚合再次通过，仅作为原有回归记录。新增 `.github/workflows/runtime-lifecycle-contract-v1.yml` 在Linux/macOS/Windows固定Node22.23.2，不安装依赖、不加载PTY；D1/D2各自执行、各自复核，一组失败不跳过另一组，完整上传全部工件。本节收口时尚未推送本轮输入，没有remote运行结果。
+
+下一步仅提交并推送独立诊断输入，执行三平台D1各37项、D2各24项，下载全部工件后按原schedule离线复核。控制正确识别失败可以通过，但不能改写raw失败、首次结果或历史结论；本地Linux与Electron模型不外推macOS/Windows。新guard没有替换旧入口的guarded等待，工具债务尚待三平台验证；partial-create、wait/通知、取消/正长度buffer、释放失败/挂起、并发、builtin、旧Windows及真实Agent/Host/Webview/packaged仍需另冻原生矩阵。生产API和预算未选定，设计比较中/验证中、计划active，退出完整性债务不关闭。

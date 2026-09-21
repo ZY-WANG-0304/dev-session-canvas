@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-21 D1/D2本地实施收口：四个独立新脚本及三平台Node22.23.2 workflow已实现，不安装依赖、零PTY，尚未推送本轮输入或取得remote结果。D1正式Node25/Electron39各37/37及离线复核通过，v2自测37正例/12类负对照，v1保留不补造Promise引用证明。D2正式local-first的24项控制及其captureIntegrity表达不足原样保留，用旧快照复核；新local-v2-deadline-integrity完整24项及离线通过，raw仍9natural-exit/3spawn-error/12deadline-exceeded，超时后真实end仍标deadline-incomplete，18real/6synthetic分账，最终自测25项。工具硬返回债务已获得Linux本地证据，三平台完整验证与旧guarded入口移交仍未完成，不关闭该债务或退出完整性。下一步运行完整runner再另冻原生异常/取消/正buffer/并发矩阵，builtin、旧Windows、真实Agent/Host/Webview/packaged和生产API/预算继续开放。见原生候选第32节、生命周期契约第11节及对应active计划；以下同日冻结记录保留其当时状态。
+
 2026-09-21 生命周期候选契约冻结：新增 `docs/design-docs/runtime-execution-lifecycle-contract.md`，将进程结果、可信源结束、authority解析、页面结算和原生资源分开；terminated/unconfirmed、同操作迟到补证及逐项owner不再混成lifecycleFailed。读者候选为opt-in close outcome，全链校验、final固定时关闭新open，源/资源/结算三能力独立；生产握手、回执上限/期限、未知owner隔离、reader/API和取消预算未选定，不能直接接入业务。D1固定24组37独立子例，下一阶段实施后才有模型证据；TSFN环境销毁排队payload及hShell登记前失败仍只是静态窗口，原生异常、builtin、旧Windows及真实Agent/Host/Webview/packaged继续开放。业务锚点来自主运行时分支0518dcc4，本树尚未包含该改造。见原生候选第31节及对应active计划，退出完整性债务不关闭。
 
 2026-09-21 guarded新版本验收冻结：D2另建两个v2诊断文件，原入口和150s等待不修改；八子项各三次/平台，三平台72条含18条synthetic、54条真实进程或启动控制，全部零PTY。1000ms采集+最多1000ms返回及独立5000ms+1000ms观测仅是工具预算；从spawn前计时，kill false/抛错不能继续无限等close。G04用受控继承helper的私有nonce/3000ms自限期证明前提，不按PID强杀；无法证明Windows Job下stdio持有则未覆盖，guard返回与fixture清理各自验收。本阶段尚无新入口或运行通过，硬返回工具债务仍开放，不能以run35586906307自然完成替代；下一阶段先实施D1/D2再另冻原生失败矩阵，见新契约第8节和 `docs/exec-plans/active/runtime-exit-integrity-native-candidates.md`。
