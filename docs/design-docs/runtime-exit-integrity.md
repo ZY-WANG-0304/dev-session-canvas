@@ -29,7 +29,7 @@ updated_at: 2026-09-22
 
 完成重构时若该项仍有未收口缺陷或原生平台验证缺口，就不能把本次重构的退出完整性宣布为完成；允许说明其他独立增量的已完成结果。任何支持范围缩减或发布例外必须显式记录并由用户确认，不能把未实测自动解释为不在范围。
 
-当前增量的脚本、workflow及.debug证据均只在独立 `runtime-exit-integrity-native-candidates` 工作树 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates`；本主运行时树只同步六份文档，没有新增这些诊断入口。第41–43节分别记录v1两次失败、v2窄协议与本地证据；其中“未提交工作树”仅指采集当时的诊断源码快照，后续实现已提交为b4db41cc，不能倒写本地采集为commit运行。唯一v2 run35676427931 attempt1的完整下载/独立审计及三平台窄验证见第44节，生产契约阻塞项仍未闭合。
+当前增量的脚本、workflow及.debug证据均只在独立 `runtime-exit-integrity-native-candidates` 工作树 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates`；本主运行时树只同步文档，没有新增这些诊断入口。第41–43节分别记录v1两次失败、v2窄协议与本地证据；其中“未提交工作树”仅指采集当时的诊断源码快照，后续实现已提交为b4db41cc，不能倒写本地采集为commit运行。唯一v2 run35676427931 attempt1的完整下载/独立审计及三平台窄验证见第44节，生产契约阻塞项仍未闭合。
 
 ## 2. 问题与证据基础
 
@@ -87,6 +87,8 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 “实际主进程退出后普通后代延迟写入/保持 slave”单列为底层诊断，保留原门槛、失败与取消结果，不进入必须支持后代续跑的产品门槛。若诊断进一步证明主进程尾部、已接收内容、最终状态或资源释放有问题，按对应产品条目阻塞；仅未收到退出后后代未来输出不能独立阻塞。详细重评见第 18 节。
 
 ## 6. 下一步与状态
+
+当前下一步见第45节：新 `runtime-diagnostic-settlement-contract.md` 已冻结D3 v3/D4 v2设计，尚未实施或执行；先本地新入口、固定fixture/source hash和独立源码复审，再唯一三平台采集及完整离线复核。W1/U1和生产交付继续阻塞，最终文档检查与静态复审已通过；以下既有证据仍按原范围保留，不把旧阶段“下一步”作为当前待办。
 
 执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
 
@@ -762,3 +764,13 @@ Windows full D3-01-1再次实际观察到fd3 after-await先于stdout operation-r
 三个artifact为Linux10673655385、macOS10673171771、Windows10674000078；每ZIP453成员，共1359，API size/digest与完整下载一致。15份runner输入与固定Git提交逐项对账，Linux/macOS共10份exact，Windows5份仅CRLF差异；验证器从可信Git输入生成，未执行归档源码。全部工件、可信输入、三个platform-audit及 `acquisition.json`、`metrics.json`、`audit.json` 保存在独立诊断树 `.debug/observation-envelope-v2-run-35676427931/`。audit SHA256为 `a772fa2a399c9b51fe109b56fff097933e9873fa0c424aab93f18717c13233f7`。本主运行时树未新增脚本、workflow或这些工件。
 
 本轮只关闭D3 v2来源/顺序窄修正的首次跨平台验证待办。三独立observation/process/evidence settlement、不可变首次deadline观察、有界unconfirmed、writer完整消息协议/预算和D4独立重放/完整身份仍阻塞；W1/U1不启动，原生失败设计保持比较中/未验证，生命周期与总退出完整性保持比较中/验证中，计划active。旧实验、原始断言及失败不改，不新增普通后代托管、旧live迁移、生产server布局或运行时代码改造。
+
+## 45. 下一版诊断结算设计冻结（2026-09-22）
+
+新设计 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 以诊断树e1a31b79、运行时树a5f8d629为输入，冻结D3 v3与D4 v2的下一版契约，状态比较中/未验证。本阶段仅源码、协议与设计复审，零新增测试、零新增native运行；旧D3 v1/v2、D4 v1、workflow、工件和历史失败全部不改。三侧静态复审、跨文档及历史保持检查已通过；只收口设计，不代表实现或新矩阵通过。
+
+D3 v3同步返回handle，observation、processSettlement、evidenceSettlement各自首次结算；绝对deadline先于等时/迟到事件，首报不可变，迟到事实追加。exit与捕获真实EOF分开，capture gate保留尾部；直接owner有界控制、未确认责任继续占账，不能以kill/close当释放。D3每case最多预留caller/evidence/publisher三个槽，任一hard截止仍unknown即停止后续case；这不是D4模型的N2容量。writer、独立verifier与最终publisher分责，协议错误不可被合法claim清除，受测证据结算、发布与可信离线归档验证分别判断；这些是诊断候选，不是生产进程布局或退出时间政策。
+
+D4 v2固定N2/Q1，完整command/return/event/snapshot由不共用SUT转换函数的oracle逐步重放。创建acquisition、use token、整体release操作、首次unknown、当前证明与槽位分账；失败不抹已取得资源，错身份拒绝零副作用，旧代同操作迟到补证不得污染新owner，完整责任结算后仍显式reopen。failureDomain只是模型标签，不提供真实故障隔离证明。
+
+运行前计划为每runner D3 v3主控36项、因果gate2项、publisher4项，D4 v2确定性模型16项，分别计数；三runner对应108/6/12/48，均尚未实施执行，不相加作PTY或产品通过数。下一步仅在独立诊断树新增版本入口，先本地实施、fixture清单/源码hash冻结与独立源码复审，再唯一一次固定输入三平台采集及全工件可信重放。主运行时树只同步文档，不推送；W1/U1和完整生产退出交付继续阻塞。

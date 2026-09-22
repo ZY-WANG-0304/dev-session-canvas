@@ -19,6 +19,8 @@ updated_at: 2026-09-22
 
 ## 1. 本阶段状态与完成边界
 
+当前新增承接见第18节及 `docs/design-docs/runtime-diagnostic-settlement-contract.md`：D3 v3/D4 v2的协议与运行前矩阵已冻结，未实施或运行。下一步先在独立诊断树进行新版本本地实施、fixture/源码复审，再唯一一次三平台采集；最终文档检查与静态复审已通过。此前v1/v2结果及本设计未验证状态不变。
+
 本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。设计输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。D3/D4 v1已以7141cfa3完成三平台首次与误触同SHA重复runner，两run均保留failure；跨pipe接收误判、真实预算迟到和证据缺口分别记录于第14节。D3 v2来源/顺序窄修正及本地验证见第15–16节，不表示完整诊断契约、native资源或生产拓扑已验证。
 
 第13节起所有新诊断源码、workflow及.debug证据均位于独立 `runtime-exit-integrity-native-candidates` 工作树 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates`，本主运行时树只同步文档，没有这些新入口。v2本地采集仍绑定当时未提交源码快照；后来实现提交为b4db41cc，不能倒称本地采集来自该commit。唯一新run35676427931 attempt1的完整下载/独立审计已在第17节收口，三平台窄验证通过；下一步补结算与重放阻塞项，不把工具结果扩大为native/生产完成。
@@ -190,7 +192,7 @@ W1/U1自身的释放错误仍是raw失败，即使成功观察这种失败；验
 
 ## 12. 实施顺序与验证入口
 
-第一步已在独立诊断树实现D3/D4四文件及 `.github/workflows/runtime-native-failure-foundation.yml`，本地与v1两次runner证据见第13–14节。CLI支持 `--self-test`、`--output NEW_DIRECTORY` 和 `--verify-saved DIRECTORY`，保存目录不可复用；命令只从独立诊断树运行，主运行时不推送、不安装新业务依赖。v2仅修来源/顺序oracle和D3-08 ACK前提，第15–17节记录协议、本地与唯一新runner完整审计。当前下一步先另冻并实施诊断结算/重放阻塞项，不启动W1/U1。
+当前第一步按 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 实施新D3 v3/D4 v2入口与独立oracle；冻结fixture清单/source hash、本地验证及源码复审后，再唯一一次固定输入三平台采集。每runner主控36/gate2/publisher4与D4模型16均为待执行计划，旧v1/v2/D4结果见第13–17节且不重跑改判。主运行时仅同步文档，W1/U1仍等待新诊断完整验收；下段原生实施为后续门槛，不是当前开始指令。
 
 第二步在D3/D4完整首次结果收口后，新增 `native-failure-owner-v1.mjs`（台账/调度协议）、`windows-native-failure-patch-v1.mjs`、`unix-native-failure-patch-v1.mjs`、`diagnose-native-failure-v1.mjs`，统一放 `scripts/diagnostics/`；它们只生成隔离fork，不import进业务、不改node_modules。原生workflow单独新增 `.github/workflows/runtime-native-failure-v1.yml`，按平台schedule执行W1/U1并始终上传完整工件。构建参数、机械补丁匹配计数及实际链接输入须实现前复审，编译失败记零实际运行、全部not-run，不能伪造66 native成功。
 
@@ -253,3 +255,13 @@ Windows full D3-01-1再次实际观察到fd3 after-await先于stdout operation-r
 三个artifact为Linux10673655385、macOS10673171771、Windows10674000078；每ZIP453成员，共1359，API size/digest与完整下载一致。15份runner输入与固定Git提交逐项对账，Linux/macOS共10份exact，Windows5份仅CRLF差异；验证器从可信Git输入生成，未执行归档源码。全部工件、可信输入、三个platform-audit及 `acquisition.json`、`metrics.json`、`audit.json` 保存在独立诊断树 `.debug/observation-envelope-v2-run-35676427931/`。audit SHA256为 `a772fa2a399c9b51fe109b56fff097933e9873fa0c424aab93f18717c13233f7`。本主运行时树未新增脚本、workflow或这些工件。
 
 本轮只关闭D3 v2来源/顺序窄修正的首次跨平台验证待办。三独立observation/process/evidence settlement、不可变首次deadline观察、有界unconfirmed、writer完整消息协议/预算和D4独立重放/完整身份仍阻塞；W1/U1不启动，原生失败设计保持比较中/未验证，生命周期与总退出完整性保持比较中/验证中，计划active。旧实验、原始断言及失败不改，不新增普通后代托管、旧live迁移、生产server布局或运行时代码改造。
+
+## 18. 完整诊断结算与身份重放设计承接（2026-09-22）
+
+新设计 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 以诊断树e1a31b79、运行时树a5f8d629为输入，冻结D3 v3与D4 v2的下一版契约，状态比较中/未验证。本阶段仅源码、协议与设计复审，零新增测试、零新增native运行；旧D3 v1/v2、D4 v1、workflow、工件和历史失败全部不改。三侧静态复审、跨文档及历史保持检查已通过；只收口设计，不代表实现或新矩阵通过。
+
+D3 v3同步返回handle，observation、processSettlement、evidenceSettlement各自首次结算；绝对deadline先于等时/迟到事件，首报不可变，迟到事实追加。exit与捕获真实EOF分开，capture gate保留尾部；直接owner有界控制、未确认责任继续占账，不能以kill/close当释放。D3每case最多预留caller/evidence/publisher三个槽，任一hard截止仍unknown即停止后续case；这不是D4模型的N2容量。writer、独立verifier与最终publisher分责，协议错误不可被合法claim清除，受测证据结算、发布与可信离线归档验证分别判断；这些是诊断候选，不是生产进程布局或退出时间政策。
+
+D4 v2固定N2/Q1，完整command/return/event/snapshot由不共用SUT转换函数的oracle逐步重放。创建acquisition、use token、整体release操作、首次unknown、当前证明与槽位分账；失败不抹已取得资源，错身份拒绝零副作用，旧代同操作迟到补证不得污染新owner，完整责任结算后仍显式reopen。failureDomain只是模型标签，不提供真实故障隔离证明。
+
+运行前计划为每runner D3 v3主控36项、因果gate2项、publisher4项，D4 v2确定性模型16项，分别计数；三runner对应108/6/12/48，均尚未实施执行，不相加作PTY或产品通过数。下一步仅在独立诊断树新增版本入口，先本地实施、fixture清单/源码hash冻结与独立源码复审，再唯一一次固定输入三平台采集及全工件可信重放。主运行时树只同步文档，不推送；W1/U1和完整生产退出交付继续阻塞。
