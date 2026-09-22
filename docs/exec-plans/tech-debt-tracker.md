@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-22 错误保留增量已按 `runtime-diagnostic-settlement-contract.md` 第15节完成：字段128/128/2048 UTF-8 bytes，role/stream/listener各256条/65536 JSON bytes、封前缀及来源摘要，reason插入去重，错误完整性独立认证。helper39/public29及saved29、tamper8正例/20组35变体、主回归119/41/156/15/37与saved5/5、portable46/6/17只关闭该局部诊断缺口。剩余阻塞是新策略下2MiB请求可达性、listeners注册集合/单chunk sequences边界和完整工具复审；旧43项中六个800条错误构造不适用，原断言与证据不改，不直接写成不可达。真实Windows junction/readlink/权限、大小写/Unicode、打包上传解包及原生异平台归档仍待runner。全owner/RSS、W1/U1、生产API/停止预算、实际启动链/双会话/宿主/packaged与总退出完整性均未关闭；以下条目保留历史时点。
+
 2026-09-22 容量与归档增量的设计、实测及剩余门槛见 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第14节。本轮不调整生产实现或容量策略；listener异常name/code无字节上界、重复错误辅助数组可越过trace边界仍是独立诊断工具风险。修复前先设计有界摘要和缺证标记，保留最小公开API反例，不以43个测试目标满足推论整体内存有界。实际Windows junction/权限/文件系统语义、打包上传解包保真及真实跨OS归档仍需runner；真实D3、W1/U1和产品退出完整性仍未验收。
 
 2026-09-22 确定性覆盖增量：D3新增156项，其中154要求完整重放，2项control reserve耗尽要求明确拒绝；独立100ms消费策略已在运行前冻结，不改原deadline。D4 local-4两次各16项、330命令/68预期拒绝/2092 checks，101语义和4 saved负例及各16/16离线复核补齐create/use unknown迟到结算。三处oracle误判和archive同拒绝类别替换漏洞已定位修正，首次source/失败保留；完整最新证据与源hash见 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第13节。旧第12节的预算未冻结和覆盖缺口只对应旧输入，不追认旧结果。

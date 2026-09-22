@@ -8,7 +8,12 @@ const EVENTS = new Set(['case-start', 'publication-start', 'evidence-start', 'sp
   'process-error', 'process-close', 'exit', 'control-attempt', 'trace-overflow', 'stream-data', 'stream-end',
   'stream-close', 'stream-error', 'stream-cancel', 'stream-truncated', 'capture-settled', 'report-frozen',
   'protocol-frame', 'protocol-error', 'ack-sent', 'ack-error', 'request-error', 'deadline', 'gate-held',
-  'gate-released', 'gate-not-established', 'consumer-after-await', 'readers-registered', 'launch-rejected']);
+  'gate-released', 'gate-not-established', 'consumer-after-await', 'readers-registered', 'launch-rejected',
+  'listener-error', 'stream-destroy-error']);
+const ERROR_POLICY = { schema: 'diagnostic-error-retention-v1', nameBytes: 128, codeBytes: 128,
+  messageBytes: 2048, entries: 256, jsonBytes: 65536 };
+const ERROR_FIELDS = ['name', 'code', 'message'];
+const CHANNELS = ['stdout', 'stderr', 'fd3'];
 const NS = 1_000_000n;
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const same = isDeepStrictEqual;
@@ -78,7 +83,7 @@ function newRole(role) {
   return { role, request: null, spawnAt: null, spawned: false, registered: null, closed: false, launchRejected: false,
     exited: null, spawnError: null, frames: [], errors: [], controls: [], truncated: false,
     streams: Object.fromEntries(['stdout', 'stderr', 'fd3'].map(channel =>
-      [channel, { pending: Buffer.alloc(0), endedAt: null, closedAt: null, cancelledAt: null, diagnosticBytes: 0, receivedBytes: 0, retainedBytes: 0 }])),
+      [channel, { pending: Buffer.alloc(0), endedAt: null, closedAt: null, cancelledAt: null, destroyErrors: 0, diagnosticBytes: 0, receivedBytes: 0, retainedBytes: 0 }])),
     channels: new Map(), sequences: new Set(), terminal: null };
 }
 
@@ -119,7 +124,7 @@ function replay(input) {
     const state = roles[fact.role];
     let frameOffset = -1;
     const issue = reason => {
-      const category = ['process-error', 'request-error', 'launch-rejected'].includes(fact.event) ? 'lifecycle' :
+      const category = ['process-error', 'request-error', 'launch-rejected', 'ack-error'].includes(fact.event) ? 'lifecycle' :
         fact.event === 'stream-error' ? 'stream' : 'protocol';
       const value = { at, ordinal: fact.eventOrdinal, frameOffset, reason, category };
       if (state) state.errors.push(value);
@@ -179,7 +184,7 @@ function replay(input) {
     } else if (fact.event === 'control-attempt' && state) {
       check(!state.exited && !state.spawnError, `control-after-exit:${fact.role}`);
       check(['SIGTERM', 'SIGKILL'].includes(d.signal), 'control-signal');
-      state.controls.push({ at, ...d });
+      state.controls.push({ at, ...d, factId: fact.factId });
     } else if (fact.event === 'trace-overflow') {
       check(!overflow, 'duplicate-overflow'); overflow = true;
     } else if (fact.event === 'stream-data' && state) {
@@ -254,8 +259,12 @@ function replay(input) {
       } else if (fact.event === 'stream-close') stream.closedAt = at;
       else if (fact.event === 'stream-cancel') stream.cancelledAt = at;
       else issue('stream-error');
-    } else if (['process-error', 'request-error'].includes(fact.event) && state) {
-      issue('process-error');
+    } else if (fact.event === 'stream-destroy-error' && state) {
+      const stream = state.streams[d.channel];
+      if (!stream) issue('stream-channel');
+      else stream.destroyErrors++;
+    } else if ((['process-error', 'request-error'].includes(fact.event) || fact.event === 'ack-error' && text(d.forType)) && state) {
+      issue(fact.event === 'ack-error' ? 'ack-error' : 'process-error');
     } else if (fact.event === 'deadline') {
       if (d.name === 'caller-hard' && (!reports.has('processSettlement') || !capture && !readersSettled(roles.caller))) blocked = true;
       if (['evidence-hard', 'publication-hard'].includes(d.name) && !reports.has(d.name === 'evidence-hard' ? 'evidenceSettlement' : 'publication')) {
@@ -329,7 +338,8 @@ function helperResult(state, start, hard, expectedTerminal) {
   const natural = state.exited && state.exited.code === 0 && state.exited.signal === null && state.exited.at < start + 1000n * NS && state.controls.length === 0;
   const terminal = state.terminal?.frame.type === expectedTerminal && state.terminal.at < hard;
   if (natural && completeBy(state, hard) && !terminal) return 'failed';
-  return natural && completeBy(state, hard) && terminal && !state.truncated ? 'sealed' : 'incomplete';
+  return natural && completeBy(state, hard) && terminal && !state.truncated &&
+    Object.values(state.streams).every(stream => stream.destroyErrors === 0) ? 'sealed' : 'incomplete';
 }
 
 function checkReport(result, report, name, expectedKind, deadline, earliest) {
@@ -391,7 +401,8 @@ export function verifySavedCase(input) {
     }
     // Capture is a first observation too: later exit/EOF cannot repair its cutoff.
     const capturePrefix = replay({ ...input, trace: input.trace.filter(fact => fact.eventOrdinal <= (capture?.ordinal ?? 0)) });
-    const captureFailed = capturePrefix.roles.caller.errors.some(e => e.category !== 'lifecycle');
+    const captureFailed = capturePrefix.roles.caller.errors.some(e => e.category !== 'lifecycle') ||
+      Object.values(capturePrefix.roles.caller.streams).some(stream => stream.destroyErrors > 0);
     const captureComplete = Boolean(capture && capture.at < processDeadline && !captureFailed && !capturePrefix.overflow &&
       completeBy(capturePrefix.roles.caller, processDeadline));
     if (capture) check(capture.integrity === (captureFailed ? 'failed' : captureComplete ? 'complete' : 'incomplete'), 'capture-integrity');
@@ -432,6 +443,7 @@ export function verifySavedCase(input) {
     }
     checkScenario(input, result, { observationKind, processKind, integrity });
     return { pass: result.errors.length === 0, errors: result.errors,
+      ...(input.owner ? { errorDiagnosticsComplete: result.errorDiagnosticsComplete } : {}),
       derived: { observation: observationKind, processSettlement: processKind, evidenceSettlement: integrity, captureComplete } };
   } catch (error) { return { pass: false, errors: [`oracle-exception:${error.message}`] }; }
 }
@@ -486,13 +498,174 @@ export function verifyPublicationSnapshot(input) {
     for (const control of result.roles.publisher.controls) result.check(control.at >= result.p0 + BigInt(control.signal === 'SIGTERM' ? 1000 : 1500) * NS, 'premature-publisher-control');
     const expected = { 'publisher-normal': 'published', 'publisher-eexist': 'failed', 'publisher-partial-failure': 'failed', 'publisher-block': 'incomplete' }[input.spec?.scenario];
     if (expected) result.check(kind === expected, 'publisher-scenario-result');
-    return { pass: result.errors.length === 0, errors: result.errors, derived: { publication: kind } };
+    return { pass: result.errors.length === 0, errors: result.errors,
+      ...(input.owner ? { errorDiagnosticsComplete: result.errorDiagnosticsComplete } : {}), derived: { publication: kind } };
   } catch (error) { return { pass: false, errors: [`oracle-exception:${error.message}`] }; }
 }
 
 function replayAtReport(input, name) {
   const ordinal = input.reports?.[name]?.eventOrdinal ?? input.report?.eventOrdinal ?? input.publication?.eventOrdinal;
   return replay({ ...input, trace: input.trace?.filter(fact => fact.eventOrdinal <= ordinal) });
+}
+
+function normalizedError(error, check, prefix) {
+  const fields = [...ERROR_FIELDS, ...(Object.hasOwn(error ?? {}, 'truncatedFields') ? ['truncatedFields'] : [])];
+  let valid = keysEqual(error, fields);
+  for (const field of ERROR_FIELDS) {
+    const value = error?.[field];
+    valid &&= field === 'code' && value === null || typeof value === 'string' &&
+      Buffer.byteLength(value, 'utf8') <= ERROR_POLICY[`${field}Bytes`] && Buffer.from(value, 'utf8').toString('utf8') === value;
+  }
+  if (error?.truncatedFields !== undefined) {
+    const truncated = error.truncatedFields;
+    valid &&= Array.isArray(truncated) && truncated.length > 0 &&
+      same(truncated, ERROR_FIELDS.filter(field => truncated.includes(field)));
+  }
+  check(valid, `${prefix}-normalized-error`);
+  return valid;
+}
+
+function emptyErrors() {
+  return { records: [], summary: { retainedCount: 0, retainedJsonBytes: 2, omitted: false,
+    firstOmittedSourceFactId: null, fieldsTruncated: false } };
+}
+
+function retainError(list, record, sourceFactId, normalized) {
+  list.summary.fieldsTruncated ||= Boolean(normalized.truncatedFields?.length);
+  if (list.summary.omitted) return;
+  const candidateBytes = Buffer.byteLength(JSON.stringify([...list.records, record]));
+  if (list.records.length >= ERROR_POLICY.entries || candidateBytes > ERROR_POLICY.jsonBytes) {
+    list.summary.omitted = true;
+    list.summary.firstOmittedSourceFactId = sourceFactId;
+    return;
+  }
+  list.records.push(record);
+  list.summary.retainedCount = list.records.length;
+  list.summary.retainedJsonBytes = candidateBytes;
+}
+
+// Replay normalized source facts, not the owner's lists or its capacity summaries.
+function replayErrorRetention(input, trace, check) {
+  const roles = Object.fromEntries(ROLES.map(role => [role, { errors: emptyErrors(),
+    streams: Object.fromEntries(CHANNELS.map(channel => [channel, emptyErrors()])) }]));
+  const listeners = emptyErrors();
+  const prior = new Map();
+  let complete = true;
+  for (const fact of trace) {
+    const d = fact.details;
+    const direct = ['spawn-error', 'process-error'].includes(fact.event);
+    const wrapped = ['launch-rejected', 'request-error', 'stream-error', 'stream-destroy-error', 'listener-error', 'ack-error'].includes(fact.event);
+    const hasError = direct || wrapped || fact.event === 'control-attempt' && d?.error !== null;
+    if (fact.event === 'trace-overflow') complete = false;
+    if (hasError) {
+      const error = direct ? d : d?.error;
+      if (normalizedError(error, check, `source-${fact.factId}`)) {
+        complete &&= !error.truncatedFields?.length;
+        const role = roles[fact.role];
+        if (fact.event === 'listener-error') {
+          check(fact.role === null && fact.attemptId === null && keysEqual(d, ['sourceFactId', 'error']), 'listener-error-envelope');
+          const delivered = prior.get(d.sourceFactId);
+          check(Boolean(delivered && !['listener-error', 'report-frozen'].includes(delivered.event) &&
+            input.lateJournal?.some(entry => entry.factId === delivered.factId)), 'listener-error-delivery-source');
+          retainError(listeners, { factId: d.sourceFactId, error }, fact.factId, error);
+        } else if (fact.event === 'stream-error' || fact.event === 'stream-destroy-error') {
+          const stream = role?.streams[d.channel];
+          check(Boolean(stream), 'stream-error-role-channel');
+          if (fact.event === 'stream-destroy-error') check([...prior.values()].some(value =>
+            value.role === fact.role && value.event === 'stream-cancel' && value.details.channel === d.channel), 'destroy-error-before-cancel');
+          if (stream) retainError(stream, error, fact.factId, error);
+        } else if (direct || ['launch-rejected', 'request-error'].includes(fact.event)) {
+          check(Boolean(role), 'role-error-source-role');
+          if (role) retainError(role.errors, { ...error, factId: fact.factId }, fact.factId, error);
+        }
+      }
+    }
+    prior.set(fact.factId, fact);
+  }
+  const lists = [listeners, ...Object.values(roles).flatMap(role => [role.errors, ...Object.values(role.streams)])];
+  return { roles, listeners, complete: Boolean(complete && lists.every(list => !list.summary.omitted && !list.summary.fieldsTruncated)) };
+}
+
+function verifyErrorRetention(input, full, first, report) {
+  const check = first.check;
+  const before = first.errors.length;
+  verifyReasonBounds(report, first);
+  const owner = input.owner;
+  const replayed = replayErrorRetention(input, input.trace, check);
+  check(same(owner.errorPolicy, ERROR_POLICY), 'owner-error-policy');
+  const inspect = (records, capacity, expected, prefix) => {
+    check(same(records, expected.records), `${prefix}-error-prefix`);
+    check(same(capacity, expected.summary), `${prefix}-error-capacity`);
+  };
+  const streams = (saved, expected, prefix) => {
+    for (const channel of CHANNELS) inspect(saved?.[channel]?.errors, saved?.[channel]?.errorCapacity,
+      expected.streams[channel], `${prefix}-${channel}`);
+  };
+  const role = (saved, expected, prefix) => {
+    inspect(saved?.errors, saved?.errorCapacity, expected.errors, prefix);
+    streams(saved?.streams, expected, prefix);
+  };
+  for (const state of Object.values(full.roles).filter(state => state.request))
+    role(owner.roles?.find(value => value.role === state.role), replayed.roles[state.role], `owner-${state.role}`);
+  inspect(owner.listenerFailures, owner.listenerFailureCapacity, replayed.listeners, 'owner-listener');
+  const ownerComplete = replayed.complete && !owner.traceCapacity?.controlOverflow;
+  check(owner.errorDiagnosticsComplete === ownerComplete, 'owner-error-diagnostics-complete');
+  for (const [name, report] of Object.entries(input.reports ?? {})) {
+    const prefix = input.trace.filter(fact => fact.eventOrdinal <= report.eventOrdinal);
+    const frozen = replayErrorRetention(input, prefix, check);
+    check(report.errorDiagnosticsComplete === frozen.complete, `report-${name}-error-diagnostics-complete`);
+    for (const helper of report.helpers ?? []) {
+      const expected = frozen.roles[helper.role];
+      check(Boolean(expected), `report-${name}-error-role`);
+      if (expected) role(helper, expected, `report-${name}-${helper.role}`);
+    }
+    if (report.error !== undefined) normalizedError(report.error, check, `report-${name}`);
+    if (name === 'processSettlement' && report.kind === 'spawn-failed') {
+      const source = prefix.find(fact => fact.role === 'caller' && fact.event === 'spawn-error');
+      check(same(report.error, source?.details), 'process-spawn-error-source');
+    }
+  }
+  for (const fact of input.trace.filter(fact => fact.event === 'capture-settled')) {
+    const prefix = input.trace.filter(value => value.eventOrdinal <= fact.eventOrdinal);
+    const captured = replayErrorRetention(input, prefix, check);
+    const callerExists = prefix.some(value => value.event === 'spawn-request' && value.role === 'caller');
+    const captureStreams = (saved, label) => {
+      if (callerExists) streams(saved, captured.roles.caller, label);
+      else check(same(saved, {}), `${label}-unlaunched-caller-streams`);
+    };
+    captureStreams(fact.details.streams, 'capture-fact');
+    if (input.capture) {
+      check(input.capture.factId === fact.factId, 'capture-error-view-source');
+      captureStreams(input.capture.streams, 'capture-snapshot');
+    }
+  }
+  for (const entry of input.lateJournal ?? []) check(!['listener-error', 'report-frozen'].includes(entry.event), 'ineligible-late-error-source');
+  first.errorDiagnosticsComplete = ownerComplete && first.errors.length === before;
+}
+
+function verifyReasonBounds(report, first) {
+  const protocols = ['eof-fragment', 'frame-capacity', 'helper-frame-capacity', 'invalid-json-or-utf8',
+    'invalid-envelope-or-payload', 'channel-or-source-sequence', 'duplicate-caller-frame', 'caller-frame-after-terminal',
+    'caller-target-source-position', 'helper-grammar', 'source-time-reversed', 'source-sequence-gap',
+    'caller-start-missing', 'caller-grammar', 'natural-exit-before-terminal'];
+  const errors = new Set(['writer-verifier-claim-mismatch', 'capture-failed']);
+  const incomplete = new Set(['trace-capacity', 'control-capacity', 'capture-hard-deadline', 'evidence-hard-deadline',
+    'publication-hard-deadline', 'evidence-work-deadline', 'publication-work-deadline',
+    'verifier-not-started-before-work-deadline', 'capture-gate-capacity', 'caller-frame-capacity', 'capture-incomplete']);
+  for (const role of ROLES) {
+    for (const reason of ['input-capacity', 'request-error', 'spawn-failed', 'process-error', 'duplicate-exit',
+      'stdout-error', 'stderr-error', 'fd3-error', 'ack-error', 'nonzero-exit']) errors.add(`${role}-${reason}`);
+    for (const reason of protocols) errors.add(`${role}-protocol:${reason}`);
+    incomplete.add(`${role}-stderr-capacity`);
+    incomplete.add(`${role}-protocol-incomplete`);
+    const failed = first.roles[role].frames.find(value => value.frame.type === 'failed');
+    if (failed) errors.add(`${role}-reported-failure:${failed.frame.payload.code}`);
+  }
+  for (const [name, allowed] of [['errors', errors], ['incomplete', incomplete]]) {
+    const reasons = report?.[name];
+    first.check(Array.isArray(reasons) && reasons.length === new Set(reasons).size &&
+      reasons.length <= allowed.size && reasons.every(reason => typeof reason === 'string' && allowed.has(reason)), `report-${name}-bounded-unique-reasons`);
+  }
 }
 
 function verifyLedgers(input, full, first, report, helperRoles) {
@@ -515,6 +688,7 @@ function verifyLedgers(input, full, first, report, helperRoles) {
     const exited = state.exited;
     check(same(ledger.exit, exited ? { code: exited.code, signal: exited.signal, receiptNs: String(exited.at),
       factId: exited.factId, eventOrdinal: exited.ordinal } : null), `${prefix}-exit-proof`);
+    check(same(ledger.controlAttempts, state.controls.map(({ at, ...value }) => ({ ...value, receiptNs: String(at) }))), `${prefix}-control-attempts`);
     check(Array.isArray(state.registered), `${prefix}-missing-reader-registration`);
     for (const [channel, stream] of Object.entries(state.streams)) {
       const saved = ledger.streams?.[channel];
@@ -530,6 +704,7 @@ function verifyLedgers(input, full, first, report, helperRoles) {
   check(Array.isArray(report?.helpers) && same(report.helpers.map(role => role.role), helpers), 'report-helper-inventory');
   for (const role of helpers) inspect(report?.helpers?.find(helper => helper.role === role), first.roles[role], `report-${role}`);
   check(Array.isArray(report?.errors) && Array.isArray(report?.incomplete), 'report-error-inventory');
+  verifyErrorRetention(input, full, first, report);
   if (['sealed', 'published'].includes(report?.kind)) check(report.errors.length === 0 && report.incomplete.length === 0, 'successful-report-extra-errors');
   if (report?.kind === 'failed') check(report.errors.length > 0, 'failed-report-missing-errors');
   check(owner.traceCapacity?.events === input.trace.length && owner.traceCapacity?.bytes === input.trace.reduce((bytes, fact) => bytes + Buffer.byteLength(JSON.stringify(fact)), 0), 'trace-capacity-counts');

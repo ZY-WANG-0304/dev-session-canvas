@@ -12,8 +12,10 @@
 
 ## 进度
 
+- [x] (2026-09-22) 完成第15阶段错误字段/列表有界化，基准运行时4743e055/诊断bcfc571b。helper39、public29及独立saved29；tamper8正例/20组35变体，主回归119/41/156/15/37与saved5/5，portable46门禁/6profile/17负例满足原判据。首轮26/29、155/156及直接相对路径复核4/5保留；详见契约第15节。不改业务/D4/旧43项，不声明全owner/RSS有界，无真实D3/native/runner或推送。
+
 - [x] (2026-09-22) 完成容量可达性与synthetic跨OS归档增量，基准诊断9230b87b/运行时fee95df9。容量43项分为1上界证明/30完整重放/12缺证拒绝；portable46门禁、6profile原位及移动各5/5、17负例；主回归119/41/156/15/37及saved5/5。首次路径/容量失败和复核过程偏差保留，详见契约第14节；不运行真实D3/native/runner，不改业务或旧实验，不推送。
-- [ ] 先设计错误字段及辅助数组有界摘要/缺证规则，再补反例回归和完整工具复审；真实Windows junction/权限/文件系统语义、打包上传解包及原生异平台归档仍需runner。未完成项不由合成profile通过关闭。
+- [ ] 先复核新错误保留策略下2MiB writer/verifier请求可达性，再确认listeners注册集合及单chunk sequences边界并完成工具复审；旧六个800条错误构造不适用但原证据不改。真实Windows junction/权限/文件系统语义、打包上传解包及原生异平台归档仍需runner，不能由合成profile关闭。
 
 - [x] (2026-09-22) 启动下一本地覆盖阶段：冻结 `diagnostic-consumer-delivery-v1` 的100ms独立交付判据，补齐并冻结D3 156项确定性边界及D4 create/use unknown迟到正例；按新目录保存首次失败、source和独立重放。只改独立诊断及两树文档，未运行真实D3/native/runner或推送。
 - [x] (2026-09-22) 独立诊断树已创建D3 v3/D4 v2八个新入口，本轮只收口本地工具初版与审计修正，主运行时仅同步文档；不运行D3真实36+2+4、不新增runner、不推送，不改业务/旧实验/image.png。
@@ -117,6 +119,8 @@
 
 ## 意外与发现
 
+第15阶段确认role/stream错误数组与listener异常字段存在trace外无界保留，现已按独立错误策略收口；reason插入去重，destroy和listener补来源事件。首轮public两个字节构造越过message上限和一个ACK oracle漏判、主回归caller尚未创建时的空capture误拒均保留原输入后窄修。审查补缺摘要认证及report-frozen伪listener来源拒绝；首轮相对目录直接调用内部验证器的4/5另存，按CLI绝对路径入参5/5。listeners注册数和单chunk sequences仍独立待办，旧六个800条错误构造不再适用，不改原断言或直接宣称2MiB不可达。
+
 第14节增量先确认两个独立工具缺口：Linux无法用宿主绝对路径规则重建Windows producer的publication fixture；trace容量不约束stream错误辅助数组或listener异常字段字节。首次路径拒绝和三个公开API容量反例分别保存在诊断树 `.debug/stage14-winpath-before-1` 与 `.debug/settlement-v3-capacity-reachability-review-1`，后者不代表OS真实错误轨迹或产品缺陷。
 
 本轮确定性覆盖暴露三个oracle误判：4096字节无换行边界、合法verified之后lifecycle错误的artifact证明分类、及时EOF但退出越过hard时倒推capture complete；首个失败和source在boundary-second及CLI dev-1保留，修订仅作用于诊断oracle。另发现相同预期拒绝的archive fixture可被换类且重hash后旧saved仍4/4；可信输入/磁盘树绑定已补。self-test-3为156边界聚合超过64MiB而saved4/5，单独设计128MiB离线读取后self-test-4为5/5；当时本机绿色未覆盖CRLF和移动目录，现已按契约第13.4节补齐源结果组合与同平台迁移，跨OS整包仍待验。没有新增业务或OS缺陷结论。
@@ -206,6 +210,8 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 通用后代实验测的是 PTY/ConPTY 的退出、挂断、EOF 与取消行为，不直接证明真实 Agent 已发生同类缺陷。macOS 后代失败在澄清后的产品范围之外不能单独构成交付阻塞；Windows 最终光标和自然资源释放问题仍在范围内。父先退出不等于交互式 shell 后台作业，启动器的实际 CLI 子进程也不能按普通工具后代排除。
 
 ## 决策记录
+
+2026-09-22：按契约第15节实施diagnostic-error-retention-v1。字段UTF8前缀128/128/2048，role/stream/listener列表各256条及完整JSON数组65536 bytes，首次省略封前缀；reason插入去重，listener/destroy补独立事实。语义有效与errorDiagnosticsComplete分开，后者还要求错误账本认证成功且trace/control无损失，并限制acceptanceReady；首报不变。caller尚未创建只允许空capture流，report-frozen不能伪装成late来源，helper destroy不扩大failed分类。固定39 helper、29 public及20 tamper组，新增变体另计35，不扩大为全进程内存或原生验证。
 
 2026-09-22：按诊断结算契约第14节分离producer路径身份与本机读取。仅显式clock和spawnRole的测试允许pathStyle覆盖，真实启动保留宿主校验；raw readlink不归一改写。固定43个容量研究目标和6个synthetic producer profile，独立driver不递归主self-test；无法到达的字节边界记录证明。错误列表有界摘要另行设计，本轮不顺手改变状态机制；不启动真实D3、native、PTY、runner或推送。
 
@@ -299,7 +305,7 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 ## 工作计划
 
-当前进展与下一步以诊断结算契约第14节为准。43容量目标和6个合成producer归档已完成本地验证，下一阶段先设计错误字段/辅助数组有界摘要及缺证规则，再补反例回归和完整工具复审；真实junction/权限/文件系统与打包传输不能用Linux合成结果代替。该门槛结束前不运行D3真实36+2+4、不新建或触发runner、不推送，不启动W1/U1或业务集成。以下段落保留上一阶段安排，不覆盖本段。
+当前进展与下一步以诊断结算契约第15节为准。错误字段/列表已按独立预算实施并复核；下一阶段重新评估2MiB writer/verifier请求在新策略下的可达性，以公开API构造或给上界，不修改旧43项原断言。随后确认listeners注册集合与单chunk sequences的责任/边界，完成工具复审；真实junction/权限/文件系统与打包传输不能用Linux合成结果代替。门槛结束前不运行D3真实36+2+4、不触发runner或推送，不启动W1/U1或业务集成。以下保留历史安排。
 
 当前执行设计是 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第12节。八个版本隔离入口已在独立 `runtime-exit-integrity-native-candidates` 工作树创建；本阶段只做本地初版/审计修正与纯fixture验证，不运行D3真实矩阵，不新增runner，不推送。D4已有local-3完整模型证据，D3下一步按六组逐fixture补齐：各控制/硬截止全边界及排队跨限；spawn/ENOENT/launch-rejected完整责任；坏帧前后/同chunk/跨pipe；work/hard与共享E0组合；协议/容量/listener；unknown迟到/取消及实际await/gate。已有部分样本按清单扣除，不用总数宣称全覆盖。完成独立审查后再另冻真实D3、三平台采集及消费验收预算，W1/U1仍待完整工具门槛。
 
@@ -347,7 +353,7 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 ## 具体步骤
 
-最新复核在独立诊断树，固定Node为 `/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node`。主回归入口 `scripts/diagnostics/diagnose-settlement-v3.mjs --self-test --output NEW_DIRECTORY`，保存重放用同入口 `--verify-saved DIRECTORY`；独立容量用 `scripts/diagnostics/settlement-capacity-fixtures-v3.mjs --out NEW_DIRECTORY`，合成跨OS用 `scripts/diagnostics/settlement-portable-fixtures-v3.mjs --output NEW_DIRECTORY`。只执行可信工作树源码，所有新输出目录须不存在；正式结果路径及分账见契约第14节，不从历史工件源码启动验证器。
+最新复核仅在独立诊断树，固定Node为 `/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node`。错误预算用 `scripts/diagnostics/settlement-error-budget-fixtures-v1.mjs --helpers-only --out NEW_DIRECTORY` 及 `--public-only`，篡改用 `scripts/diagnostics/settlement-error-retention-tamper-v3.mjs --out NEW_DIRECTORY`；主回归用 `scripts/diagnostics/diagnose-settlement-v3.mjs --self-test --output NEW_DIRECTORY`，保存复核用同入口 `--verify-saved DIRECTORY`，直接调用verifyEvidence须与CLI一样先path.resolve。合成跨OS用 `scripts/diagnostics/settlement-portable-fixtures-v3.mjs --output NEW_DIRECTORY`。旧capacity六请求构造本阶段不重跑。只执行可信工作树，输出新目录，具体分账与来源见契约第15节。
 
 本增量在独立诊断树使用固定Node22.23.2路径 `/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node`，运行 `scripts/diagnostics/diagnose-settlement-v3.mjs --self-test --output NEW_DIRECTORY` 和 `--verify-saved DIRECTORY`；D4入口为 `scripts/diagnostics/diagnose-owner-quarantine-v2.mjs` 的同名参数及单独 `--output NEW_DIRECTORY`。不得复用或清空旧输出目录；每次失败保留source和首份结果，可信保存复核不执行归档中的代码。真实D3的无self-test入口本轮不调用。
 
@@ -403,7 +409,7 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 验证与验收
 
-当前判据以契约第14节为准：43容量目标按1上界证明/30完整重放/12预期缺证拒绝分账，6个合成profile原位及搬迁各5/5、46门禁与17篡改负例单列；主回归119/41/156/15/37及saved5/5继续满足。156仍为154完整重放与2个control证据耗尽拒绝，不扩成全部完整证据。D4本轮未执行，原v1/v2源码/workflow/断言/工件不改；本机绿色不代表原生平台或产品结果，acceptanceReady=false。以下为上一阶段及历史验收口径。
+当前判据以契约第15节为准：helper39、public29及saved29；public完整性true18/false11与全部语义有效分别记录。tamper8正例/20组35变体，负例不仅要求按指定错误拒绝，还要求错误完整性认证false。主回归119/41/156/15/37及saved5/5、110 members；156仍是154完整重放与2个缺证拒绝。portable46门禁/6profile原位及迁移各5/5/17负例不计原生覆盖。source hash、旧历史正文及旧实验脚本/workflow不变及两树文档同步须另核；acceptanceReady=false，不代表产品验收。以下为历史口径。
 
 本阶段验收覆盖本地工具初版、实际fixture和审计修正，不宣称D3完整冻结覆盖。D4 local-3每次固定16项，93语义/4 saved及另存7个sidecar负例逐项有效，坏首项仍attempted16/verified15且末项通过；独立复审的两项阻断闭合。D3 v3最终 self-test-2通过119 oracle、41 core、15 files、25 archive/consumer/binding fixtures；saved4/4、88 manifest members、boundedConsumerDelivery=false、acceptanceReady=false；realNodeCases/nativeProcesses=0、pty=false，未运行live36+2+4或原生矩阵。六组覆盖与超时首报消费预算仍开放。D3真实36+2+4、本阶段三平台runner与native实际均0；本地D4不计为三平台48次已通过。收口前检查两树frontmatter/index、新增引用、共享契约一致、历史保持及diff，不能以旧runner或文档检查代替运行证据。
 
@@ -436,6 +442,8 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 只创建和清理本次 fixture，PID/进程组来自本次启动。硬截止与正常完成分开保存，清理不得误作用真实会话。唯一 evidence 目录、GitHub run/attempt 命名及源码 hash 防止覆盖。没有用户 storage 迁移或回滚需求。
 
 ## 结果与复盘
+
+第15阶段已完成错误保留边界和独立认证。最终helper39/39、public29/29及saved29/29，tamper8正例/20组35变体，主回归五组119/41/156/15/37、saved5/5/110 members；portable46/6/17，均按各自判据分账，acceptanceReady=false。只读复审无本阶段剩余确定性阻断，不是整个owner或产品退出机制验收。完整来源、首次失败及hash见契约第15节；下一步是新策略请求可达性、其他容器边界和真实归档门槛，以下第14节及更早记录为历史。
 
 第14节是容量可达性和跨OS归档的独立诊断增量，不是新reader或生产退出路径修复。实际Windows链接/权限、打包传输、真实异平台producer以及错误字段/辅助数组有界性仍须补证；本地fixture成功不关闭完整工具门槛、W1/U1或产品验收。完整证据与本轮结果集中记录在诊断结算契约第14节。
 
@@ -491,7 +499,7 @@ HPCON阶段首次原生矩阵、完整ZIP下载与独立复核已完成，见设
 
 ## 证据与备注
 
-当前正式证据在诊断树 `.debug/settlement-capacity-v3-third` 及 `-root-verification.json`、`.debug/settlement-v3-stage14-final` 及 `-verification.json`、`.debug/settlement-portable-v3-second`。原始first/second失败和first portable不覆盖；七源完整SHA256、共享纯输出的非新增计数边界、过程偏差与runner缺口见契约第14节。
+当前正式证据在诊断树 `.debug/settlement-error-budget-v1-helper-third`、`.debug/settlement-error-budget-v1-public-third` 及 `-independent`、`.debug/settlement-error-retention-tamper-v3-second`、`.debug/settlement-v3-stage15-second` 及 `-verification-absolute.json`、`.debug/settlement-portable-v3-stage15-first`。所有首次与中间失败保留，最终七源hash及准确计数见契约第15节；旧43项与第14节证据不改。
 
 本增量最新本地工件在独立诊断树 `.debug/owner-quarantine-v2-local-4-{selftest,full}`、`.debug/settlement-v3-portability-check-1`（含original/moved、32项内存检查及两份验证）、`.debug/settlement-v3-saved-binding-negatives-1`（13项）。根保存重放为 `.debug/settlement-v3-portability-check-1-root-verification.json`。首个类别替换、boundary-first/second、CLI dev-1/self-test-3/self-test-4与source-outcome-repro-1分开保留，精确路径/hash/判定见契约第13节，不执行归档源码，不把后来的提交当作之前实际输入。
 
@@ -624,3 +632,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-22，确定性覆盖增量）：补充D3 156项和固定100ms诊断消费策略、D4迟到创建/使用责任，修三个oracle误判及可信归档类别/结果绑定。保留首次编排、读取上限与可移植性缺口，记录最终119/41/156/15/37、saved5/5、13语义篡改及D4 local-4证据；四活章节、索引与债务同步。剩余容量可达性和跨OS整包归档仍待办，无真实D3/native/runner或业务改造，不关闭整体工具或产品门槛。
 
 修订记录（2026-09-22，容量与合成跨OS归档）：补43项固定容量目标与6profile/46门禁/17负例，修caller stderr的oracle角色误判并将producer身份与本机读取分离。保留首次失败、源码与归档执行方法偏差，正式结果改用可信工作树复核；四活章节、当前步骤、索引和债务同步。错误辅助数组有界策略和真实平台归档仍需后续，本轮不推送，不改业务/旧实验，不新增native/PTY/runner。
+
+修订记录（2026-09-22，错误诊断保留边界）：完成字段/列表预算、缺证标记与独立重放，保留26/29、155/156及相对路径内部调用4/5首轮记录，补来源伪造和认证反例。最终39/29、8正例/20组35变体、主回归五组与saved5/5、portable46/6/17均按范围留证；同步四活章节、当前步骤、索引和债务。旧43项不改，新策略可达性、其他容器和真实平台门槛仍开放。本轮不推送，不改业务/旧实验，不新增native/PTY/runner。

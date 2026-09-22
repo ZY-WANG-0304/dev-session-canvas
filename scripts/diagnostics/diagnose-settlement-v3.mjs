@@ -386,6 +386,7 @@ const SOURCE_FILES = [
   'diagnostic-settlement-v3.mjs', 'diagnose-settlement-v3.mjs',
   'settlement-oracle-v3.mjs', 'settlement-fixtures-v3.mjs', 'settlement-boundary-fixtures-v3.mjs',
   'settlement-portable-fixtures-v3.mjs',
+  'settlement-error-budget-v1.mjs',
 ];
 
 export function fullSchedule() {
@@ -1276,7 +1277,7 @@ export function verifySourceFixtureResult(actual, replay, producerSourceHashes) 
 }
 
 export async function verifyEvidence(directory) {
-  const report = { schema: SCHEMA, directory, attempted: 0, verified: 0, evidenceErrors: [], cases: [], consumerDeliveries: [], pass: false };
+  const report = { schema: SCHEMA, directory, attempted: 0, verified: 0, evidenceErrors: [], cases: [], consumerDeliveries: [], errorDiagnostics: [], pass: false };
   const selfTestCounts = {};
   try { report.manifest = verifyRunManifest(directory); }
   catch (error) { report.evidenceErrors.push({ id: 'shared-manifest', error: String(error.message) }); }
@@ -1367,7 +1368,9 @@ export async function verifyEvidence(directory) {
         errors.push(...publication.errors.map(error => `publication:${error}`));
         assert.deepEqual(outer.finalPublicationSnapshot.reports, outer.publicationSnapshot.reports, 'publication first report was rewritten');
         assert.deepEqual(outer.finalPublicationSnapshot.trace.slice(0, outer.publicationSnapshot.trace.length), outer.publicationSnapshot.trace, 'publication facts were rewritten');
-        errors.push(...verifyPublicationSnapshot(outer.finalPublicationSnapshot).errors.map(error => `final-publication:${error}`));
+        const finalPublication = verifyPublicationSnapshot(outer.finalPublicationSnapshot);
+        errors.push(...finalPublication.errors.map(error => `final-publication:${error}`));
+        report.errorDiagnostics.push({ id: entry.id, phase: 'publication', complete: publication.errorDiagnosticsComplete === true && finalPublication.errorDiagnosticsComplete === true });
         report.consumerDeliveries.push({ id: entry.id, phase: 'publication', receipts: verifyConsumerReceipts(outer.finalPublicationSnapshot, ['publication']) });
         if (entry.group !== 'publisher') {
           const snapshot = loadPublishedSnapshot(path.join(directory, 'cases', entry.id));
@@ -1380,10 +1383,13 @@ export async function verifyEvidence(directory) {
           assert.equal(snapshot.spec.id.caseId, entry.id);
           assert.equal(snapshot.spec.id.runId, run.runId);
           assert.equal(snapshot.spec.scenario, entry.scenario);
-          errors.push(...verifySavedCase(snapshot).errors);
+          const caseResult = verifySavedCase(snapshot);
+          errors.push(...caseResult.errors);
           assert.deepEqual(outer.finalCaseSnapshot.reports, snapshot.reports, 'case first reports were rewritten');
           assert.deepEqual(outer.finalCaseSnapshot.trace.slice(0, snapshot.trace.length), snapshot.trace, 'case facts were rewritten after publication');
-          errors.push(...verifySavedCase(outer.finalCaseSnapshot).errors.map(error => `final-case:${error}`));
+          const finalCase = verifySavedCase(outer.finalCaseSnapshot);
+          errors.push(...finalCase.errors.map(error => `final-case:${error}`));
+          report.errorDiagnostics.push({ id: entry.id, phase: 'case', complete: caseResult.errorDiagnosticsComplete === true && finalCase.errorDiagnosticsComplete === true });
           report.consumerDeliveries.push({ id: entry.id, phase: 'case', receipts: verifyConsumerReceipts(outer.finalCaseSnapshot, ['observation', 'processSettlement', 'evidenceSettlement']) });
           verifyGateOrdering(outer);
           assert.equal(outer.publicationSnapshot.reports.publication.kind, 'published', 'case publisher did not complete');
@@ -1426,7 +1432,8 @@ export async function verifyEvidence(directory) {
   } catch (error) { report.evidenceErrors.push({ id: 'summary', error: String(error.message) }); }
   report.pass = report.attempted > 0 && report.verified === report.attempted && report.evidenceErrors.length === 0;
   report.boundedConsumerDelivery = report.consumerDeliveries.length > 0 && report.consumerDeliveries.every(item => item.receipts.every(receipt => receipt.status === 'within-consumer-budget'));
-  report.acceptanceReady = run?.mode === 'full' && run.syntheticArchiveFixture !== true && !run.syntheticProducer && report.pass && report.boundedConsumerDelivery;
+  report.errorDiagnosticsComplete = report.errorDiagnostics.length > 0 && report.errorDiagnostics.every(item => item.complete);
+  report.acceptanceReady = run?.mode === 'full' && run.syntheticArchiveFixture !== true && !run.syntheticProducer && report.pass && report.boundedConsumerDelivery && report.errorDiagnosticsComplete;
   return report;
 }
 

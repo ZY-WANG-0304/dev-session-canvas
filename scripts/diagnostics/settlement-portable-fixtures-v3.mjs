@@ -234,7 +234,7 @@ export async function runPortableEvidence(output) {
   fs.mkdirSync(output, { recursive: false });
   fs.mkdirSync(path.join(output, 'sources'));
   const sourceNames = ['diagnostic-settlement-v3.mjs', 'diagnose-settlement-v3.mjs', 'settlement-oracle-v3.mjs',
-    'settlement-fixtures-v3.mjs', 'settlement-boundary-fixtures-v3.mjs', 'settlement-portable-fixtures-v3.mjs'];
+    'settlement-fixtures-v3.mjs', 'settlement-boundary-fixtures-v3.mjs', 'settlement-portable-fixtures-v3.mjs', 'settlement-error-budget-v1.mjs'];
   const sourceHashes = {};
   for (const name of sourceNames) {
     const bytes = fs.readFileSync(path.join(path.dirname(ENTRY), name)); sourceHashes[name] = hash(bytes);

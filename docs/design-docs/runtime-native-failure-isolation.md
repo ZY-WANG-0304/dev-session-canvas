@@ -19,7 +19,7 @@ updated_at: 2026-09-22
 
 ## 1. 本阶段状态与完成边界
 
-当前进展以 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第14节为准：新增容量可达性与合成跨OS归档验证，分离producer路径身份和本机读取；错误辅助数组有界性、真实Windows链接及跨系统归档仍为门槛。第19节及契约第12–13节保留上一输入的覆盖和失败，D4本轮不改。本阶段不运行D3真实36+2+4、不新增runner或推送，不启动W1/U1。此前v1/v2结果及本设计原生失败路径未验证状态不变。
+当前进展以 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第15节为准：错误字段/列表保留边界与独立认证已完成本地验证，不代表全owner/RSS有界。新策略下请求容量可达性、listeners/sequences边界、真实Windows链接及跨系统归档仍为门槛。第19节及契约第12–14节保留历史覆盖和失败，D4本轮不改。不运行D3真实36+2+4、native或runner，不推送，不启动W1/U1；原生失败路径未验证状态不变。
 
 本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。D3/D4 v1的7141cfa3两次failure保留；D3 v2已由b4db41cc/run35676427931完成三平台来源/顺序窄验证及完整归档复核，见第17节。D3完整契约、D4完整身份、native失败路径或生产拓扑仍未验证，下一步按第18节的新契约实施独立诊断版本，不重复旧矩阵或启动W1/U1。
 

@@ -19,7 +19,7 @@ updated_at: 2026-09-22
 
 ## 1. 当前阶段与证据边界
 
-本设计承接 `docs/design-docs/runtime-native-failure-isolation.md` 第17节；设计冻结输入为独立诊断树 `e1a31b79` 与运行时树 `a5f8d629`。当前本地进展见第14节，第12–13节保留先前实施与审计输入；D3 v3/D4 v2 新入口只在独立 `runtime-exit-integrity-native-candidates` 工作树实施，主运行时树仅同步文档。D4 已有确定性本地证据，D3 容量与合成归档有新增证据，但错误旁路有界性、真实平台归档及完整工具验收仍未闭合；整体决策仍比较中，验证状态为验证中。本阶段不运行 D3 真实 36+2+4 矩阵、不新增 runner、不推送任何分支。
+本设计承接 `docs/design-docs/runtime-native-failure-isolation.md` 第17节；设计冻结输入为独立诊断树 `e1a31b79` 与运行时树 `a5f8d629`。当前本地进展见第15节，第12–14节保留先前实施与审计输入；D3 v3/D4 v2 新入口只在独立 `runtime-exit-integrity-native-candidates` 工作树实施，主运行时树仅同步文档。D3错误字段/列表现有独立保留边界与缺证标记，但不等于整个owner/RSS有界；新策略下请求容量可达性、其他容器、真实平台归档及完整工具验收仍开放，D4本轮不改。整体决策仍比较中，验证状态为验证中；不运行D3真实36+2+4、native、PTY或runner，不推送任何分支。
 
 D3 v1/v2、D4 v1、原 workflow、断言、工件及失败全部冻结。唯一 v2 run `35676427931` 只验证来源/顺序窄修正；它没有证明完整结算、有界 unknown、writer 协议或 D4 全身份重放。本设计新增版本而不修改旧输入。W1/U1 原生矩阵须等待新工具完整审计，不因设计冻结直接启动。
 
@@ -414,3 +414,65 @@ producer元数据拒绝drive-relative、缺盘符root-relative、平台不匹配
 容量独立入口为 `node scripts/diagnostics/settlement-capacity-fixtures-v3.mjs --out NEW_DIRECTORY`；主回归为 `node scripts/diagnostics/diagnose-settlement-v3.mjs --self-test --output NEW_DIRECTORY`，离线为 `--verify-saved DIRECTORY`，均在独立诊断树用固定Node22.23.2执行。新目录必须不存在，失败不覆盖，不从保存工件执行源码。D4、旧v1/v2、workflow、生产模块与依赖本轮不改；真实D3、native、PTY、runner均未执行，不推送。
 
 下一步首先设计诊断错误字段/辅助数组的有界摘要与缺证标记，再补明确反例回归和完整工具复审；同时保留Windows原生junction/readlink/权限、文件系统大小写/Unicode、真实打包上传解包和原生异平台producer归档为runner门槛。未完成这些工作前，不宣称整体诊断工具内存有界或跨OS归档已原生验收，不启动W1/U1或改生产退出策略。
+
+## 15. 错误诊断保留边界（2026-09-22）
+
+本阶段基准为运行时4743e055与诊断bcfc571b，只修诊断错误字段及错误列表，生产、D4、旧v1/v2/workflow和历史工件不改，不推送，不运行真实D3、native、PTY或runner。第14节的800个stream错误与70000字符listener name反例作为修前依据。保留状态有界不是整个Node RSS、输入对象、同步getter/回调时间或全部owner容器有界：listeners注册集合及超大单chunk中先登记的sequences仍为独立待办，不能顺手纳入本阶段结论。
+
+### 15.1 选定规则与独立证明
+
+每次异常仅规范化一次，供trace、列表及报告复用。name/code分别保留最多128 UTF-8 bytes，message最多2048 UTF-8 bytes；code=null不变。按完整字符前缀截取，不能切坏UTF-8；只在发生截断或无法安全提取时记录固定字段名的truncatedFields，不保留完整后缀、全串hash或原error对象。容器另按JSON编码后的实际数组字节计费，包含方括号及逗号，控制字符的转义不能绕过64KiB。自定义同步getter或转换器的执行时间不在本规则保证内。
+
+每role.errors、每stream.errors及listenerFailures分别最多256条/65536 JSON bytes。第一次放不下后冻结保留前缀，后来较短的记录也不补入；摘要固定为retainedCount、retainedJsonBytes、omitted、firstOmittedSourceFactId、fieldsTruncated。省略只有布尔值和首次来源，不宣称不可见后缀精确总数。第一条规范化错误必须可放入，已观察错误不会因截断变为空数组或恢复helper成功；首次报告冻结其当时摘要，迟到变化只进入当前owner，不改首报和deadline。
+
+evidenceErrors/evidenceIncomplete在插入时去重并保持首次顺序。来源限现有固定reason集合及每role最多一次已接受failed帧的有界code，不按任意错误message建立去重Set；protocolErrors的8条和controlAttempts的两种信号规则不改。
+
+role/stream的摘要由现有spawn/process/request/stream-error原始事实独立重建；destroy抛错新增stream-destroy-error事实，listener异常新增listener-error事实，后者绑定被投递的late fact。listener-error仍受trace控制区预算，但不再次交付给late listener，避免诊断异常递归通知；它不变成主进程或reader失败。已有控制/ACK错误也使用同一字段规范化。若来源事实已丢失，摘要不能补造证明，校验器须拒绝无法独立重建的错误账本。
+
+校验器把“有界记录与摘要一致”与“错误详情无省略”分开：语义重放可验证一个明确截断/省略的结果，但返回errorDiagnosticsComplete=false，不能据此宣称详情完整或acceptanceReady。完整性由当前owner及各首报ordinal前缀分别核对；截断算法本身还需以fixture原输入验证，不从前缀反推未保存后缀。trace/control缺阶段证明仍按旧规则拒绝，输出EOF、资源释放和消费者状态不由错误摘要替代。
+
+### 15.2 实施与验收边界
+
+新增独立错误预算模块及fixture，oracle独立实现重放而不调用SUT的保留函数。覆盖字段多字节/转义/提取异常、三类容器count与bytes邻界、所有写入入口、首次省略后持续输入、迟到不改首报、摘要/记录篡改；首次失败另存当前可信源码快照和输入，但验证只导入可信工作树。旧43容量fixture及其43/43证据不改，六个依赖800条stream.errors的请求构造不再直接用于新策略，不能通过修改旧断言追绿，也不能据此宣称2MiB请求不可达；新输入可达性另列研究门槛。
+
+实施前补充：提取失败fallback固定为name=Error、code=null、message=Uninspectable error，并标记对应truncatedFields；孤立surrogate转为U+FFFD并标记loss。trace或control有任何丢失时，owner及此后首报的errorDiagnosticsComplete保守为false；通用重放可以核对可见事实一致，但不能称完整错误证明，账本与来源不匹配仍拒绝。destroy仅补来源可见性，不扩helper failed分类：caller在capture前观察到destroy错误仍按既有stream.errors失败，capture后不得回改；helper保留既有不能successful、可能incomplete的规则。listener容量与late journal容量分别记账，不再将监听器错误列表省略伪装成late输入溢出。
+
+固定新测试清单为39个helper原输入项、29个公开core项和20个独立语义篡改项。helper覆盖三字段ASCII/多字节邻界、JSON转义、getter/转换失败与单次读取、primitive/null、孤立surrogate、数组count/bytes邻界、封前缀/隔离及policy冻结。公开项包含三类错误容器count255/256/257及完整数组bytes65535/65536/65537共18项，另有late首报、destroy、快照隔离、request/sync-spawn/async-spawn/launch-rejected/kill/ACK两入口及单次规范化共11项。篡改项覆盖字段/样本/顺序/跨桶来源/首省略/计费/遗漏来源/首报改写/listener与destroy无来源/理由唯一性及缺policy-summary；reason只新增唯一性和有限来源校验，不声称所有旧reason顺序已独立推导。新测试判据不由实际输出临时调整，构造失败必须保留并说明。
+
+独立校验器返回的errorDiagnosticsComplete是经过错误账本验证的结论，不是仅由可见源事实计算的候选值；缺policy/summary或错误来源、摘要、首报不一致时必须为false，即使pass=false已经阻止验收也不另报完整。caller在启动队列中越过hard且尚未创建时，capture的streams严格为空对象；已创建caller则必须具有完整的三个流摘要，不能借此例外放过缺失台账。
+
+listener来源认证沿用core实际投递规则：report-frozen和listener-error都不能成为late journal输入。即使重写listenerFailures及摘要使其彼此一致，也不能将未投递的首报冻结事件伪装成监听器异常的来源。
+
+### 15.3 首次失败及审查修正
+
+helper-first/second/third均为39/39；first仅是helper初版，最终来源以third为准。公开API首次 `.debug/settlement-error-budget-v1-public-first` 为26/29，sourcesUnchanged=true：role字节65535/65536两个构造在最后一条需要2110/2111-byte message，违反既定2048上限；新增一条1024-byte中间记录再精调，目标值和断言不改。另一项ACK写入抛错由core既有caller-ack-error判failed，oracle遗漏这一lifecycle来源；仅补带forType的同步写失败，不将无forType的异步ack error自动升级。public-second 29/29及其独立复核保留为中间输入，不冒充最终oracle验证。
+
+主回归 `.debug/settlement-v3-stage15-first` 为119/41/155-of-156/15/37。唯一失败是launch-queue-crosses-caller-hard：尚未创建caller时capture.streams合法为{}，新错误重放误要求三份空摘要。只修oracle按capture前缀中的实际spawn-request判断，不改core、原boundary或时限。复审还收紧错误完整性认证，防止缺policy/summary等已拒绝输入仍返回complete；并拒绝report-frozen伪装的listener来源。
+
+tamper-first的7正例、20组/34变体均满足当时判据，不能追认包含后来新增覆盖。最终在原20组内增加一个自洽伪来源变体及其真实多首报基线，共8正例、20组/35变体；所有负例额外要求errorDiagnosticsComplete=false。原失败、原输入和源码快照不覆盖，也不从归档sources执行验证器。
+
+### 15.4 最终证据与当前结论
+
+所有执行使用Linux物理平台、Node22.23.2和当前可信工作树。最终helper `.debug/settlement-error-budget-v1-helper-third` 为39/39；公开API `.debug/settlement-error-budget-v1-public-third` 为29/29、sourcesUnchanged=true。对应 `-independent` 重读29份saved JSON、原检查项及五源hash均通过，18项错误详情完整、11项明确字段/列表损失；29份均为语义有效重放，不把11份损失记录当详情完整。该独立summary SHA256为 `5a18a6eeed3b2bc6840a68da20eb6180812dc1818bee53245b41a785f03eb415`。
+
+最终 `.debug/settlement-error-retention-tamper-v3-second` 为8/8正例、20/20组、35/35变体按预期拒绝，sourcesUnchanged=true。自洽report-frozen来源伪造仅命中listener-error-delivery-source与ineligible-late-error-source，不依赖其他结构错误。独立只读复审核对destroy前后capture、listener双来源ID和首报前缀，无本阶段新增确定性阻断。 对应 `-independent` 从当前可信oracle重读8正例/35变体，158/158检查通过，五源hash与30份旧JSON输入前后不变；summary SHA256为 `fb02fa95d0da507c36f4075ccef3023fe50d3c92556a106eb6ef8e4c6c42db29`，没有重新生成fixture或执行归档sources。
+
+主回归 `.debug/settlement-v3-stage15-second` 五组119/41/156/15/37满足原判据，156仍分为154完整重放及2个control reserve缺证预期拒绝。可信离线 `-verification-absolute.json` 为5/5、110个manifest成员、无evidenceErrors。根侧首次直接调用内部verifyEvidence传相对目录产生symlink outcome路径误拒，`-verification.json` 的4/5保留；按CLI相同的path.resolve入参复核通过，未改源码或将4/5追认为通过。self-test没有真实消费/错误完整性聚合，boundedConsumerDelivery、errorDiagnosticsComplete、acceptanceReady均false，不将空聚合视为完整。
+
+合成归档 `.debug/settlement-portable-v3-stage15-first` 为46/46门禁、6/6 profile原位及迁移各5/5、17/17负例拒绝。profile沿用第14节规则，仅首profile生成119/41/156纯输出，其余复制并重放，不计新增场景；每profile重新生成15/37文件/归档组。没有Windows/macOS原生执行、真实junction证明或打包传输验收。本阶段realNodeCases=0、nativeProcesses=0、pty=false、acceptanceReady=false，D4与旧43项未重跑。
+
+| 本阶段源码（scripts/diagnostics/） | SHA256 |
+| --- | --- |
+| diagnostic-settlement-v3.mjs | aacd998f0d80a3c9622e11f37565397defeafcefd8f5d53af05e510f5f501fe6 |
+| diagnose-settlement-v3.mjs | 3d6db16801c1a503305381257c88c43273a53a56b7cbcc62fadad5f8fb003f96 |
+| settlement-oracle-v3.mjs | b46364703af263795b3dd5ed988fa19454349273645b18eea4a951a473743bcc |
+| settlement-portable-fixtures-v3.mjs | 4af1b26a85d1914fa5e0e1ef994abc66561252395fea82e01212628bb0c32ba3 |
+| settlement-error-budget-v1.mjs | 35a78c16208b92942229501407929e8bae9d9c2cfcca49fbc598242afec5914d |
+| settlement-error-budget-fixtures-v1.mjs | e0d88c708950543f6017e977c981137479f4540b29dbbe248a77ec71d855cb85 |
+| settlement-error-retention-tamper-v3.mjs | 2f89c43a11acf36bbfae76d07f4d3bcbabe706b6202826f3c9b4f2aaea032ddf |
+
+上表绑定采集时工作树字节，不将后来的commit倒写为运行输入。旧settlement-fixtures、boundary和capacity源码及其第14节hash不变。独立错误入口为 `node scripts/diagnostics/settlement-error-budget-fixtures-v1.mjs --helpers-only --out NEW_DIRECTORY` 或 `--public-only`；篡改入口为 `node scripts/diagnostics/settlement-error-retention-tamper-v3.mjs --out NEW_DIRECTORY`。主回归/离线/portable命令沿用第14节；必须使用固定Node和新目录，只导入可信工作树模块。
+
+下一阶段先重新研究有界错误策略下2MiB writer/verifier请求的可达性，按公开API构造或给出上界，保留旧六项输入不适用的解释；再明确listeners注册集合、单chunk sequences的责任及容量边界，完成工具复审。真实Windows junction/readlink/权限、大小写/Unicode、打包上传解包和原生异平台归档仍为runner门槛。不得据本节宣布整个诊断进程内存有界、重启真实矩阵、启动W1/U1或关闭产品退出完整性；生产API/预算、实际Agent启动链、双会话、Host/Webview与packaged继续开放。
+
+收口检查覆盖两树各七份文档、三份设计YAML/索引/关联引用及12个计划章节；共享第15节一致，第2–14节正文保持原样。十份诊断源码语法和最终source hash对账通过，旧fixture/boundary/capacity、D4、业务、依赖与workflow不变。记录在主树 `.debug/diagnostic-stage15-doc-check-final.json`；独立文档复核无剩余事实冲突，不宣称全仓历史引用均通过，image.png未纳入。

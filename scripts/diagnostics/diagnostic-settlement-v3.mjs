@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { isAbsolute, posix, win32 } from 'node:path';
+import { ERROR_POLICY, ErrorBudget, normalizeError } from './settlement-error-budget-v1.mjs';
 
 export const SCHEMA = 'diagnostic-settlement-v3';
 export const FRAME_SCHEMA = 'diagnostic-settlement-frame-v3';
@@ -22,7 +23,6 @@ const freeze = (value) => {
   return value;
 };
 const immutable = (value) => freeze(jsonCopy(value));
-const errorRecord = (error) => ({ name: String(error?.name ?? 'Error'), code: error?.code == null ? null : String(error.code), message: String(error?.message ?? error).slice(0, 2048) });
 const exactKeys = (value, keys) => value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === keys.length && keys.every((key) => own(value, key));
 const text = (value, max = 256) => typeof value === 'string' && value.length > 0 && value.length <= max;
 const integer = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -113,7 +113,9 @@ class SettlementOwner {
     this.listeners = new Set();
     this.listenerQueue = [];
     this.listenerQueued = false;
-    this.listenerFailures = [];
+    this.listenerFailureBudget = new ErrorBudget();
+    this.listenerFailures = this.listenerFailureBudget.records;
+    this.errorFieldsTruncated = false;
     this.roles = [];
     this.requests = [];
     this.reports = {};
@@ -125,8 +127,8 @@ class SettlementOwner {
     this.p0 = publication ? this.t0 : null;
     this.blocked = false;
     this.blockReasons = [];
-    this.evidenceErrors = [];
-    this.evidenceIncomplete = [];
+    this.evidenceErrors = new Set();
+    this.evidenceIncomplete = new Set();
     this.guardActive = false;
     this.pumpActive = false;
     this.heldAcks = new Map();
@@ -172,6 +174,7 @@ class SettlementOwner {
   }
 
   record(event, state, details, control = false) {
+    if (details.truncatedFields?.length || details.error?.truncatedFields?.length) this.errorFieldsTruncated = true;
     const ordinal = ++this.ordinal;
     const fact = { factId: `${this.id.nonce}:fact:${ordinal}`, eventOrdinal: ordinal, receiptNs: this.clock.nowNs().toString(), event, role: state?.role ?? null, attemptId: state?.attemptId ?? null, details: jsonCopy(details) };
     const bytes = Buffer.byteLength(JSON.stringify(fact));
@@ -188,13 +191,13 @@ class SettlementOwner {
       this.traceBytes += bytes;
     } else if (!this.traceOverflow) {
       this.traceOverflow = { firstOmittedOrdinal: ordinal, reason: 'trace-capacity' };
-      this.evidenceIncomplete.push('trace-capacity');
+      this.evidenceIncomplete.add('trace-capacity');
       this.record('trace-overflow', null, this.traceOverflow, true);
     } else if (control) {
       this.controlOverflow = true;
-      if (!this.evidenceIncomplete.includes('control-capacity')) this.evidenceIncomplete.push('control-capacity');
+      this.evidenceIncomplete.add('control-capacity');
     }
-    if (event !== 'report-frozen' && (this.reports.evidenceSettlement || this.reports.publication || (state?.role === 'caller' && this.reports.processSettlement?.kind === 'unconfirmed'))) this.appendLate(fact, Object.values(this.reports).map((report) => report.reportId));
+    if (!['report-frozen', 'listener-error'].includes(event) && (this.reports.evidenceSettlement || this.reports.publication || (state?.role === 'caller' && this.reports.processSettlement?.kind === 'unconfirmed'))) this.appendLate(fact, Object.values(this.reports).map((report) => report.reportId));
     return fact;
   }
 
@@ -223,8 +226,10 @@ class SettlementOwner {
     const queued = this.listenerQueue.splice(0);
     for (const entry of queued) for (const listener of [...this.listeners]) {
       try { listener(entry); } catch (error) {
-        if (this.listenerFailures.length < LIMITS.lateEvents) this.listenerFailures.push({ factId: entry.factId, error: errorRecord(error) });
-        else this.lateOverflow = true;
+        const normalized = normalizeError(error);
+        // Observer failures are recorded without recursively notifying the same listeners.
+        const fact = this.record('listener-error', null, { sourceFactId: entry.factId, error: normalized }, true);
+        this.listenerFailureBudget.append({ factId: entry.factId, error: normalized }, fact.factId, Boolean(normalized.truncatedFields?.length));
       }
     }
   }
@@ -235,7 +240,7 @@ class SettlementOwner {
     if (name === 'publication') this.expireGate('publisher', 'publication-settled-without-gate');
     const reportId = `${this.id.nonce}:report:${name}`;
     const fact = this.record('report-frozen', null, { name, reportId, kind, reason }, true);
-    const report = immutable({ id: this.id, reportId, deadlineNs: deadline.toString(), frozenNs: fact.receiptNs, eventOrdinal: fact.eventOrdinal, kind, reason, factIds: facts.map((value) => typeof value === 'string' ? value : value.factId), ...extra });
+    const report = immutable({ id: this.id, reportId, deadlineNs: deadline.toString(), frozenNs: fact.receiptNs, eventOrdinal: fact.eventOrdinal, kind, reason, factIds: facts.map((value) => typeof value === 'string' ? value : value.factId), ...extra, errorDiagnosticsComplete: this.errorDiagnosticsComplete() });
     this.reports[name] = report;
     this.pending[name].resolve(report);
     return report;
@@ -269,7 +274,7 @@ class SettlementOwner {
             this.block('caller-process-unconfirmed');
           }
           if (!this.capture) {
-            this.evidenceIncomplete.push('capture-hard-deadline');
+            this.evidenceIncomplete.add('capture-hard-deadline');
             if (!this.readersSettled(caller)) this.block('caller-capture-unconfirmed');
             this.settleCapture(caller, true);
             this.cancelStreams(caller, 'capture-hard-deadline');
@@ -286,7 +291,7 @@ class SettlementOwner {
           this.expireGate(this.publicationOnly ? 'publisher' : 'writer', `${prefix}-hard-deadline`);
           const reportName = this.publicationOnly ? 'publication' : 'evidenceSettlement';
           if (!this.reports[reportName]) {
-            this.evidenceIncomplete.push(`${prefix}-hard-deadline`);
+            this.evidenceIncomplete.add(`${prefix}-hard-deadline`);
             for (const state of active) if (!this.processKnown(state) || !this.readersSettled(state)) this.block(`${state.role}-responsibility-unconfirmed`);
             this.finishEvidence(true);
             for (const state of active) this.cancelStreams(state, `${prefix}-hard-deadline`);
@@ -295,8 +300,8 @@ class SettlementOwner {
         if (this.deadline(`${prefix}-work`, origin + 1000n * NS_PER_MS)) {
           for (const state of active) this.control(state, 'SIGTERM');
           if (!this.reports[prefix === 'evidence' ? 'evidenceSettlement' : 'publication']) {
-            if (active.some((state) => !this.processKnown(state))) this.evidenceIncomplete.push(`${prefix}-work-deadline`);
-            if (!this.publicationOnly && !active.some((state) => state.role === 'verifier')) this.evidenceIncomplete.push('verifier-not-started-before-work-deadline');
+            if (active.some((state) => !this.processKnown(state))) this.evidenceIncomplete.add(`${prefix}-work-deadline`);
+            if (!this.publicationOnly && !active.some((state) => state.role === 'verifier')) this.evidenceIncomplete.add('verifier-not-started-before-work-deadline');
           }
         }
         if (this.deadline(`${prefix}-kill`, origin + 1500n * NS_PER_MS)) for (const state of active) this.control(state, 'SIGKILL');
@@ -311,8 +316,11 @@ class SettlementOwner {
     const request = { schema: REQUEST_SCHEMA, id: this.id, role, attemptId, requestId, scenario: this.spec.scenario, artifactDirectory: this.spec.artifactDirectory, payloadBase64 };
     const encoded = Buffer.from(JSON.stringify(request), 'utf8');
     const state = { role, attemptId, requestId, request, child: null, spawned: false, spawnFailed: false, launchRejected: false, readersRegistered: false, exit: null, close: false, streams: {}, errors: [], protocolErrors: [], frames: [], frameCount: 0, sequences: new Set(), channelSequences: {}, parser: {}, stage: 0, terminal: null, controlAttempts: [], enteredAcknowledged: false, omittedBulk: 0, gateBuffer: Buffer.alloc(0), lastHelperSentNs: -1n };
+    state.errorBudget = new ErrorBudget();
+    state.errors = state.errorBudget.records;
     for (const channel of CHANNELS) {
-      state.streams[channel] = { registered: false, end: false, close: false, cancelled: false, errors: [], receivedBytes: 0, retainedBytes: 0 };
+      const errorBudget = new ErrorBudget();
+      state.streams[channel] = { registered: false, end: false, close: false, cancelled: false, errors: errorBudget.records, errorBudget, receivedBytes: 0, retainedBytes: 0 };
       state.parser[channel] = Buffer.alloc(0);
     }
     this.roles.push(state);
@@ -324,9 +332,9 @@ class SettlementOwner {
       state.launchRejected = true;
       const error = { name: 'RangeError', code: 'INPUT_CAPACITY', message: 'Helper request exceeds capacity' };
       const fact = this.record('launch-rejected', state, { reason: 'input-capacity', inputBytes: encoded.length, limitBytes: role === 'publisher' ? LIMITS.publicationInput : LIMITS.input, error }, true);
-      state.errors.push({ ...error, factId: fact.factId });
+      state.errorBudget.append({ ...error, factId: fact.factId }, fact.factId);
       this.registerReaders(state);
-      this.evidenceErrors.push(`${role}-input-capacity`);
+      this.evidenceErrors.add(`${role}-input-capacity`);
       this.pump();
       return state;
     }
@@ -361,14 +369,15 @@ class SettlementOwner {
       const ack = child.stdio?.[4];
       if (ack?.on) ack.on('error', (error) => {
         this.guard();
-        this.record('ack-error', state, { error: errorRecord(error) }, true);
+        this.record('ack-error', state, { error: normalizeError(error) }, true);
         this.pump();
       });
       if (child.stdin?.on) child.stdin.on('error', (error) => {
         this.guard();
-        const fact = this.record('request-error', state, { error: errorRecord(error) }, true);
-        state.errors.push({ ...errorRecord(error), factId: fact.factId });
-        if (!state.spawnFailed) this.evidenceErrors.push(`${role}-request-error`);
+        const normalized = normalizeError(error);
+        const fact = this.record('request-error', state, { error: normalized }, true);
+        state.errorBudget.append({ ...normalized, factId: fact.factId }, fact.factId, Boolean(normalized.truncatedFields?.length));
+        if (!state.spawnFailed) this.evidenceErrors.add(`${role}-request-error`);
         this.pump();
       });
       this.registerReaders(state);
@@ -390,17 +399,18 @@ class SettlementOwner {
     this.guard();
     const failed = !setupError && !state.spawned && !state.exit;
     if (failed) state.spawnFailed = true;
-    const fact = this.record(failed ? 'spawn-error' : 'process-error', state, errorRecord(error), true);
-    state.errors.push({ ...errorRecord(error), factId: fact.factId });
-    if (state.role === 'caller' && failed) this.first('processSettlement', 'spawn-failed', 'direct-spawn-error', this.t0 + 6000n * NS_PER_MS, [fact], { code: null, signal: null, error: errorRecord(error), controlAttempts: state.controlAttempts });
-    else this.evidenceErrors.push(`${state.role}-${failed ? 'spawn-failed' : 'process-error'}`);
+    const normalized = normalizeError(error);
+    const fact = this.record(failed ? 'spawn-error' : 'process-error', state, normalized, true);
+    state.errorBudget.append({ ...normalized, factId: fact.factId }, fact.factId, Boolean(normalized.truncatedFields?.length));
+    if (state.role === 'caller' && failed) this.first('processSettlement', 'spawn-failed', 'direct-spawn-error', this.t0 + 6000n * NS_PER_MS, [fact], { code: null, signal: null, error: normalized, controlAttempts: state.controlAttempts });
+    else this.evidenceErrors.add(`${state.role}-${failed ? 'spawn-failed' : 'process-error'}`);
     this.pump();
   }
 
   childExit(state, code, signal) {
     this.guard();
     const fact = this.record('exit', state, { code, signal }, true);
-    if (state.exit) { this.evidenceErrors.push(`${state.role}-duplicate-exit`); return; }
+    if (state.exit) { this.evidenceErrors.add(`${state.role}-duplicate-exit`); return; }
     state.exit = { code, signal, receiptNs: fact.receiptNs, factId: fact.factId, eventOrdinal: fact.eventOrdinal };
     if (state.role === 'caller') {
       if (this.reports.processSettlement) this.appendLate(fact, [this.reports.processSettlement.reportId]);
@@ -454,7 +464,7 @@ class SettlementOwner {
   holdCapture(event) {
     const bytes = event.type === 'data' ? event.data.length : 0;
     if (this.captureHeld.length >= LIMITS.lateEvents || this.captureHeldBytes + bytes > LIMITS.lateBytes) {
-      this.evidenceIncomplete.push('capture-gate-capacity');
+      this.evidenceIncomplete.add('capture-gate-capacity');
       this.cancelStreams(event.state, 'capture-gate-capacity');
       return;
     }
@@ -477,7 +487,7 @@ class SettlementOwner {
       if (this.trace.at(-1)?.factId === fact.factId) stream.retainedBytes += retained.length;
       if (channel === 'stderr') {
         if (state.role !== 'caller' && stream.receivedBytes > LIMITS.helperStderr) {
-          this.evidenceIncomplete.push(`${state.role}-stderr-capacity`);
+          this.evidenceIncomplete.add(`${state.role}-stderr-capacity`);
           this.record('stream-truncated', state, { channel, reason: 'stderr-capacity', receivedBytes: stream.receivedBytes, retainedBytes: stream.retainedBytes }, true);
           this.cancelStream(state, channel, 'stderr-capacity');
         }
@@ -492,10 +502,10 @@ class SettlementOwner {
       stream.close = true;
       this.record('stream-close', state, { channel, ended: stream.end, ingressNs, deliveryNs: this.clock.nowNs().toString() }, true);
     } else {
-      const error = errorRecord(data);
-      stream.errors.push(error);
-      this.record('stream-error', state, { channel, error, ingressNs, deliveryNs: this.clock.nowNs().toString() }, true);
-      this.evidenceErrors.push(`${state.role}-${channel}-error`);
+      const error = normalizeError(data);
+      const fact = this.record('stream-error', state, { channel, error, ingressNs, deliveryNs: this.clock.nowNs().toString() }, true);
+      stream.errorBudget.append(error, fact.factId, Boolean(error.truncatedFields?.length));
+      this.evidenceErrors.add(`${state.role}-${channel}-error`);
     }
     this.pump();
   }
@@ -527,7 +537,7 @@ class SettlementOwner {
   protocolError(state, channel, reason, fact) {
     if (state.protocolErrors.length < LIMITS.helperFrames) state.protocolErrors.push({ channel, reason, factId: fact?.factId ?? null });
     const error = `${state.role}-protocol:${reason}`;
-    if (!this.evidenceErrors.includes(error)) this.evidenceErrors.push(error);
+    this.evidenceErrors.add(error);
     const errorFact = this.record('protocol-error', state, { channel, reason, sourceFactId: fact?.factId ?? null }, true);
     if (state.role === 'caller' && !this.reports.observation) this.first('observation', 'protocol-failed', reason, this.t0 + 2000n * NS_PER_MS, [errorFact]);
     if (state.protocolErrors.length >= LIMITS.helperFrames) this.cancelStream(state, channel, 'protocol-error-capacity');
@@ -559,7 +569,7 @@ class SettlementOwner {
       return;
     }
     if (state.frames.length >= LIMITS.events) {
-      this.evidenceIncomplete.push('caller-frame-capacity');
+      this.evidenceIncomplete.add('caller-frame-capacity');
       this.cancelStream(state, channel, 'caller-frame-capacity');
       return;
     }
@@ -607,7 +617,7 @@ class SettlementOwner {
     } else {
       state.stage = 3;
       state.terminal = { frame, factId: fact.factId };
-      if (frame.type === 'failed') this.evidenceErrors.push(`${state.role}-reported-failure:${frame.payload.code}`);
+      if (frame.type === 'failed') this.evidenceErrors.add(`${state.role}-reported-failure:${frame.payload.code}`);
     }
   }
 
@@ -630,8 +640,8 @@ class SettlementOwner {
       this.record('ack-sent', state, { forType, ack, returned }, true);
       if (forType.endsWith('-entered')) state.enteredAcknowledged = true;
     } catch (error) {
-      this.record('ack-error', state, { forType, error: errorRecord(error) }, true);
-      this.evidenceErrors.push(`${state.role}-ack-error`);
+      this.record('ack-error', state, { forType, error: normalizeError(error) }, true);
+      this.evidenceErrors.add(`${state.role}-ack-error`);
     }
   }
 
@@ -639,7 +649,7 @@ class SettlementOwner {
     if (!state?.child || state.exit || state.spawnFailed || state.controlAttempts.some((attempt) => attempt.signal === signal)) return;
     let returned = false;
     let error = null;
-    try { returned = state.child.kill(signal); } catch (caught) { error = errorRecord(caught); }
+    try { returned = state.child.kill(signal); } catch (caught) { error = normalizeError(caught); }
     const fact = this.record('control-attempt', state, { signal, returned, error }, true);
     state.controlAttempts.push({ signal, returned, error, receiptNs: fact.receiptNs, factId: fact.factId });
   }
@@ -648,7 +658,11 @@ class SettlementOwner {
     if (!state || !state.streams[channel].registered || state.streams[channel].end || state.streams[channel].cancelled) return;
     state.streams[channel].cancelled = true;
     this.record('stream-cancel', state, { channel, reason }, true);
-    try { state.streams[channel].stream?.destroy(); } catch (error) { state.streams[channel].errors.push(errorRecord(error)); }
+    try { state.streams[channel].stream?.destroy(); } catch (error) {
+      const normalized = normalizeError(error);
+      const fact = this.record('stream-destroy-error', state, { channel, error: normalized }, true);
+      state.streams[channel].errorBudget.append(normalized, fact.factId, Boolean(normalized.truncatedFields?.length));
+    }
   }
 
   cancelStreams(state, reason) {
@@ -660,8 +674,8 @@ class SettlementOwner {
   readersSettled(state) { return Boolean(state) && CHANNELS.every((channel) => !state.streams[channel].registered || state.streams[channel].end || state.streams[channel].close); }
   streamsSnapshot(state) {
     return state ? Object.fromEntries(CHANNELS.map((channel) => {
-      const { stream, ...facts } = state.streams[channel];
-      return [channel, { ...facts, pendingBytes: state.parser[channel].length }];
+      const { stream, errorBudget, ...facts } = state.streams[channel];
+      return [channel, { ...facts, errorCapacity: errorBudget.snapshot(), pendingBytes: state.parser[channel].length }];
     })) : {};
   }
 
@@ -694,7 +708,7 @@ class SettlementOwner {
       }
     }
     if (!state.terminal) {
-      if (state.controlAttempts.length || state.exit?.signal || CHANNELS.some((channel) => state.streams[channel].cancelled)) this.evidenceIncomplete.push(`${state.role}-protocol-incomplete`);
+      if (state.controlAttempts.length || state.exit?.signal || CHANNELS.some((channel) => state.streams[channel].cancelled)) this.evidenceIncomplete.add(`${state.role}-protocol-incomplete`);
       else this.protocolError(state, 'stdout', 'natural-exit-before-terminal');
     }
   }
@@ -749,7 +763,7 @@ class SettlementOwner {
             const input = { schema: 'diagnostic-settlement-verification-input-v3', expectedPayloadBase64: writer.request.payloadBase64, writerAttemptId: writer.attemptId, writerRequestId: writer.requestId };
             this.launch('verifier', Buffer.from(JSON.stringify(input), 'utf8').toString('base64'));
           }
-          else if (!this.evidenceIncomplete.includes('verifier-not-started-before-work-deadline')) this.evidenceIncomplete.push('verifier-not-started-before-work-deadline');
+          else this.evidenceIncomplete.add('verifier-not-started-before-work-deadline');
         }
         const currentVerifier = this.roles.find((state) => state.role === 'verifier');
         if (currentVerifier && this.processKnown(currentVerifier) && this.readersEnded(currentVerifier)) this.finishEvidence(false);
@@ -772,8 +786,8 @@ class SettlementOwner {
     const states = this.roles.filter((state) => this.publicationOnly ? state.role === 'publisher' : ['writer', 'verifier'].includes(state.role));
     for (const state of states) {
       this.checkCompletedProtocol(state);
-      if (state.spawnFailed) this.evidenceErrors.push(`${state.role}-spawn-failed`);
-      if (state.exit && state.exit.code !== 0 && !state.controlAttempts.length) this.evidenceErrors.push(`${state.role}-nonzero-exit`);
+      if (state.spawnFailed) this.evidenceErrors.add(`${state.role}-spawn-failed`);
+      if (state.exit && state.exit.code !== 0 && !state.controlAttempts.length) this.evidenceErrors.add(`${state.role}-nonzero-exit`);
     }
     const verifier = states.find((state) => state.role === 'verifier');
     const writer = states.find((state) => state.role === 'writer');
@@ -781,24 +795,30 @@ class SettlementOwner {
     if (artifactVerified && writer?.terminal?.frame.type === 'seal-claim') {
       const claim = writer.terminal.frame.payload;
       const actual = verifier.terminal.frame.payload;
-      if (['bytes', 'sha256', 'manifestSha256'].some((key) => claim[key] !== actual[key])) this.evidenceErrors.push('writer-verifier-claim-mismatch');
+      if (['bytes', 'sha256', 'manifestSha256'].some((key) => claim[key] !== actual[key])) this.evidenceErrors.add('writer-verifier-claim-mismatch');
     }
-    if (!this.publicationOnly && this.capture?.integrity === 'failed') this.evidenceErrors.push('capture-failed');
-    if (!this.publicationOnly && this.capture?.integrity !== 'complete') this.evidenceIncomplete.push('capture-incomplete');
+    if (!this.publicationOnly && this.capture?.integrity === 'failed') this.evidenceErrors.add('capture-failed');
+    if (!this.publicationOnly && this.capture?.integrity !== 'complete') this.evidenceIncomplete.add('capture-incomplete');
     const allSuccessful = states.length === (this.publicationOnly ? 1 : 2) && states.every((state) => this.helperSuccessful(state, origin));
-    const errors = [...new Set(this.evidenceErrors)];
-    const incomplete = [...new Set(this.evidenceIncomplete)];
+    const errors = [...this.evidenceErrors];
+    const incomplete = [...this.evidenceIncomplete];
     const kind = errors.length ? 'failed' : allSuccessful && !incomplete.length && !hard ? (this.publicationOnly ? 'published' : 'sealed') : 'incomplete';
     const reason = errors[0] ?? incomplete[0] ?? (kind === 'incomplete' ? 'helper-proof-incomplete' : this.publicationOnly ? 'publisher-protocol-and-exit-complete' : 'independent-artifact-verification-complete');
     this.first(name, kind, reason, origin + 2000n * NS_PER_MS, states.flatMap((state) => [state.exit?.factId, state.terminal?.factId].filter(Boolean)), { captureIntegrity: this.capture?.integrity ?? null, artifactVerified, errors, incomplete, helpers: states.map((state) => this.roleSnapshot(state)), ...(this.publicationOnly ? { archiveAttemptId: this.spec.archiveAttemptId, snapshotOrdinal: this.spec.snapshotOrdinal, archiveIntegrity: 'not-verified-offline' } : {}) });
   }
 
   roleSnapshot(state) {
-    return { role: state.role, attemptId: state.attemptId, requestId: state.requestId, spawned: state.spawned, spawnFailed: state.spawnFailed, launchRejected: state.launchRejected, exit: state.exit, close: state.close, streams: this.streamsSnapshot(state), errors: state.errors, protocolErrors: state.protocolErrors, terminal: state.terminal, controlAttempts: state.controlAttempts, enteredAcknowledged: state.enteredAcknowledged, omittedBulk: state.omittedBulk, processResponsibility: this.processKnown(state) ? 'concluded' : 'unconfirmed', streamResponsibility: this.readersSettled(state) ? 'concluded' : 'unconfirmed' };
+    return { role: state.role, attemptId: state.attemptId, requestId: state.requestId, spawned: state.spawned, spawnFailed: state.spawnFailed, launchRejected: state.launchRejected, exit: state.exit, close: state.close, streams: this.streamsSnapshot(state), errors: state.errors, errorCapacity: state.errorBudget.snapshot(), protocolErrors: state.protocolErrors, terminal: state.terminal, controlAttempts: state.controlAttempts, enteredAcknowledged: state.enteredAcknowledged, omittedBulk: state.omittedBulk, processResponsibility: this.processKnown(state) ? 'concluded' : 'unconfirmed', streamResponsibility: this.readersSettled(state) ? 'concluded' : 'unconfirmed' };
+  }
+
+  errorDiagnosticsComplete() {
+    if (this.errorFieldsTruncated || this.traceOverflow || this.controlOverflow) return false;
+    const budgets = [this.listenerFailureBudget, ...this.roles.flatMap(state => [state.errorBudget, ...CHANNELS.map(channel => state.streams[channel].errorBudget)])];
+    return budgets.every(budget => { const summary = budget.snapshot(); return !summary.omitted && !summary.fieldsTruncated; });
   }
 
   getOwnerSnapshot() {
-    return immutable({ id: this.id, reservedSlots: ['caller', 'evidence-helper', 'publisher'], blocked: this.blocked, blockReasons: this.blockReasons, roles: this.roles.map((state) => this.roleSnapshot(state)), traceCapacity: { events: this.trace.length, bytes: this.traceBytes, overflow: this.traceOverflow, controlOverflow: this.controlOverflow }, lateCapacity: { events: this.lateJournal.length, bytes: this.lateBytes, overflow: this.lateOverflow }, listenerFailures: this.listenerFailures });
+    return immutable({ id: this.id, reservedSlots: ['caller', 'evidence-helper', 'publisher'], blocked: this.blocked, blockReasons: this.blockReasons, roles: this.roles.map((state) => this.roleSnapshot(state)), traceCapacity: { events: this.trace.length, bytes: this.traceBytes, overflow: this.traceOverflow, controlOverflow: this.controlOverflow }, lateCapacity: { events: this.lateJournal.length, bytes: this.lateBytes, overflow: this.lateOverflow }, listenerFailures: this.listenerFailures, listenerFailureCapacity: this.listenerFailureBudget.snapshot(), errorPolicy: ERROR_POLICY, errorDiagnosticsComplete: this.errorDiagnosticsComplete() });
   }
 
   getEvidenceSnapshot() {

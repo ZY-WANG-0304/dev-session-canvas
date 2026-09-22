@@ -61,7 +61,7 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 ### 当前状态（2026-09-22）
 
-当前下一步以 `runtime-diagnostic-settlement-contract.md` 第14节为准：容量可达性和synthetic跨OS归档验证，producer路径身份与本机读取分开；错误辅助数组有界性、真实Windows链接/打包传输及完整工具门槛继续开放。第43节及契约第12–13节保留上一输入，D4本轮不改。本阶段不运行D3真实36+2+4、不新增runner、不推送；本地门槛完成后才另行确认真实矩阵。W1/U1与生产交付继续阻塞，以下历史证据仍按原范围保留，不把旧阶段“下一步”作为当前待办。
+当前下一步以 `runtime-diagnostic-settlement-contract.md` 第15节为准：错误字段/列表预算及独立缺证认证已本地收口；接着重新评估2MiB请求可达性、listeners注册集合及单chunk sequences边界，再完成工具复审和真实Windows链接/打包传输门槛。第43节及契约第12–14节保留历史输入，D4本轮不改。不运行D3真实36+2+4、native或runner，不推送；W1/U1与生产交付继续阻塞，不把局部错误预算扩为全owner有界或产品通过。
 
 最新证据见第41节：b4db41cc的唯一run35676427931经三平台完整归档复核，各full24/24、scaled24/24、oracle78/parser8及篡改24/23成立；Windows实际再次乱序而源序合法，新判据正确接受。第38节v1两个failure、真实迟到与writer预算漏验仍保留。来源/顺序窄验证不关闭D3完整settlement、D4重放/身份或W1/U1；下一阶段先补诊断结算契约。以下两段记录此前设计承接背景，不覆盖本段当前状态。
 
