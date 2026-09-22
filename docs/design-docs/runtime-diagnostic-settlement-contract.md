@@ -281,3 +281,76 @@ D3 v3最终正式本地自测证据为独立目录 `.debug/settlement-v3-cli-sel
 首报冻结与消费者实际 await 续体分账。最终 snapshot 对每份首报核验唯一 consumer-after-await、name/reportId 和冻结后的顺序。报告在自身 deadline 前冻结时，消费者在同 deadline 相等或之后运行，另判环境迟调/验收失败，不标为及时。对恰在或晚于 deadline 才冻结的 timeout 首报，消费者不可能早于该 deadline，因此只保存 frozen→consumer 延迟并标 `delivery-budget-unresolved`，不宣称有界消费已验证。独立的超时首报消费验收预算尚未冻结；本阶段不修改首次 deadline、不暗加宽限，也不把缺口隐藏在总体 pass 中。
 
 下一步补齐第7节冻结 fixture、首次/迟到事实前缀、逐项 owner 与准入封禁、严格协议/文件/publisher、消费边界及坏首项后的完整重放，完成独立源码审查并固定新输入。本地门槛完成后，才另行确认 D3 真实矩阵及唯一一次三平台采集；本阶段没有执行它们。旧 D3 v1/v2、D4 v1 与历史失败不改，W1/U1、原生第二批、实际启动链/双会话/宿主/packaged、生产 API/停止预算及整体退出完整性交付继续开放。
+
+## 13. 确定性覆盖补齐与消费判据（2026-09-22）
+
+本增量承接第12节已保存的输入和结果，诊断树基准为0b7040a9，运行时树为115c8641。先修正文档尾项的独立提交不改变旧实验。本增量只实施已有六组缺口、D4创建/使用unknown迟到正例和独立消费判据；真实D3 36+2+4、PTY/native、三平台runner和生产改造均不在本轮执行范围。所有改动只落独立诊断树及两树文档，不推送。旧自测目录及冻结的v1/v2入口不变。
+
+消费判据先比较三个候选：延长原工作deadline会混淆操作与交付，不采用；要求到期首报的消费者先于同一deadline在因果上不可能，不采用；另设从不可变frozenNs起算的消费窗口，保持原操作/控制/证据deadline不变，作为待复审的诊断方案。初始候选窗口为100ms，是最短1000ms工作窗的十分之一，仅用于运行前识别诊断observer内的同步阻塞，不是测后容差或生产预算。仍需同时保留及时冻结首报在原deadline内消费的既有条件；到期首报不改写原kind、freeze时间或结果。实施前需记录复审结论，虚拟时钟覆盖新消费窗口的-1ns/相等/+1ns，并将首报自身迟调与消费迟调分开。
+
+实施前独立复审确认上述独立窗口逻辑成立，本增量选用固定100ms诊断交付策略，版本名为 `diagnostic-consumer-delivery-v1`：F为首报frozenNs、D为该首报原deadline、C=F+100ms；F<D时消费者实际收到R须同时R<D且R<C，F>=D时仅要求R<C，等号均为超期。及时首报的双约束保留原契约，不能假定总能使用完整100ms；到期首报的新增窗口不授权调用方重新工作、重置E0/P0或控制预算。run/preflight记录策略版本和数值，可信离线实现按固定常量对账，不信工件自带更大预算。分别保存freezeDeadlineDeltaNs和frozenToConsumerNs；late-freeze后消费及时不等于首报及时，boundedConsumerDelivery仅表示已采集诊断样本满足交付阈值，不代表产品实时性或自测已覆盖真实矩阵。第12.4节保持上一输入的未冻结状态，不追认旧工件符合新策略。
+
+D3覆盖按第12.3节六组逐项登记，不以总测试数替代覆盖：控制和hard绝对边界、启动与reader责任、同chunk/同时间和跨pipe协议偏序、共享E0组合、各层容量/listener、unknown迟到及gate/实际await。测试保存动作输入、预期、首报/当前owner和独立重放；注入事件不得被称为真实不可杀进程或真实OS错误。若全量重放暴露新工具缺陷，先保留首次source与结果，再修诊断实现，不改产品契约掩盖失败。
+
+D4在固定16个模型场景内补充创建unknown经同操作report/seal清除、使用unknown经同token end-use清除的正向命令，独立oracle核对首次观察保留、当前责任清除、整槽归还及显式reopen。每次命令/断言计数按新输入实报，不追认local-3具有新增覆盖。输出仍为无共享可变引用的深拷贝，不新增JS深冻结承诺。
+
+本增量验收先覆盖源语法、逐组纯fixture、完整新self-test/saved可信重放、语义篡改及独立审查；生成新目录、源hash与覆盖清单后才作阶段判断。发现未闭合项必须保留在计划和技术债中，不能由某份summary.pass=true关闭整体工具、原生或产品门槛。
+
+### 13.1 D4 创建与使用责任的迟到结算
+
+固定16项中的D4v2-02新增两条创建链：A在unknown后迟到报告failed且零取得，只有seal空集合才归还槽；B在unknown后实际取得pipe并报告success，seal只解除创建unknown，资源仍占槽直至同一release证明结清。D4v2-06将两个在途use token各自标unknown，每个匹配end只结算自身token，两个都结束后才单次dispatch。首次unknown不改写，清账不自动reopen，显式reopen后才允许新reserve。独立oracle逐命令重建而不是仅检查最终计数。
+
+Node22.23.2的首次新输入保存在独立树 `.debug/owner-quarantine-v2-local-4-selftest` 和 `.debug/owner-quarantine-v2-local-4-full`。两次各固定16项一次，均330 commands、68次预期模型拒绝、2092次oracle checks；self-test为101个语义负例及4个saved负例。两份可信保存校验均attempted=16/verified=16，errors/rootErrors为空，self-test verifiedNegatives=101。新增8个篡改负例针对report提前清账/还槽、end清错token/提前还槽、替换首次观察和自动reopen；不是新增8项原生实验。根侧另只读核对02/06完整中间轨迹并重新验证self-test，无新发现。
+
+CLI源 `diagnose-owner-quarantine-v2.mjs` SHA256为`c7579923c5fee45b51fd77923dc01593cf3bbef81cc0fda86dac0ab48db66fc4`，fixture源为`7ad1c136e817f0d14795e8b552c59fa0cbe8b8339831a3f6c81fe2d7a3b78cc1`；model/oracle维持第12.2节hash。旧local-3、碰撞首次失败和sidecar负例不改，不追认旧输入具有本次覆盖。本增量未发生新D4失败，也不证明native释放、实际并发或生产正确性。
+
+### 13.2 D3 首次失败与校验规则修正
+
+旧CLI的严格修前反例在 `.debug/archive-fixture-binding-repro-2`：正常纯self-test归档通过后，将missing-snapshot-schema的input替换为missing-snapshot-id的input，保留类别和预期并重算根manifest，旧saved仍4/4且无evidenceErrors。两个输入都被拒绝并不能证明各自原定覆盖。repro-1因fixture源码变化导致source-exact失败，也保留而不称完整通过。新实现由可信代码重建archive/file fixture定义及完整磁盘负例树，绑定具体输入和变换，再验证语义；重算hash不再足以替换类别。
+
+新增boundary首轮108项中107满足预期，caller异步ENOENT用例在已建立E0后错误推进到hard再等待verifier，是fixture编排缺陷。第二轮156项中152满足预期，保存在 `.debug/settlement-boundaries-v3-second`；另一个listener用例误将订阅前已有两条late事实计入新投递数量。两处仅修编排/基线，不改变业务契约。CLI开发输入 `.debug/settlement-v3-cli-policy-dev-1` 的156/152独立保留，不覆盖上述目录。
+
+第二轮另三个真正的oracle误判已保留独立输入与源码：无换行累计4096字节已无空间容纳换行，必须立即按超限处理；verifier合法verified后出现lifecycle错误，整体evidence failed但已取得的artifact证明仍可有效，不能混为协议错误；caller及时EOF但process超过hard才退出，不能用迟到事实倒推capture complete。oracle现按capture自身ordinal前缀和严格hard界限重建，协议错误与进程/流错误分账。三个原输入只读重放及反向内存篡改复核通过，不改历史失败，也不是新Terminal/Agent或OS缺陷。
+
+冻结后的 `.debug/settlement-v3-cli-selftest-3` 自测119/41/156/15/37通过，但首次saved只有4/5：完整boundary动作和证据文件超过原通用64MiB读取限制，产生inventory member exceeds byte limit，summary计数缺组也如实失败。保留此来源/工件/失败；下一修订仅为已命名的boundary自测聚合文件指定128MiB离线读取上限，其余通用JSON仍64MiB。该聚合包含156个纯fixture，不能据此放宽单会话帧、trace、2MiB请求或4MiBpublication限制，也不将64MiB首次失败追认为通过。
+
+### 13.3 冻结覆盖与明确缺口
+
+新增 `settlement-boundary-fixtures-v3.mjs` 导出 `runBoundarySelfTests()`，仅复用虚拟时钟/transport，不spawn真实诊断子进程。每项保存动作、预期、报告、owner及独立重放；覆盖清单如下。既有119 oracle、41 core和15文件用例不重复计入156项。
+
+| 组 | 数量 | 新fixture覆盖 |
+| --- | --- | --- |
+| 时钟/排队 | 20 | caller TERM/KILL/hard和三helper KILL的-1ns/相等/+1ns；caller/publication在launch队列越hard。 |
+| 启动责任 | 12 | 四role的同步throw、异步ENOENT、异步ENOENT后close-only；注册reader和无EOF事实分账。 |
+| 协议偏序 | 5 | 目标前/后坏帧各同chunk/跨chunk；合法跨pipe反向到达。 |
+| 共享E0/P0 | 45 | 三helper的exit/terminal/EOF在work和terminal/EOF在hard邻界；工作窗不重置。 |
+| 协议/容量 | 57 | 四role完整/分片4095/4096/4097、无换行4095/4096、UTF8/双terminal/尾残片；helper stderr16383/16384/16385；publisher request4194303/4194304/4194305及launch拒绝。 |
+| 迟到/收尾 | 17 | unknown、cancel/close、listener、两个oracle回归、trace/control/late饱和、四gate未建立及已held/受控capture delivery。 |
+
+156项分成154个要求完整oracle重放和2个明确要求拒绝的control reserve耗尽场景。后两项保留有界记录，但缺失阶段事实，独立重放必须报missing-phase-start；它们的测试判据满足不等于归档证据完整，更不能作为完整case验收通过。
+
+尚未覆盖的具体门槛为：caller/evidence的2MiB input可达性及邻界；helper第8帧数量限额独立边界；trace events/bytes和control reserve64 events/64KiB各自精确-1/相等/+1；late256条独立阈值（当前命中64KiB，不声称命中256）；capture gate队列容量；listener failure数组自身上限。下一阶段先逐项确定可达输入、不可达理由或需要的有界设计，再实施并审查，不以本次156项总数关闭六组全部组合。
+
+消费者37项archive/consumer/binding用例包括12个新增边界：F<D/F=D/F>D各自C-1/相等/+1，以及原D更紧时D-1/相等/+1。这些是纯判据测试，不是实测调度达标；self-test没有真实consumerDelivery列表时boundedConsumerDelivery和acceptanceReady仍为false。source CRLF/LF与工件迁移是离线输入可移植性，不是Windows/macOS原生通过。
+
+### 13.4 最终本地证据与下一门槛
+
+self-test-4各组fixture判据119/41/156/15/37满足，首次saved5/5、96 members；但独立审查发现新增source outcome的原字节直接比较会误拒CRLF producer/LF verifier，迁移目录也可能因原/新根混用而误拒，故其本机通过不作为可移植性完成。修订按producer的run.sourceHashes严格验证保存的trustedSha256/exact/crlfOnly，再对可信replay作有限归一；只归一路径字段和诊断error中的已知根，不替换任意协议字符串。早期source-outcome-repro-1受路径误拒干扰，未复现整体篡改通过，原结果保留。
+
+最终输入为独立树 `.debug/settlement-v3-portability-check-1/original`，Node22.23.2完整纯自测各组119 oracle、41 core、156 boundary、15文件、37 archive/consumer/binding判据满足；其中boundary按上一节154完整重放+2预期拒绝计。原目录与复制的moved目录可信保存重放均attempted=5/verified=5、evidenceErrors=[]、96 manifest members；根侧从当前可信入口再次只读重放original也5/5，记录在同名前缀 `-root-verification.json`。没有另建self-test-5或重复原生输入。realNodeCases=0、nativeProcesses=0、pty=false，boundedConsumerDelivery=false、acceptanceReady=false。
+
+同目录 `source-outcome-memory.json` 保存32项纯内存检查：producer/verifier/archive的LF/CRLF八种组合，及各组合对三个派生字段的伪造拒绝。这不是Windows真实工件在Linux的完整重放；Windows绝对路径进入synthetic spec时的宿主path.isAbsolute行为、junction归档元数据和跨OS路径绑定仍须在首次runner前明确验证，不能把同平台迁移和源码换行检查扩大为跨平台完成。
+
+最终重hash负例在 `.debug/settlement-v3-saved-binding-negatives-1`：baseline先5/5，13项篡改全部因预期语义原因拒绝，未借shared-manifest错误求绿。覆盖archive与consumer类别替换、结果/scope/source派生字段、磁盘负例类别、file request/outcome、删除或放宽消费policy、自洽source+hash篡改、summary计数及boundary结果。summary伪造仍5/5组有效重放但整体失败，其他适用案例4/5；旧目录未修改。独立只读审查确认consumer判据、fixture绑定和source结果修正无新确定性阻断，另作72项内存正负检查，属于审查旁证而不并入正式自测计数。
+
+| D3 最终源文件 | SHA256 |
+| --- | --- |
+| diagnostic-settlement-v3.mjs（本轮未改） | 80666ad9d161e2198dcaff9363d457227acc6903a5b0b1ab09534aa21be77206 |
+| diagnose-settlement-v3.mjs | 6c89ab10c30b8fed6db751781abfdd2daa05e982fa7a926a5b822ad9aea96b7b |
+| settlement-oracle-v3.mjs | eacdb9e850dac8f59e343838355ef98ecb01c93e0ffcc61e6bb68f1f8232b195 |
+| settlement-fixtures-v3.mjs | f68b2a6e8194ef9ef4c4eab4030afb8a574895b5dfef56d56f5a1a865872f7a8 |
+| settlement-boundary-fixtures-v3.mjs | db86c07c8d10a095b1ef23bd95714c28cb5386abf391c0b673dcf1c744229a75 |
+
+以上hash绑定实际工件源快照，HEAD只记工作树基线，不倒称采集来自后来的提交。下一阶段先收口第13.3节容量与可达性、跨OS归档契约及独立审查，再决定真实36+2+4/三平台采集；本次不修改workflow、不推送，也不关闭W1/U1、原生第二批、实际Agent启动链/双会话/Host/Webview/packaged、生产API/预算及退出完整性总交付。
+
+收口检查已通过：九份诊断源的Node22.23.2语法、两树各四份设计frontmatter/索引/关联路径、各12个ExecPlan必要章节、共享契约一致、五份最终D3源快照hash和diff。契约第1–12节与本增量基准逐字保持；业务、现有tests、依赖和workflow无变化，主树scripts无变化，image.png未纳入。文档检查记录在主树 `.debug/diagnostic-stage13-doc-check.json`；检查不代表全仓历史文档引用或原生交付已通过。
