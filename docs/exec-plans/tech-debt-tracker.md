@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-22 容量与归档增量的设计、实测及剩余门槛见 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第14节。本轮不调整生产实现或容量策略；listener异常name/code无字节上界、重复错误辅助数组可越过trace边界仍是独立诊断工具风险。修复前先设计有界摘要和缺证标记，保留最小公开API反例，不以43个测试目标满足推论整体内存有界。实际Windows junction/权限/文件系统语义、打包上传解包保真及真实跨OS归档仍需runner；真实D3、W1/U1和产品退出完整性仍未验收。
+
 2026-09-22 确定性覆盖增量：D3新增156项，其中154要求完整重放，2项control reserve耗尽要求明确拒绝；独立100ms消费策略已在运行前冻结，不改原deadline。D4 local-4两次各16项、330命令/68预期拒绝/2092 checks，101语义和4 saved负例及各16/16离线复核补齐create/use unknown迟到结算。三处oracle误判和archive同拒绝类别替换漏洞已定位修正，首次source/失败保留；完整最新证据与源hash见 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第13节。旧第12节的预算未冻结和覆盖缺口只对应旧输入，不追认旧结果。
 
 本轮最终D3各组119/41/156/15/37判据满足，原目录/同平台迁移目录及根可信重放5/5、96 members，13项重hash负例拒绝；源派生字段LF/CRLF的32组合另计，boundedConsumerDelivery=false、acceptanceReady=false。仍未关闭的具体工具门槛：2MiB input可达性/邻界、helper8帧数量、trace/control各计数与字节精确邻界、late256条独立阈值、capture gate队列容量、listener failures上限，以及Windows绝对路径/junction在跨OS整包归档中的验证。boundary聚合专用128MiB读取不放宽单会话容量。下一步先冻结这些可达性/容量和归档规则并补测；真实D3 36+2+4、三平台采集、W1/U1、原生第二批和生产集成均未启动，退出完整性总债务保持开放。以下条目按历史输入理解。

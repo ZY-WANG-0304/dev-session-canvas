@@ -19,7 +19,7 @@ updated_at: 2026-09-22
 
 ## 1. 当前阶段与证据边界
 
-本设计承接 `docs/design-docs/runtime-native-failure-isolation.md` 第17节；设计冻结输入为独立诊断树 `e1a31b79` 与运行时树 `a5f8d629`。当前已进入第12节的本地实施与审计，D3 v3/D4 v2 新入口只在独立 `runtime-exit-integrity-native-candidates` 工作树实施，主运行时树仅同步文档。D4 已有确定性本地证据，D3 尚未闭合冻结覆盖与独立验收；整体决策仍比较中，本文验证状态改为验证中。本阶段不运行 D3 真实 36+2+4 矩阵、不新增 runner、不推送任何分支。
+本设计承接 `docs/design-docs/runtime-native-failure-isolation.md` 第17节；设计冻结输入为独立诊断树 `e1a31b79` 与运行时树 `a5f8d629`。当前本地进展见第14节，第12–13节保留先前实施与审计输入；D3 v3/D4 v2 新入口只在独立 `runtime-exit-integrity-native-candidates` 工作树实施，主运行时树仅同步文档。D4 已有确定性本地证据，D3 容量与合成归档有新增证据，但错误旁路有界性、真实平台归档及完整工具验收仍未闭合；整体决策仍比较中，验证状态为验证中。本阶段不运行 D3 真实 36+2+4 矩阵、不新增 runner、不推送任何分支。
 
 D3 v1/v2、D4 v1、原 workflow、断言、工件及失败全部冻结。唯一 v2 run `35676427931` 只验证来源/顺序窄修正；它没有证明完整结算、有界 unknown、writer 协议或 D4 全身份重放。本设计新增版本而不修改旧输入。W1/U1 原生矩阵须等待新工具完整审计，不因设计冻结直接启动。
 
@@ -354,3 +354,63 @@ self-test-4各组fixture判据119/41/156/15/37满足，首次saved5/5、96 membe
 以上hash绑定实际工件源快照，HEAD只记工作树基线，不倒称采集来自后来的提交。下一阶段先收口第13.3节容量与可达性、跨OS归档契约及独立审查，再决定真实36+2+4/三平台采集；本次不修改workflow、不推送，也不关闭W1/U1、原生第二批、实际Agent启动链/双会话/Host/Webview/packaged、生产API/预算及退出完整性总交付。
 
 收口检查已通过：九份诊断源的Node22.23.2语法、两树各四份设计frontmatter/索引/关联路径、各12个ExecPlan必要章节、共享契约一致、五份最终D3源快照hash和diff。契约第1–12节与本增量基准逐字保持；业务、现有tests、依赖和workflow无变化，主树scripts无变化，image.png未纳入。文档检查记录在主树 `.debug/diagnostic-stage13-doc-check.json`；检查不代表全仓历史文档引用或原生交付已通过。
+
+## 14. 容量可达性与跨OS归档（2026-09-22）
+
+本增量基准为诊断树9230b87b、运行时树fee95df9，先作容量可达性审查和路径契约确认，再新增纯fixture与诊断修正。不改业务、D4模型、旧v1/v2/workflow/原始工件，不推送，不执行真实D3 36+2+4、native、PTY或runner。本节不追认第13节具有新增覆盖，所有首次失败另存源码和输入。
+
+### 14.1 路径身份与本机读取分离
+
+不采用将真实执行入口的绝对路径检查放宽为posix或win32任一接受，也不在观察后改写spec/trace/request/inputBytes。选用仅诊断测试可用的 `testDependencies.pathStyle=posix|win32`，要求显式注入clock和spawnRole；真实spawn路径不允许覆盖，仍用宿主规则。CLI在纯synthetic fixture重建时按记录的producer平台选择style。生产者路径始终是受平台约束的逻辑身份，本机文件只由当前归档根与受约束相对成员读取，不打开记录中的C盘、UNC或旧绝对根。
+
+producer元数据拒绝drive-relative、缺盘符root-relative、平台不匹配和非法namespace；目录/请求身份逐项绑定，不以全局字符串替换修补hash或payload。Windows链接的manifest仍逐字保存readlink目标；fixture目标比对单独定义严格的普通drive/UNC及扩展前缀语义，有限映射不得接受错盘符/共享目录、错目标或路径逃逸。保存为链接的对象若变成普通文件应拒绝；归档中的symlink字面值不能证明Windows原生junction类型。
+
+新建独立portable驱动，使用Linux真实文件、明确synthetic producer metadata和字面链接目标，覆盖posix/linux、posix/darwin、win32路径及LF/CRLF、迁移归档根和重hash语义负例。驱动不递归加入主self-test，不触发真实schedule；同时记录physicalPlatform与logicalProducerPlatform。首次runner前仍须验证Windows真实junction/readlink字节与权限、原生文件系统大小写/Unicode规则、真实打包/上传/解包保真及异平台producer整包重放，本地纯模拟不关闭这些门槛。
+
+### 14.2 容量验证原则
+
+只通过公开handle和注入transport构造可达输入，不给SUT私有计数器赋值，不临时降低限额以制造边界。逐项验证count和bytes哪一个先到：有合法较小上界使某阈值不可达时记录推导及最大输入，不伪造-1/相等/+1已执行；压力输入若故意违反协议，分类为synthetic诊断鲁棒性而不是实际OS轨迹。测试判据满足与完整证据重放分别计数，容量耗尽后缺证明仍拒绝。
+
+当前研究清单为2MiB caller/writer/verifier请求、helper第8帧、trace正常/控制区的count和bytes、late256/64KiB、capture gate256/64KiB及listener failures256。既有trace/late/capture门槛不因补测而放宽。审查中发现的重复错误列表与错误字段字节界先保存最小反例，若需新增截断或改变状态规则，须在本节补充明确设计后实施；不能用测试通过掩盖旁路无界，也不在未验证前把纯模型输入当产品缺陷。
+
+本轮选定独立容量驱动 `scripts/diagnostics/settlement-capacity-fixtures-v3.mjs`，冻结43项研究目标：caller合法最大请求上界1项；writer/verifier请求2MiB的-1/相等/+1共6项；三helper帧数7/8/9共9项；normal与reserve各自count/bytes、late count/bytes、capture held count/bytes、listener failures count，各-1/相等/+1共27项。无法合法到达的目标必须改记上界或步长证明，不把未命中的精确字节值算作执行通过；新增驱动与主self-test分开，不扩大真实矩阵。
+
+已保存公开API最小反例 `.debug/settlement-v3-capacity-reachability-review-1`：800次stderr错误产生2232667-byte writer请求并触发拒绝；此时trace已耗尽，不能作为完整证据。单次listener异常的70000字符name产生70069-byte失败记录，说明256条限制不等于字节限制；最短身份下late256条为57732 bytes，说明条数门槛可独立到达。重复spawn/error只用于synthetic鲁棒性输入，未证明Node或任何OS自然产生这种轨迹。本轮不截断错误字段、不重构辅助数组；将其作为完整工具验收仍未关闭的明确风险，后续先设计有界错误摘要及缺证标记，再保留反例做回归。
+
+### 14.3 首次失败与修正依据
+
+容量首次 `.debug/settlement-capacity-v3-first` 完整43项仅38项满足，源码/输入/逐项结果均保留。三个verifier请求失败来自fixture尺寸构造：600条最大错误的固定前缀已超过目标payload，尚未到达待测边界；改成540条前缀和260条长度可调错误，保持800条总数、既定序号及2097151/2097152/2097153-byte目标不变。第二次 `.debug/settlement-capacity-v3-second` 为41/43，六个writer/verifier目标均已到达，两次sourcesUnchanged=true。
+
+剩余两项normal trace字节983039/983040命中目标后被oracle以capture-integrity/report-kind拒绝。独立核对确认第5节冻结的16KiB stderr仅用于辅助进程，core也只限制非caller；oracle重放却未区分角色，将caller的大stderr误认成协议错误。本轮仅将oracle条件限定到非caller，不改core容量或原判据；这两个容量项提供caller正例回归，已有helper16383/16384/16385边界继续验证限制未放宽。首次38/43和第二次41/43不追认通过，不将校验器误判报告为产品或OS缺陷。
+
+### 14.4 最终本地证据与复核
+
+所有正式最终执行均使用Node22.23.2，物理平台Linux。容量第三次 `.debug/settlement-capacity-v3-third` 为43/43、sourcesUnchanged=true，分账为1个caller上界证明、30个完整oracle重放、12个因missing-phase-start预期拒绝；不得称为43份完整证据。caller按配置验证器允许的UTF-16字段长度和最坏JSON转义计算最大207621 bytes，不等于实际OS接受含NUL路径。writer/verifier均通过公开错误事件构造精确2097151/2097152/2097153-byte请求，超过限额才launchRejected；这些synthetic洪泛已使trace缺证。根审计 `settlement-capacity-v3-third-root-verification.json` 只从可信工作树加载oracle、重读43份JSON并核对来源，分账一致。
+
+主回归 `.debug/settlement-v3-stage14-final` 五组分别119 oracle、41 core、156 boundaries、15 files、37 archives全部满足原判据，`-verification.json` 保存5/5可信重放、103个manifest成员、无evidenceErrors。156仍分为154完整重放和2个control reserve耗尽预期拒绝；boundedConsumerDelivery=false、acceptanceReady=false，不追认真实矩阵完成。
+
+跨OS独立入口为 `scripts/diagnostics/settlement-portable-fixtures-v3.mjs --output NEW_DIRECTORY`。首次 `.debug/settlement-portable-v3-first` 保留旧oracle输入及结果；最终新输入 `.debug/settlement-portable-v3-second` 为46/46纯门禁、6/6 profile原位及搬迁各5/5、17/17负例拒绝。六profile固定为Linux LF、macOS LF、Windows drive LF/plain、drive CRLF/extended、UNC LF/plain、UNC CRLF/extended。只有首profile实际生成119/41/156三组纯输出，其余五份复制同一纯输出并独立重放，不能累计为新增场景；每profile均重新生成与自身路径规则绑定的15/37文件/归档组。
+
+46门禁分为11路径、9链接及26 core配置；17负例中16个重算相关manifest，1个故意不重hash以检查原始目标字节完整性。覆盖producer平台/相对地址/namespace/dotdot、request/publication跨根、错盘符/共享目录/路径规则、链接变普通文件、request字节数、payload根注入以及plain/extended类别替换。复审指出synthetic固定profile不能仅用等价目标放行raw form替换，最终已绑定声明的原始形式；普通producer仍仅允许明示的有限语义映射。实际执行源与行尾模拟源分别保存为execution-sources和sources，分别记录hash，不把CRLF模拟当作Windows执行。
+
+### 14.5 来源、过程偏差与剩余工作
+
+最终受跟踪源码SHA256如下；所有运行绑定实际工作树字节，不把后来的commit冒充先前采集输入：
+
+| 文件（scripts/diagnostics/） | SHA256 |
+| --- | --- |
+| diagnostic-settlement-v3.mjs | 7ee4a23e02e29d8fb2313e41f30f37ae0097a0017486724f5901c6b2d9f97f5f |
+| diagnose-settlement-v3.mjs | d3004f625398de4bb4fc662020e2aa2bab135ff8eb8d6313d90f4eac70d926c5 |
+| settlement-oracle-v3.mjs | 8547d33b6ece83250cafc2c57d1024f71787861ab1a163db91bf715423a514f1 |
+| settlement-fixtures-v3.mjs | f68b2a6e8194ef9ef4c4eab4030afb8a574895b5dfef56d56f5a1a865872f7a8 |
+| settlement-boundary-fixtures-v3.mjs | db86c07c8d10a095b1ef23bd95714c28cb5386abf391c0b673dcf1c744229a75 |
+| settlement-portable-fixtures-v3.mjs | 3f2d02b0f9b0a97a301209d1f13bcb3591c99ea4b37ba52a8fb12a3d3db74d99 |
+| settlement-capacity-fixtures-v3.mjs | 558f648ff9ec06a67fb9e43ac32c8a0e6329c27d7091a5817d967570669ccb9c |
+
+过程偏差单列：独立复审曾从已核对hash的first归档sources执行三次只读重放；两份review-1 probe也导入了当时刚从可信树复制的冻结副本。虽未启动native或修改旧工件，这不符合本阶段统一从可信工作树加载验证器的执行规则。这些运行保留为历史旁证，不用作最终门禁；正式复核改用当前可信工作树入口和全新证据，不掩盖偏差或追认旧输入为最终版本。
+
+替代正式复核已完成：`.debug/settlement-v3-capacity-reachability-review-2` 为3/3、`.debug/settlement-v3-path-style-review-2` 为42/42（包含两入口继承属性门禁，spawnCalls=0），均导入当前可信树。独立审计 `.debug/settlement-portable-v3-second-review-1` 从当前CLI重放三份：UNC/CRLF搬迁正例5/5，raw-form替换和payload根注入各4/5且仅预定files-self-test/archives-self-test拒绝，无shared-input或manifest错误遮挡，archivedSourcesExecuted=false。独立源码复审未发现本轮改动的新增确定性阻断，剩余风险不因此关闭。
+
+容量独立入口为 `node scripts/diagnostics/settlement-capacity-fixtures-v3.mjs --out NEW_DIRECTORY`；主回归为 `node scripts/diagnostics/diagnose-settlement-v3.mjs --self-test --output NEW_DIRECTORY`，离线为 `--verify-saved DIRECTORY`，均在独立诊断树用固定Node22.23.2执行。新目录必须不存在，失败不覆盖，不从保存工件执行源码。D4、旧v1/v2、workflow、生产模块与依赖本轮不改；真实D3、native、PTY、runner均未执行，不推送。
+
+下一步首先设计诊断错误字段/辅助数组的有界摘要与缺证标记，再补明确反例回归和完整工具复审；同时保留Windows原生junction/readlink/权限、文件系统大小写/Unicode、真实打包上传解包和原生异平台producer归档为runner门槛。未完成这些工作前，不宣称整体诊断工具内存有界或跨OS归档已原生验收，不启动W1/U1或改生产退出策略。

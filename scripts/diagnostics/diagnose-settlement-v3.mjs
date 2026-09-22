@@ -12,6 +12,7 @@ import * as core from './diagnostic-settlement-v3.mjs';
 import { verifySavedCase, verifyPublicationSnapshot } from './settlement-oracle-v3.mjs';
 import { runOracleSelfTests, runCoreSelfTests } from './settlement-fixtures-v3.mjs';
 import { runBoundarySelfTests } from './settlement-boundary-fixtures-v3.mjs';
+import { assertRecordedLinkTarget, portableProfile, producerPathStyle, profileSourceBytes, syntheticLinkTarget, validateProducerPath } from './settlement-portable-fixtures-v3.mjs';
 
 const ENTRY = fileURLToPath(import.meta.url);
 const REPO = path.resolve(path.dirname(ENTRY), '../..');
@@ -384,6 +385,7 @@ export async function runRole(role) {
 const SOURCE_FILES = [
   'diagnostic-settlement-v3.mjs', 'diagnose-settlement-v3.mjs',
   'settlement-oracle-v3.mjs', 'settlement-fixtures-v3.mjs', 'settlement-boundary-fixtures-v3.mjs',
+  'settlement-portable-fixtures-v3.mjs',
 ];
 
 export function fullSchedule() {
@@ -464,13 +466,20 @@ export function verifyPublicationDirectory(directory, expectedIdentity, expected
   return { files: names.size, manifestSha256: hash(bytes) };
 }
 
-async function prepareOutput(output, mode, schedule) {
+async function prepareOutput(output, mode, schedule, options = {}) {
   assert.equal(process.version, 'v22.23.2', 'D3 v3 requires the frozen Node 22.23.2 runtime');
   await fsp.mkdir(output, { recursive: false });
   for (const name of ['sources', 'cases', 'writer-artifacts', 'outer', 'preflight']) await fsp.mkdir(path.join(output, name));
-  const sourceHashes = {};
+  const profile = options.portableProfile === undefined ? null : portableProfile(options.portableProfile);
+  if (profile) await fsp.mkdir(path.join(output, 'execution-sources'));
+  const sourceHashes = {}, executionSourceHashes = {};
   for (const name of SOURCE_FILES) {
-    const bytes = await fsp.readFile(path.join(path.dirname(ENTRY), name));
+    const executed = await fsp.readFile(path.join(path.dirname(ENTRY), name));
+    const bytes = profile ? profileSourceBytes(executed, profile.sourceLineEndings) : executed;
+    if (profile) {
+      executionSourceHashes[name] = hash(executed);
+      await fsp.writeFile(path.join(output, 'execution-sources', name), executed, { flag: 'wx' });
+    }
     sourceHashes[name] = hash(bytes);
     await fsp.writeFile(path.join(output, 'sources', name), bytes, { flag: 'wx' });
   }
@@ -483,6 +492,19 @@ async function prepareOutput(output, mode, schedule) {
     sourceHashes, schedule, consumerPolicy: CONSUMER_POLICY, nativeProcesses: 0, pty: false,
     scope: 'Node diagnostic roles only; no PTY, native API, descendants, product acceptance, or production topology.',
   };
+  if (profile) {
+    const paths = path[producerPathStyle(profile.platform)];
+    metadata.platform = profile.platform;
+    metadata.outputDirectory = profile.outputDirectory;
+    metadata.entryPath = paths.join(paths.dirname(profile.outputDirectory), 'diagnose-settlement-v3.mjs');
+    metadata.syntheticProducer = { schema: 'diagnostic-synthetic-producer-v1', profileId: profile.id,
+      physicalPlatform: process.platform, physicalOutputDirectory: output, physicalEntryPath: ENTRY,
+      logicalProducerPlatform: profile.platform, sourceLineEndings: profile.sourceLineEndings,
+      linkTargetForm: profile.linkTargetForm, executionSourceHashes, sourceVariant: 'profile',
+      sharedPureFixtureSource: options.pureFixtureSource ?? null };
+    metadata.sourceCommitKind = 'worktree-base; executionSourceHashes identify executed local code; sourceHashes identify synthetic archive bytes';
+    metadata.scope = 'Synthetic producer paths and source bytes on a local filesystem; not a native producer capture or live matrix.';
+  }
   await fsp.writeFile(path.join(output, 'run.json'), json(metadata), { flag: 'wx' });
   return metadata;
 }
@@ -550,20 +572,33 @@ function treeManifest(tree, prefix) {
   tree.file(`${prefix}manifest.json`, json({ schema: 'diagnostic-settlement-run-manifest-v3', entries: treeMembers(tree, prefix) }));
 }
 
-function materializeTree(directory, tree) {
+function materializeTree(directory, tree, producer = null) {
   createDirectory(directory);
   for (const [name, item] of tree.entries) {
     const target = path.join(directory, ...name.split('/'));
     fs.mkdirSync(path.dirname(target), { recursive: true });
     if (item.type === 'directory') fs.mkdirSync(target, { recursive: true });
     else if (item.type === 'file') exclusive(target, item.bytes);
-    else fs.symlinkSync(item.target, target, process.platform === 'win32' && item.kind === 'dir' ? 'junction' : item.kind);
+    else {
+      const rawTarget = producer ? syntheticLinkTarget(item.target, producer.logicalProducerPlatform, producer.linkTargetForm) : item.target;
+      fs.symlinkSync(rawTarget, target, process.platform === 'win32' && item.kind === 'dir' ? 'junction' : item.kind);
+    }
   }
 }
 
-function verifyFixtureTree(directory, tree, label) {
+function verifyFixtureTree(directory, tree, label, run) {
   assertNoSymlinkAncestors(directory);
-  assert.deepEqual(listMembers(directory).sort((a, b) => a.path.localeCompare(b.path)), treeMembers(tree), `${label} bytes or fixture mutations differ from trusted definitions`);
+  const expected = treeMembers(tree);
+  const actual = listMembers(directory).sort((a, b) => a.path.localeCompare(b.path));
+  assert.equal(actual.length, expected.length, `${label} member inventory differs`);
+  for (const [index, item] of actual.entries()) {
+    const definition = expected[index];
+    if (item.type === 'symlink' && definition.type === 'symlink' && item.path === definition.path) {
+      if (run.syntheticProducer) assert.equal(item.target,
+        syntheticLinkTarget(definition.target, run.platform, run.syntheticProducer.linkTargetForm), 'synthetic link raw form differs from profile');
+      assertRecordedLinkTarget(item.target, definition.target, run.platform);
+    } else assert.deepEqual(item, definition, `${label} bytes or fixture mutations differ from trusted definitions`);
+  }
   for (const [name, item] of tree.entries) if (item.type === 'directory') {
     const target = path.join(directory, ...name.split('/'));
     assertNoSymlinkAncestors(target);
@@ -601,11 +636,11 @@ function buildFileFixtures(output, id, paths = path) {
   return { tree, cases };
 }
 
-export function runFileSelfTests(output, id) {
-  const { tree, cases } = buildFileFixtures(output, id);
-  materializeTree(path.join(output, 'file-fixtures'), tree);
+export function runFileSelfTests(output, id, metadata = null) {
+  const { tree, cases } = buildFileFixtures(metadata?.outputDirectory ?? output, id, path[producerPathStyle(metadata?.platform ?? process.platform)]);
+  materializeTree(path.join(output, 'file-fixtures'), tree, metadata?.syntheticProducer);
   for (const entry of cases) {
-    try { entry.actual = { accepted: true, result: verifyPayloadDirectory(entry.request) }; }
+    try { entry.actual = { accepted: true, result: verifyPayloadDirectory({ ...entry.request, artifactDirectory: path.join(output, 'file-fixtures', entry.id) }) }; }
     catch (error) { entry.actual = { accepted: false, error: String(error.message) }; }
     entry.pass = entry.actual.accepted === (entry.expected === 'accept');
   }
@@ -765,14 +800,41 @@ export async function runEvidence(output) {
   return verifyEvidence(output);
 }
 
-export async function runSelfTests(output) {
-  const metadata = await prepareOutput(output, 'self-test', []);
-  const oracle = await runOracleSelfTests();
-  const coreResult = await runCoreSelfTests();
-  const boundaries = await runBoundarySelfTests();
-  const files = runFileSelfTests(output, fileFixtureIdentity(metadata));
+export async function runSelfTests(output, options = {}) {
+  assert(options && typeof options === 'object' && Object.keys(options).every(key => ['portableProfile', 'pureFixtureSource'].includes(key)), 'unknown self-test options');
+  assert(options.pureFixtureSource === undefined || options.portableProfile !== undefined, 'pure fixture sharing is only available to portable synthetic producers');
+  const metadata = await prepareOutput(output, 'self-test', [], options);
+  let oracle, coreResult, boundaries;
+  if (options.pureFixtureSource) {
+    const sourceRun = readJSON(path.join(options.pureFixtureSource, 'run.json'));
+    verifySources(options.pureFixtureSource, sourceRun);
+    assert.deepEqual(sourceRun.syntheticProducer?.executionSourceHashes ?? sourceRun.sourceHashes,
+      metadata.syntheticProducer.executionSourceHashes, 'shared pure fixtures executed different sources');
+    const summary = readJSON(path.join(options.pureFixtureSource, 'summary.json'));
+    assert.equal(summary.pass, true, 'shared pure fixtures did not pass');
+    const reused = {};
+    for (const name of ['oracle', 'core', 'boundaries']) {
+      const source = path.join(options.pureFixtureSource, `${name}-tests.json`);
+      assertNoSymlinkAncestors(source);
+      const stat = fs.lstatSync(source);
+      assert(stat.isFile() && stat.size <= (name === 'boundaries' ? 128 : 64) * 1024 * 1024, 'shared pure fixture file is invalid');
+      fs.copyFileSync(source, path.join(output, `${name}-tests.json`), fs.constants.COPYFILE_EXCL | fs.constants.COPYFILE_FICLONE);
+      const counts = summary.counts[name];
+      assert(Number.isSafeInteger(counts?.attempted) && counts.attempted > 0 && counts.passed === counts.attempted, 'shared pure fixture count is invalid');
+      reused[name] = { pass: true, ...counts };
+    }
+    ({ oracle, core: coreResult, boundaries } = reused);
+  } else {
+    oracle = await runOracleSelfTests();
+    coreResult = await runCoreSelfTests();
+    boundaries = await runBoundarySelfTests();
+  }
+  const files = runFileSelfTests(output, fileFixtureIdentity(metadata), metadata);
   const archives = await runArchiveSelfTests(output, metadata);
-  for (const [name, report] of Object.entries({ oracle, core: coreResult, boundaries, files, archives })) await fsp.writeFile(path.join(output, `${name}-tests.json`), json(report), { flag: 'wx' });
+  for (const [name, report] of Object.entries({ oracle, core: coreResult, boundaries, files, archives })) {
+    if (options.pureFixtureSource && ['oracle', 'core', 'boundaries'].includes(name)) continue;
+    await fsp.writeFile(path.join(output, `${name}-tests.json`), json(report), { flag: 'wx' });
+  }
   const result = { schema: SCHEMA, mode: 'self-test', pass: oracle.pass && coreResult.pass && boundaries.pass && files.pass && archives.pass,
     counts: Object.fromEntries(Object.entries({ oracle, core: coreResult, boundaries, files, archives }).map(([key, value]) => [key, { attempted: value.attempted, passed: value.passed }])),
     realNodeCases: 0, nativeProcesses: 0, pty: false };
@@ -783,6 +845,28 @@ export async function runSelfTests(output) {
 
 function readJSON(file) { return parseUtf8(fileBytes(file, 64 * 1024 * 1024), file); }
 
+function validateSyntheticProducer(run) {
+  const value = run.syntheticProducer;
+  ownKeys(value, ['schema', 'profileId', 'physicalPlatform', 'physicalOutputDirectory', 'physicalEntryPath', 'logicalProducerPlatform',
+    'sourceLineEndings', 'linkTargetForm', 'executionSourceHashes', 'sourceVariant', 'sharedPureFixtureSource'], 'synthetic producer');
+  assert.equal(value.schema, 'diagnostic-synthetic-producer-v1');
+  const profile = portableProfile(value.profileId);
+  assert.equal(run.platform, profile.platform);
+  assert.equal(value.logicalProducerPlatform, profile.platform);
+  assert.equal(value.sourceLineEndings, profile.sourceLineEndings);
+  assert.equal(value.linkTargetForm, profile.linkTargetForm);
+  assert(['profile', 'exact', 'crlf', 'content-tamper'].includes(value.sourceVariant), 'unknown synthetic source variant');
+  validateProducerPath(value.physicalOutputDirectory, value.physicalPlatform, 'physical output path');
+  validateProducerPath(value.physicalEntryPath, value.physicalPlatform, 'physical source path');
+  if (value.sharedPureFixtureSource !== null) validateProducerPath(value.sharedPureFixtureSource, value.physicalPlatform, 'shared pure fixture path');
+  const paths = path[producerPathStyle(profile.platform)];
+  assert.equal(run.outputDirectory, run.mode === 'full' && run.syntheticArchiveFixture === true
+    ? paths.join(profile.outputDirectory, 'archive-fixtures', 'traversal') : profile.outputDirectory, 'logical producer output identity differs');
+  assert.equal(run.entryPath, paths.join(paths.dirname(profile.outputDirectory), 'diagnose-settlement-v3.mjs'), 'logical producer entry identity differs');
+  assert.deepEqual(Object.keys(value.executionSourceHashes).sort(), [...SOURCE_FILES].sort(), 'execution source inventory differs');
+  return profile;
+}
+
 function verifySources(directory, run) {
   assert.equal(run.schema, SCHEMA);
   assert(['full', 'self-test'].includes(run.mode), 'unsupported evidence mode');
@@ -792,14 +876,23 @@ function verifySources(directory, run) {
   assert.deepEqual(run.consumerPolicy, CONSUMER_POLICY, 'recorded consumer policy differs from trusted diagnostic policy');
   assert(typeof run.runId === 'string' && run.runId, 'run identity is missing');
   assert(['linux', 'darwin', 'win32'].includes(run.platform), 'unsupported recorded platform');
-  const paths = run.platform === 'win32' ? path.win32 : path.posix;
-  assert(typeof run.outputDirectory === 'string' && paths.isAbsolute(run.outputDirectory), 'recorded output path is not absolute');
-  assert(typeof run.entryPath === 'string' && paths.isAbsolute(run.entryPath), 'recorded source entry path is not absolute');
+  validateProducerPath(run.outputDirectory, run.platform, 'recorded output path');
+  validateProducerPath(run.entryPath, run.platform, 'recorded source entry path');
+  const synthetic = run.syntheticProducer ? validateSyntheticProducer(run) : null;
   assert.deepEqual(Object.keys(run.sourceHashes).sort(), [...SOURCE_FILES].sort(), 'source inventory differs');
   const sources = [];
   for (const name of SOURCE_FILES) {
     const current = fs.readFileSync(path.join(path.dirname(ENTRY), name));
     const archived = fileBytes(path.join(directory, 'sources', name), 2 * 1024 * 1024);
+    if (synthetic) {
+      const executed = fileBytes(path.join(directory, 'execution-sources', name), 2 * 1024 * 1024);
+      assert.equal(hash(executed), run.syntheticProducer.executionSourceHashes[name], `execution source hash differs: ${name}`);
+      assert.equal(executed.toString('utf8').replace(/\r\n/g, '\n'), current.toString('utf8').replace(/\r\n/g, '\n'), `executed source differs beyond CRLF: ${name}`);
+      let expected = profileSourceBytes(executed, synthetic.sourceLineEndings);
+      if (run.syntheticProducer.sourceVariant === 'crlf') expected = profileSourceBytes(expected, 'crlf');
+      if (run.syntheticProducer.sourceVariant === 'content-tamper') expected = Buffer.concat([expected, Buffer.from('// changed input\n')]);
+      assert(archived.equals(expected), `synthetic archive source transform differs: ${name}`);
+    }
     assert.equal(hash(archived), run.sourceHashes[name], `archived source differs: ${name}`);
     const archivedText = archived.toString('utf8');
     assert(Buffer.from(archivedText).equals(archived), `source is not valid UTF-8: ${name}`);
@@ -814,7 +907,8 @@ function validatePreflightSpecs(run, specs) {
   const schedule = fullSchedule();
   assert(Array.isArray(specs) && specs.length === schedule.length, 'preflight spec count differs');
   const paths = run.platform === 'win32' ? path.win32 : path.posix;
-  assert(paths.isAbsolute(run.outputDirectory) && paths.isAbsolute(run.entryPath), 'preflight source/output paths must be absolute');
+  validateProducerPath(run.outputDirectory, run.platform, 'preflight output path');
+  validateProducerPath(run.entryPath, run.platform, 'preflight source path');
   assert.equal(paths.basename(run.entryPath), path.basename(ENTRY), 'preflight entrypoint differs');
   const nonces = new Set();
   for (const [index, entry] of schedule.entries()) {
@@ -831,6 +925,7 @@ function validatePreflightSpecs(run, specs) {
     if (entry.id === 'D3v3-G2') expected.gates = { capture: true };
     if (entry.scenario === 'D3v3-10') {
       ownKeys(spec.command, ['file', 'args'], 'preflight missing command');
+      validateProducerPath(spec.command.file, run.platform, 'preflight executable path');
       assert.equal(paths.dirname(spec.command.file), paths.join(run.outputDirectory, 'preflight'), 'missing command is outside preflight directory');
       assert(/^missing-[a-f0-9-]+$/.test(paths.basename(spec.command.file)), 'missing command identity differs');
       assert.deepEqual(spec.command.args, []);
@@ -885,7 +980,7 @@ export function validateSavedSnapshot(snapshot) {
   assert.equal(snapshot.lateArchiveStatus, 'external-confirmation-required');
 }
 
-async function syntheticBlockedPublication(spec) {
+async function syntheticBlockedPublication(spec, pathStyle) {
   let time = 0n, timerId = 0;
   const timers = new Map(), queued = [];
   const clock = {
@@ -916,7 +1011,7 @@ async function syntheticBlockedPublication(spec) {
     queued.push(() => child.emit('spawn'));
     return child;
   };
-  const handle = core.startPublication(spec, { clock, spawnRole });
+  const handle = core.startPublication(spec, { clock, spawnRole, pathStyle });
   await flush();
   for (const [index, [type, payload]] of [['start', { scenario: spec.scenario }], ['publish-entered', { mode: 'sync-block' }]].entries()) {
     time += 1_000_000n;
@@ -957,7 +1052,7 @@ async function evaluateArchiveFixture(fixture, output) {
   throw new Error('unknown archive fixture operation');
 }
 
-async function buildArchiveFixtures(metadata, sourceBytes) {
+async function buildArchiveFixtures(metadata, sourceBytes, executionSourceBytes = null) {
   const paths = metadata.platform === 'win32' ? path.win32 : path.posix;
   const root = paths.join(metadata.outputDirectory, 'archive-fixtures');
   const tree = fixtureTree(), cases = [];
@@ -967,6 +1062,7 @@ async function buildArchiveFixtures(metadata, sourceBytes) {
   const run = { ...metadata, mode: 'full', outputDirectory: directory, schedule: fullSchedule(), syntheticArchiveFixture: true,
     scope: 'Synthetic partial archive verifier fixture only; zero real Node cases, not a full matrix result.' };
   for (const name of SOURCE_FILES) tree.file(`traversal/sources/${name}`, sourceBytes[name]);
+  if (executionSourceBytes) for (const name of SOURCE_FILES) tree.file(`traversal/execution-sources/${name}`, executionSourceBytes[name]);
   const specs = fullSchedule().map(entry => ({
     id: { schema: SCHEMA, runId: run.runId, caseId: entry.id, generation: 'generation-1', nonce: `${run.runId}:archive-fixture:${entry.id}` },
     scenario: entry.scenario, entryPath: metadata.entryPath, artifactDirectory: paths.join(directory, 'writer-artifacts', entry.id),
@@ -980,7 +1076,7 @@ async function buildArchiveFixtures(metadata, sourceBytes) {
     payloadBase64: publicationPayload(spec.id, `${entry.id}:archive:1`, 0, {
       'fixture.json': json({ schema: 'diagnostic-settlement-publication-fixture-v3', id: spec.id, expectedScenario: entry.scenario }),
     }) };
-  const snapshot = await syntheticBlockedPublication(publicationSpec);
+  const snapshot = await syntheticBlockedPublication(publicationSpec, producerPathStyle(metadata.platform));
   const outer = { entry, publicationSnapshot: snapshot, finalPublicationSnapshot: snapshot };
   tree.file('traversal/run.json', json(run));
   tree.file('traversal/specs.json', json(specs));
@@ -1033,9 +1129,11 @@ async function buildArchiveFixtures(metadata, sourceBytes) {
     ['content-tamper', bytes => Buffer.concat([bytes, Buffer.from('// changed input\n')]), false]]) {
     tree.directory(`sources-${name}/sources`);
     const sourceRun = { ...metadata, sourceHashes: {} };
+    if (metadata.syntheticProducer) sourceRun.syntheticProducer = { ...metadata.syntheticProducer, sourceVariant: name };
     for (const file of SOURCE_FILES) {
       const bytes = mutate(sourceBytes[file]);
       tree.file(`sources-${name}/sources/${file}`, bytes); sourceRun.sourceHashes[file] = hash(bytes);
+      if (executionSourceBytes) tree.file(`sources-${name}/execution-sources/${file}`, executionSourceBytes[file]);
     }
     add(`source-${name}`, 'sources', { directory: `archive-fixtures/sources-${name}`, run: sourceRun }, accepted);
   }
@@ -1060,9 +1158,13 @@ function archivedSourceBytes(output) {
   return Object.fromEntries(SOURCE_FILES.map(name => [name, fileBytes(path.join(output, 'sources', name), 2 * 1024 * 1024)]));
 }
 
+function archivedExecutionSourceBytes(output, metadata) {
+  return metadata.syntheticProducer ? Object.fromEntries(SOURCE_FILES.map(name => [name, fileBytes(path.join(output, 'execution-sources', name), 2 * 1024 * 1024)])) : null;
+}
+
 export async function runArchiveSelfTests(output, metadata) {
-  const { tree, cases } = await buildArchiveFixtures(metadata, archivedSourceBytes(output));
-  materializeTree(path.join(output, 'archive-fixtures'), tree);
+  const { tree, cases } = await buildArchiveFixtures(metadata, archivedSourceBytes(output), archivedExecutionSourceBytes(output, metadata));
+  materializeTree(path.join(output, 'archive-fixtures'), tree, metadata.syntheticProducer);
   for (const fixture of cases) {
     try { fixture.actual = { accepted: true, result: await evaluateArchiveFixture(fixture, output) }; }
     catch (error) { fixture.actual = { accepted: false, error: String(error.message) }; }
@@ -1145,10 +1247,12 @@ export function verifyConsumerReceipts(snapshot, names) {
 
 function canonicalFixtureOutcome(actual, operation, output, run) {
   const normalized = structuredClone(actual);
+  const producerSourceHashes = run.syntheticProducer?.executionSourceHashes ?? run.sourceHashes;
   if (operation === 'sources' && normalized.accepted) normalized.result = normalized.result.map(item => ({ ...item,
-    trustedSha256: run.sourceHashes[item.file], exact: item.archivedSha256 === run.sourceHashes[item.file],
-    crlfOnly: item.archivedSha256 !== run.sourceHashes[item.file] }));
-  const prefixes = [output, run.outputDirectory].map(value => value.replaceAll('\\', '/').replace(/\/+/g, '/').replace(/\/$/, ''));
+    trustedSha256: producerSourceHashes[item.file], exact: item.archivedSha256 === producerSourceHashes[item.file],
+    crlfOnly: item.archivedSha256 !== producerSourceHashes[item.file] }));
+  const prefixes = [output, run.outputDirectory, run.syntheticProducer?.physicalOutputDirectory].filter(value => value !== undefined)
+    .map(value => value.replaceAll('\\', '/').replace(/\/+/g, '/').replace(/\/$/, ''));
   return JSON.parse(JSON.stringify(normalized, (key, value) => {
     if (typeof value !== 'string' || !['error', 'artifactDirectory', 'outputDirectory', 'entryPath'].includes(key)) return value;
     const portable = value.replaceAll('\\', '/').replace(/\/+/g, '/');
@@ -1177,7 +1281,10 @@ export async function verifyEvidence(directory) {
   try { report.manifest = verifyRunManifest(directory); }
   catch (error) { report.evidenceErrors.push({ id: 'shared-manifest', error: String(error.message) }); }
   let run;
-  try { run = readJSON(path.join(directory, 'run.json')); report.sources = verifySources(directory, run); }
+  try {
+    run = readJSON(path.join(directory, 'run.json')); report.sources = verifySources(directory, run);
+    if (run.syntheticProducer) assert.equal(run.syntheticProducer.sourceVariant, 'profile', 'root archive has a non-root source transform');
+  }
   catch (error) { report.evidenceErrors.push({ id: 'shared-input', error: String(error.message) }); }
   if (run?.mode === 'self-test') {
     for (const name of ['oracle', 'core', 'boundaries', 'files', 'archives']) {
@@ -1194,7 +1301,7 @@ export async function verifyEvidence(directory) {
           ownKeys(saved, ['pass', 'attempted', 'passed', 'cases'], 'saved file test report');
           assert.deepEqual(saved.cases.map(entry => [entry.id, entry.expected]), FILE_FIXTURES, 'file fixture schedule differs');
           const trusted = buildFileFixtures(run.outputDirectory, fileFixtureIdentity(run), run.platform === 'win32' ? path.win32 : path.posix);
-          verifyFixtureTree(path.join(directory, 'file-fixtures'), trusted.tree, 'file fixtures');
+          verifyFixtureTree(path.join(directory, 'file-fixtures'), trusted.tree, 'file fixtures', run);
           for (const [index, entry] of saved.cases.entries()) {
             ownKeys(entry, ['id', 'request', 'expected', 'actual', 'pass'], 'saved file fixture');
             const { actual, pass, ...definition } = entry;
@@ -1219,8 +1326,8 @@ export async function verifyEvidence(directory) {
           assert.equal(saved.synthetic, true);
           assert.equal(saved.realNodeCases, 0);
           assert.deepEqual(saved.cases.map(item => [item.id, item.operation, item.expectedAccepted]), ARCHIVE_FIXTURES, 'archive fixture schedule differs');
-          const trusted = await buildArchiveFixtures(run, archivedSourceBytes(directory));
-          verifyFixtureTree(path.join(directory, 'archive-fixtures'), trusted.tree, 'archive fixtures');
+          const trusted = await buildArchiveFixtures(run, archivedSourceBytes(directory), archivedExecutionSourceBytes(directory, run));
+          verifyFixtureTree(path.join(directory, 'archive-fixtures'), trusted.tree, 'archive fixtures', run);
           for (const [index, fixture] of saved.cases.entries()) {
             ownKeys(fixture, ['id', 'operation', 'input', 'expectedAccepted', 'actual', 'pass'], 'saved archive fixture');
             const { actual, pass, ...definition } = fixture;
@@ -1230,7 +1337,7 @@ export async function verifyEvidence(directory) {
             try { replay = { accepted: true, result: await evaluateArchiveFixture(trusted.cases[index], directory) }; }
             catch (error) { replay = { accepted: false, error: String(error.message) }; }
             assert.equal(replay.accepted, fixture.expectedAccepted, `archive fixture verdict differs: ${fixture.id}`);
-            if (fixture.operation === 'sources' && replay.accepted) verifySourceFixtureResult(actual.result, replay.result, run.sourceHashes);
+            if (fixture.operation === 'sources' && replay.accepted) verifySourceFixtureResult(actual.result, replay.result, run.syntheticProducer?.executionSourceHashes ?? run.sourceHashes);
             assert.deepEqual(canonicalFixtureOutcome(actual, fixture.operation, directory, run),
               canonicalFixtureOutcome(replay, fixture.operation, directory, run), `saved archive fixture outcome differs: ${fixture.id}`);
           }
@@ -1319,7 +1426,7 @@ export async function verifyEvidence(directory) {
   } catch (error) { report.evidenceErrors.push({ id: 'summary', error: String(error.message) }); }
   report.pass = report.attempted > 0 && report.verified === report.attempted && report.evidenceErrors.length === 0;
   report.boundedConsumerDelivery = report.consumerDeliveries.length > 0 && report.consumerDeliveries.every(item => item.receipts.every(receipt => receipt.status === 'within-consumer-budget'));
-  report.acceptanceReady = run?.mode === 'full' && run.syntheticArchiveFixture !== true && report.pass && report.boundedConsumerDelivery;
+  report.acceptanceReady = run?.mode === 'full' && run.syntheticArchiveFixture !== true && !run.syntheticProducer && report.pass && report.boundedConsumerDelivery;
   return report;
 }
 

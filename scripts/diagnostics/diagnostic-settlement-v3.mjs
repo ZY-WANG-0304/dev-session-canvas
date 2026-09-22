@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, posix, win32 } from 'node:path';
 
 export const SCHEMA = 'diagnostic-settlement-v3';
 export const FRAME_SCHEMA = 'diagnostic-settlement-frame-v3';
@@ -38,14 +38,22 @@ function validateId(id) {
   if (!exactKeys(id, ['schema', 'runId', 'caseId', 'generation', 'nonce']) || id.schema !== SCHEMA || !text(id.runId) || !text(id.caseId) || !text(id.nonce) || !(integer(id.generation) || text(id.generation))) throw new TypeError('Invalid complete case identity');
 }
 
-function validateSpec(spec, publication) {
+function absoluteTestPath(value, style) {
+  if (!style) return isAbsolute(value);
+  if (style === 'posix') return posix.isAbsolute(value);
+  const windowsPath = value.replaceAll('/', '\\');
+  if (/^\\\\[?.]\\/.test(windowsPath)) return false;
+  return win32.isAbsolute(windowsPath) && (/^[A-Za-z]:\\/.test(windowsPath) || /^\\\\[^\\]+\\[^\\]+(?:\\|$)/.test(windowsPath));
+}
+
+function validateSpec(spec, publication, pathStyle) {
   const allowed = publication
     ? ['id', 'scenario', 'entryPath', 'artifactDirectory', 'archiveAttemptId', 'snapshotOrdinal', 'payloadBase64', 'gates']
     : ['id', 'scenario', 'entryPath', 'artifactDirectory', 'command', 'gates'];
   if (!spec || typeof spec !== 'object' || Array.isArray(spec) || Object.keys(spec).some((key) => !allowed.includes(key))) throw new TypeError('Invalid case configuration keys');
   validateId(spec.id);
-  if (!text(spec.scenario) || !text(spec.entryPath, 32768) || !isAbsolute(spec.entryPath) || !text(spec.artifactDirectory, 32768) || !isAbsolute(spec.artifactDirectory)) throw new TypeError('Scenario and absolute entry/artifact paths are required');
-  if (own(spec, 'command') && (!exactKeys(spec.command, ['file', 'args']) || !text(spec.command.file, 32768) || !isAbsolute(spec.command.file) || !Array.isArray(spec.command.args) || spec.command.args.some((arg) => typeof arg !== 'string'))) throw new TypeError('Invalid direct executable command');
+  if (!text(spec.scenario) || !text(spec.entryPath, 32768) || !absoluteTestPath(spec.entryPath, pathStyle) || !text(spec.artifactDirectory, 32768) || !absoluteTestPath(spec.artifactDirectory, pathStyle)) throw new TypeError('Scenario and absolute entry/artifact paths are required');
+  if (own(spec, 'command') && (!exactKeys(spec.command, ['file', 'args']) || !text(spec.command.file, 32768) || !absoluteTestPath(spec.command.file, pathStyle) || !Array.isArray(spec.command.args) || spec.command.args.some((arg) => typeof arg !== 'string'))) throw new TypeError('Invalid direct executable command');
   const gates = publication ? ['publisher'] : ['caller', 'writer', 'capture'];
   if (own(spec, 'gates') && (!spec.gates || typeof spec.gates !== 'object' || Array.isArray(spec.gates) || Object.entries(spec.gates).some(([key, value]) => !gates.includes(key) || typeof value !== 'boolean'))) throw new TypeError('Invalid gate configuration');
   if (publication) {
@@ -55,7 +63,8 @@ function validateSpec(spec, publication) {
 }
 
 function validateDependencies(deps) {
-  if (!deps || typeof deps !== 'object' || Object.keys(deps).some((key) => !['clock', 'spawnRole'].includes(key))) throw new TypeError('Invalid test dependencies');
+  if (!deps || typeof deps !== 'object' || Object.keys(deps).some((key) => !['clock', 'spawnRole', 'pathStyle'].includes(key))) throw new TypeError('Invalid test dependencies');
+  if (own(deps, 'pathStyle') && (!['posix', 'win32'].includes(deps.pathStyle) || !own(deps, 'clock') || !deps.clock || !own(deps, 'spawnRole') || typeof deps.spawnRole !== 'function')) throw new TypeError('Path style requires an explicit diagnostic clock and transport');
   const clock = deps.clock ?? REAL_CLOCK;
   if (['nowNs', 'setTimeout', 'clearTimeout', 'queueMicrotask'].some((key) => typeof clock[key] !== 'function')) throw new TypeError('Invalid diagnostic clock');
   if (own(deps, 'spawnRole') && typeof deps.spawnRole !== 'function') throw new TypeError('Invalid direct-child transport');
@@ -865,13 +874,13 @@ class SettlementOwner {
 }
 
 export function startObservedCase(spec, testDependencies = {}) {
-  validateSpec(spec, false);
   validateDependencies(testDependencies);
+  validateSpec(spec, false, own(testDependencies, 'pathStyle') ? testDependencies.pathStyle : undefined);
   return new SettlementOwner(spec, testDependencies, false).handle();
 }
 
 export function startPublication(spec, testDependencies = {}) {
-  validateSpec(spec, true);
   validateDependencies(testDependencies);
+  validateSpec(spec, true, own(testDependencies, 'pathStyle') ? testDependencies.pathStyle : undefined);
   return new SettlementOwner(spec, testDependencies, true).handle();
 }

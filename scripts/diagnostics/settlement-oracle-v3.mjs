@@ -195,7 +195,7 @@ function replay(input) {
       if ((d.receivedBytes ?? bytes.length) > bytes.length) state.truncated = true;
       if (d.channel === 'stderr') {
         stream.diagnosticBytes += bytes.length;
-        if (stream.diagnosticBytes > 16 * 1024) issue('stderr-capacity');
+        if (state.role !== 'caller' && stream.diagnosticBytes > 16 * 1024) issue('stderr-capacity');
         continue;
       }
       let offset = 0;
