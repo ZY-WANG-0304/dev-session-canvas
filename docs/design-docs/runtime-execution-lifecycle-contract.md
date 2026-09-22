@@ -435,3 +435,11 @@ v2保留八场景各三次与原预算，另测错误来源、身份/序号、�
 新workflow `.github/workflows/runtime-observation-envelope-v2.yml` 只跑D3 v2，不重复D4；固定Node22.23.2三平台，语法、oracle/parser、原0.25缩放自测、完整schedule/verify和完整上传。当前输入仍为未提交工作树快照，三平台v2 runner未取得，不能称commit复现或跨平台通过。v1两个failure及真实预算迟到不改；本契约未实现的完整结算与D4审计阻塞项不随本地窄验证关闭。
 
 local-1篡改负例经独立复核并未证明失败后继续有效验证：根manifest提前失败令run.scale未读取，报告attempted24/verified0，原自测只检查总fail与首项错误。local-1 positive/full各24通过仍保留，但不追认其具备新证明。修正后根manifest检查与run元数据读取独立，self-test强制attempted24/verified23且末项无错误，并保存tampered-verification.json。新local-2-selftest目录的oracle78/parser8/positive24通过，篡改报告24/23且仅shared-manifest、D3-01-1错误；local-2-full目录未缩放24/24 verified、无evidenceErrors，最终CLI语法/diff检查通过，仍非已提交输入或三平台证据。非法writer帧可能被sealed掩盖也列入完整writer协议及独立evidence settlement债务，本次不新增其实现或通过声明。
+
+## 22. D3 v2 三平台窄验证收口（2026-09-22）
+
+唯一push run35676427931 attempt1绑定b4db41cc，Node22.23.2的Ubuntu24 x64、macOS26 arm64、Windows Server2025 x64均完成full24/24、缩放positive24/24、oracle78/78、parser8/8，篡改复核各24 attempted/23 verified。Windows full D3-01-1实际跨pipe到达倒序但源序合法，新oracle正确接受；坏首项不再阻断其余23项有效复核。三ZIP与API大小/摘要一致，15输入与Git绑定，Windows仅CRLF差异，未执行归档源码。
+
+独立诊断树 `.debug/observation-envelope-v2-run-35676427931/` 保存完整输入、原始事件、ZIP、API、可信离线复核和metrics；audit SHA256为 `a772fa2a399c9b51fe109b56fff097933e9873fa0c424aab93f18717c13233f7`。各平台本次after-await/writer原始最大值均在2000ms完整或500ms缩放预算内，详见原生失败设计第17节；不以本次未超时关闭writer预算oracle或独立结算债务。
+
+本增量仅关闭来源/顺序窄修正的runner待验项，不关闭三settlement、首次deadline不可变快照、bounded unconfirmed、writer协议/封存或D4完整身份重放；PTY、D4及W1/U1本轮新增运行均零。旧失败和正常Windows对象引用语义保留，下一步先补诊断结算契约，总退出完整性仍未验收。

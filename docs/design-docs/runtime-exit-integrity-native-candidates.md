@@ -21,7 +21,7 @@ updated_at: 2026-09-22
 
 2026-09-20 用户澄清后的产品范围以第 9 节为准：画板管理 Terminal / Agent 执行会话及其终端资源，不默认承诺实际主进程退出后继续保留节点或终端以等待普通后代及其未来输出。第 2 节冻结协议、两轮原始断言和失败结果全部保留；它们描述诊断实验是否达到原门槛，不自动等于产品验收结论。
 
-当前进展入口见第6节，最新PTY原生结果见第30节，D1/D2和Windows G07证据见第31–35节。第36–37节保留失败/隔离第一批设计及v1本地结果，第38节记录7141cfa3的首次及误触重复runner均failure，第39节冻结D3 v2来源/顺序窄修正，第40节记录Linux本地有限验证。v2三平台runner与完整D3/D4契约仍待推进，W1/U1未开始。第2–5节及第7–37节按历史时点理解，不覆盖最新状态。
+当前进展入口见第6节，最新PTY原生结果见第30节，D1/D2和Windows G07证据见第31–35节。第36–40节保留设计、v1两次failure和v2本地记录；最新第41节收口b4db41cc/run35676427931的三平台v2窄验证。完整D3/D4契约仍待推进，W1/U1未开始；此前各节按历史时点理解，不覆盖最新状态。
 
 ## 2. 运行前冻结
 
@@ -61,7 +61,7 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 ### 当前状态（2026-09-22）
 
-当前foundation证据见第38节：7141cfa3首次run35673511893和误触同SHA重复run35673550930均failure。两次完整Windows D3都为23/24跨pipe误判；重复Windows缩放自测另有真实迟到及未完整检查的writer预算超限，分别保留。第39–40节只收口D3 v2来源/顺序、帧解析和D3-08 ACK窄协议及Linux本地验证，三平台新runner待验；D3完整settlement、D4重放/身份及W1/U1继续开放。以下两段记录此前设计承接背景，不覆盖本段当前状态。
+最新证据见第41节：b4db41cc的唯一run35676427931经三平台完整归档复核，各full24/24、scaled24/24、oracle78/parser8及篡改24/23成立；Windows实际再次乱序而源序合法，新判据正确接受。第38节v1两个failure、真实迟到与writer预算漏验仍保留。来源/顺序窄验证不关闭D3完整settlement、D4重放/身份或W1/U1；下一阶段先补诊断结算契约。以下两段记录此前设计承接背景，不覆盖本段当前状态。
 
 第30节已完成Windows bundled-DLL三臂首次原生矩阵及全量复核：138条会话完整，46次已知HPCON最终Close消除同native/no-close的逐会话+2总句柄增量，四个no-close资源失败保留。这是正常自然路径的窄因果证据，不是Windows对象语义缺陷或生产退出完整性已修复；旧类型/内核对象身份归属不确定不改判。
 
@@ -691,3 +691,11 @@ foundation workflow固定Node22.23.2并配置完整schedule及self-test目录上
 输入是未提交工作树源码快照，不是可绑定新commit的运行；v2三平台runner仍待一次新提交触发及完整下载审计。本地通过只补来源/顺序oracle，不改v1两次失败、自测真实迟到、旧工件或完整契约阻塞项，不交付native/生产退出完整性。
 
 随后独立复核发现local-1 tamper自测只证实总失败与首项错误：根manifest提前失败使run.scale未赋值，实际attempted24/verified0，不是其余23项有效复核。local-1 positive/full24通过和原工件均保留。新修正分开根manifest错误与run读取，強制篡改报告attempted24/verified23及末项无错误并保存tampered-verification.json；新 `.debug/observation-envelope-v2-local-2-selftest/` 完成oracle78/parser8/positive24，篡改报告24/23且仅shared-manifest与D3-01-1错误；`.debug/observation-envelope-v2-local-2-full/` 未缩放24/24 verified且无evidenceErrors，最终CLI语法/diff检查通过。新目录仍为未提交工作树输入，三平台runner待验，不重写local-1。完整writer协议中非法帧可能被sealed掩盖的风险继续归入evidence/settlement债务，不扩此次窄实现。
+
+## 41. D3 v2 首次三平台验证与后续门槛（2026-09-22）
+
+b4db41cc的唯一push run35676427931 attempt1已完成三平台及全量独立复核。Node22.23.2/Ubuntu24 x64、macOS26 arm64、Windows Server2025 x64各full24/24、scaled positive24/24、oracle78/78、parser8/8；tamper各attempted24/verified23，只拒坏首项及共享manifest。Windows full D3-01-1再次出现跨pipe接收倒序，source序合法且按v2正确接受；本次合法迟到分类、ACK后bulk及控制帧保留有确定性重放和实际trace分层支持。
+
+完整归档 `.debug/observation-envelope-v2-run-35676427931/` 含三ZIP各453文件、API与15输入Git对账、可信固定源复核和原始时序；Windows五输入仅CRLF差异。audit SHA256为 `a772fa2a399c9b51fe109b56fff097933e9873fa0c424aab93f18717c13233f7`。本次after-await/writer原始时间未超各自完整2000ms/缩放500ms预算，不代表预算检查和独立结算已经实现；详细数值及artifact见原生失败设计第17节。
+
+不改v1两个failure或local-1自测缺口，不重跑筛绿。此次只有Node控制和合成oracle，PTY/D4/W1/U1零新增；三settlement、首次deadline快照、有界unconfirmed、writer完整协议/封存和D4身份重放仍阻塞W1/U1及生产接入。下一阶段先冻结并实现这些诊断契约，不直接修改业务或选定server拓扑，总计划继续active。

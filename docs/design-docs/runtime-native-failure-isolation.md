@@ -19,7 +19,7 @@ updated_at: 2026-09-22
 
 ## 1. 本阶段状态与完成边界
 
-本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。D3/D4 v1已以7141cfa3完成三平台首次runner，Windows D3暴露跨pipe顺序oracle缺陷；首次与误触的同SHA重复run均保留failure。当前仅冻结第15节的D3 v2来源/顺序窄修正，不表示D3完整契约、native资源或生产拓扑已验证。
+本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。D3/D4 v1的7141cfa3两次failure保留；D3 v2已由b4db41cc/run35676427931完成三平台来源/顺序窄验证及完整归档复核，见第17节。D3完整契约、D4完整身份、native失败路径或生产拓扑仍未验证，下一步先补诊断结算契约，不重复旧矩阵或启动W1/U1。
 
 目标是回答两件事：部分初始化/等待失败后，哪些资源仍由谁持有；一个资源结果无法确认时，如何不误报释放、不破坏其他会话，并限制继续积累。Terminal和Agent适用相同边界，实际Agent CLI的启动包装链另验；不新增普通后代托管、退出后历史、故障恢复、root归属改造或外部server承诺。
 
@@ -237,3 +237,21 @@ local-1独立复核随后发现篡改负例覆盖不足：根manifest校验提�
 修正协议是在同一v2入口分别收集根manifest错误和读取/校验run元数据，完整遍历不得依赖根manifest先通过；新篡改自测同时要求attempted24、verified23、坏首项被拒绝及末项没有错误，并归档 `tampered-verification.json`。新 `.debug/observation-envelope-v2-local-2-selftest/` 已通过oracle78/78、parser8/8、positive24/24，篡改报告为attempted24/verified23、仅shared-manifest与D3-01-1错误；`.debug/observation-envelope-v2-local-2-full/` 未缩放24/24 verified且无evidenceErrors，最终CLI语法和diff检查通过。两个新目录保留完整输入hash，仍是未提交工作树证据，v2三平台runner待验，不改local-1。另记录完整writer协议债务：非法writer帧可能被其他sealed事实掩盖，当前来源/顺序窄修正不证明writer消息协议正确，须在独立evidence/settlement阶段统一设计、核验。
 
 独立本地审计保存在 `.debug/observation-envelope-v2-independent-local-review/audit.json`：三源码与两组快照一致，重放oracle78/parser8/positive24/full24及篡改24/23；六个D3-08均在ACK后bulk，retained源序从5连续，省略仅是尾部bulk至4300，finish4301保留。before-fix-regression.json按原hash绑定复现local-1缺口，没有修改旧工件。本次独立复核不新增原生样本或跨平台结论。
+
+## 17. D3 v2 首次三平台结果与独立复核（2026-09-22）
+
+固定提交 `b4db41cc3219c009d6ec00f1bf4b50113d8350cd` 经一次push自动触发 `35676427931` attempt1，三job均success，没有手动dispatch或rerun。Node均22.23.2，Ubuntu24 x64/kernel6.17.0-1022-azure、macOS26 arm64/Darwin25.6.0、Windows Server2025 x64/10.0.26100。每平台完整24/24、原0.25缩放positive24/24、oracle78/78、parser8/8；篡改目录各attempted24/verified23，仅shared-manifest和坏首项D3-01-1报错，其余案例仍有效验证。故障负例正确拒绝不等于损坏工件通过。
+
+Windows完整D3-01-1实际出现stdout/fd3接收倒序，caller源sequence/sentNs合法，v2按独立源序正确接受；不是靠此次未遇乱序获得绿色。确定性重放仍拒绝错误来源/身份/同pipe逆序及控制缺口，合法迟到保留observed-late。完整与缩放的D3-08均核对ACK后bulk、唯一连续尾部省略及最终控制帧保留。
+
+原始trace补充核查的最大接收/结算时间如下；这不是对未实现的独立Promise或强制预算oracle的替代证明。
+
+| 平台 | 完整after-await / writer最大ms（各2000ms预算） | 缩放after-await / writer最大ms（各500ms预算） |
+| --- | --- | --- |
+| Windows | 1075.2648 / 1010.1685 | 330.1647 / 265.695 |
+| Linux | 1040.977367 / 1005.608616 | 296.077696 / 255.168326 |
+| macOS | 1056.778959 / 1012.396875 | 292.366375 / 254.102916 |
+
+三ZIP各453文件，artifact为Windows10674000078、Linux10673655385、macOS10673171771，大小/SHA256与GitHub API一致。15份输入与固定Git核对：Linux/macOS十份逐字一致，Windows五份仅CRLF差异；保存原字节，执行的是可信固定Git源码而非归档代码。完整证据在本独立诊断树 `.debug/observation-envelope-v2-run-35676427931/`，`acquisition.json` 保存API/ZIP清单，`metrics.json` 保存时序，`audit.json` SHA256为 `a772fa2a399c9b51fe109b56fff097933e9873fa0c424aab93f18717c13233f7`。
+
+本次共72个完整控制、72个缩放正例、234个oracle与24个parser检查，篡改复核72项中69项有效、三坏首项预期拒绝；native PTY、D4、W1/U1均零新增。原v1两个failure、真实迟到和local-1篡改覆盖缺口不追认；正常Windows对象引用语义不改。D3三独立settlement、首次deadline快照、SIGKILL后有界unconfirmed、writer预算/非法帧/独立封存及D4完整身份重放仍开放，本文继续比较中/未验证。下一阶段先为这些诊断契约缺口冻结新入口与验收，再决定W1/U1实施，业务、依赖、旧live绑定及生产预算不改。

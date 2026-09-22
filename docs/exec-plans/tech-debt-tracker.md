@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-22 D3 v2三平台窄验证完成：b4db41cc唯一run35676427931经完整三ZIP/15输入及可信Git入口复核，每平台full24/positive24、oracle78/parser8及篡改24/23成立；Windows实际乱序按源序合法接受。本次raw after-await/writer未超原预算，但不关闭三独立settlement、首次deadline快照、SIGKILL后有界unconfirmed、writer非法帧/预算/独立封存或D4完整身份重放。下一阶段先补诊断契约，W1/U1和产品退出完整性继续阻塞；本次PTY/D4/W1/U1零新增。证据在独立树`.debug/observation-envelope-v2-run-35676427931/`，详见原生失败设计第17节、生命周期第22节及候选第41节。下述v1失败和local-1覆盖缺口均保留，不追认通过。
+
 2026-09-22 原生失败/资源隔离foundation v1结果：7141cfa3首次run35673511893及误触同SHA重复run35673550930均failure。两次完整D3均Linux/macOS24/24、Windows23/24，后者跨pipe顺序oracle误判；D4每runner全24项、每run72次、两run144次模型按原verifier通过，非native/真实并发验收。工件位于独立诊断树，D4没有pty:false字段。当前只冻结新增D3 v2来源/顺序、4096有界解析和D3-08 ACK后bulk窄修正；D3完整settlement、D4独立重放/身份仍开放，W1/U1共66driver尝试未开始。原始失败、旧D1/D2/G07、正常Windows对象引用语义及所有生产API/预算边界不改。详见原生候选第38–39节、原生失败设计第14–15节和active计划。
 
 2026-09-22 D3观察外壳契约未闭合：冻结的 `startObservedCase(spec)` 尚未导出；单一child close Promise和串行caller/process/evidence编排未分成三独立等待，deadline首次观察快照、bounded unconfirmed及独立发布/manifest结算仍未实现。完整writer协议也有非法帧可能被其他sealed事实掩盖的风险，须与独立evidence结算一并验证，本轮不扩实现。v1由observer重包caller身份/sequence，v2仅新增发送端身份与真实通道/接收时间oracle，不构成完整返回保证。D4有限模型的完整独立重放及execution/generation identity核验也未闭合。关联新v2两个诊断入口、原v1冻结入口、生命周期契约第19–21节与active计划；先补诊断语义，不改业务或推进W1/U1。
