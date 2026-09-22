@@ -22,6 +22,10 @@
 
 ## 技术债列表
 
+2026-09-22 新诊断本地实施与审计：D3 v3/D4 v2八个新文件只进入独立诊断树，主运行时仅同步文档；当前不运行D3真实36+2+4、不新增runner、不推送，也不关闭W1/U1或退出完整性交付。D4 local-3的self-test/full及离线各16/16、302命令/58模型拒绝/1924 checks，另有93语义、4 saved与7个独立重hash sidecar负例。unknown拼接key碰撞的初次失败保留并修为JSON tuple；sidecar/子manifest/verification已独立对账，复审无新确定性阻断。仍建议补create/use unknown经seal/end-use迟到清除的独立正例，不能把现有固定16项外推成全部模型边界或原生/真实并发证明。
+
+同阶段D3首轮CLI自测76 oracle/29 core/15文件、saved3/3通过，但冻结覆盖不完整；cross-replay-1误把stdin JSON算成有换行而多计1字节，纯正常core样本被误拒，现移除oracle多算字节，core继续用stdin EOF分隔且不加换行。迟到错误回溯首报、owner/unknown/event/scenario与归档绑定漏验也进入审计修正，保留首次失败。超时首报的独立消费验收预算仍未冻结，明确delivery-budget-unresolved，不改首次deadline或加宽限。最终修订证据与六组待逐fixture对账覆盖以 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第12节为准；完整本地工具门槛、三平台新采集、原生第二批、实际启动链/双会话/宿主/packaged和生产API/停止预算继续开放。旧代码/workflow/工件、正常Windows对象语义及历史失败不改。
+
 2026-09-22 下一版诊断结算设计冻结：新增 `docs/design-docs/runtime-diagnostic-settlement-contract.md`（比较中/未验证），本阶段仅固定源码/协议复审、零新测试和native。D3 v3三独立不可变首报、有界未确认owner、真实EOF捕获、严格writer协议、独立verifier与publisher，以及D4 v2全身份command/return/event/snapshot重放、acquisition/use/单次release/unknown/tombstone尚未实施。每runner36主控、2gate、4publisher和16模型只是冻结计划数，最终文档检查与静态复审已通过。下一步独立诊断树本地新入口/fixture清单/source hash和源码复审，之后唯一一次三平台采集与全工件审计；旧D3 v1/v2、D4 v1/workflow/失败不改，主运行时只同步文档。完整诊断结算与D4身份债务不因设计完成关闭，W1/U1、原生第二批、真实宿主/启动链/packaged及生产退出完整性仍阻塞。
 
 2026-09-22 D3 v2三平台窄验证完成：b4db41cc唯一run35676427931经完整三ZIP/15输入及可信Git入口复核，每平台full24/positive24、oracle78/parser8及篡改24/23成立；Windows实际乱序按源序合法接受。本次raw after-await/writer未超原预算，但不关闭三独立settlement、首次deadline快照、SIGKILL后有界unconfirmed、writer非法帧/预算/独立封存或D4完整身份重放。下一阶段先补诊断契约，W1/U1和产品退出完整性继续阻塞；本次PTY/D4/W1/U1零新增。证据在独立树`.debug/observation-envelope-v2-run-35676427931/`，详见原生失败设计第17节、生命周期第22节及候选第41节。下述v1失败和local-1覆盖缺口均保留，不追认通过。

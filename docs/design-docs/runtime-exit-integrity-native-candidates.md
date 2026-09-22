@@ -61,7 +61,7 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 ### 当前状态（2026-09-22）
 
-当前下一步见第42节：新 `runtime-diagnostic-settlement-contract.md` 已冻结D3 v3/D4 v2设计，尚未实施或执行；先本地新入口、固定fixture/source hash和独立源码复审，再唯一三平台采集及完整离线复核。W1/U1和生产交付继续阻塞，最终文档检查与静态复审已通过；以下既有证据仍按原范围保留，不把旧阶段“下一步”作为当前待办。
+当前下一步见第43节与 `runtime-diagnostic-settlement-contract.md` 第12节：新D3 v3/D4 v2已进入本地实施与独立审计，D4有固定16项模型证据，D3完整冻结覆盖仍未闭合。本阶段不运行D3真实36+2+4、不新增runner、不推送；本地门槛完成后才另行确认真实矩阵。W1/U1与生产交付继续阻塞，以下历史证据仍按原范围保留，不把旧阶段“下一步”作为当前待办。
 
 最新证据见第41节：b4db41cc的唯一run35676427931经三平台完整归档复核，各full24/24、scaled24/24、oracle78/parser8及篡改24/23成立；Windows实际再次乱序而源序合法，新判据正确接受。第38节v1两个failure、真实迟到与writer预算漏验仍保留。来源/顺序窄验证不关闭D3完整settlement、D4重放/身份或W1/U1；下一阶段先补诊断结算契约。以下两段记录此前设计承接背景，不覆盖本段当前状态。
 
@@ -711,3 +711,13 @@ D3 v3同步返回handle，observation、processSettlement、evidenceSettlement�
 D4 v2固定N2/Q1，完整command/return/event/snapshot由不共用SUT转换函数的oracle逐步重放。创建acquisition、use token、整体release操作、首次unknown、当前证明与槽位分账；失败不抹已取得资源，错身份拒绝零副作用，旧代同操作迟到补证不得污染新owner，完整责任结算后仍显式reopen。failureDomain只是模型标签，不提供真实故障隔离证明。
 
 运行前计划为每runner D3 v3主控36项、因果gate2项、publisher4项，D4 v2确定性模型16项，分别计数；三runner对应108/6/12/48，均尚未实施执行，不相加作PTY或产品通过数。下一步仅在独立诊断树新增版本入口，先本地实施、fixture清单/源码hash冻结与独立源码复审，再唯一一次固定输入三平台采集及全工件可信重放。主运行时树只同步文档，不推送；W1/U1和完整生产退出交付继续阻塞。
+
+## 43. 新诊断本地实施与审计边界（2026-09-22）
+
+本阶段已进入独立诊断树的八个新版本入口实施与本地审计，完整记录见 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第12节（比较中/验证中）。主运行时只同步文档；本阶段不运行D3真实36+2+4、不新增runner、不推送任何分支，不改业务、依赖、旧实验/工件或image.png。上一节“均未实施”的表述只描述设计冻结时点，不覆盖当前进展。
+
+D4 v2的local-3 self-test/full及各自离线复核均16/16、302命令、58次预期拒绝、1924 checks；93语义负例、4 saved负例和另存7个重hash sidecar负例分开计数。unknown key拼接碰撞的初次失败保留，修订为JSON tuple并在固定第05项回归；早期绿色没有覆盖负例sidecar独立绑定的缺口也已记录。证据、精确源hash及不含native/PTY/真实并发的边界见该契约，不把本地模型计为三平台或产品验收。
+
+D3首轮76 oracle/29 core/15文件及saved3/3只覆盖该版fixture。cross-replay-1的协议换行长度误拒、迟到错误回溯首报、owner/unknown/event/scenario漏验和归档绑定问题均按诊断工具缺口处理，原失败保留；最终修订证据仍在核验。到期才冻结的首报只记录真实消费者延迟并标delivery-budget-unresolved，独立消费验收预算尚未冻结，不修改原deadline或暗加宽限。
+
+下一步仍补齐冻结覆盖和独立审查，之后才另行确认真实D3与三平台采集。W1/U1、原生第二批、真实Agent启动链/双会话/Host/Webview/packaged、生产API/停止预算及整体退出完整性均未完成；不把正常Windows已退出对象引用升级为OS bug。
