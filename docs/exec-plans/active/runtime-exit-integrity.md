@@ -16,8 +16,12 @@
 
 ## 进度
 
+- [x] (2026-09-22) 独立诊断树已创建D3 v3/D4 v2八个新入口，本轮只收口本地工具初版与审计修正，主运行时仅同步文档；不运行D3真实36+2+4、不新增runner、不推送，不改业务/旧实验/image.png。
+- [x] (2026-09-22) D4 local-3 self-test/full及离线各16/16、302命令、58预期拒绝、1924 checks；93语义、4 saved和另存7个重hash sidecar负例通过。unknown key碰撞初次失败保留，tuple与sidecar修正经独立复审无新确定性阻断。
+- [x] (2026-09-22) D3本地初版审计已形成正式 self-test-2：oracle119/core41/文件15/archive-consumer-binding25，各自通过；saved旁证attempted4/verified4、88 members、四源原字节exact。boundedConsumerDelivery=false、acceptanceReady=false，仍不代表冻结覆盖、live36+2+4或原生验收。
+- [ ] 按契约第12节逐fixture补齐D3六组剩余覆盖、超时首报独立消费预算与完整工具验收；D4补create/use unknown迟到清除独立正例。真实D3矩阵、三平台新采集和W1/U1均未启动。
 - [x] (2026-09-22) 完成下一版诊断结算契约设计与运行前矩阵冻结，新增 `docs/design-docs/runtime-diagnostic-settlement-contract.md`。D3进程/时钟、writer/封存和D4身份重放的三侧源码/协议复审建议已纳入；三侧最终静态复审及两树文档一致性检查通过，本阶段零新测试、零native，旧入口/工件与业务不改。
-- [ ] 按新设计在独立诊断树实现D3 v3/D4 v2、本地固定fixture/source hash与独立源码复审；每runner36主控+2gate+4publisher、16模型均尚未执行。
+- [ ] D3冻结覆盖与独立工具门槛收口后，另行确认每runner36主控+2gate+4publisher真实采集；D4本地16项不算三平台模型48项已执行。
 - [ ] 本地门槛收口后，以固定新commit唯一一次三平台完整采集、全工件下载与可信Git oracle重放；W1/U1仍须等待这些诊断门槛，不因设计冻结启动。
 - [x] (2026-09-22) 完成三侧最终静态复审与两树元数据/索引/路径/历史保持/一致性/diff检查；每树8份文档、4份设计元数据、12个计划章节，旧业务/脚本/workflow不变。只验文档，不计新矩阵或产品通过。
 - [x] (2026-09-22) 完成Windows/Unix/工具三侧源码核查与设计冻结，区分真实API、native替身、通知扣留、门控和模型；当时D3的72控制、D4的24逻辑模型及W1/U1的66driver尝试均未执行。实际v1每runner执行全部24项D4，三runner共72次模型，不能沿用逻辑计划数作执行总数。
@@ -107,6 +111,10 @@
 
 ## 意外与发现
 
+本轮D4首轮绿色仍漏掉合法ID含/的unknown key碰撞：两个owner被合并成reused，unknownCount从应有2变成1。首次反例保留在独立树 `.debug/owner-quarantine-v2-key-collision-first-failure`；改JSON tuple并在固定D4v2-05回归，未新增平台标签或改旧失败。sidecar仅hash自洽而未与可信预期核对的缺口也已修，7个独立重hash负例拒绝。snapshot是内部状态隔离深拷贝，不额外宣称JS深冻结。
+
+D3 cross-replay-1对纯正常core样本的误拒来自oracle多算stdin JSON换行1字节；实际core只发送JSON并以EOF分隔，修正移除多算字节而不改core输入。迟到错误必须按首报ordinal截断，不能回溯污染原首报；owner/unknown/event/scenario与归档身份也要独立重放。首轮自测的局部绿色不替代冻结覆盖，剩余六组及最终证据见诊断结算契约第12节。
+
 新设计的源码复审确认：D3 v2的close后单一Promise、事后首报和writer sealed claim不足以满足独立结算；observer内写盘也不能隔离同步I/O。D4 v1的unknown状态可被release-in-flight覆盖，create失败可替换acquisition，完整身份/参数/操作账没有被独立重放。均为固定源码中的诊断缺口，不是本阶段新增原生或业务缺陷复现。
 
 协议复审补充了exit与capture gate分离、等时先冻结deadline、错误sticky、共享helper预算、publisher不能自证本次发布成功，以及D4零资源失败not-required、completed操作复用优先级、batch应用token和逐subject未知补证。详细可实施约束以新设计为准；三侧最终静态复核已收口，不把设计收口写为测试通过。
@@ -191,6 +199,10 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+- 决策：本阶段只交付独立诊断的本地初版与审计修正，不执行D3真实36+2+4、不新增runner、不推送；下一步逐fixture补齐冻结覆盖，之后另行确认真实矩阵。理由：自测总数不能替代覆盖与独立oracle有效性，保留首次误拒和模型碰撞证据。日期/作者：2026-09-22 / Codex。
+- 决策：D4复合unknown key采用无歧义JSON tuple，负例sidecar与verification逐份按可信输入复算；保持固定16项和旧证据不变。理由：ID允许/，拼接key和仅hash自洽都可能把不同责任/错误证据误判为同一对象。日期/作者：2026-09-22 / Codex。
+- 决策：消费者续体与首报冻结分账；deadline前首报的消费者到达同deadline或之后为迟调失败，到期才冻结的超时首报只保存延迟并标delivery-budget-unresolved，独立消费预算另冻。理由：后者不可能在原deadline前被await，不伪报及时、不加宽限或改首次deadline。日期/作者：2026-09-22 / Codex。
+
 - 决策：新增D3 v3/D4 v2设计，不修改旧D3 v1/v2、D4 v1及工件；三不可变首报、捕获真实EOF、writer/verifier/publisher分责及D4全账独立oracle分别验收。理由：来源/顺序修正已经提供窄证据，不能继续以旧摘要或同步归档代替完整结算；版本隔离保留历史失败。日期/作者：2026-09-22 / Codex。
 - 决策：先本地新入口、固定fixture/源码hash和独立源码复审，再唯一三平台采集。D3每runner36主控、2gate、4publisher，D4每runner16模型分账，不扩为native或生产承诺。理由：证明层级与故障注入性质不同，设计计数不能冒充执行结果；W1/U1继续由工具验收门槛阻塞。日期/作者：2026-09-22 / Codex。
 
@@ -267,9 +279,9 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
-当前阶段交付为新诊断结算设计及运行前协议冻结，承接原生失败设计第18节、生命周期契约第23节和退出设计第45节。三侧源码/协议问题已经写入新设计，最终静态复审与文档检查已通过。本阶段只修改文档，D3 v3/D4 v2尚未实施、零新测试、零native，不能关闭三独立settlement、writer/D4完整重放或W1/U1债务。
+当前阶段交付为新诊断的本地工具初版与审计修正，完整证据/缺口见 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第12节（比较中/验证中）。D4固定16项与93语义、4 saved、另存7个sidecar负例已有最终本地证据，两项审查阻断闭合；create/use unknown迟到清除的独立正例仍待补。undefined
 
-下一阶段仅在独立诊断树实施新版本，先固定fixture/source hash、本地oracle/文件/gate与完整矩阵、独立源码复审，随后才唯一一次三平台采集及全量可信重放。新设计比较中/未验证，原设计状态不变，整体计划继续active；以下为此前阶段记录，其中当时的“下一步”不覆盖本段当前顺序。
+当前不运行D3真实36+2+4、不新增runner、不推任何分支；先补六组冻结覆盖、消费验收预算与独立审计，之后再另行确认真实矩阵/三平台采集。业务、依赖、旧脚本/workflow/工件和image.png不改。W1/U1、原生第二批、真实启动链/双会话/宿主/packaged、生产API/停止预算与整体退出完整性继续开放，计划active。以下保留此前阶段时点的结果，其“下一步”不覆盖本段。
 
 当前已完成独立D3/D4 v1实施、本地与两次runner全工件复核，v1两个failure及自测真实迟到保留；D3 v2来源/顺序窄协议、三个新脚本/专用workflow、local-2增强验证及b4db41cc唯一新runner的完整审计均完成。详细v1证据见退出完整性设计第41节，v2协议/本地与三平台结果见第42–44节；三个runner各full24/scaled24/oracle78/parser8、tamper24/23分别通过，Windows实际跨pipe倒序仍正确接受。本次raw没有超预算，但不关闭verifier预算债务。主运行时本增量仅六文档，旧live绑定、业务和依赖未改。
 
@@ -313,9 +325,9 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 工作计划
 
-当前执行设计是 `docs/design-docs/runtime-diagnostic-settlement-contract.md`。下一里程碑在独立 `runtime-exit-integrity-native-candidates` 工作树新增D3 v3的handle/CLI/oracle/fixtures与D4 v2的model/oracle/CLI/fixtures，共八个新文件，精确文件名见该设计第10节；旧脚本、workflow和工件冻结。先实现标准库诊断及严格fixture清单，完成本地语法/oracle/文件/gate和模型全账复核，再由独立审查核查owner控制、首报不可变、归档边界和oracle不复用被测转换。
+当前执行设计是 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第12节。八个版本隔离入口已在独立 `runtime-exit-integrity-native-candidates` 工作树创建；本阶段只做本地初版/审计修正与纯fixture验证，不运行D3真实矩阵，不新增runner，不推送。D4已有local-3完整模型证据，D3下一步按六组逐fixture补齐：各控制/硬截止全边界及排队跨限；spawn/ENOENT/launch-rejected完整责任；坏帧前后/同chunk/跨pipe；work/hard与共享E0组合；协议/容量/listener；unknown迟到/取消及实际await/gate。已有部分样本按清单扣除，不用总数宣称全覆盖。完成独立审查后再另冻真实D3、三平台采集及消费验收预算，W1/U1仍待完整工具门槛。
 
-本地通过后冻结新输入commit、Node22.23.2和新workflow的路径过滤/唯一首次触发方式，再一次完整三平台采集，失败上传全部partial证据，下载所有ZIP并按固定Git可信入口核验。D3主控/gate/publisher与D4模型分别报告，不更改旧门槛筛绿、不导入业务；本轮只有设计，最终文档检查已通过。以下旧工作计划作为历史记录保留。
+本地门槛通过后冻结新输入commit、Node22.23.2和新workflow的路径过滤/唯一首次触发方式，再另行确认一次完整三平台采集；失败上传全部partial证据，下载所有ZIP并按固定Git可信入口核验。D3主控/gate/publisher与D4模型分别报告，不更改旧门槛筛绿、不导入业务。上一设计冻结阶段“本轮只有设计”的记录仅限当时状态，当前已进入本地工具初版与审计；以下旧工作计划作为历史记录保留。
 
 当前设计入口是 `docs/design-docs/runtime-native-failure-isolation.md` 第13–17节。D3/D4 v1四入口及foundation workflow已经实施，两个runner失败冻结；D3 v2三个新脚本及独立workflow也已提交b4db41cc，本地快照/增强tamper证明与v1分账。唯一run35676427931的全工件获取、固定Git输入对账和独立原始trace审计已完成；当前先另冻三独立settlement、不可变首次deadline、有界unconfirmed、writer协议/预算和D4完整重放/身份设计，再实现新输入。仅该门槛收口后实施W1/U1新native副本，不import进业务。以下为历史顺序，不覆盖本段。
 
@@ -367,9 +379,9 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 具体步骤
 
-本设计阶段只做文档与固定源码/协议复审，当前不运行新矩阵。已在两树完成检查：YAML parser核对新设计frontmatter/索引/关联路径、计划四活章节、两树共同协议，按输入Git比较冻结历史正文与旧脚本/workflow字节，并执行 `git diff --check`，均通过。
+上一设计冻结阶段只做文档与固定源码/协议复审；当前本地实施与审计另按第12节记录，不运行D3真实新矩阵。已在两树完成检查：YAML parser核对新设计frontmatter/索引/关联路径、计划四活章节、两树共同协议，按输入Git比较冻结历史正文与旧脚本/workflow字节，并执行 `git diff --check`，均通过。
 
-后续实施工作目录为 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates`。新CLI完成后才可运行 `node scripts/diagnostics/diagnose-settlement-v3.mjs --self-test --output NEW_DIRECTORY` 与 `node scripts/diagnostics/diagnose-owner-quarantine-v2.mjs --self-test --output NEW_DIRECTORY`，再分别使用 `--output NEW_DIRECTORY` / `--verify-saved DIRECTORY`；Node固定22.23.2，每次目录新建且不复用。上述入口尚不存在，不能在本轮执行或声称通过；主运行时树不承载这些新增脚本。以下旧命令只用于历史证据复核，不是本轮新采集安排。
+实施与证据工作目录为 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates`；新CLI已存在，固定执行器为 `/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node`（22.23.2）。本阶段只使用该执行器运行 `scripts/diagnostics/diagnose-settlement-v3.mjs --self-test --output NEW_DIRECTORY`、`scripts/diagnostics/diagnose-owner-quarantine-v2.mjs --self-test --output NEW_DIRECTORY`、D4的 `--output NEW_DIRECTORY` 和两者的 `--verify-saved DIRECTORY`。D3的 `--output` 是真实36+2+4入口，当前不得执行。输出目录只能新建，首次失败保留；主运行时不承载新增脚本或工件。以下旧命令只作历史证据复核，不是本轮新采集安排。
 
 本树只做文档一致性检查：执行 `git diff --check`，核对YAML/索引/关联路径、当前进度、证据范围和历史保持。实际v2复核从独立工作树 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates` 执行 `node scripts/diagnostics/diagnose-observation-envelope-v2.mjs --verify-saved .debug/observation-envelope-v2-local-2-full`，预期attempted24/verified24、无evidenceErrors；其selftest目录positive为24/24、tampered-verification.json为24/23且仅shared-manifest与D3-01-1错误。使用固定Node22.23.2；不从归档执行源码，不覆盖旧目录。本树不存在这些v2入口，不能在此直接运行。新runner全量审计已完成，输入SHA/run/工件/环境/原始结果见本计划证据与备注及设计第44节，失败不筛绿；不推主运行时分支。
 
@@ -464,7 +476,7 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
-本阶段验收只覆盖设计与协议清晰度，元数据/索引/本地引用/历史保持/两树一致性/diff检查及三侧静态复审已通过。不得将旧回归或runner绿色计作新D3 v3/D4 v2通过。运行前计划固定每runner D3主控36、gate2、publisher4、D4模型16；三runner对应108/6/12/48分别计数，当前实际执行均0，native始终不由这些模型/控制证明。
+本阶段验收覆盖本地工具初版、实际fixture和审计修正，不宣称D3完整冻结覆盖。D4 local-3每次固定16项，93语义/4 saved及另存7个sidecar负例逐项有效，坏首项仍attempted16/verified15且末项通过；独立复审的两项阻断闭合。undefined六组覆盖与超时首报消费预算仍开放。D3真实36+2+4、本阶段三平台runner与native实际均0；本地D4不计为三平台48次已通过。收口前检查两树frontmatter/index、新增引用、共享契约一致、历史保持及diff，不能以旧runner或文档检查代替运行证据。
 
 实施后须验证首报与迟到补证分离、真实consumer await、process/capture与主动截断分层、writer/verifier/publisher协议和独立归档、D4完整命令/事件/全量快照重放；语义篡改即使重编号/重算hash仍拒绝，坏首项后其余项仍有效验证。首次真实输入前冻结具体fixture清单/hash和唯一workflow触发，不在本设计预造断言总数；W1/U1继续等待完整新工具验收。以下为历史验收记录。
 
@@ -491,6 +503,8 @@ HPCON首次原矩阵12项全部有效，六control及两个explicit-close通过�
 候选试验不得修改用户 storage 或替换仍承载 live 会话的 Supervisor；仅控制本次创建的 fixture。证据目录唯一，不覆盖初次失败。生产方案需要可回滚的 capability/adapter 选择和旧 session 原绑定保留，回滚不得伪造完整性或强制迁移。取消和回收必须幂等，不因重试重复输出、重复终态或误删其他读者。
 
 ## 证据与备注
+
+本阶段最新证据在独立诊断树：D4 `.debug/owner-quarantine-v2-local-3-selftest`、`.debug/owner-quarantine-v2-local-3-full` 与各自 `-verification.json`，补充 `.debug/owner-quarantine-v2-local-3-sidecar-negatives` 七项；首次碰撞失败在 `.debug/owner-quarantine-v2-key-collision-first-failure`。undefinedD4精确四源hash、缺口与证据边界见诊断结算契约第12节；以下设计冻结与历史runner记录不作为本阶段新采集。
 
 2026-09-22 本轮文档检查范围：每树4份设计的元数据/索引状态/架构标签、12个计划必要章节、新增或修改的完整本地引用、两树共同契约与4组冻结历史正文均通过；新设计12个主控场景和16个模型场景计数一致。另发现索引既有 execution-node-zoom-interaction-research 执行计划引用对应的文件不存在，两树输入HEAD已含该悬空条目，本轮未修改，不宣称全仓文档引用无缺陷。未运行旧矩阵或新诊断，用户image.png不纳入提交。
 
@@ -550,9 +564,9 @@ G07补证起点是本运行时树ebe303e7及独立诊断树2f630cd9。第14节�
 
 下一版本的候选接口是同步返回handle的 `startObservedCase(spec)`：observation、processSettlement、evidenceSettlement三个不可变首报Promise，另有只读owner快照和有界late事实订阅；process exit不代替capture真实EOF。D3每case最多预留caller/evidence/publisher三个槽，任一hard截止仍unknown停止后续case，不与D4的N2混算。writer、独立verifier与publisher仅为标准库诊断角色，不新增生产模块、外部服务或依赖。
 
-D4 v2使用完整command/return/event/snapshot、不可变owner identity和独立oracle；创建acquisition/use token/单次owner整体release/首次unknown/当前证明/tombstone分账。schema和常量可共享，SUT转换/验证/snapshot helper不得被oracle复用。所有新文件与CLI尚未实现，运行时代码、旧live绑定、旧脚本/workflow及依赖保持不变。
+D4 v2使用完整command/return/event/snapshot、不可变owner identity和独立oracle；创建acquisition/use token/单次owner整体release/首次unknown/当前证明/tombstone分账。schema和常量可共享，SUT转换/验证/snapshot helper不得被oracle复用。八个新文件与CLI已在独立诊断树创建，当前仅本地初版和审计修正；运行时代码、旧live绑定、旧脚本/workflow及依赖保持不变。D4复合key使用JSON tuple，snapshot为隔离深拷贝而非JS冻结承诺；超时首报消费者预算仍须单独冻结。
 
-本轮候选新增的 `startObservedCase(spec)` 返回observation、processSettlement、evidenceSettlement三个独立Promise；尚未导出实现。诊断台账的failureDomainId/allocationId/operationId只界定测试资源，不新增生产registry/wire；N/Q、D3毫秒数及W1/U1期限均不是生产策略。第一批只读使用锁定node-pty/native-addon-api源与headless consumer，依赖不升级，native副本按源hash/匹配计数和真实binary绑定；旧自然fork/guard/G07不改。
+设计冻结时点的候选 `startObservedCase(spec)` 尚未导出实现；当前独立诊断树已创建对应handle/CLI/oracle/fixture入口，但不等于生产导出。诊断台账的failureDomainId/allocationId/operationId只界定测试资源，不新增生产registry/wire；N/Q、D3毫秒数及W1/U1期限均不是生产策略。第一批只读使用锁定node-pty/native-addon-api源与headless consumer，依赖不升级，native副本按源hash/匹配计数和真实binary绑定；旧自然fork/guard/G07不改。
 新设计定义的是候选类型与诊断CLI，不新增生产导出或依赖。D1实现ExecutionIdentity、ProcessResult（含signal-only/terminated/unconfirmed）、SourceResult、ResourceResult、OutputSeal和AuthorityResult的可执行约束；adapter唯一分配data sequence，资源/进程迟到补证独立于不可变seal。D2使用Node标准库且不加载node-pty，独立控制返回与stdio/进程事实。生产 `ExecutionSessionProcess` 能力、outcome wire及native释放策略均须后续评审，不把上述诊断文件导入业务。
 
 本增量只新增诊断 fork 的 owner 状态接口：候选 native 必须提供受保护的 `shellExited` 发布和主线程 `closeAfterExit(id,generation)` one-shot 操作，并以带 generation/nonce 的 `markPipeEof`、`markConsumerComplete` 在 native 侧强制 Close 前提；它使用与创建/Release 相同的 bundled DLL 导出，记录 void Close 调用而不伪造返回值。现有 `PtyKill`、业务 node-pty API、Webview/Host/Supervisor 协议均不改变。三臂使用锁文件中的 node-pty、@xterm/headless、固定 Node/headers/compiler，不安装新依赖；所有源码/二进制/工具链 hash 随工件保存。
@@ -628,3 +642,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-22，v2唯一runner收口）：完成三平台全部1359成员、15输入与原始trace独立审计，记录各full24/scaled24/oracle78/parser8/tamper24/23及Windows真实跨pipe倒序正确接受；不重跑、不改变500ms缩放预算，不追认旧失败。仅关闭来源/顺序窄验证，下一阶段另冻完整结算/writer/D4身份协议，原生及生产交付继续开放。
 
 修订记录（2026-09-22，新诊断结算设计冻结）：完成D3 v3/D4 v2协议和运行前矩阵的设计写入及外围文档同步，实施与验证待办不关闭；本阶段零新测试/native。最终静态复审及文档一致性检查已通过，下一步独立树本地实施/fixture/源码复审，再唯一三平台采集，不改旧实验或推进业务。
+
+修订记录（2026-09-22，新诊断本地初版与审计）：同步八个新入口实施、D4 local-3与首次碰撞失败、sidecar重hash证明和D3首轮/交叉重放发现，更新四活章节及当前步骤。本阶段不运行D3真实矩阵、不新增runner、不推送；保留六组冻结覆盖、独立消费预算、D4 create/use正例和完整原生/产品门槛，不以自测总数宣称全部验收。
