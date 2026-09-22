@@ -22,6 +22,10 @@
 
 ## 技术债列表
 
+2026-09-22 确定性覆盖增量：D3新增156项，其中154要求完整重放，2项control reserve耗尽要求明确拒绝；独立100ms消费策略已在运行前冻结，不改原deadline。D4 local-4两次各16项、330命令/68预期拒绝/2092 checks，101语义和4 saved负例及各16/16离线复核补齐create/use unknown迟到结算。三处oracle误判和archive同拒绝类别替换漏洞已定位修正，首次source/失败保留；完整最新证据与源hash见 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第13节。旧第12节的预算未冻结和覆盖缺口只对应旧输入，不追认旧结果。
+
+本轮最终D3各组119/41/156/15/37判据满足，原目录/同平台迁移目录及根可信重放5/5、96 members，13项重hash负例拒绝；源派生字段LF/CRLF的32组合另计，boundedConsumerDelivery=false、acceptanceReady=false。仍未关闭的具体工具门槛：2MiB input可达性/邻界、helper8帧数量、trace/control各计数与字节精确邻界、late256条独立阈值、capture gate队列容量、listener failures上限，以及Windows绝对路径/junction在跨OS整包归档中的验证。boundary聚合专用128MiB读取不放宽单会话容量。下一步先冻结这些可达性/容量和归档规则并补测；真实D3 36+2+4、三平台采集、W1/U1、原生第二批和生产集成均未启动，退出完整性总债务保持开放。以下条目按历史输入理解。
+
 2026-09-22 新诊断本地实施与审计：D3 v3/D4 v2八个新文件只进入独立诊断树，主运行时仅同步文档；当前不运行D3真实36+2+4、不新增runner、不推送，也不关闭W1/U1或退出完整性交付。D4 local-3的self-test/full及离线各16/16、302命令/58模型拒绝/1924 checks，另有93语义、4 saved与7个独立重hash sidecar负例。unknown拼接key碰撞的初次失败保留并修为JSON tuple；sidecar/子manifest/verification已独立对账，复审无新确定性阻断。仍建议补create/use unknown经seal/end-use迟到清除的独立正例，不能把现有固定16项外推成全部模型边界或原生/真实并发证明。
 
 同阶段D3最终本地self-test-2通过119 oracle、41 core、15文件、25 archive/consumer/binding fixtures；saved复核4/4、88 manifest members及四源原字节匹配，boundedConsumerDelivery=false、acceptanceReady=false，未运行live36+2+4、真实进程或PTY。首轮76 oracle/29 core/15文件、saved3/3保留为当时覆盖；cross-replay-1误把stdin JSON算成有换行而多计1字节，纯正常core样本被误拒，现移除oracle多算字节，core继续用stdin EOF分隔且不加换行。迟到错误回溯首报、owner/unknown/event/scenario与归档绑定已本地修正，保留首次失败。超时首报的独立消费验收预算仍未冻结，明确delivery-budget-unresolved，不改首次deadline或加宽限。最终证据与六组待逐fixture对账覆盖见 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第12节；symlink负例归档须保留link元数据。完整本地工具门槛、三平台新采集、原生第二批、实际启动链/双会话/宿主/packaged和生产API/停止预算继续开放。旧代码/workflow/工件、正常Windows对象语义及历史失败不改。

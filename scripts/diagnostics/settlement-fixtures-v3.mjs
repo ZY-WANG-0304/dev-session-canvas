@@ -216,7 +216,7 @@ export function runOracleSelfTests() {
   return { pass: cases.every(c => c.pass), attempted: cases.length, passed: cases.filter(c => c.pass).length, cases };
 }
 
-class VirtualClock {
+export class VirtualClock {
   time = 0n;
   next = 1;
   timers = new Map();
@@ -260,7 +260,7 @@ class FakeStream extends EventEmitter {
   unref() { return this; }
 }
 
-function fakeTransport(clock) {
+export function fakeTransport(clock, options = {}) {
   const children = new Map();
   const spawnRole = (role, request) => {
     const child = new EventEmitter();
@@ -271,7 +271,7 @@ function fakeTransport(clock) {
     child.kill = signal => { child.killAttempts.push(signal); return true; };
     child.unref = () => child;
     children.set(role, child);
-    clock.queueMicrotask(() => child.emit('spawn'));
+    if (options.spawnEvent !== false) clock.queueMicrotask(() => child.emit('spawn'));
     return child;
   };
   return { children, spawnRole };

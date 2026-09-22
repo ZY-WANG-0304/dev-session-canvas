@@ -11,6 +11,7 @@ import { EventEmitter } from 'node:events';
 import * as core from './diagnostic-settlement-v3.mjs';
 import { verifySavedCase, verifyPublicationSnapshot } from './settlement-oracle-v3.mjs';
 import { runOracleSelfTests, runCoreSelfTests } from './settlement-fixtures-v3.mjs';
+import { runBoundarySelfTests } from './settlement-boundary-fixtures-v3.mjs';
 
 const ENTRY = fileURLToPath(import.meta.url);
 const REPO = path.resolve(path.dirname(ENTRY), '../..');
@@ -23,6 +24,8 @@ const PUBLICATION_PAYLOAD = 'diagnostic-settlement-publication-payload-v3';
 const PUBLICATION_MANIFEST = 'diagnostic-settlement-publication-manifest-v3';
 const MAX_REQUEST = 2 * 1024 * 1024;
 const MAX_PUBLICATION = 4 * 1024 * 1024;
+export const CONSUMER_POLICY = Object.freeze({ schema: 'diagnostic-consumer-delivery-v1', budgetNs: '100000000',
+  boundary: 'exclusive', timelyFreezeAlsoRequiresOriginalDeadline: true });
 const FILE_FIXTURES = [
   ['normal', 'accept'], ['claim-no-file', 'reject'], ['wrong-size', 'reject'], ['wrong-hash', 'reject'],
   ['self-consistent-wrong-payload', 'reject'], ['missing-payload', 'reject'], ['extra-file', 'reject'],
@@ -35,6 +38,9 @@ const ARCHIVE_FIXTURES = [
   ...['schema', 'id', 'owner', 'requests', 'lateJournal', 'gates'].map(key => [`missing-snapshot-${key}`, 'snapshot', false]),
   ['consumer-valid', 'consumer', true],
   ...['missing', 'duplicate', 'identity', 'deadline', 'before-freeze', 'deadline-first'].map(key => [`consumer-${key}`, 'consumer', key === 'deadline-first']),
+  ...['early', 'deadline', 'late-freeze'].flatMap(kind => ['minus-one', 'equal', 'plus-one'].map(offset =>
+    [`consumer-budget-${kind}-${offset}`, 'consumer', offset === 'minus-one'])),
+  ...['minus-one', 'equal', 'plus-one'].map(offset => [`consumer-original-deadline-${offset}`, 'consumer', offset === 'minus-one']),
   ['publisher-preflight-binding', 'binding', true], ['publisher-case-swap-binding', 'binding', false],
   ['source-exact', 'sources', true], ['source-crlf', 'sources', true], ['source-content-tamper', 'sources', false],
   ['publication-real-root', 'publication-root', true], ['publication-symlink-root', 'publication-root', false], ['publication-symlink-ancestor', 'publication-root', false],
@@ -377,7 +383,7 @@ export async function runRole(role) {
 
 const SOURCE_FILES = [
   'diagnostic-settlement-v3.mjs', 'diagnose-settlement-v3.mjs',
-  'settlement-oracle-v3.mjs', 'settlement-fixtures-v3.mjs',
+  'settlement-oracle-v3.mjs', 'settlement-fixtures-v3.mjs', 'settlement-boundary-fixtures-v3.mjs',
 ];
 
 export function fullSchedule() {
@@ -474,7 +480,7 @@ async function prepareOutput(output, mode, schedule) {
     osRelease: os.release(), createdAt: new Date().toISOString(),
     sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).trim(),
     sourceCommitKind: 'worktree-base; exact execution input is sourceHashes',
-    sourceHashes, schedule, nativeProcesses: 0, pty: false,
+    sourceHashes, schedule, consumerPolicy: CONSUMER_POLICY, nativeProcesses: 0, pty: false,
     scope: 'Node diagnostic roles only; no PTY, native API, descendants, product acceptance, or production topology.',
   };
   await fsp.writeFile(path.join(output, 'run.json'), json(metadata), { flag: 'wx' });
@@ -519,44 +525,89 @@ function fileRequest(id, directory, expected = Buffer.from('{"test":"payload"}\n
   return { writer, request, expected };
 }
 
-export function runFileSelfTests(output, id) {
-  const root = path.join(output, 'file-fixtures');
-  createDirectory(root);
-  const cases = [];
+function fileFixtureIdentity(metadata) {
+  return { schema: SCHEMA, runId: metadata.runId, caseId: 'file-self-test', generation: 'generation-1', nonce: `${metadata.runId}:file-fixture` };
+}
+
+function fixtureTree() {
+  const entries = new Map();
+  return { entries,
+    directory: name => entries.set(name, { type: 'directory' }),
+    file: (name, bytes) => entries.set(name, { type: 'file', bytes: Buffer.from(bytes) }),
+    symlink: (name, target, kind) => entries.set(name, { type: 'symlink', target, kind }),
+  };
+}
+
+function treeMembers(tree, prefix = '') {
+  return [...tree.entries].filter(([name, item]) => item.type !== 'directory' && name.startsWith(prefix) && name !== `${prefix}manifest.json`)
+    .map(([name, item]) => item.type === 'symlink'
+      ? { path: name.slice(prefix.length), type: 'symlink', target: item.target }
+      : { path: name.slice(prefix.length), type: 'file', bytes: item.bytes.length, sha256: hash(item.bytes) })
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function treeManifest(tree, prefix) {
+  tree.file(`${prefix}manifest.json`, json({ schema: 'diagnostic-settlement-run-manifest-v3', entries: treeMembers(tree, prefix) }));
+}
+
+function materializeTree(directory, tree) {
+  createDirectory(directory);
+  for (const [name, item] of tree.entries) {
+    const target = path.join(directory, ...name.split('/'));
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    if (item.type === 'directory') fs.mkdirSync(target, { recursive: true });
+    else if (item.type === 'file') exclusive(target, item.bytes);
+    else fs.symlinkSync(item.target, target, process.platform === 'win32' && item.kind === 'dir' ? 'junction' : item.kind);
+  }
+}
+
+function verifyFixtureTree(directory, tree, label) {
+  assertNoSymlinkAncestors(directory);
+  assert.deepEqual(listMembers(directory).sort((a, b) => a.path.localeCompare(b.path)), treeMembers(tree), `${label} bytes or fixture mutations differ from trusted definitions`);
+  for (const [name, item] of tree.entries) if (item.type === 'directory') {
+    const target = path.join(directory, ...name.split('/'));
+    assertNoSymlinkAncestors(target);
+    assert(fs.lstatSync(target).isDirectory(), `${label} directory is missing: ${name}`);
+  }
+}
+
+function buildFileFixtures(output, id, paths = path) {
+  const root = paths.join(output, 'file-fixtures');
+  const tree = fixtureTree(), cases = [];
   for (const [name, expectedOutcome] of FILE_FIXTURES) {
-    const directory = path.join(root, name);
-    createDirectory(directory);
+    const directory = paths.join(root, name);
+    tree.directory(name);
     const { writer, request, expected } = fileRequest(id, directory);
-    let setupError = null;
-    try {
-      const payload = name === 'self-consistent-wrong-payload' ? Buffer.from('{"test":"another"}\n') : expected;
-      const manifest = payloadManifest(writer, payload);
-      if (name === 'wrong-size') manifest.entries[0].bytes += 1;
-      if (name === 'wrong-hash') manifest.entries[0].sha256 = '0'.repeat(64);
-      if (name === 'duplicate-inventory') manifest.entries.push({ ...manifest.entries[0] });
-      if (name === 'path-escape') manifest.entries[0].path = '../escaped.json';
-      if (name === 'wrong-schema') manifest.schema = 'wrong-schema';
-      if (name === 'wrong-identity') manifest.id = { ...id, nonce: `${id.nonce}-wrong` };
-      if (name === 'wrong-writer-attempt') manifest.writerAttemptId += '-wrong';
-      if (name === 'wrong-writer-request') manifest.writerRequestId += '-wrong';
-      if (name !== 'claim-no-file') {
-        if (name === 'symlink') {
-          const target = path.join(root, 'symlink-target.json');
-          exclusive(target, payload);
-          fs.symlinkSync(target, path.join(directory, 'payload.json'), 'file');
-        } else if (name !== 'missing-payload') exclusive(path.join(directory, 'payload.json'), payload);
-        exclusive(path.join(directory, 'manifest.json'), name === 'bad-manifest' ? '{not-json\n' : json(manifest));
-      }
-      if (name === 'extra-file') exclusive(path.join(directory, 'extra.json'), '{}\n');
-    } catch (error) { setupError = String(error.stack ?? error); }
-    let actual;
-    if (setupError) actual = { accepted: false, setupError };
-    else {
-      try { actual = { accepted: true, result: verifyPayloadDirectory(request) }; }
-      catch (error) { actual = { accepted: false, error: String(error.message) }; }
+    const payload = name === 'self-consistent-wrong-payload' ? Buffer.from('{"test":"another"}\n') : expected;
+    const manifest = payloadManifest(writer, payload);
+    if (name === 'wrong-size') manifest.entries[0].bytes += 1;
+    if (name === 'wrong-hash') manifest.entries[0].sha256 = '0'.repeat(64);
+    if (name === 'duplicate-inventory') manifest.entries.push({ ...manifest.entries[0] });
+    if (name === 'path-escape') manifest.entries[0].path = '../escaped.json';
+    if (name === 'wrong-schema') manifest.schema = 'wrong-schema';
+    if (name === 'wrong-identity') manifest.id = { ...id, nonce: `${id.nonce}-wrong` };
+    if (name === 'wrong-writer-attempt') manifest.writerAttemptId += '-wrong';
+    if (name === 'wrong-writer-request') manifest.writerRequestId += '-wrong';
+    if (name !== 'claim-no-file') {
+      if (name === 'symlink') {
+        tree.file('symlink-target.json', payload);
+        tree.symlink(`${name}/payload.json`, paths.join(root, 'symlink-target.json'), 'file');
+      } else if (name !== 'missing-payload') tree.file(`${name}/payload.json`, payload);
+      tree.file(`${name}/manifest.json`, name === 'bad-manifest' ? '{not-json\n' : json(manifest));
     }
-    cases.push({ id: name, request, expected: expectedOutcome, actual,
-      pass: setupError === null && actual.accepted === (expectedOutcome === 'accept') });
+    if (name === 'extra-file') tree.file(`${name}/extra.json`, '{}\n');
+    cases.push({ id: name, request, expected: expectedOutcome });
+  }
+  return { tree, cases };
+}
+
+export function runFileSelfTests(output, id) {
+  const { tree, cases } = buildFileFixtures(output, id);
+  materializeTree(path.join(output, 'file-fixtures'), tree);
+  for (const entry of cases) {
+    try { entry.actual = { accepted: true, result: verifyPayloadDirectory(entry.request) }; }
+    catch (error) { entry.actual = { accepted: false, error: String(error.message) }; }
+    entry.pass = entry.actual.accepted === (entry.expected === 'accept');
   }
   return { pass: cases.every(item => item.pass), attempted: cases.length, passed: cases.filter(item => item.pass).length, cases };
 }
@@ -718,11 +769,12 @@ export async function runSelfTests(output) {
   const metadata = await prepareOutput(output, 'self-test', []);
   const oracle = await runOracleSelfTests();
   const coreResult = await runCoreSelfTests();
-  const files = runFileSelfTests(output, { schema: SCHEMA, runId: metadata.runId, caseId: 'file-self-test', generation: 'generation-1', nonce: randomUUID() });
+  const boundaries = await runBoundarySelfTests();
+  const files = runFileSelfTests(output, fileFixtureIdentity(metadata));
   const archives = await runArchiveSelfTests(output, metadata);
-  for (const [name, report] of Object.entries({ oracle, core: coreResult, files, archives })) await fsp.writeFile(path.join(output, `${name}-tests.json`), json(report), { flag: 'wx' });
-  const result = { schema: SCHEMA, mode: 'self-test', pass: oracle.pass && coreResult.pass && files.pass && archives.pass,
-    counts: Object.fromEntries(Object.entries({ oracle, core: coreResult, files, archives }).map(([key, value]) => [key, { attempted: value.attempted, passed: value.passed }])),
+  for (const [name, report] of Object.entries({ oracle, core: coreResult, boundaries, files, archives })) await fsp.writeFile(path.join(output, `${name}-tests.json`), json(report), { flag: 'wx' });
+  const result = { schema: SCHEMA, mode: 'self-test', pass: oracle.pass && coreResult.pass && boundaries.pass && files.pass && archives.pass,
+    counts: Object.fromEntries(Object.entries({ oracle, core: coreResult, boundaries, files, archives }).map(([key, value]) => [key, { attempted: value.attempted, passed: value.passed }])),
     realNodeCases: 0, nativeProcesses: 0, pty: false };
   await fsp.writeFile(path.join(output, 'summary.json'), json(result), { flag: 'wx' });
   writeRunManifest(output);
@@ -737,8 +789,12 @@ function verifySources(directory, run) {
   assert.equal(run.node, 'v22.23.2');
   assert.equal(run.nativeProcesses, 0);
   assert.equal(run.pty, false);
+  assert.deepEqual(run.consumerPolicy, CONSUMER_POLICY, 'recorded consumer policy differs from trusted diagnostic policy');
   assert(typeof run.runId === 'string' && run.runId, 'run identity is missing');
   assert(['linux', 'darwin', 'win32'].includes(run.platform), 'unsupported recorded platform');
+  const paths = run.platform === 'win32' ? path.win32 : path.posix;
+  assert(typeof run.outputDirectory === 'string' && paths.isAbsolute(run.outputDirectory), 'recorded output path is not absolute');
+  assert(typeof run.entryPath === 'string' && paths.isAbsolute(run.entryPath), 'recorded source entry path is not absolute');
   assert.deepEqual(Object.keys(run.sourceHashes).sort(), [...SOURCE_FILES].sort(), 'source inventory differs');
   const sources = [];
   for (const name of SOURCE_FILES) {
@@ -901,54 +957,52 @@ async function evaluateArchiveFixture(fixture, output) {
   throw new Error('unknown archive fixture operation');
 }
 
-export async function runArchiveSelfTests(output, metadata) {
-  const root = path.join(output, 'archive-fixtures');
-  createDirectory(root);
-  const cases = [];
-  const add = async (id, operation, input, expectedAccepted = true) => {
-    const fixture = { id, operation, input, expectedAccepted };
-    try { fixture.actual = { accepted: true, result: await evaluateArchiveFixture(fixture, output) }; }
-    catch (error) { fixture.actual = { accepted: false, error: String(error.message) }; }
-    fixture.pass = fixture.actual.accepted === expectedAccepted;
-    cases.push(fixture);
-  };
-  const directory = path.join(root, 'traversal');
-  for (const member of ['', 'sources', 'outer', 'cases', 'writer-artifacts', 'preflight']) fs.mkdirSync(path.join(directory, member), { recursive: true });
+async function buildArchiveFixtures(metadata, sourceBytes) {
+  const paths = metadata.platform === 'win32' ? path.win32 : path.posix;
+  const root = paths.join(metadata.outputDirectory, 'archive-fixtures');
+  const tree = fixtureTree(), cases = [];
+  const add = (id, operation, input, expectedAccepted = true) => cases.push({ id, operation, input, expectedAccepted });
+  const directory = paths.join(root, 'traversal');
+  for (const member of ['', 'sources', 'outer', 'cases', 'writer-artifacts', 'preflight']) tree.directory(`traversal${member ? `/${member}` : ''}`);
   const run = { ...metadata, mode: 'full', outputDirectory: directory, schedule: fullSchedule(), syntheticArchiveFixture: true,
     scope: 'Synthetic partial archive verifier fixture only; zero real Node cases, not a full matrix result.' };
-  for (const name of SOURCE_FILES) fs.copyFileSync(path.join(output, 'sources', name), path.join(directory, 'sources', name), fs.constants.COPYFILE_EXCL);
-  const specs = fullSchedule().map(entry => createSpec(directory, run, entry));
+  for (const name of SOURCE_FILES) tree.file(`traversal/sources/${name}`, sourceBytes[name]);
+  const specs = fullSchedule().map(entry => ({
+    id: { schema: SCHEMA, runId: run.runId, caseId: entry.id, generation: 'generation-1', nonce: `${run.runId}:archive-fixture:${entry.id}` },
+    scenario: entry.scenario, entryPath: metadata.entryPath, artifactDirectory: paths.join(directory, 'writer-artifacts', entry.id),
+    ...(entry.id === 'D3v3-G1' ? { gates: { caller: true, writer: true } } : {}),
+    ...(entry.id === 'D3v3-G2' ? { gates: { capture: true } } : {}),
+    ...(entry.scenario === 'D3v3-10' ? { command: { file: paths.join(directory, 'preflight', `missing-${hash(`${run.runId}:${entry.id}`).slice(0, 32)}`), args: [] } } : {}),
+  }));
   const entry = fullSchedule().at(-1), spec = specs.at(-1);
-  const publicationSpec = { id: spec.id, entryPath: ENTRY, artifactDirectory: path.join(directory, 'cases', entry.id),
+  const publicationSpec = { id: spec.id, entryPath: metadata.entryPath, artifactDirectory: paths.join(directory, 'cases', entry.id),
     archiveAttemptId: `${entry.id}:archive:1`, snapshotOrdinal: 0, scenario: entry.scenario,
     payloadBase64: publicationPayload(spec.id, `${entry.id}:archive:1`, 0, {
       'fixture.json': json({ schema: 'diagnostic-settlement-publication-fixture-v3', id: spec.id, expectedScenario: entry.scenario }),
     }) };
   const snapshot = await syntheticBlockedPublication(publicationSpec);
   const outer = { entry, publicationSnapshot: snapshot, finalPublicationSnapshot: snapshot };
-  exclusive(path.join(directory, 'run.json'), json(run));
-  exclusive(path.join(directory, 'specs.json'), json(specs));
-  exclusive(path.join(directory, 'outer', `${entry.id}.json`), json(outer));
-  exclusive(path.join(directory, 'outer', 'D3v3-01-1.json'), '{broken-first-case\n');
-  exclusive(path.join(directory, 'summary.json'), json({ schema: SCHEMA, pass: false, synthetic: true,
+  tree.file('traversal/run.json', json(run));
+  tree.file('traversal/specs.json', json(specs));
+  tree.file(`traversal/outer/${entry.id}.json`, json(outer));
+  tree.file('traversal/outer/D3v3-01-1.json', '{broken-first-case\n');
+  tree.file('traversal/summary.json', json({ schema: SCHEMA, pass: false, synthetic: true,
     results: fullSchedule().map(item => ({ id: item.id, pass: item.id === entry.id })) }));
-  writeRunManifest(directory);
-  await add('bad-first-continues-through-last', 'traversal', { directory: 'archive-fixtures/traversal', badRootManifest: false });
+  treeManifest(tree, 'traversal/');
+  add('bad-first-continues-through-last', 'traversal', { directory: 'archive-fixtures/traversal', badRootManifest: false });
   for (const [name, badRootManifest, swappedPublisher] of [['bad-root', true, false], ['swapped-publisher', false, true]]) {
-    const target = path.join(root, name);
-    fs.cpSync(directory, target, { recursive: true, errorOnExist: true });
-    fs.unlinkSync(path.join(target, 'manifest.json'));
-    if (swappedPublisher) exclusive(path.join(target, 'outer', 'D3v3-P2.json'), json({ ...outer, entry: fullSchedule().find(item => item.id === 'D3v3-P2') }));
-    if (badRootManifest) exclusive(path.join(target, 'manifest.json'), json({ schema: 'diagnostic-settlement-run-manifest-v3', entries: [] }));
-    else writeRunManifest(target);
-    await add(name, 'traversal', { directory: `archive-fixtures/${name}`, badRootManifest, swappedPublisher });
+    for (const [key, value] of [...tree.entries]) if (key === 'traversal' || key.startsWith('traversal/')) tree.entries.set(`${name}${key.slice('traversal'.length)}`, value);
+    if (swappedPublisher) tree.file(`${name}/outer/D3v3-P2.json`, json({ ...outer, entry: fullSchedule().find(item => item.id === 'D3v3-P2') }));
+    if (badRootManifest) tree.file(`${name}/manifest.json`, json({ schema: 'diagnostic-settlement-run-manifest-v3', entries: [] }));
+    else treeManifest(tree, `${name}/`);
+    add(name, 'traversal', { directory: `archive-fixtures/${name}`, badRootManifest, swappedPublisher });
   }
-  await add('complete-saved-envelope', 'snapshot', snapshot);
+  add('complete-saved-envelope', 'snapshot', snapshot);
   for (const name of ['schema', 'id', 'owner', 'requests', 'lateJournal', 'gates']) {
     const input = structuredClone(snapshot); delete input[name];
-    await add(`missing-snapshot-${name}`, 'snapshot', input, false);
+    add(`missing-snapshot-${name}`, 'snapshot', input, false);
   }
-  await add('consumer-valid', 'consumer', snapshot);
+  add('consumer-valid', 'consumer', snapshot);
   for (const kind of ['missing', 'duplicate', 'identity', 'deadline', 'before-freeze', 'deadline-first']) {
     const input = structuredClone(snapshot);
     const index = input.trace.findIndex(fact => fact.event === 'consumer-after-await');
@@ -958,35 +1012,62 @@ export async function runArchiveSelfTests(output, metadata) {
     if (kind === 'deadline') input.trace[index].receiptNs = input.reports.publication.deadlineNs;
     if (kind === 'before-freeze') input.trace[index].receiptNs = String(BigInt(input.reports.publication.frozenNs) - 1n);
     if (kind === 'deadline-first') input.reports.publication.deadlineNs = input.reports.publication.frozenNs;
-    await add(`consumer-${kind}`, 'consumer', input, kind === 'deadline-first');
+    add(`consumer-${kind}`, 'consumer', input, kind === 'deadline-first');
   }
-  await add('publisher-preflight-binding', 'binding', { run, entry, spec, outer });
-  await add('publisher-case-swap-binding', 'binding', { run, entry: fullSchedule().find(item => item.id === 'D3v3-P2'), spec: specs.find(item => item.id.caseId === 'D3v3-P2'), outer }, false);
+  for (const kind of ['early', 'deadline', 'late-freeze']) for (const [offset, delta] of [['minus-one', -1n], ['equal', 0n], ['plus-one', 1n]]) {
+    const input = structuredClone(snapshot), report = input.reports.publication;
+    const frozen = BigInt(report.frozenNs);
+    report.deadlineNs = String(kind === 'early' ? frozen + 1_000_000_000n : kind === 'deadline' ? frozen : frozen - 1n);
+    input.trace.find(fact => fact.event === 'consumer-after-await').receiptNs = String(frozen + BigInt(CONSUMER_POLICY.budgetNs) + delta);
+    add(`consumer-budget-${kind}-${offset}`, 'consumer', input, delta < 0n);
+  }
+  for (const [offset, delta] of [['minus-one', -1n], ['equal', 0n], ['plus-one', 1n]]) {
+    const input = structuredClone(snapshot), report = input.reports.publication;
+    report.deadlineNs = String(BigInt(report.frozenNs) + 50_000_000n);
+    input.trace.find(fact => fact.event === 'consumer-after-await').receiptNs = String(BigInt(report.deadlineNs) + delta);
+    add(`consumer-original-deadline-${offset}`, 'consumer', input, delta < 0n);
+  }
+  add('publisher-preflight-binding', 'binding', { run, entry, spec, outer });
+  add('publisher-case-swap-binding', 'binding', { run, entry: fullSchedule().find(item => item.id === 'D3v3-P2'), spec: specs.find(item => item.id.caseId === 'D3v3-P2'), outer }, false);
   for (const [name, mutate, accepted] of [['exact', bytes => bytes, true], ['crlf', bytes => Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')), true],
     ['content-tamper', bytes => Buffer.concat([bytes, Buffer.from('// changed input\n')]), false]]) {
-    const target = path.join(root, `sources-${name}`);
-    fs.mkdirSync(path.join(target, 'sources'), { recursive: true });
+    tree.directory(`sources-${name}/sources`);
     const sourceRun = { ...metadata, sourceHashes: {} };
     for (const file of SOURCE_FILES) {
-      const bytes = mutate(fs.readFileSync(path.join(output, 'sources', file)));
-      exclusive(path.join(target, 'sources', file), bytes); sourceRun.sourceHashes[file] = hash(bytes);
+      const bytes = mutate(sourceBytes[file]);
+      tree.file(`sources-${name}/sources/${file}`, bytes); sourceRun.sourceHashes[file] = hash(bytes);
     }
-    await add(`source-${name}`, 'sources', { directory: `archive-fixtures/sources-${name}`, run: sourceRun }, accepted);
+    add(`source-${name}`, 'sources', { directory: `archive-fixtures/sources-${name}`, run: sourceRun }, accepted);
   }
-  const publicationDirectory = path.join(root, 'publication-target');
-  createDirectory(publicationDirectory);
+  const publicationDirectory = paths.join(root, 'publication-target');
+  tree.directory('publication-target');
   const bytes = Buffer.from('{}\n');
-  exclusive(path.join(publicationDirectory, 'fixture.json'), bytes);
-  exclusive(path.join(publicationDirectory, 'manifest.json'), json({ schema: PUBLICATION_MANIFEST, id: spec.id,
+  tree.file('publication-target/fixture.json', bytes);
+  tree.file('publication-target/manifest.json', json({ schema: PUBLICATION_MANIFEST, id: spec.id,
     archiveAttemptId: 'path-fixture', snapshotOrdinal: 0, entries: [{ path: 'fixture.json', bytes: bytes.length, sha256: hash(bytes) }] }));
-  await add('publication-real-root', 'publication-root', { directory: 'archive-fixtures/publication-target', id: spec.id });
-  fs.symlinkSync(publicationDirectory, path.join(root, 'publication-symlink'), process.platform === 'win32' ? 'junction' : 'dir');
-  await add('publication-symlink-root', 'publication-root', { directory: 'archive-fixtures/publication-symlink', id: spec.id }, false);
-  createDirectory(path.join(root, 'ancestor-target'));
-  fs.cpSync(publicationDirectory, path.join(root, 'ancestor-target', 'publication-target'), { recursive: true, errorOnExist: true });
-  fs.symlinkSync(path.join(root, 'ancestor-target'), path.join(root, 'ancestor-symlink'), process.platform === 'win32' ? 'junction' : 'dir');
-  await add('publication-symlink-ancestor', 'publication-root', { directory: 'archive-fixtures/ancestor-symlink/publication-target', id: spec.id }, false);
+  add('publication-real-root', 'publication-root', { directory: 'archive-fixtures/publication-target', id: spec.id });
+  tree.symlink('publication-symlink', publicationDirectory, 'dir');
+  add('publication-symlink-root', 'publication-root', { directory: 'archive-fixtures/publication-symlink', id: spec.id }, false);
+  tree.directory('ancestor-target/publication-target');
+  for (const [key, value] of [...tree.entries]) if (key.startsWith('publication-target/')) tree.entries.set(`ancestor-target/${key}`, value);
+  tree.symlink('ancestor-symlink', paths.join(root, 'ancestor-target'), 'dir');
+  add('publication-symlink-ancestor', 'publication-root', { directory: 'archive-fixtures/ancestor-symlink/publication-target', id: spec.id }, false);
   assert.deepEqual(cases.map(item => [item.id, item.operation, item.expectedAccepted]), ARCHIVE_FIXTURES, 'archive fixture schedule differs');
+  return { tree, cases };
+}
+
+function archivedSourceBytes(output) {
+  return Object.fromEntries(SOURCE_FILES.map(name => [name, fileBytes(path.join(output, 'sources', name), 2 * 1024 * 1024)]));
+}
+
+export async function runArchiveSelfTests(output, metadata) {
+  const { tree, cases } = await buildArchiveFixtures(metadata, archivedSourceBytes(output));
+  materializeTree(path.join(output, 'archive-fixtures'), tree);
+  for (const fixture of cases) {
+    try { fixture.actual = { accepted: true, result: await evaluateArchiveFixture(fixture, output) }; }
+    catch (error) { fixture.actual = { accepted: false, error: String(error.message) }; }
+    fixture.pass = fixture.actual.accepted === fixture.expectedAccepted;
+  }
   return { pass: cases.every(item => item.pass), attempted: cases.length, passed: cases.filter(item => item.pass).length,
     synthetic: true, realNodeCases: 0, cases };
 }
@@ -1051,45 +1132,107 @@ export function verifyConsumerReceipts(snapshot, names) {
     const received = BigInt(fact.receiptNs), frozen = BigInt(report.frozenNs), deadline = BigInt(report.deadlineNs);
     assert(received >= frozen, `consumer clock precedes report freeze: ${name}`);
     const beforeDeadline = frozen < deadline;
+    const deliveryDeadline = frozen + BigInt(CONSUMER_POLICY.budgetNs);
+    assert(received < deliveryDeadline, `consumer continuation reached or exceeded independent delivery deadline: ${name}`);
     if (beforeDeadline) assert(received < deadline, `consumer continuation reached or exceeded report deadline: ${name}`);
     receipts.push({ name, reportId: report.reportId, receiptFactId: fact.factId,
-      frozenToConsumerNs: String(received - frozen), status: beforeDeadline ? 'within-report-deadline' : 'delivery-budget-unresolved' });
+      policy: CONSUMER_POLICY.schema, deliveryDeadlineNs: String(deliveryDeadline),
+      freezeDeadlineDeltaNs: String(frozen - deadline), frozenToConsumerNs: String(received - frozen),
+      originalDeadlineRequired: beforeDeadline, status: 'within-consumer-budget' });
   }
   return receipts;
 }
 
+function canonicalFixtureOutcome(actual, operation, output, run) {
+  const normalized = structuredClone(actual);
+  if (operation === 'sources' && normalized.accepted) normalized.result = normalized.result.map(item => ({ ...item,
+    trustedSha256: run.sourceHashes[item.file], exact: item.archivedSha256 === run.sourceHashes[item.file],
+    crlfOnly: item.archivedSha256 !== run.sourceHashes[item.file] }));
+  const prefixes = [output, run.outputDirectory].map(value => value.replaceAll('\\', '/').replace(/\/+/g, '/').replace(/\/$/, ''));
+  return JSON.parse(JSON.stringify(normalized, (key, value) => {
+    if (typeof value !== 'string' || !['error', 'artifactDirectory', 'outputDirectory', 'entryPath'].includes(key)) return value;
+    const portable = value.replaceAll('\\', '/').replace(/\/+/g, '/');
+    if (key === 'error') return prefixes.reduce((result, prefix) => result.replaceAll(`${prefix}/`, '<evidence>/'), portable);
+    const prefix = prefixes.find(candidate => portable === candidate || portable.startsWith(`${candidate}/`));
+    return prefix === undefined ? portable : `<evidence>${portable.slice(prefix.length)}`;
+  }));
+}
+
+export function verifySourceFixtureResult(actual, replay, producerSourceHashes) {
+  assert(Array.isArray(actual) && Array.isArray(replay), 'source fixture result is not an array');
+  assert.deepEqual(actual.map(item => item.file), SOURCE_FILES, 'saved source result inventory differs');
+  assert.deepEqual(replay.map(item => item.file), SOURCE_FILES, 'replayed source result inventory differs');
+  for (const [index, item] of actual.entries()) {
+    ownKeys(item, ['file', 'archivedSha256', 'trustedSha256', 'exact', 'crlfOnly'], 'saved source result');
+    assert.equal(item.archivedSha256, replay[index].archivedSha256, `saved source archive bytes differ: ${item.file}`);
+    assert.equal(item.trustedSha256, producerSourceHashes[item.file], `saved source trusted hash differs: ${item.file}`);
+    assert.equal(item.exact, item.archivedSha256 === item.trustedSha256, `saved source exact flag differs: ${item.file}`);
+    assert.equal(item.crlfOnly, !item.exact, `saved source difference flag differs: ${item.file}`);
+  }
+}
+
 export async function verifyEvidence(directory) {
   const report = { schema: SCHEMA, directory, attempted: 0, verified: 0, evidenceErrors: [], cases: [], consumerDeliveries: [], pass: false };
+  const selfTestCounts = {};
   try { report.manifest = verifyRunManifest(directory); }
   catch (error) { report.evidenceErrors.push({ id: 'shared-manifest', error: String(error.message) }); }
   let run;
   try { run = readJSON(path.join(directory, 'run.json')); report.sources = verifySources(directory, run); }
   catch (error) { report.evidenceErrors.push({ id: 'shared-input', error: String(error.message) }); }
   if (run?.mode === 'self-test') {
-    for (const name of ['oracle', 'core', 'files', 'archives']) {
+    for (const name of ['oracle', 'core', 'boundaries', 'files', 'archives']) {
       report.attempted += 1;
       try {
-        const saved = readJSON(path.join(directory, `${name}-tests.json`));
+        const saved = parseUtf8(fileBytes(path.join(directory, `${name}-tests.json`), name === 'boundaries' ? 128 * 1024 * 1024 : 64 * 1024 * 1024), `${name} self-test`);
         assert(saved.pass && saved.attempted === saved.passed && Array.isArray(saved.cases), `${name} self-test failed`);
         assert.equal(saved.cases.length, saved.attempted, `${name} fixture inventory differs`);
+        selfTestCounts[name] = { attempted: saved.attempted, passed: saved.passed };
         if (name === 'oracle') assert.deepEqual(saved, runOracleSelfTests(), 'saved oracle fixtures differ from trusted pure replay');
         if (name === 'core') assert.deepEqual(saved, await runCoreSelfTests(), 'saved virtual-clock fixtures differ from trusted replay');
+        if (name === 'boundaries') assert.deepEqual(saved, await runBoundarySelfTests(), 'saved boundary fixtures differ from trusted replay');
         if (name === 'files') {
+          ownKeys(saved, ['pass', 'attempted', 'passed', 'cases'], 'saved file test report');
           assert.deepEqual(saved.cases.map(entry => [entry.id, entry.expected]), FILE_FIXTURES, 'file fixture schedule differs');
-          for (const entry of saved.cases) {
-          assert(entry.pass && !entry.actual.setupError, `file fixture not established: ${entry.id}`);
-          const request = { ...entry.request, artifactDirectory: path.join(directory, 'file-fixtures', entry.id) };
-          let accepted = false;
-          try { verifyPayloadDirectory(request); accepted = true; } catch {}
-          assert.equal(accepted, entry.expected === 'accept', `file fixture verdict differs: ${entry.id}`);
+          const trusted = buildFileFixtures(run.outputDirectory, fileFixtureIdentity(run), run.platform === 'win32' ? path.win32 : path.posix);
+          verifyFixtureTree(path.join(directory, 'file-fixtures'), trusted.tree, 'file fixtures');
+          for (const [index, entry] of saved.cases.entries()) {
+            ownKeys(entry, ['id', 'request', 'expected', 'actual', 'pass'], 'saved file fixture');
+            const { actual, pass, ...definition } = entry;
+            assert.deepEqual(definition, trusted.cases[index], `file fixture input differs from trusted definition: ${entry.id}`);
+            assert(pass && !actual.setupError, `file fixture not established: ${entry.id}`);
+            if (entry.id === 'normal') {
+              assert.equal(actual.result?.manifestSha256,
+                hash(fileBytes(path.join(directory, 'file-fixtures', entry.id, 'manifest.json'), 512 * 1024)),
+                `saved file manifest result differs: ${entry.id}`);
+            }
+            const request = { ...trusted.cases[index].request, artifactDirectory: path.join(directory, 'file-fixtures', entry.id) };
+            let replay;
+            try { replay = { accepted: true, result: verifyPayloadDirectory(request) }; }
+            catch (error) { replay = { accepted: false, error: String(error.message) }; }
+            assert.equal(replay.accepted, entry.expected === 'accept', `file fixture verdict differs: ${entry.id}`);
+            assert.deepEqual(canonicalFixtureOutcome(actual, 'file', run.outputDirectory, run),
+              canonicalFixtureOutcome(replay, 'file', directory, run), `saved file fixture outcome differs: ${entry.id}`);
           }
         }
         if (name === 'archives') {
+          ownKeys(saved, ['pass', 'attempted', 'passed', 'synthetic', 'realNodeCases', 'cases'], 'saved archive test report');
+          assert.equal(saved.synthetic, true);
+          assert.equal(saved.realNodeCases, 0);
           assert.deepEqual(saved.cases.map(item => [item.id, item.operation, item.expectedAccepted]), ARCHIVE_FIXTURES, 'archive fixture schedule differs');
-          for (const fixture of saved.cases) {
-            let accepted = false;
-            try { await evaluateArchiveFixture(fixture, directory); accepted = true; } catch {}
-            assert.equal(accepted, fixture.expectedAccepted, `archive fixture verdict differs: ${fixture.id}`);
+          const trusted = await buildArchiveFixtures(run, archivedSourceBytes(directory));
+          verifyFixtureTree(path.join(directory, 'archive-fixtures'), trusted.tree, 'archive fixtures');
+          for (const [index, fixture] of saved.cases.entries()) {
+            ownKeys(fixture, ['id', 'operation', 'input', 'expectedAccepted', 'actual', 'pass'], 'saved archive fixture');
+            const { actual, pass, ...definition } = fixture;
+            assert.deepEqual(definition, trusted.cases[index], `archive fixture input differs from trusted definition: ${fixture.id}`);
+            assert(pass && !actual.setupError, `archive fixture not established: ${fixture.id}`);
+            let replay;
+            try { replay = { accepted: true, result: await evaluateArchiveFixture(trusted.cases[index], directory) }; }
+            catch (error) { replay = { accepted: false, error: String(error.message) }; }
+            assert.equal(replay.accepted, fixture.expectedAccepted, `archive fixture verdict differs: ${fixture.id}`);
+            if (fixture.operation === 'sources' && replay.accepted) verifySourceFixtureResult(actual.result, replay.result, run.sourceHashes);
+            assert.deepEqual(canonicalFixtureOutcome(actual, fixture.operation, directory, run),
+              canonicalFixtureOutcome(replay, fixture.operation, directory, run), `saved archive fixture outcome differs: ${fixture.id}`);
           }
         }
         report.verified += 1;
@@ -1166,11 +1309,17 @@ export async function verifyEvidence(directory) {
     const summary = readJSON(path.join(directory, 'summary.json'));
     assert.equal(summary.schema, SCHEMA);
     assert.equal(summary.pass, true, 'saved summary reports failure');
+    if (run?.mode === 'self-test') {
+      ownKeys(summary, ['schema', 'mode', 'pass', 'counts', 'realNodeCases', 'nativeProcesses', 'pty'], 'self-test summary');
+      assert.equal(summary.mode, 'self-test');
+      assert.deepEqual(summary.counts, selfTestCounts, 'saved self-test counts differ from independent groups');
+      assert.equal(summary.realNodeCases, 0); assert.equal(summary.nativeProcesses, 0); assert.equal(summary.pty, false);
+    }
     if (run?.mode === 'full') assert.deepEqual(summary.results.map(item => item.id), fullSchedule().map(item => item.id), 'summary schedule differs');
   } catch (error) { report.evidenceErrors.push({ id: 'summary', error: String(error.message) }); }
   report.pass = report.attempted > 0 && report.verified === report.attempted && report.evidenceErrors.length === 0;
-  report.boundedConsumerDelivery = report.consumerDeliveries.length > 0 && report.consumerDeliveries.every(item => item.receipts.every(receipt => receipt.status === 'within-report-deadline'));
-  report.acceptanceReady = report.pass && report.boundedConsumerDelivery;
+  report.boundedConsumerDelivery = report.consumerDeliveries.length > 0 && report.consumerDeliveries.every(item => item.receipts.every(receipt => receipt.status === 'within-consumer-budget'));
+  report.acceptanceReady = run?.mode === 'full' && run.syntheticArchiveFixture !== true && report.pass && report.boundedConsumerDelivery;
   return report;
 }
 

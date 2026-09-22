@@ -23,7 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `docs/design-docs/runtime-diagnostic-settlement-contract.md` | 本地实施与审计：D4固定16项及语义篡改通过，D3冻结覆盖与消费预算未闭合；不运行真实36+2+4或新runner | 执行编排域、VSCode 集成域 / 适配与基础设施层、共享模型与编排层 | 比较中 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-exit-integrity-native-candidates.md` | 2026-09-22 |
+| `docs/design-docs/runtime-diagnostic-settlement-contract.md` | 确定性覆盖增量：D3新增156项及100ms独立消费判据，D4补迟到创建/使用结算；剩余容量及完整工具门槛开放，无新原生/runner | 执行编排域、VSCode 集成域 / 适配与基础设施层、共享模型与编排层 | 比较中 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-exit-integrity-native-candidates.md` | 2026-09-22 |
 | `docs/design-docs/runtime-exit-integrity-native-runners.md` | 三平台原生 PTY/ConPTY 最小基线已跑通，保留首轮 oracle/资源失败；Windows 显式事后清理不代表自然退出或产品完整性验收 | 执行编排域、VSCode 集成域 / 适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-exit-integrity-native-runners.md` | 2026-09-20 |
 | `docs/design-docs/runtime-exit-integrity-native-candidates.md` | 旧证据保留；D3 v3/D4 v2本地工具初版与审计修正推进，冻结覆盖及真实矩阵仍开放，整体交付未完成 | 执行编排域、VSCode 集成域 / 适配与基础设施层 | 比较中 | 验证中 | `docs/exec-plans/active/runtime-exit-integrity-native-candidates.md` | 2026-09-22 |
 | `docs/design-docs/runtime-execution-lifecycle-contract.md` | 五类事实与迟到补证；新诊断本地实现/审计推进，首报前缀、owner与消费边界仍待闭合，未提供生产或原生新验证 | 执行编排域、VSCode 集成域 / 适配与基础设施层、共享模型与编排层、宿主集成层、画布呈现层 | 比较中 | 验证中 | `docs/exec-plans/active/runtime-exit-integrity-native-candidates.md` | 2026-09-22 |

@@ -70,7 +70,18 @@ export function makeFixture(entry, runId) {
       reject('dispatch-release', { owner: A, operationId: releaseId(A), resourceIds: [] }, 'create-not-sealed');
       reject('seal-create', { owner: A, createOperationId: createId(A), resourceIds: [] }, 'create-not-reported');
       reserve(B); reject('reserve', { owner: C, createOperationId: createId(C) }, 'capacity');
-      unknown(A, 'create', createId(A)); break;
+      unknown(A, 'create', createId(A)); dispatchCreate(B); unknown(B, 'create', createId(B));
+      reject('report-create', { owner: A, createOperationId: createId(B), outcome: 'failed' }, 'operation-mismatch');
+      report(A, 'failed');
+      add('observe-unknown', { owner: A, subject: { kind: 'create', id: createId(A) }, reason: 'after-late-report' }, 'reused');
+      reject('reopen', { expectedGeneration: 'generation-1' }, 'unknown-still-retained'); seal(A, []);
+      reject('reserve', { owner: C, createOperationId: createId(C) }, 'unknown-quarantine');
+      reject('reopen', { expectedGeneration: 'generation-1' }, 'unknown-still-retained');
+      acquire(B, 'pipe'); report(B, 'success');
+      reject('reopen', { expectedGeneration: 'generation-1' }, 'unknown-still-retained'); seal(B, ['pipe']);
+      reject('reserve', { owner: C, createOperationId: createId(C) }, 'unknown-quarantine'); release(B, ['pipe']);
+      reject('reserve', { owner: C, createOperationId: createId(C) }, 'unknown-quarantine');
+      add('reopen', { expectedGeneration: 'generation-1' }); reserve(C); break;
     case 'D4v2-03':
       reserve(A); dispatchCreate(A); acquire(A, 'pipe'); report(A, 'failed');
       reject('seal-create', { owner: A, createOperationId: createId(A), resourceIds: [] }, 'acquisition-set-mismatch');
@@ -98,9 +109,15 @@ export function makeFixture(entry, runId) {
       add('begin-use', first); add('begin-use', second); request(A);
       const dispatch = { owner: A, operationId: releaseId(A), resourceIds: kinds.map((kind) => resourceId(A, kind)) };
       reject('dispatch-release', dispatch, 'uses-in-flight');
+      unknown(A, 'use', first.tokenId, 'first-use-deadline'); unknown(A, 'use', second.tokenId, 'second-use-deadline');
       reject('end-use', { ...end(first), tokenId: `${A.allocationId}/stranger-token` }, 'token-mismatch');
       add('end-use', end(first)); reject('end-use', end(first), 'token-already-ended'); reject('dispatch-release', dispatch, 'uses-in-flight');
-      add('end-use', end(second)); dispatchRelease(A); kinds.forEach((kind) => add('release-evidence', receipt(A, kind))); break;
+      add('observe-unknown', { owner: A, subject: { kind: 'use', id: second.tokenId }, reason: 'after-first-use-ended' }, 'reused');
+      reject('reopen', { expectedGeneration: 'generation-1' }, 'unknown-still-retained'); add('end-use', end(second));
+      reject('reserve', { owner: B, createOperationId: createId(B) }, 'unknown-quarantine');
+      dispatchRelease(A); kinds.forEach((kind) => add('release-evidence', receipt(A, kind)));
+      reject('reserve', { owner: B, createOperationId: createId(B) }, 'unknown-quarantine');
+      add('reopen', { expectedGeneration: 'generation-1' }); reserve(B); break;
     }
     case 'D4v2-07':
       ready(A); request(A); dispatchRelease(A); add('release-evidence', receipt(A, 'pipe'));

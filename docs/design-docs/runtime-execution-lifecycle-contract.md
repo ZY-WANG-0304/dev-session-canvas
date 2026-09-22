@@ -21,7 +21,7 @@ updated_at: 2026-09-22
 
 ## 1. 状态、目的与非目标
 
-当前更新见第24节及 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第12节：新入口已进入本地实施与审计，D4全账有确定性证据，D3冻结覆盖、首报/owner重放和消费验收边界尚未闭合。本阶段不运行D3真实36+2+4、不新增runner、不推送；旧结果与本契约比较中/验证中状态不变，不以模型/文件自测替代native或产品验收。
+当前更新以 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第13节为准：D4新增创建/使用unknown迟到轨迹，D3推进确定性边界、归档类别绑定和三处oracle误判修正，独立100ms消费判据不改变原deadline。第24节及契约第12节保留上一输入；剩余容量和完整工具验收仍开放。本阶段不运行D3真实36+2+4、不新增runner、不推送；旧结果与本契约比较中/验证中状态不变，不以模型/文件自测替代native或产品验收。
 
 本设计是 `docs/design-docs/runtime-exit-integrity-native-candidates.md` 第30节之后的候选契约 v1，不是已部署接口，也不授权直接接入业务。已有证据支持 Unix 独占读取、macOS 自然路径 kqueue 关闭和 Windows bundled HPCON 最终 Close 的局部可行性；没有证明取消、异常、并发或全部支持环境的生产完整性。本文将这些证据转换为明确的职责、结果和可检验偏序，整体仍比较中/验证中。
 

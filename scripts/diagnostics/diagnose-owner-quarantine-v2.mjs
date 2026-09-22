@@ -345,6 +345,46 @@ function semanticMutations(cases) {
   add('erase-first-unknown', get('D4v2-08'), (e) => {
     for (const step of e.steps) for (const item of step.ledger.unknowns) item.first = { commandId: step.command.commandId, reason: 'new-first' };
   });
+  add('create-report-resolves-unknown', get('D4v2-02'), (e) => {
+    const step = e.steps.find((item) => item.command.kind === 'report-create' && item.result.status === 'accepted');
+    const unknown = step.ledger.unknowns.find((item) => item.subject.id === step.command.args.createOperationId);
+    unknown.resolvedBy = step.command.commandId;
+    step.ledger.unknownCount = new Set(step.ledger.unknowns.filter((item) => item.resolvedBy === null).map((item) => item.owner.allocationId)).size;
+  });
+  add('create-report-returns-slot', get('D4v2-02'), (e) => {
+    const step = e.steps.find((item) => item.command.kind === 'report-create' && item.result.status === 'accepted');
+    const owner = step.ledger.owners.find((item) => item.allocationId === step.command.args.owner.allocationId);
+    owner.slotHeld = false; owner.returnedBy = step.command.commandId;
+    step.ledger.occupied = step.ledger.owners.filter((item) => item.slotHeld).length;
+  });
+  add('use-end-resolves-other-token', get('D4v2-06'), (e) => {
+    const step = e.steps.find((item) => item.command.kind === 'end-use' && item.result.status === 'accepted');
+    const other = step.ledger.unknowns.find((item) => item.subject.kind === 'use' && item.resolvedBy === null);
+    other.resolvedBy = step.command.commandId; step.ledger.unknownCount = 0;
+  });
+  add('use-end-returns-slot', get('D4v2-06'), (e) => {
+    const step = e.steps.findLast((item) => item.command.kind === 'end-use' && item.result.status === 'accepted');
+    const owner = step.ledger.owners.find((item) => item.allocationId === step.command.args.owner.allocationId);
+    owner.slotHeld = false; owner.returnedBy = step.command.commandId;
+    step.ledger.occupied = step.ledger.owners.filter((item) => item.slotHeld).length;
+  });
+  for (const [kind, caseId] of [['create', 'D4v2-02'], ['use', 'D4v2-06']]) {
+    add(`${kind}-late-proof-erases-first`, get(caseId), (e) => {
+      for (const step of e.steps) {
+        for (const item of step.ledger.unknowns.filter((item) => item.subject.kind === kind && item.resolvedBy !== null)) {
+          item.first = { commandId: item.resolvedBy, reason: 'late-proof-replaces-first' };
+        }
+        for (const event of step.events.filter((event) => event.type === 'unknown-resolved' && event.details.subject.kind === kind)) {
+          event.details.first = { commandId: event.details.resolvedBy, reason: 'late-proof-replaces-first' };
+        }
+      }
+    });
+    add(`${kind}-late-proof-reopens-admission`, get(caseId), (e) => {
+      const step = e.steps.find((item) => item.ledger.unknowns.some((unknown) => unknown.subject.kind === kind)
+        && item.ledger.unknownCount === 0 && item.ledger.admissionBlocked);
+      step.ledger.admissionBlocked = false;
+    });
+  }
   add('fake-batch-application', get('D4v2-04'), (e) => {
     for (const step of e.steps) for (const item of step.ledger.uses) { item.applied = true; item.batchId = 'forged-batch'; }
   });

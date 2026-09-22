@@ -204,7 +204,12 @@ function replay(input) {
         const newline = bytes.indexOf(10, offset);
         const end = newline < 0 ? bytes.length : newline + 1;
         const length = stream.pending.length + end - offset;
-        if (length > 4096) { issue('frame-capacity'); stream.pending = Buffer.alloc(0); break; }
+        if (length > 4096 || (newline < 0 && length === 4096)) {
+          issue('frame-capacity'); stream.pending = Buffer.alloc(0);
+          if (newline < 0) break;
+          offset = end;
+          continue;
+        }
         stream.pending = Buffer.concat([stream.pending, bytes.subarray(offset, end)]);
         offset = end;
         if (newline < 0) break;
@@ -384,8 +389,11 @@ export function verifySavedCase(input) {
       check(e0 >= capture.at, 'evidence-before-capture');
       for (const name of ['observation', 'processSettlement']) check(e0 >= (result.reports.get(name)?.at ?? e0 + 1n), `evidence-before-${name}`);
     }
-    const captureFailed = caller.errors.some(e => e.category !== 'lifecycle' && (!capture || e.at <= capture.at));
-    const captureComplete = !captureFailed && !overflow && completeBy(caller, processDeadline);
+    // Capture is a first observation too: later exit/EOF cannot repair its cutoff.
+    const capturePrefix = replay({ ...input, trace: input.trace.filter(fact => fact.eventOrdinal <= (capture?.ordinal ?? 0)) });
+    const captureFailed = capturePrefix.roles.caller.errors.some(e => e.category !== 'lifecycle');
+    const captureComplete = Boolean(capture && capture.at < processDeadline && !captureFailed && !capturePrefix.overflow &&
+      completeBy(capturePrefix.roles.caller, processDeadline));
     if (capture) check(capture.integrity === (captureFailed ? 'failed' : captureComplete ? 'complete' : 'incomplete'), 'capture-integrity');
     const hard = e0 + 2000n * NS;
     const writer = helperResult(roles.writer, e0, hard, 'seal-claim');
@@ -413,7 +421,8 @@ export function verifySavedCase(input) {
     }
     const evidence = input.reports?.evidenceSettlement;
     checkReport(result, evidence, 'evidenceSettlement', integrity, hard, e0);
-    const artifactVerified = Boolean(roles.verifier.terminal?.frame.type === 'verified' && roles.verifier.errors.length === 0);
+    const artifactVerified = Boolean(roles.verifier.terminal?.frame.type === 'verified' &&
+      !roles.verifier.errors.some(error => !error.category || error.category === 'protocol'));
     check(evidence?.artifactVerified === artifactVerified, 'artifact-proof-flag');
     verifyLedgers(input, full, result, evidence, ['writer', 'verifier']);
     for (const role of ['caller', 'writer', 'verifier']) for (const action of roles[role].controls) {
