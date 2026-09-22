@@ -382,6 +382,7 @@ class SettlementOwner {
       });
       this.registerReaders(state);
       child.stdin?.end(encoded);
+      if (role === 'caller' && this.spec.scenario === 'D3v3-05') ack?.end();
     } catch (error) {
       this.registerReaders(state);
       this.childError(state, error, Boolean(state.child));
@@ -639,6 +640,8 @@ class SettlementOwner {
       const returned = stream.write(`${JSON.stringify(ack)}\n`);
       this.record('ack-sent', state, { forType, ack, returned }, true);
       if (forType.endsWith('-entered')) state.enteredAcknowledged = true;
+      // A pending fs.read in the child cannot finish until this writer sends EOF.
+      if (forType === 'caller-after-await' || forType.endsWith('-entered')) stream.end();
     } catch (error) {
       this.record('ack-error', state, { forType, error: normalizeError(error) }, true);
       this.evidenceErrors.add(`${state.role}-ack-error`);

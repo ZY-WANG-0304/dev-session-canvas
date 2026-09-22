@@ -14,14 +14,14 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity-native-candidates.md
-updated_at: 2026-09-22
+updated_at: 2026-09-23
 ---
 
 # 执行会话 Provider 与 Adapter 生命周期契约
 
 ## 1. 状态、目的与非目标
 
-当前以 `runtime-diagnostic-settlement-contract.md` 第16节为准：预期截断汇总已修，首次Linux真实Node整链在180秒外层截止时终止；24条失败结算、09-1部分工件与缺失的最终归档全部保留，不是42项已完成。下一步只确认并修复诊断role的ACK自然退出候选等待环，依据固定schedule重估外层安全上限，再验证既定整链；通用容量、无限集合和任意归档兼容性不阻塞。没有新增PTY/原生API/runner或产品通过结论，后续回到W1/U1及主进程尾部、终端状态、资源和实际Agent启动链。 第18–24节及其“下一步”按历史时点保留，不恢复已撤销的通用工具前置链；本契约仍比较中/验证中。
+当前以 `runtime-diagnostic-settlement-contract.md` 第17节（2026-09-23）为准：ACK等待环已由父端EOF单变量干预确认，最小修复后13/13及主self-test通过。本轮唯一Linux42项完整执行、场景控制42/42，但可信保存验收39/42；三个08的evidence consumer超过100ms，acceptanceReady=false。下一步只处理已实测的consumer交付顺序，不恢复通用工具研究。第16节失败与旧证据保留；本轮未改业务/oracle/D4、未运行PTY/native/runner或推送，不计为产品通过。 第18–24节及其“下一步”按历史时点保留，不恢复已撤销的通用工具前置链；本契约仍比较中/验证中。
 
 本设计是 `docs/design-docs/runtime-exit-integrity-native-candidates.md` 第30节之后的候选契约 v1，不是已部署接口，也不授权直接接入业务。已有证据支持 Unix 独占读取、macOS 自然路径 kqueue 关闭和 Windows bundled HPCON 最终 Close 的局部可行性；没有证明取消、异常、并发或全部支持环境的生产完整性。本文将这些证据转换为明确的职责、结果和可检验偏序，整体仍比较中/验证中。
 
