@@ -21,7 +21,7 @@ updated_at: 2026-09-22
 
 ## 1. 已确认范围与决策状态
 
-最新本地工具增量见 `runtime-diagnostic-settlement-contract.md` 第14节：容量可达性和synthetic跨OS归档，不是新增原生结果。错误辅助数组有界性、真实Windows链接/打包传输及完整工具门槛继续开放，生产退出完整性尚未验收。
+最新本地工具增量见 `runtime-diagnostic-settlement-contract.md` 第15节：诊断错误字段/列表预算及独立缺证认证已验证，不是生产退出修复。新策略请求可达性、其他owner容器边界和真实Windows链接/打包传输继续开放，不承诺全进程内存有界，生产退出完整性尚未验收。
 
 2026-09-20，用户同意将“退出完整性”作为本次 Runtime Persistence 重构的独立交付项。它与 F-04 容量优化、F-05 取消 completed 内联分别验收；不能等其他重构完成后假定问题自然消失，也不必等待整体终端状态替代或 F-03 root 归属改造才能推进。
 
@@ -90,7 +90,7 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 ## 6. 下一步与状态
 
-当前下一步以 `runtime-diagnostic-settlement-contract.md` 第13节为准：D3新增156项确定性边界、独立100ms消费判据和归档类别绑定，D4固定16项补创建/使用unknown迟到结算；完整冻结覆盖仍有容量边界未闭合。第46节及契约第12节保留上一输入。本阶段不运行D3真实36+2+4、不新增runner、不推送；本地门槛完成后才另行确认真实矩阵。W1/U1与生产交付继续阻塞，以下历史证据仍按原范围保留，不把旧阶段“下一步”作为当前待办。
+当前下一步以 `runtime-diagnostic-settlement-contract.md` 第15节为准：错误保留边界已本地收口，接着重新评估2MiB请求可达性、listeners注册集合及单chunk sequences边界，再完成工具复审和真实归档门槛。第46节及契约第12–14节保留历史输入，D4本轮不改。不运行D3真实36+2+4、native或runner，不推送；W1/U1与生产交付继续阻塞，以下历史证据仍按原范围保留，不把旧阶段“下一步”作为当前待办。
 
 执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
 
