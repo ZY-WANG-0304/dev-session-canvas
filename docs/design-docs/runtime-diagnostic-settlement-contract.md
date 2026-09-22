@@ -19,9 +19,9 @@ updated_at: 2026-09-22
 
 ## 1. 当前阶段与证据边界
 
-本设计承接 `docs/design-docs/runtime-native-failure-isolation.md` 第17节；设计冻结输入为独立诊断树 `e1a31b79` 与运行时树 `a5f8d629`。当前本地进展见第15节，第12–14节保留先前实施与审计输入；D3 v3/D4 v2 新入口只在独立 `runtime-exit-integrity-native-candidates` 工作树实施，主运行时树仅同步文档。D3错误字段/列表现有独立保留边界与缺证标记，但不等于整个owner/RSS有界；新策略下请求容量可达性、其他容器、真实平台归档及完整工具验收仍开放，D4本轮不改。整体决策仍比较中，验证状态为验证中；不运行D3真实36+2+4、native、PTY或runner，不推送任何分支。
+本设计承接 `docs/design-docs/runtime-native-failure-isolation.md` 第17节。当前以第16节的范围纠偏为准：通用容量、listener和任意路径兼容性不再默认阻塞；预期截断汇总已修，首次Linux真实Node整链在180秒安全截止时终止，未完成42项，具体失败与候选ACK等待环见第16.4节。主运行时树仅同步文档，诊断改动在独立工作树；不改业务、D4、workflow或依赖，不运行PTY/原生API/runner，不推送。第2–15节按历史输入保留，整体方案仍比较中、验证中，不将工具结果计为产品退出验收。
 
-D3 v1/v2、D4 v1、原 workflow、断言、工件及失败全部冻结。唯一 v2 run `35676427931` 只验证来源/顺序窄修正；它没有证明完整结算、有界 unknown、writer 协议或 D4 全身份重放。本设计新增版本而不修改旧输入。W1/U1 原生矩阵须等待新工具完整审计，不因设计冻结直接启动。
+D3 v1/v2、D4 v1、原workflow、断言、工件及失败全部冻结。唯一v2 run `35676427931` 只验证来源/顺序窄修正，不证明完整结算或原生退出完整性。W1/U1只等待与其实际输入判定和实验安全直接相关的门槛；通用工具增强不能自动成为前置，具体推进按第16节，不追认旧失败。
 
 本诊断不改 Terminal/Agent 业务、旧 live 绑定、root runtime 归属或生产进程拓扑。不新增退出后历史、崩溃/重启恢复或任意后代托管。执行主体存活期间的终端输出与主体退出时自身已接收、排队、消费中的尾部仍须正确结算；实际 Agent CLI 启动包装链仍须单独验证。Windows 正常的已退出进程对象引用不是系统 bug；本设计不关闭陌生句柄、不按日志 PID 清理。
 
@@ -476,3 +476,54 @@ tamper-first的7正例、20组/34变体均满足当时判据，不能追认包�
 下一阶段先重新研究有界错误策略下2MiB writer/verifier请求的可达性，按公开API构造或给出上界，保留旧六项输入不适用的解释；再明确listeners注册集合、单chunk sequences的责任及容量边界，完成工具复审。真实Windows junction/readlink/权限、大小写/Unicode、打包上传解包和原生异平台归档仍为runner门槛。不得据本节宣布整个诊断进程内存有界、重启真实矩阵、启动W1/U1或关闭产品退出完整性；生产API/预算、实际Agent启动链、双会话、Host/Webview与packaged继续开放。
 
 收口检查覆盖两树各七份文档、三份设计YAML/索引/关联引用及12个计划章节；共享第15节一致，第2–14节正文保持原样。十份诊断源码语法和最终source hash对账通过，旧fixture/boundary/capacity、D4、业务、依赖与workflow不变。记录在主树 `.debug/diagnostic-stage15-doc-check-final.json`；独立文档复核无剩余事实冲突，不宣称全仓历史引用均通过，image.png未纳入。
+
+## 16. 收窄工具范围与整体验收纠偏（2026-09-22）
+
+本轮输入为运行时0cd0c18c与诊断17b3c869。用户指出第15节将工具通用健壮性连续升级为原生实验门槛，已偏离Terminal/Agent退出完整性；本节取代此前“2MiB可达性→listener→sequences→完整工具审计”的默认推进顺序。历史测试、原断言、失败和源快照不改，不将旧结果追认为新验收。本轮只修固定矩阵的汇总矛盾、做针对性回归并运行一次Linux既定42项真实Node整链；不改业务、D4、依赖或workflow，不推送，不运行PTY、原生API或runner。
+
+### 16.1 哪些问题阻塞下一步
+
+后续新发现必须说明如何影响本次固定输入的判定或实验安全，才可成为阻塞项；通用增强登记但不自动阻塞。以下按当前源码而非理想的通用框架分类：
+
+| 问题 | 当前分类与处理 |
+| --- | --- |
+| 预期trace截断导致整轮永远不可验收 | 判定阻塞，本轮修正；正常、预期失败与预期截断不能共用“操作必须成功/源必须完整”的判据。 |
+| 真实返回/退出/EOF、内容身份比对、实际consumer预算、owner未知后停止准入 | 判定或安全门槛，保留既有代码与预算；缺失则失败，不降低断言。 |
+| 2MiB请求在任意错误洪泛组合下的可达性 | 通用容量增强，不阻塞固定输入。真实路径不注入800次错误，writer不携带bulk正文；实际请求容量检查、拒绝及失败证据仍保留，不声称所有异常请求都低于限额。 |
+| 无限listener注册 | 固定执行入口没有subscribeLateFacts调用，注册数为零；通用API增强不阻塞当前42项。 |
+| 单chunk内任意数量的sequences | 固定08最多4296个bulk和5个其他帧，其余caller最多6帧；任意无界输入防护不阻塞。08的真实trace截断仍须按预期验证。 |
+| 任意路径/junction/大小写/Unicode/跨OS迁移组合 | 通用归档兼容性不阻塞；只核本次使用的实际路径、来源、普通文件及下载/保存后重放。使用全新、无链接祖先且由本次任务控制的目录，不声称可安全写入任意不可信路径。 |
+
+已存在的工具能力不删除，也不继续为本次交付扩展。下一阶段的优先级是固定工具链实际运行与判定，然后回到会话主进程尾部、最终终端状态、reader释放和真实Agent启动链；D4模型不能代替OS资源验收，Windows已退出对象的正常引用存续仍不是系统缺陷。
+
+### 16.2 汇总语义
+
+原代码要求08实际overflow，任何overflow又使errorDiagnosticsComplete=false，整轮却要求所有场景该值为true。这是17b3c869中的静态逻辑矛盾，不是产品缺陷或已经观测到的新平台失败。
+
+保留core和首报的errorDiagnosticsComplete，不将预期截断改成完整。CLI另按可信固定schedule计算scenarioEvidenceSufficient：普通case和全部publication阶段仍要求初始与最终独立重放成功且错误详情完整；只对main组D3v3-08的case阶段允许明确的trace-capacity截断。此例外仍要求两份oracle重放成功，after-await/ACK/bulk因果与incomplete分类满足既有场景断言，错误字段/列表无损失，control及late区无溢出；缺证、来源错误或意外错误截断不能借08标签放行。
+
+整轮acceptanceReady要求完整固定schedule的有效重放、既有consumer交付预算与各阶段scenarioEvidenceSufficient，并继续排除self-test/synthetic归档。errorDiagnosticsComplete整轮仍可为false，如实描述08的源详情；验收通过只表示固定诊断场景符合预期且证据足以判断，不表示所有操作成功，更不表示产品或原生退出完整性完成。
+
+### 16.3 本轮退出条件
+
+只新增针对当前矛盾的测试，不新建诊断框架、不穷举通用边界。先验证正常、预期失败、08预期截断可正确汇总；意外截断、缺关键因果、错误详情丢失和原consumer预算不满足仍拒绝。随后在固定Node22.23.2、Linux、受控新目录执行一次既定36主控+2gate+4publisher全链并可信保存重放，外层180秒截止及5秒强制清理只作实验安全保护，不修改任何场景预算。
+
+整链失败完整留存，定位是否直接影响本次判定/安全；不以重复运行筛绿，不因失败自动转为新的通用工具研究。以上为运行前约束，首次失败与后续窄修正如下，不宣称这42项通过。
+
+### 16.4 首次整链失败、窄修正与后续边界
+
+本轮只执行一次真实整链，固定Linux/Node22.23.2，新目录为诊断树 `.debug/settlement-v3-scope-full-first`，日志为同名 `.log`。输出目录创建前确认不存在且祖先均无符号链接。外层180秒保护返回exit124；只有01至08各三次、共24条case-settlement，全部pass=false、ownerBlocked=false。09-1已有writer工件但没有结算记录，其余17项没有启动证据；不得写成24/42成功或42项已执行。执行结束后进程列表未见该入口的role进程，此检查不证明PTY/native资源释放。
+
+正常01-1相对首条case-start接收时刻，72.696ms已经caller-finished，约73ms关闭fd3，直到5004.405ms的SIGTERM后才在5010.412ms退出。writer约5080.397ms发出seal-claim，却仍到约6012ms控制后退出，verifier未启动；该case为evidence-work-deadline及verifier-not-started-before-work-deadline，publisher也为publication-work-deadline。24项publication全部incomplete。已看到的及时observation/部分consumer不能替代整轮消费预算证明，ownerBlocked=false也不等于自然退出成功。
+
+源码核对发现候选等待环：子端 `createRoleIO().close()` 对fd4的fs.ReadStream调用destroy；固定Node内置 `internal/fs/streams` 的_destroy在已有读取时等待kIoDone，不取消在途fs.read；父端则在 `childExit()` 才对fd4执行end。原始trace证明工作已声明完成却等待控制退出，但没有直接记录在途read，故本轮只认定有源码支持的候选根因，未做因果干预确认。它是诊断role问题，不能外推为Terminal/Agent或Linux系统缺陷；Windows/macOS未实测，亦不排除同类问题。
+
+运行被截断前尚未形成summary、outer最终快照及共享manifest。可信入口保存复核 `-verification.json` 为42个schedule检查/0 verified、acceptanceReady=false；42是检查次数，不是执行数。只读分析 `-analysis.json` 保留170个现存文件的hash、7份源匹配、原始时序及内置Node源码摘录，不补造缺失的正式归档。原始log SHA256为 `4d0811540696046b363b1732135a34d0fe869710c30004a61db839bbdc49467c`，analysis SHA256为 `6258ba942e6b54a0b70d98bd41b6d010024c428a25cc7f3133b3e5b002e3343f`。
+
+三个08的既有oracle允许其明确incomplete，但真实记录同时缺verifier。为防止将helper失败混入预期trace例外，本轮只收紧新汇总：必须artifactVerified，writer/verifier均有原预算内exit0/null、无控制且三个输出流end而未取消；相关原始事实仍由未改的oracle核对。capture因trace截断产生incomplete、主动取消或原hard截止不被改写成完整，也不要求captureComplete。最终针对性8/8通过；同一份partial case输入另以新判据核对，08三项均sufficient=false。此项是保存case的局部检查，不是补造两份最终快照或完整run重放。
+
+真实运行及此前 `settlement-v3-scope-selftest-final` 使用CLI SHA256 `acd97b72242b69cf17daf8fb4d69be904d27943b828dc585cdfb8aa99042b45c`。追加helper条件后的最终CLI SHA256为 `4c79c9259b2bf2b8c14a087fa010aff7dcaecdaf097d7710a696c30d73194e14`，唯一新增测试文件 `settlement-acceptance-v3.test.mjs` 为 `c16516db994d660be39d7c4e5fd378c4a940e60f7396023f8b058560d3c763ff`。最终 `.debug/settlement-v3-scope-helper-guard-selftest` 五组119/41/156/15/37满足既有判据，可信保存复核5/5、110成员、7源exact；self-test的acceptanceReady仍false。这些是模型/文件回归，未再次运行真实矩阵。core、oracle和旧fixtures字节不变，不将最终CLI倒写为首次真实采集输入。
+
+180秒是本轮事前设置的安全保护，不足以覆盖固定schedule的所有最坏路径：38个case的6+2+2秒和4个publisher的2秒合计388秒，尚未计编排/写盘。这一外层预算估计错误与role未自然退出分开记录，不能将外层截断视为42项自身均超时。下次先用最小真实role对照确认并修复ACK自然退出闭环，核验该具体修正；再根据固定schedule重新登记整轮安全上限，以新输入最多一次既定42项验证，不改场景预算，不重跑旧失败筛绿。
+
+本轮结束于范围/汇总纠偏及首次真实失败留证，不宣称工具整链已通过。后续只处理上述实际阻塞，然后回到W1/U1真实创建/等待/资源与主进程尾部、最终终端状态、实际Agent启动链；不恢复通用容量、无限集合或任意归档兼容性研究。生产API/停止预算、Host/Webview、双会话和packaged仍开放，旧live绑定及退出后无进程/历史的产品边界不改。
