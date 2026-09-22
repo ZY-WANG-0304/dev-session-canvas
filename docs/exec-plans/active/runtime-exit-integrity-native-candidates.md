@@ -13,11 +13,14 @@
 ## 进度
 
 - [x] (2026-09-22) 完成Windows/Unix/工具三侧源码核查与新设计草案，区分真实API、native替身、通知扣留、门控和模型；第一批矩阵为D3的72控制、D4的24模型及W1/U1的66driver尝试，均尚未执行。
-- [ ] 新增D3/D4工具/模型、合成负例、本地及三平台首次运行和完整离线复核；原外层返回观察缺口在取得新证据前仍开放。
+- [ ] 新增D3/D4工具/模型、合成负例、本地及三平台首次运行和完整离线复核（已完成：四个诊断文件、foundation workflow、本地D3/D4完整schedule与离线重放；剩余：GitHub三平台runner首次运行及完整工件复核）；原外层返回观察缺口在取得新证据前仍开放。
 - [ ] D3/D4收口后实施并验证W1/U1；其余通知/环境销毁、正缓冲取消、真实Close挂起与双会话隔离需第二批另冻，不宣称全部异常矩阵已冻结。
 
 - [x] (2026-09-22) 承接主树f318579a/独立树7fb4ae9e的G07结果，开始原生异常与unknown owner有界隔离设计；按Windows、Unix和工具观察三个独立方向核查源码，不修改业务或旧输入。
 - [x] (2026-09-22) 完成故障层级/owner处置候选比较、D3/D4/W1/U1第一批冻结及三侧独立复审；正式设计/索引/原则/债务同步。其余原生异常第二批未冻结，下一步实施新诊断而非业务接入。
+- [x] (2026-09-22) 在独立诊断树实现D3观察外壳初版和D4有限owner模型：D3使用真实额外fd3/fd4控制管道、after-await ACK、caller/process/writer最终trace记录、有限帧与最终trace校验；D4实现N=2/Q=1 owner模型、跨generation保账和事件独立重放。两者均支持`--self-test`、`--output NEW_DIRECTORY`、`--verify-saved DIRECTORY`，不创建PTY或native资源；三独立settlement接口仍未实现。
+- [x] (2026-09-22) 完成本地Node完整schedule：D3 24/24 trace/manifest verified，D4按linux/darwin/win32各8项共24/24 control-pass；D3篡改拒绝和D4额外工件库存篡改被独立校验拒绝。`nativeProcesses=0`只适用于本阶段无native/PTY的范围事实；三平台GitHub runner首次运行尚未取得，不能把平台矩阵写成已通过。
+- [ ] (2026-09-22) D3契约审计仍未闭合：`startObservedCase`未导出，observation/process/evidence settlement由单一close Promise和串行CLI编排，迟到after-await首次快照、caller源帧身份、forced/unconfirmed边界及独立evidence seal均待新入口实现。
 - [ ] 下一新诊断补外层调用方await后与结算I/O预算观察；本轮outer-returned仅为resolve前事件，不能替代完整返回证明，不改旧工具/工件。guard九项调用方时间已另行补算通过。
 - [x] (2026-09-22) 新C/JS/workflow已实现，v1合成21项保留，v2独立oracle27/27，零native；源码/协议/outer原始事件和语义负例复审已收口，JS/workflow/文档检查及主树bridge回归通过。详见生命周期契约第15节。
 - [x] (2026-09-22) 固定cf359040/run35631266321 attempt1完成Windows/MSVC九项矩阵、完整ZIP下载、可信入口复算及836项独立raw检查；三个正例建立前提，六个负控按预期拒绝，原始分类保留。旧Windows G07三条仍not-established，详见契约第16节。
@@ -239,7 +242,7 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 ## 工作计划
 
-当前设计入口是 `docs/design-docs/runtime-native-failure-isolation.md`，当前下一里程碑是该文第6–7/12节的D3/D4实施：在独立树新增 `diagnostic-observation-envelope-v1.mjs`、`diagnose-observation-envelope-v1.mjs`、`runtime-owner-quarantine-model-v1.mjs` 和 `diagnose-owner-quarantine-v1.mjs`，位置均为scripts/diagnostics；新增foundation workflow。观察者不在关键等待中写盘，caller实际await后发独立帧，writer单独失败/结算；N=2槽原子预留且跨generation保留unknown。先源码/合成负例复审、本地Node25/Electron39，再固定Node22.23.2三平台完整首次运行及全量下载复核。只有该门槛完成才实施W1/U1的新native副本，不import进业务。以下为历史顺序，不覆盖本段。
+（历史顺序）设计入口是 `docs/design-docs/runtime-native-failure-isolation.md`，原计划里程碑是该文第6–7/12节的D3/D4实施：在独立树新增四个诊断入口和foundation workflow，观察者不在关键等待中写盘，caller实际await后发独立帧，writer单独失败/结算；N=2槽原子预留且跨generation保留unknown。该版本的工具和本地trace/模型结果已交付，但三独立settlement等审计缺口仍未闭合；当前顺序以第249行及本阶段新增结果为准。
 
 当前设计增量以主树f318579a、独立树7fb4ae9e为输入。先只读核查固定native创建/等待/通知/读取/释放的真实边界，再比较同进程封禁、停止新建和独立进程隔离；不能假定worker线程能隔离共享进程的原生崩溃或取消永久阻塞的调用。正式结论与运行前矩阵将写入新的 `docs/design-docs/runtime-native-failure-isolation.md`，同时补外层await后与证据写盘预算的观察设计。此阶段交付设计和冻结协议，不创建生产模块、不运行未冻结异常实验；以下安排保留历史。
 
@@ -277,7 +280,7 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 ## 具体步骤
 
-本阶段只做设计检查：从两树根执行 `git diff --check`，核对新设计YAML/索引/关联路径、矩阵ID/计数、源指纹和计划四活章节；旧主设计第7–39节、独立设计第2–5及7–35节、生命周期契约第1–16节逐字保留。下一阶段才运行新CLI的 `--self-test`、`--output NEW_DIRECTORY`、`--verify-saved DIRECTORY`；这些文件现在仅为设计中的待建入口，不可把命令存在或结果通过写成本轮事实。push前fetch/rebase main，仅推独立诊断分支。
+（历史设计检查步骤）从两树根执行 `git diff --check`，核对新设计YAML/索引/关联路径、矩阵ID/计数、源指纹和计划四活章节；旧主设计第7–39节、独立设计第2–5及7–35节、生命周期契约第1–16节逐字保留。该时点尚未运行新CLI；当前工具实现、self-test和保存目录复核见进度及最新证据记录。push前fetch/rebase main，仅推独立诊断分支。
 
 本轮证据已完整下载到主运行时树。从独立诊断树执行 `node scripts/diagnostics/diagnose-windows-stdio-close.mjs --verify-saved /home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2/.debug/stdio-close-35631266321/runtime-windows-stdio-close-35631266321-1/stdio-close-evidence`，预期checked9、actualCreated9、pass:true、synthetic:false、pty:false、无工件错误，且仅三个close-wait前提为true。原始guard分类必须另核对为六natural-exit/complete及三deadline-exceeded/deadline-incomplete；离线复核不新增原生样本。下一输入先补正式设计和冻结矩阵，不改本轮脚本或工件。
 
@@ -325,7 +328,7 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 验证与验收
 
-本阶段验收只覆盖正式设计、可操作第一批协议与独立复审。固定源码hash要与锁文件版本对应；D3的24×3平台=72、D4的8×3=24、W1的8×3=24及U1 Linux6×3/macOS8×3=42分别核对。native-substitute不可冒充真实API失败，D3/D4不计PTY。新设计未验证，D3/D4/W1/U1零实际新运行；既有回归不替代这些验收。首批实现前仍须核查生成补丁/编译/实际加载输入，原始失败和not-run不得隐藏。
+（设计冻结时）本阶段验收只覆盖正式设计、可操作第一批协议与独立复审。固定源码hash要与锁文件版本对应；D3的24×3平台=72、D4的8×3=24、W1的8×3=24及U1 Linux6×3/macOS8×3=42分别核对。native-substitute不可冒充真实API失败，D3/D4不计PTY。新设计未验证，D3/D4/W1/U1零实际新运行；既有回归不替代这些验收。首批实现前仍须核查生成补丁/编译/实际加载输入，原始失败和not-run不得隐藏。当前实现和本地有限结果见本计划进度及本节后续记录。
 
 本轮九项已按冻结第14节完成，具体环境/输入/时间/审计见第16节；旧三条G07不追认通过，产品与原生异常矩阵仍未验收。收口须确认两树文档状态/索引/关联路径/计划四活章节一致，主树只改文档；独立树本轮结果提交仅文档，C/JS/guard/workflow与cf359040输入字节不变。历史主设计第7–38节、独立设计第2–5及7–34节、契约第1–15节正文不改写；只允许当前导航及新增结果变化。用户image.png不纳入提交。
 
@@ -351,9 +354,9 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 结果与复盘
 
-本阶段交付 `docs/design-docs/runtime-native-failure-isolation.md` 的候选比较、逐资源责任和第一批冻结协议，不是新实现或通过记录。D3共72个进程控制、D4共24个有限模型；W1 Windows24、U1 Linux18/macOS24，共66个driver尝试，不能相加为原生PTY通过数。新设计保持比较中/未验证；原生命周期契约第17节承接，所有历史正文/工件不改。
+（设计冻结时）本阶段交付 `docs/design-docs/runtime-native-failure-isolation.md` 的候选比较、逐资源责任和第一批冻结协议，不是新实现或通过记录。D3共72个进程控制、D4共24个有限模型；W1 Windows24、U1 Linux18/macOS24，共66个driver尝试，不能相加为原生PTY通过数。新设计保持比较中/未验证；原生命周期契约第17节承接，所有历史正文/工件不改。
 
-下一阶段先实现独立观察外壳和准入模型并完整验证，再实施创建/等待native fork。其余通知/env销毁、正缓冲取消、真实Close挂起、双会话与生产支持面仍未冻结或验收，整体退出完整性未完成。旧live绑定、业务、依赖和生产预算不改；后续仍只推独立诊断分支，不推主运行时。
+（设计冻结时）下一阶段先实现独立观察外壳和准入模型并完整验证，再实施创建/等待native fork。其余通知/env销毁、正缓冲取消、真实Close挂起、双会话与生产支持面仍未冻结或验收，整体退出完整性未完成。旧live绑定、业务、依赖和生产预算不改；后续仍只推独立诊断分支，不推主运行时。当前第一版工具已实现，但契约审计仍未闭合。
 
 本轮G07补证已完成实施、自测、首次Windows运行及完整下载/离线审计，详见契约第14–16节。固定cf359040/run35631266321 attempt1的九项控制成立：三个close-wait正例持有100.8252–101.7934ms，keep-open与close-exit各三项按预期拒绝前提；raw仍分别是超时不完整与自然完整，两个负控不当正例。runner的27项合成自测与九项真实控制分开，独立raw审计836项通过，没有重跑。
 
@@ -387,7 +390,9 @@ HPCON阶段首次原生矩阵、完整ZIP下载与独立复核已完成，见设
 
 ## 证据与备注
 
-2026-09-22 原生失败第一批设计收口：两工作树本增量各7份文档，120项设计/元数据/关联路径/历史保持与跨树一致性检查通过，四份固定源码SHA256与锁定版本对应。Windows、Unix和观察协议三侧独立复审已收口；两树 `git diff --check` 通过。主树 `npm run test:execution-session-bridge`、`npm run test:serialized-terminal-state-tracker`、`npm run test:runtime-supervisor-protocol` 均通过，仅计既有回归。D3的72项、D4的24项及W1/U1的66个driver尝试均为冻结计划数，本轮新增原生运行0次，新工具尚未实施；新设计保持比较中/未验证。业务、依赖、旧诊断、workflow和历史工件不变，用户image.png不纳入提交；主运行时仅本地提交，独立诊断分支只推本轮文档。
+2026-09-22 原生失败第一批设计收口（设计冻结时记录）：两工作树本增量各7份文档，120项设计/元数据/关联路径/历史保持与跨树一致性检查通过，四份固定源码SHA256与锁定版本对应。Windows、Unix和观察协议三侧独立复审已收口；两树 `git diff --check` 通过。主树 `npm run test:execution-session-bridge`、`npm run test:serialized-terminal-state-tracker`、`npm run test:runtime-supervisor-protocol` 均通过，仅计既有回归。D3的72项、D4的24项及W1/U1的66个driver尝试均为冻结计划数，当时新增原生运行0次、工具尚未实施；新设计保持比较中/未验证。业务、依赖、旧诊断、workflow和历史工件不变，用户image.png不纳入提交；主运行时仅本地提交，独立诊断分支只推本轮文档。
+
+2026-09-22 D3/D4第一版实施与本地复核：四个诊断入口和foundation workflow已加入工作树；D3完整schedule 24/24 trace/manifest verified，D4 linux/darwin/win32各8项共24/24 control-pass，D3 positive/tampered与D4 self-test manifest均保留。当前工作树输入尚未提交，D3/D4均无PTY/native；GitHub三平台runner尚未取得，W1/U1零运行。D3三独立settlement、迟到after-await不可变快照、caller源帧身份、forced/unconfirmed有界结算、独立evidence settlement，以及D4完整owner generation oracle仍是阻塞项；本地结果不能升格为契约或生产验收。
 
 2026-09-22 收口检查：两工作树本增量各5份文档，metadata/索引/关联路径/架构标签/计划必要章节及106项历史/一致性检查通过；共享契约第14–16节两树一致，旧正文不改。可信入口再次离线复算九项通过，runner合成27项单列，bridge回归通过。独立文档复审发现的resolve前事件/await后观察和control-unavailable命名已收紧，新增计时补充保留外层未观察边界；未修改业务、冻结C/JS/guard/workflow或原工件，用户image.png排除。
 
@@ -479,4 +484,4 @@ G07本地证据位于独立树 `.debug/windows-stdio-close-selftest-v1-first` �
 
 修订记录（2026-09-22，原生异常设计启动）：承接G07窄补证和外层观察缺口，开始跨平台源码核查、owner隔离候选比较及下一矩阵冻结；未预选生产进程拓扑、数值预算或提前宣称异常路径通过。
 
-修订记录（2026-09-22，原生失败第一批设计）：新增失败分层、逐资源台账、隔离候选及D3/D4/W1/U1第一批冻结；复审修订unknown定义、唯一Windows失败点、资源观察截止、分阶段预算、控制权链和洪泛偏序。当前没有新工具或原生运行，先实施D3/D4，第二批和生产接入继续开放，不改历史结果。
+修订记录（2026-09-22，原生失败第一批设计）：新增失败分层、逐资源台账、隔离候选及D3/D4/W1/U1第一批冻结；复审修订unknown定义、唯一Windows失败点、资源观察截止、分阶段预算、控制权链和洪泛偏序。当时没有新工具或原生运行，先实施D3/D4，第二批和生产接入继续开放，不改历史结果。

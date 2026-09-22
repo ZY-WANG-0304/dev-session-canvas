@@ -1,0 +1,131 @@
+name: Runtime Native Failure Foundation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [runtime-exit-integrity-native-candidates]
+    paths:
+      - .github/workflows/runtime-native-failure-foundation.yml
+      - scripts/diagnostics/diagnostic-observation-envelope-v1.mjs
+      - scripts/diagnostics/diagnose-observation-envelope-v1.mjs
+      - scripts/diagnostics/runtime-owner-quarantine-model-v1.mjs
+      - scripts/diagnostics/diagnose-owner-quarantine-v1.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-native-failure-foundation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  foundation:
+    name: D3/D4 foundation / ${{ matrix.os }} / Node 22.23.2
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+      - name: Record runner and exact inputs
+        run: |
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import { execFileSync } from 'node:child_process';
+          const files = [
+            '.github/workflows/runtime-native-failure-foundation.yml',
+            'scripts/diagnostics/diagnostic-observation-envelope-v1.mjs',
+            'scripts/diagnostics/diagnose-observation-envelope-v1.mjs',
+            'scripts/diagnostics/runtime-owner-quarantine-model-v1.mjs',
+            'scripts/diagnostics/diagnose-owner-quarantine-v1.mjs',
+            'docs/design-docs/runtime-native-failure-isolation.md',
+          ];
+          fs.mkdirSync('foundation-runner-evidence/inputs', { recursive: true });
+          const sources = files.map((file) => {
+            const bytes = fs.readFileSync(file);
+            const destination = `foundation-runner-evidence/inputs/${file}`;
+            fs.mkdirSync(destination.slice(0, destination.lastIndexOf('/')), { recursive: true });
+            fs.writeFileSync(destination, bytes, { flag: 'wx' });
+            return { file, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+          });
+          const metadata = {
+            schema: 'runtime-native-failure-foundation-runner-v1',
+            commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+            githubSha: process.env.GITHUB_SHA,
+            githubRef: process.env.GITHUB_REF,
+            runId: process.env.GITHUB_RUN_ID,
+            attempt: process.env.GITHUB_RUN_ATTEMPT,
+            runnerOs: process.env.RUNNER_OS,
+            runnerArch: process.env.RUNNER_ARCH,
+            image: process.env.ImageOS,
+            imageVersion: process.env.ImageVersion,
+            platform: process.platform,
+            arch: process.arch,
+            osRelease: os.release(),
+            osVersion: os.version(),
+            versions: process.versions,
+            executable: process.execPath,
+            sources,
+          };
+          fs.writeFileSync('foundation-runner-evidence/environment.json', `${JSON.stringify(metadata, null, 2)}\n`, { flag: 'wx' });
+          if (metadata.commit !== metadata.githubSha || process.versions.node !== '22.23.2') throw new Error('Runner input mismatch');
+          NODE
+      - name: Check diagnostic syntax
+        run: |
+          node --check scripts/diagnostics/diagnostic-observation-envelope-v1.mjs
+          node --check scripts/diagnostics/diagnose-observation-envelope-v1.mjs
+          node --check scripts/diagnostics/runtime-owner-quarantine-model-v1.mjs
+          node --check scripts/diagnostics/diagnose-owner-quarantine-v1.mjs
+      - name: Run D3 self-test
+        if: ${{ !cancelled() }}
+        env:
+          DSC_OBSERVATION_ENVELOPE_SELFTEST_EVIDENCE: d3-selftest
+        run: node scripts/diagnostics/diagnose-observation-envelope-v1.mjs --self-test 2>&1 | tee d3-selftest.log
+      - name: Verify D3 self-test positive evidence
+        if: always()
+        run: node scripts/diagnostics/diagnose-observation-envelope-v1.mjs --verify-saved d3-selftest/positive
+      - name: Run complete D3 schedule
+        if: ${{ !cancelled() }}
+        run: node scripts/diagnostics/diagnose-observation-envelope-v1.mjs --output d3-evidence
+      - name: Verify every saved D3 case
+        if: always()
+        run: node scripts/diagnostics/diagnose-observation-envelope-v1.mjs --verify-saved d3-evidence
+      - name: Run D4 self-test
+        if: ${{ !cancelled() }}
+        env:
+          DSC_OWNER_QUARANTINE_SELFTEST_EVIDENCE: d4-selftest
+        run: node scripts/diagnostics/diagnose-owner-quarantine-v1.mjs --self-test 2>&1 | tee d4-selftest.log
+      - name: Run complete D4 schedule
+        if: ${{ !cancelled() }}
+        run: node scripts/diagnostics/diagnose-owner-quarantine-v1.mjs --output d4-evidence
+      - name: Verify every saved D4 case
+        if: always()
+        run: node scripts/diagnostics/diagnose-owner-quarantine-v1.mjs --verify-saved d4-evidence
+      - name: Upload complete foundation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-native-failure-foundation-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            foundation-runner-evidence/
+            d3-evidence/
+            d4-evidence/
+            d3-selftest/
+            d4-selftest/
+            d3-selftest.log
+            d4-selftest.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14

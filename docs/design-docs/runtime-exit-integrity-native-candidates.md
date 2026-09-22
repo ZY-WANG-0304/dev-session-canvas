@@ -21,7 +21,7 @@ updated_at: 2026-09-22
 
 2026-09-20 用户澄清后的产品范围以第 9 节为准：画板管理 Terminal / Agent 执行会话及其终端资源，不默认承诺实际主进程退出后继续保留节点或终端以等待普通后代及其未来输出。第 2 节冻结协议、两轮原始断言和失败结果全部保留；它们描述诊断实验是否达到原门槛，不自动等于产品验收结论。
 
-当前进展入口见第6节，最新PTY原生结果见第30节，D1/D2证据与Windows G07补证冻结/首次结果见第31–35节。第36节及 `docs/design-docs/runtime-native-failure-isolation.md` 记录原生失败/隔离第一批设计冻结，尚未实施或取得新结果。第2–5节及第7–35节保留各阶段当时的协议、结果和判断，其中“下一步”按所属阶段理解，不覆盖最新状态。
+当前进展入口见第6节，最新PTY原生结果见第30节，D1/D2证据与Windows G07补证冻结/首次结果见第31–35节。第36节及 `docs/design-docs/runtime-native-failure-isolation.md` 记录原生失败/隔离第一批设计冻结；D3/D4工具实现与本地有限结果见第37节，三平台runner和W1/U1仍未完成。第2–5节及第7–35节保留各阶段当时的协议、结果和判断，其中“下一步”按所属阶段理解，不覆盖最新状态。
 
 ## 2. 运行前冻结
 
@@ -659,3 +659,11 @@ D2正式首轮 `.debug/process-guard-v2-local-first` 的24项control-pass和最�
 第二步W1 Windows八项各三次共24、U1 Linux六项各三次共18、macOS八项各三次共24，共66个driver尝试，并非66个成功PTY。第一批覆盖创建后的部分初始化、wait事实分离、Unix合成通知拒绝与释放回执延迟；原生调用是否实际进入、取得哪些资源、实际执行主体数量、前提不足和not-run均独立统计。尚未运行时不能因矩阵已冻结而宣布这些错误路径安全。
 
 其余通知/环境销毁、正长度已读缓冲取消、在途waiter/control fd、真正Close挂起和双会话仍属未冻结第二批，继续阻塞生产接入。builtin、其他Windows版本、实际Agent启动链、VS Code/Electron、Host/Webview/packaged、生产容量/停止预算及旧guarded移交仍开放。下一阶段只实施D3/D4，不改业务、依赖、旧live绑定或旧实验；原生候选总体比较中/验证中，ExecPlan active，退出完整性债务未关闭。
+
+## 37. D3/D4 工具实施与本地有限结果（2026-09-22）
+
+独立诊断树已实现 `diagnostic-observation-envelope-v1.mjs`、`diagnose-observation-envelope-v1.mjs`、`runtime-owner-quarantine-model-v1.mjs`、`diagnose-owner-quarantine-v1.mjs` 及 foundation workflow。当前工作树本地证据目录为 `.debug/runtime-native-failure-foundation-v2-d3/` 和 `.debug/runtime-native-failure-foundation-v2-d4/`：D3完整schedule 24/24 verified，D4按linux/darwin/win32各8项共24/24 control-pass；另有独立self-test目录，其中D3 positive/tampered和D4 manifest已通过本地复核。D3是Node caller/writer进程控制，D4是N=2/Q=1有限模型，均不创建PTY或native resource；`nativeProcesses=0`只表示本阶段没有native进程。
+
+foundation workflow固定Node22.23.2、三平台矩阵并上传完整schedule及self-test目录，但尚未取得GitHub runner run/artifact；上述本地目录使用当前未提交工作树源码快照，不能当作提交绑定或跨平台结果。W1/U1尚未实施，旧D1/D2/G07、历史失败与Windows正常对象引用语义不改判。
+
+本地结果不关闭D3冻结契约：`startObservedCase(spec)`尚未导出；`observeCaller()`以单一child close Promise收口，caller、processSettlement和writer/evidence阶段仍串行；没有迟到after-await不可变首次快照，caller源帧身份/序号由observer重包，强制处置请求、实际退出和stdio close未完全分层，evidence sealed为编排字段而非独立封存结算。故24/24仅证明有限trace/manifest最终可重放，不能宣称三独立settlement或外层调用方await已验证。下一阶段先补这些诊断语义，再决定runner/W1/U1；不改业务运行时代码、生产拓扑或旧工件。

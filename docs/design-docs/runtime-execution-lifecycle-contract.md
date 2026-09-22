@@ -29,7 +29,7 @@ Provider 指持有原生进程、PTY/pipe、reader、worker 与退出等待资�
 
 ## 2. 现有接口与候选选择
 
-本节及第4/6节的业务函数、分页链路和旧契约/屏障模型锚点基于运行时主分支 `0518dcc4fdbc0b233e2bb4bd1c27511aea85be88`。本独立 main-based 诊断分支尚未包含该运行时改造和两个旧模型，不将这些锚点视为本树已实现接口或可直接执行的旧模型入口；新候选模块也尚未实现。诊断结果沿用本树第30节，后续仅新增 D1/D2 隔离入口。
+本节及第4/6节的业务函数、分页链路和旧契约/屏障模型锚点基于运行时主分支 `0518dcc4fdbc0b233e2bb4bd1c27511aea85be88`。本独立 main-based 诊断分支尚未包含该运行时改造和两个旧模型，不将这些锚点视为本树已实现接口或可直接执行的旧模型入口；本阶段新增的D3/D4仅是独立诊断入口，不是业务候选模块。D3/D4实施结果与契约缺口见第18节。
 
 `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts` 的 `ExecutionSessionProcess` 目前只有 `onData/onExit/kill` 等操作；`onExit` 注释将它解释为输出已经排空。`src/supervisor/runtimeSupervisorMain.ts::bindSessionProcess()` 收到此事件立即关闭 `terminalMutationAdmissionOpen`，`finalizeSession()` 才排空已接受操作。`src/panel/CanvasPanelManager.ts` 的直接 Agent/Terminal 路径也依赖此接口。现有队列不能补回 provider 未交付的尾部，调整上层等待并不能使旧 onExit 获得源 EOF 证明。
 
@@ -394,12 +394,22 @@ close-exit-1/2先观察到child-exit再见流结束；close-exit-3的双流最�
 
 下一阶段可进入逐平台原生异常路径与unknown owner有界隔离设计，另冻partial-create、wait/通知失败、在途取消/正长度已读缓冲、release失败/挂起及两个并发会话的矩阵。需要先明确已知owner、不可确认状态、允许隔离的边界与观测预算，并补诊断外层调用方返回及结算I/O的独立观察，再实施新诊断；当前没有这批异常原生结果。builtin、其他Windows版本、真实Agent启动链/Host/Webview/packaged、生产API/取消预算和总退出完整性仍未验收。业务、依赖、旧live绑定和所有旧实验不改，设计继续比较中/验证中，ExecPlan保持active。
 
-## 17. 原生失败与隔离的设计承接（2026-09-22）
+## 17. 原生失败与隔离的设计承接（设计冻结时记录，2026-09-22）
 
-新设计 `docs/design-docs/runtime-native-failure-isolation.md` 以主树f318579a、独立树7fb4ae9e为输入，第一批只冻结协议，尚无新增工具或原生运行结果。它区分真实API受控输入、native调用点返回替身、真实返回后扣留通知、调用前门控和模型；不把这些来源混称系统调用真实失败。
+新设计 `docs/design-docs/runtime-native-failure-isolation.md` 以主树f318579a、独立树7fb4ae9e为输入；本段记录设计冻结时的协议状态，后续D3/D4实施结果见第18节。它区分真实API受控输入、native调用点返回替身、真实返回后扣留通知、调用前门控和模型；不把这些来源混称系统调用真实失败。
 
 资源处置必须覆盖部分初始化、未确认是否进入API、明确失败但副作用不明，以及同操作迟到补证。诊断按N=2总owner槽、Q=1停止新建比较有界准入：已有两个会话可同时unknown，Q不成为虚假的硬上限；跨generation不清账。封禁owner和停止新建不能隔离共享进程同步卡死/崩溃，独立进程单元仅为创建前候选，不是已选生产server，也不允许事后迁移旧live或重启共享Supervisor来清一个owner。
 
 D3冻结三平台各24个零PTY调用方/证据控制，共72项；D4各8个策略模型，共24项；W1 Windows24、U1 Linux18/macOS24合计66个driver尝试，不等于66次成功PTY。D3观察真实await后与父端接收，操作/进程结算和writer证据阶段预算分离；当前第16节的外层返回缺口仍未因设计完成而关闭。先实施并验证D3/D4，再推进W1/U1；所有结果另存新输入/新节，旧工具不改。
 
 W1/U1先覆盖创建/登记与等待事实，兼有明确的U1通知返回替身和释放回执扣留；其余通知/env销毁、正缓冲取消、真正API内Close挂起、并发故障域以及生产支持/分发仍为第二批阻塞项，未冻结的危险注入不得执行。新文档保持比较中/未验证，本契约及总体退出完整性继续比较中/验证中，业务代码和生产预算不改。
+
+## 18. D3/D4 实施结果与契约边界（2026-09-22）
+
+独立诊断树已实现D3观察外壳、D4 owner准入模型及三平台 foundation workflow。本地结果为D3 24/24 verified、D4 linux/darwin/win32各8项共24/24 control-pass；自测和篡改/库存负例均通过。D3使用真实额外控制管道和Node caller/writer子进程，D4是N=2/Q=1有限模型；范围上均不包含PTY、ConPTY或native资源，D3/D4的schedule工件均显式记录 `nativeProcesses=0` 与 `pty=false`。
+
+完整本地目录为 `.debug/runtime-native-failure-foundation-v2-d3/` 与 `.debug/runtime-native-failure-foundation-v2-d4/`，其输入是当前独立工作树源码快照而非已提交的可绑定commit。workflow已配置完整schedule和self-test目录/日志的上传路径，但截至本节尚未取得GitHub三平台runner工件，不能把Node22.23.2矩阵写成平台通过；W1/U1也尚未实施。
+
+本阶段没有实现冻结接口 `startObservedCase(spec)`。D3当前内部以单个child close Promise收口，caller、process settlement和writer/evidence阶段仍由CLI串行编排；迟到after-await未形成不可变首次观察快照，caller源帧身份由observer重包，强制处置请求、实际退出与stdio close也未完全分层，evidence sealed仍是最终编排字段。D4虽覆盖跨generation保账场景，但部分事件和validator没有完整核对execution/generation identity，不能视作完整代际oracle。因此D3/D4本地结果只能作为最终trace/manifest和有限状态控制的阶段性离线证据，不能关闭本契约第3–5节的独立Promise、外层await和证据结算要求。
+
+下一阶段应先在新入口补上述诊断语义和有界unconfirmed，再决定三平台runner及W1/U1；业务代码、旧live绑定、Windows正常对象语义和历史失败均不改，整体 `validation_status` 继续为“验证中”。

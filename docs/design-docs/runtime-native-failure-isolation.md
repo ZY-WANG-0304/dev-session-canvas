@@ -19,11 +19,11 @@ updated_at: 2026-09-22
 
 ## 1. 本阶段状态与完成边界
 
-本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。本文冻结下一轮诊断的第一批协议，不表示已实施、已原生验证或已选定生产拓扑。
+本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。D3/D4工具已经在独立诊断树实现并完成本地有限验证，但没有native资源或GitHub三平台runner结果；本文不表示生产拓扑已选定。
 
 目标是回答两件事：部分初始化/等待失败后，哪些资源仍由谁持有；一个资源结果无法确认时，如何不误报释放、不破坏其他会话，并限制继续积累。Terminal和Agent适用相同边界，实际Agent CLI的启动包装链另验；不新增普通后代托管、退出后历史、故障恢复、root归属改造或外部server承诺。
 
-本阶段完成定义是：明确故障种类及注入性质、比较隔离候选、冻结工具观察与第一批创建/等待矩阵，独立复审并同步ExecPlan。除U1-4的通知返回替身及U1-5的释放回执扣留外，其余通知故障、环境销毁、取消、真正Close挂起及并发作为第二批必须闭合的问题；未写明可安全注入协议的案例不得开跑。下一阶段先实现D3/D4，完整通过后才实现W1/U1；生产接入仍受生命周期契约第9节门槛约束。
+本阶段完成定义是：明确故障种类及注入性质、比较隔离候选、冻结工具观察与第一批创建/等待矩阵，独立复审并同步ExecPlan。D3/D4的本地工具和有限模型结果已取得，但仍不构成跨平台native证据或生产接入门槛。除U1-4的通知返回替身及U1-5的释放回执扣留外，其余通知故障、环境销毁、取消、真正Close挂起及并发作为第二批必须闭合的问题；未写明可安全注入协议的案例不得开跑。W1/U1仍须在D3/D4契约缺口收口后另冻，生产接入仍受生命周期契约第9节门槛约束。
 
 ## 2. 固定源码依据
 
@@ -79,9 +79,9 @@ owner是有明确取得来源的资源持有记录，不是PID、fd数值或HPCO
 
 若已知测试driver无法在独立观察期内确认退出，只封禁本次失败域并停止新增driver；剩余schedule记blocked/not-run，validator仍遍历。不能通过不断启动新一代隔离进程把unknown转移成无限OS进程积累。只控制确切由本诊断创建并保留控制能力的进程；Unix仅对仍由本创建者独占wait权的未回收child发信号，回收后不按数字PID继续操作，Windows保留创建所得HANDLE。不按日志PID清理，不用runner销毁冒充释放。
 
-## 6. D3：调用方返回与证据落盘分离（冻结）
+## 6. D3：调用方返回与证据落盘分离（冻结；实现审计见第13节）
 
-新增候选文件 `scripts/diagnostics/diagnostic-observation-envelope-v1.mjs`、`scripts/diagnostics/diagnose-observation-envelope-v1.mjs`；均尚不存在，不修改旧guard-v2。observer直接创建caller和writer并保留各自ChildProcess控制权。第一批caller只执行进程内注入操作，不创建后代或PTY；同步阻塞不会留下未登记子进程。
+本轮新增 `scripts/diagnostics/diagnostic-observation-envelope-v1.mjs`、`scripts/diagnostics/diagnose-observation-envelope-v1.mjs`，不修改旧guard-v2。observer直接创建caller和writer并保留各自ChildProcess控制权。第一批caller只执行进程内注入操作，不创建后代或PTY；同步阻塞不会留下未登记子进程。
 
 被测等待API只结算有界内存结果，不同步record到文件、不等待writer。caller在实际await续体先记录 `caller-after-await` 并发独立控制帧。仅把writeJSON移到resolve后仍不够：同一JS栈的同步I/O仍会阻止续体。observer按自己单调时钟记录收到该帧，证明事件至迟已经发生；不拼接父子绝对时钟。result-ready/pre-resolve/frame-send回调都不能代替真正await后接收事实。
 
@@ -108,7 +108,7 @@ owner是有明确取得来源的资源持有记录，不是PID、fd数值或HPCO
 
 ## 7. D4：未知状态准入策略（冻结）
 
-候选新增 `scripts/diagnostics/runtime-owner-quarantine-model-v1.mjs` 和 `scripts/diagnostics/diagnose-owner-quarantine-v1.mjs`。每平台8项、各一次，共24项确定性模型、零native；不能替代A/B真实并发。模型输出操作计数与完整身份，validator从事件独立重算。
+本轮新增 `scripts/diagnostics/runtime-owner-quarantine-model-v1.mjs` 和 `scripts/diagnostics/diagnose-owner-quarantine-v1.mjs`。每平台8项、各一次，共24项确定性模型、零native；不能替代A/B真实并发。模型输出操作计数与完整身份，validator从事件独立重算。
 
 | ID | 固定检查 |
 | --- | --- |
@@ -188,10 +188,20 @@ W1/U1自身的释放错误仍是raw失败，即使成功观察这种失败；验
 
 ## 12. 实施顺序与验证入口
 
-第一步在独立诊断树新增D3两文件、D4两文件及 `.github/workflows/runtime-native-failure-foundation.yml`，先合成负例与本地Node25/Electron39，再以固定Node22.23.2三平台执行D3各24/D4各8。workflow限独立诊断分支，主运行时不推送；Node控制不安装业务依赖。新工具CLI须支持 `--self-test`、`--output NEW_DIRECTORY` 和 `--verify-saved DIRECTORY`，保存目录不可复用。以下是待实现接口，不是当前可运行命令。
+第一步已在独立诊断树新增D3两文件、D4两文件及 `.github/workflows/runtime-native-failure-foundation.yml`，并完成合成负例、本地Node执行和保存目录复核。workflow固定Node22.23.2、三平台矩阵且不安装业务依赖；新工具CLI支持 `--self-test`、`--output NEW_DIRECTORY` 和 `--verify-saved DIRECTORY`，保存目录不可复用。三平台runner首次运行尚未取得；`startObservedCase` 等冻结接口仍以第13节审计为准。
 
 第二步在D3/D4完整首次结果收口后，新增 `native-failure-owner-v1.mjs`（台账/调度协议）、`windows-native-failure-patch-v1.mjs`、`unix-native-failure-patch-v1.mjs`、`diagnose-native-failure-v1.mjs`，统一放 `scripts/diagnostics/`；它们只生成隔离fork，不import进业务、不改node_modules。原生workflow单独新增 `.github/workflows/runtime-native-failure-v1.yml`，按平台schedule执行W1/U1并始终上传完整工件。构建参数、机械补丁匹配计数及实际链接输入须实现前复审，编译失败记零实际运行、全部not-run，不能伪造66 native成功。
 
 validator从完整schedule独立复算时序/身份/前提/计数/结果，不只读pass。必备负例包括删调用/回执、把held通知改成API失败、已成功wait却标仍活、重复关闭/错generation、部分释放就归还槽、原始EOF被改为取消或反向改写、伪造after-await、超预算或改t0、writer失败改sealed、缺binary/首项损坏后继续末项。源快照与输入commit逐项对账，Windows CRLF原字节保存、只读LF归一比对，不执行归档代码。
 
 本设计阶段只做源码/版本指纹、矩阵计数、文档元数据/引用/历史不变及独立方案复审；既有bridge/tracker/Supervisor测试仅作为回归，不计新D3/D4/W1/U1通过。首次结果应追加新节记录实际OS、输入commit、run/attempt、全部工件和未执行项。只有下一轮实际证据才能改变validation_status；总体退出完整性计划继续active。
+
+## 13. D3/D4 实施结果与契约缺口（2026-09-22）
+
+独立诊断树已新增四个Node标准库入口和 foundation workflow。本地完整结果保存在 `.debug/runtime-native-failure-foundation-v2-d3/` 与 `.debug/runtime-native-failure-foundation-v2-d4/`：D3为24/24 verified，D4按linux/darwin/win32各8项共24/24 control-pass；D3自测和D4自测通过，D3正例目录与篡改负例目录已分离，`nativeProcesses=0` 仅作为D4模型/自测及范围事实记录。D3完整schedule是Node caller/writer进程控制，不含PTY或native API；D4是有限状态模型，不能替代跨平台runner或生产隔离。
+
+workflow已固定Node22.23.2、三平台矩阵，并上传D3/D4完整schedule及self-test目录；截至本节记录时尚未取得GitHub runner run/artifact，因此三平台仍为未验证。W1/U1尚未实施，`decision_status: 比较中`、`validation_status: 未验证`不变。Windows已退出进程仍被其他已知句柄引用按正常对象语义保留，不形成新增系统缺陷结论。
+
+实现审计发现D3仍未导出冻结的 `startObservedCase(spec)`。`observeCaller()`只有child `close`后的单一Promise，`runCase()`串行等待caller后才启动writer；无法分别等待observation、processSettlement和evidenceSettlement，也未冻结首次deadline快照或由caller发送完整身份帧。强制处置请求、实际退出与stdio close尚未完全分层，`evidenceIntegrity`仍由CLI编排无条件写成sealed。D4虽有跨generation保账场景，但部分事件和validator未完整核对execution/generation identity，不能把当前重放称为完整代际oracle。当前24/24只证明有限trace/manifest可重放，不能关闭三独立settlement、迟到观察、有界unconfirmed或完整owner身份债务。
+
+下一阶段应在新版本入口先补上述诊断语义，再决定是否运行三平台runner和W1/U1；不修改旧工件、历史失败或业务运行时代码，也不把本地有限结果写成native/产品验收。
