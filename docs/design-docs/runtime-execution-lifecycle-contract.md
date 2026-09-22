@@ -21,6 +21,8 @@ updated_at: 2026-09-22
 
 ## 1. 状态、目的与非目标
 
+当前设计阶段更新见第23节及 `docs/design-docs/runtime-diagnostic-settlement-contract.md`：三独立首报、尾部捕获、writer/verifier/publisher和D4全账重放协议已冻结，仍未实现/运行。本阶段零新测试、零native；下一步仅新版本本地实施与fixture/源码复审，最终静态复审和跨文档检查已通过。旧结果与本契约比较中/验证中状态不变。
+
 本设计是 `docs/design-docs/runtime-exit-integrity-native-candidates.md` 第30节之后的候选契约 v1，不是已部署接口，也不授权直接接入业务。已有证据支持 Unix 独占读取、macOS 自然路径 kqueue 关闭和 Windows bundled HPCON 最终 Close 的局部可行性；没有证明取消、异常、并发或全部支持环境的生产完整性。本文将这些证据转换为明确的职责、结果和可检验偏序，整体仍比较中/验证中。
 
 Provider 指持有原生进程、PTY/pipe、reader、worker 与退出等待资源的平台实现；adapter 指把平台事实转换为统一事件的共享适配层。Authority 指按顺序应用终端操作并生成最终 revision 的运行时权威，在 live-runtime 中是 Supervisor，在直接 snapshot-only 中是 Host。页面读者是 Webview 的一次终端投影，既不是进程 owner，也不是源输出结束的判定者。
@@ -443,3 +445,13 @@ local-1篡改负例经独立复核并未证明失败后继续有效验证：根m
 独立诊断树 `.debug/observation-envelope-v2-run-35676427931/` 保存完整输入、原始事件、ZIP、API、可信离线复核和metrics；audit SHA256为 `a772fa2a399c9b51fe109b56fff097933e9873fa0c424aab93f18717c13233f7`。各平台本次after-await/writer原始最大值均在2000ms完整或500ms缩放预算内，详见原生失败设计第17节；不以本次未超时关闭writer预算oracle或独立结算债务。
 
 本增量仅关闭来源/顺序窄修正的runner待验项，不关闭三settlement、首次deadline不可变快照、bounded unconfirmed、writer协议/封存或D4完整身份重放；PTY、D4及W1/U1本轮新增运行均零。旧失败和正常Windows对象引用语义保留，下一步先补诊断结算契约，总退出完整性仍未验收。
+
+## 23. D3 v3 / D4 v2 设计冻结与实施边界（2026-09-22）
+
+新设计 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 以诊断树e1a31b79、运行时树a5f8d629为输入，冻结D3 v3与D4 v2的下一版契约，状态比较中/未验证。本阶段仅源码、协议与设计复审，零新增测试、零新增native运行；旧D3 v1/v2、D4 v1、workflow、工件和历史失败全部不改。三侧静态复审、跨文档及历史保持检查已通过；只收口设计，不代表实现或新矩阵通过。
+
+D3 v3同步返回handle，observation、processSettlement、evidenceSettlement各自首次结算；绝对deadline先于等时/迟到事件，首报不可变，迟到事实追加。exit与捕获真实EOF分开，capture gate保留尾部；直接owner有界控制、未确认责任继续占账，不能以kill/close当释放。D3每case最多预留caller/evidence/publisher三个槽，任一hard截止仍unknown即停止后续case；这不是D4模型的N2容量。writer、独立verifier与最终publisher分责，协议错误不可被合法claim清除，受测证据结算、发布与可信离线归档验证分别判断；这些是诊断候选，不是生产进程布局或退出时间政策。
+
+D4 v2固定N2/Q1，完整command/return/event/snapshot由不共用SUT转换函数的oracle逐步重放。创建acquisition、use token、整体release操作、首次unknown、当前证明与槽位分账；失败不抹已取得资源，错身份拒绝零副作用，旧代同操作迟到补证不得污染新owner，完整责任结算后仍显式reopen。failureDomain只是模型标签，不提供真实故障隔离证明。
+
+运行前计划为每runner D3 v3主控36项、因果gate2项、publisher4项，D4 v2确定性模型16项，分别计数；三runner对应108/6/12/48，均尚未实施执行，不相加作PTY或产品通过数。下一步仅在独立诊断树新增版本入口，先本地实施、fixture清单/源码hash冻结与独立源码复审，再唯一一次固定输入三平台采集及全工件可信重放。主运行时树只同步文档，不推送；W1/U1和完整生产退出交付继续阻塞。

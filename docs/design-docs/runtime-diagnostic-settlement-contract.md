@@ -1,0 +1,238 @@
+---
+title: 诊断观察、进程与证据结算契约
+decision_status: 比较中
+validation_status: 未验证
+domains:
+  - 执行编排域
+  - VSCode 集成域
+architecture_layers:
+  - 适配与基础设施层
+  - 共享模型与编排层
+related_specs:
+  - docs/product-specs/runtime-persistence-modes.md
+related_plans:
+  - docs/exec-plans/active/runtime-exit-integrity-native-candidates.md
+updated_at: 2026-09-22
+---
+
+# 诊断观察、进程与证据结算契约
+
+## 1. 当前阶段与证据边界
+
+本设计承接 `docs/design-docs/runtime-native-failure-isolation.md` 第17节。输入为独立诊断树 `e1a31b79` 与运行时树 `a5f8d629`。本阶段只做源码核查、候选取舍、下一版本契约和运行前矩阵冻结；下述 D3 v3、D4 v2 均未实施或执行，不能把设计复审写成测试通过。整体决策仍比较中，本文验证状态未验证。实现只进入独立 `runtime-exit-integrity-native-candidates` 工作树，主运行时树仅同步文档，不推送。
+
+D3 v1/v2、D4 v1、原 workflow、断言、工件及失败全部冻结。唯一 v2 run `35676427931` 只验证来源/顺序窄修正；它没有证明完整结算、有界 unknown、writer 协议或 D4 全身份重放。本设计新增版本而不修改旧输入。W1/U1 原生矩阵须等待新工具完整审计，不因设计冻结直接启动。
+
+本诊断不改 Terminal/Agent 业务、旧 live 绑定、root runtime 归属或生产进程拓扑。不新增退出后历史、崩溃/重启恢复或任意后代托管。执行主体存活期间的终端输出与主体退出时自身已接收、排队、消费中的尾部仍须正确结算；实际 Agent CLI 启动包装链仍须单独验证。Windows 正常的已退出进程对象引用不是系统 bug；本设计不关闭陌生句柄、不按日志 PID 清理。
+
+## 2. 静态发现与候选取舍
+
+以下是固定诊断源码的静态缺口，不是新增原生实验或已证明的业务缺陷。路径均相对独立诊断树的 `scripts/diagnostics/`。
+
+| 输入位置 | 已核实缺口 | 下一版本约束 |
+| --- | --- | --- |
+| `diagnose-observation-envelope-v2.mjs` 的 observeCaller/observeWriter/runCase | 等待 close 的单一 Promise；首次观察在收尾后重算；发送 kill 后仍可能无限等 close。 | 三个独立 Promise；exit、流 end、主动取消分别登记；deadline 首报不可变。 |
+| 同文件 writer reader/deriveFacts/publisher | stdout/stderr 混读、缺完整协议；坏帧可被 sealed 覆盖；封存先于实际文件/manifest，发布仍在 observer 同步写盘。 | 单协议通道、错误不可清除、独立 verifier 与 publisher；不得由 seal claim 自证成功。 |
+| `runtime-owner-quarantine-model-v1.mjs` 的 requestRelease/reopenAdmission | unknown 可被 release-in-flight 覆盖，unknownCount 降为零并重新准入。 | unknown 为独立观察维度；完整责任结算及显式 reopen 才能解除封禁。 |
+| 同文件 createReturned/createFailed/releaseResource | 校验前写状态；失败可抹掉已取得资源；资源 unknown 后不能接纳同操作迟到 released。 | 拒绝无副作用；取得记录追加；首报与当前已知事实分开。 |
+| 同文件 operations 与 `diagnose-owner-quarantine-v1.mjs` reducer | 跨 owner operationId 可覆盖，事件身份不全；oracle 不重放准入/currentGeneration，只比最终摘要，没有外部 command 输入。 | 独立完整身份、命令、结果及全量台账重放；篡改者重算摘要和 hash 后仍须拒绝。 |
+
+保留 observer 内异步写盘虽然改动少，仍无法隔离解析/散列/存储对同一事件循环的影响，不采用。仅 writer 自写自验也无法证明声明对应真实文件，不采用。下一版诊断采用直接子进程 writer 写入、另一直接子进程 verifier 校验、最终 publisher 保存完整报告的串行职责划分。helper 可复用入口但每个角色单独 spawn；不引入常驻服务，不把诊断布局升级为生产 server 决策。
+
+## 3. D3 v3 接口与不可变首次报告
+
+候选 `startObservedCase(spec)` 同步返回 handle；校验纯配置失败在任何副作用前抛错，其余 spawn、流、协议、超时、存储故障都 resolve 为类型化报告，不产生无人处理的 rejection。先构造三 Promise、登记 owner，再排入启动工作；不能在返回 handle 前同步跑完整场景。
+
+```text
+handle.id = { schema, runId, caseId, generation, nonce }
+handle.observation: Promise<ObservationFirstReport>
+handle.processSettlement: Promise<ProcessFirstReport>
+handle.evidenceSettlement: Promise<EvidenceFirstReport>
+handle.getOwnerSnapshot(): immutable copy of current ledger
+handle.subscribeLateFacts(listener): unsubscribe function
+```
+
+三份首报都有完整 id、reportId、单调 deadline、冻结时间/observer eventOrdinal、kind、reason 和引用的事实 ID；不得暴露可变 ledger/数组引用。迟到事实另有唯一 ID、真实收到时间和原首报 ID，追加到有界 journal，不能重写已有对象、文件或 Promise 结果。listener 先排队再投递，异常记独立消费失败，不在结算栈内调用。“有界”只限制队列数量/字节，不隔离同线程同步死循环；listener 必须受信且协作，其阻塞属于不满足 observer 可调度前提，不承诺抢占任意 JS。调用方必须自行消费 Promise，实际 `await` 续体记录 `consumer-after-await`；resolve 前日志或 Promise.race 加 sleep 不能替代这一事实。
+
+| Promise | 首报及含义 | 不提供的证明 |
+| --- | --- | --- |
+| observation | `observed-within-budget`：合法 caller-after-await 在截止前实际收到；`not-observed`：到期或通道真实结束仍无证明；`protocol-failed`：取得有效观察前协议已坏。 | 操作成功、进程退出、全部尾部、文件已保存。合法迟到帧另记 observed-late，不回写首报。 |
+| processSettlement | `exit-observed`：直接 child 的实际 exit，保留 code/signal；`spawn-failed`：本次启动明确失败；`unconfirmed`：截止仍缺退出证明。 | 不用 natural/forced 二选一猜因果。controlAttempts 独立记录，kill 返回 true 不等于已退出；exit 不等于流结束或资源均释放。 |
+| evidenceSettlement | `sealed`：本节后续全部条件满足；`failed`：协议/明确 I/O/校验错误；`incomplete`：缺证明、截断或阶段超时。 | 不是最终发布成功、断电耐久、所有 OS 资源释放或整个 run 通过。 |
+
+进程 exit 可以先于合法 fd3 帧到达，不能单凭 exit 判 observation 失败。已有 timely after-await 也不能被后来非法帧抹掉；后者使 capture/evidence 失败。证据失败是 sticky 的：记录全部原因，failed 优先于 incomplete，后到合法 claim 不清除早先错误。阶段超时同时保留 helper 的 unconfirmed 等独立原始事实，不压成一个总枚举。
+
+## 4. 时钟、输出捕获与有界控制
+
+observer 以同一单调时钟，在纯配置校验后、启动任务排队前记 T0 并建立绝对 deadline；排队和 spawn 都计入预算。所有事件回调在修改状态前检查绝对截止；本版统一 `now >= deadline` 先冻结该截止报告，再记录本次事件为迟到，恰好相等也不算及时。保存严格递增 observer eventOrdinal 作为相同时间的本地次序；不跨进程比较绝对 sentNs。source sequence/sentNs 只用于源内因果，不能把晚收到的帧倒填为及时。迟调 timer 不增加宽限。
+
+| 阶段 | 运行前固定预算 | 动作与首报 |
+| --- | --- | --- |
+| caller 内等待 | 调用前起 1000 ms 工作截止 | 返回操作 raw timeout 仍可正常进入 await 续体；不能把这个 timeout 判进程退出。 |
+| 外层 observation | T0 + 2000 ms | 有效证明缺失即冻结 not-observed；迟到证明独立留存。 |
+| caller 控制 | T0 + 5000 / 5500 / 6000 ms | 对仍有控制权且未观察退出的直接 child 依次尝试 TERM、KILL；6000 冻结 process unconfirmed 及捕获不完整。5500 是 v3 新冻结升级点，不改旧实验。 |
+| evidence | E0 + 1000 / 1500 / 2000 ms | 1000 关闭新工作入口，对当时仍未退出的 helper 尝试 TERM；1500 KILL；2000 冻结首报。E0 在 writer spawn/发送输入前，不在 verifier 启动时重置。 |
+| 最终 publication | P0 + 1000 / 1500 / 2000 ms | 独立环境窗口，规则同 evidence；不借用前三份报告余量。P0 在 publisher spawn 前。 |
+
+进程首报不等 close，但 writer 输入也不能在 exit 时立即截取。内部 **capture gate**（输出捕获门）持续消费 stdout、stderr、fd3 等登记的读取流：每流只有真实 `end` 且协议 parser 无残片才是完整 EOF；`close`、error、destroy、取消和预算耗尽分别记录。所有流完整结束，或者 T0+6000 明确截断后，捕获阶段才结算。截断保存已接收前缀、各流终态和原因；不能假造 EOF，也不能由捕获逻辑结算归还仍有责任的 owner 槽。无需第四个公开 Promise。
+
+仅在 observation 与 processSettlement 首报均已冻结、capture gate 已结算后建立 E0，并冻结 writer 输入字节；process 可早于 capture、observation 可早于 process，互不等待 writer。若 T0+6000 到期仍 unknown，三报告仍可结算；新 case 停止，剩余 schedule 记 blocked/not-run。当前 case 仅能使用开始前预留的一个证据 helper 槽，writer 与 verifier 串行且先前进程退出已确认；不得借取证名义无限启动 helper。publisher 也有独立预留槽，失败后不重启下一代来规避未知责任。
+
+Node ChildProcess 对象不是永久 OS 控制句柄。只直接 spawn 已知可执行文件，不用 shell；不使用私有 `_handle`，不引入外部 waitpid/reaper，收到 exit 后停止控制，绝不再按保存的数值 PID 寻找目标。Windows 的 TERM/KILL 在固定 libuv 中均走 TerminateProcess，不称 Unix 式优雅升级。error 必须按发生阶段分类，成功 spawn 后的 kill/send error 不得误记 spawn-failed；ENOENT 只表示启动失败，不证明操作系统从未创建临时子进程。固定官方源码与指纹见第11节。
+
+首报、owner 当前状态、流关闭、helper 退出和控制尝试分账。hard deadline 后迟到 exit 可以补台账，不能改首报；仍 unknown 时保留控制责任且 CLI 禁止成功退出。CI 终止整个环境不算 released。真实矩阵不尝试制造不可杀进程或阻塞持有活体 child 的 observer；无退出回执的边界用明确标记的事件替身验证。API 有界承诺以 observer 能获调度、spawn/控制 API 能返回为前提，不能保证事件循环永久停摆下的绝对实时。消费者真正续体超期另记环境迟调/验收失败，不扩大期限。
+
+D3 每 case 最多三个预留直接 child 槽：caller、串行 evidence helper、publisher；这不是第8节 D4 的 N2 模型参数。任一槽的进程/流责任在自身 hard deadline 仍未确认，停止启动后续 case，仅可使用本 case 已预留的剩余取证槽。迟到补证保留，但本次 run 不自动重新准入或重跑；剩余项仍按原 schedule 记录 blocked/not-run。
+
+## 5. 来源协议、容量与捕获完整性
+
+caller 延续 v2 的完整身份、跨 pipe 源序与真实接收时间规则，但使用新 schema，不能混用旧帧。协议通道固定 stdout 和 fd3，after-await 只走 fd3；stderr 仅为有界诊断字节，不提供成功证明。ACK 携带完整 id 与 requestId，收到匹配 ACK 才允许 bulk/受控后续阻塞。控制 oracle 同时验证源发送因果和 observer 接收事实，不因跨 pipe 倒序拒绝合法轨迹。
+
+帧最多 4096 编码字节（含换行），单项主轨迹最多 4096 事件且 1 MiB，其中预留 64 事件/64 KiB 控制区；首次 bulk 溢出后拒收所有后续 bulk 明细，只保留一个范围摘要及控制事实。不得先无限拼接再检查。late journal 最多 256 事件/64 KiB；任一容量溢出保留标志并使证据不完整，不扩容。辅助进程每实例协议最多 8 帧、stderr 最多 16 KiB，输入最多 2 MiB；最终发布请求最多 4 MiB。容量限定诊断资料而非整个 Node RSS；输出来源持续洪泛时暂停/取消并如实标截断，不将丢弃等同消费完成。
+
+原始数据在收到时记录通道、receiptNs 与 eventOrdinal；不得等 close 后重包接收时间。`captureIntegrity=complete/incomplete/failed` 独立于 `artifactVerified`：完整保存一个截断前缀可以 artifactVerified=true，却不能让 evidenceSettlement=sealed。D3v3-08 预期 evidence incomplete；成功归档这个失败事实是另一种结果。
+
+## 6. Writer、独立校验与最终发布
+
+writer/verifier/publisher 共用严格帧 envelope：schema、role、runId、caseId、generation、nonce、attemptId、requestId、sourceSequence、十进制 sentNs、type、严格 payload。每角色重新起源序，不跨角色拼成单源；拒绝错身份、错通道、未知/额外字段、非有限时间、重复/逆序/缺帧、非法 UTF-8、超长或 EOF 残片。所有输入也有严格 schema 和长度上限。stdin 输入结束才能解析请求；stderr 中的 JSON 或成功文本不算协议帧。
+
+writer 语法为 start -> write-entered -> seal-claim | failed；非法输入可 start -> failed，terminal 帧后不允许新协议帧。verifier 为 start -> verify-entered -> verified | failed，publisher 为 start -> publish-entered -> publish-claim | failed。首个协议错误永久保留，即使后续帧合法也失败。每帧原样保留源身份和收到时间；role claim 从来不是 observer 的成功结论。
+
+区分非法语法与未完成：非法帧、已收到源序中间缺口、双 terminal 或 terminal 后新帧为 failed；合法连续前缀因期限/主动控制而没有 terminal 帧是 incomplete，不因预期超时再造一个协议错误。正常自然退出却未按语法完成协议是 failed。进入阻塞 shim 的前提必须由 observer 实际收到 entered，再回完整身份 ACK 才放行；只调用 write 不证明 observer 已收到，未建立此前提则 scenario not-established。
+
+writer 只向本 case 新目录 exclusive-create 固定 inventory：`payload.json` 和最后写入的 `manifest.json`。manifest 含 schema、完整身份及 payload 的真实编码文件大小/hash；inventory 是严格条目数组，显式拒绝重复 path，不用会吞重复键的对象映射代替唯一性校验。manifest 不包含自己的 hash；文件关闭完成后才发送 claim。payload 是 observer 已冻结的明确 UTF-8 字节，不依赖不同进程自行 JSON 重排。它只含 E0 前已冻结的 observation/process 首报及已发生的 capture/control 事实，不包含当前 evidence 首报或未来 helper 事实；后续 late journal 不修改这次 seal，另行随最终归档保存。
+
+verifier 只在 writer 实际 exit0、全部读取流真实结束且协议无错、唯一 seal claim 完整时启动，且启动必须在 E0+1000 前。它从 observer 得到同一份预期输入字节，在隔离进程中独立计算预期摘要并读取实际文件，检查精确 inventory、完整身份、普通文件类型、实际大小/hash、schema、无额外/缺失条目、无 symlink/路径逃逸。不能只验证一个内部自洽但与请求不同的 manifest；不执行工件中的代码。observer 关键路径没有文件 I/O 或文件散列。
+
+E0+1000 是两 helper 的共享工作截止，不在交接时重置。writer/verifier 均须在该截止前已被观察自然 exit0、且没有对其执行超时控制，才可能 sealed；此前启动且已退出的 helper，尾部协议/EOF 可以继续排空至 E0+2000。writer 虽在 1000 前退出但 claim/EOF 后到而未能及时启动 verifier，则明确 incomplete（verifier-not-started-before-work-deadline），仍保存尾部，不能为新工作延长期。这个保守分类是 v3 新诊断取舍，不改变旧预算结果，也不是生产尾部截断政策。
+
+sealed 的全部门槛是 capture 完整、双方协议无错、writer 和 verifier 合法退出、verifier 唯一 verified 回执与精确内容/identity 相符、两者全部真实 EOF、均在各自截止内。仅 verified receipt 不够，必须防止其后 helper 失败或尾帧损坏。控制后恰有完整文件可以另记 artifactVerified，但不能回写正常 sealed。E0+2000 无论 helper 是否 close 都冻结首报；仍有进程或流责任的 owner 继续保留。
+
+最终 publisher 在三个首报和当时 late journal 冻结后，保存输入、首报、原始轨迹/字节、owner 当前账、全部错误与精确 inventory/manifest。该请求另有 archiveAttemptId、snapshotOrdinal；后来补证只能另建归档版本引用旧版本，不能覆盖旧首报或旧 manifest。publisher 在独立 P0 窗口执行，不在 observer 同步落盘；它的退出/协议首报称 publication，最终 `archiveIntegrity` 由可信离线 verifier 及完整 ZIP/digest 对账给出，不由 publish-claim 自证。
+
+publisher 输入不能包含尚未发生的“本次 publisher 已成功”；publication 首报只在返回内存及外层控制记录中产生，由外部采集一并保留。源 helper 仍 unknown 时，publisher 若复制它的文件，只能写入新的独占归档目录，标为可能变化源的一次 partial snapshot，不能以该副本的 manifest 完整证明 writer 已结束。不用活跃源目录充当已封存归档。
+
+publication 的错误、超时或 incomplete 使该项不能验收通过，但不改变前三报告；成功发布故障事实也不把受测 evidence failed 改为 sealed。publisher 失败保存已有 partial 文件，通过预先建立的有界外层控制通道/CI 日志发送失败事实，不在 observer 同步写“证明写盘失败”的 fallback 文件。归档边界后的迟到补证不能静默丢弃：没有新归档则标 late-evidence-unarchived。外层通道和存储同时失效时明确 evidence unavailable，不递归启动无限 publisher/watchdog。
+
+在可调度前提下，三个首报最多分阶段 6000+2000 ms，publication 另 2000 ms；不把 10000 ms 称原操作的宽限，也不把 ZIP 上传、离线复核包含在此内。sealed/archiveIntegrity 均只证明读取当时可见完整性，不承诺崩溃耐久或敌对并发修改下原子快照。
+
+## 7. D3 v3 运行前固定矩阵
+
+真实 Node 控制仅用 Node 22.23.2、直接 caller/helper、无 PTY/无后代。下表 12 项每 runner 各 3 次，完整 scale=1，共 36 项；三 runner 共 108 项，尚未运行。复用 v2 的八个场景目的但使用新 ID/输入/报告，不重跑或修改 v2。v3 不用缩放实时时间当主验收；边界采用确定性虚拟时钟，原 v2 的 0.25/500 ms 失败和通过原样保留，不以新设计追认。
+
+| ID | 固定输入及必须观察 |
+| --- | --- |
+| D3v3-01 | 正常操作、实际 after-await、自然 exit、完整 capture、writer/verifier sealed；外部 publisher 完整保存。 |
+| D3v3-02 | 操作永久 pending，由调用方 1000 ms 等待边界返回；after-await 及时，raw 操作仍 timeout。 |
+| D3v3-03 | result-ready 后、实际 await 续体前同步阻塞；首报 not-observed，独立 observer 控制 caller，不能用 ready 判返回。 |
+| D3v3-04 | observer 收到 after-await 并 ACK 后才同步阻塞；首份观察成功，进程退出和控制尝试分列。 |
+| D3v3-05 | caller 不发目标帧而结束专用 fd3；observer 确认真实 end，not-observed；无平台私有 fd close 假设。 |
+| D3v3-06 | 本次独有目录预置固定文件，以 wx 触发真实 EEXIST；observation/process 不受 writer failed 改写。 |
+| D3v3-07 | writer 在记录进入后同步 shim 阻塞；明确不是实测磁盘挂起，按共享预算控制，evidence incomplete。 |
+| D3v3-08 | 合法 after-await/ACK 后连续 bulk 至溢出；保留前缀/容量原因/控制事实，evidence incomplete，archive 可完整。 |
+| D3v3-09 | caller 实际 await 后扣住目标帧，observer 到 T0+2200 才发完整身份许可；caller 匹配后发送。首报 not-observed 不变，单列真实迟到接收并归档；这是 delivery-held，不证明 caller 续体自身迟到，也不跨进程比较 T0。 |
+| D3v3-10 | 直接 spawn 本次确认不存在的路径，收到启动错误；spawn-failed 与 not-observed 分开，不宣称从未有过 OS 子进程。 |
+| D3v3-11 | writer 发非法帧后再合法 claim/exit0；错误不可清除，不启动 verifier，不 sealed。 |
+| D3v3-12 | verifier 进入后同步 shim 阻塞；writer 已退出，控制只针对 verifier，原观察/进程首报不变。 |
+
+另有真实因果 gate 控制 2 项，每 runner 各一次，独立计数，不混入 36 项：G1 先扣 caller，消费者真正 await observation 后才 ACK 放行；随后扣 writer、await process；再扣最终 publisher、await evidence。每个 gate 都由消费者续体推进，记录 request/ack 匹配，不以定时 sleep 猜独立性。G2 在 after-await 已正常交付后，只扣 stdout 最后 caller-finished 帧及各读取流 end 的测试 transport 交付，exit 原样递送；消费者真正 await process 后才放行扣留回调，capture 在此之前不能完整结算。分别保存 Node 入口接收时刻 ingressNs 与 SUT 交付时刻 deliveryNs，报告使用 deliveryNs，不回填更早 ingress，不偷偷用 audit 补 SUT 事实。明确 delivery-held 不是 OS 管道实际被后代持有。gates 仅扣 helper 的工作动作/明确回调，不阻塞 observer 线程或扣死真实进程退出控制；每一阶段的固定截止照常生效。
+
+G2 的拦截规则必须在 caller 启动前安装，caller 等到 observer 确认 after-await 的匹配 ACK 后才能发送 caller-finished/结束流；不能收到 fd3 后才临时装 stdout 拦截而再次引入跨 pipe 先后假设。测试审计保留实际 ingress，但 SUT 只能看到按 gate 释放的 delivery。
+
+纯确定性事件 oracle 另固定覆盖：每个 deadline 的 -1ns/相等/+1ns；exit 先于 after-await；真实 end 对比 close/destroy；process hard 未确认及晚 exit；TERM 返回成功却未退出；spawn error 对比成功 spawn 后 kill error；writer 已退出但尾 claim 在 work 截止后到；verifier 已 exit0 而回执晚到 hard；非法帧后合法 claim；首报深度不可变；控制/late 区溢出和 blocked 后不得新建。每项保存 fixture 和预期报告，不将替身的 unconfirmed 称真实不可杀进程。
+
+共享工作截止还必须有组合 fixture：claim 及时但 writer exit 在 1000 相等/之后；writer 完整结束但 verifier 尚未及时启动；verified 及时但 verifier exit 在 1000 相等/之后；verifier exit 及时但 verified 或 EOF 在 2000 相等/之后；terminal 后错误/残片；callback 早于迟调 timer 执行但实际时间已跨截止。每例核对首报、helper 原始事实、控制尝试和 late journal，不只判断最终 kind。
+
+D3 oracle 也必须独立于 SUT：仅共享 schema 常量/可信 fixture 格式，不 import 状态转换、报告构造或验证 helper。从原始身份、receipt/eventOrdinal、控制尝试、实际 exit 与逐流终态重建三个首次报告及 deadline；不信任 SUT 的 kind/deadlinePassed/artifactVerified/summary.pass。同步篡改报告/摘要并重算 manifest 仍须语义拒绝，坏首项后继续有效核验剩余项及末项。文件 verifier 的实际输出与独立文件负例另核，不能由报告重放替代真实文件校验。
+
+协议负例按 caller/writer/verifier/publisher 四角色保存独立 fixture：错 schema/每一身份字段、错误通道、重复/逆序/缺帧、双 terminal、terminal 后新帧、非法 UTF-8、完整或分片超 4096、残片、额外字段、负数/NaN 时间、改 receipt/deadline。文件负例各独立目录覆盖：claim 无文件、错误大小/hash、内部自洽但请求内容错误、缺/多文件、重复 inventory、symlink、路径逃逸、坏 manifest。不得修改旧工件构造负例。
+
+publisher 专项 4 项每 runner 各一次：正常、wx/EEXIST、写出前缀后明确失败、同步 shim 阻塞。由没有活体 API child 的直接父 controller 驱动，保存受测 publication 与外层实际收到的失败事实；其最终审计由现有离线采集路径完成，不递归要求发布者自证。预期失败不会使缺少最终证据成为通过。首次真实矩阵前冻结全部纯 fixture 清单/hash 和新 workflow 输入 SHA；测试数按 fixture 实际清单报告，不预造 oracle 断言总数。
+
+## 8. D4 v2 全身份与责任台账
+
+本版是确定性单进程模型，不 import 生产模块，不验证原生释放/真实并发。failureDomainId 只是逻辑归属标签，不代表已建立 OS 隔离。完整 envelope 为 schema/runId/caseId、唯一 commandId（事件另有 eventSeq/因果 commandId）；owner 身份是不可变 tuple：failureDomainId + executionId + ownerGeneration + allocationId。资源与操作回执再带 resourceId/resourceKind/operationId/receiptId；verifier 不给缺字段补身份。
+
+整份台账 N=2/Q=1。currentGeneration 仅限制新 admit；ownerGeneration 永不改写。换代/重连/换 failureDomain 不清旧槽，old generation 对自身同一操作的迟到证明可以有效，对新 owner 无权。已准入 A/B 都 unknown 时如实计 2，Q 不是未知量硬上限。unknown 封禁新 admit，但不停止 B 的已有模型数据/应用/释放进度。
+
+槽预留、创建 pending/concluded、实际 acquisition、唯一 use token、release 请求/dispatch、首次观察与当前证明分别记账。admit 不把计划资源写成已取得；pending create 即使零 acquisition 仍占槽。createReturned/createFailed 必须验证当前 pending 后才写状态；失败不能提交一个新空数组抹掉已有 acquisition。创建失败且确证零 acquisition 才能归还空槽。
+
+begin-use/end-use 使用唯一 token 推导 in-flight；重复 end、错身份、陌生 token 均拒绝。release 可排队，但本模型仅在创建 acquisition 账封口且所有资源 use token 结束后，对 owner 整体模拟一次 dispatch，冻结完整 acquired 集合。此计数不是各 native Close 的次数。operationId 在整个 run 唯一绑定 owner、操作类型与规范化请求参数；pending 或 completed 时同请求复用原逻辑结果，不重复 dispatch，不承诺 JS Promise 对象相同。创建/释放不得共用 ID；冲突参数或跨 owner 复用必须拒绝。
+
+unknown 是独立观察维度，不是替代 release-in-flight 的单一 status。资源首次 unknown 不可变，同 operation 的完整迟到证明可将当前观察补成 released；禁止重试 Close 获得新证明，也不能反转已确定 released。完整责任结算要求创建已结束、所有 acquired 资源确定释放、全部 use token 和请求操作结算；部分资源 released 不归还整槽。不明进入/返回责任仍占槽；全部补齐后可归还，但准入封禁仍须显式 reopen，且整账无 unresolved unknown 才接受。
+
+相同 receiptId 和规范化内容精确重复是幂等无新效果；同 ID 变内容拒绝，重复原 eventSeq 则是工件协议错误。参数/回执只允许合法 JSON，等价比较忽略对象键顺序、保留数组顺序及值类型，数值必须有限。已释放及零资源失败 owner 都留 tombstone，旧 allocation/resource/operation ID 不能重新用于另一次取得。release 请求先验证完整身份，再查历史 operation；完成后相同 op/参数仍复用，不能先因 owner released 而拒绝。每个拒绝命令除追加 rejection 记录外，资源、操作、计数、generation 和准入状态全量不变；不能先写 returned 再验证参数。
+
+command 外壳为 schema/runId/caseId/commandId/commandSeq/kind/args；args.owner 含完整目标身份（包括目标 run/case），据此区分合法命令引用错误目标的模型 rejected 与工件外壳坏掉的 evidence-error。return 明确 accepted/reused/rejected 及结构化原因；不以任意异常满足预期拒绝。模型不用真实计时器，延迟/到期为固定逻辑步骤。
+
+| Command | 前提与允许状态变化 |
+| --- | --- |
+| reserve(owner, createOperationId) | 当前 generation、已声明 domain、ID 未使用、未封禁且 occupied<2；先预留空资源账及槽。 |
+| dispatch-create(owner, createOperationId) | 匹配已预留操作，只 dispatch 一次，计数不代表真实创建。 |
+| acquire(owner, createOperationId, resource) | 同一已 dispatch 且未封口创建，resourceId 未使用；只追加 acquisition。 |
+| report-create(owner, createOperationId, outcome) | 必须已 dispatch，记录 success/failed；精确重复可复用，冲突拒绝，不清 acquisition。本有限模型 success 且零 acquisition 的输入明确拒绝为未覆盖，不能按空集合已释放。 |
+| seal-create(owner, createOperationId, resourceIds) | 已报告结果，资源集合精确等于 acquisition；封口后不能 acquire。 |
+| begin-use / end-use(owner, resourceId, token) | begin 必须有资源、未 released、未请求释放且 token 未用；end 只结束当前匹配 token。 |
+| request-release(owner, operationId, params) | 新请求绑定并排队，同参数复用；不清 unknown，不接受第二个不同 ID 的并行/重试释放。 |
+| dispatch-release(owner, operationId, resourceIds) | 创建封口、use 全归零、精确完整资源集合；整体一次 dispatch。 |
+| release-evidence(owner, operationId, resourceId, receiptId, result) | 仅处理已 dispatch 操作中的资源，result=released/unconfirmed；unknown 后同操作可补 released。 |
+| observe-unknown(owner, subject, reason) | subject 指向存在的 create/op/token/resource 责任；追加首次观察及未解决责任，不反转已确定事实。 |
+| advance-generation(previous, next) | previous 匹配当前、next 从未用；只变新建 fence，保留旧账。 |
+| reopen(expectedGeneration) | generation 匹配且 unresolved unknown 为零，才解除 latch；不要求所有槽空闲，也不跳过下一次容量检查。 |
+
+零资源创建失败只有 report failed、seal 空集合且无在途使用后才能归还；此前排队 release 则结算同操作为 not-required，dispatchCount=0。资源 released 不能代替 end-use，操作只有全部冻结资源释放且创建/使用责任结算才能 complete。创建/使用/释放的 unknown 只被相应 seal-create/end-use/完整 release 证明消除；原首次观察保留。unknownCount 从存在未解决责任的 owner 去重推导，归零不自动 reopen。slot 归还由完整条件派生，不提供任意 free-slot 命令。tombstone 留至 run 结束；reconnect 只是相同账本的再次访问，不创建新状态容器。
+
+D4v2-04 的 B 进展用 begin-use/end-use 中 `kind=data-application`、唯一 batchId 的 token 表达：A unknown 后 B 才开始该 batch，end-use 保存同 batch 的 applied 事实，oracle 核对完整身份与前后顺序。它只证明模型允许推进，不以一个计数声称真实 B 仍可服务。
+
+## 9. D4 v2 独立 oracle 与固定场景
+
+harness 从可信冻结 fixture 取命令，在调用 SUT 前记录完整 command，之后记录 return/error、原始 emitted events、完整 immutable snapshot。oracle 不 import SUT 的类、转换、验证或 snapshot helper；共享仅限常量 schema/fixture 格式。oracle 从可信命令独立推导每一步合法性、事件语法、owner/资源/token/operation/generation/quarantine/tombstone 全账，再比较返回、事件和每步完整快照。不能用 SUT accepted/rejected、occupied/unknown/dispatchCount 自述作真相，也不能只比较最终摘要。
+
+每命令的所有事件须有精确归属，原始 schedule 必须完整匹配 fixture；删/复制/重排事件后重新编号、同步修改 snapshot/assessment 并重算 manifest，仍须由语义拒绝。manifest 校验和案例遍历分开，首项坏后继续有效验证末项，逐项保存 attempted/verified/errors。文件损坏、模型拒绝和整体场景结论分别计数。
+
+每次调用固定以下 16 项各一次；不在一个 runner 重复 linux/darwin/win32 逻辑标签。三 runner 合计 48 次模型，零 native、零真实并发，尚未执行。
+
+| ID | 必须验证的轨迹 |
+| --- | --- |
+| D4v2-01 | A/B 预留占满 N2，C 拒绝；B 明确零资源创建失败归还后 C 才可准入。 |
+| D4v2-02 | pending create 且零 acquisition 仍占槽，不能凭空列表提前归还。 |
+| D4v2-03 | 部分创建取得 pipe 后失败，空列表不能抹资源，逐项结算后才归还。 |
+| D4v2-04 | A unknown 封禁，B 仍有模型数据/应用/释放进展，C 拒绝。 |
+| D4v2-05 | A/B 都 unknown，unknownCount=2，不超总槽也不压成 Q1。 |
+| D4v2-06 | 两 use token 延迟 release dispatch，错/重复 end 拒绝，归零才一次 dispatch。 |
+| D4v2-07 | 部分资源 released，其他 pending/unknown 时不归还/reopen。 |
+| D4v2-08 | 资源 unknown 后同 operation 迟到 released，首报保留、dispatch 一次，显式 reopen。 |
+| D4v2-09 | 分别篡改 run/case/domain/execution/generation/allocation/resourceId/resourceKind/op 身份，不污染其他 owner。 |
+| D4v2-10 | g1 A pending 后换 g2 建 B；旧回执只能结算 A，不改 owner 身份。 |
+| D4v2-11 | g1 unknown 换代/重连/换域重试仍占槽并封禁，不经新 namespace 清账。 |
+| D4v2-12 | pending/completed 同参数复用；参数冲突/跨 owner operationId 重用拒绝。 |
+| D4v2-13 | 精确重复 receipt 无效果，同 ID 改内容及确定状态反向污染拒绝。 |
+| D4v2-14 | 完成或零资源失败留 tombstone，旧 allocation/resource/op 不复用。 |
+| D4v2-15 | 非法 create/resources/身份/generation 命令拒绝，全账除 rejection 外不变。 |
+| D4v2-16 | 观察结束仍有创建/使用/释放责任，保留 pending/unknown、占槽并封禁，不假 released。 |
+
+语义负例至少逐类删除/复制/重排事件，篡改完整身份/资源/请求、删保留 owner、伪造 occupancy/reopen/released、修改每步全量快照和坏首项后仍验末项。每例保存可信输入、篡改后数据、预期错误；不得仅用 hash/sequence 错误声称完成独立语义 oracle。
+
+## 10. 实施入口、验收与剩余门槛
+
+拟新增诊断文件（均尚不存在）：`scripts/diagnostics/diagnostic-settlement-v3.mjs`（handle/owner/时钟）、`scripts/diagnostics/diagnose-settlement-v3.mjs`（直接进程角色及CLI）、`scripts/diagnostics/settlement-oracle-v3.mjs`（独立报告重放）、`scripts/diagnostics/settlement-fixtures-v3.mjs`（固定事件/文件/gate负例）；D4 为 `runtime-owner-quarantine-model-v2.mjs`、`owner-quarantine-oracle-v2.mjs`、`diagnose-owner-quarantine-v2.mjs`、`owner-quarantine-fixtures-v2.mjs`，同目录。新 workflow 单列，不编辑旧 workflow；实现时冻结精确路径过滤与唯一首次触发方式，避免 push+dispatch 重复采集。
+
+下一里程碑先实现上述新入口，固定 fixture 清单和 source hash，完成纯 oracle/文件/gate 测试、Linux 首次完整矩阵及独立源码复审；每次失败另存目录，不覆盖或重跑同输入筛绿。CLI 拟支持 `--self-test --output NEW_DIRECTORY`、`--output NEW_DIRECTORY`、`--verify-saved DIRECTORY`，命令只有实现后才能使用。本设计未运行这些命令，不声称 108+48 或其他预定计数已经通过。
+
+之后固定新输入 commit，唯一一次三平台完整采集，失败也上传所有 partial/控制日志；下载全部 ZIP，对账 API digest/成员数/实际输入源码（Windows 原字节保留，CRLF 只读归一比较），仅以可信 Git verifier 重放，不执行归档代码。在线报告和离线独立 oracle 都须满足首次报告、期限、原始身份、tail/EOF、全账和语义负例；归档失败不能由 scenario 预期 writer 失败豁免。
+
+本阶段文档验收检查 frontmatter/索引/本地引用、两树共同契约一致、ExecPlan 四活章节、diff、旧源码/workflow/历史章节不变，并独立复审。只收口设计阶段，不关闭 D3/D4 实施债务、W1/U1 门槛、原生第二批、真实双会话/启动链/宿主/packaged、生产 API/停止预算或整体退出完整性交付。正常 Windows 引用语义与历史失败的证据边界继续保留。
+
+## 11. 固定官方源码依据
+
+本设计已经完成进程/时钟、writer/发布、D4台账三个方向的独立静态复审。修订包含排队前计时、capture gate、G2启动前拦截与ACK、合法未完成前缀分类、非自指归档、共享work截止组合、完整独立oracle与D4原子拒绝/迟到责任结算；最终没有剩余设计阻断点。两树本轮元数据/索引状态/新增引用/历史保持与diff检查通过；这不是新版本实施、自动化矩阵或产品退出完整性通过。
+
+本轮只读取得 Node v22.23.2 官方源码，annotated tag 为 `490a9fef8f8adcda5a95bd6f96035b05cb43fe5b`，peeled commit 为 `aa4c77582be995286fc6e00aaf530dc7ade102a9`（git ls-remote 核对）。tag URL 与固定 commit URL 完整字节/hash 一致；GitHub API 的一次 403 不作证据，Windows 源首次网络零字节超时后重新获取只属于资料下载，不是重跑实验。本次文件未收入仓库或当作 runner 二进制证明。
+
+| 官方固定来源 | 字节数 / SHA256 | 最小源码结论 |
+| --- | --- | --- |
+| [lib/internal/child_process.js](https://raw.githubusercontent.com/nodejs/node/aa4c77582be995286fc6e00aaf530dc7ade102a9/lib/internal/child_process.js) | 31715 / `9f7c4dfcbd7e3d2e8006f6e19fc09695322edd20ef280a68025e2a269bfa12cd` | 280–293：关闭并清空 _handle 再发 exit/error；497–516：无 handle 不可 kill，kill 本身也可发 error。保留 JS 对象不延长原生控制权。 |
+| [deps/uv/src/win/process.c](https://raw.githubusercontent.com/nodejs/node/aa4c77582be995286fc6e00aaf530dc7ade102a9/deps/uv/src/win/process.c) | 42052 / `39516fc8c2316ec53b853a67301958796372676fb1b27d4ec76ec51217ae6f26` | 1114/1129：保存创建 hProcess 并登记 wait；1371：按该 HANDLE 控制，1376 记录 requested signal；884：endgame CloseHandle。引用存在、控制请求和实际终止不等价。 |
+| [deps/uv/src/unix/process.c](https://raw.githubusercontent.com/nodejs/node/aa4c77582be995286fc6e00aaf530dc7ade102a9/deps/uv/src/unix/process.c) | 31333 / `cedc79cb473c0dde5c270ff2ee7b7956cbdfe0b3aceba19597b9a75a21e119f0` | 131/142/174：waitpid 与回调；1097–1102：按 PID 发信号。fork 路径的 exec 失败会传 errno 并由父 waitpid（929/938/945/948）；macOS 872–898 优先 posix_spawn，不能泛称所有 Unix ENOENT 必然先 fork。 |
+
+这是固定版本静态行为依据，不是新跨平台运行结果；不以该源码保证 private handle 可用，也不承诺任意外部 reaper/插件干预后仍可安全用 PID 控制。

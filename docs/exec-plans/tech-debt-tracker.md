@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-22 下一版诊断结算设计冻结：新增 `docs/design-docs/runtime-diagnostic-settlement-contract.md`（比较中/未验证），本阶段仅固定源码/协议复审、零新测试和native。D3 v3三独立不可变首报、有界未确认owner、真实EOF捕获、严格writer协议、独立verifier与publisher，以及D4 v2全身份command/return/event/snapshot重放、acquisition/use/单次release/unknown/tombstone尚未实施。每runner36主控、2gate、4publisher和16模型只是冻结计划数，最终文档检查与静态复审已通过。下一步独立诊断树本地新入口/fixture清单/source hash和源码复审，之后唯一一次三平台采集与全工件审计；旧D3 v1/v2、D4 v1/workflow/失败不改，主运行时只同步文档。完整诊断结算与D4身份债务不因设计完成关闭，W1/U1、原生第二批、真实宿主/启动链/packaged及生产退出完整性仍阻塞。
+
 2026-09-22 D3 v2三平台窄验证完成：b4db41cc唯一run35676427931经完整三ZIP/15输入及可信Git入口复核，每平台full24/positive24、oracle78/parser8及篡改24/23成立；Windows实际乱序按源序合法接受。本次raw after-await/writer未超原预算，但不关闭三独立settlement、首次deadline快照、SIGKILL后有界unconfirmed、writer非法帧/预算/独立封存或D4完整身份重放。下一阶段先补诊断契约，W1/U1和产品退出完整性继续阻塞；本次PTY/D4/W1/U1零新增。证据在独立树`.debug/observation-envelope-v2-run-35676427931/`，详见原生失败设计第17节、生命周期第22节及候选第41节。下述v1失败和local-1覆盖缺口均保留，不追认通过。
 
 2026-09-22 原生失败/资源隔离foundation v1结果：7141cfa3首次run35673511893及误触同SHA重复run35673550930均failure。两次完整D3均Linux/macOS24/24、Windows23/24，后者跨pipe顺序oracle误判；D4每runner全24项、每run72次、两run144次模型按原verifier通过，非native/真实并发验收。工件位于独立诊断树，D4没有pty:false字段。当前只冻结新增D3 v2来源/顺序、4096有界解析和D3-08 ACK后bulk窄修正；D3完整settlement、D4独立重放/身份仍开放，W1/U1共66driver尝试未开始。原始失败、旧D1/D2/G07、正常Windows对象引用语义及所有生产API/预算边界不改。详见原生候选第38–39节、原生失败设计第14–15节和active计划。
