@@ -1,0 +1,106 @@
+name: Runtime Observation Envelope V2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [runtime-exit-integrity-native-candidates]
+    paths:
+      - .github/workflows/runtime-observation-envelope-v2.yml
+      - scripts/diagnostics/diagnostic-observation-envelope-v2.mjs
+      - scripts/diagnostics/diagnose-observation-envelope-v2.mjs
+      - scripts/diagnostics/observation-envelope-v2-oracle-test.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-observation-envelope-v2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  observation:
+    name: D3 v2 / ${{ matrix.os }} / Node 22.23.2
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+      - name: Record runner and exact inputs
+        run: |
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import { execFileSync } from 'node:child_process';
+          const files = [
+            '.github/workflows/runtime-observation-envelope-v2.yml',
+            'scripts/diagnostics/diagnostic-observation-envelope-v2.mjs',
+            'scripts/diagnostics/diagnose-observation-envelope-v2.mjs',
+            'scripts/diagnostics/observation-envelope-v2-oracle-test.mjs',
+            'docs/design-docs/runtime-native-failure-isolation.md',
+          ];
+          fs.mkdirSync('observation-v2-runner-evidence/inputs', { recursive: true });
+          const sources = files.map(file => {
+            const bytes = fs.readFileSync(file);
+            const destination = `observation-v2-runner-evidence/inputs/${file}`;
+            fs.mkdirSync(destination.slice(0, destination.lastIndexOf('/')), { recursive: true });
+            fs.writeFileSync(destination, bytes, { flag: 'wx' });
+            return { file, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+          });
+          const metadata = {
+            schema: 'runtime-observation-envelope-v2-runner',
+            commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+            githubSha: process.env.GITHUB_SHA, githubRef: process.env.GITHUB_REF,
+            runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
+            runnerOs: process.env.RUNNER_OS, runnerArch: process.env.RUNNER_ARCH,
+            image: process.env.ImageOS, imageVersion: process.env.ImageVersion,
+            platform: process.platform, arch: process.arch,
+            osRelease: os.release(), osVersion: os.version(), versions: process.versions,
+            executable: process.execPath, sources,
+          };
+          fs.writeFileSync('observation-v2-runner-evidence/environment.json', `${JSON.stringify(metadata, null, 2)}\n`, { flag: 'wx' });
+          if (metadata.commit !== metadata.githubSha || process.versions.node !== '22.23.2') throw new Error('Runner input mismatch');
+          NODE
+      - name: Check diagnostic syntax
+        run: |
+          node --check scripts/diagnostics/diagnostic-observation-envelope-v2.mjs
+          node --check scripts/diagnostics/diagnose-observation-envelope-v2.mjs
+          node --check scripts/diagnostics/observation-envelope-v2-oracle-test.mjs
+      - name: Run D3 v2 deterministic oracle and parser tests plus self-test schedule
+        if: ${{ !cancelled() }}
+        env:
+          DSC_OBSERVATION_ENVELOPE_SELFTEST_EVIDENCE: d3-v2-selftest
+        run: node scripts/diagnostics/diagnose-observation-envelope-v2.mjs --self-test 2>&1 | tee d3-v2-selftest.log
+      - name: Verify D3 v2 self-test positive evidence
+        if: always()
+        run: node scripts/diagnostics/diagnose-observation-envelope-v2.mjs --verify-saved d3-v2-selftest/positive
+      - name: Run complete D3 v2 schedule
+        if: ${{ !cancelled() }}
+        run: node scripts/diagnostics/diagnose-observation-envelope-v2.mjs --output d3-v2-evidence
+      - name: Verify every saved D3 v2 case
+        if: always()
+        run: node scripts/diagnostics/diagnose-observation-envelope-v2.mjs --verify-saved d3-v2-evidence
+      - name: Upload complete D3 v2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-observation-envelope-v2-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            observation-v2-runner-evidence/
+            d3-v2-evidence/
+            d3-v2-selftest/
+            d3-v2-selftest.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14

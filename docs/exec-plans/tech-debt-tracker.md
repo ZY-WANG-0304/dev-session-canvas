@@ -22,9 +22,13 @@
 
 ## 技术债列表
 
-2026-09-22 原生失败/资源隔离第一批实施：`docs/design-docs/runtime-native-failure-isolation.md` 仍为比较中/未验证，已新增D3观察外壳、D4有限准入模型和三平台foundation workflow。本地D3 24/24 trace/manifest verified、D4三平台逻辑24/24 control-pass，均不含native/PTY；GitHub三平台runner尚未取得，旧D1/D2/G07与全部失败不改。D3三独立settlement、迟到after-await不可变快照、caller源帧身份、forced/unconfirmed有界结算和独立evidence settlement仍未实现，不能把本地结果当契约或产品验收。W1 Windows24、U1 Linux18/macOS24共66个driver尝试尚未开始；其余通知/环境销毁、正缓冲取消、在途control fd、真正Close挂起、双会话、builtin/其他Windows及真实Agent/Host/Webview/packaged仍未闭合，生产API/容量/停止预算继续开放。详见原生候选设计第37节和active计划。
+2026-09-22 原生失败/资源隔离foundation v1结果：7141cfa3首次run35673511893及误触同SHA重复run35673550930均failure。两次完整D3均Linux/macOS24/24、Windows23/24，后者跨pipe顺序oracle误判；D4每runner全24项、每run72次、两run144次模型按原verifier通过，非native/真实并发验收。工件位于独立诊断树，D4没有pty:false字段。当前只冻结新增D3 v2来源/顺序、4096有界解析和D3-08 ACK后bulk窄修正；D3完整settlement、D4独立重放/身份仍开放，W1/U1共66driver尝试未开始。原始失败、旧D1/D2/G07、正常Windows对象引用语义及所有生产API/预算边界不改。详见原生候选第38–39节、原生失败设计第14–15节和active计划。
 
-2026-09-22 D3初版观察外壳契约未闭合：冻结的 `startObservedCase(spec)` 尚未导出；`observeCaller()`以单一child close Promise收口，caller/process/evidence阶段串行，deadline后迟到帧可改变最终分类，caller控制帧身份由observer重包，强制处置与实际exit/stdio close未完全分层，`evidenceIntegrity: sealed`没有独立发布/manifest结算证明。下一轮先修诊断入口和原始事件模型，再决定三平台runner/W1/U1；不修改业务代码或历史工件。关联 `scripts/diagnostics/diagnose-observation-envelope-v1.mjs`、`scripts/diagnostics/diagnostic-observation-envelope-v1.mjs`、`docs/design-docs/runtime-execution-lifecycle-contract.md` 第18节及 active ExecPlan。
+2026-09-22 D3观察外壳契约未闭合：冻结的 `startObservedCase(spec)` 尚未导出；单一child close Promise和串行caller/process/evidence编排未分成三独立等待，deadline首次观察快照、bounded unconfirmed及独立发布/manifest结算仍未实现。完整writer协议也有非法帧可能被其他sealed事实掩盖的风险，须与独立evidence结算一并验证，本轮不扩实现。v1由observer重包caller身份/sequence，v2仅新增发送端身份与真实通道/接收时间oracle，不构成完整返回保证。D4有限模型的完整独立重放及execution/generation identity核验也未闭合。关联新v2两个诊断入口、原v1冻结入口、生命周期契约第19–21节与active计划；先补诊断语义，不改业务或推进W1/U1。
+
+2026-09-22 D3 v2篡改自测覆盖补证：local-1根manifest提前失败，run.scale未读取而使后续全部案例失败，实际attempted24/verified0；原自测只看总fail/坏首项，不能证明其余23项与末项仍有效验证。正例/full各24通过和旧工件不改。修订版分开根manifest检查与run读取，强制24/23及末项无错误，local-2自测oracle78/parser8/positive24通过且tampered-verification.json确为24/23、仅shared-manifest与D3-01-1错误；local-2-full未缩放24/24 verified无evidenceErrors，补齐当前版本的本地窄证明，三平台runner仍待验。不是PTY/产品验收，也不关闭完整settlement债务，关联原生失败设计第16节及active计划。
+
+2026-09-22 D3缩放自测真实迟到与writer预算核验：重复run35673550930 Windows positive自测除D3-01-1跨pipe误判外，D3-07-1/08-1 after-await为504.2253/543.014ms，超原0.25缩放的500ms，不能归因成同一个顺序oracle错误。writer结算另有554.9569/630.9223/608.3949ms超500ms，原verifier未全部检查；保留原结果，不扩大预算或用新oracle追认。两次Windows自测positive失败后均未产生最终self-test报告/tampered负例，已有trace/log留证。下一完整结算阶段须补预算与failure/unconfirmed核验，v2继续使用原缩放预算。证据为独立树 `.debug/foundation-first-two-audit/`，详见生命周期契约第19节。
 
 2026-09-22 G07收口计时边界：新九项guard的调用方await后事件已补算，最大1012.3385ms、均在2000ms内；原审计1011.7495ms是resolve前的guard-returned事件。外层1112.4939ms同样仅为outer-returned事件，其后尚有同步writeJSON及resolve，九份trace没有外层await后时间。故本轮不能宣布完整外层返回预算已独立证明；下一新诊断需补调用方/结算I/O观察，不改本轮输入、工件或三个新G07正例与六负控判定。补充证据为主树.debug/stdio-close-35631266321/timing-observation-audit-v1.json，详见生命周期契约第16节。
 

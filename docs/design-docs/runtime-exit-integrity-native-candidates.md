@@ -21,7 +21,7 @@ updated_at: 2026-09-22
 
 2026-09-20 用户澄清后的产品范围以第 9 节为准：画板管理 Terminal / Agent 执行会话及其终端资源，不默认承诺实际主进程退出后继续保留节点或终端以等待普通后代及其未来输出。第 2 节冻结协议、两轮原始断言和失败结果全部保留；它们描述诊断实验是否达到原门槛，不自动等于产品验收结论。
 
-当前进展入口见第6节，最新PTY原生结果见第30节，D1/D2证据与Windows G07补证冻结/首次结果见第31–35节。第36节及 `docs/design-docs/runtime-native-failure-isolation.md` 记录原生失败/隔离第一批设计冻结；D3/D4工具实现与本地有限结果见第37节，三平台runner和W1/U1仍未完成。第2–5节及第7–35节保留各阶段当时的协议、结果和判断，其中“下一步”按所属阶段理解，不覆盖最新状态。
+当前进展入口见第6节，最新PTY原生结果见第30节，D1/D2和Windows G07证据见第31–35节。第36–37节保留失败/隔离第一批设计及v1本地结果，第38节记录7141cfa3的首次及误触重复runner均failure，第39节冻结D3 v2来源/顺序窄修正，第40节记录Linux本地有限验证。v2三平台runner与完整D3/D4契约仍待推进，W1/U1未开始。第2–5节及第7–37节按历史时点理解，不覆盖最新状态。
 
 ## 2. 运行前冻结
 
@@ -60,6 +60,8 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 ## 6. 结论与下一步
 
 ### 当前状态（2026-09-22）
+
+当前foundation证据见第38节：7141cfa3首次run35673511893和误触同SHA重复run35673550930均failure。两次完整Windows D3都为23/24跨pipe误判；重复Windows缩放自测另有真实迟到及未完整检查的writer预算超限，分别保留。第39–40节只收口D3 v2来源/顺序、帧解析和D3-08 ACK窄协议及Linux本地验证，三平台新runner待验；D3完整settlement、D4重放/身份及W1/U1继续开放。以下两段记录此前设计承接背景，不覆盖本段当前状态。
 
 第30节已完成Windows bundled-DLL三臂首次原生矩阵及全量复核：138条会话完整，46次已知HPCON最终Close消除同native/no-close的逐会话+2总句柄增量，四个no-close资源失败保留。这是正常自然路径的窄因果证据，不是Windows对象语义缺陷或生产退出完整性已修复；旧类型/内核对象身份归属不确定不改判。
 
@@ -660,10 +662,32 @@ D2正式首轮 `.debug/process-guard-v2-local-first` 的24项control-pass和最�
 
 其余通知/环境销毁、正长度已读缓冲取消、在途waiter/control fd、真正Close挂起和双会话仍属未冻结第二批，继续阻塞生产接入。builtin、其他Windows版本、实际Agent启动链、VS Code/Electron、Host/Webview/packaged、生产容量/停止预算及旧guarded移交仍开放。下一阶段只实施D3/D4，不改业务、依赖、旧live绑定或旧实验；原生候选总体比较中/验证中，ExecPlan active，退出完整性债务未关闭。
 
-## 37. D3/D4 工具实施与本地有限结果（2026-09-22）
+## 37. D3/D4 v1 工具实施与本地有限结果（历史阶段，2026-09-22）
 
 独立诊断树已实现 `diagnostic-observation-envelope-v1.mjs`、`diagnose-observation-envelope-v1.mjs`、`runtime-owner-quarantine-model-v1.mjs`、`diagnose-owner-quarantine-v1.mjs` 及 foundation workflow。当前工作树本地证据目录为 `.debug/runtime-native-failure-foundation-v2-d3/` 和 `.debug/runtime-native-failure-foundation-v2-d4/`：D3完整schedule 24/24 verified，D4按linux/darwin/win32各8项共24/24 control-pass；另有独立self-test目录，其中D3 positive/tampered和D4 manifest已通过本地复核。D3是Node caller/writer进程控制，D4是N=2/Q=1有限模型，均不创建PTY或native resource；`nativeProcesses=0`只表示本阶段没有native进程。
 
-foundation workflow固定Node22.23.2、三平台矩阵并上传完整schedule及self-test目录，但尚未取得GitHub runner run/artifact；上述本地目录使用当前未提交工作树源码快照，不能当作提交绑定或跨平台结果。W1/U1尚未实施，旧D1/D2/G07、历史失败与Windows正常对象引用语义不改判。
+foundation workflow固定Node22.23.2并配置完整schedule及self-test目录上传；本节是runner前记录，上述本地目录当时使用未提交工作树快照，随后v1冻结为7141cfa3。目录中的v2是v1工具的第二版本地证据，不是第39节新增v2入口。后续runner见第38节，W1/U1未实施；旧D1/D2/G07、历史失败与Windows正常对象引用语义不改判。
 
-本地结果不关闭D3冻结契约：`startObservedCase(spec)`尚未导出；`observeCaller()`以单一child close Promise收口，caller、processSettlement和writer/evidence阶段仍串行；没有迟到after-await不可变首次快照，caller源帧身份/序号由observer重包，强制处置请求、实际退出和stdio close未完全分层，evidence sealed为编排字段而非独立封存结算。故24/24仅证明有限trace/manifest最终可重放，不能宣称三独立settlement或外层调用方await已验证。下一阶段先补这些诊断语义，再决定runner/W1/U1；不改业务运行时代码、生产拓扑或旧工件。
+本地结果不关闭D3冻结契约：`startObservedCase(spec)`尚未导出；`observeCaller()`以单一child close Promise收口，caller、processSettlement和writer/evidence仍串行；没有迟到after-await不可变首次快照，v1 caller帧身份/序号由observer重包。强制处置请求、实际退出和stdio close未完全分层，evidence sealed为编排字段而非独立结算；D4独立重放/完整身份也未闭合。24/24只是有限trace/manifest工具结果，当前仅按第39节窄修来源/顺序，不改业务、生产拓扑或旧工件。
+
+## 38. Foundation v1 两次 runner 与跨 pipe 误判（2026-09-22）
+
+输入7141cfa3的首次run `35673511893` attempt1与误触同SHA重复run `35673550930`均为failure。两次完整D3均为Linux/macOS各24/24、Windows23/24，仅Windows D3-01-1跨pipe误判；v1把stdout/fd3到达次序重包成source序号，不能代表caller因果。这是跨平台均需防范的诊断oracle缺陷，不是Windows系统或产品bug。D4每runner执行三组逻辑标签共24项，每run72次、两run144次模型按原verifier通过，均零native PTY；D4没有pty:false字段，实际记录native:false/nativeProcesses:0。
+
+首次Windows自测positive23/24，重复21/24；重复新增D3-07-1/08-1接收504.2253/543.014ms，超过固定缩放500ms，是独立真实迟到，不由source排序修正。重复自测还见三次writer结算554.9569/630.9223/608.3949ms超500ms，原verifier未全部检查，单列预算债务。Windows两次自测在positive失败后未生成最终self-test报告或tampered负例，保留已有轨迹/日志，不补造缺失工件。
+
+首次artifact Linux/macOS/Windows为10672290231/10671559820/10672340270，目录是独立诊断树 `.debug/github-foundation-35673511893-{ubuntu,macos,windows}/`，不是主树；重复artifact为10671619890/10671953122/10672690041。六ZIP总3,853,782字节/3022成员，size/digest均与API一致，36份输入与固定7141cfa3字节对账，Windows仅CRLF差异；只执行可信Git输入生成的验证器，不执行归档代码。完整获取/审计在本树 `.debug/foundation-first-two-audit/`，summary SHA256为 `eb5d8e91ffe23ffa03ff43384d1d52c46ab0798a05a0adc644084a2a7d9081d5`，audit SHA256为 `b1de5345391c816f11a47b4143afa65b5da8d826463f76d5883f559f59b1d5c1`。两run原failure、原断言及工件均冻结，不用重复执行筛绿。
+
+## 39. D3 v2 来源与顺序窄修正（运行前协议，2026-09-22）
+
+新增D3 v2两个入口和专用oracle自测，不改v1或D4；具体为 `scripts/diagnostics/diagnostic-observation-envelope-v2.mjs`、`scripts/diagnostics/diagnose-observation-envelope-v2.mjs`、`scripts/diagnostics/observation-envelope-v2-oracle-test.mjs`。caller源帧携带全局sequence和完整identity，observer记录真实通道及有限非负接收时间；after-await仅fd3，同pipe序号递增而跨pipe到达任意，及时性按接收时间判断。完整编码帧和分片解析限4096字节，错误协议必须失败；连续源序缺口只允许D3-08明确bulk区段，且必须observer确认after-await、caller收到ACK后才发bulk。正式边界与负例见 `runtime-native-failure-isolation.md` 第15节。
+
+新workflow `.github/workflows/runtime-observation-envelope-v2.yml` 仅固定Node22.23.2三平台D3 v2，运行语法、确定性oracle/parser、缩放自测、完整24项及离线复核并完整上传，不重复D4模型。自测保持原0.25缩放/500ms预算，不能扩大以掩盖重复Windows真实迟到。本地证据见第40节；三独立settlement、deadline不可变首次观察、bounded unconfirmed、writer预算及独立evidence结算、D4完整重放/identity仍未闭合，W1/U1未开始。
+
+## 40. D3 v2 Linux 本地窄验证（2026-09-22）
+
+独立诊断树Linux Node22.23.2的新目录 `.debug/observation-envelope-v2-local-1-selftest/` 完成oracle78/78、parser8/8、positive24/24及篡改拒绝；`.debug/observation-envelope-v2-local-1-full/` 未缩放24/24 verified，三脚本语法通过并保存源码hash。D3-08记录observer receipt/ACK发送与首bulk，caller收到匹配ACK的前提来自源码await控制流，不冒称另有caller ACK接收事件。首次overflow锁定后续bulk拒绝，以维持唯一缺序区段。
+
+输入是未提交工作树源码快照，不是可绑定新commit的运行；v2三平台runner仍待一次新提交触发及完整下载审计。本地通过只补来源/顺序oracle，不改v1两次失败、自测真实迟到、旧工件或完整契约阻塞项，不交付native/生产退出完整性。
+
+随后独立复核发现local-1 tamper自测只证实总失败与首项错误：根manifest提前失败使run.scale未赋值，实际attempted24/verified0，不是其余23项有效复核。local-1 positive/full24通过和原工件均保留。新修正分开根manifest错误与run读取，強制篡改报告attempted24/verified23及末项无错误并保存tampered-verification.json；新 `.debug/observation-envelope-v2-local-2-selftest/` 完成oracle78/parser8/positive24，篡改报告24/23且仅shared-manifest与D3-01-1错误；`.debug/observation-envelope-v2-local-2-full/` 未缩放24/24 verified且无evidenceErrors，最终CLI语法/diff检查通过。新目录仍为未提交工作树输入，三平台runner待验，不重写local-1。完整writer协议中非法帧可能被sealed掩盖的风险继续归入evidence/settlement债务，不扩此次窄实现。

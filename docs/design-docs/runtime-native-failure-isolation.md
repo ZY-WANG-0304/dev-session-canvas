@@ -19,7 +19,7 @@ updated_at: 2026-09-22
 
 ## 1. 本阶段状态与完成边界
 
-本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。D3/D4工具已经在独立诊断树实现并完成本地有限验证，但没有native资源或GitHub三平台runner结果；本文不表示生产拓扑已选定。
+本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。D3/D4 v1已以7141cfa3完成三平台首次runner，Windows D3暴露跨pipe顺序oracle缺陷；首次与误触的同SHA重复run均保留failure。当前仅冻结第15节的D3 v2来源/顺序窄修正，不表示D3完整契约、native资源或生产拓扑已验证。
 
 目标是回答两件事：部分初始化/等待失败后，哪些资源仍由谁持有；一个资源结果无法确认时，如何不误报释放、不破坏其他会话，并限制继续积累。Terminal和Agent适用相同边界，实际Agent CLI的启动包装链另验；不新增普通后代托管、退出后历史、故障恢复、root归属改造或外部server承诺。
 
@@ -108,7 +108,7 @@ owner是有明确取得来源的资源持有记录，不是PID、fd数值或HPCO
 
 ## 7. D4：未知状态准入策略（冻结）
 
-本轮新增 `scripts/diagnostics/runtime-owner-quarantine-model-v1.mjs` 和 `scripts/diagnostics/diagnose-owner-quarantine-v1.mjs`。每平台8项、各一次，共24项确定性模型、零native；不能替代A/B真实并发。模型输出操作计数与完整身份，validator从事件独立重算。
+本轮新增 `scripts/diagnostics/runtime-owner-quarantine-model-v1.mjs` 和 `scripts/diagnostics/diagnose-owner-quarantine-v1.mjs`。冻结协议为linux/darwin/win32各8项逻辑场景；实际v1 CLI在每个runner都执行全部24项，三runner合计72次有限模型执行，不是72个native进程，也不能替代A/B真实并发。原“各平台8项、共24项”的冻结计划数保留为逻辑schedule数，不冒充实际执行总数。模型输出操作计数与身份，完整独立重放及身份核验缺口见第13节。
 
 | ID | 固定检查 |
 | --- | --- |
@@ -188,20 +188,52 @@ W1/U1自身的释放错误仍是raw失败，即使成功观察这种失败；验
 
 ## 12. 实施顺序与验证入口
 
-第一步已在独立诊断树新增D3两文件、D4两文件及 `.github/workflows/runtime-native-failure-foundation.yml`，并完成合成负例、本地Node执行和保存目录复核。workflow固定Node22.23.2、三平台矩阵且不安装业务依赖；新工具CLI支持 `--self-test`、`--output NEW_DIRECTORY` 和 `--verify-saved DIRECTORY`，保存目录不可复用。三平台runner首次运行尚未取得；`startObservedCase` 等冻结接口仍以第13节审计为准。
+第一步已在独立诊断树新增D3两文件、D4两文件及 `.github/workflows/runtime-native-failure-foundation.yml`，完成合成负例、本地Node执行和v1首次runner。workflow固定Node22.23.2、不安装业务依赖；CLI支持 `--self-test`、`--output NEW_DIRECTORY` 和 `--verify-saved DIRECTORY`，保存目录不可复用。v1输入7141cfa3及工件已冻结；新D3 v2仅修正来源/顺序oracle和D3-08 ACK前提，按第15节先验证本地完整schedule和负例，再用新输入取得三平台结果。`startObservedCase` 等第13节缺口仍开放，W1/U1不启动。
 
 第二步在D3/D4完整首次结果收口后，新增 `native-failure-owner-v1.mjs`（台账/调度协议）、`windows-native-failure-patch-v1.mjs`、`unix-native-failure-patch-v1.mjs`、`diagnose-native-failure-v1.mjs`，统一放 `scripts/diagnostics/`；它们只生成隔离fork，不import进业务、不改node_modules。原生workflow单独新增 `.github/workflows/runtime-native-failure-v1.yml`，按平台schedule执行W1/U1并始终上传完整工件。构建参数、机械补丁匹配计数及实际链接输入须实现前复审，编译失败记零实际运行、全部not-run，不能伪造66 native成功。
 
 validator从完整schedule独立复算时序/身份/前提/计数/结果，不只读pass。必备负例包括删调用/回执、把held通知改成API失败、已成功wait却标仍活、重复关闭/错generation、部分释放就归还槽、原始EOF被改为取消或反向改写、伪造after-await、超预算或改t0、writer失败改sealed、缺binary/首项损坏后继续末项。源快照与输入commit逐项对账，Windows CRLF原字节保存、只读LF归一比对，不执行归档代码。
 
-本设计阶段只做源码/版本指纹、矩阵计数、文档元数据/引用/历史不变及独立方案复审；既有bridge/tracker/Supervisor测试仅作为回归，不计新D3/D4/W1/U1通过。首次结果应追加新节记录实际OS、输入commit、run/attempt、全部工件和未执行项。只有下一轮实际证据才能改变validation_status；总体退出完整性计划继续active。
+设计冻结时只做源码/版本指纹、矩阵计数、文档元数据/引用/历史不变及独立方案复审；既有bridge/tracker/Supervisor测试仅作为回归，不计新D3/D4/W1/U1通过。后续工具证据按第13–15节分版本追加，记录实际OS、输入commit、run/attempt、全部工件和未执行项。工具场景通过不关闭尚未实现的契约，本文validation_status仍未验证，总体退出完整性计划继续active。
 
-## 13. D3/D4 实施结果与契约缺口（2026-09-22）
+## 13. D3/D4 v1 本地实施结果与契约缺口（历史阶段，2026-09-22）
 
 独立诊断树已新增四个Node标准库入口和 foundation workflow。本地完整结果保存在 `.debug/runtime-native-failure-foundation-v2-d3/` 与 `.debug/runtime-native-failure-foundation-v2-d4/`：D3为24/24 verified，D4按linux/darwin/win32各8项共24/24 control-pass；D3自测和D4自测通过，D3正例目录与篡改负例目录已分离，`nativeProcesses=0` 仅作为D4模型/自测及范围事实记录。D3完整schedule是Node caller/writer进程控制，不含PTY或native API；D4是有限状态模型，不能替代跨平台runner或生产隔离。
 
-workflow已固定Node22.23.2、三平台矩阵，并上传D3/D4完整schedule及self-test目录；截至本节记录时尚未取得GitHub runner run/artifact，因此三平台仍为未验证。W1/U1尚未实施，`decision_status: 比较中`、`validation_status: 未验证`不变。Windows已退出进程仍被其他已知句柄引用按正常对象语义保留，不形成新增系统缺陷结论。
+workflow已固定Node22.23.2、三平台矩阵，并配置上传D3/D4完整schedule及self-test目录；本节记录本地阶段，后续runner结果见第14节。上述目录名称中的v2是v1工具的第二版本地工件目录，不是第15节新增的D3 v2入口。W1/U1尚未实施，`decision_status: 比较中`、`validation_status: 未验证`不变。Windows已退出进程仍被其他已知句柄引用按正常对象语义保留，不形成新增系统缺陷结论。
 
 实现审计发现D3仍未导出冻结的 `startObservedCase(spec)`。`observeCaller()`只有child `close`后的单一Promise，`runCase()`串行等待caller后才启动writer；无法分别等待observation、processSettlement和evidenceSettlement，也未冻结首次deadline快照或由caller发送完整身份帧。强制处置请求、实际退出与stdio close尚未完全分层，`evidenceIntegrity`仍由CLI编排无条件写成sealed。D4虽有跨generation保账场景，但部分事件和validator未完整核对execution/generation identity，不能把当前重放称为完整代际oracle。当前24/24只证明有限trace/manifest可重放，不能关闭三独立settlement、迟到观察、有界unconfirmed或完整owner身份债务。
 
-下一阶段应在新版本入口先补上述诊断语义，再决定是否运行三平台runner和W1/U1；不修改旧工件、历史失败或业务运行时代码，也不把本地有限结果写成native/产品验收。
+以上是v1本地阶段发现；当前增量只承接第15节的来源/顺序窄修正，其他诊断语义与W1/U1仍开放。不修改旧工件、历史失败或业务运行时代码，也不把本地有限结果写成native/产品验收。
+
+## 14. v1 首次 runner 与重复触发记录（2026-09-22）
+
+输入7141cfa3的首次foundation run `35673511893` attempt1为failure：Linux/macOS的D3各24/24，D4在每runner执行三平台逻辑各8项共24/24，三runner共72次模型执行；Windows D3 `D3-01-1`失败。原始trace中stdout的operation-returned与fd3的caller-after-await跨pipe到达顺序反转，v1按observer收到次序重包sequence并判因果，形成误判。这是诊断协议/oracle缺陷，不是Windows或产品缺陷，也不证明其他平台没有相同风险。D4工件显式记录native:false/nativeProcesses:0，没有pty:false字段；零PTY由模型入口及范围限定说明，不能补造工件字段。
+
+首次三工件10672290231、10671559820、10672340270保存在独立诊断工作树 `.debug/github-foundation-35673511893-{ubuntu,macos,windows}/`，不是主运行时树。相同SHA误触的重复run `35673550930`也为failure，另列为重复执行而非修正后的验证；两次失败、原始断言与工件均冻结，不重跑v1筛绿。完整下载/独立审计以本树 `.debug/foundation-first-two-audit/` 为证据入口。D3完整契约与D4重放/身份阻塞项均不因局部绿色改变。
+
+两次完整D3均Linux/macOS各24/24、Windows23/24，仅D3-01-1误序，共144项中原verifier接受142项。D4每runner24项，两run共144次模型按原verifier通过。Windows缩放self-test positive首次23/24、重复21/24；重复新增D3-07-1/08-1 after-await接收504.2253/543.014ms，超原500ms预算，是独立真实迟到，不归为顺序误判。重复自测writer结算另有554.9569/630.9223/608.3949ms超500ms，原verifier未全部核验，保留原分类并登记预算债务。两次Windows自测positive失败后未生成最终报告或tampered负例，已有轨迹/日志完整保留。
+
+六ZIP共3,853,782字节/3022成员，API size/digest及本地完整摘要一致；36份runner输入与7141cfa3对账，Windows仅CRLF差异。验证入口仅来自可信Git字节，没有执行归档代码。本树审计summary SHA256为 `eb5d8e91ffe23ffa03ff43384d1d52c46ab0798a05a0adc644084a2a7d9081d5`，audit SHA256为 `b1de5345391c816f11a47b4143afa65b5da8d826463f76d5883f559f59b1d5c1`。重复run在首轮最后job完成前触发，不是看到失败后筛绿；仍作为独立重复事实留证，不混入修正后结果。
+
+## 15. D3 v2 来源与顺序 oracle 窄修正（运行前协议，2026-09-22）
+
+新增 `scripts/diagnostics/diagnostic-observation-envelope-v2.mjs`、`scripts/diagnostics/diagnose-observation-envelope-v2.mjs` 与 `scripts/diagnostics/observation-envelope-v2-oracle-test.mjs`；v1两文件、原foundation workflow和7141cfa3工件冻结。v2保留D3八场景各三次、每runner24项及原预算，不实现三独立settlement接口，不改变业务或native资源处置；W1/U1仍未开始。
+
+caller在发送时为所有源帧分配一个全局严格递增sequence，并携带schema、run、case、generation、nonce及事件类型。observer不能补造这些身份或按到达次序重编号，只记录实际读取通道stdout/stderr/fd3和自身接收时间。caller-after-await只允许来自fd3；同一pipe上的source sequence必须递增，跨pipe接收允许任意顺序，生命周期因果按已验证的发送端sequence检查。observer接收时间必须是有限且非负的数值，只有该真实接收时间在冻结预算内才可判timely；源sequence不能代替接收时间或把迟到帧改成及时。
+
+4096字节上限覆盖完整编码帧，解析器在拼接任何分片前检查有界余量，超长帧、残缺帧、非法JSON、错误身份/nonce、错误通道、重复/回退sequence及非法接收时间均形成协议失败，不能静默忽略后继续报告控制通过。按发送端序列复核时，除D3-08已明确记录的bulk溢出区段外，不允许连续源序缺口；控制事实不享受bulk缺口豁免。bulk首次overflow后锁定拒绝后续bulk，不能因后续帧尺寸较短再次接纳而制造零散缺口。D3-08必须先由observer接收合法fd3 after-await并发送ACK，caller等待精确匹配ACK后才发送bulk；保存observer的fd3接收、fd4 ACK发送和首bulk事件，以源代码的await控制流限定caller接收前提，不冒称有独立caller ACK接收事件。仅caller调用write不能证明observer确认。
+
+本轮至少验证跨pipe任意到达仍按源序接受，以及stdout冒充after-await、同pipe逆序、缺/重复序号、错身份/nonce、负数/非有限接收时间、完整帧或分片超4096、非法/残缺输入、D3-08 ACK前bulk与伪造bulk缺口的拒绝。合法但超预算的接收须保留observed-late，不能判timely；它不是非法协议帧，只有对应scenario要求及时才判控制失败。完整schedule和首项损坏后继续遍历仍必需。新输入和结果另存新目录，不执行归档代码，不用v2追认两个v1失败。实测追加第16节；D3三独立Promise、deadline不可变首次快照、bounded unconfirmed、独立evidence settlement以及D4完整独立重放/身份oracle均未闭合，状态继续比较中/未验证。
+
+新workflow `.github/workflows/runtime-observation-envelope-v2.yml` 只运行固定Node22.23.2的三平台D3 v2，不重复D4有限模型；依次执行语法检查、确定性oracle/parser、自测、完整24项及verify-saved，失败也上传完整工件/输入。缩放自测保持v1的0.25及500ms接收/结算预算，不通过扩大预算掩盖重复Windows迟到；完整schedule保持冻结的未缩放预算。
+
+## 16. D3 v2 本地实测（2026-09-22）
+
+本地Linux Node22.23.2的新目录 `.debug/observation-envelope-v2-local-1-selftest/` 已完成oracle78/78、parser8/8、positive24/24及篡改拒绝；`.debug/observation-envelope-v2-local-1-full/` 完成未缩放24/24 verified，三文件语法检查通过，完整源hash与快照已封存。输入为当前未提交v2工作树，不假称已绑定新commit；GitHub三平台v2 runner仍待新提交的一次自动触发及全量下载复核。以上只涉及第15节窄协议，三settlement等剩余债务和W1/U1状态不变。
+
+local-1独立复核随后发现篡改负例覆盖不足：根manifest校验提前抛错，导致run.scale未读取，后续案例均因缺少scale失败，实际attempted24/verified0。自测只检查总失败和坏首项，未证明其余23项仍被有效验证。原positive24/24与未缩放full24/24不受此问题影响，旧工件及原报告保留；不能把“篡改被拒绝”扩写为“坏首项后其余23项已有效复核”。
+
+修正协议是在同一v2入口分别收集根manifest错误和读取/校验run元数据，完整遍历不得依赖根manifest先通过；新篡改自测同时要求attempted24、verified23、坏首项被拒绝及末项没有错误，并归档 `tampered-verification.json`。新 `.debug/observation-envelope-v2-local-2-selftest/` 已通过oracle78/78、parser8/8、positive24/24，篡改报告为attempted24/verified23、仅shared-manifest与D3-01-1错误；`.debug/observation-envelope-v2-local-2-full/` 未缩放24/24 verified且无evidenceErrors，最终CLI语法和diff检查通过。两个新目录保留完整输入hash，仍是未提交工作树证据，v2三平台runner待验，不改local-1。另记录完整writer协议债务：非法writer帧可能被其他sealed事实掩盖，当前来源/顺序窄修正不证明writer消息协议正确，须在独立evidence/settlement阶段统一设计、核验。
+
+独立本地审计保存在 `.debug/observation-envelope-v2-independent-local-review/audit.json`：三源码与两组快照一致，重放oracle78/parser8/positive24/full24及篡改24/23；六个D3-08均在ACK后bulk，retained源序从5连续，省略仅是尾部bulk至4300，finish4301保留。before-fix-regression.json按原hash绑定复现local-1缺口，没有修改旧工件。本次独立复核不新增原生样本或跨平台结论。
