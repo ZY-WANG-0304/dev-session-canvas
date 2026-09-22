@@ -21,7 +21,7 @@ updated_at: 2026-09-23
 
 ## 1. 状态、目的与非目标
 
-当前以 `runtime-diagnostic-settlement-contract.md` 第17节（2026-09-23）为准：ACK等待环已由父端EOF单变量干预确认，最小修复后13/13及主self-test通过。本轮唯一Linux42项完整执行、场景控制42/42，但可信保存验收39/42；三个08的evidence consumer超过100ms，acceptanceReady=false。下一步只处理已实测的consumer交付顺序，不恢复通用工具研究。第16节失败与旧证据保留；本轮未改业务/oracle/D4、未运行PTY/native/runner或推送，不计为产品通过。 第18–24节及其“下一步”按历史时点保留，不恢复已撤销的通用工具前置链；本契约仍比较中/验证中。
+当前以 `runtime-diagnostic-settlement-contract.md` 第18节（2026-09-23）为准：非G1 evidence消费前置及完整80阶段聚合已窄修，15项回归和本轮唯一Linux42项均通过独立复核；156条消费记录满足原预算，G1/G2原因果保持。第16节partial与第17节39/42失败保留，不追认通过。下一阶段回到W1/U1实际路径，不恢复通用工具前置；本轮未改业务/core/oracle/D4，未运行PTY/native/runner或推送，不计为跨平台或产品验收。 第18–24节及其“下一步”按历史时点保留，不恢复已撤销的通用工具前置链；本契约仍比较中/验证中。
 
 本设计是 `docs/design-docs/runtime-exit-integrity-native-candidates.md` 第30节之后的候选契约 v1，不是已部署接口，也不授权直接接入业务。已有证据支持 Unix 独占读取、macOS 自然路径 kqueue 关闭和 Windows bundled HPCON 最终 Close 的局部可行性；没有证明取消、异常、并发或全部支持环境的生产完整性。本文将这些证据转换为明确的职责、结果和可检验偏序，整体仍比较中/验证中。
 

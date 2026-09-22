@@ -61,7 +61,7 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 ### 当前状态（2026-09-23）
 
-当前以 `runtime-diagnostic-settlement-contract.md` 第17节（2026-09-23）为准：ACK等待环已由父端EOF单变量干预确认，最小修复后13/13及主self-test通过。本轮唯一Linux42项完整执行、场景控制42/42，但可信保存验收39/42；三个08的evidence consumer超过100ms，acceptanceReady=false。下一步只处理已实测的consumer交付顺序，不恢复通用工具研究。第16节失败与旧证据保留；本轮未改业务/oracle/D4、未运行PTY/native/runner或推送，不计为产品通过。 第43节及契约第12–16节保留历史输入；本轮不改业务/D4，不推送。
+当前以 `runtime-diagnostic-settlement-contract.md` 第18节（2026-09-23）为准：非G1 evidence消费前置及完整80阶段聚合已窄修，15项回归和本轮唯一Linux42项均通过独立复核；156条消费记录满足原预算，G1/G2原因果保持。第16节partial与第17节39/42失败保留，不追认通过。下一阶段回到W1/U1实际路径，不恢复通用工具前置；本轮未改业务/core/oracle/D4，未运行PTY/native/runner或推送，不计为跨平台或产品验收。 第43节及契约第12–16节保留历史输入；本轮不改业务/D4，不推送。
 
 最新证据见第41节：b4db41cc的唯一run35676427931经三平台完整归档复核，各full24/24、scaled24/24、oracle78/parser8及篡改24/23成立；Windows实际再次乱序而源序合法，新判据正确接受。第38节v1两个failure、真实迟到与writer预算漏验仍保留。来源/顺序窄验证不关闭D3完整settlement、D4重放/身份或W1/U1；下一阶段先补诊断结算契约。以下两段记录此前设计承接背景，不覆盖本段当前状态。
 

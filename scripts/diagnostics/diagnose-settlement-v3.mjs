@@ -677,6 +677,8 @@ async function executeCase(output, spec, entry, resources) {
     consume('observation', entry.id === 'D3v3-G1' ? 'caller' : null),
     consume('processSettlement', entry.id === 'D3v3-G1' ? 'writer' : entry.id === 'D3v3-G2' ? 'capture' : null),
   ];
+  // G1 consumes while the publisher is held; other consumers precede archive preparation.
+  if (entry.id !== 'D3v3-G1') consumers.push(consume('evidenceSettlement'));
   // Publication coordination is distinct from the consumer's actual await continuation.
   const publisherReady = handle.evidenceSettlement.then(() => {
     const snapshot = handle.getEvidenceSnapshot();
@@ -706,9 +708,6 @@ async function executeCase(output, spec, entry, resources) {
     await handle.evidenceSettlement;
     handle.recordConsumerAwait('evidenceSettlement');
     if (held.kind === 'held') publisher.releaseGate('publisher');
-  } else {
-    await handle.evidenceSettlement;
-    handle.recordConsumerAwait('evidenceSettlement');
   }
   const publication = await publisher.publication;
   publisher.recordConsumerAwait('publication');
@@ -1308,8 +1307,16 @@ export function assessDiagnosticEvidence(entry, phase, snapshots, verifications)
 }
 
 export function evaluateRunAcceptance(run, report) {
-  const boundedConsumerDelivery = report.consumerDeliveries.length > 0 && report.consumerDeliveries.every(item =>
-    item.receipts.every(receipt => receipt.status === 'within-consumer-budget'));
+  const expectedPhases = fullSchedule().flatMap(entry =>
+    (entry.group === 'publisher' ? ['publication'] : ['publication', 'case']).map(phase => ({ id: entry.id, phase })));
+  const deliveries = new Map(report.consumerDeliveries.map(item => [`${item.id}/${item.phase}`, item.receipts]));
+  const boundedConsumerDelivery = report.consumerDeliveries.length === expectedPhases.length &&
+    deliveries.size === expectedPhases.length && expectedPhases.every(({ id, phase }) => {
+      const receipts = deliveries.get(`${id}/${phase}`);
+      const names = phase === 'case' ? ['observation', 'processSettlement', 'evidenceSettlement'] : ['publication'];
+      return receipts?.length === names.length && names.every(name =>
+        receipts.some(receipt => receipt.name === name && receipt.status === 'within-consumer-budget'));
+    });
   const errorDiagnosticsComplete = report.errorDiagnostics.length > 0 && report.errorDiagnostics.every(item => item.complete);
   const scenarioEvidenceSufficient = report.errorDiagnostics.length > 0 && report.errorDiagnostics.every(item => item.sufficient);
   return { boundedConsumerDelivery, errorDiagnosticsComplete, scenarioEvidenceSufficient,

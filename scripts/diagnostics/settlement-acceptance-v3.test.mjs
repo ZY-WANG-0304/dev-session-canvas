@@ -230,3 +230,55 @@ test('both initial and final snapshots require successful independent verificati
     [[snapshot, snapshot], [verification, { ...verification, pass: false }]],
   ]) assert.equal(assessDiagnosticEvidence(overflowEntry, 'case', snapshots, verifications).sufficient, false);
 });
+
+test('consumer coverage uses the trusted 80 phases independently of report pass or saved schedule', async () => {
+  const report = await simulatedFullReport();
+  assert.equal(report.consumerDeliveries.length, 80);
+  assert.equal(evaluateRunAcceptance({ mode: 'full' }, report).boundedConsumerDelivery, true);
+  const rejectedReport = copy(report);
+  rejectedReport.pass = false;
+  assert.deepEqual(evaluateRunAcceptance({ mode: 'full' }, rejectedReport), {
+    boundedConsumerDelivery: true, errorDiagnosticsComplete: false, scenarioEvidenceSufficient: true, acceptanceReady: false,
+  });
+  const reducedSchedule = fullSchedule().slice(0, 1);
+  const reducedReport = copy(report);
+  reducedReport.consumerDeliveries = reducedReport.consumerDeliveries.filter(item => item.id === reducedSchedule[0].id);
+  assert.equal(reducedReport.consumerDeliveries.length, 2);
+  const reduced = evaluateRunAcceptance({ mode: 'full', schedule: reducedSchedule }, reducedReport);
+  assert.equal(reduced.boundedConsumerDelivery, false, 'A saved one-entry schedule cannot reduce the trusted denominator');
+  assert.equal(reduced.acceptanceReady, false);
+});
+
+test('missing or duplicated consumer phases and receipts cannot count as complete delivery', async () => {
+  const report = await simulatedFullReport();
+  const overflowIds = new Set(fullSchedule().filter(entry => entry.scenario === 'D3v3-08').map(entry => entry.id));
+  assert.equal(overflowIds.size, 3);
+  const gaps = [
+    ['three overflow case phases are missing', value => {
+      value.consumerDeliveries = value.consumerDeliveries.filter(item => item.phase !== 'case' || !overflowIds.has(item.id));
+      assert.equal(value.consumerDeliveries.length, 77);
+    }],
+    ['a duplicate phase replaces a required phase without changing the count', value => {
+      value.consumerDeliveries[1] = copy(value.consumerDeliveries[0]);
+      assert.equal(value.consumerDeliveries.length, 80);
+    }],
+    ['an unknown case id replaces a required id', value => { value.consumerDeliveries[0].id = 'D3v3-unknown'; }],
+    ['an unknown phase replaces publication', value => { value.consumerDeliveries[0].phase = 'capture'; }],
+    ['a publication has no receipt', value => { value.consumerDeliveries[0].receipts = []; }],
+    ['a case is missing its evidence settlement receipt', value => {
+      value.consumerDeliveries.find(item => item.phase === 'case').receipts.pop();
+    }],
+    ['a duplicate observation name replaces the evidence settlement receipt', value => {
+      const receipts = value.consumerDeliveries.find(item => item.phase === 'case').receipts;
+      receipts[2] = copy(receipts[0]);
+      assert.equal(receipts.length, 3);
+    }],
+  ];
+  for (const [gap, alter] of gaps) {
+    const changed = copy(report); alter(changed);
+    assert.equal(changed.pass, true);
+    const result = evaluateRunAcceptance({ mode: 'full' }, changed);
+    assert.equal(result.boundedConsumerDelivery, false, gap);
+    assert.equal(result.acceptanceReady, false, gap);
+  }
+});
