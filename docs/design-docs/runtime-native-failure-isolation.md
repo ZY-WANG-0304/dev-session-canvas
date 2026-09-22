@@ -274,6 +274,6 @@ D4 v2固定N2/Q1，完整command/return/event/snapshot由不共用SUT转换函�
 
 D4 v2的local-3 self-test/full及各自离线复核均16/16、302命令、58次预期拒绝、1924 checks；93语义负例、4 saved负例和另存7个重hash sidecar负例分开计数。unknown key拼接碰撞的初次失败保留，修订为JSON tuple并在固定第05项回归；早期绿色没有覆盖负例sidecar独立绑定的缺口也已记录。证据、精确源hash及不含native/PTY/真实并发的边界见该契约，不把本地模型计为三平台或产品验收。
 
-D3首轮76 oracle/29 core/15文件及saved3/3只覆盖该版fixture。cross-replay-1的协议换行长度误拒、迟到错误回溯首报、owner/unknown/event/scenario漏验和归档绑定问题均按诊断工具缺口处理，原失败保留；最终修订证据仍在核验。到期才冻结的首报只记录真实消费者延迟并标delivery-budget-unresolved，独立消费验收预算尚未冻结，不修改原deadline或暗加宽限。
+D3最终本地self-test-2通过119 oracle、41 core、15文件、25 archive/consumer/binding fixtures；saved复核4/4、88 manifest members及四源原字节均匹配，但boundedConsumerDelivery=false、acceptanceReady=false，真实进程/native/PTY均未运行。首轮76/29/15及saved3/3保留为历史覆盖；cross-replay-1因oracle多算stdin JSON换行字节而误拒，修订移除该额外字节，core仍以stdin EOF分隔。迟到错误回溯首报、owner/unknown/event/scenario漏验和归档绑定已本地修正，首次失败不改判。到期才冻结的首报记录真实消费者延迟并标delivery-budget-unresolved，独立消费验收预算及六组逐fixture对账仍开放，不修改原deadline或暗加宽限；symlink负例归档须保留link元数据。
 
 下一步仍补齐冻结覆盖和独立审查，之后才另行确认真实D3与三平台采集。W1/U1、原生第二批、真实Agent启动链/双会话/Host/Webview/packaged、生产API/停止预算及整体退出完整性均未完成；不把正常Windows已退出对象引用升级为OS bug。

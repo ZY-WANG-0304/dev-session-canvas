@@ -383,7 +383,7 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 验证与验收
 
-本阶段验收覆盖本地工具初版、实际fixture和审计修正，不宣称D3完整冻结覆盖。D4 local-3每次固定16项，93语义/4 saved及另存7个sidecar负例逐项有效，坏首项仍attempted16/verified15且末项通过；独立复审的两项阻断闭合。undefined六组覆盖与超时首报消费预算仍开放。D3真实36+2+4、本阶段三平台runner与native实际均0；本地D4不计为三平台48次已通过。收口前检查两树frontmatter/index、新增引用、共享契约一致、历史保持及diff，不能以旧runner或文档检查代替运行证据。
+本阶段验收覆盖本地工具初版、实际fixture和审计修正，不宣称D3完整冻结覆盖。D4 local-3每次固定16项，93语义/4 saved及另存7个sidecar负例逐项有效，坏首项仍attempted16/verified15且末项通过；独立复审的两项阻断闭合。D3 v3最终 self-test-2通过119 oracle、41 core、15 files、25 archive/consumer/binding fixtures；saved4/4、88 manifest members、boundedConsumerDelivery=false、acceptanceReady=false；realNodeCases/nativeProcesses=0、pty=false，未运行live36+2+4或原生矩阵。六组覆盖与超时首报消费预算仍开放。D3真实36+2+4、本阶段三平台runner与native实际均0；本地D4不计为三平台48次已通过。收口前检查两树frontmatter/index、新增引用、共享契约一致、历史保持及diff，不能以旧runner或文档检查代替运行证据。
 
 实施后须验证首报与迟到补证分离、真实consumer await、process/capture与主动截断分层、writer/verifier/publisher协议和独立归档、D4完整命令/事件/全量快照重放；语义篡改即使重编号/重算hash仍拒绝，坏首项后其余项仍有效验证。首次真实输入前冻结具体fixture清单/hash和唯一workflow触发，不在本设计预造断言总数；W1/U1继续等待完整新工具验收。以下为历史验收记录。
 
@@ -415,7 +415,7 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 结果与复盘
 
-当前阶段交付为新诊断的本地工具初版与审计修正，完整证据/缺口见 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第12节（比较中/验证中）。D4固定16项与93语义、4 saved、另存7个sidecar负例已有最终本地证据，两项审查阻断闭合；create/use unknown迟到清除的独立正例仍待补。undefined
+当前阶段交付为新诊断的本地工具初版与审计修正，完整证据/缺口见 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第12节（比较中/验证中）。D4固定16项与93语义、4 saved、另存7个sidecar负例已有最终本地证据，两项审查阻断闭合；create/use unknown迟到清除的独立正例仍待补。D3 v3最终 self-test-2：Node22.23.2，oracle119/119、core41/41、files15/15、archive/consumer/binding25/25，saved4/4、88 manifest members、boundedConsumerDelivery=false、acceptanceReady=false；realNodeCases/nativeProcesses=0、pty=false，未运行live36+2+4或原生矩阵。CLI及三份源hash见契约第12节，symlink负例归档需保留link元数据；cross-replay和oracle review首次失败保留。
 
 当前不运行D3真实36+2+4、不新增runner、不推任何分支；先补六组冻结覆盖、消费验收预算与独立审计，之后再另行确认真实矩阵/三平台采集。业务、依赖、旧脚本/workflow/工件和image.png不改。W1/U1、原生第二批、真实启动链/双会话/宿主/packaged、生产API/停止预算与整体退出完整性继续开放，计划active。以下保留此前阶段时点的结果，其“下一步”不覆盖本段。
 
@@ -461,7 +461,7 @@ HPCON阶段首次原生矩阵、完整ZIP下载与独立复核已完成，见设
 
 ## 证据与备注
 
-本阶段最新证据在独立诊断树：D4 `.debug/owner-quarantine-v2-local-3-selftest`、`.debug/owner-quarantine-v2-local-3-full` 与各自 `-verification.json`，补充 `.debug/owner-quarantine-v2-local-3-sidecar-negatives` 七项；首次碰撞失败在 `.debug/owner-quarantine-v2-key-collision-first-failure`。undefinedD4精确四源hash、缺口与证据边界见诊断结算契约第12节；以下设计冻结与历史runner记录不作为本阶段新采集。
+本阶段最新证据在独立诊断树：D4 `.debug/owner-quarantine-v2-local-3-selftest`、`.debug/owner-quarantine-v2-local-3-full` 与各自 `-verification.json`，补充 `.debug/owner-quarantine-v2-local-3-sidecar-negatives` 七项；首次碰撞失败在 `.debug/owner-quarantine-v2-key-collision-first-failure`。D3 v3最终 self-test-2通过119 oracle、41 core、15 files、25 archive/consumer/binding fixtures；saved4/4、88 manifest members、boundedConsumerDelivery=false、acceptanceReady=false；realNodeCases/nativeProcesses=0、pty=false，未运行live36+2+4或原生矩阵。D4精确四源hash、缺口与证据边界见诊断结算契约第12节；以下设计冻结与历史runner记录不作为本阶段新采集。
 
 2026-09-22 本轮文档检查范围：每树4份设计的元数据/索引状态/架构标签、12个计划必要章节、新增或修改的完整本地引用、两树共同契约与4组冻结历史正文均通过；新设计12个主控场景和16个模型场景计数一致。另发现索引既有 execution-node-zoom-interaction-research 执行计划引用对应的文件不存在，两树输入HEAD已含该悬空条目，本轮未修改，不宣称全仓文档引用无缺陷。未运行旧矩阵或新诊断，用户image.png不纳入提交。
 
@@ -584,3 +584,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-22，新诊断结算设计冻结）：完成D3 v3/D4 v2协议和运行前矩阵的设计写入及外围文档同步，实施与验证待办不关闭；本阶段零新测试/native。最终静态复审及文档一致性检查已通过，下一步独立树本地实施/fixture/源码复审，再唯一三平台采集，不改旧实验或推进业务。
 
 修订记录（2026-09-22，新诊断本地初版与审计）：同步八个新入口实施、D4 local-3与首次碰撞失败、sidecar重hash证明和D3首轮/交叉重放发现，更新四活章节及当前步骤。本阶段不运行D3真实矩阵、不新增runner、不推送；保留六组冻结覆盖、独立消费预算、D4 create/use正例和完整原生/产品门槛，不以自测总数宣称全部验收。
+
+修订记录（2026-09-22，本地阶段文档补正）：补齐D3最终119/41/15/25及saved4/4，修正误截断的oracle hash与三处无效占位文本，明确首报及时冻结和到期冻结时的不同consumer判定。两树八份设计元数据/索引/关联引用、各12个计划章节、八源hash及共享新增契约对账通过；旧章节除显式consumer澄清外保持，独立只读复核未见新的确定性文档矛盾。本补正没有重跑诊断、原生或矩阵，不改变既有失败与未闭合门槛。
