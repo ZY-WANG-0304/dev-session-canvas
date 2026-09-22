@@ -12,10 +12,15 @@
 
 ## 进度
 
+- [x] (2026-09-22) 按第16节完成范围与汇总纠偏、针对性8/8及本地主回归，并保留唯一一次Linux真实整链失败：180秒外层保护exit124，24条结算均false，09-1仅有启动证据，余17项无启动证据；保存复核按42项检查、0 verified，不是42项实际执行。本轮未成功，无PTY/native/runner或push。
+- [ ] 后续只做最小真实role对照，确认并修复ACK自然退出候选等待环；按固定schedule重新计算外层保护，保持原场景预算，修后新输入最多一次既定42项。通用2MiB/listener/sequences/任意路径研究不恢复，W1/U1与实际终端另行推进。
+
+进度中的第12–15阶段记录保留当时执行范围；其中“不运行真实D3”和先完成通用工具研究的顺序不是本轮限制。本轮执行以第16节条目为准，历史未完成项不自动成为此次Linux42项的前置。
+
 - [x] (2026-09-22) 完成第15阶段错误字段/列表有界化，基准运行时4743e055/诊断bcfc571b。helper39、public29及独立saved29；tamper8正例/20组35变体，主回归119/41/156/15/37与saved5/5，portable46门禁/6profile/17负例满足原判据。首轮26/29、155/156及直接相对路径复核4/5保留；详见契约第15节。不改业务/D4/旧43项，不声明全owner/RSS有界，无真实D3/native/runner或推送。
 
 - [x] (2026-09-22) 完成容量可达性与synthetic跨OS归档增量，基准诊断9230b87b/运行时fee95df9。容量43项分为1上界证明/30完整重放/12缺证拒绝；portable46门禁、6profile原位及移动各5/5、17负例；主回归119/41/156/15/37及saved5/5。首次路径/容量失败和复核过程偏差保留，详见契约第14节；不运行真实D3/native/runner，不改业务或旧实验，不推送。
-- [ ] 先复核新错误保留策略下2MiB writer/verifier请求可达性，再确认listeners注册集合及单chunk sequences边界并完成工具复审；旧六个800条错误构造不适用但原证据不改。真实Windows junction/权限/文件系统语义、打包上传解包及原生异平台归档仍需runner，不能由合成profile关闭。
+- [ ] 非阻塞通用增强：新策略下任意2MiB请求可达性、无限listener/单chunk sequences与任意路径兼容性；旧六个错误洪泛构造不适用但证据不改。固定矩阵不依赖这些输入，只核本次实际请求、路径、归档与清理，不将此条设为原生实验或产品工作的统一前置。
 
 - [x] (2026-09-22) 启动下一本地覆盖阶段：冻结 `diagnostic-consumer-delivery-v1` 的100ms独立交付判据，补齐并冻结D3 156项确定性边界及D4 create/use unknown迟到正例；按新目录保存首次失败、source和独立重放。只改独立诊断及两树文档，未运行真实D3/native/runner或推送。
 - [x] (2026-09-22) 独立诊断树已创建D3 v3/D4 v2八个新入口，本轮只收口本地工具初版与审计修正，主运行时仅同步文档；不运行D3真实36+2+4、不新增runner、不推送，不改业务/旧实验/image.png。
@@ -24,8 +29,8 @@
 - [x] (2026-09-22) D4 local-4两次各16项、330命令/68预期拒绝/2092 checks，101语义及4 saved负例通过，离线各16/16。D3最终portability-check-1各组119/41/156/15/37 fixture判据满足，原目录/迁移目录及根复核5/5，13个重hash负例拒绝；三oracle误判、类别替换及离线读取/归一回归的首次来源与结果保留。156中154完整重放、2预期拒绝；不是156项完整证据通过。
 - [x] 第13节列出的2MiB input可达性、helper8帧、trace/control各维邻界、late256、capture gate及listener failures条数已由第14节43项覆盖；跨OS绝对路径已完成合成验证，真实junction/归档与错误旁路字节有界性仍按新待办推进，不把此条完成当整体工具验收。
 - [x] (2026-09-22) 完成下一版诊断结算契约设计与运行前矩阵冻结，新增 `docs/design-docs/runtime-diagnostic-settlement-contract.md`。D3进程/时钟、writer/封存和D4身份重放的三侧源码/协议复审建议已纳入；三侧最终静态复审及两树文档一致性检查通过，本阶段零新测试、零native，旧入口/工件与业务不改。
-- [ ] D3冻结覆盖与独立工具门槛收口后，另行确认每runner36主控+2gate+4publisher真实采集；D4本地16项不算三平台模型48项已执行。
-- [ ] 本地门槛收口后，以固定新commit唯一一次三平台完整采集、全工件下载与可信Git oracle重放；W1/U1仍须等待这些诊断门槛，不因设计冻结启动。
+- [ ] 历史待办（第12阶段顺序，已由第16节范围分类取代）：D3冻结覆盖与独立工具门槛收口后，另行确认每runner36主控+2gate+4publisher真实采集；D4本地16项不算三平台模型48项已执行。
+- [ ] 历史待办（不作本轮通用工具阻塞链，后续三平台/W1/U1另行确认）：本地门槛收口后，以固定新commit唯一一次三平台完整采集、全工件下载与可信Git oracle重放；W1/U1仍须等待这些诊断门槛，不因设计冻结启动。
 - [x] (2026-09-22) 完成三侧最终静态复审与两树元数据/索引/路径/历史保持/一致性/diff检查；每树8份文档、4份设计元数据、12个计划章节，旧业务/脚本/workflow不变。只验文档，不计新矩阵或产品通过。
 - [x] (2026-09-22) 完成Windows/Unix/工具三侧源码核查与设计冻结；当时D3的72控制、D4的24逻辑模型及W1/U1的66driver尝试均未执行。实际v1每runner执行全部24项D4逻辑模型，三runner为72次，见当前结果。
 - [x] (2026-09-22) v1输入7141cfa3首次run35673511893及误触同SHA重复run35673550930均完成并保留failure；Windows D3的跨pipe顺序误判属于诊断oracle问题，不作平台/产品缺陷结论。
@@ -119,6 +124,10 @@
 
 ## 意外与发现
 
+唯一一次真实整链发现caller与helper完成协议后仍不能自然退出：01-1在约72.696ms发出caller-finished，却在约5004.405ms收到TERM、约5010.412ms才exit；writer seal后也经TERM，verifier未启动。ACK关闭路径可能形成子端destroy等待在途fs.read、父端等待childExit后才end fd4的闭环，尚缺直接active request因果对照，不能定性为OS或产品bug。180秒外层保护先于全schedule结束；38个case与4个publisher的阶段预算合计388秒且未含编排/写盘，原保护并不覆盖完整最坏路径。首次失败揭示纯fixture通过不能替代真实role自然退出，原失败与不完整工件保留。
+
+用户复核发现第15阶段错误详情完整性被误当所有场景成功前提，08正确截断也必然阻止整轮验收。无限listeners和任意sequences/错误洪泛/路径组合未证明影响固定输入，应退为非阻塞通用增强；此前独立复审和大量局部绿色遗漏了整体验收矛盾。
+
 第15阶段确认role/stream错误数组与listener异常字段存在trace外无界保留，现已按独立错误策略收口；reason插入去重，destroy和listener补来源事件。首轮public两个字节构造越过message上限和一个ACK oracle漏判、主回归caller尚未创建时的空capture误拒均保留原输入后窄修。审查补缺摘要认证及report-frozen伪listener来源拒绝；首轮相对目录直接调用内部验证器的4/5另存，按CLI绝对路径入参5/5。listeners注册数和单chunk sequences仍独立待办，旧六个800条错误构造不再适用，不改原断言或直接宣称2MiB不可达。
 
 第14节增量先确认两个独立工具缺口：Linux无法用宿主绝对路径规则重建Windows producer的publication fixture；trace容量不约束stream错误辅助数组或listener异常字段字节。首次路径拒绝和三个公开API容量反例分别保存在诊断树 `.debug/stage14-winpath-before-1` 与 `.debug/settlement-v3-capacity-reachability-review-1`，后者不代表OS真实错误轨迹或产品缺陷。
@@ -210,6 +219,10 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 通用后代实验测的是 PTY/ConPTY 的退出、挂断、EOF 与取消行为，不直接证明真实 Agent 已发生同类缺陷。macOS 后代失败在澄清后的产品范围之外不能单独构成交付阻塞；Windows 最终光标和自然资源释放问题仍在范围内。父先退出不等于交互式 shell 后台作业，启动器的实际 CLI 子进程也不能按普通工具后代排除。
 
 ## 决策记录
+
+2026-09-22：保留唯一真实整链exit124及全部partial工件，不重跑同输入筛绿。下一步限最小真实role对照确认ACK候选闭环，确认后仅修直接原因，再以新输入最多一次既定42项；先按388秒阶段预算加编排/写盘重算外层安全保护，不放宽场景预算。收紧08例外，必须另证writer/verifier在原预算内无控制exit0、输出end及独立验证；现存三个partial08均不充分。本轮不再实验、runner或push，通用工具增强不恢复为前置。
+
+2026-09-22：按诊断结算契约第16节重排范围。只允许本次判定或实验安全的具体问题阻塞；保留errorDiagnosticsComplete原义，另按固定场景评估证据充分性，不豁免缺证。针对性回归后直接验证一次Linux42项真实Node整链，不继续默认2MiB→listener→sequences研究，也不扩大为产品通过。
 
 2026-09-22：按契约第15节实施diagnostic-error-retention-v1。字段UTF8前缀128/128/2048，role/stream/listener列表各256条及完整JSON数组65536 bytes，首次省略封前缀；reason插入去重，listener/destroy补独立事实。语义有效与errorDiagnosticsComplete分开，后者还要求错误账本认证成功且trace/control无损失，并限制acceptanceReady；首报不变。caller尚未创建只允许空capture流，report-frozen不能伪装成late来源，helper destroy不扩大failed分类。固定39 helper、29 public及20 tamper组，新增变体另计35，不扩大为全进程内存或原生验证。
 
@@ -305,7 +318,9 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 ## 工作计划
 
-当前进展与下一步以诊断结算契约第15节为准。错误字段/列表已按独立预算实施并复核；下一阶段重新评估2MiB writer/verifier请求在新策略下的可达性，以公开API构造或给上界，不修改旧43项原断言。随后确认listeners注册集合与单chunk sequences的责任/边界，完成工具复审；真实junction/权限/文件系统与打包传输不能用Linux合成结果代替。门槛结束前不运行D3真实36+2+4、不触发runner或推送，不启动W1/U1或业务集成。以下保留历史安排。
+当前按诊断结算契约第16节处理首次真实整链暴露的直接问题，不恢复通用工具门槛链。下一步仅用最小真实role对照检验ACK自然退出候选等待环：子端fs.ReadStream(fd4).destroy可能等待在途fs.read，而父端在childExit后才end fd4；目前尚无直接active request因果证据，不定性为OS或产品bug。确认后只修该闭环，再以新输入最多一次既定42项；事前重算外层安全保护，保持各场景预算。随后回到W1/U1及主进程尾部、最终状态、reader资源和实际Agent启动链。本轮不再实验、触发runner或push，以下历史安排不覆盖本段。
+
+以下为第12节及更早的历史工作计划，保留原文以便追溯。其中“当前”“下一步”“不运行真实D3”及工具门槛顺序均指当时，不限制第16节的一次Linux42项，也不恢复已撤销的通用工具前置链。
 
 当前执行设计是 `docs/design-docs/runtime-diagnostic-settlement-contract.md` 第12节。八个版本隔离入口已在独立 `runtime-exit-integrity-native-candidates` 工作树创建；本阶段只做本地初版/审计修正与纯fixture验证，不运行D3真实矩阵，不新增runner，不推送。D4已有local-3完整模型证据，D3下一步按六组逐fixture补齐：各控制/硬截止全边界及排队跨限；spawn/ENOENT/launch-rejected完整责任；坏帧前后/同chunk/跨pipe；work/hard与共享E0组合；协议/容量/listener；unknown迟到/取消及实际await/gate。已有部分样本按清单扣除，不用总数宣称全覆盖。完成独立审查后再另冻真实D3、三平台采集及消费验收预算，W1/U1仍待完整工具门槛。
 
@@ -353,7 +368,9 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 ## 具体步骤
 
-最新复核仅在独立诊断树，固定Node为 `/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node`。错误预算用 `scripts/diagnostics/settlement-error-budget-fixtures-v1.mjs --helpers-only --out NEW_DIRECTORY` 及 `--public-only`，篡改用 `scripts/diagnostics/settlement-error-retention-tamper-v3.mjs --out NEW_DIRECTORY`；主回归用 `scripts/diagnostics/diagnose-settlement-v3.mjs --self-test --output NEW_DIRECTORY`，保存复核用同入口 `--verify-saved DIRECTORY`，直接调用verifyEvidence须与CLI一样先path.resolve。合成跨OS用 `scripts/diagnostics/settlement-portable-fixtures-v3.mjs --output NEW_DIRECTORY`。旧capacity六请求构造本阶段不重跑。只执行可信工作树，输出新目录，具体分账与来源见契约第15节。
+本轮已在独立诊断树使用固定Node22.23.2 `/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node` 执行针对性node:test、既有主self-test及唯一一次真实 `scripts/diagnostics/diagnose-settlement-v3.mjs --output NEW_DIRECTORY`，失败目录和可信保存复核全部保留，详见契约第16节。后续先最小role对照，再决定闭环修正；修后全链只用新目录及新输入，最多一次，仍不执行归档sources。原180秒/kill-after5秒仅是本次安全保护，不能覆盖完整最坏路径：38个case各6+2+2秒及4个publisher各2秒，阶段预算合计388秒，尚未含编排/写盘；下一次须事前重算外层保护，不放宽各场景预算。
+
+以下为此前阶段的历史步骤与复核入口，不是本轮命令清单；其中不调用真实D3入口的限制仅属于当时阶段。本轮只执行本节首段的第16节步骤，不据历史命令新增运行。
 
 本增量在独立诊断树使用固定Node22.23.2路径 `/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node`，运行 `scripts/diagnostics/diagnose-settlement-v3.mjs --self-test --output NEW_DIRECTORY` 和 `--verify-saved DIRECTORY`；D4入口为 `scripts/diagnostics/diagnose-owner-quarantine-v2.mjs` 的同名参数及单独 `--output NEW_DIRECTORY`。不得复用或清空旧输出目录；每次失败保留source和首份结果，可信保存复核不执行归档中的代码。真实D3的无self-test入口本轮不调用。
 
@@ -409,6 +426,8 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 验证与验收
 
+当前以契约第16节为准：errorDiagnosticsComplete与场景证据充分性分开，08预期截断仍为complete=false，但例外须同时具备writer/verifier独立验证、两helper在原预算内exit0且无控制尝试、输出真实end；不能用08掩盖helper退出故障。针对性8/8和收紧后的五组主回归119/41/156/15/37已通过，最终保存复核5/5、110 members、7源exact，现存三个partial08均scenarioEvidenceSufficient=false；这些不追认首次真实失败。首次真实工件缺summary、outer和shared manifest，42项是保存校验schedule、0 verified，acceptanceReady=false；缺证、意外截断及原consumer预算超限继续拒绝，不合并为PTY/native或产品通过。以下是历史口径。
+
 当前判据以契约第15节为准：helper39、public29及saved29；public完整性true18/false11与全部语义有效分别记录。tamper8正例/20组35变体，负例不仅要求按指定错误拒绝，还要求错误完整性认证false。主回归119/41/156/15/37及saved5/5、110 members；156仍是154完整重放与2个缺证拒绝。portable46门禁/6profile原位及迁移各5/5/17负例不计原生覆盖。source hash、旧历史正文及旧实验脚本/workflow不变及两树文档同步须另核；acceptanceReady=false，不代表产品验收。以下为历史口径。
 
 本阶段验收覆盖本地工具初版、实际fixture和审计修正，不宣称D3完整冻结覆盖。D4 local-3每次固定16项，93语义/4 saved及另存7个sidecar负例逐项有效，坏首项仍attempted16/verified15且末项通过；独立复审的两项阻断闭合。D3 v3最终 self-test-2通过119 oracle、41 core、15 files、25 archive/consumer/binding fixtures；saved4/4、88 manifest members、boundedConsumerDelivery=false、acceptanceReady=false；realNodeCases/nativeProcesses=0、pty=false，未运行live36+2+4或原生矩阵。六组覆盖与超时首报消费预算仍开放。D3真实36+2+4、本阶段三平台runner与native实际均0；本地D4不计为三平台48次已通过。收口前检查两树frontmatter/index、新增引用、共享契约一致、历史保持及diff，不能以旧runner或文档检查代替运行证据。
@@ -443,7 +462,9 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 结果与复盘
 
-第15阶段已完成错误保留边界和独立认证。最终helper39/39、public29/29及saved29/29，tamper8正例/20组35变体，主回归五组119/41/156/15/37、saved5/5/110 members；portable46/6/17，均按各自判据分账，acceptanceReady=false。只读复审无本阶段剩余确定性阻断，不是整个owner或产品退出机制验收。完整来源、首次失败及hash见契约第15节；下一步是新策略请求可达性、其他容器边界和真实归档门槛，以下第14节及更早记录为历史。
+第16阶段已完成范围及汇总纠偏，但唯一真实整链未通过：`.debug/settlement-v3-scope-full-first` 在180秒外层保护下exit124；01至08共24条case-settlement均false且ownerBlocked均false，已观察的publisher均incomplete。09-1有writer文件但未结算，余17项无启动证据；无summary、outer及shared manifest，可信保存复核42项检查、0 verified，不能写成已执行42项。01-1的caller-finished约72.696ms，TERM约5004.405ms、exit约5010.412ms；writer seal后仍经TERM，verifier未启动。ACK等待闭环只列候选根因，尚未作直接active request因果实验。初始8/8、主回归五组及saved5/5/110 members、随后收紧08的8/8与主回归均单独保留；局部绿色不覆盖真实失败，acceptanceReady=false。本轮不再实验，下一步仅按当前工作计划定位和修复实际闭环。
+
+历史结果（第15阶段，当时的“下一步”已由第16节替代）：第15阶段已完成错误保留边界和独立认证。最终helper39/39、public29/29及saved29/29，tamper8正例/20组35变体，主回归五组119/41/156/15/37、saved5/5/110 members；portable46/6/17，均按各自判据分账，acceptanceReady=false。只读复审无本阶段剩余确定性阻断，不是整个owner或产品退出机制验收。完整来源、首次失败及hash见契约第15节；下一步是新策略请求可达性、其他容器边界和真实归档门槛，以下第14节及更早记录为历史。
 
 第14节是容量可达性和跨OS归档的独立诊断增量，不是新reader或生产退出路径修复。实际Windows链接/权限、打包传输、真实异平台producer以及错误字段/辅助数组有界性仍须补证；本地fixture成功不关闭完整工具门槛、W1/U1或产品验收。完整证据与本轮结果集中记录在诊断结算契约第14节。
 
@@ -499,7 +520,9 @@ HPCON阶段首次原生矩阵、完整ZIP下载与独立复核已完成，见设
 
 ## 证据与备注
 
-当前正式证据在诊断树 `.debug/settlement-error-budget-v1-helper-third`、`.debug/settlement-error-budget-v1-public-third` 及 `-independent`、`.debug/settlement-error-retention-tamper-v3-second`、`.debug/settlement-v3-stage15-second` 及 `-verification-absolute.json`、`.debug/settlement-portable-v3-stage15-first`。所有首次与中间失败保留，最终七源hash及准确计数见契约第15节；旧43项与第14节证据不改。
+当前第16阶段证据在诊断树 `.debug/settlement-v3-scope-selftest-final`、`.debug/settlement-v3-scope-full-first` 及对应可信保存复核、`.debug/settlement-v3-scope-helper-guard-selftest`。初始汇总版本、唯一真实失败和后续收紧08例外的源码/结果分别绑定；完整来源、针对性测试、保存复核与诊断观察见契约第16节，不从归档sources执行代码，不将后续修正倒写为首次运行输入。
+
+历史证据（第15阶段）：`.debug/settlement-error-budget-v1-helper-third`、`.debug/settlement-error-budget-v1-public-third` 及 `-independent`、`.debug/settlement-error-retention-tamper-v3-second`、`.debug/settlement-v3-stage15-second` 及 `-verification-absolute.json`、`.debug/settlement-portable-v3-stage15-first`。所有首次与中间失败保留，最终七源hash及准确计数见契约第15节；旧43项与第14节证据不改。
 
 本增量最新本地工件在独立诊断树 `.debug/owner-quarantine-v2-local-4-{selftest,full}`、`.debug/settlement-v3-portability-check-1`（含original/moved、32项内存检查及两份验证）、`.debug/settlement-v3-saved-binding-negatives-1`（13项）。根保存重放为 `.debug/settlement-v3-portability-check-1-root-verification.json`。首个类别替换、boundary-first/second、CLI dev-1/self-test-3/self-test-4与source-outcome-repro-1分开保留，精确路径/hash/判定见契约第13节，不执行归档源码，不把后来的提交当作之前实际输入。
 
@@ -634,3 +657,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-22，容量与合成跨OS归档）：补43项固定容量目标与6profile/46门禁/17负例，修caller stderr的oracle角色误判并将producer身份与本机读取分离。保留首次失败、源码与归档执行方法偏差，正式结果改用可信工作树复核；四活章节、当前步骤、索引和债务同步。错误辅助数组有界策略和真实平台归档仍需后续，本轮不推送，不改业务/旧实验，不新增native/PTY/runner。
 
 修订记录（2026-09-22，错误诊断保留边界）：完成字段/列表预算、缺证标记与独立重放，保留26/29、155/156及相对路径内部调用4/5首轮记录，补来源伪造和认证反例。最终39/29、8正例/20组35变体、主回归五组与saved5/5、portable46/6/17均按范围留证；同步四活章节、当前步骤、索引和债务。旧43项不改，新策略可达性、其他容器和真实平台门槛仍开放。本轮不推送，不改业务/旧实验，不新增native/PTY/runner。
+
+修订记录（2026-09-22，工具范围纠偏与首次真实整链）：停止通用工具前置链，分离详情完整性与场景证据充分性；保留针对性8/8、主回归及唯一Linux真实整链的180秒exit124失败。明确24条失败结算、09-1未结算、余17项无启动证据及42项检查/0 verified的区别；收紧08例外以阻止helper退出故障借标签通过，不改core/oracle或原场景预算。ACK自然退出等待环仍待最小因果对照；下次外层保护按388秒阶段预算加编排/写盘重新评估，修后新输入最多一次既定42项，不恢复通用研究、不宣称产品通过。本轮无后续实验、runner或push。

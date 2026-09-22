@@ -1276,6 +1276,47 @@ export function verifySourceFixtureResult(actual, replay, producerSourceHashes) 
   }
 }
 
+export function assessDiagnosticEvidence(entry, phase, snapshots, verifications) {
+  const verified = snapshots.length === 2 && verifications.length === 2 && verifications.every(item => item.pass === true);
+  const complete = verifications.length === 2 && verifications.every(item => item.errorDiagnosticsComplete === true);
+  const intact = capacity => capacity?.omitted === false && capacity.fieldsTruncated === false;
+  // Only the frozen bulk-overflow case expects source loss; loss of its proof is never exempt.
+  const expectedOverflow = verified && entry.group === 'main' && entry.scenario === 'D3v3-08' && phase === 'case' &&
+    snapshots.every(snapshot => {
+      const owner = snapshot.owner;
+      const evidence = snapshot.reports.evidenceSettlement;
+      const overflow = owner?.traceCapacity?.overflow;
+      return snapshot.spec?.scenario === entry.scenario && snapshot.spec.id.caseId === entry.id &&
+        evidence.kind === 'incomplete' && evidence.incomplete.includes('trace-capacity') &&
+        evidence.artifactVerified === true && evidence.helpers.length === 2 &&
+        ['writer', 'verifier'].every(role => evidence.helpers.some(helper => helper.role === role &&
+          helper.exit?.code === 0 && helper.exit.signal === null && helper.controlAttempts.length === 0 &&
+          BigInt(helper.exit.receiptNs) < BigInt(evidence.deadlineNs) - 1_000_000_000n &&
+          ['stdout', 'stderr', 'fd3'].every(channel => helper.streams[channel].end && !helper.streams[channel].cancelled))) &&
+        overflow?.reason === 'trace-capacity' &&
+        Number.isSafeInteger(overflow.firstOmittedOrdinal) && overflow.firstOmittedOrdinal > 0 &&
+        snapshot.trace.some(fact => fact.event === 'trace-overflow' && fact.details.reason === overflow.reason &&
+          fact.details.firstOmittedOrdinal === overflow.firstOmittedOrdinal && fact.eventOrdinal > overflow.firstOmittedOrdinal) &&
+        owner.traceCapacity.controlOverflow === false && owner.lateCapacity.overflow === false &&
+        intact(owner.listenerFailureCapacity) && owner.roles.every(role => intact(role.errorCapacity) &&
+          ['stdout', 'stderr', 'fd3'].every(channel => intact(role.streams[channel].errorCapacity))) &&
+        snapshot.trace.every(fact => !fact.details.truncatedFields?.length && !fact.details.error?.truncatedFields?.length);
+    });
+  const sufficient = verified && (complete || expectedOverflow);
+  return { id: entry.id, phase, complete, sufficient,
+    basis: !sufficient ? 'insufficient-evidence' : complete ? 'complete-error-diagnostics' : 'expected-trace-capacity' };
+}
+
+export function evaluateRunAcceptance(run, report) {
+  const boundedConsumerDelivery = report.consumerDeliveries.length > 0 && report.consumerDeliveries.every(item =>
+    item.receipts.every(receipt => receipt.status === 'within-consumer-budget'));
+  const errorDiagnosticsComplete = report.errorDiagnostics.length > 0 && report.errorDiagnostics.every(item => item.complete);
+  const scenarioEvidenceSufficient = report.errorDiagnostics.length > 0 && report.errorDiagnostics.every(item => item.sufficient);
+  return { boundedConsumerDelivery, errorDiagnosticsComplete, scenarioEvidenceSufficient,
+    acceptanceReady: run?.mode === 'full' && run.syntheticArchiveFixture !== true && !run.syntheticProducer &&
+      report.pass && boundedConsumerDelivery && scenarioEvidenceSufficient };
+}
+
 export async function verifyEvidence(directory) {
   const report = { schema: SCHEMA, directory, attempted: 0, verified: 0, evidenceErrors: [], cases: [], consumerDeliveries: [], errorDiagnostics: [], pass: false };
   const selfTestCounts = {};
@@ -1370,7 +1411,8 @@ export async function verifyEvidence(directory) {
         assert.deepEqual(outer.finalPublicationSnapshot.trace.slice(0, outer.publicationSnapshot.trace.length), outer.publicationSnapshot.trace, 'publication facts were rewritten');
         const finalPublication = verifyPublicationSnapshot(outer.finalPublicationSnapshot);
         errors.push(...finalPublication.errors.map(error => `final-publication:${error}`));
-        report.errorDiagnostics.push({ id: entry.id, phase: 'publication', complete: publication.errorDiagnosticsComplete === true && finalPublication.errorDiagnosticsComplete === true });
+        report.errorDiagnostics.push(assessDiagnosticEvidence(entry, 'publication',
+          [outer.publicationSnapshot, outer.finalPublicationSnapshot], [publication, finalPublication]));
         report.consumerDeliveries.push({ id: entry.id, phase: 'publication', receipts: verifyConsumerReceipts(outer.finalPublicationSnapshot, ['publication']) });
         if (entry.group !== 'publisher') {
           const snapshot = loadPublishedSnapshot(path.join(directory, 'cases', entry.id));
@@ -1389,7 +1431,8 @@ export async function verifyEvidence(directory) {
           assert.deepEqual(outer.finalCaseSnapshot.trace.slice(0, snapshot.trace.length), snapshot.trace, 'case facts were rewritten after publication');
           const finalCase = verifySavedCase(outer.finalCaseSnapshot);
           errors.push(...finalCase.errors.map(error => `final-case:${error}`));
-          report.errorDiagnostics.push({ id: entry.id, phase: 'case', complete: caseResult.errorDiagnosticsComplete === true && finalCase.errorDiagnosticsComplete === true });
+          report.errorDiagnostics.push(assessDiagnosticEvidence(entry, 'case',
+            [snapshot, outer.finalCaseSnapshot], [caseResult, finalCase]));
           report.consumerDeliveries.push({ id: entry.id, phase: 'case', receipts: verifyConsumerReceipts(outer.finalCaseSnapshot, ['observation', 'processSettlement', 'evidenceSettlement']) });
           verifyGateOrdering(outer);
           assert.equal(outer.publicationSnapshot.reports.publication.kind, 'published', 'case publisher did not complete');
@@ -1431,9 +1474,7 @@ export async function verifyEvidence(directory) {
     if (run?.mode === 'full') assert.deepEqual(summary.results.map(item => item.id), fullSchedule().map(item => item.id), 'summary schedule differs');
   } catch (error) { report.evidenceErrors.push({ id: 'summary', error: String(error.message) }); }
   report.pass = report.attempted > 0 && report.verified === report.attempted && report.evidenceErrors.length === 0;
-  report.boundedConsumerDelivery = report.consumerDeliveries.length > 0 && report.consumerDeliveries.every(item => item.receipts.every(receipt => receipt.status === 'within-consumer-budget'));
-  report.errorDiagnosticsComplete = report.errorDiagnostics.length > 0 && report.errorDiagnostics.every(item => item.complete);
-  report.acceptanceReady = run?.mode === 'full' && run.syntheticArchiveFixture !== true && !run.syntheticProducer && report.pass && report.boundedConsumerDelivery && report.errorDiagnosticsComplete;
+  Object.assign(report, evaluateRunAcceptance(run, report));
   return report;
 }
 

@@ -61,7 +61,7 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 ### 当前状态（2026-09-22）
 
-当前下一步以 `runtime-diagnostic-settlement-contract.md` 第15节为准：错误字段/列表预算及独立缺证认证已本地收口；接着重新评估2MiB请求可达性、listeners注册集合及单chunk sequences边界，再完成工具复审和真实Windows链接/打包传输门槛。第43节及契约第12–14节保留历史输入，D4本轮不改。不运行D3真实36+2+4、native或runner，不推送；W1/U1与生产交付继续阻塞，不把局部错误预算扩为全owner有界或产品通过。
+当前以 `runtime-diagnostic-settlement-contract.md` 第16节为准：预期截断汇总已修，首次Linux真实Node整链在180秒外层截止时终止；24条失败结算、09-1部分工件与缺失的最终归档全部保留，不是42项已完成。下一步只确认并修复诊断role的ACK自然退出候选等待环，依据固定schedule重估外层安全上限，再验证既定整链；通用容量、无限集合和任意归档兼容性不阻塞。没有新增PTY/原生API/runner或产品通过结论，后续回到W1/U1及主进程尾部、终端状态、资源和实际Agent启动链。 第43节及契约第12–15节保留历史输入；本轮不改业务/D4，不推送。
 
 最新证据见第41节：b4db41cc的唯一run35676427931经三平台完整归档复核，各full24/24、scaled24/24、oracle78/parser8及篡改24/23成立；Windows实际再次乱序而源序合法，新判据正确接受。第38节v1两个failure、真实迟到与writer预算漏验仍保留。来源/顺序窄验证不关闭D3完整settlement、D4重放/身份或W1/U1；下一阶段先补诊断结算契约。以下两段记录此前设计承接背景，不覆盖本段当前状态。
 
