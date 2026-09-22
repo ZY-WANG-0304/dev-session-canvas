@@ -21,7 +21,7 @@ updated_at: 2026-09-23
 
 ## 1. 已确认范围与决策状态
 
-当前以 `runtime-diagnostic-settlement-contract.md` 第17节（2026-09-23）为准：ACK等待环已由父端EOF单变量干预确认，最小修复后13/13及主self-test通过。本轮唯一Linux42项完整执行、场景控制42/42，但可信保存验收39/42；三个08的evidence consumer超过100ms，acceptanceReady=false。下一步只处理已实测的consumer交付顺序，不恢复通用工具研究。第16节失败与旧证据保留；本轮未改业务/oracle/D4、未运行PTY/native/runner或推送，不计为产品通过。 不删除旧证据，不将工具结果计为产品退出完整性已验收。
+当前以 `runtime-diagnostic-settlement-contract.md` 第18节（2026-09-23）为准：非G1 evidence消费前置及完整80阶段聚合已窄修，15项回归和本轮唯一Linux42项均通过独立复核；156条消费记录满足原预算，G1/G2原因果保持。第16节partial与第17节39/42失败保留，不追认通过。下一阶段回到W1/U1实际路径，不恢复通用工具前置；本轮未改业务/core/oracle/D4，未运行PTY/native/runner或推送，不计为跨平台或产品验收。 不删除旧证据，不将工具结果计为产品退出完整性已验收。
 
 2026-09-20，用户同意将“退出完整性”作为本次 Runtime Persistence 重构的独立交付项。它与 F-04 容量优化、F-05 取消 completed 内联分别验收；不能等其他重构完成后假定问题自然消失，也不必等待整体终端状态替代或 F-03 root 归属改造才能推进。
 
@@ -90,7 +90,7 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 ## 6. 下一步与状态
 
-当前以 `runtime-diagnostic-settlement-contract.md` 第17节（2026-09-23）为准：ACK等待环已由父端EOF单变量干预确认，最小修复后13/13及主self-test通过。本轮唯一Linux42项完整执行、场景控制42/42，但可信保存验收39/42；三个08的evidence consumer超过100ms，acceptanceReady=false。下一步只处理已实测的consumer交付顺序，不恢复通用工具研究。第16节失败与旧证据保留；本轮未改业务/oracle/D4、未运行PTY/native/runner或推送，不计为产品通过。 第46节及契约第12–16节保留历史输入；本轮不改业务/D4，不推送。
+当前以 `runtime-diagnostic-settlement-contract.md` 第18节（2026-09-23）为准：非G1 evidence消费前置及完整80阶段聚合已窄修，15项回归和本轮唯一Linux42项均通过独立复核；156条消费记录满足原预算，G1/G2原因果保持。第16节partial与第17节39/42失败保留，不追认通过。下一阶段回到W1/U1实际路径，不恢复通用工具前置；本轮未改业务/core/oracle/D4，未运行PTY/native/runner或推送，不计为跨平台或产品验收。 第46节及契约第12–16节保留历史输入；本轮不改业务/D4，不推送。
 
 执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
 

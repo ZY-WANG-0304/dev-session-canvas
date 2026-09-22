@@ -19,11 +19,11 @@ updated_at: 2026-09-23
 
 ## 1. 当前阶段与证据边界
 
-当前推进第17节：只以最小真实role对照确认ACK候选等待环，修直接原因并最多一次重新验证既定整链；第16节失败保持。通用增强不恢复为前置，生产/native验收边界不变。
+当前以第18节为准：非G1证据消费顺序及完整80阶段统计已窄修，15项回归及本轮唯一Linux42项通过独立复核，100ms与G1/G2原有判据未变。第16–17节失败保留；本阶段固定Linux诊断通过，不等于跨平台原生或产品退出验收，下一步回到W1/U1实际路径。
 
-本设计承接 `docs/design-docs/runtime-native-failure-isolation.md` 第17节。当前以第16节的范围纠偏为准：通用容量、listener和任意路径兼容性不再默认阻塞；预期截断汇总已修，首次Linux真实Node整链在180秒安全截止时终止，未完成42项，具体失败与候选ACK等待环见第16.4节。主运行时树仅同步文档，诊断改动在独立工作树；不改业务、D4、workflow或依赖，不运行PTY/原生API/runner，不推送。第2–15节按历史输入保留，整体方案仍比较中、验证中，不将工具结果计为产品退出验收。
+本设计承接 `docs/design-docs/runtime-native-failure-isolation.md` 第17节，并沿用第16节范围纠偏：通用容量、listener和任意路径兼容性不再默认阻塞。第16.4节保留首次180秒安全截止后的partial失败，第17节保留ACK修复后的39/42，第18节记录本轮窄修正及新42/42，不将旧失败追认为通过。主运行时树仅同步文档，诊断改动在独立工作树；本轮不改业务、D4、workflow或依赖，不运行PTY/原生API/runner、不推送。第2–17节按历史输入保留，整体方案仍比较中、验证中。
 
-D3 v1/v2、D4 v1、原workflow、断言、工件及失败全部冻结。唯一v2 run `35676427931` 只验证来源/顺序窄修正，不证明完整结算或原生退出完整性。W1/U1只等待与其实际输入判定和实验安全直接相关的门槛；通用工具增强不能自动成为前置，具体推进按第16节，不追认旧失败。
+D3 v1/v2、D4 v1、原workflow、断言、工件及失败全部冻结。唯一v2 run `35676427931` 只验证来源/顺序窄修正，不证明完整结算或原生退出完整性。W1/U1只等待与其实际输入判定和实验安全直接相关的门槛；通用工具增强不能自动成为前置，具体推进按第18节，不追认旧失败。
 
 本诊断不改 Terminal/Agent 业务、旧 live 绑定、root runtime 归属或生产进程拓扑。不新增退出后历史、崩溃/重启恢复或任意后代托管。执行主体存活期间的终端输出与主体退出时自身已接收、排队、消费中的尾部仍须正确结算；实际 Agent CLI 启动包装链仍须单独验证。Windows 正常的已退出进程对象引用不是系统 bug；本设计不关闭陌生句柄、不按日志 PID 清理。
 
@@ -572,3 +572,39 @@ tamper-first的7正例、20组/34变体均满足当时判据，不能追认包�
 本轮收口为ACK因果确认、最小修复及一次完整矩阵的真实失败留存，不再重跑筛绿，也不宣称诊断整链或Terminal/Agent退出完整性已完成。第16节170个文件及日志不覆盖，09/gate语义和旧断言不改。后续只针对本轮consumer交付路径制定窄修正与必要回归，任何再次采集须先登记范围；不默认追加一轮工具边界审计。W1/U1真实资源、主进程自身尾部、最终终端状态及实际Agent启动链仍是产品工作目标，Windows/macOS、本轮PTY/native、Host/Webview、双会话与packaged均未因此获得通过结论。
 
 收口只读检查确认第16节170个文件及日志hash原样、当前7份采集源码exact、未见该入口仍运行的role进程；进程列表检查不等于PTY/native资源验收。两树各七份文档同步，共享第17节相同，第2–16节正文与各自HEAD相同；两个改动脚本通过固定Node语法检查，git diff --check通过。主树仍仅文档，诊断树代码仅core的三行ACK收尾与一个新测试文件；oracle、CLI、旧fixture、D4、业务、依赖及workflow未改。
+
+## 18. 证据消费顺序与完整统计的窄修正（2026-09-23）
+
+本轮输入为主树34d50134与诊断91a97400。第17节已确认ACK修复，但唯一完整42项只有39项通过独立验收：三个08的evidence消费分别超过100ms，且boundedConsumerDelivery只汇总77个成功phase。只修这两个已经影响本次判定的问题，不扩展通用工具边界；第2–17节和旧工件保持原样，不重跑旧输入追认成功。
+
+修正限于诊断CLI的executeCase与evaluateRunAcceptance。普通场景在注册publisherReady之前，通过已有consume函数立即注册evidenceSettlement的真实await续体；续体记录后，才执行同一Promise后注册的快照/归档准备。删除原来的第二次消费，保证唯一receipt。归档snapshotOrdinal按实际新前缀推导，不倒填时间、不回写冻结报告，也不把resolve或then入口冒充consumer。G1保留publisher实际gate-held之后await evidence、记录并release的路径，继续证明出版阻塞不阻塞证据消费；G1同样受100ms约束，不以其特殊顺序豁免预算。G2的capture gate不变。
+
+boundedConsumerDelivery从可信fullSchedule推导80个唯一id+phase，并要求实际集合完全覆盖；case必须有observation/processSettlement/evidenceSettlement三个唯一消费记录，publication必须有一个。缺项、重复替代、未知身份/phase或消费超时均为false，不依据保存的run.schedule缩小分母，也不通过绑定report.pass掩盖各维度的独立含义。其余错误详情/证据充分性判据不改，整体仍要求report.pass；不新增返回字段或归档兼容层。
+
+本轮只在既有acceptance测试追加最多两项，保留原八项断言：完整集合与独立维度、77项缺失/重复覆盖/未知项/receipt不完整。先运行并保存未修CLI下的失败，再修CLI，运行同一测试和已有五项ACK回归、既有主self-test及可信保存复核；不新增模拟器、子矩阵或测试入口。
+
+局部通过后，只采集一次全新Linux/Node22.23.2固定36+2+4整链。目录必须全新受控且祖先无链接；外层仍为480秒加5秒清理，不改100ms或场景预算。保留完整或partial结果，trusted保存复核之外直接核对非G1 evidence receipt早于publication-start，以及G1/G2原gate顺序与实际前缀。任何失败原样保留，不通过重试筛绿。本轮不改core/oracle/旧fixture/D4/业务/依赖/workflow，不推送、不运行PTY/native/runner；通过也只说明固定诊断工具链，后续回到W1/U1和实际退出交付，不追加通用工具审计。
+
+以上为实现和运行前冻结范围，实际结果后补。
+
+### 18.1 窄修正与局部回归
+
+修前 `.debug/settlement-consumer-stage18-before` 保留新增后的10项测试及五源快照：原八项通过、新两项失败。CLI按本节范围重排非G1消费并补齐80项集合核验，core/oracle/旧fixture不动；修后 `.debug/settlement-consumer-stage18-after` 的同10项及既有5项ACK测试15/15通过，测试字节未在修前/修后之间变化。CLI SHA256由 `4c79c9259b2bf2b8c14a087fa010aff7dcaecdaf097d7710a696c30d73194e14` 变为 `882330fe0743dfc449ef7e4483f37b614cccf407ea1400e6a4f382b694a81c87`，追加后的acceptance测试为 `ed19807ce570fa1cff3c108df9fa80271e257fcdd22bd8369a24abc11a2696b1`。
+
+主self-test `.debug/settlement-consumer-selftest-first` 五组119/41/156/15/37按既有判据通过；可信工作树的保存复核 `-verification.json` 为5/5、110成员、7源exact，self-test的acceptanceReady仍false。独立只读窄审未发现本次重排或完整集合逻辑的直接回归；局部结果不替代下面唯一完整矩阵及其真实顺序核验。
+
+### 18.2 唯一完整矩阵通过与交付边界
+
+本轮唯一新矩阵保存在诊断树 `.debug/settlement-consumer-full-first`，原始日志为同名 `.log`，命令结果为 `-outcome.json`。固定Linux/Node22.23.2，36主控+2gate+4publisher全部执行，约78.47秒后exit0，未触发外层480秒保护；ownerBlocked=false，没有再采集第二轮。采集绑定91a97400工作树及第18.1节实际源码hash，不倒写后续提交身份。
+
+可信工作树保存复核 `-verification.json` 为42/42、314个manifest成员、7源exact，无evidenceErrors；完整80个consumer phase、156条receipt满足原100ms及适用的原报告deadline，boundedConsumerDelivery=true、scenarioEvidenceSufficient=true、acceptanceReady=true。三项08仍明确errorDiagnosticsComplete=false：它们是预期trace截断而非缺失判定证据，80个诊断phase中77个详情完整、80个证据充分。各预期失败/超时/截断继续保持原报告类型，不称所有被测操作成功。
+
+原始事实附加核对 `-order-audit.json` 确认37个非G1 case的唯一evidence receipt先于publication-start，并真实包含在已发布快照中；38个case的归档边界均等于实际输入快照尾ordinal。G1的caller/writer/publisher与G2的capture共四组gate仍满足各自观察身份、held→真实consumer→release，G2 capture在释放后结算。三个08冻结至消费分别为0.505902/0.490692/0.609307ms；156条receipt最大79.961201ms，属于G1 evidence，仍小于100ms。这是固定样本的测量，不是通用性能或实时保证。
+
+首次附加核对误要求每个gate-held事件唯一，在G2发现4条后失败，未生成成功报告；原断言、4条raw事实和exit1记录保存在 `-order-audit-first-failure.json`。既有core每次暂存流事件都记held，establishGate只用第一次建立gate report；本次4条分别是stdout数据及fd3/stderr/stdout结束，正式gateObservations绑定首条。后续只读核对按实际观察fact身份取证，未改正式CLI、oracle或旧测试，也未重跑矩阵；不能把第一次辅助断言失败追认为通过。独立只读复核确认该语义及完整矩阵结果。
+
+full日志SHA256为 `e9b965c122bd6efa3729dd57a4e42102e12488e4358652cc6f0bedfe045b68b6`，保存复核为 `7deb12cf63dbe336448078698faa8c118bbcd0bac500be20fa9544a92e8a1e51`，时序核对为 `d63090918487bfcb6009c297c4f5fee8031b8e6464acf8fa0a06fbe548205287`。旧证据只读检查 `.debug/settlement-consumer-prior-evidence-check.json` 确认第16节170文件、第17节314成员及两轮旧日志/保存复核未改；对第17节原77项聚合单独应用新汇总得到boundedConsumerDelivery=false/acceptanceReady=false，不重写旧报告或冒充重新完整重放。现有八项测试前缀字节不变。
+
+本阶段只关闭第17节两个直接工具缺口及固定Linux整链待验项，主树仍只同步文档。Windows/macOS D3 v3、D4原生资源、实际PTY、Supervisor/Host/Webview及产品退出完整性不因此通过；未改变旧live绑定、退出后不保留进程/历史、主体后代职责或Windows正常对象语义。下一阶段回到W1/U1实际创建/等待/释放与主进程尾部，实施前只检查该实验实际使用路径的判定和清理安全；平台证据按实际运行补齐，不先恢复通用容量、listener、任意路径或归档兼容性审计。
+
+收口检查确认两树各七份文档、索引元数据及八个相关计划章节同步，共享第18节相同且第2–17节正文保持各自HEAD原样。CLI与追加测试通过固定Node语法检查，git diff --check通过；当前七份执行源码仍与采集hash一致，未发现该入口遗留role进程。该进程检查不是OS资源验收；本轮代码范围仅诊断CLI和既有acceptance测试的追加部分。
