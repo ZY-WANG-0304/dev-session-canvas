@@ -19,6 +19,10 @@ updated_at: 2026-09-24
 
 ## 1. 本阶段状态与完成边界
 
+当前进入第26节（2026-09-24）的macOS U1-0正常基线：先冻结平台创建、等待、源结束与资源判据，再实施独立候选并通过已有GitHub托管runner采集唯一三项。当前仅完成源码核查，尚无本轮构建或原生结果；不将Linux有限成功外推为macOS通过，不修改业务、安装依赖或历史实验。
+
+第25阶段历史状态（原文保留，不覆盖当前入口）：
+
 当前以本设计第25节（2026-09-24）为准：复用冻结native v4完成唯一Linux U1-0一次/U1-5三次4/4、独立保存复核和raw审计。实际close成功后，早到audit不替代被测回执；首次unknown与同operation迟到released并存，未再次close。19项纯测试与四个原生样本分账。下一最小项转向macOS U1-0平台协议冻结，不在本轮适配或运行runner，不宣称生产整链已验收。
 
 第24阶段历史状态（原文保留，不覆盖当前入口）：
@@ -554,3 +558,31 @@ caller的release账本保存operationId、r0、deadlineMs、audit、receipt、fi
 最大operation473.151370ms、caller after-await473.486902ms、observer after-await552.753787ms、caller close593.679338ms、writer receipt157.131539ms/close174.441986ms，原预算不变。四项无协议错误或控制处置，源和旧证据保持，测试及本轮原生首次结果均无失败；不据此更改历史失败。
 
 下一最小阶段转回跨平台原生路径：先冻结macOS U1-0正常基线及其真实创建、等待、源结束和释放差异，再依托已有runner做有限独立输入，不能把Linux forkpty/wait/EIO协议直接映射到macOS。本轮不实施平台适配、不触发runner或推送；Windows W1、其他macOS U1、真实环境销毁/并发、实际Agent包装链及Supervisor/Host/Webview/packaged仍开放，生产API/隔离策略/停止预算未选定。不再为本轮增加工具通用健壮性门槛。
+
+## 26. macOS U1-0：正常退出平台基线
+
+### 26.1 范围与运行前协议
+
+本阶段基线为主树4d676fb2、诊断树a0f412fd，只执行macOS U1-0三次。macOS U1-1至7、Linux旧矩阵、Windows W1、普通后代持续输出、实际Agent包装链及产品整链都不在本轮。沿用Node22.23.2、node-pty1.2.0-beta.12及其node-addon-api7.1.1，旧脚本、断言、原始结果和二进制不改。新脚本、候选native源码、workflow与工件只在独立诊断树；主运行时树仅同步文档。
+
+固定pty.cc的Darwin路径是posix_openpt及slave设置后posix_spawn，再由spawn-helper执行execvp；不是Linux forkpty。新候选保留该真实路径和helper源码，不将空helperPath传给Darwin。创建所得master和child在返回后立即登记，临时slave、low_fds及spawn actions/attrs分别记录取得/销毁事实；helper作为实际启动链的一环保留源、编译及二进制摘要，fixture控制消息的PID须与创建所得PID相同。本例只验证这个受控exec链，不证明真实Agent CLI包装链。
+
+等待线程保留真实kqueue、EVFILT_PROC/NOTE_EXIT注册和kevent等待，由同一线程执行唯一waitpid回收实际child；不能替换成Linux直接wait后宣称平台通过。kqueue成功取得后立即登记，全部kevent调用返回后由同一owner单次close，记录真实返回和errno，不在别的线程提前close取消。正常基线在fixture ready与kqueue注册成功两个事实均成立后才放行原写入负载；这使本轮专注已注册正常路径，早退/ESRCH竞态不在覆盖范围。异常保留真实错误和未确认责任，禁止按未初始化status编造exit0；不靠driver退出补造逐资源释放。
+
+沿用原80x24、2102字节成功写入、ONLCR后2104字节、完整headless终态和零基光标x6/y4。driver只读自身master，不启动继承fd的readiness helper、不改共享flags；EAGAIN/EWOULDBLOCK不是结束，真实read返回0才记录darwin-read-zero，EIO或主动取消不能冒充这条正常源结束。读与parser均无在途、最终状态已保存、真实wait取得exit7且正常通知/TSFN/payload/thread职责结算后才单次close master。正常结果需要真实返回0/errno0，而不只看JS调用返回。
+
+观察继续沿用observer→caller→driver→fixture责任链、不同进程各自单调时钟和独立writer。driver29秒、operation30秒、caller32秒、observer35/36秒、fixture20秒及writer1/2秒预算不变，整轮180秒只作外层保护。三份token/config/期望内容在首次创建前保存；场景符合、资源结算、证据充分分别判定，资源或证据不足即停止后续准入，剩余记not-run。正常基线不注入通知扣留或合成API错误。
+
+### 26.2 有限实施、来源与验收
+
+新增Darwin专用build/patch/support、roles/CLI/verifier及定向纯测试，不解除旧Linux平台guard或让旧oracle把Darwin事实伪装成Linux事件。复用冻结v1的fixture/writer、预算及headless序列化，新增判定仅覆盖本轮实际路径。少量纯测试检查关键Darwin前提、尾部、资源和身份的正负例，不启动新的容量、listener、归档兼容性或D3/D4研究。
+
+runner复用已有GitHub托管macOS环境，新增macOS-only workflow而不dispatch会重跑旧多平台矩阵的入口。固定Node/headers及依赖；记录实际OS/架构/image、SDK/clang、源/生成源码、helper和pty.node摘要。build/load预检零会话，随后同一候选唯一三次正常输入；每项仍有实际child身份及逐资源证明。仅推送诊断分支，推送前fetch/rebase目标main并确认无意外变更；首次push触发一次，不追加dispatch或rerun筛绿。全部工件包含失败也上传、下载，用可信工作树入口在不加载Darwin二进制的条件下复核。
+
+本节冻结时尚未实施、编译或运行。完成条件是三项实际结果及不通过原因均可由原始事实复算，首次失败不覆盖，来源与旧内容保持可核对；构建或前提失败不计作PTY样本，不为绿色结果放宽源结束、内容或资源判据。本轮只产生诊断候选证据，生产API、隔离拓扑和停止预算仍未选定。
+
+### 26.3 实施与运行前复核（2026-09-24）
+
+八个Darwin专用源文件和macOS-only workflow已经落盘，旧Linux源与workflow未改。新candidate确实增加owned kqueue close并替换诊断waiter，不是只增加日志；helper内部控制终端临时fd沿用固定源码，不将其或普通后代的全部OS资源宣称为逐项台账覆盖。编译器保留xcrun返回的clang++调用路径，另存resolvedPath摘要，避免符号链接解析改变driver模式。
+
+本地首次patch纯测试2/2、判定纯测试8/8通过；静态复审补齐master-open真实取得绑定后，同8组再次通过，组数仍为10而不是18个不同案例。EINTR仅有纯测试中的配对覆盖，未宣称macOS真实发生过EINTR。七个JS文件语法检查、源码/接口与独立整链静态复审通过，没有新增通用工具前置。首次日志保存在诊断树.debug/macos-native-baseline-v1-validation-first；此时尚无Darwin编译或原生结果。

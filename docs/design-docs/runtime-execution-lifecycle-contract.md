@@ -21,6 +21,12 @@ updated_at: 2026-09-24
 
 ## 1. 状态、目的与非目标
 
+当前进入 `runtime-native-failure-isolation.md` 第26节（2026-09-24）的macOS U1-0正常基线：仅冻结并实施三次自然exit7的新独立输入，保留Darwin posix_spawn/helper、kqueue/kevent及唯一waitpid，不把Linux forkpty/EIO协议直接映射过去。fixture ready与kqueue注册共同放行原负载，真实read0、完整尾部/终态和逐资源单次释放分别验收。运行前冻结时尚无本轮构建或原生结果，不宣称macOS或产品链路通过。
+
+本阶段通过新增macOS-only workflow复用已有GitHub托管runner，固定Node22.23.2及匹配headers/锁定依赖，仅push诊断分支触发一次三项，不追加dispatch/rerun。构建、纯测试、原生和离线检查分账，旧实验、失败和生产边界不改；macOS其他U1、Windows W1、真实Agent及Host/Supervisor/Webview/packaged仍开放。
+
+第25阶段历史记录（以下三段按当时状态保留，其macOS协议待办已由第26阶段承接，不覆盖当前实施顺序）：
+
 当前以 `runtime-native-failure-isolation.md` 第25节（2026-09-24）为准：复用冻结的6e96a9dc原生候选和既有build、不重新编译，唯一新v6切片U1-0一次、U1-5三次共4/4，采集CLI与另起进程的离线复核均exit0。四项仍保留成功写2102/读2104字节、真实EIO、完整headless状态及光标x6/y4、真实wait1792/exit7和逐资源收尾。本轮19项纯回归通过，为新增8项判定加前代11项，与四次原生执行分账；旧第20阶段3通过/1失败/2未运行及exit13、第21至24阶段各自4/4和原断言均保留，不补跑、不重判、不合算。
 
 U1-5在真实close单次返回0、error0后扣留上层receipt；audit在caller的100ms截止前到达，但只作独立事实，不代替被测释放回执。caller首次仍为observation-unknown且receipt为null，observer按自身时钟收到unknown后至少持有100ms才允许同一operation的迟到receipt；current补证为released，首次unknown及其时间保持，不再次close。这是JS回执扣留的有限证据，不是真正close失败或挂起，也不代表环境销毁、其他平台、真实Agent或Supervisor/Host/Webview/packaged整链已验收。

@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-24 第26阶段已冻结macOS U1-0正常基线，仅三次新自然exit7；Darwin真实posix_spawn/helper和kqueue/kevent/唯一waitpid须独立取证，fixture ready与kqueue注册后才放行写入。真实read0、完整2104字节/终态与kqueue/master单次close分别验收，早退/ESRCH、macOS U1-1至7及Windows W1不在本轮。新增macOS-only workflow复用现有托管runner，只push诊断分支触发一次，旧三arm/多平台workflow不重跑，不扩通用工具门槛。运行前冻结时无本轮build或原生结论；旧Linux4/4、19pure及所有历史失败保持，不能计入macOS验收。真实Agent/产品链路及生产API/隔离策略/停止预算仍开放，退出完整性债务不关闭。
+
 2026-09-24 原生第25阶段已取得真实释放与上层回执延迟分离的局部证据：复用冻结6e96a9dc和既有build，无新编译；唯一新U1-0一次/U1-5三次4/4，采集CLI与独立进程离线复核均exit0。本轮19项纯回归为新增8项加前代11项，不计作原生次数。真实close单次返回0/error0，audit在caller的100ms截止前到达但不代替被测receipt；首次observation-unknown保持，observer收到unknown后按自身时钟至少持有100ms，再许可同operation迟到receipt补证current=released，不覆写首报、不重复close。四项仍保留完整2104字节、真实EIO、终态/光标和wait1792/exit7及逐资源结算；这不是实际close失败/挂起、跨平台或产品整链验收。下一最小阶段先冻结macOS U1-0正常基线及平台创建/等待/释放差异，再按已有runner准备有限独立输入，不直接映射Linux U1；本轮不适配、不运行runner或推送、不扩通用工具门槛。真实Agent/Host/Webview/packaged、并发及生产API/隔离策略/停止预算仍开放，退出完整性债务不关闭。当前依据为runtime-native-failure-isolation第25节；以下第24阶段及更早文字、日期和失败按历史时点保留，其U1-5待办已由本阶段取得限定证据，不重判或合算。
 
 2026-09-23 原生第24阶段已取得通知未入队时资源收尾的局部证据：新6e96a9dc候选下，唯一新U1-0一次/U1-4三次4/4，采集CLI与独立进程离线复核均exit0；61项纯回归为旧45项加本轮5项补丁、11项判定，不计作原生次数。U1-4真实wait后跳过实际Push，仅返回合成napi_closing；未入队payload由native先单次释放，再单次Release实际仍持有的TSFN acquisition，完成thread/finalizer收尾，无伪造JS退出通知。四项完整2104字节、真实EIO、终态/光标x6/y4及真实wait1792/exit7均有有限证据；不能把该注入当作真实closing、环境销毁、跨平台或产品整链通过，也不能据此在真实napi_closing后重复Release。旧第20阶段3通过/1失败/2未运行及exit13、第21/22/23阶段各自4/4和原断言均保持，不合算。下一最小项Linux U1-5先冻结真实close成功后扣留回执协议，本轮未实施，不追加工具门槛。真实Agent/Host/Webview/packaged、并发和生产API/停止预算仍开放。当前依据为runtime-native-failure-isolation第24节；以下第23阶段及此前文字按历史时点保留，其U1-4待办已由本阶段取得限定证据。
