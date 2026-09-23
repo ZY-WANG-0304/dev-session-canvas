@@ -1,7 +1,7 @@
 ---
 title: 原生失败路径与资源隔离验证
 decision_status: 比较中
-validation_status: 未验证
+validation_status: 验证中
 domains:
   - 执行编排域
   - VSCode 集成域
@@ -19,13 +19,13 @@ updated_at: 2026-09-23
 
 ## 1. 本阶段状态与完成边界
 
-当前以 `runtime-diagnostic-settlement-contract.md` 第18节（2026-09-23）为准：非G1 evidence消费前置及完整80阶段聚合已窄修，15项回归和本轮唯一Linux42项均通过独立复核；156条消费记录满足原预算，G1/G2原因果保持。第16节partial与第17节39/42失败保留，不追认通过。下一阶段回到W1/U1实际路径，不恢复通用工具前置；本轮未改业务/core/oracle/D4，未运行PTY/native/runner或推送，不计为跨平台或产品验收。
+当前以 `runtime-diagnostic-settlement-contract.md` 第18节和本节第20节（2026-09-23）为准：非G1 evidence消费前置及完整80阶段聚合已窄修，15项回归和Linux42项均通过独立复核；本节随后仅运行Linux U1-0/U1-1局部原生切片，结果为3项通过、1项判定失败、2项因准入熔断未运行。第16节partial、第17节39/42失败和本节原生首个失败均保留，不追认通过；本轮未改业务/core/oracle/D4、未取得跨平台或生产验收。
 
-本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。D3/D4 v1的7141cfa3两次failure保留；D3 v2已由b4db41cc/run35676427931完成三平台来源/顺序窄验证及完整归档复核，见第17节。D3完整契约、D4完整身份、native失败路径或生产拓扑仍未验证，下一步按第18节的新契约实施独立诊断版本，不重复旧矩阵或启动W1/U1。
+早期设计背景（按当时状态保留，不覆盖第20节）：本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。D3/D4 v1的7141cfa3两次failure保留；D3 v2已由b4db41cc/run35676427931完成三平台来源/顺序窄验证及完整归档复核，见第17节。D3完整契约、D4完整身份、native失败路径或生产拓扑仍未验证，下一步按第18节的新契约实施独立诊断版本，不重复旧矩阵或启动W1/U1。
 
 目标是回答两件事：部分初始化/等待失败后，哪些资源仍由谁持有；一个资源结果无法确认时，如何不误报释放、不破坏其他会话，并限制继续积累。Terminal和Agent适用相同边界，实际Agent CLI的启动包装链另验；不新增普通后代托管、退出后历史、故障恢复、root归属改造或外部server承诺。
 
-本阶段完成定义是：明确故障种类及注入性质、比较隔离候选、冻结工具观察与第一批创建/等待矩阵，独立复审并同步ExecPlan。D3/D4的本地工具和有限模型结果已取得，但仍不构成跨平台native证据或生产接入门槛。除U1-4的通知返回替身及U1-5的释放回执扣留外，其余通知故障、环境销毁、取消、真正Close挂起及并发作为第二批必须闭合的问题；未写明可安全注入协议的案例不得开跑。W1/U1仍须在D3/D4契约缺口收口后另冻，生产接入仍受生命周期契约第9节门槛约束。
+原设计阶段完成定义是：明确故障种类及注入性质、比较隔离候选、冻结工具观察与第一批创建/等待矩阵，独立复审并同步ExecPlan。当前已取得固定Linux工具及第20节局部原生证据，后续仅以所用链路直接影响判定或安全的问题为前置，不恢复通用工具统一阻塞链。除U1-4的通知返回替身及U1-5的释放回执扣留外，其余通知故障、环境销毁、取消、真正Close挂起及并发作为第二批必须闭合的问题；未写明可安全注入协议的案例不得开跑。生产接入仍受生命周期契约第9节门槛约束。
 
 ## 2. 固定源码依据
 
@@ -279,3 +279,45 @@ D4 v2的local-3 self-test/full及各自离线复核均16/16、302命令、58次�
 D3最终本地self-test-2通过119 oracle、41 core、15文件、25 archive/consumer/binding fixtures；saved复核4/4、88 manifest members及四源原字节均匹配，但boundedConsumerDelivery=false、acceptanceReady=false，真实进程/native/PTY均未运行。首轮76/29/15及saved3/3保留为历史覆盖；cross-replay-1因oracle多算stdin JSON换行字节而误拒，修订移除该额外字节，core仍以stdin EOF分隔。迟到错误回溯首报、owner/unknown/event/scenario漏验和归档绑定已本地修正，首次失败不改判。到期才冻结的首报记录真实消费者延迟并标delivery-budget-unresolved，独立消费验收预算及六组逐fixture对账仍开放，不修改原deadline或暗加宽限；symlink负例归档须保留link元数据。
 
 下一步仍补齐冻结覆盖和独立审查，之后才另行确认真实D3与三平台采集。W1/U1、原生第二批、真实Agent启动链/双会话/Host/Webview/packaged、生产API/停止预算及整体退出完整性均未完成；不把正常Windows已退出对象引用升级为OS bug。
+
+## 20. Linux 部分创建失败最小原生增量（2026-09-23）
+
+运行前输入为主树70def060、诊断efab7aa3。本阶段从固定Linux D3通过返回实际原生路径，只实施U1-0和U1-1，各连续三次、同一个新诊断binary，其他U1/W1场景不运行、不改原断言。主树只文档；新增入口、补丁和原生支持代码仅在独立诊断树，不修改已安装node-pty、旧实验、业务或workflow，不推送。本节是第一批的局部实现，不将六次尝试记成完整66项或跨平台验收。
+
+### 20.1 资源与失败收尾
+
+固定源仍为node-pty1.2.0-beta.12、嵌套node-addon-api7.1.1和pty.cc的19210adf摘要。每个driver只创建一次会话，在fork前预分配固定大小native记录及身份；forkpty成功返回后父分支立即登记master和child，再执行后续步骤。U1-0实际执行pty_nonblock；U1-1在该调用前跳过并记录合成EIO，不宣称fcntl真实失败，也不补做F_SETFL。
+
+U1-1尚未提交read，不进入正常终端写入流程；登记owner单次close master，源记explicit-cancel/not-started而非EOF。close本身不保证child退出，因此在唯一waiter创建之前，由尚未reap的原创建者对其child尝试SIGTERM并保留实际返回，再安装同一native reaper取得真实wait结果。此时child尚未被任何本诊断waiter回收，控制不依据日志PID，不在回收后再操作它。注入失败与真实signal退出分账，不要求该负向路径自然exit7；close、控制、wait任一缺证或真实失败不能仅因命中注入而通过。
+
+两路径共用单一reaper及TSFN通知，只有waitpid返回本次pid才解释status；thread启动、wait返回、payload取得/回收、通知接受、TSFN Release、finalizer及join分别记录。收到JS退出回调不等于资源已释放。U1-0由JS独占fs.read，记录在途读取与headless parser任务，实际EIO之后完成已接收内容和最终状态，确认没有read/consumer任务在途才请求native owner单次close。只读F_GETFL/fstat观察不得改变flags；U1-1关闭前记录仍blocking及未提交reader。
+
+本阶段不注入TSFN/线程创建失败或环境销毁。实际发生这些意外时保留error/unknown并停止下一case，不能伪造已释放；整体进程退出仅是容器退出，不替代逐owner返回证明。C++支持代码仅服务单session诊断，不作为生产native API；未选定生产线程/进程布局。
+
+### 20.2 编排与固定验证
+
+保持observer→caller→native driver责任链。observer只控制自己创建的caller，caller保留driver的ChildProcess；native driver独占fork所得主体。caller在实际await操作结果后通过独立消息记录after-await，observer按自身接收时间观察，主体exit、源EOF/取消、parser完成、资源返回和driver退出分别保存。操作30秒、caller32秒、observer35/36秒沿用第10节；真实主体20秒自限只作安全保护，命中仍为fixture失败，不当自然成功。未知driver不靠新建一代绕过，停止余下样本。
+
+U1-0使用第10节固定80x24、32位RUN重复64次及TAIL/最终光标x6/y4负载。独立私有控制通道仅用于fixture与driver握手/输出许可，不能让诊断内容进入PTY；原始ONLCR字节、writer完成凭证、完整headless状态和实际wait exit7都必须成立。U1-1不进入正常写入，不虚构尾部完整性。受控路径用现有Node/xterm/native API直接实现，不泛化D3/D4入口或新建通用进程框架；证据落盘与真正after-await计时分开。
+
+Linux编译采用隔离目录中的固定原源加可重现补丁，以g++直接编译N-API shared object（C++17、PIC、pthread、异常、lutil）；显式匹配Node22.23.2官方headers和addon7.1.1，记录编译命令、compiler、header/source/binary摘要并直接加载该绝对路径，禁止回退prebuild。这是本Linux诊断的构建选择，不替代现有macOS/Windows构建或生产打包。
+
+先做生成补丁及结果判定的少量针对性测试、编译和实际加载核验，然后仅以新目录执行一次六项固定切片并从保存raw独立核对。构建失败保留且实际PTY计零；运行失败原样留存，不重复完整矩阵筛绿，不以工具通用能力阻塞此增量。后续按本次真实问题继续U1其余项与W1平台实现，而非宣布全退出完整性已交付。
+
+### 20.3 实际结果与边界
+
+隔离构建以官方 Node 22.23.2 headers、node-pty 1.2.0-beta.12、嵌套 node-addon-api 7.1.1 和固定 `pty.cc` 生成，候选二进制摘要为 `aff95d1e0fa53e2cf124cc28f77637e0c0d9e9a1ceb5b2df7e30bbe6b40dec4d`；绝对路径加载和7个导出核验通过，构建阶段没有创建PTY。针对性测试6/6通过。
+
+唯一原生切片目录为诊断树 `.debug/native-failure-v1-linux-first`。U1-0 三次均通过：写入2102字节、ONLCR后读取2104字节、Linux EIO作为源结束、wait原始状态1792/exit7、最终光标x6/y4，master单次close、TSFN/通知、payload释放、thread join/finalizer均有事实；U1-1 首次实际返回status256/exit1/signal0，仍blocking（flags32770），未提交read或writer，master close和SIGTERM调用均返回0，唯一wait、TSFN/Release、payload、join/finalizer均结算。原判定额外要求该负向路径必须以signal 1或15结束，因此记录为失败并停止其余两次，最终为3通过、1失败、2未运行。
+
+该 `exit1` 只证明直接child已以非零退出并完成wait，不证明资源泄漏、真实Agent缺陷或SIGTERM导致了退出；候选原因包括 `forkpty` 子路径的 `login_tty`/启动失败，但本轮没有子侧errno或启动阶段事件，不能区分。`kill(SIGTERM)` 返回0也不要求随后wait一定是signal退出。原始失败、2项not-run、入口保存复核因动态import循环出现的exit13均保留；最终采用独立只读 `scripts/diagnostics/verify-native-failure-v1.mjs` 入口调用原verifier导出，离线复核exit1且保持3通过/1失败/2未运行，没有重跑native或改判首个失败。曾尝试拆纯模块，但源码身份核对拒绝变化，已撤回本轮拆分并核对采集时driver/verifier/test字节完全一致；不放宽来源检查。
+
+### 20.4 证据、根因边界与下一步
+
+证据均位于诊断树：`.debug/node22-headers-first` 保存官方下载及SHASUMS验证，headers archive为 `daaf13ec5d45a38bbcfcff06d0723f72a6813b89ab27bb5af2ac8e1f6259dde0`；`.debug/native-failure-v1-build-first` 保存第一次成功构建（零PTY），`.debug/native-failure-v1-build-raw-status` 保存运行前补充wait原始status后的最终构建（零PTY）。后者的inputs、build-command、build、manifest固定原源/生成源、g++11.4.0、2725份headers、addon与实际binary；2759成员摘要核对通过。两次构建不是两轮原生实验。
+
+`.debug/native-failure-v1-validation-first` 保存6项针对性回归、唯一原生run的exit13日志、原导出离线复核、独立入口复核和raw-metrics。driver/verifier/test采集时摘要分别为 `94e77d2fe45854ba15affb23783d9544313c29da765a1c8b2b7e7869c6e61708`、`d6d98885aa4aa68a68a515f1c57c836f6d402fa594d3516c5e4d57b7516c7fc1`、`ffe977f52da3157eae4cedd8e7c807b0cafeb7d4831e2e6a9df978566c560378`，独立核对四份raw与writer receipt及三个保存源一致；既有第18阶段314个manifest成员未变。四次实际observer收到after-await最大227.630766ms，caller续体最大139.686304ms，独立writer receipt最大70.664447ms，未触发冻结30/32/35/36秒或1/2秒预算。
+
+只读核对本机glibc2.35-0ubuntu3.15的libc（SHA256 `b2cf6c33b74d2f22543b7a469a75b538911e690f769d0b238843a49465b83793`）确认forkpty子分支调用login_tty失败后直接_exit(1)。固定pty.cc在forkpty前阻塞信号，只有forkpty在child成功返回后才恢复，因此“已接受SIGTERM但仍exit1”存在合法启动路径。pty.cc的chdir/execvp失败同样_exit(1)，当前缺少child阶段/errno，不能认定本次具体命中了哪个分支，也不能把注入的nonblock合成EIO写成真实ioctl错误。未收到ready不证明是否已经exec。
+
+本次原判定不改：signal-only附加断言失败、safeToContinue=false、两项not-run，以及总入口exit13原样保留；它们不撤销已证明的owner收尾，也不作为资源unknown或OS缺陷证据。后续以新版本收窄退出形式断言、将资源结算与场景预期分别用于准入，并使用不循环导入的验证入口。仅在此直接判定问题澄清后另冻下一份最小原生输入，不补跑旧schedule、不扩通用工具框架。Linux其余U1、macOS、Windows W1、真实Agent启动链、并发/环境销毁及Supervisor/Host/Webview仍未由本轮验收。

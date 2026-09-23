@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-23 原生第20阶段新增局部事实与直接待办：Linux同binary U1-0三次尾部/EIO/exit7/完整状态及owner收尾通过；U1-1首次原始wait256/exit1、close0/kill0/payload/TSFN/join已结算，却被signal-only额外断言拒绝并停余2项。保留3通过/1失败/2未运行，不将判定失败当资源unknown或系统/Agent缺陷。下一版仅澄清真实终止、场景预期和资源准入，不要求kill0必为signal退出；child的login_tty/chdir/exec具体原因无errno证据，未确认。原CLI最终复核动态import自循环exit13保留，已新增独立只读verify-native-failure-v1入口重放原失败exit1，原driver/verifier/test源码身份不变；后续采集入口须避免同一循环。正式设计见runtime-native-failure-isolation第20节，主树仅文档。其余U1/W1、macOS/Windows、真实Agent/Host/Webview/并发与生产API/停止预算仍开放，不恢复通用工具前置，不补跑旧schedule、不新增runner或push。以下保留历史阶段债务。
+
 2026-09-23 第18阶段已关闭evidence消费顺序和77/80统计这两个实测工具缺口：15/15、既有自测/保存5/5及本轮唯一Linux42/42通过，80phase/156receipt完整，100ms与G1/G2原判据不变。三个08仍详情不完整但证据充分；G2附加核对误要求held唯一的失败单列保留，按观察fact身份完成只读复核，未重跑矩阵或改正式断言。第16/17节旧失败不追认。下一步回到W1/U1实际路径，仅以所用链路的判定/安全问题为前置；不自动扩充通用工具研究。Windows/macOS D3 v3、D4实际资源、PTY与Supervisor/Host/Webview、真实Agent启动链/双会话/packaged及生产退出完整性仍开放，本轮未改业务/core/oracle/D4、无native/runner/push。
 
 历史债务记录（第17阶段）：2026-09-23 ACK等待环已按诊断结算契约第17节因果确认并最小修复，13/13及主自测/保存5/5通过；本轮唯一Linux42项完整执行、场景控制42/42，但可信验收39/42。剩余直接阻塞是三个08的evidence consumer超过100ms；源码先同步出版准备后消费，具体各段耗时未插桩。boundedConsumerDelivery=true仅基于77个已通过phase，不能代替80个完整phase或覆盖总体false。下一步只处理实际交付顺序及聚合解释，不默认增加通用工具前置；旧失败与本轮完整314成员/7源exact证据保留，不重跑筛绿或放宽预算。W1/U1及Terminal/Agent、Host/Webview产品退出完整性仍开放，本轮无PTY/native/runner/push、业务/oracle/D4变更。以下为历史债务记录。
