@@ -143,6 +143,8 @@
 
 ## 意外与发现
 
+第22阶段完整暂存检查发现两个新增文件末尾空行（build-native-failure-v2.mjs及unix-native-failure-support-v2.h），exit2；前面的git diff --check只含已跟踪文档，不代表新增文件格式通过。为保留构建/采集字节未修这两处非功能告警，未重编译或重跑；新脚本功能与证据复核结果不变。
+
 第22阶段实测三个U1-2均flags34818、真实TSFN后合成EAGAIN，原创建者close/control/Release成功，首次WNOHANG返回wait256/exit1且finalizer完成；未出现pending/EINTR，不把这些源码/纯测试分支当实测。Node22 N-API允许initial_thread_count包含主线程取得，Release不要求worker已启动；constructor-return和worker-start也不应人为全序。
 
 第22阶段固定v1源码在线程创建异常后仅Release TSFN并throw，尚未覆盖child/master收尾；因此需要验证已取得对象的处置与未取得对象的明确缺席。不能为了回收失败的等待线程再假定新线程一定能启动，拟用原driver独占的非阻塞wait轮询。
@@ -259,6 +261,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-09-23（第22阶段提交补记）：显式保留两处EOF空行告警，不为格式清理改动已冻结源码身份；下次新版本在冻结前检查新增文件，不追认本次完整暂存检查通过，也不扩展工具验证。
+
 2026-09-23（第22阶段收口）：独立记录新U1-0/U1-2四项4/4，不混入前两批通过率。仅确认本Linux注入点的既有资源收尾可行，未创建的thread/payload/notification保持缺席；下一步先冻结U1-3合成ECHILD后同一reaper补证，不扩大到真实环境销毁或生产API，也不再追加本轮实验。
 
 2026-09-23（第22阶段运行前）：按原生失败隔离第22节，U1-2跳过std::thread并注入合成EAGAIN，原创建者close/control/Release，driver通过token-bound单次WNOHANG轮询回收。无thread/payload/notification不得伪造完成；新四项与旧样本分账。正式生产布局未选定。
@@ -367,6 +371,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+第22阶段功能与证据收口不变；完整暂存格式检查有两处EOF空行告警，已记录为冻结源码的非功能例外。诊断实现本地提交6248229b、主树文档ac588f45均不推送；本补记仅修正文档中的检查范围说明，不改源码或原始工件。
 
 第22阶段已完成具体协议、隔离构建、28/28纯测试与唯一新原生四项4/4，采集及保存复核均exit0。候选在无等待线程时仍能由原driver独占回收child并独立完成TSFN最终化；不能把未创建对象伪造为已释放，也不能据此宣布OS真实线程创建失败已验证。三个partial均首次wait即terminal，pending/EINTR及500ms多轮仅纯测试覆盖。旧stage20的3/1/2、stage21的4/4和exit13均不变，其他平台/产品尚未验收。
 
