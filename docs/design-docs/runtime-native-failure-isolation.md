@@ -19,13 +19,13 @@ updated_at: 2026-09-23
 
 ## 1. 本阶段状态与完成边界
 
-当前以本设计第21节（2026-09-23）为准：新v2将场景、资源和证据分账，同一binary的唯一新Linux U1-0一次/U1-1三次均通过，入口及独立保存复核exit0。第20节原3通过/1失败/2未运行及exit13不改；新4/4不补跑或重判旧样本，也不证明其他U1/W1或生产验收。此前固定Linux工具42项已在诊断结算契约第18节收口，不恢复通用工具前置。本轮未改业务、已安装依赖、native binary或workflow，无runner/push。
+当前以本设计第22节（2026-09-23）为准：新隔离候选在真实TSFN取得后注入线程启动失败，由原driver独占非阻塞wait完成回收；新U1-0一次/U1-2三次4/4，采集及离线复核exit0。第20节原3通过/1失败/2未运行及exit13、第21节新4/4均保持，不合并通过率；本轮只取得Linux有限失败收尾证据，不代表其他U1/W1或生产验收。原生源码只在独立诊断副本调整，业务、已安装依赖、旧binary和workflow不改，无runner/push，不恢复通用工具前置。
 
 早期设计背景（按当时状态保留，不覆盖第20节）：本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。D3/D4 v1的7141cfa3两次failure保留；D3 v2已由b4db41cc/run35676427931完成三平台来源/顺序窄验证及完整归档复核，见第17节。D3完整契约、D4完整身份、native失败路径或生产拓扑仍未验证，下一步按第18节的新契约实施独立诊断版本，不重复旧矩阵或启动W1/U1。
 
 目标是回答两件事：部分初始化/等待失败后，哪些资源仍由谁持有；一个资源结果无法确认时，如何不误报释放、不破坏其他会话，并限制继续积累。Terminal和Agent适用相同边界，实际Agent CLI的启动包装链另验；不新增普通后代托管、退出后历史、故障恢复、root归属改造或外部server承诺。
 
-原设计阶段完成定义是：明确故障种类及注入性质、比较隔离候选、冻结工具观察与第一批创建/等待矩阵，独立复审并同步ExecPlan。当前已取得固定Linux工具及第20–21节局部原生证据，后续仅以所用链路直接影响判定或安全的问题为前置，不恢复通用工具统一阻塞链。除U1-4的通知返回替身及U1-5的释放回执扣留外，其余通知故障、环境销毁、取消、真正Close挂起及并发作为第二批必须闭合的问题；未写明可安全注入协议的案例不得开跑。生产接入仍受生命周期契约第9节门槛约束。
+原设计阶段完成定义是：明确故障种类及注入性质、比较隔离候选、冻结工具观察与第一批创建/等待矩阵，独立复审并同步ExecPlan。当前已取得固定Linux工具及第20–22节局部原生证据，后续仅以所用链路直接影响判定或安全的问题为前置，不恢复通用工具统一阻塞链。除U1-4的通知返回替身及U1-5的释放回执扣留外，其余通知故障、环境销毁、取消、真正Close挂起及并发作为第二批必须闭合的问题；未写明可安全注入协议的案例不得开跑。生产接入仍受生命周期契约第9节门槛约束。
 
 ## 2. 固定源码依据
 
@@ -357,3 +357,47 @@ U1-0完整原字节、writer凭证、真实EIO、headless完整状态/光标x6/y
 另由独立审查者直接从raw/config/evidence及六源快照完成503项检查、零失败，没有以summary自报或调用冻结verifier代替原始事实核对。审计文件 `.debug/native-failure-v2-validation-first/independent-native-audit.json` 的SHA256为 `5f4a3ddea3fe34607e82ec099169bf6fd3881b9954dd07fd18dccd1cefa5e3d3`。最大operation150.922725ms、caller续体151.008634ms、observer收到after-await214.99655ms、caller close227.175316ms、writer receipt69.249869ms/close75.436092ms，未改变原预算。503是四份证据的断言数，不是新增native样本数。
 
 下一最小增量为Linux U1-2：先冻结“真实取得TSFN后、wait线程启动前注入失败”的具体资源处置与取证协议，再隔离实施及有限原生验证。未启动线程不能伪造join，child/master/TSFN/payload须分别结算；本轮未实施或运行该项。其余Linux U1、macOS U1、Windows W1、真实Agent包装链、长期/并发/环境销毁及Supervisor/Host/Webview/packaged仍未验收，生产API与停止预算未选定，不再本轮追加实验。
+
+## 22. Linux TSFN 已取得后线程启动失败（2026-09-23）
+
+运行前基线为主树dfbbe868、诊断树52954ea0。本阶段只推进U1-2，以及同一新候选的一次U1-0正常对照；全部旧v1/v2源码、断言、证据、3/1/2与新4/4结果冻结。主树只文档，隔离诊断树新增版本源码和新构建，不修改业务、已安装依赖、workflow，不push或触发runner。候选不是生产native API，不选择正式线程布局。
+
+### 22.1 故障点与唯一资源责任
+
+TSFN是N-API的线程安全通知对象。固定源仍为node-pty1.2.0-beta.12、addon7.1.1、Node22.23.2及pty.cc的19210adf摘要。fork成功后立即登记child/master，真实nonblock成功，再实际创建初始引用数1的TSFN；U1-2在std::thread构造前跳过调用并注入合成EAGAIN，走线程创建失败分支，不声称OS实际拒绝创建线程。须单列thread构造未调用、未started/finished/joined、实际joinable=false；无等待线程，不能join，也不再创建替代线程。
+
+失败分支由原创建者观察并单次close自己的master，然后在尚未reap且没有waiter时对同一个owned child尝试SIGTERM，分别记录实际返回。此时没有提交read/parser，也没有输出许可；master已经真实nonblocking，与U1-1的blocking前提不同。接着释放已取得的唯一TSFN引用并等待真实finalizer；finalizer记录thread-not-joinable，不伪造thread-joined。未创建退出payload、未调用通知的事实须保留，不能补写payload-freed或callback成功。Close/control/TSFN Release失败仍为资源失败并停止后续准入，命中注入不能覆盖它们。
+
+child由新增token-bound native方法failurePollWait独占回收：仅允许U1-2失败且无wait线程、仍持有本次wait责任时调用；每次最多一次真实waitpid(pid, &status, WNOHANG)，返回0是pending，-1/EINTR仍pending，其余错误保留unknown并停止该回收路径，只有返回本pid且status为exited/signaled才取得终态。禁止拿调用方传入PID、安装另一waiter、在reap后控制或再次wait；状态未就绪不解释status或伪造exit0。TSFN释放与child回收分别证明，不以driver退出代替资源收尾。
+
+driver在捕获预期线程启动错误后执行有限轮询，首次立即、pending后至少500ms再调用，最多60次并受既有30秒操作预算约束；该诊断间隔不是生产停止期限，计数或时间耗尽只能报未确认。固定台账256事件足以覆盖该有限路径，不引入通用容量研究。原fixture20秒自限继续存在，命中exit124/控制错误125为场景失败，不能当自然成功。TSFN finalizer和wait可先后任意出现，driver只有两者完成后才提交最终报告。
+
+### 22.2 固定验证与实施范围
+
+唯一新schedule固定U1-0一次、U1-2三次，四个新token/config及期望内容须在首项前冻结。新native支持/补丁/构建采用v2，新编排/判定采用v3；复用固定payload、完整headless状态、外层caller/driver责任链与独立writer方法，不创建通用诊断框架。v3入口不得形成顶层await导入循环，保存源码、编译输入、实际binary及来源摘要；使用已有官方headers隔离构建，禁止回退prebuild或修改已安装源。
+
+U1-0仍要求成功写2102/读2104字节、真实EIO、完整状态/光标x6/y4、exit7及原线程/TSFN/payload收尾。U1-2要求故障点实际到达、无read/parser/output、source=explicit-cancel/not-started、close/control/唯一wait及TSFN全部结算，同时证明无thread/payload/notification。独立解码wait终态，不要求SIGTERM调用成功必为signal退出。scenarioMatches、resourcesSettled、evidenceSufficient三类及safeToContinue保持第21节定义；原30/32/35/36秒、writer1/2秒不变，资源或证据缺失时余项记not-run。
+
+先实现并执行少量补丁/纯判定测试及静态安全复审，再隔离构建/load（零PTY），固定源hash后只运行一次新四项并独立复核保存raw。首次构建或运行失败完整保留，不覆盖旧目录、不重复矩阵筛绿，不把未启动对象当作需要释放的泄漏。Linux其余U1、macOS/Windows、真实Agent包装链、并发/环境销毁及Supervisor/Host/Webview/packaged仍开放。本节为运行前协议，尚无本轮原生结果。
+
+### 22.3 实施与唯一新运行
+
+诊断树新增八个文件：`unix-native-failure-support-v2.h`、`unix-native-failure-patch-v2.mjs`、`build-native-failure-v2.mjs`、`native-thread-failure-patch-v2.test.mjs`、`native-failure-roles-v3.mjs`、`diagnose-native-failure-v3.mjs`、`native-failure-verifier-v3.mjs`、`native-failure-v3.test.mjs`，均在scripts/diagnostics。v3只复用冻结v1的fixture、writer和payload/state导出，新caller/driver显式保留原控制链。预期创建异常单列creationError，不能冒充exit callback；真实错误仍写report.error。
+
+运行前安全复审确认：N-API TSFN的initial_thread_count可以包含主线程的初始取得，未启动worker时由创建者Release该唯一引用合法；Release之后不再访问TSFN，finalizer独立观察。正常路径constructor-return与thread-started可能交错，不强加伪全序。driver沿用29秒内部未确认保护，外层30/32/35/36秒不变；pending后的500ms用单调deadline复查，不依赖单次timer恰好足时。新补丁4组/判定9组及旧v1六组/v2九组合计28/28纯测试，不计native次数。
+
+首次构建目录 `.debug/native-failure-v2-build-first` 成功，load只验证绝对路径和8个导出、零native方法调用。new binary SHA256为 `fa6f9ab7ba6faefeac1c569a555e5d00d4d3e0890184e885bcb51aa5a9053478`，生成pty.cc为 `fa3941006a6e52eef4bf314ac257a45d21e041aa2e48e3ed451951844a0ae453`；2759构建成员包含固定原源、2725官方headers和addon7.1.1。没有重新编译旧候选或修改已安装源。
+
+唯一采集目录 `.debug/native-failure-v3-linux-first` 完整执行四项，新CLI及独立进程的--verify-saved均exit0，三类判断均true。U1-0成功写2102/读2104字节、真实EIO、wait1792/exit7、完整headless状态/光标x6/y4及全部原线程/通知资源收尾；本次17次read、1次parser。三个U1-2均真实nonblock成功（flags34818），真实TSFN创建后合成EAGAIN跳过thread构造，close与SIGTERM调用返回0，TSFN Release返回0并最终化，首次且唯一WNOHANG返回本child、status256/exit1；三个样本均无read/parser/output permission、无thread构造/启动/join、无payload/通知/callback。每个partial有24个native事件，source为explicit-cancel/not-started，不冒充EOF或尾部完整。
+
+本次没有实测到WNOHANG pending/EINTR或第二次轮询，也没有实测500ms等待；这些只由固定源码/纯夹具覆盖，不能按三个终态样本宣称全部等待边界已验证。exit1具体child启动位置仍未知；结果只证明本候选在此注入点的已取得资源收尾可行，不证明真实OS线程耗尽、其他平台或真实Agent故障已修复。
+
+### 22.4 来源、证据与剩余项
+
+采集时八个新文件尚未提交，来源绑定当时快照，不倒称来自后来的commit。`.debug/native-failure-v3-validation-first/frozen-sources.json` 保存八源完整摘要；CLI/roles/verifier/test分别为 `96ad640490171344b053fcec816ec8f474ba90c9731898e751fe1bcb88f30a06`、`d16eadd3f22e31bf83a8e2f81643a0af471cfe96445932cc3b2ef524e220f736`、`727138ec84696f44a95870d106f31c5545ea0b5facd083a960595a81b9857573`、`15d55f99f8be6821b3cc88b7fbf0c8e40a7cfa48c1b613c906d617d4db50c8e1`；support/patch/build/patch-test分别为 `321fe046234bbc54ca535a39db59fc43cdc0fd15fef17b354ea27a59f59cfd5a`、`d0b15c4bbe054901cdf5a09d4f00cb4296299fb894507fe19542c7ac264044de`、`d42aeac94ddfac1d424b893a70c1024ccc79e10e440026e97be24675df6a811c`、`9013c220ff41605fc2e5513cfae0dc8fcf948b0d64b6f35deae61f81f728e5ce`。
+
+schedule保存11源快照、四份预冻结config、buildDirectory及buildManifestHash；保存复核绑定binary、完整build manifest及build/patch/support的当前/构建输入/采集快照。validation-first还保存before、targeted-tests、build、native-run、offline-verification及独立审计。`build-preservation-audit.json` 完成2860项只读检查，确认新2759构建成员、可信补丁重生成和68个旧文件不变，SHA256为 `50ac12e829da8026c48060f65fbd7906a02623baa62c5c3ccaedb7964dc6e181`；检查数不是原生样本数。
+
+另存 `.debug/native-failure-v3-validation-first/independent-native-audit.json`，SHA256 `d521b5c91059aaebc306e38d4dc5ab8d69299144625dbd239453fc883bafdafa`。独立审查不读summary、不调用verifier，直接核四份raw/config/evidence与11采集源；6179项数据/保持检查零失败，其中四case自身510项，其余含旧68文件、新8源及两个build各2759成员的保持核验，零新增native。最大operation161.326947ms、caller续体161.432543ms、observer收到after-await228.073118ms、caller close243.192798ms、writer receipt71.920929ms/close76.761996ms，原预算满足。第20/21节的失败、通过、not-run和旧CLI错误均未重判。
+
+下一最小增量为Linux U1-3：先冻结“跳过一次waitpid并返回合成ECHILD、保留初次unconfirmed，再由同一个独占reaper取得真实终态”的具体协议，不能解释未初始化status或安装竞争waiter。本轮没有实施或运行U1-3，不追加实验。其余Linux U1/macOS U1/Windows W1、通知失败/环境销毁/并发、真实Agent及Host/Webview/packaged仍开放，生产API、资源隔离策略和停止预算未选定。

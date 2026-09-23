@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-23 原生第22阶段已取得TSFN后线程启动失败的局部资源证据：新fa6f9ab7候选下，U1-0一次/U1-2三次唯一新切片4/4，采集CLI及独立离线入口均exit0；28项纯回归通过，其中13项为本阶段新增（4项补丁、9项判定），与原生次数分开。三次U1-2在真实nonblock/TSFN后注入合成EAGAIN并跳过thread，close/control/TSFN Release/finalizer及创建者独占WNOHANG回收均成立，实际wait256/exit1；无thread/payload/notification，不伪造其释放。此项不代表真实OS线程创建失败、全部异常路径或生产接口已修复。旧第20阶段3通过/1失败/2未运行和exit13、第21阶段独立4/4及全部原断言保留，不合算。下一项为Linux U1-3一次合成ECHILD等待失败、真实唯一reaper补证的具体协议，尚未实施；其他U1/W1、macOS/Windows、真实Agent/Host/Webview/并发和生产API/停止预算仍开放，不新增工具前置。最新结论见runtime-native-failure-isolation第22节；以下第21阶段U1-2待办按历史时点保留，已由本段取得限定证据。
+
 2026-09-23 原生第21阶段已在新v2中收口退出形式与资源准入耦合、采集入口循环导入两项直接问题：同一aff95d1e候选及冻结v1执行角色、原预算下，新U1-0一次/U1-1三次共4/4通过，采集CLI及独立离线复核均exit0；三次U1-1均为真实wait256/exit1且owner结算，场景、资源、证据分别判定。该4/4只属于新输入，旧第20阶段3通过/1失败/2未运行、原CLI exit13及原断言不改，不能写成旧CLI已修复或资源泄漏已修复。下一项为Linux U1-2：实际取得TSFN后、wait线程启动前注入线程启动失败的协议和原生验证，本轮尚未运行；不新增通用工具前置。具体child启动位置仍未确认，其余U1/W1、macOS/Windows、真实Agent/Host/Webview/并发和生产API/停止预算仍开放。最新结论见runtime-native-failure-isolation第21节；以下第20阶段待办按历史时点保留，其中退出形式/新入口已由本段收口。
 
 2026-09-23 原生第20阶段新增局部事实与直接待办：Linux同binary U1-0三次尾部/EIO/exit7/完整状态及owner收尾通过；U1-1首次原始wait256/exit1、close0/kill0/payload/TSFN/join已结算，却被signal-only额外断言拒绝并停余2项。保留3通过/1失败/2未运行，不将判定失败当资源unknown或系统/Agent缺陷。下一版仅澄清真实终止、场景预期和资源准入，不要求kill0必为signal退出；child的login_tty/chdir/exec具体原因无errno证据，未确认。原CLI最终复核动态import自循环exit13保留，已新增独立只读verify-native-failure-v1入口重放原失败exit1，原driver/verifier/test源码身份不变；后续采集入口须避免同一循环。正式设计见runtime-native-failure-isolation第20节，主树仅文档。其余U1/W1、macOS/Windows、真实Agent/Host/Webview/并发与生产API/停止预算仍开放，不恢复通用工具前置，不补跑旧schedule、不新增runner或push。以下保留历史阶段债务。
