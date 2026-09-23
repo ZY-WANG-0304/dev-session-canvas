@@ -56,6 +56,8 @@ Windows已退出进程被句柄引用而继续保留对象是正常语义，不�
 
 场景符合预期、资源已结算和证据充分应分别判断；整体通过要求三者成立，继续有限诊断样本要求资源与证据均成立。内容或预期退出不符不自动抹去真实资源返回，通知与raw矛盾也不能用场景命中掩盖。判据修订使用新版本与新输入，旧失败、未运行项及入口错误保持原记录，不合并新旧通过率。
 
+部分创建失败只结算实际取得的资源：已取得TSFN但线程未创建时，必须证明TSFN Release/finalizer和child回收；未创建的thread、payload、notification不需要虚构join、释放或回调。唯一创建者的WNOHANG返回0或EINTR仅为pending，不解释status；只有属于本child的真实终态才能证明已回收。
+
 资源总量应区分显式owner引用、预热期间形成的背景和逐会话增量。普通进程控制中的退出后image31、释放23个引用后总数下降23与未知背景+5可以同时成立；保留原计数失败，不以事后换基线替代归属证据。
 
 HPCON 是 opaque owner token，不是可用 CloseHandle 释放的普通 Win32 HANDLE。只有同一诊断模块创建并仍持有的 token，才允许在真实 pipe EOF、消费者完成和 shell 退出后由唯一主线程调用一次 ClosePseudoConsole；PtyKill、TerminateProcess、陌生句柄和过早 Close 都不能作为自然收尾。

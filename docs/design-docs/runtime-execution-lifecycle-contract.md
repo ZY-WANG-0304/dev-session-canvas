@@ -21,9 +21,11 @@ updated_at: 2026-09-23
 
 ## 1. 状态、目的与非目标
 
-当前以 `runtime-native-failure-isolation.md` 第21节（2026-09-23）为准：同一aff95d1e原生候选、冻结v1执行角色及原预算下，唯一新v2切片U1-0一次、U1-1三次共4/4通过，采集CLI与独立离线复核均exit0。U1-0真实wait1792/exit7；三次U1-1真实wait256/exit1，均完成已登记owner结算，新判定分别报告scenarioMatches、resourcesSettled、evidenceSufficient。旧第20阶段3通过/1失败/2未运行及原CLI exit13保留，不补跑、不重判，也不与新样本合算。 第18–24节及其“下一步”按历史时点保留；本契约仍比较中/验证中。
+当前以 `runtime-native-failure-isolation.md` 第22节（2026-09-23）为准：新fa6f9ab7原生候选在原预算下完成唯一v3切片U1-0一次、U1-2三次共4/4，采集CLI与独立离线复核均exit0。U1-0真实wait1792/exit7，三次U1-2真实wait256/exit1；场景、资源、证据三类判定均成立。28项纯回归通过，其中13项为本阶段新增（4项补丁、9项判定），不计为原生尝试。旧第20阶段3通过/1失败/2未运行及原CLI exit13、第21阶段独立新4/4均保留，不补跑、不重判、不合算。 第18–24节及其“下一步”按历史时点保留；本契约仍比较中/验证中。
 
-本轮仅在v2中解决退出形式与资源准入耦合、新采集入口循环导入两项直接问题，未修改冻结v1/native或业务。下一项是Linux U1-2实际取得TSFN后、wait线程启动前注入线程启动失败的协议与原生验证，本轮尚未运行。其余U1/W1、macOS/Windows、真实Agent、并发及Supervisor/Host/Webview/产品验收仍开放，不新增通用工具前置。
+U1-2在真实nonblock和TSFN取得后以合成EAGAIN跳过线程构造，不宣称OS实际拒绝创建线程；未提交read/parser或许可输出，已知master close、SIGTERM请求、TSFN Release/finalizer及创建者独占WNOHANG回收均有事实。没有创建thread/payload/notification，不能伪造join、payload释放或退出回调。此结果仅覆盖新诊断候选，不修改旧native、业务或生产接口。下一项为Linux U1-3一次合成ECHILD等待失败、随后由真实唯一reaper补证的具体协议，尚未实施；其余U1/W1、macOS/Windows、真实Agent、并发及Supervisor/Host/Webview/产品验收仍开放，不新增通用工具前置。
+
+第21阶段历史证据：同一aff95d1e候选、冻结v1执行角色及原预算的新U1-0一次/U1-1三次4/4，采集和离线入口exit0；仅在v2中收口退出形式与资源准入耦合、新入口循环导入问题，旧v1结果和源码不改。该批U1-1的exit1与本阶段U1-2属于不同故障点和新输入，分别保留。
 
 第20阶段历史证据：U1-0各次均记录writer成功写2102字节、PTY原始2104字节（Linux ONLCR）、真实EIO、wait exit7、完整headless状态及最终光标x6/y4，master close、waiter thread、payload和TSFN均已结算。U1-1关闭前fd flags32770仍blocking，跳过非阻塞设置并记录合成EIO、未提交read；close和SIGTERM请求均返回0，真实wait status256/exit1/signal0，已登记owner均已结算。`kill`返回0不要求随后以信号退出，失败的退出形式不能抹去这些资源事实；本机glibc `forkpty`子路径在`login_tty`失败、信号仍阻塞时`_exit(1)`只是原因候选，尚未证明本样本命中。
 
