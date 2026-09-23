@@ -21,7 +21,7 @@ updated_at: 2026-09-23
 
 ## 1. 已确认范围与决策状态
 
-当前以 `runtime-native-failure-isolation.md` 第20节（2026-09-23）为准：唯一Linux U1-0/U1-1切片计划各3次、同一候选binary，实际为3通过、1失败、2未运行。三次U1-0均完成主体尾部、完整终端状态和逐owner结算；首个U1-1的真实exit1/signal0被冻结verifier额外的signal1/15限制拒绝，后两项停止准入。失败与not-run原样保留，不追认通过，也不据此宣称资源unknown、OS或Agent产品缺陷。macOS/Windows、其他U1/W1和实际Host/Webview/产品验收未完成，不恢复通用工具前置。
+当前以 `runtime-native-failure-isolation.md` 第21节（2026-09-23）为准：同一aff95d1e原生候选、冻结v1执行角色及原预算下，唯一新v2切片U1-0一次、U1-1三次共4/4通过，采集CLI与独立离线复核均exit0。U1-0真实wait1792/exit7；三次U1-1真实wait256/exit1，均完成已登记owner结算，新判定分别报告scenarioMatches、resourcesSettled、evidenceSufficient。旧第20阶段3通过/1失败/2未运行及原CLI exit13保留，不补跑、不重判，也不与新样本合算。 macOS/Windows及实际Agent/Host/Webview和生产退出完整性仍未验收。
 
 2026-09-20，用户同意将“退出完整性”作为本次 Runtime Persistence 重构的独立交付项。它与 F-04 容量优化、F-05 取消 completed 内联分别验收；不能等其他重构完成后假定问题自然消失，也不必等待整体终端状态替代或 F-03 root 归属改造才能推进。
 
@@ -90,11 +90,13 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 ## 6. 下一步与状态
 
-当前以 `runtime-native-failure-isolation.md` 第20节（2026-09-23）为准：唯一Linux U1-0/U1-1切片计划各3次、同一候选binary，实际为3通过、1失败、2未运行。三次U1-0均完成主体尾部、完整终端状态和逐owner结算；首个U1-1的真实exit1/signal0被冻结verifier额外的signal1/15限制拒绝，后两项停止准入。失败与not-run原样保留，不追认通过，也不据此宣称资源unknown、OS或Agent产品缺陷。macOS/Windows、其他U1/W1和实际Host/Webview/产品验收未完成，不恢复通用工具前置。 第46节及此前诊断契约按历史时点保留；本轮主树仅文档，不改业务、不推送。
+当前以 `runtime-native-failure-isolation.md` 第21节（2026-09-23）为准：同一aff95d1e原生候选、冻结v1执行角色及原预算下，唯一新v2切片U1-0一次、U1-1三次共4/4通过，采集CLI与独立离线复核均exit0。U1-0真实wait1792/exit7；三次U1-1真实wait256/exit1，均完成已登记owner结算，新判定分别报告scenarioMatches、resourcesSettled、evidenceSufficient。旧第20阶段3通过/1失败/2未运行及原CLI exit13保留，不补跑、不重判，也不与新样本合算。 第46节及此前诊断契约按历史时点保留；本轮主树仅文档，不改业务、不推送。
 
-U1-0各次均记录writer成功写2102字节、PTY原始2104字节（Linux ONLCR）、真实EIO、wait exit7、完整headless状态及最终光标x6/y4，master close、waiter thread、payload和TSFN均已结算。U1-1关闭前fd flags32770仍blocking，跳过非阻塞设置并记录合成EIO、未提交read；close和SIGTERM请求均返回0，真实wait status256/exit1/signal0，已登记owner均已结算。`kill`返回0不要求随后以信号退出，失败的退出形式不能抹去这些资源事实；本机glibc `forkpty`子路径在`login_tty`失败、信号仍阻塞时`_exit(1)`只是原因候选，尚未证明本样本命中。
+本轮仅在v2中解决退出形式与资源准入耦合、新采集入口循环导入两项直接问题，未修改冻结v1/native或业务。下一项是Linux U1-2实际取得TSFN后、wait线程启动前注入线程启动失败的协议与原生验证，本轮尚未运行。其余U1/W1、macOS/Windows、真实Agent、并发及Supervisor/Host/Webview/产品验收仍开放，不新增通用工具前置。
 
-原入口在最后`verifySaved`动态导入入口自身形成top-level-await循环并exit13，原失败保留，不能称原CLI已修好。新增只读独立入口 `verify-native-failure-v1.mjs` 直接导入冻结verifier；`standalone-verification.log`记录离线重放exit1，仍为3通过、1失败、2未运行且仅原U1-1失败，没有新增native执行。该入口缺陷与U1-1冻结判据失败分别记录，原driver、verifier、测试、原始证据、原断言和历史结果均保留。
+第20阶段历史证据：U1-0各次均记录writer成功写2102字节、PTY原始2104字节（Linux ONLCR）、真实EIO、wait exit7、完整headless状态及最终光标x6/y4，master close、waiter thread、payload和TSFN均已结算。U1-1关闭前fd flags32770仍blocking，跳过非阻塞设置并记录合成EIO、未提交read；close和SIGTERM请求均返回0，真实wait status256/exit1/signal0，已登记owner均已结算。`kill`返回0不要求随后以信号退出，失败的退出形式不能抹去这些资源事实；本机glibc `forkpty`子路径在`login_tty`失败、信号仍阻塞时`_exit(1)`只是原因候选，尚未证明本样本命中。
+
+第20阶段历史入口记录：原入口在最后`verifySaved`动态导入入口自身形成top-level-await循环并exit13，原失败保留，不能称原CLI已修好。新增只读独立入口 `verify-native-failure-v1.mjs` 直接导入冻结verifier；`standalone-verification.log`记录离线重放exit1，仍为3通过、1失败、2未运行且仅原U1-1失败，没有新增native执行。该入口缺陷与U1-1冻结判据失败分别记录，原driver、verifier、测试、原始证据、原断言和历史结果均保留。
 
 执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
 
