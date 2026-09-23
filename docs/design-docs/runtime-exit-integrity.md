@@ -21,7 +21,7 @@ updated_at: 2026-09-23
 
 ## 1. 已确认范围与决策状态
 
-当前以 `runtime-diagnostic-settlement-contract.md` 第18节（2026-09-23）为准：非G1 evidence消费前置及完整80阶段聚合已窄修，15项回归和本轮唯一Linux42项均通过独立复核；156条消费记录满足原预算，G1/G2原因果保持。第16节partial与第17节39/42失败保留，不追认通过。下一阶段回到W1/U1实际路径，不恢复通用工具前置；本轮未改业务/core/oracle/D4，未运行PTY/native/runner或推送，不计为跨平台或产品验收。 不删除旧证据，不将工具结果计为产品退出完整性已验收。
+当前以 `runtime-native-failure-isolation.md` 第20节（2026-09-23）为准：唯一Linux U1-0/U1-1切片计划各3次、同一候选binary，实际为3通过、1失败、2未运行。三次U1-0均完成主体尾部、完整终端状态和逐owner结算；首个U1-1的真实exit1/signal0被冻结verifier额外的signal1/15限制拒绝，后两项停止准入。失败与not-run原样保留，不追认通过，也不据此宣称资源unknown、OS或Agent产品缺陷。macOS/Windows、其他U1/W1和实际Host/Webview/产品验收未完成，不恢复通用工具前置。
 
 2026-09-20，用户同意将“退出完整性”作为本次 Runtime Persistence 重构的独立交付项。它与 F-04 容量优化、F-05 取消 completed 内联分别验收；不能等其他重构完成后假定问题自然消失，也不必等待整体终端状态替代或 F-03 root 归属改造才能推进。
 
@@ -90,7 +90,11 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 ## 6. 下一步与状态
 
-当前以 `runtime-diagnostic-settlement-contract.md` 第18节（2026-09-23）为准：非G1 evidence消费前置及完整80阶段聚合已窄修，15项回归和本轮唯一Linux42项均通过独立复核；156条消费记录满足原预算，G1/G2原因果保持。第16节partial与第17节39/42失败保留，不追认通过。下一阶段回到W1/U1实际路径，不恢复通用工具前置；本轮未改业务/core/oracle/D4，未运行PTY/native/runner或推送，不计为跨平台或产品验收。 第46节及契约第12–16节保留历史输入；本轮不改业务/D4，不推送。
+当前以 `runtime-native-failure-isolation.md` 第20节（2026-09-23）为准：唯一Linux U1-0/U1-1切片计划各3次、同一候选binary，实际为3通过、1失败、2未运行。三次U1-0均完成主体尾部、完整终端状态和逐owner结算；首个U1-1的真实exit1/signal0被冻结verifier额外的signal1/15限制拒绝，后两项停止准入。失败与not-run原样保留，不追认通过，也不据此宣称资源unknown、OS或Agent产品缺陷。macOS/Windows、其他U1/W1和实际Host/Webview/产品验收未完成，不恢复通用工具前置。 第46节及此前诊断契约按历史时点保留；本轮主树仅文档，不改业务、不推送。
+
+U1-0各次均记录writer成功写2102字节、PTY原始2104字节（Linux ONLCR）、真实EIO、wait exit7、完整headless状态及最终光标x6/y4，master close、waiter thread、payload和TSFN均已结算。U1-1关闭前fd flags32770仍blocking，跳过非阻塞设置并记录合成EIO、未提交read；close和SIGTERM请求均返回0，真实wait status256/exit1/signal0，已登记owner均已结算。`kill`返回0不要求随后以信号退出，失败的退出形式不能抹去这些资源事实；本机glibc `forkpty`子路径在`login_tty`失败、信号仍阻塞时`_exit(1)`只是原因候选，尚未证明本样本命中。
+
+原入口在最后`verifySaved`动态导入入口自身形成top-level-await循环并exit13，原失败保留，不能称原CLI已修好。新增只读独立入口 `verify-native-failure-v1.mjs` 直接导入冻结verifier；`standalone-verification.log`记录离线重放exit1，仍为3通过、1失败、2未运行且仅原U1-1失败，没有新增native执行。该入口缺陷与U1-1冻结判据失败分别记录，原driver、verifier、测试、原始证据、原断言和历史结果均保留。
 
 执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
 
