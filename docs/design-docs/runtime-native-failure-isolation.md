@@ -19,6 +19,10 @@ updated_at: 2026-09-23
 
 ## 1. 本阶段状态与完成边界
 
+当前以本设计第24节（2026-09-23）为准：唯一Linux U1-0一次/U1-4三次4/4，独立离线复核和raw/保持审计通过。合成通知未入队不抹掉真实exit7；未入队payload先释放，仍持有的TSFN acquisition单次Release，完整尾部/最终状态与资源分别验证。实际napi_closing/环境销毁及产品整链未验收；下一最小项U1-5仅待冻结真实close后扣留回执协议，本轮不追加运行、工具门槛或业务修改。历史各批保持原判定，不合算通过率。
+
+第22阶段历史状态（原文保留，不覆盖上述当前入口及第23、24节的后续事实）：
+
 当前以本设计第22节（2026-09-23）为准：新隔离候选在真实TSFN取得后注入线程启动失败，由原driver独占非阻塞wait完成回收；新U1-0一次/U1-2三次4/4，采集及离线复核exit0。第20节原3通过/1失败/2未运行及exit13、第21节新4/4均保持，不合并通过率；本轮只取得Linux有限失败收尾证据，不代表其他U1/W1或生产验收。原生源码只在独立诊断副本调整，业务、已安装依赖、旧binary和workflow不改，无runner/push，不恢复通用工具前置。
 
 早期设计背景（按当时状态保留，不覆盖第20节）：本设计承接 `docs/design-docs/runtime-execution-lifecycle-contract.md` 第16节。输入锚点为主运行时树f318579a、独立诊断树7fb4ae9e。G07新九控制仅补真实stdio关闭后的主体存活；旧三条not-established、D1/D2原结果、资源失败与所有工件不改。D3/D4 v1的7141cfa3两次failure保留；D3 v2已由b4db41cc/run35676427931完成三平台来源/顺序窄验证及完整归档复核，见第17节。D3完整契约、D4完整身份、native失败路径或生产拓扑仍未验证，下一步按第18节的新契约实施独立诊断版本，不重复旧矩阵或启动W1/U1。
@@ -443,3 +447,49 @@ U1-3与U1-0都走正常输出、单个退出payload/通知、Release、join/fina
 独立审计直接核查raw/config/evidence和构建来源，不读本轮summary结论、不导入verifier；结果保存在同validation目录的independent-native-audit.json，SHA256为62a61e7774fef3f1999815dc570991d75c8096ff39c0799414b18990fa06d256。12566项检查/零失败，其中四case自身1349项，其余包括110旧文件、8冻结源、11采集源及三个旧build/一个新build各2759成员；检查数不计原生样本。最大operation301.505554ms、caller after-await301.677223ms、observer after-await370.706758ms、caller close385.869024ms、writer receipt79.329636ms/close87.114198ms，冻结预算未改变。首次审计命令因shell引用在Node解析前失败，零检查/零native/零写入；修正调用引号后完成，相应说明另存independent-audit-invocation-note.json，没有重跑原生或改写工件。
 
 下一最小增量为Linux U1-4：在真实wait成功后跳过BlockingCall并返回合成napi_closing，先明确仍持有payload/TSFN时的合法收尾及未交付通知的判据，再冻结有限验证。合成napi_closing不代表真实环境正在销毁，不能直接沿用真实closing路径的TSFN责任假设；本轮尚未实施或运行该项，也不追加实验。其他Linux U1、macOS U1/Windows W1、真实Agent包装链、通知/环境销毁/并发与Supervisor/Host/Webview/packaged验收仍开放，生产方案和停止预算未选定。
+
+## 24. Linux U1-4：通知未入队与已取得资源收尾
+
+### 24.1 运行前所有权协议
+
+本增量只覆盖第9节U1-4的Linux切片。真实创建forkpty、nonblocking master、TSFN和唯一wait线程，取得本child真实终态并实际分配一个ExitPayload后，跳过napi_call_threadsafe_function（BlockingCall对应的N-API调用），返回合成napi_closing。它不是实际环境销毁，也没有调用Abort或关闭环境；真实wait结果不得因未交付通知而抹掉、降为未确认或改写为exit0。
+
+固定Node22.23.2的src/node_api.cc中ThreadSafeFunction::Push在真实is_closing分支会减少thread_count再返回napi_closing；官方契约要求调用方收到该真实结果后不再使用TSFN。Release同样消耗引用，因此不能对真实closing再Release。本注入没有调用Push，初始取得的唯一引用仍在；必须区分返回码来源，在synthetic-owned分支执行一次真实Release。此差异是诊断替身的所有权要求，不是对真实napi_closing语义的修复。源码依据以固定v22.23.2官方源及本轮保存摘要为准，不以其他Node版本推定。
+
+官方依据已只读保存到诊断树.debug/native-failure-v5-validation-first：node-v22.23.2-node_api.cc来自https://raw.githubusercontent.com/nodejs/node/v22.23.2/src/node_api.cc，SHA256为75a708e1667e8219663bd1ba63659f90c43618bcd3d24a298efbce607fc77333；node-v22.23.2-n-api.md来自同tag的doc/api/n-api.md，SHA256为20b8b3351be836c196f75aaa5ad805f7363997198adb14c3c4c2a39eb2dba620。Push的closing分支从251行、Release从277行、文档真实closing后禁用从6531行、仅napi_ok成功入队从6691行可核查。node-v22.23.2-tsfn-reference.json保存URL、大小、摘要及五段逐字摘录，SHA256为aabd3c2e24287e07dd6e38bbeb9be5eb399d3388ed51732fadc8fad9b21d5865；未编译或执行下载源。这是N-API所有权依据，不构成其他平台node-pty路径已通过。
+
+native新增notificationCallInvoked和notificationFailureInjected两个布尔事实。正常U1-0为true/false，保留真实notification-enter/return、status0和唯一callback。U1-4为false/true，只有一个notification-call-skipped事件（value16/error0/aux0），notificationStatus=16明确表示合成值，不伪造真实notification-enter/return。payload仍由原worker的unique_ptr持有，不转交队列；离开当前块单次释放，然后在仍持有TSFN引用的前提下执行一次真实Release。真实napi_closing原有不再使用TSFN的路径不因本注入而改变。
+
+U1-4偏序为真实terminal wait-return、payload-allocated、notification-call-skipped、payload-freed、tsfn-release-enter/return；随后worker结束并由真实finalizer join。notificationCallbackStatus和report.callback必须为null，没有exit-callback、notification-callback或notification-env-unavailable事件。driver依据只读native snapshot观察已确认进程/已结算资源，不补造JS退出通知，不增加替代waiter、通知重试、IPC握手或native门控。两场景firstAttempt/firstWaitObservation均为null，不触发上一阶段U1-3。
+
+通知是否交付、真实进程终态、输出完整性和资源收尾分别保留。U1-4的未交付是预期场景，不以callback缺席单独否定已证明的wait/资源，也不能用注入命中掩盖实际Release、payload free或join失败。两个场景都继续fixtureScenario=U1-0的显式映射，要求成功写2102/读ONLCR后2104字节、真实Linux EIO、完整headless状态/光标x6/y4、真实wait status1792/exit7及parser完成后的master单次close。
+
+### 24.2 有限实施与验收
+
+独立诊断树新增unix-native-failure-support-v4.h、unix-native-failure-patch-v4.mjs、build-native-failure-v4.mjs、native-notification-failure-patch-v4.test.mjs，以及roles/CLI/verifier/test的v5版本；主运行时树只同步文档，旧源码、构建、断言和原始工件不变。Configure仅允许U1-0/U1-4，既有U1-2 poll及U1-3首报路径不可达；不顺手扩大平台/诊断框架或变更业务接口。
+
+新schedule固定U1-0一次、U1-4三次，首次创建前保存四token/config、期望输出和源码/构建摘要。先完成针对性纯测试、静态所有权复审和新增文件暂存whitespace检查，再冻结八源、首次隔离build/load（零native calls）及唯一新矩阵。沿用Node22.23.2、node-pty1.2.0-beta.12、addon7.1.1、已验证官方headers和g++；不修改安装源、不下载新依赖、不回退prebuild。真实OS等待/通知失败、环境销毁、并发和其他平台不在本轮追加。
+
+构建、采集、验证目录分别为.debug/native-failure-v4-build-first、.debug/native-failure-v5-linux-first、.debug/native-failure-v5-validation-first，均需新目录。operation30秒/caller32秒/observer35与36秒/writer1与2秒、fixture20秒保护和driver29秒内部预算不变，exit124/125仍失败。三类判定与资源/证据准入沿用前阶段；资源或证据不足后其余not-run，未通知不自动等于未知进程。固定四项最多执行一次，另进程离线复核并独立核查raw、来源与旧内容保持，不重跑筛绿、不追加通用工具验证、不触发runner或推送。冻结本节时尚无本轮实现、构建或原生结果。
+
+### 24.3 实施与唯一新运行
+
+八个新native v4/JS v5文件已实施；原生所有权、driver和判定器静态安全复审未发现本切片阻塞项。新补丁5组、新判定11组及旧45组合计61/61纯测试通过，不计原生次数。八文件在冻结前暂存并通过git diff --cached --check，所有新mjs语法检查通过；冻结后没有修改源码。保留旧poll/首报内部实现和导出不等于实际运行它们，Configure只允许U1-0/U1-4。
+
+首次隔离构建.debug/native-failure-v4-build-first成功，绝对路径load确认8导出、零native calls。binary SHA256为6e96a9dcd2a06b05cfe09d7bc98e6782838db3a326dd277ab47b0a60260f8217，生成pty.cc为a0a0306a694b24f7523b270d7c8eecfa6007d59246bd5b57d8bd8870ee2c2292；未改安装源、旧构建或回退prebuild。沿用固定Node22.23.2及已有官方headers，不编译本轮下载的官方参考文件。
+
+唯一采集.debug/native-failure-v5-linux-first执行U1-0一次/U1-4三次，四项scenarioMatches/resourcesSettled/evidenceSufficient均true；采集CLI及另起进程的--verify-saved均exit0。四项都真实wait status1792/exit7，成功写2102/读ONLCR后2104字节、实际Linux EIO、完整headless状态及最终光标x6/y4；各一次parser，read调用数依次18/16/17/18，native事件数依次29/27/27/27。master在读取/消费完成后单次close，payload、TSFN和wait线程分别结算，没有poll/control请求或首报注入。
+
+三个U1-4均notificationCallInvoked=false、notificationFailureInjected=true，真实wait-return后实际分配payload，再记录唯一notification-call-skipped（合成status16）；payload-freed先于一次真实tsfn-release-enter/return，随后worker结束、join及finalizer完成。JS exit callback和native notification callback均缺席，report.callback及notificationCallbackStatus为null，没有伪造notification-enter/return或env-unavailable。U1-0保留实际通知调用/status0和唯一匹配callback。
+
+这些样本只证明本Linux隔离候选在“已成功wait但通知未入队”的合成故障点仍可保存真实终态、完整尾部并收尾已取得资源。没有真实napi_closing、Abort或环境销毁，不证明生产通知恢复、其他平台或真实Agent已经通过。第20节3通过/1失败/2未运行与exit13、第21/22/23节各自4/4及旧断言仍各自保留，不重判或合算通过率。
+
+### 24.4 来源、独立复核与后续边界
+
+采集绑定当时未提交的八文件快照，不倒称来自后来的commit；frozen-sources.json保存完整摘要，schedule保存11源快照及四份预冻结config。新build manifest有2759成员，SHA256为b9bdc57c4b93d529824f75dd413827ec54847aee95eb2a5d1ea5f5ea2abfa8a5。validation-first保存before、旧定向回归日志、新补丁/判定测试、源码冻结、build、唯一native-run、offline-verification及官方所有权参考文件，均不覆盖旧路径。
+
+独立审查者直接从raw/config/evidence构造期望字节与完整headless状态，核真实wait、通知缺席、payload/TSFN偏序、master/线程收尾及各自时钟预算，不读取本轮summary结论或调用verifier。审计保存在.debug/native-failure-v5-validation-first/independent-native-audit.json，SHA256为d641588db4a9ccbfeac2342006156e5ffbcbbe894758eebb2b8afde17b929b0f；15292项检查零失败，其中四case自身1266项，其余含157旧文件、8冻结源、11采集快照及四旧build/一新build各2759成员的保持核验。检查数不是原生样本数，审计零新增native。
+
+最大operation243.171570ms、caller after-await243.319094ms、observer after-await309.058966ms、caller close320.656772ms、writer receipt77.562989ms/close84.599241ms，未改变预算。U1-4首项的TSFN finalizer先于master close，后两项顺序相反；两者独立结算，不强加无契约依据的全序。冻结源码、安装源及全部旧工件保持，首次测试、构建和本轮原生采集未出现失败；不据此重判此前失败。
+
+下一最小增量为Linux U1-5：先冻结“真实close成功但上层释放回执被扣留”的具体协议，复用第9节的100/1000ms观察预算与至少100ms持有要求，区分真实资源释放、被测观察unknown及同一operation的迟到补证，不能重复close或让audit提前替代被测回执。本轮尚未实施或运行该项，不新增工具健壮性门槛。其他Linux U1、macOS U1/Windows W1、真实通知失败/环境销毁/并发、实际Agent包装链与Supervisor/Host/Webview/packaged仍开放；生产API、隔离策略和停止预算未选定。

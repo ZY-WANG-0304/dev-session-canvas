@@ -21,6 +21,12 @@ updated_at: 2026-09-23
 
 ## 1. 状态、目的与非目标
 
+当前以 `runtime-native-failure-isolation.md` 第24节（2026-09-23）为准：新6e96a9dc原生候选在原预算下完成唯一v5切片U1-0一次、U1-4三次共4/4，采集CLI与另起进程的离线复核均exit0。四项均保留成功写2102/读2104字节、真实EIO、完整headless状态及光标x6/y4、真实wait1792/exit7和逐资源收尾。61项纯回归为旧45项加本轮5项补丁、11项判定，与原生次数分开。旧第20阶段3通过/1失败/2未运行及exit13、第21/22/23阶段各自4/4均保留，不补跑、不重判、不合算。本契约仍比较中/验证中。
+
+U1-4在真实wait终态和payload分配后跳过实际Push调用，仅返回合成napi_closing；未入队payload仍由native持有并先单次释放，实际尚持有的TSFN acquisition随后单次Release，再完成线程/finalizer收尾。没有伪造通知或JS退出callback，未交付通知不抹掉真实终态，也不免除尾部和资源要求。此注入未执行真实closing的引用递减，不意味着真实napi_closing之后可再次Release，更不代表环境销毁、其他平台或产品整链已验证。下一最小项为Linux U1-5，先冻结真实close成功后扣留回执的具体协议，本轮尚未实施，不追加通用工具门槛；真实Agent、并发、Supervisor/Host/Webview/packaged及生产API/停止预算仍开放。
+
+第23阶段历史记录（以下两段按当时状态保留，其U1-4待办已由本阶段取得限定证据，不覆盖当前下一项）：
+
 当前以 `runtime-native-failure-isolation.md` 第23节（2026-09-23）为准：新2a291215原生候选在原预算下完成唯一v4切片U1-0一次、U1-3三次共4/4，采集CLI与独立离线复核均exit0。四项均为真实wait1792/exit7、完整2104字节、真实EIO和最终光标x6/y4；场景、资源、证据三类判定均成立。45项纯回归通过，其中本阶段新增5项补丁和12项判定，与原生次数分开。旧第20阶段3通过/1失败/2未运行及exit13、第21/22阶段各自4/4均保留，不补跑、不重判、不合算。第18–24节及其“下一步”按历史时点保留；本契约仍比较中/验证中。
 
 U1-3由同一个真实wait线程先跳过一次waitpid并保留合成-1/ECHILD的不可变firstAttempt，再独占取得真实终态；不解释无效status，不把首报覆写为exit0，也不增加竞争waiter。两场景都保持正常输出、单次payload/通知、TSFN Release、join/finalizer和parser完成后close。三个U1-3的JS首报快照均为currentWaitConfirmed=false；本次没有真实ECHILD、EINTR重试或回收后才观察首报的原生样本，不宣称这些边界已验证。下一项为Linux U1-4：先冻结真实wait成功后跳过通知并返回合成napi_closing时的TSFN/payload归属协议，尚未实施，不等同真实环境销毁。其他平台、真实Agent、并发及Supervisor/Host/Webview/产品验收仍开放，生产API和停止预算未选定，不新增通用工具前置。
