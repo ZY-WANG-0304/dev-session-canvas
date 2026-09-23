@@ -14,14 +14,14 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-23
+updated_at: 2026-09-24
 ---
 
 # 执行会话退出完整性交付
 
 ## 1. 已确认范围与决策状态
 
-当前以 `runtime-native-failure-isolation.md` 第24节（2026-09-23）为准：新6e96a9dc原生候选在原预算下完成唯一v5切片U1-0一次、U1-4三次共4/4，采集CLI与另起进程的离线复核均exit0。四项均保留成功写2102/读2104字节、真实EIO、完整headless状态及光标x6/y4、真实wait1792/exit7和逐资源收尾。61项纯回归为旧45项加本轮5项补丁、11项判定，与原生次数分开。旧第20阶段3通过/1失败/2未运行及exit13、第21/22/23阶段各自4/4均保留，不补跑、不重判、不合算。真实napi_closing、环境销毁、macOS/Windows及实际Agent/Host/Webview和生产退出完整性仍未验收。
+当前以 `runtime-native-failure-isolation.md` 第25节（2026-09-24）为准：复用冻结的6e96a9dc原生候选和既有build、不重新编译，唯一新v6切片U1-0一次、U1-5三次共4/4，采集CLI与另起进程的离线复核均exit0。四项仍保留成功写2102/读2104字节、真实EIO、完整headless状态及光标x6/y4、真实wait1792/exit7和逐资源收尾。本轮19项纯回归为新增8项判定加前代11项，与四次原生执行分账；旧第20阶段3通过/1失败/2未运行及exit13、第21至24阶段各自4/4和原断言均保留，不补跑、不重判、不合算。真实close失败/挂起、napi_closing、环境销毁、macOS/Windows及实际Agent/Host/Webview和生产退出完整性仍未验收。
 
 2026-09-20，用户同意将“退出完整性”作为本次 Runtime Persistence 重构的独立交付项。它与 F-04 容量优化、F-05 取消 completed 内联分别验收；不能等其他重构完成后假定问题自然消失，也不必等待整体终端状态替代或 F-03 root 归属改造才能推进。
 
@@ -89,6 +89,14 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 “实际主进程退出后普通后代延迟写入/保持 slave”单列为底层诊断，保留原门槛、失败与取消结果，不进入必须支持后代续跑的产品门槛。若诊断进一步证明主进程尾部、已接收内容、最终状态或资源释放有问题，按对应产品条目阻塞；仅未收到退出后后代未来输出不能独立阻塞。详细重评见第 18 节。
 
 ## 6. 下一步与状态
+
+当前以 `runtime-native-failure-isolation.md` 第25节（2026-09-24）为准：复用冻结的6e96a9dc原生候选和既有build、不重新编译，唯一新v6切片U1-0一次、U1-5三次共4/4，采集CLI与另起进程的离线复核均exit0。四项仍保留成功写2102/读2104字节、真实EIO、完整headless状态及光标x6/y4、真实wait1792/exit7和逐资源收尾。本轮19项纯回归通过，为新增8项判定加前代11项，与四次原生执行分账；旧第20阶段3通过/1失败/2未运行及exit13、第21至24阶段各自4/4和原断言均保留，不补跑、不重判、不合算。
+
+U1-5在真实close单次返回0、error0后扣留上层receipt；audit在caller的100ms截止前到达，但只作独立事实，不代替被测释放回执。caller首次仍为observation-unknown且receipt为null，observer按自身时钟收到unknown后至少持有100ms才允许同一operation的迟到receipt；current补证为released，首次unknown及其时间保持，不再次close。这是JS回执扣留的有限证据，不是真正close失败或挂起，也不代表环境销毁、其他平台、真实Agent或Supervisor/Host/Webview/packaged整链已验收。
+
+下一最小阶段回到跨平台原生路径：先冻结macOS U1-0正常基线及该平台创建、等待、释放差异，再按已有runner准备有限独立输入，不直接把Linux U1映射过去。本轮不实施平台适配、不运行runner或推送，不追加通用工具门槛；生产API、隔离策略和停止预算仍未选定。
+
+第24阶段历史记录（以下两段按2026-09-23当时状态保留，其U1-5待办已由第25阶段取得限定证据，不覆盖当前下一项）：
 
 当前以 `runtime-native-failure-isolation.md` 第24节（2026-09-23）为准：新6e96a9dc原生候选在原预算下完成唯一v5切片U1-0一次、U1-4三次共4/4，采集CLI与另起进程的离线复核均exit0。四项均保留成功写2102/读2104字节、真实EIO、完整headless状态及光标x6/y4、真实wait1792/exit7和逐资源收尾。61项纯回归为旧45项加本轮5项补丁、11项判定，与原生次数分开。旧第20阶段3通过/1失败/2未运行及exit13、第21/22/23阶段各自4/4均保留，不补跑、不重判、不合算。本轮主树仅文档，不改业务、不推送。
 
