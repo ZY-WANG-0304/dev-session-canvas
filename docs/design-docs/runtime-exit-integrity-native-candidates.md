@@ -21,7 +21,7 @@ updated_at: 2026-09-23
 
 2026-09-20 用户澄清后的产品范围以第 9 节为准：画板管理 Terminal / Agent 执行会话及其终端资源，不默认承诺实际主进程退出后继续保留节点或终端以等待普通后代及其未来输出。第 2 节冻结协议、两轮原始断言和失败结果全部保留；它们描述诊断实验是否达到原门槛，不自动等于产品验收结论。
 
-当前进展入口见第6节，最新Linux原生U1切片见 `runtime-native-failure-isolation.md` 第22节：新fa6f9ab7候选的U1-0一次/U1-2三次4/4，采集CLI与独立离线复核exit0；旧第20节3通过/1失败/2未运行及exit13、第21节独立4/4均保持，不合算。第30–43节保留此前原生、D1/D2及诊断工具历史；不以历史阶段的“尚未开始”覆盖本次有限结果，也不把这次切片当作完整U1/W1或产品验收。
+当前进展入口见第6节，最新Linux原生U1切片见 `runtime-native-failure-isolation.md` 第23节：新2a291215候选的U1-0一次/U1-3三次4/4，采集CLI与独立离线复核exit0；旧第20节3通过/1失败/2未运行及exit13、第21/22节各自4/4均保持，不合算。第30–43节保留此前原生、D1/D2及诊断工具历史；不以历史阶段的“尚未开始”覆盖本次有限结果，也不把这次切片当作完整U1/W1或产品验收。
 
 ## 2. 运行前冻结
 
@@ -61,9 +61,11 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 ### 当前状态（2026-09-23）
 
-当前以 `runtime-native-failure-isolation.md` 第22节（2026-09-23）为准：新fa6f9ab7原生候选在原预算下完成唯一v3切片U1-0一次、U1-2三次共4/4，采集CLI与独立离线复核均exit0。U1-0真实wait1792/exit7，三次U1-2真实wait256/exit1；场景、资源、证据三类判定均成立。28项纯回归通过，其中13项为本阶段新增（4项补丁、9项判定），不计为原生尝试。旧第20阶段3通过/1失败/2未运行及原CLI exit13、第21阶段独立新4/4均保留，不补跑、不重判、不合算。 第43节及此前诊断契约按历史时点保留；本轮不改业务、旧实验或D4，不推送。
+当前以 `runtime-native-failure-isolation.md` 第23节（2026-09-23）为准：新2a291215原生候选在原预算下完成唯一v4切片U1-0一次、U1-3三次共4/4，采集CLI与独立离线复核均exit0。四项均为真实wait1792/exit7、完整2104字节、真实EIO和最终光标x6/y4；场景、资源、证据三类判定均成立。45项纯回归通过，其中本阶段新增5项补丁和12项判定，与原生次数分开。旧第20阶段3通过/1失败/2未运行及exit13、第21/22阶段各自4/4均保留，不补跑、不重判、不合算。第43节及此前诊断契约按历史时点保留；本轮不改业务、旧实验或D4，不推送。
 
-U1-2在真实nonblock和TSFN取得后以合成EAGAIN跳过线程构造，不宣称OS实际拒绝创建线程；未提交read/parser或许可输出，已知master close、SIGTERM请求、TSFN Release/finalizer及创建者独占WNOHANG回收均有事实。没有创建thread/payload/notification，不能伪造join、payload释放或退出回调。此结果仅覆盖新诊断候选，不修改旧native、业务或生产接口。下一项为Linux U1-3一次合成ECHILD等待失败、随后由真实唯一reaper补证的具体协议，尚未实施；其余U1/W1、macOS/Windows、真实Agent、并发及Supervisor/Host/Webview/产品验收仍开放，不新增通用工具前置。
+U1-3由同一个真实wait线程先跳过一次waitpid并保留合成-1/ECHILD的不可变firstAttempt，再独占取得真实终态；不解释无效status，不把首报覆写为exit0，也不增加竞争waiter。两场景都保持正常输出、单次payload/通知、TSFN Release、join/finalizer和parser完成后close。三个U1-3的JS首报快照均为currentWaitConfirmed=false；本次没有真实ECHILD、EINTR重试或回收后才观察首报的原生样本，不宣称这些边界已验证。下一项为Linux U1-4：先冻结真实wait成功后跳过通知并返回合成napi_closing时的TSFN/payload归属协议，尚未实施，不等同真实环境销毁。其他平台、真实Agent、并发及Supervisor/Host/Webview/产品验收仍开放，生产API和停止预算未选定，不新增通用工具前置。
+
+第22阶段历史证据：fa6f9ab7候选的新U1-0一次/U1-2三次4/4和28项纯测试独立保留。U1-2在真实nonblock/TSFN后以合成EAGAIN跳过线程构造，close、SIGTERM请求、TSFN Release/finalizer及创建者独占WNOHANG回收成立，真实wait256/exit1；未创建thread/payload/notification，不伪造其释放，也不声称真实OS线程创建失败已验证。
 
 第21阶段历史证据：同一aff95d1e候选、冻结v1执行角色及原预算的新U1-0一次/U1-1三次4/4，采集和离线入口exit0；仅在v2中收口退出形式与资源准入耦合、新入口循环导入问题，旧v1结果和源码不改。该批U1-1的exit1与本阶段U1-2属于不同故障点和新输入，分别保留。
 

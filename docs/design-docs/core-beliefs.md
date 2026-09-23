@@ -58,6 +58,8 @@ Windows已退出进程被句柄引用而继续保留对象是正常语义，不�
 
 部分创建失败只结算实际取得的资源：已取得TSFN但线程未创建时，必须证明TSFN Release/finalizer和child回收；未创建的thread、payload、notification不需要虚构join、释放或回调。唯一创建者的WNOHANG返回0或EINTR仅为pending，不解释status；只有属于本child的真实终态才能证明已回收。
 
+合成等待失败的首次未确认事实与后续真实终态必须分开保留，不能用后来成功覆盖原错误，也不能解释无效status为exit0。只有明确跳过系统调用的注入才具有随后首次真实wait的前提；真实ECHILD不因此获得重试依据。原生发布和JS观察分属不同时刻，JS晚读到首报不代表观察当时仍未退出，不为没有先观察要求的实验另增门控。
+
 HPCON 是 opaque owner token，不是可用 CloseHandle 释放的普通 Win32 HANDLE。只有同一诊断模块创建并仍持有的 token，才允许在真实 pipe EOF、消费者完成和 shell 退出后由唯一主线程调用一次 ClosePseudoConsole；PtyKill、TerminateProcess、陌生句柄和过早 Close 都不能作为自然收尾。
 
 资源因果对照还必须隔离工具本身的差异：stock 不调用候选 API，同工具链候选共享编译产物；原生等待、TSFN 和一次性连接前提失败时，不能依靠 JS 调用顺序补造成功。void 导出调用返回只证明本次调用返回，不证明 OS 已经销毁全部关联对象。

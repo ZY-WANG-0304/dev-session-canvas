@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-23 原生第23阶段已取得首次合成等待失败与同一reaper真实补证的局部证据：新2a291215候选下，U1-0一次/U1-3三次唯一新切片4/4，采集CLI与独立离线入口均exit0；45项纯回归为旧28项加本轮5项补丁、12项判定，不计作原生次数。U1-3跳过一次waitpid并冻结合成-1/ECHILD的unconfirmed首报，之后同一真实线程独占取得wait1792/exit7；四项均保留完整2104字节、真实EIO、最终状态和原线程/payload/TSFN/master收尾。三个首报快照均currentWaitConfirmed=false，未实测真实ECHILD、EINTR重试或回收后的首次JS观察，不代表这些边界或生产接口已修复。旧第20阶段3通过/1失败/2未运行及exit13、第21/22阶段各自4/4和原断言均保留，不合算。下一项为Linux U1-4真实wait成功后跳过通知并返回合成napi_closing的TSFN/payload归属协议，尚未实施，不等同真实环境销毁；其他U1/W1、平台、真实Agent/Host/Webview/并发及生产API/停止预算仍开放。最新结论见runtime-native-failure-isolation第23节；以下第22阶段及此前待办按历史时点保留，其U1-3安排已由本段取得限定证据，不新增通用工具前置。
+
 2026-09-23 原生第22阶段已取得TSFN后线程启动失败的局部资源证据：新fa6f9ab7候选下，U1-0一次/U1-2三次唯一新切片4/4，采集CLI及独立离线入口均exit0；28项纯回归通过，其中13项为本阶段新增（4项补丁、9项判定），与原生次数分开。三次U1-2在真实nonblock/TSFN后注入合成EAGAIN并跳过thread，close/control/TSFN Release/finalizer及创建者独占WNOHANG回收均成立，实际wait256/exit1；无thread/payload/notification，不伪造其释放。此项不代表真实OS线程创建失败、全部异常路径或生产接口已修复。旧第20阶段3通过/1失败/2未运行和exit13、第21阶段独立4/4及全部原断言保留，不合算。下一项为Linux U1-3一次合成ECHILD等待失败、真实唯一reaper补证的具体协议，尚未实施；其他U1/W1、macOS/Windows、真实Agent/Host/Webview/并发和生产API/停止预算仍开放，不新增工具前置。最新结论见runtime-native-failure-isolation第22节；以下第21阶段U1-2待办按历史时点保留，已由本段取得限定证据。
 
 2026-09-23 原生第21阶段已在新v2中收口退出形式与资源准入耦合、采集入口循环导入两项直接问题：同一aff95d1e候选及冻结v1执行角色、原预算下，新U1-0一次/U1-1三次共4/4通过，采集CLI及独立离线复核均exit0；三次U1-1均为真实wait256/exit1且owner结算，场景、资源、证据分别判定。该4/4只属于新输入，旧第20阶段3通过/1失败/2未运行、原CLI exit13及原断言不改，不能写成旧CLI已修复或资源泄漏已修复。下一项为Linux U1-2：实际取得TSFN后、wait线程启动前注入线程启动失败的协议和原生验证，本轮尚未运行；不新增通用工具前置。具体child启动位置仍未确认，其余U1/W1、macOS/Windows、真实Agent/Host/Webview/并发和生产API/停止预算仍开放。最新结论见runtime-native-failure-isolation第21节；以下第20阶段待办按历史时点保留，其中退出形式/新入口已由本段收口。
