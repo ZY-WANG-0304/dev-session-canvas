@@ -12,12 +12,16 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity-native-candidates.md
-updated_at: 2026-09-23
+updated_at: 2026-09-24
 ---
 
 # 原生失败路径与资源隔离验证
 
 ## 1. 本阶段状态与完成边界
+
+当前以本设计第25节（2026-09-24）为准：复用冻结native v4完成唯一Linux U1-0一次/U1-5三次4/4、独立保存复核和raw审计。实际close成功后，早到audit不替代被测回执；首次unknown与同operation迟到released并存，未再次close。19项纯测试与四个原生样本分账。下一最小项转向macOS U1-0平台协议冻结，不在本轮适配或运行runner，不宣称生产整链已验收。
+
+第24阶段历史状态（原文保留，不覆盖当前入口）：
 
 当前以本设计第24节（2026-09-23）为准：唯一Linux U1-0一次/U1-4三次4/4，独立离线复核和raw/保持审计通过。合成通知未入队不抹掉真实exit7；未入队payload先释放，仍持有的TSFN acquisition单次Release，完整尾部/最终状态与资源分别验证。实际napi_closing/环境销毁及产品整链未验收；下一最小项U1-5仅待冻结真实close后扣留回执协议，本轮不追加运行、工具门槛或业务修改。历史各批保持原判定，不合算通过率。
 
@@ -493,3 +497,60 @@ U1-4偏序为真实terminal wait-return、payload-allocated、notification-call-
 最大operation243.171570ms、caller after-await243.319094ms、observer after-await309.058966ms、caller close320.656772ms、writer receipt77.562989ms/close84.599241ms，未改变预算。U1-4首项的TSFN finalizer先于master close，后两项顺序相反；两者独立结算，不强加无契约依据的全序。冻结源码、安装源及全部旧工件保持，首次测试、构建和本轮原生采集未出现失败；不据此重判此前失败。
 
 下一最小增量为Linux U1-5：先冻结“真实close成功但上层释放回执被扣留”的具体协议，复用第9节的100/1000ms观察预算与至少100ms持有要求，区分真实资源释放、被测观察unknown及同一operation的迟到补证，不能重复close或让audit提前替代被测回执。本轮尚未实施或运行该项，不新增工具健壮性门槛。其他Linux U1、macOS U1/Windows W1、真实通知失败/环境销毁/并发、实际Agent包装链与Supervisor/Host/Webview/packaged仍开放；生产API、隔离策略和停止预算未选定。
+
+## 25. Linux U1-5：真实释放与上层回执延迟
+
+### 25.1 运行前责任与计时协议
+
+本阶段基线为主树93d3f6af、诊断树85aba2f6，只推进第9节U1-5的Linux切片。复用第24节已冻结的native v4二进制6e96a9dc及原build manifest，不再编译或加载预检。config显式记录scenario为U1-0或U1-5、nativeScenario=U1-0、fixtureScenario=U1-0；两种输入均走真实正常wait和通知，故障仅为JS层delivery-held，不是原生close失败/挂起、通知失败或环境销毁。
+
+保持observer（外层观察者）→caller（被测回执消费者）→driver（唯一native资源持有者）→fixture链。每项一个token，releaseOperationId固定为token加“:master-close:1”；所有许可、audit、receipt和状态都携带两者，不按报告的PID/fd另行控制或关闭。driver在真实EIO、全部read/parser完成、最终state与written凭证、真实wait终态和payload/TSFN/thread结算后才发release-ready，保存ready.native快照，masterCloseCalls必须仍为0。等待native finalizer须让出JS事件循环，不强加正常payload free与TSFN Release间的伪全序。
+
+observer收到唯一release-ready，在发release-permit前按自身时钟记R0。caller收到许可，在发送唯一release-request前按自身时钟记r0，建立pending与deadline=r0+100ms。driver收到请求后仅调用一次failureCloseMaster，保存close snapshot；该JS方法正常返回不等于close成功，必须看到唯一master-close-enter/return、return.value=0/error=0/aux=owned master、masterCloseCalls=1/masterCloseReturned=true/masterCloseError=0。失败不能重试旧fd，也不能用driver退出补造成功。
+
+driver立即发送release-audit，另缓存相同operation/close事实的release-receipt；两者是现有IPC中的不同消息类型，不增加进程/socket或另一OS探针。caller在release.audit单独记录接收时刻和snapshot，audit不得更新被测release.current/first。U1-5要求audit在caller的r0+100ms之前已证明close成功，否则场景前提not-established，后来的audit不能追认。正常U1-0直接发送receipt；U1-5必须扣留，不能在许可前发布替代它的driver-result。
+
+caller在deadline首次冻结release.first={disposition:observation-unknown,ms,receipt:null}并发送release-observation；计时器及receipt处理入口都先检查单调deadline，防止迟到timer把迟到receipt误判按时。首次unknown距r0须100至1000ms，observer接收该报告距自身R0须不超过1000ms，两个时钟不相减。observer从收到unknown的本地时刻至少持有100ms，复查单调截止后才发receipt-permit，经caller转发给driver。driver只发送已缓存receipt，绝不再次close；caller对同operation补证released，原first和首次观察时间保持。正常对照要求100ms内receipt并首次released，不设receipt-permit。
+
+caller的release账本保存operationId、r0、deadlineMs、audit、receipt、first、current/currentMs；driver的report.release保存operationId、ready、requestMs、audit、receipt及receiptPermitMs。双方事件与observer的release-permit/receipt-permit事件均保存本地时间，IPC接收分别计时，不用send回调代替消费。重复、错身份或缺失许可/回执均失败；旁路audit不能使held路径变released或提前发布最终operation结果。失联/超预算不自动放行receipt、不重建operation、不新增driver；仅沿用直接父进程的有界控制，容器退出不代替逐资源证明。
+
+### 25.2 有限实施与验收
+
+独立诊断树只新增native-failure-roles-v6.mjs、diagnose-native-failure-v6.mjs、native-failure-verifier-v6.mjs、native-failure-v6.test.mjs四文件；主树只文档。既有fixture/writer、native v4源和binary、旧诊断/断言/原始证据全部冻结；同版本Node22.23.2、node-pty1.2.0-beta.12、addon7.1.1及headless依赖只读复用。保存显式映射、releaseOperationId、源码快照及原build绑定，不执行归档代码。
+
+唯一新schedule为U1-0一次、U1-5三次，四份token/config/期望内容在首次创建前保存。两场景仍要求成功写2102/读2104字节、真实EIO、完整headless state/光标x6/y4、wait1792/exit7、唯一正常通知和逐资源结算。U1-5还需证明close在100ms观察截止前成功、首次unknown不可覆写、独立hold达到100ms、同operation迟到receipt与单次close。audit迟到/unknown超预算是场景不成立，不按资源失败伪装；实际资源或证据不足停止后续准入。scenarioMatches/resourcesSettled/evidenceSufficient继续分账。
+
+先少量定向纯测试与静态安全复审，包含缺audit、audit迟到、提前receipt/permit、首次unknown被覆写、重复close/错operation和真实close失败，再暂存格式检查并冻结四新源。只运行一次新四项并另进程保存复核、独立原始事实/旧内容保持审计。原driver29秒、operation30秒、caller32秒、observer35/36秒、writer1/2秒及fixture20秒保护不变；外层整轮180秒只作安全保护，不覆盖或放宽每项预算。exit124/125仍失败，首次失败原样保留，不重跑筛绿。
+
+新目录为.debug/native-failure-v6-linux-first和.debug/native-failure-v6-validation-first；无新build目录。本节冻结时尚无本轮实现或原生结论，不触发runner/push、不修改业务或安装依赖，不新增通用工具验证。macOS/Windows、真实close挂起/环境销毁/并发、实际Agent及Supervisor/Host/Webview/packaged仍未验收，生产API/隔离策略/停止预算未选定。
+
+### 25.3 实施与唯一新运行（2026-09-24）
+
+四个新v6文件已实施；只改变隔离诊断的JS编排、回执消费者和判定器，native v4源/binary/build manifest不变。静态安全复审确认driver请求/许可及IPC回调等待使用同一29秒guard，audit不改变被测状态，实际close失败保留失败snapshot而不是因JS正常返回变成功。判定器对caller同一采样时刻的事件、账本和转发callerMs做精确绑定，不拼接跨进程时钟。新8组及旧v5的11组共19/19纯测试首次通过，四文件冻结前暂存格式和语法检查通过。
+
+唯一采集于本地2026-09-24完成（UTC 2026-09-23T16:01:03.124Z至16:01:06.523Z），目录为.debug/native-failure-v6-linux-first。U1-0一次/U1-5三次全部执行，三类判定均true，新CLI与另起进程的--verify-saved均exit0。没有重建、重新加载预检或重跑旧原生矩阵。
+
+四项都成功写2102/读2104字节、取得真实EIO、应用完整headless state及光标x6/y4；read次数依次23/20/18/19，各一次parser。真实wait各一次status1792/exit7，真实正常通知及JS callback各一次，旧等待/通知注入均未启用。ready快照均为24个native事件、masterCloseCalls=0且非master资源已结算；最终快照均29事件，只追加三次只读fd观察及唯一close enter/return，真实返回value0/error0，全部closeCalls=1。
+
+下表均为同一进程自身单调时钟上的毫秒差值；最后两列分别使用observer与caller时钟，不作跨时钟相减：
+
+| 样本 | caller请求至audit | caller请求至首报 | observer收到unknown后hold | caller请求至receipt |
+| --- | ---: | ---: | ---: | ---: |
+| U1-0-1 | 1.711520 | 4.461962（released） | 不适用 | 4.461962 |
+| U1-5-1 | 1.370315 | 100.997445（unknown） | 100.665907 | 205.181989 |
+| U1-5-2 | 3.658132 | 100.679944（unknown） | 100.755042 | 205.008013 |
+| U1-5-3 | 1.627234 | 100.362286（unknown） | 100.367323 | 203.882577 |
+
+三个U1-5的observer从自身R0到收到unknown分别为102.116427/102.962296/101.486533ms。真实关闭audit均在caller的100ms截止前到达，但首次报告仍是observation-unknown；只有observer完成独立hold后，才通过同operation的缓存receipt将current补证为released，所有first副本保持逐字段一致。没有第二次close，未用audit或最终driver报告代替被测回执；正常对照没有receipt-permit。
+
+这确认的是“真实资源已释放，上层回执暂时未知”可以同时成立，不把未知观察当作OS泄漏或真实close挂起。没有制造实际close失败、环境销毁或迟到timer竞态；后者仅有入口源码复核和时间一致性反例，不宣称全部调度交错已实测。有限四项不代表macOS/Windows、实际Agent或产品整链通过，旧第20节3/1/2及exit13、第21–24节各自4/4和原始断言均保持，不合并为新版通过率。
+
+### 25.4 来源、独立审计与下一边界
+
+采集绑定当时未提交的四源快照；.debug/native-failure-v6-validation-first/frozen-sources.json保存完整摘要，schedule保存11源快照、四份预冻结config及原build身份。before.json记录170旧工件、34旧源、五旧build manifest和安装源；previous-targeted-tests.json、pure-tests-first.json、roles-syntax-first.json、native-run.json及offline-verification.json保存首次检查与唯一采集，没有覆盖旧目录。继续使用binary6e96a9dcd2a06b05cfe09d7bc98e6782838db3a326dd277ab47b0a60260f8217和manifest b9bdc57c4b93d529824f75dd413827ec54847aee95eb2a5d1ea5f5ea2abfa8a5，不倒称来源于后来的commit。
+
+独立审查直接从raw/config/evidence重算原始字节、完整headless状态、真实wait/通知、ready前缀、单次close、audit/first/receipt及各自时钟预算；不读取summary判定、不导入verifier或执行归档源码。结果为16134项检查零失败，其中四case自身2061项，其余包含170旧工件、34旧源、安装源、4冻结源、11采集快照及五旧build各2759成员的保持检查。审计保存为同validation目录的independent-native-audit.json，SHA256为a24f0bce71d097a63d53094f81b409ce8a55a6efb7d399b7cb730ded35548518，零新增native；检查数不计原生样本。
+
+最大operation473.151370ms、caller after-await473.486902ms、observer after-await552.753787ms、caller close593.679338ms、writer receipt157.131539ms/close174.441986ms，原预算不变。四项无协议错误或控制处置，源和旧证据保持，测试及本轮原生首次结果均无失败；不据此更改历史失败。
+
+下一最小阶段转回跨平台原生路径：先冻结macOS U1-0正常基线及其真实创建、等待、源结束和释放差异，再依托已有runner做有限独立输入，不能把Linux forkpty/wait/EIO协议直接映射到macOS。本轮不实施平台适配、不触发runner或推送；Windows W1、其他macOS U1、真实环境销毁/并发、实际Agent包装链及Supervisor/Host/Webview/packaged仍开放，生产API/隔离策略/停止预算未选定。不再为本轮增加工具通用健壮性门槛。

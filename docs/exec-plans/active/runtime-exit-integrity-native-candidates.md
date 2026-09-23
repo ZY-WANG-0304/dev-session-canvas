@@ -12,10 +12,15 @@
 
 ## 进度
 
+- [x] (2026-09-23，原生第25阶段) 冻结U1-5真实close后扣留上层回执协议，区分audit/被测状态与各自时钟；复用原native v4，不新增构建。
+- [x] (2026-09-24，原生第25阶段) 四个v6文件、19/19纯测试和静态复审完成，冻结前语法/暂存格式检查通过；复用旧native v4，无新build，唯一U1-0一次/U1-5三次4/4，采集及独立进程保存复核exit0。
+- [x] (2026-09-24，原生第25阶段) 独立原始事实/保持审计16134项零失败（四case自身2061项），170旧工件/34旧源/4冻结源/11快照/五旧build保持；两树文档同步，不改业务、旧证据或runner。
+- [ ] 下一最小阶段先冻结macOS U1-0正常基线与创建/等待/源结束/释放差异，再按已有runner做有限独立输入；本轮未适配、未runner/push，不直接套用Linux协议。
+
 - [x] (2026-09-23，原生第24阶段) 冻结U1-4真实wait后跳过通知的合成closing协议；明确真实Push消耗引用与合成结果仍持有引用的差异，payload/TSFN各自单次收尾。
 - [x] (2026-09-23，原生第24阶段) 八个新native v4/JS v5文件、61/61纯测试及静态安全复审完成；冻结前暂存检查通过，首次隔离build/load零native calls，唯一U1-0一次/U1-4三次4/4，采集和独立进程保存复核均exit0。
 - [x] (2026-09-23，原生第24阶段) 独立raw/保持审计15292项零失败（四case自身1266项），157旧文件、8冻结源、11快照及五build各2759成员保持；两树设计/计划/外围文档同步，本轮不改业务、不触发runner/push。
-- [ ] 下一增量仅推进Linux U1-5真实close后扣留回执的具体协议与有限验证；本轮未实施，不把观察unknown当真实close失败，不追加通用工具门槛。
+- [x] 第24阶段安排的Linux U1-5已由第25阶段取得有限四项证据；未知观察不等于真实close失败，实际挂起/环境销毁/其他平台仍未验收。
 
 - [x] (2026-09-23，原生第23阶段) 冻结Linux U1-3无额外门控的首次未确认/同线程真实wait协议，见原生失败隔离第23节；明确JS可晚于真实回收才观察、真实ECHILD不自动重试及fixtureScenario映射。
 - [x] (2026-09-23，原生第23阶段) 八个新native v3/JS v4文件实施及冻结前暂存格式检查、45/45纯测试和静态安全复审完成；首次build/load零native calls，唯一U1-0一次/U1-3三次4/4，采集CLI和独立保存复核均exit0。
@@ -154,6 +159,10 @@
 
 ## 意外与发现
 
+第25阶段实测三个U1-5的audit在请求后1.370315/3.658132/1.627234ms到达，first unknown在100.997445/100.679944/100.362286ms冻结，observer独立hold均至少100ms后才允许receipt；首次unknown保持，current补证released且只close一次。四项ready native都是24事件/close0，最终29事件/close1，非master资源先完成。未知回执与已释放资源可同时成立，不能据此称OS泄漏；未额外制造迟到timer竞态。
+
+第25阶段运行前核查：failureCloseMaster正常返回JS snapshot不代表真实close成功，CloseMasterOwned的bool只代表已尝试。必须独立核value/errno与closeCalls。旧driver先close再等wait，U1-5须先完成真实wait/通知资源/read/parser，再等待释放许可；audit到达不能替代held回执，timer和receipt入口都复查单调deadline。
+
 第24阶段四项实际wait均1792/exit7，U1-4三项虽无通知callback，仍完整读取2104字节、应用最终状态并释放payload/TSFN、join线程和close master。三个注入样本payload-freed ordinal16均先于Release-enter17；首项finalizer先于master close，后两项相反，证明两种合法交错都出现，不强加全序。没有真实napi_closing、ECHILD/EINTR或环境销毁；真实终态与通知是否交付必须分账。
 
 第24阶段运行前核实：固定Node22.23.2真实Push在closing分支消耗thread_count，再Release会重复消耗；合成返回码没有调用Push，因此不能照搬v3的closing不Release分支，否则会遗留实际取得的TSFN引用。未入队payload仍由原worker拥有，不能依赖不会发生的JS callback释放。
@@ -277,6 +286,10 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 通用后代实验测的是 PTY/ConPTY 的退出、挂断、EOF 与取消行为，不直接证明真实 Agent 已发生同类缺陷。macOS 后代失败在澄清后的产品范围之外不能单独构成交付阻塞；Windows 最终光标和自然资源释放问题仍在范围内。父先退出不等于交互式 shell 后台作业，启动器的实际 CLI 子进程也不能按普通工具后代排除。
 
 ## 决策记录
+
+2026-09-24（第25阶段收口）：19项纯测试、唯一四项原生及独立审计分账，复用native v4而非新编译。只有receipt更新被测当前证明，audit和首次unknown分别保留；正常资源成功与观察及时性分别判定。下一最小项转向macOS U1-0实际创建/等待/释放差异冻结，不再追加Linux工具研究或宣称全平台生产通过。
+
+2026-09-23（第25阶段运行前）：复用native v4及binary6e96a9dc，U1-5仅JS delivery-held，config显式nativeScenario/fixtureScenario=U1-0。已有IPC按消息类型分开audit与被测receipt；同token/唯一operation单次close，首报unknown与迟到released并存。100/1000ms及hold至少100ms沿用第9节，不是生产期限。
 
 2026-09-23（第24阶段收口）：新U1-0/U1-4四项独立记4/4，61纯测试和15292审计检查不计原生样本。仅确认合成通知未入队后的已取得资源收尾，真实closing沿用官方不再touch契约；下一步先冻U1-5真实close/上层unknown/迟到补证三类事实，不选择生产API或扩张工具前置。
 
@@ -404,6 +417,8 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 ## 工作计划
 
+第25阶段实施、唯一原生采集、离线复核与独立raw审计已完成，当前只收口文档和本地提交，不再运行该矩阵。下一最小阶段先冻结macOS U1-0基线，核对其真实创建/等待/源结束/释放与Linux的差异，再依托已有runner做有限独立输入；本轮不实施平台适配或触发runner/push。旧各批及下段第24阶段安排按历史时点保留，生产API/隔离策略/停止预算未选定。
+
 第24阶段实施、唯一采集及独立复核已完成，按原生失败隔离第24节收口文档和本地提交，不再运行该矩阵。下一步只先冻结Linux U1-5具体协议：真实close成功的audit不能代替被测释放回执，首次unknown与同operation迟到补证并存，严禁再次close；第9节100/1000ms观察及至少100ms持有要求不变。仅本次判定/安全阻塞项可前置，不增加通用框架工作，不推送或选择生产方案。
 
 第23阶段历史记录：实施、45项纯测试、静态安全复审、八源冻结、隔离build/load、唯一四项原生/离线复核及独立原始事实审计已完成，不再采集。当时安排的U1-4现由第24阶段承接；旧章节中的下一步不覆盖最新顺序，生产API或停止预算仍未选定，不推送、不触发runner。
@@ -467,6 +482,12 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 职责澄清后的扩展里程碑：先把验收分类写入正式设计第 9 节，并在运行时主线设计中确认主进程尾部、已进入链路的内容、最终状态、资源释放和取消语义；启动器到实际 Agent CLI 的生命周期单独验证，不用通用后代实验替代。只有保留产品问题需要进一步底层解释时，再用本独立分支推进 macOS 控制组：真正记录 write 返回值/errno，比较 leader 退出与保持存活，将首次 EOF 后持有 master 的观测与原关闭路径分开。新诊断执行前仍须另冻结轮次、期限和分类，不调整已有两轮原始判断；尚未确定具体实现或预算。
 
 ## 具体步骤
+
+第25阶段已在/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates执行。NODE22指/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node；DEPS指/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2/node_modules，只读使用。NODE22 --test scripts/diagnostics/native-failure-v5.test.mjs首跑11/11，新native-failure-v6.test.mjs首跑8/8，分组日志完整保存；冻结四源前逐文件node --check和git diff --cached --check均exit0。
+
+已唯一执行、不可重新采集的命令为NODE22 scripts/diagnostics/diagnose-native-failure-v6.mjs --output .debug/native-failure-v6-linux-first --binary .debug/native-failure-v4-build-first/pty.node --dependency-root DEPS；外层spawnSync以180秒仅作安全保护，实际约3.4秒exit0，四项4/4。没有新build。完整argv/UTC起止/exit/stdout/stderr保存于.debug/native-failure-v6-validation-first/native-run.json。
+
+只读复核命令：/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node scripts/diagnostics/diagnose-native-failure-v6.mjs --verify-saved .debug/native-failure-v6-linux-first。本阶段已另起进程执行，4/4/exit0，日志offline-verification.json；不创建PTY、不执行归档源码、不覆盖首次工件。来源或事实不一致必须失败，不重跑筛绿。
 
 第24阶段命令均已在独立诊断工作树 /home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates 执行。NODE22为/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node，DEPS为/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2/node_modules，只读使用。新补丁和判定定向命令为DSC_DEPENDENCY_ROOT=DEPS NODE22 --test scripts/diagnostics/native-notification-failure-patch-v4.test.mjs scripts/diagnostics/native-failure-v5.test.mjs，16/16；加前代45项共61项纯测试。实际运行分组日志保存在validation-first。
 
@@ -548,6 +569,8 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 验证与验收
 
+第25阶段新Linux四项已经满足冻结判据：U1-5在ready前完成真实wait/完整输出/消费/非master资源，caller100ms前收到真实close0 audit却不据此更新被测状态，到截止first=unknown；observer至少hold100ms后放行同operation receipt，current=released且first不变。normal在4.461962ms首次released，无held许可。19项纯测试、四个原生样本及独立离线/原始事实检查分账，旧结果不重判；macOS/Windows及真实失败/挂起/生产链路仍须独立验收。
+
 第24阶段固定新U1-0一次/U1-4三次已通过，两场景真实wait1792/exit7、完整2104字节/EIO/state/光标及逐资源结算均有证据。U1-4实际分配payload后跳过API，保留合成status16、api未调用与callback缺席，再单次free/真实Release/finalizer/join，没有伪造正常通知。只读独立复核和raw审计通过；实际napi_closing和环境销毁仍未测，源/纯判定与native次数分开。下一项U1-5须先冻结具体回执路径与首次unknown判据，不能把audit已知close成功提前写入被测观察。
 
 第23阶段只验新Linux四项。三份U1-3必须保留synthetic首报的null status/unconfirmed，native先发布再由同一线程真实wait；JS首报/IPC/最终台账一致但JS观察可迟到。全部四项仍须真实正常输出2102/2104、EIO、exit7、完整终端state/光标及master/thread/payload/TSFN结算。真实ECHILD不可冒称可恢复；该路径本轮只做判定反例，不将synthetic成功扩大为真实故障通过。纯测试、load零调用和离线核验不计原生样本。
@@ -597,6 +620,8 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 只创建和清理本次 fixture，PID/进程组来自本次启动。硬截止与正常完成分开保存，清理不得误作用真实会话。唯一 evidence 目录、GitHub run/attempt 命名及源码 hash 防止覆盖。没有用户 storage 迁移或回滚需求。
 
 ## 结果与复盘
+
+第25阶段已完成四文件实施、19项纯测试、唯一U1-0/U1-5四项4/4及独立进程离线复核。三个held样本均真实close早已成功，但被测first仍按截止报告unknown，之后同operation receipt补证released且首报不变，没有再close。全部完整尾部/state、真实wait/正常通知和逐资源结算成立；独立raw/保持审计16134检查零失败，零新增native。此为Linux回执观察分离的限定证据，不是OS close挂起、跨平台或产品整链验收；下一步先冻macOS U1-0基线。
 
 第24阶段完成协议、八文件实施、61项纯测试、首次build/load、唯一四项原生及独立离线复核，有限4/4；直接raw/保持审计零失败。U1-4未交付通知不抹掉真实exit7，2104字节/EIO/完整state及各owner结算成立。没有真实closing/环境销毁或产品链路结论，历史失败不重判；当前停在本切片收口，下一最小项为Linux U1-5释放回执扣留，不再采集本轮矩阵。
 
@@ -671,6 +696,8 @@ HPCON阶段首次原生矩阵、完整ZIP下载与独立复核已完成，见设
 证据收口检查：第二轮 builtin 三个后代在 public onExit 后留下成功 writer receipt，但呈现只有 `PARENT`；候选完整收到 `CHILD_TAIL`。两轮 Windows 保存结果复算分别报告 6/0 个候选失败，不把离线验证当新增原生轮次。元数据/索引/related paths、workflow 只读权限与分支边界、`git diff --check` 通过；业务、package/lockfile、已有 baseline 入口/workflow 无差异。未执行完整 UI/Agent/packaged，资源预算仍未完成；macOS 控制组保留但不是无条件交付前置项。
 
 ## 证据与备注
+
+第25阶段工件位于诊断树.debug/native-failure-v6-linux-first和.debug/native-failure-v6-validation-first，原build仍.debug/native-failure-v4-build-first。独立审计independent-native-audit.json的SHA256为a24f0bce71d097a63d53094f81b409ce8a55a6efb7d399b7cb730ded35548518；16134检查零失败，其中四case自身2061项，170旧工件/34旧源/安装源/4冻结源/11快照及五旧build保持。最大operation473.151370ms、observer after-await552.753787ms、caller close593.679338ms、writer receipt157.131539ms/close174.441986ms。各项回执时间与完整来源见正式设计第25节，检查数不是原生样本数，采集绑定未提交快照而非后续commit。
 
 第24阶段证据位于诊断树.debug/native-failure-v4-build-first、.debug/native-failure-v5-linux-first及.debug/native-failure-v5-validation-first。binary SHA256为6e96a9dcd2a06b05cfe09d7bc98e6782838db3a326dd277ab47b0a60260f8217；独立审计independent-native-audit.json的SHA256为d641588db4a9ccbfeac2342006156e5ffbcbbe894758eebb2b8afde17b929b0f，15292项检查零失败，其中四case自身1266项，157旧文件/8冻结源/11快照/五build保持。最大operation243.171570ms、observer after-await309.058966ms、caller close320.656772ms、writer receipt77.562989ms/close84.599241ms。完整源、manifest与官方TSFN依据见原生失败隔离第24节，采集仍绑定未提交快照，不倒写后续commit。
 
@@ -749,6 +776,8 @@ G07本地证据位于独立树 `.debug/windows-stdio-close-selftest-v1-first` �
 原始工件位于 `.debug/github-inplace-cancel-35516170917-macos/inplace-cancel-evidence/` 和 `.debug/github-inplace-cancel-35516170917-ubuntu-retry1/inplace-cancel-evidence/`，完整输入哈希、环境、工件ID和传输重试边界已写入设计第22节。本地v1两个不足100ms的失败和全部旧原生失败保留，复核成功不是新增原生样本或生产通过。
 
 ## 接口与依赖
+
+第25阶段不新增native导出或业务API，复用native v4/6e96a9dc。新JS config显式nativeScenario/fixtureScenario=U1-0及releaseOperationId=token+':master-close:1'；driver report.release记录ready/request/audit/receipt，caller.release记录r0/deadline/独立audit/receipt/immutable first/current。observer仅通过release-permit和receipt-permit控制本次单一operation，不把旁路事实导入被测状态，不恢复进程或历史。
 
 第24阶段只在隔离native snapshot新增notificationCallInvoked/notificationFailureInjected，明确真实通知与合成call-skipped，仍8导出。U1-4的report.callback及notificationCallbackStatus为null，真实wait终态另行保留；无备用通知、第二waiter、Abort或环境销毁接口。Node22.23.2/node-pty1.2.0-beta.12/addon7.1.1固定不变，官方Node参考源只读、不参与构建，主树无业务API接入。
 
@@ -850,3 +879,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-23，同一等待者的未确认与补证）：完成第23节协议、八个新隔离文件、冻结前格式检查、45项纯测试、首次build/load和唯一U1-0/U1-3四项4/4；独立raw/旧内容保持审计与两树文档同步。初次合成ECHILD永不覆写，真实wait均首调用exit7；真实ECHILD/EINTR与迟到JS只保留源码/纯测试边界。下一步先设计U1-4合成closing下的资源责任，不新增通用工具门槛，不改业务/安装依赖/workflow，无runner/push。
 
 修订记录（2026-09-23，通知未交付与真实资源责任）：完成第24节协议、八个新隔离文件、61项纯测试、首次build/load及唯一U1-0/U1-4四项4/4；独立进程离线复核与raw/保持审计通过，两树文档同步。合成closing与实际Push的引用消耗不同，未入队payload先free、仍取得的TSFN单次Release；真实exit7、完整尾部和资源结算不靠伪造callback。下一步只先冻结U1-5释放回执扣留协议，真实closing/环境销毁/其他平台/产品整链未验收，本轮不追加实验或工具门槛。
+
+修订记录（2026-09-24，真实释放与未知回执）：完成第25节协议、四个v6隔离JS文件、19项纯测试及唯一U1-0/U1-5四项4/4；复用旧native无新build，另进程离线复核和直接raw/保持审计通过，两树文档同步。audit早到不改变首次unknown，同operation迟到receipt不再close、不覆盖首报；日期跨入09-24按实际运行记录。下一最小项转向macOS U1-0平台协议，旧失败及未验收边界保持，不新增工具门槛、不改业务、无runner/push。
