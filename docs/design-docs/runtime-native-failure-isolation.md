@@ -400,4 +400,6 @@ schedule保存11源快照、四份预冻结config、buildDirectory及buildManife
 
 另存 `.debug/native-failure-v3-validation-first/independent-native-audit.json`，SHA256 `d521b5c91059aaebc306e38d4dc5ab8d69299144625dbd239453fc883bafdafa`。独立审查不读summary、不调用verifier，直接核四份raw/config/evidence与11采集源；6179项数据/保持检查零失败，其中四case自身510项，其余含旧68文件、新8源及两个build各2759成员的保持核验，零新增native。最大operation161.326947ms、caller续体161.432543ms、observer收到after-await228.073118ms、caller close243.192798ms、writer receipt71.920929ms/close76.761996ms，原预算满足。第20/21节的失败、通过、not-run和旧CLI错误均未重判。
 
+提交检查备注：此前git diff --check只检查已跟踪文档，没有检查尚未暂存的新文件；完整暂存检查发现build-native-failure-v2.mjs及unix-native-failure-support-v2.h各有一处EOF多余空行，返回2。为保持实际构建/采集源码身份，保留这两处非功能格式告警，不事后格式化源码、不重新构建或采集；不能把完整暂存检查写成通过。实际测试、原始证据和摘要核对结果不变。
+
 下一最小增量为Linux U1-3：先冻结“跳过一次waitpid并返回合成ECHILD、保留初次unconfirmed，再由同一个独占reaper取得真实终态”的具体协议，不能解释未初始化status或安装竞争waiter。本轮没有实施或运行U1-3，不追加实验。其余Linux U1/macOS U1/Windows W1、通知失败/环境销毁/并发、真实Agent及Host/Webview/packaged仍开放，生产API、资源隔离策略和停止预算未选定。
