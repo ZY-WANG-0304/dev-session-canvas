@@ -21,7 +21,7 @@ updated_at: 2026-09-23
 
 2026-09-20 用户澄清后的产品范围以第 9 节为准：画板管理 Terminal / Agent 执行会话及其终端资源，不默认承诺实际主进程退出后继续保留节点或终端以等待普通后代及其未来输出。第 2 节冻结协议、两轮原始断言和失败结果全部保留；它们描述诊断实验是否达到原门槛，不自动等于产品验收结论。
 
-当前进展入口见第6节，最新Linux原生U1切片见 `runtime-native-failure-isolation.md` 第20节：计划6项中3通过、1失败、2未运行。第30–43节保留此前原生、D1/D2及诊断工具历史；不以历史阶段的“尚未开始”覆盖本次有限结果，也不把这次切片当作完整U1/W1或产品验收。
+当前进展入口见第6节，最新Linux原生U1切片见 `runtime-native-failure-isolation.md` 第21节：新U1-0一次/U1-1三次4/4，采集CLI与独立离线复核exit0；旧第20节3通过、1失败、2未运行及exit13保持。第30–43节保留此前原生、D1/D2及诊断工具历史；不以历史阶段的“尚未开始”覆盖本次有限结果，也不把这次切片当作完整U1/W1或产品验收。
 
 ## 2. 运行前冻结
 
@@ -61,11 +61,13 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 ### 当前状态（2026-09-23）
 
-当前以 `runtime-native-failure-isolation.md` 第20节（2026-09-23）为准：唯一Linux U1-0/U1-1切片计划各3次、同一候选binary，实际为3通过、1失败、2未运行。三次U1-0均完成主体尾部、完整终端状态和逐owner结算；首个U1-1的真实exit1/signal0被冻结verifier额外的signal1/15限制拒绝，后两项停止准入。失败与not-run原样保留，不追认通过，也不据此宣称资源unknown、OS或Agent产品缺陷。macOS/Windows、其他U1/W1和实际Host/Webview/产品验收未完成，不恢复通用工具前置。 第43节及此前诊断契约按历史时点保留；本轮不改业务、旧实验或D4，不推送。
+当前以 `runtime-native-failure-isolation.md` 第21节（2026-09-23）为准：同一aff95d1e原生候选、冻结v1执行角色及原预算下，唯一新v2切片U1-0一次、U1-1三次共4/4通过，采集CLI与独立离线复核均exit0。U1-0真实wait1792/exit7；三次U1-1真实wait256/exit1，均完成已登记owner结算，新判定分别报告scenarioMatches、resourcesSettled、evidenceSufficient。旧第20阶段3通过/1失败/2未运行及原CLI exit13保留，不补跑、不重判，也不与新样本合算。 第43节及此前诊断契约按历史时点保留；本轮不改业务、旧实验或D4，不推送。
 
-U1-0各次均记录writer成功写2102字节、PTY原始2104字节（Linux ONLCR）、真实EIO、wait exit7、完整headless状态及最终光标x6/y4，master close、waiter thread、payload和TSFN均已结算。U1-1关闭前fd flags32770仍blocking，跳过非阻塞设置并记录合成EIO、未提交read；close和SIGTERM请求均返回0，真实wait status256/exit1/signal0，已登记owner均已结算。`kill`返回0不要求随后以信号退出，失败的退出形式不能抹去这些资源事实；本机glibc `forkpty`子路径在`login_tty`失败、信号仍阻塞时`_exit(1)`只是原因候选，尚未证明本样本命中。
+本轮仅在v2中解决退出形式与资源准入耦合、新采集入口循环导入两项直接问题，未修改冻结v1/native或业务。下一项是Linux U1-2实际取得TSFN后、wait线程启动前注入线程启动失败的协议与原生验证，本轮尚未运行。其余U1/W1、macOS/Windows、真实Agent、并发及Supervisor/Host/Webview/产品验收仍开放，不新增通用工具前置。
 
-原入口在最后`verifySaved`动态导入入口自身形成top-level-await循环并exit13，原失败保留，不能称原CLI已修好。新增只读独立入口 `verify-native-failure-v1.mjs` 直接导入冻结verifier；`standalone-verification.log`记录离线重放exit1，仍为3通过、1失败、2未运行且仅原U1-1失败，没有新增native执行。该入口缺陷与U1-1冻结判据失败分别记录，原driver、verifier、测试、原始证据、原断言和历史结果均保留。
+第20阶段历史证据：U1-0各次均记录writer成功写2102字节、PTY原始2104字节（Linux ONLCR）、真实EIO、wait exit7、完整headless状态及最终光标x6/y4，master close、waiter thread、payload和TSFN均已结算。U1-1关闭前fd flags32770仍blocking，跳过非阻塞设置并记录合成EIO、未提交read；close和SIGTERM请求均返回0，真实wait status256/exit1/signal0，已登记owner均已结算。`kill`返回0不要求随后以信号退出，失败的退出形式不能抹去这些资源事实；本机glibc `forkpty`子路径在`login_tty`失败、信号仍阻塞时`_exit(1)`只是原因候选，尚未证明本样本命中。
+
+第20阶段历史入口记录：原入口在最后`verifySaved`动态导入入口自身形成top-level-await循环并exit13，原失败保留，不能称原CLI已修好。新增只读独立入口 `verify-native-failure-v1.mjs` 直接导入冻结verifier；`standalone-verification.log`记录离线重放exit1，仍为3通过、1失败、2未运行且仅原U1-1失败，没有新增native执行。该入口缺陷与U1-1冻结判据失败分别记录，原driver、verifier、测试、原始证据、原断言和历史结果均保留。
 
 最新证据见第41节：b4db41cc的唯一run35676427931经三平台完整归档复核，各full24/24、scaled24/24、oracle78/parser8及篡改24/23成立；Windows实际再次乱序而源序合法，新判据正确接受。第38节v1两个failure、真实迟到与writer预算漏验仍保留。来源/顺序窄验证不关闭D3完整settlement、D4重放/身份或W1/U1；下一阶段先补诊断结算契约。以下两段记录此前设计承接背景，不覆盖本段当前状态。
 

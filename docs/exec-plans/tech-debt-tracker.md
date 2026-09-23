@@ -22,6 +22,8 @@
 
 ## 技术债列表
 
+2026-09-23 原生第21阶段已在新v2中收口退出形式与资源准入耦合、采集入口循环导入两项直接问题：同一aff95d1e候选及冻结v1执行角色、原预算下，新U1-0一次/U1-1三次共4/4通过，采集CLI及独立离线复核均exit0；三次U1-1均为真实wait256/exit1且owner结算，场景、资源、证据分别判定。该4/4只属于新输入，旧第20阶段3通过/1失败/2未运行、原CLI exit13及原断言不改，不能写成旧CLI已修复或资源泄漏已修复。下一项为Linux U1-2：实际取得TSFN后、wait线程启动前注入线程启动失败的协议和原生验证，本轮尚未运行；不新增通用工具前置。具体child启动位置仍未确认，其余U1/W1、macOS/Windows、真实Agent/Host/Webview/并发和生产API/停止预算仍开放。最新结论见runtime-native-failure-isolation第21节；以下第20阶段待办按历史时点保留，其中退出形式/新入口已由本段收口。
+
 2026-09-23 原生第20阶段新增局部事实与直接待办：Linux同binary U1-0三次尾部/EIO/exit7/完整状态及owner收尾通过；U1-1首次原始wait256/exit1、close0/kill0/payload/TSFN/join已结算，却被signal-only额外断言拒绝并停余2项。保留3通过/1失败/2未运行，不将判定失败当资源unknown或系统/Agent缺陷。下一版仅澄清真实终止、场景预期和资源准入，不要求kill0必为signal退出；child的login_tty/chdir/exec具体原因无errno证据，未确认。原CLI最终复核动态import自循环exit13保留，已新增独立只读verify-native-failure-v1入口重放原失败exit1，原driver/verifier/test源码身份不变；后续采集入口须避免同一循环。正式设计见runtime-native-failure-isolation第20节，主树仅文档。其余U1/W1、macOS/Windows、真实Agent/Host/Webview/并发与生产API/停止预算仍开放，不恢复通用工具前置，不补跑旧schedule、不新增runner或push。以下保留历史阶段债务。
 
 2026-09-23 第18阶段已关闭evidence消费顺序和77/80统计这两个实测工具缺口：15/15、既有自测/保存5/5及本轮唯一Linux42/42通过，80phase/156receipt完整，100ms与G1/G2原判据不变。三个08仍详情不完整但证据充分；G2附加核对误要求held唯一的失败单列保留，按观察fact身份完成只读复核，未重跑矩阵或改正式断言。第16/17节旧失败不追认。下一步回到W1/U1实际路径，仅以所用链路的判定/安全问题为前置；不自动扩充通用工具研究。Windows/macOS D3 v3、D4实际资源、PTY与Supervisor/Host/Webview、真实Agent启动链/双会话/packaged及生产退出完整性仍开放，本轮未改业务/core/oracle/D4、无native/runner/push。
