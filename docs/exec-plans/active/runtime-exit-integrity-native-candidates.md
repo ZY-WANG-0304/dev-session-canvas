@@ -4,7 +4,7 @@
 
 ## 目标与全局图景
 
-第26阶段只建立macOS U1-0正常基线，验证真实Darwin创建链、退出等待、尾部消费及所持资源在同一次执行中结算。只执行新候选三次自然exit7，不从Linux结果推定macOS通过，不改业务；当前协议已冻结，尚无本轮构建或原生结果。
+第26阶段已取得固定macOS U1-0正常路径三次3/3：输入32312fe7的唯一push run35900772851 attempt1成功，runner及可信本地离线复核通过，独立raw/来源保持审计25206检查零失败。真实Darwin创建链、退出等待、尾部消费及所持资源在同一次执行中结算；只证明该环境的正常已注册路径，不改业务、不扩为macOS全路径或产品验收。
 
 用户需要正常结束时完整看到终端尾部，而不是把进程退出当成输出已结束。本阶段只验证隔离 reader 和资源生命周期，不改变生产会话。PR #294 已提供公共接口基线；本阶段通过 macOS 独占 fd、Windows 独立 pipe worker 等原生对照，证明或否定候选可行性。
 
@@ -18,12 +18,16 @@
 - [x] (2026-09-24，第26阶段) 八个Darwin专用源文件已实施，保留同源helper/原生构建绑定；旧Linux guard、源与证据不改。
 - [x] (2026-09-24，第26阶段) 已按确定的build/run/verify接口新增macOS-only push workflow，YAML解析通过；旧workflow不变，不安装node-gyp，不增加native自测。
 - [x] (2026-09-24，第26阶段) patch2/2与verifier8/8首次通过，补master取得绑定后同8组复核通过；七JS语法检查、接口及独立整链静态复审通过，九个源/workflow文件摘要已冻结。本地没有Darwin构建或会话。
-- [ ] fetch/rebase目标main、核输入差异后仅push诊断分支，唯一三项不追加dispatch/rerun；完整下载首次工件并以可信工作树入口离线复核，记录失败及旧内容保持。
+- [x] (2026-09-24，第26阶段) fetch后rebase origin/main为up-to-date，仅push诊断输入32312fe7；唯一run35900772851 attempt1成功，runner同10组纯测试和三次原生3/3分别通过，无dispatch/rerun，主树未推送。
+- [x] (2026-09-24，第26阶段) 完整ZIP下载与GitHub digest一致，runner及可信本地保存复核均3/3、exit0；build/load零会话，三次真实2104字节/read0、完整终态、wait1792/exit7与逐资源结算成立。
+- [x] (2026-09-24，第26阶段) 独立raw/来源保持审计25206检查零失败，其中三case15944检查；110旧tracked、15旧证据入口和1个installed source保持，不泛化为旧15GB全量深遍历。
+- [x] (2026-09-24，第26阶段收口) 两树各七份文档同步；第26节一致、旧第2至25节保持，九个冻结源/workflow与32312fe7及冻结摘要一致。两份计划12个章节齐全，过期未运行措辞已修正，git diff --check通过；只做本地文档提交，不追加push或runner。
+- [ ] 下一最小项仅先冻结macOS U1-6合成注册失败的唯一reaper/逐资源协议，不扩其他U1/W1、早退或产品链路。
 
 - [x] (2026-09-23，原生第25阶段) 冻结U1-5真实close后扣留上层回执协议，区分audit/被测状态与各自时钟；复用原native v4，不新增构建。
 - [x] (2026-09-24，原生第25阶段) 四个v6文件、19/19纯测试和静态复审完成，冻结前语法/暂存格式检查通过；复用旧native v4，无新build，唯一U1-0一次/U1-5三次4/4，采集及独立进程保存复核exit0。
 - [x] (2026-09-24，原生第25阶段) 独立原始事实/保持审计16134项零失败（四case自身2061项），170旧工件/34旧源/4冻结源/11快照/五旧build保持；两树文档同步，不改业务、旧证据或runner。
-- [x] 第25阶段安排的macOS U1-0协议冻结由第26阶段承接；实际新构建和三项runner结果仍待完成，不直接套用Linux协议。
+- [x] 第25阶段安排的macOS U1-0已由第26阶段新构建及唯一三项3/3取得限定证据，不直接套用Linux协议，不重判历史结果。
 
 - [x] (2026-09-23，原生第24阶段) 冻结U1-4真实wait后跳过通知的合成closing协议；明确真实Push消耗引用与合成结果仍持有引用的差异，payload/TSFN各自单次收尾。
 - [x] (2026-09-23，原生第24阶段) 八个新native v4/JS v5文件、61/61纯测试及静态安全复审完成；冻结前暂存检查通过，首次隔离build/load零native calls，唯一U1-0一次/U1-4三次4/4，采集和独立进程保存复核均exit0。
@@ -167,7 +171,7 @@
 
 ## 意外与发现
 
-第26阶段源码核查确认Darwin使用posix_openpt/posix_spawn/spawn-helper及kqueue/kevent后唯一waitpid，不能套用Linux forkpty/EIO。既有Native Probe固定三平台旧矩阵，resource-attribution还会重跑旧三arm和Windows，均不直接dispatch。最近macOS原生run35527528410只证明旧kqueue干预对照，不能替代本轮逐资源证明；当前没有新原生结果。
+第26阶段在macOS26.6.2 arm64/Darwin25.6.0真实完成posix_openpt/posix_spawn/同源spawn-helper及kqueue/kevent后唯一waitpid，不能套用Linux forkpty/EIO。三次read调用为5/5/4次、parser各3次，前两项多一次EAGAIN而最终均为正容量read0；每项56个native事件，writeGate前缀34个、close前51个，实际kqueue/master各单次close0。正常已注册路径成立并未覆盖早退/ESRCH或注册失败；旧run35527528410及其失败仍独立保留。
 
 第25阶段实测三个U1-5的audit在请求后1.370315/3.658132/1.627234ms到达，first unknown在100.997445/100.679944/100.362286ms冻结，observer独立hold均至少100ms后才允许receipt；首次unknown保持，current补证released且只close一次。四项ready native都是24事件/close0，最终29事件/close1，非master资源先完成。未知回执与已释放资源可同时成立，不能据此称OS泄漏；未额外制造迟到timer竞态。
 
@@ -297,6 +301,8 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 
 ## 决策记录
 
+2026-09-24（第26阶段结果）：macOS正常已注册路径的三次3/3与10组纯测试、build/load零会话及25206项独立审计分账。输入32312fe7只push一次，run35900772851 attempt1无dispatch/rerun；完整ZIP核摘要，可信本地离线3/3通过。下一最小项仅建议冻结macOS U1-6合成注册失败协议，不把正常read0、wait及单次释放外推为异常/早退或产品通过。
+
 2026-09-24（第26阶段运行前）：只执行macOS U1-0三次；fixture ready与kqueue注册均成立后才放行原负载，早退/ESRCH不在本轮覆盖。真实read0、wait exit7、kqueue及master单次close0、完整消费分别验收。新增macOS-only push入口复用现有托管runner，不改旧矩阵，不扩D3/D4、容量或生产接口研究。
 
 2026-09-24（第25阶段收口）：19项纯测试、唯一四项原生及独立审计分账，复用native v4而非新编译。只有receipt更新被测当前证明，audit和首次unknown分别保留；正常资源成功与观察及时性分别判定。下一最小项转向macOS U1-0实际创建/等待/释放差异冻结，不再追加Linux工具研究或宣称全平台生产通过。
@@ -421,7 +427,7 @@ Windows 原生 baton 在 process callback 前被移除；builtin 事后 kill 与
 
 ## 上下文与定向
 
-第26阶段基线为主树4d676fb2、诊断树a0f412fd，正式协议为docs/design-docs/runtime-native-failure-isolation.md第26节。新文件只在独立runtime-exit-integrity-native-candidates工作树的scripts/diagnostics及.github/workflows；主运行时树只同步文档。旧Linux v1-v6及旧macOS三arm实验冻结，不原地改写。
+第26阶段基线为主树4d676fb2、诊断树a0f412fd，正式协议为docs/design-docs/runtime-native-failure-isolation.md第26节；新实现已冻结诊断提交32312fe7并完成唯一run35900772851 attempt1。八源和workflow、构建/原生工件只在独立runtime-exit-integrity-native-candidates树；主运行时树只同步文档、未推送。旧Linux v1-v6及旧macOS三arm实验冻结，不原地改写。
 
 本工作树的 `runtime-exit-integrity-native-candidates` 分支基于 `origin/main@5965adb8`，只承载隔离诊断与文档；尚未完成的运行时改造在另一个本地分支，不随此分支推送。`scripts/diagnostics/diagnose-unix-inplace-cancel.mjs` 编排当前四类各三次场景及离线复核，`scripts/diagnostics/unix-pty-observer.c` 是运行在同一Node进程内的只读原生观察模块，`.github/workflows/runtime-unix-inplace-cancel.yml` 在Linux/macOS各运行12项并保留完整工件。
 
@@ -431,7 +437,7 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 ## 工作计划
 
-第26阶段分三步：新增Darwin真实创建、kqueue等待和逐资源收尾实现及少量纯判定；冻结输入与macOS-only workflow后只push诊断分支触发唯一三样本；完整下载成功与失败工件并以可信工作树入口复算事实/来源，再同步两树结论。仅本轮实际链路的判定/安全问题前置，不扩大工具框架工作。
+第26阶段实施、冻结输入、唯一三次原生采集、完整下载、可信入口复核及独立raw审计已完成，两树文档和最终范围检查完成，以本地文档提交收口，不追加运行或推送。下一最小项建议只做macOS U1-6：先冻结实际取得kqueue后合成注册失败、唯一reaper和逐资源结算协议，再另建输入；不是直接套用Linux，不宣称OS注册失败已复现。其他U1/W1、早退/ESRCH、真实Agent及产品链路继续开放，不扩大工具框架或生产接口研究。
 
 第25阶段实施、唯一原生采集、离线复核与独立raw审计已完成，当前只收口文档和本地提交，不再运行该矩阵。下一最小阶段先冻结macOS U1-0基线，核对其真实创建/等待/源结束/释放与Linux的差异，再依托已有runner做有限独立输入；本轮不实施平台适配或触发runner/push。旧各批及下段第24阶段安排按历史时点保留，生产API/隔离策略/停止预算未选定。
 
@@ -501,7 +507,7 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 第26阶段实施与下列命令均在独立诊断树执行，runner固定Node22.23.2；HEADERS指解压所得node-v22.23.2目录。先运行node --test scripts/diagnostics/macos-native-baseline-patch-v1.test.mjs scripts/diagnostics/macos-native-baseline-v1.test.mjs，失败不进入构建。再运行node scripts/diagnostics/build-macos-native-baseline-v1.mjs --output macos-native-build --dependency-root "$PWD/node_modules" --headers "$HEADERS/include/node"，候选以clang及匹配headers构建pty.node/helper，不安装node-gyp；load预检零会话，构建失败不进入采集。
 
-唯一三项采集命令为node scripts/diagnostics/diagnose-macos-native-baseline-v1.mjs --output macos-native-evidence --binary "$PWD/macos-native-build/pty.node" --dependency-root "$PWD/node_modules"；workflow以spawnSync timeout180000保留status/signal/stdout/stderr，内层原预算不变。另进程只读复核命令为node scripts/diagnostics/diagnose-macos-native-baseline-v1.mjs --verify-saved macos-native-evidence。新增.github/workflows/runtime-macos-native-baseline.yml只由诊断分支本轮文件首次push触发，不dispatch旧入口；当前以上命令尚未执行，首次结果不得覆盖。
+唯一三项采集命令为node scripts/diagnostics/diagnose-macos-native-baseline-v1.mjs --output macos-native-evidence --binary "$PWD/macos-native-build/pty.node" --dependency-root "$PWD/node_modules"；workflow以spawnSync timeout180000保留status/signal/stdout/stderr，内层原预算不变。另进程只读复核命令为node scripts/diagnostics/diagnose-macos-native-baseline-v1.mjs --verify-saved macos-native-evidence。新增.github/workflows/runtime-macos-native-baseline.yml只由诊断分支本轮文件首次push触发，不dispatch旧入口；这些命令已在唯一run35900772851 attempt1执行成功，三项原生及保存复核均3/3；首次结果保持，不重跑。完整下载后，本机可信入口另以--verify-saved、--build-directory和--dependency-root绑定保存证据、下载build及本机只读依赖，首次离线复核exit0。
 
 第25阶段已在/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates执行。NODE22指/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node；DEPS指/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2/node_modules，只读使用。NODE22 --test scripts/diagnostics/native-failure-v5.test.mjs首跑11/11，新native-failure-v6.test.mjs首跑8/8，分组日志完整保存；冻结四源前逐文件node --check和git diff --cached --check均exit0。
 
@@ -645,7 +651,7 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 结果与复盘
 
-第26阶段已完成源码/runner核查、两树运行前协议冻结及新macOS-only workflow初版，候选诊断实现仍在进行；尚无本轮构建或采集结果，不能报告macOS U1-0通过。下列第25阶段及更早结果按历史时点保留；本阶段三项实际结果、来源核验和独立离线复核仍待完成。
+第26阶段八源实现、10组定向纯测试、隔离build/load和唯一macOS U1-0三次3/3完成；run35900772851 attempt1及runner/可信本地离线复核均通过，完整ZIP摘要与GitHub一致，独立raw/来源保持审计25206检查零失败。真实2104字节/read0、完整终态与光标、wait1792/exit7及逐资源结算均有原始事件，未改预算或重跑求绿。本地master绑定增强后复核的是同8组、runner复核的是同10组，不累加覆盖；build/load零会话与三次原生分账。下列第25阶段及更早结果按历史时点保留，产品退出完整性仍未交付。
 
 第25阶段已完成四文件实施、19项纯测试、唯一U1-0/U1-5四项4/4及独立进程离线复核。三个held样本均真实close早已成功，但被测first仍按截止报告unknown，之后同operation receipt补证released且首报不变，没有再close。全部完整尾部/state、真实wait/正常通知和逐资源结算成立；独立raw/保持审计16134检查零失败，零新增native。此为Linux回执观察分离的限定证据，不是OS close挂起、跨平台或产品整链验收；下一步先冻macOS U1-0基线。
 
@@ -723,7 +729,7 @@ HPCON阶段首次原生矩阵、完整ZIP下载与独立复核已完成，见设
 
 ## 证据与备注
 
-第26阶段当前只有源码与runner配置核查，无新build、binary摘要、run ID或原生结果。运行前保存原始/生成源码、Node/headers/addon、clang/SDK及helper/pty.node指纹；记录commit/ref/run/attempt、OS/架构/image，三份config在首次创建前冻结。日志、失败工件及离线复核完整保留，不执行下载归档代码，不以旧结果或预计hash补造新证据。
+第26阶段固定输入32312fe7d7f8a1c0268cc392706d1a2e693611b6、唯一push run35900772851 attempt1；runner工件在诊断树.debug/macos-native-baseline-v1-run-35900772851/。artifact10769350773共12510695字节，完整ZIP的SHA256 a6363a2ca09376354cf61c5e148deb80337cea2dd1202ceda8edbdbc92731a06与GitHub digest一致。pty.node为65d0ccd0dbf55c13b971d4ffcbbbb8a3f5c994071b75c2e33315d2c65c53743b，helper为6a689e86f518779d34a4521494ac6f5d3e9da819f322280eb32a3f941f7a6296；Node/headers22.23.2、node-pty1.2.0-beta.12/addon7.1.1、SDK26.5/Apple clang21、image20260907.0351.1均留证。可信本地入口以新进程复核3/3、exit0，不执行归档源码或加载Darwin binary。独立审计.debug/macos-native-baseline-v1-validation-first/independent-native-audit.json SHA256 b6f65f0a4f7789eac7b9aff7db769c281c0612c8dc1e89c6adf45791b2f12c07，25206检查零失败，其中三case5317/5317/5310共15944；110旧tracked、15旧证据入口、1个installed source、9冻结新源及build2768成员保持，不声称旧15GB全量深遍历。
 
 第25阶段工件位于诊断树.debug/native-failure-v6-linux-first和.debug/native-failure-v6-validation-first，原build仍.debug/native-failure-v4-build-first。独立审计independent-native-audit.json的SHA256为a24f0bce71d097a63d53094f81b409ce8a55a6efb7d399b7cb730ded35548518；16134检查零失败，其中四case自身2061项，170旧工件/34旧源/安装源/4冻结源/11快照及五旧build保持。最大operation473.151370ms、observer after-await552.753787ms、caller close593.679338ms、writer receipt157.131539ms/close174.441986ms。各项回执时间与完整来源见正式设计第25节，检查数不是原生样本数，采集绑定未提交快照而非后续commit。
 
@@ -912,4 +918,6 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 
 修订记录（2026-09-24，真实释放与未知回执）：完成第25节协议、四个v6隔离JS文件、19项纯测试及唯一U1-0/U1-5四项4/4；复用旧native无新build，另进程离线复核和直接raw/保持审计通过，两树文档同步。audit早到不改变首次unknown，同operation迟到receipt不再close、不覆盖首报；日期跨入09-24按实际运行记录。下一最小项转向macOS U1-0平台协议，旧失败及未验收边界保持，不新增工具门槛、不改业务、无runner/push。
 
-修订记录（2026-09-24，Darwin正常路径冻结）：第26节及两树计划各活章节已同步，只实施macOS U1-0三次的独立输入与专用workflow。保留真实创建/helper/kqueue/wait路径、原输出和预算，完整来源与逐资源释放分别验收；当前无本轮构建或原生结果，不改旧实验或扩充通用工具门槛。
+修订记录（2026-09-24，Darwin正常路径冻结）：第26节及两树计划各活章节已同步，只实施macOS U1-0三次的独立输入与专用workflow。保留真实创建/helper/kqueue/wait路径、原输出和预算，完整来源与逐资源释放分别验收；冻结时无本轮构建或原生结果，不改旧实验或扩充通用工具门槛。
+
+修订记录（2026-09-24，Darwin正常路径结果）：固定32312fe7的唯一run35900772851 attempt1成功，10组定向纯测试、零会话build/load和三次原生3/3分账；完整ZIP摘要核对、可信本地离线3/3及独立raw/来源保持审计25206检查零失败。下一项先冻结macOS U1-6合成注册失败的唯一reaper/逐资源协议，其他平台路径与产品边界不改，主树不推送。

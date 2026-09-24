@@ -21,7 +21,7 @@ updated_at: 2026-09-24
 
 2026-09-20 用户澄清后的产品范围以第 9 节为准：画板管理 Terminal / Agent 执行会话及其终端资源，不默认承诺实际主进程退出后继续保留节点或终端以等待普通后代及其未来输出。第 2 节冻结协议、两轮原始断言和失败结果全部保留；它们描述诊断实验是否达到原门槛，不自动等于产品验收结论。
 
-当前进入 `runtime-native-failure-isolation.md` 第26节（2026-09-24）的macOS U1-0正常基线：仅冻结并实施三次自然exit7的新独立输入，保留Darwin posix_spawn/helper、kqueue/kevent及唯一waitpid，不把Linux forkpty/EIO协议直接映射过去。fixture ready与kqueue注册共同放行原负载，真实read0、完整尾部/终态和逐资源单次释放分别验收。运行前冻结时尚无本轮构建或原生结果，不宣称macOS或产品链路通过。 具体运行顺序见第6节，历史结果独立保留。
+当前以 `runtime-native-failure-isolation.md` 第26节（2026-09-24）为准：固定输入32312fe7的唯一push run35900772851 attempt1成功，新macOS U1-0三次3/3，runner与可信本地入口离线复核均通过，没有dispatch/rerun。macOS26.6.2 arm64/Darwin25.6.0、Node/headers22.23.2、SDK26.5/clang21下，真实posix_spawn/helper、kqueue/kevent及唯一waitpid成立；三次各写2102/读2104字节，正容量read0、完整headless终态/光标x6/y4、wait1792/exit7及逐资源单次释放成立。独立raw/来源保持审计25206检查零失败，不把这三次正常已注册路径扩为macOS全路径或产品验收。 具体运行顺序见第6节，历史结果独立保留。
 
 ## 2. 运行前冻结
 
@@ -61,9 +61,9 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 ### 当前状态（2026-09-24）
 
-当前进入 `runtime-native-failure-isolation.md` 第26节（2026-09-24）的macOS U1-0正常基线：仅冻结并实施三次自然exit7的新独立输入，保留Darwin posix_spawn/helper、kqueue/kevent及唯一waitpid，不把Linux forkpty/EIO协议直接映射过去。fixture ready与kqueue注册共同放行原负载，真实read0、完整尾部/终态和逐资源单次释放分别验收。运行前冻结时尚无本轮构建或原生结果，不宣称macOS或产品链路通过。
+当前以 `runtime-native-failure-isolation.md` 第26节（2026-09-24）为准：固定输入32312fe7的唯一push run35900772851 attempt1成功，新macOS U1-0三次3/3，runner与可信本地入口离线复核均通过，没有dispatch/rerun。macOS26.6.2 arm64/Darwin25.6.0、Node/headers22.23.2、SDK26.5/clang21下，真实posix_spawn/helper、kqueue/kevent及唯一waitpid成立；三次各写2102/读2104字节，正容量read0、完整headless终态/光标x6/y4、wait1792/exit7及逐资源单次释放成立。独立raw/来源保持审计25206检查零失败，不把这三次正常已注册路径扩为macOS全路径或产品验收。
 
-本阶段通过新增macOS-only workflow复用已有GitHub托管runner，固定Node22.23.2及匹配headers/锁定依赖，仅push诊断分支触发一次三项，不追加dispatch/rerun。构建、纯测试、原生和离线检查分账，旧实验、失败和生产边界不改；macOS其他U1、Windows W1、真实Agent及Host/Supervisor/Webview/packaged仍开放。
+本阶段10组定向纯测试为patch2组与verifier8组；本地首次通过、master取得绑定增强后同8组复核及runner同10组均通过，不能累加成新覆盖或与三次原生合算。build/load为零会话预检，helper与pty.node均来自冻结构建，ZIP完整下载并与GitHub digest核对。下一最小项拟仅推进macOS U1-6：先冻结实际取得kqueue后合成注册失败、唯一reaper与逐资源结算协议，不宣称真实注册失败已复现；其余U1/W1、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged、生产API/隔离策略/停止预算仍开放。
 
 第25阶段历史记录（以下三段按当时状态保留，其macOS协议待办已由第26阶段承接，不覆盖当前实施顺序）：
 

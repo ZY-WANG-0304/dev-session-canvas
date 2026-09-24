@@ -22,7 +22,7 @@
 
 ## 技术债列表
 
-2026-09-24 第26阶段已冻结macOS U1-0正常基线，仅三次新自然exit7；Darwin真实posix_spawn/helper和kqueue/kevent/唯一waitpid须独立取证，fixture ready与kqueue注册后才放行写入。真实read0、完整2104字节/终态与kqueue/master单次close分别验收，早退/ESRCH、macOS U1-1至7及Windows W1不在本轮。新增macOS-only workflow复用现有托管runner，只push诊断分支触发一次，旧三arm/多平台workflow不重跑，不扩通用工具门槛。运行前冻结时无本轮build或原生结论；旧Linux4/4、19pure及所有历史失败保持，不能计入macOS验收。真实Agent/产品链路及生产API/隔离策略/停止预算仍开放，退出完整性债务不关闭。
+2026-09-24 第26阶段macOS U1-0正常已注册路径取得限定证据：输入32312fe7的唯一push run35900772851 attempt1成功，10组定向纯测试与三次原生3/3分账，build/load零会话；本地增强后同8组与runner同10组复核不累加覆盖。macOS26.6.2 arm64/Darwin25.6.0、Node/headers22.23.2、SDK26.5/clang21下，真实posix_spawn/helper、kqueue/kevent及唯一waitpid成立，各写2102/读2104字节、read0、完整终态/光标和wait1792/exit7，kqueue/master各单次close0。完整ZIP与GitHub digest一致，runner与可信本地保存复核均3/3、exit0；独立raw/来源保持审计25206检查零失败，保持范围为110旧tracked、15旧证据入口和1个installed source，不宣称旧15GB全量审计。无dispatch/rerun，主树未推送，旧失败不改。下一最小项仅建议先冻结macOS U1-6实际取得kqueue后合成注册失败、唯一reaper及逐资源协议，不宣称真实注册失败；其余U1/W1、早退/ESRCH、真实Agent/产品链路与生产API/隔离策略/停止预算仍开放，退出完整性债务不关闭。
 
 2026-09-24 原生第25阶段已取得真实释放与上层回执延迟分离的局部证据：复用冻结6e96a9dc和既有build，无新编译；唯一新U1-0一次/U1-5三次4/4，采集CLI与独立进程离线复核均exit0。本轮19项纯回归为新增8项加前代11项，不计作原生次数。真实close单次返回0/error0，audit在caller的100ms截止前到达但不代替被测receipt；首次observation-unknown保持，observer收到unknown后按自身时钟至少持有100ms，再许可同operation迟到receipt补证current=released，不覆写首报、不重复close。四项仍保留完整2104字节、真实EIO、终态/光标和wait1792/exit7及逐资源结算；这不是实际close失败/挂起、跨平台或产品整链验收。下一最小阶段先冻结macOS U1-0正常基线及平台创建/等待/释放差异，再按已有runner准备有限独立输入，不直接映射Linux U1；本轮不适配、不运行runner或推送、不扩通用工具门槛。真实Agent/Host/Webview/packaged、并发及生产API/隔离策略/停止预算仍开放，退出完整性债务不关闭。当前依据为runtime-native-failure-isolation第25节；以下第24阶段及更早文字、日期和失败按历史时点保留，其U1-5待办已由本阶段取得限定证据，不重判或合算。
 

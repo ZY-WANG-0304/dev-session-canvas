@@ -19,7 +19,7 @@ updated_at: 2026-09-24
 
 ## 1. 本阶段状态与完成边界
 
-当前进入第26节（2026-09-24）的macOS U1-0正常基线：先冻结平台创建、等待、源结束与资源判据，再实施独立候选并通过已有GitHub托管runner采集唯一三项。当前仅完成源码核查，尚无本轮构建或原生结果；不将Linux有限成功外推为macOS通过，不修改业务、安装依赖或历史实验。
+当前以第26节（2026-09-24）为准：固定32312fe7的唯一macOS arm64 U1-0三项3/3，首次构建/加载、runner保存复核及完整下载后的本地可信复核、独立raw/来源审计均通过。保留真实posix_spawn/helper、kqueue/kevent/唯一waitpid、read0及逐资源收尾，10组纯测试与三项原生分账；不代表业务已修复或其他平台/失败路径/产品整链通过。
 
 第25阶段历史状态（原文保留，不覆盖当前入口）：
 
@@ -586,3 +586,27 @@ runner复用已有GitHub托管macOS环境，新增macOS-only workflow而不dispa
 八个Darwin专用源文件和macOS-only workflow已经落盘，旧Linux源与workflow未改。新candidate确实增加owned kqueue close并替换诊断waiter，不是只增加日志；helper内部控制终端临时fd沿用固定源码，不将其或普通后代的全部OS资源宣称为逐项台账覆盖。编译器保留xcrun返回的clang++调用路径，另存resolvedPath摘要，避免符号链接解析改变driver模式。
 
 本地首次patch纯测试2/2、判定纯测试8/8通过；静态复审补齐master-open真实取得绑定后，同8组再次通过，组数仍为10而不是18个不同案例。EINTR仅有纯测试中的配对覆盖，未宣称macOS真实发生过EINTR。七个JS文件语法检查、源码/接口与独立整链静态复审通过，没有新增通用工具前置。首次日志保存在诊断树.debug/macos-native-baseline-v1-validation-first；此时尚无Darwin编译或原生结果。
+
+### 26.4 唯一原生运行与完整保存复核（2026-09-24）
+
+诊断分支在fetch后对origin/main执行rebase，目标仍为5965adb8且up-to-date；仅推送固定输入32312fe7d7f8a1c0268cc392706d1a2e693611b6，唯一push事件触发run35900772851、attempt1。未dispatch、rerun或推送主运行时分支。runner全部步骤success，原生采集于UTC 2026-09-23T18:12:17.918Z至18:12:19.281Z完成，对应本地09-24；这是真实macOS采集，不是Linux模拟。
+
+实际环境为macOS26.6.2/build25G83、Darwin25.6.0、arm64、runner image20260907.0351.1、SDK26.5和Apple clang21.0.0；Node22.23.2/node-pty1.2.0-beta.12/addon7.1.1保持。新pty.node SHA256为65d0ccd0dbf55c13b971d4ffcbbbb8a3f5c994071b75c2e33315d2c65c53743b；同源helper为6a689e86f518779d34a4521494ac6f5d3e9da819f322280eb32a3f941f7a6296，构建时mode0755；build manifest为bc719f70b7b700ed23a158e79707f9b4fe7d75d55eda0049f2c8b293470aadc5，包含2768个成员。首次build/load成功，加载预检只检查导出而不创建会话，runner同10组纯测试通过，不计入原生样本数。
+
+唯一三项全部执行且场景/资源/证据三类判定均通过。各有真实posix_spawn和同PID helper→fixture链；写2102字节、读2104字节，read次数5/5/4，各三次parser且全部完成，最后真实error=null/count=0。完整headless终态及光标x6/y4一致；每项真实wait一次，rawStatus1792/exit7，正常通知和JS退出callback各一次。kevent均为自己的PID、filter=-5、fflags=2147483648、flags=32817；flags包含EV_EOF但不含EV_ERROR，不能因看到EV_EOF就误判事件失败，也不以它替代PTY read0。
+
+三项gate快照均34个native事件且kqueue已注册，master关闭前51个事件且wait/线程/TSFN/payload/kqueue职责已结算，最终56个事件，只增加master的三次只读观察及唯一close进入/返回。临时low-fd-0、spawn-actions、spawn-attrs和slave各取得/释放一次；kqueue和master的真实close均返回0/error0。low-fd-0先释放的数字14随后被kqueue取得，是正常fd重用；按owner取得时序分别结算，不按同一数值把两次不同资源的close当作重复操作。helper内部临时fd不在parent逐项台账结论内。
+
+| 原生样本 | caller操作返回ms | caller after-await ms | observer收到after-await ms | caller关闭ms | writer回执/关闭ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| U1-0-1 | 183.316083 | 183.369333 | 236.498041 | 240.388958 | 77.926459 / 83.967209 |
+| U1-0-2 | 163.032542 | 163.117792 | 224.251334 | 232.128375 | 66.416250 / 68.732958 |
+| U1-0-3 | 127.347375 | 127.401584 | 173.840875 | 176.143166 | 48.996917 / 51.609250 |
+
+各列分别使用所属进程的单调时钟，不跨进程相减；原预算不变，没有控制处置或协议错误。runner采集及另进程保存复核均exit0。完整artifact10769350773下载为.debug/macos-native-baseline-v1-run-35900772851/artifact.zip，12510695字节，SHA256 a6363a2ca09376354cf61c5e148deb80337cea2dd1202ceda8edbdbc92731a06与GitHub digest一致；完整解包在同目录extracted下的macos-native-build、macos-native-evidence和macos-native-runner。本机可信工作树入口显式绑定下载build与本机只读headless依赖，--verify-saved首次3/3且exit0，不加载Darwin二进制、不执行归档代码。
+
+独立审计直接从config/raw/evidence、源与build事实复算，不读summary/verification结论、不导入verifier、不执行归档代码或native；完整终态逐行逐格与本机可信headless比较（每项28行2240格，含scrollback）。25206项字段/内容/来源检查零失败，其中三case共15944项，检查数不是原生样本数。审计文件为validation目录下independent-native-audit.json，SHA256 b6f65f0a4f7789eac7b9aff7db769c281c0612c8dc1e89c6adf45791b2f12c07；110旧tracked文件、15旧证据入口文件、1个安装源码和9个冻结新源摘要保持，本轮2768个build成员完整核对。未遍历全部旧归档，不把这些入口摘要校验称为所有旧工件逐字节深审。
+
+当前三项仅证明此候选在成功注册kqueue后的受控正常路径，不证明stock node-pty或产品代码已修复，也不覆盖macOS x64、早退/ESRCH竞态、其他U1/W1、真实环境销毁/并发或实际Agent/Host/Webview/packaged。旧普通后代失败及全部旧实验保留，不追认通过。
+
+下一最小阶段仅冻结macOS U1-6：真实取得kqueue后，在注册调用点注入明确的合成失败，检查唯一reaper、已取得资源和既有数据责任；不能将本轮正常成功当作异常路径已通过。本轮不再追加原生输入或通用工具门槛；生产API、隔离策略和停止预算仍待选定。
