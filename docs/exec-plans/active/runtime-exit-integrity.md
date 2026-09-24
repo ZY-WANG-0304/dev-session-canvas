@@ -6,6 +6,8 @@
 
 ## 目标与全局图景
 
+第26阶段已取得固定macOS U1-0正常路径三次3/3：输入32312fe7的唯一push run35900772851 attempt1成功，runner及可信本地离线复核通过，独立raw/来源保持审计25206检查零失败。真实Darwin创建链、退出等待、尾部消费及所持资源在同一次执行中结算；只证明该环境的正常已注册路径，不改业务、不扩为macOS全路径或产品验收。
+
 用户在 Agent/Terminal 自然结束时，当前有效终端页面收到完整、按序的主进程尾部，即使程序返回非零退出码；自身已接收、排队或消费中的内容不能因提前清理而丢弃，最终终端状态正确应用并释放资源。尾部保证从主进程成功写入终端的数据开始，不包含程序自身尚未 flush 的应用缓冲，也不补造生产者未写出的 UTF-8/控制序列内容。主进程退出、真实输出结束、页面完成应用和主动取消必须区分；不能把固定等待、socket close 或最终 revision 当作全部输出已交付，也不能将超时/截断标成完整 EOF。不用把正常结束全部降级为中断来掩盖缺失。
 
 2026-09-20 用户进一步确认：画板只管理 Terminal/Agent 执行会话及其终端资源，不逐个托管、追踪或恢复后代。Terminal 内部子进程/命令/后台任务由 shell、应用和操作系统管理，Agent 工具后代由 Agent 管理；实际主进程退出后，不默认保持节点或终端等待普通后代结束或接收其未来输出。主进程仍运行时，同一终端收到的输出不能按后代来源过滤。父子关系不等于前后台关系，通用后代实验不自动等于交互 shell 后台作业或真实 Agent 缺陷。
@@ -16,10 +18,20 @@
 
 ## 进度
 
+- [x] (2026-09-24，第26阶段运行前) 按原生失败隔离第26节冻结Darwin真实创建/等待/源结束/释放协议，仅macOS U1-0三次，原预算与内容门槛不变；两树设计与计划同步。
+- [x] (2026-09-24，第26阶段) 八个Darwin专用源文件已实施，保留同源helper/原生构建绑定；旧Linux guard、源与证据不改。
+- [x] (2026-09-24，第26阶段) 已按确定的build/run/verify接口新增macOS-only push workflow，YAML解析通过；旧workflow不变，不安装node-gyp，不增加native自测。
+- [x] (2026-09-24，第26阶段) patch2/2与verifier8/8首次通过，补master取得绑定后同8组复核通过；七JS语法检查、接口及独立整链静态复审通过，九个源/workflow文件摘要已冻结。本地没有Darwin构建或会话。
+- [x] (2026-09-24，第26阶段) fetch后rebase origin/main为up-to-date，仅push诊断输入32312fe7；唯一run35900772851 attempt1成功，runner同10组纯测试和三次原生3/3分别通过，无dispatch/rerun，主树未推送。
+- [x] (2026-09-24，第26阶段) 完整ZIP下载与GitHub digest一致，runner及可信本地保存复核均3/3、exit0；build/load零会话，三次真实2104字节/read0、完整终态、wait1792/exit7与逐资源结算成立。
+- [x] (2026-09-24，第26阶段) 独立raw/来源保持审计25206检查零失败，其中三case15944检查；110旧tracked、15旧证据入口和1个installed source保持，不泛化为旧15GB全量深遍历。
+- [x] (2026-09-24，第26阶段收口) 两树各七份文档同步；第26节一致、旧第2至25节保持，九个冻结源/workflow与32312fe7及冻结摘要一致。两份计划12个章节齐全，过期未运行措辞已修正，git diff --check通过；只做本地文档提交，不追加push或runner。
+- [ ] 下一最小项仅先冻结macOS U1-6合成注册失败的唯一reaper/逐资源协议，不扩其他U1/W1、早退或产品链路。
+
 - [x] (2026-09-23，原生第25阶段) 冻结U1-5真实close后扣留上层回执协议，区分audit/被测状态与各自时钟；复用原native v4，不新增构建。
 - [x] (2026-09-24，原生第25阶段) 四个v6文件、19/19纯测试和静态复审完成，冻结前语法/暂存格式检查通过；复用旧native v4，无新build，唯一U1-0一次/U1-5三次4/4，采集及独立进程保存复核exit0。
 - [x] (2026-09-24，原生第25阶段) 独立原始事实/保持审计16134项零失败（四case自身2061项），170旧工件/34旧源/4冻结源/11快照/五旧build保持；两树文档同步，不改业务、旧证据或runner。
-- [ ] 下一最小阶段先冻结macOS U1-0正常基线与创建/等待/源结束/释放差异，再按已有runner做有限独立输入；本轮未适配、未runner/push，不直接套用Linux协议。
+- [x] 第25阶段安排的macOS U1-0已由第26阶段新构建及唯一三项3/3取得限定证据，不直接套用Linux协议，不重判历史结果。
 
 - [x] (2026-09-23，原生第24阶段) 冻结U1-4真实wait后跳过通知的合成closing协议；明确真实Push消耗引用与合成结果仍持有引用的差异，payload/TSFN各自单次收尾。
 - [x] (2026-09-23，原生第24阶段) 八个新native v4/JS v5文件、61/61纯测试及静态安全复审完成；冻结前暂存检查通过，首次隔离build/load零native calls，唯一U1-0一次/U1-4三次4/4，采集和独立进程保存复核均exit0。
@@ -158,6 +170,8 @@
 
 ## 意外与发现
 
+第26阶段在macOS26.6.2 arm64/Darwin25.6.0真实完成posix_openpt/posix_spawn/同源spawn-helper及kqueue/kevent后唯一waitpid，不能套用Linux forkpty/EIO。三次read调用为5/5/4次、parser各3次，前两项多一次EAGAIN而最终均为正容量read0；每项56个native事件，writeGate前缀34个、close前51个，实际kqueue/master各单次close0。正常已注册路径成立并未覆盖早退/ESRCH或注册失败；旧run35527528410及其失败仍独立保留。
+
 第25阶段实测三个U1-5的audit在请求后1.370315/3.658132/1.627234ms到达，first unknown在100.997445/100.679944/100.362286ms冻结，observer独立hold均至少100ms后才允许receipt；首次unknown保持，current补证released且只close一次。四项ready native都是24事件/close0，最终29事件/close1，非master资源先完成。未知回执与已释放资源可同时成立，不能据此称OS泄漏；未额外制造迟到timer竞态。
 
 第25阶段运行前核查：failureCloseMaster正常返回JS snapshot不代表真实close成功，CloseMasterOwned的bool只代表已尝试。必须独立核value/errno与closeCalls。旧driver先close再等wait，U1-5须先完成真实wait/通知资源/read/parser，再等待释放许可；audit到达不能替代held回执，timer和receipt入口都复查单调deadline。
@@ -288,6 +302,10 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-09-24（第26阶段结果）：macOS正常已注册路径的三次3/3与10组纯测试、build/load零会话及25206项独立审计分账。输入32312fe7只push一次，run35900772851 attempt1无dispatch/rerun；完整ZIP核摘要，可信本地离线3/3通过。下一最小项仅建议冻结macOS U1-6合成注册失败协议，不把正常read0、wait及单次释放外推为异常/早退或产品通过。
+
+2026-09-24（第26阶段运行前）：只执行macOS U1-0三次；fixture ready与kqueue注册均成立后才放行原负载，早退/ESRCH不在本轮覆盖。真实read0、wait exit7、kqueue及master单次close0、完整消费分别验收。新增macOS-only push入口复用现有托管runner，不改旧矩阵，不扩D3/D4、容量或生产接口研究。
+
 2026-09-24（第25阶段收口）：19项纯测试、唯一四项原生及独立审计分账，复用native v4而非新编译。只有receipt更新被测当前证明，audit和首次unknown分别保留；正常资源成功与观察及时性分别判定。下一最小项转向macOS U1-0实际创建/等待/释放差异冻结，不再追加Linux工具研究或宣称全平台生产通过。
 
 2026-09-23（第25阶段运行前）：复用native v4及binary6e96a9dc，U1-5仅JS delivery-held，config显式nativeScenario/fixtureScenario=U1-0。已有IPC按消息类型分开audit与被测receipt；同token/唯一operation单次close，首报unknown与迟到released并存。100/1000ms及hold至少100ms沿用第9节，不是生产期限。
@@ -411,6 +429,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
+第26阶段八源实现、10组定向纯测试、隔离build/load和唯一macOS U1-0三次3/3完成；run35900772851 attempt1及runner/可信本地离线复核均通过，完整ZIP摘要与GitHub一致，独立raw/来源保持审计25206检查零失败。真实2104字节/read0、完整终态与光标、wait1792/exit7及逐资源结算均有原始事件，未改预算或重跑求绿。本地master绑定增强后复核的是同8组、runner复核的是同10组，不累加覆盖；build/load零会话与三次原生分账。下列第25阶段及更早结果按历史时点保留，产品退出完整性仍未交付。
+
 第25阶段已完成四文件实施、19项纯测试、唯一U1-0/U1-5四项4/4及独立进程离线复核。三个held样本均真实close早已成功，但被测first仍按截止报告unknown，之后同operation receipt补证released且首报不变，没有再close。全部完整尾部/state、真实wait/正常通知和逐资源结算成立；独立raw/保持审计16134检查零失败，零新增native。此为Linux回执观察分离的限定证据，不是OS close挂起、跨平台或产品整链验收；下一步先冻macOS U1-0基线。
 
 第24阶段完成协议、八文件实施、61项纯测试、首次build/load、唯一四项原生及独立离线复核，有限4/4；直接raw/保持审计零失败。U1-4未交付通知不抹掉真实exit7，2104字节/EIO/完整state及各owner结算成立。没有真实closing/环境销毁或产品链路结论，历史失败不重判；当前停在本切片收口，下一最小项为Linux U1-5释放回执扣留，不再采集本轮矩阵。
@@ -479,6 +499,8 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 上下文与定向
 
+第26阶段基线为主树4d676fb2、诊断树a0f412fd，正式协议为docs/design-docs/runtime-native-failure-isolation.md第26节；新实现已冻结诊断提交32312fe7并完成唯一run35900772851 attempt1。八源和workflow、构建/原生工件只在独立runtime-exit-integrity-native-candidates树；主运行时树只同步文档、未推送。旧Linux v1-v6及旧macOS三arm实验冻结，不原地改写。
+
 `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts` 是 node-pty 接入边界，输出回调表示已交付的数据，进程退出通知不天然等于输出排空。`src/supervisor/runtimeSupervisorMain.ts` 的 `bindSessionProcess()` 与 `finalizeSession()` 将已接收事件按每会话串行队列执行；admission 表示是否继续接受新事件。`src/panel/CanvasPanelManager.ts` 还直接管理 snapshot-only 的 Agent/Terminal 退出，两条路径都要纳入设计。
 
 `src/common/runtimeSupervisorProtocol.ts` 负责 Supervisor 与 Host 的契约，`src/common/protocol.ts` 是 Host 与 Webview 的共享消息。`src/panel/runtimeTerminalReadRelay.ts` 与 `src/webview/terminalPagedProjection.ts` 管理读者、连续分页和终态呈现。revision 是已接收事件的位置，不是源进程预期输出的字节数。若需要修改这些接口，必须同时验证消费者和旧协议。
@@ -486,6 +508,8 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 平台 provider 的现状见安装的 `node_modules/node-pty/lib/unixTerminal.js`、`windowsPtyAgent.js`、`windowsTerminal.js` 和 native 源码。已有证据位于 `docs/design-docs/runtime-terminal-tail-diagnosis.md`、`docs/design-docs/runtime-terminal-cross-platform-diagnosis.md`；固定版本来源已在文档摘录，不要求接手者依赖本机 `.debug/` 才理解问题。不能直接编辑 node_modules 作为生产修复。
 
 ## 工作计划
+
+第26阶段实施、冻结输入、唯一三次原生采集、完整下载、可信入口复核及独立raw审计已完成，两树文档和最终范围检查完成，以本地文档提交收口，不追加运行或推送。下一最小项建议只做macOS U1-6：先冻结实际取得kqueue后合成注册失败、唯一reaper和逐资源结算协议，再另建输入；不是直接套用Linux，不宣称OS注册失败已复现。其他U1/W1、早退/ESRCH、真实Agent及产品链路继续开放，不扩大工具框架或生产接口研究。
 
 第25阶段实施、唯一原生采集、离线复核与独立raw审计已完成，当前只收口文档和本地提交，不再运行该矩阵。下一最小阶段先冻结macOS U1-0基线，核对其真实创建/等待/源结束/释放与Linux的差异，再依托已有runner做有限独立输入；本轮不实施平台适配或触发runner/push。旧各批及下段第24阶段安排按历史时点保留，生产API/隔离策略/停止预算未选定。
 
@@ -560,6 +584,10 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+第26阶段实施与下列命令均在独立诊断树执行，runner固定Node22.23.2；HEADERS指解压所得node-v22.23.2目录。先运行node --test scripts/diagnostics/macos-native-baseline-patch-v1.test.mjs scripts/diagnostics/macos-native-baseline-v1.test.mjs，失败不进入构建。再运行node scripts/diagnostics/build-macos-native-baseline-v1.mjs --output macos-native-build --dependency-root "$PWD/node_modules" --headers "$HEADERS/include/node"，候选以clang及匹配headers构建pty.node/helper，不安装node-gyp；load预检零会话，构建失败不进入采集。
+
+唯一三项采集命令为node scripts/diagnostics/diagnose-macos-native-baseline-v1.mjs --output macos-native-evidence --binary "$PWD/macos-native-build/pty.node" --dependency-root "$PWD/node_modules"；workflow以spawnSync timeout180000保留status/signal/stdout/stderr，内层原预算不变。另进程只读复核命令为node scripts/diagnostics/diagnose-macos-native-baseline-v1.mjs --verify-saved macos-native-evidence。新增.github/workflows/runtime-macos-native-baseline.yml只由诊断分支本轮文件首次push触发，不dispatch旧入口；这些命令已在唯一run35900772851 attempt1执行成功，三项原生及保存复核均3/3；首次结果保持，不重跑。完整下载后，本机可信入口另以--verify-saved、--build-directory和--dependency-root绑定保存证据、下载build及本机只读依赖，首次离线复核exit0。
 
 第25阶段已在/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates执行。NODE22指/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node；DEPS指/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2/node_modules，只读使用。NODE22 --test scripts/diagnostics/native-failure-v5.test.mjs首跑11/11，新native-failure-v6.test.mjs首跑8/8，分组日志完整保存；冻结四源前逐文件node --check和git diff --cached --check均exit0。
 
@@ -692,6 +720,8 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
+第26阶段各项要求真实posix_spawn/helper与同一child身份、ready和kqueue注册双前提、成功写2102/读2104字节、正容量read0、完整headless终态/光标x6/y4、真实wait1792/exit7及唯一正常通知。kevent返回后同owner单次close kqueue，read/parser及非master资源结算后单次close master，真实返回/error均0；资源或证据不足停止准入。旧19纯测、Linux4项不计本轮三次macOS原生验收。
+
 第25阶段新Linux四项已经满足冻结判据：U1-5在ready前完成真实wait/完整输出/消费/非master资源，caller100ms前收到真实close0 audit却不据此更新被测状态，到截止first=unknown；observer至少hold100ms后放行同operation receipt，current=released且first不变。normal在4.461962ms首次released，无held许可。19项纯测试、四个原生样本及独立离线/原始事实检查分账，旧结果不重判；macOS/Windows及真实失败/挂起/生产链路仍须独立验收。
 
 第24阶段固定新U1-0一次/U1-4三次已通过，两场景真实wait1792/exit7、完整2104字节/EIO/state/光标及逐资源结算均有证据。U1-4实际分配payload后跳过API，保留合成status16、api未调用与callback缺席，再单次free/真实Release/finalizer/join，没有伪造正常通知。只读独立复核和raw审计通过；实际napi_closing和环境销毁仍未测，源/纯判定与native次数分开。下一项U1-5须先冻结具体回执路径与首次unknown判据，不能把audit已知close成功提前写入被测观察。
@@ -736,9 +766,13 @@ HPCON首次原矩阵12项全部有效，六control及两个explicit-close通过�
 
 ## 幂等性与恢复
 
+第26阶段新建独立build/输出目录且拒绝覆盖，固定输入首次push只运行一次，不追加dispatch/rerun筛绿。构建或前提失败保留首次日志，不计PTY通过；修订另冻输入而不改旧结果。可重试下载传输，不重跑原生；只控制直接创建对象，未知owner停止准入，不按日志PID或陌生fd清理冒充释放。
+
 候选试验不得修改用户 storage 或替换仍承载 live 会话的 Supervisor；仅控制本次创建的 fixture。证据目录唯一，不覆盖初次失败。生产方案需要可回滚的 capability/adapter 选择和旧 session 原绑定保留，回滚不得伪造完整性或强制迁移。取消和回收必须幂等，不因重试重复输出、重复终态或误删其他读者。
 
 ## 证据与备注
+
+第26阶段固定输入32312fe7d7f8a1c0268cc392706d1a2e693611b6、唯一push run35900772851 attempt1；runner工件在诊断树.debug/macos-native-baseline-v1-run-35900772851/。artifact10769350773共12510695字节，完整ZIP的SHA256 a6363a2ca09376354cf61c5e148deb80337cea2dd1202ceda8edbdbc92731a06与GitHub digest一致。pty.node为65d0ccd0dbf55c13b971d4ffcbbbb8a3f5c994071b75c2e33315d2c65c53743b，helper为6a689e86f518779d34a4521494ac6f5d3e9da819f322280eb32a3f941f7a6296；Node/headers22.23.2、node-pty1.2.0-beta.12/addon7.1.1、SDK26.5/Apple clang21、image20260907.0351.1均留证。可信本地入口以新进程复核3/3、exit0，不执行归档源码或加载Darwin binary。独立审计.debug/macos-native-baseline-v1-validation-first/independent-native-audit.json SHA256 b6f65f0a4f7789eac7b9aff7db769c281c0612c8dc1e89c6adf45791b2f12c07，25206检查零失败，其中三case5317/5317/5310共15944；110旧tracked、15旧证据入口、1个installed source、9冻结新源及build2768成员保持，不声称旧15GB全量深遍历。
 
 第25阶段工件位于诊断树.debug/native-failure-v6-linux-first和.debug/native-failure-v6-validation-first，原build仍.debug/native-failure-v4-build-first。独立审计independent-native-audit.json的SHA256为a24f0bce71d097a63d53094f81b409ce8a55a6efb7d399b7cb730ded35548518；16134检查零失败，其中四case自身2061项，170旧工件/34旧源/安装源/4冻结源/11快照及五旧build保持。最大operation473.151370ms、observer after-await552.753787ms、caller close593.679338ms、writer receipt157.131539ms/close174.441986ms。各项回执时间与完整来源见正式设计第25节，检查数不是原生样本数，采集绑定未提交快照而非后续commit。
 
@@ -825,6 +859,8 @@ G07补证起点是本运行时树ebe303e7及独立诊断树2f630cd9。第14节�
 2026-09-20 runner 合并后的验证：`typecheck`、`build`、bridge、journal 和 Supervisor 聚合回归全部通过；聚合包含 checkpoint refresh、分页投影、无 completed 历史和退出分页。Node 25.6.0 与 Electron-as-Node 39.8.7 各 39 项契约模型、17 项实际 Supervisor 注入通过，输出目录/哈希及局限见设计第 14 节。没有运行全量 UI、真实 provider、packaged 或新的原生候选矩阵；相对 `28055e13` 不修改业务、既有测试、依赖或 workflow。
 
 ## 接口与依赖
+
+第26阶段只新增Darwin诊断接口，复用冻结v1 fixture/writer、预算和headless序列化；Node22.23.2、node-pty1.2.0-beta.12及其addon7.1.1固定。helperPath非空且可核来源，源结束单列darwin-read-zero，native记录创建/kevent/wait/释放。observer→caller→driver→fixture与独立writer责任链及29/30/32/35/36秒、writer1/2秒预算不变，不新增业务API。
 
 第25阶段不新增native导出或业务API，复用native v4/6e96a9dc。新JS config显式nativeScenario/fixtureScenario=U1-0及releaseOperationId=token+':master-close:1'；driver report.release记录ready/request/audit/receipt，caller.release记录r0/deadline/独立audit/receipt/immutable first/current。observer仅通过release-permit和receipt-permit控制本次单一operation，不把旁路事实导入被测状态，不恢复进程或历史。
 
@@ -940,3 +976,7 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-23，通知未交付与真实资源责任）：完成第24节协议、八个新隔离文件、61项纯测试、首次build/load及唯一U1-0/U1-4四项4/4；独立进程离线复核与raw/保持审计通过，两树文档同步。合成closing与实际Push的引用消耗不同，未入队payload先free、仍取得的TSFN单次Release；真实exit7、完整尾部和资源结算不靠伪造callback。下一步只先冻结U1-5释放回执扣留协议，真实closing/环境销毁/其他平台/产品整链未验收，本轮不追加实验或工具门槛。
 
 修订记录（2026-09-24，真实释放与未知回执）：完成第25节协议、四个v6隔离JS文件、19项纯测试及唯一U1-0/U1-5四项4/4；复用旧native无新build，另进程离线复核和直接raw/保持审计通过，两树文档同步。audit早到不改变首次unknown，同operation迟到receipt不再close、不覆盖首报；日期跨入09-24按实际运行记录。下一最小项转向macOS U1-0平台协议，旧失败及未验收边界保持，不新增工具门槛、不改业务、无runner/push。
+
+修订记录（2026-09-24，Darwin正常路径冻结）：第26节及两树计划各活章节已同步，只实施macOS U1-0三次的独立输入与专用workflow。保留真实创建/helper/kqueue/wait路径、原输出和预算，完整来源与逐资源释放分别验收；冻结时无本轮构建或原生结果，不改旧实验或扩充通用工具门槛。
+
+修订记录（2026-09-24，Darwin正常路径结果）：固定32312fe7的唯一run35900772851 attempt1成功，10组定向纯测试、零会话build/load和三次原生3/3分账；完整ZIP摘要核对、可信本地离线3/3及独立raw/来源保持审计25206检查零失败。下一项先冻结macOS U1-6合成注册失败的唯一reaper/逐资源协议，其他平台路径与产品边界不改，主树不推送。
