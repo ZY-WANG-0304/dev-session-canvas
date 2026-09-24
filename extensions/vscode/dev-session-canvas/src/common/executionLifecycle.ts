@@ -51,6 +51,7 @@ export type ProviderMessage = Readonly<{ identity: ExecutionIdentity }> & (
   | Readonly<{ type: 'ready'; capabilities: readonly ['execution-lifecycle-v1'] }>
   | Readonly<{ type: 'operationObservation'; operationId: string; result: OperationResult }>
   | Readonly<{ type: 'processResult'; result: ProcessResult }>
+  | Readonly<{ type: 'resourceAcquired'; resourceId: string }>
   | Readonly<{ type: 'resourceResult'; resourceId: string; operationId: string; result: ResourceResult }>
   | Readonly<{ type: 'sourceEnd'; finalFrameId: number; disposition: SourceDisposition }>
 );
@@ -67,6 +68,7 @@ export type ParentMessage =
     type: 'requestStop'; identity: ExecutionIdentity; operationId: string; mode: 'graceful' | 'force';
   }>
   | Readonly<{ type: 'cancelOutput'; identity: ExecutionIdentity; operationId: string; reason: string }>
+  | Readonly<{ type: 'sourceEndAccepted'; identity: ExecutionIdentity; finalFrameId: number }>
   | OutputAcknowledgement;
 
 export interface OutputFrame {
@@ -164,6 +166,12 @@ export function parseProviderMessage(value: unknown): ProviderMessage {
       assertKeys(record, ['type', 'identity', 'result']);
       message = Object.freeze({ type: 'processResult', identity, result: parseProcessResult(record.result) });
       break;
+    case 'resourceAcquired':
+      assertKeys(record, ['type', 'identity', 'resourceId']);
+      message = Object.freeze({
+        type: 'resourceAcquired', identity, resourceId: readString(record.resourceId, 'resource id')
+      });
+      break;
     case 'resourceResult':
       assertKeys(record, ['type', 'identity', 'resourceId', 'operationId', 'result']);
       message = Object.freeze({
@@ -220,6 +228,12 @@ export function parseParentMessage(value: unknown): ParentMessage {
     case 'accepted':
     case 'consumed':
       message = parseAcknowledgement(record);
+      break;
+    case 'sourceEndAccepted':
+      assertKeys(record, ['type', 'identity', 'finalFrameId']);
+      message = Object.freeze({
+        type: 'sourceEndAccepted', identity, finalFrameId: readInteger(record.finalFrameId, 'final frame id', 0)
+      });
       break;
     default:
       throw new TypeError('Unknown parent message type.');

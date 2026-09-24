@@ -14,12 +14,14 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-24
+updated_at: 2026-09-25
 ---
 
 # 退出完整性生产接入与故障域收敛
 
 ## 1. 当前结论与阶段边界
+
+2026-09-25 S3已实施Linux真实PTY provider有限接入，新native构建及零调用加载成功。首次真实两场景0/2，均因父侧`Control send failed`失败，但主体、PTY及provider均确认回收；首次证据原样保留。随后补显式源结束确认，adapter 43项/channel 6项/core 2项/source 1组纯回归及类型、bridge检查通过，修后没有原生重采集，不能宣称S3已通过。设计、失败与下一有限步骤见第15节；不接现有业务或运行runner。以下S2及更早结果按发生时点保留，不覆盖当前阶段。
 
 2026-09-24 S2 已完成本机 Linux/Node 的真实异步 transport/provider 启动链与零 PTY 普通 pipe 受控验证，输入为主树 `e9a3b3f7`、诊断树 `65d2eb32`。首次真实矩阵7/7通过：8次transport尝试、7个真实provider、4个受控subject，8个transport close包含1次失败spawn，并非8个真实进程。实现、首次错误、独立复审修正及未重采集的后置窄修见第14节；不接现有业务、native或runner，不关闭PI-01/02/03。S1第13节保持历史原文；以下S1及更早阶段的段落是历史，不覆盖本段。
 
@@ -370,3 +372,59 @@ S2交付实际模块和受控完整启动/关闭路径，不新增通用writer�
 下一有限阶段推进首个平台的真实PTY provider接入，优先利用本机Linux与既有受控node-pty工作，不再安排另一轮泛化工具增强。在首次native取得前，必须把本平台的read/decoder/编码预算、安全停止和逐资源释放条件绑定到本模块；以固定主体尾部、最终状态与资源收尾为验证目标，保留失败、unknown和主动取消的真实区别。只解决影响该次判断和实验安全的前置项，不将全部U1/W1或跨平台工具完备设为门槛。
 
 S2尚未证明native同步阻塞隔离、真实终端输入/resize、owner失联的OS级收尾、两种运行模式的authority/reader最终应用、真实Agent启动器生命周期或packaged接线。macOS/Windows仍需各自原生证据；Windows退出对象因合法引用继续存在不自动算bug。后续须分别关闭这些门槛，不能凭本轮7/7或纯测试数目宣布产品退出完整性完成。
+
+## 15. S3：Linux 真实 PTY provider 有限接入
+
+### 15.1 本轮目标与来源
+
+2026-09-25从主树`674eabfc`、诊断树`d3afd150`继续。只接通独立provider、真实Linux PTY、共享adapter和实际headless消费屏障，验证固定主体尾部、最终终端状态及原生资源收尾；不切换现有Host/Supervisor/Webview入口，不改manifest、root、generation或旧live会话。诊断树只同步文档，全部旧候选/断言/结果保留。
+
+新native候选在主树`extensions/vscode/dev-session-canvas/native/`维护，通过`scripts/build/build-linux-execution-provider.mjs`在新的输出目录构建。复用固定node-pty 1.2.0-beta.12的Unix forkpty/termios/exec实现、node-addon-api 7.1.1及既有官方Node22.23.2 headers；只对副本应用精确源码摘要与唯一锚点补丁，不改安装源、不加载stock prebuild或旧诊断binary。构建记录来源摘要、命令及binary，显式绝对路径加载。测试authority/provider/subject均采用本机已有Node22.23.2；这与S2的Node25运行分开，不声明Electron或其他平台适用。
+
+### 15.2 单一原生 owner 与事实
+
+本候选不建立旧wait线程、TSFN或通知payload：provider事件循环独占`waitpid(pid, WNOHANG)`，只在返回自身pid且合法终态时解释status。每次未确认轮询异步让出，固定5ms仅为本切片调度参数，不是生产响应SLA。没有第二reaper。停止在同一次native调用内先poll：已回收或ECHILD/其他未知均不kill；返回0时未回收的direct child仍保护PID身份，再沿捕获owner发送TERM/KILL，各最多一次，不接受外部数值PID。旧v4线程/TSFN证据不代证这条新路径。
+
+在fork前绑定一次性token，fork返回后先记录实际master/child，再创建JS结果；创建中抛错仍可读取所有权快照。master仅在O_NONBLOCK成功后可读取，固定最大4096B；真实read=0或Linux终端EIO才是源结束，EAGAIN/EINTR异步重试，其他错误为error。close只在无read调用在途后对原owner单次执行，失败/不确定不重试数值fd。native fork/fcntl/read/close仍可能阻塞，独立provider隔离父authority但不证明全部native调用有硬时限。
+
+实际资源为PTY master及direct child的回收责任，另由JS记录read/decoder暂存的源责任；不为未创建的线程/TSFN伪造released。新增`ProviderMessage.resourceAcquired`，与resourceResult同一紧急FIFO发送；任何终态前先报告已取得责任。父provider-control仍拒绝provider登记/释放，重复或超限登记沿已有sticky不完整账本处理。start已发但创建失败不能证明主体/源建立时保持failed/unknown与准入冻结，不以exit0/EOF或父provider close冒充安全退役；本轮不宣称该分支完整交付。
+
+### 15.3 读取、消费与取消
+
+沿用16帧/256KiB未消费信用，加一个预分配的4096B原始read槽、最多3B UTF-8 decoder尾、一个编码/发送暂存槽；不建立无界read队列。上一read的文本经过`channel.write()`后才开始下一read；信用满时最多保留这一个已读片段并等待，控制和wait继续独立推进。初始化按实际identity与最大frameId信封验证`6 * (4096 + 3)`最坏JSON转义仍不超过32KiB payload。此有限预算包括原始/解码/编码副本，不声称OS PTY缓冲、xterm或整个进程RSS被256KiB覆盖。
+
+主体退出不关闭已拥有输出。正常源结束后flush decoder，所有已读文本交给同一channel；sourceEnd仍等accepted、不等consumed。父消费使用现有`SerializedTerminalStateTracker.write/flush`的真实解析屏障，成功后才归还信用；对照固定预期文本和独立期望终态，不用“入队完成”代替应用完成。
+
+requestStop只停止主体，不自动丢输出。cancelOutput停止下一read，但当前已读/解码/发送内容继续移交，随后明确interrupted；信用未恢复不伪造已完成取消。owner通信丢失属于失败清理，不能补造EOF或资源已释放；只沿原native owner控制及结算。正常退出后普通后代是否仍持有PTY、生产排空时限及平台owner失联保障仍需后续确认，本轮不将其扩成必须托管任意后代。
+
+### 15.4 固定验证与安全停止
+
+先执行零PTY类型/接口及有限source回归，构建并仅加载新binary核对导出；独立审查后才运行新入口`scripts/test/test-linux-execution-provider.mjs`。固定两个真实场景，各一个provider/一个无后代的Node主体，串行运行：正常exit7精确尾部/真实EOF/最终状态/逐资源释放；超过信用窗口的输出在消费暂停时仍可stop，恢复消费后保留所有已取得内容并结算。禁止自动重跑筛绿，失败原样保存；只有资源确知安全才继续第二项。
+
+每场景显式30秒观察预算，受控subject自带20秒安全退出，清理预算另给TERM 2秒、KILL 2秒及资源观察2秒。这些只供本次受控测试，不成为产品默认值。清理优先恢复消费、向实际主体请求停止并等待原owner确认；未知主体未确认结束时不直接杀provider后继续创建。固定fixture无后代且自主退出可作为实验安全边界，但其退出超时不是产品成功；保留原始输出、结果与资源快照，不增加writer/oracle/归档框架。无runner/push，不重跑旧矩阵。
+
+### 15.5 阶段状态
+
+第15.1至15.4节为实施及运行前冻结；冻结时尚无S3构建、原生执行或通过结论，后续实际结果见15.6至15.7。即使固定两项后续通过，也不关闭跨平台、真实Agent包装链、输入/resize、两authority/reader、native挂起/owner失联、packaged或默认启用门槛。
+
+### 15.6 首次运行与控制收尾修正
+
+首次新native构建及零调用加载成功；固定Node22.23.2、node-pty源码SHA256 `19210adfdaba3cd09809b56bb3281b14e74a8e5efc1f35d467d3c423c30856db`，binary SHA256 `721cd46455897cf90bfb155240bf928442e30ad4558184f2c9f32c55431a3c6a`。构建证据在主树`.debug/s3-linux-provider-build-first/`，加载只核对七项导出，没有创建PTY。
+
+随后首次固定两场景在`.debug/s3-linux-provider-first/`记录为0/2，均因父authority的`Control send failed`失败。normal主体exit7、native读取2108B；flood主体SIGTERM、读取73472B。两provider均自然关闭，native三项责任及父控制资源最终released，`allOwnershipSettled=true`，两项cleanup为safe且无额外动作。normal首报unknown保留，迟到released不覆盖首报；不能因最终资源回收而将矩阵追认为通过。
+
+代码链存在明确竞态：channel仅等accepted便可关闭；adapter消费完成仍发送consumed；transport拒绝已关闭通道的发送；adapter又把任意发送失败立即当作整个控制链失联。反向process/resource/sourceEnd可能尚未投递，于是产生假unknown并永久冻结准入。首次trace未记录失败消息类型，只能说时序符合该竞态，不能声称原生记录已直接证明失败消息就是consumed，也不能据此归因操作系统或PTY丢尾部。
+
+采用显式且有界的源结束确认修正，不加入等待反向事实的猜测时间窗，也不豁免发送错误：在`ParentMessage`增加`sourceEndAccepted(finalFrameId)`。父adapter收到并校验合法sourceEnd后停止生成输出信用回执，清除尚未发送的冗余accepted/consumed；新确认沿既有单send队列排在已经在途的发送之后。provider发送sourceEnd后等待同identity和精确finalFrameId的确认才允许正常close，确认不归还信用、不表示consumer完成，也不替代process或任何资源释放事实。任何start/stop/cancel/accepted/consumed/新确认的真实发送失败仍沿原fault/unknown逻辑，缺失确认不能靠超时伪装成功。确认期间stop/cancel继续服务，sourceEnd后的本地消费及authority退役屏障不变。
+
+该修正先补直接加载真实adapter/channel的有限纯回归，覆盖确认早到/晚到、消费未完成即可正常关闭、旧回执在途先排空及真实发送失败仍冻结。不重跑或修改首次原生归档；后续原生采集必须冻结新输入、新目录，不能覆盖本次0/2。本轮仍不扩展诊断框架或接入现有业务。
+
+### 15.7 修后验证、证据边界与下一步
+
+首跑前adapter 38项/channel 1组、provider core 2项、native source 1组和类型/bridge验证通过；首次新native构建及零调用加载也成功。这些preflight没有发现真实控制关闭竞态，不能代替首次运行结果。
+
+首败后在内存独立核对保存内容：normal的2108B与冻结预期精确相等；使用首次归档tracker重放得到24行预期内容、红色宽2中文、光标(6,4)，baseY及viewportY均0。flood的73472B均为x且等于native readBytes，暂停时16帧/consumed0，SIGTERM与child释放在首次消费完成前确认。首次测试在authority断言失败后没有执行live最终终态断言，facts中也未保存terminal/serialized；离线重建不能补认它已经执行或通过。flood只证明已读取部分移交相等，不承诺被停止主体的完整1MiB写入。
+
+修正后执行Node22.23.2的`test-execution-session-adapter.mjs`为43/43，`test-execution-provider-channel.mjs`为6/6，`test-linux-execution-provider-core.mjs`为2/2，`test-linux-execution-provider-source.mjs`为1组通过；这些均无PTY或主体进程。`npm run typecheck`、`npm run test:execution-session-bridge`及两个provider fixture的独立strict TypeScript检查通过。S2 fixture仅将手写命令类型替换为共享`ExecutionProviderCommand`，未改主体、断言或原归档。独立只读复审确认旧信用回执必须排在源确认之前、正常close不等消费、任何真实send失败仍保留；未发现该修正的新确定性阻塞。不声称每个新增纯断言都先红后绿，也不把纯验证等同修后原生通过。
+
+下一阶段只冻结修后输入和新目录，对相同normal/flood两个场景作一次新的原生采集并如实结算；不覆盖`.debug/s3-linux-provider-first/`、不重跑旧矩阵筛绿、不扩充通用工具门槛。本轮无修后原生采集、runner或push；S3验收仍未通过，PI-01/02/03及跨平台、真实Agent、业务接线、owner失联等独立门槛继续开放。

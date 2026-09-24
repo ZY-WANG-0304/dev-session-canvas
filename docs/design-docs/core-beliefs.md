@@ -72,7 +72,7 @@ Windows已退出进程被句柄引用而继续保留对象是正常语义，不�
 
 纯测试、构建、原生采集和离线复核分别记账。第27.10节唯一1a88d0cc/run35963751067 attempt1的macOS U1-6三次3/3及可信保存复核，不与30项纯测试或旧U1-0合算；准备期guard-only子进程和stub binary仍不是原生证据。真实取得kqueue后合成EIO、未调用注册/等待kevent的有限成功，也不证明真实系统注册错误。unknown停止准入、not-run无raw/evidence及可信离线不执行归档代码的边界不变。
 
-生产接入不能从有限原生成功直接跳到默认启用。当前S2见 `runtime-exit-integrity-production-integration.md` 第14节：主运行时树已实施真实异步transport/provider channel及必要adapter窄修，S1回归35组与typecheck通过，真实普通pipe七组首次7/7通过；设计仍比较中/验证中，不计产品修复。本阶段仅Linux/Node v25.6.0普通pipe子进程，零PTY、无native addon、无现有业务导入/reader接线，不代表macOS/Windows/Electron或真实Agent通过。accepted只转移内容责任，信用须等消费屏障后归还；注入消费Promise不等于真实xterm消费。父侧资源只能由真实父侧证明结算，正常disconnect不等于资源unknown；正常owner关闭责任保留，异常崩溃不新增主体或普通后代立即清零保证。不追加工具门槛/全U1-W1、不自动runner/push；下一有限项先冻结Linux真实PTY provider的读取/解码预算、资源责任与安全停止，复用既有原生证据，PI-04/05/06默认启用门槛不降低。
+生产接入不能从有限原生成功直接跳到默认启用。当前S3见 `runtime-exit-integrity-production-integration.md` 第15.6节：Linux/Node22.23.2首次两个真实PTY场景仍为Control send failed/0/2，资源报告已结算及provider关闭不覆盖场景失败。代码复核确认正常关闭与迟到信用发送缺少握手，但首次trace没有失败消息类型，不能断言那次失败消息就是consumed。已实施显式sourceEndAccepted(finalFrameId)，父端合法源结束后停止信用回执，确认等待原在途发送；provider等确认才正常close、不等consumer，真实send失败仍按fault处理。首败后adapter43组/channel6组、core2组、source断言组1、bridge/typecheck及fixture strict通过，独立复核无本切片确定性blocker；未修后原生采集。下一阶段只冻结新输入/新目录复验相同两场景，不扩矩阵/工具或runner/push；旧证据、其他平台、实际Agent、两authority/reader和默认启用门槛保持。
 
 资源总量应区分显式owner引用、预热期间形成的背景和逐会话增量。普通进程控制中的退出后image31、释放23个引用后总数下降23与未知背景+5可以同时成立；保留原计数失败，不以事后换基线替代归属证据。
 

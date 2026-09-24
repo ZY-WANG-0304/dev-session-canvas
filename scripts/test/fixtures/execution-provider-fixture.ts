@@ -2,8 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { write } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 
-import { createExecutionProviderChannel } from '../../../extensions/vscode/dev-session-canvas/src/panel/executionProviderChannel';
-import type { ParentMessage, ProcessResult, ProviderMessage } from '../../../extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
+import { createExecutionProviderChannel, type ExecutionProviderCommand } from '../../../extensions/vscode/dev-session-canvas/src/panel/executionProviderChannel';
+import type { ProcessResult, ProviderMessage } from '../../../extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
 
 const identity = { executionId: process.argv[2], generation: process.argv[3] };
 const mode = process.argv[4];
@@ -84,7 +84,7 @@ async function sendRawControl(message: ProviderMessage): Promise<void> {
   });
 }
 
-async function handleCommand(command: Exclude<ParentMessage, { type: 'accepted' | 'consumed' }>): Promise<void> {
+async function handleCommand(command: ExecutionProviderCommand): Promise<void> {
   if (command.type === 'requestStop') {
     if (subject && subject.exitCode === null && subject.signalCode === null) {
       subject.kill(command.mode === 'force' ? 'SIGKILL' : 'SIGTERM');

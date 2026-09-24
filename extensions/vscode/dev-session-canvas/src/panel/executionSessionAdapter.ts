@@ -327,6 +327,9 @@ export class PreparedExecution {
         break;
       }
       case 'processResult': this.recordProcess(message.result); break;
+      case 'resourceAcquired':
+        if (message.resourceId === 'provider-control') { this.fault('Provider cannot acquire parent control resources'); return; }
+        this.registerResource(message.resourceId); break;
       case 'resourceResult':
         if (message.resourceId === 'provider-control') { this.fault('Provider cannot settle parent control resources'); return; }
         this.recordResource(message.resourceId, message.operationId, message.result); break;
@@ -341,6 +344,11 @@ export class PreparedExecution {
           return;
         }
         this.source = source;
+        // No more production credit is needed. The confirmation follows any in-flight ACK.
+        this.normal.delete('accepted');
+        this.normal.delete('consumed');
+        this.enqueue({ type: 'sourceEndAccepted', identity: this.identity, finalFrameId: message.finalFrameId },
+          'normal', 'sourceEndAccepted');
         if (this.state !== 'settled') this.state = 'closing';
         if (source.kind === 'unknown' || source.kind === 'error') this.dependencies.authority.quarantine('Output source is not confirmed');
         this.maybeSeal();
@@ -398,8 +406,14 @@ export class PreparedExecution {
       Promise.resolve(this.dependencies.transport.send(message)).then(() => {
         this.sendInFlight = false;
         this.pumpControl();
-      }, () => { this.sendInFlight = false; this.disconnect('Control send failed'); });
-    } catch { this.sendInFlight = false; this.disconnect('Control send failed'); }
+      }, () => this.controlSendFailed());
+    } catch { this.controlSendFailed(); }
+  }
+
+  private controlSendFailed(): void {
+    this.sendInFlight = false;
+    this.fault('Control send failed');
+    this.disconnect('Control send failed');
   }
 
   private countRawFrames(extra?: Uint8Array): number {
@@ -497,7 +511,9 @@ export class PreparedExecution {
           this.pendingBytes -= item.byteLength;
           this.consumedThrough = item.frameId;
         }
-        this.enqueue({ type: 'consumed', identity: this.identity, throughFrameId: this.consumedThrough }, 'normal', 'consumed');
+        if (!this.source) {
+          this.enqueue({ type: 'consumed', identity: this.identity, throughFrameId: this.consumedThrough }, 'normal', 'consumed');
+        }
         if (this.pending.length) this.dependencies.scheduler.scheduleTask(() => this.beginConsumption());
         this.maybeRetire();
       }, () => this.consumptionFailed());

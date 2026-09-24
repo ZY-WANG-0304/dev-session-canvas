@@ -14,7 +14,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-24
+updated_at: 2026-09-25
 ---
 
 # 执行会话 Provider 与 Adapter 生命周期契约
@@ -23,7 +23,7 @@ updated_at: 2026-09-24
 
 当前以 `runtime-native-failure-isolation.md` 第27.10节（2026-09-24）为准：唯一输入1a88d0cc的push run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成3个U1-6原生样本，runner及可信本地`--verify-saved`均3/3。真实kqueue取得后以native-substitute合成EIO，真实注册/等待kevent未调用；数据gate关闭、token/PID绑定abort/ack和exit0、唯一waitpid及kqueue/master收尾取得限定证据。完整ZIP、21个runner来源、16个采集来源和2768个构建成员复核完成，独立原始事实核查见第27.10节。30项纯测（前轮21项加build3/schedule6）、零会话build/load和原生次数分账；旧U1-0不重跑；早期6/6、10/10、21项保持原历史口径，不追认或累加覆盖。
 
-当前S2实施与验证见 `runtime-exit-integrity-production-integration.md` 第14节，设计仍比较中/验证中：主运行时树已实施真实异步transport/provider channel，adapter补父侧资源证明、正常disconnect及未发送start的失败退役的窄修；S1回归35组与typecheck通过，真实普通pipe七组首次7/7通过。本阶段仅Linux/Node v25.6.0普通pipe子进程，零PTY、无native addon、无现有业务导入/reader接线，不验证macOS/Windows/Electron或真实Agent。native read预算、平台失联及两authority实际接线仍开放，不能关闭PI-01/02/03。不追加工具门槛/全U1-W1、不自动runner/push，下一有限项先冻结Linux真实PTY provider的读取/解码预算、资源责任与安全停止，复用既有原生证据。owner正常关闭责任不变，不新增异常崩溃后所有主体/后代清零承诺。第27.10节及全部旧断言/失败保持，S1/S2结果不累加原生PTY覆盖；Host/Supervisor/Webview/packaged、生产预算与退出完整性总债务仍开放。
+当前S3实施与验证见 `runtime-exit-integrity-production-integration.md` 第15.6节，仍比较中/验证中：Linux/Node22.23.2单owner WNOHANG/4096B单槽首次两个真实PTY场景均Control send failed，0/2；报告allOwnershipSettled=true、cleanup safe/steps=[]且provider关闭，不追认通过。代码链已确认关闭/迟到信用发送竞态，首次trace未记录失败消息类型；新sourceEndAccepted(finalFrameId)在合法源结束后停止新信用回执、排空旧在途发送，provider等确认而不等消费，真实send失败仍冻结。首败后adapter43组/channel6组、core2组、source断言组1、bridge/typecheck与fixture strict通过，独立复核无本切片确定性blocker，未修后原生采集。离线normal2108B精确/终态重建及flood73472B全x只补内容证据，首次live终态断言未执行。下一阶段仅冻结新输入/目录复验相同两场景；S2和原生历史保持，无现有业务/reader接线或runner/push，不关闭PI-01/02/03及产品整链。
 
 U1-6的三域判定保持独立：`scenarioMatches`要求kqueue已取得并登记、注册替身明确未调用真实kevent、数据gate关闭，受控abort的exit0属于场景预期。合法非零退出或signaled终态若已由唯一wait回收且其他owner和证据齐全，不能仅因不符合exit0预期虚构资源泄漏。`resourcesSettled`核验token/PID绑定的abort/ack及其顺序，并要求同一Wait线程唯一一次waitpid确认自身child终态后单次close kqueue，并结算TSFN/payload/thread/finalizer及master；wait未知时保留kqueue未结算、禁止payload/通知并停止准入。`evidenceSufficient`核验ready的token/PID/TTY、gate前缀真实性、其他身份及事件原始值、报告对接和各自时钟域预算。不发送`go`，预期read/parser计数为0、raw为空、state为null；数据泄漏单列场景失败，不以合成EIO冒充真实系统错误，也不以driver退出或caller强杀代替逐资源回收。
 

@@ -98,7 +98,7 @@ try {
   });
 
   const require = createRequire(import.meta.url);
-  const { encodeOutputFrame, OutputCreditWindow } = require(path.join(tempDir, 'executionLifecycle.cjs'));
+  const { encodeOutputFrame, OutputCreditWindow, parseProviderMessage } = require(path.join(tempDir, 'executionLifecycle.cjs'));
   const { createExecutionAuthority, prepareExecution } = require(path.join(tempDir, 'executionSessionAdapter.cjs'));
   const tests = [];
   const test = (name, callback) => tests.push({ name, callback });
@@ -746,6 +746,70 @@ try {
     assert.equal(h.snapshot().resources['provider-control'].current.kind, 'released');
   });
 
+  test('provider acquisition messages register bounded native responsibilities before release', async () => {
+    const h = createHarness();
+    await h.started();
+    const message = { type: 'resourceAcquired', identity: h.identity, resourceId: 'pty-master' };
+    assert.deepEqual(parseProviderMessage(message), message);
+    assert.throws(() => parseProviderMessage({ ...message, resourceId: 'x'.repeat(4096) }), /byte limit/);
+    assert.throws(() => parseProviderMessage({ ...message, result: { kind: 'released' } }), /Unexpected protocol field/);
+    h.sink.message(message);
+    assert.deepEqual(h.snapshot().resources['pty-master'], {});
+    h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 7 } });
+    h.message({ type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'eof' } });
+    h.sink.controlResourceResult({ kind: 'released' });
+    assert.equal(h.authority.snapshot().active, 1, 'native responsibility must prevent early retirement');
+    h.message({
+      type: 'resourceResult', resourceId: 'pty-master', operationId: 'release-master', result: { kind: 'released' }
+    });
+    assert.equal(h.snapshot().resources['pty-master'].current.kind, 'released');
+    assert.equal(h.snapshot().state, 'settled');
+    assert.equal(h.authority.snapshot().active, 0);
+    assert.equal(h.snapshot().firstFault, undefined);
+  });
+
+  test('provider acquisition messages cannot claim the parent-owned control resource', async () => {
+    const h = createHarness();
+    await h.started();
+    const resources = h.snapshot().resources;
+    h.message({ type: 'resourceAcquired', resourceId: 'provider-control' });
+    assert.match(h.snapshot().firstFault, /cannot acquire parent control/);
+    assert.deepEqual(h.snapshot().resources, resources);
+    assert.ok(h.authority.snapshot().blockedReason);
+    h.sink.controlResourceResult({ kind: 'released' });
+    assert.equal(h.snapshot().resources['provider-control'].current.kind, 'released');
+  });
+
+  test('invalid duplicate or excessive provider acquisition keeps the responsibility ledger incomplete', async () => {
+    for (const mode of ['invalid', 'duplicate', 'excessive']) {
+      const h = createHarness();
+      await h.started();
+      h.message({ type: 'resourceAcquired', resourceId: 'pty-master' });
+      if (mode === 'excessive') {
+        for (let index = 0; index < 15; index += 1) {
+          h.message({ type: 'resourceAcquired', resourceId: `native-owner-${index}` });
+        }
+        assert.equal(Object.keys(h.snapshot().resources).length, 16);
+      } else {
+        h.message({ type: 'resourceAcquired', resourceId: mode === 'invalid' ? '../pty-master' : 'pty-master' });
+      }
+      assert.equal(h.snapshot().resourceLedgerIncomplete, true, mode);
+      for (const resourceId of Object.keys(h.snapshot().resources)) {
+        if (resourceId === 'provider-control') h.sink.controlResourceResult({ kind: 'released' });
+        else h.message({
+          type: 'resourceResult', resourceId, operationId: `release-${resourceId}`, result: { kind: 'released' }
+        });
+      }
+      h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 7 } });
+      h.message({ type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'eof' } });
+      await settle(h.scheduler);
+      assert.equal(h.snapshot().resourceLedgerIncomplete, true, mode);
+      assert.notEqual(h.snapshot().state, 'settled', mode);
+      assert.equal(h.authority.snapshot().active, 1, mode);
+      assert.ok(h.authority.snapshot().blockedReason, mode);
+    }
+  });
+
   test('pre-start failure retires only after parent control release without inventing subject facts', async () => {
     const h = createHarness({ autoReady: false });
     const observation = await h.start();
@@ -809,6 +873,115 @@ try {
     assert.equal(h.snapshot().firstFault, undefined);
     assert.equal(h.authority.snapshot().blockedReason, undefined);
     assert.doesNotThrow(() => createHarness({ authority: h.authority, scheduler: h.scheduler }));
+  });
+
+  test('source confirmation drains an in-flight receipt and removes queued production credit', async () => {
+    const receipt = deferred();
+    const h = createHarness({
+      send: (message) => message.type === 'consumed' ? receipt.promise : Promise.resolve()
+    });
+    await h.started();
+    h.output(1, 'first');
+    await settle(h.scheduler);
+    h.output(2, 'tail');
+    await settle(h.scheduler);
+    assert.equal(h.sent('accepted').at(-1).throughFrameId, 2);
+    h.consumptions[0].resolve();
+    await settle(h.scheduler);
+    h.consumptions[1].resolve();
+    await settle(h.scheduler);
+    assert.equal(h.snapshot().consumedThrough, 2);
+    assert.deepEqual(h.sent('consumed').map((message) => message.throughFrameId), [1]);
+    h.message({ type: 'sourceEnd', finalFrameId: 2, disposition: { kind: 'eof' } });
+    await settle(h.scheduler);
+    assert.equal(h.sent('sourceEndAccepted').length, 0, 'confirmation must not overtake an old receipt');
+    receipt.resolve();
+    await settle(h.scheduler);
+    assert.deepEqual(h.sent('consumed').map((message) => message.throughFrameId), [1]);
+    assert.deepEqual(h.sent('sourceEndAccepted'), [{ type: 'sourceEndAccepted', identity: h.identity, finalFrameId: 2 }]);
+    await h.retire();
+    assert.equal(h.sent('sourceEndAccepted').length, 1, 'a repeated source fact does not create another handshake');
+    assert.equal(h.authority.snapshot().blockedReason, undefined);
+  });
+
+  test('source confirmation permits provider close without waiting for local consumption', async () => {
+    const h = createHarness();
+    await h.started();
+    h.output(1, 'owned-tail');
+    await settle(h.scheduler);
+    h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 7 } });
+    h.message({ type: 'sourceEnd', finalFrameId: 1, disposition: { kind: 'eof' } });
+    await settle(h.scheduler);
+    assert.equal(h.sent('sourceEndAccepted').length, 1);
+    assert.equal(h.snapshot().consumedThrough, 0);
+    h.sink.disconnected('confirmed-source-close');
+    h.sink.exited();
+    h.sink.dataEnded();
+    h.sink.controlResourceResult({ kind: 'released' });
+    await settle(h.scheduler);
+    assert.equal(h.authority.snapshot().active, 1, 'local ownership remains until actual consumption');
+    await h.consumeAll();
+    assert.equal(h.sent('consumed').length, 0, 'consumption after source end must not write into a retiring provider');
+    assert.equal(h.snapshot().consumedThrough, 1);
+    assert.equal(h.authority.snapshot().active, 0);
+    assert.equal(h.authority.snapshot().blockedReason, undefined);
+  });
+
+  test('an invalid source boundary is never acknowledged', async () => {
+    const h = createHarness();
+    await h.started();
+    h.output(1, 'accepted');
+    await settle(h.scheduler);
+    h.message({ type: 'sourceEnd', finalFrameId: 2, disposition: { kind: 'eof' } });
+    await settle(h.scheduler);
+    assert.equal(h.sent('sourceEndAccepted').length, 0);
+    assert.equal(h.snapshot().source, undefined);
+    assert.ok(h.authority.snapshot().blockedReason);
+  });
+
+  test('source confirmation cannot replace missing process or native release facts', async () => {
+    const h = createHarness();
+    await h.started();
+    h.sink.resourceAcquired('pty-master');
+    h.message({ type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'eof' } });
+    await settle(h.scheduler);
+    assert.equal(h.sent('sourceEndAccepted').length, 1);
+    h.sink.disconnected('missing-final-facts');
+    h.sink.dataEnded();
+    h.sink.controlResourceResult({ kind: 'released' });
+    await settle(h.scheduler);
+    assert.equal(h.snapshot().process.kind, 'unconfirmed');
+    assert.equal(h.snapshot().resources['pty-master'].current.kind, 'unknown');
+    assert.equal(h.authority.snapshot().active, 1);
+    assert.ok(h.authority.snapshot().blockedReason);
+  });
+
+  test('real command and receipt send failures remain faults, including after source settlement', async () => {
+    for (const failedType of ['start', 'requestStop', 'cancelOutput', 'accepted', 'consumed', 'sourceEndAccepted']) {
+      const h = createHarness({
+        send(message) {
+          if (message.type === failedType) return Promise.reject(new Error(`controlled-${failedType}-failure`));
+          return Promise.resolve();
+        }
+      });
+      if (failedType === 'start') await h.start();
+      else {
+        await h.started();
+        if (failedType === 'requestStop') h.control.requestStop('stop', 'graceful', 100);
+        else if (failedType === 'cancelOutput') h.control.cancelOutput('cancel', 'explicit-cancel', 100);
+        else if (failedType === 'sourceEndAccepted') {
+          h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+          h.message({ type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'eof' } });
+        } else {
+          h.output(1, 'owned-data');
+          await settle(h.scheduler);
+          if (failedType === 'consumed') await h.consumeAll();
+        }
+      }
+      await settle(h.scheduler);
+      assert.equal(h.snapshot().firstFault, 'Control send failed', failedType);
+      assert.equal(h.authority.snapshot().blockedReason, 'Control send failed', failedType);
+    }
   });
 
   test('a late start observation cannot resurrect an already retired execution', async () => {

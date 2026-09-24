@@ -111,7 +111,8 @@ export class ExecutionProviderTransport implements ExecutionTransport {
       try {
         const message = parseProviderMessage(value);
         if (!sameExecutionIdentity(message.identity, this.options.identity)) throw new Error('Identity mismatch');
-        if (message.type === 'resourceResult' && message.resourceId === 'provider-control') throw new Error('Parent resource spoof');
+        if ((message.type === 'resourceAcquired' || message.type === 'resourceResult')
+          && message.resourceId === 'provider-control') throw new Error('Parent resource spoof');
         sink.message(message);
       } catch { this.reportFault('Invalid provider control message or parent resource claim'); }
     });

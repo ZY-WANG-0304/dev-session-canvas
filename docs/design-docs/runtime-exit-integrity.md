@@ -14,14 +14,14 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-24
+updated_at: 2026-09-25
 ---
 
 # 执行会话退出完整性交付
 
 ## 1. 已确认范围与决策状态
 
-当前S2实施与验证见 `runtime-exit-integrity-production-integration.md` 第14节，设计仍比较中/验证中：主运行时树异步transport/provider channel及必要adapter窄修已实施；S1回归35组与typecheck通过，真实普通pipe七组首次7/7通过。范围仅Linux/Node v25.6.0普通pipe子进程，零PTY、无native addon、无现有业务导入/reader接线；macOS/Windows/Electron、native read预算、平台失联、两authority与真实Agent仍未验证。不自动runner/push，具体边界见第6节，下一有限项先冻结Linux真实PTY provider的读取/解码预算、资源责任与安全停止，复用既有原生证据。
+当前S3实施与验证见 `runtime-exit-integrity-production-integration.md` 第15.6节，仍比较中/验证中：Linux/Node22.23.2首次两个真实PTY场景保持Control send failed/0/2，资源安全及provider关闭不追认场景通过。已实施显式sourceEndAccepted握手，首败后adapter43组/channel6组、core2组、source断言组1、bridge/typecheck及fixture strict通过，独立复核无本切片确定性blocker；尚无修后原生采集。首次trace未指明失败消息，离线原文/终态补验不代替首次live断言。下一阶段只冻结新输入/新目录复验相同两场景，不扩矩阵或工具，不接现有业务、runner或push；边界见第6节，旧证据保持。
 
 最新原生证据仍以 `runtime-native-failure-isolation.md` 第27.10节（2026-09-24）为准：唯一输入1a88d0cc、push run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成3个新U1-6原生样本，runner及可信本地`--verify-saved`均3/3。30项纯测、零会话build/load与原生执行分账。第26节32312fe7/run35900772851 attempt1的U1-0三次3/3及旧失败独立保留，不重跑、不追认早期6/6、10/10、21项覆盖。这仍是合成注册失败的限定诊断证据，不是生产退出完整性验收。
 
@@ -96,7 +96,7 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 完整ZIP与GitHub摘要一致，21个runner来源、16个采集来源及2768个build成员已核；独立构建/来源与原始事实审计结果统一见第27.10节。runner及可信本地保存复核均3/3，可信离线不执行归档代码。30项纯测试是前轮21项（源码3、角色mock7、verifier11）加build3/schedule6，13个JS语法检查另记；准备期guard-only子进程和未执行stub binary仍不是原生证据。同组本地/runner复核不累加覆盖，旧U1-0源码、原始工件、断言及失败均不改，业务未接入。
 
-S2异步transport/provider channel已在主运行时树实施，adapter补齐父侧资源证明、正常disconnect与未发送start的失败退役的有限接线，见 `runtime-exit-integrity-production-integration.md` 第14节；S1回归35组与typecheck通过，真实普通pipe七组首次7/7通过，原S1最终32/32保留为历史。本阶段只验证Linux/Node v25.6.0、最多两provider/各一subject的普通pipe子进程，零PTY、无native addon、无现有业务导入/reader接线；不折算PTY/Agent覆盖，不关闭PI-01/02/03。不追加工具门槛或全U1-W1，不自动runner/push，下一有限项先冻结Linux真实PTY provider的读取/解码预算、资源责任与安全停止，复用既有原生证据。正常owner关闭责任不变，异常owner崩溃不新增所有主体/后代立即清零保证。macOS/Windows/Electron、native read预算、平台失联、两authority接线及PI-04/05/06默认启用门槛仍开放；其他原生/取消、真实注册错误、早退/ESRCH、真实Agent和Host/Supervisor/Webview/packaged未验收，生产停止/排空预算未选定，退出完整性债务不关闭。
+S3生产接入第15.6节保留首次两项Control send failed/0/2与主树.debug/s3-linux-provider-first原始工件；normal exit7/readBytes2108，flood signal15/readBytes73472，allOwnershipSettled=true、cleanup safe/steps=[]且provider关闭，不以安全回收改判。代码复核确认缺少源结束握手会使正常关闭与迟到信用发送竞争，但首次trace未记录失败消息类型。新sourceEndAccepted(finalFrameId)已实施：父端合法sourceEnd后停止/清除未发送信用回执，确认等待旧在途发送，provider等确认才close、不等消费；真实发送失败仍fault。首败后adapter43组/channel6组、core2组、source断言组1、bridge/typecheck及fixture strict通过，独立复核无本切片确定性blocker，无修后原生采集。离线normal2108B精确且终态重建正确，flood73472B全x等于native readBytes；首次live终态断言未执行，不追认通过。下一阶段只冻结新输入和新目录复验相同两个场景，不扩矩阵/工具或runner/push；首跑前38+1、S2/S1及全部旧证据保留，其他平台、真实Agent、两authority/reader、owner失联、packaged及产品总债务仍开放。
 
 第25阶段历史记录（以下三段按当时状态保留，其macOS协议待办已由第26阶段承接，不覆盖当前实施顺序）：
 

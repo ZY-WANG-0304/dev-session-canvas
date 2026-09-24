@@ -15,7 +15,7 @@ import {
   type SourceDisposition
 } from '../common/executionLifecycle';
 
-export type ExecutionProviderCommand = Exclude<ParentMessage, { type: 'accepted' | 'consumed' }>;
+export type ExecutionProviderCommand = Exclude<ParentMessage, { type: 'accepted' | 'consumed' | 'sourceEndAccepted' }>;
 
 export interface ExecutionProviderChannelOptions {
   onCommand(command: ExecutionProviderCommand): void;
@@ -51,6 +51,8 @@ class ExecutionProviderChannel {
   private endTask?: Promise<void>;
   private closeTask?: Promise<void>;
   private disposition?: SourceDisposition;
+  private expectedFinalFrameId?: number;
+  private sourceEndAccepted = false;
   private stateChanged?: Promise<void>;
   private signalStateChanged?: () => void;
   private readySent = false;
@@ -107,6 +109,10 @@ class ExecutionProviderChannel {
       this.assertIdentity(message.identity);
       if (message.type === 'ready' || message.type === 'sourceEnd') {
         throw new Error('Use ready() or end() for lifecycle boundaries.');
+      }
+      if ((message.type === 'resourceAcquired' || message.type === 'resourceResult') &&
+          message.resourceId === 'provider-control') {
+        throw new Error('Provider cannot claim parent control resources.');
       }
       if (message.type === 'operationObservation' &&
           !Array.from(this.commands.values()).some((command) => command.operationId === message.operationId)) {
@@ -263,9 +269,16 @@ class ExecutionProviderChannel {
       this.assertHealthy();
       const window = this.credit.snapshot();
       if (window.acceptedThrough === window.sentThrough) {
+        // The parent may acknowledge delivery before the local send callback runs.
+        this.expectedFinalFrameId = window.sentThrough;
         await this.enqueue(parseProviderMessage({
           type: 'sourceEnd', identity: this.identity, finalFrameId: window.sentThrough, disposition
         }));
+        while (!this.sourceEndAccepted) {
+          this.assertHealthy();
+          await this.changed();
+        }
+        this.assertHealthy();
         this.ended = true;
         this.notify();
         return;
@@ -326,7 +339,8 @@ class ExecutionProviderChannel {
       ? Array.from(this.commands.values()).find((entry) => entry.operationId === message.operationId)
       : undefined;
     const urgent = message.type === 'sourceEnd' || message.type === 'processResult' ||
-      message.type === 'resourceResult' || (command !== undefined && command.type !== 'start') ||
+      message.type === 'resourceAcquired' || message.type === 'resourceResult' ||
+      (command !== undefined && command.type !== 'start') ||
       (message.type === 'operationObservation' &&
         ['failed', 'unconfirmed', 'rejected-before-acquire'].includes(message.result.kind));
     const queue = urgent ? this.urgent : this.normal;
@@ -384,6 +398,14 @@ class ExecutionProviderChannel {
     try {
       const message = parseParentMessage(value);
       this.assertIdentity(message.identity);
+      if (message.type === 'sourceEndAccepted') {
+        if (this.expectedFinalFrameId === undefined || message.finalFrameId !== this.expectedFinalFrameId) {
+          throw new Error('Source confirmation does not match the requested source end.');
+        }
+        this.sourceEndAccepted = true;
+        this.notify();
+        return;
+      }
       if (message.type === 'accepted' || message.type === 'consumed') {
         this.credit.acknowledge(message);
         if (message.type === 'accepted') {
