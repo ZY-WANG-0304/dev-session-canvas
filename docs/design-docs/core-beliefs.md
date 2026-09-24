@@ -72,7 +72,7 @@ Windows已退出进程被句柄引用而继续保留对象是正常语义，不�
 
 纯测试、构建、原生采集和离线复核分别记账。第27.10节唯一1a88d0cc/run35963751067 attempt1的macOS U1-6三次3/3及可信保存复核，不与30项纯测试或旧U1-0合算；准备期guard-only子进程和stub binary仍不是原生证据。真实取得kqueue后合成EIO、未调用注册/等待kevent的有限成功，也不证明真实系统注册错误。unknown停止准入、not-run无raw/evidence及可信离线不执行归档代码的边界不变。
 
-生产接入不能从有限原生成功直接跳到默认启用。当前S3见 `runtime-exit-integrity-production-integration.md` 第15.6节：Linux/Node22.23.2首次两个真实PTY场景仍为Control send failed/0/2，资源报告已结算及provider关闭不覆盖场景失败。代码复核确认正常关闭与迟到信用发送缺少握手，但首次trace没有失败消息类型，不能断言那次失败消息就是consumed。已实施显式sourceEndAccepted(finalFrameId)，父端合法源结束后停止信用回执，确认等待原在途发送；provider等确认才正常close、不等consumer，真实send失败仍按fault处理。首败后adapter43组/channel6组、core2组、source断言组1、bridge/typecheck及fixture strict通过，独立复核无本切片确定性blocker；未修后原生采集。下一阶段只冻结新输入/新目录复验相同两场景，不扩矩阵/工具或runner/push；旧证据、其他平台、实际Agent、两authority/reader和默认启用门槛保持。
+生产接入不能从有限原生成功直接跳到默认启用。S3输入3f8ebcae的Linux/Node22.23.2修后唯一两场景2/2及独立原始证据核对，只关闭该固定切片的验证待办；首次0/2及18文件保持不变。正常close的源确认、主体终态、实际消费与资源结算仍分别证明，不能从本次时序外推所有调度或跨平台行为。下一阶段仅收口Linux正常关闭/卡住时的接入条件，随后推进authority接线，不把异常崩溃全矩阵或通用工具增强设为前置；其他平台、实际Agent、reader与默认启用门槛保持。
 
 资源总量应区分显式owner引用、预热期间形成的背景和逐会话增量。普通进程控制中的退出后image31、释放23个引用后总数下降23与未知背景+5可以同时成立；保留原计数失败，不以事后换基线替代归属证据。
 

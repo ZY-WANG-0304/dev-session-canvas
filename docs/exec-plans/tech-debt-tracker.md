@@ -23,7 +23,7 @@
 
 ## 技术债列表
 
-2026-09-25 当前实施进展：生产接入第15.6节S3首次两个Linux真实PTY场景保持Control send failed/0/2，资源已结算和provider关闭不覆盖失败；normal首报unknown也不被迟到released改写。已实施sourceEndAccepted握手：父端校验源结束后停止信用回执，确认排在旧在途发送之后；provider等确认而不等消费，不豁免真实send错误。首败后adapter43组/channel6组、core2组、source断言组1、bridge/typecheck及fixture strict通过，独立复核无本切片确定性blocker，未修后原生采集。离线normal2108B精确/重建终态和flood73472B全x不代替未执行的首次live终态断言；首跑前38+1与旧证据独立保留。下一阶段只冻结新输入/新目录复验同两场景，不扩矩阵/工具或runner/push；PI-01/02/03、两authority/reader、真实Agent、其他平台和退出完整性总债务不关闭。
+2026-09-25 当前实施进展：生产接入第15.9节S3修后唯一采集3f8ebcae在Linux/Node22.23.2为2/2，normal live终态和flood暂停消费下停止/回收与已读内容移交通过，资源首报/当前均released、无fault。9份源码及原始输出/终态已独立核对，首次0/2的18文件逐项保持。该有限结果不关闭PI-01/02/03、两authority/reader、真实Agent、其他平台或产品退出完整性总债务；下一有限项按第15.10节定位两owner正常关闭入口和Linux外部控制能力，区分接入前必要条件与默认启用前异常失联风险，不扩全矩阵、工具或runner/push。
 
 最新原生证据仍为第27.10节：唯一1a88d0cc/run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成U1-6三次，runner及可信本地保存复核均3/3；30项纯测、零会话build/load另记。ZIP、21runner源、16采集源及2768build成员已核。真实取得kqueue后合成EIO，未调用注册/等待kevent；abort/ack exit0及唯一wait/kqueue/master收尾取得限定证据，独立raw核查见第27.10节。其余原生/取消、真实Agent及Host/Webview/packaged未验收；业务、旧断言/失败/工件保持。
 

@@ -1,12 +1,12 @@
 # 交付跨平台执行会话退出完整性
 
-本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，原生收尾阶段基线为 `10d40e63`。此前设计与隔离诊断阶段不直接修改业务代码、不推送运行时分支；当前S3依正式设计第15节准备Linux真实PTY provider，已完成首次两个真实PTY场景但均被Control send failed阻断，首败后源结束握手修正纯验证通过，原0/2不变，仍不接现有业务或推送。后续接线继续先明确方案，不把本计划视为私有 fd 补读或某种新 API 的授权。
+本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，原生收尾阶段基线为 `10d40e63`。此前设计与隔离诊断阶段不直接修改业务代码、不推送运行时分支；当前S3依正式设计第15.8至15.10节完成修后固定Linux两场景2/2与独立证据核对，首次0/2原样保留；下一步收口Linux最小接入条件，仍不接现有业务或推送。后续接线继续先明确方案，不把本计划视为私有 fd 补读或某种新 API 的授权。
 
 此前原生诊断阶段所有新D3/D4/v2脚本、workflow及.debug工件仅在独立工作树 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates`，当时本树只同步文档。当前S1/S2/S3的生产模块和定向测试在本运行时树，诊断树只同步文档。以下旧记录中的本地“未提交工作树”均指采集时的诊断源码快照，不是本运行时树；v1后来冻结7141cfa3，v2后来冻结b4db41cc，不倒写采集时来源。当前协议、已完成验证和剩余阻塞项见本计划各节首段，后续历史段落的“下一步”不覆盖最新顺序。
 
 ## 目标与全局图景
 
-当前S3以生产接入设计第15节为准。Linux/Node22.23.2首次两个真实PTY场景均被Control send failed阻断，0/2，未重跑；normal exit7/readBytes2108、flood signal15/readBytes73472，报告allOwnershipSettled=true、cleanup safe/steps=[]且两个provider关闭。资源安全不能替代场景/整体验收通过；代码链已确认正常关闭与迟到信用发送的竞态，显式sourceEndAccepted修正通过adapter43项/channel6项纯回归；首次trace未记录失败消息类型，修后原生效果仍待验证。保留首次工件，不自动重跑、runner/push或扩工具/矩阵，不接现有业务，PI-01/02/03和产品总债务仍开放。首跑前38+1及首次构建、首败后43+6/core2/source1与类型/bridge检查分别记录；下列准备阶段、S2及更早记录保持原时点。
+当前S3修后固定采集已完成，见生产接入第15.8至15.10节：输入3f8ebcae在Linux/Node22.23.2对原normal/flood各执行一次，新目录2/2、exit0；normal live最终状态及flood暂停消费下停止/回收、已读内容移交通过，两provider自然关闭、资源首报/当前released，无fault或追加清理。9份源码及原始事实独立核对，首次0/2的18文件逐项未变。不把有限通过扩大为跨平台或产品验收；下一阶段只收口Linux正常关闭及卡住时的最小接入条件，再转默认关闭authority接线，不扩崩溃全矩阵/通用工具，不自动runner/push。以下首败后、S2及更早记录按发生时点保留，不覆盖当前阶段。
 
 当前S2实施与验证见 `docs/design-docs/runtime-exit-integrity-production-integration.md` 第14节。主运行时树已新增真实异步transport/provider channel，复用S1共享核心并补父侧资源证明、正常disconnect和未发送start的失败安全退役的adapter窄修；Linux/Node v25.6.0真实普通pipe七组首次7/7通过，S1回归35组、独立channel纯回归1组及typecheck通过。零PTY、无native addon、无现有业务导入，不运行runner或push。macOS/Windows/Electron、native read预算、平台失联、两authority/reader及真实Agent未验证；现有模式、manifest、storage generation和业务行为保持。下一有限项是首个平台Linux真实PTY provider接线，须先冻结读取/解码预算、资源责任和安全停止，复用现有原生证据；不另起通用工具或全量矩阵，不自动native/runner/push。下列S1及更早阶段是历史记录，不覆盖本段。
 
@@ -28,15 +28,18 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [x] (2026-09-25，S3修后有限采集) 输入3f8ebcae在新目录对原两场景唯一采集2/2，exit0；独立原始内容/live终态/资源与9份来源核对通过，首次18文件逐项未变，无测试残留。
+- [ ] 下一阶段收口Linux PI-02最小接入条件：两owner正常关闭落点、外部控制能力表、实际authority准入边界；不扩崩溃全矩阵或自动新增采集。
+
 - [x] (2026-09-25，S3修后采集准备) 按生产接入第15.8节冻结同两场景、新目录及相同Node/native输入；仅增加测试目录参数，不改主体、断言或预算。只读输入与安全复核通过，原18文件失败归档摘要已记录。
-- [ ] S3修后采集：提交冻结入口后只运行一次normal/flood，在新目录保留实际结果，独立复核内容、live终态、资源及旧归档不变，再同步文档。
+- [x] S3修后采集：3f8ebcae冻结后normal/flood各执行一次，新目录2/2，内容、live终态、资源及旧归档不变均已独立核对，文档同步收口。
 
 - [x] (2026-09-25，S3运行前边界) 冻结生产接入设计第15节：Linux独立PTY provider、固定node-pty创建代码、单线程WNOHANG owner、4096B单槽读取及两个有限真实场景；旧证据保持，不接业务、不运行runner/push。
 - [x] (2026-09-25，S3准备) 资源取得协议adapter38组/channel1组纯回归与typecheck通过；native owner、精确源码补丁和新构建入口已实施，provider core直接纯回归2/2、source静态断言组1、bridge及最终typecheck通过，首次构建/零调用load通过，未创建PTY。
 - [x] (2026-09-25，S3首次真实运行，未通过) Linux/Node22.23.2首次两个真实PTY场景均被Control send failed阻断，0/2，未重跑；normal exit7/readBytes2108、flood signal15/readBytes73472，报告allOwnershipSettled=true、cleanup safe/steps=[]且两个provider关闭。不以安全回收追认通过。
 - [x] (2026-09-25，S3首败后握手修正) sourceEndAccepted明确源结束确认，不等消费、不吞真实发送错误；adapter43/43、channel6/6、core2/2、source断言组1、bridge、全typecheck与两fixture strict通过，独立复核无本切片确定性blocker，首次0/2不追改。
 - [x] S3文档收口：两树8份设计元数据/索引/关联路径、两计划12标题及原序、production第2至14节历史保持、production正文一致和变更范围检查通过；两树diffcheck、8份mjs语法检查通过，不自动push。
-- [ ] 下一阶段仅冻结修正后的新输入/新目录，复验相同两个原生场景；尚未进行修后采集，不扩矩阵或通用工具。
+- [x] 原安排的修后同两场景复验已由3f8ebcae唯一采集完成2/2，首次0/2及全部归档保持；新下一步由当前进度承接。
 
 - [x] (2026-09-24，S2开始) 按生产接入设计第14节冻结本机Linux/Node真实异步transport/provider、零PTY普通pipe夹具、消息与父资源来源、最多两provider/各一subject及显式观察/清理预算；不改现有业务、不自动runner/push。
 - [x] (2026-09-24，S2实施) 新增双向异步transport/provider channel，复用S1事实/帧/信用；adapter补父侧资源证明、正常disconnect与未发送start的失败退役。S1回归35组与typecheck通过；首轮通道TS2345/TS2339窄化失败及修正保留。
@@ -223,6 +226,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-09-25 S3修后事实边界：normal为2108B/1帧，flood为69632B/21帧；后者不同于首次73472B/20帧，是实际分块及停止时序差异，不能要求被停止主体的完整1MiB。normal此次不能代证跨read UTF-8分割；flood的seal早于最终消费，但provider控制资源释放晚于最终消费，不能反说原生证明provider先关闭。独立只读核验覆盖live终态、serialized和资源首报，首次18文件保持不变。
+
 2026-09-25 S3修后采集准备：源结束握手只改变TypeScript通信，native三份实现源码与构建inputs摘要仍一致；因此复用同一已核对S3二进制，不引入无关重建变量。首次18文件失败工件保持，具体摘要与安全复核见生产接入第15.8节，尚无新采集结果。
 
 2026-09-25 S3首败后定位与修正：代码链确认channel只等accepted即可close，而adapter后续consumed仍尝试发送，transport拒绝关闭后的发送并触发fault/unknown；首次trace未记录失败消息类型，故不能断言首次实际失败消息就是consumed，更不是OS或PTY丢尾部的直接证据。已加入sourceEndAccepted(finalFrameId)并通过有限纯回归；normal离线2108B精确且终态重建正确，flood73472B全x等于readBytes，但首次live终态断言未执行，0/2不改。S2 fixture仅把手写Exclude改为共享ExecutionProviderCommand类型，没有改主体或断言行为，不追认历史输入为新版本。
@@ -379,6 +384,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-09-25（S3修后有限通过）：原两个场景、新目录、同一已核对native二进制、相同主体/断言/预算，目录参数窄改提交3f8ebcae后只采集一次，2/2不覆盖首次0/2。下一步依据生产接入第15.10节区分PI-02接入前必需控制与默认启用前异常失联风险；只定位两owner正常关闭入口、形成Linux外部控制能力表和后续authority准入边界，不自动实施机制或再采集。
+
 2026-09-25（S3修后采集）：只增加`--output`选择新证据目录，保留默认旧路径的拒绝覆盖行为；不修改原主体、断言、预算或清理逻辑。先本地提交冻结输入，再对原normal/flood各执行一次，不自动重试、扩大矩阵或触发runner/push。
 
 2026-09-25（S3有界源结束确认）：选择sourceEndAccepted(finalFrameId)，不使用猜测时间窗或忽略真实send错误。父adapter合法sourceEnd后停止生成信用ACK并清除冗余未发送ACK，确认沿单send队列等待旧在途发送；provider校验同identity/精确finalFrameId后才正常close，不等消费，确认不归还信用、不证明consumer/process/resource完成。确认等待期间stop/cancel仍服务，缺确认不能由超时伪装成功。首败后纯验证与离线内容补证不改原0/2；下一阶段只冻结新输入/目录复验原两场景，不扩矩阵。
@@ -530,9 +537,11 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
-S3修后采集正在按第15.8节准备，输入来自`2e770c95`后的目录参数窄改，尚未运行。首次0/2及握手修正纯验证是既有事实，不覆盖本轮待采集结果；本轮结束后只按实际原生和独立内容检查结算。
+当前S3修后固定采集已完成，见生产接入第15.8至15.10节：输入3f8ebcae在Linux/Node22.23.2对原normal/flood各执行一次，新目录2/2、exit0；normal live最终状态及flood暂停消费下停止/回收、已读内容移交通过，两provider自然关闭、资源首报/当前released，无fault或追加清理。9份源码及原始事实独立核对，首次0/2的18文件逐项未变。不把有限通过扩大为跨平台或产品验收；下一阶段只收口Linux正常关闭及卡住时的最小接入条件，再转默认关闭authority接线，不扩崩溃全矩阵/通用工具，不自动runner/push。以下首败后、S2及更早记录按发生时点保留，不覆盖当前阶段。
 
-S3本轮结果：首次两个真实PTY仍为Control send failed/0/2，normal exit7/readBytes2108、flood signal15/readBytes73472；allOwnershipSettled=true、cleanup safe/steps=[]且两个provider关闭。normal首报unknown保留，不被迟到released覆盖。首次trace未记录失败消息类型，不能声称原生记录直接证明失败消息就是consumed；代码复核确认正常关闭与迟到信用发送缺少握手，已实施显式sourceEndAccepted修正。首败后Node22 adapter43/43、channel6/6、provider core2/2、source断言组1、既有bridge、全typecheck及两fixture独立strict均通过，执行会话已结束；独立只读复核无本切片确定性blocker。离线补验normal2108B精确且重建终态正确、flood73472B全x等于native readBytes；首次live终态断言未执行，不追认通过。没有修后原生采集；下一阶段仅冻结新输入/新目录复验相同两个场景，不扩矩阵/工具或自动runner/push，不接现有业务，不关闭PI-01/02/03或产品总债务。首跑前38+1和S2/S1/旧原生历史不改，统一文档静态核对通过，整体计划active。
+S3修后输入准备记录（历史）：从2e770c95起仅增加目录参数，以3f8ebcae提交冻结后进入唯一采集，结果按本节最新记录结算；首次0/2与先前纯验证分账。
+
+S3首败后阶段结果（历史）：首次两个真实PTY仍为Control send failed/0/2，normal exit7/readBytes2108、flood signal15/readBytes73472；allOwnershipSettled=true、cleanup safe/steps=[]且两个provider关闭。normal首报unknown保留，不被迟到released覆盖。首次trace未记录失败消息类型，不能声称原生记录直接证明失败消息就是consumed；代码复核确认正常关闭与迟到信用发送缺少握手，已实施显式sourceEndAccepted修正。首败后Node22 adapter43/43、channel6/6、provider core2/2、source断言组1、既有bridge、全typecheck及两fixture独立strict均通过，执行会话已结束；独立只读复核无本切片确定性blocker。离线补验normal2108B精确且重建终态正确、flood73472B全x等于native readBytes；首次live终态断言未执行，不追认通过。没有修后原生采集；下一阶段仅冻结新输入/新目录复验相同两个场景，不扩矩阵/工具或自动runner/push，不接现有业务，不关闭PI-01/02/03或产品总债务。首跑前38+1和S2/S1/旧原生历史不改，统一文档静态核对通过，整体计划active。
 
 S2真实异步transport/provider channel与必要adapter窄修已在主树形成，Linux/Node v25.6.0普通pipe七组首次7/7、exit0，无重跑；8次provider尝试含ENOENT、实际7个provider/4个subject、8次transport close含失败spawn句柄。S1回归35组、channel纯回归1组及typecheck通过，旧代码内存负对照按预期拒绝；后补deadline guard四项hook和期限snapshot一次参数检查通过且未创建child，不追改首次矩阵。首轮TS2345/TS2339、fixture TS7006和纯测断言错误保留，最终adapter35/35、channel1组、typecheck、bridge、两mjs语法及fixture独立strict均exit0；最终独立只读复核包含期限snapshot等修正，无本切片确定性blocker，统一文档静态检查通过。零PTY、无native addon、无现有业务导入，无runner或push；旧S1最终32/32与U1-6原生证据分别保留，不累加样本。macOS/Windows/Electron、两authority/reader、真实Agent和产品整链仍未验收，PI-01/02/03及退出完整性总债务不关闭，整体计划继续active。
 
@@ -618,7 +627,7 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 上下文与定向
 
-当前S3源、构建和测试位于主运行时树，诊断树只同步文档。输入基线为主树674eabfc/诊断树d3afd150，实际执行环境固定本机已有Node22.23.2，与S2 Node25证据分账；当前设计与安全边界见生产接入第15节，下列S2及原生候选记录按历史保留。
+当前S3源码、构建与采集均在主运行时树，诊断树仅同步文档。修后输入3f8ebcae由主树2e770c95/诊断树ff297168继续；本机Linux/Node22.23.2与同一S3 binary保持，目录参数外无代码修改。本次2/2与S3首次0/2、S2 Node25证据分别记录；当前边界见生产接入第15.8至15.10节。
 
 当前S2代码与测试仍只在主运行时树，诊断树只同步文档；生产接入设计第14节为有限普通pipe输入、消息来源和清理边界的当前依据，以下S1和原生阶段背景按历史保留。
 
@@ -632,7 +641,7 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 工作计划
 
-本轮sourceEndAccepted握手修正与有限纯验证已完成，保留首次0/2及首次/迟到资源观察。两树文档、索引、关联路径及历史保持检查已收口；下一阶段冻结新输入/新目录，以同两个场景做原生复验，尚不执行新采集。不追加工具门槛、全矩阵、runner/push或业务接线；以下准备阶段和S2安排保留历史原时点。
+当前有限采集与独立证据复核已完成，原0/2保持。下一阶段仅按生产接入第15.10节定位Supervisor/Host正常关闭入口、列出Linux卡住/崩溃/owner失联的控制对象与可确认事实，并冻结实际authority接线的最小准入条件；不先扩异常崩溃矩阵或通用工具，不自动实施新owner机制、运行采集或push。
 
 第14节S2首次真实普通pipe七组7/7、独立复核及统一静态检查已收口，保留全部首次失败与后续纯内存验证分账。下一有限项是首个平台Linux真实PTY provider接线，须先冻结读取/解码预算、资源责任和安全停止，复用现有原生证据；不另起通用工具或全量矩阵，不自动native/runner/push。以下各阶段安排为历史。
 
@@ -717,6 +726,8 @@ S1 最终定向32/32、typecheck 复跑、既有 bridge 回归、独立复审及
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+本轮在主运行时树执行且仅执行一次：`/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node scripts/test/test-linux-execution-provider.mjs --output .debug/s3-linux-provider-source-ack-first`。输入3f8ebcae、运行前树干净，结果exit0/2/2；两provider和主体均结算，无运行中命令，禁止重跑该目录。目录参数窄改的语法/完整源码差异检查先通过，再提交冻结；独立证据复核不调用native。以下是此前准备及首败后命令记录，不覆盖本轮结果。
 
 S3在主树新增native/linux-execution-owner.h及scripts/build下精确补丁/构建入口。已以本机已有Node22.23.2执行 `scripts/test/test-linux-execution-provider-source.mjs`，源码断言通过且零native加载；再运行 `scripts/build/build-linux-execution-provider.mjs --output .debug/s3-linux-provider-build-first --dependency-root node_modules --headers /home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates/.debug/node22-headers-first/node-v22.23.2/include/node`，首次编译/零调用load通过。Node绝对路径为 `/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node`。真实入口 `scripts/test/test-linux-execution-provider.mjs` 首次两项已运行，结果均Control send failed/0/2，证据在.debug/s3-linux-provider-first；未重跑。首败后运行test-execution-session-adapter.mjs 43组、test-execution-provider-channel.mjs 6组、test-linux-execution-provider-core.mjs 2组、source断言组1、既有bridge及全typecheck，两fixture独立strict通过，所有会话已结束；没有修后原生采集，诊断树不运行新输入。
 
@@ -886,6 +897,8 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
+S3修后验收：主树输入3f8ebcae唯一命令exit0/2/2，normal字节/24行/红色宽2中文/光标(6,4)及serialized35B实际验证；flood全69632B等于native readBytes，16帧/consumed0时主体SIGTERM及child回收，最终消费21帧、pending0，live/serialized与100行scrollback一致。两组EIO/close0、资源first/current released、无fault/外层TERM或KILL。独立核验9份源码匹配输入、首次18文件不变，没有启动额外PTY或重放。测试入口仅目录参数/提示变化，Node22语法与完整源码差异检查通过；本轮未重跑上一阶段43+6纯矩阵或全量测试。统一静态检查通过：两树8份设计YAML/索引/关联路径、两计划12标题原序、production既有历史精确保持与两树正文一致；本轮仅目录参数及文档改动，两树diffcheck通过。
+
 S3验收分账：首次两个真实PTY仍为Control send failed/0/2，normal exit7/readBytes2108、flood signal15/readBytes73472；allOwnershipSettled=true、cleanup safe/steps=[]且两个provider关闭。normal首报unknown保留，不被迟到released覆盖。首跑前adapter38/channel1等preflight为旧时点记录；首败后Node22 adapter43/43、channel6/6、provider core2/2、source断言组1、既有bridge、全typecheck及两fixture独立strict均通过，执行会话已结束；独立只读复核无本切片确定性blocker。新握手不等consumer、真实send错误仍冻结，并非把原错误降级忽略。离线补验normal2108B精确/重建终态与flood73472B全x成立，但首次live终态断言未执行，原0/2不变。没有修后原生采集；下一阶段仅冻结新输入/新目录复验相同两个场景，不扩矩阵/工具或自动runner/push，不接现有业务，不关闭PI-01/02/03或产品总债务。统一静态检查通过：两树8份设计YAML/索引/关联路径、两计划12标题及HEAD顺序、production第2至14节精确保持和两树正文一致；诊断树仅8文档，无manifest、workflow、既有业务入口或诊断源码改动，两树diffcheck通过。另8份mjs的Node22语法检查通过，没有执行fixture。
 
 当前S2实际普通pipe七组首次7/7、exit0：providerAttempts8含ENOENT、实际provider7、subject4、transport close8含失败spawn句柄；未重跑。S1回归35组、channel纯回归1组、typecheck通过，旧代码内存负对照按预期拒绝；后补四项deadline hook及一次期限snapshot参数检查通过且无child。首轮TS2345/TS2339、fixture TS7006及纯测断言错误保持；最终adapter35/35、channel1组、typecheck、bridge、两mjs语法及fixture独立strict均exit0，执行均已结束；最终独立只读复核含期限snapshot等修正，无本切片确定性blocker，统一文档静态检查通过。验收仅限第14节Linux/Node v25.6.0普通pipe，不折算PTY/native addon、macOS/Windows/Electron、reader、真实Agent或PI-01/02/03整体通过，旧32/32不追改。
@@ -955,6 +968,8 @@ HPCON首次原矩阵12项全部有效，六control及两个explicit-close通过�
 候选试验不得修改用户 storage 或替换仍承载 live 会话的 Supervisor；仅控制本次创建的 fixture。证据目录唯一，不覆盖初次失败。生产方案需要可回滚的 capability/adapter 选择和旧 session 原绑定保留，回滚不得伪造完整性或强制迁移。取消和回收必须幂等，不因重试重复输出、重复终态或误删其他读者。
 
 ## 证据与备注
+
+本轮新证据在主树`.debug/s3-linux-provider-source-ack-first/`，输入提交3f8ebcae，sources.json九项逐一匹配该提交。沿用经来源复核的同一S3 binary 721cd46455897cf90bfb155240bf928442e30ad4558184f2c9f32c55431a3c6a，不是旧诊断候选。首次`.debug/s3-linux-provider-first/`18文件逐项未变，排序内容整体SHA256仍fc64837dd8d96bc6dc2e2dd6123da99adef1252c4ce41d4ec464d86feaa9689b；0/2和首报unknown保持。以下旧构建与首败后证据记录按历史保留。
 
 S3新构建记录位于主树 `.debug/s3-linux-provider-build-first/`：build.json、build-command.json和load-command.json保存固定来源/编译与零调用加载结果；binary SHA256为721cd46455897cf90bfb155240bf928442e30ad4558184f2c9f32c55431a3c6a。加载仅核7个函数导出，nativeCalls=0，不调用configure/fork/read等接口。首次真实工件位于主树.debug/s3-linux-provider-first，两项0/2和安全回收事实保留，未重跑；无runner/push，不复用旧binary或执行旧归档源码。
 
@@ -1224,3 +1239,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-25，S3握手修正纯验证收口）：首次真实两项保持Control send failed/0/2，normal首次unknown/迟到released和原始工件不改。代码链确认关闭/信用发送竞态，但首次trace缺失败消息类型；新增sourceEndAccepted显式确认，排空旧在途发送后才能正常close，不等消费、不吞真实发送错误。首败后Node22 adapter43/43、channel6/6、provider core2/2、source断言组1、既有bridge、全typecheck及两fixture独立strict均通过，执行会话已结束；独立只读复核无本切片确定性blocker。离线normal2108B精确/终态重建与flood73472B全x不代替未执行的首次live断言；首跑前38+1与旧历史分开保留。没有修后原生采集；下一阶段仅冻结新输入/新目录复验相同两个场景，不扩矩阵/工具或自动runner/push，不接现有业务，不关闭PI-01/02/03或产品总债务。两树统一文档静态检查及8份mjs语法检查通过，按已完成事实同步当前导航和四活章节；首次0/2与历史证据保持。
 
 修订记录（2026-09-25，S3修后输入冻结）：新增第15.8节与本计划四活章节的采集准备；仅增加新目录参数，同一native二进制经来源核对后复用，第一次18文件归档摘要留存。先提交输入再执行相同两场景一次，当前尚无采集结论，不扩工具或修改验收判据。
+
+修订记录（2026-09-25，S3修后唯一原生采集）：输入3f8ebcae、新目录source-ack-first、相同normal/flood各一次，exit0/2/2。独立核对9份源码、原始输出/live终态/serialized/资源，首次18文件逐项不变；新2/2不覆盖首次0/2。normal单帧不代证UTF-8跨read，flood实际provider释放晚于最终消费，证据边界已同步。仅新增目录参数，没有修改主体、断言、预算或native；本轮不重跑全量或上一阶段纯矩阵。更新四活章节、当前导航与证据位置；下一阶段仅收口Linux最小接入条件，不扩异常崩溃全矩阵、工具或自动runner/push。 两树统一文档静态及diffcheck通过，本轮有限采集收口，整体计划继续active。

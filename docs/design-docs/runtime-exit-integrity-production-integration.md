@@ -21,7 +21,7 @@ updated_at: 2026-09-25
 
 ## 1. 当前结论与阶段边界
 
-2026-09-25 S3已实施Linux真实PTY provider有限接入，新native构建及零调用加载成功。首次真实两场景0/2，均因父侧`Control send failed`失败，但主体、PTY及provider均确认回收；首次证据原样保留。随后补显式源结束确认，adapter 43项/channel 6项/core 2项/source 1组纯回归及类型、bridge检查通过，修后没有原生重采集，不能宣称S3已通过。设计、失败与下一有限步骤见第15节；不接现有业务或运行runner。以下S2及更早结果按发生时点保留，不覆盖当前阶段。
+2026-09-25 S3修后有限采集已完成：输入`3f8ebcae`在Linux/Node22.23.2对原normal/flood各执行一次，新目录结果2/2，均无fault、主体及资源确认结算；normal的live最终状态断言已实际执行。仅本地固定两场景通过，不是跨平台或产品退出完整性完成；首次`.debug/s3-linux-provider-first/`的0/2及首报unknown原样保留，不追认通过。输入、原始事实及边界见第15.8至15.9节，不接现有业务或运行runner。以下S2及更早结果按发生时点保留，不覆盖当前阶段。
 
 2026-09-24 S2 已完成本机 Linux/Node 的真实异步 transport/provider 启动链与零 PTY 普通 pipe 受控验证，输入为主树 `e9a3b3f7`、诊断树 `65d2eb32`。首次真实矩阵7/7通过：8次transport尝试、7个真实provider、4个受控subject，8个transport close包含1次失败spawn，并非8个真实进程。实现、首次错误、独立复审修正及未重采集的后置窄修见第14节；不接现有业务、native或runner，不关闭PI-01/02/03。S1第13节保持历史原文；以下S1及更早阶段的段落是历史，不覆盖本段。
 
@@ -436,3 +436,30 @@ requestStop只停止主体，不自动丢输出。cancelOutput停止下一read�
 本轮不重建native：握手修正只改变共享TypeScript通道。只读核对确认当前native header、patch、build脚本及构建副本摘要与首次build manifest一致，binary仍为第15.6节SHA256 `721cd46455897cf90bfb155240bf928442e30ad4558184f2c9f32c55431a3c6a`，Node22.23.2可执行文件身份相同；这不是复用旧诊断候选binary。首次失败目录18文件的排序内容摘要为`fc64837dd8d96bc6dc2e2dd6123da99adef1252c4ce41d4ec464d86feaa9689b`，算法为相对路径排序后JSON序列化`[{file,sha256}]`再取SHA256，供运行后只读核对，不增加归档设施。
 
 运行前先对目录参数这一窄改做语法与源码差异核对，并将测试入口及本段提交冻结。执行工作目录为主树，命令为`/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node scripts/test/test-linux-execution-provider.mjs --output .debug/s3-linux-provider-source-ack-first`。原有sources.json保存本次实际源码摘要和bundled输入；新结果与首次0/2分账。安全复核确认：主体或native责任未知时禁止终止外层后继续创建，只有主体及三项native责任已确认结算才允许外层清理；退出异常必须留记录。本段是运行前冻结，尚无本次新采集结果，不提前宣称S3或产品通过。
+
+### 15.9 修后唯一采集结果
+
+第15.8节输入以主树`3f8ebcae`冻结，运行前工作树干净。Node22语法检查和完整源码差异核对通过：只改变目录参数及结果提示，未改主体、断言、观察预算或清理。上述命令仅执行一次，exit0，normal/flood均通过，结果位于`.debug/s3-linux-provider-source-ack-first/`；未再重跑，也没有新native构建、其他矩阵、runner或push。
+
+| 原始事实 | normal | flood |
+| --- | --- | --- |
+| 主体终态 | exit7，rawStatus1792 | SIGTERM15，rawStatus15 |
+| native读取与保存输出 | 2108B，精确等于原预期 | 69632B，全部为x且等于readBytes |
+| 连续接受及实际消费尾值 | 1帧，outputSequence=1 | 21帧，outputSequence=21 |
+| 源结束 / master close | EIO / 返回0 | EIO / 返回0 |
+| 主体TERM / KILL次数 | 0 / 0 | 1 / 0 |
+| fault / 清理追加动作 | 无 / 无 | 无 / 无 |
+
+normal实际执行并保存live终态断言：24行符合固定预期，中文为红色且宽2，光标(6,4)，baseY/viewportY均0。flood暂停点为16帧、consumed0；SIGTERM与child回收在恢复消费前已确认，随后继续消费所有已取得文本。两执行最终pending为0、authority槽释放且无隔离；每个provider的pty-master/pty-child/pty-source与父provider-control首报及当前均released。2个真实provider、2个主体、2次provider close，allOwnershipSettled=true，cleanup均safe且steps为空，未调用外层TERM/KILL，没有本轮运行中测试残留。
+
+flood读取量及帧数由真实分块/停止时序决定，不要求等于首次失败中的73472B/20帧，也不承诺被停止主体的完整1MiB。此次有限成功证明修后同场景可以完成移交、实际headless消费及资源收尾；它不能恢复首次未执行的live断言，不能直接证明原trace缺失的失败消息类型，也不能穷尽所有调度竞态。正式状态继续比较中/验证中，PI-01/02/03与其他平台、两authority/reader、真实Agent启动链、owner失联、输入/resize、packaged及默认启用门槛不因2/2关闭。
+
+独立只读核验没有使用summary中的pass替代原始事实：9个sources摘要逐一匹配`3f8ebcae0aa224d40f348b5490e0304eb08c252b`，首次18文件逐项未变，整体摘要仍为第15.8节数值；新binary与schedule一致。normal原始字节和live终态分别核对，serialized精确35B；flood可见区为23行各80个x及末行32个x，serialized为9872个x，与100行scrollback相符。flood暂停时16帧/55413B/consumed0；主体终态和child释放分别在564.183712ms/564.418544ms，首次消费完成580.513526ms；seal在640.014007ms，最终消费完成654.998172ms，父控制资源释放658.788620ms。时间值均为同次父进程performance域，不与首次运行绝对时刻比较。
+
+该原生flood样本的provider关闭并没有早于消费完成，不能据此声称原生证明了二者这一时间顺序；不等待consumer的协议仍由直接纯回归及源码保证提供相应证据。本次normal仅1帧，不能声称实际覆盖跨read的UTF-8分割。独立检查未加载native、未启动PTY、未重放输出，也未修改任一归档。
+
+### 15.10 下一有限接入条件
+
+下一阶段只收口Linux PI-02的最小接入条件，随后转默认关闭的实际authority接线；不把异常崩溃全矩阵设为所有工作的前置。第8节的接入前安全接口与第10节的默认启用前异常失联风险分别执行。当前失联处理依赖provider的JS回调，native同步阻塞时不能保证它执行；父侧杀掉直接provider也不能证明PTY主体结束。S3两场景未补齐这些能力，不从新2/2推导已具备。
+
+有限产物为三项：定位Supervisor/live-runtime与Host/snapshot-only正常关闭的新建准入、stop/cancel、内容消费和资源退役入口；列出provider卡住、provider崩溃、owner突然消失时已有控制对象、允许动作、可确认事实及未知责任；据此冻结下一实际authority切片所需能力、缺能力拒绝新路径和真实flush/reader结算落点。形成具名接线条件后即停止，不在这一轮实施新的owner机制、guardian或新增原生采集。无native的接线及定向测试无需等待异常崩溃全覆盖，但真实native进入业务必须先满足所列必要控制条件，旧live绑定与默认关闭边界保持。

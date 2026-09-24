@@ -21,7 +21,7 @@ updated_at: 2026-09-25
 
 最新原生证据仍以第27.10节（2026-09-24）为准：固定输入1a88d0cc的唯一push run35963751067 attempt1已完成macOS arm64 U1-6三项采集，runner与可信本地保存复核均3/3；完整ZIP摘要与构建来源已核对。真实kqueue取得后注入合成EIO，未调用真实kevent注册/等待；受控abort、唯一waitpid和逐资源收尾只证明此窄路径，不是系统注册故障或产品通过。第26节正常路径与全部旧失败保持。
 
-当前生产接入进展见 `runtime-exit-integrity-production-integration.md` 第15.6节，仍比较中/验证中：S3 Linux/Node22.23.2单owner WNOHANG候选首次两项真实PTY均Control send failed/0/2，报告资源已结算、cleanup safe且provider关闭，失败不改判。首败后已实施显式sourceEndAccepted握手，正常close不等consumer但须等待合法源结束确认，真实send失败不豁免；adapter43组/channel6组、core2组、source断言组1、bridge/typecheck及fixture strict通过，独立复核无本切片确定性blocker，尚无修后原生采集。首次trace不能直接指认失败消息类型；离线原文/终态补验不追认首次live断言通过。下一阶段仅冻结新输入/目录复验原两场景，不扩全矩阵或工具；旧v4/U1-6/S2及全部失败保持，不接业务或runner/push，其他平台和产品整链仍开放。
+当前S3有限结果见 `runtime-exit-integrity-production-integration.md` 第15.8至15.10节，仍比较中/验证中：输入3f8ebcae在Linux/Node22.23.2修后唯一两场景采集2/2，normal live终态、flood暂停消费时停止/回收及已读内容移交通过，资源首报/当前均released且无fault。独立核对9份输入源码与原始内容，首次0/2的18文件逐项未变，不追认旧失败。仅本地固定场景通过，未接业务或验证其他平台；下一步收口Linux正常关闭及卡住时的最小控制责任，再推进authority接线，不扩异常崩溃全矩阵或通用工具，无runner/push。
 
 第25阶段历史状态（原文保留，不覆盖当前入口）：
 
