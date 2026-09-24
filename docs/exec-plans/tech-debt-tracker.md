@@ -23,7 +23,7 @@
 
 ## 技术债列表
 
-2026-09-24 当前设计进展：`docs/design-docs/runtime-exit-integrity-production-integration.md` 第9至12节已明确PI-01/02/03的接口输入与责任，状态仍为比较中/未验证。真实pipe、native read预算、平台失联和两authority实际接线仍未验证；正常owner关闭责任不变，不新增崩溃后主体/普通后代立即清零承诺。下一阶段只实现S1实际共享adapter核心，无spawn/native、不接业务入口，不新增独立诊断模型或实验开关；S1结果不关闭三项PI或退出完整性总债务。真实接入安全条件、完整PI-04/05/06默认启用门槛仍保留，不机械追加U1-7/W1或通用工具门槛；A/B仍未冻结可运行协议、未执行。
+2026-09-24 当前实施进展：`docs/design-docs/runtime-exit-integrity-production-integration.md` 第13节记录主运行时树S1三文件共享核心及直接测试入口已实施，内存定向验证通过，设计仍比较中/验证中。无业务导入、spawn/native或reader接线；真实pipe、native read预算、平台失联、两authority及产品整链仍开放，不关闭PI-01/02/03或退出完整性总债务。正常关闭责任保留，不新增异常崩溃后主体/普通后代清零保证；真实接入安全条件及PI-04/05/06默认启用门槛不降低。下一有限切片拟为S2零PTY真实异步transport/provider启动链，先冻结有限输入和安全清理再实施，不接现有业务、不追加工具门槛/全U1-W1、不自动runner/push。
 
 最新原生证据仍为第27.10节：唯一1a88d0cc/run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成U1-6三次，runner及可信本地保存复核均3/3；30项纯测、零会话build/load另记。ZIP、21runner源、16采集源及2768build成员已核。真实取得kqueue后合成EIO，未调用注册/等待kevent；abort/ack exit0及唯一wait/kqueue/master收尾取得限定证据，独立raw核查见第27.10节。其余原生/取消、真实Agent及Host/Webview/packaged未验收；业务、旧断言/失败/工件保持。
 

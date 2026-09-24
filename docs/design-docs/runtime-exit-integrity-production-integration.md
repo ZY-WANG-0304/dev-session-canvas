@@ -1,7 +1,7 @@
 ---
 title: 退出完整性生产接入与故障域收敛
 decision_status: 比较中
-validation_status: 未验证
+validation_status: 验证中
 domains:
   - 执行编排域
   - VSCode 集成域
@@ -20,6 +20,8 @@ updated_at: 2026-09-24
 # 退出完整性生产接入与故障域收敛
 
 ## 1. 当前结论与阶段边界
+
+2026-09-24 S1 实施阶段从主树 `17e3372b`、诊断树 `89cb46fc` 继续。主树新增真实共享生命周期类型、无 native adapter 及直接加载它们的定向测试，未从任何现有业务入口导入；诊断树只同步文档。当前实现、验证与下一有限切片见第13节。整体仍比较中/验证中，真实异步 pipe、native 预算、平台 owner 失联和两 authority/页面接线未通过；不因 S1 内存验证而关闭 PI-01/02/03。以下接口阶段与原生实验描述按其发生时点保留，不覆盖本段。
 
 2026-09-24 接口阶段从主树 `07851ba4`、诊断树 `76ea6e77` 继续。第9至12节收敛 PI-01/02/03 的消息、所有权与两模式接线，并冻结下一步 S1 无 native 的共享 adapter 核心切片。PI-01 的真实 pipe/read 背压、PI-02 的平台失联处置和 PI-03 的实际宿主接线仍未验证，不能把接口收敛写成三项生产门槛全部关闭。本轮只读研究与文档修订，没有业务实现、测试、原生采集或 runner/push。
 
@@ -266,3 +268,35 @@ S1命令范围只含一次start、graceful/force stop各一个语义操作和一
 S1测试沿现有 `scripts/test/test-execution-session-bridge.mjs` 的esbuild+assert方式新增 `scripts/test/test-execution-session-adapter.mjs`，直接测试拟交付模块。固定覆盖：bind前不启动/同start不重入；旧身份拒绝且旧owner不遗忘；accepted不返信用、消费Promise成功后单次返还；零信用、超长帧及未解析队列受控限界；exit先到仍接尾部、process pending不能seal；source越过或少报接受尾值均拒绝；取消/断连保留可用前缀且不造EOF；首次unknown和同操作迟到补证；注入消费失败不伪applied；两个内存执行的预算与控制不串用。使用显式假时钟/延迟promise，不新增writer、oracle、归档、runner或真实进程；测试数量不折算native覆盖。
 
 每个S1默认配置与本设计的受控界限一致，非法配置在prepare时拒绝；没有生产停止/排空时限默认值。S1结束须报告定向测试、typecheck和相关既有bridge回归，以及两个真实authority尚未接入的事实。它不能单独关闭PI-01/02/03或退出完整性总债务；后续真实transport/native和两模式接线按各自风险推进，不要求先跑全部U1/W1，也不把S1假provider当双PTY/真实Agent验收。
+
+## 13. S1：无 native 共享核心实施
+
+### 13.1 实际代码与边界
+
+主树新增 `extensions/vscode/dev-session-canvas/src/common/executionLifecycle.ts` 与 `src/panel/executionSessionAdapter.ts`（后一文件同扩展前缀），并以 `scripts/test/test-execution-session-adapter.mjs` 直接打包加载。它们是后续 provider/authority 共用的实际模块，不是新的 D 系列观察器或资源模型。没有 vscode、node-pty、spawn 依赖，没有业务导入、真实资源取得、输入/resize、reader 消息、平台 hook、manifest 或 storage generation 变更；现有 Host/Supervisor/Webview 路由不变。
+
+`createExecutionAuthority()` 管理同一 authority 的两个槽和一个启动槽，并在各槽保留 identity 与 execution 强引用，直到安全退役；unknown 的责任记录不依赖外层 node 映射继续存在。`prepareExecution(identity, spec, dependencies)` 同步保留纯内存预留，校验并复制启动参数，随后单次 bind。transport 与 scheduler 均显式注入。S1 直接固定 `S1_LIMITS`，不开放任意数值覆盖；非法身份、启动参数或控制 envelope 拒绝，新的操作必须提供晚于调用时刻的有限绝对 deadline。重复同操作共享原观察对象，deadline 过后仍可取得原首报，不重新启动计时或请求。
+
+跨入 transport.connect 前登记 provider-control 责任；即使 connect 抛错也不能声称 acquire 前拒绝。只有 authority 启动准入在 connect 前的本地拒绝可释放纯内存槽。ready 不证明实际主体创建；一次 start、graceful/force stop 各一次及一次 cancel 分别保留首报与当前补证，不从发送完成推断操作生效。已封口或退役后迟到 started 不得回到 running。
+
+输出的4字节头、UTF-8 JSON、连续 frameId 与 data sequence 校验按第9节实现。所有原始分片和未消费内容共用字节/帧预算，解析每任务最多4帧；scheduler 必须提供异步任务，不用递归 microtask 耗尽回合。完整接收前缀由 adapter 保留；超额新 chunk 在复制前拒绝并记录 rejectedDataBytes，不能因此停止处理此前已拥有的原始前缀。格式错误的有界原始残片继续留账，不冒充正常 EOF。
+
+accepted 只移交责任；受信 consumeBatch 成功后才生成 consumed。`OutputCreditWindow` 由未来 provider 复用，只有实际接收合法 consumed 才按原编码费用返还。回执合并仍保持 accepted 先于相应 consumed，控制队列不等待消费 Promise。消费失败公开 authority failed 前缀，保持未确认批次费用，不生成 applied；真实 authority 的 finalRevision 与 tracker.flush 接线仍未实施。
+
+sourceEnd 必须严格等于连续接受尾值且没有原始在途内容，process pending 不封口，process exit 不关闭尾部准入。IPC disconnect、provider exit、data end 分账；单独 provider exit 不补造主体结果或源 EOF，失联时等可用前缀处理及数据通道结束后才结算 unknown/error。OutputSeal 只发布一次，迟到 process/resource 更新不改旧 seal。
+
+S1 每执行最多登记16个具名资源记录，记录首次/当前结果及唯一 release operationId；这只是共享核心的有限责任账，不是 native Close 实现或 OS 对象消失证明。重复、非法或超限的取得报告使 resourceLedgerIncomplete 保持为真，不能用已登记旧资源全释放来掩盖未能登记的新责任。只有责任账完整、所有已知资源、已接受内容和主体事实结算后才释放内存槽。首次 unknown 冻结该 authority 的新建，既有 B 的控制/消费继续；正常 provider 退役且事实已齐备时，后续 transport 关闭不触发故障熔断。
+
+### 13.2 验证记录
+
+首轮测试装载遇到两项测试入口问题：esbuild 输出路径与 require 路径不一致、fixture 多传 LaunchSpec 未定义的 cols/rows；均发生在用例执行前。仅修正新测试入口与 fixture 后，首次17项定向测试通过；未改既有测试或冻结原生输入。首轮整体 typecheck 发现 callback 中 union 窄化丢失（TS2339），以捕获 operationId 修正。既有 bridge 回归首轮通过。
+
+独立只读复审发现并修正三项直接实现问题：慢 send 下合并 consumed 可能越过 accepted、正常 provider 关闭误冻结 authority、迟到 started 使已退役状态回退。补充直接回归，并修正超额新 chunk 不得阻断已保存原始前缀。这些是本轮新代码问题，不追认为旧平台或真实 Agent 的新实测故障；对应新增回归首次运行时修复已到位，不声称这三项都执行过先红后绿。
+
+Linux Node v25.6.0 的最终 `node scripts/test/test-execution-session-adapter.mjs` 为32/32测试组通过，`npm run typecheck`、`node scripts/test/test-execution-session-bridge.mjs` 和新测试脚本语法检查通过。17/17、22/22、25/25、31/31到32/32是同一入口逐步增加覆盖的各轮结果；最后一组验证责任登记失败后不能误退役，不累计成原生样本。独立只读复核完成，验证覆盖固定内存契约及正常/负向交付路径，没有实际 PTY、provider 子进程、真实 xterm、reader、macOS/Windows、VS Code 或 packaged 通过声明。
+
+两树各八份当前文档同步；八份设计元数据、索引状态及关联路径检查通过，生产接入正文一致，原第2至12节保持，历史实验正文与两份计划的12章节顺序保持。一次性历史检查曾将总设计第6节的当前导航误算作冻结历史，明确两段导航的范围后重核通过；没有修改历史来适配检查。每树既有 tracked 变更仅八文档，主树另新增三个 S1 文件，现有业务与诊断源码不变；两树 `git diff --check` 通过。本轮只本地提交，不推送或触发 runner。
+
+### 13.3 下一有限切片
+
+下一阶段为 S2 真实异步 transport/provider 启动链，仍零 PTY、不接现有业务。先冻结有限目标环境、双向消息/输出 pipe 的真实异步契约及直接 child 的正常关闭和失败清理，再实现复用本模块的有限接线；不另起通用诊断框架，不要求先补齐全部 U1/W1。真实 native 接入仍需 read/worker/decoder 预算和该平台安全停止/释放前提，双 authority、页面最终应用、Agent 启动链及 packaged 验收各自保留。此 S1 收口不授权自动运行 S2、native、runner 或推送主分支。

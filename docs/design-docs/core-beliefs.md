@@ -72,7 +72,7 @@ Windows已退出进程被句柄引用而继续保留对象是正常语义，不�
 
 纯测试、构建、原生采集和离线复核分别记账。第27.10节唯一1a88d0cc/run35963751067 attempt1的macOS U1-6三次3/3及可信保存复核，不与30项纯测试或旧U1-0合算；准备期guard-only子进程和stub binary仍不是原生证据。真实取得kqueue后合成EIO、未调用注册/等待kevent的有限成功，也不证明真实系统注册错误。unknown停止准入、not-run无raw/evidence及可信离线不执行归档代码的边界不变。
 
-生产接入不能从有限原生成功直接跳到默认启用。当前候选与接口输入见 `runtime-exit-integrity-production-integration.md` 第9至12节，仍为比较中/未验证。accepted只转移内容责任，信用须等真实消费完成后归还；正常owner关闭、存活时provider卡住、provider崩溃和owner突然消失分开，不新增崩溃后主体或所有普通后代立即清零的保证，也不免除正常关闭责任。下一阶段仅实现S1实际共享adapter核心，无spawn/native且不接业务入口；真实pipe、native read预算、平台失联及两authority接线仍未验证。S1与真实接入、默认启用门槛分层，不机械追加U1-7/W1或通用工具门槛；A/B仍为条件性草案，未冻结可运行协议、未执行。
+生产接入不能从有限原生成功直接跳到默认启用。主运行时树S1真实共享核心与直接测试入口已实施并取得内存定向验证，见 `runtime-exit-integrity-production-integration.md` 第13节；设计仍比较中/验证中，不计产品修复。accepted只转移内容责任，信用须等消费屏障后归还；注入消费Promise的通过不等于真实xterm/PTY通过。正常owner关闭责任保留，异常崩溃不新增主体或普通后代立即清零保证。S1无业务导入、spawn/native或reader接线，真实pipe、native read预算、平台失联及两authority仍开放。下一有限切片拟为S2零PTY真实异步transport/provider启动链，先冻结有限输入和安全清理再实施；不接现有业务，不追加工具门槛/全U1-W1，不自动runner/push，默认启用门槛不降低。
 
 资源总量应区分显式owner引用、预热期间形成的背景和逐会话增量。普通进程控制中的退出后image31、释放23个引用后总数下降23与未知背景+5可以同时成立；保留原计数失败，不以事后换基线替代归属证据。
 

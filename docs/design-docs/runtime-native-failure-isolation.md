@@ -21,7 +21,7 @@ updated_at: 2026-09-24
 
 最新原生证据仍以第27.10节（2026-09-24）为准：固定输入1a88d0cc的唯一push run35963751067 attempt1已完成macOS arm64 U1-6三项采集，runner与可信本地保存复核均3/3；完整ZIP摘要与构建来源已核对。真实kqueue取得后注入合成EIO，未调用真实kevent注册/等待；受控abort、唯一waitpid和逐资源收尾只证明此窄路径，不是系统注册故障或产品通过。第26节正常路径与全部旧失败保持。
 
-当前生产接入接口输入见 `runtime-exit-integrity-production-integration.md` 第9至12节，仍为比较中/未验证：IPC移交、owner四类责任和两模式接线语义已明确，真实pipe、native read预算、平台失联及两authority接线仍未验证。下一阶段仅做S1无spawn/native的实际共享adapter核心，不接业务入口，不机械追加U1-7/W1或通用工具门槛。正常owner关闭责任不变，不新增崩溃后所有主体/后代立即清零承诺；A/B仍为条件性草案，未冻结可运行协议、未执行。本文后续各阶段原记录及其下一步按当时时点保留，不覆盖当前推进顺序。
+当前生产接入进展见 `runtime-exit-integrity-production-integration.md` 第13节，状态比较中/验证中：主运行时树S1共享核心及直接测试入口已实施，内存定向验证通过，无业务导入、spawn/native或reader接线，不计原生覆盖。真实pipe、native read预算、平台失联及两authority仍未验证；正常owner关闭责任不变，不新增崩溃后所有主体/后代立即清零承诺。下一有限切片拟为S2零PTY真实异步transport/provider启动链，先冻结有限输入和安全清理再实施，不接现有业务、不追加工具门槛/全U1-W1、不自动runner/push。本文后续历史原记录、失败及其当时下一步全部保留，不覆盖当前推进顺序。
 
 第25阶段历史状态（原文保留，不覆盖当前入口）：
 
