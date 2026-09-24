@@ -21,6 +21,8 @@ updated_at: 2026-09-25
 
 ## 1. 当前结论与阶段边界
 
+2026-09-25 Linux最小接入条件已按第16节收口：定位Supervisor与Host正常关闭、创建、停止、消费和reader的实际入口，区分已有控制能力与未实现责任。下一切片S4仅做默认关闭、无native的实际authority关闭准入与收尾接线；不新增诊断框架或要求先补异常崩溃全矩阵。真实PTY进入业务仍受第16.4节具名门槛约束，当前不满足；PI-01/02/03不关闭。本轮只读代码与文档，无业务改动、测试、原生采集或runner/push。以下S3及更早记录按发生时点保留，其“下一步”不覆盖本段。
+
 2026-09-25 S3修后有限采集已完成：输入`3f8ebcae`在Linux/Node22.23.2对原normal/flood各执行一次，新目录结果2/2，均无fault、主体及资源确认结算；normal的live最终状态断言已实际执行。仅本地固定两场景通过，不是跨平台或产品退出完整性完成；首次`.debug/s3-linux-provider-first/`的0/2及首报unknown原样保留，不追认通过。输入、原始事实及边界见第15.8至15.9节，不接现有业务或运行runner。以下S2及更早结果按发生时点保留，不覆盖当前阶段。
 
 2026-09-24 S2 已完成本机 Linux/Node 的真实异步 transport/provider 启动链与零 PTY 普通 pipe 受控验证，输入为主树 `e9a3b3f7`、诊断树 `65d2eb32`。首次真实矩阵7/7通过：8次transport尝试、7个真实provider、4个受控subject，8个transport close包含1次失败spawn，并非8个真实进程。实现、首次错误、独立复审修正及未重采集的后置窄修见第14节；不接现有业务、native或runner，不关闭PI-01/02/03。S1第13节保持历史原文；以下S1及更早阶段的段落是历史，不覆盖本段。
@@ -463,3 +465,70 @@ flood读取量及帧数由真实分块/停止时序决定，不要求等于首�
 下一阶段只收口Linux PI-02的最小接入条件，随后转默认关闭的实际authority接线；不把异常崩溃全矩阵设为所有工作的前置。第8节的接入前安全接口与第10节的默认启用前异常失联风险分别执行。当前失联处理依赖provider的JS回调，native同步阻塞时不能保证它执行；父侧杀掉直接provider也不能证明PTY主体结束。S3两场景未补齐这些能力，不从新2/2推导已具备。
 
 有限产物为三项：定位Supervisor/live-runtime与Host/snapshot-only正常关闭的新建准入、stop/cancel、内容消费和资源退役入口；列出provider卡住、provider崩溃、owner突然消失时已有控制对象、允许动作、可确认事实及未知责任；据此冻结下一实际authority切片所需能力、缺能力拒绝新路径和真实flush/reader结算落点。形成具名接线条件后即停止，不在这一轮实施新的owner机制、guardian或新增原生采集。无native的接线及定向测试无需等待异常崩溃全覆盖，但真实native进入业务必须先满足所列必要控制条件，旧live绑定与默认关闭边界保持。
+
+## 16. Linux最小接入条件与下一authority切片
+
+### 16.1 范围与源码基线
+
+本轮从主树`a5d884be`、诊断树`a385e34d`继续，只完成第15.10节三项产物。以下行号对应主树基线，`src/`、`native/`路径均相对`extensions/vscode/dev-session-canvas/`；诊断树没有S1至S3生产实现，代码锚点指向主树，不要求在诊断树找到同一实现。authority是持有终端权威状态和执行责任的宿主：live-runtime为Supervisor，snapshot-only为Host；provider是其直接子进程，不与authority混称。
+
+不重跑S3或改变首次0/2、修后2/2，不添加故障模型、guardian、服务或平台机制。此处是静态接线条件，不是新实测缺陷清单，也不宣称产品已通过。root稳定归属F-03、旧live的backend/storage/session/kind绑定和正常结束不保留Runtime正文的规则不变。普通后代不是独立托管对象；Agent包装链中的实际CLI仍必须正确代表会话主体，不能借此范围边界忽略它。
+
+### 16.2 两种owner的真实收尾入口
+
+| 责任 | Supervisor / live-runtime | Host / snapshot-only |
+| --- | --- | --- |
+| 正常关闭入口 | `src/supervisor/runtimeSupervisorMain.ts:2388`的`scheduleIdleShutdownIfNeeded()`仅在无连接、无live会话时计时，随后`flushRegistryBeforeShutdown()`（`:2104`）和`process.exit()`；没有统一closing状态或SIGTERM/SIGINT协调入口。进入异步flush后没有最终准入复查 | `src/extension.ts:826`的`deactivate()`等待`CanvasPanelManager.prepareForDeactivation()`（`src/panel/CanvasPanelManager.ts:3695`）及`prepareForHostBoundary()`（`:3703`）。目前先等待runtime操作、flush状态/存储，再同步dispose/kill本地会话；不是等待实际退出和资源结算 |
+| 创建准入 | `runtimeSupervisorMain.ts:419`的`createSession()`在首个journal await前只查sessions，spawn之后才登记会话；新路径须先预留身份与责任，再bind/start | `CanvasPanelManager.ts:14776`和`:15984`在异步环境/CLI解析之后创建Agent/Terminal进程，之后才登记map。本地启动不在Supervisor pending operation中；deactivation没有开启现有invalidate选项，且失效token本身也不构成本地启动屏障 |
+| stop/delete | `stopSession()`（`:974`）只发停止请求；`deleteSession()`（`:995`）先撤输出/退出监听再kill，`removeSession()`（`:1063`）跨journal删除await。新路径须保留捕获execution，异步之后校验对象身份 | `stopExecutionSession()`（`:17534`）请求kill或Agent graceful input；`terminateExecutionNodeForDeletion()`（`:17605`）本地先flush再同步dispose。`disposeExecutionSession()`（`:17962`）会清pendingOutput、撤监听、删map和dispose tracker，最后才kill，不能直接复用为新provider成功结算 |
+| 内容及最终状态 | `bindSessionProcess()`的onExit（`:1149`）立即关闭mutation admission；`finalizeSession()`（`:1184`）沿`enqueueTerminalOperation()`（`:1830`）收尾，但最终snapshot的`'never'`分支不执行tracker最终flush | 两条local finalize（`:14878`、`:16078`）撤订阅后调用`flush().catch(() => getSerializedState())`；新路径不能把fallback当成功。`flushAllExecutionSessionStatesForHostBoundary()`（`:18633`）是退出前快照，不封住后续输出 |
+| reader及退役 | `openTerminalRead()`（`:613`）、`closeTerminalRead()`（`:677`）和`finishSessionRetirement()`（`:1051`）已有cursor/身份及延迟退役，但close没有最终应用结果，reader归零也不证明provider资源已释放 | `handleExecutionTerminalApplied()`（`:16763`）拒绝local；`postMessage()`（`:6876`）不等页面应用。`src/panel/runtimeTerminalReadRelay.ts:176`的close/release发起后即返回，不能当最终ACK；local final barrier须按第11.2节另接 |
+
+表中未写完整路径的Supervisor函数属于`src/supervisor/runtimeSupervisorMain.ts`，Host函数属于`src/panel/CanvasPanelManager.ts`。两端已有的`src/common/serializedTerminalState.ts:268`之`flush()`等待串行operationChain，`:433`之`writeInternal()`等待真实xterm write callback，这是需要接入的消费屏障，不是重新发明parser或以队列长度归零代替应用。
+
+Host/Webview离开不等于live-runtime owner关闭：`src/panel/runtimeSupervisorClient.ts:207`的dispose只销毁socket、拒绝pending请求；Supervisor的`cleanupSocket()`（`:1997`）清订阅、reader及ACK，不停止live主体。Host boundary在前后均启用Runtime Persistence时只解除Host绑定，关闭该模式才按原绑定delete指定会话，不能关闭整个Supervisor。Editor/panel的onDidDispose（`CanvasPanelManager.ts:4855`、`:4927`）沿`invalidateSurfaceLifecycle()`（`:11683`）释放surface reader，不是local owner退出点。同步context disposer（`:1576`）也不能承载可等待的owner收尾。
+
+新路径的正常收尾偏序固定如下，尚未实施：
+
+1. owner正常关闭在首次await前关闭新建准入，纳入已预留/启动中的执行并保留引用；未取得资源的预留可拒绝，已进入connect/start不能按未取得处理。Host reset等可恢复边界与永久deactivation分别管理，新authority不得绕过旧unknown责任重新开门。单节点stop/delete不关闭整个authority。
+2. 对同一execution发具名stop，必要升级和cancelOutput按显式策略执行；请求accepted只表示受理。ProcessResult关闭输入/native resize，但不撤输出/资源监听。关闭或取消输出期间继续推进已取得内容的消费，避免等待关闭的任务堵住它仍依赖的terminal operation链。
+3. OutputSeal不等于全部消费批次已进入终端串行链：adapter的`beginConsumption()`（`:502`）每次至多4帧，后批等待前批完成后再调度，`maybeSeal()`（`:618`）不等消费。因此先在terminal串行链外等待截至`seal.lastDataSequence`的已接受内容实际消费成功，再进该链执行最终tracker.flush；消费失败保留已应用前缀，不用缓存补成功，也不在该链内等待依赖它的consumed/shutdown。由该执行的内容到终端操作映射固定finalRevision，不把数据帧号直接当终端revision；在固定值的同一无await边界关闭新reader准入，先前获准及open回包在途的reader继续结算。该过程不要求维持主体退出后普通后代的未来输出，取消也不能伪装EOF。
+4. native责任与页面reader责任分别结算。先停止native不必等一个已离开的页面；页面消失记cancelled/lost而非applied。保留临时最终状态直至所需reader结果收口，完成后不新增Runtime completed历史。
+5. 只有真实资源结果、已接受内容消费及必要reader责任分别收口，才退役相应owner/状态。unknown保留原操作、首次结果、当前补证和责任，冻结该authority新准入但不停止其他已准入执行的安全推进。Supervisor idle不得再仅以live=false判断可退出；Host不能以dispose返回宣称本地会话已结束。
+
+### 16.3 Linux已有外部控制能力
+
+`src/panel/executionProviderTransport.ts:172`的`terminate()`只向保留的直接provider ChildProcess请求终止，并观察其IPC/pipes关闭，不保证期限内释放。只有child close、IPC断开及相关pipes关闭才发布`provider-control=released`；该方法还未接入adapter通用ExecutionTransport或业务owner。`native/linux-execution-owner.h:18`的Owner持有master、主体PID及唯一wait责任，`:191`的signal先做同owner wait核对且只向未回收主体发信号；token同时受N-API env约束。snapshot中的PID/fd数值不是父端控制句柄，不能从日志重建kill权限。
+
+| 情况 | 已有对象与允许动作 | 可确认事实 | 未确认责任与限制 |
+| --- | --- | --- | --- |
+| owner正常关闭，provider响应 | 原adapter/transport发送graceful/force stop及cancelOutput；provider使用自己持有的token进行wait/read/close | 分别收到主体终态、真实源结束/取消、native资源结果及父侧provider-control释放 | 没有authority整体shutdown编排；stop/cancel accepted和sourceEndAccepted均不等于最终消费完成 |
+| owner存活，provider同步native调用卡住 | 父侧可观察期限、尝试IPC，并通过原ChildProcess请求终止直接provider | 父事件循环正常时可观察provider自身终止和通信资源关闭；超期只得unconfirmed/unknown | provider JS不保证处理IPC；父没有PTY master或独立主体控制句柄，杀provider不证明主体退出、PTY EOF或native责任结算 |
+| provider崩溃，owner存活 | 保留原transport，消费已到达前缀并观察disconnect/exit/pipe close | provider自身退出、通信资源释放及崩溃前已取得的有效事实 | 未报告主体终态仍unconfirmed，未结算资源仍unknown；创建中崩溃不能从未收到resourceAcquired倒推资源未取得 |
+| owner突然消失 | provider响应时由JS disconnect进入fail，尝试token化SIGTERM并取消读取，沿原wait/close流程继续 | 仅provider仍能取得的本地事实；已不存在的父端不保证收到或保存 | 无独立存活观察者、自动SIGKILL升级或硬期限；SIGTERM被忽略、native卡住时不能保证结束，不承诺主体或普通后代清零 |
+
+实际失联入口为`src/panel/executionProviderChannel.ts:451`，`src/panel/linuxExecutionProvider.ts:112`附近的channel hooks进入fail。`cancelOutput`只置取消标志，不中断已经await的`channel.write()`/信用等待（读取见`:227`），所以正常关闭必须继续消费，不能先dispose consumer再等取消成功。`src/panel/executionSessionAdapter.ts:75`只有reserve/start/release/quarantine，没有正常closing闸门；`:567`的失联事实区分与unknown保留不等于平台处置已经接通。
+
+该表确认“现有能力不够证明什么”，没有要求选择pidfd、PDEATHSIG、进程组、Job或guardian。主体终态未知可能是观察/控制能力缺口，不据此断言OS bug或主体仍存活；普通后代管理范围也不因新增provider而扩大。
+
+### 16.4 分层准入与阻塞项
+
+| 门槛 | 必需条件及当前缺口 | 适用时点 |
+| --- | --- | --- |
+| L-01 正常owner关闭 | 关闭准入、在途预留、prepare/bind/start、stop/cancel及消费链不断开；Supervisor idle与Host boundary接入同一责任原则。当前仅有局部API，无整体编排 | S4实现并以无native注入测试；真实PTY业务接入前必须成立 |
+| L-02 真实结算 | tracker.flush失败不冒充成功；ProcessResult、OutputSeal、reader结果、native资源和provider-control分开。现有onExit/dispose/reader close不能提供这些证明 | S4先接authority消费与资源责任；真实PTY业务接入前补齐第11节reader协议及页面屏障 |
+| L-03 失效控制 | authority持有原transport的独立外部处置对象；冻结触发条件、stop/升级/cancel/观察的有限预算，以及provider关闭而主体未确认时的隔离和owner关闭失败结果。当前父只能杀provider，Host退出后不能靠本进程map继续占账，尚无足以批准该正常关闭失败路径的处置决策 | 真实PTY进入业务前必须明确并验证所选路径；缺失则拒绝新路径，不能用kill(provider)或超时凑released |
+| L-04 能力与分流 | 在任何provider/PTY资源取得前验证本会话控制能力、消费/reader能力和运行环境；无能力明确拒绝，不悄悄回退旧创建路径。provider已spawn便有控制责任，不能再称rejected-before-acquire。默认开关、实际namespace、旧live路由与回退按第11.3节 | S4只保留内部注入且生产工厂不可达；真实创建入口开放前共同实现 |
+| L-05 异常owner消失 | 核对新拓扑在目标环境的孤儿风险、允许动作与可观测边界；不要求恢复进程/历史或所有后代清零 | 默认启用前按实际支持环境验证/记录；不是无native接线和定向测试的前置 |
+
+L-03不是暗中新增“任何崩溃都必须独立杀掉PTY主体”的产品保证。它要求在正常关闭失败和provider失效时选定可执行、不会伪报成功的处置，并明确Host即将退出时由谁负责或以何种失败边界结束；现有代码无法证明这一点，故不批准真实native业务接入。预算必须以具名参数、取消原因和到期结果实现，不能直接把S3测试的20s自限、30s观察、2s清理或旧Agent 5s timer转成生产政策。S4可注入测试预算，不需要先选所有生产数值或跑全部异常矩阵。
+
+PI-01/02/03继续开放；PI-04容量/预算、PI-05宿主分发与PI-06实际Agent/产品整链也不因静态收口关闭。S1的N=2/start=1仍是有限验证界限，不是生产容量决策。
+
+### 16.5 下一有限实现：S4无native的authority收尾接线
+
+下一阶段在主树推进同一生产模块及真实owner入口，不另写诊断模型。范围限定为`executionSessionAdapter.ts`的正常关闭准入/在途责任，以及`runtimeSupervisorMain.ts`、`CanvasPanelManager.ts`的新能力分支接线：Supervisor创建预留、串行消费及idle退役；Host本地创建预留、stop/delete和prepareForHostBoundary。新分支只接受显式注入的非native测试依赖；正常运行不创建新provider、不加载addon、不启用新协议或改动旧live行为。先保留内部依赖入口而非新增用户设置；真实native工厂在L-01至L-04成立前不可达，不能用环境变量绕过。共用的小型收尾编排可抽出，但必须由这两个真实入口调用，不能只测试另一个脱离业务的模型。
+
+S4用直接测试真实模块和入口的方式验收：关闭与异步prepare竞争时不再start；同身份关闭幂等且旧execution不改新映射；ProcessResult先到仍消费尾部，首批消费暂停、后批已accepted且seal已到时finalRevision不提前固定，全部消费完成后才最终flush，错误不回退成功；stop/cancel等待时消费可推进；unknown保留并拒绝新建而已准入B仍可推进；live的Host/socket离开只detach，本地Host boundary等待或诚实报告未结算；Supervisor idle不越过未结算owner；缺能力不触发任何spawn。Host的`resetState()`（`:3753`）单根走boundary、多根走`clearAllWorkspaceRootCanvases()`（`:3794`）后逐节点terminate，测试须覆盖这两条入口清map或换authority均不能逃逸旧unknown。页面最终ACK协议不在这一切片实现，以未结算reader明确阻止相应状态退役，不虚构applied。
+
+测试复用现有esbuild/assert、可注入transport/时钟及真实SerializedTerminalStateTracker，必要时增加窄的owner wiring测试文件；不加载PTY、触发真实SIGTERM、启动runner或新增writer/oracle。新测试入口在实施时登记完整命令，执行前确认没有导入会自动启动Supervisor的main副作用。通过只说明关闭准入、消费和责任接线，不说明真实OS回收、Agent包装链或最终Webview验收通过。完成此切片、定向测试、typecheck和相关既有bridge回归后停止，报告L-02 reader、L-03处置/预算及L-04实际创建分流等剩余条件，不自动接通native或追加异常工具验证。

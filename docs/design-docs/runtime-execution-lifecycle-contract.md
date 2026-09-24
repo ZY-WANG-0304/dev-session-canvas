@@ -21,6 +21,8 @@ updated_at: 2026-09-25
 
 ## 1. 状态、目的与非目标
 
+当前接入条件以`runtime-exit-integrity-production-integration.md`第16节为准：两owner正常关闭入口、Linux已有外部控制与L-01至L-05分层门槛已收口。下一S4仅做默认关闭、无native的实际authority准入/消费/收尾接线；真实PTY业务接入仍缺正常关闭失败处置、最终reader等必要能力，不因静态核对或此前2/2关闭PI-01/02/03。无新实验或业务改动，整体仍比较中/验证中；以下原生结果及当时“下一步”保持历史，不覆盖当前顺序。
+
 当前以 `runtime-native-failure-isolation.md` 第27.10节（2026-09-24）为准：唯一输入1a88d0cc的push run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成3个U1-6原生样本，runner及可信本地`--verify-saved`均3/3。真实kqueue取得后以native-substitute合成EIO，真实注册/等待kevent未调用；数据gate关闭、token/PID绑定abort/ack和exit0、唯一waitpid及kqueue/master收尾取得限定证据。完整ZIP、21个runner来源、16个采集来源和2768个构建成员复核完成，独立原始事实核查见第27.10节。30项纯测（前轮21项加build3/schedule6）、零会话build/load和原生次数分账；旧U1-0不重跑；早期6/6、10/10、21项保持原历史口径，不追认或累加覆盖。
 
 当前S3有限结果见 `runtime-exit-integrity-production-integration.md` 第15.8至15.10节，仍比较中/验证中：输入3f8ebcae在Linux/Node22.23.2修后唯一两场景采集2/2，normal live终态、flood暂停消费时停止/回收及已读内容移交通过，资源首报/当前均released且无fault。独立核对9份输入源码与原始内容，首次0/2的18文件逐项未变，不追认旧失败。仅本地固定场景通过，未接业务或验证其他平台；下一步收口Linux正常关闭及卡住时的最小控制责任，再推进authority接线，不扩异常崩溃全矩阵或通用工具，无runner/push。

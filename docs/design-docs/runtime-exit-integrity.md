@@ -21,6 +21,8 @@ updated_at: 2026-09-25
 
 ## 1. 已确认范围与决策状态
 
+当前接入条件以`runtime-exit-integrity-production-integration.md`第16节为准：两owner正常关闭入口、Linux已有外部控制与L-01至L-05分层门槛已收口。下一S4仅做默认关闭、无native的实际authority准入/消费/收尾接线；真实PTY业务接入仍缺正常关闭失败处置、最终reader等必要能力，不因静态核对或此前2/2关闭PI-01/02/03。无新实验或业务改动，整体仍比较中/验证中；以下原生结果及当时“下一步”保持历史，不覆盖当前顺序。
+
 当前S3有限结果见 `runtime-exit-integrity-production-integration.md` 第15.8至15.10节，仍比较中/验证中：输入3f8ebcae在Linux/Node22.23.2修后唯一两场景采集2/2，normal live终态、flood暂停消费时停止/回收及已读内容移交通过，资源首报/当前均released且无fault。独立核对9份输入源码与原始内容，首次0/2的18文件逐项未变，不追认旧失败。仅本地固定场景通过，未接业务或验证其他平台；下一步收口Linux正常关闭及卡住时的最小控制责任，再推进authority接线，不扩异常崩溃全矩阵或通用工具，无runner/push。
 
 最新原生证据仍以 `runtime-native-failure-isolation.md` 第27.10节（2026-09-24）为准：唯一输入1a88d0cc、push run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成3个新U1-6原生样本，runner及可信本地`--verify-saved`均3/3。30项纯测、零会话build/load与原生执行分账。第26节32312fe7/run35900772851 attempt1的U1-0三次3/3及旧失败独立保留，不重跑、不追认早期6/6、10/10、21项覆盖。这仍是合成注册失败的限定诊断证据，不是生产退出完整性验收。

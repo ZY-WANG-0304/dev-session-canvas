@@ -19,6 +19,8 @@ updated_at: 2026-09-25
 
 ## 1. 本阶段状态与完成边界
 
+当前接入条件以`runtime-exit-integrity-production-integration.md`第16节为准：两owner正常关闭入口、Linux已有外部控制与L-01至L-05分层门槛已收口。下一S4仅做默认关闭、无native的实际authority准入/消费/收尾接线；真实PTY业务接入仍缺正常关闭失败处置、最终reader等必要能力，不因静态核对或此前2/2关闭PI-01/02/03。无新实验或业务改动，整体仍比较中/验证中；以下原生结果及当时“下一步”保持历史，不覆盖当前顺序。
+
 最新原生证据仍以第27.10节（2026-09-24）为准：固定输入1a88d0cc的唯一push run35963751067 attempt1已完成macOS arm64 U1-6三项采集，runner与可信本地保存复核均3/3；完整ZIP摘要与构建来源已核对。真实kqueue取得后注入合成EIO，未调用真实kevent注册/等待；受控abort、唯一waitpid和逐资源收尾只证明此窄路径，不是系统注册故障或产品通过。第26节正常路径与全部旧失败保持。
 
 当前S3有限结果见 `runtime-exit-integrity-production-integration.md` 第15.8至15.10节，仍比较中/验证中：输入3f8ebcae在Linux/Node22.23.2修后唯一两场景采集2/2，normal live终态、flood暂停消费时停止/回收及已读内容移交通过，资源首报/当前均released且无fault。独立核对9份输入源码与原始内容，首次0/2的18文件逐项未变，不追认旧失败。仅本地固定场景通过，未接业务或验证其他平台；下一步收口Linux正常关闭及卡住时的最小控制责任，再推进authority接线，不扩异常崩溃全矩阵或通用工具，无runner/push。
