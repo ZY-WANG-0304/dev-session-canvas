@@ -638,3 +638,9 @@ U1-6不覆盖真实`kevent`注册错误、`ESRCH`竞态、kqueue取得失败、�
 ### 27.4 决策与下一步
 
 本节采纳“注册失败后同一Wait线程直接waitpid、数据gate保持关闭并使用token-bound abort/ack”的唯一回收者方案，因为child已经由本次候选创建且仍需保留真实终态；它避免了stock路径的未初始化status和重复wait风险，也不会让kqueue注册失败转化为永久child积累。继续前必须先增加正负纯测试和静态接口复审：正例确认failpoint命中后不发送go、abort/ack后唯一waitpid和kqueue单次close，负例确认旧`kqueueRegistered`门控会死锁且不能作为新协议；再冻结新输入并验证真实owner账本。生产API、隔离拓扑、停止预算和失败后是否继续交付输出仍未选定。
+
+### 27.5 纯协议测试结果（2026-09-24）
+
+诊断树提交`519ca7b8`新增三个隔离入口：`macos-native-failure-fixture-v1.mjs`只生成U1-6协议输入，`macos-native-failure-verifier-v1.mjs`按场景、资源和证据三域判定，`macos-native-failure-v1.test.mjs`只运行纯内存正负例。6组测试全部通过（`node --test scripts/diagnostics/macos-native-failure-v1.test.mjs`）；三个文件的`node --check`和`git diff --check`也通过。
+
+测试已确认合成`-1/EIO`在真实注册API进入前命中、没有register/wait/exit事件或数据gate泄漏；abort/ack保持token与PID绑定；同一Wait线程唯一waitpid后单次close kqueue，并完成payload、TSFN、thread、finalizer及master收尾。负例保留场景不匹配、资源未结算和证据不足的独立结果，不把合成错误写成真实系统错误。该结果只完成协议级纯测试，尚未实施native替身、构建、加载或运行runner；下一步仍需静态接口复审后再决定是否冻结运行输入。

@@ -935,3 +935,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-24，第27阶段U1-6协议冻结）：源码复审确认当前注册失败分支不waitpid、现有roles gate永久等待，stock Darwin实现也不能作为修复模板。冻结native-substitute合成-1/EIO、`registerApiEntered=true`/`registrationCallInvoked=false`、同一Wait线程唯一waitpid、同owner单次kqueue close、保持数据gate关闭及token-bound abort/ack；U1-6预期无写入/read/parser/state，三域分别验收。本阶段不实施、不构建、不运行runner；下一步仅做独立诊断树定向纯测试与新输入准备。
 
 修订记录（2026-09-24，Darwin正常路径结果）：固定32312fe7的唯一run35900772851 attempt1成功，10组定向纯测试、零会话build/load和三次原生3/3分账；完整ZIP摘要核对、可信本地离线3/3及独立raw/来源保持审计25206检查零失败。下一项先冻结macOS U1-6合成注册失败的唯一reaper/逐资源协议，其他平台路径与产品边界不改，主树不推送。
+
+修订记录（2026-09-24，U1-6纯协议测试）：诊断树提交519ca7b8新增隔离fixture、三域verifier和定向纯测试，6/6通过；三个文件node --check及git diff --check通过。覆盖合成EIO前置命中、旧kqueueRegistered gate不放行、无go/written/read/parser/state、token/PID abort-ack、唯一Wait线程waitpid→kqueue单次close、TSFN/payload/thread/finalizer/master结算及三域负例。未实施native替身、未构建、未加载、未运行runner；下一步仍先做静态接口复审，再决定是否冻结U1-6运行输入。
