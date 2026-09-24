@@ -27,8 +27,8 @@
 - [x] (2026-09-24，第26阶段) 独立raw/来源保持审计25206检查零失败，其中三case15944检查；110旧tracked、15旧证据入口和1个installed source保持，不泛化为旧15GB全量深遍历。
 - [x] (2026-09-24，第26阶段收口) 两树各七份文档同步；第26节一致、旧第2至25节保持，九个冻结源/workflow与32312fe7及冻结摘要一致。两份计划12个章节齐全，过期未运行措辞已修正，git diff --check通过；只做本地文档提交，不追加push或runner。
 - [x] (2026-09-24，第27阶段) 只读核对确认当前候选在注册失败后跳过waitpid、现有ready gate永久等待，且stock Darwin路径不能作为修复模板；两树第27节冻结native-substitute、同一Wait线程唯一waitpid、kqueue单次close、token-bound abort/ack和三域判定，不改第26节源码或工件。
-- [x] (2026-09-24，第27阶段收口) 两树外围文档同步完成；本阶段没有纯测试、构建、runner或业务修改，过期的第26阶段当前入口已改为第27阶段协议状态，git diff --check通过。
-- [ ] 下一最小项在独立诊断树新增U1-6定向纯测试和隔离输入，先验证failpoint/gate/abort/唯一reaper静态契约，再决定是否构建或运行runner；不重跑第26节。
+- [x] (2026-09-24，第27阶段收口) 两树外围文档同步完成；本阶段完成U1-6纯协议测试6/6，未构建、未运行runner且未改业务，过期的第26阶段当前入口已改为第27阶段协议状态，git diff --check通过。
+- [x] 下一最小项在独立诊断树新增U1-6定向纯测试和隔离输入，先验证failpoint/gate/abort/唯一reaper静态契约，再决定是否构建或运行runner；不重跑第26节。
 
 - [x] (2026-09-23，原生第25阶段) 冻结U1-5真实close后扣留上层回执协议，区分audit/被测状态与各自时钟；复用原native v4，不新增构建。
 - [x] (2026-09-24，原生第25阶段) 四个v6文件、19/19纯测试和静态复审完成，冻结前语法/暂存格式检查通过；复用旧native v4，无新build，唯一U1-0一次/U1-5三次4/4，采集及独立进程保存复核exit0。
@@ -515,7 +515,7 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 工作计划
 
-第27阶段已完成源码/矩阵只读定位和运行前协议冻结，两树文档同步并通过diff检查；没有纯测试、构建、runner、业务修改或新工件。下一最小项在独立诊断树新增U1-6输入和定向纯测试：验证kqueue取得登记、注册failpoint一次命中、旧gate不再作为放行条件、token-bound abort/ack、同一Wait线程waitpid和kqueue单次close的静态契约；测试通过前不构建或触发runner。其他U1/W1、真实注册错误、早退/ESRCH、真实Agent及产品链路继续开放，不扩大工具框架或生产接口研究。
+第27阶段已完成源码/矩阵只读定位、运行前协议冻结和U1-6定向纯测试6/6，两树文档同步并通过diff检查；没有构建、runner、业务修改或新工件。静态接口复审确认现有U1-0候选不能直接承载U1-6，下一步需在独立诊断树新增替身与roles分支并先做源码/纯测复审，不扩工具框架或生产接口研究。其他U1/W1、真实注册错误、早退/ESRCH、真实Agent及产品链路继续开放。
 
 第25阶段实施、唯一原生采集、离线复核与独立raw审计已完成，当前只收口文档和本地提交，不再运行该矩阵。下一最小阶段先冻结macOS U1-0基线，核对其真实创建/等待/源结束/释放与Linux的差异，再依托已有runner做有限独立输入；本轮不实施平台适配或触发runner/push。旧各批及下段第24阶段安排按历史时点保留，生产API/隔离策略/停止预算未选定。
 
@@ -726,7 +726,9 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
-第27阶段仅以运行前协议作为完成条件：native-substitute在真实kqueue取得并登记后、真实register调用前命中，记录`registerApiEntered=true`、`registrationCallInvoked=false`及合成-1/EIO，不出现真实register-return/kevent-wait/exit-event；同一Wait线程唯一waitpid自身child后由同一owner单次真实close kqueue。fixture ready后不发送go，必须取得token-bound abort/ack；U1-6预期无写入、无read/parser、无终态，任何数据泄漏判场景失败。三域分别判定；本阶段没有新增执行结果，不把协议冻结算原生通过。
+第27阶段运行前协议已冻结，且独立诊断树已完成协议级纯测试：native-substitute在真实kqueue取得并登记后、真实register调用前命中，记录`registerApiEntered=true`、`registrationCallInvoked=false`及合成-1/EIO，不出现真实register-return/kevent-wait/exit-event；同一Wait线程唯一waitpid自身child后由同一owner单次真实close kqueue。fixture ready后不发送go，必须取得token-bound abort/ack；U1-6预期无写入、无read/parser、无终态，任何数据泄漏判场景失败。三域分别判定；6/6纯测试通过，但仍未实施native替身、构建、加载或运行runner，不把协议级测试算作原生通过。
+
+静态接口复审进一步确认当前U1-0候选不能直接承载U1-6：`Configure`拒绝U1-6，snapshot固定U1-0且缺少失败字段，注册失败分支不执行唯一`waitpid`，roles也没有替代旧`kqueueRegistered`门控的abort/ack路径。因此下一步必须先在诊断树实现独立替身和roles分支并做源码/纯测复审，未完成前不构建或触发runner。
 
 第26阶段各项要求真实posix_spawn/helper与同一child身份、ready和kqueue注册双前提、成功写2102/读2104字节、正容量read0、完整headless终态/光标x6/y4、真实wait1792/exit7及唯一正常通知。kevent返回后同owner单次close kqueue，read/parser及非master资源结算后单次close master，真实返回/error均0；资源或证据不足停止准入。旧19纯测、Linux4项不计本轮三次macOS原生验收。
 
@@ -994,3 +996,7 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-24，第27阶段U1-6协议冻结）：源码复审确认当前注册失败分支不waitpid、现有roles gate永久等待，stock Darwin实现也不能作为修复模板。冻结native-substitute合成-1/EIO、同一Wait线程唯一waitpid、同owner单次kqueue close、保持数据gate关闭及token-bound abort/ack；U1-6预期无写入/read/parser/state，三域分别验收。本阶段不实施、不构建、不运行runner；下一步仅做独立诊断树定向纯测试与新输入准备。
 
 修订记录（2026-09-24，Darwin正常路径结果）：固定32312fe7的唯一run35900772851 attempt1成功，10组定向纯测试、零会话build/load和三次原生3/3分账；完整ZIP摘要核对、可信本地离线3/3及独立raw/来源保持审计25206检查零失败。下一项先冻结macOS U1-6合成注册失败的唯一reaper/逐资源协议，其他平台路径与产品边界不改，主树不推送。
+
+修订记录（2026-09-24，U1-6纯协议测试）：诊断树提交519ca7b8新增隔离fixture、三域verifier和定向纯测试，6/6通过；三个文件node --check及git diff --check通过。覆盖合成EIO前置命中、旧kqueueRegistered gate不放行、无go/written/read/parser/state、token/PID abort-ack、唯一Wait线程waitpid→kqueue单次close、TSFN/payload/thread/finalizer/master结算及三域负例。未实施native替身、未构建、未加载、未运行runner；下一步仍先做静态接口复审，再决定是否冻结U1-6运行输入。
+
+修订记录（2026-09-24，U1-6静态接口复审）：确认现有U1-0 support/roles不能直接执行U1-6；Configure/snapshot固定U1-0，注册失败路径不waitpid，旧gate会等待`kqueueRegistered`而无法发起受控abort。纯测试结果不外推为native实现；下一步仅在诊断树新增独立替身、roles分支及输入快照，先做源码/纯测复审后再决定构建或runner。
