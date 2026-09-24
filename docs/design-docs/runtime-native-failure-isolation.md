@@ -649,4 +649,10 @@ U1-6不覆盖真实`kevent`注册错误、`ESRCH`竞态、kqueue取得失败、�
 
 纯测试所用的U1-6字段目前不是现有U1-0候选的可直接输入。`macos-native-baseline-support-v1.h`的`Configure`拒绝`U1-6`，`MakeSnapshot`将场景固定为`U1-0`且没有注册替身、abort/ack或唯一reaper字段；`Wait`在真实`kevent`注册失败时不会进入`waitpid`，随后关闭kqueue并结束TSFN路径。`macos-native-baseline-roles-v1.mjs`的门控只等待`ready && kqueueRegistered`，没有U1-6的“不发送go、token-bound abort/ack”分支。
 
-因此，`519ca7b8`的fixture/verifier/test只证明冻结协议的内存判定和负例隔离，不能证明当前native候选已经实现U1-6，也不能把合成`EIO`记录为真实系统错误。下一步若继续，只能在诊断树新增独立的U1-6 native substitute、roles分支和输入快照；应先通过源码静态检查及对应纯测，再决定构建或触发runner。主运行时代码、U1-0源码和既有工件保持不变。
+因此，`519ca7b8`的fixture/verifier/test只证明冻结协议的内存判定和负例隔离，不能证明原U1-0候选已经实现U1-6，也不能把合成`EIO`记录为真实系统错误。诊断树随后新增的U1-6 native substitute、roles分支和fixture process仍只完成源码静态契约；主运行时代码、U1-0源码和既有工件保持不变。
+
+### 27.7 U1-6 诊断替身的源码契约结果（2026-09-24）
+
+诊断树新增`macos-native-failure-support-v1.h`、`macos-native-failure-patch-v1.mjs`、`macos-native-failure-roles-v1.mjs`及独立fixture process，并配套patch/roles测试。替身在kqueue owner登记后记录`registerApiEntered`并合成`-1/EIO`，不调用任何真实`kevent`注册或等待；同一Wait线程对登记PID执行一次阻塞`waitpid`，确认终态后单次关闭kqueue，再结算payload、TSFN、thread、finalizer和master。roles只在注册替身返回后发送token/PID绑定的abort，等待abort-ack，不发送go或强制信号。
+
+包含既有三域测试在内共10项纯测试通过，另有全部新增JS源码`node --check`及带依赖根的patch静态测试通过；本阶段没有编译C++、加载`.node`、创建真实PTY或运行runner。该实现仅是U1-6诊断候选，尚未证明macOS系统、stock node-pty、Terminal/Agent或产品链路行为。
