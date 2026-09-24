@@ -6,6 +6,8 @@
 
 ## 目标与全局图景
 
+本轮 PI-01/02/03 接口研究已形成 `docs/design-docs/runtime-exit-integrity-production-integration.md` 第9至12节：明确一次启动、身份与有界移交、owner 事件责任、两 authority 和两种消费者结算，固定下一步 S1 无 native 核心。S1 在主运行时树新增真实共享类型/adapter 及定向测试，不从现有业务入口导入，不改模式路由、namespace 或现有用户行为；不是另建诊断模型。当前仍仅文档与只读研究，没有执行 S1、测试、native 或 runner/push，统一静态验证已通过，结果见验证与验收。PI-01/02/03 未作为生产能力通过，真实 transport/native 与 PI-04/05/06 仍开放；下列旧阶段边界和当时下一步保留为历史，不覆盖本段。
+
 本轮生产接入决策记录已形成，当前入口为 `docs/design-docs/runtime-exit-integrity-production-integration.md`。首选待验证候选是每个新会话在取得原生资源前建立独立 provider 子进程，终端权威状态仍留在 Supervisor（live-runtime）或 Host（snapshot-only），共享 adapter 只复用事实接线代码。已明确五类事实、内容移交、两模式和旧 live 边界、unknown 准入及 PI-01 至 PI-06；状态仍比较中/未验证。下一阶段仅收敛 PI-01 IPC 所有权、PI-02 父 owner 消失、PI-03 两模式接口安全，不自动实施或运行 A/B、U1/W1。本轮无业务改动、测试、构建、原生或 runner/push，静态文档验证已完成，结果见本计划验证与验收。下列旧阶段结果和当时下一步保留，不覆盖本段。
 
 第27.10节已完成U1-6唯一首次macOS原生采集与完整复核：固定1a88d0cc、run35963751067 attempt1，三项场景/资源/证据判定均通过；runner和可信本地保存复核3/3，独立raw及构建来源审计无不一致。30项纯测试与三次原生分账。仅证明真实kqueue取得后合成注册失败的受控收尾，不是实际kevent错误或产品修复。下一阶段先收敛生产接入与故障隔离决策，不机械追加U1-7/W1全量、不扩通用工具门槛，主树不推送、不改业务。
@@ -20,9 +22,13 @@
 
 ## 进度
 
+- [x] (2026-09-24，PI-01/02/03接口研究形成) 完成三侧只读核对，生产接入设计第9至12节明确消息/信用/启动状态、owner事件责任、两authority与本地/远端结算及S1边界。无业务/诊断实现、测试、native或runner/push，统一静态验证已完成。
+- [x] (2026-09-24，PI接口文档收口) 两树各八文件同步，八份设计元数据/索引/关联路径、新正文一致、八段实验历史及两份原设计第2至7节保持、两计划各12章节及原顺序检查通过；git diff --check通过。S1文件尚未创建，只做本地文档提交，不推送。
+- [ ] 下一阶段仅S1：在主树实现无native的真实共享类型/adapter核心和定向测试，完成typecheck及既有bridge回归；不改现有业务入口、模式路由、manifest或generation，不自动运行原生、runner或push。
+
 - [x] (2026-09-24，生产接入决策设计形成) 完成实际接口、隔离、分发三个只读专项，新增独立设计，形成每会话provider首选候选、事实与所有权边界及PI-01至PI-06，设计阶段产物已形成。无业务/诊断实现、测试、原生/runner/push；静态文档验证通过，结果见验证与验收。
 - [x] (2026-09-24，生产接入文档收口) 两树各八文件同步；八份设计元数据/索引/关联路径、新设计正文一致、八段历史正文保持、两计划各12章节及原顺序、八个生产模块路径和六项门槛检查通过，git diff --check通过。仅文档本地提交，不推送。
-- [ ] 下一阶段仅收敛PI-01/02/03接口安全：IPC移交与信用、父owner消失和同步阻塞处置、两模式prepare-bind-start/真实flush/reader及旧live分流，连同受控两会话的安全界限。未另冻可运行协议前不执行A/B，不自动补U1-7/W1或通用工具前置。
+- [x] 上一阶段安排的PI-01/02/03接口研究已由生产接入设计第9至12节承接；S1实施输入与安全界限明确，真实transport/native、平台失联处置和两模式接线仍开放，不将三项整体标为通过。
 
 - [x] (2026-09-24，U1-6文档收口) 两树各七文档同步；设计历史/21固定来源及20份非文档输入保持，六份设计元数据/索引/关联路径、两计划12章节和九个当前首段对齐检查通过，git diff --check通过。本轮验证记录在validation/final-docs-preservation.json，只做本地文档提交。
 
@@ -188,6 +194,8 @@
 
 ## 意外与发现
 
+2026-09-24 PI 接口只读核对：accepted 若立即返还信用，会把无限积压搬到 authority 的 pendingWriteData，因此须等真实消费屏障后 consumed。现有本地 sessionId 依赖毫秒时间，不能证明不可复用；新路径复用字段但改 UUID，并用独立于 storage namespace 的绑定 nonce 排除旧回调。本地 currentLocalOutputSequence 是接收进度，普通 snapshot 回调也非最终应用证明，须沿已有写队列另设一次 final barrier。owner 消失后的平台自动回收没有现成证明，责任分类与实际平台保障分开。以上为源码与接口结论，不是本轮新增实测故障。
+
 2026-09-24生产接入只读核对：bridge 仍在返回前同步 require/spawn，两条本地路径和 Supervisor 均在创建后绑定；旧 onExit 关闭输出准入，Supervisor 最终快照 never 策略并非 tracker.flush。页面已有真实应用回调，但 close 未表达结算，本地 ACK 被现有 handler 排除。分进程把移交回执变成异步 IPC，必须分别处理内容副本与确认；provider 退出不证明主体、源、外部资源都结束，删除 session 也不证明释放。以上是新契约接入要求与源码风险，不是本轮实测丢失或产品故障。
 
 2026-09-24 U1-6原生结果：三项同一Wait线程唯一waitpid均取得真实child/rawStatus0，再单次close kqueue成功，payload/通知/TSFN/finalizer/join完成后master单次close成功。gate/关闭前/最终快照分别35/49/54事件；第三项initial只有28事件而后续gate达到35，是线程调度的合法差异。无go/written/read/parser/state，source为null，故不能把本轮成功写成EOF或尾部消费通过。首次工件传输被手动中止、第二次下载成功属于传输事件，不是原生失败或重跑。
@@ -330,6 +338,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-09-24（PI 接口与 S1 边界）：冻结 prepare/bind/start 和同操作首次/迟到观察语义，executionId 复用 UUID sessionId，generation 复用握手 nonce；accepted 移交责任，consumed 才归还受控信用。远端扩展既有 readId close 结果，本地复用 outputSequence、surface 生命周期和 writeGeneration 的最终屏障，不新增 local journal/readId。OutputSeal 后真实 flush，固定 finalRevision 与关闭新 reader 同一无 await 边界不变。下一步只实施主树无 native、无业务接线的真实 adapter 核心及定向测试；不先追加通用设计轮、诊断工具或 U1/W1，不把异常 owner 消失扩大成主体/后代清零承诺。
+
 2026-09-24（生产接入候选收敛）：首选 authority 留父进程、资源取得前建立每会话 provider 子进程作为待验证候选，不新增需用户部署的 server，不直接搬运诊断代码。共享进程的错误记账不能隔离同步 native 不返回，worker thread 不隔离地址空间崩溃。复用既有文本 sequence/终端 revision、身份、reader 与串行链，不新建全局 owner 注册表或第二套消费水位。OutputSeal 关闭新终端操作，真实 flush 后固定 finalRevision 并在同一无 await 边界关闭新 open，此前合法已准入和 open-inflight 计入既有 reader。先收敛 PI-01/02/03；A/B 仅条件草案，未冻结可运行协议。PI-04/05/06 是默认启用门槛，范围受限切片仍须先具备自身安全界限。
 
 2026-09-24（U1-6首次原生及后续收敛）：固定输入只push一次，三项结果与纯测分账，完整下载后从可信工作树复核、另由原始事实和来源字节独立审计。有限异常路径证据不批准生产默认接入；下一阶段先收敛生产方案，不机械补全故障编号。A的同步native等待/释放不返回时B能否继续交互，会改变拓扑选择，现有独立driver/D4模型不能证明；只在决策确需时另冻最小A/B协议，不在本轮追加实验。其余平台、取消、实际Agent、宿主与packaged验收不撤销。
@@ -467,6 +477,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
+本轮 PI-01/02/03 形成可实施消息、状态转换、有限队列配置和两模式结算输入，生产接入设计新增第9至12节。独立只读复核未发现身份、local final barrier 或 S1 边界与既有生命周期契约的直接矛盾；IPC复审提出的可信消费入口、未解析字节占账和sourceEnd少报拒绝已补齐并复核闭合。统一静态验证已通过，结果见验证与验收。尚未创建 S1 模块、运行测试或 native；接口研究完成不关闭 PI-01/02/03、平台回收或产品验收。下一阶段固定 S1 真实共享模块与定向测试，整体计划继续 active，旧结果和失败不追改。
+
 本轮完成生产接入决策记录和接口、隔离、分发三侧只读核对，形成每会话 provider 与父侧 authority 的首选待验证候选及六项具名阻塞。异步 IPC、父 owner 消失、两模式/reader 与分发各自留责，未形成新原生样本、产品修复或默认启用批准。下一步仅 PI-01/02/03 接口安全收敛；静态文档统一验证通过，设计比较中/未验证，整体计划继续 active。27.10 及更早结论原样保留。
 
 第27.10节以唯一macOS arm64 U1-6三项3/3、完整ZIP和可信保存复核/独立raw与构建审计收口。真实kqueue资源取得与合成注册错误分账，受控abort0、唯一reaper及单次释放成立；30项纯测不累计为原生样本。当前未改变业务或选定生产API/隔离策略/停止预算；下一阶段是生产接入决策收敛，必要时仅冻结会影响拓扑的最小对照，整体退出完整性仍未交付。
@@ -555,6 +567,8 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 工作计划
 
+下一里程碑仅为设计第12节 S1：在主树新增 `extensions/vscode/dev-session-canvas/src/common/executionLifecycle.ts` 和 `extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts`，注入 transport/observer/观察时钟，实施一次启动、身份校验、有限接受与消费、封口和首次/迟到事实。新增根 `scripts/test/test-execution-session-adapter.mjs`，直接测试拟交付模块，不另造 D 系列模型。禁止依赖 vscode/node-pty/spawn 或接入现有 Host/Supervisor/Webview，保持 manifest、storage generation 和运行模式不变。S1 收口报告定向测试、typecheck、既有 bridge 回归及未接线事实；真实异步 pipe、native read 预算和平台控制安全另阶段推进，PI-04/05/06 继续开放。
+
 当前收口生产接入设计阶段：三个只读专项已覆盖实际接线、故障隔离和分发支持，独立设计登记首选候选及 PI-01 至 PI-06。下一里程碑仅为 PI-01/02/03：确定启动/控制与输出 IPC 的有限信用和移交责任、父 owner 消失或同步阻塞时的跨平台处置、prepare-bind-start/解析屏障/reader 结果/旧 live 能力分流，并明确受控两会话负载自己的安全界限。停止条件是这三项形成可实施消息、状态转换和失败判据，或具名说明缺少的必要证据；不机械补故障编号。A/B 尚未冻结平台实现、预算与安全控制，仅在影响候选选择时另冻协议，不自动执行。PI-04 生产容量/预算、PI-05 宿主分发支持、PI-06 实际 Agent/产品整链继续开放。以下旧工作计划按历史时点保留。
 
 当前按27.10收口唯一U1-6原生结果与两树文档，只做本地结果提交，不追加push或runner。下一设计阶段基于现有各平台有限证据明确故障承诺，比较共享进程可响应错误封禁与创建前独立进程单元，收敛事实接口、两种运行模式的接线、旧live能力分流、unknown有界处置及生产预算依据、支持环境和分发。停止条件是形成首选方案/具名阻塞项；若A同步native操作未返回时B继续服务这一命题仍影响选择，只冻结一个有明确owner/安全结束/证据边界的A/B最小对照，不自动实施或扩成完整异常矩阵。不从“不要求Supervisor崩溃恢复”推出任意native崩溃下B必存活，也不以优先级调整取消产品验收。
@@ -632,6 +646,8 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+本轮基于主树 `07851ba4`、诊断树 `76ea6e77` 只读研究并冻结生产接入设计第9至12节，没有新增执行输入。后续先实施主树两个 S1 模块，按有限配置校验 prepare/bind/start 和消息；再以注入 transport、假时钟和延迟 promise 覆盖信用、尾部、封口、失联、迟到及双执行隔离；最后运行 `node scripts/test/test-execution-session-adapter.mjs`、`npm run typecheck` 和 `node scripts/test/test-execution-session-bridge.mjs` 并据实际结果收口。本段列的是下一阶段命令，不是本轮已运行记录。本轮仅同步两树文档，统一静态验证已完成；不执行真实进程、PTY、A/B、U1/W1、runner 或 push。
 
 本轮已从主树 `081c3a21`、诊断树 `f7ce4283` 只读核对生产源码，形成独立生产接入设计，没有新增可执行诊断输入。下一阶段先闭合 PI-01：bridge/adapter 的异步握手、有限帧与信用、独立副本移交和回执、失联时可用前缀与 loss；再闭合 PI-02：逐平台定义父 owner 消失或同步阻塞时的外部处置、直接 child 退出确认和未知责任；最后闭合 PI-03：两 authority 的 prepare-bind-start、真实 flush、防串会话身份、reader outcome 及新旧 capability/generation。协议先写设计再评审，默认关闭的实现切片和定向测试另行规划，本段不授权执行 A/B 或 U1/W1。当前仅核对两树文档路径、元数据、正文/计划、历史保持和 diff，静态结果已记录于验证与验收；下列命令为旧阶段记录，不是本轮执行安排。
 
@@ -793,6 +809,8 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
+本轮验收只核接口设计与既有契约一致、两树正文/计划同步、源码锚点和历史结果保持；统一静态校验通过：两树八份设计YAML/索引/关联路径、共享正文一致、八段实验历史及两份设计原第2至7节逐字保持、两计划各12章节及原顺序、每树仅八文档变化和S1文件未创建均已核；两树git diff --check通过。S1 后续定向测试必须直接加载真实共享模块，覆盖 bind 前拒绝、start 幂等、身份拒绝且旧 owner 责任保留、accepted 不返信用/消费后单次返还、帧/额度与未解析积压限界、exit 先到仍接尾部、pending 进程不 seal、封口尾值严格匹配已接受尾值（含少报拒绝）、取消失联不造 EOF、首次 unknown 与迟到补证、注入消费失败不伪 applied、双内存执行不串用。S1 还需 typecheck 和既有 bridge 回归；不折算为 native、双 PTY、两 authority 或真实 Agent 验收。
+
 本轮设计验收只检查三侧只读专项覆盖、主树代码锚点可定位、生命周期契约及产品边界一致、两树设计/索引/计划/技术债同步和旧源码/实验/断言/工件保持。静态统一校验已完成：两树八份设计YAML/索引状态/关联路径、共享新设计正文、八段历史正文逐字保持、两计划各12章节且顺序与各自HEAD一致、八个生产模块路径和六项分层门槛均通过；两树git diff --check通过。首次一次性章节检查误设两计划顺序相同而失败，改为分别对照各自HEAD后通过，未为此重排文档或修改旧证据，不能把设计形成写成原生或产品通过。下一里程碑 PI-01/02/03 的验收产物是可实施消息与状态转换、跨平台父 owner 丢失责任、两模式 parser/reader/兼容偏序和有限切片自身安全界限。A/B 须另冻可运行协议，PI-04/05/06 默认启用门槛仍未关闭。
 
 第27.10节三次真实U1-6的场景、资源、证据域均通过：无go/写读/parser，真实wait rawStatus0，单次kqueue/master close0及payload/TSFN/thread结算；caller/observer/writer原预算未放宽。完整16采集来源、21runner来源和2768build成员已核对，可信保存复核3/3，独立raw检查不依赖summary/pass。构建来源审计18175检查零失败不是原生样本数；本轮无真实注册错误、尾部消费、并发隔离或产品通过结论。后续决策阶段按工作计划的设计停止条件验收，不以枚举更多故障作为统一前置。
@@ -850,6 +868,8 @@ HPCON首次原矩阵12项全部有效，六control及两个explicit-close通过�
 候选试验不得修改用户 storage 或替换仍承载 live 会话的 Supervisor；仅控制本次创建的 fixture。证据目录唯一，不覆盖初次失败。生产方案需要可回滚的 capability/adapter 选择和旧 session 原绑定保留，回滚不得伪造完整性或强制迁移。取消和回收必须幂等，不因重试重复输出、重复终态或误删其他读者。
 
 ## 证据与备注
+
+PI 接口阶段输入基线为主树 `07851ba4`、诊断树 `76ea6e77`，新增结论仅见生产接入设计第9至12节。只读核对追到真实 bridge、创建预留、tracker.flush、reader relay 和页面写队列，确认现有 generation/capability 名称与新候选分开；本轮没有新测试、原生、runner 或构建工件。S1 预定交付在主运行时树，诊断树仅同步文档且所有冻结源码/断言/失败和已有工件保持。统一静态验证已通过，结果见验证与验收，当前文段不替代实际测试结果。
 
 本轮设计输入基线为主树 `081c3a21`、诊断树 `f7ce4283`；结论保存在 `docs/design-docs/runtime-exit-integrity-production-integration.md`，代码锚点以主树 `extensions/vscode/dev-session-canvas/src/` 为准，诊断树旧业务代码不是接入基线。只读核对覆盖 bridge/两 authority/relay/protocol/TerminalPagedProjection、同步阻塞与 owner 消失、宿主启动和六组资产分发；无新测试/native/runner 工件。独立审查要求显式衔接同步回执与异步 IPC、实施前与启用前门槛，澄清失联 loss 例外，并保持旧 reader 准入偏序；修订只作用于当前设计，不回改历史结果。统一静态验证见验证与验收；本轮不生成新原生工件或诊断框架。
 
@@ -946,6 +966,8 @@ G07补证起点是本运行时树ebe303e7及独立诊断树2f630cd9。第14节�
 2026-09-20 runner 合并后的验证：`typecheck`、`build`、bridge、journal 和 Supervisor 聚合回归全部通过；聚合包含 checkpoint refresh、分页投影、无 completed 历史和退出分页。Node 25.6.0 与 Electron-as-Node 39.8.7 各 39 项契约模型、17 项实际 Supervisor 注入通过，输出目录/哈希及局限见设计第 14 节。没有运行全量 UI、真实 provider、packaged 或新的原生候选矩阵；相对 `28055e13` 不修改业务、既有测试、依赖或 workflow。
 
 ## 接口与依赖
+
+本轮 S1 输入固定为 `prepareExecution(identity, launchSpec)`、单次 `bind(observer, consumeBatch)`、`start(operationId)`，并分开 data/processResult/outputSeal/resourceResult/fault；authority 应用结果由自身产生。输出 frameId 仅关联 accepted/consumed，复用既有文本 sequence 与终端 revision，不加第三终端水位。候选 `executionProcessResultV1`、`executionSourceEndV1`、`executionResourceSettlementV1`、`terminalReadSettlementV1`、`terminalLocalSettlementV1` 及 `execution-lifecycle-v1` namespace 仅登记后续接线，S1 不改任何现有协议入口或常量。新模块无 vscode/node-pty/spawn 依赖；真实 transport/provider 后续接同一 adapter，旧 live 原绑定保持。
 
 本轮仅登记待实施接口，不创建生产模块：五类结果沿用生命周期契约，父侧 adapter 分配已接受文本 sequence，authority 分配 terminal revision，provider 只保留 IPC 移交关联和逐资源责任。PI-01/02/03 同时核对 `panel/executionSessionBridge.ts`、`supervisor/runtimeSupervisorMain.ts`、`panel/CanvasPanelManager.ts`、`common/serializedTerminalState.ts`、两份 protocol、`panel/runtimeTerminalReadRelay.ts`、`panel/runtimeSupervisorClient.ts` 和 `webview/terminalPagedProjection.ts`。新能力须双方 opt-in，旧 live 原绑定继续，不凭分页能力补造源/资源或应用成功；旧章节接口与诊断源继续冻结。
 
@@ -1087,3 +1109,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-24，U1-6首次原生收口）：唯一1a88d0cc/run35963751067 attempt1完成首次构建、零会话加载及三项3/3；完整ZIP、可信本地保存复核与独立raw/来源审计通过。同步四活章节、当前步骤与证据边界，保留全部旧断言/失败，不改业务、不追加push/runner。下一阶段改为生产接入与故障隔离决策收敛，只有影响选择的A/B最小对照另冻协议，不机械追加U1-7/W1或通用工具前置。
 
 修订记录（2026-09-24，生产接入决策设计）：从两树已收口基线完成接口、隔离、分发只读研究，形成独立设计、每会话provider与父侧authority首选候选、五类事实/IPC责任/unknown有界准入和PI-01至PI-06。同步目标、四活章节、工作计划、步骤、验收与接口；下一步只收敛PI-01/02/03，A/B仍须另冻可运行协议，不自动追加U1/W1或业务实现。保留旧进度结果和历史正文，本轮无测试/native/runner/push；静态统一校验已完成，结果见验证与验收。
+
+修订记录（2026-09-24，PI接口研究收口）：从主树07851ba4/诊断树76ea6e77完成消息与信用、owner责任、两模式/reader只读研究，生产接入设计新增第9至12节，冻结S1无native真实模块和定向测试输入。同步目标、四活章节、当前工作/步骤/验收及接口，保留旧源码、实验与结果。下一步只实施主树S1，不改现有业务入口，不自动native/runner/push；本轮未实施或测试，统一静态校验已通过，结果见验证与验收。

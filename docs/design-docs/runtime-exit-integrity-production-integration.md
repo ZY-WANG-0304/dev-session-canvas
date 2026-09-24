@@ -21,7 +21,9 @@ updated_at: 2026-09-24
 
 ## 1. 当前结论与阶段边界
 
-本阶段从主树 `081c3a21`、诊断树 `f7ce4283` 继续，只做生产源码核对与设计收敛。首选待验证候选是：**终端权威状态留在 Supervisor 或 Host；每个新执行会话在取得任何 PTY/native 资源前，建立独立的 provider 子进程。** provider 是实际持有进程、终端和原生资源的组件，adapter 是把它的事实接到终端权威状态的共享适配逻辑，authority 是维护终端事件顺序和解析状态的 Supervisor 或本地 Host。共享 adapter 指代码复用，不是两模式共享内存或 owner。
+2026-09-24 接口阶段从主树 `07851ba4`、诊断树 `76ea6e77` 继续。第9至12节收敛 PI-01/02/03 的消息、所有权与两模式接线，并冻结下一步 S1 无 native 的共享 adapter 核心切片。PI-01 的真实 pipe/read 背压、PI-02 的平台失联处置和 PI-03 的实际宿主接线仍未验证，不能把接口收敛写成三项生产门槛全部关闭。本轮只读研究与文档修订，没有业务实现、测试、原生采集或 runner/push。
+
+上一阶段从主树 `081c3a21`、诊断树 `f7ce4283` 只做生产源码核对与设计收敛。首选待验证候选是：**终端权威状态留在 Supervisor 或 Host；每个新执行会话在取得任何 PTY/native 资源前，建立独立的 provider 子进程。** provider 是实际持有进程、终端和原生资源的组件，adapter 是把它的事实接到终端权威状态的共享适配逻辑，authority 是维护终端事件顺序和解析状态的 Supervisor 或本地 Host。共享 adapter 指代码复用，不是两模式共享内存或 owner。
 
 这不是新增供用户部署的常驻 server，也不是批准把诊断代码搬进生产。每会话进程的代价、通信和父进程失联处置尚未闭合，故状态为比较中/未验证。既有原生证据仍见 `runtime-native-failure-isolation.md` 第20至27节；尤其 U1-6 的三次通过只证明固定 macOS 环境的合成注册失败收尾，不是本拓扑通过。本轮没有新增构建、纯测试、PTY、runner 或业务实现。
 
@@ -155,8 +157,112 @@ gate 必须有限自动解除，另有不依赖被阻塞 JS 的观察和外部�
 | PI-05 HOST-ARTIFACT-MATRIX | 构建/发布：宿主运行时与 N-API 下限、六资产支持声明/来源链、Windows 后端、签名条件与真实 packaged 装载 | 默认启用前；首个切片仅选实际验证环境 |
 | PI-06 PRODUCT-EXIT | PTY/Host/Webview：主体尾部、最终状态、reader、资源、Agent 启动链、stop/delete/断连及旧 live 共存 | 默认启用前，按实际支持格逐项报告 |
 
-下一阶段仅闭合 PI-01/02/03 的可实施接口：从现有 bridge/两 authority/relay 逐步确定消息和状态转换、父 owner 消失的跨平台策略及最小失败判据，连同受控两会话负载的安全界限写入本设计。若该审查确认需要 A/B，先补齐第7节缺失的可运行参数再实施；不能先运行后倒写协议。不自动追加 U1-7/W1。
+该阶段安排的 PI-01/02/03 接口收敛由第9至12节承接。当前下一步仅实施 S1 无 native 核心切片；真实 pipe、平台处置、两模式业务接入仍各自受对应安全门槛约束。本轮没有发现必须先执行 A/B 才能定义这些接口的决策分歧，第7节继续是未冻结可运行的草案，不执行、不自动追加 U1-7/W1。
 
 随后才规划默认关闭的共享 adapter 与两模式接入切片及其定向测试，逐平台复用已经建立的原生事实来实现 provider；不另起通用诊断框架。先验证所改业务路径，再补真实宿主、Agent、打包及支持范围。未覆盖的平台不能降格旧保障后宣称整体新保证，缺能力时行为须明确。PI-04/05/06 是默认启用门槛，不阻止安全接口设计或范围受限的实现评审。
 
 本设计阶段的验收是：三个只读专项核对覆盖接口、隔离、分发；代码锚点可定位；与既有生命周期契约及产品边界一致；两树正文/索引/计划/技术债同步；旧源码、实验、断言与证据不改。没有产品通过或“退出完整性交付完成”的结论，计划继续 active。
+
+## 9. PI-01：共享接口与有界内容移交
+
+### 9.1 创建身份和一次启动
+
+本节冻结 S1 的接口语义，不批准真实 native 接入。`ExecutionIdentity.executionId` 直接取本次 sessionId，不另建第二份会话索引；新路径的 sessionId 用 UUID，不复用当前本地 `nodeId-kind-Date.now()`。`generation` 是 prepare 时分配并固定的绑定 nonce，用于拒绝旧连接/回调，不是 `CURRENT_RUNTIME_SUPERVISOR_GENERATION` 的 storage namespace；握手 token 复用该 nonce，不再加第三个实例标识。PID 只是已证明创建后的属性，不能拿它定位资源所有权。
+
+共享模块提供 `prepareExecution(identity, launchSpec)`，返回只在内存中存在的 PreparedExecution；不加载 native、不 spawn。authority 先登记预留 session、tracker 和有限接受队列，再单次 `bind(observer, consumeBatch)`，得到可 `start(operationId)` 的句柄。observer 包含同步data接受及processResult、outputSeal、resourceResult、fault通知；独立的consumeBatch由受信authority注入，返回该批真正消费的Promise，只有其成功才生成consumed，不能反过来相信transport输入的consumed代表authority完成。authority 应用结果由 authority 自己产生。未 bind 就 start 拒绝；相同 start 操作共享原观察，换 operationId 再 start 拒绝。任何 await 前即完成预留，防止 Supervisor 在 journal 创建期间并发创建同一 sessionId。
+
+启动状态按 `prepared -> bound -> starting -> running` 推进；失败转 `closing` 并结算自身责任，不能直接删映射。start 首报只允许 `started(pid)`、`rejected-before-acquire(reason)`、`failed(stage, reason)`、`unconfirmed(stage, reason)`；后两者不表示没有资源。握手 ready 只证明 provider 已可通信，不证明 PTY 已创建。ready 前后超时均保持同一次启动；收到迟到 started 不再次 spawn，若已有关闭意图，立即沿同一执行请求停止。拒绝发生在 acquire 前必须有相应事实，不能用计时推断。
+
+rejected-before-acquire仅指任何provider进程或PTY资源取得前的本地拒绝，可释放纯内存预留，不发布虚假进程退出、EOF或OutputSeal。provider已经spawn但尚未创建PTY也属于有资源的失败，必须结算provider/control责任，不能仅因主体未启动删除槽位；已开始的主体/源仍按各自事实结算，无法确认就保留unknown。
+
+### 9.2 传输和消息
+
+真实传输候选为 `spawn` 的 `stdio: ['pipe', 'ignore', 'pipe', 'ipc', 'pipe']`：stdin 输入、fd4 终端输出、Node IPC 控制，stderr 有限诊断；provider 保持直接 child，不复制 Supervisor launcher 的 detached/unref。启动期间所有监听在 start 许可前安装。fd4 的跨平台异步封装尚未验证，Windows pipe/overlapped 需独立确认；禁止同步 write、同步等待和未经核验把 stdout 当异步通道。S1 只通过注入的内存 transport 接收消息，不调用 spawn 或打开这些 fd。
+
+输出采用4字节无符号大端长度前缀加 UTF-8 JSON；长度是 payload 的编码字节数，不是字符串 length。payload 包含 `version: 1`、identity、连续 `frameId` 和 `text`；完整有界帧到齐才解析，超长在读取前缀后拒绝，截断/非法UTF-8/错误类型不静默替换成合法输出。发送前以实际 JSON 编码字节计费；转义成本也算入额度。Node chunk 不是帧边界。frameId 从1开始，不回绕，仅关联移交，父 adapter 独占 data sequence，authority 独占 terminal revision。
+
+| 方向/消息 | 语义与顺序 |
+| --- | --- |
+| provider → parent：ready | identity 与能力吻合；此前不得创建 PTY。ready 后 parent 才发送唯一 start |
+| parent → provider：start / requestStop / cancelOutput | 带 operationId；后两者与最终 release 分开；同请求不重复执行 |
+| provider → parent：operationObservation / processResult / resourceResult | 操作受理、确切主体结果、逐资源结果分开；首次未确认与同操作迟到结果并存 |
+| parent → provider：accepted(throughFrameId) | 已校验、取得独立副本并成功交给有限 authority 接受入口，转移内容责任；不归还信用 |
+| parent → provider：consumed(throughFrameId) | 已知连续批次经过真实消费屏障，按本地原计费归还信用；不接受对端自报新增额度 |
+| provider → parent：sourceEnd(finalFrameId, disposition) | read/worker/decoder 已结算且最后帧得到 accepted 后才发送；父侧要求finalFrameId严格等于已连续接受的尾值，空输出为0，少报/越过均拒绝，再结合进程观察发 OutputSeal |
+
+Node send callback、write callback 或 drain 都只是传输事实，不是 accepted、CLI 已读取或终端已应用。ACK 迟到/丢失不自动重发输出或输入；实际断连后的前缀处理见9.4。相同连续水位回执幂等，倒退、越过已发送值或身份不符拒绝。任何重复数据帧不是重发授权，不能二次进入 authority。
+
+### 9.3 信用必须覆盖解析队列
+
+`serializedTerminalState.ts:175` 的 write 只累加 pendingWriteData。因此 accepted 仅允许 provider 释放对应文本副本，不能返还额度；否则无限积压只是被搬到 authority/xterm。S1 采用一个有限消费批次，以注入的 consumeBatch Promise 作为消费边界，测试控制其成功/失败，不声称已执行真实xterm。实际接线时批次进入既有 authority 串行队列并复用 tracker.flush，确认前序解析完成后才 consumed。若处理过滤后无终端文本，仍需对应串行操作完成；不能凭空跳过源帧责任。
+
+每个 frame 的费用直到消费完成一直占额度，分别限制字节和帧数。接收入口在复制/入队前预留原始字节及队列额度，部分帧和4帧让出期间的未解析内容同样占账；同一帧从原始缓冲转为已接受数据时转移记账，不另外释放窗口或无限保留chunk/切片队列。provider 未收到 accepted 前留副本；parent 已接受即承担保留责任，即使 accepted 未送达也不能删除重建。sourceEnd 等 accepted，不等 consumed；native 释放按自身安全条件推进，不因为页面或信用未返回无限等待。父侧信用计算复用已接受 frame 的关联，不另造持久终端水位。provider只有实际收到新的合法consumed后才恢复本地发送额度，不因父端已发送或已flush推断信用。
+
+有限切片配置固定为最多2个执行、启动并发1、每输出 payload 最多32KiB、每会话未消费费用最多256KiB且最多16帧；费用含4字节头。控制普通帧最多4KiB，一次 start 最多64KiB且发送前校验（包括 env，不记录秘密正文）；每方向至多1个 send 在途、8个普通待发送槽和4个紧急槽，另有独立的单次 start 槽。accepted/consumed 和未发送 resize 可合并，已发送操作不撤销；紧急槽留给 stop、cancel、终态/错误，耗尽则协议失败并停止新准入，不无限缓存。输入独立上限64KiB、至多1个写在途，满时拒绝尚未受理部分并返回背压，不自动重发按键。stderr 仅保留64KiB，超过标记诊断截断并继续排空，不截断终端输出。
+
+这些数值是受控负载的安全配置，不是生产容量或响应 SLA，也不表示总 RSS 上限；JSON/字符串副本、OS pipe、xterm状态和 journal 保留另计。真实 provider 必须在每次 read 前预留预算，限制在途 read/worker 消息/decoder和编码膨胀；仅暂停父端 fd4 不足以证明上游有界。该 native 预算绑定未完成，阻塞真实 native 切片，不阻塞 S1 的内存接口实现。消费失败不返还未确认批次信用；停止新建，保留已接受前缀和失败事实，不把缓存快照当成功。
+
+每个事件循环回合处理至多4帧，再通过异步任务让出；不递归排 microtask 耗尽回合。控制处理不排在等待信用或 flush 的同一任务后，否则会自等待。上述调度在 S1 验证状态机互不占用，不宣称已通过真实双 PTY 的公平性或同步卡住隔离。
+
+### 9.4 取消、失联与第一次观察
+
+操作 deadline 是调用者给出的有限观察预算；S1 测试使用注入时钟和显式到期事件，不新增诊断观察器，也不把测试100ms设置升级为生产超时。到点返回 unconfirmed/unknown，保留同一 operation；迟到事实更新当前观察，不覆写首次报告。不得因 operationObservation 超时直接生成 sourceEnd、重复 Close 或声称未执行。
+
+IPC disconnect、provider exit、数据 pipe end 分别记录。失联后仍处理能安全取得的完整在途帧；控制失联不立即抛弃 fd4 内容。完整可用前缀已移交、部分帧与无法确认范围已记录后才 error/unknown 封口，不能当 PTY EOF。数据通道本身仍未结算时先返回观察结果并保留 owner，不为满足期限虚构封口。真实 EOF 或取消谁先生效按事实判定，已取得 buffer/消息/decoder 不能因 cancelOutput 被静默清空。
+
+## 10. PI-02：owner 责任，不追加崩溃清零承诺
+
+| 情形 | 固定责任与可实施接口 | 仍不能宣称 |
+| --- | --- | --- |
+| owner 正常关闭 | 先停止新建，发具名 stop/cancel，保留事实监听和已取得内容，逐项报告；超时保留原操作与未知责任 | 先删除 session/撤监听再 kill 等于完整关闭 |
+| owner 存活、provider native 卡住 | owner 独立观察并冻结准入，其他已准入会话仍可安全推进；可从独立控制路径请求终止该 provider | 被卡住线程上的 timer 可兜底，或 kill 请求成功等于 child 已退出 |
+| provider 崩溃、owner 存活 | 应用已接受前缀，记录丢失/未确认范围，安全资源各自回收，其余占账 | provider 退出等于实际主体退出、PTY EOF或外部对象全消失 |
+| owner 突然消失 | 视为异常失联；不恢复进程/历史，不伪造完成。新拓扑增加的孤儿风险必须在启用前审查 | 已确认自动干净退出，或新增“所有主体/后代立即清零”保证 |
+
+live-runtime 的 owner 是 Supervisor，不是 Host/Webview；snapshot-only 的 owner 是 Host。正常关闭时不可因移到子进程就意外把本地会话变成脱离 Host 的持久服务。异常 owner 崩溃与正常关闭区分，不把用户“不要求故障恢复”解释成主动重启共享 Supervisor 清理单会话的许可，也不扩展为跟踪所有普通工具后代。
+
+平台接口以 `prepareOwnerBinding(identity)`、`requestExternalTermination(operationId)`、`observeTermination(subjectToken)`、`releaseControl(operationId)` 表达各自能力；只允许使用已取得的直接 child/原生控制 token，不能从日志 PID 重建可杀句柄。平台返回请求受理、provider终止、主体终止和控制资源释放的独立事实；unsupported 明确返回，不能自动退化为外部 PID kill。owner 正常关闭走已定义 requestStop/cancelOutput，不重复执行原生最终 release。
+
+当前源码不具备新的父存活绑定：Linux forkpty/exec（`node_modules/node-pty/src/unix/pty.cc:438`）、macOS posix_spawn/helper（同文件`:758`）和 Windows CreateProcessW（`src/win/conpty.cc:412`）不能证明 owner 消失后必停。Linux PDEATHSIG 有注册竞态、创建线程/凭据/exec限制；pidfd不自动给出非直接child的wait结果。macOS native线程或kqueue观察不证明provider崩溃后的主体必停。Windows Job kill-on-close可能改变后代终止范围，并受创建/加入竞态、宿主Job和ConPTY资源影响。它们只是待评估的平台手段，不是已经选择的API，不是S1共同前置；本轮不新增guardian或服务。
+
+PI-02 的责任分类已收敛，平台失联处置仍开放。真实 native 切片必须先明确该平台的正常停止、卡住时的控制权和安全结束方式；异常 owner 消失造成的新增风险在默认启用前按实际支持环境验证/记录，不能借范围收窄隐去风险。S1不创建进程或终端，只验证同一份adapter如何保留这些事实，不标为OS回收验证。
+
+## 11. PI-03：两模式、两种消费者与升级
+
+### 11.1 authority 接线
+
+Supervisor 的 sessionId 默认 UUID，但允许调用方传入（`runtimeSupervisorMain.ts:423`）；必须在首个 journal await 前预留并拒绝并发重用。Host 本地 `createExecutionSessionId()`（`CanvasPanelManager.ts:27311`）目前依赖毫秒时间，新路径改为UUID。既有 operation token继续保护用户的新请求；所有异步继续执行都核验 `map.get(key) === capturedSession` 和绑定身份。旧回调不得改后来会话，但仍继续结算它捕获的旧owner，不能因为对象不再在node映射就忘掉责任。
+
+两条本地创建与Supervisor内部均按 prepare/bind/start 接线。ProcessResult只关闭新输入/native resize；OutputSeal关闭新终端操作，已接受操作在原串行链内完成真实tracker.flush。成功固定finalRevision的同一无await边界关闭新reader准入，先前获准/回包在途open仍结算；parser失败记录已应用前缀，不从缓存补成功。删除、start失败、finalize和journal异步删除之后均需再次比较捕获对象；这些落点不能只修改 onExit 回调。
+
+### 11.2 远端与本地完成消息
+
+远端沿现有 closeExecutionTerminalRead → relay → client → Supervisor 增加 outcome：`applied(finalRevision)` 或 `cancelled(reason)`，socket owner失效由服务端记lost；旧缺outcome的close仅legacy-released。复用原sessionId/authorityId/readId/appliedRevision/sentRevision；服务端核验最终值已固定且已发范围覆盖后，先留有界幂等结果再删cursor。相同结果重试可确认，冲突拒绝，过期只回不可确认/已释放。reader关闭或RPC失败不以onReleased回调冒充应用成功。
+
+本地不能虚构authorityId/readId。沿现有 host 退出通知携带可选 `localCompletion: { executionSessionId, finalOutputSequence }`，绑定实际发送surface的WebviewLifecycleIdentity；新增显式结果消息 `webview/executionLocalTerminalSettled`，回传同一身份及 `applied(finalOutputSequence)` 或 `cancelled(reason)`。这只是本地最终屏障，不新增持续消费水位、journal或已结束正文保存。消息名称/字段作为本轮接线输入，须在两端normalizer和能力协商一起实施，不在S1修改现有消息。
+
+页面已有 currentLocalOutputSequence 只在接收时前进（`webview/main.tsx:8072`），不能作应用证明。localCompletion必须等待序列连续覆盖最终值、pendingOutput全部进入既有writeChain、前序真实xterm callback成功，再发送一次applied；空输出也经过屏障。controller沿既有writeGeneration排除旧投影回调；销毁、换页、渲染失败分别cancelled/lost。writeChain的catch不能吞掉错误后让末尾sentinel成功。
+
+普通snapshot ACK不能复用成最终完成证明：健康投影会忽略重复snapshot，而现有onSnapshotApplied可发生在实际写入前（`webview/main.tsx:7858`、`:7940`）。因此本地final barrier即使snapshot未重放也必须执行，最终snapshot实际排入写队列时也要包含在屏障内。Host当前应用ACK排除local（`CanvasPanelManager.ts:16763`），须新增本地分支并校验会话、surface生命周期和已发送最终序列。晚到结果只能结算原reader，不更改新会话。
+
+### 11.3 能力与 namespace
+
+保留当前 `common/runtimeSupervisorPaths.ts:23` 的 `terminal-stream-v1`，S1不改它。真实接入候选使用独立namespace `execution-lifecycle-v1`，只改变新会话目标，旧metadata原storage/backend/session/kind继续路由。namespace不是9.1的执行绑定nonce。不得在同storage原地重启旧Supervisor或在缺新能力时悄悄走旧创建路径。
+
+hello与会话能力分别增加 `executionProcessResultV1`、`executionSourceEndV1`、`executionResourceSettlementV1`，reader沿既有候选 `terminalReadSettlementV1`，本地页面使用 `terminalLocalSettlementV1`。它们是新字段，不存在于当前只含六个stream/projection/paging能力的hello。create/open明确opt-in并核对实际session能力；不能只看server支持就替旧provider补证明。Webview ready当前没有capability payload，必须在实际接入时增加可选能力声明；新字段只有两端协商后发送。旧端保持旧分支，不把无ACK标为应用成功。
+
+双方启用新路径且任何必需能力缺失时，在创建前明确拒绝；实验入口未启用时保留现有行为且不报告新保证。旧live不迁移、不自动重启、不补造EOF。回退仅影响未来新建，已创建的新能力会话仍按原绑定保留可控制路径，不能因关闭开关卸掉其adapter；旧client退役仍等待会话、pending请求和reader归零。
+
+## 12. 阶段收口与下一有限切片
+
+PI-01 已有一次启动、消息/身份、accepted与consumed分离、帧与队列限额、封口及失联规则；真实异步pipe和native read预算未闭合。PI-02 已有四类owner事件责任及最小hook，不声称平台自动回收。PI-03 已有两authority偏序、远端close与本地final barrier、能力和namespace输入，但未接线或验证。三项不能统一标“通过”；本轮的完成定义是实现输入明确且剩余风险有落点。
+
+**下一阶段只做S1无native核心，不再安排另一轮泛化设计或诊断工具完善。** 在主运行时树新增 `src/common/executionLifecycle.ts` 的共享事实/消息类型与校验，以及 `src/panel/executionSessionAdapter.ts` 的 prepare/bind/start、有限接受/消费、封口和首次/迟到观察逻辑（路径前缀为主扩展）。保持无vscode、node-pty、spawn依赖，不从现有业务入口导入，不改manifest、CURRENT_RUNTIME_SUPERVISOR_GENERATION、Host/Supervisor/Webview路由或现有运行模式；因此没有用户可达的新native路径，也不需要新增实验开关。注入transport与observer，随后真实provider接同一实现，不复制成独立D系列模型。
+
+S1命令范围只含一次start、graceful/force stop各一个语义操作和一次cancelOutput；同operation重复共享结果，换id重发同一语义操作拒绝，不建立无限幂等记录。真正的输入/resize传输、reader消息和平台hook实现不属于S1，9至11节对应规则是后续接线输入，不因S1通过就宣称这些路径完成。
+
+两个执行共享同一注入的authority准入上下文：N=2和启动并发1不是各会话独立额度，首个unknown禁止该上下文新建但不停止已准入B的安全处理。它只管理当前authority已有预留和执行引用，不引入全局owner注册表；测试不得用两个互不关联的准入器代替这项规则。
+
+S1测试沿现有 `scripts/test/test-execution-session-bridge.mjs` 的esbuild+assert方式新增 `scripts/test/test-execution-session-adapter.mjs`，直接测试拟交付模块。固定覆盖：bind前不启动/同start不重入；旧身份拒绝且旧owner不遗忘；accepted不返信用、消费Promise成功后单次返还；零信用、超长帧及未解析队列受控限界；exit先到仍接尾部、process pending不能seal；source越过或少报接受尾值均拒绝；取消/断连保留可用前缀且不造EOF；首次unknown和同操作迟到补证；注入消费失败不伪applied；两个内存执行的预算与控制不串用。使用显式假时钟/延迟promise，不新增writer、oracle、归档、runner或真实进程；测试数量不折算native覆盖。
+
+每个S1默认配置与本设计的受控界限一致，非法配置在prepare时拒绝；没有生产停止/排空时限默认值。S1结束须报告定向测试、typecheck和相关既有bridge回归，以及两个真实authority尚未接入的事实。它不能单独关闭PI-01/02/03或退出完整性总债务；后续真实transport/native和两模式接线按各自风险推进，不要求先跑全部U1/W1，也不把S1假provider当双PTY/真实Agent验收。

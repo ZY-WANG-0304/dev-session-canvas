@@ -21,7 +21,7 @@ updated_at: 2026-09-24
 
 ## 1. 已确认范围与决策状态
 
-当前生产接入候选见 `runtime-exit-integrity-production-integration.md`，状态为比较中/未验证：authority留在Supervisor/Host，每会话provider在取得资源前独立为OS进程。下一阶段闭合PI-01/02/03的IPC移交、owner失联和两模式接线，具体边界见第6节。
+当前生产接入接口输入见 `runtime-exit-integrity-production-integration.md` 第9至12节，仍为比较中/未验证：IPC移交、owner责任和两模式接线语义已明确，真实pipe、native read预算、平台失联及两authority接线仍未验证。下一阶段仅实现S1无spawn/native的实际共享adapter核心，不接业务入口，具体边界见第6节。
 
 最新原生证据仍以 `runtime-native-failure-isolation.md` 第27.10节（2026-09-24）为准：唯一输入1a88d0cc、push run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成3个新U1-6原生样本，runner及可信本地`--verify-saved`均3/3。30项纯测、零会话build/load与原生执行分账。第26节32312fe7/run35900772851 attempt1的U1-0三次3/3及旧失败独立保留，不重跑、不追认早期6/6、10/10、21项覆盖。这仍是合成注册失败的限定诊断证据，不是生产退出完整性验收。
 
@@ -96,7 +96,7 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 完整ZIP与GitHub摘要一致，21个runner来源、16个采集来源及2768个build成员已核；独立构建/来源与原始事实审计结果统一见第27.10节。runner及可信本地保存复核均3/3，可信离线不执行归档代码。30项纯测试是前轮21项（源码3、角色mock7、verifier11）加build3/schedule6，13个JS语法检查另记；准备期guard-only子进程和未执行stub binary仍不是原生证据。同组本地/runner复核不累加覆盖，旧U1-0源码、原始工件、断言及失败均不改，业务未接入。
 
-生产接入候选已记录到 `runtime-exit-integrity-production-integration.md`，当前仅比较中/未验证；下一阶段先闭合PI-01 IPC-OWNERSHIP、PI-02 OWNER-LOSS和PI-03 TWO-MODE-WIRING的可实施接口及有限切片安全边界。默认关闭的受限实施与完整PI-04/05/06默认启用门槛分层，不机械接U1-7/W1或扩D3/D4工具门槛。A/B同步阻塞对照仍是条件性草案，未冻结可运行协议、未执行。其他原生/取消、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged仍未验收，生产API、隔离策略和停止预算尚未选定，退出完整性债务不关闭。
+PI-01/02/03的接口输入和责任已记录到 `runtime-exit-integrity-production-integration.md` 第9至12节，但不等于验证通过。下一阶段仅实现S1实际共享adapter核心：一次启动、有限接受/消费、封口及首次/迟到观察直接进入拟交付模块；无spawn/native、不接现有业务入口，不新增独立诊断模型或实验开关。正常owner关闭责任不变，异常owner崩溃不新增所有主体/后代立即清零保证；真实pipe、native read预算、平台失联和两authority接线仍开放。真实接入安全条件与完整PI-04/05/06默认启用门槛保留，不机械接U1-7/W1或扩D3/D4工具门槛；A/B仍未冻结可运行协议、未执行。其他原生/取消、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged仍未验收，生产停止/排空预算未选定，退出完整性债务不关闭。
 
 第25阶段历史记录（以下三段按当时状态保留，其macOS协议待办已由第26阶段承接，不覆盖当前实施顺序）：
 
