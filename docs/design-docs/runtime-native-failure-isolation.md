@@ -625,7 +625,7 @@ U1-6只使用本候选的native substitute，不执行真实`kevent`注册调用
 
 注入返回后仍由创建kqueue和child的同一Wait线程作为唯一reaper，直接对同一`pid`调用一次阻塞`waitpid(pid, &status, 0)`；不增加竞争线程、不按日志PID操作、不走`kevent`等待，也不调用`kill`。仅当返回的pid等于登记child且`WIFEXITED`或`WIFSIGNALED`成立时设置`waitConfirmed`并解码status；失败、陌生pid或无效status均为`wait-unknown`，不得造exit0、payload或通知。真实`wait-enter/return`必须进入native账本。
 
-注册调用已经返回且没有在途使用后，仍由该Wait线程完成一次真实`waitpid`终态，再对已取得的kqueue执行一次真实`close`，记录返回值和errno；固定顺序为`waitpid`终态→kqueue close→payload/TSFN通知与线程结算，不能由driver或其他线程提前close。wait未知、kqueue close失败、TSFN/finalizer/join失败或任一已取得owner未结算时，`resourcesSettled=false`并停止后续样本准入；不因合成注入命中而放行。
+注册调用已经返回且没有在途使用后，仍由该Wait线程确认前述唯一`waitpid`已结算，再对已取得的kqueue执行一次真实`close`，记录返回值和errno；固定顺序为`waitpid`终态→kqueue close→payload/TSFN通知与线程结算，不能由driver或其他线程提前close。wait未知、kqueue close失败、TSFN/finalizer/join失败或任一已取得owner未结算时，`resourcesSettled=false`并停止后续样本准入；不因合成注入命中而放行。
 
 夹具控制必须改为U1-6特例：driver收到同一child的`ready`后，确认合成注册返回已冻结（`registrationFailureInjected=true`且无注册在途），但**不发送`go`**，以保持注册失败前的数据门控关闭。driver通过同一token绑定的私有控制通道发送一次`abort`，fixture回传一次`abort-ack`后自行结束；不得等待fixture安全超时，也不得用caller的SIGTERM/SIGKILL把样本伪装成回收成功。这样本项专注注册失败后的回收责任，不把正常2102/2104负载或read0错误地归因于未建立的kqueue。若未来要验证注册失败仍继续交付输出，必须另冻独立场景和数据责任协议。
 
@@ -644,3 +644,9 @@ U1-6不覆盖真实`kevent`注册错误、`ESRCH`竞态、kqueue取得失败、�
 诊断树提交`519ca7b8`新增三个隔离入口：`macos-native-failure-fixture-v1.mjs`只生成U1-6协议输入，`macos-native-failure-verifier-v1.mjs`按场景、资源和证据三域判定，`macos-native-failure-v1.test.mjs`只运行纯内存正负例。6组测试全部通过（`node --test scripts/diagnostics/macos-native-failure-v1.test.mjs`）；三个文件的`node --check`和`git diff --check`也通过。
 
 测试已确认合成`-1/EIO`在真实注册API进入前命中、没有register/wait/exit事件或数据gate泄漏；abort/ack保持token与PID绑定；同一Wait线程唯一waitpid后单次close kqueue，并完成payload、TSFN、thread、finalizer及master收尾。负例保留场景不匹配、资源未结算和证据不足的独立结果，不把合成错误写成真实系统错误。该结果只完成协议级纯测试，尚未实施native替身、构建、加载或运行runner；下一步仍需静态接口复审后再决定是否冻结运行输入。
+
+### 27.6 现有候选接口的静态复审（2026-09-24）
+
+纯测试所用的U1-6字段目前不是现有U1-0候选的可直接输入。`macos-native-baseline-support-v1.h`的`Configure`拒绝`U1-6`，`MakeSnapshot`将场景固定为`U1-0`且没有注册替身、abort/ack或唯一reaper字段；`Wait`在真实`kevent`注册失败时不会进入`waitpid`，随后关闭kqueue并结束TSFN路径。`macos-native-baseline-roles-v1.mjs`的门控只等待`ready && kqueueRegistered`，没有U1-6的“不发送go、token-bound abort/ack”分支。
+
+因此，`519ca7b8`的fixture/verifier/test只证明冻结协议的内存判定和负例隔离，不能证明当前native候选已经实现U1-6，也不能把合成`EIO`记录为真实系统错误。下一步若继续，只能在诊断树新增独立的U1-6 native substitute、roles分支和输入快照；应先通过源码静态检查及对应纯测，再决定构建或触发runner。主运行时代码、U1-0源码和既有工件保持不变。
