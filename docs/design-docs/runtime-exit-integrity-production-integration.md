@@ -21,6 +21,8 @@ updated_at: 2026-09-25
 
 ## 1. 当前结论与阶段边界
 
+2026-09-25 S4从主树`e84a8558`、诊断树`14fc6462`开始实施并已完成有限验证。有限实现输入见第17节：只连接默认关闭、无native的真实owner入口，正常用户路径不变；本轮结果仅证明准入、消费屏障、责任保留和关闭接线，不开放PTY/native，也不等同于产品级退出完整性通过。第16节及更早阶段按原时点保留。
+
 2026-09-25 Linux最小接入条件已按第16节收口：定位Supervisor与Host正常关闭、创建、停止、消费和reader的实际入口，区分已有控制能力与未实现责任。下一切片S4仅做默认关闭、无native的实际authority关闭准入与收尾接线；不新增诊断框架或要求先补异常崩溃全矩阵。真实PTY进入业务仍受第16.4节具名门槛约束，当前不满足；PI-01/02/03不关闭。本轮只读代码与文档，无业务改动、测试、原生采集或runner/push。以下S3及更早记录按发生时点保留，其“下一步”不覆盖本段。
 
 2026-09-25 S3修后有限采集已完成：输入`3f8ebcae`在Linux/Node22.23.2对原normal/flood各执行一次，新目录结果2/2，均无fault、主体及资源确认结算；normal的live最终状态断言已实际执行。仅本地固定两场景通过，不是跨平台或产品退出完整性完成；首次`.debug/s3-linux-provider-first/`的0/2及首报unknown原样保留，不追认通过。输入、原始事实及边界见第15.8至15.9节，不接现有业务或运行runner。以下S2及更早结果按发生时点保留，不覆盖当前阶段。
@@ -529,6 +531,31 @@ PI-01/02/03继续开放；PI-04容量/预算、PI-05宿主分发与PI-06实际Ag
 
 下一阶段在主树推进同一生产模块及真实owner入口，不另写诊断模型。范围限定为`executionSessionAdapter.ts`的正常关闭准入/在途责任，以及`runtimeSupervisorMain.ts`、`CanvasPanelManager.ts`的新能力分支接线：Supervisor创建预留、串行消费及idle退役；Host本地创建预留、stop/delete和prepareForHostBoundary。新分支只接受显式注入的非native测试依赖；正常运行不创建新provider、不加载addon、不启用新协议或改动旧live行为。先保留内部依赖入口而非新增用户设置；真实native工厂在L-01至L-04成立前不可达，不能用环境变量绕过。共用的小型收尾编排可抽出，但必须由这两个真实入口调用，不能只测试另一个脱离业务的模型。
 
-S4用直接测试真实模块和入口的方式验收：关闭与异步prepare竞争时不再start；同身份关闭幂等且旧execution不改新映射；ProcessResult先到仍消费尾部，首批消费暂停、后批已accepted且seal已到时finalRevision不提前固定，全部消费完成后才最终flush，错误不回退成功；stop/cancel等待时消费可推进；unknown保留并拒绝新建而已准入B仍可推进；live的Host/socket离开只detach，本地Host boundary等待或诚实报告未结算；Supervisor idle不越过未结算owner；缺能力不触发任何spawn。Host的`resetState()`（`:3753`）单根走boundary、多根走`clearAllWorkspaceRootCanvases()`（`:3794`）后逐节点terminate，测试须覆盖这两条入口清map或换authority均不能逃逸旧unknown。页面最终ACK协议不在这一切片实现，以未结算reader明确阻止相应状态退役，不虚构applied。
+S4用直接测试真实模块和入口的方式验收：关闭与异步prepare竞争时不再start；同身份关闭幂等且旧execution不改新映射；ProcessResult先到仍消费尾部，首批消费暂停、后批已accepted且seal已到时finalRevision不提前固定，全部消费完成后才最终flush，错误不回退成功；stop/cancel等待时消费可推进；unknown保留并拒绝新建而已准入B仍可推进；live的Host/socket离开只detach，本地Host boundary等待或诚实报告未结算；Supervisor idle不越过未结算owner；缺能力不触发任何spawn。Host的`resetState()`（`:3753`）单根走boundary、多根走`clearAllWorkspaceRootCanvases()`（`:3794`）后逐节点terminate，生产接线不通过清map或换authority逃逸旧unknown；本轮窄Host测试覆盖入口准入和boundary竞争，reset/clear的完整UI整链仍需后续验收。页面最终ACK协议不在这一切片实现，以未结算reader明确阻止相应状态退役，不虚构applied。
 
 测试复用现有esbuild/assert、可注入transport/时钟及真实SerializedTerminalStateTracker，必要时增加窄的owner wiring测试文件；不加载PTY、触发真实SIGTERM、启动runner或新增writer/oracle。新测试入口在实施时登记完整命令，执行前确认没有导入会自动启动Supervisor的main副作用。通过只说明关闭准入、消费和责任接线，不说明真实OS回收、Agent包装链或最终Webview验收通过。完成此切片、定向测试、typecheck和相关既有bridge回归后停止，报告L-02 reader、L-03处置/预算及L-04实际创建分流等剩余条件，不自动接通native或追加异常工具验证。
+
+## 17. S4：默认关闭的owner接线
+
+### 17.1 有限实现输入
+
+主树新增`src/panel/executionOwnerLifecycle.ts`，复用同一ExecutionAuthority/PreparedExecution；两owner实际创建和关闭入口调用它，不复制诊断模型。`NonNativeExecutionOwnerOptions`要求显式non-native标记、生命周期能力、transport工厂、scheduler与五个有限测试预算（start、graceful、force、cancel、settle），没有生产默认值或native工厂。Host内部注入还要求ExtensionMode.Test，不以环境变量启用；Supervisor constructor可选注入，正常启动不传入，main加直接执行守卫以允许无副作用导入。
+
+owner在异步环境/CLI或journal准备前reserve(key)，保存原execution身份。关闭同步封准入并标记预留取消，异步准备尚未返回不能直接抹掉责任；调用方准备结束并清理已取得的本地准备资源后才abandon。start前能力/准入复查，进入connect后不能当作未取得资源撤销。关闭、reset与clear使用原owner，不重建对象绕过unknown；其他已准入执行仍可推进。
+
+Adapter追加正常closing/permanent、预留取消、可选stateChanged及同一seal尾值的消费等待，不改变旧协议或首次/迟到结果。owner在terminal链外等待真实消费，再调用实际owner的flushFinal；该hook在原终端链中flush并固定finalRevision/关闭reader准入。最终消费失败不缓存回退。执行资源、authority最终状态和reader责任分别保留；S4不实现applied ACK，reader只能因明确取消/失联结算，不能从map空或postMessage成功推导applied。
+
+停止按注入预算依次允许graceful、必要force与cancel，各语义操作只发送一次；期限内未取得真实结果时返回unconfirmed并封新准入，不把accepted当完成，也不调用原生或外部PID kill。owner close等待执行资源和最终消费，reader不阻止安全执行回收，但未结算reader仍保留最终状态责任。普通后代不增设托管，真实native关闭失败处置L-03仍未选定。
+
+### 17.2 本轮验证命令
+
+在主运行时仓库根执行以下命令，均以退出码0完成：
+
+* `node scripts/test/test-execution-owner-lifecycle.mjs`：13/13；覆盖能力拒绝、关闭竞争、unknown、消费/flush失败、stop升级、reader结算和迟到回调。
+* `node scripts/test/test-execution-session-adapter.mjs`：53 cases；原有adapter断言保持，未创建native session。
+* `node scripts/test/test-supervisor-execution-owner-wiring.mjs`：11/11；直接加载`RuntimeSupervisorServer`，不启动main server。
+* `node scripts/test/test-host-execution-owner-wiring.mjs`：5/5；覆盖严格Test mode注入、Agent/Terminal预留、能力拒绝和live detach。测试使用窄的真实入口替身，不将未稳定的宽泛tracker fixture写成通过。
+* `node scripts/test/test-execution-session-bridge.mjs`、`node scripts/test/test-serialized-terminal-state-tracker.mjs`、`node scripts/test/test-runtime-paged-completion.mjs`、`node scripts/test/test-runtime-supervisor-protocol.mjs`：全部通过；paged/protocol既有断言保持。
+* `npm run -w extensions/vscode/dev-session-canvas typecheck`：通过。
+
+测试没有启动网络服务、PTY、原生子进程或runner；Host/Supervisor注入路径只接受显式non-native依赖，未注入时旧路径保持。一次Host宽fixture因不会推进provider而产生未决顶层await，已移除该不确定测试并保留5项稳定窄测试；这不是业务失败或通过证据。S4因此只关闭L-01的无native接线切片，L-02 reader最终ACK、L-03 native失联处置/预算和L-04生产能力分流仍开放。

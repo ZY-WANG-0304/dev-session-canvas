@@ -101,6 +101,13 @@ import {
   locateCodexSessionId
 } from '../common/codexSessionIdLocator';
 import { extractClaudeCommandRuntimeSessionFlag } from '../common/agentLaunchPresets';
+import type { AuthorityResult, DataBatch, LaunchSpec, ProcessResult } from '../common/executionLifecycle';
+import type { OperationObservation } from '../panel/executionSessionAdapter';
+import {
+  ExecutionOwnerLifecycle,
+  type NonNativeExecutionOwnerOptions,
+  type OwnedExecution
+} from '../panel/executionOwnerLifecycle';
 
 const IDLE_SHUTDOWN_DELAY_MS = 30_000;
 const TERMINAL_LIVE_DELAY_MS = 160;
@@ -169,6 +176,10 @@ interface SupervisorSession {
   outputSubscription?: DisposableLike;
   exitSubscription?: DisposableLike;
   lifecycleTimer?: NodeJS.Timeout;
+  ownedExecution?: OwnedExecution;
+  ownedProcessResult?: ProcessResult;
+  ownedReaderAdmissionOpen?: boolean;
+  ownedReaderSockets?: Set<net.Socket>;
 }
 
 interface RestoredTerminalJournalCandidate {
@@ -192,7 +203,7 @@ interface TerminalReadCursor {
   checkpoint: TerminalStreamCheckpoint;
 }
 
-class RuntimeSupervisorServer {
+export class RuntimeSupervisorServer {
   private readonly sessions = new Map<string, SupervisorSession>();
   private readonly connections = new Set<net.Socket>();
   private readonly subscriptions = new Map<net.Socket, Map<string, SupervisorSubscriptionMode>>();
@@ -207,12 +218,24 @@ class RuntimeSupervisorServer {
   private persistRegistryError: Error | undefined;
   private idleShutdownTimer: NodeJS.Timeout | undefined;
   private server: net.Server | undefined;
+  private readonly executionOwner?: ExecutionOwnerLifecycle;
 
   public constructor(
     private readonly paths: RuntimeSupervisorPaths,
     private readonly runtimeBackend: RuntimeHostBackendKind,
-    private readonly runtimeGuarantee: RuntimePersistenceGuarantee
-  ) {}
+    private readonly runtimeGuarantee: RuntimePersistenceGuarantee,
+    ownerOptions?: NonNativeExecutionOwnerOptions
+  ) {
+    this.executionOwner = ownerOptions ? new ExecutionOwnerLifecycle(ownerOptions) : undefined;
+  }
+
+  public prepareForShutdown(reason: string) {
+    if (!this.executionOwner) {
+      throw new Error('An injected execution owner is required for coordinated shutdown.');
+    }
+    this.clearIdleShutdownTimer();
+    return this.executionOwner.close({ reason, permanent: true });
+  }
 
   public async start(): Promise<void> {
     fs.mkdirSync(this.paths.storageDir, { recursive: true });
@@ -446,17 +469,25 @@ class RuntimeSupervisorServer {
       : params.resumeSessionId;
     const startedAtMs = Date.now();
     const scrollback = normalizeTerminalScrollback(params.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
-    const terminalJournal = await TerminalSessionJournal.create({
-      storageDir: this.paths.storageDir,
-      sessionId,
-      initialCols: params.launchSpec.cols,
-      initialRows: params.launchSpec.rows,
-      initialScrollback: scrollback,
-      checkpointProfiles: SERIALIZED_TERMINAL_CHECKPOINT_PROFILES
-    });
-    let process: ExecutionSessionProcess;
+    const ownedExecution = this.executionOwner?.reserve(sessionId, sessionId);
+    let terminalJournal: TerminalSessionJournal;
     try {
-      process = createExecutionSessionProcess(launchSpec);
+      terminalJournal = await TerminalSessionJournal.create({
+        storageDir: this.paths.storageDir,
+        sessionId,
+        initialCols: params.launchSpec.cols,
+        initialRows: params.launchSpec.rows,
+        initialScrollback: scrollback,
+        checkpointProfiles: SERIALIZED_TERMINAL_CHECKPOINT_PROFILES
+      });
+    } catch (error) {
+      // A rejected create may already have written part of its journal; retain the reservation.
+      if (ownedExecution) void ownedExecution.requestStop('Terminal journal preparation is unconfirmed.');
+      throw error;
+    }
+    let process: ExecutionSessionProcess | undefined;
+    try {
+      if (!ownedExecution) process = createExecutionSessionProcess(launchSpec);
     } catch (error) {
       await terminalJournal.delete();
       throw error;
@@ -507,19 +538,54 @@ class RuntimeSupervisorServer {
       resumeStoragePath: params.resumeStoragePath,
       stopRequested: false,
       agentActivity: params.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
-      process
+      process,
+      ...(ownedExecution ? { ownedExecution, ownedReaderAdmissionOpen: true,
+        ownedReaderSockets: new Set(socket.destroyed ? [] : [socket]) } : {})
     };
     this.sessions.set(sessionId, session);
     if (params.deferSubscription !== true) {
       this.subscribeSocket(socket, sessionId, params.terminalStreamMode === 'paged-until-exit'
         ? 'terminal-stream-paged-completion' : params.terminalStreamMode === 'paged' ? 'terminal-stream-paged' : 'legacy');
     }
-    this.bindSessionProcess(session);
+    if (ownedExecution) {
+      try {
+        const starting = this.bindOwnedExecution(session, {
+          file: launchSpec.file, args: launchSpec.args ?? [], cwd: launchSpec.cwd,
+          env: Object.fromEntries(Object.entries(launchSpec.env).filter((entry): entry is [string, string] =>
+            typeof entry[1] === 'string'))
+        });
+        const started = await starting.first;
+        if (started.kind !== 'started') {
+          throw new Error(`Execution start was ${started.kind}.`);
+        }
+        if (this.sessions.get(sessionId) !== session || ownedExecution.snapshot().stopRequested) {
+          throw new Error('Execution creation was superseded or closed while starting.');
+        }
+      } catch (error) {
+        const acquired = Object.keys(ownedExecution.snapshot().adapter?.resources ?? {}).length > 0;
+        if (acquired) {
+          session.live = false;
+          session.lifecycle = 'error';
+          void ownedExecution.requestStop('Execution startup did not complete.');
+          throw error;
+        }
+        await terminalJournal.delete();
+        if (this.sessions.get(sessionId) === session) {
+          this.clearSessionSubscriptions(sessionId);
+          this.sessions.delete(sessionId);
+        }
+        terminalStateTracker.dispose();
+        ownedExecution.abandon('Execution start was rejected before acquiring a provider.');
+        throw error;
+      }
+    } else {
+      this.bindSessionProcess(session);
+    }
 
     if (session.kind === 'terminal') {
       session.lifecycleTimer = setTimeout(() => {
         const current = this.sessions.get(session.sessionId);
-        if (!current || !current.live || current.lifecycle !== 'launching') {
+        if (!current || (ownedExecution && current !== session) || !current.live || current.lifecycle !== 'launching') {
           return;
         }
 
@@ -617,6 +683,12 @@ class RuntimeSupervisorServer {
     const session = this.requireSession(params.sessionId);
     return this.enqueueTerminalOperation(session, async () => {
       this.requireSession(params.sessionId);
+      if (session.ownedExecution && this.sessions.get(session.sessionId) !== session) {
+        throw new Error('Terminal reader belongs to a replaced execution.');
+      }
+      if (session.ownedExecution && !session.ownedReaderAdmissionOpen) {
+        throw new Error('The execution final revision is fixed; new readers are closed.');
+      }
       const journal = this.requireReadableJournal(session, params.authorityId);
       const reads = this.terminalReads.get(socket);
       if (!reads || socket.destroyed || (params.consumerId !== 'editor' && params.consumerId !== 'panel')) {
@@ -634,6 +706,7 @@ class RuntimeSupervisorServer {
       reads.set(readId, { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
         consumerId: params.consumerId, appliedRevision: checkpoint.revision, sentRevision: checkpoint.revision,
         checkpoint: cloneTerminalStreamCheckpoint(checkpoint) });
+      session.ownedReaderSockets?.add(socket);
       return { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
         checkpoint: cloneTerminalStreamCheckpoint(checkpoint), headRevision: journal.getRevision() };
     });
@@ -972,6 +1045,17 @@ class RuntimeSupervisorServer {
   }
 
   private stopSession(params: RuntimeSupervisorStopSessionParams): void {
+    const ownedSession = this.sessions.get(params.sessionId);
+    if (ownedSession?.ownedExecution) {
+      if (!ownedSession.live) throw new Error('Execution is not live.');
+      ownedSession.stopRequested = true;
+      ownedSession.lifecycle = 'stopping';
+      this.emitSessionState(ownedSession);
+      void ownedSession.ownedExecution.requestStop('Session stop requested.').catch((error) => {
+        console.error('Failed to observe execution stop:', error);
+      });
+      return;
+    }
     const session = this.requireLiveSession(params.sessionId);
     session.stopRequested = true;
     session.lifecycle = session.kind === 'agent' ? 'stopping' : 'stopping';
@@ -996,6 +1080,19 @@ class RuntimeSupervisorServer {
     const session = this.requireSession(params.sessionId, true);
     if (params.preserveTerminalReads && session.live) {
       throw new Error('Only ended runtime sessions can retain terminal readers.');
+    }
+    if (session.ownedExecution) {
+      session.retiring = true;
+      session.terminalMutationAdmissionOpen = false;
+      session.ownedReaderAdmissionOpen = false;
+      session.stopRequested = true;
+      if (!params.preserveTerminalReads) session.ownedExecution.settleReaders('cancelled');
+      const stopped = await session.ownedExecution.requestStop('Session deletion requested.');
+      if (stopped.kind !== 'settled') {
+        throw new Error('Execution deletion remains unconfirmed; ownership is retained.');
+      }
+      await this.enqueueTerminalOperation(session, () => this.finishSessionRetirement(session));
+      return;
     }
     session.terminalMutationAdmissionOpen = false;
     if (session.finalizationPromise) {
@@ -1052,6 +1149,11 @@ class RuntimeSupervisorServer {
     if (!session.retiring || this.sessions.get(session.sessionId) !== session) {
       return;
     }
+    if (session.ownedExecution) {
+      if (!session.ownedExecution.snapshot().retired) return;
+      await this.removeSession(session);
+      return;
+    }
     for (const reads of this.terminalReads.values()) {
       if ([...reads.values()].some((read) => read.sessionId === session.sessionId)) {
         return;
@@ -1068,8 +1170,82 @@ class RuntimeSupervisorServer {
       await fs.promises.rm(resolveTerminalJournalSessionDirectory(this.paths.storageDir, session.sessionId),
         { recursive: true, force: true });
     }
+    if (session.ownedExecution && this.sessions.get(session.sessionId) !== session) return;
     this.clearSessionSubscriptions(session.sessionId);
     this.sessions.delete(session.sessionId);
+    this.schedulePersist();
+    this.scheduleIdleShutdownIfNeeded();
+  }
+
+  private bindOwnedExecution(session: SupervisorSession, spec: LaunchSpec): OperationObservation {
+    const execution = session.ownedExecution!;
+    return execution.start(spec, {
+      consume: (batches) => this.consumeOwnedOutput(session, batches),
+      flushFinal: () => this.enqueueTerminalOperation(session, async () => {
+        const state = await session.terminalStateTracker.flush();
+        if (state.outputSequence !== session.outputSequence) {
+          throw new Error('Final terminal state does not cover the accepted terminal operations.');
+        }
+        session.terminalMutationAdmissionOpen = false;
+        session.ownedReaderAdmissionOpen = false;
+        if (session.ownedReaderSockets?.size === 0) execution.settleReaders('lost');
+        return session.outputSequence;
+      }),
+      processResult: (result) => { session.ownedProcessResult = result; },
+      finalized: (result) => this.finalizeOwnedExecution(session, result),
+      fault: () => {
+        if (this.sessions.get(session.sessionId) === session) session.lifecycle = 'error';
+      },
+      changed: () => {
+        if (session.retiring && execution.snapshot().retired) {
+          void this.enqueueTerminalOperation(session, () => this.finishSessionRetirement(session))
+            .catch((error) => console.error('Failed to retire owned execution:', error));
+        }
+        void Promise.resolve().then(() => this.scheduleIdleShutdownIfNeeded()).catch((error) => {
+          this.executionOwner?.authority.quarantine('Supervisor idle coordination failed.');
+          console.error('Failed to coordinate owned execution idle retirement:', error);
+        });
+      }
+    });
+  }
+
+  private consumeOwnedOutput(session: SupervisorSession, batches: readonly DataBatch[]): Promise<void> {
+    return this.enqueueTerminalOperation(session, async () => {
+      for (const batch of batches) {
+        const titleUpdate = updateSupervisorTerminalTitle(session, batch.text);
+        const text = titleUpdate.terminalOutput;
+        const event = session.terminalJournal!.appendOutput(text);
+        session.outputSequence = event?.revision ?? session.outputSequence + 1;
+        session.output = appendOutputTail(session.output, text);
+        session.terminalStateTracker.write(text, { outputSequence: session.outputSequence });
+        if (this.sessions.get(session.sessionId) === session) {
+          this.emitSessionOutput(session, text, event,
+            titleUpdate.titleUpdated ? session.terminalTitle ?? null : undefined);
+        }
+      }
+      await session.terminalStateTracker.flush();
+    });
+  }
+
+  private finalizeOwnedExecution(session: SupervisorSession, result: AuthorityResult): void {
+    // Old execution callbacks may settle their captured owner, but cannot publish a replacement session.
+    if (this.sessions.get(session.sessionId) !== session) return;
+    if (session.lifecycleTimer) clearTimeout(session.lifecycleTimer);
+    session.lifecycleTimer = undefined;
+    session.live = false;
+    session.ownedReaderAdmissionOpen = false;
+    if (session.ownedReaderSockets?.size === 0) session.ownedExecution?.settleReaders('lost');
+    const processResult = session.ownedProcessResult;
+    const successful = result.kind === 'applied' && processResult && processResult.kind !== 'unconfirmed';
+    const stopped = session.stopRequested || session.ownedExecution?.snapshot().stopRequested;
+    session.lifecycle = !successful ? 'error'
+      : stopped || (processResult?.kind === 'exited' && processResult.exitCode === 0)
+        ? session.kind === 'agent' ? 'stopped' : 'closed' : 'error';
+    session.lastExitCode = processResult?.kind === 'exited' ? processResult.exitCode : undefined;
+    session.lastExitSignal = processResult?.kind === 'signaled' ? processResult.signal : undefined;
+    this.broadcastToSessionSubscribers(session.sessionId, {
+      type: 'event', event: 'sessionState', payload: this.toSnapshot(session, undefined, false)
+    });
     this.schedulePersist();
     this.scheduleIdleShutdownIfNeeded();
   }
@@ -1176,6 +1352,13 @@ class RuntimeSupervisorServer {
         sessionId: session.sessionId
       }
     });
+    if (session.ownedExecution) {
+      void session.ownedExecution.requestStop('Terminal journal failed.').catch((stopError) => {
+        console.error('Failed to observe execution stop after journal failure:', stopError);
+      });
+      this.scheduleIdleShutdownIfNeeded();
+      return;
+    }
     this.disposeSession(session, { terminateProcess: true });
     this.emitSessionState(session);
     this.scheduleIdleShutdownIfNeeded();
@@ -1846,11 +2029,15 @@ class RuntimeSupervisorServer {
     }
 
     subscriptions.set(sessionId, mode);
+    const session = this.sessions.get(sessionId);
+    if (session?.ownedReaderAdmissionOpen) session.ownedReaderSockets?.add(socket);
   }
 
   private deferSocketSubscription(socket: net.Socket, sessionId: string, revision: number): void {
     this.subscriptions.get(socket)?.delete(sessionId);
     this.deferredSubscriptionRevisions.get(socket)?.set(sessionId, revision);
+    const session = this.sessions.get(sessionId);
+    if (session?.ownedReaderAdmissionOpen) session.ownedReaderSockets?.add(socket);
   }
 
   private clearDeferredSubscription(socket: net.Socket, sessionId: string): void {
@@ -2004,6 +2191,14 @@ class RuntimeSupervisorServer {
     }
     for (const appliedRevision of this.appliedRevisionAcks.get(socket)?.values() ?? []) {
       affectedSessionIds.add(appliedRevision.sessionId);
+    }
+    for (const session of this.sessions.values()) {
+      if (session.ownedReaderSockets?.delete(socket)) {
+        affectedSessionIds.add(session.sessionId);
+        if (session.ownedReaderSockets.size === 0 && !session.ownedReaderAdmissionOpen) {
+          session.ownedExecution?.settleReaders('lost');
+        }
+      }
     }
     this.connections.delete(socket);
     this.subscriptions.delete(socket);
@@ -2386,7 +2581,8 @@ class RuntimeSupervisorServer {
   }
 
   private scheduleIdleShutdownIfNeeded(): void {
-    if (this.connections.size > 0 || Array.from(this.sessions.values()).some((session) => session.live)) {
+    if (this.connections.size > 0 || Array.from(this.sessions.values()).some((session) => session.live)
+      || (this.executionOwner?.snapshot().pending ?? 0) > 0) {
       this.clearIdleShutdownTimer();
       return;
     }
@@ -2397,6 +2593,11 @@ class RuntimeSupervisorServer {
 
     this.idleShutdownTimer = setTimeout(() => {
       this.idleShutdownTimer = undefined;
+      if (this.executionOwner) {
+        if (this.connections.size > 0 || this.executionOwner.snapshot().pending > 0
+          || Array.from(this.sessions.values()).some((session) => session.live)) return;
+        this.executionOwner.closeAdmission(true);
+      }
       void this.flushRegistryBeforeShutdown().then(
         () => process.exit(0),
         (error) => {
@@ -2687,7 +2888,9 @@ function normalizeRuntimePersistenceGuarantee(value: unknown): RuntimePersistenc
   return value === 'strong' ? 'strong' : 'best-effort';
 }
 
-void main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  void main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

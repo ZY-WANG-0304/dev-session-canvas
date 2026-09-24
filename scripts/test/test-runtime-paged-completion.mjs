@@ -4,15 +4,11 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import esbuild from 'esbuild';
-import ts from 'typescript';
 
 const filename = path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts');
 const source = await readFile(filename, 'utf8');
-const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
-const mainCalls = ast.statements.filter(node => ts.isExpressionStatement(node) && node.getText(ast).startsWith('void main()'));
-assert.equal(mainCalls.length, 1);
-const contents = source.slice(0, mainCalls[0].pos) + source.slice(mainCalls[0].end) +
-  '\nexport { RuntimeSupervisorServer, TerminalSessionJournal, SerializedTerminalStateTracker, resolveTerminalJournalSessionDirectory };';
+const contents = source +
+  '\nexport { TerminalSessionJournal, SerializedTerminalStateTracker, resolveTerminalJournalSessionDirectory };';
 const bundle = await esbuild.build({ stdin: { contents, resolveDir: path.dirname(filename), loader: 'ts' },
   bundle: true, platform: 'node', format: 'cjs', write: false, external: ['node-pty'] });
 const module = { exports: {} };

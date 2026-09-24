@@ -50,7 +50,12 @@ export interface ExecutionObserver {
   outputSeal(seal: OutputSeal): void;
   resourceResult(identity: ExecutionIdentity, resourceId: string, result: ResourceResult): void;
   fault(identity: ExecutionIdentity, reason: string): void;
+  stateChanged?(identity: ExecutionIdentity): void;
 }
+
+export type SealedConsumptionResult =
+  | Readonly<{ kind: 'consumed'; throughDataSequence: number }>
+  | Readonly<{ kind: 'failed'; throughDataSequence: number; reason: string }>;
 
 export interface OperationObservation {
   readonly first: Promise<OperationResult>;
@@ -77,16 +82,19 @@ export class ExecutionAuthority {
   private readonly executions = new Map<string, { identity: ExecutionIdentity; execution: PreparedExecution }>();
   private readonly starting = new Set<ExecutionIdentity>();
   private blockedReason?: string;
+  private closing = false;
+  private permanent = false;
 
   reserve(identity: ExecutionIdentity, execution: PreparedExecution): void {
     if (this.blockedReason) throw new Error('Execution authority is quarantined');
+    if (this.closing) throw new Error('Execution authority is closing');
     if (this.executions.has(identity.executionId)) throw new Error('Execution identity already reserved');
     if (this.executions.size >= S1_LIMITS.executions) throw new Error('Execution capacity exhausted');
     this.executions.set(identity.executionId, { identity, execution });
   }
 
   beginStart(identity: ExecutionIdentity): boolean {
-    if (this.executions.get(identity.executionId)?.identity !== identity || this.blockedReason
+    if (this.executions.get(identity.executionId)?.identity !== identity || this.blockedReason || this.closing
       || this.starting.size >= S1_LIMITS.starting) return false;
     this.starting.add(identity);
     return true;
@@ -102,8 +110,25 @@ export class ExecutionAuthority {
 
   quarantine(reason: string): void { this.blockedReason ??= reason; }
 
-  snapshot(): Readonly<{ active: number; starting: number; blockedReason?: string }> {
-    return Object.freeze({ active: this.executions.size, starting: this.starting.size, blockedReason: this.blockedReason });
+  closeAdmission(permanent = false): readonly PreparedExecution[] {
+    this.closing = true;
+    this.permanent ||= permanent;
+    return this.listExecutions();
+  }
+
+  listExecutions(): readonly PreparedExecution[] {
+    return Object.freeze([...this.executions.values()].map(entry => entry.execution));
+  }
+
+  tryResume(): boolean {
+    if (!this.closing || this.permanent || this.blockedReason || this.executions.size > 0 || this.starting.size > 0) return false;
+    this.closing = false;
+    return true;
+  }
+
+  snapshot(): Readonly<{ active: number; starting: number; blockedReason?: string; closing: boolean; permanent: boolean }> {
+    return Object.freeze({ active: this.executions.size, starting: this.starting.size,
+      blockedReason: this.blockedReason, closing: this.closing, permanent: this.permanent });
   }
 }
 
@@ -155,6 +180,11 @@ export class PreparedExecution {
   private providerExited = false;
   private outputEnded = false;
   private outputClosed = false;
+  private reservationCancelled = false;
+  private sealedConsumption?: Promise<SealedConsumptionResult>;
+  private resolveSealedConsumption?: (result: SealedConsumptionResult) => void;
+  private stateNotificationScheduled = false;
+  private stateNotificationFailed = false;
 
   constructor(identity: ExecutionIdentity, launchSpec: LaunchSpec, private readonly dependencies: ExecutionDependencies) {
     assertExecutionIdentity(identity);
@@ -170,7 +200,27 @@ export class PreparedExecution {
     this.observer = observer;
     this.consumeBatch = consumeBatch;
     this.state = 'bound';
+    this.changed();
     return this;
+  }
+
+  cancelReservation(): boolean {
+    if (this.reservationCancelled) return true;
+    if (this.acquired || (this.state !== 'prepared' && this.state !== 'bound')) return false;
+    this.reservationCancelled = true;
+    this.state = 'settled';
+    this.dependencies.authority.release(this.identity);
+    this.changed();
+    return true;
+  }
+
+  waitForSealedConsumption(): Promise<SealedConsumptionResult> {
+    if (!this.seal) throw new Error('Output must be sealed before waiting for its consumption');
+    if (!this.sealedConsumption) {
+      this.sealedConsumption = new Promise(resolve => { this.resolveSealedConsumption = resolve; });
+      this.settleConsumptionWait();
+    }
+    return this.sealedConsumption;
   }
 
   start(operationId: string, deadline: number): OperationObservation {
@@ -207,6 +257,7 @@ export class PreparedExecution {
       this.recordOperation(operation, { kind: 'failed', stage: 'connect', reason: 'Transport connect failed' });
       this.loseControl('Transport connect failed after acquisition boundary');
     }
+    this.changed();
     return operation.view;
   }
 
@@ -278,6 +329,7 @@ export class PreparedExecution {
     const operation = this.makeOperation(kind, id, deadline, reason);
     this.state = 'closing';
     this.enqueue(message, 'urgent', kind);
+    this.changed();
     return operation.view;
   }
 
@@ -300,6 +352,7 @@ export class PreparedExecution {
         if (this.state !== 'settled') this.state = this.operations.size > 1 || this.process || this.source ? 'closing' : 'running';
       } else if (this.state !== 'settled') this.state = 'closing';
     }
+    this.changed();
   }
 
   private receiveMessage(value: unknown): void {
@@ -352,6 +405,7 @@ export class PreparedExecution {
         if (this.state !== 'settled') this.state = 'closing';
         if (source.kind === 'unknown' || source.kind === 'error') this.dependencies.authority.quarantine('Output source is not confirmed');
         this.maybeSeal();
+        this.changed();
         break;
       }
     }
@@ -457,6 +511,7 @@ export class PreparedExecution {
     this.dependencies.scheduler.scheduleTask(() => {
       this.processingScheduled = false;
       this.processFrames();
+      this.changed();
     });
   }
 
@@ -516,6 +571,7 @@ export class PreparedExecution {
         }
         if (this.pending.length) this.dependencies.scheduler.scheduleTask(() => this.beginConsumption());
         this.maybeRetire();
+        this.changed();
       }, () => this.consumptionFailed());
     } catch { this.consumptionFailed(); }
   }
@@ -524,6 +580,7 @@ export class PreparedExecution {
     this.consuming = false;
     this.authorityFailure = Object.freeze({ kind: 'failed', throughDataSequence: this.consumedThrough, reason: 'Authority consumption failed' });
     this.fault('Authority consumption failed');
+    this.changed();
   }
 
   private recordProcess(result: ProcessResult): void {
@@ -544,9 +601,11 @@ export class PreparedExecution {
     if (this.state === 'settled' || typeof resourceId !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(resourceId)
       || this.resources.has(resourceId) || this.resources.size >= 16) {
       this.resourceLedgerIncomplete = true;
+      this.changed();
       this.fault('Invalid or repeated resource acquisition'); return;
     }
     this.resources.set(resourceId, {});
+    this.changed();
   }
 
   private recordResource(resourceId: string, operationId: string, result: ResourceResult): void {
@@ -567,6 +626,7 @@ export class PreparedExecution {
   private disconnect(reason: string): void {
     this.controlDisconnected = true;
     this.loseControl(reason);
+    this.changed();
   }
 
   private failStartup(reason: string): void {
@@ -632,11 +692,42 @@ export class PreparedExecution {
     if (!startupSettled && (!this.seal || this.process?.kind === 'unconfirmed')) return;
     this.state = 'settled';
     this.dependencies.authority.release(this.identity);
+    this.changed();
   }
 
   private notify(callback: (observer: ExecutionObserver) => void): void {
     try { callback(this.observer!); }
     catch { this.fault('Execution observer failed'); }
+    this.changed();
+  }
+
+  private settleConsumptionWait(): void {
+    if (!this.resolveSealedConsumption || !this.seal) return;
+    let result: SealedConsumptionResult | undefined;
+    if (this.authorityFailure) result = this.authorityFailure;
+    else if (this.consumedThrough >= this.seal.lastDataSequence) {
+      result = Object.freeze({ kind: 'consumed', throughDataSequence: this.seal.lastDataSequence });
+    }
+    if (!result) return;
+    const resolve = this.resolveSealedConsumption;
+    this.resolveSealedConsumption = undefined;
+    resolve(result);
+  }
+
+  private changed(): void {
+    this.settleConsumptionWait();
+    if (!this.observer?.stateChanged || this.stateNotificationScheduled || this.stateNotificationFailed) return;
+    // Observe after the current fact transition, including its retirement checks, has completed.
+    this.stateNotificationScheduled = true;
+    this.dependencies.scheduler.scheduleTask(() => {
+      this.stateNotificationScheduled = false;
+      if (this.stateNotificationFailed) return;
+      try { this.observer?.stateChanged?.(this.identity); }
+      catch {
+        this.stateNotificationFailed = true;
+        this.fault('Execution state observer failed');
+      }
+    });
   }
 
   private fault(reason: string): void {
@@ -645,5 +736,6 @@ export class PreparedExecution {
     this.dependencies.authority.quarantine(reason);
     // Retain one bounded diagnostic; a throwing observer must not recurse into itself.
     if (first) { try { this.observer?.fault(this.identity, reason); } catch { /* State remains inspectable. */ } }
+    if (first) this.changed();
   }
 }

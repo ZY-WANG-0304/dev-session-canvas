@@ -141,7 +141,8 @@ try {
       processResult: (eventIdentity, result) => events.processes.push({ identity: eventIdentity, result }),
       outputSeal: (seal) => events.seals.push(seal),
       resourceResult: (eventIdentity, resourceId, result) => events.resources.push({ identity: eventIdentity, resourceId, result }),
-      fault: (eventIdentity, reason) => events.faults.push({ identity: eventIdentity, reason })
+      fault: (eventIdentity, reason) => events.faults.push({ identity: eventIdentity, reason }),
+      ...(options.stateChanged ? { stateChanged: (eventIdentity) => options.stateChanged(eventIdentity, session.snapshot()) } : {})
     };
     const consumeBatch = (batches) => {
       const pending = deferred();
@@ -1028,6 +1029,221 @@ try {
     await b.retire();
     assert.equal(authority.snapshot().active, 1, 'the unknown gate must be tested with a free execution slot');
     assert.throws(() => createHarness({ authority, scheduler }));
+  });
+
+  test('normal authority closure retains reservations and resumes only after they are cancelled', async () => {
+    const authority = createExecutionAuthority();
+    const prepared = createHarness({ authority, bind: false });
+    const bound = createHarness({ authority });
+    const retained = authority.closeAdmission();
+    assert.deepEqual(retained, [prepared.session, bound.session]);
+    assert.ok(Object.isFrozen(retained));
+    assert.deepEqual(authority.listExecutions(), retained);
+    assert.equal(authority.snapshot().closing, true);
+    assert.equal(authority.snapshot().permanent, false);
+    assert.equal(authority.snapshot().blockedReason, undefined);
+    assert.throws(() => createHarness({ authority }), /closing/);
+    assert.equal(authority.tryResume(), false);
+    assert.equal(prepared.session.cancelReservation(), true);
+    assert.equal(prepared.session.cancelReservation(), true);
+    assert.throws(() => prepared.bind());
+    assert.equal(bound.session.cancelReservation(), true);
+    assert.equal(prepared.connectCount + bound.connectCount, 0);
+    assert.equal(prepared.snapshot().process, undefined);
+    assert.equal(prepared.snapshot().source, undefined);
+    assert.equal(prepared.snapshot().seal, undefined);
+    assert.deepEqual(prepared.snapshot().resources, {});
+    assert.equal(authority.tryResume(), true);
+    assert.equal(authority.snapshot().closing, false);
+    assert.equal(authority.tryResume(), false);
+    const next = createHarness({ authority });
+    assert.equal(next.session.cancelReservation(), true);
+    const start = bound.control.start('cancelled-reservation', 100);
+    assert.equal((await start.first).kind, 'rejected-before-acquire');
+    assert.equal(bound.connectCount, 0);
+  });
+
+  test('closure rejects a reserved start but retains an acquired startup and its stop intent', async () => {
+    const authority = createExecutionAuthority();
+    const starting = createHarness({ authority, autoReady: false });
+    const first = await starting.start();
+    const reserved = createHarness({ authority });
+    assert.deepEqual(authority.closeAdmission(), [starting.session, reserved.session]);
+    assert.equal(authority.snapshot().starting, 1);
+    const rejected = reserved.control.start('closed-before-start', 100);
+    assert.equal((await rejected.first).kind, 'rejected-before-acquire');
+    assert.equal(reserved.connectCount, 0);
+    assert.equal(reserved.session.cancelReservation(), false);
+    assert.equal(starting.session.cancelReservation(), false);
+    assert.equal(authority.tryResume(), false);
+    const stop = starting.control.requestStop('close-stop', 'graceful', 200);
+    starting.message({ type: 'ready', capabilities: ['execution-lifecycle-v1'] });
+    await settle(starting.scheduler);
+    assert.deepEqual(starting.messages.map(message => message.type), ['start', 'requestStop']);
+    starting.message({ type: 'operationObservation', operationId: 'start', result: { kind: 'started', pid: 1234 } });
+    starting.message({ type: 'operationObservation', operationId: 'close-stop', result: { kind: 'accepted' } });
+    assert.equal((await first.first).kind, 'started');
+    assert.equal((await stop.first).kind, 'accepted');
+    await starting.retire();
+    assert.equal(starting.session.cancelReservation(), false);
+    assert.equal(authority.tryResume(), true);
+  });
+
+  test('permanent closure and quarantine cannot be cleared by emptying the execution map', () => {
+    const permanent = createExecutionAuthority();
+    const pending = createHarness({ authority: permanent });
+    permanent.closeAdmission();
+    permanent.closeAdmission(true);
+    permanent.closeAdmission(false);
+    assert.equal(pending.session.cancelReservation(), true);
+    assert.equal(permanent.snapshot().permanent, true);
+    assert.equal(permanent.tryResume(), false);
+    assert.throws(() => createHarness({ authority: permanent }), /closing/);
+    const quarantined = createExecutionAuthority();
+    quarantined.closeAdmission();
+    quarantined.quarantine('retained-unknown');
+    assert.equal(quarantined.tryResume(), false);
+    assert.equal(quarantined.snapshot().blockedReason, 'retained-unknown');
+    assert.throws(() => createHarness({ authority: quarantined }), /quarantined/);
+  });
+
+  test('sealed consumption waits for later batches instead of only the already queued first batch', async () => {
+    const h = createHarness();
+    await h.started();
+    assert.throws(() => h.session.waitForSealedConsumption(), /sealed/);
+    h.sink.data(joinBytes(...Array.from({ length: 9 }, (_, index) => h.frame(index + 1, `tail-${index}`))));
+    await settle(h.scheduler);
+    assert.equal(h.snapshot().acceptedThrough, 9);
+    assert.equal(h.consumptions.length, 1);
+    h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 7 } });
+    h.message({ type: 'sourceEnd', finalFrameId: 9, disposition: { kind: 'eof' } });
+    h.sink.controlResourceResult({ kind: 'released' });
+    const waiting = h.session.waitForSealedConsumption();
+    assert.strictEqual(h.session.waitForSealedConsumption(), waiting);
+    let observed;
+    void waiting.then(result => { observed = result; });
+    await settle(h.scheduler);
+    assert.equal(observed, undefined);
+    h.consumptions[0].resolve();
+    await settle(h.scheduler);
+    assert.equal(h.snapshot().consumedThrough, 4);
+    assert.equal(observed, undefined);
+    h.consumptions[1].resolve();
+    await settle(h.scheduler);
+    assert.equal(h.snapshot().consumedThrough, 8);
+    assert.equal(observed, undefined);
+    h.consumptions[2].resolve();
+    await settle(h.scheduler);
+    assert.deepEqual(await waiting, { kind: 'consumed', throughDataSequence: 9 });
+    assert.ok(Object.isFrozen(await waiting));
+    assert.equal(h.snapshot().state, 'settled');
+  });
+
+  test('zero-frame sealed consumption does not pretend the control resource was released', async () => {
+    const h = createHarness();
+    await h.started();
+    h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    h.message({ type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'eof' } });
+    assert.deepEqual(await h.session.waitForSealedConsumption(), { kind: 'consumed', throughDataSequence: 0 });
+    assert.equal(h.snapshot().resources['provider-control'].current, undefined);
+    assert.equal(h.authority.snapshot().active, 1);
+    h.authority.closeAdmission();
+    assert.equal(h.authority.tryResume(), false);
+    h.sink.controlResourceResult({ kind: 'released' });
+    await settle(h.scheduler);
+    assert.equal(h.authority.tryResume(), true);
+  });
+
+  test('sealed consumption failure remains failed when resource facts arrive later', async () => {
+    const h = createHarness();
+    await h.started();
+    h.output(1, 'retained-on-consumer-failure');
+    await settle(h.scheduler);
+    h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    h.message({ type: 'sourceEnd', finalFrameId: 1, disposition: { kind: 'eof' } });
+    const waiting = h.session.waitForSealedConsumption();
+    h.consumptions[0].reject(new Error('intentional-consumption-failure'));
+    await settle(h.scheduler);
+    const first = await waiting;
+    assert.deepEqual(first, { kind: 'failed', throughDataSequence: 0, reason: 'Authority consumption failed' });
+    h.sink.controlResourceResult({ kind: 'released' });
+    await settle(h.scheduler);
+    assert.strictEqual(await h.session.waitForSealedConsumption(), first);
+    assert.equal(h.snapshot().pendingFrames, 1);
+    assert.notEqual(h.snapshot().state, 'settled');
+  });
+
+  test('state notifications coalesce settled facts and preserve first unknown after late release', async () => {
+    const observed = [];
+    const h = createHarness({ stateChanged: (eventIdentity, snapshot) => observed.push({ eventIdentity, snapshot }) });
+    await h.started();
+    const initialCount = observed.length;
+    h.sink.resourceAcquired('late-owner');
+    h.message({ type: 'resourceResult', resourceId: 'late-owner', operationId: 'late-release',
+      result: { kind: 'unknown', reason: 'release-not-confirmed' } });
+    const first = h.snapshot().resources['late-owner'].first;
+    h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    h.message({ type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'eof' } });
+    h.sink.controlResourceResult({ kind: 'released' });
+    h.authority.closeAdmission();
+    await settle(h.scheduler);
+    assert.equal(observed.length, initialCount + 1);
+    assert.deepEqual(observed.at(-1).eventIdentity, h.identity);
+    assert.equal(observed.at(-1).snapshot.resources['provider-control'].current.kind, 'released');
+    assert.equal(observed.at(-1).snapshot.resources['late-owner'].current.kind, 'unknown');
+    assert.equal(h.authority.tryResume(), false);
+    h.message({ type: 'resourceResult', resourceId: 'late-owner', operationId: 'late-release', result: { kind: 'released' } });
+    await settle(h.scheduler);
+    assert.equal(observed.length, initialCount + 2);
+    assert.equal(observed.at(-1).snapshot.state, 'settled');
+    assert.strictEqual(observed.at(-1).snapshot.resources['late-owner'].first, first);
+    assert.equal(h.authority.snapshot().active, 0);
+    assert.equal(h.authority.tryResume(), false, 'late evidence does not erase quarantine');
+  });
+
+  test('an idempotent state observer can cancel a reservation without recursively notifying', async () => {
+    let notifications = 0;
+    let h;
+    h = createHarness({ stateChanged: () => {
+      notifications++;
+      assert.equal(h.session.cancelReservation(), true);
+    } });
+    assert.equal(notifications, 0, 'state changes are observed after the synchronous transition');
+    await settle(h.scheduler);
+    assert.equal(notifications, 2);
+    assert.equal(h.snapshot().state, 'settled');
+    assert.equal(h.connectCount, 0);
+    assert.equal(h.scheduler.taskCount, 0);
+  });
+
+  test('state notifications expose stop intent and source settlement before process confirmation', async () => {
+    const observed = [];
+    const h = createHarness({ stateChanged: (_eventIdentity, snapshot) => observed.push(snapshot) });
+    await h.started();
+    const initialCount = observed.length;
+    h.control.requestStop('observed-stop', 'graceful', 200);
+    await settle(h.scheduler);
+    assert.equal(observed.length, initialCount + 1);
+    assert.equal(observed.at(-1).state, 'closing');
+    assert.equal(observed.at(-1).process, undefined);
+    h.message({ type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'eof' } });
+    await settle(h.scheduler);
+    assert.equal(observed.length, initialCount + 2);
+    assert.equal(observed.at(-1).source.kind, 'eof');
+    assert.equal(observed.at(-1).seal, undefined);
+  });
+
+  test('a throwing state observer is disabled without an unbounded fault notification loop', async () => {
+    let notifications = 0;
+    const h = createHarness({ stateChanged: () => { notifications++; throw new Error('observer-failure'); } });
+    await settle(h.scheduler);
+    assert.equal(notifications, 1);
+    assert.equal(h.snapshot().firstFault, 'Execution state observer failed');
+    assert.equal(h.events.faults.length, 1);
+    assert.equal(h.session.cancelReservation(), true);
+    await settle(h.scheduler);
+    assert.equal(notifications, 1);
+    assert.equal(h.scheduler.taskCount, 0);
   });
 
   const failures = [];

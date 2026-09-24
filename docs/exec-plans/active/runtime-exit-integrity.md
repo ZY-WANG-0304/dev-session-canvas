@@ -1,12 +1,14 @@
 # 交付跨平台执行会话退出完整性
 
-本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，原生收尾阶段基线为 `10d40e63`。当前按正式设计第16节完成Linux最小接入条件收口，本轮仅只读研究和文档；下一S4为默认关闭、无native的实际authority收尾接线，真实PTY业务准入仍未批准，不推送运行时分支。既有S3首次0/2、修后2/2及全部历史保持，不把本计划视为私有 fd 补读或某种新 API 的授权。
+本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，原生收尾阶段基线为 `10d40e63`。当前已完成S4默认关闭、无native的实际authority收尾接线及定向验证；真实PTY业务准入仍未批准，不推送运行时分支。既有S3首次0/2、修后2/2及全部历史保持，不把本计划视为私有 fd 补读或某种新 API 的授权。
 
 此前原生诊断阶段所有新D3/D4/v2脚本、workflow及.debug工件仅在独立工作树 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates`，当时本树只同步文档。当前S1/S2/S3的生产模块和定向测试在本运行时树，诊断树只同步文档。以下旧记录中的本地“未提交工作树”均指采集时的诊断源码快照，不是本运行时树；v1后来冻结7141cfa3，v2后来冻结b4db41cc，不倒写采集时来源。当前协议、已完成验证和剩余阻塞项见本计划各节首段，后续历史段落的“下一步”不覆盖最新顺序。
 
 ## 目标与全局图景
 
-当前Linux接入条件阶段已形成三项产物：Supervisor/Host正常关闭的具名入口、provider卡住/崩溃/owner消失的能力表、L-01至L-05分层准入。生产接入第16节明确下一S4在真实owner入口实施默认关闭、无native的关闭准入及消费/资源责任，现有用户路径不变；不先扩异常矩阵。真实PTY仍缺正常关闭失败处置和最终reader等条件，整体比较中/验证中。以下各阶段下一步是历史，不覆盖本段。
+当前S4已完成，输入主树e84a8558/诊断树14fc6462；本轮在实际Supervisor/Host入口增加默认关闭、无native的准入与收尾分支，正常用户行为不变。定向结果和边界见生产接入第17节；以下第16节是已完成的前置设计，不是仍待重复的任务。
+
+Linux接入条件阶段已形成三项产物：Supervisor/Host正常关闭的具名入口、provider卡住/崩溃/owner消失的能力表、L-01至L-05分层准入。第16节的前置设计已由S4无native接线完成一轮实现验证；真实PTY仍缺正常关闭失败处置和最终reader等条件，整体比较中/验证中。以下各阶段下一步是历史，不覆盖本段。
 
 当前S3修后固定采集已完成，见生产接入第15.8至15.10节：输入3f8ebcae在Linux/Node22.23.2对原normal/flood各执行一次，新目录2/2、exit0；normal live最终状态及flood暂停消费下停止/回收、已读内容移交通过，两provider自然关闭、资源首报/当前released，无fault或追加清理。9份源码及原始事实独立核对，首次0/2的18文件逐项未变。不把有限通过扩大为跨平台或产品验收；下一阶段只收口Linux正常关闭及卡住时的最小接入条件，再转默认关闭authority接线，不扩崩溃全矩阵/通用工具，不自动runner/push。以下首败后、S2及更早记录按发生时点保留，不覆盖当前阶段。
 
@@ -30,8 +32,10 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [x] (2026-09-25，S4无native接线) Adapter closing/消费等待、共享owner收尾和两真实入口接线完成；owner lifecycle 13/13、adapter 53 cases、Supervisor wiring 11/11、Host wiring 5/5、既有bridge/tracker/paged/protocol回归及workspace typecheck通过。不开放native工厂，Host宽fixture的未决顶层await未作为通过依据。
+
 - [x] (2026-09-25，Linux最小接入条件) 完成两owner入口、Linux控制能力与L-01至L-05门槛的只读定位；生产接入第16节及相关文档同步，独立复核补齐seal早于后批消费的屏障及单根reset/多根clear验收。
-- [ ] S4：默认关闭、无native的真实authority关闭准入/消费/资源收尾接线与定向测试；不得开放native工厂，reader协议及正常关闭失败处置仍按具名门槛后续推进。
+- [x] S4：默认关闭、无native的真实authority关闭准入/消费/资源收尾接线与定向测试已完成；reader协议及正常关闭失败处置仍按具名门槛后续推进。
 
 - [x] (2026-09-25，S3修后有限采集) 输入3f8ebcae在新目录对原两场景唯一采集2/2，exit0；独立原始内容/live终态/资源与9份来源核对通过，首次18文件逐项未变，无测试残留。
 - [x] Linux PI-02最小接入条件已由生产接入第16节收口：两owner正常关闭落点、外部控制能力表、实际authority准入边界；未扩崩溃全矩阵或新增采集，PI-02生产能力不因此关闭。
@@ -391,6 +395,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-09-25（S4最小接口）：新增executionOwnerLifecycle共用真实模块，先reserve后异步准备，关闭后保留未返回prepare直到调用方清理并abandon；不伪造同步process/onExit兼容层。Host仅Test模式显式注入，Supervisor正常main无注入；预算仅测试依赖，无生产默认值。Adapter提供事件通知和seal消费等待，owner链外等待、实际authority链内flush；reader只显式cancelled/lost，不补造applied。先按生产接入第17节实施和验证，不再进行一轮通用工具研究。
+
 2026-09-25（分层接入）：依生产接入第16节允许S4先做默认关闭、无native的真实入口接线，不另建模型或新增工具门槛。L-01关闭编排、L-02实际消费/reader、L-03原控制对象与正常关闭失败处置、L-04创建前能力拒绝是native业务接入前条件；L-05异常owner消失风险在默认启用前按支持环境验证。拒绝把杀provider当主体已结束，也不新增独立杀所有主体/后代的普遍保证。S4测试注入预算不作为生产期限，旧live与默认路径不变。
 
 2026-09-25（S3修后有限通过）：原两个场景、新目录、同一已核对native二进制、相同主体/断言/预算，目录参数窄改提交3f8ebcae后只采集一次，2/2不覆盖首次0/2。下一步依据生产接入第15.10节区分PI-02接入前必需控制与默认启用前异常失联风险；只定位两owner正常关闭入口、形成Linux外部控制能力表和后续authority准入边界，不自动实施机制或再采集。
@@ -546,7 +552,7 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
-本轮只完成第15.10节约定的三项有限产物，结论及下一实现切片落在生产接入第16节。三个只读专项复核已完成，补齐最终消费屏障、reset/clear准入及控制对象措辞；没有业务修改、运行测试、原生采集、runner或push。PI-01/02/03和产品总债务保持开放，不用局部S3成功或文档收口代替真实关闭能力。文档静态检查结果记录于验证与验收。
+S4完成第17节约定的无native有限产物：共享owner生命周期已接入实际Supervisor/Host入口，关闭准入、在途预留、seal尾值消费等待、真实tracker最终flush、unknown和reader责任分别保留。owner lifecycle 13/13、adapter 53 cases、Supervisor wiring 11/11、Host wiring 5/5，既有bridge/tracker/paged/protocol回归及workspace typecheck通过；未启动PTY、native、runner或网络服务。Host宽tracker fixture的未决顶层await被明确移除而非追认通过，reset/clear完整UI整链、reader最终ACK、native失联处置/预算和生产能力分流仍开放。PI-01/02/03及产品总债务保持开放，文档静态检查结果记录于验证与验收。
 
 当前S3修后固定采集已完成，见生产接入第15.8至15.10节：输入3f8ebcae在Linux/Node22.23.2对原normal/flood各执行一次，新目录2/2、exit0；normal live最终状态及flood暂停消费下停止/回收、已读内容移交通过，两provider自然关闭、资源首报/当前released，无fault或追加清理。9份源码及原始事实独立核对，首次0/2的18文件逐项未变。不把有限通过扩大为跨平台或产品验收；下一阶段只收口Linux正常关闭及卡住时的最小接入条件，再转默认关闭authority接线，不扩崩溃全矩阵/通用工具，不自动runner/push。以下首败后、S2及更早记录按发生时点保留，不覆盖当前阶段。
 
@@ -654,11 +660,11 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 工作计划
 
-下一里程碑S4只实施生产接入第16.5节：在上述adapter及两个真实owner入口接入关闭准入、在途预留、具名stop/cancel、截至seal尾值的消费屏障和退役责任。共用编排如需抽出，须由真实创建/关闭入口调用；禁止只测试另一份模型。正常运行无新provider工厂，只有显式非native依赖注入可进入新分支；不新增用户开关、native加载、协议/namespace变更或旧live迁移。页面最终ACK暂不实现，未结算reader不能报applied或释放对应最终状态。
+S4已按生产接入第16.5节完成：在adapter及两个真实owner入口接入关闭准入、在途预留、具名stop/cancel、截至seal尾值的消费屏障和退役责任。共用编排由真实创建/关闭入口调用；正常运行无新provider工厂，只有显式非native依赖注入可进入新分支；未新增用户开关、native加载、协议/namespace变更或旧live迁移。页面最终ACK暂不实现，未结算reader不能报applied或释放对应最终状态。
 
-S4验收覆盖异步prepare与关闭竞争、旧身份、首批暂停且后批accepted/seal早到、真实flush失败、控制等待不阻断消费、unknown拒新建但B继续、单根reset/多根clear不逃逸责任、live detach/local close差异、idle不得跨过未结算owner，以及能力拒绝发生于任何spawn前。接线及无native定向测试/typecheck/bridge回归完成后停止，实际native依然受L-01至L-04约束，不自动补崩溃矩阵。
+S4定向验收已覆盖异步prepare与关闭竞争、旧身份、首批暂停且后批accepted/seal早到、真实flush失败、控制等待不阻断消费、unknown拒新建但B继续、live detach/local close差异、idle不得跨过未结算owner，以及能力拒绝发生于任何spawn前；Host reset/clear的完整UI整链和最终reader ACK仍未作为本轮通过。实际native依然受L-01至L-04约束，不自动补崩溃矩阵。
 
-当前有限采集与独立证据复核已完成，原0/2保持。下一阶段仅按生产接入第15.10节定位Supervisor/Host正常关闭入口、列出Linux卡住/崩溃/owner失联的控制对象与可确认事实，并冻结实际authority接线的最小准入条件；不先扩异常崩溃矩阵或通用工具，不自动实施新owner机制、运行采集或push。
+当前有限采集与独立证据复核已完成，原0/2保持。下一阶段转向L-02 reader最终结算、L-03 native失联处置与预算、L-04生产能力分流及reset/clear整链验收；不先扩异常崩溃矩阵或通用工具，不自动运行采集或push。
 
 第14节S2首次真实普通pipe七组7/7、独立复核及统一静态检查已收口，保留全部首次失败与后续纯内存验证分账。下一有限项是首个平台Linux真实PTY provider接线，须先冻结读取/解码预算、资源责任和安全停止，复用现有原生证据；不另起通用工具或全量矩阵，不自动native/runner/push。以下各阶段安排为历史。
 
@@ -1268,3 +1274,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-25，S3修后输入冻结）：新增第15.8节与本计划四活章节的采集准备；仅增加新目录参数，同一native二进制经来源核对后复用，第一次18文件归档摘要留存。先提交输入再执行相同两场景一次，当前尚无采集结论，不扩工具或修改验收判据。
 
 修订记录（2026-09-25，S3修后唯一原生采集）：输入3f8ebcae、新目录source-ack-first、相同normal/flood各一次，exit0/2/2。独立核对9份源码、原始输出/live终态/serialized/资源，首次18文件逐项不变；新2/2不覆盖首次0/2。normal单帧不代证UTF-8跨read，flood实际provider释放晚于最终消费，证据边界已同步。仅新增目录参数，没有修改主体、断言、预算或native；本轮不重跑全量或上一阶段纯矩阵。更新四活章节、当前导航与证据位置；下一阶段仅收口Linux最小接入条件，不扩异常崩溃全矩阵、工具或自动runner/push。 两树统一文档静态及diffcheck通过，本轮有限采集收口，整体计划继续active。
+
+修订记录（2026-09-25，S4无native接线收口）：主树在实际`RuntimeSupervisorServer`与`CanvasPanelManager`入口接入共享`ExecutionOwnerLifecycle`，只允许显式non-native依赖注入；默认路径、旧live绑定、PTY/native工厂和协议保持不变。reserve位于首次异步准备前，关闭先封准入并保留在途责任；owner在seal尾值消费完成后才调用真实tracker最终flush，unknown、reader取消/失联和旧身份迟到回调不被清map或替换映射掩盖。定向结果为owner lifecycle 13/13、adapter 53 cases、Supervisor wiring 11/11、Host wiring 5/5，既有bridge/tracker/paged/protocol回归及workspace typecheck通过；未启动PTY/native/runner。一次Host宽tracker fixture产生未决顶层await，已移除而不修改业务断言，保留窄入口测试，不把该路径写成通过。S4仅完成L-01无native接线切片；L-02最终reader ACK、L-03 native失联处置与预算、L-04生产能力分流和reset/clear完整UI整链仍开放。
