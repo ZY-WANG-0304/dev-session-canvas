@@ -23,7 +23,7 @@ updated_at: 2026-09-24
 
 当前以 `runtime-native-failure-isolation.md` 第27.10节（2026-09-24）为准：唯一输入1a88d0cc的push run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成3个U1-6原生样本，runner及可信本地`--verify-saved`均3/3。真实kqueue取得后以native-substitute合成EIO，真实注册/等待kevent未调用；数据gate关闭、token/PID绑定abort/ack和exit0、唯一waitpid及kqueue/master收尾取得限定证据。完整ZIP、21个runner来源、16个采集来源和2768个构建成员复核完成，独立原始事实核查见第27.10节。30项纯测（前轮21项加build3/schedule6）、零会话build/load和原生次数分账；旧U1-0不重跑；早期6/6、10/10、21项保持原历史口径，不追认或累加覆盖。
 
-下一阶段收敛生产接入决策：先分类故障，明确五类事实接口、unknown隔离、预算依据、Runtime Persistence两模式兼容与native分发，不机械接U1-7/W1。只有可能改变拓扑选择的同步阻塞问题才另冻最小A/B对照协议，本轮不追加实验或接入业务。schedule仍按资源与证据结算决定准入，unknown停排、not-run无raw/evidence；可信离线不执行归档代码，准备期guard-only和stub binary不升级为原生证据。其余原生/取消、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged尚未验收，生产API/隔离策略/停止预算未选定，债务不关闭。
+当前生产接入候选见 `runtime-exit-integrity-production-integration.md`，状态为比较中/未验证：authority留在Supervisor/Host，每会话provider在取得资源前独立为OS进程。下一阶段先闭合PI-01/02/03的IPC移交、owner失联与两模式接线，不机械接U1-7/W1；A/B同步阻塞对照仍是条件性草案，未冻结可运行协议、未执行。第27.10节保持最新原生证据，schedule仍按资源与证据结算决定准入，unknown停排、not-run无raw/evidence；可信离线不执行归档代码，准备期guard-only和stub binary不升级为原生证据。其余原生/取消、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged尚未验收，生产API/隔离策略/停止预算未选定，债务不关闭。
 
 U1-6的三域判定保持独立：`scenarioMatches`要求kqueue已取得并登记、注册替身明确未调用真实kevent、数据gate关闭，受控abort的exit0属于场景预期。合法非零退出或signaled终态若已由唯一wait回收且其他owner和证据齐全，不能仅因不符合exit0预期虚构资源泄漏。`resourcesSettled`核验token/PID绑定的abort/ack及其顺序，并要求同一Wait线程唯一一次waitpid确认自身child终态后单次close kqueue，并结算TSFN/payload/thread/finalizer及master；wait未知时保留kqueue未结算、禁止payload/通知并停止准入。`evidenceSufficient`核验ready的token/PID/TTY、gate前缀真实性、其他身份及事件原始值、报告对接和各自时钟域预算。不发送`go`，预期read/parser计数为0、raw为空、state为null；数据泄漏单列场景失败，不以合成EIO冒充真实系统错误，也不以driver退出或caller强杀代替逐资源回收。
 
@@ -124,6 +124,8 @@ retained/unknown和process unconfirmed是带时间的观察，不是不可变最
 ## 4. 接口职责和偏序
 
 ### Provider 到共享 adapter
+
+2026-09-24适用范围澄清：本节下方“data同步返回给provider作为移交回执”保留为原同进程模型约定，不适用于独立provider进程。按 `runtime-exit-integrity-production-integration.md` 第4.2节候选，只有父侧adapter→authority的接受及sequence分配同步完成，发回provider的移交回执异步且有界，禁止同步IPC等待；独立副本、连续移交及唯一序号的要求不变。具体握手、信用额度和失联处置由PI-01/02闭合，不追改旧模型或实验结果。
 
 创建采用候选 `openExecution(spec, observer)`，必须先安装 observer 再启动可产生事件的源，避免 create 后注册 listener 丢失快速退出/首块。平台实现持有一个 owner 记录，创建每项资源立即登记；传给 JS 的 token 只定位自身记录，绝不把外部 PID 或数值句柄当作所有权证明。公开返回的是受控操作，不暴露 raw fd/HPCON。
 
@@ -255,6 +257,8 @@ G04不能假定公有Node API能取得driver stdio的子侧写端并转给兄弟
 D1/D2完成后才逐平台另冻原生失败矩阵，不在本轮虚构fixture或结果。每个平台至少要把第7节中的partial-create、wait/通知失败、reader取消与正长度已读缓冲、最终release失败/挂起、两个并发会话分开验证，并有同版本自然正对照。Windows TSFN环境销毁/已排队payload和hShell登记前失败、Unix在途read/control-fd生命周期都是必须覆盖的输入；无法安全注入的API点标未覆盖，不用JS抛异常声称已经原生覆盖。builtin、旧Windows版本、真实Agent/Host/Webview/packaged仍独立开放。
 
 ## 9. 接入门槛与验证记录
+
+2026-09-24门槛层级澄清：下段原“进入业务实施前须同时满足”的整套条件继续保留，当前按 `runtime-exit-integrity-production-integration.md` 第8节解释为默认启用门槛。默认关闭、范围受限的实施切片，可在PI-01/02/03及该切片自身的预算、准入、宿主/工件安全边界闭合并通过评审后推进；这不是豁免PI-04/05，完整支持范围的PI-04/05和PI-06产品验收仍须在默认启用前完成。此分层说明优先于下段对所有业务实施的一概限制，不更改原记录或追认已有诊断为产品通过。
 
 进入业务实施前须同时满足：结果格式与实际native证据对应；平台所有权失败路径有明确处置且不会无限累积；取消和生产预算有设计依据；bridge/authority/读者协议的能力分流及两个运行模式接入方案通过评审；分发与支持版本矩阵已明确。新adapter不能仅根据当前隔离候选通过就成为默认provider，也不能把诊断的轮询、删除kill导出或静默失败策略直接带入生产。
 

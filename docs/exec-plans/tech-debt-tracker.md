@@ -23,7 +23,9 @@
 
 ## 技术债列表
 
-2026-09-24 第27.10节当前进展：唯一1a88d0cc/run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成U1-6三次，runner及可信本地保存复核均3/3；30项纯测、零会话build/load另记。ZIP、21runner源、16采集源及2768build成员已核。真实取得kqueue后合成EIO，未调用注册/等待kevent；abort/ack exit0及唯一wait/kqueue/master收尾取得限定证据，独立raw核查见第27.10节。下一阶段先收敛生产故障分类、事实接口、unknown隔离、预算、两模式兼容与分发，不机械追加U1-7/W1；仅对会改变拓扑的同步阻塞另冻最小A/B协议，本轮不实验。其余原生/取消、真实Agent及Host/Webview/packaged未验收；业务、旧断言/失败/工件保持，退出完整性债务不关闭。
+2026-09-24 当前设计进展：`docs/design-docs/runtime-exit-integrity-production-integration.md` 已形成比较中/未验证的生产接入候选：authority留在Supervisor/Host，在取得资源前建立每会话独立provider进程。下一阶段先闭合PI-01/02/03的IPC移交、owner失联和两模式接线；有限切片安全边界与默认启用所需的PI-04/05/06分层，不机械追加U1-7/W1或通用工具门槛。A/B同步阻塞对照仍是条件性草案，未冻结可运行协议、未执行；生产API、预算、分发及产品整链未验收，退出完整性债务不关闭。
+
+最新原生证据仍为第27.10节：唯一1a88d0cc/run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成U1-6三次，runner及可信本地保存复核均3/3；30项纯测、零会话build/load另记。ZIP、21runner源、16采集源及2768build成员已核。真实取得kqueue后合成EIO，未调用注册/等待kevent；abort/ack exit0及唯一wait/kqueue/master收尾取得限定证据，独立raw核查见第27.10节。其余原生/取消、真实Agent及Host/Webview/packaged未验收；业务、旧断言/失败/工件保持。
 
 以下第26阶段及第27阶段初次冻结记录按当时时点保留，不覆盖上述当前状态。
 

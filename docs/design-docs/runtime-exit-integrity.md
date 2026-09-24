@@ -21,7 +21,9 @@ updated_at: 2026-09-24
 
 ## 1. 已确认范围与决策状态
 
-当前以 `runtime-native-failure-isolation.md` 第27.10节（2026-09-24）为准：唯一输入1a88d0cc、push run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成3个新U1-6原生样本，runner及可信本地`--verify-saved`均3/3。30项纯测、零会话build/load与原生执行分账。第26节32312fe7/run35900772851 attempt1的U1-0三次3/3及旧失败独立保留，不重跑、不追认早期6/6、10/10、21项覆盖。本轮仍是合成注册失败的限定诊断证据，不是生产退出完整性验收；下一阶段转入生产接入决策收敛，具体边界见第6节。
+当前生产接入候选见 `runtime-exit-integrity-production-integration.md`，状态为比较中/未验证：authority留在Supervisor/Host，每会话provider在取得资源前独立为OS进程。下一阶段闭合PI-01/02/03的IPC移交、owner失联和两模式接线，具体边界见第6节。
+
+最新原生证据仍以 `runtime-native-failure-isolation.md` 第27.10节（2026-09-24）为准：唯一输入1a88d0cc、push run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成3个新U1-6原生样本，runner及可信本地`--verify-saved`均3/3。30项纯测、零会话build/load与原生执行分账。第26节32312fe7/run35900772851 attempt1的U1-0三次3/3及旧失败独立保留，不重跑、不追认早期6/6、10/10、21项覆盖。这仍是合成注册失败的限定诊断证据，不是生产退出完整性验收。
 
 2026-09-20，用户同意将“退出完整性”作为本次 Runtime Persistence 重构的独立交付项。它与 F-04 容量优化、F-05 取消 completed 内联分别验收；不能等其他重构完成后假定问题自然消失，也不必等待整体终端状态替代或 F-03 root 归属改造才能推进。
 
@@ -94,7 +96,7 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 完整ZIP与GitHub摘要一致，21个runner来源、16个采集来源及2768个build成员已核；独立构建/来源与原始事实审计结果统一见第27.10节。runner及可信本地保存复核均3/3，可信离线不执行归档代码。30项纯测试是前轮21项（源码3、角色mock7、verifier11）加build3/schedule6，13个JS语法检查另记；准备期guard-only子进程和未执行stub binary仍不是原生证据。同组本地/runner复核不累加覆盖，旧U1-0源码、原始工件、断言及失败均不改，业务未接入。
 
-下一阶段是生产接入决策收敛：先分类故障、确定事实接口与unknown隔离、说明预算依据，再比较Runtime Persistence两模式兼容及native分发，不机械接U1-7/W1或扩D3/D4工具门槛。只有“A的同步native操作未返回时B能否继续服务”这一未决命题会改变拓扑选择时，才另冻最小A/B对照协议；本轮不追加该实验。其他原生/取消、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged仍未验收，生产API、隔离策略和停止预算尚未选定，退出完整性债务不关闭。
+生产接入候选已记录到 `runtime-exit-integrity-production-integration.md`，当前仅比较中/未验证；下一阶段先闭合PI-01 IPC-OWNERSHIP、PI-02 OWNER-LOSS和PI-03 TWO-MODE-WIRING的可实施接口及有限切片安全边界。默认关闭的受限实施与完整PI-04/05/06默认启用门槛分层，不机械接U1-7/W1或扩D3/D4工具门槛。A/B同步阻塞对照仍是条件性草案，未冻结可运行协议、未执行。其他原生/取消、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged仍未验收，生产API、隔离策略和停止预算尚未选定，退出完整性债务不关闭。
 
 第25阶段历史记录（以下三段按当时状态保留，其macOS协议待办已由第26阶段承接，不覆盖当前实施顺序）：
 
