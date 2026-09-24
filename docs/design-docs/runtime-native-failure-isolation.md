@@ -19,7 +19,7 @@ updated_at: 2026-09-24
 
 ## 1. 本阶段状态与完成边界
 
-当前以第27节（2026-09-24）为准：已完成macOS U1-6的运行前失败协议冻结；第26节固定32312fe7的唯一macOS arm64 U1-0三项3/3、首次构建/加载、runner保存复核及完整下载后的本地可信复核、独立raw/来源审计均通过。第27节只冻结候选行为，不表示注册失败已在原生runner复现；第26节真实posix_spawn/helper、kqueue/kevent/唯一waitpid、read0及逐资源收尾仍与三项原生分账，不代表业务已修复或其他平台/失败路径/产品整链通过。
+当前以第27节（2026-09-24）为准：已完成macOS U1-6协议、隔离候选接口纠正、21项有限纯测试及独立只读复核，未编译、加载或运行原生；首轮6/6、10/10的接口不足与新增回归失败见27.8。第26节固定32312fe7/run35900772851 attempt1的macOS arm64 U1-0三项3/3、构建/加载和完整工件复核保持，不外推注册失败、业务修复或产品整链。下一步只冻结新的build/schedule输入再决定唯一原生采集，不扩工具门槛。
 
 第25阶段历史状态（原文保留，不覆盖当前入口）：
 
@@ -623,7 +623,7 @@ runner复用已有GitHub托管macOS环境，新增macOS-only workflow而不dispa
 
 U1-6只使用本候选的native substitute，不执行真实`kevent`注册调用。前提是本次`kqueue()`真实返回非负fd并已登记owner；注册调用点记录一个诊断性的`kqueue-register-enter`（`registerApiEntered=true`，仅表示进入替身），随后合成`result=-1,error=EIO`，并记录`registrationFailureInjected=true`、`registrationCallInvoked=false`（真实kevent未进入）、`registrationInFlight=false`、`kqueueRegistered=false`及`kqueueWaitReturned=false`。该合成错误不是Darwin实测错误，`scenarioVerdict`必须确认真实注册API未调用；不得把它写成real-api失败或系统errno证据。
 
-注入返回后仍由创建kqueue和child的同一Wait线程作为唯一reaper，直接对同一`pid`调用一次阻塞`waitpid(pid, &status, 0)`；不增加竞争线程、不按日志PID操作、不走`kevent`等待，也不调用`kill`。仅当返回的pid等于登记child且`WIFEXITED`或`WIFSIGNALED`成立时设置`waitConfirmed`并解码status；失败、陌生pid或无效status均为`wait-unknown`，不得造exit0、payload或通知。真实`wait-enter/return`必须进入native账本。
+注入返回后仍由取得kqueue的同一Wait线程作为唯一reaper，直接对本driver经posix_spawn创建并登记的同一`pid`调用一次阻塞`waitpid(pid, &status, 0)`；child不是由Wait线程创建。不增加竞争线程、不按日志PID操作、不走`kevent`等待，也不调用`kill`。仅当返回的pid等于登记child且`WIFEXITED`或`WIFSIGNALED`成立时设置`waitConfirmed`并解码status；失败、陌生pid或无效status均为`wait-unknown`，不得造exit0、payload或通知。真实`wait-enter/return`必须进入native账本。
 
 注册调用已经返回且没有在途使用后，仍由该Wait线程确认前述唯一`waitpid`已结算，再对已取得的kqueue执行一次真实`close`，记录返回值和errno；固定顺序为`waitpid`终态→kqueue close→payload/TSFN通知与线程结算，不能由driver或其他线程提前close。wait未知、kqueue close失败、TSFN/finalizer/join失败或任一已取得owner未结算时，`resourcesSettled=false`并停止后续样本准入；不因合成注入命中而放行。
 
@@ -631,28 +631,42 @@ U1-6只使用本候选的native substitute，不执行真实`kevent`注册调用
 
 ### 27.3 分域验收与非目标
 
-U1-6的固定结果分为三域：`scenarioVerdict`要求同一token/PID的fixture ready与child/master已建立、kqueue真实取得并登记owner、诊断failpoint在真实注册调用前命中，`registerApiEntered=true`但`registrationCallInvoked=false`，合成`-1/EIO`已记录且没有真实register-return、kevent-wait或exit-event；`resourcesSettled`要求同一Wait线程完成唯一waitpid后单次真实close kqueue，再完成受控abort/ack、TSFN/payload/thread/finalizer结算以及后续master关闭；`evidenceSufficient`要求原始身份、failpoint、abort ack、wait/close/通知/stdio事实和预算可独立复算。U1-6预期`permissionSent=false`、`written=0`、`readCalls=0`、`parserAccepted=0`、`parserCompleted=0`、`state=null`，不要求2104字节、read0或exit7；任何go、written或PTY数据都是数据门控泄漏，属于场景失败，不是证据不足。合成EIO本身不是资源或证据通过条件；预期的合成失败可以通过，证据不足或实际资源失败不能通过。
+U1-6的固定结果分为三域：场景域（实现字段`scenarioMatches`）要求诊断failpoint在真实注册调用前命中，`registerApiEntered=true`但`registrationCallInvoked=false`，合成`-1/EIO`已记录且没有真实register-return、kevent-wait或exit-event，并符合受控abort的exit0预期；`resourcesSettled`要求child/master/kqueue的取得与owner绑定、token/PID受控abort/ack，以及同一Wait线程完成唯一waitpid后单次真实close kqueue、TSFN/payload/thread/finalizer及后续master结算；`evidenceSufficient`要求ready身份、gate原始前缀、wait/close/通知/stdio和各自预算可复算。wait-enter可早于abort；ack须在master关闭请求前被driver观察，不跨进程时钟强排ack与native wait-return先后。U1-6预期`permissionSent=false`、`written=0`、`readCalls=0`、`parserAccepted=0`、`parserCompleted=0`、`state=null`，不要求2104字节、read0或exit7；任何go、written或PTY数据都是数据门控泄漏，属于场景失败，不是证据不足。合成EIO本身不是资源或证据通过条件；整体pass要求三域通过，safeToContinue只取决于资源与证据，不能因场景不匹配就捏造资源失败。
 
-U1-6不覆盖真实`kevent`注册错误、`ESRCH`竞态、kqueue取得失败、早退、取消、真实环境销毁、stock node-pty、Windows、实际Agent包装链或Host/Supervisor/Webview/产品整链。候选实现、纯测试和唯一runner输入须另建版本；不修改第26节源码、原始工件或旧失败结论。本阶段只冻结协议，不实施、不构建、不运行runner。
+U1-6不覆盖真实`kevent`注册错误、`ESRCH`竞态、kqueue取得失败、早退、取消、真实环境销毁、stock node-pty、Windows、实际Agent包装链或Host/Supervisor/Webview/产品整链。候选实现、纯测试和唯一runner输入须另建版本；不修改第26节源码、原始工件或旧失败结论。协议冻结时未实施；随后候选源码与纯测试进度见27.5至27.8，仍未构建或运行runner。
 
 ### 27.4 决策与下一步
 
-本节采纳“注册失败后同一Wait线程直接waitpid、数据gate保持关闭并使用token-bound abort/ack”的唯一回收者方案，因为child已经由本次候选创建且仍需保留真实终态；它避免了stock路径的未初始化status和重复wait风险，也不会让kqueue注册失败转化为永久child积累。继续前必须先增加正负纯测试和静态接口复审：正例确认failpoint命中后不发送go、abort/ack后唯一waitpid和kqueue单次close，负例确认旧`kqueueRegistered`门控会死锁且不能作为新协议；再冻结新输入并验证真实owner账本。生产API、隔离拓扑、停止预算和失败后是否继续交付输出仍未选定。
+本节采纳“注册失败后同一Wait线程直接waitpid、数据gate保持关闭并使用token-bound abort/ack”的唯一回收者方案，因为child已经由本次候选创建且仍需保留真实终态；该设计避免解码未确认status和竞争waiter，但wait未知时仍保留未结算责任，不承诺所有失败都能回收。当前已完成27.8的有限源码及模拟对接测试，独立只读复核未发现本轮直接阻断；下一步冻结新build/schedule输入并决定唯一原生采集，当前尚无该运行输入。生产API、隔离拓扑、停止预算和失败后是否继续交付输出仍未选定。
 
 ### 27.5 纯协议测试结果（2026-09-24）
 
 诊断树提交`519ca7b8`新增三个隔离入口：`macos-native-failure-fixture-v1.mjs`只生成U1-6协议输入，`macos-native-failure-verifier-v1.mjs`按场景、资源和证据三域判定，`macos-native-failure-v1.test.mjs`只运行纯内存正负例。6组测试全部通过（`node --test scripts/diagnostics/macos-native-failure-v1.test.mjs`）；三个文件的`node --check`和`git diff --check`也通过。
 
-测试已确认合成`-1/EIO`在真实注册API进入前命中、没有register/wait/exit事件或数据gate泄漏；abort/ack保持token与PID绑定；同一Wait线程唯一waitpid后单次close kqueue，并完成payload、TSFN、thread、finalizer及master收尾。负例保留场景不匹配、资源未结算和证据不足的独立结果，不把合成错误写成真实系统错误。该结果只完成协议级纯测试，尚未实施native替身、构建、加载或运行runner；下一步仍需静态接口复审后再决定是否冻结运行输入。
+这6组测试只检查手工合成输入下的failpoint、数据gate、abort/ack和释放判定，不证明真实API调用、线程身份或资源已结算。当时尚未实施native替身；27.8的接口复核随后发现纯输入与候选不一致及漏验，故不能再把首轮6/6称为完整接口验证。首次结果保留，不追认成原生通过。
 
 ### 27.6 现有候选接口的静态复审（2026-09-24）
 
 纯测试所用的U1-6字段目前不是现有U1-0候选的可直接输入。`macos-native-baseline-support-v1.h`的`Configure`拒绝`U1-6`，`MakeSnapshot`将场景固定为`U1-0`且没有注册替身、abort/ack或唯一reaper字段；`Wait`在真实`kevent`注册失败时不会进入`waitpid`，随后关闭kqueue并结束TSFN路径。`macos-native-baseline-roles-v1.mjs`的门控只等待`ready && kqueueRegistered`，没有U1-6的“不发送go、token-bound abort/ack”分支。
 
-因此，`519ca7b8`的fixture/verifier/test只证明冻结协议的内存判定和负例隔离，不能证明原U1-0候选已经实现U1-6，也不能把合成`EIO`记录为真实系统错误。诊断树随后新增的U1-6 native substitute、roles分支和fixture process仍只完成源码静态契约；主运行时代码、U1-0源码和既有工件保持不变。
+因此，`519ca7b8`的fixture/verifier/test只证明首轮内存判定，不能证明原U1-0候选已经实现U1-6，也不能把合成`EIO`记录为真实系统错误。诊断树随后新增独立U1-6替身、roles和fixture process；27.7首轮源码检查的不足及后续纠正见27.8。主运行时代码、U1-0源码和既有工件保持不变。
 
-### 27.7 U1-6 诊断替身的源码契约结果（2026-09-24）
+### 27.7 U1-6 诊断替身的首轮源码检查（2026-09-24）
 
 诊断树新增`macos-native-failure-support-v1.h`、`macos-native-failure-patch-v1.mjs`、`macos-native-failure-roles-v1.mjs`及独立fixture process，并配套patch/roles测试。替身在kqueue owner登记后记录`registerApiEntered`并合成`-1/EIO`，不调用任何真实`kevent`注册或等待；同一Wait线程对登记PID执行一次阻塞`waitpid`，确认终态后单次关闭kqueue，再结算payload、TSFN、thread、finalizer和master。roles只在注册替身返回后发送token/PID绑定的abort，等待abort-ack，不发送go或强制信号。
 
-包含既有三域测试在内共10项纯测试通过，另有全部新增JS源码`node --check`及带依赖根的patch静态测试通过；本阶段没有编译C++、加载`.node`、创建真实PTY或运行runner。该实现仅是U1-6诊断候选，尚未证明macOS系统、stock node-pty、Terminal/Agent或产品链路行为。
+包含既有三域测试在内共10项纯测试通过，带依赖根的patch静态测试通过；但字符串断言与手工fixture不足以证明接口可执行，不能将该结果称为“源码契约完成”。早先多文件`node --check`的调用也不能证明全部JS已检查，逐文件复核见27.8。本阶段没有编译C++、加载`.node`、创建真实PTY或运行runner，尚未证明macOS系统、stock node-pty、Terminal/Agent或产品链路行为。
+
+### 27.8 接口纠正与有限对接验证（2026-09-24）
+
+首轮源码复核发现：native使用固定线程标签而未在event导出thread；errno为数字但fixture/verifier使用字符串；手工ready包含真实fixture无法知道的native注册状态；roles向fork传环境对象而非数组，并遗漏发出的abort和caller完整结算事实。verifier还缺少raw wait status、临时owner和预算绑定。新增负例先复现raw wait状态被篡改后仍可准入，7组中6通过/1失败，原输出保留在诊断树`.debug/u16-source-contract-before.log`，不将其改记为通过。
+
+本轮只纠正U1-6所需接口：native事件捕获实际`std::thread::id`，snapshot序列化为同一driver内可比的标识，不冒称OS TID；取得kqueue后显式记录owner再注入数值EIO(5)和`registrationErrorSource=native-substitute`。Wait只调用一次waitpid，不重试EINTR；未确认终态时保留wait-unknown和未关闭kqueue，不造payload或通知，TSFN/thread/finalizer的实际后续事实仍分别记录并拒绝后续准入。
+
+ready只报告token/PID和TTY身份，driver以native快照建立writeGate，保存发出的abort、收到的ack、master关闭前快照及caller的after-await、exit和stdio close。fixture仅匹配abort，ack发送完成后exit0；协议/连接错误exit125、安全超时exit124不能伪装成功。这里exit0是受控abort的场景要求：合法非零退出或signaled终态若已被唯一wait收集，资源域仍可成立，但场景域失败；不得虚构资源泄漏。本次手工正例由exit7修正为abort0、移除伪造ready字段，仅纠正未采集的U1-6纯输入，旧U1-0 exit7原生记录不变。
+
+verifier现在核对raw wait返回值/status、kqueue owner/线程/偏序、spawn-actions/spawn-attrs/slave/low-fd-0临时owner、TSFN/payload/thread/finalizer及master关闭前后快照；保留JS callback与worker通知返回的真实竞态，不强求同一线程或虚假的全序。场景、资源、证据三域及原预算不变：operation30s、caller32s、after-await35s、observation36s，writer回执1s/关闭2s；safeToContinue仅由资源与证据决定。
+
+最终定向验证为21/21：3组源码静态检查、7组角色/fixture模拟测试、11组三域判定测试。其中一组注入完整native快照，执行实际driver的JS函数，将生成report交给独立verifier；它证明本次字段对接，不证明OS资源释放。8个JS文件分别执行node --check通过，独立只读复核未发现阻塞本轮有限结论的新问题；C++未编译。首轮patch测试缺依赖根的ENOENT、误用node --check检查.h的扩展名错误仅是命令/环境错误；修正命令后的结果不充当C++检查。
+
+可在诊断树执行：`DSC_NATIVE_DEPENDENCY_ROOT=/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2/node_modules node --test scripts/diagnostics/macos-native-failure-patch-v1.test.mjs scripts/diagnostics/macos-native-failure-roles-v1.test.mjs scripts/diagnostics/macos-native-failure-v1.test.mjs`。测试不创建真实process/socket/PTY；native、传输和时钟均为模拟，源码测试只读取固定依赖源。本轮未构建、加载、触发runner或push，未形成U1-6原生build/schedule输入，不改业务、旧U1-0或冻结工件，也不追加通用诊断门槛。

@@ -21,11 +21,11 @@ updated_at: 2026-09-24
 
 ## 1. 状态、目的与非目标
 
-当前以 `runtime-native-failure-isolation.md` 第27节（2026-09-24）为准：第26节固定输入32312fe7的唯一push run35900772851 attempt1成功，新macOS U1-0三次3/3，runner与可信本地入口离线复核均通过；第27节已冻结U1-6合成注册失败协议并完成6/6纯协议测试，但尚未实施或运行native/runner。该协议要求kqueue已取得但注册替身返回`-1/EIO`后，由同一Wait线程唯一waitpid登记child，再由同一owner单次关闭kqueue；不能用driver退出冒充回收，也不能因`kqueueRegistered=false`永久阻塞夹具。第26节真实posix_spawn/helper、kqueue/kevent、read0、完整终态和逐资源结算不外推到失败路径或产品验收。
+当前以 `runtime-native-failure-isolation.md` 第27节（2026-09-24）为准：U1-6诊断替身与角色/校验器的接口纠正已完成，21项有限纯测试通过，分为3项源码断言、7项角色mock和11项verifier测试，其中包含实际driver JS报告到verifier的mock对接。没有C++编译、`.node`加载、真实PTY或runner执行，不能将mock中的native事实视作原生证据。第26节固定输入32312fe7、run35900772851 attempt1的macOS U1-0三次3/3及完整离线复核仍独立保留，不外推到失败路径或产品验收。
 
-第26阶段10组定向纯测试、零会话build/load和三次原生结果分别计数；第27阶段U1-6针对性纯测试已完成6/6，但静态接口复审确认现有U1-0候选尚不承载U1-6，故仍需独立替身/roles实现与复审，不重跑第26节，不将合成错误写成真实macOS errno。其余U1/W1、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged、生产API/隔离策略/停止预算仍开放。
+第27节早期6/6纯协议测试和10/10源码/模拟测试是各自当时的历史结果，并未充分验证跨文件接口，不因本轮21/21而追认覆盖。当前候选补齐真实`std::thread::id`事件身份、kqueue owner先登记后注入、数字EIO及`registrationErrorSource=native-substitute`，并校验原caller/observer/writer预算和逐资源事实。本轮独立只读复核未发现直接阻断；下一步冻结新build/schedule输入并决定唯一原生采集；当前没有本轮运行输入、新构建或workflow，不重跑旧U1-0、不追加通用工具门槛。其余U1/W1、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged、生产API/隔离策略/停止预算仍开放。
 
-U1-6的三域判定保持独立：`scenarioMatches`要求kqueue已取得并登记、注册failpoint在真实register调用前命中、`registerApiEntered=true`而`registrationCallInvoked=false`、合成`-1/EIO`且不出现真实register-return/kevent-wait；`resourcesSettled`要求同一Wait线程唯一waitpid自身child后由同owner单次关闭kqueue，并完成TSFN/payload/thread/finalizer及master责任；`evidenceSufficient`要求token/PID、failpoint、abort/ack、wait/close/stdio和预算事实可复算。U1-6保持数据gate关闭，不发送`go`，预期`readCalls=0`、parser计数为0、raw为空、终态为空；任何写入或PTY数据是场景失败，不是证据不足。合成EIO是预期替身，不得被标成真实系统错误或单独导致证据失败；abort必须由token/PID绑定，fixture先回`abort-ack`，且native waiter仍须完成child回收和全部owner结算，不能用fixture退出或caller强杀代替。
+U1-6的三域判定保持独立：`scenarioMatches`要求kqueue已取得并登记、注册替身明确未调用真实kevent、数据gate关闭，受控abort的exit0属于场景预期。合法非零退出或signaled终态若已由唯一wait回收且其他owner和证据齐全，不能仅因不符合exit0预期虚构资源泄漏。`resourcesSettled`核验token/PID绑定的abort/ack及其顺序，并要求同一Wait线程唯一一次waitpid确认自身child终态后单次close kqueue，并结算TSFN/payload/thread/finalizer及master；wait未知时保留kqueue未结算、禁止payload/通知并停止准入。`evidenceSufficient`核验ready的token/PID/TTY、gate前缀真实性、其他身份及事件原始值、报告对接和各自时钟域预算。不发送`go`，预期read/parser计数为0、raw为空、state为null；数据泄漏单列场景失败，不以合成EIO冒充真实系统错误，也不以driver退出或caller强杀代替逐资源回收。
 
 第25阶段历史记录（以下三段按当时状态保留，其macOS协议待办已由第26阶段承接，不覆盖当前实施顺序）：
 

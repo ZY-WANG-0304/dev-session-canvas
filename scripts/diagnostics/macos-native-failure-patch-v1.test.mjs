@@ -32,8 +32,10 @@ test('Darwin U1-6 worker substitutes registration failure and reaps before closi
   assert(support.includes('scenario != "U1-6"'));
   for (const expected of ['ledger.registerApiEntered = true;',
     'ledger.registrationFailureInjected = true;', 'ledger.registrationCallInvoked = false;',
+    'RecordLocked("kqueue-owner-registered", kq, 0, pid);',
     'RecordLocked("kqueue-register-failure", -1, EIO, kq);',
     'waited = waitpid(pid, &status, 0);', 'ledger.waitPid = waited;',
+    'RecordLocked("wait-unknown", waited, error, waited == pid ? status : 0);',
     'RecordLocked("kqueue-close-enter", kq);', 'ledger.kqueueCloseReturned = result == 0'])
     assert(support.includes(expected), expected);
   assert(!support.includes('kevent(kq, &change, 1, nullptr, 0, nullptr)'));
@@ -42,6 +44,29 @@ test('Darwin U1-6 worker substitutes registration failure and reaps before closi
   assert.equal(support.split('result = close(fd)').length - 1, 2);
   assert(!support.includes('kill('));
   assert(!support.includes('WNOHANG'));
+  assert.equal(support.split('waitpid(pid, &status, 0)').length - 1, 1);
+  assert(!support.includes('while (waited == -1 && error == EINTR)'));
+  assert(support.indexOf('ledger.kqueueOwnerRegistered = true;') < support.indexOf('RecordLocked("kqueue-owner-registered"'));
+  assert(support.indexOf('RecordLocked("kqueue-return"') < support.indexOf('RecordLocked("kqueue-owner-registered"'));
+  assert(support.indexOf('RecordLocked("kqueue-owner-registered"') < support.indexOf('RecordLocked("kqueue-register-enter"'));
   assert(support.indexOf('waited = waitpid(') < support.indexOf('result = close(kq)'));
   assert(support.indexOf('result = close(kq)') < support.indexOf('napi_call_threadsafe_function(tsfn, payload.get()'));
+  assert.match(support, /if \(decoded\) \{\s*\{ std::lock_guard<std::mutex> lock\(ledgerMutex\); \+\+ledger\.kqueueCloseCalls;/);
+  assert.match(support, /if \(decoded\) \{\s*std::unique_ptr<ExitPayload, PayloadDeleter> payload/);
+  assert(support.includes('out.Set("registrationErrorSource", state.registrationFailureInjected'));
+  assert(support.includes('Napi::String::New(env, "native-substitute")'));
+});
+
+test('Darwin U1-6 records actual executing thread identities without allocating in the event recorder', () => {
+  assert(support.includes('std::thread::id thread;'));
+  assert(support.includes('std::thread::id waitThreadId;'));
+  assert(support.includes('event.thread = std::this_thread::get_id();'));
+  assert(support.includes('ledger.waitThreadId = std::this_thread::get_id();'));
+  assert(support.includes('out.Set("waitThreadId", ThreadIdentity(state.waitThreadId));'));
+  assert(support.includes('item.Set("thread", ThreadIdentity(event.thread));'));
+  assert(!support.includes('"wait-thread-1"'));
+  const recorder = support.slice(support.indexOf('static void RecordLocked('), support.indexOf('static void Record('));
+  assert(!recorder.includes('ThreadIdentity('));
+  assert(!recorder.includes('ostringstream'));
+  assert(support.indexOf('ledger.waitThreadId = std::this_thread::get_id();') < support.indexOf('Record("kqueue-enter")'));
 });

@@ -14,6 +14,7 @@
 #include <mutex>
 #include <new>
 #include <spawn.h>
+#include <sstream>
 #include <stdlib.h>
 #include <string>
 #include <sys/event.h>
@@ -29,6 +30,7 @@ namespace dsc_macos {
 struct Event {
   uint32_t ord = 0;
   uint64_t monoNs = 0;
+  std::thread::id thread;
   char name[48] = {};
   int64_t value = 0;
   int error = 0;
@@ -53,7 +55,7 @@ struct Ledger {
   int registrationResult = 0, registrationError = 0;
   pid_t waitPid = -1;
   int waitpidCalls = 0, waitStatus = -1;
-  char waitThreadId[32] = "wait-thread-1";
+  std::thread::id waitThreadId;
   bool kqueueCloseReturned = false, kqueueExitEventValid = false;
   int kqueueCloseCalls = 0, kqueueCloseError = 0;
   uint64_t kqueueEventIdent = 0;
@@ -87,6 +89,7 @@ static void RecordLocked(const char* name, int64_t value = 0, int error = 0, int
   if (ledger.eventCount == 256) { ledger.overflow = true; return; }
   Event& event = ledger.events[ledger.eventCount++];
   event.ord = ordinal;
+  event.thread = std::this_thread::get_id();
   struct timespec now = {};
   if (clock_gettime(CLOCK_MONOTONIC, &now) == 0)
     event.monoNs = static_cast<uint64_t>(now.tv_sec) * 1000000000ULL + now.tv_nsec;
@@ -189,6 +192,12 @@ static int Spawn(pid_t* pid, const char* file, const posix_spawn_file_actions_t*
   return result;
 }
 
+static std::string ThreadIdentity(const std::thread::id& thread) {
+  if (thread == std::thread::id()) return "";
+  std::ostringstream out;
+  out << thread;
+  return out.str();
+}
 static Napi::Object MakeSnapshot(Napi::Env env) {
   Ledger state;
   { std::lock_guard<std::mutex> lock(ledgerMutex); state = ledger; }
@@ -207,7 +216,10 @@ static Napi::Object MakeSnapshot(Napi::Env env) {
   DSC_BOOL(kqueueAcquired); DSC_BOOL(kqueueOwnerRegistered); DSC_BOOL(kqueueRegistered); DSC_BOOL(kqueueWaitReturned);
   DSC_BOOL(registerApiEntered); DSC_BOOL(registrationCallInvoked); DSC_BOOL(registrationFailureInjected);
   DSC_BOOL(registrationInFlight); DSC_INT(registrationResult); DSC_INT(registrationError);
-  DSC_INT(waitPid); DSC_INT(waitpidCalls); DSC_INT(waitStatus); out.Set("waitThreadId", state.waitThreadId);
+  out.Set("registrationErrorSource", state.registrationFailureInjected
+    ? Napi::String::New(env, "native-substitute").As<Napi::Value>() : env.Null());
+  DSC_INT(waitPid); DSC_INT(waitpidCalls); DSC_INT(waitStatus);
+  out.Set("waitThreadId", ThreadIdentity(state.waitThreadId));
   DSC_BOOL(kqueueCloseReturned); DSC_BOOL(kqueueExitEventValid);
   DSC_INT(kqueueCloseCalls); DSC_INT(kqueueCloseError);
   DSC_BOOL(threadStarted); DSC_BOOL(threadFinished); DSC_BOOL(threadJoined);
@@ -248,6 +260,7 @@ static Napi::Object MakeSnapshot(Napi::Env env) {
   for (uint32_t i = 0; i < state.eventCount; ++i) {
     const Event& event = state.events[i]; Napi::Object item = Napi::Object::New(env);
     item.Set("ord", event.ord); item.Set("monoNs", std::to_string(event.monoNs)); item.Set("name", event.name);
+    item.Set("thread", ThreadIdentity(event.thread));
     item.Set("value", static_cast<double>(event.value)); item.Set("error", event.error);
     item.Set("aux", static_cast<double>(event.aux)); events.Set(i, item);
   }
@@ -372,13 +385,18 @@ static void Release(napi_threadsafe_function tsfn) {
   ledger.tsfnReleaseStatus = status; RecordLocked("tsfn-release-return", status);
 }
 static void Wait(napi_threadsafe_function tsfn, pid_t pid) {
-  { std::lock_guard<std::mutex> lock(ledgerMutex); ledger.threadStarted = true; RecordLocked("thread-started", pid); }
+  {
+    std::lock_guard<std::mutex> lock(ledgerMutex);
+    ledger.waitThreadId = std::this_thread::get_id();
+    ledger.threadStarted = true; RecordLocked("thread-started", pid);
+  }
   int kq = -1, result = -1, error = 0;
   do {
     Record("kqueue-enter"); errno = 0; kq = kqueue(); error = kq < 0 ? errno : 0;
     std::lock_guard<std::mutex> lock(ledgerMutex);
     if (kq >= 0) { ledger.kqueueFd = kq; ledger.kqueueAcquired = true; ledger.kqueueOwnerRegistered = true; }
     RecordLocked("kqueue-return", kq, error);
+    if (kq >= 0) RecordLocked("kqueue-owner-registered", kq, 0, pid);
   } while (kq == -1 && error == EINTR);
 
   // U1-6 substitutes the registration result only after kqueue ownership is recorded.
@@ -394,24 +412,21 @@ static void Wait(napi_threadsafe_function tsfn, pid_t pid) {
   int status = 0, code = 0, signal = 0;
   bool decoded = false;
   if (kq >= 0) {
-    pid_t waited;
-    do {
-      { std::lock_guard<std::mutex> lock(ledgerMutex); ++ledger.waitpidCalls; RecordLocked("wait-enter", pid); }
-      errno = 0; waited = waitpid(pid, &status, 0); error = waited < 0 ? errno : 0;
-      { std::lock_guard<std::mutex> lock(ledgerMutex);
-        RecordLocked("wait-return", waited, error, waited == pid ? status : 0); }
-    } while (waited == -1 && error == EINTR);
+    { std::lock_guard<std::mutex> lock(ledgerMutex); ++ledger.waitpidCalls; RecordLocked("wait-enter", pid); }
+    errno = 0; const pid_t waited = waitpid(pid, &status, 0); error = waited < 0 ? errno : 0;
     decoded = waited == pid && (WIFEXITED(status) || WIFSIGNALED(status));
     std::lock_guard<std::mutex> lock(ledgerMutex);
+    RecordLocked("wait-return", waited, error, waited == pid ? status : 0);
     ledger.waitPid = waited; ledger.waitStatus = decoded ? status : -1;
     ledger.waitError = error; ledger.waitConfirmed = decoded;
     if (decoded) {
       code = WIFEXITED(status) ? WEXITSTATUS(status) : 0;
       signal = WIFSIGNALED(status) ? WTERMSIG(status) : 0;
       ledger.exitCode = code; ledger.signalCode = signal;
-    }
+    } else RecordLocked("wait-unknown", waited, error, waited == pid ? status : 0);
   }
-  if (kq >= 0) {
+  // The frozen single-wait protocol retains kqueue ownership when wait is unknown.
+  if (decoded) {
     { std::lock_guard<std::mutex> lock(ledgerMutex); ++ledger.kqueueCloseCalls; RecordLocked("kqueue-close-enter", kq); }
     errno = 0; result = close(kq); error = result < 0 ? errno : 0;
     std::lock_guard<std::mutex> lock(ledgerMutex);
