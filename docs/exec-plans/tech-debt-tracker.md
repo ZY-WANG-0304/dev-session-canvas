@@ -22,7 +22,7 @@
 
 ## 技术债列表
 
-2026-09-24 第27阶段当前进展：U1-6接口纠正后的21项有限纯测试通过（3项源码、7项角色mock、11项verifier），包括实际driver JS报告到verifier的mock对接；早期6/6、10/10仅保留为当时的局部证据，不构成充分接口验证。补齐实际线程身份、kqueue owner登记、数字EIO的native-substitute来源、单次wait及原预算校验；受控abort的exit0只属场景要求，合法非零/signaled已回收不虚构资源泄漏，wait未知保留kqueue未结算并停止准入。尚无C++编译、加载、真实PTY、runner或业务改动，也没有本轮新构建、workflow或冻结运行输入。本轮独立只读复核未发现直接阻断；下一步冻结新build/schedule输入并决定唯一原生采集；旧U1-0、失败与原始工件不改，不扩工具门槛，退出完整性债务不关闭。
+2026-09-24 第27.9节当前进展：U1-6独立builder/CLI/saved/workflow已实施，固定3个新样本、16来源快照和原预算；unknown停止准入，not-run须无raw/evidence。首轮30项有限纯测试通过（前轮21项加build3项/schedule6项），13个JS语法检查通过，日志在独立树`.debug/u16-input-preparation-20260924-first.log`。guard-only Node子进程不构成构建；合成archive用真实固定源码/header字节，但stub binary未执行。本轮无编译、加载、PTY、runner、推送或业务改动；独立复核未发现直接阻断（见第27.9节）；下一阶段push前fetch/rebase并核实际远端差异，再进入唯一原生采集，不重跑U1-0。早期6/6、10/10、21项及旧失败/工件保持，不扩工具门槛，退出完整性债务不关闭。
 
 以下第26阶段及第27阶段初次冻结记录按当时时点保留，不覆盖上述当前状态。
 

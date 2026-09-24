@@ -19,7 +19,7 @@ updated_at: 2026-09-24
 
 ## 1. 本阶段状态与完成边界
 
-当前以第27节（2026-09-24）为准：已完成macOS U1-6协议、隔离候选接口纠正、21项有限纯测试及独立只读复核，未编译、加载或运行原生；首轮6/6、10/10的接口不足与新增回归失败见27.8。第26节固定32312fe7/run35900772851 attempt1的macOS arm64 U1-0三项3/3、构建/加载和完整工件复核保持，不外推注册失败、业务修复或产品整链。下一步只冻结新的build/schedule输入再决定唯一原生采集，不扩工具门槛。
+当前以第27.9节（2026-09-24）为准：U1-6独立构建、固定三项采集、保存复核与专用workflow已实施，首轮30项有限测试及13JS语法检查通过，尚未编译、加载、创建真实PTY或运行runner。27.8的21项是此前接口纠正证据，不与本轮复跑累加。第26节固定32312fe7/run35900772851 attempt1的macOS U1-0原生3/3和旧失败保留，不外推U1-6或产品链路；下一阶段仅推进冻结输入的唯一原生采集，不追加通用工具门槛。
 
 第25阶段历史状态（原文保留，不覆盖当前入口）：
 
@@ -613,6 +613,8 @@ runner复用已有GitHub托管macOS环境，新增macOS-only workflow而不dispa
 
 ## 27. macOS U1-6：kqueue注册失败后的唯一回收者协议
 
+当前已实施27.9的运行输入并完成本地有限验证；27.8的21项测试仍是此前有限源码/模拟证据。本轮不构建、加载或运行原生，不推送或触发runner。
+
 ### 27.1 运行前问题定位
 
 第26节源码复审确认，当前候选的`Wait`在`kqueue()`取得成功后执行注册循环；若注册最终失败，现有控制流只跳过`kevent`等待，随后关闭kqueue、释放TSFN并标记线程结束，却不调用任何`waitpid`。同时，现有角色门控只在`ready && kqueueRegistered`时发送`go`。因此直接把第26节输入改成U1-6会同时产生两个确定性问题：夹具永远等不到写入许可并由自限退出，且实际child没有唯一回收者，driver也无法证明master/尾部收尾。这是候选诊断缺陷，不是macOS内核或stock node-pty已经复现的产品故障。
@@ -670,3 +672,23 @@ verifier现在核对raw wait返回值/status、kqueue owner/线程/偏序、spaw
 最终定向验证为21/21：3组源码静态检查、7组角色/fixture模拟测试、11组三域判定测试。其中一组注入完整native快照，执行实际driver的JS函数，将生成report交给独立verifier；它证明本次字段对接，不证明OS资源释放。8个JS文件分别执行node --check通过，独立只读复核未发现阻塞本轮有限结论的新问题；C++未编译。首轮patch测试缺依赖根的ENOENT、误用node --check检查.h的扩展名错误仅是命令/环境错误；修正命令后的结果不充当C++检查。
 
 可在诊断树执行：`DSC_NATIVE_DEPENDENCY_ROOT=/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2/node_modules node --test scripts/diagnostics/macos-native-failure-patch-v1.test.mjs scripts/diagnostics/macos-native-failure-roles-v1.test.mjs scripts/diagnostics/macos-native-failure-v1.test.mjs`。测试不创建真实process/socket/PTY；native、传输和时钟均为模拟，源码测试只读取固定依赖源。本轮未构建、加载、触发runner或push，未形成U1-6原生build/schedule输入，不改业务、旧U1-0或冻结工件，也不追加通用诊断门槛。
+
+### 27.9 U1-6 首次原生输入准备（2026-09-24，运行前）
+
+本次只准备独立入口，保持诊断提交635aa311的native/roles/fixture/三域判据不变。新增`build-macos-native-failure-v1.mjs`、`diagnose-macos-native-failure-v1.mjs`和`macos-native-failure-saved-v1.mjs`，沿用第26节固定依赖、构建与主控/证据writer模式，但不修改或运行旧U1-0入口。新增专用`runtime-macos-native-failure.yml`，仅监听诊断分支相关新源的push，无dispatch入口；本轮只本地检查与提交，不push。后续触发前fetch/rebase并核对新commit、路径过滤与来源清单，唯一首次采集，失败不rerun求绿。
+
+构建固定Node22.23.2、node-pty1.2.0-beta.12、node-addon-api7.1.1及既有官方header/source/helper摘要，保留xcrun返回的clang++调用路径和SDK/架构实况；仅在新的macOS目录编译U1-6替身及同源helper。加载检查只验证导出，nativeCalls=0，不创建PTY。schedule只接受本入口的build kind、成功build/load和完整manifest/source/helper/binary绑定，不能误用U1-0二进制。沿用macos-latest并记录实际arm64或x64，单次结果不代表两种架构都通过。
+
+固定schedule为U1-6-1、U1-6-2、U1-6-3，逐项新token及独立driver，无U1-0控制组或历史重跑。准备阶段一次写入三个config，再串行运行；场景失败仍计失败，但只有resourcesSettled或evidenceSufficient失败才使后续为not-run，缺证不能默认为通过。保留operation30s/caller32s/after-await35s/observation36s、fixture20s和writer1s/2s预算；三项主控与writer预算合计114s，runner外层沿用180s保护，超时仅留失败事实。受控abort exit0与未知wait等判据按27.8，不创建headless/parser或生成正常输出预期。
+
+原始observation由冻结writer独立写入并给出摘要/字节回执。保存复核从可信工作树加载代码，只读取归档JSON及源/binary/helper字节；核对固定三项、token、预算、原始报告、逐资源、config与构建来源，再按当前assessCase重新计算结论及停排，不相信summary.pass。允许显式指定下载后的build目录，不从归档原路径加载native、代码或headless。缺失raw、not-run或来源不符必须明确失败；首次构建失败、原生失败及部分工件通过always上传保留。
+
+本阶段只补验证入口直接需要的测试：固定schedule及停排、实际采集编排函数的注入模拟、保存后重新校验及关键来源/原始事实篡改拒绝、build/workflow静态绑定。使用临时目录的合成归档明确不是原生工件；不新增通用容量、listener、任意路径兼容性门槛。本节的首次编译、唯一runner、完整下载与独立原始事实核验仍未执行，完成情况在本节末追加，不预写通过。
+
+实施与本地验证：本轮新增五个JS文件（build、diagnose、saved及build/schedule两测试文件）与一份workflow，既有635aa311的九个U1-6文件保持。新增源码清单共16项：14个U1-6源/测试及两个冻结writer依赖；build的三个工具源、固定header/依赖原文、转换结果、helper与binary逐项绑定。主控不生成headless或正常尾部预期。not-run仍核预写config且不能存在raw/evidence，避免汇总隐藏违规继续执行；这是本次固定输入的直接判定要求，不回写旧baseline verifier。
+
+首轮全套30/30通过，构成为此前21项加3项build/workflow/guard测试、6项采集与保存测试。采集测试运行真实runSchedule函数，注入observation/writer，使用真实固定header/源码字节构造临时manifest，但binary/helper内容明确为SYNTHETIC且不加载或执行；测试证明保存、重新判定、场景失败可继续、资源/证据失败停排及来源拒绝，不证明OS行为。guard测试只启动一次参数缺失的Node构建入口，断言创建目录/编译前失败，不计构建或原生尝试。首轮输出保存在诊断树`.debug/u16-input-preparation-20260924-first.log`；13JS逐文件语法、workflow YAML、15个触发路径、7个shell块和2个内嵌JS语法均通过，不执行workflow。
+
+本地测试需只读固定依赖及官方headers：`DSC_NATIVE_DEPENDENCY_ROOT=/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2/node_modules DSC_NATIVE_HEADERS_ROOT=$PWD/.debug/node22-headers-first/node-v22.23.2/include/node node --test scripts/diagnostics/macos-native-failure-*.test.mjs`。目录从诊断树解析；runner由锁定安装和下载的官方headers提供这两份输入（依赖默认node_modules）。首次原生运行使用全新`macos-native-failure-build`、`macos-native-failure-evidence`、`macos-native-failure-runner`目录。运行输入已具备，但本轮尚无C++编译、加载、native或runner结果，未push；不得把合成三项归档写成U1-6原生3/3。
+
+最终有限复核：在已有schedule正例中补独立Node进程执行可信CLI的`--verify-saved`，读取移动后的合成evidence/build，原身份路径不改；同30项再次通过，不累加为60项或原生样本，日志`.debug/u16-input-preparation-20260924-cli-check.log`。独立只读审查未发现本阶段直接阻断；本地origin跟踪分支至HEAD的16个净变更路径加本轮6个新文件，只匹配新U1-6 workflow，不命中旧workflow的push路径。该触发检查没有fetch或网络访问，未来push前仍须fetch/rebase并按实际远端差异复查。当前只本地提交运行输入，下一阶段首次编译/加载和唯一三项原生采集及完整工件复核仍未执行。

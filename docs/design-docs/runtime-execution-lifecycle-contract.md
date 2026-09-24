@@ -21,9 +21,9 @@ updated_at: 2026-09-24
 
 ## 1. 状态、目的与非目标
 
-当前以 `runtime-native-failure-isolation.md` 第27节（2026-09-24）为准：U1-6诊断替身与角色/校验器的接口纠正已完成，21项有限纯测试通过，分为3项源码断言、7项角色mock和11项verifier测试，其中包含实际driver JS报告到verifier的mock对接。没有C++编译、`.node`加载、真实PTY或runner执行，不能将mock中的native事实视作原生证据。第26节固定输入32312fe7、run35900772851 attempt1的macOS U1-0三次3/3及完整离线复核仍独立保留，不外推到失败路径或产品验收。
+当前以 `runtime-native-failure-isolation.md` 第27.9节（2026-09-24）为准：U1-6新builder、CLI、saved verifier和workflow已实施，固定3个新U1-6样本及16来源快照。首轮30项有限纯测试通过，为前轮21项（源码3、角色mock7、verifier11）加新build3项/schedule6项，另有13个JS语法检查；没有本轮C++编译、`.node`加载、真实PTY、runner或推送。guard-only Node子进程不是构建，合成archive虽然使用真实固定源码/header字节，但stub binary未执行。第26节固定输入32312fe7、run35900772851 attempt1的macOS U1-0三次3/3及完整离线复核仍独立保留，不外推失败路径或产品验收。
 
-第27节早期6/6纯协议测试和10/10源码/模拟测试是各自当时的历史结果，并未充分验证跨文件接口，不因本轮21/21而追认覆盖。当前候选补齐真实`std::thread::id`事件身份、kqueue owner先登记后注入、数字EIO及`registrationErrorSource=native-substitute`，并校验原caller/observer/writer预算和逐资源事实。本轮独立只读复核未发现直接阻断；下一步冻结新build/schedule输入并决定唯一原生采集；当前没有本轮运行输入、新构建或workflow，不重跑旧U1-0、不追加通用工具门槛。其余U1/W1、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged、生产API/隔离策略/停止预算仍开放。
+第27节早期6/6、10/10和接口纠正后的21项保持各自历史口径，不因本轮30项而追认或累加覆盖。新schedule保留原caller/observer/writer预算，以资源与证据结算而非场景通过决定准入；unknown停排，离线检查预写config及not-run不存在raw/evidence，不执行归档代码或native。本轮独立复核未发现直接阻断（见第27.9节）；下一阶段push前仍须fetch/rebase并核实际远端差异，再进入唯一原生采集，不重跑旧U1-0、不追加通用工具门槛。其余U1/W1、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged、生产API/隔离策略/停止预算仍开放。
 
 U1-6的三域判定保持独立：`scenarioMatches`要求kqueue已取得并登记、注册替身明确未调用真实kevent、数据gate关闭，受控abort的exit0属于场景预期。合法非零退出或signaled终态若已由唯一wait回收且其他owner和证据齐全，不能仅因不符合exit0预期虚构资源泄漏。`resourcesSettled`核验token/PID绑定的abort/ack及其顺序，并要求同一Wait线程唯一一次waitpid确认自身child终态后单次close kqueue，并结算TSFN/payload/thread/finalizer及master；wait未知时保留kqueue未结算、禁止payload/通知并停止准入。`evidenceSufficient`核验ready的token/PID/TTY、gate前缀真实性、其他身份及事件原始值、报告对接和各自时钟域预算。不发送`go`，预期read/parser计数为0、raw为空、state为null；数据泄漏单列场景失败，不以合成EIO冒充真实系统错误，也不以driver退出或caller强杀代替逐资源回收。
 

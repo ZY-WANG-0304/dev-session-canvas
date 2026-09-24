@@ -21,7 +21,7 @@ updated_at: 2026-09-24
 
 2026-09-20 用户澄清后的产品范围以第 9 节为准：画板管理 Terminal / Agent 执行会话及其终端资源，不默认承诺实际主进程退出后继续保留节点或终端以等待普通后代及其未来输出。第 2 节冻结协议、两轮原始断言和失败结果全部保留；它们描述诊断实验是否达到原门槛，不自动等于产品验收结论。
 
-当前以 `runtime-native-failure-isolation.md` 第27节（2026-09-24）为准：U1-6接口纠正后的21项有限纯测试通过（3项源码、7项角色mock、11项verifier），包含实际driver JS报告到verifier的mock对接；没有C++编译、`.node`加载、真实PTY或runner执行。第26节固定32312fe7、run35900772851 attempt1的macOS U1-0三次3/3、完整离线复核及25206项独立审计保留，不外推到注册失败。早期6/6、10/10局部历史不追认充分接口覆盖，当前无本轮新build/schedule输入、构建或workflow。
+当前以 `runtime-native-failure-isolation.md` 第27.9节（2026-09-24）为准：U1-6新builder/CLI/saved/workflow已实施，仅固定3个新U1-6样本，不重跑U1-0。首轮30项有限纯测试为前轮21项加build3项/schedule6项，另有13个JS语法检查；本轮无C++编译、`.node`加载、真实PTY、runner或推送。第26节固定32312fe7、run35900772851 attempt1的macOS U1-0三次3/3、完整离线复核及25206项独立审计保留，不外推注册失败或产品验收。早期6/6、10/10及接口纠正后21项保持历史口径。
 
 ## 2. 运行前冻结
 
@@ -61,9 +61,9 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 ### 当前状态（2026-09-24）
 
-当前第27节已纠正U1-6诊断替身、角色和verifier的字段、owner及预算接口：同一driver内真实`std::thread::id`关联wait线程，kqueue owner先登记再注入，数字EIO附`registrationErrorSource=native-substitute`，唯一一次wait与原caller/observer/writer预算分别校验。21项有限纯测试包含实际driver JS函数输出报告后交由verifier判定的mock对接；它不是C++、真实PTY或runner证据。
+第27节已纠正U1-6诊断替身、角色和verifier的接口：同一driver内真实`std::thread::id`关联wait线程，kqueue owner先登记再注入，数字EIO附`registrationErrorSource=native-substitute`，唯一一次wait与原预算分别校验。前轮21项纯测试包含实际driver JS报告到verifier的mock对接；第27.9节新增运行输入及9项纯测试后首轮共30/30，13个JS语法检查通过。guard-only Node子进程不是构建；合成archive使用真实固定源码/header字节，但stub binary未执行，不能视为原生证据。
 
-本轮21项分为3项源码、7项角色mock、11项verifier；早期6/6、10/10保留为当时局部证据，不作充分接口验证。第26阶段原patch2组/verifier8组、零会话build/load与原生三次3/3另行保留，不累加覆盖或重跑筛绿。本轮独立只读复核未发现直接阻断；下一步冻结新build/schedule输入并决定唯一原生采集；当前没有本轮运行输入、新构建或workflow，不扩通用工具门槛。其余U1/W1、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged、生产API/隔离策略/停止预算仍开放。
+新builder、CLI、saved verifier和workflow绑定16来源，仅运行预写config/token的3个新U1-6样本；资源或证据unknown停止准入，not-run须无raw/evidence，离线仅由可信工作树读取归档而不执行其中代码。首轮日志为`.debug/u16-input-preparation-20260924-first.log`；前轮21项（源码3、角色mock7、verifier11）和新增build3/schedule6分账，第26阶段原patch2组/verifier8组、零会话build/load及原生3/3不累加覆盖或重跑筛绿。本轮独立复核未发现直接阻断（见第27.9节）；下一阶段push前fetch/rebase并核实际远端差异，再进入唯一原生采集，不重跑旧U1-0、不扩通用工具门槛。其余U1/W1、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged、生产API/隔离策略/停止预算仍开放。
 
 U1-6保持数据gate关闭，以token/PID绑定的abort/ack结束夹具；受控abort的exit0只属场景预期，合法非零/signaled终态已回收且其他责任齐全时不虚构资源泄漏。wait未知保留kqueue未结算、禁止payload/通知并停止准入；确认自身child终态后才由同一Wait线程单次close kqueue，再完成其余owner结算。预期read/parser为0、raw为空、state为null，无正常负载/read0/exit7要求。旧U1-0源码、原始工件和失败结论不改，本轮没有原生或产品验收结果。
 

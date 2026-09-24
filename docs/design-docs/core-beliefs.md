@@ -70,7 +70,7 @@ Windows已退出进程被句柄引用而继续保留对象是正常语义，不�
 
 失败注入必须先冻结数据门控和回收责任：macOS U1-6先登记kqueue owner，再合成`-1/EIO`；`registrationErrorSource=native-substitute`和`registrationCallInvoked=false`明确真实API未调用。同一driver内以实际`std::thread::id`关联唯一wait与close，不把固定角色标签冒充实测线程。ready的token/PID/TTY及gate前缀真实性属于证据核验，abort/ack身份与顺序属于资源核验；数据gate保持关闭，受控abort的exit0是场景预期；合法非零/signaled终态已回收时不虚构资源泄漏，wait未知则保留kqueue未结算并停止准入。
 
-纯协议例和源码断言不能替代实际接口对接。第27节21项有限纯测试包含3项源码、7项角色mock和11项verifier测试，覆盖实际driver JS报告到verifier的mock路径，但不证明C++、PTY或runner行为。早期6/6与10/10保持历史口径；本轮独立只读复核未发现直接阻断，下一步冻结新build/schedule输入，不为工具通用健壮性继续扩大门槛。
+纯协议例和源码断言不能替代实际接口对接或原生验证。第27.9节30项有限纯测试是前轮21项加新build3项/schedule6项；guard-only Node子进程不构成构建，合成归档使用真实固定源码/header字节也不使未执行的stub binary成为原生证据。新运行输入限定3个U1-6样本、16来源快照和原预算；unknown停止准入，not-run须同时没有raw/evidence，可信离线复核不执行归档代码。早期6/6、10/10和21项保持历史口径；本轮独立复核未发现直接阻断（见第27.9节），无编译/加载/PTY/runner，不为通用健壮性继续扩大门槛。
 
 HPCON 是 opaque owner token，不是可用 CloseHandle 释放的普通 Win32 HANDLE。只有同一诊断模块创建并仍持有的 token，才允许在真实 pipe EOF、消费者完成和 shell 退出后由唯一主线程调用一次 ClosePseudoConsole；PtyKill、TerminateProcess、陌生句柄和过早 Close 都不能作为自然收尾。
 
