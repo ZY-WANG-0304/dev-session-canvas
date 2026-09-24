@@ -72,7 +72,7 @@ Windows已退出进程被句柄引用而继续保留对象是正常语义，不�
 
 纯测试、构建、原生采集和离线复核分别记账。第27.10节唯一1a88d0cc/run35963751067 attempt1的macOS U1-6三次3/3及可信保存复核，不与30项纯测试或旧U1-0合算；准备期guard-only子进程和stub binary仍不是原生证据。真实取得kqueue后合成EIO、未调用注册/等待kevent的有限成功，也不证明真实系统注册错误。unknown停止准入、not-run无raw/evidence及可信离线不执行归档代码的边界不变。
 
-生产接入不能从有限原生成功直接跳到默认启用。主运行时树S1真实共享核心与直接测试入口已实施并取得内存定向验证，见 `runtime-exit-integrity-production-integration.md` 第13节；设计仍比较中/验证中，不计产品修复。accepted只转移内容责任，信用须等消费屏障后归还；注入消费Promise的通过不等于真实xterm/PTY通过。正常owner关闭责任保留，异常崩溃不新增主体或普通后代立即清零保证。S1无业务导入、spawn/native或reader接线，真实pipe、native read预算、平台失联及两authority仍开放。下一有限切片拟为S2零PTY真实异步transport/provider启动链，先冻结有限输入和安全清理再实施；不接现有业务，不追加工具门槛/全U1-W1，不自动runner/push，默认启用门槛不降低。
+生产接入不能从有限原生成功直接跳到默认启用。当前S2见 `runtime-exit-integrity-production-integration.md` 第14节：主运行时树已实施真实异步transport/provider channel及必要adapter窄修，S1回归35组与typecheck通过，真实普通pipe七组首次7/7通过；设计仍比较中/验证中，不计产品修复。本阶段仅Linux/Node v25.6.0普通pipe子进程，零PTY、无native addon、无现有业务导入/reader接线，不代表macOS/Windows/Electron或真实Agent通过。accepted只转移内容责任，信用须等消费屏障后归还；注入消费Promise不等于真实xterm消费。父侧资源只能由真实父侧证明结算，正常disconnect不等于资源unknown；正常owner关闭责任保留，异常崩溃不新增主体或普通后代立即清零保证。不追加工具门槛/全U1-W1、不自动runner/push；下一有限项先冻结Linux真实PTY provider的读取/解码预算、资源责任与安全停止，复用既有原生证据，PI-04/05/06默认启用门槛不降低。
 
 资源总量应区分显式owner引用、预热期间形成的背景和逐会话增量。普通进程控制中的退出后image31、释放23个引用后总数下降23与未知背景+5可以同时成立；保留原计数失败，不以事后换基线替代归属证据。
 

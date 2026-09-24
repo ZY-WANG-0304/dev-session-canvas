@@ -1,12 +1,14 @@
 # 交付跨平台执行会话退出完整性
 
-本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，原生收尾阶段基线为 `10d40e63`。此前设计与隔离诊断阶段不直接修改业务代码、不推送运行时分支；当前 S1 依已更新正式设计实施无 native 共享核心，仍不接业务或推送。后续接线继续先明确方案，不把本计划视为私有 fd 补读或某种新 API 的授权。
+本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，原生收尾阶段基线为 `10d40e63`。此前设计与隔离诊断阶段不直接修改业务代码、不推送运行时分支；当前S2依正式设计第14节实施真实异步通道和Linux普通pipe验证，零PTY、无native addon，仍不接业务或推送。后续接线继续先明确方案，不把本计划视为私有 fd 补读或某种新 API 的授权。
 
-此前原生诊断阶段所有新D3/D4/v2脚本、workflow及.debug工件仅在独立工作树 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates`，当时本树只同步文档。当前 S1 的生产模块和定向测试在本运行时树，诊断树只同步文档。以下旧记录中的本地“未提交工作树”均指采集时的诊断源码快照，不是本运行时树；v1后来冻结7141cfa3，v2后来冻结b4db41cc，不倒写采集时来源。当前协议、已完成验证和剩余阻塞项见本计划各节首段，后续历史段落的“下一步”不覆盖最新顺序。
+此前原生诊断阶段所有新D3/D4/v2脚本、workflow及.debug工件仅在独立工作树 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates`，当时本树只同步文档。当前S1/S2的生产模块和定向测试在本运行时树，诊断树只同步文档。以下旧记录中的本地“未提交工作树”均指采集时的诊断源码快照，不是本运行时树；v1后来冻结7141cfa3，v2后来冻结b4db41cc，不倒写采集时来源。当前协议、已完成验证和剩余阻塞项见本计划各节首段，后续历史段落的“下一步”不覆盖最新顺序。
 
 ## 目标与全局图景
 
-当前已实施 S1 无 native 核心：主运行时树新增共享类型/校验、真实 adapter 和直接加载模块的定向测试，不再处于仅文档研究阶段。实现覆盖一次启动、有限内容接受/消费、独立事实、封口、首次/迟到观察及同 authority 准入；现有 Host/Supervisor/Webview 业务入口、运行模式、manifest 和 storage generation 保持。补资源账本完整性回归后最终定向测试32/32、typecheck 复跑和既有 bridge 回归通过；统一文档静态校验通过。下一有限阶段固定 S2 真实异步 transport/provider 启动链、零 PTY，先冻结有限目标与安全清理，不接业务、不自动 native/runner/push；旧阶段“仅文档”及“下一步”均为当时记录，不覆盖本段。
+当前S2实施与验证见 `docs/design-docs/runtime-exit-integrity-production-integration.md` 第14节。主运行时树已新增真实异步transport/provider channel，复用S1共享核心并补父侧资源证明、正常disconnect和未发送start的失败安全退役的adapter窄修；Linux/Node v25.6.0真实普通pipe七组首次7/7通过，S1回归35组、独立channel纯回归1组及typecheck通过。零PTY、无native addon、无现有业务导入，不运行runner或push。macOS/Windows/Electron、native read预算、平台失联、两authority/reader及真实Agent未验证；现有模式、manifest、storage generation和业务行为保持。下一有限项是首个平台Linux真实PTY provider接线，须先冻结读取/解码预算、资源责任和安全停止，复用现有原生证据；不另起通用工具或全量矩阵，不自动native/runner/push。下列S1及更早阶段是历史记录，不覆盖本段。
+
+S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验、真实 adapter 和直接加载模块的定向测试，不再处于仅文档研究阶段。实现覆盖一次启动、有限内容接受/消费、独立事实、封口、首次/迟到观察及同 authority 准入；现有 Host/Supervisor/Webview 业务入口、运行模式、manifest 和 storage generation 保持。补资源账本完整性回归后最终定向测试32/32、typecheck 复跑和既有 bridge 回归通过；统一文档静态校验通过。下一有限阶段固定 S2 真实异步 transport/provider 启动链、零 PTY，先冻结有限目标与安全清理，不接业务、不自动 native/runner/push；旧阶段“仅文档”及“下一步”均为当时记录，不覆盖本段。
 
 本轮 PI-01/02/03 接口研究已形成 `docs/design-docs/runtime-exit-integrity-production-integration.md` 第9至12节：明确一次启动、身份与有界移交、owner 事件责任、两 authority 和两种消费者结算，固定下一步 S1 无 native 核心。S1 在主运行时树新增真实共享类型/adapter 及定向测试，不从现有业务入口导入，不改模式路由、namespace 或现有用户行为；不是另建诊断模型。当前仍仅文档与只读研究，没有执行 S1、测试、native 或 runner/push，统一静态验证已通过，结果见验证与验收。PI-01/02/03 未作为生产能力通过，真实 transport/native 与 PI-04/05/06 仍开放；下列旧阶段边界和当时下一步保留为历史，不覆盖本段。
 
@@ -24,11 +26,18 @@
 
 ## 进度
 
+- [x] (2026-09-24，S2开始) 按生产接入设计第14节冻结本机Linux/Node真实异步transport/provider、零PTY普通pipe夹具、消息与父资源来源、最多两provider/各一subject及显式观察/清理预算；不改现有业务、不自动runner/push。
+- [x] (2026-09-24，S2实施) 新增双向异步transport/provider channel，复用S1事实/帧/信用；adapter补父侧资源证明、正常disconnect与未发送start的失败退役。S1回归35组与typecheck通过；首轮通道TS2345/TS2339窄化失败及修正保留。
+- [x] (2026-09-24，S2有限真实验证) Linux/Node v25.6.0普通pipe七组首次7/7、exit0，无重跑；8次provider尝试含ENOENT、实际7个provider/4个subject、8次transport close含失败spawn句柄。S1回归35组、channel纯回归1组与typecheck通过；纯回归旧代码内存负对照按预期拒绝，后续deadline guard四项内存hook及期限snapshot一次参数所有权检查通过，不计真实child样本。
+- [x] (2026-09-24，S2最终非真实验证) adapter35/35、channel1组、typecheck、bridge、两mjs语法及fixture独立strict检查全部exit0，所有执行已结束；最终独立只读复核包含期限snapshot等修正，未发现本切片确定性blocker。未重跑真实七组，不追改首次7/7或历史失败。
+- [x] S2统一文档静态收口：两树设计/索引/路径、正文一致、历史保持、计划标题与变更范围核对通过，首次S1导航正则漏匹配误报及纠正保留；详情见验证与验收。
+- [ ] 下一有限项是首个平台Linux真实PTY provider接线，须先冻结读取/解码预算、资源责任和安全停止，复用现有原生证据；不另起通用工具或全量矩阵，不自动native/runner/push。
+
 - [x] (2026-09-24，S1 核心已实施) 主树新增真实共享类型/校验、adapter 和定向测试；独立代码复核已检查并收敛 ACK 顺序、正常退役与迟到状态等直接问题。不接现有业务入口，不运行 native/runner/push；最终验证另列待办。
 - [x] S1 阶段代码验证：定向31/31、typecheck修正后复跑及bridge回归通过，源码和31组测试独立只读复核无新直接阻断。保留首轮TS2339和两次用例未执行的esbuild路径/fixture失败；17/17、22/22、25/25、31/31是逐次增加覆盖，三项review回归不宣称全为红后绿。
 - [x] S1 最终补充：resourceLedgerIncomplete 修正和专用第32组加入后最终32/32、typecheck复跑通过；代码登记修正及新增断言另经独立只读复核，旧31组结果不追改。
 - [x] S1 文档静态收口：八份设计元数据/索引/路径、两树主文一致、生产原第2至12节和指定历史正文保持、两计划12标题原序、每树八tracked文档/主树三S1文件范围及无业务导入/诊断源码变更核对通过，两树diffcheck通过；导航与历史首次分类误报及重核见验证与验收。
-- [ ] 下一有限阶段 S2：真实异步 transport/provider 启动链且零 PTY，先冻结有限目标和安全清理，再按窄协议实施；不接业务、不自动 native/runner/push，不扩通用工具门槛。
+- [x] S1安排的S2已由第14节冻结、实施并取得首次真实普通pipe七组7/7，仍不计PTY或产品整链通过；不接业务、不自动native/runner/push，不扩通用工具门槛。
 
 - [x] (2026-09-24，PI-01/02/03接口研究形成) 完成三侧只读核对，生产接入设计第9至12节明确消息/信用/启动状态、owner事件责任、两authority与本地/远端结算及S1边界。无业务/诊断实现、测试、native或runner/push，统一静态验证已完成。
 - [x] (2026-09-24，PI接口文档收口) 两树各八文件同步，八份设计元数据/索引/关联路径、新正文一致、八段实验历史及两份原设计第2至7节保持、两计划各12章节及原顺序检查通过；git diff --check通过。S1文件尚未创建，只做本地文档提交，不推送。
@@ -202,6 +211,8 @@
 
 ## 意外与发现
 
+2026-09-24 S2实施与有限验证：首轮provider channel严格typecheck出现TS2345/TS2339，ParentMessage的ACK联合类型未在命令分支充分窄化，补显式字段guard后通过；fixture独立tsc首次TS7006仅补类型注解后通过。close pending期间过早拒绝合法stop/cancel是本次channel实现问题，已窄修并通过真实channel纯回归1组，旧代码内存注入负对照按预期拒绝；首轮纯测断言位置错误及修正保留。provider不能声明父侧provider-control已释放，正常IPC disconnect不能单独证明资源unknown，唯一start尚未发送的启动失败须父侧确认全部已取得资源释放后才能安全退役，相关S1回归35组通过。真实普通pipe七组首次7/7；随后补execution入口deadline guard防外层超时后后台迟到创建，四个内存hook断言通过；transport期限冻结内部snapshot，一次无child参数所有权检查通过。后两处未重跑七组，不把原不变字面量输入改写成后来修正的验证证据；以上不是PTY、平台失联或真实Agent缺陷/修复证据。
+
 2026-09-24 S1 实施与独立复核：慢 send 和快速消费会使合并 consumed 越过对应 accepted，现已改为 normal 队列先发 accepted；正常 provider 退役原会误触发全 authority quarantine，迟到 started 原会把已结束状态退回 running，两处已修正且不丢原观察。额度拒绝须继续处理已拥有 raw 前缀；控制观察还需校验已发送及命令结果类别。首轮 typecheck 的 TS2339 回调窄化丢失已局部修复，bridge 首轮通过；定向测试前两次分别因 esbuild 输出路径/require 不匹配、fixture 多传 cols/rows 失败，均未执行用例；修正后依次17/17、22/22、25/25、31/31，增加的是覆盖而非 native 累计。三项复核问题对应回归加入时修复已到位，不声称均经历红后绿。后续 resourceLedgerIncomplete 修正及专用回归加入后32/32、typecheck 复跑通过，既有 bridge 通过。一次性历史核对首次把两份总设计第6节当前导航误计为不可变历史而失败，识别指定导航后重核通过，未改文档迎合检查；统一静态校验通过。
 
 2026-09-24 PI 接口只读核对：accepted 若立即返还信用，会把无限积压搬到 authority 的 pendingWriteData，因此须等真实消费屏障后 consumed。现有本地 sessionId 依赖毫秒时间，不能证明不可复用；新路径复用字段但改 UUID，并用独立于 storage namespace 的绑定 nonce 排除旧回调。本地 currentLocalOutputSequence 是接收进度，普通 snapshot 回调也非最终应用证明，须沿已有写队列另设一次 final barrier。owner 消失后的平台自动回收没有现成证明，责任分类与实际平台保障分开。以上为源码与接口结论，不是本轮新增实测故障。
@@ -348,6 +359,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-09-24（S2有限实现与收口）：第14节Linux/Node v25.6.0普通pipe transport/provider是后续共用模块，不复制诊断框架；零PTY、无native addon、无现有业务导入。最多两provider/各一subject，消息身份与父资源证明严格分责，正常disconnect、provider退出、输出EOF及通道结算分别记录。七组首次7/7，未改10s观察及TERM 2s/KILL 2s测试清理预算，不据此选定生产预算；35组S1、1组channel纯回归、后续四项hook与一次参数检查各自分账，不作为PTY样本。正常owner关闭责任不变，异常owner消失不新增主体/普通后代清零保证。下一有限项是首个平台Linux真实PTY provider接线，须先冻结读取/解码预算、资源责任和安全停止，复用现有原生证据；不另起通用工具或全量矩阵，不自动native/runner/push。
+
 2026-09-24（S1 实施）：新增的共享 adapter 是后续真实 provider 要接入的同一实现，不复制成诊断模型。transport、消费 Promise 与观察时钟可注入，accepted 与 consumed 分责；两个执行共享 authority 的 N=2/start=1，未知责任冻结新准入而不阻塞既有安全处理。authority 准入表直接强引用当前 execution/owner 记录，只有同一身份 release 才移除，unknown 责任不依赖 node 映射存续。独立复核只修本次实现直接竞态，未扩通用工具门槛；拒绝重复/非法/超限资源登记时保留 resourceLedgerIncomplete，不能用已知旧资源全 released 掩盖未登记责任。下一步 S2 只验证真实异步 transport/provider 启动链且零 PTY，先冻结有限目标、消息来源和安全清理；平台 PTY、业务/reader 接线和默认启用门槛仍后续独立推进。
 
 2026-09-24（PI 接口与 S1 边界）：冻结 prepare/bind/start 和同操作首次/迟到观察语义，executionId 复用 UUID sessionId，generation 复用握手 nonce；accepted 移交责任，consumed 才归还受控信用。远端扩展既有 readId close 结果，本地复用 outputSequence、surface 生命周期和 writeGeneration 的最终屏障，不新增 local journal/readId。OutputSeal 后真实 flush，固定 finalRevision 与关闭新 reader 同一无 await 边界不变。下一步只实施主树无 native、无业务接线的真实 adapter 核心及定向测试；不先追加通用设计轮、诊断工具或 U1/W1，不把异常 owner 消失扩大成主体/后代清零承诺。
@@ -489,6 +502,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
+S2真实异步transport/provider channel与必要adapter窄修已在主树形成，Linux/Node v25.6.0普通pipe七组首次7/7、exit0，无重跑；8次provider尝试含ENOENT、实际7个provider/4个subject、8次transport close含失败spawn句柄。S1回归35组、channel纯回归1组及typecheck通过，旧代码内存负对照按预期拒绝；后补deadline guard四项hook和期限snapshot一次参数检查通过且未创建child，不追改首次矩阵。首轮TS2345/TS2339、fixture TS7006和纯测断言错误保留，最终adapter35/35、channel1组、typecheck、bridge、两mjs语法及fixture独立strict均exit0；最终独立只读复核包含期限snapshot等修正，无本切片确定性blocker，统一文档静态检查通过。零PTY、无native addon、无现有业务导入，无runner或push；旧S1最终32/32与U1-6原生证据分别保留，不累加样本。macOS/Windows/Electron、两authority/reader、真实Agent和产品整链仍未验收，PI-01/02/03及退出完整性总债务不关闭，整体计划继续active。
+
 S1 共享类型、adapter 和定向测试已在主树形成；独立只读复核定位并复查 ACK 合并顺序、正常 transport 退役、迟到 start 状态、原始前缀保留与操作观察边界，已检查的修正没有新直接阻断。首轮类型窄化失败和两次未执行用例的装载/fixture 失败保留；先前定向31/31、typecheck 与 bridge 通过，补资源账本完整性一组后最终32/32和 typecheck 复跑通过。源码与前31组独立通读确认直接加载真实模块、失败完整汇总并断言，没有 skip 或吞失败；资源登记修正及新增第32组另经只读复核。统一文档静态校验完成，首次导航/历史分类误报与重核过程保留。该产物尚无真实 transport、进程、PTY 或两 authority 业务接线，不能关闭 PI-01/02/03 或产品退出完整性。下一阶段限定 S2 零 PTY 异步启动链，整体计划继续 active。
 
 本轮 PI-01/02/03 形成可实施消息、状态转换、有限队列配置和两模式结算输入，生产接入设计新增第9至12节。独立只读复核未发现身份、local final barrier 或 S1 边界与既有生命周期契约的直接矛盾；IPC复审提出的可信消费入口、未解析字节占账和sourceEnd少报拒绝已补齐并复核闭合。统一静态验证已通过，结果见验证与验收。尚未创建 S1 模块、运行测试或 native；接口研究完成不关闭 PI-01/02/03、平台回收或产品验收。下一阶段固定 S1 真实共享模块与定向测试，整体计划继续 active，旧结果和失败不追改。
@@ -571,6 +586,8 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 上下文与定向
 
+当前S2代码与测试仍只在主运行时树，诊断树只同步文档；生产接入设计第14节为有限普通pipe输入、消息来源和清理边界的当前依据，以下S1和原生阶段背景按历史保留。
+
 第26阶段基线为主树4d676fb2、诊断树a0f412fd，正式协议为docs/design-docs/runtime-native-failure-isolation.md第26节；新实现已冻结诊断提交32312fe7并完成唯一run35900772851 attempt1。八源和workflow、构建/原生工件只在独立runtime-exit-integrity-native-candidates树；主运行时树只同步文档、未推送。旧Linux v1-v6及旧macOS三arm实验冻结，不原地改写。
 
 `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts` 是 node-pty 接入边界，输出回调表示已交付的数据，进程退出通知不天然等于输出排空。`src/supervisor/runtimeSupervisorMain.ts` 的 `bindSessionProcess()` 与 `finalizeSession()` 将已接收事件按每会话串行队列执行；admission 表示是否继续接受新事件。`src/panel/CanvasPanelManager.ts` 还直接管理 snapshot-only 的 Agent/Terminal 退出，两条路径都要纳入设计。
@@ -580,6 +597,8 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 平台 provider 的现状见安装的 `node_modules/node-pty/lib/unixTerminal.js`、`windowsPtyAgent.js`、`windowsTerminal.js` 和 native 源码。已有证据位于 `docs/design-docs/runtime-terminal-tail-diagnosis.md`、`docs/design-docs/runtime-terminal-cross-platform-diagnosis.md`；固定版本来源已在文档摘录，不要求接手者依赖本机 `.debug/` 才理解问题。不能直接编辑 node_modules 作为生产修复。
 
 ## 工作计划
+
+第14节S2首次真实普通pipe七组7/7、独立复核及统一静态检查已收口，保留全部首次失败与后续纯内存验证分账。下一有限项是首个平台Linux真实PTY provider接线，须先冻结读取/解码预算、资源责任和安全停止，复用现有原生证据；不另起通用工具或全量矩阵，不自动native/runner/push。以下各阶段安排为历史。
 
 S1 最终定向32/32、typecheck 复跑、既有 bridge 回归、独立复审及两树统一文档静态收口已完成。随后只推进 S2 真实异步 transport/provider 启动链：先在设计中冻结有限进程数、握手与消息目标、停止/失联观察及直接 child 安全清理，再按该窄协议实施零 PTY 验证并复用同一 adapter。S2 不加载 node-pty/native、不接现有业务入口、不改 root 归属/模式/generation，不自动 runner/push；不另起泛化设计、诊断框架或工具前置。真实 native read 预算、平台控制与 PI-04/05/06 保持开放。
 
@@ -662,6 +681,8 @@ S1 最终定向32/32、typecheck 复跑、既有 bridge 回归、独立复审及
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+当前S2在主树新增 `executionProviderTransport.ts`、`executionProviderChannel.ts`、`scripts/test/test-execution-provider-transport.mjs`、`scripts/test/test-execution-provider-channel.mjs` 及普通pipe fixture。`node scripts/test/test-execution-provider-transport.mjs` 在Linux/Node v25.6.0首次七组7/7，未重跑；S1回归35组、channel纯回归1组与typecheck通过，后续四项deadline hook与一次期限参数检查不创建child，不混入真实矩阵。诊断树只同步文档，无runner/push；最终adapter35/35、channel1组、typecheck、bridge、两mjs语法及fixture独立strict均exit0，执行均已结束；最终独立复核无本切片确定性blocker，统一文档静态检查通过。以下命令与32/32等结果保留原阶段时点。
 
 主树 S1 已新增 `extensions/vscode/dev-session-canvas/src/common/executionLifecycle.ts`、`extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts` 和 `scripts/test/test-execution-session-adapter.mjs`。已运行并完成代码验证：`node scripts/test/test-execution-session-adapter.mjs`、`npm run typecheck`、`node scripts/test/test-execution-session-bridge.mjs`，先前定向31/31、typecheck 和 bridge 通过，补资源登记完整性回归后最终32/32与 typecheck 复跑通过；保留首次 TS2339 及两次用例执行前的 esbuild 路径/fixture 错误，17/22/25/31 组原阶段结果保留，新增32组不累加为 native 次数。统一文档静态校验及两树 diff 检查通过。随后先冻结 S2 零 PTY 异步启动链的有限输入和安全退出协议，再决定具体实施；本计划不授权越过这一步直接加载 native、启动 PTY、触发 runner 或 push。诊断树本轮仍只同步文档，旧可执行诊断输入不改。
 
@@ -827,6 +848,10 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
+当前S2实际普通pipe七组首次7/7、exit0：providerAttempts8含ENOENT、实际provider7、subject4、transport close8含失败spawn句柄；未重跑。S1回归35组、channel纯回归1组、typecheck通过，旧代码内存负对照按预期拒绝；后补四项deadline hook及一次期限snapshot参数检查通过且无child。首轮TS2345/TS2339、fixture TS7006及纯测断言错误保持；最终adapter35/35、channel1组、typecheck、bridge、两mjs语法及fixture独立strict均exit0，执行均已结束；最终独立只读复核含期限snapshot等修正，无本切片确定性blocker，统一文档静态检查通过。验收仅限第14节Linux/Node v25.6.0普通pipe，不折算PTY/native addon、macOS/Windows/Electron、reader、真实Agent或PI-01/02/03整体通过，旧32/32不追改。
+
+S2统一静态收口：两树八份设计YAML、索引与关联路径通过，production正文一致且原第2至13节保持；两份总设计仅当前导航两段变化，lifecycle/native isolation仅当前导航变化，两计划各12标题及各自HEAD顺序保持。每树八文档，主树另有三个tracked S1文件窄修和五个S2新文件；现有入口、manifest/generation、workflow与诊断源码无diff，rg确认新模块无业务导入，两树git diff --check通过。首次一次性检查的正则漏匹配S1当前导航导致历史误报，纠正匹配后通过；未改历史迎合检查，未新增验证工具。
+
 S1 先前定向31/31、typecheck 修正后复跑及 bridge 回归通过；补 resourceLedgerIncomplete 专用一组后最终32/32和 typecheck 复跑通过。源码与前31组已独立通读，资源登记修正及新增第32组另经只读复查，统一文档静态校验通过。重点回归包含慢 send/快消费的 accepted-before-consumed、正常 transport 退役后可继续准入、迟到 started 不复活已结束状态、已拥有 raw 前缀不随额度拒绝丢弃，以及原定启动/身份/信用/封口/失联/双执行约束。首轮 TS2339 及两次用例未执行的 esbuild 输出路径/require 与 fixture 多 cols/rows 错误均保留；之后17/17、22/22、25/25、31/31 是逐次扩大覆盖，新增32/32另计当前最终结果。三项 review 回归加入时修复已存在，不写成全部先红后绿。后续 S2 的验收仅为零 PTY 的真实异步通信和安全清理，不折算为 native、两模式/reader、Agent 或跨平台产品通过。
 
 S1 统一静态校验：八份设计 YAML/索引/关联路径、两树生产主文一致、生产原第2至12节保持、八段历史正文除两份总设计第6节指定当前导航段更新外逐字保持、两计划各12标题原序均通过。每树仅八份 tracked 文档改动，主树另有三个 S1 新文件；无现有业务导入或诊断源码变更，两树 git diff --check 通过。一次性历史检查最初误把当前导航当作不可变历史，区分这两段后重核通过，未修改文档迎合检查，也未新增验证工具。
@@ -890,6 +915,8 @@ HPCON首次原矩阵12项全部有效，六control及两个explicit-close通过�
 候选试验不得修改用户 storage 或替换仍承载 live 会话的 Supervisor；仅控制本次创建的 fixture。证据目录唯一，不覆盖初次失败。生产方案需要可回滚的 capability/adapter 选择和旧 session 原绑定保留，回滚不得伪造完整性或强制迁移。取消和回收必须幂等，不因重试重复输出、重复终态或误删其他读者。
 
 ## 证据与备注
+
+当前S2证据包括主树通道/transport与adapter窄修、首次真实普通pipe七组7/7、35组S1回归、1组channel纯回归及typecheck实际输出；首次类型/断言失败、旧代码内存负对照和后续四项hook/一次参数检查分别记录。诊断树只同步文档，未运行新原生输入、runner或push；具体源码与有限验证记录见生产接入设计第14.4节及本计划验证与验收，不将后补纯内存结果冒充首次真实矩阵覆盖。
 
 本轮证据来自主树三个 S1 新文件、实际定向运行输出与独立只读复核；先前31/31及 bridge 通过保持，补资源账本完整性回归后最终32/32与 typecheck 复跑通过，统一文档静态结果已记录。复核确认 ACK 顺序、正常 transport 结束和迟到 start 状态修正已到位，相关回归已有定向结果，资源登记不完整修正及新增第32组亦单独只读核验；独立复核未重复执行。没有新增原生/runner 工件、workflow 或旧诊断输入；诊断树仅同步当前文档。既有冻结实验、断言与失败继续按历史保留，S1 的纯内存验证与后续 S2 零 PTY、真实 native 分账。
 
@@ -990,6 +1017,8 @@ G07补证起点是本运行时树ebe303e7及独立诊断树2f630cd9。第14节�
 2026-09-20 runner 合并后的验证：`typecheck`、`build`、bridge、journal 和 Supervisor 聚合回归全部通过；聚合包含 checkpoint refresh、分页投影、无 completed 历史和退出分页。Node 25.6.0 与 Electron-as-Node 39.8.7 各 39 项契约模型、17 项实际 Supervisor 注入通过，输出目录/哈希及局限见设计第 14 节。没有运行全量 UI、真实 provider、packaged 或新的原生候选矩阵；相对 `28055e13` 不修改业务、既有测试、依赖或 workflow。
 
 ## 接口与依赖
+
+S2新增的 `executionProviderTransport.ts` 使用显式注入可执行文件/入口创建真实direct child，`executionProviderChannel.ts` 使用IPC控制与fd4异步数据通道，复用S1身份、消息、帧及信用，不建立第二套adapter。父侧provider-control只接受真实父侧释放证明；正常disconnect、进程终态和sourceEnd分责。零PTY、无native addon、无现有业务导入；两authority、reader和真实Agent尚未接线，以下S1及更早接口记录为历史。
 
 S1 已提供 `executionLifecycle.ts` 的结果/消息/帧校验及 OutputCreditWindow，`executionSessionAdapter.ts` 的 ExecutionAuthority、prepare/bind/start、有限帧接受与 consumeBatch、操作观察和资源事实。接口只依赖注入 transport/scheduler/observer，不导入 vscode/node-pty/spawn；source、process、resource、authority 消费责任分开。下一步 S2 为同一接口提供真实异步传输与零 PTY provider 启动链，不新增另一套 adapter。远端 reader outcome、本地 final barrier、业务身份切换和候选 capability/namespace 尚未接线，不能从 S1 的类型存在推导这些能力已启用。
 
@@ -1141,3 +1170,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-24，S1 核心实施）：主树新增真实共享类型、adapter 和定向测试，独立复核后修正 ACK 合并顺序、正常 transport 退役、迟到 started 状态及原始前缀/观察边界。保留首轮 TS2339 与两次未执行用例的 esbuild 路径/fixture 失败；当时定向31/31、typecheck及bridge通过，17/22/25/31组不累计为native，review回归不追认红后绿；后续32组及统一静态收口见追加修订记录。同步四活章节及当前目标/步骤/验收，明确不再是仅文档阶段；下一步限定 S2 真实异步 transport/provider 启动链、零 PTY，先冻结有限目标与安全清理，不接业务、不自动 native/runner/push。
 
 修订记录（2026-09-24，S1 最终验证）：新增 resourceLedgerIncomplete 保护，资源登记拒绝后的未知责任不被旧账全 released 掩盖；新增第32组后最终32/32、typecheck复跑通过，既有bridge通过，前31组和17/22/25阶段结果保留。登记修正和新组另经只读复核；两树统一静态通过，首次将总设计第6节当前导航误计为不可变历史的检查失败及分类纠正保留，未改文档迎合检查。S1文档收口勾选完成，不接业务、不运行native/runner/push，下一步仍为先冻结S2零PTY异步启动链的有限目标与安全清理。
+
+修订记录（2026-09-24，S2异步通道与有限验证）：按生产接入设计第14节实施真实transport/provider channel，父侧资源证明、正常disconnect、未发送start的失败退役及close pending控制准入窄修同步；只有全部已取得资源已释放才允许退役，ENOENT不等于未取得transport。Linux/Node v25.6.0普通pipe七组首次7/7，无重跑；8次provider尝试/7个实际provider/4个subject/8次transport close分别记账。adapter35/35、channel纯回归1组、typecheck、bridge、两mjs语法及fixture独立strict最终均exit0，独立只读复核无本切片确定性blocker；后补四项deadline hook与一次期限snapshot参数检查不创建child，不追改首次矩阵。首轮类型/断言失败、旧S1 32/32与原生历史全部保留；统一文档静态检查通过，首次S1导航正则漏匹配误报及纠正见验证与验收。零PTY、无native addon、无现有业务接入或runner/push，不关闭PI-01/02/03与产品验收；下一有限项先冻结Linux真实PTY的读取/解码预算、资源责任与安全停止，复用现有证据，不扩通用工具或全量矩阵。

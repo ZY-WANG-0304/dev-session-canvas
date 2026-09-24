@@ -188,7 +188,7 @@ export function parseProviderMessage(value: unknown): ProviderMessage {
   return message;
 }
 
-export function assertParentMessageSize(value: ParentMessage): void {
+export function parseParentMessage(value: unknown): ParentMessage {
   const record = readRecord(value, 'parent message');
   const identity = copyExecutionIdentity(record.identity);
   let message: ParentMessage;
@@ -226,6 +226,11 @@ export function assertParentMessageSize(value: ParentMessage): void {
   }
   assertEncodedSize(message, message.type === 'start' ? S1_LIMITS.startBytes : S1_LIMITS.controlBytes,
     'Parent message');
+  return message;
+}
+
+export function assertParentMessageSize(value: ParentMessage): void {
+  parseParentMessage(value);
 }
 
 export function encodeOutputFrame(value: OutputFrame): Uint8Array {

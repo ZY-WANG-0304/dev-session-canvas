@@ -23,7 +23,7 @@
 
 ## 技术债列表
 
-2026-09-24 当前实施进展：`docs/design-docs/runtime-exit-integrity-production-integration.md` 第13节记录主运行时树S1三文件共享核心及直接测试入口已实施，内存定向验证通过，设计仍比较中/验证中。无业务导入、spawn/native或reader接线；真实pipe、native read预算、平台失联、两authority及产品整链仍开放，不关闭PI-01/02/03或退出完整性总债务。正常关闭责任保留，不新增异常崩溃后主体/普通后代清零保证；真实接入安全条件及PI-04/05/06默认启用门槛不降低。下一有限切片拟为S2零PTY真实异步transport/provider启动链，先冻结有限输入和安全清理再实施，不接现有业务、不追加工具门槛/全U1-W1、不自动runner/push。
+2026-09-24 当前实施进展：`docs/design-docs/runtime-exit-integrity-production-integration.md` 第14节记录主运行时树S2异步transport/provider channel及必要adapter窄修已实施；S1回归35组与typecheck通过，真实普通pipe七组首次7/7通过，设计仍比较中/验证中。仅Linux/Node v25.6.0普通pipe子进程，零PTY、无native addon、无现有业务导入/reader接线；macOS/Windows/Electron、native read预算、平台失联、两authority、真实Agent及产品整链仍开放，不关闭PI-01/02/03或退出完整性总债务。正常关闭责任保留，不新增异常崩溃后主体/普通后代清零保证；真实接入安全条件及PI-04/05/06默认启用门槛不降低。不追加工具门槛/全U1-W1、不自动runner/push，下一有限项先冻结Linux真实PTY provider的读取/解码预算、资源责任与安全停止，复用既有原生证据。
 
 最新原生证据仍为第27.10节：唯一1a88d0cc/run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成U1-6三次，runner及可信本地保存复核均3/3；30项纯测、零会话build/load另记。ZIP、21runner源、16采集源及2768build成员已核。真实取得kqueue后合成EIO，未调用注册/等待kevent；abort/ack exit0及唯一wait/kqueue/master收尾取得限定证据，独立raw核查见第27.10节。其余原生/取消、真实Agent及Host/Webview/packaged未验收；业务、旧断言/失败/工件保持。
 

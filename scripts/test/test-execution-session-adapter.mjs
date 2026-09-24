@@ -204,12 +204,7 @@ try {
         this.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
         this.message({ type: 'sourceEnd', finalFrameId: this.snapshot().acceptedThrough, disposition: { kind: 'eof' } });
         await this.consumeAll();
-        this.message({
-          type: 'resourceResult',
-          resourceId: 'provider-control',
-          operationId: 'release-control',
-          result: { kind: 'released' }
-        });
+        this.sink.controlResourceResult({ kind: 'released' });
         await settle(scheduler);
         assert.equal(this.snapshot().state, 'settled');
       }
@@ -696,7 +691,8 @@ try {
     assert.equal(h.snapshot().resourceLedgerIncomplete, true);
     assert.deepEqual(Object.keys(h.snapshot().resources).sort(), ['provider-control', 'pty-owner']);
     for (const resourceId of ['provider-control', 'pty-owner']) {
-      h.message({
+      if (resourceId === 'provider-control') h.sink.controlResourceResult({ kind: 'released' });
+      else h.message({
         type: 'resourceResult', resourceId, operationId: `release-${resourceId}`, result: { kind: 'released' }
       });
     }
@@ -727,12 +723,62 @@ try {
     assert.equal(observation.current?.kind, 'failed');
     assert.equal(observation.current.stage, 'connect');
     assert.equal((await observation.first).kind, 'failed');
+    assert.equal(h.snapshot().resources['provider-control'].current, undefined);
+    h.sink.controlResourceResult({ kind: 'unknown', reason: 'external-close-observation-expired' });
     assert.equal(h.snapshot().resources['provider-control'].current.kind, 'unknown');
     assert.equal(h.snapshot().resources['partial-owner'].current.kind, 'unknown');
     assert.equal(h.authority.snapshot().active, 1);
     assert.ok(h.authority.snapshot().blockedReason);
     assert.strictEqual(h.control.start('start', 100), observation);
     assert.equal(h.connectCount, 1);
+    assert.equal(h.events.seals.length, 0);
+  });
+
+  test('provider messages cannot release the parent-owned control resource', async () => {
+    const h = createHarness();
+    await h.started();
+    h.message({
+      type: 'resourceResult', resourceId: 'provider-control', operationId: 'forged-release', result: { kind: 'released' }
+    });
+    assert.ok(h.snapshot().firstFault);
+    assert.equal(h.snapshot().resources['provider-control'].current, undefined);
+    h.sink.controlResourceResult({ kind: 'released' });
+    assert.equal(h.snapshot().resources['provider-control'].current.kind, 'released');
+  });
+
+  test('pre-start failure retires only after parent control release without inventing subject facts', async () => {
+    const h = createHarness({ autoReady: false });
+    const observation = await h.start();
+    h.sink.disconnected('startup-disconnect');
+    const first = await observation.first;
+    assert.equal(first.kind, 'unconfirmed');
+    h.sink.startupFailed('provider-spawn-failed');
+    assert.equal(observation.current.kind, 'failed');
+    assert.equal(observation.current.stage, 'provider-spawn');
+    assert.equal(h.authority.snapshot().active, 1);
+    h.sink.controlResourceResult({ kind: 'released' });
+    await settle(h.scheduler);
+    assert.equal(h.snapshot().state, 'settled');
+    assert.equal(h.authority.snapshot().active, 0);
+    assert.equal(h.snapshot().process, undefined);
+    assert.equal(h.snapshot().source, undefined);
+    assert.equal(h.events.seals.length, 0);
+    h.message({ type: 'ready', capabilities: ['execution-lifecycle-v1'] });
+    await settle(h.scheduler);
+    assert.equal(h.sent('start').length, 0);
+    assert.strictEqual(await observation.first, first);
+  });
+
+  test('pre-start failure cannot discard an independently acquired unknown resource', async () => {
+    const h = createHarness({ autoReady: false });
+    await h.start();
+    h.sink.resourceAcquired('startup-extra');
+    h.sink.startupFailed('startup-aborted');
+    h.sink.controlResourceResult({ kind: 'released' });
+    await settle(h.scheduler);
+    assert.equal(h.authority.snapshot().active, 1);
+    assert.notEqual(h.snapshot().state, 'settled');
+    assert.equal(h.snapshot().resources['startup-extra'].current, undefined);
     assert.equal(h.events.seals.length, 0);
   });
 

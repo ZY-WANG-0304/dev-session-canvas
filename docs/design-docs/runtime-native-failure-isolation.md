@@ -21,7 +21,7 @@ updated_at: 2026-09-24
 
 最新原生证据仍以第27.10节（2026-09-24）为准：固定输入1a88d0cc的唯一push run35963751067 attempt1已完成macOS arm64 U1-6三项采集，runner与可信本地保存复核均3/3；完整ZIP摘要与构建来源已核对。真实kqueue取得后注入合成EIO，未调用真实kevent注册/等待；受控abort、唯一waitpid和逐资源收尾只证明此窄路径，不是系统注册故障或产品通过。第26节正常路径与全部旧失败保持。
 
-当前生产接入进展见 `runtime-exit-integrity-production-integration.md` 第13节，状态比较中/验证中：主运行时树S1共享核心及直接测试入口已实施，内存定向验证通过，无业务导入、spawn/native或reader接线，不计原生覆盖。真实pipe、native read预算、平台失联及两authority仍未验证；正常owner关闭责任不变，不新增崩溃后所有主体/后代立即清零承诺。下一有限切片拟为S2零PTY真实异步transport/provider启动链，先冻结有限输入和安全清理再实施，不接现有业务、不追加工具门槛/全U1-W1、不自动runner/push。本文后续历史原记录、失败及其当时下一步全部保留，不覆盖当前推进顺序。
+当前生产接入进展见 `runtime-exit-integrity-production-integration.md` 第14节，状态仍比较中/验证中：主运行时树S2异步transport/provider channel及必要adapter窄修已实施，S1回归35组与typecheck通过，真实普通pipe七组首次7/7通过。仅Linux/Node v25.6.0普通pipe子进程，零PTY、无native addon、无现有业务导入/reader接线，不增加原生PTY覆盖，也不代表macOS/Windows/Electron通过。native read预算、平台失联及两authority仍开放；正常owner关闭责任不变，不新增崩溃后所有主体/后代立即清零承诺。不追加工具门槛/全U1-W1、不自动runner/push，下一有限项先冻结Linux真实PTY provider的读取/解码预算、资源责任与安全停止，复用既有原生证据。本文后续历史原记录、失败及其当时下一步全部保留，不覆盖当前推进顺序。
 
 第25阶段历史状态（原文保留，不覆盖当前入口）：
 

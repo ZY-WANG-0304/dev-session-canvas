@@ -21,6 +21,8 @@ updated_at: 2026-09-24
 
 ## 1. 当前结论与阶段边界
 
+2026-09-24 S2 已完成本机 Linux/Node 的真实异步 transport/provider 启动链与零 PTY 普通 pipe 受控验证，输入为主树 `e9a3b3f7`、诊断树 `65d2eb32`。首次真实矩阵7/7通过：8次transport尝试、7个真实provider、4个受控subject，8个transport close包含1次失败spawn，并非8个真实进程。实现、首次错误、独立复审修正及未重采集的后置窄修见第14节；不接现有业务、native或runner，不关闭PI-01/02/03。S1第13节保持历史原文；以下S1及更早阶段的段落是历史，不覆盖本段。
+
 2026-09-24 S1 实施阶段从主树 `17e3372b`、诊断树 `89cb46fc` 继续。主树新增真实共享生命周期类型、无 native adapter 及直接加载它们的定向测试，未从任何现有业务入口导入；诊断树只同步文档。当前实现、验证与下一有限切片见第13节。整体仍比较中/验证中，真实异步 pipe、native 预算、平台 owner 失联和两 authority/页面接线未通过；不因 S1 内存验证而关闭 PI-01/02/03。以下接口阶段与原生实验描述按其发生时点保留，不覆盖本段。
 
 2026-09-24 接口阶段从主树 `07851ba4`、诊断树 `76ea6e77` 继续。第9至12节收敛 PI-01/02/03 的消息、所有权与两模式接线，并冻结下一步 S1 无 native 的共享 adapter 核心切片。PI-01 的真实 pipe/read 背压、PI-02 的平台失联处置和 PI-03 的实际宿主接线仍未验证，不能把接口收敛写成三项生产门槛全部关闭。本轮只读研究与文档修订，没有业务实现、测试、原生采集或 runner/push。
@@ -300,3 +302,71 @@ Linux Node v25.6.0 的最终 `node scripts/test/test-execution-session-adapter.m
 ### 13.3 下一有限切片
 
 下一阶段为 S2 真实异步 transport/provider 启动链，仍零 PTY、不接现有业务。先冻结有限目标环境、双向消息/输出 pipe 的真实异步契约及直接 child 的正常关闭和失败清理，再实现复用本模块的有限接线；不另起通用诊断框架，不要求先补齐全部 U1/W1。真实 native 接入仍需 read/worker/decoder 预算和该平台安全停止/释放前提，双 authority、页面最终应用、Agent 启动链及 packaged 验收各自保留。此 S1 收口不授权自动运行 S2、native、runner 或推送主分支。
+
+## 14. S2：真实异步启动链与零 PTY 受控验证
+
+### 14.1 本轮运行前边界
+
+仅在本机 Linux、当前 Node v25.6.0 运行；不宣称 macOS/Windows、Electron 或旧宿主可用，不触发 runner。主树新增 `src/panel/executionProviderTransport.ts` 与 `src/panel/executionProviderChannel.ts`（均为主扩展前缀），复用 S1 adapter、帧和信用实现。业务入口、manifest、root归属、storage generation、旧 live 绑定及冻结诊断不改。需要的 S1 窄修和对应定向回归随本切片完成，不新建另一套生命周期模型。
+
+父侧按 `spawn` 的 `['pipe','ignore','pipe','ipc','pipe']` 创建直接 provider child，非 detached、不 unref、不经 shell。runtime executable 和 provider entry 明确注入，不在模块中猜测 VS Code 可执行文件；进程监听在任何 start 许可前安装。identity 只含执行标识与 nonce，启动正文仍走唯一 start，不能放入命令行或日志。S2 不实现终端输入，stdin 保持为空并在关闭时结束。
+
+provider 侧 IPC 控制消息和 fd4 输出使用 Node 异步机制，fd4 用 `net.Socket` 包装，禁止同步 write。共享 channel 先装监听再 ready，按相同 identity/nonce 接收唯一 start，普通控制4KiB/start64KiB校验，一次控制 send 在途并有限排队。输出沿 S1 编码和 OutputCreditWindow，最多一个 write 调用在途；信用不足等待实际 consumed，不能积累任意写请求。sourceEnd 只在 read/decoder 已由后端结算、最后帧实际 accepted 后发送，不等待 consumed。channel 自身不声称普通 pipe/PTY EOF，disposition 由实际源 owner 提供。
+
+父侧 stderr 只保留64KiB并持续异步排空，超限公开截断，不记录启动 env 正文。fd4 chunk 不是帧边界；发送端最多16帧/256KiB未消费，父侧保留 S1 原始/消费总账与每任务4帧调度。正常消费者停顿不阻断控制；异常解析/控制错误保留首个故障并允许沿已取得直接 child token 做安全终止，不用日志 PID 重建控制权。
+
+### 14.2 资源来源与关闭
+
+`provider-control` 属于父 transport，只能由父观察直接 child 退出、输出/诊断/input/control 通道结算后报告 released；对端同名 resourceResult 一律拒绝。provider 的退出、IPC disconnect 和 fd4 end 按真实事件分别递交；进程 exit 不能替代 pipe drain。正常收尾中 IPC disconnect 可以早于 child close，此时父控制资源仍在观察中，而不是凭 disconnect 自动成为泄漏或 unknown。缺失的主体/源/操作事实仍明确未知，外部 child 观察达到调用者明确 deadline 而未结算时才保留 provider-control unknown；迟到同操作 released 不覆盖首报。
+
+父侧提供显式 deadline 的直接 child 终止/关闭观察，至多一次 TERM、一次必要的 KILL，各自只表示请求；没有生产默认时限，不将超时当已退出。仅对捕获的 ChildProcess 对象请求，不清共享 Supervisor，不托管任意后代。正常关闭不重复 kill 已退出 child，spawn error 无 PID 时安全销毁已取得通道，未发生主体创建不伪造正常 exit/EOF。无资源前的明确失败与跨入 acquisition 后失败仍按 S1 边界分别记账。
+
+### 14.3 固定有限测试
+
+新增 `scripts/test/test-execution-provider-transport.mjs`，用 esbuild 打包真实模块，夹具放同目录专用 fixture。真实拓扑为测试 authority → provider fixture → 至多一个受控 Node 普通 pipe subject；fixture 复用真实 provider channel，不加载 native/PTY、不运行用户 CLI。subject 使用真实 exit/stdout end 产生主体和源事实；provider 与 subject 分别计数，不把 provider 自身 PID/exit 冒充 Agent 主体。
+
+固定验证正常非零退出与尾部、暂停消费时有限信用及独立 stop、sourceEnd 不等待消费、两执行共享准入与独立推进、启动失败、控制断连/部分输出非 EOF、错误身份及伪造父资源结果拒绝。每次最多两个 provider 和各一个受控 subject；测试结束必须确认直接 provider close，fixture 的正常/失联处理沿捕获的 subject ChildProcess 停止并等待。异常杀 provider 的负例仅在它未创建 subject 或 subject 已确认结束时运行，避免通过杀外层留下未知后代。
+
+每个场景观察预算显式给定10秒，清理使用2秒 TERM 后必要时2秒 KILL；仅为本次测试上限，不是产品政策。统一 finally 执行清理，真实超时/失败保留，不自动重跑筛绿。定向测试后跑 S1 32组、typecheck 与 bridge 回归；没有新增 writer/oracle/归档迁移或通用容量审计。S2 通过仍不关闭 native read 预算、平台 owner-loss、两 authority/reader、实际 Agent、packaged 或默认启用门槛。
+
+### 14.4 实际实现与独立复审
+
+父 transport 提供 `createExecutionProviderTransport()`、`createNodeExecutionScheduler()`、`closed`、`snapshot()` 与显式绝对 deadline 的 `terminate()`；Linux 之外明确拒绝，本轮不作跨平台适用声明。provider channel 提供 `ready/send/write/end/close`，复用共享 `parseParentMessage()` 和 `OutputCreditWindow`。普通控制和紧急控制分别有8槽和4槽，每方向只允许一个 send 在途，四类语义命令固定占槽，不增加通用请求历史。
+
+S1 adapter 的父 sink 增加 `dataClosed/controlResourceResult/startupFailed/transportFault`。provider-control 只能由父侧通道与 child close 结算，provider 消息无权释放；data end 与没有 end 的 close 分账。正常 IPC disconnect 早于父 close 时不误判未知泄漏。唯一 start 尚未发送、主体/源未建立的失败执行，在全部已知资源释放、无原始/待消费内容及未知责任后可退役，不补造 processResult、sourceEnd 或 OutputSeal；失败后迟到 ready 不能重新启动。失败是否解除该 authority 的后续准入冻结不是本轮的通过结论。
+
+独立复审发现 channel 在 `end()` 等待 write/accepted 时，`close()` 提前置 closing 会拒绝仍合法的 stop/cancel并破坏尾部。修正为在等待期间继续接收控制和回执，输出 socket close 后再次排空控制，直到真正断连边界才标 closing。新增 `test-execution-provider-channel.mjs` 直接加载实际模块、仅替换 Node 通道句柄，覆盖 pending write/end/close 期间 stop/cancel、accepted非consumed屏障及socket关闭后仍在途控制。该单组内存回归通过；内存重新注入旧提前 closing 行为的负对照确实失败。这是本轮新模块问题，不追认为既有Terminal/Agent的已实测故障。
+
+父终止操作先缓存同一 Promise 再异步执行，发信号前先登记一次性请求状态，避免同步重入重复 TERM/KILL。deadline 在入口复制并冻结，校验、缓存与异步闭包使用同组值，不再引用调用者后续可修改的 budget；同值重复调用返回原 Promise。此窄修由只读复核和加载实际transport的内存检查确认，没有派生新的观察工具或真实负向矩阵。
+
+### 14.5 首次真实结果与验证分账
+
+运行环境为本机 Linux、Node v25.6.0。首次完整执行 `node scripts/test/test-execution-provider-transport.mjs`，exit 0，7/7通过，未重跑；统计为 `providerAttempts=8, providersSpawned=7, subjectsObserved=4, providersClosed=8, failures=[]`。最后一个计数包含ENOENT失败spawn的transport句柄结算，并非第8个真实provider。每场景finally确认transport closed，无未结算的本轮运行中测试。
+
+| 固定组 | 本次直接证明 |
+| --- | --- |
+| 正常非零退出和尾部 | 真实subject exit7与精确尾部；暂停消费仍可source seal，provider自身资源释放不等待消费 |
+| 满信用与两个执行 | A占满16帧信用仍响应stop，第17帧已经拥有的内容不静默丢弃；同一authority的B独立完成 |
+| provider启动失败 | ENOENT有失败和父资源释放，无伪造主体退出或EOF |
+| 部分输出帧 | 已结束subject的完整前缀保留，追加的2字节残帧使source为error而非EOF |
+| 错误身份 | 错identity被拒绝，不按另一执行接纳 |
+| 父资源伪造 | provider自报provider-control released被拒绝 |
+| 显式强制清理 | 无subject且忽略TERM的provider，经真实TERM再KILL达到close |
+
+三个无subject的负例在subject spawn前返回；部分帧负例确认subject已结束后才处理坏帧。两执行场景是普通pipe、同一受控authority的验证，不是两个真实authority、双PTY公平性或实际Agent工具链验收。父transport的TERM/KILL清理只作用捕获的直接provider；fixture另行负责受控subject，不能推导任意后代已被托管或清理。
+
+纯测试与静态验证单列：S1 adapter现为35/35，通过新增父资源来源、未发送start失败退役、未知额外owner阻止退役三组；channel精确定向回归1组通过。S1原32组的父资源注入改接可信sink，保留责任断言，不改旧冻结诊断来获得绿色。整体typecheck、既有bridge回归、新mjs语法及fixture独立strict TypeScript检查通过；fixture不在根typecheck覆盖范围内，因此另行检查。独立只读复核未发现本切片新的确定性blocker。
+
+保留本轮首次失败：channel第一次typecheck出现TS2345/TS2339联合类型窄化问题，改为先确认operationId；channel回归首跑的断言预期顺序错误，第二次write实际先触发“一次仅一write在途”，仅调整断言位置；fixture单独strict检查出现TS7006，补回调类型。均不记录成新的原生平台失败，也不隐藏为“从未失败”。
+
+真实7/7之后只补fixture类型、测试入口的deadline guard和父termination budget快照。deadline guard在观察期已过时阻止迟到创建第二个provider，4个内存hook断言通过；budget快照内存验证覆盖外部修改不影响实际期限、同值调用复用Promise。后续仅进行纯测试、类型与静态检查，未再次执行真实矩阵；首次7/7不能被改写为这些后置边界都已重新实测。没有运行PTY、native、runner、VS Code或packaged验证。
+
+### 14.6 收口与下一有限切片
+
+两树各八份文档同步；设计元数据、索引状态、关联路径及两计划各12章节原序检查通过。两树本设计正文一致，原第2至13节保持；总设计、生命周期和原生隔离文档除当前导航外历史正文保持。现有业务入口、manifest、storage generation、workflow与诊断源码无本轮改动，两树diff检查通过。首次一次性历史检查漏匹配S1导航而误报，纠正检查后通过，未改历史迎合检查；本次未深遍历旧归档工件。
+
+S2交付实际模块和受控完整启动/关闭路径，不新增通用writer、oracle、归档、listener或容量验证门槛。诊断树仅同步文档，旧冻结实验、原始断言和失败结果保留。现有业务入口未导入这些模块，manifest、storage generation、root归属与旧live绑定不变；不新增completed正文历史，不声称server或机器重启可恢复。
+
+下一有限阶段推进首个平台的真实PTY provider接入，优先利用本机Linux与既有受控node-pty工作，不再安排另一轮泛化工具增强。在首次native取得前，必须把本平台的read/decoder/编码预算、安全停止和逐资源释放条件绑定到本模块；以固定主体尾部、最终状态与资源收尾为验证目标，保留失败、unknown和主动取消的真实区别。只解决影响该次判断和实验安全的前置项，不将全部U1/W1或跨平台工具完备设为门槛。
+
+S2尚未证明native同步阻塞隔离、真实终端输入/resize、owner失联的OS级收尾、两种运行模式的authority/reader最终应用、真实Agent启动器生命周期或packaged接线。macOS/Windows仍需各自原生证据；Windows退出对象因合法引用继续存在不自动算bug。后续须分别关闭这些门槛，不能凭本轮7/7或纯测试数目宣布产品退出完整性完成。

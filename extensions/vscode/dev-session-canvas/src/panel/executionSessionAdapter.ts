@@ -32,6 +32,10 @@ export interface ExecutionTransportSink {
   disconnected(reason: string): void;
   exited(): void;
   dataEnded(): void;
+  dataClosed(reason: string): void;
+  controlResourceResult(result: ResourceResult): void;
+  startupFailed(reason: string): void;
+  transportFault(reason: string): void;
   resourceAcquired(resourceId: string): void;
 }
 
@@ -150,6 +154,7 @@ export class PreparedExecution {
   private controlDisconnected = false;
   private providerExited = false;
   private outputEnded = false;
+  private outputClosed = false;
 
   constructor(identity: ExecutionIdentity, launchSpec: LaunchSpec, private readonly dependencies: ExecutionDependencies) {
     assertExecutionIdentity(identity);
@@ -192,6 +197,10 @@ export class PreparedExecution {
         disconnected: reason => this.disconnect(reason),
         exited: () => { this.providerExited = true; this.scheduleProcessing(); },
         dataEnded: () => { this.outputEnded = true; this.scheduleProcessing(); },
+        dataClosed: reason => { this.outputClosed = true; this.fault(reason); this.scheduleProcessing(); },
+        controlResourceResult: result => this.recordResource('provider-control', 'provider-control-release', result),
+        startupFailed: reason => this.failStartup(reason),
+        transportFault: reason => this.fault(reason),
         resourceAcquired: resourceId => this.registerResource(resourceId)
       });
     } catch {
@@ -220,7 +229,8 @@ export class PreparedExecution {
       resourceLedgerIncomplete: this.resourceLedgerIncomplete,
       process: this.process, source: this.source, seal: this.seal, firstFault: this.firstFault,
       authorityFailure: this.authorityFailure,
-      transport: Object.freeze({ disconnected: this.controlDisconnected, exited: this.providerExited, dataEnded: this.outputEnded }),
+      transport: Object.freeze({ disconnected: this.controlDisconnected, exited: this.providerExited,
+        dataEnded: this.outputEnded, dataClosed: this.outputClosed }),
       resources: Object.freeze(Object.fromEntries([...this.resources].map(([id, value]) => [id, Object.freeze({ ...value })])))
     });
   }
@@ -300,6 +310,9 @@ export class PreparedExecution {
     switch (message.type) {
       case 'ready': {
         if (this.ready) return;
+        if (this.state === 'settled' || this.operations.get('start')?.current?.kind === 'failed') {
+          this.fault('Provider ready arrived after startup failed or settled'); return;
+        }
         if (!message.capabilities.includes('execution-lifecycle-v1')) { this.fault('Missing lifecycle capability'); return; }
         this.ready = true;
         const operation = this.operations.get('start')!;
@@ -314,7 +327,9 @@ export class PreparedExecution {
         break;
       }
       case 'processResult': this.recordProcess(message.result); break;
-      case 'resourceResult': this.recordResource(message.resourceId, message.operationId, message.result); break;
+      case 'resourceResult':
+        if (message.resourceId === 'provider-control') { this.fault('Provider cannot settle parent control resources'); return; }
+        this.recordResource(message.resourceId, message.operationId, message.result); break;
       case 'sourceEnd': {
         if (!this.startSent || message.finalFrameId !== this.acceptedThrough || this.rawBytes !== 0
           || this.parsingFailed || this.dataAdmissionFailed) {
@@ -403,7 +418,7 @@ export class PreparedExecution {
   private receiveData(bytes: Uint8Array): void {
     if (!(bytes instanceof Uint8Array)) { this.fault('Output is not a byte chunk'); return; }
     if (bytes.byteLength === 0) return;
-    if (!this.startSent || this.source || this.outputEnded || this.parsingFailed || this.dataAdmissionFailed) {
+    if (!this.startSent || this.source || this.outputEnded || this.outputClosed || this.parsingFailed || this.dataAdmissionFailed) {
       this.rejectedDataBytes = Math.min(Number.MAX_SAFE_INTEGER, this.rejectedDataBytes + bytes.byteLength);
       this.fault('Output arrived outside data admission'); return;
     }
@@ -538,9 +553,20 @@ export class PreparedExecution {
     this.loseControl(reason);
   }
 
+  private failStartup(reason: string): void {
+    if (this.startSent) { this.loseControl(reason); return; }
+    const operation = this.operations.get('start');
+    if (!operation) { this.fault('Provider startup failure has no start operation'); return; }
+    if (!operation.current || operation.current.kind === 'unconfirmed') {
+      this.recordOperation(operation, { kind: 'failed', stage: 'provider-spawn', reason });
+    }
+    this.startMessage = undefined;
+    this.maybeRetire();
+  }
+
   private loseControl(reason: string): void {
     const factsComplete = !this.resourceLedgerIncomplete && this.process && this.process.kind !== 'unconfirmed' && this.source
-      && [...this.resources.values()].every(resource => resource.current?.kind === 'released')
+      && [...this.resources].every(([id, resource]) => id === 'provider-control' || resource.current?.kind === 'released')
       && [...this.operations.values()].every(operation => operation.current && operation.current.kind !== 'unconfirmed');
     if (factsComplete) { this.maybeRetire(); return; }
     if (this.state === 'settled') return;
@@ -551,18 +577,21 @@ export class PreparedExecution {
         ? { kind: 'unconfirmed', stage: this.ready ? 'start' : 'ready', reason: 'Provider control lost' }
         : { kind: 'unconfirmed', reason: 'Provider control lost' });
     }
-    if (!this.process) this.recordProcess({ kind: 'unconfirmed', reason: 'Provider control lost' });
+    if (this.startSent && !this.process) this.recordProcess({ kind: 'unconfirmed', reason: 'Provider control lost' });
     for (const [id, resource] of this.resources) {
+      if (id === 'provider-control') continue;
       if (resource.current?.kind === 'released' || resource.current?.kind === 'failed') continue;
       resource.current = Object.freeze({ kind: 'unknown', reason: 'Provider control lost' });
       resource.first ??= resource.current;
       this.notify(observer => observer.resourceResult(this.identity, id, resource.current!));
     }
+    this.maybeRetire();
     this.scheduleProcessing();
   }
 
   private settleLostSource(): void {
-    if (this.source || !this.outputEnded || this.processingScheduled) return;
+    if (!this.startSent) return;
+    if (this.source || (!this.outputEnded && !this.outputClosed) || this.processingScheduled) return;
     if (!this.controlDisconnected && !this.parsingFailed && !this.dataAdmissionFailed) return;
     const kind = this.parsingFailed || this.dataAdmissionFailed || this.rawBytes > 0 ? 'error' : 'unknown';
     this.source = Object.freeze({ kind, lastDataSequence: this.acceptedThrough,
@@ -578,8 +607,13 @@ export class PreparedExecution {
   }
 
   private maybeRetire(): void {
-    if (!this.seal || this.resourceLedgerIncomplete || this.process?.kind === 'unconfirmed' || this.pendingBytes !== 0 || this.authorityFailure
+    if (this.resourceLedgerIncomplete || this.pendingBytes !== 0 || this.rawBytes !== 0 || this.pending.length !== 0 || this.authorityFailure
       || [...this.resources.values()].some(resource => resource.current?.kind !== 'released')) return;
+    const startResult = this.operations.get('start')?.current;
+    // No execution source existed when start was never dispatched; do not invent its seal.
+    const startupSettled = this.acquired && !this.startSent && !this.process && !this.source && !this.seal
+      && (startResult?.kind === 'failed' || startResult?.kind === 'unconfirmed');
+    if (!startupSettled && (!this.seal || this.process?.kind === 'unconfirmed')) return;
     this.state = 'settled';
     this.dependencies.authority.release(this.identity);
   }
