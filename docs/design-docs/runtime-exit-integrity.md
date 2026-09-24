@@ -21,7 +21,7 @@ updated_at: 2026-09-24
 
 ## 1. 已确认范围与决策状态
 
-当前以 `runtime-native-failure-isolation.md` 第27.9节（2026-09-24）为准：U1-6新builder/CLI/saved/workflow已实施，仅固定3个新U1-6样本，不重跑U1-0。首轮30项有限纯测试为前轮21项加build3项/schedule6项，另有13个JS语法检查；本轮未编译C++、加载`.node`、创建真实PTY、运行runner或推送。第26节固定32312fe7、run35900772851 attempt1的macOS U1-0三次3/3及完整复核独立保留，不外推注册失败或产品验收。早期6/6、10/10及接口纠正后21项保持历史口径。具体边界见第6节。
+当前以 `runtime-native-failure-isolation.md` 第27.10节（2026-09-24）为准：唯一输入1a88d0cc、push run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成3个新U1-6原生样本，runner及可信本地`--verify-saved`均3/3。30项纯测、零会话build/load与原生执行分账。第26节32312fe7/run35900772851 attempt1的U1-0三次3/3及旧失败独立保留，不重跑、不追认早期6/6、10/10、21项覆盖。本轮仍是合成注册失败的限定诊断证据，不是生产退出完整性验收；下一阶段转入生产接入决策收敛，具体边界见第6节。
 
 2026-09-20，用户同意将“退出完整性”作为本次 Runtime Persistence 重构的独立交付项。它与 F-04 容量优化、F-05 取消 completed 内联分别验收；不能等其他重构完成后假定问题自然消失，也不必等待整体终端状态替代或 F-03 root 归属改造才能推进。
 
@@ -90,11 +90,11 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 ## 6. 下一步与状态
 
-第27节已纠正U1-6诊断替身、角色和verifier的实际接口：同一driver内真实`std::thread::id`、kqueue owner先登记再注入、数字EIO附`registrationErrorSource=native-substitute`，唯一一次wait及原预算分别核验。前轮21项纯测试包含实际driver JS报告到verifier的mock对接；第27.9节新增运行输入及9项纯测试后首轮共30/30，13个JS语法检查通过。guard-only Node子进程不是构建；合成archive使用真实固定源码/header字节，但stub binary未执行，不能视为原生证据。
+第27.10节的三个U1-6样本在真实取得并登记kqueue后注入数字EIO，`registrationErrorSource=native-substitute`且真实注册/等待kevent未调用；data gate保持关闭，token/PID绑定abort/ack、exit0、同一实际Wait线程唯一waitpid及kqueue/master收尾成立。没有发送go或正常负载，不将read/parser为0、raw为空、state为null解释为真实EOF或终端状态排空。合法非零/signaled已回收不虚构资源泄漏，wait未知仍应保留kqueue未结算、禁止payload/通知并停排；这三个受控成功样本不等于真实系统注册错误或全部unknown路径验收。
 
-本轮新builder、CLI、saved verifier和workflow绑定16来源，仅执行预写config/token的3个新U1-6样本；资源或证据unknown即停止准入，not-run须无raw/evidence，离线仅由可信工作树读取归档而不执行其中代码。首轮日志位于独立树`.debug/u16-input-preparation-20260924-first.log`；前轮21项（源码3、角色mock7、verifier11）和新增build3/schedule6分账，不与第26节10组纯测试、零会话build/load或原生3/3合算。本轮独立复核未发现直接阻断（见第27.9节）；下一阶段push前fetch/rebase并核实际远端差异，再进入唯一原生采集，不重跑旧U1-0、不扩D3/D4或通用工具门槛。其余U1/W1、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged、生产API/隔离策略/停止预算仍开放。
+完整ZIP与GitHub摘要一致，21个runner来源、16个采集来源及2768个build成员已核；独立构建/来源与原始事实审计结果统一见第27.10节。runner及可信本地保存复核均3/3，可信离线不执行归档代码。30项纯测试是前轮21项（源码3、角色mock7、verifier11）加build3/schedule6，13个JS语法检查另记；准备期guard-only子进程和未执行stub binary仍不是原生证据。同组本地/runner复核不累加覆盖，旧U1-0源码、原始工件、断言及失败均不改，业务未接入。
 
-U1-6保持数据gate关闭，不发送go，以token/PID绑定的abort/ack结束夹具；受控abort的exit0是场景预期。合法非零/signaled终态若已回收且其他owner和证据齐全，不应仅因场景不符虚构资源泄漏。wait未知则保留kqueue未结算、不造payload或通知并停止准入；确认自身child终态后才由同一Wait线程单次close kqueue，再完成其余owner结算。预期read/parser为0、raw为空、state为null，不要求正常负载、read0或exit7；本轮没有C++编译、加载、PTY或runner证据，stock node-pty与业务路径仍未证明。
+下一阶段是生产接入决策收敛：先分类故障、确定事实接口与unknown隔离、说明预算依据，再比较Runtime Persistence两模式兼容及native分发，不机械接U1-7/W1或扩D3/D4工具门槛。只有“A的同步native操作未返回时B能否继续服务”这一未决命题会改变拓扑选择时，才另冻最小A/B对照协议；本轮不追加该实验。其他原生/取消、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged仍未验收，生产API、隔离策略和停止预算尚未选定，退出完整性债务不关闭。
 
 第25阶段历史记录（以下三段按当时状态保留，其macOS协议待办已由第26阶段承接，不覆盖当前实施顺序）：
 

@@ -70,7 +70,7 @@ Windows已退出进程被句柄引用而继续保留对象是正常语义，不�
 
 失败注入必须先冻结数据门控和回收责任：macOS U1-6先登记kqueue owner，再合成`-1/EIO`；`registrationErrorSource=native-substitute`和`registrationCallInvoked=false`明确真实API未调用。同一driver内以实际`std::thread::id`关联唯一wait与close，不把固定角色标签冒充实测线程。ready的token/PID/TTY及gate前缀真实性属于证据核验，abort/ack身份与顺序属于资源核验；数据gate保持关闭，受控abort的exit0是场景预期；合法非零/signaled终态已回收时不虚构资源泄漏，wait未知则保留kqueue未结算并停止准入。
 
-纯协议例和源码断言不能替代实际接口对接或原生验证。第27.9节30项有限纯测试是前轮21项加新build3项/schedule6项；guard-only Node子进程不构成构建，合成归档使用真实固定源码/header字节也不使未执行的stub binary成为原生证据。新运行输入限定3个U1-6样本、16来源快照和原预算；unknown停止准入，not-run须同时没有raw/evidence，可信离线复核不执行归档代码。早期6/6、10/10和21项保持历史口径；本轮独立复核未发现直接阻断（见第27.9节），无编译/加载/PTY/runner，不为通用健壮性继续扩大门槛。
+纯测试、构建、原生采集和离线复核分别记账。第27.10节唯一1a88d0cc/run35963751067 attempt1的macOS U1-6三次3/3及可信保存复核，不与30项纯测试或旧U1-0合算；准备期guard-only子进程和stub binary仍不是原生证据。真实取得kqueue后合成EIO、未调用注册/等待kevent的有限成功，也不证明真实系统注册错误。unknown停止准入、not-run无raw/evidence及可信离线不执行归档代码的边界不变。证据足以进入生产接入决策收敛时，应先比较故障类别、事实接口、隔离与预算依据、两模式兼容及分发；不机械追加U1-7/W1，仅为可能改变拓扑选择的同步阻塞问题另冻最小A/B协议，本轮不追加实验。
 
 资源总量应区分显式owner引用、预热期间形成的背景和逐会话增量。普通进程控制中的退出后image31、释放23个引用后总数下降23与未知背景+5可以同时成立；保留原计数失败，不以事后换基线替代归属证据。
 

@@ -19,7 +19,7 @@ updated_at: 2026-09-24
 
 ## 1. 本阶段状态与完成边界
 
-当前以第27.9节（2026-09-24）为准：U1-6独立构建、固定三项采集、保存复核与专用workflow已实施，首轮30项有限测试及13JS语法检查通过，尚未编译、加载、创建真实PTY或运行runner。27.8的21项是此前接口纠正证据，不与本轮复跑累加。第26节固定32312fe7/run35900772851 attempt1的macOS U1-0原生3/3和旧失败保留，不外推U1-6或产品链路；下一阶段仅推进冻结输入的唯一原生采集，不追加通用工具门槛。
+当前以第27.10节（2026-09-24）为准：固定输入1a88d0cc的唯一push run35963751067 attempt1已完成macOS arm64 U1-6三项采集，runner与可信本地保存复核均3/3；完整ZIP摘要与构建来源已核对。真实kqueue取得后注入合成EIO，未调用真实kevent注册/等待；受控abort、唯一waitpid和逐资源收尾只证明此窄路径，不是系统注册故障或产品通过。第26节正常路径与全部旧失败保持。下一阶段先收敛生产接入与故障隔离决策，不机械追加U1-7/W1全量或通用工具门槛。
 
 第25阶段历史状态（原文保留，不覆盖当前入口）：
 
@@ -611,7 +611,7 @@ runner复用已有GitHub托管macOS环境，新增macOS-only workflow而不dispa
 
 ## 27. macOS U1-6：kqueue注册失败后的唯一回收者协议
 
-当前已实施27.9的运行输入并完成本地有限验证；27.8的21项测试仍是此前有限源码/模拟证据。本轮不构建、加载或运行原生，不推送或触发runner。
+当前首次原生结果见27.10；27.1至27.9保留协议、源码纠正和运行输入准备时的原始记录，其中“本轮未运行”只指各自阶段，不覆盖27.10的新事实。
 
 ### 27.1 运行前问题定位
 
@@ -690,3 +690,33 @@ verifier现在核对raw wait返回值/status、kqueue owner/线程/偏序、spaw
 本地测试需只读固定依赖及官方headers：`DSC_NATIVE_DEPENDENCY_ROOT=/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/dev-session-canvas2/node_modules DSC_NATIVE_HEADERS_ROOT=$PWD/.debug/node22-headers-first/node-v22.23.2/include/node node --test scripts/diagnostics/macos-native-failure-*.test.mjs`。目录从诊断树解析；runner由锁定安装和下载的官方headers提供这两份输入（依赖默认node_modules）。首次原生运行使用全新`macos-native-failure-build`、`macos-native-failure-evidence`、`macos-native-failure-runner`目录。运行输入已具备，但本轮尚无C++编译、加载、native或runner结果，未push；不得把合成三项归档写成U1-6原生3/3。
 
 最终有限复核：在已有schedule正例中补独立Node进程执行可信CLI的`--verify-saved`，读取移动后的合成evidence/build，原身份路径不改；同30项再次通过，不累加为60项或原生样本，日志`.debug/u16-input-preparation-20260924-cli-check.log`。独立只读审查未发现本阶段直接阻断；本地origin跟踪分支至HEAD的16个净变更路径加本轮6个新文件，只匹配新U1-6 workflow，不命中旧workflow的push路径。该触发检查没有fetch或网络访问，未来push前仍须fetch/rebase并按实际远端差异复查。当前只本地提交运行输入，下一阶段首次编译/加载和唯一三项原生采集及完整工件复核仍未执行。
+
+### 27.10 唯一原生运行、保存复核与后续边界（2026-09-24）
+
+诊断分支fetch后rebase origin/main，目标仍为5965adb8且up-to-date；触发前记录22个净变更路径及21份输入摘要，只有新U1-6 workflow匹配。唯一push输入为1a88d0cc6d74b91fbdb52808c1d129eb471e9bdb，触发run35963751067、attempt1、job107517685920，全部步骤success。没有dispatch、rerun或推送主运行时分支；原生采集于UTC 2026-09-24T06:17:49.632Z至06:17:50.505Z完成。运行入口和判据冻结不改，27.1至27.9按各自形成时点保留。
+
+实际环境为macOS26.6.2/build25G83、Darwin25.6.0、arm64、runner image20260907.0351.1、SDK26.5与Apple clang21.0.0；Node/headers22.23.2、node-pty1.2.0-beta.12、node-addon-api7.1.1保持。首次C++编译及零会话加载成功，唯一加载二进制导出7个函数；runner同30项纯测试通过，不增加原生样本数。pty.node SHA256为900e5e170772ce5d710da174fbd67f57f446d15ff187d207e952e676b3620369；helper为6a689e86f518779d34a4521494ac6f5d3e9da819f322280eb32a3f941f7a6296，构建mode0755；manifest字节摘要为a2d9844466a86a33c6dec5b4dd856b183c37865b512d0e4dc2c2066334e54458，包含2768成员。
+
+三项均实际执行，场景、资源、证据三域及safeToContinue成立。真实posix_spawn登记child PID4349/4353/4357，同PID helper→fixture链各完成一次token-bound ready/abort/abort-ack；没有go、written、PTY read、parser或headless state，source保持null，不将“未读取”标作EOF或尾部验收。kqueue实际取得并登记后，native substitute各产生一次-1/EIO(5)；registerApiEntered=true而registrationCallInvoked=false，未调用真实kevent注册/等待，也无exit-event，不是实测系统错误。
+
+各样本由取得kqueue的同一Wait线程执行唯一阻塞waitpid，实际返回登记PID、rawStatus0/exit0；随后单次close kqueue返回0/error0，再完成payload、正常通知、TSFN Release、thread结束/finalizer/join，最后单次close master返回0/error0。数据gate前缀各35事件，master关闭前各49事件，最终各54事件；第三项最初快照仅28事件，是worker尚未运行到注入点的合法时序，后续gate另行确认，不把最初快照当作已命中注入。low-fd-0、spawn-actions、spawn-attrs、slave均各取得/释放一次；low-fd-0先释放的14随后被kqueue取得，按owner与时序区分正常fd重用。helper内部临时fd不在parent逐项台账结论内。
+
+| 原生样本 | caller操作结果ms | caller after-await事件ms | observer收到after-await ms | caller关闭ms | writer回执/关闭ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| U1-6-1 | 94.515083 | 94.544875 | 135.493708 | 139.728083 | 37.917250 / 39.903958 |
+| U1-6-2 | 97.116542 | 97.150542 | 135.290417 | 139.815167 | 64.291833 / 66.636708 |
+| U1-6-3 | 98.420875 | 98.456750 | 135.433834 | 140.208084 | 44.073500 / 47.157916 |
+
+各列分别使用所属进程的单调时钟，不跨进程相减；driver、caller、writer均无强制处置且exit0，原预算保持。三份raw分别105183/105110/101326字节，与独立writer回执摘要及字节数一致。runner采集内保存复核、另进程保存复核和本机可信Node22.23.2入口首次离线复核均3/3、exit0；本机只读归档JSON/源码/binary/helper字节，不执行归档代码、不加载Darwin二进制或headless。
+
+唯一artifact10793441399的完整ZIP为12489418字节、2825成员，SHA256 a2dcfb89f6c36a3c7a926c8d919d7ba93fef12bb696834387a5cf347fceb991d与GitHub digest一致，下载至诊断树.debug/macos-native-failure-v1-run-35963751067/artifact.zip，完整解包在extracted。第一次仅工件传输由操作者在未完成时中止；第二次有界传输成功，download-attempt1/2.json分别保留，不是原生重跑或新增样本。可信本地复核完整stdout/stderr/status在validation/local-saved-verification-first.json。
+
+独立构建来源审计18175检查零失败：21份runner快照、16份采集源码与可信Git/preflight逐字节一致，2768成员精确核对，独立重建16处源码转换，核对2725个官方headers、19个addon API文件、SDK设置及编译/load命令和arm64 Mach-O身份。报告validation/independent-build-audit.json，SHA256 ca4429aee395fef605f72e4bde3adb9b90c3700e5b97871bff60e2b51cc5b79c。Node/编译器可执行文件与完整SDK未归档，对它们只保留runner身份声明和已归档设置的核对，不冒称本地重算完整工具链。
+
+独立raw审计未读取summary/verification、未导入既有verifier，直接复核三份config/raw/evidence、native事件前缀/owner/偏序、caller/observer/writer各自预算及真实raw回执，未发现与冻结判据不一致。报告validation/independent-raw-audit.json为50935字节，SHA256 18ae00395bde25c0aa6d06e8eeb80b7df416c98267582c76cb120f8e50bfe116；未记录精确断言数量，不虚构检查数或与18175来源检查相加。两项独立审计均只读本轮归档及可信Git来源，没有执行归档代码/native，也不宣称遍历了全部历史工件。
+
+本轮结果不覆盖真实kevent失败、早退/ESRCH、wait失败/EINTR、环境销毁、取消、其他U1/W1或跨会话故障隔离；不外推macOS x64、stock node-pty、真实Agent及Host/Supervisor/Webview/packaged。旧U1-0、旧失败、原断言和工件均保持，生产退出完整性未完成。
+
+后续顺序调整为先做生产接入决策收敛，不机械接U1-7或补满W1。现有证据足以比较候选，但不能据此批准默认接入：下一阶段写清可返回错误、未知操作、同步阻塞、进程崩溃的责任边界，收敛provider/adapter/authority接口、两模式接线与旧live能力分流、unknown有界处置、预算依据及分发支持矩阵，保留具名阻塞项。尤其不能把“不要求Supervisor崩溃恢复”扩大成任意native崩溃都保证其他会话存活。若共享进程与独立单元的选择仍依赖“会话A的同步native操作不返回时，B能否新鲜交互并正常收尾”，只另冻一个最小A/B对照；现有独立driver与D4模型不提供该证明。冻结决策/窄协议即为下一设计阶段停止条件，不在本轮追加实验，不把优先级调整写成撤销平台、取消、实际Agent或产品验收门槛。
+
+收口检查：两树各七份文档同步，第27节逐字节一致，隔离设计第2至26节及27.1至27.9、生命周期第2节以后、各主设计第7节以后保持原文；六份设计的frontmatter/索引状态与关联路径、两份计划12个章节和九个当前章节首段一致性通过。21份运行输入与固定Git摘要一致，除本次追加结果的设计文档外其余20份源码/配置保持；业务无变更，git diff --check通过。记录为本轮validation/final-docs-preservation.json，未将文档检查计为原生样本，只做本地文档提交，不追加push。

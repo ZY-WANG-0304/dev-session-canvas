@@ -23,7 +23,7 @@
 
 ## 技术债列表
 
-2026-09-24 第27.9节当前进展：U1-6独立builder/CLI/saved/workflow已实施，固定3个新样本、16来源快照和原预算；unknown停止准入，not-run须无raw/evidence。首轮30项有限纯测试通过（前轮21项加build3项/schedule6项），13个JS语法检查通过，日志在独立树`.debug/u16-input-preparation-20260924-first.log`。guard-only Node子进程不构成构建；合成archive用真实固定源码/header字节，但stub binary未执行。本轮无编译、加载、PTY、runner、推送或业务改动；独立复核未发现直接阻断（见第27.9节）；下一阶段push前fetch/rebase并核实际远端差异，再进入唯一原生采集，不重跑U1-0。早期6/6、10/10、21项及旧失败/工件保持，不扩工具门槛，退出完整性债务不关闭。
+2026-09-24 第27.10节当前进展：唯一1a88d0cc/run35963751067 attempt1在macOS26.6.2 arm64/Darwin25.6.0、Node22.23.2完成U1-6三次，runner及可信本地保存复核均3/3；30项纯测、零会话build/load另记。ZIP、21runner源、16采集源及2768build成员已核。真实取得kqueue后合成EIO，未调用注册/等待kevent；abort/ack exit0及唯一wait/kqueue/master收尾取得限定证据，独立raw核查见第27.10节。下一阶段先收敛生产故障分类、事实接口、unknown隔离、预算、两模式兼容与分发，不机械追加U1-7/W1；仅对会改变拓扑的同步阻塞另冻最小A/B协议，本轮不实验。其余原生/取消、真实Agent及Host/Webview/packaged未验收；业务、旧断言/失败/工件保持，退出完整性债务不关闭。
 
 以下第26阶段及第27阶段初次冻结记录按当时时点保留，不覆盖上述当前状态。
 
