@@ -21,7 +21,7 @@ updated_at: 2026-09-24
 
 ## 1. 已确认范围与决策状态
 
-当前以 `runtime-native-failure-isolation.md` 第27节（2026-09-24）为准：已冻结macOS U1-6注册失败的运行前协议；第26节固定输入32312fe7的唯一push run35900772851 attempt1成功，新macOS U1-0三次3/3，runner与可信本地入口离线复核均通过，没有dispatch/rerun。第27节尚未实施、构建或运行，不把合成注册失败写成真实macOS错误。真实posix_spawn/helper、kqueue/kevent及唯一waitpid、read0和逐资源释放仍只由第26节成功注册路径证明，不代表业务已修复或产品验收。具体当前边界见第6节，历史结果独立保留。
+当前以 `runtime-native-failure-isolation.md` 第27节（2026-09-24）为准：U1-6接口纠正后的21项有限纯测试通过（3项源码、7项角色mock、11项verifier），包括实际driver JS报告到verifier的mock对接；未编译C++、加载`.node`、创建真实PTY或运行runner。第26节固定32312fe7、run35900772851 attempt1的macOS U1-0三次3/3及完整复核独立保留，不将其外推到注册失败或产品验收。早期6/6、10/10的局部历史不追认充分接口覆盖；当前仍没有本轮新build/schedule输入、构建或workflow。具体边界见第6节。
 
 2026-09-20，用户同意将“退出完整性”作为本次 Runtime Persistence 重构的独立交付项。它与 F-04 容量优化、F-05 取消 completed 内联分别验收；不能等其他重构完成后假定问题自然消失，也不必等待整体终端状态替代或 F-03 root 归属改造才能推进。
 
@@ -90,11 +90,11 @@ Terminal 内的命令、子进程与后台任务由 shell、应用程序和操�
 
 ## 6. 下一步与状态
 
-当前以 `runtime-native-failure-isolation.md` 第27节（2026-09-24）为准：第26节固定输入32312fe7的唯一push run35900772851 attempt1成功，新macOS U1-0三次3/3，runner与可信本地入口离线复核均通过；第27节仅冻结U1-6合成注册失败的控制和唯一回收者协议，尚未实施或运行。注册失败后必须由同一Wait线程直接对登记child执行唯一waitpid，kqueue由同一owner单次真实close；不得等待`kqueueRegistered`才放行夹具，也不得以driver退出冒充回收。第26节的真实posix_spawn/helper、kqueue/kevent、read0、完整终态和逐资源结算不外推到U1-6或产品验收。
+当前第27节已纠正U1-6诊断替身、角色和verifier的实际接口：线程身份采用同一driver内真实`std::thread::id`，kqueue owner先登记再注入，数字EIO附`registrationErrorSource=native-substitute`，唯一一次wait及caller/observer/writer原预算分别核验。21项有限纯测试已通过，包含实际driver JS函数产生报告后交由verifier判定的mock路径；native调用仍为替身，不是C++或真实PTY验证。
 
-第26阶段10组定向纯测试、零会话build/load和三次原生结果仍分别计数；第27阶段下一步只增加U1-6针对性纯测试、静态复审和新版本输入，不重跑第26节、不扩D3/D4或通用工具门槛。其余U1/W1、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged、生产API/隔离策略/停止预算仍开放。
+本轮21项按3项源码、7项角色mock、11项verifier分账；早期6/6、10/10历史保持，但不能替代此次接口核对，也不与第26节10组纯测试、零会话build/load或三次原生执行合算。本轮独立只读复核未发现直接阻断；下一步冻结新build/schedule输入并决定唯一原生采集；当前无本轮运行输入、新构建或workflow，不重跑旧U1-0，不扩D3/D4或通用工具门槛。其余U1/W1、真实注册错误、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged、生产API/隔离策略/停止预算仍开放。
 
-U1-6的协议已经冻结为native-substitute：真实取得kqueue后在注册调用点返回合成`-1/EIO`，无真实kevent注册/等待；同一Wait线程直接waitpid自身登记的child，结果未知时不得伪造exit0或通知；注册返回后由同一owner单次关闭kqueue。夹具在ready后保持数据gate关闭，由同一token绑定的控制通道完成一次abort/ack并有界结束，不等待安全超时或依赖caller强杀。U1-6不要求固定输出/read0/终态；若要验证失败后仍交付输出，另需冻结独立场景。本节只记录设计边界，尚未证明stock node-pty或业务路径。
+U1-6保持数据gate关闭，不发送go，以token/PID绑定的abort/ack结束夹具；受控abort的exit0是场景预期。合法非零/signaled终态若已回收且其他owner和证据齐全，不应仅因场景不符虚构资源泄漏。wait未知则保留kqueue未结算、不造payload或通知并停止准入；确认自身child终态后才由同一Wait线程单次close kqueue，再完成其余owner结算。预期read/parser为0、raw为空、state为null，不要求正常负载、read0或exit7；本轮没有C++编译、加载、PTY或runner证据，stock node-pty与业务路径仍未证明。
 
 第25阶段历史记录（以下三段按当时状态保留，其macOS协议待办已由第26阶段承接，不覆盖当前实施顺序）：
 
