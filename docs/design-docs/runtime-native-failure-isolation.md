@@ -19,7 +19,7 @@ updated_at: 2026-09-24
 
 ## 1. 本阶段状态与完成边界
 
-当前以第26节（2026-09-24）为准：固定32312fe7的唯一macOS arm64 U1-0三项3/3，首次构建/加载、runner保存复核及完整下载后的本地可信复核、独立raw/来源审计均通过。保留真实posix_spawn/helper、kqueue/kevent/唯一waitpid、read0及逐资源收尾，10组纯测试与三项原生分账；不代表业务已修复或其他平台/失败路径/产品整链通过。
+当前以第27节（2026-09-24）为准：已完成macOS U1-6的运行前失败协议冻结；第26节固定32312fe7的唯一macOS arm64 U1-0三项3/3、首次构建/加载、runner保存复核及完整下载后的本地可信复核、独立raw/来源审计均通过。第27节只冻结候选行为，不表示注册失败已在原生runner复现；第26节真实posix_spawn/helper、kqueue/kevent/唯一waitpid、read0及逐资源收尾仍与三项原生分账，不代表业务已修复或其他平台/失败路径/产品整链通过。
 
 第25阶段历史状态（原文保留，不覆盖当前入口）：
 
@@ -610,3 +610,31 @@ runner复用已有GitHub托管macOS环境，新增macOS-only workflow而不dispa
 当前三项仅证明此候选在成功注册kqueue后的受控正常路径，不证明stock node-pty或产品代码已修复，也不覆盖macOS x64、早退/ESRCH竞态、其他U1/W1、真实环境销毁/并发或实际Agent/Host/Webview/packaged。旧普通后代失败及全部旧实验保留，不追认通过。
 
 下一最小阶段仅冻结macOS U1-6：真实取得kqueue后，在注册调用点注入明确的合成失败，检查唯一reaper、已取得资源和既有数据责任；不能将本轮正常成功当作异常路径已通过。本轮不再追加原生输入或通用工具门槛；生产API、隔离策略和停止预算仍待选定。
+
+## 27. macOS U1-6：kqueue注册失败后的唯一回收者协议
+
+### 27.1 运行前问题定位
+
+第26节源码复审确认，当前候选的`Wait`在`kqueue()`取得成功后执行注册循环；若注册最终失败，现有控制流只跳过`kevent`等待，随后关闭kqueue、释放TSFN并标记线程结束，却不调用任何`waitpid`。同时，现有角色门控只在`ready && kqueueRegistered`时发送`go`。因此直接把第26节输入改成U1-6会同时产生两个确定性问题：夹具永远等不到写入许可并由自限退出，且实际child没有唯一回收者，driver也无法证明master/尾部收尾。这是候选诊断缺陷，不是macOS内核或stock node-pty已经复现的产品故障。
+
+只读对照还发现固定stock `node-pty/src/unix/pty.cc` 的Darwin路径不能作为修复模板：它对非`ESRCH`注册错误不建立可靠回收分支，后续可能使用未确认的`stat_loc`继续解码，并且该路径没有本候选的owned kqueue关闭记录。U1-6不复制其`kill`/`WNOHANG`特例，也不把driver退出当作child回收；实际stock行为仍需另行产品验证。
+
+### 27.2 冻结的注入与控制协议
+
+U1-6只使用本候选的native substitute，不执行真实`kevent`注册调用。前提是本次`kqueue()`真实返回非负fd并已登记owner；注册调用点记录一个诊断性的`kqueue-register-enter`（`registerApiEntered=true`，仅表示进入替身），随后合成`result=-1,error=EIO`，并记录`registrationFailureInjected=true`、`registrationCallInvoked=false`（真实kevent未进入）、`registrationInFlight=false`、`kqueueRegistered=false`及`kqueueWaitReturned=false`。该合成错误不是Darwin实测错误，`scenarioVerdict`必须确认真实注册API未调用；不得把它写成real-api失败或系统errno证据。
+
+注入返回后仍由创建kqueue和child的同一Wait线程作为唯一reaper，直接对同一`pid`调用一次阻塞`waitpid(pid, &status, 0)`；不增加竞争线程、不按日志PID操作、不走`kevent`等待，也不调用`kill`。仅当返回的pid等于登记child且`WIFEXITED`或`WIFSIGNALED`成立时设置`waitConfirmed`并解码status；失败、陌生pid或无效status均为`wait-unknown`，不得造exit0、payload或通知。真实`wait-enter/return`必须进入native账本。
+
+注册调用已经返回且没有在途使用后，仍由该Wait线程完成一次真实`waitpid`终态，再对已取得的kqueue执行一次真实`close`，记录返回值和errno；固定顺序为`waitpid`终态→kqueue close→payload/TSFN通知与线程结算，不能由driver或其他线程提前close。wait未知、kqueue close失败、TSFN/finalizer/join失败或任一已取得owner未结算时，`resourcesSettled=false`并停止后续样本准入；不因合成注入命中而放行。
+
+夹具控制必须改为U1-6特例：driver收到同一child的`ready`后，确认合成注册返回已冻结（`registrationFailureInjected=true`且无注册在途），但**不发送`go`**，以保持注册失败前的数据门控关闭。driver通过同一token绑定的私有控制通道发送一次`abort`，fixture回传一次`abort-ack`后自行结束；不得等待fixture安全超时，也不得用caller的SIGTERM/SIGKILL把样本伪装成回收成功。这样本项专注注册失败后的回收责任，不把正常2102/2104负载或read0错误地归因于未建立的kqueue。若未来要验证注册失败仍继续交付输出，必须另冻独立场景和数据责任协议。
+
+### 27.3 分域验收与非目标
+
+U1-6的固定结果分为三域：`scenarioVerdict`要求同一token/PID的fixture ready与child/master已建立、kqueue真实取得并登记owner、诊断failpoint在真实注册调用前命中，`registerApiEntered=true`但`registrationCallInvoked=false`，合成`-1/EIO`已记录且没有真实register-return、kevent-wait或exit-event；`resourcesSettled`要求同一Wait线程完成唯一waitpid后单次真实close kqueue，再完成受控abort/ack、TSFN/payload/thread/finalizer结算以及后续master关闭；`evidenceSufficient`要求原始身份、failpoint、abort ack、wait/close/通知/stdio事实和预算可独立复算。U1-6预期`permissionSent=false`、`written=0`、`readCalls=0`、`parserAccepted=0`、`parserCompleted=0`、`state=null`，不要求2104字节、read0或exit7；任何go、written或PTY数据都是数据门控泄漏，属于场景失败，不是证据不足。合成EIO本身不是资源或证据通过条件；预期的合成失败可以通过，证据不足或实际资源失败不能通过。
+
+U1-6不覆盖真实`kevent`注册错误、`ESRCH`竞态、kqueue取得失败、早退、取消、真实环境销毁、stock node-pty、Windows、实际Agent包装链或Host/Supervisor/Webview/产品整链。候选实现、纯测试和唯一runner输入须另建版本；不修改第26节源码、原始工件或旧失败结论。本阶段只冻结协议，不实施、不构建、不运行runner。
+
+### 27.4 决策与下一步
+
+本节采纳“注册失败后同一Wait线程直接waitpid、数据gate保持关闭并使用token-bound abort/ack”的唯一回收者方案，因为child已经由本次候选创建且仍需保留真实终态；它避免了stock路径的未初始化status和重复wait风险，也不会让kqueue注册失败转化为永久child积累。继续前必须先增加正负纯测试和静态接口复审：正例确认failpoint命中后不发送go、abort/ack后唯一waitpid和kqueue单次close，负例确认旧`kqueueRegistered`门控会死锁且不能作为新协议；再冻结新输入并验证真实owner账本。生产API、隔离拓扑、停止预算和失败后是否继续交付输出仍未选定。

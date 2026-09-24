@@ -68,6 +68,8 @@ Windows已退出进程被句柄引用而继续保留对象是正常语义，不�
 
 正常路径的真实read0、wait终态和单次资源释放只证明该输入的收尾，不替代失败分支的唯一reaper与逐项owner结算。macOS正常基线的10组纯测试、三次原生执行及25206项离线审计分别计数；同组复核不增加覆盖，审计范围也不能从选定旧入口保持扩大为全部历史工件深遍历。
 
+失败注入必须先冻结数据门控和回收责任：macOS U1-6在真实取得kqueue后、真实kevent注册前合成`-1/EIO`，`registerApiEntered`只表示进入替身，`registrationCallInvoked=false`表示真实API未调用；不发送输出许可，使用token/PID绑定的abort/ack结束夹具，再由同一Wait线程唯一waitpid并单次关闭kqueue。预期无输出不是证据缺失，任何数据泄漏、未知owner或未结算都应单独判失败。
+
 HPCON 是 opaque owner token，不是可用 CloseHandle 释放的普通 Win32 HANDLE。只有同一诊断模块创建并仍持有的 token，才允许在真实 pipe EOF、消费者完成和 shell 退出后由唯一主线程调用一次 ClosePseudoConsole；PtyKill、TerminateProcess、陌生句柄和过早 Close 都不能作为自然收尾。
 
 资源因果对照还必须隔离工具本身的差异：stock 不调用候选 API，同工具链候选共享编译产物；原生等待、TSFN 和一次性连接前提失败时，不能依靠 JS 调用顺序补造成功。void 导出调用返回只证明本次调用返回，不证明 OS 已经销毁全部关联对象。

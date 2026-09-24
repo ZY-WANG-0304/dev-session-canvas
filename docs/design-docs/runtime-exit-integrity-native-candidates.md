@@ -21,7 +21,7 @@ updated_at: 2026-09-24
 
 2026-09-20 用户澄清后的产品范围以第 9 节为准：画板管理 Terminal / Agent 执行会话及其终端资源，不默认承诺实际主进程退出后继续保留节点或终端以等待普通后代及其未来输出。第 2 节冻结协议、两轮原始断言和失败结果全部保留；它们描述诊断实验是否达到原门槛，不自动等于产品验收结论。
 
-当前以 `runtime-native-failure-isolation.md` 第26节（2026-09-24）为准：固定输入32312fe7的唯一push run35900772851 attempt1成功，新macOS U1-0三次3/3，runner与可信本地入口离线复核均通过，没有dispatch/rerun。macOS26.6.2 arm64/Darwin25.6.0、Node/headers22.23.2、SDK26.5/clang21下，真实posix_spawn/helper、kqueue/kevent及唯一waitpid成立；三次各写2102/读2104字节，正容量read0、完整headless终态/光标x6/y4、wait1792/exit7及逐资源单次释放成立。独立raw/来源保持审计25206检查零失败，不把这三次正常已注册路径扩为macOS全路径或产品验收。 具体运行顺序见第6节，历史结果独立保留。
+当前以 `runtime-native-failure-isolation.md` 第27节（2026-09-24）为准：第27节已冻结macOS U1-6注册失败的运行前协议，尚未实施、构建或运行；第26节固定输入32312fe7的唯一push run35900772851 attempt1成功，新macOS U1-0三次3/3、runner与可信本地离线复核及25206项独立审计保留。U1-6采用native-substitute、同一Wait线程唯一waitpid、同owner单次kqueue close、数据gate关闭及token-bound abort/ack，不把合成EIO写成真实系统错误或产品验收。具体边界见共享设计第27节，历史结果独立保留。
 
 ## 2. 运行前冻结
 
@@ -61,7 +61,7 @@ Windows Server 2025 x64 build `26100`，image `20260907.229.1`；native conpty.n
 
 ### 当前状态（2026-09-24）
 
-当前以 `runtime-native-failure-isolation.md` 第26节（2026-09-24）为准：固定输入32312fe7的唯一push run35900772851 attempt1成功，新macOS U1-0三次3/3，runner与可信本地入口离线复核均通过，没有dispatch/rerun。macOS26.6.2 arm64/Darwin25.6.0、Node/headers22.23.2、SDK26.5/clang21下，真实posix_spawn/helper、kqueue/kevent及唯一waitpid成立；三次各写2102/读2104字节，正容量read0、完整headless终态/光标x6/y4、wait1792/exit7及逐资源单次释放成立。独立raw/来源保持审计25206检查零失败，不把这三次正常已注册路径扩为macOS全路径或产品验收。
+当前以 `runtime-native-failure-isolation.md` 第27节（2026-09-24）为准：第27节只冻结U1-6注册失败协议，尚未实施、构建或运行；第26节macOS U1-0三次3/3及独立审计仍是唯一新增原生证据。下一步先做U1-6定向纯测试、静态复审和新输入准备，不重跑第26节，不将合成EIO写成真实errno。
 
 本阶段10组定向纯测试为patch2组与verifier8组；本地首次通过、master取得绑定增强后同8组复核及runner同10组均通过，不能累加成新覆盖或与三次原生合算。build/load为零会话预检，helper与pty.node均来自冻结构建，ZIP完整下载并与GitHub digest核对。下一最小项拟仅推进macOS U1-6：先冻结实际取得kqueue后合成注册失败、唯一reaper与逐资源结算协议，不宣称真实注册失败已复现；其余U1/W1、早退/ESRCH、真实Agent及Host/Supervisor/Webview/packaged、生产API/隔离策略/停止预算仍开放。
 
