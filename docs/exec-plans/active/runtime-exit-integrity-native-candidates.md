@@ -23,7 +23,7 @@
 - [x] (2026-09-24，第26阶段) 独立raw/来源保持审计25206检查零失败，其中三case15944检查；110旧tracked、15旧证据入口和1个installed source保持，不泛化为旧15GB全量深遍历。
 - [x] (2026-09-24，第26阶段收口) 两树各七份文档同步；第26节一致、旧第2至25节保持，九个冻结源/workflow与32312fe7及冻结摘要一致。两份计划12个章节齐全，过期未运行措辞已修正，git diff --check通过；只做本地文档提交，不追加push或runner。
 - [x] (2026-09-24，第27阶段) 只读核对确认当前候选在注册失败后跳过waitpid、现有ready gate永久等待，且stock Darwin路径不能作为修复模板；两树第27节冻结native-substitute、同一Wait线程唯一waitpid、kqueue单次close、token-bound abort/ack和三域判定，不改第26节源码或工件。
-- [x] (2026-09-24，第27阶段收口) 两树外围文档同步完成；本阶段没有纯测试、构建、runner或业务修改，过期的第26阶段当前入口已改为第27阶段协议状态，git diff --check通过。
+- [x] (2026-09-24，第27阶段收口) 两树外围文档同步完成；本阶段完成U1-6纯协议测试6/6，未构建、未运行runner且未改业务，过期的第26阶段当前入口已改为第27阶段协议状态，git diff --check通过。
 - [ ] 下一最小项在独立诊断树新增U1-6定向纯测试和隔离输入，先验证failpoint/gate/abort/唯一reaper静态契约，再决定是否构建或运行runner；不重跑第26节。
 
 - [x] (2026-09-23，原生第25阶段) 冻结U1-5真实close后扣留上层回执协议，区分audit/被测状态与各自时钟；复用原native v4，不新增构建。
@@ -443,7 +443,7 @@ candidate指被验证的读取器，audit指candidate结算后才接管残留数
 
 ## 工作计划
 
-第27阶段已完成源码/矩阵只读定位和运行前协议冻结，两树文档同步并通过diff检查；没有纯测试、构建、runner、业务修改或新工件。下一最小项在独立诊断树新增U1-6输入和定向纯测试：验证kqueue取得登记、注册failpoint一次命中、旧gate不再作为放行条件、token-bound abort/ack、同一Wait线程waitpid和kqueue单次close的静态契约；测试通过前不构建或触发runner。其他U1/W1、真实注册错误、早退/ESRCH、真实Agent及产品链路继续开放，不扩大工具框架或生产接口研究。
+第27阶段已完成源码/矩阵只读定位、运行前协议冻结和U1-6定向纯测试6/6，两树文档同步并通过diff检查；没有构建、runner、业务修改或新工件。静态接口复审确认现有U1-0候选不能直接承载U1-6，下一步需在独立诊断树新增替身与roles分支并先做源码/纯测复审，不扩工具框架或生产接口研究。其他U1/W1、真实注册错误、早退/ESRCH、真实Agent及产品链路继续开放。
 
 第25阶段实施、唯一原生采集、离线复核与独立raw审计已完成，当前只收口文档和本地提交，不再运行该矩阵。下一最小阶段先冻结macOS U1-0基线，核对其真实创建/等待/源结束/释放与Linux的差异，再依托已有runner做有限独立输入；本轮不实施平台适配或触发runner/push。旧各批及下段第24阶段安排按历史时点保留，生产API/隔离策略/停止预算未选定。
 
@@ -601,7 +601,7 @@ push 前 fetch/rebase main，仅推当前诊断分支。通过 `gh api` 查 run/
 
 ## 验证与验收
 
-第27阶段仅以运行前协议作为完成条件：native-substitute在真实kqueue取得并登记后、真实register调用前命中，记录`registerApiEntered=true`且`registrationCallInvoked=false`的合成-1/EIO，不出现真实register-return/kevent-wait/exit-event；同一Wait线程唯一waitpid自身child后由同一owner单次真实close kqueue。fixture ready后不发送go，必须取得token-bound abort/ack；U1-6预期无写入、无read/parser、无终态，任何数据泄漏判场景失败。三域分别判定；本阶段没有新增执行结果，不把协议冻结算原生通过。
+第27阶段运行前协议已冻结并完成U1-6纯协议测试6/6：native-substitute在真实kqueue取得并登记后、真实register调用前命中，记录`registerApiEntered=true`且`registrationCallInvoked=false`的合成-1/EIO，不出现真实register-return/kevent-wait/exit-event；同一Wait线程唯一waitpid自身child后由同一owner单次真实close kqueue。fixture ready后不发送go，必须取得token-bound abort/ack；U1-6预期无写入、无read/parser、无终态，任何数据泄漏判场景失败。三域分别判定；现有U1-0候选尚不能承载该协议，未实施native替身、构建或runner，不把纯协议测试算原生通过。
 
 第26阶段各项要求真实posix_spawn/helper与同一child身份、ready和kqueue注册双前提、成功写2102/读2104字节、正容量read0、完整headless终态/光标x6/y4、真实wait1792/exit7及唯一正常通知。kevent返回后同owner单次close kqueue，read/parser及非master资源结算后单次close master，真实返回/error均0；资源或证据不足停止准入。旧19纯测、Linux4项不计本轮三次macOS原生验收。
 
