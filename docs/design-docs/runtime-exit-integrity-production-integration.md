@@ -428,3 +428,11 @@ requestStop只停止主体，不自动丢输出。cancelOutput停止下一read�
 修正后执行Node22.23.2的`test-execution-session-adapter.mjs`为43/43，`test-execution-provider-channel.mjs`为6/6，`test-linux-execution-provider-core.mjs`为2/2，`test-linux-execution-provider-source.mjs`为1组通过；这些均无PTY或主体进程。`npm run typecheck`、`npm run test:execution-session-bridge`及两个provider fixture的独立strict TypeScript检查通过。S2 fixture仅将手写命令类型替换为共享`ExecutionProviderCommand`，未改主体、断言或原归档。独立只读复审确认旧信用回执必须排在源确认之前、正常close不等消费、任何真实send失败仍保留；未发现该修正的新确定性阻塞。不声称每个新增纯断言都先红后绿，也不把纯验证等同修后原生通过。
 
 下一阶段只冻结修后输入和新目录，对相同normal/flood两个场景作一次新的原生采集并如实结算；不覆盖`.debug/s3-linux-provider-first/`、不重跑旧矩阵筛绿、不扩充通用工具门槛。本轮无修后原生采集、runner或push；S3验收仍未通过，PI-01/02/03及跨平台、真实Agent、业务接线、owner失联等独立门槛继续开放。
+
+### 15.8 修后两场景采集输入冻结
+
+2026-09-25用户要求继续下一阶段，从主树`2e770c95`、诊断树`ff297168`推进一次修后采集。仅给现有测试入口新增`--output`参数及实际目录提示，默认仍为首次路径，`mkdir`和`wx`拒绝覆盖已有证据；主体、断言、两场景顺序、30秒观察及原清理预算全部保持。本轮目录固定为`.debug/s3-linux-provider-source-ack-first/`，不存在才运行；若再次失败，原样结算而不自动重试，不改变判据求绿。
+
+本轮不重建native：握手修正只改变共享TypeScript通道。只读核对确认当前native header、patch、build脚本及构建副本摘要与首次build manifest一致，binary仍为第15.6节SHA256 `721cd46455897cf90bfb155240bf928442e30ad4558184f2c9f32c55431a3c6a`，Node22.23.2可执行文件身份相同；这不是复用旧诊断候选binary。首次失败目录18文件的排序内容摘要为`fc64837dd8d96bc6dc2e2dd6123da99adef1252c4ce41d4ec464d86feaa9689b`，算法为相对路径排序后JSON序列化`[{file,sha256}]`再取SHA256，供运行后只读核对，不增加归档设施。
+
+运行前先对目录参数这一窄改做语法与源码差异核对，并将测试入口及本段提交冻结。执行工作目录为主树，命令为`/home/users/ziyang01.wang-al/.npm/_npx/5dad66f2cb301fc2/node_modules/node/bin/node scripts/test/test-linux-execution-provider.mjs --output .debug/s3-linux-provider-source-ack-first`。原有sources.json保存本次实际源码摘要和bundled输入；新结果与首次0/2分账。安全复核确认：主体或native责任未知时禁止终止外层后继续创建，只有主体及三项native责任已确认结算才允许外层清理；退出异常必须留记录。本段是运行前冻结，尚无本次新采集结果，不提前宣称S3或产品通过。

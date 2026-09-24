@@ -28,6 +28,9 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [x] (2026-09-25，S3修后采集准备) 按生产接入第15.8节冻结同两场景、新目录及相同Node/native输入；仅增加测试目录参数，不改主体、断言或预算。只读输入与安全复核通过，原18文件失败归档摘要已记录。
+- [ ] S3修后采集：提交冻结入口后只运行一次normal/flood，在新目录保留实际结果，独立复核内容、live终态、资源及旧归档不变，再同步文档。
+
 - [x] (2026-09-25，S3运行前边界) 冻结生产接入设计第15节：Linux独立PTY provider、固定node-pty创建代码、单线程WNOHANG owner、4096B单槽读取及两个有限真实场景；旧证据保持，不接业务、不运行runner/push。
 - [x] (2026-09-25，S3准备) 资源取得协议adapter38组/channel1组纯回归与typecheck通过；native owner、精确源码补丁和新构建入口已实施，provider core直接纯回归2/2、source静态断言组1、bridge及最终typecheck通过，首次构建/零调用load通过，未创建PTY。
 - [x] (2026-09-25，S3首次真实运行，未通过) Linux/Node22.23.2首次两个真实PTY场景均被Control send failed阻断，0/2，未重跑；normal exit7/readBytes2108、flood signal15/readBytes73472，报告allOwnershipSettled=true、cleanup safe/steps=[]且两个provider关闭。不以安全回收追认通过。
@@ -220,6 +223,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-09-25 S3修后采集准备：源结束握手只改变TypeScript通信，native三份实现源码与构建inputs摘要仍一致；因此复用同一已核对S3二进制，不引入无关重建变量。首次18文件失败工件保持，具体摘要与安全复核见生产接入第15.8节，尚无新采集结果。
+
 2026-09-25 S3首败后定位与修正：代码链确认channel只等accepted即可close，而adapter后续consumed仍尝试发送，transport拒绝关闭后的发送并触发fault/unknown；首次trace未记录失败消息类型，故不能断言首次实际失败消息就是consumed，更不是OS或PTY丢尾部的直接证据。已加入sourceEndAccepted(finalFrameId)并通过有限纯回归；normal离线2108B精确且终态重建正确，flood73472B全x等于readBytes，但首次live终态断言未执行，0/2不改。S2 fixture仅把手写Exclude改为共享ExecutionProviderCommand类型，没有改主体或断言行为，不追认历史输入为新版本。
 
 2026-09-25 S3首次真实结果：Linux/Node22.23.2首次两个真实PTY场景均被Control send failed阻断，0/2，未重跑；normal exit7/readBytes2108、flood signal15/readBytes73472，报告allOwnershipSettled=true、cleanup safe/steps=[]且两个provider关闭。正常provider close与父consumed ACK的竞态是当前待纯定位假设，不写成已确认根因、旧产品问题或尾部损失证据。保留首次输出与结果，不自动重跑，不因安全回收将场景失败改为通过。
@@ -374,6 +379,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-09-25（S3修后采集）：只增加`--output`选择新证据目录，保留默认旧路径的拒绝覆盖行为；不修改原主体、断言、预算或清理逻辑。先本地提交冻结输入，再对原normal/flood各执行一次，不自动重试、扩大矩阵或触发runner/push。
+
 2026-09-25（S3有界源结束确认）：选择sourceEndAccepted(finalFrameId)，不使用猜测时间窗或忽略真实send错误。父adapter合法sourceEnd后停止生成信用ACK并清除冗余未发送ACK，确认沿单send队列等待旧在途发送；provider校验同identity/精确finalFrameId后才正常close，不等消费，确认不归还信用、不证明consumer/process/resource完成。确认等待期间stop/cancel仍服务，缺确认不能由超时伪装成功。首败后纯验证与离线内容补证不改原0/2；下一阶段只冻结新输入/目录复验原两场景，不扩矩阵。
 
 2026-09-25（S3首次失败处理）：把首次0/2、主体退出和已取得责任结算分别记录；保留.debug/s3-linux-provider-first，不修改判据追认通过。仅围绕Control send failed的关闭/ACK候选竞态做有限纯定位，修正与纯回归待实际完成后另记，未经新授权不重跑PTY或新增矩阵。原两个场景及生产边界不变，安全回收不等于退出完整性已交付。
@@ -522,6 +529,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+S3修后采集正在按第15.8节准备，输入来自`2e770c95`后的目录参数窄改，尚未运行。首次0/2及握手修正纯验证是既有事实，不覆盖本轮待采集结果；本轮结束后只按实际原生和独立内容检查结算。
 
 S3本轮结果：首次两个真实PTY仍为Control send failed/0/2，normal exit7/readBytes2108、flood signal15/readBytes73472；allOwnershipSettled=true、cleanup safe/steps=[]且两个provider关闭。normal首报unknown保留，不被迟到released覆盖。首次trace未记录失败消息类型，不能声称原生记录直接证明失败消息就是consumed；代码复核确认正常关闭与迟到信用发送缺少握手，已实施显式sourceEndAccepted修正。首败后Node22 adapter43/43、channel6/6、provider core2/2、source断言组1、既有bridge、全typecheck及两fixture独立strict均通过，执行会话已结束；独立只读复核无本切片确定性blocker。离线补验normal2108B精确且重建终态正确、flood73472B全x等于native readBytes；首次live终态断言未执行，不追认通过。没有修后原生采集；下一阶段仅冻结新输入/新目录复验相同两个场景，不扩矩阵/工具或自动runner/push，不接现有业务，不关闭PI-01/02/03或产品总债务。首跑前38+1和S2/S1/旧原生历史不改，统一文档静态核对通过，整体计划active。
 
@@ -1213,3 +1222,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-25，S3首次真实失败）：Linux/Node22.23.2首次两个真实PTY场景均被Control send failed阻断，0/2，未重跑；normal exit7/readBytes2108、flood signal15/readBytes73472，报告allOwnershipSettled=true、cleanup safe/steps=[]且两个provider关闭。资源安全不能替代场景/整体验收通过；当前仅有限纯定位正常关闭/父consumed ACK候选竞态，根因及修正效果待确认。保留首次工件，不自动重跑、runner/push或扩工具/矩阵，不接现有业务，PI-01/02/03和产品总债务仍开放。原始证据在.debug/s3-linux-provider-first，修正/纯验证与最终收口待实际结果补齐，不追改运行前准备和S2历史。
 
 修订记录（2026-09-25，S3握手修正纯验证收口）：首次真实两项保持Control send failed/0/2，normal首次unknown/迟到released和原始工件不改。代码链确认关闭/信用发送竞态，但首次trace缺失败消息类型；新增sourceEndAccepted显式确认，排空旧在途发送后才能正常close，不等消费、不吞真实发送错误。首败后Node22 adapter43/43、channel6/6、provider core2/2、source断言组1、既有bridge、全typecheck及两fixture独立strict均通过，执行会话已结束；独立只读复核无本切片确定性blocker。离线normal2108B精确/终态重建与flood73472B全x不代替未执行的首次live断言；首跑前38+1与旧历史分开保留。没有修后原生采集；下一阶段仅冻结新输入/新目录复验相同两个场景，不扩矩阵/工具或自动runner/push，不接现有业务，不关闭PI-01/02/03或产品总债务。两树统一文档静态检查及8份mjs语法检查通过，按已完成事实同步当前导航和四活章节；首次0/2与历史证据保持。
+
+修订记录（2026-09-25，S3修后输入冻结）：新增第15.8节与本计划四活章节的采集准备；仅增加新目录参数，同一native二进制经来源核对后复用，第一次18文件归档摘要留存。先提交输入再执行相同两场景一次，当前尚无采集结论，不扩工具或修改验收判据。

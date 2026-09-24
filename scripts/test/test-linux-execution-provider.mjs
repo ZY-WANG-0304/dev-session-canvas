@@ -4,13 +4,15 @@ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { parseArgs } from 'node:util';
 
 import esbuild from 'esbuild';
 
 assert.equal(process.platform, 'linux', 'S3 is frozen for local Linux');
 assert.equal(process.version, 'v22.23.2', 'authority, provider, and subject must use the frozen Node runtime');
 
-const outputDir = path.resolve('.debug/s3-linux-provider-first');
+const { values } = parseArgs({ options: { output: { type: 'string' } } });
+const outputDir = path.resolve(values.output ?? '.debug/s3-linux-provider-first');
 const binaryPath = path.resolve('.debug/s3-linux-provider-build-first/pty.node');
 const buildManifestPath = path.join(path.dirname(binaryPath), 'build.json');
 const buildDir = path.join(outputDir, 'bundled');
@@ -346,4 +348,4 @@ if (!permitNext && providers.some((h) => !h.transport.snapshot().closed)) {
 }
 assert.equal(permitNext, true, 'Ownership remains unconfirmed; the provider was deliberately not killed');
 assert.equal(cases.filter((item) => item.status === 'passed').length, 2, 'The first fixed S3 matrix did not pass both cases');
-console.log('Linux execution provider: 2/2 fixed PTY cases passed; evidence in .debug/s3-linux-provider-first');
+console.log(`Linux execution provider: 2/2 fixed PTY cases passed; evidence in ${outputDir}`);
