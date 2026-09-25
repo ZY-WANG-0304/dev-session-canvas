@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-25 L-03有限设计：生产接入第22节只读定位自然退出缺自动预算、过期阶段命令被拒、timer迟触发改变first结果及退役后缺ACK仍可能隔离；选定有限首报/持续结算、固定期限和stop/cancel ACK与真实终态分账，均待S5实际模块验证。父控制仅能证明provider-control，主体/源未知不默认杀唯一provider；Host实际退出无法靠内存unknown继续托管，本地失败也不能跳过独立live detach。下一只实施默认关闭的non-native关闭观察，不扩诊断框架。生产时长、父控制API/安全谓词、Host/Supervisor真实失败编排和在途start关闭约束仍属native准入前缺口；legacy批量删除吞错不能被新契约继承为成功，旧live兼容另按能力分流处理。L-02/03/04/05、真实UI/落盘/Agent/平台及总债务不关闭；本轮没有业务、用例、native/runner/push变更。以下为历史阶段记录。
+
 2026-09-25 本地最终屏障：生产接入第21节完成默认关闭、无native的实际Host/tracker到main写链及逐页面结果；Host35/35、实际main/headless27/27、远端接线20/20及相关回归/typecheck通过，包含一个实际Host到main/headless再回Host的受控整链。冻结后原reader恢复、进程未知拒发退出/保留隔离、并发ACK和在途发送取消均已补验，首轮失败分类保留。只收口本地接线切片，不关闭L-02总项或退出完整性；下一阶段只收敛L-03正常关闭失败处置与预算的接入设计/最小实现输入，L-04生产能力分流、真实UI/socket/落盘、实际Agent启动链及跨平台仍开放。普通snapshot-only语义、旧live绑定、新generation与root归属保持，不新增诊断框架或自动native/runner/push。以下为历史阶段记录。
 
 2026-09-25 远端发送链：生产接入第20节完成默认关闭、无native的四层能力协商、原连接reader绑定、成功终值传递和真实Webview写回调屏障；Supervisor36/36、client13/13、reader接线20/20、实际main/headless13/13及相关回归通过。一个内存整链走实际Supervisor到headless投影并校验最终退役，但不是真实UI/socket/native。两项relay时序回归保留旧断言修复，首败分类见20.3。下一有限项仅本地snapshot-only最终应用屏障，仍不关闭L-02；L-03原生正常关闭失败处置/失联预算、L-04生产能力分流、真实UI/落盘/Agent/跨平台以及总债务开放。旧live/root归属/新generation不顺带调整，不追加诊断框架或runner/push。以下为历史阶段记录。

@@ -21,6 +21,8 @@ updated_at: 2026-09-25
 
 ## 1. 当前结论与阶段边界
 
+2026-09-25 从`567bcd95`完成第22节L-03有限设计：定位自然收尾无自动预算、迟回调与绝对期限、终态后缺ACK的交互及Host实际离开缺口；选定有限首报/原责任继续结算，明确原父控制安全前提。下一仅S5默认关闭、无native的一次性关闭观察及实际模块回归，不再扩诊断工具。本轮只读源码和文档，无新测试/平台样本；生产数值、父控制接线及真实宿主失败边界尚未交付，L-03和整体退出完整性不关闭。以下阶段按原时点保留。
+
 2026-09-25 从`90a7d95b`完成第21节默认关闭、无native的本地snapshot-only最终应用屏障：实际Host/tracker发送初始和最终快照、连续输出，实际main写链以真实xterm回调回传逐页面结果。Host35/35、实际main/headless27/27、远端接线20/20及相关回归通过；包含实际Host到main/headless再回Host的受控整链，不等同真实VS Code UI或原生资源验收。未知进程不发布退出，已冻结后只允许原reader恢复投影。下一有限阶段转L-03正常关闭失败处置及预算的接入设计/最小实现输入；L-02总项、生产分流和整体退出完整性仍开放。以下阶段记录按原时点保留。
 
 2026-09-25 从`648958e0`完成第20节默认关闭、无native的远端发送链：四层能力协商、原连接reader绑定、明确finalRevision及真实Webview写回调屏障。Supervisor36/36、client13/13、Host/relay/client20/20（含一个实际Supervisor至headless投影的内存整链）、实际main controller/headless13/13及相关回归通过。两项旧relay时序断言曾失败，保留断言修实现后通过；不把headless与受控transport写成真实VS Code/socket/平台通过。下一有限切片为本地snapshot-only最终应用屏障；L-02、native失联处置/预算、生产分流及整体退出完整性继续开放。以下记录按原时点保留。
@@ -733,3 +735,81 @@ Host既有`require.resolve('node-pty')` external warning保持，native/spawn守
 下一阶段只收敛L-03正常关闭失败处置与预算的接入设计/最小实现输入。围绕已有两owner、transport及Linux原控制对象，明确正常排空、停止、取消、资源结算各自的期限来源、到点动作、unknown保留和准入限制；不能以杀provider、超时、取消或句柄仍被引用推断主体/资源已释放，也不能把Windows正常进程对象引用语义写成系统bug。先明确会改变本次接入判断的有限条件，再决定对应最小实现和验证，不追加通用工具门槛或默认执行native/runner。
 
 本地与远端受控接线已补齐，不等于L-02整体完成。真实VS Code UI/socket/落盘、L-03原生失败处置、L-04生产能力分流、真实Agent启动链和平台支持仍各自待验收；snapshot-only普通持久化、旧live原绑定、storage generation、F-03 root归属及Runtime无completed历史要求保持。本文第2至20节按`90a7d95b`保留，只本地提交，不push或创建PR，不把本阶段写成重构全部完成。
+
+## 22. L-03正常关闭失败处置与预算
+
+### 22.1 本轮范围与停止条件
+
+从主树`567bcd95`继续，仅做当前真实模块的源码核对与有限接入设计，不修改业务、native、诊断脚本或冻结实验，不执行测试/原生采集/runner。范围是两种owner仍存活时的自然退出收尾、主动停止和正常关闭失败；owner已经消失后的平台保障仍属L-05，但不能以此隐去Host即将退出时的责任缺口。主进程/输出源/authority消费/reader/资源各自结算，超时只改变等待或处置，不改变事实。
+
+本轮形成触发条件、单调期限、到点动作、原控制对象与unknown保留规则，以及下一默认关闭、无native的最小实现和直接验证输入后停止。生产数值、平台控制保障和真实UI/落盘仍需各自验证，不另建诊断框架，不把全部异常崩溃矩阵作为本次设计或下一受控实现的前置。
+
+### 22.2 当前源码事实，不是新增平台实验
+
+以下行号固定于`567bcd95`，`src/`和`native/`均相对`extensions/vscode/dev-session-canvas/`。本轮核对的是正常收尾能否有界报告，不据此宣称已复现真实Terminal/Agent缺陷。
+
+| 事实 | 源码锚点 | 对接入的约束 |
+| --- | --- | --- |
+| 自然processResult仅通知hook，seal后才等消费/flush；预算只在主动requestStop注册 | `src/panel/executionOwnerLifecycle.ts:154`、`:180`、`:279` | 自然退出后source不结束、消费/flush不返回或资源无结果，当前没有自动有限首报 |
+| force/cancel回调用预先算好的下一截止点，新操作要求deadline仍在未来 | `src/panel/executionOwnerLifecycle.ts:194`、`src/panel/executionSessionAdapter.ts:299` | 回调严重迟到可能只触发quarantine而未派发升级；不能把“注册timer”当已执行动作 |
+| operation/owner结果处理不复查当前时间，超时首报依赖timer先执行 | `src/panel/executionSessionAdapter.ts:311`、`:336`、`src/panel/executionOwnerLifecycle.ts:274` | 当前是回调顺序，不是严格绝对期限语义；迟到事实可能抢先成为first success |
+| adapter退役不等待stop/cancel ACK，未完成操作timer之后仍会隔离authority | `src/panel/executionSessionAdapter.ts:311`、`:346`、`:685` | 真实终态已结算后的ACK缺失必须与资源未知分开，不能先报settled再无说明地重新封禁 |
+| owner close的settled不含reader，adapter也不要求source=eof | `src/panel/executionOwnerLifecycle.ts:228`、`src/panel/executionSessionAdapter.ts:685` | settled不是完整输出或server可退出，retired和authority准入另判 |
+| 父transport持有ChildProcess与terminate/closed，通用transport只暴露connect/send | `src/panel/executionProviderTransport.ts:172`、`:202`、`src/panel/executionSessionAdapter.ts:42` | owner当前不能使用已有独立父控制；即使接通，也只证明provider-control关闭 |
+| cancel受理只置标志，不能越过正在await的信用write | `src/panel/linuxExecutionProvider.ts:152`、`:227`、`src/panel/executionProviderChannel.ts:227` | 取消期间仍须消费已取得内容，accepted不证明source/PTY释放 |
+
+Linux原token的signal先核对同owner wait，master close只尝试一次并保留errno，见`native/linux-execution-owner.h:191`、`:223`、`:241`。`childAcquired/masterAcquired`表示取得历史，不是当前存活/打开标志；父进程没有从日志PID/fd重建主体操作权。provider exit后管道仍未关闭时，父transport不再给已退出child发信号，期限只得unknown；“进程对象仍被其他句柄引用”不能等同进程仍运行或OS bug。本轮只核对Linux候选，不增加Windows/macOS验证结论。
+
+### 22.3 本轮取舍与有界观察
+
+选定下一受控切片采用“有限首报、原责任继续结算”：预算约束调用方何时得到明确报告和何时尝试已批准动作，不把真实consume/flush/native释放Promise替换为超时成功。无期限等待不能满足调用方收尾需要；统一到点kill provider会失去唯一主体控制者或尚未移交内容；把所有失败交给新guardian则扩大拓扑。后三者均不作为本轮路径。
+
+每个原execution只建立一次关闭观察，触发为确定主进程结果（natural-exit）、显式stop/boundary，或执行fault/unconfirmed（failure，不能归为自然结束）。正常完成可早于期限返回，重复stop、reason改变、late facts及reader变化都不重置起点/总期限。同一进程结果在provider端发生的时刻不可跨进程时钟推断；起点取authority实际接收相应事实的单调时钟。owner、adapter与未来父控制必须共用该时钟域，不将测试虚拟时间传给使用performance.now的真实transport。
+
+下一切片沿用显式注入的`gracefulMs/forceMs/cancelMs/settleMs`，另需`naturalDrainMs`。自然退出在`cancelAt = t0 + naturalDrainMs`前继续读取和消费，到点若源仍未结算则只请求cancel；不向已确认结束的主体发graceful/force。主动stop/failure在t0请求graceful，在`forceAt = t0 + gracefulMs`仍无确定主体终态才请求force，在`cancelAt = forceAt + forceMs`源仍未结算才请求cancel。两条路径均在`finishAt = cancelAt + cancelMs + settleMs`作有限首报。cancelMs是请求后的源结算观察窗口，settleMs是额外收尾观察窗口，不代表到点自动封口或消费失败；已有消费从t0持续推进，不等这些阶段结束。没有source缺口时不发cancel，但消费/flush/资源缺证仍受固定finishAt观察。
+
+owner创建的graceful/force/cancel命令，其ACK观察截止统一使用本轮固定finishAt；阶段升级依据主体/源事实和forceAt/cancelAt，而非accepted是否到达。这样阶段timer迟到但仍早于finishAt时，可直接补发仍必要的最高强度stop及cancel，不倒序补发graceful、不顺延总期限。到点先记录first unconfirmed，之后不创建新的语义命令；此前已经提交/排队的原命令仍可能交付，不能把“不新增意图”说成“期限后不再有物理派发”。现有late-ready可发送原start的契约暂不在S5改写；在途启动继续占责任，防止native生产关闭后迟启动仍是后续准入条件。
+
+所有结果入口及timer回调均检查同一`now()`。在`now >= deadline`才由authority观察到的结果，先冻结first unconfirmed，再更新current真实事实；不能因为timer延迟而把超期结果写成期限内成功，也不延长deadline。期限前已经记录的有效结果不因后续通知延迟降格；owner自身首次完成以它实际完成判定的时刻为准，不从provider时间戳反推。系统事件循环停止时不能保证按墙钟准时回包，此规则保证恢复处理后的分类诚实，不声称硬实时。
+
+首次超时只冻结观察并隔离该authority新准入。process/source/seal/resource first/current、authority实际消费与reader结果仍分账；迟到同操作补证可以更新当前责任并退役原执行，但不覆写first，不重发旧seal，不自动清除quarantine或换authority重新开门。源为interrupted/error/unknown时，即使资源已结算也不能显示为完整EOF。真正的final flush失败继续是failed，纯观察超时不能补造这个失败事实。固定保留preparation、process、source、consumption、final-flush、resources等未完成域及quarantine，不新增逐事件轨迹框架。
+
+命令ACK不是额外资源：对已发出的graceful/force/cancel，若到ACK截止时同执行已经依据真实process、source、完整资源账及消费事实达到adapter settled，则缺失ACK仍记录first unconfirmed，不能伪造accepted，但仅这一缺失不再新建authority quarantine。终态未结算时仍沿原超时隔离，先前已建立的quarantine不因迟到补证清除；start握手、真实发送失败、资源/消费失败不适用此豁免。owner最终flush与reader仍独立判断。这是本轮选定的“效果已由事实确认、受理回执未确认”政策，S5须补已退役后缺ACK不误封禁的定向断言；不能简单取消timer使外部等待的operation.first永不返回。
+
+生产毫秒数本轮不指定。S3的20s/30s/2s、旧Agent的5000ms及单元测试缩放值都不是已批准的生产期限；缺少生产profile就不开放native新创建。下一无native实施只使用显式注入值验证顺序、期限分类和责任，不拿用例绿色替代产品预算验收。
+
+### 22.4 原父控制的接入边界
+
+后续父控制接入必须由owner保留原transport/identity绑定的能力，复用已有`terminate({ termDeadline, killDeadline })`及`closed`；不得从PID、generation搜索或新建transport取得操作权。TERM/KILL各至多一次，关闭仅结算父侧provider-control，subject wait、PTY master/source及终端消费不由它代证。termDeadline、killDeadline和最终报告截止须在同一关闭观察内预留，不能到点再按now生成新的2s/4s清理预算。现有terminate拒绝过期termDeadline，阶段追赶/直接KILL必须先定义并验证，不能在接线中偷偷延期；本轮不修改该API。
+
+保守接入条件分两类：确认原start从未物理派发、且未取得主体/源的失败启动，可沿原父对象清理但不得补造process/EOF；已有主体的执行，只有真实主体终态、完整源移交、已取得native资源逐项released且没有不完整资源账时，才可将残余provider-control作为独立清理对象。源移交还须由adapter确认连续尾值、无未解析/拒收原始内容、sourceEndAccepted及相关在途控制发送已结算；仅source字段存在、cancel accepted或缺少资源消息不满足前提。父端已取得内容继续消费，独立provider关闭无需等待页面写回调。
+
+provider卡住且主体或移交仍未知时，不默认杀掉唯一控制者来换取父child退出。保留原控制对象、未知责任和拒新建，报告本次关闭未确认；也不重试可能被复用的FD close。若产品需要在该情形主动牺牲内容/控制来强制退出，应另行选择具名失败处置并验证，而不是称现有能力已覆盖。此条件目前不足以批准native正常关闭失败路径，L-03保持开放；这项限制不能靠模拟terminate成功解除。
+
+### 22.5 两种owner的失败结果
+
+可中止的stop/reset/delete与实际宿主离开分开。Supervisor的stop RPC当前只返回受理（`src/supervisor/runtimeSupervisorMain.ts:1260`），delete等待owner并在未确认时保留责任（`:1292`）；不能把stop受理回包显示为资源关闭成功。单根reset、多根clear和删除对新能力路径都应在失败时保留原节点绑定与责任，不清成成功；legacy批量删除当前会吞连接/delete错误（`src/panel/CanvasPanelManager.ts:10535`），不能把它作为新契约已成立的证据。旧live兼容分支不在本次顺手改写，差异在生产创建开放前解决。
+
+Host的`prepareForHostBoundary()`（`src/panel/CanvasPanelManager.ts:3750`）当前在本地owner关闭抛错后跳过后续detach/持久化；`src/extension.ts:826`还在await前清除全局manager。后续边界接线应分别记录本地关闭、可完成状态保存及远端detach的结果，本地失败不阻止独立的远端reader/client释放，且不得以吞错方式向reset报告成功。实际deactivation到预算后返回具名未确认报告；抛错不能否决VS Code退出，内存map不能承诺退出后的继续管理。没有确认的责任移交者就明确没有移交；Host真的消失之后进入L-05异常owner丢失边界，而不是将正常关闭追认为成功。snapshot-only仍不得被悄悄变成持久服务。
+
+live-runtime的Host/Webview离开只detach，不触发Supervisor或主体stop；relay取消无法确认时由原socket清理记lost，不能补造applied。相关入口为`CanvasPanelManager.ts:9845`与`runtimeSupervisorMain.ts:2409`。Supervisor自身的正常关闭才负责封闭新执行及reader准入、处理现有reader、收尾执行并刷新必要状态。`prepareForShutdown()`（`:266`）仅转调owner close，尚不是完整server关闭；idle（`:2815`）检查pending的保护必须保持。reader未退役、unknown或保存失败不能通过清map绕过；普通关闭失败时Supervisor可保持closing存活，不用重启共享server处理单会话。
+
+reader预算不并入native停止预算。有效页面只是慢时，不能仅为了让owner close绿色就宣布它失效；离开/删除已有明确cancelled/lost路径，资源可先安全回收，最终状态责任仍保留。最终页面等待的生产期限与真实UI验收继续属L-02/容量边界，不在本轮新增一个通用超时器。失败报告的用户呈现及实际持久化验证也不能由这些源码结论代替。
+
+### 22.6 下一有限实现：S5无native关闭观察
+
+下一阶段直接修改既有生产模块，不创建新的诊断层。`src/panel/executionOwnerLifecycle.ts`在显式non-native capability `execution-close-observation-v1`下增加一次性自然/主动/failure收尾观察与`naturalDrainMs`输入；旧注入没有该能力时保持原行为，所有生产创建仍关闭。复用现有停止方法、scheduler、snapshot和changed hook，给snapshot增加有界的关闭观察字段：触发原因、起点/固定截止、first及由现有事实派生的current/pendingDomains；`requestStop()`返回该观察的原首次结果，不另建第二次停止。settled仍仅指执行/authority责任，readerOutcome/retired独立保留。
+
+`src/panel/executionSessionAdapter.ts`补结果入口的绝对期限复核，保留原operation first/current及已排队语义；owner命令使用统一finishAt。adapter的新期限分类及ACK缺失豁免同样受显式内部`closeObservationV1?: true`控制，由owner从execution-close-observation-v1能力映射至ExecutionDependencies；默认不传则保留原语义，不能只gate自然退出timer却改变旧adapter结果。该能力要求naturalDrainMs及已有预算为有限正数，最长路径总和不超过scheduler支持范围，缺参数在transport创建前拒绝。`waitForSealedConsumption()`和真实tracker flush不套伪完成race，缺事实不构造seal或释放资源。Host/Supervisor新能力注入入口只读取同一关闭观察，验证natural与显式关闭调用到真实共享模块；不新增UI协议、public shutdown RPC或用户设置。
+
+直接扩展既有`test-execution-owner-lifecycle.mjs`、`test-execution-session-adapter.mjs`及Host/Supervisor wiring，用现有受控scheduler/transport和实际tracker覆盖有限场景：自然退出源挂起后取消但不发主体stop；credit满仍保留已接受内容；消费/flush/资源等待超期后可继续补证；timer迟到与结果抢先处理不改变绝对期限首报；重复stop与natural转stop不重计时；主体已知、源中断和资源结算不被合成EOF；reader慢不阻塞资源结算；已实际结算后缺stop/cancel ACK只保留回执未确认；未知A保持隔离且已准入B继续推进。仅为现有scheduler补“推进时间但暂扣deadline回调”的定向hook即可，不构建另一套时钟框架。保留原断言和历史结果，不事先写通过数。
+
+S5验收命令在仓库根运行上述四个脚本，并回归`test-runtime-reader-settlement-wiring.mjs`、`test-runtime-supervisor-reader-client.mjs`、`test-terminal-paged-projection.mjs`、`test-execution-session-bridge.mjs`、`test-serialized-terminal-state-tracker.mjs`、`test-runtime-paged-completion.mjs`及workspace typecheck；脚本完整命令均为`node scripts/test/<文件名>`，类型检查为`npm run -w extensions/vscode/dev-session-canvas typecheck`。不运行旧PTY protocol、真实transport七场景、S3/native或runner。S5停止于实际owner有限观察验证与文档收口，不在同轮添加父控制API、平台机制或更多诊断门槛。
+
+S5之后才以22.4的安全前提接原父控制，并完成22.5的Host/Supervisor失败边界接线；这些是真实native准入前必要工作，不因本轮设计或下一纯测试通过而关闭。L-03生产profile、L-04启动/能力拒绝、L-05平台owner消失、真实Agent启动链、UI/落盘及整体产品验收仍开放。
+
+### 22.7 本轮核对与收口
+
+三个只读专项分别核对owner/adapter、原父控制/Linux native、Host/Supervisor边界。复核补清了截止后原排队命令仍可到达、未派发start的独立清理前提、终态已结算的ACK缺失政策；最后发现adapter策略的gate描述遗漏，已明确由同一内部能力传入，不改变默认旧路径。复核未发现剩余直接契约矛盾，但没有实施或实测这些新规则。
+
+静态检查通过：本设计YAML/索引状态和关联路径一致，源码锚点与下一测试入口存在；第2至21节与`567bcd95`逐字保持，ExecPlan原12标题与顺序保持。变更限定五份文档，运行时/测试/native/workflow/依赖及原始工件没有本轮改动，`git diff --check`通过。初次搜索误写不存在的linuxPtyExecutionProvider.ts后已改按实际linuxExecutionProvider.ts核对，搜索失败不计平台或测试失败。本轮没有运行自动化用例、真实transport、PTY/native或runner，只作本地文档提交，不push或创建PR。
