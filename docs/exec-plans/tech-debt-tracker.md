@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-25 远端发送链：生产接入第20节完成默认关闭、无native的四层能力协商、原连接reader绑定、成功终值传递和真实Webview写回调屏障；Supervisor36/36、client13/13、reader接线20/20、实际main/headless13/13及相关回归通过。一个内存整链走实际Supervisor到headless投影并校验最终退役，但不是真实UI/socket/native。两项relay时序回归保留旧断言修复，首败分类见20.3。下一有限项仅本地snapshot-only最终应用屏障，仍不关闭L-02；L-03原生正常关闭失败处置/失联预算、L-04生产能力分流、真实UI/落盘/Agent/跨平台以及总债务开放。旧live/root归属/新generation不顺带调整，不追加诊断框架或runner/push。以下为历史阶段记录。
+
 2026-09-25 逐reader接收端：生产接入第19节完成默认关闭、non-native gate下逐open登记、回包提交范围、各reader结算及128条/60秒幂等窗口，Supervisor33/33（原13项不变）、Host19/19和相关回归通过。初版checkpoint未发送可经page绕过、preserve删除拒绝已准入open及legacy回执能力缺口经复核修正；未知sessionId的首次预期失败按unconfirmed语义保留，不称业务先红后绿。下一步仅远端发送链、真实页面write屏障和跨层能力协商；接收端通过不关闭L-02。本地最终屏障、native失联处置/预算、生产能力分流、真实UI/落盘/Agent/其他平台继续开放；不新增工具门槛，无native/runner/push，不关闭总债务。
 
 2026-09-25 S4接线补验：Host 19/19覆盖真实tracker消费/收尾及单根/多根reset入口，Supervisor 13/13修复checkpoint等待中断连/替换后重登记失效reader；有先红后绿证据，见生产接入第18节。原5/5及11/11不追认新增覆盖。reset验证的是实际Host决策和持久化调用，不是真实UI/落盘；reader最终ACK与各读者登记、native失联处置/预算、生产能力分流、其他平台仍未验收。前轮`test-runtime-supervisor-protocol.mjs`实际启动旧Supervisor/PTY，不能继续统称零PTY，分类勘误见18.2；本轮不重跑该入口。下一步仅默认关闭的远端逐reader结算接收端，不新增通用工具门槛，不关闭退出完整性总债务。

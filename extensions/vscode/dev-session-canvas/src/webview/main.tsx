@@ -1672,7 +1672,7 @@ function App(): JSX.Element {
         setExecutionTerminalTitles((current) => mergeTerminalTitleProjectionFromOutput(current, { ...message.payload, chunk: '' }));
         executionTerminalRegistry.get(message.payload.nodeId)?.controller.terminalAvailable(
           message.payload.executionSessionId, message.payload.authorityId, message.payload.revision,
-          message.payload.completed
+          message.payload.completed, message.payload.finalRevision
         );
         break;
       case 'host/executionTerminalPage':
@@ -1785,7 +1785,7 @@ function App(): JSX.Element {
       hostMessageHandlerRef.current(event.data);
     };
     window.addEventListener('message', listener);
-    postMessage({ type: 'webview/ready' });
+    postMessage({ type: 'webview/ready', payload: { capabilities: { terminalReadSettlementV1: true } } });
 
     return () => {
       window.removeEventListener('message', listener);
@@ -7528,8 +7528,10 @@ function createExecutionTerminalController(
   let pendingExitMessage: string | undefined;
   let disposed = false;
   let writeGeneration = 0;
+  let failedWriteGeneration: number | undefined;
   let queuedWriteCount = 0;
   let writeChain: Promise<void> = Promise.resolve();
+  let writeChainGeneration = 0;
   let currentExecutionSessionId: string | undefined;
   const supersededExecutionSessionIds = new Set<string>();
   let projectedExecutionSessionId: string | undefined;
@@ -7558,7 +7560,7 @@ function createExecutionTerminalController(
     typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
 
   const queueTerminalWrite = (
-    writer: (done: (applied?: boolean) => void, markStarted?: () => void) => void,
+    writer: (done: (applied?: boolean) => void, markStarted: () => void, failed: () => void) => void,
     detail?: {
       reason: string;
       characters?: number;
@@ -7571,9 +7573,13 @@ function createExecutionTerminalController(
     onComplete?: (applied: boolean) => void
   ): void => {
     const generation = writeGeneration;
+    const previousGeneration = writeChainGeneration;
+    writeChainGeneration = generation;
     queuedWriteCount += 1;
     writeChain = writeChain
-      .catch(() => undefined)
+      .catch(() => {
+        if (!disposed && previousGeneration === writeGeneration) failedWriteGeneration = previousGeneration;
+      })
       .then(
         () =>
           new Promise<void>((resolve) => {
@@ -7588,32 +7594,48 @@ function createExecutionTerminalController(
             const markStarted = (): void => {
               startedAt = readPerformanceNow();
             };
-            writer((applied = true) => {
+            let finished = false;
+            const done = (applied = true): void => {
+              if (finished) return;
+              finished = true;
               queuedWriteCount = Math.max(0, queuedWriteCount - 1);
-              reportExecutionPerformanceDiagnostic(
-                {
-                  source: 'webview-terminal-write',
-                  nodeId,
-                  kind,
-                  reason: detail?.reason,
-                  durationMs: readPerformanceNow() - startedAt,
-                  characters: detail?.characters,
-                  checkpointCharacters: detail?.checkpointCharacters,
-                  replayEventCount: detail?.replayEventCount,
-                  replayOutputCharacters: detail?.replayOutputCharacters,
-                  checkpointRevision: detail?.checkpointRevision,
-                  targetRevision: detail?.targetRevision,
-                  queuedWriteCount,
-                  bufferLength: terminal.buffer.active.length
-                },
-                {
-                  minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS,
-                  minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
-                }
-              );
-              onComplete?.(applied);
-              resolve();
-            }, markStarted);
+              try {
+                reportExecutionPerformanceDiagnostic(
+                  {
+                    source: 'webview-terminal-write',
+                    nodeId,
+                    kind,
+                    reason: detail?.reason,
+                    durationMs: readPerformanceNow() - startedAt,
+                    characters: detail?.characters,
+                    checkpointCharacters: detail?.checkpointCharacters,
+                    replayEventCount: detail?.replayEventCount,
+                    replayOutputCharacters: detail?.replayOutputCharacters,
+                    checkpointRevision: detail?.checkpointRevision,
+                    targetRevision: detail?.targetRevision,
+                    queuedWriteCount,
+                    bufferLength: terminal.buffer.active.length
+                  },
+                  {
+                    minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS,
+                    minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
+                  }
+                );
+              } catch {
+                if (!disposed && generation === writeGeneration) failedWriteGeneration = generation;
+              }
+              try {
+                onComplete?.(applied && !disposed && generation === writeGeneration && failedWriteGeneration !== generation);
+              } catch {
+                if (!disposed && generation === writeGeneration) failedWriteGeneration = generation;
+              } finally { resolve(); }
+            };
+            const failed = (): void => {
+              if (!disposed && generation === writeGeneration) failedWriteGeneration = generation;
+              done(false);
+            };
+            try { writer(done, markStarted, failed); }
+            catch { failed(); }
           })
       );
   };
@@ -7647,6 +7669,7 @@ function createExecutionTerminalController(
     pendingExitMessage = undefined;
     removePendingExecutionTerminalDrain(controller);
     writeGeneration += 1;
+    failedWriteGeneration = undefined;
     currentExecutionSessionId = executionSessionId;
     currentLocalOutputSequence = 0;
     currentTerminalAuthorityId = undefined;
@@ -7794,8 +7817,8 @@ function createExecutionTerminalController(
   const controller: ExecutionTerminalController = {
     nodeId,
     kind,
-    terminalAvailable(sessionId, authorityId, revision, completed) {
-      pagedProjection.available(sessionId, authorityId, revision, completed);
+    terminalAvailable(sessionId, authorityId, revision, completed, finalRevision) {
+      pagedProjection.available(sessionId, authorityId, revision, completed, finalRevision);
     },
     applyTerminalPage(readId, requestId, page, closedError) {
       pagedProjection.accept(readId, requestId, page, closedError);
@@ -8010,7 +8033,7 @@ function createExecutionTerminalController(
       if (disposed) {
         return;
       }
-      pagedProjection.stop();
+      pagedProjection.stop('projection-recovery');
       postAttachSnapshotRequest();
     },
     enqueueOutput(chunk, outputOptions) {
@@ -8264,7 +8287,7 @@ function createExecutionTerminalController(
       return pendingPersistBarrier || pendingProjectionBarrier;
     },
     dispose() {
-      pagedProjection.stop();
+      pagedProjection.stop('controller-disposed');
       disposed = true;
       pendingOutput = '';
       pendingOutputBoundaries = [];
@@ -8299,8 +8322,9 @@ function createExecutionTerminalController(
         readId: read.readId, requestId, afterRevision
       }
     }),
-    close: (read) => postMessage({ type: 'webview/closeExecutionTerminalRead', payload: {
-      nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId
+    close: (read, outcome) => postMessage({ type: 'webview/closeExecutionTerminalRead', payload: {
+      nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId,
+      ...(outcome ? { outcome } : {})
     } }),
     checkpoint: (read, current, applied) => {
       const detail: Extract<ExecutionHostEvent, { type: 'snapshot' }> = {
@@ -8311,22 +8335,23 @@ function createExecutionTerminalController(
       };
       options?.onContentWillChange?.('snapshot');
       options?.onSnapshotApplied?.(detail);
-      queueTerminalWrite((done) => {
+      queueTerminalWrite((done, _markStarted, failed) => {
         if (!current()) { done(false); return; }
         const release = options?.beginSnapshotRestoreDiagnosticsSuppression?.();
-        restoreExecutionTerminalSnapshot(terminal, detail, () => { release?.(); done(current()); });
+        restoreExecutionTerminalSnapshot(terminal, detail, () => { release?.(); done(current()); },
+          () => { release?.(); failed(); }, current);
       }, { reason: 'paged-checkpoint', checkpointRevision: read.checkpoint.revision }, (success) => {
-        if (success && current()) { applied(); }
+        applied(success && current());
       });
     },
     events: (events, current, applied) => {
       options?.onContentWillChange?.('output');
-      queueTerminalWrite((done) => {
-        applyTerminalStreamEvents(terminal, events, () => done(current()), current);
+      queueTerminalWrite((done, _markStarted, failed) => {
+        applyTerminalStreamEvents(terminal, events, () => done(current()), current, failed);
       }, { reason: 'paged-events', replayEventCount: events.length,
         replayOutputCharacters: events.reduce((size, event) => size + (event.type === 'output' ? event.data.length : 0), 0)
       }, (success) => {
-        if (success && current()) { applied(); }
+        applied(success && current());
       });
     },
     exit: queueExitWrite
@@ -8339,39 +8364,45 @@ function applyTerminalStreamEvents(
   terminal: Terminal,
   events: readonly import('../common/terminalSessionStream').TerminalStreamEvent[],
   done: () => void,
-  current: () => boolean = () => true
+  current: () => boolean = () => true,
+  failed?: () => void
 ): void {
   const apply = (start: number): void => {
-    if (!current()) {
-      done();
-      return;
-    }
-    let index = start;
-    while (index < events.length) {
-      const event = events[index];
-      if (event.type === 'output') {
-        let outputBatch = '';
-        while (index < events.length) {
-          const outputEvent = events[index];
-          if (outputEvent.type !== 'output' || (outputBatch.length > 0 &&
-              outputBatch.length + outputEvent.data.length > EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS)) {
-            break;
-          }
-          outputBatch += outputEvent.data;
-          index += 1;
-        }
-        // Resize/options changes must run after xterm leaves its parser callback.
-        terminal.write(outputBatch, () => window.setTimeout(() => apply(index), 0));
+    try {
+      if (!current()) {
+        done();
         return;
       }
-      if (event.type === 'resize') {
-        terminal.resize(event.cols, event.rows);
-      } else {
-        terminal.options.scrollback = event.scrollback;
+      let index = start;
+      while (index < events.length) {
+        const event = events[index];
+        if (event.type === 'output') {
+          let outputBatch = '';
+          while (index < events.length) {
+            const outputEvent = events[index];
+            if (outputEvent.type !== 'output' || (outputBatch.length > 0 &&
+                outputBatch.length + outputEvent.data.length > EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS)) {
+              break;
+            }
+            outputBatch += outputEvent.data;
+            index += 1;
+          }
+          // Resize/options changes must run after xterm leaves its parser callback.
+          terminal.write(outputBatch, () => window.setTimeout(() => apply(index), 0));
+          return;
+        }
+        if (event.type === 'resize') {
+          terminal.resize(event.cols, event.rows);
+        } else {
+          terminal.options.scrollback = event.scrollback;
+        }
+        index += 1;
       }
-      index += 1;
+      done();
+    } catch (error) {
+      if (failed) failed();
+      else throw error;
     }
-    done();
   };
   apply(0);
 }
@@ -8379,8 +8410,11 @@ function applyTerminalStreamEvents(
 function restoreExecutionTerminalSnapshot(
   terminal: Terminal,
   detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>,
-  onRestored?: () => void
+  onRestored?: () => void,
+  onFailed?: () => void,
+  current: () => boolean = () => true
 ): void {
+  if (!current()) { onRestored?.(); return; }
   const finishRestore = (): void => {
     window.requestAnimationFrame(() => {
       if (terminal.rows > 0) {
@@ -8390,70 +8424,77 @@ function restoreExecutionTerminalSnapshot(
     onRestored?.();
   };
 
-  if (detail.terminalStream !== undefined) {
-    const terminalStream = normalizeTerminalStreamAttachPayload(detail.terminalStream);
-    if (
-      !terminalStream ||
-      detail.executionSessionId === undefined ||
-      terminalStream.sessionId !== detail.executionSessionId
-    ) {
-      // Fail closed: raw output is not a valid fallback for a rejected authority payload.
-      onRestored?.();
+  try {
+    if (detail.terminalStream !== undefined) {
+      const terminalStream = normalizeTerminalStreamAttachPayload(detail.terminalStream);
+      if (
+        !terminalStream ||
+        detail.executionSessionId === undefined ||
+        terminalStream.sessionId !== detail.executionSessionId
+      ) {
+        // Fail closed: raw output is not a valid fallback for a rejected authority payload.
+        if (onFailed) onFailed();
+        else onRestored?.();
+        return;
+      }
+
+      const { checkpoint, events } = terminalStream;
+      terminal.options.scrollback = checkpoint.scrollback;
+      if (terminal.cols !== checkpoint.cols || terminal.rows !== checkpoint.rows) {
+        terminal.resize(checkpoint.cols, checkpoint.rows);
+      }
+      terminal.reset();
+
+      const applyEvents = (): void => applyTerminalStreamEvents(terminal, events, finishRestore, current, onFailed);
+
+      if (checkpoint.serializedState.data || onFailed) {
+        // Explicit completion also crosses xterm's callback for an empty checkpoint.
+        terminal.write(checkpoint.serializedState.data, () => window.setTimeout(applyEvents, 0));
+      } else {
+        applyEvents();
+      }
       return;
     }
 
-    const { checkpoint, events } = terminalStream;
-    terminal.options.scrollback = checkpoint.scrollback;
-    if (terminal.cols !== checkpoint.cols || terminal.rows !== checkpoint.rows) {
-      terminal.resize(checkpoint.cols, checkpoint.rows);
+    const snapshotOutputSequence = normalizeTerminalSnapshotOutputSequence(detail.outputSequence);
+    const serializedTerminalStateOutputSequence = normalizeTerminalSnapshotOutputSequence(
+      detail.serializedTerminalState?.outputSequence
+    );
+    const serializedTerminalState =
+      detail.serializedTerminalState !== undefined &&
+      (
+        snapshotOutputSequence === undefined ||
+        serializedTerminalStateOutputSequence === snapshotOutputSequence
+      )
+        ? detail.serializedTerminalState
+        : undefined;
+
+    const restoreCols = detail.cols > 1 ? detail.cols : terminal.cols;
+    const restoreRows = detail.rows > 0 ? detail.rows : terminal.rows;
+    if (restoreCols > 1 && restoreRows > 0 && (terminal.cols !== restoreCols || terminal.rows !== restoreRows)) {
+      terminal.resize(restoreCols, restoreRows);
     }
     terminal.reset();
 
-    const applyEvents = (): void => applyTerminalStreamEvents(terminal, events, finishRestore);
-
-    if (checkpoint.serializedState.data) {
-      terminal.write(checkpoint.serializedState.data, () => window.setTimeout(applyEvents, 0));
-    } else {
-      applyEvents();
+    if (serializedTerminalState) {
+      terminal.write(serializedTerminalState.data, () => {
+        finishRestore();
+      });
+      return;
     }
-    return;
+
+    if (detail.output) {
+      terminal.write(detail.output, () => {
+        finishRestore();
+      });
+      return;
+    }
+
+    finishRestore();
+  } catch (error) {
+    if (onFailed) onFailed();
+    else throw error;
   }
-
-  const snapshotOutputSequence = normalizeTerminalSnapshotOutputSequence(detail.outputSequence);
-  const serializedTerminalStateOutputSequence = normalizeTerminalSnapshotOutputSequence(
-    detail.serializedTerminalState?.outputSequence
-  );
-  const serializedTerminalState =
-    detail.serializedTerminalState !== undefined &&
-    (
-      snapshotOutputSequence === undefined ||
-      serializedTerminalStateOutputSequence === snapshotOutputSequence
-    )
-      ? detail.serializedTerminalState
-      : undefined;
-
-  const restoreCols = detail.cols > 1 ? detail.cols : terminal.cols;
-  const restoreRows = detail.rows > 0 ? detail.rows : terminal.rows;
-  if (restoreCols > 1 && restoreRows > 0 && (terminal.cols !== restoreCols || terminal.rows !== restoreRows)) {
-    terminal.resize(restoreCols, restoreRows);
-  }
-  terminal.reset();
-
-  if (serializedTerminalState) {
-    terminal.write(serializedTerminalState.data, () => {
-      finishRestore();
-    });
-    return;
-  }
-
-  if (detail.output) {
-    terminal.write(detail.output, () => {
-      finishRestore();
-    });
-    return;
-  }
-
-  finishRestore();
 }
 
 function normalizeTerminalSnapshotOutputSequence(value: number | undefined): number | undefined {

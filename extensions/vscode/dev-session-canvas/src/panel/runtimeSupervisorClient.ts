@@ -30,15 +30,32 @@ import type {
 import type {
   RuntimeSupervisorOpenTerminalReadParams,
   RuntimeSupervisorReadTerminalPageParams,
-  RuntimeSupervisorCloseTerminalReadParams
+  RuntimeSupervisorCloseTerminalReadParams,
+  RuntimeSupervisorCloseTerminalReadResult
 } from '../common/runtimeSupervisorProtocol';
-import type { TerminalStreamPage, TerminalStreamReadDescriptor } from '../common/terminalStreamPaging';
+import {
+  normalizeTerminalReadOutcome,
+  normalizeTerminalStreamRead,
+  type TerminalStreamPage,
+  type TerminalStreamReadDescriptor
+} from '../common/terminalStreamPaging';
 import type { RuntimeHostBackend } from './runtimeHostBackend';
 
 interface PendingSupervisorRequest<T> {
+  socket: net.Socket;
   resolve: (value: T) => void;
   reject: (error: Error) => void;
 }
+
+interface TerminalReadConnection {
+  socket: net.Socket;
+  sessionId: string;
+  authorityId: string;
+  consumerId: 'editor' | 'panel';
+  closed: boolean;
+}
+
+const CLOSED_TERMINAL_READ_CONNECTION_LIMIT = 128;
 
 export interface RuntimeSupervisorClientOptions extends RuntimeSupervisorClientEventHandlers {
   backend: RuntimeHostBackend;
@@ -54,6 +71,7 @@ export class RuntimeSupervisorClient {
   private buffer = '';
   private helloResult: RuntimeSupervisorHelloResult | undefined;
   private readonly pendingRequests = new Map<string, PendingSupervisorRequest<unknown>>();
+  private readonly terminalReadConnections = new Map<string, TerminalReadConnection>();
 
   public constructor(private readonly options: RuntimeSupervisorClientOptions) {}
 
@@ -107,19 +125,101 @@ export class RuntimeSupervisorClient {
     return this.supportsTerminalPagedRead() && this.helloResult?.capabilities?.terminalPagedCompletionV1 === true;
   }
 
+  public supportsTerminalReadSettlement(): boolean {
+    return this.supportsTerminalPagedCompletion() && this.helloResult?.capabilities?.terminalReadSettlementV1 === true;
+  }
+
   public async openTerminalRead(params: RuntimeSupervisorOpenTerminalReadParams): Promise<TerminalStreamReadDescriptor> {
     await this.ensureConnected({ allowRestart: false });
-    return this.requestOnConnectedSocket('openTerminalRead', params);
+    const socket = this.socket;
+    if (params.settlementMode !== undefined &&
+        (params.settlementMode !== 'final-application-v1' || !this.supportsTerminalReadSettlement())) {
+      throw new Error('Terminal reader settlement capability is unavailable.');
+    }
+    const result = await this.requestOnConnectedSocket<TerminalStreamReadDescriptor>('openTerminalRead', params, socket);
+    if (params.settlementMode === undefined) return result;
+    if (!socket || socket !== this.socket || socket.destroyed || this.disposed) {
+      throw new Error('Terminal reader connection changed while opening.');
+    }
+    const read = normalizeTerminalStreamRead(result);
+    if (!read || read.sessionId !== params.sessionId || read.authorityId !== params.authorityId) {
+      throw new Error('Invalid terminal reader settlement descriptor.');
+    }
+    if (read.settlementMode !== params.settlementMode) {
+      void this.requestOnConnectedSocket('closeTerminalRead', {
+        sessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId
+      }, socket).catch(() => undefined);
+      throw new Error('Terminal reader settlement was not negotiated.');
+    }
+    for (const binding of this.terminalReadConnections.values()) {
+      if (binding.socket === socket && binding.sessionId === read.sessionId && binding.consumerId === params.consumerId) {
+        binding.closed = true;
+      }
+    }
+    this.terminalReadConnections.set(read.readId, { socket, sessionId: read.sessionId,
+      authorityId: read.authorityId, consumerId: params.consumerId, closed: false });
+    this.pruneClosedTerminalReadConnections();
+    return read;
   }
 
   public async readTerminalPage(params: RuntimeSupervisorReadTerminalPageParams): Promise<TerminalStreamPage> {
+    const binding = this.terminalReadConnections.get(params.readId);
+    if (binding) {
+      this.assertTerminalReadConnection(binding, params);
+      if (binding.closed) throw new Error('Terminal reader is already closed.');
+      return this.requestOnConnectedSocket('readTerminalPage', params, binding.socket);
+    }
     await this.ensureConnected({ allowRestart: false });
     return this.requestOnConnectedSocket('readTerminalPage', params);
   }
 
-  public async closeTerminalRead(params: RuntimeSupervisorCloseTerminalReadParams): Promise<void> {
+  public async closeTerminalRead(params: RuntimeSupervisorCloseTerminalReadParams): Promise<RuntimeSupervisorCloseTerminalReadResult> {
+    const binding = this.terminalReadConnections.get(params.readId);
+    if (params.outcome !== undefined) {
+      const outcome = normalizeTerminalReadOutcome(params.outcome);
+      if (!outcome) throw new Error('Invalid terminal reader outcome.');
+      if (!binding || binding.sessionId !== params.sessionId || binding.authorityId !== params.authorityId) {
+        return { ok: true, settlement: 'unconfirmed' };
+      }
+      if (this.disposed || this.socket !== binding.socket || binding.socket.destroyed || !this.helloResult) {
+        binding.closed = true;
+        this.pruneClosedTerminalReadConnections();
+        return { ok: true, settlement: 'unconfirmed' };
+      }
+      const result = await this.requestOnConnectedSocket<RuntimeSupervisorCloseTerminalReadResult>(
+        'closeTerminalRead', { ...params, outcome }, binding.socket);
+      if (result?.ok !== true || !['recorded', 'duplicate', 'unconfirmed'].includes(result.settlement ?? '')) {
+        throw new Error('Invalid terminal reader settlement response.');
+      }
+      binding.closed = true;
+      this.pruneClosedTerminalReadConnections();
+      return result;
+    }
+    if (binding && (this.socket !== binding.socket || binding.socket.destroyed)) {
+      binding.closed = true;
+      this.pruneClosedTerminalReadConnections();
+      return { ok: true, settlement: 'unconfirmed' };
+    }
     if (this.socket && !this.socket.destroyed && this.helloResult) {
-      await this.requestOnConnectedSocket('closeTerminalRead', params);
+      const result = await this.requestOnConnectedSocket<RuntimeSupervisorCloseTerminalReadResult>('closeTerminalRead', params);
+      if (binding) { binding.closed = true; this.pruneClosedTerminalReadConnections(); }
+      return result;
+    }
+    return { ok: true };
+  }
+
+  private assertTerminalReadConnection(binding: TerminalReadConnection, params: RuntimeSupervisorReadTerminalPageParams): void {
+    if (this.disposed || binding.socket !== this.socket || binding.socket.destroyed || !this.helloResult ||
+        binding.sessionId !== params.sessionId || binding.authorityId !== params.authorityId) {
+      throw new Error('Terminal reader connection is no longer current.');
+    }
+  }
+
+  private pruneClosedTerminalReadConnections(): void {
+    let closed = [...this.terminalReadConnections.values()].filter(binding => binding.closed).length;
+    for (const [readId, binding] of this.terminalReadConnections) {
+      if (closed <= CLOSED_TERMINAL_READ_CONNECTION_LIMIT) break;
+      if (binding.closed) { this.terminalReadConnections.delete(readId); closed--; }
     }
   }
 
@@ -211,6 +311,7 @@ export class RuntimeSupervisorClient {
     }
     this.socket = undefined;
     this.helloResult = undefined;
+    this.terminalReadConnections.clear();
     this.rejectAllPending(createRuntimeSupervisorProtocolError({
       id: 'clientDisconnected'
     }, RUNTIME_SUPERVISOR_ERROR_CODES.clientDisconnected));
@@ -253,9 +354,9 @@ export class RuntimeSupervisorClient {
     return this.requestOnConnectedSocket(method, params);
   }
 
-  private requestOnConnectedSocket<T>(method: string, params?: unknown): Promise<T> {
+  private requestOnConnectedSocket<T>(method: string, params?: unknown, expectedSocket?: net.Socket): Promise<T> {
     const socket = this.socket;
-    if (!socket || socket.destroyed) {
+    if (!socket || socket.destroyed || this.disposed || (expectedSocket && socket !== expectedSocket)) {
       throw createRuntimeSupervisorProtocolError({
         id: 'clientNotConnected'
       }, RUNTIME_SUPERVISOR_ERROR_CODES.clientNotConnected);
@@ -264,6 +365,7 @@ export class RuntimeSupervisorClient {
     const id = randomUUID();
     const promise = new Promise<T>((resolve, reject) => {
       this.pendingRequests.set(id, {
+        socket,
         resolve: resolve as (value: unknown) => void,
         reject
       });
@@ -283,7 +385,13 @@ export class RuntimeSupervisorClient {
             params
           };
 
-    socket.write(`${JSON.stringify(message)}\n`);
+    try {
+      socket.write(`${JSON.stringify(message)}\n`);
+    } catch (error) {
+      const pending = this.pendingRequests.get(id);
+      this.pendingRequests.delete(id);
+      pending?.reject(error instanceof Error ? error : new Error(String(error)));
+    }
     return promise;
   }
 
@@ -336,15 +444,20 @@ export class RuntimeSupervisorClient {
   }
 
   private attachSocket(socket: net.Socket): void {
+    if (this.socket && this.socket !== socket) {
+      this.rejectSocketPending(this.socket, new Error('Runtime supervisor connection was replaced.'));
+    }
     this.socket = socket;
     this.buffer = '';
     this.helloResult = undefined;
     socket.setEncoding('utf8');
     socket.on('data', (chunk) => {
+      if (this.socket !== socket) return;
       this.buffer += chunk;
-      this.drainBufferedMessages();
+      this.drainBufferedMessages(socket);
     });
     socket.on('close', () => {
+      if (this.socket !== socket) return;
       const error = this.disposed
         ? undefined
         : createRuntimeSupervisorProtocolError({
@@ -352,7 +465,8 @@ export class RuntimeSupervisorClient {
           }, RUNTIME_SUPERVISOR_ERROR_CODES.clientConnectionClosed);
       this.socket = undefined;
       this.helloResult = undefined;
-      this.rejectAllPending(error ?? createRuntimeSupervisorProtocolError({
+      this.buffer = '';
+      this.rejectSocketPending(socket, error ?? createRuntimeSupervisorProtocolError({
         id: 'clientConnectionClosed'
       }, RUNTIME_SUPERVISOR_ERROR_CODES.clientConnectionClosed));
       if (!this.disposed) {
@@ -360,14 +474,14 @@ export class RuntimeSupervisorClient {
       }
     });
     socket.on('error', (error) => {
-      if (!this.disposed) {
+      if (this.socket === socket && !this.disposed) {
         this.options.onDisconnected?.(error);
       }
     });
   }
 
-  private drainBufferedMessages(): void {
-    while (true) {
+  private drainBufferedMessages(socket: net.Socket): void {
+    while (this.socket === socket) {
       const newlineIndex = this.buffer.indexOf('\n');
       if (newlineIndex < 0) {
         return;
@@ -386,14 +500,14 @@ export class RuntimeSupervisorClient {
         continue;
       }
 
-      this.handleMessage(message);
+      this.handleMessage(message, socket);
     }
   }
 
-  private handleMessage(message: RuntimeSupervisorMessage): void {
+  private handleMessage(message: RuntimeSupervisorMessage, socket: net.Socket): void {
     if (message.type === 'response') {
       const pending = this.pendingRequests.get(message.id);
-      if (!pending) {
+      if (!pending || pending.socket !== socket) {
         return;
       }
       this.pendingRequests.delete(message.id);
@@ -435,6 +549,15 @@ export class RuntimeSupervisorClient {
     this.pendingRequests.clear();
   }
 
+  private rejectSocketPending(socket: net.Socket, error: Error): void {
+    for (const [id, pending] of this.pendingRequests) {
+      if (pending.socket === socket) {
+        this.pendingRequests.delete(id);
+        pending.reject(error);
+      }
+    }
+  }
+
   private async startSupervisorProcess(): Promise<void> {
     await this.options.backend.startSupervisor({
       supervisorScriptPath: this.options.supervisorScriptPath,
@@ -466,7 +589,12 @@ export class RuntimeSupervisorClient {
   }
 
   private async performHelloHandshake(): Promise<void> {
-    this.helloResult = await this.requestOnConnectedSocket<RuntimeSupervisorHelloResult>('hello');
+    const socket = this.socket;
+    const result = await this.requestOnConnectedSocket<RuntimeSupervisorHelloResult>('hello', undefined, socket);
+    if (!socket || socket !== this.socket || socket.destroyed || this.disposed) {
+      throw new Error('Runtime supervisor connection changed during handshake.');
+    }
+    this.helloResult = result;
   }
 
   private clearConnectPromise(connectPromise: Promise<void>): void {

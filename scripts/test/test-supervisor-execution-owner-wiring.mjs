@@ -881,6 +881,73 @@ try {
     });
   }
 
+  await checkReader('hello, session and open each advertise only their actual settlement capability', async () => {
+    const legacy = fixture();
+    const legacyHello = await request(legacy, legacy.socket, 'hello');
+    assert.equal(legacyHello.result.capabilities.terminalReadSettlementV1, undefined);
+    const old = await legacy.create();
+    assert.equal(old.result.capabilities, undefined);
+    await finish(legacy, old.session, old.transport);
+    assert.equal(legacy.server.toSnapshot(old.session).terminalFinalRevision, undefined);
+
+    const f = fixture(readerCapabilities);
+    const greeting = await request(f, f.socket, 'hello');
+    assert.equal(greeting.result.capabilities.terminalReadSettlementV1, true);
+    const { session, transport, result } = await f.create();
+    assert.equal(result.capabilities.terminalReadSettlementV1, true);
+    assert.equal(result.terminalFinalRevision, undefined);
+    assert.equal(f.server.toSnapshot({ ...session, ownedReaders: undefined }).capabilities, undefined,
+      'server support must not upgrade a session without a reader owner');
+    const plain = await openReader(f, session, 'panel', f.socket, false);
+    assert.equal(plain.settlementMode, undefined);
+    const opted = await openReader(f, session);
+    assert.equal(opted.settlementMode, 'final-application-v1');
+    await finish(f, session, transport);
+    assert.equal(f.server.toSnapshot(session).terminalFinalRevision, 0);
+    assertSettlement(await closeReader(f, opted, { kind: 'applied', finalRevision: 0 }), 'recorded');
+    assertSettlement(await closeReader(f, plain), 'recorded');
+  });
+
+  await checkReader('final revision notification waits for the actual final tracker flush', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const read = await openReader(f, session);
+    transport.output('advertised-tail');
+    await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'notification tail consumed');
+    const entered = deferred();
+    const gate = deferred();
+    const flush = session.terminalStateTracker.flush.bind(session.terminalStateTracker);
+    session.terminalStateTracker.flush = async () => { entered.resolve(); await gate.promise; return flush(); };
+    transport.process();
+    transport.seal();
+    transport.release();
+    await f.until(() => session.ownedExecution.snapshot().adapter.seal !== undefined, 'notification seal');
+    await entered.promise;
+    assert.equal(f.server.toSnapshot(session).terminalFinalRevision, undefined);
+    gate.resolve();
+    await f.until(() => session.ownedExecution.snapshot().settled, 'notification final flush');
+    const notifications = f.socket.messages.filter(message => message.type === 'event' &&
+      message.event === 'sessionState' && message.payload.sessionId === session.sessionId && !message.payload.live);
+    assert.equal(notifications.at(-1).payload.terminalFinalRevision, 1);
+    assert.equal(notifications.at(-1).payload.capabilities.terminalReadSettlementV1, true);
+    await closeReader(f, read, { kind: 'cancelled', reason: 'notification fixture complete' });
+  });
+
+  await checkReader('failed authority finalization never advertises a final applied revision', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    session.terminalStateTracker.flush = async () => { throw new Error('controlled final tracker failure'); };
+    transport.process();
+    transport.seal();
+    transport.release();
+    await f.until(() => session.ownedExecution.snapshot().terminal?.kind === 'failed', 'failed authority result');
+    const snapshot = f.server.toSnapshot(session);
+    assert.equal(snapshot.live, false);
+    assert.equal(snapshot.lifecycle, 'error');
+    assert.equal(snapshot.terminalRevision, 0);
+    assert.equal(snapshot.terminalFinalRevision, undefined, 'live=false and head revision do not prove final application');
+  });
+
   assert.equal(forbiddenAcquisitions, 0);
   console.log(`Supervisor execution owner wiring: ${passed}/${passed} pure cases passed`);
 } finally {

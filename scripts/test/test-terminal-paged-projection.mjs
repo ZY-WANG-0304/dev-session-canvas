@@ -108,6 +108,8 @@ try {
   await new Promise(resolve => setTimeout(resolve, 300));
   assert.equal(requests.length, requestCount, 'closed completed readers must not retry forever');
 
+  await verifyControllerSettlement(directory);
+
   const relay = new RuntimeTerminalReadRelay();
   let opens = 0;
   let remoteFailure = false;
@@ -188,11 +190,7 @@ async function verifyClientReconnectPolicy(RuntimeSupervisorClient) {
 async function verifySupervisorRetention(directory) {
   const filename = path.resolve('extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts');
   const source = await readFile(filename, 'utf8');
-  const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
-  const calls = ast.statements.filter((node) => ts.isExpressionStatement(node) && node.getText(ast).startsWith('void main()'));
-  assert.equal(calls.length, 1);
-  const contents = source.slice(0, calls[0].pos) + source.slice(calls[0].end) +
-    '\nexport { RuntimeSupervisorServer, TerminalSessionJournal, SerializedTerminalStateTracker };';
+  const contents = source + '\nexport { TerminalSessionJournal, SerializedTerminalStateTracker };';
   const bundle = await esbuild.build({ stdin: { contents, resolveDir: path.dirname(filename), loader: 'ts' },
     bundle: true, platform: 'node', format: 'cjs', write: false, external: ['node-pty'] });
   const module = { exports: {} };
@@ -348,4 +346,299 @@ async function verifyHostReconnect() {
   await pending;
   assert.equal(subscribed, true);
   assert.equal(timers.length, 0);
+}
+
+async function verifyControllerSettlement(directory) {
+  const filename = path.resolve('extensions/vscode/dev-session-canvas/src/webview/main.tsx');
+  const source = await readFile(filename, 'utf8');
+  const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const extract = name => {
+    const declaration = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
+    assert.ok(declaration, `actual Webview function ${name} must exist`);
+    return declaration.getText(ast);
+  };
+  const contents = `
+    import { TerminalPagedProjection } from './terminalPagedProjection';
+    import { normalizeTerminalStreamAttachPayload } from '../common/terminalSessionStream';
+    const window = { setTimeout, clearTimeout, requestAnimationFrame: callback => setTimeout(callback, 0) };
+    const readPerformanceNow = () => performance.now();
+    const removePendingExecutionTerminalDrain = () => {};
+    const scheduleExecutionTerminalDrain = () => {};
+    const scheduleExecutionTerminalSnapshotWrite = task => task.run(() => {});
+    const pendingExecutionTerminalSnapshotWrites = [];
+    const activeExecutionTerminalSnapshotWrite = undefined;
+    const EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS = 0;
+    const EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS = 0;
+    const EXECUTION_TERMINAL_APPLIED_ACK_INTERVAL_MS = 5;
+    const EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS = 32768;
+    ${extract('applyTerminalStreamEvents')}
+    ${extract('restoreExecutionTerminalSnapshot')}
+    ${extract('normalizeTerminalSnapshotOutputSequence')}
+    export function createController(terminal, postMessage, options, reportExecutionPerformanceDiagnostic) {
+      ${extract('createExecutionTerminalController')}
+      return createExecutionTerminalController('node', 'terminal', terminal, options);
+    }
+  `;
+  const outfile = path.join(directory, 'actual-webview-controller.cjs');
+  await esbuild.build({ stdin: { contents, resolveDir: path.dirname(filename), loader: 'ts' },
+    outfile, bundle: true, platform: 'node', format: 'cjs', target: 'node18' });
+  const require = createRequire(import.meta.url);
+  const { createController } = require(outfile);
+  const { Terminal } = require('@xterm/headless');
+  let passed = 0;
+  const defer = () => {
+    let resolve;
+    const promise = new Promise(done => { resolve = done; });
+    return { promise, resolve };
+  };
+  const until = async (condition, label) => {
+    for (let turn = 0; turn < 200; turn++) {
+      if (condition()) return;
+      await new Promise(resolve => setTimeout(resolve, 1));
+    }
+    assert.fail(`Actual controller condition not reached: ${label}`);
+  };
+  const check = async (name, run) => {
+    let timer;
+    try {
+      await Promise.race([run(), new Promise((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`Actual controller ${name} exceeded 3000 ms`)), 3000);
+      })]);
+      passed++;
+      console.log(`PASS actual Webview writer: ${name}`);
+    } finally { clearTimeout(timer); }
+  };
+  const fixture = (readId = 'reader', headRevision = 0, settlementMode = 'final-application-v1') => {
+    const messages = [];
+    const terminal = new Terminal({ cols: 80, rows: 24, scrollback: 100, allowProposedApi: true });
+    terminal.refresh = () => {};
+    let snapshotNotifications = 0;
+    const diagnostics = { failNext: false };
+    const controller = createController(terminal, message => messages.push(message), {
+      onSnapshotApplied: () => { snapshotNotifications++; }
+    }, () => {
+      if (diagnostics.failNext) { diagnostics.failNext = false; throw new Error('controlled diagnostic callback failure'); }
+    });
+    const descriptor = {
+      readId, sessionId: 'session', authorityId: 'authority', headRevision,
+      ...(settlementMode ? { settlementMode } : {}),
+      checkpoint: { version: 1, sessionId: 'session', authorityId: 'authority', revision: 0,
+        cols: 80, rows: 24, scrollback: 100, createdAtMs: 1,
+        serializedState: { format: 'xterm-serialize-v1', data: '', outputSequence: 0 } }
+    };
+    const start = (read = descriptor) => controller.applySnapshot({
+      type: 'snapshot', nodeId: 'node', kind: 'terminal', output: '', cols: 80, rows: 24,
+      liveSession: true, executionSessionId: read.sessionId, terminalRead: read
+    });
+    const requests = () => messages.filter(message => message.type === 'webview/readExecutionTerminalPage');
+    const closes = () => messages.filter(message => message.type === 'webview/closeExecutionTerminalRead');
+    const sendPage = events => {
+      const request = requests().at(-1).payload;
+      controller.applyTerminalPage(request.readId, request.requestId, {
+        readId: request.readId, sessionId: descriptor.sessionId, authorityId: descriptor.authorityId,
+        afterRevision: request.afterRevision, revision: request.afterRevision + events.length,
+        headRevision: Math.max(headRevision, request.afterRevision + events.length), events
+      });
+    };
+    return { terminal, controller, messages, diagnostics, descriptor, start, requests, closes, sendPage,
+      snapshotNotifications: () => snapshotNotifications,
+      dispose() { controller.dispose(); terminal.dispose(); } };
+  };
+
+  await check('final zero waits for the real empty xterm callback, not snapshot notification or exit text', async () => {
+    const f = fixture();
+    const write = f.terminal.write.bind(f.terminal);
+    const callbackReady = defer();
+    let release;
+    f.terminal.write = (text, done) => write(text, () => {
+      assert.equal(text, '');
+      release = done;
+      callbackReady.resolve();
+    });
+    try {
+      f.start();
+      f.controller.terminalAvailable('session', 'authority', 0, true, 0);
+      await callbackReady.promise;
+      assert.equal(f.snapshotNotifications(), 1);
+      assert.equal(f.closes().length, 0);
+      assert.equal(f.requests().length, 0);
+      assert.equal(f.controller.getQueuedWriteCount(), 1);
+      release();
+      await until(() => f.closes().length === 1, 'empty checkpoint callback settlement');
+      assert.deepEqual(f.closes()[0].payload.outcome, { kind: 'applied', finalRevision: 0 });
+      assert.equal(f.controller.getQueuedWriteCount(), 0);
+    } finally { f.dispose(); }
+  });
+
+  await check('final arrives before the last page callback and waits for real output and cursor state', async () => {
+    const f = fixture('reader', 1);
+    try {
+      f.start();
+      await until(() => f.requests().length === 1, 'first page request after checkpoint callback');
+      const write = f.terminal.write.bind(f.terminal);
+      const callbackReady = defer();
+      let release;
+      f.terminal.write = (text, done) => write(text, () => { release = done; callbackReady.resolve(); });
+      f.sendPage([{ type: 'output', revision: 1, createdAtMs: 1, data: 'TAIL\x1b[?25l' }]);
+      f.controller.terminalAvailable('session', 'authority', 1, true, 1);
+      await callbackReady.promise;
+      assert.equal(f.closes().length, 0);
+      assert.match(f.terminal.buffer.active.getLine(0).translateToString(true), /TAIL/);
+      assert.equal(f.terminal._core.coreService.isCursorHidden, true);
+      release();
+      await until(() => f.closes().length === 1, 'tail callback settlement');
+      assert.deepEqual(f.closes()[0].payload.outcome, { kind: 'applied', finalRevision: 1 });
+    } finally { f.dispose(); }
+  });
+
+  await check('completed and head revision alone cannot create an applied result', async () => {
+    const f = fixture();
+    try {
+      f.start();
+      await until(() => f.requests().length === 1, 'empty checkpoint request');
+      f.sendPage([]);
+      f.controller.terminalAvailable('session', 'authority', 0, true);
+      f.controller.showExit('ended', 'session');
+      await until(() => f.controller.getQueuedWriteCount() === 0, 'empty page callback');
+      assert.equal(f.closes().length, 0);
+      f.controller.terminalAvailable('session', 'authority', 0, true, 0);
+      await until(() => f.closes().length === 1, 'explicit final result');
+      assert.equal(f.closes()[0].payload.outcome.kind, 'applied');
+    } finally { f.dispose(); }
+  });
+
+  for (const failure of ['checkpoint', 'output', 'async resize']) {
+    await check(`${failure} failure cancels without a later successful sentinel masking the failure`, async () => {
+      const f = fixture('reader', failure === 'async resize' ? 2 : failure === 'output' ? 1 : 0);
+      try {
+        if (failure === 'checkpoint') f.terminal.write = () => { throw new Error('checkpoint write failed'); };
+        f.start();
+        if (failure !== 'checkpoint') {
+          await until(() => f.requests().length === 1, 'failure page request');
+          if (failure === 'output') f.terminal.write = () => { throw new Error('output write failed'); };
+          else f.terminal.resize = () => { throw new Error('asynchronous resize failed'); };
+          const events = [{ type: 'output', revision: 1, createdAtMs: 1, data: 'prefix' }];
+          if (failure === 'async resize') events.push({ type: 'resize', revision: 2, createdAtMs: 1, cols: 81, rows: 24 });
+          f.sendPage(events);
+        }
+        const finalRevision = failure === 'async resize' ? 2 : failure === 'output' ? 1 : 0;
+        f.controller.terminalAvailable('session', 'authority', finalRevision, true, finalRevision);
+        await until(() => f.closes().length === 1, `${failure} cancellation`);
+        assert.equal(f.closes()[0].payload.outcome.kind, 'cancelled');
+        assert.match(f.closes()[0].payload.outcome.reason, /write-failed/);
+        assert.equal(f.controller.getQueuedWriteCount(), 0);
+      } finally { f.dispose(); }
+    });
+  }
+
+  await check('a failed earlier write in the same generation cannot be hidden by a successful checkpoint', async () => {
+    const f = fixture();
+    const write = f.terminal.write.bind(f.terminal);
+    try {
+      f.terminal.write = () => { throw new Error('prior output failure'); };
+      f.controller.enqueueOutput('prefix', { executionSessionId: 'session', outputSequence: 1 });
+      f.controller.flushPendingOutput();
+      await until(() => f.controller.getQueuedWriteCount() === 0, 'failed prefix writer cleanup');
+      f.terminal.write = write;
+      f.start();
+      f.controller.terminalAvailable('session', 'authority', 0, true, 0);
+      await until(() => f.closes().length === 1, 'prefix failure cancellation');
+      assert.equal(f.closes()[0].payload.outcome.kind, 'cancelled');
+      assert.equal(f.requests().length, 0);
+    } finally { f.dispose(); }
+  });
+
+  for (const sameGeneration of [true, false]) {
+    await check(`replacement invalidates a real old callback in ${sameGeneration ? 'the same' : 'a new'} generation`, async () => {
+      const f = fixture();
+      const write = f.terminal.write.bind(f.terminal);
+      const callbackReady = defer();
+      let release;
+      let held = false;
+      f.terminal.write = (text, done) => write(text, () => {
+        if (!held) { held = true; release = done; callbackReady.resolve(); }
+        else done();
+      });
+      try {
+        f.start();
+        f.controller.terminalAvailable('session', 'authority', 0, true, 0);
+        await callbackReady.promise;
+        const sessionId = sameGeneration ? 'session' : 'next-session';
+        const authorityId = sameGeneration ? 'authority' : 'next-authority';
+        const next = { ...f.descriptor, readId: 'next-reader', sessionId, authorityId,
+          checkpoint: { ...f.descriptor.checkpoint, sessionId, authorityId } };
+        f.start(next);
+        f.controller.terminalAvailable(sessionId, authorityId, 0, true, 0);
+        assert.equal(f.closes().length, 1);
+        assert.deepEqual(f.closes()[0].payload.outcome, { kind: 'cancelled', reason: 'reader-replaced' });
+        release();
+        await until(() => f.closes().length === 2, 'replacement callback settlement');
+        assert.equal(f.closes()[1].payload.readId, 'next-reader');
+        assert.deepEqual(f.closes()[1].payload.outcome, { kind: 'applied', finalRevision: 0 });
+        assert.equal(f.controller.getQueuedWriteCount(), 0);
+      } finally { f.dispose(); }
+    });
+  }
+
+  for (const failure of ['diagnostics', 'delivery']) {
+    await check(`${failure} callback failure settles the real write queue without manufacturing delivery`, async () => {
+      const f = fixture();
+      const push = f.messages.push.bind(f.messages);
+      let deliveryAttempted = false;
+      try {
+        if (failure === 'diagnostics') f.diagnostics.failNext = true;
+        else f.messages.push = message => {
+          if (message.type === 'webview/closeExecutionTerminalRead' && !deliveryAttempted) {
+            deliveryAttempted = true;
+            throw new Error('controlled postMessage failure');
+          }
+          return push(message);
+        };
+        f.start();
+        f.controller.terminalAvailable('session', 'authority', 0, true, 0);
+        await until(() => f.controller.getQueuedWriteCount() === 0, 'callback failure queue cleanup');
+        if (failure === 'delivery') {
+          assert.equal(deliveryAttempted, true);
+          assert.equal(f.closes().length, 0, 'a thrown delivery is not a sent applied result');
+          f.start({ ...f.descriptor, readId: 'next-reader' });
+          f.controller.terminalAvailable('session', 'authority', 0, true, 0);
+          await until(() => f.closes().length === 1, 'failed generation cannot hide behind another checkpoint');
+        }
+        assert.equal(f.closes().length, 1);
+        assert.equal(f.closes()[0].payload.outcome.kind, 'cancelled');
+      } finally { f.dispose(); }
+    });
+  }
+
+  await check('dispose cancels a pending write and its late callback cannot emit applied', async () => {
+    const f = fixture();
+    const write = f.terminal.write.bind(f.terminal);
+    const callbackReady = defer();
+    let release;
+    f.terminal.write = (text, done) => write(text, () => { release = done; callbackReady.resolve(); });
+    try {
+      f.start();
+      f.controller.terminalAvailable('session', 'authority', 0, true, 0);
+      await callbackReady.promise;
+      f.controller.dispose();
+      assert.deepEqual(f.closes()[0].payload.outcome, { kind: 'cancelled', reason: 'controller-disposed' });
+      release();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      assert.equal(f.closes().length, 1);
+    } finally { f.dispose(); }
+  });
+
+  await check('legacy descriptors keep close without outcome through the actual writer', async () => {
+    const f = fixture('reader', 0, null);
+    try {
+      f.start();
+      await until(() => f.requests().length === 1, 'legacy empty page');
+      f.sendPage([]);
+      f.controller.terminalAvailable('session', 'authority', 0, true);
+      f.controller.showExit('ended', 'session');
+      await until(() => f.closes().length === 1, 'legacy close after actual callback');
+      assert.equal(Object.hasOwn(f.closes()[0].payload, 'outcome'), false);
+    } finally { f.dispose(); }
+  });
+  console.log(`Actual Webview controller settlement: ${passed}/${passed} passed (real headless xterm callbacks, no UI/native).`);
 }

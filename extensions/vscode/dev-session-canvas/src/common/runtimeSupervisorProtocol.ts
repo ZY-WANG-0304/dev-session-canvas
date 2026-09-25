@@ -36,6 +36,7 @@ export interface RuntimeSupervisorHelloResult {
     terminalCheckpointRefreshV1?: true;
     terminalPagedReadV1?: true;
     terminalPagedCompletionV1?: true;
+    terminalReadSettlementV1?: true;
   };
 }
 
@@ -61,6 +62,8 @@ export interface RuntimeSupervisorSessionSnapshot {
   terminalRevision?: number;
   terminalStream?: TerminalStreamAttachPayload;
   terminalStreamPaged?: true;
+  capabilities?: { terminalReadSettlementV1?: true };
+  terminalFinalRevision?: number;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
   provider?: AgentProviderKind;

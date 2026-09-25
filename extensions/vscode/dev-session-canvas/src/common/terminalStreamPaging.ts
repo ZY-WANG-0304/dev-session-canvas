@@ -5,6 +5,7 @@ import {
   type TerminalStreamCheckpoint,
   type TerminalStreamEvent
 } from './terminalSessionStream';
+export { normalizeTerminalReadOutcome } from './protocol';
 
 export const TERMINAL_STREAM_PAGE_MAX_BYTES = 256 * 1024;
 export const TERMINAL_STREAM_PAGE_MAX_EVENTS = 256;
@@ -15,6 +16,7 @@ export interface TerminalStreamReadDescriptor {
   authorityId: string;
   checkpoint: TerminalStreamCheckpoint;
   headRevision: number;
+  settlementMode?: 'final-application-v1';
 }
 
 export interface TerminalStreamPage {
@@ -28,7 +30,8 @@ export interface TerminalStreamPage {
 }
 
 export function normalizeTerminalStreamRead(value: unknown): TerminalStreamReadDescriptor | undefined {
-  if (!isRecord(value) || !validId(value.readId)) {
+  if (!isRecord(value) || !validId(value.readId) ||
+      (value.settlementMode !== undefined && value.settlementMode !== 'final-application-v1')) {
     return undefined;
   }
   const checkpoint = normalizeTerminalStreamCheckpoint(value.checkpoint);
@@ -38,7 +41,8 @@ export function normalizeTerminalStreamRead(value: unknown): TerminalStreamReadD
     return undefined;
   }
   return { readId: value.readId, sessionId: checkpoint.sessionId, authorityId: checkpoint.authorityId,
-    checkpoint, headRevision };
+    checkpoint, headRevision,
+    ...(value.settlementMode === 'final-application-v1' ? { settlementMode: value.settlementMode } : {}) };
 }
 
 export function normalizeTerminalStreamPage(value: unknown): TerminalStreamPage | undefined {

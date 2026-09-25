@@ -58,7 +58,7 @@ export interface ExecutionTerminalController {
   nodeId: string;
   kind: ExecutionNodeKind;
   applySnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void;
-  terminalAvailable(sessionId: string, authorityId: string, revision: number, completed?: boolean): void;
+  terminalAvailable(sessionId: string, authorityId: string, revision: number, completed?: boolean, finalRevision?: number): void;
   applyTerminalPage(readId: string, requestId: string, page?: TerminalStreamPage, closedError?: string): void;
   requestAttachSnapshot(): void;
   enqueueOutput(

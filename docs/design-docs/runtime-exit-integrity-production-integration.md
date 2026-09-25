@@ -21,6 +21,8 @@ updated_at: 2026-09-25
 
 ## 1. 当前结论与阶段边界
 
+2026-09-25 从`648958e0`完成第20节默认关闭、无native的远端发送链：四层能力协商、原连接reader绑定、明确finalRevision及真实Webview写回调屏障。Supervisor36/36、client13/13、Host/relay/client20/20（含一个实际Supervisor至headless投影的内存整链）、实际main controller/headless13/13及相关回归通过。两项旧relay时序断言曾失败，保留断言修实现后通过；不把headless与受控transport写成真实VS Code/socket/平台通过。下一有限切片为本地snapshot-only最终应用屏障；L-02、native失联处置/预算、生产分流及整体退出完整性继续开放。以下记录按原时点保留。
+
 2026-09-25 从`bcdd7213`完成第19节默认关闭、无native的远端逐reader接收端，Supervisor 33/33（旧13项保持，新增20项）、Host19/19及相关回归通过。逐open准入、真实回包提交、逐reader outcome与有限幂等已接线；中性聚合结算不等于页面应用。仅内部capability注入可达，未改变hello能力、client/Webview、namespace或旧live。下一阶段接通远端发送和跨层能力协商；本地最终屏障、native失联处置及生产分流仍开放，不将本切片记为L-02或整体退出完整性完成。以下记录按原时点保留。
 
 2026-09-25 从`c1b6bc8b`完成S4实际接线补验，结果见第18节：Host 19/19覆盖成功启动后的真实tracker收尾和单根/多根reset入口，Supervisor 13/13包含checkpoint等待中断连/替换的先红后绿修复。仅非native注入路径，旧路径不变；没有本轮PTY或runner。第17节原5/5与11/11保持，不追认未覆盖路径；前轮将旧Supervisor协议回归误归为零PTY的说明按18.2勘误。下一有限切片为18.4的远端逐reader结算，整体仍未通过。
@@ -633,3 +635,45 @@ Host增加有界等待（每场景3秒失败上限、每阶段100次受控调度
 下一阶段沿第11.2/11.3节完整接通远端发送链：`common/protocol.ts`、Host、`runtimeTerminalReadRelay.ts`、`runtimeSupervisorClient.ts`、`webview/terminalPagedProjection.ts`及`webview/main.tsx`。必须一起实施Webview ready和hello/session/open能力声明、真实write完成屏障、相同身份的结果转发及cancel/lost分账；接收端内部gate不能替代这些协商。仍只默认关闭、无native注入，不启用新generation或用户创建入口；纯接线验证与真实UI验收分账。
 
 本地Host最终应用屏障、L-03正常关闭失败处置/失联预算、L-04生产创建能力分流、真实Agent/其他平台和真实落盘验收继续开放；本轮不关闭L-02、PI-01/02/03或退出完整性总债务。旧live原绑定、旧冻结实验/失败及第2至18节保持，不修改独立诊断工作树，不推送或触发runner。
+
+## 20. 远端发送链与实际写完成屏障
+
+### 20.1 本轮边界与接线输入
+
+从主树`648958e0`继续第19.4节，不开放native、生产新建或新generation，不修改旧live绑定。沿现有分页投影接通Supervisor/client/relay/Host/Webview，不引入另一套观察器或历史正文。正常Supervisor不注入新owner，仍不声明新能力；页面静态声明支持新能力不等于启用新执行路径。本地snapshot-only最终屏障不在本切片。
+
+hello的`capabilities.terminalReadSettlementV1`只在内部non-native gate开启时为true；snapshot的同名capability只对实际ownedReaders会话为true。Host同时确认当前Webview ready的可选`payload.capabilities.terminalReadSettlementV1`、hello及session能力，才请求open的`settlementMode: 'final-application-v1'`。descriptor必须回显本次协商且经过normalizer保留；缺失/不符明确拒绝新模式，不把同server其他旧会话升级。Webview能力按surface lifecycle保存，换页/失效/能力改变取消旧reader，不让晚到旧frame结算当前投影。
+
+Supervisor snapshot新增`terminalFinalRevision`，仅owner已成功固定终值时提供。Host将其沿已协商reader的`host/executionTerminalAvailable.payload.finalRevision`传递；普通head revision、live=false和旧completed字段不替代该事实。失败无终值时显式取消新reader，不能补造applied；已有旧分页继续原分支。Webview的close消息可带原身份与`outcome: applied(finalRevision) | cancelled(reason)`；非法outcome拒绝而非丢字段后降级旧close。
+
+页面的新模式必须等待checkpoint和连续页的真实xterm写回调，并与同一writeGeneration绑定，精确达到固定finalRevision才发applied；final0也通过实际checkpoint写屏障，结算不依赖exit提示先到。写失败、销毁、替换、关闭读失败都具名取消；旧回调不能确认新投影。现有writeChain吞错和异步事件递归异常必须在新分页回调中显式体现，不能靠普通snapshot ACK或后续成功sentinel掩盖前序失败。
+
+新能力client将open/read/close绑定发起open的原socket，握手及socket监听校验captured连接；不重连后把旧readId发到新连接，也不把断连时close直接返回当已结算。relay完整传递身份/结果，仅接收recorded或duplicate为已确认，unconfirmed/RPC失败单列；onReleased仍只处理本地引用释放，不生成应用事实。在途open被取消后，等待取得原descriptor再发具名取消；不能因删除外层key而遗漏责任。重试只使用原身份/原连接，不引入无限重试或新的生产超时政策。
+
+### 20.2 有限验证安排
+
+在现有Supervisor/Host wiring、terminal paged projection、protocol消息测试中增加直接断言，并为真实client/relay链增加无native受控transport测试。覆盖缺任一能力拒绝新字段、原连接断连和迟到事件、双surface与旧frame、final先到/空输出/暂停写回调、前序与异步写失败、在途open取消和结果不可确认。尽可能使用实际模块与真实终端写回调；模型done或静态源码断言不计实际页面写完成证明。仅执行本机受控测试，不运行会创建旧PTY的protocol全脚本，不自动启动runner；测试未执行前不宣称通过，真实VS Code UI/Agent/其他平台另行列账。
+
+### 20.3 实际实现与结果
+
+实现落点为`common/protocol.ts`、`common/runtimeSupervisorProtocol.ts`、`common/terminalStreamPaging.ts`、`panel/CanvasPanelManager.ts`、`panel/runtimeTerminalReadRelay.ts`、`panel/runtimeSupervisorClient.ts`、`supervisor/runtimeSupervisorMain.ts`、`webview/terminalPagedProjection.ts`及`webview/main.tsx`（均在主扩展`src/`下）。outcome校验只有一份，放在protocol并由paging导出，避免破坏现有Node直接加载protocol的入口。relay新增返回结果的`settle()`，旧`close()`仍兼容；取消中的open/close保留client引用直到原RPC结算。client保存活动reader的原socket，最多保留128条已关闭binding供原连接重试，不缓存成功ACK、不自动重试；断连不逐出活动binding后把旧read降级成重连请求。页面写链保留同generation的失败，后续成功sentinel不能覆盖；异步事件应用异常和诊断回调异常也保证队列最终结算。
+
+没有新增Host到Webview的close-ACK消息。页面的applied只说明本地已应用；Host把Supervisor的recorded/duplicate记为`runtime/terminalReadSettled`，不明确结果记为`runtime/terminalReadSettlementUnconfirmed`，非法身份/范围记为`runtime/terminalReadSettlementRejected`。本地release通知不承担应用或远端确认的证明。
+
+本机Linux/Node v25.6.0在仓库根执行并以exit0完成：
+
+* `node scripts/test/test-runtime-reader-settlement-wiring.mjs`：20/20，真实parser、Host入口、relay及client；其中一个场景使用实际Supervisor `handleRequest`、journal/tracker、sessionState事件和真实headless xterm分页投影。尾页写完成通知暂扣时applied=0、owner pending=1；放行后recorded、applied=1、owner retired且pending=0，session删除，尾部文本及最终光标正确。该场景不是预制server回包，但投影事件回调为测试接线，不声称走实际main UI。
+* `node scripts/test/test-terminal-paged-projection.mjs`：原分页/保留/取消断言及新增实际main controller/headless 13/13全部通过。新增用例从main提取实际函数体，使用真实xterm写回调，覆盖空终值、final早到、失败不被掩盖、替换/销毁与迟到回调。它与前一整链场景互补，不合称浏览器或VS Code UI验收。
+* `node scripts/test/test-runtime-supervisor-reader-client.mjs`：13/13；`node scripts/test/test-supervisor-execution-owner-wiring.mjs`：36/36，旧33项正文保持，增加实际能力、终值成功/失败通知三项。
+* `node scripts/test/test-host-execution-owner-wiring.mjs`：19/19；`node scripts/test/test-execution-owner-lifecycle.mjs`：13/13；`node scripts/test/test-execution-session-adapter.mjs`：53 cases。
+* 既有`test-protocol-webview-messages.mts`（使用`node --no-warnings --experimental-transform-types`）、`test-execution-session-bridge.mjs`、`test-serialized-terminal-state-tracker.mjs`、`test-runtime-paged-completion.mjs`、`test-execution-output-sequence.mjs`及`test-webview-build-xterm-entry.mjs`均通过；所列mjs均以`node scripts/test/<文件名>`运行。`npm run -w extensions/vscode/dev-session-canvas typecheck`最终全树复跑通过。
+
+未启动执行会话/native/PTY、真实socket服务或runner；构建工具及xterm构建探针的普通Node子进程不计执行会话。Host原有`require.resolve('node-pty')` external warning保持，native/spawn守卫未放宽；不重跑默认会创建旧PTY的Supervisor protocol全脚本。
+
+保留失败与修正：首轮跨模块尚未齐全时typecheck失败，随后全树验证通过，不能记成首次即绿。原paged脚本先后暴露relay即时close被延至microtask、取消中late-open先返回后释放两项时序回归；保留旧断言，分别恢复即时调用及返回前等待release，修后原断言通过。该脚本对guarded Supervisor main仅调整模块加载，不改旧保留/分页断言。整链首跑夹具缺少`scheduledExecutionOutputPosts`初始化，补齐后20/20；不是业务缺陷。callback的finally缺口和client漏检查pagedCompletion由只读复核修正，新增测试运行时修复已在，不称先红后绿。最终专项只读复核未发现本切片确定性blocker。
+
+### 20.4 下一有限切片与未决边界
+
+下一阶段仅补默认关闭、无native的本地snapshot-only最终应用屏障：从Host实际owner成功final flush取得固定终值，沿本地执行身份、surface生命周期和真实页面写链确认各消费者结果；普通snapshot ACK、postMessage成功或reader集合清空不能代证。先明确现有本地投影接口与失败/取消责任，再实施实际Host/main受控验证，不复制远端RPC或新增诊断框架。snapshot-only既有快照语义保持，不扩大Runtime completed历史或崩溃恢复承诺。
+
+本轮只完成L-02中的远端受控接线切片；本地屏障、真实Webview UI/socket集成、L-03原生正常关闭失败处置/失联预算、L-04生产创建能力分流以及真实Agent/平台/落盘仍开放。新native执行和新generation均未启用，旧live沿原绑定，F-03 root归属另行规划。第2至19节、旧冻结实验与失败保持，独立诊断工作树不改；只本地提交，不push、PR或runner。

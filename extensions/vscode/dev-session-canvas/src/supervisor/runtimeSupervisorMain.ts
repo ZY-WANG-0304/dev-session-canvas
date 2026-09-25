@@ -48,6 +48,7 @@ import {
 import {
   TERMINAL_STREAM_PAGE_MAX_BYTES,
   TERMINAL_STREAM_PAGE_MAX_EVENTS,
+  normalizeTerminalReadOutcome,
   type TerminalStreamPage,
   type TerminalStreamReadDescriptor
 } from '../common/terminalStreamPaging';
@@ -361,7 +362,9 @@ export class RuntimeSupervisorServer {
                 terminalAppliedRevisionAckV1: true,
                 terminalCheckpointRefreshV1: true,
                 terminalPagedReadV1: true,
-                terminalPagedCompletionV1: true
+                terminalPagedCompletionV1: true,
+                ...(this.executionOwner?.options.capabilities.includes('terminal-read-settlement-v1')
+                  ? { terminalReadSettlementV1: true as const } : {})
               }
             }
           });
@@ -762,7 +765,8 @@ export class RuntimeSupervisorServer {
       if (owned) owned.cursor = cursor;
       session.ownedReaderSockets?.add(socket);
       const result = { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
-        checkpoint: cloneTerminalStreamCheckpoint(checkpoint), headRevision: journal.getRevision() };
+        checkpoint: cloneTerminalStreamCheckpoint(checkpoint), headRevision: journal.getRevision(),
+        ...(owned?.explicitSettlement ? { settlementMode: 'final-application-v1' as const } : {}) };
       if (owned) this.ownedTerminalReplies.set(result, owned);
       return result;
     }).catch(error => {
@@ -930,15 +934,9 @@ export class RuntimeSupervisorServer {
   }
 
   private validateTerminalReaderOutcome(outcome: unknown): RuntimeSupervisorTerminalReadOutcome {
-    if (!outcome || typeof outcome !== 'object') throw new Error('Invalid terminal reader outcome.');
-    const value = outcome as Record<string, unknown>;
-    if (value.kind === 'applied' && Number.isSafeInteger(value.finalRevision) && (value.finalRevision as number) >= 0) {
-      return { kind: 'applied', finalRevision: value.finalRevision as number };
-    }
-    if (value.kind === 'cancelled' && typeof value.reason === 'string' && value.reason.trim().length > 0 && value.reason.length <= 1024) {
-      return { kind: 'cancelled', reason: value.reason };
-    }
-    throw new Error('Invalid terminal reader outcome.');
+    const normalized = normalizeTerminalReadOutcome(outcome);
+    if (!normalized) throw new Error('Invalid terminal reader outcome.');
+    return normalized;
   }
 
   private pruneTerminalReaderReceipts(socket: net.Socket): Map<string, TerminalReaderReceipt> | undefined {
@@ -2127,6 +2125,7 @@ export class RuntimeSupervisorServer {
       : session.terminalStateTracker.getSerializedState(),
     includeTerminalProjection = true
   ): RuntimeSupervisorSessionSnapshot {
+    const terminal = session.ownedReaders ? session.ownedExecution?.snapshot().terminal : undefined;
     return {
       sessionId: session.sessionId,
       kind: session.kind,
@@ -2148,6 +2147,8 @@ export class RuntimeSupervisorServer {
         : undefined,
       terminalAuthorityId: session.terminalJournalError ? undefined : session.terminalAuthorityId,
       terminalRevision: session.terminalJournalError ? undefined : session.terminalJournal?.getRevision(),
+      ...(session.ownedReaders ? { capabilities: { terminalReadSettlementV1: true as const } } : {}),
+      ...(terminal?.kind === 'applied' ? { terminalFinalRevision: terminal.finalRevision } : {}),
       displayLabel: session.displayLabel,
       launchMode: session.launchMode,
       provider: session.provider,

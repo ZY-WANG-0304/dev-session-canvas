@@ -5,12 +5,13 @@ import {
   type TerminalStreamReadDescriptor
 } from '../common/terminalStreamPaging';
 import type { TerminalStreamEvent } from '../common/terminalSessionStream';
+import type { RuntimeSupervisorTerminalReadOutcome } from '../common/runtimeSupervisorProtocol';
 
 export interface TerminalPagedProjectionCallbacks {
   request: (read: TerminalStreamReadDescriptor, afterRevision: number, requestId: string) => void;
-  close: (read: TerminalStreamReadDescriptor) => void;
-  checkpoint: (read: TerminalStreamReadDescriptor, current: () => boolean, done: () => void) => void;
-  events: (events: TerminalStreamEvent[], current: () => boolean, done: () => void) => void;
+  close: (read: TerminalStreamReadDescriptor, outcome?: RuntimeSupervisorTerminalReadOutcome) => void;
+  checkpoint: (read: TerminalStreamReadDescriptor, current: () => boolean, done: (applied?: boolean) => void) => void;
+  events: (events: TerminalStreamEvent[], current: () => boolean, done: (applied?: boolean) => void) => void;
   exit: (message: string) => void;
 }
 
@@ -23,6 +24,7 @@ export class TerminalPagedProjection {
   private requestSequence = 0;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private completed = false;
+  private finalRevision: number | undefined;
   private closed = false;
   private exitMessage: string | undefined;
 
@@ -39,28 +41,41 @@ export class TerminalPagedProjection {
       this.available(read.sessionId, read.authorityId, read.headRevision);
       return true;
     }
-    this.stop();
+    this.stop('reader-replaced');
     this.read = read;
     this.revision = read.checkpoint.revision;
     this.headRevision = read.headRevision;
     this.busy = true;
-    this.callbacks.checkpoint(read, () => this.read === read, () => {
+    this.callbacks.checkpoint(read, () => this.read === read, (applied = true) => {
       if (this.read !== read) {
         return;
       }
+      if (!applied) {
+        if (read.settlementMode) this.stop('checkpoint-write-failed-or-cancelled');
+        return;
+      }
       this.busy = false;
+      this.finishExit();
       // Also confirm an empty checkpoint and discover output after the open cut.
       this.pull(true);
     });
     return true;
   }
 
-  public available(sessionId: string, authorityId: string, revision: number, completed = false): void {
+  public available(sessionId: string, authorityId: string, revision: number, completed = false, finalRevision?: number): void {
     if (this.read?.sessionId !== sessionId || this.read.authorityId !== authorityId ||
         !Number.isSafeInteger(revision) || revision < 0) {
       return;
     }
-    this.headRevision = Math.max(this.headRevision, revision);
+    if (this.read.settlementMode && finalRevision !== undefined) {
+      if (!Number.isSafeInteger(finalRevision) || finalRevision < Math.max(this.revision, this.headRevision, revision) ||
+          (this.finalRevision !== undefined && this.finalRevision !== finalRevision)) {
+        this.stop('conflicting-final-revision');
+        return;
+      }
+      this.finalRevision = finalRevision;
+    }
+    this.headRevision = Math.max(this.headRevision, revision, this.finalRevision ?? 0);
     this.completed ||= completed;
     this.pull();
     this.finishExit();
@@ -72,7 +87,7 @@ export class TerminalPagedProjection {
       return;
     }
     if (closedError !== undefined) {
-      this.stop();
+      this.stop('terminal-reader-closed');
       this.callbacks.exit(closedError);
       return;
     }
@@ -87,15 +102,23 @@ export class TerminalPagedProjection {
       }, 250);
       return;
     }
+    if (read.settlementMode && this.finalRevision !== undefined && page.headRevision > this.finalRevision) {
+      this.stop('page-exceeds-final-revision');
+      return;
+    }
     this.headRevision = Math.max(this.headRevision, page.headRevision);
-    this.callbacks.events(page.events, () => this.read === read, () => {
+    this.callbacks.events(page.events, () => this.read === read, (applied = true) => {
       if (this.read !== read) {
+        return;
+      }
+      if (!applied) {
+        if (read.settlementMode) this.stop('page-write-failed-or-cancelled');
         return;
       }
       this.revision = page.revision;
       this.busy = false;
-      this.pull();
       this.finishExit();
+      this.pull();
     });
   }
 
@@ -106,18 +129,19 @@ export class TerminalPagedProjection {
     }
   }
 
-  public stop(): void {
+  public stop(reason = 'projection-stopped'): void {
     if (this.retryTimer !== undefined) {
       clearTimeout(this.retryTimer);
       this.retryTimer = undefined;
     }
     if (this.read && !this.closed) {
-      this.callbacks.close(this.read);
+      this.callbacks.close(this.read, this.read.settlementMode ? { kind: 'cancelled', reason } : undefined);
     }
     this.read = undefined;
     this.requestId = undefined;
     this.busy = false;
     this.completed = false;
+    this.finalRevision = undefined;
     this.closed = false;
     this.exitMessage = undefined;
   }
@@ -132,6 +156,19 @@ export class TerminalPagedProjection {
   }
 
   private finishExit(): void {
+    if (this.read?.settlementMode) {
+      if (this.finalRevision === undefined || this.busy || this.revision !== this.finalRevision) return;
+      if (!this.closed) {
+        this.closed = true;
+        this.callbacks.close(this.read, { kind: 'applied', finalRevision: this.finalRevision });
+      }
+      if (this.exitMessage !== undefined) {
+        const message = this.exitMessage;
+        this.exitMessage = undefined;
+        this.callbacks.exit(message);
+      }
+      return;
+    }
     if (this.completed && !this.busy && this.revision >= this.headRevision && this.exitMessage !== undefined) {
       const message = this.exitMessage;
       this.exitMessage = undefined;

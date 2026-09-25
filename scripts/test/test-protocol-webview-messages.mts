@@ -38,6 +38,28 @@ for (const patch of [{ readId: '' }, { requestId: '' }, { afterRevision: -1 }, {
 }
 assert.equal(parseWebviewMessage({ type: 'webview/closeExecutionTerminalRead', payload: terminalReadPayload })?.type,
   'webview/closeExecutionTerminalRead');
+assert.deepEqual(parseWebviewMessage({ type: 'webview/ready' }), { type: 'webview/ready' });
+assert.deepEqual(parseWebviewMessage({ type: 'webview/ready', payload: {
+  capabilities: { terminalReadSettlementV1: true }
+} }), { type: 'webview/ready', payload: { capabilities: { terminalReadSettlementV1: true } } });
+for (const payload of [null, 'invalid', { capabilities: null }, { capabilities: { terminalReadSettlementV1: false } },
+  { capabilities: { terminalReadSettlementV1: 'true' } }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/ready', payload }), null);
+}
+for (const outcome of [{ kind: 'applied', finalRevision: 0 }, { kind: 'cancelled', reason: 'surface disposed' }]) {
+  assert.deepEqual(parseWebviewMessage({ type: 'webview/closeExecutionTerminalRead',
+    payload: { ...terminalReadPayload, outcome } }), {
+    type: 'webview/closeExecutionTerminalRead', payload: {
+      nodeId: 'terminal', kind: 'terminal', executionSessionId: 'session', authorityId: 'authority', readId: 'reader', outcome
+    }
+  });
+}
+for (const outcome of [null, {}, { kind: 'applied', finalRevision: -1 }, { kind: 'applied', finalRevision: 0.5 },
+  { kind: 'applied', finalRevision: Number.MAX_SAFE_INTEGER + 1 }, { kind: 'applied', finalRevision: '0' },
+  { kind: 'cancelled', reason: '  ' }, { kind: 'cancelled', reason: 'x'.repeat(1025) }, { kind: 'lost' }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/closeExecutionTerminalRead',
+    payload: { ...terminalReadPayload, outcome } }), null, 'invalid outcome must not become a legacy close');
+}
 const hardwrapPath = 'src/webview/executionTerminalNativeInteractions.ts';
 
 const hardwrapResolveMessage = {

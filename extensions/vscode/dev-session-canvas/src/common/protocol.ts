@@ -1,6 +1,7 @@
 import type { SerializedTerminalState } from './serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
 import type { TerminalStreamPage, TerminalStreamReadDescriptor } from './terminalStreamPaging';
+import type { RuntimeSupervisorTerminalReadOutcome } from './runtimeSupervisorProtocol';
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
@@ -702,6 +703,7 @@ export type WebviewDomAction =
 export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'webview/ready';
+      payload?: { capabilities?: { terminalReadSettlementV1?: true } };
     }
   | {
       type: 'webview/bootstrapAck';
@@ -920,6 +922,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         executionSessionId: string;
         authorityId: string;
         readId: string;
+        outcome?: RuntimeSupervisorTerminalReadOutcome;
       };
     }
   | {
@@ -1283,6 +1286,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         revision: number;
         terminalTitle?: string | null;
         completed?: true;
+        finalRevision?: number;
       };
     }
   | {
@@ -1524,13 +1528,37 @@ function isWebviewExecutionImagePasteBase64(value: unknown): value is string {
   );
 }
 
+export function normalizeTerminalReadOutcome(value: unknown): RuntimeSupervisorTerminalReadOutcome | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.kind === 'applied' && typeof value.finalRevision === 'number' &&
+      Number.isSafeInteger(value.finalRevision) && value.finalRevision >= 0) {
+    return { kind: 'applied', finalRevision: value.finalRevision };
+  }
+  if (value.kind === 'cancelled' && typeof value.reason === 'string' &&
+      value.reason.trim().length > 0 && value.reason.length <= 1024) {
+    return { kind: 'cancelled', reason: value.reason };
+  }
+  return undefined;
+}
+
 export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null {
   if (!isRecord(value) || typeof value.type !== 'string') {
     return null;
   }
 
+  if (value.type === 'webview/ready') {
+    if (value.payload === undefined) return { type: value.type };
+    if (!isRecord(value.payload) || (value.payload.capabilities !== undefined && !isRecord(value.payload.capabilities))) {
+      return null;
+    }
+    const capability = isRecord(value.payload.capabilities) ? value.payload.capabilities.terminalReadSettlementV1 : undefined;
+    if (capability !== undefined && capability !== true) return null;
+    return capability === true
+      ? { type: value.type, payload: { capabilities: { terminalReadSettlementV1: true } } }
+      : { type: value.type };
+  }
+
   if (
-    value.type === 'webview/ready' ||
     value.type === 'webview/bootstrapAck' ||
     value.type === 'webview/resetDemoState' ||
     value.type === 'webview/saveCanvasAsTemplate'
@@ -1795,7 +1823,9 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     const identity = { nodeId: payload.nodeId, kind: payload.kind, executionSessionId: payload.executionSessionId,
       authorityId: payload.authorityId, readId: payload.readId };
     if (value.type === 'webview/closeExecutionTerminalRead') {
-      return { type: value.type, payload: identity };
+      const outcome = normalizeTerminalReadOutcome(payload.outcome);
+      if (payload.outcome !== undefined && !outcome) return null;
+      return { type: value.type, payload: { ...identity, ...(outcome ? { outcome } : {}) } };
     }
     const afterRevision = payload.afterRevision;
     if (typeof payload.requestId !== 'string' || !payload.requestId || payload.requestId.length > 256 ||
