@@ -168,6 +168,52 @@ async function check(name, run) {
   console.log(`PASS ${name}`);
 }
 
+const readerCapabilities = ['execution-lifecycle-v1', 'terminal-read-settlement-v1'];
+let requestId = 0;
+
+async function request(f, socket, method, requestParams) {
+  const id = `reader-request-${++requestId}`;
+  await f.server.handleRequest(socket, { type: 'request', id, method, params: requestParams });
+  const response = socket.messages.find(message => message.type === 'response' && message.id === id);
+  assert.ok(response, `${method} must actually send its response`);
+  return response;
+}
+
+async function openReader(f, session, consumerId = 'editor', socket = f.socket, settlement = true) {
+  const response = await request(f, socket, 'openTerminalRead', {
+    sessionId: session.sessionId, authorityId: session.terminalAuthorityId, consumerId,
+    ...(settlement ? { settlementMode: 'final-application-v1' } : {})
+  });
+  assert.equal(response.ok, true, JSON.stringify(response));
+  return response.result;
+}
+
+function closeReader(f, read, outcome, socket = f.socket, overrides = {}) {
+  return request(f, socket, 'closeTerminalRead', {
+    sessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId,
+    ...(outcome ? { outcome } : {}), ...overrides
+  });
+}
+
+function assertSettlement(response, settlement) {
+  assert.equal(response.ok, true, JSON.stringify(response));
+  assert.deepEqual(response.result, { ok: true, settlement });
+}
+
+async function checkReader(name, run) {
+  await check(`reader settlement: ${name}`, async () => {
+    let timeout;
+    try {
+      await Promise.race([
+        run(),
+        new Promise((_resolve, reject) => {
+          timeout = setTimeout(() => reject(new Error(`${name}: test exceeded 3000 ms`)), 3000);
+        })
+      ]);
+    } finally { clearTimeout(timeout); }
+  });
+}
+
 try {
   await check('import is inert and missing capability acquires nothing', async () => {
     assert.equal(forbiddenAcquisitions, 0);
@@ -433,6 +479,407 @@ try {
     assert.equal(f.server.sessions.get(session.sessionId), replacement);
     session.ownedExecution.settleReaders('cancelled');
   });
+
+  await checkReader('editor and panel on one socket settle independently, including final revision zero', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const editor = await openReader(f, session, 'editor');
+    const panel = await openReader(f, session, 'panel');
+    assert.equal(session.ownedReaders.size, 2);
+    assert.equal((await closeReader(f, editor, { kind: 'applied', finalRevision: 0 })).ok, false,
+      'a checkpoint revision is not a fixed execution final revision');
+    await finish(f, session, transport);
+    assert.equal(session.ownedExecution.snapshot().terminal.finalRevision, 0);
+    assertSettlement(await closeReader(f, editor, { kind: 'applied', finalRevision: 0 }), 'recorded');
+    assert.equal(session.ownedReaderResults.applied, 1);
+    assert.equal(session.ownedReaders.size, 1);
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'pending');
+    assert.equal(f.server.executionOwner.snapshot().pending, 1);
+    assertSettlement(await closeReader(f, panel, { kind: 'cancelled', reason: 'surface disposed' }), 'recorded');
+    assert.equal(session.ownedReaderResults.cancelled, 1);
+    assert.equal(session.ownedReaders.size, 0);
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'settled');
+    assert.equal(f.server.executionOwner.snapshot().pending, 0);
+    assertSettlement(await closeReader(f, editor, { kind: 'applied', finalRevision: 0 }), 'duplicate');
+    assert.equal(session.ownedReaderResults.applied, 1, 'duplicate does not count twice');
+  });
+
+  await checkReader('applied requires the exact fixed final revision to have been sent on that reader', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const read = await openReader(f, session);
+    transport.output('final-tail');
+    await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'final tail consumed');
+    await finish(f, session, transport);
+    for (const finalRevision of [0, 1, 2]) {
+      assert.equal((await closeReader(f, read, { kind: 'applied', finalRevision })).ok, false,
+        `unsent or non-final revision ${finalRevision} must be rejected`);
+    }
+    assert.equal(session.ownedReaderResults.applied, 0);
+    const page = await request(f, f.socket, 'readTerminalPage', { ...read, afterRevision: 0 });
+    assert.equal(page.ok, true, JSON.stringify(page));
+    assert.equal(page.result.revision, 1);
+    assertSettlement(await closeReader(f, read, { kind: 'applied', finalRevision: 1 }), 'recorded');
+    assert.equal(session.ownedReaderResults.applied, 1);
+  });
+
+  await checkReader('wrong identity, foreign socket and conflicting results never settle the original reader', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const read = await openReader(f, session);
+    await finish(f, session, transport);
+    const applied = { kind: 'applied', finalRevision: 0 };
+    assert.equal((await closeReader(f, read, applied, f.socket, { authorityId: 'wrong-authority' })).ok, false);
+    assertSettlement(await closeReader(f, read, applied, f.socket, { sessionId: 'wrong-session' }), 'unconfirmed');
+    assertSettlement(await closeReader(f, read, applied, f.addSocket()), 'unconfirmed');
+    assert.equal((await closeReader(f, read, { kind: 'cancelled', reason: '' })).ok, false);
+    assert.equal(session.ownedReaders.size, 1);
+    assert.equal(session.ownedReaderResults.applied, 0);
+    assertSettlement(await closeReader(f, read, applied), 'recorded');
+    assert.equal((await closeReader(f, read, { kind: 'cancelled', reason: 'conflicting retry' })).ok, false);
+    assert.equal((await closeReader(f, read, { kind: 'applied', finalRevision: 1 })).ok, false);
+    assert.equal(session.ownedReaderResults.applied, 1);
+    assert.equal(session.ownedReaderResults.cancelled, 0);
+  });
+
+  await checkReader('same result remains idempotent after session deletion but expires after sixty seconds', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const read = await openReader(f, session);
+    const outcome = { kind: 'applied', finalRevision: 0 };
+    await finish(f, session, transport);
+    assertSettlement(await closeReader(f, read, outcome), 'recorded');
+    await f.server.deleteSession({ sessionId: session.sessionId });
+    assert.equal(f.server.sessions.has(session.sessionId), false);
+    assertSettlement(await closeReader(f, read, outcome), 'duplicate');
+    await f.advance(60001);
+    assertSettlement(await closeReader(f, read, outcome), 'unconfirmed');
+    assert.equal(session.ownedReaderResults.applied, 1);
+    f.server.clearIdleShutdownTimer();
+  });
+
+  await checkReader('per-socket retention keeps only 128 recent results without rewriting older outcomes', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const reads = [];
+    const outcome = { kind: 'cancelled', reason: 'bounded retention fixture' };
+    for (let index = 0; index < 129; index++) {
+      const read = await openReader(f, session);
+      reads.push(read);
+      assertSettlement(await closeReader(f, read, outcome), 'recorded');
+    }
+    assert.equal(session.ownedReaderResults.cancelled, 129);
+    assertSettlement(await closeReader(f, reads[0], outcome), 'unconfirmed');
+    assertSettlement(await closeReader(f, reads.at(-1), outcome), 'duplicate');
+    assert.equal(session.ownedReaderResults.cancelled, 129);
+    await finish(f, session, transport);
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'settled');
+  });
+
+  await checkReader('the 129th pending reader is rejected without evicting admitted opens', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const gate = deferred();
+    session.terminalOperationChain = session.terminalOperationChain.then(() => gate.promise);
+    const sockets = [];
+    const openings = [];
+    for (let index = 0; index < 128; index++) {
+      const socket = f.addSocket();
+      sockets.push(socket);
+      openings.push(openReader(f, session, 'editor', socket));
+    }
+    assert.equal(session.ownedReaders.size, 128);
+    const rejected = await request(f, f.addSocket(), 'openTerminalRead', {
+      sessionId: session.sessionId, authorityId: session.terminalAuthorityId,
+      consumerId: 'editor', settlementMode: 'final-application-v1'
+    });
+    assert.equal(rejected.ok, false);
+    assert.equal(session.ownedReaders.size, 128);
+    assert.equal(session.ownedReaderResults.cancelled, 0);
+    assert.equal(session.ownedReaderResults.lost, 0);
+    gate.resolve();
+    const reads = await Promise.all(openings);
+    for (let index = 0; index < reads.length; index++) {
+      assertSettlement(await closeReader(f, reads[index], { kind: 'cancelled', reason: 'capacity fixture complete' },
+        sockets[index]), 'recorded');
+    }
+    await finish(f, session, transport);
+    assert.equal(session.ownedReaderResults.cancelled, 128);
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'settled');
+  });
+
+  await checkReader('socket write backpressure still counts as submitted response evidence', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const write = f.socket.write.bind(f.socket);
+    f.socket.write = line => { write(line); return false; };
+    const read = await openReader(f, session);
+    await finish(f, session, transport);
+    assertSettlement(await closeReader(f, read, { kind: 'applied', finalRevision: 0 }), 'recorded');
+    assert.equal(session.ownedReaderResults.applied, 1);
+  });
+
+  await checkReader('legacy close is only legacy-released and cannot claim applied', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const read = await openReader(f, session, 'editor', f.socket, false);
+    await finish(f, session, transport);
+    assert.equal((await closeReader(f, read, { kind: 'applied', finalRevision: 0 })).ok, false,
+      'server capability cannot replace reader opt-in');
+    const closed = await closeReader(f, read);
+    assertSettlement(closed, 'recorded');
+    assert.equal(session.ownedReaderResults['legacy-released'], 1);
+    assert.equal(session.ownedReaderResults.applied, 0);
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'settled');
+  });
+
+  await checkReader('a replacement receipt cannot grant settlement capability to the legacy reader', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const legacy = await openReader(f, session, 'editor', f.socket, false);
+    const next = await openReader(f, session);
+    assert.equal(session.ownedReaderResults.cancelled, 1);
+    const retry = await closeReader(f, legacy, { kind: 'cancelled', reason: 'reader-replaced' });
+    assert.equal(retry.ok, false, 'matching automatic cancellation is not an opt-in handshake');
+    assert.equal(session.ownedReaders.size, 1);
+    assert.equal(session.ownedReaderResults.cancelled, 1);
+    await finish(f, session, transport);
+    assertSettlement(await closeReader(f, next, { kind: 'applied', finalRevision: 0 }), 'recorded');
+    assert.equal(session.ownedReaderResults.applied, 1);
+  });
+
+  await checkReader('missing receiver capability rejects opt-in and explicit outcomes while preserving legacy close', async () => {
+    const f = fixture();
+    const { session, transport } = await f.create();
+    const opening = await request(f, f.socket, 'openTerminalRead', {
+      sessionId: session.sessionId, authorityId: session.terminalAuthorityId,
+      consumerId: 'editor', settlementMode: 'final-application-v1'
+    });
+    assert.equal(opening.ok, false);
+    const read = await openReader(f, session, 'editor', f.socket, false);
+    await finish(f, session, transport);
+    assert.equal((await closeReader(f, read, { kind: 'applied', finalRevision: 0 })).ok, false);
+    const closed = await closeReader(f, read);
+    assert.equal(closed.ok, true);
+    assert.deepEqual(closed.result, { ok: true });
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'pending');
+    f.server.cleanupSocket(f.socket);
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'lost');
+  });
+
+  await checkReader('same-surface replacement cancels one reader and disconnect loses each remaining reader', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const first = await openReader(f, session);
+    await openReader(f, session, 'panel');
+    const next = await openReader(f, session);
+    assert.notEqual(first.readId, next.readId);
+    assert.equal(session.ownedReaderResults.cancelled, 1);
+    assert.equal(session.ownedReaders.size, 2);
+    assert.equal(f.server.terminalReads.get(f.socket).has(first.readId), false);
+    f.server.cleanupSocket(f.socket);
+    assert.equal(session.ownedReaderResults.lost, 2);
+    assert.equal(session.ownedReaders.size, 0);
+    await finish(f, session, transport);
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'settled');
+    assert.equal(transport.sent.some(message => message.type === 'requestStop'), false);
+    f.server.clearIdleShutdownTimer();
+  });
+
+  await checkReader('open admitted while final flush is blocked remains owned after reader admission closes', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const entered = deferred();
+    const gate = deferred();
+    const flush = session.terminalStateTracker.flush.bind(session.terminalStateTracker);
+    session.terminalStateTracker.flush = async () => { entered.resolve(); await gate.promise; return flush(); };
+    transport.process();
+    transport.seal();
+    transport.release();
+    await f.until(() => session.ownedExecution.snapshot().adapter.seal !== undefined, 'seal before final flush');
+    await entered.promise;
+    const opening = openReader(f, session);
+    assert.equal(session.ownedReaders.size, 1, 'queued open is registered synchronously before finalization');
+    gate.resolve();
+    const read = await opening;
+    assert.equal(session.ownedReaderAdmissionOpen, false);
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'pending');
+    assert.equal(session.ownedReaders.size, 1);
+    assertSettlement(await closeReader(f, read, { kind: 'applied', finalRevision: 0 }), 'recorded');
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'settled');
+  });
+
+  for (const preserveTerminalReads of [true, false]) {
+    await checkReader(`queued admitted open ${preserveTerminalReads ? 'survives preserving' : 'is cancelled by non-preserving'} deletion`, async () => {
+      const f = fixture(readerCapabilities);
+      const { session, transport } = await f.create();
+      const flushEntered = deferred();
+      const flushGate = deferred();
+      const queueGate = deferred();
+      const flush = session.terminalStateTracker.flush.bind(session.terminalStateTracker);
+      session.terminalStateTracker.flush = async () => { flushEntered.resolve(); await flushGate.promise; return flush(); };
+      transport.process();
+      transport.seal();
+      transport.release();
+      await f.until(() => session.ownedExecution.snapshot().adapter.seal !== undefined, 'retirement seal');
+      await flushEntered.promise;
+      session.terminalOperationChain = session.terminalOperationChain.then(() => queueGate.promise);
+      const opening = request(f, f.socket, 'openTerminalRead', {
+        sessionId: session.sessionId, authorityId: session.terminalAuthorityId,
+        consumerId: 'editor', settlementMode: 'final-application-v1'
+      });
+      assert.equal(session.ownedReaders.size, 1);
+      flushGate.resolve();
+      await f.until(() => session.live === false, 'finalization before pending open dequeues');
+      const deleting = f.server.deleteSession({ sessionId: session.sessionId, preserveTerminalReads });
+      assert.equal(session.retiring, true);
+      assert.equal(session.ownedReaders.size, preserveTerminalReads ? 1 : 0);
+      queueGate.resolve();
+      const response = await opening;
+      await deleting;
+      assert.equal(response.ok, preserveTerminalReads, JSON.stringify(response));
+      if (preserveTerminalReads) {
+        assert.equal(f.server.sessions.get(session.sessionId), session);
+        assert.equal(session.ownedExecution.snapshot().readerOutcome, 'pending');
+        assertSettlement(await closeReader(f, response.result, { kind: 'applied', finalRevision: 0 }), 'recorded');
+        assert.equal(session.ownedReaderResults.applied, 1);
+      } else {
+        assert.equal(session.ownedReaderResults.cancelled, 1);
+        assert.equal(session.ownedReaderResults.applied, 0);
+      }
+      await f.until(() => !f.server.sessions.has(session.sessionId), 'reader settlement completes retirement');
+      assert.equal(session.ownedExecution.snapshot().readerOutcome, 'settled');
+      f.server.clearIdleShutdownTimer();
+    });
+  }
+
+  await checkReader('a prepared open reply is not sent evidence until handleRequest writes it', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const entered = deferred();
+    const gate = deferred();
+    const open = f.server.openTerminalRead.bind(f.server);
+    let descriptor;
+    f.server.openTerminalRead = async (...args) => {
+      descriptor = await open(...args);
+      entered.resolve();
+      await gate.promise;
+      return descriptor;
+    };
+    const opening = openReader(f, session);
+    await entered.promise;
+    await finish(f, session, transport);
+    const prematurePage = await request(f, f.socket, 'readTerminalPage', { ...descriptor, afterRevision: 0 });
+    assert.equal(prematurePage.ok, false, 'an unsent open checkpoint cannot be skipped with an empty page');
+    assert.equal((await closeReader(f, descriptor, { kind: 'applied', finalRevision: 0 })).ok, false);
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'pending');
+    gate.resolve();
+    const read = await opening;
+    assertSettlement(await closeReader(f, read, { kind: 'applied', finalRevision: 0 }), 'recorded');
+  });
+
+  await checkReader('a prepared page reply cannot advance sent evidence before handleRequest writes it', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const read = await openReader(f, session);
+    transport.output('reply-tail');
+    await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'reply tail consumed');
+    await finish(f, session, transport);
+    const entered = deferred();
+    const gate = deferred();
+    const readPage = f.server.readTerminalPage.bind(f.server);
+    f.server.readTerminalPage = async (...args) => {
+      const result = await readPage(...args);
+      entered.resolve();
+      await gate.promise;
+      return result;
+    };
+    const reading = request(f, f.socket, 'readTerminalPage', { ...read, afterRevision: 0 });
+    await entered.promise;
+    assert.equal((await closeReader(f, read, { kind: 'applied', finalRevision: 1 })).ok, false);
+    assert.equal(session.ownedReaderResults.applied, 0);
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'pending');
+    gate.resolve();
+    const page = await reading;
+    assert.equal(page.ok, true, JSON.stringify(page));
+    assert.equal(page.result.revision, 1);
+    assertSettlement(await closeReader(f, read, { kind: 'applied', finalRevision: 1 }), 'recorded');
+  });
+
+  for (const failure of ['throw once', 'destroy connection']) {
+    await checkReader(`response write ${failure} records loss without applied evidence`, async () => {
+      const f = fixture(readerCapabilities);
+      const { session, transport } = await f.create();
+      const write = f.socket.write.bind(f.socket);
+      let attempted;
+      f.socket.write = line => {
+        const message = JSON.parse(line);
+        if (!attempted && message.type === 'response' && message.ok && message.result.readId) {
+          attempted = message.result;
+          if (failure === 'throw once') throw new Error('controlled response write failure');
+          write(line);
+          f.socket.destroyed = true;
+          f.server.cleanupSocket(f.socket);
+          return false;
+        }
+        return write(line);
+      };
+      const opening = await request(f, f.socket, 'openTerminalRead', {
+        sessionId: session.sessionId, authorityId: session.terminalAuthorityId,
+        consumerId: 'editor', settlementMode: 'final-application-v1'
+      });
+      assert.ok(attempted, 'the failure occurs at response submission, after the actual open');
+      if (failure === 'throw once') assert.equal(opening.ok, false);
+      assert.equal(session.ownedReaders.size, 0);
+      assert.equal(session.ownedReaderResults.lost, 1);
+      assert.equal(session.ownedReaderResults.applied, 0);
+      await finish(f, session, transport);
+      if (failure === 'throw once') {
+        assert.equal((await closeReader(f, attempted, { kind: 'applied', finalRevision: 0 })).ok, false);
+      } else {
+        assertSettlement(await closeReader(f, attempted, { kind: 'applied', finalRevision: 0 }, f.addSocket()), 'unconfirmed');
+      }
+      assert.equal(session.ownedReaderResults.applied, 0);
+      assert.equal(session.ownedExecution.snapshot().readerOutcome, 'settled');
+      f.server.clearIdleShutdownTimer();
+    });
+  }
+
+  for (const interruption of ['close', 'replace']) {
+    await checkReader(`page waiting for journal output rejects reader ${interruption}`, async () => {
+      const f = fixture(readerCapabilities);
+      const { session, transport } = await f.create();
+      const read = await openReader(f, session);
+      transport.output('page-tail');
+      await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'page output consumed');
+      const entered = deferred();
+      const gate = deferred();
+      const pages = session.terminalJournal.readEventPagesAfter.bind(session.terminalJournal);
+      session.terminalJournal.readEventPagesAfter = async function* (...args) {
+        entered.resolve();
+        await gate.promise;
+        yield* pages(...args);
+      };
+      const reading = request(f, f.socket, 'readTerminalPage', { ...read, afterRevision: 0 });
+      await entered.promise;
+      let replacing;
+      if (interruption === 'close') {
+        assertSettlement(await closeReader(f, read, { kind: 'cancelled', reason: 'surface disposed' }), 'recorded');
+      } else {
+        replacing = openReader(f, session);
+        assert.equal(session.ownedReaderResults.cancelled, 1, 'replacement cancels at admission, not after page completion');
+      }
+      gate.resolve();
+      const page = await reading;
+      assert.equal(page.ok, false, 'invalidated in-flight page cannot publish sent evidence');
+      if (replacing) {
+        const next = await replacing;
+        assertSettlement(await closeReader(f, next, { kind: 'cancelled', reason: 'replacement cleanup' }), 'recorded');
+      }
+      await finish(f, session, transport);
+      assert.equal(session.ownedExecution.snapshot().readerOutcome, 'settled');
+    });
+  }
 
   assert.equal(forbiddenAcquisitions, 0);
   console.log(`Supervisor execution owner wiring: ${passed}/${passed} pure cases passed`);

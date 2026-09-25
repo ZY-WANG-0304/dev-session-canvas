@@ -54,7 +54,9 @@ import {
 import type {
   RuntimeSupervisorOpenTerminalReadParams,
   RuntimeSupervisorReadTerminalPageParams,
-  RuntimeSupervisorCloseTerminalReadParams
+  RuntimeSupervisorCloseTerminalReadParams,
+  RuntimeSupervisorCloseTerminalReadResult,
+  RuntimeSupervisorTerminalReadOutcome
 } from '../common/runtimeSupervisorProtocol';
 import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
@@ -180,6 +182,8 @@ interface SupervisorSession {
   ownedProcessResult?: ProcessResult;
   ownedReaderAdmissionOpen?: boolean;
   ownedReaderSockets?: Set<net.Socket>;
+  ownedReaders?: Map<string, OwnedTerminalReader>;
+  ownedReaderResults?: Record<TerminalReaderResult['kind'], number>;
 }
 
 interface RestoredTerminalJournalCandidate {
@@ -203,12 +207,41 @@ interface TerminalReadCursor {
   checkpoint: TerminalStreamCheckpoint;
 }
 
+type TerminalReaderResult = RuntimeSupervisorTerminalReadOutcome
+  | { kind: 'lost' }
+  | { kind: 'legacy-released' };
+
+interface OwnedTerminalReader {
+  readId: string;
+  session: SupervisorSession;
+  socket: net.Socket;
+  reads: Map<string, TerminalReadCursor>;
+  consumerId: 'editor' | 'panel';
+  authorityId: string;
+  explicitSettlement: boolean;
+  cursor?: TerminalReadCursor;
+}
+
+interface TerminalReaderReceipt {
+  sessionId: string;
+  authorityId: string;
+  explicitSettlement: boolean;
+  outcome: TerminalReaderResult;
+  expiresAt: number;
+}
+
+const OWNED_TERMINAL_READER_LIMIT = 128;
+const TERMINAL_READER_RECEIPT_LIMIT = 128;
+const TERMINAL_READER_RECEIPT_MS = 60_000;
+
 export class RuntimeSupervisorServer {
   private readonly sessions = new Map<string, SupervisorSession>();
   private readonly connections = new Set<net.Socket>();
   private readonly subscriptions = new Map<net.Socket, Map<string, SupervisorSubscriptionMode>>();
   private readonly deferredSubscriptionRevisions = new Map<net.Socket, Map<string, number>>();
   private readonly terminalReads = new Map<net.Socket, Map<string, TerminalReadCursor>>();
+  private readonly terminalReaderReceipts = new Map<net.Socket, Map<string, TerminalReaderReceipt>>();
+  private readonly ownedTerminalReplies = new WeakMap<object, OwnedTerminalReader>();
   private readonly appliedRevisionAcks = new Map<
     net.Socket,
     Map<string, RuntimeSupervisorAckSessionRevisionResult>
@@ -345,17 +378,17 @@ export class RuntimeSupervisorServer {
         }
         case 'openTerminalRead': {
           const result = await this.openTerminalRead(socket, request.params);
-          this.writeMessage(socket, { type: 'response', id: request.id, ok: true, result });
+          this.publishTerminalRead(socket, request.id, result);
           return;
         }
         case 'readTerminalPage': {
           const result = await this.readTerminalPage(socket, request.params);
-          this.writeMessage(socket, { type: 'response', id: request.id, ok: true, result });
+          this.publishTerminalRead(socket, request.id, result);
           return;
         }
         case 'closeTerminalRead': {
-          await this.closeTerminalRead(socket, request.params);
-          this.writeOkResponse(socket, request.id);
+          const result = await this.closeTerminalRead(socket, request.params);
+          this.writeMessage(socket, { type: 'response', id: request.id, ok: true, result });
           return;
         }
         case 'attachSession': {
@@ -540,7 +573,10 @@ export class RuntimeSupervisorServer {
       agentActivity: params.kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
       process,
       ...(ownedExecution ? { ownedExecution, ownedReaderAdmissionOpen: true,
-        ownedReaderSockets: new Set(socket.destroyed ? [] : [socket]) } : {})
+        ...(this.executionOwner!.options.capabilities.includes('terminal-read-settlement-v1')
+          ? { ownedReaders: new Map<string, OwnedTerminalReader>(),
+            ownedReaderResults: { applied: 0, cancelled: 0, lost: 0, 'legacy-released': 0 } }
+          : { ownedReaderSockets: new Set(socket.destroyed ? [] : [socket]) }) } : {})
     };
     this.sessions.set(sessionId, session);
     if (params.deferSubscription !== true) {
@@ -676,17 +712,23 @@ export class RuntimeSupervisorServer {
     return session.terminalJournal;
   }
 
-  private openTerminalRead(
+  private async openTerminalRead(
     socket: net.Socket,
     params: RuntimeSupervisorOpenTerminalReadParams
   ): Promise<TerminalStreamReadDescriptor> {
     const session = this.requireSession(params.sessionId);
+    if (params.settlementMode !== undefined &&
+        (params.settlementMode !== 'final-application-v1' || !session.ownedReaders)) {
+      throw new Error('Terminal reader settlement capability is unavailable.');
+    }
+    const owned = session.ownedReaders ? this.admitOwnedTerminalReader(session, socket, params) : undefined;
     return this.enqueueTerminalOperation(session, async () => {
-      this.requireSession(params.sessionId);
+      this.requireSession(params.sessionId, Boolean(owned));
+      if (owned) this.assertOwnedTerminalReader(owned);
       if (session.ownedExecution && this.sessions.get(session.sessionId) !== session) {
         throw new Error('Terminal reader belongs to a replaced execution.');
       }
-      if (session.ownedExecution && !session.ownedReaderAdmissionOpen) {
+      if (session.ownedExecution && !owned && !session.ownedReaderAdmissionOpen) {
         throw new Error('The execution final revision is fixed; new readers are closed.');
       }
       const journal = this.requireReadableJournal(session, params.authorityId);
@@ -695,6 +737,7 @@ export class RuntimeSupervisorServer {
         throw new Error('Invalid terminal reader connection or consumer.');
       }
       await this.createFreshSnapshot(session, 'always', false);
+      if (owned) this.assertOwnedTerminalReader(owned);
       if (session.ownedExecution) {
         if (this.sessions.get(session.sessionId) !== session) {
           throw new Error('Terminal reader belongs to a replaced execution.');
@@ -704,19 +747,27 @@ export class RuntimeSupervisorServer {
         }
       }
       const checkpoint = session.terminalCheckpoint!;
-      const readId = randomUUID();
+      const readId = owned?.readId ?? randomUUID();
       // A socket owns at most one reader per session and surface.
       for (const [id, read] of reads) {
         if (read.sessionId === session.sessionId && read.consumerId === params.consumerId) {
           reads.delete(id);
         }
       }
-      reads.set(readId, { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
-        consumerId: params.consumerId, appliedRevision: checkpoint.revision, sentRevision: checkpoint.revision,
-        checkpoint: cloneTerminalStreamCheckpoint(checkpoint) });
+      const cursor = { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
+        consumerId: params.consumerId, appliedRevision: checkpoint.revision,
+        sentRevision: owned ? -1 : checkpoint.revision,
+        checkpoint: cloneTerminalStreamCheckpoint(checkpoint) };
+      reads.set(readId, cursor);
+      if (owned) owned.cursor = cursor;
       session.ownedReaderSockets?.add(socket);
-      return { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
+      const result = { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
         checkpoint: cloneTerminalStreamCheckpoint(checkpoint), headRevision: journal.getRevision() };
+      if (owned) this.ownedTerminalReplies.set(result, owned);
+      return result;
+    }).catch(error => {
+      if (owned) this.settleOwnedTerminalReader(owned, { kind: 'lost' });
+      throw error;
     });
   }
 
@@ -725,6 +776,14 @@ export class RuntimeSupervisorServer {
     return this.enqueueTerminalOperation(session, async () => {
       const journal = this.requireReadableJournal(session, params.authorityId);
       const read = this.terminalReads.get(socket)?.get(params.readId);
+      const owned = session.ownedReaders?.get(params.readId);
+      if (session.ownedReaders) {
+        if (!owned || !read || owned.socket !== socket || owned.cursor !== read) {
+          throw new Error('Terminal reader is no longer current.');
+        }
+        this.assertOwnedTerminalReader(owned);
+        if (read.sentRevision < 0) throw new Error('Terminal reader checkpoint has not been sent.');
+      }
       const afterRevision = normalizeTerminalStreamRevision(params.afterRevision);
       if (!read || read.sessionId !== params.sessionId || read.authorityId !== params.authorityId ||
           afterRevision === undefined ||
@@ -744,18 +803,60 @@ export class RuntimeSupervisorServer {
         break;
       }
       const revision = events[events.length - 1]?.revision ?? afterRevision;
+      if (owned) this.assertOwnedTerminalReader(owned);
       read.appliedRevision = afterRevision;
-      read.sentRevision = revision;
+      if (!owned) read.sentRevision = revision;
       if (session.terminalCheckpoint && session.terminalCheckpoint.revision <= afterRevision &&
           session.terminalCheckpoint.revision > read.checkpoint.revision) {
         read.checkpoint = cloneTerminalStreamCheckpoint(session.terminalCheckpoint);
       }
-      return { readId: read.readId, sessionId: session.sessionId, authorityId: read.authorityId,
+      const result = { readId: read.readId, sessionId: session.sessionId, authorityId: read.authorityId,
         afterRevision, revision, headRevision, events };
+      if (owned) this.ownedTerminalReplies.set(result, owned);
+      return result;
     });
   }
 
-  private async closeTerminalRead(socket: net.Socket, params: RuntimeSupervisorCloseTerminalReadParams): Promise<void> {
+  private async closeTerminalRead(
+    socket: net.Socket, params: RuntimeSupervisorCloseTerminalReadParams
+  ): Promise<RuntimeSupervisorCloseTerminalReadResult> {
+    const session = this.sessions.get(params.sessionId);
+    const explicit = params.outcome !== undefined;
+    const outcome = explicit ? this.validateTerminalReaderOutcome(params.outcome) : { kind: 'legacy-released' } as const;
+    const receipts = this.pruneTerminalReaderReceipts(socket);
+    const receipt = receipts?.get(params.readId);
+    if (receipt) {
+      if (explicit && !receipt.explicitSettlement) throw new Error('Terminal reader settlement was not negotiated.');
+      if (receipt.sessionId !== params.sessionId || receipt.authorityId !== params.authorityId ||
+          JSON.stringify(receipt.outcome) !== JSON.stringify(outcome)) {
+        throw new Error('Terminal reader settlement conflicts with the recorded result.');
+      }
+      return { ok: true, settlement: 'duplicate' };
+    }
+    if (explicit && !this.executionOwner?.options.capabilities.includes('terminal-read-settlement-v1')) {
+      throw new Error('Terminal reader settlement capability is unavailable.');
+    }
+    if (session?.ownedReaders) {
+      const owned = session.ownedReaders.get(params.readId);
+      if (!owned || owned.socket !== socket) return { ok: true, settlement: 'unconfirmed' };
+      this.assertOwnedTerminalReader(owned);
+      if (owned.authorityId !== params.authorityId) throw new Error('Terminal reader authority does not match.');
+      if (explicit && !owned.explicitSettlement) throw new Error('Terminal reader settlement was not negotiated.');
+      if (outcome.kind === 'applied') {
+        const terminal = session.ownedExecution!.snapshot().terminal;
+        if (terminal?.kind !== 'applied' || terminal.finalRevision !== outcome.finalRevision ||
+            !owned.cursor || owned.cursor.sentRevision < outcome.finalRevision) {
+          throw new Error('Terminal reader final revision is not fixed or has not been sent.');
+        }
+      }
+      this.settleOwnedTerminalReader(owned, outcome);
+      if (session.retiring) await this.enqueueTerminalOperation(session, () => this.finishSessionRetirement(session));
+      return { ok: true, settlement: 'recorded' };
+    }
+    if (explicit) {
+      if (session) throw new Error('Terminal reader settlement capability is unavailable for this session.');
+      return { ok: true, settlement: 'unconfirmed' };
+    }
     const reads = this.terminalReads.get(socket);
     const read = reads?.get(params.readId);
     if (read?.sessionId === params.sessionId && read.authorityId === params.authorityId) {
@@ -764,6 +865,112 @@ export class RuntimeSupervisorServer {
       if (session?.retiring) {
         await this.enqueueTerminalOperation(session, () => this.finishSessionRetirement(session));
       }
+    }
+    return { ok: true };
+  }
+
+  private admitOwnedTerminalReader(
+    session: SupervisorSession, socket: net.Socket, params: RuntimeSupervisorOpenTerminalReadParams
+  ): OwnedTerminalReader {
+    if (!session.ownedReaderAdmissionOpen) throw new Error('The execution final revision is fixed; new readers are closed.');
+    this.requireReadableJournal(session, params.authorityId);
+    const reads = this.terminalReads.get(socket);
+    if (!reads || socket.destroyed || (params.consumerId !== 'editor' && params.consumerId !== 'panel')) {
+      throw new Error('Invalid terminal reader connection or consumer.');
+    }
+    if (session.ownedReaders!.size >= OWNED_TERMINAL_READER_LIMIT) throw new Error('Terminal reader capacity exhausted.');
+    const owned: OwnedTerminalReader = { readId: randomUUID(), session, socket, reads,
+      consumerId: params.consumerId, authorityId: params.authorityId,
+      explicitSettlement: params.settlementMode === 'final-application-v1' };
+    for (const previous of session.ownedReaders!.values()) {
+      if (previous.socket === socket && previous.consumerId === params.consumerId) {
+        this.settleOwnedTerminalReader(previous, { kind: 'cancelled', reason: 'reader-replaced' });
+      }
+    }
+    session.ownedReaders!.set(owned.readId, owned);
+    return owned;
+  }
+
+  private assertOwnedTerminalReader(owned: OwnedTerminalReader): void {
+    if (this.sessions.get(owned.session.sessionId) !== owned.session) {
+      this.settleOwnedTerminalReader(owned, { kind: 'lost' });
+      throw new Error('Terminal reader belongs to a replaced execution.');
+    }
+    if (owned.socket.destroyed || this.terminalReads.get(owned.socket) !== owned.reads) {
+      this.settleOwnedTerminalReader(owned, { kind: 'lost' });
+      throw new Error('Terminal reader connection is no longer current.');
+    }
+    if (owned.session.ownedReaders?.get(owned.readId) !== owned ||
+        (owned.cursor && owned.reads.get(owned.readId) !== owned.cursor)) {
+      throw new Error('Terminal reader is no longer current.');
+    }
+  }
+
+  private publishTerminalRead(socket: net.Socket, id: string, result: TerminalStreamReadDescriptor | TerminalStreamPage): void {
+    const owned = this.ownedTerminalReplies.get(result);
+    if (owned) {
+      // A result may have outlived its cursor while handleRequest was awaiting it.
+      if (owned.socket !== socket || owned.authorityId !== result.authorityId) {
+        throw new Error('Terminal reader reply is no longer current.');
+      }
+      this.assertOwnedTerminalReader(owned);
+      try {
+        this.writeMessage(socket, { type: 'response', id, ok: true, result });
+      } catch (error) {
+        this.settleOwnedTerminalReader(owned, { kind: 'lost' });
+        throw error;
+      }
+      this.assertOwnedTerminalReader(owned);
+      owned.cursor!.sentRevision = Math.max(owned.cursor!.sentRevision,
+        'checkpoint' in result ? result.checkpoint.revision : result.revision);
+      this.ownedTerminalReplies.delete(result);
+      return;
+    }
+    this.writeMessage(socket, { type: 'response', id, ok: true, result });
+  }
+
+  private validateTerminalReaderOutcome(outcome: unknown): RuntimeSupervisorTerminalReadOutcome {
+    if (!outcome || typeof outcome !== 'object') throw new Error('Invalid terminal reader outcome.');
+    const value = outcome as Record<string, unknown>;
+    if (value.kind === 'applied' && Number.isSafeInteger(value.finalRevision) && (value.finalRevision as number) >= 0) {
+      return { kind: 'applied', finalRevision: value.finalRevision as number };
+    }
+    if (value.kind === 'cancelled' && typeof value.reason === 'string' && value.reason.trim().length > 0 && value.reason.length <= 1024) {
+      return { kind: 'cancelled', reason: value.reason };
+    }
+    throw new Error('Invalid terminal reader outcome.');
+  }
+
+  private pruneTerminalReaderReceipts(socket: net.Socket): Map<string, TerminalReaderReceipt> | undefined {
+    const receipts = this.terminalReaderReceipts.get(socket);
+    const now = this.executionOwner?.options.scheduler.now() ?? 0;
+    for (const [id, receipt] of receipts ?? []) {
+      if (receipt.expiresAt <= now) receipts!.delete(id);
+    }
+    if (receipts?.size === 0) this.terminalReaderReceipts.delete(socket);
+    return receipts;
+  }
+
+  private settleOwnedTerminalReader(owned: OwnedTerminalReader, outcome: TerminalReaderResult): void {
+    const session = owned.session;
+    if (session.ownedReaders?.get(owned.readId) !== owned) return;
+    if (!owned.socket.destroyed && this.terminalReads.get(owned.socket) === owned.reads) {
+      const receipts = this.pruneTerminalReaderReceipts(owned.socket) ?? new Map<string, TerminalReaderReceipt>();
+      receipts.set(owned.readId, { sessionId: session.sessionId, authorityId: owned.authorityId,
+        explicitSettlement: owned.explicitSettlement,
+        outcome: { ...outcome }, expiresAt: this.executionOwner!.options.scheduler.now() + TERMINAL_READER_RECEIPT_MS });
+      while (receipts.size > TERMINAL_READER_RECEIPT_LIMIT) receipts.delete(receipts.keys().next().value!);
+      this.terminalReaderReceipts.set(owned.socket, receipts);
+    }
+    session.ownedReaderResults![outcome.kind]++;
+    session.ownedReaders.delete(owned.readId);
+    if (owned.cursor && owned.reads.get(owned.readId) === owned.cursor) owned.reads.delete(owned.readId);
+    this.settleOwnedReadersIfComplete(session);
+  }
+
+  private settleOwnedReadersIfComplete(session: SupervisorSession): void {
+    if (!session.ownedReaderAdmissionOpen && session.ownedReaders?.size === 0) {
+      session.ownedExecution!.settleReaders('settled');
     }
   }
 
@@ -1094,7 +1301,14 @@ export class RuntimeSupervisorServer {
       session.terminalMutationAdmissionOpen = false;
       session.ownedReaderAdmissionOpen = false;
       session.stopRequested = true;
-      if (!params.preserveTerminalReads) session.ownedExecution.settleReaders('cancelled');
+      if (session.ownedReaders) {
+        if (!params.preserveTerminalReads) {
+          for (const reader of session.ownedReaders.values()) {
+            this.settleOwnedTerminalReader(reader, { kind: 'cancelled', reason: 'session-deleted' });
+          }
+        }
+        this.settleOwnedReadersIfComplete(session);
+      } else if (!params.preserveTerminalReads) session.ownedExecution.settleReaders('cancelled');
       const stopped = await session.ownedExecution.requestStop('Session deletion requested.');
       if (stopped.kind !== 'settled') {
         throw new Error('Execution deletion remains unconfirmed; ownership is retained.');
@@ -1196,6 +1410,7 @@ export class RuntimeSupervisorServer {
         }
         session.terminalMutationAdmissionOpen = false;
         session.ownedReaderAdmissionOpen = false;
+        this.settleOwnedReadersIfComplete(session);
         if (session.ownedReaderSockets?.size === 0) execution.settleReaders('lost');
         return session.outputSequence;
       }),
@@ -1242,6 +1457,7 @@ export class RuntimeSupervisorServer {
     session.lifecycleTimer = undefined;
     session.live = false;
     session.ownedReaderAdmissionOpen = false;
+    this.settleOwnedReadersIfComplete(session);
     if (session.ownedReaderSockets?.size === 0) session.ownedExecution?.settleReaders('lost');
     const processResult = session.ownedProcessResult;
     const successful = result.kind === 'applied' && processResult && processResult.kind !== 'unconfirmed';
@@ -2201,6 +2417,12 @@ export class RuntimeSupervisorServer {
       affectedSessionIds.add(appliedRevision.sessionId);
     }
     for (const session of this.sessions.values()) {
+      for (const reader of session.ownedReaders?.values() ?? []) {
+        if (reader.socket === socket) {
+          affectedSessionIds.add(session.sessionId);
+          this.settleOwnedTerminalReader(reader, { kind: 'lost' });
+        }
+      }
       if (session.ownedReaderSockets?.delete(socket)) {
         affectedSessionIds.add(session.sessionId);
         if (session.ownedReaderSockets.size === 0 && !session.ownedReaderAdmissionOpen) {
@@ -2212,6 +2434,7 @@ export class RuntimeSupervisorServer {
     this.subscriptions.delete(socket);
     this.deferredSubscriptionRevisions.delete(socket);
     this.terminalReads.delete(socket);
+    this.terminalReaderReceipts.delete(socket);
     this.appliedRevisionAcks.delete(socket);
     for (const sessionId of affectedSessionIds) {
       const session = this.sessions.get(sessionId);

@@ -187,15 +187,26 @@ export interface RuntimeSupervisorOpenTerminalReadParams {
   sessionId: string;
   authorityId: string;
   consumerId: 'editor' | 'panel';
+  settlementMode?: 'final-application-v1';
 }
+
+export type RuntimeSupervisorTerminalReadOutcome =
+  | { kind: 'applied'; finalRevision: number }
+  | { kind: 'cancelled'; reason: string };
 
 export interface RuntimeSupervisorCloseTerminalReadParams {
   sessionId: string;
   authorityId: string;
   readId: string;
+  outcome?: RuntimeSupervisorTerminalReadOutcome;
 }
 
-export interface RuntimeSupervisorReadTerminalPageParams extends RuntimeSupervisorCloseTerminalReadParams {
+export interface RuntimeSupervisorCloseTerminalReadResult {
+  ok: true;
+  settlement?: 'recorded' | 'duplicate' | 'unconfirmed';
+}
+
+export interface RuntimeSupervisorReadTerminalPageParams extends Omit<RuntimeSupervisorCloseTerminalReadParams, 'outcome'> {
   afterRevision: number;
 }
 
@@ -373,6 +384,7 @@ export type RuntimeSupervisorResponse =
         | RuntimeSupervisorSessionCheckpointResult
         | RuntimeSupervisorSubscribeSessionResult
         | RuntimeSupervisorAckSessionRevisionResult
+        | RuntimeSupervisorCloseTerminalReadResult
         | {
             ok: true;
           };

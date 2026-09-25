@@ -6,6 +6,8 @@
 
 ## 目标与全局图景
 
+当前从`bcdd7213`完成生产接入第19节的有限逐reader接收端：仅内部non-native能力注入，逐open保留在途责任，在真正回包提交后记录sentRevision，独立验证最终outcome并有界保存幂等回执。Supervisor33/33（原13项保持）、Host19/19和相关回归通过。零reader及全部结算用中性退役信号，不把旧close变成applied；不启用新native/页面发送。下一步完整接通远端发送及跨层协商，本地最终屏障另行收口；以下第18节为上一轮已完成记录。
+
 本轮从`c1b6bc8b`完成S4实际接线补验，见生产接入第18节：Host 19/19覆盖成功启动、真实tracker消费与stop/delete、单根/多根reset入口；Supervisor 13/13含checkpoint等待期间断连/替换的直接修复。没有本轮PTY/native会话或runner，前轮协议回归实际运行旧PTY的分类错误按18.2勘误。下一有限切片为18.4的远端逐reader结算接收端，最终Webview ACK和本地完成屏障尚未实施，不把入口测试当UI/平台整链通过。
 
 当前S4已完成，输入主树e84a8558/诊断树14fc6462；本轮在实际Supervisor/Host入口增加默认关闭、无native的准入与收尾分支，正常用户行为不变。定向结果和边界见生产接入第17节；以下第16节是已完成的前置设计，不是仍待重复的任务。
@@ -35,7 +37,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 ## 进度
 
 - [x] (2026-09-25，S4接线补验) Host实际入口19/19、Supervisor13/13，修复在途open断连/替换重登记；owner13/13、adapter53、Linux bridge/tracker/paged回归及typecheck通过。记录先红、清理ENOTEMPTY及前轮PTY分类勘误，不追认历史覆盖；Host历史被删fixture精确根因仍不可确认。
-- [ ] 下一有限切片：按生产接入18.4实施默认关闭、无native的远端逐reader登记与结算接收端；之后仍须跨层能力协商与真实页面写屏障，不能将接收端通过称为L-02完成。
+- [x] (2026-09-25，逐reader接收端) 按生产接入第19节实现默认关闭、无native的在途open/page、真实回包提交、最终结果与有限幂等；Supervisor33/33、Host19/19、owner13/13、adapter53、Linux bridge/tracker/paged和typecheck通过。独立复核修正checkpoint绕过、preserve-open和legacy回执能力缺口，保留首轮契约预期失败，不宣称native或页面应用。
+- [ ] 下一有限切片：按19.4完整接通远端发送链、跨层能力协商与真实页面write屏障，仍默认关闭/无native；本地屏障、生产创建分流和正常关闭失败处置/预算单独开放，不将接收端通过称为L-02完成。
 
 - [x] (2026-09-25，S4无native接线) Adapter closing/消费等待、共享owner收尾和两真实入口接线完成；owner lifecycle 13/13、adapter 53 cases、Supervisor wiring 11/11、Host wiring 5/5、既有bridge/tracker/paged/protocol回归及workspace typecheck通过。不开放native工厂，Host宽fixture的未决顶层await未作为通过依据。
 
@@ -240,6 +243,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-09-25 逐reader接收端初版经只读复核发现：初始appliedRevision允许未发送checkpoint经空page把sentRevision推进，需首次open实际提交前拒绝read；已准入open排队期间preserve删除把session标retiring，旧requireSession会误拒绝，需仅允许登记过的captured owned continuation。回执另保留explicitSettlement防legacy自动取消升级能力。新增断言执行时修复已在，不编造先红后绿。首次实际测试的未知session预期报错而得到unconfirmed，是不可确认契约预期不一致；明确口径后保留原reader/pending/计数不变断言，后续33/33通过，不改旧13项。
+
 2026-09-25 S4补验确认：Supervisor `openTerminalRead()`在快照await前检查socket，恢复后未重验就写入cursor/reader集合，断连时重登记失效读者；新增断连回归先报`Missing expected rejection`/exit1，修后13项断言通过的一次整轮又因journal清理`ENOTEMPTY`失败，等待已排队flush后最终整轮exit0。另前轮运行的`test-runtime-supervisor-protocol.mjs`确实spawn真实Supervisor并走旧PTY路径，前轮“全部无native/无网络服务”说明错误；第18.2节追加勘误，旧通过结果不改、不冒充新provider通过，本轮不重跑它。Host当前成功启动与真实tracker链已通过19项；新增夹具必须先等accepted尾值再发sourceEnd，不能以非法早发封口检验业务丢尾。历史被删fixture没有可复验版本，其未决await精确原因仍未确认。
 
 2026-09-25 静态定位：Supervisor仅idle timer/registry flush后process.exit，没有统一关闭准入；Host异步deactivation之后仍同步dispose/kill，local启动在异步解析后才登记。父transport只能请求直接provider终止，Host退出后的内存unknown不再提供控制。独立复核还确认adapter的seal不等待消费且每批最多4帧，最终flush须先在terminal链外等待seal尾值消费，不能越过尚未排队的后批或在链内自等待。单根reset与多根clear入口不同，均须防止清map绕过unknown。这些是接线输入，不是本轮实测产品失败。
@@ -402,6 +407,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-09-25（逐reader接收端）：只有内部注入capability含terminal-read-settlement-v1启用。逐open而非逐socket记责任；128个未决/session、128个回执/socket和60秒幂等窗口，只逐出已结算记录。open入口同步准入，实际socket.write成功提交后更新sentRevision；最终applied仍是调用方声明，接收端校验不替代页面真实屏障。owner新增中性settled而非伪造applied，零reader亦可退役；完整生产能力协商与发送留给下一有限切片。
+
 2026-09-25（S4补验优先）：成功启动后的Host消费/收尾和reset/clear是本轮所改真实入口，不能因为共享owner绿色或fixture未决就永久后移。先用现有测试明确复现并补齐，不新增框架、native或通用边界。跨层reader最终ACK另成有限切片，当前只读核对能力协商与结果传递，避免同时开放未验证新路径。
 
 2026-09-25（S4最小接口）：新增executionOwnerLifecycle共用真实模块，先reserve后异步准备，关闭后保留未返回prepare直到调用方清理并abandon；不伪造同步process/onExit兼容层。Host仅Test模式显式注入，Supervisor正常main无注入；预算仅测试依赖，无生产默认值。Adapter提供事件通知和seal消费等待，owner链外等待、实际authority链内flush；reader只显式cancelled/lost，不补造applied。先按生产接入第17节实施和验证，不再进行一轮通用工具研究。
@@ -561,6 +568,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
+逐reader接收端完成第19节的有限交付，三处直接复核遗漏已修正，最终专项复核无blocker；没有再次开发诊断框架。Supervisor33/33和Host19/19及相关回归、typecheck通过，仅证明receiver身份/范围/结果及owner接线。真实socket、页面write完成、native/OS资源不在本轮证明范围，L-02和总债务继续开放。第19.4节将下一步限定为远端完整发送协商，不自动启用新runtime或native；历史失败与证据保持。
+
 S4接线补验已完成：Host 19/19与Supervisor 13/13直接覆盖所改入口，两个专项交叉复核无本切片确定性blocker。业务修改仅Supervisor owned分支await后的session/socket/reader-map复验，Host和旧执行路径没有修改。首败、清理失败和前轮验证分类勘误分别保留，历史Host exit13不追认。reset覆盖实际Host决策和持久化调用，但I/O仍是替身；fake资源事实也不证明OS回收。下一步为远端逐reader接收端，本地/远端最终ACK、native失联处置及生产分流仍开放；以下S4首轮结果是当时记录，其中零PTY范围以18.2勘误为准。
 
 S4完成第17节约定的无native有限产物：共享owner生命周期已接入实际Supervisor/Host入口，关闭准入、在途预留、seal尾值消费等待、真实tracker最终flush、unknown和reader责任分别保留。owner lifecycle 13/13、adapter 53 cases、Supervisor wiring 11/11、Host wiring 5/5，既有bridge/tracker/paged/protocol回归及workspace typecheck通过；未启动PTY、native、runner或网络服务。Host宽tracker fixture的未决顶层await被明确移除而非追认通过，reset/clear完整UI整链、reader最终ACK、native失联处置/预算和生产能力分流仍开放。PI-01/02/03及产品总债务保持开放，文档静态检查结果记录于验证与验收。
@@ -655,6 +664,8 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 上下文与定向
 
+本轮代码输入为主树bcdd7213，仅本树修改。common/runtimeSupervisorProtocol.ts新增open settlementMode与close outcome/result类型；supervisor/runtimeSupervisorMain.ts使用原cursor及独立socket回执；panel/executionOwnerLifecycle.ts增加中性readerOutcome='settled'（三条路径均位于extensions/vscode/dev-session-canvas/src/）。capabilities内terminal-read-settlement-v1仅用于显式NonNativeExecutionOwnerOptions注入，正常main没有注入且hello不声明新能力。当前诊断工作树不修改，也不自动同步历史文档。
+
 本阶段输入为主树a5d884be、诊断树a385e34d。主树`extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts`持有执行引用与准入，`src/supervisor/runtimeSupervisorMain.ts`是live-runtime owner，`src/panel/CanvasPanelManager.ts`是snapshot-only owner，`src/common/serializedTerminalState.ts`提供真实消费flush；后三条路径同属主扩展。诊断树无S1至S3生产代码，只同步文档，正式设计第16节代码行号均以主树为准。
 
 当前S3源码、构建与采集均在主运行时树，诊断树仅同步文档。修后输入3f8ebcae由主树2e770c95/诊断树ff297168继续；本机Linux/Node22.23.2与同一S3 binary保持，目录参数外无代码修改。本次2/2与S3首次0/2、S2 Node25证据分别记录；当前边界见生产接入第15.8至15.10节。
@@ -671,7 +682,7 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 工作计划
 
-当前第18节补验及直接修复已完成。下一里程碑仅为18.4：在现有Supervisor cursor边界分别登记reader和在途open，引入有能力门控的close结果校验、有界幂等记录与聚合退役；复用既有readId/revision，不增新水位、存储generation或completed正文。先写明有限记录上限与结果保留条件，再修改runtimeSupervisorProtocol、Supervisor及必要owner接口/定向测试；只允许内部非native注入，不向旧会话补造applied，不开放native。完整跨层发送和本地屏障仍须后续一起实施，不能先对产品宣布新保证。
+当前第19节接收端及定向验证已完成。下一里程碑仅为19.4：沿common/protocol、Host/relay/client及Webview实际write链，完整接通远端结果发送与Webview ready、hello/session/open能力声明。所有新字段与真实页面写完成屏障一起实施，旧路径/旧live不补造applied，仍不开放native、storage generation或completed正文。本地最终屏障单独保留，不能将远端接收端结果先对产品宣布为新保证。
 
 S4已按生产接入第16.5节完成：在adapter及两个真实owner入口接入关闭准入、在途预留、具名stop/cancel、截至seal尾值的消费屏障和退役责任。共用编排由真实创建/关闭入口调用；正常运行无新provider工厂，只有显式非native依赖注入可进入新分支；未新增用户开关、native加载、协议/namespace变更或旧live迁移。页面最终ACK暂不实现，未结算reader不能报applied或释放对应最终状态。
 
@@ -762,6 +773,8 @@ S1 最终定向32/32、typecheck 复跑、既有 bridge 回归、独立复审及
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+本轮已在仓库根运行`node scripts/test/test-supervisor-execution-owner-wiring.mjs`、`node scripts/test/test-host-execution-owner-wiring.mjs`、`node scripts/test/test-execution-owner-lifecycle.mjs`、`node scripts/test/test-execution-session-adapter.mjs`、`node scripts/test/test-execution-session-bridge.mjs`、`node scripts/test/test-serialized-terminal-state-tracker.mjs`、`node scripts/test/test-runtime-paged-completion.mjs`、`npm run -w extensions/vscode/dev-session-canvas typecheck`；均exit0。新增测试沿真实handleRequest和fake socket运行，不启动main；不要将默认会走旧PTY的protocol全脚本混入无native结果。收口还做mjs语法、文档schema/索引、历史设计和旧13项保持检查及diffcheck，再本地提交，不push。
 
 本轮在主树仓库根运行`node scripts/test/test-host-execution-owner-wiring.mjs`（19/19）、`node scripts/test/test-supervisor-execution-owner-wiring.mjs`（13/13）、`node scripts/test/test-execution-owner-lifecycle.mjs`（13/13）、`node scripts/test/test-execution-session-adapter.mjs`（53 cases），再运行`node scripts/test/test-execution-session-bridge.mjs`、`node scripts/test/test-serialized-terminal-state-tracker.mjs`、`node scripts/test/test-runtime-paged-completion.mjs`和`npm run -w extensions/vscode/dev-session-canvas typecheck`，均exit0。未运行旧Supervisor protocol脚本、S2/S3、native/runner或push。后续有限reader切片沿用实际类的无native测试；真实发送新协议前必须同步consumer/capability，不能靠receiver自测宣称整链完成。以下步骤按旧阶段保留，不是当前执行安排。
 
@@ -937,6 +950,10 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
+逐reader本轮Linux/Node v25.6.0结果为Supervisor33/33、Host19/19、owner13/13、adapter53，bridge/tracker/paged及typecheck通过。33项含原13项不变和新增20项；回包门控只暂停实际方法返回至socket.write之间，不替换校验与发布逻辑；preserve/nonpreserve走真实delete和final flush。socket背压/抛错、128 pending、128回执/60秒均是本切片实际接口的有限验证，不扩大成通用工具前置。首败与修正见第19.3节，真实页面应用/native/平台验收未计入。
+
+本轮收口静态检查通过：生产接入设计YAML/索引/关联路径一致，第2至18节与bcdd7213逐字保持，ExecPlan原12章节顺序保持，原13项测试正文逐字保持，仅约定9文件修改且无未跟踪文件；修改测试mjs语法和git diff --check均通过。未将历史独立诊断树引用当作本树新路径检查，也未修改旧文档迎合校验。
+
 S4补验在Linux/Node v25.6.0验证Host19/19、Supervisor13/13、owner13/13、adapter53及bridge/tracker/paged和workspace typecheck全部exit0。新增Host测试有明确阶段等待与场景失败上限，未执行的历史宽fixture不恢复为绿色；首批真实tracker暂停下尾值/最终flush与实际reset决策有直接断言，UI及实际落盘仍未覆盖。Supervisor新增断连与替换回归先红后绿，测试finally等待journal写入后完整退出，不能只计13项断言而忽略清理失败。前轮protocol回归真实PTY分类纠正见设计18.2，不计本轮新样本。设计schema/索引、新增本地引用、第2至17节逐字保持、计划12标题原序、8文件变更范围和diff检查通过，两份测试mjs语法通过；首次静态脚本误将历史独立诊断树引用按主树检查而失败，改为检查新增引用后通过，未修改历史文档以迎合检查。
 
 本阶段文档静态检查通过：两树各4份设计frontmatter/索引/关联路径、各计划12标题原序、production旧第2至15节逐字保持及两树正文一致；每树仅约定8份文档修改，无新增未跟踪文件，git diff --check通过。主树14个关键代码锚点精确核对通过；首次检查发现beginConsumption行号误写501，正文纠正为502后复核通过，属于文档定位偏差，不是运行时失败。三个只读专项确认控制能力、Host入口及消费偏序修订无剩余本项finding。本轮未运行运行时测试或新增原生样本；下一S4必须直接测试实际入口/真实tracker和可控非native transport，不能以另一份模型或typecheck独自代表接线通过。
@@ -1005,6 +1022,8 @@ HPCON首次原矩阵12项全部有效，六control及两个explicit-close通过�
 
 ## 幂等性与恢复
 
+接收端幂等回执在原socket最多128条、60秒，记录先于cursor释放，session退役后同身份同结果仍可确认；过期/逐出/未知返回unconfirmed，冲突拒绝，不从后续请求重造applied。未决reader不逐出，128/session满额时拒新open；显式取消、连接loss和legacy释放均分账。内部gate只影响新注入会话；没有旧live迁移、真实进程清理或生产默认预算，旧13项和冻结实验保持。
+
 本轮只改默认关闭的owned reader open校验及测试，不迁移旧live、不启动新的执行进程。已准入的open若在await中失去连接/原映射，拒绝回包且不重新取得reader责任；测试失败以原退出码记录，重新验证保留前轮分类，不重跑PTY或修改原生工件。
 
 第16节只读接入条件阶段不触碰旧实验或工件。下一S4正常关闭必须幂等保留同execution责任，reset/clear不通过换authority重新放行unknown；回退新分支不能卸载已持有的执行引用，关闭开关仅影响未来新建。真实native工厂尚不可达，因此本阶段没有进程迁移或清理动作。
@@ -1016,6 +1035,8 @@ HPCON首次原矩阵12项全部有效，六control及两个explicit-close通过�
 候选试验不得修改用户 storage 或替换仍承载 live 会话的 Supervisor；仅控制本次创建的 fixture。证据目录唯一，不覆盖初次失败。生产方案需要可回滚的 capability/adapter 选择和旧 session 原绑定保留，回滚不得伪造完整性或强制迁移。取消和回收必须幂等，不因重试重复输出、重复终态或误删其他读者。
 
 ## 证据与备注
+
+本轮关键输出为`Supervisor execution owner wiring: 33/33 pure cases passed`及`Host execution owner wiring: 19/19 passed (non-native only).`；独立复核重复运行33/33不增加原生样本数。测试代码保存于原Supervisor wiring脚本，业务落点与契约见生产接入第19节；没有新工件归档/诊断工具或独立诊断树修改，首轮未知session预期失败按事实记录。
 
 S4补验代码和可重跑断言保存于`test-host-execution-owner-wiring.mjs`、`test-supervisor-execution-owner-wiring.mjs`；结果细分及初次失败见生产接入18.3。本轮关键输出为`Host execution owner wiring: 19/19 passed (non-native only).`和`Supervisor execution owner wiring: 13/13 pure cases passed`，不是原生样本数。既有Host esbuild external warning保持，禁止native的守卫仍生效；历史被删fixture无快照，不编造其精确根因。诊断工作树和全部冻结原生材料不改。
 
@@ -1126,6 +1147,8 @@ G07补证起点是本运行时树ebe303e7及独立诊断树2f630cd9。第14节�
 2026-09-20 runner 合并后的验证：`typecheck`、`build`、bridge、journal 和 Supervisor 聚合回归全部通过；聚合包含 checkpoint refresh、分页投影、无 completed 历史和退出分页。Node 25.6.0 与 Electron-as-Node 39.8.7 各 39 项契约模型、17 项实际 Supervisor 注入通过，输出目录/哈希及局限见设计第 14 节。没有运行全量 UI、真实 provider、packaged 或新的原生候选矩阵；相对 `28055e13` 不修改业务、既有测试、依赖或 workflow。
 
 ## 接口与依赖
+
+本轮交付RuntimeSupervisorOpenTerminalReadParams.settlementMode、RuntimeSupervisorTerminalReadOutcome及RuntimeSupervisorCloseTerminalReadResult；outcome只允许applied(finalRevision)/cancelled(reason)，legacy/lost由server记账。Supervisor保留每个open的captured session/socket/readId直到各自结算，WeakMap只把原回包对象关联到该reader，不加消费水位。共享owner的settled仅表示所有reader责任结束；future client/Webview必须完整协商并真实应用后才发applied，不能复用onReleased或普通snapshot ACK。
 
 本轮未新增公共协议或依赖。owned open在checkpoint等待后校验session引用与socket reader-map引用，避免失效请求重新入账；正常legacy路径不变。下一远端reader切片须复用sessionId/authorityId/readId/sentRevision和固定finalRevision，将applied/cancelled/lost/legacy-released分开保留；现有整执行socket集合只作过渡责任占位，不能证明editor/panel分别完成。服务端接收实现不替代后续Host/relay/client/Webview能力与写完成接线。
 
@@ -1301,3 +1324,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-25，S4无native接线收口）：主树在实际`RuntimeSupervisorServer`与`CanvasPanelManager`入口接入共享`ExecutionOwnerLifecycle`，只允许显式non-native依赖注入；默认路径、旧live绑定、PTY/native工厂和协议保持不变。reserve位于首次异步准备前，关闭先封准入并保留在途责任；owner在seal尾值消费完成后才调用真实tracker最终flush，unknown、reader取消/失联和旧身份迟到回调不被清map或替换映射掩盖。定向结果为owner lifecycle 13/13、adapter 53 cases、Supervisor wiring 11/11、Host wiring 5/5，既有bridge/tracker/paged/protocol回归及workspace typecheck通过；未启动PTY/native/runner。一次Host宽tracker fixture产生未决顶层await，已移除而不修改业务断言，保留窄入口测试，不把该路径写成通过。S4仅完成L-01无native接线切片；L-02最终reader ACK、L-03 native失联处置与预算、L-04生产能力分流和reset/clear完整UI整链仍开放。
 
 修订记录（2026-09-25，S4实际接线补验）：从c1b6bc8b补Host19/19与Supervisor13/13，修复checkpoint await后失效socket/替换session被重新登记；共享owner/adapter及Linux bridge/tracker/paged与typecheck通过，两个专项交叉复核无本切片blocker。保留新增回归首红和ENOTEMPTY清理失败，补等待journal.flush；Host历史exit13无法精确归因，不追认旧5/5覆盖收尾。纠正前轮protocol回归实际启动旧PTY却被记为零PTY的范围错误，见生产接入18.2；本轮无PTY/native会话、runner或push。同步四活章节、下一有限reader接收端及证据边界；真实UI/落盘、Webview最终ACK、本地完成屏障、native失联处置/预算和生产能力分流仍开放。
+
+修订记录（2026-09-25，逐reader接收端）：从bcdd7213实施第19节默认关闭non-native gate、逐open准入/回包、各reader结果与有限幂等，并扩展原wiring到33/33；Host19/19与相关回归通过。同步全部当前活章节、首轮预期失败和复核修正，不把接收端当端到端应用或native证据。下一阶段远端发送/协商与真实write屏障，本地/生产/native等未决保持；不push、runner或修改独立诊断树。

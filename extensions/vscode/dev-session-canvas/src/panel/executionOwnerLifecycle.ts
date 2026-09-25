@@ -123,7 +123,7 @@ export class OwnedExecution {
   private execution?: PreparedExecution;
   private hooks?: ExecutionOwnerHooks;
   private terminal?: AuthorityResult;
-  private readerOutcome: 'pending' | 'cancelled' | 'lost' = 'pending';
+  private readerOutcome: 'pending' | 'cancelled' | 'lost' | 'settled' = 'pending';
   private abandoned = false;
   private stopRequested = false;
   private finalizing = false;
@@ -215,8 +215,11 @@ export class OwnedExecution {
     return this.stopping;
   }
 
-  settleReaders(outcome: 'cancelled' | 'lost'): void {
-    if (outcome !== 'cancelled' && outcome !== 'lost') throw new Error('A reader cancellation or loss is required');
+  settleReaders(outcome: 'cancelled' | 'lost' | 'settled'): void {
+    // "settled" means all individually tracked readers ended, not that all applied output.
+    if (outcome !== 'cancelled' && outcome !== 'lost' && outcome !== 'settled') {
+      throw new Error('A reader settlement is required');
+    }
     if (this.readerOutcome !== 'pending') return;
     this.readerOutcome = outcome;
     this.evaluate();

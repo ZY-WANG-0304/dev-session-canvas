@@ -21,6 +21,8 @@ updated_at: 2026-09-25
 
 ## 1. 当前结论与阶段边界
 
+2026-09-25 从`bcdd7213`完成第19节默认关闭、无native的远端逐reader接收端，Supervisor 33/33（旧13项保持，新增20项）、Host19/19及相关回归通过。逐open准入、真实回包提交、逐reader outcome与有限幂等已接线；中性聚合结算不等于页面应用。仅内部capability注入可达，未改变hello能力、client/Webview、namespace或旧live。下一阶段接通远端发送和跨层能力协商；本地最终屏障、native失联处置及生产分流仍开放，不将本切片记为L-02或整体退出完整性完成。以下记录按原时点保留。
+
 2026-09-25 从`c1b6bc8b`完成S4实际接线补验，结果见第18节：Host 19/19覆盖成功启动后的真实tracker收尾和单根/多根reset入口，Supervisor 13/13包含checkpoint等待中断连/替换的先红后绿修复。仅非native注入路径，旧路径不变；没有本轮PTY或runner。第17节原5/5与11/11保持，不追认未覆盖路径；前轮将旧Supervisor协议回归误归为零PTY的说明按18.2勘误。下一有限切片为18.4的远端逐reader结算，整体仍未通过。
 
 2026-09-25 S4从主树`e84a8558`、诊断树`14fc6462`开始实施并已完成有限验证。有限实现输入见第17节：只连接默认关闭、无native的真实owner入口，正常用户路径不变；本轮结果仅证明准入、消费屏障、责任保留和关闭接线，不开放PTY/native，也不等同于产品级退出完整性通过。第16节及更早阶段按原时点保留。
@@ -597,3 +599,37 @@ Host增加有界等待（每场景3秒失败上限、每阶段100次受控调度
 `applied`只能证明同身份、已固定且已发送的finalRevision真实应用，`cancelled`须显式原因，socket失效记lost，旧无outcome的close只作legacy-released。重复幂等、冲突/越界拒绝及有限保留窗口需在该接收端切片一起定义与定向验证，不能把任意旧close改判applied。修改落点为`common/runtimeSupervisorProtocol.ts`、`supervisor/runtimeSupervisorMain.ts`、必要的共享owner接口及现有接线测试；只向内部注入路径提供，不启用真实新会话或新generation。
 
 接收端通过仍不关闭L-02：真正发送新结果时，`common/protocol.ts`、Host、relay、client、`webview/terminalPagedProjection.ts`和`webview/main.tsx`的写完成屏障，以及Webview ready、hello/session/open的能力协商必须完整对齐。本地Host的最终屏障也仍单独开放。relay的onReleased、client无连接时close返回和普通snapshot ACK都不作为applied。L-03 native失联处置/预算、L-04生产分流与真实UI/平台验收仍具名保留；不借此再开通用诊断轮。
+
+## 19. 逐reader结算接收端
+
+### 19.1 本轮实现边界与规则
+
+输入为主树`bcdd7213`，只实施第18.4节。只有显式non-native owner注入的capabilities包含`terminal-read-settlement-v1`时建立逐reader账本，正常main、旧注入和旧live不启用。此内部gate不是hello/session能力声明；不修改client、relay、Webview或generation。`openTerminalRead`的可选`settlementMode: 'final-application-v1'`表示此reader允许显式结算；未协商的reader不能提交新outcome。端到端能力协商仍未完成。
+
+每次合法open在进入异步终端队列前预留readId、captured session/authority/socket/surface。最多128个未结算reader/session，包含checkpoint与回包在途；超额拒绝新open，不逐出未决责任。最终flush固定终值并关闭准入后，先前准入的open继续完成；新open拒绝。同surface重新打开将原reader记`cancelled('reader-replaced')`，等待中的旧open和page不能再发布。仅create/subscribe的socket不算额外reader，零reader与全部各自结算都只通知共享owner中性的`settled`，不伪造全部applied；各结果在session计数中分别保留。
+
+`sentRevision`在实际open/page response成功提交`socket.write`后才前进；返回false是背压，不是发送失败。构造结果、私有方法返回、抛错或已断连都不能作已发送证明。journal异步读取后和回包发布前都复验原cursor、session及socket归属；发送只证明传输提交，页面应用仍需未来发送端真实写屏障。显式`applied(finalRevision)`要求原连接/身份/reader、固定的成功终值、完全相等的安全整数和已发送范围覆盖；`cancelled(reason)`要求非空、至多1024字符理由。无outcome的close只记`legacy-released`；socket清理记lost，非preserve删除逐个取消，不停止其他执行或补造EOF。
+
+删除cursor前保存结算回执，回执在session之外、按原socket保存，最多128条/socket、60秒；到期或超量只逐出已结算回执，断连删除该socket的回执。以注入scheduler的单调时间惰性清理，不为此增加后台timer。相同身份/结果重试返回`duplicate`，冲突拒绝；session已删除仍可确认窗口内回执，窗口外/未知readId返回`unconfirmed`，不能复造applied。回执不保存终端正文，也不是已结束历史持久化。此窗口只限定接收端幂等保证，不设置reader自动超时、生产收尾预算或取消政策。
+
+`unconfirmed`是不能确认结果，不是接受最终ACK：未知sessionId、foreign socket或窗口外readId均不改变原reader。已知reader的错误authority或冲突结果报协议错误。gate内无outcome close返回`recorded`并记录legacy-released；gate外仍返回原`{ ok: true }`。回执保留reader自身是否明确opt-in，不能用legacy reader被替换时的自动取消回执绕过能力校验。
+
+### 19.2 验证安排
+
+扩展现有`test-supervisor-execution-owner-wiring.mjs`，保留旧13项，新增真实handleRequest到受控socket的定向断言：双surface、空输出、未固定/未发送/越界拒绝、同surface替换、open/page在途取消或断连、幂等与过期/容量、错误身份、legacy释放与关闭gate。使用内存provider、真实journal/tracker，不监听真实socket或创建执行进程。运行Host、owner、adapter、Linux bridge/tracker/paged回归和workspace typecheck；不重跑会创建旧PTY的protocol脚本。新增每场景3秒watchdog用于明确报告未决测试，不改变产品收尾期限。
+
+### 19.3 实际结果与复核
+
+本机Linux/Node v25.6.0运行Supervisor 33/33（旧13与新增20）、Host19/19、owner13/13、adapter53，以及Linux bridge、serialized tracker、paged completion均exit0，workspace typecheck通过。Supervisor由主代理及独立复核分别重跑通过，但不累计为原生样本。Host原有esbuild `require.resolve('node-pty')` external警告保持，native加载/spawn守卫没有放宽。未运行PTY/native、真实socket服务、runner、VS Code UI或实际Agent；构建辅助进程不计执行会话。
+
+保留首轮失败：新增测试原期望未知sessionId报协议错误，实际返回unconfirmed；明确19.1的不可确认语义后修正预期，同时保持原reader、pending与计数均不变的断言。gate内旧close返回recorded、gate外旧close返回ok的测试预期也随契约明确，不将这类预期澄清称为业务先红后绿。
+
+独立只读复核指出初版两处证明缺口，均已修正：未发布open的checkpoint虽没有sentRevision，却可沿初始appliedRevision请求空page，把page发送误当checkpoint已发送；现在gated read必须先有sentRevision非负。已准入open在队列排队期间遇preserve删除，原requireSession拒绝retiring导致错误lost；现在仅已登记owned continuation允许访问captured retiring session，非preserve取消仍拒绝。另为回执保留opt-in，legacy自动替换的取消不能升级新能力。新增断言运行时修复已在，不声称执行过先红后绿；最终复核未发现本切片blocker。
+
+测试还确认socket.write返回false仍算提交，write抛错或连接销毁不产生applied证明；回包在途和journal read在途分别受captured reader校验。只有最后一个reader各自结束且准入已封，owner才收到中性settled；普通create/subscribe不占虚构reader。接收端校验的是可信发送端将来提交的声明，不证明页面真实应用，更不证明OS资源释放。
+
+### 19.4 下一有限切片与剩余边界
+
+下一阶段沿第11.2/11.3节完整接通远端发送链：`common/protocol.ts`、Host、`runtimeTerminalReadRelay.ts`、`runtimeSupervisorClient.ts`、`webview/terminalPagedProjection.ts`及`webview/main.tsx`。必须一起实施Webview ready和hello/session/open能力声明、真实write完成屏障、相同身份的结果转发及cancel/lost分账；接收端内部gate不能替代这些协商。仍只默认关闭、无native注入，不启用新generation或用户创建入口；纯接线验证与真实UI验收分账。
+
+本地Host最终应用屏障、L-03正常关闭失败处置/失联预算、L-04生产创建能力分流、真实Agent/其他平台和真实落盘验收继续开放；本轮不关闭L-02、PI-01/02/03或退出完整性总债务。旧live原绑定、旧冻结实验/失败及第2至18节保持，不修改独立诊断工作树，不推送或触发runner。
