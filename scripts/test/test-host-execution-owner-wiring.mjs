@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import os from 'node:os';
 import path from 'node:path';
 import esbuild from 'esbuild';
 import ts from 'typescript';
@@ -1450,6 +1451,316 @@ test('actual extension deactivate preserves manager references across controlled
   await deactivate();
   assert.equal(replacementCalls, 2);
   assert.equal(getManager(), undefined);
+});
+
+const persistenceCapabilities = [...boundaryCapabilities, 'terminal-local-settlement-v1', 'terminal-local-persistence-v1'];
+
+async function persistenceFixture(options = {}) {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-host-final-persistence-'));
+  const root = path.join(directory, 'root');
+  await mkdir(root);
+  const f = fixture({ ...options, capabilities: persistenceCapabilities,
+    budgets: { naturalDrainMs: 15, boundaryMs: 50, ...options.budgets }, roots: [{ path: root, name: 'root' }] });
+  const updates = new Map();
+  const writes = [];
+  const configuration = { defaultSurface: 'editor', runtimePersistenceEnabled: false, filesFeatureEnabled: false };
+  delete f.host.persistState;
+  delete f.host.writeRootLocalCanvasSnapshot;
+  Object.assign(f.host, {
+    rawExtensionStoragePath: path.join(directory, 'workspace-storage'),
+    context: { extensionMode: 3, globalStorageUri: { fsPath: path.join(directory, 'global-storage') },
+      workspaceState: { async update(key, value) { updates.set(key, structuredClone(value)); } } },
+    appliedStartupConfiguration: configuration, readStartupConfiguration: () => configuration,
+    pendingWorkspaceStateUpdate: Promise.resolve(), lastLoadedRootLocalStates: [],
+    syncNoteMarkdownFileWatchers() {}, cleanupUnreferencedNoteMarkdownRecoverableDraftFiles() {},
+    recordStatePersistPerformance() {}, shouldPreserveLiveRuntimeAcrossHostBoundary: () => false,
+    terminalReadRelay: { closeMatching() {} }, runtimeSupervisorClients: new Map()
+  });
+  Object.assign(f.host.state, { version: 1, updatedAt: '2026-09-26T00:00:00.000Z', nextGroupSequence: 1,
+    fileReferences: [], suppressedFileActivityEdgeIds: [], suppressedAutomaticFileArtifactNodeIds: [] });
+  for (const node of f.nodes) Object.assign(node, { title: `Original ${node.kind}`, position: { x: 10, y: 20 },
+    size: { width: 640, height: 360 } });
+  const write = f.host.writePersistedCanvasSnapshotToDisk.bind(f.host);
+  f.host.writePersistedCanvasSnapshotToDisk = (filename, snapshot) => {
+    writes.push(filename);
+    return write(filename, snapshot);
+  };
+  const workspaceFile = f.host.getPersistedCanvasSnapshotPath();
+  const rootFile = f.host.getRootLocalCanvasSnapshotPath(root);
+  await f.host.persistState({ workspaceStateMode: 'full', requireRootLocalDurability: true });
+  writes.length = 0;
+  return { ...f, directory, root, updates, writes, workspaceFile, rootFile,
+    async read(filename = workspaceFile) { return JSON.parse(await readFile(filename, 'utf8')); },
+    async finish(kind, record, provider, { text, exitCode = 0, disposition = { kind: 'eof' } } = {}) {
+      const frames = text === undefined ? 0 : 1;
+      if (text !== undefined) {
+        provider.output(1, text);
+        await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === frames, `${kind} disk tail accepted`);
+      }
+      provider.message({ type: 'processResult', result: { kind: 'exited', exitCode } });
+      provider.message({ type: 'sourceEnd', finalFrameId: frames, disposition });
+      provider.release();
+      await until(f.clock, () => record.persistence?.result !== undefined, `${kind} final persistence result`);
+      return record.persistence.result;
+    },
+    async cleanup() {
+      f.host.clearDeferredCanvasStatePersistTimer();
+      for (const record of f.host.nonNativeHostExecutions.values()) record.tracker.dispose();
+      await f.host.pendingWorkspaceStateUpdate;
+      await rm(directory, { recursive: true, force: true });
+    }
+  };
+}
+
+for (const kind of ['terminal', 'agent']) {
+  test(`${kind} final snapshot-only persistence reads back actual root and workspace files before retirement`, async () => {
+    for (const frames of [0, 1]) {
+      const f = await persistenceFixture();
+      let record;
+      try {
+        if (kind === 'agent') f.nodes.find(node => node.kind === kind).metadata.agent = {
+          provider: 'codex', resumeStrategy: 'codex-session-id', resumeSessionId: 'explicit-provider-session'
+        };
+        const started = await f.started(kind);
+        record = started.record;
+        const exitCode = frames === 0 ? 0 : 7;
+        const result = await f.finish(kind, record, started.provider,
+          { text: frames ? 'disk-final-tail\r\n\x1b[4;9H' : undefined, exitCode });
+        assert.equal(result.kind, 'saved', result.reason);
+        assert.ok(Object.isFrozen(result));
+        assert.strictEqual(await record.persistence.promise, result);
+        assert.equal(record.persistence.submitted, true);
+        assert.equal(record.execution.snapshot().terminal.kind, 'applied');
+        assert.equal(record.execution.snapshot().retired, true);
+        assert.equal(f.record(kind), undefined, 'only a successful save releases the retired Host record');
+        const disk = await f.read();
+        const rootDisk = await f.read(f.rootFile);
+        const metadata = disk.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind];
+        assert.equal(metadata.persistenceMode, 'snapshot-only');
+        assert.equal(metadata.liveSession, false);
+        assert.equal(metadata.lifecycle, frames ? 'error' : kind === 'terminal' ? 'closed' : 'stopped');
+        assert.equal(metadata.lastExitCode, exitCode);
+        assert.equal(metadata.outputSequence, frames);
+        assert.deepEqual(metadata.serializedTerminalState, { ...record.finalTerminal, outputSequence: frames });
+        assert.deepEqual(rootDisk.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind], metadata);
+        assert.deepEqual(f.host.loadPersistedCanvasSnapshot().state, disk.state);
+        assert.deepEqual(f.host.loadPersistedRootLocalCanvasSnapshot(f.root).state, rootDisk.state);
+        for (const field of ['runtimeSessionId', 'runtimeBackend', 'runtimeStoragePath', 'terminalStream', 'terminalHistoryDiscarded']) {
+          assert.equal(metadata[field], undefined, field);
+        }
+        if (kind === 'agent') assert.equal(metadata.resumeSessionId, 'explicit-provider-session');
+        assert.deepEqual(f.writes, [f.rootFile, f.workspaceFile], 'one final save uses both original writers');
+        const projectedState = [...f.updates.values()].find(value => Array.isArray(value?.nodes));
+        const projectedMetadata = projectedState.nodes.find(node => node.id === `${kind}-1`).metadata[kind];
+        assert.equal(projectedMetadata.serializedTerminalState, undefined,
+          'the actual workspaceState projection must not copy the recovery snapshot');
+        assert.equal(projectedMetadata.terminalStream, undefined);
+        const { Terminal } = createRequire(import.meta.url)('@xterm/headless');
+        const terminal = new Terminal({ cols: 80, rows: 24, allowProposedApi: true });
+        try {
+          await new Promise(resolve => terminal.write(metadata.serializedTerminalState.data, resolve));
+          if (frames) {
+            assert.equal(terminal.buffer.active.getLine(0).translateToString(true), 'disk-final-tail');
+            assert.equal(terminal.buffer.active.cursorX, 8);
+            assert.equal(terminal.buffer.active.cursorY, 3);
+          } else {
+            assert.equal(terminal.buffer.active.cursorX, 0);
+            assert.equal(terminal.buffer.active.cursorY, 0);
+          }
+        } finally { terminal.dispose(); }
+      } finally { record?.tracker.dispose(); await f.cleanup(); }
+    }
+  });
+}
+
+async function assertFinalSaveRetainsHost(f, record, kind, expected) {
+  assert.equal(record.execution.snapshot().terminal.kind, 'applied');
+  assert.equal(record.execution.snapshot().retired, true);
+  assert.strictEqual(f.record(kind), record, 'owner retirement does not release pending or failed persistence');
+  assert.equal(record.persistence.result?.kind, expected);
+  const providers = f.providers.length;
+  await assert.rejects(f.start(kind), /snapshot responsibility/i);
+  assert.equal(f.providers.length, providers, 'a retained Host record blocks transport replacement');
+  const node = f.host.state.nodes.find(node => node.id === `${kind}-1`);
+  const errors = [];
+  f.host.postMessage = message => errors.push(message);
+  await completed(f.clock, f.host.deleteNode(node.id), 'retained final save delete');
+  assert.strictEqual(f.host.state.nodes.find(candidate => candidate.id === node.id), node);
+  assert.equal(errors.at(-1)?.type, 'host/error');
+  await assert.rejects(completed(f.clock, f.host.resetState(), 'retained final save reset'), /snapshot persistence/i);
+  assert.strictEqual(f.host.state.nodes.find(candidate => candidate.id === node.id), node);
+  assert.strictEqual(f.record(kind), record);
+}
+
+test('final snapshot disk and workspaceState failures retain the original Host responsibility after owner retirement', async () => {
+  for (const failure of ['root-file', 'workspace-file', 'workspace-update']) {
+    const f = await persistenceFixture();
+    const beforeRoot = await f.read(f.rootFile);
+    const beforeWorkspace = await f.read();
+    const { record, provider } = await f.started('terminal');
+    try {
+      if (failure === 'workspace-update') {
+        f.host.context.workspaceState.update = async () => { throw new Error('controlled workspaceState update rejected'); };
+      } else {
+        await mkdir(`${failure === 'root-file' ? f.rootFile : f.workspaceFile}.tmp`);
+      }
+      const result = await f.finish('terminal', record, provider, { text: `final-${failure}` });
+      assert.equal(result.kind, 'failed', failure);
+      assert.equal(record.persistence.submitted, true);
+      if (failure === 'workspace-update') assert.match(result.reason, /workspaceState update rejected/);
+      else assert.match(result.reason, /EISDIR|illegal operation on a directory/i);
+      if (failure === 'root-file') assert.deepEqual(await f.read(f.rootFile), beforeRoot);
+      else assert.match((await f.read(f.rootFile)).state.nodes[0].metadata.terminal.serializedTerminalState.data, /final-/);
+      if (failure !== 'workspace-update') assert.deepEqual(await f.read(), beforeWorkspace);
+      else assert.match((await f.read()).state.nodes[0].metadata.terminal.serializedTerminalState.data, /final-/);
+      const attempts = [...f.writes];
+      await assertFinalSaveRetainsHost(f, record, 'terminal', 'failed');
+      assert.deepEqual(f.writes, attempts, 'abortable operations cannot bypass a failed save by writing a fresh snapshot');
+    } finally { record.tracker.dispose(); await f.cleanup(); }
+  }
+});
+
+test('pending final persistence blocks restart delete and reset while the original submitted write may complete after cutoff', async () => {
+  const f = await persistenceFixture();
+  const update = deferred();
+  const entered = deferred();
+  const originalUpdate = f.host.context.workspaceState.update;
+  f.host.context.workspaceState.update = async (...args) => {
+    entered.resolve();
+    await update.promise;
+    return originalUpdate(...args);
+  };
+  const { record, provider } = await f.started('agent');
+  try {
+    provider.output(1, 'submitted-before-cutoff');
+    await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 1, 'pending save tail');
+    provider.process(); provider.seal(1); provider.release();
+    await completed(f.clock, entered.promise, 'pending original workspace update');
+    await until(f.clock, () => record.execution.snapshot().retired, 'pending save owner retired');
+    assert.equal(record.persistence.submitted, true);
+    assert.equal(record.persistence.result, undefined);
+    assert.match((await f.read()).state.nodes.find(node => node.kind === 'agent').metadata.agent.serializedTerminalState.data,
+      /submitted-before-cutoff/, 'a delayed workspaceState update is not a delayed disk write');
+    await assertFinalSaveRetainsHost(f, record, 'agent', undefined);
+    const closing = f.host.prepareForDeactivation();
+    const attempts = [...f.writes];
+    await pump(f.clock, () => true);
+    f.clock.advance(50);
+    const report = await completed(f.clock, closing, 'pending save permanent cutoff');
+    assert.equal(report.canvasSnapshot.kind, 'unconfirmed');
+    assert.equal(report.local.kind, 'settled');
+    assert.equal(record.persistence.result, undefined, 'a Host deadline does not settle the original submitted operation');
+    update.resolve();
+    const saved = await completed(f.clock, record.persistence.promise, 'late original workspace update');
+    assert.equal(saved.kind, 'saved');
+    assert.equal(f.record('agent'), undefined);
+    assert.strictEqual(await f.host.prepareForDeactivation(), report);
+    assert.deepEqual(f.writes, attempts, 'late completion cannot submit another disk write');
+  } finally { update.resolve(); record.tracker.dispose(); await f.cleanup(); }
+});
+
+test('a final tracker flush after the permanent cutoff cannot patch metadata or submit final persistence', async () => {
+  const f = await persistenceFixture();
+  const { record, provider } = await f.started('terminal');
+  const gate = deferred();
+  const entered = deferred();
+  const flush = record.tracker.flush.bind(record.tracker);
+  try {
+    provider.output(1, 'flush-after-cutoff');
+    await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'cutoff consumed tail');
+    const metadata = f.host.state.nodes.find(node => node.kind === 'terminal').metadata.terminal;
+    record.tracker.flush = async () => { entered.resolve(); await gate.promise; return flush(); };
+    const closing = f.host.prepareForDeactivation();
+    provider.process(); provider.seal(1); provider.release();
+    await completed(f.clock, entered.promise, 'cutoff original final flush');
+    const attempts = [...f.writes];
+    const atCutoff = await f.read();
+    f.clock.advance(50);
+    const report = await completed(f.clock, closing, 'final flush cutoff report');
+    assert.equal(report.canvasSnapshot.kind, 'unconfirmed');
+    assert.equal(record.persistence.submitted, false);
+    gate.resolve();
+    const result = await completed(f.clock, record.persistence.promise, 'late flush persistence observation');
+    assert.equal(result.kind, 'unconfirmed');
+    assert.match(result.reason, /boundary ended/);
+    assert.equal(record.execution.snapshot().terminal.kind, 'applied');
+    assert.equal(record.persistence.submitted, false);
+    assert.strictEqual(f.host.state.nodes.find(node => node.kind === 'terminal').metadata.terminal, metadata);
+    assert.strictEqual(f.record('terminal'), record);
+    assert.deepEqual(f.writes, attempts);
+    assert.deepEqual(await f.read(), atCutoff);
+    assert.strictEqual(await f.host.prepareForDeactivation(), report);
+  } finally { gate.resolve(); record.tracker.dispose(); await f.cleanup(); }
+});
+
+test('final persistence follows the original execution metadata while preserving current layout and unrelated nodes', async () => {
+  for (const replacement of ['layout-only', 'execution-metadata']) {
+    const f = await persistenceFixture();
+    const { record, provider } = await f.started('agent');
+    const before = await f.read();
+    const original = f.host.state.nodes.find(node => node.kind === 'agent');
+    const changed = { ...original, title: 'Changed during execution', position: { x: 401, y: 902 },
+      metadata: replacement === 'layout-only' ? original.metadata
+        : { ...original.metadata, agent: { ...original.metadata.agent, resumeSessionId: 'replacement-session' } } };
+    f.host.state = { ...f.host.state,
+      nodes: [...f.host.state.nodes.map(node => node === original ? changed : node),
+        { id: 'concurrent-note', kind: 'note', title: 'Concurrent note', position: { x: 5, y: 6 },
+          size: { width: 200, height: 160 }, metadata: {} }] };
+    try {
+      const result = await f.finish('agent', record, provider, { text: 'identity-checked-tail' });
+      if (replacement === 'layout-only') {
+        assert.equal(result.kind, 'saved', result.reason);
+        const saved = (await f.read()).state;
+        assert.equal(saved.nodes.find(node => node.kind === 'agent').title, changed.title);
+        assert.deepEqual(saved.nodes.find(node => node.kind === 'agent').position, changed.position);
+        assert.equal(saved.nodes.some(node => node.id === 'concurrent-note'), true);
+      } else {
+        assert.equal(result.kind, 'unconfirmed');
+        assert.match(result.reason, /metadata binding changed/);
+        assert.equal(record.persistence.submitted, false);
+        assert.strictEqual(f.host.state.nodes.find(node => node.kind === 'agent'), changed);
+        assert.deepEqual(await f.read(), before);
+        assert.deepEqual(f.writes, []);
+        await assertFinalSaveRetainsHost(f, record, 'agent', 'unconfirmed');
+      }
+    } finally { record.tracker.dispose(); await f.cleanup(); }
+  }
+});
+
+test('unknown process and failed final flush preserve old disk state while interrupted output keeps its actual disposition', async () => {
+  for (const outcome of ['process-unknown', 'flush-failed', 'source-interrupted']) {
+    const f = await persistenceFixture();
+    const { record, provider } = await f.started('terminal');
+    const metadata = f.host.state.nodes.find(node => node.kind === 'terminal').metadata.terminal;
+    const before = await f.read();
+    try {
+      provider.output(1, 'original-received-tail');
+      await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'invalid final state tail');
+      if (outcome === 'flush-failed') record.tracker.flush = async () => { throw new Error('controlled final disk-state flush failed'); };
+      provider.message({ type: 'processResult', result: outcome === 'process-unknown'
+        ? { kind: 'unconfirmed', reason: 'original process result unavailable' } : { kind: 'exited', exitCode: 0 } });
+      provider.message({ type: 'sourceEnd', finalFrameId: 1, disposition: outcome === 'source-interrupted'
+        ? { kind: 'interrupted', reason: 'original source was cancelled' } : { kind: 'eof' } });
+      provider.release();
+      const result = await completed(f.clock, record.persistence.promise, `${outcome} persistence result`);
+      if (outcome === 'source-interrupted') {
+        assert.equal(result.kind, 'saved', result.reason);
+        const saved = (await f.read()).state.nodes.find(node => node.kind === 'terminal').metadata.terminal;
+        assert.equal(saved.lastRuntimeError, 'original source was cancelled');
+        assert.match(saved.lastExitMessage, /Output is incomplete/);
+        assert.equal(record.execution.snapshot().adapter.seal.source.kind, 'interrupted');
+        assert.match(saved.serializedTerminalState.data, /original-received-tail/);
+      } else {
+        assert.equal(result.kind, outcome === 'flush-failed' ? 'failed' : 'unconfirmed');
+        assert.equal(record.persistence.submitted, false);
+        assert.strictEqual(f.host.state.nodes.find(node => node.kind === 'terminal').metadata.terminal, metadata);
+        assert.deepEqual(await f.read(), before);
+        assert.deepEqual(f.writes, []);
+        assert.strictEqual(f.record('terminal'), record);
+        assert.equal(record.execution.snapshot().terminal.kind, outcome === 'flush-failed' ? 'failed' : 'applied');
+      }
+    } finally { record.tracker.dispose(); await f.cleanup(); }
+  }
 });
 
 for (const { name, run } of tests) {

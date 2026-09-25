@@ -111,6 +111,11 @@ export class ExecutionOwnerLifecycle {
           budgets.boundaryMs <= 0 || budgets.boundaryMs > 0x7fffffff)) {
       throw new Error('Owner boundary requires close observation and an explicit finite boundary budget');
     }
+    if (options.capabilities.includes('terminal-local-persistence-v1') &&
+        (!options.capabilities.includes('terminal-local-settlement-v1') ||
+          !options.capabilities.includes('execution-owner-boundary-v1'))) {
+      throw new Error('Local persistence requires local terminal settlement and owner boundary capabilities');
+    }
     this.options = Object.freeze({ ...options, budgets, capabilities: Object.freeze([...options.capabilities]) });
   }
 

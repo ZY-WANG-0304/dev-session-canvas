@@ -919,6 +919,25 @@ try {
     assert.equal(h.owner.snapshot().pending, 0);
   });
 
+  test('local persistence requires both local settlement and the owner boundary before acquiring resources', () => {
+    let acquisitions = 0;
+    const options = {
+      capabilities: ['execution-lifecycle-v1', 'execution-close-observation-v1', 'execution-owner-boundary-v1',
+        'terminal-local-settlement-v1', 'terminal-local-persistence-v1'],
+      budgets: { ...budgets, naturalDrainMs: 5, boundaryMs: 60 },
+      createTransport() { acquisitions++; throw new Error('must not acquire'); }
+    };
+    for (const missing of ['terminal-local-settlement-v1', 'execution-owner-boundary-v1']) {
+      assert.throws(() => harness({ ...options,
+        capabilities: options.capabilities.filter(capability => capability !== missing) }), /local persistence/i);
+    }
+    const h = harness(options);
+    options.capabilities.pop();
+    assert.equal(h.owner.options.capabilities.includes('terminal-local-persistence-v1'), true);
+    assert.doesNotThrow(() => harness());
+    assert.equal(acquisitions, 0);
+  });
+
   for (const { name, run } of tests) {
     await run();
     console.log(`ok - ${name}`);

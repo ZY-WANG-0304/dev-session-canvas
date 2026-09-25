@@ -14,12 +14,14 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-25
+updated_at: 2026-09-26
 ---
 
 # 退出完整性生产接入与故障域收敛
 
 ## 1. 当前结论与阶段边界
+
+2026-09-26 从`c5a0487f`完成第26节S8：默认关闭的snapshot-only最终tracker投影metadata与严格实际保存，独立保存责任保留失败/未知来源并衔接S7边界。owner36/36、Host56/56和相关回归/typecheck通过，新增单root及workspace真实文件读回与headless光标验证；旧history完整脚本基线与本轮均因夹具缺字段失败，不能记通过。下一仅收敛L-03生产预算和L-04创建前能力分流、旧live错误传播与最小Linux业务接入方案，不自动开native或新增诊断门槛；总体退出完整性仍开放。以下阶段按原时点保留。
 
 2026-09-25 从`ade8f133`完成第25节S7：默认关闭、无native的实际Host/Supervisor正常关闭失败编排。Host分别报告本地执行、现有画布保存和原连接detach；Supervisor等待原执行/reader、严格保存及原server/socket关闭，失败或未知保持关闭准入与进程保活。owner35/35、Host49/49、Supervisor60/60及相关回归/typecheck通过，仅证明受控实际模块。下一有限阶段补snapshot-only最终终端状态投影与实际保存/失败保留，不增加Runtime completed历史；生产profile、native准入和整体退出完整性仍开放。以下阶段按原时点保留。
 
@@ -953,3 +955,53 @@ adapter81/81、parent-control纯入口9/9、reader接线20/20、client13/13、�
 下一阶段只处理snapshot-only新路径的最终终端状态如何从原tracker投影到原节点metadata，以及实际保存完成/失败保留的顺序。必须先冻结原节点/执行身份、最终flush与metadata提交点、保存失败的可见结果和Host永久离开的时序，再扩现有Host/持久化定向验证；不能把S7并行保存的旧画布状态追认为最终态落盘。Runtime模式已结束节点重开仍不恢复进程或历史，旧live绑定继续使用原Supervisor；不把这个有限项扩为completed历史归档。
 
 L-03生产profile仍未选定，L-02总体消费/页面/落盘验收、L-04生产能力分流及旧live批量delete吞错、L-05异常owner消失、真实VS Code UI/Agent启动链和跨平台仍开放。整体计划继续active；下一阶段不默认开启native或runner，不重开通用诊断框架。
+
+## 26. S8本地最终态保存
+
+### 26.1 输入与有限方案
+
+2026-09-26从`c5a0487f`完成25.6。源码确认新Host路径在原tracker flush后仅发布页面最终态，未投影节点metadata；S7画布保存独立并行，不能证明该终态已写入。本轮只补snapshot-only的最终状态保存，不改变Runtime已结束无历史、旧live绑定、root/storage/generation或生产/native准入。第2至25节及原测试正文保持。本节在实现前冻结有限决策，实际结果见26.5。
+
+显式non-native能力`terminal-local-persistence-v1`要求同时具备`terminal-local-settlement-v1`和`execution-owner-boundary-v1`（后者仍要求关闭观察及显式boundaryMs），transport创建前校验。旧gate不变；不新增用户设置、磁盘格式、公共RPC或通用保存框架。
+
+### 26.2 保存责任与身份
+
+`CanvasPanelManager.ts`的原NonNativeHostExecution增加独立保存结果与单次Promise，保存失败不改写terminal applied、process、source或reader结果。成功最终flush且主体有确定终态后，按原revision克隆最终SerializedTerminalState，沿buildExecutionMetadataPatch/updateExecutionNode投影到snapshot-only metadata；保存退出信息、尺寸和有限最近输出，清旧runtime绑定/terminalStream/discarded标记，保留已有Agent配置和显式resume上下文，不从输出猜测resume身份。source非EOF不能凭成功保存宣称输出完整，退出消息保留该不完整原因；主体未知或flush失败不覆盖旧快照，报告未确认/失败并保留原记录。
+
+零输出的原tracker可能未写outputSequence；仅在finalRevision和已消费序号均确认为0时，将保存快照规范化为显式0，正文/光标保持原flush结果，不放宽非零校验。最终提交metadata及发起保存前再次检查原Host deadline，避免同步快照计算跨过期限后新增写入。无subject的S6结算可独立标not-required，不以reader已退役作为没有保存义务的前提；释放record仍须reader实际退役。
+
+提交前同步核对原map记录、原execution身份、节点id/kind以及捕获的metadata[kind]引用。首次await前为原节点规范化并捕获metadata；不依赖易因布局修改而替换的node对象，也不滥用runtimeSessionId或删除前会失效的operation token。布局/标题更新保留执行metadata时允许提交；执行metadata被替换即保守判身份冲突，不覆盖新节点或自动重绑定。提交时只patch一次当前state，保留其他节点/布局；await保存后不再patch旧节点。这个保守限制不是完整生产并发编辑策略。
+
+每个record只提交一次`persistState({ mode: 'immediate', workspaceStateMode: 'full', requireRootLocalDurability: true })`，等待原Promise而非吞错旁路。成功表示原root-local及workspace canvas文件写入、必要workspaceState更新完成，不声称fsync/断电事务；部分文件成功后另一个写失败不宣称回滚。记录、最终快照及tracker在保存pending/failed/unconfirmed时保留，只有执行和reader均退役且保存成功才释放。S6未派发启动或准备阶段abandon无终态保存义务，明确中性结算。原map的未完成保存记录计入S1_LIMITS.executions容量，同key不得覆盖，不新增无界旁路列表。
+
+### 26.3 Host边界与可中止操作
+
+S8仍立即独立尝试S7初始画布保存及live detach；canvasSnapshot域同时等待边界捕获记录的最终保存结果，初始旧快照写成功不能提前报告终态已保存。固定Host deadline之前未提交的最终metadata/保存，期限后不得再发起；原已提交写入可迟到完成，只更新保存事实，不改S7不可变首报。该期限不伪造进程退出、EOF或reader applied；实际Host消失后不承诺继续保存。
+
+正常运行中的自然结束直接沿单次原保存完成；磁盘或workspaceState失败记录明确错误并保留，默认不自动重试。reset/delete除原owner结果外，还须检查Host保存责任，不能因owner已退役而绕过pending/failed记录；原执行关闭返回后，保存仍pending时明确报未确认并中止，不无限等待一个已不受执行预算覆盖的保存Promise，不新增保存预算。写完成后允许再次操作；保存失败仍保留节点，不自动重试。同步报告与诊断不应派生unhandled rejection或反过来改变已冻结保存结果。
+
+### 26.4 有限验证
+
+扩既有owner/Host测试，保留原35/49项正文；新增Terminal/Agent成功最终态、写失败、挂起/迟到、身份替换、布局保留、无终态与reset/delete不得绕过。至少一次直接运行真实persistState、root-local和workspace写入/rename后读回JSON，对比原tracker数据、revision和退出状态，并从实际snapshot恢复入口读取；workspaceState受控，不声称VS Code UI重开验收。独立检查Runtime无历史路径未受影响，不扩容量或归档矩阵。
+
+仓库根运行owner/Host、相关Supervisor/reader/main-headless/adapter/parent-control/bridge/tracker/paged及现有多根回归、workspace typecheck。禁止旧PTY protocol、真实transport七场景、S3/native/真实socket/runner。收口前同步计划、索引、原则与债务，核对历史/语法/文档/diff后本地中文提交，不push/PR。L-02总体、L-03生产profile、L-04分流及旧live吞错、L-05异常owner消失和真实Agent/UI/跨平台仍开放。
+
+### 26.5 实际结果与失败分账
+
+本机Linux/Node v25.6.0最终owner36/36、Host56/56均exit0，原35/49项正文保持。新增owner一组能力依赖校验、Host七组，覆盖Terminal/Agent零输出exit0和尾输出exit7；直接运行原persistState、root-local与workspace writer/rename、JSON读回及load入口，再将保存正文交给真实headless xterm验证内容与最终光标。这里只证明单root和workspace文件路径，不代证多根VS Code重开、fsync或断电事务；workspaceState.update为受控边界。原多根composition回归通过但不合称多根磁盘整链。
+
+Host负向组通过原.tmp路径设置目录障碍分别制造root及workspace真实写失败，并注入workspaceState.update拒绝/挂起；部分文件已成功明确保留，不宣称回滚。原owner已退役时保存pending/failed仍挡同key、delete/reset；已有磁盘写但update未返回不能报保存完成，迟到结果不改S7首报。到期后才完成final flush不再patch或写；metadata替换拒绝、布局/标题及无关节点保持；process未知和flush失败保留旧文件，source中断保留原原因。S6无主体保存中性分账来自源码复核，本轮未新建no-ready测试工具或容量矩阵。
+
+相关回归Supervisor60/60、adapter81/81、parent-control纯入口9/9、reader接线20/20、client13/13、实际main/headless27/27及原分页断言、bridge、serialized tracker、四条Terminal/Agent分页完成和多根composition通过；workspace typecheck通过。Host既有node-pty external warning保持，native守卫不放宽。专项只读复核无本轮直接blocker；无PTY/native/真实socket/runner，不代表生产或跨平台验收。
+
+本轮先败：owner原35项全过，第36项缺依赖校验而Missing expected exception，补校验后36/36；Host原49项全过，首新增Terminal零输出保存failed，原flush将undefined序号视为0而新保存校验拒绝，局限S8规范化克隆后成功，tracker原事实不改。新增测试另两次断言修正属于假设错误：workspaceState原路径允许recentOutput，只剥serializedTerminalState/terminalStream；边界测试须先等待local完成微任务再推进deadline，未处理回调不能追认按时。初次typecheck报诊断对象重复kind，改独立result字段后通过。提交前时钟复核、S6独立n/a、异常隔离与legacy短路保护来自源码复核，不编造先红。
+
+旧`test-runtime-completed-history.mjs`本轮为exit1：前段Terminal781/Agent812字节及文件读回断言通过，后续抽取式Harness缺surfaceLifecycle，在postPagedExecutionSnapshot报TypeError。独立内存加载`c5a0487f`原脚本、原Host及8个repo TS输入得到同样失败，确认非S8引入；原脚本不修改、不追认完整通过。其抽取的9个Host方法和5个顶层函数共14项、旧测试/完成历史迁移模块/reader relay相对基线逐字保持。有效模式证据仅限已执行前段及源码保持，后续reopen/remote completion/client retirement不作为本轮通过，夹具缺口单独登记，不升级为产品缺陷或通用工具门槛。
+
+提交前静态检查通过：YAML/索引状态与日期/关联路径有效；设计第2至25节逐字保持，ExecPlan十二标题及顺序保持；owner/Host原35/35个定义（展开35/49项）保持，仅新增1/6定义（展开1/7项），两mjs语法通过。Runtime相关14声明和3文件再核保持，改动恰为两实现、两测试、五文档共九个已有文件，无新增文件或依赖/工作流修改，git diff --check通过。
+
+### 26.6 下一有限阶段与未闭合项
+
+下一阶段回到生产准入方案：收敛L-03各阶段预算的来源与总关闭边界、L-04创建前能力选择和降级规则、旧live批量删除错误传播，以及最小Linux provider接入实际Host/Supervisor的范围和验收输入。当前注入仍明确non-native，输入/resize也不支持；不能只开gate就宣称已替换产品执行。先固定这一有限接入设计，不再为每个局部增加诊断框架或独立验证门槛，不自动启动native/runner。
+
+S8的metadata引用冲突是保守拒绝，保存失败默认无自动重试或用户恢复流程，不是完整生产并发编辑/恢复方案。真实VS Code重开、完整多根落盘整链、Agent启动包装链、生产profile和能力分流、L-05异常owner消失及跨平台仍开放，L-02和退出完整性总项不关闭。Runtime completed无历史、旧live沿原Supervisor以及root稳定归属待办继续按原边界处理。

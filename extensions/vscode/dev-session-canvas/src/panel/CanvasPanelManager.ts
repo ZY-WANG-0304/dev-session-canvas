@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ExecutionOwnerLifecycle, type NonNativeExecutionOwnerOptions, type OwnedExecution, type OwnerCloseResult } from './executionOwnerLifecycle';
-import type { LaunchSpec } from '../common/executionLifecycle';
+import { S1_LIMITS, type AuthorityResult, type ExecutionIdentity, type LaunchSpec } from '../common/executionLifecycle';
 import {
   ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
   NOTIFIER_COMMAND_IDS,
@@ -578,7 +578,21 @@ interface NonNativeHostExecution {
   rows: number;
   finalTerminal?: SerializedTerminalState;
   localReaders?: Map<CanvasSurfaceLocation, LocalExecutionReader>;
+  launchSpec?: Readonly<Pick<LaunchSpec, 'file' | 'cwd'>>;
+  persistence?: {
+    readonly identity: ExecutionIdentity;
+    readonly metadata: AgentNodeMetadata | TerminalNodeMetadata;
+    submitted: boolean;
+    result?: NonNativeHostPersistenceResult;
+    readonly promise: Promise<NonNativeHostPersistenceResult>;
+    readonly resolve: (result: NonNativeHostPersistenceResult) => void;
+  };
 }
+
+type NonNativeHostPersistenceResult = Readonly<{
+  kind: 'saved' | 'not-required' | 'failed' | 'unconfirmed';
+  reason?: string;
+}>;
 
 interface LocalExecutionReader {
   lifecycle: WebviewLifecycleIdentity;
@@ -1266,6 +1280,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly terminalSessions = new Map<string, ManagedExecutionSession>();
   private readonly nonNativeExecutionOwner?: ExecutionOwnerLifecycle;
   private nonNativeDeactivationReport?: Promise<HostDeactivationReport>;
+  private nonNativeFinalPersistenceDeadline?: number;
   private readonly nonNativeHostExecutions = new Map<string, NonNativeHostExecution>();
   private readonly pendingTerminalInitialInputs = new Map<string, string>();
   private readonly pendingTerminalInitialInputDispatches = new Map<string, PendingTerminalInitialInputDispatch>();
@@ -3768,6 +3783,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const scheduler = owner.options.scheduler;
     const startedAt = scheduler.now();
     const deadline = startedAt + owner.options.budgets.boundaryMs!;
+    const persistenceRecords = this.hasNonNativeHostPersistence()
+      ? Array.from(this.nonNativeHostExecutions.values()).filter(record => record.persistence) : [];
+    if (this.hasNonNativeHostPersistence()) this.nonNativeFinalPersistenceDeadline = deadline;
     let resolve!: (report: HostDeactivationReport) => void;
     const result = new Promise<HostDeactivationReport>(done => { resolve = done; });
     this.nonNativeDeactivationReport = result;
@@ -3834,6 +3852,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     run('canvasSnapshot', async () => {
       await this.persistState({ workspaceStateMode: 'full', requireRootLocalDurability: true, reason: 'host-deactivation' });
+      const persistence = await Promise.all(persistenceRecords.map(record => record.persistence!.promise));
+      const incomplete = persistence.find(saved => saved.kind !== 'saved' && saved.kind !== 'not-required');
+      if (incomplete) return { kind: incomplete.kind === 'failed' ? 'failed' : 'unconfirmed', reason: incomplete.reason };
       return { kind: 'settled' };
     });
     return result;
@@ -15922,6 +15943,125 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return `${probeMode}\u0000${normalizedCwd}`;
   }
 
+  private hasNonNativeHostPersistence(): boolean {
+    return this.nonNativeExecutionOwner?.options.capabilities.includes('terminal-local-persistence-v1') === true;
+  }
+
+  private settleNonNativeHostPersistence(record: NonNativeHostExecution, result: NonNativeHostPersistenceResult): void {
+    const persistence = record.persistence;
+    if (!persistence || persistence.result) return;
+    persistence.result = Object.freeze({ ...result });
+    persistence.resolve(persistence.result);
+    try {
+      this.recordDiagnosticEvent('execution/localFinalPersistence', {
+        kind: record.kind, nodeId: record.nodeId, executionId: persistence.identity.executionId,
+        generation: persistence.identity.generation, submitted: persistence.submitted, result: persistence.result
+      });
+    } catch { /* Diagnostics do not change the original persistence outcome. */ }
+    this.retireNonNativeHostExecution(record);
+  }
+
+  private retireNonNativeHostExecution(record: NonNativeHostExecution): void {
+    const snapshot = record.execution.snapshot();
+    const persistence = record.persistence;
+    if (persistence && !persistence.result && snapshot.settled && snapshot.adapter?.parentCleanup === 'unstarted'
+      && !snapshot.adapter.process && !snapshot.adapter.source && !snapshot.adapter.seal) {
+      this.settleNonNativeHostPersistence(record, { kind: 'not-required' });
+      return;
+    }
+    if (!snapshot.retired || this.nonNativeHostExecutions.get(record.execution.key) !== record) return;
+    if (persistence && persistence.result?.kind !== 'saved' && persistence.result?.kind !== 'not-required') return;
+    this.nonNativeHostExecutions.delete(record.execution.key);
+    record.tracker.dispose();
+  }
+
+  private assertNonNativeHostPersistenceComplete(records: readonly NonNativeHostExecution[]): void {
+    const incomplete = records.find(record => record.persistence
+      && record.persistence.result?.kind !== 'saved' && record.persistence.result?.kind !== 'not-required');
+    if (incomplete) {
+      throw new Error(`Local final snapshot persistence is ${incomplete.persistence!.result?.kind ?? 'pending'}: ${incomplete.kind}:${incomplete.nodeId}`);
+    }
+  }
+
+  private persistNonNativeHostFinal(record: NonNativeHostExecution, result: AuthorityResult): void {
+    const persistence = record.persistence;
+    if (!persistence || persistence.submitted || persistence.result) return;
+    const fail = (kind: 'failed' | 'unconfirmed', reason: string): void =>
+      this.settleNonNativeHostPersistence(record, { kind, reason });
+    if (result.kind === 'failed') {
+      fail('failed', result.reason);
+      return;
+    }
+    const snapshot = record.execution.snapshot();
+    const process = snapshot.adapter?.process;
+    const seal = snapshot.adapter?.seal;
+    if (!process || process.kind === 'unconfirmed' || !seal || !record.finalTerminal || record.finalRevision === undefined) {
+      fail('unconfirmed', 'The original terminal or process final state is not confirmed.');
+      return;
+    }
+    if (this.nonNativeFinalPersistenceDeadline !== undefined
+      && this.nonNativeExecutionOwner!.options.scheduler.now() >= this.nonNativeFinalPersistenceDeadline) {
+      fail('unconfirmed', 'Host permanent boundary ended before the final snapshot was submitted.');
+      return;
+    }
+    const node = this.state.nodes.find(candidate => candidate.id === record.nodeId && candidate.kind === record.kind);
+    const identity = record.execution.identity;
+    if (this.nonNativeHostExecutions.get(record.execution.key) !== record || !node
+      || identity.executionId !== persistence.identity.executionId || identity.generation !== persistence.identity.generation
+      || node.metadata?.[record.kind] !== persistence.metadata) {
+      fail('unconfirmed', 'The original node metadata binding changed before final snapshot submission.');
+      return;
+    }
+    const originalTerminal = record.finalRevision === 0 && record.finalTerminal.outputSequence === undefined
+      ? { ...record.finalTerminal, outputSequence: 0 } : record.finalTerminal;
+    const terminal = cloneFreshSerializedTerminalState(originalTerminal, record.finalRevision);
+    if (!terminal || terminal.outputSequence !== record.finalRevision || result.finalRevision !== record.finalRevision
+      || result.throughDataSequence !== record.lastDataSequence || seal.lastDataSequence !== record.lastDataSequence) {
+      fail('failed', 'The original final terminal revision does not match the consumed tail.');
+      return;
+    }
+    const stopped = snapshot.stopRequested || process.kind === 'terminated'
+      || (process.kind === 'exited' && process.exitCode === 0);
+    const status = stopped ? (record.kind === 'agent' ? 'stopped' : 'closed') : 'error';
+    const incompleteReason = seal.source.kind === 'eof' ? undefined : seal.source.reason;
+    const exitMessage = process.kind === 'exited'
+      ? vscode.l10n.t('Session ended with exit code {code}.', { code: process.exitCode })
+      : process.kind === 'signaled'
+        ? vscode.l10n.t('Session exited due to signal {signal}.', { signal: process.signal })
+        : vscode.l10n.t('Session terminated: {reason}', { reason: process.reason });
+    const message = incompleteReason
+      ? vscode.l10n.t('{message} Output is incomplete: {reason}', { message: exitMessage, reason: incompleteReason }) : exitMessage;
+    const recentOutput = extractRecentTerminalOutput(stripTerminalControlSequences(terminal.data));
+    const metadata = buildExecutionMetadataPatch(this.state, record.nodeId, record.kind, {
+      lifecycle: status, persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
+      terminalProjectionMode: undefined, runtimeBackend: undefined, runtimeGuarantee: undefined,
+      runtimeStoragePath: undefined, runtimeSessionId: undefined, liveSession: false, pendingLaunch: undefined,
+      terminalStream: undefined, terminalHistoryDiscarded: undefined,
+      shellPath: record.launchSpec?.file, cwd: record.launchSpec?.cwd,
+      recentOutput: recentOutput || undefined, terminalTitle: undefined,
+      outputSequence: record.finalRevision, lastExitCode: process.kind === 'exited' ? process.exitCode : undefined,
+      lastExitSignal: process.kind === 'exited' || process.kind === 'signaled' ? process.signal : undefined,
+      lastExitMessage: message, lastRuntimeError: incompleteReason,
+      lastCols: record.cols, lastRows: record.rows, serializedTerminalState: terminal
+    });
+    const nextState = updateExecutionNode(this.state, record.nodeId, record.kind, { status, summary: message, metadata });
+    if (this.nonNativeFinalPersistenceDeadline !== undefined
+      && this.nonNativeExecutionOwner!.options.scheduler.now() >= this.nonNativeFinalPersistenceDeadline) {
+      fail('unconfirmed', 'Host permanent boundary ended before the final snapshot was submitted.');
+      return;
+    }
+    persistence.submitted = true;
+    this.state = nextState;
+    try {
+      const saved = this.persistState({ mode: 'immediate', workspaceStateMode: 'full',
+        requireRootLocalDurability: true, reason: 'local-final-snapshot' });
+      void saved.then(() => this.settleNonNativeHostPersistence(record, { kind: 'saved' }),
+        error => fail('failed', formatUnknownError(error)));
+    } catch (error) { fail('failed', formatUnknownError(error)); }
+    try { this.postState('host/stateUpdated'); }
+    catch { /* A page observer cannot change the submitted save or its result. */ }
+  }
+
   private async startNonNativeHostExecution(
     kind: ExecutionNodeKind,
     nodeId: string,
@@ -15932,6 +16072,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const owner = this.nonNativeExecutionOwner;
     if (!owner) throw new Error('Non-native execution owner is not configured.');
     const key = this.getExecutionSessionOperationKey(kind, nodeId);
+    const persistsFinal = this.hasNonNativeHostPersistence();
+    if (persistsFinal && (this.nonNativeHostExecutions.has(key) || this.nonNativeHostExecutions.size >= S1_LIMITS.executions)) {
+      throw new Error('Local final snapshot responsibility still occupies the execution key or Host capacity.');
+    }
     const execution = owner.reserve(key);
     let record: NonNativeHostExecution | undefined;
     let rejectedBeforeAcquire = false;
@@ -15944,6 +16088,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ...(owner.options.capabilities.includes('terminal-local-settlement-v1')
           ? { localReaders: new Map<CanvasSurfaceLocation, LocalExecutionReader>() } : {})
       };
+      if (persistsFinal) {
+        const node = this.state.nodes.find(candidate => candidate.id === nodeId && candidate.kind === kind);
+        if (!node) throw new Error('Local final snapshot requires the original execution node.');
+        const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
+        if (node.metadata?.[kind] !== metadata) {
+          this.state = updateExecutionNode(this.state, nodeId, kind, {
+            status: node.status, summary: node.summary, metadata: { ...node.metadata, [kind]: metadata }
+          });
+        }
+        let resolve!: (result: NonNativeHostPersistenceResult) => void;
+        const promise = new Promise<NonNativeHostPersistenceResult>(done => { resolve = done; });
+        record.persistence = { identity: execution.identity, metadata, submitted: false, promise, resolve };
+      }
       this.nonNativeHostExecutions.set(key, record);
       const prepared = await prepare();
       const spec: LaunchSpec = {
@@ -15952,6 +16109,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           (entry): entry is [string, string] => typeof entry[1] === 'string'))
       };
       const active = record;
+      if (active.persistence) active.launchSpec = Object.freeze({ file: spec.file, cwd: spec.cwd });
       const operation = execution.start(spec, {
         consume: batches => {
           active.terminalChain = active.terminalChain.then(async () => {
@@ -15997,6 +16155,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return finalRevision!;
         },
         finalized: result => {
+          try { this.persistNonNativeHostFinal(active, result); }
+          catch (error) {
+            this.settleNonNativeHostPersistence(active, { kind: 'failed', reason: formatUnknownError(error) });
+          }
           if (!active.localReaders) return;
           const process = execution.snapshot().adapter?.process;
           if (result.kind === 'applied' && process && process.kind !== 'unconfirmed') {
@@ -16015,12 +16177,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.settleLocalExecutionReaderAggregate(active);
         },
         fault: reason => this.recordDiagnosticEvent('execution/nonNativeFault', { kind, nodeId, reason }),
-        changed: () => {
-          if (execution.snapshot().retired && this.nonNativeHostExecutions.get(key) === active) {
-            this.nonNativeHostExecutions.delete(key);
-            active.tracker.dispose();
-          }
-        }
+        changed: () => { this.retireNonNativeHostExecution(active); }
       });
       const result = await operation.first;
       rejectedBeforeAcquire = result.kind === 'rejected-before-acquire';
@@ -16030,6 +16187,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     } catch (error) {
       if (!execution.snapshot().adapter || rejectedBeforeAcquire) {
+        if (record?.persistence) this.settleNonNativeHostPersistence(record, { kind: 'not-required' });
         if (record?.localReaders) {
           record.readerAdmissionClosed = true;
           for (const reader of record.localReaders.values()) {
@@ -16049,10 +16207,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     permanent: boolean,
     readerOutcome: 'cancelled' | 'lost'
   ): Promise<void> {
+    const persistenceRecords = this.hasNonNativeHostPersistence() ? Array.from(this.nonNativeHostExecutions.values()) : [];
     const result = await this.beginNonNativeHostExecutionClose(reason, permanent, readerOutcome);
     if (result.kind !== 'settled') {
       throw new Error(`Non-native Host execution cleanup is unconfirmed: ${result.pending.join(', ')}`);
     }
+    this.assertNonNativeHostPersistenceComplete(persistenceRecords);
   }
 
   private async beginNonNativeHostExecutionClose(
@@ -17983,7 +18143,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    const owned = this.nonNativeExecutionOwner?.get(this.getExecutionSessionOperationKey(node.kind, node.id));
+    const key = this.nonNativeExecutionOwner ? this.getExecutionSessionOperationKey(node.kind, node.id) : undefined;
+    const retained = this.nonNativeExecutionOwner?.options.capabilities.includes('terminal-local-persistence-v1')
+      ? this.nonNativeHostExecutions.get(key!) : undefined;
+    const owned = key ? this.nonNativeExecutionOwner?.get(key) : undefined;
     if (owned) {
       const record = this.nonNativeHostExecutions.get(owned.key);
       if (record?.localReaders) {
@@ -17997,6 +18160,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       const result = await owned.requestStop('host-delete');
       if (result.kind !== 'settled') throw new Error('Non-native Host deletion is unconfirmed.');
+      if (record) this.assertNonNativeHostPersistenceComplete([record]);
+      return;
+    }
+    if (retained?.persistence) {
+      this.assertNonNativeHostPersistenceComplete([retained]);
       return;
     }
 
