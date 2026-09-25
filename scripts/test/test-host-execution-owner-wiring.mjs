@@ -116,9 +116,12 @@ function fixture(options = {}) {
     budgets: { startMs: 10, gracefulMs: 10, forceMs: 10, cancelMs: 10, settleMs: 10, ...options.budgets },
     createTransport(identity) {
       const messages = [];
+      const parentClosed = deferred();
+      const cleanupResult = deferred();
+      const cleanupRequests = [];
       let sink;
       const provider = {
-        identity, messages,
+        identity, messages, cleanupResult, cleanupRequests,
         message(message) { sink.message({ ...message, identity }); },
         output(frameId, text) { sink.data(encodeOutputFrame({ version: 1, identity, frameId, text })); },
         process() { this.message({ type: 'processResult', result: { kind: 'exited', exitCode: 7 } }); },
@@ -126,7 +129,10 @@ function fixture(options = {}) {
           this.message({ type: 'sourceEnd', finalFrameId, disposition: { kind: 'eof' } });
           sink.dataEnded();
         },
-        release() { sink.controlResourceResult({ kind: 'released' }); sink.exited(); },
+        release() {
+          sink.controlResourceResult({ kind: 'released' }); sink.exited();
+          parentClosed.resolve({ kind: 'closed', exitCode: 0, signal: null });
+        },
         transport: {
           connect(value) {
             sink = value;
@@ -135,6 +141,7 @@ function fixture(options = {}) {
           async send(message) {
             messages.push(message);
             if (message.type === 'start') {
+              if (options.exposeParentControl) provider.message({ type: 'resourceAcquired', resourceId: 'subject' });
               provider.message({ type: 'operationObservation', operationId: message.operationId,
                 result: { kind: 'started', pid: 123 } });
             } else if (message.type === 'requestStop' || message.type === 'cancelOutput') {
@@ -144,6 +151,10 @@ function fixture(options = {}) {
           }
         }
       };
+      if (options.exposeParentControl) provider.transport.parentControl = Object.freeze({
+        identity, scheduler: clock, expectedNativeResourceIds: Object.freeze(['subject']), closed: parentClosed.promise,
+        terminate(budget) { cleanupRequests.push(budget); return cleanupResult.promise; }
+      });
       providers.push(provider);
       return provider.transport;
     }
@@ -1100,6 +1111,57 @@ test('real Host without close observation capability keeps natural-exit timers d
     assert.equal(f.owner.snapshot().pending, 0);
   } finally { record.tracker.dispose(); }
 });
+
+for (const kind of ['terminal', 'agent']) {
+  test(`${kind} real Host parent cleanup preserves paused tracker work and requires the original resource result`, async () => {
+    const f = fixture({
+      capabilities: [...closeObservationCapabilities, 'execution-parent-cleanup-v1'], exposeParentControl: true,
+      budgets: { naturalDrainMs: 15, parentTermMs: 5, parentKillMs: 5 }
+    });
+    const { record, provider } = await f.started(kind);
+    const gate = deferred();
+    const flush = record.tracker.flush.bind(record.tracker);
+    record.tracker.flush = async () => { await gate.promise; return flush(); };
+    try {
+      provider.process();
+      provider.output(1, `${kind}-parent-cleanup-tail`);
+      await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 1, `${kind} transferred tail`);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      provider.seal(1);
+      await until(f.clock, () => provider.messages.some(message => message.type === 'sourceEndAccepted'), 'source acknowledgment sent');
+      f.clock.advance(24);
+      await pump(f.clock, () => true);
+      assert.equal(provider.cleanupRequests.length, 0);
+      f.clock.advance(25);
+      await until(f.clock, () => provider.cleanupRequests.length === 1, 'original Host parent cleanup');
+      const request = provider.cleanupRequests[0];
+      assert.equal(request.termDeadline, 30);
+      assert.equal(request.killDeadline, 35);
+      assert.equal(request.canSignal(), true);
+      assert.equal(record.execution.snapshot().adapter.consumedThrough, 0);
+      assert.equal(record.execution.snapshot().terminal, undefined);
+      provider.cleanupResult.resolve({ kind: 'closed', exitCode: 0, signal: null });
+      await pump(f.clock, () => true);
+      assert.notEqual(record.execution.snapshot().adapter.resources['provider-control'].current?.kind, 'released');
+      assert.equal(record.execution.snapshot().settled, false, 'cleanup return cannot replace the resource result');
+      provider.release();
+      await pump(f.clock, () => true);
+      assert.equal(record.execution.snapshot().adapter.resources['provider-control'].current.kind, 'released');
+      assert.equal(record.execution.snapshot().settled, false, 'parent release cannot replace pending tracker work');
+      gate.resolve();
+      await until(f.clock, () => record.execution.snapshot().settled, `${kind} original tracker completion`);
+      assert.match(record.tracker.getSerializedState().data, new RegExp(`${kind}-parent-cleanup-tail`));
+      assert.equal(record.execution.snapshot().closeObservation.first.kind, 'settled');
+      assert.equal(record.execution.snapshot().terminal.finalRevision, 1);
+      assert.equal(record.execution.snapshot().readerOutcome, 'pending');
+      assert.equal(record.execution.snapshot().retired, false);
+      assert.equal(f.owner.snapshot().blockedReason, undefined);
+      record.execution.settleReaders('cancelled');
+      assert.equal(f.owner.snapshot().pending, 0);
+      assert.equal(provider.cleanupRequests.length, 1);
+    } finally { gate.resolve(); record.tracker.dispose(); }
+  });
+}
 
 for (const { name, run } of tests) {
   let timeout;

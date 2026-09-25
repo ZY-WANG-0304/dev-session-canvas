@@ -14,6 +14,7 @@ import {
 import {
   createExecutionAuthority,
   prepareExecution,
+  type ExecutionParentClosed,
   type ExecutionScheduler,
   type ExecutionTransport,
   type OperationObservation,
@@ -31,6 +32,8 @@ export interface NonNativeExecutionOwnerOptions {
     cancelMs: number;
     settleMs: number;
     naturalDrainMs?: number;
+    parentTermMs?: number;
+    parentKillMs?: number;
   }>;
   // Construction must not acquire resources; acquisition belongs to connect().
   readonly createTransport: (identity: ExecutionIdentity) => ExecutionTransport;
@@ -63,6 +66,13 @@ interface CloseObservation {
   gracefulRequested: boolean;
   forceRequested: boolean;
   cancelRequested: boolean;
+  parentCleanup?: {
+    readonly at: number;
+    readonly termDeadline: number;
+    readonly killDeadline: number;
+    kind?: 'unstarted' | 'transferred';
+    first?: ExecutionParentClosed | Readonly<{ kind: 'unknown' }> | Readonly<{ kind: 'failed'; reason: string }>;
+  };
 }
 
 export class ExecutionOwnerLifecycle {
@@ -86,6 +96,13 @@ export class ExecutionOwnerLifecycle {
           budgets.naturalDrainMs <= 0 ||
           budgets.startMs + budgets.naturalDrainMs + budgets.cancelMs + budgets.settleMs > 0x7fffffff)) {
       throw new Error('Explicit finite natural drain budget is required for close observation');
+    }
+    if (options.capabilities.includes('execution-parent-cleanup-v1') &&
+        (!options.capabilities.includes('execution-close-observation-v1') ||
+          typeof budgets.parentTermMs !== 'number' || !Number.isFinite(budgets.parentTermMs) || budgets.parentTermMs <= 0 ||
+          typeof budgets.parentKillMs !== 'number' || !Number.isFinite(budgets.parentKillMs) || budgets.parentKillMs <= 0 ||
+          budgets.parentTermMs + budgets.parentKillMs > budgets.settleMs)) {
+      throw new Error('Parent cleanup requires close observation and finite budgets within the settle budget');
     }
     this.options = Object.freeze({ ...options, budgets, capabilities: Object.freeze([...options.capabilities]) });
   }
@@ -173,7 +190,8 @@ export class OwnedExecution {
       authority: this.owner.authority,
       transport,
       scheduler: this.owner.options.scheduler,
-      ...(this.closeObservationEnabled() ? { closeObservationV1: true as const } : {})
+      ...(this.closeObservationEnabled() ? { closeObservationV1: true as const } : {}),
+      ...(this.parentCleanupEnabled() ? { parentCleanupV1: true as const } : {})
     }).bind({
       data: () => {},
       processResult: (_identity, result) => {
@@ -276,7 +294,7 @@ export class OwnedExecution {
   snapshot() {
     const adapter = this.execution?.snapshot();
     const settled = this.settledCommitted || this.abandoned
-      || (adapter?.state === 'settled' && this.terminal?.kind === 'applied' && !this.callbackFailure &&
+      || (adapter?.state === 'settled' && (this.terminal?.kind === 'applied' || this.hasUnstartedParentSettlement(adapter)) && !this.callbackFailure &&
         (!this.closeObservationEnabled() || !this.finalObserverPending));
     return Object.freeze({
       identity: this.identity, key: this.key, adapter, terminal: this.terminal,
@@ -290,6 +308,17 @@ export class OwnedExecution {
 
   private closeObservationEnabled(): boolean {
     return this.owner.options.capabilities.includes('execution-close-observation-v1');
+  }
+
+  private parentCleanupEnabled(): boolean {
+    return this.owner.options.capabilities.includes('execution-parent-cleanup-v1');
+  }
+
+  private hasUnstartedParentSettlement(adapter = this.execution?.snapshot()): boolean {
+    return this.parentCleanupEnabled() && this.closeObservation?.parentCleanup?.kind === 'unstarted' &&
+      adapter?.parentCleanup === 'unstarted' && adapter.state === 'settled' &&
+      !adapter.process && !adapter.source && !adapter.seal && Object.keys(adapter.resources).length === 1 &&
+      adapter.resources['provider-control']?.current?.kind === 'released';
   }
 
   private closeFailureReason(adapter = this.execution?.snapshot()): string | undefined {
@@ -321,12 +350,17 @@ export class OwnedExecution {
     const startedAt = this.now();
     const forceAt = trigger === 'natural-exit' ? undefined : startedAt + gracefulMs;
     const cancelAt = forceAt === undefined ? startedAt + naturalDrainMs! : forceAt + forceMs;
+    const finishAt = cancelAt + cancelMs + settleMs;
     this.closeObservation = {
-      trigger, reason, startedAt, forceAt, cancelAt, finishAt: cancelAt + cancelMs + settleMs,
-      gracefulRequested: false, forceRequested: false, cancelRequested: false
+      trigger, reason, startedAt, forceAt, cancelAt, finishAt,
+      gracefulRequested: false, forceRequested: false, cancelRequested: false,
+      ...(this.parentCleanupEnabled() ? { parentCleanup: {
+        at: finishAt - this.owner.options.budgets.parentTermMs! - this.owner.options.budgets.parentKillMs!,
+        termDeadline: finishAt - this.owner.options.budgets.parentKillMs!, killDeadline: finishAt
+      } } : {})
     };
     this.stopping = new Promise(resolve => { this.resolveStop = resolve; });
-    for (const deadline of [forceAt, cancelAt, this.closeObservation.finishAt]) {
+    for (const deadline of [forceAt, cancelAt, this.closeObservation.parentCleanup?.at, finishAt]) {
       if (deadline !== undefined) {
         this.stopTimers.push(this.owner.options.scheduler.scheduleDeadline(deadline, () => this.evaluate()));
       }
@@ -361,6 +395,27 @@ export class OwnedExecution {
       observation.cancelRequested = true;
       this.command(() => execution.cancelOutput('owner-cancel', observation.reason, observation.finishAt));
     }
+    const parent = observation.parentCleanup;
+    const parentNow = this.now();
+    if (parent && !parent.kind && !parent.first && parentNow >= parent.at && parentNow < observation.finishAt) {
+      const failed = (error: unknown): void => {
+        parent.first ??= Object.freeze({ kind: 'failed', reason: error instanceof Error ? error.message : 'Parent cleanup failed' });
+        this.owner.authority.quarantine('Parent cleanup failed');
+        this.evaluate();
+      };
+      try {
+        const claim = execution.tryBeginParentCleanup();
+        if (claim) {
+          // Publish the original claim before control callbacks can reenter this owner.
+          parent.kind = claim.kind;
+          void claim.terminate({ termDeadline: parent.termDeadline, killDeadline: parent.killDeadline }).then(result => {
+            parent.first ??= Object.freeze({ ...result });
+            if (result.kind === 'unknown') this.owner.authority.quarantine('Parent cleanup is unconfirmed');
+            this.evaluate();
+          }, failed);
+        }
+      } catch (error) { failed(error); }
+    }
   }
 
   private closeObservationSnapshot(adapter: ReturnType<PreparedExecution['snapshot']> | undefined, settled: boolean) {
@@ -369,8 +424,10 @@ export class OwnedExecution {
     if (!settled) {
       if (!adapter) pendingDomains.push('preparation');
       else {
-        if (!adapter.process || adapter.process.kind === 'unconfirmed') pendingDomains.push('process');
-        if (!adapter.source) pendingDomains.push('source');
+        if (adapter.parentCleanup !== 'unstarted') {
+          if (!adapter.process || adapter.process.kind === 'unconfirmed') pendingDomains.push('process');
+          if (!adapter.source) pendingDomains.push('source');
+        }
         if (adapter.pendingBytes > 0 || adapter.pendingFrames > 0 || adapter.authorityFailure ||
             adapter.consumedThrough < adapter.acceptedThrough) pendingDomains.push('consumption');
         if (adapter.seal && this.terminal?.kind !== 'applied') pendingDomains.push('final-flush');
@@ -385,6 +442,7 @@ export class OwnedExecution {
       trigger: observation.trigger, reason: observation.reason, startedAt: observation.startedAt,
       forceAt: observation.forceAt, cancelAt: observation.cancelAt, finishAt: observation.finishAt,
       first: observation.first,
+      ...(observation.parentCleanup ? { parentCleanup: Object.freeze({ ...observation.parentCleanup }) } : {}),
       current: Object.freeze({ kind, pending: Object.freeze(settled ? [] : [this.key]) }),
       pendingDomains: Object.freeze(pendingDomains), quarantineReason: this.owner.authority.snapshot().blockedReason
     });
@@ -422,7 +480,7 @@ export class OwnedExecution {
       this.changed();
       // A callback may cancel a reader or fail; decide from the resulting facts.
       if (this.abandoned || (this.execution?.snapshot().state === 'settled'
-        && this.terminal?.kind === 'applied' && !this.callbackFailure &&
+        && (this.terminal?.kind === 'applied' || this.hasUnstartedParentSettlement()) && !this.callbackFailure &&
         (!this.closeObservationEnabled() || !this.finalObserverPending))) {
         this.settledCommitted = true;
       }

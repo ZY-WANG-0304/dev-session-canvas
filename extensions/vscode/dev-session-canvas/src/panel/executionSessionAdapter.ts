@@ -39,7 +39,30 @@ export interface ExecutionTransportSink {
   resourceAcquired(resourceId: string): void;
 }
 
+export type ExecutionParentClosed = { kind: 'closed'; exitCode: number | null; signal: string | null };
+
+export type ExecutionParentCleanupBudget = {
+  termDeadline: number;
+  killDeadline: number;
+  canSignal: () => boolean;
+};
+
+export type ExecutionParentControl = {
+  identity: ExecutionIdentity;
+  scheduler: ExecutionScheduler;
+  expectedNativeResourceIds: readonly string[];
+  closed: Promise<ExecutionParentClosed>;
+  terminate(budget: ExecutionParentCleanupBudget): Promise<ExecutionParentClosed | { kind: 'unknown' }>;
+};
+
+export type ExecutionParentCleanupClaim = {
+  kind: 'unstarted' | 'transferred';
+  closed: Promise<ExecutionParentClosed>;
+  terminate(budget: { termDeadline: number; killDeadline: number }): Promise<ExecutionParentClosed | { kind: 'unknown' }>;
+};
+
 export interface ExecutionTransport {
+  parentControl?: ExecutionParentControl;
   connect(sink: ExecutionTransportSink): void;
   send(message: ParentMessage): Promise<void>;
 }
@@ -139,6 +162,7 @@ export interface ExecutionDependencies {
   transport: ExecutionTransport;
   scheduler: ExecutionScheduler;
   closeObservationV1?: true;
+  parentCleanupV1?: true;
 }
 
 export function prepareExecution(identity: ExecutionIdentity, launchSpec: LaunchSpec, dependencies: ExecutionDependencies): PreparedExecution {
@@ -148,6 +172,9 @@ export function prepareExecution(identity: ExecutionIdentity, launchSpec: Launch
 export class PreparedExecution {
   readonly identity: ExecutionIdentity;
   private readonly spec: LaunchSpec;
+  private readonly parentControl?: Readonly<ExecutionParentControl>;
+  private parentCleanupClaim?: Readonly<ExecutionParentCleanupClaim>;
+  private parentCleanupValid = false;
   private state: State = 'prepared';
   private factualSettledAt?: number;
   private observer?: ExecutionObserver;
@@ -177,6 +204,8 @@ export class PreparedExecution {
   private authorityFailure?: Extract<AuthorityResult, { kind: 'failed' }>;
   private process?: ProcessResult;
   private source?: SourceResult;
+  private explicitSourceEnd = false;
+  private sourceEndAcceptedSent = false;
   private seal?: OutputSeal;
   private controlDisconnected = false;
   private providerExited = false;
@@ -194,6 +223,23 @@ export class PreparedExecution {
     this.spec = validateLaunchSpec(launchSpec);
     // Include the envelope in the start limit, before reserving an authority slot.
     assertParentMessageSize({ type: 'start', identity: this.identity, operationId: 'prepare', spec: this.spec });
+    if (dependencies.parentCleanupV1 === true) {
+      if (dependencies.closeObservationV1 !== true) throw new Error('Parent cleanup requires close observation v1');
+      const control = dependencies.transport.parentControl;
+      if (!control) throw new Error('Parent cleanup requires the original parent control');
+      assertExecutionIdentity(control.identity);
+      if (!sameExecutionIdentity(control.identity, this.identity) || control.scheduler !== dependencies.scheduler) {
+        throw new Error('Parent cleanup must share the original execution identity and scheduler');
+      }
+      const ids = control.expectedNativeResourceIds;
+      if (!Array.isArray(ids) || ids.length === 0 || ids.length > 15
+        || [...ids].some(id => typeof id !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(id) || id === 'provider-control')
+        || new Set(ids).size !== ids.length || typeof control.closed?.then !== 'function' || typeof control.terminate !== 'function') {
+        throw new Error('Invalid original parent cleanup contract');
+      }
+      this.parentControl = Object.freeze({ identity: Object.freeze({ ...control.identity }), scheduler: control.scheduler,
+        expectedNativeResourceIds: Object.freeze([...ids]), closed: control.closed, terminate: control.terminate.bind(control) });
+    }
     dependencies.authority.reserve(this.identity, this);
   }
 
@@ -225,10 +271,55 @@ export class PreparedExecution {
     return this.sealedConsumption;
   }
 
+  tryBeginParentCleanup(): Readonly<ExecutionParentCleanupClaim> | undefined {
+    if (this.parentCleanupClaim) return this.parentCleanupClaim;
+    const control = this.parentControl;
+    if (!control || !this.acquired || !this.resources.has('provider-control')
+      || this.resources.get('provider-control')?.current?.kind === 'released'
+      || this.firstFault || this.resourceLedgerIncomplete || this.parsingFailed || this.dataAdmissionFailed
+      || this.rejectedDataBytes !== 0 || this.rawBytes !== 0 || this.sendInFlight) return;
+    let kind: ExecutionParentCleanupClaim['kind'];
+    if (!this.startSent) {
+      if (this.process || this.source || this.seal || this.acceptedThrough !== 0 || this.pendingBytes !== 0
+        || this.pending.length !== 0 || [...this.resources.keys()].some(id => id !== 'provider-control')) return;
+      kind = 'unstarted';
+    } else {
+      const nativeIds = [...this.resources.keys()].filter(id => id !== 'provider-control');
+      if (!this.process || this.process.kind === 'unconfirmed' || !this.source || !this.explicitSourceEnd
+        || !this.sourceEndAcceptedSent || this.startMessage || this.normal.size !== 0 || this.urgent.size !== 0
+        || !this.resources.has('provider-control') || nativeIds.length !== control.expectedNativeResourceIds.length
+        || control.expectedNativeResourceIds.some(id => this.resources.get(id)?.current?.kind !== 'released')) return;
+      kind = 'transferred';
+    }
+    const canSignal = () => this.parentCleanupValid && this.parentCleanupClaim === claim;
+    const claim: Readonly<ExecutionParentCleanupClaim> = Object.freeze({ kind, closed: control.closed,
+      terminate: (budget: { termDeadline: number; killDeadline: number }) => control.terminate({
+        termDeadline: budget.termDeadline, killDeadline: budget.killDeadline, canSignal }) });
+    this.parentCleanupClaim = claim;
+    this.parentCleanupValid = true;
+    if (kind === 'unstarted') {
+      // Seal local intent before notifying observers or permitting parent teardown.
+      this.startMessage = undefined;
+      this.normal.clear();
+      this.urgent.clear();
+      for (const operation of this.operations.values()) {
+        if (!operation.sent && (!operation.current || operation.current.kind === 'unconfirmed')) {
+          const reason = `Parent cleanup sealed ${operation.kind} before dispatch`;
+          this.recordOperation(operation, operation.kind === 'start'
+            ? { kind: 'failed', stage: 'parent-cleanup-before-start', reason } : { kind: 'failed', reason });
+        }
+      }
+      this.maybeRetire();
+    }
+    this.changed();
+    return claim;
+  }
+
   start(operationId: string, deadline: number): OperationObservation {
     if (!this.observer) throw new Error('Bind execution before starting');
     const previous = this.existingOperation('start', operationId, deadline);
     if (previous) return previous.view;
+    if (this.parentCleanupClaim) throw new Error('Parent cleanup has sealed execution intent');
     const command: ParentMessage = { type: 'start', identity: this.identity, operationId, spec: this.spec };
     assertParentMessageSize(command);
     const operation = this.makeOperation('start', operationId, deadline);
@@ -249,7 +340,11 @@ export class PreparedExecution {
         disconnected: reason => this.disconnect(reason),
         exited: () => { this.providerExited = true; this.scheduleProcessing(); },
         dataEnded: () => { this.outputEnded = true; this.scheduleProcessing(); },
-        dataClosed: reason => { this.outputClosed = true; this.fault(reason); this.scheduleProcessing(); },
+        dataClosed: reason => {
+          this.outputClosed = true;
+          if (!this.parentCleanupValid) this.fault(reason);
+          this.scheduleProcessing();
+        },
         controlResourceResult: result => this.recordResource('provider-control', 'provider-control-release', result),
         startupFailed: reason => this.failStartup(reason),
         transportFault: reason => this.fault(reason),
@@ -280,6 +375,7 @@ export class PreparedExecution {
       pendingFrames: this.pending.length + this.countRawFrames(), rawBytes: this.rawBytes,
       rejectedDataBytes: this.rejectedDataBytes,
       resourceLedgerIncomplete: this.resourceLedgerIncomplete,
+      parentCleanup: this.parentCleanupClaim?.kind,
       process: this.process, source: this.source, seal: this.seal, firstFault: this.firstFault,
       authorityFailure: this.authorityFailure,
       transport: Object.freeze({ disconnected: this.controlDisconnected, exited: this.providerExited,
@@ -318,6 +414,7 @@ export class PreparedExecution {
     if (!this.acquired) throw new Error('Execution has not acquired a provider');
     const previous = this.existingOperation(kind, id, deadline, reason);
     if (previous) return previous.view;
+    if (this.parentCleanupClaim) throw new Error('Parent cleanup has sealed execution intent');
     if (this.state === 'settled') throw new Error('Execution is already settled');
     const message: ParentMessage = kind === 'cancel'
       ? { type: 'cancelOutput', identity: this.identity, operationId: id, reason: reason! }
@@ -383,6 +480,10 @@ export class PreparedExecution {
     if (!sameExecutionIdentity(message.identity, this.identity)) { this.fault('Stale execution identity'); return; }
     switch (message.type) {
       case 'ready': {
+        if (this.parentCleanupClaim?.kind === 'unstarted') {
+          if (!message.capabilities.includes('execution-lifecycle-v1')) this.fault('Missing lifecycle capability');
+          return;
+        }
         if (this.ready) return;
         if (this.state === 'settled' || this.operations.get('start')?.current?.kind === 'failed') {
           this.fault('Provider ready arrived after startup failed or settled'); return;
@@ -418,6 +519,7 @@ export class PreparedExecution {
           return;
         }
         this.source = source;
+        this.explicitSourceEnd = true;
         // No more production credit is needed. The confirmation follows any in-flight ACK.
         this.normal.delete('accepted');
         this.normal.delete('consumed');
@@ -457,7 +559,7 @@ export class PreparedExecution {
   }
 
   private pumpControl(): void {
-    if (!this.ready || this.sendInFlight || this.controlDisconnected || this.providerExited) return;
+    if (this.parentCleanupClaim || !this.ready || this.sendInFlight || this.controlDisconnected || this.providerExited) return;
     let message = this.startMessage;
     if (message) this.startMessage = undefined;
     else {
@@ -477,10 +579,14 @@ export class PreparedExecution {
       const operation = [...this.operations.values()].find(item => item.id === operationId);
       if (operation) operation.sent = true;
     }
+    const sentMessage = message;
     try {
-      Promise.resolve(this.dependencies.transport.send(message)).then(() => {
+      Promise.resolve(this.dependencies.transport.send(sentMessage)).then(() => {
         this.sendInFlight = false;
+        if (sentMessage.type === 'sourceEndAccepted' && this.explicitSourceEnd
+          && sentMessage.finalFrameId === this.source?.lastDataSequence) this.sourceEndAcceptedSent = true;
         this.pumpControl();
+        if (this.parentControl) this.changed();
       }, () => this.controlSendFailed());
     } catch { this.controlSendFailed(); }
   }
@@ -605,6 +711,7 @@ export class PreparedExecution {
   }
 
   private recordProcess(result: ProcessResult): void {
+    if (this.parentCleanupClaim?.kind === 'unstarted') this.fault('Process result arrived after unstarted parent cleanup');
     if (this.process && this.process.kind !== 'unconfirmed') {
       if (JSON.stringify(this.process) !== JSON.stringify(result)) this.fault('Conflicting process result');
       return;
@@ -619,7 +726,7 @@ export class PreparedExecution {
   }
 
   private registerResource(resourceId: string): void {
-    if (this.state === 'settled' || typeof resourceId !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(resourceId)
+    if (this.parentCleanupClaim || this.state === 'settled' || typeof resourceId !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(resourceId)
       || this.resources.has(resourceId) || this.resources.size >= 16) {
       this.resourceLedgerIncomplete = true;
       this.changed();
@@ -646,7 +753,8 @@ export class PreparedExecution {
 
   private disconnect(reason: string): void {
     this.controlDisconnected = true;
-    this.loseControl(reason);
+    if (this.parentCleanupValid) this.maybeRetire();
+    else this.loseControl(reason);
     this.changed();
   }
 
@@ -709,6 +817,7 @@ export class PreparedExecution {
     const startResult = this.operations.get('start')?.current;
     // No execution source existed when start was never dispatched; do not invent its seal.
     const startupSettled = this.acquired && !this.startSent && !this.process && !this.source && !this.seal
+      && (!this.parentCleanupClaim || this.parentCleanupValid)
       && (startResult?.kind === 'failed' || startResult?.kind === 'unconfirmed');
     if (!startupSettled && (!this.seal || this.process?.kind === 'unconfirmed')) return;
     this.state = 'settled';
@@ -755,6 +864,7 @@ export class PreparedExecution {
   }
 
   private fault(reason: string): void {
+    this.parentCleanupValid = false;
     const first = this.firstFault === undefined;
     this.firstFault ??= reason;
     this.dependencies.authority.quarantine(reason);

@@ -114,6 +114,7 @@ try {
     let sink;
     let connectCount = 0;
     const transport = {
+      ...(options.parentControl ? { parentControl: options.parentControl } : {}),
       connect(value) {
         connectCount += 1;
         sink = value;
@@ -136,7 +137,8 @@ try {
       args: [],
       cwd: '/',
       env: {}
-    }, { authority, transport, scheduler, ...(options.closeObservationV1 ? { closeObservationV1: true } : {}) });
+    }, { authority, transport, scheduler, ...(options.closeObservationV1 ? { closeObservationV1: true } : {}),
+      ...(options.parentCleanupV1 ? { parentCleanupV1: true } : {}) });
     const observer = {
       data: (batch) => events.data.push(batch),
       processResult: (eventIdentity, result) => events.processes.push({ identity: eventIdentity, result }),
@@ -1472,6 +1474,385 @@ try {
     assert.equal((await stop.first).kind, 'unconfirmed');
     assert.equal(h.authority.snapshot().blockedReason, blocked);
     assert.equal(h.sent('start').length, 1);
+  });
+
+  function createParentHarness(options = {}) {
+    const executionIdentity = options.identity ?? identity();
+    const scheduler = options.scheduler ?? createScheduler();
+    const parentClosed = deferred();
+    const terminations = [];
+    const parentControl = {
+      identity: executionIdentity,
+      scheduler,
+      expectedNativeResourceIds: options.expectedNativeResourceIds ?? ['subject'],
+      closed: parentClosed.promise,
+      terminate(budget) {
+        terminations.push({ receiver: this, budget });
+        return options.terminate?.(budget) ?? Promise.resolve({ kind: 'unknown' });
+      }
+    };
+    const h = createHarness({ ...options, identity: executionIdentity, scheduler, parentControl,
+      closeObservationV1: true, parentCleanupV1: true });
+    return Object.assign(h, { parentControl, parentClosed, terminations });
+  }
+
+  async function transferParentTail(h, disposition = { kind: 'eof' }, resourceIds = ['subject']) {
+    for (const resourceId of resourceIds) h.message({ type: 'resourceAcquired', resourceId });
+    h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    h.message({ type: 'sourceEnd', finalFrameId: h.snapshot().acceptedThrough, disposition });
+    for (const resourceId of resourceIds) {
+      h.message({ type: 'resourceResult', resourceId, operationId: `release-${resourceId}`, result: { kind: 'released' } });
+    }
+    await settle(h.scheduler);
+  }
+
+  test('parent cleanup validates the original contract before reserving or connecting', async () => {
+    const executionIdentity = identity();
+    const scheduler = createScheduler();
+    const base = { identity: executionIdentity, scheduler, expectedNativeResourceIds: ['subject'],
+      closed: deferred().promise, terminate: () => Promise.resolve({ kind: 'unknown' }) };
+    const variants = [undefined, { ...base, identity: identity() }, { ...base, scheduler: createScheduler() },
+      ...[[], Array(1), ['provider-control'], ['subject', 'subject'], ['Not-Legal'], Array.from({ length: 16 }, (_, n) => `resource-${n}`)]
+        .map(expectedNativeResourceIds => ({ ...base, expectedNativeResourceIds })),
+      { ...base, closed: undefined }, { ...base, terminate: undefined }];
+    for (const parentControl of variants) {
+      const authority = createExecutionAuthority();
+      let connects = 0;
+      assert.throws(() => createHarness({ identity: executionIdentity, scheduler, authority, parentControl,
+        closeObservationV1: true, parentCleanupV1: true, connect: () => { connects += 1; } }));
+      assert.equal(authority.snapshot().active, 0);
+      assert.equal(connects, 0);
+    }
+    const authority = createExecutionAuthority();
+    assert.throws(() => createHarness({ identity: executionIdentity, scheduler, authority,
+      parentControl: base, parentCleanupV1: true }), /close observation/);
+    assert.equal(authority.snapshot().active, 0);
+    const legacy = createHarness({ parentControl: { malformed: true } });
+    assert.equal(legacy.session.tryBeginParentCleanup(), undefined, 'the default path does not inspect or enable parent cleanup');
+  });
+
+  test('parent cleanup captures the original contract and resource inventory against later mutation', async () => {
+    const ids = ['subject'];
+    const h = createParentHarness({ expectedNativeResourceIds: ids });
+    const originalClosed = h.parentClosed.promise;
+    h.parentControl.identity = identity();
+    h.parentControl.scheduler = createScheduler();
+    h.parentControl.closed = Promise.resolve({ kind: 'closed', exitCode: 91, signal: null });
+    h.parentControl.terminate = () => { throw new Error('mutated terminate must not be selected'); };
+    ids.splice(0, 1, 'different-subject');
+    await h.started();
+    await transferParentTail(h);
+    const claim = h.session.tryBeginParentCleanup();
+    assert.equal(claim.kind, 'transferred');
+    assert.strictEqual(claim.closed, originalClosed);
+    assert.ok(Object.isFrozen(claim));
+    assert.strictEqual(h.session.tryBeginParentCleanup(), claim);
+    assert.deepEqual(await claim.terminate({ termDeadline: 20, killDeadline: 30 }), { kind: 'unknown' });
+    assert.strictEqual(h.terminations[0].receiver, h.parentControl);
+    assert.equal(h.terminations[0].budget.canSignal(), true);
+    assert.equal(h.snapshot().resources['provider-control'].current, undefined);
+  });
+
+  test('unstarted parent claim seals late ready and queued intents with named failures', async () => {
+    const h = createParentHarness({ autoReady: false });
+    const start = await h.start();
+    const graceful = h.control.requestStop('graceful', 'graceful', 200);
+    const force = h.control.requestStop('force', 'force', 210);
+    const cancel = h.control.cancelOutput('cancel', 'bounded-close', 220);
+    const claim = h.session.tryBeginParentCleanup();
+    assert.equal(claim.kind, 'unstarted');
+    assert.strictEqual(h.session.tryBeginParentCleanup(), claim);
+    assert.deepEqual(await start.first, { kind: 'failed', stage: 'parent-cleanup-before-start',
+      reason: 'Parent cleanup sealed start before dispatch' });
+    for (const [kind, operation] of [['graceful', graceful], ['force', force], ['cancel', cancel]]) {
+      assert.deepEqual(await operation.first, { kind: 'failed', reason: `Parent cleanup sealed ${kind} before dispatch` });
+    }
+    assert.strictEqual(h.control.start('start', 100), start);
+    assert.strictEqual(h.control.requestStop('graceful', 'graceful', 200), graceful);
+    assert.strictEqual(h.control.requestStop('force', 'force', 210), force);
+    assert.strictEqual(h.control.cancelOutput('cancel', 'bounded-close', 220), cancel);
+    h.message({ type: 'ready', capabilities: ['execution-lifecycle-v1'] });
+    await settle(h.scheduler);
+    assert.deepEqual(h.messages, []);
+    assert.equal(h.snapshot().process, undefined);
+    assert.equal(h.snapshot().source, undefined);
+    assert.equal(h.snapshot().seal, undefined);
+    assert.equal(h.snapshot().firstFault, undefined);
+    assert.notEqual(h.snapshot().state, 'settled');
+    h.sink.controlResourceResult({ kind: 'released' });
+    assert.equal(h.snapshot().state, 'settled');
+    assert.equal(h.authority.snapshot().active, 0);
+  });
+
+  test('unstarted parent claim refuses new intents while exact prior observations remain addressable', async () => {
+    const beforeStart = createParentHarness();
+    assert.equal(beforeStart.session.tryBeginParentCleanup(), undefined);
+    assert.equal(beforeStart.connectCount, 0);
+    assert.equal(beforeStart.session.cancelReservation(), true);
+    const h = createParentHarness({ autoReady: false });
+    const start = await h.start();
+    h.session.tryBeginParentCleanup();
+    assert.strictEqual(h.control.start('start', 100), start);
+    assert.throws(() => h.control.start('different', 100), /different parameters/);
+    assert.throws(() => h.control.requestStop('new-stop', 'graceful', 200), /sealed execution intent/);
+    assert.throws(() => h.control.cancelOutput('new-cancel', 'closed', 200), /sealed execution intent/);
+    assert.deepEqual(h.messages, []);
+  });
+
+  test('unstarted parent claim preserves expired first observations and their quarantine', async () => {
+    for (const runDeadlines of [true, false]) {
+      const h = createParentHarness({ autoReady: false });
+      const start = await h.start('start', 100);
+      const stop = h.control.requestStop('stop', 'graceful', 100);
+      h.scheduler.advanceTo(100, { runDeadlines });
+      assert.equal(h.session.tryBeginParentCleanup().kind, 'unstarted');
+      assert.equal((await start.first).kind, 'unconfirmed');
+      assert.equal((await stop.first).kind, 'unconfirmed');
+      assert.equal(start.current.kind, 'failed');
+      assert.equal(start.current.stage, 'parent-cleanup-before-start');
+      assert.equal(stop.current.kind, 'failed');
+      const blocked = h.authority.snapshot().blockedReason;
+      assert.ok(blocked);
+      h.sink.controlResourceResult({ kind: 'released' });
+      assert.equal(h.snapshot().state, 'settled');
+      assert.equal(h.authority.snapshot().blockedReason, blocked);
+    }
+  });
+
+  test('dispatched start and an in-flight send cannot claim the unstarted cleanup branch', async () => {
+    const sent = deferred();
+    const h = createParentHarness({ send: () => sent.promise });
+    await h.start();
+    assert.equal(h.sent('start').length, 1);
+    assert.equal(h.session.tryBeginParentCleanup(), undefined);
+    sent.resolve();
+    await settle(h.scheduler);
+    assert.equal(h.session.tryBeginParentCleanup(), undefined, 'send fulfillment does not undo actual start dispatch');
+  });
+
+  test('unstarted parent cleanup refuses unexpected native acquisition and pre-existing faults', async () => {
+    const acquired = createParentHarness({ autoReady: false });
+    await acquired.start();
+    acquired.sink.resourceAcquired('subject');
+    assert.equal(acquired.session.tryBeginParentCleanup(), undefined);
+    const faulted = createParentHarness({ autoReady: false });
+    await faulted.start();
+    faulted.sink.transportFault('actual connect failure');
+    assert.equal(faulted.session.tryBeginParentCleanup(), undefined);
+    assert.equal(faulted.snapshot().firstFault, 'actual connect failure');
+  });
+
+  test('transferred cleanup requires the exact acquired and released native inventory', async () => {
+    for (const ids of [[], ['other'], ['subject', 'extra']]) {
+      const h = createParentHarness();
+      await h.started();
+      await transferParentTail(h, { kind: 'eof' }, ids);
+      assert.equal(h.session.tryBeginParentCleanup(), undefined, JSON.stringify(ids));
+    }
+    for (const result of [undefined, { kind: 'unknown', reason: 'not-yet' }, { kind: 'failed', reason: 'cannot-release' }]) {
+      const h = createParentHarness();
+      await h.started();
+      h.message({ type: 'resourceAcquired', resourceId: 'subject' });
+      h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+      h.message({ type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'eof' } });
+      if (result) h.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'release-subject', result });
+      await settle(h.scheduler);
+      assert.equal(h.session.tryBeginParentCleanup(), undefined, result?.kind ?? 'unresolved');
+    }
+    const complete = createParentHarness({ expectedNativeResourceIds: ['subject', 'reader'] });
+    await complete.started();
+    await transferParentTail(complete, { kind: 'eof' }, ['reader', 'subject']);
+    assert.equal(complete.session.tryBeginParentCleanup().kind, 'transferred');
+  });
+
+  test('transferred cleanup waits for the exact source acknowledgement send and all control sends', async () => {
+    const ack = deferred();
+    const stopSend = deferred();
+    const h = createParentHarness({ send: message => message.type === 'sourceEndAccepted' ? ack.promise
+      : message.type === 'requestStop' ? stopSend.promise : Promise.resolve() });
+    await h.started();
+    await transferParentTail(h);
+    assert.equal(h.sent('sourceEndAccepted').length, 1);
+    assert.equal(h.session.tryBeginParentCleanup(), undefined);
+    const stop = h.control.requestStop('stop', 'graceful', 100);
+    assert.equal(h.sent('requestStop').length, 0, 'queued controls block the claim as well');
+    ack.resolve();
+    await settle(h.scheduler);
+    assert.equal(h.sent('requestStop').length, 1);
+    assert.equal(h.session.tryBeginParentCleanup(), undefined);
+    stopSend.resolve();
+    await settle(h.scheduler);
+    const claim = h.session.tryBeginParentCleanup();
+    assert.equal(claim.kind, 'transferred');
+    assert.strictEqual(h.control.requestStop('stop', 'graceful', 100), stop);
+    assert.throws(() => h.control.requestStop('force', 'force', 200), /sealed execution intent/);
+  });
+
+  test('source acknowledgement fulfillment notifies the owner that parent cleanup became eligible', async () => {
+    const ack = deferred();
+    let h;
+    let claimed;
+    h = createParentHarness({ send: message => message.type === 'sourceEndAccepted' ? ack.promise : Promise.resolve(),
+      stateChanged: () => { claimed ??= h.session.tryBeginParentCleanup(); } });
+    // The first state observer sees an already-dispatched start, not an unstarted reservation.
+    await h.started();
+    await transferParentTail(h);
+    assert.equal(claimed, undefined);
+    ack.resolve();
+    await settle(h.scheduler);
+    assert.equal(claimed.kind, 'transferred');
+  });
+
+  test('explicit interrupted error and unknown sources remain classified during parent cleanup', async () => {
+    for (const disposition of [{ kind: 'interrupted', reason: 'cancelled' }, { kind: 'error', reason: 'source-error' },
+      { kind: 'unknown', reason: 'source-unknown' }]) {
+      const h = createParentHarness();
+      await h.started();
+      await transferParentTail(h, disposition);
+      const blocked = h.authority.snapshot().blockedReason;
+      assert.equal(h.session.tryBeginParentCleanup().kind, 'transferred');
+      assert.deepEqual(h.snapshot().source, { ...disposition, lastDataSequence: 0 });
+      h.sink.disconnected('expected cleanup disconnect');
+      h.sink.dataClosed('expected cleanup data close');
+      h.sink.controlResourceResult({ kind: 'released' });
+      await settle(h.scheduler);
+      assert.equal(h.snapshot().source.kind, disposition.kind);
+      assert.equal(h.snapshot().firstFault, undefined);
+      assert.equal(h.authority.snapshot().blockedReason, blocked);
+    }
+  });
+
+  test('synthetic lost source and rejected tail content never qualify as transferred cleanup', async () => {
+    const lost = createParentHarness();
+    await lost.started();
+    lost.message({ type: 'resourceAcquired', resourceId: 'subject' });
+    lost.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    lost.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'release-subject', result: { kind: 'released' } });
+    lost.sink.dataEnded();
+    lost.sink.disconnected('unexpected IPC loss');
+    await settle(lost.scheduler);
+    assert.equal(lost.snapshot().source.kind, 'unknown');
+    assert.equal(lost.session.tryBeginParentCleanup(), undefined);
+    const rejected = createParentHarness();
+    await rejected.started();
+    await transferParentTail(rejected);
+    rejected.output(1, 'outside the explicit source boundary');
+    assert.ok(rejected.snapshot().rejectedDataBytes > 0);
+    assert.equal(rejected.session.tryBeginParentCleanup(), undefined);
+  });
+
+  test('parent cleanup leaves accepted consumption and its final seal independent of parent termination', async () => {
+    const h = createParentHarness({ terminate: () => Promise.resolve({ kind: 'closed', exitCode: 0, signal: null }) });
+    await h.started();
+    h.output(1, 'accepted terminal tail');
+    await settle(h.scheduler);
+    await transferParentTail(h);
+    const consumption = h.session.waitForSealedConsumption();
+    const seal = h.snapshot().seal;
+    const claim = h.session.tryBeginParentCleanup();
+    assert.equal(claim.kind, 'transferred');
+    assert.ok(h.snapshot().pendingBytes > 0);
+    assert.deepEqual(await claim.terminate({ termDeadline: 20, killDeadline: 30 }), { kind: 'closed', exitCode: 0, signal: null });
+    assert.equal(h.snapshot().resources['provider-control'].current, undefined, 'terminate cannot fabricate release');
+    h.sink.controlResourceResult({ kind: 'released' });
+    assert.notEqual(h.snapshot().state, 'settled', 'original control release does not consume accepted content');
+    await h.consumeAll();
+    assert.deepEqual(await consumption, { kind: 'consumed', throughDataSequence: 1 });
+    assert.equal(h.snapshot().state, 'settled');
+    assert.strictEqual(h.snapshot().seal, seal);
+    assert.deepEqual(h.events.data.map(batch => batch.text), ['accepted terminal tail']);
+  });
+
+  test('expected unstarted parent teardown does not fabricate execution facts or hide real transport errors', async () => {
+    const h = createParentHarness({ autoReady: false });
+    await h.start();
+    const claim = h.session.tryBeginParentCleanup();
+    await claim.terminate({ termDeadline: 20, killDeadline: 30 });
+    const { canSignal } = h.terminations[0].budget;
+    h.sink.disconnected('expected parent disconnect');
+    h.sink.dataClosed('expected parent output close');
+    h.sink.exited();
+    await settle(h.scheduler);
+    assert.equal(canSignal(), true);
+    assert.equal(h.snapshot().process, undefined);
+    assert.equal(h.snapshot().source, undefined);
+    assert.equal(h.snapshot().seal, undefined);
+    assert.equal(h.snapshot().firstFault, undefined);
+    h.sink.transportFault('real pipe error');
+    assert.equal(canSignal(), false);
+    assert.equal(h.snapshot().firstFault, 'real pipe error');
+    assert.ok(h.authority.snapshot().blockedReason);
+  });
+
+  test('illegal late acquisition content and conflicting original facts revoke the signal claim', async () => {
+    const violations = [
+      h => h.message({ type: 'resourceAcquired', resourceId: 'late-resource' }),
+      h => h.output(1, 'late content'),
+      h => h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 1 } }),
+      h => h.message({ type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'interrupted', reason: 'conflict' } }),
+      h => h.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'release-subject',
+        result: { kind: 'failed', reason: 'conflict' } })
+    ];
+    for (const violate of violations) {
+      const h = createParentHarness();
+      await h.started();
+      await transferParentTail(h);
+      const claim = h.session.tryBeginParentCleanup();
+      await claim.terminate({ termDeadline: 20, killDeadline: 30 });
+      const { canSignal } = h.terminations[0].budget;
+      assert.equal(canSignal(), true);
+      violate(h);
+      assert.equal(canSignal(), false);
+      assert.ok(h.snapshot().firstFault);
+      assert.strictEqual(h.session.tryBeginParentCleanup(), claim, 'revocation cannot create a replacement parent control');
+    }
+    const unstarted = createParentHarness({ autoReady: false });
+    await unstarted.start();
+    const claim = unstarted.session.tryBeginParentCleanup();
+    await claim.terminate({ termDeadline: 20, killDeadline: 30 });
+    unstarted.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    assert.equal(unstarted.terminations[0].budget.canSignal(), false);
+    assert.ok(unstarted.snapshot().firstFault);
+  });
+
+  test('legal duplicate original facts and expected parent disconnect preserve an existing signal claim', async () => {
+    const h = createParentHarness();
+    const start = await h.started();
+    await transferParentTail(h);
+    const claim = h.session.tryBeginParentCleanup();
+    await claim.terminate({ termDeadline: 20, killDeadline: 30 });
+    h.message({ type: 'operationObservation', operationId: 'start', result: { kind: 'started', pid: 1234 } });
+    h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    h.message({ type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'eof' } });
+    h.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'release-subject', result: { kind: 'released' } });
+    h.sink.disconnected('expected parent disconnect');
+    h.sink.dataClosed('expected parent output close');
+    await settle(h.scheduler);
+    assert.equal(h.terminations[0].budget.canSignal(), true);
+    assert.equal(h.snapshot().firstFault, undefined);
+    assert.strictEqual(h.control.start('start', 100), start);
+    assert.equal(h.sent('sourceEndAccepted').length, 1);
+    h.sink.controlResourceResult({ kind: 'released' });
+    assert.equal(h.snapshot().state, 'settled');
+  });
+
+  test('revoked unstarted parent claims cannot retire an unproved startup after parent release', async () => {
+    for (const violate of [h => h.output(1, 'unexpected content'),
+      h => h.sink.message({ type: 'ready', identity: identity(), capabilities: ['execution-lifecycle-v1'] })]) {
+      const h = createParentHarness({ autoReady: false });
+      await h.start();
+      const claim = h.session.tryBeginParentCleanup();
+      await claim.terminate({ termDeadline: 20, killDeadline: 30 });
+      violate(h);
+      h.sink.controlResourceResult({ kind: 'released' });
+      await settle(h.scheduler);
+      assert.equal(h.terminations[0].budget.canSignal(), false);
+      assert.notEqual(h.snapshot().state, 'settled');
+      assert.equal(h.authority.snapshot().active, 1);
+      assert.equal(h.snapshot().process, undefined);
+      assert.equal(h.snapshot().source, undefined);
+      assert.equal(h.snapshot().seal, undefined);
+    }
   });
 
   const failures = [];

@@ -21,6 +21,8 @@ updated_at: 2026-09-25
 
 ## 1. 当前结论与阶段边界
 
+2026-09-25 从`d934867c`完成第24节S6：默认关闭、无native的原父控制受限清理已接入owner/adapter/transport。固定资源契约、同步清理准入和同钟绝对期限得到直接验证；owner33/33、adapter81/81、transport纯测9/9、Host41/41、Supervisor42/42及相关回归/typecheck通过。只证明受控实际模块，不代证OS资源释放。下一有限阶段按22.5接真实Host/Supervisor正常关闭失败编排；生产profile、native准入及整体退出完整性仍开放，不重开通用诊断门槛。以下阶段按原时点保留。
+
 2026-09-25 从`a32b1510`完成第23节S5：默认关闭、无native的一次性natural/stop/failure关闭观察和绝对期限分类已接入实际owner/adapter。owner26/26、adapter64、Host39/39、Supervisor40/40及相关回归/typecheck通过，原断言和历史失败保持。下一有限阶段按22.4接原父控制，先确认安全移交事实与固定期限追赶；真实Host离开编排、生产时长和native准入仍未交付，不扩大诊断框架或宣称整体退出完整性完成。以下阶段按原时点保留。
 
 2026-09-25 从`567bcd95`完成第22节L-03有限设计：定位自然收尾无自动预算、迟回调与绝对期限、终态后缺ACK的交互及Host实际离开缺口；选定有限首报/原责任继续结算，明确原父控制安全前提。下一仅S5默认关闭、无native的一次性关闭观察及实际模块回归，不再扩诊断工具。本轮只读源码和文档，无新测试/平台样本；生产数值、父控制接线及真实宿主失败边界尚未交付，L-03和整体退出完整性不关闭。以下阶段按原时点保留。
@@ -847,3 +849,51 @@ Host首次运行原35项全过，新自然场景在adapter.first之后未泵现�
 下一按22.4接入原父控制前，先核对同一transport对象能提供的安全事实及固定期限追赶行为，再实现必要的最小接口与定向测试。清理能力只证明provider-control，不代证主体wait、PTY/source或消费；未确认主体/内容移交时不能默认终止唯一provider。Host真实离开与Supervisor正常关闭随后按22.5分别编排，本地失败不能跳过独立live detach，reset/delete不能吞错成功。不要重开D3/D4通用工具增强或自动运行native矩阵。
 
 本轮停止于默认关闭的实际模块和受控入口验证。生产profile、在途start关闭约束、父控制安全谓词/接线、真实宿主失败编排、UI/落盘、真实Agent启动链及跨平台仍开放，L-02/03/04/05和总体重构均未通过；旧live绑定、root归属和generation不变。
+
+## 24. S6原父控制的受限安全接线
+
+### 24.1 输入、范围与实际缺口
+
+从`d934867c`继续，限默认关闭、显式non-native的原父控制接线及真实模块纯验证。现有transport持有原ChildProcess，但terminate实际执行晚于调用时仍可能补发过期TERM/KILL，close首报也受timer顺序影响；adapter快照缺少启动派发封闭、精确sourceEndAccepted发送完成和完整资源清单证明。不能由owner在外部拼快照后异步kill。本轮修改前先冻结本节；生产毫秒数、Host真实离开编排、native准入和其他平台不在本切片。
+
+### 24.2 固定契约与同步清理准入
+
+`executionSessionAdapter.ts`为ExecutionTransport增加可选原`parentControl`能力，包含同一identity、scheduler、不可变非空expectedNativeResourceIds、closed和terminate；该清单来自原provider工厂的固定契约，不能由一次cleanup请求临时指定。内部`parentCleanupV1?: true`要求同时启用closeObservationV1，并在connect前校验原identity、scheduler对象相同及有限合法资源清单。通用旧transport不获得新能力。Linux候选的固定三项为pty-master/pty-child/pty-source，源码在sourceEnd之前报告取得及释放；部分创建缺项、额外资源或清单未闭合都保持不准入，本轮不修改native或增加通用inventory协议。
+
+adapter提供同步`tryBeginParentCleanup()`，成功后返回一次性原claim，绑定原control而非PID。未派发分支要求尚无实际start派发、主体/source/seal/输出/其他资源，且无在途发送；同步封住late-ready、新start/stop/cancel并明确结束尚未派发的原操作观察，不伪造accepted、process或EOF。已经派发的启动不进入此分支。已执行分支要求确定主体终态、经连续尾界校验的显式sourceEnd、无raw/拒收或解析失败、精确sourceEndAccepted发送成功、控制队列及在途发送为空、实际native取得集合与固定清单精确相等且各项released、账本完整。失联合成source不能满足；显式interrupted/error/unknown保留其分类，不变成EOF。
+
+两分支都要求已经取得尚未释放的原provider-control，任何已有firstFault保守拒绝新claim；不是所有失败启动都可清理。尚未派发的start具名记为failed、stage为parent-cleanup-before-start，不把本地封闭当作provider确认。原固定清单在构造时复制冻结并拒绝空洞数组，后续修改外部对象不能改变准入范围。
+
+该封闭只约束parent本地意图及已确认的固定provider契约，不声称原子锁住任意远端native行为。准入后原事实监听、已接受内容消费和flush继续；晚到非法取得、内容或矛盾事实令claim失效并阻止尚未执行的信号升级。父控制每次信号前复查claim的canSignal。预期的父控制disconnect/data-close不补造执行主体或源事实；真实错误、违约及原quarantine仍保留。sourceEndAccepted发送完成不等于provider已处理，允许清理是因为内容已归parent且native资源已释放，不称provider自然关闭成功。
+
+失效的unstarted claim即使随后收到原control释放，也不能按“未创建主体”退役；保留unconfirmed和quarantine。此时pendingDomains可能为空，它只是各事实域的待办摘要，不能脱离current和quarantineReason作为成功判据；本轮不为该诊断细节扩展域模型。
+
+### 24.3 固定预算与原控制结果
+
+owner新能力`execution-parent-cleanup-v1`必须同时具备S5能力，额外显式注入parentTermMs/parentKillMs，二者为有限正数且总和不超过settleMs。在第一次关闭观察内固定`parentAt = finishAt - parentTermMs - parentKillMs`、`termDeadline = finishAt - parentKillMs`、`killDeadline = finishAt`。正常事实可提前结算；到parentAt之后、finishAt之前才尝试安全claim。到点不安全则继续等原事实，不换provider，不顺延。迟到至termDeadline只允许直接KILL；到killDeadline不再发送信号。新capability缺失时不变更S5或旧控制路径。
+
+`executionProviderTransport.ts`通过显式parentCleanup选项暴露原能力，并复用原terminate方法的新opt-in期限策略；旧调用保持原义。新策略与owner共用注入scheduler，复制固定期限与canSignal，重复同请求复用Promise，冲突参数拒绝。TERM/KILL各至多一次；原child已exit/close时不再发信号。期限timer与真实finishClose入口共同冻结first，超期真实关闭先记unknown再递交released；closed仍只表示真实关闭，迟到可以完成但不覆盖首报。release时刻用于区分期限前事实与通知迟到，不能仅看Promise回调顺序。
+
+每次实际信号仅在canSignal严格返回true后发出，再读时钟追赶阶段。false只跳过信号，仍等原期限或真实释放；抛错先固定unknown并通知资源观察者，再记录具名fault，防同步重入改写首报。TERM/KILL返回、child exit和单条stream关闭都不是完整provider-control释放证明。
+
+terminate返回值不代替provider-control资源结果；owner仍由原adapter资源事实判断结算。未派发且已封闭的启动在控制资源真实释放后可作为“未创建执行主体”结算，不生成terminal applied或seal，reader仍按原规则单独退役。已执行内容继续真实消费，不把父控制关闭当作最终flush完成。
+
+### 24.4 有限实施与验收
+
+修改限owner、adapter、原transport和对应定向测试，必要时只扩Host/Supervisor既有注入测试。新增一个窄的transport纯测试入口，沿现有channel测试方式替换Node child/stream边界，加载真实transport代码；不建立另一套诊断框架，不更改或运行旧真实transport七场景。测试证明同步准入、固定期限追赶、first/current、原对象、逐资源事实、消费独立与旧gate兼容，不代证OS回收。
+
+新增入口为`scripts/test/test-execution-provider-parent-control.mjs`，只替换Node child/stream/time边界。它包括真实owner、adapter、transport的未派发启动组合，验证原对象接收信号、原通道逐项关闭才报告released，以及没有process/seal/flush伪造；不是实际OS进程清理。Host/Supervisor现有wiring各新增Terminal/Agent两项，暂停实际tracker消费，父清理返回、原控制资源释放、最终flush及reader退役分别断言。
+
+根代理最终在仓库根执行并取得exit0：owner33/33、adapter81/81、新transport纯测9/9、Host41/41、Supervisor42/42。旧reader接线20/20、client13/13、实际main/headless27/27及原分页断言、bridge、tracker、四条Terminal/Agent分页完成回归全部通过，workspace typecheck通过。五份修改/新增mjs语法及diff检查通过。环境为Linux/Node v25.6.0；Host原node-pty external构建warning保持，native加载/创建守卫未放宽。
+
+保留真实先败记录：Host先跑原39项通过，首个新增Terminal场景因原父清理尚未实现而超出100调度轮次，exit1，后续Agent新项未运行；不能将其计为完整41项首跑。Transport先跑1/9通过、8项缺新能力失败；实现后9/9。Owner新增unstarted的late-data子场景曾因adapter错误settled而失败，加入失效claim保护后33/33。Adapter脚本首次81/81通过，不把该owner失败挪记为adapter先红。并发typecheck先报send回调中可变message丢失类型收窄，改用固定sentMessage后通过。复核发现空洞清单校验漏拒绝；transport在原validation组补Array(1)先8/9，窄修后9/9，adapter同处修正。上述失败不改写，重复通过次数不累加覆盖数。
+
+修改为三实现、五测试、五文档；原四套测试的定义正文保留，fixture仅扩显式能力，新增量分别owner7、adapter17、Host2、Supervisor2。旧transport的runTermination/observeClose/requestSignal正文保持。两业务入口、native、manifest、依赖、workflow、旧原生实验及失败工件不改；原第2至23节保持。独立只读交叉复核owner与transport未发现本切片确定性阻塞。
+
+静态保持检查通过：设计元数据/索引状态/关联路径一致，原第2至23节逐字相同，ExecPlan十二标题顺序不变。AST比对原测试定义26/63/27/35处逐字保持（循环展开为26/64/39/40项），三个旧transport方法逐字保持。新transport纯入口是唯一新增文件，没有生成工件或额外归档；文档交叉复核修正了一处将生产profile误并入下一22.5的表述，未扩大下一阶段范围。
+
+### 24.5 下一有限阶段与未关闭项
+
+下一仅按22.5接真实Host/Supervisor正常关闭失败编排：区分可继续存活的reset/delete与不可继续托管的Host实际离开，任何本地失败都不能跳过独立live detach；Supervisor仍须等待自己的原执行责任，不以清map代替资源或reader结算。先将实际入口及错误传播选择补入设计，再沿现有注入方式直接验证。生产毫秒数、native/PTY与平台矩阵不自动启用，也不再追加通用诊断框架前置。
+
+本阶段不提供部分创建、未知主体或未完整移交时强停唯一provider的权限。生产profile、L-02/03/04/05、真实UI/落盘、实际Agent启动链及跨平台仍开放；旧live绑定、root归属、storage/generation不变。正常结束不恢复进程/历史及不承诺主体退出后的普通后代持续输出等产品边界保持。没有运行旧PTY protocol、真实transport七场景、S3/native/runner，也不push或创建PR；S6不是L-03或整体重构完成。

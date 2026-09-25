@@ -616,6 +616,267 @@ try {
     assert.equal(transport.messages.length, 0, 'no ready does not imply a physically dispatched stop');
   });
 
+  const parentCapabilities = ['execution-lifecycle-v1', 'execution-close-observation-v1', 'execution-parent-cleanup-v1'];
+  const parentBudgets = { ...budgets, naturalDrainMs: 5, parentTermMs: 3, parentKillMs: 3 };
+
+  function parentHarness({ ready = true, terminate, send, capabilities = parentCapabilities } = {}) {
+    let h;
+    h = harness({
+      capabilities, budgets: parentBudgets,
+      createTransport(identity) {
+        const closed = deferred();
+        const transport = {
+          messages: [], cleanup: [], closed,
+          parentControl: Object.freeze({
+            identity, scheduler: h.scheduler, expectedNativeResourceIds: Object.freeze(['subject']),
+            closed: closed.promise,
+            terminate(budget) {
+              transport.cleanup.push(budget);
+              return terminate?.(transport, budget) ?? Promise.resolve({ kind: 'closed', exitCode: 0, signal: null });
+            }
+          }),
+          connect(sink) {
+            this.sink = sink;
+            if (ready) sink.message({ type: 'ready', identity, capabilities: ['execution-lifecycle-v1'] });
+          },
+          send(message) {
+            this.messages.push(message);
+            if (message.type === 'start') {
+              this.sink.message({ type: 'resourceAcquired', identity, resourceId: 'subject' });
+              this.sink.message({ type: 'operationObservation', identity, operationId: message.operationId,
+                result: { kind: 'started', pid: 123 } });
+            } else if (message.type === 'requestStop' || message.type === 'cancelOutput') {
+              this.sink.message({ type: 'operationObservation', identity, operationId: message.operationId,
+                result: { kind: 'accepted' } });
+            }
+            return send?.(this, message) ?? Promise.resolve();
+          }
+        };
+        h.transports.set(identity.executionId, transport);
+        return transport;
+      }
+    });
+    return h;
+  }
+
+  const nativeResult = (h, record, result = { kind: 'released' }) => h.message(record, {
+    type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result
+  });
+
+  test('parent cleanup validates capability and fixed budgets before creating any transport', () => {
+    let factories = 0;
+    const createTransport = () => { factories++; throw new Error('must not create transport'); };
+    assert.throws(() => harness({ capabilities: ['execution-lifecycle-v1', 'execution-parent-cleanup-v1'],
+      budgets: parentBudgets, createTransport }), /Parent cleanup requires close observation/);
+    for (const parentTermMs of [undefined, 0, -1, Infinity, NaN, 8]) {
+      assert.throws(() => harness({ capabilities: parentCapabilities,
+        budgets: { ...parentBudgets, parentTermMs }, createTransport }), /Parent cleanup requires/);
+    }
+    for (const parentKillMs of [undefined, 0, -1, Infinity, NaN, 8]) {
+      assert.throws(() => harness({ capabilities: parentCapabilities,
+        budgets: { ...parentBudgets, parentKillMs }, createTransport }), /Parent cleanup requires/);
+    }
+    assert.equal(factories, 0);
+    assert.doesNotThrow(() => harness({ capabilities: parentCapabilities,
+      budgets: { ...parentBudgets, parentTermMs: 5, parentKillMs: 5 }, createTransport }));
+  });
+
+  test('transferred parent cleanup runs once while consumption is paused and its return is not release evidence', async () => {
+    const consume = deferred();
+    let record;
+    let flushes = 0;
+    const h = parentHarness({ terminate(transport, budget) {
+      assert.equal(record.snapshot().closeObservation.parentCleanup.kind, 'transferred');
+      assert.equal(budget.canSignal(), true);
+      record.requestStop('reentrant-cleanup');
+      return Promise.resolve({ kind: 'closed', exitCode: 0, signal: null });
+    } });
+    record = await h.start('paused', {
+      consume: () => consume.promise,
+      flushFinal: async () => { flushes++; return 1; }
+    });
+    const transport = h.transports.get(record.identity.executionId);
+    h.frame(record, 1, 'accepted tail');
+    await h.scheduler.drain();
+    nativeResult(h, record);
+    await h.complete(record, 1, false);
+    const first = record.requestStop('join-natural');
+    assert.deepEqual(record.snapshot().closeObservation.parentCleanup, { at: 19, termDeadline: 22, killDeadline: 25 });
+    h.scheduler.tick(18);
+    await h.scheduler.drain();
+    assert.equal(transport.cleanup.length, 0);
+    h.scheduler.tick(19);
+    await h.scheduler.drain();
+    assert.equal(transport.cleanup.length, 1);
+    assert.equal(transport.cleanup[0].termDeadline, 22);
+    assert.equal(transport.cleanup[0].killDeadline, 25);
+    assert.equal(record.snapshot().adapter.consumedThrough, 0);
+    assert.equal(record.snapshot().adapter.resources['provider-control'].current, undefined);
+    assert.equal(record.snapshot().closeObservation.parentCleanup.first.kind, 'closed');
+    assert.equal(record.snapshot().settled, false);
+    assert.equal(flushes, 0);
+    transport.sink.controlResourceResult({ kind: 'released' });
+    await h.scheduler.drain();
+    assert.equal(record.snapshot().settled, false, 'provider release does not consume accepted terminal data');
+    consume.resolve();
+    await h.scheduler.drain();
+    assert.equal((await first).kind, 'settled');
+    assert.equal(flushes, 1);
+    assert.equal(record.snapshot().retired, false, 'reader responsibility remains independent');
+    record.settleReaders('settled');
+    assert.equal(record.snapshot().retired, true);
+    assert.equal(transport.cleanup.length, 1);
+  });
+
+  test('unstarted parent cleanup seals late ready and settles only actual control release without finalizing a terminal', async () => {
+    const h = parentHarness({ ready: false });
+    let finalized = 0;
+    let flushes = 0;
+    const record = h.owner.reserve('unstarted');
+    const started = record.start(spec, h.hooks({
+      flushFinal: async () => { flushes++; return 0; }, finalized: () => { finalized++; }
+    }));
+    const transport = h.transports.get(record.identity.executionId);
+    h.scheduler.tick(10);
+    assert.equal((await started.first).kind, 'unconfirmed');
+    await h.scheduler.drain();
+    const first = record.requestStop('join-start-timeout');
+    h.scheduler.tick(44);
+    await h.scheduler.drain();
+    assert.equal(transport.cleanup.length, 1);
+    assert.equal(record.snapshot().adapter.parentCleanup, 'unstarted');
+    assert.equal(record.snapshot().closeObservation.parentCleanup.kind, 'unstarted');
+    assert.equal(record.snapshot().settled, false);
+    h.message(record, { type: 'ready', capabilities: ['execution-lifecycle-v1'] });
+    await h.scheduler.drain();
+    assert.equal(transport.messages.length, 0, 'late ready cannot send start or queued close commands');
+    assert.equal(flushes, 0);
+    assert.equal(finalized, 0);
+    assert.equal(record.snapshot().adapter.process, undefined);
+    assert.equal(record.snapshot().adapter.source, undefined);
+    assert.equal(record.snapshot().adapter.seal, undefined);
+    transport.sink.controlResourceResult({ kind: 'released' });
+    await h.scheduler.drain();
+    assert.equal((await first).kind, 'settled');
+    assert.equal(record.snapshot().adapter.state, 'settled');
+    assert.equal(record.snapshot().terminal, undefined);
+    assert.equal(record.snapshot().retired, false);
+    assert.equal(finalized, 0);
+    record.settleReaders('lost');
+    assert.equal(record.snapshot().retired, true);
+    assert.equal((await started.first).kind, 'unconfirmed');
+
+    for (const unexpected of ['late-data', 'stale-identity']) {
+      const unsafe = parentHarness({ ready: false });
+      const pending = unsafe.owner.reserve(unexpected);
+      pending.start(spec, unsafe.hooks());
+      const original = unsafe.transports.get(pending.identity.executionId);
+      unsafe.scheduler.tick(10);
+      await unsafe.scheduler.drain();
+      const stopped = pending.requestStop('join-start-timeout');
+      unsafe.scheduler.tick(44);
+      await unsafe.scheduler.drain();
+      assert.equal(original.cleanup.length, 1);
+      if (unexpected === 'late-data') unsafe.frame(pending, 1, 'cannot belong to an unstarted execution');
+      else original.sink.message({ type: 'ready', identity: { ...pending.identity, executionId: 'stale-execution' },
+        capabilities: ['execution-lifecycle-v1'] });
+      original.sink.controlResourceResult({ kind: 'released' });
+      await unsafe.scheduler.drain();
+      assert.equal(original.cleanup[0].canSignal(), false, unexpected);
+      assert.notEqual(pending.snapshot().adapter.state, 'settled', unexpected);
+      assert.equal(pending.snapshot().settled, false, unexpected);
+      unsafe.scheduler.tick(50);
+      assert.equal((await stopped).kind, 'unconfirmed', unexpected);
+      pending.settleReaders('lost');
+      assert.equal(pending.snapshot().retired, false, unexpected);
+    }
+  });
+
+  test('unsafe transfer facts deny parent cleanup without borrowing successful terminal consumption', async () => {
+    for (const unsafe of ['missing-release', 'unknown-release', 'missing-source', 'pending-ack']) {
+      const ack = deferred();
+      const h = parentHarness({ send: (_transport, message) =>
+        unsafe === 'pending-ack' && message.type === 'sourceEndAccepted' ? ack.promise : undefined });
+      const record = await h.start(unsafe);
+      const transport = h.transports.get(record.identity.executionId);
+      if (unsafe === 'unknown-release') nativeResult(h, record, { kind: 'unknown', reason: 'release unknown' });
+      else if (unsafe !== 'missing-release') nativeResult(h, record);
+      h.message(record, { type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+      if (unsafe !== 'missing-source') h.message(record, { type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'eof' } });
+      await h.scheduler.drain();
+      h.scheduler.tick(record.snapshot().closeObservation.parentCleanup.at);
+      await h.scheduler.drain();
+      assert.equal(transport.cleanup.length, 0, unsafe);
+      assert.equal(record.snapshot().closeObservation.parentCleanup.kind, undefined, unsafe);
+      assert.equal(record.snapshot().settled, false, unsafe);
+    }
+  });
+
+  test('late parent stage keeps original absolute deadlines and never initiates at the final cutoff', async () => {
+    for (const now of [23, 25]) {
+      const h = parentHarness();
+      const record = await h.start(`late-${now}`);
+      const transport = h.transports.get(record.identity.executionId);
+      nativeResult(h, record);
+      await h.complete(record, 0, false);
+      const first = record.requestStop('join-natural');
+      h.scheduler.tick(now);
+      await h.scheduler.drain();
+      assert.equal(transport.cleanup.length, now < 25 ? 1 : 0);
+      if (now < 25) {
+        assert.equal(transport.cleanup[0].termDeadline, 22);
+        assert.equal(transport.cleanup[0].killDeadline, 25);
+        h.scheduler.tick(25);
+      }
+      assert.equal((await first).kind, 'unconfirmed');
+      assert.equal(record.snapshot().closeObservation.finishAt, 25);
+    }
+  });
+
+  test('parent cleanup rejection quarantines and late real release preserves both first results', async () => {
+    const failure = deferred();
+    const h = parentHarness({ terminate: () => failure.promise });
+    const record = await h.start('rejected');
+    const transport = h.transports.get(record.identity.executionId);
+    nativeResult(h, record);
+    await h.complete(record, 0, false);
+    const first = record.requestStop('join-natural');
+    h.scheduler.tick(19);
+    await h.scheduler.drain();
+    failure.reject(new Error('original control rejected'));
+    await h.scheduler.drain();
+    const cleanupFirst = record.snapshot().closeObservation.parentCleanup.first;
+    assert.equal(cleanupFirst.kind, 'failed');
+    assert.match(cleanupFirst.reason, /original control rejected/);
+    assert.throws(() => h.owner.reserve('blocked'), /closed/);
+    h.scheduler.tick(25);
+    assert.equal((await first).kind, 'unconfirmed');
+    transport.sink.controlResourceResult({ kind: 'released' });
+    await h.scheduler.drain();
+    assert.equal(record.snapshot().closeObservation.current.kind, 'settled');
+    assert.strictEqual(record.snapshot().closeObservation.parentCleanup.first, cleanupFirst);
+    assert.equal((await first).kind, 'unconfirmed');
+    record.settleReaders('lost');
+    assert.equal(record.snapshot().retired, true);
+    assert.equal(transport.cleanup.length, 1);
+  });
+
+  test('S5-only owner never invokes an available parent control', async () => {
+    const h = parentHarness({ capabilities: ['execution-lifecycle-v1', 'execution-close-observation-v1'] });
+    const record = await h.start('s5-only');
+    const transport = h.transports.get(record.identity.executionId);
+    nativeResult(h, record);
+    await h.complete(record, 0, false);
+    const first = record.requestStop('join-natural');
+    h.scheduler.tick(25);
+    assert.equal((await first).kind, 'unconfirmed');
+    assert.equal(record.snapshot().closeObservation.parentCleanup, undefined);
+    assert.equal(transport.cleanup.length, 0);
+    transport.sink.controlResourceResult({ kind: 'released' });
+    await h.scheduler.drain();
+    record.settleReaders('lost');
+  });
+
   for (const { name, run } of tests) {
     await run();
     console.log(`ok - ${name}`);

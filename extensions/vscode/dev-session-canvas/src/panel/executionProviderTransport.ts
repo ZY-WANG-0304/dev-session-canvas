@@ -6,7 +6,9 @@ import {
   assertExecutionIdentity, assertParentMessageSize, parseProviderMessage, sameExecutionIdentity,
   type ExecutionIdentity, type ParentMessage
 } from '../common/executionLifecycle';
-import type { ExecutionScheduler, ExecutionTransport, ExecutionTransportSink } from './executionSessionAdapter';
+import type {
+  ExecutionParentCleanupBudget, ExecutionParentControl, ExecutionScheduler, ExecutionTransport, ExecutionTransportSink
+} from './executionSessionAdapter';
 
 export function createNodeExecutionScheduler(): ExecutionScheduler {
   return {
@@ -27,9 +29,25 @@ export interface ExecutionProviderTransportOptions {
   entryPoint: string;
   args?: readonly string[];
   env?: NodeJS.ProcessEnv;
+  parentCleanup?: {
+    scheduler: ExecutionScheduler;
+    expectedNativeResourceIds: readonly string[];
+  };
 }
 
 export type ProviderClosed = Readonly<{ kind: 'closed'; exitCode: number | null; signal: string | null }>;
+type ProviderCleanupResult = ProviderClosed | Readonly<{ kind: 'unknown' }>;
+type ProviderTermination = {
+  termDeadline: number;
+  killDeadline: number;
+  result: Promise<ProviderCleanupResult>;
+  observation?: {
+    canSignal: () => boolean;
+    resolve: (result: ProviderCleanupResult) => void;
+    first?: ProviderCleanupResult;
+    cancelDeadline?: () => void;
+  };
+};
 
 export function createExecutionProviderTransport(options: ExecutionProviderTransportOptions): ExecutionProviderTransport {
   return new ExecutionProviderTransport(options);
@@ -37,6 +55,7 @@ export function createExecutionProviderTransport(options: ExecutionProviderTrans
 
 export class ExecutionProviderTransport implements ExecutionTransport {
   readonly closed: Promise<ProviderClosed>;
+  readonly parentControl?: ExecutionParentControl;
   private resolveClosed!: (result: ProviderClosed) => void;
   private readonly options: ExecutionProviderTransportOptions;
   private sink?: ExecutionTransportSink;
@@ -57,7 +76,8 @@ export class ExecutionProviderTransport implements ExecutionTransport {
   private readonly stderr = Buffer.alloc(64 * 1024);
   private closeResult?: ProviderClosed;
   private releaseReported = false;
-  private termination?: { termDeadline: number; killDeadline: number; result: Promise<ProviderClosed | { kind: 'unknown' }> };
+  private releasedAt?: number;
+  private termination?: ProviderTermination;
   private termRequested = false;
   private killRequested = false;
 
@@ -66,9 +86,28 @@ export class ExecutionProviderTransport implements ExecutionTransport {
     assertExecutionIdentity(options.identity);
     if (!isAbsolute(options.executable) || !isAbsolute(options.entryPoint)) throw new Error('Provider paths must be explicit and absolute');
     if (options.args?.some(arg => typeof arg !== 'string')) throw new Error('Invalid provider arguments');
+    let parentCleanup: ExecutionProviderTransportOptions['parentCleanup'];
+    if (options.parentCleanup) {
+      const { scheduler, expectedNativeResourceIds } = options.parentCleanup;
+      if (!scheduler || typeof scheduler.now !== 'function' || typeof scheduler.scheduleDeadline !== 'function'
+        || typeof scheduler.scheduleTask !== 'function') throw new Error('An explicit parent cleanup scheduler is required');
+      if (!Array.isArray(expectedNativeResourceIds) || expectedNativeResourceIds.length < 1 || expectedNativeResourceIds.length > 15
+        || new Set(expectedNativeResourceIds).size !== expectedNativeResourceIds.length
+        || [...expectedNativeResourceIds].some(id => typeof id !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(id)
+          || id === 'provider-control')) throw new Error('Invalid parent cleanup native resource contract');
+      parentCleanup = Object.freeze({ scheduler, expectedNativeResourceIds: Object.freeze([...expectedNativeResourceIds]) });
+    }
     this.options = Object.freeze({ ...options, identity: Object.freeze({ ...options.identity }),
-      args: Object.freeze([...(options.args ?? [])]), env: options.env ? Object.freeze({ ...options.env }) : undefined });
+      args: Object.freeze([...(options.args ?? [])]), env: options.env ? Object.freeze({ ...options.env }) : undefined,
+      parentCleanup });
     this.closed = new Promise(resolve => { this.resolveClosed = resolve; });
+    if (parentCleanup) {
+      this.parentControl = Object.freeze({
+        identity: this.options.identity, scheduler: parentCleanup.scheduler,
+        expectedNativeResourceIds: parentCleanup.expectedNativeResourceIds, closed: this.closed,
+        terminate: (budget: ExecutionParentCleanupBudget) => this.terminate({ ...budget, closeObservationV1: true })
+      });
+    }
   }
 
   connect(sink: ExecutionTransportSink): void {
@@ -169,15 +208,35 @@ export class ExecutionProviderTransport implements ExecutionTransport {
     });
   }
 
-  terminate(budget: { termDeadline: number; killDeadline: number }): Promise<ProviderClosed | { kind: 'unknown' }> {
+  terminate(budget: { termDeadline: number; killDeadline: number; closeObservationV1?: true;
+    canSignal?: () => boolean }): Promise<ProviderClosed | { kind: 'unknown' }> {
     const deadlines = Object.freeze({ termDeadline: budget.termDeadline, killDeadline: budget.killDeadline });
+    const observeClose = budget.closeObservationV1 === true;
+    const canSignal = budget.canSignal;
     if (this.termination) {
       if (deadlines.termDeadline !== this.termination.termDeadline || deadlines.killDeadline !== this.termination.killDeadline) {
         throw new Error('Provider termination already requested with different deadlines');
       }
+      if (observeClose !== Boolean(this.termination.observation)
+        || (observeClose && canSignal !== this.termination.observation!.canSignal)) {
+        throw new Error('Provider termination already requested with different parameters');
+      }
       return this.termination.result;
     }
     if (!this.connected) throw new Error('Provider transport has not connected');
+    if (observeClose) {
+      const scheduler = this.options.parentCleanup?.scheduler;
+      if (!scheduler || typeof canSignal !== 'function') throw new Error('Original parent cleanup capability and guard are required');
+      if (!Number.isFinite(deadlines.termDeadline) || !Number.isFinite(deadlines.killDeadline)
+        || deadlines.killDeadline <= deadlines.termDeadline
+        || deadlines.killDeadline - scheduler.now() > 0x7fffffff) throw new Error('Invalid provider cleanup deadlines');
+      let resolve!: (result: ProviderCleanupResult) => void;
+      const result = new Promise<ProviderCleanupResult>(done => { resolve = done; });
+      const termination: ProviderTermination = { ...deadlines, result, observation: { canSignal, resolve } };
+      this.termination = termination;
+      void Promise.resolve().then(() => this.advanceParentTermination(termination));
+      return result;
+    }
     if (!Number.isFinite(deadlines.termDeadline) || !Number.isFinite(deadlines.killDeadline)
       || deadlines.termDeadline <= performance.now() || deadlines.killDeadline <= deadlines.termDeadline
       || deadlines.killDeadline - performance.now() > 0x7fffffff) throw new Error('Invalid provider cleanup deadlines');
@@ -210,10 +269,73 @@ export class ExecutionProviderTransport implements ExecutionTransport {
   private finishClose(exitCode: number | null, signal: string | null): void {
     if (this.releaseReported) return;
     this.releaseReported = true;
+    this.releasedAt = this.options.parentCleanup?.scheduler.now();
     const result = this.closeResult ?? Object.freeze({ kind: 'closed' as const, exitCode, signal });
     this.closeResult = result;
+    if (this.termination?.observation) {
+      const expired = this.releasedAt! >= this.termination.killDeadline;
+      this.finishParentTermination(this.termination, expired ? { kind: 'unknown' } : result, expired);
+    }
     this.sink!.controlResourceResult({ kind: 'released' });
     this.resolveClosed(result);
+  }
+
+  private advanceParentTermination(termination: ProviderTermination): void {
+    const observation = termination.observation!;
+    if (observation.first) return;
+    const scheduler = this.options.parentCleanup!.scheduler;
+    if (this.releaseReported) {
+      // The resource fact may predate this cleanup request; never publish unknown after released.
+      this.finishParentTermination(termination,
+        this.releasedAt! < termination.killDeadline ? this.closeResult! : { kind: 'unknown' }, false);
+      return;
+    }
+    if (scheduler.now() >= termination.killDeadline) {
+      this.finishParentTermination(termination, { kind: 'unknown' }, true);
+      return;
+    }
+    let signal: 'SIGTERM' | 'SIGKILL' = scheduler.now() < termination.termDeadline ? 'SIGTERM' : 'SIGKILL';
+    const alreadyRequested = signal === 'SIGTERM' ? this.termRequested : this.killRequested;
+    if (!alreadyRequested && this.child && !this.childExited && !this.childClosed && this.child.pid) {
+      let allowed: boolean;
+      try { allowed = observation.canSignal() === true; }
+      catch {
+        this.finishParentTermination(termination, { kind: 'unknown' }, true, 'Parent cleanup safety check failed');
+        this.reportFault('Parent cleanup safety check failed');
+        return;
+      }
+      if (observation.first) return;
+      const now = scheduler.now();
+      if (now >= termination.killDeadline) {
+        this.finishParentTermination(termination, { kind: 'unknown' }, true);
+        return;
+      }
+      signal = now < termination.termDeadline ? 'SIGTERM' : 'SIGKILL';
+      if (allowed) this.requestSignal(signal);
+    }
+    if (observation.first) return;
+    const now = scheduler.now();
+    if (now >= termination.killDeadline) {
+      this.finishParentTermination(termination, { kind: 'unknown' }, true);
+      return;
+    }
+    if (signal === 'SIGTERM' && now >= termination.termDeadline) {
+      this.advanceParentTermination(termination);
+      return;
+    }
+    const deadline = now < termination.termDeadline ? termination.termDeadline : termination.killDeadline;
+    observation.cancelDeadline = scheduler.scheduleDeadline(deadline, () => this.advanceParentTermination(termination));
+  }
+
+  private finishParentTermination(termination: ProviderTermination, result: ProviderCleanupResult,
+    reportUnknown: boolean, reason = 'Provider close observation deadline reached'): void {
+    const observation = termination.observation!;
+    if (observation.first) return;
+    // Freeze before resource observers or fault handlers can synchronously reenter.
+    observation.first = Object.freeze({ ...result });
+    observation.cancelDeadline?.();
+    observation.resolve(observation.first);
+    if (reportUnknown) this.sink!.controlResourceResult({ kind: 'unknown', reason });
   }
 
   private async runTermination(budget: { termDeadline: number; killDeadline: number }): Promise<ProviderClosed | { kind: 'unknown' }> {

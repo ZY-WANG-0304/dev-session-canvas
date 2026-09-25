@@ -64,8 +64,10 @@ function fixture(capabilities = ['execution-lifecycle-v1'], behavior = {}) {
       kind: 'non-native', capabilities, scheduler,
       budgets: { startMs: 100, gracefulMs: 10, forceMs: 10, cancelMs: 10, settleMs: 10, ...behavior.budgets },
       createTransport(identity) {
+        const parentClosed = deferred();
+        const cleanupResult = deferred();
         const transport = {
-          identity, sent: [], frameId: 0,
+          identity, sent: [], frameId: 0, cleanupRequests: [], cleanupResult,
           connect(sink) {
             this.sink = sink;
             if (behavior.connectThrows) throw new Error('injected connect failure');
@@ -98,8 +100,13 @@ function fixture(capabilities = ['execution-lifecycle-v1'], behavior = {}) {
             this.fact({ type: 'resourceResult', resourceId: 'subject', operationId: 'release-subject',
               result: { kind: 'released' } });
             this.sink.controlResourceResult({ kind: 'released' });
+            parentClosed.resolve({ kind: 'closed', exitCode: 0, signal: null });
           }
         };
+        if (behavior.exposeParentControl) transport.parentControl = Object.freeze({
+          identity, scheduler, expectedNativeResourceIds: Object.freeze(['subject']), closed: parentClosed.promise,
+          terminate(budget) { transport.cleanupRequests.push(budget); return cleanupResult.promise; }
+        });
         transports.push(transport);
         return transport;
       }
@@ -1077,6 +1084,55 @@ try {
     session.ownedExecution.settleReaders('cancelled');
     assert.equal(f.server.executionOwner.snapshot().pending, 0);
   });
+
+  for (const kind of ['terminal', 'agent']) {
+    await check(`${kind} real Supervisor parent cleanup is independent of tracker and reader settlement`, async () => {
+      const f = fixture([...closeObservationCapabilities, 'execution-parent-cleanup-v1'], {
+        exposeParentControl: true, budgets: { naturalDrainMs: 15, parentTermMs: 5, parentKillMs: 5 }
+      });
+      const { session, transport } = await f.create(kind);
+      const read = await openReader(f, session);
+      const gate = deferred();
+      const flush = session.terminalStateTracker.flush.bind(session.terminalStateTracker);
+      session.terminalStateTracker.flush = async () => { await gate.promise; return flush(); };
+      try {
+        transport.process();
+        transport.output(`${kind}-parent-cleanup-tail`);
+        await f.until(() => session.ownedExecution.snapshot().adapter.acceptedThrough === 1, 'parent received tail');
+        transport.fact({ type: 'resourceResult', resourceId: 'subject', operationId: 'release-subject', result: { kind: 'released' } });
+        transport.seal();
+        await f.until(() => transport.sent.some(message => message.type === 'sourceEndAccepted'), 'source acknowledgment sent');
+        await f.advance(24);
+        assert.equal(transport.cleanupRequests.length, 0);
+        await f.advance(1);
+        await f.until(() => transport.cleanupRequests.length === 1, 'original Supervisor parent cleanup');
+        const request = transport.cleanupRequests[0];
+        assert.equal(request.termDeadline, 30);
+        assert.equal(request.killDeadline, 35);
+        assert.equal(request.canSignal(), true);
+        assert.equal(session.ownedExecution.snapshot().adapter.consumedThrough, 0);
+        transport.cleanupResult.resolve({ kind: 'closed', exitCode: 0, signal: null });
+        await f.pump();
+        assert.notEqual(session.ownedExecution.snapshot().adapter.resources['provider-control'].current?.kind, 'released');
+        assert.equal(session.ownedExecution.snapshot().settled, false);
+        transport.release();
+        await f.pump();
+        assert.equal(session.ownedExecution.snapshot().adapter.resources['provider-control'].current.kind, 'released');
+        assert.equal(session.ownedExecution.snapshot().settled, false);
+        gate.resolve();
+        await f.until(() => session.ownedExecution.snapshot().settled, `${kind} actual tracker completion`);
+        assert.match(session.terminalStateTracker.getSerializedState().data, new RegExp(`${kind}-parent-cleanup-tail`));
+        assert.equal(session.ownedExecution.snapshot().closeObservation.first.kind, 'settled');
+        assert.equal(session.ownedExecution.snapshot().terminal.finalRevision, 1);
+        assert.equal(session.ownedExecution.snapshot().readerOutcome, 'pending');
+        assert.equal(f.server.executionOwner.snapshot().pending, 1);
+        assert.equal(f.server.executionOwner.snapshot().blockedReason, undefined);
+        assertSettlement(await closeReader(f, read, { kind: 'cancelled', reason: 'parent cleanup reader complete' }), 'recorded');
+        assert.equal(f.server.executionOwner.snapshot().pending, 0);
+        assert.equal(transport.cleanupRequests.length, 1);
+      } finally { gate.resolve(); }
+    });
+  }
 
   assert.equal(forbiddenAcquisitions, 0);
   console.log(`Supervisor execution owner wiring: ${passed}/${passed} pure cases passed`);

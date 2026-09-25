@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-25 S6原父控制受限接线：生产接入第24节完成显式non-native gate下的固定资源契约、同步未派发/已移交准入和同钟TERM/KILL固定期限。owner33/33、adapter81/81、transport纯测9/9、Host41/41、Supervisor42/42及相关回归/typecheck通过，原断言、legacy父控制方法和全部旧失败保持。只关闭这项受控接线待办；有firstFault、部分创建、主体或输出移交未知不获清理权限，未证明这些异常可安全强停。失效unstarted的pendingDomains可能为空但current仍未确认且隔离保留，不将该诊断摘要当成功，也不为其扩展通用模型。下一按22.5接真实Host离开/reset/delete与Supervisor正常关闭失败编排；本地失败不能跳过独立live detach，内存unknown不能在Host消失后声称继续托管。L-03生产profile、L-02/04/05、真实UI/落盘/Agent与跨平台及总债务仍开放，不改旧live/root/generation，不自动native/runner/push。以下为历史阶段记录。
+
 2026-09-25 S5一次性关闭观察：生产接入第23节完成显式non-native gate下的自然/主动/failure固定期限、迟到first/current和已派发且截止前真实结算的ACK缺失分账。owner26/26、adapter64、Host39/39、Supervisor40/40及相关回归/typecheck通过；未知责任继续隔离，迟到消费/flush不伪造失败或EOF，reader仍独立。仅关闭这项受控实现待办，不关闭L-03生产门槛：下一按22.4接原父控制，仍缺安全移交谓词、同一时钟固定期限追赶、在途start关闭约束及22.5真实Host/Supervisor失败编排。生产profile、L-02/04/05、真实UI/落盘/Agent与跨平台及总债务保持；不扩诊断框架，不改旧live/root/generation，不自动native/runner/push。以下为历史阶段记录。
 
 2026-09-25 L-03有限设计：生产接入第22节只读定位自然退出缺自动预算、过期阶段命令被拒、timer迟触发改变first结果及退役后缺ACK仍可能隔离；选定有限首报/持续结算、固定期限和stop/cancel ACK与真实终态分账，均待S5实际模块验证。父控制仅能证明provider-control，主体/源未知不默认杀唯一provider；Host实际退出无法靠内存unknown继续托管，本地失败也不能跳过独立live detach。下一只实施默认关闭的non-native关闭观察，不扩诊断框架。生产时长、父控制API/安全谓词、Host/Supervisor真实失败编排和在途start关闭约束仍属native准入前缺口；legacy批量删除吞错不能被新契约继承为成功，旧live兼容另按能力分流处理。L-02/03/04/05、真实UI/落盘/Agent/平台及总债务不关闭；本轮没有业务、用例、native/runner/push变更。以下为历史阶段记录。
