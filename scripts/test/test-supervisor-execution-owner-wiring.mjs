@@ -322,6 +322,51 @@ try {
     f.server.clearIdleShutdownTimer();
   });
 
+  for (const interruption of ['socket cleanup', 'session replacement']) {
+    await check(`reader opening rejects ${interruption} during checkpoint flush`, async () => {
+      const f = fixture();
+      const { session, transport } = await f.create();
+      const openingSocket = interruption === 'socket cleanup' ? f.socket : f.addSocket();
+      const reads = f.server.terminalReads.get(openingSocket);
+      const entered = deferred();
+      const gate = deferred();
+      const originalFlush = session.terminalStateTracker.flushValidatedCheckpoint.bind(session.terminalStateTracker);
+      session.terminalStateTracker.flushValidatedCheckpoint = async (...args) => {
+        entered.resolve();
+        await gate.promise;
+        return originalFlush(...args);
+      };
+      const opening = f.server.openTerminalRead(openingSocket, { sessionId: session.sessionId,
+        authorityId: session.terminalAuthorityId, consumerId: 'editor' });
+      const rejected = assert.rejects(opening,
+        interruption === 'socket cleanup' ? /reader connection/u : /replaced execution/u);
+      await entered.promise;
+      const replacement = { ...session, output: 'replacement' };
+      if (interruption === 'socket cleanup') {
+        // Error cleanup can remove the connection maps before socket.destroyed changes.
+        f.server.cleanupSocket(openingSocket);
+      } else {
+        f.server.sessions.set(session.sessionId, replacement);
+      }
+      gate.resolve();
+      await rejected;
+      assert.equal(reads.size, 0, 'an invalidated open must not publish a cursor');
+      assert.equal(session.ownedReaderSockets.has(openingSocket), false,
+        'an invalidated open must not reacquire reader responsibility');
+      if (interruption === 'session replacement') {
+        assert.equal(f.server.sessions.get(session.sessionId), replacement);
+        assert.equal(replacement.output, 'replacement');
+        f.server.sessions.set(session.sessionId, session);
+        f.server.cleanupSocket(f.socket);
+      }
+      await finish(f, session, transport);
+      assert.equal(session.ownedExecution.snapshot().readerOutcome, 'lost');
+      assert.equal(f.server.executionOwner.snapshot().pending, 0);
+      assert.equal(transport.sent.some(message => message.type === 'requestStop'), false);
+      f.server.clearIdleShutdownTimer();
+    });
+  }
+
   await check('stop and delete preserve the paused consumer until actual settlement', async () => {
     const f = fixture();
     const { session, transport } = await f.create();
@@ -396,6 +441,7 @@ try {
     f.server.clearIdleShutdownTimer();
     for (const session of f.server.sessions.values()) {
       if (session.lifecycleTimer) clearTimeout(session.lifecycleTimer);
+      await session.terminalJournal?.flush();
       session.terminalStateTracker.dispose();
     }
   }

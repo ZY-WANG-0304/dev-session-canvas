@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-25 S4接线补验：Host 19/19覆盖真实tracker消费/收尾及单根/多根reset入口，Supervisor 13/13修复checkpoint等待中断连/替换后重登记失效reader；有先红后绿证据，见生产接入第18节。原5/5及11/11不追认新增覆盖。reset验证的是实际Host决策和持久化调用，不是真实UI/落盘；reader最终ACK与各读者登记、native失联处置/预算、生产能力分流、其他平台仍未验收。前轮`test-runtime-supervisor-protocol.mjs`实际启动旧Supervisor/PTY，不能继续统称零PTY，分类勘误见18.2；本轮不重跑该入口。下一步仅默认关闭的远端逐reader结算接收端，不新增通用工具门槛，不关闭退出完整性总债务。
+
 2026-09-25 S4无native接线已完成：实际`RuntimeSupervisorServer`与`CanvasPanelManager`入口接入共享`ExecutionOwnerLifecycle`，默认路径和旧live绑定不变；owner在异步准备前预留，seal尾值消费完成后才执行真实tracker最终flush，unknown、reader取消/失联和旧身份迟到回调保留。owner lifecycle 13/13、adapter 53 cases、Supervisor wiring 11/11、Host wiring 5/5，既有bridge/tracker/paged/protocol回归及workspace typecheck通过。未启动PTY/native/runner；Host宽tracker fixture的未决顶层await被移除而不追认通过。reader最终ACK、native失联处置/预算、生产能力分流和reset/clear完整UI整链继续作为未收口债务，见`docs/design-docs/runtime-exit-integrity-production-integration.md`第17节与`docs/exec-plans/active/runtime-exit-integrity.md`。
 
 2026-09-25 Linux接入条件收口（S4前置，历史）：生产接入第16节明确L-01正常关闭准入、L-02真实消费/reader结算、L-03原控制对象及正常关闭失败处置、L-04创建前能力分流、L-05异常owner消失风险。前三类当时只有局部实现，尤其父只能终止provider，Host退出后不能靠内存账本证明主体已结束；真实PTY业务接入不批准。随后S4允许默认关闭、无native的真实authority收尾接线及定向测试，不先扩异常矩阵；L-05按实际环境在默认启用前验证。PI-01/02/03及产品总债务保持开放，旧失败/原生证据不改，本轮仅文档。下列S3及更早阶段的下一步按历史保留。

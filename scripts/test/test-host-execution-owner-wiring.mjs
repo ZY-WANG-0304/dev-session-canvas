@@ -89,6 +89,19 @@ async function pump(clock, condition = () => false) {
   }
 }
 
+async function until(clock, condition, label) {
+  await pump(clock, condition);
+  assert.equal(condition(), true, `${label} did not complete within 100 scheduler turns`);
+}
+
+async function completed(clock, promise, label) {
+  let outcome;
+  promise.then(value => { outcome = { value }; }, error => { outcome = { error }; });
+  await until(clock, () => outcome !== undefined, label);
+  if (outcome.error) throw outcome.error;
+  return outcome.value;
+}
+
 function fixture(options = {}) {
   const clock = scheduler();
   const providers = [];
@@ -132,6 +145,8 @@ function fixture(options = {}) {
   const owner = new ExecutionOwnerLifecycle(injection);
   const host = Object.create(CanvasPanelManager.prototype);
   const diagnostics = [];
+  const persisted = [];
+  const rootWrites = [];
   const nodes = [
     { id: 'terminal-1', kind: 'terminal', metadata: {} },
     { id: 'agent-1', kind: 'agent', metadata: {} }
@@ -154,14 +169,15 @@ function fixture(options = {}) {
     resolveAgentResumeContext: () => ({ supported: false, strategy: 'none' }),
     buildAgentDisplayLaunchCommandLine: () => 'controlled-agent',
     recordDiagnosticEvent: (name, detail) => diagnostics.push({ name, detail }),
-    postMessage() {}, postState() {}, persistState() {}, notifySidebarStateChanged() {},
+    postMessage() {}, postState() {}, persistState: detail => persisted.push(detail), notifySidebarStateChanged() {},
     waitForPendingRuntimeSupervisorOperations: async () => {},
     flushAllExecutionSessionStatesForHostBoundary: async () => {},
     flushDeferredCanvasStatePersist: async () => {}, waitForPendingWorkspaceStateUpdates: async () => {},
     collectPersistedLiveRuntimeSessions: () => [], clearPendingTerminalInitialInputs() {},
     disposeRuntimeSupervisorClients() {}, getAgentCliConfig: () => ({ defaultProvider: 'codex' }),
     getMultiRootWorkspaceFoldersForComposition: () => options.roots ?? [],
-    dropPendingTerminalInitialInput() {}, writeRootLocalCanvasSnapshot() {}
+    dropPendingTerminalInitialInput() {},
+    writeRootLocalCanvasSnapshot: (rootPath, state) => rootWrites.push({ rootPath, state })
   });
   function start(kind) {
     return kind === 'agent'
@@ -169,7 +185,13 @@ function fixture(options = {}) {
       : host.startTerminalSession('terminal-1', 80, 24);
   }
   function record(kind) { return host.nonNativeHostExecutions.get(`${kind}:${kind}-1`); }
-  return { host, owner, injection, clock, providers, diagnostics, start, record, nodes };
+  async function started(kind) {
+    await completed(clock, start(kind), `${kind} real Host start`);
+    assert.equal(providers.length, 1, `${kind} start must reach the injected provider`);
+    assert.equal(providers[0].messages[0].type, 'start');
+    return { record: record(kind), provider: providers[0] };
+  }
+  return { host, owner, injection, clock, providers, diagnostics, persisted, rootWrites, start, started, record, nodes };
 }
 
 const tests = [];
@@ -190,6 +212,135 @@ test('constructor injection requires strict Test mode, not a smoke environment o
 });
 
 for (const kind of ['terminal', 'agent']) {
+  test(`${kind} real Host tracker drains accepted batches before freezing its final revision`, async () => {
+    const f = fixture();
+    const { record, provider } = await f.started(kind);
+    const gate = deferred();
+    const flush = record.tracker.flush.bind(record.tracker);
+    let flushes = 0;
+    record.tracker.flush = async () => {
+      if (++flushes === 1) await gate.promise;
+      return flush();
+    };
+    try {
+      provider.process();
+      for (let frame = 1; frame <= 10; frame += 1) provider.output(frame, `${kind}-tail-${frame}\r\n`);
+      // sourceEnd is valid only after the provider observes acceptance of its full tail.
+      await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 10, `${kind} acceptance`);
+      provider.seal(10);
+      provider.release();
+      await pump(f.clock);
+      assert.equal(record.execution.snapshot().adapter.seal.lastDataSequence, 10);
+      assert.equal(record.execution.snapshot().adapter.consumedThrough, 0);
+      assert.equal(record.finalRevision, undefined);
+      assert.equal(record.readerAdmissionClosed, false);
+      assert.equal(record.execution.snapshot().settled, false);
+      assert.equal(flushes, 1);
+      gate.resolve();
+      await until(f.clock, () => record.execution.snapshot().settled, `${kind} terminal completion`);
+      assert.match(record.tracker.getSerializedState().data, new RegExp(`${kind}-tail-10`));
+      assert.equal(record.finalRevision, 10);
+      assert.equal(record.execution.snapshot().terminal.finalRevision, 10);
+      assert.equal(record.readerAdmissionClosed, true);
+      assert.equal(flushes, 4, 'three real consumer flushes must precede the final tracker flush');
+      assert.equal(record.execution.snapshot().readerOutcome, 'pending');
+      assert.equal(f.record(kind), record, 'final tracker remains owned until reader cancellation or loss');
+      assert.equal(f.owner.snapshot().pending, 1);
+      record.execution.settleReaders('cancelled');
+      assert.equal(f.owner.snapshot().pending, 0);
+      assert.equal(f.record(kind), undefined);
+    } finally {
+      gate.resolve();
+      record.tracker.dispose();
+    }
+  });
+
+  test(`${kind} stop waits for facts while tail consumption continues; delete releases only the reader`, async () => {
+    const f = fixture();
+    const { record, provider } = await f.started(kind);
+    let stopped = false;
+    const stop = f.host.stopExecutionSession(kind, `${kind}-1`).then(() => { stopped = true; });
+    try {
+      await until(f.clock, () => provider.messages.some(message => message.type === 'requestStop'), `${kind} stop request`);
+      assert.equal(stopped, false, 'accepted stop is not a process or resource result');
+      assert.equal(record.execution.snapshot().readerOutcome, 'pending');
+      provider.output(1, `${kind}-stop-tail`);
+      await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, `${kind} consumption during stop`);
+      provider.process();
+      provider.seal(1);
+      await pump(f.clock);
+      assert.equal(stopped, false, 'process and source results cannot replace resource release');
+      assert.equal(record.finalRevision, 1);
+      provider.release();
+      await completed(f.clock, stop, `${kind} stop settlement`);
+      assert.equal(f.record(kind), record);
+      assert.equal(record.execution.snapshot().readerOutcome, 'pending');
+      assert.match(record.tracker.getSerializedState().data, new RegExp(`${kind}-stop-tail`));
+      await completed(f.clock, f.host.terminateExecutionNodeForDeletion(f.nodes.find(node => node.kind === kind)), `${kind} deletion`);
+      assert.equal(record.execution.snapshot().readerOutcome, 'cancelled');
+      assert.equal(f.record(kind), undefined);
+      assert.equal(f.owner.snapshot().pending, 0);
+      assert.equal(provider.messages.filter(message => message.type === 'requestStop').length, 1);
+    } finally { record.tracker.dispose(); }
+  });
+
+  test(`${kind} deletion retains the tracker until active resource settlement`, async () => {
+    const f = fixture();
+    const { record, provider } = await f.started(kind);
+    let deleted = false;
+    const deletion = f.host.terminateExecutionNodeForDeletion(f.nodes.find(node => node.kind === kind))
+      .then(() => { deleted = true; });
+    try {
+      await until(f.clock, () => provider.messages.some(message => message.type === 'requestStop'), `${kind} delete stop`);
+      assert.equal(record.execution.snapshot().readerOutcome, 'cancelled');
+      assert.equal(deleted, false);
+      provider.output(1, `${kind}-delete-tail`);
+      await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 1, `${kind} delete acceptance`);
+      provider.process();
+      provider.seal(1);
+      await until(f.clock, () => record.finalRevision === 1, `${kind} delete final flush`);
+      assert.equal(deleted, false);
+      assert.equal(f.record(kind), record);
+      assert.match(record.tracker.getSerializedState().data, new RegExp(`${kind}-delete-tail`));
+      provider.release();
+      await completed(f.clock, deletion, `${kind} delete resource settlement`);
+      assert.equal(f.record(kind), undefined);
+      assert.equal(f.owner.snapshot().pending, 0);
+    } finally { record.tracker.dispose(); }
+  });
+
+  for (const failure of ['consumer', 'final']) {
+    test(`${kind} ${failure} tracker flush failure retains unknown responsibility without cached success`, async () => {
+      const f = fixture();
+      const { record, provider } = await f.started(kind);
+      try {
+        if (failure === 'final') {
+          provider.output(1, `${kind}-consumed`);
+          await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, `${kind} initial real flush`);
+        }
+        let failedFlushes = 0;
+        record.tracker.flush = async () => { failedFlushes += 1; throw new Error(`${failure} tracker failure`); };
+        if (failure === 'consumer') {
+          provider.output(1, `${kind}-unapplied`);
+          await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 1, `${kind} failed-consumer acceptance`);
+        }
+        provider.process();
+        provider.seal(1);
+        provider.release();
+        await until(f.clock, () => record.execution.snapshot().terminal?.kind === 'failed', `${kind} ${failure} failure`);
+        assert.equal(failedFlushes, 1);
+        assert.equal(record.finalRevision, undefined);
+        assert.equal(record.execution.snapshot().settled, false);
+        assert.equal(record.execution.snapshot().adapter.consumedThrough, failure === 'final' ? 1 : 0);
+        record.execution.settleReaders('cancelled');
+        assert.equal(f.record(kind), record);
+        assert.equal(f.owner.snapshot().pending, 1);
+        await assert.rejects(f.start(kind), /admission is closed/);
+        assert.equal(f.providers.length, 1);
+      } finally { record.tracker.dispose(); }
+    });
+  }
+
   test(`${kind} reserves before async preparation; boundary prevents late start and waits cleanup`, async () => {
     const gate = deferred();
     const f = fixture({ environment: () => gate.promise });
@@ -225,6 +376,68 @@ test('missing capability rejects both real start entries before transport creati
   assert.equal(f.owner.snapshot().pending, 0);
 });
 
+for (const scope of ['single-root', 'multi-root']) {
+  const roots = scope === 'single-root' ? [] : [
+    { path: '/controlled/root-a', name: 'root-a' },
+    { path: '/controlled/root-b', name: 'root-b' }
+  ];
+  test(`${scope} real reset preserves state and owner when preparation cleanup is unknown`, async () => {
+    const f = fixture({ roots });
+    const before = f.host.state;
+    const stateSnapshot = structuredClone(before);
+    const execution = f.owner.reserve('terminal:terminal-1');
+    const reset = f.host.resetState({ reason: 'owner-test' });
+    const result = scope === 'single-root' ? assert.rejects(reset, /cleanup is unconfirmed/) : reset;
+    assert.equal(f.owner.snapshot().closing, true);
+    assert.equal(execution.snapshot().readerOutcome, 'cancelled');
+    f.clock.advance(40);
+    await completed(f.clock, result, `${scope} unknown reset result`);
+    assert.equal(f.host.state, before);
+    assert.deepEqual(f.host.state, stateSnapshot);
+    assert.equal(f.host.nonNativeExecutionOwner, f.owner);
+    assert.equal(f.owner.get('terminal:terminal-1'), execution);
+    assert.equal(f.owner.snapshot().pending, 1);
+    assert.equal(f.owner.snapshot().closing, true);
+    assert.equal(f.persisted.length, 0);
+    assert.equal(f.rootWrites.length, 0);
+    await assert.rejects(f.start('terminal'), /admission is closed/);
+    await assert.rejects(f.start('agent'), /admission is closed/);
+    assert.equal(f.providers.length, 0);
+    execution.abandon('late preparation cleanup');
+    assert.equal(f.owner.snapshot().pending, 0);
+    assert.equal(f.owner.tryResume(), false, 'late evidence cannot undo the first unknown close');
+  });
+
+  test(`${scope} successful real reset resumes the same owner only after reservation cleanup`, async () => {
+    const f = fixture({ roots });
+    const execution = f.owner.reserve('terminal:terminal-1');
+    let resetReturned = false;
+    const reset = f.host.resetState({ reason: 'owner-test' }).then(() => { resetReturned = true; });
+    assert.equal(f.owner.snapshot().closing, true);
+    assert.equal(resetReturned, false);
+    assert.equal(f.persisted.length, 0);
+    assert.equal(f.rootWrites.length, 0);
+    execution.abandon('preparation cleanup complete');
+    await completed(f.clock, reset, `${scope} successful reset`);
+    assert.equal(f.host.nonNativeExecutionOwner, f.owner);
+    assert.equal(f.owner.snapshot().pending, 0);
+    assert.equal(f.owner.snapshot().closing, false);
+    assert.equal(f.persisted.length, 1);
+    assert.deepEqual(f.rootWrites.map(write => write.rootPath), roots.map(root => root.path));
+    assert.equal(f.host.state.nodes.length, 0);
+    f.host.state.nodes.push({ id: 'terminal-1', kind: 'terminal', metadata: {} });
+    const { record, provider } = await f.started('terminal');
+    try {
+      assert.notEqual(record.execution.identity.executionId, execution.identity.executionId);
+      provider.process();
+      provider.seal(0);
+      provider.release();
+      await until(f.clock, () => record.execution.snapshot().settled, `${scope} post-reset completion`);
+      record.execution.settleReaders('cancelled');
+    } finally { record.tracker.dispose(); }
+  });
+}
+
 test('live Host departure only detaches and never sends supervisor stop or delete', async () => {
   const f = fixture();
   const supervisorSession = { owner: 'supervisor', runtimeSessionId: 'live-runtime' };
@@ -242,7 +455,15 @@ test('live Host departure only detaches and never sends supervisor stop or delet
 });
 
 for (const { name, run } of tests) {
-  await run();
+  let timeout;
+  try {
+    await Promise.race([
+      run(),
+      new Promise((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${name}: test exceeded 3000 ms`)), 3000);
+      })
+    ]);
+  } finally { clearTimeout(timeout); }
   console.log(`ok - ${name}`);
 }
 console.log(`Host execution owner wiring: ${tests.length}/${tests.length} passed (non-native only).`);

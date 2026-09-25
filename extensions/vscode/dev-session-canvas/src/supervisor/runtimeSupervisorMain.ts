@@ -695,6 +695,14 @@ export class RuntimeSupervisorServer {
         throw new Error('Invalid terminal reader connection or consumer.');
       }
       await this.createFreshSnapshot(session, 'always', false);
+      if (session.ownedExecution) {
+        if (this.sessions.get(session.sessionId) !== session) {
+          throw new Error('Terminal reader belongs to a replaced execution.');
+        }
+        if (socket.destroyed || this.terminalReads.get(socket) !== reads) {
+          throw new Error('Terminal reader connection closed while preparing its checkpoint.');
+        }
+      }
       const checkpoint = session.terminalCheckpoint!;
       const readId = randomUUID();
       // A socket owns at most one reader per session and surface.

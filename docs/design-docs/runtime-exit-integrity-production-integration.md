@@ -21,6 +21,8 @@ updated_at: 2026-09-25
 
 ## 1. 当前结论与阶段边界
 
+2026-09-25 从`c1b6bc8b`完成S4实际接线补验，结果见第18节：Host 19/19覆盖成功启动后的真实tracker收尾和单根/多根reset入口，Supervisor 13/13包含checkpoint等待中断连/替换的先红后绿修复。仅非native注入路径，旧路径不变；没有本轮PTY或runner。第17节原5/5与11/11保持，不追认未覆盖路径；前轮将旧Supervisor协议回归误归为零PTY的说明按18.2勘误。下一有限切片为18.4的远端逐reader结算，整体仍未通过。
+
 2026-09-25 S4从主树`e84a8558`、诊断树`14fc6462`开始实施并已完成有限验证。有限实现输入见第17节：只连接默认关闭、无native的真实owner入口，正常用户路径不变；本轮结果仅证明准入、消费屏障、责任保留和关闭接线，不开放PTY/native，也不等同于产品级退出完整性通过。第16节及更早阶段按原时点保留。
 
 2026-09-25 Linux最小接入条件已按第16节收口：定位Supervisor与Host正常关闭、创建、停止、消费和reader的实际入口，区分已有控制能力与未实现责任。下一切片S4仅做默认关闭、无native的实际authority关闭准入与收尾接线；不新增诊断框架或要求先补异常崩溃全矩阵。真实PTY进入业务仍受第16.4节具名门槛约束，当前不满足；PI-01/02/03不关闭。本轮只读代码与文档，无业务改动、测试、原生采集或runner/push。以下S3及更早记录按发生时点保留，其“下一步”不覆盖本段。
@@ -559,3 +561,39 @@ Adapter追加正常closing/permanent、预留取消、可选stateChanged及同�
 * `npm run -w extensions/vscode/dev-session-canvas typecheck`：通过。
 
 测试没有启动网络服务、PTY、原生子进程或runner；Host/Supervisor注入路径只接受显式non-native依赖，未注入时旧路径保持。一次Host宽fixture因不会推进provider而产生未决顶层await，已移除该不确定测试并保留5项稳定窄测试；这不是业务失败或通过证据。S4因此只关闭L-01的无native接线切片，L-02 reader最终ACK、L-03 native失联处置/预算和L-04生产能力分流仍开放。
+
+## 18. S4接线补验：实际Host收尾与reset/clear
+
+### 18.1 有限输入与验证边界
+
+本轮输入为主树`c1b6bc8b`。复用现有`test-host-execution-owner-wiring.mjs`和真实`CanvasPanelManager`/`SerializedTerminalStateTracker`，先定位成功启动fixture未推进的实际原因，再用明确有界的失败条件替代未决顶层await。Agent与Terminal都覆盖process结果早到、暂停消费及后批已接受时seal不能提前最终flush、stop保留reader责任、delete显式取消并等待结算；最终flush失败不以缓存成功替代。单根`resetState()`和多根clear走真实入口，未确认时保留原owner、节点及root存储，不能靠清map恢复准入；已确认关闭后才允许清状态并恢复非永久准入。这些是已有业务入口的直接验证，不是新诊断框架。
+
+只修复这些场景实际复现或静态确认的接线问题，正常未注入路径不变。reader最终ACK仍依第11节，需要跨页面、Host、relay、client、Supervisor保留身份、能力与结果；本轮只核对下一有限切片的范围，不用旧close伪造applied，不改变storage namespace或生产能力。
+
+验证在仓库根运行`node scripts/test/test-host-execution-owner-wiring.mjs`、`node scripts/test/test-supervisor-execution-owner-wiring.mjs`、`node scripts/test/test-execution-owner-lifecycle.mjs`、`node scripts/test/test-execution-session-adapter.mjs`及既有bridge/tracker/paged回归，再运行`npm run -w extensions/vscode/dev-session-canvas typecheck`和`git diff --check`。仅无native内存transport、真实parser与入口测试，禁止PTY/runner/真实进程；失败和修正分开记录。完成直接接线补验及文档收口后停止，不把纯测试扩大为VS Code UI、其他平台或产品最终验收。
+
+### 18.2 前轮验证分类勘误
+
+第17.2节和前轮计划把全部测试统称为“不启动网络服务、PTY、原生子进程”，该范围说明不准确。实际已运行的`scripts/test/test-runtime-supervisor-protocol.mjs`在`assertRuntimeSupervisorClientWaitsForHello()`创建本地socket服务，在`assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot()`及后续场景spawn真实Supervisor，其默认`createExecutionSessionProcess()`走旧node-pty路径。这次旧路径回归的通过结果保持，但必须与S4注入测试分账，不是新provider通过，也不能计为零PTY或无真实child。没有充分逐会话日志，不补造原生样本数；本轮不重跑该脚本。Linux的既有bridge回归只校验launch spec；其Windows分支会spawn受控cmd夹具，故也不能对所有平台笼统称为零进程。
+
+本轮Host、Supervisor wiring直接加载真实类、使用内存transport和受控socket替身，paged completion使用真实journal与tracker而不启动main，bridge只在本机Linux执行。esbuild构建辅助进程不属于执行会话/PTY样本；“无native会话”也不等于整个测试工具链没有OS进程。
+
+前轮被移除的Host宽fixture没有冻结版本可复验，因此第17.2节“不会推进provider”的解释只记录当时观察，不能充当已定位的唯一根因。本轮须用保留的成功启动断言与受控调度验证当前路径；发现夹具在raw帧尚未被adapter接受时就发送`sourceEnd`，应修正夹具消息顺序，而非放宽真实adapter的连续性判据。
+
+### 18.3 本轮实际结果
+
+Supervisor缺陷已由新回归复现：`openTerminalRead()`在`createFreshSnapshot()`之前检验连接，等待真实checkpoint flush期间`cleanupSocket()`可删除全局reader map；恢复后却仍向脱离全局的旧map写cursor，并把失效socket重新加入`ownedReaderSockets`。此后没有第二次断连事件，聚合reader责任可能长期pending。新分支在await后重验captured session、`socket.destroyed`及`terminalReads.get(socket) === reads`，不改默认legacy行为。另一个同位置的session替换场景也明确拒绝发布旧cursor。这是S4新增注入接线的缺陷，不是已经证明用户旧路径发生的故障，也不是Windows对象语义问题。
+
+新增断连回归在修复前以`Missing expected rejection`、exit 1失败，前8项通过；修复后一次13项断言通过但finally删除临时journal目录遇`ENOTEMPTY`，整轮仍失败。仅在测试清理时等待已排队journal.flush后删除目录，最终整条命令13/13、exit 0。保留这些首败记录，不重判为成功，也不新增归档工具。
+
+Host增加有界等待（每场景3秒失败上限、每阶段100次受控调度检查），实际Agent/Terminal启动均到达注入provider。10帧跨3批、首个真实flush暂停期间`consumedThrough=0`且finalRevision未固定；放行后真实终端包含尾部，3次消费flush后才执行最终flush。stop受理及process/source结果不替代resource结果；活动delete先取消reader，但仍保留tracker至结算。consumer/final flush失败均无缓存成功。单根/多根reset的unknown路径保留原state、owner和预留且零持久化调用；成功路径等待预留清理，复用原owner恢复准入，再次成功start。Host业务代码不需要修改。本轮验证的是Host入口及持久化调用，不是完整VS Code UI/落盘；fake provider的显式provider-control结果不证明任何OS资源已释放。
+
+在本机Linux/Node v25.6.0、仓库根完成：Host wiring 19/19、Supervisor wiring 13/13、owner lifecycle 13/13、adapter 53 cases，既有bridge、serialized tracker及paged completion回归均exit 0，workspace typecheck通过。Host构建仍有`require.resolve('node-pty')` external警告，测试守卫禁止实际加载/执行；没有为去除警告改业务代码。两个专项交叉只读复核未发现本次直接blocker；全部结果不与S3原生样本合算。
+
+### 18.4 下一有限切片：远端逐reader结算
+
+下一步只实施默认关闭、无native的Supervisor逐reader登记与结算接收端，复用sessionId/authorityId/readId、socket归属、sentRevision及固定finalRevision，不引入新的消费水位或历史正文。当前`ownedReaderSockets`与`OwnedExecution.readerOutcome`是整次执行的聚合占位，不能把同socket的editor/panel当作一个已应用读者；要在现有cursor边界登记各reader和已准入但回包在途的open，全部各自结算后才释放聚合reader责任。
+
+`applied`只能证明同身份、已固定且已发送的finalRevision真实应用，`cancelled`须显式原因，socket失效记lost，旧无outcome的close只作legacy-released。重复幂等、冲突/越界拒绝及有限保留窗口需在该接收端切片一起定义与定向验证，不能把任意旧close改判applied。修改落点为`common/runtimeSupervisorProtocol.ts`、`supervisor/runtimeSupervisorMain.ts`、必要的共享owner接口及现有接线测试；只向内部注入路径提供，不启用真实新会话或新generation。
+
+接收端通过仍不关闭L-02：真正发送新结果时，`common/protocol.ts`、Host、relay、client、`webview/terminalPagedProjection.ts`和`webview/main.tsx`的写完成屏障，以及Webview ready、hello/session/open的能力协商必须完整对齐。本地Host的最终屏障也仍单独开放。relay的onReleased、client无连接时close返回和普通snapshot ACK都不作为applied。L-03 native失联处置/预算、L-04生产分流与真实UI/平台验收仍具名保留；不借此再开通用诊断轮。
