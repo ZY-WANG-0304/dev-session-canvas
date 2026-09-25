@@ -111,6 +111,7 @@ import {
   type ExecutionNodeKind,
   type ExecutionSessionMetadata,
   type HostToWebviewMessage,
+  type LocalTerminalOutcome,
   type NoteNodeMetadata,
   type NoteMarkdownImageWorkspaceRoot,
   type PendingExecutionLaunch,
@@ -573,6 +574,21 @@ interface NonNativeHostExecution {
   terminalRevision: number;
   finalRevision?: number;
   readerAdmissionClosed: boolean;
+  cols: number;
+  rows: number;
+  finalTerminal?: SerializedTerminalState;
+  localReaders?: Map<CanvasSurfaceLocation, LocalExecutionReader>;
+}
+
+interface LocalExecutionReader {
+  lifecycle: WebviewLifecycleIdentity;
+  webview: vscode.Webview;
+  pendingPublications: Set<() => void>;
+  outcome?: LocalTerminalOutcome | { kind: 'lost'; reason: string };
+  attachPromise?: Promise<void>;
+  initialPublished: boolean;
+  finalPublication?: Promise<boolean>;
+  finalPublishedSequence?: number;
 }
 
 interface SupervisorExecutionSession extends ManagedExecutionSessionBase {
@@ -634,6 +650,7 @@ interface CanvasSurfaceLifecycleState {
   frameId?: string;
   bootstrapAck: boolean;
   terminalReadSettlementV1?: true;
+  terminalLocalSettlementV1?: true;
 }
 
 interface CanvasTestDiagnosticEvent {
@@ -4840,6 +4857,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       from: this.activeSurface,
       to: surface
     });
+    if (this.activeSurface && this.activeSurface !== surface) {
+      this.cancelLocalExecutionReaders(this.activeSurface, 'cancelled', 'active-surface-changed');
+    }
     this.activeSurface = surface;
     this.persistActiveSurface();
     this.applyWorkbenchContextKeys();
@@ -11732,6 +11752,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private invalidateSurfaceLifecycle(surface: CanvasSurfaceLocation, mode?: CanvasSurfaceMode): void {
+    this.cancelLocalExecutionReaders(surface, 'lost', 'surface-invalidated');
     this.terminalReadRelay.closeMatching((key) => key.startsWith(`${surface}:`));
     this.rejectPendingWebviewProbeRequests(
       surface,
@@ -11760,6 +11781,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     surface: CanvasSurfaceLocation,
     mode: CanvasSurfaceMode
   ): WebviewLifecycleIdentity {
+    this.cancelLocalExecutionReaders(surface, 'cancelled', 'surface-rendered');
     this.terminalReadRelay.closeMatching((key) => key.startsWith(`${surface}:`));
     this.rejectPendingWebviewProbeRequests(
       surface,
@@ -11806,8 +11828,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private markSurfaceReady(
     surface: CanvasSurfaceLocation, lifecycle?: WebviewLifecycleIdentity,
-    capabilities?: { terminalReadSettlementV1?: true }
+    capabilities?: { terminalReadSettlementV1?: true; terminalLocalSettlementV1?: true }
   ): void {
+    if (this.surfaceLifecycle[surface].frameId !== lifecycle?.frameId ||
+        this.surfaceLifecycle[surface].terminalLocalSettlementV1 !== capabilities?.terminalLocalSettlementV1) {
+      this.cancelLocalExecutionReaders(surface, 'cancelled', 'surface-ready-changed');
+    }
     if (this.surfaceLifecycle[surface].frameId !== lifecycle?.frameId ||
         this.surfaceLifecycle[surface].terminalReadSettlementV1 !== capabilities?.terminalReadSettlementV1) {
       this.terminalReadRelay.closeMatching((key) => key.startsWith(`${surface}:`));
@@ -11819,6 +11845,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ready: true,
       frameId: lifecycle?.frameId,
       terminalReadSettlementV1: capabilities?.terminalReadSettlementV1,
+      terminalLocalSettlementV1: capabilities?.terminalLocalSettlementV1,
       bootstrapAck: false
     };
   }
@@ -11828,6 +11855,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     sourceWebview: vscode.Webview | undefined,
     reason: 'render' | 'ready' | 'dispose'
   ): void {
+    if (this.surfaceMessageWebview[surface] !== sourceWebview) {
+      this.cancelLocalExecutionReaders(surface, 'lost', 'surface-webview-replaced');
+    }
     if (!sourceWebview) {
       const previousWebview = this.surfaceMessageWebview[surface];
       if (previousWebview) {
@@ -12287,6 +12317,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lifecycle: summarizeWebviewLifecycleIdentity(this.getSurfaceLifecycleIdentity(sourceSurface))
       });
       this.flushPendingBootstrapHostMessages(sourceSurface);
+      this.attachLocalExecutionsToSurface(sourceSurface);
       this.postWorkspaceRootFocusGroupMessageForCurrentLifecycle(sourceSurface);
       void this.postCanvasTemplateCatalogToActiveWebview();
       return;
@@ -12300,7 +12331,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    this.handleActiveWebviewMessage(sourceSurface, parsedMessage);
+    this.handleActiveWebviewMessage(sourceSurface, parsedMessage, lifecycle, sourceWebview);
   }
 
   private async bootstrapInteractiveSurface(
@@ -12444,10 +12475,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private handleActiveWebviewMessage(
     sourceSurface: CanvasSurfaceLocation,
-    parsedMessage: WebviewToHostMessage
+    parsedMessage: WebviewToHostMessage,
+    lifecycle?: WebviewLifecycleIdentity,
+    sourceWebview?: vscode.Webview
   ): void {
     switch (parsedMessage.type) {
       case 'webview/ready':
+        return;
+      case 'webview/executionLocalTerminalSettled':
+        void this.handleLocalExecutionTerminalSettled(sourceSurface, parsedMessage.payload, lifecycle, sourceWebview);
         return;
       case 'webview/updateViewportCenter':
         this.lastVisibleCanvasCenterBySurface[sourceSurface] = parsedMessage.payload.visibleCenter;
@@ -15811,7 +15847,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         kind, nodeId, execution,
         tracker: new SerializedTerminalStateTracker(cols, rows, { scrollback: this.getTerminalScrollback() }),
         terminalChain: Promise.resolve(), lastDataSequence: 0, terminalRevision: 0,
-        readerAdmissionClosed: false
+        readerAdmissionClosed: false, cols, rows,
+        ...(owner.options.capabilities.includes('terminal-local-settlement-v1')
+          ? { localReaders: new Map<CanvasSurfaceLocation, LocalExecutionReader>() } : {})
       };
       this.nonNativeHostExecutions.set(key, record);
       const prepared = await prepare();
@@ -15824,8 +15862,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const operation = execution.start(spec, {
         consume: batches => {
           active.terminalChain = active.terminalChain.then(async () => {
+            const outputStartSequence = active.terminalRevision + 1;
             for (const batch of batches) {
-              if (active.readerAdmissionClosed || batch.sequence !== active.lastDataSequence + 1) {
+              if (active.finalRevision !== undefined || batch.sequence !== active.lastDataSequence + 1) {
                 throw new Error('Non-native Host output order is invalid.');
               }
               active.lastDataSequence = batch.sequence;
@@ -15833,6 +15872,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               active.tracker.write(batch.text, { outputSequence: active.terminalRevision });
             }
             await active.tracker.flush();
+            for (const reader of active.localReaders?.values() ?? []) {
+              if (reader.initialPublished && !reader.outcome && batches.length > 0) {
+                await this.postLocalExecutionReaderMessage(active, reader, {
+                  type: 'host/executionOutput', payload: {
+                    kind, nodeId, executionSessionId: execution.identity.executionId,
+                    chunk: batches.map(batch => batch.text).join(''),
+                    outputStartSequence, outputSequence: active.terminalRevision
+                  }
+                });
+              }
+            }
           });
           return active.terminalChain;
         },
@@ -15846,11 +15896,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             }
             // Freeze reader admission in the same turn that publishes the final revision.
             active.finalRevision = active.terminalRevision;
+            active.finalTerminal = terminal;
             active.readerAdmissionClosed = true;
             finalRevision = active.finalRevision;
           });
           await active.terminalChain;
           return finalRevision!;
+        },
+        finalized: result => {
+          if (!active.localReaders) return;
+          const process = execution.snapshot().adapter?.process;
+          if (result.kind === 'applied' && process && process.kind !== 'unconfirmed') {
+            for (const reader of active.localReaders.values()) {
+              if (!reader.outcome) {
+                reader.finalPublication = this.publishLocalExecutionFinal(active, reader);
+              }
+            }
+          } else {
+            active.readerAdmissionClosed = true;
+            for (const reader of active.localReaders.values()) {
+              this.settleLocalExecutionReader(active, reader, { kind: 'lost', reason: result.kind === 'applied'
+                ? 'process-exit-unconfirmed' : 'terminal-finalization-failed' });
+            }
+          }
+          this.settleLocalExecutionReaderAggregate(active);
         },
         fault: reason => this.recordDiagnosticEvent('execution/nonNativeFault', { kind, nodeId, reason }),
         changed: () => {
@@ -15863,8 +15932,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const result = await operation.first;
       rejectedBeforeAcquire = result.kind === 'rejected-before-acquire';
       if (result.kind !== 'started') throw new Error(`Non-native Host start was ${result.kind}.`);
+      if (active.localReaders && this.activeSurface) {
+        void this.postLocalExecutionSnapshot(active, { surface: this.activeSurface });
+      }
     } catch (error) {
       if (!execution.snapshot().adapter || rejectedBeforeAcquire) {
+        if (record?.localReaders) {
+          record.readerAdmissionClosed = true;
+          for (const reader of record.localReaders.values()) {
+            this.settleLocalExecutionReader(record, reader, { kind: 'cancelled', reason: 'start-rejected' });
+          }
+        }
         record?.tracker.dispose();
         execution.abandon('host-preparation-failed-or-cancelled');
         if (this.nonNativeHostExecutions.get(key) === record) this.nonNativeHostExecutions.delete(key);
@@ -15881,7 +15959,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const owner = this.nonNativeExecutionOwner;
     if (!owner) return;
     owner.closeAdmission(permanent);
-    for (const execution of owner.list()) execution.settleReaders(readerOutcome);
+    for (const execution of owner.list()) {
+      const record = this.nonNativeHostExecutions.get(execution.key);
+      if (record?.localReaders) {
+        record.readerAdmissionClosed = true;
+        for (const reader of record.localReaders.values()) {
+          this.settleLocalExecutionReader(record, reader, { kind: readerOutcome, reason });
+        }
+        this.settleLocalExecutionReaderAggregate(record);
+      } else {
+        execution.settleReaders(readerOutcome);
+      }
+    }
     const result = await owner.close({ reason, permanent });
     if (result.kind !== 'settled') {
       throw new Error(`Non-native Host execution cleanup is unconfirmed: ${result.pending.join(', ')}`);
@@ -16553,6 +16642,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     options: ExecutionSnapshotAttachOptions = {}
   ): void {
+    const local = this.nonNativeExecutionOwner?.options.capabilities.includes('terminal-local-settlement-v1')
+      ? this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId)) : undefined;
+    if (local?.localReaders) {
+      void this.postLocalExecutionSnapshot(local, options);
+      return;
+    }
     this.recordDiagnosticEvent('execution/attachRequested', {
       kind,
       nodeId,
@@ -17789,7 +17884,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const owned = this.nonNativeExecutionOwner?.get(this.getExecutionSessionOperationKey(node.kind, node.id));
     if (owned) {
-      owned.settleReaders('cancelled');
+      const record = this.nonNativeHostExecutions.get(owned.key);
+      if (record?.localReaders) {
+        record.readerAdmissionClosed = true;
+        for (const reader of record.localReaders.values()) {
+          this.settleLocalExecutionReader(record, reader, { kind: 'cancelled', reason: 'node-deleted' });
+        }
+        this.settleLocalExecutionReaderAggregate(record);
+      } else {
+        owned.settleReaders('cancelled');
+      }
       const result = await owned.requestStop('host-delete');
       if (result.kind !== 'settled') throw new Error('Non-native Host deletion is unconfirmed.');
       return;
@@ -18907,11 +19011,229 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
+  private sameLocalExecutionLifecycle(
+    left: WebviewLifecycleIdentity, right: WebviewLifecycleIdentity | undefined
+  ): boolean {
+    return Boolean(left.frameId && right?.frameId && left.surface === right.surface &&
+      left.mode === right.mode && left.generation === right.generation && left.frameId === right.frameId);
+  }
+
+  private isLocalExecutionReaderCurrent(record: NonNativeHostExecution, reader: LocalExecutionReader): boolean {
+    const surface = reader.lifecycle.surface;
+    return !reader.outcome && this.nonNativeHostExecutions.get(record.execution.key) === record &&
+      record.localReaders?.get(surface) === reader && this.isInteractiveSurface(surface) &&
+      this.surfaceLifecycle[surface].ready && this.surfaceLifecycle[surface].bootstrapAck &&
+      this.surfaceLifecycle[surface].terminalLocalSettlementV1 === true &&
+      this.getSurfaceMessageWebview(surface) === reader.webview &&
+      this.sameLocalExecutionLifecycle(reader.lifecycle, this.getSurfaceLifecycleIdentity(surface));
+  }
+
+  private settleLocalExecutionReaderAggregate(record: NonNativeHostExecution): void {
+    if (record.localReaders && record.readerAdmissionClosed &&
+        [...record.localReaders.values()].every(reader => reader.outcome !== undefined)) {
+      record.execution.settleReaders('settled');
+    }
+  }
+
+  private settleLocalExecutionReader(
+    record: NonNativeHostExecution, reader: LocalExecutionReader,
+    outcome: NonNullable<LocalExecutionReader['outcome']>
+  ): void {
+    if (reader.outcome) return;
+    reader.outcome = outcome;
+    for (const cancel of reader.pendingPublications) cancel();
+    reader.pendingPublications.clear();
+    this.recordDiagnosticEvent('execution/localTerminalReaderSettled', {
+      nodeId: record.nodeId, kind: record.kind, executionSessionId: record.execution.identity.executionId,
+      lifecycle: reader.lifecycle, outcome
+    });
+    this.settleLocalExecutionReaderAggregate(record);
+  }
+
+  private cancelLocalExecutionReaders(
+    surface: CanvasSurfaceLocation, kind: 'cancelled' | 'lost', reason: string
+  ): void {
+    if (!this.nonNativeExecutionOwner?.options.capabilities.includes('terminal-local-settlement-v1')) return;
+    for (const record of this.nonNativeHostExecutions.values()) {
+      const reader = record.localReaders?.get(surface);
+      if (reader) this.settleLocalExecutionReader(record, reader, { kind, reason });
+    }
+  }
+
+  private attachLocalExecutionsToSurface(surface: CanvasSurfaceLocation): void {
+    if (!this.nonNativeExecutionOwner?.options.capabilities.includes('terminal-local-settlement-v1')) return;
+    for (const record of this.nonNativeHostExecutions.values()) {
+      if (record.localReaders) void this.postLocalExecutionSnapshot(record, { surface });
+    }
+  }
+
+  private async postLocalExecutionReaderMessage(
+    record: NonNativeHostExecution, reader: LocalExecutionReader, message: HostToWebviewMessage
+  ): Promise<boolean> {
+    if (!this.isLocalExecutionReaderCurrent(record, reader)) {
+      this.settleLocalExecutionReader(record, reader, { kind: 'lost', reason: 'surface-no-longer-current' });
+      return false;
+    }
+    let cancel!: () => void;
+    const cancelled = new Promise<false>(resolve => { cancel = () => resolve(false); });
+    reader.pendingPublications.add(cancel);
+    try {
+      const prepared = { ...message, lifecycle: reader.lifecycle };
+      this.recordHostMessage(reader.lifecycle.surface, prepared, true);
+      // Cancellation releases consumption even when the Webview delivery promise never resolves.
+      const published = await Promise.race([
+        Promise.resolve(reader.webview.postMessage(prepared)), cancelled
+      ]);
+      if (published === true && this.isLocalExecutionReaderCurrent(record, reader)) return true;
+      this.settleLocalExecutionReader(record, reader, { kind: 'lost', reason: 'webview-publication-rejected' });
+    } catch {
+      this.settleLocalExecutionReader(record, reader, { kind: 'lost', reason: 'webview-publication-failed' });
+    } finally {
+      reader.pendingPublications.delete(cancel);
+    }
+    return false;
+  }
+
+  private localExecutionSnapshotMessage(
+    record: NonNativeHostExecution, terminal: SerializedTerminalState, liveSession: boolean, requestId?: string
+  ): HostToWebviewMessage {
+    return { type: 'host/executionSnapshot', payload: {
+      nodeId: record.nodeId, kind: record.kind, requestId,
+      executionSessionId: record.execution.identity.executionId, output: '',
+      cols: record.cols, rows: record.rows, liveSession, terminalTitle: null,
+      outputSequence: terminal.outputSequence ?? 0, serializedTerminalState: terminal
+    } };
+  }
+
+  private async postLocalExecutionSnapshot(
+    record: NonNativeHostExecution, options: ExecutionSnapshotAttachOptions
+  ): Promise<void> {
+    const surface = options.surface ?? this.activeSurface;
+    if (!surface || !record.localReaders || !this.isInteractiveSurface(surface) ||
+        !this.surfaceLifecycle[surface].ready || !this.surfaceLifecycle[surface].bootstrapAck ||
+        this.surfaceLifecycle[surface].terminalLocalSettlementV1 !== true ||
+        (options.executionSessionId && options.executionSessionId !== record.execution.identity.executionId)) return;
+    const lifecycle = this.getSurfaceLifecycleIdentity(surface);
+    const webview = this.getSurfaceMessageWebview(surface);
+    if (!lifecycle?.frameId || !webview) return;
+    let reader = record.localReaders.get(surface);
+    if (reader && (!this.sameLocalExecutionLifecycle(reader.lifecycle, lifecycle) || reader.webview !== webview)) {
+      this.settleLocalExecutionReader(record, reader, { kind: 'lost', reason: 'surface-replaced' });
+      reader = undefined;
+    }
+    if (reader?.outcome) return;
+    if (reader?.attachPromise) return reader.attachPromise;
+    if (record.readerAdmissionClosed && (!reader || !record.finalTerminal)) return;
+    if (!reader) {
+      reader = { lifecycle, webview, pendingPublications: new Set(), initialPublished: false };
+      // Admission precedes all tracker work and survives the final-flush admission boundary.
+      record.localReaders.set(surface, reader);
+    }
+    const admitted = reader;
+    const attach = record.terminalChain.then(async () => {
+      if (admitted.outcome) return;
+      const terminal = record.finalTerminal ?? await record.tracker.flush();
+      const published = await this.postLocalExecutionReaderMessage(record, admitted,
+        this.localExecutionSnapshotMessage(record, terminal, record.finalRevision === undefined, options.requestId));
+      if (published) admitted.initialPublished = true;
+    }).catch(() => {
+      this.settleLocalExecutionReader(record, admitted, { kind: 'lost', reason: 'initial-snapshot-failed' });
+    });
+    record.terminalChain = attach;
+    admitted.attachPromise = attach;
+    await attach;
+    if (admitted.attachPromise === attach) admitted.attachPromise = undefined;
+  }
+
+  private async publishLocalExecutionFinal(record: NonNativeHostExecution, reader: LocalExecutionReader): Promise<boolean> {
+    await reader.attachPromise;
+    const finalOutputSequence = record.finalRevision;
+    const terminal = record.finalTerminal;
+    const process = record.execution.snapshot().adapter?.process;
+    if (finalOutputSequence === undefined || !terminal || !process || process.kind === 'unconfirmed') return false;
+    const message = process.kind === 'exited'
+      ? vscode.l10n.t('Session ended with exit code {code}.', { code: process.exitCode })
+      : process.kind === 'signaled'
+        ? vscode.l10n.t('Session exited due to signal {signal}.', { signal: process.signal })
+        : vscode.l10n.t('Session terminated: {reason}', { reason: process.reason });
+    if (!await this.postLocalExecutionReaderMessage(record, reader,
+      this.localExecutionSnapshotMessage(record, terminal, false))) return false;
+    if (!await this.postLocalExecutionReaderMessage(record, reader, {
+      type: 'host/executionExit', payload: {
+        nodeId: record.nodeId, kind: record.kind, executionSessionId: record.execution.identity.executionId,
+        localCompletion: { executionSessionId: record.execution.identity.executionId, finalOutputSequence },
+        message
+      }
+    })) return false;
+    reader.finalPublishedSequence = finalOutputSequence;
+    return true;
+  }
+
+  private async handleLocalExecutionTerminalSettled(
+    surface: CanvasSurfaceLocation,
+    payload: Extract<WebviewToHostMessage, { type: 'webview/executionLocalTerminalSettled' }>['payload'],
+    lifecycle?: WebviewLifecycleIdentity,
+    sourceWebview?: vscode.Webview
+  ): Promise<void> {
+    if (!this.nonNativeExecutionOwner?.options.capabilities.includes('terminal-local-settlement-v1')) return;
+    const recordResult = (status: 'recorded' | 'duplicate' | 'rejected' | 'unconfirmed', reason: string) => {
+      this.recordDiagnosticEvent('execution/localTerminalResult', {
+        nodeId: payload.nodeId, kind: payload.kind, executionSessionId: payload.executionSessionId,
+        surface, lifecycle, outcome: payload.outcome, status, reason
+      });
+    };
+    const record = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(payload.kind, payload.nodeId));
+    const reader = record?.localReaders?.get(surface);
+    if (!record || !reader || reader.webview !== sourceWebview ||
+        !this.sameLocalExecutionLifecycle(reader.lifecycle, lifecycle) ||
+        payload.executionSessionId !== record.execution.identity.executionId) {
+      recordResult('rejected', 'execution-or-reader-identity-mismatch');
+      return;
+    }
+    const reportExistingOutcome = (): boolean => {
+      const outcome = reader.outcome;
+      if (!outcome) return false;
+      const duplicate = outcome.kind === 'applied' && payload.outcome.kind === 'applied'
+        ? outcome.finalOutputSequence === payload.outcome.finalOutputSequence
+        : outcome.kind === 'cancelled' && payload.outcome.kind === 'cancelled' &&
+          outcome.reason === payload.outcome.reason;
+      recordResult(duplicate ? 'duplicate' : 'rejected', duplicate ? 'same-outcome' : 'conflicting-outcome');
+      return true;
+    };
+    if (reportExistingOutcome()) return;
+    if (!this.isLocalExecutionReaderCurrent(record, reader)) {
+      recordResult('rejected', 'reader-no-longer-current');
+      return;
+    }
+    if (payload.outcome.kind === 'applied') {
+      if (record.execution.snapshot().terminal?.kind !== 'applied' ||
+          payload.outcome.finalOutputSequence !== record.finalRevision || !reader.finalPublication) {
+        recordResult('rejected', 'final-revision-not-publishing');
+        return;
+      }
+      const published = await reader.finalPublication;
+      if (reportExistingOutcome()) return;
+      if (!published || !this.isLocalExecutionReaderCurrent(record, reader) ||
+          reader.finalPublishedSequence !== payload.outcome.finalOutputSequence) {
+        recordResult('unconfirmed', 'final-publication-not-confirmed');
+        return;
+      }
+    }
+    this.settleLocalExecutionReader(record, reader, payload.outcome);
+    recordResult('recorded', 'reader-settled');
+  }
+
   private async postExecutionSnapshot(
     kind: ExecutionNodeKind,
     nodeId: string,
     options: ExecutionSnapshotAttachOptions = {}
   ): Promise<void> {
+    const local = this.nonNativeExecutionOwner?.options.capabilities.includes('terminal-local-settlement-v1')
+      ? this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId)) : undefined;
+    if (local?.localReaders) {
+      await this.postLocalExecutionSnapshot(local, options);
+      return;
+    }
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
     const metadata = node ? kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node) : undefined;
     // The old session stays registered while the ended node is being saved, but must not open new readers.

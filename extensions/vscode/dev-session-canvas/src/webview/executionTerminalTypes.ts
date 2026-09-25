@@ -1,7 +1,7 @@
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
-import type { ExecutionNodeKind } from '../common/protocol';
+import type { ExecutionNodeKind, LocalTerminalCompletion } from '../common/protocol';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from '../common/terminalSessionStream';
 import type { TerminalStreamPage, TerminalStreamReadDescriptor } from '../common/terminalStreamPaging';
@@ -52,6 +52,7 @@ export type ExecutionHostEvent =
       kind: ExecutionNodeKind;
       executionSessionId?: string;
       message: string;
+      localCompletion?: LocalTerminalCompletion;
     };
 
 export interface ExecutionTerminalController {
@@ -74,7 +75,7 @@ export interface ExecutionTerminalController {
     }
   ): void;
   applyTerminalEvent(detail: Extract<ExecutionHostEvent, { type: 'terminal-event' }>): void;
-  showExit(message: string, executionSessionId?: string): void;
+  showExit(message: string, executionSessionId?: string, localCompletion?: LocalTerminalCompletion): void;
   refreshVisibleRows(): void;
   flushPendingOutput(maxCharacters?: number): number;
   getPendingOutputLength(): number;

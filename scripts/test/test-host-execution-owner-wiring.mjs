@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import esbuild from 'esbuild';
+import ts from 'typescript';
 
 // Load the actual class without activation, source rewriting or a native process boundary.
 const bundled = await esbuild.build({
@@ -10,6 +12,8 @@ const bundled = await esbuild.build({
       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
       export { ExecutionOwnerLifecycle } from './extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle';
       export { encodeOutputFrame } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
+      export { RuntimeTerminalReadRelay } from './extensions/vscode/dev-session-canvas/src/panel/runtimeTerminalReadRelay';
+      export { parseWebviewMessage } from './extensions/vscode/dev-session-canvas/src/common/protocol';
     `,
     resolveDir: process.cwd(), sourcefile: 'host-owner-wiring-entry.ts'
   },
@@ -51,7 +55,8 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   createRequire(import.meta.url), loaded, loaded.exports,
   path.resolve('scripts/test/host-owner-wiring.cjs'), path.resolve('scripts/test')
 );
-const { CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame } = loaded.exports;
+const { CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
+  RuntimeTerminalReadRelay, parseWebviewMessage } = loaded.exports;
 
 function deferred() {
   let resolve;
@@ -452,6 +457,514 @@ test('live Host departure only detaches and never sends supervisor stop or delet
   assert.equal(detached, 1);
   assert.equal(f.host.terminalSessions.size, 0);
   assert.equal(f.providers.length, 0);
+});
+
+function localFixture(options = {}) {
+  const f = fixture({ ...options,
+    capabilities: options.capabilities ?? ['execution-lifecycle-v1', 'terminal-local-settlement-v1'] });
+  const posted = [];
+  const host = f.host;
+  const webviews = Object.fromEntries(['editor', 'panel'].map(surface => [surface, {
+    postMessage(message) {
+      posted.push({ surface, message });
+      options.onHostMessage?.(message, surface);
+      return options.send ? options.send(message, surface) : Promise.resolve(true);
+    }
+  }]));
+  delete host.postMessage;
+  Object.assign(host, {
+    activeSurface: 'editor', terminalReadRelay: new RuntimeTerminalReadRelay(),
+    surfaceMode: { editor: 'active', panel: 'active' }, surfaceReady: { editor: false, panel: false },
+    surfaceLifecycle: {
+      editor: { generation: 1, mode: 'active', frameId: 'editor-frame-1', ready: false, bootstrapAck: false },
+      panel: { generation: 1, mode: 'active', frameId: 'panel-frame-1', ready: false, bootstrapAck: false }
+    },
+    surfaceMessageWebview: webviews, renderedWebviewLifecycle: new WeakMap(), pendingBootstrapHostMessages: {},
+    pendingRuntimeSupervisorOperations: new Set(), scheduledExecutionOutputPosts: new Map(),
+    recordHostMessage() {}, bootstrapInteractiveSurface: async () => {},
+    postWorkspaceRootFocusGroupMessageForCurrentLifecycle() {},
+    rejectPendingWebviewProbeRequests() {}, rejectPendingWebviewDomActionRequests() {}
+  });
+  for (const surface of ['editor', 'panel']) {
+    host.renderedWebviewLifecycle.set(webviews[surface], host.getSurfaceLifecycleIdentity(surface));
+  }
+  function send(surface, type, payload, lifecycle = host.getSurfaceLifecycleIdentity(surface)) {
+    host.handleWebviewMessage(surface, { type, ...(payload === undefined ? {} : { payload }), lifecycle }, webviews[surface]);
+  }
+  function ready(surface = 'editor', enabled = options.readyCapability !== false, lifecycle) {
+    host.activeSurface = surface;
+    send(surface, 'webview/ready', enabled ? { capabilities: { terminalLocalSettlementV1: true } } : undefined, lifecycle);
+    host.surfaceLifecycle[surface].bootstrapAck = true;
+  }
+  async function attach(kind, surface = 'editor') {
+    host.activeSurface = surface;
+    await completed(f.clock, host.postExecutionSnapshot(kind, `${kind}-1`, { surface }), `${kind} local snapshot`);
+    return posted.filter(entry => entry.surface === surface && entry.message.type === 'host/executionSnapshot').at(-1)?.message;
+  }
+  function settle(kind, record, outcome, surface = 'editor', overrides = {}, lifecycle) {
+    host.activeSurface = surface;
+    send(surface, 'webview/executionLocalTerminalSettled', {
+      nodeId: `${kind}-1`, kind, executionSessionId: record.execution.identity.executionId, outcome, ...overrides
+    }, lifecycle);
+  }
+  const completions = (surface = 'editor') => posted.filter(entry => entry.surface === surface &&
+    entry.message.type === 'host/executionExit' && entry.message.payload.localCompletion);
+  async function finish(kind, record, provider, text) {
+    const final = text === undefined ? 0 : 1;
+    if (text !== undefined) {
+      provider.output(1, text);
+      await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === final, `${kind} local tail accepted`);
+    }
+    provider.process();
+    provider.seal(final);
+    provider.release();
+    await until(f.clock, () => record.execution.snapshot().settled, `${kind} local authority settled`);
+    return final;
+  }
+  ready();
+  return { ...f, posted, webviews, send, ready, attach, settle, completions, finish };
+}
+
+for (const kind of ['terminal', 'agent']) {
+  test(`${kind} local final settlement requires the exact published identity, not an ordinary application ACK`, async () => {
+    const f = localFixture();
+    const { record, provider } = await f.started(kind);
+    try {
+      const initial = await f.attach(kind);
+      assert.equal(initial.payload.executionSessionId, record.execution.identity.executionId);
+      assert.equal(initial.payload.outputSequence, 0);
+      assert.equal(f.completions().length, 0);
+      f.settle(kind, record, { kind: 'applied', finalOutputSequence: 0 });
+      assert.equal(record.execution.snapshot().readerOutcome, 'pending');
+      await f.finish(kind, record, provider, `${kind}-final-tail`);
+      await until(f.clock, () => f.completions().length === 1, `${kind} published local final`);
+      await pump(f.clock, () => false);
+      const completion = f.completions()[0].message;
+      assert.deepEqual(completion.payload.localCompletion, {
+        executionSessionId: record.execution.identity.executionId, finalOutputSequence: 1
+      });
+      assert.equal(f.owner.snapshot().pending, 1);
+      const outcome = { kind: 'applied', finalOutputSequence: 1 };
+      for (const overrides of [{ executionSessionId: 'different-execution' }, { nodeId: 'different-node' },
+        { kind: kind === 'terminal' ? 'agent' : 'terminal' }]) {
+        f.settle(kind, record, outcome, 'editor', overrides);
+      }
+      f.settle(kind, record, outcome, 'editor', {}, { ...completion.lifecycle, frameId: 'retired-frame' });
+      f.settle(kind, record, { kind: 'applied', finalOutputSequence: 2 });
+      f.send('editor', 'webview/executionTerminalApplied', {
+        nodeId: `${kind}-1`, kind, executionSessionId: record.execution.identity.executionId,
+        authorityId: 'not-a-local-authority', revision: 1
+      });
+      assert.equal(record.execution.snapshot().readerOutcome, 'pending');
+      assert.equal(f.owner.snapshot().pending, 1);
+      f.settle(kind, record, outcome);
+      await until(f.clock, () => record.execution.snapshot().retired, `${kind} exact local final applied`);
+      assert.equal(f.record(kind), undefined);
+      assert.equal(f.owner.snapshot().pending, 0);
+      f.settle(kind, record, outcome);
+      f.settle(kind, record, { kind: 'cancelled', reason: 'late-conflict' });
+      assert.equal(f.owner.snapshot().pending, 0, 'late results cannot recreate a retired owner');
+    } finally { record.tracker.dispose(); }
+  });
+}
+
+test('local final zero is explicitly published and remains pending until its empty-output application result', async () => {
+  const f = localFixture();
+  const { record, provider } = await f.started('terminal');
+  try {
+    await f.attach('terminal');
+    await f.finish('terminal', record, provider);
+    await until(f.clock, () => f.completions().length === 1, 'zero final notification');
+    assert.equal(f.completions()[0].message.payload.localCompletion.finalOutputSequence, 0);
+    assert.equal(record.execution.snapshot().readerOutcome, 'pending');
+    await pump(f.clock);
+    f.ready('panel');
+    await f.attach('terminal', 'panel');
+    assert.equal(record.localReaders.has('panel'), false, 'fixed final closes admission for a later surface');
+    assert.equal(f.completions('panel').length, 0);
+    f.settle('terminal', record, { kind: 'applied', finalOutputSequence: 0 });
+    await until(f.clock, () => record.execution.snapshot().retired, 'zero final application');
+    assert.equal(f.owner.snapshot().pending, 0);
+  } finally { record.tracker.dispose(); }
+});
+
+test('local frozen completion permits recovery only for the original admitted page and still accepts its final ACK', async () => {
+  const f = localFixture();
+  const { record, provider } = await f.started('terminal');
+  try {
+    await f.attach('terminal');
+    const reader = record.localReaders.get('editor');
+    await f.finish('terminal', record, provider, 'frozen-recovery-tail');
+    await until(f.clock, () => reader.finalPublishedSequence === 1, 'original final publication');
+    assert.equal(record.readerAdmissionClosed, true);
+    assert.equal(reader.outcome, undefined);
+    const snapshotsBefore = f.posted.filter(entry => entry.message.type === 'host/executionSnapshot').length;
+    record.tracker.flush = async () => assert.fail('recovery must reuse the frozen final, not flush a new version');
+    const recovery = await f.attach('terminal');
+    assert.equal(f.posted.filter(entry => entry.message.type === 'host/executionSnapshot').length, snapshotsBefore + 1);
+    assert.equal(recovery.payload.liveSession, false);
+    assert.equal(recovery.payload.outputSequence, 1);
+    assert.deepEqual(recovery.payload.serializedTerminalState, record.finalTerminal);
+    assert.match(recovery.payload.serializedTerminalState.data, /frozen-recovery-tail/);
+    assert.equal(record.localReaders.get('editor'), reader);
+    assert.equal(record.localReaders.size, 1);
+    assert.equal(reader.outcome, undefined);
+    f.ready('panel', true, { ...f.host.getSurfaceLifecycleIdentity('panel'), frameId: 'new-panel-frame' });
+    await f.attach('terminal', 'panel');
+    assert.equal(record.localReaders.has('panel'), false, 'recovery must not admit a new page after final freeze');
+    assert.equal(f.completions('panel').length, 0);
+    f.settle('terminal', record, { kind: 'applied', finalOutputSequence: 1 });
+    await until(f.clock, () => record.execution.snapshot().retired, 'original recovered page final application');
+    assert.deepEqual(reader.outcome, { kind: 'applied', finalOutputSequence: 1 });
+    assert.equal(f.owner.snapshot().pending, 0);
+    assert.equal(f.record('terminal'), undefined);
+  } finally { record.tracker.dispose(); }
+});
+
+test('local settlement capability is explicit and absent consumers do not fabricate applied readers', async () => {
+  for (const options of [{ readyCapability: false }, { noWebview: true },
+    { capabilities: ['execution-lifecycle-v1'] }]) {
+    const f = localFixture(options);
+    if (options.noWebview) f.host.surfaceMessageWebview.editor = undefined;
+    if (options.noWebview) f.host.getSurfaceWebview = () => undefined;
+    const { record, provider } = await f.started('terminal');
+    try {
+      await f.attach('terminal');
+      await f.finish('terminal', record, provider);
+      await pump(f.clock);
+      assert.equal(f.completions().length, 0);
+      if (options.capabilities) {
+        assert.equal(record.execution.snapshot().readerOutcome, 'pending', 'legacy injection retains its original unfinished reader semantics');
+        record.execution.settleReaders('cancelled');
+      } else {
+        assert.equal(record.execution.snapshot().readerOutcome, 'settled', 'zero consumers settle neutrally, not as applied');
+        assert.equal([...(record.localReaders?.values() ?? [])].some(reader => reader.outcome?.kind === 'applied'), false);
+      }
+      assert.equal(f.owner.snapshot().pending, 0);
+    } finally { record.tracker.dispose(); }
+  }
+});
+
+test('local ACK cannot settle a final publication whose actual webview send is still pending', async () => {
+  const gate = deferred();
+  const f = localFixture({ send: message => message.type === 'host/executionExit' && message.payload.localCompletion
+    ? gate.promise : Promise.resolve(true) });
+  const { record, provider } = await f.started('terminal');
+  try {
+    await f.attach('terminal');
+    const reader = record.localReaders.get('editor');
+    assert.equal(reader.pendingPublications.size, 0, 'successful initial send releases its cancellation resolver');
+    await f.finish('terminal', record, provider, 'send-pending-tail');
+    await until(f.clock, () => f.completions().length === 1, 'pending final send');
+    assert.equal(reader.pendingPublications.size, 1);
+    f.settle('terminal', record, { kind: 'applied', finalOutputSequence: 1 });
+    f.settle('terminal', record, { kind: 'applied', finalOutputSequence: 1 });
+    assert.equal(record.execution.snapshot().readerOutcome, 'pending');
+    assert.equal(f.owner.snapshot().pending, 1);
+    gate.resolve(true);
+    await pump(f.clock);
+    await until(f.clock, () => record.execution.snapshot().retired, 'acknowledged final send');
+    assert.equal(f.owner.snapshot().pending, 0);
+    assert.equal(reader.pendingPublications.size, 0, 'successful final send releases its cancellation resolver');
+    const results = f.diagnostics.filter(entry => entry.name === 'execution/localTerminalResult');
+    assert.deepEqual(results.map(entry => entry.detail.status), ['recorded', 'duplicate']);
+    assert.equal(f.diagnostics.filter(entry => entry.name === 'execution/localTerminalReaderSettled' &&
+      entry.detail.outcome.kind === 'applied').length, 1, 'concurrent matching ACKs settle the original reader only once');
+  } finally { gate.resolve(true); record.tracker.dispose(); }
+});
+
+test('local page invalidation releases responsibility even when its final snapshot send never resolves', async () => {
+  const f = localFixture({ send: message => message.type === 'host/executionSnapshot' && message.payload.liveSession === false
+    ? new Promise(() => {}) : Promise.resolve(true) });
+  const { record, provider } = await f.started('terminal');
+  try {
+    await f.attach('terminal');
+    await f.finish('terminal', record, provider);
+    await until(f.clock, () => f.posted.some(entry => entry.message.type === 'host/executionSnapshot' &&
+      entry.message.payload.liveSession === false), 'never-resolving final snapshot publication');
+    assert.equal(f.completions().length, 0, 'exit must not overtake an unconfirmed final snapshot');
+    f.settle('terminal', record, { kind: 'applied', finalOutputSequence: 0 });
+    assert.equal(f.owner.snapshot().pending, 1);
+    const reader = record.localReaders.get('editor');
+    assert.equal(reader.pendingPublications.size, 1);
+    f.host.invalidateSurfaceLifecycle('editor', 'active');
+    assert.equal(reader.pendingPublications.size, 0, 'cancellation releases the pending final snapshot resolver');
+    await until(f.clock, () => record.execution.snapshot().retired, 'invalidation does not await old postMessage');
+    assert.equal(f.owner.snapshot().pending, 0);
+  } finally { record.tracker.dispose(); }
+});
+
+test('local page invalidation unblocks accepted tail consumption when an output send never resolves', async () => {
+  const f = localFixture({ send: message => message.type === 'host/executionOutput'
+    ? new Promise(() => {}) : Promise.resolve(true) });
+  const { record, provider } = await f.started('terminal');
+  try {
+    await f.attach('terminal');
+    provider.output(1, 'accepted-tail-with-blocked-page');
+    await until(f.clock, () => f.posted.some(entry => entry.message.type === 'host/executionOutput'), 'pending output publication');
+    assert.equal(record.execution.snapshot().adapter.acceptedThrough, 1);
+    assert.equal(record.execution.snapshot().adapter.consumedThrough, 0);
+    provider.process();
+    provider.seal(1);
+    provider.release();
+    await pump(f.clock);
+    assert.equal(record.finalRevision, undefined);
+    assert.equal(f.owner.snapshot().pending, 1);
+    const reader = record.localReaders.get('editor');
+    assert.equal(reader.pendingPublications.size, 1);
+    f.host.invalidateSurfaceLifecycle('editor', 'active');
+    assert.equal(reader.pendingPublications.size, 0, 'cancellation releases the pending output resolver');
+    await until(f.clock, () => record.execution.snapshot().retired, 'tail consumption after page invalidation');
+    assert.equal(record.execution.snapshot().adapter.consumedThrough, 1);
+    assert.equal(record.finalRevision, 1);
+    assert.ok(['cancelled', 'lost'].includes(record.localReaders.get('editor').outcome?.kind));
+    assert.equal(f.owner.snapshot().pending, 0);
+  } finally { record.tracker.dispose(); }
+});
+
+for (const behavior of ['false', 'throw']) {
+  test(`local final send returning ${behavior} ends the reader without claiming application`, async () => {
+    const f = localFixture({ send: message => {
+      if (message.type === 'host/executionExit' && message.payload.localCompletion) {
+        if (behavior === 'throw') throw new Error('controlled final send failure');
+        return Promise.resolve(false);
+      }
+      return Promise.resolve(true);
+    } });
+    const { record, provider } = await f.started('terminal');
+    try {
+      await f.attach('terminal');
+      await f.finish('terminal', record, provider, 'unsent-tail');
+      await until(f.clock, () => record.execution.snapshot().retired, `local ${behavior} reader cancellation`);
+      assert.equal(f.owner.snapshot().pending, 0);
+      assert.equal(record.execution.snapshot().readerOutcome, 'settled');
+      assert.ok(['cancelled', 'lost'].includes(record.localReaders.get('editor').outcome?.kind));
+      f.settle('terminal', record, { kind: 'applied', finalOutputSequence: 1 });
+      assert.equal(f.owner.snapshot().pending, 0);
+    } finally { record.tracker.dispose(); }
+  });
+}
+
+test('local surface switching loses only the old consumer and preserves the active consumer responsibility', async () => {
+  const f = localFixture();
+  const { record, provider } = await f.started('terminal');
+  try {
+    await f.attach('terminal', 'editor');
+    f.ready('panel');
+    await f.attach('terminal', 'panel');
+    await f.finish('terminal', record, provider, 'two-surface-tail');
+    await until(f.clock, () => f.completions('panel').length === 1, 'active panel final notification');
+    await pump(f.clock);
+    assert.equal(record.localReaders.get('editor').outcome?.kind, 'lost');
+    assert.equal(f.completions('editor').length, 0);
+    f.settle('terminal', record, { kind: 'applied', finalOutputSequence: 1 }, 'editor');
+    assert.equal(f.owner.snapshot().pending, 1);
+    f.settle('terminal', record, { kind: 'applied', finalOutputSequence: 1 }, 'editor');
+    f.settle('terminal', record, { kind: 'cancelled', reason: 'conflicting-first-result' }, 'editor');
+    assert.equal(f.owner.snapshot().pending, 1);
+    f.settle('terminal', record, { kind: 'applied', finalOutputSequence: 1 }, 'panel');
+    await until(f.clock, () => record.execution.snapshot().retired, 'all local surface results');
+    assert.deepEqual(record.localReaders.get('panel').outcome, { kind: 'applied', finalOutputSequence: 1 });
+    assert.equal(f.owner.snapshot().pending, 0);
+  } finally { record.tracker.dispose(); }
+});
+
+test('local rerender releases the original consumer and a late old-frame result cannot settle its replacement execution', async () => {
+  const f = localFixture();
+  const first = await f.started('terminal');
+  let replacement;
+  try {
+    await f.attach('terminal');
+    const oldLifecycle = f.host.getSurfaceLifecycleIdentity('editor');
+    await f.finish('terminal', first.record, first.provider, 'old-tail');
+    await until(f.clock, () => f.completions().length === 1, 'old final');
+    f.host.invalidateSurfaceLifecycle('editor', 'active');
+    await until(f.clock, () => first.record.execution.snapshot().retired, 'invalidated local reader');
+    f.ready('editor', true, { ...f.host.getSurfaceLifecycleIdentity('editor'), frameId: 'editor-frame-2' });
+    await completed(f.clock, f.start('terminal'), 'replacement local execution');
+    replacement = { record: f.record('terminal'), provider: f.providers.at(-1) };
+    await f.attach('terminal');
+    f.settle('terminal', first.record, { kind: 'applied', finalOutputSequence: 1 }, 'editor', {}, oldLifecycle);
+    assert.equal(f.record('terminal'), replacement.record);
+    assert.equal(replacement.record.execution.snapshot().readerOutcome, 'pending');
+    await f.finish('terminal', replacement.record, replacement.provider);
+    f.host.beginSurfaceRender('editor', 'active');
+    await until(f.clock, () => replacement.record.execution.snapshot().retired, 'replacement rerender cancellation');
+  } finally { first.record.tracker.dispose(); replacement?.record.tracker.dispose(); }
+});
+
+test('local reader cancellation is not reopened by a repeated attach in the same page identity', async () => {
+  const f = localFixture();
+  const { record, provider } = await f.started('terminal');
+  try {
+    await f.attach('terminal');
+    f.settle('terminal', record, { kind: 'cancelled', reason: 'controller-disposed' });
+    await f.attach('terminal');
+    await f.finish('terminal', record, provider);
+    await until(f.clock, () => record.execution.snapshot().retired, 'cancelled consumer remains closed');
+    assert.equal(f.completions().length, 0);
+    assert.equal(f.owner.snapshot().pending, 0);
+  } finally { record.tracker.dispose(); }
+});
+
+test('local node deletion cancels its consumers but still waits for the provider resource result', async () => {
+  const f = localFixture();
+  const { record, provider } = await f.started('terminal');
+  try {
+    await f.attach('terminal');
+    let deleted = false;
+    const deletion = f.host.terminateExecutionNodeForDeletion(f.nodes.find(node => node.kind === 'terminal'))
+      .then(() => { deleted = true; });
+    await until(f.clock, () => provider.messages.some(message => message.type === 'requestStop'), 'local delete stop');
+    provider.process();
+    provider.seal(0);
+    await until(f.clock, () => record.finalRevision === 0, 'local delete final flush');
+    assert.equal(deleted, false);
+    assert.equal(f.owner.snapshot().pending, 1);
+    provider.release();
+    await completed(f.clock, deletion, 'local delete resource settlement');
+    assert.equal(f.owner.snapshot().pending, 0);
+    assert.equal(f.completions().length, 0, 'deleted projection must not receive a new final request');
+  } finally { record.tracker.dispose(); }
+});
+
+test('local final terminal application cannot announce process exit when the controlled process result is unconfirmed', async () => {
+  const f = localFixture();
+  const { record, provider } = await f.started('terminal');
+  try {
+    await f.attach('terminal');
+    provider.output(1, 'tail-before-unconfirmed-process');
+    await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'accepted tail actually consumed');
+    provider.message({ type: 'processResult', result: { kind: 'unconfirmed', reason: 'controlled provider control lost' } });
+    provider.seal(1);
+    provider.release();
+    await until(f.clock, () => record.execution.snapshot().terminal?.kind === 'applied', 'final tracker applied with unknown process');
+    await pump(f.clock);
+    assert.equal(record.finalRevision, 1);
+    assert.match(record.tracker.getSerializedState().data, /tail-before-unconfirmed-process/);
+    assert.equal(record.execution.snapshot().adapter.process.kind, 'unconfirmed');
+    assert.equal(record.execution.snapshot().settled, false);
+    assert.equal(record.execution.snapshot().retired, false);
+    assert.ok(f.owner.snapshot().blockedReason);
+    assert.equal(f.owner.snapshot().pending, 1);
+    assert.equal(f.record('terminal'), record);
+    assert.equal(f.posted.some(entry => entry.message.type === 'host/executionExit'), false,
+      'a terminal flush cannot become a process exit announcement');
+    assert.ok(['cancelled', 'lost'].includes(record.localReaders.get('editor').outcome?.kind));
+    assert.equal(record.execution.snapshot().readerOutcome, 'settled', 'reader release remains separate from unknown execution responsibility');
+    await assert.rejects(f.start('terminal'), /admission is closed/);
+    assert.equal(f.providers.length, 1);
+    f.ready('panel');
+    await f.attach('terminal', 'panel');
+    assert.equal(record.localReaders.has('panel'), false);
+    assert.equal(f.owner.snapshot().pending, 1);
+  } finally { record.tracker.dispose(); }
+});
+
+async function loadActualLocalController() {
+  const filename = path.resolve('extensions/vscode/dev-session-canvas/src/webview/main.tsx');
+  const source = await readFile(filename, 'utf8');
+  const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const extract = name => {
+    const declaration = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
+    assert.ok(declaration, `actual Webview function ${name} must exist`);
+    return declaration.getText(ast);
+  };
+  const contents = `
+    import { TerminalPagedProjection } from './terminalPagedProjection';
+    import { normalizeTerminalStreamAttachPayload } from '../common/terminalSessionStream';
+    import { normalizeLocalTerminalCompletion } from '../common/protocol';
+    const window = { setTimeout, clearTimeout, requestAnimationFrame: callback => setTimeout(callback, 0) };
+    const readPerformanceNow = () => performance.now();
+    const removePendingExecutionTerminalDrain = () => {};
+    const scheduleExecutionTerminalDrain = controller => controller.flushPendingOutput();
+    const scheduleExecutionTerminalSnapshotWrite = task => task.run(() => {});
+    const pendingExecutionTerminalSnapshotWrites = [];
+    const activeExecutionTerminalSnapshotWrite = undefined;
+    const EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS = 0;
+    const EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS = 0;
+    const EXECUTION_TERMINAL_APPLIED_ACK_INTERVAL_MS = 5;
+    const EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS = 32768;
+    ${extract('applyTerminalStreamEvents')}
+    ${extract('restoreExecutionTerminalSnapshot')}
+    ${extract('normalizeTerminalSnapshotOutputSequence')}
+    export function createController(nodeId, kind, terminal, postMessage, options) {
+      const reportExecutionPerformanceDiagnostic = () => {};
+      ${extract('createExecutionTerminalController')}
+      return createExecutionTerminalController(nodeId, kind, terminal, options);
+    }
+  `;
+  const bundle = await esbuild.build({ stdin: { contents, resolveDir: path.dirname(filename), loader: 'ts' },
+    bundle: true, platform: 'node', format: 'cjs', write: false, target: 'node18' });
+  const module = { exports: {} };
+  new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(module, module.exports, createRequire(import.meta.url));
+  return module.exports.createController;
+}
+
+test('actual local Host to main/headless to Host preserves owner responsibility until the real tail callback', async () => {
+  const createController = await loadActualLocalController();
+  const { Terminal } = createRequire(import.meta.url)('@xterm/headless');
+  const terminal = new Terminal({ cols: 80, rows: 24, scrollback: 100, allowProposedApi: true });
+  terminal.refresh = () => {};
+  let controller;
+  let releaseTail;
+  let holdTail = true;
+  const pageMessages = [];
+  const tail = 'real-local-tail\r\n\x1b[4;9H';
+  const write = terminal.write.bind(terminal);
+  terminal.write = (text, done) => write(text, () => {
+    if (holdTail && text.includes('real-local-tail')) {
+      holdTail = false;
+      releaseTail = done;
+    } else done?.();
+  });
+  const f = localFixture({ onHostMessage: message => {
+    const p = message.payload;
+    if (message.type === 'host/executionSnapshot') controller.applySnapshot({ ...p, type: 'snapshot' });
+    if (message.type === 'host/executionOutput') {
+      controller.enqueueOutput(p.chunk, p);
+      controller.flushPendingOutput();
+    }
+    if (message.type === 'host/executionExit') controller.showExit(p.message, p.executionSessionId, p.localCompletion);
+  } });
+  controller = createController('terminal-1', 'terminal', terminal, message => {
+    pageMessages.push(message);
+    assert.ok(parseWebviewMessage(message), `real local controller message must parse: ${message.type}`);
+    f.send('editor', message.type, message.payload);
+  });
+  const { record, provider } = await f.started('terminal');
+  try {
+    await f.attach('terminal');
+    await until(f.clock, () => controller.getQueuedWriteCount() === 0, 'real local checkpoint application');
+    provider.output(1, tail);
+    await until(f.clock, () => releaseTail !== undefined, 'actual local tail callback paused');
+    provider.process();
+    provider.seal(1);
+    provider.release();
+    await until(f.clock, () => f.completions().length === 1, 'real local final barrier announcement');
+    assert.equal(record.finalRevision, 1);
+    assert.equal(record.execution.snapshot().readerOutcome, 'pending');
+    assert.equal(f.owner.snapshot().pending, 1);
+    assert.equal(pageMessages.filter(message => message.type === 'webview/executionLocalTerminalSettled').length, 0);
+    assert.equal(terminal.buffer.active.getLine(0).translateToString(true), 'real-local-tail');
+    assert.equal(terminal.buffer.active.cursorX, 8);
+    assert.equal(terminal.buffer.active.cursorY, 3);
+    releaseTail();
+    await until(f.clock, () => record.execution.snapshot().retired, 'real local callback application result');
+    const outcomes = pageMessages.filter(message => message.type === 'webview/executionLocalTerminalSettled');
+    assert.equal(outcomes.length, 1);
+    assert.deepEqual(outcomes[0].payload, { nodeId: 'terminal-1', kind: 'terminal',
+      executionSessionId: record.execution.identity.executionId,
+      outcome: { kind: 'applied', finalOutputSequence: 1 } });
+    assert.equal(f.owner.snapshot().pending, 0);
+    assert.equal(f.record('terminal'), undefined);
+  } finally {
+    holdTail = false;
+    releaseTail?.();
+    controller.dispose();
+    terminal.dispose();
+    record.tracker.dispose();
+  }
 });
 
 for (const { name, run } of tests) {

@@ -50,6 +50,8 @@ import type {
   ExecutionNodeKind,
   FileListNodeEntrySummary,
   HostToWebviewMessage,
+  LocalTerminalCompletion,
+  LocalTerminalOutcome,
   WebviewDomAction,
   WebviewClipboardTextSource,
   WebviewLifecycleIdentity,
@@ -67,6 +69,7 @@ import {
   normalizeCanvasMultiRootPresentationMode,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
+  normalizeLocalTerminalCompletion,
   normalizeCanvasStrongTerminalAttentionReminderMode
 } from '../common/protocol';
 import {
@@ -1722,7 +1725,8 @@ function App(): JSX.Element {
           nodeId: message.payload.nodeId,
           kind: message.payload.kind,
           executionSessionId: message.payload.executionSessionId,
-          message: message.payload.message
+          message: message.payload.message,
+          localCompletion: message.payload.localCompletion
         });
         break;
       case 'host/executionFileLinksResolved':
@@ -1785,7 +1789,9 @@ function App(): JSX.Element {
       hostMessageHandlerRef.current(event.data);
     };
     window.addEventListener('message', listener);
-    postMessage({ type: 'webview/ready', payload: { capabilities: { terminalReadSettlementV1: true } } });
+    postMessage({ type: 'webview/ready', payload: { capabilities: {
+      terminalReadSettlementV1: true, terminalLocalSettlementV1: true
+    } } });
 
     return () => {
       window.removeEventListener('message', listener);
@@ -7129,7 +7135,17 @@ function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type
 }
 
 function routeExecutionTerminalExit(detail: Extract<ExecutionHostEvent, { type: 'exit' }>): void {
-  executionTerminalRegistry.get(detail.nodeId)?.controller.showExit(detail.message, detail.executionSessionId);
+  const controller = executionTerminalRegistry.get(detail.nodeId)?.controller;
+  const localCompletion = normalizeLocalTerminalCompletion(detail.localCompletion);
+  if (controller && controller.kind === detail.kind) {
+    controller.showExit(detail.message, detail.executionSessionId, detail.localCompletion);
+  } else if (localCompletion) {
+    postMessage({ type: 'webview/executionLocalTerminalSettled', payload: {
+      nodeId: detail.nodeId, kind: detail.kind,
+      executionSessionId: localCompletion.executionSessionId,
+      outcome: { kind: 'cancelled', reason: 'controller-unavailable' }
+    } });
+  }
 }
 
 function scheduleExecutionTerminalSnapshotWrite(entry: PendingExecutionTerminalSnapshotWrite): void {
@@ -7526,6 +7542,10 @@ function createExecutionTerminalController(
   let pendingOutput = '';
   let pendingPersistBarrier = false;
   let pendingExitMessage: string | undefined;
+  let localCompletion: (LocalTerminalCompletion & {
+    generation: number;
+    state: 'waiting' | 'queued' | 'settled';
+  }) | undefined;
   let disposed = false;
   let writeGeneration = 0;
   let failedWriteGeneration: number | undefined;
@@ -7536,6 +7556,7 @@ function createExecutionTerminalController(
   const supersededExecutionSessionIds = new Set<string>();
   let projectedExecutionSessionId: string | undefined;
   let currentLocalOutputSequence = 0;
+  let localProjectionSequenceTracked = false;
   let currentTerminalAuthorityId: string | undefined;
   let currentTerminalRevision = 0;
   let pendingOutputBoundaries: Array<{
@@ -7656,6 +7677,8 @@ function createExecutionTerminalController(
   };
 
   const beginExecutionSessionGeneration = (executionSessionId: string): void => {
+    settleLocalCompletion({ kind: 'cancelled', reason: 'execution-replaced' });
+    localCompletion = undefined;
     if (
       currentExecutionSessionId !== undefined &&
       currentExecutionSessionId !== executionSessionId
@@ -7672,6 +7695,7 @@ function createExecutionTerminalController(
     failedWriteGeneration = undefined;
     currentExecutionSessionId = executionSessionId;
     currentLocalOutputSequence = 0;
+    localProjectionSequenceTracked = false;
     currentTerminalAuthorityId = undefined;
     currentTerminalRevision = 0;
     hasAppliedSnapshot = false;
@@ -7800,11 +7824,13 @@ function createExecutionTerminalController(
   };
 
   const flushDeferredExitIfReady = (): void => {
+    flushLocalCompletionIfReady();
     if (
       pendingPersistBarrier ||
       pendingProjectionBarrier ||
       pendingOutput.length > 0 ||
-      pendingExitMessage === undefined
+      pendingExitMessage === undefined ||
+      (localCompletion !== undefined && localCompletion.state !== 'settled')
     ) {
       return;
     }
@@ -7812,6 +7838,55 @@ function createExecutionTerminalController(
     const message = pendingExitMessage;
     pendingExitMessage = undefined;
     queueExitWrite(message);
+  };
+
+  const settleLocalCompletion = (outcome: LocalTerminalOutcome): void => {
+    const completion = localCompletion;
+    if (!completion || completion.state === 'settled') return;
+    completion.state = 'settled';
+    try {
+      postMessage({ type: 'webview/executionLocalTerminalSettled', payload: {
+        nodeId, kind, executionSessionId: completion.executionSessionId, outcome
+      } });
+    } catch {
+      if (completion.generation === writeGeneration) failedWriteGeneration = writeGeneration;
+    }
+  };
+
+  const flushLocalCompletionIfReady = (): void => {
+    const completion = localCompletion;
+    if (!completion || completion.state !== 'waiting') return;
+    if (failedWriteGeneration === completion.generation) {
+      settleLocalCompletion({ kind: 'cancelled', reason: 'terminal-write-failed' });
+      return;
+    }
+    if (currentTerminalAuthorityId || pagedProjection.active ||
+        currentLocalOutputSequence > completion.finalOutputSequence) {
+      settleLocalCompletion({ kind: 'cancelled', reason: 'local-projection-conflict' });
+      return;
+    }
+    if (hasAppliedSnapshot && !localProjectionSequenceTracked) postAttachSnapshotRequest();
+    if (!hasAppliedSnapshot || !localProjectionSequenceTracked ||
+        projectedExecutionSessionId !== completion.executionSessionId ||
+        currentExecutionSessionId !== completion.executionSessionId ||
+        currentLocalOutputSequence !== completion.finalOutputSequence ||
+        pendingPersistBarrier || pendingProjectionBarrier || projectionRecoveryRequested || pendingOutput.length > 0) return;
+
+    completion.state = 'queued';
+    // This sentinel follows every queued snapshot/output write, including final zero.
+    queueTerminalWrite((done) => terminal.write('', done), { reason: 'local-final-application' }, (applied) => {
+      if (localCompletion !== completion || completion.state === 'settled') return;
+      const sameProjection = completion.generation === writeGeneration &&
+        currentExecutionSessionId === completion.executionSessionId &&
+        projectedExecutionSessionId === completion.executionSessionId &&
+        currentTerminalAuthorityId === undefined && !pagedProjection.active &&
+        localProjectionSequenceTracked && currentLocalOutputSequence === completion.finalOutputSequence &&
+        !pendingPersistBarrier && !pendingProjectionBarrier && !projectionRecoveryRequested && pendingOutput.length === 0;
+      settleLocalCompletion(applied && sameProjection
+        ? { kind: 'applied', finalOutputSequence: completion.finalOutputSequence }
+        : { kind: 'cancelled', reason: 'terminal-write-failed' });
+      flushDeferredExitIfReady();
+    });
   };
 
   const controller: ExecutionTerminalController = {
@@ -7835,6 +7910,7 @@ function createExecutionTerminalController(
         if (currentExecutionSessionId !== detail.executionSessionId && detail.executionSessionId) {
           beginExecutionSessionGeneration(detail.executionSessionId);
         }
+        settleLocalCompletion({ kind: 'cancelled', reason: 'projection-replaced' });
         if (pagedProjection.start(detail.terminalRead)) {
           projectionRecoveryRequested = false;
           projectionRecoveryEpoch += 1;
@@ -7886,6 +7962,7 @@ function createExecutionTerminalController(
         hasAppliedSnapshot && !projectionSessionChanged && projectionRecoveryRequested;
       if (hasAppliedSnapshot && !projectionSessionChanged && !isProjectionRecovery) {
         // Snapshots create projections; they do not replace a healthy live backlog.
+        flushDeferredExitIfReady();
         return;
       }
       if (isProjectionRecovery) {
@@ -7953,6 +8030,8 @@ function createExecutionTerminalController(
         if (snapshotSequence !== undefined) {
           currentLocalOutputSequence = Math.max(currentLocalOutputSequence, snapshotSequence);
         }
+        localProjectionSequenceTracked = snapshotSequence !== undefined && Number.isSafeInteger(snapshotSequence) &&
+          (!isProjectionRecovery || snapshotSequence >= currentLocalOutputSequence);
       }
       hasAppliedSnapshot = true;
       projectedExecutionSessionId = detail.executionSessionId ?? projectedExecutionSessionId;
@@ -7969,40 +8048,46 @@ function createExecutionTerminalController(
         0
       );
       queueTerminalWrite(
-        (done, markStarted) => {
+        (done, markStarted, failed) => {
           const snapshotWriteGeneration = writeGeneration;
           let finished = false;
+          let releaseSnapshotRestoreDiagnosticsSuppression: (() => void) | undefined;
           const finishSnapshotWrite = (snapshotDone?: () => void, applied = true): void => {
             if (finished) {
               snapshotDone?.();
               return;
             }
             finished = true;
-            snapshotDone?.();
-            done(applied);
+            try { releaseSnapshotRestoreDiagnosticsSuppression?.(); }
+            catch { applied = false; }
+            try { snapshotDone?.(); }
+            catch { applied = false; }
+            if (applied) done();
+            else failed();
           };
           scheduleExecutionTerminalSnapshotWrite({
             nodeId,
             kind,
             queuedAtMs: readPerformanceNow(),
             run: (snapshotDone) => {
-              if (disposed || snapshotWriteGeneration !== writeGeneration) {
+              if (finished || disposed || snapshotWriteGeneration !== writeGeneration) {
                 finishSnapshotWrite(snapshotDone, false);
                 return;
               }
-              markStarted?.();
-              const releaseSnapshotRestoreDiagnosticsSuppression =
-                options?.beginSnapshotRestoreDiagnosticsSuppression?.();
-              restoreExecutionTerminalSnapshot(terminal, detail, () => {
-                if (projectionRecoveryEpoch === recoveryEpoch) {
-                  projectionRecoveryRequested = false;
-                  if (pendingProjectionBarrier) {
-                    postAttachSnapshotRequest();
-                  }
-                }
-                releaseSnapshotRestoreDiagnosticsSuppression?.();
-                finishSnapshotWrite(snapshotDone);
-              });
+              const current = (): boolean => !disposed && snapshotWriteGeneration === writeGeneration;
+              try {
+                markStarted();
+                releaseSnapshotRestoreDiagnosticsSuppression = options?.beginSnapshotRestoreDiagnosticsSuppression?.();
+                restoreExecutionTerminalSnapshot(terminal, detail, () => {
+                  try {
+                    if (current() && projectionRecoveryEpoch === recoveryEpoch) {
+                      projectionRecoveryRequested = false;
+                      if (pendingProjectionBarrier) postAttachSnapshotRequest();
+                    }
+                    finishSnapshotWrite(snapshotDone, current());
+                  } catch { finishSnapshotWrite(snapshotDone, false); }
+                }, () => finishSnapshotWrite(snapshotDone, false), current);
+              } catch { finishSnapshotWrite(snapshotDone, false); }
             },
             cancel: () => finishSnapshotWrite(undefined, false)
           });
@@ -8022,6 +8107,7 @@ function createExecutionTerminalController(
               immediate: true
             });
           }
+          flushDeferredExitIfReady();
         }
       );
       if (pendingOutput.length > 0 && !pendingPersistBarrier && !pendingProjectionBarrier) {
@@ -8110,6 +8196,10 @@ function createExecutionTerminalController(
         }
       }
       if (chunk) {
+        if (!terminalAuthorityId &&
+            (outputSequence === undefined || !Number.isSafeInteger(outputSequence))) {
+          localProjectionSequenceTracked = false;
+        }
         pendingOutput += chunk;
         const hasValidOutputSequenceRange =
           outputStartSequence !== undefined &&
@@ -8198,8 +8288,42 @@ function createExecutionTerminalController(
         }
       });
     },
-    showExit(message, executionSessionId) {
+    showExit(message, executionSessionId, requestedLocalCompletion) {
+      if (requestedLocalCompletion !== undefined) {
+        const completion = normalizeLocalTerminalCompletion(requestedLocalCompletion);
+        if (!completion) return;
+        if (disposed || completion.executionSessionId !== executionSessionId ||
+            (currentExecutionSessionId !== undefined && completion.executionSessionId !== currentExecutionSessionId) ||
+            pagedProjection.active || currentTerminalAuthorityId !== undefined) {
+          postMessage({ type: 'webview/executionLocalTerminalSettled', payload: {
+            nodeId, kind, executionSessionId: completion.executionSessionId,
+            outcome: { kind: 'cancelled', reason: disposed ? 'controller-disposed' : 'local-projection-conflict' }
+          } });
+          return;
+        }
+        if (localCompletion) {
+          if (localCompletion.executionSessionId !== completion.executionSessionId ||
+              localCompletion.finalOutputSequence !== completion.finalOutputSequence) {
+            settleLocalCompletion({ kind: 'cancelled', reason: 'local-completion-conflict' });
+            flushDeferredExitIfReady();
+          }
+          return;
+        }
+        if (currentExecutionSessionId === undefined) beginExecutionSessionGeneration(completion.executionSessionId);
+        localCompletion = { ...completion, generation: writeGeneration, state: 'waiting' };
+        pendingExitMessage = message || undefined;
+        if (pendingOutput.length > 0 && !pendingPersistBarrier && !pendingProjectionBarrier) {
+          scheduleExecutionTerminalDrain(controller);
+        }
+        flushDeferredExitIfReady();
+        return;
+      }
       if (disposed) {
+        return;
+      }
+      if (localCompletion && localCompletion.state !== 'settled') {
+        pendingExitMessage = message;
+        flushDeferredExitIfReady();
         return;
       }
       if (pagedProjection.active) {
@@ -8273,6 +8397,7 @@ function createExecutionTerminalController(
         if (applied && outputAuthorityId && completedRevision !== undefined) {
           markTerminalRevisionApplied(outputAuthorityId, completedRevision);
         }
+        flushDeferredExitIfReady();
       });
       flushDeferredExitIfReady();
       return chunk.length;
@@ -8287,6 +8412,7 @@ function createExecutionTerminalController(
       return pendingPersistBarrier || pendingProjectionBarrier;
     },
     dispose() {
+      settleLocalCompletion({ kind: 'cancelled', reason: 'controller-disposed' });
       pagedProjection.stop('controller-disposed');
       disposed = true;
       pendingOutput = '';
@@ -8416,12 +8542,15 @@ function restoreExecutionTerminalSnapshot(
 ): void {
   if (!current()) { onRestored?.(); return; }
   const finishRestore = (): void => {
-    window.requestAnimationFrame(() => {
-      if (terminal.rows > 0) {
-        terminal.refresh(0, terminal.rows - 1);
-      }
-    });
-    onRestored?.();
+    try {
+      window.requestAnimationFrame(() => {
+        if (current() && terminal.rows > 0) terminal.refresh(0, terminal.rows - 1);
+      });
+      onRestored?.();
+    } catch (error) {
+      if (onFailed) onFailed();
+      else throw error;
+    }
   };
 
   try {
@@ -8483,7 +8612,7 @@ function restoreExecutionTerminalSnapshot(
       return;
     }
 
-    if (detail.output) {
+    if (detail.output || onFailed) {
       terminal.write(detail.output, () => {
         finishRestore();
       });

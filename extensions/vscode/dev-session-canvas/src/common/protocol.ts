@@ -411,6 +411,15 @@ interface WebviewLifecycleEnvelope {
   lifecycle?: WebviewLifecycleIdentity;
 }
 
+export interface LocalTerminalCompletion {
+  executionSessionId: string;
+  finalOutputSequence: number;
+}
+
+export type LocalTerminalOutcome =
+  | { kind: 'applied'; finalOutputSequence: number }
+  | { kind: 'cancelled'; reason: string };
+
 export interface NoteMarkdownImageWorkspaceRoot {
   name: string;
   webviewResourceBaseUri: string;
@@ -703,7 +712,7 @@ export type WebviewDomAction =
 export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'webview/ready';
-      payload?: { capabilities?: { terminalReadSettlementV1?: true } };
+      payload?: { capabilities?: { terminalReadSettlementV1?: true; terminalLocalSettlementV1?: true } };
     }
   | {
       type: 'webview/bootstrapAck';
@@ -900,6 +909,15 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         executionSessionId: string;
         authorityId: string;
         revision: number;
+      };
+    }
+  | {
+      type: 'webview/executionLocalTerminalSettled';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        outcome: LocalTerminalOutcome;
       };
     }
   | {
@@ -1337,6 +1355,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         kind: ExecutionNodeKind;
         /** Identifies the session that ended; absent only for legacy Hosts. */
         executionSessionId?: string;
+        localCompletion?: LocalTerminalCompletion;
         message: string;
       };
     }
@@ -1541,6 +1560,23 @@ export function normalizeTerminalReadOutcome(value: unknown): RuntimeSupervisorT
   return undefined;
 }
 
+export function normalizeLocalTerminalCompletion(value: unknown): LocalTerminalCompletion | undefined {
+  if (!isRecord(value) || typeof value.executionSessionId !== 'string' || !value.executionSessionId ||
+      value.executionSessionId.length > 256 || typeof value.finalOutputSequence !== 'number' ||
+      !Number.isSafeInteger(value.finalOutputSequence) || value.finalOutputSequence < 0) return undefined;
+  return { executionSessionId: value.executionSessionId, finalOutputSequence: value.finalOutputSequence };
+}
+
+export function normalizeLocalTerminalOutcome(value: unknown): LocalTerminalOutcome | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.kind === 'applied' && typeof value.finalOutputSequence === 'number' &&
+      Number.isSafeInteger(value.finalOutputSequence) && value.finalOutputSequence >= 0) {
+    return { kind: 'applied', finalOutputSequence: value.finalOutputSequence };
+  }
+  const cancelled = normalizeTerminalReadOutcome(value);
+  return cancelled?.kind === 'cancelled' ? cancelled : undefined;
+}
+
 export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null {
   if (!isRecord(value) || typeof value.type !== 'string') {
     return null;
@@ -1551,10 +1587,15 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     if (!isRecord(value.payload) || (value.payload.capabilities !== undefined && !isRecord(value.payload.capabilities))) {
       return null;
     }
-    const capability = isRecord(value.payload.capabilities) ? value.payload.capabilities.terminalReadSettlementV1 : undefined;
-    if (capability !== undefined && capability !== true) return null;
-    return capability === true
-      ? { type: value.type, payload: { capabilities: { terminalReadSettlementV1: true } } }
+    const capabilities = isRecord(value.payload.capabilities) ? value.payload.capabilities : {};
+    const remote = capabilities.terminalReadSettlementV1;
+    const local = capabilities.terminalLocalSettlementV1;
+    if ((remote !== undefined && remote !== true) || (local !== undefined && local !== true)) return null;
+    return remote === true || local === true
+      ? { type: value.type, payload: { capabilities: {
+          ...(remote === true ? { terminalReadSettlementV1: true as const } : {}),
+          ...(local === true ? { terminalLocalSettlementV1: true as const } : {})
+        } } }
       : { type: value.type };
   }
 
@@ -1778,6 +1819,16 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         targetGroupId
       }
     };
+  }
+
+  if (value.type === 'webview/executionLocalTerminalSettled') {
+    const payload = isRecord(value.payload) ? value.payload : undefined;
+    if (!payload || typeof payload.nodeId !== 'string' || !payload.nodeId || payload.nodeId.length > 256 ||
+        !isExecutionNodeKind(payload.kind) || typeof payload.executionSessionId !== 'string' ||
+        !payload.executionSessionId || payload.executionSessionId.length > 256) return null;
+    const outcome = normalizeLocalTerminalOutcome(payload.outcome);
+    return outcome ? { type: value.type, payload: { nodeId: payload.nodeId, kind: payload.kind,
+      executionSessionId: payload.executionSessionId, outcome } } : null;
   }
 
   if (

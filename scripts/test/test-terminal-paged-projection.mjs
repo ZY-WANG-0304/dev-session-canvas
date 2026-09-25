@@ -360,13 +360,11 @@ async function verifyControllerSettlement(directory) {
   const contents = `
     import { TerminalPagedProjection } from './terminalPagedProjection';
     import { normalizeTerminalStreamAttachPayload } from '../common/terminalSessionStream';
+    import { normalizeLocalTerminalCompletion } from '../common/protocol';
     const window = { setTimeout, clearTimeout, requestAnimationFrame: callback => setTimeout(callback, 0) };
     const readPerformanceNow = () => performance.now();
     const removePendingExecutionTerminalDrain = () => {};
     const scheduleExecutionTerminalDrain = () => {};
-    const scheduleExecutionTerminalSnapshotWrite = task => task.run(() => {});
-    const pendingExecutionTerminalSnapshotWrites = [];
-    const activeExecutionTerminalSnapshotWrite = undefined;
     const EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS = 0;
     const EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS = 0;
     const EXECUTION_TERMINAL_APPLIED_ACK_INTERVAL_MS = 5;
@@ -374,16 +372,24 @@ async function verifyControllerSettlement(directory) {
     ${extract('applyTerminalStreamEvents')}
     ${extract('restoreExecutionTerminalSnapshot')}
     ${extract('normalizeTerminalSnapshotOutputSequence')}
-    export function createController(terminal, postMessage, options, reportExecutionPerformanceDiagnostic) {
+    export function createController(terminal, postMessage, options, reportExecutionPerformanceDiagnostic, environment = {}) {
+      const pendingExecutionTerminalSnapshotWrites = environment.snapshotTasks ?? [];
+      const activeExecutionTerminalSnapshotWrite = undefined;
+      const scheduleExecutionTerminalSnapshotWrite = task => environment.snapshotTasks
+        ? pendingExecutionTerminalSnapshotWrites.push(task) : task.run(() => {});
       ${extract('createExecutionTerminalController')}
-      return createExecutionTerminalController('node', 'terminal', terminal, options);
+      return createExecutionTerminalController('node', environment.kind ?? 'terminal', terminal, options);
+    }
+    export function routeExit(detail, postMessage, executionTerminalRegistry) {
+      ${extract('routeExecutionTerminalExit')}
+      routeExecutionTerminalExit(detail);
     }
   `;
   const outfile = path.join(directory, 'actual-webview-controller.cjs');
   await esbuild.build({ stdin: { contents, resolveDir: path.dirname(filename), loader: 'ts' },
     outfile, bundle: true, platform: 'node', format: 'cjs', target: 'node18' });
   const require = createRequire(import.meta.url);
-  const { createController } = require(outfile);
+  const { createController, routeExit } = require(outfile);
   const { Terminal } = require('@xterm/headless');
   let passed = 0;
   const defer = () => {
@@ -408,17 +414,21 @@ async function verifyControllerSettlement(directory) {
       console.log(`PASS actual Webview writer: ${name}`);
     } finally { clearTimeout(timer); }
   };
-  const fixture = (readId = 'reader', headRevision = 0, settlementMode = 'final-application-v1') => {
+  const fixture = (readId = 'reader', headRevision = 0, settlementMode = 'final-application-v1', environment = {}) => {
     const messages = [];
     const terminal = new Terminal({ cols: 80, rows: 24, scrollback: 100, allowProposedApi: true });
     terminal.refresh = () => {};
     let snapshotNotifications = 0;
-    const diagnostics = { failNext: false };
+    const diagnostics = { failNext: false, released: 0, releaseFails: false };
     const controller = createController(terminal, message => messages.push(message), {
-      onSnapshotApplied: () => { snapshotNotifications++; }
+      onSnapshotApplied: () => { snapshotNotifications++; },
+      beginSnapshotRestoreDiagnosticsSuppression: () => () => {
+        diagnostics.released++;
+        if (diagnostics.releaseFails) throw new Error('controlled suppression release failure');
+      }
     }, () => {
       if (diagnostics.failNext) { diagnostics.failNext = false; throw new Error('controlled diagnostic callback failure'); }
-    });
+    }, environment);
     const descriptor = {
       readId, sessionId: 'session', authorityId: 'authority', headRevision,
       ...(settlementMode ? { settlementMode } : {}),
@@ -432,6 +442,13 @@ async function verifyControllerSettlement(directory) {
     });
     const requests = () => messages.filter(message => message.type === 'webview/readExecutionTerminalPage');
     const closes = () => messages.filter(message => message.type === 'webview/closeExecutionTerminalRead');
+    const localResults = () => messages.filter(message => message.type === 'webview/executionLocalTerminalSettled');
+    const localStart = (output = '', outputSequence = 0, executionSessionId = 'session') => controller.applySnapshot({
+      type: 'snapshot', nodeId: 'node', kind: environment.kind ?? 'terminal', output, outputSequence,
+      cols: 80, rows: 24, liveSession: true, executionSessionId
+    });
+    const localFinish = (finalOutputSequence = 0, executionSessionId = 'session', message = 'ended') =>
+      controller.showExit(message, executionSessionId, { executionSessionId, finalOutputSequence });
     const sendPage = events => {
       const request = requests().at(-1).payload;
       controller.applyTerminalPage(request.readId, request.requestId, {
@@ -441,6 +458,7 @@ async function verifyControllerSettlement(directory) {
       });
     };
     return { terminal, controller, messages, diagnostics, descriptor, start, requests, closes, sendPage,
+      localStart, localFinish, localResults,
       snapshotNotifications: () => snapshotNotifications,
       dispose() { controller.dispose(); terminal.dispose(); } };
   };
@@ -638,6 +656,219 @@ async function verifyControllerSettlement(directory) {
       f.controller.showExit('ended', 'session');
       await until(() => f.closes().length === 1, 'legacy close after actual callback');
       assert.equal(Object.hasOwn(f.closes()[0].payload, 'outcome'), false);
+    } finally { f.dispose(); }
+  });
+  for (const kind of ['terminal', 'agent']) {
+    await check(`local ${kind} tail waits for all partial drains, real callbacks and final cursor state`, async () => {
+      const f = fixture('reader', 0, null, { kind });
+      try {
+        f.localStart('BASE', 0);
+        await until(() => f.controller.getQueuedWriteCount() === 0, 'initial local snapshot');
+        const write = f.terminal.write.bind(f.terminal);
+        let release;
+        f.terminal.write = (text, done) => write(text, () => {
+          if (text === '') release = done;
+          else done();
+        });
+        f.controller.enqueueOutput('TAIL\x1b[?25l', {
+          executionSessionId: 'session', outputStartSequence: 1, outputSequence: 1, persisted: true
+        });
+        f.localStart('DUPLICATE MUST NOT REPLACE', 1);
+        f.localFinish(1);
+        f.controller.flushPendingOutput(2);
+        await until(() => f.controller.getQueuedWriteCount() === 0, 'partial output callback');
+        assert.equal(f.localResults().length, 0);
+        assert.ok(f.controller.getPendingOutputLength() > 0);
+        f.controller.flushPendingOutput();
+        await until(() => release !== undefined, 'local real sentinel callback');
+        assert.equal(f.localResults().length, 0);
+        assert.equal(f.terminal.buffer.active.getLine(0).translateToString(true), 'BASETAIL');
+        assert.equal(f.terminal._core.coreService.isCursorHidden, true);
+        release();
+        await until(() => f.localResults().length === 1, 'local final application');
+        assert.deepEqual(f.localResults()[0].payload, { nodeId: 'node', kind, executionSessionId: 'session',
+          outcome: { kind: 'applied', finalOutputSequence: 1 } });
+        f.localFinish(1);
+        assert.equal(f.localResults().length, 1, 'duplicate final does not create a second result');
+      } finally { f.dispose(); }
+    });
+  }
+
+  await check('local final zero waits for scheduled snapshot and both actual empty callbacks', async () => {
+    const snapshotTasks = [];
+    const f = fixture('reader', 0, null, { snapshotTasks });
+    const callbacks = [];
+    let schedulerFinished = 0;
+    const write = f.terminal.write.bind(f.terminal);
+    f.terminal.write = (text, done) => write(text, () => text === '' ? callbacks.push(done) : done());
+    try {
+      f.localFinish(0, 'session', '');
+      assert.equal(f.localResults().length, 0, 'no snapshot is not an applied empty terminal');
+      f.localStart();
+      await until(() => snapshotTasks.length === 1, 'scheduled local snapshot');
+      assert.equal(f.snapshotNotifications(), 1);
+      assert.equal(callbacks.length, 0);
+      snapshotTasks.shift().run(() => { schedulerFinished++; });
+      await until(() => callbacks.length === 1, 'empty snapshot callback');
+      assert.equal(f.localResults().length, 0);
+      callbacks.shift()();
+      await until(() => callbacks.length === 1, 'empty final barrier callback');
+      assert.equal(schedulerFinished, 1);
+      assert.equal(f.localResults().length, 0);
+      callbacks.shift()();
+      await until(() => f.localResults().length === 1, 'empty local completion');
+      assert.deepEqual(f.localResults()[0].payload.outcome, { kind: 'applied', finalOutputSequence: 0 });
+      assert.equal(f.controller.getQueuedWriteCount(), 0, 'empty local exit message queues no decorative write');
+      assert.equal(f.terminal.buffer.active.getLine(0).translateToString(true), '');
+    } finally { f.dispose(); }
+  });
+
+  await check('local gap and persistence barrier cannot be acknowledged until recovery is applied', async () => {
+    const f = fixture();
+    try {
+      f.localStart();
+      await until(() => f.controller.getQueuedWriteCount() === 0, 'local gap initial snapshot');
+      f.controller.enqueueOutput('GAP', {
+        executionSessionId: 'session', outputStartSequence: 2, outputSequence: 2, persisted: false
+      });
+      f.localFinish(2);
+      assert.equal(f.localResults().length, 0);
+      assert.equal(f.messages.filter(message => message.type === 'webview/attachExecutionSession').length, 1);
+      f.localStart('RECOVERED', 2);
+      await until(() => f.controller.getQueuedWriteCount() === 0, 'local recovery snapshot');
+      assert.equal(f.localResults().length, 0, 'persist barrier still blocks after snapshot');
+      f.controller.enqueueOutput('', { executionSessionId: 'session', outputSequence: 2, persisted: true });
+      await until(() => f.localResults().length === 1, 'local recovered completion');
+      assert.deepEqual(f.localResults()[0].payload.outcome, { kind: 'applied', finalOutputSequence: 2 });
+    } finally { f.dispose(); }
+  });
+
+  await check('unsequenced local output cannot prove the declared final prefix', async () => {
+    const f = fixture();
+    try {
+      f.localStart();
+      await until(() => f.controller.getQueuedWriteCount() === 0, 'unsequenced initial snapshot');
+      f.controller.enqueueOutput('UNTRACKED', { executionSessionId: 'session' });
+      f.controller.flushPendingOutput();
+      f.localFinish();
+      await until(() => f.controller.getQueuedWriteCount() === 0, 'unsequenced output callback');
+      assert.equal(f.localResults().length, 0);
+      f.controller.dispose();
+      assert.deepEqual(f.localResults()[0].payload.outcome, { kind: 'cancelled', reason: 'controller-disposed' });
+    } finally { f.dispose(); }
+  });
+
+  await check('a lower recovery snapshot keeps legacy flow but cannot prove the local final sequence', async () => {
+    const f = fixture();
+    const attaches = () => f.messages.filter(message => message.type === 'webview/attachExecutionSession');
+    try {
+      f.localStart('NEWER', 2);
+      await until(() => f.controller.getQueuedWriteCount() === 0, 'newer local snapshot');
+      f.controller.requestAttachSnapshot();
+      f.localStart('OLDER', 1);
+      await until(() => f.controller.getQueuedWriteCount() === 0, 'lower recovery snapshot');
+      assert.equal(f.controller.isOutputDrainBlocked(), false, 'legacy recovery barrier rule remains unchanged');
+      assert.equal(attaches().length, 1, 'legacy path does not introduce a new recovery request');
+      f.localFinish(2);
+      assert.equal(f.localResults().length, 0);
+      assert.equal(attaches().length, 2, 'only the new local completion requests a trusted projection');
+      f.localStart('FINAL', 2);
+      await until(() => f.localResults().length === 1, 'trusted local final snapshot');
+      assert.deepEqual(f.localResults()[0].payload.outcome, { kind: 'applied', finalOutputSequence: 2 });
+    } finally { f.dispose(); }
+  });
+
+  for (const failure of ['scheduled snapshot', 'suppression release', 'output', 'final sentinel']) {
+    await check(`local ${failure} failure cancels and releases the actual queue`, async () => {
+      const snapshotTasks = [];
+      const f = fixture('reader', 0, null, { snapshotTasks });
+      let schedulerFinished = 0;
+      try {
+        f.localStart('BASE');
+        await until(() => snapshotTasks.length === 1, 'local failure scheduled snapshot');
+        const write = f.terminal.write.bind(f.terminal);
+        if (failure === 'scheduled snapshot') f.terminal.reset = () => { throw new Error('scheduled reset failed'); };
+        if (failure === 'suppression release') f.diagnostics.releaseFails = true;
+        snapshotTasks.shift().run(() => { schedulerFinished++; });
+        await until(() => f.controller.getQueuedWriteCount() === 0, 'local snapshot failure cleanup');
+        f.terminal.write = (text, done) => {
+          if ((failure === 'output' && text === 'TAIL') || (failure === 'final sentinel' && text === '')) {
+            throw new Error('controlled local write failure');
+          }
+          write(text, done);
+        };
+        if (failure === 'output') {
+          f.controller.enqueueOutput('TAIL', { executionSessionId: 'session', outputStartSequence: 1, outputSequence: 1 });
+          f.controller.flushPendingOutput();
+        }
+        f.localFinish(failure === 'output' ? 1 : 0);
+        await until(() => f.localResults().length === 1 && f.controller.getQueuedWriteCount() === 0, 'local failed settlement');
+        assert.deepEqual(f.localResults()[0].payload.outcome, { kind: 'cancelled', reason: 'terminal-write-failed' });
+        assert.equal(schedulerFinished, 1);
+        assert.equal(f.diagnostics.released, 1);
+      } finally { f.dispose(); }
+    });
+  }
+
+  for (const boundary of ['replacement', 'dispose']) {
+    await check(`local ${boundary} cancels the old execution before its held real callback`, async () => {
+      const f = fixture();
+      try {
+        f.localStart('BASE');
+        await until(() => f.controller.getQueuedWriteCount() === 0, 'local boundary snapshot');
+        const write = f.terminal.write.bind(f.terminal);
+        let release;
+        f.terminal.write = (text, done) => write(text, () => {
+          if (text === '' && !release) release = done;
+          else done();
+        });
+        f.localFinish();
+        await until(() => release !== undefined, 'local old callback');
+        if (boundary === 'dispose') f.controller.dispose();
+        else { f.localStart('NEXT', 0, 'next-session'); f.localFinish(0, 'next-session'); }
+        assert.deepEqual(f.localResults()[0].payload, { nodeId: 'node', kind: 'terminal', executionSessionId: 'session',
+          outcome: { kind: 'cancelled', reason: boundary === 'dispose' ? 'controller-disposed' : 'execution-replaced' } });
+        release();
+        await until(() => f.controller.getQueuedWriteCount() === 0, 'local old callback cleanup');
+        if (boundary === 'replacement') {
+          assert.equal(f.localResults().length, 2);
+          assert.equal(f.localResults()[1].payload.executionSessionId, 'next-session');
+          assert.deepEqual(f.localResults()[1].payload.outcome, { kind: 'applied', finalOutputSequence: 0 });
+        } else assert.equal(f.localResults().length, 1);
+      } finally { f.dispose(); }
+    });
+  }
+
+  await check('missing or wrong-kind controller explicitly cancels local completion routing', async () => {
+    for (const entries of [[], [['node', { controller: { kind: 'agent', showExit() { assert.fail('wrong controller'); } } }]]]) {
+      const messages = [];
+      routeExit({ type: 'exit', nodeId: 'node', kind: 'terminal', message: 'ended', executionSessionId: 'session',
+        localCompletion: { executionSessionId: 'session', finalOutputSequence: 0 } }, message => messages.push(message), new Map(entries));
+      assert.deepEqual(messages[0], { type: 'webview/executionLocalTerminalSettled', payload: {
+        nodeId: 'node', kind: 'terminal', executionSessionId: 'session',
+        outcome: { kind: 'cancelled', reason: 'controller-unavailable' }
+      } });
+    }
+  });
+  await check('cancelling an enqueued local snapshot releases its write chain without running the restore', async () => {
+    const snapshotTasks = [];
+    const f = fixture('reader', 0, null, { snapshotTasks });
+    try {
+      f.localStart('MUST NOT APPLY');
+      f.localFinish();
+      await until(() => snapshotTasks.length === 1, 'queued snapshot before cancellation');
+      const task = snapshotTasks[0];
+      f.controller.dispose();
+      assert.equal(snapshotTasks.length, 0);
+      assert.equal(f.localResults().length, 1);
+      assert.deepEqual(f.localResults()[0].payload.outcome, { kind: 'cancelled', reason: 'controller-disposed' });
+      let finished = 0;
+      task.run(() => { finished++; });
+      await new Promise(resolve => setTimeout(resolve, 10));
+      assert.equal(finished, 1);
+      assert.equal(f.controller.getQueuedWriteCount(), 0);
+      assert.equal(f.localResults().length, 1);
+      assert.equal(f.terminal.buffer.active.getLine(0).translateToString(true), '');
     } finally { f.dispose(); }
   });
   console.log(`Actual Webview controller settlement: ${passed}/${passed} passed (real headless xterm callbacks, no UI/native).`);
