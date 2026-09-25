@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ExecutionOwnerLifecycle, type NonNativeExecutionOwnerOptions, type OwnedExecution } from './executionOwnerLifecycle';
+import { ExecutionOwnerLifecycle, type NonNativeExecutionOwnerOptions, type OwnedExecution, type OwnerCloseResult } from './executionOwnerLifecycle';
 import type { LaunchSpec } from '../common/executionLifecycle';
 import {
   ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
@@ -1199,6 +1199,17 @@ const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_FILES_DELETED = 100;
 const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_ENTRIES_SCANNED = 1000;
 const EXECUTION_IMAGE_PASTE_CACHE_MAINTENANCE_MAX_DURATION_MS = 200;
 
+type HostBoundaryDomainResult = Readonly<{ kind: 'settled' | 'unconfirmed' | 'failed'; reason?: string }>;
+
+export interface HostDeactivationReport {
+  readonly kind: 'settled' | 'unconfirmed';
+  readonly startedAt: number;
+  readonly deadline: number;
+  readonly local: HostBoundaryDomainResult;
+  readonly canvasSnapshot: HostBoundaryDomainResult;
+  readonly remoteDetach: HostBoundaryDomainResult;
+}
+
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_IDS.editorWebviewPanel;
   public static readonly panelViewType = VIEW_IDS.panelWebviewView;
@@ -1254,6 +1265,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly agentSessions = new Map<string, ManagedExecutionSession>();
   private readonly terminalSessions = new Map<string, ManagedExecutionSession>();
   private readonly nonNativeExecutionOwner?: ExecutionOwnerLifecycle;
+  private nonNativeDeactivationReport?: Promise<HostDeactivationReport>;
   private readonly nonNativeHostExecutions = new Map<string, NonNativeHostExecution>();
   private readonly pendingTerminalInitialInputs = new Map<string, string>();
   private readonly pendingTerminalInitialInputDispatches = new Map<string, PendingTerminalInitialInputDispatch>();
@@ -3738,13 +3750,93 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  public async prepareForDeactivation(): Promise<void> {
+  public async prepareForDeactivation(): Promise<HostDeactivationReport | void> {
+    if (this.nonNativeExecutionOwner?.options.capabilities.includes('execution-owner-boundary-v1')) {
+      return this.prepareNonNativeDeactivation();
+    }
     const nextStartupConfiguration = this.readStartupConfiguration();
     await this.prepareForHostBoundary({
       preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
       allowRuntimeSupervisorRestart: false,
       permanentExecutionClose: true
     });
+  }
+
+  private prepareNonNativeDeactivation(): Promise<HostDeactivationReport> {
+    if (this.nonNativeDeactivationReport) return this.nonNativeDeactivationReport;
+    const owner = this.nonNativeExecutionOwner!;
+    const scheduler = owner.options.scheduler;
+    const startedAt = scheduler.now();
+    const deadline = startedAt + owner.options.budgets.boundaryMs!;
+    let resolve!: (report: HostDeactivationReport) => void;
+    const result = new Promise<HostDeactivationReport>(done => { resolve = done; });
+    this.nonNativeDeactivationReport = result;
+    owner.closeAdmission(true);
+    type Domain = 'local' | 'canvasSnapshot' | 'remoteDetach';
+    const domains: Partial<Record<Domain, HostBoundaryDomainResult>> = {};
+    let report: HostDeactivationReport | undefined;
+    let cancelDeadline: (() => void) | undefined;
+    const finish = (): void => {
+      if (report) return;
+      if (scheduler.now() >= deadline) {
+        for (const domain of ['local', 'canvasSnapshot', 'remoteDetach'] as const) {
+          domains[domain] ??= Object.freeze({ kind: 'unconfirmed', reason: 'Host permanent boundary deadline reached' });
+        }
+      }
+      if (!domains.local || !domains.canvasSnapshot || !domains.remoteDetach) return;
+      report = Object.freeze({
+        kind: Object.values(domains).every(domain => domain.kind === 'settled') ? 'settled' : 'unconfirmed',
+        startedAt, deadline, local: domains.local, canvasSnapshot: domains.canvasSnapshot, remoteDetach: domains.remoteDetach
+      });
+      cancelDeadline?.();
+      resolve(report);
+      try { this.recordDiagnosticEvent('execution/hostDeactivationBoundary', { ...report }); }
+      catch { /* Diagnostic observers cannot change the frozen boundary outcome. */ }
+    };
+    const record = (domain: Domain, value: HostBoundaryDomainResult): void => {
+      if (report || domains[domain]) return;
+      if (scheduler.now() < deadline) domains[domain] = Object.freeze({ ...value });
+      finish();
+    };
+    const run = (domain: Domain, work: () => HostBoundaryDomainResult | Promise<HostBoundaryDomainResult>): void => {
+      if (scheduler.now() >= deadline) { finish(); return; }
+      try {
+        const operation = work();
+        if ('then' in operation) {
+          void operation.then(value => record(domain, value), error =>
+            record(domain, { kind: 'failed', reason: formatUnknownError(error) }));
+        } else record(domain, operation);
+      } catch (error) { record(domain, { kind: 'failed', reason: formatUnknownError(error) }); }
+    };
+    cancelDeadline = scheduler.scheduleDeadline(deadline, finish);
+    // Detach original remote readers before waiting for unrelated local or storage work.
+    run('remoteDetach', () => {
+      const clients = Array.from(this.runtimeSupervisorClients.entries());
+      let failed = 0;
+      let firstFailure: string | undefined;
+      const failure = (error: unknown): void => { failed++; firstFailure ??= formatUnknownError(error); };
+      try { this.terminalReadRelay.closeMatching(() => true); }
+      catch (error) { failure(error); }
+      for (const [key, client] of clients) {
+        try {
+          client.dispose();
+          if (this.runtimeSupervisorClients.get(key) === client) this.runtimeSupervisorClients.delete(key);
+        } catch (error) { failure(error); }
+      }
+      return failed > 0 ? { kind: 'failed', reason: `Host detach failed for ${failed} original resources: ${firstFailure}` }
+        : { kind: 'settled' };
+    });
+    run('local', async () => {
+      const closed = await this.beginNonNativeHostExecutionClose('host-deactivation', true, 'lost');
+      return closed.kind === 'settled' && owner.snapshot().pending === 0
+        ? { kind: 'settled' }
+        : { kind: 'unconfirmed', reason: `Host execution responsibility remains: ${closed.pending.join(', ')}` };
+    });
+    run('canvasSnapshot', async () => {
+      await this.persistState({ workspaceStateMode: 'full', requireRootLocalDurability: true, reason: 'host-deactivation' });
+      return { kind: 'settled' };
+    });
+    return result;
   }
 
   private async prepareForHostBoundary(options: {
@@ -9911,6 +10003,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     backend: RuntimeHostBackend,
     options: { allowRestart?: boolean } = {}
   ): Promise<RuntimeSupervisorClient> {
+    if (this.nonNativeDeactivationReport) throw new Error('Host permanent boundary has closed runtime client admission.');
     const runtimeStoragePath = this.getRuntimeStoragePathFromBackend(backend);
     const clientKey = this.buildRuntimeSupervisorClientKey(backend);
     let client = this.runtimeSupervisorClients.get(clientKey);
@@ -9940,6 +10033,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     await client.ensureConnected(options);
+    if (this.nonNativeDeactivationReport) throw new Error('Host permanent boundary closed during runtime client connection.');
     return client;
   }
 
@@ -10580,9 +10674,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private trackRuntimeSupervisorOperation<T>(operation: Promise<T>): void {
     this.pendingRuntimeSupervisorOperations.add(operation);
-    operation.finally(() => {
-      this.pendingRuntimeSupervisorOperations.delete(operation);
-    });
+    const settled = (): void => { this.pendingRuntimeSupervisorOperations.delete(operation); };
+    void operation.then(settled, settled);
   }
 
   private async waitForPendingRuntimeSupervisorOperations(): Promise<void> {
@@ -15956,8 +16049,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     permanent: boolean,
     readerOutcome: 'cancelled' | 'lost'
   ): Promise<void> {
+    const result = await this.beginNonNativeHostExecutionClose(reason, permanent, readerOutcome);
+    if (result.kind !== 'settled') {
+      throw new Error(`Non-native Host execution cleanup is unconfirmed: ${result.pending.join(', ')}`);
+    }
+  }
+
+  private async beginNonNativeHostExecutionClose(
+    reason: string,
+    permanent: boolean,
+    readerOutcome: 'cancelled' | 'lost'
+  ): Promise<OwnerCloseResult> {
     const owner = this.nonNativeExecutionOwner;
-    if (!owner) return;
+    if (!owner) return Object.freeze({ kind: 'settled', pending: Object.freeze([]) });
     owner.closeAdmission(permanent);
     for (const execution of owner.list()) {
       const record = this.nonNativeHostExecutions.get(execution.key);
@@ -15971,10 +16075,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         execution.settleReaders(readerOutcome);
       }
     }
-    const result = await owner.close({ reason, permanent });
-    if (result.kind !== 'settled') {
-      throw new Error(`Non-native Host execution cleanup is unconfirmed: ${result.pending.join(', ')}`);
-    }
+    return owner.close({ reason, permanent });
   }
 
   private buildTerminalLaunchSpec(

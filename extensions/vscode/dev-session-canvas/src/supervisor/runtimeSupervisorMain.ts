@@ -235,6 +235,36 @@ const OWNED_TERMINAL_READER_LIMIT = 128;
 const TERMINAL_READER_RECEIPT_LIMIT = 128;
 const TERMINAL_READER_RECEIPT_MS = 60_000;
 
+type SupervisorShutdownDomain = 'execution' | 'readers' | 'registry' | 'server' | 'sockets';
+type SupervisorShutdownStatus = 'pending' | 'settled' | 'failed';
+
+interface SupervisorShutdownReport {
+  readonly boundary: 'supervisor-shutdown';
+  readonly kind: 'settled' | 'unconfirmed' | 'failed';
+  readonly startedAt: number;
+  readonly deadline: number;
+  readonly pending: readonly SupervisorShutdownDomain[];
+  readonly domains: Readonly<Record<SupervisorShutdownDomain, SupervisorShutdownStatus>>;
+  readonly errors: Readonly<Partial<Record<SupervisorShutdownDomain, string>>>;
+}
+
+interface SupervisorShutdownBoundary {
+  readonly startedAt: number;
+  readonly deadline: number;
+  readonly executions: readonly OwnedExecution[];
+  readonly sockets: Map<net.Socket, SupervisorShutdownStatus>;
+  readonly promise: Promise<SupervisorShutdownReport>;
+  readonly resolve: (report: SupervisorShutdownReport) => void;
+  readonly errors: Partial<Record<SupervisorShutdownDomain, string>>;
+  cancelDeadline?: () => void;
+  keepAlive?: NodeJS.Timeout;
+  first?: SupervisorShutdownReport;
+  registry: SupervisorShutdownStatus;
+  server: SupervisorShutdownStatus;
+  registryStarted: boolean;
+  socketsEnded: boolean;
+}
+
 export class RuntimeSupervisorServer {
   private readonly sessions = new Map<string, SupervisorSession>();
   private readonly connections = new Set<net.Socket>();
@@ -253,6 +283,7 @@ export class RuntimeSupervisorServer {
   private idleShutdownTimer: NodeJS.Timeout | undefined;
   private server: net.Server | undefined;
   private readonly executionOwner?: ExecutionOwnerLifecycle;
+  private shutdownBoundary?: SupervisorShutdownBoundary;
 
   public constructor(
     private readonly paths: RuntimeSupervisorPaths,
@@ -268,13 +299,171 @@ export class RuntimeSupervisorServer {
       throw new Error('An injected execution owner is required for coordinated shutdown.');
     }
     this.clearIdleShutdownTimer();
+    if (this.ownerBoundaryEnabled()) return this.prepareOwnedShutdown(reason);
     return this.executionOwner.close({ reason, permanent: true });
   }
 
+  private ownerBoundaryEnabled(): boolean {
+    return this.executionOwner?.options.capabilities.includes('execution-owner-boundary-v1') === true;
+  }
+
+  private prepareOwnedShutdown(reason: string): Promise<SupervisorShutdownReport> {
+    if (this.shutdownBoundary) return this.shutdownBoundary.promise;
+    const owner = this.executionOwner!;
+    const startedAt = owner.options.scheduler.now();
+    let resolve!: (report: SupervisorShutdownReport) => void;
+    const boundary: SupervisorShutdownBoundary = {
+      startedAt, deadline: startedAt + owner.options.budgets.boundaryMs!, executions: owner.list(),
+      sockets: new Map([...this.connections].map(socket => [socket, 'pending'])),
+      promise: new Promise(done => { resolve = done; }), resolve, errors: {},
+      registry: 'pending', server: this.server ? 'pending' : 'settled', registryStarted: false, socketsEnded: false
+    };
+    this.shutdownBoundary = boundary;
+    // A closed listener must not let Node exit naturally while shutdown responsibility remains unknown.
+    boundary.keepAlive = setInterval(() => {}, IDLE_SHUTDOWN_DELAY_MS);
+    owner.closeAdmission(true);
+    for (const session of this.sessions.values()) {
+      if (!session.ownedExecution) continue;
+      session.terminalMutationAdmissionOpen = false;
+      session.ownedReaderAdmissionOpen = false;
+      this.settleOwnedReadersIfComplete(session);
+    }
+    boundary.cancelDeadline = owner.options.scheduler.scheduleDeadline(boundary.deadline, () => {
+      this.observeShutdownDeadline(boundary);
+    });
+    for (const socket of boundary.sockets.keys()) {
+      socket.once('close', () => {
+        this.observeShutdownDeadline(boundary);
+        boundary.sockets.set(socket, 'settled');
+        this.advanceOwnedShutdown();
+      });
+    }
+    if (this.server) {
+      try {
+        this.server.close(error => {
+          this.observeShutdownDeadline(boundary);
+          boundary.server = error ? 'failed' : 'settled';
+          if (error) boundary.errors.server = error.message;
+          this.advanceOwnedShutdown();
+        });
+      } catch (error) {
+        boundary.server = 'failed';
+        boundary.errors.server = error instanceof Error ? error.message : String(error);
+      }
+    }
+    void owner.close({ reason, permanent: true }).then(
+      () => this.advanceOwnedShutdown(),
+      error => {
+        this.observeShutdownDeadline(boundary);
+        boundary.errors.execution = error instanceof Error ? error.message : String(error);
+        this.finishOwnedShutdown(boundary, 'failed');
+      }
+    );
+    this.advanceOwnedShutdown();
+    return boundary.promise;
+  }
+
+  private shutdownDomains(boundary: SupervisorShutdownBoundary): Record<SupervisorShutdownDomain, SupervisorShutdownStatus> {
+    const legacySubscriptions = [...this.subscriptions.values(), ...this.deferredSubscriptionRevisions.values()]
+      .some(subscriptions => [...subscriptions.keys()].some(sessionId => {
+        const session = this.sessions.get(sessionId);
+        return session && !session.ownedExecution;
+      }));
+    return {
+      execution: boundary.errors.execution ? 'failed'
+        : boundary.executions.some(execution => !execution.snapshot().settled)
+          || [...this.sessions.values()].some(session => session.live && !session.ownedExecution) ? 'pending' : 'settled',
+      readers: boundary.executions.some(execution => execution.snapshot().readerOutcome === 'pending')
+        || [...this.terminalReads.values()].some(reads => reads.size > 0) || legacySubscriptions ? 'pending' : 'settled',
+      registry: boundary.registry,
+      server: boundary.server,
+      sockets: boundary.errors.sockets ? 'failed'
+        : [...boundary.sockets.values()].some(status => status !== 'settled') ? 'pending' : 'settled'
+    };
+  }
+
+  private finishOwnedShutdown(boundary: SupervisorShutdownBoundary, kind: SupervisorShutdownReport['kind']): void {
+    if (boundary.first) return;
+    const domains = Object.freeze(this.shutdownDomains(boundary));
+    boundary.first = Object.freeze({
+      boundary: 'supervisor-shutdown', kind, startedAt: boundary.startedAt, deadline: boundary.deadline,
+      domains, pending: Object.freeze((Object.keys(domains) as SupervisorShutdownDomain[])
+        .filter(domain => domains[domain] !== 'settled')), errors: Object.freeze({ ...boundary.errors })
+    });
+    boundary.cancelDeadline?.();
+    if (kind === 'settled' && boundary.keepAlive) {
+      clearInterval(boundary.keepAlive);
+      boundary.keepAlive = undefined;
+    }
+    boundary.resolve(boundary.first);
+  }
+
+  private observeShutdownDeadline(boundary: SupervisorShutdownBoundary): void {
+    if (!boundary.first && this.executionOwner!.options.scheduler.now() >= boundary.deadline) {
+      this.finishOwnedShutdown(boundary, 'unconfirmed');
+    }
+  }
+
+  private advanceOwnedShutdown(): void {
+    const boundary = this.shutdownBoundary;
+    if (!boundary) return;
+    this.observeShutdownDeadline(boundary);
+    if (boundary.first) return;
+    const domains = this.shutdownDomains(boundary);
+    if (Object.values(domains).includes('failed')) {
+      this.finishOwnedShutdown(boundary, 'failed');
+      return;
+    }
+    if (this.executionOwner!.snapshot().pending > 0 || domains.execution !== 'settled' || domains.readers !== 'settled') return;
+    if (!boundary.registryStarted) {
+      boundary.registryStarted = true;
+      void this.flushRegistryBeforeShutdown(true).then(
+        () => {
+          this.observeShutdownDeadline(boundary);
+          boundary.registry = 'settled';
+          this.advanceOwnedShutdown();
+        },
+        error => {
+          this.observeShutdownDeadline(boundary);
+          boundary.registry = 'failed';
+          boundary.errors.registry = error instanceof Error ? error.message : String(error);
+          this.advanceOwnedShutdown();
+        }
+      );
+      return;
+    }
+    if (boundary.registry !== 'settled') return;
+    if (!boundary.socketsEnded) {
+      boundary.socketsEnded = true;
+      for (const [socket, status] of boundary.sockets) {
+        if (status === 'settled') continue;
+        this.observeShutdownDeadline(boundary);
+        if (boundary.first) return;
+        try { socket.end(); }
+        catch (error) {
+          boundary.errors.sockets = error instanceof Error ? error.message : String(error);
+          this.finishOwnedShutdown(boundary, 'failed');
+          return;
+        }
+      }
+    }
+    if (Object.values(this.shutdownDomains(boundary)).every(status => status === 'settled')) {
+      this.finishOwnedShutdown(boundary, 'settled');
+    }
+  }
+
+  private assertOwnedAdmissionOpen(session?: SupervisorSession): void {
+    if (this.shutdownBoundary && (!session || session.ownedExecution)) {
+      throw new Error('Supervisor shutdown admission is closed.');
+    }
+  }
+
   public async start(): Promise<void> {
+    this.assertOwnedAdmissionOpen();
     fs.mkdirSync(this.paths.storageDir, { recursive: true });
     ensureSocketDirectoryReady(this.paths);
     await this.loadRegistry();
+    this.assertOwnedAdmissionOpen();
     await this.listen();
     this.scheduleIdleShutdownIfNeeded();
   }
@@ -284,55 +473,7 @@ export class RuntimeSupervisorServer {
       fs.unlinkSync(this.paths.socketPath);
     }
 
-    this.server = net.createServer((socket) => {
-      this.connections.add(socket);
-      this.subscriptions.set(socket, new Map());
-      this.deferredSubscriptionRevisions.set(socket, new Map());
-      this.terminalReads.set(socket, new Map());
-      this.appliedRevisionAcks.set(socket, new Map());
-      this.clearIdleShutdownTimer();
-      socket.setEncoding('utf8');
-      let buffer = '';
-
-      socket.on('data', (chunk) => {
-        buffer += chunk;
-        while (true) {
-          const newlineIndex = buffer.indexOf('\n');
-          if (newlineIndex < 0) {
-            break;
-          }
-
-          const line = buffer.slice(0, newlineIndex).trim();
-          buffer = buffer.slice(newlineIndex + 1);
-          if (!line) {
-            continue;
-          }
-
-          try {
-            const message = JSON.parse(line) as RuntimeSupervisorMessage;
-            if (message.type === 'request') {
-              void this.handleRequest(socket, message);
-            }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : 'Invalid JSON message.';
-            this.writeMessage(socket, createErrorResponse('parse-error', {
-              id: 'parseError',
-              params: {
-                message
-              }
-            }, RUNTIME_SUPERVISOR_ERROR_CODES.parseError));
-          }
-        }
-      });
-
-      socket.on('close', () => {
-        this.cleanupSocket(socket);
-      });
-
-      socket.on('error', () => {
-        this.cleanupSocket(socket);
-      });
-    });
+    this.server = net.createServer((socket) => this.acceptSocket(socket));
 
     await new Promise<void>((resolve, reject) => {
       this.server?.once('error', reject);
@@ -340,6 +481,60 @@ export class RuntimeSupervisorServer {
         this.server?.removeListener('error', reject);
         resolve();
       });
+    });
+  }
+
+  private acceptSocket(socket: net.Socket): void {
+    if (this.shutdownBoundary) {
+      socket.destroy();
+      return;
+    }
+    this.connections.add(socket);
+    this.subscriptions.set(socket, new Map());
+    this.deferredSubscriptionRevisions.set(socket, new Map());
+    this.terminalReads.set(socket, new Map());
+    this.appliedRevisionAcks.set(socket, new Map());
+    this.clearIdleShutdownTimer();
+    socket.setEncoding('utf8');
+    let buffer = '';
+
+    socket.on('data', (chunk) => {
+      buffer += chunk;
+      while (true) {
+        const newlineIndex = buffer.indexOf('\n');
+        if (newlineIndex < 0) {
+          break;
+        }
+
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (!line) {
+          continue;
+        }
+
+        try {
+          const message = JSON.parse(line) as RuntimeSupervisorMessage;
+          if (message.type === 'request') {
+            void this.handleRequest(socket, message);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Invalid JSON message.';
+          this.writeMessage(socket, createErrorResponse('parse-error', {
+            id: 'parseError',
+            params: {
+              message
+            }
+          }, RUNTIME_SUPERVISOR_ERROR_CODES.parseError));
+        }
+      }
+    });
+
+    socket.on('close', () => {
+      this.cleanupSocket(socket);
+    });
+
+    socket.on('error', () => {
+      this.cleanupSocket(socket);
     });
   }
 
@@ -479,6 +674,7 @@ export class RuntimeSupervisorServer {
     socket: net.Socket,
     params: RuntimeSupervisorCreateSessionParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
+    this.assertOwnedAdmissionOpen();
     const sessionId = params.sessionId?.trim() || randomUUID();
     if (this.sessions.has(sessionId)) {
       throw createRuntimeSupervisorProtocolError({
@@ -520,6 +716,12 @@ export class RuntimeSupervisorServer {
       // A rejected create may already have written part of its journal; retain the reservation.
       if (ownedExecution) void ownedExecution.requestStop('Terminal journal preparation is unconfirmed.');
       throw error;
+    }
+    if (ownedExecution && this.shutdownBoundary) {
+      await terminalJournal.delete();
+      ownedExecution.abandon('Supervisor closed during terminal journal preparation.');
+      this.advanceOwnedShutdown();
+      throw new Error('Supervisor shutdown admission is closed.');
     }
     let process: ExecutionSessionProcess | undefined;
     try {
@@ -615,6 +817,7 @@ export class RuntimeSupervisorServer {
         }
         terminalStateTracker.dispose();
         ownedExecution.abandon('Execution start was rejected before acquiring a provider.');
+        this.advanceOwnedShutdown();
         throw error;
       }
     } else {
@@ -651,6 +854,7 @@ export class RuntimeSupervisorServer {
 
     this.schedulePersist();
     const snapshot = await this.toAttachSnapshot(session, params.terminalStreamMode);
+    this.assertOwnedAdmissionOpen(session);
     if (params.deferSubscription === true && snapshot.terminalRevision !== undefined) {
       this.deferSocketSubscription(socket, sessionId, snapshot.terminalRevision);
     }
@@ -662,10 +866,12 @@ export class RuntimeSupervisorServer {
     params: RuntimeSupervisorAttachSessionParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
     const session = this.requireSession(params.sessionId);
+    this.assertOwnedAdmissionOpen();
 
     if (params.deferSubscription === true && session.terminalJournal && session.terminalCheckpoint) {
       this.subscriptions.get(socket)?.delete(params.sessionId);
       const snapshot = await this.toAttachSnapshot(session, params.terminalStreamMode);
+      this.assertOwnedAdmissionOpen();
       if (snapshot.terminalRevision !== undefined) {
         this.deferSocketSubscription(socket, params.sessionId, snapshot.terminalRevision);
       }
@@ -676,10 +882,14 @@ export class RuntimeSupervisorServer {
     if (params.terminalStreamMode) {
       this.subscribeSocket(socket, params.sessionId, params.terminalStreamMode === 'paged-until-exit'
         ? 'terminal-stream-paged-completion' : 'terminal-stream-paged');
-      return this.toAttachSnapshot(session, params.terminalStreamMode);
+      const snapshot = await this.toAttachSnapshot(session, params.terminalStreamMode);
+      this.assertOwnedAdmissionOpen();
+      return snapshot;
     }
     this.subscribeSocket(socket, params.sessionId, 'legacy');
-    return this.toFreshSnapshot(session);
+    const snapshot = await this.toFreshSnapshot(session);
+    this.assertOwnedAdmissionOpen();
+    return snapshot;
   }
 
   private getSessionSnapshot(
@@ -720,6 +930,7 @@ export class RuntimeSupervisorServer {
     params: RuntimeSupervisorOpenTerminalReadParams
   ): Promise<TerminalStreamReadDescriptor> {
     const session = this.requireSession(params.sessionId);
+    this.assertOwnedAdmissionOpen();
     if (params.settlementMode !== undefined &&
         (params.settlementMode !== 'final-application-v1' || !session.ownedReaders)) {
       throw new Error('Terminal reader settlement capability is unavailable.');
@@ -740,6 +951,7 @@ export class RuntimeSupervisorServer {
         throw new Error('Invalid terminal reader connection or consumer.');
       }
       await this.createFreshSnapshot(session, 'always', false);
+      if (!owned) this.assertOwnedAdmissionOpen();
       if (owned) this.assertOwnedTerminalReader(owned);
       if (session.ownedExecution) {
         if (this.sessions.get(session.sessionId) !== session) {
@@ -870,6 +1082,7 @@ export class RuntimeSupervisorServer {
         await this.enqueueTerminalOperation(session, () => this.finishSessionRetirement(session));
       }
     }
+    this.advanceOwnedShutdown();
     return { ok: true };
   }
 
@@ -1020,6 +1233,7 @@ export class RuntimeSupervisorServer {
     params: RuntimeSupervisorSubscribeSessionParams
   ): Promise<RuntimeSupervisorSubscribeSessionResult> {
     const session = this.requireSession(params.sessionId);
+    this.assertOwnedAdmissionOpen();
     return this.enqueueTerminalOperation(session, () =>
       this.subscribeSessionAtSettledRevision(socket, session, params)
     );
@@ -1030,6 +1244,7 @@ export class RuntimeSupervisorServer {
     session: SupervisorSession,
     params: RuntimeSupervisorSubscribeSessionParams
   ): Promise<RuntimeSupervisorSubscribeSessionResult> {
+    this.assertOwnedAdmissionOpen();
     const journal = session.terminalJournal;
     if (session.terminalJournalError || !journal || !session.terminalAuthorityId || !session.terminalCheckpoint) {
       throw createRuntimeSupervisorProtocolError({
@@ -1072,8 +1287,10 @@ export class RuntimeSupervisorServer {
     const paged = params.terminalStreamMode !== undefined;
     const pagedCompletion = params.terminalStreamMode === 'paged-until-exit';
     const snapshot = await this.createFreshSnapshot(session, 'never', !paged || (!session.live && !pagedCompletion));
+    this.assertOwnedAdmissionOpen();
     if (paged) {
       for await (const page of journal.readEventPagesAfter(afterRevision)) {
+        this.assertOwnedAdmissionOpen();
         for (const event of page) {
           this.writeTerminalStreamEvent(socket, session, event);
         }
@@ -1081,6 +1298,7 @@ export class RuntimeSupervisorServer {
       }
     } else {
       for (const event of await journal.getEventsAfter(afterRevision)) {
+        this.assertOwnedAdmissionOpen();
         this.writeTerminalStreamEvent(socket, session, event);
       }
     }
@@ -1260,6 +1478,7 @@ export class RuntimeSupervisorServer {
   private stopSession(params: RuntimeSupervisorStopSessionParams): void {
     const ownedSession = this.sessions.get(params.sessionId);
     if (ownedSession?.ownedExecution) {
+      this.assertOwnedAdmissionOpen(ownedSession);
       if (!ownedSession.live) throw new Error('Execution is not live.');
       ownedSession.stopRequested = true;
       ownedSession.lifecycle = 'stopping';
@@ -1291,6 +1510,7 @@ export class RuntimeSupervisorServer {
 
   private async deleteSession(params: RuntimeSupervisorDeleteSessionParams): Promise<void> {
     const session = this.requireSession(params.sessionId, true);
+    this.assertOwnedAdmissionOpen(session);
     if (params.preserveTerminalReads && session.live) {
       throw new Error('Only ended runtime sessions can retain terminal readers.');
     }
@@ -1383,13 +1603,15 @@ export class RuntimeSupervisorServer {
   }
 
   private async removeSession(session: SupervisorSession): Promise<void> {
-    this.disposeSession(session, { terminateProcess: false });
+    const deferDisposal = this.ownerBoundaryEnabled() && Boolean(session.ownedExecution);
+    if (!deferDisposal) this.disposeSession(session, { terminateProcess: false });
     if (session.terminalJournal) {
       await session.terminalJournal.delete();
     } else if (session.terminalAuthorityId) {
       await fs.promises.rm(resolveTerminalJournalSessionDirectory(this.paths.storageDir, session.sessionId),
         { recursive: true, force: true });
     }
+    if (deferDisposal) this.disposeSession(session, { terminateProcess: false });
     if (session.ownedExecution && this.sessions.get(session.sessionId) !== session) return;
     this.clearSessionSubscriptions(session.sessionId);
     this.sessions.delete(session.sessionId);
@@ -1422,7 +1644,10 @@ export class RuntimeSupervisorServer {
           void this.enqueueTerminalOperation(session, () => this.finishSessionRetirement(session))
             .catch((error) => console.error('Failed to retire owned execution:', error));
         }
-        void Promise.resolve().then(() => this.scheduleIdleShutdownIfNeeded()).catch((error) => {
+        void Promise.resolve().then(() => {
+          this.advanceOwnedShutdown();
+          this.scheduleIdleShutdownIfNeeded();
+        }).catch((error) => {
           this.executionOwner?.authority.quarantine('Supervisor idle coordination failed.');
           console.error('Failed to coordinate owned execution idle retirement:', error);
         });
@@ -2248,20 +2473,22 @@ export class RuntimeSupervisorServer {
   }
 
   private subscribeSocket(socket: net.Socket, sessionId: string, mode: SupervisorSubscriptionMode): void {
+    const session = this.sessions.get(sessionId);
+    this.assertOwnedAdmissionOpen();
     const subscriptions = this.subscriptions.get(socket);
     if (!subscriptions) {
       return;
     }
 
     subscriptions.set(sessionId, mode);
-    const session = this.sessions.get(sessionId);
     if (session?.ownedReaderAdmissionOpen) session.ownedReaderSockets?.add(socket);
   }
 
   private deferSocketSubscription(socket: net.Socket, sessionId: string, revision: number): void {
+    const session = this.sessions.get(sessionId);
+    this.assertOwnedAdmissionOpen();
     this.subscriptions.get(socket)?.delete(sessionId);
     this.deferredSubscriptionRevisions.get(socket)?.set(sessionId, revision);
-    const session = this.sessions.get(sessionId);
     if (session?.ownedReaderAdmissionOpen) session.ownedReaderSockets?.add(socket);
   }
 
@@ -2490,7 +2717,13 @@ export class RuntimeSupervisorServer {
     }, 120);
   }
 
-  private async persistRegistry(): Promise<void> {
+  private async persistRegistry(strict = false): Promise<void> {
+    if (strict) {
+      for (const session of this.sessions.values()) {
+        if (session.terminalJournalError) throw session.terminalJournalError;
+        if (session.retiring) throw new Error('Session deletion has not completed before shutdown persistence.');
+      }
+    }
     const sessionEntries = Array.from(this.sessions.values()).filter((session) => !session.retiring);
     const snapshots = await Promise.all(
       sessionEntries.map(async (session) => {
@@ -2502,13 +2735,16 @@ export class RuntimeSupervisorServer {
             !session.terminalAuthorityId
           );
         } catch (error) {
+          if (strict) throw error;
           if (!session.terminalJournal) {
             throw error;
           }
           this.failSessionForTerminalJournal(session, error);
           snapshot = this.toSnapshot(session);
         }
+        if (strict && session.terminalJournalError) throw session.terminalJournalError;
         if (this.sessions.get(session.sessionId) !== session || session.retiring) {
+          if (strict) throw new Error('Session changed during shutdown persistence.');
           return undefined;
         }
         return session.terminalJournalError && session.terminalAuthorityId
@@ -2528,13 +2764,13 @@ export class RuntimeSupervisorServer {
     await fs.promises.rename(tempPath, this.paths.registryPath);
   }
 
-  private async flushRegistryBeforeShutdown(): Promise<void> {
+  private async flushRegistryBeforeShutdown(strict = false): Promise<void> {
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
       this.persistTimer = undefined;
     }
     await this.persistRegistryChain;
-    await this.persistRegistry();
+    await this.persistRegistry(strict);
     this.persistRegistryError = undefined;
   }
 
@@ -2813,6 +3049,11 @@ export class RuntimeSupervisorServer {
   }
 
   private scheduleIdleShutdownIfNeeded(): void {
+    if (this.shutdownBoundary) {
+      this.clearIdleShutdownTimer();
+      this.advanceOwnedShutdown();
+      return;
+    }
     if (this.connections.size > 0 || Array.from(this.sessions.values()).some((session) => session.live)
       || (this.executionOwner?.snapshot().pending ?? 0) > 0) {
       this.clearIdleShutdownTimer();
@@ -2823,23 +3064,33 @@ export class RuntimeSupervisorServer {
       return;
     }
 
-    this.idleShutdownTimer = setTimeout(() => {
-      this.idleShutdownTimer = undefined;
-      if (this.executionOwner) {
-        if (this.connections.size > 0 || this.executionOwner.snapshot().pending > 0
-          || Array.from(this.sessions.values()).some((session) => session.live)) return;
-        this.executionOwner.closeAdmission(true);
+    this.idleShutdownTimer = setTimeout(() => this.runIdleShutdown(), IDLE_SHUTDOWN_DELAY_MS);
+  }
+
+  private runIdleShutdown(): void {
+    this.idleShutdownTimer = undefined;
+    if (this.ownerBoundaryEnabled()) {
+      if (this.connections.size > 0 || this.executionOwner!.snapshot().pending > 0
+        || Array.from(this.sessions.values()).some((session) => session.live)) return;
+      void this.prepareForShutdown('Supervisor idle shutdown.').then(report => {
+        if (report.kind === 'settled') process.exit(0);
+      });
+      return;
+    }
+    if (this.executionOwner) {
+      if (this.connections.size > 0 || this.executionOwner.snapshot().pending > 0
+        || Array.from(this.sessions.values()).some((session) => session.live)) return;
+      this.executionOwner.closeAdmission(true);
+    }
+    void this.flushRegistryBeforeShutdown().then(
+      () => process.exit(0),
+      (error) => {
+        const normalizedError = error instanceof Error ? error : new Error(String(error));
+        this.persistRegistryError = normalizedError;
+        console.error('Failed to flush runtime supervisor registry before shutdown:', normalizedError);
+        process.exit(1);
       }
-      void this.flushRegistryBeforeShutdown().then(
-        () => process.exit(0),
-        (error) => {
-          const normalizedError = error instanceof Error ? error : new Error(String(error));
-          this.persistRegistryError = normalizedError;
-          console.error('Failed to flush runtime supervisor registry before shutdown:', normalizedError);
-          process.exit(1);
-        }
-      );
-    }, IDLE_SHUTDOWN_DELAY_MS);
+    );
   }
 
   private clearIdleShutdownTimer(): void {

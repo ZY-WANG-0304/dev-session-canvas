@@ -1163,6 +1163,295 @@ for (const kind of ['terminal', 'agent']) {
   });
 }
 
+const boundaryCapabilities = [...closeObservationCapabilities, 'execution-owner-boundary-v1'];
+
+function boundaryFixture(options = {}) {
+  const f = fixture({ ...options, capabilities: boundaryCapabilities,
+    budgets: { naturalDrainMs: 15, boundaryMs: 50, ...options.budgets } });
+  const writes = [];
+  const detach = [];
+  delete f.host.persistState;
+  delete f.host.disposeRuntimeSupervisorClients;
+  Object.assign(f.host, {
+    readStartupConfiguration: () => ({}), shouldPreserveLiveRuntimeAcrossHostBoundary: () => true,
+    syncNoteMarkdownFileWatchers() {}, cleanupUnreferencedNoteMarkdownRecoverableDraftFiles() {},
+    recordStatePersistPerformance() {},
+    queuePersistedCanvasSnapshotWrite(snapshot, options) {
+      writes.push({ snapshot, options });
+      return Promise.resolve();
+    },
+    terminalReadRelay: { closeMatching: () => detach.push('relay') },
+    runtimeSupervisorClients: new Map([['original-client', { dispose: () => detach.push('client') }]])
+  });
+  return { ...f, writes, detach };
+}
+
+for (const kind of ['terminal', 'agent']) {
+  test(`${kind} permanent departure reports local unknown while saving the canvas and detaching original live clients`, async () => {
+    const f = boundaryFixture();
+    const { record, provider } = await f.started(kind);
+    const remote = { owner: 'supervisor', runtimeSessionId: 'original-live' };
+    const binding = { nodeId: 'live-node', runtimeSessionId: 'original-live' };
+    f.host.terminalSessions.set('live-node', remote);
+    f.host.runtimeSessionBindings.set('original-live', binding);
+    f.host.waitForPendingRuntimeSupervisorOperations = () => new Promise(() => {});
+    f.host.shouldPreserveLiveRuntimeAcrossHostBoundary = () => false;
+    f.host.collectPersistedLiveRuntimeSessions = () => assert.fail('permanent departure must not collect live deletion');
+    f.host.deleteRuntimeSupervisorSessions = () => assert.fail('permanent departure must not delete live executions');
+    try {
+      const closing = f.host.prepareForDeactivation();
+      assert.equal(f.owner.snapshot().permanent, true);
+      assert.deepEqual(f.detach, ['relay', 'client']);
+      assert.equal(f.writes.length, 1);
+      f.clock.advance(40);
+      const report = await completed(f.clock, closing, `${kind} permanent failure report`);
+      assert.equal(report.kind, 'unconfirmed');
+      assert.equal(report.local.kind, 'unconfirmed');
+      assert.equal(report.canvasSnapshot.kind, 'settled');
+      assert.equal(report.remoteDetach.kind, 'settled');
+      assert.equal(report.startedAt, 0);
+      assert.equal(report.deadline, 50);
+      assert.ok(Object.isFrozen(report));
+      assert.ok(Object.isFrozen(report.local));
+      assert.strictEqual(await f.host.prepareForDeactivation(), report);
+      assert.equal(f.writes[0].options.workspaceStateMode, 'full');
+      assert.strictEqual(f.host.terminalSessions.get('live-node'), remote);
+      assert.strictEqual(f.host.runtimeSessionBindings.get('original-live'), binding);
+      assert.strictEqual(f.record(kind), record);
+      assert.equal(f.host.state.nodes.length, 2);
+      assert.equal(f.diagnostics.filter(item => item.name === 'execution/hostDeactivationBoundary').length, 1);
+      provider.process(); provider.seal(0); provider.release();
+      await until(f.clock, () => record.execution.snapshot().retired, `${kind} original late responsibility`);
+      assert.strictEqual(await f.host.prepareForDeactivation(), report);
+      assert.equal(f.writes.length, 1, 'late local settlement must not submit a new save');
+      assert.equal(f.owner.tryResume(), false);
+    } finally { record.tracker.dispose(); }
+  });
+}
+
+test('permanent departure uses the original canvas write promise and classifies cutoff completion as unconfirmed', async () => {
+  for (const trigger of ['completion', 'timer']) {
+    const f = boundaryFixture({ budgets: { boundaryMs: 20 } });
+    const write = deferred();
+    let writes = 0;
+    f.host.queuePersistedCanvasSnapshotWrite = () => { writes++; return write.promise; };
+    const preparation = f.owner.reserve('terminal:preparing');
+    const closing = f.host.prepareForDeactivation();
+    assert.deepEqual(f.detach, ['relay', 'client']);
+    assert.equal(writes, 1);
+    if (trigger === 'completion') { f.clock.elapse(20); write.resolve(); }
+    else f.clock.advance(20);
+    const report = await completed(f.clock, closing, `cutoff canvas snapshot from ${trigger}`);
+    assert.equal(report.local.kind, 'unconfirmed');
+    assert.equal(report.canvasSnapshot.kind, 'unconfirmed');
+    assert.equal(report.remoteDetach.kind, 'settled');
+    assert.equal(report.deadline, 20);
+    assert.equal(f.owner.get(preparation.key), preparation);
+    preparation.abandon('late original cleanup');
+    write.resolve();
+    assert.strictEqual(await f.host.prepareForDeactivation(), report);
+    assert.equal(writes, 1);
+  }
+});
+
+test('permanent departure reports settled only after the original terminal tracker actually finishes', async () => {
+  const f = boundaryFixture();
+  const { record, provider } = await f.started('terminal');
+  const gate = deferred();
+  const entered = deferred();
+  const flush = record.tracker.flush.bind(record.tracker);
+  let finalState;
+  let reported = false;
+  f.host.collectPersistedLiveRuntimeSessions = () => assert.fail('normal permanent departure must not delete remote live');
+  f.host.deleteRuntimeSupervisorSessions = () => assert.fail('normal permanent departure must not delete remote live');
+  try {
+    provider.output(1, 'permanent-final-tail');
+    await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'permanent accepted tail');
+    record.tracker.flush = async () => {
+      entered.resolve();
+      await gate.promise;
+      finalState = await flush();
+      return finalState;
+    };
+    const closing = f.host.prepareForDeactivation().then(report => { reported = true; return report; });
+    await until(f.clock, () => provider.messages.some(message => message.type === 'requestStop'), 'permanent local stop');
+    provider.process(); provider.seal(1); provider.release();
+    await entered.promise;
+    await pump(f.clock, () => true);
+    assert.equal(reported, false);
+    assert.equal(record.execution.snapshot().readerOutcome, 'lost');
+    assert.equal(record.execution.snapshot().terminal, undefined);
+    assert.equal(f.owner.snapshot().pending, 1);
+    assert.deepEqual(f.detach, ['relay', 'client']);
+    gate.resolve();
+    const report = await completed(f.clock, closing, 'permanent original final flush');
+    assert.equal(report.kind, 'settled');
+    assert.equal(report.local.kind, 'settled');
+    assert.equal(report.canvasSnapshot.kind, 'settled');
+    assert.equal(report.remoteDetach.kind, 'settled');
+    assert.match(finalState.data, /permanent-final-tail/);
+    assert.equal(record.execution.snapshot().terminal.finalRevision, 1);
+    assert.equal(record.execution.snapshot().retired, true);
+    assert.equal(f.owner.snapshot().pending, 0);
+    assert.equal(f.writes.length, 1, 'the current canvas save is not a second terminal-history save');
+  } finally { gate.resolve(); record.tracker.dispose(); }
+});
+
+test('permanent departure keeps independent save and detach failures without losing successful local closure', async () => {
+  for (const failure of ['root-local', 'snapshot-write']) {
+    const f = boundaryFixture({ roots: failure === 'root-local' ? [{ path: '/controlled/root', name: 'root' }] : [] });
+    if (failure === 'root-local') f.host.writeRootLocalCanvasSnapshot = () => { throw new Error('root-local rejected'); };
+    else f.host.queuePersistedCanvasSnapshotWrite = () => Promise.reject(new Error('snapshot-write rejected'));
+    f.host.terminalReadRelay.closeMatching = () => { throw new Error('detach rejected'); };
+    const failedClient = { dispose: () => { throw new Error('original client rejected'); } };
+    f.host.runtimeSupervisorClients.set('first-failed-client', failedClient);
+    f.host.runtimeSupervisorClients.set('later-client', { dispose: () => f.detach.push('later-client') });
+    const diagnostic = f.host.recordDiagnosticEvent;
+    f.host.recordDiagnosticEvent = (name, detail) => {
+      if (name === 'execution/hostDeactivationBoundary') throw new Error('diagnostic observer rejected');
+      diagnostic(name, detail);
+    };
+    const report = await completed(f.clock, f.host.prepareForDeactivation(), failure);
+    assert.equal(report.kind, 'unconfirmed');
+    assert.equal(report.local.kind, 'settled');
+    assert.equal(report.canvasSnapshot.kind, 'failed');
+    assert.match(report.canvasSnapshot.reason, new RegExp(failure));
+    assert.equal(report.remoteDetach.kind, 'failed');
+    assert.match(report.remoteDetach.reason, /detach rejected/);
+    assert.deepEqual(f.detach, ['client', 'later-client'], 'one detach failure cannot skip other original clients');
+    assert.strictEqual(f.host.runtimeSupervisorClients.get('first-failed-client'), failedClient);
+    assert.equal(f.host.runtimeSupervisorClients.size, 1);
+    assert.equal(f.host.state.nodes.length, 2);
+    assert.equal(f.owner.snapshot().permanent, true);
+  }
+  const f = boundaryFixture();
+  const originalFailure = new Error('original pending runtime operation disconnected');
+  const unhandled = [];
+  const onUnhandled = error => unhandled.push(error);
+  let reject;
+  const pending = new Promise((_resolve, no) => { reject = no; });
+  const observedFailure = pending.catch(error => error);
+  f.host.pendingRuntimeSupervisorOperations = new Set();
+  f.host.trackRuntimeSupervisorOperation(pending);
+  f.host.runtimeSupervisorClients = new Map([['pending-client', { dispose: () => reject(originalFailure) }]]);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const report = await completed(f.clock, f.host.prepareForDeactivation(), 'pending operation detach');
+    assert.equal(report.kind, 'settled');
+    assert.strictEqual(await observedFailure, originalFailure, 'the original caller still receives its rejection');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(unhandled, [], 'tracking must not create a second unhandled rejection during detach');
+    assert.equal(f.host.pendingRuntimeSupervisorOperations.size, 0);
+  } finally { process.off('unhandledRejection', onUnhandled); }
+});
+
+test('permanent boundary rejects both new client acquisition and late in-flight connection completion', async () => {
+  const f = boundaryFixture();
+  const connected = deferred();
+  let acquired = 0;
+  const client = { dispose: () => f.detach.push('client'), ensureConnected: () => connected.promise };
+  f.host.runtimeSupervisorClients = new Map([['original-client', client]]);
+  f.host.getRuntimeStoragePathFromBackend = () => { acquired++; return '/controlled/original'; };
+  f.host.buildRuntimeSupervisorClientKey = () => 'original-client';
+  const pending = f.host.getRuntimeSupervisorClientForBackend({ kind: 'controlled' });
+  const rejected = assert.rejects(pending, /permanent.*boundary/i);
+  const report = await completed(f.clock, f.host.prepareForDeactivation(), 'empty permanent departure');
+  assert.equal(report.kind, 'settled');
+  connected.resolve();
+  await rejected;
+  await assert.rejects(f.host.getRuntimeSupervisorClientForBackend({ kind: 'controlled' }), /permanent.*boundary/i);
+  assert.equal(acquired, 1, 'new acquisition is rejected before the factory path');
+  assert.equal(f.host.runtimeSupervisorClients.size, 0);
+});
+
+test('boundary capability leaves failed reset and delete abortable with original nodes and bindings', async () => {
+  for (const scope of ['single-root', 'multi-root', 'delete']) {
+    const f = boundaryFixture({ roots: scope === 'multi-root'
+      ? [{ path: '/controlled/a', name: 'a' }, { path: '/controlled/b', name: 'b' }] : [] });
+    const before = f.host.state;
+    const binding = { nodeId: 'terminal-1', runtimeSessionId: 'original' };
+    f.host.runtimeSessionBindings.set('original', binding);
+    const execution = f.owner.reserve('terminal:terminal-1');
+    const errors = [];
+    f.host.postMessage = value => errors.push(value);
+    const pending = scope === 'delete' ? f.host.deleteNode('terminal-1') : f.host.resetState();
+    const outcome = scope === 'single-root' ? assert.rejects(pending, /cleanup is unconfirmed/) : pending;
+    f.clock.advance(40);
+    await completed(f.clock, outcome, `${scope} abortable failure`);
+    assert.strictEqual(f.host.state, before, scope);
+    assert.strictEqual(f.owner.get(execution.key), execution, scope);
+    assert.strictEqual(f.host.runtimeSessionBindings.get('original'), binding, scope);
+    assert.equal(f.writes.length, 0, scope);
+    assert.equal(f.owner.snapshot().permanent, false, scope);
+    if (scope === 'delete') assert.equal(errors.at(-1).type, 'host/error');
+  }
+});
+
+test('actual extension deactivate preserves manager references across controlled concurrent calls', async () => {
+  const filename = path.resolve('extensions/vscode/dev-session-canvas/src/extension.ts');
+  const source = await readFile(filename, 'utf8');
+  const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const declaration = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'deactivate');
+  assert.ok(declaration?.body, 'the actual extension deactivate function must exist');
+  // Execute the unchanged function with a controlled lexical binding, not the full activation lifecycle.
+  const bundle = await esbuild.build({ stdin: { loader: 'ts', contents: `
+    let activePanelManager;
+    ${declaration.getText(ast)}
+    export function setManager(value) { activePanelManager = value; }
+    export function getManager() { return activePanelManager; }
+  ` }, bundle: false, write: false, platform: 'node', format: 'cjs', target: 'node18' });
+  const loaded = { exports: {} };
+  new Function('module', 'exports', bundle.outputFiles[0].text)(loaded, loaded.exports);
+  const { deactivate, setManager, getManager } = loaded.exports;
+  await deactivate();
+  assert.equal(getManager(), undefined);
+
+  const close = deferred();
+  let calls = 0;
+  const manager = { prepareForDeactivation() { calls += 1; return close.promise; } };
+  setManager(manager);
+  const first = deactivate();
+  assert.strictEqual(getManager(), manager, 'await must retain the original manager');
+  const repeated = deactivate();
+  assert.equal(calls, 2, 'concurrent calls must reach the same manager');
+  assert.strictEqual(getManager(), manager);
+  close.resolve();
+  await Promise.all([first, repeated]);
+  assert.equal(getManager(), undefined);
+
+  const oldClose = deferred();
+  const oldManager = { prepareForDeactivation: () => oldClose.promise };
+  let replacementCalls = 0;
+  const replacement = { async prepareForDeactivation() { replacementCalls += 1; } };
+  setManager(oldManager);
+  const oldResult = deactivate();
+  setManager(replacement);
+  oldClose.resolve();
+  await oldResult;
+  assert.strictEqual(getManager(), replacement, 'an old finally must not clear a replacement');
+  await deactivate();
+  assert.equal(replacementCalls, 1);
+  assert.equal(getManager(), undefined);
+
+  const failure = new Error('controlled deactivation failure');
+  setManager({ prepareForDeactivation() { throw failure; } });
+  await assert.rejects(deactivate(), error => error === failure);
+  assert.equal(getManager(), undefined, 'same-manager cleanup still runs when preparation throws');
+
+  const failClose = deferred();
+  const failingManager = { prepareForDeactivation: () => failClose.promise.then(() => { throw failure; }) };
+  setManager(failingManager);
+  const rejection = assert.rejects(deactivate(), error => error === failure);
+  assert.strictEqual(getManager(), failingManager);
+  setManager(replacement);
+  failClose.resolve();
+  await rejection;
+  assert.strictEqual(getManager(), replacement, 'a failed old finally must not clear a replacement');
+  await deactivate();
+  assert.equal(replacementCalls, 2);
+  assert.equal(getManager(), undefined);
+});
+
 for (const { name, run } of tests) {
   let timeout;
   try {

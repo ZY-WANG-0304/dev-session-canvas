@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-25 S7实际宿主正常关闭失败编排：生产接入第25节完成默认关闭、显式non-native gate下的固定边界期限；Host独立记录local、canvasSnapshot及remoteDetach，Supervisor先保留原执行/reader责任、严格保存再确认原server/socket关闭，未知时保持closing和保活。owner35/35、Host49/49、Supervisor60/60及adapter、parent-control、reader/client、main/headless、分页、bridge、tracker回归与workspace typecheck通过，旧断言与先败记录保留。remoteDetach成功只表示原relay关闭已发起及原client.dispose同步返回，不证明远端reader应用或OS socket释放；canvasSnapshot仅本次画布快照，不证明新路径终端最终态落盘。下一有限项只冻结并实现snapshot-only原tracker最终态到原节点metadata的提交和实际保存完成/失败保留顺序，不能追认S7并行保存为最终态，也不增加Runtime completed历史；已结束Runtime节点重开仍不恢复进程或历史。L-02总体、L-03生产profile、L-04能力分流及旧live批量delete吞错、L-05异常owner消失、真实UI/Agent启动链、跨平台和总债务仍开放；旧live/root/generation不变，不自动native/runner/push。以下为历史阶段记录。
+
 2026-09-25 S6原父控制受限接线：生产接入第24节完成显式non-native gate下的固定资源契约、同步未派发/已移交准入和同钟TERM/KILL固定期限。owner33/33、adapter81/81、transport纯测9/9、Host41/41、Supervisor42/42及相关回归/typecheck通过，原断言、legacy父控制方法和全部旧失败保持。只关闭这项受控接线待办；有firstFault、部分创建、主体或输出移交未知不获清理权限，未证明这些异常可安全强停。失效unstarted的pendingDomains可能为空但current仍未确认且隔离保留，不将该诊断摘要当成功，也不为其扩展通用模型。下一按22.5接真实Host离开/reset/delete与Supervisor正常关闭失败编排；本地失败不能跳过独立live detach，内存unknown不能在Host消失后声称继续托管。L-03生产profile、L-02/04/05、真实UI/落盘/Agent与跨平台及总债务仍开放，不改旧live/root/generation，不自动native/runner/push。以下为历史阶段记录。
 
 2026-09-25 S5一次性关闭观察：生产接入第23节完成显式non-native gate下的自然/主动/failure固定期限、迟到first/current和已派发且截止前真实结算的ACK缺失分账。owner26/26、adapter64、Host39/39、Supervisor40/40及相关回归/typecheck通过；未知责任继续隔离，迟到消费/flush不伪造失败或EOF，reader仍独立。仅关闭这项受控实现待办，不关闭L-03生产门槛：下一按22.4接原父控制，仍缺安全移交谓词、同一时钟固定期限追赶、在途start关闭约束及22.5真实Host/Supervisor失败编排。生产profile、L-02/04/05、真实UI/落盘/Agent与跨平台及总债务保持；不扩诊断框架，不改旧live/root/generation，不自动native/runner/push。以下为历史阶段记录。

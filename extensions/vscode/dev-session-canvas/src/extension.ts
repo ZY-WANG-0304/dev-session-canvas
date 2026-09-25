@@ -825,8 +825,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export async function deactivate(): Promise<void> {
   const panelManager = activePanelManager;
-  activePanelManager = undefined;
-  await panelManager?.prepareForDeactivation();
+  try {
+    await panelManager?.prepareForDeactivation();
+  } finally {
+    if (activePanelManager === panelManager) activePanelManager = undefined;
+  }
 }
 
 function registerCommand(

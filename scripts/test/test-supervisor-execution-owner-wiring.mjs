@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -13,6 +14,7 @@ const bundle = await esbuild.build({
   bundle: true, platform: 'node', format: 'cjs', write: false, external: ['node-pty']
 });
 let forbiddenAcquisitions = 0;
+const processExits = [];
 const compiled = { exports: {} };
 const guardedRequire = (name) => {
   if (name === 'node-pty') { forbiddenAcquisitions++; assert.fail('No native loading is permitted'); }
@@ -20,10 +22,14 @@ const guardedRequire = (name) => {
     return { ...require(name), spawn() { forbiddenAcquisitions++; assert.fail('No child process is permitted'); },
       spawnSync() { forbiddenAcquisitions++; assert.fail('No synchronous child process is permitted'); } };
   }
+  if (name === 'net' || name === 'node:net') {
+    return { ...require(name), createServer() { forbiddenAcquisitions++; assert.fail('No real listener is permitted'); } };
+  }
   return require(name);
 };
 guardedRequire.main = require.main;
-new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(compiled, compiled.exports, guardedRequire);
+new Function('module', 'exports', 'require', 'process', bundle.outputFiles[0].text)(compiled, compiled.exports, guardedRequire,
+  { ...process, exit(code) { processExits.push(code); } });
 const { RuntimeSupervisorServer, TerminalSessionJournal } = compiled.exports;
 const lifecycleBundle = await esbuild.build({
   entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/executionLifecycle.ts')],
@@ -71,7 +77,7 @@ function fixture(capabilities = ['execution-lifecycle-v1'], behavior = {}) {
           connect(sink) {
             this.sink = sink;
             if (behavior.connectThrows) throw new Error('injected connect failure');
-            sink.message({ type: 'ready', identity, capabilities: ['execution-lifecycle-v1'] });
+            if (!behavior.holdReady) sink.message({ type: 'ready', identity, capabilities: ['execution-lifecycle-v1'] });
           },
           async send(message) {
             this.sent.push(message);
@@ -147,7 +153,13 @@ function fixture(capabilities = ['execution-lifecycle-v1'], behavior = {}) {
   return f;
 
   function addSocket() {
-    const socket = { destroyed: false, messages: [], write(line) { this.messages.push(JSON.parse(line)); } };
+    const socket = Object.assign(new EventEmitter(), {
+      destroyed: false, messages: [], endCalls: 0,
+      write(line) { this.messages.push(JSON.parse(line)); },
+      end() { this.endCalls++; },
+      destroy() { this.destroyed = true; this.emit('close'); }
+    });
+    socket.on('close', () => server.cleanupSocket(socket));
     server.connections.add(socket);
     server.subscriptions.set(socket, new Map());
     server.deferredSubscriptionRevisions.set(socket, new Map());
@@ -1134,11 +1146,379 @@ try {
     });
   }
 
+  const boundaryCapabilities = [...closeObservationCapabilities, 'execution-owner-boundary-v1'];
+  const boundaryFixture = (boundaryMs = 100) => {
+    const f = fixture(boundaryCapabilities, { budgets: { naturalDrainMs: 15, boundaryMs } });
+    f.listener = { closeCalls: 0, close(callback) { this.closeCalls++; this.callback = callback; } };
+    f.server.server = f.listener;
+    return f;
+  };
+
+  for (const kind of ['terminal', 'agent']) {
+    await check(`${kind} boundary saves real journal after reader application and confirms original socket/server close`, async () => {
+      const f = boundaryFixture();
+      const { session, transport } = await f.create(kind);
+      const read = await openReader(f, session);
+      transport.output(`${kind}-boundary-tail`);
+      await f.until(() => session.outputSequence === 1, 'actual boundary tail consumption');
+      const closing = f.server.prepareForShutdown('normal boundary');
+      assert.strictEqual(f.server.prepareForShutdown('repeat without a new budget'), closing);
+      assert.equal(f.listener.closeCalls, 1);
+      assert.equal(session.terminalMutationAdmissionOpen, false);
+      assert.equal(session.ownedReaderAdmissionOpen, false);
+      await assert.rejects(f.server.createSession(f.socket, params('boundary-new-session')), /admission is closed/u);
+      for (const method of ['attachSession', 'subscribeSession', 'openTerminalRead', 'stopSession', 'deleteSession']) {
+        const response = await request(f, f.socket, method, { sessionId: session.sessionId,
+          authorityId: session.terminalAuthorityId, consumerId: 'editor', afterRevision: 0 });
+        assert.equal(response.ok, false, method);
+      }
+      const lateSocket = { destroyed: false, destroy() { this.destroyed = true; } };
+      f.server.acceptSocket(lateSocket);
+      assert.equal(lateSocket.destroyed, true);
+      assert.equal(f.server.connections.has(lateSocket), false);
+      await finish(f, session, transport);
+      assert.equal(f.server.shutdownBoundary.registryStarted, false);
+      assert.equal(f.socket.endCalls, 0);
+      const page = await request(f, f.socket, 'readTerminalPage', {
+        sessionId: session.sessionId, authorityId: session.terminalAuthorityId,
+        readId: read.readId, afterRevision: read.checkpoint.revision
+      });
+      assert.equal(page.ok, true);
+      assert.equal(page.result.revision, 1);
+      assertSettlement(await closeReader(f, read, { kind: 'applied', finalRevision: 1 }), 'recorded');
+      await f.until(() => f.socket.endCalls === 1, 'socket end only after strict registry flush');
+      const registry = JSON.parse(await readFile(path.join(f.storageDir, 'registry.json'), 'utf8'));
+      assert.equal(registry.sessions[0].sessionId, session.sessionId);
+      assert.equal(registry.sessions[0].live, false);
+      assert.equal(f.server.shutdownBoundary.first, undefined);
+      f.listener.callback();
+      assert.equal(f.server.shutdownBoundary.first, undefined, 'listener callback alone does not close original socket');
+      f.socket.destroy();
+      const report = await closing;
+      assert.equal(report.kind, 'settled');
+      assert.deepEqual(report.pending, []);
+      assert.equal(report.deadline, 100);
+      assert.equal(Object.isFrozen(report), true);
+      assert.equal(Object.isFrozen(report.domains), true);
+      assert.equal(session.ownedReaderResults.applied, 1);
+      assert.equal(session.ownedReaderResults.lost, 0);
+    });
+  }
+
+  await check('slow admitted reader remains valid after boundary deadline and does not authorize late save or socket end', async () => {
+    const f = boundaryFixture(20);
+    const { session, transport } = await f.create();
+    const read = await openReader(f, session);
+    const closing = f.server.prepareForShutdown('slow reader');
+    await finish(f, session, transport);
+    await f.advance(20);
+    const first = await closing;
+    assert.equal(first.kind, 'unconfirmed');
+    assert.equal(first.domains.execution, 'settled');
+    assert.equal(first.domains.readers, 'pending');
+    assert.equal(session.ownedReaders.size, 1);
+    assert.equal(session.ownedReaderResults.lost, 0);
+    assertSettlement(await closeReader(f, read, { kind: 'applied', finalRevision: 0 }), 'recorded');
+    await f.pump();
+    assert.equal(f.server.executionOwner.snapshot().pending, 0);
+    assert.equal(f.server.shutdownBoundary.registryStarted, false);
+    assert.equal(f.socket.endCalls, 0);
+    assert.strictEqual(await f.server.prepareForShutdown('late repeat'), first);
+  });
+
+  await check('boundary unknown retains original execution and late tail consumption without starting late shutdown work', async () => {
+    const f = boundaryFixture(5);
+    const { session, transport } = await f.create();
+    const closing = f.server.prepareForShutdown('short observer');
+    await f.advance(5);
+    const first = await closing;
+    assert.equal(first.kind, 'unconfirmed');
+    assert.equal(first.domains.execution, 'pending');
+    assert.strictEqual(f.server.sessions.get(session.sessionId), session);
+    transport.output('late-accepted-tail');
+    await f.until(() => session.ownedExecution.snapshot().adapter.acceptedThrough === 1, 'late tail frame actually accepted');
+    await finish(f, session, transport);
+    await f.pump();
+    assert.match(session.terminalStateTracker.getSerializedState().data, /late-accepted-tail/u);
+    assert.equal(f.server.executionOwner.snapshot().pending, 0);
+    assert.equal(f.server.shutdownBoundary.registryStarted, false);
+    assert.equal(f.socket.endCalls, 0);
+    assert.strictEqual(f.server.shutdownBoundary.first, first);
+  });
+
+  for (const source of ['existing-error', 'flush-rejection']) {
+    await check(`strict boundary persistence propagates ${source} without fallback success or socket end`, async () => {
+      const f = boundaryFixture();
+      const { session, transport } = await f.create();
+      await finish(f, session, transport);
+      const flush = session.terminalJournal.flush;
+      if (source === 'existing-error') session.terminalJournalError = new Error('existing journal failure');
+      else session.terminalJournal.flush = async () => { throw new Error('strict journal flush failure'); };
+      try {
+        const report = await f.server.prepareForShutdown('strict save failure');
+        assert.equal(report.kind, 'failed');
+        assert.equal(report.domains.registry, 'failed');
+        assert.match(report.errors.registry, /journal.*failure/u);
+        assert.equal(f.socket.endCalls, 0);
+        assert.equal(f.server.executionOwner.snapshot().closing, true);
+        assert.strictEqual(f.server.sessions.get(session.sessionId), session);
+      } finally { session.terminalJournal.flush = flush; session.terminalJournalError = undefined; }
+    });
+  }
+
+  await check('late actual journal save freezes deadline before result even while timer callbacks are held', async () => {
+    const f = boundaryFixture(10);
+    const { session, transport } = await f.create();
+    await finish(f, session, transport);
+    const gate = deferred();
+    const entered = deferred();
+    const flush = session.terminalJournal.flush.bind(session.terminalJournal);
+    session.terminalJournal.flush = async () => { entered.resolve(); await gate.promise; return flush(); };
+    try {
+      const closing = f.server.prepareForShutdown('held registry flush');
+      await entered.promise;
+      f.elapse(10);
+      gate.resolve();
+      const first = await closing;
+      assert.equal(first.kind, 'unconfirmed');
+      assert.equal(first.domains.registry, 'pending');
+      await f.until(() => f.server.shutdownBoundary.registry === 'settled', 'late actual registry saved');
+      assert.equal(f.socket.endCalls, 0);
+      assert.strictEqual(await f.server.prepareForShutdown('late save repeat'), first);
+    } finally { gate.resolve(); session.terminalJournal.flush = flush; }
+  });
+
+  await check('pending registry chain reaches a finite boundary report without pretending save completion', async () => {
+    const f = boundaryFixture(10);
+    const { session, transport } = await f.create();
+    await finish(f, session, transport);
+    const gate = deferred();
+    f.server.persistRegistryChain = gate.promise;
+    const closing = f.server.prepareForShutdown('pending periodic save');
+    await f.advance(10);
+    const first = await closing;
+    assert.equal(first.kind, 'unconfirmed');
+    assert.equal(first.domains.registry, 'pending');
+    assert.equal(f.socket.endCalls, 0);
+    gate.resolve();
+    await f.until(() => f.server.shutdownBoundary.registry === 'settled', 'original save eventually completes');
+    assert.equal(f.socket.endCalls, 0);
+    assert.strictEqual(f.server.shutdownBoundary.first, first);
+  });
+
+  await check('socket end intent and server close intent remain unknown until original callbacks arrive', async () => {
+    const f = boundaryFixture(10);
+    const { session, transport } = await f.create();
+    await finish(f, session, transport);
+    const closing = f.server.prepareForShutdown('held socket and listener close');
+    await f.until(() => f.socket.endCalls === 1, 'original socket end requested');
+    f.elapse(10);
+    f.socket.destroy();
+    const first = await closing;
+    assert.equal(first.kind, 'unconfirmed');
+    assert.equal(first.domains.sockets, 'pending');
+    f.listener.callback();
+    assert.equal(f.server.shutdownBoundary.server, 'settled');
+    assert.equal(f.server.shutdownBoundary.sockets.get(f.socket), 'settled');
+    assert.strictEqual(f.server.shutdownBoundary.first, first);
+    assert.equal(f.socket.endCalls, 1);
+  });
+
+  await check('server close callback failure keeps original sockets open and reports a real failure', async () => {
+    const f = boundaryFixture();
+    const { session, transport } = await f.create();
+    const closing = f.server.prepareForShutdown('listener failure');
+    f.listener.callback(new Error('listener close failed'));
+    const report = await closing;
+    assert.equal(report.kind, 'failed');
+    assert.equal(report.domains.server, 'failed');
+    assert.equal(f.socket.endCalls, 0);
+    await finish(f, session, transport);
+    assert.equal(f.server.shutdownBoundary.registryStarted, false);
+  });
+
+  for (const method of ['attachSession', 'subscribeSession']) {
+    await check(`in-flight ${method} cannot publish new admission after the boundary starts`, async () => {
+      const f = boundaryFixture(10);
+      const { session, transport } = await f.create();
+      const gate = deferred();
+      const entered = deferred();
+      const snapshot = f.server.createFreshSnapshot.bind(f.server);
+      f.server.createFreshSnapshot = async (...args) => { entered.resolve(); await gate.promise; return snapshot(...args); };
+      const pending = request(f, f.socket, method, { sessionId: session.sessionId,
+        authorityId: session.terminalAuthorityId, afterRevision: 0,
+        terminalStreamMode: 'paged-until-exit', deferSubscription: true });
+      await entered.promise;
+      const closing = f.server.prepareForShutdown('admission race');
+      gate.resolve();
+      assert.equal((await pending).ok, false);
+      f.server.createFreshSnapshot = snapshot;
+      await f.advance(10);
+      assert.equal((await closing).kind, 'unconfirmed');
+      await finish(f, session, transport);
+      assert.equal(f.socket.endCalls, 0);
+    });
+  }
+
+  await check('reader admitted before boundary may finish its in-flight checkpoint and explicitly apply final state', async () => {
+    const f = boundaryFixture();
+    const { session, transport } = await f.create();
+    const gate = deferred();
+    const entered = deferred();
+    const snapshot = f.server.createFreshSnapshot.bind(f.server);
+    f.server.createFreshSnapshot = async (...args) => { entered.resolve(); await gate.promise; return snapshot(...args); };
+    const opening = openReader(f, session);
+    await entered.promise;
+    assert.equal(session.ownedReaders.size, 1);
+    const closing = f.server.prepareForShutdown('reader already admitted');
+    gate.resolve();
+    const read = await opening;
+    f.server.createFreshSnapshot = snapshot;
+    assert.equal(session.ownedReaderResults.lost, 0);
+    await finish(f, session, transport);
+    assertSettlement(await closeReader(f, read, { kind: 'applied', finalRevision: 0 }), 'recorded');
+    await f.until(() => f.socket.endCalls === 1, 'in-flight reader completed before socket end');
+    f.socket.destroy();
+    f.listener.callback();
+    assert.equal((await closing).kind, 'settled');
+  });
+
+  await check('boundary waits original journal preparation cleanup without acquiring an execution', async () => {
+    const f = boundaryFixture();
+    const entered = deferred();
+    const gate = deferred();
+    const create = TerminalSessionJournal.create;
+    TerminalSessionJournal.create = async (...args) => { entered.resolve(); await gate.promise; return create(...args); };
+    try {
+      const creating = f.server.createSession(f.socket, params('40000000-0000-4000-8000-999999999991'));
+      const rejection = assert.rejects(creating, /admission is closed/u);
+      await entered.promise;
+      const closing = f.server.prepareForShutdown('journal preparation race');
+      assert.equal(f.server.shutdownBoundary.registryStarted, false);
+      gate.resolve();
+      await rejection;
+      await f.until(() => f.socket.endCalls === 1, 'preparation is actually cleaned and registry saved');
+      assert.equal(f.server.executionOwner.snapshot().pending, 0);
+      assert.equal(f.transports.length, 0);
+      assert.equal(f.server.sessions.size, 0);
+      f.socket.destroy();
+      f.listener.callback();
+      assert.equal((await closing).kind, 'settled');
+    } finally { gate.resolve(); TerminalSessionJournal.create = create; }
+  });
+
+  await check('new gate delete propagates journal failure without disposing its retained tracker', async () => {
+    const f = boundaryFixture();
+    const { session, transport } = await f.create();
+    await finish(f, session, transport);
+    let disposals = 0;
+    const dispose = session.terminalStateTracker.dispose.bind(session.terminalStateTracker);
+    session.terminalStateTracker.dispose = () => { disposals++; dispose(); };
+    const deleteJournal = session.terminalJournal.delete.bind(session.terminalJournal);
+    session.terminalJournal.delete = async () => { throw new Error('journal deletion failed'); };
+    try {
+      await assert.rejects(f.server.deleteSession({ sessionId: session.sessionId }), /journal deletion failed/u);
+      assert.equal(disposals, 0);
+      assert.strictEqual(f.server.sessions.get(session.sessionId), session);
+      assert.equal(session.retiring, true);
+    } finally { session.terminalJournal.delete = deleteJournal; }
+    await f.server.deleteSession({ sessionId: session.sessionId });
+    assert.equal(disposals, 1);
+    assert.equal(f.server.sessions.has(session.sessionId), false);
+  });
+
+  await check('legacy cursor responsibility is not replaced by owned reader retirement at boundary', async () => {
+    const f = boundaryFixture(10);
+    const { session, transport } = await f.create();
+    await finish(f, session, transport);
+    f.server.sessions.set(session.sessionId, { ...session, ownedExecution: undefined, ownedReaders: undefined });
+    f.server.terminalReads.get(f.socket).set('retained-legacy-cursor', {
+      readId: 'retained-legacy-cursor', sessionId: session.sessionId, authorityId: session.terminalAuthorityId,
+      consumerId: 'panel', appliedRevision: 0, sentRevision: 0, checkpoint: session.terminalCheckpoint
+    });
+    assert.equal(f.server.executionOwner.snapshot().pending, 0);
+    const closing = f.server.prepareForShutdown('retained cursor');
+    for (const method of ['openTerminalRead', 'attachSession', 'subscribeSession']) {
+      const response = await request(f, f.socket, method, { sessionId: session.sessionId,
+        authorityId: session.terminalAuthorityId, consumerId: 'editor', afterRevision: 0 });
+      assert.equal(response.ok, false, `legacy ${method} must reject new reader admission`);
+    }
+    await f.advance(10);
+    const report = await closing;
+    assert.equal(report.kind, 'unconfirmed');
+    assert.equal(report.domains.readers, 'pending');
+    assert.equal(f.server.terminalReads.get(f.socket).has('retained-legacy-cursor'), true);
+    assert.equal(f.socket.endCalls, 0);
+  });
+
+  await check('new gate idle failure keeps closing alive while successful idle waits for listener close', async () => {
+    assert.deepEqual(processExits, []);
+    const failing = boundaryFixture();
+    const failedSession = await failing.create();
+    await finish(failing, failedSession.session, failedSession.transport);
+    failedSession.session.terminalJournalError = new Error('idle journal failure');
+    failing.socket.destroy();
+    failing.server.clearIdleShutdownTimer();
+    failing.server.runIdleShutdown();
+    await failing.until(() => failing.server.shutdownBoundary.first, 'idle save failure reported');
+    assert.equal(failing.server.shutdownBoundary.first.kind, 'failed');
+    assert.equal(failing.server.executionOwner.snapshot().closing, true);
+    assert.equal(failing.server.shutdownBoundary.keepAlive.hasRef(), true);
+    assert.deepEqual(processExits, []);
+    failedSession.session.terminalJournalError = undefined;
+
+    const successful = boundaryFixture();
+    const completed = await successful.create();
+    await finish(successful, completed.session, completed.transport);
+    successful.socket.destroy();
+    successful.server.clearIdleShutdownTimer();
+    successful.server.runIdleShutdown();
+    await successful.until(() => successful.server.shutdownBoundary.registry === 'settled', 'idle actual registry saved');
+    assert.equal(successful.server.shutdownBoundary.keepAlive.hasRef(), true);
+    assert.deepEqual(processExits, []);
+    successful.listener.callback();
+    await successful.pump();
+    assert.deepEqual(processExits, [0]);
+    assert.equal(successful.server.shutdownBoundary.keepAlive, undefined);
+  });
+
+  await check('S6 unstarted cleanup and S7 boundary settle a genuinely empty admitted-reader collection', async () => {
+    const f = fixture([...boundaryCapabilities, 'execution-parent-cleanup-v1'], {
+      holdReady: true, exposeParentControl: true,
+      budgets: { naturalDrainMs: 15, boundaryMs: 100, parentTermMs: 5, parentKillMs: 5 }
+    });
+    f.listener = { close(callback) { this.callback = callback; } };
+    f.server.server = f.listener;
+    const creating = f.server.createSession(f.socket, params('40000000-0000-4000-8000-999999999992'));
+    const rejection = assert.rejects(creating, /Execution start was failed/u);
+    await f.until(() => f.transports.length === 1, 'original provider acquired without ready');
+    const session = [...f.server.sessions.values()][0];
+    const transport = f.transports[0];
+    assert.equal(session.ownedReaders.size, 0);
+    const closing = f.server.prepareForShutdown('unstarted boundary');
+    await f.advance(30);
+    await rejection;
+    assert.equal(transport.cleanupRequests.length, 1);
+    assert.equal(session.ownedExecution.snapshot().adapter.parentCleanup, 'unstarted');
+    transport.cleanupResult.resolve({ kind: 'closed', exitCode: 0, signal: null });
+    transport.sink.controlResourceResult({ kind: 'released' });
+    await f.until(() => session.ownedExecution.snapshot().settled, 'unstarted original control released');
+    assert.equal(session.ownedExecution.snapshot().terminal, undefined);
+    assert.equal(session.ownedExecution.snapshot().adapter.process, undefined);
+    assert.equal(session.ownedExecution.snapshot().adapter.source, undefined);
+    assert.equal(session.ownedExecution.snapshot().readerOutcome, 'settled');
+    await f.until(() => f.socket.endCalls === 1, 'empty readers permit strict registry and socket end');
+    f.socket.destroy();
+    f.listener.callback();
+    assert.equal((await closing).kind, 'settled');
+  });
+
   assert.equal(forbiddenAcquisitions, 0);
   console.log(`Supervisor execution owner wiring: ${passed}/${passed} pure cases passed`);
 } finally {
   for (const f of fixtures) {
     f.server.clearIdleShutdownTimer();
+    if (f.server.shutdownBoundary?.keepAlive) clearInterval(f.server.shutdownBoundary.keepAlive);
     for (const session of f.server.sessions.values()) {
       if (session.lifecycleTimer) clearTimeout(session.lifecycleTimer);
       await session.terminalJournal?.flush();

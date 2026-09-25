@@ -34,6 +34,7 @@ export interface NonNativeExecutionOwnerOptions {
     naturalDrainMs?: number;
     parentTermMs?: number;
     parentKillMs?: number;
+    boundaryMs?: number;
   }>;
   // Construction must not acquire resources; acquisition belongs to connect().
   readonly createTransport: (identity: ExecutionIdentity) => ExecutionTransport;
@@ -103,6 +104,12 @@ export class ExecutionOwnerLifecycle {
           typeof budgets.parentKillMs !== 'number' || !Number.isFinite(budgets.parentKillMs) || budgets.parentKillMs <= 0 ||
           budgets.parentTermMs + budgets.parentKillMs > budgets.settleMs)) {
       throw new Error('Parent cleanup requires close observation and finite budgets within the settle budget');
+    }
+    if (options.capabilities.includes('execution-owner-boundary-v1') &&
+        (!options.capabilities.includes('execution-close-observation-v1') ||
+          typeof budgets.boundaryMs !== 'number' || !Number.isFinite(budgets.boundaryMs) ||
+          budgets.boundaryMs <= 0 || budgets.boundaryMs > 0x7fffffff)) {
+      throw new Error('Owner boundary requires close observation and an explicit finite boundary budget');
     }
     this.options = Object.freeze({ ...options, budgets, capabilities: Object.freeze([...options.capabilities]) });
   }

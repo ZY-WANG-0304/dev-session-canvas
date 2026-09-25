@@ -877,6 +877,48 @@ try {
     record.settleReaders('lost');
   });
 
+  test('owner boundary requires close observation and an explicit finite frozen budget before acquisition', () => {
+    let acquisitions = 0;
+    const options = {
+      capabilities: ['execution-lifecycle-v1', 'execution-close-observation-v1', 'execution-owner-boundary-v1'],
+      budgets: { ...budgets, naturalDrainMs: 5, boundaryMs: 60 },
+      createTransport() { acquisitions++; throw new Error('must not acquire'); }
+    };
+    assert.throws(() => harness({ ...options, capabilities: ['execution-lifecycle-v1', 'execution-owner-boundary-v1'] }),
+      /boundary/i);
+    for (const value of [undefined, 0, -1, NaN, Infinity, '60', 0x80000000]) {
+      assert.throws(() => harness({ ...options, budgets: { ...options.budgets, boundaryMs: value } }), /boundary/i);
+    }
+    const h = harness(options);
+    options.budgets.boundaryMs = 1;
+    assert.equal(h.owner.options.budgets.boundaryMs, 60);
+    assert.equal(Object.isFrozen(h.owner.options.budgets), true);
+    assert.doesNotThrow(() => harness({ ...options, budgets: { ...options.budgets, boundaryMs: 0x7fffffff } }));
+    assert.doesNotThrow(() => harness({ capabilities: ['execution-lifecycle-v1'], budgets: { ...budgets, boundaryMs: NaN } }));
+    assert.equal(acquisitions, 0);
+  });
+
+  test('a shorter outer boundary budget does not replace the original execution close or reader obligations', async () => {
+    const h = harness({
+      capabilities: ['execution-lifecycle-v1', 'execution-close-observation-v1', 'execution-owner-boundary-v1'],
+      budgets: { ...budgets, naturalDrainMs: 5, boundaryMs: 1 }
+    });
+    const record = await h.start('short-boundary');
+    const first = h.owner.close({ reason: 'short boundary', permanent: true });
+    assert.equal(record.snapshot().closeObservation.finishAt, 40);
+    h.scheduler.tick(1);
+    await h.scheduler.drain();
+    assert.equal(record.snapshot().closeObservation.first, undefined);
+    assert.equal(h.owner.snapshot().pending, 1);
+    await h.complete(record);
+    assert.equal((await first).kind, 'settled');
+    assert.strictEqual(h.owner.close({ reason: 'repeat boundary', permanent: true }), first);
+    assert.equal(record.snapshot().readerOutcome, 'pending');
+    assert.equal(record.snapshot().retired, false);
+    record.settleReaders('lost');
+    assert.equal(h.owner.snapshot().pending, 0);
+  });
+
   for (const { name, run } of tests) {
     await run();
     console.log(`ok - ${name}`);
