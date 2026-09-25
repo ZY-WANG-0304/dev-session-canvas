@@ -77,6 +77,7 @@ function scheduler() {
       return () => deadlines.delete(item);
     },
     tick() { const task = tasks.shift(); task?.(); return Boolean(task); },
+    elapse(at) { now = at; },
     advance(at) {
       now = at;
       for (const item of [...deadlines].sort((a, b) => a.at - b.at)) {
@@ -112,7 +113,7 @@ function fixture(options = {}) {
   const providers = [];
   const injection = {
     kind: 'non-native', capabilities: options.capabilities ?? ['execution-lifecycle-v1'], scheduler: clock,
-    budgets: { startMs: 10, gracefulMs: 10, forceMs: 10, cancelMs: 10, settleMs: 10 },
+    budgets: { startMs: 10, gracefulMs: 10, forceMs: 10, cancelMs: 10, settleMs: 10, ...options.budgets },
     createTransport(identity) {
       const messages = [];
       let sink;
@@ -137,7 +138,7 @@ function fixture(options = {}) {
               provider.message({ type: 'operationObservation', operationId: message.operationId,
                 result: { kind: 'started', pid: 123 } });
             } else if (message.type === 'requestStop' || message.type === 'cancelOutput') {
-              provider.message({ type: 'operationObservation', operationId: message.operationId,
+              if (!options.holdCloseAck) provider.message({ type: 'operationObservation', operationId: message.operationId,
                 result: { kind: 'accepted' } });
             }
           }
@@ -965,6 +966,139 @@ test('actual local Host to main/headless to Host preserves owner responsibility 
     terminal.dispose();
     record.tracker.dispose();
   }
+});
+
+const closeObservationCapabilities = ['execution-lifecycle-v1', 'execution-close-observation-v1'];
+
+for (const kind of ['terminal', 'agent']) {
+  test(`${kind} real Host natural close preserves its first timeout while late tail facts settle the original owner`, async () => {
+    const f = fixture({ capabilities: closeObservationCapabilities, budgets: { naturalDrainMs: 15 }, holdCloseAck: true });
+    const { record, provider } = await f.started(kind);
+    try {
+      provider.process();
+      const initial = record.execution.snapshot().closeObservation;
+      assert.equal(initial.trigger, 'natural-exit');
+      assert.equal(initial.startedAt, 0);
+      assert.equal(initial.cancelAt, 15);
+      assert.equal(initial.finishAt, 35);
+      assert.equal(initial.forceAt, undefined);
+      provider.output(1, `${kind}-natural-tail`);
+      await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, `${kind} natural tail tracker`);
+      assert.match(record.tracker.getSerializedState().data, new RegExp(`${kind}-natural-tail`));
+      f.clock.advance(15);
+      await until(f.clock, () => provider.messages.some(message => message.type === 'cancelOutput'), `${kind} natural cancel`);
+      assert.equal(provider.messages.filter(message => message.type === 'requestStop').length, 0);
+      assert.equal(record.execution.snapshot().adapter.source, undefined, 'cancel accepted is not source EOF');
+      assert.equal(record.execution.snapshot().closeObservation.first, undefined);
+      const cancel = provider.messages.find(message => message.type === 'cancelOutput');
+      const cancelObservation = record.execution.execution.operations.get('cancel').view;
+      f.clock.elapse(35);
+      provider.message({ type: 'operationObservation', operationId: cancel.operationId, result: { kind: 'accepted' } });
+      assert.equal((await cancelObservation.first).kind, 'unconfirmed', 'owner capability must enable adapter absolute-deadline classification');
+      assert.equal(cancelObservation.current.kind, 'accepted', 'late accepted is current evidence, not first success');
+      await until(f.clock, () => record.execution.snapshot().closeObservation.first !== undefined, `${kind} owner receives late ACK notification`);
+      const timedOut = record.execution.snapshot().closeObservation;
+      assert.deepEqual(timedOut.first, { kind: 'unconfirmed', pending: [`${kind}:${kind}-1`] });
+      assert.equal(timedOut.current.kind, 'unconfirmed');
+      assert.ok(timedOut.pendingDomains.includes('source'));
+      assert.ok(timedOut.pendingDomains.includes('resources'));
+      assert.equal(f.record(kind), record);
+      assert.equal(f.owner.snapshot().pending, 1);
+      await assert.rejects(f.host.stopExecutionSession(kind, `${kind}-1`), /stop is unconfirmed/);
+      assert.equal(record.execution.snapshot().closeObservation.finishAt, initial.finishAt);
+      provider.message({ type: 'sourceEnd', finalFrameId: 1,
+        disposition: { kind: 'interrupted', reason: 'controlled natural drain cancellation' } });
+      provider.release();
+      await until(f.clock, () => record.execution.snapshot().settled, `${kind} late original Host settlement`);
+      const late = record.execution.snapshot();
+      assert.deepEqual(late.closeObservation.first, timedOut.first);
+      assert.equal(late.closeObservation.current.kind, 'settled');
+      assert.equal((await cancelObservation.first).kind, 'unconfirmed');
+      assert.deepEqual(late.closeObservation.pendingDomains, []);
+      assert.equal(late.adapter.source.kind, 'interrupted');
+      assert.equal(late.terminal.finalRevision, 1);
+      assert.equal(late.readerOutcome, 'pending', 'native close observation does not settle a slow reader');
+      assert.equal(late.retired, false);
+      assert.equal(f.owner.snapshot().pending, 1);
+      assert.ok(f.owner.snapshot().blockedReason);
+      record.execution.settleReaders('cancelled');
+      assert.equal(f.record(kind), undefined);
+      assert.equal(f.owner.snapshot().pending, 0);
+      assert.equal(f.owner.tryResume(), false);
+      assert.equal(provider.messages.filter(message => message.type === 'requestStop').length, 0);
+      assert.equal(provider.messages.filter(message => message.type === 'cancelOutput').length, 1);
+    } finally { record.tracker.dispose(); }
+  });
+}
+
+test('real Host boundary preserves a timed-out final tracker obligation and accepts only its late actual completion', async () => {
+  const f = fixture({ capabilities: closeObservationCapabilities, budgets: { naturalDrainMs: 15 } });
+  const { record, provider } = await f.started('terminal');
+  const gate = deferred();
+  const entered = deferred();
+  const flush = record.tracker.flush.bind(record.tracker);
+  let finalState;
+  try {
+    provider.output(1, 'boundary-observed-tail');
+    await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'boundary tail consumed');
+    record.tracker.flush = async () => {
+      entered.resolve();
+      await gate.promise;
+      finalState = await flush();
+      return finalState;
+    };
+    const before = f.host.state;
+    const closing = f.host.prepareForHostBoundary({ preserveLiveRuntime: true, allowRuntimeSupervisorRestart: false });
+    const rejected = assert.rejects(closing, /cleanup is unconfirmed/);
+    await until(f.clock, () => provider.messages.some(message => message.type === 'requestStop'), 'boundary graceful request');
+    provider.process();
+    provider.seal(1);
+    provider.release();
+    await entered.promise;
+    const observation = record.execution.snapshot().closeObservation;
+    assert.equal(observation.trigger, 'stop');
+    assert.equal(observation.finishAt, 40);
+    assert.equal(record.execution.snapshot().readerOutcome, 'lost');
+    f.clock.advance(40);
+    await completed(f.clock, rejected, 'boundary first timeout report');
+    const first = record.execution.snapshot().closeObservation.first;
+    assert.deepEqual(first, { kind: 'unconfirmed', pending: ['terminal:terminal-1'] });
+    assert.ok(record.execution.snapshot().closeObservation.pendingDomains.includes('final-flush'));
+    assert.equal(record.execution.snapshot().terminal, undefined, 'observation timeout is not a failed flush');
+    assert.equal(f.host.state, before);
+    assert.equal(f.record('terminal'), record);
+    assert.equal(f.owner.snapshot().pending, 1);
+    gate.resolve();
+    await until(f.clock, () => record.execution.snapshot().retired, 'late actual boundary tracker completion');
+    assert.equal(finalState.outputSequence, 1);
+    assert.match(finalState.data, /boundary-observed-tail/);
+    assert.deepEqual(record.execution.snapshot().closeObservation.first, first);
+    assert.equal(record.execution.snapshot().closeObservation.current.kind, 'settled');
+    assert.equal(f.record('terminal'), undefined);
+    assert.equal(f.owner.snapshot().pending, 0);
+    assert.ok(f.owner.snapshot().blockedReason);
+    assert.equal(f.owner.tryResume(), false);
+    assert.equal(provider.messages.filter(message => message.type === 'requestStop').length, 1);
+    assert.equal(provider.messages.filter(message => message.type === 'cancelOutput').length, 0);
+  } finally { gate.resolve(); record.tracker.dispose(); }
+});
+
+test('real Host without close observation capability keeps natural-exit timers disabled', async () => {
+  const f = fixture();
+  const { record, provider } = await f.started('terminal');
+  try {
+    provider.process();
+    f.clock.advance(1000);
+    await pump(f.clock, () => true);
+    assert.equal(record.execution.snapshot().closeObservation, undefined);
+    assert.equal(provider.messages.some(message => message.type === 'requestStop' || message.type === 'cancelOutput'), false);
+    assert.equal(f.owner.snapshot().blockedReason, undefined);
+    provider.seal(0);
+    provider.release();
+    await until(f.clock, () => record.execution.snapshot().settled, 'legacy Host natural completion');
+    record.execution.settleReaders('cancelled');
+    assert.equal(f.owner.snapshot().pending, 0);
+  } finally { record.tracker.dispose(); }
 });
 
 for (const { name, run } of tests) {

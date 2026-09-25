@@ -138,6 +138,7 @@ export interface ExecutionDependencies {
   authority: ExecutionAuthority;
   transport: ExecutionTransport;
   scheduler: ExecutionScheduler;
+  closeObservationV1?: true;
 }
 
 export function prepareExecution(identity: ExecutionIdentity, launchSpec: LaunchSpec, dependencies: ExecutionDependencies): PreparedExecution {
@@ -148,6 +149,7 @@ export class PreparedExecution {
   readonly identity: ExecutionIdentity;
   private readonly spec: LaunchSpec;
   private state: State = 'prepared';
+  private factualSettledAt?: number;
   private observer?: ExecutionObserver;
   private consumeBatch?: (batches: readonly DataBatch[]) => Promise<void>;
   private readonly operations = new Map<OperationKind, Operation>();
@@ -308,12 +310,7 @@ export class PreparedExecution {
       view: Object.freeze({ first, get current() { return operation.current; } })
     };
     this.operations.set(kind, operation);
-    operation.cancelDeadline = this.dependencies.scheduler.scheduleDeadline(deadline, () => {
-      if (operation.current) return;
-      this.recordOperation(operation, kind === 'start'
-        ? { kind: 'unconfirmed', stage: this.ready ? 'start' : 'ready', reason: 'Observation deadline reached' }
-        : { kind: 'unconfirmed', reason: 'Observation deadline reached' });
-    });
+    operation.cancelDeadline = this.dependencies.scheduler.scheduleDeadline(deadline, () => this.expireOperation(operation));
     return operation;
   }
 
@@ -334,16 +331,40 @@ export class PreparedExecution {
   }
 
   private recordOperation(operation: Operation, result: OperationResult): void {
+    if (this.dependencies.closeObservationV1 === true && this.dependencies.scheduler.now() >= operation.deadline) {
+      this.expireOperation(operation);
+    }
+    this.updateOperation(operation, result);
+  }
+
+  private expireOperation(operation: Operation): void {
+    if (operation.current || (this.dependencies.closeObservationV1 === true && this.dependencies.scheduler.now() < operation.deadline)) return;
+    const missingAckOnly = this.dependencies.closeObservationV1 === true && operation.kind !== 'start' && operation.sent
+      && this.state === 'settled' && this.factualSettledAt !== undefined && this.factualSettledAt < operation.deadline
+      && this.process !== undefined && this.process.kind !== 'unconfirmed' && this.source !== undefined;
+    this.updateOperation(operation, operation.kind === 'start'
+      ? { kind: 'unconfirmed', stage: this.ready ? 'start' : 'ready', reason: 'Observation deadline reached' }
+      : { kind: 'unconfirmed', reason: 'Observation deadline reached' }, missingAckOnly);
+  }
+
+  private updateOperation(operation: Operation, result: OperationResult, missingAckOnly = false): void {
     const previous = operation.current;
     if (previous && previous.kind !== 'unconfirmed') {
       if (JSON.stringify(previous) !== JSON.stringify(result)) this.fault('Conflicting operation result');
       return;
     }
-    if (previous && result.kind === 'unconfirmed') return;
+    if (previous && result.kind === 'unconfirmed') {
+      // A provider's unknown result is not the parent's missing-ACK observation.
+      if (this.dependencies.closeObservationV1 === true && !missingAckOnly) {
+        this.dependencies.authority.quarantine('Operation observation is unconfirmed');
+        this.changed();
+      }
+      return;
+    }
     const value = Object.freeze({ ...result }) as OperationResult;
     operation.current = value;
     if (!previous) { operation.cancelDeadline(); operation.resolve(value); }
-    if (result.kind === 'unconfirmed') {
+    if (result.kind === 'unconfirmed' && !missingAckOnly) {
       this.dependencies.authority.quarantine('Operation observation is unconfirmed');
     }
     if (operation.kind === 'start') {
@@ -691,6 +712,9 @@ export class PreparedExecution {
       && (startResult?.kind === 'failed' || startResult?.kind === 'unconfirmed');
     if (!startupSettled && (!this.seal || this.process?.kind === 'unconfirmed')) return;
     this.state = 'settled';
+    if (this.dependencies.closeObservationV1 === true && !startupSettled) {
+      this.factualSettledAt ??= this.dependencies.scheduler.now();
+    }
     this.dependencies.authority.release(this.identity);
     this.changed();
   }

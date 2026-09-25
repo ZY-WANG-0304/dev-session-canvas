@@ -36,6 +36,7 @@ function clock() {
         if (entry.at <= now && deadlines.delete(entry)) entry.run();
       }
     },
+    jump(at) { now = at; },
     async drain() {
       for (let turn = 0; turn < 20; turn++) {
         const task = tasks.shift();
@@ -44,7 +45,8 @@ function clock() {
       }
       assert.equal(tasks.length, 0, 'the bounded owner task queue must quiesce');
     },
-    pendingDeadlines: () => deadlines.size
+    pendingDeadlines: () => deadlines.size,
+    deadlineTimes: () => [...deadlines].map(entry => entry.at).sort((a, b) => a - b)
   };
 }
 
@@ -319,6 +321,299 @@ try {
     await h.complete(record);
     assert.equal(record.snapshot().retired, true);
     assert.equal(h.owner.snapshot().pending, 0);
+  });
+
+  const observedHarness = (extra = {}) => harness({
+    capabilities: ['execution-lifecycle-v1', 'execution-close-observation-v1'],
+    budgets: { ...budgets, naturalDrainMs: 5 }, ...extra
+  });
+  const commands = (h, record) => h.transports.get(record.identity.executionId).messages
+    .filter(message => message.type === 'requestStop' || message.type === 'cancelOutput');
+
+  test('close observation requires an explicit valid natural budget and leaves the legacy natural path unchanged', async () => {
+    for (const naturalDrainMs of [undefined, 0, -1, Infinity, NaN, 0x7fffffff]) {
+      assert.throws(() => observedHarness({ budgets: { ...budgets, naturalDrainMs } }), /natural drain budget/);
+    }
+    const h = harness();
+    const record = await h.start('legacy');
+    h.message(record, { type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    h.scheduler.tick(100);
+    await h.scheduler.drain();
+    assert.equal(record.snapshot().closeObservation, undefined);
+    assert.equal(commands(h, record).length, 0);
+    assert.equal(h.scheduler.pendingDeadlines(), 0);
+    await h.complete(record);
+    record.settleReaders('lost');
+  });
+
+  test('natural exit drains then cancels the source without stopping the subject or restarting the observation', async () => {
+    const h = observedHarness();
+    const record = await h.start('natural');
+    h.message(record, { type: 'processResult', result: { kind: 'exited', exitCode: 7 } });
+    const initial = record.snapshot().closeObservation;
+    assert.equal(initial.trigger, 'natural-exit');
+    assert.equal(initial.startedAt, 0);
+    assert.equal(initial.forceAt, undefined);
+    assert.equal(initial.cancelAt, 5);
+    assert.equal(initial.finishAt, 25);
+    assert.equal(initial.first, undefined);
+    const first = record.requestStop('user-stop-after-natural');
+    assert.strictEqual(record.requestStop('delete-after-natural'), first);
+    h.scheduler.tick(4);
+    await h.scheduler.drain();
+    assert.equal(commands(h, record).length, 0);
+    h.scheduler.tick(5);
+    await h.scheduler.drain();
+    assert.deepEqual(commands(h, record).map(message => message.type), ['cancelOutput']);
+    assert.equal(record.snapshot().adapter.source, undefined, 'cancel acceptance is not source settlement');
+    h.message(record, { type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'interrupted', reason: 'drain cancelled' } });
+    h.transports.get(record.identity.executionId).sink.controlResourceResult({ kind: 'released' });
+    await h.scheduler.drain();
+    assert.equal((await first).kind, 'settled');
+    assert.equal(record.snapshot().adapter.seal.source.kind, 'interrupted');
+    assert.equal(record.snapshot().closeObservation.trigger, 'natural-exit');
+    assert.equal(record.snapshot().closeObservation.finishAt, 25);
+    assert.equal(record.snapshot().retired, false, 'a slow reader retains only final-state responsibility');
+    assert.deepEqual(record.snapshot().closeObservation.pendingDomains, []);
+    record.settleReaders('settled');
+    assert.equal(record.snapshot().retired, true);
+  });
+
+  test('stop commands share finishAt while delayed phase timers catch up without extending the deadline', async () => {
+    const h = observedHarness();
+    const record = await h.start('stop');
+    const transport = h.transports.get(record.identity.executionId);
+    transport.send = function(message) { this.messages.push(message); return Promise.resolve(); };
+    const first = record.requestStop('stop');
+    await h.scheduler.drain();
+    assert.deepEqual(h.scheduler.deadlineTimes(), [10, 20, 40, 40]);
+    h.scheduler.jump(21);
+    h.scheduler.tick(21);
+    await h.scheduler.drain();
+    assert.deepEqual(commands(h, record).map(message => message.mode ?? 'cancel'), ['graceful', 'force', 'cancel']);
+    assert.deepEqual(h.scheduler.deadlineTimes(), [40, 40, 40, 40]);
+    assert.equal(record.snapshot().closeObservation.finishAt, 40);
+    h.scheduler.tick(40);
+    assert.equal((await first).kind, 'unconfirmed');
+    assert.equal(commands(h, record).length, 3);
+    await h.complete(record);
+    record.settleReaders('lost');
+    assert.equal(record.snapshot().closeObservation.current.kind, 'settled');
+    assert.equal((await first).kind, 'unconfirmed');
+    assert.throws(() => h.owner.reserve('new'), /closed/);
+  });
+
+  test('a timer first handled at finishAt reports unknown without adding expired force or cancel intent', async () => {
+    const h = observedHarness();
+    const record = await h.start('late-timers');
+    const first = record.requestStop('stop');
+    await h.scheduler.drain();
+    h.scheduler.tick(40);
+    await h.scheduler.drain();
+    assert.equal((await first).kind, 'unconfirmed');
+    assert.deepEqual(commands(h, record).map(message => message.mode ?? 'cancel'), ['graceful']);
+    assert.equal(record.snapshot().adapter.process, undefined);
+    assert.equal(record.snapshot().adapter.source, undefined);
+    await h.complete(record);
+    record.settleReaders('lost');
+  });
+
+  test('facts processed at the absolute cutoff cannot overtake a delayed owner deadline callback', async () => {
+    const h = observedHarness();
+    const record = await h.start('cutoff');
+    const first = record.requestStop('stop');
+    h.scheduler.jump(40);
+    await h.complete(record);
+    assert.equal((await first).kind, 'unconfirmed');
+    const observation = record.snapshot().closeObservation;
+    assert.strictEqual(observation.first, await first);
+    assert.equal(observation.current.kind, 'settled');
+    assert.ok(observation.quarantineReason);
+    record.settleReaders('lost');
+    assert.equal(record.snapshot().retired, true);
+  });
+
+  test('late preparation cleanup preserves the original close first result', async () => {
+    const h = observedHarness();
+    const record = h.owner.reserve('preparing');
+    const first = record.requestStop('boundary');
+    assert.deepEqual(record.snapshot().closeObservation.pendingDomains, ['preparation']);
+    h.scheduler.jump(40);
+    record.abandon('cleanup completed at cutoff');
+    assert.equal((await first).kind, 'unconfirmed');
+    assert.equal(record.snapshot().closeObservation.current.kind, 'settled');
+    assert.equal(record.snapshot().retired, true);
+    assert.equal(h.factories(), 0);
+  });
+
+  test('stopping an already abandoned record resolves without recreating timers or owner responsibility', async () => {
+    const h = observedHarness();
+    const record = h.owner.reserve('abandoned');
+    record.abandon('never acquired');
+    const current = h.owner.reserve('abandoned');
+    const first = record.requestStop('old object stop');
+    assert.strictEqual(record.requestStop('repeat old stop'), first);
+    assert.equal((await first).kind, 'settled');
+    assert.equal(h.scheduler.pendingDeadlines(), 0);
+    assert.equal(record.snapshot().closeObservation, undefined);
+    assert.equal(h.owner.get('abandoned'), current);
+    current.abandon('unused');
+  });
+
+  test('natural accepted output remains charged through timeout and later real tracker consumption', async () => {
+    const h = observedHarness();
+    const gate = deferred();
+    const tracker = new SerializedTerminalStateTracker(80, 24);
+    let revision = 0;
+    let finalState;
+    try {
+      const record = await h.start('consumption', {
+        async consume(batches) {
+          await gate.promise;
+          for (const batch of batches) tracker.write(batch.text, { outputSequence: ++revision });
+          await tracker.flush();
+        },
+        async flushFinal() { finalState = await tracker.flush(); return revision; }
+      });
+      for (let i = 1; i <= 10; i++) h.frame(record, i, `accepted-${i}\r\n`);
+      await h.scheduler.drain();
+      await h.complete(record, 10);
+      const first = record.requestStop('observe-original-natural');
+      h.scheduler.tick(25);
+      assert.equal((await first).kind, 'unconfirmed');
+      assert.equal(record.snapshot().adapter.acceptedThrough, 10);
+      assert.equal(record.snapshot().adapter.consumedThrough, 0);
+      assert.ok(record.snapshot().adapter.pendingBytes > 0);
+      assert.ok(record.snapshot().closeObservation.pendingDomains.includes('consumption'));
+      assert.equal(record.snapshot().terminal, undefined);
+      assert.equal(commands(h, record).length, 0, 'confirmed source needs no cancellation');
+      gate.resolve();
+      await h.scheduler.drain();
+      assert.match(finalState.data, /accepted-10/);
+      assert.equal(record.snapshot().terminal.finalRevision, 10);
+      assert.equal(record.snapshot().closeObservation.current.kind, 'settled');
+      assert.equal((await first).kind, 'unconfirmed');
+      record.settleReaders('settled');
+    } finally { tracker.dispose(); }
+  });
+
+  test('final flush completing exactly at cutoff preserves timeout while its real result remains applied', async () => {
+    const h = observedHarness();
+    const flush = deferred();
+    const record = await h.start('flush', { flushFinal: () => flush.promise });
+    await h.complete(record);
+    const first = record.requestStop('join-natural');
+    assert.deepEqual(record.snapshot().closeObservation.pendingDomains, ['final-flush']);
+    h.scheduler.jump(25);
+    flush.resolve(0);
+    await h.scheduler.drain();
+    assert.equal((await first).kind, 'unconfirmed');
+    assert.equal(record.snapshot().terminal.kind, 'applied');
+    assert.equal(record.snapshot().closeObservation.current.kind, 'settled');
+    record.settleReaders('settled');
+  });
+
+  test('unknown resource and source facts start failure observations without borrowing another execution quarantine', async () => {
+    const h = observedHarness();
+    const a = await h.start('unknown-resource');
+    const b = await h.start('healthy-b');
+    h.transports.get(a.identity.executionId).sink.controlResourceResult({ kind: 'unknown', reason: 'release pending' });
+    assert.equal(a.snapshot().closeObservation.trigger, 'failure');
+    assert.equal(a.snapshot().closeObservation.reason, 'release pending');
+    assert.equal(b.snapshot().closeObservation, undefined);
+    await h.complete(b);
+    assert.equal(b.snapshot().closeObservation.trigger, 'natural-exit');
+    assert.equal(b.snapshot().closeObservation.first.kind, 'settled');
+    b.settleReaders('settled');
+    await h.complete(a);
+    a.settleReaders('lost');
+    assert.throws(() => h.owner.reserve('blocked'), /closed/);
+
+    const source = observedHarness();
+    const record = await source.start('unknown-source');
+    source.message(record, { type: 'sourceEnd', finalFrameId: 0, disposition: { kind: 'unknown', reason: 'source unknown' } });
+    await source.scheduler.drain();
+    assert.equal(record.snapshot().closeObservation.trigger, 'failure');
+    assert.equal(record.snapshot().closeObservation.reason, 'source unknown');
+    source.message(record, { type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    source.transports.get(record.identity.executionId).sink.controlResourceResult({ kind: 'released' });
+    await source.scheduler.drain();
+    assert.equal(record.snapshot().adapter.seal.source.kind, 'unknown');
+    assert.equal(record.snapshot().closeObservation.first.kind, 'settled');
+    assert.ok(record.snapshot().closeObservation.quarantineReason);
+    record.settleReaders('lost');
+  });
+
+  test('a real consume failure starts one failure observation and never becomes a synthetic applied terminal', async () => {
+    const h = observedHarness();
+    const record = await h.start('consume-failed', { consume: async () => { throw new Error('consume rejected'); } });
+    h.frame(record, 1, 'retained tail');
+    await h.scheduler.drain();
+    assert.equal(record.snapshot().closeObservation.trigger, 'failure');
+    await h.complete(record, 1);
+    const first = record.requestStop('same-failure');
+    h.scheduler.tick(40);
+    assert.equal((await first).kind, 'unconfirmed');
+    assert.equal(record.snapshot().terminal.kind, 'failed');
+    assert.ok(record.snapshot().closeObservation.pendingDomains.includes('consumption'));
+    assert.equal(record.snapshot().retired, false);
+  });
+
+  test('real final flush failure remains failed and a reentrant final observer cannot publish successful close', async () => {
+    const failedFlush = observedHarness();
+    const flushRecord = await failedFlush.start('flush-failed', { flushFinal: async () => { throw new Error('flush rejected'); } });
+    await failedFlush.complete(flushRecord);
+    const flushFirst = flushRecord.requestStop('same-natural-observation');
+    failedFlush.scheduler.tick(25);
+    assert.equal((await flushFirst).kind, 'unconfirmed');
+    assert.equal(flushRecord.snapshot().terminal.kind, 'failed');
+    assert.ok(flushRecord.snapshot().closeObservation.pendingDomains.includes('final-flush'));
+
+    const h = observedHarness();
+    let record;
+    record = await h.start('observer', {
+      finalized() {
+        assert.equal(record.snapshot().settled, false);
+        record.settleReaders('settled');
+        assert.equal(record.snapshot().closeObservation.first, undefined);
+        throw new Error('final observer rejected');
+      }
+    });
+    await h.complete(record);
+    const first = record.requestStop('join-failed-observer');
+    assert.ok(record.snapshot().closeObservation.pendingDomains.includes('observer'));
+    h.scheduler.tick(25);
+    assert.equal((await first).kind, 'unconfirmed');
+    assert.equal(record.snapshot().settled, false);
+    assert.equal(record.snapshot().retired, false);
+  });
+
+  test('startup first unconfirmed creates a failure observation even without a process fact', async () => {
+    let transport;
+    const h = observedHarness({
+      createTransport(identity) {
+        transport = {
+          messages: [], connect(sink) { this.sink = sink; },
+          send(message) { this.messages.push(message); return Promise.resolve(); }
+        };
+        return transport;
+      }
+    });
+    const record = h.owner.reserve('starting');
+    const start = record.start(spec, h.hooks());
+    h.scheduler.tick(10);
+    assert.equal((await start.first).kind, 'unconfirmed');
+    await h.scheduler.drain();
+    const observation = record.snapshot().closeObservation;
+    assert.equal(observation.trigger, 'failure');
+    assert.equal(observation.startedAt, 10);
+    assert.equal(observation.finishAt, 50);
+    assert.equal(record.snapshot().adapter.process, undefined);
+    const first = record.requestStop('join-start-failure');
+    h.scheduler.tick(50);
+    assert.equal((await first).kind, 'unconfirmed');
+    assert.equal(record.snapshot().retired, false);
+    assert.equal(transport.messages.length, 0, 'no ready does not imply a physically dispatched stop');
   });
 
   for (const { name, run } of tests) {

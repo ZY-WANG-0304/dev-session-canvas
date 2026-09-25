@@ -39,9 +39,10 @@ function createScheduler() {
       deadlines.add(entry);
       return () => deadlines.delete(entry);
     },
-    advanceTo(time) {
+    advanceTo(time, { runDeadlines = true } = {}) {
       assert.ok(time >= now, 'the test clock must be monotonic');
       now = time;
+      if (!runDeadlines) return;
       for (const entry of [...deadlines].sort((a, b) => a.deadline - b.deadline)) {
         if (entry.deadline <= now && deadlines.delete(entry)) {
           entry.callback();
@@ -135,7 +136,7 @@ try {
       args: [],
       cwd: '/',
       env: {}
-    }, { authority, transport, scheduler });
+    }, { authority, transport, scheduler, ...(options.closeObservationV1 ? { closeObservationV1: true } : {}) });
     const observer = {
       data: (batch) => events.data.push(batch),
       processResult: (eventIdentity, result) => events.processes.push({ identity: eventIdentity, result }),
@@ -1244,6 +1245,233 @@ try {
     await settle(h.scheduler);
     assert.equal(notifications, 1);
     assert.equal(h.scheduler.taskCount, 0);
+  });
+
+  test('the old gate preserves callback-order results when the deadline task is withheld', async () => {
+    const h = createHarness();
+    const start = await h.start('start', 100);
+    h.scheduler.advanceTo(100, { runDeadlines: false });
+    h.message({ type: 'operationObservation', operationId: 'start', result: { kind: 'started', pid: 1234 } });
+    assert.equal((await start.first).kind, 'started');
+    assert.equal(h.authority.snapshot().blockedReason, undefined);
+    const stop = h.control.requestStop('stop', 'graceful', 200);
+    await settle(h.scheduler);
+    h.scheduler.advanceTo(201, { runDeadlines: false });
+    h.message({ type: 'operationObservation', operationId: 'stop', result: { kind: 'accepted' } });
+    assert.equal((await stop.first).kind, 'accepted');
+    h.scheduler.advanceTo(201);
+    assert.equal(h.authority.snapshot().blockedReason, undefined);
+  });
+
+  test('close observation freezes a late start timeout before updating the current result', async () => {
+    for (const observedAt of [100, 101]) {
+      const h = createHarness({ closeObservationV1: true });
+      const start = await h.start('start', 100);
+      h.scheduler.advanceTo(observedAt, { runDeadlines: false });
+      h.message({ type: 'operationObservation', operationId: 'start', result: { kind: 'started', pid: 1234 } });
+      const first = await start.first;
+      assert.equal(first.kind, 'unconfirmed');
+      assert.equal(first.stage, 'start');
+      assert.equal(start.current.kind, 'started');
+      assert.equal(h.authority.snapshot().starting, 0);
+      assert.ok(h.authority.snapshot().blockedReason);
+      h.scheduler.advanceTo(observedAt);
+      assert.strictEqual(await start.first, first);
+      assert.equal(start.current.kind, 'started');
+      assert.equal(h.sent('start').length, 1);
+    }
+  });
+
+  test('close observation classifies late control ACKs by deadline while the execution remains active', async () => {
+    for (const kind of ['graceful', 'force', 'cancel']) {
+      const h = createHarness({ closeObservationV1: true });
+      await h.started();
+      const observation = kind === 'cancel'
+        ? h.control.cancelOutput(kind, 'bounded-close', 200)
+        : h.control.requestStop(kind, kind, 200);
+      await settle(h.scheduler);
+      h.scheduler.advanceTo(200, { runDeadlines: false });
+      h.message({ type: 'operationObservation', operationId: kind, result: { kind: 'accepted' } });
+      const first = await observation.first;
+      assert.equal(first.kind, 'unconfirmed', kind);
+      assert.equal(observation.current.kind, 'accepted', kind);
+      assert.ok(h.authority.snapshot().blockedReason, kind);
+      h.scheduler.advanceTo(200);
+      assert.strictEqual(await observation.first, first);
+      assert.equal(h.snapshot().process, undefined);
+      assert.equal(h.snapshot().source, undefined);
+    }
+  });
+
+  test('close observation preserves a timely ACK when scheduled notifications run after its deadline', async () => {
+    const h = createHarness({ closeObservationV1: true, stateChanged: () => {} });
+    await h.started();
+    const stop = h.control.requestStop('stop', 'graceful', 200);
+    await settle(h.scheduler);
+    h.scheduler.advanceTo(199, { runDeadlines: false });
+    h.message({ type: 'operationObservation', operationId: 'stop', result: { kind: 'accepted' } });
+    h.scheduler.advanceTo(201);
+    await settle(h.scheduler);
+    assert.equal((await stop.first).kind, 'accepted');
+    assert.equal(stop.current.kind, 'accepted');
+    assert.equal(h.authority.snapshot().blockedReason, undefined);
+  });
+
+  test('missing control ACKs after factual retirement remain unknown without new quarantine', async () => {
+    for (const kind of ['graceful', 'force', 'cancel']) {
+      const h = createHarness({ closeObservationV1: true });
+      await h.started();
+      const observation = kind === 'cancel'
+        ? h.control.cancelOutput(kind, 'bounded-close', 200)
+        : h.control.requestStop(kind, kind, 200);
+      await settle(h.scheduler);
+      h.output(1, 'retained tail');
+      await settle(h.scheduler);
+      await h.retire();
+      assert.equal(h.snapshot().consumedThrough, 1);
+      assert.equal(h.authority.snapshot().active, 0);
+      h.scheduler.advanceTo(200);
+      const first = await observation.first;
+      assert.equal(first.kind, 'unconfirmed', kind);
+      assert.equal(observation.current.kind, 'unconfirmed', kind);
+      assert.equal(h.authority.snapshot().blockedReason, undefined, kind);
+      const repeated = kind === 'cancel'
+        ? h.control.cancelOutput(kind, 'bounded-close', 200)
+        : h.control.requestStop(kind, kind, 200);
+      assert.strictEqual(repeated, observation);
+      h.message({ type: 'operationObservation', operationId: kind, result: { kind: 'accepted' } });
+      assert.equal(observation.current.kind, 'accepted');
+      assert.strictEqual(await observation.first, first);
+      assert.equal(h.authority.snapshot().blockedReason, undefined);
+    }
+
+    const inFlightStart = deferred();
+    const queued = createHarness({ closeObservationV1: true,
+      send: message => message.type === 'start' ? inFlightStart.promise : Promise.resolve() });
+    await queued.started();
+    const stop = queued.control.requestStop('queued-stop', 'graceful', 200);
+    try {
+      await settle(queued.scheduler);
+      assert.equal(queued.sent('requestStop').length, 0);
+      await queued.retire();
+      queued.scheduler.advanceTo(200);
+      assert.equal((await stop.first).kind, 'unconfirmed');
+      assert.ok(queued.authority.snapshot().blockedReason, 'an undispatched intent is not a missing provider ACK');
+    } finally {
+      inFlightStart.resolve();
+      await settle(queued.scheduler);
+    }
+    assert.equal(queued.sent('requestStop').length, 1, 'the original queued intent may still be delivered after its deadline');
+    assert.equal((await stop.first).kind, 'unconfirmed');
+  });
+
+  test('a late ACK at the result entry preserves the same retired missing-ACK classification', async () => {
+    const h = createHarness({ closeObservationV1: true });
+    await h.started();
+    const stop = h.control.requestStop('stop', 'graceful', 200);
+    await settle(h.scheduler);
+    await h.retire();
+    h.scheduler.advanceTo(200, { runDeadlines: false });
+    h.message({ type: 'operationObservation', operationId: 'stop', result: { kind: 'accepted' } });
+    assert.equal((await stop.first).kind, 'unconfirmed');
+    assert.equal(stop.current.kind, 'accepted');
+    assert.equal(h.authority.snapshot().blockedReason, undefined);
+  });
+
+  test('late factual retirement cannot retroactively exempt an ACK before a delayed deadline task', async () => {
+    for (const settledAt of [199, 200, 201]) {
+      const h = createHarness({ closeObservationV1: true });
+      await h.started();
+      const stop = h.control.requestStop('stop', 'graceful', 200);
+      await settle(h.scheduler);
+      h.scheduler.advanceTo(settledAt, { runDeadlines: false });
+      await h.retire();
+      h.scheduler.advanceTo(201);
+      assert.equal((await stop.first).kind, 'unconfirmed');
+      assert.equal(Boolean(h.authority.snapshot().blockedReason), settledAt >= 200, String(settledAt));
+      assert.equal(h.snapshot().state, 'settled');
+    }
+  });
+
+  test('provider-reported unconfirmed is never exempt as a missing control ACK', async () => {
+    for (const timing of ['before-deadline', 'after-timeout', 'at-late-result']) {
+      const h = createHarness({ closeObservationV1: true });
+      await h.started();
+      const stop = h.control.requestStop('stop', 'graceful', 200);
+      await settle(h.scheduler);
+      await h.retire();
+      if (timing !== 'before-deadline') {
+        h.scheduler.advanceTo(200, { runDeadlines: timing === 'after-timeout' });
+      }
+      h.message({ type: 'operationObservation', operationId: 'stop',
+        result: { kind: 'unconfirmed', reason: 'provider-could-not-confirm-stop' } });
+      assert.equal((await stop.first).kind, 'unconfirmed', timing);
+      assert.ok(h.authority.snapshot().blockedReason, timing);
+      assert.equal(h.snapshot().state, 'settled');
+    }
+  });
+
+  test('start handshake and unfinished consumption do not receive the retired ACK exemption', async () => {
+    const startup = createHarness({ closeObservationV1: true });
+    const start = await startup.start();
+    await startup.retire();
+    startup.scheduler.advanceTo(100);
+    assert.equal((await start.first).kind, 'unconfirmed');
+    assert.ok(startup.authority.snapshot().blockedReason);
+
+    const pending = createHarness({ closeObservationV1: true });
+    await pending.started();
+    const stop = pending.control.requestStop('stop', 'graceful', 200);
+    await settle(pending.scheduler);
+    pending.output(1, 'pending-consumption');
+    await settle(pending.scheduler);
+    pending.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    pending.message({ type: 'sourceEnd', finalFrameId: 1, disposition: { kind: 'eof' } });
+    pending.sink.controlResourceResult({ kind: 'released' });
+    assert.notEqual(pending.snapshot().state, 'settled');
+    pending.scheduler.advanceTo(200);
+    assert.equal((await stop.first).kind, 'unconfirmed');
+    const blocked = pending.authority.snapshot().blockedReason;
+    assert.ok(blocked);
+    await pending.consumeAll();
+    assert.equal(pending.snapshot().state, 'settled');
+    assert.equal(pending.authority.snapshot().blockedReason, blocked);
+  });
+
+  test('real send failures still quarantine a retired execution after an exempt ACK timeout', async () => {
+    const send = deferred();
+    const h = createHarness({ closeObservationV1: true,
+      send: message => message.type === 'requestStop' ? send.promise : Promise.resolve() });
+    await h.started();
+    const stop = h.control.requestStop('stop', 'graceful', 200);
+    await settle(h.scheduler);
+    await h.retire();
+    h.scheduler.advanceTo(200);
+    assert.equal((await stop.first).kind, 'unconfirmed');
+    assert.equal(h.authority.snapshot().blockedReason, undefined);
+    send.reject(new Error('actual-send-failure'));
+    await settle(h.scheduler);
+    assert.equal(h.snapshot().firstFault, 'Control send failed');
+    assert.equal(h.authority.snapshot().blockedReason, 'Control send failed');
+  });
+
+  test('close observation preserves late-ready intent and never clears an earlier quarantine', async () => {
+    const h = createHarness({ closeObservationV1: true, autoReady: false });
+    const start = await h.start('start', 100);
+    const stop = h.control.requestStop('stop', 'graceful', 200);
+    h.scheduler.advanceTo(100);
+    assert.equal((await start.first).kind, 'unconfirmed');
+    const blocked = h.authority.snapshot().blockedReason;
+    assert.ok(blocked);
+    h.message({ type: 'ready', capabilities: ['execution-lifecycle-v1'] });
+    await settle(h.scheduler);
+    assert.deepEqual(h.messages.filter(message => 'operationId' in message).map(message => message.operationId), ['start', 'stop']);
+    h.message({ type: 'operationObservation', operationId: 'start', result: { kind: 'started', pid: 1234 } });
+    await h.retire();
+    h.scheduler.advanceTo(200);
+    assert.equal((await stop.first).kind, 'unconfirmed');
+    assert.equal(h.authority.snapshot().blockedReason, blocked);
+    assert.equal(h.sent('start').length, 1);
   });
 
   const failures = [];

@@ -62,7 +62,7 @@ function fixture(capabilities = ['execution-lifecycle-v1'], behavior = {}) {
   const server = new RuntimeSupervisorServer({ storageDir, registryPath: path.join(storageDir, 'registry.json') },
     'legacy-detached', 'best-effort', {
       kind: 'non-native', capabilities, scheduler,
-      budgets: { startMs: 100, gracefulMs: 10, forceMs: 10, cancelMs: 10, settleMs: 10 },
+      budgets: { startMs: 100, gracefulMs: 10, forceMs: 10, cancelMs: 10, settleMs: 10, ...behavior.budgets },
       createTransport(identity) {
         const transport = {
           identity, sent: [], frameId: 0,
@@ -82,7 +82,7 @@ function fixture(capabilities = ['execution-lifecycle-v1'], behavior = {}) {
               if (behavior.holdStart) behavior.releaseStart = () => tasks.push(started);
               else queueMicrotask(started);
             } else if (message.type === 'requestStop' || message.type === 'cancelOutput') {
-              tasks.push(() => this.fact({ type: 'operationObservation', operationId: message.operationId,
+              if (!behavior.holdCloseAck) tasks.push(() => this.fact({ type: 'operationObservation', operationId: message.operationId,
                 result: { kind: 'accepted' } }));
             }
           },
@@ -128,6 +128,7 @@ function fixture(capabilities = ['execution-lifecycle-v1'], behavior = {}) {
       }
       await this.pump();
     },
+    elapse(ms) { now += ms; },
     addSocket,
     async create(kind = 'terminal', sessionId = `40000000-0000-4000-8000-${String(++fixtureId).padStart(12, '0')}`) {
       const result = await server.createSession(socket, params(sessionId, kind));
@@ -946,6 +947,135 @@ try {
     assert.equal(snapshot.lifecycle, 'error');
     assert.equal(snapshot.terminalRevision, 0);
     assert.equal(snapshot.terminalFinalRevision, undefined, 'live=false and head revision do not prove final application');
+  });
+
+  const closeObservationCapabilities = [...readerCapabilities, 'execution-close-observation-v1'];
+  for (const kind of ['terminal', 'agent']) {
+    await check(`${kind} real Supervisor natural close keeps first timeout separate from late tracker and reader settlement`, async () => {
+      const f = fixture(closeObservationCapabilities, { budgets: { naturalDrainMs: 15 }, holdCloseAck: true });
+      const { session, transport } = await f.create(kind);
+      const read = await openReader(f, session);
+      transport.process();
+      const initial = session.ownedExecution.snapshot().closeObservation;
+      assert.equal(initial.trigger, 'natural-exit');
+      assert.equal(initial.startedAt, 0);
+      assert.equal(initial.cancelAt, 15);
+      assert.equal(initial.finishAt, 35);
+      assert.equal(initial.forceAt, undefined);
+      transport.output(`${kind}-observed-supervisor-tail`);
+      await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, `${kind} observed tracker consumption`);
+      assert.match(session.terminalStateTracker.getSerializedState().data, new RegExp(`${kind}-observed-supervisor-tail`));
+      await f.advance(15);
+      assert.equal(transport.sent.filter(message => message.type === 'cancelOutput').length, 1);
+      assert.equal(transport.sent.filter(message => message.type === 'requestStop').length, 0);
+      assert.equal(session.ownedExecution.snapshot().adapter.source, undefined);
+      assert.equal(session.ownedExecution.snapshot().closeObservation.first, undefined);
+      const cancel = transport.sent.find(message => message.type === 'cancelOutput');
+      const cancelObservation = session.ownedExecution.execution.operations.get('cancel').view;
+      let cancelFirst;
+      void cancelObservation.first.then(result => { cancelFirst = result; });
+      f.elapse(20);
+      transport.fact({ type: 'operationObservation', operationId: cancel.operationId, result: { kind: 'accepted' } });
+      await f.until(() => cancelFirst !== undefined, 'actual adapter late cancel first result');
+      assert.equal(cancelFirst.kind, 'unconfirmed', 'Supervisor owner capability must enable the actual adapter deadline policy');
+      assert.equal(cancelObservation.current.kind, 'accepted');
+      const timedOut = session.ownedExecution.snapshot().closeObservation;
+      assert.deepEqual(timedOut.first, { kind: 'unconfirmed', pending: [session.sessionId] });
+      assert.equal(timedOut.current.kind, 'unconfirmed');
+      assert.ok(timedOut.pendingDomains.includes('source'));
+      assert.ok(timedOut.pendingDomains.includes('resources'));
+      const stop = await request(f, f.socket, 'stopSession', { sessionId: session.sessionId });
+      assert.equal(stop.ok, true, 'Supervisor stop RPC acknowledges the request, not completed resource cleanup');
+      assert.equal(session.ownedExecution.snapshot().closeObservation.finishAt, initial.finishAt);
+      transport.seal({ kind: 'interrupted', reason: 'controlled natural drain cancellation' });
+      transport.release();
+      await f.until(() => session.ownedExecution.snapshot().settled, `${kind} late original Supervisor completion`);
+      const late = session.ownedExecution.snapshot();
+      assert.deepEqual(late.closeObservation.first, timedOut.first);
+      assert.equal(late.closeObservation.current.kind, 'settled');
+      assert.equal((await cancelObservation.first).kind, 'unconfirmed');
+      assert.deepEqual(late.closeObservation.pendingDomains, []);
+      assert.equal(late.adapter.source.kind, 'interrupted');
+      assert.equal(late.terminal.finalRevision, 1);
+      assert.equal(late.readerOutcome, 'pending');
+      assert.equal(late.retired, false);
+      assert.equal(f.server.executionOwner.snapshot().pending, 1);
+      assert.equal(f.server.idleShutdownTimer, undefined);
+      assert.ok(f.server.executionOwner.snapshot().blockedReason);
+      assertSettlement(await closeReader(f, read, { kind: 'cancelled', reason: 'observed reader cleanup' }), 'recorded');
+      assert.equal(session.ownedExecution.snapshot().retired, true);
+      assert.equal(f.server.executionOwner.snapshot().pending, 0);
+      assert.equal(f.server.executionOwner.tryResume(), false);
+      assert.equal(transport.sent.filter(message => message.type === 'requestStop').length, 0);
+      assert.equal(transport.sent.filter(message => message.type === 'cancelOutput').length, 1);
+    });
+  }
+
+  await check('real Supervisor delete retains a timed-out final flush and retires only after late actual completion', async () => {
+    const f = fixture(closeObservationCapabilities, { budgets: { naturalDrainMs: 15 } });
+    const { session, transport } = await f.create();
+    await openReader(f, session);
+    transport.output('delete-observed-tail');
+    await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'delete observed tail consumption');
+    const gate = deferred();
+    const flush = session.terminalStateTracker.flush.bind(session.terminalStateTracker);
+    let finalFlushEntered = false;
+    let finalState;
+    session.terminalStateTracker.flush = async () => {
+      finalFlushEntered = true;
+      await gate.promise;
+      finalState = await flush();
+      return finalState;
+    };
+    try {
+      const deleting = request(f, f.socket, 'deleteSession', { sessionId: session.sessionId });
+      let response;
+      void deleting.then(result => { response = result; });
+      await f.until(() => transport.sent.some(message => message.type === 'requestStop'), 'delete observed graceful request');
+      transport.process();
+      transport.seal();
+      transport.release();
+      await f.until(() => finalFlushEntered, 'actual delete final tracker flush');
+      assert.equal(session.ownedExecution.snapshot().closeObservation.trigger, 'stop');
+      assert.equal(session.ownedExecution.snapshot().closeObservation.finishAt, 40);
+      assert.equal(session.ownedExecution.snapshot().readerOutcome, 'settled');
+      await f.advance(40);
+      await f.until(() => response !== undefined, 'delete first timeout response');
+      assert.equal(response.ok, false);
+      const first = session.ownedExecution.snapshot().closeObservation.first;
+      assert.deepEqual(first, { kind: 'unconfirmed', pending: [session.sessionId] });
+      assert.ok(session.ownedExecution.snapshot().closeObservation.pendingDomains.includes('final-flush'));
+      assert.equal(session.ownedExecution.snapshot().terminal, undefined);
+      assert.equal(f.server.sessions.get(session.sessionId), session);
+      assert.equal(f.server.executionOwner.snapshot().pending, 1);
+      assert.equal(f.server.idleShutdownTimer, undefined);
+      gate.resolve();
+      await f.until(() => !f.server.sessions.has(session.sessionId), 'late actual delete tracker completion');
+      assert.equal(finalState.outputSequence, 1);
+      assert.match(finalState.data, /delete-observed-tail/);
+      assert.deepEqual(session.ownedExecution.snapshot().closeObservation.first, first);
+      assert.equal(session.ownedExecution.snapshot().closeObservation.current.kind, 'settled');
+      assert.equal(f.server.executionOwner.snapshot().pending, 0);
+      assert.ok(f.server.executionOwner.snapshot().blockedReason);
+      assert.equal(f.server.executionOwner.tryResume(), false);
+      assert.equal(transport.sent.filter(message => message.type === 'requestStop').length, 1);
+      assert.equal(transport.sent.filter(message => message.type === 'cancelOutput').length, 0);
+    } finally { gate.resolve(); }
+  });
+
+  await check('real Supervisor without close observation capability keeps natural-exit timers disabled', async () => {
+    const f = fixture();
+    const { session, transport } = await f.create();
+    transport.process();
+    await f.advance(1000);
+    assert.equal(session.ownedExecution.snapshot().closeObservation, undefined);
+    assert.equal(transport.sent.some(message => message.type === 'requestStop' || message.type === 'cancelOutput'), false);
+    assert.equal(f.server.executionOwner.snapshot().blockedReason, undefined);
+    transport.seal();
+    transport.release();
+    await f.until(() => session.ownedExecution.snapshot().settled, 'legacy Supervisor natural completion');
+    session.ownedExecution.settleReaders('cancelled');
+    assert.equal(f.server.executionOwner.snapshot().pending, 0);
   });
 
   assert.equal(forbiddenAcquisitions, 0);
