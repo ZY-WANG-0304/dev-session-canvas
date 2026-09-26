@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-26 生产接入有限设计：生产接入第27节只读收敛单一`linux-owner-v1-candidate`预算、Runtime由Supervisor而snapshot-only由Host持有owner的创建前能力分流，以及旧live原连接严格删除/聚合失败/保留绑定责任。profile数值是未实测候选，不是生产验收；本轮没有业务代码、用例运行或native证据。下一直接实施S9默认关闭、无native的配置/准入与严格错误传播，不增加通用诊断前置；实际初始尺寸和input/resize I/O、`requireLiveSession`对owned主体与legacy process的区分、停止策略/业务回写、真实provider工厂及产物分发仍缺。旧live/root/storage/generation及Runtime已结束节点不恢复进程或历史的边界保持；L-02至L-05、真实UI/Agent启动链、跨平台和退出完整性总债务继续开放。以下S8、测试债与历史记录逐字保留。
+
 2026-09-26 S8本地最终态保存：生产接入第26节完成默认关闭、显式non-native能力下的原tracker最终态到snapshot-only metadata投影、单次真实严格保存及失败来源保留；保存责任与终端应用、reader退役独立，同key和容量继续受限，Host边界首报不因迟到写入改写。owner36/36、Host56/56，Supervisor60/60、adapter81/81、parent-control9/9、reader20/20、client13/13、main/headless27/27等定向回归及workspace typecheck通过。真实文件证据限单root与workspace写入/rename后JSON读回、原load入口及headless状态恢复，不是真实VS Code UI重开、native或跨平台验收；不将旧history整套失败计入通过。执行metadata替换时保守拒绝提交、保存失败默认不自动重试，仍不是完整生产并发编辑或恢复策略。下一有限阶段只收敛L-03生产预算来源、L-04创建前能力分流及旧live批量delete吞错、最小Linux业务接线设计，并明确当前non-native分支尚不支持实际输入/resize；不追加诊断工具或gate矩阵，不立即开启native。Runtime已结束节点不恢复进程或历史、旧live/root/storage/generation保持；L-02总体、L-03/04生产准入、L-05异常owner消失、真实UI/Agent启动链和跨平台及总债务仍开放。以下保留测试债与历史阶段记录。
 
 2026-09-26 旧Runtime无历史回归fixture缺口：`scripts/test/test-runtime-completed-history.mjs`在`c5a0487f`基线及S8工作树均因缺少`surfaceLifecycle` fixture而以TypeError/exit1退出，属于非本轮引入的测试债，不能宣称整套通过或改旧断言获得绿色。此前Terminal/Agent保存JSON为781/812字节的前段断言通过；相关14个提取方法及3个关联文件保持，支持S8没有改动既有Runtime无历史实现，但不能替代失败后未执行场景的覆盖。后续应独立补齐该旧fixture并原样重跑断言，保留本次两侧失败证据；不因此扩大S8范围或重开completed历史归档。

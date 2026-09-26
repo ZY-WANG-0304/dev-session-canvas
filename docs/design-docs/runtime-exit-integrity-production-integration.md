@@ -21,6 +21,8 @@ updated_at: 2026-09-26
 
 ## 1. 当前结论与阶段边界
 
+2026-09-26 从`b235a7bc`完成第27节生产接入有限设计。已选定下一默认关闭切片的单一候选预算、创建前分流和旧live严格删除边界；查明交互能力、初始尺寸、真实工厂/分发及停止策略仍有直接接线缺口。下一直接实施S9配置/准入与错误传播，再沿同一方案补Linux交互provider，不再安排通用诊断前置。本轮只有源码核对与文档验证，没有业务改动、用例运行或新增平台证据；候选毫秒数不是生产验收，L-02至L-05与整体交付仍开放。以下阶段按原时点保留。
+
 2026-09-26 从`c5a0487f`完成第26节S8：默认关闭的snapshot-only最终tracker投影metadata与严格实际保存，独立保存责任保留失败/未知来源并衔接S7边界。owner36/36、Host56/56和相关回归/typecheck通过，新增单root及workspace真实文件读回与headless光标验证；旧history完整脚本基线与本轮均因夹具缺字段失败，不能记通过。下一仅收敛L-03生产预算和L-04创建前能力分流、旧live错误传播与最小Linux业务接入方案，不自动开native或新增诊断门槛；总体退出完整性仍开放。以下阶段按原时点保留。
 
 2026-09-25 从`ade8f133`完成第25节S7：默认关闭、无native的实际Host/Supervisor正常关闭失败编排。Host分别报告本地执行、现有画布保存和原连接detach；Supervisor等待原执行/reader、严格保存及原server/socket关闭，失败或未知保持关闭准入与进程保活。owner35/35、Host49/49、Supervisor60/60及相关回归/typecheck通过，仅证明受控实际模块。下一有限阶段补snapshot-only最终终端状态投影与实际保存/失败保留，不增加Runtime completed历史；生产profile、native准入和整体退出完整性仍开放。以下阶段按原时点保留。
@@ -1005,3 +1007,97 @@ Host负向组通过原.tmp路径设置目录障碍分别制造root及workspace�
 下一阶段回到生产准入方案：收敛L-03各阶段预算的来源与总关闭边界、L-04创建前能力选择和降级规则、旧live批量删除错误传播，以及最小Linux provider接入实际Host/Supervisor的范围和验收输入。当前注入仍明确non-native，输入/resize也不支持；不能只开gate就宣称已替换产品执行。先固定这一有限接入设计，不再为每个局部增加诊断框架或独立验证门槛，不自动启动native/runner。
 
 S8的metadata引用冲突是保守拒绝，保存失败默认无自动重试或用户恢复流程，不是完整生产并发编辑/恢复方案。真实VS Code重开、完整多根落盘整链、Agent启动包装链、生产profile和能力分流、L-05异常owner消失及跨平台仍开放，L-02和退出完整性总项不关闭。Runtime completed无历史、旧live沿原Supervisor以及root稳定归属待办继续按原边界处理。
+
+## 27. 生产接入有限决策与下一实施
+
+### 27.1 范围和直接源码依据
+
+本节完成26.6，不重做已完成的S4至S8，也不批准真实PTY、runner或默认启用。以下路径以`extensions/vscode/dev-session-canvas/src/`为前缀，锚点对应`b235a7bc`。缺口是生产接入所需差异，不把源码核对写成新的平台实测失败。
+
+| 入口 | 当前事实 | 本轮决定 |
+| --- | --- | --- |
+| `panel/CanvasPanelManager.ts`的`startAgentSession`、`startTerminalSession`与`startNonNativeHostExecution` | live-runtime先走Supervisor，本地注入只覆盖snapshot-only；转换LaunchSpec时没有传cols/rows | 保持两种owner，不把Runtime迁到Host；初始尺寸必须进入新provider启动契约 |
+| `supervisor/runtimeSupervisorMain.ts`的`createSession`、`requireLiveSession`、`main` | owned分支不创建session.process，但live校验要求process；实际main未注入owner | live校验改为按会话执行类型判断，不能为通过校验伪造process；实际工厂在Supervisor中创建 |
+| `common/executionLifecycle.ts:51`、`:149`及`panel/executionProviderChannel.ts:94` | ready只允许/声明execution-lifecycle-v1，不能代表交互能力 | 生命周期、交互和reader能力分层检查；旧ready不因类型放宽自动获得新保证 |
+| `panel/executionProviderTransport.ts:189`、`panel/linuxExecutionProvider.ts` | stdin直接end；Linux binding只有创建/read/wait/signal/close，无write/resize | 补原IPC上的有限交互协议和token所有权API，不让Host/Supervisor接触PTY fd |
+| `scripts/build/linux-execution-provider-patch.mjs`、`scripts/test/fixtures/linux-execution-provider-fixture.ts` | patch明确移除原resize导出；真实入口仍是固定80x24的测试fixture | 不能靠上游resize或测试fixture宣称已具备产品入口；需独立构建入口和可追溯产物 |
+| `panel/CanvasPanelManager.ts:10650`、`:3863`及`panel/runtimeSupervisorClient.ts:352` | 批量删除吞连接/请求错误，调用前已清bindings；普通request会再次ensureConnected | 按27.4保留原责任并聚合传播，禁止删除时隐式重启/换generation |
+
+本轮不修F-03 root归属；新旧路径仍使用各自已有storage绑定，后续root稳定归属必须同时覆盖单根/多根。也不恢复Runtime completed正文或崩溃后进程。snapshot-only最终保存仍按S8，与Runtime轻量终态分开。
+
+### 27.2 单一候选预算与整体边界
+
+选定内部不可变配置`linux-owner-v1-candidate`作为下一受控实现的明确输入，不新增用户设置，不把散落fixture数值当默认值。该名字表示候选配置，不是Supervisor storage generation或单会话ExecutionIdentity.generation。工厂在创建前一次性选定profile并传给owner；字段缺失、非法或不相容时，在provider资源取得前拒绝，不由各入口自行补值。
+
+| 字段 | 候选毫秒数 | 依据和解释 |
+| --- | ---: | --- |
+| startMs | 10000 | 新工程取值，未验证；从注册原start观察起算，不含CLI/env准备await，不是总创建SLA |
+| gracefulMs | 5000 | 只有旧非Claude Agent的Ctrl-C后升级等待提供行为依据；不证明SIGTERM等价，也不是EOF等待依据 |
+| forceMs | 2000 | 新工程取值，观察强停后的原事实，不把signal受理当主体退出 |
+| naturalDrainMs | 2000 | 新工程取值，主体终态后仍排空；到点仅按原契约请求取消，不补造EOF或保证主进程尾部已收齐 |
+| cancelMs | 2000 | 新工程取值，取消后的移交窗口，不丢已读/已接受内容 |
+| settleMs | 4000 | 新工程取值，原资源/消费结算观察；不代替reader或保存 |
+| parentTermMs / parentKillMs | 1000 / 1000 | 新工程取值，内嵌settle最后2000ms，仅原安全claim成立才有清理权限 |
+| boundaryMs | 20000 | 新工程取值，Host/Supervisor各自整体首报窗口，不是每域独立窗口或强制进程退出期限 |
+
+沿`panel/executionOwnerLifecycle.ts`的`beginCloseObservation`保持原公式：首次触发时刻为t0，自然退出cancelAt=t0+naturalDrainMs，主动/失败cancelAt=t0+gracefulMs+forceMs，finishAt=cancelAt+cancelMs+settleMs；候选分别为8秒和13秒。父清理起点为finishAt-parentTermMs-parentKillMs，不再追加2秒。首次原因固定时间线，后来的stop、dispose或整体关闭不得重置；事实满足可提前返回。进程仍未知、partial-create或内容移交不安全时，预算到点不授予杀provider的权限。
+
+Host和Supervisor边界各在首次进入时固定B=tBoundary+20000，所有捕获责任并行使用同一个B。Host的local、初始画布保存、最终保存和remote detach不串接多个20秒；Supervisor的执行、reader、严格registry及server/socket关闭同理。已有执行观察仍保持原期限，整体首报可以先于某个执行结算；到B冻结未确认，不把慢reader改成lost。B后不从迟到保存派生新的metadata写入或socket关闭，已提交操作可补current而不改first。Host消失不承诺内存责任延续，Supervisor则按S7保持closing和保活。
+
+这些数值全部未经过本轮运行验证；只有5秒的旧行为来源已确认。`runtimeSupervisorClient.waitForSupervisorReady`的5秒外围循环不能提供connect/hello硬截止，idle保活30秒、32/16ms输出调度和诊断20/30秒也不是预算来源。同线程同步写盘或事件循环停顿不可被timer抢占，20秒不写成硬墙钟上限。下一实现用受控时钟检查期限组合，后续最小真实交互验收直接评价该候选，不先新建调参工具；若自然尾部场景被取消，诚实标interrupted仍不足以通过自然退出验收，必须保留失败并调整实现或有依据地修订候选。
+
+### 27.3 创建前能力分流和兼容边界
+
+只保留一个内部候选选择入口，不继续按阶段堆用户开关。未选择候选时原产品路径保持，不宣称新保证；显式选择候选后，只允许具备完整依赖的目标，不因能力不足静默退回旧bridge、旧Supervisor或snapshot-only。返回明确不可用原因且不派发PTY start。用于无native测试的注入仍标non-native，生产工厂另用真实类型，不将native cast成non-native绕过现有构造守卫。
+
+分流顺序为：先判既有live还是新建，再固定模式、实际执行端OS/arch/运行时和目标binding，最后检查能力/产物并预留owner。既有live始终按metadata的backend/storage/sessionId/executionKind恢复和操作，不要求其突然具备新能力，不迁移或重新启动。新live由Supervisor拥有provider、tracker和reader，Host只负责RPC/投影；新snapshot-only由Host拥有同一共享核心和独立provider，不因此升级为跨Host持久运行。
+
+新能力新建必须经过两道检查：Host检查目标server及当前页面所需reader链；实际authority在journal准备和provider创建前检查本地工厂、profile与完整能力，并在异步准备后复核准入/原身份。provider ready必须在PTY start前确认其真实生命周期及交互能力，缺能力时收尾原provider控制资源，不重试旧实现。非native注入声明只证明受控输入，不能代替实际子进程握手。
+
+沿用内部owner的`execution-lifecycle-v1`、关闭观察、父清理及owner边界要求；live另需已实现的`terminal-read-settlement-v1`整链，snapshot-only另需local settlement和persistence。新增provider交互能力拟名`terminal-interaction-v1`，必须同时包括初始尺寸、输入和resize，不能只根据方法存在宣称支持。wire ready和owner能力表不是同一个对象，不把所有内部gate原样通过IPC发送。server hello及create请求须带可核验的新执行profile能力/要求，server不能仅凭全局owner存在就给未满足交互的会话发新保证。
+
+新profile最终进入实际产品时使用独立storage generation候选`terminal-exit-v1`，不能原地覆盖当前`terminal-stream-v1`，也不能改写旧metadata即称迁移。下一S9只增加显式选择与拒绝路径，**不改CURRENT_RUNTIME_SUPERVISOR_GENERATION默认值**、不启动新generation。backend的systemd-user/legacy-detached选择与执行能力分开：只有所选backend上同样具备新能力才允许原backend降级策略，不能以best-effort为由降低退出契约。远端按执行端环境选择，不按本地UI操作系统推断。
+
+S8保存失败或metadata冲突仍保留原记录、拒绝重启/删除，不用换profile逃避。snapshot-only候选默认启用前需完成可解释的失败处置与真实并发编辑验证；本轮不新增自动重试、强制遗忘或历史归档。
+
+### 27.4 旧live删除的窄严格传播
+
+批量reset/clear与永久离开分开。永久离开仍只detach原live，不为了“清理完整”删除它们；可中止reset/clear则先捕获原节点与完整binding，停止该批新变更，在远端结果判定前不得清空sessions/bindings或提交空画布。独立项目均可尝试，不能第一个失败就跳过其余，也不能吞`allSettled`结果；保留逐绑定的`legacy-acknowledged`、`legacy-absent`、`failed`、`unconfirmed`并汇总到原错误呈现入口。前两者只满足旧协议的删除行为，不命名为新owner的settled；partial success不宣称远端回滚，失败时保留画布与未结算绑定。
+
+在`runtimeSupervisorClient.ts`增加仅服务本次删除的严格入口，捕获原socket后直接发送，不再经过会默认restart的普通request；无连接时只允许对原storage做allowRestart:false的连接，等待/握手也受本批同一固定deadline观察。连接替换、失联或截止为未确认，不换endpoint、不补发、不重启server。`sessionNotFound`只记为该原端点的legacy-absent，不据此证明旧进程、EOF或资源释放，更不能把新generation的“不存在”当原会话结束。legacy-absent可以按旧协议完成节点删除，但不得记成已证明原进程结束。
+
+connect/hello每次await返回后、实际发送delete前，复核原binding/socket和同一deadline。期限后尚未派发的delete不再首次提交；已经提交的原请求才可补current，不能重发。晚到连接不能在调用方已收到未确认后继续派发破坏性动作。
+
+同一规则覆盖`startAgentSessionWithSupervisor`/`startTerminalSessionWithSupervisor`替换旧绑定：当前先写新metadata、再吞旧delete异常的顺序不能延续到候选路径；先确认原绑定的允许结果，再提交新绑定或新create。结果未知时保留原责任，不用新sessionId或新generation绕过。后续真实创建接线还须利用已有可选create sessionId在派发前固定调用方已知身份，保留原创建请求及结果未知的绑定；不得因丢失create回包第二次创建。预分配ID只是责任定位，不提供重试幂等或创建成功证明。
+
+本批复用20秒候选boundary窗口并与外层已有期限取更早者，不另给每项20秒。到期保留原请求责任，迟到回包可更新当前结果，但不能继续执行原reset或抹去后来创建的节点；再次用户操作须检查同绑定在途请求，不能无界累积或重复删除。无须改造所有RPC成通用重试/超时框架。原单项strict入口同样使用该连接规则；best-effort仅限启动失败后对已知临时会话的补偿，不参与用户reset成功判据。新owned会话的删除继续按S7实际结算/必要保存处理，不降格成legacy acknowledged。
+
+### 27.5 最小Linux交互provider范围
+
+后续直接扩现有`executionLifecycle`、adapter/channel/transport、Linux provider和`scripts/build/linux-execution-provider-patch.mjs`及其native owner，而不另建诊断服务。候选沿当前S1有限负载两执行/一启动验证，不把该限制偷偷变为正式用户容量。首个环境限定为实际匹配产物的Linux x64；Linux arm64、其他libc、VS Code/Electron及其他平台的证据不能由现有Node样本代替。真实工厂必须复用所属authority的可执行文件/运行环境启动子进程，native只在provider加载；构建增加实际入口及独立受控资产，不从.debug fixture或任意本地node_modules私改产物加载。
+
+初始cols/rows必须通过LaunchSpec进入创建，并与authority初始tracker/journal一致。输入和resize沿原IPC普通lane增加具名交互命令，stdin继续关闭，不建立第二套输入源；stop/cancel仍独立urgent推进。交互使用自己的有界在途记录，不能复用当前adapter按start/graceful/force/cancel各一次、channel按type永久去重的生命周期表。输入按编码后的现有controlBytes限长分块，不拆坏UTF-8；只有已接收且未完成的有限输入占账，超额显式拒绝或向调用方施加背压，不静默丢弃、不用无限Promise链排队、不因结果未知重放已写前缀。具体队列上限作为同次I/O实施的显式常量及直接边界用例，不另开容量研究门槛。
+
+native增加token绑定的非阻塞write与resize，不向父端暴露fd，不通过独立fs.write或另一个reader取得相同资源。write报告实际前缀进度，partial/EAGAIN保留偏移，EINTR和错误显式分类；一次有限系统调用后让出事件循环，等待可写不得阻塞stop、read或wait。输入受理、实际写入和命令结果分开；主体终态、真实源结束或关闭准入后不接新输入/resize，尚未写出的部分取消并明确结果，不能影响已收到输出的消费。close前结算原在途读/write/resize使用，扩原native owner的readInFlight门禁，不重试已关闭fd；这是等待任务结算，不是无期限等待剩余字节写入已无消费者的PTY。
+
+resize先校验身份/存活/尺寸，通过原authority terminal串行链提交；仅native成功后追加resize journal、推进唯一revision并更新tracker/节点尺寸。等待resize确认时控制响应不依赖输出credit或同一消费链，避免输出暂停反过来阻止停止/resize回包；此前已入链输出保持先后顺序。native成功但journal/tracker失败保留不一致错误并停止新mutation，不能报告完全成功或伪称已回滚终端尺寸。实际`requireLiveSession`改为区分旧process与新owned主体，write/resize/scrollback入口一起核对；输入失败不得先标Agent已在执行。
+
+停止策略随执行种类/Agent provider明确传入，不能把旧非Claude Agent的Ctrl-C+5秒、Claude或Terminal的直接kill一律替成当前Linux候选SIGTERM。第一批交互实现保留这些策略差异，Ctrl-C仅是请求并可能失败，force不能等待输入队列排空；自然收尾不停止已确认退出主体。Agent CLI的实际启动命令、shell/包装器、resume和退出主体另行验证，受控Terminal程序不冒充真实Agent；普通后代未来输出仍不是独立产品要求。
+
+封闭普通input准入不能同时拒绝本次已准入stop的内部Ctrl-C动作；它经原owner控制路径派发，不能无限排在普通输入之后，也不重新开放用户输入。该例外不授予已确认退出主体新的写入权限。
+
+实际业务接线还须保留旧output路径的标题查询回复、Agent活动/显式resume身份同步和Terminal launching到live转变。`runtimeSupervisorMain.ts`的`consumeOwnedOutput`目前未接入`bindSessionProcess`的onData分支里的这些逻辑；沿既有helper复用，查询回复走同一有界输入路径，但consume/terminalOperationChain不得等待PTY可写或回复写入完成，以免和输出credit环等。不能只把原始文本写入tracker就声称行为等价。对应Host本地路径一并核对，不新建第二套Agent状态机。这些是实际接入同批回归，不是另一个诊断研究项目。
+
+### 27.6 下一代码交付与验收输入
+
+下一阶段直接实施S9，不再安排一轮前置设计：在既有owner及Host/Supervisor/client入口落单一候选profile、完整能力检查与两模式选择、旧live严格删除/保留责任；实际工厂不可用时创建明确拒绝，non-native受控注入可验证接线。该批不声称已交互或已native支持，不改用户默认、全局generation或旧live绑定。测试直接扩原owner、Host/Supervisor wiring及client/reader入口，保留原断言。交付后沿27.5继续实际Linux I/O/工厂和产物接线，不以新的listener/归档/容量工具测试为前置。
+
+S9必须覆盖：新live选Supervisor、新snapshot-only选Host、旧live按原storage/kind恢复；缺任一必需能力或产物时零PTY start，握手能力不足后控制责任保留；自然8秒/主动13秒/整体20秒共用同钟且迟到不改首报；两个旧backend中一个删除失败仍尝试另一个，reset不清失败绑定；断连/替换socket不重启或补发，超时后迟到成功不继续清空画布，同绑定再操作不累积请求。纯fixture可以声明交互能力验证分流，但结果必须标为受控，不能当native功能通过。
+
+后续最小Linux业务验收只取直接产品输入：两模式各启动真实Terminal受控命令，经正常输入路径发送新nonce并由程序计算响应，resize后从程序读回尺寸；随后主进程自身UTF-8/ANSI尾部与非零退出，核对最终内容、光标、revision、reader及原资源。再取一次暂停消费下stop和双会话A收尾期间B交互，保留失败/未知，不以回显或控制ACK代替执行结果。live断开Host时不停止原主体，snapshot-only关闭仍保存其快照；Runtime结束后重开无正文且不自动执行。实际Agent至少覆盖真实CLI启动主体和对应停止策略，不能合成节点标签代证。原生采集前只需固定该输入、产物/运行环境与安全清理，不扩为通用诊断框架；本轮不运行这些场景。
+
+### 27.7 本轮验证和未闭合项
+
+本轮为三路只读源码核对与五份文档同步，不修改业务、测试、依赖、工作流或独立诊断树。YAML/索引、关联路径、ExecPlan十二当前章节、第2至26节及旧债务/原则保持、恰五文档和git diff --check静态验收通过。两路独立设计复核无S9直接阻塞，补清迟到连接首次delete、内部停止与查询回复的时序边界；检查脚本假设修正记录于ExecPlan，不复用S8用例数量作为本轮运行。没有自动化业务测试、PTY/socket/native、构建或runner新结果。
+
+L-03的预算来源/公式和L-04分流/旧live传播已有下一实现输入，但生产数值有效性、S9实现、Linux交互/实际产物、L-02真实页面及保存整链、L-05异常owner消失、真实Agent和跨平台仍未闭合。S8旧completed-history fixture失败继续独立保留，不把修它设为本轮设计前置。整个ExecPlan保持active，不push/PR，不因文档收口宣称退出完整性已交付。
