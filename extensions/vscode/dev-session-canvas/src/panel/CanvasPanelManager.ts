@@ -2,11 +2,11 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ExecutionOwnerLifecycle, type NonNativeExecutionOwnerOptions, type OwnedExecution, type OwnerCloseResult } from './executionOwnerLifecycle';
-import { S1_LIMITS, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS,
+import { ExecutionOwnerLifecycle, type ExecutionOwnerOptions, type OwnedExecution, type OwnerCloseResult } from './executionOwnerLifecycle';
+import { S1_LIMITS, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_INTERACTION_LIMITS,
   assertExecutionCandidateCapabilities, type ExecutionCandidateProfile,
   type AuthorityResult, type ExecutionIdentity, type LaunchSpec } from '../common/executionLifecycle';
-import type { ExecutionScheduler } from './executionSessionAdapter';
+import type { ExecutionScheduler, InteractionObservation } from './executionSessionAdapter';
 import {
   ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
   NOTIFIER_COMMAND_IDS,
@@ -579,17 +579,35 @@ interface NonNativeHostExecution {
   readerAdmissionClosed: boolean;
   cols: number;
   rows: number;
+  business?: NonNativeHostBusiness;
+  mutationError?: string;
+  resizeObservation?: InteractionObservation;
   finalTerminal?: SerializedTerminalState;
   localReaders?: Map<CanvasSurfaceLocation, LocalExecutionReader>;
   launchSpec?: Readonly<Pick<LaunchSpec, 'file' | 'cwd'>>;
   persistence?: {
     readonly identity: ExecutionIdentity;
-    readonly metadata: AgentNodeMetadata | TerminalNodeMetadata;
+    metadata: AgentNodeMetadata | TerminalNodeMetadata;
     submitted: boolean;
     result?: NonNativeHostPersistenceResult;
     readonly promise: Promise<NonNativeHostPersistenceResult>;
     readonly resolve: (result: NonNativeHostPersistenceResult) => void;
   };
+}
+
+interface NonNativeHostBusiness {
+  buffer: string;
+  terminalTitle?: string;
+  terminalTitleCarryover?: string;
+  terminalTitleRedactionState?: ExecutionTerminalTitleRedactionState;
+  lifecycleStatus: AgentNodeStatus | TerminalNodeStatus;
+  launchMode: PendingExecutionLaunch;
+  resumePhaseActive: boolean;
+  agentProvider?: AgentProviderKind;
+  agentResume?: AgentResumeContext;
+  agentActivity?: AgentActivityHeuristicState;
+  lineContextTracker: ExecutionTerminalLineContextTracker;
+  cancelActivityPoll?: () => void;
 }
 
 type NonNativeHostPersistenceResult = Readonly<{
@@ -1387,15 +1405,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public constructor(
     private readonly context: vscode.ExtensionContext,
-    executionOwnerOptions?: NonNativeExecutionOwnerOptions,
+    executionOwnerOptions?: ExecutionOwnerOptions,
     private readonly executionCandidateProfile?: ExecutionCandidateProfile
   ) {
     if (executionCandidateProfile !== undefined && executionCandidateProfile !== EXECUTION_CANDIDATE_PROFILE) {
       throw new Error('Unknown execution candidate profile.');
     }
     if (executionOwnerOptions) {
-      if (context.extensionMode !== vscode.ExtensionMode.Test) {
+      if (executionOwnerOptions.kind === 'non-native' && context.extensionMode !== vscode.ExtensionMode.Test) {
         throw new Error('Non-native execution owner injection requires VS Code test mode.');
+      }
+      if (executionOwnerOptions.kind === 'linux-provider' &&
+        (executionOwnerOptions.profile !== (executionCandidateProfile ?? executionOwnerOptions.profile) ||
+          executionOwnerOptions.profile !== EXECUTION_CANDIDATE_PROFILE)) {
+        throw new Error('Linux execution owner requires its explicit matching candidate profile.');
       }
       this.nonNativeExecutionOwner = new ExecutionOwnerLifecycle(executionOwnerOptions);
     }
@@ -9802,6 +9825,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async refreshLiveExecutionSessionScrollback(scrollback: number): Promise<void> {
     const operations: Array<Promise<void>> = [];
+    for (const record of this.nonNativeHostExecutions.values()) {
+      if (!record.business) continue;
+      const operation = record.terminalChain.then(async () => {
+        this.assertNonNativeHostMutation(record);
+        if (record.tracker.getScrollback() === scrollback) return;
+        const revision = record.terminalRevision + 1;
+        await record.tracker.setScrollback(scrollback, { outputSequence: revision });
+        await record.business!.lineContextTracker.setScrollback(scrollback);
+        record.terminalRevision = revision;
+        await this.publishNonNativeHostMutation(record);
+      });
+      record.terminalChain = operation;
+      operations.push(operation);
+    }
     for (const [nodeId, session] of this.agentSessions.entries()) {
       operations.push(this.refreshManagedExecutionSessionScrollback('agent', nodeId, session, scrollback));
     }
@@ -9843,7 +9880,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
       const refreshedSession = this.getExecutionSessions(kind).get(nodeId);
       if (
-        refreshedSession?.owner === 'supervisor' &&
+        refreshedSession === session && refreshedSession.owner === 'supervisor' &&
         refreshedSession.terminalStateTracker.getScrollback() !== scrollback
       ) {
         await refreshedSession.terminalStateTracker.setScrollback(scrollback);
@@ -15336,7 +15373,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const resolvedCli = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand, cwd);
         return this.buildAgentLaunchSpec(resolvedCli, freshLaunch?.launchArgs ?? [], cwd,
           normalizedCols, normalizedRows, executionEnv, launchMode, resumeContext);
-      });
+      }, { provider, resumeContext, launchMode });
       return;
     }
     const sessionId = createExecutionSessionId(nodeId, 'agent');
@@ -16343,6 +16380,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!snapshot.retired || this.nonNativeHostExecutions.get(record.execution.key) !== record) return;
     if (persistence && persistence.result?.kind !== 'saved' && persistence.result?.kind !== 'not-required') return;
     this.nonNativeHostExecutions.delete(record.execution.key);
+    record.business?.cancelActivityPoll?.();
+    record.business?.lineContextTracker.dispose();
     record.tracker.dispose();
   }
 
@@ -16438,7 +16477,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     cols: number,
     rows: number,
-    prepare: () => Promise<ExecutionSessionLaunchSpec>
+    prepare: () => Promise<ExecutionSessionLaunchSpec>,
+    agent?: { provider: AgentProviderKind; resumeContext: AgentResumeContext; launchMode: PendingExecutionLaunch }
   ): Promise<void> {
     this.assertExecutionCandidateAdmission('snapshot-only');
     const owner = this.nonNativeExecutionOwner;
@@ -16478,22 +16518,37 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.assertExecutionCandidateAdmission('snapshot-only');
       const spec: LaunchSpec = {
         file: prepared.file, args: prepared.args ?? [], cwd: prepared.cwd,
+        ...(owner.options.profile ? { cols, rows, stopStrategy: kind === 'agent' && agent?.provider !== 'claude'
+          ? 'interrupt-then-hangup' as const : 'hangup' as const } : {}),
         env: Object.fromEntries(Object.entries(prepared.env ?? {}).filter(
           (entry): entry is [string, string] => typeof entry[1] === 'string'))
       };
       const active = record;
+      if (owner.options.profile) {
+        active.business = {
+          buffer: '', lifecycleStatus: kind === 'agent' ? agent?.launchMode === 'resume' ? 'resuming' : 'starting' : 'launching',
+          launchMode: agent?.launchMode ?? 'start', resumePhaseActive: agent?.launchMode === 'resume',
+          agentProvider: agent?.provider, agentResume: agent?.resumeContext,
+          agentActivity: kind === 'agent' ? createAgentActivityHeuristicState() : undefined,
+          lineContextTracker: this.createExecutionTerminalLineContextTracker(cols, rows, prepared.file,
+            prepared.cwd ?? '', this.getTerminalScrollback())
+        };
+      }
       if (active.persistence) active.launchSpec = Object.freeze({ file: spec.file, cwd: spec.cwd });
       const operation = execution.start(spec, {
         consume: batches => {
           active.terminalChain = active.terminalChain.then(async () => {
             const outputStartSequence = active.terminalRevision + 1;
+            const chunks: string[] = [];
             for (const batch of batches) {
               if (active.finalRevision !== undefined || batch.sequence !== active.lastDataSequence + 1) {
                 throw new Error('Non-native Host output order is invalid.');
               }
               active.lastDataSequence = batch.sequence;
               active.terminalRevision += 1;
-              active.tracker.write(batch.text, { outputSequence: active.terminalRevision });
+              const text = active.business ? this.consumeNonNativeHostBusinessOutput(active, batch.text) : batch.text;
+              chunks.push(text);
+              active.tracker.write(text, { outputSequence: active.terminalRevision });
             }
             await active.tracker.flush();
             for (const reader of active.localReaders?.values() ?? []) {
@@ -16501,8 +16556,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
                 await this.postLocalExecutionReaderMessage(active, reader, {
                   type: 'host/executionOutput', payload: {
                     kind, nodeId, executionSessionId: execution.identity.executionId,
-                    chunk: batches.map(batch => batch.text).join(''),
-                    outputStartSequence, outputSequence: active.terminalRevision
+                    chunk: chunks.join(''),
+                    outputStartSequence, outputSequence: active.terminalRevision,
+                    ...(active.business ? { terminalTitle: active.business.terminalTitle ?? null } : {})
                   }
                 });
               }
@@ -16518,6 +16574,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               || (terminal.outputSequence ?? 0) !== active.terminalRevision) {
               throw new Error('Non-native Host terminal tail is not fully applied.');
             }
+            if (active.mutationError) throw new Error(active.mutationError);
             // Freeze reader admission in the same turn that publishes the final revision.
             active.finalRevision = active.terminalRevision;
             active.finalTerminal = terminal;
@@ -16528,6 +16585,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return finalRevision!;
         },
         finalized: result => {
+          active.business?.cancelActivityPoll?.();
+          if (active.business) active.business.cancelActivityPoll = undefined;
+          if (kind === 'agent' && active.business) {
+            const business = active.business;
+            const finalResume = this.readAgentResumeContextFromOutput(business);
+            if (finalResume) business.agentResume = finalResume;
+            else if (business.agentProvider === 'claude' && business.launchMode === 'start' &&
+              execution.snapshot().stopRequested &&
+              !(business.agentResume?.strategy === 'claude-session-id' && business.agentResume.sessionId?.trim())) {
+              business.agentResume = { supported: false, strategy: 'none' };
+            }
+            this.projectNonNativeHostBusiness(active);
+          }
           try { this.persistNonNativeHostFinal(active, result); }
           catch (error) {
             this.settleNonNativeHostPersistence(active, { kind: 'failed', reason: formatUnknownError(error) });
@@ -16555,6 +16625,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const result = await operation.first;
       rejectedBeforeAcquire = result.kind === 'rejected-before-acquire';
       if (result.kind !== 'started') throw new Error(`Non-native Host start was ${result.kind}.`);
+      if (active.business) this.projectNonNativeHostBusiness(active);
       if (active.localReaders && this.activeSurface) {
         void this.postLocalExecutionSnapshot(active, { surface: this.activeSurface });
       }
@@ -16568,10 +16639,174 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           }
         }
         record?.tracker.dispose();
+        record?.business?.cancelActivityPoll?.();
+        record?.business?.lineContextTracker.dispose();
         execution.abandon('host-preparation-failed-or-cancelled');
         if (this.nonNativeHostExecutions.get(key) === record) this.nonNativeHostExecutions.delete(key);
       }
       throw error;
+    }
+  }
+
+  private isNonNativeHostRecordCurrent(record: NonNativeHostExecution): boolean {
+    return this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(record.kind, record.nodeId)) === record;
+  }
+
+  private assertNonNativeHostMutation(record: NonNativeHostExecution): void {
+    const snapshot = record.execution.snapshot();
+    if (!record.business || !this.isNonNativeHostRecordCurrent(record) || record.mutationError ||
+      record.finalRevision !== undefined || snapshot.stopRequested || snapshot.adapter?.process || snapshot.adapter?.seal) {
+      throw new Error(record.mutationError ?? 'Owned terminal mutation admission is closed.');
+    }
+  }
+
+  private projectNonNativeHostBusiness(record: NonNativeHostExecution): void {
+    const business = record.business;
+    if (!business || !this.isNonNativeHostRecordCurrent(record)) return;
+    const node = this.state.nodes.find(value => value.id === record.nodeId && value.kind === record.kind);
+    if (!node || (record.persistence && node.metadata?.[record.kind] !== record.persistence.metadata)) {
+      record.mutationError = 'The original execution metadata binding changed.';
+      this.recordDiagnosticEvent('execution/ownedProjectionRejected', { kind: record.kind, nodeId: record.nodeId,
+        reason: record.mutationError });
+      return;
+    }
+    const patch = buildExecutionMetadataPatch(this.state, record.nodeId, record.kind, {
+      lifecycle: business.lifecycleStatus, persistenceMode: 'snapshot-only', liveSession: false,
+      pendingLaunch: undefined, terminalTitle: business.terminalTitle, lastCols: record.cols, lastRows: record.rows,
+      ...(record.kind === 'agent' ? { provider: business.agentProvider, resumeSupported: business.agentResume?.supported,
+        resumeStrategy: business.agentResume?.strategy, resumeSessionId: business.agentResume?.sessionId,
+        resumeStoragePath: business.agentResume?.storagePath } : {})
+    });
+    this.state = updateExecutionNode(this.state, record.nodeId, record.kind, {
+      status: business.lifecycleStatus,
+      summary: record.kind === 'agent'
+        ? summarizeAgentSessionOutput(business.buffer, business.lifecycleStatus as AgentNodeStatus,
+          agentProviderDisplayLabel(business.agentProvider ?? 'codex'))
+        : summarizeEmbeddedTerminalOutput(business.buffer, business.lifecycleStatus as TerminalNodeStatus),
+      metadata: patch
+    });
+    // Only our identity-checked projection may advance the S8 persistence binding.
+    if (record.persistence) {
+      const updated = this.requireNode(record.nodeId, record.kind);
+      record.persistence.metadata = record.kind === 'agent' ? ensureAgentMetadata(updated) : ensureTerminalMetadata(updated);
+    }
+    this.postState('host/stateUpdated');
+  }
+
+  private consumeNonNativeHostBusinessOutput(record: NonNativeHostExecution, chunk: string): string {
+    const business = record.business!;
+    const title = updateExecutionTerminalTitle(business, chunk, report => {
+      // A query response must not hold the consumer while the PTY is waiting for output credit.
+      void this.writeNonNativeHostInput(record, report, true);
+    });
+    business.buffer = appendTerminalBuffer(business.buffer, title.terminalOutput);
+    const observable = stripExecutionTerminalTitleMarkers(title.terminalOutput);
+    business.lineContextTracker.write(observable);
+    if (record.kind === 'agent') {
+      const resume = this.readAgentResumeContextFromOutput(business);
+      if (resume && (!business.agentResume?.sessionId || record.execution.snapshot().stopRequested)) business.agentResume = resume;
+      if (shouldRecordAgentOutputHeuristics(business.lifecycleStatus)) {
+        recordAgentOutputHeuristics(business.agentActivity!, observable, business.buffer, business.agentProvider,
+          this.nonNativeExecutionOwner!.options.scheduler.now());
+        this.scheduleNonNativeAgentActivity(record);
+      }
+    } else if (business.lifecycleStatus === 'launching') business.lifecycleStatus = 'live';
+    this.projectNonNativeHostBusiness(record);
+    return title.terminalOutput;
+  }
+
+  private scheduleNonNativeAgentActivity(record: NonNativeHostExecution): void {
+    const business = record.business!;
+    business.cancelActivityPoll?.();
+    const scheduler = this.nonNativeExecutionOwner!.options.scheduler;
+    business.cancelActivityPoll = scheduler.scheduleDeadline(scheduler.now() + AGENT_WAITING_INPUT_POLL_INTERVAL_MS, () => {
+      business.cancelActivityPoll = undefined;
+      if (!this.isNonNativeHostRecordCurrent(record) || record.finalRevision !== undefined ||
+        record.execution.snapshot().stopRequested || !shouldRecordAgentOutputHeuristics(business.lifecycleStatus)) return;
+      const result = evaluateAgentWaitingInputTransition(business.agentActivity!, scheduler.now());
+      if (result.shouldTransition) {
+        business.lifecycleStatus = 'waiting-input';
+        business.resumePhaseActive = false;
+        this.projectNonNativeHostBusiness(record);
+      } else if (result.shouldKeepPolling) this.scheduleNonNativeAgentActivity(record);
+    });
+  }
+
+  private async writeNonNativeHostInput(record: NonNativeHostExecution, data: string, queryReply = false): Promise<boolean> {
+    try {
+      this.assertNonNativeHostMutation(record);
+      const business = record.business!;
+      if (!queryReply && !this.assertExecutionAllowed(vscode.l10n.t('The current workspace is not trusted. Terminal input is disabled.'))) return false;
+      if (record.kind === 'agent' && (business.lifecycleStatus === 'suspended' ||
+        (business.agentProvider === 'claude' && containsTerminalSuspendInput(data)))) {
+        throw new Error('This Agent cannot accept suspended terminal input.');
+      }
+      const scheduler = this.nonNativeExecutionOwner!.options.scheduler;
+      const result = await record.execution.write(data, scheduler.now() + EXECUTION_INTERACTION_LIMITS.observationMs).first;
+      if (result.kind !== 'written') throw new Error(`Owned terminal input was ${result.kind}.`);
+      const current = record.execution.snapshot();
+      if (!this.isNonNativeHostRecordCurrent(record) || record.finalRevision !== undefined || current.stopRequested ||
+        current.adapter?.process || current.adapter?.seal) return true;
+      if (!queryReply) {
+        if (record.kind === 'agent' && isAgentInstructionSubmission(data)) {
+          business.cancelActivityPoll?.(); business.cancelActivityPoll = undefined;
+          resetAgentActivityHeuristics(business.agentActivity!, business.buffer);
+          business.lifecycleStatus = 'running'; business.resumePhaseActive = false;
+        } else if (record.kind === 'terminal') {
+          business.lineContextTracker.recordInput(data);
+          if (business.lifecycleStatus === 'launching') business.lifecycleStatus = 'live';
+        }
+        this.projectNonNativeHostBusiness(record);
+      }
+      return true;
+    } catch (error) {
+      this.recordDiagnosticEvent('execution/inputRejected', { kind: record.kind, nodeId: record.nodeId,
+        reason: queryReply ? 'owned-query-reply-failed' : 'owned-write-failed', message: formatUnknownError(error) });
+      this.postMessage({ type: 'host/error', payload: { message: formatUnknownError(error) } });
+      return false;
+    }
+  }
+
+  private resizeNonNativeHostExecution(record: NonNativeHostExecution, cols: number, rows: number): Promise<void> {
+    const deadline = this.nonNativeExecutionOwner!.options.scheduler.now() + EXECUTION_INTERACTION_LIMITS.observationMs;
+    const operation = record.terminalChain.then(async () => {
+      this.assertNonNativeHostMutation(record);
+      if (record.cols === cols && record.rows === rows) return;
+      const observation = record.execution.resize(cols, rows, deadline);
+      record.resizeObservation = observation;
+      const result = await observation.first;
+      if (result.kind === 'unconfirmed') {
+        record.mutationError = `Terminal resize effect is unconfirmed: ${result.reason}`;
+      }
+      if (result.kind !== 'resized') throw new Error(`Owned terminal resize was ${result.kind}.`);
+      try {
+        const node = this.state.nodes.find(value => value.id === record.nodeId && value.kind === record.kind);
+        if (!this.isNonNativeHostRecordCurrent(record) || record.mutationError || record.finalRevision !== undefined ||
+          !node || (record.persistence && node.metadata?.[record.kind] !== record.persistence.metadata)) {
+          throw new Error('The original resize authority binding changed.');
+        }
+        const revision = record.terminalRevision + 1;
+        record.tracker.resize(cols, rows, { outputSequence: revision });
+        record.business!.lineContextTracker.resize(cols, rows);
+        record.terminalRevision = revision; record.cols = cols; record.rows = rows;
+        this.projectNonNativeHostBusiness(record);
+        await this.publishNonNativeHostMutation(record);
+      } catch (error) {
+        record.mutationError = `Terminal resize applied but authority commit failed: ${formatUnknownError(error)}`;
+        throw error;
+      }
+    });
+    // Preserve accepted output consumption; flushFinal rejects any uncertain authority state.
+    record.terminalChain = operation.catch(() => {});
+    return operation;
+  }
+
+  private async publishNonNativeHostMutation(record: NonNativeHostExecution): Promise<void> {
+    const terminal = await record.tracker.flush();
+    for (const reader of record.localReaders?.values() ?? []) {
+      if (reader.initialPublished && !reader.outcome) {
+        await this.postLocalExecutionReaderMessage(record, reader, this.localExecutionSnapshotMessage(record, terminal, true));
+      }
     }
   }
 
@@ -17750,6 +17985,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     data: string,
     diagnosticMetadata: ExecutionInputDiagnosticMetadata = {}
   ): Promise<boolean> {
+    const ownedRecord = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+    if (ownedRecord?.business) return this.writeNonNativeHostInput(ownedRecord, data);
     if (this.nonNativeExecutionOwner?.get(this.getExecutionSessionOperationKey(kind, nodeId))) {
       this.recordDiagnosticEvent('execution/inputRejected', { kind, nodeId, reason: 'non-native-input-unsupported' });
       return false;
@@ -17814,6 +18051,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return false;
     }
 
+    const recordInputActivity = (): void => {
     if (kind === 'agent') {
       const submittedInstruction = isAgentInstructionSubmission(data);
       if (session.lifecycleTimer) {
@@ -17838,6 +18076,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (kind === 'terminal') {
       session.lineContextTracker.recordInput(data);
     }
+    };
+    const deferInputActivity = session.owner === 'supervisor' && Boolean(this.getExecutionCandidateProfile());
+    if (!deferInputActivity) recordInputActivity();
     const writeStartedAt = Date.now();
     let inputWriteSucceeded = false;
     try {
@@ -17859,6 +18100,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         await operation;
       }
       inputWriteSucceeded = true;
+      if (deferInputActivity && this.getExecutionSessions(kind).get(nodeId) === session && !session.stopRequested) {
+        recordInputActivity();
+      }
     } catch (error) {
       const message = localizeRuntimeSupervisorError(
         error,
@@ -18366,6 +18610,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private resizeExecutionSession(kind: ExecutionNodeKind, nodeId: string, cols: number, rows: number): void {
+    const ownedRecord = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+    if (ownedRecord?.business) {
+      void this.resizeNonNativeHostExecution(ownedRecord, normalizeTerminalCols(cols), normalizeTerminalRows(rows))
+        .catch(error => this.postMessage({ type: 'host/error', payload: { message: formatUnknownError(error) } }));
+      return;
+    }
     if (this.nonNativeExecutionOwner?.get(this.getExecutionSessionOperationKey(kind, nodeId))) {
       this.recordDiagnosticEvent('execution/resizeRejected', { kind, nodeId, reason: 'non-native-resize-unsupported' });
       return;
@@ -18402,6 +18652,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (session.cols === normalizedCols && session.rows === normalizedRows) {
+      return;
+    }
+
+    if (session.owner === 'supervisor' && this.getExecutionCandidateProfile()) {
+      const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
+      const resizing = this.getRuntimeSupervisorClientForKind(backendKind, {}, session.runtimeStoragePath)
+        .then(client => client.resizeSession({ sessionId: session.runtimeSessionId, cols: normalizedCols, rows: normalizedRows }))
+        .then(() => {
+          if (this.getExecutionSessions(kind).get(nodeId) !== session || session.stopRequested) return;
+          session.cols = normalizedCols; session.rows = normalizedRows;
+          if (session.terminalStateTrusted) session.terminalStateTracker.resize(normalizedCols, normalizedRows);
+          session.lineContextTracker.resize(normalizedCols, normalizedRows);
+          this.queueExecutionStateSync(kind, nodeId, EXECUTION_INTERACTION_STATE_SYNC_INTERVAL_MS);
+        }).catch(error => this.postMessage({ type: 'host/error', payload: { message: formatUnknownError(error) } }));
+      this.trackRuntimeSupervisorOperation(resizing);
       return;
     }
 
@@ -18444,6 +18709,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async stopExecutionSession(kind: ExecutionNodeKind, nodeId: string): Promise<void> {
     const owned = this.nonNativeExecutionOwner?.get(this.getExecutionSessionOperationKey(kind, nodeId));
     if (owned) {
+      const record = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+      if (record?.business) {
+        record.business.lifecycleStatus = 'stopping';
+        record.business.cancelActivityPoll?.(); record.business.cancelActivityPoll = undefined;
+        this.projectNonNativeHostBusiness(record);
+      }
       const result = await owned.requestStop('host-stop');
       if (result.kind !== 'settled') throw new Error('Non-native Host stop is unconfirmed.');
       return;
@@ -19753,7 +20024,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return { type: 'host/executionSnapshot', payload: {
       nodeId: record.nodeId, kind: record.kind, requestId,
       executionSessionId: record.execution.identity.executionId, output: '',
-      cols: record.cols, rows: record.rows, liveSession, terminalTitle: null,
+      cols: record.cols, rows: record.rows, liveSession, terminalTitle: record.business?.terminalTitle ?? null,
       outputSequence: terminal.outputSequence ?? 0, serializedTerminalState: terminal
     } };
   }
@@ -28750,7 +29021,7 @@ function appendTerminalBuffer(existing: string, nextChunk: string): string {
 }
 
 function updateExecutionTerminalTitle(
-  session: ManagedExecutionSession,
+  session: Pick<ManagedExecutionSession, 'terminalTitle' | 'terminalTitleCarryover' | 'terminalTitleRedactionState'>,
   chunk: string,
   onTitleQuery?: (report: string) => void
 ): { terminalOutput: string; titleUpdated: boolean } {

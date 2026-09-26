@@ -104,13 +104,14 @@ import {
   locateCodexSessionId
 } from '../common/codexSessionIdLocator';
 import { extractClaudeCommandRuntimeSessionFlag } from '../common/agentLaunchPresets';
-import { assertExecutionCandidateCapabilities, assertExecutionCandidateProfile,
+import { assertExecutionCandidateCapabilities, assertExecutionCandidateProfile, EXECUTION_INTERACTION_LIMITS,
   type AuthorityResult, type DataBatch, type ExecutionCandidateProfile, type LaunchSpec, type ProcessResult
 } from '../common/executionLifecycle';
-import type { OperationObservation } from '../panel/executionSessionAdapter';
+import type { InteractionObservation, OperationObservation } from '../panel/executionSessionAdapter';
+import { createLinuxExecutionOwnerOptions } from '../panel/linuxExecutionOwnerFactory';
 import {
   ExecutionOwnerLifecycle,
-  type NonNativeExecutionOwnerOptions,
+  type ExecutionOwnerOptions,
   type OwnedExecution
 } from '../panel/executionOwnerLifecycle';
 
@@ -182,6 +183,8 @@ interface SupervisorSession {
   exitSubscription?: DisposableLike;
   lifecycleTimer?: NodeJS.Timeout;
   ownedExecution?: OwnedExecution;
+  ownedResizeObservation?: InteractionObservation;
+  ownedMutationError?: string;
   ownedProcessResult?: ProcessResult;
   ownedReaderAdmissionOpen?: boolean;
   ownedReaderSockets?: Set<net.Socket>;
@@ -291,7 +294,7 @@ export class RuntimeSupervisorServer {
     private readonly paths: RuntimeSupervisorPaths,
     private readonly runtimeBackend: RuntimeHostBackendKind,
     private readonly runtimeGuarantee: RuntimePersistenceGuarantee,
-    ownerOptions?: NonNativeExecutionOwnerOptions,
+    ownerOptions?: ExecutionOwnerOptions,
     private readonly executionProfile: ExecutionCandidateProfile | undefined = ownerOptions?.profile
   ) {
     if (this.executionProfile !== undefined) {
@@ -652,7 +655,7 @@ export class RuntimeSupervisorServer {
           return;
         }
         case 'writeInput':
-          this.writeInput(request.params);
+          await this.writeInput(request.params);
           this.writeOkResponse(socket, request.id);
           return;
         case 'resizeSession':
@@ -811,6 +814,9 @@ export class RuntimeSupervisorServer {
       try {
         const starting = this.bindOwnedExecution(session, {
           file: launchSpec.file, args: launchSpec.args ?? [], cwd: launchSpec.cwd,
+          ...(this.executionOwner?.options.profile ? { cols: session.cols, rows: session.rows,
+            stopStrategy: session.kind === 'agent' && session.provider !== 'claude'
+              ? 'interrupt-then-hangup' as const : 'hangup' as const } : {}),
           env: Object.fromEntries(Object.entries(launchSpec.env).filter((entry): entry is [string, string] =>
             typeof entry[1] === 'string'))
         });
@@ -1402,7 +1408,7 @@ export class RuntimeSupervisorServer {
     return result;
   }
 
-  private writeInput(params: RuntimeSupervisorWriteInputParams): void {
+  private async writeInput(params: RuntimeSupervisorWriteInputParams): Promise<void> {
     const session = this.requireLiveSession(params.sessionId);
     if (session.kind === 'agent' && session.provider === 'claude' && containsTerminalSuspendInput(params.data)) {
       throw createRuntimeSupervisorProtocolError({
@@ -1414,6 +1420,13 @@ export class RuntimeSupervisorServer {
       throw createRuntimeSupervisorProtocolError({
         id: 'claudeCodeSuspended'
       }, RUNTIME_SUPERVISOR_ERROR_CODES.claudeSuspended);
+    }
+
+    if (session.ownedExecution) {
+      const result = await session.ownedExecution.write(params.data, this.ownedInteractionDeadline()).first;
+      if (result.kind !== 'written') throw new Error(`Execution input was ${result.kind}.`);
+      if (this.sessions.get(session.sessionId) !== session || !session.live ||
+        !session.terminalMutationAdmissionOpen || session.stopRequested) return;
     }
 
     if (session.kind === 'agent') {
@@ -1433,13 +1446,35 @@ export class RuntimeSupervisorServer {
       this.emitSessionState(session);
     }
 
-    session.process?.write(params.data);
+    if (!session.ownedExecution) session.process?.write(params.data);
+  }
+
+  private ownedInteractionDeadline(): number {
+    return this.executionOwner!.options.scheduler.now() + EXECUTION_INTERACTION_LIMITS.observationMs;
   }
 
   private async resizeSession(params: RuntimeSupervisorResizeSessionParams): Promise<void> {
     const session = this.requireLiveSession(params.sessionId);
     this.assertTerminalMutationAdmissionOpen(session);
-    await this.enqueueTerminalOperation(session, () => {
+    const deadline = session.ownedExecution ? this.ownedInteractionDeadline() : undefined;
+    await this.enqueueTerminalOperation(session, async () => {
+      if (session.ownedExecution) {
+        if (this.requireLiveSession(params.sessionId) !== session) throw new Error('The original resize session was replaced.');
+        const observation = session.ownedExecution.resize(params.cols, params.rows, deadline!);
+        session.ownedResizeObservation = observation;
+        const result = await observation.first;
+        if (result.kind === 'unconfirmed') {
+          session.ownedMutationError = `Terminal resize effect is unconfirmed: ${result.reason}`;
+          session.terminalMutationAdmissionOpen = false;
+        }
+        if (result.kind !== 'resized') throw new Error(`Execution resize was ${result.kind}.`);
+        if (this.sessions.get(session.sessionId) !== session || !session.terminalMutationAdmissionOpen) {
+          const error = new Error('Execution changed while resizing its terminal.');
+          session.terminalMutationAdmissionOpen = false;
+          this.failSessionForTerminalJournal(session, error);
+          throw error;
+        }
+      }
       let terminalEvent: TerminalStreamEvent | undefined;
       try {
         terminalEvent = session.terminalJournal?.appendResize(params.cols, params.rows);
@@ -1452,9 +1487,14 @@ export class RuntimeSupervisorServer {
       }
       session.cols = params.cols;
       session.rows = params.rows;
-      session.terminalStateTracker.resize(params.cols, params.rows, {
-        outputSequence: terminalEvent?.revision
-      });
+      try {
+        session.terminalStateTracker.resize(params.cols, params.rows, {
+          outputSequence: terminalEvent?.revision
+        });
+      } catch (error) {
+        if (session.ownedExecution) this.failSessionForTerminalJournal(session, error);
+        throw error;
+      }
       session.process?.resize(params.cols, params.rows);
       if (terminalEvent) {
         this.emitTerminalStreamEvent(session, terminalEvent);
@@ -1467,6 +1507,9 @@ export class RuntimeSupervisorServer {
     const session = this.requireLiveSession(params.sessionId);
     this.assertTerminalMutationAdmissionOpen(session);
     await this.enqueueTerminalOperation(session, async () => {
+      if (session.ownedExecution && this.requireLiveSession(params.sessionId) !== session) {
+        throw new Error('The original scrollback session was replaced.');
+      }
       const scrollback = normalizeTerminalScrollback(params.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
       if (session.scrollback === scrollback) {
         return;
@@ -1501,6 +1544,8 @@ export class RuntimeSupervisorServer {
       if (!ownedSession.live) throw new Error('Execution is not live.');
       ownedSession.stopRequested = true;
       ownedSession.lifecycle = 'stopping';
+      if (ownedSession.lifecycleTimer) clearTimeout(ownedSession.lifecycleTimer);
+      ownedSession.lifecycleTimer = undefined;
       this.emitSessionState(ownedSession);
       void ownedSession.ownedExecution.requestStop('Session stop requested.').catch((error) => {
         console.error('Failed to observe execution stop:', error);
@@ -1647,6 +1692,9 @@ export class RuntimeSupervisorServer {
         if (state.outputSequence !== session.outputSequence) {
           throw new Error('Final terminal state does not cover the accepted terminal operations.');
         }
+        if (session.ownedMutationError || session.terminalJournalError) {
+          throw new Error(session.ownedMutationError ?? session.terminalJournalError!.message);
+        }
         session.terminalMutationAdmissionOpen = false;
         session.ownedReaderAdmissionOpen = false;
         this.settleOwnedReadersIfComplete(session);
@@ -1682,14 +1730,53 @@ export class RuntimeSupervisorServer {
         const event = session.terminalJournal!.appendOutput(text);
         session.outputSequence = event?.revision ?? session.outputSequence + 1;
         session.output = appendOutputTail(session.output, text);
+        for (const report of titleUpdate.titleReports) {
+          this.replyToOwnedTerminalQuery(session, report);
+        }
         session.terminalStateTracker.write(text, { outputSequence: session.outputSequence });
         if (this.sessions.get(session.sessionId) === session) {
+          this.applySessionOutputActivity(session, text);
           this.emitSessionOutput(session, text, event,
             titleUpdate.titleUpdated ? session.terminalTitle ?? null : undefined);
+          this.schedulePersist();
         }
       }
       await session.terminalStateTracker.flush();
     });
+  }
+
+  private replyToOwnedTerminalQuery(session: SupervisorSession, report: string): void {
+    // Replies share input accounting, but output consumption must never wait for PTY writability.
+    if (!session.ownedExecution || this.sessions.get(session.sessionId) !== session) return;
+    try {
+      if (!session.terminalMutationAdmissionOpen || session.ownedMutationError) {
+        throw new Error(session.ownedMutationError ?? 'Owned terminal mutation admission is closed.');
+      }
+      const observation = session.ownedExecution.write(report, this.ownedInteractionDeadline());
+      void observation.first.then(result => {
+        if (result.kind !== 'written') console.error(`Terminal title reply was ${result.kind} for ${session.sessionId}.`);
+      }, error => console.error('Terminal title reply failed:', error));
+    } catch (error) {
+      console.error('Terminal title reply was rejected:', error);
+    }
+  }
+
+  private applySessionOutputActivity(session: SupervisorSession, terminalOutput: string): void {
+    const observableTerminalOutput = stripExecutionTerminalTitleMarkers(terminalOutput);
+    if (session.kind === 'agent') {
+      this.maybeSyncAgentResumeSessionIdFromOutput(session, {
+        allowOverwriteExisting: session.stopRequested, emitState: session.stopRequested
+      });
+      if (session.lifecycle === 'starting' || session.lifecycle === 'resuming' || session.lifecycle === 'running') {
+        recordAgentOutputHeuristics(this.ensureAgentActivityState(session), observableTerminalOutput, session.output, session.provider);
+        this.queueAgentWaitingInput(session.sessionId);
+      }
+    } else if (session.lifecycle === 'launching') {
+      session.lifecycle = 'live';
+      if (session.lifecycleTimer) clearTimeout(session.lifecycleTimer);
+      session.lifecycleTimer = undefined;
+      this.emitSessionState(session);
+    }
   }
 
   private finalizeOwnedExecution(session: SupervisorSession, result: AuthorityResult): void {
@@ -1698,6 +1785,7 @@ export class RuntimeSupervisorServer {
     if (session.lifecycleTimer) clearTimeout(session.lifecycleTimer);
     session.lifecycleTimer = undefined;
     session.live = false;
+    if (session.kind === 'agent') this.finalizeAgentResumeSessionIdFromOutput(session);
     session.ownedReaderAdmissionOpen = false;
     this.settleOwnedReadersIfComplete(session);
     if (session.ownedReaderSockets?.size === 0) session.ownedExecution?.settleReaders('lost');
@@ -1744,35 +1832,7 @@ export class RuntimeSupervisorServer {
         session.terminalStateTracker.write(terminalOutput, {
           outputSequence: session.outputSequence
         });
-        const observableTerminalOutput = stripExecutionTerminalTitleMarkers(terminalOutput);
-        if (session.kind === 'agent') {
-          this.maybeSyncAgentResumeSessionIdFromOutput(session, {
-            allowOverwriteExisting: session.stopRequested,
-            emitState: session.stopRequested
-          });
-        }
-        if (session.kind === 'agent') {
-          if (
-            session.lifecycle === 'starting' ||
-            session.lifecycle === 'resuming' ||
-            session.lifecycle === 'running'
-          ) {
-            recordAgentOutputHeuristics(
-              this.ensureAgentActivityState(session),
-              observableTerminalOutput,
-              session.output,
-              session.provider
-            );
-            this.queueAgentWaitingInput(session.sessionId);
-          }
-        } else if (session.lifecycle === 'launching') {
-          session.lifecycle = 'live';
-          if (session.lifecycleTimer) {
-            clearTimeout(session.lifecycleTimer);
-            session.lifecycleTimer = undefined;
-          }
-          this.emitSessionState(session);
-        }
+        this.applySessionOutputActivity(session, terminalOutput);
 
         this.emitSessionOutput(
           session,
@@ -2456,7 +2516,9 @@ export class RuntimeSupervisorServer {
 
   private requireLiveSession(sessionId: string): SupervisorSession {
     const session = this.requireSession(sessionId);
-    if (!session.live || !session.process || !session.terminalMutationAdmissionOpen) {
+    const owned = session.ownedExecution?.snapshot();
+    if (!session.live || (!session.process && !session.ownedExecution) || !session.terminalMutationAdmissionOpen ||
+      (owned && (owned.stopRequested || owned.adapter?.process !== undefined || owned.adapter?.seal !== undefined))) {
       throw createRuntimeSupervisorProtocolError({
         id: 'sessionNotLive',
         params: {
@@ -3363,7 +3425,18 @@ async function main(): Promise<void> {
     runtimeDir,
     controlDir
   };
-  const server = new RuntimeSupervisorServer(paths, runtimeBackend, runtimeGuarantee);
+  const executionProfile = readCliFlag('--execution-profile');
+  let executionOwnerOptions: ExecutionOwnerOptions | undefined;
+  if (executionProfile !== undefined) {
+    assertExecutionCandidateProfile(executionProfile);
+    const generationDirectory = path.dirname(storageDir);
+    if (path.basename(storageDir) !== 'runtime-supervisor' || path.basename(generationDirectory) !== 'terminal-exit-v1' ||
+      path.basename(path.dirname(generationDirectory)) !== 'runtime-supervisor-generations') {
+      throw new Error('The execution candidate requires its isolated terminal-exit-v1 runtime storage generation.');
+    }
+    executionOwnerOptions = createLinuxExecutionOwnerOptions({ extensionRoot: path.dirname(__dirname), mode: 'live-runtime' });
+  }
+  const server = new RuntimeSupervisorServer(paths, runtimeBackend, runtimeGuarantee, executionOwnerOptions, executionProfile);
   await server.start();
 }
 

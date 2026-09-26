@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 export const NODE_PTY_UNIX_SHA256 = '19210adfdaba3cd09809b56bb3281b14e74a8e5efc1f35d467d3c423c30856db';
 export const LINUX_EXECUTION_EXPORTS = Object.freeze([
   'executionClose', 'executionConfigure', 'executionPollWait', 'executionRead',
-  'executionSignal', 'executionSnapshot', 'fork'
+  'executionResize', 'executionSignal', 'executionSnapshot', 'executionWrite', 'fork'
 ]);
 
 export function patchLinuxExecutionProvider(source) {
@@ -35,6 +35,8 @@ export function patchLinuxExecutionProvider(source) {
   '  exports.Set("executionConfigure", Napi::Function::New(env, dsc_execution::Configure));\n' +
     '  exports.Set("executionSnapshot", Napi::Function::New(env, dsc_execution::Snapshot));\n' +
     '  exports.Set("executionRead", Napi::Function::New(env, dsc_execution::Read));\n' +
+    '  exports.Set("executionWrite", Napi::Function::New(env, dsc_execution::Write));\n' +
+    '  exports.Set("executionResize", Napi::Function::New(env, dsc_execution::Resize));\n' +
     '  exports.Set("executionPollWait", Napi::Function::New(env, dsc_execution::PollWait));\n' +
     '  exports.Set("executionSignal", Napi::Function::New(env, dsc_execution::Signal));\n' +
     '  exports.Set("executionClose", Napi::Function::New(env, dsc_execution::Close));');

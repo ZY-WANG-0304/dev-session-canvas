@@ -2,6 +2,7 @@ import { Socket } from 'node:net';
 
 import {
   assertExecutionIdentity,
+  EXECUTION_INTERACTION_LIMITS,
   encodeOutputFrame,
   OutputCreditWindow,
   parseParentMessage,
@@ -16,8 +17,11 @@ import {
 } from '../common/executionLifecycle';
 
 export type ExecutionProviderCommand = Exclude<ParentMessage, { type: 'accepted' | 'consumed' | 'sourceEndAccepted' }>;
+type InteractionCommand = Extract<ExecutionProviderCommand, { type: 'input' | 'resize' }>;
+type LifecycleCommand = Exclude<ExecutionProviderCommand, InteractionCommand>;
 
 export interface ExecutionProviderChannelOptions {
+  interactionV1?: true;
   onCommand(command: ExecutionProviderCommand): void;
   onFault(reason: string): void;
   onOwnerLost(): void;
@@ -41,7 +45,11 @@ class ExecutionProviderChannel {
   private readonly output: Socket;
   private readonly credit: OutputCreditWindow;
   private readonly retained = new Map<number, Uint8Array>();
-  private readonly commands = new Map<string, ExecutionProviderCommand>();
+  private readonly commands = new Map<string, LifecycleCommand>();
+  private readonly interactions = new Map<number, InteractionCommand>();
+  private readonly respondingInteractions = new Set<number>();
+  private lastInteractionId = 0;
+  private pendingInputBytes = 0;
   private readonly normal: ControlSend[] = [];
   private readonly urgent: ControlSend[] = [];
   private inFlightSend?: ControlSend;
@@ -91,7 +99,8 @@ class ExecutionProviderChannel {
       return Promise.reject(this.failure ?? new Error('Provider channel is closing.'));
     }
     this.readyTask = this.enqueue(parseProviderMessage({
-      type: 'ready', identity: this.identity, capabilities: ['execution-lifecycle-v1']
+      type: 'ready', identity: this.identity, capabilities: ['execution-lifecycle-v1',
+        ...(this.options.interactionV1 ? ['terminal-interaction-v1'] : [])]
     })).then(() => {
       this.readySent = true;
       this.notify();
@@ -117,6 +126,28 @@ class ExecutionProviderChannel {
       if (message.type === 'operationObservation' &&
           !Array.from(this.commands.values()).some((command) => command.operationId === message.operationId)) {
         throw new Error('Observation does not belong to a received operation.');
+      }
+      if (message.type === 'interactionObservation') {
+        const command = this.interactions.get(message.interactionId);
+        if (!command || this.respondingInteractions.has(message.interactionId)) {
+          throw new Error('Observation does not belong to a pending interaction.');
+        }
+        const result = message.result;
+        if ((command.type === 'input' && result.kind === 'resized') ||
+          (command.type === 'resize' && (result.kind === 'written' || 'writtenBytes' in result)) ||
+          (command.type === 'input' && 'writtenBytes' in result && result.writtenBytes !== undefined &&
+            result.writtenBytes > Buffer.byteLength(command.data, 'utf8')) ||
+          (command.type === 'input' && result.kind === 'written' &&
+            result.writtenBytes !== Buffer.byteLength(command.data, 'utf8'))) {
+          throw new Error('Interaction observation does not match the received input.');
+        }
+        this.respondingInteractions.add(message.interactionId);
+        return this.enqueue(message).then(() => {
+          this.interactions.delete(message.interactionId);
+          this.respondingInteractions.delete(message.interactionId);
+          if (command.type === 'input') this.pendingInputBytes -= Buffer.byteLength(command.data, 'utf8');
+          this.notify();
+        });
       }
       return this.enqueue(message);
     } catch (error) {
@@ -204,6 +235,8 @@ class ExecutionProviderChannel {
     sendInFlight: boolean;
     queuedNormal: number;
     queuedUrgent: number;
+    pendingInteractions: number;
+    pendingInputBytes: number;
     firstFault?: string;
   }> {
     return Object.freeze({
@@ -220,6 +253,8 @@ class ExecutionProviderChannel {
       sendInFlight: this.inFlightSend !== undefined,
       queuedNormal: this.normal.length,
       queuedUrgent: this.urgent.length,
+      pendingInteractions: this.interactions.size,
+      pendingInputBytes: this.pendingInputBytes,
       ...(this.failure ? { firstFault: this.failure.message } : {})
     });
   }
@@ -291,7 +326,7 @@ class ExecutionProviderChannel {
     if (!this.failure) {
       try {
         await this.endTask;
-        while (!this.failure && (this.inFlightSend || this.normal.length > 0 || this.urgent.length > 0)) {
+        while (!this.failure && (this.inFlightSend || this.normal.length > 0 || this.urgent.length > 0 || this.interactions.size > 0)) {
           await this.changed();
         }
       } catch {
@@ -308,7 +343,7 @@ class ExecutionProviderChannel {
       await this.changed();
     }
     // Closing the output does not cancel controls received while its tail was settling.
-    while (!this.failure && (this.inFlightSend || this.normal.length > 0 || this.urgent.length > 0)) {
+    while (!this.failure && (this.inFlightSend || this.normal.length > 0 || this.urgent.length > 0 || this.interactions.size > 0)) {
       await this.changed();
     }
     this.closing = true;
@@ -420,6 +455,19 @@ class ExecutionProviderChannel {
       }
       if (!this.readyTask || this.closing) {
         throw new Error('Command arrived outside the provider command lifecycle.');
+      }
+      if (message.type === 'input' || message.type === 'resize') {
+        const bytes = message.type === 'input' ? Buffer.byteLength(message.data, 'utf8') : 0;
+        if (!this.options.interactionV1 || !this.started || message.interactionId <= this.lastInteractionId ||
+          this.interactions.size >= EXECUTION_INTERACTION_LIMITS.pendingOperations ||
+          this.pendingInputBytes + bytes > EXECUTION_INTERACTION_LIMITS.pendingInputBytes) {
+          throw new Error('Interaction capability, sequence or pending budget is invalid.');
+        }
+        this.lastInteractionId = message.interactionId;
+        this.interactions.set(message.interactionId, message);
+        this.pendingInputBytes += bytes;
+        this.options.onCommand(message);
+        return;
       }
       if (!('operationId' in message)) {
         throw new Error('Provider command lacks an operation id.');
@@ -537,7 +585,7 @@ class ExecutionProviderChannel {
   }
 }
 
-function sameCommand(left: ExecutionProviderCommand, right: ExecutionProviderCommand): boolean {
+function sameCommand(left: LifecycleCommand, right: LifecycleCommand): boolean {
   if (left.type !== right.type || left.operationId !== right.operationId) {
     return false;
   }
@@ -546,6 +594,7 @@ function sameCommand(left: ExecutionProviderCommand, right: ExecutionProviderCom
     const after = right.spec;
     const environmentKeys = Object.keys(before.env ?? {});
     return before.file === after.file && before.cwd === after.cwd &&
+      before.cols === after.cols && before.rows === after.rows && before.stopStrategy === after.stopStrategy &&
       before.args.length === after.args.length && before.args.every((arg, index) => arg === after.args[index]) &&
       environmentKeys.length === Object.keys(after.env ?? {}).length &&
       environmentKeys.every((key) => before.env?.[key] === after.env?.[key]);

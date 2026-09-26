@@ -2335,6 +2335,256 @@ for (const kind of ['terminal', 'agent']) {
   });
 }
 
+async function interactiveHostFixture(kind = 'terminal', providerKind = 'codex') {
+  const f = candidateFixture();
+  const persist = f.host.persistState.bind(f.host);
+  f.host.persistState = async (...args) => { await persist(...args); };
+  if (kind === 'agent') {
+    f.host.state.nodes.find(node => node.kind === kind).metadata.agent = { provider: providerKind };
+    f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: providerKind });
+  }
+  await completed(f.clock, kind === 'agent'
+    ? f.host.startAgentSession('agent-1', 113, 39, providerKind, false)
+    : f.host.startTerminalSession('terminal-1', 113, 39), `${kind} interactive owner start`);
+  const record = f.record(kind);
+  const provider = f.providers[0];
+  const requests = [];
+  const send = provider.transport.send.bind(provider.transport);
+  provider.transport.send = async message => {
+    await send(message);
+    if (message.type === 'input' || message.type === 'resize') requests.push(message);
+  };
+  function reply(message, result) {
+    provider.message({ type: 'interactionObservation', interactionId: message.interactionId, result });
+  }
+  async function cleanup() {
+    provider.process();
+    provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+    provider.seal(provider.messages.filter(message => message.type === 'consumed').at(-1)?.throughFrameId ?? 0);
+    provider.release();
+    await pump(f.clock, () => true);
+    record.business?.cancelActivityPoll?.();
+    record.business?.lineContextTracker.dispose();
+    record.tracker.dispose();
+  }
+  return { ...f, record, provider, requests, reply, cleanup };
+}
+
+test('S10 actual Host start forwards non-default size and kind/provider hangup policy without a process facade', async () => {
+  for (const [kind, providerKind, strategy] of [
+    ['terminal', 'codex', 'hangup'], ['agent', 'codex', 'interrupt-then-hangup'], ['agent', 'claude', 'hangup']
+  ]) {
+    const f = await interactiveHostFixture(kind, providerKind);
+    try {
+      const start = f.provider.messages.find(message => message.type === 'start');
+      assert.equal(start.spec.cols, 113);
+      assert.equal(start.spec.rows, 39);
+      assert.equal(start.spec.stopStrategy, strategy);
+      assert.equal(f.record.cols, 113);
+      assert.equal(f.record.rows, 39);
+      assert.equal(f.host.getExecutionSessions(kind).has(`${kind}-1`), false);
+      assert.equal(f.record.process, undefined);
+    } finally { await f.cleanup(); }
+  }
+});
+
+test('S10 Host Agent input commits running only after written and preserves waiting state on failed or unknown writes', async () => {
+  const f = await interactiveHostFixture('agent');
+  try {
+    for (const result of ['failed', 'unconfirmed', 'written']) {
+      f.record.business.lifecycleStatus = 'waiting-input';
+      const before = f.requests.length;
+      const writing = f.host.writeExecutionInput('agent', 'agent-1', 'instruction\r');
+      await until(f.clock, () => f.requests.length === before + 1, `${result} input submitted`);
+      assert.equal(f.record.business.lifecycleStatus, 'waiting-input');
+      f.reply(f.requests.at(-1), result === 'written' ? { kind: 'written', writtenBytes: Buffer.byteLength('instruction\r') }
+        : { kind: result, reason: 'controlled original input result', writtenBytes: 0 });
+      assert.equal(await completed(f.clock, writing, `${result} input response`), result === 'written');
+      assert.equal(f.record.business.lifecycleStatus, result === 'written' ? 'running' : 'waiting-input');
+      if (result === 'unconfirmed') break;
+    }
+  } finally { await f.cleanup(); }
+  const success = await interactiveHostFixture('agent');
+  try {
+    success.record.business.lifecycleStatus = 'waiting-input';
+    const writing = success.host.writeExecutionInput('agent', 'agent-1', 'go\r');
+    await until(success.clock, () => success.requests.length === 1, 'successful Agent instruction');
+    success.reply(success.requests[0], { kind: 'written', writtenBytes: 3 });
+    assert.equal(await completed(success.clock, writing, 'successful Agent instruction result'), true);
+    assert.equal(success.record.business.lifecycleStatus, 'running');
+    assert.equal(success.record.business.resumePhaseActive, false);
+  } finally { await success.cleanup(); }
+});
+
+test('S10 Host owned resize applies only confirmed dimensions and preserves tracker order through scrollback', async () => {
+  const f = await interactiveHostFixture();
+  try {
+    f.host.resizeExecutionSession('terminal', 'terminal-1', 101, 31);
+    await until(f.clock, () => f.requests.length === 1, 'original Host resize');
+    assert.equal(f.record.cols, 113);
+    assert.equal(f.record.rows, 39);
+    assert.equal(f.record.terminalRevision, 0);
+    f.reply(f.requests[0], { kind: 'resized' });
+    await until(f.clock, () => f.record.terminalRevision === 1, 'Host confirmed resize commit');
+    assert.equal(f.record.cols, 101);
+    assert.equal(f.record.rows, 31);
+    assert.equal(f.record.tracker.getSerializedState().outputSequence, 1);
+    f.host.resizeExecutionSession('terminal', 'terminal-1', 99, 29);
+    await until(f.clock, () => f.requests.length === 2, 'Host rejected resize');
+    f.reply(f.requests[1], { kind: 'failed', reason: 'controlled resize failed' });
+    await pump(f.clock, () => f.posted.some(message => message.type === 'host/error'));
+    assert.equal(f.record.cols, 101);
+    assert.equal(f.record.terminalRevision, 1);
+    await completed(f.clock, f.host.refreshLiveExecutionSessionScrollback(120), 'Host owned scrollback');
+    assert.equal(f.record.tracker.getScrollback(), 120);
+    assert.equal(f.record.terminalRevision, 2);
+    assert.equal(f.requests.length, 2, 'scrollback is authority state, not a provider interaction');
+  } finally { await f.cleanup(); }
+});
+
+test('S10 Host native resize success followed by tracker failure retains mutation failure instead of reporting rollback', async () => {
+  const f = await interactiveHostFixture();
+  const resize = f.record.tracker.resize.bind(f.record.tracker);
+  try {
+    f.record.tracker.resize = () => { throw new Error('controlled tracker resize failure'); };
+    const resizing = f.host.resizeNonNativeHostExecution(f.record, 90, 28);
+    const rejected = assert.rejects(resizing, /tracker resize failure/);
+    await until(f.clock, () => f.requests.length === 1, 'Host partially committed resize');
+    f.reply(f.requests[0], { kind: 'resized' });
+    await completed(f.clock, rejected, 'Host resize authority failure');
+    assert.match(f.record.mutationError, /applied.*commit failed/i);
+    assert.equal(f.record.cols, 113);
+    assert.equal(await f.host.writeExecutionInput('terminal', 'terminal-1', 'blocked'), false);
+    assert.equal(f.requests.length, 1);
+    await f.record.terminalChain.catch(() => {});
+  } finally { f.record.tracker.resize = resize; await f.cleanup(); }
+});
+
+test('S10 Host title query input cannot block owned output, Agent resume hints or Terminal launch state', async () => {
+  for (const kind of ['terminal', 'agent']) {
+    const f = await interactiveHostFixture(kind);
+    try {
+      f.provider.output(1, '\x1b]2;controlled-title\x07\x1b[21t\r\nready\r\n');
+      await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === 1, `${kind} query output consumed`);
+      await until(f.clock, () => f.requests.some(message => message.type === 'input'), `${kind} title reply submitted`);
+      assert.equal(f.record.business.terminalTitle, 'controlled-title');
+      assert.match(f.requests[0].data, /controlled-title/);
+      if (kind === 'terminal') assert.equal(f.record.business.lifecycleStatus, 'live');
+      else {
+        f.provider.output(2, '\r\nTo continue this session, run codex resume 7e57d004-2b97-4001-9455-5d94020a94cd\r\n');
+        await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === 2, 'Agent resume hint consumed');
+        assert.equal(f.record.business.agentResume.sessionId, '7e57d004-2b97-4001-9455-5d94020a94cd');
+        assert.equal(typeof f.record.business.agentActivity.lastOutputAtMs, 'number');
+      }
+      const stopping = f.host.stopExecutionSession(kind, `${kind}-1`);
+      const stopped = stopping.catch(() => {});
+      await until(f.clock, () => f.provider.messages.some(message => message.type === 'requestStop'), `${kind} stop bypasses title reply`);
+      assert.equal(f.record.business.lifecycleStatus, 'stopping');
+      f.clock.advance(13000);
+      await completed(f.clock, stopped, `${kind} controlled stop observation`);
+    } finally { await f.cleanup(); }
+  }
+});
+
+test('S10 owned Host keeps Claude Ctrl-Z and suspended input restrictions before interaction dispatch', async () => {
+  const f = await interactiveHostFixture('agent', 'claude');
+  try {
+    assert.equal(await f.host.writeExecutionInput('agent', 'agent-1', '\x1a'), false);
+    f.record.business.lifecycleStatus = 'suspended';
+    assert.equal(await f.host.writeExecutionInput('agent', 'agent-1', 'go\r'), false);
+    assert.equal(f.requests.length, 0);
+  } finally { await f.cleanup(); }
+});
+
+test('S10 confirmed Host resize still commits before accepted tail when process exit or stop arrives in the same turn', async () => {
+  for (const closing of ['process-exit', 'stop']) {
+    const f = await interactiveHostFixture();
+    try {
+      const resizing = f.host.resizeNonNativeHostExecution(f.record, 91, 33);
+      await until(f.clock, () => f.requests.length === 1, `${closing} original resize dispatched`);
+      f.provider.output(1, 'tail-after-confirmed-resize\r\n');
+      await until(f.clock, () => f.record.execution.snapshot().adapter.acceptedThrough === 1, `${closing} tail accepted behind resize`);
+      f.reply(f.requests[0], { kind: 'resized' });
+      const stopping = closing === 'stop' ? f.host.stopExecutionSession('terminal', 'terminal-1') : undefined;
+      const stopResult = stopping?.catch(error => error);
+      f.provider.process();
+      f.provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      f.provider.seal(1); f.provider.release();
+      await completed(f.clock, resizing, `${closing} resize commit`);
+      await pump(f.clock, () => f.record.execution.snapshot().terminal?.kind === 'applied');
+      assert.equal(f.record.execution.snapshot().terminal?.kind, 'applied', `${closing}: ${JSON.stringify(f.record.execution.snapshot())}`);
+      assert.equal(f.record.mutationError, undefined);
+      assert.equal(f.record.cols, 91);
+      assert.equal(f.record.rows, 33);
+      assert.equal(f.record.terminalRevision, 2);
+      assert.equal(f.record.lastDataSequence, 1);
+      assert.match(f.record.tracker.getSerializedState().data, /tail-after-confirmed-resize/);
+      if (stopResult) await completed(f.clock, stopResult, 'confirmed resize stop settlement');
+    } finally {
+      f.record.business.cancelActivityPoll?.();
+      f.record.business.lineContextTracker.dispose();
+      f.record.tracker.dispose();
+    }
+  }
+});
+
+test('S10 Host final Agent hint replaces an earlier resume identity before its final snapshot persistence', async () => {
+  const f = await interactiveHostFixture('agent');
+  try {
+    f.record.business.agentResume = { supported: true, strategy: 'codex-session-id', sessionId: 'earlier-confirmed-id' };
+    f.host.projectNonNativeHostBusiness(f.record);
+    f.provider.output(1, 'To continue this session, run codex resume 7e57d004-2b97-4001-9455-5d94020a94cd\r\n');
+    await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === 1, 'normal final hint consumed');
+    assert.equal(f.record.business.agentResume.sessionId, 'earlier-confirmed-id', 'running output preserves its confirmed earlier identity');
+    f.provider.process();
+    f.provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+    f.provider.seal(1); f.provider.release();
+    const saved = await completed(f.clock, f.record.persistence.promise, 'final corrected resume metadata persistence');
+    assert.equal(saved.kind, 'saved', saved.reason);
+    assert.equal(f.host.state.nodes.find(node => node.kind === 'agent').metadata.agent.resumeSessionId,
+      '7e57d004-2b97-4001-9455-5d94020a94cd');
+  } finally {
+    f.record.business.cancelActivityPoll?.();
+    f.record.business.lineContextTracker.dispose();
+    f.record.tracker.dispose();
+  }
+});
+
+test('S10 Host uncertain resize retains its observation and accepted tail without claiming a complete final authority', async () => {
+  const f = await interactiveHostFixture();
+  try {
+    const resizing = f.host.resizeNonNativeHostExecution(f.record, 91, 33);
+    const rejected = assert.rejects(resizing, /unconfirmed/);
+    await until(f.clock, () => f.requests.length === 1, 'original uncertain Host resize');
+    f.reply(f.requests[0], { kind: 'unconfirmed', reason: 'controlled resize observation deadline' });
+    await completed(f.clock, rejected, 'uncertain Host resize returns');
+    const original = f.record.resizeObservation;
+    assert.equal(original.current.kind, 'unconfirmed');
+    assert.match(f.record.mutationError, /effect is unconfirmed/);
+    f.reply(f.requests[0], { kind: 'resized' });
+    await until(f.clock, () => original.current.kind === 'resized', 'same original late resize evidence');
+    assert.strictEqual(f.record.resizeObservation, original);
+    assert.equal(await f.host.writeExecutionInput('terminal', 'terminal-1', 'blocked'), false);
+    await assert.rejects(f.host.resizeNonNativeHostExecution(f.record, 92, 34), /unconfirmed/);
+    assert.equal(f.requests.length, 1, 'late evidence does not reopen mutation admission');
+    f.provider.output(1, 'tail-after-uncertain-resize\r\n');
+    await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === 1, 'uncertain authority still consumes accepted tail');
+    f.provider.process();
+    f.provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+    f.provider.seal(1); f.provider.release();
+    const saved = await completed(f.clock, f.record.persistence.promise, 'uncertain Host final persistence outcome');
+    assert.notEqual(saved.kind, 'saved');
+    assert.equal(f.record.execution.snapshot().terminal.kind, 'failed');
+    assert.equal(f.record.finalRevision, undefined);
+    assert.equal(f.record.cols, 113); assert.equal(f.record.rows, 39);
+    assert.match(f.record.tracker.getSerializedState().data, /tail-after-uncertain-resize/);
+  } finally {
+    f.record.business.cancelActivityPoll?.();
+    f.record.business.lineContextTracker.dispose();
+    f.record.tracker.dispose();
+  }
+});
+
 for (const { name, run } of tests) {
   let timeout;
   try {

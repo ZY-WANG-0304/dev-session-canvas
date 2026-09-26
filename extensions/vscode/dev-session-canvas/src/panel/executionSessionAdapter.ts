@@ -1,16 +1,20 @@
 import {
   assertExecutionCandidateProfile,
+  assertCandidateLaunchSpec,
   assertExecutionIdentity,
   assertParentMessageSize,
   decodeOutputPayload,
   parseProviderMessage,
   sameExecutionIdentity,
   S1_LIMITS,
+  EXECUTION_INTERACTION_LIMITS,
+  validateExecutionDimensions,
   validateLaunchSpec,
   type AuthorityResult,
   type DataBatch,
   type ExecutionIdentity,
   type ExecutionCandidateProfile,
+  type ExecutionInteractionResult,
   type LaunchSpec,
   type OperationResult,
   type OutputSeal,
@@ -86,6 +90,31 @@ export interface OperationObservation {
   readonly first: Promise<OperationResult>;
   readonly current: OperationResult | undefined;
 }
+
+export interface InteractionObservation {
+  readonly first: Promise<ExecutionInteractionResult>;
+  readonly current: ExecutionInteractionResult | undefined;
+}
+
+type Interaction = {
+  kind: 'input' | 'resize';
+  data?: string;
+  cols?: number;
+  rows?: number;
+  bytes: number;
+  offset: number;
+  writtenBytes: number;
+  deadline: number;
+  view: InteractionObservation;
+  current?: ExecutionInteractionResult;
+  firstResolved: boolean;
+  resolve: (result: ExecutionInteractionResult) => void;
+  cancelDeadline: () => void;
+  active?: { id: number; data?: string; bytes: number; confirmedBytes: number; sent: boolean };
+};
+
+const inputEncoder = new TextEncoder();
+const inputDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 type OperationKind = 'start' | 'graceful' | 'force' | 'cancel';
 type State = 'prepared' | 'bound' | 'starting' | 'running' | 'closing' | 'settled';
@@ -184,6 +213,11 @@ export class PreparedExecution {
   private observer?: ExecutionObserver;
   private consumeBatch?: (batches: readonly DataBatch[]) => Promise<void>;
   private readonly operations = new Map<OperationKind, Operation>();
+  private readonly interactions = new Set<Interaction>();
+  private interactionBytes = 0;
+  private nextInteractionId = 1;
+  private interactionCapable = false;
+  private interactionClosedReason?: string;
   private readonly resources = new Map<string, OwnedResource>();
   private resourceLedgerIncomplete = false;
   private ready = false;
@@ -227,6 +261,7 @@ export class PreparedExecution {
     assertExecutionIdentity(identity);
     this.identity = Object.freeze({ ...identity });
     this.spec = validateLaunchSpec(launchSpec);
+    if (this.profile) assertCandidateLaunchSpec(this.spec);
     // Include the envelope in the start limit, before reserving an authority slot.
     assertParentMessageSize({ type: 'start', identity: this.identity, operationId: 'prepare', spec: this.spec });
     if (dependencies.parentCleanupV1 === true) {
@@ -344,7 +379,11 @@ export class PreparedExecution {
         message: value => this.receiveMessage(value),
         data: bytes => this.receiveData(bytes),
         disconnected: reason => this.disconnect(reason),
-        exited: () => { this.providerExited = true; this.scheduleProcessing(); },
+        exited: () => {
+          this.providerExited = true;
+          this.closeInteractions('Provider exited', true);
+          this.scheduleProcessing();
+        },
         dataEnded: () => { this.outputEnded = true; this.scheduleProcessing(); },
         dataClosed: reason => {
           this.outputClosed = true;
@@ -374,12 +413,178 @@ export class PreparedExecution {
     return this.command('cancel', operationId, deadline, reason);
   }
 
+  write(data: string, deadline: number): InteractionObservation {
+    if (typeof data !== 'string' || !data || data.length > EXECUTION_INTERACTION_LIMITS.pendingInputBytes) {
+      throw new Error('Terminal input must be a nonempty bounded string');
+    }
+    const encoded = inputEncoder.encode(data);
+    if (inputDecoder.decode(encoded) !== data) throw new Error('Terminal input must contain valid Unicode');
+    return this.interact({ kind: 'input', data, bytes: encoded.byteLength }, deadline);
+  }
+
+  resize(cols: number, rows: number, deadline: number): InteractionObservation {
+    return this.interact({ kind: 'resize', ...validateExecutionDimensions(cols, rows), bytes: 0 }, deadline);
+  }
+
+  private interact(input: Pick<Interaction, 'kind' | 'data' | 'cols' | 'rows' | 'bytes'>, deadline: number): InteractionObservation {
+    const admission = this.dependencies.authority.snapshot();
+    if (!this.interactionCapable || this.state !== 'running' || this.process || this.source || this.parentCleanupClaim
+      || this.interactionClosedReason || admission.blockedReason || admission.closing) {
+      throw new Error('Execution terminal interaction admission is closed or unsupported');
+    }
+    if (!Number.isFinite(deadline) || deadline <= this.dependencies.scheduler.now()) {
+      throw new Error('Terminal interaction requires a future finite deadline');
+    }
+    if (this.interactions.size >= EXECUTION_INTERACTION_LIMITS.pendingOperations
+      || this.interactionBytes + input.bytes > EXECUTION_INTERACTION_LIMITS.pendingInputBytes) {
+      throw new Error('Execution terminal interaction capacity exhausted');
+    }
+    let resolve!: (result: ExecutionInteractionResult) => void;
+    const first = new Promise<ExecutionInteractionResult>(done => { resolve = done; });
+    const interaction: Interaction = { ...input, deadline, offset: 0, writtenBytes: 0, resolve,
+      firstResolved: false, cancelDeadline: () => {},
+      view: Object.freeze({ first, get current() { return interaction.current; } }) };
+    this.interactions.add(interaction);
+    this.interactionBytes += input.bytes;
+    interaction.cancelDeadline = this.dependencies.scheduler.scheduleDeadline(deadline, () => this.expireInteraction(interaction));
+    this.pumpInteractions();
+    return interaction.view;
+  }
+
+  private pumpInteractions(): void {
+    // A blocked PTY input must not hold resize, whose caller may own the output-consumption chain.
+    for (const kind of ['input', 'resize'] as const) {
+      const interaction = [...this.interactions].find(item => item.kind === kind);
+      if (interaction) this.queueInteraction(interaction);
+    }
+  }
+
+  private queueInteraction(interaction: Interaction): void {
+    if (!this.interactions.has(interaction) || interaction.active) return;
+    const admission = this.dependencies.authority.snapshot();
+    if (admission.closing || admission.blockedReason) this.interactionClosedReason ??= 'Execution authority interaction admission closed';
+    if (this.interactionClosedReason || this.dependencies.scheduler.now() >= interaction.deadline) {
+      this.finishInteraction(interaction, this.interactionFailure(interaction, 'cancelled',
+        this.interactionClosedReason ?? 'Interaction deadline reached before dispatch'));
+      return;
+    }
+    if (!Number.isSafeInteger(this.nextInteractionId)) {
+      this.finishInteraction(interaction, this.interactionFailure(interaction, 'failed', 'Interaction identity exhausted'));
+      return;
+    }
+    const interactionId = this.nextInteractionId++;
+    let message: ParentMessage;
+    if (interaction.kind === 'resize') {
+      message = { type: 'resize', identity: this.identity, interactionId, cols: interaction.cols!, rows: interaction.rows! };
+    } else {
+      let data = '';
+      // Size the complete JSON envelope, including escaped input and the current numeric identity.
+      for (const character of interaction.data!.slice(interaction.offset)) {
+        const candidate = { type: 'input' as const, identity: this.identity, interactionId, data: data + character };
+        if (inputEncoder.encode(JSON.stringify(candidate)).byteLength > S1_LIMITS.controlBytes) break;
+        data += character;
+      }
+      if (!data) {
+        this.finishInteraction(interaction, this.interactionFailure(interaction, 'failed', 'Input envelope exceeds the control limit'));
+        return;
+      }
+      message = { type: 'input', identity: this.identity, interactionId, data };
+    }
+    interaction.active = { id: interactionId, sent: false, confirmedBytes: 0,
+      bytes: message.type === 'input' ? inputEncoder.encode(message.data).byteLength : 0,
+      ...(message.type === 'input' ? { data: message.data } : {}) };
+    // At most one input and one resize frame are queued, leaving acknowledgement slots available.
+    this.enqueue(message, 'normal', `interaction:${interactionId}`);
+  }
+
+  private interactionFailure(interaction: Interaction, kind: 'cancelled' | 'failed' | 'unconfirmed', reason: string,
+    writtenBytes = interaction.writtenBytes + (interaction.active?.confirmedBytes ?? 0)): ExecutionInteractionResult {
+    return Object.freeze({ kind, reason, ...(interaction.kind === 'input' ? { writtenBytes } : {}) });
+  }
+
+  private publishInteraction(interaction: Interaction, result: ExecutionInteractionResult): void {
+    interaction.current = Object.freeze({ ...result });
+    if (!interaction.firstResolved) {
+      interaction.firstResolved = true;
+      interaction.cancelDeadline();
+      interaction.resolve(interaction.current);
+    }
+  }
+
+  private finishInteraction(interaction: Interaction, result: ExecutionInteractionResult): void {
+    this.publishInteraction(interaction, result);
+    if (!this.interactions.delete(interaction)) return;
+    this.interactionBytes -= interaction.bytes;
+    const key = `interaction:${interaction.active?.id}`;
+    const queued = this.normal.get(key);
+    if (!interaction.active?.sent && queued && 'interactionId' in queued && queued.interactionId === interaction.active?.id) {
+      this.normal.delete(key);
+    }
+    interaction.data = undefined;
+    interaction.active = undefined;
+    this.pumpInteractions();
+  }
+
+  private expireInteraction(interaction: Interaction): void {
+    if (!this.interactions.has(interaction) || this.dependencies.scheduler.now() < interaction.deadline) return;
+    const result = this.interactionFailure(interaction, interaction.active?.sent ? 'unconfirmed' : 'cancelled',
+      'Interaction observation deadline reached');
+    if (interaction.active?.sent) this.publishInteraction(interaction, result);
+    else this.finishInteraction(interaction, result);
+  }
+
+  private closeInteractions(reason: string, uncertain = false): void {
+    this.interactionClosedReason ??= reason;
+    for (const interaction of [...this.interactions]) {
+      if (interaction.active?.sent) {
+        if (uncertain) this.publishInteraction(interaction, this.interactionFailure(interaction, 'unconfirmed', reason));
+      } else this.finishInteraction(interaction, this.interactionFailure(interaction, 'cancelled', reason));
+    }
+  }
+
+  private receiveInteraction(interactionId: number, result: ExecutionInteractionResult): void {
+    const interaction = [...this.interactions].find(item => item.active?.id === interactionId);
+    if (!interaction || !interaction.active?.sent) {
+      this.fault('Interaction observation does not match an original in-flight command');
+      return;
+    }
+    const active = interaction.active;
+    const bytes = 'writtenBytes' in result ? result.writtenBytes : undefined;
+    if ((interaction.kind === 'input' && (result.kind === 'resized' || bytes === undefined || bytes > active.bytes || bytes < active.confirmedBytes
+      || (result.kind === 'written' && bytes !== active.bytes)))
+      || (interaction.kind === 'resize' && (result.kind === 'written' || bytes !== undefined))) {
+      this.fault('Invalid terminal interaction result');
+      return;
+    }
+    if (this.dependencies.scheduler.now() >= interaction.deadline && !interaction.firstResolved) this.expireInteraction(interaction);
+    if (result.kind === 'unconfirmed') {
+      active.confirmedBytes = bytes ?? 0;
+      this.publishInteraction(interaction, this.interactionFailure(interaction, 'unconfirmed', result.reason,
+        interaction.writtenBytes + (bytes ?? 0)));
+      return;
+    }
+    if (result.kind === 'written') {
+      interaction.writtenBytes += result.writtenBytes;
+      interaction.offset += active.data!.length;
+      interaction.active = undefined;
+      if (interaction.offset < interaction.data!.length) {
+        this.pumpInteractions();
+        return;
+      }
+      this.finishInteraction(interaction, { kind: 'written', writtenBytes: interaction.writtenBytes });
+    } else if (result.kind === 'resized') this.finishInteraction(interaction, result);
+    else this.finishInteraction(interaction, this.interactionFailure(interaction, result.kind, result.reason,
+      interaction.writtenBytes + (bytes ?? 0)));
+  }
+
   snapshot() {
     return Object.freeze({
       identity: this.identity, state: this.state, acceptedThrough: this.acceptedThrough,
       consumedThrough: this.consumedThrough, pendingBytes: this.pendingBytes,
       pendingFrames: this.pending.length + this.countRawFrames(), rawBytes: this.rawBytes,
       rejectedDataBytes: this.rejectedDataBytes,
+      interactions: Object.freeze({ pending: this.interactions.size, inputBytes: this.interactionBytes,
+        closedReason: this.interactionClosedReason }),
       resourceLedgerIncomplete: this.resourceLedgerIncomplete,
       parentCleanup: this.parentCleanupClaim?.kind,
       process: this.process, source: this.source, seal: this.seal, firstFault: this.firstFault,
@@ -427,6 +632,7 @@ export class PreparedExecution {
       : { type: 'requestStop', identity: this.identity, operationId: id, mode: kind };
     assertParentMessageSize(message);
     const operation = this.makeOperation(kind, id, deadline, reason);
+    this.closeInteractions(`Execution ${kind} requested`);
     this.state = 'closing';
     this.enqueue(message, 'urgent', kind);
     this.changed();
@@ -504,6 +710,7 @@ export class PreparedExecution {
           return;
         }
         this.ready = true;
+        this.interactionCapable = message.capabilities.includes('terminal-interaction-v1');
         const operation = this.operations.get('start')!;
         this.enqueue({ type: 'start', identity: this.identity, operationId: operation.id, spec: this.spec }, 'start', 'start');
         break;
@@ -515,6 +722,7 @@ export class PreparedExecution {
         this.recordOperation(operation, message.result);
         break;
       }
+      case 'interactionObservation': this.receiveInteraction(message.interactionId, message.result); break;
       case 'processResult': this.recordProcess(message.result); break;
       case 'resourceAcquired':
         if (message.resourceId === 'provider-control') { this.fault('Provider cannot acquire parent control resources'); return; }
@@ -533,6 +741,7 @@ export class PreparedExecution {
           return;
         }
         this.source = source;
+        this.closeInteractions('Execution output source ended');
         this.explicitSourceEnd = true;
         // No more production credit is needed. The confirmation follows any in-flight ACK.
         this.normal.delete('accepted');
@@ -592,6 +801,21 @@ export class PreparedExecution {
       const operationId = message.operationId;
       const operation = [...this.operations.values()].find(item => item.id === operationId);
       if (operation) operation.sent = true;
+    }
+    if ('interactionId' in message) {
+      const interactionId = message.interactionId;
+      const interaction = [...this.interactions].find(item => item.active?.id === interactionId);
+      if (!interaction?.active) { this.sendInFlight = false; this.pumpControl(); return; }
+      const admission = this.dependencies.authority.snapshot();
+      if (admission.closing || admission.blockedReason) this.interactionClosedReason ??= 'Execution authority interaction admission closed';
+      if (this.dependencies.scheduler.now() >= interaction.deadline || this.interactionClosedReason) {
+        this.sendInFlight = false;
+        this.finishInteraction(interaction, this.interactionFailure(interaction, 'cancelled',
+          this.interactionClosedReason ?? 'Interaction deadline reached before dispatch'));
+        this.pumpControl();
+        return;
+      }
+      interaction.active.sent = true;
     }
     const sentMessage = message;
     try {
@@ -732,6 +956,7 @@ export class PreparedExecution {
     }
     if (this.process?.kind === 'unconfirmed' && result.kind === 'unconfirmed') return;
     this.process = Object.freeze({ ...result });
+    this.closeInteractions('Execution subject ended', result.kind === 'unconfirmed');
     if (this.state !== 'settled') this.state = 'closing';
     if (result.kind === 'unconfirmed') this.dependencies.authority.quarantine('Process result is unconfirmed');
     this.notify(observer => observer.processResult(this.identity, this.process!));
@@ -767,6 +992,7 @@ export class PreparedExecution {
 
   private disconnect(reason: string): void {
     this.controlDisconnected = true;
+    this.closeInteractions(reason, true);
     if (this.parentCleanupValid) this.maybeRetire();
     else this.loseControl(reason);
     this.changed();
@@ -881,6 +1107,7 @@ export class PreparedExecution {
     this.parentCleanupValid = false;
     const first = this.firstFault === undefined;
     this.firstFault ??= reason;
+    this.closeInteractions(reason, true);
     this.dependencies.authority.quarantine(reason);
     // Retain one bounded diagnostic; a throwing observer must not recurse into itself.
     if (first) { try { this.observer?.fault(this.identity, reason); } catch { /* State remains inspectable. */ } }

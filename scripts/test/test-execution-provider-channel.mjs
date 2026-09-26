@@ -113,11 +113,12 @@ async function flush() {
 
 const identity = { executionId: 'channel-close-regression', generation: 'binding-1' };
 
-function createChannel() {
+function createChannel(options = {}) {
   const channel = module.exports.createExecutionProviderChannel(identity, {
+    ...(options.interactionV1 ? { interactionV1: true } : {}),
     onCommand(command) {
       commands.push(command);
-      if (command.type !== 'start') {
+      if (command.type !== 'start' && command.type !== 'input' && command.type !== 'resize') {
         observations.push(observe(channel.send({
           type: 'operationObservation', identity, operationId: command.operationId,
           result: { kind: 'accepted' }
@@ -130,14 +131,14 @@ function createChannel() {
   return channel;
 }
 
-async function startNextChannel() {
+async function startNextChannel(options = {}) {
   assert.equal(tasks.length, 0);
   for (const event of ['message', 'disconnect', 'error']) assert.equal(providerProcess.listenerCount(event), 0);
   for (const values of [messages, commands, faults, observations]) values.length = 0;
   socket = heldSend = heldOperationId = heldMessageType = undefined;
   disconnectCount = ownerLossCount = 0;
   providerProcess.connected = true;
-  const channel = createChannel();
+  const channel = createChannel(options);
   const ready = observe(channel.ready());
   await flush();
   assert.equal(ready.state, 'fulfilled');
@@ -316,3 +317,76 @@ assert.equal(faults.length, 1);
 assert.equal(disconnectCount, 1);
 console.log('PASS early source confirmation cannot hide a failed source send callback');
 console.log('executionProviderChannel tests passed (6 pure cases; no child processes)');
+
+async function closeInteractionChannel(channel) {
+  const ending = observe(channel.end({ kind: 'eof' }));
+  const closing = observe(channel.close());
+  await flush();
+  providerProcess.emit('message', { type: 'sourceEndAccepted', identity, finalFrameId: 0 });
+  await flush();
+  assert.equal(ending.state, 'fulfilled');
+  socket.endCallback();
+  await flush();
+  assert.equal(closing.state, 'fulfilled');
+  assert.deepEqual(faults, []);
+}
+
+{
+  const channel = await startNextChannel({ interactionV1: true });
+  assert.deepEqual(messages[0].capabilities, ['execution-lifecycle-v1', 'terminal-interaction-v1']);
+  for (let id = 1; id <= 12; id++) {
+    const input = id % 2 === 1;
+    providerProcess.emit('message', input
+      ? { type: 'input', identity, interactionId: id, data: '\u4e2d' }
+      : { type: 'resize', identity, interactionId: id, cols: 100 + id, rows: 30 });
+    assert.equal(channel.snapshot().pendingInteractions, 1);
+    const observed = observe(channel.send({ type: 'interactionObservation', identity, interactionId: id,
+      result: input ? { kind: 'written', writtenBytes: 3 } : { kind: 'resized' } }));
+    await flush();
+    assert.equal(observed.state, 'fulfilled');
+  }
+  await closeInteractionChannel(channel);
+  assert.equal(channel.snapshot().pendingInteractions, 0);
+  console.log('PASS sequential input and resize retire original interaction records without a permanent command table');
+}
+
+{
+  const channel = await startNextChannel({ interactionV1: true });
+  providerProcess.emit('message', { type: 'input', identity, interactionId: 1, data: 'held' });
+  heldMessageType = 'interactionObservation';
+  const response = observe(channel.send({ type: 'interactionObservation', identity, interactionId: 1,
+    result: { kind: 'cancelled', reason: 'stop', writtenBytes: 2 } }));
+  providerProcess.emit('message', { type: 'requestStop', identity, operationId: 'force-during-input', mode: 'force' });
+  assert.equal(channel.snapshot().pendingInteractions, 1);
+  assert.equal(channel.snapshot().queuedUrgent, 1);
+  assert.equal(commands.at(-1).type, 'requestStop');
+  heldSend(null);
+  heldSend = heldMessageType = undefined;
+  await flush();
+  assert.equal(response.state, 'fulfilled');
+  assert.equal(messages.at(-1).operationId, 'force-during-input');
+  assert.equal(channel.snapshot().pendingInputBytes, 0);
+  await closeInteractionChannel(channel);
+  console.log('PASS pending input response retains its record while force control still dispatches and uses urgent response lane');
+}
+
+for (const invalid of ['missing-capability', 'replay', 'pending-limit', 'wrong-result']) {
+  const channel = await startNextChannel({ interactionV1: invalid !== 'missing-capability' });
+  providerProcess.emit('message', { type: 'input', identity, interactionId: 1, data: 'input' });
+  if (invalid === 'replay') providerProcess.emit('message', { type: 'input', identity, interactionId: 1, data: 'input' });
+  if (invalid === 'pending-limit') {
+    for (let id = 2; id <= 5; id++) providerProcess.emit('message', { type: 'resize', identity, interactionId: id, cols: 80, rows: 24 });
+  }
+  if (invalid === 'wrong-result') {
+    await assert.rejects(channel.send({ type: 'interactionObservation', identity, interactionId: 1,
+      result: { kind: 'written', writtenBytes: 2 } }), /does not match/);
+  }
+  await flush();
+  assert.equal(faults.length, 1);
+  assert.ok(channel.snapshot().pendingInteractions <= 4);
+  const close = observe(channel.close());
+  await flush();
+  assert.equal(close.state, 'fulfilled');
+  console.log(`PASS invalid interaction retains failure without replay: ${invalid}`);
+}
+console.log('executionProviderChannel interaction tests passed (6 pure cases; no real sockets)');

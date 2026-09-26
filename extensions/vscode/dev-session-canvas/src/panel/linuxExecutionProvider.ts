@@ -2,8 +2,9 @@ import { constants } from 'node:os';
 import { StringDecoder } from 'node:string_decoder';
 
 import {
-  encodeOutputFrame, S1_LIMITS,
-  type ExecutionIdentity, type ProcessResult, type ProviderMessage, type SourceDisposition
+  assertCandidateLaunchSpec, encodeOutputFrame, EXECUTION_INTERACTION_LIMITS, S1_LIMITS,
+  type ExecutionIdentity, type ExecutionInteractionResult, type ExecutionStopStrategy,
+  type ProcessResult, type ProviderMessage, type SourceDisposition
 } from '../common/executionLifecycle';
 import { createExecutionProviderChannel, type ExecutionProviderCommand } from './executionProviderChannel';
 
@@ -52,10 +53,19 @@ export interface LinuxExecutionBinding {
     | { kind: 'eof'; reason: 'zero' | 'eio' }
     | { kind: 'error'; errno: number };
   executionPollWait(token: string): LinuxExecutionWaitStatus;
-  executionSignal(token: string, signal: 'SIGTERM' | 'SIGKILL'):
+  executionSignal(token: string, signal: 'SIGHUP' | 'SIGTERM' | 'SIGKILL'):
     { kind: 'sent' | 'already-attempted' | 'not-running' | 'unknown' | 'error'; errno: number | null };
   executionClose(token: string):
     { kind: 'closed' | 'already-attempted' | 'not-acquired' | 'error'; errno: number | null };
+}
+
+type LinuxMutationFailure =
+  | { kind: 'retry'; errno: number }
+  | { kind: 'rejected' | 'error'; reason: string; errno: number | null };
+
+export interface LinuxInteractiveExecutionBinding extends LinuxExecutionBinding {
+  executionWrite(token: string, bytes: Buffer): { kind: 'written'; bytes: number } | LinuxMutationFailure;
+  executionResize(token: string, cols: number, rows: number): { kind: 'resized' } | LinuxMutationFailure;
 }
 
 export interface LinuxExecutionProviderOptions {
@@ -64,6 +74,7 @@ export interface LinuxExecutionProviderOptions {
   cols: number;
   rows: number;
   pollIntervalMs: number;
+  interactionV1?: true;
 }
 
 export interface LinuxExecutionProviderResult {
@@ -95,6 +106,10 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
   }
   validateLinuxExecutionReadBudget(options.identity);
   const { binding, identity } = options;
+  const interactive = binding as LinuxInteractiveExecutionBinding;
+  if (options.interactionV1 && (typeof interactive.executionWrite !== 'function' || typeof interactive.executionResize !== 'function')) {
+    throw new Error('The Linux execution binding does not support terminal interaction.');
+  }
   const token = identity.executionId;
   const buffer = Buffer.alloc(READ_BYTES);
   const decoder = new StringDecoder('utf8');
@@ -103,6 +118,18 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
   let started = false;
   let finished = false;
   let cancelled = false;
+  let subjectReady = false;
+  let subjectEnded = false;
+  let sourceEnded = false;
+  let inputClosed = false;
+  let forceRequested = false;
+  let stopStrategy: ExecutionStopStrategy | undefined;
+  type Interaction = Extract<ExecutionProviderCommand, { type: 'input' | 'resize' }>;
+  const interactions: { command: Interaction; bytes?: Buffer; offset: number }[] = [];
+  let pendingInputBytes = 0;
+  let interactionTask: Promise<void> | undefined;
+  let resizeTask: Promise<void> | undefined;
+  let interruptTask: Promise<boolean> | undefined;
   let firstFailure: string | undefined;
   let source: SourceDisposition | undefined;
   let sourceEndEvidence: LinuxExecutionProviderResult['sourceEndEvidence'];
@@ -110,6 +137,7 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
   const completed = new Promise<LinuxExecutionProviderResult>(done => { resolve = done; });
 
   const channel = createExecutionProviderChannel(identity, {
+    ...(options.interactionV1 ? { interactionV1: true as const } : {}),
     onCommand(command) { void commandReceived(command).catch(error => fail(error)); },
     onFault(reason) { fail(reason); },
     onOwnerLost() { fail('Execution authority disconnected.'); }
@@ -121,6 +149,7 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
   function fail(error: unknown): void {
     firstFailure ??= error instanceof Error ? error.message : String(error);
     cancelled = true;
+    inputClosed = true;
     if (configured) {
       try { binding.executionSignal(token, 'SIGTERM'); } catch { /* Ownership stays in the native snapshot. */ }
     }
@@ -151,25 +180,121 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
     }
     if (command.type === 'cancelOutput') {
       cancelled = true;
+      inputClosed = true;
       await send({ type: 'operationObservation', identity, operationId: command.operationId, result: { kind: 'accepted' } });
       return;
     }
-    const result = configured ? binding.executionSignal(token, command.mode === 'force' ? 'SIGKILL' : 'SIGTERM') : undefined;
+    if (command.type === 'input' || command.type === 'resize') {
+      const bytes = command.type === 'input' ? Buffer.from(command.data, 'utf8') : undefined;
+      if (!options.interactionV1 || !canInteract() || interactions.length >= EXECUTION_INTERACTION_LIMITS.pendingOperations ||
+          pendingInputBytes + (bytes?.length ?? 0) > EXECUTION_INTERACTION_LIMITS.pendingInputBytes) {
+        await send({ type: 'interactionObservation', identity, interactionId: command.interactionId,
+          result: { kind: 'cancelled', reason: 'Terminal interaction admission is closed or full.',
+            ...(bytes ? { writtenBytes: 0 } : {}) } });
+        return;
+      }
+      pendingInputBytes += bytes?.length ?? 0;
+      interactions.push({ command, bytes, offset: 0 });
+      if (command.type === 'resize' && !resizeTask) {
+        // Resize must not wait for stdin to become writable while output consumption waits for resize.
+        resizeTask = Promise.resolve().then(() => pumpInteractions('resize'));
+        void resizeTask.then(() => { resizeTask = undefined; }, error => { resizeTask = undefined; fail(error); });
+      } else if (command.type === 'input' && !interactionTask) {
+        interactionTask = Promise.resolve().then(() => pumpInteractions('input'));
+        void interactionTask.then(() => { interactionTask = undefined; }, error => { interactionTask = undefined; fail(error); });
+      }
+      return;
+    }
+    inputClosed = true;
+    if (command.mode === 'force') forceRequested = true;
+    if (options.interactionV1 && stopStrategy === 'interrupt-then-hangup' && command.mode === 'graceful') {
+      interruptTask ??= writeInterrupt();
+      const written = await interruptTask;
+      await send({ type: 'operationObservation', identity, operationId: command.operationId,
+        result: written ? { kind: 'accepted' } : { kind: 'failed', reason: 'Subject interrupt was not written.' } });
+      return;
+    }
+    const signal = options.interactionV1 ? 'SIGHUP' : command.mode === 'force' ? 'SIGKILL' : 'SIGTERM';
+    const result = configured && !subjectEnded ? binding.executionSignal(token, signal) : undefined;
     await send({ type: 'operationObservation', identity, operationId: command.operationId,
-      result: result && !['unknown', 'error'].includes(result.kind)
+      result: subjectEnded || (result && !['unknown', 'error'].includes(result.kind))
         ? { kind: 'accepted' } : { kind: 'failed', reason: 'Subject signal ownership or result is unconfirmed.' } });
+  }
+
+  function canInteract(): boolean {
+    return subjectReady && !inputClosed && !subjectEnded && !sourceEnded && !firstFailure;
+  }
+
+  async function pumpInteractions(kind: Interaction['type']): Promise<void> {
+    while (true) {
+      const entry = interactions.find(candidate => candidate.command.type === kind);
+      if (!entry) return;
+      let result: ExecutionInteractionResult;
+      try {
+        result = { kind: 'cancelled', reason: 'Terminal interaction closed before completion.',
+          ...(entry.bytes ? { writtenBytes: entry.offset } : {}) };
+        while (canInteract()) {
+          const command = entry.command;
+          if (command.type === 'input' && entry.offset === entry.bytes!.length) {
+            result = { kind: 'written', writtenBytes: entry.offset };
+            break;
+          }
+          const mutation = command.type === 'input'
+            ? interactive.executionWrite(token, entry.bytes!.subarray(entry.offset, entry.offset + READ_BYTES))
+            : interactive.executionResize(token, command.cols, command.rows);
+          if (mutation.kind === 'written') {
+            if (!Number.isInteger(mutation.bytes) || mutation.bytes <= 0 ||
+              mutation.bytes > Math.min(READ_BYTES, entry.bytes!.length - entry.offset)) throw new Error('Invalid native input progress.');
+            entry.offset += mutation.bytes;
+            if (entry.offset === entry.bytes!.length) {
+              result = { kind: 'written', writtenBytes: entry.offset };
+              break;
+            }
+          } else if (mutation.kind === 'resized') {
+            result = { kind: 'resized' };
+            break;
+          } else if (mutation.kind !== 'retry') {
+            result = { kind: mutation.kind === 'rejected' ? 'cancelled' : 'failed',
+              reason: `Native terminal interaction ${mutation.reason} (${mutation.errno}).`,
+              ...(entry.bytes ? { writtenBytes: entry.offset } : {}) };
+            break;
+          }
+          await delay();
+          result = { kind: 'cancelled', reason: 'Terminal interaction closed before completion.',
+            ...(entry.bytes ? { writtenBytes: entry.offset } : {}) };
+        }
+      } catch (error) {
+        result = { kind: 'failed', reason: error instanceof Error ? error.message : String(error),
+          ...(entry.bytes ? { writtenBytes: entry.offset } : {}) };
+      }
+      await send({ type: 'interactionObservation', identity, interactionId: entry.command.interactionId, result });
+      pendingInputBytes -= entry.bytes?.length ?? 0;
+      interactions.splice(interactions.indexOf(entry), 1);
+    }
+  }
+
+  async function writeInterrupt(): Promise<boolean> {
+    while (subjectReady && !subjectEnded && !sourceEnded && !forceRequested && !cancelled && !firstFailure) {
+      const result = interactive.executionWrite(token, Buffer.from([3]));
+      if (result.kind === 'written') return result.bytes === 1;
+      if (result.kind !== 'retry') return false;
+      await delay();
+    }
+    return subjectEnded;
   }
 
   async function start(command: Extract<ExecutionProviderCommand, { type: 'start' }>): Promise<void> {
     let creationError: unknown;
     try {
+      if (options.interactionV1) assertCandidateLaunchSpec(command.spec);
+      stopStrategy = command.spec.stopStrategy;
       binding.executionConfigure(token);
       configured = true;
       const env = Object.entries(command.spec.env ?? process.env)
         .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
         .map(([key, value]) => `${key}=${value}`);
       binding.fork(command.spec.file, command.spec.args, env, command.spec.cwd ?? process.cwd(),
-        options.cols, options.rows, -1, -1, true, '', () => {});
+        command.spec.cols ?? options.cols, command.spec.rows ?? options.rows, -1, -1, true, '', () => {});
     } catch (error) { creationError = error; }
 
     try {
@@ -179,6 +304,7 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
       const readable = !creationError && initial?.nonblockConfirmed === true;
       if (readable) await acquire(SOURCE);
       if (!creationError && initial?.childAcquired && initial.pid !== null && readable) {
+        subjectReady = true;
         await send({ type: 'operationObservation', identity, operationId: command.operationId,
           result: { kind: 'started', pid: initial.pid } });
       } else {
@@ -199,6 +325,11 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
         source = { kind: 'unknown', reason: 'PTY output source was not established.' };
         sourceEndEvidence = 'not-established';
       }
+      inputClosed = true;
+      sourceEnded = true;
+      await interactionTask;
+      await resizeTask;
+      await interruptTask;
       await release(SOURCE, true, 'PTY source settlement is incomplete.');
       if (initial?.masterAcquired) {
         try { binding.executionClose(token); } catch (error) { fail(error); }
@@ -220,6 +351,8 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
       }
     } catch (error) { fail(error); observed = undefined; }
     const result = processResult(observed);
+    subjectEnded = result.kind !== 'unconfirmed';
+    inputClosed = true;
     await send({ type: 'processResult', identity, result });
     await release(CHILD, observed?.kind === 'exited' || observed?.kind === 'signaled', 'Subject wait did not confirm a terminal state.');
   }
@@ -240,9 +373,11 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
         const text = decoder.write(buffer.subarray(0, read.bytes));
         if (text) await channel.write(text);
       } else if (read.kind === 'eof') {
+        sourceEnded = true;
         sourceEndEvidence = read.reason;
         disposition = { kind: 'eof' };
       } else {
+        sourceEnded = true;
         sourceEndEvidence = 'read-error';
         disposition = { kind: 'error', reason: `PTY read failed with errno ${read.errno}.` };
       }

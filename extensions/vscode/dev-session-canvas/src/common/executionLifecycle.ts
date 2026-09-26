@@ -65,7 +65,23 @@ export interface LaunchSpec {
   readonly args: readonly string[];
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly cols?: number;
+  readonly rows?: number;
+  readonly stopStrategy?: ExecutionStopStrategy;
 }
+
+export type ExecutionStopStrategy = 'hangup' | 'interrupt-then-hangup';
+
+export const EXECUTION_INTERACTION_LIMITS = Object.freeze({
+  pendingOperations: 4,
+  pendingInputBytes: 32768,
+  observationMs: 5000
+});
+
+export type ExecutionInteractionResult =
+  | Readonly<{ kind: 'written'; writtenBytes: number }>
+  | Readonly<{ kind: 'resized' }>
+  | Readonly<{ kind: 'cancelled' | 'failed' | 'unconfirmed'; reason: string; writtenBytes?: number }>;
 
 export type StartResult =
   | Readonly<{ kind: 'started'; pid: number }>
@@ -82,6 +98,7 @@ export type OperationResult = StartResult | CommandResult;
 export type ProviderMessage = Readonly<{ identity: ExecutionIdentity }> & (
   | Readonly<{ type: 'ready'; capabilities: readonly ExecutionProviderCapability[] }>
   | Readonly<{ type: 'operationObservation'; operationId: string; result: OperationResult }>
+  | Readonly<{ type: 'interactionObservation'; interactionId: number; result: ExecutionInteractionResult }>
   | Readonly<{ type: 'processResult'; result: ProcessResult }>
   | Readonly<{ type: 'resourceAcquired'; resourceId: string }>
   | Readonly<{ type: 'resourceResult'; resourceId: string; operationId: string; result: ResourceResult }>
@@ -100,6 +117,8 @@ export type ParentMessage =
     type: 'requestStop'; identity: ExecutionIdentity; operationId: string; mode: 'graceful' | 'force';
   }>
   | Readonly<{ type: 'cancelOutput'; identity: ExecutionIdentity; operationId: string; reason: string }>
+  | Readonly<{ type: 'input'; identity: ExecutionIdentity; interactionId: number; data: string }>
+  | Readonly<{ type: 'resize'; identity: ExecutionIdentity; interactionId: number; cols: number; rows: number }>
   | Readonly<{ type: 'sourceEndAccepted'; identity: ExecutionIdentity; finalFrameId: number }>
   | OutputAcknowledgement;
 
@@ -143,13 +162,18 @@ export function sameExecutionIdentity(left: ExecutionIdentity, right: ExecutionI
 }
 
 export function validateLaunchSpec(value: unknown): LaunchSpec {
-  const record = readRecord(value, 'launch spec', ['file', 'args', 'cwd', 'env']);
+  const record = readRecord(value, 'launch spec', ['file', 'args', 'cwd', 'env', 'cols', 'rows', 'stopStrategy']);
   const file = readString(record.file, 'launch file');
   if (!Array.isArray(record.args)) {
     throw new TypeError('Launch args must be an array.');
   }
   const args = Object.freeze(Array.from(record.args, (arg) => readString(arg, 'launch argument', true)));
   const cwd = record.cwd === undefined ? undefined : readString(record.cwd, 'launch cwd');
+  if ((record.cols === undefined) !== (record.rows === undefined)) throw new TypeError('Launch dimensions must be paired.');
+  const dimensions = record.cols === undefined ? {} : validateExecutionDimensions(record.cols, record.rows);
+  if (record.stopStrategy !== undefined && record.stopStrategy !== 'hangup' && record.stopStrategy !== 'interrupt-then-hangup') {
+    throw new TypeError('Unknown execution stop strategy.');
+  }
   let env: Readonly<Record<string, string>> | undefined;
   if (record.env !== undefined) {
     const environment = readRecord(record.env, 'launch env');
@@ -164,10 +188,44 @@ export function validateLaunchSpec(value: unknown): LaunchSpec {
     file,
     args,
     ...(cwd === undefined ? {} : { cwd }),
-    ...(env === undefined ? {} : { env })
+    ...(env === undefined ? {} : { env }),
+    ...dimensions,
+    ...(record.stopStrategy === undefined ? {} : { stopStrategy: record.stopStrategy })
   });
   assertEncodedSize(spec, S1_LIMITS.startBytes, 'Launch spec');
   return spec;
+}
+
+export function validateExecutionDimensions(cols: unknown, rows: unknown): Readonly<{ cols: number; rows: number }> {
+  const dimensions = { cols: readInteger(cols, 'terminal cols', 1), rows: readInteger(rows, 'terminal rows', 1) };
+  if (dimensions.cols > 1000 || dimensions.rows > 1000) throw new RangeError('Terminal dimensions exceed the supported limit.');
+  return Object.freeze(dimensions);
+}
+
+export function assertCandidateLaunchSpec(spec: LaunchSpec): void {
+  if (spec.cols === undefined || spec.rows === undefined || spec.stopStrategy === undefined) {
+    throw new Error('Execution candidate requires initial dimensions and an explicit stop strategy.');
+  }
+}
+
+export function parseExecutionInteractionResult(value: unknown): ExecutionInteractionResult {
+  const result = readRecord(value, 'interaction result');
+  switch (result.kind) {
+    case 'written':
+      assertKeys(result, ['kind', 'writtenBytes']);
+      return Object.freeze({ kind: 'written', writtenBytes: readInteger(result.writtenBytes, 'written bytes', 0) });
+    case 'resized':
+      assertKeys(result, ['kind']);
+      return Object.freeze({ kind: 'resized' });
+    case 'cancelled':
+    case 'failed':
+    case 'unconfirmed':
+      assertKeys(result, ['kind', 'reason', 'writtenBytes']);
+      return Object.freeze({ kind: result.kind, reason: readString(result.reason, 'interaction reason'),
+        ...(result.writtenBytes === undefined ? {} : { writtenBytes: readInteger(result.writtenBytes, 'written bytes', 0) }) });
+    default:
+      throw new TypeError('Unknown interaction result.');
+  }
 }
 
 export function parseProviderMessage(value: unknown): ProviderMessage {
@@ -194,6 +252,12 @@ export function parseProviderMessage(value: unknown): ProviderMessage {
         operationId: readString(record.operationId, 'operation id'),
         result: parseOperationResult(record.result)
       });
+      break;
+    case 'interactionObservation':
+      assertKeys(record, ['type', 'identity', 'interactionId', 'result']);
+      message = Object.freeze({ type: 'interactionObservation', identity,
+        interactionId: readInteger(record.interactionId, 'interaction id', 1),
+        result: parseExecutionInteractionResult(record.result) });
       break;
     case 'processResult':
       assertKeys(record, ['type', 'identity', 'result']);
@@ -257,6 +321,18 @@ export function parseParentMessage(value: unknown): ParentMessage {
         type: 'cancelOutput', identity, operationId: readString(record.operationId, 'operation id'),
         reason: readString(record.reason, 'cancel reason')
       });
+      break;
+    case 'input':
+      assertKeys(record, ['type', 'identity', 'interactionId', 'data']);
+      message = Object.freeze({ type: 'input', identity,
+        interactionId: readInteger(record.interactionId, 'interaction id', 1),
+        data: readString(record.data, 'terminal input') });
+      break;
+    case 'resize':
+      assertKeys(record, ['type', 'identity', 'interactionId', 'cols', 'rows']);
+      message = Object.freeze({ type: 'resize', identity,
+        interactionId: readInteger(record.interactionId, 'interaction id', 1),
+        ...validateExecutionDimensions(record.cols, record.rows) });
       break;
     case 'accepted':
     case 'consumed':

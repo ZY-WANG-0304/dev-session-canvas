@@ -99,7 +99,8 @@ try {
     const hooks = (overrides = {}) => ({ consume: async () => {}, flushFinal: async () => 0, ...overrides });
     const start = async (key, overrides) => {
       const record = owner.reserve(key);
-      assert.equal((await record.start(spec, hooks(overrides)).first).kind, 'started');
+      const launch = owner.options.profile ? { ...spec, cols: 80, rows: 24, stopStrategy: 'hangup' } : spec;
+      assert.equal((await record.start(launch, hooks(overrides)).first).kind, 'started');
       await scheduler.drain();
       return record;
     };
@@ -1009,6 +1010,93 @@ try {
     h.scheduler.tick(13000);
     assert.equal((await closed).kind, 'unconfirmed');
     assert.equal(record.snapshot().retired, false);
+  });
+
+  test('explicit Linux factory options require the candidate contract without acquiring any transport', () => {
+    let acquired = 0;
+    const createTransport = () => { acquired++; throw new Error('must not create transport'); };
+    const options = { kind: 'linux-provider', ...candidateOptions, capabilities: candidateCapabilities, createTransport };
+    assert.doesNotThrow(() => harness(options));
+    for (const missing of ['profile', 'profileMode']) {
+      assert.throws(() => harness({ ...options, [missing]: undefined }), /explicit candidate profile and mode/);
+    }
+    assert.throws(() => harness({ ...options, capabilities: candidateCapabilities.filter(value => value !== 'terminal-interaction-v1') }),
+      /capabilities missing/);
+    assert.throws(() => harness({ ...options, budgets: { ...EXECUTION_CANDIDATE_BUDGETS, forceMs: 1 } }), /fixed candidate budgets/);
+    assert.doesNotThrow(() => harness());
+    assert.equal(acquired, 0);
+  });
+
+  test('candidate launch prerequisites reject before the owner calls the transport factory', () => {
+    let acquired = 0;
+    const h = harness({ ...candidateOptions, capabilities: candidateCapabilities,
+      createTransport() { acquired++; throw new Error('must not create transport'); } });
+    const record = h.owner.reserve('bad-launch');
+    assert.throws(() => record.start(spec, h.hooks()), /initial dimensions/);
+    assert.throws(() => record.start({ ...spec, cols: 80, rows: 24 }, h.hooks()), /stop strategy/);
+    assert.throws(() => record.start({ ...spec, stopStrategy: 'hangup' }, h.hooks()), /initial dimensions/);
+    assert.equal(acquired, 0);
+    assert.equal(h.owner.authority.snapshot().active, 0);
+    record.abandon('invalid launch never acquired');
+    assert.equal(record.snapshot().retired, true);
+  });
+
+  test('owned input and resize use the original execution while paused output consumes independently', async () => {
+    const h = candidateHarness();
+    const pending = deferred();
+    const record = await h.start('interactive', { consume: () => pending.promise });
+    const transport = h.transports.get(record.identity.executionId);
+    h.frame(record, 1, 'retained output');
+    await h.scheduler.drain();
+    const input = record.write('command', 5000);
+    const resize = record.resize(120, 40, 5000);
+    await h.scheduler.drain();
+    const command = transport.messages.find(message => message.type === 'input');
+    assert.equal(command.data, 'command');
+    h.message(record, { type: 'interactionObservation', interactionId: command.interactionId,
+      result: { kind: 'written', writtenBytes: Buffer.byteLength(command.data) } });
+    assert.equal((await input.first).kind, 'written');
+    await h.scheduler.drain();
+    const resized = transport.messages.find(message => message.type === 'resize');
+    h.message(record, { type: 'interactionObservation', interactionId: resized.interactionId, result: { kind: 'resized' } });
+    assert.equal((await resize.first).kind, 'resized');
+    assert.equal(record.snapshot().adapter.consumedThrough, 0);
+    assert.equal(transport.messages.filter(message => message.type === 'start').length, 1);
+    assert.equal(transport.messages.find(message => message.type === 'start').spec.cols, 80);
+    record.requestStop('close input admission');
+    assert.throws(() => record.write('retry', 5000), /admission/);
+    assert.throws(() => record.resize(80, 24, 5000), /admission/);
+    pending.resolve();
+    nativeResult(h, record);
+    await h.complete(record, 1);
+    record.settleReaders('settled');
+    assert.equal(record.snapshot().retired, true);
+  });
+
+  test('both explicit stop strategies reach the original provider without reopening ordinary input during stop', async () => {
+    for (const stopStrategy of ['hangup', 'interrupt-then-hangup']) {
+      const h = candidateHarness();
+      const record = h.owner.reserve(stopStrategy);
+      const launch = { ...spec, cols: 97, rows: 31, stopStrategy };
+      assert.equal((await record.start(launch, h.hooks()).first).kind, 'started');
+      await h.scheduler.drain();
+      const transport = h.transports.get(record.identity.executionId);
+      const sent = transport.messages.find(message => message.type === 'start');
+      assert.deepEqual(sent.spec, launch);
+      const input = record.write('pending', 10000);
+      record.requestStop('explicit user stop');
+      await h.scheduler.drain();
+      assert.throws(() => record.write('after stop', 10000), /admission/);
+      assert.equal(transport.messages.filter(message => message.type === 'requestStop').length, 1);
+      assert.equal(transport.messages.find(message => message.type === 'requestStop').mode, 'graceful');
+      h.scheduler.tick(5000);
+      await h.scheduler.drain();
+      assert.equal(transport.messages.filter(message => message.type === 'requestStop').at(-1).mode, 'force');
+      h.scheduler.tick(10000);
+      assert.equal((await input.first).kind, 'unconfirmed');
+      assert.equal(record.snapshot().adapter.interactions.pending, 1);
+      assert.equal(transport.messages.filter(message => message.type === 'input').length, 1);
+    }
   });
 
   for (const { name, run } of tests) {

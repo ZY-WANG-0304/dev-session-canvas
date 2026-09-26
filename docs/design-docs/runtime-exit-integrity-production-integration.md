@@ -21,6 +21,8 @@ updated_at: 2026-09-26
 
 ## 1. 当前结论与阶段边界
 
+2026-09-26 从`7a39497b`实施第29节S10：Linux候选的初始尺寸、有界input/resize、原token非阻塞mutation、按执行种类停止、两authority业务回写及正式worker/资产工厂已接线，继续默认关闭。组合验证发现并修复阻塞input与resize/输出消费的环等；源码复核补齐已成功resize与退出竞态、最终Agent resume等价行为。当前证据仅为受控实际模块、JS构建和一次未加载的Linux原生产物编译/显式导入，不是PTY、真实Agent、VS Code/Electron或跨平台通过。下一S11按27.6固定实际Linux业务输入、匹配环境/资产与安全清理后采集；不再追加通用诊断门槛，L-02至L-05和整体退出完整性仍开放。以下阶段按原时点保留。
+
 2026-09-26 从`f8ca57d4`实施第28节S9：单一默认关闭候选profile、完整能力准入、原连接严格删除及在途创建/删除广播责任保护已接入实际模块。受控验证与旧protocol误跑分别记录于28.4，不把候选配置或fake交互声明写成真实Linux支持。下一按27.5直接补实际I/O、停止策略、业务回写和真实工厂/产物；当前默认generation、旧live原绑定、Runtime结束无历史保持，L-02至L-05及整体退出完整性仍开放。以下阶段按原时点保留。
 
 2026-09-26 从`b235a7bc`完成第27节生产接入有限设计。已选定下一默认关闭切片的单一候选预算、创建前分流和旧live严格删除边界；查明交互能力、初始尺寸、真实工厂/分发及停止策略仍有直接接线缺口。下一直接实施S9配置/准入与错误传播，再沿同一方案补Linux交互provider，不再安排通用诊断前置。本轮只有源码核对与文档验证，没有业务改动、用例运行或新增平台证据；候选毫秒数不是生产验收，L-02至L-05与整体交付仍开放。以下阶段按原时点保留。
@@ -1143,3 +1145,53 @@ Owner/adapter/Supervisor新增用例首次实际运行直接通过，不虚构�
 S9只关闭默认关闭的profile/能力分流及严格传播接线待办；L-03生产时长、L-04实际产物/默认准入尚未通过。没有真实工厂/交互时明确拒绝是当前预期，不是可用生产替换。未知create、删除失败、最终保存冲突仍保守保留，没有自动重试、强制遗忘或完整用户恢复流程；不能只开启profile绕过这些限制。
 
 下一直接沿27.5实施最小Linux I/O与实际接线：LaunchSpec尺寸、原IPC有界输入/resize、native token原owner门禁、owned live校验、按Terminal/Agent的停止策略及既有输出派生行为、正式provider入口和构建产物。继续默认关闭，用原模块定向测试；原生采集前只固定27.6的产品输入、匹配产物/运行环境和安全清理，不再增加通用listener、归档或容量框架门槛。真实VS Code/Electron、Agent启动主体/停止策略、L-02页面/保存完整链、L-05异常owner消失及跨平台仍分别开放；整体计划保持active，本轮只本地提交、不push/PR。
+
+## 29. S10 Linux交互与正式产物接线
+
+### 29.1 本轮实施输入
+
+输入`7a39497b`，继续默认关闭，不改旧live/storage generation、不新增用户开关或诊断服务。本轮直接实施27.5的交互代码和正式worker/工厂边界，先以现有模块受控回归及静态构建验证；不运行旧protocol、真实transport七场景、S3/PTY或runner。编译资产不等于已验证运行平台，缺匹配资产时生产候选仍拒绝；真实原生产品采集另按27.6固定环境/输入/清理，不能把fake输入或函数存在当真实交互通过。
+
+### 29.2 交互接口与有限责任
+
+`common/executionLifecycle.ts`的LaunchSpec新增cols/rows（1至1000整数）及stopStrategy，显式候选必须提供，旧无profile路径保持兼容。PreparedExecution/OwnedExecution提供write(data, deadline)和resize(cols, rows, deadline)，返回InteractionObservation的first/current；交互使用单调interactionId，wire为input/resize与interactionObservation，不复用一次性operation表。结果区分written及实际writtenBytes、resized、cancelled/failed/unconfirmed；不能把send受理写成实际完成。
+
+每执行最多4个未完成交互调用、32768个原始UTF-8输入字节，超额在派发前明确拒绝。write按完整JSON envelope不超过controlBytes分块、不拆Unicode code point；每调用逐片确认并累计实际前缀，输入之间保持调用顺序。resize之间亦保序，但允许越过等待可写的input；adapter最多各一个input/resize wire在途、provider分别推进两类任务，总容量和原normal lane不变。初版普通交互全序会形成authority消费链等待resize、resize等待input、input等待主体消费、主体输出等待消费链的环等，因此不能保留全序假设。wire ID仍在实际入队时分配并按原发送队列递增，不以越过输入为由重放。已派发超时保留原记录等迟到事实，不重放已写前缀；未派发取消释放其输入责任。输出ACK保持可推进，stop/cancel走urgent；交互回包直接结算，不能等输出credit或消费串行链。Host/Supervisor普通交互的观察窗口固定5000ms作为未实测工程输入，与执行关闭预算分开；到期不是失败写入/未写入的证明。
+
+`linuxExecutionProvider.ts`使用同一native token的executionWrite/Resize：每次最多4096字节、一次非阻塞系统调用，partial保留偏移，EAGAIN/EINTR明确retry后让出；resize成功只证明原master的TIOCSWINSZ。native在原readInFlight之外检查write/resize使用；JS未完成任务先取消/结算再close，不保留跨调用Buffer指针。主体终态、源结束或关闭准入后拒新输入/resize，取消尚未写出的部分，仍交付已接收输出；force控制不能等待输入队列可写。
+
+### 29.3 停止与authority提交
+
+只读依据为`executionSessionBridge.ts`的无参数pty.kill及node-pty UnixTerminal默认SIGHUP。候选stopStrategy为hangup（Terminal/Claude）或interrupt-then-hangup（其他Agent）：前者首次请求SIGHUP，后者首次经独立stop路径写Ctrl-C、原5秒升级阶段请求SIGHUP；后续force阶段不偷偷改成更强的SIGKILL。无profile旧S3的TERM/KILL契约不变，父provider清理仍是独立权限。普通input关闭不阻止本次stop的内部Ctrl-C，主体已确认退出则不写。请求返回不能替代主体结束或源EOF，SIGHUP无效时仍如实未确认。
+
+Host/Supervisor按原执行记录选择owned与legacy process。resize沿原authority串行链先等待native成功，再journal/tracker/revision和尺寸投影；native成功但authority提交失败关闭mutation并保留错误，不报告回滚成功。成功回包后的原提交只检查原record/metadata身份和提交错误，不能因随后已退出/stop将其当新请求拒绝并阻断尾部。输入全部written后才记录Agent输入活动，失败不提前变成running。旧标题查询回复、Agent活动/显式resume身份与Terminal launching到live沿原helper衔接；查询回复只登记异步有界写入，不等待消费链，错误须可见。最终Agent resume仍从完整输出核对，不能仅因预先存在ID而漏掉最终明确hint；Host只允许自身从同一可信metadata引用投影时推进S8保存绑定，外部替换继续是冲突。
+
+已派发resize的首报unconfirmed不能按“尺寸未改变”处理：两authority保留原InteractionObservation和独立mutation错误，封闭后续input/resize/scrollback及查询回复，已接收尾部仍沿原消费链处理。最终flush明确失败，不把旧尺寸状态称为完整应用/保存；同ID迟到resized只更新原current，不改首报、不自动补写journal或解除错误。当前不自动requestStop或提供恢复操作，仍可沿原owner显式停止/清理；这是默认关闭候选的保守失败边界，不能称未知resize已成功恢复。
+
+### 29.4 正式worker与产物边界
+
+正常构建增加`panel/linuxExecutionProviderMain.ts`，输出`dist/linux-execution-provider.js`；专用native产物和manifest放`dist/native/linux-execution-candidate/linux-x64-glibc/`，不覆盖stock node-pty或从.debug实验资产直接加载。`scripts/build/linux-execution-candidate-assets.mjs`提供显式build/import，manifest绑定profile、Linux x64/glibc、明确Node/Electron运行环境、源/headers/binary哈希及声明导出集合。声明导出不是实测加载结果；验证字段明确compiled=true而nativeLoaded/nativeCalls/productValidated=false。
+
+`panel/linuxExecutionOwnerFactory.ts`验证固定真实路径、文件类型/大小、manifest、ELF目标格式及内容摘要，拒绝symlink资产、ABI/Node或Electron版本/libc不符，构造阶段不启动provider、不require native。每次transport取得前复核binary/manifest/worker摘要；使用实际authority的process.execPath，Electron父端明确ELECTRON_RUN_AS_NODE。Main在IPC子进程中再次核对原摘要和实际导出后才加载，绑定原executionId/generation；只有Main拥有native require。原父控制的pty-master/pty-child/pty-source清理责任不变。
+
+资产必须在普通dist构建后显式导入，因为普通build会重建dist。默认build允许只有worker，不因此公布可用native候选；`ExecutionOwnerOptions`区分linux-provider和non-native注入，不用cast放宽测试守卫。Supervisor只在显式内部`--execution-profile linux-owner-v1-candidate`及规范隔离storage后缀`runtime-supervisor-generations/terminal-exit-v1/runtime-supervisor`创建工厂；Host只接受显式匹配owner，不自动选择或新增用户设置。旧`terminal-stream-v1`默认generation和旧live绑定均不变。
+
+### 29.5 受控验证、构建与失败记录
+
+共享owner43/43、adapter95/95、channel12/12、Linux provider core10/10、候选资产8/8、工厂14/14及真实adapter/channel/provider内存整链1/1通过。最后一项只替换Node IPC/socket和native OS边界，实际运行三模块及输出credit：输入含UTF-8与需JSON转义字符，分片后的partial前缀不重放；16帧输出信用耗尽时resize越过待写输入，SIGHUP停止仍推进，随后消费17帧尾部并结算原资源。provider额外覆盖Ctrl-C持续EAGAIN/EINTR时force独立，以及process-first/source-first下partial输入、retry resize先取消/结算再close。没有以模拟read或signal证明实际syscall。
+
+Host95/95、Supervisor71/71通过，覆盖实际入口的初始尺寸/停止策略、成功后才回写输入活动/resize revision、标题查询/Agent resume、resize与退出竞态、提交失败及迟到resized保留未知责任。既有parent-control9/9、client20/20、reader wiring20/20、真实main/headless27/27、分页completion/projection、bridge、serialized tracker、多根composition与workspace typecheck通过；不是VS Code UI、真实CLI或实际OS资源验证。
+
+整链初版普通partial场景首次通过；扩为partial两字节后EAGAIN须由resize解除的直接组合场景，旧全序实现实际exit1，快照pending交互2、accepted16/consumed0且无fault。修adapter及provider独立resize后，同一断言exit0。为匹配该设计，S10本轮尚未冻结的provider新例等待双方结果，natural场景改为独立retry resize；一次夹具仍只flush而未推进resize timer，读取未结算结果exit1，改成显式等待原结果后通过。没有改`7a39497b`既有断言或旧冻结实验取绿，旧S3/协议失败保持。
+
+Host新增ACK+exit夹具曾在frame准入前发seal，报source boundary与accepted tail不一致，修正新夹具时序后通过；新增final resume夹具的同步persist stub不满足实际Promise契约，曾报saved.then错误，补齐新helper后通过。Supervisor新增journal提交失败场景原将cleanup误期望为settled，在最终flush正确拒绝失败authority后，改为明确断言terminal failed；没有放宽旧用例。早期类型检查的共享分支/工厂unknown哈希缩窄问题在模块实现中修正，不属于原生平台失败。代码只读复核和组合回归各自注明发现来源，不虚构所有修正都已有原生先败。
+
+`node scripts/build/build.mjs`通过，随后将一次compile-only产物从`/tmp/dsc-linux-execution-candidate-s10-7a39497b-2378-23336`显式import到新dist。环境为Linux x64、Node25.6.0、ABI141、NAPI10、glibc2.35，binary SHA256为`3ed4d6bdc53c12f5d0abf578d3885a71f63dc4ad1a8bc4bab919dff62397fccb`。本轮没有加载该binary或运行worker，没有实际PTY/socket、旧protocol、真实transport七场景、S3、runner或full npm test。esbuild/编译器辅助进程不算provider运行，不能把本轮写成零辅助进程。dist产物是本地构建结果，不提交binary、不改依赖/manifest/workflow。
+
+导入后还用禁止native require和spawn的守卫加载实际工厂，复核真实资产并分别构造live-runtime/snapshot-only options及transport，未调用connect；两模式通过仅证明产物校验与无取得构造路径。声明支持Electron不等于已有Electron编译/运行证据。文档静态检查确认设计第2至28节保持、YAML/索引/关联路径与十二当前ExecPlan章节同步；旧测试体及断言保持另用TypeScript AST核对。临时静态脚本曾把YAML日期Date对象误作索引字符串，采用字符串schema后通过，没有改文档迎合错误比较。
+
+### 29.6 下一交付与保留限制
+
+S10关闭本次交互和正式资产接线待办，不关闭实际Linux交互验收、L-02页面/保存整链、L-03生产预算、L-04默认准入或L-05异常owner消失。工厂仅支持与当前manifest严格匹配的Linux x64/glibc Node或Electron；本轮只编译Node产物，不能在Electron中冒用。Terminal/Claude的SIGHUP及其他Agent的Ctrl-C后SIGHUP只保持源码语义，真实CLI/包装启动链仍需独立验证。
+
+下一S11直接按27.6执行有限Linux业务验证，先固定实际authority入口、兼容运行环境/产物、命令输入、一次性工作目录和安全清理。两模式的程序计算nonce响应/读回resize尺寸、主体UTF-8/ANSI尾部与非零退出、暂停消费下stop、双会话隔离分别核对，保留first失败/未知与原始输出，不用回显或ACK代替业务执行。实际VS Code/Electron、Agent和macOS/Windows未具备本轮证据时继续独立列未验证，不为其追加通用工具完善作为Linux前置。旧live不迁移，Runtime completed无进程/历史、snapshot-only保存和F-03 root归属边界不变；整体ExecPlan仍active，本轮只本地提交，不push/PR。

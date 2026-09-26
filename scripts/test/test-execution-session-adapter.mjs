@@ -99,7 +99,8 @@ try {
   });
 
   const require = createRequire(import.meta.url);
-  const { encodeOutputFrame, OutputCreditWindow, parseProviderMessage, EXECUTION_CANDIDATE_PROFILE } = require(path.join(tempDir, 'executionLifecycle.cjs'));
+  const { encodeOutputFrame, OutputCreditWindow, parseProviderMessage, parseParentMessage, validateLaunchSpec,
+    EXECUTION_CANDIDATE_PROFILE, EXECUTION_INTERACTION_LIMITS } = require(path.join(tempDir, 'executionLifecycle.cjs'));
   const { createExecutionAuthority, prepareExecution } = require(path.join(tempDir, 'executionSessionAdapter.cjs'));
   const tests = [];
   const test = (name, callback) => tests.push({ name, callback });
@@ -136,7 +137,9 @@ try {
       file: 'controlled-fixture',
       args: [],
       cwd: '/',
-      env: {}
+      env: {},
+      ...(options.profile ? { cols: 80, rows: 24, stopStrategy: 'hangup' } : {}),
+      ...options.spec
     }, { authority, transport, scheduler, ...(options.profile ? { profile: options.profile } : {}),
       ...(options.closeObservationV1 ? { closeObservationV1: true } : {}),
       ...(options.parentCleanupV1 ? { parentCleanupV1: true } : {}) });
@@ -1887,6 +1890,258 @@ try {
       ['execution-lifecycle-v1', 'terminal-interaction-v1', 'terminal-interaction-v1']]) {
       assert.throws(() => parseProviderMessage({ type: 'ready', identity: identity(), capabilities }));
     }
+  });
+
+  const interactive = (options = {}) => createHarness({
+    readyCapabilities: ['execution-lifecycle-v1', 'terminal-interaction-v1'], ...options
+  });
+  const interactionMessages = h => h.messages.filter(message => message.type === 'input' || message.type === 'resize');
+  const answerInteraction = (h, message, result) => h.message({
+    type: 'interactionObservation', interactionId: message.interactionId, result
+  });
+
+  test('candidate launch dimensions and stop strategy reject before reserving or connecting', () => {
+    for (const spec of [{ cols: undefined, rows: undefined }, { stopStrategy: undefined }]) {
+      const authority = createExecutionAuthority();
+      assert.throws(() => createHarness({ profile: EXECUTION_CANDIDATE_PROFILE, authority, spec }), /initial dimensions/);
+      assert.equal(authority.snapshot().active, 0);
+    }
+    for (const extra of [{ cols: 0, rows: 24 }, { cols: 80 }, { cols: 1001, rows: 24 },
+      { cols: 80, rows: 1.5 }, { stopStrategy: 'SIGTERM' }]) {
+      assert.throws(() => validateLaunchSpec({ file: 'fixture', args: [], ...extra }));
+    }
+    assert.deepEqual(validateLaunchSpec({ file: 'fixture', args: [] }), { file: 'fixture', args: [] });
+    for (const stopStrategy of ['hangup', 'interrupt-then-hangup']) {
+      assert.equal(validateLaunchSpec({ file: 'fixture', args: [], cols: 90, rows: 30, stopStrategy }).stopStrategy, stopStrategy);
+    }
+  });
+
+  test('interaction admission needs actual ready capability, running subject, valid sizes and a finite future deadline', async () => {
+    const old = createHarness();
+    await old.started();
+    assert.throws(() => old.session.write('a', 100), /unsupported/);
+    const h = interactive();
+    assert.throws(() => h.session.write('a', 100), /admission/);
+    await h.started();
+    for (const value of ['', 42, '\ud800']) assert.throws(() => h.session.write(value, 100));
+    for (const deadline of [0, NaN, Infinity]) assert.throws(() => h.session.write('a', deadline));
+    for (const [cols, rows] of [[0, 24], [80, 0], [1001, 24], [80, 1.5]]) assert.throws(() => h.session.resize(cols, rows, 100));
+    h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    assert.throws(() => h.session.resize(80, 24, 100), /admission/);
+    assert.equal(interactionMessages(h).length, 0);
+  });
+
+  test('bounded input chunks preserve Unicode and escaping, writes stay ordered while resize advances independently', async () => {
+    const h = interactive();
+    await h.started();
+    h.output(1, 'paused output');
+    await settle(h.scheduler);
+    assert.equal(h.snapshot().consumedThrough, 0);
+    const text = '\u{1f642}\u001b"\\'.repeat(700);
+    const first = h.session.write(text, 5000);
+    const resize = h.session.resize(111, 37, 5000);
+    const second = h.session.write('after-resize', 5000);
+    const chunks = [];
+    let answered = 0;
+    for (let step = 0; step < 20 && h.snapshot().interactions.pending; step++) {
+      await settle(h.scheduler);
+      const message = interactionMessages(h)[answered++];
+      assert.ok(message);
+      assert.ok(Buffer.byteLength(JSON.stringify(message)) <= 4096);
+      assert.deepEqual(parseParentMessage(message), message);
+      if (message.type === 'input') {
+        assert.equal(Buffer.from(message.data).toString('utf8'), message.data);
+        chunks.push(message.data);
+        answerInteraction(h, message, { kind: 'written', writtenBytes: Buffer.byteLength(message.data) });
+      } else answerInteraction(h, message, { kind: 'resized' });
+    }
+    assert.deepEqual(await first.first, { kind: 'written', writtenBytes: Buffer.byteLength(text) });
+    assert.equal((await resize.first).kind, 'resized');
+    assert.equal((await second.first).writtenBytes, Buffer.byteLength('after-resize'));
+    assert.equal(chunks.slice(0, -1).join(''), text);
+    assert.equal(chunks.at(-1), 'after-resize');
+    const messages = interactionMessages(h);
+    assert.ok(messages.filter(message => message.type === 'input').length > 2);
+    assert.deepEqual(messages.map(message => message.interactionId), messages.map((_, index) => index + 1));
+    assert.equal(messages[1].type, 'resize');
+    assert.equal(h.snapshot().consumedThrough, 0, 'resize results must not depend on a paused output consumer');
+    assert.equal(h.snapshot().interactions.pending, 0);
+    assert.equal(h.snapshot().interactions.inputBytes, 0);
+  });
+
+  test('four pending caller operations reject overflow and successful calls release their bounded records', async () => {
+    const h = interactive();
+    await h.started();
+    const calls = Array.from({ length: 4 }, (_, index) => h.session.write(`call-${index}`, 5000));
+    assert.equal(EXECUTION_INTERACTION_LIMITS.pendingOperations, 4);
+    assert.throws(() => h.session.resize(90, 30, 5000), /capacity/);
+    assert.equal(h.snapshot().interactions.pending, 4);
+    for (let index = 0; index < calls.length; index++) {
+      await settle(h.scheduler);
+      const message = interactionMessages(h)[index];
+      answerInteraction(h, message, { kind: 'written', writtenBytes: Buffer.byteLength(message.data) });
+      assert.equal((await calls[index].first).kind, 'written');
+    }
+    for (let index = 0; index < 12; index++) {
+      const observation = h.session.resize(80 + index, 24, 5000);
+      await settle(h.scheduler);
+      answerInteraction(h, interactionMessages(h).at(-1), { kind: 'resized' });
+      assert.equal((await observation.first).kind, 'resized');
+      assert.equal(h.snapshot().interactions.pending, 0);
+    }
+    assert.equal(interactionMessages(h).length, 16);
+  });
+
+  test('raw input byte bound counts originals, output ACK and urgent stop remain independent, partial failure is not replayed', async () => {
+    const h = interactive();
+    await h.started();
+    const observation = h.session.write('x'.repeat(EXECUTION_INTERACTION_LIMITS.pendingInputBytes), 5000);
+    assert.throws(() => h.session.write('y', 5000), /capacity/);
+    assert.equal(h.snapshot().interactions.inputBytes, 32768);
+    const queued = h.session.resize(100, 40, 5000);
+    h.output(1, 'tail');
+    await settle(h.scheduler);
+    assert.equal(h.sent('accepted').at(-1).throughFrameId, 1);
+    assert.equal(h.snapshot().consumedThrough, 0);
+    answerInteraction(h, interactionMessages(h).find(message => message.type === 'resize'), { kind: 'resized' });
+    assert.equal((await queued.first).kind, 'resized');
+    h.session.requestStop('force', 'force', 5000);
+    await settle(h.scheduler);
+    assert.equal(h.sent('requestStop').length, 1);
+    const input = interactionMessages(h)[0];
+    answerInteraction(h, input, { kind: 'failed', reason: 'partial native write', writtenBytes: 3 });
+    assert.deepEqual(await observation.first, { kind: 'failed', reason: 'partial native write', writtenBytes: 3 });
+    assert.equal(interactionMessages(h).length, 2);
+    assert.equal(h.snapshot().interactions.pending, 0);
+    assert.equal(h.snapshot().interactions.inputBytes, 0);
+    assert.throws(() => h.session.write('retry', 5000), /admission/);
+  });
+
+  test('sent interaction timeout freezes first, cancels unsent calls and retains original late evidence without replay', async () => {
+    const h = interactive();
+    await h.started();
+    const observation = h.session.write('x'.repeat(8000), 10);
+    const queued = h.session.write('queued input', 10);
+    await settle(h.scheduler);
+    const input = interactionMessages(h)[0];
+    h.scheduler.advanceTo(10);
+    assert.deepEqual(await observation.first, { kind: 'unconfirmed', reason: 'Interaction observation deadline reached', writtenBytes: 0 });
+    assert.equal((await queued.first).kind, 'cancelled');
+    assert.equal(h.snapshot().interactions.pending, 1);
+    answerInteraction(h, input, { kind: 'written', writtenBytes: Buffer.byteLength(input.data) });
+    await settle(h.scheduler);
+    assert.equal(observation.current.kind, 'cancelled');
+    assert.equal(observation.current.writtenBytes, Buffer.byteLength(input.data));
+    assert.equal((await observation.first).kind, 'unconfirmed');
+    assert.equal(interactionMessages(h).length, 1);
+    assert.equal(h.snapshot().interactions.pending, 0);
+  });
+
+  test('partial unknown retains its known prefix and only original late result advances current', async () => {
+    const h = interactive();
+    await h.started();
+    const observation = h.session.write('abcdef', 10);
+    await settle(h.scheduler);
+    const input = interactionMessages(h)[0];
+    answerInteraction(h, input, { kind: 'unconfirmed', writtenBytes: 2, reason: 'write completion unknown' });
+    assert.equal((await observation.first).writtenBytes, 2);
+    h.sink.disconnected('connection lost');
+    assert.equal(observation.current.writtenBytes, 2);
+    answerInteraction(h, input, { kind: 'failed', writtenBytes: 3, reason: 'original result' });
+    assert.equal(observation.current.writtenBytes, 3);
+    assert.equal((await observation.first).kind, 'unconfirmed');
+    assert.equal(h.snapshot().interactions.pending, 0);
+    assert.equal(interactionMessages(h).length, 1);
+  });
+
+  test('input IPC failure retains unknown sent responsibility while cancelling queued mutations', async () => {
+    const gate = deferred();
+    const h = interactive({ send: message => message.type === 'input' ? gate.promise : Promise.resolve() });
+    await h.started();
+    const input = h.session.write('command', 5000);
+    const resize = h.session.resize(100, 40, 5000);
+    gate.reject(new Error('controlled IPC write error'));
+    await settle(h.scheduler);
+    assert.equal((await input.first).kind, 'unconfirmed');
+    assert.equal((await resize.first).kind, 'cancelled');
+    assert.equal(h.snapshot().interactions.pending, 1);
+    assert.equal(interactionMessages(h).length, 1);
+    assert.throws(() => h.session.write('command', 5000), /admission/);
+  });
+
+  test('queued input checks original deadline at dispatch even when deadline callbacks are late', async () => {
+    const gate = deferred();
+    const h = interactive({ send: message => message.type === 'accepted' ? gate.promise : Promise.resolve() });
+    await h.started();
+    h.output(1, 'blocked ACK send');
+    await settle(h.scheduler);
+    const input = h.session.write('never sent', 10);
+    h.scheduler.advanceTo(10, { runDeadlines: false });
+    gate.resolve();
+    await settle(h.scheduler);
+    assert.equal((await input.first).kind, 'cancelled');
+    assert.equal(input.current.writtenBytes, 0);
+    assert.equal(interactionMessages(h).length, 0);
+  });
+
+  test('closing cancels unsent input without blocking the original urgent stop lane', async () => {
+    const gate = deferred();
+    const h = interactive({ send: message => message.type === 'accepted' ? gate.promise : Promise.resolve() });
+    await h.started();
+    h.output(1, 'blocked ACK send');
+    await settle(h.scheduler);
+    const input = h.session.write('never sent', 100);
+    h.session.requestStop('force', 'force', 100);
+    assert.equal((await input.first).kind, 'cancelled');
+    gate.resolve();
+    await settle(h.scheduler);
+    assert.equal(interactionMessages(h).length, 0);
+    assert.equal(h.sent('requestStop').length, 1);
+  });
+
+  test('invalid or stale interaction results cannot fabricate write completion', async () => {
+    for (const result of [{ kind: 'written', writtenBytes: 99 }, { kind: 'written', writtenBytes: 2 },
+      { kind: 'resized' }, { kind: 'failed', reason: 'missing prefix' }]) {
+      const h = interactive();
+      await h.started();
+      const input = h.session.write('abc', 100);
+      await settle(h.scheduler);
+      answerInteraction(h, interactionMessages(h)[0], result);
+      assert.equal((await input.first).kind, 'unconfirmed');
+      assert.equal(h.snapshot().interactions.pending, 1);
+      assert.match(h.snapshot().firstFault, /Invalid terminal interaction result/);
+    }
+  });
+
+  test('resize bypasses an unconfirmed blocked input without reordering input or depending on output credit', async () => {
+    const h = interactive();
+    await h.started();
+    h.output(1, 'consumer is paused');
+    await settle(h.scheduler);
+    const first = h.session.write('first input', 5000);
+    const second = h.session.write('second input', 5000);
+    const resize = h.session.resize(132, 43, 5000);
+    await settle(h.scheduler);
+    assert.deepEqual(interactionMessages(h).map(message => message.type), ['input', 'resize']);
+    const original = interactionMessages(h)[0];
+    answerInteraction(h, original, { kind: 'unconfirmed', writtenBytes: 2, reason: 'write is blocked' });
+    assert.equal((await first.first).kind, 'unconfirmed');
+    answerInteraction(h, interactionMessages(h)[1], { kind: 'resized' });
+    assert.equal((await resize.first).kind, 'resized');
+    assert.equal(h.snapshot().consumedThrough, 0);
+    assert.equal(h.snapshot().interactions.pending, 2);
+    assert.equal(interactionMessages(h).filter(message => message.type === 'input').length, 1);
+    answerInteraction(h, original, { kind: 'written', writtenBytes: Buffer.byteLength(original.data) });
+    await settle(h.scheduler);
+    const next = interactionMessages(h).at(-1);
+    assert.equal(next.type, 'input');
+    assert.equal(next.data, 'second input');
+    answerInteraction(h, next, { kind: 'written', writtenBytes: Buffer.byteLength(next.data) });
+    assert.equal((await second.first).kind, 'written');
+    assert.equal((await first.first).kind, 'unconfirmed');
+    assert.equal(first.current.kind, 'written');
+    assert.deepEqual(interactionMessages(h).map(message => message.interactionId), [1, 2, 3]);
+    assert.equal(h.snapshot().interactions.pending, 0);
   });
 
   const failures = [];

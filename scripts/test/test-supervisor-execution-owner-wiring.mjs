@@ -1608,6 +1608,168 @@ try {
     assert.equal((await closing).kind, 'settled');
   });
 
+  async function interactiveSupervisorFixture(kind = 'terminal', provider = 'codex') {
+    const f = fixture(candidateCapabilities, candidateBehavior);
+    const sessionId = `s10-${kind}-${++fixtureId}`;
+    const create = params(sessionId, kind);
+    create.launchSpec.cols = 113; create.launchSpec.rows = 39;
+    await f.server.createSession(f.socket, { ...create, provider: kind === 'agent' ? provider : undefined,
+      executionProfile: EXECUTION_CANDIDATE_PROFILE });
+    const session = f.server.sessions.get(sessionId);
+    const transport = f.transports[0];
+    const interactions = [];
+    const send = transport.send.bind(transport);
+    transport.send = async message => {
+      await send(message);
+      if (message.type === 'input' || message.type === 'resize') interactions.push(message);
+    };
+    const reply = (message, result) => transport.fact({ type: 'interactionObservation', interactionId: message.interactionId, result });
+    return { ...f, session, transport, interactions, reply };
+  }
+
+  await check('S10 Supervisor initial dimensions and stop policy represent Terminal, Codex and Claude without legacy process', async () => {
+    for (const [kind, provider, strategy] of [
+      ['terminal', 'codex', 'hangup'], ['agent', 'codex', 'interrupt-then-hangup'], ['agent', 'claude', 'hangup']
+    ]) {
+      const f = await interactiveSupervisorFixture(kind, provider);
+      const start = f.transport.sent.find(message => message.type === 'start');
+      assert.equal(start.spec.cols, 113); assert.equal(start.spec.rows, 39);
+      assert.equal(start.spec.stopStrategy, strategy);
+      assert.equal(f.session.process, undefined);
+      assert.equal(f.session.terminalCheckpoint.cols, 113);
+      assert.equal(f.session.terminalCheckpoint.rows, 39);
+      await finish(f, f.session, f.transport);
+    }
+  });
+
+  await check('S10 Supervisor write RPC waits actual written and never marks Agent running after failed input', async () => {
+    for (const outcome of ['failed', 'written']) {
+      const f = await interactiveSupervisorFixture('agent');
+      f.session.lifecycle = 'waiting-input';
+      const writing = request(f, f.socket, 'writeInput', { sessionId: f.session.sessionId, data: 'go\r' });
+      await f.until(() => f.interactions.length === 1, `${outcome} original Supervisor input`);
+      assert.equal(f.session.lifecycle, 'waiting-input');
+      assert.equal(f.socket.messages.some(message => message.type === 'response' && message.id.startsWith('reader-request-')), false);
+      f.reply(f.interactions[0], outcome === 'written' ? { kind: 'written', writtenBytes: 3 }
+        : { kind: 'failed', reason: 'controlled input failure', writtenBytes: 0 });
+      const response = await writing;
+      assert.equal(response.ok, outcome === 'written');
+      assert.equal(f.session.lifecycle, outcome === 'written' ? 'running' : 'waiting-input');
+      await finish(f, f.session, f.transport);
+    }
+  });
+
+  await check('S10 Supervisor resize orders native confirmation before journal tracker and scrollback revisions', async () => {
+    const f = await interactiveSupervisorFixture();
+    const resizing = f.server.resizeSession({ sessionId: f.session.sessionId, cols: 99, rows: 30 });
+    await f.until(() => f.interactions.length === 1, 'Supervisor resize dispatch');
+    assert.equal(f.session.cols, 113); assert.equal(f.session.rows, 39);
+    assert.equal(f.session.outputSequence, 0);
+    assert.equal(f.session.terminalJournal.getRevision(), 0);
+    f.reply(f.interactions[0], { kind: 'resized' });
+    await resizing;
+    assert.equal(f.session.cols, 99); assert.equal(f.session.rows, 30);
+    assert.equal(f.session.outputSequence, 1);
+    assert.equal(f.session.terminalJournal.getRevision(), 1);
+    await f.server.updateSessionScrollback({ sessionId: f.session.sessionId, scrollback: 120 });
+    assert.equal(f.session.terminalStateTracker.getScrollback(), 120);
+    assert.equal(f.session.outputSequence, 2);
+    assert.equal(f.interactions.length, 1);
+    f.transport.output('tail-after-owned-resize\r\n');
+    await f.until(() => f.session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'owned resized output consumed');
+    assert.equal(f.session.outputSequence, 3);
+    await finish(f, f.session, f.transport);
+  });
+
+  await check('S10 Supervisor failed resize does not mutate dimensions and confirmed resize journal failure closes admission', async () => {
+    for (const outcome of ['provider-failed', 'journal-failed']) {
+      const f = await interactiveSupervisorFixture();
+      const append = f.session.terminalJournal.appendResize.bind(f.session.terminalJournal);
+      if (outcome === 'journal-failed') f.session.terminalJournal.appendResize = () => { throw new Error('controlled resize journal failure'); };
+      const resizing = f.server.resizeSession({ sessionId: f.session.sessionId, cols: 98, rows: 29 });
+      const rejected = assert.rejects(resizing, /resize|journal/i);
+      await f.until(() => f.interactions.length === 1, `${outcome} resize dispatch`);
+      f.reply(f.interactions[0], outcome === 'provider-failed' ? { kind: 'failed', reason: 'controlled resize failure' } : { kind: 'resized' });
+      await rejected;
+      assert.equal(f.session.cols, 113);
+      assert.equal(f.session.rows, 39);
+      assert.equal(f.session.outputSequence, 0);
+      if (outcome === 'journal-failed') {
+        assert.equal(f.session.live, false);
+        assert.match(f.session.terminalJournalError.message, /controlled resize journal failure/);
+        await assert.rejects(f.server.writeInput({ sessionId: f.session.sessionId, data: 'no' }), /not live|not running|active|not available/i);
+      }
+      f.session.terminalJournal.appendResize = append;
+      if (outcome === 'journal-failed') {
+        f.transport.process(); f.transport.seal(); f.transport.release();
+        await f.until(() => f.session.ownedExecution.snapshot().terminal?.kind === 'failed', 'native resize journal failure cannot claim complete authority');
+      } else await finish(f, f.session, f.transport);
+    }
+  });
+
+  await check('S10 Supervisor title replies remain independent of output consumption and preserve Agent resume activity', async () => {
+    for (const kind of ['terminal', 'agent']) {
+      const f = await interactiveSupervisorFixture(kind);
+      f.transport.output('\x1b]2;supervisor-title\x07\x1b[21t\r\nready\r\n');
+      await f.until(() => f.session.ownedExecution.snapshot().adapter.consumedThrough === 1, `${kind} title query consumed`);
+      await f.until(() => f.interactions.length === 1, `${kind} title reply dispatched`);
+      assert.equal(f.session.terminalTitle, 'supervisor-title');
+      assert.match(f.interactions[0].data, /supervisor-title/);
+      if (kind === 'terminal') assert.equal(f.session.lifecycle, 'live');
+      else {
+        f.transport.output('\r\nTo continue this session, run codex resume 7e57d004-2b97-4001-9455-5d94020a94cd\r\n');
+        await f.until(() => f.session.ownedExecution.snapshot().adapter.consumedThrough === 2, 'Supervisor Agent hint consumed');
+        assert.equal(f.session.resumeSessionId, '7e57d004-2b97-4001-9455-5d94020a94cd');
+        assert.equal(typeof f.session.agentActivity.lastOutputAtMs, 'number');
+      }
+      f.server.stopSession({ sessionId: f.session.sessionId });
+      await f.until(() => f.transport.sent.some(message => message.type === 'requestStop'), 'stop bypasses title reply');
+      assert.equal(f.session.lifecycle, 'stopping');
+      await finish(f, f.session, f.transport);
+    }
+  });
+
+  await check('S10 Supervisor owned subject exit and Claude input restrictions reject mutation without a legacy process', async () => {
+    const f = await interactiveSupervisorFixture('agent', 'claude');
+    await assert.rejects(f.server.writeInput({ sessionId: f.session.sessionId, data: '\x1a' }), /Ctrl-Z|ctrl|suspend/i);
+    f.session.lifecycle = 'suspended';
+    await assert.rejects(f.server.writeInput({ sessionId: f.session.sessionId, data: 'go\r' }), /suspend/i);
+    f.session.lifecycle = 'running';
+    f.transport.process();
+    await assert.rejects(f.server.writeInput({ sessionId: f.session.sessionId, data: 'late' }), /not live|not running|active|not available/i);
+    await assert.rejects(f.server.resizeSession({ sessionId: f.session.sessionId, cols: 90, rows: 30 }), /not live|not running|active|not available/i);
+    assert.equal(f.interactions.length, 0);
+    await finish(f, f.session, f.transport);
+  });
+
+  await check('S10 Supervisor uncertain resize retains original late evidence while consuming tail and refusing complete authority', async () => {
+    const f = await interactiveSupervisorFixture();
+    const resizing = f.server.resizeSession({ sessionId: f.session.sessionId, cols: 91, rows: 33 });
+    const rejected = assert.rejects(resizing, /unconfirmed/);
+    await f.until(() => f.interactions.length === 1, 'original uncertain Supervisor resize');
+    f.reply(f.interactions[0], { kind: 'unconfirmed', reason: 'controlled resize observation deadline' });
+    await rejected;
+    const original = f.session.ownedResizeObservation;
+    assert.equal(original.current.kind, 'unconfirmed');
+    assert.match(f.session.ownedMutationError, /effect is unconfirmed/);
+    f.reply(f.interactions[0], { kind: 'resized' });
+    await f.until(() => original.current.kind === 'resized', 'Supervisor original late resize evidence');
+    assert.strictEqual(f.session.ownedResizeObservation, original);
+    await assert.rejects(f.server.writeInput({ sessionId: f.session.sessionId, data: 'blocked' }), /not live|not running|active|not available/i);
+    await assert.rejects(f.server.resizeSession({ sessionId: f.session.sessionId, cols: 92, rows: 34 }), /not live|not running|active|not available/i);
+    assert.equal(f.interactions.length, 1);
+    f.transport.output('\x1b]2;uncertain-title\x07\x1b[21ttail-after-uncertain-resize\r\n');
+    await f.until(() => f.session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'uncertain Supervisor authority consumes tail');
+    assert.equal(f.transport.sent.filter(message => message.type === 'input').length, 0,
+      'automatic title reply cannot bypass closed mutation admission');
+    f.transport.process(); f.transport.seal(); f.transport.release();
+    await f.until(() => f.session.ownedExecution.snapshot().terminal?.kind === 'failed', 'uncertain Supervisor final authority rejected');
+    assert.equal(f.session.cols, 113); assert.equal(f.session.rows, 39);
+    assert.equal(f.session.outputSequence, 1);
+    assert.equal(f.session.terminalJournal.getRevision(), 1);
+    assert.match(f.session.terminalStateTracker.getSerializedState().data, /tail-after-uncertain-resize/);
+  });
+
   assert.equal(forbiddenAcquisitions, 0);
   console.log(`Supervisor execution owner wiring: ${passed}/${passed} pure cases passed`);
 } finally {

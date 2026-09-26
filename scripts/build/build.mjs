@@ -61,6 +61,16 @@ const supervisorLauncherConfig = {
   target: 'node18'
 };
 
+const linuxExecutionProviderConfig = {
+  entryPoints: [fromMainExtensionRoot('src/panel/linuxExecutionProviderMain.ts')],
+  bundle: true,
+  ...sharedConfig,
+  format: 'cjs',
+  outfile: fromMainExtensionDist('linux-execution-provider.js'),
+  platform: 'node',
+  target: 'node18'
+};
+
 const webviewConfig = {
   entryPoints: {
     webview: fromMainExtensionRoot('src/webview/main.tsx'),
@@ -98,6 +108,7 @@ async function runBuild() {
       esbuild.build(extensionConfig),
       esbuild.build(supervisorConfig),
       esbuild.build(supervisorLauncherConfig),
+      esbuild.build(linuxExecutionProviderConfig),
       esbuild.build(webviewConfig)
     ]);
     return;
@@ -106,12 +117,14 @@ async function runBuild() {
   const extensionContext = await esbuild.context(extensionConfig);
   const supervisorContext = await esbuild.context(supervisorConfig);
   const supervisorLauncherContext = await esbuild.context(supervisorLauncherConfig);
+  const linuxExecutionProviderContext = await esbuild.context(linuxExecutionProviderConfig);
   const webviewContext = await esbuild.context(webviewConfig);
 
   await Promise.all([
     extensionContext.watch(),
     supervisorContext.watch(),
     supervisorLauncherContext.watch(),
+    linuxExecutionProviderContext.watch(),
     webviewContext.watch()
   ]);
 }

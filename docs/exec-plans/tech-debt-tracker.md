@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-26 S10交互与产物：生产接入第29节完成默认关闭的LaunchSpec尺寸、独立有界input/resize、同token非阻塞mutation、SIGHUP/Ctrl-C停止差异及两authority业务回写；正式worker、严格匹配Linux x64/glibc/Node或Electron的工厂、compile-only构建/显式导入已提供。受控整链确认input全序阻塞resize/消费的环等，修为输入内部保序、resize独立；成功resize的退出竞态和最终resume同步亦直接修正。未知resize不等于尺寸未变，需保留原观察、关闭后续mutation并拒绝完整最终状态，而非丢弃已接收尾部。本轮纯测试/受控模块、JS build及未加载binary的编译/import均不代证实际PTY、OS资源、VS Code/Electron或真实Agent。下一只按27.6固定环境/资产/输入/安全清理开展Linux实际业务验收，不追加通用诊断工具前置。L-02至L-05、生产时限、异常owner消失、用户恢复流程、真实Agent启动链和跨平台总债务继续开放；未改默认generation、旧live、root归属或Runtime completed无进程/无历史边界。以下历史记录逐字保留。
+
 2026-09-26 S9候选准入与原绑定责任：生产接入第28节完成默认关闭profile、完整能力拒绝、同钟固定候选预算、原连接严格删除和批量失败保留；multi-root reset共用整体边界，已提交create阻止同节点重建/删除绕过，delete期间广播的finalization与回包独立保留，截止后不首次写盘，成功无节点cleanup记录及时回收。最终owner39/39、adapter83/83、Supervisor64/64、client20/20、Host86/86，parent-control9/9、reader20/20、main/headless27/27和相关回归/typecheck通过，不据此宣称真实交互或生产验收。一次误跑旧protocol先发生两个临时Unix socket hello（第二个含checkpoint），随后旧源码regex断言失败，基线同样失败；未执行到真实Supervisor/PTY，临时socket已清理，既不能称全程零socket，也不能称该整脚本通过。下一直接按27.5有限实施实际Linux初始尺寸/input/resize、停止策略/业务回写、provider工厂及产物；native采集前固定输入、执行环境与安全清理，不追加诊断工具门槛。未知create/delete及保存失败仍保守保留，没有自动重试/强制遗忘/完整用户恢复流程；profile时长的生产有效性、实际UI/保存整链、Agent启动主体、L-02至L-05、跨平台及退出完整性总债务仍开放。旧live/root/storage/generation和Runtime completed无进程/无历史边界保持，以下阶段记录原样保留。
 
 2026-09-26 生产接入有限设计：生产接入第27节只读收敛单一`linux-owner-v1-candidate`预算、Runtime由Supervisor而snapshot-only由Host持有owner的创建前能力分流，以及旧live原连接严格删除/聚合失败/保留绑定责任。profile数值是未实测候选，不是生产验收；本轮没有业务代码、用例运行或native证据。下一直接实施S9默认关闭、无native的配置/准入与严格错误传播，不增加通用诊断前置；实际初始尺寸和input/resize I/O、`requireLiveSession`对owned主体与legacy process的区分、停止策略/业务回写、真实provider工厂及产物分发仍缺。旧live/root/storage/generation及Runtime已结束节点不恢复进程或历史的边界保持；L-02至L-05、真实UI/Agent启动链、跨平台和退出完整性总债务继续开放。以下S8、测试债与历史记录逐字保留。

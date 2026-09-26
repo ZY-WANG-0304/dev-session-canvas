@@ -186,7 +186,7 @@ export class ExecutionProviderTransport implements ExecutionTransport {
     diagnostics?.on('close', () => { this.stderrClosed = true; this.maybeFinishClose(); });
     input?.on('error', () => { this.reportFault('Provider input pipe failed'); });
     input?.on('close', () => { this.inputClosed = true; this.maybeFinishClose(); });
-    // Terminal input is deliberately not exposed in S2.
+    // Terminal input uses bounded IPC commands, never a second stdin stream.
     input?.end();
   }
 

@@ -4,6 +4,7 @@ import {
   assertExecutionCandidateCapabilities,
   assertExecutionCandidateProfile,
   assertExecutionIdentity,
+  assertCandidateLaunchSpec,
   EXECUTION_CANDIDATE_BUDGETS,
   S1_LIMITS,
   validateLaunchSpec,
@@ -23,6 +24,7 @@ import {
   type ExecutionScheduler,
   type ExecutionTransport,
   type OperationObservation,
+  type InteractionObservation,
   type PreparedExecution
 } from './executionSessionAdapter';
 
@@ -46,6 +48,14 @@ export interface NonNativeExecutionOwnerOptions {
   // Construction must not acquire resources; acquisition belongs to connect().
   readonly createTransport: (identity: ExecutionIdentity) => ExecutionTransport;
 }
+
+export interface LinuxExecutionOwnerOptions extends Omit<NonNativeExecutionOwnerOptions, 'kind' | 'profile' | 'profileMode'> {
+  readonly kind: 'linux-provider';
+  readonly profile: ExecutionCandidateProfile;
+  readonly profileMode: ExecutionCandidateMode;
+}
+
+export type ExecutionOwnerOptions = NonNativeExecutionOwnerOptions | LinuxExecutionOwnerOptions;
 
 export interface ExecutionOwnerHooks {
   consume(batches: readonly DataBatch[]): Promise<void>;
@@ -85,13 +95,16 @@ interface CloseObservation {
 
 export class ExecutionOwnerLifecycle {
   readonly authority = createExecutionAuthority();
-  readonly options: NonNativeExecutionOwnerOptions;
+  readonly options: ExecutionOwnerOptions;
   private readonly records = new Map<string, OwnedExecution>();
   private closing?: Promise<OwnerCloseResult>;
 
-  constructor(options: NonNativeExecutionOwnerOptions) {
-    if (options.kind !== 'non-native' || typeof options.createTransport !== 'function') {
-      throw new Error('Only an explicitly injected non-native execution provider is available');
+  constructor(options: ExecutionOwnerOptions) {
+    if ((options.kind !== 'non-native' && options.kind !== 'linux-provider') || typeof options.createTransport !== 'function') {
+      throw new Error('An explicitly injected execution provider is required');
+    }
+    if (options.kind === 'linux-provider' && (options.profile === undefined || options.profileMode === undefined)) {
+      throw new Error('Linux execution provider requires an explicit candidate profile and mode');
     }
     const budgets = Object.freeze({ ...options.budgets });
     if (options.profile !== undefined) {
@@ -211,6 +224,7 @@ export class OwnedExecution {
     this.owner.assertAdmission(this);
     if (this.stopRequested || this.abandoned || this.execution) throw new Error('Execution reservation cannot start');
     const launch = validateLaunchSpec(spec);
+    if (this.owner.options.profile) assertCandidateLaunchSpec(launch);
     if (typeof hooks.consume !== 'function' || typeof hooks.flushFinal !== 'function') throw new Error('Execution terminal hooks are required');
     const transport = this.owner.options.createTransport(this.identity);
     this.owner.assertAdmission(this);
@@ -246,6 +260,22 @@ export class OwnedExecution {
     }
     this.evaluate();
     return operation;
+  }
+
+  write(data: string, deadline: number): InteractionObservation {
+    return this.requireInteraction().write(data, deadline);
+  }
+
+  resize(cols: number, rows: number, deadline: number): InteractionObservation {
+    return this.requireInteraction().resize(cols, rows, deadline);
+  }
+
+  private requireInteraction(): PreparedExecution {
+    this.owner.assertAdmission(this);
+    if (!this.execution || this.stopRequested || this.abandoned || this.closeObservation || this.snapshot().settled) {
+      throw new Error('Owned execution terminal interaction admission is closed');
+    }
+    return this.execution;
   }
 
   abandon(reason: string): void {
