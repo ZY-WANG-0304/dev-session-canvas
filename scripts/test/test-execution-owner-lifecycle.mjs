@@ -61,7 +61,8 @@ try {
     outExtension: { '.js': '.cjs' }
   });
   const { ExecutionOwnerLifecycle } = require(path.join(tempDir, 'owner.cjs'));
-  const { encodeOutputFrame } = require(path.join(tempDir, 'protocol.cjs'));
+  const { encodeOutputFrame, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS,
+    assertExecutionCandidateCapabilities } = require(path.join(tempDir, 'protocol.cjs'));
   const { SerializedTerminalStateTracker } = require(path.join(tempDir, 'tracker.cjs'));
 
   function harness(extra = {}) {
@@ -619,10 +620,11 @@ try {
   const parentCapabilities = ['execution-lifecycle-v1', 'execution-close-observation-v1', 'execution-parent-cleanup-v1'];
   const parentBudgets = { ...budgets, naturalDrainMs: 5, parentTermMs: 3, parentKillMs: 3 };
 
-  function parentHarness({ ready = true, terminate, send, capabilities = parentCapabilities } = {}) {
+  function parentHarness({ ready = true, terminate, send, capabilities = parentCapabilities,
+    readyCapabilities = ['execution-lifecycle-v1'], ownerOptions = {} } = {}) {
     let h;
     h = harness({
-      capabilities, budgets: parentBudgets,
+      capabilities, budgets: parentBudgets, ...ownerOptions,
       createTransport(identity) {
         const closed = deferred();
         const transport = {
@@ -637,7 +639,7 @@ try {
           }),
           connect(sink) {
             this.sink = sink;
-            if (ready) sink.message({ type: 'ready', identity, capabilities: ['execution-lifecycle-v1'] });
+            if (ready) sink.message({ type: 'ready', identity, capabilities: readyCapabilities });
           },
           send(message) {
             this.messages.push(message);
@@ -936,6 +938,77 @@ try {
     assert.equal(h.owner.options.capabilities.includes('terminal-local-persistence-v1'), true);
     assert.doesNotThrow(() => harness());
     assert.equal(acquisitions, 0);
+  });
+
+  const candidateCapabilities = [...parentCapabilities, 'execution-owner-boundary-v1', 'terminal-interaction-v1',
+    'terminal-read-settlement-v1'];
+  const candidateOptions = { profile: EXECUTION_CANDIDATE_PROFILE, profileMode: 'live-runtime',
+    budgets: EXECUTION_CANDIDATE_BUDGETS };
+  const candidateHarness = () => parentHarness({ capabilities: candidateCapabilities,
+    readyCapabilities: ['execution-lifecycle-v1', 'terminal-interaction-v1'], ownerOptions: candidateOptions });
+
+  test('candidate validates every mode capability and fixed budget before any acquisition', () => {
+    let acquired = 0;
+    const createTransport = () => { acquired++; throw new Error('must not acquire'); };
+    for (const mode of ['live-runtime', 'snapshot-only']) {
+      const capabilities = mode === 'live-runtime' ? candidateCapabilities
+        : candidateCapabilities.filter(capability => capability !== 'terminal-read-settlement-v1')
+          .concat('terminal-local-settlement-v1', 'terminal-local-persistence-v1');
+      assert.doesNotThrow(() => harness({ ...candidateOptions, profileMode: mode, capabilities, createTransport }));
+      for (const missing of capabilities) {
+        assert.throws(() => harness({ ...candidateOptions, profileMode: mode,
+          capabilities: capabilities.filter(capability => capability !== missing), createTransport }), /capabilities missing/);
+      }
+    }
+    for (const key of Object.keys(EXECUTION_CANDIDATE_BUDGETS)) {
+      for (const value of [undefined, EXECUTION_CANDIDATE_BUDGETS[key] + 1]) {
+        assert.throws(() => harness({ ...candidateOptions, capabilities: candidateCapabilities,
+          budgets: { ...EXECUTION_CANDIDATE_BUDGETS, [key]: value }, createTransport }), /fixed candidate budgets/);
+      }
+    }
+    assert.throws(() => harness({ ...candidateOptions, capabilities: candidateCapabilities,
+      profile: 'unknown-candidate', createTransport }), /Unsupported execution candidate/);
+    assert.throws(() => harness({ ...candidateOptions, capabilities: candidateCapabilities,
+      profileMode: undefined, createTransport }), /explicit execution candidate mode/);
+    assert.throws(() => harness({ profileMode: 'snapshot-only', createTransport }), /explicit profile/);
+    assert.throws(() => assertExecutionCandidateCapabilities(candidateCapabilities, 'unknown'), /explicit/);
+    assert.equal(Object.isFrozen(EXECUTION_CANDIDATE_BUDGETS), true);
+    assert.equal(acquired, 0);
+  });
+
+  test('candidate natural close freezes at eight seconds and late settlement cannot replace first', async () => {
+    const h = candidateHarness();
+    const record = await h.start('candidate-natural');
+    h.message(record, { type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    assert.equal(record.snapshot().closeObservation.cancelAt, 2000);
+    assert.equal(record.snapshot().closeObservation.finishAt, 8000);
+    assert.deepEqual(record.snapshot().closeObservation.parentCleanup,
+      { at: 6000, termDeadline: 7000, killDeadline: 8000 });
+    const closed = record.requestStop('join natural timeline');
+    h.scheduler.tick(8000);
+    assert.equal((await closed).kind, 'unconfirmed');
+    nativeResult(h, record);
+    await h.complete(record);
+    assert.equal(record.snapshot().settled, true);
+    assert.equal(record.snapshot().closeObservation.first.kind, 'unconfirmed');
+    assert.equal((await record.requestStop('repeat')).kind, 'unconfirmed');
+  });
+
+  test('candidate active close uses one thirteen-second timeline and nested stop cannot extend it', async () => {
+    const h = candidateHarness();
+    const record = await h.start('candidate-stop');
+    const closed = record.requestStop('stop');
+    assert.equal(record.snapshot().closeObservation.forceAt, 5000);
+    assert.equal(record.snapshot().closeObservation.cancelAt, 7000);
+    assert.equal(record.snapshot().closeObservation.finishAt, 13000);
+    assert.deepEqual(record.snapshot().closeObservation.parentCleanup,
+      { at: 11000, termDeadline: 12000, killDeadline: 13000 });
+    h.scheduler.tick(12000);
+    assert.strictEqual(record.requestStop('again'), closed);
+    assert.equal(record.snapshot().closeObservation.finishAt, 13000);
+    h.scheduler.tick(13000);
+    assert.equal((await closed).kind, 'unconfirmed');
+    assert.equal(record.snapshot().retired, false);
   });
 
   for (const { name, run } of tests) {

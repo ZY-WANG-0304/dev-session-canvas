@@ -3,6 +3,38 @@ export interface ExecutionIdentity {
   readonly generation: string;
 }
 
+export const EXECUTION_CANDIDATE_PROFILE = 'linux-owner-v1-candidate' as const;
+export type ExecutionCandidateProfile = typeof EXECUTION_CANDIDATE_PROFILE;
+export type ExecutionCandidateMode = 'live-runtime' | 'snapshot-only';
+export const EXECUTION_CANDIDATE_BUDGETS = Object.freeze({
+  startMs: 10000,
+  gracefulMs: 5000,
+  forceMs: 2000,
+  naturalDrainMs: 2000,
+  cancelMs: 2000,
+  settleMs: 4000,
+  parentTermMs: 1000,
+  parentKillMs: 1000,
+  boundaryMs: 20000
+});
+
+export function assertExecutionCandidateProfile(value: unknown): asserts value is ExecutionCandidateProfile {
+  if (value !== EXECUTION_CANDIDATE_PROFILE) throw new Error('Unsupported execution candidate profile.');
+}
+
+export function assertExecutionCandidateCapabilities(
+  capabilities: readonly string[], mode: ExecutionCandidateMode
+): void {
+  if (mode !== 'live-runtime' && mode !== 'snapshot-only') throw new Error('An explicit execution candidate mode is required.');
+  const required = ['execution-lifecycle-v1', 'execution-close-observation-v1', 'execution-parent-cleanup-v1',
+    'execution-owner-boundary-v1', 'terminal-interaction-v1', ...(mode === 'live-runtime'
+      ? ['terminal-read-settlement-v1'] : ['terminal-local-settlement-v1', 'terminal-local-persistence-v1'])];
+  const missing = required.filter(capability => !capabilities.includes(capability));
+  if (missing.length) throw new Error(`Execution candidate capabilities missing: ${missing.join(', ')}.`);
+}
+
+export type ExecutionProviderCapability = 'execution-lifecycle-v1' | 'terminal-interaction-v1';
+
 export type ProcessResult =
   | Readonly<{ kind: 'exited'; exitCode: number; signal?: string }>
   | Readonly<{ kind: 'signaled'; signal: string }>
@@ -48,7 +80,7 @@ export interface CommandResult {
 export type OperationResult = StartResult | CommandResult;
 
 export type ProviderMessage = Readonly<{ identity: ExecutionIdentity }> & (
-  | Readonly<{ type: 'ready'; capabilities: readonly ['execution-lifecycle-v1'] }>
+  | Readonly<{ type: 'ready'; capabilities: readonly ExecutionProviderCapability[] }>
   | Readonly<{ type: 'operationObservation'; operationId: string; result: OperationResult }>
   | Readonly<{ type: 'processResult'; result: ProcessResult }>
   | Readonly<{ type: 'resourceAcquired'; resourceId: string }>
@@ -145,12 +177,13 @@ export function parseProviderMessage(value: unknown): ProviderMessage {
   switch (record.type) {
     case 'ready': {
       assertKeys(record, ['type', 'identity', 'capabilities']);
-      if (!Array.isArray(record.capabilities) || record.capabilities.length !== 1 ||
-          record.capabilities[0] !== 'execution-lifecycle-v1') {
-        throw new TypeError('Provider capabilities must contain execution-lifecycle-v1 only.');
+      if (!Array.isArray(record.capabilities) || !record.capabilities.includes('execution-lifecycle-v1') ||
+          new Set(record.capabilities).size !== record.capabilities.length ||
+          record.capabilities.some(capability => capability !== 'execution-lifecycle-v1' && capability !== 'terminal-interaction-v1')) {
+        throw new TypeError('Provider capabilities must contain lifecycle and only known optional capabilities.');
       }
       message = Object.freeze({
-        type: 'ready', identity, capabilities: Object.freeze(['execution-lifecycle-v1'] as const)
+        type: 'ready', identity, capabilities: Object.freeze([...record.capabilities] as ExecutionProviderCapability[])
       });
       break;
     }

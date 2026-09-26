@@ -12,6 +12,7 @@ import type { SerializedTerminalState } from './serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamCheckpoint, TerminalStreamEvent } from './terminalSessionStream';
 import type { TerminalStreamPage, TerminalStreamReadDescriptor } from './terminalStreamPaging';
 import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
+import type { ExecutionCandidateProfile } from './executionLifecycle';
 
 export interface RuntimeSupervisorPaths {
   storageDir: string;
@@ -37,6 +38,7 @@ export interface RuntimeSupervisorHelloResult {
     terminalPagedReadV1?: true;
     terminalPagedCompletionV1?: true;
     terminalReadSettlementV1?: true;
+    executionCandidateProfiles?: readonly ExecutionCandidateProfile[];
   };
 }
 
@@ -166,6 +168,7 @@ export interface RuntimeSupervisorMessageDescriptor {
 export type RuntimeTerminalStreamMode = 'paged' | 'paged-until-exit';
 
 export interface RuntimeSupervisorCreateSessionParams {
+  executionProfile?: ExecutionCandidateProfile;
   kind: ExecutionNodeKind;
   sessionId?: string;
   displayLabel: string;

@@ -1,4 +1,5 @@
 import {
+  assertExecutionCandidateProfile,
   assertExecutionIdentity,
   assertParentMessageSize,
   decodeOutputPayload,
@@ -9,6 +10,7 @@ import {
   type AuthorityResult,
   type DataBatch,
   type ExecutionIdentity,
+  type ExecutionCandidateProfile,
   type LaunchSpec,
   type OperationResult,
   type OutputSeal,
@@ -158,6 +160,7 @@ export class ExecutionAuthority {
 export function createExecutionAuthority(): ExecutionAuthority { return new ExecutionAuthority(); }
 
 export interface ExecutionDependencies {
+  profile?: ExecutionCandidateProfile;
   authority: ExecutionAuthority;
   transport: ExecutionTransport;
   scheduler: ExecutionScheduler;
@@ -171,6 +174,7 @@ export function prepareExecution(identity: ExecutionIdentity, launchSpec: Launch
 
 export class PreparedExecution {
   readonly identity: ExecutionIdentity;
+  private readonly profile?: ExecutionCandidateProfile;
   private readonly spec: LaunchSpec;
   private readonly parentControl?: Readonly<ExecutionParentControl>;
   private parentCleanupClaim?: Readonly<ExecutionParentCleanupClaim>;
@@ -218,6 +222,8 @@ export class PreparedExecution {
   private stateNotificationFailed = false;
 
   constructor(identity: ExecutionIdentity, launchSpec: LaunchSpec, private readonly dependencies: ExecutionDependencies) {
+    if (dependencies.profile !== undefined) assertExecutionCandidateProfile(dependencies.profile);
+    this.profile = dependencies.profile;
     assertExecutionIdentity(identity);
     this.identity = Object.freeze({ ...identity });
     this.spec = validateLaunchSpec(launchSpec);
@@ -489,6 +495,14 @@ export class PreparedExecution {
           this.fault('Provider ready arrived after startup failed or settled'); return;
         }
         if (!message.capabilities.includes('execution-lifecycle-v1')) { this.fault('Missing lifecycle capability'); return; }
+        if (this.profile && !message.capabilities.includes('terminal-interaction-v1')) {
+          const operation = this.operations.get('start')!;
+          this.recordOperation(operation, { kind: 'failed', stage: 'provider-ready',
+            reason: 'Execution candidate provider lacks terminal-interaction-v1.' });
+          this.startMessage = undefined;
+          this.maybeRetire();
+          return;
+        }
         this.ready = true;
         const operation = this.operations.get('start')!;
         this.enqueue({ type: 'start', identity: this.identity, operationId: operation.id, spec: this.spec }, 'start', 'start');

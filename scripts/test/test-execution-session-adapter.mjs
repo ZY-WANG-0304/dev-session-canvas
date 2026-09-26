@@ -99,7 +99,7 @@ try {
   });
 
   const require = createRequire(import.meta.url);
-  const { encodeOutputFrame, OutputCreditWindow, parseProviderMessage } = require(path.join(tempDir, 'executionLifecycle.cjs'));
+  const { encodeOutputFrame, OutputCreditWindow, parseProviderMessage, EXECUTION_CANDIDATE_PROFILE } = require(path.join(tempDir, 'executionLifecycle.cjs'));
   const { createExecutionAuthority, prepareExecution } = require(path.join(tempDir, 'executionSessionAdapter.cjs'));
   const tests = [];
   const test = (name, callback) => tests.push({ name, callback });
@@ -123,7 +123,7 @@ try {
           sink.message({
             type: 'ready',
             identity: executionIdentity,
-            capabilities: ['execution-lifecycle-v1']
+            capabilities: options.readyCapabilities ?? ['execution-lifecycle-v1']
           });
         }
       },
@@ -137,7 +137,8 @@ try {
       args: [],
       cwd: '/',
       env: {}
-    }, { authority, transport, scheduler, ...(options.closeObservationV1 ? { closeObservationV1: true } : {}),
+    }, { authority, transport, scheduler, ...(options.profile ? { profile: options.profile } : {}),
+      ...(options.closeObservationV1 ? { closeObservationV1: true } : {}),
       ...(options.parentCleanupV1 ? { parentCleanupV1: true } : {}) });
     const observer = {
       data: (batch) => events.data.push(batch),
@@ -1852,6 +1853,39 @@ try {
       assert.equal(h.snapshot().process, undefined);
       assert.equal(h.snapshot().source, undefined);
       assert.equal(h.snapshot().seal, undefined);
+    }
+  });
+
+  test('candidate ready requires actual interaction capability before start and retains acquired control', async () => {
+    const h = createParentHarness({ profile: EXECUTION_CANDIDATE_PROFILE });
+    const start = h.session.start('start', 10000);
+    assert.deepEqual(await start.first, { kind: 'failed', stage: 'provider-ready',
+      reason: 'Execution candidate provider lacks terminal-interaction-v1.' });
+    await settle(h.scheduler);
+    assert.equal(h.sent('start').length, 0);
+    assert.equal(h.session.snapshot().resources['provider-control'].current, undefined);
+    assert.equal(h.authority.snapshot().active, 1);
+    const claim = h.session.tryBeginParentCleanup();
+    assert.equal(claim.kind, 'unstarted');
+    await claim.terminate({ termDeadline: 12000, killDeadline: 13000 });
+    assert.equal(h.authority.snapshot().active, 1, 'termination response is not a released control resource');
+    h.sink.controlResourceResult({ kind: 'released' });
+    await settle(h.scheduler);
+    assert.equal(h.session.snapshot().state, 'settled');
+    assert.equal(h.sent('start').length, 0);
+  });
+
+  test('candidate fixture interaction declaration permits controlled start without granting legacy ready the capability', async () => {
+    const h = createHarness({ profile: EXECUTION_CANDIDATE_PROFILE,
+      readyCapabilities: ['execution-lifecycle-v1', 'terminal-interaction-v1'] });
+    h.session.start('start', 10000);
+    await settle(h.scheduler);
+    assert.equal(h.sent('start').length, 1);
+    const legacy = parseProviderMessage({ type: 'ready', identity: identity(), capabilities: ['execution-lifecycle-v1'] });
+    assert.deepEqual(legacy.capabilities, ['execution-lifecycle-v1']);
+    for (const capabilities of [['terminal-interaction-v1'], ['execution-lifecycle-v1', 'other'],
+      ['execution-lifecycle-v1', 'terminal-interaction-v1', 'terminal-interaction-v1']]) {
+      assert.throws(() => parseProviderMessage({ type: 'ready', identity: identity(), capabilities }));
     }
   });
 

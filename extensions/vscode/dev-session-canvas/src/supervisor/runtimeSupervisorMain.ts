@@ -104,7 +104,9 @@ import {
   locateCodexSessionId
 } from '../common/codexSessionIdLocator';
 import { extractClaudeCommandRuntimeSessionFlag } from '../common/agentLaunchPresets';
-import type { AuthorityResult, DataBatch, LaunchSpec, ProcessResult } from '../common/executionLifecycle';
+import { assertExecutionCandidateCapabilities, assertExecutionCandidateProfile,
+  type AuthorityResult, type DataBatch, type ExecutionCandidateProfile, type LaunchSpec, type ProcessResult
+} from '../common/executionLifecycle';
 import type { OperationObservation } from '../panel/executionSessionAdapter';
 import {
   ExecutionOwnerLifecycle,
@@ -289,8 +291,16 @@ export class RuntimeSupervisorServer {
     private readonly paths: RuntimeSupervisorPaths,
     private readonly runtimeBackend: RuntimeHostBackendKind,
     private readonly runtimeGuarantee: RuntimePersistenceGuarantee,
-    ownerOptions?: NonNativeExecutionOwnerOptions
+    ownerOptions?: NonNativeExecutionOwnerOptions,
+    private readonly executionProfile: ExecutionCandidateProfile | undefined = ownerOptions?.profile
   ) {
+    if (this.executionProfile !== undefined) {
+      assertExecutionCandidateProfile(this.executionProfile);
+      if (ownerOptions && (ownerOptions.profile !== this.executionProfile || ownerOptions.profileMode !== 'live-runtime')) {
+        throw new Error('Supervisor execution candidate requires a matching live-runtime owner.');
+      }
+      if (ownerOptions) assertExecutionCandidateCapabilities(ownerOptions.capabilities, 'live-runtime');
+    }
     this.executionOwner = ownerOptions ? new ExecutionOwnerLifecycle(ownerOptions) : undefined;
   }
 
@@ -559,7 +569,9 @@ export class RuntimeSupervisorServer {
                 terminalPagedReadV1: true,
                 terminalPagedCompletionV1: true,
                 ...(this.executionOwner?.options.capabilities.includes('terminal-read-settlement-v1')
-                  ? { terminalReadSettlementV1: true as const } : {})
+                  ? { terminalReadSettlementV1: true as const } : {}),
+                ...(this.executionProfile && this.executionOwner
+                  ? { executionCandidateProfiles: [this.executionProfile] } : {})
               }
             }
           });
@@ -674,6 +686,13 @@ export class RuntimeSupervisorServer {
     socket: net.Socket,
     params: RuntimeSupervisorCreateSessionParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
+    if (params.executionProfile !== undefined) assertExecutionCandidateProfile(params.executionProfile);
+    if (params.executionProfile !== this.executionProfile) {
+      throw new Error('Execution candidate profile does not match this Supervisor.');
+    }
+    if (this.executionProfile && !this.executionOwner) {
+      throw new Error('Execution candidate provider factory is unavailable.');
+    }
     this.assertOwnedAdmissionOpen();
     const sessionId = params.sessionId?.trim() || randomUUID();
     if (this.sessions.has(sessionId)) {

@@ -1,10 +1,12 @@
 # 交付跨平台执行会话退出完整性
 
-本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，原生收尾阶段基线为 `10d40e63`。当前S8已完成，随后从b235a7bc完成第27节生产接入有限设计，下一直接实施S9默认关闭的候选profile/能力分流与旧live严格传播；真实PTY业务准入仍未批准，不推送运行时分支。既有S3首次0/2、修后2/2及全部历史保持，不把本计划视为私有 fd 补读或某种新 API 的授权。
+本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，原生收尾阶段基线为 `10d40e63`。当前从f8ca57d4实施S9默认关闭候选profile/能力分流与旧live严格传播，结果见生产接入第28节；下一按27.5直接实施Linux交互/实际工厂和产物，真实PTY业务准入仍未通过，不推送运行时分支。既有S3首次0/2、修后2/2及全部历史保持；本轮误跑旧protocol的socket和失败单列，不把本计划视为私有fd补读或新native运行授权。
 
 此前原生诊断阶段所有新D3/D4/v2脚本、workflow及.debug工件仅在独立工作树 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates`，当时本树只同步文档。当前S1/S2/S3的生产模块和定向测试在本运行时树，诊断树只同步文档。以下旧记录中的本地“未提交工作树”均指采集时的诊断源码快照，不是本运行时树；v1后来冻结7141cfa3，v2后来冻结b4db41cc，不倒写采集时来源。当前协议、已完成验证和剩余阻塞项见本计划各节首段，后续历史段落的“下一步”不覆盖最新顺序。
 
 ## 目标与全局图景
+
+S9已落实单一候选与两模式能力拒绝、原连接严格删除、同节点在途创建和删除广播责任保留，见生产接入第28节。默认用户路径不变；显式候选缺工厂/能力时不开始执行，旧删除失败时不清绑定或继续新建。自然8秒/主动13秒/整体20秒只在受控时钟验证，不是生产时限承诺；Runtime owner仍是Supervisor，snapshot-only仍是Host。下一直接补27.5真实I/O、停止策略、业务回写与工厂产物，不重启通用诊断研究。下面各阶段的“当前/下一”按当时历史理解。
 
 当前第27节已将26.6的接入设计收口为可直接实施的S9：单一默认关闭linux-owner-v1-candidate、创建前能力分流、旧live原绑定/原连接删除结果传播。用户可观察目标是能力不足时不误创建、删除失败时不丢绑定或继续启动新会话；本轮未改业务，这些不是已实现行为。Runtime owner仍在Supervisor，snapshot-only owner仍在Host；后续沿同计划补初始尺寸、input/resize、停止策略及实际工厂，不另扩诊断工具。候选自然8秒、主动13秒、整体20秒只是有限观察输入，不是原生或生产时限验收。以下为已完成阶段记录。
 
@@ -52,9 +54,12 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [x] (2026-09-26，S9，输入f8ca57d4) 实施默认关闭单profile、两模式完整能力检查、provider ready拒绝及旧live原连接严格删除；新增多根共预算、submitted create保护、completed广播保留及期限检查，成功无节点清理记录回收。沿原受控入口验证，误跑旧protocol的临时socket/旧断言失败单列，未到Supervisor spawn/PTY。
 - [x] (2026-09-26，输入b235a7bc) 按26.6完成三路只读核对及第27节有限设计：固定候选profile、两模式能力分流、旧live严格删除和最小Linux交互/工厂范围；五份文档同步，无业务修改或新平台证据。
 - [x] (2026-09-26) 第27节独立复核无直接阻塞，补期限后不首次派发delete、内部Ctrl-C门禁及查询回复不阻塞消费；YAML/索引/路径、十二当前章节、设计2至26节与旧债务/原则保持、恰五文档及diff检查通过。
-- [ ] S9：直接实施第27.2至27.4的默认关闭profile/完整能力检查与两模式选择、旧live原连接严格删除/失败保留；缺实际交互/产物时拒绝新候选，不开启native或改默认generation。沿既有受控测试覆盖第27.6输入，不新增诊断前置。
+- [x] S9：第27.2至27.4有限接线由第28节完成；缺实际交互/产物时拒绝新候选，旧live和默认generation不变。验证结果见本计划当前验收段，不将non-native声明写成真实交互支持。
+- [x] (2026-09-26，S9收口) 最终owner39/adapter83/Host86/Supervisor64/client20及相关回归/typecheck通过；YAML/索引/路径、十二当前章节、设计2至27节、原原则/债务及五测试旧调用体保持、17文件范围和diff检查通过。整体退出完整性仍未完成。
+- [ ] 下一有限交付：直接按27.5补LaunchSpec尺寸、原IPC/native token输入和resize、owned live校验、停止策略/输出业务回写及真实工厂/正式产物；继续默认关闭。原生前只固定27.6产品输入/环境/清理，不追加通用工具门槛。
 - [x] (2026-09-26) S8（输入c5a0487f）：第26节设计、Host独立保存/身份/失败保留及S7衔接完成，owner36/Host56和相关回归/typecheck通过；原测试/历史保持，旧history基线夹具失败分账，同步全部当前章节、索引/原则/债务。
 - [x] 26.6的有限设计由第27节完成；Linux交互和真实工厂实施/验收仍未完成，不将能力声明或本轮文档视为L-03/04生产通过。
 
@@ -277,6 +282,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-09-26 S9：只读复核发现多根清空绕过统一边界、预分配ID仍可能被第二次create/delete-absent绕过、旧server先广播completed造成提前解绑；已补原入口保护与回归。最终复核又发现无nodeId成功cleanup记录无法回收，以及completeRemote迟到后会在原deadline外首次persist；窄修保持未知，不扩展通用工具。Owner/adapter/Supervisor新增测试首次直接通过。Host夹具曾缺surfaceMode、Agent extraArgs/extraEnv，重复start错误实际走host/error而非reject；对齐夹具而不放宽业务断言。子代理误跑旧protocol：实际两个临时Unix socket hello（第二含checkpoint）后旧源码regex失败，原基线同样不匹配，已清理且未到真实Supervisor/PTY；不能报全程零socket或整脚本通过，详见28.4。
+
 2026-09-26第27节只读核对：owned Supervisor没有session.process，但requireLiveSession要求它，因此input/resize/scrollback不是开gate即可使用。协议LaunchSpec无尺寸、ready仅生命周期、transport关闭stdin，native patch移除resize；旧非Claude Agent的Ctrl-C+5秒也不同于候选SIGTERM。旧live删除存在两层吞错且调用前清maps，单改throw不足；client普通request还会默认ensureConnected，取client时allowRestart:false不是整链禁止重启。旧create替换在确认原delete前已投影新metadata。这些是源码事实，不是新平台实验失败，锚点见27.1/27.4/27.5。
 
 2026-09-26 S8实施：Host原49全过，新增Terminal零输出保存首次failed，因为新校验拒绝原tracker的缺省零序号；只在S8保存克隆补明确0后通过，非零严格校验和原tracker保持。新增测试两次假设修正分别是workspaceState可保留recentOutput但剥恢复正文、边界需先等待local完成微任务；不是业务修复。typecheck首报诊断对象kind重复，改独立result字段。提交前时钟二次复核、S6 not-required不依赖reader退休、异常隔离和旧delete短路来自源码复核，不虚构先红。下面记录初始校验及旧history基线失败。
@@ -458,6 +465,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 真实链路只有 Windows .cmd/.bat 会被 bridge 包 cmd /d /s /c，POSIX Agent 不由扩展另加运行 shell。本机 Codex npm JS 源码会等待 child，而旧 fake-provider 多是 exec；新增等待/非等待启动器对照补齐了这一层受控证据，不等于真实 provider 通过。首次启动诊断因错误要求 Linux spawn-helper 而在 spawn 前失败，0 个原生样本，已保留；12 s 进程内 timer 不能约束同步 probe 阻塞，外部 watchdog 与新增 fatal handler 故障注入仍缺。
 
 ## 决策记录
+
+2026-09-26（S9实施）：候选集中为冻结profile/预算，不将native伪装non-native，缺真实工厂或ready交互能力即拒绝。严格delete固定原socket与一次deadline，legacy ack/absent不代表资源settled；Host保留原绑定和每项错误，reset失败不提交空画布。创建在首await前登记，提交未知不借新ID/absent重试；completed广播依附原删除责任并受同一截止限制，成功自然清理记录才回收。理由是兑现27.2至27.4而非新增诊断层；正式生产I/O/工厂仍留给27.5，不改root、默认generation或Runtime无历史边界。
 
 2026-09-26（第27节有限接入设计）：选linux-owner-v1-candidate作为显式未验证工程配置，除旧非Claude Agent graceful5秒外不冒称数值有实测来源；保持一次性期限和整体共享窗口，不等待新调参工具。候选选择失败拒绝新建，不静默回退；旧live沿原binding，删除逐项传播且legacy acknowledged/absent不充当资源settled。Runtime/Snapshot owner不变，I/O沿原IPC和token native API补，保留停止/Agent派生行为及正式产物要求。下一直接S9代码，不再自动追加设计门槛；本轮不开native、不改变用户默认。
 
@@ -642,6 +651,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 结果与复盘
 
+第28节S9已把第27节规则接入实际owner、adapter、Supervisor、client与Host，定向测试覆盖拒绝、原责任保留和迟到不改首报。只收口这一默认关闭切片，不宣称真实Linux输入/resize、Agent或跨平台完成。误跑旧protocol虽未到PTY仍违反本轮socket排除边界，作为失败例外保留，不能用其他绿色覆盖。下一直接推进27.5产品接线，L-02至L-05、生产恢复流程和整个退出完整性仍开放；不把新增通用工具验证设为前置。
+
 第27节完成26.6有限设计，冻结下一实现所需规则而非再次增加诊断设施。预算来源、能力分层、旧live删除连接/责任和Linux交互/产物差异已有代码依据；三路只读核对不算测试通过。S9尚未实现，Linux真实接入、L-02至L-05与总交付仍开放。S8及全部旧失败保持；下一应按本节已定输入直接写业务接线并验收，不从历史“下一步”重复研究。
 
 第26节S8完成原tracker最终态到原节点metadata及实际保存，Owner执行/reader结算不再抹掉独立保存责任。最终owner36/Host56、相关回归/typecheck通过；真实单root/workspace文件读回及headless光标验证使本阶段不只检查调用次数。旧history完整测试基线就失败，有限前段证据和14声明保持不能代替剩余测试。保守metadata冲突拒绝、失败无自动恢复仍需生产接入处理；下一按26.6回到生产预算/能力分流/最小Linux业务接入设计，不继续加工具门槛。L-02总体与整个退出完整性保持active。以下为历史结果。
@@ -754,6 +765,8 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 上下文与定向
 
+S9输入f8ca57d4。主扩展src/common/executionLifecycle.ts固定profile/预算/能力；src/panel/executionOwnerLifecycle.ts及executionSessionAdapter.ts负责资源前准入与ready检查；src/common/runtimeSupervisorProtocol.ts和src/supervisor/runtimeSupervisorMain.ts传递并校验匹配profile；src/panel/runtimeSupervisorClient.ts提供StrictRuntimeDeleteObservation；src/panel/CanvasPanelManager.ts持有原节点/binding、创建责任和Host整体边界。以上src均位于extensions/vscode/dev-session-canvas/。first是固定首报，current是原请求迟到事实，不是自动重试授权；legacy-absent只证明原端点旧协议的缺席答复。真实provider channel仍没有交互，不应发布候选支持。
+
 本轮输入b235a7bc，源码前缀为extensions/vscode/dev-session-canvas/src/。panel/executionOwnerLifecycle.ts承接不可变预算与准入；panel/CanvasPanelManager.ts负责两模式选择、原节点/binding和reset/delete；supervisor/runtimeSupervisorMain.ts负责live的实际owner；panel/runtimeSupervisorClient.ts须为严格删除固定原socket，不能调用会隐式重启的普通request。common/executionLifecycle.ts及panel下adapter/channel/transport/Linux provider承接后续交互；仓库根的scripts/build/linux-execution-provider-patch.mjs、extensions/vscode/dev-session-canvas/native/linux-execution-owner.h和正式build/package入口承接真实产物。profile是创建前选定的配置，不是storage generation；legacy-acknowledged只表示旧删除RPC返回，不表示资源结算。
 
 S8输入`c5a0487f`。主要改动为`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`的persistNonNativeHostFinal/retireNonNativeHostExecution、原start/finalized/deactivation/reset/delete入口；同目录executionOwnerLifecycle.ts只验证能力依赖。persistence是原Host记录的一次保存责任，saved/not-required/failed/unconfirmed与terminal applied、process、reader互不替代；submitted表示保存已提交，不等于完成。原writer负责root-local和workspace文件，workspaceState只保存剥终端恢复正文的投影。测试为`scripts/test/test-host-execution-owner-wiring.mjs`和`test-execution-owner-lifecycle.mjs`，没有新模块或新框架。以下为历史上下文。
@@ -787,6 +800,8 @@ S5输入为a32b1510，仅本运行时树修改。实际实现是`extensions/vsco
 平台 provider 的现状见安装的 `node_modules/node-pty/lib/unixTerminal.js`、`windowsPtyAgent.js`、`windowsTerminal.js` 和 native 源码。已有证据位于 `docs/design-docs/runtime-terminal-tail-diagnosis.md`、`docs/design-docs/runtime-terminal-cross-platform-diagnosis.md`；固定版本来源已在文档摘录，不要求接手者依赖本机 `.debug/` 才理解问题。不能直接编辑 node_modules 作为生产修复。
 
 ## 工作计划
+
+S9完成后下一里程碑直接实施27.5，在现有共享LaunchSpec/channel/transport/Linux provider/native owner中补初始尺寸和有界input/resize，保持生命周期urgent路径和原token所有权；再把owned主体接入实际Host/Supervisor I/O、停止差异及输出派生helper，提供独立正式工厂/构建入口。用原模块受控测试验证输入前缀/错误/资源在途和串行revision，不另建工具框架；原生前冻结27.6真实产品输入、匹配Linux x64运行环境、产物及安全清理。默认关闭，旧live不迁移，真实Agent与Electron分别验证。以下S9及更早工作安排保留为历史。
 
 S9直接把第27.2候选值与完整能力依赖集中为一个内部不可变输入，保持现有non-native类型和默认关闭路径；候选真工厂未具备时明确拒绝，不能伪装non-native或改CURRENT_RUNTIME_SUPERVISOR_GENERATION。两模式选定实际authority后复核新建准入，旧live不重新选择。严格删除沿原client增窄入口，绑定原socket/同批deadline，逐项尝试并传播，先确认允许结果再清maps/替换metadata；未确认的原请求保留且不得自动补发或继续reset。直接扩原owner/Host/Supervisor/client受控测试，覆盖27.6，不跑原生。随后按27.5补实际I/O、停止及业务回写和构建产物并开展有限产品验收，不另立工具或新研究阶段。
 
@@ -893,6 +908,8 @@ S1 最终定向32/32、typecheck 复跑、既有 bridge 回归、独立复审及
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+S9在仓库根运行node scripts/test/test-execution-owner-lifecycle.mjs、node scripts/test/test-execution-session-adapter.mjs、node scripts/test/test-host-execution-owner-wiring.mjs、node scripts/test/test-supervisor-execution-owner-wiring.mjs、node scripts/test/test-runtime-supervisor-reader-client.mjs、node scripts/test/test-execution-provider-parent-control.mjs；关联回归为test-runtime-reader-settlement-wiring.mjs、test-terminal-paged-projection.mjs、test-runtime-paged-completion.mjs、test-execution-session-bridge.mjs、test-serialized-terminal-state-tracker.mjs、test-canvas-multi-root-composition.mjs（均在scripts/test下以node运行），类型检查为npm --prefix extensions/vscode/dev-session-canvas run typecheck。只读静态核对旧测试体、设计2至27节、索引/路径、十二当前章节和git diff --check。禁止将旧test-runtime-supervisor-protocol.mjs当纯测试重跑；本轮误跑单列28.4。真实transport七场景/S3/native/runner不在本批命令内。
 
 本轮仅在仓库根使用git status、rg/sed/cat核对源码与现有设计；通过临时Node只读检查frontmatter/索引、关联路径、十二标题和各节当前段、第2至26节历史逐字保持，最后git diff --check及五文件范围核对。下一S9在仓库根运行node scripts/test/test-execution-owner-lifecycle.mjs、node scripts/test/test-host-execution-owner-wiring.mjs、node scripts/test/test-supervisor-execution-owner-wiring.mjs、node scripts/test/test-runtime-supervisor-reader-client.mjs及npm run -w extensions/vscode/dev-session-canvas typecheck；这些是既有受控入口，不启动旧PTY protocol、真实transport七场景或native全量脚本。新I/O未实现前不应出现可用生产provider结果。
 
@@ -1086,6 +1103,10 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
+S9最终受控回归全部exit0：owner39/39、adapter83/83、Host86/86、Supervisor64/64、client20/20、parent-control9/9、reader20/20、main/headless27/27，另分页completion/projection、bridge、tracker、多根composition及workspace typecheck通过。断言覆盖缺任一owner/reader/ready交互能力零start，Runtime选Supervisor、snapshot-only选Host，旧live原storage/kind恢复；候选自然8秒/主动13秒/整体20秒同钟固定，迟到不翻首报。两个backend独立尝试且reset失败无空画布；submitted create期间重复start/delete/reset零新请求且原token不变；completed广播保留绑定和轻量无正文，deadline后不新写盘，成功自然cleanup不累积。没有真实I/O、VS Code UI、PTY或跨平台验收。误跑protocol为exit1独立例外，不混入通过集；最后6项Host新增首跑通过，不虚构先红。
+
+S9静态检查exit0：YAML状态与索引一致，相关规格/计划路径存在，十二章节当前段已更新；生产设计2至27节及旧原则/债务逐字保持。TypeScript AST比对五测试中原有36/80/41/51/13个静态test/check/checkReader调用体全部未改（循环展开后的运行数量另列，不混算）；17个变更文件中五份文档，git diff --check通过。没有增加诊断树、依赖、manifest或workflow变更。
+
 第27节本轮文档/源码一致性验收通过：js-yaml解析元数据及索引状态/日期一致、关联和下一测试路径存在、十二标题顺序保持且当前段均已同步；设计第2至26节、旧债务/原则正文逐字保持，差异仅五份文档，git diff --check通过。两路独立复核未发现S9直接阻塞，补清晚到连接不得首次delete、内部Ctrl-C及查询回复不得环等，修正源码函数名。未运行业务用例/typecheck/native，不沿用S8通过数冒充新验证。下一S9行为判据为两模式正确owner、缺能力零PTY start、同钟固定8/13/20秒首报、批量失败保留原绑定、连接替换不重启/补发、迟到结果不继续reset和旧live恢复不改generation；实际交互须由程序计算响应及读回尺寸，不能以声明/回显代证。
 
 S8根代理最终owner36/36、Host56/56均exit0；新增1/7组，原35/49正文保持。Supervisor60、adapter81、parent-control9、reader20、client13、main/headless27及原分页断言、bridge/tracker、四条paged completion和多根composition回归通过，typecheck通过。新增Host真实单root+workspace文件与原load读回、headless最终光标，失败覆盖两文件写及workspaceState拒绝/挂起、迟到不新写、身份替换/布局保留、delete/reset；无VS Code UI/完整多根磁盘/native证明。旧history整套exit1，前段Terminal781/Agent812与14声明保持仅作为有限模式证据，不计后续reopen等通过。专项最终只读复核无直接blocker。以下为历史验证。
@@ -1184,6 +1205,8 @@ HPCON首次原矩阵12项全部有效，六control及两个explicit-close通过�
 
 ## 幂等性与恢复
 
+S9的create不是可重试幂等API：预分配ID定位原责任，提交未知保留原client/ID并阻止同节点绕过；不会因无回包再次创建。严格delete同原绑定复用一次观察，不换socket/restart或超期首次派发；迟到成功仅更新原事实，不恢复旧reset。完成广播依赖原deadline，截止前已提交保存可迟到结算，截止后不得从迟到reader追加首次保存。成功无节点cleanup记录可释放，failed/unknown不遗忘；尚无自动重试/强制遗忘/完整用户恢复流程，仍是默认关闭生产前限制。旧live/root/generation及冻结实验不改，无push/PR。
+
 本轮只改五份文档，历史设计第2至26节、旧测试和冻结证据保持。S9同一原binding的未决delete不重复发起，截止只结束首报观察；允许同次迟到补证，不允许重新派发reset。部分远端删除已成功不能回滚，保留画布和失败绑定并明确逐项结果。候选选择失败发生于PTY start前，开始取得资源或create未知后不fallback；未来调用方预分配sessionId也不等于幂等创建。Host实际消失不承诺内存继续托管。
 
 S8每record只提交一次原保存Promise，具名结果冻结，失败/未知保留且无自动重试；同key与原Host容量继续占用。reset/delete在原执行关闭后同步拒绝pending/failed，不能无限等待或绕过；metadata替换不覆盖新绑定，await后不再patch节点。Host到期前已提交的写可晚到，只更新保存事实而不改首报；未提交则不再新写。临时文件由用例finally清理，不改独立诊断树/旧证据；部分目标写成功不宣称回滚或fsync保证。以下为历史边界。
@@ -1213,6 +1236,8 @@ S5每execution只保留一份关闭观察，重复stop返回同一Promise；迟�
 候选试验不得修改用户 storage 或替换仍承载 live 会话的 Supervisor；仅控制本次创建的 fixture。证据目录唯一，不覆盖初次失败。生产方案需要可回滚的 capability/adapter 选择和旧 session 原绑定保留，回滚不得伪造完整性或强制迁移。取消和回收必须幂等，不因重试重复输出、重复终态或误删其他读者。
 
 ## 证据与备注
+
+S9可重跑断言保存在五份既有owner/adapter/Host/Supervisor/client测试，没有新增诊断设施；实际headless回调和旧分页/bridge/tracker/多根回归分项记录，不累计复跑为新样本。Host原node-pty external警告保持、native守卫未放宽。本轮protocol误跑的两个临时Unix socket、旧regex exit1、未到Supervisor/PTY及清理范围按28.4保留；esbuild可能有构建辅助进程，不能写零子进程。旧history的基线fixture失败未修改/未重跑求绿，全部冻结原生工件和设计2至27节保持。
 
 第27节证据为b235a7bc上的实际函数与三个只读核对报告：requireLiveSession/process不相容、缺input/resize/初始尺寸、旧delete先清map且吞错、普通request再次允许restart及Agent停止语义差异。候选预算只有graceful5秒有旧行为来源，其他为本轮工程输入。静态最终exit0输出为PASS: YAML/index/paths; 12 current plan sections; design sections 2-26 unchanged; old debt/principles preserved; exactly 5 documentation files; candidate budget arithmetic (not runtime validation)。首版临时检查要求每段必须含27或S9，误拒实际已更新的上下文段；改为比较基线首段后通过，属于检查脚本假设修正，不是业务失败或新工具交付。无新原生工件。
 
@@ -1341,6 +1366,8 @@ G07补证起点是本运行时树ebe303e7及独立诊断树2f630cd9。第14节�
 2026-09-20 runner 合并后的验证：`typecheck`、`build`、bridge、journal 和 Supervisor 聚合回归全部通过；聚合包含 checkpoint refresh、分页投影、无 completed 历史和退出分页。Node 25.6.0 与 Electron-as-Node 39.8.7 各 39 项契约模型、17 项实际 Supervisor 注入通过，输出目录/哈希及局限见设计第 14 节。没有运行全量 UI、真实 provider、packaged 或新的原生候选矩阵；相对 `28055e13` 不修改业务、既有测试、依赖或 workflow。
 
 ## 接口与依赖
+
+S9已提供ExecutionCandidateProfile/Mode、EXECUTION_CANDIDATE_BUDGETS与assertExecutionCandidateCapabilities；owner options新增profile/profileMode，adapter捕获profile并在provider ready校验terminal-interaction-v1。hello.executionCandidateProfiles与create.executionProfile只匹配完整live owner；Host第三构造参数为内部候选选择，不新增用户设置。RuntimeSupervisorClient.deleteSessionStrict(params,{deadline,scheduler,isCurrent?})返回first/current/submitted；结果为legacy-acknowledged/legacy-absent/failed/unconfirmed，不新增资源settled含义。Host原删除record含deadline及finalization责任、候选创建record保留原sessionId/client；无新依赖、公共服务、storage格式或默认generation变更，真实输入/resize接口仍按27.5下一步实施。
 
 第27节不新增接口实现或依赖。S9需要内部linux-owner-v1-candidate预算/能力选择及原client的捕获连接严格delete接口，完整结果包含legacy-acknowledged/legacy-absent/failed/unconfirmed，不合成新settled。后续terminal-interaction-v1必须包含尺寸、输入、resize，重复交互不得复用一次性lifecycle operation表；native token write/resize与close共享原owner门禁。候选storage generation terminal-exit-v1仅用于未来显式选择，当前terminal-stream-v1默认不改；这些名字不能相互替代或授予未实现能力。
 S8新增内部能力`terminal-local-persistence-v1`，构造owner时要求local-settlement和owner-boundary能力，继承已有关闭观察/预算要求，不增加毫秒值。NonNativeHostExecution.persistence绑定原identity与metadata引用，含submitted、原Promise和具名不可变结果；Host单次finalized将经校验的finalTerminal投影并调用原strict persistState。保存结果不加入共享adapter事实或公共协议；deactivation canvasSnapshot等待captured保存责任，reset/delete同步检查结果，原非native gate缺失保持。无新依赖、用户设置、格式、工作流或storage/generation变化。以下为历史接口记录。
@@ -1551,3 +1578,5 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-26，S8实施）：从c5a0487f完成第26节本地最终态严格保存、身份/失败保留及S7边界衔接，默认关闭。owner36/Host56和相关回归/typecheck通过，新增真实单root/workspace文件读回；保留zero先败及测试假设修正，旧history基线fixture失败单独登记，不冒称全套通过。同步十二当前章节、索引/原则/债务，下一回到L-03/L-04生产准入与最小Linux业务接入设计，不增Runtime历史或工具门槛。整体计划active，无native/runner/push。
 
 修订记录（2026-09-26，生产接入有限设计）：从b235a7bc完成第27节候选预算来源/公式、创建前分流、旧live严格删除以及Linux交互/实际工厂的最小接线决定。同步全部当前章节、索引/原则/债务，保留历史与旧失败，下一直接S9无native代码而非工具研究。只有源码/文档核对，无业务修改、业务测试或新平台证据；整体计划继续active，不push/PR。
+
+修订记录（2026-09-26，S9实施）：从f8ca57d4落实第28节默认关闭候选profile/完整能力、原连接严格删除和创建/广播责任保护。最终owner39/adapter83/Host86/Supervisor64/client20、相关回归/typecheck与静态检查通过；只读发现的多根预算、在途create、广播提前解绑、成功记录滞留和跨deadline首次保存均有窄修与回归。原测试体、旧设计/失败保持，误跑protocol真实临时socket和旧断言exit1单列，不追认通过或声称零socket。同步十二当前章节、索引/原则/债务，下一直接27.5实际Linux I/O/工厂/产物，整体计划active，本轮不push/PR。

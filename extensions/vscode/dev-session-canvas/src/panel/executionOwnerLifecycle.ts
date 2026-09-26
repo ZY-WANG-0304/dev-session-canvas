@@ -1,11 +1,16 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  assertExecutionCandidateCapabilities,
+  assertExecutionCandidateProfile,
   assertExecutionIdentity,
+  EXECUTION_CANDIDATE_BUDGETS,
   S1_LIMITS,
   validateLaunchSpec,
   type AuthorityResult,
   type DataBatch,
+  type ExecutionCandidateMode,
+  type ExecutionCandidateProfile,
   type ExecutionIdentity,
   type LaunchSpec,
   type OutputSeal,
@@ -23,6 +28,8 @@ import {
 
 export interface NonNativeExecutionOwnerOptions {
   readonly kind: 'non-native';
+  readonly profile?: ExecutionCandidateProfile;
+  readonly profileMode?: ExecutionCandidateMode;
   readonly capabilities: readonly string[];
   readonly scheduler: ExecutionScheduler;
   readonly budgets: Readonly<{
@@ -87,6 +94,16 @@ export class ExecutionOwnerLifecycle {
       throw new Error('Only an explicitly injected non-native execution provider is available');
     }
     const budgets = Object.freeze({ ...options.budgets });
+    if (options.profile !== undefined) {
+      assertExecutionCandidateProfile(options.profile);
+      assertExecutionCandidateCapabilities(options.capabilities, options.profileMode!);
+      if (Object.entries(EXECUTION_CANDIDATE_BUDGETS).some(([key, value]) =>
+        budgets[key as keyof typeof budgets] !== value)) {
+        throw new Error('Execution candidate requires the complete fixed candidate budgets.');
+      }
+    } else if (options.profileMode !== undefined) {
+      throw new Error('Execution candidate mode requires an explicit profile.');
+    }
     const values = [budgets.startMs, budgets.gracefulMs, budgets.forceMs, budgets.cancelMs, budgets.settleMs];
     if (values.some(value => !Number.isFinite(value) || value <= 0)
       || values.reduce((sum, value) => sum + value, 0) > 0x7fffffff) {
@@ -202,6 +219,7 @@ export class OwnedExecution {
       authority: this.owner.authority,
       transport,
       scheduler: this.owner.options.scheduler,
+      ...(this.owner.options.profile ? { profile: this.owner.options.profile } : {}),
       ...(this.closeObservationEnabled() ? { closeObservationV1: true as const } : {}),
       ...(this.parentCleanupEnabled() ? { parentCleanupV1: true as const } : {})
     }).bind({

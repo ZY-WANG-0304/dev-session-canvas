@@ -12,9 +12,11 @@ const build = await esbuild.build({
   bundle: true, platform: 'node', format: 'cjs', write: false
 });
 let forbiddenAcquisitions = 0;
+let controlledConnect;
 const forbidden = () => { forbiddenAcquisitions++; assert.fail('No network, native or child acquisition is permitted'); };
 const guardedRequire = name => {
-  if (name === 'net' || name === 'node:net') return { ...require(name), createConnection: forbidden, createServer: forbidden };
+  if (name === 'net' || name === 'node:net') return { ...require(name),
+    createConnection: (...args) => controlledConnect ? controlledConnect(...args) : forbidden(), createServer: forbidden };
   if (name === 'node-pty') return { spawn: forbidden };
   if (name === 'child_process' || name === 'node:child_process') return {
     spawn: forbidden, spawnSync: forbidden, fork: forbidden, exec: forbidden, execFile: forbidden,
@@ -253,6 +255,199 @@ test('closed reader connection bindings are bounded without evicting an active s
   assert.equal(client.terminalReadConnections.size, 129);
   assert.equal(client.terminalReadConnections.get(active.readId).closed, false);
   assert.equal((await client.readTerminalPage({ ...active, afterRevision: 0 })).revision, 0);
+});
+
+function deleteClock() {
+  let now = 0;
+  const deadlines = new Set();
+  return {
+    now: () => now, scheduleTask: task => queueMicrotask(task),
+    scheduleDeadline(at, run) {
+      const item = { at, run };
+      deadlines.add(item);
+      return () => deadlines.delete(item);
+    },
+    elapse(value) { now = value; },
+    advance(value) {
+      now = value;
+      for (const item of [...deadlines]) if (item.at <= now && deadlines.delete(item)) item.run();
+    }
+  };
+}
+
+function replyDeleteError(socket, request, code = 'CONTROLLED_DELETE_FAILED') {
+  socket.emit('data', `${JSON.stringify({ type: 'response', id: request.id, ok: false,
+    error: { message: 'Controlled original delete error', code } })}\n`);
+}
+
+test('strict delete sends once on the original socket and separates old acknowledgements absence and errors', async () => {
+  for (const result of ['acknowledged', 'absent', 'failed']) {
+    const { client, socket } = await fixture();
+    const clock = deleteClock();
+    socket.respond = () => undefined;
+    const params = { sessionId: `strict-${result}` };
+    const observation = client.deleteSessionStrict(params, { deadline: 20, scheduler: clock });
+    assert.equal(observation.submitted, true);
+    assert.strictEqual(client.deleteSessionStrict(params, { deadline: 200, scheduler: clock }), observation,
+      'a second call cannot register another request or extend the original deadline');
+    assert.throws(() => client.deleteSessionStrict({ ...params, preserveTerminalReads: true },
+      { deadline: 20, scheduler: clock }), /different terminal reader semantics/);
+    const request = socket.messages.at(-1);
+    assert.equal(socket.messages.filter(message => message.method === 'deleteSession').length, 1);
+    if (result === 'acknowledged') socket.reply(request, { ok: true });
+    else replyDeleteError(socket, request, result === 'absent'
+      ? 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_FOUND' : undefined);
+    const first = await observation.first;
+    assert.equal(first.kind, result === 'acknowledged' ? 'legacy-acknowledged' : result === 'absent' ? 'legacy-absent' : 'failed');
+    assert.ok(Object.isFrozen(first));
+    assert.deepEqual(observation.current(), first);
+  }
+});
+
+test('strict delete freezes timeout before a late response without dropping or replaying the submitted request', async () => {
+  for (const trigger of ['timer', 'late-response']) {
+    const { client, socket } = await fixture();
+    const clock = deleteClock();
+    socket.respond = () => undefined;
+    const params = { sessionId: `strict-${trigger}` };
+    const observation = client.deleteSessionStrict(params, { deadline: 20, scheduler: clock });
+    const request = socket.messages.at(-1);
+    if (trigger === 'timer') clock.advance(20);
+    else clock.elapse(20);
+    assert.strictEqual(client.deleteSessionStrict(params, { deadline: 100, scheduler: clock }), observation);
+    assert.equal(client.pendingRequests.size, 1, 'timeout does not cancel the original remote delete');
+    socket.reply(request, { ok: true });
+    const first = await observation.first;
+    await turns();
+    assert.equal(first.kind, 'unconfirmed');
+    assert.equal(observation.current().kind, 'legacy-acknowledged');
+    assert.strictEqual(await observation.first, first);
+    assert.equal(socket.messages.filter(message => message.method === 'deleteSession').length, 1);
+    assert.equal(client.pendingRequests.size, 0);
+  }
+});
+
+test('strict delete retains uncertainty after disconnect replacement or write failure and never reconnects', async () => {
+  for (const failure of ['disconnect', 'replace', 'write']) {
+    const { client, socket } = await fixture();
+    const clock = deleteClock();
+    socket.respond = () => undefined;
+    if (failure === 'write') socket.write = () => { throw new Error('controlled strict write failure'); };
+    const params = { sessionId: `strict-${failure}` };
+    const observation = client.deleteSessionStrict(params, { deadline: 20, scheduler: clock });
+    let next;
+    if (failure === 'disconnect') socket.destroy();
+    if (failure === 'replace') {
+      next = new ControlledSocket();
+      client.attachSocket(next);
+      await client.performHelloHandshake();
+    }
+    const first = await observation.first;
+    assert.equal(first.kind, 'unconfirmed');
+    assert.strictEqual(client.deleteSessionStrict(params, { deadline: 100, scheduler: clock }), observation);
+    assert.equal(observation.submitted, true);
+    assert.equal(next?.messages.filter(message => message.method === 'deleteSession').length ?? 0, 0);
+  }
+});
+
+test('strict delete rejects an expired stale or unrelated connecting binding before any deletion', async () => {
+  const { client, socket } = await fixture();
+  const clock = deleteClock();
+  const expired = client.deleteSessionStrict({ sessionId: 'expired' }, { deadline: 0, scheduler: clock });
+  assert.equal((await expired.first).kind, 'unconfirmed');
+  assert.equal(expired.submitted, false);
+  const stale = client.deleteSessionStrict({ sessionId: 'stale' }, { deadline: 20, scheduler: clock, isCurrent: () => false });
+  assert.equal((await stale.first).kind, 'unconfirmed');
+  socket.destroy();
+  client.connectPromise = new Promise(() => {});
+  const unrelated = client.deleteSessionStrict({ sessionId: 'connecting' }, { deadline: 20, scheduler: clock });
+  assert.equal((await unrelated.first).kind, 'unconfirmed');
+  assert.equal(unrelated.submitted, false);
+  assert.equal(socket.messages.filter(message => message.method === 'deleteSession').length, 0);
+});
+
+test('strict deletion connects without restart and rechecks the original deadline and binding after hello', async () => {
+  for (const timing of ['success', 'connect-cutoff', 'connect-timeout', 'hello-cutoff', 'hello-timeout', 'stale-binding']) {
+    const clock = deleteClock();
+    const socket = new ControlledSocket();
+    socket.respond = () => undefined;
+    let acquisitions = 0;
+    controlledConnect = () => { acquisitions++; return socket; };
+    const client = new RuntimeSupervisorClient({ backend: { paths: { socketPath: '/controlled-only' }, startSupervisor: forbidden },
+      supervisorScriptPath: '/never', supervisorLauncherScriptPath: '/never' });
+    clients.push(client);
+    let current = true;
+    try {
+      const observation = client.deleteSessionStrict({ sessionId: timing },
+        { deadline: 20, scheduler: clock, isCurrent: () => current });
+      assert.equal(acquisitions, 1);
+      if (timing === 'connect-cutoff') clock.elapse(20);
+      if (timing === 'connect-timeout') clock.advance(20);
+      else socket.emit('connect');
+      await turns(8);
+      if (!timing.startsWith('connect-')) {
+        const handshake = socket.messages.at(-1);
+        assert.equal(handshake.method, 'hello');
+        if (timing === 'hello-cutoff') clock.elapse(20);
+        if (timing === 'hello-timeout') {
+          clock.advance(20);
+          assert.equal((await observation.first).kind, 'unconfirmed');
+          assert.strictEqual(client.deleteSessionStrict({ sessionId: timing }, { deadline: 200, scheduler: clock }), observation);
+        }
+        if (timing === 'stale-binding') current = false;
+        socket.reply(handshake, hello);
+        await turns(8);
+      }
+      if (timing === 'success') {
+        assert.equal(observation.submitted, true);
+        assert.equal(socket.messages.at(-1).method, 'deleteSession');
+        socket.reply(socket.messages.at(-1), { ok: true });
+        assert.equal((await observation.first).kind, 'legacy-acknowledged');
+      } else {
+        assert.equal((await observation.first).kind, 'unconfirmed');
+        assert.equal(observation.submitted, false);
+        assert.equal(socket.messages.filter(message => message.method === 'deleteSession').length, 0);
+      }
+    } finally { client.dispose(); controlledConnect = undefined; }
+  }
+});
+
+test('candidate create requires both the announced profile and reader chain on the original connection', async () => {
+  const profile = 'linux-owner-v1-candidate';
+  for (const capability of ['none', 'profile-only', 'complete']) {
+    const socket = new ControlledSocket();
+    socket.respond = request => request.method === 'hello' ? { ...hello, capabilities: capability === 'none' ? hello.capabilities
+      : capability === 'profile-only' ? { executionCandidateProfiles: [profile] }
+        : { ...hello.capabilities, executionCandidateProfiles: [profile] } } : { sessionId: 'candidate', live: true };
+    const { client } = await fixture(socket);
+    const params = { sessionId: 'candidate', executionProfile: profile };
+    if (capability === 'complete') {
+      assert.equal(client.supportsExecutionCandidateProfile(profile), true);
+      assert.equal((await client.createSession(params)).sessionId, 'candidate');
+      assert.equal(socket.messages.at(-1).params.executionProfile, profile);
+    } else {
+      assert.equal(client.supportsExecutionCandidateProfile(profile), false);
+      await assert.rejects(client.createSession(params), /candidate profile/);
+      assert.equal(socket.messages.length, 1);
+    }
+    socket.destroy();
+    await assert.rejects(client.createSession(params), /candidate profile/);
+  }
+});
+
+test('candidate create does not bind an old response to a replacement socket or replay an unknown create', async () => {
+  const socket = new ControlledSocket();
+  socket.respond = request => request.method === 'hello' ? { ...hello,
+    capabilities: { ...hello.capabilities, executionCandidateProfiles: ['linux-owner-v1-candidate'] } } : undefined;
+  const { client } = await fixture(socket);
+  const creation = client.createSession({ sessionId: 'known-before-submit', executionProfile: 'linux-owner-v1-candidate' });
+  const rejected = assert.rejects(creation, /connection changed/);
+  socket.reply(socket.messages.at(-1), { sessionId: 'known-before-submit', live: true });
+  const next = new ControlledSocket();
+  client.attachSocket(next);
+  await rejected;
+  assert.equal(next.messages.length, 0);
+  assert.equal(socket.messages.filter(message => message.method === 'createSession').length, 1);
 });
 
 try {

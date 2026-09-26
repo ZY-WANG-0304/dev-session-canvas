@@ -38,7 +38,7 @@ const lifecycleBundle = await esbuild.build({
 const lifecycleModule = { exports: {} };
 new Function('module', 'exports', 'require', lifecycleBundle.outputFiles[0].text)(
   lifecycleModule, lifecycleModule.exports, require);
-const { encodeOutputFrame } = lifecycleModule.exports;
+const { encodeOutputFrame, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS } = lifecycleModule.exports;
 const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-supervisor-owner-'));
 const fixtures = [];
 let fixtureId = 0;
@@ -68,6 +68,7 @@ function fixture(capabilities = ['execution-lifecycle-v1'], behavior = {}) {
   const server = new RuntimeSupervisorServer({ storageDir, registryPath: path.join(storageDir, 'registry.json') },
     'legacy-detached', 'best-effort', {
       kind: 'non-native', capabilities, scheduler,
+      ...(behavior.profile ? { profile: behavior.profile, profileMode: behavior.profileMode ?? 'live-runtime' } : {}),
       budgets: { startMs: 100, gracefulMs: 10, forceMs: 10, cancelMs: 10, settleMs: 10, ...behavior.budgets },
       createTransport(identity) {
         const parentClosed = deferred();
@@ -77,7 +78,8 @@ function fixture(capabilities = ['execution-lifecycle-v1'], behavior = {}) {
           connect(sink) {
             this.sink = sink;
             if (behavior.connectThrows) throw new Error('injected connect failure');
-            if (!behavior.holdReady) sink.message({ type: 'ready', identity, capabilities: ['execution-lifecycle-v1'] });
+            if (!behavior.holdReady) sink.message({ type: 'ready', identity,
+              capabilities: behavior.readyCapabilities ?? ['execution-lifecycle-v1'] });
           },
           async send(message) {
             this.sent.push(message);
@@ -144,7 +146,8 @@ function fixture(capabilities = ['execution-lifecycle-v1'], behavior = {}) {
     elapse(ms) { now += ms; },
     addSocket,
     async create(kind = 'terminal', sessionId = `40000000-0000-4000-8000-${String(++fixtureId).padStart(12, '0')}`) {
-      const result = await server.createSession(socket, params(sessionId, kind));
+      const result = await server.createSession(socket, { ...params(sessionId, kind),
+        ...(behavior.profile ? { executionProfile: behavior.profile } : {}) });
       await this.pump();
       return { result, session: server.sessions.get(sessionId), transport: transports.at(-1) };
     }
@@ -235,6 +238,98 @@ async function checkReader(name, run) {
 }
 
 try {
+  const candidateCapabilities = ['execution-lifecycle-v1', 'execution-close-observation-v1',
+    'execution-parent-cleanup-v1', 'execution-owner-boundary-v1', 'terminal-read-settlement-v1', 'terminal-interaction-v1'];
+  const candidateBehavior = { profile: EXECUTION_CANDIDATE_PROFILE, budgets: EXECUTION_CANDIDATE_BUDGETS,
+    exposeParentControl: true, readyCapabilities: ['execution-lifecycle-v1', 'terminal-interaction-v1'] };
+
+  await check('candidate factory and profile requirements reject before journal or execution acquisition', async () => {
+    const original = TerminalSessionJournal.create;
+    let journals = 0;
+    TerminalSessionJournal.create = async () => { journals++; throw new Error('journal must not be reached'); };
+    try {
+      const f = fixture();
+      const requested = { ...params('candidate-missing'), executionProfile: EXECUTION_CANDIDATE_PROFILE };
+      await assert.rejects(f.server.createSession(f.socket, requested), /does not match/);
+      await assert.rejects(f.server.createSession(f.socket, { ...requested, executionProfile: 'unknown-profile' }), /Unsupported/);
+      const absent = new RuntimeSupervisorServer({ storageDir: directory }, 'legacy-detached', 'best-effort',
+        undefined, EXECUTION_CANDIDATE_PROFILE);
+      await assert.rejects(absent.createSession(f.socket, requested), /factory is unavailable/);
+      assert.throws(() => new RuntimeSupervisorServer({ storageDir: directory }, 'legacy-detached', 'best-effort',
+        undefined, 'unknown-profile'), /Unsupported/);
+      const candidate = fixture(candidateCapabilities, candidateBehavior);
+      await assert.rejects(candidate.server.createSession(candidate.socket, params('candidate-omitted')), /does not match/);
+      assert.equal(candidate.transports.length, 0);
+      assert.equal(candidate.server.executionOwner.snapshot().pending, 0);
+      assert.equal(f.transports.length, 0);
+      assert.equal(journals, 0);
+    } finally { TerminalSessionJournal.create = original; }
+  });
+
+  await check('candidate hello advertises only complete matching live injection and legacy remains unchanged', async () => {
+    for (const missing of candidateCapabilities) {
+      assert.throws(() => fixture(candidateCapabilities.filter(capability => capability !== missing), candidateBehavior),
+        /capabilities missing/);
+    }
+    assert.throws(() => fixture(candidateCapabilities, { ...candidateBehavior, profileMode: 'snapshot-only' }), /matching live-runtime/);
+    const legacy = fixture();
+    assert.equal((await request(legacy, legacy.socket, 'hello')).result.capabilities.executionCandidateProfiles, undefined);
+    const absent = new RuntimeSupervisorServer({ storageDir: directory }, 'legacy-detached', 'best-effort',
+      undefined, EXECUTION_CANDIDATE_PROFILE);
+    assert.equal((await request({ server: absent }, legacy.socket, 'hello')).result.capabilities.executionCandidateProfiles, undefined);
+    const f = fixture(candidateCapabilities, candidateBehavior);
+    const hello = await request(f, f.socket, 'hello');
+    assert.deepEqual(hello.result.capabilities.executionCandidateProfiles, [EXECUTION_CANDIDATE_PROFILE]);
+    const { session, transport } = await f.create();
+    assert.equal(session.process, undefined, 'controlled candidate must be owned by Supervisor, not legacy bridge');
+    assert.equal(transport.sent.filter(message => message.type === 'start').length, 1);
+    await finish(f, session, transport);
+    session.ownedExecution.settleReaders('lost');
+  });
+
+  await check('candidate declaration cannot substitute provider ready interaction and control responsibility survives refusal', async () => {
+    const f = fixture(candidateCapabilities, { ...candidateBehavior, readyCapabilities: ['execution-lifecycle-v1'] });
+    await assert.rejects(f.create(), /Execution start was failed/);
+    await f.pump();
+    const transport = f.transports[0];
+    const session = [...f.server.sessions.values()][0];
+    assert.equal(transport.sent.filter(message => message.type === 'start').length, 0);
+    assert.equal(session.live, false);
+    assert.equal(session.lifecycle, 'error');
+    assert.equal(session.ownedExecution.snapshot().retired, false);
+    assert.equal(f.server.executionOwner.snapshot().pending, 1);
+    await f.advance(11000);
+    assert.equal(transport.cleanupRequests.length, 1);
+    assert.equal(session.ownedExecution.snapshot().retired, false);
+    transport.cleanupResult.resolve({ kind: 'closed', exitCode: 0, signal: null });
+    transport.sink.controlResourceResult({ kind: 'released' });
+    await f.pump();
+    assert.equal(transport.sent.length, 0);
+    assert.equal(session.ownedExecution.snapshot().adapter.state, 'settled');
+  });
+
+  await check('candidate Supervisor uses one twenty-second boundary and late cleanup cannot replace first', async () => {
+    const f = fixture(candidateCapabilities, candidateBehavior);
+    const { session, transport } = await f.create();
+    const closing = f.server.prepareForShutdown('candidate boundary');
+    assert.equal(f.server.shutdownBoundary.startedAt, 0);
+    assert.equal(f.server.shutdownBoundary.deadline, 20000);
+    assert.equal(session.ownedExecution.snapshot().closeObservation.finishAt, 13000);
+    await f.advance(19000);
+    assert.strictEqual(f.server.prepareForShutdown('repeated'), closing);
+    assert.equal(f.server.shutdownBoundary.deadline, 20000);
+    await f.advance(1000);
+    const first = await closing;
+    assert.equal(first.kind, 'unconfirmed');
+    assert.equal(f.socket.endCalls, 0);
+    await finish(f, session, transport);
+    session.ownedExecution.settleReaders('lost');
+    await f.pump();
+    assert.strictEqual(await closing, first);
+    assert.equal(first.kind, 'unconfirmed');
+    assert.equal(f.socket.endCalls, 0, 'late settlement cannot authorize a new socket close beyond B');
+  });
+
   await check('import is inert and missing capability acquires nothing', async () => {
     assert.equal(forbiddenAcquisitions, 0);
     const f = fixture([]);
