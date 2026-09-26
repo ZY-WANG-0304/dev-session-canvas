@@ -14,12 +14,14 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-26
+updated_at: 2026-09-27
 ---
 
 # 退出完整性生产接入与故障域收敛
 
 ## 1. 当前结论与阶段边界
+
+2026-09-27 从`ae3c42cf`完成第30节S11唯一首次有限业务采集：Linux x64/glibc 2.35、Node25.6.0正式工厂/provider与真实PTY，四场景/五主体通过，所有原transport关闭、四类资源释放且无额外停止清理。确认两authority交互与主体尾部、snapshot-only真实文件保存/重开、受控连接live重附着、暂停消费下stop及同Supervisor隔离。没有修改业务代码或启用默认候选。VS Code服务和reader连接仍受控，Runtime删除后拒绝重附着不代证Host自动完成清理/节点重开；Host活跃退出、真实Webview/Electron、Agent和其他平台未验收。下一有限项补实际宿主生命周期与Runtime完成节点重开路径，不追加诊断框架；L-02至L-05和整体计划仍开放。以下阶段按原时点保留。
 
 2026-09-26 从`7a39497b`实施第29节S10：Linux候选的初始尺寸、有界input/resize、原token非阻塞mutation、按执行种类停止、两authority业务回写及正式worker/资产工厂已接线，继续默认关闭。组合验证发现并修复阻塞input与resize/输出消费的环等；源码复核补齐已成功resize与退出竞态、最终Agent resume等价行为。当前证据仅为受控实际模块、JS构建和一次未加载的Linux原生产物编译/显式导入，不是PTY、真实Agent、VS Code/Electron或跨平台通过。下一S11按27.6固定实际Linux业务输入、匹配环境/资产与安全清理后采集；不再追加通用诊断门槛，L-02至L-05和整体退出完整性仍开放。以下阶段按原时点保留。
 
@@ -1195,3 +1197,52 @@ Host新增ACK+exit夹具曾在frame准入前发seal，报source boundary与accep
 S10关闭本次交互和正式资产接线待办，不关闭实际Linux交互验收、L-02页面/保存整链、L-03生产预算、L-04默认准入或L-05异常owner消失。工厂仅支持与当前manifest严格匹配的Linux x64/glibc Node或Electron；本轮只编译Node产物，不能在Electron中冒用。Terminal/Claude的SIGHUP及其他Agent的Ctrl-C后SIGHUP只保持源码语义，真实CLI/包装启动链仍需独立验证。
 
 下一S11直接按27.6执行有限Linux业务验证，先固定实际authority入口、兼容运行环境/产物、命令输入、一次性工作目录和安全清理。两模式的程序计算nonce响应/读回resize尺寸、主体UTF-8/ANSI尾部与非零退出、暂停消费下stop、双会话隔离分别核对，保留first失败/未知与原始输出，不用回显或ACK代替业务执行。实际VS Code/Electron、Agent和macOS/Windows未具备本轮证据时继续独立列未验证，不为其追加通用工具完善作为Linux前置。旧live不迁移，Runtime completed无进程/历史、snapshot-only保存和F-03 root归属边界不变；整体ExecPlan仍active，本轮只本地提交，不push/PR。
+
+## 30. S11 Linux实际业务有限验证
+
+### 30.1 首次运行前固定范围
+
+2026-09-27，输入`ae3c42cf`。本轮新增窄验收脚本，不修改旧冻结实验，不先改业务。固定四个场景：snapshot-only正常交互/退出/实际快照保存；live-runtime正常交互/退出以及活着时detach/reattach、结束后无正文；Supervisor暂停实际消费时stop；同Supervisor的A暂停消费并停止期间B完成交互及正常退出。最多五个新Terminal主体，无真实Agent、包装链、Electron/UI或macOS/Windows样本；不可把Terminal程序改标签后计作Agent。遇确定性失败保留首次结果，先核对根因，不自动重跑取绿或扩大矩阵。
+
+实际运行本机Linux x64/glibc、Node25.6.0，使用S10正式worker/native/manifest及严格工厂。运行前重新校验运行环境和内容摘要，记录实际输入源码、worker、binary及manifest；不在authority require原生模块，只有正式provider执行加载。CanvasPanelManager通过原型实例和有限VS Code服务替身进入真实start/input/resize/保存路径；RuntimeSupervisorServer使用真实类及journal/tracker，通过受控内存连接调用原RPC入口。provider IPC/output pipe和PTY为真实OS资源，页面连接、VS Code生命周期及业务启动配置注入为受控，不能写成完整用户环境验收。
+
+单主体为受控Node程序，不派生后代或访问外部服务。初始107x33，输入随机nonce由主体计算SHA256而非回显；resize为119x41，主体通过终端尺寸读回；finish写出自身UTF-8与ANSI最终屏幕（首行ROOT、第三行第5列红色中文、光标第5行第7列）后exit7。正常样本保留实际write回调后的字节凭证与原输出，核对最终内容、尺寸、光标和revision。flood最多256个4096字节块，暂停的是实际tracker消费，不伪造provider输出/主体退出；stop及资源事实仍由原owner观测。
+
+### 30.2 有限安全与证据边界
+
+每场景观察窗口45秒，主体自带25秒安全退出，仅用于实验停止而非生产预算；原候选8/13/20秒及交互5秒预算不变。脚本在失败时先释放自己设置的消费gate，再沿已捕获原owner停止并等待原transport关闭，绝不按进程名/外部端口扫描或杀陌生PID。任何额外紧急清理只针对本轮记录的原provider及主体，先核对身份，记录实际动作，不能把强制清理当产品正常结算。清理未确认则禁止后续场景并保留责任，不通过隐藏进程/清空状态获得成功。
+
+每轮使用必须新建的独立`.debug/s11-linux-business-*`目录，保留运行前schedule、输入及摘要、逐场景原始输出/控制事实、首次结果、最终资源与清理结果；不覆盖既有目录。正常场景核对生产者字节与消费者；停止场景只对已接受/消费前缀作完整性判断，不要求被信号终止后尚未写出的输出。最终页面用真实headless终端状态检查，受控reader完成与真实Webview ACK分别说明。仅保存与这四个产品场景相关的有限证据，不引入D3/D4、通用oracle或归档兼容框架。实现与首次结果随后追加，当前不是通过声明。
+
+### 30.3 实现、运行输入与安全复核
+
+新增`scripts/test/test-linux-execution-business.mjs`及`fixtures/linux-business-{subject,host,supervisor}.mjs`，后者均位于`scripts/test/`。直接加载真实Host、Supervisor、owner、journal和tracker；被测代码不复制成模型。运行前只读安全复核发现三项直接风险并修正：场景超时不自动取消续体，因此同步封闭owner及transport create/connect准入并等待原任务结算；证据写入失败不能绕过清理，因此先在finally沿原owner收尾；主体证据改为异步写入，避免同步写盘阻塞25秒安全计时器。未追加通用工具门槛，原生采样前修正不计为产品实验失败。
+
+实际运行环境为Linux x64、glibc 2.35、Node v25.6.0（ABI141、N-API10）。S10产物复用且无重建：worker SHA256 `0ac69e89756c126a080aaf74348db6c72b34e58a1c6c92bd6174eb431e3ab3f0`，binary SHA256 `3ed4d6bdc53c12f5d0abf578d3885a71f63dc4ad1a8bc4bab919dff62397fccb`，manifest SHA256 `43bea1b13fe5088d21c702edbafc743579dbaf38fce3d1de75d47807f62464f1`。manifest仍保留构建时compile-only事实，不为本轮执行倒写构建记录。输入脚本和实际加载业务源码摘要分别保存在schedule与loaded-sources中；脚本为本轮未提交快照，业务基线为`ae3c42cf`。
+
+仓库根先执行`node scripts/test/test-linux-execution-business.mjs --preflight --output .debug/s11-linux-business-first`，仅检查资产与环境、不启动provider。随后唯一执行`node scripts/test/test-linux-execution-business.mjs --output .debug/s11-linux-business-first`，exit0。四个first结果、cleanup及原始帧各自保存，无重跑；没有运行旧protocol、S3矩阵、全量npm test或runner。
+
+### 30.4 首次结果与证据口径
+
+| 场景 | 主体/源/消费事实 | 已验证行为 |
+| --- | --- | --- |
+| snapshot-normal | exit7、EOF、accepted=consumed=5、finalRevision6 | nonce计算、107x33到119x41真实尺寸读回、主体138B成功写入与PTY142B经ONLCR精确比对；真实root/workspace快照相同，磁盘重建屏幕及Host load/restore/attach无新执行 |
+| runtime-normal | exit7、EOF、5/5、finalRevision6 | 受控连接detach不stop，同身份重附着后仍计算响应；主体尾部完整，分页真实headless消费后提交applied；显式delete后attach/getSnapshot均拒绝 |
+| paused-stop | SIGHUP、EOF、22/22、finalRevision22 | tracker flush gate保持时accepted17/consumed1，16帧信用耗尽；stop仍观察到主进程退出，尚未settled；释放gate后消费、reader及资源结算 |
+| isolation | A为SIGHUP、EOF、22/22、revision22；B为exit7、EOF、6/6、revision7 | A仍暂停且未settled时，同Supervisor的B完成交互、主体尾部、reader应用及删除；随后才释放A的消费gate |
+
+三个正常结束主体的最终authority和重建终端均检查119x41、首行ROOT、第三行红色中文和零基光标(6,4)。停止样本的证据是所有provider已交付数据均进入实际journal/reader、接受序号等于消费序号；不要求被SIGHUP打断后尚未写出的1MiB输出，也不将停止动作本身当作EOF，实际源另报EOF。本轮没有命中cancel/force预算，不能据此确认取消分支或8/13/20秒生产数值。
+
+四场景的首次pass、cleanupSafe均true，五个provider实际spawn，五个transport均exited/disconnected/dataEnded/dataClosed/closed，无termRequested/killRequested；五主体的provider-control、pty-master、pty-child、pty-source首报和当前均released。cleanup.actions全部为空、taskSettled均true，证据无容量截断或写入错误。资源结算先于独立reader责任退役是合法分账，first中readerOutcome=pending不改写，最终evidence中五项retired=true。
+
+证明范围必须保持：Host无实际Webview reader，只有自然结束的最终快照保存，`activeDeactivationValidated=false`；Supervisor未启动listener/daemon idle，受控RPC连接不是实际RuntimeSupervisorClient/socket或Host远端编排；独立headless reader不是Webview main的真实页面回执。Runtime重开拒绝发生于显式delete之后，不证明真实Host自动删除、completed节点重开无正文/无进程的完整工作流。两个停止样本只证明受控flush屏障下仍可stop，不冒称真实UI卡死或任意负载都不会拖住。
+
+首次Host报告存在一项仅影响序列化字段的错误：assertScreen返回的文本数组覆盖了数值rows；119x41断言实际执行，保存metadata及reopened.rows均为41。采样后仅将工作树返回字段改为lines，原inputs、first/report和原始证据不改，不再采样，也不把修后的脚本摘要追写进schedule。该窄修不改变断言或业务行为。
+
+独立只读复核直接比对冻结输入、连续原始帧、成功write与消费/资源事实，未发现本轮有限断言的新增阻塞。审计自身先后有两次exit1：误要求sourceEnd后的最终wire consumed信用ACK覆盖全部帧，以及误要求采样后已窄修的当前runner仍等于首次摘要。前者忽略sourceEnd后停止发信用但继续本地消费，后者混淆冻结输入与当前代码；改正审计假设后核对，不改变证据或产品断言，也不记为原生失败。Runtime三个registry文件实际仍有早期正文/状态（normal为live，paused为stopping，isolation留closed A）；fixture清除了待执行的120ms persistTimer、仅等待已入队persistRegistryChain，没有执行正式flushRegistryBeforeShutdown。因此该目录不能证明删除已持久化或重启无历史，不能在证据采集后强刷空文件；产品正常关闭路径与崩溃残留策略须另外验证。
+
+### 30.5 下一有限交付与未关闭项
+
+S11关闭的是固定Linux Node业务样本，不是整个产品退出验收。下一S12聚焦两个仍缺的用户工作流：snapshot-only活跃会话随Host正常离开而停止、尾部保存和原资源释放；live-runtime实际Host/client连接detach后仍运行，完成后经Host原清理路径重新打开节点且无新执行/正文，同时检查原正式关闭落盘，不能仅验内存缺席。沿既有Host/Supervisor/client/reader接线补验，不用测试直接delete代替Host自动清理，不再增加通用诊断模型或重复本轮四场景。实际VS Code/Electron入口若需要匹配产物，先核对运行时和构建；Node产物不可冒用，受控替身结果独立标注，不宣称UI通过。
+
+真实Agent/CLI包装主体、真实Webview最终应用、macOS/Windows、异常owner消失与用户恢复、生产预算及默认准入仍需各自证据。Linux本轮正常/主动停止成功不能关闭L-02至L-05总项。候选默认关闭，旧live原绑定、Runtime completed无进程/无历史、普通后代责任和F-03稳定root归属均不变；无业务改动、push或PR，整体ExecPlan保持active。
