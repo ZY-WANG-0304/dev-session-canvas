@@ -23,7 +23,7 @@
 
 ## 技术债列表
 
-2026-09-28 当前 Runtime 重构收尾入口：`docs/design-docs/runtime-persistence-closeout.md`。用户已暂停自动追加阶段，完成定义待确认；当前仅归并 B1 容量预算/恢复、B2 可用退出路径、B3 有限状态替换风险及 A1 至 A6 必要验收。F-05 新路径不重开归档，F-03 root 稳定归属另列 R1 独立计划。通用工具增强不默认前置，真实 Agent/Webview/跨平台与尾部完整性不延期。下列 Runtime dated 记录、旧 L/PI 分类与建议时机保留为历史，不能据其中“下一步”自动执行；表中当前债务以本入口分账，未完成项不因暂停而关闭。
+2026-09-28 当前 Runtime 重构收尾入口：`docs/design-docs/runtime-persistence-closeout.md`。按用户委托，代理已选定完成定义及 B1 容量优先 -> B2 可用退出路径（合并 B3 有限风险）-> 最终 A1 至 A6 验收的顺序，不再等待用户确认清单/选择预算。F-05 不重开归档，F-03 另列 R1；通用工具增强不默认前置，真实 Agent/Webview/跨平台和尾部不延期。F-04 不以小样本未 OOM 关闭，最终 B2 产物仍须复核 A1。下列 dated 记录、旧 L/PI 分类及“下一步”保留为历史，不自动执行；当前债务以本入口分账，均未因工程口径选定而冒称完成。
 
 2026-09-28 S16有限收口：普通completed保存失败复活已清root已在未改业务基线先红；reader/persist窗口补原投影/session身份检查和并发节点级回滚，strict路径保持。Host25次、相关回归/typecheck通过，独立review无阻塞，见生产接入31.15。剩余为完整reset/reload状态替换仲裁、首次pending等待后callback、新业务准入、完整template apply，以及原session同步释放后等待旧Runtime delete再外层发exit的reader/UI身份竞态；本轮仅验证template prepare及较早等待窗口，不承诺所有迟到UI安全。剩余项另按有限输入确认，不自动扩成下一轮矩阵，不恢复全局gate/core锁/root drain，不增工具/native门槛；真实宿主/Agent/跨平台及退出完整性总债务仍开放。
 
