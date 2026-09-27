@@ -67,6 +67,7 @@ try {
   process.stdout.write(capacityCheck.stdout);
 
   await verifyBoundedCacheAndPagedReads(TerminalSessionJournal, resolveTerminalJournalSessionDirectory);
+  await verifyChunkedPageReads(TerminalSessionJournal, resolveTerminalJournalSessionDirectory);
   await verifyCheckpointSummaryIntegrity(TerminalSessionJournal, resolveTerminalJournalSessionDirectory);
 
   const storageDir = path.join(tempDir, 'runtime-storage');
@@ -1020,6 +1021,141 @@ async function verifyCheckpointScanRetainedHeap(outfile, tempDirectory) {
   assert.ok(retainedHeap < 12 * MiB,
     `checkpoint verification must not retain all 32 MiB of journal payload; retained heap was ${retainedHeap} bytes.`);
   await journal.delete();
+}
+
+async function verifyChunkedPageReads(Journal, resolveDirectory) {
+  const storageDir = path.join(tempDir, 'chunked-page-reads');
+  const options = {
+    storageDir, sessionId: 'large-segment-small-page', authorityId: 'chunked-authority',
+    initialCols: 80, initialRows: 24, initialScrollback: 1000,
+    segmentMaxBytes: 2 * 1024 * 1024, eventCacheMaxBytes: 0, flushDelayMs: 60000,
+    checkpointProfiles
+  };
+  const journal = await Journal.create(options);
+  const payloadFor = index => `${String(index).padStart(6, '0')}:${'\u4e2d'.repeat(4096)}\r\n`;
+  for (let index = 0; index < 96; index += 1) journal.appendOutput(payloadFor(index));
+  await journal.flush();
+  const directory = resolveDirectory(storageDir, options.sessionId);
+  const manifest = await readManifest(directory);
+  assert.equal(manifest.segments.length, 1);
+  const segment = manifest.segments[0];
+  assert.ok(segment.bytes > 1024 * 1024, 'the first-page fixture must exceed 1 MiB in a single segment.');
+  const file = path.join(directory, segment.file);
+  const original = await readFile(file, 'utf8');
+
+  const stats = await withShortSegmentReads(async () => {
+    const reader = journal.readEventPagesAfter(0, { pageMaxBytes: 32 * 1024, pageMaxEvents: 1 });
+    try {
+      const firstPage = await reader.next();
+      assert.equal(firstPage.value.length, 1);
+      assert.equal(firstPage.value[0].revision, 1);
+      assert.equal(firstPage.value[0].data, payloadFor(0));
+      await assert.rejects(journal.commitCheckpoint(
+        createCheckpoint(options.sessionId, options.authorityId, journal.getRevision()), { force: true }
+      ), /active readers/u);
+      await assert.rejects(journal.delete(), /active readers/u);
+    } finally {
+      await reader.return();
+    }
+  });
+  assert.equal(stats.bytesRead, segment.bytes, 'a small first page must verify the complete frozen segment.');
+  assert.ok(stats.readCalls > 1000, 'the fixture must exercise repeated short reads.');
+  assert.ok(stats.utf8Splits > 0, 'short reads must split multibyte UTF-8 sequences.');
+  assert.equal(stats.openHandles, 0, 'returning a paged reader must close its file handle.');
+
+  const tailRecordStart = original.lastIndexOf('\n', original.length - 2) + 1;
+  const rewrittenTail = JSON.parse(original.slice(tailRecordStart));
+  rewrittenTail.data = rewrittenTail.data.replace('000095:', '000096:');
+  const { checksum: _checksum, ...tailBody } = rewrittenTail;
+  rewrittenTail.checksum = createHash('sha256').update(JSON.stringify(tailBody)).digest('hex');
+  for (const [replacement, expectedError] of [
+    [original.replace('000095:', '000096:'), /checksum or revision mismatch/u],
+    [`${original.slice(0, tailRecordStart)}${JSON.stringify(rewrittenTail)}\n`, /checksum anchor mismatch/u]
+  ]) {
+    assert.equal(Buffer.byteLength(replacement), segment.bytes);
+    await writeFile(file, replacement);
+    const failedStats = await withShortSegmentReads(async () => {
+      await assert.rejects(journal.readEventPagesAfter(0, {
+        throughRevision: 1, pageMaxBytes: 32 * 1024, pageMaxEvents: 1
+      }).next(), expectedError, 'page-external tail corruption must be rejected before yielding the first page.');
+    });
+    assert.equal(failedStats.openHandles, 0, 'failed verification must close its reader handle.');
+  }
+  await writeFile(file, `${original}uncommitted-garbage`);
+  const prefixStats = await withShortSegmentReads(async () => {
+    const reader = journal.readEventPagesAfter(0, { throughRevision: 1, pageMaxEvents: 1 });
+    try {
+      assert.equal((await reader.next()).value[0].data, payloadFor(0));
+    } finally {
+      await reader.return();
+    }
+  });
+  assert.equal(prefixStats.bytesRead, segment.bytes, 'reads must not consume bytes beyond the frozen prefix.');
+  await writeFile(file, original);
+  const truncatedStats = await withShortSegmentReads(async () => {
+    await assert.rejects(journal.readEventPagesAfter(0, { pageMaxEvents: 1 }).next(), /truncated/u);
+  }, 4000);
+  assert.equal(truncatedStats.openHandles, 0, 'an unexpected zero-byte read must release the reader.');
+  assert.equal((await journal.commitCheckpoint(
+    createCheckpoint(options.sessionId, options.authorityId, journal.getRevision()), { force: true }
+  )).committed, true, 'cancelled and failed reads must release the compaction pin.');
+  await journal.delete();
+
+  const oversized = await Journal.create({ ...options, sessionId: 'oversized-record', segmentMaxBytes: 64 * 1024 });
+  const oversizedData = `oversized:${'\u4e2d'.repeat(70 * 1024)}\r\n`;
+  oversized.appendOutput(oversizedData);
+  await oversized.flush();
+  const oversizedStats = await withShortSegmentReads(async () => {
+    const reader = oversized.readEventPagesAfter(0, { pageMaxBytes: 32 * 1024, pageMaxEvents: 1 });
+    try {
+      const page = (await reader.next()).value;
+      assert.equal(page.length, 1);
+      assert.equal(page[0].data, oversizedData, 'a record larger than a read chunk must remain a single event.');
+      assert.ok(Buffer.byteLength(JSON.stringify(page)) > 32 * 1024,
+        'the existing oversized-single-event page exception must remain supported.');
+      assert.equal((await reader.next()).done, true);
+    } finally {
+      await reader.return();
+    }
+  });
+  assert.equal(oversizedStats.openHandles, 0);
+  await oversized.delete();
+
+  async function withShortSegmentReads(action, endAfterBytes = Number.POSITIVE_INFINITY) {
+    const stats = { bytesRead: 0, readCalls: 0, utf8Splits: 0, openHandles: 0 };
+    const originalOpen = fs.promises.open;
+    fs.promises.open = async (...args) => {
+      const handle = await originalOpen(...args);
+      if (String(args[0]).startsWith(storageDir) && String(args[0]).endsWith('.ndjson')) {
+        stats.openHandles += 1;
+        const originalRead = handle.read.bind(handle);
+        const originalClose = handle.close.bind(handle);
+        handle.read = async (buffer, offset, length, position) => {
+          assert.ok(length <= 64 * 1024,
+            `paged journal reads must request at most 64 KiB, requested ${length} bytes.`);
+          assert.ok(buffer.byteLength <= 64 * 1024, 'the read buffer must not materialize the complete segment.');
+          if (stats.bytesRead >= endAfterBytes) return { bytesRead: 0, buffer };
+          const result = await originalRead(buffer, offset, Math.min(length, 997), position);
+          stats.readCalls += 1;
+          stats.bytesRead += result.bytesRead;
+          const lastByte = buffer[offset + result.bytesRead - 1];
+          if (lastByte >= 0xc2 && lastByte <= 0xf4) stats.utf8Splits += 1;
+          return result;
+        };
+        handle.close = async () => {
+          await originalClose();
+          stats.openHandles -= 1;
+        };
+      }
+      return handle;
+    };
+    try {
+      await action();
+      return stats;
+    } finally {
+      fs.promises.open = originalOpen;
+    }
+  }
 }
 
 async function verifyCheckpointSummaryIntegrity(Journal, resolveDirectory) {

@@ -273,3 +273,27 @@ checkpoint 回归另设 32 MiB 日志、零缓存、1 MiB 分段，提交扫描�
 本机原始日志保留于 `.debug/runtime-persistence-capacity-20260928-wZfyUa/`：`paged-capacity.log` 与 `paged-capacity-sample.log` 是采样前失败；`paged-capacity-measured.log` 是完成负载的内存失败；`legacy-comparison.log` 是原对照。这些与本节固定输入、指标及失败摘要共同追溯，不以局部绿色代替整体 B1/A1 通过。
 
 原 Playwright 十会话基准 1/1 通过，10 节点、9 个后台各 4000 行，共 864,020 字符；输入分发 13.2ms、ACK 19.3ms、优先回显 170.2ms、最大后台完成 1035.4ms、后台分散 144.4ms、观察主线程滞后 0ms，原逐行正文与优先顺序断言不变。日志为同目录 `webview-10-agent.log`，只覆盖注入 Host 输出/ACK 的实际浏览器 xterm，不是本轮真实 Agent、Supervisor socket、VS Code/Electron 或跨平台端到端验收。
+
+### 10.2 分页扫描的直接修正
+
+从 `4dc42c87` 继续同一 B1：将 `readEventPagesAfter()` 的 cache miss 改为逐记录扫描，只保留本页和当前未结束记录，不再把整段读成 Buffer/string/lines/events。文件读取块固定为 64 KiB；按原始 LF 字节组装完整记录后再解码 UTF-8，允许正数短读，提前零字节或不完整尾记录拒绝。64 KiB 是 I/O 工作缓冲，不是事件截断上限；兼容原超大单事件独占一页，因此空间界限为读取块、当前记录及当前页，而非所有情况下绝对 256 KiB。
+
+提交给调用者前仍验证本页涉及段的全部记录、连续 revision、checksum 链、冻结 bytes/count/endRevision 和可信尾锚，页外损坏不能被隐藏。验证游标与实际入页游标分开，跨段页不跳过未交付事件；下一页可重新扫描同段，暂不通过新增长期 segment cache/跨 RPC generator 降 CPU。原先在 await flush 前冻结的前缀和 activeReaders 生命周期保持，文件 handle 在 yield 前关闭，取消/失败释放原读取责任。
+
+验证沿原 journal 回归增加块大小/短读、页外损坏及首屏交付前尾锚检查，先红后修；产品修正后仅执行一次原 `--paged-capacity` 的 1x/2x/4x 对照，64/128 MiB、30 秒、cache/page 门槛及输入不变，保留第 10.1 节失败。结果未出前不宣称解决全部峰值；普通 socket/Host 及旧生产链背压仍独立留在 B1，不借本修正宣布端到端收口。
+
+本轮原代码先红为首页单次 `FileHandle.read` 请求 1,211,319 bytes，超过 64 KiB。修后原 journal 回归与新增 fixture 通过：强制 997 字节短读并跨 UTF-8 边界；首页只含一个事件但先读完整冻结段；页外末记录损坏和自洽重算 checksum 均在 yield 前拒绝；零字节短读失败；冻结前缀后的垃圾不参与；取消/失败释放 pin；约 210 KiB 单事件保持独页而非截断。独立 review 未发现阻塞。代价是同一 generator 逐页消费也会重扫段，不能宣称总扫描 CPU/I/O 减少。
+
+同一 Linux x64 / Node v25.6.0、同一探针（本轮未改）的一次修后对照：
+
+| 累计负载 | 回放秒（原 / 本轮） | heap 增量 MiB（原 / 本轮） | RSS 增量 MiB（原 / 本轮） | 本轮判定 |
+| --- | --- | --- | --- | --- |
+| 1x | 1.334 / 1.509 | 74.70 / 70.72 | 147.66 / 81.18 | heap 超限，其余已测门槛通过 |
+| 2x | 2.715 / 3.578 | 89.20 / 84.50 | 181.57 / 95.57 | heap 超限，其余已测门槛通过 |
+| 4x | 5.903 / 7.699 | 93.92 / 103.72 | 196.78 / 116.92 | heap 超限，其余已测门槛通过 |
+
+内容、全部 revision、最终屏幕/光标、缓存及 page 断言保持通过；输出与 27/54/107 页不变。观察 timer lag 最大 32.51ms；回放均在 30 秒内，但时间增加如实保留。基线 heap/RSS 为 44,876,824 / 235,827,200 bytes，采样最大值 153,632,256 / 358,428,672 bytes；额外 heap/RSS 为 108,755,432 / 122,601,472 bytes。RSS 达原 128 MiB 预算不抵消 heap 未达 64 MiB，整轮 exit 1，未重采或修改门槛。heap 包含生产、双 tracker 与临时分配，剩余来源尚未由本轮采样独立归因，不能以 GC 推测、RSS 下降或缩小负载关闭该失败。
+
+原始结果为 `.debug/runtime-persistence-paged-scan-20260928-N6P27u/paged-capacity.log`，旧失败目录完整保留。原默认容量对照（含尺寸拒绝与 completed 保存）通过，日志为同目录 `legacy-comparison.log`；journal、Supervisor wiring 77/77、paged projection（含 27/27 headless writer）、paged completion、checkpoint refresh、typecheck/build 通过。没有新增浏览器、真实 Agent、原生平台或 runner 结果；上轮浏览器证据仍只代表其注入路径。B1 剩余为 heap 预算归因/修复、普通 socket/Host 与旧生产链在途约束及既定真实整链验收，不新增通用诊断要求。
+
+剩余 heap 的只读核对：`SerializedTerminalStateTracker.flush()` 在脏写后序列化完整有限 scrollback；探针的 producer 每 16 块、replay 每页都执行，真实 Webview `applyTerminalStreamEvents()` 只分批写入并等 callback，不做相同的逐页序列化。当前颜色状态在验证第三个模型创建前就被拒绝，不能归因于候选 checkpoint 恢复模型。未发现保存所有历史 tracker/snapshot 的容器，尚不构成泄漏证明；也没有测出额外 replay 序列化占用多少 heap，因此不扣除它或追认预算通过。后续随实际 socket/Host/页面消费链收口做堆来源归因，不将“先优化双 tracker 探针直到绿色”设为传输产品修正前置，最终 A1 实际内存证据仍不能缺失。
