@@ -21,6 +21,8 @@ updated_at: 2026-09-27
 
 ## 1. 当前结论与阶段边界
 
+2026-09-27 修后测试输入`54c3bc00`按31.7仅采集Runtime单例一次，1/1通过、partialSelection=true。实际Host/client/socket detach后保留原执行，新Host从磁盘恢复并计算新nonce，自然exit7后Host自动保存轻量终态和单次delete，第三Host重开无正文/新执行；Supervisor原正常shutdown严格落盘空registry并关闭原连接，资源安全释放。首轮1/2与旧证据不改，不合并成首次全绿。本轮没有业务或测试源码改动，零Webview reader、Node API及受控VSCode服务的范围保持。旧Host关闭报告后的延迟保存登记需独立核对，不能由本轮清timer的夹具证明迟到写盘已安全；后续边界见31.9。候选仍默认关闭，L-02至L-05与整体退出完整性未交付。以下按原时点保留。
+
 2026-09-27 从`7b480cbd`推进第31节S12，唯一首次两场景exit1，1通过1失败。snapshot-only活跃Host调用原deactivation后，自身SIGHUP尾部、最终保存/重开及资源释放通过；Runtime真实client/socket/start和首次输入已发生，但prototype夹具缺诊断数组导致TypeError，尚未到detach/恢复/自动完成清理。两原执行均安全释放，Runtime的退出属于失败清理，不能替换失败首报。已仅补夹具字段并完成确定性纯验证，增加仅选失败场景的入口，没有第三次原生样本或业务改动。下一只冻结新输入/新目录复验同一Runtime场景一次，不重复本地样本或增加工具前置；S12、L-02至L-05及整体计划保持未完成，候选默认关闭。以下按原时点保留。
 
 2026-09-27 从`ae3c42cf`完成第30节S11唯一首次有限业务采集：Linux x64/glibc 2.35、Node25.6.0正式工厂/provider与真实PTY，四场景/五主体通过，所有原transport关闭、四类资源释放且无额外停止清理。确认两authority交互与主体尾部、snapshot-only真实文件保存/重开、受控连接live重附着、暂停消费下stop及同Supervisor隔离。没有修改业务代码或启用默认候选。VS Code服务和reader连接仍受控，Runtime删除后拒绝重附着不代证Host自动完成清理/节点重开；Host活跃退出、真实Webview/Electron、Agent和其他平台未验收。下一有限项补实际宿主生命周期与Runtime完成节点重开路径，不追加诊断框架；L-02至L-05和整体计划仍开放。以下阶段按原时点保留。
@@ -1296,3 +1298,33 @@ Runtime未执行resize、Host正常detach、新Host恢复、自然finish、自�
 只继续未完成的Runtime样本：先固定修后提交/输入摘要，在全新`.debug/s12-linux-runtime-retry-first`目录运行`node scripts/test/test-linux-execution-business.mjs --stage s12 --only runtime-lifecycle --output .debug/s12-linux-runtime-retry-first`一次，最多一个主体；该目录仍未采样。运行前同参数加`--preflight`核对资产/所选场景，不创建目录或资源。report显式记录scenarios及partialSelection，单例通过也不能改写首轮1/2或宣称重跑全矩阵。新失败仍保留并先定位，不继续自动重跑。
 
 原Runtime断言不放宽：真实Host detach/恢复、不同nonce、自然finish、Host自动保存/delete、重开无正文/无新执行、正式shutdown严格flush和原socket/listener关闭。无需另起工具研究，不能改成fixture显式delete取绿。真实VS Code/Electron/Webview、Agent启动链、跨平台、生产预算与异常owner消失仍未验收；默认关闭、旧live绑定和root边界不改，本轮只本地提交。
+
+### 31.7 修后Runtime单例运行前冻结
+
+2026-09-27，修后测试输入提交为`54c3bc00a32c1c75671fc2d6562bc57ff22f7188`。schedule中的`sourceCommit=7b480cbd`仍表示S12业务基线，不是修后夹具提交；实际采集输入由本提交和schedule内四份文件摘要共同标识，不倒写旧schedule。runner、subject、Host和Runtime摘要依次为`593929bc36ba54bbc15e43b4e8ed3b4c8379d6dd06605e8df526448ad46df285`、`010d8139f481bbfbc2c153e76e59eea806168c7a96f4dba15088937275aeeb9f`、`8b480dcdda0758e5c87e0e5391e1a0693e71683a6861d0ef34beeed3725f9b69`、`4a1509e34ef2d7242ca6964c51eaa753c1ca93d738a73d8750434bf06b551b7a`。
+
+运行前同参数`--preflight`返回exit0，确认只选择runtime-lifecycle、S10三份正式资产摘要与Node25.6.0/ABI141/NAPI10/Linux x64/glibc2.35匹配，未加载native或启动provider；目标目录尚不存在。独立静态复核另冻结旧first全部30文件路径/大小/摘要，排序台账整体SHA256为`b3f359be1efc178d0867a8fd7087233e125ffba5fdcc7b0dbfb5f4e5bd9d055c`。以下唯一采集严格沿31.6，一次一主体，不扩场景、不重建、不改业务；采集结果另行记录，预检不等于原生通过。
+
+### 31.8 修后Runtime唯一采集结果
+
+31.7冻结后执行31.6命令一次，`.debug/s12-linux-runtime-retry-first`保存独立schedule、四份输入、loaded-sources及该场景first/cleanup/evidence、原始帧、主体成功write和真实磁盘文件。report为`scenarios=[runtime-lifecycle]`、`partialSelection=true`、1/1通过、无未执行项，测试进程已结束。首轮`.debug/s12-linux-lifecycle-first`的1/2不改变，也不把两个不同输入的通过项合成一次全矩阵成功。
+
+实际只创建一个执行`99d0fcea-245d-42ba-b89a-985dfc89c0bb`、generation `7bf2aee4-30bd-409c-a2e6-d7d476ceccdd`。首个Host通过真实client写入nonce、107x33到119x41 resize及主体尺寸读回后调用prepareForDeactivation；原client和server端socket均关闭，主体没有退出、没有stopRequested，原owner身份保持。第二Host从root文件加载原绑定、经原client附着同执行并计算不同nonce，之后输入finish，主体自然exit7。只有一次createSession、一次attachSession、一次自动deleteSession，无stopSession；fixture未显式删除，launcherAttempts=0。
+
+主体成功write共208B，PTY ONLCR对应213B；五帧连续、acceptedThrough=consumedThrough=5，真实EOF尾值5，authority最终应用revision6。最终stopRequested=true源于自动deleteSession调用原requestStop进行退役，不代表向仍活着的主体发送了停止：原closeObservation仍为natural-exit/process-exited，wire无requestStop/cancelOutput/force，provider无TERM/KILL，主体无SIGHUP标记。四资源first/current均released；外层taskSettled/cleanupSafe=true、actions=[]、evidenceErrors=[]，原transport最终closed/disconnected/exited/dataEnded/dataClosed均true。已退役adapter快照的dataClosed=false与之后真实transport close分属不同时点，不能倒写快照或据此否定已观察到的关闭。
+
+Host原completed保存后的root/workspace文件均无正文、serialized state和runtime绑定，保留119x41尺寸等轻量终态。第三Host load/restore/attach返回空output、liveSession=false，不取得执行或新socket。原server.prepareForShutdown的execution/readers/registry/server/sockets五域settled，磁盘registry严格为`{version:1,sessions:[]}`，原四socket和一个listener均closed；此处不是S11取消persistTimer后只验内存，也不是S12首败后的补救shutdown。
+
+本轮没有Webview reader，terminal applied指authority最终消费，不指页面最终应用；Runtime夹具没有断言live最终屏幕像素或光标。实际VSCode deactivation调度、Electron关闭宽限、daemon自动退出、Agent/包装主体、其他平台、生产时限和异常owner消失仍无本轮证据。
+
+独立只读复核四份冻结输入、60份实际加载源码摘要及原始事实通过；1043B framing解出五帧，成功write经ONLCR与213B输出逐字节一致，SHA256为`78447487ffd50e1c312f8b7e8bf237b82c520003b9d17d1c2a4d871027cb9b15`。第二nonce `726506c11efb037cd8e8c0e7003a34c2`对应HASH正确，原始输入回执39/5/39/7B、resize119x41。实际root/workspace读回匹配completedDisk、registry为空。用同摘要`@xterm/headless`离线重放原始帧得到119x41、ROOT/中文和光标(6,4)，仅为离线重建，不补称live屏幕或页面验收。旧first30文件逐项与运行前台账一致，整体摘要保持31.7值；无归档脚本执行、额外native加载或采样。
+
+文档收口静态检查通过：五份文档范围、设计第2至31.6节逐字保持、计划12标题及顺序/当前首段、元数据/索引/关联路径、原原则/债务保持、旧first失败和新partial通过分别核对，git diff --check通过。新增结论经独立只读复核，无本轮证据口径阻塞；没有业务或测试源码改动，不运行全量回归、push或PR。
+
+### 31.9 Host关闭后的延迟保存与下一有限项
+
+新证据first Host的`execution/hostDeactivationBoundary=settled`之后仍记录`state/persistDeferred`，reason为live-execution-state、delayMs=1500，stateHash从`e2074de87eec`变为`693644173feb`。这是退出报告后再次接受状态保存的实测事实；本轮第三Host读取completed文件和正常shutdown均在这次旧延迟写入之前，fixture cleanup最终取消该timer，不能据此证明旧Host永远不会覆盖较新的磁盘状态，也不能反过来宣称本轮已经实测覆盖或历史复活。
+
+只读源码核对找到足以解释该顺序的已排队任务：`CanvasPanelManager.ts:18667`在远端resize完成后调用queueExecutionStateSync，交互同步延迟为160ms；`:19786`的syncTimer回调只检查会话仍在Map，随后`:19857`的flushLiveExecutionState更新live元数据并在`:19926`安排deferred persist。`:3840`起的prepareNonNativeDeactivation关闭client、收尾本地owner并保存当前状态，但没有清理远端syncTimer/移除远端会话；`:11302`的disposeManagedExecutionSession也不清syncTimer。无需假设断线后收到新事件，且主动client.dispose抑制onDisconnected，不能把本次具体来源写成已证的disconnect回调。`extension.ts:826`的deactivate只await准备方法并清activePanelManager引用；真实VSCode进程退出/订阅清理能否及时终止这些回调仍需单独确认，不能当作当前已有保证。
+
+下一切片只定位和确定Host永久关闭的状态/持久化契约：复用已有实际Host受控测试，固定远端resize排队同步、deactivation返回、新Host保存completed状态、旧定时回调到期的顺序。区分旧回调能排队、实际写成、生产清理取消三个事实，明确哪些已接受状态应在报告前flush，哪些晚任务应取消或拒绝；原live绑定的最终保存不能因简单取消而丢失，Runtime detach不能变成停止原执行。此项直接关系无历史重开与退出结算，不是通用工具健壮性；无需新PTY、native构建、runner或全量诊断矩阵，不在本轮直接改业务。确认后才规划最小修正与回归。非零reader最终应用、真实Agent启动链、Electron与跨平台仍单独开放，不因有限样本通过默认启用候选。
