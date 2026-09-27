@@ -1708,3 +1708,19 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 修订记录（2026-09-27，S12首次及首败定位）：从7b480cbd固定两主体，首次1/2；本地活跃Host退出/自身尾部/真实保存重开通过，Runtime首次成功写入后被prototype夹具漏诊断数组阻断。原类初始化/8ms阈值根因与纯回归已确认，仅补字段及固定单例复验选择，没有业务改动或第三个原生样本。两个原执行安全释放，Runtime补救stop/closed registry不替代未执行的自然完成断言；全部原证据保留。同步十二当前章节、索引/原则/债务，下一仅新输入/新目录Runtime单例，不重跑本地或追加工具门槛；S12与整体计划active、候选默认关闭，本轮不push/PR。
 
 修订记录（2026-09-27，S12修后单例与迟到保存边界）：固定54c3bc00四输入/新目录后唯一Runtime采集1/1，实际detach/恢复/自动完成清理/空历史重开及正常空registry落盘通过，原始事实和旧30文件保持独立核对。同步十二当前章节、索引/原则/债务，旧首轮1/2不改。发现关闭报告后既有syncTimer仍可排入保存，未证明旧写覆盖，下一只定位该Host持久化收尾契约，不继续工具或原生矩阵。本轮只文档改动，整体计划active、候选默认关闭，无push/PR。
+
+### S13 Runtime Host 退出屏障实现
+
+本阶段在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的显式 `execution-owner-boundary-v1`（non-native/candidate）永久 Host deactivation 路径实现最小退出完整性修正。边界一开始关闭 Runtime 事件准入，并为每个 client 回调保存 generation；迟到 output、terminal event、state、disconnect 和 sync timer 不再进入旧 Host 的状态保存路径。已接收的异步 state callback 在最终快照前由 pending 集合等待；边界先启动原有 immediate canvas persistence，再对 Supervisor session 做最终 immediate flush，确保已确认的 resize/output/runtime binding 已投影后清理 sync、output 和 terminal projection timer，并等待 deferred/workspace 写入。未完成的通用 Supervisor operation 不被伪造为成功，仍属于 boundary 的未确认范围。
+
+旧 Supervisor live session、`terminalSessions`/`agentSessions` map 和 `runtimeSessionBindings` 按既有 detach 契约保留，不由 Host 边界发送 stop/delete；只 dispose Host client。保留这些身份是为了让旧执行继续由 Supervisor 持有，同时依赖准入屏障阻止旧 generation 再写盘。
+
+验证命令（仓库根目录）：
+
+    node scripts/test/test-runtime-host-deactivation-integrity.mjs
+    node scripts/test/test-host-execution-owner-wiring.mjs
+    npm run typecheck
+
+结果为 S13 用例 5 项通过、既有 Host wiring 95/95、workspace typecheck 通过，`git diff --check` 与新脚本 `node --check` 通过。该验证没有启动 PTY/native、VS Code/Electron、真实 Agent 或其他平台；普通生产 Runtime（未注入该 owner）仍走既有普通 boundary 路径，真实宿主退出调度、Webview 最终应用、跨平台时序和未完成 operation 的 deadline 证据仍保持开放，不能把本地 Host 夹具结果扩大为全产品验收。
+
+修订记录（2026-09-27，S13最小修正）：Runtime deactivation 关闭事件准入、跟踪 state callback、最终 flush 并清理 Host 侧 timer/output/projection，保留 live map/binding 与远端执行；新增五项纯 Host 回归，既有 95/95 与 typecheck 通过。未运行新的 PTY/native 或跨平台样本，真实宿主和其他退出边界继续验证中。

@@ -1352,3 +1352,13 @@ Host原completed保存后的root/workspace文件均无正文、serialized state�
 因此该项从“待确认的持久化竞态”升级为退出完整性阻塞：正常关闭后，旧Host可能复活已完成节点的Runtime绑定，破坏“completed无进程/无历史”契约。修正必须在旧Host永久边界建立身份/代次的保存屏障：先保留并有序保存最后接受的live状态，再阻止旧timer和未追踪的session-state回调写入；第二Host的completed写入不能被旧Host覆盖。不能通过停止或删除Supervisor live execution解决，也不能只改root文件读取。
 
 S13修正的不可变不变量暂定为：一是边界前已确认的resize、输出和Runtime binding必须先投影并完成一次有序保存；二是保存完成后旧Host关闭syncTimer、拒绝新的状态同步，并等待已经进入的`onSessionState`/persist操作；三是边界报告返回后，旧Host不得再提交任何会改变root/workspace snapshot的写入；四是Supervisor仍持有的live execution只断开Host client，不被该屏障停止或删除；五是第二Host completed写入后，旧generation的任何迟到事实都必须被身份/代次拒绝，而不是靠文件读取时猜测。
+
+### 31.11 S13 最小修正与验证结果
+
+本阶段已将上述屏障接入 `CanvasPanelManager` 的显式 `execution-owner-boundary-v1`（non-native/candidate）永久 Host deactivation 路径，不改变 Supervisor 的进程所有权。边界开始时关闭 Runtime 事件准入；每个 Runtime client 的回调闭包带有 client epoch，迟到的 output、terminal event、state 和 disconnect 事件都会被拒绝。`onSessionState` 的异步处理加入专用 pending 集合，边界在最终保存前等待已经接收的回调；同步 timer 的回调和后续排队入口也检查同一准入状态。
+
+画布快照域先启动原有 immediate persistence，再等待已接受的 Runtime state callback，随后对仍在 Host map 中的 Supervisor session 执行最终 immediate 状态 flush。该 flush 投影最后确认的尺寸、输出序号和 Runtime 绑定，清理 sync/output/projection timer，并等待 deferred/workspace 写入完成。未完成的通用 Supervisor operation 不被强行等待或伪造成功，仍由 boundary 的未知/未确认语义覆盖；其迟到 resize 等回调只能更新已保留的内存身份，不能通过关闭后的准入门再次排队保存。旧 `terminalSessions`/`agentSessions` map 及 `runtimeSessionBindings` 不删除，作为仍由 Supervisor 持有的 live execution 身份；remoteDetach 域只 dispose Host client，不发送 stop/delete。这样既保持既有“detach 而非终止”的契约，也让旧 generation 的迟到 timer/event 无法再次排队保存。
+
+新增 `scripts/test/test-runtime-host-deactivation-integrity.mjs`，通过真实 `CanvasPanelManager` 方法、阻断 node-pty/child_process 的 Host 夹具验证：已确认 resize 在 final metadata 中落盘；已排队 timer 和迟到 Runtime 事件不再 flush 或变更 session；第二 Host 的 completed 状态不会被旧 live 写者覆盖；state callback 会被跟踪且边界重复调用幂等；旧 Supervisor client 不收到 stop/delete，live map/binding 保持。`node scripts/test/test-host-execution-owner-wiring.mjs` 仍为 95/95，workspace `npm run typecheck` 通过，S13 用例 5 项通过。
+
+本阶段没有新增 PTY/native/VS Code/Electron/真实 Agent 或其他平台样本。普通生产 Runtime（未注入该 execution owner）仍走既有 `prepareForHostBoundaryCore`，本次没有把 event admission 屏障全面接入该路径；因此真实宿主退出调度、Webview 最终应用、Agent 启动包装链、跨平台时序以及未完成 Runtime operation 在 deadline 后的运行时证据仍未决。这些不能由本地 Host 夹具的 settled 结果替代。设计状态从“修正待设计”进入“candidate 路径最小修正已实现、普通生产路径与真实宿主验证中”。

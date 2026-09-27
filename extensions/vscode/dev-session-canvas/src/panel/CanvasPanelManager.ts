@@ -1356,6 +1356,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     { nodeId: string; kind: ExecutionNodeKind; resolved?: ResolvedExecutionFileLink }
   >();
   private readonly pendingRuntimeSupervisorOperations = new Set<Promise<unknown>>();
+  /** Runtime events accepted after a host boundary can otherwise revive stale state. */
+  private runtimeSupervisorEventAdmissionOpen = true;
+  private pendingRuntimeSupervisorStateCallbacks: Set<Promise<void>> | undefined;
+  private runtimeSupervisorClientEpochs: Map<string, number> | undefined;
   private readonly pendingTerminalProjectionRefreshes = new Map<string, Promise<void>>();
   private readonly terminalReadRelay = new RuntimeTerminalReadRelay();
   private readonly terminalProjectionRefreshScheduler = new TerminalProjectionRefreshScheduler({
@@ -3837,6 +3841,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     let resolve!: (report: HostDeactivationReport) => void;
     const result = new Promise<HostDeactivationReport>(done => { resolve = done; });
     this.nonNativeDeactivationReport = result;
+    this.closeRuntimeSupervisorEventAdmission();
     owner.closeAdmission(true);
     type Domain = 'local' | 'canvasSnapshot' | 'remoteDetach';
     const domains: Partial<Record<Domain, HostBoundaryDomainResult>> = {};
@@ -3899,7 +3904,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : { kind: 'unconfirmed', reason: `Host execution responsibility remains: ${closed.pending.join(', ')}` };
     });
     run('canvasSnapshot', async () => {
-      await this.persistState({ workspaceStateMode: 'full', requireRootLocalDurability: true, reason: 'host-deactivation' });
+      const initialPersistence = this.persistState({
+        workspaceStateMode: 'full',
+        requireRootLocalDurability: true,
+        reason: 'host-deactivation'
+      });
+      const supervisorDetach = this.flushAndDetachSupervisorExecutionSessionsForHostBoundary();
+      await initialPersistence;
+      await supervisorDetach;
+      await this.flushDeferredCanvasStatePersist('host-deactivation-final');
+      await this.waitForPendingWorkspaceStateUpdates();
       const persistence = await Promise.all(persistenceRecords.map(record => record.persistence!.promise));
       const incomplete = persistence.find(saved => saved.kind !== 'saved' && saved.kind !== 'not-required');
       if (incomplete) return { kind: incomplete.kind === 'failed' ? 'failed' : 'unconfirmed', reason: incomplete.reason };
@@ -10152,26 +10166,38 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const clientKey = this.buildRuntimeSupervisorClientKey(backend);
     let client = this.runtimeSupervisorClients.get(clientKey);
     if (!client) {
+      const clientEpoch = this.nextRuntimeSupervisorClientEpoch(clientKey);
       client = new RuntimeSupervisorClient({
         backend,
         supervisorScriptPath: this.getRuntimeSupervisorScriptPath(),
         supervisorLauncherScriptPath: this.getRuntimeSupervisorLauncherScriptPath(),
         onSessionOutput: (event) =>
-          this.handleRuntimeSupervisorOutput(backend.kind, runtimeStoragePath, event),
+          this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch)
+            ? this.handleRuntimeSupervisorOutput(backend.kind, runtimeStoragePath, event)
+            : undefined,
         onSessionTerminalEvent: (event) =>
-          this.handleRuntimeSupervisorTerminalEvent(backend.kind, runtimeStoragePath, event),
+          this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch)
+            ? this.handleRuntimeSupervisorTerminalEvent(backend.kind, runtimeStoragePath, event)
+            : undefined,
         onSessionState: (snapshot) => {
-          void this.handleRuntimeSupervisorState(backend.kind, runtimeStoragePath, snapshot).catch((error) => {
-            this.recordDiagnosticEvent('runtime/sessionStateHandlerFailed', {
-              sessionId: snapshot.sessionId,
-              lifecycle: snapshot.lifecycle,
-              live: snapshot.live,
-              message: formatUnknownError(error)
+          if (!this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch)) {
+            return;
+          }
+          const operation = this.handleRuntimeSupervisorState(backend.kind, runtimeStoragePath, snapshot)
+            .catch((error) => {
+              this.recordDiagnosticEvent('runtime/sessionStateHandlerFailed', {
+                sessionId: snapshot.sessionId,
+                lifecycle: snapshot.lifecycle,
+                live: snapshot.live,
+                message: formatUnknownError(error)
+              });
             });
-          });
+          this.trackRuntimeSupervisorStateCallback(operation);
         },
         onDisconnected: (error) =>
-          this.handleRuntimeSupervisorDisconnected(backend.kind, runtimeStoragePath, error)
+          this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch)
+            ? this.handleRuntimeSupervisorDisconnected(backend.kind, runtimeStoragePath, error)
+            : undefined
       });
       this.runtimeSupervisorClients.set(clientKey, client);
     }
@@ -11027,6 +11053,45 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     void operation.then(settled, settled);
   }
 
+  private nextRuntimeSupervisorClientEpoch(clientKey: string): number {
+    const epochs = this.runtimeSupervisorClientEpochs ??= new Map<string, number>();
+    const epoch = (epochs.get(clientKey) ?? 0) + 1;
+    epochs.set(clientKey, epoch);
+    return epoch;
+  }
+
+  private isRuntimeSupervisorEventAdmitted(clientKey?: string, clientEpoch?: number): boolean {
+    if (this.runtimeSupervisorEventAdmissionOpen === false) {
+      return false;
+    }
+    if (clientKey === undefined || clientEpoch === undefined) {
+      return true;
+    }
+    return this.runtimeSupervisorClientEpochs?.get(clientKey) === clientEpoch;
+  }
+
+  private closeRuntimeSupervisorEventAdmission(): void {
+    this.runtimeSupervisorEventAdmissionOpen = false;
+  }
+
+  private trackRuntimeSupervisorStateCallback(operation: Promise<void>): void {
+    const pending = this.pendingRuntimeSupervisorStateCallbacks ??= new Set<Promise<void>>();
+    pending.add(operation);
+    const settled = (): void => {
+      pending.delete(operation);
+    };
+    void operation.then(settled, settled);
+  }
+
+  private async waitForPendingRuntimeSupervisorStateCallbacks(): Promise<void> {
+    const pending = this.pendingRuntimeSupervisorStateCallbacks;
+    if (!pending || pending.size === 0) {
+      return;
+    }
+
+    await Promise.allSettled(Array.from(pending));
+  }
+
   private async waitForPendingRuntimeSupervisorOperations(): Promise<void> {
     if (this.pendingRuntimeSupervisorOperations.size === 0) {
       return;
@@ -11316,6 +11381,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     runtimeStoragePath: string,
     event: RuntimeSupervisorSessionOutputEvent
   ): void {
+    if (!this.isRuntimeSupervisorEventAdmitted()) {
+      return;
+    }
     const binding = this.runtimeSessionBindings.get(
       this.buildRuntimeSessionBindingKey(event.kind, event.sessionId, runtimeStoragePath, runtimeBackend)
     );
@@ -11349,6 +11417,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     runtimeStoragePath: string,
     payload: RuntimeSupervisorSessionTerminalEvent
   ): void {
+    if (!this.isRuntimeSupervisorEventAdmitted()) {
+      return;
+    }
     const binding = this.runtimeSessionBindings.get(
       this.buildRuntimeSessionBindingKey(payload.kind, payload.sessionId, runtimeStoragePath, runtimeBackend)
     );
@@ -11516,6 +11587,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     runtimeStoragePath: string,
     snapshot: RuntimeSupervisorSessionSnapshot
   ): Promise<void> {
+    if (!this.isRuntimeSupervisorEventAdmitted()) {
+      return;
+    }
     const binding = this.runtimeSessionBindings.get(
       this.buildRuntimeSessionBindingKey(snapshot.kind, snapshot.sessionId, runtimeStoragePath, runtimeBackend)
     );
@@ -11585,6 +11659,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     runtimeStoragePath: string,
     error?: Error
   ): void {
+    if (!this.isRuntimeSupervisorEventAdmitted()) {
+      return;
+    }
     for (const [nodeId, session] of this.agentSessions.entries()) {
       if (
         session.owner === 'supervisor' &&
@@ -19793,6 +19870,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!session) {
       return;
     }
+    if (session.owner === 'supervisor' && !this.isRuntimeSupervisorEventAdmitted()) {
+      return;
+    }
 
     const nextDelayMs = Math.max(0, delayMs);
     const dueAtMs = Date.now() + nextDelayMs;
@@ -19808,6 +19888,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.syncTimer = setTimeout(() => {
       const activeSession = this.getExecutionSessions(kind).get(nodeId);
       if (!activeSession) {
+        return;
+      }
+
+      if (activeSession.owner === 'supervisor' && !this.isRuntimeSupervisorEventAdmitted()) {
+        activeSession.syncTimer = undefined;
+        activeSession.syncDueAtMs = undefined;
         return;
       }
 
@@ -19852,6 +19938,35 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     for (const nodeId of this.terminalSessions.keys()) {
       await this.flushExecutionStateImmediately('terminal', nodeId);
+    }
+  }
+
+  private async flushAndDetachSupervisorExecutionSessionsForHostBoundary(): Promise<void> {
+    // Callbacks accepted before the boundary must finish before the final snapshot is captured.
+    await this.waitForPendingRuntimeSupervisorStateCallbacks();
+    for (const [kind, sessions] of [
+      ['agent', this.agentSessions],
+      ['terminal', this.terminalSessions]
+    ] as const) {
+      for (const [nodeId, session] of sessions) {
+        if (session.owner !== 'supervisor') {
+          continue;
+        }
+        if (typeof session.buffer === 'string' && session.terminalStateTracker) {
+          await this.flushExecutionStateImmediately(kind, nodeId);
+        } else {
+          this.flushExecutionStateSyncTimer(kind, nodeId);
+        }
+        this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId, session.runtimeSessionId);
+        if (session.outputFlushTimer) {
+          clearTimeout(session.outputFlushTimer);
+          session.outputFlushTimer = undefined;
+        }
+        session.pendingOutput = '';
+        if (this.scheduledExecutionOutputPosts) {
+          this.clearScheduledExecutionOutputPost(kind, nodeId);
+        }
+      }
     }
   }
 
