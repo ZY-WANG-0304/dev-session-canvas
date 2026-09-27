@@ -7,11 +7,19 @@ import { performance } from 'node:perf_hooks';
 import { parseArgs } from 'node:util';
 import esbuild from 'esbuild';
 
-const { values } = parseArgs({ options: { output: { type: 'string' }, preflight: { type: 'boolean' } } });
+const { values } = parseArgs({ options: { output: { type: 'string' }, preflight: { type: 'boolean' },
+  stage: { type: 'string' }, only: { type: 'string' } } });
+const stage = values.stage ?? 's11';
+assert.ok(stage === 's11' || stage === 's12', 'Only the frozen s11 and s12 business scenarios are supported');
+assert.ok(values.only === undefined || (stage === 's12' && values.only === 'runtime-lifecycle'),
+  'Only the unfinished s12 runtime-lifecycle scenario may be selected independently');
+const scenarios = values.only ? [values.only] : stage === 's11'
+  ? ['snapshot-normal', 'runtime-normal', 'paused-stop', 'isolation']
+  : ['snapshot-deactivation', 'runtime-lifecycle'];
 assert.equal(process.platform, 'linux');
 assert.equal(process.arch, 'x64');
 assert.equal(process.version, 'v25.6.0');
-assert.ok(!process.env.NODE_OPTIONS && !process.env.NODE_PATH, 'Remove Node injection variables before S11');
+assert.ok(!process.env.NODE_OPTIONS && !process.env.NODE_PATH, 'Remove Node injection variables before the Linux business run');
 assert.ok(values.output, 'Specify a new evidence directory with --output');
 const root = process.cwd();
 const outputDirectory = path.resolve(values.output);
@@ -46,30 +54,38 @@ const assets = factory.resolveLinuxExecutionProviderAssets(path.join(extensionRo
 const manifest = JSON.parse(await fs.readFile(path.join(path.dirname(assets.binaryPath), 'manifest.json')));
 assert.equal(manifest.runtime.name, 'node');
 assert.equal(manifest.libc.version, '2.35');
-const subjectPath = path.resolve('scripts/test/fixtures/linux-business-subject.mjs');
-const files = ['scripts/test/test-linux-execution-business.mjs', 'scripts/test/fixtures/linux-business-subject.mjs',
-  'scripts/test/fixtures/linux-business-host.mjs', 'scripts/test/fixtures/linux-business-supervisor.mjs'];
+const fixturePrefix = stage === 's11' ? 'linux-business' : 'linux-lifecycle';
+const subjectPath = path.resolve(`scripts/test/fixtures/${fixturePrefix}-subject.mjs`);
+const files = ['scripts/test/test-linux-execution-business.mjs', `scripts/test/fixtures/${fixturePrefix}-subject.mjs`,
+  `scripts/test/fixtures/${fixturePrefix}-host.mjs`,
+  `scripts/test/fixtures/${fixturePrefix}-${stage === 's11' ? 'supervisor' : 'runtime'}.mjs`];
 const fixedInputs = {};
 for (const file of files) fixedInputs[file] = digest(await fs.readFile(file));
 if (values.preflight) {
-  console.log(JSON.stringify({ preflight: true, assets, manifest, fixedInputs, nativeLoaded: false, providerStarted: false }));
+  console.log(JSON.stringify({ stage, scenarios, preflight: true, assets, manifest, fixedInputs,
+    nativeLoaded: false, providerStarted: false }));
   process.exit(0);
 }
 await fs.mkdir(outputDirectory);
 await fs.mkdir(path.join(outputDirectory, 'inputs'));
 for (const file of files) await fs.copyFile(file, path.join(outputDirectory, 'inputs', path.basename(file)));
 const subjectCopy = path.join(outputDirectory, 'inputs', path.basename(subjectPath));
-const schedule = { sourceCommit: 'ae3c42cf', executable: process.execPath, versions: process.versions,
+const schedule = { stage, sourceCommit: stage === 's11' ? 'ae3c42cf' : '7b480cbd', executable: process.execPath, versions: process.versions,
   platform: process.platform, arch: process.arch, manifest, assets, fixedInputs,
-  scenarios: ['snapshot-normal', 'runtime-normal', 'paused-stop', 'isolation'],
-  maximumSubjects: 5, caseBudgetMs: 45000, cleanupBudgetMs: 35000, subjectSafetyMs: 25000,
-  boundary: 'real Node authority/provider/PTY and disk; controlled VSCode services and reader connections; no UI/Electron/Agent' };
+  scenarios, partialSelection: values.only !== undefined,
+  maximumSubjects: values.only ? 1 : stage === 's11' ? 5 : 2,
+  caseBudgetMs: 45000, cleanupBudgetMs: 35000, subjectSafetyMs: 25000,
+  boundary: stage === 's11'
+    ? 'real Node authority/provider/PTY and disk; controlled VSCode services and reader connections; no UI/Electron/Agent'
+    : 'real Node Host/Supervisor/client/Unix socket/provider/PTY and disk; controlled VSCode services; no Webview/Electron/Agent or OS Host exit' };
 await json(path.join(outputDirectory, 'schedule.json'), schedule);
-const { runHostScenario } = await import('./fixtures/linux-business-host.mjs');
-const { runSupervisorScenario } = await import('./fixtures/linux-business-supervisor.mjs');
+const runHostScenario = stage === 's11' ? (await import('./fixtures/linux-business-host.mjs')).runHostScenario
+  : (await import('./fixtures/linux-lifecycle-host.mjs')).runHostLifecycleScenario;
+const runSupervisorScenario = stage === 's11' ? (await import('./fixtures/linux-business-supervisor.mjs')).runSupervisorScenario
+  : (await import('./fixtures/linux-lifecycle-runtime.mjs')).runRuntimeLifecycleScenario;
 const results = [];
 
-function contextFor(directory) {
+function contextFor(directory, maximumProviders) {
   const nonce = randomBytes(16).toString('hex');
   const probes = [];
   const executions = new Set();
@@ -79,13 +95,13 @@ function contextFor(directory) {
   let sealed = false;
   let taskSettled = false;
   const assertAdmission = () => {
-    if (sealed || performance.now() >= began + 45000) throw new Error('S11 scenario acquisition is closed');
+    if (sealed || performance.now() >= began + 45000) throw new Error(`${stage} scenario acquisition is closed`);
   };
   const until = async (condition, label, milliseconds = 8000) => {
     const deadline = Math.min(began + 45000, performance.now() + milliseconds);
     while (!condition()) {
       assertAdmission();
-      if (performance.now() >= deadline) throw new Error(`S11 observation deadline: ${label}`);
+      if (performance.now() >= deadline) throw new Error(`${stage} observation deadline: ${label}`);
       await delay(5);
     }
   };
@@ -93,7 +109,7 @@ function contextFor(directory) {
     let timer;
     try {
       return await Promise.race([promise, new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`S11 observation deadline: ${label}`)),
+        timer = setTimeout(() => reject(new Error(`${stage} observation deadline: ${label}`)),
           Math.max(0, Math.min(began + 45000, performance.now() + milliseconds) - performance.now()));
       })]);
     } finally { clearTimeout(timer); }
@@ -117,6 +133,7 @@ function contextFor(directory) {
   }
   const context = {
     directory, nonce, expectedHash: digest(nonce), subjectPath: subjectCopy, load, until, before,
+    assertActive: assertAdmission,
     seal() { sealed = true; for (const owner of owners) owner.closeAdmission(true); },
     taskSettled() { taskSettled = true; },
     trackExecution(execution) { executions.add(execution); },
@@ -125,7 +142,7 @@ function contextFor(directory) {
       if (sealed) owner.closeAdmission(true);
       assertAdmission();
     },
-    addCleanup(fn) { cleanups.push(fn); },
+    addCleanup(fn, timeoutMs = 2000) { cleanups.push({ fn, timeoutMs }); },
     launchSpec(label) {
       assert.match(label, /^[a-z0-9-]+$/);
       return { file: process.execPath, args: [subjectCopy, path.join(directory, label)], cwd: directory,
@@ -137,6 +154,7 @@ function contextFor(directory) {
       const options = factory.createLinuxExecutionOwnerOptions({ extensionRoot, mode });
       return { ...options, createTransport(identity) {
         assertAdmission();
+        assert.ok(probes.length < maximumProviders, 'The fixed scenario provider limit cannot be exceeded');
         const transport = options.createTransport(identity);
         const probe = { identity, transport, controls: [], commands: [], raw: [], rawBytes: 0, incomplete: false };
         probes.push(probe);
@@ -193,21 +211,29 @@ function contextFor(directory) {
     async cleanup() {
       context.seal();
       const actions = [];
+      const deadline = performance.now() + 35000;
       for (const cleanup of cleanups.reverse()) {
-        try { await Promise.race([cleanup(), delay(2000).then(() => { throw new Error('Fixture cleanup observation timed out'); })]); }
+        let timer;
+        try {
+          await Promise.race([cleanup.fn(), new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('Fixture cleanup observation timed out')),
+              Math.max(0, Math.min(cleanup.timeoutMs, deadline - performance.now())));
+          })]);
+        }
         catch (error) { actions.push({ step: 'fixture-release', error: String(error) }); }
+        finally { clearTimeout(timer); }
       }
       for (const owner of owners) for (const execution of owner.list()) executions.add(execution);
       for (const execution of executions) {
         if (!execution.snapshot().settled) {
           actions.push({ step: 'original-owner-stop', identity: execution.identity });
-          void execution.requestStop('S11 failure cleanup').catch(error => actions.push({ step: 'stop-error', error: String(error) }));
+          void execution.requestStop(`${stage} failure cleanup`).catch(error => actions.push({ step: 'stop-error', error: String(error) }));
         }
       }
-      const deadline = performance.now() + 35000;
       while ((!taskSettled || probes.some(probe => !probe.transport.snapshot().closed)) && performance.now() < deadline) await delay(10);
       for (const owner of owners) for (const execution of owner.list()) executions.add(execution);
-      const safe = taskSettled && probes.every(probe => probe.transport.snapshot().closed) && [...executions].every(execution => {
+      const safe = taskSettled && !actions.some(action => action.error)
+        && probes.every(probe => probe.transport.snapshot().closed) && [...executions].every(execution => {
         const snapshot = execution.snapshot().adapter;
         return !snapshot || (!snapshot.resourceLedgerIncomplete &&
           Object.values(snapshot.resources).every(resource => resource.current?.kind === 'released'));
@@ -229,12 +255,12 @@ function contextFor(directory) {
 for (const scenario of schedule.scenarios) {
   const directory = path.join(outputDirectory, scenario);
   await fs.mkdir(directory);
-  const context = contextFor(directory);
+  const context = contextFor(directory, scenario === 'isolation' ? 2 : 1);
   let first;
   let cleanup;
   const evidenceErrors = [];
   try {
-    const task = scenario === 'snapshot-normal' ? runHostScenario(context)
+    const task = scenario === 'snapshot-normal' || scenario === 'snapshot-deactivation' ? runHostScenario(context)
       : runSupervisorScenario(context, scenario === 'runtime-normal' ? 'normal' : scenario);
     void task.then(() => context.taskSettled(), () => context.taskSettled());
     const value = await context.before(task, `whole ${scenario}`, 45000);
@@ -258,7 +284,7 @@ for (const scenario of schedule.scenarios) {
   if (!result.pass || !cleanup.safe) break;
 }
 await json(path.join(outputDirectory, 'loaded-sources.json'), Object.fromEntries(inputs));
-await json(path.join(outputDirectory, 'report.json'), { results,
-  pass: results.length === 4 && results.every(result => result.pass && result.cleanupSafe),
+await json(path.join(outputDirectory, 'report.json'), { stage, scenarios, partialSelection: values.only !== undefined, results,
+  pass: results.length === schedule.scenarios.length && results.every(result => result.pass && result.cleanupSafe),
   unattempted: schedule.scenarios.slice(results.length), nativeEvidence: true, uiElectronAgentEvidence: false });
-if (results.length !== 4 || results.some(result => !result.pass || !result.cleanupSafe)) process.exitCode = 1;
+if (results.length !== schedule.scenarios.length || results.some(result => !result.pass || !result.cleanupSafe)) process.exitCode = 1;

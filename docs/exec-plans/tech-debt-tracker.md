@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-27 S12部分验证：生产接入31节首次1/2，Node实际Host活跃deactivation、SIGHUP后自身尾部、真实快照保存/无新执行重开通过。Runtime实际client/socket/创建和首次nonce完成后，夹具缺executionPerformanceDiagnostics数组而失败；补字段及8ms阈值纯回归已完成，没有修后原生样本。两个原执行均安全释放，但Runtime是失败清理stop/EOF，不代表detach/恢复/自动completed清理/重开或正常shutdown验收。下一只复验同一Runtime场景一次、新目录/最多一个主体，不重跑本地或扩诊断门槛；默认关闭、旧live/root不变，L-02至L-05、真实UI/Electron/Agent/跨平台总债务继续开放。以下历史原样保留。
+
 2026-09-27 S11有限原生业务验证：生产接入第30节记录Linux x64/glibc2.35/Node25.6.0唯一首次四场景五主体通过，真实正式provider/PTY、两authority交互和尾部、root/workspace快照读回、受控live重附着、暂停flush时stop及同Supervisor隔离均有证据。五个原transport关闭、四资源首报/当前released，无额外停止清理或证据截断。不关闭L-02至L-05：Host活跃退出尚未采样，Runtime无历史只验证显式delete后的拒绝，真实Host完成清理/节点重开、client/socket、Webview/Electron及真实Agent启动链仍需独立验证。三个Runtime registry仍有早期正文/状态，因fixture取消延迟persist未走正式关闭，不能称删除已落盘或重启无历史；保留证据，产品路径另验。下一S12只补实际宿主生命周期及完成节点重开/正式关闭落盘，不增加诊断框架前置；候选默认关闭、旧live/root/generation边界不变。Host首轮screen.rows字段重名只做工作树序列化窄修，原证据/哈希保留，不据此重跑原生。以下历史记录逐字保留。
 
 2026-09-26 S10交互与产物：生产接入第29节完成默认关闭的LaunchSpec尺寸、独立有界input/resize、同token非阻塞mutation、SIGHUP/Ctrl-C停止差异及两authority业务回写；正式worker、严格匹配Linux x64/glibc/Node或Electron的工厂、compile-only构建/显式导入已提供。受控整链确认input全序阻塞resize/消费的环等，修为输入内部保序、resize独立；成功resize的退出竞态和最终resume同步亦直接修正。未知resize不等于尺寸未变，需保留原观察、关闭后续mutation并拒绝完整最终状态，而非丢弃已接收尾部。本轮纯测试/受控模块、JS build及未加载binary的编译/import均不代证实际PTY、OS资源、VS Code/Electron或真实Agent。下一只按27.6固定环境/资产/输入/安全清理开展Linux实际业务验收，不追加通用诊断工具前置。L-02至L-05、生产时限、异常owner消失、用户恢复流程、真实Agent启动链和跨平台总债务继续开放；未改默认generation、旧live、root归属或Runtime completed无进程/无历史边界。以下历史记录逐字保留。

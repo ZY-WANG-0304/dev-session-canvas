@@ -21,6 +21,8 @@ updated_at: 2026-09-27
 
 ## 1. 当前结论与阶段边界
 
+2026-09-27 从`7b480cbd`推进第31节S12，唯一首次两场景exit1，1通过1失败。snapshot-only活跃Host调用原deactivation后，自身SIGHUP尾部、最终保存/重开及资源释放通过；Runtime真实client/socket/start和首次输入已发生，但prototype夹具缺诊断数组导致TypeError，尚未到detach/恢复/自动完成清理。两原执行均安全释放，Runtime的退出属于失败清理，不能替换失败首报。已仅补夹具字段并完成确定性纯验证，增加仅选失败场景的入口，没有第三次原生样本或业务改动。下一只冻结新输入/新目录复验同一Runtime场景一次，不重复本地样本或增加工具前置；S12、L-02至L-05及整体计划保持未完成，候选默认关闭。以下按原时点保留。
+
 2026-09-27 从`ae3c42cf`完成第30节S11唯一首次有限业务采集：Linux x64/glibc 2.35、Node25.6.0正式工厂/provider与真实PTY，四场景/五主体通过，所有原transport关闭、四类资源释放且无额外停止清理。确认两authority交互与主体尾部、snapshot-only真实文件保存/重开、受控连接live重附着、暂停消费下stop及同Supervisor隔离。没有修改业务代码或启用默认候选。VS Code服务和reader连接仍受控，Runtime删除后拒绝重附着不代证Host自动完成清理/节点重开；Host活跃退出、真实Webview/Electron、Agent和其他平台未验收。下一有限项补实际宿主生命周期与Runtime完成节点重开路径，不追加诊断框架；L-02至L-05和整体计划仍开放。以下阶段按原时点保留。
 
 2026-09-26 从`7a39497b`实施第29节S10：Linux候选的初始尺寸、有界input/resize、原token非阻塞mutation、按执行种类停止、两authority业务回写及正式worker/资产工厂已接线，继续默认关闭。组合验证发现并修复阻塞input与resize/输出消费的环等；源码复核补齐已成功resize与退出竞态、最终Agent resume等价行为。当前证据仅为受控实际模块、JS构建和一次未加载的Linux原生产物编译/显式导入，不是PTY、真实Agent、VS Code/Electron或跨平台通过。下一S11按27.6固定实际Linux业务输入、匹配环境/资产与安全清理后采集；不再追加通用诊断门槛，L-02至L-05和整体退出完整性仍开放。以下阶段按原时点保留。
@@ -1246,3 +1248,51 @@ S10关闭本次交互和正式资产接线待办，不关闭实际Linux交互验
 S11关闭的是固定Linux Node业务样本，不是整个产品退出验收。下一S12聚焦两个仍缺的用户工作流：snapshot-only活跃会话随Host正常离开而停止、尾部保存和原资源释放；live-runtime实际Host/client连接detach后仍运行，完成后经Host原清理路径重新打开节点且无新执行/正文，同时检查原正式关闭落盘，不能仅验内存缺席。沿既有Host/Supervisor/client/reader接线补验，不用测试直接delete代替Host自动清理，不再增加通用诊断模型或重复本轮四场景。实际VS Code/Electron入口若需要匹配产物，先核对运行时和构建；Node产物不可冒用，受控替身结果独立标注，不宣称UI通过。
 
 真实Agent/CLI包装主体、真实Webview最终应用、macOS/Windows、异常owner消失与用户恢复、生产预算及默认准入仍需各自证据。Linux本轮正常/主动停止成功不能关闭L-02至L-05总项。候选默认关闭，旧live原绑定、Runtime completed无进程/无历史、普通后代责任和F-03稳定root归属均不变；无业务改动、push或PR，整体ExecPlan保持active。
+
+## 31. S12 宿主生命周期与完成重开
+
+### 31.1 运行前固定范围
+
+2026-09-27，业务输入`7b480cbd`。只执行两个有限Linux Node样本、最多两个新Terminal主体，复用S10正式匹配产物和S11证据/原owner清理入口；不重跑S11矩阵，不新建通用诊断设施。开始前仍检查Linux x64/glibc2.35/Node25.6.0与worker/native/manifest摘要，不重建资产或加载到authority。测试入口增加显式S12选择，S11原场景及断言保持。全部首次输入/结果存入新目录，发现确定性失败即保留并停止，先定位，不自动重跑取绿。
+
+第一例是snapshot-only活跃Host正常离开：实际Host启动、nonce计算及resize后，确认原主体仍活着、没有进程/源终态，再调用原prepareForDeactivation，不用测试直接stop或先finish代替。受控主体在收到SIGHUP后才写自身UTF-8/ANSI尾部，完成write及证据记录后exit7；最终尺寸119x41、ROOT/红色中文/光标(6,4)。核对原Host固定20秒关闭报告、原执行/消费/资源、真实root/workspace最终快照及新Host load/attach不新建执行。VSCode服务和UI生命周期仍受控，零页面reader不冒充最终Webview应用。
+
+第二例是live-runtime实际连接与完成重开：真实RuntimeSupervisorServer.start监听唯一原Unix socket，Host原RuntimeSupervisorClient连接/hello/create/input/resize；后端只返回本轮端点，startSupervisor明确拒绝，不能意外启动旧launcher。经Host prepareForDeactivation断开原client，Supervisor与主体保持原身份，再由新Host读取实际保存绑定并恢复连接、继续计算新输入。主体finish自然exit7后，只等待Host原轻量终态保存及自动complete/delete，不由fixture显式delete替代；重建Host再load/restore/attach应无正文、无新进程。最后调用真实Supervisor prepareForShutdown，分别确认registry严格flush、原listener/socket关闭及原执行资源，不以测试清空Map/取消persistTimer冒充正常落盘。无浏览器reader时仅证明对应零reader路径；不宣称Webview/main或真实OS宿主进程退出通过。
+
+### 31.2 安全、证据和停止条件
+
+仍使用每场景45秒、主体25秒安全退出及清理35秒观察，候选8/13/20秒不改。观察Host/Supervisor关闭允许覆盖其原20秒报告边界，不用测试默认8秒抢先代替产品首报。主体无后代/外部服务，SIGHUP处理写入仍异步，安全退出124不计成功。采样目录独占新建、证据wx；实际socket只使用本轮新建的短路径目录，不碰用户端点。
+
+原owner在取得资源前登记；超时/失败同步封闭create/connect准入，先释放自设读者/连接，再沿捕获原owner收尾，不按裸PID或进程名杀进程。fixture资源清理失败必须影响cleanupSafe，不能只看到provider关闭就遗漏仍打开的监听器/客户端；被测关闭的首次失败与测试补救分开保存。不得在采样后补写registry使结果变绿。保留主体成功write、原output/control、两Host的保存和重新加载证据，以及server原关闭报告；Node API调用、真实socket/PTY与受控VSCode/页面分别声明。本轮不开默认候选、不改旧live/root/generation、不push/PR；实际结果随后追加。
+
+### 31.3 首次结果与窄修边界
+
+首次`.debug/s12-linux-lifecycle-first`实际exit1：snapshot-deactivation通过，runtime-lifecycle首次输入后在诊断记录处TypeError，整轮1/2，不重跑。只读定位为prototype夹具漏初始化原类`executionPerformanceDiagnostics=[]`字段，不改业务诊断方法。后续仅补此字段及确定性纯验证，并在已有入口增加`--stage s12 --only runtime-lifecycle`固定选择，明确报告所选场景，防止为复验失败例再启动已通过主体；当前不运行第三个原生主体。原始first/cleanup/inputs/哈希不改，详细证据与下一次新输入规则随后追加。
+
+四份S12输入为原`scripts/test/test-linux-execution-business.mjs`加`fixtures/linux-lifecycle-{subject,host,runtime}.mjs`。shared Host夹具服务两个样本，不改旧S11三份fixture。runner新增stage固定选择、每场景一个provider上限、真实net取得前的同步封闭检查，以及清理异常影响cleanupSafe；原server关闭22秒观察计入同一个35秒清理总窗。首次前发现第二nonce不符合主体32hex协议，改为新的32hex输入，不放宽主体断言；这发生在采样前，不算原生先败后修。
+
+运行命令均在仓库根：`node scripts/test/test-linux-execution-business.mjs --stage s12 --preflight --output .debug/s12-linux-lifecycle-first`不加载native或启动provider，随后唯一`node scripts/test/test-linux-execution-business.mjs --stage s12 --output .debug/s12-linux-lifecycle-first`实际exit1。环境及worker/binary/manifest摘要与30.3相同，无重建。输入、schedule、loaded-sources和逐场景原始帧/首次/cleanup保持；独立只读核对四份冻结输入及60份实际加载源码摘要一致。
+
+### 31.4 已通过的活跃Host边界
+
+snapshot-deactivation在关闭前原执行running、accepted/consumed=3、无process/source/seal、stopRequested=false。实际prepareForDeactivation封闭新准入，原关闭原因host-deactivation；主体独立记录SIGHUP后才生成最终尾部并exit7，真实source EOF。最后5帧、accepted/consumed=5、finalRevision6；成功write152B对应ONLCR后的PTY157B，逐字节一致。保存的119x41、ROOT/红色中文、零基光标(6,4)由真实tracker重建核对。
+
+原Host报告local/canvasSnapshot/remoteDetach三域settled，deadline-startedAt=20000仅证明沿用原候选预算，并未耗尽期限或验证其生产充分性。实际final保存先于成功关闭报告，root/workspace终端metadata一致、lifecycle=closed且lastExitCode7、snapshot-only、liveSession=false；新Host加载真实root文件后attach无新执行。两次关闭返回原冻结报告，永久准入不能恢复。四资源首报/当前released、provider原transport闭合，未依赖fixture额外stop。
+
+本例证明Node下调用实际Host API的活跃离开，不是VS Code实际deactivate调度、Electron退出宽限或浏览器reader验收。remoteDetach为空集合、无Webview reader，不能借其settled声称非空远端或页面回执通过。
+
+### 31.5 Runtime失败、根因与纯修正
+
+Runtime已通过原Host/client/Unix socket建立会话，首个nonce有39B实际written回执且主体HASH正确。随后`CanvasPanelManager.ts:18142`的成功输入finally进入`:20806`诊断记录，在`:20811`读取缺失数组的push时抛TypeError；原类`:1340`本来就初始化`executionPerformanceDiagnostics=[]`，是夹具Object.create绕过实例初始化造成，不是当前证据证明生产实例存在缺字段。成功host-input-write仅在耗时达到8ms时保留，因此快样本不报错也不能验证夹具完整；本地owned输入又走另一直接路径。
+
+修正只在`linux-lifecycle-host.mjs`补原数组，不stub真实方法。内联Node/TypeScript AST纯验证提取原诊断方法、保留条件和clone helper：旧夹具7ms样本过滤、8ms样本确定复现TypeError；补字段后原方法保存内容相同但独立引用的样本。前后断言均通过，未用native证明修正后的完整Runtime路径。首次Host fixture摘要`2d8f7d7a97b17de64e423047d8e589cc2c4ba891414c0ab5bc565bfb1fb1c98b`，修后`8b480dcdda0758e5c87e0e5391e1a0693e71683a6861d0ef34beeed3725f9b69`，原inputs/schedule不倒写。
+
+Runtime未执行resize、Host正常detach、新Host恢复、自然finish、自动completed清理、第三Host重开或预定正常server shutdown断言。其失败清理调用原prepareForShutdown，原closeObservation.reason为`S12 original runtime cleanup.`，主体收到SIGHUP后exit7；3帧、140B成功write到PTY144B、EOF及资源释放仅作为清理证据。外层cleanup.actions=[]不表示没有补救stop；registry留有closed会话及正文，是本轮未走到Host自动删除的状态，不认定为删除产品路径通过或已证缺陷。
+
+两个原provider和两个原主体身份独立，原transport全closed/exited/disconnected/dataEnded/dataClosed，四资源first/current均released，cleanupSafe均true，无cancelOutput/force/provider TERM/KILL、stderr或证据截断。Runtime夹具清理中的原socket/listener close断言也已完成，测试进程实际exit1；这些安全事实不改变首轮1/2或将业务结论补绿。
+
+### 31.6 下一有限复验与剩余范围
+
+只继续未完成的Runtime样本：先固定修后提交/输入摘要，在全新`.debug/s12-linux-runtime-retry-first`目录运行`node scripts/test/test-linux-execution-business.mjs --stage s12 --only runtime-lifecycle --output .debug/s12-linux-runtime-retry-first`一次，最多一个主体；该目录仍未采样。运行前同参数加`--preflight`核对资产/所选场景，不创建目录或资源。report显式记录scenarios及partialSelection，单例通过也不能改写首轮1/2或宣称重跑全矩阵。新失败仍保留并先定位，不继续自动重跑。
+
+原Runtime断言不放宽：真实Host detach/恢复、不同nonce、自然finish、Host自动保存/delete、重开无正文/无新执行、正式shutdown严格flush和原socket/listener关闭。无需另起工具研究，不能改成fixture显式delete取绿。真实VS Code/Electron/Webview、Agent启动链、跨平台、生产预算与异常owner消失仍未验收；默认关闭、旧live绑定和root边界不改，本轮只本地提交。
