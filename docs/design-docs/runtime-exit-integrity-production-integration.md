@@ -14,12 +14,14 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-27
+updated_at: 2026-09-28
 ---
 
 # 退出完整性生产接入与故障域收敛
 
 ## 1. 当前结论与阶段边界
+
+2026-09-28，当前S16见31.15，输入`a74844c4`。真实Host回归先红证明旧completed保存失败可复活已清root；最小修正只保护普通completed在reader/persist等待窗口的原投影/session身份，并在并发时局部恢复节点执行字段，strict分支不改。Host回归25次、wiring95/95、checkpoint、paged completion四组合及typecheck通过，独立review无阻塞。完整reset/reload事务、首次pending等待后callback注入、新业务准入及旧Runtime delete之后的迟到UI仍开放；template仅验证prepare入口，不恢复global gate/core锁/root全局drain，不新增native或平台样本。以下S15及更早段落为原时点记录，不覆盖本段。
 
 2026-09-27 从`670320b8`推进S15，正式范围按31.14收窄为普通 `prepareForDeactivation()` 的首次内部 Promise 缓存：同一 Host 的重复永久离开复用首次配置和同一成功/失败结果，不重复执行保存、detach 或删除，不承诺public async调用返回的Promise对象引用相同。candidate/non-native原关闭路径，以及reset/reload/root/template实现保持原状；本轮不是非永久边界的全流程串行化。审计中试作的core锁、临时关闭非永久准入和root全局drain方案已撤回，其局部测试不计交付证据。正式最小修改已通过13次Host边界测试调用（旧8/新增5）、Host wiring95/95、checkpoint、typecheck与测试脚本语法检查，新增并发用例在未改业务基线先红；独立review无阻塞，reviewer复跑目标测试及`git diff --check`通过。真实VS Code/Electron/Webview、Agent与跨平台、非永久跨代次写入及未完成operation仍开放。以下S12及更早“当前/下一”段落保留为历史，当前范围以本S15段落及31.14为准。
 
@@ -1396,3 +1398,25 @@ Runtime client 获取默认受永久 gate 保护。已经被 gate 关闭前接�
 定向验收只扩 `scripts/test/test-runtime-host-deactivation-integrity.mjs`。新增并发用例在未改业务的`670320b8`源码上先红：`testOrdinaryDeactivationSharesInFlightBoundary`断言flush应为1、实际为2（`2 !== 1`，exit1）。正式最小修正后旧8次加新增5次共13次测试调用通过，新增覆盖并发单flush、preserve true/false首次配置冻结与重复完成（普通delete一次）、首次flush失败保持原Error、首次配置同步异常保持原Error。Host owner wiring95/95、checkpoint refresh、仓库根`npm run typecheck`及`node --check scripts/test/test-runtime-host-deactivation-integrity.mjs`均实际通过；独立review无阻塞，reviewer复跑目标测试及`git diff --check`通过。不以撤回候选绿色结果替代这些验证，没有新增PTY/native、runner、真实VS Code/Electron/Webview、Agent或跨平台采集，整体退出完整性及L-02至L-05继续开放。
 
 下一有限阶段的受控验收输入固定为：普通reset/reload完整入口重叠，覆盖core之后的load/state replacement/persist；pending state callback在首轮wait后进入；root A clear/template期间root B保持live，且strict delete失败时保留A的原绑定与状态。这些均待实现和待验证，不由S15的首次结果复用推导为通过；只沿现有Host回归验证，不新增native样本或工具门槛。
+
+### 31.15 S16 普通completed续体的节点级保护
+
+2026-09-27，验证阶段输入固定为`a74844c44aef1bfef5c2d13adbb29ddaf7389777`。本阶段先沿31.14的三类输入取得最小复现，直接扩展已有`scripts/test/test-runtime-host-deactivation-integrity.mjs`中的实际Host方法回归；不新建诊断工具，不启动PTY/native、真实Supervisor或平台runner。运行前只登记以下待验证定义，实际结果随后分账记录；S15通过仅覆盖普通永久离开的首次结果复用。
+
+第一类固定普通reset/reload完整入口的重叠顺序，观察`prepareForHostBoundaryCore`返回后的load、state replacement与persist，而不是只统计core调用次数。第二类让state callback在首次pending集合等待之后进入，并控制其异步续体在状态替换前后恢复，核对旧binding是否仍能保存或回滚到新状态。两类均须保留实际入口、事件顺序和最终state/保存内容，分别记录已复现、未复现或夹具阻断；源码上的可能性和局部绿色不能代替该顺序的实证。
+
+第三类只作用于root A的clear/template，保持root B live并观察其准入和交互是否被无关操作拖住；另以A的strict delete失败核对错误传播及原绑定、节点状态保持。不能用全局pending等待替代受影响binding的收尾，也不能将严格删除降为best-effort后清空状态。实际受控结果只说明Host逻辑层，不推导真实宿主、Agent或其他平台已经通过。
+
+实现方案只在最小复现及责任边界确认后收敛。本阶段不批准全局准入gate、仅锁core或root全局drain，也不恢复S15已撤回的候选；不停止因Host detach而保留的Supervisor执行，不改变旧live绑定、Runtime completed无进程/无历史及候选默认关闭。新失败及原断言须保留，不通过扩展工具门槛或先改业务再补结论跳过定位。
+
+本轮定位先收敛到真实`CanvasPanelManager.applyCompletedRuntimeSupervisorSnapshot()`的普通completed callback。只读源码确认：它在reader或persist等待后，普通失败分支会无条件恢复整个`stateBeforeCompleted`及原root缓存；若等待期间root A已清除或root B已更新，该写法可能复活A或覆盖B。随后默认Host回归在未改业务基线先红：真实root A clear已成功，旧completed保存再reject，却恢复`terminal-1`，实际A+B而预期只有B；主会话与测试代理分别实跑复现。这证明该Host状态回滚竞态，不代表三类输入已经全部实证；调用链没有平台专属条件，但未采集其他平台运行结果。
+
+最小修正只作用于无`finalizationRecord`的普通completed分支，以节点执行metadata的本次投影引用及原session对象身份复核异步续体；reader等待后、保存前及persist完成后再次检查，过期则抛出内部错误，阻止在这些等待窗口已经过期的旧外层继续发布exit通知。root已清除或同ID节点已替换时，不得复活旧节点，也不得解绑、dispose或删除replacement。strict `finalizationRecord`分支保留既有deadline/binding断言与回滚语义，不借普通分支扩大其保证。
+
+正式业务diff仅限`applyCompletedRuntimeSupervisorSnapshot()`方法；reset/reload/root/template入口及旧strict删除路径没有重写，相关root用例是在原入口上验证隔离和错误保留，不代表引入了新的事务框架。
+
+普通失败回滚分两种情况：整体state仍恰为本次投影且身份有效时，保留无并发情况下的原state/cache恢复；整体state已经变化但该节点投影和session身份仍有效时，只恢复A的status、summary及对应kind执行metadata，保留A的title/position、其他节点和当前root缓存。投影或session已替换则不回滚。普通reset/reload完整事务仲裁、新业务admission及三类输入其余部分继续开放，不由该节点级修正代称为已解决，也不因此追加全局锁或gate。
+
+最小业务修正后，Host回归最终25次通过：原13次，加root clear/template preparation成功/失败4次、已清root不回滚复活1次、节点局部回滚1次、replacement保护2次、受控Agent普通分支2次及reader等待期间clear/replace2次，主会话已复跑。template只调用真实prepare入口，不代证完整apply。Host wiring95/95、checkpoint refresh、paged completion的Terminal/Agent与disconnect四组合、multi-root composition及仓库根`npm run typecheck`均通过；目标脚本`node --check`与最终工作树`git diff --check`通过，独立review无阻塞且reviewer复跑目标测试及diff检查通过。普通reset/reload完整入口重叠、首次pending等待之后注入callback的完整边界顺序尚未运行，仍是开放验收项。
+
+本轮保护限于reader/persist等待后的旧回滚及后续同步清理，不泛化为所有迟到UI安全：原session已同步释放后，等待旧Runtime delete再返回外层发布exit的后段仍有既有reader/UI身份竞态，未纳入本次修正。正常queued sync/resize/scrollback flush受`terminalHistoryDiscarded`拦截，不能仅凭投影引用检查就登记为已确认的false-stale缺陷。没有新增PTY/native、真实宿主/Agent启动链或跨平台证据，整体退出完整性继续开放；剩余项另按有限输入确认，不自动扩展为下一轮矩阵。

@@ -67,6 +67,16 @@ function sleep(ms = 0) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 function makeSession() {
   return {
     owner: 'supervisor',
@@ -542,6 +552,377 @@ async function testOrdinaryDeactivationRetainsConfigurationFailure() {
   assert.equal(f.persisted.length, 0);
 }
 
+async function makeRootHost() {
+  const f = makeHost();
+  const rootA = { id: 'root-a', role: 'workspace-root', workspaceRootPath: '/controlled/root-a',
+    title: 'Root A', position: { x: 0, y: 0 }, size: { width: 900, height: 700 } };
+  const rootB = { ...rootA, id: 'root-b', workspaceRootPath: '/controlled/root-b', title: 'Root B',
+    position: { x: 1000, y: 0 } };
+  f.node.groupId = rootA.id;
+  const nodeB = structuredClone(f.node);
+  nodeB.id = 'terminal-2';
+  nodeB.groupId = rootB.id;
+  nodeB.metadata.terminal.runtimeSessionId = 'session-2';
+  const sessionB = { ...makeSession(), sessionId: 'session-2', runtimeSessionId: 'session-2' };
+  f.host.terminalSessions.set(nodeB.id, sessionB);
+  f.host.runtimeSessionBindings.set(
+    f.host.buildRuntimeSessionBindingKey('terminal', 'session-2', '/controlled/runtime', 'legacy-detached'),
+    { kind: 'terminal', nodeId: nodeB.id, runtimeSessionId: 'session-2' }
+  );
+  f.host.state = { ...f.host.state, nodes: [f.node, nodeB], groups: [rootA, rootB] };
+  const snapshots = [];
+  const deletes = [];
+  let disposals = 0;
+  Object.assign(f.host, {
+    activeSurface: undefined,
+    executionSessionOperationTokens: new Map(),
+    pendingTerminalInitialInputDispatches: new Map(),
+    activeAssociatedNoteMarkdownEdits: new Map(),
+    getMultiRootWorkspaceFoldersForComposition: () => [
+      { path: rootA.workspaceRootPath, name: rootA.title },
+      { path: rootB.workspaceRootPath, name: rootB.title }
+    ],
+    getRuntimeHostBaseStoragePath: () => '/controlled/runtime',
+    getRuntimeStoragePathFromBackend: () => '/controlled/runtime',
+    getRuntimeSupervisorScriptPath: () => '/controlled/supervisor.js',
+    getRuntimeSupervisorLauncherScriptPath: () => '/controlled/launcher.js',
+    writeRootLocalCanvasSnapshot: (rootPath, state) => snapshots.push({ rootPath, state }),
+    reconcileCanvasFileArtifacts: state => state,
+    notifySidebarStateChanged() {},
+    bridgeExecutionAttentionSignals: async () => undefined,
+    queueExecutionStateSync() {},
+    queueExecutionOutput() {},
+    recordExecutionPerformanceDiagnostics() {},
+    postExecutionExitWithFinalSnapshot: async () => undefined
+  });
+  const backend = {
+    kind: 'legacy-detached', guarantee: 'best-effort', label: 'controlled',
+    paths: { storageDir: '/controlled/runtime/storage', socketPath: '/controlled/runtime/socket' },
+    startSupervisor: async () => undefined
+  };
+  f.host.getRuntimeHostBackend = () => backend;
+  const client = await f.host.getRuntimeSupervisorClientForBackend(backend, { deferConnection: true });
+  client.ensureConnected = async () => undefined;
+  client.deleteSession = async request => { deletes.push(request.sessionId); };
+  client.dispose = () => { disposals += 1; };
+  const emitRootBOutput = chunk => client.options.onSessionOutput({
+    kind: 'terminal', sessionId: 'session-2', chunk, outputSequence: sessionB.outputSequence + 1
+  });
+  return { ...f, rootA, rootB, nodeB, sessionB, client, snapshots, deletes, emitRootBOutput,
+    getDisposals: () => disposals };
+}
+
+async function testRootBoundaryPreservesOtherRootAndStrictFailure(mode, failDelete) {
+  const f = await makeRootHost();
+  const deletion = deferred();
+  const deletionStarted = deferred();
+  const failure = new Error('controlled strict root deletion failure');
+  f.client.deleteSession = async request => {
+    f.deletes.push(request.sessionId);
+    deletionStarted.resolve();
+    await deletion.promise;
+  };
+  const stateBefore = structuredClone(f.host.state);
+  const bindingBefore = [...f.host.runtimeSessionBindings.entries()];
+  const operation = mode === 'clear'
+    ? f.host.clearWorkspaceRootCanvas(f.rootA.workspaceRootPath)
+    : f.host.prepareWorkspaceRootCanvasForTemplateReset(f.rootA, f.rootA.workspaceRootPath);
+  const observed = operation.then(value => ({ value }), error => ({ error }));
+  await Promise.race([deletionStarted.promise, observed.then(result => {
+    if (result.error) throw result.error;
+    assert.fail('root cleanup returned before issuing the controlled strict delete');
+  })]);
+  f.emitRootBOutput(' during root A cleanup');
+  assert.equal(f.sessionB.buffer, 'live output during root A cleanup');
+  assert.equal(f.sessionB.outputSequence, 3);
+  assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, true);
+  assert.strictEqual(f.host.terminalSessions.get(f.nodeB.id), f.sessionB);
+  assert.equal(f.sessionB.stopRequested, false);
+  assert.equal(f.getDisposals(), 0, 'root A cleanup does not dispose the shared Supervisor client');
+
+  if (failDelete) deletion.reject(failure);
+  else deletion.resolve();
+  const result = await observed;
+  assert.deepEqual(f.deletes, ['session-1'], 'root cleanup only deletes its original session');
+  if (failDelete) {
+    if (mode === 'clear') assert.equal(result.value, false);
+    else assert.equal(result.error?.message, failure.message);
+    assert.deepEqual(f.host.state, stateBefore, 'strict delete failure preserves the composed state');
+    assert.strictEqual(f.host.terminalSessions.get(f.node.id), f.session);
+    assert.equal(f.session.stopRequested, false);
+    assert.deepEqual([...f.host.runtimeSessionBindings.entries()], bindingBefore);
+    assert.deepEqual(f.snapshots, [], 'strict delete failure never saves an empty root');
+    assert.deepEqual(f.persisted, []);
+  } else {
+    assert.equal(result.error, undefined);
+    assert.equal(f.host.terminalSessions.has(f.node.id), false);
+    if (mode === 'clear') {
+      assert.equal(result.value, true);
+      assert.deepEqual(f.host.state.nodes.map(node => node.id), [f.nodeB.id]);
+      assert.deepEqual(f.snapshots.map(snapshot => snapshot.rootPath), [f.rootA.workspaceRootPath]);
+    } else {
+      assert.deepEqual(f.host.state, stateBefore, 'template preparation leaves replacement to the caller');
+      assert.deepEqual(f.snapshots, []);
+    }
+  }
+  f.emitRootBOutput(' after root A cleanup');
+  assert.equal(f.sessionB.buffer, 'live output during root A cleanup after root A cleanup');
+  assert.equal(f.sessionB.stopRequested, false);
+  assert.equal(f.getDisposals(), 0);
+}
+
+async function startDelayedCompletedCallback(f) {
+  const completedPersistence = deferred();
+  const callbackEnteredPersistence = deferred();
+  const persist = f.host.persistState;
+  f.host.persistState = options => {
+    if (options.reason === 'runtime-supervisor-completed-snapshot') {
+      callbackEnteredPersistence.resolve();
+      return completedPersistence.promise;
+    }
+    return persist(options);
+  };
+  f.client.options.onSessionState({
+    kind: f.node.kind, sessionId: 'session-1', live: false,
+    lifecycle: f.node.kind === 'agent' ? 'stopped' : 'closed',
+    runtimeBackend: 'legacy-detached', output: 'tail', cols: 119, rows: 41
+  });
+  await Promise.race([
+    callbackEnteredPersistence.promise,
+    f.host.waitForPendingRuntimeSupervisorStateCallbacks().then(() => {
+      assert.fail(`completed callback did not reach persistence: ${JSON.stringify(f.diagnostics)}`);
+    })
+  ]);
+  assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks.size, 1);
+  return completedPersistence;
+}
+
+async function testAcceptedCallbackCannotRollbackClearedRoot() {
+  const f = await makeRootHost();
+  const completedPersistence = await startDelayedCompletedCallback(f);
+  assert.equal(await f.host.clearWorkspaceRootCanvas(f.rootA.workspaceRootPath), true);
+  assert.deepEqual(f.host.state.nodes.map(node => node.id), [f.nodeB.id]);
+  f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(node => ({ ...node, title: 'Root B edited' })) };
+  f.emitRootBOutput(' while root A callback waits');
+  completedPersistence.reject(new Error('controlled delayed completed persistence failure'));
+  await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+  assert.deepEqual(f.host.state.nodes.map(node => node.id), [f.nodeB.id],
+    'an accepted callback failure must not restore root A after clear completed');
+  assert.equal(f.host.state.nodes[0].title, 'Root B edited');
+  assert.equal(f.sessionB.buffer, 'live output while root A callback waits');
+  assert.equal(f.host.terminalSessions.has(f.node.id), false);
+}
+
+async function testCompletedFailureOnlyRollsBackOriginalExecution() {
+  const f = await makeRootHost();
+  const originalExecution = structuredClone(f.node);
+  const completedPersistence = await startDelayedCompletedCallback(f);
+  const groups = f.host.state.groups.map(group => ({ ...group, title: `${group.title} edited` }));
+  f.host.state = {
+    ...f.host.state,
+    groups,
+    nodes: f.host.state.nodes.map(node => ({
+      ...node, title: `${node.id} edited`, position: { x: 250, y: 350 },
+      metadata: { ...node.metadata, annotation: 'edited during completion' }
+    }))
+  };
+  const changedNodeB = structuredClone(f.host.state.nodes.find(node => node.id === f.nodeB.id));
+  const rootLocalStates = [{ rootPath: f.rootB.workspaceRootPath, state: { marker: 'latest root cache' } }];
+  const overlay = { marker: 'latest overlay' };
+  f.host.lastLoadedRootLocalStates = rootLocalStates;
+  f.host.multiRootOverlay = overlay;
+  completedPersistence.reject(new Error('controlled completed persistence failure'));
+  await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+
+  const nodeA = f.host.state.nodes.find(node => node.id === f.node.id);
+  assert.equal(nodeA.status, originalExecution.status);
+  assert.equal(nodeA.summary, originalExecution.summary);
+  assert.deepEqual(nodeA.metadata.terminal, originalExecution.metadata.terminal,
+    'failed completion restores only its original execution fields');
+  assert.equal(nodeA.title, `${f.node.id} edited`);
+  assert.deepEqual(nodeA.position, { x: 250, y: 350 });
+  assert.equal(nodeA.metadata.annotation, 'edited during completion');
+  assert.deepEqual(f.host.state.nodes.find(node => node.id === f.nodeB.id), changedNodeB);
+  assert.strictEqual(f.host.state.groups, groups);
+  assert.strictEqual(f.host.lastLoadedRootLocalStates, rootLocalStates);
+  assert.strictEqual(f.host.multiRootOverlay, overlay);
+  assert.strictEqual(f.host.terminalSessions.get(f.node.id), f.session);
+  assert.equal(f.host.runtimeSessionBindings.size, 2);
+  assert.deepEqual(f.deletes, [], 'failed completion cannot delete the original live binding');
+}
+
+async function testCompletedContinuationCannotChangeReplacement(failPersistence) {
+  const f = await makeRootHost();
+  const completedPersistence = await startDelayedCompletedCallback(f);
+  const successor = { ...makeSession(), sessionId: 'successor', runtimeSessionId: 'successor' };
+  const successorNode = {
+    ...structuredClone(f.node), title: 'Replacement execution',
+    metadata: { terminal: { ...f.node.metadata.terminal, runtimeSessionId: 'successor' } }
+  };
+  f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(node => node.id === f.node.id ? successorNode : node) };
+  f.host.terminalSessions.set(f.node.id, successor);
+  f.host.unbindRuntimeSession('session-1', '/controlled/runtime', 'terminal', 'legacy-detached');
+  const successorBindingKey = f.host.buildRuntimeSessionBindingKey(
+    'terminal', 'successor', '/controlled/runtime', 'legacy-detached'
+  );
+  const successorBinding = { kind: 'terminal', nodeId: f.node.id, runtimeSessionId: 'successor' };
+  f.host.runtimeSessionBindings.set(successorBindingKey, successorBinding);
+  if (failPersistence) completedPersistence.reject(new Error('controlled stale completion failure'));
+  else completedPersistence.resolve();
+  await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+
+  assert.strictEqual(f.host.state.nodes.find(node => node.id === f.node.id), successorNode,
+    'an old completed continuation cannot replace the successor node');
+  assert.strictEqual(f.host.terminalSessions.get(f.node.id), successor,
+    'an old completed continuation cannot dispose the successor session');
+  assert.strictEqual(f.host.runtimeSessionBindings.get(successorBindingKey), successorBinding);
+  assert.equal(successor.stopRequested, false);
+  assert.equal(f.deletes.includes('successor'), false);
+}
+
+function makeRootAAgent(f) {
+  f.host.terminalSessions.delete(f.node.id);
+  f.host.unbindRuntimeSession('session-1', '/controlled/runtime', 'terminal', 'legacy-detached');
+  f.node.kind = 'agent';
+  f.node.metadata = { agent: {
+    ...f.node.metadata.terminal, provider: 'codex', resumeStrategy: 'none', lifecycle: 'running'
+  } };
+  f.session.agentProvider = 'codex';
+  f.host.agentSessions.set(f.node.id, f.session);
+  f.host.runtimeSessionBindings.set(
+    f.host.buildRuntimeSessionBindingKey('agent', 'session-1', '/controlled/runtime', 'legacy-detached'),
+    { kind: 'agent', nodeId: f.node.id, runtimeSessionId: 'session-1' }
+  );
+}
+
+async function testAgentCompletedFailurePreservesConcurrentEdits() {
+  const f = await makeRootHost();
+  makeRootAAgent(f);
+  const originalAgent = structuredClone(f.node);
+  const completedPersistence = await startDelayedCompletedCallback(f);
+  f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(node => ({
+    ...node, title: `${node.id} concurrently edited`, position: { x: 425, y: 525 }
+  })) };
+  const editedRootB = structuredClone(f.host.state.nodes.find(node => node.id === f.nodeB.id));
+  f.emitRootBOutput(' during agent finalization');
+  completedPersistence.reject(new Error('controlled Agent completed persistence failure'));
+  await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+
+  const agent = f.host.state.nodes.find(node => node.id === f.node.id);
+  assert.equal(agent.status, originalAgent.status);
+  assert.equal(agent.summary, originalAgent.summary);
+  assert.deepEqual(agent.metadata.agent, originalAgent.metadata.agent);
+  assert.equal(agent.title, `${f.node.id} concurrently edited`);
+  assert.deepEqual(agent.position, { x: 425, y: 525 });
+  assert.deepEqual(f.host.state.nodes.find(node => node.id === f.nodeB.id), editedRootB);
+  assert.equal(f.sessionB.buffer, 'live output during agent finalization');
+  assert.strictEqual(f.host.agentSessions.get(f.node.id), f.session);
+  assert.equal(f.host.runtimeSessionBindings.size, 2);
+  assert.deepEqual(f.deletes, []);
+}
+
+async function testAgentCompletedSuccessCannotDisposeReplacement() {
+  const f = await makeRootHost();
+  makeRootAAgent(f);
+  const completedPersistence = await startDelayedCompletedCallback(f);
+  const successor = { ...makeSession(), sessionId: 'agent-successor', runtimeSessionId: 'agent-successor',
+    agentProvider: 'codex' };
+  const successorNode = {
+    ...structuredClone(f.node), title: 'Replacement Agent',
+    metadata: { agent: { ...f.node.metadata.agent, runtimeSessionId: 'agent-successor' } }
+  };
+  f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(node => node.id === f.node.id ? successorNode : node) };
+  f.host.agentSessions.set(f.node.id, successor);
+  f.host.unbindRuntimeSession('session-1', '/controlled/runtime', 'agent', 'legacy-detached');
+  const successorBindingKey = f.host.buildRuntimeSessionBindingKey(
+    'agent', 'agent-successor', '/controlled/runtime', 'legacy-detached'
+  );
+  const successorBinding = { kind: 'agent', nodeId: f.node.id, runtimeSessionId: 'agent-successor' };
+  f.host.runtimeSessionBindings.set(successorBindingKey, successorBinding);
+  let fileActivityDisposals = 0;
+  let exits = 0;
+  f.host.disposeAgentFileActivitySession = async () => { fileActivityDisposals += 1; };
+  f.host.postExecutionExitWithFinalSnapshot = async () => { exits += 1; };
+  completedPersistence.resolve();
+  await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+
+  assert.strictEqual(f.host.state.nodes.find(node => node.id === f.node.id), successorNode);
+  assert.strictEqual(f.host.agentSessions.get(f.node.id), successor);
+  assert.strictEqual(f.host.runtimeSessionBindings.get(successorBindingKey), successorBinding);
+  assert.equal(successor.stopRequested, false);
+  assert.equal(fileActivityDisposals, 0, 'stale Agent completion cannot dispose successor file activity');
+  assert.equal(exits, 0, 'stale Agent completion cannot post an exit for its replacement');
+  assert.equal(f.deletes.includes('agent-successor'), false);
+}
+
+async function testReaderWaitCannotPersistOrNotifyAfterRootChanges(mode) {
+  const f = await makeRootHost();
+  const readers = deferred();
+  const readerWaitStarted = deferred();
+  const readerKeys = [];
+  f.host.terminalReadRelay.completeRemote = async key => {
+    readerKeys.push(key);
+    if (readerKeys.length === 2) readerWaitStarted.resolve();
+    await readers.promise;
+  };
+  let exits = 0;
+  f.host.postExecutionExitWithFinalSnapshot = async () => { exits += 1; };
+  f.client.options.onSessionState({
+    kind: 'terminal', sessionId: 'session-1', live: false, lifecycle: 'closed',
+    runtimeBackend: 'legacy-detached', output: 'tail', cols: 119, rows: 41,
+    terminalStreamPaged: true, terminalAuthorityId: 'controlled-authority',
+    terminalRevision: 2, outputSequence: 2
+  });
+  await Promise.race([
+    readerWaitStarted.promise,
+    f.host.waitForPendingRuntimeSupervisorStateCallbacks().then(() => {
+      assert.fail(`completed callback did not wait for readers: ${JSON.stringify(f.diagnostics)}`);
+    })
+  ]);
+  assert.deepEqual(readerKeys, [`editor:terminal:${f.node.id}`, `panel:terminal:${f.node.id}`]);
+  assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks.size, 1);
+  assert.equal(f.persisted.length, 0, 'completed persistence waits for both readers');
+  let successor;
+  let successorNode;
+  let successorBindingKey;
+  if (mode === 'clear') {
+    assert.equal(await f.host.clearWorkspaceRootCanvas(f.rootA.workspaceRootPath), true);
+  } else {
+    successor = { ...makeSession(), sessionId: 'reader-successor', runtimeSessionId: 'reader-successor' };
+    successorNode = {
+      ...structuredClone(f.node), title: 'Replacement during reader wait',
+      metadata: { terminal: { ...f.node.metadata.terminal, runtimeSessionId: 'reader-successor' } }
+    };
+    f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(node => node.id === f.node.id ? successorNode : node) };
+    f.host.terminalSessions.set(f.node.id, successor);
+    f.host.unbindRuntimeSession('session-1', '/controlled/runtime', 'terminal', 'legacy-detached');
+    successorBindingKey = f.host.buildRuntimeSessionBindingKey(
+      'terminal', 'reader-successor', '/controlled/runtime', 'legacy-detached'
+    );
+    f.host.runtimeSessionBindings.set(successorBindingKey,
+      { kind: 'terminal', nodeId: f.node.id, runtimeSessionId: 'reader-successor' });
+  }
+  f.emitRootBOutput(' during reader finalization');
+  readers.resolve();
+  await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+
+  assert.equal(f.persisted.filter(entry => entry.options.reason === 'runtime-supervisor-completed-snapshot').length, 0,
+    'a stale completed callback cannot begin persistence after its reader wait');
+  assert.equal(exits, 0, 'a stale completed callback cannot post an exit after its reader wait');
+  assert.equal(f.sessionB.buffer, 'live output during reader finalization');
+  if (mode === 'clear') {
+    assert.deepEqual(f.host.state.nodes.map(node => node.id), [f.nodeB.id]);
+    assert.equal(f.host.terminalSessions.has(f.node.id), false);
+    assert.deepEqual(f.deletes, ['session-1']);
+  } else {
+    assert.strictEqual(f.host.state.nodes.find(node => node.id === f.node.id), successorNode);
+    assert.strictEqual(f.host.terminalSessions.get(f.node.id), successor);
+    assert.equal(f.host.runtimeSessionBindings.get(successorBindingKey).runtimeSessionId, 'reader-successor');
+    assert.equal(successor.stopRequested, false);
+    assert.deepEqual(f.deletes, []);
+  }
+}
+
 await testFinalFlushProjectsResizeAndKeepsRemoteAlive();
 await testAdmissionRejectsLateTimerAndEvents();
 await testCompletedStateCannotBeReplacedByOldTimer();
@@ -555,4 +936,16 @@ await testOrdinaryDeactivationRetainsSuccess(false);
 await testOrdinaryDeactivationRetainsFailure();
 await testOrdinaryDeactivationRetainsConfigurationFailure();
 await testNonPermanentBoundaryKeepsAdmissionOpen();
+await testRootBoundaryPreservesOtherRootAndStrictFailure('clear', false);
+await testRootBoundaryPreservesOtherRootAndStrictFailure('clear', true);
+await testRootBoundaryPreservesOtherRootAndStrictFailure('template', false);
+await testRootBoundaryPreservesOtherRootAndStrictFailure('template', true);
+await testAcceptedCallbackCannotRollbackClearedRoot();
+await testCompletedFailureOnlyRollsBackOriginalExecution();
+await testCompletedContinuationCannotChangeReplacement(false);
+await testCompletedContinuationCannotChangeReplacement(true);
+await testAgentCompletedFailurePreservesConcurrentEdits();
+await testAgentCompletedSuccessCannotDisposeReplacement();
+await testReaderWaitCannotPersistOrNotifyAfterRootChanges('clear');
+await testReaderWaitCannotPersistOrNotifyAfterRootChanges('replace');
 console.log('runtime Host deactivation integrity tests passed (flush, admission, stale overwrite, callback tracking, idempotence)');

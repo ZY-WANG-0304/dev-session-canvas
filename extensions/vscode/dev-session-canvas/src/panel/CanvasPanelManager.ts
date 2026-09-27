@@ -12056,25 +12056,47 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       })
     });
     const projectedState = this.state;
+    const projectedNode = this.requireNode(nodeId, kind);
+    const getCurrentProjection = (): CanvasNodeSummary | undefined => {
+      const node = this.state.nodes.find(candidate => candidate.id === nodeId && candidate.kind === kind);
+      return node && node.metadata?.[kind] === projectedNode.metadata?.[kind] &&
+        node.status === projectedNode.status && node.summary === projectedNode.summary &&
+        this.getExecutionSessions(kind).get(nodeId) === existingSession ? node : undefined;
+    };
+    const assertCompletionCurrent = (): void => {
+      assertFinalizationCurrent();
+      if (!preserveRuntimeBinding && !getCurrentProjection()) {
+        throw new Error('The original Runtime completion was superseded.');
+      }
+    };
     try {
       if (remoteCompletion) {
         await Promise.all((['editor', 'panel'] as const).map((surface) =>
           this.terminalReadRelay.completeRemote(`${surface}:${kind}:${nodeId}`, remoteCompletion)));
       }
-      assertFinalizationCurrent();
+      assertCompletionCurrent();
       await this.persistState({
         reason: 'runtime-supervisor-completed-snapshot',
         workspaceStateMode: 'skip',
         requireRootLocalDurability: true
       });
     } catch (error) {
-      if (!preserveRuntimeBinding || this.state === projectedState) {
+      const currentProjection = preserveRuntimeBinding ? undefined : getCurrentProjection();
+      if (this.state === projectedState && (preserveRuntimeBinding || currentProjection)) {
         this.state = stateBeforeCompleted;
         this.lastLoadedRootLocalStates = rootLocalStatesBeforeCompleted;
         this.multiRootOverlay = multiRootOverlayBeforeCompleted;
+      } else if (currentProjection) {
+        // A failed save owns only these execution fields, not intervening canvas/root edits.
+        this.state = updateExecutionNode(this.state, nodeId, kind, {
+          status: existingNode.status,
+          summary: existingNode.summary,
+          metadata: { ...currentProjection.metadata, [kind]: currentMetadata }
+        });
       }
       throw error;
     }
+    if (!preserveRuntimeBinding) assertCompletionCurrent();
     if (completedTerminalStream) {
       for (const surface of ['editor', 'panel'] as const) {
         this.terminalReadRelay.complete(`${surface}:${kind}:${nodeId}`, completedTerminalStream);

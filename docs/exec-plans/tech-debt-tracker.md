@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-28 S16有限收口：普通completed保存失败复活已清root已在未改业务基线先红；reader/persist窗口补原投影/session身份检查和并发节点级回滚，strict路径保持。Host25次、相关回归/typecheck通过，独立review无阻塞，见生产接入31.15。剩余为完整reset/reload状态替换仲裁、首次pending等待后callback、新业务准入、完整template apply，以及原session同步释放后等待旧Runtime delete再外层发exit的reader/UI身份竞态；本轮仅验证template prepare及较早等待窗口，不承诺所有迟到UI安全。剩余项另按有限输入确认，不自动扩成下一轮矩阵，不恢复全局gate/core锁/root drain，不增工具/native门槛；真实宿主/Agent/跨平台及退出完整性总债务仍开放。
+
 2026-09-27 S15范围收窄：正式最小交付仅普通 `prepareForDeactivation()` 的首次内部Promise与配置缓存，成功/失败都复用，不重复保存/detach/删除；基线并发flush 2!==1先红，修后Host边界13次调用、wiring95/95、checkpoint/typecheck和脚本语法检查通过，独立review无阻塞，reviewer复跑目标测试及diff检查通过。配置同步异常仍在core之前，不视为gate已经关闭。candidate/non-native与reset/reload/root/template实现不变。非永久全流程仍开放：core锁不包含后续state replacement；一次pending集合等待和client epoch不足以覆盖其后callback/operation与新业务准入；root严格delete失败保留不能换成ordinary批量best-effort，全局drain也会不当地等待其他root长操作。部分attach/snapshot跟踪只是待实证源码观察。试作的core锁、临时gate与root全局drain已撤回，不算交付或验证证据；后续须按31.14固定输入围绕原binding、定向责任和完整替换顺序验收，不关闭退出完整性总债务。
 
 2026-09-27 S14工作树增量审阅：普通生产永久 `prepareForDeactivation()` 现需先关闭 Runtime event admission；client dispose、remote detach 和 legacy retire 前递增 client epoch，旧回调即使遇到 replacement 也被拒绝；非永久 reset/reload/template boundary 保持 gate，reconnect timer/重试受同一屏障并在 detach 清理。`allowClosedAdmission` + `requireExistingClient` 只能是 `deleteRuntimeSupervisorSessions()` 的既有 session cleanup 旁路，不能放行创建、attach、reconnect 或普通事件；candidate 非永久删除已收窄为不传该参数。已接受 callback 仅可复用仍在 map 中的原 client，原 client 已释放时保持未确认。该增量没有新的真实宿主、PTY/native、Agent 或跨平台证据，不关闭整体退出完整性债务。
