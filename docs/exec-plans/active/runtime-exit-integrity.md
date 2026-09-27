@@ -65,6 +65,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-09-27，S12首败定位) 确认原构造字段被prototype fixture遗漏、8ms保留阈值触发；仅补数组，确定性纯验证复现旧失败并验证新初始化。新增--only runtime-lifecycle固定复验入口，preflight通过且未取得资源；Runtime清理stop与未到达的业务断言分账。
 - [x] (2026-09-27，S12修后有限复验) 按31.6/31.7唯一Runtime单例1/1、partialSelection=true；原执行detach/恢复与新nonce、自动完成清理、无历史重开及正常shutdown空registry/原socket关闭通过。原始帧、四输入/60源码、真实落盘及四资源独立复核通过，旧first30文件逐项不变。
 - [ ] S12后续有限定位：确认旧Host关闭报告后迟到回调/延迟保存的来源与生产关闭契约，不能由fixture取消timer宣称无晚写风险。只围绕实际入口及该顺序定位，不重跑原生或扩诊断框架；范围见31.9。
+- [x] (2026-09-27，S12晚写根因定位) 只读AST契约确认Runtime `prepareForDeactivation -> prepareNonNativeDeactivation` 未清理/flush Supervisor session syncTimer；普通 `prepareForHostBoundaryCore` 会清理并 immediate flush。timer仅需session仍在Map即可再次排队 deferred persist，`disposeManagedExecutionSession`也不清该timer。Host wiring 95/95、checkpoint refresh通过；completed-history既有Harness在`surfaceLifecycle[surface]`缺失处失败，未改写或纳入本结论。
+- [ ] S12后续设计决策：在不停止/删除远端live执行、不丢已接受状态且不允许旧回调覆盖新状态的前提下，选择“永久边界最终flush”或“关闭准入后取消timer并有序保存”的最小方案；方案确认前不改业务代码、不追加PTY/native样本。
 - [x] (2026-09-27，S11，输入ae3c42cf) 冻结30.1/30.2后新增四份窄脚本，修正采样前续体准入/清理finally/异步证据三项直接安全问题。唯一首次四场景五主体exit0；原transport全关闭、四资源首报/当前released、无追加stop/kill、无证据截断，原始输入和事实保持。
 - [x] (2026-09-27，S11证据复核) 独立核对Host真实落盘及重开、Supervisor受控重附着/暂停消费/同authority隔离与reader退役；只修工作树screen返回字段重名，原采样不改、不重跑。完成实际PTY证明，不将显式delete后的拒绝当Host自动完成工作流通过。
 - [x] S12原两个固定场景已有有限通过证据，分为首轮本地通过与修后Runtime单例通过，不替代真实UI/Electron/Agent/跨平台或关闭后迟到写盘验收，L-02至L-05仍开放。
@@ -301,6 +303,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 ## 意外与发现
 
 2026-09-27 S12修后：相同Runtime断言通过，不是产品修正后红转绿。最终stopRequested=true来自自动delete的原requestStop退役调用，原自然退出观察与无stop wire证明未主动停止仍活着的主体；已退役adapter的dataClosed=false也不覆盖之后真实transport已closed的事实。另first Host在hostDeactivationBoundary settled后登记一次1500ms的live-execution-state延迟保存，fixture cleanup会清timer；本轮未证明该迟到保存安全，也不能仅凭登记断定实际覆盖了磁盘。源码确认resize排队160ms的syncTimer可在关闭后更新仍在Map的远端会话并再排保存，prepareNonNativeDeactivation和disposeManagedExecutionSession均未清该timer，无需假设新disconnect事件。旧first30文件保持，schedule基线标签与修后测试提交分开记录。
+
+2026-09-27 S12晚写根因：AST只读契约确认Runtime deactivation专用路径遗漏了普通Host boundary已有的`flushExecutionStateSyncTimer`/immediate persistence屏障；不是测试工具自行制造的抽象问题。已有Host wiring 95/95与checkpoint refresh通过；completed-history测试另因Harness缺`surfaceLifecycle.editor`失败，未修改业务或测试求绿。当前确定的是“关闭报告后仍可排队保存”，尚未确定旧写已覆盖磁盘，下一阶段先做方案选择和最小定向验证。
 
 2026-09-27 S12：首次前将第二nonce修为主体要求的新32hex，不放宽协议。唯一原生运行中本地通过，Runtime成功输入39B并输出正确HASH后，finally诊断路径因executionPerformanceDiagnostics缺失而TypeError。CanvasPanelManager原类1340行已有[]初始化，20811行push依赖该字段；夹具Object.create跳过构造，成功样本达到8ms才保留，因此快速路径未暴露不证明生产实例有问题。补字段并用原方法7ms过滤/8ms保留做确定性纯验证，不修改业务。Runtime后续exit7/EOF来自S12 original runtime cleanup.的原shutdown停止，即使cleanup.actions=[]也不能称无补救；未执行预定detach/恢复/自然finish/自动delete/重开，registry仍含closed输出。原证据不改。
 
@@ -1163,6 +1167,8 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 S12修后单例1/1、partialSelection=true，唯一新主体自然exit7、EOF5、accepted=consumed5、revision6；208B成功write与213B PTY逐字节相符，四资源first/current released，provider原transport及4 socket/1 listener闭合，无stop/cancel wire或强杀、无补救动作/证据截断。实际root/workspace为completed无历史元数据，正常shutdown后实际registry为空，第三Host不取得执行/socket。四冻结输入及60源码、旧first30文件逐项保持经独立只读复核；同hash headless离线重建119x41、ROOT/中文/光标(6,4)，不冒称live屏幕。旧Host报告后新增deferred persist另列31.9，未证明实际旧写覆盖；不得因该未验路径把本轮有限通过扩大为整个退出验收。以下首轮记录保留当时结论。
 
+31.10根因定位的AST检查输出`confirmed-source-race`，对比Runtime专用deactivation与普通Host boundary的timer处理；Host wiring 95/95、checkpoint refresh通过。completed-history测试在Harness缺`surfaceLifecycle.editor`处失败，未追认通过，亦未作为本阶段业务/原生结论。下一设计决策尚未完成。
+
 S12修后文档收口检查通过：仅五文档变更，设计第2至31.6节逐字保持、计划12标题与原序/各当前首段、元数据/索引/关联路径、旧原则/债务和两次不同输入的判定核对通过，git diff --check通过。独立只读文档复核无新增不一致；本轮无生产/测试源码变更，不追加全量测试或原生采样。
 
 S12首次exit1、总1/2。snapshot-deactivation通过：关闭前running/无process-source-seal，主体SIGHUP后152B成功写入对应PTY157B，5帧/accepted=consumed5/revision6、真实EOF、exit7；119x41/红色中文/光标(6,4)、两保存文件和新Host无执行重开通过，原20秒报告三域settled。Runtime首个输入39B成功及HASH可核对，但fixture缺字段中断，不能声称后续业务通过；其清理3帧/140B到144B、EOF和资源释放只是安全结果。两个provider原transport全闭合、四资源首报/当前released，无强杀/取消/证据截断。独立核对四冻结输入、60源码及raw逐字节一致。原方法8ms确定性纯回归与四mjs语法通过，修后仅preflight，无新原生/业务测试全量；零页面reader与真实VSCode/Electron/Agent/跨平台范围继续分开。
@@ -1466,6 +1472,8 @@ G07补证起点是本运行时树ebe303e7及独立诊断树2f630cd9。第14节�
 ## 接口与依赖
 
 本轮没有业务、测试接口或依赖变更，直接执行54c3bc00已提交的固定Runtime选择；Host prepareForDeactivation、真实client/server和provider资产保持。下一定位复用CanvasPanelManager原queueExecutionStateSync/flushLiveExecutionState、prepareNonNativeDeactivation及extension.deactivate，不引入诊断API或新生命周期模型。必须区分永久Host状态写入准入与仍由Supervisor持有的执行，不能为禁止旧写而停止远端主体，也不能抹掉已接受状态或失败保存责任。
+
+本阶段没有实现变更。下一阶段若选择最小修正，先以现有实际Host受控夹具验证：排队resize同步后调用永久deactivation，观察原 binding、状态flush、timer取消/拒绝和最终文件；再决定是否需要一条生产回归。不得把普通 boundary core 的已有flush调用直接宣称覆盖 Runtime deactivation。
 
 S11未新增业务接口、依赖、设置或storage generation。窄测试通过真实createLinuxExecutionOwnerOptions取得原transport，观察层透明转发message/data/send，原生模块只在正式provider加载；Host直接使用startTerminalSession/writeExecutionInput/resizeExecutionSession/实际persist与load，Supervisor使用实际create/write/resize/stop/reader/delete RPC业务方法。分页由真实headless tracker消费，不伪造其write完成，但仍不等于Webview main。下一S12沿现有Host/client/reader接口，不引入第二生命周期模型或通用诊断API。
 

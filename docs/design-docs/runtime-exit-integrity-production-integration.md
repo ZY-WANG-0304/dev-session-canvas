@@ -1328,3 +1328,13 @@ Host原completed保存后的root/workspace文件均无正文、serialized state�
 只读源码核对找到足以解释该顺序的已排队任务：`CanvasPanelManager.ts:18667`在远端resize完成后调用queueExecutionStateSync，交互同步延迟为160ms；`:19786`的syncTimer回调只检查会话仍在Map，随后`:19857`的flushLiveExecutionState更新live元数据并在`:19926`安排deferred persist。`:3840`起的prepareNonNativeDeactivation关闭client、收尾本地owner并保存当前状态，但没有清理远端syncTimer/移除远端会话；`:11302`的disposeManagedExecutionSession也不清syncTimer。无需假设断线后收到新事件，且主动client.dispose抑制onDisconnected，不能把本次具体来源写成已证的disconnect回调。`extension.ts:826`的deactivate只await准备方法并清activePanelManager引用；真实VSCode进程退出/订阅清理能否及时终止这些回调仍需单独确认，不能当作当前已有保证。
 
 下一切片只定位和确定Host永久关闭的状态/持久化契约：复用已有实际Host受控测试，固定远端resize排队同步、deactivation返回、新Host保存completed状态、旧定时回调到期的顺序。区分旧回调能排队、实际写成、生产清理取消三个事实，明确哪些已接受状态应在报告前flush，哪些晚任务应取消或拒绝；原live绑定的最终保存不能因简单取消而丢失，Runtime detach不能变成停止原执行。此项直接关系无历史重开与退出结算，不是通用工具健壮性；无需新PTY、native构建、runner或全量诊断矩阵，不在本轮直接改业务。确认后才规划最小修正与回归。非零reader最终应用、真实Agent启动链、Electron与跨平台仍单独开放，不因有限样本通过默认启用候选。
+
+### 31.10 关闭路径根因已确认
+
+本阶段只读 TypeScript AST 契约检查确认了两条关闭路径的直接差异。`CanvasPanelManager.prepareForDeactivation()`在 owner 具备`execution-owner-boundary-v1`时无条件进入`prepareNonNativeDeactivation()`；Runtime 持久化样本正是该路径。该方法负责关闭本地 owner、保存画布并断开原 Runtime client，但正文没有调用`flushExecutionStateSyncTimer()`或`flushAllExecutionSessionStatesForHostBoundary()`，也没有清理`terminalSessions`/`agentSessions`中仍由 Supervisor 托管的 syncTimer。`disposeManagedExecutionSession()`只清 Supervisor reconnectTimer，同样不处理 syncTimer。
+
+普通`prepareForHostBoundaryCore()`则先调用`flushAllExecutionSessionStatesForHostBoundary()`；其`flushExecutionStateImmediately()`会清除 syncTimer，再以`persistMode: 'immediate'`执行`flushLiveExecutionState()`，随后等待 deferred canvas flush 和 workspace update。因此同一类状态同步在普通边界被收口，在 Runtime 持久化的实际 deactivation 分支却没有同等屏障。这解释了31.9中 boundary settled 后仍出现`live-execution-state` deferred persist；并不需要假设断线回调继续到达。syncTimer回调只要求 session 仍在对应 Map，随后更新 live metadata 并再次排队延迟保存。
+
+本阶段的只读契约输出为`confirmed-source-race`：Runtime路径`flushesSyncTimer=false`、普通边界`flushesSyncTimer=true`、timer要求session仍在Map并调用deferred flush、managed-session dispose不清syncTimer。已有`test-host-execution-owner-wiring.mjs`通过95/95，`test-runtime-checkpoint-refresh.mjs`通过；尝试运行`test-runtime-completed-history.mjs`时在既有Harness的`surfaceLifecycle[surface]`缺失处失败，未把该失败改写成通过，也不把它作为本根因的原生证据。
+
+这已经是一个确定的生命周期一致性问题，但本阶段没有证明旧 delayed write 实际覆盖了新文件。下一设计选择需在以下两个边界之间取舍：在保留 live Runtime 的永久 Host 离开前，对仍在 Supervisor Map 的会话执行与普通边界等价的最终状态 flush；或者先关闭旧 session 的状态同步准入并取消所有 timer，再以已捕获的原 binding 做一次有序最终保存。无论选择哪项，都不能删除/停止远端 live execution，不能丢掉已经接受的尺寸和终端状态，也不能让旧 Host 的迟到回调覆盖新 Host 的状态。方案确定前不改业务代码、不新增 PTY/native 样本。
