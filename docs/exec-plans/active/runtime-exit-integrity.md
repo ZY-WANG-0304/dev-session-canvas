@@ -1724,3 +1724,25 @@ D4 v2使用完整command/return/event/snapshot、不可变owner identity和独�
 结果为 S13 用例 5 项通过、既有 Host wiring 95/95、workspace typecheck 通过，`git diff --check` 与新脚本 `node --check` 通过。该验证没有启动 PTY/native、VS Code/Electron、真实 Agent 或其他平台；普通生产 Runtime（未注入该 owner）仍走既有普通 boundary 路径，真实宿主退出调度、Webview 最终应用、跨平台时序和未完成 operation 的 deadline 证据仍保持开放，不能把本地 Host 夹具结果扩大为全产品验收。
 
 修订记录（2026-09-27，S13最小修正）：Runtime deactivation 关闭事件准入、跟踪 state callback、最终 flush 并清理 Host 侧 timer/output/projection，保留 live map/binding 与远端执行；新增五项纯 Host 回归，既有 95/95 与 typecheck 通过。未运行新的 PTY/native 或跨平台样本，真实宿主和其他退出边界继续验证中。
+
+### S14 普通生产 Runtime 永久边界
+
+S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永久 `extension.deactivate()` 关闭 Runtime event admission，并等待已接受的 state callback；普通 reset/reload/template boundary 不关闭 gate，保持后续 Host/client 可恢复。所有 Runtime client dispose/delete 路径主动递增旧 client epoch，旧 client 在释放到新 client 建立的间隙不能继续回调。已接受 callback 若仍有原 client，可完成同一 binding 的 cleanup；原 client 已释放时不得新建/重启连接。永久 cleanup 删除已捕获旧 Supervisor session 时使用显式 `allowClosedAdmission` + `requireExistingClient` 例外；这不放行普通 reconnect 或新业务操作。
+
+分页 reconnect 在永久 gate 后不再安排或重试；Host detach 清除 reconnect timer/pending 标记。普通 deactivation 回归预置边界前 sync timer，并验证 119x41 resize、live binding 和 immediate snapshot；另验证 dispose/replacement epoch、永久 gate acquisition rejection、非永久 boundary admission 保持。验证通过：`node scripts/test/test-runtime-host-deactivation-integrity.mjs`、`node scripts/test/test-host-execution-owner-wiring.mjs`（95/95）、`node scripts/test/test-runtime-checkpoint-refresh.mjs`、`npm run typecheck`、`git diff --check`。
+
+本阶段仍未验证真实 VS Code/Electron 调度、Webview 最终应用、Agent 启动包装链、未完成 operation deadline 或 macOS/Windows；不把普通 Host 夹具结果扩大为整体退出完整性通过。旧 live execution 仍由 Supervisor 持有，completed 节点重开不恢复进程或历史。下一阶段需单独覆盖非永久 reset/reload 的跨 generation 持久化顺序及真实宿主关闭观察，不再扩展诊断工具门槛。
+
+已接受 completed callback 的原 client cleanup 结论只适用于普通非-candidate Runtime；candidate/non-native 严格 finalization 仍按自身 owner/deadline 结算，不由 S14 普通 cleanup 旁路代替。
+
+修订记录（2026-09-27，S14普通生产屏障）：普通 Core 接入永久 event admission close 与 state callback wait；client 释放递增 epoch，分页 reconnect 在关闭后停止；新增普通 deactivation、epoch replacement、永久 acquisition rejection 与非永久 gate 回归。S14未运行新的 PTY/native/跨平台样本，整体计划继续 active。
+
+### S14 工作树增量审阅
+
+当前未提交改动的文档口径补充如下：普通永久 `prepareForDeactivation()` 必须在生产 Core 路径先关闭 Runtime admission；非永久 reset/reload/template boundary 不关闭 gate。client dispose、remote detach 和 legacy client retire 前递增 epoch，旧回调即使等待到 replacement 建立也不得写入新 Host。分页 reconnect 的入口、timer 回调和失败重试均再次检查 gate；detach 清除 timer/pending，不能在永久边界报告后复连。
+
+`allowClosedAdmission` + `requireExistingClient` 只允许出现在 `deleteRuntimeSupervisorSessions()` 的既有 session cleanup 旁路，并由永久边界条件显式开启。验收须证明该旁路不会创建/attach/reconnect 或恢复普通事件准入；candidate 的非永久删除不再传入该参数。已接受 callback 只能复用仍在 map 中的原 client，原 client 已释放时保持未确认。
+
+本增量只做结构和边界记录，不新增 PTY/native/真实宿主样本。待补的窄回归应覆盖普通永久 gate 的前后时序、非永久 gate 保持、释放前后 epoch 拒绝、reconnect timer 屏障及删除旁路不越权；既有 S14 通过记录和旧失败历史保持不变。
+
+修订记录（2026-09-27，S14工作树增量审阅）：同步普通生产永久 deactivation、client epoch 失效、非永久 gate 保持、reconnect timer 屏障及 `allowClosedAdmission` 删除例外；candidate 非永久删除已收窄为不传该参数。未增加跨平台或真实宿主验收。

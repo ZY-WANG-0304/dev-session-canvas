@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-27 S14工作树增量审阅：普通生产永久 `prepareForDeactivation()` 现需先关闭 Runtime event admission；client dispose、remote detach 和 legacy retire 前递增 client epoch，旧回调即使遇到 replacement 也被拒绝；非永久 reset/reload/template boundary 保持 gate，reconnect timer/重试受同一屏障并在 detach 清理。`allowClosedAdmission` + `requireExistingClient` 只能是 `deleteRuntimeSupervisorSessions()` 的既有 session cleanup 旁路，不能放行创建、attach、reconnect 或普通事件；candidate 非永久删除已收窄为不传该参数。已接受 callback 仅可复用仍在 map 中的原 client，原 client 已释放时保持未确认。该增量没有新的真实宿主、PTY/native、Agent 或跨平台证据，不关闭整体退出完整性债务。
+
 2026-09-27 S12修后有限验证：测试输入54c3bc00、Runtime-only新目录唯一1/1，实际client/socket detach、同执行恢复并计算新nonce、Host自动completed保存/delete、无正文/新执行重开和正常空registry落盘通过；四资源/原transport/4 socket/1 listener释放，原始输出与来源独立复核，旧first30文件及首轮1/2不改。新增具名未确认风险是旧Host关闭报告后syncTimer仍排入1500ms延迟保存：源码路径已定位，fixture清timer使本轮无法证明迟到写盘安全，尚未实测旧状态覆盖。下一只按31.9复用实际Host受控测试定位永久边界的flush/cancel责任，不追加PTY、runner或工具框架；真实Webview非零reader、VSCode/Electron、Agent启动链、跨平台和L-02至L-05仍开放，默认关闭、旧live/root不变。以下历史原样保留。
 
 2026-09-27 S12晚写根因已确认：Runtime持久化实际走`prepareNonNativeDeactivation`，不调用普通Host boundary已有的`flushExecutionStateSyncTimer`/`flushAllExecutionSessionStatesForHostBoundary`；`queueExecutionStateSync`到期只检查session仍在Map，`disposeManagedExecutionSession`不清syncTimer，因此关闭报告后仍可更新live metadata并排队deferred persist。AST只读检查、Host wiring 95/95及checkpoint refresh通过；completed-history现有Harness因缺`surfaceLifecycle.editor`失败，未改写或作为根因证据。当前只确认竞态与未定义关闭契约，未证明磁盘已被旧写覆盖。下一需先决定永久边界最终flush或取消timer后有序保存，不停止/删除远端live执行、不扩原生工具范围。

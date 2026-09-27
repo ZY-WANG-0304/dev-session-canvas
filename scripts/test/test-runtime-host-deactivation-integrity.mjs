@@ -137,11 +137,14 @@ function makeHost() {
       kind: 'terminal', nodeId: 'terminal-1', runtimeSessionId: 'session-1'
     }]]),
     runtimeSupervisorClients: new Map(),
+    runtimeSupervisorEventAdmissionOpen: true,
+    runtimeSupervisorClientEpochs: new Map(),
     pendingRuntimeSupervisorOperations: new Set(),
     nonNativeHostExecutions: new Map(),
     terminalProjectionRefreshScheduler: { clearMatching() {} },
     terminalReadRelay: { closeMatching() {} },
     scheduledExecutionOutputPosts: new Map(),
+    pendingTerminalInitialInputs: new Map(),
     pendingWorkspaceStateUpdate: Promise.resolve(),
     hasActiveExecutionSessions: () => terminalSessions.size > 0,
     getExecutionSessions: kind => kind === 'terminal' ? terminalSessions : host.agentSessions,
@@ -152,6 +155,7 @@ function makeHost() {
     postState() {},
     flushDeferredCanvasStatePersist: async () => undefined,
     waitForPendingWorkspaceStateUpdates: async () => undefined,
+    clearPendingTerminalInitialInputs() {},
     clearExecutionTerminalProjectionRefreshTimers() {},
     clearScheduledExecutionOutputPost() {},
     recordDiagnosticEvent: (name, details) => diagnostics.push({ name, details }),
@@ -287,6 +291,56 @@ async function testStateCallbacksAreTrackedAndBoundaryIsIdempotent() {
   assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks.size, 0);
 }
 
+async function testDisposedClientEpochRejectsCallbacksBeforeReplacement() {
+  const f = makeHost();
+  f.host.getRuntimeStoragePathFromBackend = () => '/controlled/runtime';
+  f.host.buildRuntimeSupervisorClientKey = backend => `${backend.kind}:${backend.paths.storageDir}`;
+  f.host.getRuntimeSupervisorScriptPath = () => '/controlled/supervisor.js';
+  f.host.getRuntimeSupervisorLauncherScriptPath = () => '/controlled/launcher.js';
+  RuntimeSupervisorClient.prototype.ensureConnected = async function ensureConnected() {};
+  const backend = {
+    kind: 'legacy-detached', guarantee: 'best-effort', label: 'controlled',
+    paths: { storageDir: '/controlled/runtime/storage', socketPath: '/controlled/runtime/socket' },
+    startSupervisor: async () => undefined
+  };
+  const original = await f.host.getRuntimeSupervisorClientForBackend(backend, { deferConnection: true });
+  let callbacks = 0;
+  f.host.handleRuntimeSupervisorOutput = () => { callbacks += 1; };
+  f.host.disposeRuntimeSupervisorClients();
+  original.options.onSessionOutput({ kind: 'terminal', sessionId: 'session-1', chunk: 'stale', outputSequence: 3 });
+  assert.equal(callbacks, 0, 'disposing a client invalidates its epoch before a replacement exists');
+
+  const replacement = await f.host.getRuntimeSupervisorClientForBackend(backend, { deferConnection: true });
+  replacement.options.onSessionOutput({ kind: 'terminal', sessionId: 'session-1', chunk: 'current', outputSequence: 4 });
+  assert.equal(callbacks, 1, 'the replacement client receives callbacks after a new epoch is assigned');
+
+  f.host.closeRuntimeSupervisorEventAdmission();
+  assert.strictEqual(
+    await f.host.getRuntimeSupervisorClientForBackend(backend, {
+      deferConnection: true,
+      allowClosedAdmission: true,
+      requireExistingClient: true
+    }),
+    replacement,
+    'an existing client remains available for an accepted boundary cleanup'
+  );
+  f.host.disposeRuntimeSupervisorClients();
+  await assert.rejects(
+    f.host.getRuntimeSupervisorClientForBackend(backend, { deferConnection: true }),
+    /closed runtime client admission/
+  );
+}
+
+async function testNonPermanentBoundaryKeepsAdmissionOpen() {
+  const f = makeHost();
+  await f.host.prepareForHostBoundary({
+    preserveLiveRuntime: true,
+    allowRuntimeSupervisorRestart: false
+  });
+  assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, true,
+    'non-permanent reset/reload boundaries keep Runtime admission available');
+}
+
 async function testDeactivationIsIdempotentAndDoesNotStopRemoteSession() {
   const f = makeHost();
   let now = 0;
@@ -321,9 +375,60 @@ async function testDeactivationIsIdempotentAndDoesNotStopRemoteSession() {
   assert.strictEqual(await f.host.prepareForDeactivation(), report);
 }
 
+async function testOrdinaryDeactivationClosesAdmissionBeforeCoreFlush() {
+  const f = makeHost();
+  let disposed = 0;
+  f.host.isRuntimePersistenceEnabled = () => true;
+  f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: true });
+  f.host.runtimeSupervisorClients.set('original', { dispose() { disposed += 1; } });
+  let flushes = 0;
+  const originalFlushLiveExecutionState = f.host.flushLiveExecutionState.bind(f.host);
+  f.host.flushLiveExecutionState = (...args) => {
+    flushes += 1;
+    return originalFlushLiveExecutionState(...args);
+  };
+  f.host.queueExecutionStateSync('terminal', 'terminal-1', 1000);
+  f.session.reconnectTimer = setTimeout(() => assert.fail('reconnect timer was not cancelled'), 1000);
+  f.session.outputFlushTimer = setTimeout(() => assert.fail('output timer was not cancelled'), 1000);
+  f.session.pendingOutput = 'queued output';
+
+  let releaseCallback;
+  const acceptedCallback = new Promise(resolve => { releaseCallback = resolve; });
+  f.host.pendingRuntimeSupervisorStateCallbacks = new Set([acceptedCallback]);
+  let settled = false;
+  const boundary = f.host.prepareForDeactivation();
+  void boundary.then(() => { settled = true; });
+  await sleep();
+  assert.equal(settled, false, 'ordinary boundary waits for an accepted Runtime state callback');
+  releaseCallback();
+  await boundary;
+  assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, false);
+  assert.equal(disposed, 1, 'ordinary boundary still detaches the original Host client');
+  assert.equal(f.host.terminalSessions.size, 0, 'ordinary boundary retires Host session maps');
+  assert.equal(f.host.runtimeSessionBindings.size, 0);
+  assert.equal(flushes, 1, 'ordinary boundary flushes the active Runtime session once');
+  assert.equal(f.persisted.length, 1, 'ordinary boundary writes one final immediate snapshot');
+  assert.equal(f.persisted[0].options.mode, 'immediate');
+  const metadata = f.persisted[0].state.nodes[0].metadata.terminal;
+  assert.equal(metadata.lastCols, 119);
+  assert.equal(metadata.lastRows, 41);
+  assert.equal(metadata.liveSession, true);
+  assert.equal(metadata.runtimeSessionId, 'session-1');
+  assert.equal(f.session.reconnectTimer, undefined);
+  assert.equal(f.session.outputFlushTimer, undefined);
+  assert.equal(f.session.pendingOutput, '');
+
+  f.host.queueExecutionStateSync('terminal', 'terminal-1', 0);
+  await sleep(10);
+  assert.equal(flushes, 1, 'late ordinary-boundary timer cannot revive the old session');
+}
+
 await testFinalFlushProjectsResizeAndKeepsRemoteAlive();
 await testAdmissionRejectsLateTimerAndEvents();
 await testCompletedStateCannotBeReplacedByOldTimer();
 await testStateCallbacksAreTrackedAndBoundaryIsIdempotent();
+await testDisposedClientEpochRejectsCallbacksBeforeReplacement();
 await testDeactivationIsIdempotentAndDoesNotStopRemoteSession();
+await testOrdinaryDeactivationClosesAdmissionBeforeCoreFlush();
+await testNonPermanentBoundaryKeepsAdmissionOpen();
 console.log('runtime Host deactivation integrity tests passed (flush, admission, stale overwrite, callback tracking, idempotence)');

@@ -1362,3 +1362,23 @@ S13修正的不可变不变量暂定为：一是边界前已确认的resize、�
 新增 `scripts/test/test-runtime-host-deactivation-integrity.mjs`，通过真实 `CanvasPanelManager` 方法、阻断 node-pty/child_process 的 Host 夹具验证：已确认 resize 在 final metadata 中落盘；已排队 timer 和迟到 Runtime 事件不再 flush 或变更 session；第二 Host 的 completed 状态不会被旧 live 写者覆盖；state callback 会被跟踪且边界重复调用幂等；旧 Supervisor client 不收到 stop/delete，live map/binding 保持。`node scripts/test/test-host-execution-owner-wiring.mjs` 仍为 95/95，workspace `npm run typecheck` 通过，S13 用例 5 项通过。
 
 本阶段没有新增 PTY/native/VS Code/Electron/真实 Agent 或其他平台样本。普通生产 Runtime（未注入该 execution owner）仍走既有 `prepareForHostBoundaryCore`，本次没有把 event admission 屏障全面接入该路径；因此真实宿主退出调度、Webview 最终应用、Agent 启动包装链、跨平台时序以及未完成 Runtime operation 在 deadline 后的运行时证据仍未决。这些不能由本地 Host 夹具的 settled 结果替代。设计状态从“修正待设计”进入“candidate 路径最小修正已实现、普通生产路径与真实宿主验证中”。
+
+### 31.12 S14 普通生产 Runtime 屏障接入
+
+本阶段把同一退出屏障接入未注入 `execution-owner-boundary-v1` 的普通生产 `prepareForHostBoundaryCore`。只有 `permanentExecutionClose: true`（扩展正常永久 deactivation）会关闭 Runtime event admission；`resetState`、模板/根画布重置和测试 runtime reload 等非永久边界保持准入，以便新 Host/client 继续工作。永久边界在最终状态 flush 前等待已接受的 `onSessionState` callback，并在释放 client 时主动使其 epoch 失效；因此旧 client 在 dispose 与新 client 创建之间也不能回调写入。
+
+Runtime client 获取默认受永久 gate 保护。已经被 gate 关闭前接受的 state callback 仍可使用 map 中原有 client 完成其同一 binding 的 cleanup；gate 关闭后如果原 client 已被 dispose，则不新建/重启 client，cleanup 只能按未确认处理。永久清理已捕获的旧 Supervisor session 时，批量调用链通过显式 `allowClosedAdmission` + `requireExistingClient` 例外完成删除；该例外只用于边界内的既有 cleanup，不向普通 reconnect/新业务操作开放。分页 reconnect timer 在 gate 关闭后不再排队、执行或重试，Host detach 也清除已登记的 reconnect timer/pending 标记。Supervisor live execution 仍由其原 owner 持有，Host 不因 detach 发送 stop/delete。
+
+新增回归覆盖：普通生产 deactivation 的 pending state callback、边界前已排队 sync timer、119x41 resize 与 live runtime binding 的一次性 immediate snapshot、旧 client dispose 后的 epoch replacement、永久 gate 后禁止 client acquisition，以及非永久 boundary 保持 admission。测试仍是阻断 native/child_process 的 `CanvasPanelManager` 逻辑夹具；没有新增 PTY、VS Code/Electron、真实 Agent 或其他平台证据。`node scripts/test/test-runtime-host-deactivation-integrity.mjs`、`node scripts/test/test-host-execution-owner-wiring.mjs`（95/95）和 workspace `npm run typecheck` 通过。
+
+本阶段只闭合普通生产 Host 永久退出的旧写者/旧 client 屏障，不宣称 `resetState`/模板重置的完整跨 generation 持久化验收，也不宣称 Webview 最终应用、未完成 operation deadline、真实宿主调度、Agent 启动包装链或跨平台退出完整性已通过。旧 live session 继续沿原 metadata binding 运行，正常结束节点仍不恢复进程或历史。
+
+本阶段的“已接受 completed callback 可 cleanup”结论限定于普通非-candidate Runtime 路径：它要求原 client 仍在 map 中。candidate/non-native 的严格删除与 finalization 仍受其自身 deadline/owner 语义约束，不能由本节的普通 production cleanup 旁路代称为已验证。
+
+### 31.13 S14 工作树增量复核：删除旁路与 timer 屏障边界
+
+当前未提交增量进一步把 client epoch 失效放到普通 remote detach、统一 client dispose 和旧 generation retire 的每个释放点；因此同一 client key 的 replacement 也不能接收旧对象迟到回调。`reconnectPagedRuntimeSession()` 的入口、延迟回调和失败重试都复核全局 admission，Host detach 同时清理 reconnect timer 与 pending 标志，避免永久 deactivation 报告后重新 attach。
+
+`allowClosedAdmission` + `requireExistingClient` 是 `getRuntimeSupervisorClientForBackend()` 的受限删除旁路，当前仅由 `deleteRuntimeSupervisorSessions()` 在永久边界 cleanup 时按 `permanentExecutionClose` 显式传入；candidate 的非永久 reset/delete 不再无条件打开该旁路。文档契约只能把它解释为既有 session cleanup，不得把它视为创建、attach、reconnect 或普通 Runtime 操作的通行证；已接受 callback 只复用仍在 map 中的原 client，原 client 已释放时结果保持未确认。
+
+该增量仍未增加真实宿主、Webview、PTY/native、Agent 启动链或跨平台证据。已有 S14 回归结果不因逻辑夹具自动扩大；删除旁路已按永久边界条件收窄并有定向覆盖，S13/S14 的普通生产时序与未完成 operation deadline 仍不能标记为整体退出完整性完成。

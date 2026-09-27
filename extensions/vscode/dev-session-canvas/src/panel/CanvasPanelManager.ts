@@ -3890,6 +3890,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       catch (error) { failure(error); }
       for (const [key, client] of clients) {
         try {
+          this.invalidateRuntimeSupervisorClientEpoch(key);
           client.dispose();
           if (this.runtimeSupervisorClients.get(key) === client) this.runtimeSupervisorClients.delete(key);
         } catch (error) { failure(error); }
@@ -3960,6 +3961,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     permanentExecutionClose?: boolean;
   }): Promise<void> {
     const candidate = Boolean(this.getExecutionCandidateProfile()) && !options.preserveLiveRuntime;
+    if (options.permanentExecutionClose) {
+      this.closeRuntimeSupervisorEventAdmission();
+    }
     const capturedNodes = candidate ? this.state.nodes.map(node => `${node.kind}:${node.id}`).sort().join('\n') : undefined;
     const checkBoundary = (): void => {
       if (!candidate) return;
@@ -3978,9 +3982,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (ownedClose) await ownedClose;
     checkBoundary();
+    await this.waitForPendingRuntimeSupervisorStateCallbacks();
     await this.waitForPendingRuntimeSupervisorOperations();
     checkBoundary();
     await this.flushAllExecutionSessionStatesForHostBoundary();
+    for (const [kind, sessions] of [
+      ['agent', this.agentSessions],
+      ['terminal', this.terminalSessions]
+    ] as const) {
+      for (const [nodeId, session] of sessions) {
+        if (session.owner !== 'supervisor') {
+          continue;
+        }
+        this.clearSupervisorHostBoundaryTimers(kind, nodeId, session);
+      }
+    }
     checkBoundary();
     await this.flushDeferredCanvasStatePersist('host-boundary');
     checkBoundary();
@@ -3989,7 +4005,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const persistedRuntimeSessions = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessions();
     if (candidate && persistedRuntimeSessions.length > 0) {
-      await this.deleteRuntimeSupervisorSessions(persistedRuntimeSessions, { allowRestart: false });
+      await this.deleteRuntimeSupervisorSessions(persistedRuntimeSessions, {
+        allowRestart: false,
+        allowClosedAdmission: options.permanentExecutionClose === true,
+        requireExistingClient: options.permanentExecutionClose === true
+      });
       checkBoundary();
     }
 
@@ -4017,7 +4037,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (!candidate && persistedRuntimeSessions.length > 0) {
       await this.deleteRuntimeSupervisorSessions(persistedRuntimeSessions, {
-        allowRestart: options.allowRuntimeSupervisorRestart
+        allowRestart: options.allowRuntimeSupervisorRestart,
+        allowClosedAdmission: options.permanentExecutionClose === true,
+        requireExistingClient: options.permanentExecutionClose === true
       });
     }
 
@@ -10094,7 +10116,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private disposeRuntimeSupervisorClients(): void {
     this.terminalReadRelay.closeMatching(() => true);
-    for (const client of this.runtimeSupervisorClients.values()) {
+    for (const [clientKey, client] of this.runtimeSupervisorClients.entries()) {
+      this.invalidateRuntimeSupervisorClientEpoch(clientKey);
       client.dispose();
     }
     this.runtimeSupervisorClients.clear();
@@ -10150,6 +10173,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.runtimeSupervisorClients.delete(clientKey);
+    this.invalidateRuntimeSupervisorClientEpoch(clientKey);
     client.dispose();
     this.recordDiagnosticEvent('runtime/legacySupervisorClientRetired', {
       runtimeBackend: backend.kind,
@@ -10159,12 +10183,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async getRuntimeSupervisorClientForBackend(
     backend: RuntimeHostBackend,
-    options: { allowRestart?: boolean; deferConnection?: true } = {}
+    options: {
+      allowRestart?: boolean;
+      deferConnection?: true;
+      allowClosedAdmission?: boolean;
+      requireExistingClient?: boolean;
+    } = {}
   ): Promise<RuntimeSupervisorClient> {
-    if (this.nonNativeDeactivationReport) throw new Error('Host permanent boundary has closed runtime client admission.');
+    if (!options.allowClosedAdmission && !this.isRuntimeSupervisorEventAdmitted()) {
+      throw new Error('Host permanent boundary has closed runtime client admission.');
+    }
     const runtimeStoragePath = this.getRuntimeStoragePathFromBackend(backend);
     const clientKey = this.buildRuntimeSupervisorClientKey(backend);
     let client = this.runtimeSupervisorClients.get(clientKey);
+    if (!client && options.requireExistingClient) {
+      throw new Error('The original Runtime client is no longer available for boundary cleanup.');
+    }
     if (!client) {
       const clientEpoch = this.nextRuntimeSupervisorClientEpoch(clientKey);
       client = new RuntimeSupervisorClient({
@@ -10203,13 +10237,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (!options.deferConnection) await client.ensureConnected(options);
-    if (this.nonNativeDeactivationReport) throw new Error('Host permanent boundary closed during runtime client connection.');
+    if (!options.allowClosedAdmission && !this.isRuntimeSupervisorEventAdmitted()) {
+      throw new Error('Host permanent boundary closed during runtime client connection.');
+    }
     return client;
   }
 
   private async getRuntimeSupervisorClientForKind(
     kind: RuntimeHostBackendKind,
-    options: { allowRestart?: boolean } = {},
+    options: { allowRestart?: boolean; allowClosedAdmission?: boolean; requireExistingClient?: boolean } = {},
     runtimeStoragePath?: string
   ): Promise<RuntimeSupervisorClient> {
     return this.getRuntimeSupervisorClientForBackend(
@@ -10969,7 +11005,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async deleteRuntimeSupervisorSessionStrict(
     session: PersistedLiveRuntimeSession,
-    options: { allowRestart: boolean; preserveTerminalReads?: true }
+    options: {
+      allowRestart: boolean;
+      preserveTerminalReads?: true;
+      allowClosedAdmission?: boolean;
+      requireExistingClient?: boolean;
+    }
   ): Promise<void> {
     if (this.getExecutionCandidateProfile()) {
       await this.deleteRuntimeSupervisorSessionsWithCandidate([session], options.preserveTerminalReads);
@@ -10979,7 +11020,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     let client: RuntimeSupervisorClient | undefined;
     try {
       client = await this.getRuntimeSupervisorClientForBackend(backend, {
-        allowRestart: options.allowRestart
+        allowRestart: options.allowRestart,
+        allowClosedAdmission: options.allowClosedAdmission,
+        requireExistingClient: options.requireExistingClient
       });
       await client.deleteSession({
         sessionId: session.sessionId,
@@ -10999,7 +11042,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async deleteRuntimeSupervisorSessions(
     sessions: PersistedLiveRuntimeSession[],
-    options: { allowRestart: boolean }
+    options: { allowRestart: boolean; allowClosedAdmission?: boolean; requireExistingClient?: boolean }
   ): Promise<void> {
     if (sessions.length === 0) {
       return;
@@ -11031,7 +11074,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       let client: RuntimeSupervisorClient;
       try {
         client = await this.getRuntimeSupervisorClientForKind(backendKind, {
-          allowRestart: options.allowRestart
+          allowRestart: options.allowRestart,
+          allowClosedAdmission: options.allowClosedAdmission,
+          requireExistingClient: options.requireExistingClient
         }, runtimeStoragePath);
       } catch {
         continue;
@@ -11058,6 +11103,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const epoch = (epochs.get(clientKey) ?? 0) + 1;
     epochs.set(clientKey, epoch);
     return epoch;
+  }
+
+  private invalidateRuntimeSupervisorClientEpoch(clientKey: string): void {
+    const epochs = this.runtimeSupervisorClientEpochs ??= new Map<string, number>();
+    epochs.set(clientKey, (epochs.get(clientKey) ?? 0) + 1);
   }
 
   private isRuntimeSupervisorEventAdmitted(clientKey?: string, clientEpoch?: number): boolean {
@@ -11700,6 +11750,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session: SupervisorExecutionSession,
     error?: Error
   ): void {
+    if (!this.isRuntimeSupervisorEventAdmitted()) {
+      return;
+    }
     if (session.reconnectTimer || session.reconnectPending || this.getExecutionSessions(kind).get(nodeId) !== session) {
       return;
     }
@@ -11716,7 +11769,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.postState('host/stateUpdated');
     session.reconnectTimer = setTimeout(() => {
       session.reconnectTimer = undefined;
-      if (this.getExecutionSessions(kind).get(nodeId) !== session || this.getLiveRuntimeReconnectBlockReason()) {
+      if (!this.isRuntimeSupervisorEventAdmitted() ||
+          this.getExecutionSessions(kind).get(nodeId) !== session || this.getLiveRuntimeReconnectBlockReason()) {
         return;
       }
       session.reconnectPending = true;
@@ -11742,7 +11796,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           session.reconnectPending = false;
           if ((failure as { code?: string }).code === RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound) {
             this.markExecutionNodeAsHistoryRestored(nodeId, kind, formatUnknownError(failure));
-          } else {
+          } else if (this.isRuntimeSupervisorEventAdmitted()) {
             this.reconnectPagedRuntimeSession(kind, nodeId, current, failure instanceof Error ? failure : undefined);
           }
         } finally {
@@ -12043,7 +12097,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           sessionId: snapshot.sessionId,
           runtimeStoragePath, kind
         },
-        { allowRestart: false, ...(remoteCompletion ? { preserveTerminalReads: true as const } : {}) }
+        {
+          allowRestart: false,
+          ...(!this.isRuntimeSupervisorEventAdmitted()
+            ? { allowClosedAdmission: true, requireExistingClient: true }
+            : {}),
+          ...(remoteCompletion ? { preserveTerminalReads: true as const } : {})
+        }
       );
     } catch (error) {
       this.recordDiagnosticEvent('runtime/completedSessionCleanupFailed', {
@@ -19954,19 +20014,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
         if (typeof session.buffer === 'string' && session.terminalStateTracker) {
           await this.flushExecutionStateImmediately(kind, nodeId);
-        } else {
-          this.flushExecutionStateSyncTimer(kind, nodeId);
         }
-        this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId, session.runtimeSessionId);
-        if (session.outputFlushTimer) {
-          clearTimeout(session.outputFlushTimer);
-          session.outputFlushTimer = undefined;
-        }
-        session.pendingOutput = '';
-        if (this.scheduledExecutionOutputPosts) {
-          this.clearScheduledExecutionOutputPost(kind, nodeId);
-        }
+        this.clearSupervisorHostBoundaryTimers(kind, nodeId, session);
       }
+    }
+  }
+
+  private clearSupervisorHostBoundaryTimers(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    session: SupervisorExecutionSession
+  ): void {
+    this.flushExecutionStateSyncTimer(kind, nodeId);
+    this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId, session.runtimeSessionId);
+    if (session.outputFlushTimer) {
+      clearTimeout(session.outputFlushTimer);
+      session.outputFlushTimer = undefined;
+    }
+    if (session.reconnectTimer) {
+      clearTimeout(session.reconnectTimer);
+      session.reconnectTimer = undefined;
+    }
+    session.reconnectPending = false;
+    session.pendingOutput = '';
+    if (this.scheduledExecutionOutputPosts) {
+      this.clearScheduledExecutionOutputPost(kind, nodeId);
     }
   }
 
