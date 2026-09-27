@@ -4,6 +4,8 @@
 
 ### 历史阶段入口
 
+2026-09-28 B1 实施入口为 `docs/exec-plans/active/runtime-persistence-capacity-closeout.md`：checkpoint 摘要校验与 owned journal 信用已局部修复，固定容量校准内存超限仍阻塞 B1。没有重开退出工具阶段，B2/真实跨平台验收继续按有限收尾定义保留。下述“本轮没有实施”等描述仅代表当时记录。
+
 本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。当前最新阶段是下段S16，覆盖本计划历史S15及更早记录的“当前/下一”描述。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，原生收尾阶段基线为 `10d40e63`。以下为S12阶段历史：修后输入`54c3bc00`只复验Runtime单例一次，1/1、partialSelection=true，实际Host detach/同执行恢复/自然完成自动清理/空历史重开及正常Supervisor关闭落盘通过，见生产接入31.7至31.9。首轮1/2和全部旧工件保持，不合并为首次全绿。本轮无业务或测试源码改动；旧Host关闭报告后仍登记延迟保存，尚不能证明关闭后无迟到写盘，下一限定核对该产品生命周期风险，不追加工具或原生样本。候选默认关闭，整体计划active，不push/PR，不冒称UI/Electron/Agent或跨平台通过。
 
 当前阶段为S16，输入`a74844c44aef1bfef5c2d13adbb29ddaf7389777`，结果于2026-09-28收口。沿生产接入31.15取得普通completed保存失败复活已清root的先红；最小修正保护reader/persist等待窗口的原投影/session身份，并发时只回滚节点执行字段，strict路径保持。Host回归25次、wiring95/95、checkpoint、paged completion四组合与typecheck通过，独立review无阻塞。template仅prepare而非完整apply；完整reset/reload重叠、首次pending等待后callback注入、新业务准入及旧Runtime delete后的迟到UI仍开放，不批准全局gate、core锁或root全局drain，不新增工具/native/runner。下段S15及其后阶段摘要按原时点保留，不覆盖本段。

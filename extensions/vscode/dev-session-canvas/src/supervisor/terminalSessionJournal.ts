@@ -117,6 +117,12 @@ interface VerifiedTerminalJournal {
   checksums: string[];
 }
 
+interface VerifiedTerminalJournalSummary {
+  manifest: TerminalJournalManifest;
+  baseRevision: number;
+  checksums: ReadonlyMap<number, string>;
+}
+
 interface ScannedTerminalJournalSegment extends TerminalJournalSegmentManifest {
   recordByteEnds: number[];
 }
@@ -827,7 +833,7 @@ export class TerminalSessionJournal {
       throw new Error(`Terminal journal head changed during checkpoint commit for session ${this.sessionId}.`);
     }
     await syncTerminalJournalSegments(this.sessionDirectory, this.segments);
-    const verified = await verifyTerminalSessionJournal(this.storageDir, this.sessionId, this.authorityId);
+    const verified = await verifyTerminalSessionJournalSummary(this.storageDir, this.sessionId, this.authorityId);
     if (
       verified.manifest.lastRevision !== this.lastRevision ||
       verified.manifest.lastChecksum !== this.lastChecksum
@@ -858,7 +864,7 @@ export class TerminalSessionJournal {
         const fallbackSupported =
           this.checkpointProfiles[fallbackCheckpoint.codecId] === fallbackCheckpoint.producerProfile;
         const fallbackAnchored =
-          checksumAtScannedRevision(verified, fallbackCheckpoint.revision) === fallbackCheckpoint.journalChecksum;
+          verified.checksums.get(fallbackCheckpoint.revision) === fallbackCheckpoint.journalChecksum;
         const fallbackReadable = fallbackSupported && fallbackAnchored
           ? await readTerminalJournalCheckpoint(
               this.sessionDirectory,
@@ -909,7 +915,7 @@ export class TerminalSessionJournal {
     const removedThroughRevision = removedSegments.at(-1)?.endRevision;
     const compactedAnchor = removedThroughRevision === undefined
       ? undefined
-      : checksumAtScannedRevision(verified, removedThroughRevision);
+      : verified.checksums.get(removedThroughRevision);
     if (removedThroughRevision !== undefined && !compactedAnchor) {
       throw new Error(`Could not anchor terminal journal compaction at revision ${removedThroughRevision}.`);
     }
@@ -1133,13 +1139,79 @@ export async function verifyTerminalSessionJournal(
   });
 }
 
-async function loadTerminalSessionJournal(
+async function verifyTerminalSessionJournalSummary(
   storageDir: string,
   sessionId: string,
-  expectedAuthorityId: string | undefined,
-  options: { repairStaleTail: boolean }
-): Promise<VerifiedTerminalJournal> {
+  expectedAuthorityId: string
+): Promise<VerifiedTerminalJournalSummary> {
   const sessionDirectory = resolveTerminalJournalSessionDirectory(storageDir, sessionId);
+  const manifest = await readTerminalJournalManifest(sessionDirectory, sessionId, expectedAuthorityId);
+  const retainedStartRevision = manifest.version === TERMINAL_JOURNAL_MANIFEST_VERSION_V2
+    ? manifest.retainedStartRevision : 1;
+  const retainedPreviousChecksum = manifest.version === TERMINAL_JOURNAL_MANIFEST_VERSION_V2
+    ? manifest.retainedPreviousChecksum : TERMINAL_JOURNAL_GENESIS_CHECKSUM;
+  const baseRevision = retainedStartRevision - 1;
+  const checkpoints = new Set<number>([manifest.lastRevision]);
+  if (manifest.version === TERMINAL_JOURNAL_MANIFEST_VERSION_V2) {
+    checkpoints.add(manifest.currentCheckpoint.revision);
+    if (manifest.previousCheckpoint) checkpoints.add(manifest.previousCheckpoint.revision);
+  }
+  const checksums = new Map<number, string>([[baseRevision, retainedPreviousChecksum]]);
+  const segments: TerminalJournalSegmentManifest[] = [];
+  const manifestPrefixBytes: Array<number | undefined> = [];
+  const fileNames = await listTerminalJournalSegmentFiles(sessionDirectory, retainedStartRevision);
+  let expectedRevision = retainedStartRevision;
+  let previousChecksum = retainedPreviousChecksum;
+  for (const file of fileNames) {
+    const fileStartRevision = getSegmentStartRevision(file);
+    if (!Number.isSafeInteger(fileStartRevision) || fileStartRevision !== expectedRevision) {
+      throw new Error(`Terminal journal segment ${file} starts at an unexpected revision.`);
+    }
+    const buffer = await fs.promises.readFile(path.join(sessionDirectory, file));
+    if (buffer.length > 0 && buffer[buffer.length - 1] !== 0x0a) {
+      throw new Error(`Terminal journal segment ${file} has an incomplete final record.`);
+    }
+    const data = buffer.toString('utf8');
+    const lines = data ? data.slice(0, -1).split('\n') : [];
+    const manifestRecordCount = manifest.segments[segments.length]?.recordCount;
+    let prefixBytes: number | undefined = manifestRecordCount === 0 ? 0 : undefined;
+    let segmentBytes = 0;
+    let recordCount = 0;
+    for (const line of lines) {
+      const record = verifyTerminalJournalRecord(
+        line, sessionId, manifest.authorityId, expectedRevision, previousChecksum
+      );
+      previousChecksum = record.checksum;
+      if (checkpoints.has(expectedRevision)) checksums.set(expectedRevision, record.checksum);
+      segmentBytes += Buffer.byteLength(`${line}\n`, 'utf8');
+      recordCount += 1;
+      if (recordCount === manifestRecordCount) prefixBytes = segmentBytes;
+      expectedRevision += 1;
+    }
+    // Compaction needs segment-end anchors, not a checksum and payload per record.
+    checksums.set(expectedRevision - 1, previousChecksum);
+    segments.push({
+      file, startRevision: fileStartRevision, endRevision: expectedRevision - 1,
+      recordCount, bytes: buffer.length
+    });
+    manifestPrefixBytes.push(prefixBytes);
+  }
+  validateManifestPrefix(manifest, {
+    baseRevision, segments, checksumAtRevision: (revision) => checksums.get(revision), manifestPrefixBytes
+  });
+  if (segments.length !== manifest.segments.length ||
+      segments.some((segment, index) => segment.recordCount !== manifest.segments[index].recordCount ||
+        segment.bytes !== manifest.segments[index].bytes)) {
+    throw new Error(`Terminal journal segment manifest mismatch for session ${sessionId}.`);
+  }
+  return { manifest, baseRevision, checksums };
+}
+
+async function readTerminalJournalManifest(
+  sessionDirectory: string,
+  sessionId: string,
+  expectedAuthorityId: string | undefined
+): Promise<TerminalJournalManifest> {
   const manifestPath = path.join(sessionDirectory, TERMINAL_JOURNAL_MANIFEST_FILE);
   const manifest = normalizeManifest(JSON.parse(await fs.promises.readFile(manifestPath, 'utf8')));
   if (!manifest || manifest.sessionId !== sessionId) {
@@ -1148,6 +1220,28 @@ async function loadTerminalSessionJournal(
   if (expectedAuthorityId && manifest.authorityId !== expectedAuthorityId) {
     throw new Error(`Terminal journal authority mismatch for session ${sessionId}.`);
   }
+  return manifest;
+}
+
+async function listTerminalJournalSegmentFiles(
+  sessionDirectory: string,
+  retainedStartRevision: number
+): Promise<string[]> {
+  return (await fs.promises.readdir(sessionDirectory))
+    .filter((fileName) => TERMINAL_JOURNAL_SEGMENT_PATTERN.test(fileName))
+    .filter((fileName) => getSegmentStartRevision(fileName) >= retainedStartRevision)
+    .sort();
+}
+
+async function loadTerminalSessionJournal(
+  storageDir: string,
+  sessionId: string,
+  expectedAuthorityId: string | undefined,
+  options: { repairStaleTail: boolean }
+): Promise<VerifiedTerminalJournal> {
+  const sessionDirectory = resolveTerminalJournalSessionDirectory(storageDir, sessionId);
+  const manifestPath = path.join(sessionDirectory, TERMINAL_JOURNAL_MANIFEST_FILE);
+  const manifest = await readTerminalJournalManifest(sessionDirectory, sessionId, expectedAuthorityId);
 
   const retainedStartRevision = manifest.version === TERMINAL_JOURNAL_MANIFEST_VERSION_V2
     ? manifest.retainedStartRevision
@@ -1155,10 +1249,7 @@ async function loadTerminalSessionJournal(
   const retainedPreviousChecksum = manifest.version === TERMINAL_JOURNAL_MANIFEST_VERSION_V2
     ? manifest.retainedPreviousChecksum
     : TERMINAL_JOURNAL_GENESIS_CHECKSUM;
-  const fileNames = (await fs.promises.readdir(sessionDirectory))
-    .filter((fileName) => TERMINAL_JOURNAL_SEGMENT_PATTERN.test(fileName))
-    .filter((fileName) => getSegmentStartRevision(fileName) >= retainedStartRevision)
-    .sort();
+  const fileNames = await listTerminalJournalSegmentFiles(sessionDirectory, retainedStartRevision);
   const scanned = await scanTerminalJournalSegments(
     sessionDirectory,
     sessionId,
@@ -1168,7 +1259,15 @@ async function loadTerminalSessionJournal(
     retainedPreviousChecksum,
     options.repairStaleTail
   );
-  validateManifestPrefix(manifest, scanned);
+  validateManifestPrefix(manifest, {
+    baseRevision: scanned.baseRevision,
+    segments: scanned.segments,
+    checksumAtRevision: (revision) => scanned.checksums[revision - scanned.baseRevision],
+    manifestPrefixBytes: scanned.segments.map((segment, index) => {
+      const recordCount = manifest.segments[index]?.recordCount;
+      return recordCount === undefined ? undefined : recordCount === 0 ? 0 : segment.recordByteEnds[recordCount - 1];
+    })
+  });
 
   const repairedManifest = createManifestFromScan(manifest, scanned);
   const manifestIsCurrent = JSON.stringify(manifest) === JSON.stringify(repairedManifest);
@@ -1235,23 +1334,7 @@ async function scanTerminalJournalSegments(
     const recordByteEnds: number[] = [];
     let segmentBytes = 0;
     for (const line of lines) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(line);
-      } catch {
-        throw new Error(`Terminal journal record at revision ${expectedRevision} is not valid JSON.`);
-      }
-      const record = normalizeStoredTerminalJournalRecord(parsed);
-      if (
-        !record ||
-        record.sessionId !== sessionId ||
-        record.authorityId !== authorityId ||
-        record.revision !== expectedRevision ||
-        record.previousChecksum !== previousChecksum ||
-        record.checksum !== checksumStoredTerminalJournalRecord(record)
-      ) {
-        throw new Error(`Terminal journal checksum or revision mismatch at revision ${expectedRevision}.`);
-      }
+      const record = verifyTerminalJournalRecord(line, sessionId, authorityId, expectedRevision, previousChecksum);
       events.push(cloneTerminalStreamEvent(record));
       previousChecksum = record.checksum;
       checksums.push(record.checksum);
@@ -1279,12 +1362,42 @@ async function scanTerminalJournalSegments(
   };
 }
 
-function validateManifestPrefix(manifest: TerminalJournalManifest, scanned: ScannedTerminalJournal): void {
-  const lastChecksumIndex = manifest.lastRevision - scanned.baseRevision;
-  if (lastChecksumIndex < 0 || lastChecksumIndex >= scanned.checksums.length) {
+function verifyTerminalJournalRecord(
+  line: string,
+  sessionId: string,
+  authorityId: string,
+  expectedRevision: number,
+  previousChecksum: string
+): StoredTerminalJournalRecord {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    throw new Error(`Terminal journal record at revision ${expectedRevision} is not valid JSON.`);
+  }
+  const record = normalizeStoredTerminalJournalRecord(parsed);
+  if (!record || record.sessionId !== sessionId || record.authorityId !== authorityId ||
+      record.revision !== expectedRevision || record.previousChecksum !== previousChecksum ||
+      record.checksum !== checksumStoredTerminalJournalRecord(record)) {
+    throw new Error(`Terminal journal checksum or revision mismatch at revision ${expectedRevision}.`);
+  }
+  return record;
+}
+
+function validateManifestPrefix(
+  manifest: TerminalJournalManifest,
+  scanned: {
+    baseRevision: number;
+    segments: readonly TerminalJournalSegmentManifest[];
+    checksumAtRevision(revision: number): string | undefined;
+    manifestPrefixBytes: readonly (number | undefined)[];
+  }
+): void {
+  const lastChecksum = scanned.checksumAtRevision(manifest.lastRevision);
+  if (manifest.lastRevision < scanned.baseRevision || lastChecksum === undefined) {
     throw new Error(`Terminal journal manifest tail mismatch for session ${manifest.sessionId}.`);
   }
-  if (scanned.checksums[lastChecksumIndex] !== manifest.lastChecksum) {
+  if (lastChecksum !== manifest.lastChecksum) {
     throw new Error(`Terminal journal manifest checksum mismatch for session ${manifest.sessionId}.`);
   }
 
@@ -1302,10 +1415,7 @@ function validateManifestPrefix(manifest: TerminalJournalManifest, scanned: Scan
     }
 
     const expectedEndRevision = manifestSegment.startRevision + manifestSegment.recordCount - 1;
-    const expectedBytes =
-      manifestSegment.recordCount === 0
-        ? 0
-        : scannedSegment.recordByteEnds[manifestSegment.recordCount - 1];
+    const expectedBytes = scanned.manifestPrefixBytes[index];
     if (manifestSegment.endRevision !== expectedEndRevision || manifestSegment.bytes !== expectedBytes) {
       throw new Error(`Terminal journal segment ${manifestSegment.file} manifest prefix mismatch.`);
     }

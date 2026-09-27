@@ -14,6 +14,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/active/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-checkpoint-only-refresh.md
   - docs/exec-plans/completed/runtime-journal-bounded-cache.md
@@ -228,3 +229,47 @@ Supervisor、Host、Webview 各自需要每会话及全局缓存/在途预算；
 F-04 继续重评。首选验证方向为第 6.3 节的 server 生命周期模型，不预设 durable journal/归档，运行期落盘需要由容量证明；B+S1 可作为存储兼容路线对照。C 不再是 completed 默认下一步，A 不能代替职责分离。本文整体 `decision_status` 保持“比较中”，D 的局部已选定决策见独立设计，并未接受某个新文件格式、mux backend、纯内存实现或服务拓扑。
 
 下一阶段以相同拒绝样本验证运行期状态、未消费事件及最小模型的恢复正确性、交互时间和资源预算，并核对 S3 能力矩阵。只有确实需要运行期落盘时再确定相应提交/回收协议；不重新引入已取消的 completed 归档或故障恢复门槛。重评不必等待 F-03，但身份与迁移必须兼容其方向。不把部分优化当作整体终端模型替换完成。
+
+## 10. B1 容量收尾：当前实施范围与工程预算
+
+2026-09-28，从 `8dd82629` 开始执行有限收尾 B1，过程见 `docs/exec-plans/active/runtime-persistence-capacity-closeout.md`。本节取代前文历史“下一阶段”的执行顺序，仍沿当前 Supervisor/缓存/分页方向。F-04 未整体通过；不重开 F-05 归档、不改变退出完整性或 F-03 边界。
+
+源码已确认正常 live checkpoint 的 `commitCheckpointOnWriteChain()` 经完整 verifier 保留全历史 events/checksums/recordByteEnds，独立于有界事件缓存。选定最小修正为提交专用摘要校验：逐段验证所有记录与 manifest，只保留本次 current/previous checkpoint 和分段边界需要的 checksum，不保留完整 payload 或每条记录的校验数组；必须保持损坏拒绝、连续性、双代 fallback、原子 manifest 提交。公开完整读取与旧恢复接口暂不变，不把它们冒称新路径容量已通过。
+
+同时核对 journal `pendingWrites`/`writeChain`、普通 socket 与 Host 接收在途。它们无界与否不由缓存/page 数字代证。慢消费者不能靠丢事件、无条件断开有效 completed reader 或停止其他 session 收敛；需要将约束接到可继续控制的原生产者/消费者。尚未接通或验证的环节必须保持 B1 开放。
+
+本轮固定负载：80x24、1000 scrollback，已知 OSC 颜色资格拒绝后，640 个 10 KiB 块为 1x，测累计 1x/2x/4x；另保持原 10000 scrollback/5000 行尺寸拒绝输入。新路径测量禁止调用完整 projection 或收集完整 events；逐页核对内容/revision 并应用到 headless，记录每档缓存、最大页、单页/总恢复时间、heap/RSS 与 timer 延迟。它是实际模块校准，未含的 socket/Host/UI 不能记通过。
+
+缓存沿用 1 MiB/2048 事件，普通块读取页沿用 256 KiB/256 事件；这不是任意超大单事件或整个 RSS 上限。校准进程额外 heap/RSS 初始观察预算为 64/128 MiB，每档分页读取 30 秒，依据是有限 4 MiB segment 读取/解析、1 MiB cache、page 和有限 xterm 投影的裕量，不是历史实测或用户 SLA；来源不明的峰值不得直接减去。原浏览器十会话门槛不变：输入分发 <150ms、ACK <250ms、优先回显 <500ms、后台分散 <5s、主线程滞后 <1s、全量完成 <45s。该基准只覆盖注入消息的浏览器层，不代证真实 Supervisor/Agent。
+
+先记录原失败再修复。初始预算超限时保留数据并定位，不事后放宽阈值求绿；有限样本没 OOM 也不能放过确定无界结构。正常 live checkpoint 的新校验允许总 CPU 随日志增长，但不允许全量正文常驻；总恢复时间与终端可交互分别验收。最终 B2 产物仍需复核 A1。实际实验与结果在本节后续分账登记，不预写通过。
+
+owned 执行路径选定在每批输出完成 tracker 消费后等待 journal `flush()`，再由既有 adapter 返还消费信用。这样现有 256 KiB/16 帧接收窗口覆盖 pendingWrites 和已搬进 writeChain 的正文，而不只限制事件缓存。append/flush 失败要登记 journal 故障、请求本执行停止并重新抛出，由 authority 保留失败责任；不能返还成功信用，也不能在实际退出确认前把 `live` 设为 false。tracker 错误不归类成 journal 故障。该选择只覆盖 owned 路径；旧 node-pty 的无 pause/resume 链和普通 socket 写入仍是 B1 阻塞，不因本修正追授有界保证。
+
+checkpoint 回归另设 32 MiB 日志、零缓存、1 MiB 分段，提交扫描期间在每段边界 GC 后观察仍被持有的 heap，界限 12 MiB，给单段 Buffer/string/行解析及元数据留裕量。它针对全历史数组持有，不能替代不强制 GC 的容量峰值/RSS 校准。新分页测量进程含一个生产 tracker 和一个逐页回放 tracker，64/128 MiB 增量预算适用于整个测量进程，不从结果减掉第二个模型或脚本开销。
+
+### 10.1 本轮结果与未收口责任
+
+环境为 Linux x64 / Node v25.6.0，业务输入 `8dd82629` 加本轮工作树。原 journal 回归新增固定扫描样本，旧代码先红：34 段 retained heap 34,508,616 bytes，超过 12 MiB；摘要实现后同一断言为 103,848 bytes，原完整校验/双代回退及七类损坏拒绝通过。它消除全历史正文持有，但每次仍完整扫描，CPU 与分段元数据继续随历史增长，不能声称无限历史下常量成本。
+
+独立 review 又发现摘要初版遗漏原始分段 `buffer.length` 比较：合法 U+FFFD 的三个 UTF-8 字节损坏成单字节 FF 后仍解码成同一字符，不能仅凭重新编码/记录 checksum 接受。第八类负例先红 `Missing expected rejection`，补实际 `segment.bytes` 比较后原测试全绿，最终 retained heap 100,216 bytes。下表校准采于该窄拒绝语义修正前，修后只回归 journal，没有重复容量采集或覆盖首次内存失败。
+
+真实 journal `appendFile` 被单 session gate 阻塞时，旧 owned 路径已经将 `consumedThrough` 推进到 4，违反期望的 0。修后 Terminal/Agent 均等待实际磁盘写入，主进程 exit/seal 不能越过；另一 session 可继续消费。append/flush 故障保留具名 journal error、未返信用和停止责任。Supervisor wiring 77/77 通过。原 S10 resize 故障断言误将持久化失败当作已退出，本轮改为保持 live，并继续断言 error、停止请求与禁止输入；这不是更改冻结原生诊断的失败或尾部断言。
+
+唯一一次完成负载的 `--paged-capacity` 校准如下。峰值为每 10ms 及 batch/page 边界的观察最大值，不是绝对瞬时峰值；基线 heap/RSS 为 44,879,544 / 231,870,464 bytes，已含工具编译/空模型。GC 只用于生产前基线，不在每档回收后取数。
+
+| 累计负载 | output bytes / 页数 | 最大页 / 缓存编码 bytes | 回放秒 | heap / RSS 增量 MiB | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| 1x | 6,553,613 / 27 | 253,669 / 1,046,034 | 1.334 | 74.70 / 147.66 | 内容/终态正确，内存两项超限 |
+| 2x | 13,107,213 / 54 | 253,669 / 1,046,133 | 2.715 | 89.20 / 181.57 | 内容/终态正确，内存两项超限 |
+| 4x | 26,214,413 / 107 | 253,669 / 1,046,133 | 5.903 | 93.92 / 196.78 | 内容/终态正确，内存两项超限 |
+
+整轮退出码 1，预算未放宽；最大观察 heap/RSS 为 143,363,824 / 438,206,464 bytes，timer lag 35.90ms。headless 总回放不是真实页面首次可交互时间。源码核对确定：Supervisor 每页重新建立 generator，只取一页后关闭；cache miss 的 `readVerifiedTerminalJournalSegment()` 先完整读段、解码/拆行、校验并收集全段 events，再按游标分页。它造成重复分配，但本次峰值也含生产、双 tracker 及校验开销，不能将全部超限精确归因于它或宣称永久泄漏。
+
+后续直接产品工作保持在 B1：分页扫描减少到只保留目标页/当前记录，仍核验涉及段的全部 checksum 链和尾锚；然后闭合实际普通 socket/Host 传输与旧生产链的在途责任并完成多会话整链验收。不得用无预算全段缓存、跳过页外损坏检查、强断慢有效读者或暂停其他会话求通过；本轮尚未实施这些后续修正。旧恢复/公开全量 verifier 保持兼容，不纳入本次已修声明。
+
+原容量脚本默认对照仍通过，5000 行/10000 scrollback 的尺寸拒绝输入保持原断言；它主动完整物化，不计作新路径内存证据。新模式首次两次在采样前因旧启动表达式定位和重复导出失败，最小适配当前受 guard 的入口后才完成上述唯一校准，原失败不抹除。`test-terminal-paged-projection` 原 Host harness 缺真实 admission 方法首次失败；补真实方法和默认字段后 27/27 writer 及原分页/重连断言通过，没有更改 Host 业务。checkpoint refresh、paged completion、typecheck/build 均通过。
+
+本机原始日志保留于 `.debug/runtime-persistence-capacity-20260928-wZfyUa/`：`paged-capacity.log` 与 `paged-capacity-sample.log` 是采样前失败；`paged-capacity-measured.log` 是完成负载的内存失败；`legacy-comparison.log` 是原对照。这些与本节固定输入、指标及失败摘要共同追溯，不以局部绿色代替整体 B1/A1 通过。
+
+原 Playwright 十会话基准 1/1 通过，10 节点、9 个后台各 4000 行，共 864,020 字符；输入分发 13.2ms、ACK 19.3ms、优先回显 170.2ms、最大后台完成 1035.4ms、后台分散 144.4ms、观察主线程滞后 0ms，原逐行正文与优先顺序断言不变。日志为同目录 `webview-10-agent.log`，只覆盖注入 Host 输出/ACK 的实际浏览器 xterm，不是本轮真实 Agent、Supervisor socket、VS Code/Electron 或跨平台端到端验收。

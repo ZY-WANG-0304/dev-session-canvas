@@ -1,7 +1,7 @@
 ---
 title: Runtime Persistence 有限收尾与完成定义
 decision_status: 已选定
-validation_status: 未验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 执行编排域
@@ -14,6 +14,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/active/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/active/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
 updated_at: 2026-09-28
@@ -23,7 +24,7 @@ updated_at: 2026-09-28
 
 ## 1. 状态与目的
 
-2026-09-28，用户先要求暂停自动追加阶段，随后明确不承担清单确认，要求代理依据重构目标作出判断。本文件据此收口为已选定的工程完成定义与有限工作顺序，不再等待用户批准工程清单或选择技术预算。代码核对基线仍为 `ba2c148b`，前版草案保存在 `2d375606`。本次只作工程裁决和文档同步，不执行新实验、业务改造、runner 或发布；方案已选定不等于产品已验证，`validation_status` 仍为未验证。
+2026-09-28，用户先要求暂停自动追加阶段，随后明确不承担清单确认，要求代理依据重构目标作出判断。本文件据此收口为已选定的工程完成定义与有限工作顺序，不再等待用户批准工程清单或选择技术预算。最初核对基线为 `ba2c148b`，草案保存在 `2d375606`，工程裁决保存在 `8dd82629`。其后已按既定顺序启动 B1，过程见 `runtime-persistence-capacity-closeout` active 计划；两处局部修复不代表整体容量通过，固定校准仍有内存超限，状态改为验证中。没有新增 runner 或发布动作。
 
 原始重点是 F-04 运行期容量与恢复成本、F-05 已结束历史进入画板。退出完整性是后来明确批准的独立正确性交付，必须完成，但不能以无限增加局部阶段替代总体交付。当前产品方向未发生根本变化，推进重心却过度集中于退出诊断与局部接线，F-04 整体收口落后。
 
@@ -36,6 +37,7 @@ updated_at: 2026-09-28
 | F-04 周期传输 | 独立 checkpoint 刷新，不再为健康 live stream 周期重传完整后缀；见 `runtime-checkpoint-only-refresh.md` | 首次恢复和总回放时间已收口 |
 | F-04 常驻缓存与单次读取 | Supervisor 缓存限制为 1 MiB 编码字节/2048 事件；新能力 live Host/Webview 消费驱动分页，Host 不驻留完整后缀；见 `runtime-journal-bounded-cache.md`、`runtime-paged-terminal-projection.md` | 该预算就是整体 RSS 上限、全部队列已受限 |
 | F-04 新能力完成路径 | 当前读者从原 Supervisor 分页收尾，避免完整终态聚合；见 `runtime-paged-completion.md` | 旧协议/混合订阅、扫描与总恢复成本已消除 |
+| F-04 本轮局部修复 | live checkpoint 提交只保留校验摘要；owned 输出信用等 journal 写入完成，失败保留未结责任；见 `runtime-persistence-storage-reevaluation.md` 第 10 节 | 旧生产者、socket/Host 已背压；固定容量峰值已达标；候选已经生产启用 |
 | F-05 新路径 | Runtime completed 只保存轻量节点、配置与退出状态；重开不恢复正文或自动执行，明确可识别的旧内联记录已处理；见 `runtime-completed-no-history.md` | 当前页面可以丢尾；可推断并删除来源不明的旧 serialized-only 记录 |
 | 退出完整性实现增量 | 两种 owner、内容消费与逐 reader 结算、最终应用屏障、保存与失败责任已有受控模块实现；Linux 正式 provider/PTY 有有限业务证据；见生产接入设计第 17 至 31 节 | 真实 Agent、实际 Webview、macOS/Windows、packaged 产品路径已全部通过 |
 | Host 状态保护 | S13/S14 永久退出旧写者屏障、S15 首次退出结果复用、S16 普通 completed 陈旧回滚/清理保护；S16 有先红及 25 次 Host 回归 | template prepare 等于完整 apply；所有等待窗口或状态替换竞态均已解决 |
@@ -54,7 +56,7 @@ updated_at: 2026-09-28
 
 代码定向：以下代码相对 `extensions/vscode/dev-session-canvas/`。B1 涉及 `src/supervisor/terminalSessionJournal.ts`、`src/supervisor/runtimeSupervisorMain.ts`、Host 的 `src/panel/CanvasPanelManager.ts` 与 Webview 分页消费；B2 沿 `src/panel/executionSessionAdapter.ts`、`src/panel/executionOwnerLifecycle.ts`、`src/panel/linuxExecutionOwnerFactory.ts` 和真实 Host/Supervisor/Webview 接线；B3 聚焦 `CanvasPanelManager.ts` 的原边界与 completed 续体。具体落点由选中条目的直接证据决定，不把这一段作为重构所有模块的授权。
 
-B1 当前源码仍有 journal 的 `pendingWrites`/`writeChain` 积压、Supervisor 普通 socket 写入未等待背压，以及 live checkpoint 校验扫描累积事件等结构性成本；不据此宣称已复现 OOM。正式运行路径的写失败/满盘必须有可执行且不谎报完整的策略，不能以无限内存暂存掩盖失败。Supervisor 崩溃后重放优化不自动成为验收要求；保留的 open/扫描只有确实进入本轮正式路径时才计入相应预算观察。
+B1 已修正常 live checkpoint 全历史数组持有，并将 owned 输出信用接到 journal 完整 flush；原 node-pty 生产链、普通 socket/Host 在途仍未闭合。固定 1x/2x/4x 模块校准内容正确，但额外 heap/RSS 全部超出预定 64/128 MiB，不能关闭 A1。分页每次请求重新物化整段约 4 MiB 是已确认分配热点，尚非全部峰值的因果归因或 OOM/泄漏证据。正式运行路径的写失败/满盘不能伪报完整或以无限内存暂存掩盖；Supervisor 崩溃后的 open/全量恢复优化不自动成为本轮验收要求。
 
 F-04 的工程判据不只是一轮负载没有超限：当前支持路径的缓存、读取和在途数据必须有明确容量约束、背压或可证明的来源上限，不能依赖消费者永远足够快。若新路径仍要求按完整历史线性物化后缀或无界累计待写正文，即使小样本未 OOM 也不能关闭该项。总回放工作可随所需历史增长，但必须让步、可取消，不阻塞输入控制；终端可交互与完整追赶分别度量，不强加恒定恢复时间。
 
@@ -122,7 +124,7 @@ B2 会改变实际 provider、信用与消费链，最终启用产物必须复�
 
 下一项工作固定为 B1 的端到端容量收尾：复用已知 checkpoint 拒绝输入，以 1x/2x/4x 历史和既有十会话交互场景作有限负载，明确实际 journal 待写、socket/Host 在途、分页消费和 live compact 的容量责任；据此登记工程预算并验证，只修当前路径上的无界持有、背压或交互阻塞。既有容量诊断可作为入口，但它没有实际 socket/UI 的部分不能冒称端到端证据；必要观测直接补在对应产品回归，不新增 D 系列框架。该项的结束产物是有来源的预算/结果表、实际阻塞修复与回归、剩余项分类，而不是又一份待用户确认的探索建议。
 
-每次工作必须引用 B/A 编号、写明直接产品风险和结束条件；无法映射的增强延期。校准不是验收通过，失败不得事后调宽门槛抹绿；确有环境或方案原因要修改工程阈值时，保留原值/失败和理由重新评审，不改变既定产品保证。只有外部凭据/资源确实缺失、不可逆操作或产品保证需要变更时才向用户提出具体问题，不再泛问是否同意清单。此次仍止于工程裁决，未启动容量实验或代码修改。
+每次工作必须引用 B/A 编号、写明直接产品风险和结束条件；无法映射的增强延期。校准不是验收通过，失败不得事后调宽门槛抹绿；确有环境或方案原因要修改工程阈值时，保留原值/失败和理由重新评审，不改变既定产品保证。只有外部凭据/资源确实缺失、不可逆操作或产品保证需要变更时才向用户提出具体问题，不再泛问是否同意清单。B1 本轮修复、首次失败与剩余产品阻塞记入容量 active 计划，仍按 B1 -> B2 -> 最终验收推进，不因一次校准另开工具阶段。
 
 历史证据继续保留原 SHA、原输入、断言、失败、工件与补救动作。D1 至 D4、U1/W1、PTY/EOF/挂断及后代对照作为诊断资料；不追认失败为通过，不为抹红重复采集，也不将旧阶段未勾项全文复制进当前清单。Windows 已退出进程仍被合法句柄引用需按对象语义解释，本方 owner 释放与 OS 对象最终销毁分开，不能盲关其他进程句柄求零。
 

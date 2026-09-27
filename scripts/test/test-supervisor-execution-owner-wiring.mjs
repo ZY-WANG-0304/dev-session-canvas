@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -393,6 +394,83 @@ try {
   });
 
   for (const kind of ['terminal', 'agent']) {
+    await check(`${kind}: disk backlog holds consumption credit and finalization without blocking another session`, async () => {
+      const f = fixture();
+      const { session, transport } = await f.create(kind);
+      const second = await f.create(kind);
+      const journal = session.terminalJournal;
+      const gate = deferred();
+      let appendEntered = false;
+      const originalAppend = fs.promises.appendFile;
+      fs.promises.appendFile = async (file, ...args) => {
+        if (path.dirname(String(file)) === journal.sessionDirectory) {
+          appendEntered = true;
+          await gate.promise;
+        }
+        return originalAppend(file, ...args);
+      };
+      try {
+        for (let index = 0; index < 8; index++) transport.output(String(index));
+        await f.until(() => appendEntered, 'actual journal append blocked');
+        await f.pump();
+        assert.equal(session.ownedExecution.snapshot().adapter.acceptedThrough, 8);
+        assert.equal(session.ownedExecution.snapshot().adapter.consumedThrough, 0,
+          'unpersisted output must still occupy the existing consumption window');
+        assert.equal(transport.sent.some(message => message.type === 'consumed'), false);
+        second.transport.output('independent');
+        await f.until(() => second.session.ownedExecution.snapshot().adapter.consumedThrough === 1,
+          'other session consumes while the first disk write is blocked');
+        transport.process(); transport.seal(); transport.release();
+        await f.pump();
+        assert.equal(session.ownedExecution.snapshot().terminal, undefined);
+        assert.equal(session.live, true);
+        gate.resolve();
+        await f.until(() => session.ownedExecution.snapshot().settled, 'disk backlog and final flush settled');
+        assert.equal(session.ownedExecution.snapshot().adapter.consumedThrough, 8);
+        assert.equal(session.ownedExecution.snapshot().terminal.finalRevision, 8);
+        assert.equal(session.output, '01234567');
+        const events = await journal.readAllEvents();
+        assert.deepEqual(events.map(event => event.revision), [1, 2, 3, 4, 5, 6, 7, 8]);
+        assert.equal(events.map(event => event.data).join(''), '01234567');
+        await finish(f, second.session, second.transport);
+      } finally {
+        gate.resolve();
+        fs.promises.appendFile = originalAppend;
+        await journal.flush();
+      }
+    });
+
+    for (const operation of ['appendOutput', 'flush']) {
+      await check(`${kind}: failed journal ${operation} retains credit and live responsibility`, async () => {
+        const f = fixture();
+        const { session, transport } = await f.create(kind);
+        const second = await f.create(kind);
+        const journal = session.terminalJournal;
+        const original = journal[operation];
+        const failure = new Error(`injected journal ${operation} failure`);
+        journal[operation] = operation === 'flush'
+          ? async () => { throw failure; }
+          : () => { throw failure; };
+        try {
+          transport.output('unsettled');
+          await f.until(() => Boolean(session.ownedExecution.snapshot().adapter.authorityFailure),
+            'failed journal retains authority responsibility');
+          assert.strictEqual(session.terminalJournalError, failure);
+          assert.equal(session.lifecycle, 'error');
+          assert.equal(session.live, true, 'journal failure is not evidence that the process has exited');
+          assert.equal(session.ownedExecution.snapshot().adapter.consumedThrough, 0);
+          assert.equal(transport.sent.some(message => message.type === 'consumed'), false);
+          assert.ok(transport.sent.some(message => message.type === 'requestStop'));
+          assert.equal(session.ownedExecution.snapshot().settled, false);
+          assert.notEqual(session.ownedExecution.snapshot().terminal?.kind, 'applied');
+          second.transport.output('still independent');
+          await f.until(() => second.session.ownedExecution.snapshot().adapter.consumedThrough === 1,
+            'other existing session consumes after journal failure');
+          await finish(f, second.session, second.transport);
+        } finally { journal[operation] = original; }
+      });
+    }
+
     await check(`${kind}: seal cannot overtake paused consumption and later accepted batches`, async () => {
       const f = fixture();
       const { session, transport } = await f.create(kind);
@@ -1695,7 +1773,9 @@ try {
       assert.equal(f.session.rows, 39);
       assert.equal(f.session.outputSequence, 0);
       if (outcome === 'journal-failed') {
-        assert.equal(f.session.live, false);
+        assert.equal(f.session.live, true, 'failed persistence must retain the unconfirmed live process');
+        assert.equal(f.session.lifecycle, 'error');
+        assert.ok(f.transport.sent.some(message => message.type === 'requestStop'));
         assert.match(f.session.terminalJournalError.message, /controlled resize journal failure/);
         await assert.rejects(f.server.writeInput({ sessionId: f.session.sessionId, data: 'no' }), /not live|not running|active|not available/i);
       }

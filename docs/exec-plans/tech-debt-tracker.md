@@ -25,6 +25,8 @@
 
 2026-09-28 当前 Runtime 重构收尾入口：`docs/design-docs/runtime-persistence-closeout.md`。按用户委托，代理已选定完成定义及 B1 容量优先 -> B2 可用退出路径（合并 B3 有限风险）-> 最终 A1 至 A6 验收的顺序，不再等待用户确认清单/选择预算。F-05 不重开归档，F-03 另列 R1；通用工具增强不默认前置，真实 Agent/Webview/跨平台和尾部不延期。F-04 不以小样本未 OOM 关闭，最终 B2 产物仍须复核 A1。下列 dated 记录、旧 L/PI 分类及“下一步”保留为历史，不自动执行；当前债务以本入口分账，均未因工程口径选定而冒称完成。
 
+同日 B1 已实施局部修复：live checkpoint 不再构建全历史数组；owned 输出消费等待 journal 完整 flush，慢写/失败不提前返信用或伪称进程退出。32 MiB 扫描 retained heap 从 34,508,616 降至约 103,848 bytes，不能替代峰值证明；1x/2x/4x 模块校准内容正确，但额外 heap/RSS 最高 93.92/196.78 MiB，超预设 64/128 MiB。十会话浏览器输入/ACK/回显通过，仅覆盖注入 Host 的真实浏览器层。B1 保持开放：逐页重新物化整段的分配、普通 socket/Host 在途与旧 node-pty 生产链仍需收口，不把旧恢复全量扫描自动升级为前置。记录与计划见 `runtime-persistence-storage-reevaluation.md` 第 10 节及 `docs/exec-plans/active/runtime-persistence-capacity-closeout.md`。
+
 2026-09-28 S16有限收口：普通completed保存失败复活已清root已在未改业务基线先红；reader/persist窗口补原投影/session身份检查和并发节点级回滚，strict路径保持。Host25次、相关回归/typecheck通过，独立review无阻塞，见生产接入31.15。剩余为完整reset/reload状态替换仲裁、首次pending等待后callback、新业务准入、完整template apply，以及原session同步释放后等待旧Runtime delete再外层发exit的reader/UI身份竞态；本轮仅验证template prepare及较早等待窗口，不承诺所有迟到UI安全。剩余项另按有限输入确认，不自动扩成下一轮矩阵，不恢复全局gate/core锁/root drain，不增工具/native门槛；真实宿主/Agent/跨平台及退出完整性总债务仍开放。
 
 2026-09-27 S15范围收窄：正式最小交付仅普通 `prepareForDeactivation()` 的首次内部Promise与配置缓存，成功/失败都复用，不重复保存/detach/删除；基线并发flush 2!==1先红，修后Host边界13次调用、wiring95/95、checkpoint/typecheck和脚本语法检查通过，独立review无阻塞，reviewer复跑目标测试及diff检查通过。配置同步异常仍在core之前，不视为gate已经关闭。candidate/non-native与reset/reload/root/template实现不变。非永久全流程仍开放：core锁不包含后续state replacement；一次pending集合等待和client epoch不足以覆盖其后callback/operation与新业务准入；root严格delete失败保留不能换成ordinary批量best-effort，全局drain也会不当地等待其他root长操作。部分attach/snapshot跟踪只是待实证源码观察。试作的core锁、临时gate与root全局drain已撤回，不算交付或验证证据；后续须按31.14固定输入围绕原binding、定向责任和完整替换顺序验收，不关闭退出完整性总债务。

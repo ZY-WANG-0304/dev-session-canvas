@@ -1727,7 +1727,13 @@ export class RuntimeSupervisorServer {
       for (const batch of batches) {
         const titleUpdate = updateSupervisorTerminalTitle(session, batch.text);
         const text = titleUpdate.terminalOutput;
-        const event = session.terminalJournal!.appendOutput(text);
+        let event: TerminalStreamEvent | undefined;
+        try {
+          event = session.terminalJournal!.appendOutput(text);
+        } catch (error) {
+          this.failSessionForTerminalJournal(session, error);
+          throw error;
+        }
         session.outputSequence = event?.revision ?? session.outputSequence + 1;
         session.output = appendOutputTail(session.output, text);
         for (const report of titleUpdate.titleReports) {
@@ -1742,6 +1748,13 @@ export class RuntimeSupervisorServer {
         }
       }
       await session.terminalStateTracker.flush();
+      // Consumption credit must cover pending and in-flight journal writes, not only parser work.
+      try {
+        await session.terminalJournal!.flush();
+      } catch (error) {
+        this.failSessionForTerminalJournal(session, error);
+        throw error;
+      }
     });
   }
 
@@ -1870,7 +1883,6 @@ export class RuntimeSupervisorServer {
     session.terminalTitle = undefined;
     session.terminalTitleCarryover = undefined;
     session.terminalTitleRedactionState = undefined;
-    session.live = false;
     session.lifecycle = 'error';
     setSessionLastExitMessage(session, {
       id: 'terminalJournalPersistenceFailed',
@@ -1885,6 +1897,7 @@ export class RuntimeSupervisorServer {
       this.scheduleIdleShutdownIfNeeded();
       return;
     }
+    session.live = false;
     this.disposeSession(session, { terminateProcess: true });
     this.emitSessionState(session);
     this.scheduleIdleShutdownIfNeeded();

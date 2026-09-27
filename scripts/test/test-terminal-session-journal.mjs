@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -57,7 +58,16 @@ try {
     verifyTerminalSessionJournal
   } = require(outfile);
 
+  const capacityCheck = spawnSync(process.execPath, [
+    '--expose-gc', '--input-type=commonjs', '-e',
+    `(${verifyCheckpointScanRetainedHeap.toString()})(${JSON.stringify(outfile)}, ${JSON.stringify(tempDir)})`
+  ], { encoding: 'utf8', timeout: 120000 });
+  assert.equal(capacityCheck.status, 0,
+    `checkpoint scan capacity regression failed:\n${capacityCheck.stdout}\n${capacityCheck.stderr}`);
+  process.stdout.write(capacityCheck.stdout);
+
   await verifyBoundedCacheAndPagedReads(TerminalSessionJournal, resolveTerminalJournalSessionDirectory);
+  await verifyCheckpointSummaryIntegrity(TerminalSessionJournal, resolveTerminalJournalSessionDirectory);
 
   const storageDir = path.join(tempDir, 'runtime-storage');
   const sessionId = 'journal-test-session';
@@ -956,4 +966,149 @@ async function verifyBoundedCacheAndPagedReads(Journal, resolveDirectory) {
     'eviction plus write failure must never become an empty successful read.');
   await assert.rejects(failed.flush(), /ENOTDIR|ENOENT/u);
   await failed.delete();
+}
+
+async function verifyCheckpointScanRetainedHeap(outfile, tempDirectory) {
+  const assert = require('node:assert/strict');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { TerminalSessionJournal } = require(outfile);
+  const MiB = 1024 * 1024;
+  const sessionId = 'checkpoint-scan-capacity';
+  const authorityId = 'checkpoint-scan-capacity-authority';
+  const journal = await TerminalSessionJournal.create({
+    storageDir: path.join(tempDirectory, sessionId), sessionId, authorityId,
+    initialCols: 80, initialRows: 24, initialScrollback: 1000,
+    eventCacheMaxBytes: 0, eventCacheMaxEvents: 0,
+    segmentMaxBytes: MiB, flushDelayMs: 60000,
+    checkpointProfiles: { 'xterm-serialize-v1': 'capacity-test-profile' }
+  });
+  for (let index = 0; index < 2048; index += 1) {
+    journal.appendOutput(`${index}:` + 'x'.repeat(16 * 1024));
+    if (index % 32 === 31) await journal.flush();
+  }
+  await journal.flush();
+  global.gc();
+  const baseline = process.memoryUsage().heapUsed;
+  let peak = baseline;
+  let scannedSegments = 0;
+  const originalReadFile = fs.promises.readFile;
+  fs.promises.readFile = async (...args) => {
+    if (String(args[0]).endsWith('.ndjson')) {
+      global.gc();
+      peak = Math.max(peak, process.memoryUsage().heapUsed);
+      scannedSegments += 1;
+    }
+    return originalReadFile(...args);
+  };
+  let result;
+  try {
+    result = await journal.commitCheckpoint({
+      version: 1, sessionId, authorityId, revision: journal.getRevision(),
+      cols: 80, rows: 24, scrollback: 1000, createdAtMs: Date.now(),
+      serializedState: {
+        format: 'xterm-serialize-v1', data: 'bounded-checkpoint', outputSequence: journal.getRevision()
+      }
+    }, { force: true });
+  } finally {
+    fs.promises.readFile = originalReadFile;
+  }
+  assert.equal(result.committed, true);
+  assert.ok(scannedSegments >= 32, 'the capacity fixture must verify the whole retained journal.');
+  const retainedHeap = peak - baseline;
+  console.log(`checkpoint scan retained heap: ${retainedHeap} bytes across ${scannedSegments} segments`);
+  assert.ok(retainedHeap < 12 * MiB,
+    `checkpoint verification must not retain all 32 MiB of journal payload; retained heap was ${retainedHeap} bytes.`);
+  await journal.delete();
+}
+
+async function verifyCheckpointSummaryIntegrity(Journal, resolveDirectory) {
+  const cases = [
+    {
+      name: 'incomplete-tail', expected: /incomplete final record/u,
+      mutate: async ({ firstSegment, firstContents }) => writeFile(firstSegment, firstContents.slice(0, -1))
+    },
+    {
+      name: 'invalid-json', expected: /not valid JSON/u,
+      mutate: async ({ firstSegment, firstContents }) =>
+        writeFile(firstSegment, `!\n${firstContents.slice(firstContents.indexOf('\n') + 1)}`)
+    },
+    {
+      name: 'foreign-authority', expected: /checksum or revision mismatch/u,
+      mutate: async ({ firstSegment, firstContents, authorityId }) =>
+        writeFile(firstSegment, firstContents.replace(authorityId, 'foreign-authority'))
+    },
+    {
+      name: 'manifest-prefix', expected: /manifest prefix mismatch/u,
+      mutate: async ({ directory, manifest }) => {
+        manifest.segments[0].bytes -= 1;
+        await rewriteManifest(directory, manifest);
+      }
+    },
+    {
+      name: 'manifest-tail-checksum', expected: /manifest checksum mismatch/u,
+      mutate: async ({ directory, manifest }) => {
+        manifest.lastChecksum = '0'.repeat(64);
+        await rewriteManifest(directory, manifest);
+      }
+    },
+    {
+      name: 'raw-byte-length', expected: /segment manifest mismatch/u,
+      mutate: async ({ firstSegment }) => {
+        const bytes = await readFile(firstSegment);
+        const replacement = Buffer.from('\ufffd');
+        const offset = bytes.indexOf(replacement);
+        assert.ok(offset >= 0);
+        // Invalid UTF-8 decodes to the same character, but the persisted byte count changes.
+        await writeFile(firstSegment, Buffer.concat([
+          bytes.subarray(0, offset), Buffer.from([0xff]), bytes.subarray(offset + replacement.length)
+        ]));
+      }
+    },
+    {
+      name: 'extra-empty-segment', expected: /segment manifest mismatch/u,
+      mutate: async ({ directory, manifest }) =>
+        writeFile(path.join(directory, `segment-${String(manifest.lastRevision + 1).padStart(16, '0')}.ndjson`), '')
+    },
+    {
+      name: 'stale-manifest', expected: /segment manifest mismatch/u,
+      mutate: async ({ directory, prefixManifest }) => rewriteManifest(directory, prefixManifest)
+    }
+  ];
+  for (const test of cases) {
+    const storageDir = path.join(tempDir, 'checkpoint-summary-integrity');
+    const sessionId = test.name;
+    const authorityId = `authority-${test.name}`;
+    const journal = await Journal.create({
+      storageDir, sessionId, authorityId, initialCols: 80, initialRows: 24, initialScrollback: 1000,
+      segmentMaxBytes: 8192, eventCacheMaxBytes: 0, flushDelayMs: 60000, checkpointProfiles
+    });
+    for (let index = 0; index < 3; index += 1) journal.appendOutput(`prefix-${index}\ufffd\r\n`);
+    await generationFallbackCommit(journal, sessionId, authorityId, 3);
+    const directory = resolveDirectory(storageDir, sessionId);
+    const prefixManifest = await readManifest(directory);
+    journal.appendOutput('tail-4\r\n');
+    journal.appendOutput('tail-5\r\n');
+    await journal.flush();
+    const manifest = await readManifest(directory);
+    const firstSegment = path.join(directory, manifest.segments[0].file);
+    const firstContents = await readFile(firstSegment, 'utf8');
+    await test.mutate({ directory, manifest, prefixManifest, firstSegment, firstContents, authorityId });
+    const manifestBefore = await readFile(path.join(directory, 'manifest.json'), 'utf8');
+    const filesBefore = (await readdir(directory)).sort();
+    await assert.rejects(generationFallbackCommit(journal, sessionId, authorityId, 5), test.expected,
+      `summary verification must fail closed for ${test.name}.`);
+    assert.equal(await readFile(path.join(directory, 'manifest.json'), 'utf8'), manifestBefore,
+      `failed ${test.name} verification must not promote a checkpoint manifest.`);
+    assert.deepEqual((await readdir(directory)).sort(), filesBefore,
+      `failed ${test.name} verification must not delete a fallback or retained segment.`);
+    await journal.delete();
+  }
+
+  async function rewriteManifest(directory, manifest) {
+    const { checksum: _checksum, ...body } = manifest;
+    await writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify({
+      ...body, checksum: createHash('sha256').update(JSON.stringify(body)).digest('hex')
+    }, null, 2)}\n`);
+  }
 }

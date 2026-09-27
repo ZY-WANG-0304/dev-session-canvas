@@ -257,7 +257,7 @@ async function verifyHostReconnect() {
   const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
   const manager = ast.statements.find((node) => ts.isClassDeclaration(node) && node.name?.text === 'CanvasPanelManager');
   const names = ['handleRuntimeSupervisorDisconnected', 'reconnectPagedRuntimeSession',
-    'subscribeRuntimeSupervisorTerminalStream'];
+    'subscribeRuntimeSupervisorTerminalStream', 'isRuntimeSupervisorEventAdmitted'];
   const methods = names.map((name) => {
     const method = manager.members.find((node) => ts.isMethodDeclaration(node) && node.name.getText(ast) === name);
     assert.ok(method);
@@ -271,7 +271,11 @@ async function verifyHostReconnect() {
     const formatUnknownError = (error) => String(error);
     const updateExecutionNode = (state, nodeId, kind, patch) => ({ ...state, ...patch });
     const buildExecutionMetadataPatch = (state, nodeId, kind, patch) => patch;
-    class Harness { ${methods.join('\n')} }
+    class Harness {
+      runtimeSupervisorEventAdmissionOpen = true;
+      runtimeSupervisorClientEpochs = new Map();
+      ${methods.join('\n')}
+    }
     export { Harness, timers };
   `, resolveDir: path.dirname(path.dirname(filename)), loader: 'ts' }, bundle: true,
     platform: 'node', format: 'cjs', write: false });
@@ -346,6 +350,11 @@ async function verifyHostReconnect() {
   await pending;
   assert.equal(subscribed, true);
   assert.equal(timers.length, 0);
+  const current = host.terminalSessions.get('node');
+  host.runtimeSupervisorEventAdmissionOpen = false;
+  host.handleRuntimeSupervisorDisconnected('legacy-detached', '/same-runtime', new Error('late socket close'));
+  assert.equal(timers.length, 0, 'closed admission must not schedule a reconnect');
+  assert.strictEqual(host.terminalSessions.get('node'), current);
 }
 
 async function verifyControllerSettlement(directory) {
