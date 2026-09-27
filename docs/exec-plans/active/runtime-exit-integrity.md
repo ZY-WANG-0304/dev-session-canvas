@@ -67,6 +67,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [ ] S12后续有限定位：确认旧Host关闭报告后迟到回调/延迟保存的来源与生产关闭契约，不能由fixture取消timer宣称无晚写风险。只围绕实际入口及该顺序定位，不重跑原生或扩诊断框架；范围见31.9。
 - [x] (2026-09-27，S12晚写根因定位) 只读AST契约确认Runtime `prepareForDeactivation -> prepareNonNativeDeactivation` 未清理/flush Supervisor session syncTimer；普通 `prepareForHostBoundaryCore` 会清理并 immediate flush。timer仅需session仍在Map即可再次排队 deferred persist，`disposeManagedExecutionSession`也不清该timer。Host wiring 95/95、checkpoint refresh通过；completed-history既有Harness在`surfaceLifecycle[surface]`缺失处失败，未改写或纳入本结论。
 - [ ] S12后续设计决策：在不停止/删除远端live执行、不丢已接受状态且不允许旧回调覆盖新状态的前提下，选择“永久边界最终flush”或“关闭准入后取消timer并有序保存”的最小方案；方案确认前不改业务代码、不追加PTY/native样本。
+- [ ] 下一受控定位场景：保留第一Host旧timer，第二Host先将节点保存为completed空历史，再让第一Host旧timer到期；读取root-local/workspace文件区分旧状态复活、仅排队未落盘和被身份/序列屏障拒绝。仅用CanvasPanelManager与磁盘，不启动PTY/native；结果决定是否进入最小业务修正。
 - [x] (2026-09-27，S11，输入ae3c42cf) 冻结30.1/30.2后新增四份窄脚本，修正采样前续体准入/清理finally/异步证据三项直接安全问题。唯一首次四场景五主体exit0；原transport全关闭、四资源首报/当前released、无追加stop/kill、无证据截断，原始输入和事实保持。
 - [x] (2026-09-27，S11证据复核) 独立核对Host真实落盘及重开、Supervisor受控重附着/暂停消费/同authority隔离与reader退役；只修工作树screen返回字段重名，原采样不改、不重跑。完成实际PTY证明，不将显式delete后的拒绝当Host自动完成工作流通过。
 - [x] S12原两个固定场景已有有限通过证据，分为首轮本地通过与修后Runtime单例通过，不替代真实UI/Electron/Agent/跨平台或关闭后迟到写盘验收，L-02至L-05仍开放。
@@ -1168,6 +1169,8 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 S12修后单例1/1、partialSelection=true，唯一新主体自然exit7、EOF5、accepted=consumed5、revision6；208B成功write与213B PTY逐字节相符，四资源first/current released，provider原transport及4 socket/1 listener闭合，无stop/cancel wire或强杀、无补救动作/证据截断。实际root/workspace为completed无历史元数据，正常shutdown后实际registry为空，第三Host不取得执行/socket。四冻结输入及60源码、旧first30文件逐项保持经独立只读复核；同hash headless离线重建119x41、ROOT/中文/光标(6,4)，不冒称live屏幕。旧Host报告后新增deferred persist另列31.9，未证明实际旧写覆盖；不得因该未验路径把本轮有限通过扩大为整个退出验收。以下首轮记录保留当时结论。
 
 31.10根因定位的AST检查输出`confirmed-source-race`，对比Runtime专用deactivation与普通Host boundary的timer处理；Host wiring 95/95、checkpoint refresh通过。completed-history测试在Harness缺`surfaceLifecycle.editor`处失败，未追认通过，亦未作为本阶段业务/原生结论。下一设计决策尚未完成。
+
+冻结first诊断还核对了时序：旧Host的host-deactivation写入和boundary settled后出现`state/persistDeferred`，没有旧Host对应的deferred persistWritten；随后runtime-supervisor-live-snapshot immediate属于第二Host恢复，不能倒归旧timer。该Host逻辑无Linux专属分支，Linux样本只证明发生，不决定其他平台结论。
 
 S12修后文档收口检查通过：仅五文档变更，设计第2至31.6节逐字保持、计划12标题与原序/各当前首段、元数据/索引/关联路径、旧原则/债务和两次不同输入的判定核对通过，git diff --check通过。独立只读文档复核无新增不一致；本轮无生产/测试源码变更，不追加全量测试或原生采样。
 
