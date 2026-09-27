@@ -21,6 +21,8 @@ updated_at: 2026-09-27
 
 ## 1. 当前结论与阶段边界
 
+2026-09-27 从`670320b8`推进S15，正式范围按31.14收窄为普通 `prepareForDeactivation()` 的首次内部 Promise 缓存：同一 Host 的重复永久离开复用首次配置和同一成功/失败结果，不重复执行保存、detach 或删除，不承诺public async调用返回的Promise对象引用相同。candidate/non-native原关闭路径，以及reset/reload/root/template实现保持原状；本轮不是非永久边界的全流程串行化。审计中试作的core锁、临时关闭非永久准入和root全局drain方案已撤回，其局部测试不计交付证据。正式最小修改已通过13次Host边界测试调用（旧8/新增5）、Host wiring95/95、checkpoint、typecheck与测试脚本语法检查，新增并发用例在未改业务基线先红；独立review无阻塞，reviewer复跑目标测试及`git diff --check`通过。真实VS Code/Electron/Webview、Agent与跨平台、非永久跨代次写入及未完成operation仍开放。以下S12及更早“当前/下一”段落保留为历史，当前范围以本S15段落及31.14为准。
+
 2026-09-27 修后测试输入`54c3bc00`按31.7仅采集Runtime单例一次，1/1通过、partialSelection=true。实际Host/client/socket detach后保留原执行，新Host从磁盘恢复并计算新nonce，自然exit7后Host自动保存轻量终态和单次delete，第三Host重开无正文/新执行；Supervisor原正常shutdown严格落盘空registry并关闭原连接，资源安全释放。首轮1/2与旧证据不改，不合并成首次全绿。本轮没有业务或测试源码改动，零Webview reader、Node API及受控VSCode服务的范围保持。旧Host关闭报告后的延迟保存登记需独立核对，不能由本轮清timer的夹具证明迟到写盘已安全；后续边界见31.9。候选仍默认关闭，L-02至L-05与整体退出完整性未交付。以下按原时点保留。
 
 2026-09-27 从`7b480cbd`推进第31节S12，唯一首次两场景exit1，1通过1失败。snapshot-only活跃Host调用原deactivation后，自身SIGHUP尾部、最终保存/重开及资源释放通过；Runtime真实client/socket/start和首次输入已发生，但prototype夹具缺诊断数组导致TypeError，尚未到detach/恢复/自动完成清理。两原执行均安全释放，Runtime的退出属于失败清理，不能替换失败首报。已仅补夹具字段并完成确定性纯验证，增加仅选失败场景的入口，没有第三次原生样本或业务改动。下一只冻结新输入/新目录复验同一Runtime场景一次，不重复本地样本或增加工具前置；S12、L-02至L-05及整体计划保持未完成，候选默认关闭。以下按原时点保留。
@@ -1382,3 +1384,15 @@ Runtime client 获取默认受永久 gate 保护。已经被 gate 关闭前接�
 `allowClosedAdmission` + `requireExistingClient` 是 `getRuntimeSupervisorClientForBackend()` 的受限删除旁路，当前仅由 `deleteRuntimeSupervisorSessions()` 在永久边界 cleanup 时按 `permanentExecutionClose` 显式传入；candidate 的非永久 reset/delete 不再无条件打开该旁路。文档契约只能把它解释为既有 session cleanup，不得把它视为创建、attach、reconnect 或普通 Runtime 操作的通行证；已接受 callback 只复用仍在 map 中的原 client，原 client 已释放时结果保持未确认。
 
 该增量仍未增加真实宿主、Webview、PTY/native、Agent 启动链或跨平台证据。已有 S14 回归结果不因逻辑夹具自动扩大；删除旁路已按永久边界条件收窄并有定向覆盖，S13/S14 的普通生产时序与未完成 operation deadline 仍不能标记为整体退出完整性完成。
+
+### 31.14 S15 普通永久离开的首次结果复用
+
+本轮以`670320b8`为输入。正式最小方案只调整 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的普通 `prepareForDeactivation()`：首次调用读取 startup configuration、固定 `preserveLiveRuntime` 和永久关闭选项，并缓存原关闭 Promise；并发及后续调用都复用它。成功后不重复 flush/detach；失败后也不清缓存、不根据后来配置重试或重复发送删除。首次配置读取同步抛错也保留原错误，但仍沿既有行为，不能宣称此时已经进入core或关闭event admission。返回同一结果只表示对同一关闭操作的观察，不将首次失败改成成功，也不给该普通路径新增deadline或OS资源结算承诺。显式 `execution-owner-boundary-v1` 的candidate/non-native路径继续使用原 `nonNativeDeactivationReport`，本轮不改变其owner、预算、报告或清理语义。
+
+此前考虑把锁放到 `prepareForHostBoundaryCore`、临时关闭非永久event admission、把多根clear接到全量core或在root操作中全局drain。复核后撤回这些候选，不作为交付：core返回后调用方仍会load/替换/persist state，故只锁core不等于完整reset/reload操作串行；临时关闭准入会影响已有attach/create续体和删除旁路；root原有strict delete失败保留不能换成ordinary批量best-effort；root A也不能为等待全局pending集合而被root B的长操作阻塞。撤回代码及其局部测试不记为产品修复或正式验证通过。
+
+非永久边界仍需单独设计并验收。普通core的一次pending集合快照等待不阻止其后新callback/operation或业务创建入队；epoch只拒绝尚未进入的client事件，不能失效已进入的异步续体。已接收completed callback可在reader/persist等待后继续保存或回滚，须围绕原binding与最终state replacement确认顺序。另有部分attach/snapshot异步工作是否完整纳入边界责任的源码观察尚未闭合，没有本轮实证，不能写成已复现覆盖或新平台失败。root clear/template需按受影响binding追踪，保留其他root准入与严格删除错误传播；这些不是本轮缓存修正的已解决项。
+
+定向验收只扩 `scripts/test/test-runtime-host-deactivation-integrity.mjs`。新增并发用例在未改业务的`670320b8`源码上先红：`testOrdinaryDeactivationSharesInFlightBoundary`断言flush应为1、实际为2（`2 !== 1`，exit1）。正式最小修正后旧8次加新增5次共13次测试调用通过，新增覆盖并发单flush、preserve true/false首次配置冻结与重复完成（普通delete一次）、首次flush失败保持原Error、首次配置同步异常保持原Error。Host owner wiring95/95、checkpoint refresh、仓库根`npm run typecheck`及`node --check scripts/test/test-runtime-host-deactivation-integrity.mjs`均实际通过；独立review无阻塞，reviewer复跑目标测试及`git diff --check`通过。不以撤回候选绿色结果替代这些验证，没有新增PTY/native、runner、真实VS Code/Electron/Webview、Agent或跨平台采集，整体退出完整性及L-02至L-05继续开放。
+
+下一有限阶段的受控验收输入固定为：普通reset/reload完整入口重叠，覆盖core之后的load/state replacement/persist；pending state callback在首轮wait后进入；root A clear/template期间root B保持live，且strict delete失败时保留A的原绑定与状态。这些均待实现和待验证，不由S15的首次结果复用推导为通过；只沿现有Host回归验证，不新增native样本或工具门槛。

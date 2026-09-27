@@ -1319,6 +1319,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private candidateRuntimeStarts?: Map<string, { submitted: boolean; settled: boolean;
     sessionId?: string; client?: RuntimeSupervisorClient }>;
   private nonNativeDeactivationReport?: Promise<HostDeactivationReport>;
+  private ordinaryDeactivationPromise?: Promise<void>;
   private nonNativeFinalPersistenceDeadline?: number;
   private readonly nonNativeHostExecutions = new Map<string, NonNativeHostExecution>();
   private readonly pendingTerminalInitialInputs = new Map<string, string>();
@@ -3821,6 +3822,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (this.nonNativeExecutionOwner?.options.capabilities.includes('execution-owner-boundary-v1')) {
       return this.prepareNonNativeDeactivation();
     }
+    // Permanent shutdown keeps its first outcome, including failure; it is not a retryable reset.
+    this.ordinaryDeactivationPromise ??= this.prepareOrdinaryDeactivation();
+    return this.ordinaryDeactivationPromise;
+  }
+
+  private async prepareOrdinaryDeactivation(): Promise<void> {
     const nextStartupConfiguration = this.readStartupConfiguration();
     await this.prepareForHostBoundary({
       preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),

@@ -394,7 +394,7 @@ async function testOrdinaryDeactivationClosesAdmissionBeforeCoreFlush() {
 
   let releaseCallback;
   const acceptedCallback = new Promise(resolve => { releaseCallback = resolve; });
-  f.host.pendingRuntimeSupervisorStateCallbacks = new Set([acceptedCallback]);
+  f.host.trackRuntimeSupervisorStateCallback(acceptedCallback);
   let settled = false;
   const boundary = f.host.prepareForDeactivation();
   void boundary.then(() => { settled = true; });
@@ -423,6 +423,125 @@ async function testOrdinaryDeactivationClosesAdmissionBeforeCoreFlush() {
   assert.equal(flushes, 1, 'late ordinary-boundary timer cannot revive the old session');
 }
 
+async function testOrdinaryDeactivationSharesInFlightBoundary() {
+  const f = makeHost();
+  f.host.isRuntimePersistenceEnabled = () => true;
+  f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: true });
+  let disposed = 0;
+  f.host.runtimeSupervisorClients.set('original', { dispose() { disposed += 1; } });
+  let flushes = 0;
+  const originalFlushLiveExecutionState = f.host.flushLiveExecutionState.bind(f.host);
+  f.host.flushLiveExecutionState = (...args) => {
+    flushes += 1;
+    return originalFlushLiveExecutionState(...args);
+  };
+  let releaseCallback;
+  const acceptedCallback = new Promise(resolve => { releaseCallback = resolve; });
+  f.host.trackRuntimeSupervisorStateCallback(acceptedCallback);
+
+  const first = f.host.prepareForDeactivation();
+  const second = f.host.prepareForDeactivation();
+  await sleep();
+  releaseCallback();
+  await Promise.all([first, second]);
+
+  assert.equal(disposed, 1, 'concurrent ordinary deactivation shares one client detach');
+  assert.equal(flushes, 1, 'concurrent ordinary deactivation performs one final live-state flush');
+  assert.equal(f.persisted.length, 1, 'concurrent ordinary deactivation performs one final snapshot');
+}
+
+async function testOrdinaryDeactivationRetainsSuccess(preserveLiveRuntime) {
+  const f = makeHost();
+  let configuredPersistence = preserveLiveRuntime;
+  let configurationReads = 0;
+  let acquisitions = 0;
+  let disposals = 0;
+  const deletes = [];
+  const client = {
+    async deleteSession(request) { deletes.push(request.sessionId); },
+    dispose() { disposals += 1; }
+  };
+  f.host.runtimeSupervisorClients.set('original', client);
+  f.host.isRuntimePersistenceEnabled = () => true;
+  f.host.readStartupConfiguration = () => {
+    configurationReads += 1;
+    return { runtimePersistenceEnabled: configuredPersistence };
+  };
+  f.host.getRuntimeSupervisorClientForKind = async (_kind, options) => {
+    acquisitions += 1;
+    assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, false);
+    assert.equal(options.allowRestart, false);
+    assert.equal(options.allowClosedAdmission, true);
+    assert.equal(options.requireExistingClient, true);
+    return client;
+  };
+
+  const first = f.host.prepareForDeactivation();
+  assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, false,
+    'the first permanent call closes admission before returning to the caller');
+  configuredPersistence = !preserveLiveRuntime;
+  const second = f.host.prepareForDeactivation();
+  await Promise.all([first, second]);
+  await f.host.prepareForDeactivation();
+  assert.equal(configurationReads, 1, 'all repeated calls keep the first shutdown policy');
+  assert.equal(disposals, 1);
+  assert.equal(f.persisted.length, 1);
+  assert.equal(acquisitions, preserveLiveRuntime ? 0 : 1);
+  assert.deepEqual(deletes, preserveLiveRuntime ? [] : ['session-1'],
+    'detach never becomes delete and accepted cleanup never runs twice');
+  assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, false,
+    'a completed permanent boundary does not reopen admission');
+}
+
+async function testOrdinaryDeactivationRetainsFailure() {
+  const f = makeHost();
+  f.host.isRuntimePersistenceEnabled = () => true;
+  let configurationReads = 0;
+  f.host.readStartupConfiguration = () => {
+    configurationReads += 1;
+    return { runtimePersistenceEnabled: true };
+  };
+  const failure = new Error('controlled boundary flush failure');
+  let shouldFail = true;
+  let flushAttempts = 0;
+  f.host.flushDeferredCanvasStatePersist = async () => {
+    flushAttempts += 1;
+    if (shouldFail) throw failure;
+  };
+  let disposals = 0;
+  f.host.runtimeSupervisorClients.set('original', { dispose() { disposals += 1; } });
+
+  const results = await Promise.allSettled([
+    f.host.prepareForDeactivation(), f.host.prepareForDeactivation()
+  ]);
+  for (const result of results) {
+    assert.equal(result.status, 'rejected');
+    assert.strictEqual(result.reason, failure);
+  }
+  shouldFail = false;
+  await assert.rejects(f.host.prepareForDeactivation(), error => error === failure,
+    'a later call cannot turn the first failed permanent boundary into success');
+  assert.equal(configurationReads, 1);
+  assert.equal(flushAttempts, 1, 'failure does not schedule a second cleanup');
+  assert.equal(f.persisted.length, 1);
+  assert.equal(disposals, 0, 'the failure is preserved at its original cleanup step');
+  assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, false);
+}
+
+async function testOrdinaryDeactivationRetainsConfigurationFailure() {
+  const f = makeHost();
+  const failure = new Error('controlled configuration failure');
+  let configurationReads = 0;
+  f.host.readStartupConfiguration = () => {
+    configurationReads += 1;
+    throw failure;
+  };
+  await assert.rejects(f.host.prepareForDeactivation(), error => error === failure);
+  await assert.rejects(f.host.prepareForDeactivation(), error => error === failure);
+  assert.equal(configurationReads, 1, 'a synchronous setup error is also retained');
+  assert.equal(f.persisted.length, 0);
+}
+
 await testFinalFlushProjectsResizeAndKeepsRemoteAlive();
 await testAdmissionRejectsLateTimerAndEvents();
 await testCompletedStateCannotBeReplacedByOldTimer();
@@ -430,5 +549,10 @@ await testStateCallbacksAreTrackedAndBoundaryIsIdempotent();
 await testDisposedClientEpochRejectsCallbacksBeforeReplacement();
 await testDeactivationIsIdempotentAndDoesNotStopRemoteSession();
 await testOrdinaryDeactivationClosesAdmissionBeforeCoreFlush();
+await testOrdinaryDeactivationSharesInFlightBoundary();
+await testOrdinaryDeactivationRetainsSuccess(true);
+await testOrdinaryDeactivationRetainsSuccess(false);
+await testOrdinaryDeactivationRetainsFailure();
+await testOrdinaryDeactivationRetainsConfigurationFailure();
 await testNonPermanentBoundaryKeepsAdmissionOpen();
 console.log('runtime Host deactivation integrity tests passed (flush, admission, stale overwrite, callback tracking, idempotence)');
