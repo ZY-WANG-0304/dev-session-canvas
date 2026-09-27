@@ -20,12 +20,14 @@ related_plans:
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-20
+updated_at: 2026-09-28
 ---
 
 # Runtime Persistence 容量与会话归档架构重评
 
 ## 1. 范围与决策状态
+
+2026-09-28 当前收尾入口为 `docs/design-docs/runtime-persistence-closeout.md`，整体完成定义待用户确认，暂停自动追加实施/验证阶段。F-04 四项传输/缓存/分页增量已完成，但总恢复、在途/峰值及运行期存储失败政策仍未整体收口；F-05 新 completed 无历史路径已完成。退出完整性继续独立验收，不替代容量目标；本文原始诊断、候选和历史“下一步”不自动变为当前待办，尤其第 7 节归档研究不再实施。此次只同步收尾范围，未运行容量样本或改变产品保证。
 
 2026-09-16，用户确认 Runtime Persistence 审核中的问题 2（完整日志后缀在内存和恢复消息中增长）与问题 3（completed 会话恢复数据内联画板）是当前更严重的问题，需要重新评估架构决策。本次将它们登记为 `docs/design-docs/webview-host-supervisor-architecture-review.md` 的 F-04、F-05，作为高优先级架构重评，而不是普通画板写文件优化。
 

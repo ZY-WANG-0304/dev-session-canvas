@@ -1,5 +1,9 @@
 # 交付跨平台执行会话退出完整性
 
+当前状态（2026-09-28）：按用户要求暂停自动追加实现和验证阶段，先对齐 `docs/design-docs/runtime-persistence-closeout.md` 的有限清单及整体完成定义。本计划未完成、不归档，但不再自动展开 S17、工具增强或原生采样。新稿的 B1 容量、B2 退出产品路径、B3 生命周期风险及 A1 至 A6 验收待用户确认；F-05 新路径已收口，F-03 独立登记。以下所有阶段摘要、未勾项和“下一步”是历史，不作为当前执行队列；各节本次对齐记录优先。
+
+### 历史阶段入口
+
 本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。当前最新阶段是下段S16，覆盖本计划历史S15及更早记录的“当前/下一”描述。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，原生收尾阶段基线为 `10d40e63`。以下为S12阶段历史：修后输入`54c3bc00`只复验Runtime单例一次，1/1、partialSelection=true，实际Host detach/同执行恢复/自然完成自动清理/空历史重开及正常Supervisor关闭落盘通过，见生产接入31.7至31.9。首轮1/2和全部旧工件保持，不合并为首次全绿。本轮无业务或测试源码改动；旧Host关闭报告后仍登记延迟保存，尚不能证明关闭后无迟到写盘，下一限定核对该产品生命周期风险，不追加工具或原生样本。候选默认关闭，整体计划active，不push/PR，不冒称UI/Electron/Agent或跨平台通过。
 
 当前阶段为S16，输入`a74844c44aef1bfef5c2d13adbb29ddaf7389777`，结果于2026-09-28收口。沿生产接入31.15取得普通completed保存失败复活已清root的先红；最小修正保护reader/persist等待窗口的原投影/session身份，并发时只回滚节点执行字段，strict路径保持。Host回归25次、wiring95/95、checkpoint、paged completion四组合与typecheck通过，独立review无阻塞。template仅prepare而非完整apply；完整reset/reload重叠、首次pending等待后callback注入、新业务准入及旧Runtime delete后的迟到UI仍开放，不批准全局gate、core锁或root全局drain，不新增工具/native/runner。下段S15及其后阶段摘要按原时点保留，不覆盖本段。
@@ -9,6 +13,8 @@
 此前原生诊断阶段所有新D3/D4/v2脚本、workflow及.debug工件仅在独立工作树 `/home/users/ziyang01.wang-al/projects/dev-session-canvas.worktrees/runtime-exit-integrity-native-candidates`，当时本树只同步文档。当前S1/S2/S3的生产模块和定向测试在本运行时树，诊断树只同步文档。以下旧记录中的本地“未提交工作树”均指采集时的诊断源码快照，不是本运行时树；v1后来冻结7141cfa3，v2后来冻结b4db41cc，不倒写采集时来源。当前协议、已完成验证和剩余阻塞项见本计划各节首段，后续历史段落的“下一步”不覆盖最新顺序。
 
 ## 目标与全局图景
+
+本次只校准整体终点：运行期容量/交互有明确预算，已结束 Runtime 不留正文，当前有效页面仍收齐主体尾部并正确应用终态；退出完整性不能取代 F-04 的整体收口，也不能因停止扩张而削弱。清单确认前不决定实现顺序。以下目标均为历史阶段范围。
 
 S16只交付普通completed旧续体不复活已清root、不覆盖其他root更新或清理replacement；reader/persist窗口的失败只恢复仍属本次投影的节点执行字段。该窄目标已有受控Host回归，不等于完整非永久事务或全部迟到UI安全。
 
@@ -67,6 +73,11 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 范围包含 Linux/macOS/Windows、Agent/Terminal，以及由 Supervisor 托管的 live-runtime 和直接由 Host 托管的 snapshot-only。结束后 Runtime 重开仍不恢复进程或历史，Supervisor/机器故障后仍无需恢复；F-03 root 归属、F-04 容量整体模型和 F-05 已取消的历史归档不在此项顺手改造。不必等待其他重构完成，但本项未通过验收前不得宣称本次重构的退出完整性已经完成。
 
 ## 进度
+
+- [x] (2026-09-28) 按用户要求暂停自动阶段；基于 ba2c148b 只读复核 F-04/F-05 与退出接线，形成有限收尾草案，区分已完成、B1 至 B3、A1 至 A6、延期及 R1 独立归属计划。
+- [ ] 用户确认整体完成定义及有限清单；此前不自动实施、测试、运行 runner 或启用候选。预算数值与生产支持/失败政策仍未确认，不作为已完成。
+
+以下 checklist 保留历史执行状态，不与本次有限清单累加；例如 S12 的后续旧写者定位已由 S13/S14 承接，不再次排队。
 
 - [x] (2026-09-27，S16验证输入登记) 固定a74844c4与生产接入31.15三类受控顺序，只沿现有Host回归取得最小复现，不新增工具/native，不预先选定global gate、core锁或root全局drain。
 - [x] (2026-09-28，S16最小复现与修正) 未改业务基线默认Host回归先红，root A真实clear后旧completed保存reject复活terminal-1，主会话与测试代理各实跑；普通分支补投影/session身份检查及节点执行字段回滚，strict分支保持。root clear/template prepare成功/失败已覆盖B独立性及A严格删除失败保留，不写成完整template apply。
@@ -322,6 +333,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+本次整体核对发现推进重心失衡而非产品方向根本改变：F-04 缺整体预算验收，F-05 新路径已完成，退出计划却不断积累局部阶段与历史待办。工具局部绿色和 Linux 有限证据不能代替实际产品完成；B3 未验顺序也不能统称已复现缺陷。
+
 S16在未改业务基线上实跑复现root A已清却被旧completed保存失败恢复：普通catch无条件回滚整张`stateBeforeCompleted`，也可能覆盖B更新。调用链没有平台专属条件；受控Host先红不等于其他平台已运行失败。正常sync/resize/scrollback flush有`terminalHistoryDiscarded`屏障，不据此登记新的false-stale缺陷。
 
 2026-09-27 S15审计：只锁 `prepareForHostBoundaryCore` 不覆盖调用方随后load、替换及persist state，不能称全流程串行；一次pending集合快照等待也不阻止其后callback/operation或新业务入队。client epoch仅拒绝未进入的事件闭包，不失效已开始续体。root clear/template原严格delete的失败保留不能改用ordinary批量best-effort；对root操作全局drain会让其他root长操作成为阻塞。部分attach/snapshot异步工作是否完整纳入边界尚未形成实证，本轮不宣布复现或平台失败。撤回的试作方案和测试不计正式交付。
@@ -524,6 +537,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-09-28 / 用户、Codex：暂停自动追加阶段，先以有限清单对齐原始目标；真实 Agent/Webview/跨平台和尾部完整性保持，工具仅在影响具名实验安全或判定时阻塞该实验，F-03 独立规划。暂停和这些边界已确认；B1 至 B3/A1 至 A6 及整体完成定义仍为建议，待确认后再选择工作，不将编写文档当作实施授权。
+
 S16决定只修普通completed在reader/persist等待窗口的身份复核与局部回滚：执行metadata投影引用和原session对象必须仍匹配；并发时保留其他节点、布局及root缓存。strict deadline/binding路径保持，不采用全局gate/core锁/root drain；完整事务和后段delete等待后的UI身份另行验收。日期：2026-09-28。
 
 2026-09-27（S15）：只在普通 `prepareForDeactivation()` 缓存首次Promise并冻结首次startup配置，成功和拒绝都保持；显式candidate/non-native沿用原报告缓存，其他入口不改。理由是永久离开属于同一不可重新解释的操作，而可中止reset/reload/root/template还需要覆盖完整state replacement、定向binding与新业务准入，不能把core锁或全局drain当作已解决。先用现有无native回归证明一次性调用、配置冻结与失败不重试，不以撤回候选测试或局部绿代证正式范围。
@@ -721,6 +736,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 
 ## 结果与复盘
 
+本次产物是 `runtime-persistence-closeout.md` 收尾草案和同步入口，不是新实现阶段。两路独立只读核对覆盖容量与退出范围；没有新增产品测试、平台通过或债务关闭。保留全部历史证据，等待用户对整体完成定义的意见。
+
 S16完成先红复现和最小普通分支修正，最终Host25次、wiring95/95、checkpoint、paged completion四组合及typecheck通过，独立review无阻塞。仅template prepare和reader/persist窗口有本轮证据；完整非永久事务、新准入及旧Runtime delete后UI仍开放，没有新native或平台结论。
 
 S15正式最小缓存修改与定向回归已完成，旧8+新增5共13次Host测试调用、wiring95/95、checkpoint、typecheck和脚本语法检查通过，独立review无阻塞，reviewer复跑目标测试及diff检查通过。交付口径只包含普通永久离开的首次结果复用；非永久全流程串行、root定向callback/operation生命周期、真实宿主/UI/Agent/跨平台及未完成operation deadline继续开放。试作范围收回是保留既有严格删除与多根隔离语义，不是这些风险已解决；历史实验、旧断言和失败结果保持。
@@ -845,6 +862,8 @@ HPCON 首次原生阶段已完成：d0f0be88/run35586906307 的12 driver/138 PTY
 
 ## 上下文与定向
 
+本次代码基线为 ba2c148b。原目标和契约分别由架构审核 F-04/F-05、`docs/product-specs/runtime-persistence-modes.md` 第 9、10 节提供；收尾稿第 2 节登记已完成增量、第 3/4 节登记当前剩余、第 7 节单列 F-03。本计划只承接退出责任，不把容量与 root 归属吞入新的退出阶段。
+
 S16业务diff仅限`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`的`applyCompletedRuntimeSupervisorSnapshot()`，未重写reset/reload/root/template或旧strict删除路径；定向回归仍在`scripts/test/test-runtime-host-deactivation-integrity.mjs`。replacement指同节点ID已由另一执行投影/session接管，旧回调不得按ID清理它；方案及边界见生产接入31.15。
 
 S15主要位置是 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `prepareForDeactivation()` 和现有普通 `prepareForHostBoundary` 调用。新缓存只属于当前Manager实例的永久关闭，不是Supervisor generation、Webview生命周期或可重置的mutation锁。测试沿 `scripts/test/test-runtime-host-deactivation-integrity.mjs` 的真实方法夹具，禁止native/child_process；reset/reload/root/template和candidate/non-native正文保持。
@@ -890,6 +909,8 @@ S5输入为a32b1510，仅本运行时树修改。实际实现是`extensions/vsco
 平台 provider 的现状见安装的 `node_modules/node-pty/lib/unixTerminal.js`、`windowsPtyAgent.js`、`windowsTerminal.js` 和 native 源码。已有证据位于 `docs/design-docs/runtime-terminal-tail-diagnosis.md`、`docs/design-docs/runtime-terminal-cross-platform-diagnosis.md`；固定版本来源已在文档摘录，不要求接手者依赖本机 `.debug/` 才理解问题。不能直接编辑 node_modules 作为生产修复。
 
 ## 工作计划
+
+当前只等待整体对齐，不执行以下历史安排。确认后所选工作须引用收尾 B/A 编号、说明直接产品风险和结束条件；无法映射的增强延期。S16 剩余顺序统一进入 B3/A6，不自动逐项再开阶段。
 
 S16窄修已完成，不继续扩大工具或全局屏障。31.15的reset/reload状态替换、首轮pending等待后callback、新业务准入及旧delete后UI身份作为剩余项保留；后续另行固定有限输入，不自动把全部剩余项排成下一轮矩阵，也不重复root prepare场景冒充全流程覆盖。
 
@@ -1008,6 +1029,8 @@ S1 最终定向32/32、typecheck 复跑、既有 bridge 回归、独立复审及
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+本次只读核对当前代码/正式文档，编写收尾稿并同步设计索引、核心信念、审核/容量/接入入口与技术债；在仓库根执行 `git diff --check` 和只读文档路径/历史保持检查。没有运行产品测试、native/build、runner 或 push/PR，也不按下列历史命令重采样。
 
 S16在仓库根先扩原Host回归于a74844c4业务基线实跑首红，再最小修正并执行`node scripts/test/test-runtime-host-deactivation-integrity.mjs`（25次）、`node scripts/test/test-host-execution-owner-wiring.mjs`（95/95）、`node scripts/test/test-runtime-checkpoint-refresh.mjs`、`node scripts/test/test-runtime-paged-completion.mjs`、`node scripts/test/test-canvas-multi-root-composition.mjs`及`npm run typecheck`，均通过；目标脚本`node --check`和最终diff检查通过，无native/runner执行。
 
@@ -1213,6 +1236,8 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
+本次文档路径、索引/frontmatter、历史正文/原计划行保持及 diff 检查通过，两路独立只读复核无范围阻塞。后续产品验收沿收尾 A1 至 A6，真实 Agent、实际 Webview/双 surface、两模式、Linux/macOS/Windows 与分发路径不延期；未知预算不冒充确认值。没有新增产品通过结论。
+
 S16新增12次与原13次共25次通过，覆盖root clear/template prepare成功和严格删除失败、已清root不复活、并发局部回滚、replacement、受控Agent和reader等待clear/replace。主会话复跑与独立review目标测试均通过；不把prepare视为完整apply，也不把本窗口身份保护外推到旧Runtime delete返回后的exit发布。
 
 S15已验证：普通Host首次关闭挂起时再次调用，boundary仅执行一次，后续成功调用也不再次flush/detach；preserve true/false在挂起期间更改startup配置仍沿首次选项，普通delete只一次；首次flush拒绝或配置同步异常后再次调用保留同一原Error，不发起第二轮cleanup。13次Host边界测试调用与wiring95/95、checkpoint/typecheck和脚本语法检查通过，candidate/non-native既有测试保持；独立review无阻塞，reviewer复跑目标测试及diff检查通过。上述Host逻辑回归不代证真实VS Code/Electron/Webview、Agent启动链、跨平台或非永久完整state replacement。
@@ -1343,6 +1368,8 @@ HPCON首次原矩阵12项全部有效，六control及两个explicit-close通过�
 
 ## 幂等性与恢复
 
+暂停不关闭未完成债务，也不触发重试、旧 live 迁移或数据清理。恢复推进必须基于确认后的有限清单，不通过旧阶段“下一步”隐式恢复；原失败、原断言和工件保持。
+
 S16身份过期只拒绝旧续体，不复活节点或清理replacement；原投影仍有效才允许回滚自身执行字段，无并发时保留旧state/cache恢复。首次基线失败保留，不改变S15永久关闭首次结果复用、strict删除失败或旧live归属，不以重复原生采集补证。
 
 S15的幂等性限同一Host实例的普通永久deactivation：成功和失败都缓存首次Promise，不在失败后重新读取配置或重发cleanup；需要新的Host生命周期时创建新Manager实例。reset/reload/root/template不使用此缓存，不能以清空它取得未设计的新重试权限。撤回候选patch未交付，不以重跑其旧测试恢复为批准方案。
@@ -1384,6 +1411,8 @@ S5每execution只保留一份关闭观察，重复stop返回同一Promise；迟�
 候选试验不得修改用户 storage 或替换仍承载 live 会话的 Supervisor；仅控制本次创建的 fixture。证据目录唯一，不覆盖初次失败。生产方案需要可回滚的 capability/adapter 选择和旧 session 原绑定保留，回滚不得伪造完整性或强制迁移。取消和回收必须幂等，不因重试重复输出、重复终态或误删其他读者。
 
 ## 证据与备注
+
+本次为 ba2c148b 的只读状态核对与文档变更；已完成阶段证据只引用、不合并或重判。Windows 对象合法引用、普通后代未来输出等诊断不能独立当作产品缺陷；本方资源与主进程尾部仍按原契约验收。
 
 S16证据为a74844c4基线实跑root A+B与预期仅B的首红，以及修后25次Host、95/95 wiring、checkpoint/paged completion/typecheck通过；主会话和测试代理分别复现首红，独立review无阻塞。原生工件与历史实验未修改，没有新平台、真实Agent或UI采集。
 
@@ -1532,6 +1561,8 @@ G07补证起点是本运行时树ebe303e7及独立诊断树2f630cd9。第14节�
 2026-09-20 runner 合并后的验证：`typecheck`、`build`、bridge、journal 和 Supervisor 聚合回归全部通过；聚合包含 checkpoint refresh、分页投影、无 completed 历史和退出分页。Node 25.6.0 与 Electron-as-Node 39.8.7 各 39 项契约模型、17 项实际 Supervisor 注入通过，输出目录/哈希及局限见设计第 14 节。没有运行全量 UI、真实 provider、packaged 或新的原生候选矩阵；相对 `28055e13` 不修改业务、既有测试、依赖或 workflow。
 
 ## 接口与依赖
+
+本次不变更业务接口、协议、依赖、运行模式或能力开关。收尾稿也不选择数据库、mux 或新的诊断设施；预算、生产路径和支持声明须由后续获准的产品收尾工作确认。
 
 S16不新增协议、依赖、全局gate或core锁，只在普通completed方法内部复核原执行投影/session并限制回滚范围；strict finalizationRecord保持原deadline/binding语义。外层旧Runtime delete等待后的reader/UI身份及完整非永久事务尚未变为本轮接口保证。
 
@@ -1816,3 +1847,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-09-27，S16验证输入登记）：追加生产接入31.15与本计划当前阶段摘要、进度，固定a74844c4及三类最小复现输入；先将completed callback窄项收敛为原身份复核/节点执行字段回滚候选。保留S15历史，不追加工具或native，不将待验证责任边界写成已选定实现或通过结果，完整事务与新业务准入仍开放。
 
 修订记录（2026-09-28，S16有限结果）：记录root clear后旧completed失败复活节点的先红、普通分支身份/局部回滚修正及最终25次Host和相关回归/typecheck通过，独立review无阻塞；同步十二节当前短摘要及五份正式文档。完整非永久事务、首次wait后注入、新准入与旧Runtime delete后UI仍开放，template仅prepare，未扩大为三类输入或平台验收全通过。
+
+修订记录（2026-09-28，整体收尾对齐）：用户要求停止自动追加阶段。本次仅登记暂停，新增有限收尾/完成定义草案并同步十二节当前口径；F-04 部分完成、F-05 新路径收口、退出完整性未整体交付分别记录。真实验收不降级、工具增强不默认前置、root 稳定归属单列，历史记录不再形成执行队列；清单待用户确认，没有新实现、产品试验或阶段授权。

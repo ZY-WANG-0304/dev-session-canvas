@@ -22,7 +22,7 @@ related_plans:
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
-updated_at: 2026-09-20
+updated_at: 2026-09-28
 ---
 
 # Webview、Host 与 Runtime Supervisor 架构审核
@@ -34,6 +34,8 @@ updated_at: 2026-09-20
 这不是某个待合并 MR 的差异审查，因此下列问题描述的是当前主线基线。严重度表示对当前架构和用户主路径的影响，不等同于仓库 Code Review 流程中的“必须拒绝合并”标签。
 
 ## 2. Findings
+
+2026-09-28 状态核对：F-04 只完成部分容量优化，F-05 新 completed 无历史路径已收口；退出完整性有实现增量和有限证据，但尚未整体交付。用户已暂停自动追加阶段，待确认的有限收尾清单见 `docs/design-docs/runtime-persistence-closeout.md`；F-03 登记为独立后续计划，不作为容量/退出收尾的前置。下文保留审核基线、当时的缺陷和历史结果，不把已由后续增量替代的描述或诊断建议累加为当前待办。
 
 2026-09-16 的补充审核将 Runtime Persistence 容量与 completed 归档提升为优先重评项。以下按本轮优先级排列，保留原有编号以便追踪；F-04/F-05 对应讨论中的问题 2、3，是用户确认需要重评的设计决策，不是已证明违反现行规格的实现回归。
 

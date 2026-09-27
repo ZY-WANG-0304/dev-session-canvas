@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-09-28 当前 Runtime 重构收尾入口：`docs/design-docs/runtime-persistence-closeout.md`。用户已暂停自动追加阶段，完成定义待确认；当前仅归并 B1 容量预算/恢复、B2 可用退出路径、B3 有限状态替换风险及 A1 至 A6 必要验收。F-05 新路径不重开归档，F-03 root 稳定归属另列 R1 独立计划。通用工具增强不默认前置，真实 Agent/Webview/跨平台与尾部完整性不延期。下列 Runtime dated 记录、旧 L/PI 分类与建议时机保留为历史，不能据其中“下一步”自动执行；表中当前债务以本入口分账，未完成项不因暂停而关闭。
+
 2026-09-28 S16有限收口：普通completed保存失败复活已清root已在未改业务基线先红；reader/persist窗口补原投影/session身份检查和并发节点级回滚，strict路径保持。Host25次、相关回归/typecheck通过，独立review无阻塞，见生产接入31.15。剩余为完整reset/reload状态替换仲裁、首次pending等待后callback、新业务准入、完整template apply，以及原session同步释放后等待旧Runtime delete再外层发exit的reader/UI身份竞态；本轮仅验证template prepare及较早等待窗口，不承诺所有迟到UI安全。剩余项另按有限输入确认，不自动扩成下一轮矩阵，不恢复全局gate/core锁/root drain，不增工具/native门槛；真实宿主/Agent/跨平台及退出完整性总债务仍开放。
 
 2026-09-27 S15范围收窄：正式最小交付仅普通 `prepareForDeactivation()` 的首次内部Promise与配置缓存，成功/失败都复用，不重复保存/detach/删除；基线并发flush 2!==1先红，修后Host边界13次调用、wiring95/95、checkpoint/typecheck和脚本语法检查通过，独立review无阻塞，reviewer复跑目标测试及diff检查通过。配置同步异常仍在core之前，不视为gate已经关闭。candidate/non-native与reset/reload/root/template实现不变。非永久全流程仍开放：core锁不包含后续state replacement；一次pending集合等待和client epoch不足以覆盖其后callback/operation与新业务准入；root严格delete失败保留不能换成ordinary批量best-effort，全局drain也会不当地等待其他root长操作。部分attach/snapshot跟踪只是待实证源码观察。试作的core锁、临时gate与root全局drain已撤回，不算交付或验证证据；后续须按31.14固定输入围绕原binding、定向责任和完整替换顺序验收，不关闭退出完整性总债务。

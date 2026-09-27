@@ -21,6 +21,8 @@ updated_at: 2026-09-28
 
 ## 1. 当前结论与阶段边界
 
+2026-09-28，用户要求暂停自动追加阶段，先对齐原始目标的有限收尾清单，见 `docs/design-docs/runtime-persistence-closeout.md`。F-04 容量仍部分完成，F-05 新路径已收口，退出完整性保留独立交付与真实 Agent/Webview/跨平台要求；不继续默认展开 S17、工具健壮性或历史诊断待办。新清单与整体完成定义待确认，本文后续阶段及其“下一步”均为历史证据，不是当前执行授权。
+
 2026-09-28，当前S16见31.15，输入`a74844c4`。真实Host回归先红证明旧completed保存失败可复活已清root；最小修正只保护普通completed在reader/persist等待窗口的原投影/session身份，并在并发时局部恢复节点执行字段，strict分支不改。Host回归25次、wiring95/95、checkpoint、paged completion四组合及typecheck通过，独立review无阻塞。完整reset/reload事务、首次pending等待后callback注入、新业务准入及旧Runtime delete之后的迟到UI仍开放；template仅验证prepare入口，不恢复global gate/core锁/root全局drain，不新增native或平台样本。以下S15及更早段落为原时点记录，不覆盖本段。
 
 2026-09-27 从`670320b8`推进S15，正式范围按31.14收窄为普通 `prepareForDeactivation()` 的首次内部 Promise 缓存：同一 Host 的重复永久离开复用首次配置和同一成功/失败结果，不重复执行保存、detach 或删除，不承诺public async调用返回的Promise对象引用相同。candidate/non-native原关闭路径，以及reset/reload/root/template实现保持原状；本轮不是非永久边界的全流程串行化。审计中试作的core锁、临时关闭非永久准入和root全局drain方案已撤回，其局部测试不计交付证据。正式最小修改已通过13次Host边界测试调用（旧8/新增5）、Host wiring95/95、checkpoint、typecheck与测试脚本语法检查，新增并发用例在未改业务基线先红；独立review无阻塞，reviewer复跑目标测试及`git diff --check`通过。真实VS Code/Electron/Webview、Agent与跨平台、非永久跨代次写入及未完成operation仍开放。以下S12及更早“当前/下一”段落保留为历史，当前范围以本S15段落及31.14为准。
