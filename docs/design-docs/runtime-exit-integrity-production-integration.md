@@ -1344,3 +1344,11 @@ Host原completed保存后的root/workspace文件均无正文、serialized state�
 该调用链位于`CanvasPanelManager.ts`和扩展 Host 的定时器/Map 生命周期，当前没有Linux专属分支；Linux/Node样本只证明它在该环境实际发生。Supervisor、Unix socket和PTY的其余证据仍是平台相关，不能将本风险缩小为Linux问题，也不能据此宣称macOS/Windows已失败或通过。
 
 下一次受控验证应把旧延迟保存故意排到第二Host完成保存之后：第一Host在deactivation后保留已捕获的旧timer，第二Host先完成自然结束并把节点写成`liveSession=false`、无`runtimeSessionId`的completed状态，再让旧timer经过160ms同步和1500ms debounce。读取root-local与workspace文件，分别判定旧`liveSession/runtimeSessionId`是否被写回、仅收到排队请求、或被身份/序列屏障拒绝。该验证只需实际CanvasPanelManager与磁盘写入，不需PTY/native；若旧状态复活，才进入最小业务修正；若未复活，也仍需记录旧Host晚写被接受的契约缺口。
+
+该受控验证已完成，结果为旧状态确实复活。harness 通过 esbuild 加载真实`CanvasPanelManager`方法，阻断`node-pty`/`child_process`，以fake owner/client和磁盘适配器提供边界依赖；没有启动PTY、Supervisor或native。顺序为：第一Host实际`prepareForDeactivation()`返回`settled`且旧timer仍在；旧timer先产生`persist(mode=deferred, reason=live-execution-state)`；第二Host随后立即写completed空metadata；旧timer的deferred flush最后把`liveSession=true`、旧`runtimeSessionId='session'`、`persistenceMode='live-runtime'`和旧尺寸119x41写回root文件。事件顺序为`host-deactivation` immediate → boundary settled → 第一Host deferred request → 第二Host completed immediate → 第一Host deferred flush。该结果已经证明跨Host的stale overwrite，不再是未确认风险；但它仍是Host逻辑层证据，不等同真实VS Code/Electron进程时序或其他平台运行通过。
+
+同一harness还显示，resize ACK只更新内存 session 的`cols/rows`，节点metadata的`lastCols/lastRows`要等`flushLiveExecutionState()`才投影；若永久边界只取消未触发的syncTimer，边界前已接受的119x41可能仍以旧尺寸保存。因此修正验收必须同时满足：边界前已确认的尺寸/终端状态先进入一次有序最终保存；边界后旧timer和旧回调不得再写入。
+
+因此该项从“待确认的持久化竞态”升级为退出完整性阻塞：正常关闭后，旧Host可能复活已完成节点的Runtime绑定，破坏“completed无进程/无历史”契约。修正必须在旧Host永久边界建立身份/代次的保存屏障：先保留并有序保存最后接受的live状态，再阻止旧timer和未追踪的session-state回调写入；第二Host的completed写入不能被旧Host覆盖。不能通过停止或删除Supervisor live execution解决，也不能只改root文件读取。
+
+S13修正的不可变不变量暂定为：一是边界前已确认的resize、输出和Runtime binding必须先投影并完成一次有序保存；二是保存完成后旧Host关闭syncTimer、拒绝新的状态同步，并等待已经进入的`onSessionState`/persist操作；三是边界报告返回后，旧Host不得再提交任何会改变root/workspace snapshot的写入；四是Supervisor仍持有的live execution只断开Host client，不被该屏障停止或删除；五是第二Host completed写入后，旧generation的任何迟到事实都必须被身份/代次拒绝，而不是靠文件读取时猜测。

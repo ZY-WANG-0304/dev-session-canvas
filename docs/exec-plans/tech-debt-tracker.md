@@ -27,7 +27,11 @@
 
 2026-09-27 S12晚写根因已确认：Runtime持久化实际走`prepareNonNativeDeactivation`，不调用普通Host boundary已有的`flushExecutionStateSyncTimer`/`flushAllExecutionSessionStatesForHostBoundary`；`queueExecutionStateSync`到期只检查session仍在Map，`disposeManagedExecutionSession`不清syncTimer，因此关闭报告后仍可更新live metadata并排队deferred persist。AST只读检查、Host wiring 95/95及checkpoint refresh通过；completed-history现有Harness因缺`surfaceLifecycle.editor`失败，未改写或作为根因证据。当前只确认竞态与未定义关闭契约，未证明磁盘已被旧写覆盖。下一需先决定永久边界最终flush或取消timer后有序保存，不停止/删除远端live执行、不扩原生工具范围。
 
-冻结诊断的旧Host时序没有对应的deferred persistWritten；后续immediate runtime snapshot属于第二Host恢复。因此当前只登记“报告后仍接受deferred请求”，不登记“已发生磁盘覆盖”。该调用链是跨平台Host逻辑，Linux只提供发生证据，其他平台仍待各自宿主/进程链验证。
+冻结诊断的旧Host时序没有对应的deferred persistWritten；后续immediate runtime snapshot属于第二Host恢复。因此31.9冻结样本只登记“报告后仍接受deferred请求”，不登记“已发生磁盘覆盖”。另一个独立的受控CanvasPanelManager harness 已证明该写者在第二Host完成后可以覆盖root；两类证据不合并改写。该调用链是跨平台Host逻辑，Linux只提供发生证据，其他平台仍待各自宿主/进程链验证。
+
+2026-09-27 无native stale overwrite harness 已确认实际覆盖：真实CanvasPanelManager方法在 fake owner/client/磁盘适配下，第一Host关闭后旧timer deferred flush 排在第二Host completed immediate 写入之后，并将旧`liveSession=true`/`runtimeSessionId`/live-runtime重新写回 root。该结果是Host逻辑层确定性阻塞，未启动PTY/Supervisor/native，不能外推真实VS Code/Electron或平台执行链。技术债升级为S13身份/代次屏障：先有序保存最后live状态，再拒绝旧timer及未追踪session-state回调覆盖新completed状态；不得停止/删除远端live execution。
+
+该harness同时暴露尺寸投影顺序：resize ACK先更新session，`lastCols/lastRows`直到live flush才进入metadata；修复不能只取消timer，必须先保存已确认的尺寸和终端状态，再封闭旧写者。
 
 2026-09-27 S12部分验证：生产接入31节首次1/2，Node实际Host活跃deactivation、SIGHUP后自身尾部、真实快照保存/无新执行重开通过。Runtime实际client/socket/创建和首次nonce完成后，夹具缺executionPerformanceDiagnostics数组而失败；补字段及8ms阈值纯回归已完成，没有修后原生样本。两个原执行均安全释放，但Runtime是失败清理stop/EOF，不代表detach/恢复/自动completed清理/重开或正常shutdown验收。下一只复验同一Runtime场景一次、新目录/最多一个主体，不重跑本地或扩诊断门槛；默认关闭、旧live/root不变，L-02至L-05、真实UI/Electron/Agent/跨平台总债务继续开放。以下历史原样保留。
 

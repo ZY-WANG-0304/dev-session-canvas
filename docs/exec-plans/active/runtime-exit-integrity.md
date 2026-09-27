@@ -67,7 +67,10 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [ ] S12后续有限定位：确认旧Host关闭报告后迟到回调/延迟保存的来源与生产关闭契约，不能由fixture取消timer宣称无晚写风险。只围绕实际入口及该顺序定位，不重跑原生或扩诊断框架；范围见31.9。
 - [x] (2026-09-27，S12晚写根因定位) 只读AST契约确认Runtime `prepareForDeactivation -> prepareNonNativeDeactivation` 未清理/flush Supervisor session syncTimer；普通 `prepareForHostBoundaryCore` 会清理并 immediate flush。timer仅需session仍在Map即可再次排队 deferred persist，`disposeManagedExecutionSession`也不清该timer。Host wiring 95/95、checkpoint refresh通过；completed-history既有Harness在`surfaceLifecycle[surface]`缺失处失败，未改写或纳入本结论。
 - [ ] S12后续设计决策：在不停止/删除远端live执行、不丢已接受状态且不允许旧回调覆盖新状态的前提下，选择“永久边界最终flush”或“关闭准入后取消timer并有序保存”的最小方案；方案确认前不改业务代码、不追加PTY/native样本。
-- [ ] 下一受控定位场景：保留第一Host旧timer，第二Host先将节点保存为completed空历史，再让第一Host旧timer到期；读取root-local/workspace文件区分旧状态复活、仅排队未落盘和被身份/序列屏障拒绝。仅用CanvasPanelManager与磁盘，不启动PTY/native；结果决定是否进入最小业务修正。
+- [x] 下一受控定位场景已执行：保留第一Host旧timer，第二Host先将节点保存为completed空历史，再让第一Host旧timer到期；读取root-local/workspace确认旧状态复活。仅用CanvasPanelManager与磁盘，不启动PTY/native，结果进入最小业务修正设计。
+- [x] (2026-09-27，无native stale overwrite harness) 真实 CanvasPanelManager 方法配合 fake owner/client/磁盘适配复现：第一Host deactivation settled但旧timer仍在；第二Host先 immediate 写 completed 空metadata；旧Host deferred flush 随后将 `liveSession=true`、旧 `runtimeSessionId`、live-runtime 和旧尺寸写回 root 文件。未启动PTY/Supervisor/native；该Host逻辑竞态升级为退出完整性阻塞，下一进入最小业务修正设计。
+- [x] 同一harness确认resize ACK的119x41只在迟到 `flushLiveExecutionState` 时投影到node metadata；若简单取消timer会丢掉已接受尺寸。修正必须先最终flush，再封闭旧timer/回调写入。
+- [ ] S13最小修正设计：为旧Host永久边界建立状态身份/代次屏障，先保存最后接受的live状态，再阻止旧syncTimer及未追踪session-state回调覆盖第二Host completed；不得停止/删除仍由Supervisor托管的live execution。先补受控回归，再决定是否进入生产代码修改。
 - [x] (2026-09-27，S11，输入ae3c42cf) 冻结30.1/30.2后新增四份窄脚本，修正采样前续体准入/清理finally/异步证据三项直接安全问题。唯一首次四场景五主体exit0；原transport全关闭、四资源首报/当前released、无追加stop/kill、无证据截断，原始输入和事实保持。
 - [x] (2026-09-27，S11证据复核) 独立核对Host真实落盘及重开、Supervisor受控重附着/暂停消费/同authority隔离与reader退役；只修工作树screen返回字段重名，原采样不改、不重跑。完成实际PTY证明，不将显式delete后的拒绝当Host自动完成工作流通过。
 - [x] S12原两个固定场景已有有限通过证据，分为首轮本地通过与修后Runtime单例通过，不替代真实UI/Electron/Agent/跨平台或关闭后迟到写盘验收，L-02至L-05仍开放。
@@ -306,6 +309,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 2026-09-27 S12修后：相同Runtime断言通过，不是产品修正后红转绿。最终stopRequested=true来自自动delete的原requestStop退役调用，原自然退出观察与无stop wire证明未主动停止仍活着的主体；已退役adapter的dataClosed=false也不覆盖之后真实transport已closed的事实。另first Host在hostDeactivationBoundary settled后登记一次1500ms的live-execution-state延迟保存，fixture cleanup会清timer；本轮未证明该迟到保存安全，也不能仅凭登记断定实际覆盖了磁盘。源码确认resize排队160ms的syncTimer可在关闭后更新仍在Map的远端会话并再排保存，prepareNonNativeDeactivation和disposeManagedExecutionSession均未清该timer，无需假设新disconnect事件。旧first30文件保持，schedule基线标签与修后测试提交分开记录。
 
 2026-09-27 S12晚写根因：AST只读契约确认Runtime deactivation专用路径遗漏了普通Host boundary已有的`flushExecutionStateSyncTimer`/immediate persistence屏障；不是测试工具自行制造的抽象问题。已有Host wiring 95/95与checkpoint refresh通过；completed-history测试另因Harness缺`surfaceLifecycle.editor`失败，未修改业务或测试求绿。当前确定的是“关闭报告后仍可排队保存”，尚未确定旧写已覆盖磁盘，下一阶段先做方案选择和最小定向验证。
+
+2026-09-27 无native stale overwrite harness：在真实CanvasPanelManager方法上复现完整顺序，第一Host boundary settled后旧syncTimer排deferred，第二Host先写completed，旧deferred flush随后把live绑定写回root。该结果将问题从“晚写请求”升级为已证实的跨Host stale overwrite；harness阻断PTY/native，不能外推VS Code/Electron/跨平台执行，但已足以阻塞退出完整性设计。下一阶段转S13最小身份/代次屏障设计与受控回归，不以停止/删除Supervisor会话规避。
 
 2026-09-27 S12：首次前将第二nonce修为主体要求的新32hex，不放宽协议。唯一原生运行中本地通过，Runtime成功输入39B并输出正确HASH后，finally诊断路径因executionPerformanceDiagnostics缺失而TypeError。CanvasPanelManager原类1340行已有[]初始化，20811行push依赖该字段；夹具Object.create跳过构造，成功样本达到8ms才保留，因此快速路径未暴露不证明生产实例有问题。补字段并用原方法7ms过滤/8ms保留做确定性纯验证，不修改业务。Runtime后续exit7/EOF来自S12 original runtime cleanup.的原shutdown停止，即使cleanup.actions=[]也不能称无补救；未执行预定detach/恢复/自然finish/自动delete/重开，registry仍含closed输出。原证据不改。
 
@@ -1168,7 +1173,7 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 S12修后单例1/1、partialSelection=true，唯一新主体自然exit7、EOF5、accepted=consumed5、revision6；208B成功write与213B PTY逐字节相符，四资源first/current released，provider原transport及4 socket/1 listener闭合，无stop/cancel wire或强杀、无补救动作/证据截断。实际root/workspace为completed无历史元数据，正常shutdown后实际registry为空，第三Host不取得执行/socket。四冻结输入及60源码、旧first30文件逐项保持经独立只读复核；同hash headless离线重建119x41、ROOT/中文/光标(6,4)，不冒称live屏幕。旧Host报告后新增deferred persist另列31.9，未证明实际旧写覆盖；不得因该未验路径把本轮有限通过扩大为整个退出验收。以下首轮记录保留当时结论。
 
-31.10根因定位的AST检查输出`confirmed-source-race`，对比Runtime专用deactivation与普通Host boundary的timer处理；Host wiring 95/95、checkpoint refresh通过。completed-history测试在Harness缺`surfaceLifecycle.editor`处失败，未追认通过，亦未作为本阶段业务/原生结论。下一设计决策尚未完成。
+31.10根因定位的AST检查输出`confirmed-source-race`，对比Runtime专用deactivation与普通Host boundary的timer处理；Host wiring 95/95、checkpoint refresh通过。无native stale overwrite harness进一步复现旧Host deferred flush 覆盖第二Host completed root 状态；completed-history测试在Harness缺`surfaceLifecycle.editor`处失败，未追认通过，亦未作为本阶段业务/原生结论。问题已升级为退出完整性阻塞，下一设计决策为S13身份/代次屏障。
 
 冻结first诊断还核对了时序：旧Host的host-deactivation写入和boundary settled后出现`state/persistDeferred`，没有旧Host对应的deferred persistWritten；随后runtime-supervisor-live-snapshot immediate属于第二Host恢复，不能倒归旧timer。该Host逻辑无Linux专属分支，Linux样本只证明发生，不决定其他平台结论。
 
