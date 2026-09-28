@@ -1677,6 +1677,16 @@ function App(): JSX.Element {
           message.payload.executionSessionId, message.payload.authorityId, message.payload.revision,
           message.payload.completed, message.payload.finalRevision
         );
+        if (message.payload.receiptId) {
+          // Receipt releases notification credit, not terminal application or settlement.
+          postMessage({ type: 'webview/executionTerminalAvailableReceived', payload: {
+            nodeId: message.payload.nodeId,
+            kind: message.payload.kind,
+            executionSessionId: message.payload.executionSessionId,
+            authorityId: message.payload.authorityId,
+            receiptId: message.payload.receiptId
+          } });
+        }
         break;
       case 'host/executionTerminalPage':
         executionTerminalRegistry.get(message.payload.nodeId)?.controller.applyTerminalPage(
@@ -1790,7 +1800,7 @@ function App(): JSX.Element {
     };
     window.addEventListener('message', listener);
     postMessage({ type: 'webview/ready', payload: { capabilities: {
-      terminalReadSettlementV1: true, terminalLocalSettlementV1: true
+      terminalReadSettlementV1: true, terminalLocalSettlementV1: true, terminalAvailableReceiptV1: true
     } } });
 
     return () => {

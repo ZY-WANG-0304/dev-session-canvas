@@ -370,6 +370,7 @@ test('lifecycle identity acks bootstrap and ignores stale bootstrap frames', asy
     generation: 1
   });
   expect(readyMessage.lifecycle.frameId).toMatch(/^frame-/);
+  expect(readyMessage.payload.capabilities.terminalAvailableReceiptV1).toBe(true);
 
   const staleState = createEmptyCanvasState();
   const currentState = createCanvasScreenshotState();
@@ -16508,6 +16509,93 @@ test('terminal batches thousands of contiguous journal events without losing the
   const finalProbe = await readProbeNode(page, nodeId, 0);
   expect(finalProbe.terminalVisibleLines.some((line) => line.includes(finalMarker))).toBe(true);
   expect(await readPostedMessagesByType(page, 'webview/attachExecutionSession')).toHaveLength(0);
+});
+
+for (const kind of ['terminal', 'agent']) {
+  test(`${kind} availability receipts acknowledge notification identity before page consumption`, async ({ page }) => {
+    const nodeId = `${kind}-zoom`;
+    const executionSessionId = `${kind}-receipt-session`;
+    const authorityId = `${kind}-receipt-authority`;
+    await openHarness(page);
+    const ready = await waitForPostedMessageByType(page, 'webview/ready', { includeLifecycle: true });
+    await bootstrap(page, createLiveExecutionNodeState(kind));
+    const terminal = await waitForExecutionTerminalReady(page, nodeId);
+    const stream = await createTerminalStreamPayload({
+      sessionId: executionSessionId, authorityId, checkpointRevision: 1,
+      checkpointOutput: 'RECEIPT-CHECKPOINT\r\n', checkpointCols: terminal.terminalCols, checkpointRows: terminal.terminalRows,
+      events: [{ type: 'output', revision: 2, data: 'RECEIPT-PAGE-OUTPUT\r\n' }]
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId, kind, output: '', executionSessionId, outputSequence: 1,
+      cols: terminal.terminalCols, rows: terminal.terminalRows,
+      terminalRead: { readId: `${kind}-receipt-reader`, sessionId: executionSessionId, authorityId,
+        checkpoint: stream.checkpoint, headRevision: 1 }
+    });
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('RECEIPT-CHECKPOINT');
+    const initialRequest = await waitForPostedMessageByType(page, 'webview/readExecutionTerminalPage');
+    await page.evaluate(request => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload: {
+        ...request, page: { readId: request.readId, sessionId: request.executionSessionId, authorityId: request.authorityId,
+          afterRevision: 1, revision: 1, headRevision: 1, events: [] }
+      } });
+    }, initialRequest.payload);
+    await settleWebview(page, 2);
+    await clearPostedMessages(page);
+    const payload = { nodeId, kind, executionSessionId, authorityId, receiptId: `${kind}-receipt-1` };
+    await page.evaluate(payload => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable',
+        payload: { ...payload, revision: 2, terminalTitle: 'Receipt title' } });
+    }, payload);
+    const receipt = await waitForPostedMessageByType(page, 'webview/executionTerminalAvailableReceived', { includeLifecycle: true });
+    expect(receipt).toEqual({ type: 'webview/executionTerminalAvailableReceived', payload, lifecycle: ready.lifecycle });
+    const request = await waitForPostedMessageByType(page, 'webview/readExecutionTerminalPage');
+    expect(request.payload.afterRevision).toBe(1);
+    expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).not.toContain('RECEIPT-PAGE-OUTPUT');
+    expect(await readPostedMessagesByType(page, 'webview/executionTerminalApplied')).toHaveLength(0);
+    expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(0);
+    await page.evaluate(({ request, stream }) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload: {
+        ...request, page: { readId: request.readId, sessionId: stream.sessionId, authorityId: stream.authorityId,
+          afterRevision: 1, revision: 2, headRevision: 2, events: stream.events }
+      } });
+    }, { request: request.payload, stream });
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('RECEIPT-PAGE-OUTPUT');
+    await clearPostedMessages(page);
+    await page.evaluate(({ receiptId: _receiptId, ...identity }) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable',
+        payload: { ...identity, revision: 2, terminalTitle: 'Legacy title' } });
+    }, payload);
+    await expect(nodeById(page, nodeId).locator('.window-title-context')).toContainText('Legacy title');
+    expect(await readPostedMessagesByType(page, 'webview/executionTerminalAvailableReceived')).toHaveLength(0);
+  });
+}
+
+test('availability receipts work without a terminal controller and ignore stale lifecycle notifications', async ({ page }) => {
+  await openHarness(page);
+  const ready = await waitForPostedMessageByType(page, 'webview/ready', { includeLifecycle: true });
+  await bootstrap(page, createEmptyCanvasState());
+  await clearPostedMessages(page);
+  const payload = { nodeId: 'unmounted-terminal', kind: 'terminal', executionSessionId: 'unmounted-session',
+    authorityId: 'unmounted-authority', receiptId: 'unmounted-receipt' };
+  await page.evaluate(({ payload, lifecycle }) => {
+    for (const staleLifecycle of [undefined,
+      { ...lifecycle, generation: lifecycle.generation - 1 },
+      { ...lifecycle, frameId: 'stale-frame' }]) {
+      window.__devSessionCanvasHarness.dispatchRawHostMessage({ type: 'host/executionTerminalAvailable',
+        lifecycle: staleLifecycle, payload: { ...payload, revision: 3 } });
+    }
+  }, { payload, lifecycle: ready.lifecycle });
+  await settleWebview(page, 3);
+  expect(await readPostedMessagesByType(page, 'webview/executionTerminalAvailableReceived')).toHaveLength(0);
+  await page.evaluate(payload => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable',
+      payload: { ...payload, revision: 3 } });
+  }, payload);
+  const receipt = await waitForPostedMessageByType(page, 'webview/executionTerminalAvailableReceived', { includeLifecycle: true });
+  expect(receipt).toEqual({ type: 'webview/executionTerminalAvailableReceived', payload, lifecycle: ready.lifecycle });
+  expect(await readPostedMessagesByType(page, 'webview/readExecutionTerminalPage')).toHaveLength(0);
+  expect(await readPostedMessagesByType(page, 'webview/executionTerminalApplied')).toHaveLength(0);
+  expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(0);
 });
 
 test('terminal paged recovery handles completion before the first page request', async ({ page }) => {

@@ -712,7 +712,11 @@ export type WebviewDomAction =
 export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'webview/ready';
-      payload?: { capabilities?: { terminalReadSettlementV1?: true; terminalLocalSettlementV1?: true } };
+      payload?: { capabilities?: {
+        terminalReadSettlementV1?: true;
+        terminalLocalSettlementV1?: true;
+        terminalAvailableReceiptV1?: true;
+      } };
     }
   | {
       type: 'webview/bootstrapAck';
@@ -899,6 +903,16 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         requestId?: string;
         executionSessionId?: string;
         minOutputSequence?: number;
+      };
+    }
+  | {
+      type: 'webview/executionTerminalAvailableReceived';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        receiptId: string;
       };
     }
   | {
@@ -1302,6 +1316,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         executionSessionId: string;
         authorityId: string;
         revision: number;
+        receiptId?: string;
         terminalTitle?: string | null;
         completed?: true;
         finalRevision?: number;
@@ -1590,11 +1605,14 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     const capabilities = isRecord(value.payload.capabilities) ? value.payload.capabilities : {};
     const remote = capabilities.terminalReadSettlementV1;
     const local = capabilities.terminalLocalSettlementV1;
-    if ((remote !== undefined && remote !== true) || (local !== undefined && local !== true)) return null;
-    return remote === true || local === true
+    const availableReceipt = capabilities.terminalAvailableReceiptV1;
+    if ((remote !== undefined && remote !== true) || (local !== undefined && local !== true) ||
+        (availableReceipt !== undefined && availableReceipt !== true)) return null;
+    return remote === true || local === true || availableReceipt === true
       ? { type: value.type, payload: { capabilities: {
           ...(remote === true ? { terminalReadSettlementV1: true as const } : {}),
-          ...(local === true ? { terminalLocalSettlementV1: true as const } : {})
+          ...(local === true ? { terminalLocalSettlementV1: true as const } : {}),
+          ...(availableReceipt === true ? { terminalAvailableReceiptV1: true as const } : {})
         } } }
       : { type: value.type };
   }
@@ -1884,6 +1902,27 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       return null;
     }
     return { type: value.type, payload: { ...identity, requestId: payload.requestId, afterRevision } };
+  }
+
+  if (value.type === 'webview/executionTerminalAvailableReceived') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || !isExecutionNodeKind(payload.kind) ||
+        typeof payload.nodeId !== 'string' || !payload.nodeId || payload.nodeId.length > 256 ||
+        typeof payload.executionSessionId !== 'string' || !payload.executionSessionId || payload.executionSessionId.length > 256 ||
+        typeof payload.authorityId !== 'string' || !payload.authorityId || payload.authorityId.length > 256 ||
+        typeof payload.receiptId !== 'string' || !payload.receiptId || payload.receiptId.length > 256) {
+      return null;
+    }
+    return {
+      type: value.type,
+      payload: {
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        executionSessionId: payload.executionSessionId,
+        authorityId: payload.authorityId,
+        receiptId: payload.receiptId
+      }
+    };
   }
 
   if (value.type === 'webview/executionTerminalApplied') {

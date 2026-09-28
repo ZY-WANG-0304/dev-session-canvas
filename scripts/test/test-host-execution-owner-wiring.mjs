@@ -15,6 +15,7 @@ const bundled = await esbuild.build({
       export { encodeOutputFrame } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
       export { EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
       export { RuntimeTerminalReadRelay } from './extensions/vscode/dev-session-canvas/src/panel/runtimeTerminalReadRelay';
+      export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
       export { parseWebviewMessage } from './extensions/vscode/dev-session-canvas/src/common/protocol';
     `,
     resolveDir: process.cwd(), sourcefile: 'host-owner-wiring-entry.ts'
@@ -58,7 +59,7 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   path.resolve('scripts/test/host-owner-wiring.cjs'), path.resolve('scripts/test')
 );
 const { CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
-  RuntimeTerminalReadRelay, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS } = loaded.exports;
+  RuntimeTerminalReadRelay, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS } = loaded.exports;
 
 function deferred() {
   let resolve;
@@ -163,6 +164,7 @@ function fixture(options = {}) {
   };
   const owner = new ExecutionOwnerLifecycle(injection);
   const host = Object.create(CanvasPanelManager.prototype);
+  host.terminalAvailableNotifications = new TerminalAvailableNotifications();
   const diagnostics = [];
   const persisted = [];
   const rootWrites = [];

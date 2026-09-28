@@ -74,6 +74,38 @@ for (const terminalLocalSettlementV1 of [false, null, 'true', 1]) {
     capabilities: { terminalReadSettlementV1: true, terminalLocalSettlementV1 }
   } }), null);
 }
+for (const capabilities of [{ terminalAvailableReceiptV1: true },
+  { terminalReadSettlementV1: true, terminalLocalSettlementV1: true, terminalAvailableReceiptV1: true }]) {
+  assert.deepEqual(parseWebviewMessage({ type: 'webview/ready', payload: { capabilities } }),
+    { type: 'webview/ready', payload: { capabilities } });
+}
+for (const terminalAvailableReceiptV1 of [false, null, 'true', 1]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/ready', payload: {
+    capabilities: { terminalReadSettlementV1: true, terminalAvailableReceiptV1 }
+  } }), null);
+}
+const availableReceiptPayload = {
+  nodeId: 'terminal', kind: 'terminal', executionSessionId: 'session', authorityId: 'authority', receiptId: 'receipt'
+};
+for (const kind of ['terminal', 'agent']) {
+  const payload = { ...availableReceiptPayload, kind };
+  assert.deepEqual(parseWebviewMessage({ type: 'webview/executionTerminalAvailableReceived', payload }), {
+    type: 'webview/executionTerminalAvailableReceived', payload
+  });
+}
+for (const field of ['nodeId', 'executionSessionId', 'authorityId', 'receiptId']) {
+  for (const value of [undefined, null, '', 1, 'x'.repeat(257)]) {
+    assert.equal(parseWebviewMessage({ type: 'webview/executionTerminalAvailableReceived',
+      payload: { ...availableReceiptPayload, [field]: value } }), null);
+  }
+}
+for (const payload of [undefined, null, {}, { ...availableReceiptPayload, kind: 'note' }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/executionTerminalAvailableReceived', payload }), null);
+}
+assert.deepEqual(parseWebviewMessage({ type: 'webview/executionTerminalAvailableReceived', payload: {
+  ...availableReceiptPayload, revision: 42, outcome: { kind: 'applied', finalRevision: 42 }
+} }), { type: 'webview/executionTerminalAvailableReceived', payload: availableReceiptPayload },
+'Notification receipt must not acquire application or settlement semantics.');
 const localIdentity = { nodeId: 'terminal', kind: 'terminal', executionSessionId: 'local-session' };
 const completion = { executionSessionId: 'local-session', finalOutputSequence: 0 };
 assert.deepEqual(normalizeLocalTerminalCompletion(completion), completion);

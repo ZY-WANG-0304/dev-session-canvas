@@ -232,6 +232,7 @@ import {
   type TerminalStreamEvent
 } from '../common/terminalSessionStream';
 import { TerminalProjectionRefreshScheduler } from '../common/terminalProjectionRefreshScheduler';
+import { TerminalAvailableNotifications } from './terminalAvailableNotifications';
 import { isTestHarnessMode } from '../common/testHarness';
 import {
   resolveNoteMarkdownLinkTarget,
@@ -687,6 +688,7 @@ interface CanvasSurfaceLifecycleState {
   bootstrapAck: boolean;
   terminalReadSettlementV1?: true;
   terminalLocalSettlementV1?: true;
+  terminalAvailableReceiptV1?: true;
 }
 
 interface CanvasTestDiagnosticEvent {
@@ -1364,6 +1366,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private runtimeSupervisorClientEpochs: Map<string, number> | undefined;
   private readonly pendingTerminalProjectionRefreshes = new Map<string, Promise<void>>();
   private readonly terminalReadRelay = new RuntimeTerminalReadRelay();
+  private readonly terminalAvailableNotifications = new TerminalAvailableNotifications();
   private readonly terminalProjectionRefreshScheduler = new TerminalProjectionRefreshScheduler({
     intervalMs: EXECUTION_TERMINAL_PROJECTION_CACHE_REFRESH_INTERVAL_MS,
     spreadMs: EXECUTION_TERMINAL_PROJECTION_CACHE_REFRESH_SPREAD_MS
@@ -3890,6 +3893,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     cancelDeadline = scheduler.scheduleDeadline(deadline, finish);
     // Detach original remote readers before waiting for unrelated local or storage work.
     run('remoteDetach', () => {
+      this.clearTerminalAvailableNotifications();
       const clients = Array.from(this.runtimeSupervisorClients.entries());
       let failed = 0;
       let firstFailure: string | undefined;
@@ -7206,6 +7210,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private postMessage(message: HostToWebviewMessage, surface?: CanvasSurfaceLocation): void {
+    void this.postMessageWithDeliveryResult(message, surface);
+  }
+
+  private postMessageWithDeliveryResult(
+    message: HostToWebviewMessage, surface?: CanvasSurfaceLocation
+  ): Thenable<boolean> | undefined {
     const targetSurface = surface ?? this.activeSurface;
     const targetWebview =
       targetSurface && this.isInteractiveSurface(targetSurface)
@@ -7223,7 +7233,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    void targetWebview.postMessage(preparedMessage);
+    return targetWebview.postMessage(preparedMessage);
   }
 
   private withSurfaceLifecycle(
@@ -10123,6 +10133,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private disposeRuntimeSupervisorClients(): void {
+    this.clearTerminalAvailableNotifications();
     this.terminalReadRelay.closeMatching(() => true);
     for (const [clientKey, client] of this.runtimeSupervisorClients.entries()) {
       this.invalidateRuntimeSupervisorClientEpoch(clientKey);
@@ -11441,6 +11452,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!session) {
       return;
     }
+    if (session.owner === 'supervisor') {
+      this.terminalAvailableNotifications.clearMatching((_key, payload) =>
+        payload.executionSessionId === session.sessionId && payload.authorityId === session.terminalAuthorityId);
+    }
     if (session.owner === 'supervisor' && session.reconnectTimer) {
       clearTimeout(session.reconnectTimer);
     }
@@ -12499,6 +12514,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private invalidateSurfaceLifecycle(surface: CanvasSurfaceLocation, mode?: CanvasSurfaceMode): void {
+    this.clearTerminalAvailableNotifications(surface);
     this.cancelLocalExecutionReaders(surface, 'lost', 'surface-invalidated');
     this.terminalReadRelay.closeMatching((key) => key.startsWith(`${surface}:`));
     this.rejectPendingWebviewProbeRequests(
@@ -12528,6 +12544,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     surface: CanvasSurfaceLocation,
     mode: CanvasSurfaceMode
   ): WebviewLifecycleIdentity {
+    this.clearTerminalAvailableNotifications(surface);
     this.cancelLocalExecutionReaders(surface, 'cancelled', 'surface-rendered');
     this.terminalReadRelay.closeMatching((key) => key.startsWith(`${surface}:`));
     this.rejectPendingWebviewProbeRequests(
@@ -12575,8 +12592,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private markSurfaceReady(
     surface: CanvasSurfaceLocation, lifecycle?: WebviewLifecycleIdentity,
-    capabilities?: { terminalReadSettlementV1?: true; terminalLocalSettlementV1?: true }
+    capabilities?: { terminalReadSettlementV1?: true; terminalLocalSettlementV1?: true; terminalAvailableReceiptV1?: true }
   ): void {
+    this.clearTerminalAvailableNotifications(surface);
     if (this.surfaceLifecycle[surface].frameId !== lifecycle?.frameId ||
         this.surfaceLifecycle[surface].terminalLocalSettlementV1 !== capabilities?.terminalLocalSettlementV1) {
       this.cancelLocalExecutionReaders(surface, 'cancelled', 'surface-ready-changed');
@@ -12593,6 +12611,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       frameId: lifecycle?.frameId,
       terminalReadSettlementV1: capabilities?.terminalReadSettlementV1,
       terminalLocalSettlementV1: capabilities?.terminalLocalSettlementV1,
+      terminalAvailableReceiptV1: capabilities?.terminalAvailableReceiptV1,
       bootstrapAck: false
     };
   }
@@ -12603,6 +12622,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     reason: 'render' | 'ready' | 'dispose'
   ): void {
     if (this.surfaceMessageWebview[surface] !== sourceWebview) {
+      this.clearTerminalAvailableNotifications(surface);
       this.cancelLocalExecutionReaders(surface, 'lost', 'surface-webview-replaced');
     }
     if (!sourceWebview) {
@@ -12816,6 +12836,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     this.pendingVisibilityRestore[surface] = false;
+    this.flushTerminalAvailableNotifications(surface);
     const restoreFocus = options?.restoreFocus ?? this.pendingVisibilityRestoreFocus[surface];
     delete this.pendingVisibilityRestoreFocus[surface];
     this.postMessage({
@@ -13064,6 +13085,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lifecycle: summarizeWebviewLifecycleIdentity(this.getSurfaceLifecycleIdentity(sourceSurface))
       });
       this.flushPendingBootstrapHostMessages(sourceSurface);
+      this.flushTerminalAvailableNotifications(sourceSurface);
       this.attachLocalExecutionsToSurface(sourceSurface);
       this.postWorkspaceRootFocusGroupMessageForCurrentLifecycle(sourceSurface);
       void this.postCanvasTemplateCatalogToActiveWebview();
@@ -13466,6 +13488,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/executionTerminalApplied':
         this.handleExecutionTerminalApplied(sourceSurface, parsedMessage.payload);
+        return;
+      case 'webview/executionTerminalAvailableReceived':
+        this.receiveTerminalAvailable(sourceSurface, parsedMessage.payload);
         return;
       case 'webview/executionInput':
         {
@@ -20507,11 +20532,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             outputSequence: terminalRead.checkpoint.revision, terminalRead
           } }, surface);
         }
-        this.postMessage({ type: 'host/executionTerminalAvailable', payload: {
+        this.postCompletedTerminalAvailable(surface, {
           nodeId, kind, executionSessionId: stream.sessionId, authorityId: stream.authorityId,
           revision: stream.revision, completed: true, terminalTitle: null,
           ...(stream.finalRevision !== undefined ? { finalRevision: stream.finalRevision } : {})
-        } }, surface);
+        });
         return;
       }
     }
@@ -20566,15 +20591,53 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     kind: ExecutionNodeKind,
     nodeId: string,
     session: SupervisorExecutionSession,
-    terminalTitle?: string | null
+    terminalTitle?: string | null,
+    surface = this.activeSurface
   ): void {
     if (!session.terminalAuthorityId) {
       return;
     }
-    this.postMessage({ type: 'host/executionTerminalAvailable', payload: {
+    const payload = {
       nodeId, kind, executionSessionId: session.sessionId, authorityId: session.terminalAuthorityId,
       revision: session.outputSequence, terminalTitle
-    } });
+    };
+    if (!surface || !this.isInteractiveSurface(surface) || !this.getSurfaceMessageWebview(surface)) return;
+    if (this.surfaceLifecycle[surface].terminalAvailableReceiptV1 !== true) {
+      this.postMessage({ type: 'host/executionTerminalAvailable', payload }, surface);
+      return;
+    }
+    const lifecycle = this.getSurfaceLifecycleIdentity(surface);
+    this.terminalAvailableNotifications.offer(`${surface}:${kind}:${nodeId}`, payload, (next) => {
+      return this.postMessageWithDeliveryResult({ type: 'host/executionTerminalAvailable', lifecycle, payload: next }, surface);
+    }, !this.surfaceLifecycle[surface].bootstrapAck);
+  }
+
+  private receiveTerminalAvailable(
+    surface: CanvasSurfaceLocation,
+    payload: Extract<WebviewToHostMessage, { type: 'webview/executionTerminalAvailableReceived' }>['payload']
+  ): void {
+    if (this.surfaceLifecycle[surface].terminalAvailableReceiptV1 !== true) return;
+    this.terminalAvailableNotifications.received(`${surface}:${payload.kind}:${payload.nodeId}`, payload);
+  }
+
+  private clearTerminalAvailableNotifications(surface?: CanvasSurfaceLocation): void {
+    this.terminalAvailableNotifications.clearMatching((key) => !surface || key.startsWith(`${surface}:`));
+  }
+
+  private flushTerminalAvailableNotifications(surface: CanvasSurfaceLocation): void {
+    if (!this.surfaceLifecycle[surface].bootstrapAck) return;
+    this.terminalAvailableNotifications.resumeMatching((key) => key.startsWith(`${surface}:`));
+  }
+
+  private postCompletedTerminalAvailable(
+    surface: CanvasSurfaceLocation,
+    payload: Extract<HostToWebviewMessage, { type: 'host/executionTerminalAvailable' }>['payload']
+  ): void {
+    // Completion is a separate control message and must not wait for an ordinary hint receipt.
+    this.terminalAvailableNotifications.clearMatching((key, previous) =>
+      key === `${surface}:${payload.kind}:${payload.nodeId}` &&
+      previous.executionSessionId === payload.executionSessionId && previous.authorityId === payload.authorityId);
+    this.postMessage({ type: 'host/executionTerminalAvailable', payload }, surface);
   }
 
   private async postPagedExecutionSnapshot(
@@ -20631,6 +20694,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       liveSession: true, terminalTitle: session.terminalTitle ?? null,
       outputSequence: descriptor.checkpoint.revision, terminalRead: descriptor
     } }, surface);
+    if (this.surfaceLifecycle[surface].terminalAvailableReceiptV1 === true) {
+      // Opening a reader can overlap newer output than the descriptor's captured head.
+      this.postTerminalAvailable(kind, nodeId, session, session.terminalTitle ?? null, surface);
+    }
     this.recordDiagnosticEvent('runtime/terminalPagedReadOpened', {
       nodeId, kind, sessionId: session.sessionId, checkpointRevision: descriptor.checkpoint.revision,
       headRevision: descriptor.headRevision, hostCachedEvents: session.terminalStream?.events.length ?? 0

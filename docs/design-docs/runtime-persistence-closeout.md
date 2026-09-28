@@ -37,7 +37,7 @@ updated_at: 2026-09-28
 | F-04 周期传输 | 独立 checkpoint 刷新，不再为健康 live stream 周期重传完整后缀；见 `runtime-checkpoint-only-refresh.md` | 首次恢复和总回放时间已收口 |
 | F-04 常驻缓存与单次读取 | Supervisor 缓存限制为 1 MiB 编码字节/2048 事件；新能力 live Host/Webview 消费驱动分页，Host 不驻留完整后缀；见 `runtime-journal-bounded-cache.md`、`runtime-paged-terminal-projection.md` | 该预算就是整体 RSS 上限、全部队列已受限 |
 | F-04 新能力完成路径 | 当前读者从原 Supervisor 分页收尾，避免完整终态聚合；见 `runtime-paged-completion.md` | 旧协议/混合订阅、扫描与总恢复成本已消除 |
-| F-04 局部修复 | live checkpoint 校验摘要、owned journal 写入信用、64 KiB 分页扫描；新协商 Supervisor/Host 订阅单页信用及实际 line-context flush；见 `runtime-persistence-storage-reevaluation.md` 第 10 节 | 旧生产者/旧订阅和 Webview 通知全部有界；整体 heap 已达标；退出候选已经生产启用 |
+| F-04 局部修复 | live checkpoint 校验摘要、owned journal 写入信用、64 KiB 分页扫描；新协商 Supervisor/Host 单页信用及实际 line-context flush；Host/Webview 通知单在途与最新水位合并；见 `runtime-persistence-storage-reevaluation.md` 第 10 节 | 旧生产者/旧订阅/旧页面全部有界；整体 heap 已达标；退出候选已经生产启用 |
 | F-05 新路径 | Runtime completed 只保存轻量节点、配置与退出状态；重开不恢复正文或自动执行，明确可识别的旧内联记录已处理；见 `runtime-completed-no-history.md` | 当前页面可以丢尾；可推断并删除来源不明的旧 serialized-only 记录 |
 | 退出完整性实现增量 | 两种 owner、内容消费与逐 reader 结算、最终应用屏障、保存与失败责任已有受控模块实现；Linux 正式 provider/PTY 有有限业务证据；见生产接入设计第 17 至 31 节 | 真实 Agent、实际 Webview、macOS/Windows、packaged 产品路径已全部通过 |
 | Host 状态保护 | S13/S14 永久退出旧写者屏障、S15 首次退出结果复用、S16 普通 completed 陈旧回滚/清理保护；S16 有先红及 25 次 Host 回归 | template prepare 等于完整 apply；所有等待窗口或状态替换竞态均已解决 |
@@ -56,7 +56,7 @@ updated_at: 2026-09-28
 
 代码定向：以下代码相对 `extensions/vscode/dev-session-canvas/`。B1 涉及 `src/supervisor/terminalSessionJournal.ts`、`src/supervisor/runtimeSupervisorMain.ts`、Host 的 `src/panel/CanvasPanelManager.ts` 与 Webview 分页消费；B2 沿 `src/panel/executionSessionAdapter.ts`、`src/panel/executionOwnerLifecycle.ts`、`src/panel/linuxExecutionOwnerFactory.ts` 和真实 Host/Supervisor/Webview 接线；B3 聚焦 `CanvasPanelManager.ts` 的原边界与 completed 续体。具体落点由选中条目的直接证据决定，不把这一段作为重构所有模块的授权。
 
-B1 已修正常 live checkpoint 全历史数组持有、owned journal 信用与分页整段物化；本轮进一步接入具名 Supervisor/Host 消费信用，真实 socket 慢消费不再产生正文/状态推送洪泛，Host 等行上下文真实应用后回执。原 node-pty 生产链、旧订阅、Host 到 Webview 水位通知和真实多会话整体预算仍未闭合。首次 1x/2x/4x 的 64/128 MiB 内存失败保留；分页扫描修后同探针对照 RSS 最高增量 116.92 MiB 达标、heap 103.72 MiB 仍超限，内容和 30 秒回放门槛通过，不能关闭 A1。探针回放比真实 Webview 多一份逐页序列化，尚未量化，不扣除或追认通过，也不把优化探针先变绿当作传输修正前置；随实际链验证剩余内存来源。正式运行路径的写失败/满盘不能伪报完整或以无限内存暂存掩盖；Supervisor 崩溃后的 open/全量恢复优化不自动成为本轮验收要求。
+B1 已修正常 live checkpoint 全历史数组持有、owned journal 信用与分页整段物化；具名 Supervisor/Host 消费信用使真实 socket 慢消费不再产生正文/状态推送洪泛，Host 等行上下文真实应用后回执。本轮进一步收敛协商后的 Host/Webview 水位提示，接收回执不代替正文应用，最终 completed 通知不等普通提示。原 node-pty 生产链、旧订阅/旧页面、真实多会话整体预算仍未闭合。stock pause 会与 Unix/当前 Windows 的退出定时 destroy 冲突，故生产者有界化由 B1 依赖 B2 的既定 owned 接入完成，不另造旧生产者生命周期，也不将其延期出本次交付。首次 1x/2x/4x 的 64/128 MiB 内存失败保留；分页扫描修后同探针对照 RSS 最高增量 116.92 MiB 达标、heap 103.72 MiB 仍超限，内容和 30 秒回放门槛通过，不能关闭 A1。探针回放比真实 Webview 多一份逐页序列化，尚未量化，不扣除或追认通过，也不把优化探针先变绿当作传输修正前置；随实际链验证剩余内存来源。正式运行路径的写失败/满盘不能伪报完整或以无限内存暂存掩盖；Supervisor 崩溃后的 open/全量恢复优化不自动成为本轮验收要求。
 
 F-04 的工程判据不只是一轮负载没有超限：当前支持路径的缓存、读取和在途数据必须有明确容量约束、背压或可证明的来源上限，不能依赖消费者永远足够快。若新路径仍要求按完整历史线性物化后缀或无界累计待写正文，即使小样本未 OOM 也不能关闭该项。总回放工作可随所需历史增长，但必须让步、可取消，不阻塞输入控制；终端可交互与完整追赶分别度量，不强加恒定恢复时间。
 
@@ -121,6 +121,8 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 工程顺序已选定，不再请求用户确认：先 B1/F-04，恢复原始容量目标的优先级；再 B2 的真实产品接入，将 B3 的有限状态替换检查并入相同用户流程，不将每个竞态拆成独立阶段；最后在同一候选版本上汇总 A1 至 A6，关闭明确失败后才宣布整体交付。B1 不等待退出诊断工具完善，B2 的既定真实验收也不被移出本次重构。
 
 B2 会改变实际 provider、信用与消费链，最终启用产物必须复核 A1 的关键容量/交互项，不能用 B1 对此前路径的通过替新产物背书；这是最终回归，不另立容量研究或工具项目。
+
+容量修正已确认生产源与退出完整性的直接依赖：stock node-pty 暂停 socket 不保证退出时继续排空，不能为形式上的 B1 先绿而先加有损背压。共用 owned 接入属于原 B2 工作，B1 保留未完并随该接入验收；不等待旧源的第三套实现，也不把原 heap 失败归零。后续工作的终点是实际消费链的资源/交互证据和同一生产候选，不再追加通知工具或一般调度框架。
 
 下一项工作固定为 B1 的端到端容量收尾：复用已知 checkpoint 拒绝输入，以 1x/2x/4x 历史和既有十会话交互场景作有限负载，明确实际 journal 待写、socket/Host 在途、分页消费和 live compact 的容量责任；据此登记工程预算并验证，只修当前路径上的无界持有、背压或交互阻塞。既有容量诊断可作为入口，但它没有实际 socket/UI 的部分不能冒称端到端证据；必要观测直接补在对应产品回归，不新增 D 系列框架。该项的结束产物是有来源的预算/结果表、实际阻塞修复与回归、剩余项分类，而不是又一份待用户确认的探索建议。
 

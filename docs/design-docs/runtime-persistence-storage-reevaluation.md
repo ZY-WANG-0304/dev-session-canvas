@@ -323,3 +323,23 @@ Linux x64 / Node v25.6.0，真实本地 socket 回归只读加载 `d432bf89` 的
 独立 review 后的 `compact-steady-current.log` 和主会话最终 `socket-closeout.log` 继续通过：真实 journal 在暂停订阅期间两次 checkpoint 均不回收被 pin 的段，断连后第三次实际回收至少两段，旧 cursor 0 具名拒绝，保留 cursor 2 从 revision 3 继续；三轮普通输出/ACK 不附加 state，最终状态仍交付。Host 的精确 cursor 重连、具名 compact 回退、损坏不回退及 Webview reader 重开均有定向断言。
 
 最终共享树回归为 Supervisor wiring 80/80、client 24/24、Host batch 10/10 和原 headless writer 27/27；journal、line context、paged completion 四组合、checkpoint refresh、reader settlement 20/20、Host deactivation、attention/title、typecheck/build 与 diff 检查通过。新增 owned Terminal/Agent 测试确认 Webview reader 独立应用、preserve delete 在 Host ACK 前返回而 journal 尚存、ACK 后物理删除。其首次夹具提前于 provider accepted 握手发送 sourceEnd，被 adapter 正确拒绝；`owned-immediate-exit.log` 保留，正式输入改为等待真实 provider 契约要求的 accepted 而不等待 consumed/Host ACK，不把非法首轮追认为通过。独立 review 的重连两项回归已修并复核，没有据此新增退出诊断阶段。
+
+### 10.4 Host 到 Webview 的水位通知与生产链边界
+
+从 `52ff49bc` 继续同一 B1。正文已分页，但 `CanvasPanelManager.postTerminalAvailable()` 仍逐事件调用 Webview `postMessage()`；该 API 的投递 Promise 不证明页面收到或应用，慢页面仍可能累计通知。本轮只收敛这条直接产品路径，不新增诊断框架。
+
+选定 `terminalAvailableReceiptV1` 显式协商，通知携带独立 `receiptId`，页面在当前 lifecycle 的消息分发后回 `webview/executionTerminalAvailableReceived`。此回执只证明水位通知已处理，不代表正文写入或最终屏幕应用，不推进 Supervisor reader 的消费 revision。每 surface/kind/node 的当前 session/authority 最多一条在途通知和一份最新待发水位；后续 revision 合并为最大值，明确的 title（包括 null 清空）不能被缺省 title 覆盖。正文仍由现有分页 reader 拉取，不能通过合并丢掉正文事件。
+
+实现以 Host 的专用通知状态及 `common/protocol.ts`、`webview/main.tsx` 为边界。bootstrap ACK 前只保留最新待发通知，不进入会截短的普通 bootstrap 消息数组，ACK 后再发。frame、surface、执行身份替换或销毁释放原通知责任；迟到/重复/错身份 receipt 不释放新在途项。没有 receipt 的旧页面沿原契约，不追认为有界。没有挂载终端的页面仍可确认收到提示，之后挂载由 checkpoint/reader head 重新取得权威状态，不能把提示当恢复来源。
+
+最终 completed 通知及 finalRevision 保持既有独立发送和顺序，先废弃原普通提示的待发责任，再沿原 snapshot/available/exit 链交付，不等待普通提示回执。该例外是每次结束的终态控制消息，不是允许持续输出绕过信用。最终正文和 xterm callback 屏障不变；通知信用不能伪造应用、取消正文 reader 或阻塞另一节点控制。
+
+投递 Promise 的 true 不释放信用；false、抛错或拒绝只让原项返回最新待发，在下一输出、可见性恢复或重附着时重投，不增加定时重试。原 `postMessage()` 的 void 契约不变，仅新提示路径取得投递结果，避免改变原业务 Promise catch 的等待语义。迟到失败校验原 slot 和原在途对象。重附着发布 snapshot 后重新提示当前 session revision/title，因为 relay 可能复用旧 readId 与旧 descriptor head，不能清掉新水位后仅靠旧 descriptor 恢复。
+
+同一 lifecycle/session/authority 的重附着保留原提示信用，只合并最新水位；通知不属于 readId，不能为每次 attach 重开提示信用而积压旧在途项。原 receipt 仍只释放其对应提示，重复 receipt 无效；frame 或执行身份真正替换时才废弃旧责任。已发出的旧世代提示与一次 completed 控制消息不计为新世代的信用，单条限额不是跨全部世代的物理通道绝对上限。
+
+旧 node-pty 生产链的有限决策：安装版本 `1.2.0-beta.12` 的公共 pause/resume 仅暂停 socket；Unix 的 native exit 后 200ms destroy（Linux/macOS 共用），当前 Windows 非 DLL 路径 exit 后 1000ms destroy 均可能与暂停期慢消费冲突，公共 onExit 又不能区分真实 EOF 与强制关闭。因此不在本轮盲加 pause/resume、不修改超时或另建第三套源生命周期。生产者有界化作为 B1 对既定 B2 owned 生产接入的依赖，不能从收尾清单删除；当前默认仍是 stock bridge，owned 候选默认关闭，A1 必须在启用后的真实链复核。此为已知退出契约与容量的交叉依赖，不是把通用工具增强升为前置。
+
+本轮验证限定为实际 Host 方法的慢接收/标题/身份/结束顺序回归、协议解析及真实浏览器消息分发和原分页尾部回归。浏览器 harness 不是真实 VS Code/Agent 整链，旧 heap 失败仍保留，最终 A1 至 A6 不缩减。实施与结果在原 capacity ExecPlan 记录。
+
+Linux 定向结果：只读 `52ff49bc` 原 Host 方法在 1000 次更新、不给 receipt 时发送 1000 条，单在途断言先红；修后发送 1 条，receipt 后发送 revision 1000，正文未参与合并。实际 Host/helper 的标题 null、错/旧身份、bootstrap、completed、同 readId 重附着、投递失败和两节点/双 surface 独立通过，原正文 socket 回归继续通过。协议解析、Host owner 95/95、reader wiring 20/20、headless writer 27/27、Host batch 10/10、Host deactivation、typecheck/build 通过；浏览器 8/8 覆盖 Terminal/Agent receipt、无 controller、生命周期拒绝和原分页尾部。证据在 `.debug/runtime-terminal-available-credit-20260928/`，baseline buffer 入口失败、测试夹具字段/初始读取顺序错误及中途返回类型检查失败均独立保留，不写成产品或平台失败。独立 review 后不再为同身份 attach 清通知信用，最终 `notification-reattach-final.log` 验证重复 attach 仍只有原一条在途，旧 descriptor 的新水位不丢失。未重跑 heap 或原生矩阵，B1 仍未整体完成。

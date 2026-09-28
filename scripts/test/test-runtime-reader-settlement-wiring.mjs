@@ -11,6 +11,7 @@ const bundled = await esbuild.build({
     contents: `
       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
       export { RuntimeTerminalReadRelay } from './extensions/vscode/dev-session-canvas/src/panel/runtimeTerminalReadRelay';
+      export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
       export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
       export { parseWebviewMessage } from './extensions/vscode/dev-session-canvas/src/common/protocol';
       export { TerminalProjectionRefreshScheduler } from './extensions/vscode/dev-session-canvas/src/common/terminalProjectionRefreshScheduler';
@@ -69,7 +70,7 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   guardedRequire, loaded, loaded.exports,
   path.resolve('scripts/test/runtime-reader-settlement-wiring.cjs'), path.resolve('scripts/test')
 );
-const { CanvasPanelManager, RuntimeTerminalReadRelay, RuntimeSupervisorClient, parseWebviewMessage,
+const { CanvasPanelManager, RuntimeTerminalReadRelay, TerminalAvailableNotifications, RuntimeSupervisorClient, parseWebviewMessage,
   TerminalProjectionRefreshScheduler, RuntimeSupervisorServer, TerminalPagedProjection, encodeOutputFrame } = loaded.exports;
 const mode = 'final-application-v1';
 const clients = new Set();
@@ -167,6 +168,7 @@ async function fixture(options = {}) {
   const remote = options.remote ?? await controlledClient(options);
   const relay = new RuntimeTerminalReadRelay();
   const host = Object.create(CanvasPanelManager.prototype);
+  host.terminalAvailableNotifications = new TerminalAvailableNotifications();
   const posted = [];
   const diagnostics = [];
   const released = [];

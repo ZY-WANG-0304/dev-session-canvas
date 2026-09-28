@@ -31,6 +31,7 @@ const bundled = await esbuild.build({
     contents: `
       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
       export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
+      export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
     `,
     resolveDir: cwd,
     sourcefile: 'runtime-host-deactivation-integrity.ts'
@@ -61,7 +62,7 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   createRequire(import.meta.url), loaded, loaded.exports,
   path.resolve('scripts/test/runtime-host-deactivation-integrity.cjs'), path.resolve('scripts/test')
 );
-const { CanvasPanelManager, RuntimeSupervisorClient } = loaded.exports;
+const { CanvasPanelManager, RuntimeSupervisorClient, TerminalAvailableNotifications } = loaded.exports;
 
 function sleep(ms = 0) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -137,6 +138,7 @@ function makeHost() {
     }
   };
   const host = Object.create(CanvasPanelManager.prototype);
+  host.terminalAvailableNotifications = new TerminalAvailableNotifications();
   Object.assign(host, {
     context: { extensionMode: 3, extensionUri: { fsPath: cwd } },
     state: { version: 1, nodes: [node], edges: [], groups: [] },
