@@ -37,7 +37,7 @@ updated_at: 2026-09-28
 | F-04 周期传输 | 独立 checkpoint 刷新，不再为健康 live stream 周期重传完整后缀；见 `runtime-checkpoint-only-refresh.md` | 首次恢复和总回放时间已收口 |
 | F-04 常驻缓存与单次读取 | Supervisor 缓存限制为 1 MiB 编码字节/2048 事件；新能力 live Host/Webview 消费驱动分页，Host 不驻留完整后缀；见 `runtime-journal-bounded-cache.md`、`runtime-paged-terminal-projection.md` | 该预算就是整体 RSS 上限、全部队列已受限 |
 | F-04 新能力完成路径 | 当前读者从原 Supervisor 分页收尾，避免完整终态聚合；见 `runtime-paged-completion.md` | 旧协议/混合订阅、扫描与总恢复成本已消除 |
-| F-04 局部修复 | live checkpoint 校验摘要、owned journal 写入信用、64 KiB 分页扫描；新协商 Supervisor/Host 单页信用及实际 line-context flush；Host/Webview 通知单在途与最新水位合并；见 `runtime-persistence-storage-reevaluation.md` 第 10 节 | 旧生产者/旧订阅/旧页面全部有界；整体 heap 已达标；退出候选已经生产启用 |
+| F-04 局部修复 | live checkpoint 校验摘要、owned journal 写入信用、64 KiB 分页扫描；新协商 Supervisor/Host 单页信用及实际 line-context flush；Host/Webview 通知合并；owned 解析消费不再逐批完整序列化；见 `runtime-persistence-storage-reevaluation.md` 第 10 节 | 旧生产者/旧订阅/旧页面全部有界；整体 heap/RSS 已达标；退出候选已经生产启用 |
 | F-05 新路径 | Runtime completed 只保存轻量节点、配置与退出状态；重开不恢复正文或自动执行，明确可识别的旧内联记录已处理；见 `runtime-completed-no-history.md` | 当前页面可以丢尾；可推断并删除来源不明的旧 serialized-only 记录 |
 | 退出完整性实现增量 | 两种 owner、内容消费与逐 reader 结算、最终应用屏障、保存与失败责任已有受控模块实现；Linux 正式 provider/PTY 有有限业务证据；见生产接入设计第 17 至 31 节 | 真实 Agent、实际 Webview、macOS/Windows、packaged 产品路径已全部通过 |
 | Host 状态保护 | S13/S14 永久退出旧写者屏障、S15 首次退出结果复用、S16 普通 completed 陈旧回滚/清理保护；S16 有先红及 25 次 Host 回归 | template prepare 等于完整 apply；所有等待窗口或状态替换竞态均已解决 |
@@ -59,6 +59,12 @@ updated_at: 2026-09-28
 B1 已修正常 live checkpoint 全历史数组持有、owned journal 信用与分页整段物化；具名 Supervisor/Host 消费信用使真实 socket 慢消费不再产生正文/状态推送洪泛，Host 等行上下文真实应用后回执。本轮进一步收敛协商后的 Host/Webview 水位提示，接收回执不代替正文应用，最终 completed 通知不等普通提示。原 node-pty 生产链、旧订阅/旧页面、真实多会话整体预算仍未闭合。stock pause 会与 Unix/当前 Windows 的退出定时 destroy 冲突，故生产者有界化由 B1 依赖 B2 的既定 owned 接入完成，不另造旧生产者生命周期，也不将其延期出本次交付。首次 1x/2x/4x 的 64/128 MiB 内存失败保留；分页扫描修后同探针对照 RSS 最高增量 116.92 MiB 达标、heap 103.72 MiB 仍超限，内容和 30 秒回放门槛通过，不能关闭 A1。探针回放比真实 Webview 多一份逐页序列化，尚未量化，不扣除或追认通过，也不把优化探针先变绿当作传输修正前置；随实际链验证剩余内存来源。正式运行路径的写失败/满盘不能伪报完整或以无限内存暂存掩盖；Supervisor 崩溃后的 open/全量恢复优化不自动成为本轮验收要求。
 
 F-04 的工程判据不只是一轮负载没有超限：当前支持路径的缓存、读取和在途数据必须有明确容量约束、背压或可证明的来源上限，不能依赖消费者永远足够快。若新路径仍要求按完整历史线性物化后缀或无界累计待写正文，即使小样本未 OOM 也不能关闭该项。总回放工作可随所需历史增长，但必须让步、可取消，不阻塞输入控制；终端可交互与完整追赶分别度量，不强加恒定恢复时间。
+
+后续从 `f24a84f0` 分离 owned 解析消费与快照物化，真实 Linux provider/PTY/socket/受控 Host 的同输入 baseline/current 各一次对照完成。累计序列化 1616→4 次，内容、终态、自然退出及清理通过；current 1x 内存达标，2x/4x 仍超原 64/128 MiB，4x 额外 heap/RSS 为 99.14/167.45 MiB，不能宣称整体峰值改善。该受控单 Terminal 链并非实际 VS Code/Agent，旧模块探针失败也不改。下一直接容量工作是同链剩余分配归因与必要修正；分页逐页重新校验整个相关段是源码事实，尚未量化其峰值贡献，不新增通用工具门槛。
+
+只读定位已将下一 B1 修正收窄为 Host 行上下文的取消等待：同一长期未决 disposedSignal 被重复 Promise.race，work 完成不能注销另一分支，注册在 dispose 前持续累计。消除该结构时必须保留真实解析屏障和销毁取消，不量化冒称本轮全部内存根因，也不新增通用取消框架。
+
+B2 生产接线已确认的缺口是：扩展入口未注入 owner/profile，Host 默认 generation 仍为 terminal-stream-v1，Client/backend 的 detached/systemd 启动与 launcher 未传 execution profile；candidate 的 allowRestart=false 也阻止新 generation 首次启动。已有 Supervisor 入口只覆盖精确匹配的 Linux 资产，不能仅打开开关。后续在同一候选接通两模式的新执行、严格区分首次创建与旧 live 重连/未知结果，并保留跨平台/分发验收；这不是新增研究阶段，也不与 R1 归属迁移混做。
 
 生产接入设计的 L-01 至 L-05、PI-01 至 PI-06 只用于追溯上述责任，不能把历史表中的旧缺口全文重复排队。新拓扑中 provider 失效、owner 消失时的孤儿风险、允许动作和未知结果仍须确认，但不新增机器崩溃后恢复、任意故障全部清零或逐个托管后代的承诺。
 

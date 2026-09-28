@@ -218,6 +218,31 @@ function fixture(options = {}) {
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
 
+for (const kind of ['terminal', 'agent']) {
+  test(`${kind} ordinary Host consumption does not serialize terminal state`, async () => {
+    const f = fixture();
+    const { record, provider } = await f.started(kind);
+    const addon = record.tracker.serializeAddon;
+    const serialize = addon.serialize.bind(addon);
+    let serializations = 0;
+    addon.serialize = (...args) => { serializations++; return serialize(...args); };
+    try {
+      for (let revision = 1; revision <= 3; revision++) {
+        provider.output(revision, `${kind}-drain-${revision}\r\n`);
+        await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === revision,
+          `${kind} ordinary consumption ${revision}`);
+        assert.equal(serializations, 0, 'ordinary consumer acknowledgement must not serialize the whole terminal.');
+      }
+      provider.process();
+      provider.seal(3);
+      provider.release();
+      await until(f.clock, () => record.execution.snapshot().settled, `${kind} final serialization`);
+      assert.ok(serializations > 0, 'final application must still serialize terminal state.');
+      assert.match(record.tracker.getSerializedState().data, new RegExp(`${kind}-drain-3`));
+    } finally { record.tracker.dispose(); }
+  });
+}
+
 test('constructor injection requires strict Test mode, not a smoke environment override', () => {
   const f = fixture();
   const previous = process.env.DEV_SESSION_CANVAS_SMOKE_TEST_MODE;
@@ -237,12 +262,15 @@ for (const kind of ['terminal', 'agent']) {
     const f = fixture();
     const { record, provider } = await f.started(kind);
     const gate = deferred();
+    const drain = record.tracker.drain.bind(record.tracker);
     const flush = record.tracker.flush.bind(record.tracker);
+    let drains = 0;
     let flushes = 0;
-    record.tracker.flush = async () => {
-      if (++flushes === 1) await gate.promise;
-      return flush();
+    record.tracker.drain = async () => {
+      if (++drains === 1) await gate.promise;
+      return drain();
     };
+    record.tracker.flush = async () => { flushes++; return flush(); };
     try {
       provider.process();
       for (let frame = 1; frame <= 10; frame += 1) provider.output(frame, `${kind}-tail-${frame}\r\n`);
@@ -256,14 +284,16 @@ for (const kind of ['terminal', 'agent']) {
       assert.equal(record.finalRevision, undefined);
       assert.equal(record.readerAdmissionClosed, false);
       assert.equal(record.execution.snapshot().settled, false);
-      assert.equal(flushes, 1);
+      assert.equal(drains, 1);
+      assert.equal(flushes, 0, 'final serialization must not overtake pending consumption');
       gate.resolve();
       await until(f.clock, () => record.execution.snapshot().settled, `${kind} terminal completion`);
       assert.match(record.tracker.getSerializedState().data, new RegExp(`${kind}-tail-10`));
       assert.equal(record.finalRevision, 10);
       assert.equal(record.execution.snapshot().terminal.finalRevision, 10);
       assert.equal(record.readerAdmissionClosed, true);
-      assert.equal(flushes, 4, 'three real consumer flushes must precede the final tracker flush');
+      assert.equal(drains, 3, 'three real consumer drains must precede the final tracker flush');
+      assert.equal(flushes, 1, 'final application still requires its separate serialization');
       assert.equal(record.execution.snapshot().readerOutcome, 'pending');
       assert.equal(f.record(kind), record, 'final tracker remains owned until reader cancellation or loss');
       assert.equal(f.owner.snapshot().pending, 1);
@@ -331,16 +361,19 @@ for (const kind of ['terminal', 'agent']) {
   });
 
   for (const failure of ['consumer', 'final']) {
-    test(`${kind} ${failure} tracker flush failure retains unknown responsibility without cached success`, async () => {
+    test(`${kind} ${failure} tracker failure retains unknown responsibility without cached success`, async () => {
       const f = fixture();
       const { record, provider } = await f.started(kind);
       try {
         if (failure === 'final') {
           provider.output(1, `${kind}-consumed`);
-          await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, `${kind} initial real flush`);
+          await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, `${kind} initial real drain`);
         }
         let failedFlushes = 0;
-        record.tracker.flush = async () => { failedFlushes += 1; throw new Error(`${failure} tracker failure`); };
+        record.tracker[failure === 'consumer' ? 'drain' : 'flush'] = async () => {
+          failedFlushes += 1;
+          throw new Error(`${failure} tracker failure`);
+        };
         if (failure === 'consumer') {
           provider.output(1, `${kind}-unapplied`);
           await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 1, `${kind} failed-consumer acceptance`);
@@ -999,7 +1032,10 @@ for (const kind of ['terminal', 'agent']) {
       assert.equal(initial.forceAt, undefined);
       provider.output(1, `${kind}-natural-tail`);
       await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, `${kind} natural tail tracker`);
-      assert.match(record.tracker.getSerializedState().data, new RegExp(`${kind}-natural-tail`));
+      const appliedBuffer = record.tracker.terminal.buffer.active;
+      assert.match(Array.from({ length: appliedBuffer.length }, (_, index) =>
+        appliedBuffer.getLine(index)?.translateToString(true) ?? '').join('\n'),
+      new RegExp(`${kind}-natural-tail`), 'consumed tail must exist in the real parser, without forcing a snapshot');
       f.clock.advance(15);
       await until(f.clock, () => provider.messages.some(message => message.type === 'cancelOutput'), `${kind} natural cancel`);
       assert.equal(provider.messages.filter(message => message.type === 'requestStop').length, 0);
@@ -1124,8 +1160,8 @@ for (const kind of ['terminal', 'agent']) {
     });
     const { record, provider } = await f.started(kind);
     const gate = deferred();
-    const flush = record.tracker.flush.bind(record.tracker);
-    record.tracker.flush = async () => { await gate.promise; return flush(); };
+    const drain = record.tracker.drain.bind(record.tracker);
+    record.tracker.drain = async () => { await gate.promise; return drain(); };
     try {
       provider.process();
       provider.output(1, `${kind}-parent-cleanup-tail`);

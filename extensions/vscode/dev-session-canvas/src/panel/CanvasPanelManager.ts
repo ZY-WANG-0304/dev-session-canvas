@@ -16847,7 +16847,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               chunks.push(text);
               active.tracker.write(text, { outputSequence: active.terminalRevision });
             }
-            await active.tracker.flush();
+            await active.tracker.drain();
             for (const reader of active.localReaders?.values() ?? []) {
               if (reader.initialPublished && !reader.outcome && batches.length > 0) {
                 await this.postLocalExecutionReaderMessage(active, reader, {

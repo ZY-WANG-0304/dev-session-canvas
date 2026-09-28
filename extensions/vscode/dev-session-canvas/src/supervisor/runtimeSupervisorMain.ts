@@ -1956,7 +1956,7 @@ export class RuntimeSupervisorServer {
           this.schedulePersist();
         }
       }
-      await session.terminalStateTracker.flush();
+      await session.terminalStateTracker.drain();
       // Consumption credit must cover pending and in-flight journal writes, not only parser work.
       try {
         await session.terminalJournal!.flush();

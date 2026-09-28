@@ -239,6 +239,26 @@ async function checkReader(name, run) {
 }
 
 try {
+  for (const kind of ['terminal', 'agent']) {
+    await check(`${kind} ordinary Supervisor consumption does not serialize terminal state`, async () => {
+      const f = fixture();
+      const { session, transport } = await f.create(kind);
+      const addon = session.terminalStateTracker.serializeAddon;
+      const serialize = addon.serialize.bind(addon);
+      let serializations = 0;
+      addon.serialize = (...args) => { serializations++; return serialize(...args); };
+      for (let revision = 1; revision <= 3; revision++) {
+        transport.output(`${kind}-drain-${revision}\r\n`);
+        await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === revision,
+          `${kind} ordinary consumption ${revision}`);
+        assert.equal(serializations, 0, 'ordinary consumer acknowledgement must not serialize the whole terminal.');
+      }
+      await finish(f, session, transport);
+      assert.ok(serializations > 0, 'final application must still serialize terminal state.');
+      assert.match(session.terminalStateTracker.getSerializedState().data, new RegExp(`${kind}-drain-3`));
+    });
+  }
+
   const candidateCapabilities = ['execution-lifecycle-v1', 'execution-close-observation-v1',
     'execution-parent-cleanup-v1', 'execution-owner-boundary-v1', 'terminal-read-settlement-v1', 'terminal-interaction-v1'];
   const candidateBehavior = { profile: EXECUTION_CANDIDATE_PROFILE, budgets: EXECUTION_CANDIDATE_BUDGETS,
@@ -477,12 +497,15 @@ try {
       assert.equal(transport.identity.executionId, session.sessionId);
       const entered = deferred();
       const gate = deferred();
+      const originalDrain = session.terminalStateTracker.drain.bind(session.terminalStateTracker);
       const originalFlush = session.terminalStateTracker.flush.bind(session.terminalStateTracker);
+      let drainCalls = 0;
       let flushCalls = 0;
-      session.terminalStateTracker.flush = async () => {
-        if (++flushCalls === 1) { entered.resolve(); await gate.promise; }
-        return originalFlush();
+      session.terminalStateTracker.drain = async () => {
+        if (++drainCalls === 1) { entered.resolve(); await gate.promise; }
+        return originalDrain();
       };
+      session.terminalStateTracker.flush = async () => { flushCalls++; return originalFlush(); };
       for (let index = 0; index < 8; index++) transport.output(String(index));
       await f.until(() => session.ownedExecution.snapshot().adapter.acceptedThrough === 8, 'eight accepted frames');
       await entered.promise;
@@ -493,12 +516,14 @@ try {
       await f.pump();
       assert.equal(session.ownedExecution.snapshot().terminal, undefined);
       assert.equal(session.ownedExecution.snapshot().adapter.consumedThrough, 0);
-      assert.equal(flushCalls, 1, 'final flush must not enter the terminal chain yet');
+      assert.equal(drainCalls, 1, 'first real consumption is still pending');
+      assert.equal(flushCalls, 0, 'final flush must not enter the terminal chain yet');
       assert.equal(session.ownedReaderAdmissionOpen, true);
       gate.resolve();
       await f.until(() => session.ownedExecution.snapshot().settled, 'all batches and final flush');
       assert.equal(session.output, '01234567');
-      assert.equal(flushCalls, 3, 'two consume batches and one final flush');
+      assert.equal(drainCalls, 2, 'both accepted consume batches must actually drain');
+      assert.equal(flushCalls, 1, 'final application still requires its separate serialization');
       assert.equal(session.ownedExecution.snapshot().terminal.finalRevision, 8);
       assert.equal(session.ownedReaderAdmissionOpen, false);
       assert.equal(session.live, false);
@@ -700,9 +725,9 @@ try {
     const f = fixture();
     const { session, transport } = await f.create();
     const gate = deferred();
-    const originalFlush = session.terminalStateTracker.flush.bind(session.terminalStateTracker);
+    const originalDrain = session.terminalStateTracker.drain.bind(session.terminalStateTracker);
     let paused = true;
-    session.terminalStateTracker.flush = async () => { if (paused) await gate.promise; return originalFlush(); };
+    session.terminalStateTracker.drain = async () => { if (paused) await gate.promise; return originalDrain(); };
     transport.output('TAIL');
     await f.until(() => session.ownedExecution.snapshot().adapter.acceptedThrough === 1, 'tail accepted');
     f.server.stopSession({ sessionId: session.sessionId });
@@ -1246,7 +1271,10 @@ try {
       assert.equal(initial.forceAt, undefined);
       transport.output(`${kind}-observed-supervisor-tail`);
       await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, `${kind} observed tracker consumption`);
-      assert.match(session.terminalStateTracker.getSerializedState().data, new RegExp(`${kind}-observed-supervisor-tail`));
+      const appliedBuffer = session.terminalStateTracker.terminal.buffer.active;
+      assert.match(Array.from({ length: appliedBuffer.length }, (_, index) =>
+        appliedBuffer.getLine(index)?.translateToString(true) ?? '').join('\n'),
+      new RegExp(`${kind}-observed-supervisor-tail`), 'consumed tail must exist in the real parser, without forcing a snapshot');
       await f.advance(15);
       assert.equal(transport.sent.filter(message => message.type === 'cancelOutput').length, 1);
       assert.equal(transport.sent.filter(message => message.type === 'requestStop').length, 0);
@@ -1368,8 +1396,8 @@ try {
       const { session, transport } = await f.create(kind);
       const read = await openReader(f, session);
       const gate = deferred();
-      const flush = session.terminalStateTracker.flush.bind(session.terminalStateTracker);
-      session.terminalStateTracker.flush = async () => { await gate.promise; return flush(); };
+      const drain = session.terminalStateTracker.drain.bind(session.terminalStateTracker);
+      session.terminalStateTracker.drain = async () => { await gate.promise; return drain(); };
       try {
         transport.process();
         transport.output(`${kind}-parent-cleanup-tail`);

@@ -17,9 +17,15 @@
 - [ ] 收敛 journal、socket、Host 在途责任并对直接阻塞作必要修正及验证；未实施或未覆盖部分保留为 B1 未完成，不另开退出阶段。
 - [x] (2026-09-28) 从 `d432bf89` 接通具名 Host 页消费信用；旧真实 socket 暂停 Host 仍推送 96 条 raw 事件先红，修后单页在途及 97 事件无损、控制/其他会话进展、compact/重连和取消隔离通过，设计见第 10.3 节。
 - [x] (2026-09-28) 从 `52ff49bc` 收敛 Host/Webview 水位通知为单在途与最新待发；旧 Host 无回执 1000 条先红，修后单条及最新 revision、标题、生命周期、重附着和投递失败回归通过，浏览器 8/8；不改正文/最终应用契约，设计见第 10.4 节。
+- [x] (2026-09-28) 从 `f24a84f0` 分离 owned 消费解析屏障与完整快照，取得实际消费序列化先红并保持最终保存/错误契约；真实 Linux provider/socket/Host 固定负载各一次对照，序列化 1616→4 次、内容/终态/清理通过；current 2x/4x 内存仍超限，见第 10.5 节。
+- [ ] 修正实际 Host line-context 的共享未决取消 Promise 累积：已完成等待须解除自身取消责任，保留 dispose 唤醒和严格消费信用；再核对同链剩余超预算分配。本轮不改该文件或追加 native 重跑，未将内存峰值全部归因于这项，B1/A1 保持开放。
 - [x] (2026-09-28) 本轮结果/残余债务已同步，独立 review 的字节校验问题已复现并修复、复核无新阻塞，以本地提交交付该增量；F-04 未整体通过，计划保持 active，不 push/PR。
 
 ## 意外与发现
+
+本轮实际 owned 消费逐批调用强制快照 flush；替换为只等待真实 parser 的 drain 后，实际 provider 对照序列化累计 1616 次降至 4 次，耗时 7590.04ms 降至 39.75ms。但 current 2x/4x heap/RSS 仍超限，4x 为 99.14/167.45 MiB，高于同拓扑 baseline 的 76.77/152.77 MiB；不能用工作减少推断峰值下降。分页仍逐页完整校验相关段并重复 JSON 解析/编码，是待归因路径，不是已证明泄漏。本轮三档采样未分别归因生产、Host 和 replay 的峰值。
+
+只读核对发现 line-context 在每次 writeSegment/awaitPendingOperations 中对同一长期未决 disposedSignal.promise 做 Promise.race；消费胜出不会解除另一分支的 reaction，注册随生命周期累计，直至 dispose 才结束。正文 replaySegments、lineCwds、journal cache 有限不能替代这项取消结构的边界。下一直接修正已收窄，不把它未经测量量化为整个峰值来源。
 
 输入版本 `terminalSessionJournal.ts` 的 `commitCheckpointOnWriteChain()` 调用全量 verifier，而它收集所有 events/checksums/recordByteEnds；这是正常 live 操作，并非仅崩溃恢复。`pendingWrites` 和 `writeChain` 的字符串闭包不受 1 MiB 事件缓存限制。原新 provider 的 `consumeOwnedOutput()` 等 tracker，但不等 journal 写入；普通 socket 写也没有统一等待背压。前两处已按本计划修复，代码事实不等于已测 OOM。
 
@@ -32,6 +38,12 @@
 通知合并的独立 review 命中同 readId 重附着：relay 可返回旧 descriptor，页面对此不执行新 reader 的初始强制拉取，清掉较新 pending 会遗失唤醒。最终实现保留同身份通知信用，于 snapshot 后显式合并当前 session revision/title；原 receipt 有效但重复无效，frame/执行身份替换后的旧 receipt 无效。这样重复 attach 也不绕过单在途限额。另保留原通用 postMessage 的 void 契约，只让提示取得原投递 Promise，避免把其他 catch 续体改成等待投递。stock node-pty 的公共 pause 不足以证明退出 drain，故当前生产源有界化不能靠简单暂停补丁关闭。
 
 ## 决策记录
+
+2026-09-28 / Codex：两次固定实际链样本完成后停止重跑，保留原 64/128 MiB 和 30 秒门槛。重复序列化修正可独立交付，但 current 内存失败仍是 B1 直接产品阻塞；下一工作围绕同链分配归因与必要修正，不先让旧模拟探针变绿。B2 的实际启动接线已经源码定位，不能通过默认开启不完整 Linux 候选来宣称 B1 或跨平台交付。
+
+2026-09-28 / Codex：下一 B1 修正优先消除行上下文取消等待的非定长注册，完成点是已完成 work 不再保留取消等待，dispose 仍唤醒在途 work 且不能返回成功信用；不扩成共享框架。页内/段级完整校验不因尚未归因的重复扫描而削减，最终仍需通过真实链原预算。
+
+2026-09-28 / Codex：原 owned 消费每批 flush 强制完整 scrollback 序列化，是生产路径成本而非仅探针问题。增加严格不序列化 drain，只替换 Host/Supervisor consume，最终/附着/保存/checkpoint 原 flush 保持。以实际源和实际 Host 信用做固定负载对照；不先打开缺跨平台资产/正式启动链的默认 profile，也不为此追加平台诊断框架。
 
 2026-09-28 / Codex：普通水位通知采用独立接收回执，不能复用正文应用 ACK，也不能把 VS Code postMessage Promise 当作页面消费。bootstrap 前原地合并，最终 completed 控制消息独立交付并清理普通提示；frame/执行身份隔离由原 lifecycle 与独立 receiptId 共同保证。stock node-pty 的 socket pause 与 Unix 200ms/Windows 当前非 DLL 1000ms 退出 destroy 冲突，故旧生产链有界化随 B2 既定 owned 生产接入完成；B1/A1 仍开放，不为即将替换的路径新造生命周期，也不以候选局部测试冒充默认启用。
 
@@ -48,6 +60,8 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 2026-09-28 / Codex：选定 Host 独立订阅信用，不借用 editor/panel reader；正文页后等待严格 line-context flush，状态同样受信用约束但不因普通 chunk 触发额外全画板保存。正常退役保留游标来源，而 delete RPC 不等其调用方待发的批次 ACK。断连释放旧责任；可读范围内恢复原消费 revision，已合法 compact 的旧游标具名拒绝并显式重建 checkpoint 基线，不追认缺失业务事件已消费。重连另行重新打开 Webview reader；一般损坏不套用该回退。这些均为本次传输改动的直接正确性要求，不新增工具门槛。
 
 ## 结果与复盘
+
+新增严格 drain 并仅替换两处普通 owned consume，Supervisor journal 写入信用、final/attach/checkpoint/保存保持；Tracker、Supervisor 82/82、Host 97/97、原分页完成与 writer 27/27、Host batch 10/10、journal、checkpoint、socket信用、client 24/24、typecheck/build 通过。真实 Linux Terminal 两次各三档的内容/终态/自然退出/清理通过、每次仅一个主体；修后生产消费 3.260/1.495/2.986 秒，回放 1.092/2.263/4.655 秒，但仅 1x 内存达标，2x/4x 仍失败。该增量消除明确成本，不关闭 A1，也不替代真实 Agent/VS Code/Webview/平台验收。
 
 已接通实际 Supervisor/Host 消费信用：协议显式协商，单订阅一页在途，journal 保留未消费后缀，Host 等待 line context drain；状态同样有界合并，终态不得越过正文。新增 `scripts/test/test-runtime-host-output-credit.mjs` 的真实本地 socket 对照通过，但不启动 PTY；旧业务先红、成功路径、compact 游标和 steady output 不额外产生 state 均有证据。Supervisor wiring 80/80、真实 Host 方法 10/10、原 headless writer 27/27、client 24/24 及相关回归通过。原 heap 失败仍开放。
 
@@ -73,6 +87,8 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 本轮提示回归执行 `npm run test:terminal-available-credit`，同脚本的 `--baseline-ref=52ff49bc` 只读原 Host 方法取得洪泛先红。`npm run test:runtime-host-output-credit` 已串接新回归。浏览器使用 `npm run build` 后执行 `node scripts/test/run-playwright-webview.mjs --grep "availability receipts|terminal paged recovery handles|terminal consumes paged recovery through ANSI|lifecycle identity acks bootstrap"`，预期 8/8；另跑协议解析、原 paged projection、reader wiring、Host owner/deactivation 和 typecheck。该范围是产品通知改动所需回归，不扩容量工具。
 
+本轮 drain 回归执行 `node scripts/test/test-serialized-terminal-state-tracker.mjs`、`node scripts/test/test-supervisor-execution-owner-wiring.mjs`、`node scripts/test/test-host-execution-owner-wiring.mjs`。固定实际链命令为 `node --expose-gc scripts/diagnostics/audit-owned-runtime-capacity.mjs --baseline-ref=f24a84f0 --output .debug/owned-runtime-capacity-baseline-first-20260928` 及不带 baseline-ref、output 为 `.debug/owned-runtime-capacity-current-first-20260928` 的 current 命令；这两次已经运行，不再以相同目录或重跑覆盖。运行前可用 `--preflight` 仅校验资产/加载实际入口，不启动 provider；native 要求精确 Linux x64/glibc、Node 25.6.0 及原已校验资产，`npm run build` 会删除 dist，资产需按原 `linux-execution-candidate-assets.mjs import` 恢复。其他平台不以此入口代验。
+
 ## 验证与验收
 
 保留原损坏、连续 revision、双代 fallback、读取/删除互斥断言。验证空间改进须有结构性无全量持有证据及固定增长负载，不只观察一次 RSS。校准/新旧基线/修后结果分别保存；输入、ACK、实际终端内容与公平性不能只看末尾 marker。不得把 no-PTY 实际模块测试当作实际 socket/Host/Webview 整链，也不得把浏览器 Agent 标签当真实 CLI。
@@ -97,6 +113,8 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 ## 接口与依赖
 
+`SerializedTerminalStateTracker.drain(): Promise<void>` 只承诺调用前已接受的解析工作及先前 operation 完成，不承诺新快照、完整 EOF 或页面应用；错误和 disposed 严格拒绝。最终/附着/修改/checkpoint 的旧 flush 语义保持。实际链脚本只记录流式 hash/计数和固定结果，不修改旧诊断设施或历史失败。
+
 2026-09-28 的传输决策新增 `terminalHostOutputCreditV1` 能力、subscribe 的 `hostOutputCredit: journal-pages-v1` 及独立批次 ACK；旧模式语义不变。`RuntimeSupervisorClient` 只在原 socket 的异步 Host 消费完成后返信用。`ExecutionTerminalLineContextTracker.flush()` 严格等待既有操作并区分错误/取消；Host 身份失效不能记为成功消费。正常退役由未确认订阅游标保护 journal，但不把 Host 信用加入会互等的 owned reader completion。
 
 不新增依赖、运行模式、存储 generation、root 归属或用户配置。journal 的公开完整读取/旧恢复保持兼容，正常 checkpoint 内部改为受限摘要验证。生产背压必须落实到原 owner/消费回执，不能添加无限队列来绕过限额。
@@ -110,3 +128,5 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 修订记录（2026-09-28，页面提示信用）：补齐最后一段持续水位通知的有界责任与重附着/投递失败回归，明确 stock 源安全背压对原 B2 的依赖；保留当前 heap 失败和最终产品验收，不继续扩工具阶段。
 
 最终复核补记：同身份重复 attach 不重置提示信用，`notification-reattach-final.log` 保留该简化后的回归；frame/执行替换仍隔离旧 receipt。`typecheck-closeout.log`、`build-closeout.log` 为最终共享树检查，上一轮中途返回类型失败及原绿色日志不覆盖。
+
+修订记录（2026-09-28，解析消费）：实际路径先红后分离 drain/快照；证据在 `.debug/runtime-consumption-drain-20260928/`，旧缓存 live 断言首次失败保留。真实链两个 `owned-runtime-capacity-*-first-20260928` 目录保留首次 exit 1 与全部成功/失败事实，清理首报和本方资源分别核对。未新增当前页面浏览器、真实 Agent 或跨平台通过；生产启动的 profile/generation/冷启动链待 B2 接通，当前阶段先处理已测 B1 超限，不另开诊断编号。
