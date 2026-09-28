@@ -37,6 +37,7 @@ export interface RuntimeSupervisorHelloResult {
     terminalCheckpointRefreshV1?: true;
     terminalPagedReadV1?: true;
     terminalPagedCompletionV1?: true;
+    terminalHostOutputCreditV1?: true;
     terminalReadSettlementV1?: true;
     executionCandidateProfiles?: readonly ExecutionCandidateProfile[];
   };
@@ -115,6 +116,7 @@ export const RUNTIME_SUPERVISOR_ERROR_CODES = {
   systemdCommandFailed: 'DEV_SESSION_CANVAS_RUNTIME_SYSTEMD_COMMAND_FAILED',
   terminalAuthorityMismatch: 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_AUTHORITY_MISMATCH',
   terminalRevisionInvalid: 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_REVISION_INVALID',
+  terminalHostCursorCompacted: 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_HOST_CURSOR_COMPACTED',
   terminalJournalUnavailable: 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_JOURNAL_UNAVAILABLE'
 } as const;
 
@@ -238,12 +240,35 @@ export interface RuntimeSupervisorSubscribeSessionParams {
   authorityId: string;
   afterRevision: number;
   terminalStreamMode?: RuntimeTerminalStreamMode;
+  hostOutputCredit?: 'journal-pages-v1';
+}
+
+export interface RuntimeSupervisorAckTerminalBatchParams {
+  sessionId: string;
+  authorityId: string;
+  subscriptionId: string;
+  batchId: number;
+  outcome: 'consumed' | 'cancelled';
+}
+
+export interface RuntimeSupervisorSessionTerminalBatch {
+  sessionId: string;
+  kind: ExecutionNodeKind;
+  authorityId: string;
+  subscriptionId: string;
+  batchId: number;
+  afterRevision: number;
+  revision: number;
+  events: TerminalStreamEvent[];
+  snapshot?: RuntimeSupervisorSessionSnapshot;
+  error?: string;
 }
 
 export interface RuntimeSupervisorSubscribeSessionResult {
   sessionId: string;
   authorityId: string;
   revision: number;
+  subscriptionId?: string;
 }
 
 export interface RuntimeSupervisorAckSessionRevisionParams {
@@ -349,6 +374,12 @@ export type RuntimeSupervisorRequest =
   | {
       type: 'request';
       id: string;
+      method: 'ackTerminalBatch';
+      params: RuntimeSupervisorAckTerminalBatchParams;
+    }
+  | {
+      type: 'request';
+      id: string;
       method: 'writeInput';
       params: RuntimeSupervisorWriteInputParams;
     }
@@ -405,6 +436,11 @@ export type RuntimeSupervisorResponse =
 export type RuntimeSupervisorEvent =
   | {
       type: 'event';
+      event: 'sessionTerminalBatch';
+      payload: RuntimeSupervisorSessionTerminalBatch;
+    }
+  | {
+      type: 'event';
       event: 'sessionOutput';
       payload: {
         sessionId: string;
@@ -441,6 +477,9 @@ export type RuntimeSupervisorMessage =
   | RuntimeSupervisorEvent;
 
 export interface RuntimeSupervisorClientEventHandlers {
+  onSessionTerminalBatch?: (
+    payload: RuntimeSupervisorSessionTerminalBatch, isCurrent: () => boolean
+  ) => Promise<'consumed' | 'cancelled'>;
   onSessionOutput?: (event: Extract<RuntimeSupervisorEvent, { event: 'sessionOutput' }>['payload']) => void;
   onSessionTerminalEvent?: (
     event: Extract<RuntimeSupervisorEvent, { event: 'sessionTerminalEvent' }>['payload']

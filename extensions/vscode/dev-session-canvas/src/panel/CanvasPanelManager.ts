@@ -634,6 +634,7 @@ interface SupervisorExecutionSession extends ManagedExecutionSessionBase {
   terminalStream?: TerminalStreamAttachPayload;
   terminalStreamHealthy: boolean;
   terminalStreamPaged?: boolean;
+  hostOutputCredit?: boolean;
   terminalReadSettlementV1?: boolean;
   reconnectTimer?: NodeJS.Timeout;
   reconnectPending?: boolean;
@@ -10220,6 +10221,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch)
             ? this.handleRuntimeSupervisorTerminalEvent(backend.kind, runtimeStoragePath, event)
             : undefined,
+        onSessionTerminalBatch: (batch, isCurrent) => {
+          const operation = this.handleRuntimeSupervisorTerminalBatch(backend.kind, runtimeStoragePath, batch,
+            () => isCurrent() && this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch));
+          this.trackRuntimeSupervisorStateCallback(operation.then(() => undefined));
+          return operation;
+        },
+        onTerminalBatchSettled: () => this.retireLegacyRuntimeSupervisorClientIfUnused(backend, client),
         onSessionState: (snapshot) => {
           if (!this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch)) {
             return;
@@ -10669,12 +10677,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!client.supportsTerminalSessionStream()) {
       return;
     }
+    const hostOutputCredit = paged && client.supportsTerminalPagedCompletion() && client.supportsTerminalHostOutputCredit();
+    if (hostOutputCredit) {
+      const binding = this.runtimeSessionBindings.get(this.buildRuntimeSessionBindingKey(
+        snapshot.kind, snapshot.sessionId, runtimeStoragePath, snapshot.runtimeBackend));
+      const session = binding && this.getExecutionSessions(binding.kind).get(binding.nodeId);
+      if (session?.owner === 'supervisor') session.hostOutputCredit = true;
+    }
     await client.subscribeSession({
       sessionId: snapshot.sessionId,
       authorityId: paged ? snapshot.terminalAuthorityId! : terminalStream!.authorityId,
       afterRevision: paged ? snapshot.terminalRevision! : terminalStream!.revision,
       ...(paged ? { terminalStreamMode:
-        client.supportsTerminalPagedCompletion() ? 'paged-until-exit' as const : 'paged' as const } : {})
+        client.supportsTerminalPagedCompletion() ? 'paged-until-exit' as const : 'paged' as const } : {}),
+      ...(hostOutputCredit ? { hostOutputCredit: 'journal-pages-v1' as const } : {})
     });
   }
 
@@ -11579,6 +11595,74 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  private async handleRuntimeSupervisorTerminalBatch(
+    runtimeBackend: RuntimeHostBackendKind,
+    runtimeStoragePath: string,
+    batch: Extract<RuntimeSupervisorEvent, { event: 'sessionTerminalBatch' }>['payload'],
+    isCurrent: () => boolean
+  ): Promise<'consumed' | 'cancelled'> {
+    const binding = this.runtimeSessionBindings.get(
+      this.buildRuntimeSessionBindingKey(batch.kind, batch.sessionId, runtimeStoragePath, runtimeBackend));
+    const session = binding && this.getExecutionSessions(binding.kind).get(binding.nodeId);
+    if (!binding || !session || session.owner !== 'supervisor' || !session.terminalStreamPaged) return 'cancelled';
+    const current = (): boolean => isCurrent() && this.getExecutionSessions(binding.kind).get(binding.nodeId) === session &&
+      this.runtimeSessionBindings.get(
+        this.buildRuntimeSessionBindingKey(batch.kind, batch.sessionId, runtimeStoragePath, runtimeBackend)) === binding;
+    if (!current()) return 'cancelled';
+    session.hostOutputCredit = true;
+    try {
+      if (batch.error) throw new Error(batch.error);
+      if (!session.terminalStreamHealthy || session.terminalAuthorityId !== batch.authorityId ||
+          session.outputSequence !== batch.afterRevision) {
+        throw new Error('Host output batch does not continue the original terminal session.');
+      }
+      for (const event of batch.events) {
+        if (!current()) return 'cancelled';
+        this.handleRuntimeSupervisorTerminalEvent(runtimeBackend, runtimeStoragePath, {
+          sessionId: batch.sessionId, kind: batch.kind, authorityId: batch.authorityId, event
+        });
+        if (!session.terminalStreamHealthy || session.outputSequence !== event.revision) {
+          throw new Error('Host output event was not applied.');
+        }
+      }
+      await session.lineContextTracker.flush();
+      if (!current()) return 'cancelled';
+      if (session.outputSequence !== batch.revision) throw new Error('Host output batch is incomplete.');
+      if (batch.snapshot) {
+        if (batch.snapshot.sessionId !== batch.sessionId || batch.snapshot.kind !== batch.kind ||
+            batch.snapshot.terminalAuthorityId !== batch.authorityId || batch.snapshot.terminalRevision !== batch.revision) {
+          throw new Error('Host output batch state is ahead of its consumed terminal events.');
+        }
+        // Completion may dispose this session and request retirement; its source stays pinned until this callback returns.
+        await this.handleRuntimeSupervisorState(runtimeBackend, runtimeStoragePath, batch.snapshot);
+        if (!isCurrent()) return 'cancelled';
+        if (batch.snapshot.live) {
+          if (!current()) return 'cancelled';
+          await session.lineContextTracker.flush();
+          if (!current()) return 'cancelled';
+        }
+      }
+      return 'consumed';
+    } catch (error) {
+      if (current()) {
+        session.terminalStreamHealthy = false;
+        this.recordDiagnosticEvent('runtime/hostOutputConsumptionFailed', {
+          sessionId: batch.sessionId, authorityId: batch.authorityId, revision: batch.revision,
+          message: formatUnknownError(error)
+        });
+        const node = this.requireNode(binding.nodeId, binding.kind);
+        this.state = updateExecutionNode(this.state, binding.nodeId, binding.kind, {
+          status: node.status, summary: node.summary,
+          metadata: buildExecutionMetadataPatch(this.state, binding.nodeId, binding.kind, {
+            lastRuntimeError: formatUnknownError(error)
+          })
+        });
+        this.postState('host/stateUpdated');
+      }
+      return 'cancelled';
+    }
+  }
+
   private applyRuntimeSupervisorOutputChunk(
     kind: ExecutionNodeKind,
     nodeId: string,
@@ -11786,6 +11870,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           const client = await this.getRuntimeSupervisorClientForKind(
             session.runtimeBackend ?? 'legacy-detached', { allowRestart: false }, session.runtimeStoragePath
           );
+          if (session.hostOutputCredit && client.supportsTerminalHostOutputCredit()) {
+            // An existing Host resumes its consumed cursor, not the latest attach snapshot's head.
+            await session.lineContextTracker.flush();
+            if (!this.isRuntimeSupervisorEventAdmitted() || this.getExecutionSessions(kind).get(nodeId) !== session) return;
+            session.terminalStreamHealthy = true;
+            try {
+              await client.subscribeSession({ sessionId: session.runtimeSessionId, authorityId: session.terminalAuthorityId!,
+                afterRevision: session.outputSequence, terminalStreamMode: 'paged-until-exit', hostOutputCredit: 'journal-pages-v1' });
+              if (this.isRuntimeSupervisorEventAdmitted() && this.getExecutionSessions(kind).get(nodeId) === session) {
+                await this.postPagedExecutionSnapshot(kind, nodeId, session, { executionSessionId: session.sessionId });
+              }
+              return;
+            } catch (error) {
+              session.terminalStreamHealthy = false;
+              if ((error as { code?: string }).code !== RUNTIME_SUPERVISOR_ERROR_CODES.terminalHostCursorCompacted) throw error;
+              if (!this.isRuntimeSupervisorEventAdmitted() || this.getExecutionSessions(kind).get(nodeId) !== session) return;
+              this.recordDiagnosticEvent('runtime/hostOutputCursorReset', {
+                sessionId: session.runtimeSessionId, authorityId: session.terminalAuthorityId,
+                afterRevision: session.outputSequence, reason: 'disconnected-cursor-compacted'
+              });
+            }
+          }
           const result = await this.requestRuntimeSupervisorSessionAttach(client, session.runtimeSessionId);
           if (this.getExecutionSessions(kind).get(nodeId) !== session) {
             return;
@@ -14118,12 +14224,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.clearExecutionAttention(node.kind, nodeId);
   }
 
-  private async bridgeExecutionAttentionSignals(
+  private bridgeExecutionAttentionSignals(
     kind: ExecutionNodeKind,
     nodeId: string,
     session: ManagedExecutionSession,
     chunk: string
-  ): Promise<void> {
+  ): Promise<void> | void {
     const state = this.ensureExecutionAttentionNotificationState(session);
     const parsed = parseExecutionAttentionSignals(chunk, state.carryover);
     state.carryover = parsed.carryover;
@@ -14183,7 +14289,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     state.lastNotificationKey = notificationKey;
     state.lastNotificationAtMs = now;
 
-    await this.publishExecutionAttentionNotification(kind, nodeId, message, notificationKey, {
+    return this.publishExecutionAttentionNotification(kind, nodeId, message, notificationKey, {
       trigger: 'terminal-signal',
       signal: signal.kind
     });

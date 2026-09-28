@@ -68,6 +68,7 @@ import {
   type RuntimeSupervisorAttachSessionParams,
   type RuntimeSupervisorAckSessionRevisionParams,
   type RuntimeSupervisorAckSessionRevisionResult,
+  type RuntimeSupervisorAckTerminalBatchParams,
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorDeleteSessionParams,
   type RuntimeSupervisorEvent,
@@ -201,7 +202,22 @@ interface RestoredTerminalJournalCandidate {
   output: string;
 }
 
-type SupervisorSubscriptionMode = 'legacy' | 'terminal-stream-v1' | 'terminal-stream-paged' | 'terminal-stream-paged-completion';
+type SupervisorSubscriptionMode = 'legacy' | 'terminal-stream-v1' | 'terminal-stream-paged' | 'terminal-stream-paged-completion'
+  | 'terminal-host-credit';
+
+interface HostOutputSubscription {
+  socket: net.Socket;
+  session: SupervisorSession;
+  authorityId: string;
+  subscriptionId: string;
+  appliedRevision: number;
+  nextBatchId: number;
+  stateVersion: number;
+  appliedStateVersion: number;
+  scheduled: boolean;
+  pumping: boolean;
+  inFlight?: { batchId: number; revision: number; stateVersion: number; completed: boolean; error: boolean };
+}
 
 interface TerminalReadCursor {
   readId: string;
@@ -274,6 +290,8 @@ export class RuntimeSupervisorServer {
   private readonly sessions = new Map<string, SupervisorSession>();
   private readonly connections = new Set<net.Socket>();
   private readonly subscriptions = new Map<net.Socket, Map<string, SupervisorSubscriptionMode>>();
+  private readonly hostOutputSubscriptions = new Map<net.Socket, Map<string, HostOutputSubscription>>();
+  private readonly hostOutputDrainListeners = new Map<net.Socket, () => void>();
   private readonly deferredSubscriptionRevisions = new Map<net.Socket, Map<string, number>>();
   private readonly terminalReads = new Map<net.Socket, Map<string, TerminalReadCursor>>();
   private readonly terminalReaderReceipts = new Map<net.Socket, Map<string, TerminalReaderReceipt>>();
@@ -387,7 +405,8 @@ export class RuntimeSupervisorServer {
         : boundary.executions.some(execution => !execution.snapshot().settled)
           || [...this.sessions.values()].some(session => session.live && !session.ownedExecution) ? 'pending' : 'settled',
       readers: boundary.executions.some(execution => execution.snapshot().readerOutcome === 'pending')
-        || [...this.terminalReads.values()].some(reads => reads.size > 0) || legacySubscriptions ? 'pending' : 'settled',
+        || [...this.terminalReads.values()].some(reads => reads.size > 0)
+        || this.hostOutputSubscriptions.size > 0 || legacySubscriptions ? 'pending' : 'settled',
       registry: boundary.registry,
       server: boundary.server,
       sockets: boundary.errors.sockets ? 'failed'
@@ -571,6 +590,7 @@ export class RuntimeSupervisorServer {
                 terminalCheckpointRefreshV1: true,
                 terminalPagedReadV1: true,
                 terminalPagedCompletionV1: true,
+                terminalHostOutputCreditV1: true,
                 ...(this.executionOwner?.options.capabilities.includes('terminal-read-settlement-v1')
                   ? { terminalReadSettlementV1: true as const } : {}),
                 ...(this.executionProfile && this.executionOwner
@@ -654,6 +674,10 @@ export class RuntimeSupervisorServer {
           });
           return;
         }
+        case 'ackTerminalBatch':
+          this.ackTerminalBatch(socket, request.params);
+          this.writeOkResponse(socket, request.id);
+          return;
         case 'writeInput':
           await this.writeInput(request.params);
           this.writeOkResponse(socket, request.id);
@@ -1309,8 +1333,35 @@ export class RuntimeSupervisorServer {
     }
 
     this.requireSession(params.sessionId);
+    if (params.hostOutputCredit !== undefined &&
+        (params.hostOutputCredit !== 'journal-pages-v1' || params.terminalStreamMode !== 'paged-until-exit')) {
+      throw new Error('Host output credit requires paged-until-exit subscription.');
+    }
     const paged = params.terminalStreamMode !== undefined;
     const pagedCompletion = params.terminalStreamMode === 'paged-until-exit';
+    if (params.hostOutputCredit === 'journal-pages-v1') {
+      if (afterRevision < journal.getRetainedStartRevision() - 1) {
+        throw createRuntimeSupervisorProtocolError({ id: 'terminalRevisionInvalid',
+          params: { sessionId: session.sessionId, revision: String(afterRevision) }
+        }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalHostCursorCompacted);
+      }
+      if (socket.destroyed || !this.subscriptions.has(socket) || this.sessions.get(session.sessionId) !== session) {
+        throw new Error('Host output subscription is no longer current.');
+      }
+      this.subscribeSocket(socket, params.sessionId, 'terminal-host-credit');
+      const subscriptions = this.hostOutputSubscriptions.get(socket) ?? new Map<string, HostOutputSubscription>();
+      this.hostOutputSubscriptions.set(socket, subscriptions);
+      const subscription: HostOutputSubscription = {
+        socket, session, authorityId: session.terminalAuthorityId, subscriptionId: randomUUID(),
+        appliedRevision: afterRevision, nextBatchId: 1, stateVersion: 1, appliedStateVersion: 0,
+        scheduled: false, pumping: false
+      };
+      subscriptions.set(session.sessionId, subscription);
+      this.clearDeferredSubscription(socket, params.sessionId);
+      this.scheduleHostOutput(subscription);
+      return { sessionId: session.sessionId, authorityId: session.terminalAuthorityId,
+        revision: journal.getRevision(), subscriptionId: subscription.subscriptionId };
+    }
     const snapshot = await this.createFreshSnapshot(session, 'never', !paged || (!session.live && !pagedCompletion));
     this.assertOwnedAdmissionOpen();
     if (paged) {
@@ -1342,6 +1393,155 @@ export class RuntimeSupervisorServer {
       authorityId: session.terminalAuthorityId,
       revision: journal.getRevision()
     };
+  }
+
+  private toHostOutputSnapshot(snapshot: RuntimeSupervisorSessionSnapshot): RuntimeSupervisorSessionSnapshot {
+    return { ...snapshot, output: '', terminalStream: undefined, serializedTerminalState: undefined,
+      terminalTitle: snapshot.live ? snapshot.terminalTitle ?? null : null, terminalStreamPaged: true };
+  }
+
+  private isHostOutputCurrent(subscription: HostOutputSubscription): boolean {
+    return !subscription.socket.destroyed && this.sessions.get(subscription.session.sessionId) === subscription.session &&
+      this.hostOutputSubscriptions.get(subscription.socket)?.get(subscription.session.sessionId) === subscription;
+  }
+
+  private scheduleHostOutput(subscription: HostOutputSubscription): void {
+    if (!this.isHostOutputCurrent(subscription) || subscription.scheduled || subscription.pumping || subscription.inFlight) return;
+    if (subscription.socket.writableNeedDrain) {
+      const socket = subscription.socket;
+      if (!this.hostOutputDrainListeners.has(socket)) {
+        const drained = (): void => {
+          this.hostOutputDrainListeners.delete(socket);
+          for (const pending of this.hostOutputSubscriptions.get(socket)?.values() ?? []) {
+            this.scheduleHostOutput(pending);
+          }
+        };
+        this.hostOutputDrainListeners.set(socket, drained);
+        socket.once('drain', drained);
+      }
+      return;
+    }
+    subscription.scheduled = true;
+    setImmediate(() => {
+      subscription.scheduled = false;
+      void this.pumpHostOutput(subscription).catch(error => console.error('Failed to deliver Host output:', error));
+    });
+  }
+
+  private async pumpHostOutput(subscription: HostOutputSubscription): Promise<void> {
+    if (!this.isHostOutputCurrent(subscription) || subscription.pumping || subscription.inFlight) return;
+    if (subscription.socket.writableNeedDrain) {
+      this.scheduleHostOutput(subscription);
+      return;
+    }
+    subscription.pumping = true;
+    const { session, socket } = subscription;
+    try {
+      // Only source reads enter the terminal chain; consumer credit and socket drain never hold it.
+      if (!this.isHostOutputCurrent(subscription)) return;
+      const result = await this.enqueueTerminalOperation(session, async () => {
+        if (!this.isHostOutputCurrent(subscription)) return undefined;
+        const journal = this.requireReadableJournal(session, subscription.authorityId);
+        const afterRevision = subscription.appliedRevision;
+        const headRevision = journal.getRevision();
+        let events: TerminalStreamEvent[] = [];
+        if (afterRevision < headRevision) {
+          for await (const page of journal.readEventPagesAfter(afterRevision, {
+            throughRevision: headRevision, pageMaxBytes: TERMINAL_STREAM_PAGE_MAX_BYTES,
+            pageMaxEvents: TERMINAL_STREAM_PAGE_MAX_EVENTS
+          })) {
+            events = page;
+            break;
+          }
+          if (events.length === 0) throw new Error('Host output journal page did not advance.');
+        }
+        const revision = events.at(-1)?.revision ?? afterRevision;
+        const snapshot = subscription.stateVersion > subscription.appliedStateVersion && revision === headRevision
+          ? this.toHostOutputSnapshot(this.toSnapshot(session, undefined, false)) : undefined;
+        if (events.length === 0 && !snapshot) return undefined;
+        return { afterRevision, revision, events, snapshot,
+          stateVersion: snapshot ? subscription.stateVersion : subscription.appliedStateVersion };
+      });
+      if (!result || !this.isHostOutputCurrent(subscription)) return;
+      const batchId = subscription.nextBatchId++;
+      subscription.inFlight = { batchId, revision: result.revision, stateVersion: result.stateVersion,
+        completed: result.snapshot?.live === false, error: false };
+      this.writeMessage(socket, { type: 'event', event: 'sessionTerminalBatch', payload: {
+        sessionId: session.sessionId, kind: session.kind, authorityId: subscription.authorityId,
+        subscriptionId: subscription.subscriptionId, batchId, afterRevision: result.afterRevision,
+        revision: result.revision, events: result.events, ...(result.snapshot ? { snapshot: result.snapshot } : {})
+      } });
+    } catch (error) {
+      if (!this.isHostOutputCurrent(subscription) || subscription.inFlight) return;
+      const batchId = subscription.nextBatchId++;
+      subscription.inFlight = { batchId, revision: subscription.appliedRevision,
+        stateVersion: subscription.appliedStateVersion, completed: false, error: true };
+      this.writeMessage(socket, { type: 'event', event: 'sessionTerminalBatch', payload: {
+        sessionId: session.sessionId, kind: session.kind, authorityId: subscription.authorityId,
+        subscriptionId: subscription.subscriptionId, batchId, afterRevision: subscription.appliedRevision,
+        revision: subscription.appliedRevision, events: [], error: error instanceof Error ? error.message : String(error)
+      } });
+    } finally {
+      subscription.pumping = false;
+      if ((session.terminalJournal?.getRevision() ?? 0) > subscription.appliedRevision ||
+          subscription.stateVersion > subscription.appliedStateVersion) this.scheduleHostOutput(subscription);
+    }
+  }
+
+  private ackTerminalBatch(socket: net.Socket, params: RuntimeSupervisorAckTerminalBatchParams): void {
+    if ((params.outcome !== 'consumed' && params.outcome !== 'cancelled') ||
+        !Number.isSafeInteger(params.batchId) || params.batchId <= 0) {
+      throw new Error('Invalid Host output batch acknowledgement.');
+    }
+    const subscription = this.hostOutputSubscriptions.get(socket)?.get(params.sessionId);
+    if (!subscription || !this.isHostOutputCurrent(subscription) ||
+        subscription.subscriptionId !== params.subscriptionId || subscription.authorityId !== params.authorityId ||
+        subscription.inFlight?.batchId !== params.batchId) return;
+    if (params.outcome === 'cancelled') {
+      this.cancelHostOutput(subscription);
+      return;
+    }
+    const inFlight = subscription.inFlight;
+    if (inFlight.error) throw new Error('A failed Host output batch must be cancelled.');
+    subscription.appliedRevision = inFlight.revision;
+    subscription.appliedStateVersion = inFlight.stateVersion;
+    subscription.inFlight = undefined;
+    if (inFlight.completed) {
+      this.cancelHostOutput(subscription);
+      return;
+    }
+    this.releaseTerminalJournalMemoryThroughCheckpoint(subscription.session);
+    this.scheduleHostOutput(subscription);
+  }
+
+  private cancelHostOutput(subscription: HostOutputSubscription): void {
+    const subscriptions = this.hostOutputSubscriptions.get(subscription.socket);
+    if (subscriptions?.get(subscription.session.sessionId) !== subscription) return;
+    subscriptions.delete(subscription.session.sessionId);
+    if (subscriptions.size === 0) {
+      this.hostOutputSubscriptions.delete(subscription.socket);
+      this.clearHostOutputDrainListener(subscription.socket);
+    }
+    if (this.subscriptions.get(subscription.socket)?.get(subscription.session.sessionId) === 'terminal-host-credit') {
+      this.subscriptions.get(subscription.socket)?.delete(subscription.session.sessionId);
+    }
+    this.releaseTerminalJournalMemoryThroughCheckpoint(subscription.session);
+    if (subscription.session.retiring) {
+      void this.enqueueTerminalOperation(subscription.session, () => this.finishSessionRetirement(subscription.session))
+        .catch(error => console.error('Failed to retire Host output subscription:', error));
+    }
+    this.scheduleIdleShutdownIfNeeded();
+  }
+
+  private updateHostOutput(subscription: HostOutputSubscription, stateChanged = false): void {
+    if (stateChanged) subscription.stateVersion += 1;
+    this.scheduleHostOutput(subscription);
+  }
+
+  private clearHostOutputDrainListener(socket: net.Socket): void {
+    const listener = this.hostOutputDrainListeners.get(socket);
+    if (listener) socket.removeListener('drain', listener);
+    this.hostOutputDrainListeners.delete(socket);
   }
 
   private ackSessionRevision(
@@ -1578,6 +1778,12 @@ export class RuntimeSupervisorServer {
     if (params.preserveTerminalReads && session.live) {
       throw new Error('Only ended runtime sessions can retain terminal readers.');
     }
+    if (!params.preserveTerminalReads) {
+      for (const subscriptions of this.hostOutputSubscriptions.values()) {
+        const subscription = subscriptions.get(session.sessionId);
+        if (subscription?.session === session) this.cancelHostOutput(subscription);
+      }
+    }
     if (session.ownedExecution) {
       session.retiring = true;
       session.terminalMutationAdmissionOpen = false;
@@ -1652,6 +1858,9 @@ export class RuntimeSupervisorServer {
   private async finishSessionRetirement(session: SupervisorSession): Promise<void> {
     if (!session.retiring || this.sessions.get(session.sessionId) !== session) {
       return;
+    }
+    for (const subscriptions of this.hostOutputSubscriptions.values()) {
+      if (subscriptions.get(session.sessionId)?.session === session) return;
     }
     if (session.ownedExecution) {
       if (!session.ownedExecution.snapshot().retired) return;
@@ -2217,6 +2426,11 @@ export class RuntimeSupervisorServer {
       if (!mode || socket.destroyed) {
         continue;
       }
+      if (mode === 'terminal-host-credit') {
+        const subscription = this.hostOutputSubscriptions.get(socket)?.get(session.sessionId);
+        if (subscription) this.updateHostOutput(subscription, terminalTitle !== undefined);
+        continue;
+      }
       if ((mode === 'terminal-stream-v1' || mode === 'terminal-stream-paged' ||
           mode === 'terminal-stream-paged-completion') && terminalEvent) {
         this.writeTerminalStreamEvent(socket, session, terminalEvent, terminalTitle);
@@ -2229,6 +2443,11 @@ export class RuntimeSupervisorServer {
   private emitTerminalStreamEvent(session: SupervisorSession, event: TerminalStreamEvent): void {
     for (const [socket, subscriptions] of this.subscriptions.entries()) {
       const mode = subscriptions.get(session.sessionId);
+      if (mode === 'terminal-host-credit' && !socket.destroyed) {
+        const subscription = this.hostOutputSubscriptions.get(socket)?.get(session.sessionId);
+        if (subscription) this.updateHostOutput(subscription);
+        continue;
+      }
       if ((mode !== 'terminal-stream-v1' && mode !== 'terminal-stream-paged' &&
           mode !== 'terminal-stream-paged-completion') || socket.destroyed) {
         continue;
@@ -2573,7 +2792,8 @@ export class RuntimeSupervisorServer {
     if (!subscriptions) {
       return;
     }
-
+    const previous = this.hostOutputSubscriptions.get(socket)?.get(sessionId);
+    if (previous) this.cancelHostOutput(previous);
     subscriptions.set(sessionId, mode);
     if (session?.ownedReaderAdmissionOpen) session.ownedReaderSockets?.add(socket);
   }
@@ -2581,6 +2801,8 @@ export class RuntimeSupervisorServer {
   private deferSocketSubscription(socket: net.Socket, sessionId: string, revision: number): void {
     const session = this.sessions.get(sessionId);
     this.assertOwnedAdmissionOpen();
+    const previous = this.hostOutputSubscriptions.get(socket)?.get(sessionId);
+    if (previous) this.cancelHostOutput(previous);
     this.subscriptions.get(socket)?.delete(sessionId);
     this.deferredSubscriptionRevisions.get(socket)?.set(sessionId, revision);
     if (session?.ownedReaderAdmissionOpen) session.ownedReaderSockets?.add(socket);
@@ -2591,6 +2813,13 @@ export class RuntimeSupervisorServer {
   }
 
   private clearSessionSubscriptions(sessionId: string): void {
+    for (const [socket, subscriptions] of this.hostOutputSubscriptions) {
+      subscriptions.delete(sessionId);
+      if (subscriptions.size === 0) {
+        this.hostOutputSubscriptions.delete(socket);
+        this.clearHostOutputDrainListener(socket);
+      }
+    }
     for (const reads of this.terminalReads.values()) {
       for (const [id, read] of reads) {
         if (read.sessionId === sessionId) {
@@ -2634,6 +2863,10 @@ export class RuntimeSupervisorServer {
         ? revision
         : Math.min(retentionRevision, revision);
     };
+    for (const subscriptions of this.hostOutputSubscriptions.values()) {
+      const subscription = subscriptions.get(session.sessionId);
+      if (subscription?.session === session) retainAfter(subscription.appliedRevision);
+    }
     for (const reads of this.terminalReads.values()) {
       for (const read of reads.values()) {
         if (read.sessionId === session.sessionId && read.authorityId === session.terminalAuthorityId) {
@@ -2673,6 +2906,11 @@ export class RuntimeSupervisorServer {
       }
 
       const mode = subscriptions.get(sessionId);
+      if (mode === 'terminal-host-credit') {
+        const subscription = this.hostOutputSubscriptions.get(socket)?.get(sessionId);
+        if (subscription && message.event === 'sessionState') this.updateHostOutput(subscription, true);
+        continue;
+      }
       socket.write(mode === 'terminal-stream-paged-completion' ||
         (mode === 'terminal-stream-paged' && message.event === 'sessionState' && message.payload.live)
         ? pagedPayload : payload);
@@ -2683,6 +2921,7 @@ export class RuntimeSupervisorServer {
     return [...this.subscriptions.values()].some((subscriptions) => {
       const mode = subscriptions.get(session.sessionId);
       return mode !== undefined && mode !== 'terminal-stream-paged-completion' &&
+        mode !== 'terminal-host-credit' &&
         (!session.live || mode !== 'terminal-stream-paged');
     });
   }
@@ -2753,6 +2992,8 @@ export class RuntimeSupervisorServer {
       }
     }
     this.connections.delete(socket);
+    this.hostOutputSubscriptions.delete(socket);
+    this.clearHostOutputDrainListener(socket);
     this.subscriptions.delete(socket);
     this.deferredSubscriptionRevisions.delete(socket);
     this.terminalReads.delete(socket);

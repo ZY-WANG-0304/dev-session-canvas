@@ -45,6 +45,7 @@ export class ExecutionTerminalLineContextTracker {
   private pendingWriteData = '';
   private pendingWriteDrainTimer: NodeJS.Timeout | undefined;
   private operationChain: Promise<void> = Promise.resolve();
+  private operationError: Error | undefined;
   private readonly disposedSignal = createDeferred<void>();
 
   public constructor(cols: number, rows: number, options: ExecutionTerminalLineContextTrackerOptions) {
@@ -145,6 +146,23 @@ export class ExecutionTerminalLineContextTracker {
     return this.currentCwd;
   }
 
+  public async flush(): Promise<void> {
+    if (this.disposed) {
+      throw new Error('Terminal line context tracker was disposed before output consumption completed.');
+    }
+
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteData = this.takePendingWriteData();
+    this.enqueueOperation(() => this.drainWriteData(pendingWriteData));
+    await this.awaitPendingOperations();
+    if (this.disposed) {
+      throw new Error('Terminal line context tracker was disposed before output consumption completed.');
+    }
+    if (this.operationError) {
+      throw this.operationError;
+    }
+  }
+
   public dispose(): void {
     if (this.disposed) {
       return;
@@ -166,7 +184,10 @@ export class ExecutionTerminalLineContextTracker {
 
         await operation();
       })
-      .catch(() => {});
+      .catch((error) => {
+        // Legacy lookups remain best effort; strict consumption credit must observe earlier failures.
+        this.operationError ??= error instanceof Error ? error : new Error(String(error));
+      });
   }
 
   private schedulePendingWriteDrain(): void {

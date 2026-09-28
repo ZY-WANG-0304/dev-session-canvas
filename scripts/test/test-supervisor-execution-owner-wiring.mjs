@@ -512,6 +512,96 @@ try {
     });
   }
 
+  for (const kind of ['terminal', 'agent']) {
+    await checkReader(`${kind}: Host final credit pins the journal without blocking preserving delete`, async () => {
+      const f = fixture(readerCapabilities);
+      const { session, transport } = await f.create(kind);
+      const read = await openReader(f, session);
+      const journalDirectory = session.terminalJournal.sessionDirectory;
+      const subscription = await request(f, f.socket, 'subscribeSession', {
+        sessionId: session.sessionId, authorityId: session.terminalAuthorityId, afterRevision: 0,
+        terminalStreamMode: 'paged-until-exit', hostOutputCredit: 'journal-pages-v1'
+      });
+      assert.equal(subscription.ok, true);
+      assert.ok(subscription.result.subscriptionId);
+      transport.output('owned final tail');
+      await f.until(() => transport.sent.some(message => message.type === 'accepted' && message.throughFrameId === 1),
+        'the provider observes accepted credit before declaring sourceEnd');
+      await finish(f, session, transport);
+      assert.equal(session.ownedExecution.snapshot().readerOutcome, 'pending',
+        'Host consumption credit must not claim Webview final application');
+      const page = await request(f, f.socket, 'readTerminalPage', { ...read, afterRevision: 0 });
+      assert.equal(page.ok, true);
+      assert.equal(page.result.revision, 1);
+      assertSettlement(await closeReader(f, read, { kind: 'applied', finalRevision: 1 }), 'recorded');
+      assert.equal(session.ownedReaderResults.applied, 1);
+
+      let finalBatch;
+      let consumedRevision = 0;
+      let content = '';
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await f.until(() => Boolean(f.server.hostOutputSubscriptions.get(f.socket)?.get(session.sessionId)?.inFlight),
+          'Host batch sent');
+        const batch = f.socket.messages.filter(message => message.event === 'sessionTerminalBatch').at(-1).payload;
+        assert.equal(batch.afterRevision, consumedRevision);
+        content += batch.events.map(event => event.type === 'output' ? event.data : '').join('');
+        if (batch.snapshot?.live === false) { finalBatch = batch; break; }
+        assert.equal((await request(f, f.socket, 'ackTerminalBatch', {
+          ...batch, outcome: 'consumed'
+        })).ok, true);
+        consumedRevision = batch.revision;
+      }
+      assert.ok(finalBatch, 'the complete terminal result must reach a finite Host batch');
+      assert.equal(content, 'owned final tail');
+      assert.equal(finalBatch.snapshot.terminalFinalRevision, 1);
+      assert.equal(finalBatch.snapshot.terminalRevision, finalBatch.revision);
+      const deleted = await request(f, f.socket, 'deleteSession', {
+        sessionId: session.sessionId, preserveTerminalReads: true
+      });
+      assert.equal(deleted.ok, true, 'delete must return while its caller still owes the Host final ACK');
+      assert.equal(f.server.sessions.get(session.sessionId), session);
+      assert.equal(session.retiring, true);
+      assert.equal((await fs.promises.stat(journalDirectory)).isDirectory(), true);
+      assert.equal(session.ownedReaderResults.applied, 1, 'preserving delete must not manufacture reader settlement');
+      assert.equal((await request(f, f.socket, 'ackTerminalBatch', { ...finalBatch, outcome: 'consumed' })).ok, true);
+      await f.until(() => !f.server.sessions.has(session.sessionId), 'Host final ACK permits physical retirement');
+      await assert.rejects(fs.promises.stat(journalDirectory), { code: 'ENOENT' });
+      assert.equal(f.server.hostOutputSubscriptions.has(f.socket), false);
+    });
+  }
+
+  await checkReader('steady Host output credit does not turn each acknowledged output into a state update', async () => {
+    const f = fixture();
+    const { session, transport } = await f.create();
+    transport.output('warm-up');
+    await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'terminal reaches live output');
+    const subscribed = await request(f, f.socket, 'subscribeSession', {
+      sessionId: session.sessionId, authorityId: session.terminalAuthorityId, afterRevision: 1,
+      terminalStreamMode: 'paged-until-exit', hostOutputCredit: 'journal-pages-v1'
+    });
+    assert.equal(subscribed.ok, true);
+    const nextBatch = async () => {
+      await f.until(() => Boolean(f.server.hostOutputSubscriptions.get(f.socket)?.get(session.sessionId)?.inFlight),
+        'next Host batch available');
+      return f.socket.messages.filter(message => message.event === 'sessionTerminalBatch').at(-1).payload;
+    };
+    const initial = await nextBatch();
+    assert.ok(initial.snapshot, 'subscription delivers its initial lightweight state');
+    assert.equal((await request(f, f.socket, 'ackTerminalBatch', { ...initial, outcome: 'consumed' })).ok, true);
+    for (let index = 1; index <= 3; index += 1) {
+      transport.output(`steady-${index}`);
+      const batch = await nextBatch();
+      assert.equal(batch.revision, index + 1);
+      assert.equal(batch.events[0].data, `steady-${index}`);
+      assert.equal(batch.snapshot, undefined, 'ordinary output must not bypass Host state throttling');
+      assert.equal((await request(f, f.socket, 'ackTerminalBatch', { ...batch, outcome: 'consumed' })).ok, true);
+    }
+    await finish(f, session, transport);
+    const final = await nextBatch();
+    assert.equal(final.snapshot.live, false, 'the final state still crosses the consumption boundary');
+    assert.equal((await request(f, f.socket, 'ackTerminalBatch', { ...final, outcome: 'consumed' })).ok, true);
+  });
+
   await check('socket loss only detaches readers and the last owner prevents idle retirement', async () => {
     const f = fixture();
     const { session, transport } = await f.create();

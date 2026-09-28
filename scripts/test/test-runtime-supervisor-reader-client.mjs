@@ -72,10 +72,10 @@ class ControlledSocket extends EventEmitter {
 }
 
 const clients = [];
-async function fixture(socket = new ControlledSocket()) {
+async function fixture(socket = new ControlledSocket(), options = {}) {
   const disconnected = [];
   const client = new RuntimeSupervisorClient({ backend: { startSupervisor: forbidden },
-    onDisconnected: error => disconnected.push(error), supervisorScriptPath: '/never', supervisorLauncherScriptPath: '/never' });
+    onDisconnected: error => disconnected.push(error), supervisorScriptPath: '/never', supervisorLauncherScriptPath: '/never', ...options });
   clients.push(client);
   client.attachSocket(socket);
   await client.performHelloHandshake();
@@ -448,6 +448,93 @@ test('candidate create does not bind an old response to a replacement socket or 
   await rejected;
   assert.equal(next.messages.length, 0);
   assert.equal(socket.messages.filter(message => message.method === 'createSession').length, 1);
+});
+
+const creditParams = { sessionId: 'session', authorityId: 'authority', afterRevision: 0,
+  terminalStreamMode: 'paged-until-exit', hostOutputCredit: 'journal-pages-v1' };
+function creditSocket() {
+  const socket = new ControlledSocket();
+  socket.respond = request => {
+    if (request.method === 'hello') return { ...hello, capabilities: { ...hello.capabilities, terminalHostOutputCreditV1: true } };
+    if (request.method === 'subscribeSession') return { sessionId: 'session', authorityId: 'authority', revision: 0, subscriptionId: request.id };
+    if (request.method === 'ackTerminalBatch') return { ok: true };
+    throw new Error(`Unexpected credit request ${request.method}`);
+  };
+  return socket;
+}
+function terminalBatch(subscriptionId, revision = 1) {
+  return { type: 'event', event: 'sessionTerminalBatch', payload: { sessionId: 'session', kind: 'terminal', authorityId: 'authority',
+    subscriptionId, batchId: revision, afterRevision: revision - 1, revision,
+    events: [{ type: 'output', revision, data: `row-${revision}\r\n` }] } };
+}
+
+test('Host credit requires explicit capability and an async consumer', async () => {
+  const legacy = await fixture();
+  assert.equal(legacy.client.supportsTerminalHostOutputCredit(), false);
+  await assert.rejects(legacy.client.subscribeSession(creditParams), /unavailable/);
+  assert.equal(legacy.socket.messages.length, 1);
+  const supported = await fixture(creditSocket());
+  assert.equal(supported.client.supportsTerminalHostOutputCredit(), true);
+  await assert.rejects(supported.client.subscribeSession(creditParams), /unavailable/);
+  assert.equal(supported.socket.messages.length, 1);
+});
+
+test('Host subscription binds before a same-chunk batch and does not ACK before actual consumption', async () => {
+  const socket = creditSocket();
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let consuming = false;
+  const { client } = await fixture(socket, { onSessionTerminalBatch: async (_batch, isCurrent) => {
+    assert.equal(isCurrent(), true); consuming = true; await gate; return 'consumed';
+  } });
+  const reply = socket.reply.bind(socket);
+  socket.reply = (request, result) => {
+    if (request.method !== 'subscribeSession') return reply(request, result);
+    socket.emit('data', `${JSON.stringify({ type: 'response', id: request.id, ok: true, result })}\n${JSON.stringify(terminalBatch(result.subscriptionId))}\n`);
+  };
+  await client.subscribeSession(creditParams);
+  assert.equal(consuming, true);
+  assert.equal(client.hasPendingRequests(), true);
+  assert.equal(socket.messages.some(message => message.method === 'ackTerminalBatch'), false);
+  release();
+  await turns(8);
+  assert.equal(socket.messages.at(-1).params.outcome, 'consumed');
+  assert.equal(client.hasPendingRequests(), false);
+});
+
+test('late Host consumption cannot credit a replacement subscription or socket', async () => {
+  const socket = creditSocket();
+  let release;
+  let current;
+  const gate = new Promise(resolve => { release = resolve; });
+  const { client } = await fixture(socket, { onSessionTerminalBatch: async (_batch, isCurrent) => {
+    current = isCurrent; await gate; return 'consumed';
+  } });
+  const first = await client.subscribeSession(creditParams);
+  socket.emit('data', `${JSON.stringify(terminalBatch(first.subscriptionId))}\n`);
+  const second = await client.subscribeSession(creditParams);
+  assert.notEqual(first.subscriptionId, second.subscriptionId);
+  assert.equal(current(), false);
+  release();
+  await turns(8);
+  assert.equal(socket.messages.some(message => message.method === 'ackTerminalBatch'), false);
+  socket.emit('data', `${JSON.stringify(terminalBatch(second.subscriptionId))}\n`);
+  const next = creditSocket();
+  client.attachSocket(next);
+  await turns(8);
+  assert.equal(current(), false);
+  assert.equal(socket.messages.some(message => message.method === 'ackTerminalBatch'), false);
+  assert.equal(next.messages.length, 0);
+});
+
+test('Host consumer cancellation is explicit and cannot become successful credit', async () => {
+  const socket = creditSocket();
+  const { client } = await fixture(socket, { onSessionTerminalBatch: async () => 'cancelled' });
+  const subscription = await client.subscribeSession(creditParams);
+  socket.emit('data', `${JSON.stringify(terminalBatch(subscription.subscriptionId))}\n`);
+  await turns(8);
+  assert.equal(socket.messages.at(-1).params.outcome, 'cancelled');
+  assert.equal(client.hostOutputSubscriptions.size, 0);
 });
 
 try {

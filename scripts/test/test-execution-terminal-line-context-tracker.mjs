@@ -108,6 +108,75 @@ try {
   );
   smokeTracker.dispose();
 
+  const flushTracker = new ExecutionTerminalLineContextTracker(80, 24, {
+    cwd: '/repo', pathStyle: 'posix'
+  });
+  const callbackReached = deferred();
+  const releaseCallback = deferred();
+  const originalWrite = flushTracker.terminal.write.bind(flushTracker.terminal);
+  flushTracker.terminal.write = (data, callback) => originalWrite(data, () => {
+    callbackReached.resolve();
+    void releaseCallback.promise.then(() => callback?.());
+  });
+  flushTracker.write('before-resize\r\n');
+  flushTracker.resize(40, 8);
+  const scrollbackChanged = flushTracker.setScrollback(60);
+  flushTracker.write('after-resize\r\n');
+  let flushSettled = false;
+  const flushed = flushTracker.flush().then(() => { flushSettled = true; });
+  await callbackReached.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(flushSettled, false, 'credit must wait for the real write callback, not queued input');
+  releaseCallback.resolve();
+  await Promise.all([flushed, scrollbackChanged]);
+  assert.equal(flushTracker.terminal.cols, 40);
+  assert.equal(flushTracker.terminal.rows, 8);
+  assert.equal(flushTracker.terminal.options.scrollback, 60);
+  assert.ok(readTrackerBufferLines(flushTracker).includes('after-resize'));
+  flushTracker.dispose();
+  await assert.rejects(flushTracker.flush(), /disposed before output consumption completed/);
+
+  const disposedFlushTracker = new ExecutionTerminalLineContextTracker(80, 24, {
+    cwd: '/repo', pathStyle: 'posix'
+  });
+  const disposeCallbackReached = deferred();
+  const disposedOriginalWrite = disposedFlushTracker.terminal.write.bind(disposedFlushTracker.terminal);
+  let delayedDisposedCallback;
+  disposedFlushTracker.terminal.write = (data, callback) => disposedOriginalWrite(data, () => {
+    delayedDisposedCallback = callback;
+    disposeCallbackReached.resolve();
+  });
+  disposedFlushTracker.write('parsed-but-not-credited\r\n');
+  const cancelledFlush = assert.rejects(
+    disposedFlushTracker.flush(), /disposed before output consumption completed/
+  );
+  await disposeCallbackReached.promise;
+  disposedFlushTracker.dispose();
+  await cancelledFlush;
+  delayedDisposedCallback?.();
+  await assert.rejects(disposedFlushTracker.flush(), /disposed before output consumption completed/);
+
+  const failedTracker = new ExecutionTerminalLineContextTracker(80, 24, {
+    cwd: '/repo', pathStyle: 'posix'
+  });
+  const expectedWriteError = new Error('controlled line context write failure');
+  failedTracker.terminal.write = () => { throw expectedWriteError; };
+  failedTracker.write('failed-output\r\n');
+  // The existing best-effort method still settles, but must not erase the failed consumption.
+  await failedTracker.setScrollback(1000);
+  await assert.rejects(failedTracker.flush(), error => error === expectedWriteError);
+  await assert.rejects(failedTracker.flush(), error => error === expectedWriteError);
+  failedTracker.dispose();
+
+  const failedResizeTracker = new ExecutionTerminalLineContextTracker(80, 24, {
+    cwd: '/repo', pathStyle: 'posix'
+  });
+  const expectedResizeError = new Error('controlled line context rebuild failure');
+  failedResizeTracker.createTerminal = () => { throw expectedResizeError; };
+  failedResizeTracker.resize(40, 8);
+  await assert.rejects(failedResizeTracker.flush(), error => error === expectedResizeError);
+  failedResizeTracker.dispose();
+
   console.log('executionTerminalLineContextTracker tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
@@ -121,6 +190,12 @@ function readTrackerBufferLines(tracker) {
     lines.push(line ? line.translateToString(true) : '');
   }
   return lines;
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(resolvePromise => { resolve = resolvePromise; });
+  return { promise, resolve };
 }
 
 function findLastBufferLineIndex(lines, matcher) {

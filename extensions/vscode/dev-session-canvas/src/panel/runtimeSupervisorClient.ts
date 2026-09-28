@@ -77,6 +77,16 @@ interface TerminalReadConnection {
   closed: boolean;
 }
 
+interface HostOutputSubscription {
+  socket: net.Socket;
+  sessionId: string;
+  authorityId: string;
+  subscriptionId: string;
+  revision: number;
+  batchId: number;
+  consuming: boolean;
+}
+
 const CLOSED_TERMINAL_READ_CONNECTION_LIMIT = 128;
 
 export interface RuntimeSupervisorClientOptions extends RuntimeSupervisorClientEventHandlers {
@@ -84,6 +94,7 @@ export interface RuntimeSupervisorClientOptions extends RuntimeSupervisorClientE
   supervisorScriptPath: string;
   supervisorLauncherScriptPath: string;
   onDisconnected?: (error?: Error) => void;
+  onTerminalBatchSettled?: () => void;
 }
 
 export class RuntimeSupervisorClient {
@@ -94,6 +105,7 @@ export class RuntimeSupervisorClient {
   private helloResult: RuntimeSupervisorHelloResult | undefined;
   private readonly pendingRequests = new Map<string, PendingSupervisorRequest<unknown>>();
   private readonly terminalReadConnections = new Map<string, TerminalReadConnection>();
+  private readonly hostOutputSubscriptions = new Map<string, HostOutputSubscription>();
   private readonly strictDeletes = new Map<string, {
     preserveTerminalReads: boolean;
     observation: StrictRuntimeDeleteObservation;
@@ -154,6 +166,10 @@ export class RuntimeSupervisorClient {
 
   public supportsTerminalReadSettlement(): boolean {
     return this.supportsTerminalPagedCompletion() && this.helloResult?.capabilities?.terminalReadSettlementV1 === true;
+  }
+
+  public supportsTerminalHostOutputCredit(): boolean {
+    return this.supportsTerminalPagedCompletion() && this.helloResult?.capabilities?.terminalHostOutputCreditV1 === true;
   }
 
   public supportsExecutionCandidateProfile(profile: ExecutionCandidateProfile): boolean {
@@ -264,7 +280,7 @@ export class RuntimeSupervisorClient {
   }
 
   public hasPendingRequests(): boolean {
-    return this.pendingRequests.size > 0;
+    return this.pendingRequests.size > 0 || [...this.hostOutputSubscriptions.values()].some(binding => binding.consuming);
   }
 
   public async createSession(
@@ -309,6 +325,24 @@ export class RuntimeSupervisorClient {
   public async subscribeSession(
     params: RuntimeSupervisorSubscribeSessionParams
   ): Promise<RuntimeSupervisorSubscribeSessionResult> {
+    if (params.hostOutputCredit !== undefined) {
+      await this.ensureConnected({ allowRestart: false });
+      const socket = this.socket!;
+      if (params.hostOutputCredit !== 'journal-pages-v1' || params.terminalStreamMode !== 'paged-until-exit' ||
+          !this.supportsTerminalHostOutputCredit() || !this.options.onSessionTerminalBatch) {
+        throw new Error('Host output consumption credit is unavailable.');
+      }
+      return this.requestOnConnectedSocket('subscribeSession', params, socket, undefined, (value) => {
+        const result = value as RuntimeSupervisorSubscribeSessionResult;
+        if (!result.subscriptionId || result.sessionId !== params.sessionId || result.authorityId !== params.authorityId) {
+          throw new Error('Host output consumption credit was not negotiated.');
+        }
+        // Bind before parsing the next event in the same socket data chunk.
+        this.hostOutputSubscriptions.set(params.sessionId, { socket, sessionId: params.sessionId,
+          authorityId: params.authorityId, subscriptionId: result.subscriptionId,
+          revision: params.afterRevision, batchId: 0, consuming: false });
+      });
+    }
     if (params.terminalStreamMode) {
       await this.ensureConnected({ allowRestart: false });
       return this.requestOnConnectedSocket('subscribeSession', params);
@@ -482,6 +516,7 @@ export class RuntimeSupervisorClient {
     this.socket = undefined;
     this.helloResult = undefined;
     this.terminalReadConnections.clear();
+    this.hostOutputSubscriptions.clear();
     this.rejectAllPending(createRuntimeSupervisorProtocolError({
       id: 'clientDisconnected'
     }, RUNTIME_SUPERVISOR_ERROR_CODES.clientDisconnected));
@@ -525,7 +560,7 @@ export class RuntimeSupervisorClient {
   }
 
   private requestOnConnectedSocket<T>(method: string, params?: unknown, expectedSocket?: net.Socket,
-    responseError?: (error: Error) => void): Promise<T> {
+    responseError?: (error: Error) => void, responseResult?: (value: unknown) => void): Promise<T> {
     const socket = this.socket;
     if (!socket || socket.destroyed || this.disposed || (expectedSocket && socket !== expectedSocket)) {
       throw createRuntimeSupervisorProtocolError({
@@ -537,7 +572,10 @@ export class RuntimeSupervisorClient {
     const promise = new Promise<T>((resolve, reject) => {
       this.pendingRequests.set(id, {
         socket,
-        resolve: resolve as (value: unknown) => void,
+        resolve: (value: unknown) => {
+          try { responseResult?.(value); resolve(value as T); }
+          catch (error) { reject(error); }
+        },
         reject,
         ...(responseError ? { responseError } : {})
       });
@@ -620,6 +658,7 @@ export class RuntimeSupervisorClient {
       this.rejectSocketPending(this.socket, new Error('Runtime supervisor connection was replaced.'));
     }
     this.socket = socket;
+    this.hostOutputSubscriptions.clear();
     this.buffer = '';
     this.helloResult = undefined;
     socket.setEncoding('utf8');
@@ -636,6 +675,7 @@ export class RuntimeSupervisorClient {
             id: 'clientConnectionClosed'
           }, RUNTIME_SUPERVISOR_ERROR_CODES.clientConnectionClosed);
       this.socket = undefined;
+      this.hostOutputSubscriptions.clear();
       this.helloResult = undefined;
       this.buffer = '';
       this.rejectSocketPending(socket, error ?? createRuntimeSupervisorProtocolError({
@@ -697,10 +737,14 @@ export class RuntimeSupervisorClient {
       return;
     }
 
-    this.handleEvent(message);
+    this.handleEvent(message, socket);
   }
 
-  private handleEvent(message: RuntimeSupervisorEvent): void {
+  private handleEvent(message: RuntimeSupervisorEvent, socket: net.Socket): void {
+    if (message.event === 'sessionTerminalBatch') {
+      void this.consumeTerminalBatch(message.payload, socket);
+      return;
+    }
     if (message.event === 'sessionOutput') {
       this.options.onSessionOutput?.(message.payload);
       return;
@@ -713,6 +757,62 @@ export class RuntimeSupervisorClient {
 
     if (message.event === 'sessionState') {
       this.options.onSessionState?.(message.payload);
+    }
+  }
+
+  private async consumeTerminalBatch(
+    payload: Extract<RuntimeSupervisorEvent, { event: 'sessionTerminalBatch' }>['payload'],
+    socket: net.Socket
+  ): Promise<void> {
+    const subscription = this.hostOutputSubscriptions.get(payload.sessionId);
+    const isCurrent = (): boolean => Boolean(subscription && !this.disposed && !socket.destroyed &&
+      this.socket === socket && this.hostOutputSubscriptions.get(payload.sessionId) === subscription);
+    if (!subscription || !isCurrent() || subscription.subscriptionId !== payload.subscriptionId ||
+        subscription.authorityId !== payload.authorityId) return;
+    if (subscription.consuming) {
+      // A valid sender never has two unacknowledged pages. Do not build a fallback queue.
+      console.error('Runtime Host output credit was exceeded.');
+      socket.destroy();
+      return;
+    }
+    subscription.consuming = true;
+    let outcome: 'consumed' | 'cancelled' = 'cancelled';
+    try {
+      if (payload.batchId !== subscription.batchId + 1 || payload.afterRevision !== subscription.revision ||
+          !Array.isArray(payload.events) || !Number.isSafeInteger(payload.revision) ||
+          payload.events.some((event, index) => event.revision !== subscription.revision + index + 1) ||
+          payload.revision !== subscription.revision + payload.events.length) {
+        throw new Error('Invalid Host output batch identity or revision.');
+      }
+      outcome = await this.options.onSessionTerminalBatch!(payload, isCurrent);
+      if (outcome !== 'consumed' && outcome !== 'cancelled') outcome = 'cancelled';
+      if (!isCurrent()) return;
+      if (outcome === 'consumed' && payload.error) outcome = 'cancelled';
+      await this.requestOnConnectedSocket('ackTerminalBatch', {
+        sessionId: payload.sessionId, authorityId: payload.authorityId, subscriptionId: payload.subscriptionId,
+        batchId: payload.batchId, outcome
+      }, socket, undefined, () => {
+        if (!isCurrent()) return;
+        subscription.revision = payload.revision;
+        subscription.batchId = payload.batchId;
+        subscription.consuming = false;
+        if (outcome === 'cancelled' || payload.snapshot?.live === false) {
+          this.hostOutputSubscriptions.delete(payload.sessionId);
+        }
+      });
+    } catch (error) {
+      console.error('Runtime Host output batch consumption failed:', error);
+      if (isCurrent()) {
+        this.hostOutputSubscriptions.delete(payload.sessionId);
+        try {
+          await this.requestOnConnectedSocket('ackTerminalBatch', {
+            sessionId: payload.sessionId, authorityId: payload.authorityId, subscriptionId: payload.subscriptionId,
+            batchId: payload.batchId, outcome: 'cancelled'
+          }, socket);
+        } catch { /* A lost connection retains no successful consumption claim. */ }
+      }
+    } finally {
+      this.options.onTerminalBatchSettled?.();
     }
   }
 

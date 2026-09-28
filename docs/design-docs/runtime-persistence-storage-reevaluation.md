@@ -297,3 +297,29 @@ checkpoint 回归另设 32 MiB 日志、零缓存、1 MiB 分段，提交扫描�
 原始结果为 `.debug/runtime-persistence-paged-scan-20260928-N6P27u/paged-capacity.log`，旧失败目录完整保留。原默认容量对照（含尺寸拒绝与 completed 保存）通过，日志为同目录 `legacy-comparison.log`；journal、Supervisor wiring 77/77、paged projection（含 27/27 headless writer）、paged completion、checkpoint refresh、typecheck/build 通过。没有新增浏览器、真实 Agent、原生平台或 runner 结果；上轮浏览器证据仍只代表其注入路径。B1 剩余为 heap 预算归因/修复、普通 socket/Host 与旧生产链在途约束及既定真实整链验收，不新增通用诊断要求。
 
 剩余 heap 的只读核对：`SerializedTerminalStateTracker.flush()` 在脏写后序列化完整有限 scrollback；探针的 producer 每 16 块、replay 每页都执行，真实 Webview `applyTerminalStreamEvents()` 只分批写入并等 callback，不做相同的逐页序列化。当前颜色状态在验证第三个模型创建前就被拒绝，不能归因于候选 checkpoint 恢复模型。未发现保存所有历史 tracker/snapshot 的容器，尚不构成泄漏证明；也没有测出额外 replay 序列化占用多少 heap，因此不扣除它或追认预算通过。后续随实际 socket/Host/页面消费链收口做堆来源归因，不将“先优化双 tracker 探针直到绿色”设为传输产品修正前置，最终 A1 实际内存证据仍不能缺失。
+
+### 10.3 Supervisor 到 Host 的消费信用
+
+从 `d432bf89` 继续 B1。核对确认 paged 订阅仍逐事件推送 `sessionTerminalEvent`；普通 socket 写入不处理背压，Host 的 line context 还会异步排队。正文不能直接删掉：它承担 cwd/link 上下文、attention 解析、Agent resume/activity 和有限尾缓存。仅等待 socket drain 不等于这些消费者已完成，且在 session operation chain 内等待慢 Host 会阻塞同会话 resize/read。
+
+选定具名能力 `terminalHostOutputCreditV1` 与 subscribe 参数 `hostOutputCredit: journal-pages-v1`，只在已支持 paged-until-exit 的双方显式启用。create/attach 保持既有 deferred subscription，旧服务端/客户端保持原模式，不将旧路径追认为有界。新订阅不是 editor/panel reader，不占用或替换 Webview 的读句柄。
+
+每个当前订阅最多一页正文在途；这不是取消/替换世代叠加时的绝对 socket 缓冲上限。Supervisor 只保存订阅身份、已消费 revision、单个在途批次及最新可替换状态，未消费正文留在原 journal；页沿 256 KiB/256 events 和既有超大单事件例外。读取/发送调度不等待远端信用占住 session chain。Host 逐事件沿原业务处理，再等待 line-context 的实际 xterm callback；处理失败或生命周期替换必须取消，不能回 consumed。应用信用不代表 Webview final application，后者仍沿原 editor/panel 结算。
+
+状态通知也受同一信用限制并合并为最新状态；只有页覆盖状态 revision 时才交付该状态，包括当前 title 或显式 null。终态必须在 Host 尾部处理之后应用，不用 head 通知提前推进 `outputSequence`。订阅游标进入 journal retention；正常 preserve-reader 退役延后物理删除，但不能让 delete RPC 等待其调用方尚未发出的批次 ACK。显式删除/取消/断连只释放原订阅责任，迟到 ACK 不得释放新订阅。
+
+验证固定为真实本地 socket + 实际 Supervisor/client/journal 的慢 Host 回归及现有 Host/reader 回归：信用暂停时有界、正文顺序和终态完整、同会话控制和另一会话继续、保留来源、替换/取消/断连隔离。该测试不启动 PTY 或真实 Agent，不代证平台、VS Code 页面或总体 RSS。结果另记；前两节 heap 失败不被撤销，旧生产链与 A1 实际整链仍须收尾，不扩展通用诊断工具。
+
+实现落点为 `runtimeSupervisorMain.ts` 的独立订阅游标、链外 pump 和具名 ACK，`runtimeSupervisorClient.ts` 的原 socket/订阅身份及异步消费回执，`CanvasPanelManager.ts` 的原业务逐事件处理、line-context 屏障与末尾状态应用。订阅先安装保留下界，不能先刷新 checkpoint 把重连所需后缀 compact 掉。恢复中的已有 Host 直接从自己的已处理 revision 订阅；不重取新 head 代替消费。缺失来源或业务应用失败显式取消并展示原绑定错误，不将其记为完整消费或进程退出。attention/resume/activity 的正文解析仍同步执行；外部通知投递不是终端消费屏障，不让用户提示交互卡住下一页，attention bridge 不再用跨 await 的调用帧持有原 chunk。
+
+独立 review 修正重连边界：断连会释放旧 socket 责任，不能假定断线期间旧游标始终保留。在保留范围内继续原 revision，并重新打开当前 Webview 分页 reader；只有具名 `terminalHostCursorCompacted` 表明旧位置已被合法 checkpoint 覆盖时，记录 `hostOutputCursorReset` 后沿既有 attach 重建业务/页面基点，不把缺失区间追认为 Host 已消费。读取损坏、authority 不符或一般失败不能借此退回最新水位。无需新 lease 服务或永久保存断线游标。普通输出只唤醒页发送，不为每块新建 sessionState；只有初始状态、既有状态变更和 title 变化标记状态待发送，避免新增逐块画板保存/整页状态推送。
+
+Linux x64 / Node v25.6.0，真实本地 socket 回归只读加载 `d432bf89` 的 server/client/protocol 作为旧业务对照：同一 96 个 8 KiB 正文块，在 Host 暂停消费时旧路径仍收到 96 条 raw 事件，断言 `96 !== 0`，exit 1。修后每订阅最多一页，原逐条内容/revision 校验通过，正文共 786,432 bytes，连同一次 resize 共 97 个事件；慢 Terminal 期间 Agent 继续消费，同会话 input/resize 在测试 1.5 秒观察界限内返回，终态在全部正文后交付。该时限仅为定向死锁回归，未测成产品延迟 SLA。替换、主动取消、断连只释放原游标，无 capability 的服务端仍走旧契约。
+
+原始日志为 `.debug/runtime-host-output-credit-20260928/socket-behavior-baseline.log` 与 `socket-current-final.log`。前置 `socket-behavior-red.log` 是 esbuild 不接受过滤正则标志，`socket-capability-red.log` 含 capability smoke 成功后夹具 idle timer 错误，都不算产品先红；没有回退共享源码或改写历史失败。Host 定向测试使用提取的实际 batch/event/output/state 方法和真实 line-context/xterm callback，验证等待、替换/取消、错误、title 与 original-revision 重连；通知服务与节点持久化仍为受控替身，不能冒称实际 VS Code。
+
+本轮不重跑或修改双 tracker 容量探针，未产生新 heap/RSS 通过；1x/2x/4x 历史失败继续有效。Host 到 Webview 的 `terminalAvailable` 仍逐事件通知，此层的在途/合并边界未随正文信用自动收口；旧 node-pty 待写、旧订阅和实际多会话容量/交互仍属于原 B1。真实 Agent、实际 Webview、两模式、跨平台、packaged 与 Remote SSH 保持最终 A1 至 A6，不将本地 socket 结果代证这些格子。
+
+独立 review 后的 `compact-steady-current.log` 和主会话最终 `socket-closeout.log` 继续通过：真实 journal 在暂停订阅期间两次 checkpoint 均不回收被 pin 的段，断连后第三次实际回收至少两段，旧 cursor 0 具名拒绝，保留 cursor 2 从 revision 3 继续；三轮普通输出/ACK 不附加 state，最终状态仍交付。Host 的精确 cursor 重连、具名 compact 回退、损坏不回退及 Webview reader 重开均有定向断言。
+
+最终共享树回归为 Supervisor wiring 80/80、client 24/24、Host batch 10/10 和原 headless writer 27/27；journal、line context、paged completion 四组合、checkpoint refresh、reader settlement 20/20、Host deactivation、attention/title、typecheck/build 与 diff 检查通过。新增 owned Terminal/Agent 测试确认 Webview reader 独立应用、preserve delete 在 Host ACK 前返回而 journal 尚存、ACK 后物理删除。其首次夹具提前于 provider accepted 握手发送 sourceEnd，被 adapter 正确拒绝；`owned-immediate-exit.log` 保留，正式输入改为等待真实 provider 契约要求的 accepted 而不等待 consumed/Host ACK，不把非法首轮追认为通过。独立 review 的重连两项回归已修并复核，没有据此新增退出诊断阶段。

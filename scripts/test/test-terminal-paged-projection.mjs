@@ -155,6 +155,7 @@ try {
   await verifyClientReconnectPolicy(modules.RuntimeSupervisorClient);
   await verifySupervisorRetention(directory);
   await verifyHostReconnect();
+  await verifyHostBatches(directory);
   console.log('terminal paged projection: validation, backpressure, cancellation, retry and ephemeral completion passed');
 } finally {
   await rm(directory, { recursive: true, force: true });
@@ -276,12 +277,12 @@ async function verifyHostReconnect() {
       runtimeSupervisorClientEpochs = new Map();
       ${methods.join('\n')}
     }
-    export { Harness, timers };
+    export { Harness, timers, RUNTIME_SUPERVISOR_ERROR_CODES };
   `, resolveDir: path.dirname(path.dirname(filename)), loader: 'ts' }, bundle: true,
     platform: 'node', format: 'cjs', write: false });
   const module = { exports: {} };
   new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(module, module.exports, createRequire(import.meta.url));
-  const { Harness, timers } = module.exports;
+  const { Harness, timers, RUNTIME_SUPERVISOR_ERROR_CODES } = module.exports;
   const subscriber = new Harness();
   let subscribedWithoutRestart = false;
   subscriber.getRuntimeSupervisorClientForKind = async (backend, options, storage) => {
@@ -291,6 +292,7 @@ async function verifyHostReconnect() {
     return {
       supportsTerminalSessionStream: () => true,
       supportsTerminalPagedCompletion: () => false,
+      supportsTerminalHostOutputCredit: () => false,
       subscribeSession: async (params) => {
         assert.equal(params.terminalStreamMode, 'paged');
         assert.equal(params.sessionId, 'original');
@@ -351,10 +353,328 @@ async function verifyHostReconnect() {
   assert.equal(subscribed, true);
   assert.equal(timers.length, 0);
   const current = host.terminalSessions.get('node');
+  const reconnectFlush = deferredHostOperation();
+  const flushStarted = deferredHostOperation();
+  current.hostOutputCredit = true;
+  current.reconnectPending = false;
+  current.outputSequence = 7;
+  current.terminalAuthorityId = 'authority';
+  current.lineContextTracker = { flush: async () => {
+    flushStarted.resolve();
+    await reconnectFlush.promise;
+  } };
+  const creditSubscriptions = [];
+  const reopenedProjections = [];
+  host.postPagedExecutionSnapshot = async (...args) => reopenedProjections.push(args);
+  host.getRuntimeSupervisorClientForKind = async (backend, options, storage) => {
+    assert.equal(options.allowRestart, false);
+    assert.equal(storage, '/same-runtime');
+    return {
+      supportsTerminalHostOutputCredit: () => true,
+      subscribeSession: async params => { creditSubscriptions.push(params); }
+    };
+  };
+  host.requestRuntimeSupervisorSessionAttach = async () => assert.fail('credit reconnect must not attach the latest head');
+  host.reconnectPagedRuntimeSession('terminal', 'node', current);
+  timers.shift()();
+  await flushStarted.promise;
+  assert.equal(creditSubscriptions.length, 0, 'Host pending consumption must settle before resubscription');
+  reconnectFlush.resolve();
+  await pending;
+  assert.deepEqual(creditSubscriptions, [{ sessionId: 'original', authorityId: 'authority',
+    afterRevision: 7, terminalStreamMode: 'paged-until-exit', hostOutputCredit: 'journal-pages-v1' }]);
+  assert.strictEqual(host.terminalSessions.get('node'), current, 'credit reconnect must preserve Host business state');
+  assert.equal(current.outputSequence, 7);
+  assert.equal(current.terminalStreamHealthy, true);
+  assert.equal(reopenedProjections.length, 1, 'exact Host cursor reconnect must also replace closed Webview readers');
+  assert.equal(reopenedProjections[0][0], 'terminal');
+  assert.equal(reopenedProjections[0][1], 'node');
+  assert.strictEqual(reopenedProjections[0][2], current);
+  for (const failure of ['compacted', 'corrupt']) {
+    const retryHost = new Harness();
+    const retryCalls = [];
+    const retrySession = { ...current, reconnectPending: false, reconnectTimer: undefined,
+      lineContextTracker: { flush: async () => retryCalls.push('flush') } };
+    retryHost.terminalSessions = new Map([['node', retrySession]]);
+    retryHost.getExecutionSessions = () => retryHost.terminalSessions;
+    retryHost.state = {};
+    retryHost.requireNode = host.requireNode;
+    retryHost.terminalReadRelay = host.terminalReadRelay;
+    retryHost.postState = () => {};
+    retryHost.recordDiagnosticEvent = (name, detail) => retryCalls.push({ name, detail });
+    retryHost.getLiveRuntimeReconnectBlockReason = () => undefined;
+    retryHost.markExecutionNodeAsHistoryRestored = () => assert.fail('compaction or corruption is not session loss');
+    let retryOperation;
+    retryHost.trackRuntimeSupervisorOperation = operation => { retryOperation = operation; };
+    const error = Object.assign(new Error(`controlled ${failure} cursor failure`), {
+      code: failure === 'compacted' ? RUNTIME_SUPERVISOR_ERROR_CODES.terminalHostCursorCompacted
+        : RUNTIME_SUPERVISOR_ERROR_CODES.terminalJournalUnavailable
+    });
+    assert.equal(typeof error.code, 'string');
+    retryHost.getRuntimeSupervisorClientForKind = async (_backend, options, storage) => {
+      assert.equal(options.allowRestart, false);
+      assert.equal(storage, '/same-runtime');
+      return { supportsTerminalHostOutputCredit: () => true, subscribeSession: async params => {
+        retryCalls.push(['resume', params.afterRevision]);
+        throw error;
+      } };
+    };
+    retryHost.requestRuntimeSupervisorSessionAttach = async (_client, sessionId) => {
+      assert.equal(failure, 'compacted', 'journal corruption must not fall back to a newer checkpoint');
+      retryCalls.push('attach');
+      return { snapshot: { sessionId, kind: 'terminal', live: true, terminalRevision: 19 },
+        terminalProjectionMode: 'terminal-stream-v1' };
+    };
+    retryHost.applyRuntimeSupervisorSnapshot = async (_nodeId, _kind, snapshot, options) => {
+      assert.equal(options.postSnapshot, true, 'compacted recovery must rebuild the actual projection');
+      retryCalls.push(['rebuild', snapshot.terminalRevision]);
+      retryHost.terminalSessions.set('node', { ...retrySession, outputSequence: snapshot.terminalRevision,
+        terminalStreamHealthy: true, reconnectPending: false });
+    };
+    retryHost.subscribeRuntimeSupervisorTerminalStream = async snapshot => retryCalls.push(['new-baseline', snapshot.terminalRevision]);
+    retryHost.reconnectPagedRuntimeSession('terminal', 'node', retrySession);
+    timers.shift()();
+    await retryOperation;
+    assert.deepEqual(retryCalls.slice(0, 2), ['flush', ['resume', 7]]);
+    if (failure === 'compacted') {
+      assert.equal(retryCalls.includes('attach'), true);
+      assert.ok(retryCalls.some(call => Array.isArray(call) && call[0] === 'rebuild' && call[1] === 19));
+      assert.ok(retryCalls.some(call => Array.isArray(call) && call[0] === 'new-baseline' && call[1] === 19));
+      assert.ok(retryCalls.some(call => call?.name), 'compacted reset must be explicitly diagnosed');
+      assert.equal(retrySession.outputSequence, 7, 'a new baseline must not claim the missing old revisions were consumed');
+      assert.equal(timers.length, 0);
+    } else {
+      assert.equal(retryCalls.includes('attach'), false);
+      assert.equal(retryHost.terminalSessions.get('node'), retrySession);
+      assert.equal(retrySession.terminalStreamHealthy, false);
+      assert.equal(timers.length, 1, 'non-compaction failure keeps its existing explicit retry path');
+      timers.length = 0;
+    }
+  }
   host.runtimeSupervisorEventAdmissionOpen = false;
   host.handleRuntimeSupervisorDisconnected('legacy-detached', '/same-runtime', new Error('late socket close'));
   assert.equal(timers.length, 0, 'closed admission must not schedule a reconnect');
   assert.strictEqual(host.terminalSessions.get('node'), current);
+}
+
+async function verifyHostBatches(directory) {
+  const filename = path.resolve('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts');
+  const source = await readFile(filename, 'utf8');
+  const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
+  const manager = ast.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'CanvasPanelManager');
+  const methodNames = ['handleRuntimeSupervisorTerminalBatch', 'handleRuntimeSupervisorTerminalEvent',
+    'applyRuntimeSupervisorOutputChunk', 'handleRuntimeSupervisorState', 'queueExecutionOutput',
+    'postTerminalAvailable', 'isRuntimeSupervisorEventAdmitted'];
+  const methods = methodNames.map(name => {
+    const method = manager.members.find(node => ts.isMethodDeclaration(node) && node.name.getText(ast) === name);
+    assert.ok(method, `actual Host method ${name} must exist`);
+    return method.getText(ast);
+  });
+  const functions = ['updateExecutionTerminalTitle', 'appendTerminalBuffer', 'trimStoredTerminalText'].map(name => {
+    const declaration = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
+    assert.ok(declaration, `actual Host function ${name} must exist`);
+    return declaration.getText(ast);
+  });
+  const outfile = path.join(directory, 'actual-host-terminal-batch.cjs');
+  await esbuild.build({ stdin: { contents: `
+    import { cloneTerminalStreamEvent } from './common/terminalSessionStream';
+    import { formatExecutionTerminalTitleReport, normalizeExecutionTerminalTitle,
+      processExecutionTerminalTitleControls, stripExecutionTerminalTitleMarkers } from './common/executionTerminalTitle';
+    import { ExecutionTerminalLineContextTracker } from './panel/executionTerminalLineContextTracker';
+    const formatUnknownError = error => String(error);
+    const EXECUTION_OUTPUT_STATE_SYNC_INTERVAL_MS = 1;
+    const localizeRuntimeSupervisorSnapshotExitMessage = snapshot => snapshot.lastExitMessage;
+    const vscode = { l10n: { t: value => value } };
+    const updateExecutionNode = (state, nodeId, kind, patch) => ({ ...state, ...patch });
+    const buildExecutionMetadataPatch = (state, nodeId, kind, patch) => patch;
+    ${functions.join('\n')}
+    class Harness {
+      runtimeSupervisorEventAdmissionOpen = true;
+      runtimeSupervisorClientEpochs = new Map();
+      ${methods.join('\n')}
+    }
+    export { Harness, ExecutionTerminalLineContextTracker };
+  `, resolveDir: path.dirname(path.dirname(filename)), loader: 'ts' }, outfile, bundle: true,
+    platform: 'node', format: 'cjs', target: 'node18' });
+  const require = createRequire(import.meta.url);
+  const { Harness, ExecutionTerminalLineContextTracker } = require(outfile);
+  let passed = 0;
+  const fixture = (kind = 'terminal', live = false) => {
+    const host = new Harness();
+    const calls = [];
+    const posts = [];
+    host.state = {};
+    host.requireNode = () => ({ status: 'live', summary: '' });
+    host.postState = () => calls.push({ name: 'state-updated' });
+    const tracker = new ExecutionTerminalLineContextTracker(80, 24, {
+      cwd: '/repo', pathStyle: 'posix', scrollback: 100
+    });
+    const session = { owner: 'supervisor', sessionId: 'session', runtimeSessionId: 'session',
+      runtimeBackend: 'legacy-detached', runtimeStoragePath: '/runtime', terminalStreamPaged: true,
+      terminalStreamHealthy: true, terminalAuthorityId: 'authority', outputSequence: 0,
+      terminalProjectionMode: 'terminal-stream-v1', terminalStateTrusted: false,
+      cols: 80, rows: 24, buffer: '', pendingOutput: '', terminalTitle: 'initial-title',
+      lifecycleStatus: 'live', lineContextTracker: tracker };
+    const binding = { kind, nodeId: 'node' };
+    const sessions = new Map([['node', session]]);
+    host.buildRuntimeSessionBindingKey = (...parts) => JSON.stringify(parts);
+    const key = host.buildRuntimeSessionBindingKey(kind, 'session', '/runtime', 'legacy-detached');
+    host.runtimeSessionBindings = new Map([[key, binding]]);
+    host.getExecutionSessions = candidate => {
+      assert.equal(candidate, kind);
+      return sessions;
+    };
+    host.postMessage = message => posts.push(message);
+    host.recordDiagnosticEvent = (name, detail) => calls.push({ name, detail });
+    host.recordExecutionPerformanceDiagnostics = () => {};
+    host.queueExecutionStateSync = () => {};
+    host.clearExecutionTerminalProjectionRefreshTimers = () => {};
+    host.flushExecutionOutputImmediately = () => calls.push({ name: 'flush-output' });
+    host.reconnectPagedRuntimeSession = () => calls.push({ name: 'unexpected-reconnect' });
+    host.bridgeExecutionAttentionSignals = async (_kind, _nodeId, _session, text) => calls.push({ name: 'attention', text });
+    host.maybeSyncAgentResumeContextFromOutput = () => calls.push({ name: 'agent-resume' });
+    host.recordAgentOutputHeuristicsAndNotifyAbnormalStream = (_nodeId, _session, text) => calls.push({ name: 'agent-output', text });
+    const applyEvent = host.handleRuntimeSupervisorTerminalEvent.bind(host);
+    host.handleRuntimeSupervisorTerminalEvent = (...args) => {
+      calls.push({ name: 'event', type: args[2].event.type, revision: args[2].event.revision });
+      return applyEvent(...args);
+    };
+    host.applyRuntimeSupervisorSnapshot = async (_nodeId, _kind, snapshot) => {
+      calls.push({ name: 'snapshot', snapshot });
+      assert.equal(session.outputSequence, snapshot.terminalRevision);
+      assert.equal(tracker.terminal.cols, 40);
+      assert.equal(tracker.terminal.rows, 8);
+      assert.equal(tracker.terminal.options.scrollback, 60);
+      const lines = Array.from({ length: tracker.terminal.buffer.active.length }, (_, index) =>
+        tracker.terminal.buffer.active.getLine(index)?.translateToString(true));
+      assert.ok(lines.includes('TAIL'), 'final state dispatch must follow actual tail application');
+      session.terminalTitle = snapshot.terminalTitle ?? undefined;
+      if (!snapshot.live) {
+        tracker.dispose();
+        sessions.delete('node');
+        host.runtimeSessionBindings.delete(key);
+      }
+    };
+    host.postExecutionExitWithFinalSnapshot = async () => calls.push({ name: 'exit' });
+    const events = [
+      // Supervisor journals redact title controls; title arrives separately in the caught-up state.
+      { type: 'output', revision: 1, createdAtMs: 1, data: '\0HEAD\r\n' },
+      { type: 'resize', revision: 2, createdAtMs: 1, cols: 40, rows: 8 },
+      { type: 'scrollback', revision: 3, createdAtMs: 1, scrollback: 60 },
+      { type: 'output', revision: 4, createdAtMs: 1, data: 'TAIL\r\n' }
+    ];
+    const batch = { sessionId: 'session', kind, authorityId: 'authority', subscriptionId: 'subscription', batchId: 1,
+      afterRevision: 0, revision: 4, events,
+      snapshot: { sessionId: 'session', kind, live, lifecycle: live ? 'live' : 'closed',
+        terminalAuthorityId: 'authority', terminalRevision: 4, terminalTitle: live ? 'batch-title' : null,
+        lastExitMessage: 'ended' } };
+    let current = true;
+    return { host, calls, posts, tracker, session, sessions, batch, key, binding,
+      run: () => host.handleRuntimeSupervisorTerminalBatch('legacy-detached', '/runtime', batch, () => current),
+      invalidate: () => { current = false; },
+      dispose: () => tracker.dispose() };
+  };
+  const holdWriteCallback = tracker => {
+    const ready = deferredHostOperation();
+    const write = tracker.terminal.write.bind(tracker.terminal);
+    let held;
+    tracker.terminal.write = (text, done) => write(text, () => {
+      if (!held) { held = done; ready.resolve(); }
+      else done?.();
+    });
+    return { ready: ready.promise, release: () => held?.() };
+  };
+  for (const kind of ['terminal', 'agent']) {
+    const f = fixture(kind);
+    const write = holdWriteCallback(f.tracker);
+    let settled = false;
+    try {
+      const result = f.run().then(value => { settled = true; return value; });
+      await write.ready;
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(settled, false, 'a queued business event is not Host consumption credit');
+      assert.equal(f.calls.filter(call => call.name === 'snapshot').length, 0);
+      assert.equal(f.session.terminalTitle, 'initial-title', 'sanitized journal output does not carry a newer title');
+      assert.deepEqual(f.calls.filter(call => call.name === 'event').map(({ type, revision }) => [type, revision]),
+        [['output', 1], ['resize', 2], ['scrollback', 3], ['output', 4]]);
+      write.release();
+      assert.equal(await result, 'consumed');
+      assert.equal(f.session.terminalTitle, undefined);
+      assert.equal(f.posts.every(message => message.type === 'host/executionTerminalAvailable'), true);
+      assert.equal(f.posts.every(message => message.payload.terminalTitle === undefined), true);
+      assert.equal(f.calls.find(call => call.name === 'snapshot').snapshot.terminalTitle, null);
+      assert.deepEqual(f.calls.filter(call => ['snapshot', 'exit'].includes(call.name)).map(call => call.name), ['snapshot', 'exit']);
+      assert.equal(f.calls.filter(call => call.name === 'attention').length, 2);
+      assert.equal(f.calls.filter(call => call.name === 'agent-resume').length, kind === 'agent' ? 2 : 0);
+      assert.equal(f.calls.filter(call => call.name === 'agent-output').length, kind === 'agent' ? 2 : 0);
+      passed++;
+    } finally { write.release(); f.dispose(); }
+  }
+
+  {
+    const f = fixture('terminal', true);
+    const snapshotReached = deferredHostOperation();
+    const applySnapshot = f.host.applyRuntimeSupervisorSnapshot;
+    let write;
+    let settled = false;
+    f.host.applyRuntimeSupervisorSnapshot = async (...args) => {
+      await applySnapshot(...args);
+      write = holdWriteCallback(f.tracker);
+      f.tracker.write('AFTER-SNAPSHOT\r\n');
+      snapshotReached.resolve();
+    };
+    try {
+      const result = f.run().then(value => { settled = true; return value; });
+      await snapshotReached.promise;
+      await write.ready;
+      assert.equal(settled, false, 'live snapshot work must drain before credit is returned');
+      write.release();
+      assert.equal(await result, 'consumed');
+      assert.equal(f.calls.some(call => call.name === 'exit'), false);
+      assert.equal(f.session.terminalTitle, 'batch-title');
+      passed++;
+    } finally { write?.release(); f.dispose(); }
+  }
+
+  for (const boundary of ['dispose', 'connection-replaced', 'session-replaced', 'binding-replaced']) {
+    const f = fixture();
+    const write = holdWriteCallback(f.tracker);
+    try {
+      const result = f.run();
+      await write.ready;
+      if (boundary === 'dispose') f.tracker.dispose();
+      else if (boundary === 'connection-replaced') f.invalidate();
+      else if (boundary === 'session-replaced') f.sessions.set('node', { ...f.session });
+      else f.host.runtimeSessionBindings.set(f.key, { ...f.binding });
+      write.release();
+      assert.equal(await result, 'cancelled', `${boundary} must not acknowledge the old batch`);
+      assert.equal(f.calls.some(call => call.name === 'snapshot' || call.name === 'exit'), false);
+      assert.equal(f.host.runtimeSessionBindings.has(f.key), true, 'stale completion must not unbind a successor');
+      passed++;
+    } finally { write.release(); f.dispose(); }
+  }
+  for (const failure of ['write-error', 'server-error', 'ahead-snapshot']) {
+    const f = fixture();
+    try {
+      if (failure === 'write-error') f.tracker.terminal.write = () => { throw new Error('controlled Host line write failure'); };
+      else if (failure === 'server-error') f.batch.error = 'controlled journal failure';
+      else f.batch.snapshot.terminalRevision = 5;
+      assert.equal(await f.run(), 'cancelled');
+      assert.equal(f.session.terminalStreamHealthy, false);
+      assert.equal(f.calls.some(call => call.name === 'snapshot' || call.name === 'exit'), false);
+      assert.equal(f.calls.filter(call => call.name === 'runtime/hostOutputConsumptionFailed').length, 1);
+      assert.equal(typeof f.host.state.metadata.lastRuntimeError, 'string');
+      assert.equal(f.calls.some(call => call.name === 'state-updated'), true);
+      passed++;
+    } finally { f.dispose(); }
+  }
+  console.log(`Actual Host batch handling: ${passed}/${passed} passed (real event/state dispatch and line callbacks; sanitized title input, snapshot application, persistence and notification delivery controlled).`);
+}
+
+function deferredHostOperation() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
 }
 
 async function verifyControllerSettlement(directory) {
