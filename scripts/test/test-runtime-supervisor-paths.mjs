@@ -25,6 +25,8 @@ try {
   const {
     CURRENT_RUNTIME_SUPERVISOR_GENERATION,
     resolveCurrentRuntimeSupervisorBaseStoragePath,
+    resolveExecutionCandidateRuntimeSupervisorBaseStoragePath,
+    assertExecutionCandidateRuntimeSupervisorStorageDir,
     resolveRuntimeSupervisorPathsFromStorageDir,
     resolveSystemdUserRuntimeSupervisorPathsFromStorageDir
   } = require(outfile);
@@ -58,6 +60,33 @@ try {
   });
   assert.notEqual(currentGenerationPaths.storageDir, shortPaths.storageDir);
   assert.notEqual(currentGenerationPaths.socketPath, shortPaths.socketPath);
+
+  const candidateProfile = 'linux-owner-v1-candidate';
+  const candidateBase = resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(extensionStorageDir, candidateProfile);
+  const candidateStorageDir = path.join(candidateBase, 'runtime-supervisor');
+  assert.equal(candidateBase, path.join(extensionStorageDir, 'runtime-supervisor-generations', 'terminal-exit-v1'));
+  assert.doesNotThrow(() => assertExecutionCandidateRuntimeSupervisorStorageDir(candidateStorageDir, candidateProfile));
+  for (const invalidStorage of [shortStorageDir, currentGenerationStorageDir, candidateBase,
+    path.join(extensionStorageDir, 'terminal-exit-v1', 'runtime-supervisor'),
+    path.join(candidateStorageDir, '..', '..', 'terminal-stream-v1', 'runtime-supervisor')]) {
+    assert.throws(() => assertExecutionCandidateRuntimeSupervisorStorageDir(invalidStorage, candidateProfile), /isolated/);
+  }
+  for (const invalidProfile of ['', 'future-profile', undefined, null]) {
+    assert.throws(() => resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(extensionStorageDir, invalidProfile), /Unsupported/);
+    assert.throws(() => assertExecutionCandidateRuntimeSupervisorStorageDir(candidateStorageDir, invalidProfile), /Unsupported/);
+  }
+  const isolatedPathOptions = { platform: 'linux', env: {}, tmpDir: '/tmp', userId: 1000, homeDir: '/home/test' };
+  for (const resolvePaths of [resolveRuntimeSupervisorPathsFromStorageDir, resolveSystemdUserRuntimeSupervisorPathsFromStorageDir]) {
+    const candidate = resolvePaths(candidateStorageDir, isolatedPathOptions);
+    const stock = resolvePaths(currentGenerationStorageDir, isolatedPathOptions);
+    assert.notEqual(candidate.storageDir, stock.storageDir);
+    assert.notEqual(candidate.socketPath, stock.socketPath);
+    assert.notEqual(candidate.registryPath, stock.registryPath);
+    if (candidate.unitName) {
+      assert.notEqual(candidate.unitName, stock.unitName);
+      assert.notEqual(candidate.unitFilePath, stock.unitFilePath);
+    }
+  }
 
   const longStorageDir =
     '/home/users/example/.vscode-server/data/User/workspaceStorage/' +

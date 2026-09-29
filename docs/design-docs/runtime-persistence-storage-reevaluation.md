@@ -21,14 +21,14 @@ related_plans:
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-29
+updated_at: 2026-09-30
 ---
 
 # Runtime Persistence 容量与会话归档架构重评
 
 ## 1. 范围与决策状态
 
-2026-09-28 当前收尾入口为 `docs/design-docs/runtime-persistence-closeout.md`。用户委托代理作判断，已选定 F-04 容量优先、退出产品接入（含有限竞态）、最终整体验收的工程顺序，不等待用户确认清单或选择预算。F-04 四项传输/缓存/分页增量已完成，但在途/扫描/峰值、交互预算及存储失败仍须收口；沿当前路线验证实际约束，不以小样本未 OOM 代证，也不预设换引擎。F-05 新路径保持完成，退出完整性不替代容量目标；本文旧“下一步”和第 7 节归档研究不重新排队。本次未运行容量样本或改变产品保证。
+2026-09-30 当前收尾入口为 `docs/design-docs/runtime-persistence-closeout.md`。按用户要求调整预算口径与推进顺序：第 10 节合并进程样本的额外 heap/RSS 64/128 MiB 只作为对应拓扑的观察信号，原阈值、数值和 exit 1 不改，不追认为通过；不再把其转绿或 profiler 归因作为 B2 前置。F-04/B1/A1 仍开放，下一推进 B2 启动 profile 传递与隔离 generation 校验，真实分进程、多会话资源/交互预算归 A1。F-05 新路径保持完成，尾部、真实 Agent/Webview/跨平台要求不削减，root 归属仍独立。本文旧“下一步”和第 7 节归档研究不重新排队；具名当前决定见第 10.7 节，本次调整本身未运行新容量样本或改变产品保证。
 
 2026-09-16，用户确认 Runtime Persistence 审核中的问题 2（完整日志后缀在内存和恢复消息中增长）与问题 3（completed 会话恢复数据内联画板）是当前更严重的问题，需要重新评估架构决策。本次将它们登记为 `docs/design-docs/webview-host-supervisor-architecture-review.md` 的 F-04、F-05，作为高优先级架构重评，而不是普通画板写文件优化。
 
@@ -396,4 +396,12 @@ authority Node 进程（本轮同进程 Supervisor/Host/分页模型）的额外
 
 本轮确已消除取消登记随已完成消费累计的结构；单次 heap/RSS 下降不证明差值全部来自该项，也不证明其余队列已有界或 A1 完成。4x 回放升至 5.473 秒但仍低于原 30 秒，不能只展示下降指标。Host 97/97、真实 socket 信用、Host deactivation、原分页投影（writer 27/27、Host batch 10/10）、typecheck/build 通过；未重跑浏览器或补造真实 Agent/VS Code/平台通过。
 
-下一直接 B1 工作收窄为同一失败负载的分配来源测量：优先复用 Node/V8 现成采样能力，不修改判据或扩建诊断框架；区分实际仍存活对象、累计短命分配与 RSS，不把分配热点自动叫作泄漏。只有测量支持才选下一业务修正；分页重扫目前仍只是源码热点。带 profiler 的数据只用于归因，不替代无额外观测开销的容量验收。原始失败保留，B2 生产接入及最终 A1 至 A6 不移出本次交付。
+当时将下一直接 B1 工作收窄为同一失败负载的分配来源测量；该推进顺序现由第 10.7 节取代。分页重扫仍只是源码热点，不把热点自动叫作泄漏；如为后续具体产品问题使用 profiler，须区分实际仍存活对象、累计短命分配与 RSS，其数据只用于归因，不替代无额外观测开销的容量验收。原始失败保留，B2 生产接入及最终 A1 至 A6 不移出本次交付。
+
+### 10.7 当前决定：观察阈值与生产预算分账，推进 B2
+
+2026-09-30，按用户要求修正当前预算口径和顺序。第 10.1 至 10.6 节的原阈值、输入、数值、断言和 exit 1 全部保持。包含多个逻辑角色/终端模型的合并进程样本能暴露成本和结构问题，但其中额外 heap/RSS 64/128 MiB 不能直接当作实际 Supervisor、Host、Webview、provider/主体分别运行时的产品资源预算；当前只将其作为该样本的观察信号。这个判断不把历史失败转绿，不从旧结果扣除未量化的模型或脚本成本，也不宣称没有剩余产品风险。
+
+F-04/B1/A1 继续未完成。已经确认的全历史物化、未写日志提前返信用、通知洪泛、逐批序列化与取消登记累积已按各自证据修复，不再重复排队；实际支持路径的在途边界、旧协议兼容成本和多会话交互仍须 A1 验收。A1 在实际分进程生产候选上区分共享及逐会话成本，运行前登记各进程/多会话总量的资源与交互预算、输入和失败含义，保留完整性、可取消恢复与输入响应要求。64/128 MiB 不自动复制为这些预算，局部绿色或小样本未 OOM 也不构成验收。
+
+现已推进原 B2，不先要求 profiler 归因或同一合并样本转绿。当前增量已接通 Client/backend 的 detached/systemd、launcher 到 Supervisor 的显式 execution profile，并校验独立 `terminal-exit-v1` generation；细节与受控验收见 `runtime-exit-integrity-production-integration.md` 第 32 节。不默认启用 extension owner，不开放 Host `allowRestart:false` 所禁止的 cold-start，不改旧 live metadata 绑定或 root 归属。同 namespace 排他首次启动仍是下一具体 B2 生产接入责任，不另设通用锁或诊断项目；真实两模式、Agent/Webview/跨平台与分发及最终 A1 至 A6 均保持。

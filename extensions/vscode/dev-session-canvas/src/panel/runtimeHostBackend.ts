@@ -4,11 +4,13 @@ import * as path from 'path';
 import { promisify } from 'util';
 import * as vscode from 'vscode';
 
+import type { ExecutionCandidateProfile } from '../common/executionLifecycle';
 import type {
   RuntimeHostBackendKind,
   RuntimePersistenceGuarantee
 } from '../common/protocol';
 import {
+  assertExecutionCandidateRuntimeSupervisorStorageDir,
   resolveLegacyRuntimeSupervisorPaths,
   resolveSystemdUserRuntimeSupervisorPaths
 } from '../common/runtimeSupervisorPaths';
@@ -42,6 +44,7 @@ export interface RuntimeHostBackend extends RuntimeHostBackendDescriptor {
 export interface RuntimeHostBackendStartArgs {
   supervisorScriptPath: string;
   supervisorLauncherScriptPath: string;
+  executionProfile?: ExecutionCandidateProfile;
 }
 
 export interface RuntimeHostBackendFactoryOptions {
@@ -95,6 +98,10 @@ export function createRuntimeHostBackend(
   return {
     ...descriptor,
     startSupervisor: async (args) => {
+      if (args.executionProfile !== undefined) {
+        assertExecutionCandidateRuntimeSupervisorStorageDir(paths.storageDir, args.executionProfile);
+      }
+
       if (kind === 'systemd-user') {
         await startSystemdUserSupervisor(descriptor, args);
         return;
@@ -132,6 +139,10 @@ function startLegacyDetachedSupervisor(
     childArgs.push('--control-dir', backend.paths.controlDir);
   }
 
+  if (args.executionProfile !== undefined) {
+    childArgs.push('--execution-profile', args.executionProfile);
+  }
+
   const child = spawn(executablePath, childArgs, {
     detached: true,
     env: buildSupervisorProcessEnv(),
@@ -166,7 +177,8 @@ async function startSystemdUserSupervisor(
   const unitContent = renderSystemdUserUnit({
     unitName,
     backend,
-    supervisorScriptPath: args.supervisorScriptPath
+    supervisorScriptPath: args.supervisorScriptPath,
+    executionProfile: args.executionProfile
   });
   await fs.writeFile(unitFilePath, unitContent, 'utf8');
 
@@ -219,6 +231,7 @@ function renderSystemdUserUnit(params: {
   unitName: string;
   backend: RuntimeHostBackendDescriptor;
   supervisorScriptPath: string;
+  executionProfile?: ExecutionCandidateProfile;
 }): string {
   const executablePath = resolveSupervisorExecPath();
   const execArgs = [
@@ -239,6 +252,10 @@ function renderSystemdUserUnit(params: {
 
   if (params.backend.paths.runtimeDir) {
     execArgs.push('--runtime-dir', params.backend.paths.runtimeDir);
+  }
+
+  if (params.executionProfile !== undefined) {
+    execArgs.push('--execution-profile', params.executionProfile);
   }
 
   return [

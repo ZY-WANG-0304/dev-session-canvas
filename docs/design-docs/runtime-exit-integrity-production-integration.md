@@ -14,14 +14,14 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-28
+updated_at: 2026-09-30
 ---
 
 # 退出完整性生产接入与故障域收敛
 
 ## 1. 当前结论与阶段边界
 
-2026-09-28，按用户要求停止自动扩阶段，并由代理依据原始目标作出工程判断，见已选定的 `docs/design-docs/runtime-persistence-closeout.md`。顺序为 F-04 容量收尾、退出真实产品接入（含有限状态替换风险）、最终整体验收；F-05 新路径保持收口，真实 Agent/Webview/跨平台和尾部要求不变。工程预算不等待用户选择，实际验收仍未完成；不展开 S17 工具链。本文后续阶段及其“下一步”均为历史证据，不是当前执行队列。
+2026-09-30，按预算重评调整既定有限收尾顺序，见 `docs/design-docs/runtime-persistence-closeout.md`。合并测试进程的 Heap 64 MiB / RSS 128 MiB 是初始观察预算，不是独立 Supervisor 或每会话的产品预算；原阈值、结果及 exit 1 保留，超限改列待评估信号，不单凭它阻塞 B2，也不先做仅为压线的优化或 profiler。现推进 B2 正式启动链接入，范围见第 32 节；真实分进程、多会话资源与交互评估并入 A1，F-04 仍开放。F-05 新路径保持收口，B3、真实 Agent/Webview/跨平台、主体尾部及 A1 至 A6 不削减；不展开 S17 工具链。本文旧阶段及其“下一步”是历史证据，不是当前执行队列。
 
 2026-09-28，当前S16见31.15，输入`a74844c4`。真实Host回归先红证明旧completed保存失败可复活已清root；最小修正只保护普通completed在reader/persist等待窗口的原投影/session身份，并在并发时局部恢复节点执行字段，strict分支不改。Host回归25次、wiring95/95、checkpoint、paged completion四组合及typecheck通过，独立review无阻塞。完整reset/reload事务、首次pending等待后callback注入、新业务准入及旧Runtime delete之后的迟到UI仍开放；template仅验证prepare入口，不恢复global gate/core锁/root全局drain，不新增native或平台样本。以下S15及更早段落为原时点记录，不覆盖本段。
 
@@ -1422,3 +1422,17 @@ Runtime client 获取默认受永久 gate 保护。已经被 gate 关闭前接�
 最小业务修正后，Host回归最终25次通过：原13次，加root clear/template preparation成功/失败4次、已清root不回滚复活1次、节点局部回滚1次、replacement保护2次、受控Agent普通分支2次及reader等待期间clear/replace2次，主会话已复跑。template只调用真实prepare入口，不代证完整apply。Host wiring95/95、checkpoint refresh、paged completion的Terminal/Agent与disconnect四组合、multi-root composition及仓库根`npm run typecheck`均通过；目标脚本`node --check`与最终工作树`git diff --check`通过，独立review无阻塞且reviewer复跑目标测试及diff检查通过。普通reset/reload完整入口重叠、首次pending等待之后注入callback的完整边界顺序尚未运行，仍是开放验收项。
 
 本轮保护限于reader/persist等待后的旧回滚及后续同步清理，不泛化为所有迟到UI安全：原session已同步释放后，等待旧Runtime delete再返回外层发布exit的后段仍有既有reader/UI身份竞态，未纳入本次修正。正常queued sync/resize/scrollback flush受`terminalHistoryDiscarded`拦截，不能仅凭投影引用检查就登记为已确认的false-stale缺陷。没有新增PTY/native、真实宿主/Agent启动链或跨平台证据，整体退出完整性继续开放；剩余项另按有限输入确认，不自动扩展为下一轮矩阵。
+
+## 32. B2 正式启动链接入
+
+2026-09-30 从 `9a8f4915` 开始推进既定 B2，不再以合并夹具的 64/128 MiB 超限或 profiler 为接入前置。当前增量补齐 `RuntimeSupervisorClient` 到 `runtimeHostBackend` 的 detached/systemd 及 `runtimeSupervisorLauncher` 两跳 profile 传递。选中的 `ExecutionCandidateProfile` 必须原值到达 Supervisor，未知 profile 或错误 generation 在连接/启动副作用前拒绝；连接成功后仍须核对真实 hello 的 profile 和完整 reader 能力，不退回 stock 能力。
+
+`src/common/runtimeSupervisorPaths.ts` 提供显式 candidate 到 `terminal-exit-v1` 的映射及 storageDir 校验，供 Client、backend、launcher 和 Supervisor main 复用。默认 `terminal-stream-v1` 不变，既有 metadata 的 backend/storage/session/executionKind 不重写，也不在新路径补造旧会话保证。无 profile 时保持现有启动参数和行为；显式 profile 时只允许 `runtime-supervisor-generations/terminal-exit-v1/runtime-supervisor`。单根/多根的 root 稳定归属不在本增量实施。
+
+本轮不修改 Host 的 `allowRestart:false`，不默认注入 extension owner，不新增用户配置。源码核对发现 Unix `listen()` 会先 unlink socket；两个独立 client 冷启动同 namespace 可能摘掉已有监听路径。这是具体启动安全风险，尚无本轮原生复现；正式允许新会话冷启动前必须保证活动 endpoint 不被替换。新会话尚未提交 create 的连接准备可以另行获得首次启动许可；旧 live 重连、reader、strict delete 及提交后未知创建始终不能借此启动替代服务或重放请求。这些仍属 B2 启动接入，不增加通用锁/诊断框架项目。
+
+定向验证加载实际模块并捕获连接、spawn 与 systemd unit 参数，覆盖 profile 原值传递、stock 参数保持、错误 profile/generation 无启动副作用、hello 不匹配拒绝，以及原 socket create/未知结果不重放。路径测试检查隔离后的 storage/socket/unit；沿用 Host、reader 与 deactivation 回归，另跑 typecheck/build。受控验证不代证真实 PTY、VS Code/Electron、Agent 或跨平台；本轮不重跑容量样本、改原阈值或历史证据。B2 后续仍须接通安全首次启动、Host/extension 两模式选择、匹配资产与实际启用，完成 A1 至 A6 才能关闭整体重构。
+
+本轮已完成上述传递链与定向验证。新增 `scripts/test/test-runtime-supervisor-startup-profile.mjs` 在原 backend/launcher 上先红，缺失 candidate 的第一跳参数；paths 新映射尚不存在、Client 未拒绝未知 profile 的先红分别保留为接口缺口与准入缺口。独立复核又以畸形 hello 的 `executionCandidateProfiles: {}` 证明校验抛错后仍残留已接受缓存，导致第二次连接检查直接成功；新增用例先红后，改为数组/reader 能力验证成功才提交 hello，失败清理连接且不启动替代服务，不增通用协议工具。
+
+最终运行 `npm run test:runtime-supervisor-startup-profile`：实际 backend/launcher 受控启动 16/16、Client 28/28；`test-runtime-supervisor-paths.mjs`、Host owner 97/97、Supervisor owner 82/82、Host deactivation、真实 socket Host output credit、typecheck/build 与 diff 检查通过。构建清除 dist 后从原已校验目录重新 import Linux 资产，没有加载 binary 或启动 native。没有新的容量、实际 systemd 服务、真实 Agent/VS Code/Webview 或跨平台通过；默认入口、Host cold-start 和旧 live 路径均未改变。下一直接处理同 namespace 首次启动与两模式入口，仍属本 B2，不返回合并阈值压线或工具阶段。

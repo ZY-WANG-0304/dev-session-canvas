@@ -42,6 +42,7 @@ import {
 import type { RuntimeHostBackend } from './runtimeHostBackend';
 import type { ExecutionScheduler } from './executionSessionAdapter';
 import type { ExecutionCandidateProfile } from '../common/executionLifecycle';
+import { assertExecutionCandidateRuntimeSupervisorStorageDir } from '../common/runtimeSupervisorPaths';
 
 interface PendingSupervisorRequest<T> {
   socket: net.Socket;
@@ -89,10 +90,13 @@ interface HostOutputSubscription {
 
 const CLOSED_TERMINAL_READ_CONNECTION_LIMIT = 128;
 
+class ExecutionCandidateHandshakeError extends Error {}
+
 export interface RuntimeSupervisorClientOptions extends RuntimeSupervisorClientEventHandlers {
   backend: RuntimeHostBackend;
   supervisorScriptPath: string;
   supervisorLauncherScriptPath: string;
+  executionProfile?: ExecutionCandidateProfile;
   onDisconnected?: (error?: Error) => void;
   onTerminalBatchSettled?: () => void;
 }
@@ -112,7 +116,11 @@ export class RuntimeSupervisorClient {
   }>();
   private strictDeleteConnection?: Promise<net.Socket>;
 
-  public constructor(private readonly options: RuntimeSupervisorClientOptions) {}
+  public constructor(private readonly options: RuntimeSupervisorClientOptions) {
+    if (options.executionProfile !== undefined) {
+      assertExecutionCandidateRuntimeSupervisorStorageDir(options.backend.paths.storageDir, options.executionProfile);
+    }
+  }
 
   public async ensureConnected(options: { allowRestart?: boolean } = {}): Promise<void> {
     if (this.disposed) {
@@ -173,8 +181,7 @@ export class RuntimeSupervisorClient {
   }
 
   public supportsExecutionCandidateProfile(profile: ExecutionCandidateProfile): boolean {
-    return this.supportsTerminalReadSettlement()
-      && this.helloResult?.capabilities?.executionCandidateProfiles?.includes(profile) === true;
+    return helloSupportsExecutionCandidateProfile(this.helloResult, profile);
   }
 
   public async openTerminalRead(params: RuntimeSupervisorOpenTerminalReadParams): Promise<TerminalStreamReadDescriptor> {
@@ -835,7 +842,8 @@ export class RuntimeSupervisorClient {
   private async startSupervisorProcess(): Promise<void> {
     await this.options.backend.startSupervisor({
       supervisorScriptPath: this.options.supervisorScriptPath,
-      supervisorLauncherScriptPath: this.options.supervisorLauncherScriptPath
+      supervisorLauncherScriptPath: this.options.supervisorLauncherScriptPath,
+      ...(this.options.executionProfile !== undefined ? { executionProfile: this.options.executionProfile } : {})
     });
   }
 
@@ -851,6 +859,7 @@ export class RuntimeSupervisorClient {
         await this.performHelloHandshake();
         return;
       } catch (error) {
+        if (error instanceof ExecutionCandidateHandshakeError) throw error;
         lastError = error instanceof Error ? error : new Error(String(error));
       }
 
@@ -868,6 +877,11 @@ export class RuntimeSupervisorClient {
     if (!socket || socket !== this.socket || socket.destroyed || this.disposed) {
       throw new Error('Runtime supervisor connection changed during handshake.');
     }
+    if (this.options.executionProfile !== undefined && !helloSupportsExecutionCandidateProfile(result, this.options.executionProfile)) {
+      this.helloResult = undefined;
+      socket.destroy();
+      throw new ExecutionCandidateHandshakeError('Runtime supervisor execution candidate profile or reader capability is unavailable.');
+    }
     this.helloResult = result;
   }
 
@@ -876,6 +890,18 @@ export class RuntimeSupervisorClient {
       this.connectPromise = undefined;
     }
   }
+}
+
+function helloSupportsExecutionCandidateProfile(
+  hello: RuntimeSupervisorHelloResult | undefined,
+  profile: ExecutionCandidateProfile
+): boolean {
+  const capabilities = hello?.capabilities;
+  return capabilities?.terminalPagedReadV1 === true
+    && capabilities.terminalPagedCompletionV1 === true
+    && capabilities.terminalReadSettlementV1 === true
+    && Array.isArray(capabilities.executionCandidateProfiles)
+    && capabilities.executionCandidateProfiles.includes(profile);
 }
 
 function isSupervisorSocketStartupError(error: unknown): boolean {

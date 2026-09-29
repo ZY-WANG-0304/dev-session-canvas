@@ -27,7 +27,7 @@ import {
   stripExecutionTerminalTitleMarkers,
   type ExecutionTerminalTitleRedactionState
 } from '../common/executionTerminalTitle';
-import { resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
+import { assertExecutionCandidateRuntimeSupervisorStorageDir, resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
 import {
   SERIALIZED_TERMINAL_CHECKPOINT_PROFILES,
   SerializedTerminalStateTracker,
@@ -3679,15 +3679,12 @@ async function main(): Promise<void> {
     runtimeDir,
     controlDir
   };
-  const executionProfile = readCliFlag('--execution-profile');
+  let executionProfile: ExecutionCandidateProfile | undefined;
   let executionOwnerOptions: ExecutionOwnerOptions | undefined;
-  if (executionProfile !== undefined) {
-    assertExecutionCandidateProfile(executionProfile);
-    const generationDirectory = path.dirname(storageDir);
-    if (path.basename(storageDir) !== 'runtime-supervisor' || path.basename(generationDirectory) !== 'terminal-exit-v1' ||
-      path.basename(path.dirname(generationDirectory)) !== 'runtime-supervisor-generations') {
-      throw new Error('The execution candidate requires its isolated terminal-exit-v1 runtime storage generation.');
-    }
+  if (process.argv.includes('--execution-profile')) {
+    const requestedProfile = readCliFlag('--execution-profile');
+    assertExecutionCandidateRuntimeSupervisorStorageDir(storageDir, requestedProfile);
+    executionProfile = requestedProfile;
     executionOwnerOptions = createLinuxExecutionOwnerOptions({ extensionRoot: path.dirname(__dirname), mode: 'live-runtime' });
   }
   const server = new RuntimeSupervisorServer(paths, runtimeBackend, runtimeGuarantee, executionOwnerOptions, executionProfile);

@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import * as os from 'os';
 import * as path from 'path';
 
+import { assertExecutionCandidateProfile, type ExecutionCandidateProfile } from './executionLifecycle';
 import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
   createRuntimeSupervisorProtocolError,
@@ -21,6 +22,7 @@ const SYSTEMD_USER_SERVICE_PREFIX = 'dev-session-canvas-runtime-supervisor-';
 const RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR = 'runtime-supervisor-generations';
 
 export const CURRENT_RUNTIME_SUPERVISOR_GENERATION = 'terminal-stream-v1';
+const EXECUTION_CANDIDATE_RUNTIME_SUPERVISOR_GENERATION = 'terminal-exit-v1';
 
 type PathModuleLike = typeof path.posix | typeof path.win32;
 
@@ -38,6 +40,28 @@ export function resolveCurrentRuntimeSupervisorBaseStoragePath(baseStorageDir: s
     RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR,
     CURRENT_RUNTIME_SUPERVISOR_GENERATION
   );
+}
+
+export function resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(
+  baseStorageDir: string,
+  profile: ExecutionCandidateProfile
+): string {
+  assertExecutionCandidateProfile(profile);
+  return path.join(baseStorageDir, RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR, EXECUTION_CANDIDATE_RUNTIME_SUPERVISOR_GENERATION);
+}
+
+export function assertExecutionCandidateRuntimeSupervisorStorageDir(
+  storageDir: string,
+  profile: unknown
+): asserts profile is ExecutionCandidateProfile {
+  assertExecutionCandidateProfile(profile);
+  const resolvedStorageDir = path.resolve(storageDir);
+  const generationDirectory = path.dirname(resolvedStorageDir);
+  if (path.basename(resolvedStorageDir) !== 'runtime-supervisor' ||
+      path.basename(generationDirectory) !== EXECUTION_CANDIDATE_RUNTIME_SUPERVISOR_GENERATION ||
+      path.basename(path.dirname(generationDirectory)) !== RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR) {
+    throw new Error('The execution candidate requires its isolated terminal-exit-v1 runtime storage generation.');
+  }
 }
 
 export function resolveRuntimeSupervisorPaths(

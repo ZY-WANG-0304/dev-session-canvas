@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
+import path from 'node:path';
 import esbuild from 'esbuild';
 
 const require = createRequire(import.meta.url);
@@ -84,6 +85,113 @@ async function fixture(socket = new ControlledSocket(), options = {}) {
 async function turns(count = 3) { for (let turn = 0; turn < count; turn++) await Promise.resolve(); }
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
+
+const candidateProfile = 'linux-owner-v1-candidate';
+const candidateHello = { ...hello, capabilities: { ...hello.capabilities, executionCandidateProfiles: [candidateProfile] } };
+const candidateStorageDir = path.resolve('controlled-only/runtime-supervisor-generations/terminal-exit-v1/runtime-supervisor');
+function startupClient({ executionProfile = candidateProfile, storageDir = candidateStorageDir, startSupervisor = forbidden } = {}) {
+  const client = new RuntimeSupervisorClient({
+    backend: { paths: { storageDir, socketPath: '/controlled-only' }, startSupervisor },
+    ...(executionProfile === null ? {} : { executionProfile }),
+    supervisorScriptPath: '/supervisor', supervisorLauncherScriptPath: '/launcher'
+  });
+  clients.push(client);
+  return client;
+}
+
+test('startup profile and generation reject before any connection or process acquisition', () => {
+  for (const executionProfile of ['', 'unknown-profile']) {
+    assert.throws(() => startupClient({ executionProfile }), /Unsupported execution candidate profile/);
+  }
+  for (const storageDir of [path.resolve('old/runtime-supervisor'), candidateStorageDir.replace('terminal-exit-v1', 'terminal-stream-v1')]) {
+    assert.throws(() => startupClient({ storageDir }), /isolated/);
+  }
+});
+
+test('connection preparation forwards the selected profile once; stock startup arguments remain unchanged', async () => {
+  for (const executionProfile of [candidateProfile, null]) {
+    let connects = 0;
+    const starts = [];
+    const socket = new ControlledSocket();
+    socket.respond = request => request.method === 'hello' ? candidateHello : { sessionId: 'new-session', live: true };
+    controlledConnect = () => {
+      connects++;
+      if (connects === 1) {
+        const absent = new ControlledSocket();
+        queueMicrotask(() => absent.emit('error', Object.assign(new Error('endpoint absent'), { code: 'ENOENT' })));
+        return absent;
+      }
+      queueMicrotask(() => socket.emit('connect'));
+      return socket;
+    };
+    const client = startupClient({ executionProfile, startSupervisor: async args => starts.push(args) });
+    try {
+      await Promise.all([client.ensureConnected(), client.ensureConnected()]);
+      assert.deepEqual(starts, [{ supervisorScriptPath: '/supervisor', supervisorLauncherScriptPath: '/launcher',
+        ...(executionProfile ? { executionProfile } : {}) }]);
+      assert.equal(connects, 2);
+      assert.equal(socket.messages.filter(message => message.method === 'hello').length, 1);
+      assert.equal(socket.messages.some(message => message.method === 'createSession'), false);
+      if (executionProfile) {
+        await client.createSession({ sessionId: 'new-session', executionProfile });
+        assert.equal(socket.messages.at(-1).params.executionProfile, candidateProfile);
+        assert.equal(connects, 2, 'create must use the already accepted original connection');
+      }
+    } finally { client.dispose(); controlledConnect = undefined; }
+  }
+});
+
+test('startup profile rejects a mismatched hello without restart retry or a cached accepted connection', async () => {
+  const invalidHellos = [hello, { ...hello, capabilities: { executionCandidateProfiles: [candidateProfile] } },
+    ...[null, {}, candidateProfile, ['future-profile']].map(executionCandidateProfiles => ({
+      ...candidateHello, capabilities: { ...candidateHello.capabilities, executionCandidateProfiles }
+    })),
+    ...['terminalPagedReadV1', 'terminalPagedCompletionV1', 'terminalReadSettlementV1'].map(missing => ({
+      ...candidateHello, capabilities: { ...candidateHello.capabilities, [missing]: false }
+    }))];
+  for (const initiallyAbsent of [false, true]) {
+    for (const response of invalidHellos) {
+      let connects = 0;
+      let starts = 0;
+      const socket = new ControlledSocket();
+      socket.respond = () => response;
+      controlledConnect = () => {
+        connects++;
+        if (initiallyAbsent && connects === 1) {
+          const absent = new ControlledSocket();
+          queueMicrotask(() => absent.emit('error', Object.assign(new Error('endpoint absent'), { code: 'ECONNREFUSED' })));
+          return absent;
+        }
+        queueMicrotask(() => socket.emit('connect'));
+        return socket;
+      };
+      const client = startupClient({ startSupervisor: async () => { starts++; } });
+      try {
+        await assert.rejects(client.ensureConnected(), /candidate profile/);
+        assert.equal(starts, Number(initiallyAbsent));
+        assert.equal(connects, 1 + Number(initiallyAbsent));
+        assert.equal(socket.destroyed, true);
+        assert.equal(client.helloResult, undefined);
+        assert.deepEqual(socket.messages.map(message => message.method), ['hello']);
+      } finally { client.dispose(); controlledConnect = undefined; }
+    }
+  }
+});
+
+test('selected startup profile does not override an existing binding no-restart request', async () => {
+  let connects = 0;
+  controlledConnect = () => {
+    connects++;
+    const socket = new ControlledSocket();
+    queueMicrotask(() => socket.emit('error', Object.assign(new Error('bound endpoint absent'), { code: 'ENOENT' })));
+    return socket;
+  };
+  const client = startupClient();
+  try {
+    await assert.rejects(client.ensureConnected({ allowRestart: false }), /bound endpoint absent/);
+    assert.equal(connects, 1);
+  } finally { client.dispose(); controlledConnect = undefined; }
+});
 
 test('read descriptors and outcomes retain only valid settlement values', () => {
   const read = descriptor(openParams);
