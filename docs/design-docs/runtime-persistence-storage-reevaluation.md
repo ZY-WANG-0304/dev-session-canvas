@@ -21,7 +21,7 @@ related_plans:
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-28
+updated_at: 2026-09-29
 ---
 
 # Runtime Persistence 容量与会话归档架构重评
@@ -373,3 +373,27 @@ authority Node 进程（本轮同进程 Supervisor/Host/分页模型）的额外
 原始三档、schedule、loaded-sources、final-execution 与 cleanup-executions 保存在 `.debug/owned-runtime-capacity-baseline-first-20260928/` 和 `.debug/owned-runtime-capacity-current-first-20260928/`。新实验与第 10.2 节拓扑不同，旧 heap 失败不改。分页扫描仍逐页校验完整相关段并重复解析/编码，这是剩余分配事实，不是本轮峰值的已测归因；10ms 采样与合并进程范围亦不证明所有瞬时峰值或泄漏。下一直接容量工作是定位并修正同一真实消费链的剩余超预算分配，不先优化旧模拟探针、不新增通用诊断框架。B1/A1 保持开放；生产源默认接入仍按 B2 既定责任推进，真实 Agent/Webview/多会话及跨平台验收不削减。
 
 同轮只读定位进一步将下一修正收窄到 `src/panel/executionTerminalLineContextTracker.ts`：`awaitPendingOperations()` 与 `writeSegment()` 每次对同一个长期未决的 `disposedSignal.promise` 做 Promise.race；成功分支不会注销该 Promise 上已注册的 reaction，而它直到 dispose 才 resolve。因此取消等待的注册随消费次数增长，没有定长边界。该结构事实足以列为 B1 直接产品问题，但不等于已测的 heap/RSS 全部根因，也未证明保存全部正文。下一修正应令每个已完成等待解除自己的取消责任，保留 dispose 唤醒、strict flush 拒绝和真实 write callback 屏障；不为此新增通用取消框架或平台实验。本轮不修改该文件、不再 native 重跑，固定对照仍只含三个业务源码差异。
+
+### 10.6 行上下文取消等待按在途责任释放
+
+2026-09-29，从 `c1de9301` 继续同一 B1。只修改 `src/panel/executionTerminalLineContextTracker.ts`：以类内 `disposalWaiters` 集合替换共享未决 Promise，每个正在等待的 operation/write callback 有一个独立取消 Promise；正常完成或失败在 finally 注销自身，dispose 同步标记已销毁并唤醒/清空现有登记。已销毁后的等待不新注册，但仍处理原 operation 的结果，避免同步错误被遗留成未处理拒绝。不增加公共接口、全局取消服务、定时器或固定并发上限。
+
+集合大小只随当前在途等待变化，不随已完成消费历史累计；不将其表述为任意调用者并发下的绝对常数。保留 xterm 实际回调、原 operation chain 顺序、首次操作错误、dispose 后 strict flush 拒绝及旧查询 best-effort。writeSegment 在等待后仍检查 disposed/terminal 身份，迟到回调不能修改新终端或重新返还消费信用。
+
+本轮先以同输入直接统计旧取消 Promise 的未决 reaction 及新集合登记取得红绿，不以 GC/内存阈值替代结构验证；覆盖反复写入/空 flush、resize/scrollback 重建、并发等待、失败和销毁。沿用第 10.5 节未改动的固定容量入口、subject、资产及预算，仅对本次业务修正运行一次新 current；前轮 current 保留为修前证据，不重新跑旧版或覆盖首报。内容/终态/清理与 64/128 MiB、30 秒判据均不变，不因本项修复就预先宣称整体容量通过；真实 Agent/页面/平台验收仍开放。
+
+实现与验证完成：旧业务空 flush 已结束仍有一个取消 reaction，`1 !== 0` 先红；修后 32 次真实 headless write/flush 逐次归零，并发调用的登记从 4→3→0，先完成者不替后续输出返还信用。真实 write callback 被暂停时仍等待，dispose 唤醒 parser/flush/lookup/scrollback，严格 flush 拒绝、迟到 callback 不写 lineCwds；write/rebuild 的 sticky 错误、同步 write 中 dispose 后 throw 均保持。原 100 次销毁、cwd/尺寸/scrollback 行为回归未删除。独立审查未见直接缺陷，日志在 `.debug/runtime-line-context-cancellation-20260929/`，先红与两份绿色均保留。
+
+唯一实际链结果保存在 `.debug/owned-runtime-capacity-cancellation-first-20260929/`，整体 exit 1；本轮只改一个产品模块，原脚本/subject 不变，沿用同一 Linux x64/glibc、Node 25.6.0 产物和前轮 current 对照。阶段数据如下：
+
+| 累计输出 | 本轮额外 heap / RSS MiB | 前轮 current 额外 heap / RSS MiB | 本轮生产消费 / 回放秒 | 判定 |
+| --- | --- | --- | --- | --- |
+| 1x | 43.63 / 75.38 | 47.31 / 81.77 | 2.842 / 1.128 | 原预算通过 |
+| 2x | 67.73 / 134.03 | 77.05 / 140.51 | 1.420 / 2.401 | heap/RSS 仍超预算 |
+| 4x | 68.22 / 142.98 | 99.14 / 167.45 | 2.973 / 5.473 | heap/RSS 仍超预算 |
+
+三档字节数和内容 hash 与前轮一致，journal/Host/分页对账、最终屏幕/光标通过；cache/页/Host 单在途界限和暂停 Host 时输入 nonce 的原判据保持通过。自然退出、EOF、accepted=consumed、pending=0 和四资源释放成立，Host/Supervisor 首次清理报告全域 settled、provider closed，无 transport TERM/KILL。包含退出的整轮额外 RSS 峰值为 143.18 MiB；provider/主体独立 RSS 峰值为 62.35/50.61 MiB，仍不计入 authority 预算或宣称多进程整体通过。实际 Supervisor 序列化共 4 次，不回退前轮修正。
+
+本轮确已消除取消登记随已完成消费累计的结构；单次 heap/RSS 下降不证明差值全部来自该项，也不证明其余队列已有界或 A1 完成。4x 回放升至 5.473 秒但仍低于原 30 秒，不能只展示下降指标。Host 97/97、真实 socket 信用、Host deactivation、原分页投影（writer 27/27、Host batch 10/10）、typecheck/build 通过；未重跑浏览器或补造真实 Agent/VS Code/平台通过。
+
+下一直接 B1 工作收窄为同一失败负载的分配来源测量：优先复用 Node/V8 现成采样能力，不修改判据或扩建诊断框架；区分实际仍存活对象、累计短命分配与 RSS，不把分配热点自动叫作泄漏。只有测量支持才选下一业务修正；分页重扫目前仍只是源码热点。带 profiler 的数据只用于归因，不替代无额外观测开销的容量验收。原始失败保留，B2 生产接入及最终 A1 至 A6 不移出本次交付。

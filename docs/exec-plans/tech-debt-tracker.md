@@ -37,6 +37,8 @@
 
 同轮只读将下一直接修正定位到 `executionTerminalLineContextTracker.ts`：writeSegment/awaitPendingOperations 对同一只在 dispose 结束的 Promise 反复 race，消费成功不移除未决取消分支 reaction，注册量随消费次数增长。需要完成后解除自身等待且保持 dispose 唤醒/严格信用；尚未量化其对本轮峰值的贡献，不写成全部内存根因或全历史正文泄漏。该文件本轮未改，后续仍沿原 B1，不建立新工具阶段。
 
+2026-09-29 从 `c1de9301` 已修复该取消等待结构：独立登记、finally 注销、dispose 唤醒，原严格 flush/错误/真实 callback 保持；空 flush 1!==0 先红及修后并发/销毁/迟到回调回归通过。未改容量入口和主体，唯一真实 Linux 链样本与前轮 61 份源码仅一文件不同，三档内容/终态/自然退出/清理通过；1x 内存达标，2x/4x 仍 heap/RSS 失败，4x 68.22/142.98 MiB、回放 5.473 秒，整体 exit 1 保留。该已修结构不再排队，下一 B1 是用现成分配采样定位剩余来源并据证据修正，不把单次差值量化为修复收益或继续猜热点；带 profiler 结果不替代容量验收。B2/B3、真实 Agent/Webview/平台、最终 A1 至 A6 仍开放，见容量重评第 10.6 节及原 active 计划。
+
 2026-09-28 S16有限收口：普通completed保存失败复活已清root已在未改业务基线先红；reader/persist窗口补原投影/session身份检查和并发节点级回滚，strict路径保持。Host25次、相关回归/typecheck通过，独立review无阻塞，见生产接入31.15。剩余为完整reset/reload状态替换仲裁、首次pending等待后callback、新业务准入、完整template apply，以及原session同步释放后等待旧Runtime delete再外层发exit的reader/UI身份竞态；本轮仅验证template prepare及较早等待窗口，不承诺所有迟到UI安全。剩余项另按有限输入确认，不自动扩成下一轮矩阵，不恢复全局gate/core锁/root drain，不增工具/native门槛；真实宿主/Agent/跨平台及退出完整性总债务仍开放。
 
 2026-09-27 S15范围收窄：正式最小交付仅普通 `prepareForDeactivation()` 的首次内部Promise与配置缓存，成功/失败都复用，不重复保存/detach/删除；基线并发flush 2!==1先红，修后Host边界13次调用、wiring95/95、checkpoint/typecheck和脚本语法检查通过，独立review无阻塞，reviewer复跑目标测试及diff检查通过。配置同步异常仍在core之前，不视为gate已经关闭。candidate/non-native与reset/reload/root/template实现不变。非永久全流程仍开放：core锁不包含后续state replacement；一次pending集合等待和client epoch不足以覆盖其后callback/operation与新业务准入；root严格delete失败保留不能换成ordinary批量best-effort，全局drain也会不当地等待其他root长操作。部分attach/snapshot跟踪只是待实证源码观察。试作的core锁、临时gate与root全局drain已撤回，不算交付或验证证据；后续须按31.14固定输入围绕原binding、定向责任和完整替换顺序验收，不关闭退出完整性总债务。

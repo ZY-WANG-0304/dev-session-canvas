@@ -18,14 +18,17 @@
 - [x] (2026-09-28) 从 `d432bf89` 接通具名 Host 页消费信用；旧真实 socket 暂停 Host 仍推送 96 条 raw 事件先红，修后单页在途及 97 事件无损、控制/其他会话进展、compact/重连和取消隔离通过，设计见第 10.3 节。
 - [x] (2026-09-28) 从 `52ff49bc` 收敛 Host/Webview 水位通知为单在途与最新待发；旧 Host 无回执 1000 条先红，修后单条及最新 revision、标题、生命周期、重附着和投递失败回归通过，浏览器 8/8；不改正文/最终应用契约，设计见第 10.4 节。
 - [x] (2026-09-28) 从 `f24a84f0` 分离 owned 消费解析屏障与完整快照，取得实际消费序列化先红并保持最终保存/错误契约；真实 Linux provider/socket/Host 固定负载各一次对照，序列化 1616→4 次、内容/终态/清理通过；current 2x/4x 内存仍超限，见第 10.5 节。
-- [ ] 修正实际 Host line-context 的共享未决取消 Promise 累积：已完成等待须解除自身取消责任，保留 dispose 唤醒和严格消费信用；再核对同链剩余超预算分配。本轮不改该文件或追加 native 重跑，未将内存峰值全部归因于这项，B1/A1 保持开放。
+- [x] (2026-09-29) 从 `c1de9301` 修正实际 Host line-context 的共享未决取消 Promise 累积：先红 1!==0，修后独立登记随在途释放、销毁仍唤醒；原固定实际链唯一新 current 内容/终态/清理通过，2x/4x 内存仍失败，见设计第 10.6 节。
+- [ ] 对同一失败负载用 Node/V8 现成采样测量剩余分配来源，区分存活对象、短命分配与 RSS；据测量选择必要产品修正，不再仅凭源码热点推断峰值原因。profiler 样本不作为容量验收，不扩建工具或放宽原预算。
 - [x] (2026-09-28) 本轮结果/残余债务已同步，独立 review 的字节校验问题已复现并修复、复核无新阻塞，以本地提交交付该增量；F-04 未整体通过，计划保持 active，不 push/PR。
 
 ## 意外与发现
 
+2026-09-29：取消登记原结构由空 flush 后 1 个未决 reaction 直接复现，修后真实 parser/并发/错误/dispose 等待全部按责任释放。一次同负载 current 的额外 heap/RSS 为 43.63/75.38、67.73/134.03、68.22/142.98 MiB，仅第一档通过；4x 仍超 64/128 MiB，回放 5.473 秒低于 30 秒但高于前轮 4.655 秒。没有分配栈或存活对象来源证据，不能把下降差值全算作取消结构贡献，更不能据此继续猜测修正。
+
 本轮实际 owned 消费逐批调用强制快照 flush；替换为只等待真实 parser 的 drain 后，实际 provider 对照序列化累计 1616 次降至 4 次，耗时 7590.04ms 降至 39.75ms。但 current 2x/4x heap/RSS 仍超限，4x 为 99.14/167.45 MiB，高于同拓扑 baseline 的 76.77/152.77 MiB；不能用工作减少推断峰值下降。分页仍逐页完整校验相关段并重复 JSON 解析/编码，是待归因路径，不是已证明泄漏。本轮三档采样未分别归因生产、Host 和 replay 的峰值。
 
-只读核对发现 line-context 在每次 writeSegment/awaitPendingOperations 中对同一长期未决 disposedSignal.promise 做 Promise.race；消费胜出不会解除另一分支的 reaction，注册随生命周期累计，直至 dispose 才结束。正文 replaySegments、lineCwds、journal cache 有限不能替代这项取消结构的边界。下一直接修正已收窄，不把它未经测量量化为整个峰值来源。
+2026-09-28 的只读核对发现 line-context 在每次 writeSegment/awaitPendingOperations 中对同一长期未决 disposedSignal.promise 做 Promise.race；消费胜出不会解除另一分支的 reaction，注册随生命周期累计，直至 dispose 才结束。正文 replaySegments、lineCwds、journal cache 有限不能替代这项取消结构的边界。该项于 2026-09-29 修复，但不将其量化为整个峰值来源。
 
 输入版本 `terminalSessionJournal.ts` 的 `commitCheckpointOnWriteChain()` 调用全量 verifier，而它收集所有 events/checksums/recordByteEnds；这是正常 live 操作，并非仅崩溃恢复。`pendingWrites` 和 `writeChain` 的字符串闭包不受 1 MiB 事件缓存限制。原新 provider 的 `consumeOwnedOutput()` 等 tracker，但不等 journal 写入；普通 socket 写也没有统一等待背压。前两处已按本计划修复，代码事实不等于已测 OOM。
 
@@ -38,6 +41,10 @@
 通知合并的独立 review 命中同 readId 重附着：relay 可返回旧 descriptor，页面对此不执行新 reader 的初始强制拉取，清掉较新 pending 会遗失唤醒。最终实现保留同身份通知信用，于 snapshot 后显式合并当前 session revision/title；原 receipt 有效但重复无效，frame/执行身份替换后的旧 receipt 无效。这样重复 attach 也不绕过单在途限额。另保留原通用 postMessage 的 void 契约，只让提示取得原投递 Promise，避免把其他 catch 续体改成等待投递。stock node-pty 的公共 pause 不足以证明退出 drain，故当前生产源有界化不能靠简单暂停补丁关闭。
 
 ## 决策记录
+
+2026-09-29 / Codex：类内独立取消登记只存当前在途等待，正常/异常完成均注销；不引入通用框架、并发限额或超时。已销毁后不注册但仍观察 work，flush 原拒绝检查和 write callback/终端身份检查不变。先用直接登记计数验证结构，修后沿前轮未改入口/负载/预算取得一次实际链对照，不重跑旧版、不推定本项解释全部内存超限。
+
+2026-09-29 / Codex：唯一容量对照仍失败后停止本轮 native 运行。下一以现成分配采样为归因证据，不直接改分页校验、不以 GC 后数值替换峰值；本轮不启动 profiler，更不据局部绿色关闭 B1 或提前默认启用 B2。
 
 2026-09-28 / Codex：两次固定实际链样本完成后停止重跑，保留原 64/128 MiB 和 30 秒门槛。重复序列化修正可独立交付，但 current 内存失败仍是 B1 直接产品阻塞；下一工作围绕同链分配归因与必要修正，不先让旧模拟探针变绿。B2 的实际启动接线已经源码定位，不能通过默认开启不完整 Linux 候选来宣称 B1 或跨平台交付。
 
@@ -60,6 +67,8 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 2026-09-28 / Codex：选定 Host 独立订阅信用，不借用 editor/panel reader；正文页后等待严格 line-context flush，状态同样受信用约束但不因普通 chunk 触发额外全画板保存。正常退役保留游标来源，而 delete RPC 不等其调用方待发的批次 ACK。断连释放旧责任；可读范围内恢复原消费 revision，已合法 compact 的旧游标具名拒绝并显式重建 checkpoint 基线，不追认缺失业务事件已消费。重连另行重新打开 Webview reader；一般损坏不套用该回退。这些均为本次传输改动的直接正确性要求，不新增工具门槛。
 
 ## 结果与复盘
+
+2026-09-29 的增量只改行上下文取消等待：完成/失败注销、dispose 唤醒、严格 flush 拒绝及原顺序保持，未加框架。结构先红/修后回归、Host 97/97、socket 信用、Host deactivation、分页 writer 27/27 与 Host batch 10/10、typecheck/build 均通过，独立 review 未发现直接缺陷。唯一实际链样本三档内容/终态/自然退出/清理通过，整体因 2x/4x 内存超限 exit 1；实际 Supervisor 序列化仍仅 4 次。B1 继续 active，剩余分配来源需测量，真实多会话/Agent/Webview/平台及 B2/B3/最终验收不削减。
 
 新增严格 drain 并仅替换两处普通 owned consume，Supervisor journal 写入信用、final/attach/checkpoint/保存保持；Tracker、Supervisor 82/82、Host 97/97、原分页完成与 writer 27/27、Host batch 10/10、journal、checkpoint、socket信用、client 24/24、typecheck/build 通过。真实 Linux Terminal 两次各三档的内容/终态/自然退出/清理通过、每次仅一个主体；修后生产消费 3.260/1.495/2.986 秒，回放 1.092/2.263/4.655 秒，但仅 1x 内存达标，2x/4x 仍失败。该增量消除明确成本，不关闭 A1，也不替代真实 Agent/VS Code/Webview/平台验收。
 
@@ -89,6 +98,8 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 本轮 drain 回归执行 `node scripts/test/test-serialized-terminal-state-tracker.mjs`、`node scripts/test/test-supervisor-execution-owner-wiring.mjs`、`node scripts/test/test-host-execution-owner-wiring.mjs`。固定实际链命令为 `node --expose-gc scripts/diagnostics/audit-owned-runtime-capacity.mjs --baseline-ref=f24a84f0 --output .debug/owned-runtime-capacity-baseline-first-20260928` 及不带 baseline-ref、output 为 `.debug/owned-runtime-capacity-current-first-20260928` 的 current 命令；这两次已经运行，不再以相同目录或重跑覆盖。运行前可用 `--preflight` 仅校验资产/加载实际入口，不启动 provider；native 要求精确 Linux x64/glibc、Node 25.6.0 及原已校验资产，`npm run build` 会删除 dist，资产需按原 `linux-execution-candidate-assets.mjs import` 恢复。其他平台不以此入口代验。
 
+2026-09-29 执行 `node scripts/test/test-execution-terminal-line-context-tracker.mjs` 取得修改前先红与修改后绿色，其他回归见结果段。固定样本命令 `node --expose-gc scripts/diagnostics/audit-owned-runtime-capacity.mjs --output .debug/owned-runtime-capacity-cancellation-first-20260929` 已运行一次，exit 1 保留，不自动重试或覆盖。下一归因使用现成 Node/V8 profiler 时先冻结其观测范围与单次负载，不新增工具验证门槛；观测开销污染的内存数字不得替换这次无 profiler 结果。
+
 ## 验证与验收
 
 保留原损坏、连续 revision、双代 fallback、读取/删除互斥断言。验证空间改进须有结构性无全量持有证据及固定增长负载，不只观察一次 RSS。校准/新旧基线/修后结果分别保存；输入、ACK、实际终端内容与公平性不能只看末尾 marker。不得把 no-PTY 实际模块测试当作实际 socket/Host/Webview 整链，也不得把浏览器 Agent 标签当真实 CLI。
@@ -113,6 +124,8 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 ## 接口与依赖
 
+行上下文内部 `awaitOperationOrDisposal(operation: Promise<void>): Promise<void>` 为每个正在等待的操作注册独立取消责任，finally 释放；不改变公共 API，集合不保留完成历史，也不宣称任意并发下绝对常数。
+
 `SerializedTerminalStateTracker.drain(): Promise<void>` 只承诺调用前已接受的解析工作及先前 operation 完成，不承诺新快照、完整 EOF 或页面应用；错误和 disposed 严格拒绝。最终/附着/修改/checkpoint 的旧 flush 语义保持。实际链脚本只记录流式 hash/计数和固定结果，不修改旧诊断设施或历史失败。
 
 2026-09-28 的传输决策新增 `terminalHostOutputCreditV1` 能力、subscribe 的 `hostOutputCredit: journal-pages-v1` 及独立批次 ACK；旧模式语义不变。`RuntimeSupervisorClient` 只在原 socket 的异步 Host 消费完成后返信用。`ExecutionTerminalLineContextTracker.flush()` 严格等待既有操作并区分错误/取消；Host 身份失效不能记为成功消费。正常退役由未确认订阅游标保护 journal，但不把 Host 信用加入会互等的 owned reader completion。
@@ -130,3 +143,5 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 最终复核补记：同身份重复 attach 不重置提示信用，`notification-reattach-final.log` 保留该简化后的回归；frame/执行替换仍隔离旧 receipt。`typecheck-closeout.log`、`build-closeout.log` 为最终共享树检查，上一轮中途返回类型失败及原绿色日志不覆盖。
 
 修订记录（2026-09-28，解析消费）：实际路径先红后分离 drain/快照；证据在 `.debug/runtime-consumption-drain-20260928/`，旧缓存 live 断言首次失败保留。真实链两个 `owned-runtime-capacity-*-first-20260928` 目录保留首次 exit 1 与全部成功/失败事实，清理首报和本方资源分别核对。未新增当前页面浏览器、真实 Agent 或跨平台通过；生产启动的 profile/generation/冷启动链待 B2 接通，当前阶段先处理已测 B1 超限，不另开诊断编号。
+
+修订记录（2026-09-29，取消等待）：修复直接无界登记并保留严格消费语义；红绿日志在 `.debug/runtime-line-context-cancellation-20260929/`，唯一实际链输入与结果在 `.debug/owned-runtime-capacity-cancellation-first-20260929/`。仍有 2x/4x 内存失败，下一仅针对实际分配来源取证；不继续盲目修热点、不加诊断框架、不覆盖前轮失败。

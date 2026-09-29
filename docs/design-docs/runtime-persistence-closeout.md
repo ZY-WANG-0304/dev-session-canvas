@@ -17,14 +17,14 @@ related_plans:
   - docs/exec-plans/active/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/active/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
-updated_at: 2026-09-28
+updated_at: 2026-09-29
 ---
 
 # Runtime Persistence 有限收尾与完成定义
 
 ## 1. 状态与目的
 
-2026-09-28，用户先要求暂停自动追加阶段，随后明确不承担清单确认，要求代理依据重构目标作出判断。本文件据此收口为已选定的工程完成定义与有限工作顺序，不再等待用户批准工程清单或选择技术预算。最初核对基线为 `ba2c148b`，草案保存在 `2d375606`，工程裁决保存在 `8dd82629`。其后已按既定顺序启动 B1，过程见 `runtime-persistence-capacity-closeout` active 计划；局部修复不代表整体容量通过，最新同预算对照 RSS 达标但 heap 仍超限，状态保持验证中。没有新增 runner 或发布动作。
+2026-09-28，用户先要求暂停自动追加阶段，随后明确不承担清单确认，要求代理依据重构目标作出判断。本文件据此收口为已选定的工程完成定义与有限工作顺序，不再等待用户批准工程清单或选择技术预算。最初核对基线为 `ba2c148b`，草案保存在 `2d375606`，工程裁决保存在 `8dd82629`。其后已按既定顺序启动 B1，过程见 `runtime-persistence-capacity-closeout` active 计划；局部修复不代表整体容量通过，2026-09-29 最新实际链同预算样本 2x/4x 的 heap/RSS 仍超限，状态保持验证中。没有新增 runner 或发布动作。
 
 原始重点是 F-04 运行期容量与恢复成本、F-05 已结束历史进入画板。退出完整性是后来明确批准的独立正确性交付，必须完成，但不能以无限增加局部阶段替代总体交付。当前产品方向未发生根本变化，推进重心却过度集中于退出诊断与局部接线，F-04 整体收口落后。
 
@@ -37,7 +37,7 @@ updated_at: 2026-09-28
 | F-04 周期传输 | 独立 checkpoint 刷新，不再为健康 live stream 周期重传完整后缀；见 `runtime-checkpoint-only-refresh.md` | 首次恢复和总回放时间已收口 |
 | F-04 常驻缓存与单次读取 | Supervisor 缓存限制为 1 MiB 编码字节/2048 事件；新能力 live Host/Webview 消费驱动分页，Host 不驻留完整后缀；见 `runtime-journal-bounded-cache.md`、`runtime-paged-terminal-projection.md` | 该预算就是整体 RSS 上限、全部队列已受限 |
 | F-04 新能力完成路径 | 当前读者从原 Supervisor 分页收尾，避免完整终态聚合；见 `runtime-paged-completion.md` | 旧协议/混合订阅、扫描与总恢复成本已消除 |
-| F-04 局部修复 | live checkpoint 校验摘要、owned journal 写入信用、64 KiB 分页扫描；新协商 Supervisor/Host 单页信用及实际 line-context flush；Host/Webview 通知合并；owned 解析消费不再逐批完整序列化；见 `runtime-persistence-storage-reevaluation.md` 第 10 节 | 旧生产者/旧订阅/旧页面全部有界；整体 heap/RSS 已达标；退出候选已经生产启用 |
+| F-04 局部修复 | live checkpoint 校验摘要、owned journal 写入信用、64 KiB 分页扫描；新协商 Supervisor/Host 单页信用及实际 line-context flush；Host/Webview 通知合并；owned 消费不再逐批序列化，行上下文取消登记不再累计；见 `runtime-persistence-storage-reevaluation.md` 第 10 节 | 旧生产者/旧订阅/旧页面全部有界；整体 heap/RSS 已达标；退出候选已经生产启用 |
 | F-05 新路径 | Runtime completed 只保存轻量节点、配置与退出状态；重开不恢复正文或自动执行，明确可识别的旧内联记录已处理；见 `runtime-completed-no-history.md` | 当前页面可以丢尾；可推断并删除来源不明的旧 serialized-only 记录 |
 | 退出完整性实现增量 | 两种 owner、内容消费与逐 reader 结算、最终应用屏障、保存与失败责任已有受控模块实现；Linux 正式 provider/PTY 有有限业务证据；见生产接入设计第 17 至 31 节 | 真实 Agent、实际 Webview、macOS/Windows、packaged 产品路径已全部通过 |
 | Host 状态保护 | S13/S14 永久退出旧写者屏障、S15 首次退出结果复用、S16 普通 completed 陈旧回滚/清理保护；S16 有先红及 25 次 Host 回归 | template prepare 等于完整 apply；所有等待窗口或状态替换竞态均已解决 |
@@ -62,7 +62,7 @@ F-04 的工程判据不只是一轮负载没有超限：当前支持路径的缓
 
 后续从 `f24a84f0` 分离 owned 解析消费与快照物化，真实 Linux provider/PTY/socket/受控 Host 的同输入 baseline/current 各一次对照完成。累计序列化 1616→4 次，内容、终态、自然退出及清理通过；current 1x 内存达标，2x/4x 仍超原 64/128 MiB，4x 额外 heap/RSS 为 99.14/167.45 MiB，不能宣称整体峰值改善。该受控单 Terminal 链并非实际 VS Code/Agent，旧模块探针失败也不改。下一直接容量工作是同链剩余分配归因与必要修正；分页逐页重新校验整个相关段是源码事实，尚未量化其峰值贡献，不新增通用工具门槛。
 
-只读定位已将下一 B1 修正收窄为 Host 行上下文的取消等待：同一长期未决 disposedSignal 被重复 Promise.race，work 完成不能注销另一分支，注册在 dispose 前持续累计。消除该结构时必须保留真实解析屏障和销毁取消，不量化冒称本轮全部内存根因，也不新增通用取消框架。
+2026-09-29 已修复 Host 行上下文的取消等待累积：独立登记只存当前在途等待，完成/失败后移除，dispose 唤醒且 strict flush 仍拒绝；先红及真实 parser/并发/迟到回调回归通过。原固定入口唯一新样本的内容/终态/清理通过，但 2x/4x 仍超预算，4x 额外 heap/RSS 为 68.22/142.98 MiB，整轮保留 exit 1。单次下降不量化为该修复的全部贡献，也不关闭 B1。下一工作用 Node/V8 现成采样定位同链剩余分配，区分存活对象、短命分配与 RSS，再选择必要产品修正；不把 profiler 开销下的样本当容量验收，不扩工具框架或削减既定验收。
 
 B2 生产接线已确认的缺口是：扩展入口未注入 owner/profile，Host 默认 generation 仍为 terminal-stream-v1，Client/backend 的 detached/systemd 启动与 launcher 未传 execution profile；candidate 的 allowRestart=false 也阻止新 generation 首次启动。已有 Supervisor 入口只覆盖精确匹配的 Linux 资产，不能仅打开开关。后续在同一候选接通两模式的新执行、严格区分首次创建与旧 live 重连/未知结果，并保留跨平台/分发验收；这不是新增研究阶段，也不与 R1 归属迁移混做。
 
