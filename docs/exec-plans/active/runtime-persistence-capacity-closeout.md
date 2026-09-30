@@ -4,6 +4,8 @@
 
 当前决定（2026-09-30）：按用户要求，合并进程样本的额外 heap/RSS 64/128 MiB 只作为观察信号，不再作为 B2 接入门槛；原阈值、数值、断言及 exit 1 原样保留。F-04/B1/A1 仍开放；既有退出计划已完成 B2 profile/generation、Linux namespace 排他及显式 candidate Manager 的 Terminal/Agent 新建启动，candidate bound 不重启，extension 默认仍关闭，snapshot-only 原显式工厂不改。下一接剩余扩展两模式入口与匹配资产。真实分进程、多会话资源/交互预算归 A1，profiler 不默认前置。该决定取代下列原日期记录中的“下一先采样归因”安排，不改历史证据。
 
+当前 B2 依赖进展：实际 extension 的构建期候选选择与 Linux Electron 资产已接通。退出提示覆写、snapshot-only 当前 live 投影及大快照读取丢弃已修，Runtime/editor 已有大输出/终态/重开证据；32.10 的 `snapshot-normalization-fixed` 单选真实 complete/reopen exit 0，90002 行、工件光标 `(6,2)`、5580063 字符快照及 applied 1396/清理通过，旧 exit 1 全部保留，不外推为 OS 全程无新进程追踪。Host 110/110、tracker、journal、checkpoint、typecheck 及补翻译后的 localization 通过。A4 前两轮分别在 Node 12 认证与 custom env 前缀校验失败，零模型请求；第三轮 `command-path-fixed` 创建首个 Codex 节点后候选启动被 superseded，未出现 CLI/provider/输出、未提交执行，exit 1、后七项未跑，根因待定位。不能依据节点存在计算模型请求。A1 分进程多会话预算及候选共享两槽的生产策略仍未完成，不因页面通过关闭 F-04 或把两槽改为产品上限。后文旧“剩余扩展入口”不再要求重复接线。
+
 ## 目标与全局图景
 
 沿现有 Supervisor、journal（可校验的分段终端事件文件）、缓存及分页链，直接修正长期会话下的全量物化或无界积压。用户应能在其他节点高输出或重连追赶时继续操作当前节点；已接受内容仍按顺序可读。不能只得到小消息数字就宣布整体 F-04 完成，真实 socket、Host 与页面证据分别登记。
@@ -12,6 +14,8 @@
 
 ## 进度
 
+- [x] (2026-09-30) B2 已接实际候选扩展与匹配 Electron 资产，Runtime/editor 和修后 snapshot-only 的对应有限完成/真实重开证据分别成立；后者 `snapshot-normalization-fixed` 单选 exit 0，旧 live 投影、夹具字段及真实重开失败均保留。Host 110/110 等回归通过；不是 A1 容量结果，不重跑合并阈值样本。
+- [ ] (2026-09-30) 原 B2/A1 处理候选共享两槽/启动并发一限制，准备实际分进程多会话校准及生产策略；未采集新资源样本，不将有限候选限制升级为产品上限，既定十会话验收不削减。
 - [x] (2026-09-28) 读取有限收尾契约、现有容量脚本与产品链；确认 live checkpoint 完整扫描物化、journal 待写和普通 socket 背压缺口。
 - [x] (2026-09-28) 固定本轮输入、初始工程预算与事实分账，设计见容量重评第 10 节；不新增 D 系列工具。
 - [x] (2026-09-28) checkpoint 先红 34,508,616 bytes retained heap，修后约 100 KiB；保留全部校验与双代语义，独立 review 所见 raw bytes 漏校验先红再补，原 journal 回归及八类损坏负例通过。
@@ -30,6 +34,10 @@
 - [x] (2026-09-28) 本轮结果/残余债务已同步，独立 review 的字节校验问题已复现并修复、复核无新阻塞，以本地提交交付该增量；F-04 未整体通过，计划保持 active，不 push/PR。
 
 ## 意外与发现
+
+2026-09-30 A1 只读定向确认候选的 `ExecutionAuthority.reserve()` 与 `NonNativeExecutionOwner.reserve()` 均沿用 `S1_LIMITS.executions=2`，并限制 starting=1；这是有限候选约束，不是产品已获认可的两会话上限，必须在原 A1/B2 生产策略中处理，不能用两会话成功代证既定十会话。现有真实 Electron smoke 可承接分进程测量，旧合并容量脚本不能直接升格。每会话 1 MiB/2048 缓存、owned 32 KiB payload/256 KiB与16帧在途、单订阅一批/单reader一页等结构限额可直接核对；分角色基线、峰值和真实主体回显仍未采集。
+
+2026-09-30 实际页面证明 reader applied 后仍可能被宿主装饰性退出文本破坏终态；snapshot-only 活着的 PTY 也曾被元数据错误标非live，合法大快照还会因读取端 5 Mi 字符条件丢失并回写降级状态。三项已按生产接入 32.4/32.7/32.10 修正；大快照实际重开单选通过不等于 A1 内存通过，不能把这些直接产品缺口归因于旧合并进程阈值或扩诊断框架。
 
 2026-09-30 的 B2 启动核对确认 registry 恢复可修复 journal stale tail，并非只读；namespace 排他必须先于恢复。claim 以 uid 与 `realpath(storageDir)` 定义、不含 backend，保护 detached/systemd 共用的 registry；本版 Linux 进程持有到退出，不因业务 listener 关闭释放。candidate systemd 改为 `Restart=no`，避免竞争败方反复重启后接管。该有限启动修正不量化 A1 内存，也不证明跨主机、旧 candidate 或真实 systemd 服务验收。
 
@@ -52,6 +60,10 @@
 通知合并的独立 review 命中同 readId 重附着：relay 可返回旧 descriptor，页面对此不执行新 reader 的初始强制拉取，清掉较新 pending 会遗失唤醒。最终实现保留同身份通知信用，于 snapshot 后显式合并当前 session revision/title；原 receipt 有效但重复无效，frame/执行身份替换后的旧 receipt 无效。这样重复 attach 也不绕过单在途限额。另保留原通用 postMessage 的 void 契约，只让提示取得原投递 Promise，避免把其他 catch 续体改成等待投递。stock node-pty 的公共 pause 不足以证明退出 drain，故当前生产源有界化不能靠简单暂停补丁关闭。
 
 ## 决策记录
+
+2026-09-30 / Codex：A1 沿实际 Electron/Host/Supervisor/页面入口，用固定输入先校准共享基线、逐会话和有限瞬时成本，再冻结分角色工程预算及十会话验收；不把 S1 的两会话约束转成新产品上限，也不拿旧假 ACK 交互基准冒充主体回显。尚未启动校准，不提前写入数值或通过结论；当前页面三项直接失败已有有限修后证据，继续原 A4 前提修正及既定验收，不为此另开容量工具阶段。
+
+2026-09-30 / Codex，按原 B2 实际验收直接修页面与两模式接入失败，候选固定构建不静默降级、原失败不改；A1 沿实际分进程拓扑继续验收，当前未采集多会话内存或选定新的数值结论，profiler 不默认前置。
 
 2026-09-30 / Codex，B2 安全首次启动：仅显式 candidate Manager 的新建连接准备获得 `allowRestart:true`；candidate bound 恢复、reader、strict delete 与未知 create 不获得该许可，缺省旧绑定仍解析原 workspace slot。legacy bound 首次连接默认不重启，显式选项及 stock Client 既有内部请求自动重启保留，不承诺全部旧路径完全 no-restart。Linux/Node >=20.8 的 abstract socket claim 在恢复前取得并持到进程退出，candidate systemd `Restart=no`，stock 不改。下一接剩余扩展两模式入口与匹配资产，extension 默认仍关闭、snapshot-only 工厂不改；详见生产接入第 32.1 节，不新增容量或诊断里程碑。
 
@@ -87,6 +99,7 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 ## 结果与复盘
 
+实际候选构建与 Electron 运行已成立，Runtime/editor 有有限页面成功证据；snapshot-only 大快照自读修后，在 `.debug/execution-candidate-a2-a3-20260930-snapshot-normalization-fixed` 取得单选 complete/reopen exit 0，90002 行和最终状态/清理通过，旧失败不改。A4 前两轮认证/命令前提失败零模型请求；第三轮 `command-path-fixed` 创建节点后报候选启动 superseded，未出现 CLI/provider/输出、未提交执行，后七项未跑，不把该相关时序预判为已定位根因。F-04/A1 及共享两槽生产策略仍未完成，不能用页面内容对账替代分进程、多会话资源/交互预算，也不把旧 64/128 MiB 结果追改。
 2026-09-30 的后续 B2 增量补齐 namespace 排他和显式 candidate Manager 新建路由，candidate bound 保留原连接且禁止替代启动。Linux namespace 7/7、启动参数 16/16、Client 28/28、Host 104/104、Supervisor 82/82 及 typecheck/build 通过，详见生产接入第 32.1 节；实际 socket/受控子进程不等于 PTY/Agent 或真实 systemd 服务。extension 默认、snapshot-only 显式工厂、旧 raw/stream 兼容和 R1 边界不变。没有新容量、实际 VS Code/Webview 或其他平台通过；F-04/A1/B2 总体继续开放。
 
 2026-09-30 已完成预算解释和顺序同步，随后原退出计划完成 B2 profile/generation 启动参数链及受控验证，见生产接入第 32 节；没有新增容量通过证据。原合并进程结果/exit 1 仍保留，已完成的取消等待与消费成本修复不重开；F-04/A1 未完成，真实分进程、多会话资源/交互评估仍待生产候选。下一是 B2 安全首次启动和两模式入口，不以 profiler 为门槛，也不默认开启候选。两模式、真实 Agent/Webview/跨平台及 B3/最终 A1 至 A6 要求不变。
@@ -109,11 +122,11 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 本计划只含三个可验证里程碑：真实调用链/预算及先红；直接产品修复与定向验证；相同负载容量和交互结果及总体缺口分账。它们不生成新的子阶段。checkpoint 先红直接禁止其校验构造全历史数组，原正确性回归须继续通过；socket/待写设计只沿已核对链路落实，不引入通用消息框架。
 
-当前按 B1 对 B2 的依赖继续既有生产接入，不新增容量工具里程碑。显式 profile/generation、同 namespace 排他和 candidate Manager 新建路由已接通，正式规则与有限验证见 `docs/design-docs/runtime-exit-integrity-production-integration.md` 第 32、32.1 节及退出 active 计划。剩余扩展两模式入口与匹配资产仍需接通，不靠全局开启重启或默认开关替代准入；candidate bound 不重启，旧路径保留。A1 再按实际各进程和多会话资源模型取得预算/交互证据，B1 不能以依赖已登记而宣布完成。
+当前按 B1 对 B2 的依赖继续既有生产验收，不新增容量工具里程碑。显式 profile/generation、同 namespace 排他、candidate Manager 新建路由、实际 extension 两模式入口及匹配 Linux Electron 资产均已接通，正式规则与有限结果见生产接入第 32 节及退出 active 计划。candidate bound 不重启、旧路径保留、普通构建仍 stock；实际 Agent/跨平台和其余既定验收继续开放。A1 按实际各进程和多会话资源模型取得预算/交互证据，并处理共享两槽限制，B1 不能以依赖已登记或页面单例通过宣布完成。
 
 ## 具体步骤
 
-当前步骤（2026-09-30）由退出 active 计划继续剩余 B2 扩展入口与匹配资产，容量计划保留 A1 未完成。已执行 `npm run test:runtime-supervisor-namespace`、`npm run test:runtime-supervisor-startup-profile`（同时运行 Client 回归）、路径及相关 Host/Supervisor 回归、typecheck/build；namespace 只使用测试临时目录、真实 Linux socket 和受控子进程，不启动 PTY/Agent，systemd 只检查 unit 参数。最终结果见生产接入第 32.1 节，不证明 extension 默认启用、真实 systemd 服务或产品整链验收。当前不运行 profiler、不重跑合并容量样本、不改原 64/128 MiB 阈值。
+当前步骤（2026-09-30）由退出 active 计划沿已接通 B2 候选完成原真实 Agent 与其他必要验收；32.10 snapshot-only 固定输入的真实 complete/reopen 已单选通过，不重复原页面失败或扩展接线。容量计划保留 A1 未完成：先登记实际拓扑、固定输入、共享/逐会话成本及观测范围，处理候选共享两槽后再完成既定多会话判定；尚未运行校准，不预填预算结论。此前 namespace/startup/profile 回归只证明各自范围，不代证默认启用、真实 systemd 或产品整链。当前不运行 profiler、不重跑合并容量样本、不改原 64/128 MiB 阈值。
 
 以下命令与运行记录保留已经执行的 B1 工作，不作为当前自动执行队列。
 

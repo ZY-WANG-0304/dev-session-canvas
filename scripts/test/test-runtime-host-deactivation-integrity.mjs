@@ -32,6 +32,9 @@ const bundled = await esbuild.build({
       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
       export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
       export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
+      export { RuntimeTerminalReadRelay } from './extensions/vscode/dev-session-canvas/src/panel/runtimeTerminalReadRelay';
+      export { namespaceCanvasObjectId } from './extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition';
+      export { workspace as vscodeWorkspace } from 'vscode';
     `,
     resolveDir: cwd,
     sourcefile: 'runtime-host-deactivation-integrity.ts'
@@ -62,7 +65,8 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   createRequire(import.meta.url), loaded, loaded.exports,
   path.resolve('scripts/test/runtime-host-deactivation-integrity.cjs'), path.resolve('scripts/test')
 );
-const { CanvasPanelManager, RuntimeSupervisorClient, TerminalAvailableNotifications } = loaded.exports;
+const { CanvasPanelManager, RuntimeSupervisorClient, TerminalAvailableNotifications,
+  RuntimeTerminalReadRelay, namespaceCanvasObjectId, vscodeWorkspace } = loaded.exports;
 
 function sleep(ms = 0) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -925,6 +929,381 @@ async function testReaderWaitCannotPersistOrNotifyAfterRootChanges(mode) {
   }
 }
 
+async function testCompletedDeleteWaitCannotCloseOrNotifyReplacement(kind, replace, replacementPoint = 'delete') {
+  const f = await makeRootHost();
+  if (kind === 'agent') makeRootAAgent(f);
+  const deletion = deferred();
+  const deletionStarted = deferred();
+  const messages = [];
+  const closedReaders = [];
+  const abnormalNotifications = [];
+  const readers = new Map();
+  const readerKey = `editor:${kind}:${f.node.id}`;
+  const successor = { ...makeSession(), sessionId: 'delete-successor', runtimeSessionId: 'delete-successor',
+    terminalProjectionMode: 'terminal-stream-v1', terminalStreamPaged: true, terminalAuthorityId: 'successor-authority' };
+  const successorNode = {
+    ...structuredClone(f.node), title: 'Replacement during completed delete',
+    metadata: { [kind]: { ...f.node.metadata[kind], runtimeSessionId: 'delete-successor' } }
+  };
+  const installReplacement = () => {
+    f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(node => node.id === f.node.id ? successorNode : node) };
+    f.host.getExecutionSessions(kind).set(f.node.id, successor);
+    f.host.bindRuntimeSession(f.node.id, kind, 'delete-successor', '/controlled/runtime', 'legacy-detached');
+    readers.set(readerKey, 'successor-reader');
+  };
+  const lifecycle = { surface: 'editor', mode: 'active', generation: 1, frameId: 'controlled-frame' };
+  Object.assign(f.host, {
+    executionCandidateProfile: 'linux-owner-v1-candidate',
+    activeSurface: 'editor',
+    isInteractiveSurface: () => true,
+    getSurfaceMessageWebview: () => ({}),
+    getSurfaceLifecycleIdentity: () => lifecycle,
+    postExecutionExitWithFinalSnapshot: CanvasPanelManager.prototype.postExecutionExitWithFinalSnapshot,
+    postMessage: message => messages.push(message),
+    disposeAgentFileActivitySession: async () => undefined,
+    markAndNotifyAgentAbnormalInterruption: async nodeId => {
+      f.host.setExecutionAttentionPending('agent', nodeId, true);
+      abnormalNotifications.push(nodeId);
+    },
+    terminalReadRelay: {
+      closeMatching() {},
+      completeRemote: async () => undefined,
+      getCompleted: () => replacementPoint === 'after-snapshot'
+        ? { sessionId: 'session-1', authorityId: 'original-authority', revision: 2 } : undefined,
+      getUnacknowledgedCompletedRead: () => undefined,
+      close: key => {
+        if (readers.has(key)) closedReaders.push(readers.get(key));
+        readers.delete(key);
+      }
+    }
+  });
+  f.session.terminalProjectionMode = 'terminal-stream-v1';
+  f.session.terminalStreamPaged = true;
+  f.session.terminalAuthorityId = 'original-authority';
+  f.client.deleteSessionStrict = request => {
+    f.deletes.push(request.sessionId);
+    deletionStarted.resolve();
+    return { first: deletion.promise, current: () => undefined };
+  };
+  if (replacementPoint === 'after-apply') {
+    const applySnapshot = f.host.applyRuntimeSupervisorSnapshot;
+    f.host.applyRuntimeSupervisorSnapshot = async (...args) => {
+      await applySnapshot.apply(f.host, args);
+      installReplacement();
+    };
+  } else if (replacementPoint === 'after-snapshot') {
+    const postSnapshot = f.host.postExecutionSnapshot;
+    f.host.postExecutionSnapshot = async (...args) => {
+      await postSnapshot.apply(f.host, args);
+      installReplacement();
+    };
+  }
+  f.client.options.onSessionState({
+    kind, sessionId: 'session-1', live: false, lifecycle: kind === 'agent' ? 'error' : 'closed',
+    runtimeBackend: 'legacy-detached', output: '', cols: 119, rows: 41,
+    terminalStreamPaged: true, terminalAuthorityId: 'original-authority',
+    terminalRevision: 2, outputSequence: 2
+  });
+  await Promise.race([
+    deletionStarted.promise,
+    f.host.waitForPendingRuntimeSupervisorStateCallbacks().then(() => {
+      assert.fail(`completed callback did not wait for delete: ${JSON.stringify(f.diagnostics)}`);
+    })
+  ]);
+  assert.equal(f.persisted.filter(entry => entry.options.reason === 'runtime-supervisor-completed-snapshot').length, 1);
+  assert.equal(f.host.getExecutionSessions(kind).has(f.node.id), false,
+    'original session is retired before its remote delete returns');
+
+  if (replace && replacementPoint === 'delete') installReplacement();
+  deletion.resolve({ kind: 'legacy-acknowledged' });
+  await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+
+  assert.deepEqual(f.deletes, ['session-1']);
+  if (replace) {
+    assert.strictEqual(f.host.state.nodes.find(node => node.id === f.node.id), successorNode);
+    assert.strictEqual(f.host.getExecutionSessions(kind).get(f.node.id), successor);
+    assert.equal(f.host.runtimeSessionBindings.get(f.host.buildRuntimeSessionBindingKey(
+      kind, 'delete-successor', '/controlled/runtime', 'legacy-detached')).runtimeSessionId, 'delete-successor');
+  } else {
+    assert.equal(f.host.getExecutionSessions(kind).has(f.node.id), false);
+    assert.equal(f.host.state.nodes.find(node => node.id === f.node.id).metadata[kind].terminalHistoryDiscarded, true);
+  }
+  assert.deepEqual({
+    closedReaders,
+    abnormalNotifications,
+    errorNotifications: messages.filter(message => message.type === 'host/error').length,
+    finalNotifications: messages.filter(message =>
+      message.type === 'host/executionSnapshot' || message.type === 'host/executionExit')
+      .map(message => ({ type: message.type, executionSessionId: message.payload.executionSessionId }))
+  }, {
+    closedReaders: [], abnormalNotifications: kind === 'agent' && !replace ? [f.node.id] : [],
+    errorNotifications: kind === 'agent' && !replace ? 1 : 0,
+    finalNotifications: replace ? [] : [
+      { type: 'host/executionSnapshot', executionSessionId: 'session-1' },
+      { type: 'host/executionExit', executionSessionId: 'session-1' }
+    ]
+  }, 'a completed delete continuation can only finish notifications for its original execution');
+  if (replace) assert.equal(readers.get(readerKey), 'successor-reader');
+}
+
+async function testFullRootTemplateResetCannotLoseNewExecutionDuringDelete(mode) {
+  const f = await makeRootHost();
+  for (const [node, session, root] of [[f.node, f.session, f.rootA], [f.nodeB, f.sessionB, f.rootB]]) {
+    f.host.terminalSessions.delete(node.id);
+    f.host.unbindRuntimeSession(session.runtimeSessionId, '/controlled/runtime', 'terminal', 'legacy-detached');
+    node.id = namespaceCanvasObjectId(root.workspaceRootPath, node.id);
+    f.host.terminalSessions.set(node.id, session);
+    f.host.bindRuntimeSession(node.id, 'terminal', session.runtimeSessionId, '/controlled/runtime', 'legacy-detached');
+  }
+  const foldersBefore = vscodeWorkspace.workspaceFolders;
+  const deletion = deferred();
+  const deletionStarted = deferred();
+  const creates = [];
+  let operation;
+  let admittedNodeId;
+  let admittedSession;
+  let newRootBNode;
+  Object.assign(f.host, {
+    executionCandidateProfile: 'linux-owner-v1-candidate',
+    getAgentCliConfig: () => ({ defaultProvider: 'codex' }),
+    getTerminalShellPath: () => '/controlled/shell',
+    getTerminalShellArgs: () => [],
+    getTerminalScrollback: () => 1000,
+    getExecutionNodeCwd: node => node.metadata.terminal.cwd,
+    resolveExecutionEnvironment: async () => ({}),
+    getPreferredRuntimeSupervisorClient: async () => ({
+      client: f.client, backend: f.host.getRuntimeHostBackend(), runtimeStoragePath: '/controlled/runtime'
+    })
+  });
+  f.client.supportsExecutionCandidateProfile = profile => profile === 'linux-owner-v1-candidate';
+  f.client.supportsTerminalSessionStream = () => true;
+  f.client.supportsTerminalPagedRead = () => true;
+  f.client.supportsTerminalPagedCompletion = () => true;
+  f.client.subscribeSession = async () => undefined;
+  f.client.deleteSessionStrict = request => {
+    f.deletes.push(request.sessionId);
+    deletionStarted.resolve();
+    return { first: deletion.promise, current: () => undefined };
+  };
+  f.client.createSession = async request => {
+    creates.push(request);
+    return {
+      kind: request.kind, sessionId: request.sessionId, live: true, lifecycle: 'live',
+      runtimeBackend: 'legacy-detached', runtimeGuarantee: 'best-effort',
+      displayLabel: request.displayLabel, launchMode: request.launchMode,
+      shellPath: request.launchSpec.file, cwd: request.launchSpec.cwd,
+      cols: request.launchSpec.cols, rows: request.launchSpec.rows, scrollback: request.scrollback,
+      output: '', outputSequence: 0, terminalStreamPaged: true,
+      terminalAuthorityId: 'new-root-a-authority', terminalRevision: 0
+    };
+  };
+  const start = async nodeId => {
+    await f.host.startTerminalSessionWithSupervisor(nodeId, 80, 24);
+    admittedNodeId = nodeId;
+    admittedSession = f.host.terminalSessions.get(nodeId);
+    assert.equal(creates.length, 1);
+    assert.equal(admittedSession?.runtimeSessionId, creates[0].sessionId);
+  };
+  if (mode === 'same-id-replacement') {
+    const prepare = f.host.prepareWorkspaceRootCanvasForTemplateReset;
+    f.host.prepareWorkspaceRootCanvasForTemplateReset = async (...args) => {
+      await prepare.apply(f.host, args);
+      await start(f.node.id);
+    };
+  }
+  const template = {
+    id: 'controlled-root-reset', name: 'Controlled root reset', category: 'builtin',
+    createdAt: '2026-09-30T00:00:00.000Z', updatedAt: '2026-09-30T00:00:00.000Z',
+    nodes: [{ kind: 'note', title: 'Reset note', position: { x: 0, y: 0 },
+      size: { width: 320, height: 240 }, metadata: { note: { content: 'Replacement root' } } }],
+    edges: []
+  };
+  try {
+    vscodeWorkspace.workspaceFolders = [f.rootA, f.rootB].map(root => ({
+      name: root.title, uri: { fsPath: root.workspaceRootPath }
+    }));
+    operation = f.host.applyCanvasTemplateRecord({ template }, {
+      reset: true, targetGroupId: f.rootA.id, visibleCenter: { x: 200, y: 200 }
+    }).then(value => ({ value }), error => ({ error }));
+    await Promise.race([deletionStarted.promise, operation.then(result => {
+      if (result.error) throw result.error;
+      assert.fail('full template reset did not wait for its original root execution delete');
+    })]);
+    f.emitRootBOutput(' during full root A template reset');
+    const stateBefore = structuredClone(f.host.state);
+    if (mode === 'new-execution') {
+      const created = f.host.applyCreateNode('terminal', { x: 100, y: 100 }, { targetGroupId: f.rootA.id });
+      assert.equal(created?.kind, 'terminal', 'real Host creation admits a new node while root cleanup waits');
+      await start(created.id);
+    } else if (mode === 'completed') {
+      newRootBNode = f.host.applyCreateNode('note', { x: 100, y: 100 }, { targetGroupId: f.rootB.id });
+      assert.equal(newRootBNode?.kind, 'note', 'other roots remain open to actual Host creation');
+      f.client.options.onSessionState({
+        kind: 'terminal', sessionId: 'session-1', live: false, lifecycle: 'closed',
+        runtimeBackend: 'legacy-detached', output: 'original tail', cols: 119, rows: 41
+      });
+      await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+      assert.equal(f.host.state.nodes.find(node => node.id === f.node.id).metadata.terminal.terminalHistoryDiscarded, true);
+    } else if (mode === 'root-replaced') {
+      f.host.state = { ...f.host.state, groups: f.host.state.groups.map(group => group.id === f.rootA.id
+        ? { ...group, workspaceRootPath: '/controlled/replacement-root' } : group) };
+    }
+
+    if (mode === 'strict-failure') deletion.reject(new Error('controlled original root deletion failed'));
+    else deletion.resolve({ kind: 'legacy-acknowledged' });
+    const result = await operation;
+    f.emitRootBOutput(' after full root A template reset');
+    assert.equal(f.sessionB.buffer, 'live output during full root A template reset after full root A template reset');
+    assert.strictEqual(f.host.terminalSessions.get(f.nodeB.id), f.sessionB);
+    assert.equal(f.host.state.nodes.find(node => node.id === f.nodeB.id)?.metadata.terminal.runtimeSessionId, 'session-2');
+    assert.deepEqual(f.deletes, ['session-1'], 'only the initially captured execution was deleted');
+    const templateWrites = f.persisted.filter(entry => entry.options?.reason === 'template-applied');
+    if (mode === 'new-execution' || mode === 'same-id-replacement') {
+      const newBindingKey = f.host.buildRuntimeSessionBindingKey(
+        'terminal', creates[0].sessionId, '/controlled/runtime', 'legacy-detached');
+      assert.deepEqual({
+        nodeRetained: f.host.state.nodes.some(node => node.id === admittedNodeId),
+        sessionRetained: f.host.terminalSessions.get(admittedNodeId) === admittedSession,
+        bindingRetained: f.host.runtimeSessionBindings.get(newBindingKey)?.nodeId === admittedNodeId,
+        savedWithoutNewExecution: templateWrites.some(entry => !entry.state.nodes.some(node => node.id === admittedNodeId))
+      }, { nodeRetained: true, sessionRetained: true, bindingRetained: true, savedWithoutNewExecution: false },
+      `full template reset must not remove an admitted execution without deleting it; reset error: ${result.error?.message ?? 'none'}`);
+      assert.match(result.error?.message ?? '', /workspace root changed/);
+      assert.equal(templateWrites.length, 0);
+    } else if (mode === 'completed') {
+      assert.equal(result.error, undefined);
+      assert.equal(result.value.length, 1);
+      assert.equal(f.host.state.nodes.some(node => node.id === f.node.id), false);
+      assert.equal(f.host.terminalSessions.has(f.node.id), false);
+      assert.equal(f.host.state.nodes.some(node => node.id === newRootBNode.id), true);
+      assert.equal(templateWrites.length, 1);
+    } else if (mode === 'strict-failure') {
+      assert.match(result.error?.message ?? '', /Runtime deletion did not complete/);
+      assert.deepEqual(f.host.state, stateBefore);
+      assert.strictEqual(f.host.terminalSessions.get(f.node.id), f.session);
+      assert.equal(templateWrites.length, 0);
+    } else {
+      assert.match(result.error?.message ?? '', /workspace root changed/);
+      assert.equal(f.host.state.groups.find(group => group.id === f.rootA.id).workspaceRootPath, '/controlled/replacement-root');
+      assert.equal(templateWrites.length, 0);
+    }
+  } finally {
+    deletion.resolve({ kind: 'legacy-acknowledged' });
+    if (operation) await operation;
+    for (const session of f.host.terminalSessions.values()) f.host.disposeManagedExecutionSession(session);
+    vscodeWorkspace.workspaceFolders = foldersBefore;
+  }
+}
+
+async function testResetCannotSkipCompletionAcceptedAfterInitialCallbackWait() {
+  const f = await makeRootHost();
+  const storageStarted = deferred();
+  const storageReply = deferred();
+  const openReply = deferred();
+  const authorityId = 'reset-original-authority';
+  const readerKey = `editor:terminal:${f.node.id}`;
+  f.host.state = { ...f.host.state, nodes: [f.node], groups: [] };
+  f.node.groupId = undefined;
+  f.host.terminalSessions.delete(f.nodeB.id);
+  f.host.unbindRuntimeSession('session-2', '/controlled/runtime', 'terminal', 'legacy-detached');
+  Object.assign(f.host, {
+    executionCandidateProfile: 'linux-owner-v1-candidate',
+    getMultiRootWorkspaceFoldersForComposition: () => [],
+    getAgentCliConfig: () => ({ defaultProvider: 'codex' }),
+    terminalReadRelay: new RuntimeTerminalReadRelay(),
+    flushDeferredCanvasStatePersist: async reason => {
+      if (reason === 'host-boundary') {
+        storageStarted.resolve();
+        await storageReply.promise;
+      }
+    }
+  });
+  Object.assign(f.session, {
+    terminalProjectionMode: 'terminal-stream-v1', terminalStreamPaged: true,
+    terminalAuthorityId: authorityId, terminalStreamHealthy: true
+  });
+  f.client.openTerminalRead = () => openReply.promise;
+  f.client.closeTerminalRead = async () => ({ ok: true, settlement: 'recorded' });
+  f.client.deleteSessionStrict = request => {
+    f.deletes.push(request.sessionId);
+    return { first: Promise.resolve({ kind: 'legacy-acknowledged' }), current: () => undefined };
+  };
+  const descriptor = {
+    readId: 'reset-original-reader', sessionId: 'session-1', authorityId,
+    checkpoint: { version: 1, sessionId: 'session-1', authorityId, revision: 0,
+      cols: 119, rows: 41, scrollback: 1000, createdAtMs: 1,
+      serializedState: { format: 'xterm-serialize-v1', data: '', outputSequence: 0 } },
+    headRevision: 2, settlementMode: 'final-application-v1'
+  };
+  const opening = f.host.terminalReadRelay.open(readerKey, f.client, 'session-1', authorityId,
+    'editor', undefined, 'final-application-v1');
+  let resetFinished = false;
+  let resetError;
+  const reset = f.host.resetState().then(() => { resetFinished = true; }, error => {
+    resetFinished = true;
+    resetError = error;
+  });
+  try {
+    await Promise.race([storageStarted.promise, reset.then(() => {
+      throw resetError ?? new Error('reset returned before its controlled storage wait');
+    })]);
+    assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks?.size ?? 0, 0);
+    f.client.options.onSessionState({
+      kind: 'terminal', sessionId: 'session-1', live: false, lifecycle: 'closed',
+      runtimeBackend: 'legacy-detached', output: '', cols: 119, rows: 41,
+      terminalStreamPaged: true, terminalAuthorityId: authorityId,
+      terminalRevision: 2, terminalFinalRevision: 2, outputSequence: 2,
+      capabilities: { terminalReadSettlementV1: true }
+    });
+    assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks.size, 1);
+    assert.equal(f.host.terminalReadRelay.getCompleted(readerKey)?.finalRevision, 2);
+    assert.equal(f.host.state.nodes[0].metadata.terminal.persistenceMode, 'snapshot-only');
+    storageReply.resolve();
+    await sleep(0);
+    const observation = {
+      resetFinished, resetError: resetError?.message,
+      pendingCallbacks: f.host.pendingRuntimeSupervisorStateCallbacks.size,
+      deleteRequests: f.deletes,
+      retainedBindings: f.host.runtimeSessionBindings.size,
+      nodeCount: f.host.state.nodes.length,
+      savedEmpty: f.persisted.some(entry => entry.options?.reason === 'state-reset' && entry.state.nodes.length === 0)
+    };
+    assert.equal(resetFinished && !resetError && observation.pendingCallbacks > 0 &&
+      observation.deleteRequests.length === 0 && observation.savedEmpty, false,
+    `reset must not forget an original Runtime whose accepted completion is still pending: ${JSON.stringify(observation)}`);
+    assert.equal(resetFinished, true, 'a non-permanent reset reports its abort without draining the new callback');
+    assert.match(resetError?.message ?? '', /Runtime session updates are still pending/);
+    assert.equal(f.host.state.nodes.length, 1);
+    assert.strictEqual(f.host.terminalSessions.get(f.node.id), f.session);
+    assert.equal(f.host.runtimeSessionBindings.get(f.host.buildRuntimeSessionBindingKey(
+      'terminal', 'session-1', '/controlled/runtime', 'legacy-detached'))?.nodeId, f.node.id);
+    assert.equal(f.getDisposals(), 0, 'aborting reset keeps the original client available for its accepted callback');
+    assert.equal(observation.savedEmpty, false);
+    assert.deepEqual(f.deletes, []);
+
+    openReply.resolve(descriptor);
+    await opening;
+    await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+    assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks.size, 0);
+    assert.deepEqual(f.deletes, ['session-1'], 'the original completion later performs its own original-session cleanup');
+    assert.equal(f.host.state.nodes[0].metadata.terminal.terminalHistoryDiscarded, true);
+    assert.equal(f.host.runtimeSessionBindings.size, 0);
+    assert.equal(f.persisted.some(entry => entry.options?.reason === 'state-reset'), false);
+
+    await f.host.resetState();
+    assert.equal(f.host.state.nodes.length, 0);
+    assert.equal(f.host.terminalSessions.size, 0);
+    assert.equal(f.host.runtimeSessionBindings.size, 0);
+    assert.equal(f.persisted.filter(entry => entry.options?.reason === 'state-reset' && entry.state.nodes.length === 0).length, 1);
+  } finally {
+    storageReply.resolve();
+    openReply.resolve(descriptor);
+    await opening;
+    await reset;
+    await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+  }
+}
+
 await testFinalFlushProjectsResizeAndKeepsRemoteAlive();
 await testAdmissionRejectsLateTimerAndEvents();
 await testCompletedStateCannotBeReplacedByOldTimer();
@@ -950,4 +1329,17 @@ await testAgentCompletedFailurePreservesConcurrentEdits();
 await testAgentCompletedSuccessCannotDisposeReplacement();
 await testReaderWaitCannotPersistOrNotifyAfterRootChanges('clear');
 await testReaderWaitCannotPersistOrNotifyAfterRootChanges('replace');
+await testCompletedDeleteWaitCannotCloseOrNotifyReplacement('terminal', true);
+await testCompletedDeleteWaitCannotCloseOrNotifyReplacement('terminal', false);
+await testCompletedDeleteWaitCannotCloseOrNotifyReplacement('agent', true);
+await testCompletedDeleteWaitCannotCloseOrNotifyReplacement('agent', false);
+await testCompletedDeleteWaitCannotCloseOrNotifyReplacement('agent', true, 'after-snapshot');
+await testCompletedDeleteWaitCannotCloseOrNotifyReplacement('terminal', true, 'after-apply');
+await testCompletedDeleteWaitCannotCloseOrNotifyReplacement('agent', true, 'after-apply');
+await testFullRootTemplateResetCannotLoseNewExecutionDuringDelete('new-execution');
+await testFullRootTemplateResetCannotLoseNewExecutionDuringDelete('completed');
+await testFullRootTemplateResetCannotLoseNewExecutionDuringDelete('same-id-replacement');
+await testFullRootTemplateResetCannotLoseNewExecutionDuringDelete('strict-failure');
+await testFullRootTemplateResetCannotLoseNewExecutionDuringDelete('root-replaced');
+await testResetCannotSkipCompletionAcceptedAfterInitialCallbackWait();
 console.log('runtime Host deactivation integrity tests passed (flush, admission, stale overwrite, callback tracking, idempotence)');

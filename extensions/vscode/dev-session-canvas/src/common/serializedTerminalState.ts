@@ -23,7 +23,6 @@ export const SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE = [
 export const SERIALIZED_TERMINAL_CHECKPOINT_PROFILES: Readonly<Record<string, string>> = Object.freeze({
   [SERIALIZED_TERMINAL_STATE_FORMAT]: SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE
 });
-const MAX_SERIALIZED_TERMINAL_STATE_DATA_LENGTH = 5 * 1024 * 1024;
 const MAX_VALIDATED_TERMINAL_CHECKPOINT_DATA_LENGTH = 256 * 1024;
 const SERIALIZED_TERMINAL_STATE_WRITE_BATCH_DELAY_MS = 16;
 const SERIALIZED_TERMINAL_STATE_WRITE_CHUNK_CHARS = 32 * 1024;
@@ -81,7 +80,7 @@ export function normalizeSerializedTerminalState(value: unknown): SerializedTerm
     value.outputSequence >= 0
       ? value.outputSequence
       : undefined;
-  if (!format || data === undefined || data.length > MAX_SERIALIZED_TERMINAL_STATE_DATA_LENGTH) {
+  if (!format || data === undefined) {
     return undefined;
   }
 

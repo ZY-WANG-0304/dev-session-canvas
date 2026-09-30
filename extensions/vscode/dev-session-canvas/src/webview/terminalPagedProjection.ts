@@ -13,6 +13,7 @@ export interface TerminalPagedProjectionCallbacks {
   checkpoint: (read: TerminalStreamReadDescriptor, current: () => boolean, done: (applied?: boolean) => void) => void;
   events: (events: TerminalStreamEvent[], current: () => boolean, done: (applied?: boolean) => void) => void;
   exit: (message: string) => void;
+  error?: (message: string) => void;
 }
 
 export class TerminalPagedProjection {
@@ -88,7 +89,7 @@ export class TerminalPagedProjection {
     }
     if (closedError !== undefined) {
       this.stop('terminal-reader-closed');
-      this.callbacks.exit(closedError);
+      (this.callbacks.error ?? this.callbacks.exit)(closedError);
       return;
     }
     this.requestId = undefined;

@@ -4029,6 +4029,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       checkBoundary();
     }
 
+    if (!options.permanentExecutionClose) this.assertRuntimeSupervisorStateCallbacksSettled();
     for (const [nodeId, session] of Array.from(this.agentSessions.entries())) {
       if (session.owner === 'local') {
         this.disposeExecutionSession('agent', nodeId, {
@@ -4066,6 +4067,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     checkBoundary();
     await this.waitForPendingWorkspaceStateUpdates();
     checkBoundary();
+    if (!options.permanentExecutionClose) this.assertRuntimeSupervisorStateCallbacksSettled();
   }
 
   public async resetState(options: { clearAgentCliResolutionCache?: boolean; reason?: string } = {}): Promise<void> {
@@ -4085,6 +4087,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         invalidatePendingExecutionOperations: true
       });
     }
+    this.assertRuntimeSupervisorStateCallbacksSettled();
     if (options.clearAgentCliResolutionCache) {
       this.clearAgentCliResolutionCache();
     }
@@ -5565,12 +5568,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async prepareWorkspaceRootCanvasForTemplateReset(
     rootGroup: CanvasGroupSummary,
-    rootPath: string
+    rootPath: string,
+    assertCurrent?: () => CanvasGroupSummary
   ): Promise<void> {
     const affectedNodeIds = collectWorkspaceRootOwnedNodeIds(this.state, rootPath, rootGroup.id);
     const affectedNodes = this.state.nodes.filter((node) => affectedNodeIds.has(node.id));
 
     for (const node of affectedNodes) {
+      assertCurrent?.();
       this.dropPendingTerminalInitialInput(
         node.id,
         vscode.l10n.t('The workspace root was reset to a template, so the install command was not sent.')
@@ -5696,7 +5701,56 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (options?.reset) {
       if (targetRootGroup && targetWorkspaceRootPath) {
-        await this.prepareWorkspaceRootCanvasForTemplateReset(targetRootGroup, targetWorkspaceRootPath);
+        const rootId = targetRootGroup.id;
+        const rootPath = targetWorkspaceRootPath;
+        const originalNodeIds = collectWorkspaceRootOwnedNodeIds(this.state, rootPath, rootId);
+        const originalNodes = this.state.nodes.filter(node => originalNodeIds.has(node.id));
+        const originalKinds = new Map(originalNodes.map(node => [node.id, node.kind]));
+        const originalExecutions = originalNodes.flatMap(node => {
+          if (!isExecutionNodeKind(node.kind)) return [];
+          const key = this.getExecutionSessionOperationKey(node.kind, node.id);
+          const binding = this.getPersistedLiveRuntimeSessionForNode(node);
+          return [{
+            nodeId: node.id, kind: node.kind, key,
+            session: this.getExecutionSessions(node.kind).get(node.id),
+            owned: this.nonNativeExecutionOwner?.get(key),
+            record: this.nonNativeHostExecutions.get(key),
+            start: this.candidateRuntimeStarts?.get(key),
+            bindingKey: binding ? this.strictRuntimeDeleteKey(binding) : undefined,
+            bindingKeys: new Set(Array.from(this.runtimeSessionBindings).filter(([, value]) =>
+              value.nodeId === node.id && value.kind === node.kind).map(([bindingKey]) => bindingKey))
+          }];
+        });
+        const assertCurrentRoot = (): CanvasGroupSummary => {
+          const currentRoot = (this.state.groups ?? []).find(group => group.id === rootId &&
+            isWorkspaceRootGroup(group) && resolveWorkspaceRootPathForGroup(group) === rootPath);
+          const currentNodeIds = collectWorkspaceRootOwnedNodeIds(this.state, rootPath, rootId);
+          const currentNodes = this.state.nodes.filter(node => currentNodeIds.has(node.id));
+          const changed = !currentRoot || currentNodes.length !== originalNodes.length ||
+            currentNodes.some(node => originalKinds.get(node.id) !== node.kind) ||
+            originalExecutions.some(original => {
+              const node = currentNodes.find(current => current.id === original.nodeId);
+              const binding = node && this.getPersistedLiveRuntimeSessionForNode(node);
+              const session = this.getExecutionSessions(original.kind).get(original.nodeId);
+              const owned = this.nonNativeExecutionOwner?.get(original.key);
+              const record = this.nonNativeHostExecutions.get(original.key);
+              const start = this.candidateRuntimeStarts?.get(original.key);
+              return (session !== undefined && session !== original.session) ||
+                (owned !== undefined && owned !== original.owned) ||
+                (record !== undefined && record !== original.record) ||
+                (start !== undefined && start !== original.start) ||
+                (binding !== undefined && this.strictRuntimeDeleteKey(binding) !== original.bindingKey) ||
+                Array.from(this.runtimeSessionBindings).some(([bindingKey, value]) =>
+                  value.nodeId === original.nodeId && value.kind === original.kind && !original.bindingKeys.has(bindingKey));
+            });
+          if (changed) {
+            throw new Error(vscode.l10n.t('The workspace root changed while its template reset was pending. The template was not applied.'));
+          }
+          return currentRoot!;
+        };
+        assertCurrentRoot();
+        await this.prepareWorkspaceRootCanvasForTemplateReset(targetRootGroup, rootPath, assertCurrentRoot);
+        targetRootGroup = assertCurrentRoot();
       } else {
         await this.prepareForHostBoundary({
           preserveLiveRuntime: false,
@@ -11187,6 +11241,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await Promise.allSettled(Array.from(pending));
   }
 
+  private assertRuntimeSupervisorStateCallbacksSettled(): void {
+    if (this.pendingRuntimeSupervisorStateCallbacks?.size) {
+      throw new Error(vscode.l10n.t('Runtime session updates are still pending. Please try again after they finish.'));
+    }
+  }
+
   private async waitForPendingRuntimeSupervisorOperations(): Promise<void> {
     if (this.pendingRuntimeSupervisorOperations.size === 0) {
       return;
@@ -11771,34 +11831,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (wasLive && !snapshot.live) {
       this.flushExecutionOutputImmediately(binding.kind, binding.nodeId);
     }
+    const completion: { isCurrent?: () => boolean } = {};
     await this.applyRuntimeSupervisorSnapshot(binding.nodeId, binding.kind, snapshot, {
-      postSnapshot: false
+      postSnapshot: false,
+      onCompletedProjection: isCurrent => { completion.isCurrent = isCurrent; }
     });
 
     if (wasLive && !snapshot.live) {
+      if (completion.isCurrent?.() === false) return;
       const snapshotExitMessage = localizeRuntimeSupervisorSnapshotExitMessage(snapshot);
       await this.postExecutionExitWithFinalSnapshot(
         binding.kind,
         binding.nodeId,
         snapshotExitMessage ?? vscode.l10n.t('Session ended.'),
         snapshot.sessionId,
-        { snapshot, surface: finalSurface, lifecycle: finalLifecycle }
+        { snapshot, surface: finalSurface, lifecycle: finalLifecycle, isCurrent: completion.isCurrent }
       );
-      if (binding.kind === 'agent' && previousSession && snapshot.lifecycle === 'error') {
-        await this.markAndNotifyAgentAbnormalInterruption(
-          binding.nodeId,
-          previousSession,
-          snapshot.lifecycle,
-          snapshotExitMessage ?? vscode.l10n.t('Agent session exited unexpectedly.'),
-          {
-            exitCode: snapshot.lastExitCode ?? null,
-            signal: snapshot.lastExitSignal ?? null,
-            launchMode: snapshot.launchMode,
-            runtimeBackend: snapshot.runtimeBackend,
-            reason: 'process-exit'
-          }
-        );
-      }
+      if (completion.isCurrent?.() === false) return;
       if (
         snapshot.lifecycle === 'error' ||
         snapshot.lifecycle === 'resume-failed'
@@ -11816,6 +11865,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ) {
         this.retireLegacyRuntimeSupervisorClientIfUnused(
           this.getRuntimeHostBackend(runtimeBackend, this.resolveRuntimeStoragePath(runtimeStoragePath))
+        );
+      }
+      // Attention publication may update this completion's metadata before its own await.
+      if (binding.kind === 'agent' && previousSession && snapshot.lifecycle === 'error') {
+        await this.markAndNotifyAgentAbnormalInterruption(
+          binding.nodeId,
+          previousSession,
+          snapshot.lifecycle,
+          snapshotExitMessage ?? vscode.l10n.t('Agent session exited unexpectedly.'),
+          {
+            exitCode: snapshot.lastExitCode ?? null,
+            signal: snapshot.lastExitSignal ?? null,
+            launchMode: snapshot.launchMode,
+            runtimeBackend: snapshot.runtimeBackend,
+            reason: 'process-exit'
+          }
         );
       }
     }
@@ -11953,6 +12018,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options: {
       postSnapshot: boolean;
       terminalProjectionMode?: RuntimeTerminalProjectionMode;
+      onCompletedProjection?: (isCurrent: () => boolean) => void;
     }
   ): Promise<void> {
     const snapshotExitMessage = localizeRuntimeSupervisorSnapshotExitMessage(snapshot);
@@ -12073,14 +12139,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    await this.applyCompletedRuntimeSupervisorSnapshot(nodeId, kind, snapshot);
+    await this.applyCompletedRuntimeSupervisorSnapshot(nodeId, kind, snapshot, undefined, options.onCompletedProjection);
   }
 
   private async applyCompletedRuntimeSupervisorSnapshot(
     nodeId: string,
     kind: ExecutionNodeKind,
     snapshot: RuntimeSupervisorSessionSnapshot,
-    finalizationRecord?: StrictHostRuntimeDelete
+    finalizationRecord?: StrictHostRuntimeDelete,
+    onCompletedProjection?: (isCurrent: () => boolean) => void
   ): Promise<void> {
     const preserveRuntimeBinding = Boolean(finalizationRecord);
     if (!preserveRuntimeBinding && (this.executionCandidateProfile || this.nonNativeExecutionOwner?.options.profile)) {
@@ -12189,18 +12256,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     const projectedState = this.state;
     const projectedNode = this.requireNode(nodeId, kind);
-    const getCurrentProjection = (): CanvasNodeSummary | undefined => {
+    let completionRetired = false;
+    const getCurrentProjection = (retired = false): CanvasNodeSummary | undefined => {
       const node = this.state.nodes.find(candidate => candidate.id === nodeId && candidate.kind === kind);
       return node && node.metadata?.[kind] === projectedNode.metadata?.[kind] &&
         node.status === projectedNode.status && node.summary === projectedNode.summary &&
-        this.getExecutionSessions(kind).get(nodeId) === existingSession ? node : undefined;
+        this.getExecutionSessions(kind).get(nodeId) === (retired ? undefined : existingSession) ? node : undefined;
     };
-    const assertCompletionCurrent = (): void => {
+    const assertCompletionCurrent = (retired = false): void => {
       assertFinalizationCurrent();
-      if (!preserveRuntimeBinding && !getCurrentProjection()) {
+      if (!preserveRuntimeBinding && !getCurrentProjection(retired)) {
         throw new Error('The original Runtime completion was superseded.');
       }
     };
+    if (!preserveRuntimeBinding) onCompletedProjection?.(() => Boolean(getCurrentProjection(completionRetired)));
     try {
       if (remoteCompletion) {
         await Promise.all((['editor', 'panel'] as const).map((surface) =>
@@ -12247,6 +12316,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId);
     this.disposeManagedExecutionSession(existingSession);
     this.getExecutionSessions(kind).delete(nodeId);
+    completionRetired = true;
     if (kind === 'agent') {
       void this.disposeAgentFileActivitySession(nodeId);
     }
@@ -12274,6 +12344,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         message: formatUnknownError(error)
       });
     }
+    assertCompletionCurrent(true);
   }
 
   private markExecutionNodeAsHistoryRestored(
@@ -16978,8 +17049,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         reason: record.mutationError });
       return;
     }
+    const execution = record.execution.snapshot();
+    const process = execution.adapter?.process;
+    const liveSession = record.finalRevision === undefined && !execution.settled &&
+      (process === undefined || process.kind === 'unconfirmed');
     const patch = buildExecutionMetadataPatch(this.state, record.nodeId, record.kind, {
-      lifecycle: business.lifecycleStatus, persistenceMode: 'snapshot-only', liveSession: false,
+      lifecycle: business.lifecycleStatus, persistenceMode: 'snapshot-only', liveSession,
+      attachmentState: liveSession ? 'attached-live' : 'history-restored',
       pendingLaunch: undefined, terminalTitle: business.terminalTitle, lastCols: record.cols, lastRows: record.rows,
       ...(record.kind === 'agent' ? { provider: business.agentProvider, resumeSupported: business.agentResume?.supported,
         resumeStrategy: business.agentResume?.strategy, resumeSessionId: business.agentResume?.sessionId,
@@ -20782,12 +20858,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       snapshot: RuntimeSupervisorSessionSnapshot;
       surface: CanvasSurfaceLocation | undefined;
       lifecycle: WebviewLifecycleIdentity | undefined;
+      isCurrent?: () => boolean;
     }
   ): Promise<void> {
     if (finalRuntime) {
       const { snapshot, surface, lifecycle } = finalRuntime;
       if (!surface || !this.isInteractiveSurface(surface) || !this.getSurfaceMessageWebview(surface) ||
-          JSON.stringify(this.getSurfaceLifecycleIdentity(surface)) !== JSON.stringify(lifecycle)) {
+          JSON.stringify(this.getSurfaceLifecycleIdentity(surface)) !== JSON.stringify(lifecycle) ||
+          finalRuntime.isCurrent?.() === false) {
         return;
       }
       if (this.terminalReadRelay.getCompleted(`${surface}:${kind}:${nodeId}`)) {
@@ -20804,6 +20882,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } else {
       await this.postExecutionSnapshot(kind, nodeId, { executionSessionId });
     }
+    if (finalRuntime?.isCurrent?.() === false) return;
     this.postMessage({
       type: 'host/executionExit',
       lifecycle: finalRuntime?.lifecycle,

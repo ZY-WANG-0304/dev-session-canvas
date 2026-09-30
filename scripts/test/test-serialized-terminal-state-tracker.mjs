@@ -31,6 +31,7 @@ try {
   assert.match(SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE, /xterm-headless@6\.0\.0/u);
   assert.match(SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE, /addon-serialize@0\.14\.0/u);
   await verifyConsumptionDrain(SerializedTerminalStateTracker);
+  await verifyLargeSnapshotRestore(SerializedTerminalStateTracker, normalizeSerializedTerminalState);
 
   const tracker = new SerializedTerminalStateTracker(40, 8);
   tracker.write('alpha\r\n');
@@ -371,6 +372,41 @@ try {
   console.log('serializedTerminalStateTracker tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+async function verifyLargeSnapshotRestore(Tracker, normalize) {
+  const lineCount = 90000;
+  const row = index => `SNAPSHOT-${String(index).padStart(5, '0')}-${'x'.repeat(46)}`;
+  const producer = new Tracker(80, 24, { scrollback: 100000 });
+  let restored;
+  try {
+    producer.write(`${Array.from({ length: lineCount }, (_, index) => row(index)).join('\r\n')}\r\n\x1b[3;7H`,
+      { outputSequence: 9 });
+    const state = await producer.flush();
+    assert.ok(state.data.length > 5 * 1024 * 1024, 'The actual serialized scrollback must cross the former restore limit.');
+    const normalized = normalize(JSON.parse(JSON.stringify(state)));
+    assert.ok(normalized, 'A valid snapshot produced by the tracker must survive normalization regardless of history size.');
+    assert.deepEqual(normalized, state);
+    assert.deepEqual(await producer.flushValidatedCheckpoint(), { eligible: false, reason: 'serialized-state-too-large' },
+      'Accepting a persisted snapshot must not relax the independent checkpoint eligibility limit.');
+    restored = new Tracker(80, 24, { scrollback: 100000, initialState: normalized, initialOutputSequence: 9 });
+    const restoredState = await restored.flush();
+    assert.equal(restoredState.data, state.data);
+    assert.equal(restoredState.outputSequence, 9);
+    const buffer = restored.terminal.buffer.active;
+    for (let index = 0; index < lineCount; index++) {
+      assert.equal(buffer.getLine(index).translateToString(true), row(index), `Restored snapshot line ${index}`);
+    }
+    assert.equal(buffer.cursorX, 6);
+    assert.equal(buffer.cursorY, 2);
+    assert.equal(normalize({ ...state, format: 'unknown-format' }), undefined);
+    assert.equal(normalize({ ...state, data: 42 }), undefined);
+    assert.equal(normalize({ ...state, outputSequence: -1 }).outputSequence, undefined);
+    assert.equal(normalize({ ...state, outputSequence: 1.5 }).outputSequence, undefined);
+  } finally {
+    restored?.dispose();
+    producer.dispose();
+  }
 }
 
 async function verifyConsumptionDrain(Tracker) {

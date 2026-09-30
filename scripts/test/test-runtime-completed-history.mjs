@@ -12,6 +12,7 @@ const source = await readFile(filename, 'utf8');
 const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
 const manager = ast.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'CanvasPanelManager');
 const methods = ['applyCompletedRuntimeSupervisorSnapshot', 'postExecutionExitWithFinalSnapshot',
+  'isRuntimeSupervisorEventAdmitted', 'invalidateRuntimeSupervisorClientEpoch', 'postCompletedTerminalAvailable',
   'flushLiveExecutionState', 'flushExecutionStateSyncTimer',
   'readExecutionTerminalPage', 'retireLegacyRuntimeSupervisorClientIfUnused',
   'postExecutionSnapshot', 'postPagedExecutionSnapshot', 'writePersistedCanvasSnapshotToDisk'].map(name => {
@@ -31,6 +32,7 @@ const bundle = await esbuild.build({ stdin: { contents: `
   import { normalizeCompletedRuntimeHistory } from './common/completedRuntimeHistory';
   import { cloneTerminalStreamAttachPayload, normalizeTerminalStreamAttachPayload, normalizeTerminalStreamRevision } from './common/terminalSessionStream';
   import { RuntimeTerminalReadRelay } from './panel/runtimeTerminalReadRelay';
+  import { TerminalAvailableNotifications } from './panel/terminalAvailableNotifications';
   const vscode = { l10n: { t: (text) => text } };
   const ensureAgentMetadata = (node) => node.metadata.agent;
   const ensureTerminalMetadata = (node) => node.metadata.terminal;
@@ -45,11 +47,11 @@ const bundle = await esbuild.build({ stdin: { contents: `
     nodes: state.nodes.map(node => node.id === id ? { ...node, ...patch } : node) });
   ${functions.join('\n')}
   class Harness { ${methods.join('\n')} }
-  export { Harness, RuntimeTerminalReadRelay, normalizeCompletedRuntimeHistory, buildExecutionMetadataPatch };
+  export { Harness, RuntimeTerminalReadRelay, TerminalAvailableNotifications, normalizeCompletedRuntimeHistory, buildExecutionMetadataPatch };
 `, resolveDir: sourceRoot, loader: 'ts' }, bundle: true, write: false, format: 'cjs', platform: 'node' });
 const module = { exports: {} };
 new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(module, module.exports, createRequire(import.meta.url));
-const { Harness, RuntimeTerminalReadRelay, normalizeCompletedRuntimeHistory, buildExecutionMetadataPatch } = module.exports;
+const { Harness, RuntimeTerminalReadRelay, TerminalAvailableNotifications, normalizeCompletedRuntimeHistory, buildExecutionMetadataPatch } = module.exports;
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-completed-history-'));
 try {
   for (const kind of ['terminal', 'agent']) {
@@ -121,6 +123,9 @@ function assertNoHistory(metadata) {
 
 function harness(kind, stream) {
   const host = new Harness();
+  host.surfaceLifecycle = { editor: {}, panel: {} };
+  host.terminalAvailableNotifications = new TerminalAvailableNotifications();
+  host.resolveRuntimeStoragePath = value => value;
   const lifecycle = kind === 'agent' ? 'stopped' : 'closed';
   const metadata = { lifecycle: kind === 'agent' ? 'running' : 'live', liveSession: true,
     runtimeSessionId: 'session', runtimeStoragePath: '/original-runtime', runtimeBackend: 'legacy-detached',
@@ -311,6 +316,7 @@ async function verifyRemoteCompletion() {
         { sessionId: 'session', authorityId: 'authority', readId: 'remote-reader', afterRevision: 0 });
       assert.equal(page.events.length, 2);
       assert.equal(reads, 1);
+      const originalReader = host.terminalReadRelay.reads.get(key);
       if (pendingOpen) {
         client.readTerminalPage = async () => { throw new Error('completed reader disconnected'); };
         await host.readExecutionTerminalPage('editor', { nodeId: 'node', kind, executionSessionId: 'session',
@@ -320,7 +326,8 @@ async function verifyRemoteCompletion() {
       } else {
         host.terminalReadRelay.close(key);
       }
-      await Promise.resolve();
+      assert(originalReader.releasing, 'the original reader owns the asynchronous close');
+      await originalReader.releasing;
       assert.equal(closes, 1);
       assert.equal(host.terminalReadRelay.usesClient(client), false);
     }

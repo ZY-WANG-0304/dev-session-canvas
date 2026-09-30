@@ -3,6 +3,8 @@ import { promises as fs } from 'fs';
 import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { parseArgs } from 'node:util';
+import { importCandidateAssets, readCandidateAssets } from './linux-execution-candidate-assets.mjs';
 
 const require = createRequire(import.meta.url);
 const xtermBrowserMainEntryPath = require.resolve('@xterm/xterm/lib/xterm.js');
@@ -20,6 +22,31 @@ function fromMainExtensionDist(relativePath) {
 
 const isWatch = process.argv.includes('--watch');
 const isProduction = process.argv.includes('--production');
+
+export async function resolveExecutionBuildSelection(args, distDirectory = mainExtensionDistRoot) {
+  const { values } = parseArgs({ args, options: {
+    watch: { type: 'boolean' }, production: { type: 'boolean' },
+    'execution-profile': { type: 'string' }, 'execution-assets': { type: 'string' }
+  } });
+  const profile = values['execution-profile'];
+  const source = values['execution-assets'];
+  if (profile === undefined && source === undefined) return {};
+  if (profile !== 'linux-owner-v1-candidate' || !source) {
+    throw new Error('Specify --execution-profile=linux-owner-v1-candidate and --execution-assets together.');
+  }
+  if (values.watch) throw new Error('Execution candidate watch builds are not supported.');
+  const sourceDirectory = await fs.realpath(source);
+  const dist = await fs.realpath(distDirectory).catch(error => {
+    if (error.code !== 'ENOENT') throw error;
+    return path.resolve(distDirectory);
+  });
+  const relative = path.relative(dist, sourceDirectory);
+  if (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
+    throw new Error('Execution candidate assets must be outside the dist directory cleared by the build.');
+  }
+  readCandidateAssets(sourceDirectory);
+  return Object.freeze({ profile, source: sourceDirectory });
+}
 
 const sharedConfig = {
   minify: isProduction,
@@ -101,6 +128,9 @@ const webviewConfig = {
 };
 
 async function runBuild() {
+  const selection = await resolveExecutionBuildSelection(process.argv.slice(2));
+  extensionConfig.define = { ...extensionConfig.define,
+    __DEV_SESSION_CANVAS_EXECUTION_PROFILE__: JSON.stringify(selection.profile) ?? 'undefined' };
   await fs.rm(mainExtensionDistRoot, { recursive: true, force: true });
 
   if (!isWatch) {
@@ -111,6 +141,7 @@ async function runBuild() {
       esbuild.build(linuxExecutionProviderConfig),
       esbuild.build(webviewConfig)
     ]);
+    if (selection.profile) importCandidateAssets({ source: selection.source, dist: mainExtensionDistRoot });
     return;
   }
 
@@ -129,7 +160,9 @@ async function runBuild() {
   ]);
 }
 
-runBuild().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  runBuild().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

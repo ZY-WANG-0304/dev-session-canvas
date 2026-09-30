@@ -21,6 +21,8 @@ updated_at: 2026-09-30
 
 ## 1. 当前结论与阶段边界
 
+当前实施状态：第 32.2 至 32.11 节已接通实际候选 extension 和匹配 Linux Electron 资产。退出提示覆写、snapshot-only live 投影和大快照读取丢弃均已修；Runtime/editor 与后续 snapshot-only 单选分别取得大输出/终态/真实重开通过，旧失败不改、不合称同轮全绿。A6 completed 后续发布、完整 root template reset 与迟到 callback 三项已修，生命周期 38 次、Host wiring 110/110 通过，不代证其余 A6。A4 原认证前置失败定位为 Host 使用不兼容 Node 12；固定 Node 后认证通过，但 custom command 的 env 前缀被产品校验拒绝，仍零模型请求，按 32.11 修正实验接入。普通构建仍 stock，A1/其余实际验收/跨平台/分发与整体完成保持开放；下列旧摘要按各自原时点理解，不覆盖本段。
+
 2026-09-30，按预算重评调整既定有限收尾顺序，见 `docs/design-docs/runtime-persistence-closeout.md`。合并测试进程的 Heap 64 MiB / RSS 128 MiB 是初始观察预算，不是独立 Supervisor 或每会话的产品预算；原阈值、结果及 exit 1 保留，超限改列待评估信号，不单凭它阻塞 B2，也不先做仅为压线的优化或 profiler。B2 已接通启动参数链、Linux candidate 的安全首次启动和显式 Host 新建入口，范围及有限结果见第 32 节与 32.1；extension 默认仍关闭，两模式正式入口、匹配资产和既定验收仍开放。真实分进程、多会话资源与交互评估并入 A1，F-04 仍开放。F-05 新路径保持收口，B3、真实 Agent/Webview/跨平台、主体尾部及 A1 至 A6 不削减；不展开 S17 工具链。本文旧阶段及其“下一步”是历史证据，不是当前执行队列。
 
 2026-09-28，当前S16见31.15，输入`a74844c4`。真实Host回归先红证明旧completed保存失败可复活已清root；最小修正只保护普通completed在reader/persist等待窗口的原投影/session身份，并在并发时局部恢复节点执行字段，strict分支不改。Host回归25次、wiring95/95、checkpoint、paged completion四组合及typecheck通过，独立review无阻塞。完整reset/reload事务、首次pending等待后callback注入、新业务准入及旧Runtime delete之后的迟到UI仍开放；template仅验证prepare入口，不恢复global gate/core锁/root全局drain，不新增native或平台样本。以下S15及更早段落为原时点记录，不覆盖本段。
@@ -1452,3 +1454,115 @@ Runtime client 获取默认受永久 gate 保护。已经被 gate 关闭前接�
 本轮已实施上述有限范围。原 namespace 竞争先红为 `loads=[1,1]`，修后只有一个 writer、败方 `loads=0`；同时覆盖不同 backend/socket 共用 storage、realpath 别名、业务 listener 关闭仍占用、进程退出后释放。其他直接先红为 candidate unit 仍是 `Restart=on-failure`、Client 默认连接会启动服务、Host 实际 getter 丢 profile 导致 create 为 0，以及 candidate bound 显式 `allowRestart:true` 得到 `[true,true]` 而非 `[false,true]`。现在 bound 入口按实际 generation 强制禁止重启，旧 legacy 显式选项保持。namespace 测试最初误禁止模块导入、strict Host 新夹具漏传 options 两次失败属于夹具错误，分别修正，不记产品缺陷或原生平台失败。
 
 最终 Linux x64/Node 25.6.0 验证：`npm run test:runtime-supervisor-namespace` 7/7（实际 socket、测试自有子进程，禁止 PTY/Agent 获取），`npm run test:runtime-supervisor-startup-profile` 启动 16/16、Client 28/28，Host owner 104/104、Supervisor owner 82/82、paths、Host deactivation、真实 socket Host output credit、typecheck/build 和 diff 检查通过。Host 路由用真实 getter/backend/Client constructor/cache，替换 connection/RPC 边界观察意图；systemd 仅验证 unit/参数，没有启动实际服务。独立最新 diff 复核未发现新增确定性 blocker。build 后从原已校验目录重新 import Linux 资产，未加载 native。本轮没有真实 PTY、Agent、VS Code/Electron/Webview 或其他平台验收，不改写之前证据；下一仍是原 B2 的 extension 两模式入口及匹配资产接入，再完成原 A1 至 A6，不另开工具阶段。
+
+### 32.2 实际扩展入口与候选构建
+
+2026-09-30 从 `43527328` 继续原 B2，用户要求持续推进到需要外部决策，而非每个局部切片结束。选择构建期固定 profile，不增加用户设置、运行时环境开关或按目录存在自动启用。`scripts/build/build.mjs` 显式接受成对的 `--execution-profile=linux-owner-v1-candidate` 和 `--execution-assets=<编译产物目录>`，未知值、缺配对参数、candidate watch 或会被清空的 dist 内资产源在构建副作用前拒绝。普通构建仍选择 stock；候选构建将常量编入 extension 并沿既有 import 复制已校验资产，不在 Host 或构建过程中加载 native。stock 构建不能因环境变量或残留资产自动选 candidate。
+
+扩展激活通过 `src/panel/executionRuntimeSelection.ts` 读取编译期选择，选中时调用已有 `createLinuxExecutionOwnerOptions({ extensionRoot, mode: 'snapshot-only' })`，将 owner options 与同一 profile 注入 `CanvasPanelManager`。这是实际扩展入口，不是 Test 模式构造器替身；snapshot-only 在 Host 执行，Runtime 仍沿新建路由到 Supervisor，由其准备 live-runtime owner。空闲本地 owner 不获取 PTY/worker，既有配置切换沿原边界收尾。原绑定不改址，未知创建不重放，不改 root 归属。
+
+构建允许离线暂存明确目标的 Node 或 Electron 产物；激活/启动时仍按真实 authority 的平台、架构、glibc、Node/Electron/version/ABI/N-API 及内容摘要严格校验。错误或缺失资产明确拒绝，不静默降为旧源；Node 产物不冒充 Electron 产物。现有 VSIX/测试 staging 复制整个 dist，须验证候选资产和编译期选择均保留。普通发行构建的默认启用策略不因候选包可构建而改变；候选包用于原 A1 至 A6 的真实验收，最终支持/启用仍须同一产物的证据。
+
+当前先验证构建参数、真实激活入口和两模式选择的有限受控回归，再在可用 VS Code/Electron 环境编译匹配资产并进入真实页面/Terminal 验收。真实 Agent、macOS/Windows 与分发责任保持，环境不可用先找既有工具/runner 路径，不用 fake 替代或降范围。新失败在独立目录保留，定位具体原因后才进行有依据的复验，不重开诊断框架项目。
+
+本机可用 VS Code 1.117.0，实际 `ELECTRON_RUN_AS_NODE` 身份为 Electron 39.8.7、Node 22.22.1、ABI 140、N-API 10、Linux x64/glibc 2.35。官方 `https://artifacts.electronjs.org/headers/dist/v39.8.7/node-v39.8.7-headers.tar.gz` 下载后与同目录 SHASUMS256 的 `af6712ab16c436b9288ece2f0173924c74008446346bda3457d07b769f402eda` 相符；使用该 Electron 执行现有 build，在 `/tmp/dsc-b2-electron-39.8.7-pfOkg2/assets` 生成匹配产物，当前仅 compile-only，不倒写 manifest 的验证字段。
+
+真实页面固定输入为 Runtime/snapshot-only 各一个 Terminal，100000 scrollback、90000 编号行和 UTF-8/ANSI 尾部；复用现有 smoke runner、staging、Host 测试命令与实际 xterm buffer 断言。主体逐次成功写入后的独立凭证与页面逐行内容、终态/光标核对，Runtime 再核对轻量保存及重开无历史，snapshot-only 保持原保存语义。测试使用全新目录、测试自有主体和原关闭入口，不使用 fake Agent 或 TEST_NODE_PATH 替代 Electron，不运行一般诊断矩阵；缺失的真实 Agent、多 reader、慢消费及其他平台格子仍留在原 A1 至 A6。
+
+### 32.3 A6 旧 completed 删除等待后的身份保护
+
+与 B2 实际入口并行核对原 31.15 已登记风险。新增 `test-runtime-host-deactivation-integrity.mjs` 的实际 Host callback 用例先红：旧 completed 已保存轻量结果并退休 session，strict delete 未返回时同 ID replacement 建立新节点/session/binding/reader；旧 delete 返回后，新映射仍正确，但 `successor-reader` 被关闭，随后发出旧 session 的 snapshot/exit。这是现行产品续体串代，不是原生资源或诊断工具缺陷；原 25 次测试先通过，新用例 exit 1 保留。
+
+选定窄修普通 completed 的原投影身份检查：继续要求原完成投影（execution metadata、status、summary）仍当前；退休前必须仍是原 session，退休后必须没有替代 session。不满足按已有 superseded 路径中止最终通知。该检查通过 `onCompletedProjection` 回传到 `handleRuntimeSupervisorState`，贯穿 apply 等待返回与 `postExecutionExitWithFinalSnapshot` 的真实 reader/消息发布边界；不能在每个续体把 replacement 捕获为新基线。Agent 异常通知会同步更新自己的 attention metadata，故放到当前续体最后，不在通知等待之后再执行旧清理/发布。strict finalization 保存/删除责任保持，不加 Map、全局锁或 root 全局 drain。
+
+第一版仅在内部完成方法末尾检查，后续有限用例再次先红：内部 apply 返回后替换仍关闭新 reader、发布旧消息；snapshot 发布等待后替换仍会把旧 Agent 的 `attentionPending` 写入新执行。上述三类失败均保留。最终 Host 边界共 32 次通过（原 25 次及本组 7 次），含 Terminal/Agent 正常完成阳性和三类替换；Host wiring 104/104、typecheck、脚本语法和 diff 检查通过。验证只针对实际 Host 方法的受控顺序，没有新增 native/UI/Agent 通过，不泛化为通用通知系统或 `postExecutionSnapshot()` 内部任意异步路径安全。完整 template apply/root 准入及其余原 A6 顺序仍需完成。
+
+### 32.4 真实页面首轮失败与退出提示责任
+
+32.2 固定实验首轮保存在 `.debug/execution-candidate-a2-a3-20260930-first`，进程 exit 1；Runtime/editor 首个场景失败即停止，snapshot-only 及两次重开未执行，不将其列通过。真实 Electron authority、provider 和 PTY 已实际运行，主体凭证为 5580102 B、SHA256 `e03d6d758493454da0946cc62e7c17fb2444e39afaa7639c8a88ad271eaff48f`，真实 reader 已记录 applied/finalRevision 1402。但页面逐行对账超时：保存的 probe 显示第 89979 行变为 `[Dev Session Canvas] Session ended.000...`，最终光标为 `(0,4)` 而非主体的 `(6,2)`。UTF-8/ANSI 尾行仍可见；不能把该失败记作 PTY 未收到主体尾部，也不能因 applied 回执存在宣布最终页面正确。
+
+源码定位到 `src/webview/main.tsx` 的 `queueExitWrite()`：在已完成的终端内容上追加宿主状态文本和换行。主体可以合法地把光标停在已有内容上，故该追加会覆写输出和终态。选定生命周期提示与终端字节分离：退出状态和 message 留在已有节点状态/overlay 中，`host/executionExit` 不再向 xterm 注入合成正文。保持原输出排队、投影/保存和 local completion 屏障、身份检查及取消结果，不通过清屏、恢复光标但仍改正文、缩短输入或跳过内容断言解决。Terminal/Agent 和两种持久化模式共享此规则；正常及异常退出均不得污染主体终端。只补该直接产品缺陷的定向回归后，以新证据目录复验固定页面实验，原失败不改。
+
+该出口还承载 paged reader 的断连/读取关闭错误，不能随正文写入一起静默删除错误反馈。`TerminalPagedProjection.accept()` 必须先沿原 readId/requestId 拒绝陈旧回包，再通过独立错误回调进入现有节点 `onShowTransientError`；当前 reader 仍按原 cancelled 结算，错误文本只显示在终端之外。自然退出不变成错误 toast，旧 reader 的迟到错误不能泄漏给 replacement。定向测试同时检查当前错误可见、旧错误无效和 buffer/光标不变，不新增页面状态容器或协议框架。
+
+修后实际 controller/headless 39/39、Host batch 10/10、reader wiring 20/20 及 typecheck 通过，Terminal/Agent、local/Runtime/旧分页/旧stream 退出均保持正文和光标，当前读取错误只反馈一次，陈旧错误无效。另补齐本增量及候选最终退出的中文提示，localization 首败后通过；不以这些受控回归代替下文真实页面结果。
+
+### 32.5 A6 完整 root 模板 reset 的提交复核
+
+原 A6 完整入口用例先红：`applyCanvasTemplateRecord(reset, targetGroupId)` 清理 root A 原执行的 strict delete 等待期间，真实 `applyCreateNode()` 与 `startTerminalSessionWithSupervisor()` 已接纳 A 的新执行；旧删除成功后模板提交把新节点移除，却保留其 session/binding，并保存不含新执行的状态。root B 前后仍可输出、绑定正常，删除请求仅指原 session。受控 Client 返回 create 结果，实际 Host 入口及 headless tracker 执行，无 native；原 32 次回归先通过，新用例 exit 1。最初旧夹具未使用 namespace 身份造成 strict 正确拒绝，已修夹具，不能把它计为产品通过。
+
+原因是 `prepareWorkspaceRootCanvasForTemplateReset()` 只清理初始集合，外层 await 后仍用预先的空基态替换目标 root，没有验证等待期间已接纳的执行责任。选定提交前复核而非 root 锁：在清理前固定目标 root 身份、所属节点 ID/kind 集合及相关执行责任，清理返回后、compose/赋值/persist 前复核。新增/移除节点、目标 root 被替换或同 ID 出现新执行责任时，明确中止旧模板提交，保留当前节点与绑定；不宣称回滚已经成功的旧 session 删除，不为了模板成功再终止等待期间新接纳的执行。允许本次正常清理造成的原节点 completed 投影变化，不能用全 state 引用把正常清理或其他 root 输出误判为冲突。
+
+本修正只覆盖完整 root reset 提交窗口；保持其他 root 准入和交互，不新增全局 drain、通用事务框架或无限重试。定向验收包含无冲突成功、新执行/同 ID replacement 的明确失败保留、原 strict 删除失败保留及 B 独立；完整非 root reset/reload 和首次 pending 后 callback 仍按原有限 A6 处理。
+
+### 32.6 A4 真实 Agent 的固定本机输入
+
+本机只读核对可用 Codex 0.157.1 和 Claude Code 2.1.280。Codex 的真实 npm 入口启动 native CLI、转发 SIGINT/SIGTERM/SIGHUP 并等待其退出；Claude 安装入口直接为 native binary。源码不代替实际时序验证。现有测试创建命令可通过 `agentLaunchPreset: custom` 和 `agentCustomLaunchCommand` 进入产品 Agent 链，不使用 fake provider，也不把普通 Terminal 命令记为 Agent 通过。
+
+固定为两个 CLI、两种持久化模式、自然完成/主动停止，共八个场景；每个场景一个执行，一次请求或停止，不自动重试外部服务失败。自然完成四场景使用空的仓库外测试目录，只请求回复一个具名 nonce，不要求工具或文件操作。Codex 使用真实 `exec`、ephemeral、skip-git-repo-check、read-only sandbox、never approval、JSON 输出与独立 last-message 文件；Claude 使用 safe-mode、空 tools、strict 空 MCP 配置、no-session-persistence、noninteractive print/JSON 及每次 USD 0.25 上限。准确参数先以已安装 CLI help 核对，不通过换模型/服务或复制凭据获取通过；实际返回错误或工具调用按失败保留，不把错误退出算成功短答。
+
+停止四场景启动真实交互 CLI，不发送模型任务；通过页面输入帮助命令、resize，再使用原产品 stop，检查 Codex interrupt-then-hangup 与 Claude hangup 的实际结果。CLI 首次信任/登录交互如出现，只在测试空目录内处理合法提示，不扩大权限或操作真实项目。自然退出与主动取消分别报告，未取得完整源/应用证据的停止不写成自然 EOF。运行前保存实际命令/版本/模式，记录原执行身份、真实页面、reader 结算、持久化和清理；Agent 证据补 A4，不代替 A3 的独立大输出尾部断言。
+
+认证保持 smoke 的隔离 HOME 与现有 secret 过滤，仅传原 `CODEX_HOME`、`CLAUDE_CONFIG_DIR` 的目录引用给 CLI，由其自己读取认证；不复制/输出 auth 正文、API key、环境全集或用户配置内容。隔离 HOME 下只读 status 已确认两者报告 API-key 登录，没有模型请求证据。若固定真实请求遇到失效凭据/配额/服务不可达，保留首报并作为实际外部前提处理，不提前推定缺权限。
+
+启动链只在已确认本轮 owner 派生范围有限采样 PID/PPID、启动标识、状态和 executable，区分 Codex npm wrapper 与 native 主体；不扫描其他会话环境，不把进程对象仍被引用当作仍在执行。主体仍活着时 wrapper 不得已结束；双方退出时间区间重叠则说明精确先后不可分辨，不制造高精度结论。所有场景使用新证据目录，失败先归档后只清理本轮已知资源。Linux 证据不能外推 macOS/Windows 或 packaged 路径。
+
+### 32.7 snapshot-only 的当前执行状态投影
+
+32.4 修后固定复验保存在 `.debug/execution-candidate-a2-a3-20260930-exit-ui-fixed`，整轮仍 exit 1。Runtime/editor 完成与真实重开通过：90002 条前缀行逐行一致，最终光标 `(6,2)`，completed 节点 661 B，重开空内容/无自动执行、清理通过。随后 snapshot-only/panel 在等待真实 Terminal live 时超时，尚未发送 90000 行主体、未执行 snapshot 重开。该场景已经实际启动 PTY，页面出现 `$ `，Host snapshot 报 liveSession=true；但节点 metadata 为 liveSession=false、attachmentState=history-restored，页面显示“Terminal not started yet”，runningExecutionCount=0。
+
+源码确认 `projectNonNativeHostBusiness()` 把所有候选本地业务投影固定写为 liveSession=false。snapshot-only 仅描述跨 Host 的持久化保证，不表示当前执行不在运行；stock 本地路径原来使用 attached-live/liveSession=true。选定按原 owned execution 的主进程结果/最终状态投影当前存活：真实启动后的当前主体未退出时使用 attached-live/liveSession=true；有退出事实或最终投影后为 false，最终快照保存继续使用原完整性/持久化屏障。不能用 legacy session Map 的缺席判断新 owner 不在运行，也不能通过改验收判据忽略实际错误 overlay。覆盖 Terminal/Agent 的启动、输出、停止等待、自然完成和失败保留；不创建兼容 process facade，不恢复已结束进程或改变 snapshot-only 持久化承诺。
+
+本轮还恢复既有 completed-history 回归夹具的可执行性：补原准入/epoch/最终提示方法、surfaceLifecycle 与 notifier 对象，等待原 reader 的 releasing Promise而非一个微任务。原内容、无历史、保存失败和资源断言保持，修后通过；初始缺方法/字段和过早释放断言的失败不改。模板完整套件另在既有静态断言失败（main.tsx 中查找已经迁至 fileNoteNodes.tsx 的 action），不记模板总套件通过，也不为本次产品修正扩 unrelated UI 测试迁移。
+
+### 32.8 A6 reset 首次等待之后接纳的 callback
+
+原有限 A6 的实际 candidate `resetState()` 顺序已先红：边界首次等完 callback 后等待存储，新的 completed callback 经真实 Client 入口接纳，先将节点投影为 snapshot-only，再在真实 reader relay 等原 open 返回。放行存储后，reset 成功、保存空画板，但仍有一个 callback 在途，没有发出 Runtime delete，原 binding 已清除。固定结果为 `resetFinished=true, pendingCallbacks=1, deleteRequests=[], retainedBindings=0, nodeCount=0, savedEmpty=true`；原 37 次先通过，新用例 exit 1，测试 finally 返回原 reader 结果并收齐 callback，无 native。根因是首次 wait 不是之后不再接纳的保证，而仅按当前 metadata 收集 live binding 会漏掉已进入 completed 投影、尚未结算的原责任。
+
+选定破坏性提交前的责任复核：正常非永久边界即将清理 session/binding 或替换状态时，仍有已接纳 Runtime callback 未结束则明确失败，不把节点/绑定清掉并报告 reset 成功。候选 strict delete 等异步步骤之后仍复核，不能只在最初 wait 后检查。保留当前投影和原 callback 的 reader/保存/delete责任，让其按原链结束，不新建 drain 循环、全局锁或关闭其他 root 的准入；已成功删除的原 session不补造回滚。验证中止时没有空画板保存/绑定丢失，原 callback 完成后正常 reset 可成功，并保留永久关闭已有保证。`simulateRuntimeReloadForTest`、`reloadPersistedStateForTest` 仅是测试命令，不以同对象人工并发代证实际 Host reload；后者继续由真实宿主流程验收。
+
+32.7、32.8 修正已实施：Terminal/Agent 的启动、输出、停止等待及自然结束投影四项新增回归通过，Host wiring 108/108；完整 reset 新用例证明首次中止保留节点/session/binding/client，原 callback 完成保存/delete 后重试成功，生命周期回归共 38 次。typecheck、语法和 diff 检查通过；独立只读复核未发现本有限边界新增阻塞。永久关闭不进入新 abort 检查，继续先关闭 admission 再等待原 callback，不将未知或取消伪报 settled。
+
+### 32.9 snapshot-only 实际复验与夹具字段修正
+
+按原参数重建匹配 Electron 候选后，仅选择未通过的 snapshot-only，保存 `.debug/execution-candidate-a2-a3-20260930-snapshot-live-fixed`，`partialSelection=true`，仍 exit 1。当前 live 投影已正确；主体成功写入凭证 5580102 B，页面 90002 条前缀行逐行匹配、光标 `(6,2)`、主体回收和最终快照保存断言均已完成。失败在等待本地 reader 最终回执，重开尚未执行。原事件实际记录同 execution 的 applied，`finalOutputSequence=1394`，与保存 metadata/serialized state 的 outputSequence 一致；脚本却读取不存在的 `outcome.finalRevision`。`protocol.ts` 的 `LocalTerminalReaderOutcome` 与生产 Host 均使用前者，这是新夹具字段错误，不是本轮证实产品丢尾或未应用。
+
+仅把 Terminal 和尚未运行的 Agent 脚本本地回执比较改为正式 `finalOutputSequence`，保留同执行、applied 和最终保存序号相等的断言；Runtime 协议不改。原失败目录、字段、exit 1 保留，清理后无该轮残余进程。下一仅在全新目录复验相同 snapshot-only complete/reopen，不重跑已通过 Runtime 或扩大工具矩阵；新结果另记，不把离线核对追认为原轮通过。
+
+修后新目录 `.debug/execution-candidate-a2-a3-20260930-snapshot-receipt-fixed` 的 complete 已通过：原成功写入字节/摘要、90002 行、光标 `(6,2)`、原主体回收、最终快照及同 execution 的 applied/最终 outputSequence 1399 一致。保存节点 5767052 B。真实 VS Code 重开失败，整轮 exit 1；加载后的节点缺失 serialized state、只剩 6000 字符摘要，页面历史及光标不匹配，不能宣布两模式通过。`normalizeSerializedTerminalState` 的 5 Mi 字符限制小于已保存快照，是待追踪的具体加载链路，不修改原负载或 scrollback 取绿。
+
+A4 首跑前安全输入已冻结：现有 Codex 0.157.1 用户模型服务配置保持，仅通过 CLI 覆盖禁用 hooks/plugins/apps/shell_tool/skill_mcp_dependency_install、web search 及列出的 MCP server。`mcp list --json` 只在内存解析配置 ID，覆盖 `mcp_servers.<id>.enabled=false` 后复核；不记录配置正文/凭据，`features list` 确认指定功能 false。一次只读预检的 quoted dotted key 拒绝保留为前置失败，修后受限 ID 参数通过，非模型请求或产品验证。Claude 沿 32.6 safe-mode/空工具配置。八场景使用全新 `.debug/agent-candidate-a4-20260930-first`，自然短答最多四次 CLI 请求，不改变服务路由、不自动重试；首败及未执行项分账。
+
+### 32.10 snapshot-only 保存与读取的大小契约一致性
+
+32.9 的真实重开失败已追到原加载链：root-local 文件经 `loadRootLocalState → normalizeState → normalizeNode → normalizeMetadata`，Agent/Terminal 共同调用 `normalizeSerializedTerminalState`，其 5 Mi 字符检查丢弃本轮 5580063 字符的合法快照。随后只能发布 6000 字符 recentOutput；初始化还把降级后的状态再次写回。tracker 构造也调用同一 normalizer，仅修改 Host 一处会留下第二次丢弃。原 tracker 生成与文件 writer 均无该 5 Mi 限额；fresh sequence 检查通过，因此不是 stale state、源尾部缺失或测试回执错误。
+
+选定移除通用 serialized state normalizer 中的任意 5 Mi 字符拒绝，保留格式/字段与输出序号新鲜度校验。它发生在 JSON 文件已经整体读取/解析之后，既不是文件读取的内存预算，也不一致地约束可更大的既有 terminal stream；不能用单次样本调成 6/8/64 Mi 来推迟同类丢失。实际快照仍只含配置的有限终端屏幕/scrollback，不新增 Runtime completed 历史、无限原始日志或外置历史服务。Runtime 的 validated checkpoint 256 Ki 字符限额（UTF-16 code unit）、eligibility、可信摘要及分页/在途约束完全保持；此修改不能代替 A1 的资源预算与文件输入防护结论。
+
+回归覆盖真实生成的超过旧限额的快照结构读回、Terminal/Agent Host 最终保存后 normalize/reload 与 tracker 恢复，不只断言放宽后的字符串长度；旧格式/序号/不合法输入及 checkpoint 拒绝继续验证。真实页面仅在新目录复验原 snapshot-only complete/reopen，90000 行、100000 scrollback、主体成功写入及最终光标不变。保留此前所有 exit 1，不宣称跨平台或全部 A2/A3 通过。
+
+实施后，`.debug/snapshot-large-state-normalization-20260930/` 保留 tracker 与真实 Host loadState 的丢失先红；新增大样本首次超过旧单测试 3 秒只是夹具超时，之后仅为这两个新增测试固定 15 秒观察保护，原用例和产品预算不变。修后 tracker 的 90000 行/光标/合法及非法字段、原 checkpoint 拒绝回归通过；Host wiring 110/110 包含 Terminal/Agent 各实际最终文件保存、原 root-local normalization、snapshot 发布与 tracker 逐行恢复，陈旧序号及未知格式仍拒绝。typecheck、checkpoint refresh 通过。
+
+相同 Electron 候选重建后，`.debug/execution-candidate-a2-a3-20260930-snapshot-normalization-fixed` 仅 snapshot-only complete/reopen，`partialSelection=true`、exit 0。主体成功写入仍为 5580102 B/原 SHA256，当前页和真实重开均逐行验证 90002 条前缀内容；当前页断言和重开归档光标均为 `(6,2)`。same execution applied 的 `finalOutputSequence=1396`，保存节点 5767058 B，重开 retained serialized state 5580063 字符、节点 closed/liveSession=false，最终清理通过；没有 OS 全程创建轨迹，不能扩大为整个重开期间绝未创建任何进程。独立只读复核输入/staged/hash/native manifest、主体凭证、不同 Host PID 和断言执行顺序通过。该新单模式通过不覆盖旧四轮 exit 1，也不与此前不同输入的 Runtime 成功合称一次两模式全绿；余下多 reader/慢消费/活跃离开、真实 Agent、A1 和跨平台仍开放。
+
+### 32.11 A4 真实 Host 认证差异的有限定位
+
+`.debug/agent-candidate-a4-20260930-first` 首轮在第一个 Codex 场景的认证检查返回 exit 1、loggedIn=false；尚未执行显式 activate/create，后七场景未跑，模型请求为零。原结果保留。随后只读对照 inherited、isolated HOME、共享环境过滤、过滤加 isolated 四组 `codex login status` 均 exit 0、loggedIn=true；最后一组在 repo、原 HOME、smoke HOME、staged tests、VS Code 安装目录五种 cwd 也通过。`CODEX_HOME` 没有被过滤，`HMIND_API_KEY` 等变量被删除但过滤后的外部对照仍通过，因此不能据此认定凭据缺失或要求放宽 secret filter。原工件没有实际 Extension Host 的目录引用及子进程错误分类，差异根因尚未确认。
+
+下一次运行前限定为原 A4 runner 的 `--auth-only`：新证据目录、一个真实 VS Code Extension Host 内分别执行两种现有 CLI 的只读 auth status，固定每种一次、无重试；首项失败仍采集第二种独立状态，不重新运行八场景。测试入口在 observer、显式 activate/create/reset 之前返回，不执行模型、PTY、Supervisor 或 Webview 产品操作，不计 A4 产品通过，也不以外部 status 代证 Host 可用。
+
+证据仅含显式非敏感目录引用及其与请求值的一致性、Host 的 process.execPath/cwd、严格版本格式校验后的 CLI 版本摘要、wrapper 经 `/usr/bin/env node` 解析的解释器路径/版本、NODE_OPTIONS 是否存在、受限 Electron 公共开关、spawn errorCode/signal/timeout 和固定错误分类。CLI 与解释器原 stdout/stderr 只在内存解析，不保存原文、配置正文、环境全集或任何凭据；认证命令仍沿原配置目录及服务路由。不得通过改 secret filter、复制凭据或重配服务来绕过失败。若此有限证据证明必须提供凭据或改变环境责任，再明确需要的决策；否则只修已确认的夹具/启动差异。代码准备与语法检查不等于实际 Host 定位已完成，结果由独立新工件补记。
+
+真实 `.debug/agent-candidate-auth-only-20260930-first` exit 1，零模型/执行节点。目录引用与请求值相同，NODE_OPTIONS 不存在；实际 Host PATH 首个 node 是 `/usr/bin/node`。Codex 连 `--version` 都 exit 1，Claude 的版本及认证均 exit 0、loggedIn=true。进一步仅只读查询确认 `/usr/bin/node` 为 v12.22.9，对原 Codex npm wrapper 执行 `--check` 得到 exit 1/SyntaxError；前置原已安装 Node v25.6.0 后，经原 npm 入口 `--version` 返回 codex-cli 0.157.1。这将失败定位为真实 Host PATH 选择了不兼容的 wrapper 解释器，不是已证明的凭据缺失。Node 身份探针自身使用 `??`，也不兼容 Node 12；该失败原样保留，不再为诊断探针另开修正/复验阶段。
+
+A4 固定输入相应明确：runner 记录其 `process.execPath`、realpath 和 v25.6.0，Codex 的认证查询仅在继承实际 Host 环境时前置该 Node 所在目录到 PATH；实际 custom launch 经 `/usr/bin/env PATH=<相同值>` 执行原 Codex npm 入口。仍观察 wrapper 与真实 CLI，不绕过 wrapper 直接执行 native binary；剩余 Host PATH、共享 secret filter、认证目录及模型服务路由保持，Claude 不改。PATH 目录值属于显式启动参数证据，不扩大为完整环境归档。下一直接在新目录运行原八场景，首失败即停、最多四次请求模型轮次；不重跑 auth-only，不把本次只读版本检查视为 A4 产品通过。
+
+`.debug/agent-candidate-a4-20260930-node-runtime-fixed` 首场景仍 exit 1，零模型；本次认证已通过，但真实 `node/createRejected` 明确拒绝 `/usr/bin/env` 开头的 custom command，因为正式 `validateAgentCommandLine` 要求以配置的 Codex 命令开头。这是夹具绕开了原custom命令形式的输入错误，不是产品缺陷或再次认证失败；原失败保留，上段 env 前缀方案停止使用。
+
+最终固定输入恢复以原 installed CLI entry 开头的 custom command，不改变既有隔离参数。runner 通过已有 `DEV_SESSION_CANVAS_TEST_CODEX_COMMAND` / `DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND` 传入同一个真实 installed entry，并确认 Codex 与记录的 Node v25.6.0 位于同一命令目录。`CanvasPanelManager.getAgentCliConfig()` 保持该实际命令，`getPrioritizedBaseExecutionPathEntries()` 将这两个目录优先加入真实execution环境，`resolveExecutionEnvironment()` 的 shell patch merge保留其优先级；这些变量不选择fake provider或替换owner，原CLI解析、启动spec、PTY、wrapper与实际provider仍走正式路径。认证查询仍仅对Codex前置已知Node。运行前以现有pure custom parser核对固定四种argv及真实PATH merge helper，再进入原八场景，不靠重新启动模型试错，不修改业务、secret filter或服务路由。
+
+运行前纯核对已通过：从当前 A4 脚本调用实际四种 `launchArguments`，交给正式 `validateAgentCommandLine`，Codex/Claude 的自然结束/停止命令均接受且argv逐项保持；抽取当前 Manager 的两个原PATH方法并调用正式 `applyShellEnvironmentPatch`，在基础及shell PATH均为 `/usr/bin:/bin` 时仍优先原Node25目录、保留系统路径。原 `test-agent-launch-presets.mjs`、两脚本语法及diff检查通过。一次内存构建因未external `vscode` 而失败，补Test枚举边界后纯核对通过，未运行执行进程、模型或VS Code；不以这些纯验证代替待运行A4。
+
+`.debug/agent-candidate-a4-20260930-command-path-fixed` 已执行并保留 exit 1。首个 Codex 场景认证、custom 命令解析与节点创建通过，但等待 live 身份超时；原诊断为 `execution/candidateStartFailed: Execution candidate launch was superseded.`，节点保持 pendingLaunch=start，尚未发布 execution/started 或绑定 runtimeSessionId，观察无 CLI/provider。源码中的首次 candidate replacement 检查以整个 metadata 引用相等判断当前性，等待 Supervisor 时真实页面已更新终端尺寸；需以有限回归确认是否误拒绝正常 resize，同时保留同 ID replacement 和旧绑定保护。后七场景 not-run，不将此次失败写成 CLI 尾部缺陷或 A4 通过。
+
+原 result 的 `requestedModelTurns:1` 仅由 nodeId 已分配推导，不能证明模型调用，原工件保留且该解释撤回。后续报告分别记录计划轮次、观察到的 CLI 和已校验短答，不推断网络请求总数；本轮原启动在 createSession 提交前失败，不能根据创建了画板节点宣称已发送模型请求。该计数修正不改变任何产品断言或首报失败。

@@ -7546,6 +7546,7 @@ function createExecutionTerminalController(
   options?: {
     onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
     onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
+    onReadError?: (message: string) => void;
     beginSnapshotRestoreDiagnosticsSuppression?: () => (() => void) | undefined;
   }
 ): ExecutionTerminalController {
@@ -7805,16 +7806,6 @@ function createExecutionTerminalController(
     }
   };
 
-  const queueExitWrite = (message: string): void => {
-    options?.onContentWillChange?.('exit');
-    queueTerminalWrite((done) => {
-      terminal.write(`\r\n[Dev Session Canvas] ${message}\r\n`, done);
-    }, {
-      reason: 'exit',
-      characters: message.length
-    });
-  };
-
   const postAttachSnapshotRequest = (): void => {
     if (projectionRecoveryRequested) {
       return;
@@ -7845,9 +7836,7 @@ function createExecutionTerminalController(
       return;
     }
 
-    const message = pendingExitMessage;
     pendingExitMessage = undefined;
-    queueExitWrite(message);
   };
 
   const settleLocalCompletion = (outcome: LocalTerminalOutcome): void => {
@@ -8358,7 +8347,6 @@ function createExecutionTerminalController(
         scheduleExecutionTerminalDrain(controller);
         return;
       }
-      queueExitWrite(message);
     },
     refreshVisibleRows() {
       if (disposed) {
@@ -8490,7 +8478,9 @@ function createExecutionTerminalController(
         applied(success && current());
       });
     },
-    exit: queueExitWrite
+    // Exit status is rendered by the node UI, outside the subject's terminal buffer.
+    exit: flushDeferredExitIfReady,
+    error: options?.onReadError
   });
 
   return controller;
@@ -8934,6 +8924,8 @@ function readProbeExecutionTerminalState(
   | 'terminalSelectionText'
   | 'terminalCols'
   | 'terminalRows'
+  | 'terminalCursorX'
+  | 'terminalCursorY'
   | 'terminalViewportY'
   | 'terminalVisibleLines'
   | 'terminalTextareaLeft'
@@ -8952,6 +8944,8 @@ function readProbeExecutionTerminalState(
     terminalSelectionText: terminal.terminal.getSelection(),
     terminalCols: terminal.terminal.cols > 0 ? terminal.terminal.cols : undefined,
     terminalRows: terminal.terminal.rows > 0 ? terminal.terminal.rows : undefined,
+    terminalCursorX: terminal.terminal.buffer.active.cursorX,
+    terminalCursorY: terminal.terminal.buffer.active.cursorY,
     terminalViewportY:
       terminal.terminal.buffer.active.viewportY >= 0 ? terminal.terminal.buffer.active.viewportY : undefined,
     terminalVisibleLines: readProbeTerminalVisibleLines(terminal.terminal),

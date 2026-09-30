@@ -217,7 +217,7 @@ function fixture(options = {}) {
 }
 
 const tests = [];
-const test = (name, run) => tests.push({ name, run });
+const test = (name, run, timeoutMs = 3000) => tests.push({ name, run, timeoutMs });
 
 for (const kind of ['terminal', 'agent']) {
   test(`${kind} ordinary Host consumption does not serialize terminal state`, async () => {
@@ -1611,6 +1611,86 @@ for (const kind of ['terminal', 'agent']) {
       } finally { record?.tracker.dispose(); await f.cleanup(); }
     }
   });
+
+  test(`${kind} large final snapshot survives actual Host reload and tracker restoration`, async () => {
+    const f = await persistenceFixture();
+    const row = index => `SNAPSHOT-${String(index).padStart(5, '0')}-${'x'.repeat(46)}`;
+    const lineCount = 90000;
+    f.host.getTerminalScrollback = () => 100000;
+    f.host.fileFilterState = { includeGlobs: [], excludeGlobs: [] };
+    f.host.context.workspaceState.get = key => f.updates.get(key);
+    let record;
+    let restored;
+    try {
+      const started = await f.started(kind);
+      record = started.record;
+      let frame = 0;
+      for (let offset = 0; offset < lineCount; offset += 128) {
+        const count = Math.min(128, lineCount - offset);
+        started.provider.output(++frame,
+          `${Array.from({ length: count }, (_, index) => row(offset + index)).join('\r\n')}\r\n`);
+        await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === frame,
+          `${kind} large snapshot original frame ${frame}`);
+      }
+      started.provider.output(++frame, '\x1b[3;7H');
+      await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === frame,
+        `${kind} large snapshot final cursor`);
+      started.provider.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+      started.provider.seal(frame);
+      started.provider.release();
+      await until(f.clock, () => record.persistence?.result !== undefined, `${kind} large final save`);
+      assert.equal(record.persistence.result.kind, 'saved', record.persistence.result.reason);
+      const disk = await f.read();
+      const rootDisk = await f.read(f.rootFile);
+      const metadata = disk.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind];
+      assert.ok(metadata.serializedTerminalState.data.length > 5 * 1024 * 1024);
+      assert.equal(metadata.serializedTerminalState.outputSequence, frame);
+      assert.deepEqual(rootDisk.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind], metadata);
+      assert.equal(f.record(kind), undefined);
+      assert.equal(f.host.getExecutionSessions(kind).size, 0, 'Reload must not borrow a live session tracker.');
+      const loaded = f.host.loadState();
+      const loadedMetadata = loaded.nodes.find(node => node.id === `${kind}-1`).metadata[kind];
+      assert.ok(loadedMetadata.serializedTerminalState,
+        `${kind} actual root-local normalization must retain the saved large snapshot.`);
+      assert.deepEqual(loadedMetadata.serializedTerminalState, metadata.serializedTerminalState);
+      assert.equal(loadedMetadata.liveSession, false);
+      f.host.state = loaded;
+      const messages = [];
+      f.host.postMessage = message => messages.push(message);
+      await f.host.postExecutionSnapshot(kind, `${kind}-1`);
+      const payload = messages.find(message => message.type === 'host/executionSnapshot').payload;
+      assert.deepEqual(payload.serializedTerminalState, metadata.serializedTerminalState);
+      assert.equal(payload.liveSession, false);
+      assert.equal(f.providers.length, 1, 'Restoring history must not launch a replacement process.');
+      restored = new record.tracker.constructor(payload.cols, payload.rows, {
+        scrollback: 100000, initialState: payload.serializedTerminalState,
+        initialOutput: payload.output, initialOutputSequence: payload.outputSequence
+      });
+      const restoredState = await restored.flush();
+      assert.equal(restoredState.data, metadata.serializedTerminalState.data);
+      assert.equal(restoredState.outputSequence, frame);
+      const buffer = restored.terminal.buffer.active;
+      for (let index = 0; index < lineCount; index++) {
+        assert.equal(buffer.getLine(index).translateToString(true), row(index), `${kind} reloaded line ${index}`);
+      }
+      assert.equal(buffer.cursorX, 6);
+      assert.equal(buffer.cursorY, 2);
+      const stale = structuredClone(rootDisk);
+      stale.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind].outputSequence = frame + 1;
+      f.host.writePersistedCanvasSnapshotToDisk(f.rootFile, stale);
+      assert.equal(f.host.loadState().nodes.find(node => node.id === `${kind}-1`).metadata[kind].serializedTerminalState,
+        undefined, 'Removing a size policy must not make a stale snapshot authoritative.');
+      const invalid = structuredClone(rootDisk);
+      invalid.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind].serializedTerminalState.format = 'unknown-format';
+      f.host.writePersistedCanvasSnapshotToDisk(f.rootFile, invalid);
+      assert.equal(f.host.loadState().nodes.find(node => node.id === `${kind}-1`).metadata[kind].serializedTerminalState,
+        undefined, 'Removing a size policy must not admit an unknown serialization format.');
+    } finally {
+      restored?.dispose();
+      record?.tracker.dispose();
+      await f.cleanup();
+    }
+  }, 15000);
 }
 
 async function assertFinalSaveRetainsHost(f, record, kind, expected) {
@@ -2053,6 +2133,60 @@ test('B2 strict deletion resolves missing legacy binding storage before actual b
 });
 
 for (const kind of ['terminal', 'agent']) {
+  for (const stop of [false, true]) {
+    test(`snapshot ${kind} projects live ownership through output and ${stop ? 'pending stop' : 'natural exit'}`, async () => {
+      const f = candidateFixture();
+      f.host.persistState = async detail => { f.persisted.push(detail); };
+      await completed(f.clock, f.start(kind), `${kind} live projection start`);
+      const record = f.record(kind);
+      const provider = f.providers[0];
+      const metadata = () => f.host.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind];
+      const assertLive = () => {
+        assert.equal(metadata().persistenceMode, 'snapshot-only');
+        assert.equal(metadata().liveSession, true, 'An owned running subject must be live in the actual node metadata.');
+        assert.equal(metadata().attachmentState, 'attached-live');
+        assert.equal(metadata().runtimeSessionId, undefined, 'Current local ownership is not a Supervisor binding.');
+      };
+      let stopping;
+      try {
+        assertLive();
+        provider.output(1, 'running output');
+        await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, `${kind} live output`);
+        assertLive();
+        if (stop) {
+          stopping = f.host.stopExecutionSession(kind, `${kind}-1`);
+          assert.equal(record.execution.snapshot().stopRequested, true);
+          assert.equal(metadata().lifecycle, 'stopping');
+          assertLive();
+          provider.output(2, ' output while stopping');
+          await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 2, `${kind} stopping output`);
+          assertLive();
+        }
+        provider.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+        f.host.projectNonNativeHostBusiness(record);
+        assert.equal(metadata().liveSession, false, 'A confirmed subject exit must not remain live while final output settles.');
+        assert.equal(metadata().attachmentState, 'history-restored');
+        provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release',
+          result: { kind: 'released' } });
+        provider.seal(stop ? 2 : 1);
+        provider.release();
+        await until(f.clock, () => record.execution.snapshot().settled, `${kind} live projection finalization`);
+        if (stopping) await completed(f.clock, stopping, `${kind} stop settled`);
+        assert.equal((await record.persistence.promise).kind, 'saved');
+        assert.equal(metadata().persistenceMode, 'snapshot-only');
+        assert.equal(metadata().liveSession, false);
+        assert.equal(metadata().outputSequence, stop ? 2 : 1);
+        assert.equal(metadata().lastExitCode, 0);
+        assert(metadata().serializedTerminalState?.data.includes('running output'));
+        assert.equal(f.persisted.filter(detail => detail.reason === 'local-final-snapshot').length, 1);
+      } finally {
+        record.tracker.dispose();
+        record.business?.cancelActivityPoll?.();
+        record.business?.lineContextTracker.dispose();
+      }
+    });
+  }
+
   test(`S9 ${kind} snapshot candidate starts only the explicitly profiled local owner`, async () => {
     const f = candidateFixture();
     f.host.getPreferredRuntimeSupervisorClient = () => assert.fail('snapshot-only must not acquire a Supervisor');
@@ -2759,13 +2893,13 @@ test('S10 Host uncertain resize retains its observation and accepted tail withou
   }
 });
 
-for (const { name, run } of tests) {
+for (const { name, run, timeoutMs } of tests) {
   let timeout;
   try {
     await Promise.race([
       run(),
       new Promise((_resolve, reject) => {
-        timeout = setTimeout(() => reject(new Error(`${name}: test exceeded 3000 ms`)), 3000);
+        timeout = setTimeout(() => reject(new Error(`${name}: test exceeded ${timeoutMs} ms`)), timeoutMs);
       })
     ]);
   } finally { clearTimeout(timeout); }

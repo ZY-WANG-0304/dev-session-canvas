@@ -131,13 +131,19 @@ export function buildCandidateAssets({ output, dependencyRoot, headers, compiler
   return { directory, manifest };
 }
 
-export function importCandidateAssets({ source, dist }) {
-  assert(source && dist, 'Specify candidate source and extension dist');
+export function readCandidateAssets(source) {
+  assert(source, 'Specify candidate source');
   const directory = fs.realpathSync(source);
   const manifest = JSON.parse(readRegular(path.join(directory, 'manifest.json')));
   assert.equal(manifest.binary?.file, binaryFile);
   const binary = readRegular(path.join(directory, binaryFile));
   validateCandidateManifest(manifest, binary);
+  return { directory, manifest, binary };
+}
+
+export function importCandidateAssets({ source, dist }) {
+  assert(source && dist, 'Specify candidate source and extension dist');
+  const { manifest, binary } = readCandidateAssets(source);
   const distRoot = fs.realpathSync(dist);
   assert(readRegular(path.join(distRoot, 'linux-execution-provider.js')).length > 0,
     'Build the formal provider entry before importing candidate assets');

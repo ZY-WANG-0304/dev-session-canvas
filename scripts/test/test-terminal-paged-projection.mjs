@@ -745,11 +745,13 @@ async function verifyControllerSettlement(directory) {
   };
   const fixture = (readId = 'reader', headRevision = 0, settlementMode = 'final-application-v1', environment = {}) => {
     const messages = [];
+    const readErrors = [];
     const terminal = new Terminal({ cols: 80, rows: 24, scrollback: 100, allowProposedApi: true });
     terminal.refresh = () => {};
     let snapshotNotifications = 0;
     const diagnostics = { failNext: false, released: 0, releaseFails: false };
     const controller = createController(terminal, message => messages.push(message), {
+      onReadError: message => { readErrors.push(message); },
       onSnapshotApplied: () => { snapshotNotifications++; },
       beginSnapshotRestoreDiagnosticsSuppression: () => () => {
         diagnostics.released++;
@@ -786,11 +788,94 @@ async function verifyControllerSettlement(directory) {
         headRevision: Math.max(headRevision, request.afterRevision + events.length), events
       });
     };
-    return { terminal, controller, messages, diagnostics, descriptor, start, requests, closes, sendPage,
+    return { terminal, controller, messages, readErrors, diagnostics, descriptor, start, requests, closes, sendPage,
       localStart, localFinish, localResults,
       snapshotNotifications: () => snapshotNotifications,
       dispose() { controller.dispose(); terminal.dispose(); } };
   };
+
+  for (const kind of ['terminal', 'agent']) {
+    for (const mode of ['runtime', 'local', 'legacy-paged', 'legacy-stream']) {
+      await check(`${kind} ${mode} exit status preserves all terminal cells and final cursor`, async () => {
+        const f = fixture('reader', 1, mode === 'runtime' ? 'final-application-v1' : null, { kind });
+        const paged = mode === 'runtime' || mode === 'legacy-paged';
+        const tail = 'FIRST\r\nSECOND\r\nTAIL\x1b[31m-RED\x1b[0m\x1b]2;FINAL_TITLE\x07\x1b[?25l\x1b[2;3H';
+        const screen = () => ({
+          lines: Array.from({ length: f.terminal.buffer.active.length }, (_, index) =>
+            f.terminal.buffer.active.getLine(index).translateToString(true)),
+          cursorX: f.terminal.buffer.active.cursorX,
+          cursorY: f.terminal.buffer.active.cursorY,
+          baseY: f.terminal.buffer.active.baseY,
+          hidden: f.terminal._core.coreService.isCursorHidden
+        });
+        try {
+          if (paged) {
+            f.start();
+            await until(() => f.requests().length === 1, 'reader opened for terminal body');
+            f.sendPage([{ type: 'output', revision: 1, createdAtMs: 1, data: tail }]);
+          } else {
+            f.localStart(tail, 1);
+          }
+          await until(() => f.controller.getQueuedWriteCount() === 0, 'subject tail fully applied');
+          const expected = screen();
+          assert.equal(expected.cursorX, 2);
+          assert.equal(expected.cursorY, 1);
+          assert.equal(expected.lines[2], 'TAIL-RED');
+          if (paged) f.controller.terminalAvailable('session', 'authority', 1, true,
+            mode === 'runtime' ? 1 : undefined);
+          if (mode === 'local') f.localFinish(1, 'session', 'Session ended.');
+          else f.controller.showExit('Session ended.', 'session');
+          await until(() => f.controller.getQueuedWriteCount() === 0, 'exit notification and final application drained');
+          if (mode === 'local') {
+            assert.deepEqual(f.localResults()[0].payload.outcome, { kind: 'applied', finalOutputSequence: 1 });
+          } else if (paged) {
+            assert.equal(f.closes().length, 1);
+            if (mode === 'runtime') assert.deepEqual(f.closes()[0].payload.outcome, { kind: 'applied', finalRevision: 1 });
+            else assert.equal(Object.hasOwn(f.closes()[0].payload, 'outcome'), false);
+          }
+          assert.deepEqual(screen(), expected, 'Lifecycle status must not append or overwrite subject terminal bytes.');
+          assert.deepEqual(f.readErrors, [], 'Natural exit must not create an error notification.');
+        } finally { f.dispose(); }
+      });
+    }
+  }
+
+  for (const kind of ['terminal', 'agent']) {
+    for (const settlementMode of ['final-application-v1', null]) {
+      await check(`${kind} ${settlementMode ?? 'legacy'} reader errors notify once without touching terminal bytes`, async () => {
+        const f = fixture('reader', 1, settlementMode, { kind });
+        f.descriptor.checkpoint.serializedState.data = 'FIRST\r\nTAIL\x1b[1;3H';
+        const screen = () => ({ lines: Array.from({ length: f.terminal.buffer.active.length }, (_, index) =>
+          f.terminal.buffer.active.getLine(index).translateToString(true)),
+          cursorX: f.terminal.buffer.active.cursorX, cursorY: f.terminal.buffer.active.cursorY });
+        try {
+          f.start();
+          await until(() => f.requests().length === 1, 'original reader request');
+          const original = f.requests()[0].payload;
+          f.controller.applyTerminalPage('unrelated-reader', original.requestId, undefined, 'wrong-reader error');
+          f.controller.applyTerminalPage(original.readId, 'unrelated-request', undefined, 'wrong-request error');
+          assert.deepEqual(f.readErrors, []);
+          const successor = { ...f.descriptor, readId: 'successor-reader' };
+          f.start(successor);
+          await until(() => f.requests().length === 2, 'successor reader request');
+          const expected = screen();
+          f.controller.applyTerminalPage(original.readId, original.requestId, undefined, 'replaced-reader error');
+          assert.deepEqual(f.readErrors, []);
+          assert.deepEqual(screen(), expected);
+          const current = f.requests()[1].payload;
+          f.controller.applyTerminalPage(current.readId, current.requestId, undefined, 'Terminal reader disconnected.');
+          f.controller.applyTerminalPage(current.readId, current.requestId, undefined, 'duplicate error');
+          await until(() => f.controller.getQueuedWriteCount() === 0, 'reader cancellation');
+          assert.deepEqual(f.readErrors, ['Terminal reader disconnected.']);
+          assert.deepEqual(screen(), expected, 'Read error feedback belongs outside the terminal byte stream.');
+          assert.equal(f.closes().length, 2);
+          if (settlementMode) assert.deepEqual(f.closes()[1].payload.outcome,
+            { kind: 'cancelled', reason: 'terminal-reader-closed' });
+          else assert.equal(Object.hasOwn(f.closes()[1].payload, 'outcome'), false);
+        } finally { f.dispose(); }
+      });
+    }
+  }
 
   await check('final zero waits for the real empty xterm callback, not snapshot notification or exit text', async () => {
     const f = fixture();

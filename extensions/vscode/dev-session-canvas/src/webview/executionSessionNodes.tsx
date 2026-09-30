@@ -165,6 +165,7 @@ export interface ExecutionSessionNodeDependencies {
     options?: {
       onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
       onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
+      onReadError?: (message: string) => void;
       beginSnapshotRestoreDiagnosticsSuppression?: () => (() => void) | undefined;
     }
   ) => ExecutionTerminalController;
@@ -339,6 +340,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
       let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
       const controller = deps.createExecutionTerminalController(id, 'agent', terminal, {
+        onReadError: message => data.onShowTransientError?.(message),
         onContentWillChange: (reason) => {
           if (reason !== 'snapshot') {
             nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
@@ -1052,6 +1054,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
       let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
       const controller = deps.createExecutionTerminalController(id, 'terminal', terminal, {
+        onReadError: message => data.onShowTransientError?.(message),
         onContentWillChange: (reason) => {
           if (reason !== 'snapshot') {
             nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
