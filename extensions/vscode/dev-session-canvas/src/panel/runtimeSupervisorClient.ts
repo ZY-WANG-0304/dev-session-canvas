@@ -137,7 +137,8 @@ export class RuntimeSupervisorClient {
       return;
     }
 
-    const connectPromise = this.connectWithRestart(options.allowRestart !== false);
+    const allowRestart = options.allowRestart ?? (this.options.executionProfile === undefined);
+    const connectPromise = this.connectWithRestart(allowRestart);
     this.connectPromise = connectPromise;
     void connectPromise.then(
       () => this.clearConnectPromise(connectPromise),

@@ -16,7 +16,7 @@
 
 ## 目标与全局图景
 
-本次已由代理选定整体终点：运行期容量/交互有明确约束，已结束 Runtime 不留正文，当前有效页面仍收齐主体尾部并正确应用终态。当前接通 B2 生产能力及有限竞态，最终以实际分进程、多会话资源模型完成 A1 和其他必要验收，不再先让合并夹具压线。当前增量先补 Client/backend/launcher 的具名 profile 与隔离 generation 校验；不默认启用候选或放开 Host 冷启动。真实 Agent/Webview/跨平台验收不削弱。以下目标均为历史阶段范围。
+本次已由代理选定整体终点：运行期容量/交互有明确约束，已结束 Runtime 不留正文，当前有效页面仍收齐主体尾部并正确应用终态。当前接通 B2 生产能力及有限竞态，最终以实际分进程、多会话资源模型完成 A1 和其他必要验收，不再先让合并夹具压线。Client/backend/launcher 的具名 profile、隔离 generation、Linux candidate 的安全首次启动与显式 Host 新建路由已接通；extension 默认仍关闭，snapshot-only 原显式工厂不变，两模式正式入口和匹配资产继续按 B2 完成。真实 Agent/Webview/跨平台验收不削弱。以下目标均为历史阶段范围。
 
 S16只交付普通completed旧续体不复活已清root、不覆盖其他root更新或清理replacement；reader/persist窗口的失败只恢复仍属本次投影的节点执行字段。该窄目标已有受控Host回归，不等于完整非永久事务或全部迟到UI安全。
 
@@ -80,7 +80,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-09-28) 用户要求代理作出判断；完成定义与 B1 -> B2（含 B3）-> 整体回归的工程顺序已选定，取消等待用户确认清单的前置。预算由代理负责论证，不冒称已有实测或用户 SLA。
 - [x] (2026-09-30) 同步预算重评：原 64/128 MiB 和 exit 1 保留为合并进程观察信号；取消 profiler/压线优化作为 B2 前置，F-04 与最终 A1 保持开放。
 - [x] (2026-09-30) B2 启动参数链：Client/backend/launcher 传递 typed profile，复用隔离 generation 校验；hello 先校验后缓存，畸形/缺失能力明确拒绝。启动 16/16、Client 28/28、paths、Host 97/97、Supervisor 82/82、deactivation、socket 信用、typecheck/build 通过；不代证 native/真实产品验收。
-- [ ] B2 继续接通不替换活动 endpoint 的首次启动与 Host/extension 两模式选择、匹配资产和实际启用，不改变旧 live 和未知创建责任；随后按原 A1 至 A6 验收，不自动增加工具阶段。具体范围见生产接入第 32 节。
+- [x] (2026-09-30) 按 32.1 接通 Linux candidate 进程期 namespace claim、恢复前 endpoint 检查及 systemd 不自动重启；显式 Host 新建使用隔离 generation 和专属启动许可，candidate bound 强制不重启、旧路径保留。namespace 7/7、启动 16/16、Client 28/28、Host 104/104、Supervisor 82/82 及定向回归/typecheck/build 通过，不代证真实产品启用。
+- [ ] B2 继续完成 extension 两模式正式入口、匹配资产和实际启用，不改变旧 live 和未知创建责任；随后按原 A1 至 A6 验收，不自动增加工具阶段。已完成范围见生产接入第 32 节及 32.1，snapshot-only 原显式工厂和 extension 默认关闭仍保持。
 
 以下 checklist 保留历史执行状态，不与本次有限清单累加；例如 S12 的后续旧写者定位已由 S13/S14 承接，不再次排队。
 
@@ -338,6 +339,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-09-30 B2 首次启动核对：registry 恢复可修复并写入 journal，不能把锁仅放在 listen；systemd/detached 共用 registry、不同 socket，必须按 canonical storage 而非 backend 排他。namespace 实际竞争先红 `loads=[1,1]`，修后败方在恢复前拒绝；unit 的 on-failure、Client 默认启动、Host 实际 getter 缺 profile 的先红分别修正。新增 candidate bound 用例又先红 `[true,true] != [false,true]`，现按实际 generation 钳制 no-restart，旧 legacy 显式选项保留。误禁止 child_process 导入、strict 夹具漏传 options 属两项夹具错误，不计产品缺陷。修后结果及范围见生产接入 32.1。
+
 2026-09-30：旧容量入口将 Supervisor、Host、回放模型及测试开销放在同一进程，64/128 MiB 不代表独立 Supervisor 或每会话预算；超限数值不能单独推出真实产品缺陷。B2 源码另发现 Unix listen 先 unlink socket，两个 client 同 namespace 冷启动可能替换活动路径；本轮没有原生复现，开放 Host 冷启动前须解决该具体安全条件。
 
 本轮独立复核确认 selected Client 的 hello 缓存不能早于能力验证：畸形 profile 列表会让 includes 抛错而留下缓存，后续 ensureConnected 可直接成功。固定畸形输入已先红，修为 Array.isArray 与完整 reader 能力检查成功后才缓存，失败销毁原连接且不重启。这只修本轮准入责任，不扩通用协议健壮性门槛。
@@ -546,6 +549,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+- 决策：Linux candidate 用内核持有的 abstract socket 占用 canonical storage，Node >=20.8 才准入，生命周期到进程退出，候选 systemd 不自动重启；Host 仅显式新建连接准备可启动，按实际 generation 指定 Client profile。理由：先于可能修复 journal 的恢复建立单写者，避免文件租约抢占和 backend 双写；已有 live/unknown 不借新建许可重放。日期/作者：2026-09-30，Codex，实施输入 `4578cd34`。
+
 - 决策：保留合并进程阈值与失败，超限改列待评估信号，当前推进 B2，不前置 profiler；最终 A1 按真实分进程、多会话及交互资源模型论证正式预算。理由：观察拓扑与产品预算对象不同，结构性容量约束及尾部验收仍独立有效。日期/作者：2026-09-30，用户预算重评 / Codex。
 - 决策：本轮先接 typed profile/generation 的正式启动传递链，默认行为和 Host 禁止冷启动不变；安全首次启动、两模式启用与资产准入继续作为原 B2。理由：补已知生产缺口而不在缺少 namespace 排他和平台验证时开放新入口；无新诊断阶段。日期/作者：2026-09-30，Codex。
 
@@ -747,6 +752,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+32.1 已关闭当前 Linux candidate 安全首次启动与显式 Host 新建路由的具体缺口；namespace 7/7 使用实际 socket/测试自有子进程，启动 16/16、Client 28/28、Host 104/104、Supervisor 82/82、paths/deactivation/socket credit/typecheck/build 通过，独立最终复核未见新增确定性 blocker。Host 测试观察真实 getter/backend/Client/cache 到受控 connection/RPC 边界；没有实际 systemd 服务、PTY/Agent、VS Code/Electron/Webview 或其他平台验收。真实两模式产品启用、资产/平台和 A1 至 A6 仍开放，extension 默认关闭，不开展 profiler 或合并样本压线。
 
 2026-09-30：已同步当前预算与推进顺序，原容量失败/历史证据不改，F-04 不关闭。B2 profile/generation 启动参数链已实现，未知/错 generation 及错误 hello 均拒绝；本轮先红、独立复核修正与验证详见生产接入第 32 节。启动参数 16/16、Client 28/28、paths、Host 97/97、Supervisor 82/82、Host deactivation、socket 信用与 typecheck/build 通过。profile 传递不等于完整生产启用；下一是安全首次启动和两模式入口，真实 Agent/Webview、跨平台、有限生命周期及最终资源预算仍需验收。
 
@@ -1043,6 +1050,8 @@ S1 最终定向32/32、typecheck 复跑、既有 bridge 回归、独立复审及
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+32.1 已执行：先补设计与本计划，再在 `src/supervisor/runtimeSupervisorNamespace.ts` 与 Server start 接排他/遗留 endpoint 规则，在 backend unit 关闭候选自动重启；Host/path resolver 与 Client 新建许可沿现有回归补断言。仓库根运行 `npm run test:runtime-supervisor-namespace`（Linux，自有 socket/受控子进程，无 PTY）、`npm run test:runtime-supervisor-startup-profile`、`node scripts/test/test-runtime-supervisor-paths.mjs`、`node scripts/test/test-host-execution-owner-wiring.mjs`、`node scripts/test/test-runtime-host-deactivation-integrity.mjs`、`node scripts/test/test-supervisor-execution-owner-wiring.mjs`、`node scripts/test/test-runtime-host-output-credit.mjs`、`npm run typecheck` 和 `npm run build`，修后均通过。构建后执行 `node scripts/build/linux-execution-candidate-assets.mjs import --source /tmp/dsc-linux-execution-candidate-s10-7a39497b-2378-23336` 恢复原已校验资产，未加载 native。测试只用自有临时目录和有限进程；保留先红与修后结果，不修改旧原生诊断。下一直接完成同一 B2 的 extension 两模式入口与匹配资产，不另设诊断前置。
 
 2026-09-30 已执行步骤：先同步收尾、容量和本计划，再实施生产接入第 32 节的共享 profile/generation 校验及 Client/backend/launcher 传递。仓库根运行 `node scripts/test/test-runtime-supervisor-paths.mjs`、`npm run test:runtime-supervisor-startup-profile`（启动参数与 Client 两脚本），验证 no-profile 不变、拒绝无副作用、两跳原值传递、hello 拒绝与不重放。再运行 `node scripts/test/test-host-execution-owner-wiring.mjs`、`node scripts/test/test-runtime-host-deactivation-integrity.mjs`、`node scripts/test/test-supervisor-execution-owner-wiring.mjs`、`node scripts/test/test-runtime-host-output-credit.mjs` 以及 `npm run typecheck`、`npm run build`，均通过。不改冻结诊断或重复容量样本；余下安全冷启动及实际两模式接入按同一 B2 推进，不另设工具前置。
 
@@ -1871,3 +1880,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-09-28，代理工程裁决）：用户明确不做确认，要求代理依据重构目标判断。收尾设计改为已选定/未验证，取消等待用户批准清单/选择工程数字的前置，确定 B1 -> B2（含 B3）-> 最终整体验收；强调 F-04 的实际容量/背压而非小样本未 OOM，以及 B2 后最终产物的 A1 回归。没有改变产品保证、原始证据或启动新实验，旧草案记录保留为历史。
 
 修订记录（2026-09-30，观察预算与 B2 接入）：先按用户要求同步设计和当前计划，将合并进程 64/128 MiB 超限改列观察信号并保留原失败，取消压线/profiler 前置；随后补正式启动 profile/generation 链及 hello 先验证后缓存。先红与修后 16/28 项、Host/Supervisor/paths/deactivation/socket/typecheck/build 分账，独立复核修正后无新增阻塞。本轮不开 Host cold-start，不冒称整体 B2/A1 或原生产品验收；下一按同一 B2 接安全首次启动和两模式入口，不新建工具阶段。
+
+修订记录（2026-09-30，B2 安全首次启动与 Host 新建）：先登记 32.1 的 Linux 进程期排他与恢复前拒绝、候选 systemd 不重启及新建专属许可，再实施并记录先红/夹具错误/修后结果；同步当前目标、进度、发现、决策、复盘、步骤及收尾入口。显式 Host 路径可启动不等于 extension 默认启用；既有绑定和未知责任保持，不将有限 socket/受控模块结果升级为真实产品或跨平台验收。B2/A1/F-04 总项未完成，保留原预算失败、R1 独立及既定有限收尾顺序。

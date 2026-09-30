@@ -270,7 +270,7 @@ function renderSystemdUserUnit(params: {
     ),
     `WorkingDirectory=${quoteSystemdExecArg(params.backend.paths.storageDir)}`,
     `ExecStart=${execArgs.map((value) => quoteSystemdExecArg(value)).join(' ')}`,
-    'Restart=on-failure',
+    params.executionProfile === undefined ? 'Restart=on-failure' : 'Restart=no',
     'RestartSec=1',
     '',
     '[Install]',

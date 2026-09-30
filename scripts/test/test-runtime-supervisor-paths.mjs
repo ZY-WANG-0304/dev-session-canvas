@@ -26,6 +26,7 @@ try {
     CURRENT_RUNTIME_SUPERVISOR_GENERATION,
     resolveCurrentRuntimeSupervisorBaseStoragePath,
     resolveExecutionCandidateRuntimeSupervisorBaseStoragePath,
+    resolveRuntimeSupervisorExecutionProfile,
     assertExecutionCandidateRuntimeSupervisorStorageDir,
     resolveRuntimeSupervisorPathsFromStorageDir,
     resolveSystemdUserRuntimeSupervisorPathsFromStorageDir
@@ -65,10 +66,13 @@ try {
   const candidateBase = resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(extensionStorageDir, candidateProfile);
   const candidateStorageDir = path.join(candidateBase, 'runtime-supervisor');
   assert.equal(candidateBase, path.join(extensionStorageDir, 'runtime-supervisor-generations', 'terminal-exit-v1'));
+  assert.equal(resolveRuntimeSupervisorExecutionProfile(candidateStorageDir), candidateProfile);
+  assert.equal(resolveRuntimeSupervisorExecutionProfile(path.join(candidateStorageDir, '.')), candidateProfile);
   assert.doesNotThrow(() => assertExecutionCandidateRuntimeSupervisorStorageDir(candidateStorageDir, candidateProfile));
   for (const invalidStorage of [shortStorageDir, currentGenerationStorageDir, candidateBase,
     path.join(extensionStorageDir, 'terminal-exit-v1', 'runtime-supervisor'),
     path.join(candidateStorageDir, '..', '..', 'terminal-stream-v1', 'runtime-supervisor')]) {
+    assert.equal(resolveRuntimeSupervisorExecutionProfile(invalidStorage), undefined);
     assert.throws(() => assertExecutionCandidateRuntimeSupervisorStorageDir(invalidStorage, candidateProfile), /isolated/);
   }
   for (const invalidProfile of ['', 'future-profile', undefined, null]) {

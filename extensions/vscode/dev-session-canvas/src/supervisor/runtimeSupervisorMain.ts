@@ -111,6 +111,11 @@ import { assertExecutionCandidateCapabilities, assertExecutionCandidateProfile, 
 import type { InteractionObservation, OperationObservation } from '../panel/executionSessionAdapter';
 import { createLinuxExecutionOwnerOptions } from '../panel/linuxExecutionOwnerFactory';
 import {
+  acquireRuntimeSupervisorNamespace,
+  assertRuntimeSupervisorNamespaceSupport,
+  prepareRuntimeSupervisorSocketPath
+} from './runtimeSupervisorNamespace';
+import {
   ExecutionOwnerLifecycle,
   type ExecutionOwnerOptions,
   type OwnedExecution
@@ -305,6 +310,8 @@ export class RuntimeSupervisorServer {
   private persistRegistryError: Error | undefined;
   private idleShutdownTimer: NodeJS.Timeout | undefined;
   private server: net.Server | undefined;
+  private namespaceClaim: net.Server | undefined;
+  private candidateStartAttempted = false;
   private readonly executionOwner?: ExecutionOwnerLifecycle;
   private shutdownBoundary?: SupervisorShutdownBoundary;
 
@@ -492,7 +499,16 @@ export class RuntimeSupervisorServer {
 
   public async start(): Promise<void> {
     this.assertOwnedAdmissionOpen();
+    if (this.executionProfile !== undefined) {
+      if (this.candidateStartAttempted) throw new Error('Execution candidate Supervisor startup was already attempted.');
+      this.candidateStartAttempted = true;
+      assertRuntimeSupervisorNamespaceSupport();
+    }
     fs.mkdirSync(this.paths.storageDir, { recursive: true });
+    if (this.executionProfile !== undefined) {
+      this.namespaceClaim = await acquireRuntimeSupervisorNamespace(this.paths.storageDir);
+      await prepareRuntimeSupervisorSocketPath(this.paths.socketPath);
+    }
     ensureSocketDirectoryReady(this.paths);
     await this.loadRegistry();
     this.assertOwnedAdmissionOpen();
@@ -501,7 +517,7 @@ export class RuntimeSupervisorServer {
   }
 
   private async listen(): Promise<void> {
-    if (process.platform !== 'win32' && fs.existsSync(this.paths.socketPath)) {
+    if (this.executionProfile === undefined && process.platform !== 'win32' && fs.existsSync(this.paths.socketPath)) {
       fs.unlinkSync(this.paths.socketPath);
     }
 

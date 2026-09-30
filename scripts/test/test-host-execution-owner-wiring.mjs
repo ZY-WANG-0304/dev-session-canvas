@@ -15,6 +15,7 @@ const bundled = await esbuild.build({
       export { encodeOutputFrame } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
       export { EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
       export { RuntimeTerminalReadRelay } from './extensions/vscode/dev-session-canvas/src/panel/runtimeTerminalReadRelay';
+      export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
       export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
       export { parseWebviewMessage } from './extensions/vscode/dev-session-canvas/src/common/protocol';
     `,
@@ -59,7 +60,7 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   path.resolve('scripts/test/host-owner-wiring.cjs'), path.resolve('scripts/test')
 );
 const { CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
-  RuntimeTerminalReadRelay, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS } = loaded.exports;
+  RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS } = loaded.exports;
 
 function deferred() {
   let resolve;
@@ -1915,6 +1916,141 @@ function settledLegacyDelete(kind, reason) {
   const result = Object.freeze({ kind, ...(reason ? { reason } : {}) });
   return { first: Promise.resolve(result), current: () => result, submitted: true };
 }
+
+function candidateRuntimeRoutingFixture() {
+  const f = candidateRuntimeFixture();
+  const baseStoragePath = path.resolve('/controlled/workspace-runtime');
+  f.host.context = { extensionMode: 3, extensionUri: { fsPath: '/controlled/extension' } };
+  f.host.getExtensionStoragePath = () => baseStoragePath;
+  f.host.resolveRuntimeStoragePath = CanvasPanelManager.prototype.resolveRuntimeStoragePath;
+  f.host.getPreferredRuntimeSupervisorClient = CanvasPanelManager.prototype.getPreferredRuntimeSupervisorClient;
+  return { ...f, baseStoragePath,
+    candidateStoragePath: path.join(baseStoragePath, 'runtime-supervisor-generations', 'terminal-exit-v1') };
+}
+
+async function withRuntimeConnectionBoundary(run, connect = () => {}) {
+  const connections = [];
+  const creates = [];
+  const methods = {
+    async ensureConnected(options = {}) {
+      const observation = { client: this, backend: this.options.backend, profile: this.options.executionProfile, options };
+      connections.push(observation);
+      await connect(observation);
+    },
+    supportsExecutionCandidateProfile(profile) { return profile === this.options.executionProfile; },
+    supportsTerminalSessionStream() { return true; },
+    supportsTerminalPagedRead() { return false; },
+    async createSession(request) {
+      creates.push({ client: this, request });
+      return { sessionId: request.sessionId, kind: request.kind, runtimeBackend: this.options.backend.kind,
+        live: true, lifecycle: request.kind === 'agent' ? 'running' : 'live' };
+    }
+  };
+  const originals = new Map(Object.keys(methods).map(name => [name, RuntimeSupervisorClient.prototype[name]]));
+  Object.assign(RuntimeSupervisorClient.prototype, methods);
+  try { await run({ connections, creates }); }
+  finally { for (const [name, original] of originals) RuntimeSupervisorClient.prototype[name] = original; }
+}
+
+for (const kind of ['terminal', 'agent']) {
+  test(`B2 ${kind} actual Host routing selects isolated candidate with new-session startup permission`, async () => {
+    const f = candidateRuntimeRoutingFixture();
+    await withRuntimeConnectionBoundary(async ({ connections, creates }) => {
+      await completed(f.clock, f.start(kind), `${kind} actual Host candidate route`);
+      assert.equal(creates.length, 1, JSON.stringify({ posted: f.posted, errors: f.errors }));
+      assert.equal(connections.length, 1);
+      assert.equal(connections[0].profile, EXECUTION_CANDIDATE_PROFILE);
+      assert.equal(connections[0].backend.paths.storageDir, path.join(f.candidateStoragePath, 'runtime-supervisor'));
+      assert.equal(connections[0].options.allowRestart, true);
+      assert.equal(creates[0].request.executionProfile, EXECUTION_CANDIDATE_PROFILE);
+      assert.equal([...f.host.runtimeSessionBindings.values()][0].runtimeStoragePath, f.candidateStoragePath);
+    });
+  });
+}
+
+test('B2 actual bound Host routing preserves old raw and stream slots without candidate profile or startup permission', async () => {
+  const f = candidateRuntimeRoutingFixture();
+  const streamStoragePath = path.join(f.baseStoragePath, 'runtime-supervisor-generations', 'terminal-stream-v1');
+  await withRuntimeConnectionBoundary(async ({ connections }) => {
+    await f.host.getRuntimeSupervisorClientForKind('legacy-detached');
+    await f.host.getRuntimeSupervisorClientForKind('legacy-detached', {}, streamStoragePath);
+    assert.deepEqual(connections.map(value => value.backend.paths.storageDir),
+      [f.baseStoragePath, streamStoragePath].map(value => path.join(value, 'runtime-supervisor')));
+    assert.deepEqual(connections.map(value => value.profile), [undefined, undefined]);
+    assert.deepEqual(connections.map(value => value.options.allowRestart), [false, false]);
+  });
+});
+
+test('B2 candidate bound-first and new-first cache reuse retains profile and per-call startup permission', async () => {
+  for (const first of ['bound', 'new']) {
+    const f = candidateRuntimeRoutingFixture();
+    await withRuntimeConnectionBoundary(async ({ connections }) => {
+      const bound = () => f.host.getRuntimeSupervisorClientForKind('legacy-detached', { allowRestart: true }, f.candidateStoragePath);
+      const prepare = async () => (await f.host.getPreferredRuntimeSupervisorClient({ allowRestart: true })).client;
+      const a = await (first === 'bound' ? bound() : prepare());
+      const b = await (first === 'bound' ? prepare() : bound());
+      assert.strictEqual(a, b);
+      assert.equal(f.host.runtimeSupervisorClients.size, 1);
+      assert.deepEqual(connections.map(value => value.profile), [EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_PROFILE]);
+      assert.deepEqual(connections.map(value => value.options.allowRestart), first === 'bound' ? [false, true] : [true, false]);
+    });
+  }
+});
+
+test('B2 actual stock Host new route remains stream generation while candidate bindings retain their own profile', async () => {
+  const f = candidateRuntimeRoutingFixture();
+  f.host.executionCandidateProfile = undefined;
+  f.host.nonNativeExecutionOwner = undefined;
+  await withRuntimeConnectionBoundary(async ({ connections }) => {
+    const current = await f.host.getPreferredRuntimeSupervisorClient();
+    assert.equal(current.runtimeStoragePath,
+      path.join(f.baseStoragePath, 'runtime-supervisor-generations', 'terminal-stream-v1'));
+    assert.equal(connections[0].profile, undefined);
+    await f.host.getRuntimeSupervisorClientForKind('legacy-detached', {}, f.candidateStoragePath);
+    assert.equal(connections[1].profile, EXECUTION_CANDIDATE_PROFILE);
+    assert.equal(connections[1].options.allowRestart, false);
+  });
+});
+
+test('B2 actual cached backend fallback preserves candidate generation and profile', async () => {
+  if (process.platform !== 'linux') return;
+  const f = candidateRuntimeRoutingFixture();
+  f.host.context.extensionMode = 1;
+  f.host.preferredRuntimeHostBackendKind = 'systemd-user';
+  await withRuntimeConnectionBoundary(async ({ connections }) => {
+    const result = await f.host.getPreferredRuntimeSupervisorClient({ allowRestart: true });
+    assert.equal(result.backend.kind, 'legacy-detached');
+    assert.match(result.fallbackReason, /controlled systemd unavailable/);
+    assert.ok(connections.some(value => value.backend.kind === 'systemd-user'));
+    assert.ok(connections.some(value => value.backend.kind === 'legacy-detached'));
+    for (const value of connections) {
+      assert.equal(value.backend.paths.storageDir, path.join(f.candidateStoragePath, 'runtime-supervisor'));
+      assert.equal(value.profile, EXECUTION_CANDIDATE_PROFILE);
+      assert.equal(value.options.allowRestart, true);
+    }
+  }, value => { if (value.backend.kind === 'systemd-user') throw new Error('controlled systemd unavailable'); });
+});
+
+test('B2 strict deletion resolves missing legacy binding storage before actual backend selection', async () => {
+  for (const candidate of [false, true]) {
+    for (const candidateBinding of [false, true]) {
+      const f = candidateRuntimeRoutingFixture();
+      if (!candidate) { f.host.executionCandidateProfile = undefined; f.host.nonNativeExecutionOwner = undefined; }
+      const selected = [];
+      f.host.getRuntimeSupervisorClientForBackend = async (backend, options) => {
+        selected.push({ backend, options });
+        return { deleteSession: async () => {}, deleteSessionStrict: () => settledLegacyDelete('legacy-acknowledged') };
+      };
+      await f.host.deleteRuntimeSupervisorSessionStrict(
+        { kind: 'terminal', backendKind: 'legacy-detached', sessionId: 'old-terminal',
+          ...(candidateBinding ? { runtimeStoragePath: f.candidateStoragePath } : {}) }, { allowRestart: candidateBinding });
+      assert.equal(selected.length, 1);
+      assert.equal(selected[0].backend.paths.storageDir,
+        path.join(candidateBinding ? f.candidateStoragePath : f.baseStoragePath, 'runtime-supervisor'));
+      assert.equal(selected[0].options.allowRestart, false);
+    }
+  }
+});
 
 for (const kind of ['terminal', 'agent']) {
   test(`S9 ${kind} snapshot candidate starts only the explicitly profiled local owner`, async () => {

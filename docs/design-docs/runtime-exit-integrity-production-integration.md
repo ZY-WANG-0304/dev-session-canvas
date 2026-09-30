@@ -21,7 +21,7 @@ updated_at: 2026-09-30
 
 ## 1. 当前结论与阶段边界
 
-2026-09-30，按预算重评调整既定有限收尾顺序，见 `docs/design-docs/runtime-persistence-closeout.md`。合并测试进程的 Heap 64 MiB / RSS 128 MiB 是初始观察预算，不是独立 Supervisor 或每会话的产品预算；原阈值、结果及 exit 1 保留，超限改列待评估信号，不单凭它阻塞 B2，也不先做仅为压线的优化或 profiler。现推进 B2 正式启动链接入，范围见第 32 节；真实分进程、多会话资源与交互评估并入 A1，F-04 仍开放。F-05 新路径保持收口，B3、真实 Agent/Webview/跨平台、主体尾部及 A1 至 A6 不削减；不展开 S17 工具链。本文旧阶段及其“下一步”是历史证据，不是当前执行队列。
+2026-09-30，按预算重评调整既定有限收尾顺序，见 `docs/design-docs/runtime-persistence-closeout.md`。合并测试进程的 Heap 64 MiB / RSS 128 MiB 是初始观察预算，不是独立 Supervisor 或每会话的产品预算；原阈值、结果及 exit 1 保留，超限改列待评估信号，不单凭它阻塞 B2，也不先做仅为压线的优化或 profiler。B2 已接通启动参数链、Linux candidate 的安全首次启动和显式 Host 新建入口，范围及有限结果见第 32 节与 32.1；extension 默认仍关闭，两模式正式入口、匹配资产和既定验收仍开放。真实分进程、多会话资源与交互评估并入 A1，F-04 仍开放。F-05 新路径保持收口，B3、真实 Agent/Webview/跨平台、主体尾部及 A1 至 A6 不削减；不展开 S17 工具链。本文旧阶段及其“下一步”是历史证据，不是当前执行队列。
 
 2026-09-28，当前S16见31.15，输入`a74844c4`。真实Host回归先红证明旧completed保存失败可复活已清root；最小修正只保护普通completed在reader/persist等待窗口的原投影/session身份，并在并发时局部恢复节点执行字段，strict分支不改。Host回归25次、wiring95/95、checkpoint、paged completion四组合及typecheck通过，独立review无阻塞。完整reset/reload事务、首次pending等待后callback注入、新业务准入及旧Runtime delete之后的迟到UI仍开放；template仅验证prepare入口，不恢复global gate/core锁/root全局drain，不新增native或平台样本。以下S15及更早段落为原时点记录，不覆盖本段。
 
@@ -1436,3 +1436,19 @@ Runtime client 获取默认受永久 gate 保护。已经被 gate 关闭前接�
 本轮已完成上述传递链与定向验证。新增 `scripts/test/test-runtime-supervisor-startup-profile.mjs` 在原 backend/launcher 上先红，缺失 candidate 的第一跳参数；paths 新映射尚不存在、Client 未拒绝未知 profile 的先红分别保留为接口缺口与准入缺口。独立复核又以畸形 hello 的 `executionCandidateProfiles: {}` 证明校验抛错后仍残留已接受缓存，导致第二次连接检查直接成功；新增用例先红后，改为数组/reader 能力验证成功才提交 hello，失败清理连接且不启动替代服务，不增通用协议工具。
 
 最终运行 `npm run test:runtime-supervisor-startup-profile`：实际 backend/launcher 受控启动 16/16、Client 28/28；`test-runtime-supervisor-paths.mjs`、Host owner 97/97、Supervisor owner 82/82、Host deactivation、真实 socket Host output credit、typecheck/build 与 diff 检查通过。构建清除 dist 后从原已校验目录重新 import Linux 资产，没有加载 binary 或启动 native。没有新的容量、实际 systemd 服务、真实 Agent/VS Code/Webview 或跨平台通过；默认入口、Host cold-start 和旧 live 路径均未改变。下一直接处理同 namespace 首次启动与两模式入口，仍属本 B2，不返回合并阈值压线或工具阶段。
+
+### 32.1 安全首次启动与 Host 新建入口
+
+2026-09-30 从 `4578cd34` 继续 B2。源码确认 registry 恢复会经 journal open 修复 stale tail，并非纯读；排他取得必须早于 `loadRegistry()`，且持有到最终写盘之后。选定仅为当前 Linux candidate 使用 Node 内置 abstract Unix socket 作为进程期 namespace claim，即由内核原子占用、进程结束自动释放的无磁盘地址；不是新增服务进程、文件租约、PID 存活猜测或通用锁框架。`src/supervisor/runtimeSupervisorNamespace.ts` 按 uid 和 `realpath(storageDir)` 的结构化身份生成具名地址，不含 backend，保证共享 registry 的 detached/systemd 竞争同一占用。Node 具名 abstract socket 自 20.8.0 支持，取得资源前要求 Linux/Node >=20.8；不支持直接拒绝，stock 路径不改。
+
+候选 `start()` 同对象只执行一次；创建 storage 后先取得 claim，再检查业务 endpoint、恢复 registry、监听及开放业务。claim 的 socket 只拒绝连接、unref 不阻止进程退出，不随业务 listener close、关闭超时/失败释放。shutdown 的 server 域仍指业务 listener；claim 是本进程到退出前应保留的排他责任。获得 claim 后，遗留 public endpoint 若不是 socket、仍可连接或状态未知，均在 load 前拒绝；只有明确 ECONNREFUSED 且再次 lstat 的 dev/ino/type 未变，才清理残留 socket。不得保留候选 listen 的无条件 unlink。该保证限同一 Linux 内核运行环境中的本版参与者，不代证共享存储跨主机/network namespace，亦不宣称与不持 claim 的旧 candidate 并发启动安全。
+
+候选 systemd unit 使用 `Restart=no`，防止失败的竞争者持续重启、在赢家退出后自动接管；stock 的 Restart=on-failure 保持。Supervisor/机器故障后不恢复进程或历史的既定非目标不变，后续只有明确新建可以重新启动。Host 只有收到真实匹配 hello 才确认连接可用，启动命令返回不代表 ready。
+
+`CanvasPanelManager` 的显式 candidate 新建选择 `terminal-exit-v1`，同一 profile/generation 贯穿 backend fallback；既有绑定始终用 metadata 的路径，缺省旧路径先按旧 workspace storage 解析，不得走新建默认 generation。按 backend 实际 generation 为 Client 指定 profile，避免先恢复缓存一个无 profile client、再新建时丢失启动参数。candidate Client 默认禁止重启，只有 Agent/Terminal 新建的连接准备明确 `allowRestart:true`；candidate attach、恢复、reader、strict delete 与未知 create 不获得此许可。legacy bound 的首次连接默认禁止重启，但保留其显式旧选项，不宣称 stock Client 内部既有请求重启行为已整体改造。create 本身仍在原 socket 单次提交，不能重放。同节点 pending/unknown 责任与最终尾部屏障保持。
+
+本轮不默认启用 extension candidate、不新增用户配置，snapshot-only 原显式 owner 工厂路径不变；匹配平台/运行时资产及 A1 至 A6 仍须完成。定向回归只覆盖本次风险：实际 Linux socket/受控子进程竞争、活动/残留 endpoint、claim 生命周期与恢复前拒绝；Host Agent/Terminal 新旧路径及缓存/fallback；Client 默认不启动及显式新建许可；systemd unit 参数。使用测试自有临时目录，不启动 PTY/Agent，不改冻结诊断或重跑容量样本，旧失败保留。
+
+本轮已实施上述有限范围。原 namespace 竞争先红为 `loads=[1,1]`，修后只有一个 writer、败方 `loads=0`；同时覆盖不同 backend/socket 共用 storage、realpath 别名、业务 listener 关闭仍占用、进程退出后释放。其他直接先红为 candidate unit 仍是 `Restart=on-failure`、Client 默认连接会启动服务、Host 实际 getter 丢 profile 导致 create 为 0，以及 candidate bound 显式 `allowRestart:true` 得到 `[true,true]` 而非 `[false,true]`。现在 bound 入口按实际 generation 强制禁止重启，旧 legacy 显式选项保持。namespace 测试最初误禁止模块导入、strict Host 新夹具漏传 options 两次失败属于夹具错误，分别修正，不记产品缺陷或原生平台失败。
+
+最终 Linux x64/Node 25.6.0 验证：`npm run test:runtime-supervisor-namespace` 7/7（实际 socket、测试自有子进程，禁止 PTY/Agent 获取），`npm run test:runtime-supervisor-startup-profile` 启动 16/16、Client 28/28，Host owner 104/104、Supervisor owner 82/82、paths、Host deactivation、真实 socket Host output credit、typecheck/build 和 diff 检查通过。Host 路由用真实 getter/backend/Client constructor/cache，替换 connection/RPC 边界观察意图；systemd 仅验证 unit/参数，没有启动实际服务。独立最新 diff 复核未发现新增确定性 blocker。build 后从原已校验目录重新 import Linux 资产，未加载 native。本轮没有真实 PTY、Agent、VS Code/Electron/Webview 或其他平台验收，不改写之前证据；下一仍是原 B2 的 extension 两模式入口及匹配资产接入，再完成原 A1 至 A6，不另开工具阶段。

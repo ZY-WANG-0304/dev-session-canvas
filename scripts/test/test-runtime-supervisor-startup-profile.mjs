@@ -63,6 +63,8 @@ for (const profile of [undefined, candidateProfile]) {
     ];
     assert.equal(unit.args[1].split('\n').find((line) => line.startsWith('ExecStart=')),
       `ExecStart=${expectedArgs.map(quoteSystemdArg).join(' ')}`);
+    assert.equal(unit.args[1].split('\n').find((line) => line.startsWith('Restart=')),
+      profile ? 'Restart=no' : 'Restart=on-failure');
     const commands = harness.effects.filter(({ kind }) => kind === 'execFile');
     assert.deepEqual(commands.map(({ file, args }) => [file, args]), [
       ['systemctl', ['--user', 'daemon-reload']],

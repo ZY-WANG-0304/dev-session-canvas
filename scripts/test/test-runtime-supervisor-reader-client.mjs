@@ -126,7 +126,8 @@ test('connection preparation forwards the selected profile once; stock startup a
     };
     const client = startupClient({ executionProfile, startSupervisor: async args => starts.push(args) });
     try {
-      await Promise.all([client.ensureConnected(), client.ensureConnected()]);
+      const preparation = executionProfile ? { allowRestart: true } : {};
+      await Promise.all([client.ensureConnected(preparation), client.ensureConnected(preparation)]);
       assert.deepEqual(starts, [{ supervisorScriptPath: '/supervisor', supervisorLauncherScriptPath: '/launcher',
         ...(executionProfile ? { executionProfile } : {}) }]);
       assert.equal(connects, 2);
@@ -167,7 +168,7 @@ test('startup profile rejects a mismatched hello without restart retry or a cach
       };
       const client = startupClient({ startSupervisor: async () => { starts++; } });
       try {
-        await assert.rejects(client.ensureConnected(), /candidate profile/);
+        await assert.rejects(client.ensureConnected({ allowRestart: true }), /candidate profile/);
         assert.equal(starts, Number(initiallyAbsent));
         assert.equal(connects, 1 + Number(initiallyAbsent));
         assert.equal(socket.destroyed, true);
@@ -178,19 +179,34 @@ test('startup profile rejects a mismatched hello without restart retry or a cach
   }
 });
 
-test('selected startup profile does not override an existing binding no-restart request', async () => {
-  let connects = 0;
-  controlledConnect = () => {
-    connects++;
-    const socket = new ControlledSocket();
-    queueMicrotask(() => socket.emit('error', Object.assign(new Error('bound endpoint absent'), { code: 'ENOENT' })));
-    return socket;
-  };
-  const client = startupClient();
-  try {
-    await assert.rejects(client.ensureConnected({ allowRestart: false }), /bound endpoint absent/);
-    assert.equal(connects, 1);
-  } finally { client.dispose(); controlledConnect = undefined; }
+test('selected profile defaults to no restart for bound operations and preserves an explicit refusal', async () => {
+  const operations = [
+    client => client.ensureConnected(),
+    client => client.ensureConnected({ allowRestart: false }),
+    client => client.hello(),
+    client => client.attachSession({ sessionId: 'bound' }),
+    client => client.writeInput({ sessionId: 'bound', data: 'input' }),
+    client => client.deleteSession({ sessionId: 'bound' })
+  ];
+  for (const run of operations) {
+    let connects = 0;
+    let starts = 0;
+    controlledConnect = () => {
+      connects++;
+      const socket = new ControlledSocket();
+      queueMicrotask(() => socket.emit('error', Object.assign(new Error('bound endpoint absent'), { code: 'ENOENT' })));
+      return socket;
+    };
+    const client = startupClient({ startSupervisor: async () => {
+      starts++;
+      throw new Error('Bound operations must not start a replacement supervisor.');
+    } });
+    try {
+      await assert.rejects(run(client), /bound endpoint absent/);
+      assert.equal(connects, 1);
+      assert.equal(starts, 0);
+    } finally { client.dispose(); controlledConnect = undefined; }
+  }
 });
 
 test('read descriptors and outcomes retain only valid settlement values', () => {

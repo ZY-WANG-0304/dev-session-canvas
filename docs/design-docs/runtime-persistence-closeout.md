@@ -26,7 +26,7 @@ updated_at: 2026-09-30
 
 2026-09-28，用户先要求暂停自动追加阶段，随后明确不承担清单确认，要求代理依据重构目标作出判断。本文件据此收口为已选定的工程完成定义与有限工作顺序，不再等待用户批准工程清单或选择技术预算。最初核对基线为 `ba2c148b`，草案保存在 `2d375606`，工程裁决保存在 `8dd82629`。其后已按既定顺序启动 B1，过程见 `runtime-persistence-capacity-closeout` active 计划；局部修复不代表整体容量通过，2026-09-29 最新实际链同预算样本 2x/4x 的 heap/RSS 仍超限，状态保持验证中。没有新增 runner 或发布动作。
 
-当前决定（2026-09-30，预算口径与推进顺序）：按用户要求，合并进程样本的额外 heap/RSS 64/128 MiB 只作为该拓扑的观察信号，不作为真实分进程产品预算，也不再作为进入 B2 的前置门槛。原阈值、数值、断言、exit 1 与全部历史证据保持，不追认为通过。F-04/B1/A1 仍未完成；当前已完成 B2 的启动 profile 传递与隔离 generation 校验，继续安全首次启动与两模式入口，真实分进程、多会话资源/交互预算由 A1 在实际生产候选上评估。profiler 可用于具体归因，但不默认前置。本决定取代旧记录中“先对同一合并进程采样归因并达到原门槛，再接 B2”的工作顺序，具体边界见第 3.1、8 节。
+当前决定（2026-09-30，预算口径与推进顺序）：按用户要求，合并进程样本的额外 heap/RSS 64/128 MiB 只作为该拓扑的观察信号，不作为真实分进程产品预算，也不再作为进入 B2 的前置门槛。原阈值、数值、断言、exit 1 与全部历史证据保持，不追认为通过。F-04/B1/A1 仍未完成；B2 已补齐启动 profile、隔离 generation、Linux candidate namespace 排他及显式 Manager 的新建入口，继续扩展两模式入口与匹配资产，真实分进程、多会话资源/交互预算由 A1 在实际生产候选上评估。extension 默认仍关闭，profiler 可用于具体归因但不默认前置。本决定取代旧记录中“先对同一合并进程采样归因并达到原门槛，再接 B2”的工作顺序，具体边界见第 3.1、8 节。
 
 原始重点是 F-04 运行期容量与恢复成本、F-05 已结束历史进入画板。退出完整性是后来明确批准的独立正确性交付，必须完成，但不能以无限增加局部阶段替代总体交付。当前产品方向未发生根本变化，推进重心却过度集中于退出诊断与局部接线，F-04 整体收口落后。
 
@@ -66,17 +66,19 @@ F-04 的工程判据不只是一轮负载没有超限：当前支持路径的缓
 
 2026-09-29 已修复 Host 行上下文的取消等待累积：独立登记只存当前在途等待，完成/失败后移除，dispose 唤醒且 strict flush 仍拒绝；先红及真实 parser/并发/迟到回调回归通过。原固定入口唯一新样本的内容/终态/清理通过，但 2x/4x 仍超预算，4x 额外 heap/RSS 为 68.22/142.98 MiB，整轮保留 exit 1。单次下降不量化为该修复的全部贡献，也不关闭 B1。当时拟定的 Node/V8 归因不再是 B2 前置；如后续为具体问题使用 profiler，仍须区分存活对象、短命分配与 RSS，其开销下的样本不能替代容量验收。
 
-B2 初始接线缺口中的 Client/backend/launcher profile 传递已在 2026-09-30 补齐，并复用 candidate generation 校验，验证见生产接入第 32 节。剩余缺口是扩展入口未注入 owner/profile、Host 尚未选独立 generation，candidate 的 allowRestart=false 仍阻止新 generation 首次启动。已有 Supervisor 入口只覆盖精确匹配的 Linux 资产，不能仅打开开关。后续在同一候选接通两模式的新执行、严格区分首次创建与旧 live 重连/未知结果，并保留跨平台/分发验收；这不是新增研究阶段，也不与 R1 归属迁移混做。
+B2 初始接线缺口中的 Client/backend/launcher profile 传递及 candidate generation 校验已补齐，显式 candidate Manager 的 Terminal/Agent 新建现选独立 generation 并明确允许首次启动，验证见生产接入第 32、32.1 节。旧绑定按原路径解析，candidate bound 恢复不启动替代 Supervisor。扩展默认入口仍未注入 owner/profile，snapshot-only 原显式工厂不变；已有 Supervisor 入口只覆盖精确匹配的 Linux 资产，不能仅打开开关。后续在同一候选接通扩展两模式入口与匹配资产，并保留跨平台/分发验收；这不是新增研究阶段，也不与 R1 归属迁移混做。
 
 生产接入设计的 L-01 至 L-05、PI-01 至 PI-06 只用于追溯上述责任，不能把历史表中的旧缺口全文重复排队。新拓扑中 provider 失效、owner 消失时的孤儿风险、允许动作和未知结果仍须确认，但不新增机器崩溃后恢复、任意故障全部清零或逐个托管后代的承诺。
 
 ### 3.1 当前 B2 有限接入范围
 
-本轮只完成启动 profile 的传递和隔离 generation 的校验，具体契约见 `runtime-exit-integrity-production-integration.md` 第 32 节。`src/panel/runtimeSupervisorClient.ts`、`src/panel/runtimeHostBackend.ts` 的显式启动选项，detached 路径的 `src/supervisor/runtimeSupervisorLauncher.ts`，以及 systemd 直接启动 `runtimeSupervisorMain.ts` 的参数须保留同一 profile；`src/common/runtimeSupervisorPaths.ts` 与 Supervisor 入口共同约束候选仅使用独立 `terminal-exit-v1` generation，不把 profile 补到旧 live 的 storage slot。未知 profile 或 profile/generation 不匹配须在连接/启动副作用前明确拒绝，连接后仍校验真实 hello 的 profile 与 reader 能力；省略 profile 的旧路径保持兼容。
+具体契约见 `runtime-exit-integrity-production-integration.md` 第 32、32.1 节。`src/panel/runtimeSupervisorClient.ts`、`src/panel/runtimeHostBackend.ts` 的显式启动选项，detached 路径的 `src/supervisor/runtimeSupervisorLauncher.ts`，以及 systemd 直接启动 `runtimeSupervisorMain.ts` 的参数保留同一 profile；`src/common/runtimeSupervisorPaths.ts` 与 Supervisor 入口共同约束候选仅使用独立 `terminal-exit-v1` generation，不把 profile 补到旧 live 的 storage slot。未知 profile 或 profile/generation 不匹配在连接/启动副作用前明确拒绝，连接后仍校验真实 hello 的 profile 与 reader 能力；省略 profile 的旧路径保持兼容。
 
-本轮不修改 `src/extension.ts` 的默认启用状态，不给 Host 开放 candidate cold-start（未运行 Supervisor 的首次启动），不把受控 argv/路径回归称为实际产品启用。下一具体生产接入责任仍包括同一 namespace 的排他冷启动，即同一隔离运行时地址不能被并发启动争用，且必须与旧 live 重连、已提交但结果未知的创建分开处理；不能通过全局放开 `allowRestart` 绕过这些责任。这是 B2 的既有启动责任，不是新诊断研究。
+`src/supervisor/runtimeSupervisorNamespace.ts` 为 Linux/Node >=20.8 candidate 在 registry 恢复前取得 abstract Unix socket claim，身份为 uid 与 `realpath(storageDir)`，不含 backend；不同 backend 共享 registry 也必须竞争同一 claim。claim 持有到进程退出，不随业务 listener 关闭或关闭失败释放；活动、非 socket 或状态未知的遗留 endpoint 拒绝启动，只清理经复核未变的明确 stale socket。candidate systemd 使用 `Restart=no`，stock 行为不变。保证仅限同 Linux 内核运行环境、本版参与者，不代证跨主机或旧 candidate 并发启动。
 
-本轮结束条件已完成：两种 backend 的显式 profile 不丢失、launcher 转发一致、隔离路径校验及拒绝分支有受控证据、旧路径和默认关闭不变；启动 16/16、Client 28/28 与相关回归/typecheck/build 通过，详见生产接入第 32 节。这不是 B2 整体完成。生产两模式、真实 Agent/Webview、跨平台与分发准入仍依第 4、5 节完成。
+`CanvasPanelManager` 仅在显式 candidate 的 Terminal/Agent 新建连接准备中使用 `allowRestart:true`，按实际 backend generation 建立带 profile 的 Client；candidate Client 默认不重启，candidate bound 恢复、reader、strict delete 和未知 create 不获得新建许可。缺省旧绑定先解析为原 workspace slot，旧 raw/stream 路径保留；legacy bound 首次连接默认不重启，但保留其显式选项，stock Client 既有内部请求自动重启未整体改造，不扩大为所有旧路径完全 no-restart 的承诺。`src/extension.ts` 默认仍关闭，snapshot-only 原显式工厂不改，不新增用户配置。
+
+本轮已取得 Linux namespace 7/7、启动参数 16/16、Client 28/28、Host 104/104、Supervisor 82/82 及相关回归/typecheck/build 的有限证据，详见第 32.1 节。不启动 PTY/Agent，systemd 仅验 unit 参数，没有新增实际 VS Code/Webview、其他平台或真实 systemd 服务通过。这不是 B2 整体完成；扩展两模式入口、匹配资产、真实 Agent/Webview、跨平台与分发准入仍依第 4、5 节完成。
 
 ## 4. 必要验收，保留既定强度
 
@@ -134,13 +136,13 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 
 ## 8. 推进约束与证据归档
 
-当前工程顺序按 2026-09-30 决定推进：保留 B1 已完成修复与未完成责任，继续 B2 的安全首次启动和两模式入口，将 B3 的有限状态替换检查并入既定用户流程；在实际分进程生产候选上完成 A1 资源/交互评估，最终汇总 A1 至 A6，关闭明确失败后才宣布整体交付。不要求合并进程观察阈值先变绿或完成 profiler 归因才能接 B2；这既不是关闭 F-04，也不是把 B2 的真实验收移出本次重构。
+当前工程顺序按 2026-09-30 决定推进：保留 B1 已完成修复与未完成责任，在 B2 的 namespace 排他和显式 Manager 新建入口后继续扩展两模式入口与匹配资产，将 B3 的有限状态替换检查并入既定用户流程；在实际分进程生产候选上完成 A1 资源/交互评估，最终汇总 A1 至 A6，关闭明确失败后才宣布整体交付。不要求合并进程观察阈值先变绿或完成 profiler 归因才能接 B2；这既不是关闭 F-04，也不是把 B2 的真实验收移出本次重构。
 
 B2 会改变实际 provider、信用与消费链，最终启用产物必须复核 A1 的关键容量/交互项，不能用 B1 对此前路径的通过替新产物背书；这是最终回归，不另立容量研究或工具项目。
 
 容量修正已确认生产源与退出完整性的直接依赖：stock node-pty 暂停 socket 不保证退出时继续排空，不能为形式上的 B1 先绿而先加有损背压。共用 owned 接入属于原 B2 工作，B1 保留未完并随该接入验收；不等待旧源的第三套实现，也不把原 heap 失败归零。后续工作的终点是实际消费链的资源/交互证据和同一生产候选，不再追加通知工具或一般调度框架。
 
-第 3.1 节的 profile 启动传递及隔离 generation 校验已经完成；下一直接工作为同 namespace 排他首次启动与 Host/extension 两模式入口，仍属 B2，不扩大为新的诊断研究。默认启用和 Host cold-start 本轮保持原状。A1 仍复用已知 checkpoint 拒绝输入、1x/2x/4x 历史和既有十会话交互场景，测实际 journal 待写、socket/Host 在途、分页消费与 live compact；其结束产物是实际拓扑有来源的预算/结果表和必要产品修复，不是 profiler 框架或把旧合并样本重跑为绿色。
+第 3.1 节已允许显式 candidate Manager 安全准备新建连接，旧绑定不得因此重启或换 generation；extension 默认仍关闭。下一直接工作是剩余扩展两模式入口与匹配资产，仍属 B2，不扩大为新的诊断研究。A1 仍复用已知 checkpoint 拒绝输入、1x/2x/4x 历史和既有十会话交互场景，测实际 journal 待写、socket/Host 在途、分页消费与 live compact；其结束产物是实际拓扑有来源的预算/结果表和必要产品修复，不是 profiler 框架或把旧合并样本重跑为绿色。
 
 每次工作必须引用 B/A 编号、写明直接产品风险和结束条件；无法映射的增强延期。校准不是验收通过，失败不得事后调宽门槛抹绿；确有环境或方案原因要修改工程阈值时，保留原值/失败和理由重新评审，不改变既定产品保证。只有外部凭据/资源确实缺失、不可逆操作或产品保证需要变更时才向用户提出具体问题，不再泛问是否同意清单。B1 修复、首次失败与未完责任记入容量 active 计划；当前 B2 接入与实际拓扑 A1 的顺序以本节为准，不因历史“下一步”再开工具阶段。
 

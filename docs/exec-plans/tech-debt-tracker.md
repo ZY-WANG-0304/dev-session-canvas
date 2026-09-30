@@ -25,7 +25,7 @@
 
 2026-09-30 当前 Runtime 重构收尾入口：`docs/design-docs/runtime-persistence-closeout.md`。合并测试进程的 Heap 64 MiB / RSS 128 MiB 重列为初始观察预算，不是独立 Supervisor/每会话产品预算；原阈值、结果和 exit 1 保持，不追认通过。暂停仅为压线的优化和自动前置 profiler，当前推进 B2 正式启动接入，真实分进程、多会话资源与交互评估并入 A1，并据资源模型论证正式预算。已证无界积压、重复物化、取消等待累积等结构问题不因口径调整失效。F-04 仍开放，F-05 不重开归档，F-03 另列 R1；B3、真实 Agent/Webview/跨平台、尾部与最终 A1 至 A6 不削减，不等待用户选择工程预算。下列 dated 记录、旧 L/PI 分类及“下一步”保留为历史，不自动执行；尤其旧 profiler 下一步不再作为 B2 前置。
 
-B2 本轮已补齐 Client/backend/launcher 的 typed profile 传递及隔离 generation 校验，修复独立复核发现的畸形 hello 缓存准入绕过；启动 16/16、Client 28/28、paths、Host 97/97、Supervisor 82/82、deactivation、socket 信用及 typecheck/build 通过，见生产接入第 32 节。默认关闭、Host 的冷启动禁止仍保持。正式允许新会话首次启动前，还需解决两个 client 启动同 namespace 时旧 Unix listen 会 unlink 活动 socket 的源码风险，且不得让旧 live 重连/未知 create 启动替代服务或重放。此为 B2 具体启动责任，不是新增通用诊断研究；两模式入口、匹配资产、真实产品启用与既定验收仍开放。
+B2 已补齐 Client/backend/launcher 的 typed profile/generation 链；本轮进一步在 registry 恢复前取得 Linux abstract socket claim，按 uid 与 `realpath(storageDir)` 排他、不含 backend，持到进程退出，candidate systemd 使用 `Restart=no`。显式 candidate Manager 的 Terminal/Agent 新建现用隔离 generation 且 `allowRestart:true`，candidate bound 恢复/reader/strict delete 与未知 create 不获替代启动许可，旧 raw/stream 路径及 legacy 显式选项保留。namespace 7/7、启动 16/16、Client 28/28、Host 104/104、Supervisor 82/82、paths/deactivation/socket 信用及 typecheck/build 通过，见生产接入第 32、32.1 节。extension 默认仍关闭，snapshot-only 原显式工厂不改；本轮没有真实 PTY/Agent/VS Code/Webview、其他平台或真实 systemd 服务验收。下一为剩余扩展两模式入口与匹配资产，F-04/A1/B2 及既定验收仍开放，不扩通用诊断研究或 R1 归属迁移。
 
 以下 2026-09-28 至 2026-09-29 的历史记录保持原时点；紧随其后的“同日”指 2026-09-28，不因当前入口更新而变为新实验或当前执行队列。
 
