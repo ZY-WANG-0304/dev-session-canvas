@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { buildCandidateAssets, candidateAssetRelativePath, candidateCompilerArguments,
   importCandidateAssets, readCandidateAssets, validateCandidateHeaders, validateCandidateManifest,
   NODE_PTY_PATH_UTIL_SHA256, NODE_PTY_WINDOWS_HEADERS_SHA256,
-  NODE_GYP_DELAY_LOAD_HOOK_SHA256 } from '../build/windows-execution-candidate-assets.mjs';
+  NODE_GYP_DELAY_LOAD_HOOK_SHA256, NODE_GYP_DELAY_LOAD_HOOK_CRLF_SHA256,
+  validateCandidateDelayLoadHook } from '../build/windows-execution-candidate-assets.mjs';
 import { WINDOWS_EXECUTION_EXPORTS, NODE_PTY_CONPTY_SHA256 } from '../build/windows-execution-provider-patch.mjs';
 import { resolveExecutionBuildSelection } from '../build/build.mjs';
 
@@ -59,6 +60,27 @@ const test = async (name, run) => { await run(); passed++; console.log(`PASS ${n
 const candidateArgs = source => [`--execution-profile=${profile}`, `--execution-assets=${source}`];
 
 try {
+  await test('only the two fixed LF and CRLF hook byte forms are accepted and recorded unchanged', () => {
+    const suffix = 'node_modules/npm/node_modules/node-gyp/src/win_delay_load_hook.cc';
+    const hookPath = [path.join(path.dirname(process.execPath), suffix),
+      path.resolve(path.dirname(process.execPath), '../lib', suffix)].find(file => fs.existsSync(file));
+    assert(hookPath, 'The fixed Node input must include its npm node-gyp hook');
+    const lf = fs.readFileSync(hookPath, 'utf8').replaceAll('\r\n', '\n');
+    const crlf = lf.replaceAll('\n', '\r\n');
+    for (const [source, expected] of [[lf, NODE_GYP_DELAY_LOAD_HOOK_SHA256], [crlf, NODE_GYP_DELAY_LOAD_HOOK_CRLF_SHA256]]) {
+      assert.equal(validateCandidateDelayLoadHook(Buffer.from(source)), expected);
+      const { manifest, binary, dependencies } = fixture();
+      manifest.sources.delayLoadHookSha256 = expected;
+      validateCandidateManifest(manifest, binary, dependencies);
+      assert.equal(manifest.sources.delayLoadHookSha256, expected);
+    }
+    for (const changed of [lf.replace('\n', '\r\n'), `${lf} `]) {
+      assert.throws(() => validateCandidateDelayLoadHook(Buffer.from(changed)), /Unexpected node-gyp/);
+      const { manifest, binary, dependencies } = fixture();
+      manifest.sources.delayLoadHookSha256 = digest(changed);
+      assert.throws(() => validateCandidateManifest(manifest, binary, dependencies), /Unexpected node-gyp/);
+    }
+  });
   await test('both PE architectures and Node/Electron manifests remain compile-only', () => {
     for (const arch of ['x64', 'arm64']) {
       const { manifest, binary, dependencies } = fixture(arch);

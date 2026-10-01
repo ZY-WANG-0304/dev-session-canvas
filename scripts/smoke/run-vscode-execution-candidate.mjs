@@ -15,7 +15,7 @@ const { values } = parseArgs({ options: { output: { type: 'string' }, mode: { ty
   'capacity-reconnect': { type: 'boolean', default: false },
   'capacity-calibration': { type: 'boolean', default: false } } });
 const capacitySelected = values['capacity-calibration'] || values['capacity-reconnect'];
-assert(['linux', 'darwin'].includes(process.platform), 'This finite product acceptance requires Linux or macOS.');
+assert(['linux', 'darwin', 'win32'].includes(process.platform), 'This finite product acceptance requires a supported native platform.');
 assert(!capacitySelected || process.platform === 'linux', 'The fixed capacity workload requires Linux process identity observation.');
 assert(values.output, 'Specify a new --output evidence directory.');
 assert(values.mode === undefined || ['live-runtime', 'snapshot-only'].includes(values.mode), 'Unknown mode.');
@@ -33,8 +33,9 @@ await fs.mkdir(output);
 const runId = randomUUID();
 const vscodeExecutablePath = await ensureVSCodeExecutable(projectRoot);
 const dist = path.join(projectRoot, 'extensions/vscode/dev-session-canvas/dist');
-const platformName = process.platform === 'darwin' ? 'macos' : 'linux';
-const assetTarget = process.platform === 'darwin' ? `darwin-${process.arch}` : 'linux-x64-glibc';
+const platformName = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux';
+const assetTarget = process.platform === 'win32' ? `win32-${process.arch}`
+  : process.platform === 'darwin' ? `darwin-${process.arch}` : 'linux-x64-glibc';
 const manifest = JSON.parse(await fs.readFile(path.join(dist,
   `native/${platformName}-execution-candidate/${assetTarget}/manifest.json`), 'utf8'));
 assert.equal(manifest.runtime.name, 'electron', 'Use the matching Electron candidate build, not a Node addon.');
@@ -50,6 +51,17 @@ for (const file of ['scripts/smoke/run-vscode-execution-candidate.mjs',
   'tests/vscode-smoke/execution-candidate-tests.cjs',
   'tests/vscode-smoke/fixtures/execution-candidate-subject.cjs']) {
   sourceHashes[file] = hash(await fs.readFile(path.join(projectRoot, file)));
+}
+if (process.platform === 'win32') {
+  assert.equal(process.arch, 'x64'); assert.equal(process.version, 'v25.6.0');
+  assert.equal(manifest.runtime.version, '39.8.7'); assert.equal(manifest.runtime.node, '22.22.1');
+  assert.equal(manifest.runtime.modules, '140');
+  for (const file of ['windows-execution-output-worker.js']) sourceHashes[file] = hash(await fs.readFile(path.join(dist, file)));
+  for (const file of ['windows-execution-candidate.cjs', 'fixtures/execution-candidate-windows.cjs',
+    'fixtures/execution-candidate-windows.cmd', 'fixtures/execution-candidate-windows-observer.ps1']) {
+    const relative = `tests/vscode-smoke/${file}`;
+    sourceHashes[relative] = hash(await fs.readFile(path.join(projectRoot, relative)));
+  }
 }
 if (capacitySelected) {
   await runCapacityCalibration();
@@ -69,7 +81,9 @@ for (const [index, mode] of modes.entries()) {
     runtimeDirName: `dsc-candidate-${runId}-${index}`,
     userSettings: { 'security.workspace.trust.enabled': false,
       'devSessionCanvas.runtimePersistence.enabled': mode === 'live-runtime',
-      'devSessionCanvas.terminal.shell': 'default', 'devSessionCanvas.terminal.shellPath': '/bin/sh',
+      'devSessionCanvas.terminal.shell': 'default', 'devSessionCanvas.terminal.shellPath': process.platform === 'win32'
+        ? path.join(process.env.SystemRoot, 'System32/cmd.exe') : '/bin/sh',
+      ...(process.platform === 'win32' ? { 'devSessionCanvas.terminal.shellArgs': ['/d', '/q'] } : {}),
       'terminal.integrated.scrollback': 100000 } });
   const workspacePath = path.join(debugRoot, 'workspace');
   await fs.mkdir(workspacePath);

@@ -1867,8 +1867,14 @@ Windows写入使用真实Node TTY write完成回调，保留原90000编号行、
 
 Windows主体安全期限180秒、原进程对象观察期限270秒、失败后额外观察清理30秒，只约束本轮受控夹具，不改产品预算；safety回执或exit124不能通过，清理未确认记unsafe，不强杀未知PID。原生首败保留并停止后续阶段。新增脚本/observer/worker和编译来源摘要一并归档；仍须分别证明Windows编译、装载及两模式实际执行，本节冻结时无此原生通过声明。
 
+实现后本地 `test-windows-execution-electron-input.mjs` 通过：直接加载实际Windows身份/退出判定辅助模块，覆盖未知、未绑定、StartTime不一致、非退出与safety/124拒绝；在受控成功TTY回调及内存文件系统下执行新的Windows writer和原Unix writer，完整源字节、写入数、SHA256及90000编号行相同，并核对.cmd独立退出行和workflow后置Electron输入。该VM回调不执行WindowsTTY解码，不能据此宣布逐字节UTF8原生通过。五个变更/新增JS入口语法检查、原Node四例`--self-test`及diff空白检查通过。失败清理只在reset成功、节点/Host绑定为空、且绑定原对象确认退出时记safe；原生OS资源总验收仍不由这一局部字段证明。
+
 ### 34.7 首次 Windows runner 的路径夹具失败
 
 输入 `72ca0efe6ac0148529d5ff22209953797bded9d2` 的run `36821938613`/job `110239195433` 保留exit1。依赖安装、MSVC初始化、source契约及资产纯测试前九项通过，第十项构建选择断言比较了短路径 `C:\\Users\\RUNNER~1\\...` 与 `fs.promises.realpath` 返回的长路径 `C:\\Users\\runneradmin\\...` 而失败。Node编译、四例原生执行均skipped，也没有build/evidence目录可上传；不能写成Windows ConPTY产品失败。
 
 修正仅将两处selection预期设为同一来源目录的 `await fs.promises.realpath(source)`；测试仍精确核对返回的规范路径、profile与不可变准入策略，不改产品路径校验、不改原始来源目录、不隐藏失败。Linux本地十二项纯检查修后通过，真实Windows修后结果仍待运行。
+
+第二轮run `36822343054`/job `110240436059` 使用 `22376acd`，source/资产十二项/四例self-test全部通过，随后builder在调用MSVC前拒绝hook摘要，原生四例未执行。冻结LF摘要为 `ec2357ffdf512151c21a52326ad3396aaa650b83e5c4a31153d216a155f68ecc`，本轮实际文件摘要为 `b339840a98e7ad5106384473d94bde68dd3e8d34028dad64f09e5a6453bf8422`。独立核对本机与官方nodejs/node v25.6.0、node-gyp v12.1.0原始hook均为前者，1003字节、41个LF；仅把这41个LF改为CRLF后，1044字节精确得到本轮摘要。未完成官方Windows zip整包下载核验，不宣称其内部npm版本已核实。
+
+因此正式builder和manifest校验只接受上述两个精确raw摘要，保留并编译原字节，manifest记录实际摘要；不自动归一化任意来源，不接受第三个hash。新增局部检查两种已知输入通过、混合换行和任一源码字节变化拒绝；不改变native实现、四例、预算或退出判据。第二轮exit1和后续未运行项保留，修后实际编译与运行另记。

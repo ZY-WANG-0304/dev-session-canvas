@@ -13,6 +13,11 @@ on:
       - scripts/build/windows-execution-candidate-assets.mjs
       - scripts/test/test-windows-execution-product.mjs
       - scripts/test/fixtures/windows-execution-*
+      - scripts/smoke/run-vscode-execution-candidate.mjs
+      - tests/vscode-smoke/execution-candidate-tests.cjs
+      - tests/vscode-smoke/windows-execution-candidate.cjs
+      - tests/vscode-smoke/fixtures/execution-candidate-windows*
+      - scripts/test/test-windows-execution-electron-input.mjs
 
 permissions:
   contents: read
@@ -70,6 +75,45 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run fixed real product provider cases
         run: node scripts/test/test-windows-execution-product.mjs --output windows-product-evidence
+      - name: Prepare fixed VS Code
+        run: |
+          node scripts/test/test-windows-execution-electron-input.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          @'
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          import { downloadAndUnzipVSCode } from '@vscode/test-electron';
+          const executable = await downloadAndUnzipVSCode({ version: '1.117.0', platform: 'win32-x64-archive',
+            cachePath: path.join(process.env.RUNNER_TEMP, 'windows-vscode') });
+          await fs.appendFile(process.env.GITHUB_ENV, `DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=${executable}\n`);
+          '@ | node --input-type=module
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile matching Electron product build
+        shell: pwsh
+        run: |
+          $headers = Join-Path $env:RUNNER_TEMP 'windows-electron-headers.tar.gz'
+          $nodeLib = Join-Path $env:RUNNER_TEMP 'windows-electron-node.lib'
+          Invoke-WebRequest https://artifacts.electronjs.org/headers/dist/v39.8.7/node-v39.8.7-headers.tar.gz -OutFile $headers
+          Invoke-WebRequest https://artifacts.electronjs.org/headers/dist/v39.8.7/win-x64/node.lib -OutFile $nodeLib
+          if ((Get-FileHash $headers -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'af6712ab16c436b9288ece2f0173924c74008446346bda3457d07b769f402eda') { throw 'Electron headers hash mismatch' }
+          if ((Get-FileHash $nodeLib -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'ee92beea67d0f12ef058adc52d0f5344e1005153c9487d0f4d63cab91111421a') { throw 'Electron import library hash mismatch' }
+          $include = Join-Path $env:RUNNER_TEMP 'windows-electron-headers'
+          New-Item -ItemType Directory -Path $include | Out-Null
+          tar --extract --gzip --file $headers --strip-components=1 --directory $include
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hook = node -p "require('path').join(require('path').dirname(process.execPath), 'node_modules/npm/node_modules/node-gyp/src/win_delay_load_hook.cc')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          try {
+            & $env:DEV_SESSION_CANVAS_VSCODE_EXECUTABLE -e 'const a = require("node:assert/strict"); a.equal(process.versions.electron, "39.8.7"); a.equal(process.versions.node, "22.22.1"); a.equal(process.versions.modules, "140");'
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $env:DEV_SESSION_CANVAS_VSCODE_EXECUTABLE scripts/build/windows-execution-candidate-assets.mjs build --output windows-electron-build --dependency-root "$env:GITHUB_WORKSPACE/node_modules" --headers "$include/include/node" --node-lib $nodeLib --delay-load-hook $hook
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally { Remove-Item Env:ELECTRON_RUN_AS_NODE }
+          node scripts/build/build.mjs --execution-profile=windows-owner-v1-candidate --execution-assets windows-electron-build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run actual Terminal Webview and completed reopen
+        run: node scripts/smoke/run-vscode-execution-candidate.mjs --output=windows-electron-evidence
       - name: Preserve first build and product evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -78,5 +122,7 @@ jobs:
           path: |
             windows-product-build/
             windows-product-evidence/
+            windows-electron-build/
+            windows-electron-evidence/
           if-no-files-found: warn
           retention-days: 14

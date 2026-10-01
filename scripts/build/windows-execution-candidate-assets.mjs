@@ -18,6 +18,8 @@ const conptyVersion = '1.25.260303002';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export const NODE_PTY_PATH_UTIL_SHA256 = '54a6041c38bf714893c1d18db3d2888f42089d0209c3d1dc8d444ac6dbf46a0b';
 export const NODE_GYP_DELAY_LOAD_HOOK_SHA256 = 'ec2357ffdf512151c21a52326ad3396aaa650b83e5c4a31153d216a155f68ecc';
+export const NODE_GYP_DELAY_LOAD_HOOK_CRLF_SHA256 = 'b339840a98e7ad5106384473d94bde68dd3e8d34028dad64f09e5a6453bf8422';
+const delayLoadHookHashes = Object.freeze([NODE_GYP_DELAY_LOAD_HOOK_SHA256, NODE_GYP_DELAY_LOAD_HOOK_CRLF_SHA256]);
 const windowsHeaders = Object.freeze([
   { file: 'conpty.h', sha256: '32b74fe493b4435bc2f8362cfa4bcb4f49a290438002cc4a369e9379c7728d3c' },
   { file: 'path_util.h', sha256: 'f877c15389b7794f1c25a0f3b05101a0fde92ccf8b0a351500ebd5b7922c3bff' }
@@ -27,6 +29,12 @@ export const NODE_PTY_WINDOWS_HEADERS_SHA256 = hash(JSON.stringify(windowsHeader
 function readRegular(file) {
   assert(fs.lstatSync(file).isFile(), `Expected a regular file: ${file}`);
   return fs.readFileSync(file);
+}
+
+export function validateCandidateDelayLoadHook(bytes) {
+  const digest = hash(bytes);
+  assert(delayLoadHookHashes.includes(digest), 'Unexpected node-gyp delay-load hook source');
+  return digest;
 }
 
 function treeHash(directory) {
@@ -101,7 +109,7 @@ export function validateCandidateManifest(manifest, binary, dependencies) {
   assert.equal(manifest.sources.nodePtySha256, NODE_PTY_CONPTY_SHA256);
   assert.equal(manifest.sources.pathUtilSha256, NODE_PTY_PATH_UTIL_SHA256);
   assert.equal(manifest.sources.windowsHeadersSha256, NODE_PTY_WINDOWS_HEADERS_SHA256);
-  assert.equal(manifest.sources.delayLoadHookSha256, NODE_GYP_DELAY_LOAD_HOOK_SHA256);
+  assert(delayLoadHookHashes.includes(manifest.sources.delayLoadHookSha256), 'Unexpected node-gyp delay-load hook source');
   assert.equal(manifest.sources.ownerSha256, hash(readRegular(ownerFile)), 'Candidate owner source changed');
   assert.equal(manifest.sources.patchSha256, hash(readRegular(patchFile)), 'Candidate patch source changed');
   assert.deepEqual(manifest.verification,
@@ -169,7 +177,7 @@ export function buildCandidateAssets({ output, dependencyRoot, headers, nodeLib,
   const nodeLibrary = readRegular(fs.realpathSync(nodeLib));
   assert(nodeLibrary.length > 0, 'Expected a nonempty node.lib');
   const hook = readRegular(fs.realpathSync(delayLoadHook));
-  assert.equal(hash(hook), NODE_GYP_DELAY_LOAD_HOOK_SHA256, 'Unexpected node-gyp delay-load hook source');
+  validateCandidateDelayLoadHook(hook);
   const sources = { ownerSha256: hash(owner), patchSha256: hash(readRegular(patchFile)),
     nodePtySha256: hash(original), patchedSha256: hash(patched), pathUtilSha256: hash(pathUtil),
     windowsHeadersSha256: NODE_PTY_WINDOWS_HEADERS_SHA256, headersSha256: treeHash(includeRoot),

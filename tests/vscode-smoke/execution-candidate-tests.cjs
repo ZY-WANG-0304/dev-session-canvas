@@ -4,6 +4,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
+const windows = require('./windows-execution-candidate.cjs');
 
 const mode = process.env.DEV_SESSION_CANVAS_CANDIDATE_MODE;
 const phase = process.env.DEV_SESSION_CANVAS_CANDIDATE_PHASE;
@@ -19,6 +20,12 @@ const nodeById = (state, id) => state.state.nodes.find(node => node.id === id);
 const writeJson = (name, value) => fs.writeFile(path.join(artifacts, name), `${JSON.stringify(value, null, 2)}\n`);
 const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+let windowsObserver, windowsReceiptPath;
+
+async function optionalJson(file) {
+  try { return JSON.parse(await fs.readFile(file, 'utf8')); }
+  catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
+}
 
 module.exports = { run };
 
@@ -69,6 +76,10 @@ async function run() {
     await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
     await waitForCommand(vscode, 'devSessionCanvas.__test.getDebugState');
     await openSurface();
+    if (process.platform === 'win32') {
+      assert.equal(vscode.version, '1.117.0'); assert.equal(process.versions.electron, '39.8.7');
+      assert.equal(process.versions.node, '22.22.1'); assert.equal(process.versions.modules, '140');
+    }
     assert.equal(vscode.workspace.getConfiguration('terminal.integrated').get('scrollback'), 100000);
     await writeJson(`${phase}-environment.json`, { mode, phase, surface, pid: process.pid,
       versions: process.versions, vscode: vscode.version, executable: process.execPath });
@@ -83,8 +94,28 @@ async function run() {
       catch (captureError) { await writeJson(`${phase}-failure-${file}-error.json`, { error: String(captureError) }); }
     }
     // Preserve the failed state first; cleanup failures must not erase the original result.
+    let resetStateComplete = true;
     try { await command('resetState'); }
-    catch (cleanupError) { await writeJson(`${phase}-cleanup-error.json`, { error: String(cleanupError) }); }
+    catch (cleanupError) { resetStateComplete = false; await writeJson(`${phase}-cleanup-error.json`, { error: String(cleanupError) }); }
+    if (process.platform === 'win32' && phase === 'complete') {
+      let observationError, safety, productCleanup;
+      if (windowsObserver) {
+        try { await poll('original Windows writer cleanup observation', async () => windowsObserver.result, Boolean, 30000); }
+        catch (error) { observationError = String(error); }
+      }
+      try {
+        safety = windowsReceiptPath ? await optionalJson(`${windowsReceiptPath}.safety.json`) : undefined;
+        const runtime = await command('getRuntimeSupervisorState');
+        productCleanup = { bindings: runtime.bindings.length,
+          terminalNodes: (await snapshot()).state.nodes.filter(entry => entry.kind === 'terminal').length };
+      } catch (error) { observationError ??= String(error); }
+      await writeJson(`${phase}-windows-cleanup.json`, {
+        safe: resetStateComplete && !observationError && productCleanup?.bindings === 0
+          && productCleanup?.terminalNodes === 0 && Boolean(windows.exitFact(windowsObserver)),
+        subjectExit: windows.exitFact(windowsObserver), observer: windowsObserver, observationError,
+        resetStateComplete, productCleanup, safety,
+        processTreeKillUsed: false, unknownPidConsideredExited: false });
+    }
     throw error;
   }
 }
@@ -100,7 +131,8 @@ async function complete() {
   const metadata = node.metadata.terminal;
   assert.equal(metadata.persistenceMode, mode);
   if (mode === 'live-runtime') {
-    assert.match(metadata.runtimeStoragePath, process.platform === 'darwin' ? /terminal-exit-macos-v1/ : /terminal-exit-v1/);
+    assert.match(metadata.runtimeStoragePath, process.platform === 'win32' ? /terminal-exit-windows-v1/
+      : process.platform === 'darwin' ? /terminal-exit-macos-v1/ : /terminal-exit-v1/);
     assert(metadata.runtimeSessionId);
   }
   await dispatch('webview/resizeNode', { nodeId: id, position: node.position,
@@ -117,11 +149,30 @@ async function complete() {
   await command('clearHostMessages');
   await command('clearDiagnosticEvents');
   const receiptPath = path.join(artifacts, 'subject-write-receipt.json');
-  const subject = path.join(__dirname, 'fixtures/execution-candidate-subject.cjs');
+  const subject = path.join(__dirname, process.platform === 'win32'
+    ? 'fixtures/execution-candidate-windows.cjs' : 'fixtures/execution-candidate-subject.cjs');
   const subjectNode = process.env.DEV_SESSION_CANVAS_CANDIDATE_SUBJECT_NODE;
   assert(subjectNode);
-  await dispatch('webview/executionInput', { kind: 'terminal', nodeId: id,
-    data: `exec ${quote(subjectNode)} ${quote(subject)} ${quote(receiptPath)}\r` });
+  if (process.platform === 'win32') {
+    windowsReceiptPath = receiptPath;
+    await dispatch('webview/executionInput', { kind: 'terminal', nodeId: id,
+      data: windows.terminalCommand(path.join(__dirname, 'fixtures/execution-candidate-windows.cmd'), subjectNode, subject, receiptPath) });
+    const ready = await poll('Windows writer ready for identity binding', () => optionalJson(`${receiptPath}.ready.json`), Boolean);
+    assert(ready.stdinTTY && ready.stdoutTTY); assert.equal(ready.executable, subjectNode);
+    windowsObserver = windows.startObserver(ready, subjectNode,
+      path.join(__dirname, 'fixtures/execution-candidate-windows-observer.ps1'));
+    await poll('original Windows writer handle acquired', async () => windowsObserver,
+      value => value.events.length || value.result || value.error);
+    assert.equal(windowsObserver.events[0]?.kind, 'observing');
+    await dispatch('webview/executionInput', { kind: 'terminal', nodeId: id, data: `observe:${windowsObserver.nonce}\r` });
+    const observed = await poll('original Windows writer identity response', () => optionalJson(`${receiptPath}.observed.json`), Boolean);
+    windows.bindObserver(windowsObserver, observed);
+    await writeJson('windows-subject-bound.json', windowsObserver);
+    await dispatch('webview/executionInput', { kind: 'terminal', nodeId: id, data: `run:${windowsObserver.nonce}\r` });
+  } else {
+    await dispatch('webview/executionInput', { kind: 'terminal', nodeId: id,
+      data: `exec ${quote(subjectNode)} ${quote(subject)} ${quote(receiptPath)}\r` });
+  }
   await poll('subject successful terminal-write receipt', async () => {
     try { return JSON.parse(await fs.readFile(receiptPath, 'utf8')); }
     catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
@@ -138,6 +189,11 @@ async function complete() {
   assert.equal(receipt.bytesWritten, expectedBytes);
   assert.equal(receipt.sha256, digest.digest('hex'));
   assert.equal(receipt.lineCount, 90000);
+  if (process.platform === 'win32') {
+    assert.equal(receipt.pid, windowsObserver.subject.pid); assert.equal(receipt.ppid, windowsObserver.subject.ppid);
+    const source = await fs.readFile(`${receiptPath}.source.bin`);
+    assert.equal(source.length, expectedBytes); assert.equal(createHash('sha256').update(source).digest('hex'), receipt.sha256);
+  }
   const ended = await poll('natural exit and final product state', snapshot, state => {
     const current = nodeById(state, id);
     return current?.status === 'closed' && current.metadata.terminal.liveSession === false &&
@@ -152,10 +208,17 @@ async function complete() {
   const terminalProbe = finalProbe.nodes.find(entry => entry.nodeId === id);
   assert.equal(terminalProbe.terminalCursorX, 6, 'Final CSI column must be applied.');
   assert.equal(terminalProbe.terminalCursorY, 2, 'Final CSI row must be applied.');
-  await poll('real subject process reaped', async () => {
-    try { process.kill(receipt.pid, 0); return false; }
-    catch (error) { if (error.code === 'ESRCH') return true; throw error; }
-  }, Boolean);
+  if (process.platform === 'win32') {
+    await poll('original Windows writer exited', async () => windowsObserver.result, Boolean);
+    const subjectExit = windows.assertCompleted(windowsObserver, await optionalJson(`${receiptPath}.safety.json`));
+    await writeJson('windows-subject-exited.json', { subjectExit, observer: windowsObserver,
+      processObjectDisappearanceRequired: false });
+  } else {
+    await poll('real subject process reaped', async () => {
+      try { process.kill(receipt.pid, 0); return false; }
+      catch (error) { if (error.code === 'ESRCH') return true; throw error; }
+    }, Boolean);
+  }
   const saved = await command('flushPersistedState');
   assert(saved.exists && saved.snapshot?.state);
   const savedNode = saved.snapshot.state.nodes.find(entry => entry.id === id);
@@ -178,6 +241,7 @@ async function complete() {
         event.detail.outcome.finalOutputSequence === savedNode.metadata.terminal.outputSequence));
   }
   await writeJson('completed.json', { mode, id, executionId, runtimeSessionId: metadata.runtimeSessionId,
+    ...(process.platform === 'win32' ? { subjectExit: windows.exitFact(windowsObserver), sourceByteIdentityWithConptyClaim: false } : {}),
     receipt, savedNodeBytes: Buffer.byteLength(JSON.stringify(savedNode)), finalProbe,
     runtime: await command('getRuntimeSupervisorState'), events: await command('getDiagnosticEvents'), pass: true });
 }
@@ -211,5 +275,7 @@ async function reopen() {
   assert.equal(cleanup.bindings.length, 0);
   assert.equal((await snapshot()).state.nodes.filter(entry => entry.kind === 'terminal').length, 0);
   await writeJson('cleanup.json', { runtime: cleanup, pass: true,
-    scope: 'Subject process reaped; node and Host bindings removed. Does not assert all OS resources or A5.' });
+    scope: process.platform === 'win32'
+      ? 'Original writer object observed exited; node and Host bindings removed. Does not require object disappearance or assert all OS resources or A5.'
+      : 'Subject process reaped; node and Host bindings removed. Does not assert all OS resources or A5.' });
 }
