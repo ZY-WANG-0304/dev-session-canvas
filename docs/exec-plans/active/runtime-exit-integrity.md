@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前唯一执行入口（2026-10-02，§52 判定复核）：两次 Linux `30f421b3` 首场超时是根因未定的验收阻塞；通用 poll 行号及 cleanup 后事实不能证明 CLI 已退出或 Host 丢失终态。本轮只修正 reopen schema2 的真实字段、首页面独立判据与原 30 秒 snapshot 应用等待，并从现有第一现场生成脱敏阶段/进程/CLI 事实。定向回归、独立审核后只运行一次原 Linux 八场矩阵，首败停止并按证据处置；不追加同输入重试或通用工具门槛。A1/F-04、A2/A3 页面和最终准入仍按有限收尾清单，历史入口不构成追加队列。
+当前唯一执行入口（2026-10-02，§52）：判据窄修 `1d784d8b` 的唯一 Linux run `36935000098` 原八场通过，包含空/非空 snapshot stop 首页面独立重排与 schema2 新Host重开；四 natural 响应/EOF、八场零cleanup。旧两次 `30f421b3` 首场超时根因未知，不宣称产品修复、不为抓红重跑。当前回到有限清单 A1/F-04、A2/A3 慢写/最终状态及平台新判据、最终生产准入；已完成固定 Linux 格不重排，历史入口不构成追加队列，不追加工具门槛。
 
 最新 A1/B1 结果（2026-10-01，覆盖后续历史入口）：固定 `10/1` schema2 Linux Electron 候选的 `color`/`size` 真实多会话校准均通过内容、预算观察和产品 cleanup，仍只是声明负载；同候选 `2/1` `color` Host detach/reconnect 也通过，B 在 A 尚未追平时 53.4ms 应用，旧 Supervisor 与 reader/session 身份保持，Host ready 后 15,538.456ms 追平。该结果解除具名容量/离线交互组合，不关闭 F-04、默认准入、跨平台/packaged 或其他 A 格；不重复成功矩阵，不新增通用诊断门槛。
 
@@ -110,7 +110,9 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 - [x] (2026-10-02) 复核 `36917661214`/`36918349766`：公开摘要不足以确定 poll 阶段或失败前 CLI 生命周期，撤回确定性根因推断，原失败保留。
 - [x] (2026-10-02，§52) 实施真实 reopen schema2、首页面独立对账及现有第一现场脱敏摘要；reopen/snapshot-evidence/CI-report 三项、CLI/process-observer/Windows-observer/DeepSeek 四项定向脚本、语法和 diff 检查通过，独立审核无新增确定性阻塞。
-- [ ] (2026-10-02，§52) 一次既定 Linux 原矩阵形成具名结果，不扩场景或放宽尾部；beforeCleanup 仅是清理前归档期间的已有采样，不声称超时瞬间原子快照。
+- [x] (2026-10-02，§52) 唯一 Linux 原矩阵 `36935000098` / `1d784d8b` 八场通过；四 natural 响应/EOF、两snapshot stop原页面独立重排/schema2新Host及八场零cleanup。Claude保存1262bytes/seq5，新增非空格成立，不放宽原尾部，不回写旧超时。
+- [x] (2026-10-02，§52) 独立只读核对安全摘要：11个源码hash匹配冻结1d784d8b，八场原检查、两场reflow/schema2和零cleanup一致；4个构建hash仅保留报告记录，未本地重建，不把报告核对称为raw/产物全文重算。
+- [ ] (2026-10-02，原 A2/A3) 慢写/最终 fit 与保存 viewport 的实际应用责任仍未由本固定样本覆盖，其他平台新判据、F-04 和最终准入按有限清单保留；不另立通用诊断阶段。
 
 - [x] (2026-10-01，第50节) 同一冻结 VSIX 的 A6 snapshot-only 真实 Reload Window 复验通过：主体启动后真实 resize 后唯一 nonce/SIZE 握手、完整 SIGHUP 中文/ANSI 尾部、双路径 snapshot、实际新 Host 页面重放、原 provider/主体退出、无新执行、无 binding/pending operation 与 cleanup 均通过；首轮尺寸错误和失败路径 pending cleanup 保留。
 - [x] (2026-10-01，B2/A1) 修复 Q=1 `rejected-before-acquire` 的类型化 Host 预约清理，并补 terminal/agent 同节点重试回归；未知连接/能力/资源结果继续 sticky quarantine，Host wiring 149/149 通过。
@@ -482,6 +484,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 2026-10-02，§52：非空 reopen 将 pageBufferMatched/pageGeometryMatched 赋给 empty/origin/normal，报告事实与字段含义不符；非空首页面比较未进入成功判据，第二 Host 不能代证第一 Host 尾部。两次 Linux 超时均发生在这些新断言之前，不能据此归因 helper。现有私有第一现场已有 timeout 原文、进程与消息，可生成固定脱敏字段，无需新观察器。
 
+§52 唯一新run的两个 snapshot stop均由66x21保存到96x30页面，direct geometry/visible=false而独立resize比较全true；Claude viewport10到8也与oracle一致，因此本固定场景的差异是可解释的尺寸重排，不能凭direct false判丢尾。源码中snapshot通知早于write、fit无完成屏障及未显式恢复viewport的差异仍需原慢消费者验收；本样本不证明这些时序或最终fit，旧两次超时也不由绿色推定根因。
+
 2026-10-01，第49节跨runner聚合发现Windows实际CRLF owner/patch原始hash与Linux checkout不同；两项均经LF→CRLF独立重算精确吻合。Windows ARM64双宿主native加载成立，但旧产物不能通过当前Linux原始source gate，不改manifest、不误称旧代码。已注册workflow可改为手动Windows两格，并在checkout前关闭autocrlf，复用已验四格而不重复它们。
 
 2026-10-01，固定六格workflow只存在主题分支时，首次 `gh workflow run` 未找到注册项、没有启动实验；增加仅当前分支和该workflow自身路径的push入口，不放开普通源码触发。既有macOS/Windows产品run36872496523/36872496520已因兼容实现推送启动，尚待回收，不增加Agent请求。
@@ -792,6 +796,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 - 决策：新报告使用显式 schema2 并拒绝缺失字段；旧 schema1 只按历史解释。首页面和新 Host 页面各自通过，合法 resize 用独立回放核对；失败阶段和清理前事实仅复用现有记录。理由：这些是当前 A2/A3/A4 安全判定直接缺口，不构成通用工具增强。定向回归及审核后仅一次原 Linux 矩阵，不盲重跑或猜修产品。日期/作者：2026-10-02 / Codex。
 
+- 决策：新run通过后关闭具名Linux非空stop+reopen格，不为复现旧超时重复原矩阵。保留原pageProjectionIndependence未知、慢写/最终fit及viewport差异的证据边界，回到原A1至A6有限清单，不把静态差异直接升级为本轮实测缺陷。日期/作者：2026-10-02 / Codex。
+
 - 决策：分发runner按git对象字节checkout，保留原source/hash gate；已注册后撤bootstrap push，仅用固定Windows两格重建受CRLF影响的资产。理由：构建来源须能在聚合机独立复核，不能凭语义近似追改历史hash；这是现有六资产路径的确定阻塞，不扩一般归档兼容框架。日期/作者：2026-10-01 / Codex。
 
 - 决策：A6剩余只补第50节snapshot-only单Terminal真实reload组合，旧reader离开和新页面应用分开结算。理由：Runtime真实reload及直接Host方法各自不能承担该用户流程，但已有activation-driver、主体和安装收据足以复用；不新增通用工具或平台矩阵。日期/作者：2026-10-01 / Codex。
@@ -1083,7 +1089,7 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 
 ## 结果与复盘
 
-2026-10-02，§52 判定复核：页面与第一现场报告窄修已完成，七个定向脚本、语法和 diff 检查通过，独立审核无新增确定性阻塞。旧超时证据不能定位 Host/CLI/服务根因，新非空 stop 尚无原生通过；下一仅一次具名原矩阵。F-04、当前页面、重开及生产启用均不以局部 fixture 通过关闭。
+2026-10-02，§52：页面与第一现场报告窄修经七个定向脚本、语法/diff与独立审核后，唯一原Linux run36935000098八场通过。新增1262-byte Claude非空stop原页面独立重排、新Host实际读盘/页面/无执行/清理证据，Codex空态保持，四natural真实响应/EOF、八场零cleanup；原两次失败根因未明，不改绿。只关闭该固定Linux格，其他平台新判据、原慢消费者/最终fit责任、F-04和默认启用仍开放。
 
 2026-10-01，第50节只完成有限验收接线和局部回归，原生结果尚待新包。第49节首轮六格已有分别的build/load结果，但Windows CRLF来源不能通过Linux聚合门禁，42022169的新run36874985406仅重建Windows两格，原x64超时/上传失败不追认；没有新的Agent请求或通用工具阶段。
 2026-10-01，第49节分发脚本的Linux x64整条路径已实际完成，而非仅局部测试；同一addon双宿主加载、runtime-only归档及有限摘要成立。六格远端运行尚待首次调度，最低OS与PTY/页面未由load验证，下一仍属原六资产/最终产品清单，不追加工具阶段。
@@ -2367,3 +2373,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-02，Linux 真实 Agent 阻塞）：提交 `30f421b3` 的 run `36917661214` 及唯一同输入复跑 `36918349766` 均在首场 `codex-live-runtime-natural` 超时，CLI 已观察但 Host 节点仍 `waiting-input`/`liveSession=true`，cleanup 无残留；后续 snapshot-only 场景未运行。保留两次失败，不归因非空重开 helper，不继续追加重跑；A2/A3 非空 snapshot stop + reopen 仍无真实证据。
 
 修订记录（2026-10-02，§52 判定与有限取证）：明确上述旧失败不能证明清理前 CLI 已退出或具体超时阶段；新 schema2 避免虚假 empty/origin 字段，首页面与重开独立验收。七个定向脚本和独立审核通过后仅安排一次原 Linux 矩阵，新事实不回写旧 run，不增加诊断框架或平台门槛。
+
+修订记录（2026-10-02，§52 结果）：同步1d784d8b/run36935000098八场完整通过及固定Linux非空stop+reopen收口；原两超时、direct比较false和未知字段保持，慢写/最终fit线索仍在原A2/A3范围，不追加重复矩阵或新工具工作。

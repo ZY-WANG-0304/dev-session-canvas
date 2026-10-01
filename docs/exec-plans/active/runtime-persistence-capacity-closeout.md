@@ -297,4 +297,4 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 
 修订记录（2026-10-02，非空 snapshot stop 重开收口）：上述历史 run 的非空 stop 不追认通过。验收 harness 现统一要求 snapshot-only stop 在首 Host 完成保存/reader/replay 后启动新 Host；空快照保持原 origin 断言，非空快照严格核对保存内容、可见行、尺寸、光标、viewport、buffer 类型、序列和无新执行。定向 fixture/CI/helper 回归已通过，真实现代 runner 复验尚未运行；该项仍归 A2/A3 页面责任，不改变 F-04/A1 范围或低版本边界。
 
-随后提交 `30f421b3` 的 Linux 真实 Agent run `36917661214` 与同输入复跑 `36918349766` 均在首场 Codex natural 超时，节点保持 `waiting-input`/`liveSession=true`，cleanup 无残留，后续 snapshot stop 未执行。两次失败保留为 Agent 生命周期阻塞，不归因重开 harness，不再自动扩展重跑；A2/A3 非空 snapshot stop 的真实重开证据仍待有效 Agent 首场完成后取得。
+随后提交 `30f421b3` 的 Linux 真实 Agent run `36917661214` 与同输入复跑 `36918349766` 均在首场 Codex natural 超时，节点保持 `waiting-input`/`liveSession=true`，cleanup 后无残留，后七场未执行。两次失败根因未定：通用 poll 行号不确定具体等待点，cleanup 后事实不证明失败前 CLI 已退出，不能写成已确认 Agent/Host 生命周期缺陷。§52 的有限 harness 修正只处理真实页面判据和已有第一现场脱敏；`1d784d8b` 的单次原 Linux 矩阵 `36935000098` 已八场通过，四 natural 实际响应/EOF、两snapshot stop独立重排及schema2新Host重开、八场零cleanup均成立，Claude1262bytes/seq5补齐该固定Linux非空格。11个源码hash独立对账，4个构建hash仅按报告保留未本地重建；旧超时仍未解释，不再为抓红重跑。F-04/A1、慢写/最终fit与平台新判据、最终准入责任不变，不扩工具或放宽原断言。

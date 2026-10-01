@@ -19,6 +19,8 @@ updated_at: 2026-10-02
 
 # 退出完整性生产接入与故障域收敛
 
+当前 §52 增量（2026-10-02）：`1d784d8b` / Linux `36935000098` 原八场真实 Agent 验收通过，包含 Codex 空快照与 Claude 1262-byte 非空快照的首页面独立重排和 schema2 新 Host 重开；四 natural 响应/EOF、八场零 cleanup 通过。旧两次首场超时根因未知，不为复现而重跑；固定 Linux 结果不代证其他平台新判据、慢写/最终 fit、F-04 或默认生产准入。
+
 最新 A1/B1 结果（2026-10-01，覆盖后续历史入口）：固定 `10/1` schema2 Linux Electron 候选的 `color`/`size` 多会话校准均通过内容、预算观察与产品 cleanup；峰值总 RSS 为 3,876,724,736 / 3,954,757,632 bytes，仅代表该声明输入。随后同候选 `2/1` `color` Host detach/reconnect 通过：旧 Host 消失后原 Supervisor、主体和 session/reader 身份保持，B 在 A 尚未追平时 53.4ms 应用，Host ready 后 15,538.456ms 追平，reconnect/outer cleanup 均通过。两项不关闭 F-04、默认准入、跨平台/packaged 或未填页面格，不再重复成功矩阵或扩展通用工具前置。
 
 同日分发补充：Windows x64/ARM64 的修后 attempt2 已成功，和先前四格合并后的六目标 schema2 import、聚合与固定 VSIX SHA 均通过；这仍只证明分发构建/加载/归档路径，不代证最低旧 OS 或各目标完整产品验收。A6 snapshot-only Host 离开及 A3 双 Host 共享 root 的既有真实 evidence 已在执行计划中对齐，旧失败和未观察字段不改。
@@ -2338,3 +2340,7 @@ macOS 真实 Agent 的第一次 run `36906574728` 与唯一允许的同输入重
 §52 本轮判定修正：`agent-candidate-reopen.cjs` 的 schema2 明确表达 state/buffer/geometry 匹配，保留 schema1 历史阅读但不将其当新验收；`agent-candidate-snapshot-evidence.cjs` 保持空态断言，并让非空 stop 首页面也独立通过直接或合法 resize 比较。`agent-candidate-tests.cjs` 在原 30 秒内等待完整重开页面应用，以保存尺寸 hydrate 后按页面尺寸独立 resize，不取实际光标/正文作期望。新报告不能把匹配写成 empty/origin/normal，重开不能掩盖首页面不匹配，非空行 buffer/可见行/几何对账不宣称逐 cell 等价。
 
 下一原生输入限定为一次原 Linux 八场矩阵，先通过定向测试和独立审核。`agent-candidate-ci-report.mjs` 只从现有第一现场导出白名单 timeout stage、清理前按角色进程计数、已有 parser 的 CLI 事实；driver 复用 `collectOutput()` 写私有第一现场输出，报告不上传原文/错误/凭据。缺少历史字段保持 null，旧失败不回写。不加入场景选择框架、额外诊断矩阵、超时放宽或业务猜修；以首败具名证据决定下一动作。
+
+上述单次原生输入已在 run `36935000098` / `1d784d8b` 全部通过。实际 Agent job 为 `ubuntu-22.04`，不是六资产 workflow 的 Ubuntu 24.04；Codex `0.157.1`、Claude `2.1.280`、DeepSeek `deepseek-flash`。四 natural 的响应/EOF 和八场零 cleanup 均成立；stop 仍按主动停止解释，不能因为 source=eof 把它写成自然完成。Codex snapshot stop 保存 0 bytes/seq14，Claude 非空保存 1262 bytes/seq5；保存66x21到页面96x30的独立重排比较全匹配，Claude viewport10到8保持原事实，两场 schema2 新Host严格读盘/页面/无新执行/cleanup均通过，非空不伪装 empty/origin。报告 `.debug/ci-36935000098-schema2/runtime-real-agent-linux-36935000098-1/summary.json` 的源码hash与冻结提交核对，未上传raw。两次旧超时未复现、根因未确定，不能宣称修复或由本轮补造旧第一现场。
+
+仍在既定 A2/A3 内的边界：`main.tsx` 的 `onSnapshotApplied` 先于排队快照 write，`executionSessionNodes.tsx` 的 fit 不以 write callback 为屏障；serialized-state restore 分支也未显式 scrollToLine(saved.viewportY)。新 oracle 则先完成 hydrate 再 resize。当前固定页面通过不证明任意慢写或 fit 前后所有时序均通过，也不证明保存 viewport 与默认底部不同的组合；新Host断言还可能在延迟fit前满足。只读差异供原慢消费者/终态责任定位，不据此扩大本次失败因果、削弱oracle或追加平台诊断框架。

@@ -28,7 +28,7 @@
 
 ## 技术债列表
 
-2026-10-02 当前 A2/A3/A4 补充：Linux `36917661214` 与 `36918349766` 在首场 natural 超时，后七场 not-run；通用 poll 位置与 cleanup 后状态不足以确认具体等待点或 CLI 已退出，按根因未定验收阻塞保留。本轮只修正重开 schema2 真实字段、首页面独立对账和已有第一现场脱敏摘要，定向验证后一次原矩阵取证；旧失败、非空 stop 原生未验、F-04 与最终准入不追认完成，不扩成诊断工具项目。
+2026-10-02 当前 A2/A3/A4 补充：`1d784d8b` / Linux `36935000098` 原八场通过，四natural实际响应/EOF、Claude1262-byte/seq5非空stop的首页面独立重排/schema2新Host和八场零cleanup成立。Linux旧 `36917661214`/`36918349766` 首场超时根因未定，不能用cleanup后状态倒推失败前CLI已退出，也不由本轮成功追认修复。当前剩余为原慢写/最终fit/保存viewport应用、其他平台新判据、F-04和最终准入，不重跑固定Linux格、不扩诊断工具；`main.tsx` snapshot通知早于write、fit无回调屏障及未显式恢复viewport仅为只读实现差异，未证明本次或历史失败因果。
 
 2026-10-02 现代 runner 生产验收的具名矩阵已补齐：固定六资产 run `36906440380`（Ubuntu 24.04 x64/arm64、macOS 15 x64/arm64、Windows Server 2025 x64、Windows 11 ARM64）、macOS Product Provider `36906440973` 与 Windows Product Provider `36907160402` 均成功；Windows 真实 Agent `36906573764` 的 Codex `0.157.1`、Claude `2.1.280`、DeepSeek 八场全部通过，四个 natural 场景有实际响应/EOF，cleanup bindings/failures/forced/active 全为零。上述只关闭具名现代组合，不关闭 F-04/A1、全部 A5、默认准入或旧系统兼容；Node.js 20 弃用 annotation 与 macOS `ENTRYNOTSUPPORTED` artifact warning 保留且不阻塞。
 

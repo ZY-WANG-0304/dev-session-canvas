@@ -241,6 +241,8 @@ macOS 真实 Agent 仍是具名未决。第一次 run `36906574728` 的 Codex �
 
 ## 10. 2026-10-02 非空 snapshot stop 重开收口
 
+当前结果：§52 的 `1d784d8b` / Linux run `36935000098` 原八场全部通过，新增的 Claude 非空 stop 原页面独立重排与 schema2 新 Host 重开也通过，具体数值见本节末。这里只关闭固定 Linux 组合；旧两次超时根因仍未知，不为抓红重跑。慢写/最终 fit/viewport 责任仍留在原 A2/A3，其他平台新判据、F-04 与最终生产准入不由该结果代证。
+
 本轮将 `snapshot-only` 的显式 `stop` 统一纳入两阶段验收：首 Host 必须完成保存、reader settlement、序列一致性和独立 replay；空与非空快照均设置 `reopenRequired=true`，随后由新 Host 读取同一持久化状态。空快照继续使用既有页面 origin 断言；非空快照在新 Host 阶段按保存的 xterm 状态严格核对完整非空 buffer、可见行、尺寸、光标、viewport、buffer 类型、节点序列和无新执行。
 
 测试层改动已完成并通过 `test-agent-candidate-reopen.mjs`、`test-agent-candidate-snapshot-evidence.mjs`、`test-agent-candidate-ci-report.mjs` 及相关 JavaScript 语法检查；fixture 证据覆盖非空保存内容与页面几何。此前 `36911430020` 的非空 stop 结果仍是历史证据，未因 harness 改动追认通过；现代 runner 上的新真实非空 snapshot stop + reopen 尚未运行，A2/A3 该直接验收仍开放。未修改 Canvas/Host/Supervisor 业务代码，也未扩展旧系统矩阵。
@@ -250,3 +252,7 @@ macOS 真实 Agent 仍是具名未决。第一次 run `36906574728` 的 Codex �
 本轮限定修正直接影响 A2/A3/A4 判定的 harness 契约，不扩展工具能力或平台矩阵：新 reopen 报告显式使用 schema2 的状态/页面匹配字段，不把非空、非原点或 alternate buffer 写成 empty/origin/normal；首页面必须独立通过保存/replay/页面比较，重开成功不能替代其尾部与终态责任。合法页面尺寸变化由保存尺寸 hydrate 后独立 resize 的 oracle 对比，不采纳页面内容、光标或 viewport 为期望；在原 30 秒页面等待窗口内等候实际 snapshot 应用，不只等 xterm 挂载。全文 buffer 断言只比较非空行，另比较可见行和几何，不扩大宣称完整逐 cell 等价。
 
 失败诊断只复用现有第一现场：精确白名单映射 timeout label，按角色输出清理前进程观察计数，私有输出复用既有 parser 生成 CLI 事件布尔值/摘要；原始错误、正文和凭据不上传，缺文件仍为 unknown。定向回归与独立审核后，只安排一次带新证据的既定 Linux 原矩阵，不重复同输入碰运气；首败即停止，依据具名事实决定产品修复或外部问题。当前原页面/重开、F-04 和最终生产准入均未关闭。
+
+该单次运行已完成：`36935000098` / `1d784d8b` 在既定 `ubuntu-22.04` Agent workflow、Codex `0.157.1`、Claude `2.1.280`、DeepSeek `deepseek-flash` 和固定 VS Code/Electron candidate 上八场通过，四 natural 均实际响应/EOF，八场 cleanup 的 bindings/failures/forcedSignals/unconfirmedSignals/active 均为零。Codex snapshot stop 为 0 bytes / seq14；Claude snapshot stop 为 1262 bytes / seq5，保存/replay/发布状态及 reader 一致。两者保存 `66x21`、原页面 `96x30`，直接 geometry/visible 比较仍为 false，独立 hydrate→resize 后的 buffer/visible/geometry 全为 true；Claude viewport 由 10 到 8 符合独立重排结果，不通过照抄页面期望消除差异。两场新 Host 均为 schema2，实际重新读盘、同存储/工作区、正文/序列保留、页面匹配、无新执行和 cleanup 全通过；旧 empty/origin 字段为 null，不冒称非空为空。
+
+安全报告位于 `.debug/ci-36935000098-schema2/runtime-real-agent-linux-36935000098-1/summary.json`，固定来源/hash 与独立内容核对另记 ExecPlan。原 `pageProjectionIndependence=not-proven` 不改，逐非空行/可见行/几何相等不扩大为逐 cell 或任意慢写、最终容器 fit 通过。源码只读核对发现 `main.tsx` 的 onSnapshotApplied 早于异步 write 完成，Agent/Terminal 的 fit 可独立触发，且 serialized-state 恢复分支未显式恢复保存 viewport；这些是原 A2/A3 慢写/状态应用需要具体验证的实现差异，不是本次通过或旧超时已经证明的缺陷因果。不得据静态线索猜修或新增通用工具门槛。
