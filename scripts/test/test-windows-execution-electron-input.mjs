@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import yaml from 'js-yaml';
+import { transform } from 'esbuild';
 
 const require = createRequire(import.meta.url);
 const helper = require('../../tests/vscode-smoke/windows-execution-candidate.cjs');
@@ -76,5 +77,44 @@ const compile = steps.find(step => step.name === 'Compile matching Electron prod
 assert.match(compile, /win-x64\/node.lib/);
 assert.match(compile, /ee92beea67d0f12ef058adc52d0f5344e1005153c9487d0f4d63cab91111421a/);
 assert.match(compile, /process.versions.modules, "140"/);
-assert.match(compile, /finally \{ Remove-Item Env:ELECTRON_RUN_AS_NODE \}/);
+assert.match(compile, /spawnSync\(/, 'The GUI Electron executable must finish before extension assets are imported');
+assert.doesNotMatch(compile, /& \$env:DEV_SESSION_CANVAS_VSCODE_EXECUTABLE/);
+const inline = compile.match(/^@'\n([\s\S]*?)^'@ \| node --input-type=module\nif \(\$LASTEXITCODE -ne 0\) \{ exit \$LASTEXITCODE \}/m);
+assert(inline, 'The awaited build must propagate its failure before importing assets');
+const executableBuild = (await transform(inline[1], { format: 'cjs', platform: 'node' })).code;
+for (const failure of [undefined, 'spawn', 'signal', 'probe-exit', 'build-exit']) {
+  const invocations = [];
+  const environment = { DEV_SESSION_CANVAS_VSCODE_EXECUTABLE: 'C:\\VS Code\\Code.exe',
+    GITHUB_WORKSPACE: 'C:\\test workspace', RUNNER_TEMP: 'C:\\runner temp' };
+  const execute = () => vm.runInNewContext(executableBuild, {
+    require(name) {
+      if (name === 'node:path') return require(name).win32;
+      if (name === 'node:child_process') return { spawnSync(file, args, options) {
+        invocations.push({ file, args, options });
+        if (failure === 'spawn') return { error: new Error('controlled original process spawn failure') };
+        if (failure === 'signal') return { status: null, signal: 'SIGTERM' };
+        return { status: failure === 'probe-exit' || (failure === 'build-exit' && invocations.length === 2) ? 9 : 0, signal: null };
+      } };
+      return require(name);
+    },
+    process: { execPath: 'C:\\fixed Node\\node.exe', env: environment }
+  });
+  if (failure) assert.throws(execute, /original.*process/);
+  else execute();
+  assert.equal(invocations.length, failure && failure !== 'build-exit' ? 1 : 2);
+  for (const call of invocations) {
+    assert.equal(call.file, environment.DEV_SESSION_CANVAS_VSCODE_EXECUTABLE);
+    assert.equal(call.options.stdio, 'inherit');
+    assert.equal(call.options.env.ELECTRON_RUN_AS_NODE, '1');
+  }
+  assert.equal(environment.ELECTRON_RUN_AS_NODE, undefined, 'Electron mode stays child-local');
+  if (invocations.length === 2) {
+    assert.equal(invocations[0].args[0], '-e');
+    assert.deepEqual(Array.from(invocations[1].args), ['scripts/build/windows-execution-candidate-assets.mjs',
+      'build', '--output', 'windows-electron-build', '--dependency-root', 'C:\\test workspace\\node_modules',
+      '--headers', 'C:\\runner temp\\windows-electron-headers\\include\\node',
+      '--node-lib', 'C:\\runner temp\\windows-electron-node.lib',
+      '--delay-load-hook', 'C:\\fixed Node\\node_modules\\npm\\node_modules\\node-gyp\\src\\win_delay_load_hook.cc']);
+  }
+}
 console.log('Windows Electron fixed input: identity/exit, original writer byte identity, shell and workflow contracts passed; no native or VS Code calls.');

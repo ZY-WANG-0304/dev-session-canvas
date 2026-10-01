@@ -1936,3 +1936,15 @@ Windows继续32.20的真实Codex0.157.1/Claude2.1.280、DeepSeek、两模式natu
 清理先调用产品resetState；失败时仅可对已绑定原句柄的本场景CLI/wrapper/provider定点强制清理，记录动作且场景仍失败，不用taskkill树杀、按名清理或向未知PID发信号。observer完成后释放自身句柄；本方资源退役与OS对象销毁分开。现有summary增加Windows平台和未知/未确认退出计数，原内容扫描保持，不上传raw或任意命令行。
 
 DeepSeek私有配置内容和销毁流程复用，但Windows文件mode不冒充POSIX隔离。独立临时配置目录在写key前应用并核对仅当前runner用户与SYSTEM的DACL；无法确认则失败且不启动Agent。新Windows workflow手动、单job、匹配Electron候选构建，共用既有real-agent concurrency；secret只进入最终验收step，仅report_ready时上传sanitized summary。Windows auth-only旧旁路暂明确不支持，不成为原八场景前置。局部定向回归后仍须Windows实际运行，Linux/macOS通过不代证。
+
+GitHub实际读取及dispatch新的macOS文件均返回404：仅特性分支存在的workflow_dispatch文件尚未注册，不能靠反复请求启动。为不提前合并主线或扩展带凭据的push/PR触发，选定复用已注册 `runtime-exit-integrity-native.yml` 的手动入口，保留 `real_agents` 布尔并新增默认linux的平台choice；原stock与Linux语义保持，每次仅选一个Agent平台。macOS/Windows文件同时声明 `workflow_call`，由该入口在同一ref显式传递唯一所需secret；不使用 `secrets: inherit`。共享Agent并发组不变，局部契约校验单平台选择与secret边界，实际dispatch仍需平台基线通过。
+
+### 34.11 Windows Electron 构建必须等待原进程
+
+输入353bb575的run36829311128已通过原Node四场景，但后置Electron构建失败、页面未执行。原日志07:19:03的 `build.mjs` 报 `windows-electron-build` 不存在，07:19:05原native builder才报告compiled=true；PowerShell直接调用GUI程序Code.exe后提前继续，没有等待其原进程完成。该失败属于实际构建顺序，不是Node尾部回归，也不能将Node通过复制为Electron通过。
+
+选定在两个Windows验收workflow的既有构建step里，以Node `spawnSync()` 顺序等待Code.exe版本probe和原native builder，逐一检查启动error、signal和退出码，任何失败不进入后续build。`ELECTRON_RUN_AS_NODE=1` 仅在这两个子进程环境中设置，随后仍由固定Node执行原扩展build。资产摘要、版本、四场景和页面断言不变；局部回归直接执行YAML中该固定JS块的受控进程替身，验证顺序、原参数及失败阻止后续构建，不新增通用进程框架。原run failure保留，修后实际Electron及页面结果另记。
+
+原artifact已下载至 `.debug/windows-product-36829311128` 并独立对账：normal实际主体code7，90000编号行/Unicode与ANSI终态通过，原写入1530184bytes/SHA256 `567ee41cadd0f12583a77e8ce4e056f330df6950da08df00cddf074e59c1461a`，467帧连续且完整消费/真实EOF。ConPTY合法VT转换使帧文本摘要不同，未宣称字节同一。paused-stop实际EOF59帧，paused-cancel明确interrupted24帧，二者保留主动停止及不承诺未来写入；B交互分别15.7925/15.9919ms且与A收尾重叠。三份原帧文件均连续、无不完整帧且与保存output一致，主体observer绑定原对象并观测退出；namespace加三例的cleanupSafe均true。该四例不代证Webview/Electron/Agent；整轮仍因构建顺序failure。
+
+本次构建顺序回归先在旧workflow实际exit1，修后同一测试通过，并覆盖原子进程启动错误、signal、probe非零和builder非零阻止后续。product self-test也通过，未运行新原生场景；下一仅复验原Windows流水线。

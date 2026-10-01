@@ -103,15 +103,25 @@ jobs:
           New-Item -ItemType Directory -Path $include | Out-Null
           tar --extract --gzip --file $headers --strip-components=1 --directory $include
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $hook = node -p "require('path').join(require('path').dirname(process.execPath), 'node_modules/npm/node_modules/node-gyp/src/win_delay_load_hook.cc')"
+          @'
+          import assert from 'node:assert/strict';
+          import { spawnSync } from 'node:child_process';
+          import path from 'node:path';
+          const runElectron = args => {
+            const result = spawnSync(process.env.DEV_SESSION_CANVAS_VSCODE_EXECUTABLE, args,
+              { stdio: 'inherit', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
+            if (result.error) throw result.error;
+            assert.equal(result.signal, null, 'The original Electron build process was interrupted');
+            assert.equal(result.status, 0, 'The original Electron build process failed');
+          };
+          runElectron(['-e', 'const a = require("node:assert/strict"); a.equal(process.versions.electron, "39.8.7"); a.equal(process.versions.node, "22.22.1"); a.equal(process.versions.modules, "140");']);
+          runElectron(['scripts/build/windows-execution-candidate-assets.mjs', 'build', '--output', 'windows-electron-build',
+            '--dependency-root', path.join(process.env.GITHUB_WORKSPACE, 'node_modules'),
+            '--headers', path.join(process.env.RUNNER_TEMP, 'windows-electron-headers', 'include/node'),
+            '--node-lib', path.join(process.env.RUNNER_TEMP, 'windows-electron-node.lib'),
+            '--delay-load-hook', path.join(path.dirname(process.execPath), 'node_modules/npm/node_modules/node-gyp/src/win_delay_load_hook.cc')]);
+          '@ | node --input-type=module
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $env:ELECTRON_RUN_AS_NODE = '1'
-          try {
-            & $env:DEV_SESSION_CANVAS_VSCODE_EXECUTABLE -e 'const a = require("node:assert/strict"); a.equal(process.versions.electron, "39.8.7"); a.equal(process.versions.node, "22.22.1"); a.equal(process.versions.modules, "140");'
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            & $env:DEV_SESSION_CANVAS_VSCODE_EXECUTABLE scripts/build/windows-execution-candidate-assets.mjs build --output windows-electron-build --dependency-root "$env:GITHUB_WORKSPACE/node_modules" --headers "$include/include/node" --node-lib $nodeLib --delay-load-hook $hook
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          } finally { Remove-Item Env:ELECTRON_RUN_AS_NODE }
           node scripts/build/build.mjs --execution-profile=windows-owner-v1-candidate --execution-assets windows-electron-build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run actual Terminal Webview and completed reopen
