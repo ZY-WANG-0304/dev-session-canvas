@@ -1747,6 +1747,12 @@ DeepSeek 官方接口提供 Codex 所需的 Responses 路径和 Claude 所需的
 
 `test-macos-execution-product.mjs --self-test` 已在本地通过，验证固定 workflow、完整/截断帧判定、仅 CR-before-LF 的来源对账归一和真实 headless 终态 oracle；subject/runner 语法及 namespace fixture bundle-only 检查通过。没有加载 addon、创建 PTY 或取得 namespace 锁。取消场另保存已记录 writer bytes/hash，但信号可能打断成功 write 后的 audit append，不冒称完整写回执；严格要求全部已收到帧进入真实 parser，且结果只能 interrupted，normal 场仍按完整成功回执逐字对账。
 
+### 33.4 首次 runner 失败与输入修正（2026-10-01）
+
+首跑为 push run `36819133440`，输入 `dcac5b8299de7ad941a8d9ce045cf9c66ace04fd`，job `110230671679` 在 `Check bounded provider input` 失败。源码契约检查和资产测试前三项已通过；第四项 `test-macos-execution-candidate-assets.mjs:113` 的路径严格相等断言失败：实际导入目录为 `/private/var/folders/...`，夹具期望为 `/var/folders/...`。`importCandidateAssets` 已按既定契约对 dist 使用 realpath，测试却直接以 `os.tmpdir()` 的别名路径建立预期。这是已定位的测试夹具路径错误，不是 Mach-O、PTY 或产品退出结果。
+
+修正仅将 macOS 资产与工厂纯测试的临时根在创建后规范化，保持原资产目录、摘要、可执行位和拒绝覆盖断言；资产测试增加一项合成目录别名回归，确认 read/import/build-selection 返回既定规范路径，没有修改产品路径校验或放宽断言。本地 Linux/Node25.6.0 上资产12/12、工厂两个受控架构和 product `--self-test` 通过；这些不是 Darwin 原生验证。首跑的 Node 编译、四个产品场景、VS Code 准备、Electron 编译和两模式 Webview complete/reopen 均 skipped，没有生成对应 build/evidence 目录，因此归档步骤没有上传产物。首败 run/log 保留，尚无修正后 runner 结果，不将未执行项计为通过，也不自动重复运行旧输入。
+
 ## 34. Windows 产品原生接入
 
 ### 34.1 运行前原生契约（2026-10-01）

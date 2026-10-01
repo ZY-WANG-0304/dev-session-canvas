@@ -12,7 +12,7 @@ import { MACOS_EXECUTION_EXPORTS, NODE_PTY_UNIX_SHA256,
   NODE_PTY_SPAWN_HELPER_SHA256 } from '../build/macos-execution-provider-patch.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
-const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-macos-assets-test-'));
+const temporary = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-macos-assets-test-')));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const fileDigest = relative => digest(fs.readFileSync(path.join(root, relative)));
 const profile = 'macos-owner-v1-candidate';
@@ -118,6 +118,22 @@ try {
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(imported.directory, 'manifest.json'))), value.manifest);
       assert.throws(() => importCandidateAssets({ source, dist }), /EEXIST/);
     }
+  });
+  await test('temporary directory aliases retain canonical import and build-selection paths', async () => {
+    const source = writeFixture('source-through-alias');
+    const dist = path.join(temporary, 'dist-through-alias');
+    fs.mkdirSync(dist);
+    fs.writeFileSync(path.join(dist, 'macos-execution-provider.js'), '/* controlled worker boundary */');
+    const alias = path.join(temporary, 'temporary-alias');
+    fs.symlinkSync(temporary, alias, 'dir');
+    const sourceAlias = path.join(alias, path.basename(source));
+    const distAlias = path.join(alias, path.basename(dist));
+    assert.notEqual(sourceAlias, fs.realpathSync(sourceAlias));
+    assert.equal(readCandidateAssets(sourceAlias).directory, source);
+    assert.equal(importCandidateAssets({ source: sourceAlias, dist: distAlias }).directory,
+      path.join(dist, candidateAssetRelativePath('arm64')));
+    assert.deepEqual(await resolveExecutionBuildSelection(candidateArgs(sourceAlias), '/missing/dist'),
+      { profile, source, admissionLimits: { executions: 2, starting: 1 } });
   });
   await test('nonexecutable or redirected helper is rejected before import', () => {
     const source = writeFixture('helper-validation');

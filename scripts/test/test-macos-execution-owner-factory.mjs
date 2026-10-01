@@ -8,7 +8,7 @@ import esbuild from 'esbuild';
 import { MACOS_EXECUTION_EXPORTS } from '../build/macos-execution-provider-patch.mjs';
 
 const require = createRequire(import.meta.url);
-const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-macos-factory-'));
+const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-macos-factory-')));
 const bundle = await esbuild.build({ entryPoints: ['extensions/vscode/dev-session-canvas/src/panel/macosExecutionOwnerFactory.ts'],
   bundle: true, write: false, platform: 'node', format: 'cjs' });
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
