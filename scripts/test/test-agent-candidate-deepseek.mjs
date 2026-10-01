@@ -23,15 +23,19 @@ try {
     CLAUDE_CONFIG_DIR: path.join(first.directory, 'claude')
   });
   assert.equal(first.claudeSettingsPath, path.join(first.authReferences.CLAUDE_CONFIG_DIR, 'settings.json'));
-  assert.deepEqual(await fs.readdir(first.authReferences.CODEX_HOME), ['config.toml']);
+  assert.deepEqual((await fs.readdir(first.authReferences.CODEX_HOME)).sort(), ['config.toml', 'models.json']);
   assert.deepEqual(await fs.readdir(first.authReferences.CLAUDE_CONFIG_DIR), ['settings.json']);
 
   const codexConfigPath = path.join(first.authReferences.CODEX_HOME, 'config.toml');
+  const modelCatalogPath = path.join(first.authReferences.CODEX_HOME, 'models.json');
   const codexConfig = await fs.readFile(codexConfigPath, 'utf8');
   const codexLines = codexConfig.trim().split('\n');
   assert.deepEqual(codexLines.slice(0, -1), [
     'model = "deepseek-flash"',
     'model_provider = "deepseek"',
+    'model_reasoning_effort = "high"',
+    'forced_login_method = "api"',
+    `model_catalog_json = ${JSON.stringify(modelCatalogPath)}`,
     '',
     '[model_providers.deepseek]',
     'name = "DeepSeek"',
@@ -43,7 +47,34 @@ try {
   const bearerTokenString = bearerTokenLine.slice('experimental_bearer_token = '.length);
   assert.equal(JSON.parse(bearerTokenString), fakeApiKey);
   assert.doesNotMatch(bearerTokenString, /[\x00-\x1f\x7f]/u);
-  assert.doesNotMatch(codexConfig, /env_key|OPENAI_API_KEY|requires_openai_auth|mcp_servers/u);
+  assert.doesNotMatch(codexConfig, /env_key|OPENAI_API_KEY|requires_openai_auth|mcp_servers|preferred_auth_method/u);
+  const modelCatalog = JSON.parse(await fs.readFile(modelCatalogPath, 'utf8'));
+  assert.deepEqual(modelCatalog, { models: [{
+    slug: 'deepseek-flash',
+    display_name: 'DeepSeek-Flash',
+    default_reasoning_level: 'high',
+    supported_reasoning_levels: [
+      { effort: 'low', description: 'Fast responses with lighter reasoning' },
+      { effort: 'high', description: 'Extra high reasoning depth for complex problems' },
+      { effort: 'max', description: 'Maximum reasoning depth for the hardest problems' }
+    ],
+    shell_type: 'shell_command',
+    visibility: 'list',
+    supported_in_api: true,
+    priority: 1,
+    base_instructions: 'Follow the user instructions.',
+    supports_reasoning_summaries: true,
+    reasoning_summary_format: 'experimental',
+    default_reasoning_summary: 'none',
+    input_modalities: ['text', 'image'],
+    context_window: 1048576,
+    support_verbosity: true,
+    default_verbosity: 'low',
+    truncation_policy: { mode: 'tokens', limit: 10000 },
+    supports_parallel_tool_calls: true,
+    experimental_supported_tools: []
+  }] });
+  assert.equal(JSON.stringify(modelCatalog).includes(fakeApiKey), false);
 
   const claudeSettings = JSON.parse(await fs.readFile(first.claudeSettingsPath, 'utf8'));
   assert.deepEqual(claudeSettings, {
@@ -74,7 +105,7 @@ try {
     for (const directory of [first.directory, ...Object.values(first.authReferences)]) {
       assert.equal((await fs.stat(directory)).mode & 0o777, 0o700);
     }
-    for (const file of [codexConfigPath, first.claudeSettingsPath]) {
+    for (const file of [codexConfigPath, modelCatalogPath, first.claudeSettingsPath]) {
       assert.equal((await fs.stat(file)).mode & 0o777, 0o600);
     }
   }

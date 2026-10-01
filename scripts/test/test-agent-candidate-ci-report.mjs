@@ -30,6 +30,7 @@ try {
   assert.equal(text.includes(key), false);
   assert.equal(text.includes('private data'), false);
   assert.equal(summary.scenarios[0].receivedOutput.sha256.length, 64);
+  assert.equal(summary.scenarios[0].cliEvidence.lastMessageMatches, null);
   await assert.rejects(writeAgentCandidateCIReport({ ...options, directory }), { code: 'EEXIST' });
   const failedDirectory = path.join(root, 'failure-report');
   await writeAgentCandidateCIReport({ ...options, directory: failedDirectory, failed: true, phase: 'prepare', scenarios: [] });
@@ -38,6 +39,33 @@ try {
   await assert.rejects(writeAgentCandidateCIReport({ ...options, directory: rejectedDirectory, apiKey: 'deepseek' }),
     /publication refused/);
   await assert.rejects(fs.stat(rejectedDirectory), { code: 'ENOENT' });
+  const scenario = { ...scenarios[0], nonce: 'DSC_FIXED_NONCE', state: 'failed' };
+  const artifacts = path.join(options.output, scenario.name, 'artifacts');
+  await fs.writeFile(path.join(artifacts, 'result.json'), JSON.stringify({ pass: false, naturalResponseVerified: false }));
+  await fs.writeFile(path.join(artifacts, 'host-received-output.txt'), [
+    { type: 'item.completed', item: { type: 'error', message: 'Model metadata for `deepseek-flash` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.' } },
+    { type: 'item.completed', item: { type: 'agent_message', text: scenario.nonce } },
+    { type: 'turn.completed' },
+    { type: 'error', message: key }
+  ].map(value => JSON.stringify(value)).join('\r\n'));
+  await fs.writeFile(path.join(artifacts, 'codex-final-message.txt'), `${scenario.nonce}\n`);
+  await fs.writeFile(path.join(artifacts, 'first-failure.json'), JSON.stringify({ nodeId: 'n1', executionId: 'e1', error: key }));
+  await fs.writeFile(path.join(artifacts, 'first-failure-events.json'), JSON.stringify([
+    { kind: 'runtime/terminalSourceDisposition', detail: { nodeId: 'other', sessionId: 'e1', sourceDisposition: { kind: 'error' } } },
+    { kind: 'runtime/terminalSourceDisposition', detail: { nodeId: 'n1', sessionId: 'e1', sourceDisposition: { kind: 'eof' } } }
+  ]));
+  const warningDirectory = path.join(root, 'warning-report');
+  await writeAgentCandidateCIReport({ ...options, directory: warningDirectory, scenarios: [scenario], failed: true });
+  const warningText = await fs.readFile(path.join(warningDirectory, 'summary.json'), 'utf8');
+  const warningReport = JSON.parse(warningText);
+  assert.equal(warningReport.pass, false, 'A response or EOF must not override a failed acceptance assertion.');
+  assert.equal(warningReport.scenarios[0].naturalResponseVerified, false);
+  assert.equal(warningReport.scenarios[0].sourceDisposition, 'eof');
+  assert.deepEqual(warningReport.scenarios[0].cliEvidence, { turnCompleted: true, turnFailed: false,
+    expectedResponseInOutput: true, lastMessageMatches: true, modelMetadataFallback: true });
+  assert.equal(warningText.includes(key), false);
+  assert.equal(warningText.includes(scenario.nonce), false);
+  assert.equal(warningText.includes('Defaulting to fallback metadata'), false);
   console.log('Agent candidate CI report: fixed fields, missing evidence, failed run, and secret refusal passed.');
 } finally {
   await fs.rm(root, { recursive: true, force: true });

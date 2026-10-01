@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前执行入口（2026-10-01）：真实 Codex/Claude + DeepSeek 的受限 CI 接入已以 `60cdcc7a` 提交并推送，四脚本/typecheck 与固定 CLI 假 key 配置解析通过，尚不代表联网认证。首次 GitHub run `36809595428` 在 Ubuntu24.04 的 bwrap uid map `Permission denied` 准备失败，安装/构建/secret 验收后续全部 skipped，零模型，原 failure 保留。完整产品候选已以 `69bf93b6` 冻结，四 dist SHA 匹配 A1/A4 indexed-pages、sourcemap 133 项目源项零漂移，十项定向回归/typecheck 通过；当前待 Ubuntu22.04 新 CI 输入，保留 bwrap/CLI sandbox、安全策略、期限/断言。私有 credential 配置主动 dispose；raw/HOME 仅随临时 runner VM 销毁且不上传，workflow 仅 `report_ready` 后上传安全摘要。固定版本/原八场景及 F-04/跨平台边界仍按 32.20，不预写新 CI 通过。
+当前执行入口（2026-10-01）：第二轮 run `36810562601`/`37bdf12b` 的首场 failed、后七 not-run 与远端摘要保持，不由宽分类推断原文。本地固定 Codex0.157.1 假 key/loopback 已证明无 model catalog 时成功响应仍发 metadata item.error，导致原严格验证拒绝；私有单 deepseek-flash 最小 catalog 修后 exit0、nonce/turn.completed 匹配、无 item.error，等价严格断言通过。仅使用官方能力值和短 instructions，不改业务/模型/版本/期限/沙箱，不加被该版本 ignored 的 preferred_auth_method。安全摘要五布尔/first-failure source 已通过定向测试；当前等待修正配置的新 CI 证据，本地复现不还原远端586bytes、不追认通过。F-04/完整 A5/跨平台仍未完成。
 
 当前状态（2026-09-30）：有界索引顺序读取已实施，`.debug/a1-host-reconnect-20260930-indexed-pages/` 同一 2/1 Electron candidate 完整 exit 0，新 Host ready 1422.291ms、完整应用 14431.416ms、追平 13009.125ms；B 响应 32.6ms、独立 journal/hash、原执行身份及新 reader、完整保留后缀、自然 closed/no-history 和两份 cleanup 通过，outer `forcedSignals=[]`。原 30 秒和完整性边界保持，四轮旧 exit 1 不追认；解除的是该固定冷恢复阻塞，不关闭整个 F-04/A1 至 A6。真实重连追赶交互重叠为 false，不能从追平后 B 响应推断。同一新 2/1 构建 A4 `.debug/a4-real-agent-20260930-indexed-pages/` 八场景也已完整 exit 0，natural 四项响应/实际 source EOF 通过，stop 保留主动停止，八份 cleanup 无 binding/process failure/forcedSignals；Claude stop 为 startup/auth 等待界面，不代表完成模型任务。具体结果见生产接入 32.19，不追加工具阶段。
 
@@ -116,7 +116,9 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01，受限 CI 实施) `60cdcc7a` 已提交推送 DeepSeek 配置/报告/workflow，四定向脚本与 typecheck 通过；固定 installed CLI 的假 key Codex features list、Claude safe-mode/explicit settings auth status 成功，probe 临时目录均删除。仅证明配置解析，不证明联网认证。
 - [x] (2026-10-01，首次 CI) run `36809595428`/`60cdcc7a` 在 Ubuntu24.04 bwrap uid map Permission denied 准备失败；后续安装、构建和 secret 验收全部 skipped，零模型，保留 failure，不记产品或平台 bug。
 - [x] (2026-10-01，完整候选冻结) `69bf93b6` 提交 31 文件，含两个容量 fixture；四 dist SHA 匹配 A1/A4 indexed-pages，sourcemap 133 项目源项零漂移，十项定向回归/typecheck 通过。不追认首次不完整 CI 输入为已验候选。
-- [ ] (2026-10-01，新 CI 输入) 在 `69bf93b6` 完整候选上选 Ubuntu22.04，保留 bwrap/CLI sandbox 与原期限/断言，执行原八场景。自然须真实响应/尾部 EOF/Webview/cleanup，stop 不伪造 EOF；仅 report_ready 的扫描后安全摘要可上传，尚无新 CI 通过，不关闭 F-04/完整 A5。
+- [x] (2026-10-01，第二轮 CI) run `36810562601`/`37bdf12b` 在 Ubuntu22.04 通过 sandbox/安装/构建，首场 Codex Runtime natural failed、其余七场 not-run，整轮 failure 保留。安全摘要 CLI/配置已到、响应未验证、source=null，四 cleanup 计数为 0；586 bytes 只发布长度/hash，不等于模型或 EOF 通过。
+- [x] (2026-10-01，首场有限定位) 固定 Codex0.157.1 假 key/loopback 证明：缺 catalog 时成功 SSE/exit0/nonce/turn.completed 仍伴随 metadata item.error，原严格断言拒绝。私有单模型最小 catalog 修后无 item.error、等价断言通过；仅证明本地配置缺口/修正，不还原远端586bytes。报告 cliEvidence 五布尔与 first-failure source 已实现并通过定向测试。
+- [ ] (2026-10-01，配置修后 CI) 按 32.20 固定私有单 deepseek-flash catalog、短 instructions、forced_login_method=api/reasoning=high，不使用 ignored preferred_auth_method；保留原模型/版本/期限/沙箱/严格断言和安全摘要，取得新远端结果后再判断，旧两轮 failure 不改。
 - [x] (2026-09-30，A6) 32.8 完整 candidate reset 先红后补破坏性提交前在途责任复核：首次中止保留节点/session/binding/client，原 callback 完成保存/delete 后重试成功；生命周期回归 38 次、typecheck 通过，不追加 drain/锁，永久关闭原屏障保持。真实 Host reload 和其余 A6 不由此代证。
 
 以下 checklist 保留历史执行状态，不与本次有限清单累加；例如 S12 的后续旧写者定位已由 S13/S14 承接，不再次排队。
@@ -375,7 +377,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
-2026-10-01，repository-level secret metadata 与实际固定 CLI 假 key 配置解析已分别确认，后者不证明联网认证。首轮 run `36809595428` 在取得模型凭据前，因 Ubuntu24.04 bwrap uid map Permission denied 失败；CLI 安装/构建/验收未到，不能推导 Agent 产品缺陷或系统 bug。首次 `60cdcc7a` 只冻结 CI 接入，不含当时仍 dirty 的已验证产品改动；完整候选现以 `69bf93b6` 冻结，四 dist SHA/133 项目源码映射核对一致，不能反过来将首次输入当作本机已验产物。
+2026-10-01，第二轮远端 summary 的 586 bytes 长度/hash、`model-or-protocol` 和 source=null 不足以还原 warning/请求/EOF。随后本地固定 CLI loopback 单独证明：缺 catalog 时即使成功 SSE、exit0、nonce/turn.completed 成立，仍产生 metadata item.error 并被原断言拒绝；合法 catalog 还要求非空 base_instructions 或 instructions_template，故用短句而非复制长模板。修后本地无 item.error/原等价断言通过，官网 preferred_auth_method 在固定版本被报告 ignored，未采用。此因果证据不追改远端失败、plannedModelTurns 不当实际请求数；安全摘要五布尔/source 提取已通过定向测试。
 
 2026-09-30 `indexed-pages` 同构建真实 Agent 复验完整 exit 0，Codex/Claude × 两模式 × natural/stop 八场景的 schedule/result 均通过。natural 四项 `naturalResponseVerified=true` 且真实 completed event source=eof；stop 四项 `sourceEofClaim=false`，其中 Claude 实际 startup/auth 等待界面可停止，不代表完成模型任务。八份 cleanup 无残留 binding、process failure 或 forcedSignals。Host wiring 145/145、Client 28/28 也通过；当前证据覆盖新构建，不把旧 dist 记录追认为新构建通过。
 
@@ -631,6 +633,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 - 决策：按用户选择保留真实 Codex/Claude CLI，将 CI 模型后端统一为 DeepSeek；先复用 native workflow manual input 接固定 Linux x64/glibc Electron 八场景，以 step 级 secret 和独立临时 CLI 配置交接凭据，通用 smoke secret filter 不放宽，远端只发布经 key 内容扫描的固定摘要。理由：解除专用认证前提，同时维持真实 CLI/Host/Webview/尾部及资源验收，避免凭据与 raw/HOME 外泄；官方兼容接口不能代证固定版本实际可用。日期/作者：2026-10-01，Codex。
 - 决策：保留 Ubuntu24.04 首次 sandbox 准备失败，后续改选更接近已验证本机 glibc 基线的 Ubuntu22.04，并先冻结完整产品候选；不禁用系统安全策略或 bwrap/CLI sandbox，不修改期限/断言。理由：本次失败发生于安装/构建/secret 验收前，只证明该准备条件不成立，不是模型认证、PTY 或平台 bug 的证据；raw 仅留临时 runner、私有凭据配置主动清理和扫描后 report_ready 上传各自留责。日期/作者：2026-10-01，Codex。
+- 决策：第二轮首场失败只补既有固定安全摘要的 turn 完成/失败、nonce 匹配、missing-model-metadata 分类及 first-failure 实际 source，再以假 key/loopback 复现确认原因；当前不写 catalog 根因或修改严格断言。理由：现有宽分类不足以区别 warning 与请求失败，必要判定事实可用有限布尔/枚举补齐，无须发布原文、扩诊断框架或重跑求绿。日期/作者：2026-10-01，Codex。
+- 决策：本地 loopback 确认配置缺口后，仅补私有单 deepseek-flash 最小 catalog、forced_login_method=api 与 reasoning=high，必要 instructions 使用固定短句，省略固定版本 ignored 的 preferred_auth_method；原严格 warning 断言保持。理由：修正真实配置可消除本地成功响应时的 metadata item.error，无须更改业务、模型/版本/期限/沙箱或抄长模板；远端原文不可回推，新 CI 仍须独立验收。日期/作者：2026-10-01，Codex。
 
 - 决策：有界索引读取及 `indexed-pages` 完整真实重连只解除原固定冷恢复阻塞，原四轮失败、全部预算和来源断言保持；同构建 A4 已完整通过，后续返回原有限清单，而不是再加工具或重复冷恢复/Agent 矩阵。理由：原执行/新 reader、完整应用/独立 journal 与自然无历史现已实际到达，B 只证明追平后交互，未覆盖项仍独立；性能改动后的真实 Agent 已取得新构建有限证据，不依赖旧 dist 代证。日期/作者：2026-09-30，Codex。
 - 决策：将两轮真实冷恢复 30 秒未追平列为 F-04/A1/A2 直接阻塞，不延长期限、不裁剪尾部或借十会话热路径通过关闭。下一仅拟有界顺序读优化，冻结 segment 首个相关页发布前仍完整校验，尾部篡改、身份/取消/compact 和页/在途边界保持，先定向验证再原输入真实复验。理由：逐页重扫放大已由源码确认，但全部耗时未归因；消除具体重复工作可以直接服务原产品验收，无需新诊断框架。日期/作者：2026-09-30，Codex。
@@ -859,7 +863,7 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 
 ## 结果与复盘
 
-2026-10-01 当前增量已完成 `60cdcc7a` 的受限 CI 接入/推送、四脚本/typecheck 与固定 CLI 假 key 配置解析；首次 run `36809595428` 在 Ubuntu24.04 sandbox 准备失败，后续全部 skipped/零模型。`69bf93b6` 已冻结完整 31 文件产品候选，四 dist/133 项目源项一致，十定向回归与 typecheck 通过；当前待 Ubuntu22.04 原八场景的新 CI 结果。原 failure 保留，私有配置主动 dispose 与 raw/HOME 随临时 VM 销毁分账，仅 report_ready 允许安全摘要上传，不追认旧本机结果或关闭 F-04/全部 A5。
+2026-10-01 第二轮 `36810562601`/`37bdf12b` 首场失败、其余七未跑，安全摘要保存在 `.debug/agent-ci-36810562601-summary/summary.json`；source 未知、cleanup 四计数为0、586 bytes 仅 hash/长度的原事实不改。本地固定 CLI loopback 后续确认缺 catalog 的 metadata warning 可使成功响应仍被原断言拒绝；私有最小 catalog 修后无 item.error/等价断言通过，五布尔及 first-failure source 报告补证已通过定向测试。当前等待配置修后的新远端证据，本地结果不还原原文或代证 DeepSeek/EOF/产品通过，不关闭 F-04/全部 A5。
 
 当前 A1/A2 的固定冷恢复阻塞已在 `indexed-pages` 新证据中解除：读取索引窄修已实施，原输入/30 秒下 13009.125ms 追平，来源 hash/revision6499、原主体/绑定/新 reader、完整后缀、B32.6ms、自然 no-history 与两 cleanup 全部实际通过。四轮旧 exit 1 和证据局限原样保留，B 发生于追平后，overlap=false；同一新构建 A4 八场景也已完整 exit 0，自然响应/EOF、主动停止和清理分账，Claude stop 仅代表实际 startup/auth 等待状态可停止。不把局部完成扩大为整个 F-04/A1 至 A6、A3 独立大尾部或跨平台，也不重新安排工具阶段。
 
@@ -1047,7 +1051,7 @@ S5输入为a32b1510，仅本运行时树修改。实际实现是`extensions/vsco
 
 ## 工作计划
 
-生产接入 32.20 的 workflow/DeepSeek 配置/摘要入口已实施并以 `60cdcc7a` 推送，索引读取/准入/source EOF 等完整产品候选现以 `69bf93b6` 冻结，不再列为待提交。下一只在该候选上将 Agent job 选择为 Ubuntu22.04、保留原安全隔离，运行固定 Linux/Electron 八场景。原三平台 stock 诊断、通用 smoke secret filter、natural/stop 期限和完整性断言保持；主动 dispose 私有认证配置，raw/HOME 不上传而随临时 VM 销毁。只有安全 summary 写完且步骤产出 report_ready 才上传，不为失败取证扩大工件；新结果独立于首次准备失败记录。
+生产接入 32.20 的本地有限定位和报告窄补证已完成，当前只收口 `scripts/smoke/agent-candidate-deepseek.mjs` 的私有单模型 catalog 配置及其定向验证，再冻结新 CI 输入。catalog 使用官方 deepseek-flash 能力值，model_catalog_json 指向私有文件，forced_login_method=api、reasoning=high，必要 instructions 仅短句；不复制长模板，不加固定版本 ignored 的 preferred_auth_method，不改业务或原严格断言。本地成功 loopback 不等于远端验证，原版本/期限/沙箱/secret filter 保持，旧 failure 不改；仅报告安全摘要、主动 dispose 私有配置，raw/HOME 随临时 VM 销毁。
 
 有界索引读取和固定 A1/A2 冷恢复已完成各自有限验证，保留完整冻结段校验、页/在途及尾部篡改边界，不再将它们列为拟实现。同一新 2/1 candidate 的 A4 本机八场景已完整 exit 0；其余 A 项、B3、跨平台/分发与准入沿原有限清单，不因新结果自动追加工具阶段或重复已通过矩阵。真实重连追赶交互重叠仍未覆盖，2026-10-01 新 CI 后端需取得自身证据，不能用本机 Linux 两 Terminal/八 Agent 场景结果替代。
 
@@ -1169,7 +1173,7 @@ S1 最终定向32/32、typecheck 复跑、既有 bridge 回归、独立复审及
 
 ## 具体步骤
 
-本增量工作目录为仓库根。32.20 的入口已实现，`node scripts/test/test-agent-candidate-deepseek.mjs`、`node scripts/test/test-agent-candidate-ci-report.mjs`、`node scripts/test/test-vscode-smoke-runner-env.mjs`、`node scripts/test/test-runtime-agent-ci-workflow.mjs` 与 typecheck 已通过；实际 fixed CLI 假 key 的配置 probe 也通过并清理全部 probe 临时目录，没有模型调用。固定 `deepseek-flash`、Codex Responses `https://api.deepseek.com/`、Claude `https://api.deepseek.com/anthropic` 和私有 `0700/0600` 配置保持。首次 manual input `real_agents` 的 run `36809595428` 未越过 Ubuntu24.04 bwrap 准备；完整候选现已冻结为 `69bf93b6`，改选 Ubuntu22.04 后由同入口使用 step secret 执行 `node scripts/smoke/run-vscode-agent-candidate.mjs --backend=deepseek --ci-report agent-ci-report --output <本轮新目录>`。自然真实响应/EOF/Webview/cleanup 与 stop 分账，扫描后只有 report_ready 才上传摘要；当前待该新输入，不预写成功。
+本增量工作目录为仓库根。第二轮安全摘要保持于 `.debug/agent-ci-36810562601-summary/summary.json`，本地无真实凭据/外部模型的固定 CLI loopback 已证明缺 catalog 的严格断言失败及最小合法配置修后通过；报告五布尔和 first-failure source 已定向验证。当前收口私有单 deepseek-flash catalog 的实现/定向测试并冻结新输入，再沿同一 manual real_agents 路径取得新 CI 证据。固定模型/端点/版本、私有 `0700/0600` 配置、自然响应/EOF/Webview/cleanup 与 stop 断言保持，report_ready 后只上传安全摘要，不追改旧失败。
 
 当前已实施索引读取，并用匹配新 2/1 candidate 在 `.debug/a1-host-reconnect-20260930-indexed-pages/` 完成原 `--capacity-reconnect` 输入，exit 0；原四轮失败全部保留。协议脚本仅更新 HEAD 已存在的 await fresh/admission/return 顺序断言，修后 `.debug/journal-index-supervisor-protocol-attach-assertion-fixed.log` 通过，旧静态失败不覆盖；Webview 两个 global 夹具缺失修后 39/39+10/10 通过。`node scripts/smoke/run-vscode-agent-candidate.mjs --output .debug/a4-real-agent-20260930-indexed-pages` 已完整 exit 0，八场景逐项结果和 cleanup 见生产接入 32.19；Host wiring 145/145、Client 28/28 也通过。不追加同矩阵，下面旧步骤只记录当时操作，不作为下一任务队列。
 
@@ -1385,7 +1389,7 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
-DeepSeek CI 的新增验收只覆盖 32.20 的固定 Linux/Electron 原八场景，Node/CLI/VSCode/Electron 版本及非敏感模型配置必须与输入一致。配置预检不得要求官方账号登录来代替 custom provider，也不得把假 key 配置解析记成模型响应；自然四场须有真实目标响应、实际 source EOF、Webview 尾部应用与两模式保存/无历史/cleanup，停止四场按主动处置记录。私有认证配置主动 dispose，raw/HOME 仅留临时 runner 并随 VM 销毁，不上传。只有固定字段摘要扫描通过、写完并产生 report_ready 后才可发布，命中/扫描失败/准备失败不上传 raw。四脚本/typecheck 已过，首个 CI 准备失败、零模型保持 failure；Ubuntu22.04 完整候选的新实际结果仍待取得，不算跨平台通过。
+DeepSeek CI 的新增验收只覆盖 32.20 的固定 Linux/Electron 原八场景，Node/CLI/VSCode/Electron 版本及非敏感模型配置必须与输入一致。配置预检/假 key 解析不代表模型响应；自然四场须有真实目标响应、实际 source EOF、Webview 尾部应用与两模式保存/无历史/cleanup，停止四场按主动处置记录。第二轮首场实际 failed、后七 not-run，source=null 不等于 EOF 或已证输出缺失，cleanup 四计数为 0 不代证自然成功。只允许固定 turn/nonce/metadata 分类/source 摘要补证，不发布原文或放宽断言；loopback 是局部因果验证，不是 DeepSeek 服务成功。私有配置主动 dispose、raw/HOME 随临时 VM 销毁、扫描/report_ready 后上传安全摘要的边界保持。
 
 固定十 Terminal 已按容量重评 10.10 的原预算完整通过：Supervisor RSS 1280 MiB、Host RSS 640 MiB、renderer-group RSS 1536 MiB、十 provider 合计 1024 MiB、十主体合计 768 MiB、总 RSS 5 GiB、Host isolate heapUsed 192 MiB；交互 1500ms、单档追平 30 秒。实际数值和未知量归档 10.12，只适用于声明运行时/固定负载，不是一般产品 SLA 或最大会话数；旧失败及 A4 旧 dist 边界保持。10.11 两次真实 Host launch 的固定输入经有界索引读取修正后完整通过：旧 Host 消失后产出来源、新 Host 恢复原执行及新 reader、实际后缀/独立 hash、B 响应与自然无历史/清理均到达；原 30 秒/1500ms/每例 10 分钟界限不变，总 RSS 5 GiB 仅为实验保护。追平为 13.009 秒，B 输入发生在追平后，未覆盖离线追赶交互重叠。同一新 2/1 构建 A4 八场景完整 exit 0，natural 实际 EOF 与 stop 非 EOF claim 分账；该有限结果不把来源/尾部、A3 大尾部、其他 A 项或跨平台/分发移出验收。
 
@@ -2028,3 +2032,7 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-01，DeepSeek 真实 Agent CI 选择）：记录用户后端选择与 repository secret 名称/metadata，先补 32.20 的固定 Linux/Electron 八场景、临时 CLI 配置、step 凭据、通用过滤保持及安全摘要边界，再同步当前入口、目标、四活章节和执行/验收。原 32.17 查询及旧通过不追认，新固定 CLI 兼容和 CI 执行尚未验证；不关闭 F-04/完整 A5，不追加通用工具门槛。
 
 修订记录（2026-10-01，CI 接入与准备首败）：同步 60cdcc7a 接入/推送、四脚本/typecheck、假 key 解析及清理事实，保留 run 36809595428 的 Ubuntu24.04 bwrap 准备 failure/后续 skipped/零模型。选 Ubuntu22.04 而不禁用 sandbox，先冻结完整产品候选再运行新输入；修正 credential 主动 dispose 与 raw/HOME 临时 VM 销毁边界、report_ready 上传条件，不把未到达的真实验收写成通过。
+
+修订记录（2026-10-01，第二轮实际首场失败）：同步 run 36810562601/37bdf12b 的准备/安装/构建通过与首场 failed/后七 not-run，安全摘要的配置/CLI、响应未验证、source未知、cleanup四计数为0及输出hash分账。32.20 只允许固定摘要窄补证及假 key/loopback 复现，catalog尚为假设，不宣布根因或修改断言；保留两次原失败，整体完成定义不变。
+
+修订记录（2026-10-01，本地配置缺口复现）：固定 CLI 假 key/loopback 确认缺 catalog 时成功响应仍产生 metadata item.error；私有单模型最小 catalog、短 instructions 及固定版本可用认证配置修后通过原等价严格断言，未修改业务或期限。报告五布尔/first-failure source 已通过定向测试；不还原远端586bytes，新 CI 仍待，旧失败保留。

@@ -5,6 +5,32 @@ import path from 'node:path';
 const MODEL = 'deepseek-flash';
 const CODEX_ENDPOINT = 'https://api.deepseek.com/';
 const CLAUDE_ENDPOINT = 'https://api.deepseek.com/anthropic';
+const CODEX_MODEL_CATALOG = { models: [{
+  slug: MODEL,
+  display_name: 'DeepSeek-Flash',
+  default_reasoning_level: 'high',
+  supported_reasoning_levels: [
+    { effort: 'low', description: 'Fast responses with lighter reasoning' },
+    { effort: 'high', description: 'Extra high reasoning depth for complex problems' },
+    { effort: 'max', description: 'Maximum reasoning depth for the hardest problems' }
+  ],
+  shell_type: 'shell_command',
+  visibility: 'list',
+  supported_in_api: true,
+  priority: 1,
+  // The fixed CLI requires instructions even for a tool-free acceptance task.
+  base_instructions: 'Follow the user instructions.',
+  supports_reasoning_summaries: true,
+  reasoning_summary_format: 'experimental',
+  default_reasoning_summary: 'none',
+  input_modalities: ['text', 'image'],
+  context_window: 1048576,
+  support_verbosity: true,
+  default_verbosity: 'low',
+  truncation_policy: { mode: 'tokens', limit: 10000 },
+  supports_parallel_tool_calls: true,
+  experimental_supported_tools: []
+}] };
 
 export async function createDeepSeekConfiguration({ apiKey, temporaryRoot = os.tmpdir() } = {}) {
   if (typeof apiKey !== 'string' || apiKey.trim().length === 0 || /[\r\n\0]/u.test(apiKey)) {
@@ -19,12 +45,18 @@ export async function createDeepSeekConfiguration({ apiKey, temporaryRoot = os.t
     const claudeConfigDir = path.join(directory, 'claude');
     await fs.mkdir(codexHome, { mode: 0o700 });
     await fs.mkdir(claudeConfigDir, { mode: 0o700 });
+    const modelCatalogPath = path.join(codexHome, 'models.json');
+    await fs.writeFile(modelCatalogPath, `${JSON.stringify(CODEX_MODEL_CATALOG, null, 2)}\n`,
+      { encoding: 'utf8', mode: 0o600, flag: 'wx' });
 
     // JSON basic strings also encode TOML controls, except for DEL.
     const bearerToken = JSON.stringify(apiKey).replace(/\x7f/gu, '\\u007f');
     await fs.writeFile(path.join(codexHome, 'config.toml'), [
       `model = "${MODEL}"`,
       'model_provider = "deepseek"',
+      'model_reasoning_effort = "high"',
+      'forced_login_method = "api"',
+      `model_catalog_json = ${JSON.stringify(modelCatalogPath)}`,
       '',
       '[model_providers.deepseek]',
       'name = "DeepSeek"',

@@ -2,7 +2,7 @@
 
 本 ExecPlan 按 `docs/PLANS.md` 维护，承接 `docs/design-docs/runtime-persistence-closeout.md` 的 B1/A1，不是新的退出诊断阶段。输入为 `8dd82629`。F-04 目标是长历史不再要求每层常驻/一次性复制完整后缀，实际在途数据有约束，恢复不挤掉交互；F-05 的无 completed 历史与退出尾部保证不变。工程判断由代理承担，不等待用户选择预算。
 
-当前入口（2026-09-30，覆盖后面的历史下一步）：10.13 已实施 reader-local 单段认证偏移索引并接通 Webview/Host 两消费链，10.14 的 `indexed-pages` 同输入实际重连完整 exit 0；Host ready 后 13.01 秒追平 2560 块、B 32.6ms，独立来源 hash/自然 no-history/清理通过，原 30 秒期限不改。同一新 2/1 构建的真实 Codex/Claude 两模式 natural/stop 八场景也已完整 exit 0。原四次重连 exit 1 保留，该固定冷恢复阻塞解除，不能关闭全部 F-04/A1。剩余必要产品组合、平台接入与分发继续按有限收尾契约，跨平台真实 Agent 的认证/执行位置需要用户决定；该资源决定不表示其他工程已完成或全部受阻，不重跑成功矩阵求次数。
+当前入口（2026-09-30，覆盖后面的历史下一步）：10.13 已实施 reader-local 单段认证偏移索引并接通 Webview/Host 两消费链，10.14 的 `indexed-pages` 同输入实际重连完整 exit 0；Host ready 后 13.01 秒追平 2560 块、B 32.6ms，独立来源 hash/自然 no-history/清理通过，原 30 秒期限不改。同一新 2/1 构建的真实 Codex/Claude 两模式 natural/stop 八场景也已完整 exit 0。原四次重连 exit 1 保留，该固定冷恢复阻塞解除，不能关闭全部 F-04/A1。剩余必要产品组合、平台接入与分发继续按有限收尾契约；2026-10-01 用户已选 DeepSeek 专用 CI 且 repository Secret 已确认，Linux 真实 Agent CI 尚待结果，凭据不再列为用户阻塞。macOS/Windows provider、build、namespace 等平台工程仍未完成，不重跑成功矩阵求次数。
 
 最新进展（2026-09-30）：显式 10/1 candidate 的 `.debug/a1-ten-session-20260930-probe-fixed/` color/size 十 Terminal 三档完整 exit 0，每例 27 次实际响应全部应用，最大 1365.5/1323ms；原运行前资源预算、来源 hash、自然退出无历史和清理通过，见容量设计 10.12。1280 档两例观察到同 reader 隐藏恢复的追赶交互重叠，不是 Host 离线恢复；两个 probe 前置 exit 1、v18 与更早失败保持。下一只推进原 A1/A2 的固定真实 Host 两次 launch 重连（10.11），不关闭 F-04、其余 A 项或正式准入，不新增工具阶段或 profiler 前置。
 

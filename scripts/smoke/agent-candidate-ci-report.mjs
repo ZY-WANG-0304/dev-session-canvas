@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 
 const count = value => Array.isArray(value) ? value.length : null;
 const boolean = value => typeof value === 'boolean' ? value : null;
@@ -18,20 +19,45 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
     const auth = await read('auth-status');
     const cleanup = await read('cleanup');
     const completed = await read('completed');
-    const events = await read('completed-events');
+    const firstFailure = await read('first-failure');
+    const events = await read('completed-events') ?? await read('first-failure-events');
     const remainder = await read('remaining-resources');
+    const nodeId = completed?.node?.id ?? firstFailure?.nodeId;
+    const executionId = completed?.executionId ?? firstFailure?.executionId;
     const source = events?.find(event => event.kind === 'runtime/terminalSourceDisposition' &&
-      event.detail?.nodeId === completed?.node?.id &&
-      (event.detail.executionSessionId === completed?.executionId || event.detail.sessionId === completed?.executionId));
+      typeof nodeId === 'string' && typeof executionId === 'string' && event.detail?.nodeId === nodeId &&
+      (event.detail.executionSessionId === executionId || event.detail.sessionId === executionId));
     let rawOutput;
     try { rawOutput = await fs.readFile(path.join(artifacts, 'host-received-output.txt')); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
+    const records = rawOutput === undefined ? undefined : stripVTControlCharacters(rawOutput.toString('utf8'))
+      .split(/\r?\n/).flatMap(line => {
+        try { const record = JSON.parse(line); return record && typeof record === 'object' ? [record] : []; }
+        catch { return []; }
+      });
+    let lastMessage;
+    if (scenario.name.startsWith('codex-')) {
+      try { lastMessage = await fs.readFile(path.join(artifacts, 'codex-final-message.txt'), 'utf8'); }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
     rows.push({
       name: scenario.name,
       state: ['not-run', 'started', 'passed', 'failed'].includes(scenario.state) ? scenario.state : 'unknown',
       pass: boolean(result?.pass),
       cliObserved: boolean(result?.cliObserved),
       naturalResponseVerified: boolean(result?.naturalResponseVerified),
+      cliEvidence: {
+        turnCompleted: records ? records.some(record => record.type === 'turn.completed') : null,
+        turnFailed: records ? records.some(record => record.type === 'turn.failed') : null,
+        expectedResponseInOutput: records && typeof scenario.nonce === 'string'
+          ? records.some(record => (record.item?.type === 'agent_message' && typeof record.item.text === 'string' &&
+            record.item.text.trim() === scenario.nonce) || (record.type === 'result' && record.is_error === false &&
+            typeof record.result === 'string' && record.result.trim() === scenario.nonce)) : null,
+        lastMessageMatches: lastMessage !== undefined && typeof scenario.nonce === 'string'
+          ? lastMessage.trim() === scenario.nonce : null,
+        modelMetadataFallback: records ? records.some(record => record.item?.type === 'error' &&
+          record.item.message === 'Model metadata for `deepseek-flash` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.') : null
+      },
       sourceDisposition: dispositions.has(source?.detail?.sourceDisposition?.kind)
         ? source.detail.sourceDisposition.kind : null,
       authentication: { exitCode: integer(auth?.exitCode), loggedIn: boolean(auth?.loggedIn),
