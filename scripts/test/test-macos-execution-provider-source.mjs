@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { MACOS_EXECUTION_EXPORTS, NODE_PTY_SPAWN_HELPER_SHA256,
-  patchMacosExecutionProvider } from '../build/macos-execution-provider-patch.mjs';
+  patchMacosExecutionProvider, patchMacosSpawnHelper } from '../build/macos-execution-provider-patch.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -15,6 +15,8 @@ const mac = read(`${nativeRoot}macos-execution-owner.h`);
 const common = read(`${nativeRoot}unix-execution-owner.h`);
 const linux = read(`${nativeRoot}linux-execution-owner.h`);
 const patched = patchMacosExecutionProvider(source);
+const originalHelper = read('node_modules/node-pty/src/unix/spawn-helper.cc');
+const helper = patchMacosSpawnHelper(originalHelper);
 const fork = patched.slice(patched.indexOf('Napi::Value PtyFork(const Napi::CallbackInfo& info) {'),
   patched.indexOf('Napi::Value PtyOpen(const Napi::CallbackInfo& info) {'));
 const spawn = mac.slice(mac.indexOf('static void Spawn('), mac.indexOf('static bool SameFile('));
@@ -26,6 +28,16 @@ assert.equal(createHash('sha256').update(read('node_modules/node-pty/src/unix/sp
   NODE_PTY_SPAWN_HELPER_SHA256);
 assert.throws(() => patchMacosExecutionProvider(`${source}\n`), /Unexpected node-pty/);
 assert.throws(() => patchMacosExecutionProvider(patched), /Unexpected node-pty/);
+assert.throws(() => patchMacosSpawnHelper(`${originalHelper}\n`), /Unexpected node-pty/);
+assert.throws(() => patchMacosSpawnHelper(helper), /Unexpected node-pty/);
+assert(!mac.includes('POSIX_SPAWN_SETSID'));
+assert(helper.includes('if (argc < 3 || setsid() == -1) _exit(1);'));
+assert(helper.includes('if (slave_path == nullptr) _exit(1);'));
+assert(helper.includes('if (slave == -1) _exit(1);'));
+assert(helper.includes('if (close(slave) == -1) _exit(1);'));
+assert(helper.indexOf('setsid()') < helper.indexOf('ttyname('));
+assert(helper.indexOf('ttyname(') < helper.indexOf('open(slave_path,'));
+assert(helper.indexOf('close(slave)') < helper.indexOf('execvp(file, argv)'));
 assert.equal((fork.match(/dsc_execution::BeforeSpawn\(napiEnv, helper_path\)/g) ?? []).length, 1);
 assert(fork.indexOf('dsc_execution::BeforeSpawn(') < fork.indexOf('pty_posix_spawn('));
 assert(fork.includes('argv[0] = strdup(helper_path.c_str());'));

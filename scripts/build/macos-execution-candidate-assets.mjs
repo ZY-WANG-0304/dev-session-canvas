@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { MACOS_EXECUTION_EXPORTS, NODE_PTY_UNIX_SHA256, NODE_PTY_SPAWN_HELPER_SHA256,
-  patchMacosExecutionProvider } from './macos-execution-provider-patch.mjs';
+  patchMacosExecutionProvider, patchMacosSpawnHelper } from './macos-execution-provider-patch.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const nativeRoot = path.join(root, 'extensions/vscode/dev-session-canvas/native');
@@ -113,7 +113,7 @@ export function validateCandidateManifest(manifest, binary, helper) {
   }
   assert.deepEqual(manifest.exports, MACOS_EXECUTION_EXPORTS);
   for (const key of ['ownerSha256', 'sharedOwnerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256',
-    'helperSourceSha256', 'headersSha256', 'nodeAddonApiSha256']) assert.match(manifest.sources?.[key] ?? '', /^[a-f0-9]{64}$/);
+    'helperSourceSha256', 'helperPatchedSha256', 'headersSha256', 'nodeAddonApiSha256']) assert.match(manifest.sources?.[key] ?? '', /^[a-f0-9]{64}$/);
   assert.equal(manifest.sources.nodePtySha256, NODE_PTY_UNIX_SHA256);
   assert.equal(manifest.sources.helperSourceSha256, NODE_PTY_SPAWN_HELPER_SHA256);
   assert.equal(manifest.sources.ownerSha256, hash(readRegular(ownerFile)), 'Candidate owner source changed');
@@ -173,6 +173,7 @@ export function buildCandidateAssets({ output, dependencyRoot, headers, compiler
   const original = readRegular(path.join(ptyRoot, 'src/unix/pty.cc'));
   const helperSource = readRegular(path.join(ptyRoot, 'src/unix/spawn-helper.cc'));
   assert.equal(hash(helperSource), NODE_PTY_SPAWN_HELPER_SHA256, 'Unexpected node-pty spawn helper source');
+  const patchedHelper = patchMacosSpawnHelper(helperSource.toString('utf8'));
   const patched = patchMacosExecutionProvider(original.toString('utf8'));
   const owner = readRegular(ownerFile);
   const sharedOwner = readRegular(sharedOwnerFile);
@@ -180,6 +181,7 @@ export function buildCandidateAssets({ output, dependencyRoot, headers, compiler
   assert(fs.statSync(sdkPath).isDirectory(), 'Expected a macOS SDK directory');
   const sources = { ownerSha256: hash(owner), sharedOwnerSha256: hash(sharedOwner), patchSha256: hash(readRegular(patchFile)),
     nodePtySha256: hash(original), patchedSha256: hash(patched), helperSourceSha256: hash(helperSource),
+    helperPatchedSha256: hash(patchedHelper),
     headersSha256: treeHash(includeRoot), nodeAddonApiSha256: treeHash(addonRoot) };
   const directory = path.resolve(output);
   fs.mkdirSync(path.dirname(directory), { recursive: true });
@@ -191,7 +193,7 @@ export function buildCandidateAssets({ output, dependencyRoot, headers, compiler
   const source = path.join(inputs, 'pty-candidate.cc');
   const helperInput = path.join(inputs, 'spawn-helper.cc');
   fs.writeFileSync(source, patched, { flag: 'wx' });
-  fs.writeFileSync(helperInput, helperSource, { flag: 'wx' });
+  fs.writeFileSync(helperInput, patchedHelper, { flag: 'wx' });
   const binaryPath = path.join(directory, binaryFile);
   const helperPath = path.join(directory, helperFile);
   const common = { arch: process.arch, sdk: sdkPath };

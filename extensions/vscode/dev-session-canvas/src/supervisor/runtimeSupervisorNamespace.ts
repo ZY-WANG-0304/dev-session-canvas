@@ -5,11 +5,13 @@ import * as net from 'net';
 const ENDPOINT_PROBE_TIMEOUT_MS = 1000;
 
 export function assertRuntimeSupervisorNamespaceSupport(nativeClaim?: (storageDir: string) => void): void {
+  // Windows named pipes do not depend on Node's Linux abstract-socket support.
+  if (process.platform === 'win32') return;
   if (process.platform === 'darwin' && typeof nativeClaim === 'function' && typeof process.getuid === 'function') return;
   const [major, minor] = process.versions.node.split('.').map(Number);
-  if (!['linux', 'win32'].includes(process.platform) || !Number.isInteger(major) || !Number.isInteger(minor)
+  if (process.platform !== 'linux' || !Number.isInteger(major) || !Number.isInteger(minor)
     || major < 20 || (major === 20 && minor < 8)
-    || (process.platform === 'linux' && typeof process.getuid !== 'function')) {
+    || typeof process.getuid !== 'function') {
     throw new Error('Runtime Supervisor namespace ownership requires a supported platform and Node >=20.8.');
   }
 }

@@ -7,6 +7,21 @@ export { NODE_PTY_UNIX_SHA256 };
 export const NODE_PTY_SPAWN_HELPER_SHA256 = '22195de1710b574d5904fc89be5624c25e531de20d5e17e5998a2fd19d86e0e6';
 export const MACOS_EXECUTION_EXPORTS = Object.freeze([...LINUX_EXECUTION_EXPORTS, 'executionClaimNamespace'].sort());
 
+export function patchMacosSpawnHelper(source) {
+  assert.equal(createHash('sha256').update(source).digest('hex'), NODE_PTY_SPAWN_HELPER_SHA256,
+    'Unexpected node-pty spawn helper source');
+  return source.replace('int main (int argc, char** argv) {',
+    'int main (int argc, char** argv) {\n' +
+    '  if (argc < 3 || setsid() == -1) _exit(1);')
+    .replace('  char *slave_path = ttyname(STDIN_FILENO);',
+      '  char *slave_path = ttyname(STDIN_FILENO);\n' +
+      '  if (slave_path == nullptr) _exit(1);')
+    .replace('  close(open(slave_path, O_RDWR));',
+      '  const int slave = open(slave_path, O_RDWR);\n' +
+      '  if (slave == -1) _exit(1);\n' +
+      '  if (close(slave) == -1) _exit(1);');
+}
+
 export function patchMacosExecutionProvider(source) {
   assert.equal(createHash('sha256').update(source).digest('hex'), NODE_PTY_UNIX_SHA256,
     'Unexpected node-pty Unix source');

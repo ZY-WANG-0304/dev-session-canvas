@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前唯一执行队列（2026-10-01）：A3第38节两例、A6第39节Runtime reload有限通过，macOS36850339021原八场真实Agent通过但旧间歇失败未定位，不重复已完成组合。c851d028已修第42节socket drain丢唤醒及第43节Claude预登记参数差异；Windows产品36852373473的原Node/两模式页面步骤成功，491MB工件下载超时，字段级独立复核仍未完成，不能倒推旧CI唯一因果。Windows Agent36852378637首Codex natural通过、第二stop观察unknown/CLI未登记，Claude未跑；第45节只修主动stop前原身份观察屏障，保留45秒绝对截止与旧失败，安全摘要区分无信号动作与实际信号，下一固定原八场。并行按第44节自主准备隔离Remote SSH/实际Server Node/固定Node VSIX，不使用用户SSH凭据或Electron冒充远端。A5六资产/默认分发仍有真实生产接线待办，F-04与其余A1至A6不关闭、不扩通用诊断门槛。后续历史“当前/下一”不构成追加队列。
+当前唯一执行队列（2026-10-01）：Windows真实Agent36854266396 attempt2原八场、Windows产品36852373473原Terminal六报告/四环境、A3第38节两例及A6第39节Runtime reload均已独立核对，不重复排队；attempt1与所有旧失败保留。第44节Remote同一固定Node VSIX经单次全文观察窄修后原四阶段完整exit0，真实Server Node22.22.1/ABI127、原90002行/尾部/光标/EOF/applied与两模式重开、清理通过，首败不改；该Linux x64 loopback格收口。第37节Windows namespace误限已先红后绿，macOS同PID helper的setsid兼容修正及受控失败测试/独立review已完成，下一回收新helper的原macOS产品及Agent流程；36850339021通过不代证新helper。其余只按有限收尾第8节五包：六资产/兼容/正常分发与准入、A1最终结构及关键回归、A2/A3未填页面格、A6实际多根失败隔离/本地Host离开、剩余installed/support与最终证据表。F-04及默认启用未完成，不增加通用工具阶段；后续历史“当前/下一”不构成追加队列。
 
 该队列实际增量：e10ad8aa的Windows36841262535已通过私有目录/全部文件ACL及原isolatedCheck，随后Darwin observer夹具混用Windows路径规则首败；只在夹具显式path.posix，原角色断言保持，三条observer/CLI局部命令通过。macOS36841263618仍按原矩阵运行中，未宣称结果。A3第38节冻结真实单surface切换/跨Host reader两例，A5第37节固定部署目标在实现；均不重跑已完成容量组合。
 

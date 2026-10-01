@@ -55,10 +55,35 @@ async function dispatch(type, payload) {
   return command('dispatchWebviewMessage', { type, payload }, surface);
 }
 
-async function assertBuffer(id, lines) {
+async function assertBuffer(id, lines, timeoutMs = 30000) {
   return command('performWebviewDomAction', {
     kind: 'assertExecutionTerminalBuffer', nodeId: id, linePrefix: prefix, expectedLines: lines
-  }, surface, 30000);
+  }, surface, timeoutMs);
+}
+
+async function assertAppliedBuffer(id, executionId, finalOutputSequence) {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    // Repeated full-buffer assertions otherwise resend 5.7 MB over the Remote Webview transport.
+    const events = await command('getDiagnosticEvents');
+    if (Date.now() >= deadline) break;
+    const applied = events.some(event => mode === 'live-runtime'
+      ? event.kind === 'runtime/terminalReadSettled' && event.detail?.nodeId === id &&
+        event.detail.sessionId === executionId && event.detail.outcome?.kind === 'applied'
+      : event.kind === 'execution/localTerminalReaderSettled' && event.detail?.nodeId === id &&
+        event.detail.executionSessionId === executionId && event.detail.outcome?.kind === 'applied' &&
+        Number.isSafeInteger(finalOutputSequence) && finalOutputSequence >= 0 &&
+        event.detail.outcome.finalOutputSequence === finalOutputSequence);
+    if (applied) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await assertBuffer(id, expectedLines, remaining);
+      if (Date.now() >= deadline) break;
+      return;
+    }
+    await sleep(Math.min(50, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error('Timed out: actual xterm buffer fully applied');
 }
 
 function assertRuntimeDiscarded(metadata) {
@@ -208,10 +233,7 @@ async function complete() {
       (mode !== 'live-runtime' || current.metadata.terminal.terminalHistoryDiscarded === true);
   }, 120000);
   assert.equal(nodeById(ended, id).metadata.terminal.lastExitCode, 0);
-  await poll('actual xterm buffer fully applied', async () => {
-    try { await assertBuffer(id, expectedLines); return true; }
-    catch (error) { if (!/Execution terminal .* (has|differs)/.test(String(error))) throw error; return false; }
-  }, Boolean, 30000);
+  await assertAppliedBuffer(id, executionId, nodeById(ended, id).metadata.terminal.outputSequence);
   const finalProbe = await probe();
   const terminalProbe = finalProbe.nodes.find(entry => entry.nodeId === id);
   assert.equal(terminalProbe.terminalCursorX, 6, 'Final CSI column must be applied.');

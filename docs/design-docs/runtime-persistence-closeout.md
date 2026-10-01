@@ -24,7 +24,7 @@ updated_at: 2026-10-01
 
 ## 1. 状态与目的
 
-当前有限增量（2026-10-01，以本段优先）：第39节固定Linux installed VSIX的一次真实Runtime Reload Window首轮通过，同UI而Host/frame/readId更换，原执行保持、新nonce11ms应用、completed空重开、最终applied与清理均独立核对；A3修正后 `.debug/a3-reader-isolation-20261001-fixed/` live双Host与snapshot-only两例完整exit0，跨Host同execution/B原readId、90000行尾部/EOF/applied、无历史和cleanup通过，首败保留。Windows36843457341已进入真实Agent但首场storage路径断言失败，窄realpath/platform-relative修正已通过4/4纯测，原失败仍不追认；macOS36843430053新target产品Terminal/Webview/reopen workflow success。macOS Agent空态重开及A4原矩阵、六资产/兼容/Remote、其他A1至A6及默认准入继续开放，不追加通用工具阶段。后续dated段落保留各原时点事实，不是重复队列。
+当前有限增量（2026-10-01，以本段优先）：Windows36854266396 attempt2真实Codex/Claude原八场、36852373473原Terminal两模式六结果/四环境已独立核对；原前置失败与整包下载124不改。A3第38节两例及A6第39节真实Runtime reload保留原输入有限通过，不重复排队。Remote固定Node VSIX的原四阶段经单次全文观察窄修后完整exit0，原30秒和90002行/光标/EOF/applied、两模式重开及独立清理保持，旧首败不追认；Linux x64 loopback格收口。第37节Windows namespace误限已修，macOS移除10.15专有spawn flag并由同PID helper建立session的窄修/受控失败测试已完成，新原生尚待原流程回收，36850339021旧helper八场不能代证。六资产/兼容/默认分发/准入及F-04、剩余A1至A6仍未完成，按第8节有限剩余映射推进，不增加通用工具门槛；历史不是追加队列。
 
 当前B2/A5与B3/A6（2026-10-01）：macOS Terminal run36829311235六报告已核对；首轮真实Agent36832581851前三Codex场passed，第四snapshot stop因非空快照断言失败，Claude未跑，按生产接入33.10取终态证据，不盲目重跑或归因为丢内容。Windows36830583121绿灯缺五报告已确认code.cmd转交误作宿主完成，34.12窄修后36834158313真实exit1，首败reader identity前提，Agent仍未调度。A6永久退出后旧reset写盘先红已修，50次Host回归及独立复核通过；真实reload/多根UI不代证。旧失败、EOF/尾部、真实Agent及既定矩阵不削减，F-04、其余A1至A6、packaged/Remote和默认准入仍开放；当前只处理上述具名产品/判定缺口，不追加通用工具阶段。
 
@@ -157,6 +157,16 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 旧 live 继续连接 metadata 中原 backend/storage/session/kind，不能只改地址声称迁移；新会话用新归属，旧 Supervisor 随原会话及相关责任结束而退役。独立验收包括单根/多根双向新建、不同窗口 slot、并发创建、新旧 generation 共存、不同 root 故障隔离及环境/用户身份边界。当前 B3 只保护现有 root 状态与绑定，不预支这些保证。
 
 ## 8. 推进约束与证据归档
+
+当前剩余交付只按下表结账，不以历史阶段、工具边界或重复绿色另开队列。各包可复用已有效证据；“剩余”不表示每格都必须新写脚本或重跑全部平台。
+
+| 交付包 | 直接剩余责任 | 可复用且不重复立项 |
+| --- | --- | --- |
+| B2/A5生产工程 | 最低ABI/OS/库要求与构建来源分离、Linux arm64/旧Node同名namespace、macOS旧API修正的原生确认、六资产聚合与实际执行端选择、正常打包/默认启用/生产准入 | 三平台已有provider、同PID主体与逐资源责任；第37节Windows namespace窄修；不另建server或下载器 |
+| A1/F-04最终收口 | 逐层正文/在途上界、旧协议边界、最终准入；最终产物关键容量回归，仅补原输入未覆盖的attach中output/resize/scrollback与live compact组合 | 容量10.12十会话color/size预算、10.15实际Host离线追赶时B交互；原socket/compact/resize用例，不重建compact工具、不压旧64/128门槛 |
+| A2/A3未填页面格 | 慢消费者最终write应用、force/delete/读失败的不同结算、新旧generation实际共存；只补现有证据不能承担的真实页面责任 | 第36节journal ENOSPC/root EISDIR、completed轻量writer与旧binding受控回归、第38节surface/双Host reader、既有大尾部与停止证据；不做平台笛卡尔积或新增满盘研究 |
+| A6有限用户入口 | 实际多根root A失败/B页面继续交互、snapshot-only实际Host离开边界 | 50项真实Host方法受控回归含完整template/replacement/等待窗口，及第39节Runtime真实reload；注入B输出不冒充真实交互，已完成顺序不整轮重排 |
+| A5支持与总体结账 | 其他平台installed/未覆盖架构与最低环境格、最终同一生产版本A1至A6证据表 | Linux固定VSIX及Remote Node原四阶段已通过；三平台真实Agent各原输入有限通过，改变实际启动链后只复验受影响原流程；旧OS缺环境不伪称新runner已证明 |
 
 当前工程顺序按有限收尾定义推进：保留 B1 修复与未完责任、固定 A1/A2 冷恢复的原期限通过及本机/CI 各自 A4 有限结果，所有旧失败保持。10.15固定一次已证明真实离线追赶时B51ms实际应用、A12到18未追平，随后原完整后缀在不重置30秒内完成，身份/hash/no-history/cleanup均通过。下一推进原B2/A5的macOS/Windows产品provider、namespace、匹配Node/Electron构建与packaged接入，不是重开平台诊断或只增加runner。其余用户流程、B3状态替换、分发与最终准入保持；第三轮Codex snapshot stop具名间歇失败未定位，不把未复现当已修或为抓红追加CI。汇总A1至A6才宣布整体交付，不重排历史或增加工具阶段，F-04/A3/完整A5仍开放。
 

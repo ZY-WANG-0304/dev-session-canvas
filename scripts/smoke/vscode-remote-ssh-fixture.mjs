@@ -77,7 +77,8 @@ export async function createRemoteSSHFixture(options) {
       remoteRuntimeDir,
       remoteTmpDir,
       remoteAgentDir,
-      realReopenControlFile: options.realReopenControlFile
+      realReopenControlFile: options.realReopenControlFile,
+      candidateControlFile: options.candidateControlFile
     }),
     'utf8'
   );
@@ -112,14 +113,33 @@ export async function createRemoteSSHFixture(options) {
     );
   });
 
+  const disposeObserved = async () => {
+    const report = { schemaVersion: 1, scope: 'This loopback fixture server, private client roots and original sshd only; not product settlement.',
+      signals: [], remaining: [], failures: [] };
+    try { await cleanupObservedServer([remoteAgentDir, ...(options.clientRoots ?? [])], report); }
+    catch (error) { report.failures.push(String(error)); }
+    try {
+      await terminateProcess(sshdProcess, (pid, signal) => report.signals.push({ pid, signal, role: 'fixture-sshd' }));
+    } catch (error) { report.failures.push(String(error)); }
+    if (sshdProcess.exitCode === null && !sshdProcess.signalCode) report.failures.push('Original fixture sshd exit is unconfirmed.');
+    report.pass = report.failures.length === 0 && report.remaining.length === 0;
+    if (options.cleanupReportPath) await fs.writeFile(options.cleanupReportPath, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
+    return report;
+  };
+
   try {
     await waitForSelfSshProbe({
       sshPath,
       sshConfigPath,
-      hostAlias
+      hostAlias,
+      bounded: options.observeCleanup
     });
   } catch (error) {
-    await terminateProcess(sshdProcess);
+    if (options.observeCleanup) {
+      try { await disposeObserved(); }
+      catch (cleanupError) { error.message += `\nFixture cleanup reporting failed: ${String(cleanupError)}`; }
+    }
+    else await terminateProcess(sshdProcess);
     const sshdLog = await fs.readFile(logPath, 'utf8').catch(() => '');
     throw new Error(
       `${error instanceof Error ? error.message : String(error)}\n\nsshd log:\n${sshdLog}`.trim()
@@ -152,6 +172,7 @@ export async function createRemoteSSHFixture(options) {
   );
 
   return {
+    sshPath,
     hostAlias,
     remoteAuthority: `ssh-remote+${hostAlias}`,
     sshConfigPath,
@@ -165,6 +186,7 @@ export async function createRemoteSSHFixture(options) {
     remoteTmpDir,
     remoteAgentDir,
     async dispose() {
+      if (options.observeCleanup) return disposeObserved();
       try {
         await cleanupProcessesForPath(remoteAgentDir, {
           excludePids: [process.pid, sshdProcess.pid].filter(Boolean)
@@ -203,9 +225,11 @@ function buildSshdConfig(options) {
     XDG_RUNTIME_DIR: options.remoteRuntimeDir,
     TMPDIR: options.remoteTmpDir,
     VSCODE_AGENT_FOLDER: options.remoteAgentDir,
-    DEV_SESSION_CANVAS_REAL_REOPEN_CONTROL_FILE: options.realReopenControlFile
+    DEV_SESSION_CANVAS_REAL_REOPEN_CONTROL_FILE: options.realReopenControlFile,
+    DEV_SESSION_CANVAS_REMOTE_CANDIDATE_CONTROL_FILE: options.candidateControlFile
   };
   const setEnvLines = Object.entries(envEntries)
+    .filter(([, value]) => value !== undefined)
     .map(([key, value]) => `SetEnv ${key}=${value}`)
     .join('\n');
 
@@ -296,7 +320,8 @@ async function waitForSelfSshProbe(options) {
       options.sshPath,
       ['-F', options.sshConfigPath, options.hostAlias, `echo ${SELF_SSH_PROBE_OUTPUT} && pwd`],
       {
-        encoding: 'utf8'
+        encoding: 'utf8',
+        ...(options.bounded ? { timeout: Math.max(1, Math.min(5000, deadline - Date.now())), killSignal: 'SIGKILL' } : {})
       }
     );
 
@@ -310,11 +335,12 @@ async function waitForSelfSshProbe(options) {
   throw new Error('临时 sshd 未在超时内通过 self-ssh probe。');
 }
 
-async function terminateProcess(child) {
+async function terminateProcess(child, onSignal) {
   if (child.exitCode !== null || child.signalCode) {
     return;
   }
 
+  onSignal?.(child.pid, 'SIGTERM');
   child.kill('SIGTERM');
   await Promise.race([
     new Promise((resolve) => child.once('exit', resolve)),
@@ -322,9 +348,58 @@ async function terminateProcess(child) {
   ]);
 
   if (child.exitCode === null && !child.signalCode) {
+    onSignal?.(child.pid, 'SIGKILL');
     child.kill('SIGKILL');
-    await new Promise((resolve) => child.once('exit', resolve));
+    const exited = new Promise((resolve) => child.once('exit', resolve));
+    if (onSignal) await Promise.race([exited, sleep(3000)]);
+    else await exited;
   }
+}
+
+export function belongsToFixtureServer(args, serverRoot) {
+  return args.some(value => value === serverRoot || value.startsWith(`${serverRoot}${path.sep}`)
+    || value.startsWith(`--server-data-dir=${serverRoot}${path.sep}`)
+    || value === `--user-data-dir=${serverRoot}`);
+}
+
+async function readFixtureProcess(pid, serverRoot) {
+  try {
+    if ((await fs.stat(`/proc/${pid}`)).uid !== process.getuid()) return;
+    const args = (await fs.readFile(`/proc/${pid}/cmdline`, 'utf8')).split('\0').filter(Boolean);
+    if (!belongsToFixtureServer(args, serverRoot)) return;
+    const stat = await fs.readFile(`/proc/${pid}/stat`, 'utf8');
+    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    return { pid, starttime: fields[19] };
+  } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error; }
+}
+
+async function cleanupObservedServer(serverRoots, report) {
+  const readOwned = async () => {
+    const result = [];
+    for (const name of await fs.readdir('/proc')) {
+      if (!/^\d+$/.test(name) || Number(name) === process.pid) continue;
+      for (const serverRoot of serverRoots) {
+        const owned = await readFixtureProcess(Number(name), serverRoot);
+        if (owned) { result.push({ ...owned, root: serverRoot }); break; }
+      }
+    }
+    return result;
+  };
+  let owned = await readOwned();
+  for (const signal of ['SIGTERM', 'SIGKILL']) {
+    for (const original of owned) {
+      const current = await readFixtureProcess(original.pid, original.root);
+      if (!current || current.starttime !== original.starttime) continue;
+      try {
+        process.kill(original.pid, signal);
+        report.signals.push({ ...original, signal, role: original.root === serverRoots[0] ? 'fixture-server' : 'fixture-client' });
+      } catch (error) { if (error.code !== 'ESRCH') report.failures.push(String(error)); }
+    }
+    const deadline = Date.now() + 3000;
+    do { owned = await readOwned(); if (!owned.length) break; await sleep(100); } while (Date.now() < deadline);
+    if (!owned.length) break;
+  }
+  report.remaining = owned;
 }
 
 function runCommand(file, args, errorMessage) {

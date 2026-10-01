@@ -54,6 +54,7 @@ function fixture(arch = 'arm64', command = 0x32) {
       sharedOwnerSha256: fileDigest('extensions/vscode/dev-session-canvas/native/unix-execution-owner.h'),
       patchSha256: fileDigest('scripts/build/macos-execution-provider-patch.mjs'),
       nodePtySha256: NODE_PTY_UNIX_SHA256, helperSourceSha256: NODE_PTY_SPAWN_HELPER_SHA256,
+      helperPatchedSha256: '4'.repeat(64),
       patchedSha256: '1'.repeat(64), headersSha256: '2'.repeat(64), nodeAddonApiSha256: '3'.repeat(64)
     }, verification: { compiled: true, nativeLoaded: false, nativeCalls: false, productValidated: false } } };
 }
@@ -182,7 +183,8 @@ try {
       m => { m.exports.shift(); }, m => { m.sources.ownerSha256 = '0'.repeat(64); },
       m => { m.sources.sharedOwnerSha256 = '0'.repeat(64); }, m => { delete m.sources.sharedOwnerSha256; },
       m => { m.sources.patchSha256 = '0'.repeat(64); }, m => { m.sources.nodePtySha256 = '0'.repeat(64); },
-      m => { m.sources.helperSourceSha256 = '0'.repeat(64); }, m => { m.sources.headersSha256 = ''; },
+      m => { m.sources.helperSourceSha256 = '0'.repeat(64); }, m => { delete m.sources.helperPatchedSha256; },
+      m => { m.sources.helperPatchedSha256 = 'not-a-hash'; }, m => { m.sources.headersSha256 = ''; },
       m => { m.verification.nativeLoaded = true; }, m => { m.verification.nativeCalls = true; },
       m => { m.verification.productValidated = true; }
     ]) {

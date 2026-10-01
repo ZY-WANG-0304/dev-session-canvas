@@ -2067,6 +2067,14 @@ A2在 `test-host-execution-owner-wiring.mjs` 的真实persistenceFixture中种�
 
 固定target和实际Mach-O检查已实施于原builder/test两文件，未改factory或native API。原26.0缺拒绝和混合外来平台声明两项先红保留；最终18/18资产纯测、11/11运行选择和factory两架构mock通过，root均独立复跑。旧run36825479993实际26.0产物read/import拒绝，manifest/addon/helper前后摘要不变。日志 `.debug/macos-deployment-target-original-20261001.log`、`.debug/macos-deployment-foreign-platform-original-20261001.log` 及各自修后记录保留。仅是离线校验，不宣称修后macOS原生编译或旧OS可用；下一由原macOS产品workflow编译/装载验证固定target，其他分发责任保持。
 
+六资产明确指原packager要求的Linux x64/arm64 glibc、Darwin x64/arm64、Windows x64/arm64，而非三平台各两个Node/Electron包。当前candidate的单profile/单目录build、Linux固定x64和精确runtime/libc相等gate仍需实际改造；不能靠多下载几个现有包完成默认分发。锁定stock的Linux两架构ELF还要求GLIBCXX_3.4.22/CXXABI_1.3.9，兼容构建不能只核GLIBC_2.28。GitHub托管的Ubuntu arm、macOS Intel/arm和Windows arm runner可用于六格构建接线，不需要现在向用户索要ARM机器；最新runner仍不提供macOS10.13/14或Windows1809的最低OS API证明。
+
+Windows namespace窄修保持既定平台能力分流：`runtimeSupervisorNamespace.ts` 的win32 named pipe不再继承Linux abstract socket Node20.8门槛，路径canonicalization/大小写身份、同名竞争、claim持有到退出与活动/unknown拒绝均不变。VS Code1.80.0对应Electron22.3.14/Node16.17.1，后者libuv的Windows pipe已使用 `FILE_FLAG_FIRST_PIPE_INSTANCE`，这一能力不是Node20.8新增。定向测试以Windows16.17.1先红，再验证16.17.1/18.20.8/20.7.0的同名和拒绝规则；Linux旧Node仍拒绝、Darwin仍要求native claim/getuid，原Linux7/7通过。一次长TMPDIR导致测试socket路径过长的前置失败保留，改用短临时根执行原断言，不改变产品路径预算。此次仅解除namespace层误限，不改工厂精确gate、不宣称旧Node/旧OS原生或六资产已验。
+
+macOS旧API缺口的正式修正选择：保留现有 `posix_spawn`、stdio/slave file actions及同PID helper→实际CLI的exec启动链，不改为fork或额外daemon；从owner的spawn flags移除 `POSIX_SPAWN_SETSID`，由已验证helper在exec前先 `setsid()`，再打开原slave取得controlling terminal。helper参数、setsid、ttyname、open或close失败必须非零退出，不继续exec；posix_spawn成功后的helper失败仍是已取得child的非零退出，由原waitpid/source/master责任结算，不能伪称未创建资源。owner已使用原PID直接signal而非进程组，保留该边界；stdio在spawn actions中连续持有，不产生新的无slave窗口。spawn返回仍不代表CLI就绪，原READY后的输入/resize/停止与真实Agent链验收不削减。builder保留upstream helper/source hash，新增实际patched helper输入hash并重编两资产；x64=10.13/arm64=11.0目标不变。窄受控helper失败测试不代证原生，修后应沿原macOS Node四场、Electron两模式complete/reopen及真实Agent八场复验；最新runner仍不证明10.13/14实际可用。
+
+上述helper改造已实施，`test-macos-execution-spawn-helper.mjs` 编译实际patched helper并仅替换系统调用为受控输入，八项覆盖参数、setsid/ttyname/open/close/chdir/exec失败及原argv成功顺序；`--baseline-ref=b5f53cdf`使用原builder确实编译的upstream helper未满足新setup契约而exit1，新实现exit0，不把这条差异写成旧macOS原生失败。provider source、资产18/18、两架构factory、runtime selection11/11、原product self-test、workflow contract及typecheck通过；独立review重跑无阻塞。新测试已加入原macOS产品workflow，未追加原生场景。当前只有局部证据，原macOS通过仍属于旧helper，待同一新提交的原流程回收。
+
 ## 38. A3 实际 surface 切换与跨 Host reader 隔离
 
 同一Host只允许一个interactive surface：切editor使panel进入standby，切panel会dispose editor；实际并发有效读者应来自两个Host。原定向夹具直接设置activeSurface只能证明受控隔离，不能当双active产品路径。复用既有Linux candidate、真实90000行主体、VS Code launcher和页面内容断言，固定两例，不引入假Agent、手工Runtime metadata或业务hook。
@@ -2143,11 +2151,29 @@ macOS唯一重跑现已回收：`36850339021` / `4f613e7a` 的真实Codex/Claude
 
 先用无产品执行的真实Remote Host probe确认同一固定VS Code commit的server Node、execPath、版本/ABI/N-API及libc；probe不启动Terminal/Agent。仅使用该隔离server Node和原Linux builder生成匹配Node资产，再由原显式build/packager形成冻结VSIX。现有Electron包与精确runtime gate保持，不把Electron资产改标签成Node，也不放宽工厂兼容性。输入准备与正式验收分开，验收不得自动重建或重试取绿。
 
-新增有限Remote runner复用 `prepareRuntime/createRemoteSSHFixture/launchPreparedVSCodeScenario`，沿真实server CLI安装固定包，使用只有测试脚本的workspace driver；逐文件hash、manifest和实际扩展路径收据沿第35节。原installed helper允许显式选择Node输入，缺省仍严格Electron；两种运行时分别核对实际tuple。Remote wrapper只从本轮fixture经明确SetEnv传入的控制文件读取固定phase/mode/artifacts/expectation，然后调用原 `execution-candidate-tests.cjs`，不依赖本地环境经SSH隐式传递，不改原尾部断言。
+新增有限Remote runner复用 `prepareRuntime/createRemoteSSHFixture/spawnPreparedVSCodeScenario`，沿真实server CLI安装固定包，使用只有测试脚本的workspace driver；逐文件hash、manifest和实际扩展路径收据沿第35节。原installed helper允许显式选择Node输入，缺省仍严格Electron；两种运行时分别核对实际tuple。Remote wrapper从自身staged driver目录的固定 `remote-control.json` 绑定读取本轮控制文件，再取固定phase/mode/artifacts/expectation，调用原 `execution-candidate-tests.cjs`。sshd仍显式SetEnv该路径；若最终Host收到该值，必须与driver绑定相等，不搜索workspace、不依赖本地环境经SSH隐式传递、不改原尾部断言。
 
 唯一正式矩阵仍是Runtime/editor和snapshot-only/panel的complete/reopen四次真实Host启动，使用原90000行、100000 scrollback、成功写入凭证、UTF-8/ANSI/OSC尾部、光标和reader applied检查；Runtime重开空历史/无新执行，snapshot-only恢复原快照。每次另断言 `vscode.env.remoteName=ssh-remote`、workspace authority为本轮alias、Host execPath在本轮server目录内且无Electron字段，并与固定Node资产匹配。清理先走原reset/退出/绑定及本方资源检查，再释放本轮sshd/server；任何fixture兜底清理动作分账，不能覆盖产品失败。只证明Linux x64/glibc远端子项，其他架构、六资产、默认分发与A1/F-04未因此完成。
 
 Remote URI边界补充：Remote Extension Host可能将workspace URI转换为 `file:`；必须记录原API值，不伪造authority。若实际API仍有remote authority则严格匹配本轮alias；若为file，则以 `remoteName`、私有server execPath、启动器remote target及本轮SSH链共同确认，不能仅凭本地路径声称远端。
+
+2026-10-01首次无产品probe `.debug/a5-remote-probe-20261001-first/` 保留exit1：临时SSH认证、独立Server安装及真实Remote Extension Host已进入，但Remote SSH的exec-server没有把sshd自定义SetEnv交付给最终Host，wrapper因缺显式控制文件失败。没有产品执行或Terminal/Agent新通过。该次fixture清理记录5个本轮server进程及原sshd的TERM、remaining/failures均0、无KILL；后续按私有server/client根独立 `/proc` 核对无匹配残留。只修staged driver固定绑定，不追认首轮通过。
+
+第二次 `.debug/a5-remote-probe-20261001-control-binding/` 无产品probe完整exit0。`server-runtime.json` 来自实际Host PID262179：VS Code1.117.0/commit `10c8e557c8b9f9ed0a87f61f1c9a44bde731c409`、Linux x64、Server Node22.22.1/ABI127/N-API10/glibc2.35、无Electron；可执行文件位于该轮 `remote-ssh-fixture/remote-agent/.vscode-server/cli/servers/Stable-10c8e557c8b9f9ed0a87f61f1c9a44bde731c409/server/node`，SHA256 `243fd8938011479f41b3de101842150fa990f33fbbb3f7aabd330857f2d79e1d`。实际workspace API为 `file:`/空authority，`remoteName=ssh-remote`，controlTransport为staged-driver-binding，productPresent/productActive均false。5个本轮server进程和原sshd仅TERM，cleanup remaining/failures均0，无forcedClientSignals；独立私有根进程核对为空。原Remote纯测及installed九组检查通过；EOF独立对账采用真实 `SourceDisposition` 对象的 `kind`，字符串 `eof` 被拒绝。此结果仅完成构建输入probe，不代证固定包安装、四阶段产品矩阵、真实Agent或完整A5。
+
+固定Node包已在 `.debug/a5-remote-node-package-20261001/` 构建并冻结，不自动启动正式矩阵。业务/native/build/lock输入核对未偏离 `b5f53cdf0765b31b8e6dcb6241dd8779614164af`，逐文件来源及整体SHA256 `08617e59cbeffc362cc8437409e1122740554f3a97f3a42ad6b5fad3e06a22fc` 保存于 `frozen-build-input.json`。使用上述实际私有Server Node执行原Linux builder，官方Node22.22.1 headers归档SHA256 `0f76c31ce76a623a6a3a4038cb62eae281b2e33ad189dcf2d514ec32ae74d9b2` 已对官方SHASUMS256核验；资产manifest保留编译tuple Node22.22.1/ABI127/N-API10/glibc2.35和原owner/sharedOwner/patch/headers摘要，addon SHA256 `28ecb79548a2aa7f969c3dde9998d128f4b256fac26df8def6a034d5e8529f34`。原显式production build与直接packager生成 `candidate.vsix`，SHA256 `c4d0fa123133f6a6cd5c695f3c1c9a4f92fd09501b1de7517f66755aca608e84`；逐业务/native文件包内hash已冻结。原根目录包另行保存，旧Electron frozen包和证据未改。此时仅compiled/package成立，nativeLoaded/nativeCalls/productValidated仍未宣称通过；不发布该验收包，不修改factory兼容gate，也不关闭六资产/默认分发。
+
+固定包首次正式矩阵 `.debug/a5-remote-installed-20261001-first/` 保留exit1。真实Remote Server CLI安装成功，实际Host加载私有extensions目录内的原固定Node包；首场 `live-runtime/complete` 在原30秒 `actual xterm buffer fully applied` 等待失败，其余三个phase没有执行。主体凭证记录成功写入5580102字节、90000行及原SHA，source为EOF/finalRevision1406；失败归档时页面仅到revision1378/head1406，不能把随后probe可见最后行和正确光标当成截止前90002行全文通过。API scrollback断言已通过，保存的 `host/stateUpdated.payload.runtime.terminalScrollback=100000`，没有证据支持本轮workspace设置未送达。fixture清理8个私有Server进程及原sshd仅TERM，remaining/failures均0、无KILL/forcedClientSignals，独立私有根 `/proc` 核对无残留；这不覆盖产品失败。
+
+只读核对确认原full-buffer轮询在11:28:17.125至11:28:46.510之间发送43次同一90002行期望，每次Host消息compact JSON为5670417字节、合计243827931字节，约为本轮93个实际page消息5986226字节的40.7倍；漂亮打印的messages归档为292550069字节。保存页面revision连续、无gap，但尚未包含主体最终尾部；原response内容/时间未归档，不补造每次匹配行数或精确往返时长。观察器施加的大量传输和重复扫描是已确认事实，是否为此次超时唯一根因仍未知，首败不能追认通过。
+
+选定修正只改变原harness的complete等待顺序：从原30秒同一绝对截止开始，用本Extension Host局部 `getDiagnosticEvents` 等待同execution的既有Runtime reader applied或local reader applied及最终outputSequence，然后仅发送一次原90002行全文断言。传入剩余预算，await返回后再次检查绝对截止；不延长时限、不抽样、不改hash/业务hook，也不删除最终光标、成功写入、持久化及原reader结算断言。纯测须拒绝late/error/cancelled/other-execution并核对只发送一次未变正文。原始首败保留；先审查此窄修，不自动重跑原生矩阵，不增加通用观察协议或工具边界门槛。
+
+窄修已完成定向纯测：两模式先applied后全文单次发送、原90002行同内容/同对象、剩余budget、late read/late buffer拒绝、错误原样传播、cancelled/lost/unknown及其他execution/错误sequence拒绝均通过；原Remote纯测、installed九组、语法及diff检查通过。独立复审无阻塞，未修改业务或重建固定包。接下来仅在新目录 `.debug/a5-remote-installed-20261001-applied-wait/` 对同一 `c4d0fa12` Node VSIX运行原四阶段矩阵一次，并记录本轮harness来源hash；尚未取得本轮原生结果，不改原首败。
+
+该唯一新矩阵已exit0，原四阶段全部实际执行通过，不追加重采集。`input.json` 保留八项harness source hash，原测试文件为 `0ce7538187a291ec297748993c2785b919c77b0f1b311dbdfd0d6563cbb3e5f7`；固定VSIX、实际安装八项payload及Server Node文件hash均独立复核未变。四实际Remote Host PID为315036/316498、317456/319102，均由同一私有Server Node22.22.1/ABI127启动、无Electron，complete/reopen不是复用旧Host。两主体均成功写入原5580102字节及SHA，原90002行全文和最终光标(6,2)通过；Runtime source EOF与同reader applied均为revision1389（间隔8.109秒），snapshot-only均为1388（间隔1.141秒）。Runtime完成节点654字节，新Host重开无正文/无新执行；snapshot-only节点5767036字节，新Host恢复原全文，原保存最终sequence和reader回执对账通过。两模式原cleanup的bindings均0。
+
+本轮fixture最后仅TERM 13个私有Server进程和原sshd，无KILL/forcedClientSignals，remaining/failures均0；独立扫描本轮Server及bootstrap/两模式client私有根无匹配进程。此结果关闭A5中Linux x64/glibc实际Remote SSH执行端及两模式Terminal安装验收子项，不关闭其他架构、六资产/默认分发、真实Agent或完整A5。原首败及其时间线保持；一次窄修后通过不证明243.8MB观察流量是旧超时的唯一根因，也不把loopback扩大为跨机器网络恢复保证。
 
 ## 45. Windows 固定复验回收与主动停止前的观察屏障
 
@@ -2156,3 +2182,9 @@ Remote URI边界补充：Remote Extension Host可能将workspace URI转换为 `f
 源码确认主动stop场景缺少测试同步：页面就绪/resize后立即发stop，CLI原始句柄却只在产品完成后才要求出现。PowerShell通过CIM发现再取得原始句柄，两者之间CLI可被本次测试自身的stop结束，导致观察为unknown。该可达顺序是应修的验收前提，尚不是该run的唯一因果证明。最小修正仅Windows主动stop：在原交互就绪的同一截止窗口中同时等待已验证且仍live的Host/对应owner/provider/cmd及实际CLI原始身份（Codex含node wrapper），然后才发送原stop动作；不增加窗口、不放宽句柄身份/结束检查，natural路径不变。
 
 安全摘要只增既有固定failure kind、失败request operation和清理action kind白名单，不发布命令、路径、PID或原始错误。旧 `forcedSignals=1` 是actions数组计数，其中可能是 `unknown-identity-no-signal`，不能直接写成确有一个强制信号；新报告将实际信号与unknown/no-signal区分，旧报告字节保持。先验证晚到/未知/已退出CLI均不能越过stop屏障，再以固定输入复验原八场，不增加通用观察框架或任意竞态矩阵。
+
+`b5f53cdf` / `36854266396` attempt1在Windows observer原生自测触发原10秒 `helper-request-deadline`，发生于CLI安装、候选构建、真实八场之前，未发模型请求，也没有Agent安全摘要。新纯测和report检查已通过，PowerShell实现及原生自测主体未变，具体慢点尚未知。仅安排一次同提交/同期限的failed-job重跑attempt2，保留attempt1，不提高deadline、不增观察工具或把再次通过当作已定位根因。
+
+同输入attempt2已完成，job `110344192808` success。仅回收安全artifact `11157772291` 至 `.debug/windows-agent-36854266396-attempt2/summary.json`，SHA256 `5b623af6c9a55419ae3b3904f8b758611ffa78ab89069166b43719e921e9f5f1`；13项非dist源码hash与该提交Windows CRLF checkout一致，不将换行差异误判为旧源码。固定Codex0.157.1/Claude2.1.280、DeepSeek原八场全部passed，四natural真实预期响应/EOF、八场实际CLI及完整启动链观察通过；所有cleanup bindings/failures/remaining/unknown/unconfirmedSignals均0，cleanupActionKinds为空。stop仍是产品主动停止，事后无清理信号不表示产品未发停止信号；不把这轮source均EOF推广为stop保证。两snapshot-stop为735/1947字节非空状态，原reader/lifecycle/sequence与resize后saved-page对账成立，故reopen未要求也未执行；原始geometry/replay不匹配与独立投影not-proven保持。旧空态重开证据仍只属于原输入，不由本轮补造通过。该固定Windows真实Agent矩阵不再排队，attempt1及全部旧失败保留，不称旧前置慢点或全部间歇失败已定位。
+
+Windows产品 `36852373473` 的整包下载在600秒退出124；随后仅按该artifact中央目录范围读取18份原报告，未下载整包，保存在 `.debug/windows-product-36852373473-ranges/`。六份completed/reopened/cleanup、四份environment已独立逐字段核对，`report-crosscheck.json`记录原报告hash：实际VS Code1.117.0/Electron39.8.7/Node22.22.1/ABI140，两个writer原句柄exit0、各成功写入5580102bytes/90000行，尾部UTF-8/ANSI及光标(6,2)、实际EOF/原reader applied通过，finalRevision分别1382/1381。Runtime节点616bytes且新Host重开closed/空历史；snapshot-only节点5766998bytes，重开保留5580063字符及原终态；两cleanup bindings均0。该原两模式Terminal组合收口，不反推第42节为旧失败唯一原因，不要求合法外部引用的进程对象消失，不代证Remote、六资产/默认分发或完整A5。

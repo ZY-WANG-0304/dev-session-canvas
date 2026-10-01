@@ -9,7 +9,8 @@ const { outputFiles } = await esbuild.build({
   bundle: true, platform: 'node', format: 'cjs', write: false
 });
 
-function harness({ canonical = 'C:\\Users\\Owner\\storage', listenError, endpointError = 'ENOENT', active = false } = {}) {
+function harness({ canonical = 'C:\\Users\\Owner\\storage', listenError, endpointError = 'ENOENT', active = false,
+  nodeVersion = '25.6.0', platform = 'win32', getuid } = {}) {
   const calls = [];
   const server = new EventEmitter();
   server.listen = (name, callback) => {
@@ -38,7 +39,7 @@ function harness({ canonical = 'C:\\Users\\Owner\\storage', listenError, endpoin
       }
     };
     assert.fail(`Unexpected dependency: ${name}`);
-  }, module, module.exports, { platform: 'win32', versions: { node: '25.6.0' } });
+  }, module, module.exports, { platform, versions: { node: nodeVersion }, getuid });
   return { api: module.exports, calls, server };
 }
 
@@ -57,4 +58,27 @@ assert.equal(competitor.calls.some(([kind]) => kind === 'unref'), false);
 await original.api.prepareRuntimeSupervisorSocketPath('\\\\.\\pipe\\business');
 await assert.rejects(harness({ active: true }).api.prepareRuntimeSupervisorSocketPath('\\\\.\\pipe\\business'), /already active/);
 await assert.rejects(harness({ endpointError: 'EACCES' }).api.prepareRuntimeSupervisorSocketPath('\\\\.\\pipe\\business'), /EACCES/);
+for (const nodeVersion of ['16.17.1', '18.20.8', '20.7.0']) {
+  const legacy = harness({ nodeVersion });
+  assert.doesNotThrow(() => legacy.api.assertRuntimeSupervisorNamespaceSupport(),
+    `Windows Node ${nodeVersion} must not inherit the Linux abstract-socket version requirement.`);
+  assert.strictEqual(await legacy.api.acquireRuntimeSupervisorNamespace('legacy-alias',
+    () => assert.fail('Windows must retain the named-pipe claim.')), legacy.server);
+  assert.equal(legacy.calls.find(([kind]) => kind === 'listen')[1], name);
+  assert.deepEqual(legacy.calls.map(([kind]) => kind), ['realpath', 'createServer', 'listen', 'unref']);
+  await assert.rejects(harness({ nodeVersion, listenError: 'EADDRINUSE' })
+    .api.acquireRuntimeSupervisorNamespace('same-storage'), /EADDRINUSE/);
+  await assert.rejects(harness({ nodeVersion, active: true })
+    .api.prepareRuntimeSupervisorSocketPath('\\\\.\\pipe\\business'), /already active/);
+  await assert.rejects(harness({ nodeVersion, endpointError: 'EACCES' })
+    .api.prepareRuntimeSupervisorSocketPath('\\\\.\\pipe\\business'), /EACCES/);
+  const linux = harness({ platform: 'linux', nodeVersion, getuid: () => 1234 });
+  assert.throws(() => linux.api.assertRuntimeSupervisorNamespaceSupport(), /Node >=20\.8/);
+  assert.deepEqual(linux.calls, [], 'Unsupported Linux hosts must fail before namespace resources.');
+}
+const darwin = harness({ platform: 'darwin', nodeVersion: '16.17.1', getuid: () => 1234 });
+assert.throws(() => darwin.api.assertRuntimeSupervisorNamespaceSupport());
+assert.doesNotThrow(() => darwin.api.assertRuntimeSupervisorNamespaceSupport(() => {}));
+assert.throws(() => harness({ platform: 'darwin', nodeVersion: '16.17.1' })
+  .api.assertRuntimeSupervisorNamespaceSupport(() => {}));
 console.log('Windows namespace controlled contract passed (no actual Windows claim or PTY).');

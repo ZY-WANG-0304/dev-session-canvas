@@ -51,7 +51,7 @@ try {
       binary: { file: 'execution-owner.node', sha256: hash(binary) },
       helper: { file: 'spawn-helper', sha256: hash(helper) }, exports: MACOS_EXECUTION_EXPORTS,
       sources: Object.fromEntries(['ownerSha256', 'sharedOwnerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256',
-        'helperSourceSha256', 'headersSha256', 'nodeAddonApiSha256'].map(key => [key, 'a'.repeat(64)])),
+        'helperSourceSha256', 'helperPatchedSha256', 'headersSha256', 'nodeAddonApiSha256'].map(key => [key, 'a'.repeat(64)])),
       verification: { compiled: true, nativeLoaded: false, nativeCalls: false, productValidated: false } };
     const manifest = value => fs.writeFileSync(manifestFile, JSON.stringify(value));
     fs.writeFileSync(binaryPath, binary);

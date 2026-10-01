@@ -92,6 +92,74 @@ try {
     { ...runtime, versions: { ...runtime.versions, modules: '999' } }), /matching modules/);
   checks += 1;
 
+  const nativeManifestPath = 'dist/native/linux-execution-candidate/linux-x64-glibc/manifest.json';
+  const nodeManifest = { ...manifest, libc: { name: 'glibc', version: '2.36' },
+    runtime: { name: 'node', version: '22.22.1', node: '22.22.1', modules: '127', napi: '10' } };
+  const nodePayload = { ...payload, [nativeManifestPath]: Buffer.from(JSON.stringify(nodeManifest)) };
+  const nodeZip = new JSZip();
+  nodeZip.file('extension/package.json', JSON.stringify(packageManifest));
+  for (const [file, bytes] of Object.entries(nodePayload)) nodeZip.file(`extension/${file}`, bytes);
+  const nodeSourcePath = path.join(root, 'node.vsix');
+  await fs.writeFile(nodeSourcePath, await nodeZip.generateAsync({ type: 'nodebuffer' }));
+  const nodeOutput = path.join(root, 'node-evidence');
+  await fs.mkdir(nodeOutput);
+  await assert.rejects(prepareInstalledVsixInput(nodeSourcePath, nodeOutput), /matching electron asset/);
+  await assert.rejects(prepareInstalledVsixInput(input.vsixPath, nodeOutput, { runtimeName: 'node' }), /matching node asset/);
+  await assert.rejects(prepareInstalledVsixInput(nodeSourcePath, nodeOutput, { runtimeName: 'other' }), /supported runtime/);
+  const invalidNodePath = path.join(root, 'invalid-node.vsix');
+  for (const change of [
+    { runtime: { ...nodeManifest.runtime, version: '22.0.0' } },
+    { runtime: { ...nodeManifest.runtime, node: undefined } },
+    { runtime: { ...nodeManifest.runtime, modules: undefined } },
+    { runtime: { ...nodeManifest.runtime, napi: undefined } },
+    { libc: undefined }, { libc: { name: 'musl', version: '2.36' } }
+  ]) {
+    nodeZip.file(`extension/${nativeManifestPath}`, JSON.stringify({ ...nodeManifest, ...change }));
+    await fs.writeFile(invalidNodePath, await nodeZip.generateAsync({ type: 'nodebuffer' }));
+    await assert.rejects(prepareInstalledVsixInput(invalidNodePath, nodeOutput, { runtimeName: 'node' }));
+  }
+  const nodeInput = await prepareInstalledVsixInput(nodeSourcePath, nodeOutput, { runtimeName: 'node' });
+  assert.equal(input.runtimeName, 'electron');
+  assert.equal(nodeInput.runtimeName, 'node');
+  assert.deepEqual(nodeInput.manifest, nodeManifest);
+  assert.equal(nodeInput.vsixSha256, hash(await fs.readFile(nodeSourcePath)));
+  checks += 1;
+
+  const nodeExtensionsDir = path.join(root, 'node-extensions');
+  const nodeInstalledPath = path.join(nodeExtensionsDir, 'devsessioncanvas.dev-session-canvas-0.25.0');
+  await fs.mkdir(nodeInstalledPath, { recursive: true });
+  await fs.writeFile(path.join(nodeInstalledPath, 'package.json'), JSON.stringify(installedManifest));
+  for (const [file, bytes] of Object.entries(nodePayload)) {
+    await fs.mkdir(path.dirname(path.join(nodeInstalledPath, file)), { recursive: true });
+    await fs.writeFile(path.join(nodeInstalledPath, file), bytes);
+  }
+  const nodeExpectationPath = path.join(nodeOutput, 'installed-vsix-expectation.json');
+  const nodeExpected = { ...nodeInput, extensionsDir: await fs.realpath(nodeExtensionsDir) };
+  await fs.writeFile(nodeExpectationPath, JSON.stringify(nodeExpected));
+  const nodeExtension = { ...extension, extensionPath: nodeInstalledPath };
+  const nodeRuntime = { platform: 'linux', arch: 'x64', versions: { node: '22.22.1', modules: '127', napi: '10' },
+    report: { getReport: () => ({ header: { glibcVersionRuntime: '2.36' } }) } };
+  const nodeReceipt = await receipts.captureInstalledExtensionReceipt(nodeExtension, nodeExpectationPath, nodeRuntime);
+  receipts.assertInstalledExtensionReceipt(nodeReceipt, nodeExpected);
+  assert.deepEqual(nodeReceipt.payloadHashes, nodeInput.payloadHashes);
+  assert.equal(nodeReceipt.extensionPath, await fs.realpath(nodeInstalledPath));
+  for (const key of ['node', 'modules', 'napi']) {
+    await assert.rejects(receipts.captureInstalledExtensionReceipt(nodeExtension, nodeExpectationPath,
+      { ...nodeRuntime, versions: { ...nodeRuntime.versions, [key]: '999' } }), new RegExp(`matching ${key}`));
+  }
+  await assert.rejects(receipts.captureInstalledExtensionReceipt(nodeExtension, nodeExpectationPath,
+    { ...nodeRuntime, versions: { ...nodeRuntime.versions, electron: '39.8.7' } }), /non-Electron runtime/);
+  await assert.rejects(receipts.captureInstalledExtensionReceipt(nodeExtension, nodeExpectationPath,
+    { ...nodeRuntime, report: { getReport: () => ({ header: { glibcVersionRuntime: '2.35' } }) } }), /matching glibc/);
+  await assert.rejects(receipts.captureInstalledExtensionReceipt(nodeExtension, nodeExpectationPath,
+    { ...nodeRuntime, report: undefined }), /matching glibc/);
+  assert.throws(() => receipts.assertInstalledCandidateRuntime(nodeRuntime, nodeManifest), /selected runtime/);
+  assert.throws(() => receipts.assertInstalledCandidateRuntime(runtime,
+    { ...manifest, runtime: { ...manifest.runtime, napi: '10' } }), /matching napi/);
+  assert.throws(() => receipts.assertInstalledCandidateRuntime(runtime,
+    { ...manifest, libc: nodeManifest.libc }), /matching glibc/);
+  checks += 1;
+
   await fs.writeFile(path.join(installedPath, 'dist/extension.js'), 'wrong installed bytes');
   await assert.rejects(receipts.captureInstalledExtensionReceipt(extension, driver.expectationPath, runtime));
   await fs.writeFile(path.join(installedPath, 'dist/extension.js'), payload['dist/extension.js']);

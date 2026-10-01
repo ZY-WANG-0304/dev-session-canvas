@@ -13,10 +13,6 @@
 #include <sys/stat.h>
 #include <termios.h>
 
-#ifndef POSIX_SPAWN_SETSID
-#define POSIX_SPAWN_SETSID 1024
-#endif
-
 #include "unix-execution-owner.h"
 
 namespace dsc_execution {
@@ -120,8 +116,9 @@ static void Spawn(char** argv, char** env, const struct termios* term,
     if (result != 0) return result;
     result = posix_spawn_file_actions_addclose(&actions, *master);
     if (result != 0) return result;
+    // The verified helper creates the session without the macOS 10.15-only spawn flag.
     result = posix_spawnattr_setflags(&attributes, POSIX_SPAWN_CLOEXEC_DEFAULT |
-      POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSID);
+      POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK);
     if (result != 0) return result;
     sigset_t signals;
     if (sigfillset(&signals) < 0) return errno;

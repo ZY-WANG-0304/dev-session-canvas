@@ -33,6 +33,10 @@
 
 2026-10-01第45节：c851d028原Windows产品36852373473步骤成功、大工件下载超时，尚未独立逐字段复核；Agent36852378637首场通过、第二stop原句柄观察unknown，后六项未跑，不能称Claude修正原生通过。原driver未等CLI取得即停止的时序先红后绿，绝对45秒拒绝迟到ready；安全摘要纠正no-signal action计为forced的歧义，旧报告保持。第44节Remote自主接线中。A5 ABI/OS/libc兼容、Linux arm64/namespace、六资产聚合、默认执行端选择/package与生产admission仍开放，不能泛化为只待验收。
 
+第45节后续事实取代上一段待回收状态：Windows36854266396 attempt2原八场真实Agent全部通过，四natural响应/EOF、完整原生CLI链、八cleanup均独立核对；attempt1原10秒前置超时及所有旧失败不追认。产品36852373473六份Terminal结果/四环境小报告已范围提取对账，90000行/最终光标/EOF/applied和两模式completed重开成立，整包下载124保留；这两个固定组合不再排队。第44节Remote取得真实Server Node22.22.1/ABI127并安装固定Node包，首次产品Runtime在原30秒buffer检查失败、后3阶段未运行，保留为具名验收首败，先定位不重试。A5分发兼容与默认准入、F-04及其余A项继续开放，不新增通用工具债务。
+
+第44节修后Remote同一冻结VSIX已原四阶段exit0：等待原reader applied后只发一次原全文检查，原30秒绝对截止和全部断言保持；旧观察器累计243.8MB期望正文不再干扰6MB产品分页，首败与后通过分别保留，不夸大为旧失败唯一根因。真实Node/安装hash/EOF/applied/两模式重开及清理已核对，Linux x64 loopback子项收口。第37节Windows namespace误限已修、Linux/Darwin原规则不变；macOS同PID helper的setsid与失败处置/来源hash窄修已实现并独立review，新helper尚待原macOS原生流程，不用旧通过代证。当前仅按有限收尾第8节五包结账，不扩工具门槛或重复已完成回归。
+
 2026-10-01最新有限增量：第39节真实Linux Runtime Reload Window首轮exit0、同UI/新Host/原执行/新reader、completed空重开与清理均独立核对，固定子项不再排队；snapshot-only reload、多根、其余A1至A6不代证。Windows36843457341越过无凭据前置后首败storage路径断言，后七场未跑，保留清理观察未知，先核对路径语义。macOS36841263618已证明连续空终态与独立resize后页面一致，严格空态判据及真实重开待新证据；A5新target产品报告待回收，六资产/兼容/Remote和默认准入仍开放。当前队列以有限收尾及active计划首段为准，以下dated记录均保留原时点含义。
 
 2026-10-01 B2/A5与B3/A6：macOS Terminal36829311235六报告核对通过，真实Agent36832581851前三Codex场passed、第四snapshot stop空快照真值断言首败、Claude未跑，33.10所需终态证据已接入，定向回归与独立复核通过，原断言不改，待一次原矩阵。Windows36830583121绿灯缺报告已确认CLI转交误判，34.12窄修后36834158313真实exit1，原小报告确认mounted早于reader身份返回；共享原30秒poll已先红后绿，待原流水线，Agent未调度。32.21新增永久退出后旧reset写入缺陷已先红后修，原46+真实start2+普通/owner重叠2共50项、Host145/typecheck/localization及独立复核通过，不代证真实reload/多根UI。第35节固定VSIX实际安装接线开始，不把原payload smoke算installed通过。所有旧失败保留；剩余F-04/A1至A6、六资产/运行时、Remote与默认准入按有限清单，不另增通用工具债务。

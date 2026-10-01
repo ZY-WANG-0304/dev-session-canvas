@@ -82,7 +82,7 @@ export function resolveMacosExecutionProviderAssets(distDirectory: string): Maco
   }
   const sources = record(manifest.sources);
   for (const key of ['ownerSha256', 'sharedOwnerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256',
-    'helperSourceSha256', 'headersSha256', 'nodeAddonApiSha256']) {
+    'helperSourceSha256', 'helperPatchedSha256', 'headersSha256', 'nodeAddonApiSha256']) {
     if (typeof sources[key] !== 'string' || !/^[a-f0-9]{64}$/.test(sources[key] as string)) {
       throw new Error('macOS candidate provenance is incomplete.');
     }

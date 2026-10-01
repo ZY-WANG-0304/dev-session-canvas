@@ -15,6 +15,7 @@ on:
       - scripts/build/macos-execution-candidate-assets.mjs
       - scripts/smoke/vscode-smoke-runner.mjs
       - scripts/test/test-macos-execution-product.mjs
+      - scripts/test/test-macos-execution-spawn-helper.mjs
       - scripts/test/test-vscode-smoke-runner-env.mjs
       - scripts/test/fixtures/macos-execution-subject.mjs
       - scripts/test/fixtures/macos-execution-namespace.ts
@@ -46,6 +47,7 @@ jobs:
         run: |
           node scripts/test/test-vscode-smoke-runner-env.mjs
           node scripts/test/test-macos-execution-provider-source.mjs
+          node scripts/test/test-macos-execution-spawn-helper.mjs
           node scripts/test/test-macos-execution-candidate-assets.mjs
           node scripts/test/test-macos-execution-product.mjs --self-test
       - name: Compile actual Node candidate and explicit product build
