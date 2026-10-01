@@ -137,11 +137,14 @@ async function complete() {
   }
   await dispatch('webview/resizeNode', { nodeId: id, position: node.position,
     size: { width: 900, height: 540 } });
-  await poll('terminal mounted in actual Webview', probe, value => value.nodes.some(entry =>
-    entry.nodeId === id && entry.terminalCols >= 64 && entry.terminalRows >= 3));
-  const initialMessages = await command('getHostMessages');
-  const initialSnapshot = initialMessages.findLast(message => message.type === 'host/executionSnapshot' &&
-    message.payload.nodeId === id && typeof message.payload.executionSessionId === 'string');
+  const mounted = await poll('terminal mounted in actual Webview', async () => {
+    const layout = await probe();
+    const messages = await command('getHostMessages');
+    return { layout, snapshot: messages.findLast(message => message.type === 'host/executionSnapshot' &&
+      message.payload.nodeId === id && typeof message.payload.executionSessionId === 'string') };
+  }, value => value.layout.nodes.some(entry =>
+    entry.nodeId === id && entry.terminalCols >= 64 && entry.terminalRows >= 3) && Boolean(value.snapshot));
+  const initialSnapshot = mounted.snapshot;
   assert(initialSnapshot, 'An actual mounted reader must expose the original execution identity.');
   const executionId = initialSnapshot.payload.executionSessionId;
   if (mode === 'live-runtime') assert.equal(executionId, metadata.runtimeSessionId);

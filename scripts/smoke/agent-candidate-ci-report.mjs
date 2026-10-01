@@ -12,6 +12,31 @@ const agentStatuses = new Set(['idle', 'starting', 'waiting-input', 'running', '
   'resume-failed', 'suspended', 'stopping', 'stopped', 'error', 'interrupted']);
 const readerSettlementKinds = new Set(['applied', 'cancelled', 'lost', 'legacy-released']);
 
+function snapshotEvidenceSummary(value) {
+  if (!value || typeof value !== 'object') return null;
+  const result = { schemaVersion: value.schemaVersion === 1 ? 1 : null };
+  for (const name of ['savedNodeMatched', 'savedStatePresent', 'savedStateValid', 'readerApplied', 'readerLifecycleMatched', 'sequenceMatched',
+    'helpProbePresent', 'finalProbePresent', 'pageGeometryMatched', 'pageVisibleMatched', 'pageBufferMatched',
+    'savedMatchesPage', 'replayComplete', 'replayMatchesSaved', 'replayMatchesPage', 'publishedFinalMatchesSaved']) {
+    result[name] = boolean(value[name]);
+  }
+  for (const name of ['savedDataBytes', 'savedOutputSequence', 'snapshotOutputSequence', 'readerFinalOutputSequence',
+    'helpNonEmptyLines', 'savedCols', 'savedRows', 'messageCount', 'replayInitialSequence',
+    'replayOutputMessages', 'replayResizeSnapshots']) {
+    result[name] = Number.isSafeInteger(value[name]) && value[name] >= 0 ? value[name] : null;
+  }
+  for (const name of ['helperSha256', 'savedDataSha256', 'hydratedStateSha256', 'replayStateSha256']) {
+    result[name] = typeof value[name] === 'string' && /^[a-f0-9]{64}$/.test(value[name]) ? value[name] : null;
+  }
+  result.replayReason = ['unknown', 'complete', 'messages-missing', 'message-window-full', 'execution-changed',
+    'initial-checkpoint-missing', 'reader-changed', 'output-range-missing', 'snapshot-invalid',
+    'resize-checkpoint-mismatch', 'projection-recovery-or-unknown-snapshot', 'exit-boundary-missing',
+    'final-sequence-mismatch', 'saved-state-invalid', 'evidence-computation-failed', 'evidence-inputs-unavailable']
+    .includes(value.replayReason) ? value.replayReason : null;
+  result.pageProjectionIndependence = value.pageProjectionIndependence === 'not-proven' ? 'not-proven' : null;
+  return result;
+}
+
 export async function writeAgentCandidateCIReport({ directory, output, input, scenarios, phase, failed, apiKey, failureMessage = '' }) {
   const rows = [];
   for (const scenario of scenarios) {
@@ -83,6 +108,8 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
           ? readerSettlement.detail.outcome.kind : null,
         readerFinalOutputSequence: integer(readerSettlement?.detail?.outcome?.finalOutputSequence)
       } : null,
+      snapshotEvidence: scenario.name.endsWith('-snapshot-only-stop')
+        ? snapshotEvidenceSummary(await read('snapshot-evidence')) : null,
       cliEvidence: {
         turnCompleted: records ? records.some(record => record.type === 'turn.completed') : null,
         turnFailed: records ? records.some(record => record.type === 'turn.failed') : null,

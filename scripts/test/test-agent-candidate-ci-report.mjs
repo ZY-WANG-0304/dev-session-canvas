@@ -146,6 +146,38 @@ try {
     assert.equal(failureState.readerSettlementKind, entry.unsupported ? null : entry.outcome);
     assert.equal(enumText.includes(key), false, 'Unknown status, outcome and reason text must remain private.');
   }
+  const stopped = { ...scenarios.find(value => value.name === 'codex-snapshot-only-stop'), state: 'failed' };
+  const stopArtifacts = path.join(options.output, stopped.name, 'artifacts');
+  const snapshotEvidence = { schemaVersion: 1, savedStatePresent: true, savedStateValid: true, savedDataBytes: 0,
+    savedOutputSequence: 15, snapshotOutputSequence: 15, readerFinalOutputSequence: 15, sequenceMatched: true,
+    savedDataSha256: 'a'.repeat(64), helperSha256: 'b'.repeat(64), replayComplete: true,
+    replayReason: 'complete', replayMatchesSaved: true, savedMatchesPage: true, replayMatchesPage: true,
+    pageProjectionIndependence: 'not-proven', raw: key, snapshot: { data: key }, error: key };
+  await fs.writeFile(path.join(stopArtifacts, 'snapshot-evidence.json'), JSON.stringify(snapshotEvidence));
+  await fs.writeFile(path.join(stopArtifacts, 'result.json'), JSON.stringify({ pass: false }));
+  const snapshotDirectory = path.join(root, 'snapshot-report');
+  await writeAgentCandidateCIReport({ ...options, directory: snapshotDirectory, scenarios: [stopped], failed: true });
+  const snapshotText = await fs.readFile(path.join(snapshotDirectory, 'summary.json'), 'utf8');
+  const snapshotReport = JSON.parse(snapshotText);
+  assert.equal(snapshotReport.pass, false, 'A diagnostic match must not turn the retained truthy assertion green.');
+  assert.equal(snapshotReport.scenarios[0].pass, false);
+  assert.equal(snapshotReport.scenarios[0].snapshotEvidence.savedDataBytes, 0);
+  assert.equal(snapshotReport.scenarios[0].snapshotEvidence.replayMatchesSaved, true);
+  assert.equal(snapshotReport.scenarios[0].snapshotEvidence.pageProjectionIndependence, 'not-proven');
+  assert.equal(snapshotReport.scenarios[0].snapshotEvidence.savedDataSha256, 'a'.repeat(64));
+  assert.equal(snapshotText.includes(key), false);
+  assert.equal(snapshotReport.scenarios[0].snapshotEvidence.raw, undefined);
+  assert.equal(snapshotReport.scenarios[0].snapshotEvidence.snapshot, undefined);
+  await fs.writeFile(path.join(stopArtifacts, 'snapshot-evidence.json'), JSON.stringify({ ...snapshotEvidence,
+    replayReason: key, replayMatchesSaved: key, savedDataBytes: -1, savedDataSha256: key,
+    pageProjectionIndependence: 'independent', helperSha256: `invalid ${key}` }));
+  const invalidSnapshotDirectory = path.join(root, 'invalid-snapshot-report');
+  await writeAgentCandidateCIReport({ ...options, directory: invalidSnapshotDirectory, scenarios: [stopped], failed: true });
+  const invalidSnapshotText = await fs.readFile(path.join(invalidSnapshotDirectory, 'summary.json'), 'utf8');
+  const invalidSnapshot = JSON.parse(invalidSnapshotText).scenarios[0].snapshotEvidence;
+  for (const field of ['replayReason', 'replayMatchesSaved', 'savedDataBytes', 'savedDataSha256',
+    'pageProjectionIndependence', 'helperSha256']) assert.equal(invalidSnapshot[field], null, field);
+  assert.equal(invalidSnapshotText.includes(key), false);
   console.log('Agent candidate CI report: fixed fields, missing evidence, failed run, and secret refusal passed.');
 } finally {
   await fs.rm(root, { recursive: true, force: true });

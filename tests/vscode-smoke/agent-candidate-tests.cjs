@@ -9,6 +9,7 @@ const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { AgentProcessObserver, executionEnded } = require('./agent-candidate-process-observer.cjs');
 const { invokeCLI } = require('./agent-candidate-cli.cjs');
+const { collectSnapshotEvidence } = require('./agent-candidate-snapshot-evidence.cjs');
 const { resolveExecutionSessionSpawnSpec } = require('./agent-candidate-spawn-spec.cjs');
 const { resolveLegacyRuntimeSupervisorPaths,
   resolveSystemdUserRuntimeSupervisorPaths } = require('./agent-candidate-runtime-paths.cjs');
@@ -167,6 +168,23 @@ async function run() {
       }
       assert(Buffer.byteLength(JSON.stringify(savedNode)) < 16384);
     } else {
+      if (config.lifecycle === 'stop') {
+        let snapshotEvidence;
+        try {
+          snapshotEvidence = await collectSnapshotEvidence({ savedNode, nodeId, executionId,
+            messages: await command('getHostMessages'), events: await command('getDiagnosticEvents'),
+            helpProbe: JSON.parse(await fs.readFile(path.join(config.artifactDir, 'help-probe.json'), 'utf8')),
+            finalProbe: await probe(),
+            assertBuffer: async expectedLines => {
+              await dom({ kind: 'assertExecutionTerminalBuffer', nodeId, expectedLines });
+              return true;
+            } });
+        } catch {
+          snapshotEvidence = { schemaVersion: 1, replayComplete: false, replayReason: 'evidence-inputs-unavailable',
+            pageProjectionIndependence: 'not-proven' };
+        }
+        await writeJson('snapshot-evidence.json', snapshotEvidence);
+      }
       assert(savedNode.metadata.agent.serializedTerminalState?.data);
       const settlements = await command('getDiagnosticEvents');
       assert(settlements.some(event => matchesSettlement(event) &&

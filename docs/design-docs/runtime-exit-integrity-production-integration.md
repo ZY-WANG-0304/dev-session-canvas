@@ -1837,6 +1837,8 @@ run `36821963386`/job `110239281754` 使用 `72ca0efe`，修后原Node四例全�
 
 该诊断只增加固定枚举/布尔/计数/hash的 `snapshotEvidence` 安全摘要，缺证据保持unknown；raw/快照正文不发布，同一key内容扫描继续执行。局部用既有xterm验证合法空屏、正常非空、丢正文/错cursor/序号/缺消息不能误判；不建通用replay框架或扩场景。之后只运行一次原macOS矩阵取得新输入事实，失败即停；旧failure与原真值断言不追改。是否将非空判据替换为终态一致性，依据新证据另行判断，不预设“合法清屏”结论。
 
+上述evidence-only接线已实施于 `agent-candidate-snapshot-evidence.cjs`、原Agent测试与受限CI report，未改业务、runner或原truthy断言。重放只使用初始checkpoint、连续output及resize操作，后续终态snapshot只作对账，不能覆写重放来制造一致；满200条窗口、缺区间/resize/exit、reader换代和恢复snapshot均保留unknown。helper自身摘要随安全证据发布，页面投影独立性明确为not-proven。helper及report定向回归、workflow契约通过，包含“空终值及页面不能洗掉重放非空正文”负例；这些不是原macOS失败的根因结论，新原生输入仍待固定一次执行。
+
 ## 34. Windows 产品原生接入
 
 ### 34.1 运行前原生契约（2026-10-01）
@@ -1988,3 +1990,21 @@ CLI选择、Windows observer、原Unix observer、CI summary、私有配置、�
 选定窄修：测试启动直接用Node spawn原Code.exe、shell:false等待原进程，Linux/macOS语义保持；安装扩展等真正CLI用途仍使用原CLI解析。`run-vscode-execution-candidate.mjs` 在每次complete/reopen返回后读取该阶段既有必需报告，核对mode、phase所需内容及pass；缺失或失败立即停止，不再仅凭进程0打印整轮成功。沿现有runner和Electron输入测试取得旧实现先红并覆盖原进程等待/非零/缺报告，再复验原Windows流水线，不增加新的工具矩阵、延时或宽松尾部判据。此处只是运行前修正设计，原job绿灯不追认为真实测试通过。
 
 上述四文件窄修已实施，旧launcher真实spawn捕获和旧orchestration缺报告仍继续四次launch两条确定红分别保留在 `.debug/windows-launcher-original-red-20261001-01.log`、`.debug/windows-phase-reports-original-red-20261001-01.log`。修后env、Electron input（原loop一正向/十五负向）、Agent workflow与语法/diff检查通过，root独立复跑三项同样通过。没有业务或预算改动，Windows实际修后结果仍待原流水线；macOS本轮Agent输入冻结于b1628715，不回填此新等待实现。
+
+修后926889c0的Windows run36834158313在真实宿主内首败并返回exit1，未继续后续阶段；joblog保存于 `.debug/windows-launcher-fixed-36834158313-job.log`。原Node四例及Electron构建通过，具体失败为 `execution-candidate-tests.cjs` 的初始reader身份断言，不是新的尾部缺失结论。同输入macOS36834158241工作流success，范围仍仅原Terminal矩阵，不代证Agent或全平台完成。
+
+源码确认该Windows首败涉及一个跨平台测试前提缺口：`applyRuntimeSupervisorSnapshot()` 先更新liveSession/postState，再异步 `postExecutionSnapshot()`；paged snapshot还须等client与relay.open。页面registry在发attach请求前创建，probe中的cols/rows只证明本地xterm已创建，不证明原reader身份已返回。当前test在live和尺寸poll后立即读取一次messages，二者没有身份到达的先后保证；不能以此判定产品没有reader。原native失败报告继续保留，缺少该次完整消息时间线时不声称已测得每个异步调用的原生时间。
+
+选定两文件窄修：在原mounted那一次30秒poll内同时读取probe与messages，接受条件同时包含原尺寸条件和原节点的executionSessionId snapshot，复用该轮消息继续原身份断言及Runtime sessionId严格相等。不给身份缺失额外30秒，不降低90000行/UTF-8/光标/主体与资源断言，不改业务。现有Electron输入测试直接执行该实际poll片段，冻结已mounted但snapshot延迟到50ms的先红、同预算等待成功，以及身份始终缺失在原截止失败；这属于当前验收前提修正，不增加独立工具矩阵。
+
+原artifact九份小报告已范围提取至 `.debug/windows-product-36834158313/small-reports/`。失败probe为122x30且空白；稍后catch保存的messages已有同node、同runtimeSessionId的executionSnapshot和terminalRead，events于08:08:17.680Z记录terminalPagedReadOpened。这直接证明该次读取早于身份返回，不是原reader始终未建立；失败发生在writer启动前。cleanup仅证明resetStateComplete及nodes/bindings为零，observer尚未取得主体时safe=false保持，不冒称完整OS清理。旧实现受控确定红保留在 `.debug/windows-mounted-identity-original-red-20261001-01.log`；修后五例覆盖身份/尺寸分别迟到、身份缺失、共享截止及错误Runtime身份拒绝，原尾部断言不变。
+
+## 35. A5 固定 VSIX 的实际安装路径
+
+本项只补既定A5的Linux installed candidate，不新增平台诊断，也不代证完整分发准入。现有 `run-vscode-vsix-smoke.mjs` 重建stock并改装development扩展，正确范围仅为payload smoke；不能把它当成未改装VSIX的安装证据。选定在 `scripts/smoke/run-vscode-execution-candidate.mjs` 新增显式 `--installed-vsix`，只接收固定文件，不自动重建或选择最新包，首轮不与capacity选择混用。
+
+从指定VSIX提取manifest及业务/native摘要作为预期，记录整个VSIX SHA256。原VSIX通过VS Code CLI安装到本轮隔离extensionsDir，manifest/main不改写；使用不同extension id的最小development test-driver承载原测试、helper与fixture，不复制业务dist、不手动转发主扩展activate/context。原测试仍通过真实产品id激活已安装扩展；沿现有 `DEV_SESSION_CANVAS_SMOKE_TEST_MODE=1` 测试命令gate，不放宽native候选注入条件。原manifest只有推荐extensionPack，可用固定CLI已支持的 `--do-not-include-pack-dependencies` 跳过companion自动下载，明确本项不验证notifier，而非删除manifest字段。
+
+每次complete/reopen的environment收据必须记录实际extensionPath、业务id/version/main和实际安装文件摘要，校验规范路径位于本轮extensionsDir而非workspace、driver或解包目录，并与同一VSIX预期一致。外层保留原phase、mode、node id、pass及空bindings报告检查；进程exit0不能代证。固定两模式complete/reopen共四次Host启动，90002行、UTF-8、ANSI最终光标、原reader settlement、Runtime无历史和snapshot-only恢复断言保持，失败即停并保留第一现场，不自动重试。
+
+直接调用 `node scripts/release/package-vsix.mjs` 保存明确选定的匹配Linux Electron candidate dist；不调用会重建stock的npm打包命令。实施前先核对资产仍匹配当前源码并记录来源；未运行或前置失败不能记为installed通过。此设计不预支macOS/Windows、真实Agent、Remote或六资产支持格，Windows installer接线风险不设为Linux前置。

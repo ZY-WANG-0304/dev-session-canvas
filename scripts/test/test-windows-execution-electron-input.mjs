@@ -201,4 +201,51 @@ for (const [phase, filename, replacement] of [
   assert.equal(failure.mode, 'live-runtime');
   assert.equal(failure.error, String(result.error));
 }
-console.log('Windows Electron fixed input: identity/exit, original writer byte identity, shell, workflow and required phase reports passed; no native or VS Code calls.');
+const terminalTests = await fs.readFile('tests/vscode-smoke/execution-candidate-tests.cjs', 'utf8');
+const pollStart = terminalTests.indexOf('async function poll(');
+const pollEnd = terminalTests.indexOf('async function openSurface()', pollStart);
+const mountedStart = terminalTests.indexOf("await dispatch('webview/resizeNode'");
+const mountedEnd = terminalTests.indexOf("await writeJson('started.json'", mountedStart);
+assert(pollStart >= 0 && pollEnd > pollStart && mountedStart >= 0 && mountedEnd > mountedStart);
+async function mountedIdentity(identityAt, mountedAt = 0, receivedIdentity = 'original-execution') {
+  let now = 0, reads = 0;
+  let executionId, error;
+  try {
+    executionId = await vm.runInNewContext(`(async () => {
+      ${terminalTests.slice(pollStart, pollEnd)}
+      ${terminalTests.slice(mountedStart, mountedEnd)}
+      return executionId;
+    })()`, {
+      assert, id: 'original-node', node: { position: { x: 0, y: 0 } }, mode: 'live-runtime',
+      metadata: { runtimeSessionId: 'original-execution' }, Date: { now: () => now },
+      async sleep(ms) { now += ms; }, async dispatch() {},
+      async probe() { return { nodes: now >= mountedAt
+        ? [{ nodeId: 'original-node', terminalCols: 80, terminalRows: 24 }] : [] }; },
+      async command(name) {
+        assert.equal(name, 'getHostMessages'); reads++;
+        return now >= identityAt ? [{ type: 'host/executionSnapshot',
+          payload: { nodeId: 'original-node', executionSessionId: receivedIdentity } }] : [];
+      }
+    });
+  } catch (failure) { error = failure; }
+  return { now, reads, executionId, error };
+}
+const delayedIdentity = await mountedIdentity(50);
+assert.equal(delayedIdentity.error, undefined,
+  'Mounted xterm dimensions must not end the existing wait before the original reader identity arrives');
+assert.equal(delayedIdentity.executionId, 'original-execution');
+assert.equal(delayedIdentity.now, 50);
+assert(delayedIdentity.reads >= 2);
+const delayedMount = await mountedIdentity(0, 50);
+assert.equal(delayedMount.error, undefined);
+assert.equal(delayedMount.now, 50, 'Reader identity cannot replace the actual mounted dimensions');
+for (const [identityAt, mountedAt] of [[Infinity, 0], [30000, 29950]]) {
+  const missingIdentity = await mountedIdentity(identityAt, mountedAt);
+  assert.match(missingIdentity.error?.message ?? '', /Timed out: terminal mounted in actual Webview/);
+  assert.equal(missingIdentity.now, 30000, 'Mount and identity must share the original 30-second deadline');
+  assert.equal(missingIdentity.executionId, undefined);
+}
+const wrongIdentity = await mountedIdentity(0, 0, 'different-execution');
+assert.equal(wrongIdentity.error?.code, 'ERR_ASSERTION');
+assert.equal(wrongIdentity.now, 0, 'The original Runtime execution identity equality must still reject a mismatch');
+console.log('Windows Electron fixed input: identity/exit, original writer byte identity, shell, workflow, required phase reports and mounted reader identity passed; no native or VS Code calls.');
