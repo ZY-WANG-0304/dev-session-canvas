@@ -28,6 +28,8 @@ updated_at: 2026-10-01
 
 同一最新范围内，六架构 schema2 分发候选的 Windows x64/ARM64 attempt2 已完成并与已核对四格合并，固定聚合/VSIX SHA 通过；这只关闭构建、加载与归档链，不代证最低旧 OS、各目标完整产品支持或默认准入。A6 snapshot-only Host 离开和 A3 双 Host 共享 root 的既有真实证据也已对齐为已覆盖，旧失败与未观察字段继续保留。
 
+现有直接回归（2026-10-01）保持绿色：`test-runtime-host-output-credit.mjs` 的真实 socket 背压/控制/尾部/compact 生命周期、`test-execution-output-sequence.mjs` 的 output/resize/scrollback 顺序，以及 `test-terminal-paged-projection.mjs` 的 39/39 Webview settlement、Host batch 10/10、分页 compaction/取消/重试均通过；这些是必要结构回归，不替代真实跨平台页面或最终容量准入。
+
 本轮唯一未提交代码是 `scripts/smoke/run-vscode-execution-candidate.mjs` 的 schema2 资产兼容：允许 Node/Electron runtime provenance、允许 `profile=platform` 聚合选择，并仅在 Windows Electron 资产上检查 Electron 版本字段。该变更已由候选构建、installed-candidate 13 项测试和上述真实运行覆盖，待与本轮证据一并提交；历史失败与原阈值保持不变。
 
 当前有限增量（2026-10-01，以本段优先）：Windows36854266396 attempt2真实Codex/Claude原八场、36852373473原Terminal两模式六结果/四环境已独立核对；原前置失败与整包下载124不改。A3第38节两例、A6第39节真实Runtime reload及第47节新固定包实际多根保存失败/B交互均有限通过，不重复排队；第47节A真实EISDIR仍保来源/binding、原reader applied4，B原执行nonce24.9ms，空registry落盘后独立清理通过，旧首败保持。Remote固定Node VSIX原四阶段和macOS新helper产品/真实Agent原矩阵已收口各自固定格；Claude snapshot-only stop非空保存未重开，第48节局部尺寸修复不代证其实际页面/重开。A6仍保留snapshot-only实际Host离开。六资产/兼容/默认分发/准入及F-04、其余A1至A6未完成，当前沿第49节实施兼容要求，按第8节有限剩余映射推进，不增加通用工具门槛；历史不是追加队列。

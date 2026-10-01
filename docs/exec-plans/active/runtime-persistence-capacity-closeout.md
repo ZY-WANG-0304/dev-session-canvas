@@ -1,6 +1,8 @@
 # 收口 Runtime Persistence 的容量与交互成本
 
-当前收口（2026-10-01，覆盖后续历史“下一步”）：固定 `10/1` schema2 Linux Electron 候选已完成 `color`/`size` 两场景；两场均 `measurementAndContentPass=true`、预算观察 `pass=true`、产品 cleanup `pass=true`，峰值总 RSS 为 3,876,724,736 / 3,954,757,632 bytes。该结果只关闭声明输入，不形成产品并发上限。随后同候选 `2/1` 真实 Host detach/reconnect `color` 通过：旧 Host/原 Supervisor 绑定保持，A 离线期间 B 在追平前 53.4ms 应用，Host ready 后 15,538.456ms 完成追平，reader 身份、journal/hash、自然 no-history 和 reconnect/outer cleanup 均成立。A1/F-04 仍开放；不重复这两个成功组合，不追加通用工具验证，下一只处理既定跨平台/分发与剩余 A1/A2/A3/A6 格。
+当前收口（2026-10-01，覆盖后续历史“下一步”）：固定 `10/1` schema2 Linux Electron 候选已完成 `color`/`size` 两场景；两场均 `measurementAndContentPass=true`、预算观察 `pass=true`、产品 cleanup `pass=true`，峰值总 RSS 为 3,876,724,736 / 3,954,757,632 bytes。该结果只关闭声明输入，不形成产品并发上限。随后同候选 `2/1` 真实 Host detach/reconnect `color` 通过：旧 Host/原 Supervisor 绑定保持，A 离线期间 B 在追平前 53.4ms 应用，Host ready 后 15,538.456ms 完成追平，reader 身份、journal/hash、自然 no-history 和 reconnect/outer cleanup 均成立。A1/F-04 仍开放；不重复这两个成功组合，不追加通用工具验证，下一只处理既定跨平台/分发与剩余 A1/A2/A3 格。
+
+同日现有结构回归复核保持通过：Host output credit 的真实 socket 背压、控制/尾部/compact 生命周期，output/resize/scrollback 顺序，以及 terminal paged projection 的 Webview 39/39、Host batch 10/10 与 compaction/取消/重试均通过；仅作为直接结构护栏，不升级为完整 A1 资源或跨平台页面证据。
 
 本 ExecPlan 按 `docs/PLANS.md` 维护，承接 `docs/design-docs/runtime-persistence-closeout.md` 的 B1/A1，不是新的退出诊断阶段。输入为 `8dd82629`。F-04 目标是长历史不再要求每层常驻/一次性复制完整后缀，实际在途数据有约束，恢复不挤掉交互；F-05 的无 completed 历史与退出尾部保证不变。工程判断由代理承担，不等待用户选择预算。
 
