@@ -245,4 +245,8 @@ macOS 真实 Agent 仍是具名未决。第一次 run `36906574728` 的 Codex �
 
 测试层改动已完成并通过 `test-agent-candidate-reopen.mjs`、`test-agent-candidate-snapshot-evidence.mjs`、`test-agent-candidate-ci-report.mjs` 及相关 JavaScript 语法检查；fixture 证据覆盖非空保存内容与页面几何。此前 `36911430020` 的非空 stop 结果仍是历史证据，未因 harness 改动追认通过；现代 runner 上的新真实非空 snapshot stop + reopen 尚未运行，A2/A3 该直接验收仍开放。未修改 Canvas/Host/Supervisor 业务代码，也未扩展旧系统矩阵。
 
-同一提交 `30f421b3` 的 Linux 现代 runner 尝试 `36917661214` 与仅一次允许的同输入复跑 `36918349766` 均在首场 `codex-live-runtime-natural` 超时：CLI 已被观察到，但节点仍为 `waiting-input`/`liveSession=true`，cleanup 无残留；八场均未进入 `snapshot-only stop`。两次结果作为真实 Agent 生命周期阻塞保留，不归因非空重开 helper，也不继续追加重跑或扩大平台矩阵。因此新的真实非空 snapshot stop + reopen 仍未取得证据。
+同一提交 `30f421b3` 的 Linux runner 尝试 `36917661214` 与仅一次允许的同输入复跑 `36918349766` 均在首场 `codex-live-runtime-natural` 超时：CLI 曾被观察到，节点仍为 `waiting-input`/`liveSession=true`，cleanup 后无残留，后七场未运行。通用 `poll` 行号不能确定等待点，cleanup 后的进程事实不能证明失败前 CLI 已退出，未写出 completed output 也不等于 CLI 无输出。这是根因未定的验收阻塞，不是已证实的 Host 退出传播或服务缺陷；两次失败不改，新的真实非空 snapshot stop + reopen 仍未取得证据。
+
+本轮限定修正直接影响 A2/A3/A4 判定的 harness 契约，不扩展工具能力或平台矩阵：新 reopen 报告显式使用 schema2 的状态/页面匹配字段，不把非空、非原点或 alternate buffer 写成 empty/origin/normal；首页面必须独立通过保存/replay/页面比较，重开成功不能替代其尾部与终态责任。合法页面尺寸变化由保存尺寸 hydrate 后独立 resize 的 oracle 对比，不采纳页面内容、光标或 viewport 为期望；在原 30 秒页面等待窗口内等候实际 snapshot 应用，不只等 xterm 挂载。全文 buffer 断言只比较非空行，另比较可见行和几何，不扩大宣称完整逐 cell 等价。
+
+失败诊断只复用现有第一现场：精确白名单映射 timeout label，按角色输出清理前进程观察计数，私有输出复用既有 parser 生成 CLI 事件布尔值/摘要；原始错误、正文和凭据不上传，缺文件仍为 unknown。定向回归与独立审核后，只安排一次带新证据的既定 Linux 原矩阵，不重复同输入碰运气；首败即停止，依据具名事实决定产品修复或外部问题。当前原页面/重开、F-04 和最终生产准入均未关闭。

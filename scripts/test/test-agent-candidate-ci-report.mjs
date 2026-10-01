@@ -34,7 +34,10 @@ try {
   assert.equal(text.includes(key), false);
   assert.equal(text.includes('private data'), false);
   assert.equal(summary.scenarios[0].receivedOutput.sha256.length, 64);
+  assert.equal(summary.scenarios[0].receivedOutput.source, 'host-received-output');
   assert.equal(summary.scenarios[0].cliEvidence.lastMessageMatches, null);
+  assert.equal(summary.scenarios[0].pollStage, null);
+  assert.equal(summary.scenarios[0].processObservation.beforeCleanup, null);
   await assert.rejects(writeAgentCandidateCIReport({ ...options, directory }), { code: 'EEXIST' });
   const failedDirectory = path.join(root, 'failure-report');
   await writeAgentCandidateCIReport({ ...options, directory: failedDirectory, failed: true, phase: 'prepare', scenarios: [] });
@@ -75,7 +78,8 @@ try {
     exitCode: 0, outputSequence: 3, serializedStatePresent: true,
     serializedStateBytes: Buffer.byteLength(key), readerSettlementObserved: false,
     readerSettlementKind: null, readerFinalOutputSequence: null });
-  assert.deepEqual(warningReport.scenarios[0].cliEvidence, { turnCompleted: true, turnFailed: false,
+  assert.deepEqual(warningReport.scenarios[0].cliEvidence, { recordCount: 4, threadStarted: false, turnStarted: false,
+    turnCompleted: true, turnFailed: false, errorObserved: true,
     expectedResponseInOutput: true, lastMessageMatches: true, modelMetadataFallback: true });
   assert.equal(warningText.includes(key), false);
   assert.equal(warningText.includes(scenario.nonce), false);
@@ -139,7 +143,7 @@ try {
     assert.equal(row.cleanup.forcedSignals, entry.forced);
     assert.equal(row.cleanup.unconfirmedSignals, entry.unconfirmed);
     assert.deepEqual(row.cleanup.cleanupActionKinds, [entry.action === key ? 'unclassified' : entry.action]);
-    assert.deepEqual(row.processObservation, { failureKinds: ['helper-request-failed', 'unclassified'],
+    assert.deepEqual(row.processObservation, { beforeCleanup: null, failureKinds: ['helper-request-failed', 'unclassified'],
       failedOperations: ['sample', 'unclassified'] });
     assert.equal(safeText.includes(key), false);
   }
@@ -256,7 +260,8 @@ try {
   const reopened = JSON.parse(reopenedText);
   assert.equal(reopened.pass, true);
   assert.deepEqual(reopened.scenarios.find(row => row.name === stopped.name).snapshotReopen,
-    { required: true, reportPresent: true, pass: true, ...Object.fromEntries(reopenFields.map(field => [field, true])) });
+    { required: true, reportPresent: true, pass: true, schemaVersion: 1,
+      ...Object.fromEntries(reopenFields.map(field => [field, true])) });
   assert.equal(reopenedText.includes(key), false);
   for (const [index, field] of [...reopenFields, 'pass'].entries()) {
     await fs.writeFile(path.join(reopenDir, 'reopen-result.json'), JSON.stringify({ ...reopenReport, [field]: key }));
@@ -291,6 +296,109 @@ try {
   await writeAgentCandidateCIReport({ ...options, directory: originalFailureDirectory });
   const originalFailure = JSON.parse(await fs.readFile(path.join(originalFailureDirectory, 'summary.json'), 'utf8'));
   assert.equal(originalFailure.pass, false, 'Even a complete reopen report cannot erase a first-stage failure.');
+
+  await fs.unlink(path.join(artifacts, 'host-received-output.txt'));
+  await fs.unlink(path.join(artifacts, 'codex-final-message.txt'));
+  await fs.writeFile(path.join(artifacts, 'result.json'), JSON.stringify({ pass: false }));
+  await fs.writeFile(path.join(artifacts, 'first-failure-output.txt'), [
+    { type: 'turn.started' }, { type: 'error', message: `network connection reset ${key}` }
+  ].map(record => JSON.stringify(record)).join('\r\n'));
+  await fs.writeFile(path.join(artifacts, 'first-failure-process.json'), JSON.stringify({ entries: [
+    { role: 'cli', active: true, state: 'S', executable: key },
+    { role: 'wrapper', active: false, state: 'S' },
+    { role: 'provider', active: true, state: 'Z' },
+    { role: 'provider', active: true, state: 'S', observationUnknown: true },
+    { role: 'host', active: true, state: key },
+    { role: key, active: true, state: 'S' }, { role: '__proto__' }
+  ] }));
+  await fs.writeFile(path.join(artifacts, 'process-observations.json'), JSON.stringify({ entries: [], failures: [] }));
+  for (const [index, entry] of [
+    { error: 'Error: Timed out: Agent final product state', stage: 'agent-final-product-state' },
+    { error: 'Error: Timed out: real Agent execution identity', stage: 'agent-execution-identity' },
+    { error: `Error: Timed out: Agent final product state ${key}`, stage: null }
+  ].entries()) {
+    await fs.writeFile(path.join(artifacts, 'first-failure.json'), JSON.stringify({ nodeId: 'n1', executionId: 'e1',
+      error: entry.error, stack: `Error: ${key}\n at poll (/private/${key}/agent-candidate-tests.cjs:50:9)` }));
+    const target = path.join(root, `failure-observations-${index}`);
+    await writeAgentCandidateCIReport({ ...options, directory: target, scenarios: [scenario], failed: true,
+      input: { platform: 'linux' } });
+    const safeText = await fs.readFile(path.join(target, 'summary.json'), 'utf8');
+    const row = JSON.parse(safeText).scenarios[0];
+    assert.equal(row.pollStage, entry.stage);
+    assert.equal(row.pass, false, 'Evidence additions cannot turn an unsuccessful scenario green.');
+    assert.equal(row.receivedOutput.source, 'first-failure-output');
+    assert.equal(row.cliEvidence.recordCount, 2);
+    assert.equal(row.cliEvidence.threadStarted, false);
+    assert.equal(row.cliEvidence.turnStarted, true);
+    assert.equal(row.cliEvidence.turnCompleted, false);
+    assert.equal(row.cliEvidence.turnFailed, false);
+    assert.equal(row.cliEvidence.errorObserved, true);
+    assert.equal(row.cliEvidence.expectedResponseInOutput, false);
+    assert.equal(row.cliEvidence.lastMessageMatches, null);
+    assert.equal(row.diagnosticClasses.includes('network'), true);
+    assert.equal(row.cleanup.remainingActiveProcesses, 0);
+    assert.deepEqual(row.processObservation.beforeCleanup, { observationError: false, roles: {
+      host: { observed: 1, live: 0, ended: 0, unknown: 1 },
+      supervisor: { observed: 0, live: 0, ended: 0, unknown: 0 },
+      provider: { observed: 2, live: 0, ended: 1, unknown: 1 },
+      wrapper: { observed: 1, live: 0, ended: 1, unknown: 0 },
+      cli: { observed: 1, live: 1, ended: 0, unknown: 0 }
+    } });
+    assert.equal(safeText.includes(key), false);
+    assert.equal(safeText.includes('network connection reset'), false);
+  }
+  await fs.writeFile(path.join(artifacts, 'first-failure-process.json'), JSON.stringify({ error: key, entries: [
+    { platform: 'win32', role: 'cli', active: true, hasExited: true, exitConfirmed: true, exitCode: 0 },
+    { platform: 'win32', role: 'wrapper', active: false, hasExited: false, exitConfirmed: false,
+      observationUnknown: false, exitCode: null },
+    { platform: 'win32', role: 'provider', active: false, state: 'Z', observationUnknown: true },
+    { role: 'cli', active: false, state: 'Z' }
+  ] }));
+  const beforeWindowsDirectory = path.join(root, 'before-cleanup-windows');
+  await writeAgentCandidateCIReport({ ...options, directory: beforeWindowsDirectory, scenarios: [scenario], failed: true,
+    input: { platform: 'win32' } });
+  const beforeWindowsText = await fs.readFile(path.join(beforeWindowsDirectory, 'summary.json'), 'utf8');
+  const beforeWindows = JSON.parse(beforeWindowsText).scenarios[0].processObservation.beforeCleanup;
+  assert.equal(beforeWindows.observationError, true);
+  assert.deepEqual(beforeWindows.roles.cli, { observed: 2, live: 0, ended: 1, unknown: 1 });
+  assert.deepEqual(beforeWindows.roles.wrapper, { observed: 1, live: 1, ended: 0, unknown: 0 });
+  assert.deepEqual(beforeWindows.roles.provider, { observed: 1, live: 0, ended: 0, unknown: 1 });
+  assert.equal(beforeWindowsText.includes(key), false);
+
+  const genericFields = ['attempted', 'newHost', 'sameRuntime', 'sameWorkspace', 'sameUserData', 'persistedNodeLoaded',
+    'stoppedNodeRetained', 'stateRetained', 'sequenceRetained', 'freshPage', 'pageBufferMatched',
+    'pageGeometryMatched', 'noNewExecution', 'cleanupComplete'];
+  const genericReport = { schemaVersion: 2, pass: true,
+    ...Object.fromEntries(genericFields.map(field => [field, true])), raw: key };
+  await fs.writeFile(path.join(artifacts, 'result.json'), JSON.stringify({ pass: true }));
+  await fs.writeFile(path.join(stopArtifacts, 'completed.json'), JSON.stringify({ savedNode: {
+    metadata: { agent: { serializedTerminalState: { data: key } } } } }));
+  for (const [index, entry] of [
+    { first: { reopenRequired: true, reopenHandoffReady: true }, reopen: genericReport, pass: true },
+    { first: { reopenRequired: true, reopenHandoffReady: true }, reopen: reopenReport, pass: false },
+    { first: { reopenRequired: false, reopenHandoffReady: false }, reopen: genericReport, pass: false },
+    { first: {}, reopen: genericReport, pass: false },
+    { first: { reopenRequired: true, reopenHandoffReady: true }, reopen: { ...genericReport, pageBufferMatched: false }, pass: false },
+    { first: { reopenRequired: true, reopenHandoffReady: true }, reopen: null, pass: false }
+  ].entries()) {
+    await fs.writeFile(path.join(stopArtifacts, 'result.json'), JSON.stringify({ schemaVersion: 2, pass: true, ...entry.first }));
+    await fs.writeFile(path.join(reopenDir, 'reopen-result.json'), JSON.stringify(entry.reopen));
+    const target = path.join(root, `generic-reopen-${index}`);
+    await writeAgentCandidateCIReport({ ...options, directory: target });
+    const safeText = await fs.readFile(path.join(target, 'summary.json'), 'utf8');
+    const report = JSON.parse(safeText);
+    const row = report.scenarios.find(value => value.name === stopped.name);
+    assert.equal(report.pass, entry.pass, `Generic reopen ${index}`);
+    assert.equal(row.pass, entry.pass);
+    if (index === 0) {
+      assert.equal(row.snapshotReopen.schemaVersion, 2);
+      assert.equal(row.snapshotReopen.required, true);
+      assert.equal(row.snapshotReopen.emptyStateRetained, null);
+      assert.equal(row.snapshotReopen.pageCursorOrigin, null);
+      assert.equal(row.snapshotReopen.pageBufferMatched, true);
+    }
+    assert.equal(safeText.includes(key), false);
+  }
   console.log('Agent candidate CI report: fixed fields, missing evidence, failed run, and secret refusal passed.');
 } finally {
   await fs.rm(root, { recursive: true, force: true });

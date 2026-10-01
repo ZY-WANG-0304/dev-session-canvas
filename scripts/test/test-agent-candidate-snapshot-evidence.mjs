@@ -9,7 +9,7 @@ const clone = value => structuredClone(value);
 const write = (terminal, text) => new Promise(resolve => terminal.write(text, resolve));
 const frame = { surface: 'panel', mode: 'active', generation: 1, frameId: 'f1' };
 
-async function fixture({ blank = false, resize = false } = {}) {
+async function fixture({ blank = false, resize = false, outputText = 'VISIBLE BEFORE RESET' } = {}) {
   const terminal = new Terminal({ cols: 40, rows: 5, scrollback: 10000, allowProposedApi: true });
   const addon = new SerializeAddon();
   terminal.loadAddon(addon);
@@ -28,7 +28,7 @@ async function fixture({ blank = false, resize = false } = {}) {
       payload: { nodeId: 'n1', executionSessionId: 'e1', outputStartSequence: start, outputSequence: sequence, chunk: text } });
   };
   try {
-    await output('VISIBLE BEFORE RESET');
+    await output(outputText);
     if (resize) {
       terminal.resize(32, 4);
       sequence += 1;
@@ -212,8 +212,42 @@ assert.equal(eligible(blankEvidence), true, 'Complete output followed by a legal
 assert.equal(eligible(resizedEvidence), true, 'Only dimensions may differ before the independent resize comparison.');
 assert.equal(nonemptyEligible(nonemptyEvidence), true, 'A valid nonempty snapshot stop is eligible for a second Host.');
 assert.equal(nonemptyEligible({ ...nonemptyEvidence, pageGeometryMatched: false, pageVisibleMatched: false,
-  savedMatchesPage: false, replayMatchesPage: false }), true,
-  'The original page projection does not replace the required second-Host check.');
+  savedMatchesPage: false, replayMatchesPage: false }), false,
+  'A second Host cannot excuse failed original-page checks.');
+assert.equal(nonemptyEligible(await collectSnapshotEvidence(wrongCursor)), false);
+const nonemptyReflow = await fixture({ outputText: 'abcdefghij\r\nTAIL\r\n' });
+Object.assign(nonemptyReflow.finalProbe.nodes[0], { terminalCols: 4, terminalRows: 6,
+  terminalCursorX: 0, terminalCursorY: 4, terminalViewportY: 0,
+  terminalVisibleLines: ['abcd', 'efgh', 'ij', 'TAIL', '', ''] });
+nonemptyReflow.assertBuffer = async expected => JSON.stringify(expected) === JSON.stringify(['abcd', 'efgh', 'ij', 'TAIL']);
+const nonemptyReflowEvidence = await collectSnapshotEvidence(nonemptyReflow);
+const reflowEligible = evidence => acceptsSnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
+  savedNode: nonemptyReflow.savedNode, evidence });
+assert.equal(nonemptyReflowEvidence.pageGeometryMatches.cursorY, false,
+  'Independent reflow may change the cursor without copying the observed cursor.');
+assert.equal(nonemptyReflowEvidence.savedMatchesPage, false);
+assert.equal(nonemptyReflowEvidence.replayMatchesSaved, true);
+assert.equal(nonemptyReflowEvidence.resizedSavedMatchesPage, true);
+assert.equal(reflowEligible(nonemptyReflowEvidence), true);
+for (const field of ['pageGeometryMatched', 'pageVisibleMatched', 'pageBufferMatched', 'savedMatchesPage', 'replayMatchesPage']) {
+  assert.equal(nonemptyEligible({ ...nonemptyEvidence, [field]: false }), false, field);
+}
+for (const field of ['resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched',
+  'resizedSavedPageBufferMatched', 'resizedSavedMatchesPage']) {
+  for (const invalid of [false, null, undefined]) {
+    assert.equal(reflowEligible({ ...nonemptyReflowEvidence, [field]: invalid }), false, field);
+  }
+}
+for (const [name, mutate] of [
+  ['cursor', value => { value.finalProbe.nodes[0].terminalCursorY = 2; }],
+  ['viewport', value => { value.finalProbe.nodes[0].terminalViewportY = 1; }],
+  ['visible content', value => { value.finalProbe.nodes[0].terminalVisibleLines[0] = 'incorrect'; }],
+  ['unknown buffer', value => { value.assertBuffer = async () => { throw new Error('buffer unavailable'); }; }]
+]) {
+  const invalid = { ...nonemptyReflow, finalProbe: clone(nonemptyReflow.finalProbe) };
+  mutate(invalid);
+  assert.equal(reflowEligible(await collectSnapshotEvidence(invalid)), false, name);
+}
 for (const field of ['savedNodeMatched', 'savedStatePresent', 'savedStateValid', 'readerApplied', 'readerLifecycleMatched',
   'sequenceMatched', 'helpProbePresent', 'finalProbePresent', 'pageBufferMatched', 'replayComplete',
   'replayMatchesSaved', 'publishedFinalMatchesSaved']) {
@@ -243,4 +277,4 @@ for (const patch of [{ mode: 'live-runtime' }, { lifecycle: 'natural' }, { saved
   assert.equal(acceptsEmptySnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
     savedNode: blank.savedNode, evidence: blankEvidence, ...patch }), false);
 }
-console.log('Agent snapshot evidence: strict replay, independent resize, and complete empty-stop acceptance checks passed.');
+console.log('Agent snapshot evidence: strict replay, independent reflow, and original-page empty/nonempty stop checks passed.');

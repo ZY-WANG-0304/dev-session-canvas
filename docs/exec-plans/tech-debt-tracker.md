@@ -28,6 +28,8 @@
 
 ## 技术债列表
 
+2026-10-02 当前 A2/A3/A4 补充：Linux `36917661214` 与 `36918349766` 在首场 natural 超时，后七场 not-run；通用 poll 位置与 cleanup 后状态不足以确认具体等待点或 CLI 已退出，按根因未定验收阻塞保留。本轮只修正重开 schema2 真实字段、首页面独立对账和已有第一现场脱敏摘要，定向验证后一次原矩阵取证；旧失败、非空 stop 原生未验、F-04 与最终准入不追认完成，不扩成诊断工具项目。
+
 2026-10-02 现代 runner 生产验收的具名矩阵已补齐：固定六资产 run `36906440380`（Ubuntu 24.04 x64/arm64、macOS 15 x64/arm64、Windows Server 2025 x64、Windows 11 ARM64）、macOS Product Provider `36906440973` 与 Windows Product Provider `36907160402` 均成功；Windows 真实 Agent `36906573764` 的 Codex `0.157.1`、Claude `2.1.280`、DeepSeek 八场全部通过，四个 natural 场景有实际响应/EOF，cleanup bindings/failures/forced/active 全为零。上述只关闭具名现代组合，不关闭 F-04/A1、全部 A5、默认准入或旧系统兼容；Node.js 20 弃用 annotation 与 macOS `ENTRYNOTSUPPORTED` artifact warning 保留且不阻塞。
 
 2026-10-02 macOS 真实 Agent 的两次具名 run 仍未决。`36906574728` 的 Codex 四场及 Claude live natural/stop 通过，但 `claude-snapshot-only-natural` 在 `tests/vscode-smoke/agent-candidate-tests.cjs:50` bounded poll 超时；唯一同输入重跑 `36909378525` 的 Codex 四场通过，但 `claude-live-runtime-natural` 在 `agent-candidate-tests.cjs:153` 未及时取得 execution identity，后续 Claude 场景未运行。静态核对确认第二次位置是 harness 在 xterm probe 后只读取一次 Host 消息的异步竞态，现已改为在原 30 秒窗口轮询带 identity 的 snapshot，未放宽产品断言；首轮 line 50 尺寸超时仍独立未决。两次前置认证/构建/runner 均通过、`failureClasses=[]`，没有凭据、native resource 或 cleanup failure；不把 harness 修正称为业务修复，也不无限重跑。既有成功 `36858502983` 与所有历史失败继续保留。

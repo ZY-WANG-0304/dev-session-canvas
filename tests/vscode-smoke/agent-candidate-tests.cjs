@@ -10,7 +10,7 @@ const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs
 const { AgentProcessObserver, executionEnded } = require('./agent-candidate-process-observer.cjs');
 const { hasLiveWindowsStartupChain } = require('./agent-candidate-windows-observer.cjs');
 const { invokeCLI, buildClaudeCandidateArguments } = require('./agent-candidate-cli.cjs');
-const { collectSnapshotEvidence, acceptsEmptySnapshotStop, acceptsSnapshotStop } = require('./agent-candidate-snapshot-evidence.cjs');
+const { collectSnapshotEvidence, acceptsSnapshotStop } = require('./agent-candidate-snapshot-evidence.cjs');
 const { runSnapshotReopen, runEmptySnapshotReopen } = require('./agent-candidate-reopen.cjs');
 const { resolveExecutionSessionSpawnSpec } = require('./agent-candidate-spawn-spec.cjs');
 const { resolveLegacyRuntimeSupervisorPaths,
@@ -73,40 +73,35 @@ function codexPath() {
 async function run() {
   config = JSON.parse(await fs.readFile(process.env.DEV_SESSION_CANVAS_AGENT_CANDIDATE_CONFIG, 'utf8'));
   assert(['linux', 'darwin', 'win32'].includes(process.platform));
-  if (config.stage === 'snapshot-reopen') return runSnapshotReopen({
-    config, hostPid: process.pid, workspaceFolders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) ?? [],
-    activate: async () => {
-      await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
-      await waitForCommand(vscode, 'devSessionCanvas.__test.getDebugState');
-    },
-    command,
-    openCanvas: () => vscode.commands.executeCommand(config.surface === 'editor'
-      ? 'devSessionCanvas.openCanvasInEditor' : 'devSessionCanvas.openCanvasInPanel'),
-    probe: id => poll('reopened Agent reader mounted', probe, value => value.nodes.some(node =>
-      node.nodeId === id && node.terminalCols > 1 && node.terminalRows > 0)),
-    assertBuffer: async (id, expectedLines) => {
-      await dom({ kind: 'assertExecutionTerminalBuffer', nodeId: id, expectedLines });
-      return true;
-    },
-    readJson: async file => JSON.parse(await fs.readFile(file, 'utf8')), writeJson
-  });
-  if (config.stage === 'empty-snapshot-reopen') return runEmptySnapshotReopen({
-    config, hostPid: process.pid, workspaceFolders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) ?? [],
-    activate: async () => {
-      await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
-      await waitForCommand(vscode, 'devSessionCanvas.__test.getDebugState');
-    },
-    command,
-    openCanvas: () => vscode.commands.executeCommand(config.surface === 'editor'
-      ? 'devSessionCanvas.openCanvasInEditor' : 'devSessionCanvas.openCanvasInPanel'),
-    probe: id => poll('reopened Agent reader mounted', probe, value => value.nodes.some(node =>
-      node.nodeId === id && node.terminalCols > 1 && node.terminalRows > 0)),
-    assertBuffer: async (id, expectedLines) => {
-      await dom({ kind: 'assertExecutionTerminalBuffer', nodeId: id, expectedLines });
-      return true;
-    },
-    readJson: async file => JSON.parse(await fs.readFile(file, 'utf8')), writeJson
-  });
+  if (['snapshot-reopen', 'empty-snapshot-reopen'].includes(config.stage)) {
+    const reopen = config.stage === 'snapshot-reopen' ? runSnapshotReopen : runEmptySnapshotReopen;
+    return reopen({
+      config, hostPid: process.pid, workspaceFolders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) ?? [],
+      activate: async () => {
+        await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
+        await waitForCommand(vscode, 'devSessionCanvas.__test.getDebugState');
+      },
+      command,
+      openCanvas: () => vscode.commands.executeCommand(config.surface === 'editor'
+        ? 'devSessionCanvas.openCanvasInEditor' : 'devSessionCanvas.openCanvasInPanel'),
+      probe,
+      settlePage: async verifyPage => {
+        let lastError;
+        try {
+          return await poll('reopened Agent snapshot applied', async () => {
+            try { await verifyPage(); return true; }
+            // Webview assertion failures arrive through VS Code as ordinary Error objects.
+            catch (error) { lastError = error; return false; }
+          }, value => value === true);
+        } catch (error) { error.cause = lastError; throw error; }
+      },
+      assertBuffer: async (id, expectedLines) => {
+        await dom({ kind: 'assertExecutionTerminalBuffer', nodeId: id, expectedLines });
+        return true;
+      },
+      readJson: async file => JSON.parse(await fs.readFile(file, 'utf8')), writeJson
+    });
+  }
   if (config.authOnly === true) return runAuthenticationOnly();
   assert(['codex', 'claude'].includes(config.provider));
   assert(['natural', 'stop'].includes(config.lifecycle));
@@ -322,7 +317,7 @@ async function run() {
     }
     await writeJson('process-observations.json', observer.result());
     await writeJson('actions.json', actions);
-    await writeJson('result.json', { name: config.name, pass: !failure, error: failure ? String(failure) : undefined,
+    await writeJson('result.json', { schemaVersion: 2, name: config.name, pass: !failure, error: failure ? String(failure) : undefined,
       plannedModelTurns: config.lifecycle === 'natural' ? 1 : 0,
       cliObserved: observer.result().entries.some(entry => entry.role === 'cli'), naturalResponseVerified,
       reopenRequired, reopenHandoffReady,
@@ -581,7 +576,11 @@ async function archive(prefix, extra) {
   await writeJson(`${prefix}.json`, extra);
   for (const [name, read] of [['snapshot', snapshot], ['probe', probe], ['events', () => command('getDiagnosticEvents')],
     ['messages', () => command('getHostMessages')], ['runtime', () => command('getRuntimeSupervisorState')]]) {
-    try { await writeJson(`${prefix}-${name}.json`, await read()); }
+    try {
+      const value = await read();
+      await writeJson(`${prefix}-${name}.json`, value);
+      if (name === 'messages') await fs.writeFile(path.join(config.artifactDir, `${prefix}-output.txt`), collectOutput(value));
+    }
     catch (error) { await writeJson(`${prefix}-${name}-error.json`, { error: String(error) }); }
   }
   await writeJson(`${prefix}-process.json`, observer.result());

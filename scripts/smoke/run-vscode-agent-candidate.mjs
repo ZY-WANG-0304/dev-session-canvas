@@ -225,8 +225,8 @@ for (const [index, scenario] of scenarios.entries()) {
             extensionTestsEnv: { DEV_SESSION_CANVAS_AGENT_CANDIDATE_CONFIG: reopenConfigPath } });
         } catch (error) {
           // Keep a fixed, non-secret second-stage outcome even when the Host never reaches the test module.
-          await fs.writeFile(path.join(artifactDir, 'reopen-result.json'), `${JSON.stringify({ schemaVersion: 1,
-            pass: false, attempted: true, ...Object.fromEntries(reopenHelpers.REOPEN_CHECKS
+          await fs.writeFile(path.join(artifactDir, 'reopen-result.json'), `${JSON.stringify({ schemaVersion: 2,
+            pass: false, attempted: true, ...Object.fromEntries(reopenHelpers.GENERIC_REOPEN_CHECKS
               .filter(key => key !== 'attempted').map(key => [key, false])) })}\n`);
           throw error;
         }

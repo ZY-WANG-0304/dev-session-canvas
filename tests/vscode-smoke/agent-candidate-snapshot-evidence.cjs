@@ -282,9 +282,14 @@ function acceptsSnapshotStop({ mode, lifecycle: completion, savedNode, evidence:
       !integer(value.replayOutputMessages) || value.replayOutputMessages === 0 ||
       !integer(value.helpNonEmptyLines) || value.helpNonEmptyLines === 0 ||
       !integer(value.messageCount) || value.messageCount === 0 || value.messageCount >= 200) return false;
-  // The original page projection is recorded but may be stale at stop. The second Host
-  // must prove the saved snapshot itself renders correctly, so page equality is checked there.
-  return true;
+  const direct = ['pageGeometryMatched', 'pageVisibleMatched', 'pageBufferMatched', 'savedMatchesPage', 'replayMatchesPage']
+    .every(key => value[key] === true) && ['cols', 'rows'].every(key => value.pageGeometryMatches?.[key] === true);
+  const resized = ['cols', 'rows'].every(key => typeof value.pageGeometryMatches?.[key] === 'boolean') &&
+    ['cols', 'rows'].some(key => value.pageGeometryMatches[key] === false) &&
+    ['resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched', 'resizedSavedPageBufferMatched',
+      'resizedSavedMatchesPage'].every(key => value[key] === true);
+  // A fresh Host checks persistence separately; it cannot excuse incorrect rendering on the original page.
+  return direct || resized;
 }
 
 module.exports = { collectSnapshotEvidence, acceptsEmptySnapshotStop, acceptsSnapshotStop };

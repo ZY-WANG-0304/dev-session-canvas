@@ -23,6 +23,44 @@ const unconfirmedActions = new Set(['original-handle-signal-unconfirmed', 'signa
 const cleanupActions = new Set([...signalledActions, ...unconfirmedActions, 'unknown-identity-no-signal',
   'already-exited', 'already-absent-no-signal', 'already-ended-no-signal',
   'identity-changed-no-signal', 'identity-unconfirmed-no-signal']);
+const pollStages = new Map([
+  ['Agent node created', 'agent-node-created'],
+  ['real Agent live identity', 'agent-live-identity'],
+  ['real xterm reader mounted', 'xterm-reader-mounted'],
+  ['real Agent execution identity', 'agent-execution-identity'],
+  ['Agent final product state', 'agent-final-product-state'],
+  ['same Agent reader settled', 'agent-reader-settled'],
+  ['owned CLI and wrapper no longer execute', 'owned-execution-ended'],
+  ['real CLI interactive readiness', 'cli-interactive-readiness'],
+  ['actual xterm resize', 'xterm-resize'],
+  ['reopened Agent reader mounted', 'reopened-agent-reader-mounted'],
+  ['reopened Agent snapshot applied', 'reopened-agent-snapshot-applied']
+].map(([label, stage]) => [`Error: Timed out: ${label}`, stage]));
+const processRoles = ['host', 'supervisor', 'provider', 'wrapper', 'cli'];
+const unixLiveStates = new Set(['R', 'S', 'D', 'T', 't', 'K', 'W', 'P', 'I', 'U']);
+
+function beforeCleanupProcesses(value, platform) {
+  if (!Array.isArray(value?.entries)) return null;
+  const roles = Object.fromEntries(processRoles.map(role => [role, { observed: 0, live: 0, ended: 0, unknown: 0 }]));
+  for (const entry of value.entries) {
+    if (!processRoles.includes(entry?.role)) continue;
+    const counts = roles[entry?.role];
+    counts.observed += 1;
+    let state = 'unknown';
+    if (entry.observationUnknown !== true) {
+      if (platform === 'win32' && entry.platform === 'win32') {
+        if (windowsExitConfirmed(entry)) state = 'ended';
+        else if (entry.observationUnknown === false && entry.hasExited === false &&
+          entry.exitConfirmed === false && entry.exitCode === null) state = 'live';
+      } else if (['linux', 'darwin'].includes(platform)) {
+        if (entry.active === false || (entry.active === true && ['Z', 'X'].includes(entry.state))) state = 'ended';
+        else if (entry.active === true && unixLiveStates.has(entry.state)) state = 'live';
+      }
+    }
+    counts[state] += 1;
+  }
+  return { observationError: !!value.error, roles };
+}
 
 function cleanupSignalSummary(actions) {
   if (!Array.isArray(actions)) return { forcedSignals: null, unconfirmedSignals: null, cleanupActionKinds: null };
@@ -94,13 +132,17 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
         processEntries.some(entry => entry.role === 'wrapper' && entry.wrapperKind === 'node'));
     const completed = await read('completed');
     const reopen = await read('reopen/reopen-result');
-    const reopenRequired = result?.reopenRequired === true || result?.reopenHandoffReady === true ||
+    const currentSnapshotStop = result?.schemaVersion === 2 && scenario.name.endsWith('-snapshot-only-stop');
+    const reopenRequired = currentSnapshotStop || result?.reopenRequired === true || result?.reopenHandoffReady === true ||
       (scenario.name.endsWith('-snapshot-only-stop') && completed?.savedNode?.metadata?.agent?.serializedTerminalState?.data === '');
     const reopenDecisionValid = (result?.reopenRequired === undefined || typeof result.reopenRequired === 'boolean') &&
       (result?.reopenHandoffReady === undefined || typeof result.reopenHandoffReady === 'boolean') &&
-      !(result?.reopenHandoffReady === true && result?.reopenRequired !== true);
-    const reopenPassed = reopenHelpers.reopenReportPassed(reopen);
+      !(result?.reopenHandoffReady === true && result?.reopenRequired !== true) &&
+      (!currentSnapshotStop || (result.reopenRequired === true && result.reopenHandoffReady === true));
+    const reopenPassed = reopenHelpers.reopenReportPassed(reopen,
+      currentSnapshotStop ? { requireSchemaVersion: 2 } : undefined);
     const firstFailure = await read('first-failure');
+    const failureProcesses = await read('first-failure-process');
     const failureSnapshot = await read('first-failure-snapshot');
     const events = await read('completed-events') ?? await read('first-failure-events');
     const remainder = await read('remaining-resources');
@@ -118,8 +160,15 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
       ((event.kind === 'runtime/terminalReadSettled' && event.detail.sessionId === executionId) ||
       (event.kind === 'execution/localTerminalReaderSettled' && event.detail.executionSessionId === executionId)));
     let rawOutput;
+    let outputSource = null;
     try { rawOutput = await fs.readFile(path.join(artifacts, 'host-received-output.txt')); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (rawOutput !== undefined) outputSource = 'host-received-output';
+    else {
+      try { rawOutput = await fs.readFile(path.join(artifacts, 'first-failure-output.txt')); }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (rawOutput !== undefined) outputSource = 'first-failure-output';
+    }
     const records = rawOutput === undefined ? undefined : stripVTControlCharacters(rawOutput.toString('utf8'))
       .split(/\r?\n/).flatMap(line => {
         try { const record = JSON.parse(line); return record && typeof record === 'object' ? [record] : []; }
@@ -136,6 +185,7 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
       pass: !reopenDecisionValid || (reopenRequired && !reopenPassed) ? false : boolean(result?.pass),
       cliObserved: boolean(result?.cliObserved),
       naturalResponseVerified: boolean(result?.naturalResponseVerified),
+      pollStage: pollStages.get(firstFailure?.error) ?? null,
       failureLocation: failureLocation ? { file: 'agent-candidate-tests.cjs',
         line: Number(failureLocation[1]), column: Number(failureLocation[2]) } : null,
       failureState: failureNode ? {
@@ -155,12 +205,17 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
         ? snapshotEvidenceSummary(await read('snapshot-evidence')) : null,
       snapshotReopen: scenario.name.endsWith('-snapshot-only-stop') ? {
         required: reopenDecisionValid ? reopenRequired : null, reportPresent: reopen !== undefined, pass: reopenPassed,
-        ...Object.fromEntries([...reopenHelpers.REOPEN_CHECKS, 'stateRetained', 'pageBufferMatched',
-          'pageGeometryMatched'].map(key => [key, boolean(reopen?.[key])]))
+        schemaVersion: [1, 2].includes(reopen?.schemaVersion) ? reopen.schemaVersion : null,
+        ...Object.fromEntries([...new Set([...reopenHelpers.REOPEN_CHECKS, ...reopenHelpers.GENERIC_REOPEN_CHECKS])]
+          .map(key => [key, boolean(reopen?.[key])]))
       } : null,
       cliEvidence: {
+        recordCount: records?.length ?? null,
+        threadStarted: records ? records.some(record => record.type === 'thread.started') : null,
+        turnStarted: records ? records.some(record => record.type === 'turn.started') : null,
         turnCompleted: records ? records.some(record => record.type === 'turn.completed') : null,
         turnFailed: records ? records.some(record => record.type === 'turn.failed') : null,
+        errorObserved: records ? records.some(record => record.type === 'error' || record.item?.type === 'error') : null,
         expectedResponseInOutput: records && typeof scenario.nonce === 'string'
           ? records.some(record => (record.item?.type === 'agent_message' && typeof record.item.text === 'string' &&
             record.item.text.trim() === scenario.nonce) || (record.type === 'result' && record.is_error === false &&
@@ -173,6 +228,7 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
       sourceDisposition: dispositions.has(source?.detail?.sourceDisposition?.kind)
         ? source.detail.sourceDisposition.kind : null,
       processObservation: {
+        beforeCleanup: beforeCleanupProcesses(failureProcesses, input?.platform),
         failureKinds: Array.isArray(processes?.failures) ? processes.failures.map(entry =>
           observationFailures.has(entry?.kind) ? entry.kind : 'unclassified') : null,
         failedOperations: Array.isArray(processes?.samples) ? processes.samples.filter(entry => entry?.complete !== true)
@@ -193,7 +249,7 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
           ? processEntries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role) &&
             !windowsExitConfirmed(entry)).length : null },
       diagnosticClasses: classifyFailure(`${result?.error ?? ''}\n${rawOutput?.toString('utf8') ?? ''}`),
-      receivedOutput: rawOutput ? { bytes: rawOutput.length,
+      receivedOutput: rawOutput ? { source: outputSource, bytes: rawOutput.length,
         sha256: createHash('sha256').update(rawOutput).digest('hex') } : null
     });
   }

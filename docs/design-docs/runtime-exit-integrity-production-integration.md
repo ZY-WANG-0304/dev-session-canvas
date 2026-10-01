@@ -2333,4 +2333,8 @@ macOS 真实 Agent 的第一次 run `36906574728` 与唯一允许的同输入重
 
 修订记录（2026-10-02，非空 snapshot stop 重开验收）：snapshot-only 的显式 stop 不再按保存内容是否为空选择是否重开。首 Host 继续要求 reader/save/replay 证据；空快照保留原页面 origin 断言，非空快照由新 Host 严格对账完整保存 buffer、可见行、尺寸、光标、viewport、buffer 类型、节点序列和无新执行。测试层 helper、CI 摘要与 fixture 已通过定向回归，未修改业务实现；既有现代 runner 非空 stop 结果不追认通过，新真实 runner 复验待执行，A2/A3 责任保持开放。
 
-后续同一提交 `30f421b3` 的 Linux 真实 Agent run `36917661214` 与同输入复跑 `36918349766` 都在首场 `codex-live-runtime-natural` 超时，CLI 已观察但节点仍为 `waiting-input`/`liveSession=true`，cleanup 责任为零；后续场景没有执行。该失败按 Agent 生命周期/服务时序阻塞登记，不归因新重开 helper，不再自动重跑；新的非空 snapshot stop + reopen 仍没有真实证据。
+后续同一提交 `30f421b3` 的 Linux 真实 Agent run `36917661214` 与同输入复跑 `36918349766` 都在首场 `codex-live-runtime-natural` 超时，CLI 曾被观察但节点仍为 `waiting-input`/`liveSession=true`，cleanup 后责任为零，后七场没有执行。既有通用 poll 行号不定位具体阶段，输出文件只在终态通过后写出，cleanup 后零责任不证明失败前 CLI 已退出；因此是根因未定的验收阻塞，不是已确认 Agent 生命周期/服务或 Host 传播缺陷。新的非空 snapshot stop + reopen 仍没有真实证据。
+
+§52 本轮判定修正：`agent-candidate-reopen.cjs` 的 schema2 明确表达 state/buffer/geometry 匹配，保留 schema1 历史阅读但不将其当新验收；`agent-candidate-snapshot-evidence.cjs` 保持空态断言，并让非空 stop 首页面也独立通过直接或合法 resize 比较。`agent-candidate-tests.cjs` 在原 30 秒内等待完整重开页面应用，以保存尺寸 hydrate 后按页面尺寸独立 resize，不取实际光标/正文作期望。新报告不能把匹配写成 empty/origin/normal，重开不能掩盖首页面不匹配，非空行 buffer/可见行/几何对账不宣称逐 cell 等价。
+
+下一原生输入限定为一次原 Linux 八场矩阵，先通过定向测试和独立审核。`agent-candidate-ci-report.mjs` 只从现有第一现场导出白名单 timeout stage、清理前按角色进程计数、已有 parser 的 CLI 事实；driver 复用 `collectOutput()` 写私有第一现场输出，报告不上传原文/错误/凭据。缺少历史字段保持 null，旧失败不回写。不加入场景选择框架、额外诊断矩阵、超时放宽或业务猜修；以首败具名证据决定下一动作。

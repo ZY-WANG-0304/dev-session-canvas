@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const { runSnapshotReopen, runEmptySnapshotReopen, reopenReportPassed, completeEmptySnapshotReopen, REOPEN_CHECKS } =
+const { runSnapshotReopen, runEmptySnapshotReopen, reopenReportPassed, completeSnapshotReopen,
+  completeEmptySnapshotReopen, REOPEN_CHECKS, GENERIC_REOPEN_CHECKS } =
   require('../../tests/vscode-smoke/agent-candidate-reopen.cjs');
 
-function fixture({ nonEmpty = false } = {}) {
+function fixture({ nonEmpty = false, reflow = false } = {}) {
   const node = { id: 'n1', kind: 'agent', status: 'stopped', metadata: { agent: {
     persistenceMode: 'snapshot-only', liveSession: false, outputSequence: 2,
-    serializedTerminalState: { format: 'xterm-serialize-v1', data: nonEmpty ? 'hello\r\nworld' : '', outputSequence: 2, viewportY: 0 }
+    serializedTerminalState: { format: 'xterm-serialize-v1',
+      data: reflow ? 'abcdefghij\r\nTAIL\r\n' : nonEmpty ? 'hello\r\nworld' : '', outputSequence: 2, viewportY: 0 }
   } } };
   const handoff = { schemaVersion: 1, hostPid: 101, nodeId: 'n1', workspacePath: '/workspace',
     runtimeDir: '/runtime', userDataDir: '/user-data', snapshotPath: '/user-data/state.json',
@@ -27,11 +29,13 @@ function fixture({ nonEmpty = false } = {}) {
     terminalCursorX: nonEmpty ? 5 : 0, terminalCursorY: nonEmpty ? 1 : 0, terminalViewportY: 0,
     terminalBufferType: 'normal', terminalVisibleLines: nonEmpty
       ? ['hello', 'world', ...Array(18).fill('')] : Array(20).fill('') }] };
+  if (reflow) Object.assign(page.nodes[0], { terminalCols: 4, terminalRows: 6,
+    terminalCursorX: 0, terminalCursorY: 4, terminalVisibleLines: ['abcd', 'efgh', 'ij', 'TAIL', '', ''] });
   const calls = [];
   const reports = {};
   let reset = false;
   const value = { handoff, state, persisted, runtime, diagnostics, events, messages, page, calls, reports,
-    bufferEmpty: !nonEmpty, expectedLines: nonEmpty ? ['hello', 'world'] : [],
+    bufferEmpty: !nonEmpty, expectedLines: reflow ? ['abcd', 'efgh', 'ij', 'TAIL'] : nonEmpty ? ['hello', 'world'] : [],
     cleanupError: undefined, activationError: undefined };
   value.options = { config: { mode: 'snapshot-only', lifecycle: 'stop', surface: 'panel',
     workspacePath: '/workspace', runtimeDir: '/runtime', userDataDir: '/user-data', reopenHandoffPath: '/handoff.json' },
@@ -93,17 +97,53 @@ assert.equal(reopenReportPassed(nonEmpty.reports['reopen-result.json']), true);
 assert.equal(nonEmpty.reports['reopen-result.json'].stateRetained, true);
 assert.equal(nonEmpty.reports['reopen-result.json'].pageBufferMatched, true);
 assert.equal(nonEmpty.reports['reopen-result.json'].pageGeometryMatched, true);
+assert.equal(nonEmpty.reports['reopen-result.json'].schemaVersion, 2);
+for (const key of ['emptyStateRetained', 'pageBufferEmpty', 'pageCursorOrigin', 'pageViewportOrigin', 'pageNormalBuffer']) {
+  assert.equal(Object.hasOwn(nonEmpty.reports['reopen-result.json'], key), false, `Do not fabricate legacy fact ${key}.`);
+}
+const resized = fixture({ nonEmpty: true, reflow: true });
+await runSnapshotReopen(resized.options);
+assert.equal(reopenReportPassed(resized.reports['reopen-result.json'], { requireSchemaVersion: 2 }), true);
+const delayed = fixture({ nonEmpty: true });
+const appliedVisibleLines = [...delayed.page.nodes[0].terminalVisibleLines];
+delayed.page.nodes[0].terminalVisibleLines.fill('');
+delayed.options.settlePage = async verifyPage => {
+  await assert.rejects(verifyPage(), /pageBufferMatched/, 'A mounted terminal is not evidence that its write completed.');
+  delayed.page.nodes[0].terminalVisibleLines = appliedVisibleLines;
+  await verifyPage();
+};
+await runSnapshotReopen(delayed.options);
+assert.equal(delayed.calls.filter(name => name === 'probe').length, 2);
+assert.equal(reopenReportPassed(delayed.reports['reopen-result.json']), true);
 assert(success.calls.indexOf('getDebugState') < success.calls.indexOf('resetState'));
 assert(success.calls.indexOf('assertBuffer') < success.calls.indexOf('resetState'));
 assert(success.calls.indexOf('read:/user-data/root.json') < success.calls.indexOf('dumpHostDiagnostics'));
 assert.equal(success.calls.filter(name => name === 'resetState').length, 1);
-for (const name of REOPEN_CHECKS) {
+for (const name of GENERIC_REOPEN_CHECKS) {
   for (const invalid of [false, null, undefined, 'true']) {
     assert.equal(reopenReportPassed({ ...success.reports['reopen-result.json'], [name]: invalid }), false, name);
   }
 }
 assert.equal(reopenReportPassed(undefined), false);
-assert.equal(reopenReportPassed({ ...success.reports['reopen-result.json'], schemaVersion: 2 }), false);
+assert.equal(reopenReportPassed({ ...success.reports['reopen-result.json'], schemaVersion: 3 }), false);
+const legacyReport = { schemaVersion: 1, pass: true, ...Object.fromEntries(REOPEN_CHECKS.map(key => [key, true])) };
+assert.equal(reopenReportPassed(legacyReport), true, 'Historical empty-snapshot reports remain readable.');
+assert.equal(reopenReportPassed(legacyReport, { requireSchemaVersion: 2 }), false);
+assert.equal(reopenReportPassed({ ...legacyReport, schemaVersion: 2 }), false, 'Schema 2 cannot omit generic checks.');
+for (const name of REOPEN_CHECKS) assert.equal(reopenReportPassed({ ...legacyReport, [name]: false }), false, name);
+
+for (const [name, mutate] of [
+  ['missing saved dimensions', value => { delete value.handoff.savedCols; }],
+  ['wrong reflow cursor', value => { value.page.nodes[0].terminalCursorY = 2; }],
+  ['wrong reflow viewport', value => { value.page.nodes[0].terminalViewportY = 1; }],
+  ['wrong visible content', value => { value.page.nodes[0].terminalVisibleLines[0] = 'different'; }],
+  ['wrong hidden content', value => { value.expectedLines.push('unexpected'); }]
+]) {
+  const value = fixture({ nonEmpty: true, reflow: true });
+  mutate(value);
+  await assert.rejects(runSnapshotReopen(value.options), undefined, name);
+  assert.equal(reopenReportPassed(value.reports['reopen-result.json']), false, name);
+}
 
 for (const [name, mutate] of [
   ['same host', value => { value.options.hostPid = 101; }],
@@ -147,7 +187,7 @@ const launched = [];
 const finish = firstResult => completeEmptySnapshotReopen({ firstResult,
   launch: async () => { launched.push('launch'); }, readReport: async () => success.reports['reopen-result.json'] });
 assert.equal(await finish({ pass: true, reopenRequired: false, reopenHandoffReady: false }), false);
-assert.equal(launched.length, 0, 'Nonempty/natural scenarios must not launch another Host.');
+assert.equal(launched.length, 0, 'Scenarios without a required reopen must not launch another Host.');
 assert.equal(await finish({ pass: true, reopenRequired: true, reopenHandoffReady: true }), true);
 assert.equal(launched.length, 1);
 for (const firstResult of [undefined, { pass: false, reopenRequired: true, reopenHandoffReady: true },
@@ -160,4 +200,11 @@ await assert.rejects(completeEmptySnapshotReopen({ firstResult: { pass: true, re
   launch: async () => { throw new Error('Host launch failed'); }, readReport: async () => {
     assert.fail('Do not read a stale report after a failed Host launch.');
   } }), /Host launch failed/);
-console.log('Agent empty-snapshot reopen: fresh Host load, empty full buffer, no execution, strict report and cleanup checks passed.');
+const currentCompletion = report => completeSnapshotReopen({
+  firstResult: { pass: true, reopenRequired: true, reopenHandoffReady: true },
+  launch: async () => {}, readReport: async () => report });
+assert.equal(await currentCompletion(nonEmpty.reports['reopen-result.json']), true);
+await assert.rejects(currentCompletion(legacyReport), /reopen report/i);
+assert.equal(await completeEmptySnapshotReopen({ firstResult: { pass: true, reopenRequired: true, reopenHandoffReady: true },
+  launch: async () => {}, readReport: async () => legacyReport }), true);
+console.log('Agent snapshot reopen: schema 2, independent reflow, complete page retry, legacy reading and cleanup checks passed.');
