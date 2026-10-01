@@ -174,6 +174,7 @@
 - 实际主进程退出后普通后代继续输出仅作 PTY 生命周期、EOF、挂断与取消诊断，不以收到它们的未来输出作为独立产品验收门槛。若主动取消或触及期限，不能伪装成完整 EOF；这不豁免主进程尾部及既有内容的收尾要求。
 - 启动包装程序与实际 Agent CLI 分开记录身份和退出事件；真实启动链的生命周期另行验证，不能用通用后代实验代替真实 provider 证据。
 - 当前读者读完或取消后回收临时资源，Runtime 重开仍无 completed 正文且不自动执行；旧 live session 保持原 Supervisor 绑定，升级 Host 不替旧实现补造完整性保证。
+- `snapshot-only` 的显式 `stop` 若保存了非空终端快照，必须在新 Host 重开阶段核对保存内容、可见行、尺寸、光标、viewport、buffer 类型、节点序列及无新执行；不能因首 Host 已完成保存和 replay 就跳过页面等价验收。空快照继续保留既有空页面 origin 断言。
 - Linux/macOS/Windows 原生 PTY、实际 VS Code/Electron 与 packaged 路径分别留证；Windows 记录 builtin/DLL 路径，真实 provider 与 fake-provider 证据分开。本次只要求上述现代 runner 作为验收输入；旧系统环境缺失不阻塞本次重构，但现代 runner 结果不得宣称旧系统兼容。
 
 冻结的后代实验、原始断言和失败结果继续保留，不修改旧测试求绿，也不追认历史失败为通过。macOS 后代场景失败不能单独证明 Agent / Terminal 产品退出缺陷，亦不能据此宣布 macOS 全部验收通过；产品阻塞与底层诊断的重新分类及理由见退出完整性设计第 18 节。
