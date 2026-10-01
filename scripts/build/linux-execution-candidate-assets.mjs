@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { LINUX_EXECUTION_EXPORTS, NODE_PTY_UNIX_SHA256, patchLinuxExecutionProvider } from './linux-execution-provider-patch.mjs';
+import { readLinuxExecutionRequirements } from './linux-execution-elf.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const ownerFile = path.join(root, 'extensions/vscode/dev-session-canvas/native/linux-execution-owner.h');
@@ -13,6 +14,10 @@ const sharedOwnerFile = path.join(root, 'extensions/vscode/dev-session-canvas/na
 const patchFile = fileURLToPath(new URL('./linux-execution-provider-patch.mjs', import.meta.url));
 const profile = 'linux-owner-v1-candidate';
 export const CANDIDATE_ASSET_RELATIVE_PATH = 'native/linux-execution-candidate/linux-x64-glibc';
+export function candidateAssetRelativePath(arch) {
+  assert(['x64', 'arm64'].includes(arch), 'Candidate assets require x64 or arm64');
+  return `native/linux-execution-candidate/linux-${arch}-glibc`;
+}
 const binaryFile = 'execution-owner.node';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
@@ -37,7 +42,7 @@ function treeHash(directory) {
 
 export function readCandidateBuildEnvironment() {
   assert.equal(process.platform, 'linux', 'Candidate assets require Linux');
-  assert.equal(process.arch, 'x64', 'Candidate assets require x64');
+  assert(['x64', 'arm64'].includes(process.arch), 'Candidate assets require x64 or arm64');
   const version = process.report.getReport().header.glibcVersionRuntime;
   assert(typeof version === 'string' && /^\d+\.\d+(?:\.\d+)?$/.test(version), 'An explicit glibc runtime is required');
   return {
@@ -49,10 +54,10 @@ export function readCandidateBuildEnvironment() {
 }
 
 export function validateCandidateManifest(manifest, binary) {
-  assert.equal(manifest.schemaVersion, 1);
+  assert.equal(manifest.schemaVersion, 2);
   assert.equal(manifest.profile, profile);
   assert.equal(manifest.platform, 'linux');
-  assert.equal(manifest.arch, 'x64');
+  assert(['x64', 'arm64'].includes(manifest.arch));
   assert.equal(manifest.libc?.name, 'glibc');
   assert.match(manifest.libc?.version ?? '', /^\d+\.\d+(?:\.\d+)?$/);
   assert(['node', 'electron'].includes(manifest.runtime?.name));
@@ -62,10 +67,8 @@ export function validateCandidateManifest(manifest, binary) {
   assert.equal(manifest.binary?.file, binaryFile);
   assert.match(manifest.binary.sha256 ?? '', /^[a-f0-9]{64}$/);
   assert.equal(hash(binary), manifest.binary.sha256, 'Candidate binary hash does not match');
-  // This only checks the declared target format; it does not load or execute the addon.
-  assert(binary.length >= 64 && binary.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]))
-    && binary[4] === 2 && binary[5] === 1 && binary.readUInt16LE(16) === 3 && binary.readUInt16LE(18) === 62,
-  'Candidate binary must declare ELF64 little-endian x86-64 shared-object format');
+  assert.deepEqual(manifest.requirements, readLinuxExecutionRequirements(binary, manifest.arch),
+    'Candidate requirements must match the actual ELF version dependencies');
   assert.deepEqual(manifest.exports, LINUX_EXECUTION_EXPORTS);
   for (const key of ['ownerSha256', 'sharedOwnerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256', 'headersSha256', 'nodeAddonApiSha256'])
     assert.match(manifest.sources?.[key] ?? '', /^[a-f0-9]{64}$/);
@@ -79,7 +82,7 @@ export function validateCandidateManifest(manifest, binary) {
 }
 
 export function candidateCompilerArguments({ headers, addonRoot, inputs, source, binary }) {
-  return ['-std=c++17', '-shared', '-fPIC', '-pthread', '-fexceptions', '-DNAPI_CPP_EXCEPTIONS',
+  return ['-std=c++17', '-shared', '-fPIC', '-pthread', '-fexceptions', '-DNAPI_VERSION=8', '-DNAPI_CPP_EXCEPTIONS',
     '-DNODE_GYP_MODULE_NAME=pty', '-I', headers, '-I', addonRoot, '-I', inputs, source, '-o', binary, '-lutil'];
 }
 
@@ -127,7 +130,8 @@ export function buildCandidateAssets({ output, dependencyRoot, headers, compiler
   const args = candidateCompilerArguments({ headers: includeRoot, addonRoot, inputs, source, binary: binaryPath });
   runCompiler(compiler, args, directory);
   const binary = readRegular(binaryPath);
-  const manifest = { schemaVersion: 1, profile, platform: 'linux', arch: 'x64', ...environment,
+  const manifest = { schemaVersion: 2, profile, platform: 'linux', arch: process.arch, ...environment,
+    requirements: readLinuxExecutionRequirements(binary, process.arch),
     binary: { file: binaryFile, sha256: hash(binary) }, exports: [...LINUX_EXECUTION_EXPORTS], sources,
     verification: { compiled: true, nativeLoaded: false, nativeCalls: false, productValidated: false } };
   validateCandidateManifest(manifest, binary);
@@ -151,7 +155,7 @@ export function importCandidateAssets({ source, dist }) {
   const distRoot = fs.realpathSync(dist);
   assert(readRegular(path.join(distRoot, 'linux-execution-provider.js')).length > 0,
     'Build the formal provider entry before importing candidate assets');
-  const target = path.join(distRoot, CANDIDATE_ASSET_RELATIVE_PATH);
+  const target = path.join(distRoot, candidateAssetRelativePath(manifest.arch));
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.mkdirSync(target);
   // Copy exactly the already hashed bytes, not paths that could change after validation.

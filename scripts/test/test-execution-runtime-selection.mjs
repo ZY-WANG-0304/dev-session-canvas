@@ -10,6 +10,8 @@ import esbuild from 'esbuild';
 import ts from 'typescript';
 import { resolveExecutionBuildSelection } from '../build/build.mjs';
 import { LINUX_EXECUTION_EXPORTS, NODE_PTY_UNIX_SHA256 } from '../build/linux-execution-provider-patch.mjs';
+import { linuxExecutionElf } from './fixtures/linux-execution-elf.mjs';
+import { readLinuxExecutionRequirements } from '../build/linux-execution-elf.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const extensionFile = path.join(root, 'extensions/vscode/dev-session-canvas/src/extension.ts');
@@ -19,11 +21,9 @@ const require = createRequire(import.meta.url);
 const temporary = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-execution-selection-')));
 const profile = 'linux-owner-v1-candidate';
 const digest = value => createHash('sha256').update(value).digest('hex');
-const binary = Buffer.alloc(64);
-binary.set([0x7f, 0x45, 0x4c, 0x46, 2, 1]);
-binary.writeUInt16LE(3, 16);
-binary.writeUInt16LE(62, 18);
-const manifest = { schemaVersion: 1, profile, platform: 'linux', arch: 'x64',
+const binary = linuxExecutionElf();
+const manifest = { schemaVersion: 2, profile, platform: 'linux', arch: 'x64',
+  requirements: readLinuxExecutionRequirements(binary, 'x64'),
   libc: { name: 'glibc', version: '2.35' },
   runtime: { name: 'node', version: '22.23.2', node: '22.23.2', modules: '127', napi: '10' },
   binary: { file: 'execution-owner.node', sha256: digest(binary) }, exports: [...LINUX_EXECUTION_EXPORTS],
@@ -45,11 +45,14 @@ const candidateArgs = source => [`--execution-profile=${profile}`, `--execution-
 let passed = 0;
 const test = async (name, run) => { await run(); passed++; console.log(`PASS ${name}`); };
 
-async function activationFixture(compiledProfile, factoryError) {
+async function activationFixture(compiledProfile, factoryError, host = { platform: 'linux', arch: 'x64' }) {
   const observed = { factory: [], constructors: [] };
-  const ownerOptions = Object.freeze({ kind: compiledProfile === 'windows-owner-v1-candidate' ? 'windows-provider'
-    : compiledProfile === 'macos-owner-v1-candidate' ? 'macos-provider' : 'linux-provider',
-    profile: compiledProfile ?? profile, profileMode: 'snapshot-only' });
+  const selectedProfile = compiledProfile === 'platform'
+    ? { linux: profile, darwin: 'macos-owner-v1-candidate', win32: 'windows-owner-v1-candidate' }[host.platform]
+    : compiledProfile ?? profile;
+  const ownerOptions = Object.freeze({ kind: selectedProfile === 'windows-owner-v1-candidate' ? 'windows-provider'
+    : selectedProfile === 'macos-owner-v1-candidate' ? 'macos-provider' : 'linux-provider',
+    profile: selectedProfile, profileMode: 'snapshot-only' });
   const stop = new Error('Captured real activate constructor boundary.');
   const modules = new Map();
   for (const statement of ast.statements) {
@@ -76,17 +79,19 @@ async function activationFixture(compiledProfile, factoryError) {
         }
       });
       build.onLoad({ filter: /.*/, namespace: 'activation' }, args => ({ contents: args.path === 'owner-factory'
-        ? `export function createLinuxExecutionOwnerOptions(options) {
-            globalThis.observed.factory.push(options);
+        ? `function createOptions(options, factoryKind) {
+            globalThis.observed.factory.push({ ...options, factoryKind });
             if (globalThis.factoryError) throw globalThis.factoryError;
             return globalThis.ownerOptions;
           }
-          export const createMacosExecutionOwnerOptions = createLinuxExecutionOwnerOptions;
-          export const createWindowsExecutionOwnerOptions = createLinuxExecutionOwnerOptions;`
+          export const createLinuxExecutionOwnerOptions = options => createOptions(options, 'linux-provider');
+          export const createMacosExecutionOwnerOptions = options => createOptions(options, 'macos-provider');
+          export const createWindowsExecutionOwnerOptions = options => createOptions(options, 'windows-provider');`
         : modules.get(args.path), loader: 'js' }));
     } }] });
   const context = { module: { exports: {} }, require, observed, ownerOptions, stop, factoryError, TextEncoder, TextDecoder,
-    process: { env: { DEV_SESSION_CANVAS_EXECUTION_PROFILE: profile } } };
+    process: { ...host, env: { DEV_SESSION_CANVAS_EXECUTION_PROFILE: profile,
+      VSCODE_ARCH: 'ia32', VSCODE_PLATFORM: 'unsupported' } } };
   vm.runInNewContext(result.outputFiles[0].text, context);
   const extensionContext = { extensionUri: { fsPath: '/controlled/extension' }, extensionMode: 1 };
   return { observed, ownerOptions, stop, extensionContext, activate: () => context.module.exports.activate(extensionContext) };
@@ -205,6 +210,42 @@ try {
     assert.throws(invalid.activate, received => received === error);
     assert.equal(invalid.observed.factory.length, 1);
     assert.equal(invalid.observed.constructors.length, 0);
+  });
+  await test('platform activation resolves all six execution-host tuples to existing profiles and factories', async () => {
+    for (const [platform, selectedProfile, kind] of [
+      ['linux', profile, 'linux-provider'], ['darwin', 'macos-owner-v1-candidate', 'macos-provider'],
+      ['win32', 'windows-owner-v1-candidate', 'windows-provider']
+    ]) {
+      for (const arch of ['x64', 'arm64']) {
+        const f = await activationFixture('platform', undefined, { platform, arch });
+        assert.throws(f.activate, error => error === f.stop);
+        assert.equal(f.observed.factory.length, 1);
+        assert.equal(f.observed.factory[0].factoryKind, kind);
+        assert.equal(f.observed.factory[0].profile, selectedProfile);
+        assert.equal(f.observed.factory[0].mode, 'snapshot-only');
+        assert.strictEqual(f.observed.constructors[0][1], f.ownerOptions);
+        assert.equal(f.observed.constructors[0][2], selectedProfile);
+        assert.notEqual(f.observed.constructors[0][2], 'platform');
+      }
+    }
+  });
+  await test('platform activation rejects unsupported execution hosts before constructing any manager', async () => {
+    for (const host of [{ platform: 'freebsd', arch: 'x64' }, { platform: 'linux', arch: 'ia32' },
+      { platform: 'darwin', arch: 'ppc64' }, { platform: 'win32', arch: 'ia32' }]) {
+      const f = await activationFixture('platform', undefined, host);
+      assert.throws(f.activate, /Unsupported execution candidate/);
+      assert.equal(f.observed.factory.length, 0);
+      assert.equal(f.observed.constructors.length, 0);
+    }
+  });
+  await test('platform asset validation errors propagate without a stock manager or alternate factory', async () => {
+    for (const platform of ['linux', 'darwin', 'win32']) {
+      const error = new Error('Controlled candidate asset rejection.');
+      const f = await activationFixture('platform', error, { platform, arch: 'arm64' });
+      assert.throws(f.activate, received => received === error);
+      assert.equal(f.observed.factory.length, 1);
+      assert.equal(f.observed.constructors.length, 0);
+    }
   });
   console.log(`Execution runtime selection: ${passed}/${passed} pure cases passed (real activate entry, controlled constructor/factory, no native).`);
 } finally {

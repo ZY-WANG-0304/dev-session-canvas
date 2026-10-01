@@ -17,7 +17,7 @@ const bundles = new Map();
 let forbidden = 0;
 let passed = 0;
 
-async function loadFactory(targetProcess, compiledAdmission) {
+async function loadFactory(targetProcess, compiledAdmission, windowsRelease = '10.0.26100') {
   const key = JSON.stringify(compiledAdmission) ?? 'undefined';
   if (!bundles.has(key)) {
     const bundle = await esbuild.build({
@@ -30,6 +30,7 @@ async function loadFactory(targetProcess, compiledAdmission) {
   const loaded = { exports: {} };
   new Function('require', 'module', 'exports', 'process', bundles.get(key))(name => {
     if (name === 'node:child_process') return { spawn() { forbidden++; assert.fail('No startup during owner preparation.'); } };
+    if (name === 'node:os') return { ...require(name), release: () => windowsRelease };
     if (name.endsWith('.node')) { forbidden++; assert.fail('The authority must not load the Windows native binding.'); }
     return require(name);
   }, loaded, loaded.exports, targetProcess);
@@ -70,7 +71,8 @@ try {
     const descriptors = assetNames.map((file, index) => ({ file, sha256: hash(images[index]) }));
     const runtime = { name: runtimeName, version: versions.electron ?? versions.node, node: versions.node,
       modules: versions.modules, napi: versions.napi };
-    const base = { schemaVersion: 1, profile: 'windows-owner-v1-candidate', platform: 'win32', arch, runtime,
+    const base = { schemaVersion: 2, profile: 'windows-owner-v1-candidate', platform: 'win32', arch, runtime,
+      requirements: { napi: 8, windows: { minimumBuild: 17763, conptyVersion: '1.25.260303002', addonCrt: 'static' } },
       binary: descriptors[0], dependencies: descriptors.slice(1), exports: WINDOWS_EXECUTION_EXPORTS,
       sources: Object.fromEntries(sourceKeys.map(key => [key, 'a'.repeat(64)])),
       verification: { compiled: true, nativeLoaded: false, nativeCalls: false, productValidated: false } };
@@ -86,6 +88,25 @@ try {
     assert.equal(assets.workerPath, workerPath);
     assert.equal(assets.workerSha256, hash(worker));
     assert.ok(Object.isFrozen(assets));
+    for (const provenance of [
+      { name: 'node', version: '16.17.1', node: '16.17.1', modules: '93', napi: '8' },
+      { name: 'electron', version: '39.8.7', node: '22.22.1', modules: '140', napi: '10' }
+    ]) {
+      writeManifest({ ...base, runtime: provenance });
+      assert.doesNotThrow(() => resolveWindowsExecutionProviderAssets(dist));
+    }
+    writeManifest(base);
+    const legacy = await loadFactory({ ...targetProcess,
+      versions: { node: '16.17.1', modules: '93', napi: '8' } }, undefined, '10.0.17763');
+    assert.doesNotThrow(() => legacy.resolveWindowsExecutionProviderAssets(dist));
+    for (const napi of ['7', undefined, 'invalid', '8.0', 8]) {
+      const incompatible = await loadFactory({ ...targetProcess, versions: { ...versions, napi } });
+      assert.throws(() => incompatible.resolveWindowsExecutionProviderAssets(dist), /N-API/);
+    }
+    for (const version of ['10.0.17762', '6.3.9600', 'invalid']) {
+      const incompatible = await loadFactory(targetProcess, undefined, version);
+      assert.throws(() => incompatible.resolveWindowsExecutionProviderAssets(dist), /library/);
+    }
     assert.throws(() => resolveWindowsExecutionProviderAssets('relative/dist'), /absolute/);
     assert.throws(() => createWindowsExecutionOwnerOptions({ extensionRoot: root, mode: 'legacy' }), /explicit/);
     for (const mode of ['live-runtime', 'snapshot-only']) {
@@ -109,9 +130,13 @@ try {
       assert.equal(forbidden, 0);
     }
     const mutations = [
-      m => { m.schemaVersion = 2; }, m => { m.profile = 'linux-owner-v1-candidate'; },
+      m => { m.schemaVersion = 1; }, m => { m.profile = 'linux-owner-v1-candidate'; },
       m => { m.platform = 'darwin'; }, m => { m.arch = arch === 'arm64' ? 'x64' : 'arm64'; },
       ...Object.keys(runtime).map(key => m => { m.runtime[key] = 'mismatch'; }),
+      m => { delete m.requirements; }, m => { m.requirements.napi = 7; }, m => { m.requirements.napi = '8'; },
+      m => { m.requirements.windows.minimumBuild = 18309; }, m => { m.requirements.windows.minimumBuild = '17763'; },
+      m => { m.requirements.windows.conptyVersion = '1.25'; }, m => { m.requirements.windows.addonCrt = 'dynamic'; },
+      m => { m.requirements.windows.extra = true; }, m => { m.requirements.extra = true; },
       m => { m.binary.file = '../conpty.node'; }, m => { m.binary.sha256 = '0'.repeat(64); },
       m => { m.dependencies.pop(); }, m => { m.dependencies.reverse(); },
       m => { m.dependencies[0].file = '../conpty.dll'; }, m => { m.dependencies[1].sha256 = '0'.repeat(64); },

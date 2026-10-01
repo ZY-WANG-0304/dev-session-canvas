@@ -5,7 +5,7 @@ import { LINUX_EXECUTION_EXPORTS, NODE_PTY_UNIX_SHA256 } from './linux-execution
 
 export { NODE_PTY_UNIX_SHA256 };
 export const NODE_PTY_SPAWN_HELPER_SHA256 = '22195de1710b574d5904fc89be5624c25e531de20d5e17e5998a2fd19d86e0e6';
-export const MACOS_EXECUTION_EXPORTS = Object.freeze([...LINUX_EXECUTION_EXPORTS, 'executionClaimNamespace'].sort());
+export const MACOS_EXECUTION_EXPORTS = Object.freeze([...LINUX_EXECUTION_EXPORTS]);
 
 export function patchMacosSpawnHelper(source) {
   assert.equal(createHash('sha256').update(source).digest('hex'), NODE_PTY_SPAWN_HELPER_SHA256,

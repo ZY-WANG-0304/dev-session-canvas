@@ -9,18 +9,18 @@ import { LINUX_EXECUTION_EXPORTS } from '../build/linux-execution-provider-patch
 
 const require = createRequire(import.meta.url);
 let forbidden = 0;
-async function loadFactory(compiledAdmission) {
+async function loadFactory(compiledAdmission, processOverride = process) {
   const bundle = await esbuild.build({
     entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/panel/linuxExecutionOwnerFactory.ts')],
     bundle: true, format: 'cjs', platform: 'node', write: false,
     define: { __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__: JSON.stringify(compiledAdmission) ?? 'undefined' }
   });
   const loaded = { exports: {} };
-  new Function('require', 'module', 'exports', bundle.outputFiles[0].text)(specifier => {
+  new Function('require', 'module', 'exports', 'process', bundle.outputFiles[0].text)(specifier => {
     if (specifier === 'node:child_process') return { spawn() { forbidden++; assert.fail('factory must not spawn before connect'); } };
     if (specifier.endsWith('.node')) { forbidden++; assert.fail('authority must never load native'); }
     return require(specifier);
-  }, loaded, loaded.exports);
+  }, loaded, loaded.exports, processOverride);
   return loaded.exports;
 }
 const { createLinuxExecutionOwnerOptions, resolveLinuxExecutionProviderAssets,
@@ -39,7 +39,8 @@ const binaryFile = path.join(assets, 'execution-owner.node');
 const manifestFile = path.join(assets, 'manifest.json');
 const entryPoint = path.join(dist, 'linux-execution-provider.js');
 const base = {
-  schemaVersion: 1, profile: 'linux-owner-v1-candidate', platform: 'linux', arch: 'x64',
+  schemaVersion: 2, profile: 'linux-owner-v1-candidate', platform: 'linux', arch: 'x64',
+  requirements: { napi: 8, linux: { libc: 'glibc', glibcMinimum: '2.28', glibcxxMinimum: '3.4.22', cxxabiMinimum: '1.3.9' } },
   libc: { name: 'glibc', version: process.report.getReport().header.glibcVersionRuntime },
   runtime: { name: process.versions.electron ? 'electron' : 'node', version: process.versions.electron ?? process.versions.node,
     node: process.versions.node, modules: process.versions.modules, napi: process.versions.napi },
@@ -128,9 +129,11 @@ try {
     else process.env.DEV_SESSION_CANVAS_EXECUTION_ADMISSION = previousAdmissionEnv;
   }
   const mutations = [
-    m => { m.profile = 'other'; }, m => { m.runtime.modules = '1'; },
-    m => { m.runtime.name = m.runtime.name === 'node' ? 'electron' : 'node'; },
-    m => { m.libc.version = '0.0'; }, m => { m.binary.file = '../execution-owner.node'; },
+    m => { m.profile = 'other'; }, m => { m.runtime.modules = ''; },
+    m => { m.runtime.name = 'unknown'; }, m => { m.schemaVersion = 1; },
+    m => { m.requirements.napi = 10; }, m => { m.requirements.linux.glibcMinimum = '99.0'; },
+    m => { m.requirements.linux.glibcxxMinimum = 'unknown'; },
+    m => { m.libc.version = 'unknown'; }, m => { m.binary.file = '../execution-owner.node'; },
     m => { m.binary.sha256 = '0'.repeat(64); }, m => { m.exports.pop(); },
     m => { m.sources.headersSha256 = ''; }, m => { m.verification.productValidated = true; }
   ];
@@ -140,6 +143,29 @@ try {
     assert.equal(forbidden, 0); count++;
   }
   writeManifest(base);
+  for (const versions of [
+    { node: '16.17.1', modules: '93', napi: '8', electron: undefined },
+    { node: '22.22.1', modules: '140', napi: '10', electron: '39.8.7' }
+  ]) {
+    const runtime = await loadFactory(undefined, { ...process, versions });
+    assert.doesNotThrow(() => runtime.resolveLinuxExecutionProviderAssets(dist));
+    count++;
+  }
+  for (const napi of [undefined, '7', '8broken']) {
+    const runtime = await loadFactory(undefined, { ...process, versions: { ...process.versions, napi } });
+    assert.throws(() => runtime.resolveLinuxExecutionProviderAssets(dist), /N-API/);
+    count++;
+  }
+  const armDirectory = path.join(dist, 'native/linux-execution-candidate/linux-arm64-glibc');
+  fs.mkdirSync(armDirectory);
+  const armBinary = Buffer.from(binary);
+  armBinary.writeUInt16LE(183, 18);
+  fs.writeFileSync(path.join(armDirectory, 'execution-owner.node'), armBinary);
+  fs.writeFileSync(path.join(armDirectory, 'manifest.json'), JSON.stringify({ ...base, arch: 'arm64',
+    binary: { ...base.binary, sha256: hash(armBinary) } }));
+  const arm = await loadFactory(undefined, { ...process, arch: 'arm64' });
+  assert.equal(arm.resolveLinuxExecutionProviderAssets(dist).binaryPath, path.join(armDirectory, 'execution-owner.node'));
+  count++;
   const prepared = createLinuxExecutionOwnerOptions({ extensionRoot: directory, mode: 'live-runtime' });
   fs.appendFileSync(entryPoint, '// changed');
   assert.throws(() => prepared.createTransport({ executionId: 'factory-execution', generation: 'generation-1' }), /changed/);

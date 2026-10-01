@@ -17,9 +17,11 @@ try {
   for (const arch of ['x64', 'arm64']) {
     const observed = { nativeLoads: 0, claims: [], spawned: 0 };
     const targetProcess = { ...process, platform: 'darwin', arch };
+    let darwinRelease = '26.0.0';
     const loaded = { exports: {} };
     new Function('require', 'module', 'exports', 'process', bundle.outputFiles[0].text)(name => {
       if (name === 'node:child_process') return { spawn() { observed.spawned++; assert.fail('No startup in asset preparation.'); } };
+      if (name === 'node:os') return { ...os, release: () => darwinRelease };
       if (name.endsWith('.node')) {
         observed.nativeLoads++;
         return { executionClaimNamespace: file => observed.claims.push(file) };
@@ -47,7 +49,8 @@ try {
     const entryPoint = path.join(dist, 'macos-execution-provider.js');
     const runtime = { name: 'node', version: process.versions.node, node: process.versions.node,
       modules: process.versions.modules, napi: process.versions.napi };
-    const base = { schemaVersion: 1, profile: 'macos-owner-v1-candidate', platform: 'darwin', arch, runtime,
+    const base = { schemaVersion: 2, profile: 'macos-owner-v1-candidate', platform: 'darwin', arch, runtime,
+      requirements: { napi: 8, macos: { deploymentTarget: arch === 'arm64' ? '11.0' : '10.13' } },
       binary: { file: 'execution-owner.node', sha256: hash(binary) },
       helper: { file: 'spawn-helper', sha256: hash(helper) }, exports: MACOS_EXECUTION_EXPORTS,
       sources: Object.fromEntries(['ownerSha256', 'sharedOwnerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256',
@@ -74,12 +77,27 @@ try {
     assert.equal(observed.nativeLoads, 1);
     assert.deepEqual(observed.claims, [path.join(root, 'supervisor-owner.lock')]);
     for (const changed of [{ ...base, arch: 'other' }, { ...base, profile: 'linux-owner-v1-candidate' },
-      { ...base, runtime: { ...runtime, modules: '999' } }, { ...base, helper: { ...base.helper, file: '../helper' } },
+      { ...base, runtime: { ...runtime, modules: '' } }, { ...base, helper: { ...base.helper, file: '../helper' } },
+      { ...base, schemaVersion: 1 }, { ...base, requirements: { ...base.requirements, napi: 10 } },
       { ...base, sources: { ...base.sources, sharedOwnerSha256: undefined } }]) {
       manifest(changed);
       assert.throws(() => resolveMacosExecutionProviderAssets(dist));
     }
     manifest(base);
+    for (const versions of [
+      { node: '16.17.1', modules: '93', napi: '8' },
+      { electron: '39.8.7', node: '22.22.1', modules: '140', napi: '10' }
+    ]) {
+      targetProcess.versions = versions;
+      assert.doesNotThrow(() => resolveMacosExecutionProviderAssets(dist));
+    }
+    targetProcess.versions = { ...process.versions, napi: '7' };
+    assert.throws(() => resolveMacosExecutionProviderAssets(dist), /N-API/);
+    targetProcess.versions = process.versions;
+    darwinRelease = arch === 'arm64' ? '19.6.0' : '16.7.0';
+    assert.throws(() => resolveMacosExecutionProviderAssets(dist), /minimum/);
+    darwinRelease = arch === 'arm64' ? '20.0.0' : '17.0.0';
+    assert.doesNotThrow(() => resolveMacosExecutionProviderAssets(dist));
     fs.chmodSync(helperPath, 0o644);
     assert.throws(() => resolveMacosExecutionProviderAssets(dist), /Invalid macOS candidate asset/);
     fs.chmodSync(helperPath, 0o755);

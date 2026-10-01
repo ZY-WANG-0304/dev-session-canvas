@@ -56,8 +56,8 @@ struct Owner {
 // One provider environment owns one child; no other thread or reaper is installed.
 static Owner owner;
 
-#if defined(__APPLE__)
 static bool NamespaceClaimed();
+#if defined(__APPLE__)
 static void AppendCreationResources(Napi::Env env, Napi::Object result);
 #endif
 
@@ -98,9 +98,7 @@ static Napi::Value Configure(const Napi::CallbackInfo& info) {
       token.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != std::string::npos)
     throw Napi::TypeError::New(info.Env(), "Invalid execution owner token");
   if (owner.configured) throw Napi::Error::New(info.Env(), "Execution owner already configured");
-#if defined(__APPLE__)
   if (NamespaceClaimed()) throw Napi::Error::New(info.Env(), "Namespace authorities cannot configure executions");
-#endif
   owner.token = token;
   owner.env = info.Env();
   owner.configured = true;

@@ -10,6 +10,7 @@ import { importCandidateAssets as importMacosCandidateAssets,
   readCandidateAssets as readMacosCandidateAssets } from './macos-execution-candidate-assets.mjs';
 import { importCandidateAssets as importWindowsCandidateAssets,
   readCandidateAssets as readWindowsCandidateAssets } from './windows-execution-candidate-assets.mjs';
+import { importExecutionCandidateAssetSet, readExecutionCandidateAssetSet } from './execution-candidate-assets-set.mjs';
 
 const require = createRequire(import.meta.url);
 const xtermBrowserMainEntryPath = require.resolve('@xterm/xterm/lib/xterm.js');
@@ -32,13 +33,19 @@ export async function resolveExecutionBuildSelection(args, distDirectory = mainE
   const { values } = parseArgs({ args, options: {
     watch: { type: 'boolean' }, production: { type: 'boolean' },
     'execution-profile': { type: 'string' }, 'execution-assets': { type: 'string' },
+    'execution-assets-set': { type: 'string' },
     'execution-admission': { type: 'string' }
   } });
-  const profile = values['execution-profile'];
-  const source = values['execution-assets'];
+  const assetSet = values['execution-assets-set'];
+  if (assetSet !== undefined && (values['execution-profile'] !== undefined || values['execution-assets'] !== undefined)) {
+    throw new Error('--execution-assets-set is mutually exclusive with --execution-profile and --execution-assets.');
+  }
+  const profile = assetSet !== undefined ? 'platform' : values['execution-profile'];
+  const source = assetSet ?? values['execution-assets'];
   const admission = values['execution-admission'];
   if (profile === undefined && source === undefined && admission === undefined) return {};
-  if (!['linux-owner-v1-candidate', 'macos-owner-v1-candidate', 'windows-owner-v1-candidate'].includes(profile) || !source) {
+  if ((!['linux-owner-v1-candidate', 'macos-owner-v1-candidate', 'windows-owner-v1-candidate'].includes(profile)
+    && assetSet === undefined) || !source) {
     throw new Error('Specify a supported --execution-profile (linux-owner-v1-candidate, macos-owner-v1-candidate or windows-owner-v1-candidate) and --execution-assets together.');
   }
   if (values.watch) throw new Error('Execution candidate watch builds are not supported.');
@@ -55,11 +62,16 @@ export async function resolveExecutionBuildSelection(args, distDirectory = mainE
     if (error.code !== 'ENOENT') throw error;
     return path.resolve(distDirectory);
   });
-  const relative = path.relative(dist, sourceDirectory);
-  if (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
-    throw new Error('Execution candidate assets must be outside the dist directory cleared by the build.');
-  }
-  (profile === 'windows-owner-v1-candidate' ? readWindowsCandidateAssets
+  const assertOutsideDist = directory => {
+    const relative = path.relative(dist, directory);
+    if (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
+      throw new Error('Execution candidate assets must be outside the dist directory cleared by the build.');
+    }
+  };
+  assertOutsideDist(sourceDirectory);
+  if (assetSet !== undefined) {
+    for (const asset of readExecutionCandidateAssetSet(source).assets) assertOutsideDist(asset.directory);
+  } else (profile === 'windows-owner-v1-candidate' ? readWindowsCandidateAssets
     : profile === 'macos-owner-v1-candidate' ? readMacosCandidateAssets : readLinuxCandidateAssets)(sourceDirectory);
   return Object.freeze({ profile, source: sourceDirectory, admissionLimits });
 }
@@ -183,7 +195,8 @@ async function runBuild() {
       esbuild.build(webviewConfig)
     ]);
     if (selection.profile) {
-      (selection.profile === 'windows-owner-v1-candidate' ? importWindowsCandidateAssets
+      (selection.profile === 'platform' ? importExecutionCandidateAssetSet
+        : selection.profile === 'windows-owner-v1-candidate' ? importWindowsCandidateAssets
         : selection.profile === 'macos-owner-v1-candidate' ? importMacosCandidateAssets : importLinuxCandidateAssets)(
         { source: selection.source, dist: mainExtensionDistRoot });
       await fs.writeFile(fromMainExtensionDist('execution-candidate-selection.json'), `${JSON.stringify({

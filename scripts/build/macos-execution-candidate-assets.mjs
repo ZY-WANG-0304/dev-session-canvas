@@ -95,10 +95,12 @@ function assertMachO(bytes, arch, filetype) {
 }
 
 export function validateCandidateManifest(manifest, binary, helper) {
-  assert.equal(manifest.schemaVersion, 1);
+  assert.equal(manifest.schemaVersion, 2);
   assert.equal(manifest.profile, profile);
   assert.equal(manifest.platform, 'darwin');
   assert(['arm64', 'x64'].includes(manifest.arch));
+  assert.deepEqual(manifest.requirements, { napi: 8,
+    macos: { deploymentTarget: deploymentTargets[manifest.arch].argument } });
   assert(['node', 'electron'].includes(manifest.runtime?.name));
   for (const key of ['version', 'node']) assert.match(manifest.runtime[key] ?? '', /^\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.-]+)?$/);
   for (const key of ['modules', 'napi']) assert.match(manifest.runtime[key] ?? '', /^[1-9]\d*$/);
@@ -145,7 +147,7 @@ function targetArguments(arch, sdk) {
 
 export function candidateCompilerArguments({ arch, sdk, headers, addonRoot, inputs, source, binary }) {
   return ['-std=c++17', '-bundle', '-undefined', 'dynamic_lookup', '-fPIC', '-pthread', '-fexceptions',
-    '-DNAPI_CPP_EXCEPTIONS', '-DNODE_GYP_MODULE_NAME=pty', ...targetArguments(arch, sdk),
+    '-DNAPI_VERSION=8', '-DNAPI_CPP_EXCEPTIONS', '-DNODE_GYP_MODULE_NAME=pty', ...targetArguments(arch, sdk),
     '-I', headers, '-I', addonRoot, '-I', inputs, source, '-o', binary];
 }
 
@@ -203,7 +205,8 @@ export function buildCandidateAssets({ output, dependencyRoot, headers, compiler
   command(compiler, helperArgs, directory);
   const binary = readRegular(binaryPath);
   const helper = readRegular(helperPath, true);
-  const manifest = { schemaVersion: 1, profile, platform: 'darwin', arch: process.arch, ...environment,
+  const manifest = { schemaVersion: 2, profile, platform: 'darwin', arch: process.arch, ...environment,
+    requirements: { napi: 8, macos: { deploymentTarget: deploymentTargets[process.arch].argument } },
     binary: { file: binaryFile, sha256: hash(binary) }, helper: { file: helperFile, sha256: hash(helper) },
     exports: [...MACOS_EXECUTION_EXPORTS], sources, compiler: { command: compiler, sdk: sdkPath, args, helperArgs },
     verification: { compiled: true, nativeLoaded: false, nativeCalls: false, productValidated: false } };

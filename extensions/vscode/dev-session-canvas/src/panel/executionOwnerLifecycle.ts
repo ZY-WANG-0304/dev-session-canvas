@@ -57,6 +57,7 @@ export interface LinuxExecutionOwnerOptions extends Omit<NonNativeExecutionOwner
   readonly kind: 'linux-provider';
   readonly profile: ExecutionCandidateProfile;
   readonly profileMode: ExecutionCandidateMode;
+  readonly claimNamespace?: (storageDir: string) => void;
 }
 
 export interface MacosExecutionOwnerOptions extends Omit<LinuxExecutionOwnerOptions, 'kind'> {
@@ -64,7 +65,7 @@ export interface MacosExecutionOwnerOptions extends Omit<LinuxExecutionOwnerOpti
   readonly claimNamespace: (storageDir: string) => void;
 }
 
-export interface WindowsExecutionOwnerOptions extends Omit<LinuxExecutionOwnerOptions, 'kind'> {
+export interface WindowsExecutionOwnerOptions extends Omit<LinuxExecutionOwnerOptions, 'kind' | 'claimNamespace'> {
   readonly kind: 'windows-provider';
 }
 

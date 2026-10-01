@@ -2256,3 +2256,13 @@ Linux旧Node通过原nativeClaim接口竞争与现代Node相同的uid/真实stor
 后续macOS沿已固定10.13/11.0及实际Mach-O下限接入独立requirements；Windows沿真实ConPTY/CRT依赖确定下限，不能只抄PE声明或用未知值作生产通过。六资产必须用同一正式产物跨既定Node/Electron加载，再接正常聚合/实际执行端选择与默认准入。当前仅明确实施输入，默认仍关闭，不扩通用依赖扫描器，也不重排已经完成的Agent矩阵；最低OS真机证据和最终生产版本验收仍独立。
 
 六资产聚合沿现有build/import实现：新增互斥的显式 `--execution-assets-set` 输入目录，必须且仅包含linux-x64-glibc、linux-arm64-glibc、darwin-x64、darwin-arm64、win32-x64、win32-arm64六个具名子目录，各自先完成原平台manifest/字节校验再清理dist。编译期选择标记使用 `platform`，激活时根据实际 `process.platform/process.arch` 返回原三种具体profile及factory；Remote取远端宿主事实，不看UI端或环境变量。单平台显式candidate入口保留供原验收，`platform`不进入Supervisor协议作为新profile。缺资产、不支持的平台/架构或原生加载失败均不得静默回落stock。普通构建暂不默认开启，待正式六资产与准入验收收口后切换，不能以显式聚合存在宣称交付完成。
+
+Windows最低要求依据采用锁定包的官方NuGet `Microsoft.Windows.Console.ConPTY/1.25.260303002-preview` 原始nuspec，其明确声明Windows 10.0.17763.0及以上；不使用node-pty README混写的18309，也不把Microsoft Terminal主分支不同构建默认18362当作该包的契约。requirements.windows固定minimumBuild=17763、conptyVersion=1.25.260303002；这里只记录供应方要求，最低OS仍需实际验证。addon改为与锁定stock及Node Release默认一致的 `/MT`，显式NAPI_VERSION=8，避免额外要求用户安装MSVC redist；build/import检查实际PE正常导入表无动态MSVC/UCRT依赖，requirements的addonCrt=static只描述addon，不把bundled ConPTY/OpenConsole的OS UCRT称作静态。原delay-load hook、node.lib来源和两个ConPTY依赖的hash/架构检查保留；实际加载及API取得失败依旧在PTY创建之前拒绝。
+
+上述三平台schema2、Linux arm64目录选择/旧Node claim、Windows静态CRT及六资产聚合/实际执行端选择已实施。统一局部入口 `npm run test:execution-native-assets` 通过：Linux资产10/factory35，macOS资产18/双架构factory，Windows资产14/四组合factory，聚合7和真实activate受控入口14；typecheck、Host147、Supervisor94及原namespace回归通过。ELF要求取实际版本表，PE检查按正常导入RVA解析而非搜字符串；旧Windows `/MD` 二进制仍因动态CRT被拒绝，未改写历史产物。工厂加载失败先于PTY创建，独立只读审查未发现直接阻塞。单元测试的模拟系统不是原生支持证据。
+
+Linux旧Node原生互斥使用 `.debug/linux-native-namespace-20261001/assets`，addon SHA256 `6b4f166e5aeab848b75f3c42c13b34254b5ad42df3e5f09abaf932085cec60da`。实际Node16.17.1与25.6.0双向争用同一abstract地址、canonical alias、CLOEXEC、authority/provider互斥、失败bind后再争用和原进程自然退出释放均通过；未启动PTY。Node16官方归档与同版本SHASUMS相符，SHA256 `06ba2eb34aa385967f5f58c87a44753f83212f6cccea892b33f80a2e7fda8384`。该资产在新glibc编译，真实要求仍2.34，不伪装旧glibc通过。
+
+随后另在固定官方 `node@sha256:674750127bbf45f52660ada71ed1f1491d15e94c16583bff6df0df2489481049` 的Debian buster/glibc2.28/Node16.17.1容器中编译一次，仓库只读、独立输出、构建无网络，生成 `.debug/linux-compatibility-20261001/assets`。addon SHA256 `b9e1e200d5b944c8c2ab5374734870015059bd7f2041f4008e3b27e0e4bdfc63`，真实要求GLIBC2.14/GLIBCXX3.4.22/CXXABI1.3.9、N-API8；这不是将产品支持下限扩大到glibc2.14。经原import与实际factory，完全同一字节在该旧容器、宿主Node25.6.0以及VS Code1.117.0的Electron39.8.7/Node22.22.1成功加载并核对导出，均未调用执行API。三次使用同一二进制而非按runtime重编，证明此Linux x64资产的有限装载兼容；旧系统PTY/页面、其他架构、最终生产预算与默认启用不由此通过。首次按tag拉镜像的TLS超时是环境前置失败，固定digest随后成功，不当作产品缺陷。
+
+剩余先由无凭据、手动workflow构建固定六格并对同一产物做最低/当前宿主加载，再沿原A1至A6补最终产品回归；不新增Agent模型矩阵。最新GitHub托管runner仍不能证明macOS10.13/10.14或Windows1809，已单独向用户询问可用隔离环境，不擅自改变支持政策，也不将此环境缺口扩大为停止其他工程工作的理由。

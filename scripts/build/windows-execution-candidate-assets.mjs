@@ -15,6 +15,9 @@ const profile = 'windows-owner-v1-candidate';
 const binaryFile = 'conpty.node';
 const dependencyFiles = Object.freeze(['conpty/conpty.dll', 'conpty/OpenConsole.exe']);
 const conptyVersion = '1.25.260303002';
+const requirements = Object.freeze({ napi: 8, windows: Object.freeze({
+  minimumBuild: 17763, conptyVersion, addonCrt: 'static'
+}) });
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export const NODE_PTY_PATH_UTIL_SHA256 = '54a6041c38bf714893c1d18db3d2888f42089d0209c3d1dc8d444ac6dbf46a0b';
 export const NODE_GYP_DELAY_LOAD_HOOK_SHA256 = 'ec2357ffdf512151c21a52326ad3396aaa650b83e5c4a31153d216a155f68ecc';
@@ -80,8 +83,62 @@ function assertPE(bytes, arch, dll) {
     'Candidate binary must declare the matching PE executable or DLL type');
 }
 
+export function assertCandidateStaticCrt(bytes, arch) {
+  assertPE(bytes, arch, true);
+  const pe = bytes.readUInt32LE(0x3c);
+  const optional = pe + 24;
+  const optionalSize = bytes.readUInt16LE(pe + 20);
+  const directoryCount = bytes.readUInt32LE(optional + 108);
+  if (directoryCount < 2) return;
+  assert(optionalSize >= 128, 'Candidate PE import directory is truncated');
+  const importRva = bytes.readUInt32LE(optional + 120);
+  const importSize = bytes.readUInt32LE(optional + 124);
+  if (!importRva && !importSize) return;
+  assert(importRva && importSize >= 20, 'Candidate PE import directory is invalid');
+  const sectionCount = bytes.readUInt16LE(pe + 6);
+  const sections = optional + optionalSize;
+  assert(sections + sectionCount * 40 <= bytes.length, 'Candidate PE section table is truncated');
+  const headerSize = bytes.readUInt32LE(optional + 60);
+  // Resolve virtual addresses through the PE section table, never through byte-string searches.
+  const region = rva => {
+    const matches = [];
+    if (rva < headerSize) matches.push({ offset: rva, available: headerSize - rva });
+    for (let index = 0; index < sectionCount; index++) {
+      const section = sections + index * 40;
+      const virtualSize = bytes.readUInt32LE(section + 8);
+      const start = bytes.readUInt32LE(section + 12);
+      const size = bytes.readUInt32LE(section + 16);
+      const offset = bytes.readUInt32LE(section + 20);
+      if (rva >= start && rva - start < Math.max(size, virtualSize)) {
+        const delta = rva - start;
+        assert(delta < size && offset + size <= bytes.length, 'Candidate PE import address is not file-backed');
+        matches.push({ offset: offset + delta, available: size - delta });
+      }
+    }
+    assert(matches.length === 1 && matches[0].offset + matches[0].available <= bytes.length,
+      'Candidate PE import address is invalid or ambiguous');
+    return matches[0];
+  };
+  const table = region(importRva);
+  assert(importSize <= table.available, 'Candidate PE import directory is truncated');
+  for (let index = 0; index + 20 <= importSize; index += 20) {
+    const descriptor = table.offset + index;
+    if (bytes.subarray(descriptor, descriptor + 20).every(value => value === 0)) return;
+    const name = region(bytes.readUInt32LE(descriptor + 12));
+    const end = bytes.indexOf(0, name.offset);
+    assert(end > name.offset && end < name.offset + name.available && end - name.offset <= 260,
+      'Candidate PE import name is invalid');
+    assert(bytes.subarray(name.offset, end).every(value => value < 128), 'Candidate PE import name is invalid');
+    const library = bytes.toString('ascii', name.offset, end);
+    assert(/^[a-zA-Z0-9_.-]+$/.test(library), 'Candidate PE import name is invalid');
+    assert(!/^(?:(?:msvcp|msvcr|vcruntime|concrt|vccorlib|vcomp)[\d_].*|msvcrt|ucrtbased?|api-ms-win-crt-.*)\.dll$/i.test(library),
+      `Candidate addon requires static CRT, not ${library}`);
+  }
+  assert.fail('Candidate PE import directory has no terminator');
+}
+
 export function validateCandidateManifest(manifest, binary, dependencies) {
-  assert.equal(manifest.schemaVersion, 1);
+  assert.equal(manifest.schemaVersion, 2);
   assert.equal(manifest.profile, profile);
   assert.equal(manifest.platform, 'win32');
   assert(['x64', 'arm64'].includes(manifest.arch));
@@ -89,6 +146,7 @@ export function validateCandidateManifest(manifest, binary, dependencies) {
   for (const key of ['version', 'node']) assert.match(manifest.runtime[key] ?? '', /^\d+\.\d+\.\d+(?:[-+][a-zA-Z0-9.-]+)?$/);
   for (const key of ['modules', 'napi']) assert.match(manifest.runtime[key] ?? '', /^[1-9]\d*$/);
   if (manifest.runtime.name === 'node') assert.equal(manifest.runtime.version, manifest.runtime.node);
+  assert.deepEqual(manifest.requirements, requirements, 'Candidate Windows requirements do not match');
   assert.equal(manifest.binary?.file, binaryFile);
   assert.deepEqual(manifest.dependencies?.map(entry => entry.file), dependencyFiles);
   assert(Array.isArray(dependencies) && dependencies.length === dependencyFiles.length,
@@ -101,6 +159,7 @@ export function validateCandidateManifest(manifest, binary, dependencies) {
     assert.equal(hash(bytes), entry.sha256, `Candidate ${entry.file} hash does not match`);
     assertPE(bytes, manifest.arch, dll);
   }
+  assertCandidateStaticCrt(binary, manifest.arch);
   assert.deepEqual(manifest.exports, WINDOWS_EXECUTION_EXPORTS);
   for (const key of ['ownerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256', 'pathUtilSha256',
     'windowsHeadersSha256', 'headersSha256', 'nodeAddonApiSha256', 'nodeLibSha256', 'delayLoadHookSha256']) {
@@ -133,9 +192,9 @@ export function candidateCompilerArguments({ arch, headers, addonRoot, inputs, s
   assert(['x64', 'arm64'].includes(arch), 'Candidate compiler target must be x64 or arm64');
   assert(nodeLib, 'Specify an explicit node.lib for the build runtime');
   assert(delayLoadHook, 'Specify an explicit node-gyp delay-load hook');
-  return ['/nologo', '/LD', '/MD', '/EHsc', '/std:c++17', '/guard:cf', '/sdl', '/W3', '/ZH:SHA_256',
+  return ['/nologo', '/LD', '/MT', '/EHsc', '/std:c++17', '/guard:cf', '/sdl', '/W3', '/ZH:SHA_256',
     '/DWIN32_LEAN_AND_MEAN', '/DNAPI_CPP_EXCEPTIONS', '/DNODE_ADDON_API_CPP_EXCEPTIONS', '/D_HAS_EXCEPTIONS=1',
-    '/DBUILDING_NODE_EXTENSION', '/DHOST_BINARY="node.exe"', '/DNODE_GYP_MODULE_NAME=conpty',
+    '/DBUILDING_NODE_EXTENSION', '/DNAPI_VERSION=8', '/DHOST_BINARY="node.exe"', '/DNODE_GYP_MODULE_NAME=conpty',
     `/I${headers}`, `/I${addonRoot}`, `/I${inputs}`, source, pathUtil, delayLoadHook,
     '/link', '/DLL', '/DYNAMICBASE', '/guard:cf', `/MACHINE:${arch === 'arm64' ? 'ARM64' : 'X64'}`,
     `/OUT:${binary}`, '/DELAYLOAD:node.exe', nodeLib, 'shlwapi.lib', 'delayimp.lib'];
@@ -198,7 +257,7 @@ export function buildCandidateAssets({ output, dependencyRoot, headers, nodeLib,
     binary: binaryPath, nodeLib: path.join(inputs, 'node.lib'), delayLoadHook: path.join(inputs, 'win_delay_load_hook.cc') });
   command(compiler, args, directory);
   const binary = readRegular(binaryPath);
-  const manifest = { schemaVersion: 1, profile, platform: 'win32', arch: process.arch, ...environment,
+  const manifest = { schemaVersion: 2, profile, platform: 'win32', arch: process.arch, ...environment, requirements,
     binary: { file: binaryFile, sha256: hash(binary) },
     dependencies: dependencyFiles.map((file, index) => ({ file, sha256: hash(dependencies[index]) })),
     exports: [...WINDOWS_EXECUTION_EXPORTS], sources, compiler: { command: compiler, args },

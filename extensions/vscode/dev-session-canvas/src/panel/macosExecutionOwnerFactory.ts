@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import * as path from 'node:path';
+import { release } from 'node:os';
 
 import { EXECUTION_CANDIDATE_BUDGETS, MACOS_EXECUTION_CANDIDATE_PROFILE, normalizeExecutionAdmissionLimits,
   type ExecutionAdmissionLimits, type ExecutionCandidateMode, type ExecutionIdentity } from '../common/executionLifecycle';
 import type { MacosExecutionOwnerOptions } from './executionOwnerLifecycle';
 import { createExecutionProviderTransport, createNodeExecutionScheduler } from './executionProviderTransport';
 import type { ExecutionScheduler } from './executionSessionAdapter';
+import { assertExecutionAssetRuntime, assertMinimumExecutionLibraryVersion } from './executionAssetCompatibility';
 
 declare const __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__: ExecutionAdmissionLimits | undefined;
 
@@ -54,15 +56,15 @@ export function resolveMacosExecutionProviderAssets(distDirectory: string): Maco
   if (realpathSync(directory) !== directory) throw new Error('macOS candidate asset directories must not be redirected.');
   const manifestBytes = readAsset(path.join(directory, 'manifest.json'), 32768);
   const manifest = record(JSON.parse(manifestBytes.toString('utf8')));
-  if (manifest.schemaVersion !== 1 || manifest.profile !== MACOS_EXECUTION_CANDIDATE_PROFILE ||
+  if (manifest.schemaVersion !== 2 || manifest.profile !== MACOS_EXECUTION_CANDIDATE_PROFILE ||
       manifest.platform !== 'darwin' || manifest.arch !== process.arch) throw new Error('macOS candidate manifest target mismatch.');
-  const runtime = record(manifest.runtime);
-  const expected = { name: process.versions.electron ? 'electron' : 'node',
-    version: process.versions.electron ?? process.versions.node, node: process.versions.node,
-    modules: process.versions.modules, napi: process.versions.napi };
-  for (const [key, value] of Object.entries(expected)) {
-    if (typeof value !== 'string' || runtime[key] !== value) throw new Error(`macOS candidate runtime mismatch: ${key}.`);
+  const requirements = record(manifest.requirements);
+  const macos = record(requirements.macos);
+  if (macos.deploymentTarget !== (process.arch === 'arm64' ? '11.0' : '10.13')) {
+    throw new Error('macOS candidate deployment target mismatch.');
   }
+  assertMinimumExecutionLibraryVersion(release(), process.arch === 'arm64' ? '20.0' : '17.0');
+  assertExecutionAssetRuntime(record(manifest.runtime), requirements.napi);
   const binary = record(manifest.binary);
   const helper = record(manifest.helper);
   if (binary.file !== 'execution-owner.node' || helper.file !== 'spawn-helper' ||

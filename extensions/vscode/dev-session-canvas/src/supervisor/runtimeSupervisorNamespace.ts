@@ -4,13 +4,19 @@ import * as net from 'net';
 
 const ENDPOINT_PROBE_TIMEOUT_MS = 1000;
 
+function supportsLinuxAbstractSockets(): boolean | undefined {
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  if (!Number.isInteger(major) || !Number.isInteger(minor)) return undefined;
+  return major > 20 || (major === 20 && minor >= 8);
+}
+
 export function assertRuntimeSupervisorNamespaceSupport(nativeClaim?: (storageDir: string) => void): void {
   // Windows named pipes do not depend on Node's Linux abstract-socket support.
   if (process.platform === 'win32') return;
   if (process.platform === 'darwin' && typeof nativeClaim === 'function' && typeof process.getuid === 'function') return;
-  const [major, minor] = process.versions.node.split('.').map(Number);
-  if (process.platform !== 'linux' || !Number.isInteger(major) || !Number.isInteger(minor)
-    || major < 20 || (major === 20 && minor < 8)
+  const nodeAbstractSockets = supportsLinuxAbstractSockets();
+  if (process.platform !== 'linux' || nodeAbstractSockets === undefined
+    || (!nodeAbstractSockets && typeof nativeClaim !== 'function')
     || typeof process.getuid !== 'function') {
     throw new Error('Runtime Supervisor namespace ownership requires a supported platform and Node >=20.8.');
   }
@@ -19,7 +25,7 @@ export function assertRuntimeSupervisorNamespaceSupport(nativeClaim?: (storageDi
 export async function acquireRuntimeSupervisorNamespace(storageDir: string,
   nativeClaim?: (storageDir: string) => void): Promise<net.Server | undefined> {
   assertRuntimeSupervisorNamespaceSupport(nativeClaim);
-  if (process.platform === 'darwin') {
+  if (process.platform === 'darwin' || (process.platform === 'linux' && !supportsLinuxAbstractSockets())) {
     nativeClaim!(await fs.realpath(storageDir));
     return undefined;
   }

@@ -7,11 +7,12 @@ import { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_CANDIDATE_PROFILE, normalizeExec
 import type { LinuxExecutionOwnerOptions } from './executionOwnerLifecycle';
 import { createExecutionProviderTransport, createNodeExecutionScheduler } from './executionProviderTransport';
 import type { ExecutionScheduler } from './executionSessionAdapter';
+import { assertExecutionAssetRuntime, assertMinimumExecutionLibraryVersion } from './executionAssetCompatibility';
 
 declare const __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__: ExecutionAdmissionLimits | undefined;
 
 export const LINUX_EXECUTION_NATIVE_EXPORTS = Object.freeze([
-  'executionClose', 'executionConfigure', 'executionPollWait', 'executionRead', 'executionResize',
+  'executionClaimNamespace', 'executionClose', 'executionConfigure', 'executionPollWait', 'executionRead', 'executionResize',
   'executionSignal', 'executionSnapshot', 'executionWrite', 'fork'
 ]);
 export const LINUX_EXECUTION_ASSET_DIRECTORY = 'native/linux-execution-candidate/linux-x64-glibc';
@@ -37,26 +38,29 @@ function readAsset(file: string, maximumBytes: number): Buffer {
 }
 
 export function resolveLinuxExecutionProviderAssets(distDirectory: string): LinuxExecutionProviderAssets {
-  if (process.platform !== 'linux' || process.arch !== 'x64') throw new Error('Linux candidate assets require Linux x64.');
+  if (process.platform !== 'linux' || !['x64', 'arm64'].includes(process.arch)) {
+    throw new Error('Linux candidate assets require Linux x64 or arm64.');
+  }
   if (!path.isAbsolute(distDirectory)) throw new Error('An absolute extension dist directory is required.');
   const dist = realpathSync(distDirectory);
-  const directory = path.join(dist, LINUX_EXECUTION_ASSET_DIRECTORY);
+  const directory = path.join(dist, `native/linux-execution-candidate/linux-${process.arch}-glibc`);
   if (realpathSync(directory) !== directory) throw new Error('Linux candidate asset directories must not be redirected.');
   const manifestBytes = readAsset(path.join(directory, 'manifest.json'), 32768);
   const manifest = record(JSON.parse(manifestBytes.toString('utf8')));
-  if (manifest.schemaVersion !== 1 || manifest.profile !== EXECUTION_CANDIDATE_PROFILE ||
-      manifest.platform !== 'linux' || manifest.arch !== 'x64') throw new Error('Linux candidate manifest target mismatch.');
+  if (manifest.schemaVersion !== 2 || manifest.profile !== EXECUTION_CANDIDATE_PROFILE ||
+      manifest.platform !== 'linux' || manifest.arch !== process.arch) throw new Error('Linux candidate manifest target mismatch.');
   const libc = record(manifest.libc);
+  const requirements = record(manifest.requirements);
+  const linux = record(requirements.linux);
   const report = process.report?.getReport() as { header?: { glibcVersionRuntime?: string } } | undefined;
-  if (libc.name !== 'glibc' || typeof libc.version !== 'string' ||
-      libc.version !== report?.header?.glibcVersionRuntime) throw new Error('Linux candidate libc does not match this authority.');
-  const runtime = record(manifest.runtime);
-  const expected = { name: process.versions.electron ? 'electron' : 'node',
-    version: process.versions.electron ?? process.versions.node, node: process.versions.node,
-    modules: process.versions.modules, napi: process.versions.napi };
-  for (const [key, value] of Object.entries(expected)) {
-    if (typeof value !== 'string' || runtime[key] !== value) throw new Error(`Linux candidate runtime mismatch: ${key}.`);
+  if (libc.name !== 'glibc' || linux.libc !== 'glibc') throw new Error('Linux candidate assets require glibc.');
+  assertMinimumExecutionLibraryVersion(libc.version, libc.version);
+  assertMinimumExecutionLibraryVersion(report?.header?.glibcVersionRuntime, linux.glibcMinimum);
+  // The provider's dynamic loader checks these independently before acquiring a PTY.
+  for (const key of ['glibcxxMinimum', 'cxxabiMinimum']) {
+    assertMinimumExecutionLibraryVersion(linux[key], linux[key]);
   }
+  assertExecutionAssetRuntime(record(manifest.runtime), requirements.napi);
   const binary = record(manifest.binary);
   if (binary.file !== 'execution-owner.node' || typeof binary.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(binary.sha256)) {
     throw new Error('Invalid Linux candidate binary descriptor.');
@@ -65,7 +69,9 @@ export function resolveLinuxExecutionProviderAssets(distDirectory: string): Linu
   const bytes = readAsset(binaryPath, 32 * 1024 * 1024);
   if (digest(bytes) !== binary.sha256 || bytes.length < 64 ||
       !bytes.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46])) || bytes[4] !== 2 || bytes[5] !== 1 ||
-      bytes.readUInt16LE(16) !== 3 || bytes.readUInt16LE(18) !== 62) throw new Error('Linux candidate binary content mismatch.');
+      bytes.readUInt16LE(16) !== 3 || bytes.readUInt16LE(18) !== (process.arch === 'arm64' ? 183 : 62)) {
+    throw new Error('Linux candidate binary content mismatch.');
+  }
   const declaredExports = manifest.exports;
   if (!Array.isArray(declaredExports) || declaredExports.length !== LINUX_EXECUTION_NATIVE_EXPORTS.length ||
       LINUX_EXECUTION_NATIVE_EXPORTS.some((name, index) => declaredExports[index] !== name)) {
@@ -104,6 +110,17 @@ export function createLinuxExecutionOwnerOptions(options: {
       ? ['terminal-read-settlement-v1'] : ['terminal-local-settlement-v1', 'terminal-local-persistence-v1'])]);
   return Object.freeze({ kind: 'linux-provider', profile: EXECUTION_CANDIDATE_PROFILE, profileMode: options.mode,
     budgets: EXECUTION_CANDIDATE_BUDGETS, admissionLimits, capabilities, scheduler,
+    claimNamespace(storageDir: string) {
+      if (options.mode !== 'live-runtime') throw new Error('Only the Runtime authority may claim a Supervisor namespace.');
+      const current = resolveLinuxExecutionProviderAssets(dist);
+      if (current.binarySha256 !== assets.binarySha256 || current.manifestSha256 !== assets.manifestSha256 ||
+          current.entrySha256 !== assets.entrySha256) throw new Error('Linux candidate assets changed after owner preparation.');
+      if (typeof process.getuid !== 'function') throw new Error('Linux candidate namespace requires a user identity.');
+      const identity = { uid: process.getuid(), storageDir: realpathSync(storageDir) };
+      const address = `\0dsc-runtime-owner-${digest(Buffer.from(JSON.stringify(identity)))}`;
+      const binding = require(current.binaryPath) as { executionClaimNamespace: (address: string) => void };
+      binding.executionClaimNamespace(address);
+    },
     createTransport(identity: ExecutionIdentity) {
       const current = resolveLinuxExecutionProviderAssets(dist);
       if (current.binarySha256 !== assets.binarySha256 || current.manifestSha256 !== assets.manifestSha256 ||

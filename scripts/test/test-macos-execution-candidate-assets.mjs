@@ -45,7 +45,8 @@ function replaceAsset(value, asset, bytes) {
 function fixture(arch = 'arm64', command = 0x32) {
   const binary = machO(arch, 8, command);
   const helper = machO(arch, 2, command);
-  return { binary, helper, manifest: { schemaVersion: 1, profile, platform: 'darwin', arch,
+  return { binary, helper, manifest: { schemaVersion: 2, profile, platform: 'darwin', arch,
+    requirements: { napi: 8, macos: { deploymentTarget: arch === 'arm64' ? '11.0' : '10.13' } },
     runtime: { name: 'node', version: '22.23.2', node: '22.23.2', modules: '127', napi: '10' },
     binary: { file: 'execution-owner.node', sha256: digest(binary) },
     helper: { file: 'spawn-helper', sha256: digest(helper) }, exports: [...MACOS_EXECUTION_EXPORTS],
@@ -176,6 +177,8 @@ try {
     const { manifest, binary, helper } = fixture();
     for (const mutate of [
       m => { m.profile = 'linux-owner-v1-candidate'; }, m => { m.platform = 'linux'; },
+      m => { m.schemaVersion = 1; }, m => { m.requirements.napi = 10; },
+      m => { m.requirements.macos.deploymentTarget = '26.0'; },
       m => { m.arch = 'ia32'; }, m => { m.runtime.name = 'browser'; },
       m => { m.runtime.version = '20.0.0'; }, m => { m.runtime.node = ''; },
       m => { m.runtime.modules = ''; }, m => { m.runtime.napi = undefined; },
@@ -275,7 +278,7 @@ try {
       const args = candidateCompilerArguments({ arch, sdk: '/sdk', headers: '/headers', addonRoot: '/addon',
         inputs: '/inputs', source: '/inputs/pty.cc', binary: '/output/execution-owner.node' });
       assert.deepEqual(args, ['-std=c++17', '-bundle', '-undefined', 'dynamic_lookup', '-fPIC', '-pthread', '-fexceptions',
-        '-DNAPI_CPP_EXCEPTIONS', '-DNODE_GYP_MODULE_NAME=pty', '-arch', compilerArch, '-isysroot', '/sdk',
+        '-DNAPI_VERSION=8', '-DNAPI_CPP_EXCEPTIONS', '-DNODE_GYP_MODULE_NAME=pty', '-arch', compilerArch, '-isysroot', '/sdk',
         `-mmacosx-version-min=${arch === 'arm64' ? '11.0' : '10.13'}`,
         '-I', '/headers', '-I', '/addon', '-I', '/inputs', '/inputs/pty.cc', '-o', '/output/execution-owner.node']);
       assert.deepEqual(helperCompilerArguments({ arch, sdk: '/sdk', source: '/inputs/helper.cc', binary: '/output/spawn-helper' }),

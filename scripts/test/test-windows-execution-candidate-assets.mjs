@@ -8,7 +8,7 @@ import { buildCandidateAssets, candidateAssetRelativePath, candidateCompilerArgu
   importCandidateAssets, readCandidateAssets, validateCandidateHeaders, validateCandidateManifest,
   NODE_PTY_PATH_UTIL_SHA256, NODE_PTY_WINDOWS_HEADERS_SHA256,
   NODE_GYP_DELAY_LOAD_HOOK_SHA256, NODE_GYP_DELAY_LOAD_HOOK_CRLF_SHA256,
-  validateCandidateDelayLoadHook } from '../build/windows-execution-candidate-assets.mjs';
+  validateCandidateDelayLoadHook, assertCandidateStaticCrt } from '../build/windows-execution-candidate-assets.mjs';
 import { WINDOWS_EXECUTION_EXPORTS, NODE_PTY_CONPTY_SHA256 } from '../build/windows-execution-provider-patch.mjs';
 import { resolveExecutionBuildSelection } from '../build/build.mjs';
 
@@ -30,11 +30,33 @@ function pe(arch, dll) {
   bytes.writeUInt16LE(0x20b, 88);
   return bytes;
 }
+function peImports(libraries, arch = 'x64') {
+  const bytes = Buffer.alloc(1024);
+  pe(arch, true).copy(bytes);
+  bytes.writeUInt16LE(1, 70);
+  bytes.writeUInt16LE(240, 84);
+  bytes.writeUInt32LE(512, 148);
+  bytes.writeUInt32LE(16, 196);
+  bytes.writeUInt32LE(4096, 208);
+  bytes.writeUInt32LE((libraries.length + 1) * 20, 212);
+  bytes.write('.rdata', 328, 'ascii');
+  bytes.writeUInt32LE(512, 336);
+  bytes.writeUInt32LE(4096, 340);
+  bytes.writeUInt32LE(512, 344);
+  bytes.writeUInt32LE(512, 348);
+  let nameOffset = 768;
+  for (const [index, library] of libraries.entries()) {
+    bytes.writeUInt32LE(4096 + nameOffset - 512, 512 + index * 20 + 12);
+    nameOffset += bytes.write(library, nameOffset, 'ascii') + 1;
+  }
+  return bytes;
+}
 function fixture(arch = 'x64') {
   const binary = pe(arch, true);
   const dependencies = [pe(arch, true), pe(arch, false)];
-  return { binary, dependencies, manifest: { schemaVersion: 1, profile, platform: 'win32', arch,
+  return { binary, dependencies, manifest: { schemaVersion: 2, profile, platform: 'win32', arch,
     runtime: { name: 'node', version: '22.23.2', node: '22.23.2', modules: '127', napi: '10' },
+    requirements: { napi: 8, windows: { minimumBuild: 17763, conptyVersion: '1.25.260303002', addonCrt: 'static' } },
     binary: { file: 'conpty.node', sha256: digest(binary) },
     dependencies: dependencyFiles.map((file, index) => ({ file, sha256: digest(dependencies[index]) })),
     exports: [...WINDOWS_EXECUTION_EXPORTS], sources: {
@@ -87,6 +109,8 @@ try {
       assert.strictEqual(validateCandidateManifest(manifest, binary, dependencies), manifest);
       manifest.runtime = { ...manifest.runtime, name: 'electron', version: '39.8.7' };
       assert.strictEqual(validateCandidateManifest(manifest, binary, dependencies), manifest);
+      manifest.runtime = { name: 'node', version: '16.17.1', node: '16.17.1', modules: '93', napi: '8' };
+      assert.strictEqual(validateCandidateManifest(manifest, binary, dependencies), manifest);
       assert.equal(candidateAssetRelativePath(arch), `native/windows-execution-candidate/win32-${arch}`);
     }
     assert.throws(() => candidateAssetRelativePath('ia32'));
@@ -94,6 +118,11 @@ try {
   await test('foreign targets stale sources incomplete ABI and runtime claims reject', () => {
     const { manifest, binary, dependencies } = fixture();
     for (const mutate of [
+      m => { m.schemaVersion = 1; }, m => { delete m.requirements; },
+      m => { m.requirements.napi = 7; }, m => { m.requirements.napi = '8'; },
+      m => { m.requirements.windows.minimumBuild = 18309; },
+      m => { m.requirements.windows.conptyVersion = '1.25'; },
+      m => { m.requirements.windows.addonCrt = 'dynamic'; }, m => { m.requirements.windows.extra = true; },
       m => { m.profile = 'linux-owner-v1-candidate'; }, m => { m.platform = 'linux'; },
       m => { m.arch = 'ia32'; }, m => { m.runtime.name = 'browser'; },
       m => { m.runtime.version = '20.0.0'; }, m => { m.runtime.node = ''; },
@@ -113,6 +142,37 @@ try {
       assert.throws(() => validateCandidateManifest(altered, binary, dependencies));
     }
     assert.throws(() => validateCandidateManifest(manifest, binary, dependencies.slice(0, 1)), /both/);
+  });
+  await test('normal PE imports enforce static addon CRT without treating other bytes as imports', () => {
+    for (const arch of ['x64', 'arm64']) {
+      const binary = peImports(['KERNEL32.dll', 'SHLWAPI.dll'], arch);
+      binary.write('VCRUNTIME140.dll', 980, 'ascii');
+      assert.doesNotThrow(() => assertCandidateStaticCrt(binary, arch));
+      for (const library of ['MSVCP140.dll', 'VCRUNTIME140_1.dll', 'msvcrt.dll', 'ucrtbase.dll',
+        'api-ms-win-crt-runtime-l1-1-0.dll', 'CONCRT140.dll']) {
+        assert.throws(() => assertCandidateStaticCrt(peImports([library], arch), arch), /static CRT/);
+      }
+      const value = fixture(arch);
+      value.binary = peImports(['VCRUNTIME140.dll'], arch);
+      value.manifest.binary.sha256 = digest(value.binary);
+      assert.throws(() => validateCandidateManifest(value.manifest, value.binary, value.dependencies), /static CRT/);
+      value.binary = binary;
+      value.manifest.binary.sha256 = digest(binary);
+      value.dependencies[0] = peImports(['api-ms-win-crt-runtime-l1-1-0.dll'], arch);
+      value.manifest.dependencies[0].sha256 = digest(value.dependencies[0]);
+      assert.doesNotThrow(() => validateCandidateManifest(value.manifest, value.binary, value.dependencies));
+      for (const mutate of [
+        bytes => bytes.writeUInt16LE(112, 84), bytes => bytes.writeUInt32LE(0, 208),
+        bytes => bytes.writeUInt32LE(0xffffffff, 208), bytes => bytes.writeUInt32LE(513, 212),
+        bytes => bytes.writeUInt32LE(20, 212), bytes => bytes.writeUInt32LE(0xffffffff, 524),
+        bytes => bytes.writeUInt32LE(1000, 348), bytes => bytes.fill(65, 768),
+        bytes => { bytes[768] = 0xff; }
+      ]) {
+        const changed = peImports(['KERNEL32.dll'], arch);
+        mutate(changed);
+        assert.throws(() => assertCandidateStaticCrt(changed, arch), /PE/);
+      }
+    }
   });
   await test('addon DLL and executable hashes and PE declarations are independently checked', () => {
     const { manifest, binary, dependencies } = fixture();
@@ -172,9 +232,9 @@ try {
         source: '/inputs/conpty.cc', pathUtil: '/inputs/path_util.cc', binary: '/output/conpty.node', nodeLib: '/inputs/node.lib',
         delayLoadHook: '/inputs/win_delay_load_hook.cc' };
       assert.deepEqual(candidateCompilerArguments(options), [
-        '/nologo', '/LD', '/MD', '/EHsc', '/std:c++17', '/guard:cf', '/sdl', '/W3', '/ZH:SHA_256',
+        '/nologo', '/LD', '/MT', '/EHsc', '/std:c++17', '/guard:cf', '/sdl', '/W3', '/ZH:SHA_256',
         '/DWIN32_LEAN_AND_MEAN', '/DNAPI_CPP_EXCEPTIONS', '/DNODE_ADDON_API_CPP_EXCEPTIONS', '/D_HAS_EXCEPTIONS=1',
-        '/DBUILDING_NODE_EXTENSION', '/DHOST_BINARY="node.exe"', '/DNODE_GYP_MODULE_NAME=conpty',
+        '/DBUILDING_NODE_EXTENSION', '/DNAPI_VERSION=8', '/DHOST_BINARY="node.exe"', '/DNODE_GYP_MODULE_NAME=conpty',
         '/I/headers', '/I/addon', '/I/inputs', '/inputs/conpty.cc', '/inputs/path_util.cc', '/inputs/win_delay_load_hook.cc',
         '/link', '/DLL', '/DYNAMICBASE', '/guard:cf', `/MACHINE:${machine}`, '/OUT:/output/conpty.node',
         '/DELAYLOAD:node.exe', '/inputs/node.lib', 'shlwapi.lib', 'delayimp.lib'
@@ -213,6 +273,7 @@ try {
       file, sha256: digest(fs.readFileSync(path.join(ptyRoot, 'src/win', file)))
     })))), NODE_PTY_WINDOWS_HEADERS_SHA256);
     for (const arch of ['x64', 'arm64']) {
+      assertCandidateStaticCrt(fs.readFileSync(path.join(ptyRoot, 'prebuilds', `win32-${arch}`, 'conpty.node')), arch);
       const value = fixture(arch);
       value.dependencies = dependencyFiles.map(file => fs.readFileSync(path.join(ptyRoot,
         'third_party/conpty/1.25.260303002', `win10-${arch}`, path.posix.basename(file))));

@@ -4,9 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildCandidateAssets, candidateCompilerArguments, CANDIDATE_ASSET_RELATIVE_PATH,
+import { buildCandidateAssets, candidateCompilerArguments, candidateAssetRelativePath, CANDIDATE_ASSET_RELATIVE_PATH,
   importCandidateAssets, validateCandidateManifest } from '../build/linux-execution-candidate-assets.mjs';
 import { LINUX_EXECUTION_EXPORTS, NODE_PTY_UNIX_SHA256 } from '../build/linux-execution-provider-patch.mjs';
+import { readLinuxExecutionRequirements } from '../build/linux-execution-elf.mjs';
+import { linuxExecutionElf } from './fixtures/linux-execution-elf.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-candidate-assets-test-'));
@@ -15,11 +17,9 @@ const owner = fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-can
 const sharedOwner = fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-canvas/native/unix-execution-owner.h'));
 const patch = fs.readFileSync(path.join(root, 'scripts/build/linux-execution-provider-patch.mjs'));
 // Synthetic header bytes only exercise import validation, never addon loading or machine code.
-const binary = Buffer.alloc(64);
-binary.set([0x7f, 0x45, 0x4c, 0x46, 2, 1]);
-binary.writeUInt16LE(3, 16);
-binary.writeUInt16LE(62, 18);
-const manifest = { schemaVersion: 1, profile: 'linux-owner-v1-candidate', platform: 'linux', arch: 'x64',
+const binary = linuxExecutionElf();
+const manifest = { schemaVersion: 2, profile: 'linux-owner-v1-candidate', platform: 'linux', arch: 'x64',
+  requirements: { napi: 8, linux: { libc: 'glibc', glibcMinimum: '2.28', glibcxxMinimum: '3.4.22', cxxabiMinimum: '1.3.9' } },
   libc: { name: 'glibc', version: '2.35' },
   runtime: { name: 'node', version: '22.23.2', node: '22.23.2', modules: '127', napi: '10' },
   binary: { file: 'execution-owner.node', sha256: digest(binary) }, exports: [...LINUX_EXECUTION_EXPORTS],
@@ -41,6 +41,9 @@ try {
   test('foreign targets stale source incomplete exports and unsupported proof claims are rejected', () => {
     for (const mutate of [
       value => { value.profile = 'other'; }, value => { value.platform = 'darwin'; },
+      value => { value.schemaVersion = 1; }, value => { value.requirements.napi = 10; },
+      value => { value.requirements.linux.glibcMinimum = '2.17'; },
+      value => { value.requirements.linux.glibcxxMinimum = '3.4.2'; },
       value => { value.arch = 'arm64'; }, value => { value.libc.name = 'musl'; },
       value => { value.runtime.name = 'unknown'; }, value => { value.runtime.node = '20.0.0'; },
       value => { value.runtime.modules = ''; }, value => { value.runtime.napi = undefined; },
@@ -57,6 +60,39 @@ try {
       mutate(altered);
       assert.throws(() => validateCandidateManifest(altered, binary));
     }
+  });
+
+  test('both existing Linux architectures import their own binary and real minimum requirements', () => {
+    for (const arch of ['x64', 'arm64']) {
+      const bytes = linuxExecutionElf(arch);
+      const value = { ...manifest, arch, binary: { ...manifest.binary, sha256: digest(bytes) } };
+      assert.strictEqual(validateCandidateManifest(value, bytes), value);
+      assert.equal(candidateAssetRelativePath(arch), `native/linux-execution-candidate/linux-${arch}-glibc`);
+    }
+    assert.throws(() => candidateAssetRelativePath('riscv64'));
+    const requirements = readLinuxExecutionRequirements(linuxExecutionElf('x64',
+      ['GLIBC_2.9', 'GLIBC_2.34', 'GLIBCXX_3.4.9', 'GLIBCXX_3.4.22', 'CXXABI_1.3.9']), 'x64');
+    assert.equal(requirements.linux.glibcMinimum, '2.34');
+    assert.equal(requirements.linux.glibcxxMinimum, '3.4.22');
+  });
+
+  test('missing truncated conflicting or malformed ELF dependency records cannot claim compatibility', () => {
+    for (const mutate of [
+      bytes => bytes.writeUInt16LE(0, 60),
+      bytes => bytes.writeBigUInt64LE(1000n, 40),
+      bytes => bytes.writeUInt32LE(9, 192 + 40),
+      bytes => bytes.writeUInt16LE(0, 514),
+      bytes => bytes.writeUInt32LE(0, 520),
+      bytes => bytes.writeUInt32LE(1024, 528 + 8),
+      bytes => bytes.writeUInt32LE(0, 528 + 12),
+      bytes => bytes.writeUInt32LE(16, 528 + 3 * 16 + 12)
+    ]) {
+      const bytes = Buffer.from(binary);
+      mutate(bytes);
+      assert.throws(() => readLinuxExecutionRequirements(bytes, 'x64'));
+    }
+    assert.throws(() => readLinuxExecutionRequirements(linuxExecutionElf('x64', ['GLIBC_2.28']), 'x64'));
+    assert.throws(() => readLinuxExecutionRequirements(linuxExecutionElf('x64', ['GLIBC_PRIVATE']), 'x64'));
   });
 
   test('binary content hash and basic target format are checked without loading code', () => {
@@ -88,7 +124,7 @@ try {
   test('compiler command contains only the controlled addon compilation inputs', () => {
     const args = candidateCompilerArguments({ headers: '/headers', addonRoot: '/addon', inputs: '/inputs',
       source: '/inputs/source.cc', binary: '/output/execution-owner.node' });
-    assert.deepEqual(args, ['-std=c++17', '-shared', '-fPIC', '-pthread', '-fexceptions', '-DNAPI_CPP_EXCEPTIONS',
+    assert.deepEqual(args, ['-std=c++17', '-shared', '-fPIC', '-pthread', '-fexceptions', '-DNAPI_VERSION=8', '-DNAPI_CPP_EXCEPTIONS',
       '-DNODE_GYP_MODULE_NAME=pty', '-I', '/headers', '-I', '/addon', '-I', '/inputs',
       '/inputs/source.cc', '-o', '/output/execution-owner.node', '-lutil']);
   });

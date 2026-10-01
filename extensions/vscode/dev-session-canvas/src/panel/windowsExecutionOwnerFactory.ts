@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { release } from 'node:os';
 import * as path from 'node:path';
 
 import { EXECUTION_CANDIDATE_BUDGETS, WINDOWS_EXECUTION_CANDIDATE_PROFILE, normalizeExecutionAdmissionLimits,
   type ExecutionAdmissionLimits, type ExecutionCandidateMode, type ExecutionIdentity } from '../common/executionLifecycle';
 import type { WindowsExecutionOwnerOptions } from './executionOwnerLifecycle';
+import { assertExecutionAssetRuntime, assertMinimumExecutionLibraryVersion } from './executionAssetCompatibility';
 import { createExecutionProviderTransport, createNodeExecutionScheduler } from './executionProviderTransport';
 import type { ExecutionScheduler } from './executionSessionAdapter';
 
@@ -63,15 +65,17 @@ export function resolveWindowsExecutionProviderAssets(distDirectory: string): Wi
   }
   const manifestBytes = readAsset(path.join(directory, 'manifest.json'), 32768);
   const manifest = record(JSON.parse(manifestBytes.toString('utf8')));
-  if (manifest.schemaVersion !== 1 || manifest.profile !== WINDOWS_EXECUTION_CANDIDATE_PROFILE ||
+  if (manifest.schemaVersion !== 2 || manifest.profile !== WINDOWS_EXECUTION_CANDIDATE_PROFILE ||
       manifest.platform !== 'win32' || manifest.arch !== process.arch) throw new Error('Windows candidate manifest target mismatch.');
-  const runtime = record(manifest.runtime);
-  const expected = { name: process.versions.electron ? 'electron' : 'node',
-    version: process.versions.electron ?? process.versions.node, node: process.versions.node,
-    modules: process.versions.modules, napi: process.versions.napi };
-  for (const [key, value] of Object.entries(expected)) {
-    if (typeof value !== 'string' || runtime[key] !== value) throw new Error(`Windows candidate runtime mismatch: ${key}.`);
+  const requirements = record(manifest.requirements);
+  const windows = record(requirements.windows);
+  if (Object.keys(requirements).sort().join(',') !== 'napi,windows' ||
+      Object.keys(windows).sort().join(',') !== 'addonCrt,conptyVersion,minimumBuild' ||
+      windows.minimumBuild !== 17763 || windows.conptyVersion !== '1.25.260303002' || windows.addonCrt !== 'static') {
+    throw new Error('Windows candidate compatibility requirements mismatch.');
   }
+  assertExecutionAssetRuntime(record(manifest.runtime), requirements.napi);
+  assertMinimumExecutionLibraryVersion(release(), '10.0.17763');
   const binary = record(manifest.binary);
   if (!Array.isArray(manifest.dependencies) || manifest.dependencies.length !== dependencyFiles.length) {
     throw new Error('Windows candidate requires both ConPTY dependencies.');

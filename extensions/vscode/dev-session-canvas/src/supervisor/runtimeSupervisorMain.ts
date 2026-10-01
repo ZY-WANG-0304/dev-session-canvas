@@ -510,7 +510,8 @@ export class RuntimeSupervisorServer {
   public async start(): Promise<void> {
     this.assertOwnedAdmissionOpen();
     const options = this.executionOwner?.options;
-    const nativeClaim = options?.kind === 'macos-provider' ? options.claimNamespace : undefined;
+    const nativeClaim = options?.kind === 'macos-provider' || options?.kind === 'linux-provider'
+      ? options.claimNamespace : undefined;
     if (this.executionProfile !== undefined) {
       if (this.candidateStartAttempted) throw new Error('Execution candidate Supervisor startup was already attempted.');
       this.candidateStartAttempted = true;
