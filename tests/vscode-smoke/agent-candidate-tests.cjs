@@ -8,7 +8,7 @@ const { stripVTControlCharacters } = require('node:util');
 const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { AgentProcessObserver, executionEnded } = require('./agent-candidate-process-observer.cjs');
-const { invokeCLI } = require('./agent-candidate-cli.cjs');
+const { invokeCLI, buildClaudeCandidateArguments } = require('./agent-candidate-cli.cjs');
 const { collectSnapshotEvidence, acceptsEmptySnapshotStop } = require('./agent-candidate-snapshot-evidence.cjs');
 const { runEmptySnapshotReopen } = require('./agent-candidate-reopen.cjs');
 const { resolveExecutionSessionSpawnSpec } = require('./agent-candidate-spawn-spec.cjs');
@@ -59,11 +59,8 @@ function launchArguments(finalMessagePath) {
         '--color', 'never', '--json', '--output-last-message', finalMessagePath, prompt]
       : [...limited, '--no-daemon', '--no-alt-screen', '--sandbox', 'read-only', '-a', 'never'];
   }
-  const limited = [...claudeConfigurationArguments(), '--safe-mode', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--tools', ''];
-  return config.lifecycle === 'natural'
-    ? [...limited, '--no-session-persistence', '--permission-prompts', 'none', '--max-budget-usd', '0.25',
-      '-p', '--output-format', 'json', prompt]
-    : [...limited, '--permission-mode', 'plan'];
+  return buildClaudeCandidateArguments({ lifecycle: config.lifecycle,
+    configurationArguments: claudeConfigurationArguments(), prompt });
 }
 
 function codexPath() {

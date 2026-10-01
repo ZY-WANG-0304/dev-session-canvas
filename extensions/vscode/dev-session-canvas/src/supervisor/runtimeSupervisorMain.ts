@@ -1460,14 +1460,13 @@ export class RuntimeSupervisorServer {
 
   private scheduleHostOutput(subscription: HostOutputSubscription): void {
     if (!this.isHostOutputCurrent(subscription) || subscription.pumping || subscription.inFlight) return;
-    if (subscription.scheduled) {
-      // A ready subscription may already be queued while the socket is draining.
-      // Re-arm the socket-level turn after the drain instead of leaving it stuck.
-      this.scheduleHostOutputSocket(subscription.socket);
-      return;
-    }
-    if (subscription.socket.writableNeedDrain) {
-      const socket = subscription.socket;
+    subscription.scheduled = true;
+    this.scheduleHostOutputSocket(subscription.socket);
+  }
+
+  private scheduleHostOutputSocket(socket: net.Socket): void {
+    if (socket.destroyed) return;
+    if (socket.writableNeedDrain) {
       if (!this.hostOutputDrainListeners.has(socket)) {
         const drained = (): void => {
           this.hostOutputDrainListeners.delete(socket);
@@ -1480,17 +1479,12 @@ export class RuntimeSupervisorServer {
       }
       return;
     }
-    subscription.scheduled = true;
-    this.scheduleHostOutputSocket(subscription.socket);
-  }
-
-  private scheduleHostOutputSocket(socket: net.Socket): void {
     const scheduler = this.hostOutputSocketSchedulers.get(socket) ?? {
       scheduled: false,
       pumping: false
     };
     this.hostOutputSocketSchedulers.set(socket, scheduler);
-    if (scheduler.scheduled || scheduler.pumping || socket.writableNeedDrain) return;
+    if (scheduler.scheduled || scheduler.pumping) return;
     scheduler.scheduled = true;
     setImmediate(() => {
       scheduler.scheduled = false;
@@ -1499,7 +1493,12 @@ export class RuntimeSupervisorServer {
   }
 
   private pumpNextHostOutput(socket: net.Socket, scheduler: HostOutputSocketScheduler): void {
-    if (scheduler.pumping || socket.destroyed || socket.writableNeedDrain) return;
+    if (scheduler.pumping || socket.destroyed) return;
+    if (socket.writableNeedDrain) {
+      // Other socket writes may introduce backpressure after this turn was queued.
+      this.scheduleHostOutputSocket(socket);
+      return;
+    }
     const subscriptions = this.hostOutputSubscriptions.get(socket);
     if (!subscriptions || subscriptions.size === 0) return;
     const entries = [...subscriptions.values()];

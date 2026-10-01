@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
 const fs = require('node:fs/promises');
 const { constants } = require('node:fs');
 const { createRequire } = require('node:module');
@@ -55,4 +56,16 @@ async function windowsCliManifest(provider, entry, nodeInterpreter) {
   return { provider, nativeExecutable, nodeWrapper, nodeExecutable: nodeInterpreter.realpath };
 }
 
-module.exports = { invokeCLI, findExecutable, windowsCliManifest };
+function buildClaudeCandidateArguments({ lifecycle, configurationArguments = [], prompt, sessionId = randomUUID() }) {
+  assert(['natural', 'stop'].includes(lifecycle));
+  assert(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(sessionId));
+  const limited = [...configurationArguments, '--safe-mode', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--tools', ''];
+  const args = lifecycle === 'natural'
+    ? [...limited, '--no-session-persistence', '--permission-prompts', 'none', '--max-budget-usd', '0.25',
+      '-p', '--output-format', 'json', prompt]
+    : [...limited, '--permission-mode', 'plan'];
+  // Select once before both observer setup and product launch so the product does not append an unseen ID.
+  return [...args, '--session-id', sessionId];
+}
+
+module.exports = { invokeCLI, findExecutable, windowsCliManifest, buildClaudeCandidateArguments };

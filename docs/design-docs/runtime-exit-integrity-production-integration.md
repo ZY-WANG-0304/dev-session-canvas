@@ -2112,3 +2112,25 @@ A3修正夹具的最终纯测试在当前工作树通过7组，新增receipt只�
 当前提交 `85f08d8e` 的macOS Agent run `36849214028` 在 `codex-live-runtime-natural` 完整通过（真实响应、source EOF、cleanup），随后 `codex-live-runtime-stop` 在 `agent-candidate-tests.cjs:137` 的 `lastRuntimeError` 检查失败；认证、构建和首场均已通过，后六场未运行。安全摘要保存在 `.debug/macos-agent-36849214028/summary.json`，未发布原始CLI或环境内容。
 
 该结果与此前macOS run `36832581851`、`36836757674` 的场景间失败相互印证，但失败位置不同：两次此前运行分别在 `codex-snapshot-only-stop` 的 reader settlement/完成保存断言处停止，当前运行更早在第二场启动状态失败。不能据此宣称固定可复现的单一业务根因，也不能把一次首场通过扩展为macOS矩阵通过；当前分类为macOS候选场景间启动/收尾稳定性阻塞，下一次只允许一次同输入重跑用于区分环境波动与确定性产品缺陷，仍保留三次失败现场与原断言。
+
+## 42. Windows 最终状态传播与已排队发送的背压唤醒
+
+对 `36846733819` 失败工件的进一步只读核对修正第40节的初步分类：实际Webview已收到90000行、UTF-8/ANSI尾部及最终光标 `(6,2)`；Runtime registry为 `live=false/lifecycle=closed/lastExitCode=0/sourceDisposition=eof`，但Host节点仍 `liveSession=true/outputSequence=1390` 且保留绑定。外层失败是 `Timed out: natural exit and final product state`，不是仅有宿主启动失败。当前直接产品阻塞是Supervisor闭合后的最终状态未传播或未应用，不能以页面正文完整替代终态和资源结算，也不归因storage containment。
+
+代码核对另确认一个跨平台调度缺陷：`runtimeSupervisorMain.ts` 中 `scheduleHostOutputSocket` 已排队的 `setImmediate` 执行前，其他socket写入可使 `writableNeedDrain=true`；`pumpNextHostOutput` 此时直接返回，既保留subscription的scheduled标志又不安装drain监听。没有后续输出或状态变化时，即使socket恢复可写也不再发送。基于实际Server类的受控复现观察到 `scheduled=true`、socket scheduler未排队、drain listener为0，恢复并发出drain后pump仍为0。此缺陷成立，但尚未证明它就是该Windows工件的唯一原因。
+
+正式修正只集中socket级唤醒责任：已就绪subscription保持有界单批信用；安排turn和执行turn两个入口一旦遇到背压，都注册同一个socket级drain监听，drain后按原公平调度继续。它不新增轮询、重试队列、状态旁路或取消预算，也不提前ACK或绕过Webview消费。先在 `scripts/test/test-runtime-host-output-credit.mjs` 增加“最后状态已排队、执行前背压、恢复后无新输出”的定向先红回归，再修生产调度并验证已有真实socket信用/尾部/公平/断连测试。随后只复验原Windows产品组合；旧失败及跨平台未知保持。
+
+Windows Claude的 `naturalResponseVerified=true` 与 `cliObserved=false` 分账：Runtime完成后清除outputSequence符合无历史规则，不能单凭该字段缺失认定CLI没有输出。仍需确认实际 `cmd.exe -> claude.exe` 启动链是否被观察器识别，不将普通工具后代边界用于排除实际CLI。macOS第41节唯一重跑为 `36850339021` / `4f613e7a`，未回收前不宣称通过或追加重试。
+
+修后局部证据：`test-runtime-host-output-credit.mjs --baseline-ref=4f613e7a --queued-drain-only` 固定旧Server超时exit1；新Server同例及全部原Host credit组通过，client28/28、paged completion四组合与typecheck通过，独立review与复跑无新增阻塞。它证明实际Server/socket调度修复，不是原Windows产品通过声明。
+
+macOS唯一重跑现已回收：`36850339021` / `4f613e7a` 的真实Codex/Claude原八场均passed，四natural响应与实际EOF通过，八cleanup的bindings/failures/forcedSignals/active计数均0；stop仍是主动停止。Codex snapshot-stop为空、序列7，完整独立回放与resize对账以及新Host重开全部通过；Claude snapshot-stop为2090字节、序列12，原验收和resize对账通过，但诊断replay为 `projection-recovery-or-unknown-snapshot`，不能声称所有场景均独立重放。与前一失败run的16项buildHashes完全一致，旧失败不能追认成修复或已证实的环境波动。第137行的lastRuntimeError也可能来自消费或断连，不是CLI spawn专有错误；每场存储和Host隔离，目前没有上一场状态污染的确定证据。
+
+## 43. Windows Claude 固定启动身份与严格观察
+
+已确定本轮观察缺口而非立即认定CLI生命周期缺陷：PowerShell观察器要求provider子级cmd的原始tail与预登记 `launchArguments` Ordinal全等；但 `CanvasPanelManager.resolveAgentResumeContext` 会为没有显式session flag的Claude fresh启动生成UUID，`buildAgentLaunchSpec` 将 `--session-id UUID` 追加到实际参数。原harness只登记追加前的命令，故实际cmd不匹配，后续原生claude.exe也无法沿严格父链纳入观察。Codex没有同一追加路径。该静态确定差异与 `naturalResponseVerified=true/cliObserved=false` 相容，不能据此宣称真实Windows矩阵已通过。
+
+最小方案只修改固定验收输入：每个Claude场景在发起创建前生成一个有效UUID，将 `--session-id` 置于原参数末尾，观察器和产品custom command共用这一数组。实际产品识别已有session flag后保留同一ID、不重复追加，仍走正常fresh launch与原有session身份语义。`agent-candidate-cli.cjs` 保存该窄参数构造，`agent-candidate-tests.cjs` 使用它；纯测试调用实际resume resolver、launch builder、command parser和Windows spawn resolver验证完整tail相等及原JSON/空tools参数保持。不得改PowerShell为宽松子串匹配、补认未持有的进程、按PID消失认退出或放宽旧断言。纯测通过后只重新运行原Windows八场，仍保留原失败及真实wrapper/CLI生命周期门禁。
+
+本轮实现及验证：上述三文件窄修已完成，原无ID的产品追加差异仍在回归中复现；两个lifecycle的实际产品方法、parser和Windows spawn resolver组合通过。CLI、Windows/Darwin observer、DeepSeek配置、安全CI report及语法检查通过，未运行Windows原生。第42节整体npm命令另暴露旧 `test-terminal-available-credit.mjs` 共享夹具缺 `recordDiagnosticEvent`，与85f08d8e基线一致；仅补可观察diagnostics依赖、保持旧断言后整条命令通过，不修改业务。下一固定新提交各一次原Windows产品和Agent矩阵，不增加平台/场景或自动重试。

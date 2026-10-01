@@ -172,6 +172,8 @@ B2 会改变实际 provider、信用与消费链，最终启用产物必须复�
 
 随后 `36849214028` 的macOS Agent首场Codex live natural通过，第二场Codex live stop在既有启动错误检查处失败，后六场未运行；与两次既有macOS后续场景失败的位置不同，当前按场景间候选启动/收尾稳定性阻塞处理，只再安排一次同输入重跑用于区分环境波动与确定性问题。
 
+当前更新取代上两段的待执行状态：唯一重跑 `36850339021` / `4f613e7a` 原八场真实Codex/Claude全部passed，四natural响应/EOF与八场零清理残留通过，Codex空snapshot经新Host重开；旧间歇失败根因未知，不追认已修。Windows `36846733819` 已取得失败第一现场：Webview完整尾部与registry closed/EOF已到，Host节点仍live，升级为最终状态传播/消费产品阻塞。第42节已排队socket turn遇背压丢唤醒独立复现并局部修正，下一仅复验原产品组合，尚不声称该CI因果已闭合。Windows Claude响应已核验但实际CLI未被observer确认，先定位启动链识别；completed无outputSequence符合无历史，不能独立推断输出丢失。其余有限完成定义不变。
+
 历史证据继续保留原 SHA、原输入、断言、失败、工件与补救动作。D1 至 D4、U1/W1、PTY/EOF/挂断及后代对照作为诊断资料；不追认失败为通过，不为抹红重复采集，也不将旧阶段未勾项全文复制进当前清单。Windows 已退出进程仍被合法句柄引用需按对象语义解释，本方 owner 释放与 OS 对象最终销毁分开，不能盲关其他进程句柄求零。
 
 前版 `2d375606` 只读核对与文档检查通过，容量与退出两路独立复核未发现范围阻塞；该证据不表示用户批准了草案或产品验收通过。本次按用户要求由代理承担工程裁决，变更完成定义状态、预算责任和工作顺序，历史实验/断言不改。原始审核见 `webview-host-supervisor-architecture-review.md`，容量进展见 `runtime-persistence-storage-reevaluation.md` 第 9 节，退出接线与有限证据见 `runtime-exit-integrity-production-integration.md`，契约以 `docs/product-specs/runtime-persistence-modes.md` 第 9、10 节为准。

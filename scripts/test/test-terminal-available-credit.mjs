@@ -78,6 +78,8 @@ function fixture(Harness, receiptCapability = true, delivery) {
   const host = new Harness();
   const posts = [];
   const bootstrapQueue = [];
+  const diagnostics = [];
+  host.recordDiagnosticEvent = (kind, detail) => { diagnostics.push({ kind, detail }); };
   host.activeSurface = 'editor';
   host.surfaceMode = { editor: 'active', panel: 'active' };
   host.surfaceReady = { editor: true, panel: true };
@@ -99,7 +101,7 @@ function fixture(Harness, receiptCapability = true, delivery) {
   host.rejectPendingWebviewProbeRequests = () => {};
   host.rejectPendingWebviewDomActionRequests = () => {};
   host.clearPendingBootstrapHostMessages = () => { bootstrapQueue.length = 0; };
-  return { host, posts, bootstrapQueue };
+  return { host, posts, bootstrapQueue, diagnostics };
 }
 
 function makeSession(sessionId = 'session-a', authorityId = 'authority-a') {
@@ -265,7 +267,6 @@ async function verifyReattachPublishesCurrentHead(Harness) {
   f.host.getExecutionSessions = () => new Map([['node-a', session]]);
   f.host.getRuntimeSupervisorClientForKind = async () => ({ supportsTerminalReadSettlement: () => false });
   f.host.terminalReadRelay.open = async () => descriptor;
-  f.host.recordDiagnosticEvent = () => {};
   f.host.postTerminalAvailable('terminal', 'node-a', session);
   const oldReceipt = receipt(f.posts[0]);
   session.outputSequence = 2;

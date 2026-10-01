@@ -12,6 +12,7 @@ const sockets = new Set();
 const clients = new Set();
 const sessions = [];
 const baselineRef = process.argv.find(value => value.startsWith('--baseline-ref='))?.split('=')[1];
+const queuedDrainOnly = process.argv.includes('--queued-drain-only');
 let listener;
 let server;
 try {
@@ -97,8 +98,9 @@ try {
       await tracker.flush();
     } };
   };
-  await verifyCreditFlow({ createClient, createSession, server, baselineRef });
-  if (!baselineRef) {
+  if (queuedDrainOnly || !baselineRef) await verifyQueuedFinalStateDrain({ createClient, createSession, server });
+  if (!queuedDrainOnly) await verifyCreditFlow({ createClient, createSession, server, baselineRef });
+  if (!baselineRef && !queuedDrainOnly) {
     await verifyPageReaderReuse({ createClient, createSession, server });
     await verifyRoundRobinFairness({ createClient, createSession, server });
     await verifyReplacementAndDisconnect({ createClient, createSession, server });
@@ -106,7 +108,8 @@ try {
     await verifySteadyOutput({ createClient, createSession, server });
     await verifyLegacy({ createClient, createSession, server });
   }
-  console.log('runtime Host output credit: real socket backpressure, controls, tail ordering and lifecycle passed');
+  console.log(queuedDrainOnly ? 'runtime Host output credit: queued final state drain passed'
+    : 'runtime Host output credit: real socket backpressure, controls, tail ordering and lifecycle passed');
 } finally {
   for (const client of clients) client.dispose();
   for (const socket of sockets) socket.destroy();
@@ -122,6 +125,48 @@ try {
     await session.terminalJournal.delete();
   }
   await rm(directory, { recursive: true, force: true });
+}
+
+async function verifyQueuedFinalStateDrain({ createClient, createSession, server }) {
+  const fixture = await createSession('queued-final-state-drain');
+  const snapshots = [];
+  const client = createClient({ onSessionTerminalBatch: async batch => {
+    assert.equal(batch.error, undefined);
+    if (batch.snapshot) snapshots.push(batch.snapshot);
+    return 'consumed';
+  } });
+  let socket;
+  let needDrain = false;
+  try {
+    await client.ensureConnected({ allowRestart: false });
+    await client.subscribeSession(subscription(fixture.session));
+    await until(() => {
+      const flow = findFlow(server, fixture.session.sessionId);
+      return snapshots.length === 1 && flow && !flow.inFlight && !flow.pumping && !flow.scheduled;
+    }, 'initial live state acknowledged');
+    const flow = findFlow(server, fixture.session.sessionId);
+    socket = flow.socket;
+    Object.defineProperty(socket, 'writableNeedDrain', { configurable: true, get: () => needDrain });
+    fixture.session.live = false;
+    fixture.session.lifecycle = 'closed';
+    server.updateHostOutput(flow, true);
+    assert.equal(flow.scheduled, true);
+    // Another socket write can create backpressure after scheduling but before the turn runs.
+    needDrain = true;
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(snapshots.length, 1, 'The final state must wait for writable transport.');
+    needDrain = false;
+    socket.emit('drain');
+    await until(() => snapshots.length === 2, 'queued final state after drain without new output');
+    assert.equal(snapshots[1].live, false);
+    assert.equal(snapshots[1].lifecycle, 'closed');
+    await until(() => !findFlow(server, fixture.session.sessionId), 'final state acknowledged and subscription retired');
+    assert.equal(server.hostOutputDrainListeners.has(socket), false);
+  } finally {
+    if (socket) delete socket.writableNeedDrain;
+    client.dispose();
+  }
+  console.log('Host credit: queued final state resumes after drain without a new output/state event');
 }
 
 async function verifyPageReaderReuse({ createClient, createSession, server }) {

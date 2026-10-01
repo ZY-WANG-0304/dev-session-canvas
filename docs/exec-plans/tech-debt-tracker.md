@@ -29,6 +29,8 @@
 
 2026-10-01 macOS Agent回收：`36849214028` 在 `85f08d8e` 上首场Codex live natural完整通过，第二场Codex live stop于 `agent-candidate-tests.cjs:137` 的 `lastRuntimeError` 启动检查失败，认证/构建成功且后六场未运行。此前 `36832581851`、`36836757674` 也在后续Codex场景失败但位置不同，当前只记录为macOS候选场景间启动/收尾稳定性阻塞；下一仅允许一次同输入重跑区分波动与确定性，不追认首场通过为平台通过。
 
+2026-10-01后续回收取代上述当前队列：唯一重跑 `36850339021` 的macOS真实Agent原八场全部通过，cleanup全零及Codex空snapshot新Host重开通过；旧失败保持、根因未知，不追加抓红矩阵。Windows `36846733819` 实际页面完整90000行/尾部/最终光标与Supervisor closed/EOF已确认，但Host仍live，初步宿主启动分类改为最终状态传播/消费阻塞。生产接入第42节独立复现并窄修queued turn背压丢drain唤醒，原生因果仍待复验。Windows Claude `naturalResponseVerified=true/cliObserved=false` 按启动链观察缺口定位，completed缺sequence不是丢输出的独立证据。F-04、A5/Remote/默认准入与既定验收继续开放。
+
 2026-10-01最新有限增量：第39节真实Linux Runtime Reload Window首轮exit0、同UI/新Host/原执行/新reader、completed空重开与清理均独立核对，固定子项不再排队；snapshot-only reload、多根、其余A1至A6不代证。Windows36843457341越过无凭据前置后首败storage路径断言，后七场未跑，保留清理观察未知，先核对路径语义。macOS36841263618已证明连续空终态与独立resize后页面一致，严格空态判据及真实重开待新证据；A5新target产品报告待回收，六资产/兼容/Remote和默认准入仍开放。当前队列以有限收尾及active计划首段为准，以下dated记录均保留原时点含义。
 
 2026-10-01 B2/A5与B3/A6：macOS Terminal36829311235六报告核对通过，真实Agent36832581851前三Codex场passed、第四snapshot stop空快照真值断言首败、Claude未跑，33.10所需终态证据已接入，定向回归与独立复核通过，原断言不改，待一次原矩阵。Windows36830583121绿灯缺报告已确认CLI转交误判，34.12窄修后36834158313真实exit1，原小报告确认mounted早于reader身份返回；共享原30秒poll已先红后绿，待原流水线，Agent未调度。32.21新增永久退出后旧reset写入缺陷已先红后修，原46+真实start2+普通/owner重叠2共50项、Host145/typecheck/localization及独立复核通过，不代证真实reload/多根UI。第35节固定VSIX实际安装接线开始，不把原payload smoke算installed通过。所有旧失败保留；剩余F-04/A1至A6、六资产/运行时、Remote与默认准入按有限清单，不另增通用工具债务。
