@@ -1841,6 +1841,10 @@ run `36821963386`/job `110239281754` 使用 `72ca0efe`，修后原Node四例全�
 
 固定一次新输入6d622bee的run36836757674仍整轮failure：前三Codex场passed，第四snapshot stop原truthy断言在188行拒绝，Claude四场not-run。安全摘要保存在 `.debug/agent-ci-macos-36836757674-summary/`，actual savedNode的空串有效、快照/metadata/reader最终序号均13，reader lifecycle匹配；原help页面有11条非空可见行。最终hydrate与页面的geometry/visible不一致，但全文非空行对账为true；62条消息未满窗，独立重放因execution-changed保守unknown，故不能判定合法清屏或丢正文，更不能改为通过。四cleanup仍零残留。下一仅核对该两种具名未知的现有消息/布局生产语义，不自动复跑或扩展通用诊断框架，原两次macOS失败与Linux具名未决项继续分账。
 
+33.10 的只读离线核对使用旧 Linux 真实输入 `.debug/a4-real-agent-20260930-indexed-pages/codex-snapshot-only-stop/artifacts/`，不更改证据或代证 macOS。已确认三个生产 schema 事实：创建前有同 reader、无执行身份的 inactive 空 snapshot；首个 live checkpoint 外层序号为0而空 serialized state 未带可选序号；输出前重复发送完全等价的初始 checkpoint。当前 helper 因这些合法输入逐层返回 execution-changed、initial-checkpoint-missing 和 projection-recovery-or-unknown-snapshot。选定只识别这三个窄规则：无身份前缀必须位于首个当前执行 checkpoint 之前、同 lifecycle、inactive、output 为空且无序号/serialized state/terminalRead/stream；缺嵌套序号仅限初始外层0、合法格式、空数据、viewport为0或缺失；等价重复仅限任何 output/resize/final 之前。其余缺身份、非空缺序号、换代和后续恢复仍 unknown，不以新终值覆盖独立重放。
+
+该旧 Linux 输入按三条规则内存核对可完整重放0至12，共10个output、无resize，published final与saved相同。replayMatchesSaved仍为false：几何/光标/viewport/所有行均相同，但原重放序列化为656字节，而hydrate再serialize为650字节；不做ANSI归一或改为true。旧saved66×21与page96×30的原geometry/visible均false，仅将独立hydrate resize到page尺寸后对账一致。后续允许额外记录这一具名resize对账，不覆盖原比较、不设置page光标/viewport、不复制page正文，也不宣称真实resize顺序已证。原truthy断言和停止时机保持；局部回归及原输入离线复核后，至多一次原macOS矩阵用于填补这次已知采集盲点，不自动失败重试。
+
 ## 34. Windows 产品原生接入
 
 ### 34.1 运行前原生契约（2026-10-01）
@@ -2004,6 +2008,8 @@ CLI选择、Windows observer、原Unix observer、CI summary、私有配置、�
 修后6d622bee的run36836728391/job110285817329完整success，六份completed/reopened/cleanup及四份environment已范围提取并独立对账，保存于 `.debug/windows-product-36836728391/`，汇总为report-crosscheck.json。实际VS Code1.117.0/Electron39.8.7/Node22.22.1/ABI140，两模式原writer句柄观测exit0、成功写入5580102bytes，原90002行/UTF-8/ANSI/最终光标(6,2)通过，source均EOF、同execution reader applied/finalRevision1379。Runtime节点616bytes且重开closed无历史/空终端；snapshot-only节点5766998bytes、原终态重开保留。两个complete/reopen Host PID各不同，cleanup均pass且bindings0。只读取548209bytes小报告而非491.5MB整包；该实际通过解除Windows原定Agent验收前提，首次Agent输入仍为同6d622bee，手动run36838248572，尚无Agent结果。原失败不追认，不要求已退出OS对象因其他合法引用而消失，也不关闭全A5。
 
 首次Windows Agent run36838248572/job110290820480实际failure，原日志 `.debug/windows-agent-36838248572-job.log` 保留。失败位于无凭据前置 `test-agent-candidate-deepseek.mjs:16`，createDeepSeekConfiguration只报告安全通用错误；CLI安装、候选构建、真实验收/secret步骤均未运行。step开始08:45:46.91Z、失败08:46:02.28Z，与私有目录PowerShell的15000ms上限相近但不能据此确认超时。当前先核对具体私有目录阶段/进程结果，不提高期限、不放宽DACL、不要求用户重配key，不从前置失败推断Agent/终端产品缺陷。
+
+为定位这一安全前置，选定只在原配置helper及其测试补固定字段错误属性：配置stage、PowerShell最近白名单阶段、code整数/具名OS码、signal白名单、killed布尔、durationMs与原timeoutMs、readyTokenMatched和stderrPresent。脚本只增加少量固定阶段标记，验证仍须全部原DACL规则及最终ready；不记录原stdout/stderr、路径、env、command、cause或原错误文本，也不打印key。execFile没有权威timedOut字段，不能把killed/耗时写成已确认超时。原通用报错、15000ms、fail-closed及清理不变；局部测试验证安全字段与key/raw不泄露后，仅复验原Windows前置/矩阵，不建立通用诊断设施。测试后段外层10000ms小于内层15000ms另记尚未到达的风险，不据此归因本次失败或提前放宽。
 
 ## 35. A5 固定 VSIX 的实际安装路径
 

@@ -4,14 +4,29 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+const WINDOWS_PRIVATE_DIRECTORY_STAGES = ['inspect-directory', 'build-acl', 'set-acl', 'verify-acl'];
+const WINDOWS_PRIVATE_DIRECTORY_OUTPUT = [
+  ...WINDOWS_PRIVATE_DIRECTORY_STAGES.map(stage => `private-directory-stage:${stage}`),
+  'private-directory-ready'
+].join('\n');
+const SAFE_FAILURE_CODES = new Set(['ENOENT', 'EACCES', 'EPERM', 'EINVAL', 'ENOMEM', 'EAGAIN',
+  'EIO', 'ENOSPC', 'EISDIR', 'ETIMEDOUT', 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER']);
+const SAFE_FAILURE_SIGNALS = new Set(['SIGTERM', 'SIGKILL', 'SIGINT', 'SIGABRT', 'SIGHUP', 'SIGBREAK']);
+
+function safeFailureCode(code) {
+  return code === null || Number.isSafeInteger(code) || SAFE_FAILURE_CODES.has(code) ? code : 'unknown';
+}
+
 const WINDOWS_PRIVATE_DIRECTORY_SCRIPT = `
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
+[Console]::Out.WriteLine('private-directory-stage:inspect-directory')
 $directory = $env:DSC_PRIVATE_CREDENTIAL_DIRECTORY
 $item = Get-Item -LiteralPath $directory -Force
 if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Invalid private directory' }
 if (@(Get-ChildItem -LiteralPath $directory -Force).Count -ne 0) { throw 'Private directory is not empty' }
+[Console]::Out.WriteLine('private-directory-stage:build-acl')
 $current = [Security.Principal.WindowsIdentity]::GetCurrent().User
 $system = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
 $identities = @($current, $system) | Sort-Object -Property Value -Unique
@@ -24,7 +39,9 @@ foreach ($identity in $identities) {
     $inheritance, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow)
   $acl.AddAccessRule($rule)
 }
+[Console]::Out.WriteLine('private-directory-stage:set-acl')
 Set-Acl -LiteralPath $directory -AclObject $acl
+[Console]::Out.WriteLine('private-directory-stage:verify-acl')
 $actual = Get-Acl -LiteralPath $directory
 if (-not $actual.AreAccessRulesProtected -or $actual.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $current.Value) { throw 'Private directory protection mismatch' }
 $rules = @($actual.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
@@ -42,20 +59,44 @@ foreach ($identity in $identities) {
 [Console]::Out.WriteLine('private-directory-ready')
 `;
 
-async function restrictWindowsCredentialDirectory(directory) {
+async function restrictWindowsCredentialDirectory(directory, diagnostics) {
+  Object.assign(diagnostics, { powershellStage: 'unobserved', signal: null, killed: false,
+    durationMs: 0, timeoutMs: 15000, readyTokenMatched: false, stderrPresent: false });
   const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT;
   if (!systemRoot || !path.win32.isAbsolute(systemRoot)) throw new Error('Windows system directory is unavailable.');
   const executable = path.win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  const { stdout, stderr } = await promisify(childProcess.execFile)(executable,
-    ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand',
-      Buffer.from(WINDOWS_PRIVATE_DIRECTORY_SCRIPT, 'utf16le').toString('base64')], {
-      windowsHide: true,
-      timeout: 15000,
-      maxBuffer: 65536,
-      encoding: 'utf8',
-      env: { SystemRoot: systemRoot, WINDIR: systemRoot, DSC_PRIVATE_CREDENTIAL_DIRECTORY: directory }
-    });
-  if (stdout.trim() !== 'private-directory-ready' || stderr.trim()) throw new Error('Windows private directory was not confirmed.');
+  const startedAt = performance.now();
+  let result;
+  try {
+    result = await promisify(childProcess.execFile)(executable,
+      ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand',
+        Buffer.from(WINDOWS_PRIVATE_DIRECTORY_SCRIPT, 'utf16le').toString('base64')], {
+        windowsHide: true,
+        timeout: 15000,
+        maxBuffer: 65536,
+        encoding: 'utf8',
+        env: { SystemRoot: systemRoot, WINDIR: systemRoot, DSC_PRIVATE_CREDENTIAL_DIRECTORY: directory }
+      });
+    diagnostics.code = 0;
+  } catch (error) {
+    result = error;
+    diagnostics.code = safeFailureCode(error?.code);
+    throw error;
+  } finally {
+    const lines = typeof result?.stdout === 'string' ? result.stdout.trim().split(/\r?\n/u) : [];
+    const markers = lines.filter(line => WINDOWS_PRIVATE_DIRECTORY_STAGES.some(
+      stage => line === `private-directory-stage:${stage}`));
+    diagnostics.powershellStage = markers.at(-1)?.slice('private-directory-stage:'.length) ?? 'unobserved';
+    diagnostics.signal = result?.signal === null || SAFE_FAILURE_SIGNALS.has(result?.signal) ? result.signal : 'unknown';
+    diagnostics.killed = result?.killed === true;
+    diagnostics.durationMs = Math.max(0, Math.round(performance.now() - startedAt));
+    diagnostics.readyTokenMatched = lines.includes('private-directory-ready');
+    diagnostics.stderrPresent = typeof result?.stderr === 'string' && result.stderr.length > 0;
+  }
+  diagnostics.signal = null;
+  if (result.stdout.trim().replace(/\r\n/gu, '\n') !== WINDOWS_PRIVATE_DIRECTORY_OUTPUT || result.stderr.trim()) {
+    throw new Error('Windows private directory was not confirmed.');
+  }
 }
 
 const MODEL = 'deepseek-flash';
@@ -94,20 +135,27 @@ export async function createDeepSeekConfiguration({ apiKey, temporaryRoot = os.t
   }
 
   let directory;
+  let stage = 'create-directory';
+  const windowsDiagnostics = {};
   try {
     directory = await fs.mkdtemp(path.join(temporaryRoot, 'dsc-agent-deepseek-'));
-    if (process.platform === 'win32') await restrictWindowsCredentialDirectory(directory);
+    stage = 'protect-directory';
+    if (process.platform === 'win32') await restrictWindowsCredentialDirectory(directory, windowsDiagnostics);
     else await fs.chmod(directory, 0o700);
     const codexHome = path.join(directory, 'codex');
     const claudeConfigDir = path.join(directory, 'claude');
+    stage = 'create-codex-home';
     await fs.mkdir(codexHome, { mode: 0o700 });
+    stage = 'create-claude-home';
     await fs.mkdir(claudeConfigDir, { mode: 0o700 });
     const modelCatalogPath = path.join(codexHome, 'models.json');
+    stage = 'write-model-catalog';
     await fs.writeFile(modelCatalogPath, `${JSON.stringify(CODEX_MODEL_CATALOG, null, 2)}\n`,
       { encoding: 'utf8', mode: 0o600, flag: 'wx' });
 
     // JSON basic strings also encode TOML controls, except for DEL.
     const bearerToken = JSON.stringify(apiKey).replace(/\x7f/gu, '\\u007f');
+    stage = 'write-codex-config';
     await fs.writeFile(path.join(codexHome, 'config.toml'), [
       `model = "${MODEL}"`,
       'model_provider = "deepseek"',
@@ -124,6 +172,7 @@ export async function createDeepSeekConfiguration({ apiKey, temporaryRoot = os.t
     ].join('\n'), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
 
     const claudeSettingsPath = path.join(claudeConfigDir, 'settings.json');
+    stage = 'write-claude-settings';
     await fs.writeFile(claudeSettingsPath, `${JSON.stringify({
       env: {
         ANTHROPIC_BASE_URL: CLAUDE_ENDPOINT,
@@ -150,14 +199,18 @@ export async function createDeepSeekConfiguration({ apiKey, temporaryRoot = os.t
       },
       dispose: () => fs.rm(directory, { recursive: true, force: true })
     };
-  } catch {
+  } catch (error) {
+    const diagnostics = { stage, code: safeFailureCode(error?.code),
+      ...(stage === 'protect-directory' ? windowsDiagnostics : {}) };
+    let message = 'Failed to prepare isolated DeepSeek configuration.';
     if (directory) {
       try {
         await fs.rm(directory, { recursive: true, force: true });
       } catch {
-        throw new Error('Failed to prepare isolated DeepSeek configuration and remove its temporary directory.');
+        message = 'Failed to prepare isolated DeepSeek configuration and remove its temporary directory.';
       }
     }
-    throw new Error('Failed to prepare isolated DeepSeek configuration.');
+    // Only locally constructed fields cross this boundary; native errors may contain credentials.
+    throw Object.assign(new Error(message), { diagnostics });
   }
 }

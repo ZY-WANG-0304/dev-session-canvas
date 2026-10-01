@@ -4,7 +4,7 @@ import childProcess from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
+import { inspect, promisify } from 'node:util';
 
 import { createDeepSeekConfiguration } from '../smoke/agent-candidate-deepseek.mjs';
 
@@ -193,11 +193,17 @@ foreach ($file in ($env:DSC_ACL_CHECK_PATHS | ConvertFrom-Json)) {
     process.env.SystemRoot = 'C:\\Windows';
     let confirmed = false;
     let writes = 0;
-    let result = { stdout: 'private-directory-ready\r\n', stderr: '' };
+    const stages = ['inspect-directory', 'build-acl', 'set-acl', 'verify-acl'];
+    const outputThrough = stage => stages.slice(0, stages.indexOf(stage) + 1)
+      .map(value => `private-directory-stage:${value}`).join('\r\n');
+    const confirmedOutput = `${outputThrough('verify-acl')}\r\nprivate-directory-ready\r\n`;
+    let result = { stdout: confirmedOutput, stderr: '' };
     const fakeExecFile = () => assert.fail('The async ACL command must use its promisified contract');
     fakeExecFile[promisify.custom] = async (executable, args, options) => {
       assert.equal(executable, 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
       assert.deepEqual(args.slice(0, 4), ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand']);
+      assert.equal(options.timeout, 15000);
+      assert.equal(options.maxBuffer, 65536);
       assert.deepEqual(Object.keys(options.env).sort(), ['DSC_PRIVATE_CREDENTIAL_DIRECTORY', 'SystemRoot', 'WINDIR']);
       assert.deepEqual(await fs.readdir(options.env.DSC_PRIVATE_CREDENTIAL_DIRECTORY), [], 'No credential exists before ACL confirmation');
       assert.equal(JSON.stringify({ args, options }).includes(fakeApiKey), false);
@@ -206,8 +212,10 @@ foreach ($file in ($env:DSC_ACL_CHECK_PATHS | ConvertFrom-Json)) {
       assert.match(script, /GetCurrent\(\)\.User/u);
       assert.match(script, /S-1-5-18/u);
       assert.match(script, /Set-Acl[\s\S]+Get-Acl[\s\S]+GetAccessRules/u);
+      assert.deepEqual([...script.matchAll(/WriteLine\('private-directory-stage:([^']+)'\)/gu)]
+        .map(match => match[1]), stages);
       if (result instanceof Error) throw result;
-      confirmed = result.stdout.trim() === 'private-directory-ready' && !result.stderr.trim();
+      confirmed = result.stdout.trim() === confirmedOutput.trim() && !result.stderr.trim();
       return result;
     };
     childProcess.execFile = fakeExecFile;
@@ -219,13 +227,49 @@ foreach ($file in ($env:DSC_ACL_CHECK_PATHS | ConvertFrom-Json)) {
     const protectedConfiguration = await createDeepSeekConfiguration({ apiKey: fakeApiKey, temporaryRoot });
     await protectedConfiguration.dispose();
     assert.equal(writes, 3);
-    for (const failure of [new Error('controlled ACL failure'), { stdout: '', stderr: '' },
-      { stdout: 'private-directory-ready\n', stderr: 'unconfirmed ACL' }]) {
+    const raw = `raw-sensitive-directory ${fakeApiKey}`;
+    const commandError = properties => Object.assign(new Error(raw), {
+      cmd: raw, path: raw, env: { DEEPSEEK_API_KEY: fakeApiKey }, cause: new Error(raw), ...properties
+    });
+    const failures = [
+      [commandError({ code: null, signal: 'SIGTERM', killed: true, stdout: outputThrough('build-acl'), stderr: '' }),
+        { powershellStage: 'build-acl', code: null, signal: 'SIGTERM', killed: true, readyTokenMatched: false, stderrPresent: false }],
+      [commandError({ code: 'ENOENT' }),
+        { powershellStage: 'unobserved', code: 'ENOENT', signal: 'unknown', killed: false, readyTokenMatched: false, stderrPresent: false }],
+      [commandError({ code: 'EACCES', signal: null }),
+        { powershellStage: 'unobserved', code: 'EACCES', signal: null, killed: false, readyTokenMatched: false, stderrPresent: false }],
+      [commandError({ code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER', stdout: outputThrough('set-acl'), stderr: raw }),
+        { powershellStage: 'set-acl', code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER', signal: 'unknown', killed: false, readyTokenMatched: false, stderrPresent: true }],
+      [commandError({ code: 1, signal: null, stdout: outputThrough('verify-acl'), stderr: raw }),
+        { powershellStage: 'verify-acl', code: 1, signal: null, killed: false, readyTokenMatched: false, stderrPresent: true }],
+      [commandError({ code: raw, signal: raw, killed: raw,
+        stdout: `${outputThrough('build-acl')}\nprivate-directory-stage:${raw}\n`, stderr: raw }),
+        { powershellStage: 'build-acl', code: 'unknown', signal: 'unknown', killed: false, readyTokenMatched: false, stderrPresent: true }],
+      [{ stdout: '', stderr: '' },
+        { powershellStage: 'unobserved', code: 0, signal: null, killed: false, readyTokenMatched: false, stderrPresent: false }],
+      [{ stdout: 'private-directory-ready\n', stderr: '' },
+        { powershellStage: 'unobserved', code: 0, signal: null, killed: false, readyTokenMatched: true, stderrPresent: false }],
+      [{ stdout: confirmedOutput, stderr: raw },
+        { powershellStage: 'verify-acl', code: 0, signal: null, killed: false, readyTokenMatched: true, stderrPresent: true }],
+      [{ stdout: `${confirmedOutput}${raw}\n`, stderr: '' },
+        { powershellStage: 'verify-acl', code: 0, signal: null, killed: false, readyTokenMatched: true, stderrPresent: false }]
+    ];
+    for (const [failure, expected] of failures) {
       result = failure;
       confirmed = false;
       writes = 0;
-      await assert.rejects(createDeepSeekConfiguration({ apiKey: fakeApiKey, temporaryRoot }), {
-        message: 'Failed to prepare isolated DeepSeek configuration.'
+      await assert.rejects(createDeepSeekConfiguration({ apiKey: fakeApiKey, temporaryRoot }), error => {
+        assert.equal(error.message, 'Failed to prepare isolated DeepSeek configuration.');
+        const { durationMs, ...diagnostics } = error.diagnostics;
+        assert.deepEqual(diagnostics, { stage: 'protect-directory', timeoutMs: 15000, ...expected });
+        assert.ok(Number.isSafeInteger(durationMs) && durationMs >= 0);
+        assert.deepEqual(Object.keys(error), ['diagnostics']);
+        for (const field of ['cause', 'cmd', 'path', 'env', 'stdout', 'stderr', 'timedOut']) {
+          assert.equal(error[field], undefined);
+          assert.equal(error.diagnostics[field], undefined);
+        }
+        assert.doesNotMatch(`${inspect(error)}\n${JSON.stringify(error)}`, /raw-sensitive-directory|fake-deepseek-key/u);
+        return true;
       });
       assert.equal(writes, 0);
       assert.deepEqual(await fs.readdir(temporaryRoot), directoriesBeforeInvalidInputs);
@@ -244,8 +288,12 @@ foreach ($file in ($env:DSC_ACL_CHECK_PATHS | ConvertFrom-Json)) {
       if (args[0].endsWith('settings.json')) throw new Error(`Simulated failure containing ${fakeApiKey}`);
       return originalWriteFile(...args);
     };
-    await assert.rejects(createDeepSeekConfiguration({ apiKey: fakeApiKey, temporaryRoot }), {
-      message: 'Failed to prepare isolated DeepSeek configuration.'
+    await assert.rejects(createDeepSeekConfiguration({ apiKey: fakeApiKey, temporaryRoot }), error => {
+      assert.equal(error.message, 'Failed to prepare isolated DeepSeek configuration.');
+      assert.deepEqual(error.diagnostics, { stage: 'write-claude-settings', code: 'unknown' });
+      assert.equal(error.cause, undefined);
+      assert.doesNotMatch(`${inspect(error)}\n${JSON.stringify(error)}`, /fake-deepseek-key/u);
+      return true;
     });
   } finally {
     fs.writeFile = originalWriteFile;
