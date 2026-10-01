@@ -1,0 +1,107 @@
+name: macOS Product Execution Provider
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - runtime-persistence-session-state-refactor
+    paths:
+      - .github/workflows/runtime-execution-macos.yml
+      - extensions/vscode/dev-session-canvas/native/macos-execution-owner.h
+      - extensions/vscode/dev-session-canvas/native/unix-execution-owner.h
+      - extensions/vscode/dev-session-canvas/src/panel/macosExecutionOwnerFactory.ts
+      - extensions/vscode/dev-session-canvas/src/panel/macosExecutionProviderMain.ts
+      - scripts/build/macos-execution-provider-patch.mjs
+      - scripts/build/macos-execution-candidate-assets.mjs
+      - scripts/test/test-macos-execution-product.mjs
+      - scripts/test/fixtures/macos-execution-subject.mjs
+      - scripts/test/fixtures/macos-execution-namespace.ts
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-execution-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  product-provider:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout fixed product input
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup fixed Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '25.6.0'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check bounded provider input
+        run: |
+          node scripts/test/test-macos-execution-provider-source.mjs
+          node scripts/test/test-macos-execution-candidate-assets.mjs
+          node scripts/test/test-macos-execution-product.mjs --self-test
+      - name: Compile actual Node candidate and explicit product build
+        run: |
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/macos-node-headers.tar.gz" https://nodejs.org/dist/v25.6.0/node-v25.6.0-headers.tar.gz
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          const bytes = await fs.readFile(path.join(process.env.RUNNER_TEMP, 'macos-node-headers.tar.gz'));
+          assert.equal(createHash('sha256').update(bytes).digest('hex'), '6e6662d6081f36bb3896df42a331e9ccbb4286fda72daf7bc7fb5bfb18fa8ed0');
+          NODE
+          mkdir "$RUNNER_TEMP/macos-node-headers"
+          tar --extract --gzip --file "$RUNNER_TEMP/macos-node-headers.tar.gz" --strip-components=1 --directory "$RUNNER_TEMP/macos-node-headers"
+          node scripts/build/macos-execution-candidate-assets.mjs build --output macos-product-build --dependency-root "$GITHUB_WORKSPACE/node_modules" --headers "$RUNNER_TEMP/macos-node-headers/include/node"
+          node scripts/build/build.mjs --execution-profile=macos-owner-v1-candidate --execution-assets macos-product-build
+      - name: Run fixed real product provider cases
+        run: node scripts/test/test-macos-execution-product.mjs --output macos-product-evidence
+      - name: Prepare fixed VS Code
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          import { downloadAndUnzipVSCode } from '@vscode/test-electron';
+          const executable = await downloadAndUnzipVSCode({
+            version: '1.117.0',
+            platform: process.arch === 'arm64' ? 'darwin-arm64' : 'darwin',
+            cachePath: path.join(process.env.RUNNER_TEMP, 'macos-vscode')
+          });
+          await fs.appendFile(process.env.GITHUB_ENV, `DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=${executable}\n`);
+          NODE
+      - name: Compile matching Electron product build
+        run: |
+          ELECTRON_RUN_AS_NODE=1 "$DEV_SESSION_CANVAS_VSCODE_EXECUTABLE" -e 'const assert = require("node:assert/strict"); assert.equal(process.versions.electron, "39.8.7"); assert.equal(process.versions.node, "22.22.1"); assert.equal(process.versions.modules, "140");'
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/macos-electron-headers.tar.gz" https://artifacts.electronjs.org/headers/dist/v39.8.7/node-v39.8.7-headers.tar.gz
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          const bytes = await fs.readFile(path.join(process.env.RUNNER_TEMP, 'macos-electron-headers.tar.gz'));
+          assert.equal(createHash('sha256').update(bytes).digest('hex'), 'af6712ab16c436b9288ece2f0173924c74008446346bda3457d07b769f402eda');
+          NODE
+          mkdir "$RUNNER_TEMP/macos-electron-headers"
+          tar --extract --gzip --file "$RUNNER_TEMP/macos-electron-headers.tar.gz" --strip-components=1 --directory "$RUNNER_TEMP/macos-electron-headers"
+          ELECTRON_RUN_AS_NODE=1 "$DEV_SESSION_CANVAS_VSCODE_EXECUTABLE" scripts/build/macos-execution-candidate-assets.mjs build --output macos-electron-build --dependency-root "$GITHUB_WORKSPACE/node_modules" --headers "$RUNNER_TEMP/macos-electron-headers/include/node"
+          node scripts/build/build.mjs --execution-profile=macos-owner-v1-candidate --execution-assets macos-electron-build
+      - name: Run actual Terminal Webview and completed reopen
+        run: node scripts/smoke/run-vscode-execution-candidate.mjs --output=macos-electron-evidence
+      - name: Preserve first build and product evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-product-provider-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            macos-product-build/
+            macos-product-evidence/
+            macos-electron-build/
+            macos-electron-evidence/
+          if-no-files-found: warn
+          retention-days: 14

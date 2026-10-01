@@ -29,6 +29,7 @@ const manifest = { schemaVersion: 1, profile, platform: 'linux', arch: 'x64',
   binary: { file: 'execution-owner.node', sha256: digest(binary) }, exports: [...LINUX_EXECUTION_EXPORTS],
   sources: {
     ownerSha256: digest(fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-canvas/native/linux-execution-owner.h'))),
+    sharedOwnerSha256: digest(fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-canvas/native/unix-execution-owner.h'))),
     patchSha256: digest(fs.readFileSync(path.join(root, 'scripts/build/linux-execution-provider-patch.mjs'))),
     nodePtySha256: NODE_PTY_UNIX_SHA256, patchedSha256: '1'.repeat(64), headersSha256: '2'.repeat(64),
     nodeAddonApiSha256: '3'.repeat(64)
@@ -46,7 +47,8 @@ const test = async (name, run) => { await run(); passed++; console.log(`PASS ${n
 
 async function activationFixture(compiledProfile, factoryError) {
   const observed = { factory: [], constructors: [] };
-  const ownerOptions = Object.freeze({ kind: 'linux-provider', profile, profileMode: 'snapshot-only' });
+  const ownerOptions = Object.freeze({ kind: compiledProfile === 'macos-owner-v1-candidate' ? 'macos-provider' : 'linux-provider',
+    profile: compiledProfile ?? profile, profileMode: 'snapshot-only' });
   const stop = new Error('Captured real activate constructor boundary.');
   const modules = new Map();
   for (const statement of ast.statements) {
@@ -67,14 +69,17 @@ async function activationFixture(compiledProfile, factoryError) {
     plugins: [{ name: 'activation-boundaries', setup(build) {
       build.onResolve({ filter: /.*/ }, args => {
         if (args.importer === extensionFile && modules.has(args.path)) return { path: args.path, namespace: 'activation' };
-        if (args.path === './linuxExecutionOwnerFactory') return { path: 'owner-factory', namespace: 'activation' };
+        if (args.path === './linuxExecutionOwnerFactory' || args.path === './macosExecutionOwnerFactory') {
+          return { path: 'owner-factory', namespace: 'activation' };
+        }
       });
       build.onLoad({ filter: /.*/, namespace: 'activation' }, args => ({ contents: args.path === 'owner-factory'
         ? `export function createLinuxExecutionOwnerOptions(options) {
             globalThis.observed.factory.push(options);
             if (globalThis.factoryError) throw globalThis.factoryError;
             return globalThis.ownerOptions;
-          }`
+          }
+          export const createMacosExecutionOwnerOptions = createLinuxExecutionOwnerOptions;`
         : modules.get(args.path), loader: 'js' }));
     } }] });
   const context = { module: { exports: {} }, require, observed, ownerOptions, stop, factoryError, TextEncoder, TextDecoder,
@@ -172,6 +177,16 @@ try {
     assert.throws(invalid.activate, received => received === error);
     assert.equal(invalid.observed.factory.length, 1);
     assert.equal(invalid.observed.constructors.length, 0);
+  });
+  await test('macOS activation selects the matching factory and preserves its distinct Runtime profile', async () => {
+    const macProfile = 'macos-owner-v1-candidate';
+    const f = await activationFixture(macProfile);
+    assert.throws(f.activate, error => error === f.stop);
+    assert.equal(f.observed.factory.length, 1);
+    assert.equal(f.observed.factory[0].profile, macProfile);
+    assert.equal(f.observed.factory[0].mode, 'snapshot-only');
+    assert.equal(f.observed.constructors[0][1].kind, 'macos-provider');
+    assert.equal(f.observed.constructors[0][2], macProfile);
   });
   console.log(`Execution runtime selection: ${passed}/${passed} pure cases passed (real activate entry, controlled constructor/factory, no native).`);
 } finally {

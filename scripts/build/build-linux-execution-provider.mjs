@@ -61,6 +61,7 @@ function build(directory) {
     fs.mkdirSync(inputs);
     const sources = [
       'extensions/vscode/dev-session-canvas/native/linux-execution-owner.h',
+      'extensions/vscode/dev-session-canvas/native/unix-execution-owner.h',
       'scripts/build/linux-execution-provider-patch.mjs',
       'scripts/build/build-linux-execution-provider.mjs'
     ];

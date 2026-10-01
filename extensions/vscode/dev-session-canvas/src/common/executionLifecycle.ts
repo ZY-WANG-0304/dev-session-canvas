@@ -4,7 +4,8 @@ export interface ExecutionIdentity {
 }
 
 export const EXECUTION_CANDIDATE_PROFILE = 'linux-owner-v1-candidate' as const;
-export type ExecutionCandidateProfile = typeof EXECUTION_CANDIDATE_PROFILE;
+export const MACOS_EXECUTION_CANDIDATE_PROFILE = 'macos-owner-v1-candidate' as const;
+export type ExecutionCandidateProfile = typeof EXECUTION_CANDIDATE_PROFILE | typeof MACOS_EXECUTION_CANDIDATE_PROFILE;
 export type ExecutionCandidateMode = 'live-runtime' | 'snapshot-only';
 export const EXECUTION_CANDIDATE_BUDGETS = Object.freeze({
   startMs: 10000,
@@ -19,7 +20,9 @@ export const EXECUTION_CANDIDATE_BUDGETS = Object.freeze({
 });
 
 export function assertExecutionCandidateProfile(value: unknown): asserts value is ExecutionCandidateProfile {
-  if (value !== EXECUTION_CANDIDATE_PROFILE) throw new Error('Unsupported execution candidate profile.');
+  if (value !== EXECUTION_CANDIDATE_PROFILE && value !== MACOS_EXECUTION_CANDIDATE_PROFILE) {
+    throw new Error('Unsupported execution candidate profile.');
+  }
 }
 
 export function assertExecutionCandidateCapabilities(

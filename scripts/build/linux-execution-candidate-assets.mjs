@@ -9,6 +9,7 @@ import { LINUX_EXECUTION_EXPORTS, NODE_PTY_UNIX_SHA256, patchLinuxExecutionProvi
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const ownerFile = path.join(root, 'extensions/vscode/dev-session-canvas/native/linux-execution-owner.h');
+const sharedOwnerFile = path.join(root, 'extensions/vscode/dev-session-canvas/native/unix-execution-owner.h');
 const patchFile = fileURLToPath(new URL('./linux-execution-provider-patch.mjs', import.meta.url));
 const profile = 'linux-owner-v1-candidate';
 export const CANDIDATE_ASSET_RELATIVE_PATH = 'native/linux-execution-candidate/linux-x64-glibc';
@@ -66,10 +67,11 @@ export function validateCandidateManifest(manifest, binary) {
     && binary[4] === 2 && binary[5] === 1 && binary.readUInt16LE(16) === 3 && binary.readUInt16LE(18) === 62,
   'Candidate binary must declare ELF64 little-endian x86-64 shared-object format');
   assert.deepEqual(manifest.exports, LINUX_EXECUTION_EXPORTS);
-  for (const key of ['ownerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256', 'headersSha256', 'nodeAddonApiSha256'])
+  for (const key of ['ownerSha256', 'sharedOwnerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256', 'headersSha256', 'nodeAddonApiSha256'])
     assert.match(manifest.sources?.[key] ?? '', /^[a-f0-9]{64}$/);
   assert.equal(manifest.sources.nodePtySha256, NODE_PTY_UNIX_SHA256);
   assert.equal(manifest.sources.ownerSha256, hash(readRegular(ownerFile)), 'Candidate owner source changed');
+  assert.equal(manifest.sources.sharedOwnerSha256, hash(readRegular(sharedOwnerFile)), 'Candidate shared owner source changed');
   assert.equal(manifest.sources.patchSha256, hash(readRegular(patchFile)), 'Candidate patch source changed');
   assert.deepEqual(manifest.verification,
     { compiled: true, nativeLoaded: false, nativeCalls: false, productValidated: false });
@@ -108,7 +110,8 @@ export function buildCandidateAssets({ output, dependencyRoot, headers, compiler
   const original = readRegular(path.join(ptyRoot, 'src/unix/pty.cc'));
   const patched = patchLinuxExecutionProvider(original.toString('utf8'));
   const owner = readRegular(ownerFile);
-  const sources = { ownerSha256: hash(owner), patchSha256: hash(readRegular(patchFile)),
+  const sharedOwner = readRegular(sharedOwnerFile);
+  const sources = { ownerSha256: hash(owner), sharedOwnerSha256: hash(sharedOwner), patchSha256: hash(readRegular(patchFile)),
     nodePtySha256: hash(original), patchedSha256: hash(patched), headersSha256: treeHash(includeRoot),
     nodeAddonApiSha256: treeHash(addonRoot) };
   const directory = path.resolve(output);
@@ -117,6 +120,7 @@ export function buildCandidateAssets({ output, dependencyRoot, headers, compiler
   const inputs = path.join(directory, 'inputs');
   fs.mkdirSync(inputs);
   fs.writeFileSync(path.join(inputs, 'linux-execution-owner.h'), owner, { flag: 'wx' });
+  fs.writeFileSync(path.join(inputs, 'unix-execution-owner.h'), sharedOwner, { flag: 'wx' });
   const source = path.join(inputs, 'pty-candidate.cc');
   fs.writeFileSync(source, patched, { flag: 'wx' });
   const binaryPath = path.join(directory, binaryFile);

@@ -12,6 +12,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-candidate-assets-test-'));
 const digest = value => createHash('sha256').update(value).digest('hex');
 const owner = fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-canvas/native/linux-execution-owner.h'));
+const sharedOwner = fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-canvas/native/unix-execution-owner.h'));
 const patch = fs.readFileSync(path.join(root, 'scripts/build/linux-execution-provider-patch.mjs'));
 // Synthetic header bytes only exercise import validation, never addon loading or machine code.
 const binary = Buffer.alloc(64);
@@ -22,7 +23,7 @@ const manifest = { schemaVersion: 1, profile: 'linux-owner-v1-candidate', platfo
   libc: { name: 'glibc', version: '2.35' },
   runtime: { name: 'node', version: '22.23.2', node: '22.23.2', modules: '127', napi: '10' },
   binary: { file: 'execution-owner.node', sha256: digest(binary) }, exports: [...LINUX_EXECUTION_EXPORTS],
-  sources: { ownerSha256: digest(owner), patchSha256: digest(patch), nodePtySha256: NODE_PTY_UNIX_SHA256,
+  sources: { ownerSha256: digest(owner), sharedOwnerSha256: digest(sharedOwner), patchSha256: digest(patch), nodePtySha256: NODE_PTY_UNIX_SHA256,
     patchedSha256: '1'.repeat(64), headersSha256: '2'.repeat(64), nodeAddonApiSha256: '3'.repeat(64) },
   verification: { compiled: true, nativeLoaded: false, nativeCalls: false, productValidated: false } };
 let passed = 0;
@@ -45,6 +46,8 @@ try {
       value => { value.runtime.modules = ''; }, value => { value.runtime.napi = undefined; },
       value => { value.binary.file = '../external.node'; }, value => { value.exports.pop(); },
       value => { value.sources.ownerSha256 = '0'.repeat(64); },
+      value => { value.sources.sharedOwnerSha256 = '0'.repeat(64); },
+      value => { delete value.sources.sharedOwnerSha256; },
       value => { value.sources.patchSha256 = '0'.repeat(64); },
       value => { value.sources.headersSha256 = ''; },
       value => { value.verification.productValidated = true; },
@@ -103,7 +106,8 @@ try {
   });
 
   test('native mutations are bounded token calls and all uses participate in one-shot close', () => {
-    const source = owner.toString('utf8');
+    const source = sharedOwner.toString('utf8');
+    assert(owner.toString('utf8').includes('#include "unix-execution-owner.h"'));
     const write = source.slice(source.indexOf('static Napi::Value Write('), source.indexOf('static Napi::Value Resize('));
     const resize = source.slice(source.indexOf('static Napi::Value Resize('), source.indexOf('static Napi::Value Close('));
     const close = source.slice(source.indexOf('static Napi::Value Close('));

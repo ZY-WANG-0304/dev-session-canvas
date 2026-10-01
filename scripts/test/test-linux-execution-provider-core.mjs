@@ -23,8 +23,9 @@ const { outputFiles } = await esbuild.build({
 
 const require = createRequire(import.meta.url);
 let active;
+const providerProcess = { ...process, platform: 'linux' };
 const module = { exports: {} };
-new Function('require', 'module', 'exports', 'setTimeout', outputFiles[0].text)(
+new Function('require', 'module', 'exports', 'setTimeout', 'process', outputFiles[0].text)(
   (specifier) => specifier === 'controlled-provider-channel'
     ? { createExecutionProviderChannel: (...args) => active.createChannel(...args) }
     : require(specifier),
@@ -32,9 +33,9 @@ new Function('require', 'module', 'exports', 'setTimeout', outputFiles[0].text)(
   (callback, milliseconds) => {
     assert.equal(milliseconds, 5);
     active.timers.push(callback);
-  }
+  }, providerProcess
 );
-const { runLinuxExecutionProvider, validateLinuxExecutionReadBudget } = module.exports;
+const { runLinuxExecutionProvider, runUnixExecutionProvider, validateLinuxExecutionReadBudget } = module.exports;
 
 async function flush() {
   for (let turn = 0; turn < 40; turn += 1) await Promise.resolve();
@@ -150,7 +151,10 @@ function createHarness(chunks) {
       active = this;
       validateLinuxExecutionReadBudget(identity);
       assert.throws(() => validateLinuxExecutionReadBudget({ ...identity, generation: 'g'.repeat(9000) }), /insufficient room/);
-      void runLinuxExecutionProvider({ identity, binding: native, cols: 80, rows: 24, pollIntervalMs: 5,
+      providerProcess.platform = options.platform ?? 'linux';
+      const run = options.platform === 'darwin' ? runUnixExecutionProvider : runLinuxExecutionProvider;
+      void run({ identity, binding: native, cols: 80, rows: 24, pollIntervalMs: 5,
+        ...(options.platform ? { platform: options.platform, helperPath: options.helperPath } : {}),
         ...(options.interactionV1 ? { interactionV1: true } : {}) })
         .then((result) => { completed = result; });
       this.command({ type: 'start', operationId: 'start', spec: { file: 'controlled-subject', args: [], cwd: '/', ...options.spec } });
@@ -439,3 +443,35 @@ for (const boundary of ['process-first', 'source-first']) {
 }
 
 console.log('linuxExecutionProvider interaction tests passed (8 pure cases; fake native boundary, no PTY)');
+
+for (const releaseResult of [0, -1]) {
+  const h = createHarness([{ kind: 'eof', reason: 'zero' }]);
+  h.state.creationResources = [{ resourceId: 'pty-low-fd-0', acquired: true, releaseAttempted: true,
+    releaseResult, releaseErrno: releaseResult === 0 ? null : 4 }];
+  await h.start({ platform: 'darwin', helperPath: '/controlled/spawn-helper' });
+  assert.equal(h.forkArgs[9], '/controlled/spawn-helper');
+  if (releaseResult === 0) {
+    h.state.waitStatus = { kind: 'exited', exitCode: 0, signalCode: null, rawStatus: 0, errno: null };
+  }
+  await until(h, () => Boolean(h.result));
+  const creation = h.messages.filter(message => message.type === 'resourceResult' && message.resourceId === 'pty-creation');
+  assert.equal(creation.length, 1);
+  assert.equal(creation[0].result.kind, releaseResult === 0 ? 'released' : 'unknown');
+  assert.equal(h.messages.some(message => message.resourceId === 'pty-low-fd-1'), false,
+    'A creation transaction cannot invent acquisition of absent temporary OS resources.');
+  assert.equal(h.result.kind, releaseResult === 0 ? 'closed' : 'failed');
+  assert.equal(h.result.resourcesSettled, releaseResult === 0);
+  assert.equal(h.result.sourceEndEvidence, releaseResult === 0 ? 'zero' : 'not-established');
+  console.log(`PASS controlled Darwin helper and creation-resource ${releaseResult === 0 ? 'release' : 'unknown'}`);
+}
+{
+  const h = createHarness([{ kind: 'eof', reason: 'eio' }]);
+  h.state.creationResources = [];
+  await h.start({ platform: 'darwin', helperPath: '/controlled/spawn-helper' });
+  await until(h, () => Boolean(h.result));
+  assert.equal(h.result.kind, 'failed');
+  assert.equal(h.dispositions[0].kind, 'error');
+  assert.notEqual(h.result.sourceEndEvidence, 'eio');
+  console.log('PASS controlled Darwin does not inherit Linux EIO-to-EOF classification');
+}
+console.log('Darwin provider adaptation: 3 controlled cases; no Darwin native execution claimed.');

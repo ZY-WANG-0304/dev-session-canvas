@@ -24,6 +24,8 @@ updated_at: 2026-10-01
 
 ## 1. 状态与目的
 
+当前B2/A5（2026-10-01）：macOS共享Unix owner、Darwin provider/factory/namespace与匹配资产入口已实施，源码/受控契约通过；共享头后的Linux两模式实际Terminal完成/重开完整exit0，见生产接入33.2。下一在授权runner执行33.3固定Node四场和原实际Electron/Webview两模式验收，分别保留首败及未运行项。Windows独立核心仍在接线，真实Agent、package和其余验收不由这一增量代证；F-04及总体未关闭。
+
 当前 A1 结果与下一项（2026-10-01）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整exit0；B回复51ms实际应用，同一Webview动作中A的块号12到18均未追平2560，随后ready后13137.248ms完整恢复。原1500ms/不重置30秒、原执行及新reader、完整后缀/独立journal/hash/自然no-history与两份cleanup均通过，outer forcedSignals/failures为空。声明输入下的真实离线追赶交互组合已覆盖；10.14的overlap=false和全部旧失败保持。下一推进原B2/A5的macOS/Windows产品provider、namespace、匹配Node/Electron及packaged接入，不追加此组合或工具阶段；F-04总体和其他A项继续开放。
 
 当前 CI 有限结果（2026-10-01）：run `36812745671`/`736f9ddd` 的 Linux 真实 Codex/Claude + DeepSeek 两模式 natural/stop 八场景全部 passed，四 natural 真实 nonce/EOF 及原 Webview/持久化断言通过，八份 cleanup 的 bindings/failures/forcedSignals/active 均0。专用 CI 凭据和临时配置已由这些实际响应证明可用，不再是待用户处理的认证阻塞；stop 的 eof/interrupted 仍按主动处置记录。第三轮 `36811935908` 的 Codex snapshot-only stop failure 本轮未复现，且只有报告/文档变化，业务与断言未变；根因未知，保留为具名间歇失败，不能宣称已修复或追认通过。详细证据见生产接入32.20，不自动增加CI捕获循环，F-04/完整A5/macOS/Windows边界不变。

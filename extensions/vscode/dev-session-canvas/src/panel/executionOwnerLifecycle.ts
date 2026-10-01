@@ -6,6 +6,8 @@ import {
   assertExecutionIdentity,
   assertCandidateLaunchSpec,
   EXECUTION_CANDIDATE_BUDGETS,
+  EXECUTION_CANDIDATE_PROFILE,
+  MACOS_EXECUTION_CANDIDATE_PROFILE,
   validateLaunchSpec,
   type AuthorityResult,
   type DataBatch,
@@ -56,7 +58,13 @@ export interface LinuxExecutionOwnerOptions extends Omit<NonNativeExecutionOwner
   readonly profileMode: ExecutionCandidateMode;
 }
 
-export type ExecutionOwnerOptions = NonNativeExecutionOwnerOptions | LinuxExecutionOwnerOptions;
+export interface MacosExecutionOwnerOptions extends Omit<LinuxExecutionOwnerOptions, 'kind'> {
+  readonly kind: 'macos-provider';
+  readonly claimNamespace: (storageDir: string) => void;
+}
+
+export type NativeExecutionOwnerOptions = LinuxExecutionOwnerOptions | MacosExecutionOwnerOptions;
+export type ExecutionOwnerOptions = NonNativeExecutionOwnerOptions | NativeExecutionOwnerOptions;
 
 export interface ExecutionOwnerHooks {
   consume(batches: readonly DataBatch[]): Promise<void>;
@@ -102,11 +110,16 @@ export class ExecutionOwnerLifecycle {
   private closing?: Promise<OwnerCloseResult>;
 
   constructor(options: ExecutionOwnerOptions) {
-    if ((options.kind !== 'non-native' && options.kind !== 'linux-provider') || typeof options.createTransport !== 'function') {
+    if (!['non-native', 'linux-provider', 'macos-provider'].includes(options.kind) || typeof options.createTransport !== 'function') {
       throw new Error('An explicitly injected execution provider is required');
     }
-    if (options.kind === 'linux-provider' && (options.profile === undefined || options.profileMode === undefined)) {
-      throw new Error('Linux execution provider requires an explicit candidate profile and mode');
+    if (options.kind !== 'non-native' && (options.profile === undefined || options.profileMode === undefined)) {
+      throw new Error('Native execution provider requires an explicit candidate profile and mode');
+    }
+    if ((options.kind === 'linux-provider' && options.profile !== EXECUTION_CANDIDATE_PROFILE) ||
+        (options.kind === 'macos-provider' && (options.profile !== MACOS_EXECUTION_CANDIDATE_PROFILE ||
+          typeof options.claimNamespace !== 'function'))) {
+      throw new Error('Native execution provider profile or namespace capability does not match its platform.');
     }
     const budgets = Object.freeze({ ...options.budgets });
     if (options.profile !== undefined) {

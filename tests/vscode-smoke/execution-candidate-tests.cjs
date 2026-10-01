@@ -100,7 +100,7 @@ async function complete() {
   const metadata = node.metadata.terminal;
   assert.equal(metadata.persistenceMode, mode);
   if (mode === 'live-runtime') {
-    assert.match(metadata.runtimeStoragePath, /terminal-exit-v1/);
+    assert.match(metadata.runtimeStoragePath, process.platform === 'darwin' ? /terminal-exit-macos-v1/ : /terminal-exit-v1/);
     assert(metadata.runtimeSessionId);
   }
   await dispatch('webview/resizeNode', { nodeId: id, position: node.position,

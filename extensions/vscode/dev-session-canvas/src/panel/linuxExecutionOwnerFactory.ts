@@ -72,7 +72,7 @@ export function resolveLinuxExecutionProviderAssets(distDirectory: string): Linu
     throw new Error('Linux candidate declared exports mismatch.');
   }
   const sources = record(manifest.sources);
-  for (const key of ['ownerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256', 'headersSha256', 'nodeAddonApiSha256']) {
+  for (const key of ['ownerSha256', 'sharedOwnerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256', 'headersSha256', 'nodeAddonApiSha256']) {
     const hash = sources[key];
     if (typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash)) throw new Error('Linux candidate provenance is incomplete.');
   }

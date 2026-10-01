@@ -82,7 +82,9 @@ export class ExecutionProviderTransport implements ExecutionTransport {
   private killRequested = false;
 
   constructor(options: ExecutionProviderTransportOptions) {
-    if (process.platform !== 'linux') throw new Error('Execution provider transport is not validated on this platform');
+    if (process.platform !== 'linux' && process.platform !== 'darwin') {
+      throw new Error('Execution provider transport requires a supported POSIX platform');
+    }
     assertExecutionIdentity(options.identity);
     if (!isAbsolute(options.executable) || !isAbsolute(options.entryPoint)) throw new Error('Provider paths must be explicit and absolute');
     if (options.args?.some(arg => typeof arg !== 'string')) throw new Error('Invalid provider arguments');

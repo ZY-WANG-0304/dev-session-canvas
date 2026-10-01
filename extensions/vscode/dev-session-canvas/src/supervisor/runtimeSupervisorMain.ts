@@ -110,7 +110,7 @@ import { assertExecutionCandidateCapabilities, assertExecutionCandidateProfile, 
   type AuthorityResult, type DataBatch, type ExecutionCandidateProfile, type LaunchSpec, type ProcessResult
 } from '../common/executionLifecycle';
 import type { InteractionObservation, OperationObservation } from '../panel/executionSessionAdapter';
-import { createLinuxExecutionOwnerOptions } from '../panel/linuxExecutionOwnerFactory';
+import { createNativeExecutionOwnerOptions } from '../panel/executionOwnerFactory';
 import {
   acquireRuntimeSupervisorNamespace,
   assertRuntimeSupervisorNamespaceSupport,
@@ -509,14 +509,16 @@ export class RuntimeSupervisorServer {
 
   public async start(): Promise<void> {
     this.assertOwnedAdmissionOpen();
+    const options = this.executionOwner?.options;
+    const nativeClaim = options?.kind === 'macos-provider' ? options.claimNamespace : undefined;
     if (this.executionProfile !== undefined) {
       if (this.candidateStartAttempted) throw new Error('Execution candidate Supervisor startup was already attempted.');
       this.candidateStartAttempted = true;
-      assertRuntimeSupervisorNamespaceSupport();
+      assertRuntimeSupervisorNamespaceSupport(nativeClaim);
     }
-    fs.mkdirSync(this.paths.storageDir, { recursive: true });
+    fs.mkdirSync(this.paths.storageDir, { recursive: true, ...(nativeClaim ? { mode: 0o700 } : {}) });
     if (this.executionProfile !== undefined) {
-      this.namespaceClaim = await acquireRuntimeSupervisorNamespace(this.paths.storageDir);
+      this.namespaceClaim = await acquireRuntimeSupervisorNamespace(this.paths.storageDir, nativeClaim);
       await prepareRuntimeSupervisorSocketPath(this.paths.socketPath);
     }
     ensureSocketDirectoryReady(this.paths);
@@ -3803,7 +3805,8 @@ async function main(): Promise<void> {
     const requestedProfile = readCliFlag('--execution-profile');
     assertExecutionCandidateRuntimeSupervisorStorageDir(storageDir, requestedProfile);
     executionProfile = requestedProfile;
-    executionOwnerOptions = createLinuxExecutionOwnerOptions({ extensionRoot: path.dirname(__dirname), mode: 'live-runtime' });
+    executionOwnerOptions = createNativeExecutionOwnerOptions({ extensionRoot: path.dirname(__dirname),
+      mode: 'live-runtime', profile: executionProfile });
   }
   const server = new RuntimeSupervisorServer(paths, runtimeBackend, runtimeGuarantee, executionOwnerOptions, executionProfile);
   await server.start();

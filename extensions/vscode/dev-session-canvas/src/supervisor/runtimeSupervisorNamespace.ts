@@ -4,7 +4,8 @@ import * as net from 'net';
 
 const ENDPOINT_PROBE_TIMEOUT_MS = 1000;
 
-export function assertRuntimeSupervisorNamespaceSupport(): void {
+export function assertRuntimeSupervisorNamespaceSupport(nativeClaim?: (storageDir: string) => void): void {
+  if (process.platform === 'darwin' && typeof nativeClaim === 'function' && typeof process.getuid === 'function') return;
   const [major, minor] = process.versions.node.split('.').map(Number);
   if (process.platform !== 'linux' || !Number.isInteger(major) || !Number.isInteger(minor)
     || major < 20 || (major === 20 && minor < 8) || typeof process.getuid !== 'function') {
@@ -12,8 +13,13 @@ export function assertRuntimeSupervisorNamespaceSupport(): void {
   }
 }
 
-export async function acquireRuntimeSupervisorNamespace(storageDir: string): Promise<net.Server> {
-  assertRuntimeSupervisorNamespaceSupport();
+export async function acquireRuntimeSupervisorNamespace(storageDir: string,
+  nativeClaim?: (storageDir: string) => void): Promise<net.Server | undefined> {
+  assertRuntimeSupervisorNamespaceSupport(nativeClaim);
+  if (process.platform === 'darwin') {
+    nativeClaim!(await fs.realpath(storageDir));
+    return undefined;
+  }
   const identity = { uid: process.getuid!(), storageDir: await fs.realpath(storageDir) };
   const digest = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
   const owner = net.createServer((socket) => socket.destroy());

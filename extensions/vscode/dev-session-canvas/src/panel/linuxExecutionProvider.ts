@@ -1,4 +1,5 @@
 import { constants } from 'node:os';
+import { isAbsolute } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 
 import {
@@ -39,6 +40,13 @@ export interface LinuxExecutionNativeSnapshot {
   pollCalls: number;
   termCalls: number;
   killCalls: number;
+  creationResources?: readonly {
+    resourceId: string;
+    acquired: boolean;
+    releaseAttempted: boolean;
+    releaseResult: number | null;
+    releaseErrno: number | null;
+  }[];
 }
 
 export interface LinuxExecutionBinding {
@@ -75,6 +83,8 @@ export interface LinuxExecutionProviderOptions {
   rows: number;
   pollIntervalMs: number;
   interactionV1?: true;
+  platform?: 'linux' | 'darwin';
+  helperPath?: string;
 }
 
 export interface LinuxExecutionProviderResult {
@@ -99,10 +109,18 @@ export function validateLinuxExecutionReadBudget(identity: ExecutionIdentity): v
 }
 
 export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions): Promise<LinuxExecutionProviderResult> {
-  if (process.platform !== 'linux' || options.pollIntervalMs !== 5
+  return runUnixExecutionProvider({ ...options, platform: 'linux' });
+}
+
+export function runUnixExecutionProvider(options: LinuxExecutionProviderOptions): Promise<LinuxExecutionProviderResult> {
+  const platform = options.platform ?? 'linux';
+  if (!['linux', 'darwin'].includes(platform) || process.platform !== platform || options.pollIntervalMs !== 5
     || !Number.isInteger(options.cols) || options.cols < 1 || options.cols > 1000
     || !Number.isInteger(options.rows) || options.rows < 1 || options.rows > 1000) {
     throw new Error('Invalid Linux execution provider configuration.');
+  }
+  if (platform === 'darwin' && (!options.helperPath || !isAbsolute(options.helperPath))) {
+    throw new Error('Darwin execution requires its verified absolute spawn helper path.');
   }
   validateLinuxExecutionReadBudget(options.identity);
   const { binding, identity } = options;
@@ -294,13 +312,21 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
         .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
         .map(([key, value]) => `${key}=${value}`);
       binding.fork(command.spec.file, command.spec.args, env, command.spec.cwd ?? process.cwd(),
-        command.spec.cols ?? options.cols, command.spec.rows ?? options.rows, -1, -1, true, '', () => {});
+        command.spec.cols ?? options.cols, command.spec.rows ?? options.rows, -1, -1, true,
+        platform === 'darwin' ? options.helperPath! : '', () => {});
     } catch (error) { creationError = error; }
 
     try {
       const initial = snapshot();
       if (initial?.masterAcquired) await acquire(MASTER);
       if (initial?.childAcquired) await acquire(CHILD);
+      if (platform === 'darwin' && initial?.forkAttempted) {
+        await acquire('pty-creation');
+        const released = Array.isArray(initial.creationResources) && initial.creationResources.every(resource =>
+          !resource.acquired || (resource.releaseAttempted && resource.releaseResult === 0));
+        await release('pty-creation', released, 'PTY creation resource release is unconfirmed.');
+        if (!released) creationError ??= new Error('PTY creation resources were not fully released.');
+      }
       const readable = !creationError && initial?.nonblockConfirmed === true;
       if (readable) await acquire(SOURCE);
       if (!creationError && initial?.childAcquired && initial.pid !== null && readable) {
@@ -373,6 +399,7 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
         const text = decoder.write(buffer.subarray(0, read.bytes));
         if (text) await channel.write(text);
       } else if (read.kind === 'eof') {
+        if (platform === 'darwin' && read.reason !== 'zero') throw new Error('Darwin EOF requires an actual zero-length read.');
         sourceEnded = true;
         sourceEndEvidence = read.reason;
         disposition = { kind: 'eof' };
@@ -395,7 +422,10 @@ export function runLinuxExecutionProvider(options: LinuxExecutionProviderOptions
     try { native = snapshot(); } catch (error) { firstFailure ??= String(error); }
     const resourcesSettled = configured && Boolean(native)
       && (!native!.masterAcquired || native!.closeResult === 0)
-      && (!native!.childAcquired || native!.waitStatus.kind === 'exited' || native!.waitStatus.kind === 'signaled');
+      && (!native!.childAcquired || native!.waitStatus.kind === 'exited' || native!.waitStatus.kind === 'signaled')
+      && (platform !== 'darwin' || Array.isArray(native!.creationResources))
+      && (native!.creationResources ?? []).every(resource => !resource.acquired ||
+        (resource.releaseAttempted && resource.releaseResult === 0));
     resolve({ kind: !firstFailure && resourcesSettled ? 'closed' : 'failed',
       ...(firstFailure ? { reason: firstFailure } : {}), native, source, sourceEndEvidence, resourcesSettled });
   }

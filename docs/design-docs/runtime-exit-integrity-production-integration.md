@@ -1707,16 +1707,82 @@ DeepSeek 官方接口提供 Codex 所需的 Responses 路径和 Claude 所需的
 
 ### 33.1 运行前原生契约（2026-10-01）
 
-本增量将 macOS 接入现有产品 provider，不改冻结的 baseline/failure 诊断、旧断言或历史结果。显式 profile 为 `macos-owner-v1-candidate`，隔离 generation 为 `terminal-exit-macos-v1`；stock 和 Linux candidate 不因本增量默认启用或被替换。推进过程由现有容量收尾 ExecPlan 承接，不新增工具项目或验证矩阵。
+本增量将 macOS 接入现有产品 provider，不改冻结的 baseline/failure 诊断、旧断言或历史结果。显式 profile 为 `macos-owner-v1-candidate`，隔离 generation 为 `terminal-exit-macos-v1`，owner kind 为 `macos-provider`；stock 和 Linux candidate 不因本增量默认启用或被替换，旧 Linux profile/generation 保持。推进过程由现有 `runtime-exit-integrity` ExecPlan 承接，不新增工具项目或验证矩阵。两 authority 通过同一薄 factory 选择平台，普通 build 不启用候选；共享 transport 只增加 Darwin 的 POSIX 路径，Windows guard 保留。
 
 产品使用独立 provider 内同一个 token/env owner 执行非阻塞读写、resize 和唯一 `waitpid(pid, WNOHANG)`，不安装 stock 退出 callback，不创建 kqueue、wait thread、TSFN 或第二个 reaper。这个 polling 选择利用现有产品 adapter/channel 的调度与输出 credit 隔离，不将旧 Darwin kqueue/TSFN 诊断成功当作新实现验证。实际 Darwin native、Host/Webview 和 packaged 结果取得之前，平台仍未通过。
 
 创建保留锁定 node-pty 的 `posix_openpt`、slave 配置、`posix_spawn` 和同源 `spawn-helper` 的真实链；helper `execvp` 后主体 PID 不变。master、child 在各自取得时立即登记，失败不丢失已有责任；slave、low-fd-0/1/2、spawn-actions/attrs 分别记录取得和实际释放。所有 init/adddup2/addclose/setattr 返回均检查，只有初始化成功的对象才 destroy；POSIX spawn 错误使用直接返回码，不解读无效 PID。原始创建错误与释放错误分别保留，不用进程退出代证 provider 正确释放。
 
-现有九个 `fork`/`executionConfigure`/`executionSnapshot`/`executionRead`/`executionWrite`/`executionResize`/`executionPollWait`/`executionSignal`/`executionClose` 导出和参数保持。snapshot 新增 `creationResources`，只列实际取得的 `{resourceId, acquired, releaseAttempted, releaseResult, releaseErrno}`，资源 ID 固定为 `pty-spawn-actions`、`pty-spawn-attrs`、`pty-slave`、`pty-low-fd-0/1/2`。provider 用原 `resourceAcquired/resourceResult` 顺序报告；任何已取得条目没有实际成功释放都保留 unknown，并使整体 `resourcesSettled=false`。master/child/source 仍分别结算。
+现有九个 `fork`/`executionConfigure`/`executionSnapshot`/`executionRead`/`executionWrite`/`executionResize`/`executionPollWait`/`executionSignal`/`executionClose` 导出和参数保持。snapshot 新增 `creationResources`，只列实际取得的 `{resourceId, acquired, releaseAttempted, releaseResult, releaseErrno}`，原生账本 ID 固定为 `pty-spawn-actions`、`pty-spawn-attrs`、`pty-slave`、`pty-low-fd-0/1/2`。通常只取得 low-fd-0，不伪造其余 fd 的取得/释放。provider 在 `forkAttempted` 后用原 `resourceAcquired/resourceResult` 报告一个 `pty-creation` 创建事务责任；只有账本中全部实际取得条目均已成功释放，该事务才 released，否则保留 unknown，并使整体 `resourcesSettled=false`。这不是把未取得 OS 资源写成已释放。master/child/source 仍分别结算，正常已启动会话的 parent cleanup 原生资源集合固定为这三项加 `pty-creation`，不扩共享 adapter 的必需/可选资源协议。
 
 每次 read 使用正容量 4096-byte Buffer；Darwin 只将真实 read 0 记 EOF，EIO 保留 read-error，不机械继承 Linux EIO 语义。UTF-8 尾片和已读数据沿原 channel 完整移交；主体退出、停止、取消或超时不等于 EOF。write 保留 partial/retry，resize 使用 token-bound `TIOCSWINSZ`；SIGHUP/SIGTERM/SIGKILL 仅作用于同 owner 尚未回收且本次 `WNOHANG` 返回 pending 的主体，退出 status 仅在返回本 PID 且 exited/signaled 时解码，其他错误保留 unknown。
 
 新增 authority 专用 `executionClaimNamespace(path): void`。路径为 authority 规范化私有 storage 下的绝对锁文件；native 用 `O_NOFOLLOW|O_CLOEXEC` 打开，核对普通文件、当前有效 uid、0600 权限、单一硬链接和路径/fd 的同一 dev/ino，以 `flock(LOCK_EX|LOCK_NB)` 取得排他。成功 fd 持有至进程退出，不能在 listener 关闭时释放，也不 unlink 文件；竞争者失败后关闭自己取得的 fd。锁文件/存储目录不能在运行期间替换；同 uid 主动篡改不作为不可信主体安全隔离承诺。authority 只取得 namespace，不 configure 执行 owner；provider 只配置执行 owner，不取得 namespace。私有目录建立、规范路径、旧 socket 处理与两 authority 启动由现有产品层负责。
 
-构建提供匹配执行端架构、实际 Node/Electron/ABI 的 Mach-O addon 和同源 helper，分别记录源码/二进制 hash 并保留 helper 可执行位；不加载 `.debug` 资产，不修改安装的 node-pty。原生源码/patch 受控测试只能证明选定源码和局部控制契约，不代替 Darwin 编译、加载或实际运行。本节冻结时尚无新 native 执行或 runner 结果。
+构建提供匹配当前执行端 x64/arm64 架构、实际 Node/Electron/ABI 的 Mach-O addon 和同源 helper，分别记录源码/二进制 hash 并保留 helper 可执行位；不加载 `.debug` 资产，不修改安装的 node-pty。Linux 守卫头与 macOS 创建扩展共用 `unix-execution-owner.h`，构建 provenance 包含公共头；不通过伪造平台宏复用系统声明。namespace callback 必须来自同一份验证过的 native 资产，Darwin support guard 不接受没有 callback 的启动。原生源码/patch 受控测试和 Linux 编译回归只能证明对应层的契约，不代替 Darwin 编译、加载或实际运行。本节冻结时尚无新 native 执行或 runner 结果。
+
+### 33.2 原生源码局部实施
+
+新增 `native/macos-execution-owner.h`、`scripts/build/macos-execution-provider-patch.mjs` 和 `scripts/test/test-macos-execution-provider-source.mjs`，将既有 Linux owner 主体提取到公共 Unix 头，Linux 守卫头保持原平台限制。Darwin patch 对锁定 node-pty 源码进行唯一锚点替换，使用受检查的创建函数，错误返回不再绕过 owner 账本直接关闭 master；旧退出 callback 不被安装。helper 源码固定 SHA256 `22195de1710b574d5904fc89be5624c25e531de20d5e17e5998a2fd19d86e0e6`，不改其 exec 同 PID 语义。
+
+新增源码测试已通过，覆盖锁定来源/导出集合、唯一 reaper、Darwin EOF 分支、已取得创建资源报告与释放检查、helper 参数和 namespace 文件/锁前后身份约束；作用域 `git diff --check` 通过。这些检查未加载 addon、创建 PTY 或取得 namespace 锁，不证明实际 Darwin syscall、产品两模式或 package 已通过。共享接线只读审查发现最初将六个可变取得条目全部作为 parent cleanup 必需 ID 会使常见 low-fd-0 路径永远无法取得 transferred claim；因此在原生验证前改为 33.1 的创建事务聚合，native 逐项账本不变，不伪报未取得资源。共享 factory/build/profile/namespace 接线及后续原生验证由同一产品增量继续承接。
+
+共享产品接线已落到两个 authority 的显式 factory 选择、独立 macOS generation、helper/入口/原生 hash 校验及 Darwin namespace callback；普通构建仍 stock。局部回归为 owner46/46、adapter98/98、Host145/145、Supervisor92/92、Linux namespace7/7、transport7组、channel12项、parent-control9项、Linux factory25/25、macOS factory两个架构受控契约、build selection10/10、macOS assets11/11，以及公共 provider 的原10项加Darwin3项，均已通过。Darwin factory/资源/EOF检查仍是受控边界，不是原生证据。
+
+公共头提取后的 Linux/Electron39.8.7、Node22.22.1、ABI140 资产已在 `.debug/linux-shared-owner-20261001-assets/` 新目录实际编译，显式2/1产品构建完成。仅因共享native/profile/Host路径有实质变化，随后以新目录 `.debug/linux-shared-owner-20261001-smoke/` 运行原 A2/A3 两模式 Terminal complete/reopen 有限入口各一次，整轮 exit 0、四次 launch 完成。两模式均保持90002行、最终光标及独立成功写入凭证；Runtime轻量节点646 bytes、真实重开无历史且绑定删除，snapshot-only节点5767028 bytes、真实重开保留原缓冲。completed/reopened/cleanup各自pass，清理只证明原主体回收和本节点/Host绑定删除，不外推全部OS资源。不是再跑已通过的A1或Agent矩阵，不将旧结果覆盖为新构建结果。
+
+### 33.3 首个 Darwin 产品 provider 原生输入
+
+首跑使用独立 workflow `runtime-execution-macos.yml`，保留手动入口；因新 workflow 尚未在默认分支注册，另加仅限 `runtime-persistence-session-state-refactor` 分支和本 workflow/macOS native/provider/验收输入路径的有界 push 触发，不带 secrets、矩阵或旧三平台诊断任务。固定 Node 25.6.0、macos-latest 的实际 x64/arm64 架构、锁定 npm 依赖、对应官方 headers；headers tar.gz SHA256 固定为 `6e6662d6081f36bb3896df42a331e9ccbb4286fda72daf7bc7fb5bfb18fa8ed0`。新生产 asset builder 编译当前源码，再通过原 build 的显式 macOS profile/assets 生成产品入口。输入、manifest、addon/helper/入口 hash、OS/架构和首次原始结果分别保存。
+
+固定四场串行，不重试、不增加样本：namespace 场启动三个没有 PTY 的实际 authority 子进程，验证初始持有、竞争者拒绝、原 owner 自然退出后新 owner 对原锁文件同一 inode 重新取得；normal 场通过实际 factory/Main/channel/owner 创建真实 PTY，完成 nonce 输入回应、119x41 resize、非零自然退出、成功写入来源全量对账、红色中文终态与光标及真实 read-0 EOF；paused-stop 场在 16 帧信用耗尽且消费暂停时请求原产品停止，确认主体回收独立推进，观察原 owner cancelOutput 后恢复消费，源必须 interrupted 而非 EOF；partial-create 场最后执行。
+
+创建失败控制仅操作本测试新复制的私有资产：产品 Main 已验证资产并发布 ready 后，在 authority 向 adapter 交付 ready、发送 start 前去掉 helper 执行位，使真实 `posix_spawn` 返回 EACCES。不替换 binding、provider Main 或原生函数，不修改已发布资产；确认原 master 和创建事务释放、没有 child/source 取得、没有 EOF，并在收尾恢复 helper 执行位。这个失败按预期保留 process/source 未确认和 authority 拒新建，不把失败启动写成普通成功会话；OS 资源释放与产品不确认结果分别验收。
+
+预算沿用已存在有限业务入口的每场 45000 ms、清理观察 35000 ms、真实 subject 自限 25000 ms；产品 start/stop/cancel/settlement 预算不变。每场最多一个 provider，normal/paused-stop 各一个主体，partial-create 不应产生主体，namespace 最多三个直接子进程；证据内存保留沿原 8 MiB 输出和 20000 控制事件上限，超限失败。首个场景断言或清理失败即停排并保留未运行项，不延长预算筛选通过。
+
+这四场只验当前 Node authority/provider/PTY 与真实解析器，namespace 使用实际 factory 原生锁。首跑结束条件是四场均达到各自冻结结果且本方清理可证，或保存第一个失败/清理结果后停排。编写此协议时尚未推送、触发 workflow 或取得新 Darwin 原生结果。
+
+四场通过后，同一job直接复用原 `run-vscode-execution-candidate.mjs` 的两模式Terminal complete/reopen，补足实际Host/Webview，不新增诊断框架。固定VS Code1.117.0、Electron39.8.7/Node22.22.1/ABI140；对应headers SHA256为 `af6712ab16c436b9288ece2f0173924c74008446346bda3457d07b769f402eda`，重新编译匹配Electron的addon/helper，不复用Node二进制。runner仅为基本A2/A3选择本平台manifest/provider和隔离generation，容量/proc身份路径仍只准Linux；90002行、最终光标、实际关闭重开及两模式历史断言均不变。Node和Electron的build/evidence分别归档，前者通过不代证后者，任一步失败停止后续运行；真实Agent、package及其余A5不在该有限结果内。
+
+`test-macos-execution-product.mjs --self-test` 已在本地通过，验证固定 workflow、完整/截断帧判定、仅 CR-before-LF 的来源对账归一和真实 headless 终态 oracle；subject/runner 语法及 namespace fixture bundle-only 检查通过。没有加载 addon、创建 PTY 或取得 namespace 锁。取消场另保存已记录 writer bytes/hash，但信号可能打断成功 write 后的 audit append，不冒称完整写回执；严格要求全部已收到帧进入真实 parser，且结果只能 interrupted，normal 场仍按完整成功回执逐字对账。
+
+## 34. Windows 产品原生接入
+
+### 34.1 运行前原生契约（2026-10-01）
+
+本增量新增 Windows bundled ConPTY DLL 的产品 provider 核心，沿用现有 authority/channel 的有限信用、交互预算和退出屏障，不改冻结的 HPCON 诊断 patch、旧测试或历史失败。profile、namespace、实际 Node/Electron 资产和分发接线由产品构建层显式选择；未完成接线和真实 runner 验证前不默认启用，不宣布 Windows 已通过。
+
+native 导出为 `executionStart(token, pipeName, cols, rows)`、`executionConnect(token, commandLine, cwd, env)`、`executionPollWait(token)`、`executionResize(token, cols, rows)`、`executionClose(token)` 和 `executionSnapshot(token)`。token 绑定 execution/generation，单个 provider 只配置一个 owner；start/connect/resize/close 为异步操作。唯一 `WaitForSingleObject(hShell, 0)` 观察循环独立于输出信用，只观察本次创建的进程句柄，不新建 waiter/TSFN 或按 PID 寻找后来的进程。确认退出码后只关闭自己持有的 hShell；其他进程继续合法引用已退出对象不是缺陷，不要求对象全局消失，不关闭他人的句柄。
+
+资源分为 `conpty-owner`（HPCON、创建连接端句柄、线程句柄及 DLL 引用）、`conpty-process`（本次 hShell）、`conpty-input`（输入 socket）和 `conpty-source`（直接输出 reader/worker）；`provider-control` 仍由原父进程负责。部分创建失败仍保留 snapshot 中已取得和未释放的责任，不能因 start 被拒绝或 JS 抛错清空 native 账本。HPCON 只调用正确类型的 `ConptyClosePseudoConsole`，不能作为普通 HANDLE 调用 CloseHandle；connect 使用 header 对应的 HRESULT 类型调用 `ConptyReleasePseudoConsole`，记录实际结果，与最终 Close 分离。
+
+输出 worker 直接读取本次 conout pipe，以正容量固定大小 read、一个在途交付和明确 ACK 限制消息积压；等待 channel credit 时不无限 postMessage。reader 的真实 `end` 且未发生取消才记 EOF，close-without-end、error 和主动取消分别保留，不从主进程退出或 timeout 推导 EOF。取消只结算取消边界之前已交付及 reader 已拥有的有界 JS 缓冲，保持 UTF-8 decoder 尾片与交付顺序，不读取无限未来输出，也不要求主进程结束后继续托管普通工具后代。
+
+输入走自有 conin 的异步 write，沿用现有四个交互/32768 字节预算。resize 与最终 HPCON Close 互斥：close intent 先封闭新增操作，等待已取得操作结束后执行单次 Close；不能在持有 native 状态锁期间阻塞 JS 线程，也不能将正在 Close 的 HPCON 再交给 resize。start/connect 同样属于在途 native 操作，关闭意图先到时不能随后再创建新主体。
+
+自然路径分别等待主体退出事实、真实源结束、本地已拥有字节向 authority 移交及本方资源释放。现有 `channel.end()` 只确认 accepted/sourceEndAccepted，不等于最终消费者完成；native 释放门禁称本地交付完成，不冒称诊断的 markConsumerComplete。最终 xterm 应用/持久化仍由已有 authority 屏障核对，资源释放不代替其结果。
+
+主动停止选择本次 HPCON 的一次性异步 Close，同时独立 reader 继续读取；`interrupt-then-hangup` 的 graceful 先通过同一输入通道写 ETX，force 再发起上述 Close。Close 返回、源 EOF 或明确取消、主进程退出和最终应用分账。不能把 TerminateProcess(cmd 包装器) 当作实际 Agent 已结束；真实 cmd/bat 启动链及此停止分支必须在既定 Windows 验收中确认。关闭/进程观察无法确认时保持 unknown/unconfirmed，不伪造资源释放或完整 EOF。
+
+本增量的局部验证仅覆盖新 source patch、有限 reader/取消、provider 顺序和失败账本；不另建通用诊断框架。后续原生验证仍包含已知主进程尾部/最终光标、输入/resize、实际包装链、停止/取消、本方资源、Host/Webview 两模式和 packaged。局部 fake 或 Linux 上的源码检查不替代 Windows 编译、加载、真实 CLI 或 Electron 结果。
+
+### 34.2 核心实现与局部验证边界
+
+生产实现位于 `native/windows-execution-owner.h`、`src/panel/windowsExecutionProvider.ts`、`windowsExecutionPipes.ts`、`windowsExecutionOutput.ts`、`windowsExecutionOutputWorker.ts` 与 `windowsExecutionProviderMain.ts`，以上相对扩展目录。仓库根的 `scripts/build/windows-execution-provider-patch.mjs` 校验固定 node-pty ConPTY 源 SHA256，只将导出替换为本方六个 API 并包含新 owner 头；不修改已安装依赖或旧诊断 patch。native Close intent 和在途工作分别记账，阻塞的 ConPTY 操作在 AsyncWorker 执行；0-timeout process polling 不依赖输出回调。Windows 编译及加载仍未由本节证明。
+
+reader 一次只投递一个不超过 4096-byte 的新 Uint8Array，并 transfer 其独立 backing buffer，避免取消快照每个切片重复复制整个底层 Buffer。Socket 使用 4096 的 readableHighWaterMark，并在连接前检查实际值；取消只快照本方已拥有的 readable buffer，再关闭管道，按原 ACK 串行交付剩余片段。消费者失败无法 ACK 时，适配层只中止本次拥有的 reader worker并记录传输错误，不把这条路径写成 EOF，也不让 worker 永久等待不可能到达的 ACK。实际 worker exit 与输入 socket close 后才报告本方资源释放；失败创建只报告真正取得的资源。
+
+本地 `test-windows-execution-provider-core.mjs` 的六个 fake native/channel 场景通过，覆盖 UTF-8 尾片、主进程观察不被输出信用阻塞、输入/resize 分离、ETX 与 force Close、明确取消、部分 start/connect 失败和资源 unknown。`test-windows-execution-output.mjs` 四个真实 Node stream 场景验证逐帧 ACK、取消时已拥有字节完整交付、EOF/close-without-end/error 分离；不是 Windows named pipe。`test-windows-execution-pipes.mjs` 五个假 socket/worker 场景验证交付/ACK、消费失败和三处部分取得失败。`test-windows-execution-provider-source.mjs` 的来源/导出/选定 native 调用契约检查也通过，但不是 C++ 编译或原生 API 测试。
+
+四个核心 TypeScript 模块的严格独立 typecheck 通过。Main 仍等待共享 Windows factory、profile/namespace、通道平台接线和构建/分发入口；此处只交付完整可测试核心，不把局部通过计入实际 Windows Node/Electron、Terminal/真实 Agent、Webview 或 packaged 验收，也不关闭 A5/F-04。未运行新的 Windows CI，未宣称包装器停止或 HPCON 异步 Close 的原生尾部完整性已通过。
+
+### 34.3 编译与资产导入边界
+
+新增 `scripts/build/windows-execution-candidate-assets.mjs` 的 `build`/`import` 入口，固定 profile 为 `windows-owner-v1-candidate`，导入位置为 `native/windows-execution-candidate/win32-{arch}`。build 只允许实际 Windows x64/arm64 当前进程架构，记录完整 Node/Electron 版本、内嵌 Node 版本、module ABI 与 N-API 版本；显式 `--headers` 的 `node_version.h` 必须精确匹配当前运行时。参数生成覆盖两个架构不等于两个架构已编译或通过，实际 arm64 结果仍未取得。
+
+编译输入固定为已安装 `node-pty@1.2.0-beta.12` 的 `conpty.cc`、`path_util.cc`、`conpty.h`、`path_util.h`，当前 owner/patch，`node-addon-api@7.1.1`，以及显式 `--node-lib` 和 `--delay-load-hook`。ConPTY 源、路径工具和配套头均校验冻结 SHA；hook 使用标准 node-gyp `src/win_delay_load_hook.cc`，冻结 SHA256 `ec2357ffdf512151c21a52326ad3396aaa650b83e5c4a31153d216a155f68ecc`，本地核对来源为 npm 所带 node-gyp12.1.0。不在 builder 中下载或改写依赖。MSVC 直接编译两个 ConPTY 源与 hook，保留异常设置、`WIN32_LEAN_AND_MEAN`、明确目标架构、`shlwapi.lib` 和受控 `node.lib`；同时使用 `HOST_BINARY="node.exe"`、`/DELAYLOAD:node.exe` 与 `delayimp.lib`，由标准 hook 将 API 加载重定向到实际 Node/Electron 主程序。不能只提供 Node 头和 import library 就声称已满足 Windows Electron 加载。头版本核对及 import library 摘要只固定输入，实际 Node/Electron 加载仍必须原生验收。
+
+运行时配套文件直接来自锁定包的 `third_party/conpty/1.25.260303002/win10-{arch}`，保留 `conpty.node` 与相邻 `conpty/conpty.dll`、`conpty/OpenConsole.exe` 的布局。manifest 的 `binary` 固定为 addon，`dependencies` 按上述两个配套文件的固定顺序记录 SHA256；三文件均校验 DOS/PE32+ 头、目标架构及 DLL/EXE 类型。源码 provenance 包含 owner、patch、原始及 patched ConPTY、路径工具、配套头、Node headers、node-addon-api、node.lib 和 delay-load hook 的摘要。导入前还要求正式 provider 与 output-worker 的两个 JS 入口存在，不复制编译输入，不接受旧目录覆盖。
+
+build/import 均不加载 addon、不调用原生函数、不启动 OpenConsole，manifest 的验证声明严格为 `compiled=true`、`nativeLoaded=false`、`nativeCalls=false`、`productValidated=false`。本地 `test-windows-execution-candidate-assets.mjs` 九项纯测试通过，覆盖精确清单与路径、三资产独立摘要/PE 声明、两个 JS 入口、MSVC 参数与 delay-load 输入、版本/ABI、外平台构建拒绝及锁定依赖布局；合成 PE 只验证校验逻辑，读取真实 DLL/EXE 也不执行它们。本段没有新增 Windows 原生结果，不关闭既定 Windows 编译/加载、Terminal/真实 Agent、Host/Webview 或打包验收。

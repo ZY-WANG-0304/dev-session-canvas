@@ -3,8 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ExecutionOwnerLifecycle, type ExecutionOwnerOptions, type OwnedExecution, type OwnerCloseResult } from './executionOwnerLifecycle';
-import { EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_INTERACTION_LIMITS,
-  assertExecutionCandidateCapabilities, type ExecutionCandidateProfile,
+import { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_INTERACTION_LIMITS,
+  assertExecutionCandidateProfile, assertExecutionCandidateCapabilities, type ExecutionCandidateProfile,
   type AuthorityResult, type ExecutionIdentity, type LaunchSpec } from '../common/executionLifecycle';
 import type { ExecutionScheduler, InteractionObservation } from './executionSessionAdapter';
 import {
@@ -1424,17 +1424,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     executionOwnerOptions?: ExecutionOwnerOptions,
     private readonly executionCandidateProfile?: ExecutionCandidateProfile
   ) {
-    if (executionCandidateProfile !== undefined && executionCandidateProfile !== EXECUTION_CANDIDATE_PROFILE) {
-      throw new Error('Unknown execution candidate profile.');
-    }
+    if (executionCandidateProfile !== undefined) assertExecutionCandidateProfile(executionCandidateProfile);
     if (executionOwnerOptions) {
       if (executionOwnerOptions.kind === 'non-native' && context.extensionMode !== vscode.ExtensionMode.Test) {
         throw new Error('Non-native execution owner injection requires VS Code test mode.');
       }
-      if (executionOwnerOptions.kind === 'linux-provider' &&
-        (executionOwnerOptions.profile !== (executionCandidateProfile ?? executionOwnerOptions.profile) ||
-          executionOwnerOptions.profile !== EXECUTION_CANDIDATE_PROFILE)) {
-        throw new Error('Linux execution owner requires its explicit matching candidate profile.');
+      if (executionOwnerOptions.kind !== 'non-native' &&
+        executionOwnerOptions.profile !== (executionCandidateProfile ?? executionOwnerOptions.profile)) {
+        throw new Error('Native execution owner requires its explicit matching candidate profile.');
       }
       this.nonNativeExecutionOwner = new ExecutionOwnerLifecycle(executionOwnerOptions);
     }
@@ -10419,7 +10416,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private assertExecutionCandidateAdmission(mode: 'live-runtime' | 'snapshot-only', client?: RuntimeSupervisorClient): void {
     const profile = this.getExecutionCandidateProfile();
     if (!profile) return;
-    if (profile !== EXECUTION_CANDIDATE_PROFILE || this.strictRuntimeMutationBoundary || this.nonNativeDeactivationReport) {
+    assertExecutionCandidateProfile(profile);
+    if (this.strictRuntimeMutationBoundary || this.nonNativeDeactivationReport) {
       throw new Error('Execution candidate creation admission is closed.');
     }
     const surface = this.activeSurface;

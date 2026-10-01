@@ -2,6 +2,8 @@
 
 本 ExecPlan 按 `docs/PLANS.md` 维护，承接 `docs/design-docs/runtime-persistence-closeout.md` 的 B1/A1，不是新的退出诊断阶段。输入为 `8dd82629`。F-04 目标是长历史不再要求每层常驻/一次性复制完整后缀，实际在途数据有约束，恢复不挤掉交互；F-05 的无 completed 历史与退出尾部保证不变。工程判断由代理承担，不等待用户选择预算。
 
+当前B2依赖（2026-10-01）：生产接入33.2的共享Unix/macOS代码已实施并完成局部契约，Linux共享头实际重新编译后的Terminal两模式complete/reopen完整exit0；下一执行33.3冻结macOS Node与实际Electron有限验收。这个平台增量不改变已通过的10.15、不新增容量重复矩阵、不关闭本计划或正式准入。
+
 当前入口（2026-10-01，覆盖后面的历史下一步）：容量设计 10.15 的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整 exit 0；B 回复 51ms 实际应用，同一 Webview 动作的 A 块号 12 到 18 满足 `0 < before <= after < 2560`，新 Host ready 后 13137.248ms 完整追平。原两主体/2:1候选/负载、1500ms 与不重置的30秒期限不变，完整后缀、原执行/新 reader、独立 journal/hash、自然 no-history 及两份 cleanup 通过，outer forcedSignals/failures 为空。该组合已覆盖，10.14 和旧失败不改；下一按生产接入第33节推进 B2/A5 的macOS产品owner/provider、两authority工厂、namespace及匹配Node/Electron/packaged接入，平台仍未验，Windows及F-04总体保持开放，不重复成功矩阵或追加工具阶段。
 
 当前入口（2026-09-30，覆盖后面的历史下一步）：10.13 已实施 reader-local 单段认证偏移索引并接通 Webview/Host 两消费链，10.14 的 `indexed-pages` 同输入实际重连完整 exit 0；Host ready 后 13.01 秒追平 2560 块、B 32.6ms，独立来源 hash/自然 no-history/清理通过，原 30 秒期限不改。同一新 2/1 构建的真实 Codex/Claude 两模式 natural/stop 八场景也已完整 exit 0。原四次重连 exit 1 保留，该固定冷恢复阻塞解除，不能关闭全部 F-04/A1。剩余必要产品组合、平台接入与分发继续按有限收尾契约；2026-10-01 第四轮 DeepSeek CI `36812745671` 的 Linux 真实 Agent 八场景有限通过，专用凭据已实证可用，不再列为用户阻塞。第三轮 Codex snapshot-only stop 间歇失败本轮未复现、根因未定位，不声称已修；macOS/Windows provider、build、namespace 工程仍未完成，不追加 CI 捕获循环或关闭总体。

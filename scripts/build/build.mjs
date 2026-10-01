@@ -4,7 +4,10 @@ import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { parseArgs } from 'node:util';
-import { importCandidateAssets, readCandidateAssets } from './linux-execution-candidate-assets.mjs';
+import { importCandidateAssets as importLinuxCandidateAssets,
+  readCandidateAssets as readLinuxCandidateAssets } from './linux-execution-candidate-assets.mjs';
+import { importCandidateAssets as importMacosCandidateAssets,
+  readCandidateAssets as readMacosCandidateAssets } from './macos-execution-candidate-assets.mjs';
 
 const require = createRequire(import.meta.url);
 const xtermBrowserMainEntryPath = require.resolve('@xterm/xterm/lib/xterm.js');
@@ -33,8 +36,8 @@ export async function resolveExecutionBuildSelection(args, distDirectory = mainE
   const source = values['execution-assets'];
   const admission = values['execution-admission'];
   if (profile === undefined && source === undefined && admission === undefined) return {};
-  if (profile !== 'linux-owner-v1-candidate' || !source) {
-    throw new Error('Specify --execution-profile=linux-owner-v1-candidate and --execution-assets together.');
+  if (!['linux-owner-v1-candidate', 'macos-owner-v1-candidate'].includes(profile) || !source) {
+    throw new Error('Specify a supported --execution-profile (linux-owner-v1-candidate or macos-owner-v1-candidate) and --execution-assets together.');
   }
   if (values.watch) throw new Error('Execution candidate watch builds are not supported.');
   const admissionParts = admission === undefined ? [2, 1]
@@ -54,7 +57,7 @@ export async function resolveExecutionBuildSelection(args, distDirectory = mainE
   if (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
     throw new Error('Execution candidate assets must be outside the dist directory cleared by the build.');
   }
-  readCandidateAssets(sourceDirectory);
+  (profile === 'macos-owner-v1-candidate' ? readMacosCandidateAssets : readLinuxCandidateAssets)(sourceDirectory);
   return Object.freeze({ profile, source: sourceDirectory, admissionLimits });
 }
 
@@ -108,6 +111,12 @@ const linuxExecutionProviderConfig = {
   target: 'node18'
 };
 
+const macosExecutionProviderConfig = {
+  ...linuxExecutionProviderConfig,
+  entryPoints: [fromMainExtensionRoot('src/panel/macosExecutionProviderMain.ts')],
+  outfile: fromMainExtensionDist('macos-execution-provider.js')
+};
+
 const webviewConfig = {
   entryPoints: {
     webview: fromMainExtensionRoot('src/webview/main.tsx'),
@@ -152,10 +161,12 @@ async function runBuild() {
       esbuild.build(supervisorConfig),
       esbuild.build(supervisorLauncherConfig),
       esbuild.build(linuxExecutionProviderConfig),
+      esbuild.build(macosExecutionProviderConfig),
       esbuild.build(webviewConfig)
     ]);
     if (selection.profile) {
-      importCandidateAssets({ source: selection.source, dist: mainExtensionDistRoot });
+      (selection.profile === 'macos-owner-v1-candidate' ? importMacosCandidateAssets : importLinuxCandidateAssets)(
+        { source: selection.source, dist: mainExtensionDistRoot });
       await fs.writeFile(fromMainExtensionDist('execution-candidate-selection.json'), `${JSON.stringify({
         schemaVersion: 1, profile: selection.profile, admissionLimits: selection.admissionLimits
       }, null, 2)}\n`);
@@ -167,6 +178,7 @@ async function runBuild() {
   const supervisorContext = await esbuild.context(supervisorConfig);
   const supervisorLauncherContext = await esbuild.context(supervisorLauncherConfig);
   const linuxExecutionProviderContext = await esbuild.context(linuxExecutionProviderConfig);
+  const macosExecutionProviderContext = await esbuild.context(macosExecutionProviderConfig);
   const webviewContext = await esbuild.context(webviewConfig);
 
   await Promise.all([
@@ -174,6 +186,7 @@ async function runBuild() {
     supervisorContext.watch(),
     supervisorLauncherContext.watch(),
     linuxExecutionProviderContext.watch(),
+    macosExecutionProviderContext.watch(),
     webviewContext.watch()
   ]);
 }

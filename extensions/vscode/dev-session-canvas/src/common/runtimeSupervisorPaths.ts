@@ -2,7 +2,8 @@ import { createHash } from 'crypto';
 import * as os from 'os';
 import * as path from 'path';
 
-import { EXECUTION_CANDIDATE_PROFILE, assertExecutionCandidateProfile, type ExecutionCandidateProfile } from './executionLifecycle';
+import { EXECUTION_CANDIDATE_PROFILE, MACOS_EXECUTION_CANDIDATE_PROFILE,
+  assertExecutionCandidateProfile, type ExecutionCandidateProfile } from './executionLifecycle';
 import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
   createRuntimeSupervisorProtocolError,
@@ -22,7 +23,10 @@ const SYSTEMD_USER_SERVICE_PREFIX = 'dev-session-canvas-runtime-supervisor-';
 const RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR = 'runtime-supervisor-generations';
 
 export const CURRENT_RUNTIME_SUPERVISOR_GENERATION = 'terminal-stream-v1';
-const EXECUTION_CANDIDATE_RUNTIME_SUPERVISOR_GENERATION = 'terminal-exit-v1';
+const EXECUTION_CANDIDATE_GENERATIONS: Readonly<Record<ExecutionCandidateProfile, string>> = Object.freeze({
+  [EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-v1',
+  [MACOS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-macos-v1'
+});
 
 type PathModuleLike = typeof path.posix | typeof path.win32;
 
@@ -47,7 +51,7 @@ export function resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(
   profile: ExecutionCandidateProfile
 ): string {
   assertExecutionCandidateProfile(profile);
-  return path.join(baseStorageDir, RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR, EXECUTION_CANDIDATE_RUNTIME_SUPERVISOR_GENERATION);
+  return path.join(baseStorageDir, RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR, EXECUTION_CANDIDATE_GENERATIONS[profile]);
 }
 
 export function assertExecutionCandidateRuntimeSupervisorStorageDir(
@@ -56,7 +60,7 @@ export function assertExecutionCandidateRuntimeSupervisorStorageDir(
 ): asserts profile is ExecutionCandidateProfile {
   assertExecutionCandidateProfile(profile);
   if (resolveRuntimeSupervisorExecutionProfile(storageDir) !== profile) {
-    throw new Error('The execution candidate requires its isolated terminal-exit-v1 runtime storage generation.');
+    throw new Error('The execution candidate requires its isolated platform runtime storage generation.');
   }
 }
 
@@ -64,9 +68,9 @@ export function resolveRuntimeSupervisorExecutionProfile(storageDir: string): Ex
   const resolvedStorageDir = path.resolve(storageDir);
   const generationDirectory = path.dirname(resolvedStorageDir);
   if (path.basename(resolvedStorageDir) === 'runtime-supervisor' &&
-      path.basename(generationDirectory) === EXECUTION_CANDIDATE_RUNTIME_SUPERVISOR_GENERATION &&
       path.basename(path.dirname(generationDirectory)) === RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR) {
-    return EXECUTION_CANDIDATE_PROFILE;
+    return (Object.keys(EXECUTION_CANDIDATE_GENERATIONS) as ExecutionCandidateProfile[])
+      .find(profile => EXECUTION_CANDIDATE_GENERATIONS[profile] === path.basename(generationDirectory));
   }
   return undefined;
 }

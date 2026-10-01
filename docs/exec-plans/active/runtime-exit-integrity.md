@@ -1,5 +1,7 @@
 # 交付跨平台执行会话退出完整性
 
+当前执行入口（2026-10-01，macOS产品接入）：第33节共享Unix原生owner、Darwin provider/factory/profile/generation/namespace及compile-only资产入口已实施，局部契约验证通过；共享改动后的Linux两模式实际Terminal完成/重开在 `.debug/linux-shared-owner-20261001-smoke/` 完整exit0，保留90002行/光标及各自历史策略。下一只在授权GitHub runner运行冻结的macOS Node四场，并接原两模式实际Electron/Webview完成重开，首次失败与未到达项分账，不增加工具前置。Windows核心并行实施但尚未原生验证；真实Agent、package及其余A1至A6未关闭。
+
 当前执行入口（2026-10-01，优先于后面的历史下一步）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整exit0；真实新Host追赶时B51ms应用、A同动作12到18未追平2560，随后ready后13137.248ms完整恢复，原身份/hash/no-history及两份cleanup通过、outer forcedSignals/failures为空。该B1/A1组合收口，下一按生产接入第33节推进B2/A5的macOS产品接入：共享Unix owner、Darwin原生provider、两authority工厂/构建与namespace，保留独立profile/generation、匹配Node/Electron和packaged责任。该平台目前只有运行前设计，没有新平台通过；Windows、其余A项和总体仍开放，原10.14/旧失败及Agent snapshot stop具名未决项不改。
 
 当前执行入口（2026-10-01）：第四轮 run `36812745671`/`736f9ddd` 的 Linux/DeepSeek 原八场景全部 passed，四 natural 真实 nonce/EOF 与原 Webview/持久化断言通过，八 cleanup 的 bindings/failures/forcedSignals/active 均0。stop source 分别为 Codex Runtime eof、Codex snapshot interrupted、Claude两模式eof，均仍是主动停止。第三轮 snapshot-only stop failure 本轮未复现；两轮仅报告/文档变更，业务和断言未变，根因仍未知，具名保留而不声称修复。当前回到原有限产品清单的剩余组合、B3状态替换、平台/分发与准入，不为抓红自动追加CI/框架；四轮结果保持，Linux凭据已实证可用，F-04/完整A5/macOS/Windows未关闭。
@@ -88,6 +90,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [x] (2026-10-01) 第33节macOS生产原生与共享两authority接线、平台资产构建和有限验收入口已实施；仅源码/受控测试通过，不冒称Darwin实际通过。共享头重新编译后Linux原两模式Terminal四次launch全部exit0。
+- [ ] 执行第33.3冻结macOS Node四场和原两模式实际Electron/Webview验收，保存首败/清理和not-run；继续原A5，不新增诊断阶段。
 - [x] (2026-10-01，B1/A1) 容量设计10.15原两主体重连只提前B交互，固定一次完整exit0；B51ms应用时A12到18，随后13137.248ms追平，原身份/完整后缀/hash/no-history和两份cleanup通过。旧10.14/失败保留，不重复成功矩阵或关闭总体。
 - [ ] (2026-10-01，B2/A5) 生产接入第33节已冻结macOS运行前契约，下一实现共享Unix owner、Darwin原生provider、两authority工厂/匹配构建与namespace；尚无新Darwin编译、原生或产品通过，不用Linux/冻结诊断代证，Windows及其他验收继续开放。
 - [x] (2026-09-28) 按用户要求暂停自动阶段；基于 ba2c148b 只读复核 F-04/F-05 与退出接线，形成有限收尾草案，区分已完成、B1 至 B3、A1 至 A6、延期及 R1 独立归属计划。
@@ -384,6 +388,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-10-01，Darwin创建时临时资源不是固定全取得；若parent要求六个可选native ID全部释放，普通低fd路径会被误判未结算。改为实际创建事务聚合，native逐项实际取得/释放仍保留；共享原生头后的Linux实际Terminal双模式回归通过，不能据此推导Darwin系统调用通过。
+
 2026-10-01，10.15将原B动作提前到新reader已挂载/A已有编号内容后，就实际观察到同一Webview动作中A12到18、B51ms应用；随后原完整后缀在ready后13137.248ms通过。无需sleep、扩大负载或暂停消费，10.14此前overlap=false仅说明当时动作安排未覆盖该组合。本次独立source26214425bytes/hash/revision6502、原执行及新reader、自然无历史和两份cleanup均通过，但不构成一般容量或平台保证。
 
 2026-10-01，第四轮八场景全部通过，四natural真实响应/nonce/source EOF及原Webview/持久化断言建立Linux固定CLI/凭据实际可用证据，不能追改第二轮586bytes或第三轮snapshot stop failure。第三与第四轮十个buildHashes只有report脚本变化，其余九项含四dist/runner/原test/helper一致；新增定位字段在全绿轮没有失败样本，故仍不知道第三轮哪个断言失败。Codex snapshot stop第四轮source=interrupted、其余stop=eof，均是主动处置，不能凭source类型把stop改为自然完成或认定第三轮被修复。
@@ -640,6 +646,10 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+- 决策：macOS先在同一有限workflow验证Node产品provider，再用匹配Electron产物直接跑原Terminal真实页面与重开；不使用诊断export代替产品，也不将Node通过代证UI。
+  理由：复用既定验收覆盖A5实际缺口，失败停止后续并保留原断言，避免另起工具阶段。
+  日期/作者：2026-10-01 / Codex。
+
 - 决策：10.15固定一次完整通过后，结束该离线追赶交互组合，按生产接入第33节推进原B2/A5的macOS产品owner/provider、两authority工厂、匹配产物与namespace，不追加成功矩阵或平台诊断框架。理由：当前取得的是具名Linux真实用户流程证据，剩余阻塞是已有承诺中的平台产品能力；运行前设计不等于新平台通过，Windows和其他有限验收仍保留。日期/作者：2026-10-01，Codex。
 - 决策：按用户选择保留真实 Codex/Claude CLI，将 CI 模型后端统一为 DeepSeek；先复用 native workflow manual input 接固定 Linux x64/glibc Electron 八场景，以 step 级 secret 和独立临时 CLI 配置交接凭据，通用 smoke secret filter 不放宽，远端只发布经 key 内容扫描的固定摘要。理由：解除专用认证前提，同时维持真实 CLI/Host/Webview/尾部及资源验收，避免凭据与 raw/HOME 外泄；官方兼容接口不能代证固定版本实际可用。日期/作者：2026-10-01，Codex。
 - 决策：保留 Ubuntu24.04 首次 sandbox 准备失败，后续改选更接近已验证本机 glibc 基线的 Ubuntu22.04，并先冻结完整产品候选；不禁用系统安全策略或 bwrap/CLI sandbox，不修改期限/断言。理由：本次失败发生于安装/构建/secret 验收前，只证明该准备条件不成立，不是模型认证、PTY 或平台 bug 的证据；raw 仅留临时 runner、私有凭据配置主动清理和扫描后 report_ready 上传各自留责。日期/作者：2026-10-01，Codex。
@@ -874,6 +884,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-01，第33节产品实施与原Linux回归已形成可追溯增量，Darwin原生/实际页面仍待首次runner，Windows尚在独立实现。这里不关闭F-04、A5或整体计划；旧证据和已知Agent stop间歇未决项保持。
 
 2026-10-01，容量10.15新目录 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整exit0，B51ms实际应用、A同动作12到18、HostReady1501.906ms/fullApply14639.154ms/catchup13137.248ms；原30秒与1500ms未改。独立source26214425bytes/SHA `0167208c8b0fcf6bd465c0c19064d3f7584429ef32e4cbb2841f1e147ee5ed98`/revision6502/color-state与receipt一致，原执行及新reader、完整后缀、自然no-history和两份cleanup通过，outer forcedSignals/failures为空。本机具名离线追赶交互已覆盖；下一实施生产接入第33节macOS产品路径，尚无该平台新通过，不关闭F-04/总体或改写旧结果。
 

@@ -44,7 +44,7 @@ const base = {
   runtime: { name: process.versions.electron ? 'electron' : 'node', version: process.versions.electron ?? process.versions.node,
     node: process.versions.node, modules: process.versions.modules, napi: process.versions.napi },
   binary: { file: 'execution-owner.node', sha256: hash(binary) }, exports: LINUX_EXECUTION_EXPORTS,
-  sources: Object.fromEntries(['ownerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256', 'headersSha256', 'nodeAddonApiSha256']
+  sources: Object.fromEntries(['ownerSha256', 'sharedOwnerSha256', 'patchSha256', 'nodePtySha256', 'patchedSha256', 'headersSha256', 'nodeAddonApiSha256']
     .map(key => [key, 'a'.repeat(64)])),
   verification: { compiled: true, nativeLoaded: false, nativeCalls: false, productValidated: false }
 };

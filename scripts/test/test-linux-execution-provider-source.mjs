@@ -6,7 +6,10 @@ import { LINUX_EXECUTION_EXPORTS, patchLinuxExecutionProvider } from '../build/l
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const source = fs.readFileSync(path.join(root, 'node_modules/node-pty/src/unix/pty.cc'), 'utf8');
-const header = fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-canvas/native/linux-execution-owner.h'), 'utf8');
+const linux = fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-canvas/native/linux-execution-owner.h'), 'utf8');
+const header = fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-canvas/native/unix-execution-owner.h'), 'utf8');
+assert(linux.includes('#if !defined(__linux__)'));
+assert(linux.includes('#include "unix-execution-owner.h"'));
 const patched = patchLinuxExecutionProvider(source);
 const fork = patched.slice(patched.indexOf('Napi::Value PtyFork(const Napi::CallbackInfo& info) {'),
   patched.indexOf('Napi::Value PtyOpen(const Napi::CallbackInfo& info) {'));

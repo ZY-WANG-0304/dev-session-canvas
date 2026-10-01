@@ -15,7 +15,8 @@ const { values } = parseArgs({ options: { output: { type: 'string' }, mode: { ty
   'capacity-reconnect': { type: 'boolean', default: false },
   'capacity-calibration': { type: 'boolean', default: false } } });
 const capacitySelected = values['capacity-calibration'] || values['capacity-reconnect'];
-assert.equal(process.platform, 'linux', 'This finite product acceptance requires Linux.');
+assert(['linux', 'darwin'].includes(process.platform), 'This finite product acceptance requires Linux or macOS.');
+assert(!capacitySelected || process.platform === 'linux', 'The fixed capacity workload requires Linux process identity observation.');
 assert(values.output, 'Specify a new --output evidence directory.');
 assert(values.mode === undefined || ['live-runtime', 'snapshot-only'].includes(values.mode), 'Unknown mode.');
 assert(!capacitySelected || values.mode === undefined,
@@ -32,13 +33,17 @@ await fs.mkdir(output);
 const runId = randomUUID();
 const vscodeExecutablePath = await ensureVSCodeExecutable(projectRoot);
 const dist = path.join(projectRoot, 'extensions/vscode/dev-session-canvas/dist');
+const platformName = process.platform === 'darwin' ? 'macos' : 'linux';
+const assetTarget = process.platform === 'darwin' ? `darwin-${process.arch}` : 'linux-x64-glibc';
 const manifest = JSON.parse(await fs.readFile(path.join(dist,
-  'native/linux-execution-candidate/linux-x64-glibc/manifest.json'), 'utf8'));
+  `native/${platformName}-execution-candidate/${assetTarget}/manifest.json`), 'utf8'));
 assert.equal(manifest.runtime.name, 'electron', 'Use the matching Electron candidate build, not a Node addon.');
-assert.equal(manifest.profile, 'linux-owner-v1-candidate');
+assert.equal(manifest.profile, `${platformName}-owner-v1-candidate`);
+assert.equal(manifest.platform, process.platform);
+assert.equal(manifest.arch, process.arch);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const sourceHashes = {};
-for (const file of ['extension.js', 'runtime-supervisor.js', 'linux-execution-provider.js', 'webview.js']) {
+for (const file of ['extension.js', 'runtime-supervisor.js', `${platformName}-execution-provider.js`, 'webview.js']) {
   sourceHashes[file] = hash(await fs.readFile(path.join(dist, file)));
 }
 for (const file of ['scripts/smoke/run-vscode-execution-candidate.mjs',
@@ -51,7 +56,7 @@ if (capacitySelected) {
   process.exit(0);
 }
 await fs.writeFile(path.join(output, 'input.json'), `${JSON.stringify({
-  schemaVersion: 1, scope: 'A2/A3 finite Linux two-mode real Terminal and actual Electron Webview; not A4/A5 closure',
+  schemaVersion: 1, scope: `A2/A3 finite ${process.platform} two-mode real Terminal and actual Electron Webview; not A4/A5 closure`,
   vscodeExecutablePath, subjectExecutable: process.execPath, subjectVersions: process.versions,
   assetManifest: manifest, sourceHashes, lineCount: 90000, scrollback: 100000,
   partialSelection: values.mode !== undefined,

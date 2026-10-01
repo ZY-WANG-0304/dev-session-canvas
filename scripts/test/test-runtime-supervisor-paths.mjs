@@ -69,6 +69,14 @@ try {
   assert.equal(resolveRuntimeSupervisorExecutionProfile(candidateStorageDir), candidateProfile);
   assert.equal(resolveRuntimeSupervisorExecutionProfile(path.join(candidateStorageDir, '.')), candidateProfile);
   assert.doesNotThrow(() => assertExecutionCandidateRuntimeSupervisorStorageDir(candidateStorageDir, candidateProfile));
+  const macProfile = 'macos-owner-v1-candidate';
+  const macBase = resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(extensionStorageDir, macProfile);
+  const macStorage = path.join(macBase, 'runtime-supervisor');
+  assert.equal(macBase, path.join(extensionStorageDir, 'runtime-supervisor-generations', 'terminal-exit-macos-v1'));
+  assert.equal(resolveRuntimeSupervisorExecutionProfile(macStorage), macProfile);
+  assert.doesNotThrow(() => assertExecutionCandidateRuntimeSupervisorStorageDir(macStorage, macProfile));
+  assert.throws(() => assertExecutionCandidateRuntimeSupervisorStorageDir(candidateStorageDir, macProfile), /isolated/);
+  assert.throws(() => assertExecutionCandidateRuntimeSupervisorStorageDir(macStorage, candidateProfile), /isolated/);
   for (const invalidStorage of [shortStorageDir, currentGenerationStorageDir, candidateBase,
     path.join(extensionStorageDir, 'terminal-exit-v1', 'runtime-supervisor'),
     path.join(candidateStorageDir, '..', '..', 'terminal-stream-v1', 'runtime-supervisor')]) {
