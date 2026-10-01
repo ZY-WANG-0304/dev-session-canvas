@@ -90,6 +90,8 @@ try {
   assert.equal(await fs.readFile(path.join(copiedStorage.targetPath, 'runtime-supervisor', 'registry.json'), 'utf8'), '{"sessions":[]}\n');
   await assert.rejects(fs.stat(path.join(copiedStorage.targetPath, 'state.vscdb')), { code: 'ENOENT' });
   await assert.rejects(fs.stat(path.join(copiedStorage.targetPath, 'SingletonLock')), { code: 'ENOENT' });
+  await assert.rejects(copyReaderIsolationExtensionStorage({ sourceStoragePath: storagePath,
+    sourceUserDataDir: storageOwner, targetUserDataDir: storageAttacher }), /already exists/);
   await assert.rejects(copyReaderIsolationExtensionStorage({ sourceStoragePath: path.join(storageOwner, '..'),
     sourceUserDataDir: storageOwner, targetUserDataDir: storageAttacher }));
   await fs.symlink(path.join(storageOwner, 'outside'), path.join(storagePath, 'escape-link'));
