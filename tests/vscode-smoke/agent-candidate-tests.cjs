@@ -147,9 +147,12 @@ async function run() {
     }
     await poll('real xterm reader mounted', probe, value => value.nodes.some(node =>
       node.nodeId === nodeId && node.terminalCols >= 64));
-    const messages = await command('getHostMessages');
-    const initial = messages.findLast(message => message.type === 'host/executionSnapshot' &&
-      message.payload.nodeId === nodeId && message.payload.executionSessionId);
+    // xterm mounting can precede the asynchronous Host/Supervisor reader snapshot.
+    const initial = await poll('real Agent execution identity', async () => {
+      const messages = await command('getHostMessages');
+      return messages.findLast(message => message.type === 'host/executionSnapshot' &&
+        message.payload.nodeId === nodeId && message.payload.executionSessionId);
+    }, value => value !== undefined);
     assert(initial, 'Actual Agent reader must supply the execution identity.');
     executionId = initial.payload.executionSessionId;
     if (config.mode === 'live-runtime') assert.equal(executionId, currentNode(active).metadata.agent.runtimeSessionId);

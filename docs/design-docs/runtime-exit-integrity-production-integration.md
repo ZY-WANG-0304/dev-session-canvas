@@ -2312,3 +2312,15 @@ Windows ARM64原产物已下载，官方Electron22.3.14/Node16.17.1与当前Node
 首轮和第二轮 setup 失败后的 `Local final snapshot persistence is pending` 仍按 §26.3 解释为安全拒绝：`persistNonNativeHostFinal()` 已写出 root-local 与 workspace snapshot，owner 资源也已退出，但 workspaceState Promise 尚未完成时 reset 不删除节点、不伪报 cleanup 成功。该恢复分支不代表健康 Reload 路径失败；若未来要保证“自然结束后立即 reset/delete 必须成功”，需另立 bounded persistence 等待验收，不能用本次失败清理改写既定契约。
 
 修订记录（2026-10-02，旧系统边界收口）：用户决定本次重构使用现代 GitHub-hosted runner 即足够，不再等待 macOS 10.13/10.14 或 Windows 10 1809。固定六格、产品 workflow 的浮动标签及旧版本未验证事实均保留；不把现代 runner 结果外推为旧系统兼容，低版本问题在收到实际报告后另行修复。
+
+## 51. 现代 runner 生产候选回收与 macOS Agent 未决
+
+本提交 `4c8c0f73` 的现代 runner 回收结果如下：固定六资产 run `36906440380` 的 Ubuntu 24.04 x64/arm64、macOS 15 x64/arm64、Windows Server 2025 x64 与 Windows 11 ARM64 六格均成功；macOS Product Provider `36906440973` 与 Windows Product Provider `36907160402` 的 Node/Electron candidate、Terminal/Webview、completed reopen 与 cleanup 均成功。两条 provider workflow 仍使用现代 `macos-latest`/`windows-latest` 浮动标签；固定资产 workflow 的六格版本记录不能改写为所有浮动标签的同一版本。Node.js 20 action 弃用只产生 GitHub annotation，不改变 job 结论。macOS artifact zip 的 `ENTRYNOTSUPPORTED` 也是非阻塞归档警告，保留原事实。
+
+Windows 真实 Agent run `36906573764` 在同一提交、固定 Codex 0.157.1/Claude 2.1.280、DeepSeek 和现代 Windows runner 上八场全部通过，四个 natural 场景有实际响应/EOF，cleanup 的 binding/failure/forced/active 均为零。该结果只关闭该固定 Windows Agent 矩阵，不外推 macOS 或旧系统，也不关闭非空 snapshot stop 的重开等价责任。
+
+macOS 真实 Agent 的第一次 run `36906574728` 与唯一允许的同输入重跑 `36909378525` 均保留为失败证据。第一次 Codex 四场和 Claude live natural/stop 已通过，`claude-snapshot-only-natural` 在 `agent-candidate-tests.cjs:50` 的 bounded `poll` 超时，snapshot stop 未运行；第二次 Codex 四场通过，但 `claude-live-runtime-natural` 在 `agent-candidate-tests.cjs:153` 未及时取得 execution identity，后续 Claude 场景未运行。两次前置认证、构建和 runner 环境均通过，报告 `failureClasses=[]`，没有凭据、原生资源或 cleanup failure；失败点分别是 Claude candidate 启动/reader readiness 的不稳定性，不能称 macOS Agent 已通过，也不应放宽旧断言或追加自动重跑循环。此前新 helper run `36858502983` 的八场通过及所有历史失败继续保留，不能用新失败抹掉旧通过或反向宣称根因已定。
+
+静态根因核对（2026-10-02）进一步收窄第二次失败：`tests/vscode-smoke/agent-candidate-tests.cjs:148-153` 先等待 Webview xterm `terminalCols >= 64`，随后只读取一次 `getHostMessages`；xterm 挂载/布局与 Host 等待 Supervisor 分页 reader 后记录 `host/executionSnapshot` 是两个异步阶段，因此 macOS 的 `line 153` 失败可由正常调度延迟触发。现已将该处改为在原 30 秒 bounded `poll` 内等待带 `executionSessionId` 的快照，未放宽 identity、EOF、尾部或 cleanup 断言。首轮 `line 50` 的 snapshot-only xterm 尺寸超时仍是独立未决证据，不能由此修正代替，也不据此归因低版本或宣称产品根因已闭合。
+
+本节只收口现代六资产、两平台 Product Provider 和 Windows Agent 的具名矩阵；macOS Agent、A2/A3 非空 snapshot stop 页面/重开等价、A1/F-04、旧系统兼容和默认准入仍开放。低版本环境不属于本次重构前置，后续仅在出现实际报告时单独定位。

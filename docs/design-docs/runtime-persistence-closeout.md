@@ -222,3 +222,15 @@ B2 会改变实际 provider、信用与消费链，最终启用产物必须复�
 2026-10-01 回收 macOS 新 helper 结果：`36858038984` 的 Node/provider 四场与 Electron Terminal 两模式 complete/reopen/cleanup 已按中央目录独立核对，`36858502983` 的真实 Codex/Claude 八场安全摘要为通过。Claude snapshot-only stop 保存非空状态，按既定规则未执行重开；本轮replay complete但终态比较false与历史诊断unknown分别保留，旧 helper 首败和所有旧工件保持。Windows固定产品/Agent、Remote Linux x64 loopback及随后第47节实际多根失败隔离已移出当前队列；A5六资产/兼容/默认分发、A1/F-04、A2/A3剩余页面格和A6 snapshot-only实际Host离开仍是直接责任。第48节尺寸结构缺陷局部修复不代证非空stop实际重开，不重排Agent矩阵或追加工具验证。
 
 修订记录（2026-10-02，现代 runner 验收基线）：根据用户决定，将现代 GitHub-hosted runner 固定矩阵作为本次支持与验收输入，移除旧系统作为本轮前置的表述；保留旧系统构建要求、历史失败和未验证事实，不改写为兼容通过，也不修改平台版本声明。浮动 `latest` 产品 job 的实际镜像版本必须随 run 记录，不能用固定资产 runner 版本替代。
+
+## 9. 2026-10-02 现代 runner 实证回收
+
+现代 runner 的具名结果已补入本次收尾账：固定六资产 run `36906440380` 的 Ubuntu 24.04 x64/arm64、macOS 15 x64/arm64、Windows Server 2025 x64 与 Windows 11 ARM64 全部成功；macOS Product Provider `36906440973`、Windows Product Provider `36907160402` 也成功完成对应 Node/Electron candidate、Terminal/Webview、completed reopen 与 cleanup。六资产构建/加载/归档以及两条 Product Provider workflow 的通过只关闭各自固定组合，不代证全部 A1 至 A6、默认生产准入或旧系统兼容。Actions 的 Node.js 20 弃用 annotation 与 macOS artifact 的 `ENTRYNOTSUPPORTED` zip warning 均为非阻塞事实，不能从报告中删除。
+
+Windows 真实 Agent run `36906573764` 在现代 Windows runner 上以固定 Codex `0.157.1`、Claude `2.1.280` 与 DeepSeek 完成八场；四个 natural 场景取得实际响应/EOF，八份 cleanup 的 bindings/failures/forced/active 均为零。该结果关闭的是具名 Windows Agent 矩阵，不外推 macOS、其他旧系统或非空 snapshot stop 的页面/重开等价责任。
+
+macOS 真实 Agent 仍是具名未决。第一次 run `36906574728` 的 Codex 四场及 Claude live natural/stop 通过，但 `claude-snapshot-only-natural` 在 `tests/vscode-smoke/agent-candidate-tests.cjs:50` 的 bounded `poll()` 超时，后续 Claude snapshot stop 未运行；按既定规则仅以同输入重跑一次。第二次 run `36909378525` 的 Codex 四场通过，但 `claude-live-runtime-natural` 在 `agent-candidate-tests.cjs:153` 未及时取得 execution identity，后续 Claude 场景未运行。两次认证、构建与 runner 前置均通过，报告 `failureClasses=[]`，没有凭据、原生资源或 cleanup failure；当前只能定位为 Claude candidate 启动/reader readiness 不稳定，不能宣称 macOS Agent 矩阵通过、不能放宽原断言，也不能继续无限重跑。既有成功 run `36858502983` 及所有旧失败继续保留，不能互相覆盖。
+
+静态核对显示第二次 `line 153` 是验收脚本的异步读取竞态：Webview xterm 的挂载探针先成功，但 Host 还可能在等待 Supervisor 分页 reader 后才把带 `executionSessionId` 的 `host/executionSnapshot` 写入测试消息；脚本原先只读一次消息。现已在 `tests/vscode-smoke/agent-candidate-tests.cjs` 保持原 30 秒上限轮询该 identity，未改弱任何产品断言。首轮 `line 50` 的 xterm 尺寸超时仍保持为独立未决；因此 macOS Agent 尚未重新取得完整矩阵通过，不能把这次 harness 修正写成业务修复。
+
+因此当前整体完成定义不变：A1/F-04、A2/A3 页面责任、macOS Agent 未决项及最终生产准入仍开放；现代 runner 只确定本次重构的支持/验收基线，不将缺少 macOS 10.13/10.14 或 Windows 10 1809 环境解释为本轮阻塞，也不由现代结果反推低版本兼容。

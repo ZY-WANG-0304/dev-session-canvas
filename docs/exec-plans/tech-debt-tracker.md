@@ -27,6 +27,10 @@
 
 ## 技术债列表
 
+2026-10-02 现代 runner 生产验收的具名矩阵已补齐：固定六资产 run `36906440380`（Ubuntu 24.04 x64/arm64、macOS 15 x64/arm64、Windows Server 2025 x64、Windows 11 ARM64）、macOS Product Provider `36906440973` 与 Windows Product Provider `36907160402` 均成功；Windows 真实 Agent `36906573764` 的 Codex `0.157.1`、Claude `2.1.280`、DeepSeek 八场全部通过，四个 natural 场景有实际响应/EOF，cleanup bindings/failures/forced/active 全为零。上述只关闭具名现代组合，不关闭 F-04/A1、全部 A5、默认准入或旧系统兼容；Node.js 20 弃用 annotation 与 macOS `ENTRYNOTSUPPORTED` artifact warning 保留且不阻塞。
+
+2026-10-02 macOS 真实 Agent 的两次具名 run 仍未决。`36906574728` 的 Codex 四场及 Claude live natural/stop 通过，但 `claude-snapshot-only-natural` 在 `tests/vscode-smoke/agent-candidate-tests.cjs:50` bounded poll 超时；唯一同输入重跑 `36909378525` 的 Codex 四场通过，但 `claude-live-runtime-natural` 在 `agent-candidate-tests.cjs:153` 未及时取得 execution identity，后续 Claude 场景未运行。静态核对确认第二次位置是 harness 在 xterm probe 后只读取一次 Host 消息的异步竞态，现已改为在原 30 秒窗口轮询带 identity 的 snapshot，未放宽产品断言；首轮 line 50 尺寸超时仍独立未决。两次前置认证/构建/runner 均通过、`failureClasses=[]`，没有凭据、native resource 或 cleanup failure；不把 harness 修正称为业务修复，也不无限重跑。既有成功 `36858502983` 与所有历史失败继续保留。
+
 2026-10-01继续更新：A3夹具首跑因独立Host使用不同workspace-storage失败，修正为owner已flush扩展存储快照复制到B对应slot后，`.debug/a3-reader-isolation-20261001-fixed/` live双Host与snapshot-only两例完整通过；跨Host同execution/B原readId、90000行尾部/EOF/applied、无历史和cleanup均通过，首败仍保留。Windows36843457341的storage containment误拒绝已以realpath+平台relative严格子路径窄修并完成纯测，新的Windows原矩阵仍待workflow回收。A6真实reload首轮及macOS新target产品Terminal/Webview/reopen已各自取得有限通过；A4严格空态Agent重开、六资产/Remote/默认准入与F-04仍开放。
 
 2026-10-01当前回收：`36846756417` 的Windows真实Codex四场（含严格空snapshot及新Host重开）通过；Claude首场natural在认证成功后stopped/EOF/applied但无outputSequence，触发timeout/response，后续三场未运行，作为真实Agent生命周期阻塞保留。`36846733819` Windows产品Provider在Electron启动阶段失败且未形成可核对报告，不能归因storage helper；`36846734096` macOS产品Provider成功但不代证Agent。A3 receipt边界与目标冲突纯测已通过7组，但晚于`8515ea25`固定输入，旧A3证据不回填为当前树provenance。下一先定位Windows产品启动第一现场，再触发macOS Agent矩阵；不新增通用诊断门槛。

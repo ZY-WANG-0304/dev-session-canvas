@@ -286,3 +286,7 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 修订记录（2026-10-01，离线恢复交互重叠输入）：新增设计10.15并同步当前入口/四活章节，只提前原B动作、固定同动作前后块号与原预算，保持color两主体/负载/身份/完整性/清理。新目录尚无结果，未重叠记未覆盖失败；不增加sleep、负载、ExecPlan或工具阶段，不重排历史。
 
 修订记录（2026-10-01，离线恢复交互重叠结果）：10.15固定一次完整exit0，B51ms应用时A12到18，随后原30秒内完整恢复、身份/hash/no-history及两份cleanup通过；同步当前入口、四活章节、步骤和验收。旧10.14/旧失败保留，下一回到B2/A5跨平台产品接入，总体仍未完成，不追加成功矩阵或工具阶段。
+
+修订记录（2026-10-02，现代 runner 具名结果）：固定六资产 run `36906440380` 的 Ubuntu 24.04 x64/arm64、macOS 15 x64/arm64、Windows Server 2025 x64 与 Windows 11 ARM64 全部成功；macOS Product Provider `36906440973` 与 Windows Product Provider `36907160402` 也完成对应 Node/Electron candidate、Terminal/Webview、completed reopen 与 cleanup。Windows 真实 Agent run `36906573764` 在现代 Windows runner 上以固定 Codex `0.157.1`、Claude `2.1.280` 与 DeepSeek 完成八场，四个 natural 场景取得实际响应/EOF，cleanup 的 bindings/failures/forced/active 均为零。这些只关闭具名平台/资产组合，不形成 F-04/A1 容量预算、默认准入或旧系统兼容结论；Actions Node.js 20 弃用 annotation 与 macOS artifact `ENTRYNOTSUPPORTED` zip warning 保留为非阻塞事实。
+
+macOS 真实 Agent 仍未收口：`36906574728` 首轮在 `agent-candidate-tests.cjs:50` 的 `claude-snapshot-only-natural` bounded poll 超时；唯一同输入重跑 `36909378525` 又在 `agent-candidate-tests.cjs:153` 的 `claude-live-runtime-natural` 未及时取得 execution identity，后续 Claude 场景未运行。两次前置认证/构建/runner 均通过，`failureClasses=[]`，没有凭据、native resource 或 cleanup failure；不放宽断言、不无限重跑，也不把已有成功 `36858502983` 或历史失败覆盖为新结论。A1/F-04 的实际分进程、多会话预算与 A5 最终生产准入继续按本计划和 closeout 定义推进；低版本系统不是本轮前置，后续仅在实际报告出现时单独处理。
