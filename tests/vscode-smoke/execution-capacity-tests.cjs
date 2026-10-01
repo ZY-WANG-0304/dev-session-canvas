@@ -9,7 +9,8 @@ const { performance } = require('node:perf_hooks');
 const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { resolveLegacyRuntimeSupervisorPaths, resolveSystemdUserRuntimeSupervisorPaths,
-  resolveTerminalJournalSessionDirectory, SerializedTerminalStateTracker } = require('./execution-capacity-runtime.cjs');
+  resolveTerminalJournalSessionDirectory, SerializedTerminalStateTracker, TerminalSessionJournal,
+  SERIALIZED_TERMINAL_CHECKPOINT_PROFILES } = require('./execution-capacity-runtime.cjs');
 const format = require('./fixtures/execution-capacity-subject.cjs');
 
 const scenario = process.env.DEV_SESSION_CANVAS_CAPACITY_SCENARIO;
@@ -61,8 +62,22 @@ async function poll(label, read, accept, timeoutMs = 30000) {
   throw new Error(`Timed out: ${label}`);
 }
 
+async function setLiveScrollback(value, subject) {
+  await command('clearHostMessages');
+  await vscode.workspace.getConfiguration('terminal.integrated').update(
+    'scrollback', value, vscode.ConfigurationTarget.Workspace);
+  await poll(`host scrollback update ${value}`, () => command('getHostMessages'), messages =>
+    messages.some(message => message.type === 'host/stateUpdated' &&
+      message.payload?.runtime?.terminalScrollback === value));
+  if (subject) {
+    await poll(`runtime scrollback update ${value}`, () => command('getRuntimeSupervisorState'), state =>
+      Object.values(state.registries ?? {}).some(entry => entry.registry?.sessions?.some(session =>
+        session.sessionId === subject.metadata.runtimeSessionId && session.scrollback === value)));
+  }
+}
+
 async function run() {
-  assert(['color', 'size'].includes(scenario));
+  assert(['color', 'size', 'compact'].includes(scenario));
   assert(artifacts && path.isAbsolute(process.env.DEV_SESSION_CANVAS_CAPACITY_SUBJECT_NODE));
   if (capacityPhase) {
     assert(['detach', 'reconnect', 'cleanup'].includes(capacityPhase));
@@ -73,7 +88,7 @@ async function run() {
   let detached = false;
   try {
     const operation = capacityPhase === 'detach' ? prepareDetach : capacityPhase === 'reconnect' ? reconnect
-      : capacityPhase === 'cleanup' ? prepareOwnedCleanup : measure;
+      : capacityPhase === 'cleanup' ? prepareOwnedCleanup : scenario === 'compact' ? attachCompact : measure;
     await Promise.race([operation(), new Promise((_, reject) => {
       deadline = setTimeout(() => { aborted = new Error('A1 case exceeded the fixed 10 minute safety bound.'); reject(aborted); }, 600000);
     })]);
@@ -332,6 +347,226 @@ async function finishSubjects() {
   }
 }
 
+async function attachCompact() {
+  await initialize({ reset: true });
+  // Keep the validated checkpoint below the production serialized-state cap;
+  // subsequent updates still exercise the live scrollback event path.
+  await setLiveScrollback(512);
+  startSampling();
+  await idle(0);
+  baselineRss = baselines[0].meanSumRss;
+  const a = await createSubject('a');
+  const b = await createSubject('b');
+  const beforeReader = (await probe()).capacityCalibration.readers.find(reader => reader.nodeId === a.id);
+
+  phase = 'dynamic-scrollback';
+  await setLiveScrollback(768, a);
+  const beforeResize = (await probe()).nodes.find(entry => entry.nodeId === a.id);
+  let aNode = getNode(await snapshot(), a.id);
+  await command('dispatchWebviewMessage', { type: 'webview/resizeNode', payload: {
+    nodeId: a.id, position: aNode.position,
+    size: { width: aNode.size.width + 100, height: aNode.size.height + 60 } } }, surface);
+  const resizedProbe = await poll('initial dynamic terminal resize', probe, value => {
+    const node = value.nodes.find(entry => entry.nodeId === a.id);
+    return node && (node.terminalCols !== beforeResize?.terminalCols || node.terminalRows !== beforeResize?.terminalRows)
+      ? node : false;
+  });
+  const resized = resizedProbe.nodes.find(entry => entry.nodeId === a.id);
+
+  phase = 'attach-output';
+  for (const target of format.blocks) {
+    await dom({ kind: 'sendExecutionInput', nodeId: a.id, data: `produce:${target}\r` });
+    await poll(`compact source write ${target}`, () => readReceipt(a), value =>
+      value.state === 'stage-complete' && value.blocks === target, 60000);
+  }
+  const firstOutput = await poll('compact source write', () => readReceipt(a), value =>
+    value.state === 'stage-complete' && value.blocks === 2560, 60000);
+  assertReceipt(firstOutput, 2560);
+  const first = await checkpoint(a, 0);
+  await archive('compact-checkpoint-before', { firstOutput, checkpoint: first });
+  const firstManifestPath = path.join(
+    resolveTerminalJournalSessionDirectory(a.paths.storageDir, a.metadata.runtimeSessionId),
+    'manifest.json'
+  );
+  await archive('compact-manifest-initial', JSON.parse(await fs.readFile(firstManifestPath, 'utf8')));
+  assert(first.checkpoint && first.checkpoint.revision === first.revision,
+    'The first eligible checkpoint must cover the live journal head.');
+  await poll('A terminal applied the compact source suffix', probe, value => {
+    const node = value.nodes.find(entry => entry.nodeId === a.id);
+    return Boolean(node?.terminalVisibleLines?.some(line => /^00002560:x{69}$/.test(line)));
+  }, 30000);
+
+  // The attached reader must consume a post-checkpoint response before C2 is
+  // allowed to reclaim the prefix. This reader uses TerminalPagedProjection;
+  // its page cursor is not reported through the live terminal-stream applied
+  // ACK diagnostic, so the DOM response is the authoritative harness evidence.
+  await command('clearDiagnosticEvents');
+  await dom({ kind: 'measureCapacityInteraction',
+    nodeId: a.id, loadNodeId: b.id, nonce: `compact-before-${Date.now()}` });
+  const readerAdvancedInteraction = (await probe()).capacityCalibration.interaction;
+  assert(readerAdvancedInteraction?.applied && readerAdvancedInteraction.nodeId === a.id,
+    'The attached reader must consume a post-checkpoint response before compaction.');
+  assert(readerAdvancedInteraction.nonce.startsWith('compact-before-'));
+  assert(readerAdvancedInteraction.loadLastBlockAfter >= readerAdvancedInteraction.loadLastBlockBefore,
+    'The post-checkpoint interaction must retain its source load observation.');
+
+  // A paged reader proves a page was consumed when it requests the next page.
+  // Add a tiny suffix so an idle reader whose C1 page ended at the head gets a
+  // subsequent request and advances its retention cursor to C1.
+  const retentionProbeBlocks = 1;
+  await dom({ kind: 'sendExecutionInput', nodeId: a.id, data: `noise:${retentionProbeBlocks}\r` });
+  const retentionProbeMarker = `DSC_A1_COMPACT_NOISE_DONE_${retentionProbeBlocks}`;
+  await poll('retention probe output', probe, value => {
+    const node = value.nodes.find(entry => entry.nodeId === a.id);
+    return Boolean(node?.terminalVisibleLines?.some(line => line.includes(retentionProbeMarker)));
+  }, 30000);
+  await setLiveScrollback(1024, a);
+
+  // The first checkpoint is initially gated by the attached paged reader's
+  // retention cursor. Retry after the reader has consumed the checkpoint
+  // suffix so the next promotion can exercise the two-checkpoint compact path.
+  let firstPromotion;
+  const firstPromotionDeadline = performance.now() + 30000;
+  while (performance.now() < firstPromotionDeadline) {
+    firstPromotion = await checkpoint(a, 0);
+    const manifest = JSON.parse(await fs.readFile(firstManifestPath, 'utf8'));
+    if (manifest.version === 2 && manifest.currentCheckpoint?.revision >= first.revision) break;
+    await sleep(500);
+  }
+  await archive('compact-manifest-before', JSON.parse(await fs.readFile(firstManifestPath, 'utf8')));
+  assert(firstPromotion?.checkpoint?.revision >= first.revision,
+    `The first checkpoint was not committed after reader catch-up: ${JSON.stringify(firstPromotion)}`);
+  const committedFirst = firstPromotion;
+
+  phase = 'resize';
+  aNode = getNode(await snapshot(), a.id);
+  await command('dispatchWebviewMessage', { type: 'webview/resizeNode', payload: {
+    nodeId: a.id, position: aNode.position,
+    size: { width: aNode.size.width + 140, height: aNode.size.height + 80 } } }, surface);
+  const resizedAgainProbe = await poll('second dynamic terminal resize', probe, value => {
+    const node = value.nodes.find(entry => entry.nodeId === a.id);
+    return node && (node.terminalCols !== resized.terminalCols || node.terminalRows !== resized.terminalRows)
+      ? node : false;
+  });
+  const resizedAgain = resizedAgainProbe.nodes.find(entry => entry.nodeId === a.id);
+  const compactNoiseBlocks = Math.ceil((18 * 1024 ** 2) / 10240);
+  await dom({ kind: 'sendExecutionInput', nodeId: a.id, data: `noise:${compactNoiseBlocks}\r` });
+  await poll('compact noise output', () => command('getRuntimeSupervisorState'), state =>
+    Object.values(state.registries ?? {}).some(entry => entry.registry?.sessions?.some(session =>
+      session.sessionId === a.metadata.runtimeSessionId &&
+      session.output?.includes(`DSC_A1_COMPACT_NOISE_DONE_${compactNoiseBlocks}`))), 60000);
+  const compactNoiseMarker = `DSC_A1_COMPACT_NOISE_DONE_${compactNoiseBlocks}`;
+  await poll('A terminal applied compact noise suffix', probe, value => {
+    const node = value.nodes.find(entry => entry.nodeId === a.id);
+    return Boolean(node?.terminalVisibleLines?.some(line => line.includes(compactNoiseMarker)));
+  }, 60000);
+  // Output pages do not carry a live applied-revision ACK. A bounded pair of
+  // scrollback events after the flood gives the same reader a non-output
+  // revision boundary, then restores the required final value for C2.
+  await setLiveScrollback(1152, a);
+  await setLiveScrollback(1024, a);
+  // Give the journal and tracker time to drain the bounded post-checkpoint
+  // workload before issuing the expensive checkpoint validation RPC.
+  await sleep(1000);
+  const checkpointDeadline = performance.now() + 60000;
+  let second;
+  while (performance.now() < checkpointDeadline) {
+    second = await checkpoint(a, committedFirst.revision);
+    if (second.revision > committedFirst.revision && second.checkpoint?.revision === second.revision &&
+        second.checkpoint.scrollback === 1024) break;
+    await sleep(1000);
+  }
+  const settledAfterCheckpointProbe = await poll('checkpoint geometry settle', probe, value => {
+    const node = value.nodes.find(entry => entry.nodeId === a.id);
+    return node && node.terminalCols === second?.checkpoint?.cols &&
+      node.terminalRows === second?.checkpoint?.rows ? node : false;
+  }, 30000);
+  const settledAfterCheckpoint = settledAfterCheckpointProbe.nodes.find(entry => entry.nodeId === a.id);
+  await archive('compact-checkpoint-attempt', { second, resizedAgain, settledAfterCheckpoint });
+  assert(second && second.revision > committedFirst.revision && second.checkpoint?.revision === second.revision &&
+    second.checkpoint.scrollback === 1024 && second.checkpoint.cols === settledAfterCheckpoint.terminalCols &&
+    second.checkpoint.rows === settledAfterCheckpoint.terminalRows,
+  `Live checkpoint promotion did not reach the dynamic terminal head: ${JSON.stringify(second)}`);
+  await archive('compact-resize', { before: beforeResize, first: resized, after: resizedAgain, checkpoint: second });
+
+  phase = 'compact-retention';
+  const directory = resolveTerminalJournalSessionDirectory(a.paths.storageDir, a.metadata.runtimeSessionId);
+  const manifest = JSON.parse(await fs.readFile(path.join(directory, 'manifest.json'), 'utf8'));
+  await archive('compact-manifest', manifest);
+  assert(manifest.version === 2 && manifest.currentCheckpoint && manifest.previousCheckpoint,
+    `Live compact must retain current and fallback checkpoint references: ${JSON.stringify({
+      version: manifest.version,
+      retainedStartRevision: manifest.retainedStartRevision,
+      currentCheckpoint: manifest.currentCheckpoint,
+      previousCheckpoint: manifest.previousCheckpoint
+    })}`);
+  assert(manifest.retainedStartRevision > 1, 'The second checkpoint must compact at least one old journal revision.');
+  assert(manifest.currentCheckpoint.revision > committedFirst.checkpoint.revision &&
+    manifest.currentCheckpoint.revision <= second.revision,
+  'The compacted current checkpoint must be newer than the first committed generation and no newer than the observed head.');
+  assert.equal(manifest.lastRevision, second.revision);
+  const journal = await TerminalSessionJournal.open({ storageDir: a.paths.storageDir,
+    sessionId: a.metadata.runtimeSessionId, authorityId: a.reader.authorityId,
+    checkpointProfiles: SERIALIZED_TERMINAL_CHECKPOINT_PROFILES });
+  const recoveryCandidates = await journal.getRecoveryCandidates();
+  const currentCandidate = recoveryCandidates.find(candidate => candidate.source === 'current');
+  const previousCandidate = recoveryCandidates.find(candidate => candidate.source === 'previous');
+  assert(currentCandidate && previousCandidate, 'Compaction must preserve current and previous recovery candidates.');
+  assert.equal(currentCandidate.checkpoint.revision, manifest.currentCheckpoint.revision);
+  assert.equal(previousCandidate.checkpoint.revision, committedFirst.checkpoint.revision);
+  const previousEvents = previousCandidate.events;
+  const previousRevisions = previousEvents.map(event => event.revision);
+  assert(previousRevisions.length > 0, 'The fallback candidate must expose the retained post-checkpoint events.');
+  assert(previousRevisions.every((revision, index) => revision === committedFirst.revision + index + 1),
+    'Retained journal revisions must remain contiguous after compaction.');
+  assert(previousEvents.some(event => event.type === 'resize' && event.cols === second.checkpoint.cols &&
+    event.rows === second.checkpoint.rows), 'The fallback candidate must retain the post-checkpoint resize.');
+  assert(previousEvents.some(event => event.type === 'scrollback' && event.scrollback === second.checkpoint.scrollback),
+    'The fallback candidate must retain the post-checkpoint scrollback update.');
+  await archive('compact-recovery-candidates', {
+    retainedStartRevision: manifest.retainedStartRevision,
+    current: { checkpointRevision: currentCandidate.checkpoint.revision, eventCount: currentCandidate.events.length },
+    previous: { checkpointRevision: previousCandidate.checkpoint.revision,
+      eventCount: previousCandidate.events.length,
+      firstRevision: previousRevisions[0], lastRevision: previousRevisions.at(-1),
+      types: previousEvents.reduce((counts, event) => ({ ...counts, [event.type]: (counts[event.type] ?? 0) + 1 }), {}) }
+  });
+  await command('clearHostMessages');
+  await command('clearDiagnosticEvents');
+  const afterAInteraction = await dom({ kind: 'measureCapacityInteraction',
+    nodeId: a.id, loadNodeId: b.id, nonce: `compact-after-a-${Date.now()}` });
+  const afterAProbe = (await probe()).capacityCalibration.interaction;
+  assert(afterAProbe?.applied && afterAProbe.nodeId === a.id && afterAProbe.elapsedMs <= 1500,
+    `A reader did not remain interactive after live compaction: ${JSON.stringify(afterAProbe)}`);
+  const compactDiagnostics = await command('getDiagnosticEvents');
+  assert(!compactDiagnostics.some(event => event.kind === 'runtime/terminalPagedReadFailed'),
+    'The compacted reader must not report a paged read failure.');
+  const afterA = await poll('compacted terminal projection', probe, value => {
+    const node = value.nodes.find(entry => entry.nodeId === a.id);
+    return node && node.terminalCols === resizedAgain.terminalCols && node.terminalRows === resizedAgain.terminalRows &&
+      node.terminalVisibleLines?.some(line => line === `DSC_A1_REPLY_${afterAProbe.nonce}`) ? node : false;
+  });
+  const afterBInteraction = await dom({ kind: 'measureCapacityInteraction',
+    nodeId: b.id, loadNodeId: a.id, nonce: `compact-after-b-${Date.now()}` });
+  const compactInteraction = (await probe()).capacityCalibration.interaction;
+  assert(compactInteraction?.applied && compactInteraction.nodeId === b.id && compactInteraction.elapsedMs <= 1500,
+    `Peer interaction after live compaction failed: ${JSON.stringify(compactInteraction)}`);
+  const pageErrors = (await command('getHostMessages')).filter(message =>
+    message.type === 'host/executionTerminalPage' && message.payload?.error);
+  assert.deepEqual(pageErrors, [], 'The attached reader must not receive a page error after compaction.');
+  await stopSampling();
+  const afterReader = (await probe()).capacityCalibration.readers.find(reader => reader.nodeId === a.id);
+  assert.deepEqual(afterReader, beforeReader, 'Live compaction must retain the attached reader identity.');
+  await archive('compact-result', { firstOutput, first, second,
+    manifest: { retainedStartRevision: manifest.retainedStartRevision,
+      currentCheckpoint: manifest.currentCheckpoint, previousCheckpoint: manifest.previousCheckpoint },
+    interactions: [readerAdvancedInteraction, afterAInteraction, afterBInteraction, compactInteraction],
+    afterA, readers: { before: beforeReader, after: afterReader },
+    scope: 'Actual two-session Linux Electron attach with output, dynamic scrollback, resize, live checkpoint promotion and reader retention.' });
+  await setLiveScrollback(100000, a);
+  await finishSubjects();
+}
+
 async function measure() {
   await initialize({ reset: true });
   startSampling();
@@ -509,7 +744,8 @@ async function checkpoint(subject, previousRevision) {
   assert.equal(result.sessionId, subject.metadata.runtimeSessionId);
   assert.equal(result.authorityId, subject.reader.authorityId);
   return { revision: result.revision, checkpointRevision: result.checkpoint?.revision ?? previousRevision,
-    returnedCheckpointBytes: result.checkpoint ? Buffer.byteLength(result.checkpoint.serializedState.data) : 0 };
+    returnedCheckpointBytes: result.checkpoint ? Buffer.byteLength(result.checkpoint.serializedState.data) : 0,
+    ...(result.checkpoint ? { checkpoint: result.checkpoint } : {}) };
 }
 
 function rpc(socketPath, method, params) {
@@ -710,10 +946,10 @@ function startSampling() {
       const rss = await processSamples();
       const host = process.memoryUsage();
       const sumRss = Object.values(rss).reduce((sum, value) => sum + value, 0);
-      await command('clearHostMessages');
+      if (scenario !== 'compact') await command('clearHostMessages');
       // Keep the bounded output interaction trace intact for failure attribution;
       // idle/start phases can still clear the diagnostic ring to limit noise.
-      if (!phase.startsWith('output-')) await command('clearDiagnosticEvents');
+      if (scenario !== 'compact' && !phase.startsWith('output-')) await command('clearDiagnosticEvents');
       // Hidden surfaces cannot service a probe; never label stale values as current.
       const webview = hidden ? undefined : await probe();
       samples.push({ ms: tickStarted - started, phase, rss, sumRss, host,

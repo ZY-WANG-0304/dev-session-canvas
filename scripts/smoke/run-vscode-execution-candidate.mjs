@@ -19,8 +19,9 @@ const { values } = parseArgs({ options: { output: { type: 'string' }, mode: { ty
   'reader-isolation': { type: 'boolean', default: false },
   'capacity-sessions': { type: 'string' },
   'capacity-reconnect': { type: 'boolean', default: false },
+  'capacity-attach-compact': { type: 'boolean', default: false },
   'capacity-calibration': { type: 'boolean', default: false } } });
-const capacitySelected = values['capacity-calibration'] || values['capacity-reconnect'];
+const capacitySelected = values['capacity-calibration'] || values['capacity-reconnect'] || values['capacity-attach-compact'];
 assertReaderIsolationSelection(values);
 assertInstalledCandidateSelection(values);
 assert(['linux', 'darwin', 'win32'].includes(process.platform), 'This finite product acceptance requires a supported native platform.');
@@ -29,8 +30,9 @@ assert(values.output, 'Specify a new --output evidence directory.');
 assert(values.mode === undefined || ['live-runtime', 'snapshot-only'].includes(values.mode), 'Unknown mode.');
 assert(!capacitySelected || values.mode === undefined,
   'Capacity calibration is a separate fixed live-runtime selection.');
-assert(!(values['capacity-calibration'] && values['capacity-reconnect']), 'Select one fixed capacity workload.');
-assert(!values['capacity-reconnect'] || values['capacity-sessions'] === undefined,
+assert(Number([values['capacity-calibration'], values['capacity-reconnect'], values['capacity-attach-compact']].filter(Boolean).length) <= 1,
+  'Select one fixed capacity workload.');
+assert(!values['capacity-reconnect'] && !values['capacity-attach-compact'] || values['capacity-sessions'] === undefined,
   'Host reconnect uses its fixed two-session workload.');
 assert(values['capacity-sessions'] === undefined || (values['capacity-calibration'] &&
   ['2', '10'].includes(values['capacity-sessions'])), 'Select --capacity-calibration with --capacity-sessions=2 or 10.');
@@ -169,7 +171,8 @@ console.log(`Finite real Electron candidate acceptance passed: ${output}`);
 
 async function runCapacityCalibration() {
   const reconnect = values['capacity-reconnect'];
-  const scenarios = reconnect ? ['color'] : ['color', 'size'];
+  const attachCompact = values['capacity-attach-compact'];
+  const scenarios = reconnect ? ['color'] : attachCompact ? ['compact'] : ['color', 'size'];
   const workload = capacityFormat.capacityWorkload(Number(values['capacity-sessions'] ?? 2));
   const selectionBytes = await fs.readFile(path.join(dist, 'execution-candidate-selection.json'));
   const selection = JSON.parse(selectionBytes);
@@ -192,7 +195,9 @@ async function runCapacityCalibration() {
     bundle: true, platform: 'node', format: 'cjs', target: 'node22', write: false });
   const helperBytes = helper.outputFiles[0].contents;
   await fs.writeFile(path.join(output, 'input.json'), `${JSON.stringify({ schemaVersion: 1,
-    scope: 'A1 finite Linux real Electron fixed Terminal workload; not complete A1 or a general product memory budget',
+    scope: attachCompact
+      ? 'A1 finite Linux real Electron attach/resize/scrollback/live-compaction Terminal workload; not complete A1 or a general product memory budget'
+      : 'A1 finite Linux real Electron fixed Terminal workload; not complete A1 or a general product memory budget',
     runId, vscodeExecutablePath, subjectExecutable: process.execPath, subjectVersions: process.versions,
     assetManifest: manifest, selection, sourceHashes, helperSha256: hash(helperBytes), scenarios,
     cumulativeBlocks: [640, 1280, 2560], terminalEncodedBlockBytes: 10240, scrollback: 100000,
@@ -202,6 +207,9 @@ async function runCapacityCalibration() {
       overlapAcceptance: 'v2: one actual B response applied within 1500ms with 0 < loadLastBlockBefore <= loadLastBlockAfter < 2560 in the same Webview action; catchup deadline is not reset',
       absoluteRssSafetyBytes: 5 * 1024 ** 3,
       triggerRule: 'Only after the original Extension Host identity is gone; retain original runtime and bindings.' } : {}),
+    ...(attachCompact ? { phases: ['attach', 'dynamic-scrollback', 'resize', 'checkpoint', 'compact-retention'],
+      compactNoiseBytes: 18 * 1024 ** 2,
+      compactAcceptance: 'A live reader remains usable after a checkpoint promotion and journal compaction; output, resize and scrollback revisions remain contiguous.' } : {}),
     limitsScope: 'Workload-specific observation and experiment safety only; not a product session limit or general SLA.',
     oldAcceptance: reconnect ? 'Only A1/A2 live Host reconnect selected; not completed reopen or A3 closure.'
       : 'A2/A3 not selected and not combined into this result.' }, null, 2)}\n`);

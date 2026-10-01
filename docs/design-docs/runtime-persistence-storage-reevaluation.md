@@ -21,12 +21,14 @@ related_plans:
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-10-01
+updated_at: 2026-10-02
 ---
 
 # Runtime Persistence 容量与会话归档架构重评
 
 ## 1. 范围与决策状态
+
+当前入口（2026-10-02，r23 优先于下述历史下一步）：固定现代 Linux Electron 候选的 `--capacity-attach-compact` 两 Terminal 实际 attach/compact 运行已完成。运行包含动态 scrollback、两次 resize、首个 checkpoint、同一分页 reader 持续消费、约 18 MiB 后置输出并跨过实际 16 MiB journal compaction 阈值；compact 后 current/previous recovery candidate 可读，previous 事件从 `6503` 连续到 `11185`，reader identity 保持，compact 后 reader 仍可交互，页面输出/尺寸/scrollback 与自然 no-history、cleanup 均通过。最终 manifest 以 `currentCheckpoint=6579`、`previousCheckpoint=6502`、`retainedStartRevision=6503`、`lastRevision=11185` 为权威；不要求 `getSessionCheckpoint` 最新 RPC revision 与 durable manifest generation 相等。证据见 `.debug/a1-attach-compact-20261002-r23/compact/artifacts/`。这只关闭现代 Linux Electron 固定 attach/compact 组合，不关闭 F-04/A1、真实 Agent、其余页面语义、跨平台/packaged、退出完整性或生产准入；原 64/128 MiB 观察阈值及历史失败保持。
 
 当前入口（2026-10-01，覆盖后面的历史下一步）：10.15 的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整 exit 0；B 回复在 51ms 内实际应用，同一 Webview 动作中的 A 块号为 12 到 18，满足 `0 < before <= after < 2560`。新 Host ready 1501.906ms、完整应用 14639.154ms、追平 13137.248ms，原不重置的 30 秒与 1500ms 界限保持；原执行及新 reader、完整后缀、独立 journal/hash、自然 no-history 和两份 cleanup 全通过，outer forcedSignals/failures 均为空。该离线追赶交互组合已覆盖，10.14 的 overlap=false 和旧失败原样保留。下一沿原 B2/A5 推进 macOS/Windows 产品 provider、namespace、匹配 Node/Electron 与 packaged 接入，不再为此组合追加运行或工具阶段；F-04 和总体仍未完成。
 
@@ -549,3 +551,17 @@ B交互完成后继续原完整保留后缀poll，沿原恢复轮计时基点使
 独立 `reconnect-independent-journal-validation.json` 核对 sourceBytes=26214425、SHA256=`0167208c8b0fcf6bd465c0c19064d3f7584429ef32e4cbb2841f1e147ee5ed98`，与主体成功写入 receipt 一致，lastRevision=6502、checkpoint rejection=`color-state`；来源内容比对不替代生产 journal checksum 校验。`reconnect-cleanup.json` 为 product reset、空闲自有 Supervisor 正常 SIGTERM/退出通过；`outer-cleanup.json` 的 pass=true、forcedSignals=[]、failures=[]，没有补救强杀。
 
 本次仅关闭声明 Linux/Electron 两 Terminal 输入下的新 Host 离线追赶与交互重叠组合，不关闭 F-04 总体、A3 尾部、其余 A 项或跨平台/分发，也不把 10.14 的追平后交互追认为重叠。下一回到原 B2/A5 的跨平台产品接入及匹配产物，不重复成功矩阵或新设工具门槛；第三轮真实 Agent snapshot stop 的具名间歇失败仍按原记录保留。
+
+### 10.16 r23 attach/compact 固定组合
+
+本轮沿既有 A1 入口增加一次有限的真实 attach/compact 组合，不建立新的诊断框架。固定现代 Linux Electron 候选以两个 Terminal 创建同一次 Webview attach；A 先完成动态 scrollback 与两次 resize，建立首个 checkpoint，再由同一分页 reader 持续消费。随后注入约 18 MiB 后置输出，跨过实际 16 MiB journal compaction 阈值，核对 checkpoint promotion、journal compact、current/previous recovery candidate、retained prefix 删除和 compact 后 reader 继续交互。该路径同时保留页面输出/尺寸/scrollback、Host page error、`runtime/terminalPagedReadFailed`、reader identity、自然结束无 completed 历史和产品 cleanup 判据。
+
+固定命令为：
+
+    node scripts/smoke/run-vscode-execution-candidate.mjs \
+      --capacity-attach-compact \
+      --output .debug/a1-attach-compact-20261002-r23
+
+`.debug/a1-attach-compact-20261002-r23/compact/artifacts/compact-manifest.json` 的 durable 事实为 `currentCheckpoint.revision=6579`、`previousCheckpoint.revision=6502`、`retainedStartRevision=6503`、`lastRevision=11185`；`compact-recovery-candidates.json` 证明 previous candidate 的事件从 `6503` 连续到 `11185`（output 4680、resize 1、scrollback 2），current candidate 可读。`compact-result.json` 证明 before/after reader identity 相同，页面在 compact 后继续应用输出与尺寸，`cleanup.json` 为本方资源清理通过。后台 `persistRegistry`/`createFreshSnapshot` 可能先于显式 checkpoint RPC 完成 promotion，因此验收以 manifest current/previous、retainedStartRevision、lastRevision 和候选连续性为准，不要求 RPC revision 与 durable generation 相等。
+
+该结果只关闭现代 Linux Electron 的固定 attach/compact 组合；它不关闭 F-04/A1 总体，也不替代真实 Agent、其余 Webview/页面责任、跨平台/packaged、退出完整性或最终生产准入。64/128 MiB 合并进程观察阈值、原始数值与 `exit 1` 历史不改；已完成的有限场景不重复运行，不把工具通用健壮性、低版本系统兼容或归档迁移扩成当前前置。

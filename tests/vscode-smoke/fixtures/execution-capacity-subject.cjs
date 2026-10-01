@@ -38,7 +38,7 @@ if (require.main === module) {
 async function run() {
   const [role, scenario, receiptPath, offlineTriggerPath] = process.argv.slice(2);
   assert(['a', 'b'].includes(role));
-  assert(['color', 'size'].includes(scenario));
+  assert(['color', 'size', 'compact'].includes(scenario));
   assert(receiptPath && process.stdin.isTTY && process.stdout.isTTY, 'Requires a real raw PTY.');
   if (offlineTriggerPath) assert(role === 'a' && scenario === 'color', 'Offline input is only defined for color subject A.');
   process.stdin.setRawMode(true);
@@ -118,9 +118,20 @@ async function run() {
           process.stdin.destroy();
           return;
         }
-        if (role === 'b') {
+        if (input.startsWith('ping:') && (role === 'b' || (role === 'a' && scenario === 'compact'))) {
           assert.match(input, /^ping:[a-zA-Z0-9_-]{1,80}$/);
-          await write(`DSC_A1_REPLY_${input.slice(5)}\r\n`);
+          await write(`DSC_A1_REPLY_${input.slice(5)}\r\n`, role === 'a' && scenario === 'compact' ? false : true);
+          return;
+        }
+        if (input.startsWith('noise:') && role === 'a' && scenario === 'compact') {
+          const blocks = Number(input.slice(6));
+          assert(Number.isSafeInteger(blocks) && blocks > 0 && blocks <= 4096);
+          // Keep the noise in the same unwrapped row shape as the primary
+          // workload so checkpoint semantic validation measures compaction,
+          // not a giant-line wrap edge case.
+          const chunk = block(0);
+          for (let index = 0; index < blocks; index += 1) await write(chunk, false);
+          await write(`DSC_A1_COMPACT_NOISE_DONE_${blocks}\r\n`, false);
           return;
         }
         assert.match(input, /^produce:\d+$/);

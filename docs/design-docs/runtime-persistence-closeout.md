@@ -24,6 +24,8 @@ updated_at: 2026-10-02
 
 ## 1. 状态与目的
 
+当前有限增量（2026-10-02，r23）：固定现代 Linux Electron 候选执行 `--capacity-attach-compact` 的两 Terminal 实际 Webview attach/compact 场景通过。该运行覆盖动态 scrollback、两次 resize、首个 checkpoint、同一分页 reader 持续消费、约 18 MiB 后置输出跨过实际 16 MiB journal compaction 阈值、current/previous recovery candidate 以及 compact 后 reader 交互；页面输出、尺寸、scrollback、reader identity、自然结束无 completed 历史和本方资源清理均通过，未出现 `runtime/terminalPagedReadFailed` 或 Host page error。最终 manifest 的 `currentCheckpoint.revision=6579`、`previousCheckpoint.revision=6502`、`retainedStartRevision=6503`、`lastRevision=11185` 与 previous candidate 的连续事件可读性均按 manifest/候选工件核对；不强行把最新 checkpoint RPC 返回值等同于 durable manifest generation。证据保存在 `.debug/a1-attach-compact-20261002-r23/compact/artifacts/`。该结果只关闭现代 Linux Electron 的固定 attach/compact 组合，不关闭 F-04/A1 总体，不替代真实 Agent、其余 Webview/页面责任、跨平台/packaged、退出完整性或最终生产准入；不改变 64/128 MiB 合并进程观察阈值及其历史 `exit 1`。
+
 最新状态（2026-10-01，覆盖本节后续历史入口）：A1 的固定 `10/1` schema2 Linux Electron 候选已完成 `color` 与 `size` 两个场景，内容/交互/来源 hash/自然无历史/产品 cleanup 均通过；峰值总 RSS 分别为 3,876,724,736 与 3,954,757,632 bytes，仍仅是该声明工作负载的观察结果，不构成 `N=10` 产品上限或通用 SLA。随后同候选 `2/1` 的真实 Host detach/reconnect `color` 组合通过：旧 Host 消失后原 Supervisor、主体和 session/reader 身份保持，B 在 A 尚未追平时 53.4ms 实际应用，Host ready 后 15,538.456ms 追平，reconnect/outer cleanup 均通过。两项均不关闭 F-04、跨平台/packaged、A2/A3 未填页面格或默认准入；不再重复成功矩阵，不把工具边界追加为前置。
 
 同一最新范围内，六架构 schema2 分发候选的 Windows x64/ARM64 attempt2 已完成并与已核对四格合并，固定聚合/VSIX SHA 通过；这只关闭构建、加载与归档链，不代证最低旧 OS、各目标完整产品支持或默认准入。A6 snapshot-only Host 离开和 A3 双 Host 共享 root 的既有真实证据也已对齐为已覆盖，旧失败与未观察字段继续保留。
