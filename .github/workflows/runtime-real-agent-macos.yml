@@ -79,7 +79,7 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           umask 077
-          if node scripts/smoke/run-vscode-agent-candidate.mjs --backend=deepseek --ci-report agent-ci-report --output ".debug/agent-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" > "$RUNNER_TEMP/agent-candidate.log" 2>&1; then
+          if node scripts/smoke/run-vscode-agent-candidate.mjs --backend=deepseek --ci-report agent-ci-report --output "$RUNNER_TEMP/dsc-agent" > "$RUNNER_TEMP/agent-candidate.log" 2>&1; then
             echo 'Real Agent acceptance passed; sanitized report: agent-ci-report/'
           else
             echo 'Real Agent acceptance failed; sanitized report: agent-ci-report/' >&2

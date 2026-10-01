@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前执行入口（2026-10-01，B2/A5）：macOS run `36820565903` 的Node编译、namespace/normal/paused-stop及清理通过，partial-create资源释放但原13秒关闭首报缺失，整场45秒失败、Electron/Webview未运行。共享scheduler提前通知丢失机制已先红并修，保持原预算/unknown，详见33.6；此前两轮失败保留。Windows核心/独立reader、工厂、profile/namespace、匹配Node/Electron资产入口与局部回归已实施，但尚无原生通过。下一对修后macOS执行原四例与实际Terminal两模式，并推进Windows原四例；Darwin真实Agent观察接线只补原八场的安全身份来源，真实Agent、package及其余A1至A6未关闭。
+当前执行入口（2026-10-01，B2/A5）：macOS第四轮run `36821963386` 修后原Node四例及匹配Electron编译通过，实际Terminal尚未执行产品断言，live-runtime先被VS Code测试路径长度挡住，snapshot-only未运行；只缩短workflow工作根，见33.7。Windows第二轮run `36822343054` 纯输入通过，但Windows Node自带hook摘要不同，在编译前拒绝；须核对源码，不放宽来源校验。Darwin真实Agent原八场接线已完成，未运行。继续原平台产品及分发验收，保留全部首败，不新增工具矩阵或关闭总体。
 
 当前执行入口（2026-10-01，优先于后面的历史下一步）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整exit0；真实新Host追赶时B51ms应用、A同动作12到18未追平2560，随后ready后13137.248ms完整恢复，原身份/hash/no-history及两份cleanup通过、outer forcedSignals/failures为空。该B1/A1组合收口，下一按生产接入第33节推进B2/A5的macOS产品接入：共享Unix owner、Darwin原生provider、两authority工厂/构建与namespace，保留独立profile/generation、匹配Node/Electron和packaged责任。该平台目前只有运行前设计，没有新平台通过；Windows、其余A项和总体仍开放，原10.14/旧失败及Agent snapshot stop具名未决项不改。
 
@@ -90,6 +90,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [x] (2026-10-01，B2/A5) 修后macOS原Node四例通过，匹配Electron编译通过；VS Code长socket路径启动失败与未运行场景分别保留，workflow改用短私有工作根。Windows两轮分别停在路径夹具和明确hook来源检查，均未进入native执行。
 - [x] (2026-10-01，B2/A5) 保存macOS前三轮失败及未运行项，第三轮normal已证明主体尾部/真实EOF/终态/本方资源；共享scheduler早唤醒机制确定性先红后修，原期限与未确认语义保持。
 - [x] (2026-10-01，B2/A5) Windows ConPTY核心、独立输出worker、有界交互、工厂/profile/namespace及匹配资产构建接线完成局部验证；同步调用异常与输入EPIPE影响输出两项先红后修，详见34节，不计作Windows原生通过。
 - [x] (2026-10-01) 第33节macOS生产原生与共享两authority接线、平台资产构建和有限验收入口已实施；仅源码/受控测试通过，不冒称Darwin实际通过。共享头重新编译后Linux原两模式Terminal四次launch全部exit0。
@@ -389,6 +390,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [ ] 同步最终文档与技术债，符合完整完成定义后归档计划；不能因 Linux 或局部夹具通过就勾选全平台完成。
 
 ## 意外与发现
+
+2026-10-01，Darwin工作区下的VS Code用户目录使main.sock长达118字节，超过103限制，尚未启动产品Host；改为job私有短根，Terminal最长76、Agent最长88字节，测试语义不变。Windows官方Node包含的hook摘要与本机Linux来源不同，当前拒绝正确；差异未核实前不能宣称可编译或直接放宽hash。
 
 2026-10-01，macOS第三轮partial-create实际已释放本方三个资源，但结束期限后仍缺首次结论；共享timer浮点提前触发可丢失唯一通知，确定性测试证明机制存在。工件没有各timer进入时间，故不声称直接测得该轮调度时间。Windows独立复核另确认native标准异常需转Napi异常、输入错误不能提前销毁仍有尾部的reader，两项有先红回归；包装器终态不得单独代证实际CLI主体结束，原生验收须保留这项判断。
 

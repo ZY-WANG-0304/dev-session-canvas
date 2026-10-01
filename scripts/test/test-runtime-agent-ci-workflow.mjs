@@ -113,7 +113,7 @@ const macStep = name => {
   return found;
 };
 for (const name of ['Checkout acceptance source', 'Setup fixed Agent Node.js', 'Install locked dependencies',
-  'Install fixed real Agent CLIs', 'Run finite real Agent acceptance']) {
+  'Install fixed real Agent CLIs']) {
   assert.deepEqual(macStep(name), step(name), `macOS must preserve the shared ${name} contract.`);
 }
 const python = macStep('Setup fixed process observer Python');
@@ -147,6 +147,10 @@ assert.match(macBuild.run, /af6712ab16c436b9288ece2f0173924c74008446346bda3457d0
 assert.match(macBuild.run, /ELECTRON_RUN_AS_NODE=1 .*macos-execution-candidate-assets\.mjs build/u);
 assert.match(macBuild.run, /--execution-profile=macos-owner-v1-candidate --execution-assets/u);
 const macRun = macStep('Run finite real Agent acceptance');
+assert.deepEqual(macRun, { ...run, run: run.run.replace(
+  '".debug/agent-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"', '"$RUNNER_TEMP/dsc-agent"') },
+  'Only the raw working path changes to fit the Darwin Unix socket limit.');
+assert.ok(Buffer.byteLength('/Users/runner/work/_temp/dsc-agent/claude-snapshot-only-natural/user-data/1.11-main.sock') < 104);
 assert.deepEqual(macAcceptance.steps.filter(candidate => JSON.stringify(candidate).includes('secrets.')), [macRun]);
 for (const preparation of macAcceptance.steps.slice(0, macAcceptance.steps.indexOf(macRun))) {
   assert.equal(preparation.env, undefined, `Preparation cannot receive credential environment: ${preparation.name}`);

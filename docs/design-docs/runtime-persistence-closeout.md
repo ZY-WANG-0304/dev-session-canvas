@@ -24,7 +24,7 @@ updated_at: 2026-10-01
 
 ## 1. 状态与目的
 
-当前B2/A5（2026-10-01）：macOS第三次run `36820565903` 的Node编译、namespace/normal/paused-stop及清理通过；partial-create已释放本方资源但原关闭首报未完成，整场保留失败，Electron/Webview尚未运行。共享deadline提前通知机制已确定性复现并修正，不修改原13秒预算或unknown语义，见生产接入33.6。Windows ConPTY核心、独立reader、工厂/profile/namespace和Node/Electron编译入口已实施，当前只有局部验证；固定Node四例仍须原生验证。Darwin真实Agent身份来源同步接入，不扩大原八场或混传凭据产物。下一依序完成原平台实际验收和分发；F-04与总体仍未关闭。
+当前B2/A5（2026-10-01）：修共享deadline后的macOS第四轮run `36821963386` 原Node四例及匹配Electron编译通过；实际Terminal在live-runtime的VS Code启动前因测试目录超过Unix socket长度限制失败，snapshot-only未运行，见33.7。只缩短workflow工作根继续原断言，真实Agent八场接线已完成但未运行。Windows第二轮run `36822343054` 纯输入通过，官方Windows Node所带delay-load hook摘要不同而在编译前拒绝，须核对原源码后再固定输入，不能接受未知hash；首轮短/长路径夹具失败保留。下一继续原平台产品与分发验收，F-04与总体仍未关闭。
 
 当前 A1 结果与下一项（2026-10-01）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整exit0；B回复51ms实际应用，同一Webview动作中A的块号12到18均未追平2560，随后ready后13137.248ms完整恢复。原1500ms/不重置30秒、原执行及新reader、完整后缀/独立journal/hash/自然no-history与两份cleanup均通过，outer forcedSignals/failures为空。声明输入下的真实离线追赶交互组合已覆盖；10.14的overlap=false和全部旧失败保持。下一推进原B2/A5的macOS/Windows产品provider、namespace、匹配Node/Electron及packaged接入，不追加此组合或工具阶段；F-04总体和其他A项继续开放。
 

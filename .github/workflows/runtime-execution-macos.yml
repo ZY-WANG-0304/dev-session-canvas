@@ -92,7 +92,7 @@ jobs:
           ELECTRON_RUN_AS_NODE=1 "$DEV_SESSION_CANVAS_VSCODE_EXECUTABLE" scripts/build/macos-execution-candidate-assets.mjs build --output macos-electron-build --dependency-root "$GITHUB_WORKSPACE/node_modules" --headers "$RUNNER_TEMP/macos-electron-headers/include/node"
           node scripts/build/build.mjs --execution-profile=macos-owner-v1-candidate --execution-assets macos-electron-build
       - name: Run actual Terminal Webview and completed reopen
-        run: node scripts/smoke/run-vscode-execution-candidate.mjs --output=macos-electron-evidence
+        run: node scripts/smoke/run-vscode-execution-candidate.mjs --output="$RUNNER_TEMP/dsc-terminal"
       - name: Preserve first build and product evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -102,6 +102,6 @@ jobs:
             macos-product-build/
             macos-product-evidence/
             macos-electron-build/
-            macos-electron-evidence/
+            ${{ runner.temp }}/dsc-terminal/
           if-no-files-found: warn
           retention-days: 14

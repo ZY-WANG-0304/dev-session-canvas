@@ -1777,6 +1777,14 @@ Darwin观察接线已实现，Linux原身份路径保持；JS单在途/亲缘/�
 
 正式修正只在该共享 scheduler：首次剩余时间仍校验有限且不超过 Node timer 范围，按剩余量向上取整；每次唤醒复核原绝对 deadline，提前则重新安排同一 deadline，不延长预算、不执行业务回调。到期仅调用一次，取消作用于当前 timer 且幂等；不改变 owner 的首报、unknown、隔离、内容或资源语义。现有 parent-control 回归覆盖提前唤醒、重排后取消、已过期和非法期限；原 owner/adapter/Host/Supervisor 回归继续执行。修后按原 macOS 固定输入重新运行，旧失败不删除，也不从该局部修正推断其他平台已经原生通过。
 
+### 33.7 第四次 Darwin 运行的宿主启动路径失败
+
+run `36821963386`/job `110239281754` 使用 `72ca0efe`，修后原Node四例全部通过，匹配VS Code1.117.0/Electron39.8.7/Node22.22.1/ABI140的编译也通过；后置Terminal步骤仍exit1。VS Code在扩展启动前报告其 `user-data/1.11-main.sock` 路径超过Darwin的103字节限制，随后 `connect ENOTSOCK`。仓库内证据目录层级过长是该前置失败的具体依据，不能宣称本次实际Webview尾部已经通过，也不将其归为新的PTY尾部缺陷。完整artifact `macos-product-provider-36821963386-1` 保留，前三轮失败不变。
+
+本次仅尝试live-runtime的首次宿主启动，没有进入complete/reopen断言；snapshot-only整例未运行，不能把未执行记成第二个产品失败。
+
+修正只在两份macOS验收workflow：Terminal输出根使用本job私有的 `$RUNNER_TEMP/dsc-terminal`，归档同一目录；真实Agent原始工作根使用 `$RUNNER_TEMP/dsc-agent`，仍只上传原脱敏 `agent-ci-report/`。最长固定Agent场景的socket路径在已知runner根下为88字节，不改通用smoke runner、不用symlink改变真实root、不削减内容或退出断言。Node已通过不代表Agent或两模式Electron通过，修后继续原输入验收。
+
 ## 34. Windows 产品原生接入
 
 ### 34.1 运行前原生契约（2026-10-01）
