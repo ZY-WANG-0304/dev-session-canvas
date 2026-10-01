@@ -261,4 +261,30 @@ function acceptsEmptySnapshotStop({ mode, lifecycle: completion, savedNode, evid
   return direct || resized;
 }
 
-module.exports = { collectSnapshotEvidence, acceptsEmptySnapshotStop };
+function acceptsSnapshotStop({ mode, lifecycle: completion, savedNode, evidence: value }) {
+  const metadata = savedNode?.metadata?.agent;
+  const saved = metadata?.serializedTerminalState;
+  if (mode !== 'snapshot-only' || completion !== 'stop' || savedNode?.status !== 'stopped' ||
+      metadata?.liveSession !== false || metadata.persistenceMode !== mode || !serialized(saved) ||
+      !integer(saved.outputSequence) || saved.outputSequence === 0 || metadata.outputSequence !== saved.outputSequence ||
+      !value || value.schemaVersion !== 1) return false;
+  // Keep the existing empty-stop contract unchanged, including its reset-specific assertions.
+  if (saved.data === '') return acceptsEmptySnapshotStop({ mode, lifecycle: completion, savedNode, evidence: value });
+  const required = ['savedNodeMatched', 'savedStatePresent', 'savedStateValid', 'readerApplied',
+    'readerLifecycleMatched', 'sequenceMatched', 'helpProbePresent', 'finalProbePresent',
+    'replayComplete', 'replayMatchesSaved', 'publishedFinalMatchesSaved'];
+  if (required.some(key => value[key] !== true) || value.replayReason !== 'complete' ||
+      value.replayInitialSequence !== 0 || value.savedDataBytes <= 0 ||
+      value.savedDataBytes !== Buffer.byteLength(saved.data) || value.savedDataSha256 !== hash(saved.data) ||
+      !/^[a-f0-9]{64}$/.test(value.hydratedStateSha256 ?? '') || value.hydratedStateSha256 !== value.replayStateSha256 ||
+      !['savedOutputSequence', 'snapshotOutputSequence', 'readerFinalOutputSequence']
+        .every(key => value[key] === saved.outputSequence) ||
+      !integer(value.replayOutputMessages) || value.replayOutputMessages === 0 ||
+      !integer(value.helpNonEmptyLines) || value.helpNonEmptyLines === 0 ||
+      !integer(value.messageCount) || value.messageCount === 0 || value.messageCount >= 200) return false;
+  // The original page projection is recorded but may be stale at stop. The second Host
+  // must prove the saved snapshot itself renders correctly, so page equality is checked there.
+  return true;
+}
+
+module.exports = { collectSnapshotEvidence, acceptsEmptySnapshotStop, acceptsSnapshotStop };

@@ -155,7 +155,8 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
         ? snapshotEvidenceSummary(await read('snapshot-evidence')) : null,
       snapshotReopen: scenario.name.endsWith('-snapshot-only-stop') ? {
         required: reopenDecisionValid ? reopenRequired : null, reportPresent: reopen !== undefined, pass: reopenPassed,
-        ...Object.fromEntries(reopenHelpers.REOPEN_CHECKS.map(key => [key, boolean(reopen?.[key])]))
+        ...Object.fromEntries([...reopenHelpers.REOPEN_CHECKS, 'stateRetained', 'pageBufferMatched',
+          'pageGeometryMatched'].map(key => [key, boolean(reopen?.[key])]))
       } : null,
       cliEvidence: {
         turnCompleted: records ? records.some(record => record.type === 'turn.completed') : null,

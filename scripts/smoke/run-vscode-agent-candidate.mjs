@@ -206,13 +206,13 @@ for (const [index, scenario] of scenarios.entries()) {
       extensionTestsEnv: { ...authReferences, ...testCommandReferences,
         CODEX_UPDATE_ON_STARTUP: 'false',
         DEV_SESSION_CANVAS_AGENT_CANDIDATE_CONFIG: configPath } });
-    if (!authOnly) await reopenHelpers.completeEmptySnapshotReopen({
+    if (!authOnly) await reopenHelpers.completeSnapshotReopen({
       firstResult: JSON.parse(await fs.readFile(path.join(runtime.artifactsDir, 'result.json'), 'utf8')),
       launch: async () => {
         const artifactDir = path.join(runtime.artifactsDir, 'reopen');
         await fs.mkdir(artifactDir);
         const reopenConfigPath = path.join(debugRoot, 'reopen-scenario.json');
-        await fs.writeFile(reopenConfigPath, `${JSON.stringify({ ...config, stage: 'empty-snapshot-reopen', artifactDir,
+        await fs.writeFile(reopenConfigPath, `${JSON.stringify({ ...config, stage: 'snapshot-reopen', artifactDir,
           reopenHandoffPath: path.join(runtime.artifactsDir, 'reopen-handoff.json') }, null, 2)}\n`);
         // Reuse the original storage and workspace; prepareRuntime would erase the state under test.
         try {

@@ -10,8 +10,8 @@ const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs
 const { AgentProcessObserver, executionEnded } = require('./agent-candidate-process-observer.cjs');
 const { hasLiveWindowsStartupChain } = require('./agent-candidate-windows-observer.cjs');
 const { invokeCLI, buildClaudeCandidateArguments } = require('./agent-candidate-cli.cjs');
-const { collectSnapshotEvidence, acceptsEmptySnapshotStop } = require('./agent-candidate-snapshot-evidence.cjs');
-const { runEmptySnapshotReopen } = require('./agent-candidate-reopen.cjs');
+const { collectSnapshotEvidence, acceptsEmptySnapshotStop, acceptsSnapshotStop } = require('./agent-candidate-snapshot-evidence.cjs');
+const { runSnapshotReopen, runEmptySnapshotReopen } = require('./agent-candidate-reopen.cjs');
 const { resolveExecutionSessionSpawnSpec } = require('./agent-candidate-spawn-spec.cjs');
 const { resolveLegacyRuntimeSupervisorPaths,
   resolveSystemdUserRuntimeSupervisorPaths } = require('./agent-candidate-runtime-paths.cjs');
@@ -73,6 +73,23 @@ function codexPath() {
 async function run() {
   config = JSON.parse(await fs.readFile(process.env.DEV_SESSION_CANVAS_AGENT_CANDIDATE_CONFIG, 'utf8'));
   assert(['linux', 'darwin', 'win32'].includes(process.platform));
+  if (config.stage === 'snapshot-reopen') return runSnapshotReopen({
+    config, hostPid: process.pid, workspaceFolders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) ?? [],
+    activate: async () => {
+      await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
+      await waitForCommand(vscode, 'devSessionCanvas.__test.getDebugState');
+    },
+    command,
+    openCanvas: () => vscode.commands.executeCommand(config.surface === 'editor'
+      ? 'devSessionCanvas.openCanvasInEditor' : 'devSessionCanvas.openCanvasInPanel'),
+    probe: id => poll('reopened Agent reader mounted', probe, value => value.nodes.some(node =>
+      node.nodeId === id && node.terminalCols > 1 && node.terminalRows > 0)),
+    assertBuffer: async (id, expectedLines) => {
+      await dom({ kind: 'assertExecutionTerminalBuffer', nodeId: id, expectedLines });
+      return true;
+    },
+    readJson: async file => JSON.parse(await fs.readFile(file, 'utf8')), writeJson
+  });
   if (config.stage === 'empty-snapshot-reopen') return runEmptySnapshotReopen({
     config, hostPid: process.pid, workspaceFolders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) ?? [],
     activate: async () => {
@@ -207,9 +224,9 @@ async function run() {
         }
         await writeJson('snapshot-evidence.json', snapshotEvidence);
       }
-      if (config.lifecycle === 'stop' && savedNode.metadata.agent.serializedTerminalState?.data === '') {
-        assert(acceptsEmptySnapshotStop({ ...config, savedNode, evidence: snapshotEvidence }),
-          'Empty snapshot-only stop requires complete output, reader, saved-state and page evidence.');
+      if (config.lifecycle === 'stop') {
+        assert(acceptsSnapshotStop({ ...config, savedNode, evidence: snapshotEvidence }),
+          'Snapshot-only stop requires complete output, reader, saved-state and page evidence.');
         reopenRequired = true;
       } else assert(savedNode.metadata.agent.serializedTerminalState?.data);
       const settlements = await command('getDiagnosticEvents');
@@ -249,7 +266,8 @@ async function run() {
       hostPid: process.pid, nodeId, workspacePath: config.workspacePath, userDataDir: config.userDataDir,
       runtimeDir: config.runtimeDir,
       snapshotPath: saved.snapshotPath, readerFrameId: initial.lifecycle.frameId,
-      savedState: savedNode.metadata.agent.serializedTerminalState, outputSequence: savedNode.metadata.agent.outputSequence };
+      savedState: savedNode.metadata.agent.serializedTerminalState, outputSequence: savedNode.metadata.agent.outputSequence,
+      savedCols: savedNode.metadata.agent.lastCols, savedRows: savedNode.metadata.agent.lastRows };
   } catch (error) {
     failure = error;
     await archive('first-failure', { error: String(error), stack: error.stack, nodeId, executionId, hello });

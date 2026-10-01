@@ -1,18 +1,18 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const { runEmptySnapshotReopen, reopenReportPassed, completeEmptySnapshotReopen, REOPEN_CHECKS } =
+const { runSnapshotReopen, runEmptySnapshotReopen, reopenReportPassed, completeEmptySnapshotReopen, REOPEN_CHECKS } =
   require('../../tests/vscode-smoke/agent-candidate-reopen.cjs');
 
-function fixture() {
+function fixture({ nonEmpty = false } = {}) {
   const node = { id: 'n1', kind: 'agent', status: 'stopped', metadata: { agent: {
     persistenceMode: 'snapshot-only', liveSession: false, outputSequence: 2,
-    serializedTerminalState: { format: 'xterm-serialize-v1', data: '', outputSequence: 2, viewportY: 0 }
+    serializedTerminalState: { format: 'xterm-serialize-v1', data: nonEmpty ? 'hello\r\nworld' : '', outputSequence: 2, viewportY: 0 }
   } } };
   const handoff = { schemaVersion: 1, hostPid: 101, nodeId: 'n1', workspacePath: '/workspace',
     runtimeDir: '/runtime', userDataDir: '/user-data', snapshotPath: '/user-data/state.json',
     readerFrameId: 'first-page', savedState: structuredClone(node.metadata.agent.serializedTerminalState),
-    outputSequence: 2, originalChecksPassed: true };
+    outputSequence: 2, savedCols: 60, savedRows: 20, originalChecksPassed: true };
   const state = { state: { nodes: [node] }, surfaceLifecycle: { panel: { frameId: 'fresh-page' } } };
   const persisted = { state: { nodes: [structuredClone(node)] } };
   const runtime = { bindings: [], pendingRuntimeSupervisorOperationCount: 0 };
@@ -24,13 +24,15 @@ function fixture() {
     snapshotAvailable: true, snapshotPath: '/user-data/root.json', rootPath: '/workspace' } }];
   const messages = [];
   const page = { nodes: [{ nodeId: 'n1', terminalCols: 60, terminalRows: 20,
-    terminalCursorX: 0, terminalCursorY: 0, terminalViewportY: 0, terminalBufferType: 'normal',
-    terminalVisibleLines: Array(20).fill('') }] };
+    terminalCursorX: nonEmpty ? 5 : 0, terminalCursorY: nonEmpty ? 1 : 0, terminalViewportY: 0,
+    terminalBufferType: 'normal', terminalVisibleLines: nonEmpty
+      ? ['hello', 'world', ...Array(18).fill('')] : Array(20).fill('') }] };
   const calls = [];
   const reports = {};
   let reset = false;
   const value = { handoff, state, persisted, runtime, diagnostics, events, messages, page, calls, reports,
-    bufferEmpty: true, cleanupError: undefined, activationError: undefined };
+    bufferEmpty: !nonEmpty, expectedLines: nonEmpty ? ['hello', 'world'] : [],
+    cleanupError: undefined, activationError: undefined };
   value.options = { config: { mode: 'snapshot-only', lifecycle: 'stop', surface: 'panel',
     workspacePath: '/workspace', runtimeDir: '/runtime', userDataDir: '/user-data', reopenHandoffPath: '/handoff.json' },
     hostPid: 202, workspaceFolders: ['/workspace'],
@@ -39,8 +41,9 @@ function fixture() {
     openCanvas: async () => { calls.push('openCanvas'); },
     probe: async () => { calls.push('probe'); return page; },
     assertBuffer: async (nodeId, expectedLines) => {
-      calls.push('assertBuffer'); assert.equal(nodeId, 'n1'); assert.deepEqual(expectedLines, []);
-      if (!value.bufferEmpty) throw new Error('nonempty full buffer');
+      calls.push('assertBuffer'); assert.equal(nodeId, 'n1');
+      assert.deepEqual(expectedLines, value.expectedLines);
+      if (!value.bufferEmpty && expectedLines.length === 0) throw new Error('nonempty full buffer');
       return true;
     },
     readJson: async file => {
@@ -83,6 +86,13 @@ function fixture() {
 const success = fixture();
 await runEmptySnapshotReopen(success.options);
 assert.equal(reopenReportPassed(success.reports['reopen-result.json']), true);
+
+const nonEmpty = fixture({ nonEmpty: true });
+await runSnapshotReopen(nonEmpty.options);
+assert.equal(reopenReportPassed(nonEmpty.reports['reopen-result.json']), true);
+assert.equal(nonEmpty.reports['reopen-result.json'].stateRetained, true);
+assert.equal(nonEmpty.reports['reopen-result.json'].pageBufferMatched, true);
+assert.equal(nonEmpty.reports['reopen-result.json'].pageGeometryMatched, true);
 assert(success.calls.indexOf('getDebugState') < success.calls.indexOf('resetState'));
 assert(success.calls.indexOf('assertBuffer') < success.calls.indexOf('resetState'));
 assert(success.calls.indexOf('read:/user-data/root.json') < success.calls.indexOf('dumpHostDiagnostics'));

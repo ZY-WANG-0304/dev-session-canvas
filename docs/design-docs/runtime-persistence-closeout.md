@@ -238,3 +238,9 @@ macOS 真实 Agent 仍是具名未决。第一次 run `36906574728` 的 Codex �
 因此当前整体完成定义不变：A1/F-04、A2/A3 页面责任、非空 snapshot stop 的页面/重开等价及最终生产准入仍开放；现代 runner 只确定本次重构的支持/验收基线，不将缺少 macOS 10.13/10.14 或 Windows 10 1809 环境解释为本轮阻塞，也不由现代结果反推低版本兼容。
 
 随后提交 `56cec10c` 的 harness 窄修已在现代 macOS runner run `36911430020` 得到完整回收：Codex/Claude 的 `live-runtime` 与 `snapshot-only`、`natural` 与 `stop` 八场全部通过，四个 natural 场景都有实际 CLI 响应/EOF，cleanup 的 bindings/failures/forced/active 全为零。该结果关闭现代 macOS Agent 的具名矩阵，旧 run `36906574728`、`36909378525` 及更早失败作为历史保留；非空 `claude-snapshot-only-stop` 未按规则执行重开，页面 projection independence 和 A2/A3 非空 snapshot stop 等价不因此通过。整体仍只剩 A1/F-04、A2/A3 页面责任、最终生产准入等既定责任，低版本不作本轮前置。
+
+## 10. 2026-10-02 非空 snapshot stop 重开收口
+
+本轮将 `snapshot-only` 的显式 `stop` 统一纳入两阶段验收：首 Host 必须完成保存、reader settlement、序列一致性和独立 replay；空与非空快照均设置 `reopenRequired=true`，随后由新 Host 读取同一持久化状态。空快照继续使用既有页面 origin 断言；非空快照在新 Host 阶段按保存的 xterm 状态严格核对完整非空 buffer、可见行、尺寸、光标、viewport、buffer 类型、节点序列和无新执行。
+
+测试层改动已完成并通过 `test-agent-candidate-reopen.mjs`、`test-agent-candidate-snapshot-evidence.mjs`、`test-agent-candidate-ci-report.mjs` 及相关 JavaScript 语法检查；fixture 证据覆盖非空保存内容与页面几何。此前 `36911430020` 的非空 stop 结果仍是历史证据，未因 harness 改动追认通过；现代 runner 上的新真实非空 snapshot stop + reopen 尚未运行，A2/A3 该直接验收仍开放。未修改 Canvas/Host/Supervisor 业务代码，也未扩展旧系统矩阵。

@@ -3,7 +3,8 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { Terminal } = require('@xterm/headless');
 const { SerializeAddon } = require('@xterm/addon-serialize');
-const { collectSnapshotEvidence, acceptsEmptySnapshotStop } = require('../../tests/vscode-smoke/agent-candidate-snapshot-evidence.cjs');
+const { collectSnapshotEvidence, acceptsEmptySnapshotStop, acceptsSnapshotStop } =
+  require('../../tests/vscode-smoke/agent-candidate-snapshot-evidence.cjs');
 const clone = value => structuredClone(value);
 const write = (terminal, text) => new Promise(resolve => terminal.write(text, resolve));
 const frame = { surface: 'panel', mode: 'active', generation: 1, frameId: 'f1' };
@@ -205,8 +206,14 @@ for (const [reason, mutate] of [
 }
 const eligible = evidence => acceptsEmptySnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
   savedNode: blank.savedNode, evidence });
+const nonemptyEligible = evidence => acceptsSnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
+  savedNode: nonempty.savedNode, evidence });
 assert.equal(eligible(blankEvidence), true, 'Complete output followed by a legal reset can produce an empty final snapshot.');
 assert.equal(eligible(resizedEvidence), true, 'Only dimensions may differ before the independent resize comparison.');
+assert.equal(nonemptyEligible(nonemptyEvidence), true, 'A valid nonempty snapshot stop is eligible for a second Host.');
+assert.equal(nonemptyEligible({ ...nonemptyEvidence, pageGeometryMatched: false, pageVisibleMatched: false,
+  savedMatchesPage: false, replayMatchesPage: false }), true,
+  'The original page projection does not replace the required second-Host check.');
 for (const field of ['savedNodeMatched', 'savedStatePresent', 'savedStateValid', 'readerApplied', 'readerLifecycleMatched',
   'sequenceMatched', 'helpProbePresent', 'finalProbePresent', 'pageBufferMatched', 'replayComplete',
   'replayMatchesSaved', 'publishedFinalMatchesSaved']) {

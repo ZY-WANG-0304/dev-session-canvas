@@ -233,7 +233,8 @@ try {
     JSON.stringify({ pass: true }));
   const reopenFields = ['attempted', 'newHost', 'sameRuntime', 'sameWorkspace', 'sameUserData', 'persistedNodeLoaded',
     'stoppedNodeRetained', 'emptyStateRetained', 'sequenceRetained', 'freshPage', 'pageBufferEmpty',
-    'pageCursorOrigin', 'pageViewportOrigin', 'pageNormalBuffer', 'noNewExecution', 'cleanupComplete'];
+    'pageCursorOrigin', 'pageViewportOrigin', 'pageNormalBuffer', 'noNewExecution', 'cleanupComplete',
+    'stateRetained', 'pageBufferMatched', 'pageGeometryMatched'];
   await fs.writeFile(path.join(stopArtifacts, 'result.json'), JSON.stringify({ pass: true, reopenRequired: true }));
   const missingReopenDirectory = path.join(root, 'missing-reopen-report');
   await writeAgentCandidateCIReport({ ...options, directory: missingReopenDirectory });

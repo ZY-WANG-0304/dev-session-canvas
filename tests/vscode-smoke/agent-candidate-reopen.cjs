@@ -2,10 +2,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
+const { Terminal } = require('@xterm/headless');
 
 const REOPEN_CHECKS = ['attempted', 'newHost', 'sameRuntime', 'sameWorkspace', 'sameUserData', 'persistedNodeLoaded',
   'stoppedNodeRetained', 'emptyStateRetained', 'sequenceRetained', 'freshPage', 'pageBufferEmpty',
   'pageCursorOrigin', 'pageViewportOrigin', 'pageNormalBuffer', 'noNewExecution', 'cleanupComplete'];
+const GENERIC_REOPEN_CHECKS = ['attempted', 'newHost', 'sameRuntime', 'sameWorkspace', 'sameUserData', 'persistedNodeLoaded',
+  'stoppedNodeRetained', 'stateRetained', 'sequenceRetained', 'freshPage', 'pageBufferMatched',
+  'pageGeometryMatched', 'noNewExecution', 'cleanupComplete'];
 const same = isDeepStrictEqual;
 const nodeIn = (value, id) => value?.state?.nodes?.find(node => node.id === id);
 const emptySessions = value => Array.isArray(value?.executionSessions?.agent) && value.executionSessions.agent.length === 0 &&
@@ -15,25 +19,51 @@ const emptyBindings = value => Array.isArray(value?.bindings) && value.bindings.
   value.pendingRuntimeSupervisorOperationCount === 0;
 
 function reopenReportPassed(value) {
-  return value?.schemaVersion === 1 && value.pass === true && REOPEN_CHECKS.every(key => value[key] === true);
+  const legacy = value?.schemaVersion === 1 && value.pass === true && REOPEN_CHECKS.every(key => value[key] === true);
+  const generic = value?.stateRetained !== undefined
+    ? GENERIC_REOPEN_CHECKS.every(key => value[key] === true) : true;
+  return legacy && generic;
 }
 
-async function completeEmptySnapshotReopen({ firstResult, launch, readReport }) {
+async function completeSnapshotReopen({ firstResult, launch, readReport }) {
   assert.equal(firstResult?.pass, true, 'Original Agent scenario did not pass.');
   assert.equal(typeof firstResult.reopenRequired, 'boolean', 'Missing conditional reopen decision.');
   if (!firstResult.reopenRequired) return false;
   assert.equal(firstResult.reopenHandoffReady, true, 'Original Host did not complete the reopen handoff.');
   await launch();
-  assert(reopenReportPassed(await readReport()), 'Required empty snapshot reopen report is missing or incomplete.');
+  assert(reopenReportPassed(await readReport()), 'Required snapshot reopen report is missing or incomplete.');
   return true;
 }
 
-async function runEmptySnapshotReopen({ config, hostPid, workspaceFolders, activate, command, openCanvas,
-  probe, assertBuffer, readJson, writeJson, realpath = fs.realpath }) {
-  const report = { schemaVersion: 1, pass: false, ...Object.fromEntries(REOPEN_CHECKS.map(key => [key, false])), attempted: true };
+// Keep the old entry point for existing empty-snapshot fixtures.
+const completeEmptySnapshotReopen = completeSnapshotReopen;
+
+function terminalState(data, cols, rows) {
+  const terminal = new Terminal({ cols, rows, scrollback: 10000, allowProposedApi: true });
+  const dispose = () => terminal.dispose();
+  return { terminal, dispose };
+}
+
+async function hydrateState(savedState, cols, rows) {
+  const runtime = terminalState(savedState.data, cols, rows);
+  try {
+    if (savedState.data) await new Promise(resolve => runtime.terminal.write(savedState.data, resolve));
+    if (savedState.viewportY !== undefined) runtime.terminal.scrollToLine(savedState.viewportY);
+    const buffer = runtime.terminal.buffer.active;
+    const lines = Array.from({ length: buffer.length }, (_, index) => buffer.getLine(index)?.translateToString(true) ?? '');
+    return { cols: runtime.terminal.cols, rows: runtime.terminal.rows, lines,
+      visibleLines: Array.from({ length: runtime.terminal.rows }, (_, index) => lines[buffer.viewportY + index] ?? ''),
+      cursorX: buffer.cursorX, cursorY: buffer.cursorY, viewportY: buffer.viewportY, bufferType: buffer.type };
+  } finally { runtime.dispose(); }
+}
+
+async function runSnapshotReopen({ config, hostPid, workspaceFolders, activate, command, openCanvas,
+  probe, assertBuffer, readJson, writeJson, realpath = fs.realpath, requireEmpty = false }) {
+  const report = { schemaVersion: 1, pass: false,
+    ...Object.fromEntries([...REOPEN_CHECKS, ...GENERIC_REOPEN_CHECKS].map(key => [key, false])), attempted: true };
   let failure;
   let activated = false;
-  const check = (key, condition) => { report[key] = condition === true; assert(report[key], `Empty snapshot reopen: ${key}.`); };
+  const check = (key, condition) => { report[key] = condition === true; assert(report[key], `Snapshot reopen: ${key}.`); };
   const samePath = async (first, second) => typeof first === 'string' && typeof second === 'string' &&
     path.isAbsolute(first) && path.isAbsolute(second) && path.relative(await realpath(first), await realpath(second)) === '';
   const diagnostics = async () => readJson((await command('dumpHostDiagnostics')).summaryPath);
@@ -60,7 +90,8 @@ async function runEmptySnapshotReopen({ config, hostPid, workspaceFolders, activ
     assert(handoff.nodeId.length > 0);
     assert(Number.isSafeInteger(handoff.outputSequence) && handoff.outputSequence > 0);
     assert.equal(handoff.savedState?.format, 'xterm-serialize-v1');
-    assert.equal(handoff.savedState?.data, '');
+    assert.equal(typeof handoff.savedState?.data, 'string');
+    if (requireEmpty) assert.equal(handoff.savedState.data, '');
     assert.equal(handoff.savedState.outputSequence, handoff.outputSequence);
     check('newHost', Number.isSafeInteger(handoff.hostPid) && handoff.hostPid > 0 &&
       Number.isSafeInteger(hostPid) && hostPid > 0 && hostPid !== handoff.hostPid);
@@ -82,7 +113,8 @@ async function runEmptySnapshotReopen({ config, hostPid, workspaceFolders, activ
     check('persistedNodeLoaded', nodes.every(node => node?.id === handoff.nodeId && node.kind === 'agent'));
     check('stoppedNodeRetained', nodes.every(node => node.status === 'stopped' &&
       node.metadata?.agent?.liveSession === false && node.metadata.agent.persistenceMode === 'snapshot-only'));
-    check('emptyStateRetained', nodes.every(node => same(node.metadata.agent.serializedTerminalState, handoff.savedState)));
+    check('stateRetained', nodes.every(node => same(node.metadata.agent.serializedTerminalState, handoff.savedState)));
+    report.emptyStateRetained = report.stateRetained;
     check('sequenceRetained', nodes.every(node => node.metadata.agent.outputSequence === handoff.outputSequence));
     const before = await diagnostics();
     check('sameUserData', before.host?.pid === hostPid && before.workspace?.folders?.length === 1 &&
@@ -100,12 +132,27 @@ async function runEmptySnapshotReopen({ config, hostPid, workspaceFolders, activ
       typeof frameId === 'string' && frameId.length > 0 && frameId !== handoff.readerFrameId && !!terminal &&
       Number.isSafeInteger(terminal.terminalCols) && terminal.terminalCols > 1 &&
       Number.isSafeInteger(terminal.terminalRows) && terminal.terminalRows > 0);
-    check('pageBufferEmpty', await assertBuffer(handoff.nodeId, []) === true &&
+    let expected;
+    const emptySnapshot = handoff.savedState.data === '';
+    if (!emptySnapshot && Number.isSafeInteger(handoff.savedCols) && handoff.savedCols > 1 &&
+        Number.isSafeInteger(handoff.savedRows) && handoff.savedRows > 0) {
+      expected = await hydrateState(handoff.savedState, handoff.savedCols, handoff.savedRows);
+    } else {
+      // Empty snapshots retain the existing page-origin contract; nonempty snapshots require saved dimensions.
+      assert.equal(handoff.savedState.data, '');
+      expected = { cols: terminal.terminalCols, rows: terminal.terminalRows, lines: [],
+        visibleLines: Array(terminal.terminalRows).fill(''), cursorX: 0, cursorY: 0, viewportY: 0, bufferType: 'normal' };
+    }
+    check('pageBufferMatched', await assertBuffer(handoff.nodeId, expected.lines.filter(line => line.length > 0)) === true &&
       Array.isArray(terminal.terminalVisibleLines) && terminal.terminalVisibleLines.length === terminal.terminalRows &&
-      terminal.terminalVisibleLines.every(line => line === ''));
-    check('pageCursorOrigin', terminal.terminalCursorX === 0 && terminal.terminalCursorY === 0);
-    check('pageViewportOrigin', terminal.terminalViewportY === 0);
-    check('pageNormalBuffer', terminal.terminalBufferType === 'normal');
+      same(terminal.terminalVisibleLines, expected.visibleLines));
+    check('pageGeometryMatched', terminal.terminalCols === expected.cols && terminal.terminalRows === expected.rows &&
+      terminal.terminalCursorX === expected.cursorX && terminal.terminalCursorY === expected.cursorY &&
+      terminal.terminalViewportY === expected.viewportY && terminal.terminalBufferType === expected.bufferType);
+    report.pageBufferEmpty = report.pageBufferMatched;
+    report.pageCursorOrigin = report.pageGeometryMatched;
+    report.pageViewportOrigin = report.pageGeometryMatched;
+    report.pageNormalBuffer = report.pageGeometryMatched;
     const finalNode = nodeIn(after, handoff.nodeId);
     assert(finalNode?.status === 'stopped' && finalNode.metadata?.agent?.liveSession === false &&
       same(finalNode.metadata.agent.serializedTerminalState, handoff.savedState) &&
@@ -135,4 +182,9 @@ async function runEmptySnapshotReopen({ config, hostPid, workspaceFolders, activ
   return report;
 }
 
-module.exports = { runEmptySnapshotReopen, reopenReportPassed, completeEmptySnapshotReopen, REOPEN_CHECKS };
+async function runEmptySnapshotReopen(options) {
+  return runSnapshotReopen({ ...options, requireEmpty: true });
+}
+
+module.exports = { runSnapshotReopen, runEmptySnapshotReopen, reopenReportPassed,
+  completeSnapshotReopen, completeEmptySnapshotReopen, REOPEN_CHECKS };
