@@ -14,6 +14,7 @@
 
 ## 近期已收口
 
+- 2026-10-01：第49节三平台schema2/实际requirements、旧Node同名namespace和六资产聚合代码已实现，固定分发脚本本地Linux x64整条构建/双宿主加载/归档通过。首次六格远端产物、最低OS原生环境、最终产品版本及默认准入仍在原B2/A5有限队列；加载不等于PTY/页面验收，不增加通用工具债务。
 - 2026-10-01：第47节root写失败阻断已有reader最终水位已分离发布与保存，真实root writer先红/Host147回归后，新固定installed包原多根场景唯一复验exit0并独立核对。A真实EISDIR仍保来源/binding且原reader applied4，B原执行nonce24.9ms，reset零责任、真实空registry落盘后外部TERM与资源退出通过；旧包首败和cleanup失败不追认。该多根格收口，不代证自动重试、root稳定归属或snapshot-only实际Host离开。第48节旧banner断言按32.4修正后八项通过，原4/6保留。
 - 2026-10-01：A2/A3已结束snapshot被页面resize只改尺寸标签的跨平台结构问题已修；实际Host先红3/12后最小保护16/16、原Host147/147、Runtime completed及typecheck通过，保留原快照内容和原尺寸，新candidate仍独立获得当前viewport。原macOS Claude整轮因果、实际页面/非空stop重开仍未证明；既有浏览器六例4过/2失败原现场保留，具体终态责任继续按生产接入第48节处理，不将局部修复写成总体收口。
 - 2026-09-17：F-05 的新 Runtime completed 历史内联已收口。用户明确重开不需要进程或历史后，Host 只保存轻量终态，可明确识别的旧 Supervisor completed stream 加载时清理；当前页面仅临时收齐尾部，保存失败保留来源。实际 completion + writer fixture 为 Terminal 781 / Agent 812 字节，输出体积增大不改变保存体积；Linux 常规完成重开、真实关闭再开、单根转多根与实际 xterm 逐行 90000 行已有通过证据。完整终态临时聚合仍计入 F-04，旧 serialized-only 来源模糊记录保留兼容，不把整个运行时或极端尾部短读写成已修复。设计与证据见 `docs/design-docs/runtime-completed-no-history.md`、`docs/exec-plans/completed/runtime-completed-no-history.md`。

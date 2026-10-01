@@ -1,0 +1,85 @@
+name: Execution Native Distribution Assets
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-execution-assets-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-assets:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64-glibc
+            runner: ubuntu-24.04
+            arch: x64
+          - target: linux-arm64-glibc
+            runner: ubuntu-24.04-arm
+            arch: arm64
+          - target: darwin-x64
+            runner: macos-15-intel
+            arch: x64
+          - target: darwin-arm64
+            runner: macos-15
+            arch: arm64
+          - target: win32-x64
+            runner: windows-2025
+            arch: x64
+            compilerArch: x64
+          - target: win32-arm64
+            runner: windows-11-arm
+            arch: arm64
+            compilerArch: amd64_arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout fixed asset input
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup actual target Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '25.6.0'
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - name: Setup target compiler
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.compilerArch }}
+      - name: Install locked build dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check bounded distribution contract
+        run: node scripts/test/test-execution-distribution-assets.mjs
+      - name: Build and load the same native asset in minimum and current hosts
+        run: node scripts/build/build-execution-distribution-assets.mjs --target=${{ matrix.target }} --output="${{ runner.temp }}/execution-assets/${{ matrix.target }}" --artifacts="${{ github.workspace }}/execution-asset-artifacts"
+      - name: Upload runtime files and finite load summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-native-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: execution-asset-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve available build and load evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-native-evidence-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/execution-assets/${{ matrix.target }}/manifest.json
+            ${{ runner.temp }}/execution-assets/${{ matrix.target }}/execution-owner.node
+            ${{ runner.temp }}/execution-assets/${{ matrix.target }}/spawn-helper
+            ${{ runner.temp }}/execution-assets/${{ matrix.target }}/conpty.node
+            ${{ runner.temp }}/execution-assets/${{ matrix.target }}/conpty/conpty.dll
+            ${{ runner.temp }}/execution-assets/${{ matrix.target }}/conpty/OpenConsole.exe
+            ${{ runner.temp }}/execution-assets/${{ matrix.target }}-inputs-*/minimum-load.json
+            ${{ runner.temp }}/execution-assets/${{ matrix.target }}-inputs-*/current-load.json
+          if-no-files-found: warn
+          retention-days: 14

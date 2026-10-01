@@ -1,5 +1,7 @@
 # 交付跨平台执行会话退出完整性
 
+当前工程状态补充（2026-10-01，第49节）：三平台schema2、Linux旧Node同名namespace和六资产聚合已提交，固定六格无凭据workflow完成局部复核；本地Linux x64整条构建/双宿主加载/归档已通过。下一只首次运行六格原生分发矩阵，再继续下段有限五包；不是重新实施已完成的兼容代码。最低OS真机环境与现代runner验证分账，普通构建仍stock。
+
 当前唯一执行队列（2026-10-01）：Windows真实Agent36854266396 attempt2原八场、Windows产品36852373473原Terminal六报告/四环境、macOS新helper产品36858038984、macOS真实Agent36858502983、A3第38节两例及A6第39节Runtime reload均已独立核对，不重复排队；所有attempt1与历史失败保留。第44节Remote Linux x64 loopback原四阶段及第47节新固定包A6实际多根组合也已独立通过：A真实EISDIR仍保来源/binding，原reader applied4，B原执行nonce24.9ms，空registry落盘后独立清理通过，旧首败不改。macOS Claude snapshot-only stop非空保存未重开，第48节局部尺寸修复不代证该页面格。其余只按有限收尾第8节五包：六资产/兼容/正常分发与准入、A1最终结构及关键回归、A2/A3未填页面格、A6 snapshot-only实际Host离开、剩余installed/support与最终证据表。当前第49节正在实施Linux schema2实际requirements、arm64及旧Node同名namespace；F-04及默认启用未完成，不增加通用工具阶段，后续历史“当前/下一”不构成追加队列。
 
 该队列实际增量：e10ad8aa的Windows36841262535已通过私有目录/全部文件ACL及原isolatedCheck，随后Darwin observer夹具混用Windows路径规则首败；只在夹具显式path.posix，原角色断言保持，三条observer/CLI局部命令通过。macOS36841263618仍按原矩阵运行中，未宣称结果。A3第38节冻结真实单surface切换/跨Host reader两例，A5第37节固定部署目标在实现；均不重跑已完成容量组合。
@@ -105,7 +107,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01，第47节) 新固定包c4df29f5的原多根组合唯一复验exit0，input/installed/case/cleanup独立核对及冻结断言重放通过；A真实EISDIR/原binding/EOF与原reader applied4、B原执行24.9ms和空registry落盘后清理均成立，旧首败不改。
 - [x] (2026-10-01，第49节) 三平台schema2分离构建来源与实际要求，Linux arm64选择/旧Node同名namespace、Windows静态addon CRT、六资产聚合及执行端profile选择已实施；统一资产回归、typecheck、Host147/Supervisor94通过，默认仍stock。
 - [x] (2026-10-01，第49节) 实际Node16/25同名namespace双向互斥通过；另用固定buster/glibc2.28编译的同一x64 addon在旧容器、Node25和当前Electron成功factory检查/加载，无PTY，不代证旧OS页面。
-- [ ] (2026-10-01，第49节) 六格手动无凭据构建/同产物最低与当前宿主装载，随后原产品验收与默认准入；最低macOS/Windows隔离环境已询问，尚未作支持政策变更。
+- [x] (2026-10-01，第49节) 固定六格无凭据workflow及最小build/load脚本已形成，窄测试通过；本地整条Linux x64构建/基线/Node16与25同产物加载/归档exit0，glibc分别2.28/2.35。独立复核只补失败时已有产物保留，不生成成功摘要。
+- [ ] (2026-10-01，第49节) 首次六格远端构建/同产物最低与当前宿主装载，随后原产品验收与默认准入；最低macOS/Windows隔离环境已询问，尚未作支持政策变更。
 - [x] (2026-10-01，第48节) 实际Host/headless先红3过/9失败后六行snapshot尺寸保护使原12项通过，独立Host147/147、Runtime completed与typecheck通过；不证明原macOSrun唯一因果。
 - [x] (2026-10-01，第48节) 新增submitted/replacement负向组合及原序列化入口回归通过，新增16/16。
 - [x] (2026-10-01，第48节) 页面旧fixture错误要求合成exit banner，按32.4既定契约改为无合成正文且原tail/不替换不变，相关八例通过；原4/6保留。非空snapshot实际页面/重开不由此代证。
@@ -1048,6 +1051,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-01，第49节分发脚本的Linux x64整条路径已实际完成，而非仅局部测试；同一addon双宿主加载、runtime-only归档及有限摘要成立。六格远端运行尚待首次调度，最低OS与PTY/页面未由load验证，下一仍属原六资产/最终产品清单，不追加工具阶段。
 
 2026-10-01，第49节兼容与聚合代码及局部回归完成，Linux x64同产物在glibc2.28/Node16、Node25和当前Electron装载通过，旧Node同名互斥也有独立原生证据。仍没有六架构原生产物全集/最低OS产品通过，六格workflow在准备，最终F-04、页面/Host离开和普通默认准入保持未完成；不以新的测试数量替代原有限清单。
 
@@ -2318,3 +2323,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-01，macOS新helper与有限收尾回收）：同步第46节macOS新helper产品run36858038984与真实Agent run36858502983；产品Node/provider四场、Electron Terminal两模式和真实Agent八场安全摘要按各自边界记账，Claude snapshot-only stop非空保存未执行重开，旧helper首败和诊断未知不追认。Windows产品/Agent及Remote回收状态同步为已完成子项，当前只剩第8节五组有限收尾，不追加D3/D4或重复平台矩阵。
 
 修订记录（2026-10-01，实际多根收口与生产兼容）：将第47节新包通过及旧首败分账，移出已完成的多根格；第49节实施三平台schema2、旧Node同名namespace、六资产聚合与真实执行端选择，登记Linux x64同产物旧glibc/新Node/Electron装载通过。四个活章节与步骤同步，六格原生构建、最低OS与最终产品验收仍开放，默认stock及原尾部完整性要求不变。
+
+修订记录（2026-10-01，固定分发整体路径）：记录无凭据六格构建输入、Windows ARM64最低宿主替代的准确身份、本地Linux x64整条实际通过与失败工件保留。原生远端尚待执行，不以load/局部测试替代产品验收，不新设通用诊断前置。
