@@ -17,7 +17,7 @@ const acceptance = workflow.jobs['real-agent-linux'];
 assert.equal(baseline.if, "github.event_name != 'workflow_dispatch' || !inputs.real_agents");
 assert.equal(acceptance.if, "github.event_name == 'workflow_dispatch' && inputs.real_agents");
 assert.deepEqual(baseline.strategy.matrix.os, ['ubuntu-latest', 'macos-latest', 'windows-latest']);
-assert.equal(acceptance['runs-on'], 'ubuntu-24.04');
+assert.equal(acceptance['runs-on'], 'ubuntu-22.04');
 assert.equal(acceptance.environment, undefined, 'Repository secret acceptance has no Environment dependency.');
 assert.equal(acceptance.strategy, undefined, 'Real Agent acceptance must not fan out into a matrix.');
 assert.equal(acceptance.env, undefined, 'Preparation must not inherit the Agent credential.');
@@ -41,6 +41,9 @@ assert.match(cliInstall.run, /@anthropic-ai\/claude-code@2\.1\.280\b/u);
 const linuxDependencies = step('Install Linux desktop and sandbox dependencies');
 assert.match(linuxDependencies.run, /\bxvfb\b/u);
 assert.match(linuxDependencies.run, /\bbubblewrap\b/u);
+assert.match(linuxDependencies.run, /\blibgtk-3-0\b/u);
+assert.match(linuxDependencies.run, /\blibasound2\b/u);
+assert.doesNotMatch(linuxDependencies.run, /t64/u);
 assert.match(linuxDependencies.run, /bwrap --unshare-user --ro-bind \/ \/ \/usr\/bin\/true/u);
 assert.doesNotMatch(linuxDependencies.run, /sysctl|apparmor_restrict|disable.*(?:apparmor|sandbox)/iu);
 const vscode = step('Prepare fixed VS Code');
@@ -65,7 +68,8 @@ assert.match(run.run, /\.debug\/agent-ci-\$\{GITHUB_RUN_ID\}-\$\{GITHUB_RUN_ATTE
 assert.match(run.run, /umask 077/u);
 assert.match(run.run, /> "\$RUNNER_TEMP\/agent-candidate\.log" 2>&1/u);
 assert.match(run.run, /else\n\s+echo 'Real Agent acceptance failed; sanitized report: agent-ci-report\/' >&2\n\s+exit 1/u);
-assert.match(run.run, /echo 'report_ready=true' >> "\$GITHUB_OUTPUT"/u);
+assert.doesNotMatch(run.run, /GITHUB_OUTPUT|report_ready/u,
+  'Only the runner may publish report readiness after writing the sanitized report.');
 assert.doesNotMatch(run.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/u,
   'The acceptance step must not expose raw output or credential values in Actions logs.');
 assert.equal(acceptance.steps.filter(candidate => candidate.run).at(-1), run,
