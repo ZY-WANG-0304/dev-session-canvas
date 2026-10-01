@@ -2188,3 +2188,33 @@ Remote URI边界补充：Remote Extension Host可能将workspace URI转换为 `f
 同输入attempt2已完成，job `110344192808` success。仅回收安全artifact `11157772291` 至 `.debug/windows-agent-36854266396-attempt2/summary.json`，SHA256 `5b623af6c9a55419ae3b3904f8b758611ffa78ab89069166b43719e921e9f5f1`；13项非dist源码hash与该提交Windows CRLF checkout一致，不将换行差异误判为旧源码。固定Codex0.157.1/Claude2.1.280、DeepSeek原八场全部passed，四natural真实预期响应/EOF、八场实际CLI及完整启动链观察通过；所有cleanup bindings/failures/remaining/unknown/unconfirmedSignals均0，cleanupActionKinds为空。stop仍是产品主动停止，事后无清理信号不表示产品未发停止信号；不把这轮source均EOF推广为stop保证。两snapshot-stop为735/1947字节非空状态，原reader/lifecycle/sequence与resize后saved-page对账成立，故reopen未要求也未执行；原始geometry/replay不匹配与独立投影not-proven保持。旧空态重开证据仍只属于原输入，不由本轮补造通过。该固定Windows真实Agent矩阵不再排队，attempt1及全部旧失败保留，不称旧前置慢点或全部间歇失败已定位。
 
 Windows产品 `36852373473` 的整包下载在600秒退出124；随后仅按该artifact中央目录范围读取18份原报告，未下载整包，保存在 `.debug/windows-product-36852373473-ranges/`。六份completed/reopened/cleanup、四份environment已独立逐字段核对，`report-crosscheck.json`记录原报告hash：实际VS Code1.117.0/Electron39.8.7/Node22.22.1/ABI140，两个writer原句柄exit0、各成功写入5580102bytes/90000行，尾部UTF-8/ANSI及光标(6,2)、实际EOF/原reader applied通过，finalRevision分别1382/1381。Runtime节点616bytes且新Host重开closed/空历史；snapshot-only节点5766998bytes，重开保留5580063字符及原终态；两cleanup bindings均0。该原两模式Terminal组合收口，不反推第42节为旧失败唯一原因，不要求合法外部引用的进程对象消失，不代证Remote、六资产/默认分发或完整A5。
+
+## 46. macOS 新 helper 产品与真实 Agent 收口
+
+提交 `8ae426c9` 的 macOS 新 helper 已完成一次产品与一次真实 Agent 验收。产品 run `36858038984` / job `110355130607` 使用 `macos-latest` arm64 runner；artifact `11160311635` 为592998864 bytes，仅按ZIP范围提取必要报告、manifest、helper输入及原生文件，未下载整包。原证据保存在 `.debug/macos-product-36858038984-ranges/`。Node/provider的namespace、normal、paused-stop、partial-create四场均pass且cleanupSafe；normal实际exit7/source EOF、accepted=consumed=4、terminal applied及本方资源released，paused-stop明确SIGHUP/interrupted而非EOF，partial-create预期失败保留process unconfirmed/source unknown及quarantine，不冒称自然成功。
+
+同artifact的六份Electron Terminal completed/reopened/cleanup与四份environment已独立核对：VS Code1.117.0/Electron39.8.7/Node22.22.1/ABI140，两writer均成功写5580102 bytes/90000行，SHA256 `e03d6d758493454da0946cc62e7c17fb2444e39afaa7639c8a88ad271eaff48f`；原90002行、UTF-8/ANSI尾部、光标(6,2)、source EOF及同reader applied通过。Runtime finalRevision9401、完成节点556 bytes，新Host重开closed/空历史/无新执行；snapshot-only finalOutputSequence8634、节点5766938 bytes，重开恢复5580063字符及原终态；两cleanup bindings均0。complete/reopen Host PID分别3004→3410与3878→4572，不是复用旧Host。
+
+Node25.6.0/ABI141与Electron39.8.7/ABI140的manifest分别保留实际构建运行时；两份manifest记录的addon SHA256均为 `c1b171b5f8bcdb74fa29e9d84c58e10520ed6c3e43757c1ce990082072ac7966`，helper均为 `8494089d371e20b2a42e0b88a6a39611eaefd10d9d08ae9837d5fd514c580019`。patched helper输入SHA256 `35ed5c2dfb2df7e605f367f0026dff54e51c2a7e7cf96829ee10681f7741bd13` 与manifest一致，owner/shared/patch/upstream helper摘要与8ae426c9逐文件匹配；实际Mach-O均arm64、部署目标11.0。该来源和最新runner实测不能代证x64或macOS10.13/10.14。
+
+真实Agent run `36858502983` / job `110356656416` 为同一8ae426c9、新helper、固定Codex0.157.1/Claude2.1.280与DeepSeek。仅回收安全artifact `11161645155` 至 `.debug/runtime-real-agent-macos-36858502983/summary.json`，整轮phase=complete/pass=true、原八场均passed、automaticHarnessRetries=0；四natural真实预期响应/实际EOF，八场实际CLI及启动链观察通过。八cleanup bindings/failures/forcedSignals/unconfirmedSignals/remainingActiveProcesses均0，cleanupActionKinds为空；stop仍是产品主动处置，不因source EOF或无兜底信号称自然任务完成。credentialContentsRecorded/rawLogsPublished均false，没有下载raw Agent正文或凭据。
+
+Codex snapshot-only stop为空、最终sequence11，完整初始回放与saved/published final相等；原页面geometry/visible比较仍false，独立hydrate仅resize后的geometry/visible/buffer全部true，因此沿33.10的严格resize分支通过，并实际由新Host重开空态、保持序号/节点且无新执行。pageProjectionIndependence仍not-proven，不把Host发布记录改称独立页面接收证明。Claude snapshot-only stop保存1262 bytes非空状态、最终sequence8；原reader/lifecycle/sequence与停止/保存/清理断言通过，但replayMatchesSaved/publishedFinalMatchesSaved及resizedSavedMatchesPage均false，保留具名诊断差异，不笼统称unknown或已证终态相等。按33.10既定非空分支，snapshotReopen.required=false且未执行；非空Agent stop的重开/终态等价未由此覆盖，不能仅凭八场pass关闭这些产品责任，也不凭该摘要直接认定产品丢尾。
+
+本节仅关闭新helper固定arm64的Node/provider、Electron Terminal两模式及原真实Agent八场运行门禁，保留旧helper36850339021及所有首败，不重跑取绿。A5其他架构/最低环境/安装分发、A1/F-04、A2/A3未覆盖页面及A6仍按有限收尾第8节处理；Claude的具名非空终态差异在原A2/A3最终状态责任内核对，不追加通用replay框架或平台笛卡尔积。
+
+## 47. A6 实际多根保存失败与另一画板交互
+
+本项只补既定A6的实际页面格：同一真实installed VS Code窗口中两个root的Runtime Terminal，A自然结束但root快照保存失败时，B仍能通过原Webview/PTY往返交互。固定使用第35/39节已有Electron VSIX，不重建、不启用默认产品路径、不改变root runtime归属。新runner和workspace driver独立于原共享矩阵；运行前核对固定包hash、安装来源与原生tuple，纯测只检查本场景断言和本方清理边界，不增加通用诊断能力。
+
+两个节点经原 `webview/createDemoNode(targetGroupId)` 入口落在不同root，正常保存后只读确认各自root快照与workspace快照。随后仅在A的 `root-local-canvas/<root hash>/canvas-state.json.tmp` 创建本轮拥有的空目录，触发原 `writeFileSync` 的真实EISDIR；不改workspace storage或runtime文件。A自然退出后，先只读取原diagnostics/debug state/Host messages/Supervisor与磁盘，冻结第一次失败和原binding/session责任；此之前不调用会写盘的flush或dump。主进程退出、真实EOF、尾部marker及同reader applied分别检查，保存失败不得清掉唯一来源/绑定或误重启执行。
+
+保持障碍存在，再经B原页面的 `measureCapacityInteraction` 发送新nonce，要求同主体、provider、Supervisor及reader收到真实 `DSC_A1_REPLY_<nonce>` 并在原1500ms内应用。该交互后的合法保存可能更新磁盘，不能把第一失败快照不变要求扩大到后续所有写入；也不预设移除障碍后会自动重试A保存。结束时只对本轮仍为空、同inode且非symlink的障碍执行rmdir，再走原reset；reset返回不代替零bindings/pending/nodes及本方主体/provider实际退出检查。必要的孤立idle Supervisor正常TERM单独记账，任何失败、未知或兜底动作不覆盖原结果。实际运行前保留harness来源，首次失败保留，不自动重试取绿。
+
+## 48. A2/A3 已结束快照的尺寸归属
+
+第46节Claude的安全摘要中，published final是66x21，saved metadata是96x30，replay没有resize snapshot。发布比较包含geometry，因此false至少由尺寸差异触发；replay按66x21消费、saved按96x30直接恢复，也不是同尺寸对照。`resizedSavedMatchesPage` 从saved metadata尺寸开始再resize到96x30，不能补回原尺寸历史。buffer true仅比较去空行/右侧空白后的文本，不证明完整终态；viewportY不是baseY，不能用cursorY加viewportY相等推导逻辑光标相等。仍保留本次八场原执行/退出断言通过，未证明非空停止后的画面/重开等价，也未证明正文丢失或macOS PTY缺陷。
+
+代码中存在可独立验证的跨平台风险：`CanvasPanelManager.resizeExecutionSession()` 在record已退役时，调用 `updateExecutionTerminalMetadata()` 改lastCols/lastRows但保留原serializedTerminalState；Webview完成后仍可能fit并上报新尺寸。原snapshot以final record的cols/rows生成，不能只改标签后按新尺寸hydrate。本次摘要没有resize时序，结构风险与原生run的完整因果分账。
+
+选定最小工程方向为保持已保存snapshot内容与原始geometry一致，页面当前布局尺寸不覆写它；不是禁止页面resize，也不重新创建已结束执行。先以真实Host方法和实际headless终端补Terminal/Agent共用分支的固定先红。保护范围是无session、snapshot-only、非live且保存了serializedTerminalState（包括空串）的节点；pendingLaunch也不能仅改旧snapshot标签。显式新建/恢复仍由页面当前terminalSizeRef传入cols/rows；若已有同metadata身份、未提交的candidateRuntimeStarts，只推进该次start.viewport，不改旧snapshot或currentMetadata。无保存快照仍沿原尺寸更新规则，live及Runtime恢复路径不顺手改变。验证使用有限含scrollback的66x21输入、completed后96x30上报与按原尺寸hydrate再reflow的对照，记录光标/视口语义，原false与旧证据保持。不发新模型请求、不扩大Agent矩阵或建设通用重放框架。
