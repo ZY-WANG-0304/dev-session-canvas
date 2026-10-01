@@ -2,6 +2,8 @@
 
 本 ExecPlan 按 `docs/PLANS.md` 维护，承接 `docs/design-docs/runtime-persistence-closeout.md` 的 B1/A1，不是新的退出诊断阶段。输入为 `8dd82629`。F-04 目标是长历史不再要求每层常驻/一次性复制完整后缀，实际在途数据有约束，恢复不挤掉交互；F-05 的无 completed 历史与退出尾部保证不变。工程判断由代理承担，不等待用户选择预算。
 
+当前入口（2026-10-01，覆盖后面的历史下一步）：容量设计 10.15 的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整 exit 0；B 回复 51ms 实际应用，同一 Webview 动作的 A 块号 12 到 18 满足 `0 < before <= after < 2560`，新 Host ready 后 13137.248ms 完整追平。原两主体/2:1候选/负载、1500ms 与不重置的30秒期限不变，完整后缀、原执行/新 reader、独立 journal/hash、自然 no-history 及两份 cleanup 通过，outer forcedSignals/failures 为空。该组合已覆盖，10.14 和旧失败不改；下一按生产接入第33节推进 B2/A5 的macOS产品owner/provider、两authority工厂、namespace及匹配Node/Electron/packaged接入，平台仍未验，Windows及F-04总体保持开放，不重复成功矩阵或追加工具阶段。
+
 当前入口（2026-09-30，覆盖后面的历史下一步）：10.13 已实施 reader-local 单段认证偏移索引并接通 Webview/Host 两消费链，10.14 的 `indexed-pages` 同输入实际重连完整 exit 0；Host ready 后 13.01 秒追平 2560 块、B 32.6ms，独立来源 hash/自然 no-history/清理通过，原 30 秒期限不改。同一新 2/1 构建的真实 Codex/Claude 两模式 natural/stop 八场景也已完整 exit 0。原四次重连 exit 1 保留，该固定冷恢复阻塞解除，不能关闭全部 F-04/A1。剩余必要产品组合、平台接入与分发继续按有限收尾契约；2026-10-01 第四轮 DeepSeek CI `36812745671` 的 Linux 真实 Agent 八场景有限通过，专用凭据已实证可用，不再列为用户阻塞。第三轮 Codex snapshot-only stop 间歇失败本轮未复现、根因未定位，不声称已修；macOS/Windows provider、build、namespace 工程仍未完成，不追加 CI 捕获循环或关闭总体。
 
 最新进展（2026-09-30）：显式 10/1 candidate 的 `.debug/a1-ten-session-20260930-probe-fixed/` color/size 十 Terminal 三档完整 exit 0，每例 27 次实际响应全部应用，最大 1365.5/1323ms；原运行前资源预算、来源 hash、自然退出无历史和清理通过，见容量设计 10.12。1280 档两例观察到同 reader 隐藏恢复的追赶交互重叠，不是 Host 离线恢复；两个 probe 前置 exit 1、v18 与更早失败保持。下一只推进原 A1/A2 的固定真实 Host 两次 launch 重连（10.11），不关闭 F-04、其余 A 项或正式准入，不新增工具阶段或 profiler 前置。
@@ -18,6 +20,8 @@
 
 ## 进度
 
+- [x] (2026-10-01，B1/A1输入) 设计10.15在运行前冻结原两主体color离线恢复的交互顺序/同动作前后块号/1500ms与不重置30秒判据，保留旧indexed-pages及全部内容/身份/清理。
+- [x] (2026-10-01，B1/A1有限验收) 原test窄调及runner判据摘要后，`.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整 exit 0：B51ms应用、A12到18未追平、ready后13137.248ms完整恢复，原身份/hash/no-history及两份cleanup通过，无强杀；不关闭总体或重跑求次数。
 - [x] (2026-09-30) 固定真实 Host 两次 launch 已执行；原执行身份/绑定、新 reader 与离线 source receipt 成立，但 `tail-observed` 在原 30 秒期限只到 1404/2560 块。四轮 exit 1 保留，末轮清理通过，B 新交互/独立 journal hash/自然无历史未到达，不记整体通过。
 - [x] (2026-09-30) 按容量设计 10.13 修复每页整段重扫：只保留单段认证偏移索引，每页释放读取保护。96 页读取量由先红 116286624 bytes 降到 <=2×1211319 bytes，完整性/取消/compact 回归通过；同输入实际冷恢复 `indexed-pages` exit 0，详见 10.14。
 - [x] (2026-09-30) B2 已接实际候选扩展与匹配 Electron 资产，Runtime/editor 和修后 snapshot-only 的对应有限完成/真实重开证据分别成立；后者 `snapshot-normalization-fixed` 单选 exit 0，旧 live 投影、夹具字段及真实重开失败均保留。Host 110/110 等回归通过；不是 A1 容量结果，不重跑合并阈值样本。
@@ -45,6 +49,8 @@
 - [x] (2026-09-28) 本轮结果/残余债务已同步，独立 review 的字节校验问题已复现并修复、复核无新阻塞，以本地提交交付该增量；F-04 未整体通过，计划保持 active，不 push/PR。
 
 ## 意外与发现
+
+2026-10-01，10.14的B交互安排在完整后缀之后，`overlap=false`不抵消原恢复通过。10.15只改变原动作顺序与readiness/判定，未增加数据或sleep，就观察到B51ms应用时A由12推进到18且仍未追平；本次来源hash与原输入一致、revision6502，随后原内容/身份/无历史及清理全部通过。该事实补齐具名组合，不能推导一般性能保证或将10.14改记重叠。
 
 2026-09-30 `indexed-pages` 在原输入/期限下完整 exit 0；局部确定性读取量对照证明重复扫描已消除，真实新 Host 13.01 秒完整恢复证明该固定流程达标，但两者不能量化所有耗时来源。独立 review 的“读取已 yield、释放未完成时取消”窗口已加检查/回归；只修原测试抽取缺两个 global 及旧 snapshot regex，未降低真实内容要求，详见容量设计 10.14。
 
@@ -83,6 +89,10 @@
 通知合并的独立 review 命中同 readId 重附着：relay 可返回旧 descriptor，页面对此不执行新 reader 的初始强制拉取，清掉较新 pending 会遗失唤醒。最终实现保留同身份通知信用，于 snapshot 后显式合并当前 session revision/title；原 receipt 有效但重复无效，frame/执行身份替换后的旧 receipt 无效。这样重复 attach 也不绕过单在途限额。另保留原通用 postMessage 的 void 契约，只让提示取得原投递 Promise，避免把其他 catch 续体改成等待投递。stock node-pty 的公共 pause 不足以证明退出 drain，故当前生产源有界化不能靠简单暂停补丁关闭。
 
 ## 决策记录
+
+2026-10-01 / Codex：返回原F-04/B1/A1，按10.15将B真实交互移到A部分恢复/B已挂载时，同一Webview动作保存前后块号且两者均小于2560；原1500ms及同一个30秒总追平期限、来源/身份/无历史/清理不变。理由是补现有离线恢复交互缺口，不增加负载/sleep/工具阶段；未重叠只能报未覆盖失败，不自动判产品退化。
+
+2026-10-01 / Codex：10.15固定一次完整通过后结束该组合，下一沿原B2/A5推进跨平台产品接入，不重复此样本、十会话或已通过Agent矩阵求次数。理由是新Host恢复与B交互的同动作证据及原完整性要求已经取得，剩余平台实现/产物和有限产品验收不是通用工具工作，整体F-04及第三轮Agent间歇失败仍保持未决。
 
 2026-09-30 / Codex：在原 A1/F-04 内选定 reader-local 单段认证偏移索引，先全段校验后按页定点验证，不保留整段正文。每页归还 activeReaders，故不采用跨远端消费等待的长寿 generator；新 reader 必须重新验证，dispose/错误不返回成功 EOF。Supervisor 同时接 Webview reader 和独立 Host 订阅，现有测试先红/修后验证重复工作与校验边界，随后按设计 10.11 原输入、30 秒期限复验，不放宽尾部或追加工具阶段。
 
@@ -132,6 +142,8 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 ## 结果与复盘
 
+当前增量（2026-10-01）已完成10.15实施与固定一次真实运行，`.debug/a1-host-reconnect-20261001-overlap/` 完整exit0、overlapAcceptance=covered。B51ms应用、A12到18；HostReady1501.906ms/fullApply14639.154ms/catchup13137.248ms，原30秒与1500ms不改。原执行/新reader、完整后缀、source26214425bytes/SHA `0167208c8b0fcf6bd465c0c19064d3f7584429ef32e4cbb2841f1e147ee5ed98`、revision6502/color-state、自然no-history和两份cleanup通过，outer forcedSignals/failures为空。旧indexed-pages及失败不改；下一B2/A5跨平台产品接入，F-04和其他A项未关闭。
+
 当前结果（2026-09-30）：`indexed-pages` 原固定冷恢复完整 exit 0，原绑定/主体/new reader、13.01 秒恢复、B32.6ms、独立来源 26214425 bytes/SHA、closed/no-history 与两份 cleanup pass 成立，旧失败不改。52 个重连样本总 RSS 峰值 2531540992 bytes、Host heapUsed72881284 bytes，只是本次观察。journal/owner92/92/Host信用/reader20/20/Webview39/39/Hostbatch10/10/原协议/checkpoint/typecheck/build通过。F-04/A1及其他既定验收仍开放；下面“冷恢复仍未通过”描述的是修前事实。
 
 同构建真实 Agent 复验也已完整 exit 0，证据 `.debug/a4-real-agent-20260930-indexed-pages/`，八项通过、四 natural 实际 eof、stop 不冒充自然结束、无 observer failure/强制清理信号；Host 145/145 和 Client 28/28 亦复验通过。这个有限结果不证明跨平台或所有 Agent 用法；尤其 stop 可以在真实 CLI 启动/认证界面发生，不表示完成了模型任务。
@@ -165,11 +177,15 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 ## 工作计划
 
+10.15已按固定一次结果收口：原test提前B动作并严查同动作重叠，runner仅增加冻结判据摘要，fixture、产品代码、源负载和原清理边界保持。下一按生产接入第33节推进B2/A5的macOS共享Unix owner、Darwin原生provider、两authority工厂、namespace及匹配Node/Electron与packaged接入，仍由现有计划承接，不新建工具项目；新产品产物须保留A1关键容量/交互回归，不复跑本次成功输入增加计数，也不将总体容量和准入责任延期。
+
 本计划只含三个可验证里程碑：真实调用链/预算及先红；直接产品修复与定向验证；相同负载容量和交互结果及总体缺口分账。它们不生成新的子阶段。checkpoint 先红直接禁止其校验构造全历史数组，原正确性回归须继续通过；socket/待写设计只沿已核对链路落实，不引入通用消息框架。
 
 当前按 B1 对 B2 的依赖继续既有生产验收，不新增容量工具里程碑。显式准入、固定十 Terminal 和 10.11 真实重连已分别取得有限通过，后者实现/证据见 10.13/10.14。同一 2/1 新构建的真实 Agent 收尾八场景已通过，后续依有限收尾契约补未覆盖产品组合/平台/分发，不能将旧研究条目整批重开。第四轮 DeepSeek CI 的 Linux 真实 Agent 八场景有限通过，凭据已实证可用，不再是用户阻塞，也不上传本机登录；第三轮 Codex snapshot-only stop 间歇失败仍未定位，未复现不等于修复，macOS/Windows provider、build、namespace 工程和总体 F-04 仍开放。candidate bound 不重启、旧 live 原绑定、普通构建 stock 不变，未确认格子不得由局部成功代证。
 
 ## 具体步骤
+
+本轮在仓库根完成原容量test顺序/readiness/严格重叠判定及runner一行判据摘要，独立只读复核无阻塞；随后仅执行一次 `node scripts/smoke/run-vscode-execution-candidate.mjs --capacity-reconnect --output=.debug/a1-host-reconnect-20261001-overlap`，完整exit0。同动作前后块号、B实际应用/耗时、不重置的完整追平期限及原identity/hash/no-history/cleanup已记录在新目录，不再把该命令列为待执行或自动重跑，旧目录保持。
 
 最新步骤：显式 2/1 candidate 已重建，`node scripts/smoke/run-vscode-execution-candidate.mjs --capacity-reconnect --output=.debug/a1-host-reconnect-20260930-indexed-pages` 完整 exit 0；输入和dist/helper哈希留在 input.json，两次 launch 共用原 runtime。实际 journal、Supervisor、Host credit、reader、projection、protocol、checkpoint、typecheck 及 build 验证见容量设计 10.14。十 Terminal 与原四轮重连失败分别保留，不覆盖旧目录或重复成功矩阵；下面 v4 状态及其后命令属于历史时点，不重新排队。
 
@@ -190,6 +206,8 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 2026-09-29 执行 `node scripts/test/test-execution-terminal-line-context-tracker.mjs` 取得修改前先红与修改后绿色，其他回归见结果段。固定样本命令 `node --expose-gc scripts/diagnostics/audit-owned-runtime-capacity.mjs --output .debug/owned-runtime-capacity-cancellation-first-20260929` 已运行一次，exit 1 保留，不自动重试或覆盖。当时安排的下一 profiler 归因由 2026-09-30 决定取代；如后续为具体问题使用现成工具，仍先说明观测范围/开销，其内存数字不得替换这次无 profiler 结果。
 
 ## 验证与验收
+
+10.15新增且仅新增一个组合判据：同一Webview动作记录 `0 < loadLastBlockBefore <= loadLastBlockAfter < 2560`，B真实响应在原1500ms内实际应用；随后原完整后缀在同一30秒总期限内追平，期限不因准备/交互重置。固定一次结果为A12到18、B51ms实际应用及13137.248ms追平，原两次Host/新reader及原执行身份、独立journal来源/hash、自然无历史与cleanup均成立。没有添加sleep/负载/会话或放宽断言；本机具名组合通过，不代证全部F-04、A3、跨平台或正式准入。
 
 固定十 Terminal 已按 10.10 原预算通过，数值和边界归档 10.12；不得将其扩大为正式部署上限或全部 A1 完成。下一 10.11 固定离线重连要求旧 Host 身份消失、原 Supervisor/provider/主体身份及绑定不变、新 reader、离线写入来源与实际页面保留后缀一致，再验 B 响应、自然完成无历史和本方资源清理。30 秒追平、1500ms 交互、每例 10 分钟与总 RSS 5 GiB 实验保护按原设计保持；是否观察追赶重叠独立记录，不伪造或放宽尾部完整性。
 
@@ -248,3 +266,7 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 修订记录（2026-09-30，冷恢复）：同步四次原始失败与末轮 1404/2560 内容进度，明确实际冷恢复是直接验收阻塞；选定单 reader/单段认证偏移索引窄修，拒绝跨消费等待保留读取保护。保留原校验、期限及其他验收，历史下一步不再自动重排。
 
 修订记录（2026-09-30，冷恢复修后）：10.13实现/针对性回归和10.14原输入真实运行完成，当前入口、四活章节、工作计划和执行步骤同步。只解除具名固定冷恢复阻塞，原四次失败不改，不关闭全部F-04或削减真实Agent/跨平台验收。
+
+修订记录（2026-10-01，离线恢复交互重叠输入）：新增设计10.15并同步当前入口/四活章节，只提前原B动作、固定同动作前后块号与原预算，保持color两主体/负载/身份/完整性/清理。新目录尚无结果，未重叠记未覆盖失败；不增加sleep、负载、ExecPlan或工具阶段，不重排历史。
+
+修订记录（2026-10-01，离线恢复交互重叠结果）：10.15固定一次完整exit0，B51ms应用时A12到18，随后原30秒内完整恢复、身份/hash/no-history及两份cleanup通过；同步当前入口、四活章节、步骤和验收。旧10.14/旧失败保留，下一回到B2/A5跨平台产品接入，总体仍未完成，不追加成功矩阵或工具阶段。

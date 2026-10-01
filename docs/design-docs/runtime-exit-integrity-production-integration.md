@@ -1702,3 +1702,21 @@ DeepSeek 官方接口提供 Codex 所需的 Responses 路径和 Claude 所需的
 第四轮 run `36812745671` 使用 `736f9ddd`，安全摘要为 `.debug/agent-ci-36812745671-summary/summary.json`，整轮 success、八场景 passed。四个 natural 均 `naturalResponseVerified=true`、预期 nonce 匹配且实际 source=eof，原 Webview、两模式持久化/无历史与全部场景断言通过；Codex 的两 natural 同时保有 turn.completed、finalMessage 匹配和无 metadata fallback，Claude 使用自身 result 格式，不要求冒造 Codex 事件。stop 四场按主动停止登记：Codex Runtime 的 source=eof，Codex snapshot-only 为 interrupted，Claude 两模式均 eof；source 关闭不把它们改写为自然模型任务完成。八份 cleanup 的 bindings/failures/forcedSignals/remainingActiveProcesses 全部为0。该结果实际证明本次 repository Secret、临时配置与真实 Codex/Claude + DeepSeek 的固定 Linux/Electron 八场景可用，预检本身仍不承担联网认证证明。
 
 第三轮 snapshot-only stop failure 在第四轮没有复现，但两轮之间只改报告与文档，业务、CLI 任务和原断言未变，因此没有已修复该失败的因果证据。独立核对两轮十个 buildHashes，只有 report 脚本变化，其余九项含四 dist、runner、原 test 和 helper 均一致，run/SHA 也已核实。固定 first-failure 定位字段虽已接入，第四轮全绿没有新的失败位置，第三轮 root cause 仍未知，继续作为 A4/A6 的具名间歇失败保留；不能以第四轮 success 追认第三轮通过，也不自动增加 CI 循环求再现。当前工程顺序回到既定有限清单中的剩余产品组合、B3 状态替换、平台接入/分发和最终准入，结合与该失败直接相关的既有实现路径作必要定位；不重排全部历史待办或扩诊断框架。Linux 有限八场景完成不关闭 F-04、A3 独立大尾部、完整 A5 或 macOS/Windows 产品验收。
+
+## 33. Darwin 产品原生接入
+
+### 33.1 运行前原生契约（2026-10-01）
+
+本增量将 macOS 接入现有产品 provider，不改冻结的 baseline/failure 诊断、旧断言或历史结果。显式 profile 为 `macos-owner-v1-candidate`，隔离 generation 为 `terminal-exit-macos-v1`；stock 和 Linux candidate 不因本增量默认启用或被替换。推进过程由现有容量收尾 ExecPlan 承接，不新增工具项目或验证矩阵。
+
+产品使用独立 provider 内同一个 token/env owner 执行非阻塞读写、resize 和唯一 `waitpid(pid, WNOHANG)`，不安装 stock 退出 callback，不创建 kqueue、wait thread、TSFN 或第二个 reaper。这个 polling 选择利用现有产品 adapter/channel 的调度与输出 credit 隔离，不将旧 Darwin kqueue/TSFN 诊断成功当作新实现验证。实际 Darwin native、Host/Webview 和 packaged 结果取得之前，平台仍未通过。
+
+创建保留锁定 node-pty 的 `posix_openpt`、slave 配置、`posix_spawn` 和同源 `spawn-helper` 的真实链；helper `execvp` 后主体 PID 不变。master、child 在各自取得时立即登记，失败不丢失已有责任；slave、low-fd-0/1/2、spawn-actions/attrs 分别记录取得和实际释放。所有 init/adddup2/addclose/setattr 返回均检查，只有初始化成功的对象才 destroy；POSIX spawn 错误使用直接返回码，不解读无效 PID。原始创建错误与释放错误分别保留，不用进程退出代证 provider 正确释放。
+
+现有九个 `fork`/`executionConfigure`/`executionSnapshot`/`executionRead`/`executionWrite`/`executionResize`/`executionPollWait`/`executionSignal`/`executionClose` 导出和参数保持。snapshot 新增 `creationResources`，只列实际取得的 `{resourceId, acquired, releaseAttempted, releaseResult, releaseErrno}`，资源 ID 固定为 `pty-spawn-actions`、`pty-spawn-attrs`、`pty-slave`、`pty-low-fd-0/1/2`。provider 用原 `resourceAcquired/resourceResult` 顺序报告；任何已取得条目没有实际成功释放都保留 unknown，并使整体 `resourcesSettled=false`。master/child/source 仍分别结算。
+
+每次 read 使用正容量 4096-byte Buffer；Darwin 只将真实 read 0 记 EOF，EIO 保留 read-error，不机械继承 Linux EIO 语义。UTF-8 尾片和已读数据沿原 channel 完整移交；主体退出、停止、取消或超时不等于 EOF。write 保留 partial/retry，resize 使用 token-bound `TIOCSWINSZ`；SIGHUP/SIGTERM/SIGKILL 仅作用于同 owner 尚未回收且本次 `WNOHANG` 返回 pending 的主体，退出 status 仅在返回本 PID 且 exited/signaled 时解码，其他错误保留 unknown。
+
+新增 authority 专用 `executionClaimNamespace(path): void`。路径为 authority 规范化私有 storage 下的绝对锁文件；native 用 `O_NOFOLLOW|O_CLOEXEC` 打开，核对普通文件、当前有效 uid、0600 权限、单一硬链接和路径/fd 的同一 dev/ino，以 `flock(LOCK_EX|LOCK_NB)` 取得排他。成功 fd 持有至进程退出，不能在 listener 关闭时释放，也不 unlink 文件；竞争者失败后关闭自己取得的 fd。锁文件/存储目录不能在运行期间替换；同 uid 主动篡改不作为不可信主体安全隔离承诺。authority 只取得 namespace，不 configure 执行 owner；provider 只配置执行 owner，不取得 namespace。私有目录建立、规范路径、旧 socket 处理与两 authority 启动由现有产品层负责。
+
+构建提供匹配执行端架构、实际 Node/Electron/ABI 的 Mach-O addon 和同源 helper，分别记录源码/二进制 hash 并保留 helper 可执行位；不加载 `.debug` 资产，不修改安装的 node-pty。原生源码/patch 受控测试只能证明选定源码和局部控制契约，不代替 Darwin 编译、加载或实际运行。本节冻结时尚无新 native 执行或 runner 结果。

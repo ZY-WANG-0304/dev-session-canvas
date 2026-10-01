@@ -1,5 +1,7 @@
 # 交付跨平台执行会话退出完整性
 
+当前执行入口（2026-10-01，优先于后面的历史下一步）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整exit0；真实新Host追赶时B51ms应用、A同动作12到18未追平2560，随后ready后13137.248ms完整恢复，原身份/hash/no-history及两份cleanup通过、outer forcedSignals/failures为空。该B1/A1组合收口，下一按生产接入第33节推进B2/A5的macOS产品接入：共享Unix owner、Darwin原生provider、两authority工厂/构建与namespace，保留独立profile/generation、匹配Node/Electron和packaged责任。该平台目前只有运行前设计，没有新平台通过；Windows、其余A项和总体仍开放，原10.14/旧失败及Agent snapshot stop具名未决项不改。
+
 当前执行入口（2026-10-01）：第四轮 run `36812745671`/`736f9ddd` 的 Linux/DeepSeek 原八场景全部 passed，四 natural 真实 nonce/EOF 与原 Webview/持久化断言通过，八 cleanup 的 bindings/failures/forcedSignals/active 均0。stop source 分别为 Codex Runtime eof、Codex snapshot interrupted、Claude两模式eof，均仍是主动停止。第三轮 snapshot-only stop failure 本轮未复现；两轮仅报告/文档变更，业务和断言未变，根因仍未知，具名保留而不声称修复。当前回到原有限产品清单的剩余组合、B3状态替换、平台/分发与准入，不为抓红自动追加CI/框架；四轮结果保持，Linux凭据已实证可用，F-04/完整A5/macOS/Windows未关闭。
 
 当前状态（2026-09-30）：有界索引顺序读取已实施，`.debug/a1-host-reconnect-20260930-indexed-pages/` 同一 2/1 Electron candidate 完整 exit 0，新 Host ready 1422.291ms、完整应用 14431.416ms、追平 13009.125ms；B 响应 32.6ms、独立 journal/hash、原执行身份及新 reader、完整保留后缀、自然 closed/no-history 和两份 cleanup 通过，outer `forcedSignals=[]`。原 30 秒和完整性边界保持，四轮旧 exit 1 不追认；解除的是该固定冷恢复阻塞，不关闭整个 F-04/A1 至 A6。真实重连追赶交互重叠为 false，不能从追平后 B 响应推断。同一新 2/1 构建 A4 `.debug/a4-real-agent-20260930-indexed-pages/` 八场景也已完整 exit 0，natural 四项响应/实际 source EOF 通过，stop 保留主动停止，八份 cleanup 无 binding/process failure/forcedSignals；Claude stop 为 startup/auth 等待界面，不代表完成模型任务。具体结果见生产接入 32.19，不追加工具阶段。
@@ -26,7 +28,7 @@ A4 `.debug/a4-real-agent-20260930-capacity-regression` 的 Codex/Claude × Runti
 
 当前有限增量让既有真实 Agent 生命周期验收在 GitHub CI 中使用专用 DeepSeek 凭据可重现：用户看到的仍是真实 Codex/Claude 经画板启动、响应、完成/停止和尾部结算，而非假 Agent 或模型能力测试。只有固定 Linux/Electron 输入实际运行并形成安全摘要才记新增通过；暂时配置可用、secret 名称存在或官方账号 status 不构成产品成功。跨平台与整体容量完成定义保持。
 
-本次已由代理选定整体终点：运行期容量/交互有明确约束，已结束 Runtime 不留正文，当前有效页面仍收齐主体尾部并正确应用终态。B2 的 Client/backend/launcher 具名 profile、隔离 generation、安全首次启动和实际 extension 两模式入口已接通，匹配 Linux Electron 资产已实际运行；候选由显式构建选定，普通构建仍 stock，不按残留资产自动启用。当前 A2/A3 三项具体页面失败和 A4 真实启动前提已修，真实 Agent 八场景的 Linux 有限证据成立，B3 的有限责任复核并入原 A6。32.16 显式构建准入和固定十 Terminal 的声明预算/内容/交互已通过，见容量重评 10.12；固定 10.11 真实 Host 离线重连经有界索引读取修正后在原 30 秒内通过，同一新 2/1 构建 A4 八场景也已通过，见生产接入 32.19。真实重连追赶交互重叠仍未覆盖，不能由同 reader 隐藏恢复结果代替。其余 A1 至 A6、真实 Agent/Webview/跨平台要求不削弱，不再先让合并夹具压线。以下目标均为历史阶段范围。
+本次已由代理选定整体终点：运行期容量/交互有明确约束，已结束 Runtime 不留正文，当前有效页面仍收齐主体尾部并正确应用终态。B2 的 Client/backend/launcher 具名 profile、隔离 generation、安全首次启动和实际 extension 两模式入口已接通，匹配 Linux Electron 资产已实际运行；候选由显式构建选定，普通构建仍 stock，不按残留资产自动启用。当前 A2/A3 三项具体页面失败和 A4 真实启动前提已修，真实 Agent 八场景的 Linux 有限证据成立，B3 的有限责任复核并入原 A6。32.16 显式构建准入和固定十 Terminal 的声明预算/内容/交互已通过，见容量重评 10.12；固定 10.11 真实 Host 离线重连经有界索引读取修正后在原 30 秒内通过，同一新 2/1 构建 A4 八场景也已通过，见生产接入 32.19。10.15另以固定一次新证据证明真实新Host追赶时B51ms应用、A12到18未追平，不改10.14的overlap=false，也不由同reader隐藏恢复代证。其余A1至A6、真实Agent/Webview/跨平台要求不削弱，下一按生产接入第33节实现macOS产品路径，平台仍未验；不再先让合并夹具压线。以下目标均为历史阶段范围。
 
 S16只交付普通completed旧续体不复活已清root、不覆盖其他root更新或清理replacement；reader/persist窗口的失败只恢复仍属本次投影的节点执行字段。该窄目标已有受控Host回归，不等于完整非永久事务或全部迟到UI安全。
 
@@ -86,6 +88,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [x] (2026-10-01，B1/A1) 容量设计10.15原两主体重连只提前B交互，固定一次完整exit0；B51ms应用时A12到18，随后13137.248ms追平，原身份/完整后缀/hash/no-history和两份cleanup通过。旧10.14/失败保留，不重复成功矩阵或关闭总体。
+- [ ] (2026-10-01，B2/A5) 生产接入第33节已冻结macOS运行前契约，下一实现共享Unix owner、Darwin原生provider、两authority工厂/匹配构建与namespace；尚无新Darwin编译、原生或产品通过，不用Linux/冻结诊断代证，Windows及其他验收继续开放。
 - [x] (2026-09-28) 按用户要求暂停自动阶段；基于 ba2c148b 只读复核 F-04/F-05 与退出接线，形成有限收尾草案，区分已完成、B1 至 B3、A1 至 A6、延期及 R1 独立归属计划。
 - [x] (2026-09-28) 用户要求代理作出判断；完成定义与 B1 -> B2（含 B3）-> 整体回归的工程顺序已选定，取消等待用户确认清单的前置。预算由代理负责论证，不冒称已有实测或用户 SLA。
 - [x] (2026-09-30) 同步预算重评：原 64/128 MiB 和 exit 1 保留为合并进程观察信号；取消 profiler/压线优化作为 B2 前置，F-04 与最终 A1 保持开放。
@@ -380,6 +384,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-10-01，10.15将原B动作提前到新reader已挂载/A已有编号内容后，就实际观察到同一Webview动作中A12到18、B51ms应用；随后原完整后缀在ready后13137.248ms通过。无需sleep、扩大负载或暂停消费，10.14此前overlap=false仅说明当时动作安排未覆盖该组合。本次独立source26214425bytes/hash/revision6502、原执行及新reader、自然无历史和两份cleanup均通过，但不构成一般容量或平台保证。
+
 2026-10-01，第四轮八场景全部通过，四natural真实响应/nonce/source EOF及原Webview/持久化断言建立Linux固定CLI/凭据实际可用证据，不能追改第二轮586bytes或第三轮snapshot stop failure。第三与第四轮十个buildHashes只有report脚本变化，其余九项含四dist/runner/原test/helper一致；新增定位字段在全绿轮没有失败样本，故仍不知道第三轮哪个断言失败。Codex snapshot stop第四轮source=interrupted、其余stop=eof，均是主动处置，不能凭source类型把stop改为自然完成或认定第三轮被修复。
 
 2026-09-30 `indexed-pages` 同构建真实 Agent 复验完整 exit 0，Codex/Claude × 两模式 × natural/stop 八场景的 schedule/result 均通过。natural 四项 `naturalResponseVerified=true` 且真实 completed event source=eof；stop 四项 `sourceEofClaim=false`，其中 Claude 实际 startup/auth 等待界面可停止，不代表完成模型任务。八份 cleanup 无残留 binding、process failure 或 forcedSignals。Host wiring 145/145、Client 28/28 也通过；当前证据覆盖新构建，不把旧 dist 记录追认为新构建通过。
@@ -634,6 +640,7 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+- 决策：10.15固定一次完整通过后，结束该离线追赶交互组合，按生产接入第33节推进原B2/A5的macOS产品owner/provider、两authority工厂、匹配产物与namespace，不追加成功矩阵或平台诊断框架。理由：当前取得的是具名Linux真实用户流程证据，剩余阻塞是已有承诺中的平台产品能力；运行前设计不等于新平台通过，Windows和其他有限验收仍保留。日期/作者：2026-10-01，Codex。
 - 决策：按用户选择保留真实 Codex/Claude CLI，将 CI 模型后端统一为 DeepSeek；先复用 native workflow manual input 接固定 Linux x64/glibc Electron 八场景，以 step 级 secret 和独立临时 CLI 配置交接凭据，通用 smoke secret filter 不放宽，远端只发布经 key 内容扫描的固定摘要。理由：解除专用认证前提，同时维持真实 CLI/Host/Webview/尾部及资源验收，避免凭据与 raw/HOME 外泄；官方兼容接口不能代证固定版本实际可用。日期/作者：2026-10-01，Codex。
 - 决策：保留 Ubuntu24.04 首次 sandbox 准备失败，后续改选更接近已验证本机 glibc 基线的 Ubuntu22.04，并先冻结完整产品候选；不禁用系统安全策略或 bwrap/CLI sandbox，不修改期限/断言。理由：本次失败发生于安装/构建/secret 验收前，只证明该准备条件不成立，不是模型认证、PTY 或平台 bug 的证据；raw 仅留临时 runner、私有凭据配置主动清理和扫描后 report_ready 上传各自留责。日期/作者：2026-10-01，Codex。
 - 决策：第二轮首场失败只补既有固定安全摘要的 turn 完成/失败、nonce 匹配、missing-model-metadata 分类及 first-failure 实际 source，再以假 key/loopback 复现确认原因；当前不写 catalog 根因或修改严格断言。理由：现有宽分类不足以区别 warning 与请求失败，必要判定事实可用有限布尔/枚举补齐，无须发布原文、扩诊断框架或重跑求绿。日期/作者：2026-10-01，Codex。
@@ -868,6 +875,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 
 ## 结果与复盘
 
+2026-10-01，容量10.15新目录 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整exit0，B51ms实际应用、A同动作12到18、HostReady1501.906ms/fullApply14639.154ms/catchup13137.248ms；原30秒与1500ms未改。独立source26214425bytes/SHA `0167208c8b0fcf6bd465c0c19064d3f7584429ef32e4cbb2841f1e147ee5ed98`/revision6502/color-state与receipt一致，原执行及新reader、完整后缀、自然no-history和两份cleanup通过，outer forcedSignals/failures为空。本机具名离线追赶交互已覆盖；下一实施生产接入第33节macOS产品路径，尚无该平台新通过，不关闭F-04/总体或改写旧结果。
+
 2026-10-01 第四轮 `36812745671`/`736f9ddd` 的 `.debug/agent-ci-36812745671-summary/summary.json` 记录整轮success/8passed，四natural真实响应/nonce/EOF和原断言通过，八cleanup四计数均0。stop的Codex snapshot interrupted和其他三项eof按主动处置分账。前三轮原证据保持，尤其第三轮snapshot stop failure本轮未复现但无业务/断言改动，根因未知、不算已修；有限字段接入没有新失败位置可供定位。Linux认证路径不再是用户阻塞，当前回到原产品清单并保留该具名未决项，不关闭F-04/完整A5/跨平台。
 
 当前 A1/A2 的固定冷恢复阻塞已在 `indexed-pages` 新证据中解除：读取索引窄修已实施，原输入/30 秒下 13009.125ms 追平，来源 hash/revision6499、原主体/绑定/新 reader、完整后缀、B32.6ms、自然 no-history 与两 cleanup 全部实际通过。四轮旧 exit 1 和证据局限原样保留，B 发生于追平后，overlap=false；同一新构建 A4 八场景也已完整 exit 0，自然响应/EOF、主动停止和清理分账，Claude stop 仅代表实际 startup/auth 等待状态可停止。不把局部完成扩大为整个 F-04/A1 至 A6、A3 独立大尾部或跨平台，也不重新安排工具阶段。
@@ -1056,9 +1065,9 @@ S5输入为a32b1510，仅本运行时树修改。实际实现是`extensions/vsco
 
 ## 工作计划
 
-生产接入32.20的固定摘要和第四轮Linux真实八场景已完成各自有限验证，不再把CI凭据或该报告列为待接通。下一直接回到有限收尾清单的剩余用户组合、B3/A6状态替换、macOS/Windows产品provider/namespace/构建/分发及最终准入；第三轮Codex snapshot stop间歇失败随相关既有产品路径作必要定位，不能因本轮未复现就删除或宣称修复。不给该失败自动追加CI捕获循环，不重新排全部历史待办，不新增工具框架；原完整性/安全与旧live边界保持。
+生产接入32.20的固定摘要/第四轮Linux真实八场景及容量10.15离线追赶交互已完成各自有限验证，不再把CI凭据、该报告或该重叠组合列为待完成。下一按生产接入第33节实现macOS共享Unix owner、Darwin原生provider、两authority工厂、匹配构建与namespace，沿原B2/A5产品边界推进；真实Darwin/packaged未验，Windows、其他用户组合、B3/A6和最终准入保持。第三轮Codex snapshot stop间歇失败随相关既有产品路径作必要定位，不因未复现删除或称已修；不自动追加CI捕获循环或工具框架，原完整性/安全与旧live边界保持。
 
-有界索引读取和固定 A1/A2 冷恢复已完成各自有限验证，保留完整冻结段校验、页/在途及尾部篡改边界，不再将它们列为拟实现。同一新 2/1 candidate 的 A4 本机八场景已完整 exit 0；其余 A 项、B3、跨平台/分发与准入沿原有限清单，不因新结果自动追加工具阶段或重复已通过矩阵。真实重连追赶交互重叠仍未覆盖，2026-10-01 新 CI 后端需取得自身证据，不能用本机 Linux 两 Terminal/八 Agent 场景结果替代。
+有界索引读取和固定A1/A2冷恢复已完成各自有限验证，保留完整冻结段校验、页/在途及尾部篡改边界，不再将它们列为拟实现。同一新2/1 candidate的A4本机八场景已完整exit0；10.15真实重连追赶交互与32.20的DeepSeek CI分别取得自己的固定输入证据，不相互代证或回写历史。其余A项、B3、跨平台/分发与准入沿原有限清单，不因新结果自动追加工具阶段或重复已通过矩阵。
 
 S16窄修已完成，不继续扩大工具或全局屏障。31.15的reset/reload状态替换、首轮pending等待后callback、新业务准入及旧delete后UI身份作为剩余项保留；后续另行固定有限输入，不自动把全部剩余项排成下一轮矩阵，也不重复root prepare场景冒充全流程覆盖。
 
@@ -1177,6 +1186,8 @@ S1 最终定向32/32、typecheck 复跑、既有 bridge 回归、独立复审及
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+容量10.15已在仓库根固定一次运行 `node scripts/smoke/run-vscode-execution-candidate.mjs --capacity-reconnect --output=.debug/a1-host-reconnect-20261001-overlap`，完整exit0；新目录的reconnect-result、独立journal与两份cleanup已直接核对，结果见10.15，不再待运行。下一按生产接入第33节落实macOS产品原生/工厂/namespace与匹配Node/Electron资产，Linux本轮通过不写成Darwin通过，原失败目录不动。
 
 本增量工作目录为仓库根。第四轮安全摘要在 `.debug/agent-ci-36812745671-summary/summary.json`，原八场景passed、四natural实际响应/EOF、八cleanup零残留已核对；前三轮目录及failure均保留。固定first-failure摘要已实施，第三轮snapshot stop未在第四轮重现，不靠再次dispatch获得根因。当前以有限收尾文档中的原B/A编号选择剩余直接产品项，并把该间歇失败随相关路径核对；若形成确切复现或原因再修订32.20，不改变原断言、期限或安全工件边界。
 
@@ -1393,6 +1404,8 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 全量套件如有已登记的基线阻断，保留首错并解释隔离验证覆盖和残余缺口，不伪称全量通过。任何 native 或发布依赖调整都在方案中明确，不能顺手升级整个工具链。
 
 ## 验证与验收
+
+容量10.15的固定一次结果已覆盖真实Host离线追赶交互：同一Webview动作A12到18、B51ms实际应用，随后ready后13137.248ms完整恢复；原执行/新reader、完整后缀/独立hash/自然no-history和两份cleanup均通过。原1500ms与不重置30秒、10分钟及资源安全保护保持；10.14的overlap=false和旧失败仍按各自输入记录。下一macOS按生产接入第33节保留两模式、真实主体/Webview、EOF/取消/尾部和本方资源责任，编译、受控模块或Linux通过均不能代替该平台实际验收，F-04与总体仍未关闭。
 
 DeepSeek CI 的新增通过只覆盖32.20固定Linux/Electron原八场景：第四轮四natural已取得真实目标响应/nonce、source EOF、Webview和两模式原断言通过，四stop仍按主动处置登记，八cleanup四计数均0。该success不抹去第三轮snapshot stop failure，未复现且无业务/断言变更意味着根因仍待定位，不是已修复证明；不要求重复CI求绿或抓红来替代具体分析。first-failure内存快照不代证正式落盘，source EOF不单独代证reader/保存。跨平台、F-04及原剩余A项不削减，私有配置dispose、raw/HOME临时VM销毁、安全摘要扫描/report_ready规则保持。
 

@@ -116,6 +116,7 @@ async function runCapacityCalibration() {
     sampleMs: 250, idleBaselineMs: 5000, hideMs: 5000, interactionObservationMs: 1500,
     catchupMs: 30000, caseSafetyMs: 600000, ...workload,
     ...(reconnect ? { phases: ['detach', 'reconnect'], offlineBlocks: 2560,
+      overlapAcceptance: 'v2: one actual B response applied within 1500ms with 0 < loadLastBlockBefore <= loadLastBlockAfter < 2560 in the same Webview action; catchup deadline is not reset',
       absoluteRssSafetyBytes: 5 * 1024 ** 3,
       triggerRule: 'Only after the original Extension Host identity is gone; retain original runtime and bindings.' } : {}),
     limitsScope: 'Workload-specific observation and experiment safety only; not a product session limit or general SLA.',

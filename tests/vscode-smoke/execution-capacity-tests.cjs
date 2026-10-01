@@ -263,10 +263,25 @@ async function reconnect() {
   }
   await archive('reader-identities', readers);
   startSampling();
-  const mounted = await poll('restored terminal dimensions after journal resize', probe,
-    value => value.nodes.some(entry => entry.nodeId === a.id && entry.terminalCols >= 78 && entry.terminalRows >= 3),
+  const mounted = await poll('restored terminals mounted and numbered output applied', probe,
+    value => subjects.every(subject => value.nodes.some(entry => entry.nodeId === subject.id &&
+      entry.terminalCols >= 78 && entry.terminalRows >= 3)) && value.nodes.some(entry => entry.nodeId === a.id &&
+      entry.terminalBufferType === 'normal' && entry.terminalVisibleLines?.some(line => /^(\d{8}):x{69}$/.test(line))),
     Math.max(0, catchupDeadline - performance.now()));
   await archive('restored-terminal-dimensions', mounted.nodes.filter(entry => subjects.some(subject => subject.id === entry.nodeId)));
+  const nonce = `reconnect_${process.pid}_${Date.now()}`;
+  const interactionStartedMs = performance.now() - started;
+  await dom({ kind: 'measureCapacityInteraction', nodeId: b.id, loadNodeId: a.id, nonce });
+  const interaction = (await probe()).capacityCalibration.interaction;
+  assert.equal(interaction?.nodeId, b.id);
+  assert.equal(interaction.nonce, nonce);
+  const overlap = interaction.loadLastBlockBefore > 0 &&
+    interaction.loadLastBlockBefore <= interaction.loadLastBlockAfter && interaction.loadLastBlockAfter < 2560;
+  interactions.push({ ...interaction, phase, peer: b.role, measuredWhileSurfaceVisible: true,
+    targetBlocks: 2560, loadNotAtTargetBeforeInput: interaction.loadLastBlockBefore < 2560,
+    catchupInteractionOverlapObserved: overlap });
+  assert(interaction.applied && interaction.elapsedMs <= 1500, `Reconnected subject response exceeded observation bound: ${JSON.stringify(interaction)}`);
+  const interactionFinishedMs = performance.now() - started;
   let lastSuffixError;
   try {
     await poll('complete retained xterm suffix after actual Host replacement', async () => {
@@ -284,15 +299,6 @@ async function reconnect() {
   }
   const fullApplyMs = performance.now() - started;
   assert(fullApplyMs - hostReadyMs <= 30000, 'Restored bindings, reader and complete xterm suffix must settle within 30 seconds of Host ready.');
-  const nonce = `reconnect_${process.pid}_${Date.now()}`;
-  const interactionStartedMs = performance.now() - started;
-  await dom({ kind: 'measureCapacityInteraction', nodeId: b.id, loadNodeId: a.id, nonce });
-  const interaction = (await probe()).capacityCalibration.interaction;
-  assert.equal(interaction?.nonce, nonce);
-  interactions.push({ ...interaction, phase, peer: b.role, measuredWhileSurfaceVisible: true,
-    targetBlocks: 2560, loadNotAtTargetBeforeInput: interaction.loadLastBlockBefore < 2560 });
-  assert(interaction.applied && interaction.elapsedMs <= 1500, `Reconnected subject response exceeded observation bound: ${JSON.stringify(interaction)}`);
-  const interactionFinishedMs = performance.now() - started;
   await confirmRuntimeIdentities();
   await stopSampling();
   check();
@@ -301,13 +307,15 @@ async function reconnect() {
   assert.equal(validation.rejectionReason, 'color-state');
   await archive('independent-journal-validation', validation);
   await finishSubjects();
-  await archive('reconnect-result', { pass: true, oldHostIdentity: saved.hostIdentity,
+  await archive('reconnect-result', { pass: overlap, oldHostIdentity: saved.hostIdentity,
     oldHostAtReconnect: oldHost ?? null, hostIdentity, supervisor,
     readers, receipt, validation, interactions, timing: { hostReadyMs, fullApplyMs,
       catchupAfterHostReadyMs: fullApplyMs - hostReadyMs, interactionStartedMs, interactionFinishedMs },
-    catchupInteractionOverlapObserved: interaction.loadLastBlockBefore < 2560,
+    catchupInteractionOverlapObserved: overlap,
+    overlapAcceptance: overlap ? 'covered' : 'not-covered; no product regression inferred from missed overlap alone',
     cleanupResult: 'See reconnect-cleanup.json; this result alone does not assert cleanup success.',
     scope: 'Actual two-session color Host detach/offline output/reconnect only; no Agent or other-platform claim.' });
+  assert(overlap, 'Host reconnect interaction overlap was not covered: require 0 < before <= after < 2560; original content and cleanup evidence remain separate.');
 }
 
 async function finishSubjects() {

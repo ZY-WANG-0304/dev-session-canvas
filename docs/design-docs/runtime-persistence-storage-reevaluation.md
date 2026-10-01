@@ -21,12 +21,14 @@ related_plans:
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-30
+updated_at: 2026-10-01
 ---
 
 # Runtime Persistence 容量与会话归档架构重评
 
 ## 1. 范围与决策状态
+
+当前入口（2026-10-01，覆盖后面的历史下一步）：10.15 的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整 exit 0；B 回复在 51ms 内实际应用，同一 Webview 动作中的 A 块号为 12 到 18，满足 `0 < before <= after < 2560`。新 Host ready 1501.906ms、完整应用 14639.154ms、追平 13137.248ms，原不重置的 30 秒与 1500ms 界限保持；原执行及新 reader、完整后缀、独立 journal/hash、自然 no-history 和两份 cleanup 全通过，outer forcedSignals/failures 均为空。该离线追赶交互组合已覆盖，10.14 的 overlap=false 和旧失败原样保留。下一沿原 B2/A5 推进 macOS/Windows 产品 provider、namespace、匹配 Node/Electron 与 packaged 接入，不再为此组合追加运行或工具阶段；F-04 和总体仍未完成。
 
 当前入口（2026-09-30，优先于以下历史下一步）：10.13 的单 reader/单段认证偏移索引已接通两个消费路径，10.14 的同输入真实 Host 离线重连完整 exit 0，新 Host ready 后 13.01 秒恢复全部 2560 块，B 响应 32.6ms，独立来源 hash、自然 no-history 和清理通过。原 30 秒/1500ms 未改，四次旧 exit 1 保留。此固定冷恢复阻塞已解除；在线十 Terminal、真实 Agent、跨平台及其他 A 项各自分账，F-04 未整体完成，不增加 profiler 或通用工具门槛。
 
@@ -531,3 +533,19 @@ Supervisor 的 Webview cursor 与独立 Host 订阅分别持有该 reader；相�
 本轮 52 个重连资源样本中同时采样合计 RSS 峰值 2531540992 bytes、Host isolate heapUsed 峰值 72881284 bytes；含 workbench、共享页重复和观测开销，不宣称独立 Supervisor heap 或通用产品预算。交互是在完整追平后发生，`catchupInteractionOverlapObserved=false`，不补造离线追赶期间交互的证据。十会话既有隐藏恢复交互仍单独有效，不等同于此重连组合。
 
 本结果解除的是 10.13 原固定冷恢复的直接阻塞，不能把差值全部量化归因给唯一热点，也不把旧失败追认成功。F-04/A1 的其他组合、运行期写失败/满盘与跨平台/分发仍按有限收尾契约管理；真实 Agent 用同一新构建复验，结果记在生产接入文档，不重开通用工具或扩大已确认产品承诺。
+
+### 10.15 A1 离线恢复期间的真实交互重叠
+
+本轮只补原 F-04/B1/A1 已登记的“恢复追赶不能挤掉另一节点交互”组合，不重跑10.14求计数，也不新建ExecPlan或诊断阶段。复用 `tests/vscode-smoke/execution-capacity-tests.cjs` 的真实两次Host launch流程和原color两个Terminal主体，Linux/Electron原2/1候选、离线 `2560 × 10240 B` 来源、100000 scrollback均不变。旧 `indexed-pages` 的13.009秒追平/追平后B32.6ms及 `overlap=false` 结果保持，新运行只写 `.debug/a1-host-reconnect-20261001-overlap/`。
+
+唯一测试顺序调整是将B交互从“完整后缀poll成功之后”提前到“新Host/reader已挂载、A已有可识别块且B已挂载”之后。交互动作在同一Webview动作内记录A最后块号的前后值，必须满足 `0 < loadLastBlockBefore <= loadLastBlockAfter < 2560`；B仍通过真实输入、真实主体响应和实际xterm应用核对新nonce，交互耗时不得超过原1500ms。不能用动作之外较早/较晚的独立采样拼成重叠，也不能用只发送输入或Host ACK代替页面应用。不得添加sleep、暂停消费、额外输出或更多会话制造交集。
+
+B交互完成后继续原完整保留后缀poll，沿原恢复轮计时基点使用同一个30秒总追平期限，等待A可识别/B挂载与交互所耗时间都计入，不能重置或续期。原Supervisor/provider/两主体身份、backend/storage/session/authority连续性、新reader身份、独立journal来源SHA与color-state判定、自然closed/no-history及cleanup全部保留；原每例10分钟及资源安全保护不变。未观察到上述重叠条件，必须记为“该组合未覆盖”的失败，不自动扩大负载或重跑，也不仅凭未重叠冒称产品性能退化；真实B响应超时、完整内容/身份失败及清理结果分别记账。
+
+结束条件是本轮新输入得到可追溯的实际结果：同一Webview动作确有未完成追赶的前后观察、B在1500ms内真实应用、随后原全部断言在不重置的期限内成立，或如实保留失败及未到达项。现已完成原测试顺序/readiness/严格重叠判定的窄调整，runner 只增加判据摘要；产品实现、fixture、负载和 Webview probe 未改，未添加 sleep 或暂停消费。独立只读顺序复核无阻塞后，固定一次命令 `node scripts/smoke/run-vscode-execution-candidate.mjs --capacity-reconnect --output=.debug/a1-host-reconnect-20261001-overlap` 完整 exit 0。
+
+实际结果位于新目录 `color/artifacts/`：`reconnect-result.json` 的 `pass=true`、`overlapAcceptance=covered`，B 的唯一 nonce 回复 `applied=true`、51ms，A 在该同一动作的块号为 12 到 18，均小于 2560。新 Host ready 为 1501.906ms，完整后缀应用为 14639.154ms，ready 后追平 13137.248ms；没有重置原 30 秒期限。旧 Host 已消失，原 Supervisor/provider/主体及 backend/storage/session/authority 保持，两 reader 的 readId 均为新身份。原完整保留后缀、最终空行/光标、自然 closed/no-history 与主体退出断言全部到达。
+
+独立 `reconnect-independent-journal-validation.json` 核对 sourceBytes=26214425、SHA256=`0167208c8b0fcf6bd465c0c19064d3f7584429ef32e4cbb2841f1e147ee5ed98`，与主体成功写入 receipt 一致，lastRevision=6502、checkpoint rejection=`color-state`；来源内容比对不替代生产 journal checksum 校验。`reconnect-cleanup.json` 为 product reset、空闲自有 Supervisor 正常 SIGTERM/退出通过；`outer-cleanup.json` 的 pass=true、forcedSignals=[]、failures=[]，没有补救强杀。
+
+本次仅关闭声明 Linux/Electron 两 Terminal 输入下的新 Host 离线追赶与交互重叠组合，不关闭 F-04 总体、A3 尾部、其余 A 项或跨平台/分发，也不把 10.14 的追平后交互追认为重叠。下一回到原 B2/A5 的跨平台产品接入及匹配产物，不重复成功矩阵或新设工具门槛；第三轮真实 Agent snapshot stop 的具名间歇失败仍按原记录保留。

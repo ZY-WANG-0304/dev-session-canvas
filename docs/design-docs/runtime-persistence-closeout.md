@@ -24,6 +24,8 @@ updated_at: 2026-10-01
 
 ## 1. 状态与目的
 
+当前 A1 结果与下一项（2026-10-01）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整exit0；B回复51ms实际应用，同一Webview动作中A的块号12到18均未追平2560，随后ready后13137.248ms完整恢复。原1500ms/不重置30秒、原执行及新reader、完整后缀/独立journal/hash/自然no-history与两份cleanup均通过，outer forcedSignals/failures为空。声明输入下的真实离线追赶交互组合已覆盖；10.14的overlap=false和全部旧失败保持。下一推进原B2/A5的macOS/Windows产品provider、namespace、匹配Node/Electron及packaged接入，不追加此组合或工具阶段；F-04总体和其他A项继续开放。
+
 当前 CI 有限结果（2026-10-01）：run `36812745671`/`736f9ddd` 的 Linux 真实 Codex/Claude + DeepSeek 两模式 natural/stop 八场景全部 passed，四 natural 真实 nonce/EOF 及原 Webview/持久化断言通过，八份 cleanup 的 bindings/failures/forcedSignals/active 均0。专用 CI 凭据和临时配置已由这些实际响应证明可用，不再是待用户处理的认证阻塞；stop 的 eof/interrupted 仍按主动处置记录。第三轮 `36811935908` 的 Codex snapshot-only stop failure 本轮未复现，且只有报告/文档变化，业务与断言未变；根因未知，保留为具名间歇失败，不能宣称已修复或追认通过。详细证据见生产接入32.20，不自动增加CI捕获循环，F-04/完整A5/macOS/Windows边界不变。
 
 当前 A1/A2 状态（2026-09-30）：有界索引顺序读取已实施，`.debug/a1-host-reconnect-20260930-indexed-pages/` 在同一 2/1 Electron candidate 上完整 exit 0，新 Host ready 1422.291ms、完整应用 14431.416ms、追平 13009.125ms；B32.6ms、独立 journal/hash、原执行及新 reader、完整保留后缀、自然 closed/no-history 与两份 cleanup 通过，outer `forcedSignals=[]`。原 30 秒界限与完整冻结段/尾部篡改检测保持，四轮旧 exit 1 不追认。该固定冷恢复阻塞已解除，但追赶交互重叠为 false，不关闭整个 F-04/其他 A 项。同一新 2/1 构建 A4 `indexed-pages` 八场景完整 exit 0：natural 四项响应/实际 source EOF 通过，stop 保留主动停止，八份 cleanup 均无 binding/process failure/forcedSignals。Claude stop 为 startup/auth 等待界面，不代表模型任务完成；详见生产接入 32.19。跨平台/分发及外部认证边界不变。
@@ -148,13 +150,13 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 
 ## 8. 推进约束与证据归档
 
-当前工程顺序按有限收尾定义推进：保留 B1 修复与未完责任、固定 A1/A2 冷恢复的原期限通过及本机/CI 各自 A4 有限结果，所有旧失败保持。第四轮 DeepSeek CI 八场景通过后，直接回到原清单的剩余用户流程、B3 有限状态替换、跨平台/分发与最终准入；第三轮 Codex snapshot-only stop 间歇失败列为 A4/A6 具名未决项，结合相关既有路径定位，不把未复现当作已修复，也不为抓红自动追加 CI。汇总 A1 至 A6 才能宣布整体交付，不重排全部历史待办或增加工具计数；真实离线追赶交互重叠、F-04、A3独立大尾部和完整A5仍开放。
+当前工程顺序按有限收尾定义推进：保留 B1 修复与未完责任、固定 A1/A2 冷恢复的原期限通过及本机/CI 各自 A4 有限结果，所有旧失败保持。10.15固定一次已证明真实离线追赶时B51ms实际应用、A12到18未追平，随后原完整后缀在不重置30秒内完成，身份/hash/no-history/cleanup均通过。下一推进原B2/A5的macOS/Windows产品provider、namespace、匹配Node/Electron构建与packaged接入，不是重开平台诊断或只增加runner。其余用户流程、B3状态替换、分发与最终准入保持；第三轮Codex snapshot stop具名间歇失败未定位，不把未复现当已修或为抓红追加CI。汇总A1至A6才宣布整体交付，不重排历史或增加工具阶段，F-04/A3/完整A5仍开放。
 
 B2 会改变实际 provider、信用与消费链，最终启用产物必须复核 A1 的关键容量/交互项，不能用 B1 对此前路径的通过替新产物背书；这是最终回归，不另立容量研究或工具项目。
 
 容量修正已确认生产源与退出完整性的直接依赖：stock node-pty 暂停 socket 不保证退出时继续排空，不能为形式上的 B1 先绿而先加有损背压。共用 owned 接入属于原 B2 工作，B1 保留未完并随该接入验收；不等待旧源的第三套实现，也不把原 heap 失败归零。后续工作的终点是实际消费链的资源/交互证据和同一生产候选，不再追加通知工具或一般调度框架。
 
-第 3.1 节已允许显式 candidate Manager 安全准备新建连接，旧绑定不得因此重启或换 generation；普通构建仍 stock。实际候选入口与 Linux Electron 资产已接通，页面三项直接失败和 Agent 启动前提已有各自修后证据，继续有限生命周期及其余验收，不扩大为新的诊断研究。显式准入省略仍为 2/1，unknown 与尾部预算保持；固定十 Terminal 的预算/结果不泛化为无限容量。A1/A2 已在新索引读取上证明两次真实 Host launch 的离线产出、原执行/新 reader、13.009 秒追平、独立完整性与自然 no-history；本轮 B 交互发生在追平后，不冒称恢复/交互重叠。其他 journal 待写、socket/Host 在途、分页消费与 live compact 仍按原范围核对；结束产物是实际拓扑证据与必要产品修复，不是 profiler 框架或把旧合并样本重跑为绿色。
+第 3.1 节已允许显式 candidate Manager 安全准备新建连接，旧绑定不得因此重启或换 generation；普通构建仍 stock。实际候选入口与 Linux Electron 资产已接通，页面三项直接失败和 Agent 启动前提已有各自修后证据，继续有限生命周期及其余验收，不扩大为新的诊断研究。显式准入省略仍为 2/1，unknown 与尾部预算保持；固定十 Terminal 的预算/结果不泛化为无限容量。A1/A2 的10.14证明两次真实Host launch离线产出、原执行/新reader、13.009秒追平、独立完整性与自然no-history，彼时B交互在追平后；10.15另取新证据证明B51ms应用时A12到18未追平，随后13.137秒完整恢复，不能回写10.14为重叠。其他journal待写、socket/Host在途、分页消费与live compact仍按原范围核对；结束产物是实际拓扑证据与必要产品修复，不是profiler框架或把旧合并样本重跑为绿色。
 
 每次工作必须引用 B/A 编号、写明直接产品风险和结束条件；无法映射的增强延期。校准不是验收通过，失败不得事后调宽门槛抹绿；确有环境或方案原因要修改工程阈值时，保留原值/失败和理由重新评审，不改变既定产品保证。只有外部凭据/资源确实缺失、不可逆操作或产品保证需要变更时才向用户提出具体问题，不再泛问是否同意清单。B1 修复、首次失败与未完责任记入容量 active 计划；当前 B2 接入与实际拓扑 A1 的顺序以本节为准，不因历史“下一步”再开工具阶段。
 
