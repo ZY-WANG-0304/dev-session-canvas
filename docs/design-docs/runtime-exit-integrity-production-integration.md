@@ -1849,6 +1849,12 @@ run `36821963386`/job `110239281754` 使用 `72ca0efe`，修后原Node四例全�
 
 三个严格初始规则和独立resize对账已在原四个helper/report/test文件实施。helper/report新增回归各自先红后绿，日志 `.debug/mac-snapshot-initial-schema-original-20261001-01.log` 与 `.debug/mac-snapshot-fields-original-20261001-01.log` 及各自fixed记录保留；root复跑两测试和workflow契约通过。旧Linux原消息无需改写即可回放，原replayMatchesSaved=false及geometry/visible=false保持，新resize几何/可见行true但历史完整buffer未存，整项保持null。原重复负例移至输出之后，继续拒绝后续恢复；新非法前缀、非空缺序号、resize后重复和敏感文本负例保持。原truthy与停止时机未改，macOS新原生输入仍待运行。
 
+e10ad8aa的固定macOS run36841263618仍前三passed、第四188行truthy failed、Claude四场not-run；安全报告 `.debug/agent-ci-macos-36841263618-summary/summary.json` 保留。新增证据首次可判定：初始0至最终13完整连续回放，9个output、无resize/recovery，replayMatchesSaved=true且publishedFinalMatchesSaved=true；原reader/lifecycle/seq13匹配，help曾有11条非空行。saved66×21/page96×30原geometry/visible仍false，但cursor(0,0)、viewport0、normal相同，独立hydrate仅resize到page后geometry/visible/buffer全部true。四cleanup零值不代替原truthy之后尚未执行的主体结束检查。独立review核实helper/script/report摘要与输入一致；这些消息是Host发布记录（记录在postMessage之前），不是provider原始字节或独立页面接收日志，pageProjectionIndependence仍not-proven。
+
+据此选定未来输入的有限判据变更：只在snapshot-only-stop且实际saved.data严格为空字符串时，允许用原helper的完整证明替代非空断言。必须saved合法/节点和reader身份匹配、从初始0连续到最终正序号、实际output至少一条、曾有非空help、replayComplete/replayMatchesSaved/publishedFinalMatchesSaved/readerApplied/sequenceMatched均true；页面原完整buffer为true，除cols/rows外cursor/viewport/bufferType逐项相等，且原直接页面全部匹配或独立resize后的全部匹配。缺证据/unknown仍失败，非空路径和natural原要求保持；不进行ANSI等价归一、不放宽序号或停止时机、不更改旧失败。
+
+新判据后继续原CLI/wrapper/provider真实退出与清理检查。合法空态额外在同一场景内交接已完成节点的持久状态，退出原Host后由同runtime/workspace的新Host重新加载，不再调用模型、不重启主体。新Host必须不同、同节点仍stopped/live=false、原空serialized状态与序号未丢，实际fresh页面完整buffer为空、cursor(0,0)/viewport0/normal，且没有新Agent session/Runtime binding；最后沿原reset清理。第一阶段只有在主体退出已经通过后才能保留节点等待reopen；任何阶段失败保留首次结果并清理本轮资源，缺第二阶段报告不通过。报告仅新增固定重开布尔事实，不发布正文。该变更不追认本轮通过，不补造具体清屏序列或Linux间歇失败同因，也不要求对非空Agent重复整套重开矩阵。
+
 ## 34. Windows 产品原生接入
 
 ### 34.1 运行前原生契约（2026-10-01）
@@ -2021,6 +2027,10 @@ CLI选择、Windows observer、原Unix observer、CI summary、私有配置、�
 
 新输入e10ad8aa的Windows run36841262535/job110300678158中，原DeepSeek配置测试已完整通过（包含真实目录/文件ACL及isolatedCheck），原15秒/10秒不变。这说明.NET依赖收窄后的新输入可用，不倒推旧Get-Item段的具体内部原因。随后Darwin observer纯夹具第57行失败：模拟process.platform=darwin却仍require宿主Windows的node:path，fixture argv为POSIX而provider目标被拼成反斜杠，实际roles的provider变descendant。选定只让该Darwin夹具显式使用path.posix，保留原roles/cleanup断言和生产observer；不把未进入的真实Windows Agent记作产品失败。原日志 `.debug/windows-agent-36841262535-job.log` 保留。
 
+1aebd444的Windows run36842061186/job110303408565再次通过配置和Darwin夹具，随后真实Windows observer初始化未在原10秒请求期限内回应，helper-request-deadline，CLI安装/模型仍未运行。原日志 `.debug/windows-agent-36842061186-job.log` 保留。该helper启动需要New-Object/Add-Type/JSON和CIM模块，但其最小env没有明确模块路径；只有宿主完整环境下的语法/原对象单调性测试已通过，不将初始化失联认作OS对象泄漏。
+
+下一限定该安全观察器的启动依赖：从固定powershell.exe的PSHOME/Modules显式导入Microsoft.PowerShell.Utility、Microsoft.PowerShell.Management和CimCmdlets，模块发现路径仅指向此系统目录、关闭自动加载，不继承用户PSModulePath或任何凭据环境。原Same-Path/保留SafeHandle/CIM身份绑定/exit及cleanup断言、原10秒和失败unknown保持。先局部源契约，再一次原Windows前置/矩阵；不能据假helper通过声称PowerShell或CLI已验，也不展开一般observer健壮性。
+
 ## 35. A5 固定 VSIX 的实际安装路径
 
 本项只补既定A5的Linux installed candidate，不新增平台诊断，也不代证完整分发准入。现有 `run-vscode-vsix-smoke.mjs` 重建stock并改装development扩展，正确范围仅为payload smoke；不能把它当成未改装VSIX的安装证据。选定在 `scripts/smoke/run-vscode-execution-candidate.mjs` 新增显式 `--installed-vsix`，只接收固定文件，不自动重建或选择最新包，首轮不与capacity选择混用。
@@ -2055,6 +2065,8 @@ A2在 `test-host-execution-owner-wiring.mjs` 的真实persistenceFixture中种�
 
 必须独立保留API兼容风险：候选及锁定stock均无条件使用POSIX_SPAWN_SETSID，而Apple XNU10.13/10.14对应头中该位尚未定义，10.15系列才有该flag。固定链接target不证明旧系统PTY创建可用，也不因此提高产品支持线；正式兼容验收仍须处理。此次仅原builder/资产纯测试和既有macOS构建入口验证，不追加一般兼容框架。旧26.0产物与结果保留，不重新包装为已修正产物。
 
+固定target和实际Mach-O检查已实施于原builder/test两文件，未改factory或native API。原26.0缺拒绝和混合外来平台声明两项先红保留；最终18/18资产纯测、11/11运行选择和factory两架构mock通过，root均独立复跑。旧run36825479993实际26.0产物read/import拒绝，manifest/addon/helper前后摘要不变。日志 `.debug/macos-deployment-target-original-20261001.log`、`.debug/macos-deployment-foreign-platform-original-20261001.log` 及各自修后记录保留。仅是离线校验，不宣称修后macOS原生编译或旧OS可用；下一由原macOS产品workflow编译/装载验证固定target，其他分发责任保持。
+
 ## 38. A3 实际 surface 切换与跨 Host reader 隔离
 
 同一Host只允许一个interactive surface：切editor使panel进入standby，切panel会dispose editor；实际并发有效读者应来自两个Host。原定向夹具直接设置activeSurface只能证明受控隔离，不能当双active产品路径。复用既有Linux candidate、真实90000行主体、VS Code launcher和页面内容断言，固定两例，不引入假Agent、手工Runtime metadata或业务hook。
@@ -2064,3 +2076,13 @@ Runtime例让A/B两个真实Host打开同一全新root，使用各自user-data�
 snapshot-only例只有一个Host，在相同gate处由panel切editor，保持原本地执行身份，最后同样检查完整尾部/光标/local applied及完整保存；不伪造跨Host共享本地进程。gate仅保证切换发生在主体未结束时，不代证慢消费者。原主体无gate路径的输出字节、默认行为及旧断言保持；新增可选gate的独立回归检查原hash不变及超时不能通过。
 
 失败先保存首次事实，双方仍沿原产品reset/stop及同一原主体身份清理；检查bindings/pending operations归零并等待主体退出，再关闭所创建Host。未知退出/资源失败如实报告，不按全机PID扫描强杀。自动surface关闭目前没有远端close ACK专用成功诊断，只声明实际surface取消与B原reader延续，不补造ACK。该两例不关闭全部A3、非零/force/delete/读错组合、真实Agent、其他平台或A6实际reload。
+
+## 39. A6 一次真实 Reload Window
+
+现有real-reopen和capacity reconnect是两次launcher，不代证真正 `workbench.action.reloadWindow`。固定VS Code1.117.0源码（10c8e557c8b9f9ed0a87f61f1c9a44bde731c409）在reload保留extensionTestsPath，但旧Workbench停止RPC会拒绝尚未返回的extensionTestsExecute，其catch请求CLI测试实例退出；setup正常返回也会退出。因此本例不挂起原测试run跨reload，不把两次启动伪装成reload。
+
+复用第35节固定Linux installed VSIX、隔离runtime、独立driver及原UI进程launcher。新增一个onStartupFinished activation-driver，不传extensionTestsPath，不承载/转发业务activation；原launcher仅支持省略该可选参数，原测试调用保持。driver通过固定控制文件区分setup/verify，成功和失败写具名收据，不将UI退出0当验收成功。外层只spawn一次，整体上限180秒；中途退出、缺verify/cleanup或截止均失败，不再次启动取绿。
+
+固定Runtime例只创建A/B两个Terminal，不运行容量负载：A复用capacity主体的b角色做ready/ping/finish；B写一条固定marker正常退出，须当前页完整应用并落盘completed无历史。记录A原execution/backend/storage、Supervisor/provider/主体身份，旧Host和reader/frame；原子写phase=verify后发真正reload命令。新driver确认旧Host退出、新Host及reader/frame不同，外层确认原UI child/PID/startTicks/executable不变；A沿原Supervisor/provider/主体和execution重连，在真实页面新nonce ping响应通过，B保持closed/no-history且attach空终態、不启动新进程。最后A经原输入finish自然完成、reader applied、无历史、bindings/pending归零，再关闭本轮窗口。
+
+reload前持久交接原资源身份及隔离storage，失败先保存首次事实并由当前driver走产品reset；新Host未起来时只允许外层核实原PID/startTicks/executable后清理本轮责任，不PID-only或泛杀进程树，fallback signal单列且不称产品清理通过。本例不覆写原证据、不重跑冷恢复容量，也不代证snapshot-only旧Host结束收尾、多根失败隔离或全部A6。

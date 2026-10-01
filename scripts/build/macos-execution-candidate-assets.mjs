@@ -16,6 +16,10 @@ const patchFile = fileURLToPath(new URL('./macos-execution-provider-patch.mjs', 
 const profile = 'macos-owner-v1-candidate';
 const binaryFile = 'execution-owner.node';
 const helperFile = 'spawn-helper';
+const deploymentTargets = {
+  arm64: { argument: '11.0', version: 0x000b0000 },
+  x64: { argument: '10.13', version: 0x000a0d00 }
+};
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
 function readRegular(file, executable = false) {
@@ -56,6 +60,38 @@ function assertMachO(bytes, arch, filetype) {
   assert(bytes.length >= 32 && bytes.readUInt32LE(0) === 0xfeedfacf
     && bytes.readUInt32LE(4) === (arch === 'arm64' ? 0x0100000c : 0x01000007)
     && bytes.readUInt32LE(12) === filetype, 'Candidate binary must declare the matching Mach-O target and file type');
+  const commandCount = bytes.readUInt32LE(16);
+  const commandBytes = bytes.readUInt32LE(20);
+  const commandsEnd = 32 + commandBytes;
+  assert(commandsEnd <= bytes.length && commandCount <= Math.floor(commandBytes / 8),
+    'Candidate Mach-O load-command table is out of bounds');
+  let offset = 32;
+  let minimumVersion;
+  for (let index = 0; index < commandCount; index++) {
+    assert(offset + 8 <= commandsEnd, 'Candidate Mach-O load-command header is truncated');
+    const command = bytes.readUInt32LE(offset);
+    const size = bytes.readUInt32LE(offset + 4);
+    assert(size >= 8 && size % 8 === 0 && size <= commandsEnd - offset,
+      'Candidate Mach-O load-command size is invalid');
+    assert(![0x25, 0x2f, 0x30].includes(command), 'Candidate Mach-O minimum-version platform must be macOS');
+    if (command === 0x32 || command === 0x24) {
+      assert(minimumVersion === undefined, 'Candidate Mach-O must contain only one deployment target declaration');
+      if (command === 0x32) {
+        assert(size >= 24, 'Candidate Mach-O build-version command is truncated');
+        assert(bytes.readUInt32LE(offset + 8) === 1, 'Candidate Mach-O build-version platform must be macOS');
+        assert(size === 24 + bytes.readUInt32LE(offset + 20) * 8,
+          'Candidate Mach-O build-version tool records are invalid');
+        minimumVersion = bytes.readUInt32LE(offset + 12);
+      } else {
+        assert(size === 16, 'Candidate Mach-O macOS minimum-version command size is invalid');
+        minimumVersion = bytes.readUInt32LE(offset + 8);
+      }
+    }
+    offset += size;
+  }
+  assert(offset === commandsEnd, 'Candidate Mach-O load-command table length is inconsistent');
+  assert(minimumVersion === deploymentTargets[arch].version,
+    `Candidate Mach-O deployment target must be macOS ${deploymentTargets[arch].argument}`);
 }
 
 export function validateCandidateManifest(manifest, binary, helper) {
@@ -103,7 +139,8 @@ export function validateCandidateHeaders(headers, runtime) {
 function targetArguments(arch, sdk) {
   assert(['arm64', 'x64'].includes(arch), 'Candidate compiler target must be arm64 or x64');
   assert(path.isAbsolute(sdk), 'Specify an absolute macOS SDK path');
-  return ['-arch', arch === 'x64' ? 'x86_64' : 'arm64', '-isysroot', sdk];
+  return ['-arch', arch === 'x64' ? 'x86_64' : 'arm64', '-isysroot', sdk,
+    `-mmacosx-version-min=${deploymentTargets[arch].argument}`];
 }
 
 export function candidateCompilerArguments({ arch, sdk, headers, addonRoot, inputs, source, binary }) {
