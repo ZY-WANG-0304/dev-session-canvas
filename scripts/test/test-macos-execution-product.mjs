@@ -79,12 +79,16 @@ async function selfTest() {
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   assert.ok(Object.hasOwn(workflow.on, 'workflow_dispatch'));
   assert.deepEqual(workflow.on.push.branches, ['runtime-persistence-session-state-refactor']);
+  for (const input of ['scripts/smoke/vscode-smoke-runner.mjs', 'scripts/test/test-vscode-smoke-runner-env.mjs']) {
+    assert.ok(workflow.on.push.paths.includes(input), `macOS product workflow must observe ${input}`);
+  }
   assert.equal(Object.keys(workflow.jobs).length, 1);
   const job = workflow.jobs['product-provider'];
   assert.equal(job['runs-on'], 'macos-latest');
   assert.equal(job.strategy, undefined);
   assert.equal(job.steps.find(step => step.uses === 'actions/setup-node@v4').with['node-version'], '25.6.0');
   const commands = job.steps.map(step => step.run ?? '').join('\n');
+  assert.match(commands, /node scripts\/test\/test-vscode-smoke-runner-env\.mjs/);
   assert.match(commands, /--execution-profile=macos-owner-v1-candidate/);
   assert.doesNotMatch(commands, /scripts\/diagnostics|DEEPSEEK|continue-on-error/);
   const cancel = [{ message: { type: 'cancelOutput', operationId: 'original-cancel' } }];

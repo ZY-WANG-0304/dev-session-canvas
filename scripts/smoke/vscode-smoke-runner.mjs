@@ -391,7 +391,7 @@ export async function findExistingVSCodeExecutablePath(projectRoot) {
   return undefined;
 }
 
-export function buildVSCodeArgs(options) {
+export function buildVSCodeArgs(options, platform = process.platform) {
   const args = [];
   if (options.remoteAuthority) {
     args.push('--remote', options.remoteAuthority);
@@ -413,8 +413,9 @@ export function buildVSCodeArgs(options) {
     `--extensions-dir=${options.extensionsDir}`,
     '--no-sandbox',
     '--disable-gpu-sandbox',
-    ...resolveVSCodeSmokeStabilityArgs(),
+    ...resolveVSCodeSmokeStabilityArgs(platform),
     '--password-store=basic',
+    ...(platform === 'darwin' ? ['--use-inmemory-secretstorage'] : []),
     '--disable-updates',
     '--skip-welcome',
     '--skip-release-notes'
@@ -440,8 +441,8 @@ export function buildVSCodeArgs(options) {
   return args;
 }
 
-function resolveVSCodeSmokeStabilityArgs() {
-  if (process.platform !== 'linux') {
+function resolveVSCodeSmokeStabilityArgs(platform) {
+  if (platform !== 'linux') {
     return [];
   }
 

@@ -24,7 +24,7 @@ updated_at: 2026-10-01
 
 ## 1. 状态与目的
 
-当前B2/A5（2026-10-01）：macOS短路径run `36822748979` 解除socket长度阻塞，但实际VS Code启动后job超时，尚无产品清理结论；新run `36825479993` 的Node normal/namespace通过，paused-stop因真实EOF已到但测试仍等待取消而首败。按生产接入33.8仅修正受控消费gate及失败清理顺序，旧失败不追认。Windows `36823205778`/`36825483498` 编译及namespace通过，normal在主体READY前code1退出，身份未确认、cleanup unsafe；新增有限启动收据定位，不先改业务。源码hash差异为CRLF而非旧版本，见34.8。真实Agent、两模式Webview、分发及其他A项保持原要求，F-04与总体仍未关闭。
+当前B2/A5与B3/A6（2026-10-01）：Windows新run `36827234960` 的启动收据确认实际主体stdin/stdout非TTY，按生产接入34.9补齐上游ConPTY标准句柄设置；局部先红后绿，原生修后待验。macOS原artifact确认Canvas初始ready超时、尚无Terminal，test runner已退出但外层未结束；按33.9仅给临时smoke宿主加入官方内存Secret Storage参数作对照，不宣称keychain根因已证实。run `36827234930` 已通过修后Node四例及Electron编译，页面尚无通过。A6新增两例先红确认非root reset/template可覆盖boundary返回后新执行，按32.21保护提交身份。原失败及CRLF来源事实保留，真实Agent、两模式Webview、分发及其他A项不削减，F-04与总体仍开放。
 
 当前 A1 结果与下一项（2026-10-01）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整exit0；B回复51ms实际应用，同一Webview动作中A的块号12到18均未追平2560，随后ready后13137.248ms完整恢复。原1500ms/不重置30秒、原执行及新reader、完整后缀/独立journal/hash/自然no-history与两份cleanup均通过，outer forcedSignals/failures为空。声明输入下的真实离线追赶交互组合已覆盖；10.14的overlap=false和全部旧失败保持。下一推进原B2/A5的macOS/Windows产品provider、namespace、匹配Node/Electron及packaged接入，不追加此组合或工具阶段；F-04总体和其他A项继续开放。
 

@@ -1703,6 +1703,16 @@ DeepSeek 官方接口提供 Codex 所需的 Responses 路径和 Claude 所需的
 
 第三轮 snapshot-only stop failure 在第四轮没有复现，但两轮之间只改报告与文档，业务、CLI 任务和原断言未变，因此没有已修复该失败的因果证据。独立核对两轮十个 buildHashes，只有 report 脚本变化，其余九项含四 dist、runner、原 test 和 helper 均一致，run/SHA 也已核实。固定 first-failure 定位字段虽已接入，第四轮全绿没有新的失败位置，第三轮 root cause 仍未知，继续作为 A4/A6 的具名间歇失败保留；不能以第四轮 success 追认第三轮通过，也不自动增加 CI 循环求再现。当前工程顺序回到既定有限清单中的剩余产品组合、B3 状态替换、平台接入/分发和最终准入，结合与该失败直接相关的既有实现路径作必要定位；不重排全部历史待办或扩诊断框架。Linux 有限八场景完成不关闭 F-04、A3 独立大尾部、完整 A5 或 macOS/Windows 产品验收。
 
+### 32.21 A6 非 root 重置的提交身份复核
+
+`b163ee7d` 上新增的两例实际 Host 入口回归已先红，原38次生命周期回归先通过。单根 `resetState()` 与非 root `applyCanvasTemplateRecord(..., {reset:true})` 在真实 `prepareForHostBoundary()` 返回之后、外层续体提交之前，经真实 `startTerminalSessionWithSupervisor()` 接纳同 ID 新执行；旧调用仍成功并保存/发布不含新节点的状态，新 session/binding 却保留。原日志 `.debug/a6-non-root-reset-original-red-20261001-01.log` 保留。这是受控 Host 方法顺序的产品缺陷证据，不代证真实磁盘、native 或 UI。
+
+选定与32.5一致的提交前身份复核：在非 root 清理前固定节点 ID/kind 与 session、owner、record、待启动和 Runtime binding 身份；允许本次清理移除原责任，但发现新增节点或新执行身份时，在 state replacement、persist/post 之前中止旧重置，保留当前执行。两入口一起调整，正常无冲突重置仍须成功。不得为完成旧重置再杀新执行，也不回滚已成功的原删除；不引入全局锁、drain 或通用事务框架。其他 root 和完整 reload 验收不由本次定向回归代证。
+
+同一外层提交窗口还有实际callback先红，原日志 `.debug/a6-non-root-completion-original-red-20261001-01.log`：真实新client epoch接纳同ID新执行，实际completed callback移除session/binding后等strict delete，此时pendingCallbacks=1。`resetState()` 的既有callback检查会中止，但非root模板没有该检查，仍覆盖completed节点并保存/发布。非root模板在boundary返回后须同时复用 `assertRuntimeSupervisorStateCallbacksSettled()` 与身份复核；不把身份集合为空误认为在途责任已结束。
+
+最小修正已实施，共享 `captureCanvasResetIdentity()` 复用原root保护，两个非root提交点新增检查，模板同时补callback屏障。原38次加新8次生命周期回归全部通过：两入口各覆盖新执行保留、正常成功、strict失败保留及completed删除在途；Host wiring145/145、typecheck/localization通过，独立复核及复跑未见确定阻塞。原先红和中间夹具断言失败不改，最终日志 `.debug/a6-non-root-reset-and-completion-fixed-20261001-01.log`。这是受控Host方法证据，完整reload、多根及实际UI仍不由此代证。
+
 ## 33. Darwin 产品原生接入
 
 ### 33.1 运行前原生契约（2026-10-01）
@@ -1787,13 +1797,21 @@ run `36821963386`/job `110239281754` 使用 `72ca0efe`，修后原Node四例全�
 
 ### 33.8 短路径后首败与停止场景的真实 EOF
 
-短路径输入 `32e4ab9c` 的 run `36822748979` 在 job 的20分钟上限被取消。Node四例及Electron编译已完成，VS Code日志中的socket路径为75字符且未再出现ENOTSOCK；标准输出只确认到workbench启动。不能因标准输出没有test日志就断言Extension Host从未运行，也没有完成/重开或产品清理的通过证据。原artifact `11144487527` 保留，需从既有宿主日志定位实际阻塞，不把job取消写成尾部产品断言失败。
+短路径输入 `32e4ab9c` 的 run `36822748979` 在 job 的20分钟上限被取消。Node四例及Electron编译已完成，VS Code日志中的socket路径为75字符且未再出现ENOTSOCK；标准输出只确认到workbench启动。随后取回原artifact `11144487527` 的宿主日志，确认test module与产品extension均已启动：06:05:17调用 `openCanvasInEditor()`，06:05:37在原20秒预算内等待Canvas ready失败，已捕获failure证据、调用resetState，test runner报错且Extension Host exit0；外层VS Code仍未结束，最终job取消。这里是Canvas ready缺失与外层进程未结束两层事实，不是test module未启动；日志末尾的secret storage/encryption记录尚不足以确认keychain根因。没有完成/重开或产品清理通过证据，保留原失败并继续读取已有failure证据，不把job取消写成尾部丢失。
 
 随后 `86c53365` 的手动run `36825479993` 在Node `paused-stop` 首败，namespace/normal通过，partial-create、Electron及Webview均未执行。本轮SIGHUP后已取得真实source EOF（finalFrame17），但测试只等待 `cancelOutput` 接受才恢复其自身消费gate。源已经结束时owner无需再发取消，导致整场45秒到期。原17帧重组与output完全一致，READY换行规范化后的16397字节与writer保存字节相同，SHA256为 `d2f2eab0ebb2629c573a5b6f259d711b55e0a776d9d0628eaa9427711afb4cd9`；这只证明已保存写入，不承诺被信号打断后的未来写入。五组资源均released，provider已关闭，cleanup无强制信号。失败后cleanup恢复gate却未等最终消费即dispose tracker，故末次 `2 !== 17` 不能独立认定为产品尾部丢失。
 
 最小修正保持同四例、SIGHUP、原预算和全部消费/终态/资源断言：收到原source EOF或原取消接受后恢复消费；最终source按实际EOF或interrupted分别核对，stop始终不声称自然任务完成。失败清理仍只在原35秒内等在途消费后释放tracker，不延长产品期限。原输入和两个失败结果保留，不追认通过、不另增诊断矩阵；修后原生结果另记。
 
 本地同一 `--self-test` 已覆盖EOF、原取消接受、错operationId、unknown不放行，以及整场已拒绝但16批消费仍在途时须到seal17才dispose。真实headless tracker验证最后序号17；不执行Darwin原生调用，也不替代新一轮平台验收。
+
+### 33.9 macOS 临时验收宿主的 Secret Storage 隔离
+
+旧run36822748979的failure JSON进一步确认：editor generation2已attached/rendered/messageWebviewBound，但ready与bootstrapAck均false，只有默认Note、runningExecutionCount=0、Runtime bindings为空，Terminal尚未创建。主进程日志停在 `EncryptionMainService: Checking if encryption is available...`，renderer同时停在内置GitHub扩展读取github.auth。VS Code1.117.0该日志后同步调用Electron `safeStorage.isEncryptionAvailable()`；缺少native stack，故keychain/safeStorage阻塞仍为强假设，不写成已证实死锁。
+
+选定最小受控对照为仅在macOS临时smoke宿主启动参数加入官方 `--use-inmemory-secretstorage`：该版本明确支持此参数，使 `NativeSecretStorageService` 不进入系统加密可用性探测。测试不依赖跨launch的VS Code账号Secret，Agent凭据仍来自32.20专用私有CLI配置；产品与通用secret filter不变，不读取本机keychain、不放宽Canvas ready或尾部断言、不延长预算。局部验证固定macOS参数与其他平台不变，然后以新输入复验原Terminal页面/重开；旧失败保留，若通过只说明避开了该临时宿主环境依赖，不宣称修复产品keychain问题。
+
+该参数、三平台完整参数对照和macOS原workflow触发/执行接线已实施；env/secret过滤、macOS product self-test及Agent CI workflow契约测试通过，尚无该输入的原生对照。此前run36827234930的Node四例与Electron编译已通过，页面仍未取得通过，不因Node成功关闭A5。
 
 ## 34. Windows 产品原生接入
 
@@ -1896,3 +1914,25 @@ Windows主体安全期限180秒、原进程对象观察期限270秒、失败后�
 本轮只增加直接影响启动判定的固定输入：先运行现有 `test-execution-session-bridge.mjs` 的Windows原生cmd参数分支；原.cmd增加进入及原退出码收据；主体在原TTY断言前记录固定启动事实，并通过uncaughtExceptionMonitor记录原异常而不改变默认失败退出。原执行已settled且仍无READY时及时明确失败，不再空等45秒。真实TTY、PPID、challenge、SafeHandle退出、安全超时拒绝和尾部断言不变，不绕开cmd，不先改native或shell产品代码。上述收据不是退出完整性验收通过，下一仅依据新证据定位启动链。
 
 本地product self-test新增非TTY启动拒绝检查，确认exit1、启动/异常收据形成且无READY；原session bridge与Windows Electron输入测试亦通过。Linux上的这些局部检查不执行Windows API，尤其不能从启动收据代替原对象退出证据。
+
+### 34.9 Windows ConPTY 标准句柄设置
+
+输入 `b163ee7d` 的 run `36827234960` 中现成原生cmd回归、构建、装载与namespace通过，normal仍首败，后续未执行。新增 `A-startup.json` 确认实际 Node25.6.0 主体进入，stdinTTY/stdoutTTY均false；`A-uncaught-error.txt` 为原真实TTY断言，launcher原退出码1。由此定位到终端标准流连接，而不是未进入cmd或主体脚本；旧失败不追认通过。
+
+产品 `native/windows-execution-owner.h` 的 `STARTUPINFOEXW` 漏了锁定node-pty上游 `src/win/conpty.cc` 中 `STARTF_USESTDHANDLES` 与三项标准句柄设NULL。上游修复 `95c9a01e1836cccca3b7a028a6369472ee527174`（fix handle inheritance for shells）及Microsoft Terminal issue11276的解释指出，父进程重定向pipe/file的标准句柄默认复制不会自动替换为ConPTY；必须显式指定NULL标准句柄以取得新终端。当前provider本身使用pipe/ignore stdio，符合此触发条件。
+
+选定最小修正仅补该flag和stdin/stdout/stderr三NULL，保持 `CreateProcessW` 的 `bInheritHandles=false`、原cmd启动链、Job/原进程句柄所有权及EOF/尾部/清理断言。先以源码契约回归冻结此设置，再运行同一Windows原生四例和后置Electron验收；Linux局部检查不代证Windows修后实际TTY或尾部通过。Windows正常已退出对象被外部句柄引用的语义与此缺陷无关，不尝试清除外部句柄。
+
+四行native修正已实施。新增source契约在原实现实际exit1，修后通过；source、main/core、factory、pipes/output、assets、Electron input、session bridge及product self-test十条局部命令全部通过。验证环境为Linux，未执行Windows API；真正TTY连接、主体尾部及原生四例仍待同一新输入的runner。
+
+### 34.10 Windows 真实 Agent 的既定验收接线
+
+Windows继续32.20的真实Codex0.157.1/Claude2.1.280、DeepSeek、两模式natural/stop八场景，四次计划自然模型turns、失败即停、不自动重试、步骤级凭据和脱敏summary不变。先通过同产物Terminal原生/页面基线，再手动触发真实Agent；接线本身不是Agent通过，不新增独立诊断矩阵。
+
+`scripts/smoke/run-vscode-agent-candidate.mjs` 选择Windows明确的npm `.cmd` 而不是同名POSIX shim，版本/MCP/认证预检复用产品 `resolveExecutionSessionSpawnSpec` 的cmd参数和 `windowsVerbatimArguments`。Windows全局npm目录不必与node.exe目录相同，但实际Codex Node wrapper必须使用固定Node25.6.0。固定包安装清单核对实际主体：Codex为 `cmd.exe -> node.exe bin/codex.js -> codex.exe`；Claude为 `cmd.exe -> bin/claude.exe`，不凭shim realpath或basename推定CLI。产品command parser已将customLaunchCommand还原为argv，不额外手写另一套cmd转义。
+
+现有 `tests/vscode-smoke/agent-candidate-process-observer.cjs` 增加Windows后端，单个场景期PowerShell助手在createNode前启动。根为当前Host和绑定hello的Supervisor；CIM只发现具名启动链，随后立即保留原Process.SafeHandle，核对创建身份、实际exe及父对象身份。只观察provider、cmd launcher、Codex Node wrapper和实际CLI；普通工具后代不升级为托管对象。后续退出须有原对象HasExited/WaitForExit/ExitCode事实，不以PID不存在、Unix Z/X或合法对象仍被引用替代。真实CLI没有fixture challenge收据，不伪造；未捕获主体或身份不明必须明确失败/unknown，不从包装器结束补造CLI结束。沿既有有限观察期限、失败即停和错误不伪报规则，不扩容量/洪泛/归档框架。
+
+清理先调用产品resetState；失败时仅可对已绑定原句柄的本场景CLI/wrapper/provider定点强制清理，记录动作且场景仍失败，不用taskkill树杀、按名清理或向未知PID发信号。observer完成后释放自身句柄；本方资源退役与OS对象销毁分开。现有summary增加Windows平台和未知/未确认退出计数，原内容扫描保持，不上传raw或任意命令行。
+
+DeepSeek私有配置内容和销毁流程复用，但Windows文件mode不冒充POSIX隔离。独立临时配置目录在写key前应用并核对仅当前runner用户与SYSTEM的DACL；无法确认则失败且不启动Agent。新Windows workflow手动、单job、匹配Electron候选构建，共用既有real-agent concurrency；secret只进入最终验收step，仅report_ready时上传sanitized summary。Windows auth-only旧旁路暂明确不支持，不成为原八场景前置。局部定向回归后仍须Windows实际运行，Linux/macOS通过不代证。

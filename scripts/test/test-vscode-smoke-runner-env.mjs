@@ -41,20 +41,35 @@ try {
     path.join(os.tmpdir(), 'dsc-smoke-debug-root')
   );
 
-  const args = buildVSCodeArgs({
+  const argsOptions = {
     workspacePath: '/workspace/project',
     userDataDir: '/tmp/dsc-smoke/trusted/user-data',
     extensionsDir: '/tmp/dsc-smoke/trusted/extensions',
     extensionTestsPath: '/workspace/project/tests/vscode-smoke/extension-tests.cjs',
     extensionDevelopmentPath: '/workspace/project',
     extraLaunchArgs: ['--locale=zh-cn']
-  });
-  assert.ok(args.includes('--password-store=basic'));
-  if (process.platform === 'linux') {
-    assert.ok(args.includes('--disable-gpu'));
-    assert.ok(args.includes('--disable-dev-shm-usage'));
+  };
+  for (const platform of ['linux', 'darwin', 'win32']) {
+    assert.deepStrictEqual(buildVSCodeArgs(argsOptions, platform), [
+      argsOptions.workspacePath,
+      '--disable-extensions',
+      '--log=trace',
+      `--user-data-dir=${argsOptions.userDataDir}`,
+      `--extensions-dir=${argsOptions.extensionsDir}`,
+      '--no-sandbox',
+      '--disable-gpu-sandbox',
+      ...(platform === 'linux' ? ['--disable-gpu', '--disable-dev-shm-usage'] : []),
+      '--password-store=basic',
+      ...(platform === 'darwin' ? ['--use-inmemory-secretstorage'] : []),
+      '--disable-updates',
+      '--skip-welcome',
+      '--skip-release-notes',
+      '--locale=zh-cn',
+      `--extensionTestsPath=${argsOptions.extensionTestsPath}`,
+      `--extensionDevelopmentPath=${argsOptions.extensionDevelopmentPath}`
+    ], `${platform} smoke launch arguments`);
   }
-  assert.ok(args.includes('--locale=zh-cn'));
+  assert.deepStrictEqual(buildVSCodeArgs(argsOptions), buildVSCodeArgs(argsOptions, process.platform));
 
   const debugRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-smoke-runner-env-'));
   try {

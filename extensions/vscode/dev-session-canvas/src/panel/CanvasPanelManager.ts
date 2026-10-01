@@ -4070,6 +4070,46 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!options.permanentExecutionClose) this.assertRuntimeSupervisorStateCallbacksSettled();
   }
 
+  private captureCanvasResetIdentity(
+    nodes: readonly CanvasNodeSummary[]
+  ): (currentNodes: readonly CanvasNodeSummary[]) => boolean {
+    const originalNodeCount = nodes.length;
+    const originalKinds = new Map(nodes.map(node => [node.id, node.kind]));
+    const originalExecutions = nodes.flatMap(node => {
+      if (!isExecutionNodeKind(node.kind)) return [];
+      const key = this.getExecutionSessionOperationKey(node.kind, node.id);
+      const binding = this.getPersistedLiveRuntimeSessionForNode(node);
+      return [{
+        nodeId: node.id, kind: node.kind, key,
+        session: this.getExecutionSessions(node.kind).get(node.id),
+        owned: this.nonNativeExecutionOwner?.get(key),
+        record: this.nonNativeHostExecutions.get(key),
+        start: this.candidateRuntimeStarts?.get(key),
+        bindingKey: binding ? this.strictRuntimeDeleteKey(binding) : undefined,
+        bindingKeys: new Set(Array.from(this.runtimeSessionBindings).filter(([, value]) =>
+          value.nodeId === node.id && value.kind === node.kind).map(([bindingKey]) => bindingKey))
+      }];
+    });
+    return currentNodes => currentNodes.length === originalNodeCount &&
+      currentNodes.every(node => originalKinds.get(node.id) === node.kind) &&
+      originalExecutions.every(original => {
+        const node = currentNodes.find(current => current.id === original.nodeId);
+        const binding = node && this.getPersistedLiveRuntimeSessionForNode(node);
+        const session = this.getExecutionSessions(original.kind).get(original.nodeId);
+        const owned = this.nonNativeExecutionOwner?.get(original.key);
+        const record = this.nonNativeHostExecutions.get(original.key);
+        const start = this.candidateRuntimeStarts?.get(original.key);
+        // Cleanup may remove captured responsibilities, but must not commit over their replacements.
+        return (session === undefined || session === original.session) &&
+          (owned === undefined || owned === original.owned) &&
+          (record === undefined || record === original.record) &&
+          (start === undefined || start === original.start) &&
+          (binding === undefined || this.strictRuntimeDeleteKey(binding) === original.bindingKey) &&
+          !Array.from(this.runtimeSessionBindings).some(([bindingKey, value]) =>
+            value.nodeId === original.nodeId && value.kind === original.kind && !original.bindingKeys.has(bindingKey));
+      });
+  }
+
   public async resetState(options: { clearAgentCliResolutionCache?: boolean; reason?: string } = {}): Promise<void> {
     const previousNodeCount = this.state.nodes.length;
     const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
@@ -4081,11 +4121,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
     } else {
+      const isCurrentCanvas = this.captureCanvasResetIdentity(this.state.nodes);
       await this.prepareForHostBoundary({
         preserveLiveRuntime: false,
         allowRuntimeSupervisorRestart: false,
         invalidatePendingExecutionOperations: true
       });
+      if (!isCurrentCanvas(this.state.nodes)) {
+        throw new Error(vscode.l10n.t('The canvas changed while its reset was pending. The reset was not applied.'));
+      }
     }
     this.assertRuntimeSupervisorStateCallbacksSettled();
     if (options.clearAgentCliResolutionCache) {
@@ -5705,45 +5749,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const rootPath = targetWorkspaceRootPath;
         const originalNodeIds = collectWorkspaceRootOwnedNodeIds(this.state, rootPath, rootId);
         const originalNodes = this.state.nodes.filter(node => originalNodeIds.has(node.id));
-        const originalKinds = new Map(originalNodes.map(node => [node.id, node.kind]));
-        const originalExecutions = originalNodes.flatMap(node => {
-          if (!isExecutionNodeKind(node.kind)) return [];
-          const key = this.getExecutionSessionOperationKey(node.kind, node.id);
-          const binding = this.getPersistedLiveRuntimeSessionForNode(node);
-          return [{
-            nodeId: node.id, kind: node.kind, key,
-            session: this.getExecutionSessions(node.kind).get(node.id),
-            owned: this.nonNativeExecutionOwner?.get(key),
-            record: this.nonNativeHostExecutions.get(key),
-            start: this.candidateRuntimeStarts?.get(key),
-            bindingKey: binding ? this.strictRuntimeDeleteKey(binding) : undefined,
-            bindingKeys: new Set(Array.from(this.runtimeSessionBindings).filter(([, value]) =>
-              value.nodeId === node.id && value.kind === node.kind).map(([bindingKey]) => bindingKey))
-          }];
-        });
+        const isCurrentRootNodes = this.captureCanvasResetIdentity(originalNodes);
         const assertCurrentRoot = (): CanvasGroupSummary => {
           const currentRoot = (this.state.groups ?? []).find(group => group.id === rootId &&
             isWorkspaceRootGroup(group) && resolveWorkspaceRootPathForGroup(group) === rootPath);
           const currentNodeIds = collectWorkspaceRootOwnedNodeIds(this.state, rootPath, rootId);
           const currentNodes = this.state.nodes.filter(node => currentNodeIds.has(node.id));
-          const changed = !currentRoot || currentNodes.length !== originalNodes.length ||
-            currentNodes.some(node => originalKinds.get(node.id) !== node.kind) ||
-            originalExecutions.some(original => {
-              const node = currentNodes.find(current => current.id === original.nodeId);
-              const binding = node && this.getPersistedLiveRuntimeSessionForNode(node);
-              const session = this.getExecutionSessions(original.kind).get(original.nodeId);
-              const owned = this.nonNativeExecutionOwner?.get(original.key);
-              const record = this.nonNativeHostExecutions.get(original.key);
-              const start = this.candidateRuntimeStarts?.get(original.key);
-              return (session !== undefined && session !== original.session) ||
-                (owned !== undefined && owned !== original.owned) ||
-                (record !== undefined && record !== original.record) ||
-                (start !== undefined && start !== original.start) ||
-                (binding !== undefined && this.strictRuntimeDeleteKey(binding) !== original.bindingKey) ||
-                Array.from(this.runtimeSessionBindings).some(([bindingKey, value]) =>
-                  value.nodeId === original.nodeId && value.kind === original.kind && !original.bindingKeys.has(bindingKey));
-            });
-          if (changed) {
+          if (!currentRoot || !isCurrentRootNodes(currentNodes)) {
             throw new Error(vscode.l10n.t('The workspace root changed while its template reset was pending. The template was not applied.'));
           }
           return currentRoot!;
@@ -5752,11 +5764,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         await this.prepareWorkspaceRootCanvasForTemplateReset(targetRootGroup, rootPath, assertCurrentRoot);
         targetRootGroup = assertCurrentRoot();
       } else {
+        const isCurrentCanvas = this.captureCanvasResetIdentity(this.state.nodes);
         await this.prepareForHostBoundary({
           preserveLiveRuntime: false,
           allowRuntimeSupervisorRestart: false,
           invalidatePendingExecutionOperations: true
         });
+        this.assertRuntimeSupervisorStateCallbacksSettled();
+        if (!isCurrentCanvas(this.state.nodes)) {
+          throw new Error(vscode.l10n.t('The canvas changed while its reset was pending. The reset was not applied.'));
+        }
       }
     }
 

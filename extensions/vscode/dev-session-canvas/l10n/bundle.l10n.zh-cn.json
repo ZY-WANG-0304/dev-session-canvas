@@ -1045,6 +1045,7 @@
   "The current runtime namespace is occupied by an incompatible supervisor. Existing legacy sessions can continue in compatibility mode, but this new session could not start.": "当前运行时命名空间被不兼容的 supervisor 占用。既有旧会话可以继续以兼容模式运行，但本次新会话无法启动。",
   "Runtime session updates are still pending. Please try again after they finish.": "运行时会话更新尚未完成，请等待完成后重试。",
   "The workspace root changed while its template reset was pending. The template was not applied.": "等待模板重置期间，工作区根目录的画板已发生变化。模板未应用。",
+  "The canvas changed while its reset was pending. The reset was not applied.": "等待重置期间，画板已发生变化。重置未应用。",
   "Session ended with exit code {code}.": "会话已结束，退出码为 {code}。",
   "Session exited due to signal {signal}.": "会话因信号 {signal} 退出。",
   "Session terminated: {reason}": "会话已终止：{reason}",

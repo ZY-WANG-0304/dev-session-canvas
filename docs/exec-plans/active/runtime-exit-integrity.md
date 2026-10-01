@@ -1,5 +1,7 @@
 # 交付跨平台执行会话退出完整性
 
+当前执行入口（2026-10-01，已定位的产品修正）：Windows run36827234960的启动收据已确认实际主体stdin/stdout非TTY，按生产接入34.9补齐上游ConPTY标准句柄设置，保持原句柄继承/退出/尾部判据后复验。A6新增单根reset和非root模板完整入口两例先红，按32.21增加提交身份复核，不覆盖等待期间新执行。macOS旧hang的原宿主日志已确认Canvas ready超时、test runner失败退出而外层未结束，继续从已有failure证据定位，不泛化成keychain结论。下段启动收据待采集描述为上一输入状态。
+
 当前执行入口（2026-10-01，B2/A5）：macOS短路径run `36822748979` 的VS Code启动后job超时，未取得产品清理结论；新run `36825479993` paused-stop因真实EOF已到但测试仍等待取消而首败，按生产接入33.8仅修正消费gate和失败后tracker释放顺序。Windows `36823205778`/`36825483498` 编译及namespace通过，normal在主体READY前code1退出，cleanup unsafe；按34.8增加有限启动收据和既有原生cmd回归，不先改业务。hash差异已确认为CRLF而非旧源码。当前只收口这些具体启动/判定阻塞，随后继续原平台产品及分发验收；真实Agent/Webview和F-04均未关闭，不增加工具矩阵。
 
 当前执行入口（2026-10-01，优先于后面的历史下一步）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整exit0；真实新Host追赶时B51ms应用、A同动作12到18未追平2560，随后ready后13137.248ms完整恢复，原身份/hash/no-history及两份cleanup通过、outer forcedSignals/failures为空。该B1/A1组合收口，下一按生产接入第33节推进B2/A5的macOS产品接入：共享Unix owner、Darwin原生provider、两authority工厂/构建与namespace，保留独立profile/generation、匹配Node/Electron和packaged责任。该平台目前只有运行前设计，没有新平台通过；Windows、其余A项和总体仍开放，原10.14/旧失败及Agent snapshot stop具名未决项不改。
@@ -89,6 +91,13 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 范围包含 Linux/macOS/Windows、Agent/Terminal，以及由 Supervisor 托管的 live-runtime 和直接由 Host 托管的 snapshot-only。结束后 Runtime 重开仍不恢复进程或历史，Supervisor/机器故障后仍无需恢复；F-03 root 归属、F-04 容量整体模型和 F-05 已取消的历史归档不在此项顺手改造。不必等待其他重构完成，但本项未通过验收前不得宣称本次重构的退出完整性已经完成。
 
 ## 进度
+
+- [x] (2026-10-01) Windows新增启动收据确认非TTY真实前置失败；macOS旧artifact宿主日志确认Canvas ready超时而非test module未启动，原结果保留。
+- [x] (2026-10-01，A6) 原38次回归通过后两例完整非root重置入口先红，原日志保留；32.21冻结身份复核边界。
+- [x] (2026-10-01) 34.9的ConPTY四行标准句柄修正已先红后绿，十条Windows相关局部命令通过；33.9的macOS临时宿主参数及三平台参数/Secret过滤回归通过，不代证原生。
+- [x] (2026-10-01，A6) 32.21非root两提交点身份复核及模板callback屏障已实施；原38+新8生命周期、Host145、typecheck/localization通过，独立review和复跑无确定阻塞。原先红/中间夹具失败保留，完整reload/多根/真实UI不代证。
+- [ ] 运行34.9原Windows输入和33.9原macOS页面对照；整体既定验收不减少。
+- [ ] 按生产接入34.10补齐既定Windows真实Agent八场景的cmd入口、原进程对象观察、临时配置DACL及受限workflow；原Terminal基线通过后才触发，不新增模型请求矩阵。
 
 - [x] (2026-10-01) 核对macOS短路径超时与新paused-stop首败、Windows两轮READY前失败；保留原artifact及exit1，明确CRLF摘要差异不代表旧源码，详见生产接入33.8/34.8。
 - [x] (2026-10-01) 完成macOS真实EOF/取消分支和失败后消费等待、Windows启动收据及现成cmd原生回归接线；两product self-test、session bridge、Windows Electron输入与diff检查通过，均为本地局部证据。
@@ -395,6 +404,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-10-01新增原始证据：Windows实际主体非TTY，ConPTY STARTUPINFO缺上游标准句柄设置；A6非root两个重置入口均可覆盖boundary返回后新接纳的同ID执行。macOS旧failure JSON确认页面绑定但未bootstrap ACK、尚无Terminal，safeStorage同步调用为环境阻塞强假设而非已证实死锁；详见32.21/33.9/34.9。
+
 2026-10-01：macOS暂停停止的源已真实EOF时，原测试等待不会再发出的取消，自己保持消费gate到整场到期；失败后立即dispose tracker又污染最终消费快照。Windows两轮READY前code1尚无主体进入证据，不能从空字段推断旧版本或对象泄漏。精确来源和原始字节比较见生产接入33.8/34.8；这些是当前具体判定/启动问题，不扩为通用工具健壮性。
 
 2026-10-01，Darwin工作区下的VS Code用户目录使main.sock长达118字节，超过103限制，尚未启动产品Host；改为job私有短根，Terminal最长76、Agent最长88字节，测试语义不变。Windows官方Node包含的hook摘要与本机Linux来源不同，当前拒绝正确；差异未核实前不能宣称可编译或直接放宽hash。
@@ -659,6 +670,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-10-01 / Codex：先修已先红的A6提交身份保护和Windows ConPTY标准句柄设置；macOS仅在临时smoke宿主采用官方in-memory Secret Storage作受控对照。三项不改产品完成定义、原期限/尾部断言或普通用户配置，不引入全局锁、通用诊断框架，也不由局部回归冒称跨平台通过。
+
 2026-10-01 / Codex：保留原生首败，只修改与本轮判定直接有关的输入。macOS停止允许真实EOF或明确取消，并始终区分主动停止与自然任务完成；Windows先取得launcher/subject启动收据和现成cmd回归，不在缺证据时改产品。所有原尾部、消费、身份、资源及时间预算保持。下一仍为原有限平台/产品验收，不循环原输入筛选绿色。
 
 2026-10-01，保持固定预算并在共享scheduler复核原deadline，提前唤醒重排而非延长时间或放宽结果；属于B2产品收尾的直接缺陷，不是工具通用增强。Windows按独立HPCON/process/input/source责任接线，合法外部句柄引用不作为泄漏；新增Darwin身份helper仅服务原真实Agent八场，不进入产品依赖。详见生产接入33.5、33.6与34节。
@@ -901,6 +914,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-01本轮定位已从空启动字段推进到Windows真实非TTY前置失败，从macOS标准输出缺失推进到实际Canvas ready超时。A6身份保护和模板callback屏障已先红后绿，生命周期46次、Host145、typecheck/localization及独立review通过；Windows四行与macOS宿主参数局部回归通过，原生复验待执行。保留run36827234960及此前所有失败，不关闭F-04、两模式页面、真实Agent或平台整体。
 
 2026-10-01：两次手动run `36825479993`/`36825483498` 均失败，不能以已通过的Node normal/namespace或资源释放关闭平台验收。macOS确认了一处测试等待冲突；Windows确认失败在READY前但原因待新启动收据。此前“Windows旧源码”推断已撤销并改为CRLF事实。没有新的真实Agent、Webview或分发通过，也没有默认启用新profile。
 
@@ -2093,3 +2108,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-01，第四轮Linux八场景通过）：同步run36812745671/736f9ddd的8passed、四natural真实响应/EOF/原断言、八cleanup零值和stop source分账；十buildHashes仅report改变，第三snapshot stop failure未复现且根因未知，不追认或声称修复。凭据已在Linux实证可用，返回原有限产品清单并保留具名未决项，不追加CI捕获循环或新框架，整体未关闭。
 
 修订记录（2026-10-01，平台首败分类）：保留macOS短路径超时及paused-stop等待冲突、Windows两轮READY前失败；修正EOF/取消测试分支及tracker清理顺序，补最小Windows启动事实。CRLF差异不写成旧输入；本地局部回归通过，原生修后结果待验，原产品完成定义不变。
+
+修订记录（2026-10-01，真实启动根因与提交身份）：Windows启动收据确认实际非TTY，34.9按上游补标准句柄且局部先红后绿；macOS旧宿主日志/failure JSON确认初始Canvas未ready，33.9仅用官方临时Secret Storage参数作环境对照；32.21记录两例非root重置竞态与提交复核设计。同步四活章节及当前入口，原失败和全部有限完成定义保持，不追加工具阶段。

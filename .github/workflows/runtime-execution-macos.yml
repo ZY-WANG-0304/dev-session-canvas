@@ -13,7 +13,9 @@ on:
       - extensions/vscode/dev-session-canvas/src/panel/macosExecutionProviderMain.ts
       - scripts/build/macos-execution-provider-patch.mjs
       - scripts/build/macos-execution-candidate-assets.mjs
+      - scripts/smoke/vscode-smoke-runner.mjs
       - scripts/test/test-macos-execution-product.mjs
+      - scripts/test/test-vscode-smoke-runner-env.mjs
       - scripts/test/fixtures/macos-execution-subject.mjs
       - scripts/test/fixtures/macos-execution-namespace.ts
 
@@ -42,6 +44,7 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Check bounded provider input
         run: |
+          node scripts/test/test-vscode-smoke-runner-env.mjs
           node scripts/test/test-macos-execution-provider-source.mjs
           node scripts/test/test-macos-execution-candidate-assets.mjs
           node scripts/test/test-macos-execution-product.mjs --self-test

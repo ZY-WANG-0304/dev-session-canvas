@@ -2,7 +2,7 @@
 
 本 ExecPlan 按 `docs/PLANS.md` 维护，承接 `docs/design-docs/runtime-persistence-closeout.md` 的 B1/A1，不是新的退出诊断阶段。输入为 `8dd82629`。F-04 目标是长历史不再要求每层常驻/一次性复制完整后缀，实际在途数据有约束，恢复不挤掉交互；F-05 的无 completed 历史与退出尾部保证不变。工程判断由代理承担，不等待用户选择预算。
 
-当前B2依赖（2026-10-01）：macOS第四轮run `36821963386` 原Node四例及匹配Electron编译通过，真实Terminal被VS Code测试目录socket长度挡在Host启动前；Windows第二轮纯输入通过，hook来源摘要检查在编译前拒绝，见生产接入33.7与34节。继续既定平台产品验收，不改变已通过的10.15、不新增容量重复矩阵，不关闭F-04、本计划或正式准入。
+当前B2依赖（2026-10-01）：macOS修后run `36827234930` Node四例与Electron编译通过，旧artifact进一步定位为Canvas ready超时且未创建Terminal，按生产接入33.9隔离临时宿主Secret Storage环境依赖。Windows run `36827234960` 确认主体标准流非TTY，34.9最小句柄设置修后原生待验。A6非root提交竞态按32.21修正。继续既定平台产品验收，不改变已通过的10.15、不新增容量重复矩阵，不关闭F-04、本计划或正式准入。
 
 当前入口（2026-10-01，覆盖后面的历史下一步）：容量设计 10.15 的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整 exit 0；B 回复 51ms 实际应用，同一 Webview 动作的 A 块号 12 到 18 满足 `0 < before <= after < 2560`，新 Host ready 后 13137.248ms 完整追平。原两主体/2:1候选/负载、1500ms 与不重置的30秒期限不变，完整后缀、原执行/新 reader、独立 journal/hash、自然 no-history 及两份 cleanup 通过，outer forcedSignals/failures 为空。该组合已覆盖，10.14 和旧失败不改；下一按生产接入第33节推进 B2/A5 的macOS产品owner/provider、两authority工厂、namespace及匹配Node/Electron/packaged接入，平台仍未验，Windows及F-04总体保持开放，不重复成功矩阵或追加工具阶段。
 

@@ -321,6 +321,10 @@ static Napi::Value executionConnect(const Napi::CallbackInfo& info) {
     std::vector<wchar_t> mutableEnvironment(environment.begin(), environment.end());
     STARTUPINFOEXW startup{};
     startup.StartupInfo.cb = sizeof(startup);
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = nullptr;
+    startup.StartupInfo.hStdOutput = nullptr;
+    startup.StartupInfo.hStdError = nullptr;
     startup.lpAttributeList = attributes;
     PROCESS_INFORMATION child{};
     {

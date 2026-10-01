@@ -1304,6 +1304,212 @@ async function testResetCannotSkipCompletionAcceptedAfterInitialCallbackWait() {
   }
 }
 
+async function testNonRootResetCannotLoseExecutionAdmittedAfterBoundary(mode, outcome = 'same-id-replacement') {
+  const f = await makeRootHost();
+  const foldersBefore = vscodeWorkspace.workspaceFolders;
+  const creates = [];
+  const postedStates = [];
+  const completionDeletion = deferred();
+  const completionDeletionStarted = deferred();
+  let admittedSession;
+  f.host.state = { ...f.host.state, nodes: [f.node], groups: [] };
+  f.node.groupId = undefined;
+  f.host.terminalSessions.delete(f.nodeB.id);
+  f.host.unbindRuntimeSession('session-2', '/controlled/runtime', 'terminal', 'legacy-detached');
+  Object.assign(f.host, {
+    executionCandidateProfile: 'linux-owner-v1-candidate',
+    getMultiRootWorkspaceFoldersForComposition: () => [],
+    getAgentCliConfig: () => ({ defaultProvider: 'codex' }),
+    getTerminalShellPath: () => '/controlled/shell',
+    getTerminalShellArgs: () => [],
+    getTerminalScrollback: () => 1000,
+    getExecutionNodeCwd: node => node.metadata.terminal.cwd,
+    resolveExecutionEnvironment: async () => ({}),
+    getPreferredRuntimeSupervisorClient: async () => ({
+      client: f.client, backend: f.host.getRuntimeHostBackend(), runtimeStoragePath: '/controlled/runtime'
+    }),
+    postState: type => postedStates.push({ type, state: structuredClone(f.host.state) })
+  });
+  f.client.supportsExecutionCandidateProfile = profile => profile === 'linux-owner-v1-candidate';
+  f.client.supportsTerminalSessionStream = () => true;
+  f.client.supportsTerminalPagedRead = () => true;
+  f.client.supportsTerminalPagedCompletion = () => true;
+  f.client.subscribeSession = async () => undefined;
+  f.client.deleteSessionStrict = request => {
+    f.deletes.push(request.sessionId);
+    return {
+      first: outcome === 'strict-failure'
+        ? Promise.reject(new Error('controlled original execution deletion failed'))
+        : Promise.resolve({ kind: 'legacy-acknowledged' }),
+      current: () => undefined
+    };
+  };
+  f.client.createSession = async request => {
+    creates.push(request);
+    return {
+      kind: request.kind, sessionId: request.sessionId, live: true, lifecycle: 'live',
+      runtimeBackend: 'legacy-detached', runtimeGuarantee: 'best-effort',
+      displayLabel: request.displayLabel, launchMode: request.launchMode,
+      shellPath: request.launchSpec.file, cwd: request.launchSpec.cwd,
+      cols: request.launchSpec.cols, rows: request.launchSpec.rows, scrollback: request.scrollback,
+      output: '', outputSequence: 0, terminalStreamPaged: true,
+      terminalAuthorityId: 'new-non-root-authority', terminalRevision: 0
+    };
+  };
+  const prepare = f.host.prepareForHostBoundary;
+  f.host.prepareForHostBoundary = async (...args) => {
+    await prepare.apply(f.host, args);
+    if (outcome !== 'same-id-replacement' && outcome !== 'pending-completion') return;
+    let replacementClient;
+    if (outcome === 'pending-completion') {
+      replacementClient = await f.host.getRuntimeSupervisorClientForBackend(
+        f.host.getRuntimeHostBackend(), { deferConnection: true });
+      assert.notStrictEqual(replacementClient, f.client, 'completed events use the new actual client epoch');
+      for (const method of ['ensureConnected', 'supportsExecutionCandidateProfile', 'supportsTerminalSessionStream',
+        'supportsTerminalPagedRead', 'supportsTerminalPagedCompletion', 'subscribeSession', 'createSession']) {
+        replacementClient[method] = f.client[method];
+      }
+      replacementClient.deleteSessionStrict = request => {
+        f.deletes.push(request.sessionId);
+        completionDeletionStarted.resolve();
+        return { first: completionDeletion.promise, current: () => undefined };
+      };
+      f.host.getPreferredRuntimeSupervisorClient = async () => ({
+        client: replacementClient, backend: f.host.getRuntimeHostBackend(), runtimeStoragePath: '/controlled/runtime'
+      });
+      f.host.terminalReadRelay = new RuntimeTerminalReadRelay();
+    }
+    await f.host.startTerminalSessionWithSupervisor(f.node.id, 80, 24);
+    admittedSession = f.host.terminalSessions.get(f.node.id);
+    assert.equal(creates.length, 1, 'the real Host startup admits exactly one replacement execution');
+    assert.equal(admittedSession?.runtimeSessionId, creates[0].sessionId);
+    assert.notEqual(admittedSession, f.session);
+    if (replacementClient) {
+      replacementClient.options.onSessionState({
+        kind: 'terminal', sessionId: admittedSession.runtimeSessionId, live: false, lifecycle: 'closed',
+        runtimeBackend: 'legacy-detached', output: '', cols: 80, rows: 24,
+        terminalStreamPaged: true, terminalAuthorityId: 'new-non-root-authority',
+        terminalRevision: 2, terminalFinalRevision: 2, outputSequence: 2
+      });
+      await Promise.race([completionDeletionStarted.promise,
+        f.host.waitForPendingRuntimeSupervisorStateCallbacks().then(() => {
+          assert.fail('the actual completed callback must reach its controlled remote delete wait');
+        })]);
+      assert.equal(f.host.terminalSessions.size, 0);
+      assert.equal(f.host.runtimeSessionBindings.size, 0);
+      assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks.size, 1);
+    }
+  };
+  const template = {
+    id: 'controlled-non-root-reset', name: 'Controlled non-root reset', category: 'builtin',
+    createdAt: '2026-09-30T00:00:00.000Z', updatedAt: '2026-09-30T00:00:00.000Z',
+    nodes: [{ kind: 'note', title: 'Reset note', position: { x: 0, y: 0 },
+      size: { width: 320, height: 240 }, metadata: { note: { content: 'Replacement canvas' } } }],
+    edges: []
+  };
+  try {
+    vscodeWorkspace.workspaceFolders = [];
+    const result = await (mode === 'state-reset'
+      ? f.host.resetState()
+      : f.host.applyCanvasTemplateRecord({ template }, { reset: true, visibleCenter: { x: 200, y: 200 } }))
+      .then(value => ({ value }), error => ({ error }));
+    const writes = f.persisted.filter(entry => entry.options?.reason === mode);
+    if (outcome === 'pending-completion') {
+      const observation = {
+        mode, error: result.error?.message ?? null,
+        pendingCallbacks: f.host.pendingRuntimeSupervisorStateCallbacks.size,
+        completedNodeRetained: f.host.state.nodes.some(node => node.id === f.node.id &&
+          node.metadata.terminal?.terminalHistoryDiscarded === true),
+        savedWithoutCompletedNode: writes.some(entry => !entry.state.nodes.some(node => node.id === f.node.id)),
+        notifiedWithoutCompletedNode: postedStates.some(entry => entry.type === 'host/stateUpdated' &&
+          !entry.state.nodes.some(node => node.id === f.node.id))
+      };
+      console.log(`non-root pending completion observation: ${JSON.stringify(observation)}`);
+      assert.deepEqual(f.deletes, ['session-1', creates[0].sessionId]);
+      assert.deepEqual({
+        pendingCallbacks: observation.pendingCallbacks,
+        completedNodeRetained: observation.completedNodeRetained,
+        savedWithoutCompletedNode: observation.savedWithoutCompletedNode,
+        notifiedWithoutCompletedNode: observation.notifiedWithoutCompletedNode
+      }, {
+        pendingCallbacks: 1, completedNodeRetained: true,
+        savedWithoutCompletedNode: false, notifiedWithoutCompletedNode: false
+      });
+      assert.match(result.error?.message ?? '', /Runtime session updates are still pending/);
+      assert.equal(writes.length, 0);
+      completionDeletion.resolve({ kind: 'legacy-acknowledged' });
+      await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+      assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks.size, 0);
+      assert.equal(f.host.state.nodes.find(node => node.id === f.node.id)?.metadata.terminal.terminalHistoryDiscarded, true);
+      return;
+    }
+    assert.deepEqual(f.deletes, ['session-1'], 'the old boundary deletes only its initially captured execution');
+    if (outcome !== 'same-id-replacement') {
+      assert.equal(creates.length, 0);
+      if (outcome === 'strict-failure') {
+        assert.match(result.error?.message ?? '', /Runtime deletion did not complete/);
+        assert.equal(f.host.state.nodes.find(node => node.id === f.node.id)?.metadata.terminal.runtimeSessionId, 'session-1');
+        assert.strictEqual(f.host.terminalSessions.get(f.node.id), f.session);
+        assert.equal(f.host.runtimeSessionBindings.get(f.host.buildRuntimeSessionBindingKey(
+          'terminal', 'session-1', '/controlled/runtime', 'legacy-detached'))?.nodeId, f.node.id);
+        assert.equal(writes.length, 0);
+        assert.equal(postedStates.some(entry => entry.type === 'host/stateUpdated' &&
+          !entry.state.nodes.some(node => node.id === f.node.id)), false);
+      } else {
+        assert.equal(result.error, undefined);
+        assert.equal(f.host.terminalSessions.size, 0);
+        assert.equal(f.host.runtimeSessionBindings.size, 0);
+        assert.equal(f.host.state.nodes.some(node => node.id === f.node.id), false);
+        assert.equal(f.host.state.nodes.length, mode === 'state-reset' ? 0 : 1);
+        if (mode === 'template-applied') {
+          assert.equal(f.host.state.nodes[0].metadata.note.content, 'Replacement canvas');
+          assert.equal(result.value.length, 1);
+        }
+        assert.equal(writes.length, 1);
+        assert.equal(postedStates.filter(entry => entry.type === 'host/stateUpdated' &&
+          !entry.state.nodes.some(node => node.id === f.node.id)).length, 1);
+        assert.deepEqual(postedStates.at(-1).state, f.host.state);
+      }
+      console.log(`non-root reset ${outcome} passed: ${mode}`);
+      return;
+    }
+    assert.equal(creates.length, 1, `replacement startup must run before evaluating the reset: ${result.error?.stack ?? 'none'}`);
+    assert.ok(admittedSession, 'the replacement must reach the real session map');
+    const newBindingKey = f.host.buildRuntimeSessionBindingKey(
+      'terminal', creates[0].sessionId, '/controlled/runtime', 'legacy-detached');
+    const observation = {
+      mode, error: result.error?.message ?? null,
+      creates: creates.length, deletedOriginalOnly: f.deletes.length === 1 && f.deletes[0] === 'session-1',
+      nodeRetained: f.host.state.nodes.some(node => node.id === f.node.id &&
+        node.metadata.terminal?.runtimeSessionId === admittedSession.runtimeSessionId),
+      sessionRetained: f.host.terminalSessions.get(f.node.id) === admittedSession,
+      bindingRetained: f.host.runtimeSessionBindings.get(newBindingKey)?.nodeId === f.node.id,
+      savedWithoutNewExecution: writes.some(entry => !entry.state.nodes.some(node => node.id === f.node.id)),
+      notifiedWithoutNewExecution: postedStates.some(entry => entry.type === 'host/stateUpdated' &&
+        !entry.state.nodes.some(node => node.id === f.node.id))
+    };
+    console.log(`non-root reset replacement observation: ${JSON.stringify(observation)}`);
+    assert.deepEqual({
+      nodeRetained: observation.nodeRetained,
+      sessionRetained: observation.sessionRetained,
+      bindingRetained: observation.bindingRetained,
+      savedWithoutNewExecution: observation.savedWithoutNewExecution,
+      notifiedWithoutNewExecution: observation.notifiedWithoutNewExecution
+    }, {
+      nodeRetained: true, sessionRetained: true, bindingRetained: true,
+      savedWithoutNewExecution: false, notifiedWithoutNewExecution: false
+    }, `${mode} must not overwrite a same-ID execution admitted after its cleanup returned`);
+    assert.match(result.error?.message ?? '', /canvas changed while its reset was pending/);
+    assert.equal(writes.length, 0);
+  } finally {
+    completionDeletion.resolve({ kind: 'legacy-acknowledged' });
+    await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+    for (const session of f.host.terminalSessions.values()) f.host.disposeManagedExecutionSession(session);
+    f.host.disposeRuntimeSupervisorClients();
+    vscodeWorkspace.workspaceFolders = foldersBefore;
+  }
+}
+
 await testFinalFlushProjectsResizeAndKeepsRemoteAlive();
 await testAdmissionRejectsLateTimerAndEvents();
 await testCompletedStateCannotBeReplacedByOldTimer();
@@ -1342,4 +1548,19 @@ await testFullRootTemplateResetCannotLoseNewExecutionDuringDelete('same-id-repla
 await testFullRootTemplateResetCannotLoseNewExecutionDuringDelete('strict-failure');
 await testFullRootTemplateResetCannotLoseNewExecutionDuringDelete('root-replaced');
 await testResetCannotSkipCompletionAcceptedAfterInitialCallbackWait();
+console.log('existing runtime Host deactivation integrity cases passed; checking non-root reset replacement boundaries');
+const nonRootResetFailures = [];
+for (const outcome of ['same-id-replacement', 'unchanged', 'strict-failure', 'pending-completion']) {
+  for (const mode of ['state-reset', 'template-applied']) {
+    try {
+      await testNonRootResetCannotLoseExecutionAdmittedAfterBoundary(mode, outcome);
+    } catch (error) {
+      console.error(`${mode} ${outcome} boundary regression: ${error.stack}`);
+      nonRootResetFailures.push(error);
+    }
+  }
+}
+if (nonRootResetFailures.length > 0) {
+  throw new AggregateError(nonRootResetFailures, 'non-root reset identity boundary regressions');
+}
 console.log('runtime Host deactivation integrity tests passed (flush, admission, stale overwrite, callback tracking, idempotence)');

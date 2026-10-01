@@ -16,6 +16,15 @@ assert.doesNotMatch(header, /LoadConptyDll\(|GetModuleHandleA\(/);
 const start = header.slice(header.indexOf('static Napi::Value executionStart('), header.indexOf('static Napi::Value executionConnect('));
 assert.match(start, /catch \(const std::exception& error\) \{[\s\S]*?throw Napi::Error::New\(info.Env\(\), error.what\(\)\)/,
   'Synchronous standard exceptions must not cross node-addon-api 7 WrapCallback');
+const connect = header.slice(header.indexOf('static Napi::Value executionConnect('), header.indexOf('static Napi::Value executionPollWait('));
+const startup = connect.slice(connect.indexOf('STARTUPINFOEXW startup{};'), connect.indexOf('PROCESS_INFORMATION child{};'));
+assert.match(startup, /startup\.StartupInfo\.dwFlags = STARTF_USESTDHANDLES;/,
+  'A ConPTY child must not receive the provider redirected standard handles');
+for (const field of ['hStdInput', 'hStdOutput', 'hStdError']) {
+  assert(startup.includes(`startup.StartupInfo.${field} = nullptr;`), `${field} must be explicitly NULL for the new ConPTY`);
+}
+assert.match(connect, /CreateProcessW\(nullptr, mutableCommand\.data\(\), nullptr, nullptr, false,/,
+  'Null ConPTY standard handles do not enable arbitrary parent handle inheritance');
 assert.match(header, /WaitForSingleObject\(owner->process\.value, 0\)/);
 assert.match(header, /owner->idle\.wait\(lock, \[this\] \{ return !owner->busy; \}\)/);
 assert.match(header, /owner->busy \|\| owner->closeRequested/);
