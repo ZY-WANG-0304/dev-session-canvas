@@ -2096,3 +2096,13 @@ reload前持久交接原资源身份及隔离storage，失败先保存首次事�
 Windows Agent `36843457341` 首场在 `agent-candidate-tests.cjs:121` 的测试 storage containment 断言失败，发生在Supervisor hello、observer和CLI生命周期验收之前；Windows盘符大小写与VS Code `fsPath`规范化可使旧 `startsWith` 误拒绝合法子路径。新增的窄 helper/test改用realpath与平台relative严格子路径判断，仍拒绝父目录、相邻前缀、跨盘和symlink逃逸；原失败不追认通过，下一次固定原矩阵前需确认新helper已进入source hash。
 
 macOS产品workflow `36843430053` 在4f015c81上完成固定部署目标编译及两模式Terminal/Webview/completed reopen步骤，job success；原artifact仍保留为平台证据，未将本地Linux或历史macOS Agent失败改写为Agent通过。六资产、旧OS API、Remote及默认分发仍开放。
+
+## 40. A3/A4 当前平台证据回收与下一门禁
+
+A3修正夹具的最终纯测试在当前工作树通过7组，新增receipt只声明 `mode=frozen-owner-flush-before-attacher-start`，并明确不声称两个Host并发写入同一workspace persistence。该字段和目标已存在拒绝测试是在原A3固定输入 `8515ea25` 之后补入的，因此 `.debug/a3-reader-isolation-20261001-fixed/` 仍按其原始输入与SHA解释，不把后加的provenance字段回填为同一输入；行为结论不变，原首败继续保留。
+
+当前提交 `8515ea25` 的Windows native Agent run `36846756417` 只取得有限通过：真实Codex的live natural、live stop、snapshot-only natural以及snapshot-only stop四场均通过；最后一场包含严格空snapshot判据和同runtime/workspace/user-data的新Host重开，节点保持stopped、空状态、无新执行且cleanup完成。Claude的第一场live natural在认证成功后进入stopped、source EOF且reader settlement为`applied`，但没有 `outputSequence` 或 CLI observed，触发既有 `timeout/response` 诊断；其余三个Claude场景未运行。该结果是真实Agent/生命周期验收的直接阻塞，不能归类为凭据前置失败，也不能从Codex通过推断Claude通过。先保存摘要 `.debug/windows-agent-36846756417-v2/summary.json`，定位Claude启动链/终态顺序后再调度完整矩阵；不修改旧断言取绿。
+
+同一提交的Windows产品Provider run `36846733819` 在实际Terminal/Webview/completed reopen步骤失败，构建和前置产品provider均成功，日志只证明Electron启动到`workbench#open()`，未形成可核对的产品报告。该失败目前只分类为产品workflow/宿主启动阶段阻塞，不能归因storage containment（修正后的helper尚未进入该步骤的可核对报告），也不能以进程退出或大artifact存在宣称产品通过。macOS产品Provider run `36846734096`成功，但仍不代证macOS Agent。
+
+下一门禁保持有限：提交当前A3 receipt/文档后，先按原输入复核Windows产品启动失败的第一现场；再触发一次macOS真实Agent固定矩阵，单独取得其Codex/Claude结果。未完成Claude完整矩阵、Windows产品Provider、macOS Agent、A5六资产/Remote/默认分发和F-04前，不宣布跨平台或总体退出完整性交付；不把诊断工具通用增强重新设为前置。

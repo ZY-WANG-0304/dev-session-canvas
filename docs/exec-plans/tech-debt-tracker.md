@@ -23,6 +23,10 @@
 
 ## 技术债列表
 
+2026-10-01继续更新：A3夹具首跑因独立Host使用不同workspace-storage失败，修正为owner已flush扩展存储快照复制到B对应slot后，`.debug/a3-reader-isolation-20261001-fixed/` live双Host与snapshot-only两例完整通过；跨Host同execution/B原readId、90000行尾部/EOF/applied、无历史和cleanup均通过，首败仍保留。Windows36843457341的storage containment误拒绝已以realpath+平台relative严格子路径窄修并完成纯测，新的Windows原矩阵仍待workflow回收。A6真实reload首轮及macOS新target产品Terminal/Webview/reopen已各自取得有限通过；A4严格空态Agent重开、六资产/Remote/默认准入与F-04仍开放。
+
+2026-10-01当前回收：`36846756417` 的Windows真实Codex四场（含严格空snapshot及新Host重开）通过；Claude首场natural在认证成功后stopped/EOF/applied但无outputSequence，触发timeout/response，后续三场未运行，作为真实Agent生命周期阻塞保留。`36846733819` Windows产品Provider在Electron启动阶段失败且未形成可核对报告，不能归因storage helper；`36846734096` macOS产品Provider成功但不代证Agent。A3 receipt边界与目标冲突纯测已通过7组，但晚于`8515ea25`固定输入，旧A3证据不回填为当前树provenance。下一先定位Windows产品启动第一现场，再触发macOS Agent矩阵；不新增通用诊断门槛。
+
 2026-10-01最新有限增量：第39节真实Linux Runtime Reload Window首轮exit0、同UI/新Host/原执行/新reader、completed空重开与清理均独立核对，固定子项不再排队；snapshot-only reload、多根、其余A1至A6不代证。Windows36843457341越过无凭据前置后首败storage路径断言，后七场未跑，保留清理观察未知，先核对路径语义。macOS36841263618已证明连续空终态与独立resize后页面一致，严格空态判据及真实重开待新证据；A5新target产品报告待回收，六资产/兼容/Remote和默认准入仍开放。当前队列以有限收尾及active计划首段为准，以下dated记录均保留原时点含义。
 
 2026-10-01 B2/A5与B3/A6：macOS Terminal36829311235六报告核对通过，真实Agent36832581851前三Codex场passed、第四snapshot stop空快照真值断言首败、Claude未跑，33.10所需终态证据已接入，定向回归与独立复核通过，原断言不改，待一次原矩阵。Windows36830583121绿灯缺报告已确认CLI转交误判，34.12窄修后36834158313真实exit1，原小报告确认mounted早于reader身份返回；共享原30秒poll已先红后绿，待原流水线，Agent未调度。32.21新增永久退出后旧reset写入缺陷已先红后修，原46+真实start2+普通/owner重叠2共50项、Host145/typecheck/localization及独立复核通过，不代证真实reload/多根UI。第35节固定VSIX实际安装接线开始，不把原payload smoke算installed通过。所有旧失败保留；剩余F-04/A1至A6、六资产/运行时、Remote与默认准入按有限清单，不另增通用工具债务。

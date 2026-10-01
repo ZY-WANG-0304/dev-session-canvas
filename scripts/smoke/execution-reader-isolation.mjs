@@ -164,7 +164,8 @@ export async function copyReaderIsolationExtensionStorage({ sourceStoragePath, s
   }
   const targetHash = await hashReaderStorageSnapshot(target);
   if (targetHash !== sourceHash) throw new Error('Reader storage copy hash does not match its source.');
-  return { sourcePath: source, targetPath: target, relativePath: relative, sourceHash, targetHash };
+  return { mode: 'frozen-owner-flush-before-attacher-start', sourcePath: source, targetPath: target,
+    relativePath: relative, sourceHash, targetHash, concurrentWorkspacePersistenceClaim: false };
 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -201,7 +202,8 @@ export async function runReaderIsolation({ projectRoot, output, runId, vscodeExe
     scenarios: [{ mode: 'live-runtime', roles: ['owner', 'attacher'],
       surfaces: { owner: ['editor', 'panel', 'editor'], attacher: ['panel'] },
       storageHandoff: { kind: 'owner-extension-storage-snapshot', source: 'owner-ready.storage.extensionStoragePath',
-        target: 'attacher.userDataDir/<same User/workspaceStorage slot>/devsessioncanvas', hash: 'sha256' } },
+        target: 'attacher.userDataDir/<same User/workspaceStorage slot>/devsessioncanvas', hash: 'sha256',
+        concurrentWorkspacePersistenceClaim: false } },
     { mode: 'snapshot-only', roles: ['owner'], surfaces: { owner: ['panel', 'editor'] } }],
     automaticRetries: 0, businessPrivateStateInjection: false, remoteCancellationAckClaim: false });
 

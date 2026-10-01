@@ -221,6 +221,8 @@ async function runAttacher() {
   const storageCopy = await waitShared('attacher-storage-ready.json');
   assert.equal(typeof storageCopy.sourcePath, 'string');
   assert.equal(typeof storageCopy.targetPath, 'string');
+  assert.equal(storageCopy.mode, 'frozen-owner-flush-before-attacher-start');
+  assert.equal(storageCopy.concurrentWorkspacePersistenceClaim, false);
   assert.equal(storageCopy.sourceHash, storageCopy.targetHash);
   assert.equal(JSON.parse(process.env.DEV_SESSION_CANVAS_READER_STORAGE_COPY).targetPath, storageCopy.targetPath);
   nodeId = owner.nodeId;

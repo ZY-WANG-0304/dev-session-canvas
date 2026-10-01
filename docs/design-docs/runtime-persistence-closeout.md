@@ -168,6 +168,8 @@ B2 会改变实际 provider、信用与消费链，最终启用产物必须复�
 
 每次工作必须引用 B/A 编号、写明直接产品风险和结束条件；无法映射的增强延期。校准不是验收通过，失败不得事后调宽门槛抹绿；确有环境或方案原因要修改工程阈值时，保留原值/失败和理由重新评审，不改变既定产品保证。只有外部凭据/资源确实缺失、不可逆操作或产品保证需要变更时才向用户提出具体问题，不再泛问是否同意清单。B1 修复、首次失败与未完责任记入容量 active 计划；当前 B2 接入与实际拓扑 A1 的顺序以本节为准，不因历史“下一步”再开工具阶段。
 
+2026-10-01当前门禁：Windows真实Agent的Codex四场已通过，包含snapshot-only空状态严格判据与同Host存储重开；Claude首场natural在认证成功后提前进入stopped/EOF/applied而无output sequence，后续场景未运行，作为真实Agent生命周期直接阻塞保留。Windows产品Provider在Electron启动阶段未形成可核对报告而失败，不能归因storage helper；macOS产品Provider成功但不代证macOS Agent。A3 receipt边界纯测在当前工作树通过，但晚于固定A3 run输入，不回填其provenance。下一只回收Windows产品第一现场并触发一次macOS Agent矩阵；不把通用诊断增强、旧失败或局部Codex通过当作整体完成。
+
 历史证据继续保留原 SHA、原输入、断言、失败、工件与补救动作。D1 至 D4、U1/W1、PTY/EOF/挂断及后代对照作为诊断资料；不追认失败为通过，不为抹红重复采集，也不将旧阶段未勾项全文复制进当前清单。Windows 已退出进程仍被合法句柄引用需按对象语义解释，本方 owner 释放与 OS 对象最终销毁分开，不能盲关其他进程句柄求零。
 
 前版 `2d375606` 只读核对与文档检查通过，容量与退出两路独立复核未发现范围阻塞；该证据不表示用户批准了草案或产品验收通过。本次按用户要求由代理承担工程裁决，变更完成定义状态、预算责任和工作顺序，历史实验/断言不改。原始审核见 `webview-host-supervisor-architecture-review.md`，容量进展见 `runtime-persistence-storage-reevaluation.md` 第 9 节，退出接线与有限证据见 `runtime-exit-integrity-production-integration.md`，契约以 `docs/product-specs/runtime-persistence-modes.md` 第 9、10 节为准。

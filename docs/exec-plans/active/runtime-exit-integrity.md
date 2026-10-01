@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前唯一执行队列（2026-10-01）：A3第38节修正后两例已完成，首败保留，不重复该组合。下一是A4按33.10已取得的完整空终态证据实施严格空态判据及真实新Host重开，再固定一次原macOS Agent矩阵。Windows36843457341已越过全部无凭据前置并进入真实Agent，首场在隔离storage路径断言失败；窄helper/test已完成，下一固定矩阵只验证该判定修正，不把旧失败当产品缺陷。A5 macOS产品run36843430053在新target下成功，六资产/兼容/Remote仍开放。A6第39节真实Runtime reload首轮已通过，不重跑已完成容量/重连组合；无需用户重复配置key或先缩减支持范围。下述各“当前/下一”段落是原时点记录，不构成追加队列。
+当前唯一执行队列（2026-10-01）：A3第38节修正后两例已完成，首败保留，不重复该组合；当前工作树只补receipt边界与目标冲突纯测，原A3 run按其冻结输入解释。A6第39节真实Runtime reload首轮已通过，不重跑已完成容量/重连组合。Windows native Agent run36846756417的Codex四场通过，Claude第一场natural在认证成功后以stopped/EOF/applied但无outputSequence并触发timeout/response，后续Claude场景未运行；这是直接真实Agent生命周期阻塞，先定位后再调度完整矩阵。Windows产品Provider run36846733819在Electron启动阶段未形成可核对报告而失败，不能归因storage helper；macOS产品Provider run36846734096成功但不代证Agent。下一按第40节先提交并回收Windows产品启动第一现场，再触发一次macOS Agent矩阵；A5六资产/Remote/默认分发、F-04和其余A1至A6仍开放。不扩通用诊断工具门槛。下述各“当前/下一”段落是原时点记录，不构成追加队列。
 
 该队列实际增量：e10ad8aa的Windows36841262535已通过私有目录/全部文件ACL及原isolatedCheck，随后Darwin observer夹具混用Windows路径规则首败；只在夹具显式path.posix，原角色断言保持，三条observer/CLI局部命令通过。macOS36841263618仍按原矩阵运行中，未宣称结果。A3第38节冻结真实单surface切换/跨Host reader两例，A5第37节固定部署目标在实现；均不重跑已完成容量组合。
 
