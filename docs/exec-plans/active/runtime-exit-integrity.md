@@ -2,7 +2,7 @@
 
 最新 A1/B1 结果（2026-10-01，覆盖后续历史入口）：固定 `10/1` schema2 Linux Electron 候选的 `color`/`size` 真实多会话校准均通过内容、预算观察和产品 cleanup，仍只是声明负载；同候选 `2/1` `color` Host detach/reconnect 也通过，B 在 A 尚未追平时 53.4ms 应用，旧 Supervisor 与 reader/session 身份保持，Host ready 后 15,538.456ms 追平。该结果解除具名容量/离线交互组合，不关闭 F-04、默认准入、跨平台/packaged 或其他 A 格；不重复成功矩阵，不新增通用诊断门槛。
 
-当前收尾更新（2026-10-01）：固定六架构候选包已完成字节聚合并独立加载，A6 snapshot-only 的同一冻结 VSIX 已在 `.debug/a6-snapshot-real-reload-20261001-post-start-resize/` 完成一次真实 `Reload Window` 通过。该运行覆盖实际尺寸交接、SIGHUP 尾部、双文件保存、新 Host 页面恢复、原资源退出、无重启执行和 cleanup；首轮尺寸前置失败与其 cleanup 的 pending 保存仍原样保留。A1/F-04 继续按有限收尾推进：十会话是声明输入而非产品上限，活动会话的 O(N) 成本与最终保存/unknown 责任槽分账；Q=1 保留且其 `rejected-before-acquire` Host 预约泄漏是下一项直接代码阻塞。不要再追加通用诊断工具门槛。
+当前收尾更新（2026-10-01）：固定六架构候选包已完成字节聚合并独立加载，A6 snapshot-only 的同一冻结 VSIX 已在 `.debug/a6-snapshot-real-reload-20261001-post-start-resize/` 完成一次真实 `Reload Window` 通过。该运行覆盖实际尺寸交接、SIGHUP 尾部、双文件保存、新 Host 页面恢复、原资源退出、无重启执行和 cleanup；首轮尺寸前置失败与其 cleanup 的 pending 保存仍原样保留。A1/F-04 继续按有限收尾推进：十会话是声明输入而非产品上限，活动会话的 O(N) 成本与最终保存/unknown 责任槽分账；Q=1 的 `rejected-before-acquire` Host 预约清理已由 e2a53372 修复并以 149/149 回归确认，不再作为当前代码阻塞。不要再追加通用诊断工具门槛。
 
 当前工程状态补充（2026-10-01，第49节）：三平台schema2、Linux旧Node同名namespace和六资产聚合已提交，固定六格无凭据workflow完成局部复核；本地Linux x64整条构建/双宿主加载/归档已通过。下一只首次运行六格原生分发矩阵，再继续下段有限五包；不是重新实施已完成的兼容代码。最低OS真机环境与现代runner验证分账，普通构建仍stock。
 
@@ -112,7 +112,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01，B1/A2) 同候选 `2/1` 真实 Host detach/reconnect `color` 通过；新 Host 在 A 尚未追平时实际应用 B（53.4ms），保持原 Supervisor/session/reader 身份并在 ready 后 15,538.456ms 追平，reconnect/outer cleanup 通过。F-04 总体和其余平台/页面格继续开放。
 
 - [x] (2026-10-01，第50节) snapshot-only一次UI真实reload接线及schema2 installed适配完成，installed13/reload11/typecheck和原窄回归通过；原Runtime固定包与主体/整体期限保持，自动activation与driver读盘分账，旧reader/EOF及独占落盘不代证。
-- [ ] (2026-10-01，第50节) 冻结当前包后一次实际snapshot-only Host离开验收，独立成功写入/磁盘来源/新页面及原进程释放对账；未取得真实结果前不关闭A6。
+- [x] (2026-10-01，第50节) 冻结当前包后一次实际snapshot-only Host离开验收已由 `.debug/a6-snapshot-real-reload-20261001-post-start-resize/` 完成：独立写入/磁盘来源、新页面恢复、旧Host/provider/主体释放、无重启执行、binding/pending 与 cleanup 均通过；保留 `oldReaderOutcome=not-observed`、`sourceEofClaim=false`、`oldHostExclusiveDiskWriteClaim=false`，不外推旧 reader/EOF 事实。
 - [x] (2026-10-01，第47节) 独立A6纯测/审查及固定旧包唯一首轮完成，exit1保留；真实EISDIR、原来源/磁盘保留与EOF成立，但final通知被保存失败阻断，B故障后交互未执行，cleanup registry断言另失败。
 - [x] (2026-10-01，第47节) 已有reader/root writer先红后修final水位发布与落盘耦合，Host147/147、completed/typecheck/A6纯测与独立复审通过；清理改为等真实空registry再独立TERM。
 - [x] (2026-10-01，第47节) 新固定包c4df29f5的原多根组合唯一复验exit0，input/installed/case/cleanup独立核对及冻结断言重放通过；A真实EISDIR/原binding/EOF与原reader applied4、B原执行24.9ms和空registry落盘后清理均成立，旧首败不改。
@@ -120,7 +120,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01，第49节) 实际Node16/25同名namespace双向互斥通过；另用固定buster/glibc2.28编译的同一x64 addon在旧容器、Node25和当前Electron成功factory检查/加载，无PTY，不代证旧OS页面。
 - [x] (2026-10-01，第49节) 固定六格无凭据workflow及最小build/load脚本已形成，窄测试通过；本地整条Linux x64构建/基线/Node16与25同产物加载/归档exit0，glibc分别2.28/2.35。独立复核只补失败时已有产物保留，不生成成功摘要。
 - [x] (2026-10-01，第49节) 六格首轮36872829936/deb5dc9c attempt1已执行，整体failure保留；Linux/macOS四格成功且产物独立hash/import复核，Windows ARM64 job成功待回收，x64原120秒编译超时/文件锁致失败artifact上传也失败，未进入load。
-- [ ] (2026-10-01，第49节) 仅Windows x64同输入/同期限一次job重跑attempt2待回收，其余五格不重跑；随后原产品验收与默认准入。最低macOS/Windows隔离环境已询问，尚未作支持政策变更。
+- [x] (2026-10-01，第49节) Windows x64/ARM64 受影响两格已按同输入/同期限完成 attempt2（run `36874985406`）；与已核对四格合并后六目标 import/聚合/固定 VSIX SHA 均通过。该结果仍不代证最低旧 OS、各目标完整产品或默认准入。
 - [x] (2026-10-01，第48节) 实际Host/headless先红3过/9失败后六行snapshot尺寸保护使原12项通过，独立Host147/147、Runtime completed与typecheck通过；不证明原macOSrun唯一因果。
 - [x] (2026-10-01，第48节) 新增submitted/replacement负向组合及原序列化入口回归通过，新增16/16。
 - [x] (2026-10-01，第48节) 页面旧fixture错误要求合成exit banner，按32.4既定契约改为无合成正文且原tail/不替换不变，相关八例通过；原4/6保留。非空snapshot实际页面/重开不由此代证。
@@ -137,7 +137,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01) 第39节固定VSIX真实Reload Window首轮exit0，9297ms；同UI、新Host/frame/readId、原Supervisor/provider/主体、新nonce11ms应用、B空completed无新执行、A最终applied和零bindings/pending/nodes、fallback=[]均经root独立核对。局部7/7及原launcher环境回归通过，不代证其他A6。
 - [x] (2026-10-01) 4f015c81已推送，Windows36843457341全部前置通过并进入首个真实Codex场景；首败storage路径断言，后七项not-run，observer未知/原failure保留，不记作通过。
 - [x] (2026-10-01) Windows storage containment窄修及4/4纯测完成，改用realpath+平台relative严格子路径并保留拒绝边界；尚未重跑原矩阵。
-- [ ] A3双Host夹具需先共享同一root持久化路径而保持独立Host，再固定真实两例；A4严格空态判据/真实重开与A3两例正在实施/复核。macOS原产品36843430053的新target编译与页面步骤成功，artifact已保留。
+- [x] A3 双 Host 共享 root 持久化路径的真实两例已由 `.debug/a3-reader-isolation-20261001-fixed/` 完成：live/snapshot-only、surface switch、reader/EOF、完整保存、自然 no-history 与 cleanup 均通过；旧首败保留，慢消费者/force-delete/其他平台仍不由此代证。
 - [x] (2026-10-01) 34.12安全失败属性两文件已实施并独立复跑原DeepSeek配置测试通过；不携带原错误/路径/凭据，也不将killed或耗时当成超时证明。Windows原生复验待固定提交。
 - [x] (2026-10-01) 33.10旧Linux输入只读核对确定三个初始消息schema盲点及几何尺寸差异；序列化再编码差异单独保留，不推断macOS空屏正确。
 - [x] (2026-10-01) 33.10三个严格初始规则及独立resize对账已实施，helper/report两项先红后绿，root复跑及workflow契约通过；旧Linux完整0至12回放、字节比较false、原几何false均保留。
