@@ -2,6 +2,8 @@
 
 当前唯一执行队列（2026-10-01）：A4先收口Windows无凭据私有配置前置的安全失败字段，以及macOS终态证据已核实的三个初始消息schema盲点。保留原15秒/DACL、truthy断言、停止时机和全部旧失败；局部复核后各固定一次原平台输入，不开通用工具或重采循环。A5沿既有平台builder处理真实兼容/分发缺口，A2/A3/A6未覆盖组合继续按有限收尾清单；无需用户重复配置key或先缩减支持范围。下述各“当前/下一”段落是原时点记录，不构成追加队列。
 
+该队列实际增量：e10ad8aa的Windows36841262535已通过私有目录/全部文件ACL及原isolatedCheck，随后Darwin observer夹具混用Windows路径规则首败；只在夹具显式path.posix，原角色断言保持，三条observer/CLI局部命令通过。macOS36841263618仍按原矩阵运行中，未宣称结果。A3第38节冻结真实单surface切换/跨Host reader两例，A5第37节固定部署目标在实现；均不重跑已完成容量组合。
+
 当前执行入口（2026-10-01）：macOS Terminal36829311235六报告通过；首轮真实Agent36832581851前三Codex场passed、第四snapshot stop空快照真值断言首败、Claude未跑，33.10的有限终态证据已接入并通过局部回归，原断言不改，下一仅固定一次原矩阵。Windows36834158313已正确传播真实exit1，小报告确认初始reader身份读取过早，34.12共享原30秒poll的窄修先红后绿，待原流水线复验后才调度Agent。A6永久退出旧续体已在a383b109修复，50项局部回归不代证真实reload。第35节补固定VSIX真实安装的运行前设计并开始接线，尚未安装验收。F-04、其余A1至A6、Remote与默认准入不关闭；后段旧入口按原输入理解。
 
 本段更新优先于上段待执行状态：6d622bee的macOS36836757674已固定一次failure，前三passed/第四原断言失败/后四not-run；saved空快照seq13与reader匹配，但geometry/visible不符且独立重放execution-changed未知，不改通过、不盲重跑。第35节Linux真实安装 `.debug/a5-installed-candidate-20261001-first/` 已完整exit0，四份安装路径/hash收据及六份结果报告独立核对，固定包604494fd的Runtime无历史与snapshot恢复通过。第36节仅补实际Journal ENOSPC传播和实际root writer失败两类原模块组合，不先改业务或重跑容量。
@@ -103,6 +105,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01) 33.10三个严格初始规则及独立resize对账已实施，helper/report两项先红后绿，root复跑及workflow契约通过；旧Linux完整0至12回放、字节比较false、原几何false均保留。
 - [ ] 固定新输入各一次macOS原矩阵和Windows私有配置依赖修正后的原矩阵；不改非空断言、产品停止时机、DACL或期限。
 - [ ] A5第37节先修macOS固定部署目标及两个实际Mach-O检查；旧OS API兼容、六资产分发/默认准入仍另有具名责任，不先提高支持下限。
+- [x] (2026-10-01) Windows36841262535证明原私有配置前置解除；其后模拟Darwin的path夹具单行修正通过局部回归，原失败不改，真实Agent仍未到达。
+- [ ] A3第38节固定Runtime双Host原reader取消隔离及snapshot-only单Host切surface两例；先复用原主体/launcher实施并复核，再采新证据。
 - [x] (2026-10-01) Windows新增启动收据确认非TTY真实前置失败；macOS旧artifact宿主日志确认Canvas ready超时而非test module未启动，原结果保留。
 - [x] (2026-10-01，A6) 原38次回归通过后两例完整非root重置入口先红，原日志保留；32.21冻结身份复核边界。
 - [x] (2026-10-01) 34.9的ConPTY四行标准句柄修正已先红后绿，十条Windows相关局部命令通过；33.9的macOS临时宿主参数及三平台参数/Secret过滤回归通过，不代证原生。
@@ -434,6 +438,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 2026-10-01：Windows新run36840316777仍前置failure，但首次明确到inspect-directory后、build-acl前被终止（15021ms、SIGTERM、killed）。尚未分辨文件系统与PowerShell模块自动加载，不能称已确诊。A5静态资产核对发现macOS实际minos26.0由构建机默认引入，Linux实际GLIBC_2.34也高于stock2.28；精确manifest宿主N-API10不等于addon真实最低8。
 
+2026-10-01：e10ad8aa在Windows真实ACL及原期限内通过，之后失败是模拟Darwin process但未模拟POSIX path的夹具语义冲突，不是Windows observer或Agent缺陷。A3源码确认同Host只允许一个interactive surface，多reader实际验收应使用跨Host原绑定，不用私有activeSurface注入制造非法产品状态。
+
 2026-10-01：Windows原Terminal两模式已实证通过，首次Agent却停在无凭据配置测试的通用错误；step到失败约15秒与私有目录PowerShell的15秒上限相近，但不足以证明超时。不在缺因果证据时调整预算或放宽私有权限。两类写失败组合未出现产品红结果，实际错误传播与唯一来源保护已有受控模块证据。
 
 2026-10-01：macOS新证据直接确认savedNode空串，但页面全文空行对账通过不代表几何一致，回放因不同/缺失执行身份保守拒绝。不能把本次仍不充分的证据改写为合法空屏通过。Linux固定安装已确实从隔离extensions目录加载同一原包，解除的是原payload smoke无法证明installed的缺口。
@@ -718,6 +724,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 - 决策：Windows后续用固定PowerShell5.1的.NET文件/ACL API消除私有最小环境对Management/Utility自动加载的隐式依赖，保留全部ACL规则与原期限；A5按第37节修真实构建下限，不先删gate或请求用户缩范围。理由：处理已具名的运行前阻塞和产品分发缺口，不用循环采集或提高预算代替定位。日期/作者：2026-10-01 / Codex。
 
+- 决策：A3只用实际surface命令及跨Host原Runtime绑定验证取消隔离，旧90000行主体仅加一个有界中途同步点；Windows Darwin夹具仅指定path.posix。理由：让验收输入符合产品及被模拟平台语义，保持原内容/身份断言，不增加通用诊断框架。日期/作者：2026-10-01 / Codex。
+
 - 决策：macOS此次失败后先只读核对具体身份/几何原因，不自动再采样；文件系统失败只补两类已具名模块组合。理由：以当前产品阻塞为限，避免取证扩张和用既有高层替身代证实际writer传播。日期/作者：2026-10-01 / Codex。
 
 - 决策：33.10先保留非空断言并补终态证据；34.12仅共享原等待；A5第35节使用固定原VSIX和独立test-driver执行原四阶段。理由：分别解决已证实判定缺口与既定installed证据缺口，不把工具通用健壮性或companion下载设为前置，不降低尾部/身份/资源要求。日期/作者：2026-10-01 / Codex。
@@ -976,6 +984,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 2026-10-01：当前阶段仍无新的macOS/Windows Agent通过声明。Windows窄诊断已局部复核；macOS原输入离线核对将未知拆成具体schema和尺寸因素，并保留编码差异。后续以原固定平台输入判定，不把工具通过数量当产品风险已关闭。
 
 2026-10-01：schema窄修和安全report已通过独立复跑；Linux旧证据仍保留原差异，未用于macOS结论。Windows第二次失败仍不涉及Agent或secret，.NET依赖收窄尚待原生；A5构建基线发现已转换为有限实现项，不弱化既定支持或真实验证。
+
+2026-10-01：Windows第三次运行已解除私有配置前置，新的Darwin夹具path失败单独归因并窄修。macOS新矩阵尚在执行；A3的两个既定真实页面责任已有可执行输入，不把局部测试数量等同于整体完成。
 
 2026-10-01：WindowsTerminal基线解除，首次Agent前置失败和未跑项单独保留；Linuxinstalled及A1/A2两类文件系统组合已有本轮实证。当前剩余平台Agent阻塞是具体前置/终态判定，不是缺少用户凭据；不得让这些局部失败重新引出无边界工具项目。
 

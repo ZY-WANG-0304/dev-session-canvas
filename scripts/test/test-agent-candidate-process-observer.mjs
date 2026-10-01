@@ -18,6 +18,7 @@ function harness(responder) {
   let maximumInFlight = 0;
   const module = { exports: {} };
   new Function('require', 'module', 'exports', 'process', '__dirname', source)(name => {
+    if (name === 'node:path') return path.posix;
     if (name === 'node:child_process') return { execFile(python, args, options, callback) {
       inFlight++;
       maximumInFlight = Math.max(maximumInFlight, inFlight);

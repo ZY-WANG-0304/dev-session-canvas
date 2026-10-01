@@ -2019,6 +2019,8 @@ CLI选择、Windows observer、原Unix observer、CI summary、私有配置、�
 
 下一窄修选定在固定Windows PowerShell 5.1脚本内直接使用.NET Framework的DirectoryInfo/FileInfo与GetAccessControl/SetAccessControl，避免私有最小env路径隐式依赖Management/Utility模块自动加载。目录存在、非reparse point、空目录、owner、禁止继承、仅当前SID/SYSTEM及精确FullControl/继承flags的检查全部保留；SID去重/逐条匹配用语言内建循环。原独立文件ACL验收同样用明确固定字段传入路径和.NET读取，不通过继承任意环境解决。不增权限、不修改15秒或外层10秒，不预判该依赖消除必然修好；局部契约及原Windows前置/矩阵另取一次新证据，旧失败不改。
 
+新输入e10ad8aa的Windows run36841262535/job110300678158中，原DeepSeek配置测试已完整通过（包含真实目录/文件ACL及isolatedCheck），原15秒/10秒不变。这说明.NET依赖收窄后的新输入可用，不倒推旧Get-Item段的具体内部原因。随后Darwin observer纯夹具第57行失败：模拟process.platform=darwin却仍require宿主Windows的node:path，fixture argv为POSIX而provider目标被拼成反斜杠，实际roles的provider变descendant。选定只让该Darwin夹具显式使用path.posix，保留原roles/cleanup断言和生产observer；不把未进入的真实Windows Agent记作产品失败。原日志 `.debug/windows-agent-36841262535-job.log` 保留。
+
 ## 35. A5 固定 VSIX 的实际安装路径
 
 本项只补既定A5的Linux installed candidate，不新增平台诊断，也不代证完整分发准入。现有 `run-vscode-vsix-smoke.mjs` 重建stock并改装development扩展，正确范围仅为payload smoke；不能把它当成未改装VSIX的安装证据。选定在 `scripts/smoke/run-vscode-execution-candidate.mjs` 新增显式 `--installed-vsix`，只接收固定文件，不自动重建或选择最新包，首轮不与capacity选择混用。
@@ -2052,3 +2054,13 @@ A2在 `test-host-execution-owner-wiring.mjs` 的真实persistenceFixture中种�
 本次先独立修正macOS构建下限：`macos-execution-candidate-assets.mjs` 的共用target参数固定arm64=11.0、x64=10.13，addon/helper都显式带 `-mmacosx-version-min`，不开放任意target覆盖。arm64与原资产及Apple Silicon起点一致；VS Code1.80.0官方.yarnrc使用Electron22.3.14，其支持基线为10.13，因此x64不跟随stock声明的10.7，也不偷升到10.15/26。保留C++17，不将语言标准当OS下限。build/read/import共同检查两个实际Mach-O的LC_BUILD_VERSION或LC_VERSION_MIN_MACOSX及固定目标；缺失/冲突/截断或错误平台拒绝，不能仅相信manifest或编译参数。原runtime factory精确gate暂不改，hash/路径/目标校验保持。
 
 必须独立保留API兼容风险：候选及锁定stock均无条件使用POSIX_SPAWN_SETSID，而Apple XNU10.13/10.14对应头中该位尚未定义，10.15系列才有该flag。固定链接target不证明旧系统PTY创建可用，也不因此提高产品支持线；正式兼容验收仍须处理。此次仅原builder/资产纯测试和既有macOS构建入口验证，不追加一般兼容框架。旧26.0产物与结果保留，不重新包装为已修正产物。
+
+## 38. A3 实际 surface 切换与跨 Host reader 隔离
+
+同一Host只允许一个interactive surface：切editor使panel进入standby，切panel会dispose editor；实际并发有效读者应来自两个Host。原定向夹具直接设置activeSurface只能证明受控隔离，不能当双active产品路径。复用既有Linux candidate、真实90000行主体、VS Code launcher和页面内容断言，固定两例，不引入假Agent、手工Runtime metadata或业务hook。
+
+Runtime例让A/B两个真实Host打开同一全新root，使用各自user-data及测试自有同一XDG_RUNTIME_DIR；两份prepareRuntime必须在启动任何Host前完成，避免后来准备删除已使用的runtime目录。A自然创建Terminal并flush root，B从该root正常恢复原backend/storage/session/kind。A/editor和B/panel有不同Host PID及readId、相同session/authority后开始原主体输出。主体在第45000行成功写入后进入唯一可选、最长60秒的fixture gate，记录原主体身份；超时明确失败/exit124，不当正常通过。A真实执行editor→panel→editor，各生命周期及reader更换，B保留原readId；放行原主体后双方都验证完整90002行、UTF-8/ANSI/OSC尾部、光标(6,2)、成功写入字节/hash、真实source EOF及同执行/最终revision的各自applied，Runtime无历史/原binding删除。不能以B重新开reader代证原reader未受取消影响。
+
+snapshot-only例只有一个Host，在相同gate处由panel切editor，保持原本地执行身份，最后同样检查完整尾部/光标/local applied及完整保存；不伪造跨Host共享本地进程。gate仅保证切换发生在主体未结束时，不代证慢消费者。原主体无gate路径的输出字节、默认行为及旧断言保持；新增可选gate的独立回归检查原hash不变及超时不能通过。
+
+失败先保存首次事实，双方仍沿原产品reset/stop及同一原主体身份清理；检查bindings/pending operations归零并等待主体退出，再关闭所创建Host。未知退出/资源失败如实报告，不按全机PID扫描强杀。自动surface关闭目前没有远端close ACK专用成功诊断，只声明实际surface取消与B原reader延续，不补造ACK。该两例不关闭全部A3、非零/force/delete/读错组合、真实Agent、其他平台或A6实际reload。
