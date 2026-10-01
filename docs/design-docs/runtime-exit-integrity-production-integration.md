@@ -14,14 +14,20 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-30
+updated_at: 2026-10-01
 ---
 
 # 退出完整性生产接入与故障域收敛
 
 ## 1. 当前结论与阶段边界
 
-当前实施状态：第 32.2 至 32.11 节已接通实际候选 extension 和匹配 Linux Electron 资产。退出提示覆写、snapshot-only live 投影和大快照读取丢弃均已修；Runtime/editor 与后续 snapshot-only 单选分别取得大输出/终态/真实重开通过，旧失败不改、不合称同轮全绿。A6 completed 后续发布、完整 root template reset 与迟到 callback 三项已修，生命周期 38 次、Host wiring 110/110 通过，不代证其余 A6。A4 原认证前置失败定位为 Host 使用不兼容 Node 12；固定 Node 后认证通过，但 custom command 的 env 前缀被产品校验拒绝，仍零模型请求，按 32.11 修正实验接入。普通构建仍 stock，A1/其余实际验收/跨平台/分发与整体完成保持开放；下列旧摘要按各自原时点理解，不覆盖本段。
+当前 CI 选择（2026-10-01）：用户选定继续使用真实 Codex/Claude CLI，模型后端统一 DeepSeek。`DEEPSEEK_API_KEY` 的 repository-level secret 名称及 metadata 已于 `2026-10-01T02:57:24Z` 通过 GitHub API 确认，无 Environment 或分支限制；没有读取/归档 secret 值，也不上传本机登录状态。下一有限实施复用现有 native workflow 的 manual input，先接 Linux x64/glibc Electron candidate 的原八场景，以临时独立 CLI 配置传递凭据，通用 smoke secret filter 不放宽，工件仅允许扫描后的固定摘要。官方兼容接口存在不代表固定 CLI 版本已可用；实际请求、尾部、Webview 和清理仍待验证，具体设计见 32.20。32.17 的当时认证缺口和所有旧结果保持历史原貌，不宣称跨平台或 F-04 已完成。
+
+当前 A1/A2 状态（2026-09-30）：有界索引顺序读取已实施，同一 2/1 Electron candidate 的 `.debug/a1-host-reconnect-20260930-indexed-pages/` 完整 exit 0。新 Host ready 1422.291ms、完整应用 14431.416ms，ready 后追平 13009.125ms，小于原 30 秒；B 响应 32.6ms、独立 journal/hash、原执行/新 reader、完整保留后缀、自然 completed 无历史及清理通过，详见 32.19。旧四轮 exit 1 保留，本次解除的是该固定冷恢复的直接阻塞，不关闭全部 F-04/A1 至 A6。真实重连追赶交互重叠本轮为 false，不补造覆盖；同一新 2/1 构建 A4 `.debug/a4-real-agent-20260930-indexed-pages/` 八场景完整 exit 0，natural 四项取得响应与实际 source EOF，stop 四项保留主动停止。Claude stop 覆盖 startup/auth 等待界面的停止，不代表完成模型任务；既有跨平台/认证边界和尾部要求不变。
+
+2026-09-30 最新结果：第 32.14 至 32.15 节的 A4 v18/source-eof 复验已取得 Linux 实际 VS Code/Electron Host、真实 Codex/Claude、candidate owner 和两种持久化模式的八场景有限通过；natural source evidence=eof，stop 仍保留非 EOF claim，旧认证、命令、启动与告警分类失败保留，不代证 A3 大尾部、A5 容量或跨平台。A1 v4 已执行一次实际 Electron 校准，在 color 首档真实回显应用的 1500ms 观察界限首败，部分基线和资源样本仍保留；它不是 OOM 或已冻结产品预算的失败结论，详见容量重评第 10.9 节。候选默认、整体 A1 至 A6 与退出完整性交付仍开放。以下旧摘要按原时点理解。
+
+当前实施状态：第 32.2 至 32.15 节已接通实际候选 extension 和匹配 Linux Electron 资产。退出提示覆写、snapshot-only live 投影和大快照读取丢弃均已修；Runtime/editor 与后续 snapshot-only 单选分别取得大输出/终态/真实重开通过，旧失败不改、不合称同轮全绿。A6 completed 后续发布、完整 root template reset 与迟到 callback 三项已修，生命周期 38 次、Host wiring 110/110 通过；source-eof 复验后的主线 Host wiring 144/144、Supervisor wiring 90/90、protocol/localization 与 typecheck 也通过，不代证其余 A6。A4 的认证/命令/启动前置失败仍按历史保留，v18 与 source-eof 复验已在 Linux 实际 Host 完成八场景有限通过，natural source evidence 与 stop 非 EOF claim 分账见32.14至32.15。普通构建仍 stock，A1/其余实际验收/跨平台/分发与整体完成保持开放；下列旧摘要按各自原时点理解，不覆盖本段。
 
 2026-09-30，按预算重评调整既定有限收尾顺序，见 `docs/design-docs/runtime-persistence-closeout.md`。合并测试进程的 Heap 64 MiB / RSS 128 MiB 是初始观察预算，不是独立 Supervisor 或每会话的产品预算；原阈值、结果及 exit 1 保留，超限改列待评估信号，不单凭它阻塞 B2，也不先做仅为压线的优化或 profiler。B2 已接通启动参数链、Linux candidate 的安全首次启动和显式 Host 新建入口，范围及有限结果见第 32 节与 32.1；extension 默认仍关闭，两模式正式入口、匹配资产和既定验收仍开放。真实分进程、多会话资源与交互评估并入 A1，F-04 仍开放。F-05 新路径保持收口，B3、真实 Agent/Webview/跨平台、主体尾部及 A1 至 A6 不削减；不展开 S17 工具链。本文旧阶段及其“下一步”是历史证据，不是当前执行队列。
 
@@ -1566,3 +1572,117 @@ A4 固定输入相应明确：runner 记录其 `process.execPath`、realpath 和
 `.debug/agent-candidate-a4-20260930-command-path-fixed` 已执行并保留 exit 1。首个 Codex 场景认证、custom 命令解析与节点创建通过，但等待 live 身份超时；原诊断为 `execution/candidateStartFailed: Execution candidate launch was superseded.`，节点保持 pendingLaunch=start，尚未发布 execution/started 或绑定 runtimeSessionId，观察无 CLI/provider。源码中的首次 candidate replacement 检查以整个 metadata 引用相等判断当前性，等待 Supervisor 时真实页面已更新终端尺寸；需以有限回归确认是否误拒绝正常 resize，同时保留同 ID replacement 和旧绑定保护。后七场景 not-run，不将此次失败写成 CLI 尾部缺陷或 A4 通过。
 
 原 result 的 `requestedModelTurns:1` 仅由 nodeId 已分配推导，不能证明模型调用，原工件保留且该解释撤回。后续报告分别记录计划轮次、观察到的 CLI 和已校验短答，不推断网络请求总数；本轮原启动在 createSession 提交前失败，不能根据创建了画板节点宣称已发送模型请求。该计数修正不改变任何产品断言或首报失败。
+
+### 32.12 候选启动期间的尺寸更新与 owned 输入入口
+
+32.11 的失败现已由实际代码路径确认：Terminal/Agent 的 Runtime 新建在解析环境、准备连接前捕获节点；`prepareExecutionCandidateReplacement()` 对没有前任绑定的节点要求执行 metadata 引用仍相同。真实 `resizeExecutionSession()` 在尚无 session 时只更新 lastCols/lastRows，但该更新必然生成新 metadata，因而正常初次 fit/resize 被误判为替换，`createSession()` 尚未提交。这个缺口同时影响 Terminal/Agent，不限于 Codex 或 Linux 进程语义。
+
+选定复用原 `candidateRuntimeStarts` reservation 记录启动所依赖的 metadata 身份。仅在未提交、原身份仍匹配的真实无 session resize 路径，允许其推进到本次只更新尺寸的新 metadata；提交前仍检查原 operation token、reservation 和该期望身份，并使用最后一次被接受的尺寸构造启动投影和 spec。不删除身份检查，不以字段值相同接纳任意替换，不重新捕获已经变化的配置为基线；已有 live 前任的 strict binding/delete 检查保持。回归在真实等待窗口调用真实 resize 取得先红，覆盖两类执行、最后尺寸、同 ID replacement/配置改变仍拒绝及旧绑定保护。
+
+同次有限入口核对确认 snapshot-only owned 的两类直接产品缺口：`createTerminalAndRunCommand()` 为安装 CLI 排队初始命令，但成功启动后仍走测试专用 drop，原 flush 也只认 legacy session Map；文本粘贴和 Agent 截图粘贴的等待前后同样只检查该 Map，误拒绝真实 owned 执行。修正限于这些原入口识别当前 owned business，沿已有 `writeExecutionInput()` 的实际写回执发送。异步读取剪贴板、确认或图片准备后仍复核原执行身份与可输入状态，不能把旧粘贴送给 replacement；停止/失败要明确结算，不伪报已发送。不构造兼容 process facade、不新建输入服务，也不改变多行确认、图片格式、Terminal 不支持图片或旧 Runtime/stock 路径。
+
+结束条件是原 Host wiring 的有限先红与回归、clipboard/生命周期/typecheck 通过，再用新证据目录继续原 A4 八场景；保留 32.11 原失败，不以单元测试替代真实 CLI。此处属于 B2 生产入口修正，不新增诊断阶段或扩大进程托管范围。
+
+启动尺寸修正已取得原 Host 等待窗口先红，保存在 `.debug/b2-owned-input-launch-resize-20260930-first.log`；两类执行在环境/连接/prepare 返回等待中的合法尺寸更新、最后尺寸进入 spec 与 metadata，以及 replacement/配置/旧绑定保护共增加 14 例，Host 124/124 和 typecheck 通过。首版新负例对本地化 stub 未插值文案的匹配失败另保留，改为核对实际原启动 Error，不放宽产品拒绝断言。
+
+匹配 Electron 候选重建后，`.debug/agent-candidate-a4-20260930-start-resize-fixed` 首个真实 Codex 已启动，使用最后尺寸 112x38，完成短答 nonce、turn.completed、exit 0、同执行 reader applied 和 Runtime completed 无历史。原 wrapper/native CLI/provider 均观察到，失败归档前已消失，未观察到 wrapper 先结束而 CLI 仍活着；精确退出先后仍受采样区间限制。整轮仍 exit 1，后七项 not-run：脚本把两个 `item.type=error` 一律当成工具调用或任务失败，而其正文均为 Codex 明确报告用户 `config.toml` 中 `disable_response_storage` 不受支持并被忽略。后续仅精确允许这一条已知非致命配置告警，仍要求正确 nonce、完成事件和零工具记录，其他错误不接受；原配置、服务、输入、原失败与原始记录不改。这个分类修正不追认原轮通过，尚未执行的页面响应/最终归档断言不补记为已运行。
+
+该轮同时暴露测试模式的证据边界：`resolveAgentResumeContext()` 对所有测试模式 Codex 无条件写 fake-provider 恢复元数据，虽然实际执行和进程身份确实是安装的真实 Codex，并非 fake executable。原证据保留这一差异，不宣称已验证生产恢复策略；真实 CLI 验收应只对实际 fake-provider 命令使用该测试分支，真实命令沿原生产恢复上下文，不新加绕过 flag 或改服务配置。
+
+具体沿已经解析的 `configuredCliSpec.command` 传入 resume resolver，仅当测试模式且 `looksLikeFakeAgentProviderCommand(command)` 成立时保留 fake 分支。真实 Codex 的 start/resume 使用原生产 none/codex-session-id 逻辑，Claude 原分支不变；以真实/fake 两类命令的 start/resume 有限回归验证，不用测试环境本身代替可执行命令身份。
+
+### 32.13 Runtime 传递真实输出结束的处置事实
+
+原 Supervisor 自然关闭的受控 interrupted 用例已证明内部 source 为 `interrupted`、终态内容 applied；只读定向运行原两例（断言未变、内存附加观察）同时确认外部 Terminal/Agent snapshot 分别为 closed/stopped、exitCode=0、finalRevision=1，却没有 source、退出消息或 descriptor。`finalizeOwnedExecution()` 只看应用结果和进程结果，`toSnapshot()` 未传 source，Host completed 又清空 lastRuntimeError。snapshot-only 已保存 seal 中非 EOF 的错误/提示，Runtime 丢失该事实。这是既定 B2/A3 退出完整性的直接状态缺口，不证明本例已经丢弃成功接收的内容，也不能把 applied 改解释为真实 EOF。
+
+选定在 Runtime snapshot 增加可选 `terminalSourceDisposition`，复用已有 `SourceDisposition` 的 eof/interrupted/error/unknown 及 reason。只从原 execution 实际 seal 投影 kind/reason；尚未封口或旧 snapshot 缺字段保持未知，不因 live=false、finalRevision 或超时推断 EOF。Supervisor 对非 EOF 用原 message descriptor 机制发布明确可本地化的 incomplete 提示；Host completed 保留对应 lastRuntimeError/lastExitMessage，当前页面提示仍在终端正文之外。进程状态、最终 revision、已接收内容 applied、每个 reader 回执和资源释放分别保留，不将正常用户 stop 的中断伪装自然完整，也不把已应用内容一律改成失败。
+
+回归覆盖两种执行的 EOF、三种非 EOF、活跃未封口和旧缺字段，并验证 Host 轻量 completed 保存/重开仍保留提示、不恢复历史。保留原自然超时/迟到结算断言与全部历史结果；只补协议、Supervisor、Host 和既有本地化的事实传递，不改 provider 读写、取消时间预算或增加诊断 RPC。真实 A4 自然场景应检查实际 EOF，停止场景保存真实处置而不要求伪造 EOF。
+
+### 32.14 A4 v18 真实 Agent 八场景有限结果
+
+证据目录为 `.debug/agent-candidate-a4-20260930-source-fixed-v18/`。Codex/Claude、live-runtime/snapshot-only、natural/stop 的八份 `artifacts/result.json` 均为 `pass:true`，各场景 `cliObserved:true`、`automaticHarnessRetries:0`。四个自然场景的短答已验证；四个停止场景沿原产品停止入口完成，不请求模型任务。范围是 Linux 的实际 VS Code/Electron Host、真实 CLI、candidate owner 和真实 Webview，不是 fake Agent 或仅受控 Host 方法。
+
+四个 live-runtime 场景完成后的 `completed-runtime.json` 均为 `bindings:[]`、`pendingRuntimeSupervisorOperationCount:0`，原 candidate registry 的 sessions 为空，轻量 completed 节点不留 Runtime 正文或绑定。registry 在 legacy-detached/systemd-user 查询结果中可能来自同一 storage 文件，不能将重复列出的空 registry 解释为两个实际 backend 均运行通过；本轮实际 hello 为 legacy-detached。snapshot-only 仍按既有最终保存语义验收，不把它改成 Runtime completed 历史。
+
+自然完成的 `sourceEofClaim` 保留为“requires product source evidence; not inferred from exit”，不从 exitCode、最终 revision 或已应用内容推断 EOF；stop 场景明确为 `false`，不追认为自然 EOF。Codex 已知 `disable_response_storage` 不受支持并被忽略的配置告警仍归档，只按 32.12 的精确非致命分类处理，不改用户配置，也不放过其他 CLI 错误或工具记录。`plannedModelTurns` 与已校验短答分别记录，实际网络模型请求总数仍为 `not observed directly`。
+
+本轮只关闭上述固定 A4 Linux 八场景的有限验证项。它不代证 A3 独立大尾部、A5 十会话容量、真实活跃宿主离开、所有包装启动链时序、其他平台、分发或默认生产准入；没有将旧失败追认为通过，也不与其他输入的 Terminal 结果合称一次全量通过。A1 v4 的首档回显观察失败和未冻结预算独立见容量重评第 10.9 节，整体退出完整性仍未完成。
+
+### 32.15 A4 source-eof 复验结果
+
+随后使用 `.debug/a4-real-agent-20260930-source-eof-rerun/` 对同一八场景输入进行 source disposition 复验。Codex/Claude、live-runtime/snapshot-only、natural/stop 八场景均为 `pass:true`、`automaticHarnessRetries:0`，实际 CLI、candidate owner、Host/Webview 和清理观察均无 failure；observer 没有 failure，cleanup 的 `forcedSignals` 为空，四个 live-runtime 场景以及四个 snapshot-only 场景的 cleanup runtime bindings 均为空、pending Supervisor operations 为 0。
+
+四个 natural 场景均取得产品 source evidence，`completed-events.json` 的 `sourceDisposition.kind` 为 `eof`；这一次修复了 v18 中“自然结束只保留需要 source evidence、尚未在真实 A4 中核对”的剩余验收项。四个 stop 场景仍按产品 stop 记录 `sourceEofClaim:false`，不能因为底层 source 在停止后关闭或事件中出现 `eof` 就把主动停止改写成自然完成；进程退出、已应用正文、source disposition 和清理事实继续分账。
+
+本次复验同时确认所有场景没有 `forcedSignals`、process failures 或残留 Runtime binding，但这只覆盖该 Linux candidate 的八场景有限责任；不外推为 A3 大尾部、A5 十会话容量、A1 正式预算、真实跨平台、分发或默认启用通过。v18 目录、原始失败和本次复验均保留，不能用新 exit 0 覆盖历史证据。
+
+### 32.16 B2/A1 显式准入策略
+
+只读核对确认 `ExecutionAuthority.reserve()`、`ExecutionOwnerLifecycle.reserve()` 和 `CanvasPanelManager.startNonNativeHostExecution()` 的最终保存责任各自硬码 `S1_LIMITS.executions=2`；`beginStart()` 的 starting=1 是拒绝并发 acquire，不是排队。该有限候选策略不能解释为正式产品两会话上限，也不能只改一处常量开展十会话验收。
+
+选定在现有 owner options 注入不可变 `admissionLimits: { executions, starting }`，authority、owner 与 Host 最终保存占槽使用同一份正整数策略，starting 不超过 executions。省略时保留原 2/1；Linux factory 显式传递并冻结策略，现有未显式选择的实际候选行为不变。十会话验收将显式提供容纳固定负载的策略，该实验数值不是产品上限，正式部署 N/Q 仍须实际资源模型论证；本次不引入用户配置、动态 RSS 调度器、隐藏排队或自动重试。
+
+preparation、活跃执行、关闭中、未结算 reader 和 snapshot-only 最终保存责任继续占账。首个 unknown 后新准入停止，旧责任/旧代不可用更换策略清空；已有会话安全消费继续，sticky quarantine 和旧 live metadata 绑定保持。单会话 wire/帧/信用、source/reader/退出预算不变，不借准入调整裁剪尾部。验证限于真实模块的默认兼容、策略校验/冻结、非默认容量与启动数、保存占槽、获取前拒绝和 unknown 停排，再接原实际多会话验收。
+
+实际十会话输入通过已有候选构建入口显式选 `--execution-admission=10:1`，仅允许与原 profile/assets 一起使用，两个正安全整数由相同规范化规则校验。编译期常量在 Host 和 Supervisor 的同一 Linux factory 生效，运行时不读取测试环境变量、不新增用户配置，省略仍为 2/1。数值只标识本次固定候选验收产物，不宣布正式产品最大十会话；stock 构建不启用候选或继承该参数。输入摘要保存实际构建选择，原 generation/旧 live 不变，实验仅使用新建隔离 storage。
+
+实现已落在 `executionLifecycle.ts`、`executionSessionAdapter.ts`、`executionOwnerLifecycle.ts`、`linuxExecutionOwnerFactory.ts`、`CanvasPanelManager.ts` 与 `scripts/build/build.mjs`。candidate 构建把同一策略编入 Host/Supervisor，保存 `dist/execution-candidate-selection.json`；容量 runner 在启动前核对 profile 与 N/1 并冻结产物 hash。省略参数和 stock 选择保持既有行为，authority/options/owner 共用冻结值。Host 测试以十槽验证九个 live 加一个未完成最终保存会在 transport 获取前拒绝下一次新建，原保存完成后才准入；改前失败保存在 `.debug/b2-admission-host-before.log`，修后 Host 145/145，adapter 98/98、owner 46/46、factory 25/25、build selection 9/9 及 typecheck 通过。
+
+容量改动前的实际 A4 回归 `.debug/a4-real-agent-20260930-capacity-regression/` 八例 exit 0：四个 natural 为实际 `sourceDisposition=eof`，stop 不申报 EOF；清理没有 forcedSignals/process failures，Runtime bindings 和待处理操作均归零。该轮使用准入改动前 dist，不作为新 admission 产物的原生覆盖。十 Terminal 的源、九个 peer、预算和有限覆盖边界见容量重评 10.10；它不替代真实 Agent 或 A1 至 A6 其他格子。
+
+新 admission 产物的固定十 Terminal 已在 `.debug/a1-ten-session-20260930-probe-fixed/` 取得 color/size 完整 exit 0，内容、每例 27 次响应、运行前全部资源预算及 cleanup 通过，最大交互 1365.5/1323ms；实际数据见容量重评 10.12。此前 `.debug/a1-ten-session-20260930-first/` 和 `reader-fixed/` 分别暴露测试 probe 发端/协议接端两 reader 上限，原 exit 1/cleanup 通过保留，仅修服务于既定输入的观测与清理。1280 两例虽有追赶重叠，但 reader 未重建；下一固定 A1/A2 按容量重评 10.11 验证真实 Host 消失期间产出及新 Host 原绑定恢复，不把本轮十 Terminal 外推为十 Agent、离线恢复或产品最大会话数。
+
+复验后的主线静态/定向回归为 Host wiring 144/144、Supervisor wiring 90/90、protocol 与 localization 检查通过，并再次通过 typecheck；这些只证明本次 source disposition 接线和候选边界未破坏既有接口，不扩大 A4 的平台或容量范围。
+
+### 32.17 A5 平台接入现状与真实 Agent 认证边界
+
+2026-09-30 只读核对确认，主仓库目前交付的 candidate 仍只有 Linux x64/glibc，而不是已有全平台实现只缺 runner。`native/linux-execution-owner.h` 明确要求 `__linux__`；`src/panel/linuxExecutionProvider.ts` 与 `executionProviderTransport.ts` 拒绝其他平台；`linuxExecutionOwnerFactory.ts` 校验 Linux x64、实际 glibc/Node 或 Electron 资产；`scripts/build/linux-execution-candidate-assets.mjs` 只生成对应 Linux 目标。`src/supervisor/runtimeSupervisorNamespace.ts` 使用 Linux abstract socket 与 uid/realpath 定义持有期，要求 Linux/Node >=20.8，不能直接搬到 macOS/Windows。这些路径均相对 `extensions/vscode/dev-session-canvas/`，只有 `scripts/build/` 位于仓库根。
+
+独立 `runtime-exit-integrity-native-candidates` 工作树保留的 macOS baseline/failure 与 Windows HPCON owner 是冻结诊断接口及原始实验，不是当前 `execution-lifecycle-v1` 产品 provider。主仓库 `.github/workflows/runtime-exit-integrity-native.yml` 运行 Node 22 的 stock node-pty/builtin ConPTY 诊断；即使旧三平台任务通过，也不能代证新的 candidate、实际 Host/Webview 或 packaged 路径。旧诊断源码、断言和失败结果保持，不改造它们来追认产品通过。
+
+已获授权的 GitHub runner 可承接既定 Terminal/native 验收，不需要再次把 runner 可用性当作未获批准的全线阻塞。剩余 A5 工程责任仍是为 macOS/Windows 接通实际产品 provider、资源与退出语义、namespace 排他、匹配 Node/Electron 构建及 packaged 入口，再在对应真实 runner 运行原必要验收；不能只删除 platform guard 或把 Linux binary/诊断 API 冒作产品实现。Windows 主体退出与其进程对象仍被合法句柄引用继续分别判定，不为了对象消失擅自关闭其他进程的句柄。
+
+本轮只读查询 `gh secret list` 的 repository secrets 仅见发布用途条目，repository environments 查询为空；这只说明当前没有可用真实 Agent CI 认证配置的证据，不证明所有组织级凭据或自托管环境不存在。未读取、上传或复制本机 CLI 登录内容。主会话已向用户提出一项具体外部选择：由用户配置专用 CI 测试凭据到 GitHub Secrets 并限制用量，或提供已登录真实 Codex/Claude CLI 的 macOS/Windows self-hosted runner。不得要求用户在对话发送 token，也不把本机现有登录凭据上传 GitHub；未选定前不擅自创建服务账户、改变凭据用途或安排有新费用责任的认证。
+
+该待输入项只决定跨平台真实 Agent 的执行位置与认证方式，不阻塞已有授权的 Terminal/native runner 工作、无凭据的平台产品接入或当前 Linux A1/A2。真实 Agent、两模式、Webview、跨平台和尾部要求均未削减；未知认证不标通过，也不追加通用诊断工具前置或新的研究计划。本节仅记录本轮只读平台/认证核对，不包含新 macOS/Windows product build、runner 运行或跨平台通过结论。
+
+### 32.18 A1/A2 真实冷恢复的直接验收阻塞
+
+本节保留优化前的失败和当时决定；当前修后有限结果见 32.19，不能把这里的 exit 1 追改为通过。
+
+`.debug/a1-host-reconnect-20260930-resize-ready/` 与 `.debug/a1-host-reconnect-20260930-tail-observed/` 已结束且均为 runner exit 1，不再是运行中。后者保存了明确的冷恢复尾部观察：原 30 秒追平截止到达时，真实 xterm 仍只到 1404/2560 块，正常缓冲区尺寸 112x28、光标 `(42,27)`。旧 Host 已退出，离线 `offline-output.json` receipt 记录 2560 块、26214425 bytes、SHA256 `0167208c8b0fcf6bd465c0c19064d3f7584429ef32e4cbb2841f1e147ee5ed98`，原 Supervisor/provider/主体身份不变，恢复沿同 session/authority 且取得新 reader。这些是有限通过的前置事实，不是恢复内容完整性的通过。
+
+失败发生于 `reconnect-catchup`，B 输入交互、重连后的独立 journal 来源校验及自然完成 no-history 检查均未到达，不补记通过，也不拿 receipt 的来源 hash 代替尚未执行的 journal hash。该轮 reconnect/cleanup/outer 三份清理均 pass，outer `forcedSignals=[]`；自有空闲 Supervisor 正常停止不等于强杀主体。更早 `first`、`rss-identity-fixed` 的失败、首报覆盖局限和 raw log 保持。本轮已是固定产品恢复时限的直接失败，不能继续仅按测试探针问题归类或增大期限抹绿。
+
+静态核对确认 `src/supervisor/runtimeSupervisorMain.ts` 的 `readTerminalPage()` 每次请求都新建 `journal.readEventPagesAfter()` iterator，取得一页即退出；`src/supervisor/terminalSessionJournal.ts` 的扫描为每个 64 KiB 页完整校验相关约 4 MiB segment，重复解码、JSON 与 hash。该结构造成可疑读/计算放大，但尚未量化为全部 30 秒耗时或证明唯一根因。下一拟实施有界顺序读的直接优化，不缓存完整历史、不削减现有页/在途限制；必须维持每个冻结 segment 在首个相关页发布前完成整段校验，以及未消费尾部损坏/篡改检测、身份/取消/compact 边界。具体实现与这些正确性要求仍待定向回归和同一真实重连输入验证，不宣称方案已生效，不扩大成诊断框架或新工具前置。
+
+### 32.19 A1/A2 有界读取后的真实重连结果
+
+容量重评 10.13 的有界索引读取已接入 journal、Webview reader cursor 和独立 Host subscription，不再处于拟议状态。每个 reader 只保留最近一个已完整校验冻结 segment 的记录偏移/长度/可信 checksum，不常驻整段正文或完整历史；新 reader/冻结段变化仍完整校验，后续页按偏移读取并复核可信摘要，单页结束释放句柄/读取保护，取消、错误与退役清除索引。冻结段首个相关页发布前的完整校验及尾部篡改检测保留，不借优化缩小 scrollback、增大页或减少完整性断言。
+
+匹配新 2/1 Electron 构建的 `.debug/a1-host-reconnect-20260930-indexed-pages/` 按原 10.11 输入完整 exit 0。新 Host ready 为 1422.291ms，完整保留后缀应用为 14431.416ms，ready 后追平 13009.125ms；原 30 秒界限不变。旧 Host 已消失，原 Supervisor/provider/主体身份和 backend/storage/session/authority 保持，两个 Webview reader 均为新身份。B 新 nonce 实际应用耗时 32.6ms；此时 A 已到 2560 块，因此 `catchupInteractionOverlapObserved=false`，不宣称真实离线追赶期间的交互已覆盖。
+
+本轮实际到达独立 journal 重放：source 26214425 bytes、SHA256 `0167208c8b0fcf6bd465c0c19064d3f7584429ef32e4cbb2841f1e147ee5ed98`、lastRevision 6499、validator 拒绝原因为 `color-state`。完整允许保留的 xterm 后缀、自然 closed/no-history、reconnect 与 outer cleanup 均通过，outer `forcedSignals=[]`。这与先前只有 receipt 的来源证据不同；四轮 `first`、`rss-identity-fixed`、`resize-ready`、`tail-observed` 的 exit 1、首报覆盖局限及清理分账原样保留，不合并为首次全绿。
+
+同轮测试维护只修既有夹具失配：Supervisor 协议脚本的旧静态 regex 只接受直接 return，而 HEAD 已是 await fresh snapshot、复核 admission 后返回；改为严格检查实际顺序，原失败 `.debug/journal-index-supervisor-protocol.log` 与修后 `journal-index-supervisor-protocol-attach-assertion-fixed.log` 分开，完整脚本通过。Webview 夹具缺少两个既有 global 的首败保留，补齐后 controller 39/39、Host batch 10/10 通过。它们不是新工具门槛，也不替代新 candidate 或真实 Agent 证据。
+
+同一新 2/1 candidate 的 A4 `.debug/a4-real-agent-20260930-indexed-pages/` 已完整 exit 0，Codex/Claude × Runtime/snapshot-only × natural/stop 八场景的 schedule 均为 passed、`result.pass=true`。四个 natural 的 `naturalResponseVerified=true`，`completed-events.json` 中对应 Runtime/Terminal source disposition 均为 `eof`；四个 stop 的 `sourceEofClaim=false`，不追认为自然完成。Claude stop 实际停在 CLI startup/auth 等待界面，只证明该真实启动状态可停止，不宣称已完成模型任务。八份 cleanup 均为 bindings=0、`process.failures=[]`、`forcedSignals=[]`。这一次覆盖新的准入/索引产物；旧 capacity-regression 仍只对应改动前 dist，原记录不覆盖。
+
+本轮 Host wiring 145/145、Client 28/28 也已通过。当前关闭本机固定两 Terminal color 离线重连的具体阻塞，并补齐同构建 Linux A4 八场景有限回归；不外推 A3 独立大尾部、全部 F-04/A1 至 A6、真实离线追赶交互重叠、其他平台或正式分发准入，不因通过再追加通用工具阶段。
+
+### 32.20 真实 Agent 的 DeepSeek CI 接入方案
+
+2026-10-01 用户已选择专用 CI 模型凭据路线：保持真实 Codex 与 Claude Code CLI，把两者的模型后端统一到 DeepSeek，不替换为假 CLI、受控 provider 或模型能力测评。GitHub API 于 `2026-10-01T02:57:24Z` 确认 repository-level `DEEPSEEK_API_KEY` 的名称与 metadata；本轮不配置 Environment 或分支限制，不读取 secret 内容到对话/仓库，也不复用或上传本机 CLI 登录目录。该新输入解除 32.17 当时待选的认证路线，不改变当时查询事实，也不追认旧 runner/旧 CLI 已使用此后端。
+
+有限实施复用 `.github/workflows/runtime-exit-integrity-native.yml`，以显式 manual input `real_agents` 选择 Agent candidate 路径，既有三平台 stock node-pty 诊断保持独立。第一条 Agent 路径只针对 Linux x64/glibc，固定 Node 25.6.0、Codex 0.157.1、Claude Code 2.1.280、VS Code 1.117.0 与 Electron 39.8.7，构建并装载匹配 Electron ABI 的候选原生产物。沿 `scripts/smoke/run-vscode-agent-candidate.mjs --backend=deepseek --ci-report agent-ci-report` 和 `tests/vscode-smoke/agent-candidate-tests.cjs` 复用 Codex/Claude × Runtime/snapshot-only × natural/stop 八场景、真实 Host/Webview/owner 与原清理规则，不新增独立测试框架或默认启用候选。
+
+DeepSeek 官方接口提供 Codex 所需的 Responses 路径和 Claude 所需的 Anthropic 兼容路径；依据为 [Codex 接入说明](https://api-docs.deepseek.com/quick_start/agent_integrations/codex) 与 [Claude Code 接入说明](https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code)。本次固定模型 `deepseek-flash`，Codex base URL 为 `https://api.deepseek.com/`、`wire_api=responses`，Claude base URL 为 `https://api.deepseek.com/anthropic`。这些非敏感输入连同 CLI 版本写入摘要，不以 CLI 产品名称暗示使用 OpenAI/Anthropic 模型。文档只建立可实施依据，不代证固定版本的参数、响应格式和启动配置已经兼容；先用假 key 的无模型请求 probe 核对配置解析，不把它记作认证成功。认证预检识别显式 custom provider，只报告配置已解析/未联网认证，不要求官方 `login status` 来证明此后端可用；实际 natural 成功响应才支持凭据有效。首次不兼容须记为原失败，沿具体入口修正，不自动换 CLI 版本、后端或放宽完成断言。
+
+凭据只在显式 Agent 执行 step 注入，安装、构建与无凭据诊断 step 不取得该值。在 runner 临时目录创建本轮独立 CLI 配置，目录权限 `0700`、文件 `0600`：Codex 的临时 config 使用自定义 provider 的 `experimental_bearer_token`；Claude 通过显式 `--settings` 指向私有配置文件，其 `env` 保存所需 token/model/base URL，保留 `--safe-mode`。真实 CLI 从该配置读取允许的后端认证，不把 key 放到命令行、节点 metadata、终端输入、日志或原始工件。只有明确选定此 CI backend 的测试入口可以读取 `DEEPSEEK_API_KEY`，随后仅向本轮 CLI 配置交接，不向普通 Terminal 或通用 smoke 环境开放。原 `vscode-smoke-runner.mjs` 的 secret filter 保持不变，不增加通用 env 白名单；固定 CLI 若不接受上述配置，按实际兼容失败修订本节后再改接线，不能全量传递环境或复制 HOME。临时配置和可含敏感内容的 raw/HOME 在执行结束时清理，失败也执行同一清理责任。
+
+远端 artifact 只允许预先固定字段的 summary：版本/构建身份、非敏感后端配置、场景状态、请求轮次口径、自然响应断言、source disposition、Webview 最终应用与清理布尔结果；不上传 raw terminal、完整错误对象、任意 CLI 输出、临时 HOME 或认证文件。发布前在持有本轮 key 的受限步骤对待发布摘要执行内容扫描，命中或扫描失败即不上传，不依赖 GitHub 自动 masking 作为唯一保护。执行失败保留失败状态；只有通过安全扫描的固定摘要可作为失败工件上传，不能为取证扩大允许路径。
+
+自然四场仍必须由真实 CLI 请求选定后端并取得目标响应，随后核对主体退出、实际 source EOF、Webview 已应用尾部和两模式保存/无历史规则，cleanup 不得残留绑定或失败。停止四场仍经产品 stop，主动取消不能伪报自然 EOF；尚处 CLI startup/auth 界面只能按实际覆盖登记，不宣称已完成模型任务。沿原固定自然/停止期限、最多四个自然请求轮次及不自动重试的 harness 规则，不通过延长时限或重复直到通过消解不兼容；provider 内部传输尝试不由 CLI 调用次数推断。
+
+此增量结束条件是受限 CI 入口可执行，固定版本实际八场景结果及安全摘要/清理能够被独立核对。实现、受控配置测试与真实 CI 执行分账；当前只有方案和 secret metadata 已确认，尚无新 DeepSeek CLI/runner 通过结论。它不关闭 F-04、A3 大尾部、完整 A5 或跨平台产品 provider/namespace/分发缺口，不追加通用诊断工具的容量或健壮性前置。

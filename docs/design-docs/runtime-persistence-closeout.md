@@ -24,11 +24,15 @@ updated_at: 2026-09-30
 
 ## 1. 状态与目的
 
+当前 A1/A2 状态（2026-09-30）：有界索引顺序读取已实施，`.debug/a1-host-reconnect-20260930-indexed-pages/` 在同一 2/1 Electron candidate 上完整 exit 0，新 Host ready 1422.291ms、完整应用 14431.416ms、追平 13009.125ms；B32.6ms、独立 journal/hash、原执行及新 reader、完整保留后缀、自然 closed/no-history 与两份 cleanup 通过，outer `forcedSignals=[]`。原 30 秒界限与完整冻结段/尾部篡改检测保持，四轮旧 exit 1 不追认。该固定冷恢复阻塞已解除，但追赶交互重叠为 false，不关闭整个 F-04/其他 A 项。同一新 2/1 构建 A4 `indexed-pages` 八场景完整 exit 0：natural 四项响应/实际 source EOF 通过，stop 保留主动停止，八份 cleanup 均无 binding/process failure/forcedSignals。Claude stop 为 startup/auth 等待界面，不代表模型任务完成；详见生产接入 32.19。跨平台/分发及外部认证边界不变。
+
+当前 A5 边界（2026-10-01）：产品 candidate 仍只有 Linux x64/glibc，macOS/Windows 现有冻结诊断和 stock workflow 不提供 `execution-lifecycle-v1` 产品能力。已授权 GitHub runner 仍可承接 Terminal/native，但还需对应产品 provider、namespace、Node/Electron 构建及 packaged 接入，不能只删平台守卫。用户已选定真实 Codex/Claude CLI 共用 DeepSeek 后端，并添加仓库级 `DEEPSEEK_API_KEY`；只读 API 已确认 Secret 名称存在，不读取值。按用户要求不绑定 Environment、不限制分支，不上传本机登录凭据。先在已有 Linux 八场景接通受控临时 CLI 配置、手动 workflow 与安全报告，再沿既定平台接入复用；Secret 存在不等于认证或验收通过，不削减真实响应、Webview、尾部及跨平台要求。历史查询见生产接入 32.17，当前决策见 32.20。
+
 2026-09-28，用户先要求暂停自动追加阶段，随后明确不承担清单确认，要求代理依据重构目标作出判断。本文件据此收口为已选定的工程完成定义与有限工作顺序，不再等待用户批准工程清单或选择技术预算。最初核对基线为 `ba2c148b`，草案保存在 `2d375606`，工程裁决保存在 `8dd82629`。其后已按既定顺序启动 B1，过程见 `runtime-persistence-capacity-closeout` active 计划；局部修复不代表整体容量通过，2026-09-29 最新实际链同预算样本 2x/4x 的 heap/RSS 仍超限，状态保持验证中。没有新增 runner 或发布动作。
 
 当前决定（2026-09-30，预算口径与推进顺序）：按用户要求，合并进程样本的额外 heap/RSS 64/128 MiB 只作为该拓扑的观察信号，不作为真实分进程产品预算，也不再作为进入 B2 的前置门槛。原阈值、数值、断言、exit 1 与全部历史证据保持，不追认为通过。F-04/B1/A1 仍未完成；B2 已补齐启动 profile、隔离 generation、Linux candidate namespace 排他、实际 extension 两模式入口与匹配 Linux Electron 资产，当前进入既定真实验收，真实分进程、多会话资源/交互预算由 A1 在实际生产候选上评估。普通构建仍 stock，profiler 可用于具体归因但不默认前置。本决定取代旧记录中“先对同一合并进程采样归因并达到原门槛，再接 B2”的工作顺序，具体边界见第 3.1、8 节。
 
-当前实施进展：构建期显式候选已接通实际 extension 两模式入口，匹配 VS Code 1.117.0/Electron 39.8.7 的 Linux 资产已实际运行。退出提示覆写修后，Runtime/editor 的 90002 条前缀行、光标 `(6,2)`、661 B completed 节点及真实重开空内容已有有限通过证据。snapshot-only 的 live 投影和大快照读取丢弃也已修；32.10 新目录 `.debug/execution-candidate-a2-a3-20260930-snapshot-normalization-fixed` 单选 complete/reopen exit 0，逐行恢复 90002 行、工件光标 `(6,2)`、保存 5580063 字符、applied 1396 与清理通过，输入及独立写入凭证已核对。此前整轮、`snapshot-live-fixed` 夹具字段及 `snapshot-receipt-fixed` 重开失败均保留 exit 1；当前通过不等于 OS 全程无新进程追踪或全部 A2/A3。Host wiring 110/110、tracker、journal、checkpoint、typecheck 及补齐候选退出翻译后的 localization 通过。B3 三项先红已修，Host 生命周期 38 次回归通过，其余 A6 未关闭。A4 首轮 Node 12 认证失败、第二轮 custom env 前缀校验失败均零模型请求；第三轮 `command-path-fixed` 用真实 CLI 和既有测试 PATH 优先机制通过认证/命令校验，创建首节点后却因候选启动 superseded 而 exit 1，未出现 CLI/provider/输出、未提交执行，后七场景未跑。具体根因待定位，不凭节点存在计算模型请求。普通构建仍 stock；A1 分进程多会话预算、候选共享两槽的生产策略、其他 A1 至 A6 和跨平台/分发继续开放，不将两槽变成产品上限。
+32.15 时点的实施进展（后续准入与十会话结果以本节首段和容量重评 10.12 为准）：构建期显式候选已接通实际 extension 两模式入口，匹配 VS Code 1.117.0/Electron 39.8.7 的 Linux 资产已实际运行。退出提示覆写修后，Runtime/editor 的 90002 条前缀行、光标 `(6,2)`、661 B completed 节点及真实重开空内容已有有限通过证据。snapshot-only 的 live 投影和大快照读取丢弃也已修；32.10 新目录 `.debug/execution-candidate-a2-a3-20260930-snapshot-normalization-fixed` 单选 complete/reopen exit 0，逐行恢复 90002 行、工件光标 `(6,2)`、保存 5580063 字符、applied 1396 与清理通过，输入及独立写入凭证已核对。此前整轮、`snapshot-live-fixed` 夹具字段及 `snapshot-receipt-fixed` 重开失败均保留 exit 1；当前通过不等于 OS 全程无新进程追踪或全部 A2/A3。Host wiring 110/110、tracker、journal、checkpoint、typecheck 及补齐候选退出翻译后的 localization 通过；source-eof 复验后的主线 Host wiring 144/144、Supervisor wiring 90/90、protocol/localization 与 typecheck 也通过。B3 三项先红已修，Host 生命周期 38 次回归通过，其余 A6 未关闭。A4 v18 及 `.debug/a4-real-agent-20260930-source-eof-rerun` 已在实际 Linux VS Code/Electron Host 中完成八场景有限复验；natural 四场取得实际 `sourceDisposition=eof`，stop 四场保留 `sourceEofClaim:false`，observer/cleanup 无 failure、无 forcedSignals 且 Runtime bindings=0。v18、首轮失败和 source-eof 复验均保留；该有限结果不代证 A3 大尾部、A5 容量、A1 正式预算、跨平台/分发或默认准入。普通构建仍 stock；A1 分进程多会话预算、候选共享两槽的生产策略、其他 A1 至 A6 和跨平台/分发继续开放，不将两槽变成产品上限。
 
 原始重点是 F-04 运行期容量与恢复成本、F-05 已结束历史进入画板。退出完整性是后来明确批准的独立正确性交付，必须完成，但不能以无限增加局部阶段替代总体交付。当前产品方向未发生根本变化，推进重心却过度集中于退出诊断与局部接线，F-04 整体收口落后。
 
@@ -68,7 +72,7 @@ F-04 的工程判据不只是一轮负载没有超限：当前支持路径的缓
 
 2026-09-29 已修复 Host 行上下文的取消等待累积：独立登记只存当前在途等待，完成/失败后移除，dispose 唤醒且 strict flush 仍拒绝；先红及真实 parser/并发/迟到回调回归通过。原固定入口唯一新样本的内容/终态/清理通过，但 2x/4x 仍超预算，4x 额外 heap/RSS 为 68.22/142.98 MiB，整轮保留 exit 1。单次下降不量化为该修复的全部贡献，也不关闭 B1。当时拟定的 Node/V8 归因不再是 B2 前置；如后续为具体问题使用 profiler，仍须区分存活对象、短命分配与 RSS，其开销下的样本不能替代容量验收。
 
-B2 初始接线缺口中的 Client/backend/launcher profile 传递及 candidate generation 校验已补齐，显式 candidate Manager 的 Terminal/Agent 新建现选独立 generation 并明确允许首次启动，验证见生产接入第 32、32.1 节。旧绑定按原路径解析，candidate bound 恢复不启动替代 Supervisor。第 32.2 节已接通构建期固定候选与实际 extension owner/profile 注入，普通构建不启用；已编译并运行匹配 Linux Electron 资产。真实页面直接失败与有限修后结果见 32.4、32.7、32.9、32.10；A4 第三轮已通过前提却在实际候选启动被 superseded，事实与计数边界见 32.11，仍未取得真实 CLI/模型执行证据。真实 Agent、其他平台与分发不由页面局部成功代证，不新增研究阶段或混做 R1 归属迁移。
+B2 初始接线缺口中的 Client/backend/launcher profile 传递及 candidate generation 校验已补齐，显式 candidate Manager 的 Terminal/Agent 新建现选独立 generation 并明确允许首次启动，验证见生产接入第 32、32.1 节。旧绑定按原路径解析，candidate bound 恢复不启动替代 Supervisor。第 32.2 节已接通构建期固定候选与实际 extension owner/profile 注入，普通构建不启用；已编译并运行匹配 Linux Electron 资产。真实页面直接失败与有限修后结果见 32.4、32.7、32.9、32.10；A4 的 v18 与 source-eof 复验已在实际 Linux Host 完成八场景有限通过，natural source evidence=eof，stop 保留非 EOF claim，历史前置失败和未覆盖 A3/A5/A1/跨平台边界见 32.11 至 32.15。真实 Agent、其他平台与分发不由页面局部成功代证，不新增研究阶段或混做 R1 归属迁移。
 
 生产接入设计的 L-01 至 L-05、PI-01 至 PI-06 只用于追溯上述责任，不能把历史表中的旧缺口全文重复排队。新拓扑中 provider 失效、owner 消失时的孤儿风险、允许动作和未知结果仍须确认，但不新增机器崩溃后恢复、任意故障全部清零或逐个托管后代的承诺。
 
@@ -80,7 +84,7 @@ B2 初始接线缺口中的 Client/backend/launcher profile 传递及 candidate 
 
 `CanvasPanelManager` 仅在显式 candidate 的 Terminal/Agent 新建连接准备中使用 `allowRestart:true`，按实际 backend generation 建立带 profile 的 Client；candidate Client 默认不重启，candidate bound 恢复、reader、strict delete 和未知 create 不获得新建许可。缺省旧绑定先解析为原 workspace slot，旧 raw/stream 路径保留；legacy bound 首次连接默认不重启，但保留其显式选项，stock Client 既有内部请求自动重启未整体改造，不扩大为所有旧路径完全 no-restart 的承诺。实际 `src/extension.ts` 已通过 `executionRuntimeSelection.ts` 注入 snapshot-only owner 与统一 profile；成对构建参数显式选候选，普通构建仍 stock，不新增用户配置或依据残留资产自动启用。
 
-第 32.1 节的 Linux namespace 7/7、启动参数 16/16、Client 28/28、Host 104/104、Supervisor 82/82 及相关回归/typecheck/build 是无 PTY/Agent 的有限接线证据，systemd 仅验 unit 参数。后续实际 Linux VS Code/Webview 的 Runtime/editor 完成与重开通过，snapshot-only 重开失败保留，修后 32.10 单选完成与重开通过；Host wiring 已增至 110/110，生命周期 38 次只覆盖登记顺序。A4 三轮失败与尚未执行的 CLI 分账见 32.11，不能写成真实 Agent 产品通过或退出缺陷；其他平台、真实 systemd 服务与 packaged 路径没有因此获得新通过。两模式入口和本机匹配资产已接通，但不等于 B2 整体完成，最终验收及准入仍依第 4、5 节完成。
+第 32.1 节的 Linux namespace 7/7、启动参数 16/16、Client 28/28、Host 104/104、Supervisor 82/82 及相关回归/typecheck/build 是无 PTY/Agent 的有限接线证据，systemd 仅验 unit 参数。后续实际 Linux VS Code/Webview 的 Runtime/editor 完成与重开通过，snapshot-only 重开失败保留，修后 32.10 单选完成与重开通过；Host wiring 已增至 110/110，生命周期 38 次只覆盖登记顺序。A4 的首轮/第二轮/第三轮失败事实与 v18、source-eof 复验分账见 32.11 至 32.15；最新八场景通过不能写成 A3 大尾部、A5 容量、跨平台或默认准入完成。其他平台、真实 systemd 服务与 packaged 路径没有因此获得新通过。两模式入口和本机匹配资产已接通，但不等于 B2 整体完成，最终验收及准入仍依第 4、5 节完成。
 
 ## 4. 必要验收，保留既定强度
 
@@ -97,13 +101,15 @@ B2 初始接线缺口中的 Client/backend/launcher profile 传递及 candidate 
 
 A1 的容量/交互预算和 B2 的生产收尾预算由代理负责选定并论证，不是等待用户确认的前置。先利用既有样本与已实现限额、实际队列所有权和支持环境成本，在验收运行前登记具名数值、来源及失败含义；缺测量时只允许一次有固定输入的校准，不循环试数直到绿色。记录会话数、输出量/持续时间、scrollback、慢读/离线时长、缓存/在途和内存预算、可交互时间及到期结果；对比相同输入的基线，架构性判据仍须满足。现有 1 MiB/2048 是缓存实现值，候选自然 8 秒/主动 13 秒/整体 20 秒不自动升格为生产指标；本次未测得的数值不伪造为结论，也不承诺新的对外 SLA。
 
-当前只读确认候选 `ExecutionAuthority` 与 owner 仍共享 `S1_LIMITS.executions=2`、starting=1。该有限候选约束列入原 B2/A1 的生产容量策略待处理，尚未取得实际分进程多会话校准，不得将其解释为新增产品两会话上限，也不能以两会话通过替代既定十会话验收。
+当前候选准入已按生产接入 32.16 分离为同一不可变策略，由 authority、owner 和 Host 最终保存共同计账；省略仍为 executions=2、starting=1，构建十 Terminal 验收时显式选 10/1。真实模块默认/非默认、unknown 停排与保存占槽回归通过，正式部署策略仍待完整 A1 资源模型，不得将候选 2/10 解释为新增产品会话上限，也不能以两会话通过替代既定十会话验收。
 
 早期容量证据只有 fixture 编码量，后续已有模块与合并 authority 进程的 heap/RSS、受控浏览器交互及真实 Terminal 链样本，但仍未形成实际分进程、多会话生产候选的完整资源/交互预算。A1 应按实际进程所有权与共享/逐会话成本登记资源模型、数值依据、裕量和失败含义，不直接沿用合并夹具的 64/128 MiB 为产品准入线，也不从旧结果中扣除未量化成本来制造通过。固定验收负载不是新增产品会话数上限，不能通过缩小 scrollback、静默限制用户并发或削减支持环境来达标。
 
 运行期存储失败采用现有完整性目标下的 fail-closed 原则：不能继续声明输出可完整恢复，不能丢弃唯一已接受来源或持续无界积压来掩盖失败，必须反馈具名失败。可安全背压时保持可取消消费与控制；不能继续安全接收时走既有显式失败/停止结算，不以正常完成掩盖中断。具体背压阈值及实际入口的修正由 B1 负责，B2 的截止时间只限定观察/处置，不改变内容、页面或资源事实；两者均不另开通用预算研究。
 
 A5 沿用既定平台、架构和运行时支持承诺，逐格标记通过、失败、未验或明确不支持；不能只跑 Linux 再称全部完成。只有存在真实相同的实现/环境与有效来源证明才复用证据，不能用 Node 产物冒充 Electron，也不能因没有方便的 CLI 凭据或 runner 就删除真实 Agent/平台要求。支持范围缩减、发布例外须另获用户确认；不默认要求所有诊断负例与所有环境做无意义笛卡尔积。
+
+A5 当前缺的是 macOS/Windows 的产品 provider/namespace/匹配 Node、Electron 与 packaged 接入，不只是把 Linux 候选放到 runner 上运行。原 GitHub runner 授权继续覆盖既定 Terminal/native 验证；冻结 macOS/Windows 诊断 API 和 stock node-pty workflow 不能代证新 candidate。2026-10-01 用户已经配置仓库级 DeepSeek Secret，不再等待原中转服务或官方账号凭据选择；固定 CLI 的 DeepSeek 兼容性、真实响应与退出检查仍需实际验证。使用独立临时配置及步骤级凭据，保留通用 smoke Secret 过滤，只发布不含凭据或原始 CLI 日志的有限报告。结果明确标识真实 CLI 加 DeepSeek 后端，不冒称官方模型或原中转通过；平台工程、认证配置与实际通过分别记录，不新增工具门槛。
 
 主进程成功写入终端的尾部，以及自身已接收、排队、消费中的内容仍必须完整交付和应用；不承诺程序尚未 flush 的应用缓冲。超时、主动截断、socket close 与进程 exit 不能冒充完整 EOF。Terminal/Agent 主体存活时正常接收同终端后代输出；主体退出后的普通后代未来输出不作为产品门槛。启动器下实际 Agent CLI 仍是主体。上述边界不因清单收窄而改变。
 
@@ -140,13 +146,13 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 
 ## 8. 推进约束与证据归档
 
-当前工程顺序按 2026-09-30 决定推进：保留 B1 已完成修复与未完成责任，B2 的实际两模式入口和匹配 Linux Electron 资产已接通，当前关闭 snapshot-only 真实重开失败并完成原真实 Agent/页面验收，将 B3 的有限状态替换检查并入既定用户流程；在实际分进程生产候选上完成 A1 资源/交互评估，最终汇总 A1 至 A6，关闭明确失败后才宣布整体交付。不要求合并进程观察阈值先变绿或完成 profiler 归因才能接 B2；这既不是关闭 F-04，也不是把 B2 的真实验收移出本次重构。
+当前工程顺序按 2026-09-30 决定推进：保留 B1 已完成修复与未完成责任，固定 A1/A2 冷恢复经有界索引读取修正后已在原 30 秒内通过，旧失败保持。同一新 2/1 candidate 的 A4 真实 Agent 八场景也已完整 exit 0；当前沿原清单补齐剩余用户流程、B3 有限状态替换、跨平台/分发与最终准入，汇总 A1 至 A6 后才宣布整体交付。索引/测试维护均服务具体产品路径，不扩大工具工作，不重复已通过矩阵增加计数；真实离线追赶交互重叠未覆盖与整个 F-04 仍开放，A4 不代证 A3 独立大尾部或全部 A5。
 
 B2 会改变实际 provider、信用与消费链，最终启用产物必须复核 A1 的关键容量/交互项，不能用 B1 对此前路径的通过替新产物背书；这是最终回归，不另立容量研究或工具项目。
 
 容量修正已确认生产源与退出完整性的直接依赖：stock node-pty 暂停 socket 不保证退出时继续排空，不能为形式上的 B1 先绿而先加有损背压。共用 owned 接入属于原 B2 工作，B1 保留未完并随该接入验收；不等待旧源的第三套实现，也不把原 heap 失败归零。后续工作的终点是实际消费链的资源/交互证据和同一生产候选，不再追加通知工具或一般调度框架。
 
-第 3.1 节已允许显式 candidate Manager 安全准备新建连接，旧绑定不得因此重启或换 generation；普通构建仍 stock。实际候选入口与 Linux Electron 资产已接通，当前页面三项直接失败已有各自有限修后证据，继续原 Agent 启动前提修正、有限生命周期及其余验收，不扩大为新的诊断研究。A1 仍复用已知 checkpoint 拒绝输入、1x/2x/4x 历史和既有十会话交互场景，处理候选共享两槽限制并测实际 journal 待写、socket/Host 在途、分页消费与 live compact；其结束产物是实际拓扑有来源的预算/结果表和必要产品修复，不是 profiler 框架或把旧合并样本重跑为绿色。
+第 3.1 节已允许显式 candidate Manager 安全准备新建连接，旧绑定不得因此重启或换 generation；普通构建仍 stock。实际候选入口与 Linux Electron 资产已接通，页面三项直接失败和 Agent 启动前提已有各自修后证据，继续有限生命周期及其余验收，不扩大为新的诊断研究。显式准入省略仍为 2/1，unknown 与尾部预算保持；固定十 Terminal 的预算/结果不泛化为无限容量。A1/A2 已在新索引读取上证明两次真实 Host launch 的离线产出、原执行/新 reader、13.009 秒追平、独立完整性与自然 no-history；本轮 B 交互发生在追平后，不冒称恢复/交互重叠。其他 journal 待写、socket/Host 在途、分页消费与 live compact 仍按原范围核对；结束产物是实际拓扑证据与必要产品修复，不是 profiler 框架或把旧合并样本重跑为绿色。
 
 每次工作必须引用 B/A 编号、写明直接产品风险和结束条件；无法映射的增强延期。校准不是验收通过，失败不得事后调宽门槛抹绿；确有环境或方案原因要修改工程阈值时，保留原值/失败和理由重新评审，不改变既定产品保证。只有外部凭据/资源确实缺失、不可逆操作或产品保证需要变更时才向用户提出具体问题，不再泛问是否同意清单。B1 修复、首次失败与未完责任记入容量 active 计划；当前 B2 接入与实际拓扑 A1 的顺序以本节为准，不因历史“下一步”再开工具阶段。
 

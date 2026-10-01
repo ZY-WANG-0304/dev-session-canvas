@@ -8,20 +8,60 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { build } from 'esbuild';
+import { createDeepSeekConfiguration } from './agent-candidate-deepseek.mjs';
+import { writeAgentCandidateCIReport } from './agent-candidate-ci-report.mjs';
 import { ensureVSCodeExecutable, launchPreparedVSCodeScenario, prepareMainSmokeHostExtension,
   prepareRuntime, resolveStagedSmokeTestPath, runInsideXvfb, shouldReRunInsideXvfb } from './vscode-smoke-runner.mjs';
 
 const projectRoot = process.cwd();
-const { values } = parseArgs({ options: { output: { type: 'string' }, 'auth-only': { type: 'boolean' } } });
+const { values } = parseArgs({ options: { output: { type: 'string' }, 'auth-only': { type: 'boolean' },
+  backend: { type: 'string', default: 'existing' }, 'ci-report': { type: 'string' } } });
 const authOnly = values['auth-only'] === true;
+assert(['existing', 'deepseek'].includes(values.backend), 'Unsupported Agent acceptance backend.');
+assert(!values['ci-report'] || values.backend === 'deepseek', 'CI reports require the isolated DeepSeek backend.');
+assert(!(authOnly && values.backend === 'deepseek'), 'DeepSeek authentication is verified by the real natural scenarios.');
 assert.equal(process.platform, 'linux');
 assert(values.output, 'Specify a new --output evidence directory.');
 if (shouldReRunInsideXvfb()) process.exit(runInsideXvfb(fileURLToPath(import.meta.url), projectRoot));
 const output = path.resolve(values.output);
+const apiKey = values.backend === 'deepseek' ? process.env.DEEPSEEK_API_KEY : undefined;
+let backendConfiguration;
+let input;
+let scenarios = [];
+let phase = 'prepare';
+let failed = false;
+let failureMessage = '';
+try {
+  await runCandidate();
+} catch (error) {
+  failed = true;
+  failureMessage = String(error);
+  process.exitCode = 1;
+  if (values.backend === 'existing') throw error;
+  console.error(`DeepSeek Agent acceptance failed during ${phase}; raw evidence stays on the runner.`);
+} finally {
+  try { await backendConfiguration?.dispose(); }
+  catch { failed = true; process.exitCode = 1; phase = 'credential-cleanup'; }
+  if (values['ci-report']) {
+    await writeAgentCandidateCIReport({ directory: path.resolve(values['ci-report']), output, input, scenarios,
+      phase, failed, apiKey, failureMessage });
+    if (process.env.GITHUB_ACTIONS === 'true' && process.env.GITHUB_OUTPUT) {
+      await fs.appendFile(process.env.GITHUB_OUTPUT, 'report_ready=true\n');
+    }
+  }
+}
+
+async function runCandidate() {
+await fs.mkdir(path.dirname(output), { recursive: true });
 await fs.mkdir(output);
+if (values.backend === 'deepseek') {
+  backendConfiguration = await createDeepSeekConfiguration({ apiKey });
+  // Only private CLI configuration files carry the key past the smoke environment filter.
+  delete process.env.DEEPSEEK_API_KEY;
+}
 const runId = randomUUID();
 const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-real-agent-'));
-const authReferences = { CODEX_HOME: process.env.CODEX_HOME || path.join(os.homedir(), '.codex'),
+const authReferences = backendConfiguration?.authReferences ?? { CODEX_HOME: process.env.CODEX_HOME || path.join(os.homedir(), '.codex'),
   CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude') };
 const nodeInterpreter = { entry: process.execPath, realpath: await fs.realpath(process.execPath), version: process.version };
 assert.equal(nodeInterpreter.version, 'v25.6.0', 'This fixed Agent input requires the installed Node 25.6.0.');
@@ -42,7 +82,8 @@ assert.equal(path.dirname(cli.codex.entry), path.dirname(nodeInterpreter.entry),
   'This fixed Codex wrapper and its Node interpreter must share the installed command directory.');
 const testCommandReferences = { DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: cli.codex.entry,
   DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: cli.claude.entry };
-const codexIsolation = authOnly ? undefined : inspectCodexIsolation();
+const codexIsolation = authOnly ? undefined : inspectCodexIsolation({ cli, codexEnvironment, workspaceRoot, authReferences });
+phase = 'native-assets';
 const dist = path.join(projectRoot, 'extensions/vscode/dev-session-canvas/dist');
 const assetManifest = JSON.parse(await fs.readFile(path.join(dist,
   'native/linux-execution-candidate/linux-x64-glibc/manifest.json'), 'utf8'));
@@ -54,6 +95,7 @@ for (const file of ['extensions/vscode/dev-session-canvas/dist/extension.js',
   'extensions/vscode/dev-session-canvas/dist/linux-execution-provider.js',
   'extensions/vscode/dev-session-canvas/dist/webview.js',
   'scripts/smoke/run-vscode-agent-candidate.mjs', 'tests/vscode-smoke/agent-candidate-tests.cjs',
+  'scripts/smoke/agent-candidate-deepseek.mjs', 'scripts/smoke/agent-candidate-ci-report.mjs',
   'tests/vscode-smoke/agent-candidate-process-observer.cjs',
   'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts']) {
   hashes[file] = createHash('sha256').update(await fs.readFile(path.join(projectRoot, file))).digest('hex');
@@ -61,24 +103,27 @@ for (const file of ['extensions/vscode/dev-session-canvas/dist/extension.js',
 const runtimePaths = await build({ entryPoints: [path.join(projectRoot,
   'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts')],
   bundle: true, platform: 'node', format: 'cjs', target: 'node22', write: false });
-const scenarios = authOnly ? [{ name: 'auth-only', authOnly: true, state: 'not-run' }]
+scenarios = authOnly ? [{ name: 'auth-only', authOnly: true, state: 'not-run' }]
   : ['codex', 'claude'].flatMap(provider => ['live-runtime', 'snapshot-only'].flatMap(mode =>
   ['natural', 'stop'].map(lifecycle => ({ name: `${provider}-${mode}-${lifecycle}`, provider, mode, lifecycle,
     nonce: `DSC_A4_${randomUUID().replaceAll('-', '')}`, state: 'not-run' }))));
 const writeJson = (file, data) => fs.writeFile(path.join(output, file), `${JSON.stringify(data, null, 2)}\n`);
-await writeJson('input.json', { schemaVersion: 1,
+input = { schemaVersion: 1,
   scope: authOnly ? 'Real Host auth-only diagnosis; not A4 product acceptance'
     : 'A4 finite Linux real CLI acceptance; not A3/A5 closure',
   runId, cli, nodeInterpreter, authReferences, testCommandReferences, codexIsolation, workspaceRoot, assetManifest, hashes,
+  backend: backendConfiguration?.descriptor ?? { backend: 'existing', model: 'existing-cli-configuration' },
   scenarioCount: scenarios.length, plannedModelTurns: authOnly ? 0 : 4,
   retryScope: 'No harness retries; provider-internal transport attempts are not inferred from invocation count.',
   naturalTimeoutMs: 120000, stopTimeoutMs: 30000,
-  environmentPolicy: 'Existing smoke secret filtering and isolated HOME; CLI authentication directory references only.',
-  interpreterPolicy: 'Real CLI test command references preserve command-directory PATH priority; Codex retains its original npm wrapper.' });
+  environmentPolicy: 'Existing smoke secret filtering and isolated HOME; private CLI configuration references only.',
+  interpreterPolicy: 'Real CLI test command references preserve command-directory PATH priority; Codex retains its original npm wrapper.' };
+await writeJson('input.json', input);
 await writeJson('schedule.json', scenarios);
 const vscodeExecutablePath = await ensureVSCodeExecutable(projectRoot);
 
 for (const [index, scenario] of scenarios.entries()) {
+  phase = scenario.name;
   const debugRoot = path.join(output, scenario.name);
   const workspacePath = path.join(workspaceRoot, scenario.name);
   await fs.mkdir(workspacePath);
@@ -94,6 +139,8 @@ for (const [index, scenario] of scenarios.entries()) {
   await fs.writeFile(resolveStagedSmokeTestPath(smokeHostRoot, 'agent-candidate-runtime-paths.cjs'),
     runtimePaths.outputFiles[0].contents);
   const config = { ...scenario, cli: cli[scenario.provider], nodeInterpreter, testCommandReferences, workspacePath,
+    backend: values.backend,
+    ...(backendConfiguration ? { claudeSettingsPath: backendConfiguration.claudeSettingsPath } : {}),
     ...(authOnly ? { cliCandidates: cli, expectedAuthReferences: authReferences } : {}),
     ...(scenario.provider === 'codex' ? { codexIsolation } : {}),
     surface: scenario.mode === 'live-runtime' ? 'editor' : 'panel', artifactDir: runtime.artifactsDir,
@@ -108,6 +155,7 @@ for (const [index, scenario] of scenarios.entries()) {
       extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'agent-candidate-tests.cjs'),
       disableExtensions: false, disableWorkspaceTrust: true,
       extensionTestsEnv: { ...authReferences, ...testCommandReferences,
+        CODEX_UPDATE_ON_STARTUP: 'false',
         DEV_SESSION_CANVAS_AGENT_CANDIDATE_CONFIG: configPath } });
     scenario.state = 'passed';
     await writeJson('schedule.json', scenarios);
@@ -120,8 +168,10 @@ for (const [index, scenario] of scenarios.entries()) {
 }
 console.log(`${authOnly ? 'Real Host auth-only diagnosis completed; not A4 product acceptance'
   : 'Finite real Agent candidate acceptance passed'}: ${output}`);
+phase = 'complete';
+}
 
-function inspectCodexIsolation() {
+function inspectCodexIsolation({ cli, codexEnvironment, workspaceRoot, authReferences }) {
   const disabledFeatures = ['hooks', 'plugins', 'apps', 'shell_tool', 'skill_mcp_dependency_install'];
   const args = [...disabledFeatures.flatMap(feature => ['--disable', feature]), '-c', 'web_search="disabled"'];
   const invoke = command => {

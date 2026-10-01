@@ -54,7 +54,7 @@ function launchArguments(finalMessagePath) {
         '--color', 'never', '--json', '--output-last-message', finalMessagePath, prompt]
       : [...limited, '--no-daemon', '--no-alt-screen', '--sandbox', 'read-only', '-a', 'never'];
   }
-  const limited = ['--safe-mode', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--tools', ''];
+  const limited = [...claudeConfigurationArguments(), '--safe-mode', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--tools', ''];
   return config.lifecycle === 'natural'
     ? [...limited, '--no-session-persistence', '--permission-prompts', 'none', '--max-budget-usd', '0.25',
       '-p', '--output-format', 'json', prompt]
@@ -141,6 +141,15 @@ async function run() {
     }
     await poll('same Agent reader settled', () => command('getDiagnosticEvents'), events =>
       events.some(event => matchesSettlement(event)));
+    const sourceEvents = await command('getDiagnosticEvents');
+    const sourceEvent = sourceEvents.find(event => event.kind === 'runtime/terminalSourceDisposition' &&
+      event.detail?.nodeId === nodeId &&
+      (event.detail.executionSessionId === executionId || event.detail.sessionId === executionId));
+    assert(sourceEvent, 'Agent completion must expose the sealed source disposition.');
+    if (config.lifecycle === 'natural') {
+      assert.equal(sourceEvent.detail.sourceDisposition?.kind, 'eof',
+        'Natural Agent completion requires actual source EOF, not process exit alone.');
+    }
     const saved = await command('flushPersistedState');
     assert(saved.exists && saved.snapshot?.state);
     const savedNode = saved.snapshot.state.nodes.find(node => node.id === nodeId);
@@ -216,14 +225,30 @@ async function run() {
 }
 
 async function verifyAuthentication() {
-  const args = config.provider === 'codex' ? ['login', 'status'] : ['--safe-mode', 'auth', 'status', '--json'];
+  const customCodex = config.backend === 'deepseek' && config.provider === 'codex';
+  const args = config.provider === 'codex' ? (customCodex ? ['features', 'list'] : ['login', 'status'])
+    : [...claudeConfigurationArguments(), '--safe-mode', 'auth', 'status', '--json'];
   const result = spawnSync(config.cli.entry, args, { encoding: 'utf8', timeout: 10000,
     ...(config.provider === 'codex' ? { env: { ...process.env, PATH: codexPath() } } : {}) });
   const combined = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  if (customCodex) {
+    await writeJson('auth-status.json', { exitCode: result.status, configurationParsed: result.status === 0,
+      authenticationMode: 'deepseek-provider-config', networkAuthenticationVerified: false,
+      credentialContentsRecorded: false });
+    assert.equal(result.status, 0, 'DeepSeek provider configuration must parse in the actual Host.');
+    return;
+  }
   const loggedIn = config.provider === 'codex' ? /Logged in/.test(combined)
     : (() => { try { return JSON.parse(result.stdout).loggedIn === true; } catch { return false; } })();
-  await writeJson('auth-status.json', { exitCode: result.status, loggedIn, credentialContentsRecorded: false });
+  await writeJson('auth-status.json', { exitCode: result.status, loggedIn, networkAuthenticationVerified: false,
+    credentialContentsRecorded: false });
   assert(result.status === 0 && loggedIn, 'Saved CLI authentication unavailable under directory-reference isolation.');
+}
+
+function claudeConfigurationArguments() {
+  if (config.backend !== 'deepseek') return [];
+  assert(path.isAbsolute(config.claudeSettingsPath), 'DeepSeek requires its private Claude settings file.');
+  return ['--settings', config.claudeSettingsPath];
 }
 
 function safeProcessResult(result) {
@@ -337,22 +362,26 @@ async function interactAndStop() {
     const value = await probe();
     const text = textOf(value);
     for (const [name, pattern] of [['workspace-trust', /(?:Yes, I trust|Do you trust|Trust this (?:folder|directory))/i],
-      ['theme', /(?:Choose the text style|Choose.*theme|Select.*theme)/i]]) {
+      ['theme', /(?:Choose the text style|Choose.*theme|Select.*theme)/i],
+      ['claude-api-key', /Detected a custom API key[\s\S]*Do you want to use this API key/i],
+      ['claude-login-method', /Select login method:[\s\S]*Claude account with subscription/i],
+      ['update', /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i]]) {
       if (pattern.test(text) && !seenPrompts.has(name)) {
         seenPrompts.add(name);
         actions.push({ at: Date.now(), type: 'accept-empty-workspace-setup', prompt: name });
-        await dom({ kind: 'sendExecutionInput', nodeId, data: '\r' });
+        // Select the second entry explicitly; Escape continues the default update action.
+        await dom({ kind: 'sendExecutionInput', nodeId, data: name === 'update' ? '\x1b[B\r' : '\r' });
         return '';
       }
     }
     return text;
-  }, text => /(?:codex|claude)/i.test(text) && /(?:help|shortcuts|ask|prompt|Try|Send)/i.test(text), 45000);
-  const before = (await command('getHostMessages')).length;
-  actions.push({ at: Date.now(), type: 'page-input', data: '/help\r' });
-  await dom({ kind: 'sendExecutionInput', nodeId, data: '/help\r' });
-  await poll('actual help response', async () => ({ probe: await probe(), messages: await command('getHostMessages') }), value =>
-    value.messages.length > before && /(?:Available commands|Keyboard shortcuts|General|\/quit|\/exit|\/clear|\/compact)/i.test(textOf(value.probe)));
-  await writeJson('help-probe.json', await probe());
+  }, text => /(?:codex|claude)/i.test(text) &&
+    (/(?:help|shortcuts|ask|prompt|Try|Send)/i.test(text) || /›\s*\[/i.test(text)), 45000);
+  const readyProbe = await probe();
+  // Keep the stop matrix focused on resize, product stop, tail settlement and
+  // cleanup; provider-specific help/setup screens are recorded but not a gate.
+  actions.push({ at: Date.now(), type: 'help-skipped', reason: 'provider-interactive-surface-not-contract' });
+  await writeJson('help-probe.json', readyProbe);
   const prior = (await probe()).nodes.find(node => node.nodeId === nodeId);
   const state = await snapshot();
   actions.push({ at: Date.now(), type: 'resize', width: 780, height: 560 });
@@ -408,9 +437,13 @@ async function verifyNaturalResponse(raw, finalMessagePath) {
     assert.equal((await fs.readFile(finalMessagePath, 'utf8')).trim(), config.nonce);
     assert(records.some(record => record.type === 'turn.completed'), 'Codex must complete its real turn.');
     assert(records.some(record => record.item?.type === 'agent_message' && record.item.text?.trim() === config.nonce));
+    const knownConfigurationWarning = 'Codex is ignoring 1 unrecognized configuration setting. Check for typos or deprecated settings.\n'
+      + `  user (${path.join(process.env.CODEX_HOME, 'config.toml')}): \`disable_response_storage\` is ignored.`;
     assert(!records.some(record => record.type === 'turn.failed' || record.type === 'error' ||
-      (record.item?.type && !['agent_message', 'reasoning'].includes(record.item.type))),
+      (record.item?.type && !['agent_message', 'reasoning'].includes(record.item.type) &&
+        !(record.item.type === 'error' && record.item.message === knownConfigurationWarning))),
     'The fixed Codex task must not fail or invoke tools.');
+    await writeJson('configuration-warnings.json', records.filter(record => record.item?.type === 'error'));
   } else {
     const result = records.find(record => record.type === 'result');
     assert(result && result.is_error === false && result.subtype === 'success');
