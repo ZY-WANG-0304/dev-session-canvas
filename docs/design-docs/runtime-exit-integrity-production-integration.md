@@ -2001,6 +2001,10 @@ CLI选择、Windows observer、原Unix observer、CI summary、私有配置、�
 
 原artifact九份小报告已范围提取至 `.debug/windows-product-36834158313/small-reports/`。失败probe为122x30且空白；稍后catch保存的messages已有同node、同runtimeSessionId的executionSnapshot和terminalRead，events于08:08:17.680Z记录terminalPagedReadOpened。这直接证明该次读取早于身份返回，不是原reader始终未建立；失败发生在writer启动前。cleanup仅证明resetStateComplete及nodes/bindings为零，observer尚未取得主体时safe=false保持，不冒称完整OS清理。旧实现受控确定红保留在 `.debug/windows-mounted-identity-original-red-20261001-01.log`；修后五例覆盖身份/尺寸分别迟到、身份缺失、共享截止及错误Runtime身份拒绝，原尾部断言不变。
 
+修后6d622bee的run36836728391/job110285817329完整success，六份completed/reopened/cleanup及四份environment已范围提取并独立对账，保存于 `.debug/windows-product-36836728391/`，汇总为report-crosscheck.json。实际VS Code1.117.0/Electron39.8.7/Node22.22.1/ABI140，两模式原writer句柄观测exit0、成功写入5580102bytes，原90002行/UTF-8/ANSI/最终光标(6,2)通过，source均EOF、同execution reader applied/finalRevision1379。Runtime节点616bytes且重开closed无历史/空终端；snapshot-only节点5766998bytes、原终态重开保留。两个complete/reopen Host PID各不同，cleanup均pass且bindings0。只读取548209bytes小报告而非491.5MB整包；该实际通过解除Windows原定Agent验收前提，首次Agent输入仍为同6d622bee，手动run36838248572，尚无Agent结果。原失败不追认，不要求已退出OS对象因其他合法引用而消失，也不关闭全A5。
+
+首次Windows Agent run36838248572/job110290820480实际failure，原日志 `.debug/windows-agent-36838248572-job.log` 保留。失败位于无凭据前置 `test-agent-candidate-deepseek.mjs:16`，createDeepSeekConfiguration只报告安全通用错误；CLI安装、候选构建、真实验收/secret步骤均未运行。step开始08:45:46.91Z、失败08:46:02.28Z，与私有目录PowerShell的15000ms上限相近但不能据此确认超时。当前先核对具体私有目录阶段/进程结果，不提高期限、不放宽DACL、不要求用户重配key，不从前置失败推断Agent/终端产品缺陷。
+
 ## 35. A5 固定 VSIX 的实际安装路径
 
 本项只补既定A5的Linux installed candidate，不新增平台诊断，也不代证完整分发准入。现有 `run-vscode-vsix-smoke.mjs` 重建stock并改装development扩展，正确范围仅为payload smoke；不能把它当成未改装VSIX的安装证据。选定在 `scripts/smoke/run-vscode-execution-candidate.mjs` 新增显式 `--installed-vsix`，只接收固定文件，不自动重建或选择最新包，首轮不与capacity选择混用。
@@ -2022,3 +2026,5 @@ CLI选择、Windows observer、原Unix observer、CI summary、私有配置、�
 A1在 `test-supervisor-execution-owner-wiring.mjs` 复用实际Server/TerminalSessionJournal，仅让目标journal路径的 `fs.promises.appendFile` 对一条短output抛带ENOSPC的原错误，不替换journal.appendOutput/flush。必须保留terminalJournalError、consumedThrough=0且无consumed ACK、原session/journal责任；stop请求不等于进程已退或settled/applied，另一已存在会话仍可消费。失败注入移除后不伪造恢复已损失的来源，按原fixture清理责任。
 
 A2在 `test-host-execution-owner-wiring.mjs` 的真实persistenceFixture中种原Runtime绑定和已保存文件，通过将root临时文件路径占用为目录触发实际writer失败，调用原 `applyCompletedRuntimeSupervisorSnapshot`，不替换persistState。必须拒绝保存、旧root/workspace文件仍可读，原runtimeSessionId/runtimeStoragePath、binding及managed session未释放，strict delete为零。该验证不声称实际Webview告警/控制可用性已验，也不替代保存成功路径或旧live共存；出现直接失败再据证据设计最小业务修正。
+
+两类各Terminal/Agent实际模块用例通过，未修改业务。A1验证实际异步append错误进入journal.writeError及Supervisor authorityFailure，原manifest未提升、已接收内容仍在原session/tracker、没有consumed ACK且请求stop不冒充退出；另一session消费成功，去除注入后flush仍拒绝原错误。fixture清理仅逐个assert.rejects事先登记的原错误，不吞未知失败或清掉业务错误。A2验证root临时路径目录导致实际EISDIR，原root/workspace字节未变，原Runtime身份/state/rootStates/binding/managed保留，dispose和strict delete均0。Supervisor94/94、Host147/147及root独立完整复跑通过，日志为 `.debug/a1-journal-enospc-supervisor-wiring-20261001.log`、`.debug/a2-root-save-failure-host-wiring-20261001.log`。无实际OS满盘、Webview或原生新通过声明，剩余A1/A2按有限清单继续。

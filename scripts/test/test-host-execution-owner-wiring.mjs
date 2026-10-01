@@ -1789,6 +1789,72 @@ test('final snapshot disk and workspaceState failures retain the original Host r
   }
 });
 
+for (const kind of ['terminal', 'agent']) {
+  test(`${kind} completed Runtime actual root write failure retains its original binding and managed session`, async () => {
+    const f = await persistenceFixture();
+    const session = addCandidateLegacyBinding(f, kind);
+    const authorityId = `original-${kind}-authority`;
+    const disposals = [];
+    const managed = { owner: 'supervisor', sessionId: session.sessionId,
+      terminalProjectionMode: 'terminal-stream-v1', terminalAuthorityId: authorityId, outputSequence: 1,
+      terminalStateTracker: { dispose: () => disposals.push('terminal') },
+      lineContextTracker: { dispose: () => disposals.push('line-context') } };
+    f.host.getExecutionSessions(kind).set(session.nodeId, managed);
+    f.host.executionCandidateProfile = EXECUTION_CANDIDATE_PROFILE;
+    f.host.terminalReadRelay = new RuntimeTerminalReadRelay();
+    f.host.isRuntimePersistenceEnabled = () => true;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    let strictDeletes = 0;
+    f.host.deleteRuntimeSupervisorSessionStrict = async () => {
+      strictDeletes++;
+      throw new Error('A failed completed save must not submit a strict delete.');
+    };
+    try {
+      assert.strictEqual(f.host.persistState, CanvasPanelManager.prototype.persistState);
+      await f.host.persistState({ workspaceStateMode: 'full', requireRootLocalDurability: true });
+      const beforeState = f.host.state;
+      const beforeRootStates = f.host.lastLoadedRootLocalStates;
+      const beforeRoot = await readFile(f.rootFile, 'utf8');
+      const beforeWorkspace = await readFile(f.workspaceFile, 'utf8');
+      const bindings = [...f.host.runtimeSessionBindings.entries()];
+      f.writes.length = 0;
+      await mkdir(`${f.rootFile}.tmp`);
+      const snapshot = candidateCompletedSnapshot(session, {
+        lifecycle: kind === 'agent' ? 'stopped' : 'closed',
+        terminalStreamPaged: true, terminalAuthorityId: authorityId, terminalRevision: 1,
+        terminalFinalRevision: 1, capabilities: { terminalReadSettlementV1: true }
+      });
+      await assert.rejects(f.host.applyCompletedRuntimeSupervisorSnapshot(session.nodeId, kind, snapshot),
+        /EISDIR|illegal operation on a directory/i);
+      assert.deepEqual(f.writes, [f.rootFile], 'the original root writer fails before a workspace save');
+      assert.equal(await readFile(f.rootFile, 'utf8'), beforeRoot);
+      assert.equal(await readFile(f.workspaceFile, 'utf8'), beforeWorkspace);
+      const rootMetadata = (await f.read(f.rootFile)).state.nodes.find(node => node.kind === kind).metadata[kind];
+      const workspaceMetadata = (await f.read()).state.nodes.find(node => node.kind === kind).metadata[kind];
+      for (const metadata of [rootMetadata, workspaceMetadata]) {
+        assert.equal(metadata.runtimeSessionId, session.sessionId);
+        assert.equal(metadata.runtimeStoragePath, session.runtimeStoragePath);
+        assert.equal(metadata.persistenceMode, 'live-runtime');
+      }
+      assert.strictEqual(f.host.state, beforeState);
+      assert.strictEqual(f.host.lastLoadedRootLocalStates, beforeRootStates);
+      const metadata = f.host.requireNode(session.nodeId, kind).metadata[kind];
+      assert.equal(metadata.runtimeSessionId, session.sessionId);
+      assert.equal(metadata.runtimeStoragePath, session.runtimeStoragePath);
+      assert.deepEqual([...f.host.runtimeSessionBindings.entries()], bindings);
+      for (const [key, binding] of bindings) assert.strictEqual(f.host.runtimeSessionBindings.get(key), binding);
+      assert.strictEqual(f.host.getExecutionSessions(kind).get(session.nodeId), managed);
+      assert.deepEqual(disposals, []);
+      assert.equal(strictDeletes, 0);
+      assert.equal(f.providers.length, 0);
+      assert.ok(f.diagnostics.some(event => event.name === 'state/rootLocalPersistFailed' && event.detail.rootPath === f.root));
+    } finally {
+      f.host.getExecutionSessions(kind).delete(session.nodeId);
+      await f.cleanup();
+    }
+  });
+}
+
 test('pending final persistence blocks restart delete and reset while the original submitted write may complete after cutoff', async () => {
   const f = await persistenceFixture();
   const update = deferred();

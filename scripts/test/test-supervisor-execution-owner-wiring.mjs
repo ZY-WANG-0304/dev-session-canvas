@@ -42,6 +42,7 @@ new Function('module', 'exports', 'require', lifecycleBundle.outputFiles[0].text
 const { encodeOutputFrame, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS } = lifecycleModule.exports;
 const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-supervisor-owner-'));
 const fixtures = [];
+const expectedJournalWriteFailures = new WeakMap();
 let fixtureId = 0;
 let passed = 0;
 
@@ -561,6 +562,60 @@ try {
         } finally { journal[operation] = original; }
       });
     }
+
+    await check(`${kind}: actual journal ENOSPC retains consumption credit and the original live responsibility`, async () => {
+      const f = fixture();
+      const { session, transport } = await f.create(kind);
+      const second = await f.create(kind);
+      const journal = session.terminalJournal;
+      const originalAppend = fs.promises.appendFile;
+      const failure = Object.assign(new Error('controlled journal append has no space left'), { code: 'ENOSPC' });
+      const manifestBefore = await readFile(journal.manifestPath, 'utf8');
+      let failedAppends = 0;
+      fs.promises.appendFile = async (file, ...args) => {
+        if (path.dirname(String(file)) === journal.sessionDirectory) {
+          failedAppends++;
+          throw failure;
+        }
+        return originalAppend(file, ...args);
+      };
+      expectedJournalWriteFailures.set(journal, failure);
+      try {
+        transport.output('accepted-before-ENOSPC');
+        await f.until(() => Boolean(session.ownedExecution.snapshot().adapter.authorityFailure),
+          'actual asynchronous journal write failure reaches the owner');
+        assert.equal(failedAppends, 1);
+        assert.strictEqual(session.terminalJournalError, failure);
+        assert.equal(session.terminalJournalError.code, 'ENOSPC');
+        assert.equal(session.lifecycle, 'error');
+        assert.equal(session.live, true, 'a failed disk write does not prove process exit');
+        assert.equal(session.ownedExecution.snapshot().adapter.acceptedThrough, 1);
+        assert.equal(session.ownedExecution.snapshot().adapter.consumedThrough, 0);
+        assert.equal(transport.sent.some(message => message.type === 'consumed'), false);
+        assert.ok(transport.sent.some(message => message.type === 'requestStop'));
+        assert.equal(session.ownedExecution.snapshot().settled, false);
+        assert.notEqual(session.ownedExecution.snapshot().terminal?.kind, 'applied');
+        assert.strictEqual(f.server.sessions.get(session.sessionId), session);
+        assert.strictEqual(session.terminalJournal, journal);
+        assert.equal(session.output, 'accepted-before-ENOSPC');
+        assert.match((await session.terminalStateTracker.flush()).data, /accepted-before-ENOSPC/);
+        assert.equal(await readFile(journal.manifestPath, 'utf8'), manifestBefore,
+          'the failed append cannot promote an unpersisted journal revision');
+        await assert.rejects(journal.readAllEvents(), error => error === failure,
+          'a failed journal cannot advertise complete readable history');
+        second.transport.output('independent-after-ENOSPC');
+        await f.until(() => second.session.ownedExecution.snapshot().adapter.consumedThrough === 1,
+          'the other existing session consumes through the original filesystem writer');
+        await finish(f, second.session, second.transport);
+      } finally {
+        fs.promises.appendFile = originalAppend;
+      }
+      await assert.rejects(journal.flush(), error => error === failure,
+        'removing the injection must not fabricate recovery of the failed accepted write');
+      assert.strictEqual(f.server.sessions.get(session.sessionId), session);
+      assert.equal(session.ownedExecution.snapshot().adapter.consumedThrough, 0);
+      assert.equal(transport.sent.some(message => message.type === 'consumed'), false);
+    });
 
     await check(`${kind}: seal cannot overtake paused consumption and later accepted batches`, async () => {
       const f = fixture();
@@ -2112,7 +2167,12 @@ try {
     if (f.server.shutdownBoundary?.keepAlive) clearInterval(f.server.shutdownBoundary.keepAlive);
     for (const session of f.server.sessions.values()) {
       if (session.lifecycleTimer) clearTimeout(session.lifecycleTimer);
-      await session.terminalJournal?.flush();
+      const expectedWriteFailure = expectedJournalWriteFailures.get(session.terminalJournal);
+      if (expectedWriteFailure) {
+        await assert.rejects(session.terminalJournal.flush(), error => error === expectedWriteFailure);
+      } else {
+        await session.terminalJournal?.flush();
+      }
       session.terminalStateTracker.dispose();
     }
   }

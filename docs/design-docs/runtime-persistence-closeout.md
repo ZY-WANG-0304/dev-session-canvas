@@ -32,9 +32,11 @@ updated_at: 2026-10-01
 
 当前 A1/A2 状态（2026-09-30）：有界索引顺序读取已实施，`.debug/a1-host-reconnect-20260930-indexed-pages/` 在同一 2/1 Electron candidate 上完整 exit 0，新 Host ready 1422.291ms、完整应用 14431.416ms、追平 13009.125ms；B32.6ms、独立 journal/hash、原执行及新 reader、完整保留后缀、自然 closed/no-history 与两份 cleanup 通过，outer `forcedSignals=[]`。原 30 秒界限与完整冻结段/尾部篡改检测保持，四轮旧 exit 1 不追认。该固定冷恢复阻塞已解除，但追赶交互重叠为 false，不关闭整个 F-04/其他 A 项。同一新 2/1 构建 A4 `indexed-pages` 八场景完整 exit 0：natural 四项响应/实际 source EOF 通过，stop 保留主动停止，八份 cleanup 均无 binding/process failure/forcedSignals。Claude stop 为 startup/auth 等待界面，不代表模型任务完成；详见生产接入 32.19。跨平台/分发及外部认证边界不变。
 
-当前 A5 边界（2026-10-01）：产品candidate已在Linux x64/glibc、Darwin arm64取得各自固定Node/Electron及Terminal页面证据；Windows x64已有Node四例与Electron构建，页面最终证据不全，不能把workflow绿灯作验收。三平台都不再是仅有stock诊断，但其余架构、运行时兼容、packaged与Remote SSH仍需原清单验收。用户选定的真实Codex/Claude + DeepSeek及仓库级 `DEEPSEEK_API_KEY` 已在Linux八场景取得有限实际通过，macOS/Windows接线不代证响应或退出。仍不绑定Environment/分支、不上传本机登录，secret仅交给最终验收step，raw不上传；Windows临时配置在写key前验证私有DACL，进程退出用原SafeHandle事实而非对象消失。普通构建仍stock，F-04和完整A5未关闭。
+当前 A5 边界（2026-10-01）：产品candidate已在Linux x64/glibc、Darwin arm64取得各自固定Node/Electron及Terminal页面证据；Windows x64原Node四例、Electron构建及两模式Terminal六报告/四环境收据于36836728391核对通过，不仅依赖workflow绿灯。其余架构、运行时兼容、其他平台packaged与Remote SSH仍需原清单验收。用户选定的真实Codex/Claude + DeepSeek及仓库级 `DEEPSEEK_API_KEY` 已在Linux八场景取得有限实际通过；macOS第四场终态判定仍失败，Windows首次36838248572在无凭据私有配置测试前置失败、真实Agent未运行。仍不绑定Environment/分支、不上传本机登录，secret仅交给最终验收step，raw不上传；Windows临时配置须在写key前验证私有DACL，进程退出用原SafeHandle事实而非对象消失。普通构建仍stock，F-04和完整A5未关闭。
 
 同日新增结果以生产接入33.10/35为准：macOS真实Agent两次均前三Codex场passed、snapshot stop原非空断言失败、Claude未跑；新取证确认实际saved空串但geometry/visible不符和execution-changed未知，不按空串预判正文丢失或合法清屏。Linux固定production VSIX 604494fd在 `.debug/a5-installed-candidate-20261001-first/` 四次真实安装路径Host验证首次通过，四份路径/摘要收据与六份完成/重开/清理报告齐全，原90002行/最终光标/EOF及两模式保存语义保持。该Linux installed子项不再排队，但其他平台packaged、Remote、运行时兼容与默认准入仍开放；第36节两类文件系统失败组合直接服务A1/A2，不扩通用工具。
+
+第36节两类文件系统失败组合已完成：Terminal/Agent各自通过实际journal异步ENOSPC错误传播与真实root临时文件EISDIR保存失败，原消费信用/错误和唯一来源/binding/managed责任保留，另一个已有会话仍可消费。Supervisor94/Host147及root独立复跑、只读审查通过，未修改业务；该组合不重复排队，不代证实际OS满盘或页面告警/控制。
 
 2026-09-28，用户先要求暂停自动追加阶段，随后明确不承担清单确认，要求代理依据重构目标作出判断。本文件据此收口为已选定的工程完成定义与有限工作顺序，不再等待用户批准工程清单或选择技术预算。最初核对基线为 `ba2c148b`，草案保存在 `2d375606`，工程裁决保存在 `8dd82629`。其后已按既定顺序启动 B1，过程见 `runtime-persistence-capacity-closeout` active 计划；局部修复不代表整体容量通过，2026-09-29 最新实际链同预算样本 2x/4x 的 heap/RSS 仍超限，状态保持验证中。没有新增 runner 或发布动作。
 

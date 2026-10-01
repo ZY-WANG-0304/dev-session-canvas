@@ -4,6 +4,8 @@
 
 本段更新优先于上段待执行状态：6d622bee的macOS36836757674已固定一次failure，前三passed/第四原断言失败/后四not-run；saved空快照seq13与reader匹配，但geometry/visible不符且独立重放execution-changed未知，不改通过、不盲重跑。第35节Linux真实安装 `.debug/a5-installed-candidate-20261001-first/` 已完整exit0，四份安装路径/hash收据及六份结果报告独立核对，固定包604494fd的Runtime无历史与snapshot恢复通过。第36节仅补实际Journal ENOSPC传播和实际root writer失败两类原模块组合，不先改业务或重跑容量。
 
+最新有限增量：Windows36836728391六结果/四environment核对通过，原两模式Terminal尾部与重开子项收口；同6d622bee首次Agent36838248572在无凭据的private-config测试前置失败，CLI安装/构建/真实Agent全部未跑，不能记作Windows Agent产品缺陷。A1/A2第36节两类实际模块组合已通过Supervisor94/Host147及root复跑，未改业务，仍不代证OS满盘/实际页面。
+
 当前执行入口（2026-10-01，B2/A5）：macOS短路径run `36822748979` 的VS Code启动后job超时，未取得产品清理结论；新run `36825479993` paused-stop因真实EOF已到但测试仍等待取消而首败，按生产接入33.8仅修正消费gate和失败后tracker释放顺序。Windows `36823205778`/`36825483498` 编译及namespace通过，normal在主体READY前code1退出，cleanup unsafe；按34.8增加有限启动收据和既有原生cmd回归，不先改业务。hash差异已确认为CRLF而非旧源码。当前只收口这些具体启动/判定阻塞，随后继续原平台产品及分发验收；真实Agent/Webview和F-04均未关闭，不增加工具矩阵。
 
 当前执行入口（2026-10-01，优先于后面的历史下一步）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整exit0；真实新Host追赶时B51ms应用、A同动作12到18未追平2560，随后ready后13137.248ms完整恢复，原身份/hash/no-history及两份cleanup通过、outer forcedSignals/failures为空。该B1/A1组合收口，下一按生产接入第33节推进B2/A5的macOS产品接入：共享Unix owner、Darwin原生provider、两authority工厂/构建与namespace，保留独立profile/generation、匹配Node/Electron和packaged责任。该平台目前只有运行前设计，没有新平台通过；Windows、其余A项和总体仍开放，原10.14/旧失败及Agent snapshot stop具名未决项不改。
@@ -102,7 +104,9 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01) 33.9 macOS新run36829311235完整success，六份两模式页面报告核对；34.11 Windows修后run36830583121构建通过但job绿灯与缺最终报告矛盾，保留实际未验收状态及旧failure。
 - [x] (2026-10-01) 34.12已确认Windows等待的是code.cmd转交而非真实宿主；原passed早于snapshot主体启动约7秒。原job/缺五报告事实保留。
 - [x] (2026-10-01) 34.12直接等待原Code.exe与phase报告检查两项先红后绿，env/Electron input/Agent workflow独立复跑通过，无业务/预算改动。
-- [ ] 复验34.12原Windows两模式验收，完整报告通过后才调度该平台Agent，不以job绿灯代证。
+- [x] (2026-10-01) 34.12修后Windows36836728391六结果/四environment独立核对通过，主体原对象exit0、90002行/光标/EOF/重开保持，不仅依赖job绿灯。
+- [x] (2026-10-01) 同6d622bee首次Windows Agent36838248572无凭据private-config测试前置失败，原日志保留，后续CLI/构建/Agent未运行。
+- [ ] 仅定位Windows私有配置准备失败的具名原因，不放宽DACL或把通用工具增强变为前置。
 - [x] (2026-10-01) 按34.10补齐Windows真实Agent的产品cmd入口、原对象观察、临时配置DACL及受限workflow；六项局部测试、typecheck/env/Electron输入通过，不代证Windows原生PowerShell或Agent。
 - [ ] 通过已注册workflow的 `real_agents=true` 和单选 `real_agent_platform=macos/windows` 依次运行各自原八场景并核对脱敏报告；不新增场景或自动重试，剩余产品责任按有限收尾清单。
 - [x] (2026-10-01) b1628715的macOS首次run36832581851已回收：前三Codex场passed、snapshot stop原非空快照断言首败、Claude四场not-run，四cleanup均零残留；33.10保留具体空串/序号/reader/EOF事实，未盲目重跑，Windows仍未调度。
@@ -112,7 +116,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [ ] 仅核对上述两种具名未知的生产消息与布局语义，取得明确判据前不重跑或放宽原断言。
 - [x] (2026-10-01) 34.12原小报告确认122x30挂载早于原reader身份，旧实现受控先红；同一次30秒poll窄修五例及root复跑通过，原尾部断言保持。
 - [x] (2026-10-01) 第35节固定VSIX接线七组纯测及root复跑通过；Linux首轮四次Host/四安装收据/六结果报告全通过，实际installed主扩展未经改装，原尾部断言保持。
-- [ ] 第36节补A1真实Journal写错误传播与A2实际root writer失败保留原Runtime来源的有限模块组合，不冒称实际OS满盘或UI已验。
+- [x] (2026-10-01) 第36节补A1真实Journal异步ENOSPC传播与A2实际root writer失败保留原Runtime来源的两类Terminal/Agent用例，Supervisor94/Host147及root复跑通过；不冒称实际OS满盘或UI已验。
 
 - [x] (2026-10-01) 核对macOS短路径超时与新paused-stop首败、Windows两轮READY前失败；保留原artifact及exit1，明确CRLF摘要差异不代表旧源码，详见生产接入33.8/34.8。
 - [x] (2026-10-01) 完成macOS真实EOF/取消分支和失败后消费等待、Windows启动收据及现成cmd原生回归接线；两product self-test、session bridge、Windows Electron输入与diff检查通过，均为本地局部证据。
@@ -418,6 +422,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [ ] 同步最终文档与技术债，符合完整完成定义后归档计划；不能因 Linux 或局部夹具通过就勾选全平台完成。
 
 ## 意外与发现
+
+2026-10-01：Windows原Terminal两模式已实证通过，首次Agent却停在无凭据配置测试的通用错误；step到失败约15秒与私有目录PowerShell的15秒上限相近，但不足以证明超时。不在缺因果证据时调整预算或放宽私有权限。两类写失败组合未出现产品红结果，实际错误传播与唯一来源保护已有受控模块证据。
 
 2026-10-01：macOS新证据直接确认savedNode空串，但页面全文空行对账通过不代表几何一致，回放因不同/缺失执行身份保守拒绝。不能把本次仍不充分的证据改写为合法空屏通过。Linux固定安装已确实从隔离extensions目录加载同一原包，解除的是原payload smoke无法证明installed的缺口。
 
@@ -951,6 +957,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-01：WindowsTerminal基线解除，首次Agent前置失败和未跑项单独保留；Linuxinstalled及A1/A2两类文件系统组合已有本轮实证。当前剩余平台Agent阻塞是具体前置/终态判定，不是缺少用户凭据；不得让这些局部失败重新引出无边界工具项目。
 
 2026-10-01：Linux固定VSIX installed子项首次通过，保留90002行/光标/EOF/重开/清理及原路径hash收据。macOS真实Agent仍第四场失败而非认证阻塞；新摘要不够支持终态判据变更，继续有限根因核对。F-04和完整平台/分发不由本地安装成功关闭。
 
@@ -2173,3 +2181,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-01，原身份等待与固定安装）：同步Windows小报告直接时序与共享原截止修正、macOS evidence-only局部回归及一次原矩阵边界，并冻结第35节真实VSIX安装设计。同步四活章节，原失败和有限完成定义不变。
 
 修订记录（2026-10-01，installed实证与Agent未知分账）：同步固定包SHA、四份安装收据和六结果通过，以及macOS一次新失败的有限证据；登记第36节两类文件系统组合输入，未自动追加模型/诊断矩阵，四活章节与原完成定义一致。
+
+修订记录（2026-10-01，Windows基线及写失败组合）：记录原Windows六报告通过、首次Agent无凭据配置前置失败，以及第36节四个参数化模块用例与root复跑；未改业务/权限/预算，未知根因不预判。

@@ -27,6 +27,8 @@
 
 同日更新：33.10固定一次macOS36836757674仍第四场原断言失败，新saved/reader证据明确但独立回放与页面几何未判定，不盲重跑。第35节Linux fixed VSIX installed首次四次Host/六结果通过，包SHA604494fd、实际安装路径和八文件hash已核对，该子项不重复排队；第36节只补A1/A2实际文件系统失败组合，原高层替身不误算同链验证。其余责任仍依有限收尾清单。
 
+同日增量：Windows36836728391原两模式Terminal六报告/四environment独立核对通过，首次Agent36838248572停在无凭据私有配置测试，后续CLI/构建/secret/Agent未跑，不能称Agent产品失败。第36节两类真实模块写失败组合已通过Supervisor94/Host147、root复跑及只读审查，无业务改动，不冒称OS实际满盘或UI验收。上述已收口子项不重排，剩余具体失败和原有限责任继续。
+
 2026-09-30 当前 Runtime 重构收尾入口：`docs/design-docs/runtime-persistence-closeout.md`。合并测试进程的 Heap 64 MiB / RSS 128 MiB 重列为初始观察预算，不是独立 Supervisor/每会话产品预算；原阈值、结果和 exit 1 保持，不追认通过。暂停仅为压线的优化和自动前置 profiler，当前推进 B2 正式启动接入，真实分进程、多会话资源与交互评估并入 A1，并据资源模型论证正式预算。已证无界积压、重复物化、取消等待累积等结构问题不因口径调整失效。F-04 仍开放，F-05 不重开归档，F-03 另列 R1；B3、真实 Agent/Webview/跨平台、尾部与最终 A1 至 A6 不削减，不等待用户选择工程预算。下列 dated 记录、旧 L/PI 分类及“下一步”保留为历史，不自动执行；尤其旧 profiler 下一步不再作为 B2 前置。
 
 B2 已完成 typed profile/generation、安全首次启动和构建期固定候选的实际 extension 注入；Linux Electron 39.8.7 匹配资产已经用于真实 VS Code/Webview/PTY，普通构建仍 stock。退出提示覆写修后，Runtime/editor 的 90002 条前缀行、终态光标和真实重开有有限通过证据；snapshot-only live 投影与大快照读取丢弃也已修，32.10 的 `.debug/execution-candidate-a2-a3-20260930-snapshot-normalization-fixed` 单选 complete/reopen exit 0，90002 行、工件光标 `(6,2)`、5580063 字符快照、applied 1396 及清理通过。原整轮、夹具字段和重开失败 exit 1 均保留，当前通过不等于 OS 全程无新进程追踪或全部两模式验收。Host 110/110、tracker、journal、checkpoint、typecheck 及补候选退出翻译后的 localization 通过；B3 completed 发布、完整 root template reset 和 reset 在途责任三项先红已修，生命周期 38 次回归通过。其余 A6、A1 分进程多会话预算、真实 Agent 与跨平台/分发仍开放；不扩通用诊断或 R1 归属迁移，也不重复登记已完成启动接线。
