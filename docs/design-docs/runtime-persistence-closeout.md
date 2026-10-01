@@ -168,19 +168,30 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 
 ## 8. 推进约束与证据归档
 
-2026-10-01第49节工程增量：三平台requirements/schema2与六资产聚合已实现；固定六格无凭据workflow和窄测试已准备，本地Linux x64整条build/旧新Node同字节load/runtime归档exit0。首次六格远端结果尚待取得，最低OS/产品验收和普通默认启用不由此完成；不重开已经通过的Agent矩阵，也不把分发脚本扩为通用诊断框架。
+2026-10-01第49节工程增量：三平台requirements/schema2与六资产聚合已实现；首轮四格与修后 Windows x64/ARM64 attempt2 均已取得，六目标 import/聚合/固定 VSIX 及本地 Linux x64 build/load/archive 均通过。该结果关闭分发构建链，不代证最低旧 OS、各目标完整产品验收或普通默认启用；不重开已经通过的 Agent 矩阵，也不把分发脚本扩为通用诊断框架。
 
 当前剩余交付只按下表结账，不以历史阶段、工具边界或重复绿色另开队列。各包可复用已有效证据；“剩余”不表示每格都必须新写脚本或重跑全部平台。
 
 | 交付包 | 直接剩余责任 | 可复用且不重复立项 |
 | --- | --- | --- |
-| B2/A5生产工程 | 最低ABI/OS/库要求与构建来源分离、Linux arm64/旧Node同名namespace、macOS旧系统原生确认、六资产聚合与实际执行端选择、正常打包/默认启用/生产准入 | 三平台已有provider、同PID主体与逐资源责任；第37节Windows namespace窄修、第46节新helper在最新arm64 runner的原流程通过；不另建server或下载器 |
+| B2/A5生产工程 | 最低 ABI/OS/库要求与实际产品支持、macOS 旧系统原生确认、正常打包/默认启用/生产准入；六资产聚合与实际执行端选择已完成 | 三平台已有 provider、同 PID 主体与逐资源责任；Windows namespace 窄修、第46节新 helper、六目标 import/聚合/固定 VSIX 均有证据；不另建 server 或下载器 |
 | A1/F-04最终收口 | 逐层正文/在途上界、旧协议边界、最终准入；最终产物关键容量回归，仅补原输入未覆盖的attach中output/resize/scrollback与live compact组合 | 容量10.12十会话color/size预算、10.15实际Host离线追赶时B交互；原socket/compact/resize用例，不重建compact工具、不压旧64/128门槛 |
 | A2/A3未填页面格 | 慢消费者最终write应用、force/delete/读失败的不同结算、新旧generation实际共存；第46节Claude非空stop最终视口/光标诊断差异的有限语义核对；只补现有证据不能承担的真实页面责任 | 第36节journal ENOSPC/root EISDIR、completed轻量writer与旧binding受控回归、第38节surface/双Host reader、既有大尾部与停止证据；不做平台笛卡尔积或新增满盘研究 |
-| A6有限用户入口 | snapshot-only实际Host离开边界 | 50项真实Host方法受控回归含完整template/replacement/等待窗口、第39节Runtime真实reload及第47节Linux installed多根真实EISDIR/B原页面24.9ms交互；原reader applied4与独立清理通过，旧首败不改，已完成格不重复排队 |
+| A6有限用户入口 | 当前冻结 VSIX 的 snapshot-only Host 离开已覆盖；只有在产品另行区分 `closeWindow` 与 `reloadWindow` 语义时才需单列新输入 | 50项真实 Host 方法受控回归含完整 template/replacement/等待窗口、第39节 Runtime reload、第50节 snapshot-only reload 及第47节 Linux installed 多根真实 EISDIR/B 原页面 24.9ms 交互；旧 reader/EOF 未观察字段和旧首败不改，不重复已完成格 |
 | A5支持与总体结账 | 其他平台installed/未覆盖架构与最低环境格、最终同一生产版本A1至A6证据表 | Linux固定VSIX及Remote Node原四阶段已通过；三平台真实Agent各原输入有限通过，改变实际启动链后只复验受影响原流程；旧OS缺环境不伪称新runner已证明 |
 
-当前工程顺序按有限收尾定义推进：保留B1修复与未完责任、A1/A2原期限通过、各自A4有限结果及全部旧失败，第47节多根格从剩余队列移出。当前落实生产接入第49节的B2/A5 Linux schema2实际requirements、arm64及旧Node同名namespace，随后沿原六资产/正常分发/生产准入责任收口，不重开平台诊断或只增加runner。A2/A3未填页面格、A6 snapshot-only实际Host离开及最终同版本回归仍保留；第三轮Codex snapshot stop具名间歇失败不因未复现称已修，也不为抓红追加CI。汇总A1至A6才宣布整体交付，F-04和完整A5仍开放。
+当前证据表（2026-10-01，面向收尾而非重新排队）：
+
+| 项目 | 当前结论 | 直接剩余 |
+| --- | --- | --- |
+| A1 / F-04 | `10/1` color/size 与 `2/1` Host detach/reconnect 固定组合通过，资源/交互只按声明输入记录 | attach 中 output/resize/scrollback/live compact 组合、最终支持路径容量模型与准入责任槽 |
+| A2 | live 原执行重连、completed 无历史、snapshot-only 保存/重开及保存失败组合已有有限证据 | 仍需把未由现有证据承担的页面/慢消费者/失败结算语义收口，不重跑已通过矩阵 |
+| A3 | 双 Host/surface、多 reader、大尾部和 A6 reload 已取得固定页面证据 | 真实支持路径的慢消费者/读错/force-delete 组合及跨平台同版本页面结账 |
+| A4 | Linux/Electron 及 macOS 新 helper、Windows attempt2 的固定 Agent/Terminal 子矩阵已有通过；自然 EOF 与主动 stop 分账 | 非空 snapshot stop 的页面等价仍保持具名未决，不扩大为新的 Agent 矩阵 |
+| A5 | 六资产 schema2 构建、加载、聚合、固定 VSIX 与 Linux Remote 子项通过 | 最低旧 OS、各目标完整 packaged 产品、默认启用/生产准入与最终同版本证据 |
+| A6 | Runtime reload、snapshot-only reload、双 Host 失败/替换和多根交互固定组合通过 | 仅在产品明确区分 `closeWindow` 与 `reloadWindow` 时另立单项；否则不再重复 Host 离开实验 |
+
+当前工程顺序按有限收尾定义推进：保留 B1 修复与未完责任、A1/A2 原期限通过、各自 A4 有限结果及全部旧失败；第47节多根格、A3 双 Host 格、A6 snapshot-only Host 离开格及六资产构建格均已移出剩余队列。下一只收口 A1 attach/live-compact 组合、A2/A3 仍未由现有证据承担的页面语义、最低 OS/实际支持与最终同版本准入，不重开平台诊断或只增加 runner。第三轮 Codex snapshot stop 具名间歇失败不因未复现称已修，也不为抓红追加 CI。汇总 A1 至 A6 才宣布整体交付，F-04 和完整 A5 仍开放。
 
 B2 会改变实际 provider、信用与消费链，最终启用产物必须复核 A1 的关键容量/交互项，不能用 B1 对此前路径的通过替新产物背书；这是最终回归，不另立容量研究或工具项目。
 
