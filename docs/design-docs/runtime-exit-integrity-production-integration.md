@@ -2290,3 +2290,5 @@ Windows ARM64原产物已下载，官方Electron22.3.14/Node16.17.1与当前Node
 用成功written字节的独立headless回放、原磁盘snapshot与新Webview全文/中文位置及最终光标(6,4)核对，不只检查marker。新Host不得为此节点启动新执行，产品reset及本方资源清理通过且无fallback才计通过。原旧reader事件只是旧Host内存ring，未取得可靠收据时不反推其applied或完整EOF；旧surface实际离开可结算lost/cancelled，新页面应用单独验。该边界不削弱主进程成功写入尾部保存或最终页面完整性，本例仅关闭实际Host离开格，模块内EOF/逐资源契约仍由原证据承担。
 
 证据归因补充：恢复panel的onView可先于测试activation-driver自动激活产品。因此“先读磁盘”只承诺先于driver自己的activation/attach/flush命令，并记录读盘前后产品isActive；不声称两份具体文件一定由旧Host最后写入，收据明确 `oldHostExclusiveDiskWriteClaim:false`。本例仍严格要求只在真实退出SIGHUP后产生的完整尾部可恢复、旧执行资源退出且没有重启，证明用户离开与恢复流程，不用新Host事件替旧Host内部结算背书。
+
+第50节有限接线已完成：原reload launcher增加显式 `--mode=snapshot-only --expected-vsix-sha256=...`，原Runtime固定SHA保持；原主体字节/25秒期限与总体180秒保持。schema2 installed离线检查复用原ELF/build validator，实际安装收据使用按hash冻结的产品factory/compatibility sidecar，不复制兼容规则，不触发native执行；schema1原断言和receipt形状保持。installed13组、reload11组（含原7组）、root-failure/Remote窄测试与typecheck通过，尚未运行新包原生验收。有限sidecar只是重用实际产品准入函数，不设为新工具框架或新的平台门槛。

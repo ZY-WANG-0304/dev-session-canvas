@@ -6,10 +6,10 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import contract from '../../tests/vscode-smoke/runtime-reload-contract.cjs';
 import { buildVSCodeArgs } from '../smoke/vscode-smoke-runner.mjs';
-import { prepareReloadDriver } from '../smoke/run-vscode-runtime-reload-candidate.mjs';
+import { prepareReloadDriver, selectReloadInput } from '../smoke/run-vscode-runtime-reload-candidate.mjs';
 
 const { assertControl, assertReloadReceipts, assertRuntimeDiscarded, sameLiveIdentity,
-  exitedIdentity, signalOwned, fixedVsixSha256 } = contract;
+  exitedIdentity, signalOwned, fixedVsixSha256, assertSnapshotNode, replaySnapshotTail, snapshotTail } = contract;
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const identity = pid => ({ pid, ppid: 1, state: 'S', startTicks: String(pid * 100), executable: `/owned/${pid}` });
 const closed = () => ({ status: 'closed', metadata: { terminal: {
@@ -30,6 +30,88 @@ const receipts = () => {
     cleanup: { nonce, pass: true, runtime: { bindings: [], pendingRuntimeSupervisorOperationCount: 0 },
       nodesRemaining: 0, resourcesExited: true }, exit: { code: 0, signal: null }, fallback: [] };
 };
+const snapshotNode = () => ({ id: 'a', status: 'closed', metadata: { terminal: {
+  persistenceMode: 'snapshot-only', lifecycle: 'closed', liveSession: false, lastExitCode: 7,
+  outputSequence: 4, lastCols: 80, lastRows: 7, serializedTerminalState: { data: snapshotTail }
+} } });
+const snapshotReceipts = () => {
+  const value = receipts();
+  value.control.mode = 'snapshot-only';
+  delete value.setup.b;
+  value.setup.mode = 'snapshot-only';
+  value.setup.diskPaths = ['/original/workspace.json', '/original/root.json'];
+  value.verify = { nonce: value.control.nonce, pass: true, mode: 'snapshot-only', reloadRequests: 1,
+    ui: identity(10), host: identity(12), oldHostAtVerify: null, frameId: 'snapshot-new-frame',
+    node: snapshotNode(), diskReadBeforeDriverProductCalls: true,
+    productActivationAtDiskRead: { before: true, after: true }, oldHostExclusiveDiskWriteClaim: false,
+    disk: value.setup.diskPaths.map(path => ({ path, node: snapshotNode() })),
+    subjectSignal: { signal: 'SIGHUP' }, subjectCompleted: { exitCode: 7, writtenComplete: true },
+    writtenMatches: true, replayMatches: true, resourcesExited: true,
+    resourceChecks: [value.setup.a.provider, value.setup.a.identity].map(expected => ({ expected, after: null })),
+    page: { applied: true, cursorX: 6, cursorY: 4, visibleLines: ['ROOT', '', '    \u4e2d\u6587', '', '', '', ''] },
+    restartedExecutionEvents: [], replacementProviders: [], oldReaderOutcome: 'not-observed', sourceEofClaim: false };
+  return value;
+};
+
+test('snapshot-only requires an explicit frozen package while original Runtime package remains unchanged', () => {
+  assert.deepEqual(selectReloadInput({}), { mode: 'live-runtime', expectedSha256: fixedVsixSha256 });
+  assert.deepEqual(selectReloadInput({ mode: 'snapshot-only', 'expected-vsix-sha256': 'b'.repeat(64) }),
+    { mode: 'snapshot-only', expectedSha256: 'b'.repeat(64) });
+  for (const value of [{ mode: 'snapshot-only' }, { mode: 'snapshot-only', 'expected-vsix-sha256': 'unknown' },
+    { mode: 'live-runtime', 'expected-vsix-sha256': 'b'.repeat(64) }, { mode: 'other' }]) {
+    assert.throws(() => selectReloadInput(value));
+  }
+});
+
+test('snapshot actual Host departure requires original disk, tail, page and released process identities', () => {
+  assertReloadReceipts(snapshotReceipts());
+  for (const mutate of [
+    value => { value.verify.diskReadBeforeDriverProductCalls = false; },
+    value => { value.verify.oldHostExclusiveDiskWriteClaim = true; },
+    value => { delete value.verify.productActivationAtDiskRead.after; },
+    value => { value.verify.disk.pop(); }, value => { value.verify.disk[0].path = '/replacement'; },
+    value => { value.verify.disk[0].node.metadata.terminal.liveSession = true; },
+    value => { value.verify.disk[1].node.metadata.terminal.serializedTerminalState.data += 'changed'; },
+    value => { value.verify.node.id = 'replacement'; },
+    value => { value.verify.node.metadata.terminal.serializedTerminalState.data += 'changed'; },
+    value => { value.verify.subjectSignal.signal = 'SIGTERM'; },
+    value => { value.verify.subjectCompleted.writtenComplete = false; },
+    value => { value.verify.writtenMatches = false; }, value => { value.verify.replayMatches = false; },
+    value => { value.verify.page.applied = false; }, value => { value.verify.page.cursorY = 3; },
+    value => { value.verify.page.visibleLines[2] = ''; },
+    value => { value.verify.resourceChecks[0].after = value.setup.a.provider; },
+    value => { value.verify.resourceChecks[1].expected = identity(100); },
+    value => { value.verify.replacementProviders.push(identity(100)); },
+    value => { value.verify.restartedExecutionEvents.push({ kind: 'execution/started' }); },
+    value => { value.verify.oldReaderOutcome = 'applied'; }, value => { value.verify.sourceEofClaim = true; },
+    value => { value.verify.oldHostAtVerify = value.setup.host; },
+    value => { value.fallback.push({ action: 'owned-fallback-signal' }); }
+  ]) {
+    const value = snapshotReceipts(); mutate(value);
+    assert.throws(() => assertReloadReceipts(value));
+  }
+});
+
+test('snapshot closed state rejects new execution bindings and incomplete final metadata', () => {
+  for (const [key, value] of Object.entries({ liveSession: true, lastExitCode: 0, lifecycle: 'live', outputSequence: 0,
+    lastCols: 0, lastRows: 4, runtimeSessionId: 'new', pendingLaunch: {}, serializedTerminalState: { data: '' } })) {
+    const node = snapshotNode(); node.metadata.terminal[key] = value;
+    assert.throws(() => assertSnapshotNode(node));
+  }
+});
+
+test('independent write replay checks full saved screen, ANSI colour and final cursor without native execution', async () => {
+  const written = Buffer.from(`READY:80x7\nHASH:${'a'.repeat(64)}\nSIZE:80x7\n${snapshotTail}`);
+  const metadata = snapshotNode().metadata.terminal;
+  const rendered = await replaySnapshotTail(written, metadata);
+  assert.deepEqual(rendered.lines.filter(Boolean), ['ROOT', '    \u4e2d\u6587']);
+  assert.equal(rendered.cursorX, 6); assert.equal(rendered.cursorY, 4);
+  for (const data of [snapshotTail.replace('\u4e2d\u6587', '\u4e2d'), snapshotTail.replace('[5;7H', '[4;7H'),
+    snapshotTail.replace('[31m', '[32m'), `${snapshotTail}unexpected`]) {
+    await assert.rejects(replaySnapshotTail(written, { ...metadata, serializedTerminalState: { data } }));
+  }
+  await assert.rejects(replaySnapshotTail(written.subarray(0, written.length - 1), metadata), /complete SIGHUP tail/);
+});
 
 test('launcher omission has no test RPC argument; original argument path remains exact on three platforms', () => {
   const options = { workspacePath: '/workspace', userDataDir: '/user', extensionsDir: '/extensions',
@@ -139,9 +221,17 @@ test('staged activation driver is separate, has no business dist and keeps fixed
     assert.equal(result.expectation.extensionsDir, await fs.realpath(runtime.extensionsDir));
     assert(result.sourceHashes['tests/vscode-smoke/fixtures/execution-capacity-subject.cjs']);
     assert(result.sourceHashes['staged-runtime-reload-paths.cjs']);
+    assert(result.sourceHashes['scripts/test/fixtures/linux-lifecycle-subject.mjs']);
+    assert(result.sourceHashes['staged-runtime-reload-contract.cjs']);
+    assert.equal(await fs.readFile(path.join(targetRoot, 'fixtures/linux-lifecycle-subject.mjs'), 'utf8'),
+      await fs.readFile(path.join(projectRoot, 'scripts/test/fixtures/linux-lifecycle-subject.mjs'), 'utf8'));
     const driver = await fs.readFile(path.join(targetRoot, manifest.main), 'utf8');
     assert.match(driver, /workbench\.action\.reloadWindow/);
     assert.doesNotMatch(driver, /simulateRuntimeReload|prepareForDeactivation|produce:/);
     assert.match(driver, /role === 'a' \? ` b color/);
+    assert(driver.indexOf("archive('original-disk'") < driver.indexOf('await activateVisibleExtension'));
+    assert.match(driver, /diskReadBeforeDriverProductCalls: true/);
+    assert.match(driver, /oldHostExclusiveDiskWriteClaim: false/);
+    assert.match(driver, /oldReaderOutcome: 'not-observed', sourceEofClaim: false/);
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
 });

@@ -8,6 +8,7 @@ import JSZip from 'jszip';
 import { assertInstalledCandidateSelection, installedCandidateFiles, installedCandidateInstallCommand,
   prepareInstalledCandidateDriver, prepareInstalledVsixInput } from '../smoke/installed-execution-candidate.mjs';
 import receipts from '../../tests/vscode-smoke/installed-execution-candidate.cjs';
+import { writeExecutionAssetSet } from './fixtures/execution-candidate-assets-set.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-installed-candidate-'));
@@ -28,7 +29,7 @@ try {
     main: './dist/extension.js', displayName: '%extension.displayName%',
     extensionPack: ['devsessioncanvas.dev-session-canvas-notifier'] };
   const binary = Buffer.from('controlled native payload, not an executable');
-  const manifest = { profile: 'linux-owner-v1-candidate', platform: 'linux', arch: 'x64',
+  const manifest = { schemaVersion: 1, profile: 'linux-owner-v1-candidate', platform: 'linux', arch: 'x64',
     runtime: { name: 'electron', version: '39.8.7', node: '22.22.1', modules: '140' },
     binary: { file: 'execution-owner.node', sha256: hash(binary) } };
   const payload = Object.fromEntries(installedCandidateFiles.map(file => [file, Buffer.from(`fixed:${file}`)]));
@@ -47,6 +48,7 @@ try {
   assert.equal(input.vsixSha256, hash(vsixBytes));
   assert.deepEqual(input.packageManifest, packageManifest);
   assert.deepEqual(input.manifest, manifest);
+  assert.equal(Object.hasOwn(input, 'runtimeValidation'), false);
   assert.deepEqual(input.payloadHashes, Object.fromEntries(Object.entries(payload).map(([file, bytes]) => [file, hash(bytes)])));
   await fs.writeFile(sourcePath, 'later source replacement');
   assert.deepEqual(await fs.readFile(input.vsixPath), vsixBytes, 'Installation uses the inspected frozen bytes.');
@@ -80,6 +82,7 @@ try {
     versions: { electron: '39.8.7', node: '22.22.1', modules: '140' } };
   const receipt = await receipts.captureInstalledExtensionReceipt(extension, driver.expectationPath, runtime);
   receipts.assertInstalledExtensionReceipt(receipt, driver.expectation);
+  assert.equal(Object.hasOwn(receipt, 'nativeAssetValidation'), false);
   assert.equal(receipt.extensionPath, await fs.realpath(installedPath));
   assert.equal(receipt.main, './dist/extension.js');
   assert.deepEqual(receipt.productManifest.extensionPack, packageManifest.extensionPack);
@@ -158,6 +161,101 @@ try {
     { ...manifest, runtime: { ...manifest.runtime, napi: '10' } }), /matching napi/);
   assert.throws(() => receipts.assertInstalledCandidateRuntime(runtime,
     { ...manifest, libc: nodeManifest.libc }), /matching glibc/);
+  checks += 1;
+
+  const schema2Assets = writeExecutionAssetSet(path.join(root, 'schema2-assets'))[0];
+  const schema2Manifest = { ...schema2Assets.manifest,
+    runtime: { name: 'node', version: '16.17.1', node: '16.17.1', modules: '93', napi: '8' } };
+  const schema2Binary = schema2Assets.files.get('execution-owner.node');
+  const schema2Payload = { ...payload, [nativeManifestPath]: Buffer.from(JSON.stringify(schema2Manifest)),
+    [`${path.posix.dirname(nativeManifestPath)}/execution-owner.node`]: schema2Binary,
+    'dist/execution-candidate-selection.json': Buffer.from(JSON.stringify({ schemaVersion: 1, profile: 'platform' })) };
+  const schema2Zip = new JSZip();
+  schema2Zip.file('extension/package.json', JSON.stringify(packageManifest));
+  for (const [file, bytes] of Object.entries(schema2Payload)) schema2Zip.file(`extension/${file}`, bytes);
+  const schema2Source = path.join(root, 'schema2.vsix');
+  await fs.writeFile(schema2Source, await schema2Zip.generateAsync({ type: 'nodebuffer' }));
+  const schema2Output = path.join(root, 'schema2-evidence');
+  await fs.mkdir(schema2Output);
+  const schema2Input = await prepareInstalledVsixInput(schema2Source, schema2Output);
+  assert.equal(schema2Input.runtimeName, 'electron');
+  assert.deepEqual(schema2Input.manifest, schema2Manifest);
+  assert.equal(schema2Input.selection.profile, 'platform');
+  const validatorBytes = await fs.readFile(schema2Input.runtimeValidation.file);
+  assert.equal(hash(validatorBytes), schema2Input.runtimeValidation.sha256);
+  assert(schema2Input.runtimeValidation.sources.some(source => source.file.endsWith('/linuxExecutionOwnerFactory.ts')));
+  assert(schema2Input.runtimeValidation.sources.some(source => source.file.endsWith('/executionAssetCompatibility.ts')));
+  for (const source of schema2Input.runtimeValidation.sources) assert.equal(hash(await fs.readFile(source.file)), source.sha256);
+  checks += 1;
+
+  const invalidSchema2 = path.join(root, 'invalid-schema2.vsix');
+  const invalidSchema2Output = path.join(root, 'rejected-schema2-evidence');
+  await fs.mkdir(invalidSchema2Output);
+  for (const change of [
+    { schemaVersion: 3 }, { arch: 'arm64' }, { requirements: undefined },
+    { requirements: { ...schema2Manifest.requirements, napi: 7 } },
+    { requirements: { ...schema2Manifest.requirements,
+      linux: { ...schema2Manifest.requirements.linux, glibcMinimum: '2.17' } } },
+    { requirements: { ...schema2Manifest.requirements,
+      linux: { ...schema2Manifest.requirements.linux, glibcxxMinimum: '3.4.1' } } },
+    { sources: { ...schema2Manifest.sources, ownerSha256: '0'.repeat(64) } }
+  ]) {
+    schema2Zip.file(`extension/${nativeManifestPath}`, JSON.stringify({ ...schema2Manifest, ...change }));
+    await fs.writeFile(invalidSchema2, await schema2Zip.generateAsync({ type: 'nodebuffer' }));
+    await assert.rejects(prepareInstalledVsixInput(invalidSchema2, invalidSchema2Output));
+  }
+  assert.deepEqual(await fs.readdir(invalidSchema2Output), []);
+  schema2Zip.file(`extension/${nativeManifestPath}`, JSON.stringify(schema2Manifest));
+  schema2Zip.file('extension/dist/execution-candidate-selection.json', JSON.stringify({ schemaVersion: 1, profile: 'windows-owner-v1-candidate' }));
+  await fs.writeFile(invalidSchema2, await schema2Zip.generateAsync({ type: 'nodebuffer' }));
+  await assert.rejects(prepareInstalledVsixInput(invalidSchema2, invalidSchema2Output), /verified Linux profile/);
+  checks += 1;
+
+  const schema2Extensions = path.join(root, 'schema2-extensions');
+  const schema2Installed = path.join(schema2Extensions, 'devsessioncanvas.dev-session-canvas-0.25.0');
+  await fs.mkdir(schema2Installed, { recursive: true });
+  await fs.writeFile(path.join(schema2Installed, 'package.json'), JSON.stringify(installedManifest));
+  for (const [file, bytes] of Object.entries(schema2Payload)) {
+    await fs.mkdir(path.dirname(path.join(schema2Installed, file)), { recursive: true });
+    await fs.writeFile(path.join(schema2Installed, file), bytes);
+  }
+  const schema2Driver = await prepareInstalledCandidateDriver({ projectRoot,
+    targetRoot: path.join(root, 'schema2-driver'), input: schema2Input, extensionsDir: schema2Extensions, artifactsDir: schema2Output });
+  const schema2Extension = { ...extension, extensionPath: schema2Installed };
+  const schema2Runtime = { ...runtime, versions: { ...runtime.versions, napi: '10' },
+    report: { getReport: () => ({ header: { glibcVersionRuntime: '2.28' } }) } };
+  const captureSchema2 = actual => receipts.captureInstalledExtensionReceipt(schema2Extension, schema2Driver.expectationPath, actual);
+  const schema2Receipt = await captureSchema2(schema2Runtime);
+  receipts.assertInstalledExtensionReceipt(schema2Receipt, schema2Driver.expectation);
+  assert.deepEqual(schema2Receipt.payloadHashes, schema2Input.payloadHashes);
+  assert.equal(schema2Receipt.nativeAssetValidation.validatorSha256, schema2Input.runtimeValidation.sha256);
+  assert.throws(() => receipts.assertInstalledExtensionReceipt({ ...schema2Receipt, nativeAssetValidation: undefined }, schema2Driver.expectation));
+  for (const napi of [undefined, '7', '8broken']) {
+    await assert.rejects(captureSchema2({ ...schema2Runtime, versions: { ...schema2Runtime.versions, napi } }), /N-API/);
+  }
+  for (const glibcVersionRuntime of [undefined, '2.27', 'unknown']) {
+    await assert.rejects(captureSchema2({ ...schema2Runtime, report: { getReport: () => ({ header: { glibcVersionRuntime } }) } }),
+      /library/);
+  }
+  for (const actual of [{ ...schema2Runtime, platform: 'darwin' }, { ...schema2Runtime, arch: 'arm64' },
+    { ...schema2Runtime, versions: { node: '16.17.1', modules: '93', napi: '8' } }]) {
+    await assert.rejects(captureSchema2(actual));
+  }
+  checks += 1;
+
+  await fs.writeFile(schema2Driver.expectationPath, JSON.stringify({ ...schema2Driver.expectation, runtimeName: 'node' }));
+  const schema2NodeRuntime = { ...schema2Runtime, versions: { node: '25.6.0', modules: '141', napi: '10' } };
+  await captureSchema2(schema2NodeRuntime);
+  await assert.rejects(captureSchema2(schema2Runtime), /non-Electron/);
+  await fs.writeFile(schema2Driver.expectationPath, JSON.stringify(schema2Driver.expectation));
+  await fs.writeFile(schema2Input.runtimeValidation.file, 'module.exports = () => { throw new Error("must not run changed bytes"); };');
+  await assert.rejects(captureSchema2(schema2Runtime), /validator hash changed/);
+  await fs.writeFile(schema2Input.runtimeValidation.file, validatorBytes);
+  const schema2InstalledBinary = path.join(schema2Installed, path.posix.dirname(nativeManifestPath), 'execution-owner.node');
+  await fs.appendFile(schema2InstalledBinary, 'changed');
+  await assert.rejects(captureSchema2(schema2Runtime), /binary content mismatch/);
+  await fs.writeFile(schema2InstalledBinary, schema2Binary);
+  await captureSchema2(schema2Runtime);
   checks += 1;
 
   await fs.writeFile(path.join(installedPath, 'dist/extension.js'), 'wrong installed bytes');

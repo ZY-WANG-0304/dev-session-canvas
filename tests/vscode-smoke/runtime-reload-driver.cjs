@@ -2,12 +2,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const net = require('node:net');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { captureInstalledExtensionReceipt } = require('./installed-execution-candidate.cjs');
 const { resolveLegacyRuntimeSupervisorPaths, resolveSystemdUserRuntimeSupervisorPaths } = require('./runtime-reload-paths.cjs');
 const { completedMarker, assertControl, assertRuntimeDiscarded, readIdentity, sameLiveIdentity,
-  exitedIdentity } = require('./runtime-reload-contract.cjs');
+  exitedIdentity, assertSnapshotNode, replaySnapshotTail, snapshotTail } = require('./runtime-reload-contract.cjs');
 
 const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
 const controlPath = process.env.DEV_SESSION_CANVAS_RELOAD_CONTROL;
@@ -25,6 +26,9 @@ let control;
 let phase = 'initialization';
 let owned = { resources: [], expectedSubjects: [], readySubjects: [] };
 let activated = false;
+let originalDisk;
+let productActivationAtDiskRead;
+const hash = value => createHash('sha256').update(value).digest('hex');
 
 exports.activate = () => {
   // Do not keep extensionTestsExecute or activation RPC pending across a real reload.
@@ -59,6 +63,25 @@ async function run() {
     phase = control.phase;
     await archive(`${phase}-activation`, { nonce: control.nonce, host: await readIdentity(process.pid) });
     if (phase === 'verify') owned = await read('ownership');
+    if (phase === 'verify' && control.mode === 'snapshot-only') {
+      await poll('original snapshot Host exited', () => readIdentity(control.setup.host.pid),
+        value => exitedIdentity(control.setup.host, value));
+      originalDisk = [];
+      const product = vscode.extensions.getExtension('devsessioncanvas.dev-session-canvas');
+      assert(product, 'The installed product must remain registered after reload.');
+      productActivationAtDiskRead = { before: product.isActive };
+      // Panel restoration may already have activated the product. This only precedes driver calls.
+      for (const file of control.setup.diskPaths) {
+        const bytes = await fs.readFile(file);
+        const node = getNode(JSON.parse(bytes), control.setup.a.id);
+        assertSnapshotNode(node);
+        originalDisk.push({ path: file, sha256: hash(bytes), node });
+        await fs.writeFile(path.join(artifacts, `original-disk-${originalDisk.length}.json`), bytes, { flag: 'wx' });
+      }
+      productActivationAtDiskRead.after = product.isActive;
+      await archive('original-disk', { capturedBeforeDriverProductCalls: true, productActivationAtDiskRead,
+        oldHostExclusiveDiskWriteClaim: false, files: originalDisk });
+    }
     const extension = await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
     await waitForCommand(vscode, 'devSessionCanvas.__test.getDebugState');
     const installedVsix = await captureInstalledExtensionReceipt(extension, process.env.DEV_SESSION_CANVAS_INSTALLED_VSIX_EXPECTATION);
@@ -77,16 +100,18 @@ async function run() {
     if (phase === 'setup') await command('resetState');
     await vscode.commands.executeCommand('devSessionCanvas.openCanvasInPanel');
     await command('waitForCanvasReady', surface, 20000);
-    await dom({ kind: 'configureCapacityCalibration', nodeId: 'reload', enabled: true });
+    if (control.mode !== 'snapshot-only') await dom({ kind: 'configureCapacityCalibration', nodeId: 'reload', enabled: true });
     if (phase === 'setup') {
-      await setup(launcher);
+      if (control.mode === 'snapshot-only') await setupSnapshot(launcher, installedVsix);
+      else await setup(launcher);
       reloading = true;
       // A disposed workbench RPC may reject during shutdown; only the new Host's
       // independent verify receipt proves reload, never this promise's outcome.
       void vscode.commands.executeCommand('workbench.action.reloadWindow').catch(error => {
         void archive('reload-command-rejection', { error: String(error) }).catch(console.error);
       });
-    } else await verify(launcher);
+    } else if (control.mode === 'snapshot-only') await verifySnapshot(launcher);
+    else await verify(launcher);
   } catch (error) {
     failure = error;
     await archive(`${phase}-failure`, { phase, nonce: control?.nonce, error: String(error), stack: error.stack });
@@ -300,6 +325,163 @@ async function verify(launcher) {
     a, frameId: state.surfaceLifecycle[surface].frameId, interaction: response,
     completedNodeId: setup.b.id, completedNode, completedAttachEmpty: true,
     restartedExecutionEvents, aCompletedApplied: true, finishedNode: finished.node, finished });
+}
+
+async function snapshotProviders(providerPath) {
+  const children = (await fs.readFile(`/proc/${process.pid}/task/${process.pid}/children`, 'utf8'))
+    .trim().split(/\s+/).filter(Boolean).map(Number);
+  const providers = [];
+  for (const pid of children) {
+    const argv = (await fs.readFile(`/proc/${pid}/cmdline`, 'utf8')).split('\0');
+    if (argv.includes(providerPath)) providers.push(await readIdentity(pid));
+  }
+  return providers;
+}
+
+async function snapshotProcessIdentities(providerPath) {
+  const providers = await snapshotProviders(providerPath);
+  assert.equal(providers.length, 1, 'The single snapshot Terminal must have one direct Host-owned provider.');
+  const provider = providers[0];
+  assert.equal(provider.ppid, process.pid);
+  const subjects = (await fs.readFile(`/proc/${provider.pid}/task/${provider.pid}/children`, 'utf8'))
+    .trim().split(/\s+/).filter(Boolean).map(Number);
+  assert.equal(subjects.length, 1, 'The controlled exec subject must be the original PTY child.');
+  const identity = await readIdentity(subjects[0]);
+  assert(identity && identity.ppid === provider.pid);
+  owned.resources = [provider, identity];
+  await recordOwnership();
+  return { provider, identity };
+}
+
+async function setupSnapshot(launcher, installedVsix) {
+  assert.equal(vscode.workspace.getConfiguration('devSessionCanvas.runtimePersistence').get('enabled'), false);
+  owned.host = await readIdentity(process.pid);
+  owned.expectedSubjects.push('snapshot');
+  await recordOwnership();
+  await command('createNode', 'terminal');
+  const state = await poll('snapshot-only Terminal started', snapshot, value => value.state.nodes.some(node =>
+    node.kind === 'terminal' && node.metadata?.terminal?.liveSession));
+  const nodes = state.state.nodes.filter(node => node.kind === 'terminal');
+  assert.equal(nodes.length, 1);
+  const node = nodes[0];
+  assert.equal(node.metadata.terminal.persistenceMode, 'snapshot-only');
+  assert.equal(node.metadata.terminal.runtimeSessionId, undefined);
+  await command('dispatchWebviewMessage', { type: 'webview/resizeNode', payload: {
+    nodeId: node.id, position: node.position, size: { width: 900, height: 540 } } }, surface);
+  const mounted = await poll('snapshot-only mounted execution identity', async () => ({
+    page: (await probe()).nodes.find(entry => entry.nodeId === node.id), messages: await command('getHostMessages')
+  }), value => value.page?.terminalCols >= 64 && value.page.terminalRows >= 5 && value.messages.some(message =>
+    message.type === 'host/executionSnapshot' && message.payload.nodeId === node.id && message.payload.executionSessionId));
+  const initial = mounted.messages.findLast(message => message.type === 'host/executionSnapshot' && message.payload.nodeId === node.id);
+  const providerPath = path.join(installedVsix.extensionPath, 'dist/linux-execution-provider.js');
+  const beforeExec = await snapshotProcessIdentities(providerPath);
+  const subjectPath = path.join(__dirname, 'fixtures/linux-lifecycle-subject.mjs');
+  const auditPrefix = path.join(artifacts, 'snapshot-subject');
+  await dom({ kind: 'sendExecutionInput', nodeId: node.id,
+    data: `stty -echo -onlcr; exec ${quote(process.env.DEV_SESSION_CANVAS_RELOAD_SUBJECT_NODE)} ${quote(subjectPath)} ${quote(auditPrefix)}\r` });
+  const ready = await poll('original lifecycle subject ready', async () => {
+    try { return await fs.readFile(`${auditPrefix}-written.bin`, 'utf8'); }
+    catch (error) { if (error.code === 'ENOENT') return ''; throw error; }
+  }, text => /^READY:\d+x\d+\n$/.test(text));
+  const dimensions = /^READY:(\d+)x(\d+)\n$/.exec(ready);
+  const cols = Number(dimensions[1]), rows = Number(dimensions[2]);
+  assert(cols >= 64 && rows >= 5);
+  const processes = await snapshotProcessIdentities(providerPath);
+  assert(sameLiveIdentity(beforeExec.provider, processes.provider));
+  assert.equal(processes.identity.pid, beforeExec.identity.pid);
+  assert.equal(processes.identity.startTicks, beforeExec.identity.startTicks);
+  assert.equal(processes.identity.executable, process.env.DEV_SESSION_CANVAS_RELOAD_SUBJECT_NODE);
+  const argv = (await fs.readFile(`/proc/${processes.identity.pid}/cmdline`, 'utf8')).split('\0');
+  assert(argv.includes(subjectPath) && argv.includes(auditPrefix));
+  owned.readySubjects.push('snapshot');
+  await recordOwnership();
+  const subjectNonce = control.nonce.replaceAll('-', '');
+  const expectedHash = hash(subjectNonce);
+  await dom({ kind: 'sendExecutionInput', nodeId: node.id, data: `nonce:${subjectNonce}\nsize\n` });
+  const expectedPrefix = `${ready}HASH:${expectedHash}\nSIZE:${cols}x${rows}\n`;
+  await poll('ready nonce and dimensions actually applied', async () => {
+    const page = (await probe()).nodes.find(entry => entry.nodeId === node.id);
+    return { page, written: await fs.readFile(`${auditPrefix}-written.bin`, 'utf8') };
+  }, value => value.written === expectedPrefix && value.page?.terminalCols === cols && value.page.terminalRows === rows &&
+    value.page.terminalVisibleLines.join('').includes(`HASH:${expectedHash}`) &&
+    value.page.terminalVisibleLines.join('').includes(`SIZE:${cols}x${rows}`));
+  const saved = await command('flushPersistedState');
+  assert(saved.exists && !saved.lastError);
+  assert.equal(getNode(saved.snapshot, node.id).metadata.terminal.liveSession, true);
+  const userData = path.resolve(artifacts, '..', 'user-data');
+  const root = vscode.workspace.workspaceFolders[0].uri.fsPath;
+  const rootFile = path.join(userData, 'User/globalStorage/devsessioncanvas.dev-session-canvas/root-local-canvas',
+    hash(path.resolve(root)).slice(0, 24), 'canvas-state.json');
+  for (const file of [saved.snapshotPath, rootFile]) {
+    const relative = path.relative(userData, file);
+    assert(relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+    assert.equal(getNode(JSON.parse(await fs.readFile(file, 'utf8')), node.id).metadata.terminal.liveSession, true);
+  }
+  const current = await snapshot();
+  const result = { nonce: control.nonce, mode: 'snapshot-only', pass: true, ui: await live(launcher.ui),
+    host: owned.host, a: { id: node.id, ...processes, executionId: initial.payload.executionSessionId,
+      cols, rows, auditPrefix, expectedPrefix, providerPath }, diskPaths: [saved.snapshotPath, rootFile],
+    frameId: current.surfaceLifecycle[surface].frameId };
+  await live(processes.provider);
+  await live(processes.identity);
+  await archive('setup', result);
+  control = { ...control, phase: 'verify', reloadRequests: 1, setup: result };
+  await atomic(controlPath, control);
+}
+
+async function verifySnapshot(launcher) {
+  const setup = control.setup;
+  assert(originalDisk?.length === 2);
+  assert.deepEqual(originalDisk[0].node.metadata.terminal, originalDisk[1].node.metadata.terminal);
+  const metadata = assertSnapshotNode(originalDisk[0].node);
+  const written = await fs.readFile(`${setup.a.auditPrefix}-written.bin`);
+  assert.equal(written.toString('utf8'), setup.a.expectedPrefix + snapshotTail);
+  const subjectSignal = JSON.parse(await fs.readFile(`${setup.a.auditPrefix}-signal.json`, 'utf8'));
+  const subjectCompleted = JSON.parse(await fs.readFile(`${setup.a.auditPrefix}-complete.json`, 'utf8'));
+  assert.deepEqual(subjectSignal, { signal: 'SIGHUP' });
+  assert.deepEqual(subjectCompleted, { exitCode: 7, writtenComplete: true });
+  assert.equal(metadata.lastCols, setup.a.cols);
+  assert.equal(metadata.lastRows, setup.a.rows);
+  const replay = await replaySnapshotTail(written, metadata);
+  await poll('old local execution resources exited', async () => Promise.all(owned.resources.map(async expected =>
+    exitedIdentity(expected, await readIdentity(expected.pid)))), values => values.every(Boolean));
+  const resourceChecks = await Promise.all([setup.a.provider, setup.a.identity].map(async expected =>
+    ({ expected, after: await readIdentity(expected.pid) ?? null })));
+  assert(resourceChecks.every(entry => exitedIdentity(entry.expected, entry.after)));
+  const state = await snapshot();
+  const node = getNode(state, setup.a.id);
+  assertSnapshotNode(node);
+  assert.deepEqual(node.metadata.terminal.serializedTerminalState, metadata.serializedTerminalState);
+  await command('dispatchWebviewMessage', { type: 'webview/attachExecutionSession',
+    payload: { kind: 'terminal', nodeId: setup.a.id } }, surface);
+  const page = await poll('restored snapshot full content and cursor', async () => {
+    try { await dom({ kind: 'assertExecutionTerminalBuffer', nodeId: node.id, expectedLines: replay.lines.filter(Boolean) }); }
+    catch (error) {
+      if (/Execution terminal .* (has|differs|is not mounted)/.test(String(error))) return undefined;
+      throw error;
+    }
+    return (await probe()).nodes.find(entry => entry.nodeId === node.id);
+  }, value => value?.terminalCols === replay.cols && value.terminalRows === replay.rows &&
+    value.terminalCursorX === replay.cursorX && value.terminalCursorY === replay.cursorY &&
+    value.terminalViewportY === replay.viewportY && value.terminalBufferType === replay.bufferType &&
+    JSON.stringify(value.terminalVisibleLines) === JSON.stringify(replay.visibleLines));
+  const restartedExecutionEvents = (await command('getDiagnosticEvents')).filter(event =>
+    ['execution/startRequested', 'execution/started'].includes(event.kind) && event.detail?.nodeId === node.id);
+  assert.deepEqual(restartedExecutionEvents, []);
+  const replacementProviders = await snapshotProviders(setup.a.providerPath);
+  assert.deepEqual(replacementProviders, [], 'Restoring the closed snapshot must not create a local provider.');
+  const runtime = await command('getRuntimeSupervisorState');
+  assert.equal(runtime.bindings.length, 0);
+  assert.equal(runtime.pendingRuntimeSupervisorOperationCount, 0);
+  await archive('verify', { nonce: control.nonce, mode: 'snapshot-only', pass: true, reloadRequests: 1,
+    ui: await live(launcher.ui), host: await readIdentity(process.pid), oldHostAtVerify: await readIdentity(setup.host.pid) ?? null,
+    node, disk: originalDisk, diskReadBeforeDriverProductCalls: true, productActivationAtDiskRead,
+    oldHostExclusiveDiskWriteClaim: false, subjectSignal, subjectCompleted,
+    writtenMatches: true, writtenSha256: hash(written), replayMatches: true, replay,
+    page: { applied: true, cursorX: page.terminalCursorX, cursorY: page.terminalCursorY, visibleLines: page.terminalVisibleLines },
+    frameId: state.surfaceLifecycle[surface].frameId, resourcesExited: true, resourceChecks, runtime,
+    restartedExecutionEvents, replacementProviders,
+    oldReaderOutcome: 'not-observed', sourceEofClaim: false });
 }
 
 async function cleanup() {

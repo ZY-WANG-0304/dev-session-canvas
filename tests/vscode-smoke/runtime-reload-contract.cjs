@@ -3,6 +3,7 @@ const fs = require('node:fs/promises');
 
 const fixedVsixSha256 = '604494fdebc917d3e12b54fceec75a764ed064e486dd0e76ff20513ddca61656';
 const completedMarker = 'DSC_A6_COMPLETED';
+const snapshotTail = 'SIGNAL:SIGHUP\n\x1b[3J\x1b[2J\x1b[HROOT\n\x1b[3;5H\x1b[31m\u4e2d\u6587\x1b[0m\x1b[5;7H';
 const sameIdentity = (expected, actual) => Boolean(expected && actual && Number.isInteger(expected.pid) &&
   expected.pid > 1 && typeof expected.startTicks === 'string' && expected.startTicks.length > 0 &&
   typeof expected.executable === 'string' && expected.executable.startsWith('/') &&
@@ -28,9 +29,11 @@ function assertControl(value) {
   assert(['setup', 'verify'].includes(value.phase));
   assert.match(value.nonce, /^[a-f0-9-]{36}$/);
   assert(Number.isSafeInteger(value.deadlineAt));
+  assert(['live-runtime', 'snapshot-only'].includes(value.mode ?? 'live-runtime'));
   if (value.phase === 'verify') {
     assert.equal(value.reloadRequests, 1);
-    assert(value.setup?.host && value.setup?.a?.identity && value.setup?.b?.identity);
+    assert(value.setup?.host && value.setup?.a?.identity);
+    if (value.mode !== 'snapshot-only') assert(value.setup?.b?.identity);
   }
   return value;
 }
@@ -44,6 +47,50 @@ function assertRuntimeDiscarded(node) {
   for (const key of ['terminalStream', 'serializedTerminalState', 'recentOutput', 'runtimeSessionId', 'pendingLaunch']) {
     assert.equal(metadata[key], undefined, `Completed Runtime must not retain ${key}.`);
   }
+}
+
+function assertSnapshotNode(node) {
+  assert.equal(node?.status, 'closed');
+  const metadata = node.metadata?.terminal;
+  assert.equal(metadata?.persistenceMode, 'snapshot-only');
+  assert.equal(metadata.liveSession, false);
+  assert.equal(metadata.lastExitCode, 7);
+  assert.equal(metadata.lifecycle, 'closed');
+  assert(Number.isSafeInteger(metadata.outputSequence) && metadata.outputSequence > 0);
+  assert(typeof metadata.serializedTerminalState?.data === 'string' && metadata.serializedTerminalState.data.length > 0);
+  assert(Number.isInteger(metadata.lastCols) && metadata.lastCols >= 8);
+  assert(Number.isInteger(metadata.lastRows) && metadata.lastRows >= 5);
+  for (const key of ['runtimeBackend', 'runtimeStoragePath', 'runtimeSessionId', 'pendingLaunch']) {
+    assert.equal(metadata[key], undefined, `Snapshot-only must not retain ${key}.`);
+  }
+  return metadata;
+}
+
+async function replaySnapshotTail(written, metadata) {
+  const { Terminal } = require('@xterm/headless');
+  const render = async data => {
+    const terminal = new Terminal({ cols: metadata.lastCols, rows: metadata.lastRows,
+      scrollback: 100000, allowProposedApi: true });
+    try {
+      await new Promise(resolve => terminal.write(data, resolve));
+      const buffer = terminal.buffer.active;
+      const lines = Array.from({ length: buffer.length }, (_, index) => buffer.getLine(index)?.translateToString(true) ?? '');
+      return { cols: terminal.cols, rows: terminal.rows, lines, visibleLines: lines.slice(buffer.viewportY, buffer.viewportY + terminal.rows),
+        cursorX: buffer.cursorX, cursorY: buffer.cursorY, viewportY: buffer.viewportY, bufferType: buffer.type,
+        chineseForeground: buffer.getLine(2)?.getCell(4)?.getFgColor() };
+    } finally { terminal.dispose(); }
+  };
+  assert(Buffer.isBuffer(written) && written.subarray(-Buffer.byteLength(snapshotTail)).equals(Buffer.from(snapshotTail)),
+    'Require the independently written complete SIGHUP tail.');
+  const original = await render(written);
+  const saved = await render(metadata.serializedTerminalState.data);
+  assert.deepEqual(saved, original, 'Persisted snapshot must match independent successful-write replay.');
+  assert.equal(original.lines[0], 'ROOT');
+  assert.equal(original.lines[2], '    \u4e2d\u6587');
+  assert.equal(original.chineseForeground, 1);
+  assert.equal(original.cursorX, 6);
+  assert.equal(original.cursorY, 4);
+  return original;
 }
 
 function assertReloadReceipts({ control, launcher, setup, verify, cleanup, exit, fallback }) {
@@ -61,22 +108,58 @@ function assertReloadReceipts({ control, launcher, setup, verify, cleanup, exit,
   assert(sameLiveIdentity(launcher.ui, verify.ui), 'Reload must retain the original UI process.');
   assert(!sameIdentity(setup.host, verify.host), 'Reload must start a different Extension Host.');
   assert(exitedIdentity(setup.host, verify.oldHostAtVerify), 'Original Host must exit.');
-  for (const role of ['supervisor', 'provider', 'identity']) {
-    assert(sameLiveIdentity(setup.a[role], verify.a[role]), `Reload replaced the original ${role}.`);
+  if (control.mode === 'snapshot-only') {
+    assert.equal(verify.mode, 'snapshot-only');
+    assert.equal(verify.node.id, setup.a.id);
+    assert.equal(verify.diskReadBeforeDriverProductCalls, true);
+    assert.equal(typeof verify.productActivationAtDiskRead.before, 'boolean');
+    assert.equal(typeof verify.productActivationAtDiskRead.after, 'boolean');
+    assert.equal(verify.oldHostExclusiveDiskWriteClaim, false);
+    assert.deepEqual(verify.disk.map(entry => entry.path), setup.diskPaths);
+    for (const entry of verify.disk) {
+      assert.equal(entry.node.id, setup.a.id);
+      assertSnapshotNode(entry.node);
+      assert.deepEqual(entry.node.metadata.terminal, verify.disk[0].node.metadata.terminal);
+    }
+    assert.equal(verify.disk.length, 2);
+    assertSnapshotNode(verify.node);
+    assert.deepEqual(verify.node.metadata.terminal.serializedTerminalState,
+      verify.disk[0].node.metadata.terminal.serializedTerminalState);
+    assert.deepEqual(verify.subjectSignal, { signal: 'SIGHUP' });
+    assert.deepEqual(verify.subjectCompleted, { exitCode: 7, writtenComplete: true });
+    assert.equal(verify.writtenMatches, true);
+    assert.equal(verify.replayMatches, true);
+    assert.equal(verify.page.applied, true);
+    assert.equal(verify.page.cursorX, 6);
+    assert.equal(verify.page.cursorY, 4);
+    assert.equal(verify.page.visibleLines[0], 'ROOT');
+    assert.equal(verify.page.visibleLines[2], '    \u4e2d\u6587');
+    assert.equal(verify.oldReaderOutcome, 'not-observed');
+    assert.equal(verify.sourceEofClaim, false);
+    assert.equal(verify.resourcesExited, true);
+    assert.deepEqual(verify.resourceChecks.map(entry => entry.expected), [setup.a.provider, setup.a.identity]);
+    for (const entry of verify.resourceChecks) assert(exitedIdentity(entry.expected, entry.after));
+    assert.deepEqual(verify.restartedExecutionEvents, []);
+    assert.deepEqual(verify.replacementProviders, []);
+    assert(verify.frameId && setup.frameId && verify.frameId !== setup.frameId);
+  } else {
+    for (const role of ['supervisor', 'provider', 'identity']) {
+      assert(sameLiveIdentity(setup.a[role], verify.a[role]), `Reload replaced the original ${role}.`);
+    }
+    assert.deepEqual(verify.a.binding, setup.a.binding);
+    assert.equal(verify.a.reader.sessionId, setup.a.binding.runtimeSessionId);
+    assert.equal(verify.a.reader.authorityId, setup.a.reader.authorityId);
+    assert.notEqual(verify.a.reader.readId, setup.a.reader.readId);
+    assert(verify.frameId && setup.frameId && verify.frameId !== setup.frameId);
+    assert.equal(verify.interaction.nonce, control.nonce);
+    assert.equal(verify.interaction.applied, true);
+    assert.equal(verify.completedNodeId, setup.b.id);
+    assertRuntimeDiscarded(verify.completedNode);
+    assert.equal(verify.completedAttachEmpty, true);
+    assert.deepEqual(verify.restartedExecutionEvents, []);
+    assert.equal(verify.aCompletedApplied, true);
+    assertRuntimeDiscarded(verify.finishedNode);
   }
-  assert.deepEqual(verify.a.binding, setup.a.binding);
-  assert.equal(verify.a.reader.sessionId, setup.a.binding.runtimeSessionId);
-  assert.equal(verify.a.reader.authorityId, setup.a.reader.authorityId);
-  assert.notEqual(verify.a.reader.readId, setup.a.reader.readId);
-  assert(verify.frameId && setup.frameId && verify.frameId !== setup.frameId);
-  assert.equal(verify.interaction.nonce, control.nonce);
-  assert.equal(verify.interaction.applied, true);
-  assert.equal(verify.completedNodeId, setup.b.id);
-  assertRuntimeDiscarded(verify.completedNode);
-  assert.equal(verify.completedAttachEmpty, true);
-  assert.deepEqual(verify.restartedExecutionEvents, []);
-  assert.equal(verify.aCompletedApplied, true);
-  assertRuntimeDiscarded(verify.finishedNode);
   assert.equal(cleanup.runtime.bindings.length, 0);
   assert.equal(cleanup.runtime.pendingRuntimeSupervisorOperationCount, 0);
   assert.equal(cleanup.nodesRemaining, 0);
@@ -100,4 +183,5 @@ async function signalOwned(expected, signal, { read = readIdentity, kill = proce
 }
 
 module.exports = { fixedVsixSha256, completedMarker, sameIdentity, sameLiveIdentity, exitedIdentity,
-  readIdentity, assertControl, assertRuntimeDiscarded, assertReloadReceipts, signalOwned };
+  readIdentity, assertControl, assertRuntimeDiscarded, assertSnapshotNode, replaySnapshotTail, snapshotTail,
+  assertReloadReceipts, signalOwned };

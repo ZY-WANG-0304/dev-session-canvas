@@ -102,7 +102,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
-- [ ] (2026-10-01，第50节) 复用一次UI真实reload设施，实施snapshot-only单Terminal实际Host离开验收及schema2 installed要求适配；先冻结当前包，独立成功写入/原磁盘保存/新页面及原进程释放对账，不代证已离开旧reader的applied或EOF。
+- [x] (2026-10-01，第50节) snapshot-only一次UI真实reload接线及schema2 installed适配完成，installed13/reload11/typecheck和原窄回归通过；原Runtime固定包与主体/整体期限保持，自动activation与driver读盘分账，旧reader/EOF及独占落盘不代证。
+- [ ] (2026-10-01，第50节) 冻结当前包后一次实际snapshot-only Host离开验收，独立成功写入/磁盘来源/新页面及原进程释放对账；未取得真实结果前不关闭A6。
 - [x] (2026-10-01，第47节) 独立A6纯测/审查及固定旧包唯一首轮完成，exit1保留；真实EISDIR、原来源/磁盘保留与EOF成立，但final通知被保存失败阻断，B故障后交互未执行，cleanup registry断言另失败。
 - [x] (2026-10-01，第47节) 已有reader/root writer先红后修final水位发布与落盘耦合，Host147/147、completed/typecheck/A6纯测与独立复审通过；清理改为等真实空registry再独立TERM。
 - [x] (2026-10-01，第47节) 新固定包c4df29f5的原多根组合唯一复验exit0，input/installed/case/cleanup独立核对及冻结断言重放通过；A真实EISDIR/原binding/EOF与原reader applied4、B原执行24.9ms和空registry落盘后清理均成立，旧首败不改。
@@ -1063,6 +1064,7 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 
 ## 结果与复盘
 
+2026-10-01，第50节只完成有限验收接线和局部回归，原生结果尚待新包。第49节首轮六格已有分别的build/load结果，但Windows CRLF来源不能通过Linux聚合门禁，42022169的新run36874985406仅重建Windows两格，原x64超时/上传失败不追认；没有新的Agent请求或通用工具阶段。
 2026-10-01，第49节分发脚本的Linux x64整条路径已实际完成，而非仅局部测试；同一addon双宿主加载、runtime-only归档及有限摘要成立。六格远端运行尚待首次调度，最低OS与PTY/页面未由load验证，下一仍属原六资产/最终产品清单，不追加工具阶段。
 
 2026-10-01，第49节兼容与聚合代码及局部回归完成，Linux x64同产物在glibc2.28/Node16、Node25和当前Electron装载通过，旧Node同名互斥也有独立原生证据。仍没有六架构原生产物全集/最低OS产品通过，六格workflow在准备，最终F-04、页面/Host离开和普通默认准入保持未完成；不以新的测试数量替代原有限清单。

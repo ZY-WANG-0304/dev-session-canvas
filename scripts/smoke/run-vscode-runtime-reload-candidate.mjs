@@ -16,6 +16,15 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const write = (file, value) => fs.writeFile(file, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx' });
 const read = async file => JSON.parse(await fs.readFile(file, 'utf8'));
 
+export function selectReloadInput(values) {
+  const mode = values.mode ?? 'live-runtime';
+  assert(['live-runtime', 'snapshot-only'].includes(mode), 'Choose an explicit supported reload mode.');
+  if (mode === 'snapshot-only') assert.match(values['expected-vsix-sha256'] ?? '', /^[a-f0-9]{64}$/,
+    'Snapshot-only requires the explicitly frozen package SHA256.');
+  else assert.equal(values['expected-vsix-sha256'], undefined, 'The original Runtime package remains fixed.');
+  return { mode, expectedSha256: mode === 'snapshot-only' ? values['expected-vsix-sha256'] : fixedVsixSha256 };
+}
+
 export async function prepareReloadDriver({ projectRoot, targetRoot, input, runtime }) {
   await fs.mkdir(path.join(targetRoot, 'fixtures'), { recursive: true });
   await write(path.join(targetRoot, 'package.json'), {
@@ -32,6 +41,18 @@ export async function prepareReloadDriver({ projectRoot, targetRoot, input, runt
     sourceHashes[`tests/vscode-smoke/${file}`] = createHash('sha256').update(bytes).digest('hex');
     await fs.writeFile(path.join(targetRoot, file), bytes, { flag: 'wx' });
   }
+  const lifecyclePath = 'scripts/test/fixtures/linux-lifecycle-subject.mjs';
+  const lifecycle = await fs.readFile(path.join(projectRoot, lifecyclePath));
+  sourceHashes[lifecyclePath] = createHash('sha256').update(lifecycle).digest('hex');
+  await fs.writeFile(path.join(targetRoot, 'fixtures/linux-lifecycle-subject.mjs'), lifecycle, { flag: 'wx' });
+  const replay = await build({ entryPoints: [path.join(projectRoot, 'tests/vscode-smoke/runtime-reload-contract.cjs')],
+    outfile: path.join(targetRoot, 'runtime-reload-contract.cjs'), bundle: true, platform: 'node', format: 'cjs',
+    write: true, metafile: true, logLevel: 'silent' });
+  for (const file of Object.keys(replay.metafile.inputs)) {
+    sourceHashes[file] = createHash('sha256').update(await fs.readFile(path.resolve(file))).digest('hex');
+  }
+  sourceHashes['staged-runtime-reload-contract.cjs'] = createHash('sha256')
+    .update(await fs.readFile(path.join(targetRoot, 'runtime-reload-contract.cjs'))).digest('hex');
   const helper = path.join(targetRoot, 'runtime-reload-paths.cjs');
   const bundled = await build({ entryPoints: [path.join(projectRoot,
     'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts')], outfile: helper,
@@ -47,9 +68,13 @@ export async function prepareReloadDriver({ projectRoot, targetRoot, input, runt
 }
 
 export async function main(args = process.argv.slice(2)) {
-  const { values } = parseArgs({ args, options: { output: { type: 'string' }, 'installed-vsix': { type: 'string' } } });
+  const { values } = parseArgs({ args, options: { output: { type: 'string' }, 'installed-vsix': { type: 'string' },
+    mode: { type: 'string' }, 'expected-vsix-sha256': { type: 'string' } } });
+  const selection = selectReloadInput(values);
   assert.equal(process.platform, 'linux');
   assert.equal(process.arch, 'x64');
+  if (selection.mode === 'snapshot-only') assert.equal(process.versions.node, '25.6.0',
+    'The unchanged lifecycle subject requires the fixed Node 25.6.0 executable.');
   assert(values.output && values['installed-vsix'], 'Specify --output NEW_DIRECTORY --installed-vsix FROZEN_PACKAGE.');
   const projectRoot = process.cwd();
   if (shouldReRunInsideXvfb()) {
@@ -62,14 +87,15 @@ export async function main(args = process.argv.slice(2)) {
   await fs.mkdir(output);
   const nonce = randomUUID();
   const input = await prepareInstalledVsixInput(values['installed-vsix'], output);
-  assert.equal(input.vsixSha256, fixedVsixSha256, 'This case uses the unchanged frozen Linux installed package only.');
+  assert.equal(input.vsixSha256, selection.expectedSha256, 'Use exactly the explicitly frozen Linux installed package.');
   const vscodeRoot = path.join(projectRoot, '.vscode-test/vscode-linux-x64-1.117.0');
   const vscodeExecutablePath = await fs.realpath(path.join(vscodeRoot, 'code'));
   const product = await read(path.join(vscodeRoot, 'resources/app/product.json'));
   assert.equal(product.commit, '10c8e557c8b9f9ed0a87f61f1c9a44bde731c409');
   const runtime = await prepareRuntime({ projectRoot, debugRoot: path.join(output, 'runtime'),
     runtimeDirName: `dsc-reload-${nonce}`,
-    userSettings: { 'security.workspace.trust.enabled': false, 'devSessionCanvas.runtimePersistence.enabled': true,
+    userSettings: { 'security.workspace.trust.enabled': false,
+      'devSessionCanvas.runtimePersistence.enabled': selection.mode === 'live-runtime',
       'devSessionCanvas.terminal.shell': 'default', 'devSessionCanvas.terminal.shellPath': '/bin/sh',
       'terminal.integrated.scrollback': 100000 } });
   const workspacePath = path.join(runtime.debugRoot, 'workspace');
@@ -78,9 +104,12 @@ export async function main(args = process.argv.slice(2)) {
   const driver = await prepareReloadDriver({ projectRoot, targetRoot: driverRoot, input, runtime });
   await installCandidateVsix({ vscodeExecutablePath, runtime, input });
   const controlPath = path.join(runtime.artifactsDir, 'control.json');
-  await write(controlPath, { schemaVersion: 1, phase: 'setup', nonce, deadlineAt });
+  await write(controlPath, { schemaVersion: 1, phase: 'setup', nonce, deadlineAt, mode: selection.mode });
   await write(path.join(output, 'input.json'), { schemaVersion: 1, nonce, startedAt, deadlineAt,
-    scope: 'One Linux installed Runtime two-Terminal real Reload Window; no capacity, Agent, snapshot-only or other-platform claim.',
+    scope: selection.mode === 'live-runtime'
+      ? 'One Linux installed Runtime two-Terminal real Reload Window; no capacity, Agent, snapshot-only or other-platform claim.'
+      : 'One Linux installed snapshot-only Terminal real Reload Window; no old-reader applied, source EOF, Agent or other-platform claim.',
+    mode: selection.mode,
     vsixSha256: input.vsixSha256, vscodeExecutablePath, vscodeCommit: product.commit,
     subjectExecutable: process.execPath, spawnCount: 1, extensionTestsPath: null,
     sourceHashes: { ...driver.sourceHashes,

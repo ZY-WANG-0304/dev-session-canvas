@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const assetRoot = 'dist/native/linux-execution-candidate/linux-x64-glibc';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const productManifest = manifest => {
@@ -28,10 +29,33 @@ function assertInstalledExtensionReceipt(receipt, expected) {
   // VS Code may add its own installation metadata; every product manifest field stays unchanged.
   assert.deepEqual(receipt.productManifest, productManifest(expected.packageManifest));
   assert.deepEqual(receipt.payloadHashes, expected.payloadHashes);
+  if (expected.manifest.schemaVersion === 2) {
+    assert.deepEqual(receipt.nativeAssetValidation, {
+      validatorSha256: expected.runtimeValidation.sha256,
+      binarySha256: expected.payloadHashes[`${assetRoot}/execution-owner.node`],
+      manifestSha256: expected.payloadHashes[`${assetRoot}/manifest.json`],
+      entrySha256: expected.payloadHashes['dist/linux-execution-provider.js']
+    });
+  }
 }
 
-function assertInstalledCandidateRuntime(runtime, manifest, runtimeName = 'electron') {
+function assertInstalledCandidateRuntime(runtime, manifest, runtimeName = 'electron', compatibility) {
   assert(['electron', 'node'].includes(runtimeName), 'Installed acceptance requires an explicit supported runtime.');
+  if (manifest.schemaVersion === 2) {
+    assert.equal(runtime.platform, 'linux', 'Installed schema2 acceptance currently selects Linux only.');
+    assert.equal(runtime.arch, 'x64', 'Installed schema2 acceptance currently selects x64 only.');
+    assert.equal(manifest.platform, runtime.platform);
+    assert.equal(manifest.arch, runtime.arch);
+    assert.equal(manifest.profile, 'linux-owner-v1-candidate');
+    if (runtimeName === 'electron') assert.match(runtime.versions.electron ?? '', /^\d+\.\d+\.\d+$/);
+    else assert(!Object.hasOwn(runtime.versions, 'electron'), 'Installed Node acceptance requires a non-Electron runtime.');
+    assert(compatibility, 'Installed schema2 acceptance requires the frozen product validator.');
+    compatibility.assertExecutionAssetRuntime(manifest.runtime, manifest.requirements?.napi);
+    assert.equal(manifest.requirements.linux.libc, 'glibc');
+    compatibility.assertMinimumExecutionLibraryVersion(runtime.report?.getReport().header?.glibcVersionRuntime,
+      manifest.requirements.linux.glibcMinimum);
+    return;
+  }
   assert.equal(manifest.runtime.name, runtimeName, 'Installed native asset requires the selected runtime.');
   assert.equal(runtime.platform, manifest.platform);
   assert.equal(runtime.arch, manifest.arch);
@@ -75,10 +99,23 @@ async function captureInstalledExtensionReceipt(extension, expectationPath, runt
     assertChild(extensionPath, actualPath);
     payloadHashes[relative] = hash(await fs.readFile(actualPath));
   }
-  assertInstalledCandidateRuntime(runtime, expected.manifest, expected.runtimeName ?? 'electron');
+  let nativeAssetValidation;
+  if (expected.manifest.schemaVersion === 2) {
+    const validator = expected.runtimeValidation;
+    assert(validator && path.isAbsolute(validator.file), 'Installed schema2 acceptance requires the frozen product validator.');
+    assert.equal(hash(await fs.readFile(validator.file)), validator.sha256, 'Installed runtime validator hash changed.');
+    const compatibility = require(validator.file)(runtime);
+    assertInstalledCandidateRuntime(runtime, expected.manifest, expected.runtimeName ?? 'electron', compatibility);
+    const assets = compatibility.resolveLinuxExecutionProviderAssets(path.join(extensionPath, 'dist'));
+    assert.equal(assets.binaryPath, path.join(extensionPath, assetRoot, 'execution-owner.node'));
+    assert.equal(assets.entryPoint, path.join(extensionPath, 'dist/linux-execution-provider.js'));
+    nativeAssetValidation = { validatorSha256: validator.sha256, binarySha256: assets.binarySha256,
+      manifestSha256: assets.manifestSha256, entrySha256: assets.entrySha256 };
+  } else assertInstalledCandidateRuntime(runtime, expected.manifest, expected.runtimeName ?? 'electron');
   const receipt = { schemaVersion: 1, vsixSha256: expected.vsixSha256, extensionsDir, extensionPath,
     id: extension.id, isActive: extension.isActive, version: installedManifest.version, main: installedManifest.main,
-    installedPackageSha256: hash(packageBytes), productManifest: productManifest(installedManifest), payloadHashes };
+    installedPackageSha256: hash(packageBytes), productManifest: productManifest(installedManifest), payloadHashes,
+    ...(nativeAssetValidation ? { nativeAssetValidation } : {}) };
   assertInstalledExtensionReceipt(receipt, expected);
   return receipt;
 }
