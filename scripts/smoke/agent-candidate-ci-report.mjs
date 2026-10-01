@@ -20,13 +20,22 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
     const cleanup = await read('cleanup');
     const completed = await read('completed');
     const firstFailure = await read('first-failure');
+    const failureSnapshot = await read('first-failure-snapshot');
     const events = await read('completed-events') ?? await read('first-failure-events');
     const remainder = await read('remaining-resources');
     const nodeId = completed?.node?.id ?? firstFailure?.nodeId;
     const executionId = completed?.executionId ?? firstFailure?.executionId;
+    const failureLocation = typeof firstFailure?.stack === 'string'
+      ? /agent-candidate-tests\.cjs:(\d+):(\d+)/.exec(firstFailure.stack) : null;
+    const failureNode = failureSnapshot?.state?.nodes?.find(node => node.id === nodeId);
+    const failureAgent = failureNode?.metadata?.agent;
     const source = events?.find(event => event.kind === 'runtime/terminalSourceDisposition' &&
       typeof nodeId === 'string' && typeof executionId === 'string' && event.detail?.nodeId === nodeId &&
       (event.detail.executionSessionId === executionId || event.detail.sessionId === executionId));
+    const readerSettlement = events?.find(event => typeof nodeId === 'string' && typeof executionId === 'string' &&
+      event.detail?.nodeId === nodeId &&
+      ((event.kind === 'runtime/terminalReadSettled' && event.detail.sessionId === executionId) ||
+      (event.kind === 'execution/localTerminalReaderSettled' && event.detail.executionSessionId === executionId)));
     let rawOutput;
     try { rawOutput = await fs.readFile(path.join(artifacts, 'host-received-output.txt')); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -46,6 +55,21 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
       pass: boolean(result?.pass),
       cliObserved: boolean(result?.cliObserved),
       naturalResponseVerified: boolean(result?.naturalResponseVerified),
+      failureLocation: failureLocation ? { file: 'agent-candidate-tests.cjs',
+        line: Number(failureLocation[1]), column: Number(failureLocation[2]) } : null,
+      failureState: failureNode ? {
+        status: ['idle', 'running', 'waiting', 'stopped', 'error'].includes(failureNode.status) ? failureNode.status : null,
+        liveSession: boolean(failureAgent?.liveSession),
+        exitCode: integer(failureAgent?.lastExitCode),
+        outputSequence: integer(failureAgent?.outputSequence),
+        serializedStatePresent: failureAgent ? failureAgent.serializedTerminalState !== undefined : null,
+        serializedStateBytes: typeof failureAgent?.serializedTerminalState?.data === 'string'
+          ? Buffer.byteLength(failureAgent.serializedTerminalState.data) : null,
+        readerSettlementObserved: Array.isArray(events) ? readerSettlement !== undefined : null,
+        readerSettlementKind: ['applied', 'cancelled'].includes(readerSettlement?.detail?.outcome?.kind)
+          ? readerSettlement.detail.outcome.kind : null,
+        readerFinalOutputSequence: integer(readerSettlement?.detail?.outcome?.finalOutputSequence)
+      } : null,
       cliEvidence: {
         turnCompleted: records ? records.some(record => record.type === 'turn.completed') : null,
         turnFailed: records ? records.some(record => record.type === 'turn.failed') : null,

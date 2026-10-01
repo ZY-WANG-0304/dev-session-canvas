@@ -49,7 +49,12 @@ try {
     { type: 'error', message: key }
   ].map(value => JSON.stringify(value)).join('\r\n'));
   await fs.writeFile(path.join(artifacts, 'codex-final-message.txt'), `${scenario.nonce}\n`);
-  await fs.writeFile(path.join(artifacts, 'first-failure.json'), JSON.stringify({ nodeId: 'n1', executionId: 'e1', error: key }));
+  await fs.writeFile(path.join(artifacts, 'first-failure.json'), JSON.stringify({ nodeId: 'n1', executionId: 'e1', error: key,
+    stack: `Error: ${key}\n at run (/private/${key}/agent-candidate-tests.cjs:164:7)` }));
+  await fs.writeFile(path.join(artifacts, 'first-failure-snapshot.json'), JSON.stringify({ state: { nodes: [
+    { id: 'n1', status: 'stopped', metadata: { agent: { liveSession: false, lastExitCode: 0, outputSequence: 3,
+      serializedTerminalState: { data: key } } } }
+  ] } }));
   await fs.writeFile(path.join(artifacts, 'first-failure-events.json'), JSON.stringify([
     { kind: 'runtime/terminalSourceDisposition', detail: { nodeId: 'other', sessionId: 'e1', sourceDisposition: { kind: 'error' } } },
     { kind: 'runtime/terminalSourceDisposition', detail: { nodeId: 'n1', sessionId: 'e1', sourceDisposition: { kind: 'eof' } } }
@@ -61,6 +66,11 @@ try {
   assert.equal(warningReport.pass, false, 'A response or EOF must not override a failed acceptance assertion.');
   assert.equal(warningReport.scenarios[0].naturalResponseVerified, false);
   assert.equal(warningReport.scenarios[0].sourceDisposition, 'eof');
+  assert.deepEqual(warningReport.scenarios[0].failureLocation, { file: 'agent-candidate-tests.cjs', line: 164, column: 7 });
+  assert.deepEqual(warningReport.scenarios[0].failureState, { status: 'stopped', liveSession: false,
+    exitCode: 0, outputSequence: 3, serializedStatePresent: true,
+    serializedStateBytes: Buffer.byteLength(key), readerSettlementObserved: false,
+    readerSettlementKind: null, readerFinalOutputSequence: null });
   assert.deepEqual(warningReport.scenarios[0].cliEvidence, { turnCompleted: true, turnFailed: false,
     expectedResponseInOutput: true, lastMessageMatches: true, modelMetadataFallback: true });
   assert.equal(warningText.includes(key), false);
