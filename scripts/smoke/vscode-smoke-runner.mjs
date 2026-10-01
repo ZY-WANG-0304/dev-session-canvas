@@ -518,12 +518,11 @@ async function launchVSCodeTestProcess(executablePath, args, extensionTestsEnv) 
 
 function spawnVSCodeTestProcess(executablePath, args, extensionTestsEnv) {
   const fullEnv = buildVSCodeChildEnv(extensionTestsEnv);
-  const shell = process.platform === 'win32';
-  const launchPath = resolveVSCodeTestLaunchPath(executablePath);
 
-  const child = spawn(shell ? `"${launchPath}"` : launchPath, args, {
+  // The Windows CLI detaches Code.exe; observe the actual test process instead.
+  const child = spawn(executablePath, args, {
     env: fullEnv,
-    shell
+    shell: false
   });
 
   child.stdout.on('data', (chunk) => process.stdout.write(chunk));
@@ -654,13 +653,4 @@ function resolveVSCodeCliPath(vscodeExecutablePath) {
   }
 
   return path.join(path.dirname(vscodeExecutablePath), 'bin', 'code');
-}
-
-function resolveVSCodeTestLaunchPath(vscodeExecutablePath) {
-  if (process.platform !== 'win32') {
-    return vscodeExecutablePath;
-  }
-
-  const cliPath = resolveVSCodeCliPath(vscodeExecutablePath);
-  return existsSync(cliPath) ? cliPath : vscodeExecutablePath;
 }

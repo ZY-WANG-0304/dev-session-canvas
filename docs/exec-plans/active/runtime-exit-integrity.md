@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前执行入口（2026-10-01）：macOS run36829311235/353bb575完整success且六份两模式页面报告已核对；Windows run36830583121/f35c023c虽job success，但完整artifact缺重开/清理及snapshot completed，页面验收未通过，见33.9/34.11。旧非TTY/Canvas ready/构建顺序失败保留；macOS不证明系统keychain死锁。34.10的Windows真实Agent接线、私有DACL及已注册三平台单选手动入口已完成局部验证，下一先运行macOS原八场景，Windows须先解除实际判定缺口，失败即停。A6非root身份保护局部收口，完整reload仍保留；F-04、其余A1至A6、packaged/Remote与默认准入不关闭，不追加工具矩阵；后段旧入口按原输入理解。
+当前执行入口（2026-10-01）：macOS Terminal36829311235六报告通过；首轮真实Agent36832581851前三Codex场passed、第四snapshot stop空快照真值断言首败、Claude未跑，33.10保留原结果并核对终态判据。Windows36830583121虽job success但缺五报告，34.12定位code.cmd转交误作完成并完成窄修，下一复验原Windows流水线，Agent未调度。A6新增真实start replacement两项通过、永久退出后旧reset仍写入一项先红，按32.21修正。F-04、其余A1至A6、packaged/Remote与默认准入不关闭，不追加工具矩阵；后段旧入口按原输入理解。
 
 当前执行入口（2026-10-01，B2/A5）：macOS短路径run `36822748979` 的VS Code启动后job超时，未取得产品清理结论；新run `36825479993` paused-stop因真实EOF已到但测试仍等待取消而首败，按生产接入33.8仅修正消费gate和失败后tracker释放顺序。Windows `36823205778`/`36825483498` 编译及namespace通过，normal在主体READY前code1退出，cleanup unsafe；按34.8增加有限启动收据和既有原生cmd回归，不先改业务。hash差异已确认为CRLF而非旧源码。当前只收口这些具体启动/判定阻塞，随后继续原平台产品及分发验收；真实Agent/Webview和F-04均未关闭，不增加工具矩阵。
 
@@ -98,9 +98,13 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01，A6) 32.21非root两提交点身份复核及模板callback屏障已实施；原38+新8生命周期、Host145、typecheck/localization通过，独立review和复跑无确定阻塞。原先红/中间夹具失败保留，完整reload/多根/真实UI不代证。
 - [x] (2026-10-01) 353bb575的Windows run36829311128原Node四例全通过，原帧/主体/清理独立对账；Electron构建顺序首败与未执行页面分账，34.11等待原GUI子进程的窄修已先红后绿。
 - [x] (2026-10-01) 33.9 macOS新run36829311235完整success，六份两模式页面报告核对；34.11 Windows修后run36830583121构建通过但job绿灯与缺最终报告矛盾，保留实际未验收状态及旧failure。
-- [ ] 定位Windows页面最终报告缺失及退出传播，完成原两模式验收后才调度该平台Agent，不以job绿灯代证。
+- [x] (2026-10-01) 34.12已确认Windows等待的是code.cmd转交而非真实宿主；原passed早于snapshot主体启动约7秒。原job/缺五报告事实保留。
+- [x] (2026-10-01) 34.12直接等待原Code.exe与phase报告检查两项先红后绿，env/Electron input/Agent workflow独立复跑通过，无业务/预算改动。
+- [ ] 复验34.12原Windows两模式验收，完整报告通过后才调度该平台Agent，不以job绿灯代证。
 - [x] (2026-10-01) 按34.10补齐Windows真实Agent的产品cmd入口、原对象观察、临时配置DACL及受限workflow；六项局部测试、typecheck/env/Electron输入通过，不代证Windows原生PowerShell或Agent。
 - [ ] 通过已注册workflow的 `real_agents=true` 和单选 `real_agent_platform=macos/windows` 依次运行各自原八场景并核对脱敏报告；不新增场景或自动重试，剩余产品责任按有限收尾清单。
+- [x] (2026-10-01) b1628715的macOS首次run36832581851已回收：前三Codex场passed、snapshot stop原非空快照断言首败、Claude四场not-run，四cleanup均零残留；33.10保留具体空串/序号/reader/EOF事实，未盲目重跑，Windows仍未调度。
+- [ ] 沿32.21原Host脚本补Terminal/Agent真实start replacement各一例、reset等待期间正式deactivation一例；未复现前不预设业务修正，不代证真实reload/多根UI。
 
 - [x] (2026-10-01) 核对macOS短路径超时与新paused-stop首败、Windows两轮READY前失败；保留原artifact及exit1，明确CRLF摘要差异不代表旧源码，详见生产接入33.8/34.8。
 - [x] (2026-10-01) 完成macOS真实EOF/取消分支和失败后消费等待、Windows启动收据及现成cmd原生回归接线；两product self-test、session bridge、Windows Electron输入与diff检查通过，均为本地局部证据。
@@ -407,6 +411,10 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-10-01：macOS Agent首轮失败不在凭据，两个natural已有真实响应；snapshot stop原真值断言拒绝存在但空串的快照。产品允许空字符串，仍需独立终态证据区分合法空屏与内容缺失，不能从EOF/reader applied直接结论。A6三例中真实start replacement两项通过，但永久退出成功后旧reset仍两次写入的产品失败已先红，按32.21窄修。
+
+2026-10-01：34.12独立核对确认Windows外层07:32:51.826Z已打印passed，而snapshot主体07:32:58.740Z才启动。CLI源码与当前launcher表明code.cmd detached转交后返回0，complete/reopen遂重叠；这是验收等待对象错误，不是已证明的产品尾部缺陷。只修真实宿主等待和原报告必需检查，不扩通用工具。
+
 2026-10-01：macOS原页面在临时宿主内存Secret Storage下实际完成两模式完整尾部与重开，旧取消未追认。Windows等待Code.exe修正后原Electron构建完成，但页面job绿灯缺最终报告，不能宣称完整通过。新的macOS单独workflow因未在默认分支注册而实际404，故复用已注册手动入口调用同ref的reusable workflow，不提前合并或扩展带secret的push触发。
 
 2026-10-01：Windows实际ConPTY四例已通过，后置Electron构建因PowerShell的GUI执行不等待而竞争，07:19:03引用尚未生成目录、07:19:05原builder才成功。这是实际构建前提，不是新的尾部失败；34.11以Node等待原Code.exe子进程收口，不放宽产物校验。
@@ -677,6 +685,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-10-01 / Codex：Windows页面基线报告不全时停止该平台Agent调度，保留job success但不计产品通过。测试直接spawn原Code.exe、shell:false，安装扩展仍走CLI；各phase核对已有报告，缺失即失败。macOS原报告完整，故继续其原八场景；A6并行只补原有限清单中的三例真实Host入口，不加入新的故障框架。
+
 2026-10-01 / Codex：平台Terminal基线已执行后进入既定真实Agent八场景，不扩模型请求矩阵。Windows保留原对象并将CIM启动事实绑定到该对象仍live的区间；正常false→true退出竞争不判故障，漏采/unknown摘要不给虚假零。凭据写入前校验私有DACL，原手动入口按平台单选，只上传经内容扫描的固定摘要。原失败、全部尾部断言和整体完成定义保持。
 
 2026-10-01 / Codex：Windows保留原Node四例通过与整轮Electron构建failure，固定workflow通过spawnSync等待原进程，失败不进入资产导入。真实Agent平台接线仅复用原八场景，并坚持原对象身份与私有配置ACL；不因通过而追加原生矩阵或重复模型请求。
@@ -925,6 +935,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-01最新：Windows launcher/必需报告窄修完成受控验证，等待原生复验；macOS Agent原八场景在第四项明确首败并停止，安全摘要已独立回收，认证不再是该平台前提，完整A4仍未过。A6真实start replacement两项通过、reset与永久退出重叠一项失败，不把新增用例数量当产品通过；当前只处理这三个直接产品/判定缺口。
 
 2026-10-01：macOS36829311235完整success并核对六份页面报告，解除该平台固定Terminal/Electron验收前提；Windows36830583121缺最终报告，不计两模式页面通过。WindowsAgent接线六项定向回归及typecheck/env/Electron输入通过，基线缺口解除前不调度；macOS原八场景待执行。普通构建未启用，A6局部保护与已有A1成果不重开，F-04、其余A1至A6与分发仍是有限清单的实际未完项。
 
@@ -2129,3 +2141,7 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-01，Windows原生通过与构建竞态）：同步353bb575提交、A6局部收口与Windows原生四例独立对账；保留后置Electron构建failure，34.11修复原GUI进程等待并补先红/局部回归。macOS旧取消/新参数对照与Windows真实Agent接线分账，整体完成定义不变。
 
 修订记录（2026-10-01，平台页面基线与真实Agent接线）：同步macOS/Windows修后Node/Electron及Terminal页面的实际结果；34.10接通原cmd/CLI链、原对象退出观察、Windows私有DACL及已注册单选调度。局部回归和两路独立审查已完成，下一仅原两平台Agent矩阵；历史失败、有限收尾范围与默认关闭保持。
+
+修订记录（2026-10-01，Windows绿灯反证）：完整artifact核对否定两模式页面已通过的推断，记录CLI转交时间反证及34.12窄修设计；b1628715冻结后只调度macOS原八场景。补32.21三例局部A6运行前边界，未削减实际reload/多根责任。
+
+修订记录（2026-10-01，真实Agent首败与有限修正）：33.10记录macOS实际前三过/第四空快照断言失败/后四未跑；34.12记录launcher及phase报告先红后绿。32.21的两项真实start已通过、永久退出与旧reset重叠已先红，不追认旧样本或扩大工具门槛。

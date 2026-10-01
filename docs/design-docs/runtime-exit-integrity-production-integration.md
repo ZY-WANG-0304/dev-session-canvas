@@ -21,7 +21,7 @@ updated_at: 2026-10-01
 
 ## 1. 当前结论与阶段边界
 
-当前B2/A5入口（2026-10-01）：macOS36829311235/353bb575完成匹配Node/Electron、两模式Terminal/Webview和completed重开，六份页面报告已核对。Windows36830583121/f35c023c虽job success，但完整ZIP目录只有Runtime completed、缺重开/清理及snapshot completed，不能计两模式页面通过，按34.11定位判定传播。34.10的Windows真实Agent接线及三平台单选手动入口已完成局部验证和独立审查，下一先执行原macOS八场景；Windows基线缺口解除前不调度Agent。普通构建仍stock，其他架构/运行时、packaged/Remote、剩余A1至A6与F-04未关闭，后面的旧当前/下一按各自历史输入理解。
+当前B2/A5入口（2026-10-01）：macOS36829311235/353bb575完成两模式Terminal/Webview和重开，六报告已核对；首轮真实Agent36832581851前三Codex场passed、第四snapshot stop空快照真值断言首败、Claude未跑，见33.10。Windows36830583121虽job success却缺五份最终报告，34.12已确认code.cmd转交误作宿主完成并实施窄修，待原流水线复验，Agent未调度。A6三项真实Host入口新增两绿一红，永久退出后旧reset写入按32.21处理。普通构建仍stock，其他架构/运行时、packaged/Remote、剩余A1至A6与F-04未关闭，后面的旧当前/下一按各自历史输入理解。
 
 当前 CI 状态（2026-10-01）：第四轮 run `36812745671`/`736f9ddd` 在 Linux/DeepSeek 原八场景全部 passed，四 natural 已有真实目标响应/nonce、source EOF 与原 Webview/持久化断言通过，八份 cleanup 四计数均0。stop 仍为主动停止，source 分别是 Codex Runtime eof、Codex snapshot-only interrupted、Claude 两模式 eof，不改写自然终止。第三轮 Codex snapshot-only stop 的失败本轮未复现；本轮仅修改报告/文档，业务与断言未变，根因仍未知，保留为具名间歇失败，不宣称已修。当前返回原有限产品清单，不为捕获红项自动追加 CI/工具，四轮原结果保持，详见32.20；F-04/完整A5/macOS/Windows仍未关闭。
 
@@ -1715,6 +1715,12 @@ DeepSeek 官方接口提供 Codex 所需的 Responses 路径和 Claude 所需的
 
 最小修正已实施，共享 `captureCanvasResetIdentity()` 复用原root保护，两个非root提交点新增检查，模板同时补callback屏障。原38次加新8次生命周期回归全部通过：两入口各覆盖新执行保留、正常成功、strict失败保留及completed删除在途；Host wiring145/145、typecheck/localization通过，独立复核及复跑未见确定阻塞。原先红和中间夹具断言失败不改，最终日志 `.debug/a6-non-root-reset-and-completion-fixed-20261001-01.log`。这是受控Host方法证据，完整reload、多根及实际UI仍不由此代证。
 
+同一A6有限清单的下一局部验证不重开全部等待点：在原 `test-runtime-host-deactivation-integrity.mjs` 的旧delete等待窗口，Terminal/Agent各一例通过真正 `start*WithSupervisor()` 接纳replacement，取代只写map的代证，仍核对最终保存/消息/reader/绑定。再以一例reset等待strict delete时并发正式 `prepareForDeactivation()`，核对永久离开、保存及旧callback责任；先记录实际结果，未复现前不预设业务缺陷或新增全局锁。现有root A失败/B输出注入仅证明Host入口隔离，不是实际Webview交互；测试专用reload方法也不是 `workbench.action.reloadWindow`。真实多根/Host reload验收继续独立保留，不把这三例局部通过计作整个A6完成。
+
+该三例首轮在未改业务时两绿一红，原46例保持通过，日志 `.debug/a6-finite-entries-original-20261001-01.log` 保留exit1。Terminal/Agent实际start replacement均被原身份保护；但reset等待strict delete时，正式preserving deactivation绕过 `strictRuntimeMutationBoundary` 并成功返回，释放原delete后reset仍保存/发布空画板。永久callback gate当时已关闭，故缺口是已进入的旧续体及错误的永久成功声明，不是callback入口。
+
+选定窄修同时处理这两个事实：永久离开一开始封闭原事件/执行准入；若开始时已有strict mutation，普通路径保留首次拒绝，带owner报告路径将相关域记为未确认，不能只等部分Core就宣布已结算。原delete继续沿原绑定执行并保留真实结果，不重发、不补造取消，也不将外层reset放入它自身等待的pending集合。非永久boundary每次已有等待点之后及reset/template既有提交复核点检查永久关闭，不允许旧续体继续清maps、写盘或发布；正常无冲突重置保持。永久结果不是OS强制退出的承诺，此修正不新增全局锁、root drain、事务框架或任意并发矩阵。普通和带owner两入口须各有窄回归，现有首次结果复用/原46项保持；真实reload仍另行验收。
+
 ## 33. Darwin 产品原生接入
 
 ### 33.1 运行前原生契约（2026-10-01）
@@ -1818,6 +1824,12 @@ run `36821963386`/job `110239281754` 使用 `72ca0efe`，修后原Node四例全�
 修后输入353bb575的run36829311235整轮success；原报告已从artifact按范围提取至 `.debug/macos-success-36829311235/small-reports/` 独立核对，不只依赖job绿灯。Darwin arm64的Node四例全部pass/cleanupSafe，实际Electron39.8.7/Node22.22.1/ABI140，两模式共四次宿主启动均使用内存Secret Storage；这只证明避开该测试环境依赖，不证明系统keychain死锁。`partialSelection=false`，live-runtime与snapshot-only各自completed/reopened/cleanup六份报告通过。
 
 两模式实际writer均写5580102bytes，SHA256 `e03d6d758493454da0946cc62e7c17fb2444e39afaa7639c8a88ad271eaff48f`、terminalWriteComplete=true，原90002行断言和最终光标(6,2)成立，source=eof，最终applied分别7981/7554。Runtime保存节点556bytes，重开closed且无history/serialized/runtimeId、空buffer；snapshot-only保存节点5766938bytes，重开保留5580063字符快照及同一光标。两cleanup的bindings/pending operations均0，范围仅主体回收及节点/Host绑定，不代证全部OS资源或A5。旧失败不追认，真实Agent、其余A项、packaged及默认启用继续开放。
+
+### 33.10 首轮 macOS 真实 Agent 的空快照断言失败
+
+输入b1628715经已注册手动入口的run36832581851实际执行原八场景，整轮failure；安全摘要为 `.debug/agent-ci-macos-36832581851-summary/summary.json`。Codex Runtime natural、Runtime stop、snapshot-only natural前三场passed；两natural取得真实DeepSeek响应/nonce、turn.completed、无metadata fallback与实际source EOF，Runtime stop仍为主动处置。第四场snapshot-only stop在原 `agent-candidate-tests.cjs:170` 的 `assert(serializedTerminalState?.data)` 首败，Claude四场not-run，未自动重试。
+
+失败摘要明确记录：status=stopped、liveSession=false、exitCode=0、serializedStatePresent=true但serializedStateBytes=0、outputSequence=15，原reader applied且finalOutputSequence=15，实际source=eof；四场cleanup的bindings/failures/forcedSignals/active均0。该事实只定位到非空字符串断言，不能凭EOF/序号宣布尾部完整，也不能凭空串认定正文丢失；原raw没有发布，不从摘要还原内容。产品 `normalizeSerializedTerminalState()` 接受空字符串，故下一直接核对合法空屏与丢内容的区分判据，不先删除原断言或盲目重跑。此前Linux第三轮snapshot stop的根因仍未知，不因场景名相同追认同一根因或已修复。凭据在该平台的两个natural实际可用，不要求用户重复配置认证。
 
 ## 34. Windows 产品原生接入
 
@@ -1960,3 +1972,13 @@ CLI选择、Windows observer、原Unix observer、CI summary、私有配置、�
 本次构建顺序回归先在旧workflow实际exit1，修后同一测试通过，并覆盖原子进程启动错误、signal、probe非零和builder非零阻止后续。product self-test也通过，未运行新原生场景；下一仅复验原Windows流水线。
 
 修后输入f35c023c的run36830583121/job110266023730于07:35:01Z报告success，匹配Electron构建不再停在未生成资产目录；页面步骤07:31:36至07:32:52也显示success。但artifact完整ZIP目录61289条中，只有live-runtime completed.json，没有任何reopened.json/cleanup.json或snapshot-only completed.json；snapshot-only目录本身存在，非范围提取漏筛。故该绿灯不能计作两模式页面验收通过。当前直接定位宿主/runner退出传播与报告形成，WindowsAgent暂不调度；Node证据、原进程句柄/合法VT转换口径及所有旧失败分别保留，不为缺报告推断产品尾部已丢失。
+
+### 34.12 Windows 测试必须等待真正宿主而非 CLI 转交
+
+36830583121完整目录、job.log及小报告保存在 `.debug/windows-success-36830583121/`，仅按范围下载10213464bytes，未下载448MB整包。原input确认两模式计划与partialSelection=false；Node四例各自pass/cleanupSafe，normal90000行/光标(6,4)/exit7/EOF，两个暂停场景分别EOF/interrupted、B交互15.9666/15.7925ms，仍按主动停止记录。唯一Runtime completed证明90002行/光标(6,2)、source EOF、applied1383与616bytes轻量节点；这不补造缺失的其余五份报告。
+
+直接时间证据：外层四次Exit0后于07:32:51.826Z打印整体passed，snapshot主体却于07:32:58.740Z才启动。Runtime的EOF07:32:22.475Z和applied07:32:27.500Z也晚于其前两次外层Exit0。`scripts/smoke/vscode-smoke-runner.mjs` 的Windows `resolveVSCodeTestLaunchPath()` 把实际Code.exe改为bin/code.cmd，并以shell:true启动；VS Code1.117.0的CLI在无wait/verbose时detached启动真正宿主，等待约1秒stdin listener后返回0。`--extensionTestsPath`不改变此转交语义，因此被等待的是CLI/shell，不是测试宿主。
+
+选定窄修：测试启动直接用Node spawn原Code.exe、shell:false等待原进程，Linux/macOS语义保持；安装扩展等真正CLI用途仍使用原CLI解析。`run-vscode-execution-candidate.mjs` 在每次complete/reopen返回后读取该阶段既有必需报告，核对mode、phase所需内容及pass；缺失或失败立即停止，不再仅凭进程0打印整轮成功。沿现有runner和Electron输入测试取得旧实现先红并覆盖原进程等待/非零/缺报告，再复验原Windows流水线，不增加新的工具矩阵、延时或宽松尾部判据。此处只是运行前修正设计，原job绿灯不追认为真实测试通过。
+
+上述四文件窄修已实施，旧launcher真实spawn捕获和旧orchestration缺报告仍继续四次launch两条确定红分别保留在 `.debug/windows-launcher-original-red-20261001-01.log`、`.debug/windows-phase-reports-original-red-20261001-01.log`。修后env、Electron input（原loop一正向/十五负向）、Agent workflow与语法/diff检查通过，root独立复跑三项同样通过。没有业务或预算改动，Windows实际修后结果仍待原流水线；macOS本轮Agent输入冻结于b1628715，不回填此新等待实现。

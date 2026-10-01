@@ -89,6 +89,7 @@ for (const [index, mode] of modes.entries()) {
   await fs.mkdir(workspacePath);
   const smokeHostRoot = await prepareMainSmokeHostExtension({ projectRoot, targetRoot: path.join(debugRoot, 'smoke-host') });
   try {
+    let completed;
     for (const phase of ['complete', 'reopen']) {
       await launchPreparedVSCodeScenario({ projectRoot, runtime, vscodeExecutablePath, workspacePath,
         extensionDevelopmentPath: smokeHostRoot,
@@ -97,6 +98,26 @@ for (const [index, mode] of modes.entries()) {
         extensionTestsEnv: { DEV_SESSION_CANVAS_CANDIDATE_MODE: mode,
           DEV_SESSION_CANVAS_CANDIDATE_PHASE: phase,
           DEV_SESSION_CANVAS_CANDIDATE_SUBJECT_NODE: process.execPath } });
+      const read = async name => JSON.parse(await fs.readFile(path.join(runtime.artifactsDir, `${name}.json`), 'utf8'));
+      const environment = await read(`${phase}-environment`);
+      assert.equal(environment.mode, mode, `${phase} environment must match the selected mode.`);
+      assert.equal(environment.phase, phase, 'The actual Extension Host must run the selected phase.');
+      if (phase === 'complete') {
+        completed = await read('completed');
+        assert.equal(completed.pass, true, `${mode}/complete must pass before reopening.`);
+        assert.equal(completed.mode, mode);
+        assert.equal(typeof completed.id, 'string');
+        assert(completed.id.length > 0, 'The completed subject node must be recorded.');
+      } else {
+        const reopened = await read('reopened');
+        assert.equal(reopened.pass, true, `${mode}/reopen must pass.`);
+        assert.equal(reopened.mode, mode);
+        assert.equal(reopened.id, completed.id, 'Reopen must verify the original completed subject node.');
+        const cleanup = await read('cleanup');
+        assert.equal(cleanup.pass, true, `${mode}/cleanup must pass before advancing.`);
+        assert(Array.isArray(cleanup.runtime?.bindings), 'Cleanup must report the remaining Host bindings.');
+        assert.equal(cleanup.runtime.bindings.length, 0, 'Cleanup must leave no Host bindings.');
+      }
     }
   } catch (error) {
     await fs.writeFile(path.join(output, 'first-failure.json'), `${JSON.stringify({ mode, error: String(error) }, null, 2)}\n`);

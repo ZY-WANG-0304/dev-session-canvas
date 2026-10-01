@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import vm from 'node:vm';
 import yaml from 'js-yaml';
 import { transform } from 'esbuild';
@@ -117,4 +118,87 @@ for (const failure of [undefined, 'spawn', 'signal', 'probe-exit', 'build-exit']
       '--delay-load-hook', 'C:\\fixed Node\\node_modules\\npm\\node_modules\\node-gyp\\src\\win_delay_load_hook.cc']);
   }
 }
-console.log('Windows Electron fixed input: identity/exit, original writer byte identity, shell and workflow contracts passed; no native or VS Code calls.');
+const candidateSource = await fs.readFile('scripts/smoke/run-vscode-execution-candidate.mjs', 'utf8');
+const phaseLoopStart = candidateSource.indexOf('for (const [index, mode] of modes.entries()) {');
+const phaseLoopEnd = candidateSource.indexOf('async function runCapacityCalibration() {', phaseLoopStart);
+assert(phaseLoopStart >= 0 && phaseLoopEnd > phaseLoopStart);
+const phaseLoop = candidateSource.slice(phaseLoopStart, phaseLoopEnd);
+async function controlledPhases(changeReports) {
+  const reports = new Map(), launches = [], messages = [];
+  const output = '/fixed-output';
+  const execute = () => vm.runInNewContext(`(async () => { ${phaseLoop} })()`, {
+    assert, path, modes: ['live-runtime', 'snapshot-only'], output, projectRoot: '/fixed-project', runId: 'fixed',
+    vscodeExecutablePath: '/fixed-Code.exe', process: { platform: 'win32', env: { SystemRoot: 'C:\\Windows' }, execPath: '/fixed-node' },
+    fs: {
+      async mkdir() {},
+      async writeFile(file, data) { reports.set(file, data); },
+      async readFile(file) {
+        if (!reports.has(file)) throw Object.assign(new Error(`Missing phase report: ${file}`), { code: 'ENOENT' });
+        return reports.get(file);
+      }
+    },
+    async prepareRuntime({ debugRoot }) { return { artifactsDir: path.join(debugRoot, 'artifacts') }; },
+    async prepareMainSmokeHostExtension({ targetRoot }) { return targetRoot; },
+    resolveStagedSmokeTestPath: (root, file) => path.join(root, file),
+    async launchPreparedVSCodeScenario({ runtime, extensionTestsEnv: env }) {
+      const mode = env.DEV_SESSION_CANVAS_CANDIDATE_MODE, phase = env.DEV_SESSION_CANVAS_CANDIDATE_PHASE;
+      const id = `${mode}-node`;
+      launches.push(`${mode}/${phase}`);
+      const write = (file, data) => reports.set(path.join(runtime.artifactsDir, file), JSON.stringify(data));
+      write(`${phase}-environment.json`, { mode, phase });
+      if (phase === 'complete') write('completed.json', { mode, id, pass: true });
+      else {
+        write('reopened.json', { mode, id, pass: true });
+        write('cleanup.json', { runtime: { bindings: [] }, pass: true });
+      }
+      changeReports?.({ reports, root: runtime.artifactsDir, mode, phase, write });
+    },
+    console: { log(message) { messages.push(message); } }
+  });
+  let error;
+  try { await execute(); } catch (failure) { error = failure; }
+  return { error, reports, launches, messages, output };
+}
+const missingCompleted = await controlledPhases(({ reports, root, phase }) => {
+  if (phase === 'complete') reports.delete(path.join(root, 'completed.json'));
+});
+assert(missingCompleted.error, 'A zero-exit launcher without completed.json must fail before reopen or the next mode');
+assert.deepEqual(missingCompleted.launches, ['live-runtime/complete']);
+assert.equal(missingCompleted.messages.length, 0);
+const accepted = await controlledPhases();
+assert.equal(accepted.error, undefined);
+assert.deepEqual(accepted.launches, ['live-runtime/complete', 'live-runtime/reopen',
+  'snapshot-only/complete', 'snapshot-only/reopen']);
+assert.equal(accepted.messages.length, 1);
+assert.match(accepted.messages[0], /acceptance passed/);
+assert(!accepted.reports.has(path.join(accepted.output, 'first-failure.json')));
+for (const [phase, filename, replacement] of [
+  ['complete', 'complete-environment.json', undefined],
+  ['reopen', 'reopen-environment.json', undefined],
+  ['reopen', 'reopened.json', undefined],
+  ['reopen', 'cleanup.json', undefined],
+  ['complete', 'completed.json', { mode: 'live-runtime', id: 'live-runtime-node', pass: false }],
+  ['reopen', 'reopened.json', { mode: 'live-runtime', id: 'live-runtime-node', pass: false }],
+  ['reopen', 'cleanup.json', { runtime: { bindings: [] }, pass: false }],
+  ['complete', 'complete-environment.json', { mode: 'snapshot-only', phase: 'complete' }],
+  ['reopen', 'reopen-environment.json', { mode: 'live-runtime', phase: 'complete' }],
+  ['complete', 'completed.json', { mode: 'snapshot-only', id: 'live-runtime-node', pass: true }],
+  ['complete', 'completed.json', { mode: 'live-runtime', pass: true }],
+  ['reopen', 'reopened.json', { mode: 'snapshot-only', id: 'live-runtime-node', pass: true }],
+  ['reopen', 'reopened.json', { mode: 'live-runtime', id: 'different-node', pass: true }],
+  ['reopen', 'cleanup.json', { runtime: { bindings: [{ nodeId: 'remaining-node' }] }, pass: true }]
+]) {
+  const result = await controlledPhases(({ reports, root, phase: actualPhase, write }) => {
+    if (actualPhase !== phase) return;
+    if (replacement === undefined) reports.delete(path.join(root, filename));
+    else write(filename, replacement);
+  });
+  assert(result.error, `${filename} must be present, successful and tied to this phase`);
+  assert.deepEqual(result.launches, phase === 'complete' ? ['live-runtime/complete']
+    : ['live-runtime/complete', 'live-runtime/reopen']);
+  assert.equal(result.messages.length, 0, 'A failed phase must not print whole-run success');
+  const failure = JSON.parse(result.reports.get(path.join(result.output, 'first-failure.json')));
+  assert.equal(failure.mode, 'live-runtime');
+  assert.equal(failure.error, String(result.error));
+}
+console.log('Windows Electron fixed input: identity/exit, original writer byte identity, shell, workflow and required phase reports passed; no native or VS Code calls.');
