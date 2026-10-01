@@ -15,6 +15,7 @@
 ## 近期已收口
 
 - 2026-10-02：A1/r23 在现代 Linux Electron 固定候选上完成一次两 Terminal attach/compact 组合；动态 scrollback、两次 resize、约 18 MiB 后置输出、current/previous checkpoint、retained prefix、同一分页 reader 的 compact 后交互及 cleanup 均通过。该项只关闭具名固定组合，不关闭 F-04/A1 总体、真实 Agent/Webview、跨平台/packaged 或最终准入；manifest generation 按 durable current/previous 事实核对，64/128 MiB 合并进程历史阈值与失败保持。
+- 2026-10-02：A1/r24 沿同一现代 Linux Electron 候选入口复核 attach/compact 组合通过，manifest current/previous `6572/6503`、retained start `6504`、journal head `11184`，reader identity、页面交互和本方 cleanup 均成立。该路径仍是显式 candidate、Runtime Persistence 默认关闭的固定输入；复核不形成产品并发或资源预算，也不替代最终默认启用准入。
 - 2026-10-01：第49节三平台schema2/实际requirements、旧Node同名namespace和六资产聚合代码已实现，固定分发脚本本地Linux x64整条构建/双宿主加载/归档通过。首次六格远端产物、最低OS原生环境、最终产品版本及默认准入仍在原B2/A5有限队列；加载不等于PTY/页面验收，不增加通用工具债务。
 - 2026-10-01：第47节root写失败阻断已有reader最终水位已分离发布与保存，真实root writer先红/Host147回归后，新固定installed包原多根场景唯一复验exit0并独立核对。A真实EISDIR仍保来源/binding且原reader applied4，B原执行nonce24.9ms，reset零责任、真实空registry落盘后外部TERM与资源退出通过；旧包首败和cleanup失败不追认。该多根格收口，不代证自动重试、root稳定归属或snapshot-only实际Host离开。第48节旧banner断言按32.4修正后八项通过，原4/6保留。
 - 2026-10-01：A2/A3已结束snapshot被页面resize只改尺寸标签的跨平台结构问题已修；实际Host先红3/12后最小保护16/16、原Host147/147、Runtime completed及typecheck通过，保留原快照内容和原尺寸，新candidate仍独立获得当前viewport。原macOS Claude整轮因果、实际页面/非空stop重开仍未证明；既有浏览器六例4过/2失败原现场保留，具体终态责任继续按生产接入第48节处理，不将局部修复写成总体收口。
