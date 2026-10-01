@@ -19186,6 +19186,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const start = this.candidateRuntimeStarts?.get(this.getExecutionSessionOperationKey(kind, nodeId));
       const advancesLaunch = node !== undefined && start !== undefined && !start.submitted &&
         node.metadata?.[kind] === start.currentMetadata;
+      if (metadata?.persistenceMode === 'snapshot-only' && !metadata.liveSession &&
+        metadata.serializedTerminalState !== undefined) {
+        // Saved terminal bytes must be hydrated at their original dimensions before page reflow.
+        if (advancesLaunch) start.viewport = { cols: normalizedCols, rows: normalizedRows };
+        return;
+      }
       this.state = updateExecutionNode(this.state, nodeId, kind, {
         status: readExecutionStatus(this.state, nodeId, kind),
         summary: readExecutionSummary(this.state, nodeId, kind),

@@ -14,6 +14,7 @@
 
 ## 近期已收口
 
+- 2026-10-01：A2/A3已结束snapshot被页面resize只改尺寸标签的跨平台结构问题已修；实际Host先红3/12后最小保护16/16、原Host147/147、Runtime completed及typecheck通过，保留原快照内容和原尺寸，新candidate仍独立获得当前viewport。原macOS Claude整轮因果、实际页面/非空stop重开仍未证明；既有浏览器六例4过/2失败原现场保留，具体终态责任继续按生产接入第48节处理，不将局部修复写成总体收口。
 - 2026-09-17：F-05 的新 Runtime completed 历史内联已收口。用户明确重开不需要进程或历史后，Host 只保存轻量终态，可明确识别的旧 Supervisor completed stream 加载时清理；当前页面仅临时收齐尾部，保存失败保留来源。实际 completion + writer fixture 为 Terminal 781 / Agent 812 字节，输出体积增大不改变保存体积；Linux 常规完成重开、真实关闭再开、单根转多根与实际 xterm 逐行 90000 行已有通过证据。完整终态临时聚合仍计入 F-04，旧 serialized-only 来源模糊记录保留兼容，不把整个运行时或极端尾部短读写成已修复。设计与证据见 `docs/design-docs/runtime-completed-no-history.md`、`docs/exec-plans/completed/runtime-completed-no-history.md`。
 - 2026-09-14：开发依赖 npm audit 告警已收口。root `overrides.qs` 从 `6.15.2` 升至 `6.16.0`，覆盖 `@vscode/vsce -> typed-rest-client` 的两个 `qs` moderate advisory；root、Marketplace 与共享包的 Vitest 从 `3.2.7` 升至 `4.1.11`，覆盖 `@vitest/mocker` 路径穿越 advisory。`npm audit` 与 `npm audit --omit=dev` 均为 `0 vulnerabilities`；Marketplace API `99` 项、Web `45` 项、共享包 `28` 项测试及 Marketplace typecheck 均通过。
 - 2026-07-17：Marketplace X11 录制的 ffmpeg 首帧 ready handshake 已收口。`record-start` 现在为每条 clip 创建独立 `-progress` 文件，轮询到 `frame >= 1` 才允许原生输入继续；15 秒无首帧或 ffmpeg 提前退出会停止当前进程并给出 progress 路径，`record-stop` 在 probe 后清理进度文件。纯函数测试覆盖空/部分 progress、首帧、超时和提前退出；本轮两个 Codex、两个 Claude Code 的三条真实 X11 scene 均经过握手并完整捕获首个动作，因此删除原“固定等待 300ms”未收口条目。逐 clip contact sheet 仍是内容完整性门禁，ready 只解决首帧竞争，不替代视觉验收。
