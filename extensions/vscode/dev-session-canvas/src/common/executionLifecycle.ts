@@ -150,6 +150,20 @@ export const S1_LIMITS = Object.freeze({
   starting: 1
 });
 
+export interface ExecutionAdmissionLimits {
+  readonly executions: number;
+  readonly starting: number;
+}
+
+export function normalizeExecutionAdmissionLimits(value?: ExecutionAdmissionLimits): ExecutionAdmissionLimits {
+  const record = value === undefined ? S1_LIMITS
+    : readRecord(value, 'Execution admission limits', ['executions', 'starting']);
+  const executions = readInteger(record.executions, 'Execution admission executions', 1);
+  const starting = readInteger(record.starting, 'Execution admission starting', 1);
+  if (starting > executions) throw new RangeError('Execution admission starting must not exceed executions.');
+  return Object.freeze({ executions, starting });
+}
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 

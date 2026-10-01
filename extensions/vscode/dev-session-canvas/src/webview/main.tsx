@@ -529,11 +529,13 @@ const EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER = 1;
 const EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS = 32;
 const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS = 96;
 const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_MAX_DEFER_MS = 480;
-const EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS = 256 * 1024;
+// Match the journal page bound so paged output yields between sessions.
+const EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS = 64 * 1024;
 const EXECUTION_TERMINAL_APPLIED_ACK_INTERVAL_MS = 40;
 const EXECUTION_MAIN_THREAD_LAG_INTERVAL_MS = 500;
 const EXECUTION_MAIN_THREAD_LAG_REPORT_THRESHOLD_MS = 120;
 const executionPerformanceDiagnosticSamples: ExecutionPerformanceDiagnosticPayload[] = [];
+const terminalDrainDiagnosticAtMs = new Map<string, number>();
 let nextExecutionInputSequence = 1;
 const pendingExecutionInputAcks = new Map<number, PendingExecutionInputAck>();
 let lastExecutionInputAtMs = Number.NEGATIVE_INFINITY;
@@ -753,6 +755,25 @@ function reportExecutionPerformanceDiagnostic(
   } catch {
     // Ignore telemetry failures; performance diagnostics must not affect input/output.
   }
+}
+
+function reportTerminalDrainDiagnostic(payload: ExecutionPerformanceDiagnosticPayload): void {
+  // Keep transport tracing below one sample per 100 ms per terminal so diagnostics do not
+  // become the source of the scheduling delay being measured.
+  const key = `${payload.nodeId ?? ''}:${payload.kind ?? ''}`;
+  const now = Date.now();
+  const previous = terminalDrainDiagnosticAtMs.get(key) ?? Number.NEGATIVE_INFINITY;
+  // Preserve the small reply page used by the capacity probe even when its
+  // preceding availability hint was sampled in the same window.
+  const isSmallPageReceipt = payload.reason === 'terminal-page-received' &&
+    (payload.replayOutputCharacters ?? 0) <= 1024;
+  if (!isSmallPageReceipt && now - previous < 100) return;
+  terminalDrainDiagnosticAtMs.set(key, now);
+  if (terminalDrainDiagnosticAtMs.size > 256) {
+    terminalDrainDiagnosticAtMs.clear();
+    terminalDrainDiagnosticAtMs.set(key, now);
+  }
+  reportExecutionPerformanceDiagnostic(payload, { force: true });
 }
 
 function normalizeExecutionPerformanceDiagnosticForWebview(
@@ -1673,6 +1694,18 @@ function App(): JSX.Element {
         break;
       case 'host/executionTerminalAvailable':
         setExecutionTerminalTitles((current) => mergeTerminalTitleProjectionFromOutput(current, { ...message.payload, chunk: '' }));
+        reportTerminalDrainDiagnostic(
+          {
+            source: 'webview-terminal-drain',
+            nodeId: message.payload.nodeId,
+            kind: message.payload.kind,
+            executionSessionId: message.payload.executionSessionId,
+            sequence: message.payload.revision,
+            reason: 'terminal-available-received',
+            webviewEpochMs: Date.now(),
+            success: true
+          }
+        );
         executionTerminalRegistry.get(message.payload.nodeId)?.controller.terminalAvailable(
           message.payload.executionSessionId, message.payload.authorityId, message.payload.revision,
           message.payload.completed, message.payload.finalRevision
@@ -7649,6 +7682,8 @@ function createExecutionTerminalController(
                     bufferLength: terminal.buffer.active.length
                   },
                   {
+                    force: detail?.reason === 'paged-events' &&
+                      (detail.replayOutputCharacters ?? 0) <= 1024,
                     minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS,
                     minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
                   }
@@ -7910,6 +7945,12 @@ function createExecutionTerminalController(
           beginExecutionSessionGeneration(detail.executionSessionId);
         }
         settleLocalCompletion({ kind: 'cancelled', reason: 'projection-replaced' });
+        if (capacityCalibrationProbe && (capacityCalibrationProbe.readers.some((reader) => reader.nodeId === nodeId) ||
+            capacityCalibrationProbe.readers.length < 10)) {
+          capacityCalibrationProbe.readers = capacityCalibrationProbe.readers.filter((reader) => reader.nodeId !== nodeId);
+          capacityCalibrationProbe.readers.push({ nodeId, readId: detail.terminalRead.readId,
+            sessionId: detail.terminalRead.sessionId, authorityId: detail.terminalRead.authorityId });
+        }
         if (pagedProjection.start(detail.terminalRead)) {
           projectionRecoveryRequested = false;
           projectionRecoveryEpoch += 1;
@@ -8440,12 +8481,27 @@ function createExecutionTerminalController(
   };
 
   const pagedProjection = new TerminalPagedProjection({
-    request: (read, afterRevision, requestId) => postMessage({
-      type: 'webview/readExecutionTerminalPage', payload: {
-        nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId,
-        readId: read.readId, requestId, afterRevision
-      }
-    }),
+    request: (read, afterRevision, requestId) => {
+      reportTerminalDrainDiagnostic(
+        {
+          source: 'webview-terminal-drain',
+          nodeId,
+          kind,
+          executionSessionId: read.sessionId,
+          sequence: afterRevision,
+          requestId,
+          reason: 'terminal-page-requested',
+          webviewEpochMs: Date.now(),
+          success: true
+        }
+      );
+      postMessage({
+        type: 'webview/readExecutionTerminalPage', payload: {
+          nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId,
+          readId: read.readId, requestId, afterRevision
+        }
+      });
+    },
     close: (read, outcome) => postMessage({ type: 'webview/closeExecutionTerminalRead', payload: {
       nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId,
       ...(outcome ? { outcome } : {})
@@ -8470,6 +8526,20 @@ function createExecutionTerminalController(
     },
     events: (events, current, applied) => {
       options?.onContentWillChange?.('output');
+      reportTerminalDrainDiagnostic(
+        {
+          source: 'webview-terminal-drain',
+          nodeId,
+          kind,
+          executionSessionId: currentExecutionSessionId,
+          reason: 'terminal-page-received',
+          replayEventCount: events.length,
+          replayOutputCharacters: events.reduce((size, event) =>
+            size + (event.type === 'output' ? event.data.length : 0), 0),
+          webviewEpochMs: Date.now(),
+          success: true
+        }
+      );
       queueTerminalWrite((done, _markStarted, failed) => {
         applyTerminalStreamEvents(terminal, events, () => done(current()), current, failed);
       }, { reason: 'paged-events', replayEventCount: events.length,
@@ -8745,6 +8815,8 @@ function ensureEmbeddedTerminalThemeObservers(): void {
   };
 }
 
+let capacityCalibrationProbe: WebviewProbeSnapshot['capacityCalibration'];
+
 function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
   const nodeElements = Array.from(
     document.querySelectorAll<HTMLElement>('[data-node-id][data-node-kind]')
@@ -8776,7 +8848,12 @@ function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
     edges,
     groupCount: groups.length,
     groups,
-    selectedGroupIds: groups.filter((group) => group.selected).map((group) => group.groupId)
+    selectedGroupIds: groups.filter((group) => group.selected).map((group) => group.groupId),
+    capacityCalibration: capacityCalibrationProbe ? {
+      ...capacityCalibrationProbe,
+      browserReportedHeapUsed: (performance as Performance & { memory?: { usedJSHeapSize: number } })
+        .memory?.usedJSHeapSize
+    } : undefined
   };
 }
 
@@ -9051,6 +9128,77 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
 
         entry.terminal.input(action.data);
         await waitForDomActionFlush();
+        break;
+      }
+      case 'configureCapacityCalibration': {
+        capacityCalibrationProbe = action.enabled ? { readers: [] } : undefined;
+        break;
+      }
+      case 'measureCapacityInteraction': {
+        const entry = executionTerminalRegistry.get(action.nodeId);
+        const calibration = capacityCalibrationProbe;
+        const load = executionTerminalRegistry.get(action.loadNodeId);
+        if (!entry || !load || !calibration) throw new Error('Capacity calibration terminal is not enabled and mounted.');
+        const reply = `DSC_A1_REPLY_${action.nonce}`;
+        const lastLoadBlock = () => {
+          const buffer = load.terminal.buffer.active;
+          for (let index = buffer.length - 1; index >= Math.max(0, buffer.length - 10); index -= 1) {
+            const match = /^(\d{8}):x{69}$/.exec(buffer.getLine(index)?.translateToString(true) ?? '');
+            if (match) return Number(match[1]);
+          }
+          return 0;
+        };
+        const loadLastBlockBefore = lastLoadBlock();
+        let started = 0;
+        await new Promise<void>((resolve) => {
+          const settle = (applied: boolean) => {
+            clearTimeout(timer);
+            listener.dispose();
+            calibration.interaction = { nodeId: action.nodeId, nonce: action.nonce,
+              elapsedMs: performance.now() - started, applied,
+              loadLastBlockBefore, loadLastBlockAfter: lastLoadBlock() };
+            resolve();
+          };
+          const listener = entry.terminal.onWriteParsed(() => {
+            const buffer = entry.terminal.buffer.active;
+            // Replies may remain near the cursor before the terminal scrolls.
+            const cursorLine = buffer.baseY + buffer.cursorY;
+            const start = Math.max(0, cursorLine - 10);
+            const end = Math.min(buffer.length, cursorLine + 11);
+            for (let index = start; index < end; index += 1) {
+              if (buffer.getLine(index)?.translateToString(true) === reply) { settle(true); return; }
+            }
+          });
+          const timer = window.setTimeout(() => settle(false), 1500);
+          started = performance.now();
+          entry.terminal.input(`ping:${action.nonce}\r`);
+        });
+        break;
+      }
+      case 'assertCapacityTerminalSuffix': {
+        const entry = executionTerminalRegistry.get(action.nodeId);
+        if (!entry || !capacityCalibrationProbe) throw new Error('Capacity calibration terminal is not enabled and mounted.');
+        const terminal = entry.terminal;
+        if (terminal.cols < 78 || terminal.options.scrollback !== 100000 || terminal.buffer.active.type !== 'normal') {
+          throw new Error('Capacity suffix requires the fixed unwrapped normal-buffer dimensions and scrollback.');
+        }
+        const totalRows = action.blocks * 128;
+        const retainedRows = Math.min(totalRows, 100000 + terminal.rows - 1);
+        const buffer = terminal.buffer.active;
+        if (buffer.length !== Math.max(terminal.rows, retainedRows + 1)) {
+          throw new Error(`Capacity suffix pending: ${buffer.length} rows, expected ${retainedRows + 1}.`);
+        }
+        // Compare the complete retained suffix without allocating a second transcript.
+        for (let index = 0; index < retainedRows; index += 1) {
+          const block = Math.floor((totalRows - retainedRows + index) / 128) + 1;
+          const expected = `${String(block).padStart(8, '0')}:${'x'.repeat(69)}`;
+          if (buffer.getLine(index)?.translateToString(true) !== expected) {
+            throw new Error(`Capacity suffix pending or corrupt at retained row ${index}.`);
+          }
+        }
+        if (buffer.getLine(retainedRows)?.translateToString(true) !== '' || buffer.cursorX !== 0) {
+          throw new Error('Capacity suffix final blank row/cursor differs.');
+        }
         break;
       }
       case 'assertExecutionTerminalBuffer': {

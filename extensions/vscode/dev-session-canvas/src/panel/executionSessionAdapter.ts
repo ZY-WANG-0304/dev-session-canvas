@@ -4,6 +4,7 @@ import {
   assertExecutionIdentity,
   assertParentMessageSize,
   decodeOutputPayload,
+  normalizeExecutionAdmissionLimits,
   parseProviderMessage,
   sameExecutionIdentity,
   S1_LIMITS,
@@ -12,6 +13,7 @@ import {
   validateLaunchSpec,
   type AuthorityResult,
   type DataBatch,
+  type ExecutionAdmissionLimits,
   type ExecutionIdentity,
   type ExecutionCandidateProfile,
   type ExecutionInteractionResult,
@@ -133,23 +135,28 @@ type OwnedResource = { operationId?: string; first?: ResourceResult; current?: R
 
 // Admission belongs to an authority, not to each individual execution.
 export class ExecutionAuthority {
+  readonly admissionLimits: ExecutionAdmissionLimits;
   private readonly executions = new Map<string, { identity: ExecutionIdentity; execution: PreparedExecution }>();
   private readonly starting = new Set<ExecutionIdentity>();
   private blockedReason?: string;
   private closing = false;
   private permanent = false;
 
+  constructor(admissionLimits?: ExecutionAdmissionLimits) {
+    this.admissionLimits = normalizeExecutionAdmissionLimits(admissionLimits);
+  }
+
   reserve(identity: ExecutionIdentity, execution: PreparedExecution): void {
     if (this.blockedReason) throw new Error('Execution authority is quarantined');
     if (this.closing) throw new Error('Execution authority is closing');
     if (this.executions.has(identity.executionId)) throw new Error('Execution identity already reserved');
-    if (this.executions.size >= S1_LIMITS.executions) throw new Error('Execution capacity exhausted');
+    if (this.executions.size >= this.admissionLimits.executions) throw new Error('Execution capacity exhausted');
     this.executions.set(identity.executionId, { identity, execution });
   }
 
   beginStart(identity: ExecutionIdentity): boolean {
     if (this.executions.get(identity.executionId)?.identity !== identity || this.blockedReason || this.closing
-      || this.starting.size >= S1_LIMITS.starting) return false;
+      || this.starting.size >= this.admissionLimits.starting) return false;
     this.starting.add(identity);
     return true;
   }
@@ -186,7 +193,9 @@ export class ExecutionAuthority {
   }
 }
 
-export function createExecutionAuthority(): ExecutionAuthority { return new ExecutionAuthority(); }
+export function createExecutionAuthority(admissionLimits?: ExecutionAdmissionLimits): ExecutionAuthority {
+  return new ExecutionAuthority(admissionLimits);
+}
 
 export interface ExecutionDependencies {
   profile?: ExecutionCandidateProfile;

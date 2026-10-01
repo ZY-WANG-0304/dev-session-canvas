@@ -28,7 +28,11 @@ updated_at: 2026-09-30
 
 ## 1. 范围与决策状态
 
-2026-09-30 当前收尾入口为 `docs/design-docs/runtime-persistence-closeout.md`。按用户要求调整预算口径与推进顺序：第 10 节合并进程样本的额外 heap/RSS 64/128 MiB 只作为对应拓扑的观察信号，原阈值、数值和 exit 1 不改，不追认为通过；不再把其转绿或 profiler 归因作为 B2 前置。F-04/B1/A1 仍开放，下一推进 B2 启动 profile 传递与隔离 generation 校验，真实分进程、多会话资源/交互预算归 A1。F-05 新路径保持完成，尾部、真实 Agent/Webview/跨平台要求不削减，root 归属仍独立。本文旧“下一步”和第 7 节归档研究不重新排队；具名当前决定见第 10.7 节，本次调整本身未运行新容量样本或改变产品保证。
+当前入口（2026-09-30，优先于以下历史下一步）：10.13 的单 reader/单段认证偏移索引已接通两个消费路径，10.14 的同输入真实 Host 离线重连完整 exit 0，新 Host ready 后 13.01 秒恢复全部 2560 块，B 响应 32.6ms，独立来源 hash、自然 no-history 和清理通过。原 30 秒/1500ms 未改，四次旧 exit 1 保留。此固定冷恢复阻塞已解除；在线十 Terminal、真实 Agent、跨平台及其他 A 项各自分账，F-04 未整体完成，不增加 profiler 或通用工具门槛。
+
+2026-09-30 最新 A1 结果：`.debug/a1-ten-session-20260930-probe-fixed/` 的 color/size 十 Terminal 固定三档均完成，runner exit 0；每例九个 peer 共 27 次真实输入响应，最大 1365.5/1323ms，原 1500ms 界限与运行前资源预算全部通过，完整来源、自然完成无历史和清理通过。1280 档两例均观察到隐藏恢复后的追赶与交互重叠，但 reader 未重建，不是 Host 离线恢复。首轮/第二轮 probe 两条上限造成的 exit 1 及全部 v18/更早证据保留，详见第 10.12 节。下一固定原 A1/A2 的真实 Host 离开与两次 launch 重连，方案见第 10.11 节；F-04、其他 A 项、正式生产准入和跨平台仍开放，不以十 Terminal 替代真实 Agent。
+
+2026-09-30 当前收尾入口为 `docs/design-docs/runtime-persistence-closeout.md`。按用户要求调整预算口径与推进顺序：第 10 节合并进程样本的额外 heap/RSS 64/128 MiB 只作为对应拓扑的观察信号，原阈值、数值和 exit 1 不改，不追认为通过；不再把其转绿或 profiler 归因作为 B2 前置。F-04/B1/A1 仍开放，下一推进 B2 启动 profile 传递与隔离 generation 校验，真实分进程、多会话资源/交互预算归 A1。F-05 新路径保持完成，尾部、真实 Agent/Webview/跨平台要求不削减，root 归属仍独立。本文旧“下一步”和第 7 节归档研究不重新排队；具名当前决定见第 10.7 节。该预算决定作出时未运行新容量样本，随后唯一 Electron v4 尝试及首败见第 10.9 节，不改变产品保证。
 
 2026-09-16，用户确认 Runtime Persistence 审核中的问题 2（完整日志后缀在内存和恢复消息中增长）与问题 3（completed 会话恢复数据内联画板）是当前更严重的问题，需要重新评估架构决策。本次将它们登记为 `docs/design-docs/webview-host-supervisor-architecture-review.md` 的 F-04、F-05，作为高优先级架构重评，而不是普通画板写文件优化。
 
@@ -405,3 +409,125 @@ authority Node 进程（本轮同进程 Supervisor/Host/分页模型）的额外
 F-04/B1/A1 继续未完成。已经确认的全历史物化、未写日志提前返信用、通知洪泛、逐批序列化与取消登记累积已按各自证据修复，不再重复排队；实际支持路径的在途边界、旧协议兼容成本和多会话交互仍须 A1 验收。A1 在实际分进程生产候选上区分共享及逐会话成本，运行前登记各进程/多会话总量的资源与交互预算、输入和失败含义，保留完整性、可取消恢复与输入响应要求。64/128 MiB 不自动复制为这些预算，局部绿色或小样本未 OOM 也不构成验收。
 
 现已推进原 B2，不先要求 profiler 归因或同一合并样本转绿。当前增量已接通 Client/backend 的 detached/systemd、launcher 到 Supervisor 的显式 execution profile，并校验独立 `terminal-exit-v1` generation；细节与受控验收见 `runtime-exit-integrity-production-integration.md` 第 32 节。不默认启用 extension owner，不开放 Host `allowRestart:false` 所禁止的 cold-start，不改旧 live metadata 绑定或 root 归属。同 namespace 排他首次启动仍是下一具体 B2 生产接入责任，不另设通用锁或诊断项目；真实两模式、Agent/Webview/跨平台与分发及最终 A1 至 A6 均保持。
+
+### 10.8 实际 Electron 分进程的唯一有限校准
+
+当前 B2 已接通候选 extension 与匹配 VS Code 1.117.0/Electron 39.8.7 资产，后续事实见生产接入第 32.2 至 32.12 节，10.7 末段的历史接线待办不再重开。本次只在该实际候选上补预算依据，不升级旧合并进程脚本、不运行 profiler。原容量收尾计划承接实现和结果；校准不关闭 A1，不将候选的两会话/启动并发一限制当成产品上限，既定十会话仍需生产策略和真实验收。
+
+固定 live-runtime 两例分别使用颜色状态拒绝和尺寸/快照大小拒绝，二者不叠加，须记录实际拒绝原因。每例先记录零、一、二会话 idle 基线，再以 A 累计生成 640/1280/2560 个终端编码后 10240 B 的已知块，scrollback=100000，B 保持真实 PTY nonce 回显。B 关闭内核回显，主体输出与输入使用不同前缀；Webview 同一单调时钟从真实 terminal.input 到对应响应在 xterm 中应用，不能把 Host ACK 或终端输入回显当主体完成。完整源字节通过独立成功写入凭证和 journal 分段流式比对，页面只校验配置允许的完整保留后缀，不发送或持有第二份巨大 expectedLines 数组，不以末尾 marker 代证内容。
+
+真实 Supervisor 的现有 checkpoint 查询不返回 validator 的拒绝原因，因此原链只记录 checkpoint/revision 未推进，不补造原始 reason。资源测量结束后，对同一 journal 使用正式 tracker/validator 按相同尺寸及 scrollback 流式重放，单独记录独立验证的拒绝原因；该第二模型不混入资源峰值或冒充 Supervisor 自报，不新增业务 RPC。若原输入不能实际证明预期拒绝，保留不符并定位，不把场景名字当作断言结果。
+
+每档以 250ms 有限采样记录实际 Host 的 memoryUsage、已确认 Supervisor/provider/主体 PID 与启动身份的 RSS，及自有 VS Code renderer 组的 RSS。Host heap 只代表所在 isolate，进程 RSS 含其他线程；Chromium performance.memory 如可用仅记浏览器报告的 JS heap，不假称独立 Webview RSS。无法获得的 Supervisor/provider heap 明记未测，不为此新增诊断 RPC。各进程 RSS 求和会重复计数共享页，必须同时保留分角色值及该说明。现有测试 ring 会 clone 最多 200 条 Host 消息，采样时用原 clear 命令有限清空、不拉取完整正文；瞬时 clone 与采样开销仍在测量内，不从结果扣除。
+
+原产品入口只能隐藏整个 canvas surface，固定隐藏 5 秒后恢复，并记录 surface lifecycle 和 reader 身份；没有重建 reader 时只称隐藏恢复，不冒称离线重连，也不称 B 在页面隐藏时可交互。恢复后在 A 追赶期间测 B。交互 1500ms、单档内容追赶 30 秒作为沿用既有工程观测界限，失败保留；每例最多 10 分钟，所测进程合计 RSS 相对零会话基线增长 2 GiB 为实验保护线，触发即保存失败后清理，不是产品预算。正式共享/逐会话资源预算在唯一校准后依据角色成本、增长与裕量确定，不循环改数到绿色。
+
+最小实现复用 `run-vscode-execution-candidate.mjs` 的隔离/候选 staging，增加固定 calibration 选择及两个有限 test/subject 文件；现有测试专用 DOM/probe 仅扩有限后缀检查、输入到应用计时与可用浏览器 heap，业务调度不改。输出为固定输入摘要、角色基线/峰值、三档内容与响应结果、隐藏/恢复和原资源清理。写失败/满盘、真实慢消费者、十会话、其他模式/平台仍按原 A1 至 A6 保留，不能拿这一次校准宣布总体通过。
+
+### 10.9 A1 v4 首档首败与部分资源观察
+
+`.debug/a1-capacity-calibration-20260930-v4/` 保存固定输入和首败，实际候选为 Linux x64/glibc 2.35、VS Code 1.117.0/Electron 39.8.7。唯一校准尝试在 color 的 `output-640` 首次交互失败，runner exit 1、`automaticRetries:0`；size、color 的 2x/4x、隐藏恢复及后续校准判定均未到达，不能补记通过。原 1500ms 界限、首报和输入不改。
+
+`color/artifacts/first-failure.json` 记录 nonce `color_640_0`，`elapsedMs=1500.2000000476837`、`applied=false`；A 页面观察块号由 0 进到 421，目标为 640，`loadNotAtTargetBeforeInput=true`。因此证据是另一真实主体的响应在 A 仍追赶时未于有限观察界限内应用，不是 OOM、主体未收到输入或某层已确定丢失输出的证明，也不是已冻结产品资源预算的失败结论。后续须定位实际输入、响应传递与页面应用边界，不能仅放宽门槛求绿。
+
+失败前 `resource-samples.json` 保留 250ms 周期的 78 份样本，其中零/一/二会话各有 20 份 idle 样本。所测角色 RSS 合计如下，单位为 bytes，均为本次有限 calibration observation，不直接导出逐会话产品预算：
+
+| 阶段 | 平均合计 RSS | 观察峰值合计 RSS | 观察峰值 Host heapUsed |
+| --- | --- | --- | --- |
+| idle-0 | 1,097,124,044.8 | 1,105,137,664 | 45,499,260 |
+| idle-1 | 1,306,180,812.8 | 1,312,157,696 | 47,140,892 |
+| idle-2 | 1,423,490,457.6 | 1,426,157,568 | 46,606,732 |
+| output-640，7 份样本 | 未用作 idle 基线 | 1,917,046,784 | 75,399,824 |
+
+RSS 求和重复计算共享页，renderer-group 包括 workbench，不等于独立 Webview RSS；Host heap 只代表本 isolate，Supervisor/provider/主体 heap 仍未测而非零。测试 ring 的瞬时 clone、采样开销保持在结果中，没有强制 GC、profiler 或采样间绝对峰值保证。部分样本、小样本未 OOM 或阶段 RSS 没触发额外 2 GiB 保护都不能记为容量通过。
+
+本轮完成的是一次失败的校准尝试和可追溯的部分观察，不是完成 10.8 或冻结正式预算。共享两槽/启动并发一仍为 candidate 有限约束，后续生产策略、十会话和其余 A1 至 A6 保持；旧合并样本 64/128 MiB 原阈值、数值及 exit 1 不改，A4 v18 八场景有限通过亦不抵消本次首败。
+
+### 10.10 A1 v18 固定校准完成与 oracle 修正
+
+`.debug/a1-capacity-calibration-20260930-v18/` 保存当前同一 Linux x64/glibc、VS Code 1.117.0/Electron 39.8.7 候选的 color/size 两例完整运行。每例均创建两个真实 PTY 主体，会话 A 依次生成 640、1280、2560 个 10240 B 块，每档检查 B 的三次真实输入交互；640/2560 档观察到与 A 输出重叠，1280 档隐藏 canvas surface 5 秒后恢复，并核对 reader 身份保持。两例 `measurementAndContentPass=true`、三档尾部均应用、所有交互 `applied=true` 且 `elapsedMs <= 1500`，最长分别约 879ms（color）和 928ms（size）；每档内容追赶均在 30 秒观察界限内，自然结束后两个节点均为轻量 closed/no-history，`cleanup.pass=true`。恢复时 A 已到目标，`catchupOverlapObserved=false`；这不是离线重连或恢复追赶期间交互的通过证据，这两项仍开放。
+
+独立 journal 重放使用当前生产 `SerializedTerminalStateTracker`/validator，不信任 Supervisor 自报：color 得到 `sourceBytes=26214425`、SHA256 `0167208c...ed98`、拒绝原因为 `color-state`；size 得到 `sourceBytes=26214407`、SHA256 `477b9250...0ee3`、拒绝原因为 `serialized-state-too-large`。这些结果证明本轮受控来源按既定 PTY 行尾规范化后与 receipt 一致，不能代替生产 manifest checksum 验证或无限历史保证。
+
+历史版本分账：v16 的 frozen verifier 无行尾规范化，因 PTY 的 CRCRLF 找不到 source marker；v17 的 frozen verifier 逐 event 替换 CRCRLF，不能处理跨 event 行尾。后续工作树 stateful 初稿又先匹配单 CR，只携带一个尾部 CR，同样遗漏 `CR CR`/`LF` 分片。用 v16 原始证据可分别复现这两个算法缺陷，首个遗漏位于 source offset 173944、revision 47/48 边界；连续流规范化后与 receipt 逐字节及 hash 一致。v17 未保存原始 journal，不宣称逐字节重现它的具体 hash。v18 保留全部尾部 CR run，按跨事件 `CR+LF -> CRLF` 规则校验受控 fixture；生产 tracker 仍消费原始 event.data，不改 Runtime journal 或业务数据，也不扩大为任意终端输出的等价性规则。
+
+v18 资源样本仅作 A1 预算输入：color 观察峰值合计 RSS 约 2.63 GiB、size 约 2.69 GiB，包含 VS Code renderer/workbench、Host、Supervisor、provider、两个主体及采样开销；RSS 求和重复计算共享页，Supervisor/provider heap 未测而非零。两例分别保留 184/199 份样本。各角色峰值可能不在同一采样点，下面是 MiB 观察值，不应相加当作同一瞬时峰值：
+
+| 输入/阶段 | Supervisor RSS | Host RSS | Host heapUsed | renderer-group RSS | 两个 provider RSS 合计 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| color idle-2 | 89.90 | 188.04 | 41.16 | 870.60 | 161.96 |
+| color 640 | 405.67 | 371.69 | 82.88 | 1092.32 | 167.89 |
+| color 1280（输出/恢复各角色最大） | 551.15 | 408.06 | 83.38 | 1127.13 | 168.98 |
+| color 2560（含最终一秒 idle） | 897.94 | 417.22 | 90.30 | 1121.13 | 169.21 |
+| size idle-2 | 89.19 | 192.06 | 55.12 | 859.47 | 161.64 |
+| size 640 | 387.43 | 368.11 | 76.89 | 1046.15 | 167.84 |
+| size 1280（输出/恢复各角色最大） | 564.34 | 409.80 | 83.79 | 1128.29 | 168.45 |
+| size 2560（含最终一秒 idle） | 875.73 | 430.38 | 102.41 | 1195.61 | 168.70 |
+
+有限源码核对未找到新热路径长期持有每条历史 Buffer 的确定性泄漏：journal cache 仍为 1 MiB/2048，segment anchor 只含逐段摘要，分页扫描以 64 KiB 缓冲逐记录解析。但取满 64 KiB 页后仍验证整个相关 4 MiB segment，下页再从头验证，产生确定的重复读/parse/hash工作；checkpoint 拒绝前仍有有限 scrollback 序列化。它们可产生短命分配，但没有 Supervisor heap/external 或存活对象证据来解释全部 RSS，不能宣称已归因泄漏或直接据此压线优化。正式预算必须纳入该成本和未知风险，不新增 profiler 前置。
+
+候选在 v18 仍共享 `S1_LIMITS.executions=2`、starting=1；不能将两会话或这组资源峰值升格为产品上限/正式预算。后续按生产接入第 32.16 节把准入策略与单会话 wire 限额分离，默认值和 unknown 责任不变。A1 仍需处理十会话、多会话慢消费/重连、写失败/满盘及跨平台/分发格子，并与 B2 最终启用产物复核；64/128 MiB 合并样本原阈值及 exit 1 继续只作历史观察信号。
+
+历史尝试全部保留：v4/v5/v6/v8 至 v14 记录交互 `applied=false` 首报，其中 v11 至 v14 用于链路诊断；v15 将未滚动 B 终端探针从底部十行改为实际光标邻域后，color 三档交互均过界限，但整轮仍因 journal marker 失败 exit 1。v16 保存原始 journal 后仍 marker 失败，v17 改 oracle 后 hash 失败，v18 才完整通过。v7 未形成 input.json，不虚构其原生结果。期间的 64 KiB 终端分页/页面 output batch 与同 socket per-session round-robin、drain 后重新调度及诊断接线是生产增量，不能把全部改善归因于探针修正，也不能把旧失败追改为通过。
+
+接下来只扩大到原 A1 既定十会话路径，不继续重复两会话校准：候选显式构建准入 10/1，按原真实入口串行建立十个 Terminal，A 使用相同 color/size 三档来源与 100000 scrollback，其余九个主体逐一产生独立输入响应。记录 0/1/2/10 idle 基线、全部九个响应及来源 hash、自然结束/清理，不假称同时并发启动或十个真实 Agent。旧两会话输入保持可选，不覆盖 v18；慢消费/断连/双 surface 与其他 A 项仍分别保留。
+
+运行前选定该十会话固定负载的工程观察预算：Supervisor RSS 1280 MiB、Host RSS 640 MiB、renderer-group RSS 1536 MiB、十个 provider 合计 1024 MiB、十个主体合计 768 MiB、总 RSS 5 GiB，Host isolate heapUsed 192 MiB；交互继续 1500ms，单档追平继续 30秒，额外实验安全保护为相对零会话合计 RSS 增长 6 GiB/单例10分钟。依据是 v18 高水位再给 Supervisor/Host/renderer 约 28%/49%/28% 裕量、空闲 provider 约81 MiB/主体约42 MiB加逐会话余量，且当前只一个大 scrollback 负载；不从观测值扣除共享页或测试成本。这个预算只评价声明的机器/运行时/输入，不是用户会话上限、一般终端 RSS 保证或跨平台 SLA。超限保留失败并判断实际所有权/交互风险，不调整到绿色；来源/尾部完整性独立要求不变。
+
+### 10.11 A1/A2 真实 Host 离开与原会话重连
+
+复用现有容量 runner、test 和 fixture 增加独立 `--capacity-reconnect` 固定输入，不新建诊断框架。仅选 color、两个真实 Terminal 和构建 2/1：第一次 VS Code 创建 A/B、确认原 Supervisor/provider/主体身份与 reader，保存原绑定并正常离开；外层验证旧 Extension Host 的 PID/startTicks 已消失后，才写本轮隔离目录的触发文件，让 A 在没有 Host 时生成原 2560 个 10240 B 块。确认成功写入 receipt 后用同一 runtime/user-data/workspace 启动第二个真实 VS Code，不再次调用会清空目录的 prepareRuntime。
+
+新 Host 必须恢复原 backend/storage/session/authority，Supervisor、provider、A/B 主体 PID/startTicks/执行映像不变，Webview reader 则必须是新身份。真实 xterm 校验完整保留后缀，独立 journal/validator 校验来源 SHA 与 color-state 拒绝，再测 B 的新输入响应、自然结束无历史及清理。分别记录新 Host ready、完整应用与输入响应时刻；仍用 30 秒追平、1500ms 交互及单例10分钟界限，额外采样仅作资源观察（总 RSS 5 GiB 为本轮实验保护），不靠强制 GC 或动态改数。不保证本例必然观察到追赶与交互重叠；未观察到的组合继续未验，不伪造慢消费。
+
+detach 成功仅转移本轮清理责任给 runner，不执行原无条件 reset；任何首败仍保存原结果。外层 finally 覆盖两次 launch 之间的失败：先尝试第二 Host 的原产品 reset，再对隔离 namespace 内已核对 ancestry 的本轮身份做有限 fallback，记录强制信号并使清理判定失败。旧用户会话、其他进程及来源不明的 PID 不纳入信号范围。此次确认正常 Host 离开后的持续运行，不增加 Supervisor 崩溃后恢复或普通后代托管保证。
+
+### 10.12 A1 固定十 Terminal 的实际结果
+
+`.debug/a1-ten-session-20260930-probe-fixed/` 保存 Linux x64/glibc、VS Code 1.117.0/Electron 39.8.7、显式 10/1 candidate 的 color/size 完整结果，runner exit 0。每例串行创建十 Terminal 并记录 0/1/2/10 idle 基线，A 沿用 640/1280/2560 个 10240 B 块和 100000 scrollback，其余九个实际主体每档各响应一次，共 27 次。两例 `measurementAndContentPass=true`、每次 `applied=true`，最大交互分别 1365.5/1323ms，三档追平都在 30 秒内；本次没有调整 10.10 的任何预算或原内容断言。
+
+独立 journal 校验的 source bytes 仍为 color 26214425、size 26214407，SHA256 分别为 `0167208c8b0fcf6bd465c0c19064d3f7584429ef32e4cbb2841f1e147ee5ed98` 与 `477b9250f64c880701ae90eeb8f03f5e630a6263a1e0cf1e8f7c7b766feb0ee3`，与 v18 相同；lastRevision 分别 6506/6497，独立 validator 仍分别拒绝 `color-state`/`serialized-state-too-large`。正文比较仍按 fixture 的既定 PTY 行尾规则，不替代生产 journal checksum。十个节点自然完成后无 Runtime 正文/历史，两个 `cleanup.pass=true`；自有空闲 Supervisor 正常 SIGTERM 退出，没有强杀主体或 provider。
+
+1280 档两例的 `catchupOverlapObserved=true`，color 前六个 peer、size 第一个 peer 输入前 A 尚未到目标，实际响应随后应用。这比 v18 多出隐藏恢复追赶期间交互的有限证据，但 `sameReader=true`、分类仍为 `surface-hide-restore-retained-reader`，不能当成 Host 退出后新 reader 的离线恢复。第 10.11 节的独立两次 launch 验收仍待执行。
+
+两例全部运行前预算通过，资源样本分别 260/256 份。下表保留实际峰值 bytes；各角色峰值不一定同时发生，RSS 求和重复计数共享页、renderer-group 包含 workbench，采样/test 开销未扣除，Supervisor/provider heap 仍未测而非零。
+
+| 观察项 | color 峰值 bytes | size 峰值 bytes | 运行前界限 |
+| --- | ---: | ---: | --- |
+| Supervisor RSS | 818405376 | 825536512 | 1280 MiB |
+| Host RSS | 455176192 | 455569408 | 640 MiB |
+| renderer-group RSS | 1186611200 | 1239683072 | 1536 MiB |
+| 十 provider 合计 RSS | 899244032 | 894640128 | 1024 MiB |
+| 十主体合计 RSS | 456998912 | 459825152 | 768 MiB |
+| 同时采样总 RSS | 3801968640 | 3843158016 | 5 GiB |
+| Host isolate heapUsed | 106714220 | 102483044 | 192 MiB |
+
+前置失败单独保留：`.debug/a1-ten-session-20260930-first/` 在第三会话已 live 后因 Webview probe 只发送两条 reader 超时；`.debug/a1-ten-session-20260930-reader-fixed/` 修发端后又因 Host 协议接端最多接受两条 reader 而丢弃回复。两次 runner exit 1、cleanup 通过，不追认成功。只将测试 probe 收发端统一为十条，并使已确认 ancestry 的主体身份参与失败清理；协议 2/10/11 条边界已先红后绿，旧失败日志保留。此修正仅保障既定十会话判定和清理，没有新增工具框架。
+
+本结果关闭的是本机声明输入下的十 Terminal 容量、内容、交互及同 reader 隐藏恢复有限项，不是一般产品 SLA、最大十会话保证或全平台预算。下一直接沿第 10.11 节执行固定 A1/A2 真实 Host 离开/原会话重连；其他慢消费、写失败/满盘、双 surface、真实 Agent 与跨平台/分发各自证据保持独立，F-04 和整个 A1 至 A6 不由本次 exit 0 关闭。
+
+### 10.13 真实冷恢复首败与有界顺序读取
+
+10.11 的四次实际尝试全部保留 exit 1：`a1-host-reconnect-20260930-first` 在创建 A 时遇到已确认 renderer 的 RSS 缺值，原 cleanup 首报失败；后续检查隔离 registry 空且没有对应 runtime 路径进程，不追认原清理通过。`rss-identity-fixed` 已跨 Host 恢复，但页面尺寸准备断言先败；原失败 JSON 被外层同名文件覆盖，原日志仍保留，不能补造当时尺寸。修正仅在同一身份 RSS 缺失时复查是否消失/替换，并将外层失败改独立文件名。`resize-ready` 在原预算内等待实际尺寸后仍未追平；它没有记录最后内容差异，不能推断损坏。
+
+`.debug/a1-host-reconnect-20260930-tail-observed/` 只补保存最后内容观察，不改输入或期限。旧 Host 消失后 A 成功写入 2560 块，receipt 为 26214425 bytes、SHA256 `0167208c8b0fcf6bd465c0c19064d3f7584429ef32e4cbb2841f1e147ee5ed98`。原 Supervisor/provider/主体身份和绑定保持，新 Host/new reader 成立；新 Host ready 为 1485.18ms，30 秒追平期限后页面仍在第 1404 块，尺寸 112×28、光标 (42,27)。`retained row 0` 不符说明当时未追平，不能单凭该文案断言正文损坏。B 新输入、重连后独立 journal hash 与自然完成无历史尚未到达；reconnect/cleanup/outer 三份清理均 pass，`forcedSignals=[]`。这些事实不关闭 F-04。
+
+静态定位确认 `runtimeSupervisorMain.ts` 的 `readTerminalPage()` 和 `pumpHostOutput()` 每次只取新 journal iterator 的第一页，`terminalSessionJournal.ts` 每 64 KiB 页又从头校验相关约 4 MiB segment，包含逐条 JSON/hash。满段可重复约 64 次，这是确定的工作放大，不是本轮实测计数，也未证明解释全部恢复耗时。
+
+选定本次窄修：journal 提供归属单个真实消费者的 `createPageReader()`，只保存最近一个已完整校验 segment 的记录偏移、编码长度与可信 checksum，不缓存整段正文或完整历史。首次访问及新 reader 仍流式完整校验冻结段，包括页外尾部；同冻结段的后续页按偏移读取，对两端可信摘要、身份与连续 revision 再验证。段快照或锚点改变即重新全验，不能以 mtime 代替校验；页内修改即使重算 checksum 也不得绕过原可信锚点。每页仍以不超过 64 KiB 原始块读取，保留 UTF-8 短读和超大单事件独页语义。
+
+Supervisor 的 Webview cursor 与独立 Host 订阅分别持有该 reader；相同 revision 重试重新验证页，不积累重试正文。page 调用结束即释放文件句柄与 activeReaders，等待消费者信用时不占读取保护，不阻止合法 compact。替换、断连、取消、错误与退役清除索引；dispose 中的未返回读取必须拒绝，不伪装 EOF。原保留下界、authority、已发送/已应用 revision、最终消费和 unknown 责任不变。此方案替代跨请求保留 generator 的候选，因为后者会将读取保护持到远端消费完成、干扰 checkpoint/delete。
+
+验收只补现有 journal/Supervisor 测试：顺序页的实际读取量不再逐页全扫；首页面外损坏、后续页被修改、自洽重算 checksum、UTF-8、取消/重试与 compact 生命周期保持。随后重建同 2/1 Electron 候选，原 `--capacity-reconnect` 输入、30 秒/1500ms 和内容断言均不变，真实结果另记，不能用局部测试关闭本次冷恢复失败。
+
+### 10.14 认证偏移索引接入与固定冷恢复复验
+
+10.13 已实施于 `terminalSessionJournal.ts` 和 `runtimeSupervisorMain.ts`，Webview reader 与 Host 订阅分别持有独立索引；没有跨请求的文件句柄、iterator、读取保护或正文重试缓存。独立 review 发现并修复 `readAfter()` 在迭代器关闭期间被 dispose 仍可能返回页面的窗口，现于释放后再次核验取消；对应回归保留。每个 reader 的索引只覆盖一个 segment，段元数据/可信 anchor 改变即失效，原始读取块仍最多 64 KiB。
+
+现有 journal 测试增加确定性读取量断言：原 1211319 bytes 的 segment 分成 96 页实际读 116286624 bytes，先红保存在 `.debug/journal-sequential-before.log`；修后完整读取量不超过两倍 segment bytes。首次全段验证、后续页自洽重算 checksum 仍拒绝、同 revision 重试、追加失效、取消/释放阶段、idle reader 跨 compact、原 UTF-8/超大事件回归通过，最终日志 `.debug/journal-page-reader-final.log`。Supervisor owner 92/92、真实 Host credit 有限测试、reader wiring 20/20、checkpoint/完成/typecheck/build 通过。原 projection 抽取夹具漏掉已有 probe/诊断 global，协议源码断言仍匹配旧 direct-return，首次失败日志保留；只修夹具依赖和明确 await/admission/同 snapshot 返回断言后，Webview controller 39/39、Host batch 10/10 和完整原协议测试通过，不改业务行为求绿。
+
+`.debug/a1-host-reconnect-20260930-indexed-pages/` 是同一固定 Linux x64/glibc、VS Code 1.117.0/Electron 39.8.7、2/1 candidate、color 2560 块输入的新运行，runner exit 0；没有更改原 30 秒恢复期限、1500ms 交互、内容判据或清理规则。旧 Host 已消失，原 Supervisor/provider/两个主体及绑定保持、新 reader 建立，完整 xterm 保留后缀在 Host ready 后 13009.125ms 应用，B 新输入响应 32.6ms。独立 journal 仍得到 26214425 source bytes、SHA256 `0167208c8b0fcf6bd465c0c19064d3f7584429ef32e4cbb2841f1e147ee5ed98`、lastRevision 6499、拒绝原因 `color-state`。两主体自然结束为 closed/no-history，reconnect/outer cleanup 均 pass、`forcedSignals=[]`，仅空闲自有 Supervisor 正常 SIGTERM。
+
+本轮 52 个重连资源样本中同时采样合计 RSS 峰值 2531540992 bytes、Host isolate heapUsed 峰值 72881284 bytes；含 workbench、共享页重复和观测开销，不宣称独立 Supervisor heap 或通用产品预算。交互是在完整追平后发生，`catchupInteractionOverlapObserved=false`，不补造离线追赶期间交互的证据。十会话既有隐藏恢复交互仍单独有效，不等同于此重连组合。
+
+本结果解除的是 10.13 原固定冷恢复的直接阻塞，不能把差值全部量化归因给唯一热点，也不把旧失败追认成功。F-04/A1 的其他组合、运行期写失败/满盘与跨平台/分发仍按有限收尾契约管理；真实 Agent 用同一新构建复验，结果记在生产接入文档，不重开通用工具或扩大已确认产品承诺。

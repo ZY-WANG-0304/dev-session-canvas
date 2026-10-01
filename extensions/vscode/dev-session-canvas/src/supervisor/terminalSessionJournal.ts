@@ -172,6 +172,37 @@ export interface TerminalJournalReadOptions {
   pageMaxEvents?: number;
 }
 
+export interface TerminalJournalPageReader {
+  readAfter(revision: number, throughRevision?: number): Promise<TerminalStreamEvent[]>;
+  dispose(): void;
+}
+
+interface TerminalJournalRecordOffset {
+  end: number;
+  checksum: string;
+  eventBytes: number;
+}
+
+interface TerminalJournalReadIndex {
+  segment: TerminalJournalSegmentManifest;
+  anchor: TerminalJournalSegmentAnchor;
+  records: TerminalJournalRecordOffset[];
+}
+
+interface TerminalJournalReadState {
+  disposed: boolean;
+  index?: TerminalJournalReadIndex;
+}
+
+interface TerminalJournalReadRange {
+  offset: number;
+  endOffset: number;
+  startRevision: number;
+  endRevision: number;
+  previousChecksum: string;
+  lastChecksum: string;
+}
+
 export interface TerminalJournalCacheStats {
   eventCount: number;
   encodedBytes: number;
@@ -585,10 +616,42 @@ export class TerminalSessionJournal {
     return events;
   }
 
-  public async *readEventPagesAfter(
+  public createPageReader(
+    options: Omit<TerminalJournalReadOptions, 'throughRevision'> = {}
+  ): TerminalJournalPageReader {
+    const state: TerminalJournalReadState = { disposed: false };
+    const limits = { ...options };
+    return {
+      readAfter: async (revision, throughRevision) => {
+        assertTerminalJournalReadOpen(state);
+        let result: TerminalStreamEvent[] = [];
+        for await (const page of this.readPages(revision, { ...limits, throughRevision }, state)) {
+          result = page;
+          break;
+        }
+        assertTerminalJournalReadOpen(state);
+        return result;
+      },
+      dispose: () => {
+        state.disposed = true;
+        state.index = undefined;
+      }
+    };
+  }
+
+  public readEventPagesAfter(
     revision: number,
     options: TerminalJournalReadOptions = {}
   ): AsyncGenerator<TerminalStreamEvent[]> {
+    return this.readPages(revision, options, { disposed: false });
+  }
+
+  private async *readPages(
+    revision: number,
+    options: TerminalJournalReadOptions,
+    state: TerminalJournalReadState
+  ): AsyncGenerator<TerminalStreamEvent[]> {
+    assertTerminalJournalReadOpen(state);
     this.assertNotDeleting();
     this.throwIfWriteFailed();
     if (this.checkpointCommitInProgress) {
@@ -619,6 +682,7 @@ export class TerminalSessionJournal {
     this.activeReaders += 1;
     try {
       await this.flush();
+      assertTerminalJournalReadOpen(state);
       let expectedRevision = revision + 1;
       let cachedIndex = 0;
       let segmentIndex = 0;
@@ -648,26 +712,70 @@ export class TerminalSessionJournal {
         } else {
           while (segmentIndex < segments.length && !pageFull && expectedRevision <= throughRevision) {
             const segment = segments[segmentIndex];
-            await scanVerifiedTerminalJournalSegment(
-              this.sessionDirectory, this.sessionId, this.authorityId, segment, segment.anchor,
-              (record) => {
-                if (!pageFull && record.revision >= expectedRevision && record.revision <= throughRevision) {
-                  appendToPage(normalizeTerminalStreamEvent(record)!);
-                }
+            const index = state.index;
+            if (index && sameTerminalJournalReadSegment(index, segment, segment.anchor)) {
+              const first = expectedRevision - segment.startRevision;
+              let last = first;
+              let bytes = pageBytes;
+              let count = page.length;
+              while (last < index.records.length && segment.startRevision + last <= throughRevision) {
+                const nextBytes = index.records[last].eventBytes + (count > 0 ? 1 : 0);
+                if (count > 0 && (count >= pageMaxEvents || bytes + nextBytes > pageMaxBytes)) break;
+                bytes += nextBytes;
+                count += 1;
+                last += 1;
+                if (count >= pageMaxEvents || bytes >= pageMaxBytes) break;
               }
-            );
-            // Scanning verifies the entire segment, but only delivered revisions advance the reader.
+              if (last === first) {
+                pageFull = true;
+                break;
+              }
+              await scanVerifiedTerminalJournalSegment(
+                this.sessionDirectory, this.sessionId, this.authorityId, segment, segment.anchor,
+                (record) => appendToPage(normalizeTerminalStreamEvent(record)!),
+                {
+                  offset: first === 0 ? 0 : index.records[first - 1].end,
+                  endOffset: index.records[last - 1].end,
+                  startRevision: expectedRevision,
+                  endRevision: segment.startRevision + last - 1,
+                  previousChecksum: first === 0 ? index.anchor.previousChecksum : index.records[first - 1].checksum,
+                  lastChecksum: index.records[last - 1].checksum
+                }
+              );
+              if (last < index.records.length && expectedRevision <= throughRevision) pageFull = true;
+            } else {
+              // Authenticate the entire frozen segment before exposing even its first page.
+              // Retain offsets and hashes only; subsequent pages re-read and verify their own bytes.
+              state.index = undefined;
+              const records: TerminalJournalRecordOffset[] = [];
+              await scanVerifiedTerminalJournalSegment(
+                this.sessionDirectory, this.sessionId, this.authorityId, segment, segment.anchor,
+                (record, end) => {
+                  const event = normalizeTerminalStreamEvent(record)!;
+                  records.push({ end, checksum: record.checksum, eventBytes: terminalEventEncodedBytes(event) });
+                  if (!pageFull && record.revision >= expectedRevision && record.revision <= throughRevision) {
+                    appendToPage(event);
+                  }
+                }
+              );
+              assertTerminalJournalReadOpen(state);
+              state.index = { segment, anchor: segment.anchor!, records };
+            }
             if (expectedRevision > segment.endRevision) segmentIndex += 1;
           }
         }
         if (page.length === 0 || (!pageFull && expectedRevision <= throughRevision)) {
           throw new Error(`Terminal journal ended before revision ${throughRevision}.`);
         }
+        assertTerminalJournalReadOpen(state);
         yield page;
       }
       if (expectedRevision !== throughRevision + 1) {
         throw new Error(`Terminal journal ended before revision ${throughRevision}.`);
       }
+    } catch (error) {
+      state.index = undefined;
+      throw error;
     } finally {
       this.activeReaders -= 1;
     }
@@ -1087,13 +1195,29 @@ function terminalEventEncodedBytes(event: TerminalStreamEvent): number {
   return Buffer.byteLength(JSON.stringify(event), 'utf8');
 }
 
+function assertTerminalJournalReadOpen(state: TerminalJournalReadState): void {
+  if (state.disposed) throw new Error('Terminal journal page reader is disposed.');
+}
+
+function sameTerminalJournalReadSegment(
+  index: TerminalJournalReadIndex,
+  segment: TerminalJournalSegmentManifest,
+  anchor: TerminalJournalSegmentAnchor | undefined
+): boolean {
+  return index.segment.file === segment.file && index.segment.bytes === segment.bytes &&
+    index.segment.startRevision === segment.startRevision && index.segment.endRevision === segment.endRevision &&
+    index.segment.recordCount === segment.recordCount && index.anchor.previousChecksum === anchor?.previousChecksum &&
+    index.anchor.lastChecksum === anchor?.lastChecksum;
+}
+
 async function scanVerifiedTerminalJournalSegment(
   sessionDirectory: string,
   sessionId: string,
   authorityId: string,
   segment: TerminalJournalSegmentManifest,
   anchor: TerminalJournalSegmentAnchor | undefined,
-  visitRecord: (record: StoredTerminalJournalRecord) => void
+  visitRecord: (record: StoredTerminalJournalRecord, endOffset: number) => void,
+  range?: TerminalJournalReadRange
 ): Promise<void> {
   if (!anchor) {
     throw new Error(`Missing terminal journal checksum anchor for segment ${segment.file}.`);
@@ -1104,14 +1228,15 @@ async function scanVerifiedTerminalJournalSegment(
     if (!stat.isFile() || stat.size < segment.bytes) {
       throw new Error(`Terminal journal segment ${segment.file} is truncated.`);
     }
-    const buffer = Buffer.alloc(Math.min(TERMINAL_JOURNAL_READ_BLOCK_BYTES, segment.bytes));
+    const endOffset = range?.endOffset ?? segment.bytes;
+    let offset = range?.offset ?? 0;
+    const buffer = Buffer.alloc(Math.min(TERMINAL_JOURNAL_READ_BLOCK_BYTES, endOffset - offset));
     let fragments: Buffer[] = [];
     let fragmentBytes = 0;
-    let previousChecksum = anchor.previousChecksum;
-    let expectedRevision = segment.startRevision;
-    let offset = 0;
-    while (offset < segment.bytes) {
-      const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, segment.bytes - offset), offset);
+    let previousChecksum = range?.previousChecksum ?? anchor.previousChecksum;
+    let expectedRevision = range?.startRevision ?? segment.startRevision;
+    while (offset < endOffset) {
+      const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, endOffset - offset), offset);
       if (bytesRead === 0) {
         throw new Error(`Terminal journal segment ${segment.file} is truncated.`);
       }
@@ -1129,7 +1254,7 @@ async function scanVerifiedTerminalJournalSegment(
         const record = verifyTerminalJournalRecord(line, sessionId, authorityId, expectedRevision, previousChecksum);
         previousChecksum = record.checksum;
         expectedRevision += 1;
-        visitRecord(record);
+        visitRecord(record, offset - bytesRead + end + 1);
         start = end + 1;
         end = buffer.indexOf(0x0a, start);
       }
@@ -1142,8 +1267,9 @@ async function scanVerifiedTerminalJournalSegment(
     if (fragments.length > 0) {
       throw new Error(`Terminal journal segment ${segment.file} has an incomplete final record.`);
     }
-    if (expectedRevision - segment.startRevision !== segment.recordCount ||
-        expectedRevision !== segment.endRevision + 1 || previousChecksum !== anchor.lastChecksum) {
+    if ((!range && expectedRevision - segment.startRevision !== segment.recordCount) ||
+        expectedRevision !== (range?.endRevision ?? segment.endRevision) + 1 ||
+        previousChecksum !== (range?.lastChecksum ?? anchor.lastChecksum)) {
       throw new Error(`Terminal journal segment ${segment.file} checksum anchor mismatch.`);
     }
   } finally {

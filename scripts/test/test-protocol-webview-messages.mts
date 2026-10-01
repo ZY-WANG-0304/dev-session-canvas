@@ -1780,4 +1780,15 @@ assert.equal(isWebviewDomAction({ kind: 'assertExecutionTerminalBuffer', nodeId:
 assert.equal(isWebviewDomAction({ kind: 'assertExecutionTerminalBuffer', nodeId: 'terminal',
   expectedLines: ['ROW_1'], linePrefix: 1 }), false);
 
+for (const count of [2, 10, 11]) {
+  const probeMessage = { type: 'webview/testProbeResult', payload: { requestId: 'capacity', snapshot: {
+    documentTitle: 'capacity', hasDocumentFocus: true, hasCanvasShell: true, hasReactFlow: true,
+    toastMessage: null, executionLinkTooltipText: null, nodeCount: 0, nodes: [], edgeCount: 0, edges: [],
+    capacityCalibration: { readers: Array.from({ length: count }, (_, index) => ({ nodeId: `node-${index}`,
+      readId: `read-${index}`, sessionId: `session-${index}`, authorityId: `authority-${index}` })) }
+  } } };
+  assert.equal(Boolean(parseWebviewMessage(probeMessage)), count <= 10,
+    'The fixed ten-session probe must survive Host validation without accepting unbounded reader lists.');
+}
+
 console.log('protocol webview message tests passed');

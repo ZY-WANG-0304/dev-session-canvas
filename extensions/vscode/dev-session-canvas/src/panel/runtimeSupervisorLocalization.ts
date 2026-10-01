@@ -72,6 +72,10 @@ export function localizeRuntimeSupervisorMessageDescriptor(
       return vscode.l10n.t('Terminal stopped.');
     case 'terminalSessionEnded':
       return vscode.l10n.t('Terminal session ended.');
+    case 'terminalOutputIncomplete':
+      return vscode.l10n.t('Output is incomplete: {reason}', {
+        reason: params.reason ?? vscode.l10n.t('<unknown>')
+      });
     case 'recoveredHistoryOnly':
       return vscode.l10n.t('The session supervisor did not retain the original live runtime. Only history results were restored.');
     case 'agentExitedSignal':

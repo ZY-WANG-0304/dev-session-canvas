@@ -518,6 +518,12 @@ export interface WebviewProbeSnapshot {
   groupCount?: number;
   groups?: WebviewProbeGroupSnapshot[];
   selectedGroupIds?: string[];
+  capacityCalibration?: {
+    readers: Array<{ nodeId: string; readId: string; sessionId: string; authorityId: string }>;
+    browserReportedHeapUsed?: number;
+    interaction?: { nodeId: string; nonce: string; elapsedMs: number; applied: boolean;
+      loadLastBlockBefore: number; loadLastBlockAfter: number };
+  };
 }
 
 export interface WebviewProbeGroupSnapshot {
@@ -647,6 +653,25 @@ export type WebviewDomAction =
       nodeId: string;
       expectedLines: string[];
       linePrefix?: string;
+      delayMs?: number;
+    }
+  | {
+      kind: 'configureCapacityCalibration';
+      nodeId: string;
+      enabled: boolean;
+      delayMs?: number;
+    }
+  | {
+      kind: 'measureCapacityInteraction';
+      nodeId: string;
+      nonce: string;
+      loadNodeId: string;
+      delayMs?: number;
+    }
+  | {
+      kind: 'assertCapacityTerminalSuffix';
+      nodeId: string;
+      blocks: 640 | 1280 | 2560;
       delayMs?: number;
     }
   | {
@@ -2994,6 +3019,17 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
       (value.linePrefix === undefined || typeof value.linePrefix === 'string');
   }
 
+  if (value.kind === 'configureCapacityCalibration') {
+    return typeof value.enabled === 'boolean';
+  }
+  if (value.kind === 'measureCapacityInteraction') {
+    return typeof value.nonce === 'string' && /^[a-zA-Z0-9_-]{1,60}$/.test(value.nonce) &&
+      typeof value.loadNodeId === 'string';
+  }
+  if (value.kind === 'assertCapacityTerminalSuffix') {
+    return value.blocks === 640 || value.blocks === 1280 || value.blocks === 2560;
+  }
+
   if (value.kind === 'dropExecutionResources') {
     return (
       (value.source === 'resourceUrls' || value.source === 'codeFiles' || value.source === 'uriList') &&
@@ -3245,8 +3281,24 @@ function isWebviewProbeSnapshot(value: unknown): value is WebviewProbeSnapshot {
     (value.groups === undefined ||
       (Array.isArray(value.groups) && value.groups.every((group) => isWebviewProbeGroupSnapshot(group)))) &&
     (value.selectedGroupIds === undefined ||
-      (Array.isArray(value.selectedGroupIds) && value.selectedGroupIds.every((groupId) => typeof groupId === 'string')))
+      (Array.isArray(value.selectedGroupIds) && value.selectedGroupIds.every((groupId) => typeof groupId === 'string'))) &&
+    (value.capacityCalibration === undefined || isCapacityCalibrationProbe(value.capacityCalibration))
   );
+}
+
+function isCapacityCalibrationProbe(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.readers) || value.readers.length > 10 ||
+      !value.readers.every((reader) => isRecord(reader) &&
+        ['nodeId', 'readId', 'sessionId', 'authorityId'].every((key) => typeof reader[key] === 'string'))) return false;
+  if (value.browserReportedHeapUsed !== undefined &&
+      (typeof value.browserReportedHeapUsed !== 'number' || !Number.isFinite(value.browserReportedHeapUsed) ||
+        value.browserReportedHeapUsed < 0)) return false;
+  const sample = value.interaction;
+  return sample === undefined || (isRecord(sample) && typeof sample.nodeId === 'string' &&
+    typeof sample.nonce === 'string' && typeof sample.elapsedMs === 'number' &&
+    Number.isFinite(sample.elapsedMs) && sample.elapsedMs >= 0 && typeof sample.applied === 'boolean' &&
+    typeof sample.loadLastBlockBefore === 'number' && Number.isSafeInteger(sample.loadLastBlockBefore) &&
+    typeof sample.loadLastBlockAfter === 'number' && Number.isSafeInteger(sample.loadLastBlockAfter));
 }
 
 function isWebviewProbeGroupSnapshot(value: unknown): value is WebviewProbeGroupSnapshot {

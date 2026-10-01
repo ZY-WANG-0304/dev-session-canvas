@@ -91,11 +91,35 @@ try {
     assert.deepEqual(await resolveExecutionBuildSelection(['--watch'], '/missing/dist'), {});
   });
   await test('explicit build selection accepts offline Node and Electron manifests without loading native', async () => {
-    assert.deepEqual(await resolveExecutionBuildSelection(candidateArgs(source), dist), { profile, source });
+    const expected = { profile, source, admissionLimits: { executions: 2, starting: 1 } };
+    assert.deepEqual(await resolveExecutionBuildSelection(candidateArgs(source), dist), expected);
     fs.writeFileSync(path.join(source, 'manifest.json'), JSON.stringify({ ...manifest,
       runtime: { ...manifest.runtime, name: 'electron', version: '37.0.0' } }));
-    assert.deepEqual(await resolveExecutionBuildSelection(candidateArgs(source), dist), { profile, source });
+    assert.deepEqual(await resolveExecutionBuildSelection(candidateArgs(source), dist), expected);
     fs.writeFileSync(path.join(source, 'manifest.json'), JSON.stringify(manifest));
+  });
+  await test('candidate admission build input is explicit finite and frozen', async () => {
+    for (const [input, executions, starting] of [['10:1', 10, 1], ['10:2', 10, 2], ['1:1', 1, 1]]) {
+      const selection = await resolveExecutionBuildSelection([...candidateArgs(source), `--execution-admission=${input}`], dist);
+      assert.deepEqual(selection, { profile, source, admissionLimits: { executions, starting } });
+      assert.ok(Object.isFrozen(selection));
+      assert.ok(Object.isFrozen(selection.admissionLimits));
+    }
+    assert.equal(fs.readFileSync(path.join(dist, 'retained.txt'), 'utf8'), 'unchanged');
+  });
+  await test('stock unpaired and malformed admission input rejects without changing dist', async () => {
+    for (const args of [['--execution-admission=10:1'], ['--production', '--execution-admission=10:1'],
+      [`--execution-profile=${profile}`, '--execution-admission=10:1'],
+      [`--execution-assets=${source}`, '--execution-admission=10:1'],
+      ['--execution-profile=other', `--execution-assets=${source}`, '--execution-admission=10:1']]) {
+      await assert.rejects(resolveExecutionBuildSelection(args, dist));
+    }
+    for (const input of ['', '10', '10:0', '0:1', '-1:1', '10:11', '10:1.5', 'Infinity:1',
+      '9007199254740992:1', '10:9007199254740992', '1e2:1', '10:1:1', ' 10:1']) {
+      await assert.rejects(resolveExecutionBuildSelection([...candidateArgs(source), `--execution-admission=${input}`], dist),
+        /admission/);
+    }
+    assert.equal(fs.readFileSync(path.join(dist, 'retained.txt'), 'utf8'), 'unchanged');
   });
   await test('unpaired unknown watch and invalid asset inputs reject before clearing dist', async () => {
     for (const args of [[`--execution-profile=${profile}`], [`--execution-assets=${source}`],

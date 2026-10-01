@@ -910,12 +910,17 @@ async function verifyBoundedCacheAndPagedReads(Journal, resolveDirectory) {
   const cancelled = journal.readEventPagesAfter(0, { pageMaxEvents: 1 });
   await cancelled.next();
   await cancelled.return();
+  const unpinned = journal.createPageReader({ pageMaxEvents: 1 });
+  assert.deepEqual(await unpinned.readAfter(0), expected.slice(0, 1));
   assert.equal((await journal.commitCheckpoint(
     createCheckpoint(options.sessionId, options.authorityId, appended.revision), { force: true }
   )).committed, true, 'cancelled reads must release their compaction pin.');
   const next = journal.appendOutput('after-checkpoint\r\n');
   await journal.commitCheckpoint(createCheckpoint(options.sessionId, options.authorityId, next.revision), { force: true });
   assert.ok(journal.getRetainedStartRevision() > 1);
+  await assert.rejects(unpinned.readAfter(0), /Invalid terminal journal revision/u,
+    'authenticated offsets do not authorize access to a compacted prefix.');
+  unpinned.dispose();
   await assert.rejects(journal.getEventsAfter(0), /Invalid terminal journal revision/u);
   journal.releaseMemoryThrough(next.revision);
   assert.deepEqual(await journal.getEventsAfter(appended.revision), [next], 'retained anchors survive compaction.');
@@ -1063,6 +1068,87 @@ async function verifyChunkedPageReads(Journal, resolveDirectory) {
   assert.ok(stats.utf8Splits > 0, 'short reads must split multibyte UTF-8 sequences.');
   assert.equal(stats.openHandles, 0, 'returning a paged reader must close its file handle.');
 
+  const sequentialStats = await withShortSegmentReads(async () => {
+    let revision = 0;
+    for await (const page of journal.readEventPagesAfter(0, { pageMaxBytes: 32 * 1024, pageMaxEvents: 1 })) {
+      assert.equal(page.length, 1);
+      assert.equal(page[0].revision, ++revision);
+      assert.equal(page[0].data, payloadFor(revision - 1));
+    }
+    assert.equal(revision, 96);
+  });
+  assert.ok(sequentialStats.bytesRead <= segment.bytes * 2,
+    `sequential pages must not rescan the complete segment per page; read ${sequentialStats.bytesRead} bytes for ${segment.bytes}.`);
+  assert.equal(sequentialStats.openHandles, 0);
+
+  const cursor = journal.createPageReader({ pageMaxBytes: 32 * 1024, pageMaxEvents: 1 });
+  const cursorStats = await withShortSegmentReads(async () => {
+    for (let revision = 0; revision < 96; revision += 1) {
+      const page = await cursor.readAfter(revision, 96);
+      assert.equal(page.length, 1);
+      assert.equal(page[0].revision, revision + 1);
+      assert.equal(page[0].data, payloadFor(revision));
+      assert.equal(journal.activeReaders, 0, 'consumer credit waits must not pin checkpoint compaction.');
+    }
+    assert.deepEqual(await cursor.readAfter(96, 96), []);
+  });
+  assert.ok(cursorStats.bytesRead <= segment.bytes * 2,
+    'separate page requests on one reader must reuse its authenticated offsets.');
+  assert.equal(cursorStats.openHandles, 0);
+  const retry = await cursor.readAfter(95, 96);
+  assert.equal(retry[0].data, payloadFor(95), 'retrying a sent revision must re-read the same page.');
+
+  const savedRecords = original.trimEnd().split('\n');
+  const modifiedRecord = JSON.parse(savedRecords[1]);
+  modifiedRecord.data = modifiedRecord.data.replace('000001:', '999999:');
+  const { checksum: _oldPageChecksum, ...modifiedBody } = modifiedRecord;
+  modifiedRecord.checksum = createHash('sha256').update(JSON.stringify(modifiedBody)).digest('hex');
+  const modifiedRecords = [...savedRecords];
+  modifiedRecords[1] = JSON.stringify(modifiedRecord);
+  await writeFile(file, `${modifiedRecords.join('\n')}\n`);
+  await assert.rejects(cursor.readAfter(1, 96), /checksum anchor mismatch/u,
+    'recomputed checksums in a later page must not replace the previously authenticated endpoint.');
+  await writeFile(file, original);
+  cursor.dispose();
+  await assert.rejects(cursor.readAfter(0, 96), /disposed/u);
+
+  const cancelled = journal.createPageReader({ pageMaxEvents: 1 });
+  const flush = journal.flush.bind(journal);
+  let releaseFlush;
+  journal.flush = () => new Promise(resolve => { releaseFlush = resolve; });
+  try {
+    const pending = cancelled.readAfter(0, 96);
+    assert.equal(journal.activeReaders, 1);
+    cancelled.dispose();
+    releaseFlush();
+    await assert.rejects(pending, /disposed/u, 'disposal during an in-flight read must not deliver a page.');
+    assert.equal(journal.activeReaders, 0);
+  } finally {
+    journal.flush = flush;
+  }
+
+  const closing = journal.createPageReader({ pageMaxEvents: 1 });
+  const readPages = journal.readPages.bind(journal);
+  journal.readPages = (...args) => {
+    const source = readPages(...args);
+    return {
+      [Symbol.asyncIterator]() { return this; },
+      next: (...params) => source.next(...params),
+      return: async () => {
+        const result = await source.return();
+        closing.dispose();
+        return result;
+      }
+    };
+  };
+  try {
+    await assert.rejects(closing.readAfter(0, 96), /disposed/u,
+      'disposal while releasing the completed page must reject rather than publish that page.');
+    assert.equal(journal.activeReaders, 0);
+  } finally {
+    journal.readPages = readPages;
+  }
+
   const tailRecordStart = original.lastIndexOf('\n', original.length - 2) + 1;
   const rewrittenTail = JSON.parse(original.slice(tailRecordStart));
   rewrittenTail.data = rewrittenTail.data.replace('000095:', '000096:');
@@ -1092,6 +1178,18 @@ async function verifyChunkedPageReads(Journal, resolveDirectory) {
   });
   assert.equal(prefixStats.bytesRead, segment.bytes, 'reads must not consume bytes beyond the frozen prefix.');
   await writeFile(file, original);
+  const refreshed = journal.createPageReader({ pageMaxEvents: 1 });
+  await refreshed.readAfter(0, 96);
+  journal.appendOutput(payloadFor(96));
+  await journal.flush();
+  const refreshedStats = await withShortSegmentReads(async () => {
+    assert.equal((await refreshed.readAfter(96, 97))[0].data, payloadFor(96));
+  });
+  const appendedSegment = (await readManifest(directory)).segments[0];
+  assert.equal(refreshedStats.bytesRead, appendedSegment.bytes,
+    'an appended segment must be fully reauthenticated instead of inheriting an older prefix index.');
+  assert.equal(journal.activeReaders, 0);
+  refreshed.dispose();
   const truncatedStats = await withShortSegmentReads(async () => {
     await assert.rejects(journal.readEventPagesAfter(0, { pageMaxEvents: 1 }).next(), /truncated/u);
   }, 4000);

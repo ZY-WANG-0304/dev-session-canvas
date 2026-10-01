@@ -402,6 +402,7 @@
   "Terminal root": "Terminal 所属 root",
   "Terminal root selection was canceled.": "已取消选择 Terminal root。",
   "Terminal session ended.": "Terminal 会话已结束。",
+  "Output is incomplete: {reason}": "输出不完整：{reason}",
   "Terminal session exited unexpectedly.": "Terminal 会话异常退出。",
   "Terminal shell {shell} ended with exit code {code}.{suffix}": "Terminal shell {shell} 以退出码 {code} 结束。{suffix}",
   "Terminal shell {shell} ended.{suffix}": "Terminal shell {shell} 已结束。{suffix}",

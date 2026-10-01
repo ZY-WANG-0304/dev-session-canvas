@@ -99,6 +99,8 @@ try {
   };
   await verifyCreditFlow({ createClient, createSession, server, baselineRef });
   if (!baselineRef) {
+    await verifyPageReaderReuse({ createClient, createSession, server });
+    await verifyRoundRobinFairness({ createClient, createSession, server });
     await verifyReplacementAndDisconnect({ createClient, createSession, server });
     await verifyCompactedCursor({ createClient, createSession, server });
     await verifySteadyOutput({ createClient, createSession, server });
@@ -120,6 +122,60 @@ try {
     await session.terminalJournal.delete();
   }
   await rm(directory, { recursive: true, force: true });
+}
+
+async function verifyPageReaderReuse({ createClient, createSession, server }) {
+  const fixture = await createSession('bounded-host-page-reader');
+  const journal = fixture.session.terminalJournal;
+  const create = journal.createPageReader.bind(journal);
+  const contexts = [];
+  journal.createPageReader = (...options) => {
+    const reader = create(...options);
+    const observed = { calls: 0, disposed: false };
+    contexts.push(observed);
+    return {
+      readAfter(...args) { observed.calls++; return reader.readAfter(...args); },
+      dispose() { observed.disposed = true; reader.dispose(); }
+    };
+  };
+  for (let index = 0; index < 24; index++) fixture.emit(`${index}:${'x'.repeat(8192)}\r\n`);
+  await fixture.settle();
+  const head = journal.getRevision();
+  const gate = deferred();
+  let first = true;
+  let consumedRevision = 0;
+  const client = createClient({ onSessionTerminalBatch: async batch => {
+    assert.equal(batch.error, undefined);
+    if (first) { first = false; await gate.promise; }
+    consumedRevision = batch.revision;
+    return 'consumed';
+  } });
+  try {
+    await client.ensureConnected({ allowRestart: false });
+    await client.subscribeSession(subscription(fixture.session));
+    await until(() => !first, 'first authenticated Host page');
+    assert.equal(contexts.length, 1);
+    assert.equal(journal.activeReaders, 0, 'Waiting for Host credit must not hold a compaction pin.');
+    gate.resolve();
+    await until(() => consumedRevision === head, 'all authenticated Host pages');
+    assert.equal(contexts.length, 1, 'Successive Host pages must share one bounded authentication context.');
+    assert.ok(contexts[0].calls > 1, 'The fixture must require multiple actual journal pages.');
+    assert.equal(journal.activeReaders, 0);
+    await client.subscribeSession({ ...subscription(fixture.session), afterRevision: head });
+    assert.equal(contexts[0].disposed, true, 'Replacing a Host subscription must discard its old index.');
+    fixture.emit('new-subscription-tail\r\n');
+    await fixture.settle();
+    await until(() => consumedRevision === journal.getRevision(), 'new Host subscription output');
+    assert.equal(contexts.length, 2);
+    client.dispose();
+    await until(() => !findFlow(server, fixture.session.sessionId), 'page reader disconnect');
+    assert.equal(contexts[1].disposed, true);
+    assert.equal(journal.activeReaders, 0);
+  } finally {
+    gate.resolve();
+    client.dispose();
+  }
+  console.log('Host credit: bounded journal context reused across pages and released on replacement/disconnect');
 }
 
 async function verifyCreditFlow({ createClient, createSession, server, baselineRef }) {
@@ -219,6 +275,49 @@ async function verifyCreditFlow({ createClient, createSession, server, baselineR
     console.log(`Host credit: ${events.length} ordered Terminal events; Agent and input/resize progressed during stalled consumption`);
   } finally {
     gate.resolve();
+    client.dispose();
+  }
+}
+
+async function verifyRoundRobinFairness({ createClient, createSession, server }) {
+  const a = await createSession('fair-terminal');
+  const b = await createSession('fair-agent', 'agent');
+  const order = [];
+  const client = createClient({
+    onSessionTerminalBatch: async (batch, isCurrent) => {
+      assert.ok(isCurrent());
+      assert.equal(batch.error, undefined);
+      order.push(batch.sessionId);
+      return 'consumed';
+    }
+  });
+  const originalAckTerminalBatch = server.ackTerminalBatch;
+  let emittedBAfterAck = false;
+  server.ackTerminalBatch = function(socket, params) {
+    const result = originalAckTerminalBatch.call(this, socket, params);
+    if (!emittedBAfterAck && params.sessionId === a.session.sessionId && params.batchId === 1 &&
+        params.outcome === 'consumed') {
+      emittedBAfterAck = true;
+      b.emit('fair-agent-progress\r\n');
+    }
+    return result;
+  };
+  try {
+    await client.ensureConnected({ allowRestart: false });
+    await bounded(client.subscribeSession(subscription(a.session)), 'subscribe fair Terminal');
+    await bounded(client.subscribeSession(subscription(b.session)), 'subscribe fair Agent');
+    for (let index = 0; index < 96; index += 1) {
+      a.emit(`${String(index).padStart(4, '0')}:${'y'.repeat(8185)}\r\n`);
+    }
+    await a.settle();
+    await until(() => order.includes(b.session.sessionId), 'round-robin Agent delivery');
+    assert.equal(order[0], a.session.sessionId, 'The first ready session should be A.');
+    assert.equal(order[1], b.session.sessionId,
+      'A must not start its next page before the other ready session gets a turn.');
+    await until(() => order.length >= 3, 'round-robin Terminal continuation');
+    assert.equal(order[2], a.session.sessionId, 'A should resume after B has been serviced.');
+  } finally {
+    server.ackTerminalBatch = originalAckTerminalBatch;
     client.dispose();
   }
 }

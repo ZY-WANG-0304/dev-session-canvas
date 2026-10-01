@@ -159,8 +159,8 @@ try {
   );
   assert.match(
     supervisorSource,
-    /private async createSession\([\s\S]*await this\.toAttachSnapshot\(session,[\s\S]*private async attachSession\([\s\S]*return this\.toFreshSnapshot\(session\);/u,
-    'runtime supervisor create/attach snapshot 必须先 flush headless terminal，不能发布 stale serializedTerminalState。'
+    /private async createSession\([\s\S]*?await this\.toAttachSnapshot\(session,[\s\S]*?private async attachSession\([\s\S]*?const snapshot = await this\.toFreshSnapshot\(session\);\s*this\.assertOwnedAdmissionOpen\(\);\s*return snapshot;/u,
+    'runtime supervisor create/attach snapshot 必须先 flush headless terminal，attach 等待后复核 admission 再返回，不能发布 stale serializedTerminalState。'
   );
   assert.match(
     supervisorSource,

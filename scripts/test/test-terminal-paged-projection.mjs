@@ -698,6 +698,8 @@ async function verifyControllerSettlement(directory) {
     const EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS = 0;
     const EXECUTION_TERMINAL_APPLIED_ACK_INTERVAL_MS = 5;
     const EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS = 32768;
+    const capacityCalibrationProbe = undefined;
+    const reportTerminalDrainDiagnostic = () => {};
     ${extract('applyTerminalStreamEvents')}
     ${extract('restoreExecutionTerminalSnapshot')}
     ${extract('normalizeTerminalSnapshotOutputSequence')}

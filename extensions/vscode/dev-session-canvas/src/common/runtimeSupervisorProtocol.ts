@@ -12,7 +12,7 @@ import type { SerializedTerminalState } from './serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamCheckpoint, TerminalStreamEvent } from './terminalSessionStream';
 import type { TerminalStreamPage, TerminalStreamReadDescriptor } from './terminalStreamPaging';
 import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
-import type { ExecutionCandidateProfile } from './executionLifecycle';
+import type { ExecutionCandidateProfile, SourceDisposition } from './executionLifecycle';
 
 export interface RuntimeSupervisorPaths {
   storageDir: string;
@@ -67,6 +67,8 @@ export interface RuntimeSupervisorSessionSnapshot {
   terminalStreamPaged?: true;
   capabilities?: { terminalReadSettlementV1?: true };
   terminalFinalRevision?: number;
+  /** The sealed source outcome; final application or a process exit alone does not establish EOF. */
+  terminalSourceDisposition?: SourceDisposition;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
   provider?: AgentProviderKind;
@@ -136,6 +138,7 @@ export type RuntimeSupervisorMessageId =
   | 'agentSessionEnded'
   | 'terminalStopped'
   | 'terminalSessionEnded'
+  | 'terminalOutputIncomplete'
   | 'recoveredHistoryOnly'
   | 'agentExitedSignal'
   | 'agentExitedCode'
@@ -260,6 +263,8 @@ export interface RuntimeSupervisorSessionTerminalBatch {
   afterRevision: number;
   revision: number;
   events: TerminalStreamEvent[];
+  /** Local Supervisor wall-clock timestamp for cross-process latency diagnostics only. */
+  emittedAtMs?: number;
   snapshot?: RuntimeSupervisorSessionSnapshot;
   error?: string;
 }
@@ -618,6 +623,8 @@ export function formatRuntimeSupervisorMessageDescriptor(
       return 'Terminal stopped.';
     case 'terminalSessionEnded':
       return 'Terminal session ended.';
+    case 'terminalOutputIncomplete':
+      return `Output is incomplete: ${params.reason ?? '<unknown>'}`;
     case 'recoveredHistoryOnly':
       return 'The session supervisor did not retain the original live runtime. Only history results were restored.';
     case 'agentExitedSignal':
@@ -745,6 +752,7 @@ function isRuntimeSupervisorMessageId(value: string): value is RuntimeSupervisor
     case 'agentSessionEnded':
     case 'terminalStopped':
     case 'terminalSessionEnded':
+    case 'terminalOutputIncomplete':
     case 'recoveredHistoryOnly':
     case 'agentExitedSignal':
     case 'agentExitedCode':

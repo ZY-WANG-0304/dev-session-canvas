@@ -7,7 +7,9 @@ import {
 } from './terminalSessionStream';
 export { normalizeTerminalReadOutcome } from './protocol';
 
-export const TERMINAL_STREAM_PAGE_MAX_BYTES = 256 * 1024;
+// Keep each journal page short enough that one xterm write cannot monopolize
+// the Webview event loop while another execution is receiving input.
+export const TERMINAL_STREAM_PAGE_MAX_BYTES = 64 * 1024;
 export const TERMINAL_STREAM_PAGE_MAX_EVENTS = 256;
 
 export interface TerminalStreamReadDescriptor {

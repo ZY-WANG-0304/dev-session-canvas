@@ -238,7 +238,78 @@ async function checkReader(name, run) {
   });
 }
 
+function observePageReaders(journal) {
+  const create = journal.createPageReader?.bind(journal);
+  const readers = [];
+  journal.createPageReader = (...options) => {
+    assert.ok(create, 'The real journal must implement the bounded page reader.');
+    const delegate = create(...options);
+    const observed = { calls: [], disposed: false };
+    readers.push(observed);
+    return {
+      readAfter(...args) { observed.calls.push(args); return delegate.readAfter(...args); },
+      dispose() { observed.disposed = true; delegate.dispose(); }
+    };
+  };
+  return readers;
+}
+
 try {
+  await checkReader('one real reader reuses its journal context for retry, empty head and appended output without a pin', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const read = await openReader(f, session);
+    const contexts = observePageReaders(session.terminalJournal);
+    transport.output('first-page');
+    await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'first page consumed');
+    const first = await request(f, f.socket, 'readTerminalPage', { ...read, afterRevision: 0 });
+    assert.equal(first.ok, true);
+    assert.equal(first.result.events[0].data, 'first-page');
+    assert.equal(session.terminalJournal.activeReaders, 0, 'Consumer credit must not retain a journal compaction pin.');
+    const retry = await request(f, f.socket, 'readTerminalPage', { ...read, afterRevision: 0 });
+    assert.deepEqual(retry.result, first.result, 'Retrying the last applied revision must not skip a page.');
+    const empty = await request(f, f.socket, 'readTerminalPage', { ...read, afterRevision: 1 });
+    assert.deepEqual(empty.result.events, []);
+    transport.output('next-page');
+    await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 2, 'appended page consumed');
+    const next = await request(f, f.socket, 'readTerminalPage', { ...read, afterRevision: 1 });
+    assert.equal(next.result.events[0].data, 'next-page');
+    assert.equal(contexts.length, 1, 'Every page must reuse this real reader context, not create a first-page scan.');
+    assert.deepEqual(contexts[0].calls, [[0, 1], [0, 1], [1, 1], [1, 2]]);
+    assert.equal(session.terminalJournal.activeReaders, 0);
+    assertSettlement(await closeReader(f, read, { kind: 'cancelled', reason: 'test complete' }), 'recorded');
+    assert.equal(contexts[0].disposed, true);
+    await finish(f, session, transport);
+  });
+
+  await checkReader('a failed journal page drops its context without fabricating sent or applied evidence', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const read = await openReader(f, session);
+    const contexts = observePageReaders(session.terminalJournal);
+    transport.output('retry-after-source-failure');
+    await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'failure fixture output');
+    const flush = session.terminalJournal.flush.bind(session.terminalJournal);
+    session.terminalJournal.flush = async () => { throw new Error('injected page flush failure'); };
+    let failed;
+    try { failed = await request(f, f.socket, 'readTerminalPage', { ...read, afterRevision: 0 }); }
+    finally { session.terminalJournal.flush = flush; }
+    assert.equal(failed.ok, false);
+    assert.match(failed.error.message, /injected page flush failure/u);
+    assert.equal(contexts.length, 1);
+    assert.equal(contexts[0].disposed, true);
+    assert.equal(session.terminalJournal.activeReaders, 0);
+    assert.equal(f.server.terminalReads.get(f.socket).get(read.readId).sentRevision, 0);
+    assert.equal(session.ownedReaderResults.applied, 0);
+    const retried = await request(f, f.socket, 'readTerminalPage', { ...read, afterRevision: 0 });
+    assert.equal(retried.ok, true);
+    assert.equal(retried.result.events[0].data, 'retry-after-source-failure');
+    assert.equal(contexts.length, 2, 'Retry must create a fresh authentication context after source failure.');
+    assertSettlement(await closeReader(f, read, { kind: 'cancelled', reason: 'test complete' }), 'recorded');
+    assert.equal(contexts[1].disposed, true);
+    await finish(f, session, transport);
+  });
+
   for (const kind of ['terminal', 'agent']) {
     await check(`${kind} ordinary Supervisor consumption does not serialize terminal state`, async () => {
       const f = fixture();
@@ -978,14 +1049,21 @@ try {
   await checkReader('same-surface replacement cancels one reader and disconnect loses each remaining reader', async () => {
     const f = fixture(readerCapabilities);
     const { session, transport } = await f.create();
+    const contexts = observePageReaders(session.terminalJournal);
     const first = await openReader(f, session);
-    await openReader(f, session, 'panel');
+    assert.equal((await request(f, f.socket, 'readTerminalPage', { ...first, afterRevision: 0 })).ok, true);
+    const panel = await openReader(f, session, 'panel');
+    assert.equal((await request(f, f.socket, 'readTerminalPage', { ...panel, afterRevision: 0 })).ok, true);
     const next = await openReader(f, session);
+    assert.equal(contexts[0].disposed, true, 'Reader replacement must release the original authentication context.');
+    assert.equal((await request(f, f.socket, 'readTerminalPage', { ...next, afterRevision: 0 })).ok, true);
     assert.notEqual(first.readId, next.readId);
     assert.equal(session.ownedReaderResults.cancelled, 1);
     assert.equal(session.ownedReaders.size, 2);
     assert.equal(f.server.terminalReads.get(f.socket).has(first.readId), false);
     f.server.cleanupSocket(f.socket);
+    assert.equal(contexts.length, 3);
+    assert.equal(contexts.every(context => context.disposed), true, 'Socket loss must release every admitted reader context.');
     assert.equal(session.ownedReaderResults.lost, 2);
     assert.equal(session.ownedReaders.size, 0);
     await finish(f, session, transport);
@@ -1162,11 +1240,14 @@ try {
       await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'page output consumed');
       const entered = deferred();
       const gate = deferred();
-      const pages = session.terminalJournal.readEventPagesAfter.bind(session.terminalJournal);
-      session.terminalJournal.readEventPagesAfter = async function* (...args) {
-        entered.resolve();
-        await gate.promise;
-        yield* pages(...args);
+      const create = session.terminalJournal.createPageReader.bind(session.terminalJournal);
+      let disposed = false;
+      session.terminalJournal.createPageReader = (...options) => {
+        const reader = create(...options);
+        return {
+          async readAfter(...args) { entered.resolve(); await gate.promise; return reader.readAfter(...args); },
+          dispose() { disposed = true; reader.dispose(); }
+        };
       };
       const reading = request(f, f.socket, 'readTerminalPage', { ...read, afterRevision: 0 });
       await entered.promise;
@@ -1177,9 +1258,11 @@ try {
         replacing = openReader(f, session);
         assert.equal(session.ownedReaderResults.cancelled, 1, 'replacement cancels at admission, not after page completion');
       }
+      assert.equal(disposed, true, 'Invalidation must dispose the in-flight journal context before its read returns.');
       gate.resolve();
       const page = await reading;
       assert.equal(page.ok, false, 'invalidated in-flight page cannot publish sent evidence');
+      assert.equal(session.terminalJournal.activeReaders, 0, 'Cancelled pages must not retain journal pins.');
       if (replacing) {
         const next = await replacing;
         assertSettlement(await closeReader(f, next, { kind: 'cancelled', reason: 'replacement cleanup' }), 'recorded');
@@ -1256,6 +1339,53 @@ try {
     assert.equal(snapshot.terminalFinalRevision, undefined, 'live=false and head revision do not prove final application');
   });
 
+  for (const kind of ['terminal', 'agent']) {
+    for (const disposition of [
+      { kind: 'interrupted', reason: 'controlled source cancellation' },
+      { kind: 'error', reason: 'controlled source read failure' },
+      { kind: 'unknown', reason: 'controlled source observation missing' },
+      { kind: 'eof' }
+    ]) {
+      await checkReader(`${kind} final snapshot preserves ${disposition.kind} separately from applied output`, async () => {
+        const f = fixture(readerCapabilities);
+        const { session, transport, result } = await f.create(kind);
+        const read = await openReader(f, session);
+        assert.equal(result.terminalSourceDisposition, undefined, 'an active source has no final disposition');
+        transport.output(`${kind}-${disposition.kind}-accepted-tail`);
+        await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'accepted source tail consumed');
+        transport.process();
+        assert.equal(f.server.toSnapshot(session).terminalSourceDisposition, undefined,
+          'a confirmed process exit does not establish output EOF');
+        transport.seal(disposition);
+        transport.release();
+        await f.until(() => session.ownedExecution.snapshot().settled, 'original output and resources settled');
+        const snapshot = f.server.toSnapshot(session, undefined, false);
+        assert.deepEqual(snapshot.terminalSourceDisposition, disposition,
+          'publish only the original source kind and reason, not internal data sequence fields');
+        assert.equal(snapshot.lifecycle, kind === 'agent' ? 'stopped' : 'closed');
+        assert.equal(snapshot.lastExitCode, 0);
+        assert.equal(snapshot.terminalFinalRevision, 1, 'accepted output can be applied even when its source was interrupted');
+        assert.deepEqual(session.ownedExecution.snapshot().terminal,
+          { kind: 'applied', finalRevision: 1, throughDataSequence: 1 });
+        if (disposition.kind === 'eof') {
+          assert.equal(snapshot.lastExitMessageDescriptor, undefined);
+          assert.equal(snapshot.lastExitMessage, undefined);
+        } else {
+          assert.deepEqual(snapshot.lastExitMessageDescriptor,
+            { id: 'terminalOutputIncomplete', params: { reason: disposition.reason } });
+          assert.equal(snapshot.lastExitMessage, `Output is incomplete: ${disposition.reason}`);
+        }
+        assert.deepEqual(f.server.toHostOutputSnapshot(snapshot).terminalSourceDisposition, disposition);
+        const completed = f.socket.messages.filter(message => message.type === 'event' &&
+          message.event === 'sessionState' && message.payload.sessionId === session.sessionId && !message.payload.live);
+        assert.deepEqual(completed.at(-1).payload.terminalSourceDisposition, disposition);
+        assert.equal(f.server.toSnapshot({ ...session, ownedExecution: undefined }).terminalSourceDisposition, undefined,
+          'legacy snapshots without a source seal must not acquire an inferred EOF');
+        assertSettlement(await closeReader(f, read, { kind: 'cancelled', reason: 'source projection fixture complete' }), 'recorded');
+      });
+    }
+  }
+
   const closeObservationCapabilities = [...readerCapabilities, 'execution-close-observation-v1'];
   for (const kind of ['terminal', 'agent']) {
     await check(`${kind} real Supervisor natural close keeps first timeout separate from late tracker and reader settlement`, async () => {
@@ -1306,6 +1436,12 @@ try {
       assert.equal((await cancelObservation.first).kind, 'unconfirmed');
       assert.deepEqual(late.closeObservation.pendingDomains, []);
       assert.equal(late.adapter.source.kind, 'interrupted');
+      const lateSnapshot = f.server.toSnapshot(session, undefined, false);
+      assert.deepEqual(lateSnapshot.terminalSourceDisposition,
+        { kind: 'interrupted', reason: 'controlled natural drain cancellation' });
+      assert.deepEqual(lateSnapshot.lastExitMessageDescriptor,
+        { id: 'terminalOutputIncomplete', params: { reason: 'controlled natural drain cancellation' } });
+      assert.equal(lateSnapshot.lastExitMessage, 'Output is incomplete: controlled natural drain cancellation');
       assert.equal(late.terminal.finalRevision, 1);
       assert.equal(late.readerOutcome, 'pending');
       assert.equal(late.retired, false);

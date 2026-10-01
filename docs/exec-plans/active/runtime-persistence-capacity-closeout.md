@@ -2,9 +2,13 @@
 
 本 ExecPlan 按 `docs/PLANS.md` 维护，承接 `docs/design-docs/runtime-persistence-closeout.md` 的 B1/A1，不是新的退出诊断阶段。输入为 `8dd82629`。F-04 目标是长历史不再要求每层常驻/一次性复制完整后缀，实际在途数据有约束，恢复不挤掉交互；F-05 的无 completed 历史与退出尾部保证不变。工程判断由代理承担，不等待用户选择预算。
 
-当前决定（2026-09-30）：按用户要求，合并进程样本的额外 heap/RSS 64/128 MiB 只作为观察信号，不再作为 B2 接入门槛；原阈值、数值、断言及 exit 1 原样保留。F-04/B1/A1 仍开放；既有退出计划已完成 B2 profile/generation、Linux namespace 排他及显式 candidate Manager 的 Terminal/Agent 新建启动，candidate bound 不重启，extension 默认仍关闭，snapshot-only 原显式工厂不改。下一接剩余扩展两模式入口与匹配资产。真实分进程、多会话资源/交互预算归 A1，profiler 不默认前置。该决定取代下列原日期记录中的“下一先采样归因”安排，不改历史证据。
+当前入口（2026-09-30，覆盖后面的历史下一步）：10.13 已实施 reader-local 单段认证偏移索引并接通 Webview/Host 两消费链，10.14 的 `indexed-pages` 同输入实际重连完整 exit 0；Host ready 后 13.01 秒追平 2560 块、B 32.6ms，独立来源 hash/自然 no-history/清理通过，原 30 秒期限不改。同一新 2/1 构建的真实 Codex/Claude 两模式 natural/stop 八场景也已完整 exit 0。原四次重连 exit 1 保留，该固定冷恢复阻塞解除，不能关闭全部 F-04/A1。剩余必要产品组合、平台接入与分发继续按有限收尾契约，跨平台真实 Agent 的认证/执行位置需要用户决定；该资源决定不表示其他工程已完成或全部受阻，不重跑成功矩阵求次数。
 
-当前 B2 依赖进展：实际 extension 的构建期候选选择与 Linux Electron 资产已接通。退出提示覆写、snapshot-only 当前 live 投影及大快照读取丢弃已修，Runtime/editor 已有大输出/终态/重开证据；32.10 的 `snapshot-normalization-fixed` 单选真实 complete/reopen exit 0，90002 行、工件光标 `(6,2)`、5580063 字符快照及 applied 1396/清理通过，旧 exit 1 全部保留，不外推为 OS 全程无新进程追踪。Host 110/110、tracker、journal、checkpoint、typecheck 及补翻译后的 localization 通过。A4 前两轮分别在 Node 12 认证与 custom env 前缀校验失败，零模型请求；第三轮 `command-path-fixed` 创建首个 Codex 节点后候选启动被 superseded，未出现 CLI/provider/输出、未提交执行，exit 1、后七项未跑，根因待定位。不能依据节点存在计算模型请求。A1 分进程多会话预算及候选共享两槽的生产策略仍未完成，不因页面通过关闭 F-04 或把两槽改为产品上限。后文旧“剩余扩展入口”不再要求重复接线。
+最新进展（2026-09-30）：显式 10/1 candidate 的 `.debug/a1-ten-session-20260930-probe-fixed/` color/size 十 Terminal 三档完整 exit 0，每例 27 次实际响应全部应用，最大 1365.5/1323ms；原运行前资源预算、来源 hash、自然退出无历史和清理通过，见容量设计 10.12。1280 档两例观察到同 reader 隐藏恢复的追赶交互重叠，不是 Host 离线恢复；两个 probe 前置 exit 1、v18 与更早失败保持。下一只推进原 A1/A2 的固定真实 Host 两次 launch 重连（10.11），不关闭 F-04、其余 A 项或正式准入，不新增工具阶段或 profiler 前置。
+
+预算决定形成时的记录（2026-09-30，后续接入状态以本计划顶部为准）：按用户要求，合并进程样本的额外 heap/RSS 64/128 MiB 只作为观察信号，不再作为 B2 接入门槛；原阈值、数值、断言及 exit 1 原样保留。F-04/B1/A1 仍开放；既有退出计划已完成 B2 profile/generation、Linux namespace 排他及显式 candidate Manager 的 Terminal/Agent 新建启动，candidate bound 不重启，extension 默认仍关闭，snapshot-only 原显式工厂不改。下一接剩余扩展两模式入口与匹配资产。真实分进程、多会话资源/交互预算归 A1，profiler 不默认前置。该决定取代下列原日期记录中的“下一先采样归因”安排，不改历史证据。
+
+32.15 时点的 B2 依赖进展（后续准入和十会话结果以本计划顶部为准）：实际 extension 的构建期候选选择与 Linux Electron 资产已接通。退出提示覆写、snapshot-only 当前 live 投影及大快照读取丢弃已修，Runtime/editor 已有大输出/终态/重开证据；32.10 的 `snapshot-normalization-fixed` 单选真实 complete/reopen exit 0，90002 行、工件光标 `(6,2)`、5580063 字符快照及 applied 1396/清理通过，旧 exit 1 全部保留，不外推为 OS 全程无新进程追踪。Host 110/110、tracker、journal、checkpoint、typecheck 及补翻译后的 localization 通过；source-eof 复验后的主线 Host wiring 144/144、Supervisor wiring 90/90、protocol/localization 与 typecheck 也通过。A4 v18 与 `.debug/a4-real-agent-20260930-source-eof-rerun` 已完成 Linux 实际 Host 八场景有限复验，natural source evidence=eof，stop 保留 `sourceEofClaim:false`，observer/cleanup 无 failure、无 forcedSignals、runtime bindings=0。该结果不代证 A3/A5/A1、跨平台或默认准入，v18 与旧失败保留。A1 分进程多会话预算及候选共享两槽的生产策略仍未完成，不因页面通过关闭 F-04 或把两槽改为产品上限。后文旧“剩余扩展入口”不再要求重复接线。
 
 ## 目标与全局图景
 
@@ -14,8 +18,15 @@
 
 ## 进度
 
+- [x] (2026-09-30) 固定真实 Host 两次 launch 已执行；原执行身份/绑定、新 reader 与离线 source receipt 成立，但 `tail-observed` 在原 30 秒期限只到 1404/2560 块。四轮 exit 1 保留，末轮清理通过，B 新交互/独立 journal hash/自然无历史未到达，不记整体通过。
+- [x] (2026-09-30) 按容量设计 10.13 修复每页整段重扫：只保留单段认证偏移索引，每页释放读取保护。96 页读取量由先红 116286624 bytes 降到 <=2×1211319 bytes，完整性/取消/compact 回归通过；同输入实际冷恢复 `indexed-pages` exit 0，详见 10.14。
 - [x] (2026-09-30) B2 已接实际候选扩展与匹配 Electron 资产，Runtime/editor 和修后 snapshot-only 的对应有限完成/真实重开证据分别成立；后者 `snapshot-normalization-fixed` 单选 exit 0，旧 live 投影、夹具字段及真实重开失败均保留。Host 110/110 等回归通过；不是 A1 容量结果，不重跑合并阈值样本。
-- [ ] (2026-09-30) 原 B2/A1 处理候选共享两槽/启动并发一限制，准备实际分进程多会话校准及生产策略；未采集新资源样本，不将有限候选限制升级为产品上限，既定十会话验收不削减。
+- [x] (2026-09-30) 原 B2/A1 的共享两槽硬码已改显式冻结准入并在实际 10/1 candidate 执行固定十 Terminal；省略仍 2/1，unknown 停排和尾部预算不变。声明负载资源/交互通过不等于正式产品准入或最大会话数，其他容量责任仍保留。
+- [x] (2026-09-30) 按容量设计 10.8 完成固定实际 Electron 校准 v18：color/size、0/1/2 基线及 640/1280/2560 三档均运行；全部交互 <1500ms、独立 journal 对齐与拒绝原因正确、自然结束无历史及 cleanup 通过。保留旧失败及 oracle 修正经过，不关闭正式预算或全部 A1。
+- [x] (2026-09-30) 按生产接入 32.16 将 owner/authority/Host 最终保存共用显式准入策略，默认 2/1 不变；非默认容量、并发启动、unknown 与保存占槽回归通过：adapter 98/98、owner 46/46、Host 145/145、factory 25/25、build selection 9/9。真实候选编译 10/1，实验槽数不成为产品上限。
+- [x] (2026-09-30) 原十 Terminal 固定 color/size 负载在 `.debug/a1-ten-session-20260930-probe-fixed/` 完整 exit 0：每例 27 次响应、全部预算、来源 hash/保留后缀、无历史自然结束和 cleanup 通过，最大 1365.5/1323ms，资源样本 260/256 份。1280 同 reader 追赶重叠有实际观察，不代证 Host 离线；前两轮 probe 发端/接端两条上限的 exit 1/cleanup 与协议先红/修后证据保留。
+- [x] (2026-09-30) 按设计 10.11 执行真实 Host detach/reconnect，10.14 同输入修后全部有限断言通过，13.01 秒追平、B 32.6ms、hash/no-history/清理通过；没有追赶交互重叠。旧失败与各自首报保留，不代证全部 A1/A2。
+- [x] (2026-09-30) 同一新 2/1 Electron 构建的 `.debug/a4-real-agent-20260930-indexed-pages/` 真实 Codex/Claude 两模式 natural/stop 八场景完整 exit 0；四 natural 取得实际 eof，四 stop 不声称 EOF，bindings=0、observer failures=[]、forcedSignals=[]。只补当前构建有限回归，不代证 A3 大尾部、其他平台或全部 A1；跨平台真实 Agent 认证/执行位置仍待用户提供安全渠道。
 - [x] (2026-09-28) 读取有限收尾契约、现有容量脚本与产品链；确认 live checkpoint 完整扫描物化、journal 待写和普通 socket 背压缺口。
 - [x] (2026-09-28) 固定本轮输入、初始工程预算与事实分账，设计见容量重评第 10 节；不新增 D 系列工具。
 - [x] (2026-09-28) checkpoint 先红 34,508,616 bytes retained heap，修后约 100 KiB；保留全部校验与双代语义，独立 review 所见 raw bytes 漏校验先红再补，原 journal 回归及八类损坏负例通过。
@@ -35,7 +46,19 @@
 
 ## 意外与发现
 
-2026-09-30 A1 只读定向确认候选的 `ExecutionAuthority.reserve()` 与 `NonNativeExecutionOwner.reserve()` 均沿用 `S1_LIMITS.executions=2`，并限制 starting=1；这是有限候选约束，不是产品已获认可的两会话上限，必须在原 A1/B2 生产策略中处理，不能用两会话成功代证既定十会话。现有真实 Electron smoke 可承接分进程测量，旧合并容量脚本不能直接升格。每会话 1 MiB/2048 缓存、owned 32 KiB payload/256 KiB与16帧在途、单订阅一批/单reader一页等结构限额可直接核对；分角色基线、峰值和真实主体回显仍未采集。
+2026-09-30 `indexed-pages` 在原输入/期限下完整 exit 0；局部确定性读取量对照证明重复扫描已消除，真实新 Host 13.01 秒完整恢复证明该固定流程达标，但两者不能量化所有耗时来源。独立 review 的“读取已 yield、释放未完成时取消”窗口已加检查/回归；只修原测试抽取缺两个 global 及旧 snapshot regex，未降低真实内容要求，详见容量设计 10.14。
+
+2026-09-30 真实冷恢复已将容量风险具体化：`.debug/a1-host-reconnect-20260930-tail-observed/` 的 source receipt 完整，而截止时 Webview 仍在 1404/2560 块。源码确认 Webview 页请求与 Host 信用泵均新建 iterator，journal 每页全验约 4 MiB 段；不能把“retained row 0 不符”直接写成损坏，也不能声称重复扫描已解释全部耗时。四轮前置失败、日志覆盖局限及原清理首报见容量设计 10.13，全部保持。
+
+2026-09-30 十 Terminal 固定负载通过后，两例 1280 档均有 `catchupOverlapObserved=true`，color 前六个 peer、size 第一个 peer 输入时 A 尚未到目标，响应实际应用；但 `sameReader=true`，所以只补足隐藏恢复追赶交互证据。资源预算均通过，总 RSS 峰值 3801968640/3843158016 bytes 包含 workbench/共享页重复及采样开销，不代证一般 SLA 或未测 Supervisor heap；没有修改运行前界限。剩余真实离线重连必须按 10.11 观察旧 Host 消失及新 Host/reader，不能凭 surface 隐藏推断。
+
+2026-09-30 十会话首轮 `.debug/a1-ten-session-20260930-first/` 已创建第三个 live session，但原 Webview 校准 probe 仅保存两 reader，等待第三个 reader 超时；`.debug/a1-ten-session-20260930-reader-fixed/` 修发端后又因 Host 协议最多接受两 reader 而丢弃回复。两轮 exit 1 与 cleanup.pass=true 保留，不是会话准入或维度已证失败。收发端统一有限上限十条，协议测试对 2/10/11 条先红再绿；清理把已确认 Supervisor ancestry 的主体身份并入采样账本，避免首败先于下一采样时漏掉本方主体。此修正仅服务固定十会话判定与安全，不扩通用工具。
+
+2026-09-30 v18 完整校准确认两项验收工具误差：B 终端尚未滚动时，真实响应位于光标邻域而非 buffer 最后十行；v16 原始 journal 比 receipt 恰多 327680 个行尾 CR，连续流规范化后逐字节/hash 相同。v17 逐 event 替换与后续 stateful 初稿都漏跨 chunk CRCR/LF，当前源码保留整个尾部 CR run 后，45 个局部切分检查及 v16 保存工件 hash 核对通过。它们不构成 Runtime journal 丢失证明，原失败不改。v18 RSS 角色观察仍不足以把 64/128 MiB 变成产品预算；恢复时 A 已追平，没有取得隐藏恢复追赶重叠证据。
+
+2026-09-30 固定校准准备核对：现有实际 Host 可以读取本 isolate heap 与进程 RSS，但 Supervisor/provider 没有 heap 查询协议，Webview 也不能可靠对应独立 renderer RSS；不可将缺值补为零或把 Host 值复用。测试 ring 会 clone 正文，必须保留该观测开销说明。现有 UI 隐藏整个 surface，不保证 reader 卸载，因此 10.8 明确区别隐藏恢复和真实离线重连。
+
+2026-09-30 A1 v4 首次校准已运行：color 首档 `output-640` 因 nonce `color_640_0` 在 1500ms 观察界限内未应用而 exit 1，保留 78 份采样与零/一/二会话 idle 基线；这是有限交互观察界限首败，不是 OOM 或正式产品预算结论。size/后续档位与隐藏恢复未运行。候选 `ExecutionAuthority.reserve()` 与 `NonNativeExecutionOwner.reserve()` 仍沿用 `S1_LIMITS.executions=2`、starting=1；这是有限候选约束，不是产品已获认可的两会话上限，必须在原 A1/B2 生产策略中处理，不能用两会话成功代证既定十会话。现有真实 Electron smoke 可承接分进程测量，旧合并容量脚本不能直接升格；不可得的 Supervisor/provider heap 不补为零。
 
 2026-09-30 实际页面证明 reader applied 后仍可能被宿主装饰性退出文本破坏终态；snapshot-only 活着的 PTY 也曾被元数据错误标非live，合法大快照还会因读取端 5 Mi 字符条件丢失并回写降级状态。三项已按生产接入 32.4/32.7/32.10 修正；大快照实际重开单选通过不等于 A1 内存通过，不能把这些直接产品缺口归因于旧合并进程阈值或扩诊断框架。
 
@@ -61,9 +84,19 @@
 
 ## 决策记录
 
-2026-09-30 / Codex：A1 沿实际 Electron/Host/Supervisor/页面入口，用固定输入先校准共享基线、逐会话和有限瞬时成本，再冻结分角色工程预算及十会话验收；不把 S1 的两会话约束转成新产品上限，也不拿旧假 ACK 交互基准冒充主体回显。尚未启动校准，不提前写入数值或通过结论；当前页面三项直接失败已有有限修后证据，继续原 A4 前提修正及既定验收，不为此另开容量工具阶段。
+2026-09-30 / Codex：在原 A1/F-04 内选定 reader-local 单段认证偏移索引，先全段校验后按页定点验证，不保留整段正文。每页归还 activeReaders，故不采用跨远端消费等待的长寿 generator；新 reader 必须重新验证，dispose/错误不返回成功 EOF。Supervisor 同时接 Webview reader 和独立 Host 订阅，现有测试先红/修后验证重复工作与校验边界，随后按设计 10.11 原输入、30 秒期限复验，不放宽尾部或追加工具阶段。
 
-2026-09-30 / Codex，按原 B2 实际验收直接修页面与两模式接入失败，候选固定构建不静默降级、原失败不改；A1 沿实际分进程拓扑继续验收，当前未采集多会话内存或选定新的数值结论，profiler 不默认前置。
+2026-09-30 / Codex：固定十 Terminal 声明负载已完成，不再为增加次数重复该矩阵；保留两个 probe 首败、全部原预算和 v18 校准。下一沿原 A1/A2 的 10.11 固定两次真实 Host launch，验旧 Host 消失后的来源、原执行不替换及新 reader 恢复，未知追赶组合不补造通过；该用户流程属于原容量/恢复责任，不新增诊断阶段。
+
+2026-09-30 / Codex：显式构建 10/1 串行新建十 Terminal，仅 A 使用三档大输出，另外九个独立输入响应；预算在运行前按设计 10.10 冻结，观测超限保留 exit 1，不调整门槛或取消来源/自然退出/清理检查。默认构建不启用候选，不以实验槽数作产品限制；原 A4 回归使用旧 dist，不能冒称 admission 原生覆盖。
+
+2026-09-30 / Codex：先离线核对已保存 v16 来源，只修固定 oracle 的跨事件 PTY 行尾，再运行 v18 原 color/size 负载，不改 1500ms/30秒/scrollback/块数。完整校准后停止重复两会话采样；按生产接入 32.16 分离准入政策，未知责任、原 wire/退出限额不变。当前资源增长只触发有限源码归因，不自动开启 profiler、压线优化或一般工具增强。
+
+2026-09-30 / Codex：采用设计 10.8 的唯一固定 Electron 校准，分别测颜色与尺寸拒绝、零/一/二会话基线及 1x/2x/4x，250ms 有限采样，B 以真实主体回显在 xterm 应用结束计时。保留 1500ms/30秒工程界限、10分钟/额外2GiB实验保护，后两者不是产品预算。只补现有 smoke 的限定测试入口，未知 heap 保持未测，不建 profiler/诊断协议；校准后固定生产资源模型并处理十会话，不能循环改数求通过。
+
+2026-09-30 / Codex：A1 沿实际 Electron/Host/Supervisor/页面入口执行唯一 v4 校准尝试；零/一/二会话 idle 基线已采集，color 首档在 1500ms 观察界限首败，保留首报和部分资源样本，不将其解释为 OOM、产品预算或通过。size/后续档位与正式预算继续开放，不循环放宽门槛；A4 source-eof 八场景有限通过见退出完整性生产接入第 32.15 节，不抵消容量首败。
+
+2026-09-30 / Codex，按原 B2 实际验收直接修页面与两模式接入失败，候选固定构建不静默降级、原失败不改；该记录形成时 A1 尚未采集多会话内存或选定新的数值结论，profiler 不默认前置；随后 v4 首档结果见第 10.9 节，仍未形成正式预算。
 
 2026-09-30 / Codex，B2 安全首次启动：仅显式 candidate Manager 的新建连接准备获得 `allowRestart:true`；candidate bound 恢复、reader、strict delete 与未知 create 不获得该许可，缺省旧绑定仍解析原 workspace slot。legacy bound 首次连接默认不重启，显式选项及 stock Client 既有内部请求自动重启保留，不承诺全部旧路径完全 no-restart。Linux/Node >=20.8 的 abstract socket claim 在恢复前取得并持到进程退出，candidate systemd `Restart=no`，stock 不改。下一接剩余扩展两模式入口与匹配资产，extension 默认仍关闭、snapshot-only 工厂不改；详见生产接入第 32.1 节，不新增容量或诊断里程碑。
 
@@ -99,7 +132,19 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 ## 结果与复盘
 
-实际候选构建与 Electron 运行已成立，Runtime/editor 有有限页面成功证据；snapshot-only 大快照自读修后，在 `.debug/execution-candidate-a2-a3-20260930-snapshot-normalization-fixed` 取得单选 complete/reopen exit 0，90002 行和最终状态/清理通过，旧失败不改。A4 前两轮认证/命令前提失败零模型请求；第三轮 `command-path-fixed` 创建节点后报候选启动 superseded，未出现 CLI/provider/输出、未提交执行，后七项未跑，不把该相关时序预判为已定位根因。F-04/A1 及共享两槽生产策略仍未完成，不能用页面内容对账替代分进程、多会话资源/交互预算，也不把旧 64/128 MiB 结果追改。
+当前结果（2026-09-30）：`indexed-pages` 原固定冷恢复完整 exit 0，原绑定/主体/new reader、13.01 秒恢复、B32.6ms、独立来源 26214425 bytes/SHA、closed/no-history 与两份 cleanup pass 成立，旧失败不改。52 个重连样本总 RSS 峰值 2531540992 bytes、Host heapUsed72881284 bytes，只是本次观察。journal/owner92/92/Host信用/reader20/20/Webview39/39/Hostbatch10/10/原协议/checkpoint/typecheck/build通过。F-04/A1及其他既定验收仍开放；下面“冷恢复仍未通过”描述的是修前事实。
+
+同构建真实 Agent 复验也已完整 exit 0，证据 `.debug/a4-real-agent-20260930-indexed-pages/`，八项通过、四 natural 实际 eof、stop 不冒充自然结束、无 observer failure/强制清理信号；Host 145/145 和 Client 28/28 亦复验通过。这个有限结果不证明跨平台或所有 Agent 用法；尤其 stop 可以在真实 CLI 启动/认证界面发生，不表示完成了模型任务。
+
+2026-09-30 冷恢复仍未通过。原十 Terminal 在线资源/交互成功不能抵消此次 30 秒只到 1404/2560 块；末轮绑定连续性和清理成立，后续交互/独立 hash/自然 no-history 未执行。当前交付是失败定位与 10.13 的有限修正设计，优化与实际结果须另记，F-04 和必要 A 项均保持开放。
+
+2026-09-30 `.debug/a1-ten-session-20260930-probe-fixed/` 完整 exit 0，关闭本机固定十 Terminal 的声明资源/内容/交互有限项，不关闭整个 F-04/A1。color/size 最大输入响应 1365.5/1323ms，总 RSS 峰值 3801968640/3843158016 bytes，原运行前七项资源界限全部通过；独立 source SHA 与 v18 相同，lastRevision 6506/6497，清理通过且无强杀。1280 两例同 reader 隐藏恢复观察到追赶重叠，仍不是 Host 离线恢复。下一直接 10.11 固定 A1/A2 两次 Host launch，不重跑已完成十会话或把工具健壮性列为前置；下面结果保留各自历史时点。
+
+2026-09-30 v18 在 `.debug/a1-capacity-calibration-20260930-v18/` 两例完整 exit 0。color/size 交互最大 879/928.1ms，source 分别 26214425/26214407 bytes 且 SHA 与独立 receipt 相同，validator 分别拒绝 color-state/serialized-state-too-large；两例 cleanup.pass=true。Host 144/144、Supervisor 90/90、协议/本地化/typecheck、分页完成、Host 信用、Client 28/28 和 reader wiring 20/20 已复验通过。该结果只闭合固定两会话校准，不代证十会话/正式预算/真实重连/跨平台；A4 生产路径回归另记，F-04 与总体退出完整性仍未交付。
+
+2026-09-30 A1 v4 已进行一次实际 Electron 校准尝试，证据为 `.debug/a1-capacity-calibration-20260930-v4/`。color 的 `output-640` 首次交互在 `1500.2000000476837ms` 首败（nonce `color_640_0`、`applied:false`、块数 `0 -> 421`、目标 `640`），runner exit 1 且无自动重试；size、后续档位和隐藏恢复未运行。失败表示有限交互/输出应用观察界限未满足，不是 OOM 或正式预算失败。失败前保留 78 个 250ms 样本及零/一/二会话 idle 基线；本次只完成部分 calibration observation，正式容量预算仍未冻结。
+
+实际候选构建与 Electron 运行已成立，Runtime/editor 有有限页面成功证据；snapshot-only 大快照自读修后，在 `.debug/execution-candidate-a2-a3-20260930-snapshot-normalization-fixed` 取得单选 complete/reopen exit 0，90002 行和最终状态/清理通过，旧失败不改。A4 前两轮认证、第三轮 superseded 和后七场景未跑属于历史首败，v18/source-eof 复验已在生产接入第 32.14 至 32.15 节单独记为八场景有限通过，不覆盖历史失败。F-04/A1 及共享两槽生产策略仍未完成，不能用页面内容对账替代分进程、多会话资源/交互预算，也不把旧 64/128 MiB 结果追改。
 2026-09-30 的后续 B2 增量补齐 namespace 排他和显式 candidate Manager 新建路由，candidate bound 保留原连接且禁止替代启动。Linux namespace 7/7、启动参数 16/16、Client 28/28、Host 104/104、Supervisor 82/82 及 typecheck/build 通过，详见生产接入第 32.1 节；实际 socket/受控子进程不等于 PTY/Agent 或真实 systemd 服务。extension 默认、snapshot-only 显式工厂、旧 raw/stream 兼容和 R1 边界不变。没有新容量、实际 VS Code/Webview 或其他平台通过；F-04/A1/B2 总体继续开放。
 
 2026-09-30 已完成预算解释和顺序同步，随后原退出计划完成 B2 profile/generation 启动参数链及受控验证，见生产接入第 32 节；没有新增容量通过证据。原合并进程结果/exit 1 仍保留，已完成的取消等待与消费成本修复不重开；F-04/A1 未完成，真实分进程、多会话资源/交互评估仍待生产候选。下一是 B2 安全首次启动和两模式入口，不以 profiler 为门槛，也不默认开启候选。两模式、真实 Agent/Webview/跨平台及 B3/最终 A1 至 A6 要求不变。
@@ -122,11 +167,13 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 本计划只含三个可验证里程碑：真实调用链/预算及先红；直接产品修复与定向验证；相同负载容量和交互结果及总体缺口分账。它们不生成新的子阶段。checkpoint 先红直接禁止其校验构造全历史数组，原正确性回归须继续通过；socket/待写设计只沿已核对链路落实，不引入通用消息框架。
 
-当前按 B1 对 B2 的依赖继续既有生产验收，不新增容量工具里程碑。显式 profile/generation、同 namespace 排他、candidate Manager 新建路由、实际 extension 两模式入口及匹配 Linux Electron 资产均已接通，正式规则与有限结果见生产接入第 32 节及退出 active 计划。candidate bound 不重启、旧路径保留、普通构建仍 stock；实际 Agent/跨平台和其余既定验收继续开放。A1 按实际各进程和多会话资源模型取得预算/交互证据，并处理共享两槽限制，B1 不能以依赖已登记或页面单例通过宣布完成。
+当前按 B1 对 B2 的依赖继续既有生产验收，不新增容量工具里程碑。显式准入、固定十 Terminal 和 10.11 真实重连已分别取得有限通过，后者实现/证据见 10.13/10.14。同一 2/1 新构建的真实 Agent 收尾八场景已通过，后续依有限收尾契约补未覆盖产品组合/平台/分发，不能将旧研究条目整批重开。用户已选定 DeepSeek 专用 CI，repository secret 已确认，Linux 真实 Agent CI 验收待完成，不再把凭据列为当前用户阻塞，也不上传本机登录态；macOS/Windows provider、build、namespace 工程仍开放。candidate bound 不重启、旧 live 原绑定、普通构建 stock 不变，未确认格子不得由局部成功代证。
 
 ## 具体步骤
 
-当前步骤（2026-09-30）由退出 active 计划沿已接通 B2 候选完成原真实 Agent 与其他必要验收；32.10 snapshot-only 固定输入的真实 complete/reopen 已单选通过，不重复原页面失败或扩展接线。容量计划保留 A1 未完成：先登记实际拓扑、固定输入、共享/逐会话成本及观测范围，处理候选共享两槽后再完成既定多会话判定；尚未运行校准，不预填预算结论。此前 namespace/startup/profile 回归只证明各自范围，不代证默认启用、真实 systemd 或产品整链。当前不运行 profiler、不重跑合并容量样本、不改原 64/128 MiB 阈值。
+最新步骤：显式 2/1 candidate 已重建，`node scripts/smoke/run-vscode-execution-candidate.mjs --capacity-reconnect --output=.debug/a1-host-reconnect-20260930-indexed-pages` 完整 exit 0；输入和dist/helper哈希留在 input.json，两次 launch 共用原 runtime。实际 journal、Supervisor、Host credit、reader、projection、protocol、checkpoint、typecheck 及 build 验证见容量设计 10.14。十 Terminal 与原四轮重连失败分别保留，不覆盖旧目录或重复成功矩阵；下面 v4 状态及其后命令属于历史时点，不重新排队。
+
+当前步骤（2026-09-30）由退出 active 计划沿已接通 B2 候选完成原真实 Agent 与其他必要验收；32.10 snapshot-only 固定输入的真实 complete/reopen 已单选通过，不重复原页面失败或扩展接线。容量计划保留 A1 未完成：v4 已完成一次实际 Electron 校准尝试并在 color 首档首败，当前先保留首报/78 份样本和零/一/二会话基线，再处理候选共享两槽及正式分进程多会话判定；size、后续档位、隐藏恢复和正式预算仍未完成。此前 namespace/startup/profile 回归只证明各自范围，不代证默认启用、真实 systemd 或产品整链。当前不运行 profiler、不重跑合并容量样本、不改原 64/128 MiB 阈值。
 
 以下命令与运行记录保留已经执行的 B1 工作，不作为当前自动执行队列。
 
@@ -143,6 +190,8 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 2026-09-29 执行 `node scripts/test/test-execution-terminal-line-context-tracker.mjs` 取得修改前先红与修改后绿色，其他回归见结果段。固定样本命令 `node --expose-gc scripts/diagnostics/audit-owned-runtime-capacity.mjs --output .debug/owned-runtime-capacity-cancellation-first-20260929` 已运行一次，exit 1 保留，不自动重试或覆盖。当时安排的下一 profiler 归因由 2026-09-30 决定取代；如后续为具体问题使用现成工具，仍先说明观测范围/开销，其内存数字不得替换这次无 profiler 结果。
 
 ## 验证与验收
+
+固定十 Terminal 已按 10.10 原预算通过，数值和边界归档 10.12；不得将其扩大为正式部署上限或全部 A1 完成。下一 10.11 固定离线重连要求旧 Host 身份消失、原 Supervisor/provider/主体身份及绑定不变、新 reader、离线写入来源与实际页面保留后缀一致，再验 B 响应、自然完成无历史和本方资源清理。30 秒追平、1500ms 交互、每例 10 分钟与总 RSS 5 GiB 实验保护按原设计保持；是否观察追赶重叠独立记录，不伪造或放宽尾部完整性。
 
 保留原损坏、连续 revision、双代 fallback、读取/删除互斥断言。验证空间改进须有结构性无全量持有证据及固定增长负载，不只观察一次 RSS。校准/新旧基线/修后结果分别保存；输入、ACK、实际终端内容与公平性不能只看末尾 marker。不得把 no-PTY 实际模块测试当作实际 socket/Host/Webview 整链，也不得把浏览器 Agent 标签当真实 CLI。
 
@@ -193,3 +242,9 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 修订记录（2026-09-30，预算口径与 B2 顺序）：用户要求先纠正合并进程观察阈值与产品资源预算的混用，再推进 B2。新增具名当前决定并同步四个活章节、工作计划、具体步骤与 A1 验收，原数值/阈值/exit 1/历史证据保留；profiler 不再默认前置，F-04 仍未完成。当前 B2 只传递启动 profile 并校验隔离 generation，不默认启用或开放 Host cold-start；同 namespace 排他首次启动仍属随后的具体生产接入，不新增诊断阶段。
 
 修订记录（2026-09-30，B2 安全首次启动）：同步显式 Manager 新建许可、bound 不重启、Linux namespace claim 与 candidate systemd 策略；extension 默认仍关闭，snapshot-only 不改。保留前一增量及全部容量历史，当前剩余指向扩展两模式入口、匹配资产和既定 A1 至 A6，不扩诊断阶段。
+
+修订记录（2026-09-30，固定十 Terminal）：同步 probe-fixed 完整 exit 0、原预算全部通过、两次 probe 首败和同 reader 追赶重叠边界，保留 v18 与原合并失败。四个活章节及当前步骤转向既定 10.11 A1/A2 真实 Host 离线重连，不新设工具阶段、不改变尾部要求或宣布 F-04 完成。
+
+修订记录（2026-09-30，冷恢复）：同步四次原始失败与末轮 1404/2560 内容进度，明确实际冷恢复是直接验收阻塞；选定单 reader/单段认证偏移索引窄修，拒绝跨消费等待保留读取保护。保留原校验、期限及其他验收，历史下一步不再自动重排。
+
+修订记录（2026-09-30，冷恢复修后）：10.13实现/针对性回归和10.14原输入真实运行完成，当前入口、四活章节、工作计划和执行步骤同步。只解除具名固定冷恢复阻塞，原四次失败不改，不关闭全部F-04或削减真实Agent/跨平台验收。

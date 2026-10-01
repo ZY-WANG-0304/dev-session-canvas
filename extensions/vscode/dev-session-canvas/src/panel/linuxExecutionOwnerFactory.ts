@@ -2,11 +2,13 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import * as path from 'node:path';
 
-import { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_CANDIDATE_PROFILE,
-  type ExecutionCandidateMode, type ExecutionIdentity } from '../common/executionLifecycle';
+import { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_CANDIDATE_PROFILE, normalizeExecutionAdmissionLimits,
+  type ExecutionAdmissionLimits, type ExecutionCandidateMode, type ExecutionIdentity } from '../common/executionLifecycle';
 import type { LinuxExecutionOwnerOptions } from './executionOwnerLifecycle';
 import { createExecutionProviderTransport, createNodeExecutionScheduler } from './executionProviderTransport';
 import type { ExecutionScheduler } from './executionSessionAdapter';
+
+declare const __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__: ExecutionAdmissionLimits | undefined;
 
 export const LINUX_EXECUTION_NATIVE_EXPORTS = Object.freeze([
   'executionClose', 'executionConfigure', 'executionPollWait', 'executionRead', 'executionResize',
@@ -87,8 +89,13 @@ export function createLinuxExecutionOwnerOptions(options: {
   extensionRoot: string;
   mode: ExecutionCandidateMode;
   scheduler?: ExecutionScheduler;
+  admissionLimits?: ExecutionAdmissionLimits;
 }): LinuxExecutionOwnerOptions {
   if (options.mode !== 'live-runtime' && options.mode !== 'snapshot-only') throw new Error('An explicit candidate owner mode is required.');
+  const compiledAdmission = typeof __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__ === 'undefined'
+    ? undefined : __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__;
+  const admissionLimits = normalizeExecutionAdmissionLimits(
+    options.admissionLimits === undefined ? compiledAdmission : options.admissionLimits);
   const dist = path.join(options.extensionRoot, 'dist');
   const assets = resolveLinuxExecutionProviderAssets(dist);
   const scheduler = options.scheduler ?? createNodeExecutionScheduler();
@@ -96,7 +103,7 @@ export function createLinuxExecutionOwnerOptions(options: {
     'execution-owner-boundary-v1', 'terminal-interaction-v1', ...(options.mode === 'live-runtime'
       ? ['terminal-read-settlement-v1'] : ['terminal-local-settlement-v1', 'terminal-local-persistence-v1'])]);
   return Object.freeze({ kind: 'linux-provider', profile: EXECUTION_CANDIDATE_PROFILE, profileMode: options.mode,
-    budgets: EXECUTION_CANDIDATE_BUDGETS, capabilities, scheduler,
+    budgets: EXECUTION_CANDIDATE_BUDGETS, admissionLimits, capabilities, scheduler,
     createTransport(identity: ExecutionIdentity) {
       const current = resolveLinuxExecutionProviderAssets(dist);
       if (current.binarySha256 !== assets.binarySha256 || current.manifestSha256 !== assets.manifestSha256 ||

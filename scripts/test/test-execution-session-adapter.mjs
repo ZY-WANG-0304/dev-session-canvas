@@ -100,7 +100,8 @@ try {
 
   const require = createRequire(import.meta.url);
   const { encodeOutputFrame, OutputCreditWindow, parseProviderMessage, parseParentMessage, validateLaunchSpec,
-    EXECUTION_CANDIDATE_PROFILE, EXECUTION_INTERACTION_LIMITS } = require(path.join(tempDir, 'executionLifecycle.cjs'));
+    normalizeExecutionAdmissionLimits, EXECUTION_CANDIDATE_PROFILE,
+    EXECUTION_INTERACTION_LIMITS } = require(path.join(tempDir, 'executionLifecycle.cjs'));
   const { createExecutionAuthority, prepareExecution } = require(path.join(tempDir, 'executionSessionAdapter.cjs'));
   const tests = [];
   const test = (name, callback) => tests.push({ name, callback });
@@ -218,6 +219,71 @@ try {
       }
     };
   }
+
+  test('admission limits preserve S1 defaults and validate a frozen independent policy', () => {
+    assert.deepEqual(normalizeExecutionAdmissionLimits(), { executions: 2, starting: 1 });
+    const input = { executions: 10, starting: 2 };
+    const policy = normalizeExecutionAdmissionLimits(input);
+    assert.notStrictEqual(policy, input);
+    assert.ok(Object.isFrozen(policy));
+    input.executions = 1;
+    assert.deepEqual(policy, { executions: 10, starting: 2 });
+    for (const invalid of [null, [], {}, { executions: 2 }, { executions: 0, starting: 1 },
+      { executions: -1, starting: 1 }, { executions: 2.5, starting: 1 },
+      { executions: Number.MAX_SAFE_INTEGER + 1, starting: 1 }, { executions: Infinity, starting: 1 },
+      { executions: 2, starting: 0 }, { executions: 2, starting: NaN },
+      { executions: 2, starting: 1.5 }, { executions: 2, starting: 3 },
+      { executions: '10', starting: 2 }, { executions: 10, starting: 2, extra: true }]) {
+      assert.throws(() => normalizeExecutionAdmissionLimits(invalid));
+      assert.throws(() => createExecutionAuthority(invalid));
+    }
+  });
+
+  test('explicit ten execution two start policy rejects overflow before acquisition', async () => {
+    const input = { executions: 10, starting: 2 };
+    const authority = createExecutionAuthority(input);
+    const scheduler = createScheduler();
+    input.executions = 1;
+    input.starting = 1;
+    assert.deepEqual(authority.admissionLimits, { executions: 10, starting: 2 });
+    assert.ok(Object.isFrozen(authority.admissionLimits));
+    const entries = Array.from({ length: 10 }, () => createHarness({ authority, scheduler }));
+    assert.throws(() => createHarness({ authority, scheduler }), /capacity/);
+    assert.equal(entries.reduce((sum, entry) => sum + entry.connectCount, 0), 0);
+    await entries[0].start();
+    await entries[1].start();
+    const denied = entries[2].control.start('overflow-start', 100);
+    assert.equal((await denied.first).kind, 'rejected-before-acquire');
+    assert.equal(entries[2].connectCount, 0);
+    assert.equal(authority.snapshot().starting, 2);
+    entries[0].message({ type: 'operationObservation', operationId: 'start', result: { kind: 'started', pid: 1234 } });
+    await settle(scheduler);
+    await entries[3].start();
+    assert.equal(entries[3].connectCount, 1);
+    assert.equal(authority.snapshot().starting, 2);
+  });
+
+  test('expanded admission still quarantines unknown while existing consumers progress', async () => {
+    const authority = createExecutionAuthority({ executions: 10, starting: 2 });
+    const scheduler = createScheduler();
+    const a = createHarness({ authority, scheduler });
+    const b = createHarness({ authority, scheduler });
+    const reserved = createHarness({ authority, scheduler });
+    await a.started();
+    await b.started();
+    a.sink.controlResourceResult({ kind: 'unknown', reason: 'release not confirmed' });
+    assert.throws(() => createHarness({ authority, scheduler }), /quarantined/);
+    const denied = reserved.control.start('quarantined-start', 100);
+    assert.equal((await denied.first).kind, 'rejected-before-acquire');
+    assert.equal(reserved.connectCount, 0);
+    b.output(1, 'existing-consumer');
+    await b.consumeAll();
+    assert.equal(b.snapshot().consumedThrough, 1);
+    a.sink.controlResourceResult({ kind: 'released' });
+    await settle(scheduler);
+    assert.ok(authority.snapshot().blockedReason);
+    assert.equal(authority.tryResume(), false);
+  });
 
   test('bind is required and the same start never repeats native intent', async () => {
     const h = createHarness({ bind: false });

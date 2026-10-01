@@ -6,10 +6,10 @@ import {
   assertExecutionIdentity,
   assertCandidateLaunchSpec,
   EXECUTION_CANDIDATE_BUDGETS,
-  S1_LIMITS,
   validateLaunchSpec,
   type AuthorityResult,
   type DataBatch,
+  type ExecutionAdmissionLimits,
   type ExecutionCandidateMode,
   type ExecutionCandidateProfile,
   type ExecutionIdentity,
@@ -33,6 +33,7 @@ export interface NonNativeExecutionOwnerOptions {
   readonly profile?: ExecutionCandidateProfile;
   readonly profileMode?: ExecutionCandidateMode;
   readonly capabilities: readonly string[];
+  readonly admissionLimits?: ExecutionAdmissionLimits;
   readonly scheduler: ExecutionScheduler;
   readonly budgets: Readonly<{
     startMs: number;
@@ -94,7 +95,8 @@ interface CloseObservation {
 }
 
 export class ExecutionOwnerLifecycle {
-  readonly authority = createExecutionAuthority();
+  readonly authority: ReturnType<typeof createExecutionAuthority>;
+  readonly admissionLimits: ExecutionAdmissionLimits;
   readonly options: ExecutionOwnerOptions;
   private readonly records = new Map<string, OwnedExecution>();
   private closing?: Promise<OwnerCloseResult>;
@@ -146,14 +148,17 @@ export class ExecutionOwnerLifecycle {
           !options.capabilities.includes('execution-owner-boundary-v1'))) {
       throw new Error('Local persistence requires local terminal settlement and owner boundary capabilities');
     }
-    this.options = Object.freeze({ ...options, budgets, capabilities: Object.freeze([...options.capabilities]) });
+    this.authority = createExecutionAuthority(options.admissionLimits);
+    this.admissionLimits = this.authority.admissionLimits;
+    this.options = Object.freeze({ ...options, admissionLimits: this.admissionLimits,
+      budgets, capabilities: Object.freeze([...options.capabilities]) });
   }
 
   reserve(key: string, executionId: string = randomUUID()): OwnedExecution {
     this.assertAdmission();
     if (!key || this.records.has(key)) throw new Error('Execution owner key is already reserved or invalid');
     // Include preparation and final reader responsibility in the same finite capacity.
-    if (this.records.size >= S1_LIMITS.executions) throw new Error('Execution owner capacity exhausted');
+    if (this.records.size >= this.admissionLimits.executions) throw new Error('Execution owner capacity exhausted');
     const identity = Object.freeze({ executionId, generation: randomUUID() });
     assertExecutionIdentity(identity);
     const record = new OwnedExecution(this, key, identity);

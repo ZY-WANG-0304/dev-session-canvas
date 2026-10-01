@@ -123,6 +123,83 @@ try {
     assert.throws(() => harness({ budgets: { ...budgets, settleMs: Infinity } }), /finite/);
   });
 
+  test('owner shares a frozen admission policy across preparation and authority', () => {
+    const defaults = harness();
+    assert.deepEqual(defaults.owner.admissionLimits, { executions: 2, starting: 1 });
+    defaults.owner.reserve('default-a');
+    defaults.owner.reserve('default-b');
+    assert.throws(() => defaults.owner.reserve('default-overflow'), /capacity/);
+    assert.equal(defaults.factories(), 0);
+    const input = { executions: 10, starting: 2 };
+    const h = harness({ admissionLimits: input });
+    assert.strictEqual(h.owner.admissionLimits, h.owner.authority.admissionLimits);
+    assert.strictEqual(h.owner.options.admissionLimits, h.owner.admissionLimits);
+    assert.notStrictEqual(h.owner.admissionLimits, input);
+    assert.ok(Object.isFrozen(h.owner.admissionLimits));
+    input.executions = 1;
+    input.starting = 1;
+    assert.deepEqual(h.owner.admissionLimits, { executions: 10, starting: 2 });
+    for (let index = 0; index < 10; index++) h.owner.reserve(`reserved-${index}`);
+    assert.throws(() => h.owner.reserve('overflow'), /capacity/);
+    assert.equal(h.factories(), 0);
+    for (const admissionLimits of [null, { executions: 0, starting: 1 }, { executions: 2, starting: 3 },
+      { executions: 2, starting: Infinity }, { executions: 2.5, starting: 1 }]) {
+      assert.throws(() => harness({ admissionLimits }), /admission/);
+    }
+  });
+
+  test('owner explicit start allowance refuses the next provider acquisition', async () => {
+    const connections = new Map();
+    const h = harness({ admissionLimits: { executions: 10, starting: 2 },
+      createTransport(identity) {
+        return {
+          connect(sink) {
+            connections.set(identity.executionId, sink);
+            sink.message({ type: 'ready', identity, capabilities: ['execution-lifecycle-v1'] });
+          },
+          send: async () => {}
+        };
+      }
+    });
+    const records = ['a', 'b', 'c'].map(key => h.owner.reserve(key));
+    const observations = records.map(record => record.start(spec, h.hooks()));
+    assert.equal((await observations[2].first).kind, 'rejected-before-acquire');
+    assert.equal(connections.size, 2);
+    assert.equal(connections.has(records[2].identity.executionId), false);
+    for (const record of records.slice(0, 2)) {
+      connections.get(record.identity.executionId).message({ type: 'operationObservation', identity: record.identity,
+        operationId: 'owner-start', result: { kind: 'started', pid: 123 } });
+    }
+    await h.scheduler.drain();
+    assert.equal((await observations[0].first).kind, 'started');
+    assert.equal((await observations[1].first).kind, 'started');
+  });
+
+  test('expanded owner admission keeps unknown sticky and final reader responsibility occupied', async () => {
+    const h = harness({ admissionLimits: { executions: 10, starting: 2 } });
+    const a = await h.start('a');
+    let received = '';
+    const b = await h.start('b', { consume: async batches => { received += batches.map(batch => batch.text).join(''); } });
+    const reserved = h.owner.reserve('not-started');
+    h.transports.get(a.identity.executionId).sink.controlResourceResult({ kind: 'unknown', reason: 'release unknown' });
+    const factories = h.factories();
+    assert.throws(() => h.owner.reserve('later'), /closed/);
+    assert.throws(() => reserved.start(spec, h.hooks()), /closed/);
+    assert.equal(h.factories(), factories);
+    h.frame(b, 1, 'existing-consumer');
+    await h.scheduler.drain();
+    assert.equal(received, 'existing-consumer');
+    await h.complete(b, 1);
+    assert.equal(b.snapshot().retired, false);
+    assert.strictEqual(h.owner.get('b'), b, 'final reader responsibility remains in owner capacity');
+    b.settleReaders('cancelled');
+    assert.equal(b.snapshot().retired, true);
+    h.transports.get(a.identity.executionId).sink.controlResourceResult({ kind: 'released' });
+    await h.scheduler.drain();
+    assert.ok(h.owner.snapshot().blockedReason);
+    assert.equal(h.owner.tryResume(), false);
+  });
+
   test('close retains in-flight preparation until caller cleanup and rejects later start', async () => {
     const h = harness();
     const record = h.owner.reserve('a', 'caller-session-id');

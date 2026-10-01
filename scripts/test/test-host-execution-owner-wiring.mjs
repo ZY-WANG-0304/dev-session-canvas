@@ -18,6 +18,7 @@ const bundled = await esbuild.build({
       export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
       export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
       export { parseWebviewMessage } from './extensions/vscode/dev-session-canvas/src/common/protocol';
+      export { env as testEnvironment, window as testWindow } from 'vscode';
     `,
     resolveDir: process.cwd(), sourcefile: 'host-owner-wiring-entry.ts'
   },
@@ -60,7 +61,8 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   path.resolve('scripts/test/host-owner-wiring.cjs'), path.resolve('scripts/test')
 );
 const { CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
-  RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS } = loaded.exports;
+  RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS,
+  testEnvironment, testWindow } = loaded.exports;
 
 function deferred() {
   let resolve;
@@ -117,6 +119,7 @@ function fixture(options = {}) {
   const providers = [];
   const injection = {
     kind: 'non-native', capabilities: options.capabilities ?? ['execution-lifecycle-v1'], scheduler: clock,
+    admissionLimits: options.admissionLimits,
     budgets: { startMs: 10, gracefulMs: 10, forceMs: 10, cancelMs: 10, settleMs: 10, ...options.budgets },
     createTransport(identity) {
       const messages = [];
@@ -177,6 +180,7 @@ function fixture(options = {}) {
     context: { extensionMode: 3 },
     nonNativeExecutionOwner: owner, nonNativeHostExecutions: new Map(),
     agentSessions: new Map(), terminalSessions: new Map(), runtimeSessionBindings: new Map(),
+    pendingTerminalInitialInputs: new Map(), pendingTerminalInitialInputDispatches: new Map(),
     executionSessionOperationTokens: new Map(), activeAssociatedNoteMarkdownEdits: new Map(),
     state: { nodes, edges: [], groups: [] },
     terminalProjectionRefreshScheduler: { clearMatching() {} },
@@ -1712,6 +1716,51 @@ async function assertFinalSaveRetainsHost(f, record, kind, expected) {
   assert.strictEqual(f.record(kind), record);
 }
 
+test('explicit Host capacity includes retired executions whose original final save is still pending', async () => {
+  const f = await persistenceFixture({ admissionLimits: { executions: 10, starting: 1 } });
+  const saved = deferred();
+  const entered = deferred();
+  const originalUpdate = f.host.context.workspaceState.update;
+  f.host.context.workspaceState.update = async (...args) => {
+    entered.resolve();
+    await saved.promise;
+    return originalUpdate(...args);
+  };
+  const active = [];
+  let first;
+  try {
+    first = await f.started('terminal');
+    first.provider.process(); first.provider.seal(0); first.provider.release();
+    await completed(f.clock, entered.promise, 'capacity original save entered');
+    await until(f.clock, () => first.record.execution.snapshot().retired, 'capacity first owner retired');
+    assert.equal(first.record.persistence.result, undefined);
+    const create = async index => {
+      const id = `terminal-${index}`;
+      const node = { ...f.nodes[0], id, metadata: {}, title: id };
+      f.host.state.nodes.push(node);
+      await completed(f.clock, f.host.startTerminalSession(id, 80, 24), `capacity ${id} start`);
+      active.push({ record: f.host.nonNativeHostExecutions.get(`terminal:${id}`), provider: f.providers.at(-1) });
+    };
+    for (let index = 2; index <= 10; index += 1) await create(index);
+    assert.equal(f.host.nonNativeHostExecutions.size, 10);
+    assert.equal(f.owner.snapshot().pending, 9, 'pending final persistence is no longer an owner execution');
+    const acquired = f.providers.length;
+    f.host.state.nodes.push({ ...f.nodes[0], id: 'terminal-11', metadata: {} });
+    await assert.rejects(f.host.startTerminalSession('terminal-11', 80, 24), /Host capacity/);
+    assert.equal(f.providers.length, acquired, 'the retained save refuses before transport acquisition');
+    saved.resolve();
+    assert.equal((await completed(f.clock, first.record.persistence.promise, 'original capacity save')).kind, 'saved');
+    await completed(f.clock, f.host.startTerminalSession('terminal-11', 80, 24), 'released Host capacity');
+    active.push({ record: f.host.nonNativeHostExecutions.get('terminal:terminal-11'), provider: f.providers.at(-1) });
+    assert.equal(f.owner.snapshot().pending, 10);
+  } finally {
+    saved.resolve();
+    for (const entry of active) await f.finish('terminal', entry.record, entry.provider);
+    first?.record.tracker.dispose();
+    await f.cleanup();
+  }
+});
+
 test('final snapshot disk and workspaceState failures retain the original Host responsibility after owner retirement', async () => {
   for (const failure of ['root-file', 'workspace-file', 'workspace-update']) {
     const f = await persistenceFixture();
@@ -1883,6 +1932,60 @@ test('unknown process and failed final flush preserve old disk state while inter
   }
 });
 
+for (const kind of ['terminal', 'agent']) {
+  for (const disposition of [
+    { kind: 'eof' },
+    { kind: 'interrupted', reason: 'controlled persisted source interruption' },
+    { kind: 'error', reason: 'controlled persisted source failure' },
+    { kind: 'unknown', reason: 'controlled persisted source observation missing' }
+  ]) {
+    test(`${kind} completed persistence saves and reloads ${disposition.kind} without inferring source state`, async () => {
+      const f = await persistenceFixture();
+      let record;
+      try {
+        f.host.fileFilterState = { includeGlobs: [], excludeGlobs: [] };
+        f.host.context.workspaceState.get = key => f.updates.get(key);
+        const started = await f.started(kind);
+        record = started.record;
+        const result = await f.finish(kind, record, started.provider, {
+          text: `persisted-${kind}-${disposition.kind}\r\n`,
+          disposition
+        });
+        assert.equal(result.kind, 'saved', result.reason);
+        const disk = await f.read();
+        const rootDisk = await f.read(f.rootFile);
+        const savedNode = disk.state.nodes.find(node => node.id === `${kind}-1`);
+        const savedMetadata = savedNode.metadata[kind];
+        assert.deepEqual(rootDisk.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind], savedMetadata);
+        const loaded = f.host.loadState();
+        const loadedMetadata = loaded.nodes.find(node => node.id === `${kind}-1`).metadata[kind];
+        assert.equal(loadedMetadata.liveSession, false);
+        if (disposition.kind === 'eof') {
+          assert.equal(loadedMetadata.lastRuntimeError, undefined);
+          assert.equal(/Output is incomplete/.test(loadedMetadata.lastExitMessage ?? ''), false);
+        } else {
+          assert.equal(loadedMetadata.lastRuntimeError, disposition.reason);
+          // The Host wiring stub intentionally leaves vscode.l10n placeholders untouched;
+          // the persisted reason is asserted separately above.
+          assert.match(loadedMetadata.lastExitMessage, /Output is incomplete/);
+        }
+
+        // A completed snapshot written by an older version has no source fields; load must not invent an error.
+        const legacy = structuredClone(disk);
+        delete legacy.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind].lastRuntimeError;
+        delete legacy.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind].lastExitMessage;
+        delete legacy.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind].terminalSourceDisposition;
+        f.host.writePersistedCanvasSnapshotToDisk(f.workspaceFile, legacy);
+        f.host.writePersistedCanvasSnapshotToDisk(f.rootFile, legacy);
+        const loadedLegacy = f.host.loadState();
+        const legacyMetadata = loadedLegacy.nodes.find(node => node.id === `${kind}-1`).metadata[kind];
+        assert.equal(legacyMetadata.lastRuntimeError, undefined);
+        assert.equal(/Output is incomplete/.test(legacyMetadata.lastExitMessage ?? ''), false);
+      } finally { record?.tracker.dispose(); await f.cleanup(); }
+    });
+  }
+}
+
 const candidateCapabilities = [
   'execution-lifecycle-v1', 'execution-close-observation-v1', 'execution-parent-cleanup-v1',
   'execution-owner-boundary-v1', 'terminal-interaction-v1',
@@ -1933,11 +2036,13 @@ function candidateRuntimeFixture(options = {}) {
   const applies = [];
   const subscriptions = [];
   const errors = [];
-  const agentStart = f.host.startAgentSessionWithSupervisor.bind(f.host);
-  f.host.startAgentSessionWithSupervisor = async (...args) => {
-    try { return await agentStart(...args); }
-    catch (error) { errors.push(error instanceof Error ? error.message : String(error)); throw error; }
-  };
+  for (const method of ['startAgentSessionWithSupervisor', 'startTerminalSessionWithSupervisor']) {
+    const start = f.host[method].bind(f.host);
+    f.host[method] = async (...args) => {
+      try { return await start(...args); }
+      catch (error) { errors.push(error instanceof Error ? error.message : String(error)); throw error; }
+    };
+  }
   const backend = { kind: 'legacy-detached', guarantee: 'best-effort' };
   const client = {
     supportsTerminalSessionStream: () => true,
@@ -2006,6 +2111,84 @@ function candidateRuntimeRoutingFixture() {
   f.host.getPreferredRuntimeSupervisorClient = CanvasPanelManager.prototype.getPreferredRuntimeSupervisorClient;
   return { ...f, baseStoragePath,
     candidateStoragePath: path.join(baseStoragePath, 'runtime-supervisor-generations', 'terminal-exit-v1') };
+}
+
+for (const kind of ['terminal', 'agent']) {
+  for (const waitingAt of ['environment', 'connection', 'prepared']) {
+    test(`B2 ${kind} pending ${waitingAt} accepts only its own viewport changes and launches at the latest size`, async () => {
+      const f = candidateRuntimeFixture();
+      f.host.pendingTerminalInitialInputs = new Map();
+      const entered = deferred();
+      const resume = deferred();
+      const method = waitingAt === 'environment' ? 'resolveExecutionEnvironment'
+        : waitingAt === 'connection' ? 'getPreferredRuntimeSupervisorClient' : 'prepareExecutionCandidateReplacement';
+      const original = f.host[method].bind(f.host);
+      f.host[method] = async (...args) => {
+        const result = waitingAt === 'prepared' ? await original(...args) : undefined;
+        entered.resolve();
+        await resume.promise;
+        return waitingAt === 'prepared' ? result : original(...args);
+      };
+      const starting = f.start(kind);
+      await completed(f.clock, entered.promise, `${kind} pending ${waitingAt}`);
+      const nodeId = `${kind}-1`;
+      f.host.resizeExecutionSession(kind, nodeId, 100, 35);
+      f.host.resizeExecutionSession(kind, nodeId, 119, 41);
+      resume.resolve();
+      await completed(f.clock, starting, `${kind} start after ${waitingAt} resize`);
+      assert.equal(f.creates.length, 1, 'A legitimate viewport update must not supersede its original launch.');
+      assert.equal(f.creates[0].launchSpec.cols, 119);
+      assert.equal(f.creates[0].launchSpec.rows, 41);
+      const metadata = f.host.state.nodes.find(node => node.id === nodeId).metadata[kind];
+      assert.equal(metadata.lastCols, 119);
+      assert.equal(metadata.lastRows, 41);
+      assert.equal(f.host.candidateRuntimeStarts.size, 0);
+      assert.equal(f.posted.some(message => message.type === 'host/error'), false);
+    });
+  }
+
+  for (const change of ['same-id-replacement', 'launch-config', 'old-binding', 'prepared-replacement']) {
+    test(`B2 ${kind} viewport changes cannot rebase a pending launch onto ${change}`, async () => {
+      const f = candidateRuntimeFixture();
+      if (change === 'old-binding') addCandidateLegacyBinding(f, kind);
+      const strict = candidateStrictDeletes(f, () => settledLegacyDelete('legacy-acknowledged'));
+      const entered = deferred();
+      const resume = deferred();
+      if (change === 'prepared-replacement') {
+        const prepare = f.host.prepareExecutionCandidateReplacement.bind(f.host);
+        f.host.prepareExecutionCandidateReplacement = async (...args) => {
+          const currentViewport = await prepare(...args);
+          entered.resolve();
+          await resume.promise;
+          return currentViewport;
+        };
+      } else {
+        f.host.resolveExecutionEnvironment = async () => { entered.resolve(); await resume.promise; return {}; };
+      }
+      const starting = f.start(kind);
+      await completed(f.clock, entered.promise, `${kind} original pending launch`);
+      const nodeId = `${kind}-1`;
+      f.host.resizeExecutionSession(kind, nodeId, 100, 35);
+      f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(node => node.id !== nodeId ? node : {
+        ...node, metadata: { ...node.metadata, [kind]: { ...node.metadata[kind],
+          ...(change === 'launch-config' ? { cwd: '/controlled/reconfigured' } : {}),
+          ...(change === 'old-binding' ? { runtimeSessionId: 'replacement-binding' } : {})
+        } }
+      }) };
+      const replacementMetadata = f.host.state.nodes.find(node => node.id === nodeId).metadata[kind];
+      f.host.resizeExecutionSession(kind, nodeId, 119, 41);
+      resume.resolve();
+      await completed(f.clock, starting, `${kind} rejected ${change}`);
+      assert.equal(f.creates.length, 0);
+      assert.equal(strict.calls.length, 0, 'A replaced binding must not delete the originally captured execution.');
+      assert(f.errors.some(message => /superseded/.test(message)), JSON.stringify(f.errors));
+      assert(f.posted.some(message => message.type === 'host/error'));
+      const metadata = f.host.state.nodes.find(node => node.id === nodeId).metadata[kind];
+      if (change === 'launch-config') assert.equal(metadata.cwd, replacementMetadata.cwd);
+      if (change === 'old-binding') assert.equal(metadata.runtimeSessionId, 'replacement-binding');
+      assert.equal(f.host.candidateRuntimeStarts.size, 0);
+    });
+  }
 }
 
 async function withRuntimeConnectionBoundary(run, connect = () => {}) {
@@ -2677,6 +2860,261 @@ async function interactiveHostFixture(kind = 'terminal', providerKind = 'codex')
   }
   return { ...f, record, provider, requests, reply, cleanup };
 }
+
+function prepareInitialTerminalInput(f, text = 'controlled-install\n') {
+  delete f.host.dropPendingTerminalInitialInput;
+  delete f.host.clearPendingTerminalInitialInputs;
+  f.host.pendingTerminalInitialInputs = new Map([['terminal-1', text]]);
+  f.host.pendingTerminalInitialInputDispatches = new Map();
+  return f.host.waitForPendingTerminalInitialInputDispatch('terminal-1', text);
+}
+
+async function disposeStartedCandidate(f, kind = 'terminal') {
+  const record = f.record(kind);
+  const provider = f.providers[0];
+  if (!record || !provider) return;
+  provider.process();
+  provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+  provider.seal(provider.messages.filter(message => message.type === 'consumed').at(-1)?.throughFrameId ?? 0);
+  provider.release();
+  await pump(f.clock, () => true);
+  record.business?.cancelActivityPoll?.();
+  record.business?.lineContextTracker.dispose();
+  record.tracker.dispose();
+}
+
+for (const result of ['written', 'failed', 'unconfirmed']) {
+  test(`owned Terminal initial install input settles only the actual ${result} write observation`, async () => {
+    const f = candidateFixture();
+    let dispatched = false;
+    const dispatch = prepareInitialTerminalInput(f).then(value => { dispatched = true; return value; });
+    const starting = f.start('terminal');
+    try {
+      await until(f.clock, () => f.providers[0]?.messages.some(message => message.type === 'input'), 'initial install write');
+      assert.equal(dispatched, false, 'start acknowledgement is not an input write acknowledgement');
+      assert.equal(f.host.terminalSessions.size, 0, 'owned input does not need a legacy process facade');
+      const input = f.providers[0].messages.find(message => message.type === 'input');
+      assert.equal(input.data, 'controlled-install\n');
+      f.providers[0].message({ type: 'interactionObservation', interactionId: input.interactionId,
+        result: result === 'written' ? { kind: result, writtenBytes: Buffer.byteLength(input.data) }
+          : { kind: result, reason: 'controlled install write result', writtenBytes: 0 } });
+      await completed(f.clock, starting, 'install Terminal start');
+      const outcome = await dispatch;
+      assert.equal(outcome.dispatched, result === 'written');
+      assert.equal(Boolean(outcome.errorMessage), result !== 'written');
+      await f.host.flushPendingTerminalInitialInput('terminal-1');
+      assert.equal(f.providers[0].messages.filter(message => message.type === 'input').length, 1);
+      assert.equal(f.host.pendingTerminalInitialInputDispatches.size, 0);
+    } finally {
+      f.host.clearPendingTerminalInitialInputs('controlled cleanup');
+      await disposeStartedCandidate(f);
+    }
+  });
+}
+
+test('owned Terminal initial install input settles immediately when launch preparation fails', async () => {
+  const f = candidateFixture({ environment: async () => { throw new Error('controlled install preparation failure'); } });
+  const dispatch = prepareInitialTerminalInput(f);
+  try {
+    await assert.rejects(f.start('terminal'), /controlled install preparation failure/);
+    assert.equal(f.host.pendingTerminalInitialInputDispatches.size, 0);
+    const outcome = await dispatch;
+    assert.equal(outcome.dispatched, false);
+    assert.match(outcome.errorMessage, /controlled install preparation failure/);
+    assert.equal(f.providers.length, 0);
+  } finally { f.host.clearPendingTerminalInitialInputs('controlled cleanup'); }
+});
+
+test('owned Terminal initial install input cannot cross a replacement before start returns', async () => {
+  const f = candidateFixture();
+  const dispatch = prepareInitialTerminalInput(f);
+  const startOwned = f.host.startNonNativeHostExecution.bind(f.host);
+  let original;
+  f.host.startNonNativeHostExecution = async (...args) => {
+    const result = await startOwned(...args);
+    original = f.record('terminal');
+    f.host.nonNativeHostExecutions.set('terminal:terminal-1', { ...original });
+    return result;
+  };
+  try {
+    await completed(f.clock, f.start('terminal'), 'superseded install Terminal start');
+    assert.equal((await dispatch).dispatched, false);
+    assert.equal(f.providers[0].messages.filter(message => message.type === 'input').length, 0);
+  } finally {
+    if (original) f.host.nonNativeHostExecutions.set('terminal:terminal-1', original);
+    f.host.clearPendingTerminalInitialInputs('controlled cleanup');
+    await disposeStartedCandidate(f);
+  }
+});
+
+for (const kind of ['terminal', 'agent']) {
+  test(`owned ${kind} text paste reaches the existing actual input acknowledgement`, async () => {
+    const f = await interactiveHostFixture(kind);
+    const previous = testEnvironment.clipboard;
+    const messages = [];
+    testEnvironment.clipboard = { readText: async () => 'controlled clipboard text' };
+    f.host.postMessageToSurface = (_surface, message) => messages.push(message);
+    try {
+      await f.host.handleExecutionPasteRequest('editor', kind, `${kind}-1`, 'controlled-paste', true);
+      const paste = messages.find(message => message.type === 'host/executionPasteText');
+      assert.equal(paste?.payload.text, 'controlled clipboard text');
+      assert.equal(paste.payload.requestId, 'controlled-paste');
+      // This is the Host boundary; the actual Webview's terminal.paste route is separately accepted.
+      let resolved = false;
+      const writing = f.host.writeExecutionInput(kind, `${kind}-1`, paste.payload.text).then(value => { resolved = true; return value; });
+      await until(f.clock, () => f.requests.length === 1, `${kind} pasted input`);
+      assert.equal(resolved, false);
+      f.reply(f.requests[0], { kind: 'written', writtenBytes: Buffer.byteLength(paste.payload.text) });
+      assert.equal(await completed(f.clock, writing, `${kind} pasted write acknowledgement`), true);
+    } finally { testEnvironment.clipboard = previous; await f.cleanup(); }
+  });
+}
+
+test('owned paste captures the original execution across clipboard and confirmation waits', async () => {
+  for (const change of ['clipboard-replacement', 'clipboard-metadata', 'confirmation-stop', 'confirmation-cancel']) {
+    const f = await interactiveHostFixture();
+    const previousClipboard = testEnvironment.clipboard;
+    const previousWarning = testWindow.showWarningMessage;
+    const clipboard = deferred();
+    const confirmation = deferred();
+    const messages = [];
+    let confirming = false;
+    testEnvironment.clipboard = { readText: () => clipboard.promise };
+    testWindow.showWarningMessage = () => { confirming = true; return confirmation.promise; };
+    f.host.postMessageToSurface = (_surface, message) => messages.push(message);
+    try {
+      const pasting = f.host.handleExecutionPasteRequest('editor', 'terminal', 'terminal-1', 'controlled-paste', false);
+      if (change === 'clipboard-replacement') {
+        f.host.nonNativeHostExecutions.set('terminal:terminal-1', { ...f.record });
+      } else if (change === 'clipboard-metadata') {
+        const node = f.host.state.nodes.find(node => node.id === 'terminal-1');
+        node.metadata = { ...node.metadata, terminal: { ...node.metadata.terminal, cwd: '/replacement' } };
+      }
+      clipboard.resolve(change.startsWith('confirmation') ? 'first\nsecond' : 'single-line');
+      if (change.startsWith('confirmation')) {
+        await until(f.clock, () => confirming, 'multiline paste confirmation');
+        if (change === 'confirmation-stop') {
+          void f.host.stopExecutionSession('terminal', 'terminal-1').catch(() => {});
+          assert.equal(f.record.execution.snapshot().stopRequested, true);
+        }
+        confirmation.resolve(change === 'confirmation-cancel' ? undefined : 'Continue Paste');
+      }
+      await pasting;
+      assert.equal(messages.some(message => message.type === 'host/executionPasteText'), false, change);
+      assert.equal(messages.some(message => message.type === 'host/executionPasteCancelled'), true, change);
+      assert.equal(f.requests.length, 0);
+    } finally {
+      f.host.nonNativeHostExecutions.set('terminal:terminal-1', f.record);
+      testEnvironment.clipboard = previousClipboard;
+      testWindow.showWarningMessage = previousWarning;
+      await f.cleanup();
+    }
+  }
+});
+
+test('paste retains legacy session identity and Terminal screenshot rejection', async () => {
+  const f = fixture();
+  const previous = testEnvironment.clipboard;
+  const gate = deferred();
+  const messages = [];
+  f.host.postMessageToSurface = (_surface, message) => messages.push(message);
+  testEnvironment.clipboard = { readText: () => gate.promise };
+  const session = { owner: 'local', stopRequested: false };
+  f.host.terminalSessions.set('terminal-1', session);
+  try {
+    const pasting = f.host.handleExecutionPasteRequest('editor', 'terminal', 'terminal-1', 'legacy-paste', true);
+    f.host.terminalSessions.set('terminal-1', { ...session });
+    gate.resolve('old-session text');
+    await pasting;
+    assert.equal(messages.some(message => message.type === 'host/executionPasteText'), false);
+    messages.length = 0;
+    await f.host.handleExecutionPasteRequest('editor', 'terminal', 'terminal-1', 'current-paste', true);
+    assert.equal(messages.find(message => message.type === 'host/executionPasteText')?.payload.text, 'old-session text');
+    messages.length = 0;
+    await f.host.handleExecutionImagePasteRequest('editor', 'terminal', 'terminal-1', 'terminal-image', 'image/png', '', 0);
+    assert.equal(messages.some(message => message.type === 'host/executionPasteCancelled'), true);
+    assert.equal(messages.some(message => message.type === 'host/executionPasteText'), false);
+  } finally { testEnvironment.clipboard = previous; }
+});
+
+test('owned Agent screenshot paste preserves validation, provider and original execution identity', async () => {
+  const f = await interactiveHostFixture('agent', 'claude');
+  const messages = [];
+  const files = [];
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  f.host.postMessageToSurface = (_surface, message) => messages.push(message);
+  f.host.writeExecutionImagePasteFile = (nodeId, mimeType, image) => {
+    files.push({ nodeId, mimeType, image });
+    return '/controlled/image with spaces.png';
+  };
+  try {
+    await f.host.handleExecutionImagePasteRequest('editor', 'agent', 'agent-1', 'image-paste', 'image/png', png.toString('base64'), png.length);
+    const paste = messages.find(message => message.type === 'host/executionPasteText');
+    assert.match(paste?.payload.text ?? '', /image with spaces\.png/);
+    assert.equal(files.length, 1);
+    assert.deepEqual(files[0].image, png);
+    assert.equal(f.diagnostics.find(item => item.name === 'execution/imagePastePrepared')?.detail.provider, 'claude');
+    const writing = f.host.writeExecutionInput('agent', 'agent-1', paste.payload.text);
+    await until(f.clock, () => f.requests.length === 1, 'Agent pasted image path');
+    f.reply(f.requests[0], { kind: 'written', writtenBytes: Buffer.byteLength(paste.payload.text) });
+    assert.equal(await completed(f.clock, writing, 'Agent image path acknowledgement'), true);
+    messages.length = 0;
+    await f.host.handleExecutionImagePasteRequest('editor', 'agent', 'agent-1', 'invalid-image', 'image/png', 'aW52YWxpZA==', 7);
+    assert.equal(files.length, 1);
+    assert.equal(messages.some(message => message.type === 'host/executionPasteText'), false);
+    f.host.writeExecutionImagePasteFile = () => {
+      f.host.nonNativeHostExecutions.set('agent:agent-1', { ...f.record });
+      return '/controlled/old-image.png';
+    };
+    messages.length = 0;
+    await f.host.handleExecutionImagePasteRequest('editor', 'agent', 'agent-1', 'superseded-image', 'image/png', png.toString('base64'), png.length);
+    assert.equal(messages.some(message => message.type === 'host/executionPasteText'), false);
+    assert.equal(messages.some(message => message.type === 'host/executionPasteCancelled'), true);
+  } finally {
+    f.host.nonNativeHostExecutions.set('agent:agent-1', f.record);
+    await f.cleanup();
+  }
+});
+
+test('test-mode Codex resume context uses fake storage only for an actual fake command', () => {
+  const f = fixture();
+  delete f.host.resolveAgentResumeContext;
+  f.host.getAgentRuntimeStorageRoot = () => '/controlled/agent-runtime';
+  f.host.ensureRuntimeDirectory = value => value;
+  const metadata = { provider: 'codex', resumeSessionId: 'original-session', resumeStoragePath: '/controlled/original' };
+  assert.deepEqual(f.host.resolveAgentResumeContext('agent-1', 'codex', 'start', '/installed/codex', metadata),
+    { supported: false, strategy: 'none' });
+  assert.deepEqual(f.host.resolveAgentResumeContext('agent-1', 'codex', 'resume', '/installed/codex', metadata),
+    { supported: true, strategy: 'codex-session-id', sessionId: 'original-session' });
+  const fakeStart = f.host.resolveAgentResumeContext('agent-1', 'codex', 'start', '/controlled/fake-codex-provider', metadata);
+  assert.equal(fakeStart.strategy, 'fake-provider');
+  assert.equal(fakeStart.storagePath, '/controlled/agent-runtime/agent-1');
+  assert.notEqual(fakeStart.sessionId, metadata.resumeSessionId);
+  assert.deepEqual(f.host.resolveAgentResumeContext('agent-1', 'codex', 'resume', '/controlled/fake-codex-provider', metadata),
+    { supported: true, strategy: 'fake-provider', sessionId: 'original-session', storagePath: '/controlled/original' });
+  assert.deepEqual(f.host.resolveAgentResumeContext('agent-1', 'claude', 'resume', '/installed/claude',
+    { provider: 'claude', resumeSessionId: 'original-claude' }),
+  { supported: true, strategy: 'claude-session-id', sessionId: 'original-claude' });
+});
+
+test('actual Agent start selects resume context from its parsed configured command', async () => {
+  for (const [command, strategy] of [['/installed/codex', 'none'], ['/controlled/fake-codex-provider', 'fake-provider']]) {
+    const f = candidateFixture();
+    delete f.host.resolveAgentResumeContext;
+    f.host.getAgentRuntimeStorageRoot = () => '/controlled/agent-runtime';
+    f.host.ensureRuntimeDirectory = value => value;
+    f.host.resolveAgentFreshLaunch = () => ({ commandLine: command, requestedCommand: command, launchArgs: [], launchPreset: 'custom' });
+    f.host.getRequestedAgentCliSpec = CanvasPanelManager.prototype.getRequestedAgentCliSpec;
+    f.host.resolveAgentCli = async () => ({ command, requestedCommand: command, provider: 'codex' });
+    try {
+      await completed(f.clock, f.start('agent'), `${strategy} Agent resume context through real start`);
+      assert.equal(f.record('agent').business.agentResume.strategy, strategy);
+      const metadata = f.host.state.nodes.find(node => node.id === 'agent-1').metadata.agent;
+      assert.equal(metadata.resumeStrategy, strategy);
+      assert.equal(Boolean(metadata.resumeStoragePath), strategy === 'fake-provider');
+    } finally { await disposeStartedCandidate(f, 'agent'); }
+  }
+});
 
 test('S10 actual Host start forwards non-default size and kind/provider hangup policy without a process facade', async () => {
   for (const [kind, providerKind, strategy] of [

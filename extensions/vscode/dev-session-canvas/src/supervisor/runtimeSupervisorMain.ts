@@ -90,6 +90,7 @@ import {
 import {
   resolveTerminalJournalSessionDirectory,
   TerminalSessionJournal,
+  type TerminalJournalPageReader,
   type TerminalJournalRecoveryCandidate
 } from './terminalSessionJournal';
 import {
@@ -221,7 +222,14 @@ interface HostOutputSubscription {
   appliedStateVersion: number;
   scheduled: boolean;
   pumping: boolean;
+  pageReader?: TerminalJournalPageReader;
   inFlight?: { batchId: number; revision: number; stateVersion: number; completed: boolean; error: boolean };
+}
+
+interface HostOutputSocketScheduler {
+  scheduled: boolean;
+  pumping: boolean;
+  cursorSessionId?: string;
 }
 
 interface TerminalReadCursor {
@@ -232,6 +240,7 @@ interface TerminalReadCursor {
   appliedRevision: number;
   sentRevision: number;
   checkpoint: TerminalStreamCheckpoint;
+  pageReader?: TerminalJournalPageReader;
 }
 
 type TerminalReaderResult = RuntimeSupervisorTerminalReadOutcome
@@ -296,6 +305,7 @@ export class RuntimeSupervisorServer {
   private readonly connections = new Set<net.Socket>();
   private readonly subscriptions = new Map<net.Socket, Map<string, SupervisorSubscriptionMode>>();
   private readonly hostOutputSubscriptions = new Map<net.Socket, Map<string, HostOutputSubscription>>();
+  private readonly hostOutputSocketSchedulers = new WeakMap<net.Socket, HostOutputSocketScheduler>();
   private readonly hostOutputDrainListeners = new Map<net.Socket, () => void>();
   private readonly deferredSubscriptionRevisions = new Map<net.Socket, Map<string, number>>();
   private readonly terminalReads = new Map<net.Socket, Map<string, TerminalReadCursor>>();
@@ -1031,6 +1041,7 @@ export class RuntimeSupervisorServer {
       // A socket owns at most one reader per session and surface.
       for (const [id, read] of reads) {
         if (read.sessionId === session.sessionId && read.consumerId === params.consumerId) {
+          this.disposeJournalPageReader(read);
           reads.delete(id);
         }
       }
@@ -1074,17 +1085,13 @@ export class RuntimeSupervisorServer {
         }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalRevisionInvalid);
       }
       const headRevision = journal.getRevision();
-      let events: TerminalStreamEvent[] = [];
-      for await (const page of journal.readEventPagesAfter(afterRevision, {
-        throughRevision: headRevision,
-        pageMaxBytes: TERMINAL_STREAM_PAGE_MAX_BYTES,
-        pageMaxEvents: TERMINAL_STREAM_PAGE_MAX_EVENTS
-      })) {
-        events = page;
-        break;
-      }
+      const events = await this.readJournalPage(read, journal, afterRevision, headRevision);
       const revision = events[events.length - 1]?.revision ?? afterRevision;
       if (owned) this.assertOwnedTerminalReader(owned);
+      if (socket.destroyed || this.terminalReads.get(socket)?.get(params.readId) !== read) {
+        this.disposeJournalPageReader(read);
+        throw new Error('Terminal reader is no longer current.');
+      }
       read.appliedRevision = afterRevision;
       if (!owned) read.sentRevision = revision;
       if (session.terminalCheckpoint && session.terminalCheckpoint.revision <= afterRevision &&
@@ -1096,6 +1103,32 @@ export class RuntimeSupervisorServer {
       if (owned) this.ownedTerminalReplies.set(result, owned);
       return result;
     });
+  }
+
+  private async readJournalPage(
+    consumer: { pageReader?: TerminalJournalPageReader }, journal: TerminalSessionJournal,
+    afterRevision: number, throughRevision: number
+  ): Promise<TerminalStreamEvent[]> {
+    // Retain only the authenticated index between requests, never a live journal
+    // iterator or compaction pin while the consumer is processing its page.
+    const reader = consumer.pageReader ??= journal.createPageReader({
+      pageMaxBytes: TERMINAL_STREAM_PAGE_MAX_BYTES, pageMaxEvents: TERMINAL_STREAM_PAGE_MAX_EVENTS
+    });
+    try {
+      const events = await reader.readAfter(afterRevision, throughRevision);
+      if (consumer.pageReader !== reader) throw new Error('Terminal journal page reader is no longer current.');
+      return events;
+    } catch (error) {
+      reader.dispose();
+      if (consumer.pageReader === reader) consumer.pageReader = undefined;
+      throw error;
+    }
+  }
+
+  private disposeJournalPageReader(consumer: { pageReader?: TerminalJournalPageReader }): void {
+    const reader = consumer.pageReader;
+    consumer.pageReader = undefined;
+    reader?.dispose();
   }
 
   private async closeTerminalRead(
@@ -1141,6 +1174,7 @@ export class RuntimeSupervisorServer {
     const reads = this.terminalReads.get(socket);
     const read = reads?.get(params.readId);
     if (read?.sessionId === params.sessionId && read.authorityId === params.authorityId) {
+      this.disposeJournalPageReader(read);
       reads?.delete(params.readId);
       const session = this.sessions.get(params.sessionId);
       if (session?.retiring) {
@@ -1240,6 +1274,7 @@ export class RuntimeSupervisorServer {
     }
     session.ownedReaderResults![outcome.kind]++;
     session.ownedReaders.delete(owned.readId);
+    if (owned.cursor) this.disposeJournalPageReader(owned.cursor);
     if (owned.cursor && owned.reads.get(owned.readId) === owned.cursor) owned.reads.delete(owned.readId);
     this.settleOwnedReadersIfComplete(session);
   }
@@ -1422,7 +1457,13 @@ export class RuntimeSupervisorServer {
   }
 
   private scheduleHostOutput(subscription: HostOutputSubscription): void {
-    if (!this.isHostOutputCurrent(subscription) || subscription.scheduled || subscription.pumping || subscription.inFlight) return;
+    if (!this.isHostOutputCurrent(subscription) || subscription.pumping || subscription.inFlight) return;
+    if (subscription.scheduled) {
+      // A ready subscription may already be queued while the socket is draining.
+      // Re-arm the socket-level turn after the drain instead of leaving it stuck.
+      this.scheduleHostOutputSocket(subscription.socket);
+      return;
+    }
     if (subscription.socket.writableNeedDrain) {
       const socket = subscription.socket;
       if (!this.hostOutputDrainListeners.has(socket)) {
@@ -1438,10 +1479,57 @@ export class RuntimeSupervisorServer {
       return;
     }
     subscription.scheduled = true;
+    this.scheduleHostOutputSocket(subscription.socket);
+  }
+
+  private scheduleHostOutputSocket(socket: net.Socket): void {
+    const scheduler = this.hostOutputSocketSchedulers.get(socket) ?? {
+      scheduled: false,
+      pumping: false
+    };
+    this.hostOutputSocketSchedulers.set(socket, scheduler);
+    if (scheduler.scheduled || scheduler.pumping || socket.writableNeedDrain) return;
+    scheduler.scheduled = true;
     setImmediate(() => {
-      subscription.scheduled = false;
-      void this.pumpHostOutput(subscription).catch(error => console.error('Failed to deliver Host output:', error));
+      scheduler.scheduled = false;
+      this.pumpNextHostOutput(socket, scheduler);
     });
+  }
+
+  private pumpNextHostOutput(socket: net.Socket, scheduler: HostOutputSocketScheduler): void {
+    if (scheduler.pumping || socket.destroyed || socket.writableNeedDrain) return;
+    const subscriptions = this.hostOutputSubscriptions.get(socket);
+    if (!subscriptions || subscriptions.size === 0) return;
+    const entries = [...subscriptions.values()];
+    const cursorIndex = scheduler.cursorSessionId === undefined
+      ? -1
+      : entries.findIndex(subscription => subscription.session.sessionId === scheduler.cursorSessionId);
+    let selected: HostOutputSubscription | undefined;
+    for (let offset = 1; offset <= entries.length; offset += 1) {
+      const candidate = entries[(cursorIndex + offset) % entries.length];
+      if (candidate.scheduled && !candidate.pumping && !candidate.inFlight) {
+        selected = candidate;
+        break;
+      }
+    }
+    if (!selected) return;
+
+    selected.scheduled = false;
+    scheduler.pumping = true;
+    void this.pumpHostOutput(selected)
+      .catch(error => console.error('Failed to deliver Host output:', error))
+      .finally(() => {
+        scheduler.pumping = false;
+        scheduler.cursorSessionId = selected!.session.sessionId;
+        // The selected subscription may have more output, while other sessions may
+        // have become ready during its journal read. Pick the next one fairly.
+        for (const pending of this.hostOutputSubscriptions.get(socket)?.values() ?? []) {
+          if (pending.scheduled && !pending.pumping && !pending.inFlight) {
+            this.scheduleHostOutputSocket(socket);
+            break;
+          }
+        }
+      });
   }
 
   private async pumpHostOutput(subscription: HostOutputSubscription): Promise<void> {
@@ -1462,13 +1550,7 @@ export class RuntimeSupervisorServer {
         const headRevision = journal.getRevision();
         let events: TerminalStreamEvent[] = [];
         if (afterRevision < headRevision) {
-          for await (const page of journal.readEventPagesAfter(afterRevision, {
-            throughRevision: headRevision, pageMaxBytes: TERMINAL_STREAM_PAGE_MAX_BYTES,
-            pageMaxEvents: TERMINAL_STREAM_PAGE_MAX_EVENTS
-          })) {
-            events = page;
-            break;
-          }
+          events = await this.readJournalPage(subscription, journal, afterRevision, headRevision);
           if (events.length === 0) throw new Error('Host output journal page did not advance.');
         }
         const revision = events.at(-1)?.revision ?? afterRevision;
@@ -1485,9 +1567,11 @@ export class RuntimeSupervisorServer {
       this.writeMessage(socket, { type: 'event', event: 'sessionTerminalBatch', payload: {
         sessionId: session.sessionId, kind: session.kind, authorityId: subscription.authorityId,
         subscriptionId: subscription.subscriptionId, batchId, afterRevision: result.afterRevision,
-        revision: result.revision, events: result.events, ...(result.snapshot ? { snapshot: result.snapshot } : {})
+        revision: result.revision, events: result.events, emittedAtMs: Date.now(),
+        ...(result.snapshot ? { snapshot: result.snapshot } : {})
       } });
     } catch (error) {
+      this.disposeJournalPageReader(subscription);
       if (!this.isHostOutputCurrent(subscription) || subscription.inFlight) return;
       const batchId = subscription.nextBatchId++;
       subscription.inFlight = { batchId, revision: subscription.appliedRevision,
@@ -1495,7 +1579,8 @@ export class RuntimeSupervisorServer {
       this.writeMessage(socket, { type: 'event', event: 'sessionTerminalBatch', payload: {
         sessionId: session.sessionId, kind: session.kind, authorityId: subscription.authorityId,
         subscriptionId: subscription.subscriptionId, batchId, afterRevision: subscription.appliedRevision,
-        revision: subscription.appliedRevision, events: [], error: error instanceof Error ? error.message : String(error)
+        revision: subscription.appliedRevision, events: [], emittedAtMs: Date.now(),
+        error: error instanceof Error ? error.message : String(error)
       } });
     } finally {
       subscription.pumping = false;
@@ -1533,6 +1618,7 @@ export class RuntimeSupervisorServer {
   private cancelHostOutput(subscription: HostOutputSubscription): void {
     const subscriptions = this.hostOutputSubscriptions.get(subscription.socket);
     if (subscriptions?.get(subscription.session.sessionId) !== subscription) return;
+    this.disposeJournalPageReader(subscription);
     subscriptions.delete(subscription.session.sessionId);
     if (subscriptions.size === 0) {
       this.hostOutputSubscriptions.delete(subscription.socket);
@@ -2027,14 +2113,19 @@ export class RuntimeSupervisorServer {
     session.ownedReaderAdmissionOpen = false;
     this.settleOwnedReadersIfComplete(session);
     if (session.ownedReaderSockets?.size === 0) session.ownedExecution?.settleReaders('lost');
+    const execution = session.ownedExecution?.snapshot();
     const processResult = session.ownedProcessResult;
     const successful = result.kind === 'applied' && processResult && processResult.kind !== 'unconfirmed';
-    const stopped = session.stopRequested || session.ownedExecution?.snapshot().stopRequested;
+    const stopped = session.stopRequested || execution?.stopRequested;
     session.lifecycle = !successful ? 'error'
       : stopped || (processResult?.kind === 'exited' && processResult.exitCode === 0)
         ? session.kind === 'agent' ? 'stopped' : 'closed' : 'error';
     session.lastExitCode = processResult?.kind === 'exited' ? processResult.exitCode : undefined;
     session.lastExitSignal = processResult?.kind === 'signaled' ? processResult.signal : undefined;
+    const source = execution?.adapter?.seal?.source;
+    if (source && source.kind !== 'eof') {
+      setSessionLastExitMessage(session, { id: 'terminalOutputIncomplete', params: { reason: source.reason } });
+    }
     this.broadcastToSessionSubscribers(session.sessionId, {
       type: 'event', event: 'sessionState', payload: this.toSnapshot(session, undefined, false)
     });
@@ -2677,7 +2768,9 @@ export class RuntimeSupervisorServer {
       : session.terminalStateTracker.getSerializedState(),
     includeTerminalProjection = true
   ): RuntimeSupervisorSessionSnapshot {
-    const terminal = session.ownedReaders ? session.ownedExecution?.snapshot().terminal : undefined;
+    const execution = session.ownedExecution?.snapshot();
+    const terminal = session.ownedReaders ? execution?.terminal : undefined;
+    const source = execution?.adapter?.seal?.source;
     return {
       sessionId: session.sessionId,
       kind: session.kind,
@@ -2701,6 +2794,8 @@ export class RuntimeSupervisorServer {
       terminalRevision: session.terminalJournalError ? undefined : session.terminalJournal?.getRevision(),
       ...(session.ownedReaders ? { capabilities: { terminalReadSettlementV1: true as const } } : {}),
       ...(terminal?.kind === 'applied' ? { terminalFinalRevision: terminal.finalRevision } : {}),
+      ...(source ? { terminalSourceDisposition: source.kind === 'eof'
+        ? { kind: source.kind } : { kind: source.kind, reason: source.reason } } : {}),
       displayLabel: session.displayLabel,
       launchMode: session.launchMode,
       provider: session.provider,
@@ -2830,6 +2925,8 @@ export class RuntimeSupervisorServer {
 
   private clearSessionSubscriptions(sessionId: string): void {
     for (const [socket, subscriptions] of this.hostOutputSubscriptions) {
+      const subscription = subscriptions.get(sessionId);
+      if (subscription) this.disposeJournalPageReader(subscription);
       subscriptions.delete(sessionId);
       if (subscriptions.size === 0) {
         this.hostOutputSubscriptions.delete(socket);
@@ -2839,6 +2936,7 @@ export class RuntimeSupervisorServer {
     for (const reads of this.terminalReads.values()) {
       for (const [id, read] of reads) {
         if (read.sessionId === sessionId) {
+          this.disposeJournalPageReader(read);
           reads.delete(id);
         }
       }
@@ -2989,6 +3087,7 @@ export class RuntimeSupervisorServer {
     }
     for (const read of this.terminalReads.get(socket)?.values() ?? []) {
       affectedSessionIds.add(read.sessionId);
+      this.disposeJournalPageReader(read);
     }
     for (const appliedRevision of this.appliedRevisionAcks.get(socket)?.values() ?? []) {
       affectedSessionIds.add(appliedRevision.sessionId);
@@ -3008,6 +3107,9 @@ export class RuntimeSupervisorServer {
       }
     }
     this.connections.delete(socket);
+    for (const subscription of this.hostOutputSubscriptions.get(socket)?.values() ?? []) {
+      this.disposeJournalPageReader(subscription);
+    }
     this.hostOutputSubscriptions.delete(socket);
     this.clearHostOutputDrainListener(socket);
     this.subscriptions.delete(socket);

@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import {
+  formatRuntimeSupervisorMessageDescriptor,
+  getRuntimeSupervisorErrorDescriptor
+} from '../../extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts';
+import {
   enWebviewMessages,
   formatWebviewMessage,
   normalizeWebviewLocale,
@@ -178,7 +182,8 @@ for (const descriptorId of [
   'terminalAuthorityMismatch',
   'terminalRevisionInvalid',
   'terminalJournalUnavailable',
-  'terminalJournalPersistenceFailed'
+  'terminalJournalPersistenceFailed',
+  'terminalOutputIncomplete'
 ]) {
   assert.match(
     runtimeSupervisorLocalizationSource,
@@ -186,6 +191,15 @@ for (const descriptorId of [
     `Expected controlled runtime supervisor descriptor ${descriptorId} to localize at the Host boundary.`
   );
 }
+
+const incompleteDescriptor = {
+  id: 'terminalOutputIncomplete' as const,
+  params: { reason: 'controlled natural drain cancellation' }
+};
+assert.equal(formatRuntimeSupervisorMessageDescriptor(incompleteDescriptor),
+  'Output is incomplete: controlled natural drain cancellation');
+assert.deepEqual(getRuntimeSupervisorErrorDescriptor({ descriptor: incompleteDescriptor }), incompleteDescriptor,
+  'The new descriptor must remain valid when parsed at the Host boundary.');
 
 console.log('ui copy localization tests passed');
 

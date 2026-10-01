@@ -26,15 +26,25 @@ const isProduction = process.argv.includes('--production');
 export async function resolveExecutionBuildSelection(args, distDirectory = mainExtensionDistRoot) {
   const { values } = parseArgs({ args, options: {
     watch: { type: 'boolean' }, production: { type: 'boolean' },
-    'execution-profile': { type: 'string' }, 'execution-assets': { type: 'string' }
+    'execution-profile': { type: 'string' }, 'execution-assets': { type: 'string' },
+    'execution-admission': { type: 'string' }
   } });
   const profile = values['execution-profile'];
   const source = values['execution-assets'];
-  if (profile === undefined && source === undefined) return {};
+  const admission = values['execution-admission'];
+  if (profile === undefined && source === undefined && admission === undefined) return {};
   if (profile !== 'linux-owner-v1-candidate' || !source) {
     throw new Error('Specify --execution-profile=linux-owner-v1-candidate and --execution-assets together.');
   }
   if (values.watch) throw new Error('Execution candidate watch builds are not supported.');
+  const admissionParts = admission === undefined ? [2, 1]
+    : /^\d+:\d+$/.test(admission) ? admission.split(':').map(Number) : [];
+  const [executions, starting] = admissionParts;
+  if (admissionParts.length !== 2 || !Number.isSafeInteger(executions) || executions <= 0
+    || !Number.isSafeInteger(starting) || starting <= 0 || starting > executions) {
+    throw new Error('Execution admission must be positive safe integers N:Q with Q <= N.');
+  }
+  const admissionLimits = Object.freeze({ executions, starting });
   const sourceDirectory = await fs.realpath(source);
   const dist = await fs.realpath(distDirectory).catch(error => {
     if (error.code !== 'ENOENT') throw error;
@@ -45,7 +55,7 @@ export async function resolveExecutionBuildSelection(args, distDirectory = mainE
     throw new Error('Execution candidate assets must be outside the dist directory cleared by the build.');
   }
   readCandidateAssets(sourceDirectory);
-  return Object.freeze({ profile, source: sourceDirectory });
+  return Object.freeze({ profile, source: sourceDirectory, admissionLimits });
 }
 
 const sharedConfig = {
@@ -130,7 +140,10 @@ const webviewConfig = {
 async function runBuild() {
   const selection = await resolveExecutionBuildSelection(process.argv.slice(2));
   extensionConfig.define = { ...extensionConfig.define,
-    __DEV_SESSION_CANVAS_EXECUTION_PROFILE__: JSON.stringify(selection.profile) ?? 'undefined' };
+    __DEV_SESSION_CANVAS_EXECUTION_PROFILE__: JSON.stringify(selection.profile) ?? 'undefined',
+    __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__: JSON.stringify(selection.admissionLimits) ?? 'undefined' };
+  supervisorConfig.define = { ...supervisorConfig.define,
+    __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__: JSON.stringify(selection.admissionLimits) ?? 'undefined' };
   await fs.rm(mainExtensionDistRoot, { recursive: true, force: true });
 
   if (!isWatch) {
@@ -141,7 +154,12 @@ async function runBuild() {
       esbuild.build(linuxExecutionProviderConfig),
       esbuild.build(webviewConfig)
     ]);
-    if (selection.profile) importCandidateAssets({ source: selection.source, dist: mainExtensionDistRoot });
+    if (selection.profile) {
+      importCandidateAssets({ source: selection.source, dist: mainExtensionDistRoot });
+      await fs.writeFile(fromMainExtensionDist('execution-candidate-selection.json'), `${JSON.stringify({
+        schemaVersion: 1, profile: selection.profile, admissionLimits: selection.admissionLimits
+      }, null, 2)}\n`);
+    }
     return;
   }
 
