@@ -49,7 +49,8 @@
 - [x] (2026-09-28) owned 写入先红：实际 append 阻塞而 consumedThrough=4；消费信用改为等待 journal 完整 flush，Terminal/Agent 慢写及失败回归通过，Supervisor wiring 77/77。
 - [x] (2026-09-28) 新路径唯一一次完成负载的 1x/2x/4x 校准内存超限，保留失败；原十会话浏览器基准 1/1 通过，输入/ACK/回显 13.2/19.3/170.2ms，不代证真实 Supervisor/Agent。
 - [x] (2026-09-28) 从 `4dc42c87` 修分页整段物化，先红单次读取 1,211,319 bytes；修后 64 KiB 块/当前记录/页、完整段校验及原回归通过。一次原预算对照 RSS 达标、heap 仍超限，旧失败保留。
-- [ ] 收敛 journal、socket、Host 在途责任并对直接阻塞作必要修正及验证；未实施或未覆盖部分保留为 B1 未完成，不另开退出阶段。
+- [x] (2026-10-02，B1结构责任切片) 已收敛 journal 分页/信用、Supervisor/Host 单页在途、Host/Webview 水位通知合并、取消等待登记以及明确 `rejected-before-acquire` 后的 candidate reservation 清理；对应先红、定向回归和 Host wiring 149/149 保留，未知连接/能力/资源结果仍进入 sticky unknown/quarantine。
+- [ ] (B1剩余直接验收) 收敛仍在支持边界内的旧 node-pty/socket 生产路径与旧协议/页面兼容成本，并在实际分进程生产候选上完成多会话、慢消费/重连、输入控制和资源预算整链验收；不把上述结构切片或十会话声明输入写成 F-04/A1 完成。
 - [x] (2026-09-28) 从 `d432bf89` 接通具名 Host 页消费信用；旧真实 socket 暂停 Host 仍推送 96 条 raw 事件先红，修后单页在途及 97 事件无损、控制/其他会话进展、compact/重连和取消隔离通过，设计见第 10.3 节。
 - [x] (2026-09-28) 从 `52ff49bc` 收敛 Host/Webview 水位通知为单在途与最新待发；旧 Host 无回执 1000 条先红，修后单条及最新 revision、标题、生命周期、重附着和投递失败回归通过，浏览器 8/8；不改正文/最终应用契约，设计见第 10.4 节。
 - [x] (2026-09-28) 从 `f24a84f0` 分离 owned 消费解析屏障与完整快照，取得实际消费序列化先红并保持最终保存/错误契约；真实 Linux provider/socket/Host 固定负载各一次对照，序列化 1616→4 次、内容/终态/清理通过；current 2x/4x 内存仍超限，见第 10.5 节。
@@ -62,7 +63,7 @@
 
 ## 意外与发现
 
-2026-10-01 只读核对发现，启动并发 `Q=1` 的第二次创建在 Supervisor 侧可确定返回 `rejected-before-acquire` 并删除准备资源，但 Host 侧将其当作普通 Error；由于记录已标记 `submitted` 而未 `settled`，`CanvasPanelManager` 后续会把同节点永久视为 pending/unknown。该问题与容量数值无关，是直接的新建可用性阻塞。固定十会话结果不提供把 `N` 变成产品上限的证据；移除总 N 也会错误移除 final snapshot/unknown 的保护，因此活动会话计数与责任槽必须分账。
+2026-10-01 只读核对发现，启动并发 `Q=1` 的第二次创建在 Supervisor 侧可确定返回 `rejected-before-acquire` 并删除准备资源，但 Host 侧将其当作普通 Error；由于记录已标记 `submitted` 而未 `settled`，`CanvasPanelManager` 后续会把同节点永久视为 pending/unknown。该问题与容量数值无关，曾是直接的新建可用性阻塞；`e2a53372` 已仅针对这一明确结果清理 reservation、恢复可重试 error，并以 Terminal/Agent 同节点重试回归收口，未知连接/能力/资源结果仍保持隔离。该历史发现和首报保留，不再列为当前未修复项。固定十会话结果不提供把 `N` 变成产品上限的证据；移除总 N 也会错误移除 final snapshot/unknown 的保护，因此活动会话计数与责任槽必须分账。
 
 2026-10-01，10.14的B交互安排在完整后缀之后，`overlap=false`不抵消原恢复通过。10.15只改变原动作顺序与readiness/判定，未增加数据或sleep，就观察到B51ms应用时A由12推进到18且仍未追平；本次来源hash与原输入一致、revision6502，随后原内容/身份/无历史及清理全部通过。该事实补齐具名组合，不能推导一般性能保证或将10.14改记重叠。
 
