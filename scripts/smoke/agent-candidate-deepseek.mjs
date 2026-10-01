@@ -1,6 +1,62 @@
 import fs from 'node:fs/promises';
+import childProcess from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
+
+const WINDOWS_PRIVATE_DIRECTORY_SCRIPT = `
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+Set-StrictMode -Version Latest
+$directory = $env:DSC_PRIVATE_CREDENTIAL_DIRECTORY
+$item = Get-Item -LiteralPath $directory -Force
+if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Invalid private directory' }
+if (@(Get-ChildItem -LiteralPath $directory -Force).Count -ne 0) { throw 'Private directory is not empty' }
+$current = [Security.Principal.WindowsIdentity]::GetCurrent().User
+$system = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+$identities = @($current, $system) | Sort-Object -Property Value -Unique
+$acl = [Security.AccessControl.DirectorySecurity]::new()
+$acl.SetOwner($current)
+$acl.SetAccessRuleProtection($true, $false)
+$inheritance = [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit
+foreach ($identity in $identities) {
+  $rule = [Security.AccessControl.FileSystemAccessRule]::new($identity, [Security.AccessControl.FileSystemRights]::FullControl,
+    $inheritance, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow)
+  $acl.AddAccessRule($rule)
+}
+Set-Acl -LiteralPath $directory -AclObject $acl
+$actual = Get-Acl -LiteralPath $directory
+if (-not $actual.AreAccessRulesProtected -or $actual.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $current.Value) { throw 'Private directory protection mismatch' }
+$rules = @($actual.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+if ($rules.Count -ne @($identities).Count) { throw 'Private directory rule count mismatch' }
+foreach ($identity in $identities) {
+  $matching = @($rules | Where-Object { $_.IdentityReference.Value -eq $identity.Value })
+  if ($matching.Count -ne 1) { throw 'Private directory identity mismatch' }
+  $rule = $matching[0]
+  if ($rule.IsInherited -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+      $rule.FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl -or
+      $rule.InheritanceFlags -ne $inheritance -or $rule.PropagationFlags -ne [Security.AccessControl.PropagationFlags]::None) {
+    throw 'Private directory permission mismatch'
+  }
+}
+[Console]::Out.WriteLine('private-directory-ready')
+`;
+
+async function restrictWindowsCredentialDirectory(directory) {
+  const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT;
+  if (!systemRoot || !path.win32.isAbsolute(systemRoot)) throw new Error('Windows system directory is unavailable.');
+  const executable = path.win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const { stdout, stderr } = await promisify(childProcess.execFile)(executable,
+    ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand',
+      Buffer.from(WINDOWS_PRIVATE_DIRECTORY_SCRIPT, 'utf16le').toString('base64')], {
+      windowsHide: true,
+      timeout: 15000,
+      maxBuffer: 65536,
+      encoding: 'utf8',
+      env: { SystemRoot: systemRoot, WINDIR: systemRoot, DSC_PRIVATE_CREDENTIAL_DIRECTORY: directory }
+    });
+  if (stdout.trim() !== 'private-directory-ready' || stderr.trim()) throw new Error('Windows private directory was not confirmed.');
+}
 
 const MODEL = 'deepseek-flash';
 const CODEX_ENDPOINT = 'https://api.deepseek.com/';
@@ -40,7 +96,8 @@ export async function createDeepSeekConfiguration({ apiKey, temporaryRoot = os.t
   let directory;
   try {
     directory = await fs.mkdtemp(path.join(temporaryRoot, 'dsc-agent-deepseek-'));
-    await fs.chmod(directory, 0o700);
+    if (process.platform === 'win32') await restrictWindowsCredentialDirectory(directory);
+    else await fs.chmod(directory, 0o700);
     const codexHome = path.join(directory, 'codex');
     const claudeConfigDir = path.join(directory, 'claude');
     await fs.mkdir(codexHome, { mode: 0o700 });

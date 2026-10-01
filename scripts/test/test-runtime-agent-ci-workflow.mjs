@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 import yaml from 'js-yaml';
 
@@ -9,13 +10,20 @@ const workflow = yaml.load(source);
 const input = workflow.on.workflow_dispatch.inputs.real_agents;
 assert.equal(input.type, 'boolean');
 assert.equal(input.default, false);
+const platformInput = workflow.on.workflow_dispatch.inputs.real_agent_platform;
+assert.equal(platformInput.type, 'choice');
+assert.equal(platformInput.default, 'linux');
+assert.deepEqual(platformInput.options, ['linux', 'macos', 'windows']);
 assert.deepEqual(workflow.permissions, { contents: 'read' });
 assert.equal(workflow.env, undefined, 'Credentials must not enter workflow-wide environment.');
+assert.deepEqual(workflow.concurrency, { group: 'runtime-exit-native-${{ github.ref }}', 'cancel-in-progress': false });
+assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch', 'push']);
+assert.deepEqual(workflow.on.push.branches, ['runtime-exit-integrity-platform-runners', 'runtime-exit-integrity-platform-runners-agent']);
 
 const baseline = workflow.jobs['native-node-pty'];
 const acceptance = workflow.jobs['real-agent-linux'];
 assert.equal(baseline.if, "github.event_name != 'workflow_dispatch' || !inputs.real_agents");
-assert.equal(acceptance.if, "github.event_name == 'workflow_dispatch' && inputs.real_agents");
+assert.equal(acceptance.if, "github.event_name == 'workflow_dispatch' && inputs.real_agents && inputs.real_agent_platform == 'linux'");
 assert.deepEqual(baseline.strategy.matrix.os, ['ubuntu-latest', 'macos-latest', 'windows-latest']);
 assert.equal(acceptance['runs-on'], 'ubuntu-22.04');
 assert.equal(acceptance.environment, undefined, 'Repository secret acceptance has no Environment dependency.');
@@ -23,6 +31,26 @@ assert.equal(acceptance.strategy, undefined, 'Real Agent acceptance must not fan
 assert.equal(acceptance.env, undefined, 'Preparation must not inherit the Agent credential.');
 assert.equal(acceptance['timeout-minutes'], 40);
 assert.deepEqual(acceptance.concurrency, { group: 'runtime-real-agent-acceptance', 'cancel-in-progress': false });
+for (const platform of ['macos', 'windows']) {
+  const caller = workflow.jobs[`real-agent-${platform}`];
+  assert.equal(caller.if, `github.event_name == 'workflow_dispatch' && inputs.real_agents && inputs.real_agent_platform == '${platform}'`);
+  assert.equal(caller.uses, `./.github/workflows/runtime-real-agent-${platform}.yml`, 'The reusable workflow must use this same source ref.');
+  assert.deepEqual(caller.secrets, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}' });
+  for (const field of ['env', 'strategy', 'steps', 'concurrency', 'runs-on', 'with']) assert.equal(caller[field], undefined);
+}
+assert.notEqual(workflow.concurrency.group, acceptance.concurrency.group,
+  'A caller must not hold the same concurrency group that its callee awaits.');
+assert.deepEqual(Object.keys(workflow.jobs), ['native-node-pty', 'real-agent-linux', 'real-agent-macos', 'real-agent-windows']);
+for (const eventName of ['push', 'workflow_dispatch']) {
+  for (const realAgents of [false, true]) {
+    for (const platform of platformInput.options) {
+      const selected = Object.entries(workflow.jobs).filter(([, job]) =>
+        new Function('github', 'inputs', `return (${job.if});`)(
+          { event_name: eventName }, { real_agents: realAgents, real_agent_platform: platform })).map(([id]) => id);
+      assert.deepEqual(selected, [eventName === 'workflow_dispatch' && realAgents ? `real-agent-${platform}` : 'native-node-pty']);
+    }
+  }
+}
 
 const step = name => {
   const found = acceptance.steps.find(candidate => candidate.name === name);
@@ -74,7 +102,7 @@ assert.doesNotMatch(run.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/u,
   'The acceptance step must not expose raw output or credential values in Actions logs.');
 assert.equal(acceptance.steps.filter(candidate => candidate.run).at(-1), run,
   'Only artifact upload may follow the credential-bearing acceptance step.');
-const credentialSteps = Object.values(workflow.jobs).flatMap(job => job.steps)
+const credentialSteps = Object.values(workflow.jobs).flatMap(job => job.steps ?? [])
   .filter(candidate => JSON.stringify(candidate).includes('secrets.'));
 assert.deepEqual(credentialSteps, [run], 'The repository credential is available only during acceptance.');
 for (const preparation of [cliInstall, vscode, build, linuxDependencies]) {
@@ -89,13 +117,14 @@ assert.equal(upload.with['include-hidden-files'], undefined);
 assert.deepEqual(acceptance.steps.filter(candidate => candidate.uses?.startsWith('actions/upload-artifact@')), [upload]);
 assert.doesNotMatch(JSON.stringify(upload.with), /\.debug|HOME|provider|auth/u,
   'Raw output, temporary credentials and home directories must not be uploaded.');
-for (const candidate of acceptance.steps.filter(candidate => candidate.run)) {
+for (const candidate of acceptance.steps.filter(candidate => candidate.run && process.platform !== 'win32')) {
   const syntax = spawnSync('bash', ['-n'], { input: candidate.run, encoding: 'utf8' });
   assert.equal(syntax.status, 0, `Invalid shell syntax in ${candidate.name}: ${syntax.stderr}`);
 }
 
 const macWorkflow = yaml.load(await readFile('.github/workflows/runtime-real-agent-macos.yml', 'utf8'));
-assert.deepEqual(Object.keys(macWorkflow.on), ['workflow_dispatch'], 'Real Agent runs require explicit manual dispatch.');
+assert.deepEqual(Object.keys(macWorkflow.on), ['workflow_dispatch', 'workflow_call'], 'Real Agent runs require manual dispatch or the selected reusable call.');
+assert.deepEqual(macWorkflow.on.workflow_call, { secrets: { DEEPSEEK_API_KEY: { required: true } } });
 assert.deepEqual(macWorkflow.permissions, { contents: 'read' });
 assert.equal(macWorkflow.env, undefined, 'Credentials must not enter workflow-wide environment.');
 assert.deepEqual(macWorkflow.concurrency, acceptance.concurrency, 'Linux and macOS share one finite acceptance lane.');
@@ -163,9 +192,114 @@ assert.deepEqual(macUpload, { ...upload, with: { ...upload.with,
   name: 'runtime-real-agent-macos-${{ github.run_id }}-${{ github.run_attempt }}' } });
 assert.deepEqual(macAcceptance.steps.filter(candidate => candidate.uses?.startsWith('actions/upload-artifact@')), [macUpload],
   'Raw Agent output, temporary credentials and home directories must never be uploaded.');
-for (const candidate of macAcceptance.steps.filter(candidate => candidate.run)) {
+for (const candidate of macAcceptance.steps.filter(candidate => candidate.run && process.platform !== 'win32')) {
   const syntax = spawnSync('bash', ['-n'], { input: candidate.run, encoding: 'utf8' });
   assert.equal(syntax.status, 0, `Invalid shell syntax in macOS ${candidate.name}: ${syntax.stderr}`);
 }
 
-console.log('runtime real Agent CI workflow contract tests passed for Linux and macOS');
+const windowsWorkflow = yaml.load(await readFile('.github/workflows/runtime-real-agent-windows.yml', 'utf8'));
+assert.deepEqual(Object.keys(windowsWorkflow.on), ['workflow_dispatch', 'workflow_call'], 'Windows real Agent runs require manual dispatch or the selected reusable call.');
+assert.deepEqual(windowsWorkflow.on.workflow_call, { secrets: { DEEPSEEK_API_KEY: { required: true } } });
+assert.deepEqual(windowsWorkflow.permissions, { contents: 'read' });
+assert.equal(windowsWorkflow.env, undefined);
+assert.deepEqual(windowsWorkflow.concurrency, acceptance.concurrency, 'All real Agent platforms share one finite acceptance lane.');
+assert.deepEqual(Object.keys(windowsWorkflow.jobs), ['real-agent-windows']);
+const windowsAcceptance = windowsWorkflow.jobs['real-agent-windows'];
+assert.equal(windowsAcceptance['runs-on'], 'windows-latest');
+assert.equal(windowsAcceptance['timeout-minutes'], 40);
+for (const field of ['if', 'environment', 'strategy', 'env']) assert.equal(windowsAcceptance[field], undefined);
+const windowsStep = name => {
+  const found = windowsAcceptance.steps.find(candidate => candidate.name === name);
+  assert.ok(found, `Missing Windows acceptance step: ${name}`);
+  return found;
+};
+for (const name of ['Checkout acceptance source', 'Setup fixed Agent Node.js', 'Install locked dependencies',
+  'Install fixed real Agent CLIs']) {
+  assert.deepEqual(windowsStep(name), step(name), `Windows must preserve the shared ${name} contract.`);
+}
+assert.deepEqual(windowsStep('Setup x64 compiler environment'), {
+  name: 'Setup x64 compiler environment', uses: 'ilammy/msvc-dev-cmd@v1', with: { arch: 'x64' }
+});
+const windowsChecks = windowsStep('Check real Agent workflow contract');
+for (const file of ['test-agent-candidate-deepseek', 'test-agent-candidate-ci-report',
+  'test-runtime-agent-ci-workflow', 'test-agent-candidate-process-observer',
+  'test-agent-candidate-windows-observer', 'test-agent-candidate-cli']) {
+  assert.ok(windowsChecks.run.includes(`node scripts/test/${file}.mjs\nif ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`));
+}
+const windowsVSCode = windowsStep('Prepare fixed VS Code');
+assert.match(windowsVSCode.run, /version: '1\.117\.0', platform: 'win32-x64-archive'/u);
+assert.match(windowsVSCode.run, /DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=/u);
+const windowsBuild = windowsStep('Build fixed Electron execution candidate');
+assert.equal(windowsBuild.shell, 'pwsh');
+assert.match(windowsBuild.run, /assert\.equal\(process\.versions\.electron, "39\.8\.7"\)/u);
+assert.match(windowsBuild.run, /assert\.equal\(process\.versions\.node, "22\.22\.1"\)/u);
+assert.match(windowsBuild.run, /assert\.equal\(process\.versions\.modules, "140"\)/u);
+assert.match(windowsBuild.run, /af6712ab16c436b9288ece2f0173924c74008446346bda3457d07b769f402eda/u);
+assert.match(windowsBuild.run, /ee92beea67d0f12ef058adc52d0f5344e1005153c9487d0f4d63cab91111421a/u);
+assert.match(windowsBuild.run, /win-x64\/node\.lib/u);
+assert.match(windowsBuild.run, /ELECTRON_RUN_AS_NODE: '1'/u);
+assert.doesNotMatch(windowsBuild.run, /& \$env:DEV_SESSION_CANVAS_VSCODE_EXECUTABLE|\$env:ELECTRON_RUN_AS_NODE =/u);
+assert.match(windowsBuild.run, /'--node-lib', path\.join\(process\.env\.RUNNER_TEMP, 'agent-electron-node\.lib'\)/u);
+assert.match(windowsBuild.run, /'--delay-load-hook', path\.join\(path\.dirname\(process\.execPath\)/u);
+assert.match(windowsBuild.run, /--execution-profile=windows-owner-v1-candidate --execution-assets \$assets/u);
+const electronScript = windowsBuild.run.match(/@'\n([\s\S]+?)\n'@ \| node --input-type=module/u)?.[1];
+assert.ok(electronScript, 'Windows Electron startup must explicitly wait for both GUI-executable processes.');
+const runElectronBuild = new Function('spawnSync', 'assert', 'path', 'process', electronScript.replace(/^import .+;\n/gmu, ''));
+const buildEnvironment = { RUNNER_TEMP: 'C:\\temp', GITHUB_WORKSPACE: 'D:\\project', DEV_SESSION_CANVAS_VSCODE_EXECUTABLE: 'C:\\Code.exe' };
+for (const failureAt of [-1, 0, 1]) {
+  const calls = [];
+  const invoke = () => runElectronBuild((executable, args, options) => {
+    calls.push({ executable, args, options });
+    return { status: calls.length - 1 === failureAt ? 19 : 0, signal: null };
+  }, assert, path.win32, { env: buildEnvironment, execPath: 'C:\\node\\node.exe' });
+  if (failureAt === -1) invoke();
+  else assert.throws(invoke, assert.AssertionError);
+  assert.equal(calls.length, failureAt === 0 ? 1 : 2);
+  assert.equal(calls[0].args[0], '-e');
+  for (const call of calls) {
+    assert.equal(call.executable, buildEnvironment.DEV_SESSION_CANVAS_VSCODE_EXECUTABLE);
+    assert.equal(call.options.stdio, 'inherit');
+    assert.deepEqual(call.options.env, { ...buildEnvironment, ELECTRON_RUN_AS_NODE: '1' });
+  }
+  if (calls[1]) {
+    assert.deepEqual(calls[1].args.slice(0, 2), ['scripts/build/windows-execution-candidate-assets.mjs', 'build']);
+    assert.ok(calls[1].args.includes('C:\\temp\\agent-native-assets'));
+  }
+}
+const spawnFailure = new Error('controlled Electron spawn failure');
+assert.throws(() => runElectronBuild(() => ({ error: spawnFailure }), assert, path.win32,
+  { env: buildEnvironment, execPath: 'C:\\node\\node.exe' }), error => error === spawnFailure);
+assert.equal(buildEnvironment.ELECTRON_RUN_AS_NODE, undefined, 'The Electron flag must not leak into the ordinary build process.');
+const windowsRun = windowsStep('Run finite real Agent acceptance');
+assert.equal(windowsRun.id, 'real_agents');
+assert.deepEqual(windowsRun.env, run.env);
+assert.equal(windowsRun.if, undefined);
+assert.equal(windowsRun['continue-on-error'], undefined);
+assert.match(windowsRun.run, /run-vscode-agent-candidate\.mjs --backend=deepseek --ci-report agent-ci-report --output \$output \*> \$log/u);
+assert.match(windowsRun.run, /if \(\$LASTEXITCODE -ne 0\) \{[\s\S]*exit 1/u);
+assert.doesNotMatch(windowsRun.run, /GITHUB_OUTPUT|report_ready|Get-Content|\bcat\b|\btee\b|\$env:DEEPSEEK_API_KEY/u);
+assert.deepEqual(windowsAcceptance.steps.filter(candidate => JSON.stringify(candidate).includes('secrets.')), [windowsRun]);
+for (const preparation of windowsAcceptance.steps.slice(0, windowsAcceptance.steps.indexOf(windowsRun))) {
+  assert.equal(preparation.env, undefined, `Windows preparation cannot receive credential environment: ${preparation.name}`);
+  assert.doesNotMatch(JSON.stringify(preparation), /DEEPSEEK_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY|secrets\./u);
+}
+const windowsUpload = windowsStep('Upload sanitized real Agent report');
+assert.deepEqual(windowsAcceptance.steps.slice(windowsAcceptance.steps.indexOf(windowsRun) + 1), [windowsUpload]);
+assert.deepEqual(windowsUpload, { ...upload, with: { ...upload.with,
+  name: 'runtime-real-agent-windows-${{ github.run_id }}-${{ github.run_attempt }}' } });
+assert.deepEqual(windowsAcceptance.steps.filter(candidate => candidate.uses?.startsWith('actions/upload-artifact@')), [windowsUpload]);
+if (process.platform === 'win32') {
+  const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT;
+  const powershell = path.win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  for (const candidate of windowsAcceptance.steps.filter(candidate => candidate.run)) {
+    const parse = "$errors = $null; [void][Management.Automation.Language.Parser]::ParseInput($env:DSC_WORKFLOW_RUN, [ref]$null, [ref]$errors); if ($errors.Count -ne 0) { $errors | Out-String | Write-Error; exit 1 }";
+    const syntax = spawnSync(powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand',
+      Buffer.from(parse, 'utf16le').toString('base64')], {
+      encoding: 'utf8', timeout: 15000, windowsHide: true,
+      env: { SystemRoot: systemRoot, WINDIR: systemRoot, DSC_WORKFLOW_RUN: candidate.run }
+    });
+    assert.equal(syntax.status, 0, `Invalid Windows PowerShell syntax in ${candidate.name}: ${syntax.stderr}`);
+  }
+}
+
+console.log(`runtime real Agent CI workflow contract tests passed for Linux, macOS and Windows; native shell syntax: ${process.platform === 'win32' ? 'PowerShell' : 'Bash'}`);

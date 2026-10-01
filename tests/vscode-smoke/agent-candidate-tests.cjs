@@ -7,7 +7,9 @@ const { spawnSync } = require('node:child_process');
 const { stripVTControlCharacters } = require('node:util');
 const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
-const { AgentProcessObserver } = require('./agent-candidate-process-observer.cjs');
+const { AgentProcessObserver, executionEnded } = require('./agent-candidate-process-observer.cjs');
+const { invokeCLI } = require('./agent-candidate-cli.cjs');
+const { resolveExecutionSessionSpawnSpec } = require('./agent-candidate-spawn-spec.cjs');
 const { resolveLegacyRuntimeSupervisorPaths,
   resolveSystemdUserRuntimeSupervisorPaths } = require('./agent-candidate-runtime-paths.cjs');
 
@@ -69,7 +71,7 @@ function codexPath() {
 
 async function run() {
   config = JSON.parse(await fs.readFile(process.env.DEV_SESSION_CANVAS_AGENT_CANDIDATE_CONFIG, 'utf8'));
-  assert(['linux', 'darwin'].includes(process.platform));
+  assert(['linux', 'darwin', 'win32'].includes(process.platform));
   if (config.authOnly === true) return runAuthenticationOnly();
   assert(['codex', 'claude'].includes(config.provider));
   assert(['natural', 'stop'].includes(config.lifecycle));
@@ -88,6 +90,8 @@ async function run() {
     await command('clearDiagnosticEvents');
     const finalMessagePath = path.join(config.artifactDir, 'codex-final-message.txt');
     const args = launchArguments(finalMessagePath);
+    if (process.platform === 'win32') await observer.setLaunch(resolveExecutionSessionSpawnSpec({
+      file: config.cli.entry, args, env: process.env }, 'win32'));
     const customLaunchCommand = [config.cli.entry, ...args].map(quote).join(' ');
     await writeJson('launch.json', { ...config, command: config.cli.entry, args, customLaunchCommand,
       hostPid: process.pid, hostExecutable: process.execPath, hostVersions: process.versions, vscode: vscode.version,
@@ -117,7 +121,8 @@ async function run() {
         'Supervisor storage must belong to this isolated test.');
       hello = await readHello(metadata);
       assert(hello.capabilities?.executionCandidateProfiles?.includes(process.platform === 'darwin'
-        ? 'macos-owner-v1-candidate' : 'linux-owner-v1-candidate'));
+        ? 'macos-owner-v1-candidate' : process.platform === 'win32'
+          ? 'windows-owner-v1-candidate' : 'linux-owner-v1-candidate'));
       await observer.addRoot(hello.pid, 'supervisor');
     }
     await poll('real xterm reader mounted', probe, value => value.nodes.some(node =>
@@ -179,10 +184,20 @@ async function run() {
       return observer.result();
     }, result => result.entries.some(entry => entry.role === 'cli') &&
       result.entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role))
-        .every(entry => !entry.active || ['Z', 'X'].includes(entry.state)));
+        .every(executionEnded));
     assert.equal(observer.failures.length, 0, 'Wrapper must not finish while the actual CLI remains live.');
     if (config.provider === 'codex') assert(observer.result().entries.some(entry => entry.role === 'wrapper'),
       'The installed npm wrapper must be observed, not replaced with a direct native launch.');
+    if (process.platform === 'win32') {
+      const entries = observer.result().entries;
+      assert.equal(entries.filter(entry => entry.role === 'provider').length, 1);
+      assert.equal(entries.filter(entry => entry.role === 'wrapper' && entry.wrapperKind === 'cmd').length, 1);
+      assert.equal(entries.filter(entry => entry.role === 'wrapper' && entry.wrapperKind === 'node').length,
+        config.provider === 'codex' ? 1 : 0);
+      const subjects = entries.filter(entry => entry.role === 'cli');
+      assert.equal(subjects.length, 1, 'The installed native Agent subject must be observed.');
+      if (config.lifecycle === 'natural') assert.equal(subjects[0].exitCode, 0);
+    }
     await archive('completed', { node: currentNode(ended), savedNode, hello, executionId,
       resultKind: config.lifecycle === 'natural' ? 'natural-completion' : 'explicit-product-stop',
       sourceEofClaim: config.lifecycle === 'natural' ? 'requires product source evidence; not inferred from exit' : false });
@@ -191,29 +206,31 @@ async function run() {
     await archive('first-failure', { error: String(error), stack: error.stack, nodeId, executionId, hello });
   } finally {
     try {
-      await command('resetState');
-      await observer.sample();
-      await writeJson('cleanup.json', { runtime: await command('getRuntimeSupervisorState'),
-        snapshot: await snapshot(), process: observer.result(), forcedSignals: [] });
-    } catch (error) {
-      failure ??= error;
-      await writeJson('product-cleanup-failure.json', { error: String(error) });
-    }
-    await observer.stop();
-    const remaining = observer.result().entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role) &&
-      entry.active && !['Z', 'X'].includes(entry.state));
-    if (remaining.length) {
-      failure ??= new Error('Product cleanup left owned Agent resources live.');
-      const forcedSignals = await observer.cleanupKnownExecution();
-      const deadline = Date.now() + 2000;
-      while (Date.now() < deadline) {
+      try {
+        await command('resetState');
         await observer.sample();
-        if (!observer.result().entries.some(entry => ['cli', 'wrapper', 'provider'].includes(entry.role) &&
-          entry.active && !['Z', 'X'].includes(entry.state))) break;
-        await sleep(25);
+        await writeJson('cleanup.json', { runtime: await command('getRuntimeSupervisorState'),
+          snapshot: await snapshot(), process: observer.result(), forcedSignals: [] });
+      } catch (error) {
+        failure ??= error;
+        await writeJson('product-cleanup-failure.json', { error: String(error) });
       }
-      await writeJson('remaining-resources.json', { remaining, forcedSignals, after: observer.result() });
-    }
+      await observer.stop();
+      const remaining = observer.result().entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role) &&
+        !executionEnded(entry));
+      if (remaining.length) {
+        failure ??= new Error('Product cleanup left owned Agent resources live.');
+        const forcedSignals = await observer.cleanupKnownExecution();
+        const deadline = Date.now() + 2000;
+        while (Date.now() < deadline) {
+          await observer.sample();
+          if (!observer.result().entries.some(entry => ['cli', 'wrapper', 'provider'].includes(entry.role) &&
+            !executionEnded(entry))) break;
+          await sleep(25);
+        }
+        await writeJson('remaining-resources.json', { remaining, forcedSignals, after: observer.result() });
+      }
+    } finally { await observer.dispose?.(); }
     if (observer.error) failure ??= new Error(observer.error);
     if (observer.failures.length) failure ??= new Error('Process observation or wrapper lifecycle verification failed.');
     await writeJson('process-observations.json', observer.result());
@@ -231,7 +248,7 @@ async function verifyAuthentication() {
   const customCodex = config.backend === 'deepseek' && config.provider === 'codex';
   const args = config.provider === 'codex' ? (customCodex ? ['features', 'list'] : ['login', 'status'])
     : [...claudeConfigurationArguments(), '--safe-mode', 'auth', 'status', '--json'];
-  const result = spawnSync(config.cli.entry, args, { encoding: 'utf8', timeout: 10000,
+  const result = invokeCLI(resolveExecutionSessionSpawnSpec, config.cli.entry, args, { encoding: 'utf8', timeout: 10000,
     ...(config.provider === 'codex' ? { env: { ...process.env, PATH: codexPath() } } : {}) });
   const combined = `${result.stdout ?? ''}${result.stderr ?? ''}`;
   if (customCodex) {

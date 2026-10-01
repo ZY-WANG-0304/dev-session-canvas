@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import childProcess from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
 import { createDeepSeekConfiguration } from '../smoke/agent-candidate-deepseek.mjs';
 
@@ -108,6 +110,31 @@ try {
     for (const file of [codexConfigPath, modelCatalogPath, first.claudeSettingsPath]) {
       assert.equal((await fs.stat(file)).mode & 0o777, 0o600);
     }
+  } else {
+    const check = `
+$ErrorActionPreference = 'Stop'
+$current = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$allowed = @($current, 'S-1-5-18') | Sort-Object -Unique
+foreach ($file in ($env:DSC_ACL_CHECK_PATHS | ConvertFrom-Json)) {
+  $acl = Get-Acl -LiteralPath $file
+  $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+  if ($rules.Count -ne $allowed.Count) { throw 'Credential ACL identity mismatch' }
+  foreach ($identity in $allowed) {
+    $matching = @($rules | Where-Object { $_.IdentityReference.Value -eq $identity })
+    if ($matching.Count -ne 1 -or $matching[0].AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+        $matching[0].FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl) { throw 'Credential ACL permission mismatch' }
+  }
+}
+`;
+    const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT;
+    const nativeAcl = spawnSync(path.win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+      ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(check, 'utf16le').toString('base64')], {
+        encoding: 'utf8', timeout: 15000, windowsHide: true,
+        env: { SystemRoot: systemRoot, WINDIR: systemRoot, DSC_ACL_CHECK_PATHS: JSON.stringify([
+          first.directory, ...Object.values(first.authReferences), codexConfigPath, modelCatalogPath, first.claudeSettingsPath
+        ]) }
+      });
+    assert.equal(nativeAcl.status, 0, nativeAcl.stderr);
   }
 
   const helperUrl = new URL('../smoke/agent-candidate-deepseek.mjs', import.meta.url).href;
@@ -139,6 +166,7 @@ try {
       TMPDIR: temporaryRoot,
       TMP: temporaryRoot,
       TEMP: temporaryRoot,
+      ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot ?? process.env.SYSTEMROOT } : {}),
       CODEX_HOME: path.join(temporaryRoot, 'unread-original-codex'),
       CLAUDE_CONFIG_DIR: path.join(temporaryRoot, 'unread-original-claude'),
       DEEPSEEK_API_KEY: 'fake-filtered-deepseek-key',
@@ -155,6 +183,60 @@ try {
     });
   }
   assert.deepEqual(await fs.readdir(temporaryRoot), directoriesBeforeInvalidInputs);
+
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const originalSystemRoot = process.env.SystemRoot;
+  const originalExecFile = childProcess.execFile;
+  const originalAclWriteFile = fs.writeFile;
+  try {
+    Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'win32' });
+    process.env.SystemRoot = 'C:\\Windows';
+    let confirmed = false;
+    let writes = 0;
+    let result = { stdout: 'private-directory-ready\r\n', stderr: '' };
+    const fakeExecFile = () => assert.fail('The async ACL command must use its promisified contract');
+    fakeExecFile[promisify.custom] = async (executable, args, options) => {
+      assert.equal(executable, 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+      assert.deepEqual(args.slice(0, 4), ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand']);
+      assert.deepEqual(Object.keys(options.env).sort(), ['DSC_PRIVATE_CREDENTIAL_DIRECTORY', 'SystemRoot', 'WINDIR']);
+      assert.deepEqual(await fs.readdir(options.env.DSC_PRIVATE_CREDENTIAL_DIRECTORY), [], 'No credential exists before ACL confirmation');
+      assert.equal(JSON.stringify({ args, options }).includes(fakeApiKey), false);
+      const script = Buffer.from(args[4], 'base64').toString('utf16le');
+      assert.match(script, /SetAccessRuleProtection\(\$true, \$false\)/u);
+      assert.match(script, /GetCurrent\(\)\.User/u);
+      assert.match(script, /S-1-5-18/u);
+      assert.match(script, /Set-Acl[\s\S]+Get-Acl[\s\S]+GetAccessRules/u);
+      if (result instanceof Error) throw result;
+      confirmed = result.stdout.trim() === 'private-directory-ready' && !result.stderr.trim();
+      return result;
+    };
+    childProcess.execFile = fakeExecFile;
+    fs.writeFile = async (...args) => {
+      assert.equal(confirmed, true, 'No configuration may be written before ACL confirmation');
+      writes += 1;
+      return originalAclWriteFile(...args);
+    };
+    const protectedConfiguration = await createDeepSeekConfiguration({ apiKey: fakeApiKey, temporaryRoot });
+    await protectedConfiguration.dispose();
+    assert.equal(writes, 3);
+    for (const failure of [new Error('controlled ACL failure'), { stdout: '', stderr: '' },
+      { stdout: 'private-directory-ready\n', stderr: 'unconfirmed ACL' }]) {
+      result = failure;
+      confirmed = false;
+      writes = 0;
+      await assert.rejects(createDeepSeekConfiguration({ apiKey: fakeApiKey, temporaryRoot }), {
+        message: 'Failed to prepare isolated DeepSeek configuration.'
+      });
+      assert.equal(writes, 0);
+      assert.deepEqual(await fs.readdir(temporaryRoot), directoriesBeforeInvalidInputs);
+    }
+  } finally {
+    Object.defineProperty(process, 'platform', originalPlatform);
+    if (originalSystemRoot === undefined) delete process.env.SystemRoot;
+    else process.env.SystemRoot = originalSystemRoot;
+    childProcess.execFile = originalExecFile;
+    fs.writeFile = originalAclWriteFile;
+  }
 
   const originalWriteFile = fs.writeFile;
   try {

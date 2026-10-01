@@ -17,6 +17,10 @@ async function identity(pid) {
 
 class AgentProcessObserver {
   constructor(cli, smokeHostRoot, options) {
+    if (process.platform === 'win32') {
+      const { WindowsAgentProcessObserver } = require('./agent-candidate-windows-observer.cjs');
+      return new WindowsAgentProcessObserver(cli, smokeHostRoot, options);
+    }
     this.cli = cli;
     this.smokeHostRoot = smokeHostRoot;
     this.started = performance.now();
@@ -246,4 +250,9 @@ class AgentProcessObserver {
   }
 }
 
-module.exports = { AgentProcessObserver };
+function executionEnded(entry) {
+  return entry.platform === 'win32'
+    ? entry.observationUnknown !== true && entry.exitConfirmed === true && entry.hasExited === true && Number.isInteger(entry.exitCode)
+    : !entry.active || ['Z', 'X'].includes(entry.state);
+}
+module.exports = { AgentProcessObserver, executionEnded };

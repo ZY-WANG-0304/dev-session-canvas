@@ -21,6 +21,16 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
     const result = await read('result');
     const auth = await read('auth-status');
     const cleanup = await read('cleanup');
+    const processes = await read('process-observations') ?? cleanup?.process;
+    const processEntries = Array.isArray(processes?.entries) ? processes.entries : undefined;
+    const windows = input?.platform === 'win32';
+    const windowsObservationComplete = !windows || !processEntries ? null :
+      !processes.error && processEntries.every(entry => entry.platform === 'win32' && entry.observationUnknown !== true) &&
+      ['host', 'provider', 'cli', ...(scenario.name.includes('-live-runtime-') ? ['supervisor'] : [])]
+        .every(role => processEntries.some(entry => entry.role === role)) &&
+      processEntries.some(entry => entry.role === 'wrapper' && entry.wrapperKind === 'cmd') &&
+      (!scenario.name.startsWith('codex-') ||
+        processEntries.some(entry => entry.role === 'wrapper' && entry.wrapperKind === 'node'));
     const completed = await read('completed');
     const firstFailure = await read('first-failure');
     const failureSnapshot = await read('first-failure-snapshot');
@@ -89,11 +99,18 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
         ? source.detail.sourceDisposition.kind : null,
       authentication: { exitCode: integer(auth?.exitCode), loggedIn: boolean(auth?.loggedIn),
         configurationParsed: boolean(auth?.configurationParsed), networkAuthenticationVerifiedByPreflight: false },
-      cleanup: { bindings: count(cleanup?.runtime?.bindings), failures: count(cleanup?.process?.failures),
+      cleanup: { bindings: count(cleanup?.runtime?.bindings), failures: count(processes?.failures),
         forcedSignals: count(remainder?.forcedSignals ?? cleanup?.forcedSignals),
-        remainingActiveProcesses: Array.isArray(cleanup?.process?.entries)
-          ? cleanup.process.entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role) &&
-            entry.active && !['Z', 'X'].includes(entry.state)).length : null },
+        remainingActiveProcesses: processEntries && (!windows || windowsObservationComplete)
+          ? processEntries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role) &&
+            (windows ? !windowsExitConfirmed(entry)
+              : entry.active && !['Z', 'X'].includes(entry.state))).length : null,
+        windowsObservationComplete,
+        windowsUnknownProcesses: windows && processEntries
+          ? processEntries.filter(entry => entry.observationUnknown === true).length : null,
+        windowsUnconfirmedExits: windowsObservationComplete
+          ? processEntries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role) &&
+            !windowsExitConfirmed(entry)).length : null },
       diagnosticClasses: classifyFailure(`${result?.error ?? ''}\n${rawOutput?.toString('utf8') ?? ''}`),
       receivedOutput: rawOutput ? { bytes: rawOutput.length,
         sha256: createHash('sha256').update(rawOutput).digest('hex') } : null
@@ -104,7 +121,7 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
     const version = input?.cli?.[provider]?.version;
     safeVersions[provider] = /^(?:codex-cli )?\d+\.\d+\.\d+(?: \(Claude Code\))?$/.test(version ?? '') ? version : null;
   }
-  const platform = ['linux', 'darwin'].includes(input?.platform) ? input.platform : 'unknown';
+  const platform = ['linux', 'darwin', 'win32'].includes(input?.platform) ? input.platform : 'unknown';
   const report = {
     schemaVersion: 1,
     scope: 'Real Codex/Claude CLI + DeepSeek + candidate Host/Webview on the recorded platform; not cross-platform closure.',
@@ -135,6 +152,11 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
 async function readOptionalJson(file) {
   try { return JSON.parse(await fs.readFile(file, 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
+}
+
+function windowsExitConfirmed(entry) {
+  return entry.observationUnknown !== true && entry.exitConfirmed === true && entry.hasExited === true &&
+    Number.isInteger(entry.exitCode);
 }
 
 function classifyFailure(text) {

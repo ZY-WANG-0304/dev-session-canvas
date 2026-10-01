@@ -4,10 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       real_agents:
-        description: Run Linux real Codex and Claude acceptance through DeepSeek
+        description: Run real Codex and Claude acceptance through DeepSeek
         type: boolean
         required: false
         default: false
+      real_agent_platform:
+        description: Platform for the finite real Agent acceptance
+        type: choice
+        required: false
+        default: linux
+        options:
+          - linux
+          - macos
+          - windows
   push:
     branches:
       - runtime-exit-integrity-platform-runners
@@ -64,7 +73,7 @@ jobs:
 
   real-agent-linux:
     name: Real Agent candidate / Linux / DeepSeek
-    if: github.event_name == 'workflow_dispatch' && inputs.real_agents
+    if: github.event_name == 'workflow_dispatch' && inputs.real_agents && inputs.real_agent_platform == 'linux'
     runs-on: ubuntu-22.04
     timeout-minutes: 40
     concurrency:
@@ -144,3 +153,17 @@ jobs:
           path: agent-ci-report/
           if-no-files-found: error
           retention-days: 14
+
+  real-agent-macos:
+    name: Real Agent candidate / macOS / DeepSeek
+    if: github.event_name == 'workflow_dispatch' && inputs.real_agents && inputs.real_agent_platform == 'macos'
+    uses: ./.github/workflows/runtime-real-agent-macos.yml
+    secrets:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+  real-agent-windows:
+    name: Real Agent candidate / Windows / DeepSeek
+    if: github.event_name == 'workflow_dispatch' && inputs.real_agents && inputs.real_agent_platform == 'windows'
+    uses: ./.github/workflows/runtime-real-agent-windows.yml
+    secrets:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

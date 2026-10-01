@@ -24,7 +24,7 @@ updated_at: 2026-10-01
 
 ## 1. 状态与目的
 
-当前B2/A5与B3/A6（2026-10-01）：Windows新run `36827234960` 的启动收据确认实际主体stdin/stdout非TTY，按生产接入34.9补齐上游ConPTY标准句柄设置；局部先红后绿，原生修后待验。macOS原artifact确认Canvas初始ready超时、尚无Terminal，test runner已退出但外层未结束；按33.9仅给临时smoke宿主加入官方内存Secret Storage参数作对照，不宣称keychain根因已证实。run `36827234930` 已通过修后Node四例及Electron编译，页面尚无通过。A6新增两例先红确认非root reset/template可覆盖boundary返回后新执行，按32.21保护提交身份。原失败及CRLF来源事实保留，真实Agent、两模式Webview、分发及其他A项不削减，F-04与总体仍开放。
+当前B2/A5与B3/A6（2026-10-01）：macOS run `36829311235`/353bb575完整success且六份页面原报告已独立核对，尾部90002行、光标(6,2)、Runtime无历史及两模式清理通过。Windows run `36830583121`/f35c023c的Node/Electron构建与页面步骤显示success，但完整artifact缺重开/清理及snapshot completed，不能计作两模式页面通过；按生产接入34.11定位退出传播，Agent暂不调度。此前非TTY、Canvas ready超时和Electron构建顺序失败分别保留，不追认通过或宣称系统keychain缺陷已证实。A6非root提交身份及callback保护已有46次局部生命周期回归，完整reload/多根仍未代证。34.10接线已局部验证，下一先运行原macOS八场景，不新增模型矩阵。F-04、其余A1至A6、packaged和默认准入仍开放。
 
 当前 A1 结果与下一项（2026-10-01）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整exit0；B回复51ms实际应用，同一Webview动作中A的块号12到18均未追平2560，随后ready后13137.248ms完整恢复。原1500ms/不重置30秒、原执行及新reader、完整后缀/独立journal/hash/自然no-history与两份cleanup均通过，outer forcedSignals/failures为空。声明输入下的真实离线追赶交互组合已覆盖；10.14的overlap=false和全部旧失败保持。下一推进原B2/A5的macOS/Windows产品provider、namespace、匹配Node/Electron及packaged接入，不追加此组合或工具阶段；F-04总体和其他A项继续开放。
 
@@ -32,7 +32,7 @@ updated_at: 2026-10-01
 
 当前 A1/A2 状态（2026-09-30）：有界索引顺序读取已实施，`.debug/a1-host-reconnect-20260930-indexed-pages/` 在同一 2/1 Electron candidate 上完整 exit 0，新 Host ready 1422.291ms、完整应用 14431.416ms、追平 13009.125ms；B32.6ms、独立 journal/hash、原执行及新 reader、完整保留后缀、自然 closed/no-history 与两份 cleanup 通过，outer `forcedSignals=[]`。原 30 秒界限与完整冻结段/尾部篡改检测保持，四轮旧 exit 1 不追认。该固定冷恢复阻塞已解除，但追赶交互重叠为 false，不关闭整个 F-04/其他 A 项。同一新 2/1 构建 A4 `indexed-pages` 八场景完整 exit 0：natural 四项响应/实际 source EOF 通过，stop 保留主动停止，八份 cleanup 均无 binding/process failure/forcedSignals。Claude stop 为 startup/auth 等待界面，不代表模型任务完成；详见生产接入 32.19。跨平台/分发及外部认证边界不变。
 
-当前 A5 边界（2026-10-01）：产品 candidate 仍只有 Linux x64/glibc，macOS/Windows 现有冻结诊断和 stock workflow 不提供 `execution-lifecycle-v1` 产品能力。已授权 GitHub runner 仍可承接 Terminal/native，但还需对应产品 provider、namespace、Node/Electron 构建及 packaged 接入，不能只删平台守卫。用户选定的真实 Codex/Claude + DeepSeek 与仓库级 `DEEPSEEK_API_KEY` 已在第四轮 Linux 八场景取得有限实际通过，不再只依赖 secret metadata；预检不冒充网络认证。仍按用户要求不绑定 Environment/分支、不上传本机登录，沿既定平台工程接入复用临时配置与安全报告；Linux 的认证/响应通过不代证其他平台、尾部或全部产品验收。历史查询见32.17、当前证据见32.20。
+当前 A5 边界（2026-10-01）：产品candidate已在Linux x64/glibc、Darwin arm64取得各自固定Node/Electron及Terminal页面证据；Windows x64已有Node四例与Electron构建，页面最终证据不全，不能把workflow绿灯作验收。三平台都不再是仅有stock诊断，但其余架构、运行时兼容、packaged与Remote SSH仍需原清单验收。用户选定的真实Codex/Claude + DeepSeek及仓库级 `DEEPSEEK_API_KEY` 已在Linux八场景取得有限实际通过，macOS/Windows接线不代证响应或退出。仍不绑定Environment/分支、不上传本机登录，secret仅交给最终验收step，raw不上传；Windows临时配置在写key前验证私有DACL，进程退出用原SafeHandle事实而非对象消失。普通构建仍stock，F-04和完整A5未关闭。
 
 2026-09-28，用户先要求暂停自动追加阶段，随后明确不承担清单确认，要求代理依据重构目标作出判断。本文件据此收口为已选定的工程完成定义与有限工作顺序，不再等待用户批准工程清单或选择技术预算。最初核对基线为 `ba2c148b`，草案保存在 `2d375606`，工程裁决保存在 `8dd82629`。其后已按既定顺序启动 B1，过程见 `runtime-persistence-capacity-closeout` active 计划；局部修复不代表整体容量通过，2026-09-29 最新实际链同预算样本 2x/4x 的 heap/RSS 仍超限，状态保持验证中。没有新增 runner 或发布动作。
 
@@ -65,7 +65,7 @@ updated_at: 2026-10-01
 | 编号 | 当前缺口与产品影响 | 结束条件 |
 | --- | --- | --- |
 | B1 容量与恢复，F-04 | checkpoint 长期不推进时总回放仍随后缀增长；在途队列、正常 open/compact 的全量临时分配及整体峰值未完成预算验收。分页与缓存增量不能证明多会话长期可交互，也没有已测 OOM 结论 | 固定实际支持的新路径负载和资源/可交互预算，完成 A1；只修会突破该预算的当前产品路径。旧协议成本单列兼容边界，不靠截断未消费数据、放宽 checkpoint 正确性或缩小 scrollback 求通过。若当前模型不能满足预算，再在原候选中作一次有证据的取舍，不预设重写全部终端模型 |
-| B2 退出完整性成为可用产品能力 | 候选仍默认关闭；当前正式工厂只覆盖匹配运行时的 Linux x64/glibc。跨平台 provider/宿主产物、生产预算和准入、失败处置、真实 Agent 与页面证据未整体闭合 | 两种模式按既定支持环境接通并通过 A2 至 A5，明确实际启用路径、能力不足处理、新 generation 与旧 live 共存。只有默认关闭候选或 fake/headless 测试不能算交付；开放前须有预算和支持清单，不把正常尾部统一降为取消 |
+| B2 退出完整性成为可用产品能力 | 候选仍默认关闭；三平台工厂与固定匹配Node/Electron已接通，其他架构/运行时和分发、生产预算与准入、失败处置及完整真实Agent/页面责任未闭合 | 两种模式按既定支持环境接通并通过 A2 至 A5，明确实际启用路径、能力不足处理、新 generation 与旧 live 共存。只有默认关闭候选或 fake/headless 测试不能算交付；开放前须有预算和支持清单，不把正常尾部统一降为取消 |
 | B3 生命周期不串代 | 32.3/32.5/32.8 已修旧 completed 最终发布、完整 root template reset 新执行及 reset 首次等待后 callback 的责任丢失；真实 Host reload、其余有限顺序与完整用户流程仍未全部验收 | 用 A6 的有限实际入口顺序判断；危及尾部、节点/绑定、新执行或其他 root 的确定问题修复并回归。没有复现且有覆盖证据的顺序可按证据关闭，不要求证明任意并发排列或引入全局锁 |
 
 代码定向：以下代码相对 `extensions/vscode/dev-session-canvas/`。B1 涉及 `src/supervisor/terminalSessionJournal.ts`、`src/supervisor/runtimeSupervisorMain.ts`、Host 的 `src/panel/CanvasPanelManager.ts` 与 Webview 分页消费；B2 沿 `src/panel/executionSessionAdapter.ts`、`src/panel/executionOwnerLifecycle.ts`、`src/panel/linuxExecutionOwnerFactory.ts` 和真实 Host/Supervisor/Webview 接线；B3 聚焦 `CanvasPanelManager.ts` 的原边界与 completed 续体。具体落点由选中条目的直接证据决定，不把这一段作为重构所有模块的授权。

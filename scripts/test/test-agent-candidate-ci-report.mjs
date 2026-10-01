@@ -80,6 +80,46 @@ try {
   assert.equal(warningText.includes(key), false);
   assert.equal(warningText.includes(scenario.nonce), false);
   assert.equal(warningText.includes('Defaulting to fallback metadata'), false);
+  await fs.writeFile(path.join(artifacts, 'process-observations.json'), JSON.stringify({ failures: [], entries: [
+    { platform: 'win32', role: 'cli', active: true, hasExited: true, exitConfirmed: true, exitCode: 0 },
+    { platform: 'win32', role: 'wrapper', active: false, state: 'Z', hasExited: false, exitConfirmed: false },
+    { platform: 'win32', role: 'provider', active: false, hasExited: true, exitConfirmed: true, exitCode: 0,
+      observationUnknown: true }
+  ] }));
+  const windowsDirectory = path.join(root, 'windows-report');
+  await writeAgentCandidateCIReport({ ...options, directory: windowsDirectory, scenarios: [scenario], failed: true,
+    input: { platform: 'win32' } });
+  const windowsReport = JSON.parse(await fs.readFile(path.join(windowsDirectory, 'summary.json'), 'utf8'));
+  assert.equal(windowsReport.platform, 'win32');
+  assert.equal(windowsReport.pass, false);
+  assert.equal(windowsReport.scenarios[0].cleanup.windowsObservationComplete, false);
+  assert.equal(windowsReport.scenarios[0].cleanup.remainingActiveProcesses, null,
+    'An incomplete Windows observation must not claim that unobserved objects have exited.');
+  assert.equal(windowsReport.scenarios[0].cleanup.windowsUnknownProcesses, 1);
+  assert.equal(windowsReport.scenarios[0].cleanup.windowsUnconfirmedExits, null);
+  await fs.writeFile(path.join(artifacts, 'process-observations.json'), JSON.stringify({ failures: [], entries: [
+    { role: 'host' }, { role: 'supervisor' },
+    { role: 'provider', active: true, hasExited: true, exitConfirmed: true, exitCode: 0 },
+    { role: 'cli', active: true, hasExited: true, exitConfirmed: true, exitCode: 0 },
+    { role: 'wrapper', wrapperKind: 'cmd', active: false, state: 'Z', hasExited: false, exitConfirmed: false },
+    { role: 'wrapper', wrapperKind: 'node', active: true, hasExited: true, exitConfirmed: true, exitCode: 0 }
+  ].map(value => ({ platform: 'win32', ...value })) }));
+  const windowsCompleteDirectory = path.join(root, 'windows-complete-observation-report');
+  await writeAgentCandidateCIReport({ ...options, directory: windowsCompleteDirectory, scenarios: [scenario], failed: true,
+    input: { platform: 'win32' } });
+  const windowsCompleteReport = JSON.parse(await fs.readFile(path.join(windowsCompleteDirectory, 'summary.json'), 'utf8'));
+  assert.equal(windowsCompleteReport.scenarios[0].cleanup.windowsObservationComplete, true);
+  assert.equal(windowsCompleteReport.scenarios[0].cleanup.remainingActiveProcesses, 1);
+  assert.equal(windowsCompleteReport.scenarios[0].cleanup.windowsUnconfirmedExits, 1,
+    'Use final original-handle facts, not an empty earlier cleanup snapshot or Unix absence/zombie states.');
+  await fs.writeFile(path.join(artifacts, 'process-observations.json'), JSON.stringify({ error: 'unknown',
+    failures: [{ kind: 'helper-failed' }], entries: [] }));
+  const windowsEmptyDirectory = path.join(root, 'windows-empty-observation-report');
+  await writeAgentCandidateCIReport({ ...options, directory: windowsEmptyDirectory, scenarios: [scenario], failed: true,
+    input: { platform: 'win32' } });
+  const windowsEmptyReport = JSON.parse(await fs.readFile(path.join(windowsEmptyDirectory, 'summary.json'), 'utf8'));
+  assert.equal(windowsEmptyReport.scenarios[0].cleanup.windowsObservationComplete, false);
+  assert.equal(windowsEmptyReport.scenarios[0].cleanup.remainingActiveProcesses, null);
   const enumCases = [
     { status: 'starting', outcome: 'lost', local: true },
     { status: 'waiting-input', outcome: 'cancelled', local: false },

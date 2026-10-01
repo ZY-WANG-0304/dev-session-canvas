@@ -5,11 +5,13 @@ import fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { build } from 'esbuild';
 import { createDeepSeekConfiguration } from './agent-candidate-deepseek.mjs';
 import { writeAgentCandidateCIReport } from './agent-candidate-ci-report.mjs';
+import cliHelpers from '../../tests/vscode-smoke/agent-candidate-cli.cjs';
 import { ensureVSCodeExecutable, launchPreparedVSCodeScenario, prepareMainSmokeHostExtension,
   prepareRuntime, resolveStagedSmokeTestPath, runInsideXvfb, shouldReRunInsideXvfb } from './vscode-smoke-runner.mjs';
 
@@ -20,7 +22,8 @@ const authOnly = values['auth-only'] === true;
 assert(['existing', 'deepseek'].includes(values.backend), 'Unsupported Agent acceptance backend.');
 assert(!values['ci-report'] || values.backend === 'deepseek', 'CI reports require the isolated DeepSeek backend.');
 assert(!(authOnly && values.backend === 'deepseek'), 'DeepSeek authentication is verified by the real natural scenarios.');
-assert(['linux', 'darwin'].includes(process.platform), 'The fixed Agent acceptance supports Linux or macOS.');
+assert(['linux', 'darwin', 'win32'].includes(process.platform), 'Unsupported fixed Agent acceptance platform.');
+assert(!(authOnly && process.platform === 'win32'), 'Windows auth-only diagnosis is outside the fixed eight-scenario input.');
 assert(values.output, 'Specify a new --output evidence directory.');
 if (shouldReRunInsideXvfb()) process.exit(runInsideXvfb(fileURLToPath(import.meta.url), projectRoot));
 const output = path.resolve(values.output);
@@ -31,6 +34,8 @@ let scenarios = [];
 let phase = 'prepare';
 let failed = false;
 let failureMessage = '';
+let resolveSpawn;
+const invokeCLI = (file, args, options) => cliHelpers.invokeCLI(resolveSpawn, file, args, options);
 try {
   await runCandidate();
 } catch (error) {
@@ -52,6 +57,12 @@ try {
 }
 
 async function runCandidate() {
+const spawnBundle = await build({ entryPoints: [path.join(projectRoot,
+  'extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts')], bundle: true, platform: 'node',
+  format: 'cjs', target: 'node22', write: false, external: ['node-pty'] });
+const spawnModule = { exports: {} };
+new Function('require', 'module', 'exports', spawnBundle.outputFiles[0].text)(createRequire(import.meta.url), spawnModule, spawnModule.exports);
+resolveSpawn = spawnModule.exports.resolveExecutionSessionSpawnSpec;
 await fs.mkdir(path.dirname(output), { recursive: true });
 await fs.mkdir(output);
 if (values.backend === 'deepseek') {
@@ -75,29 +86,34 @@ if (process.platform === 'darwin') {
   assert.equal(check.status, 0, 'Darwin process identity dependency is unavailable.');
   assert.equal(check.stdout.trim(), '3.12.10', 'Darwin process identity requires the pinned Python runtime.');
   processObserver = { python, pythonVersion: check.stdout.trim(), psutilVersion: '7.0.0' };
+} else if (process.platform === 'win32') {
+  processObserver = { backend: 'windows-safehandle-v1', powershell: path.join(process.env.SystemRoot,
+    'System32/WindowsPowerShell/v1.0/powershell.exe') };
 }
 const codexEnvironment = { ...process.env, PATH: `${path.dirname(nodeInterpreter.entry)}${path.delimiter}${process.env.PATH ?? ''}` };
 const cli = {};
 for (const [provider, version] of [['codex', '0.157.1'], ['claude', '2.1.280']]) {
-  const entry = await findExecutable(provider);
+  const entry = await cliHelpers.findExecutable(provider);
   const realpath = await fs.realpath(entry);
-  const result = spawnSync(entry, ['--version'], { encoding: 'utf8', timeout: 10000,
+  const result = invokeCLI(entry, ['--version'], { encoding: 'utf8', timeout: 10000,
     ...(provider === 'codex' ? { env: codexEnvironment } : {}) });
   assert.equal(result.status, 0, `${provider} version query failed.`);
   const versionPattern = provider === 'codex' ? /^codex-cli \d+\.\d+\.\d+$/ : /^\d+\.\d+\.\d+ \(Claude Code\)$/;
   assert(versionPattern.test(result.stdout.trim()) && result.stdout.includes(version),
     `This fixed input requires ${provider} ${version}; unexpected output is not recorded.`);
-  cli[provider] = { entry, realpath, version: result.stdout.trim() };
+  cli[provider] = { entry, realpath, version: result.stdout.trim(),
+    ...(process.platform === 'win32' ? await cliHelpers.windowsCliManifest(provider, entry, nodeInterpreter) : {}) };
 }
-assert.equal(path.dirname(cli.codex.entry), path.dirname(nodeInterpreter.entry),
+if (process.platform !== 'win32') assert.equal(path.dirname(cli.codex.entry), path.dirname(nodeInterpreter.entry),
   'This fixed Codex wrapper and its Node interpreter must share the installed command directory.');
 const testCommandReferences = { DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: cli.codex.entry,
   DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: cli.claude.entry };
 const codexIsolation = authOnly ? undefined : inspectCodexIsolation({ cli, codexEnvironment, workspaceRoot, authReferences });
 phase = 'native-assets';
 const dist = path.join(projectRoot, 'extensions/vscode/dev-session-canvas/dist');
-const platformName = process.platform === 'darwin' ? 'macos' : 'linux';
-const assetTarget = process.platform === 'darwin' ? `darwin-${process.arch}` : 'linux-x64-glibc';
+const platformName = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux';
+const assetTarget = process.platform === 'win32' ? `win32-${process.arch}`
+  : process.platform === 'darwin' ? `darwin-${process.arch}` : 'linux-x64-glibc';
 const assetManifest = JSON.parse(await fs.readFile(path.join(dist,
   `native/${platformName}-execution-candidate/${assetTarget}/manifest.json`), 'utf8'));
 assert.equal(assetManifest.profile, `${platformName}-owner-v1-candidate`);
@@ -112,11 +128,18 @@ for (const file of ['extensions/vscode/dev-session-canvas/dist/extension.js',
   'scripts/smoke/run-vscode-agent-candidate.mjs', 'tests/vscode-smoke/agent-candidate-tests.cjs',
   'scripts/smoke/agent-candidate-deepseek.mjs', 'scripts/smoke/agent-candidate-ci-report.mjs',
   'tests/vscode-smoke/agent-candidate-process-observer.cjs',
+  'tests/vscode-smoke/agent-candidate-cli.cjs',
+  'extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts',
   'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts']) {
   hashes[file] = createHash('sha256').update(await fs.readFile(path.join(projectRoot, file))).digest('hex');
 }
-if (processObserver) {
+if (process.platform === 'darwin') {
   const helper = 'tests/vscode-smoke/agent-candidate-process-observer.py';
+  hashes[helper] = createHash('sha256').update(await fs.readFile(path.join(projectRoot, helper))).digest('hex');
+}
+if (process.platform === 'win32') for (const helper of ['tests/vscode-smoke/agent-candidate-process-observer.ps1',
+  'tests/vscode-smoke/agent-candidate-windows-observer.cjs',
+  'extensions/vscode/dev-session-canvas/dist/windows-execution-output-worker.js']) {
   hashes[helper] = createHash('sha256').update(await fs.readFile(path.join(projectRoot, helper))).digest('hex');
 }
 const runtimePaths = await build({ entryPoints: [path.join(projectRoot,
@@ -158,6 +181,8 @@ for (const [index, scenario] of scenarios.entries()) {
   const smokeHostRoot = await prepareMainSmokeHostExtension({ projectRoot, targetRoot: path.join(debugRoot, 'smoke-host') });
   await fs.writeFile(resolveStagedSmokeTestPath(smokeHostRoot, 'agent-candidate-runtime-paths.cjs'),
     runtimePaths.outputFiles[0].contents);
+  await fs.writeFile(resolveStagedSmokeTestPath(smokeHostRoot, 'agent-candidate-spawn-spec.cjs'),
+    spawnBundle.outputFiles[0].contents);
   const config = { ...scenario, cli: cli[scenario.provider], nodeInterpreter, testCommandReferences, workspacePath, processObserver,
     backend: values.backend,
     ...(backendConfiguration ? { claudeSettingsPath: backendConfiguration.claudeSettingsPath } : {}),
@@ -195,7 +220,7 @@ function inspectCodexIsolation({ cli, codexEnvironment, workspaceRoot, authRefer
   const disabledFeatures = ['hooks', 'plugins', 'apps', 'shell_tool', 'skill_mcp_dependency_install'];
   const args = [...disabledFeatures.flatMap(feature => ['--disable', feature]), '-c', 'web_search="disabled"'];
   const invoke = command => {
-    const result = spawnSync(cli.codex.entry, [...args, ...command], { encoding: 'utf8', timeout: 10000,
+    const result = invokeCLI(cli.codex.entry, [...args, ...command], { encoding: 'utf8', timeout: 10000,
       maxBuffer: 1024 * 1024, cwd: workspaceRoot, env: { ...codexEnvironment, CODEX_HOME: authReferences.CODEX_HOME } });
     assert.equal(result.status, 0, 'Codex read-only isolation inspection failed; raw output is not recorded.');
     return result.stdout;
@@ -230,13 +255,4 @@ function inspectCodexIsolation({ cli, codexEnvironment, workspaceRoot, authRefer
     basis: ['https://developers.openai.com/codex/mcp/', 'https://learn.chatgpt.com/docs/hooks',
       'https://learn.chatgpt.com/docs/config-file/config-reference',
       'Installed Codex 0.157.1 mcp list --help: Output the configured servers as JSON'] };
-}
-
-async function findExecutable(name) {
-  for (const directory of (process.env.PATH ?? '').split(path.delimiter).filter(Boolean)) {
-    const candidate = path.join(directory, name);
-    try { await fs.access(candidate, constants.X_OK); return candidate; }
-    catch (error) { if (!['ENOENT', 'EACCES', 'ENOTDIR'].includes(error.code)) throw error; }
-  }
-  throw new Error(`Required real CLI is missing: ${name}`);
 }

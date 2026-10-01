@@ -2,6 +2,10 @@ name: macOS Real Agent Execution Acceptance
 
 on:
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      DEEPSEEK_API_KEY:
+        required: true
 
 permissions:
   contents: read

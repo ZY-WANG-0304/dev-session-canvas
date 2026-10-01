@@ -21,6 +21,8 @@ updated_at: 2026-10-01
 
 ## 1. 当前结论与阶段边界
 
+当前B2/A5入口（2026-10-01）：macOS36829311235/353bb575完成匹配Node/Electron、两模式Terminal/Webview和completed重开，六份页面报告已核对。Windows36830583121/f35c023c虽job success，但完整ZIP目录只有Runtime completed、缺重开/清理及snapshot completed，不能计两模式页面通过，按34.11定位判定传播。34.10的Windows真实Agent接线及三平台单选手动入口已完成局部验证和独立审查，下一先执行原macOS八场景；Windows基线缺口解除前不调度Agent。普通构建仍stock，其他架构/运行时、packaged/Remote、剩余A1至A6与F-04未关闭，后面的旧当前/下一按各自历史输入理解。
+
 当前 CI 状态（2026-10-01）：第四轮 run `36812745671`/`736f9ddd` 在 Linux/DeepSeek 原八场景全部 passed，四 natural 已有真实目标响应/nonce、source EOF 与原 Webview/持久化断言通过，八份 cleanup 四计数均0。stop 仍为主动停止，source 分别是 Codex Runtime eof、Codex snapshot-only interrupted、Claude 两模式 eof，不改写自然终止。第三轮 Codex snapshot-only stop 的失败本轮未复现；本轮仅修改报告/文档，业务与断言未变，根因仍未知，保留为具名间歇失败，不宣称已修。当前返回原有限产品清单，不为捕获红项自动追加 CI/工具，四轮原结果保持，详见32.20；F-04/完整A5/macOS/Windows仍未关闭。
 
 当前 A1/A2 状态（2026-09-30）：有界索引顺序读取已实施，同一 2/1 Electron candidate 的 `.debug/a1-host-reconnect-20260930-indexed-pages/` 完整 exit 0。新 Host ready 1422.291ms、完整应用 14431.416ms，ready 后追平 13009.125ms，小于原 30 秒；B 响应 32.6ms、独立 journal/hash、原执行/新 reader、完整保留后缀、自然 completed 无历史及清理通过，详见 32.19。旧四轮 exit 1 保留，本次解除的是该固定冷恢复的直接阻塞，不关闭全部 F-04/A1 至 A6。真实重连追赶交互重叠本轮为 false，不补造覆盖；同一新 2/1 构建 A4 `.debug/a4-real-agent-20260930-indexed-pages/` 八场景完整 exit 0，natural 四项取得响应与实际 source EOF，stop 四项保留主动停止。Claude stop 覆盖 startup/auth 等待界面的停止，不代表完成模型任务；既有跨平台/认证边界和尾部要求不变。
@@ -1811,7 +1813,11 @@ run `36821963386`/job `110239281754` 使用 `72ca0efe`，修后原Node四例全�
 
 选定最小受控对照为仅在macOS临时smoke宿主启动参数加入官方 `--use-inmemory-secretstorage`：该版本明确支持此参数，使 `NativeSecretStorageService` 不进入系统加密可用性探测。测试不依赖跨launch的VS Code账号Secret，Agent凭据仍来自32.20专用私有CLI配置；产品与通用secret filter不变，不读取本机keychain、不放宽Canvas ready或尾部断言、不延长预算。局部验证固定macOS参数与其他平台不变，然后以新输入复验原Terminal页面/重开；旧失败保留，若通过只说明避开了该临时宿主环境依赖，不宣称修复产品keychain问题。
 
-该参数、三平台完整参数对照和macOS原workflow触发/执行接线已实施；env/secret过滤、macOS product self-test及Agent CI workflow契约测试通过，尚无该输入的原生对照。此前run36827234930的Node四例与Electron编译已通过，页面仍未取得通过，不因Node成功关闭A5。
+该参数、三平台完整参数对照和macOS原workflow触发/执行接线已实施；env/secret过滤、macOS product self-test及Agent CI workflow契约测试通过。旧run36827234930再次Canvas ready超时、外层随后取消，保留原结果。
+
+修后输入353bb575的run36829311235整轮success；原报告已从artifact按范围提取至 `.debug/macos-success-36829311235/small-reports/` 独立核对，不只依赖job绿灯。Darwin arm64的Node四例全部pass/cleanupSafe，实际Electron39.8.7/Node22.22.1/ABI140，两模式共四次宿主启动均使用内存Secret Storage；这只证明避开该测试环境依赖，不证明系统keychain死锁。`partialSelection=false`，live-runtime与snapshot-only各自completed/reopened/cleanup六份报告通过。
+
+两模式实际writer均写5580102bytes，SHA256 `e03d6d758493454da0946cc62e7c17fb2444e39afaa7639c8a88ad271eaff48f`、terminalWriteComplete=true，原90002行断言和最终光标(6,2)成立，source=eof，最终applied分别7981/7554。Runtime保存节点556bytes，重开closed且无history/serialized/runtimeId、空buffer；snapshot-only保存节点5766938bytes，重开保留5580063字符快照及同一光标。两cleanup的bindings/pending operations均0，范围仅主体回收及节点/Host绑定，不代证全部OS资源或A5。旧失败不追认，真实Agent、其余A项、packaged及默认启用继续开放。
 
 ## 34. Windows 产品原生接入
 
@@ -1939,6 +1945,10 @@ DeepSeek私有配置内容和销毁流程复用，但Windows文件mode不冒充P
 
 GitHub实际读取及dispatch新的macOS文件均返回404：仅特性分支存在的workflow_dispatch文件尚未注册，不能靠反复请求启动。为不提前合并主线或扩展带凭据的push/PR触发，选定复用已注册 `runtime-exit-integrity-native.yml` 的手动入口，保留 `real_agents` 布尔并新增默认linux的平台choice；原stock与Linux语义保持，每次仅选一个Agent平台。macOS/Windows文件同时声明 `workflow_call`，由该入口在同一ref显式传递唯一所需secret；不使用 `secrets: inherit`。共享Agent并发组不变，局部契约校验单平台选择与secret边界，实际dispatch仍需平台基线通过。
 
+实施中复核的身份细节保持收窄：CIM发现后保留原handle，再定向读回同一PID的command line/父PID/exe，并以前后原对象仍live将这次读取绑定到原对象；不符或过早退出记unknown，不重开PID替换身份。`WaitForExit(0)=false`后`HasExited=true`是正常推进，只拒绝反向变化。summary只有完整捕获Host、必要Supervisor、provider、cmd、Codex Node wrapper和实际CLI且无unknown才给出退出计数；漏采/助手错误不能把空集合写成0。Windows无凭据前置检查用自有Node自然exit7验证保留原对象和释放本方handle，不要求对象全局消失。
+
+CLI选择、Windows observer、原Unix observer、CI summary、私有配置、三平台workflow六项局部回归均通过，typecheck、smoke env与Electron输入回归另行复核。凭据DACL/dispatcher与核心observer/CLI分别独立只读审查，无确定阻塞；Linux局部替身不代证Windows PowerShell/DACL调用。清理请求已发但结果失联时记原句柄signal-unconfirmed，不伪称未发信号。所有真实Agent场景仍为既定八项，接线成功不计作模型响应或产品退出通过。
+
 ### 34.11 Windows Electron 构建必须等待原进程
 
 输入353bb575的run36829311128已通过原Node四场景，但后置Electron构建失败、页面未执行。原日志07:19:03的 `build.mjs` 报 `windows-electron-build` 不存在，07:19:05原native builder才报告compiled=true；PowerShell直接调用GUI程序Code.exe后提前继续，没有等待其原进程完成。该失败属于实际构建顺序，不是Node尾部回归，也不能将Node通过复制为Electron通过。
@@ -1948,3 +1958,5 @@ GitHub实际读取及dispatch新的macOS文件均返回404：仅特性分支存�
 原artifact已下载至 `.debug/windows-product-36829311128` 并独立对账：normal实际主体code7，90000编号行/Unicode与ANSI终态通过，原写入1530184bytes/SHA256 `567ee41cadd0f12583a77e8ce4e056f330df6950da08df00cddf074e59c1461a`，467帧连续且完整消费/真实EOF。ConPTY合法VT转换使帧文本摘要不同，未宣称字节同一。paused-stop实际EOF59帧，paused-cancel明确interrupted24帧，二者保留主动停止及不承诺未来写入；B交互分别15.7925/15.9919ms且与A收尾重叠。三份原帧文件均连续、无不完整帧且与保存output一致，主体observer绑定原对象并观测退出；namespace加三例的cleanupSafe均true。该四例不代证Webview/Electron/Agent；整轮仍因构建顺序failure。
 
 本次构建顺序回归先在旧workflow实际exit1，修后同一测试通过，并覆盖原子进程启动错误、signal、probe非零和builder非零阻止后续。product self-test也通过，未运行新原生场景；下一仅复验原Windows流水线。
+
+修后输入f35c023c的run36830583121/job110266023730于07:35:01Z报告success，匹配Electron构建不再停在未生成资产目录；页面步骤07:31:36至07:32:52也显示success。但artifact完整ZIP目录61289条中，只有live-runtime completed.json，没有任何reopened.json/cleanup.json或snapshot-only completed.json；snapshot-only目录本身存在，非范围提取漏筛。故该绿灯不能计作两模式页面验收通过。当前直接定位宿主/runner退出传播与报告形成，WindowsAgent暂不调度；Node证据、原进程句柄/合法VT转换口径及所有旧失败分别保留，不为缺报告推断产品尾部已丢失。
