@@ -244,3 +244,5 @@ macOS 真实 Agent 仍是具名未决。第一次 run `36906574728` 的 Codex �
 本轮将 `snapshot-only` 的显式 `stop` 统一纳入两阶段验收：首 Host 必须完成保存、reader settlement、序列一致性和独立 replay；空与非空快照均设置 `reopenRequired=true`，随后由新 Host 读取同一持久化状态。空快照继续使用既有页面 origin 断言；非空快照在新 Host 阶段按保存的 xterm 状态严格核对完整非空 buffer、可见行、尺寸、光标、viewport、buffer 类型、节点序列和无新执行。
 
 测试层改动已完成并通过 `test-agent-candidate-reopen.mjs`、`test-agent-candidate-snapshot-evidence.mjs`、`test-agent-candidate-ci-report.mjs` 及相关 JavaScript 语法检查；fixture 证据覆盖非空保存内容与页面几何。此前 `36911430020` 的非空 stop 结果仍是历史证据，未因 harness 改动追认通过；现代 runner 上的新真实非空 snapshot stop + reopen 尚未运行，A2/A3 该直接验收仍开放。未修改 Canvas/Host/Supervisor 业务代码，也未扩展旧系统矩阵。
+
+同一提交 `30f421b3` 的 Linux 现代 runner 尝试 `36917661214` 与仅一次允许的同输入复跑 `36918349766` 均在首场 `codex-live-runtime-natural` 超时：CLI 已被观察到，但节点仍为 `waiting-input`/`liveSession=true`，cleanup 无残留；八场均未进入 `snapshot-only stop`。两次结果作为真实 Agent 生命周期阻塞保留，不归因非空重开 helper，也不继续追加重跑或扩大平台矩阵。因此新的真实非空 snapshot stop + reopen 仍未取得证据。

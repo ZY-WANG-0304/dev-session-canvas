@@ -296,3 +296,5 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 后续提交 `56cec10c` 的 harness 窄修在现代 macOS runner run `36911430020` 完整通过八场真实 Agent 矩阵：Codex/Claude 两种模式及 natural/stop 全部通过，四个 natural 场景有实际响应/EOF，cleanup bindings/failures/forced/active 全为零。该结果关闭现代 macOS Agent 的具名组合；旧失败保留，非空 snapshot-only stop 不要求重开且其页面 projection independence 仍未证明，不把这项有限回收扩写成 A2/A3 页面责任或 F-04/A1 完成。低版本仍不属于本计划前置。
 
 修订记录（2026-10-02，非空 snapshot stop 重开收口）：上述历史 run 的非空 stop 不追认通过。验收 harness 现统一要求 snapshot-only stop 在首 Host 完成保存/reader/replay 后启动新 Host；空快照保持原 origin 断言，非空快照严格核对保存内容、可见行、尺寸、光标、viewport、buffer 类型、序列和无新执行。定向 fixture/CI/helper 回归已通过，真实现代 runner 复验尚未运行；该项仍归 A2/A3 页面责任，不改变 F-04/A1 范围或低版本边界。
+
+随后提交 `30f421b3` 的 Linux 真实 Agent run `36917661214` 与同输入复跑 `36918349766` 均在首场 Codex natural 超时，节点保持 `waiting-input`/`liveSession=true`，cleanup 无残留，后续 snapshot stop 未执行。两次失败保留为 Agent 生命周期阻塞，不归因重开 harness，不再自动扩展重跑；A2/A3 非空 snapshot stop 的真实重开证据仍待有效 Agent 首场完成后取得。

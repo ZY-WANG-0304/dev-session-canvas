@@ -2351,3 +2351,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-02，现代 runner 基线）：用户确认本次重构不等待低版本系统。固定六格现代 runner（Ubuntu 24.04、macOS 15、Windows 2025/11 ARM）承担 native 资产构建、加载与归档；跨平台 Terminal/Agent 产品验收由各 workflow 的当次现代 runner 证据承担。macOS 10.13/10.14、Windows 10 1809 及其他旧系统不作前置，也不由现代结果反推兼容。产品 `latest` job 仍按实际 run 记录镜像版本（例如 macOS 26.6.2、Windows Server 2025），低版本问题保留为后续按报告处理的独立事项，不改变退出完整性和真实 Agent/Webview 验收要求。
 
 修订记录（2026-10-02，非空 snapshot stop 重开）：验收 harness 现对 snapshot-only 显式 stop 的空/非空快照统一要求首 Host 保存与 replay 后启动新 Host；非空重开严格核对完整保存 buffer、可见行、尺寸、光标、viewport、buffer 类型、序列和无新执行，空快照继续保留 origin 断言。`test-agent-candidate-reopen.mjs`、`test-agent-candidate-snapshot-evidence.mjs`、`test-agent-candidate-ci-report.mjs` 与语法检查通过；未修改业务代码。既有 runner 证据不追认，新真实非空 stop + reopen 尚未执行，A2/A3 保持未完成。
+
+修订记录（2026-10-02，Linux 真实 Agent 阻塞）：提交 `30f421b3` 的 run `36917661214` 及唯一同输入复跑 `36918349766` 均在首场 `codex-live-runtime-natural` 超时，CLI 已观察但 Host 节点仍 `waiting-input`/`liveSession=true`，cleanup 无残留；后续 snapshot-only 场景未运行。保留两次失败，不归因非空重开 helper，不继续追加重跑；A2/A3 非空 snapshot stop + reopen 仍无真实证据。

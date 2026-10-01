@@ -2332,3 +2332,5 @@ macOS 真实 Agent 的第一次 run `36906574728` 与唯一允许的同输入重
 该 run 关闭现代 macOS Agent 的具名 CLI/Host/Webview/EOF 矩阵，不抹除 `36906574728`、`36909378525` 或更早历史失败；它证明的是窄 harness 修正后的整条验收路径，而不是低版本兼容。`claude-snapshot-only-stop` 因保存状态非空按既定规则不要求重开，报告中的 `pageProjectionIndependence=not-proven` 及非空 snapshot stop 页面/重开等价仍是独立边界，不得写成通过。A1/F-04、A2/A3 未填页面责任、默认生产准入与 root 稳定归属继续开放。
 
 修订记录（2026-10-02，非空 snapshot stop 重开验收）：snapshot-only 的显式 stop 不再按保存内容是否为空选择是否重开。首 Host 继续要求 reader/save/replay 证据；空快照保留原页面 origin 断言，非空快照由新 Host 严格对账完整保存 buffer、可见行、尺寸、光标、viewport、buffer 类型、节点序列和无新执行。测试层 helper、CI 摘要与 fixture 已通过定向回归，未修改业务实现；既有现代 runner 非空 stop 结果不追认通过，新真实 runner 复验待执行，A2/A3 责任保持开放。
+
+后续同一提交 `30f421b3` 的 Linux 真实 Agent run `36917661214` 与同输入复跑 `36918349766` 都在首场 `codex-live-runtime-natural` 超时，CLI 已观察但节点仍为 `waiting-input`/`liveSession=true`，cleanup 责任为零；后续场景没有执行。该失败按 Agent 生命周期/服务时序阻塞登记，不归因新重开 helper，不再自动重跑；新的非空 snapshot stop + reopen 仍没有真实证据。
