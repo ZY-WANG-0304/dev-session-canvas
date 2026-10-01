@@ -10513,6 +10513,40 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const record = { submitted: false, settled: false, originalMetadata, currentMetadata: originalMetadata };
     starts.set(key, record);
     try { await run(); }
+    catch (error) {
+      // The Supervisor has deleted the prepared session and provider before this
+      // typed result; release only that confirmed pre-acquire reservation.
+      if (error instanceof Error && error.message === 'Execution start was rejected-before-acquire.') {
+        record.submitted = false;
+        const node = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
+        const submittedSessionId = (record as { sessionId?: string }).sessionId;
+        if (node && node.metadata?.[kind]?.runtimeSessionId === submittedSessionId) {
+          const message = error.message;
+          this.state = updateExecutionNode(this.state, nodeId, kind, {
+            status: 'error',
+            summary: message,
+            metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+              lifecycle: 'error',
+              attachmentState: 'history-restored',
+              runtimeBackend: undefined,
+              runtimeGuarantee: undefined,
+              runtimeStoragePath: undefined,
+              runtimeSessionId: undefined,
+              liveSession: false,
+              pendingLaunch: undefined,
+              terminalProjectionMode: undefined,
+              terminalStream: undefined,
+              serializedTerminalState: undefined,
+              lastRuntimeError: message,
+              lastExitMessage: message
+            })
+          });
+          this.persistState({ reason: 'execution-start-rejected-before-acquire' });
+          this.postState('host/stateUpdated');
+        }
+      }
+      throw error;
+    }
     finally {
       if ((!record.submitted || record.settled) && starts.get(key) === record) starts.delete(key);
     }

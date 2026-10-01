@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,7 +10,7 @@ import { buildVSCodeArgs } from '../smoke/vscode-smoke-runner.mjs';
 import { prepareReloadDriver, selectReloadInput } from '../smoke/run-vscode-runtime-reload-candidate.mjs';
 
 const { assertControl, assertReloadReceipts, assertRuntimeDiscarded, sameLiveIdentity,
-  exitedIdentity, signalOwned, fixedVsixSha256, assertSnapshotNode, replaySnapshotTail, snapshotTail } = contract;
+  exitedIdentity, signalOwned, fixedVsixSha256, assertSnapshotNode, replaySnapshotTail, snapshotTail, readSnapshotHandshake } = contract;
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const identity = pid => ({ pid, ppid: 1, state: 'S', startTicks: String(pid * 100), executable: `/owned/${pid}` });
 const closed = () => ({ status: 'closed', metadata: { terminal: {
@@ -61,6 +62,28 @@ test('snapshot-only requires an explicit frozen package while original Runtime p
     { mode: 'live-runtime', 'expected-vsix-sha256': 'b'.repeat(64) }, { mode: 'other' }]) {
     assert.throws(() => selectReloadInput(value));
   }
+});
+
+test('snapshot handshake permits real resize after READY but requires unique exact output and matching current page', () => {
+  const nonce = '0123456789abcdef0123456789abcdef';
+  const digest = createHash('sha256').update(nonce).digest('hex');
+  const ready = 'READY:64x20\n';
+  const written = `${ready}HASH:${digest}\nSIZE:112x28\n`;
+  const page = { terminalCols: 112, terminalRows: 28 };
+  assert.deepEqual(readSnapshotHandshake(written, ready, nonce, page), {
+    initialCols: 64, initialRows: 20, cols: 112, rows: 28, expectedPrefix: written
+  });
+  for (const [input, currentPage, currentNonce, initial] of [
+    [written, { terminalCols: 64, terminalRows: 20 }, nonce, ready],
+    [written, { terminalCols: 112, terminalRows: 20 }, nonce, ready],
+    [written, page, 'wrong-nonce', ready],
+    [written, page, nonce, 'READY:112x28\n'],
+    [`${written}SIZE:112x28\n`, page, nonce, ready],
+    [`${written}\n`, page, nonce, ready],
+    [`${written}extra\n`, page, nonce, ready],
+    [`extra\n${written}`, page, nonce, ready],
+    [written.slice(0, -1), page, nonce, ready]
+  ]) assert.equal(readSnapshotHandshake(input, initial, currentNonce, currentPage), undefined);
 });
 
 test('snapshot actual Host departure requires original disk, tail, page and released process identities', () => {

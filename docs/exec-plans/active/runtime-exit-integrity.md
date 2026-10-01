@@ -1,5 +1,7 @@
 # 交付跨平台执行会话退出完整性
 
+当前收尾更新（2026-10-01）：固定六架构候选包已完成字节聚合并独立加载，A6 snapshot-only 的同一冻结 VSIX 已在 `.debug/a6-snapshot-real-reload-20261001-post-start-resize/` 完成一次真实 `Reload Window` 通过。该运行覆盖实际尺寸交接、SIGHUP 尾部、双文件保存、新 Host 页面恢复、原资源退出、无重启执行和 cleanup；首轮尺寸前置失败与其 cleanup 的 pending 保存仍原样保留。A1/F-04 继续按有限收尾推进：十会话是声明输入而非产品上限，活动会话的 O(N) 成本与最终保存/unknown 责任槽分账；Q=1 保留且其 `rejected-before-acquire` Host 预约泄漏是下一项直接代码阻塞。不要再追加通用诊断工具门槛。
+
 当前工程状态补充（2026-10-01，第49节）：三平台schema2、Linux旧Node同名namespace和六资产聚合已提交，固定六格无凭据workflow完成局部复核；本地Linux x64整条构建/双宿主加载/归档已通过。下一只首次运行六格原生分发矩阵，再继续下段有限五包；不是重新实施已完成的兼容代码。最低OS真机环境与现代runner验证分账，普通构建仍stock。
 
 当前唯一执行队列（2026-10-01）：Windows真实Agent36854266396 attempt2原八场、Windows产品36852373473原Terminal六报告/四环境、macOS新helper产品36858038984、macOS真实Agent36858502983、A3第38节两例及A6第39节Runtime reload均已独立核对，不重复排队；所有attempt1与历史失败保留。第44节Remote Linux x64 loopback原四阶段及第47节新固定包A6实际多根组合也已独立通过：A真实EISDIR仍保来源/binding，原reader applied4，B原执行nonce24.9ms，空registry落盘后独立清理通过，旧首败不改。macOS Claude snapshot-only stop非空保存未重开，第48节局部尺寸修复不代证该页面格。其余只按有限收尾第8节五包：六资产/兼容/正常分发与准入、A1最终结构及关键回归、A2/A3未填页面格、A6 snapshot-only实际Host离开、剩余installed/support与最终证据表。当前第49节正在实施Linux schema2实际requirements、arm64及旧Node同名namespace；F-04及默认启用未完成，不增加通用工具阶段，后续历史“当前/下一”不构成追加队列。
@@ -101,6 +103,9 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 范围包含 Linux/macOS/Windows、Agent/Terminal，以及由 Supervisor 托管的 live-runtime 和直接由 Host 托管的 snapshot-only。结束后 Runtime 重开仍不恢复进程或历史，Supervisor/机器故障后仍无需恢复；F-03 root 归属、F-04 容量整体模型和 F-05 已取消的历史归档不在此项顺手改造。不必等待其他重构完成，但本项未通过验收前不得宣称本次重构的退出完整性已经完成。
 
 ## 进度
+
+- [x] (2026-10-01，第50节) 同一冻结 VSIX 的 A6 snapshot-only 真实 Reload Window 复验通过：主体启动后真实 resize 后唯一 nonce/SIZE 握手、完整 SIGHUP 中文/ANSI 尾部、双路径 snapshot、实际新 Host 页面重放、原 provider/主体退出、无新执行、无 binding/pending operation 与 cleanup 均通过；首轮尺寸错误和失败路径 pending cleanup 保留。
+- [x] (2026-10-01，B2/A1) 修复 Q=1 `rejected-before-acquire` 的类型化 Host 预约清理，并补 terminal/agent 同节点重试回归；未知连接/能力/资源结果继续 sticky quarantine，Host wiring 149/149 通过。
 
 - [x] (2026-10-01，第50节) snapshot-only一次UI真实reload接线及schema2 installed适配完成，installed13/reload11/typecheck和原窄回归通过；原Runtime固定包与主体/整体期限保持，自动activation与driver读盘分账，旧reader/EOF及独占落盘不代证。
 - [ ] (2026-10-01，第50节) 冻结当前包后一次实际snapshot-only Host离开验收，独立成功写入/磁盘来源/新页面及原进程释放对账；未取得真实结果前不关闭A6。

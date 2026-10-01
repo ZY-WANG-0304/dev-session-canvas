@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
+const { createHash } = require('node:crypto');
 
 const fixedVsixSha256 = '604494fdebc917d3e12b54fceec75a764ed064e486dd0e76ff20513ddca61656';
 const completedMarker = 'DSC_A6_COMPLETED';
@@ -10,6 +11,18 @@ const sameIdentity = (expected, actual) => Boolean(expected && actual && Number.
   expected.pid === actual.pid && expected.startTicks === actual.startTicks && expected.executable === actual.executable);
 const sameLiveIdentity = (expected, actual) => sameIdentity(expected, actual) && !['Z', 'X'].includes(actual.state);
 const exitedIdentity = (expected, actual) => !actual || expected.startTicks !== actual.startTicks || ['Z', 'X'].includes(actual.state);
+
+function readSnapshotHandshake(written, ready, nonce, page) {
+  const match = /^(READY:(\d+)x(\d+)\n)HASH:([a-f0-9]{64})\nSIZE:(\d+)x(\d+)\n$/.exec(written);
+  if (!match || match[0] !== written || match[1] !== ready ||
+      match[4] !== createHash('sha256').update(nonce).digest('hex')) return undefined;
+  const initialCols = Number(match[2]), initialRows = Number(match[3]);
+  const cols = Number(match[5]), rows = Number(match[6]);
+  if (![initialCols, initialRows, cols, rows].every(Number.isSafeInteger) ||
+      initialCols < 64 || initialRows < 5 || cols < 64 || rows < 5 ||
+      page?.terminalCols !== cols || page.terminalRows !== rows) return undefined;
+  return { initialCols, initialRows, cols, rows, expectedPrefix: written };
+}
 
 async function readIdentity(pid) {
   assert(Number.isInteger(pid) && pid > 1);
@@ -183,5 +196,5 @@ async function signalOwned(expected, signal, { read = readIdentity, kill = proce
 }
 
 module.exports = { fixedVsixSha256, completedMarker, sameIdentity, sameLiveIdentity, exitedIdentity,
-  readIdentity, assertControl, assertRuntimeDiscarded, assertSnapshotNode, replaySnapshotTail, snapshotTail,
+  readIdentity, readSnapshotHandshake, assertControl, assertRuntimeDiscarded, assertSnapshotNode, replaySnapshotTail, snapshotTail,
   assertReloadReceipts, signalOwned };

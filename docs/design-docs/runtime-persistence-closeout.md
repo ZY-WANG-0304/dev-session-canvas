@@ -74,6 +74,10 @@ updated_at: 2026-10-01
 | B2 退出完整性成为可用产品能力 | 候选仍默认关闭；三平台工厂与固定匹配Node/Electron已接通，其他架构/运行时和分发、生产预算与准入、失败处置及完整真实Agent/页面责任未闭合 | 两种模式按既定支持环境接通并通过 A2 至 A5，明确实际启用路径、能力不足处理、新 generation 与旧 live 共存。只有默认关闭候选或 fake/headless 测试不能算交付；开放前须有预算和支持清单，不把正常尾部统一降为取消 |
 | B3 生命周期不串代 | 32.3/32.5/32.8 已修旧 completed 最终发布、完整 root template reset 新执行及 reset 首次等待后 callback 的责任丢失；真实 Host reload、其余有限顺序与完整用户流程仍未全部验收 | 用 A6 的有限实际入口顺序判断；危及尾部、节点/绑定、新执行或其他 root 的确定问题修复并回归。没有复现且有覆盖证据的顺序可按证据关闭，不要求证明任意并发排列或引入全局锁 |
 
+A1/F-04 的准入口径已由只读源码核对收敛：固定十会话是声明输入，不是产品 `N=10` 上限；活动会话资源按用户显式需求随 `O(N)` 增长，不承诺任意 N 下固定 RSS。payload 32 KiB、pending 256 KiB/16 帧、page 64 KiB/256 事件、credit 在 tracker 消费并 journal flush 后返还继续作为每会话硬边界。最终保存、未结算 reader 和 unknown/quarantine 责任不能随意增长，需使用独立有限责任槽；达到槽位时停止新建并报告具名 failure/unknown，已有会话仍可安全消费。启动并发 `Q=1` 保留为 acquire 限制，不形成隐藏队列；第二个新建应在取得 provider/journal 前得到可重试的 busy 结果。
+
+当前发现的 Q=1 直接缺口已完成最窄修复：Supervisor 的 `rejected-before-acquire` 会清理准备中的 journal/session，Host 现在只对这一明确结果清除 `candidateRuntimeStarts`、将未绑定节点置为可重试的 error，并保留连接断开、能力不符或资源释放未知的 sticky unknown/quarantine。Terminal/Agent 同节点拒绝后重试回归已加入 Host wiring，149/149 通过。正式候选默认准入仍需完成 A1 责任槽与跨平台验收，不能用此局部修复或十会话绿色代替。
+
 代码定向：以下代码相对 `extensions/vscode/dev-session-canvas/`。B1 涉及 `src/supervisor/terminalSessionJournal.ts`、`src/supervisor/runtimeSupervisorMain.ts`、Host 的 `src/panel/CanvasPanelManager.ts` 与 Webview 分页消费；B2 沿 `src/panel/executionSessionAdapter.ts`、`src/panel/executionOwnerLifecycle.ts`、`src/panel/linuxExecutionOwnerFactory.ts` 和真实 Host/Supervisor/Webview 接线；B3 聚焦 `CanvasPanelManager.ts` 的原边界与 completed 续体。具体落点由选中条目的直接证据决定，不把这一段作为重构所有模块的授权。
 
 B1 已修正常 live checkpoint 全历史数组持有、owned journal 信用与分页整段物化；具名 Supervisor/Host 消费信用使真实 socket 慢消费不再产生正文/状态推送洪泛，Host 等行上下文真实应用后回执。本轮进一步收敛协商后的 Host/Webview 水位提示，接收回执不代替正文应用，最终 completed 通知不等普通提示。原 node-pty 生产链、旧订阅/旧页面、真实多会话整体预算仍未闭合。stock pause 会与 Unix/当前 Windows 的退出定时 destroy 冲突，故生产者有界化由 B1 依赖 B2 的既定 owned 接入完成，不另造旧生产者生命周期，也不将其延期出本次交付。首次 1x/2x/4x 的 64/128 MiB 内存失败保留；分页扫描修后同探针对照 RSS 最高增量 116.92 MiB 达标、heap 103.72 MiB 仍超限，内容和 30 秒回放门槛通过，不能关闭 A1。探针回放比真实 Webview 多一份逐页序列化，尚未量化，不扣除或追认通过，也不把优化探针先变绿当作传输修正前置；随实际链验证剩余内存来源。正式运行路径的写失败/满盘不能伪报完整或以无限内存暂存掩盖；Supervisor 崩溃后的 open/全量恢复优化不自动成为本轮验收要求。
@@ -113,7 +117,7 @@ B2 初始接线缺口中的 Client/backend/launcher profile 传递及 candidate 
 
 A1 的容量/交互预算和 B2 的生产收尾预算由代理负责选定并论证，不是等待用户确认的前置。先利用既有样本与已实现限额、实际队列所有权和支持环境成本，在验收运行前登记具名数值、来源及失败含义；缺测量时只允许一次有固定输入的校准，不循环试数直到绿色。记录会话数、输出量/持续时间、scrollback、慢读/离线时长、缓存/在途和内存预算、可交互时间及到期结果；对比相同输入的基线，架构性判据仍须满足。现有 1 MiB/2048 是缓存实现值，候选自然 8 秒/主动 13 秒/整体 20 秒不自动升格为生产指标；本次未测得的数值不伪造为结论，也不承诺新的对外 SLA。
 
-当前候选准入已按生产接入 32.16 分离为同一不可变策略，由 authority、owner 和 Host 最终保存共同计账；省略仍为 executions=2、starting=1，构建十 Terminal 验收时显式选 10/1。真实模块默认/非默认、unknown 停排与保存占槽回归通过，正式部署策略仍待完整 A1 资源模型，不得将候选 2/10 解释为新增产品会话上限，也不能以两会话通过替代既定十会话验收。
+当前候选准入已按生产接入 32.16 分离为同一不可变策略；省略仍为 executions=2、starting=1，构建十 Terminal 验收时显式选 10/1。固定十会话只用于声明输入，不能升格为产品会话上限；正式启用仍需把活动会话资源与未结算责任槽分账，并修复 Q=1 的明确拒绝预约泄漏。真实模块默认/非默认、unknown 停排与保存占槽回归保持，不以两会话通过替代既定十会话验收。
 
 早期容量证据只有 fixture 编码量，后续已有模块与合并 authority 进程的 heap/RSS、受控浏览器交互及真实 Terminal 链样本，但仍未形成实际分进程、多会话生产候选的完整资源/交互预算。A1 应按实际进程所有权与共享/逐会话成本登记资源模型、数值依据、裕量和失败含义，不直接沿用合并夹具的 64/128 MiB 为产品准入线，也不从旧结果中扣除未量化成本来制造通过。固定验收负载不是新增产品会话数上限，不能通过缩小 scrollback、静默限制用户并发或削减支持环境来达标。
 

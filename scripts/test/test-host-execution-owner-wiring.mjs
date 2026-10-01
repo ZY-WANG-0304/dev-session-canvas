@@ -2130,6 +2130,7 @@ function candidateRuntimeFixture(options = {}) {
   const applies = [];
   const subscriptions = [];
   const errors = [];
+  let rejectBeforeAcquire = options.rejectBeforeAcquire === true;
   for (const method of ['startAgentSessionWithSupervisor', 'startTerminalSessionWithSupervisor']) {
     const start = f.host[method].bind(f.host);
     f.host[method] = async (...args) => {
@@ -2143,6 +2144,7 @@ function candidateRuntimeFixture(options = {}) {
     supportsTerminalPagedRead: () => false,
     supportsExecutionCandidateProfile: profile => profile === EXECUTION_CANDIDATE_PROFILE,
     async createSession(request) {
+      if (rejectBeforeAcquire) throw new Error('Execution start was rejected-before-acquire.');
       creates.push(request);
       return { sessionId: request.sessionId, kind: request.kind, runtimeBackend: backend.kind,
         live: true, lifecycle: request.kind === 'agent' ? 'running' : 'live' };
@@ -2158,7 +2160,8 @@ function candidateRuntimeFixture(options = {}) {
     applyRuntimeSupervisorSnapshot: async (...args) => { applies.push(args); },
     subscribeRuntimeSupervisorTerminalStream: async (...args) => { subscriptions.push(args); }
   });
-  return { ...f, client, backend, creates, applies, subscriptions, errors };
+  return { ...f, client, backend, creates, applies, subscriptions, errors,
+    setRejectBeforeAcquire: value => { rejectBeforeAcquire = value; } };
 }
 
 function addCandidateLegacyBinding(f, kind, backendKind = 'legacy-detached') {
@@ -2205,6 +2208,19 @@ function candidateRuntimeRoutingFixture() {
   f.host.getPreferredRuntimeSupervisorClient = CanvasPanelManager.prototype.getPreferredRuntimeSupervisorClient;
   return { ...f, baseStoragePath,
     candidateStoragePath: path.join(baseStoragePath, 'runtime-supervisor-generations', 'terminal-exit-v1') };
+}
+
+for (const kind of ['terminal', 'agent']) {
+  test(`B2 ${kind} clears a confirmed pre-acquire rejection and permits a later retry`, async () => {
+    const f = candidateRuntimeFixture({ rejectBeforeAcquire: true });
+    await completed(f.clock, f.start(kind), `${kind} pre-acquire rejection`);
+    assert(f.errors.some(message => /rejected-before-acquire/.test(message)), f.errors.join('\n'));
+    assert.equal(f.host.candidateRuntimeStarts.size, 0);
+    f.setRejectBeforeAcquire(false);
+    await completed(f.clock, f.start(kind), `${kind} retry after pre-acquire rejection`);
+    assert.equal(f.host.candidateRuntimeStarts.size, 0);
+    assert.equal(f.creates.length, 1);
+  });
 }
 
 for (const kind of ['terminal', 'agent']) {

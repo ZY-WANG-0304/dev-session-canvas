@@ -2279,6 +2279,10 @@ Windows ARM64原产物已下载，官方Electron22.3.14/Node16.17.1与当前Node
 
 原x64唯一attempt2已job success（14:07:59至14:09:30），同一编译预算未变；其余五格在attempt2列表中的开始/结束仍为attempt1原时间，未重新执行。该成功不解释原编译慢点或追认失败artifact已保存，CRLF分发责任仍须新LF输入处理。
 
+修后仅Windows两格 `36874985406` / `42022169` attempt1成功，原源码LF/hash门禁均由Linux实际import复核通过；x64 addon为 `34f4119abaae80dd6fca66e67dec47283c5c0acb1027d9b56c3d84b4b7e723c7`，arm64为 `ca8dbb501774050f504c5d5d96975135c4e51df30edf4b8c308827fbdf719dba`。与首轮四格汇入 `.debug/execution-assets-production-20261001/assets` 后完整六目标一次import成功；`aggregation.json` 保留各自来源run与原manifest/binary摘要，不改早期CRLF产物。按70a0a32e显式production聚合build、原packager形成固定 `candidate.vsix`，SHA256 `bb4a5a23dc527d097b740df7359499432469be00eda0b70f6145f4f51a7e3543`、5855123bytes；包内六manifest/全部runtime文件hash及两个macOS helper执行位通过独立检查。selection=platform，候选仍2/1，未将其当生产并发上限，普通构建仍stock；编译/聚合/打包不代证各目标完整产品或最低OS。
+
+受兼容改动影响的原产品回归已独立回收：`f2414f98` 的Windows36872496520与macOS36872496523均有原Node/provider四格first/cleanup、Terminal两模式六报告/四环境通过。两平台真实VS Code1.117.0/Electron39.8.7、重开新Host，各模式原90000行/5580102bytes、EOF后最终应用及光标(6,2)成立；Windows final1431/1381、Runtime节点616bytes，macOS final8220/8161、Runtime节点556bytes，snapshot重开均5580063字符。各五份schema2 manifest及Windows五addon/macOS五对addon-helper实际hash核对，源码Windows19项按CRLF、macOS17项按原字节匹配。Windows依赖DLL/EXE仅对账manifest、未另下载核hash；不将这些不同构建资产的产品结果称为新聚合包通过。证据在 `.debug/windows-product-36872496520-schema2/` 与 `.debug/macos-product-36872496523-schema2/`，下载超时/首版报告结构假设错误保留，不扩大到Agent、最低OS或完整A5。
+
 ## 50. A6 snapshot-only 实际 Host 离开
 
 原第39节Runtime真实reload不负责结束Supervisor执行，原S12直接调用Host方法又不是实际VS Code关闭，因此仍缺snapshot-only的真实永久离开组合。本项只复用 `run-vscode-runtime-reload-candidate.mjs` 的独立activation-driver、一次UI启动和180秒总体期限（保留30秒清理），新增明确的snapshot-only选择；默认Runtime固定输入及旧证据不改，不另建诊断设施或增加平台矩阵。
@@ -2292,3 +2296,11 @@ Windows ARM64原产物已下载，官方Electron22.3.14/Node16.17.1与当前Node
 证据归因补充：恢复panel的onView可先于测试activation-driver自动激活产品。因此“先读磁盘”只承诺先于driver自己的activation/attach/flush命令，并记录读盘前后产品isActive；不声称两份具体文件一定由旧Host最后写入，收据明确 `oldHostExclusiveDiskWriteClaim:false`。本例仍严格要求只在真实退出SIGHUP后产生的完整尾部可恢复、旧执行资源退出且没有重启，证明用户离开与恢复流程，不用新Host事件替旧Host内部结算背书。
 
 第50节有限接线已完成：原reload launcher增加显式 `--mode=snapshot-only --expected-vsix-sha256=...`，原Runtime固定SHA保持；原主体字节/25秒期限与总体180秒保持。schema2 installed离线检查复用原ELF/build validator，实际安装收据使用按hash冻结的产品factory/compatibility sidecar，不复制兼容规则，不触发native执行；schema1原断言和receipt形状保持。installed13组、reload11组（含原7组）、root-failure/Remote窄测试与typecheck通过，尚未运行新包原生验收。有限sidecar只是重用实际产品准入函数，不设为新工具框架或新的平台门槛。
+
+固定新包首轮 `.debug/a6-snapshot-real-reload-20261001-first/` exit1保留。安装与schema2实际Electron准入已进入，主体ready/正确nonce成立；setup在实际reload之前因尺寸前提超时，未生成setup或verify。独立written记录READY64x20、后续SIZE112x28，失败前Host记录112x28；测试错误地将启动时尺寸固定为后续查询尺寸，拒绝了合法resize，不能把该首败当退出尾部缺陷。失败清理另报 `Local final snapshot persistence is pending`，不计cleanup通过；此后SIGHUP尾部属于失败清理，不是reload证据。外层fallback=[]且原provider/主体/Host/UI身份均经独立核对已退出，仍不追认产品cleanup成功。只窄修setup判据为原READY/nonce/唯一SIZE字节严格匹配，并以SIZE与实际页面一致的最终尺寸交接；不延长25秒/180秒、不改变产品或尾部断言，再以同一包新目录运行一次。旧cleanup事实单列，不假设已解决。
+
+同一冻结 VSIX 的一次新目录复验 `.debug/a6-snapshot-real-reload-20261001-post-start-resize/` 已 exit 0。夹具在主体启动后触发一次真实尺寸变化，先确认页面几何变化，再分别发送 nonce 与唯一 `SIZE`；setup 仍保留 `READY:64x20`，最终确认 `SIZE:112x28` 与页面一致。实际 `workbench.action.reloadWindow` 产生同一 UI 的新 Host，旧 Host/provider/主体均按原 PID、启动计数和可执行文件身份退出；主体在真实 SIGHUP 后写入完整中文/ANSI 尾部并以 exit7 结束，保存文件、原始写入字节、snapshot 重放、页面光标 `(6,4)`/可见行、无重启执行、无 runtime binding/pending operation、产品 reset 和 cleanup 全部通过。证据中的 `oldReaderOutcome=not-observed`、`sourceEofClaim=false` 和 `oldHostExclusiveDiskWriteClaim=false` 保持，不能扩大为旧 reader 已应用或 EOF 已确认。首轮尺寸失败与其失败清理 pending 仍作为历史事实保留。
+
+同日补齐一项直接启动责任缺口：Supervisor 明确返回 `rejected-before-acquire` 时，Host 只清理对应的 candidate start reservation，并将未取得资源的节点置为可重试错误；网络、能力或资源状态未知仍保留原 reservation/quarantine。Terminal/Agent 同节点重试回归已随 Host wiring 达到 149/149。该修复不改变 Q=1 的 acquire 限制，也不把十会话校准升格为产品并发上限。
+
+首轮和第二轮 setup 失败后的 `Local final snapshot persistence is pending` 仍按 §26.3 解释为安全拒绝：`persistNonNativeHostFinal()` 已写出 root-local 与 workspace snapshot，owner 资源也已退出，但 workspaceState Promise 尚未完成时 reset 不删除节点、不伪报 cleanup 成功。该恢复分支不代表健康 Reload 路径失败；若未来要保证“自然结束后立即 reset/delete 必须成功”，需另立 bounded persistence 等待验收，不能用本次失败清理改写既定契约。

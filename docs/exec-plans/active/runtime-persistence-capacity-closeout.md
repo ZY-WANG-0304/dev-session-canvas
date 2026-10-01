@@ -22,6 +22,9 @@
 
 ## 进度
 
+- [x] (2026-10-01) 只读重评 A1 正式资源口径：十会话固定负载是声明输入而非产品并发上限；活动会话按用户需求承担 O(N) 资源成本，不承诺任意 N 的固定 RSS；payload/pending/page/credit 硬边界与最终保存、reader、unknown 责任保护保持。
+- [x] (2026-10-01) 修复 Q=1 在明确 `rejected-before-acquire` 后遗留 `candidateRuntimeStarts` 的 Host 预约，并以 Terminal/Agent 同一节点重试回归验证；不得清理网络/能力/资源未知结果，Host wiring 149/149 通过。
+
 - [x] (2026-10-01，B1/A1输入) 设计10.15在运行前冻结原两主体color离线恢复的交互顺序/同动作前后块号/1500ms与不重置30秒判据，保留旧indexed-pages及全部内容/身份/清理。
 - [x] (2026-10-01，B1/A1有限验收) 原test窄调及runner判据摘要后，`.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整 exit 0：B51ms应用、A12到18未追平、ready后13137.248ms完整恢复，原身份/hash/no-history及两份cleanup通过，无强杀；不关闭总体或重跑求次数。
 - [x] (2026-09-30) 固定真实 Host 两次 launch 已执行；原执行身份/绑定、新 reader 与离线 source receipt 成立，但 `tail-observed` 在原 30 秒期限只到 1404/2560 块。四轮 exit 1 保留，末轮清理通过，B 新交互/独立 journal hash/自然无历史未到达，不记整体通过。
@@ -51,6 +54,8 @@
 - [x] (2026-09-28) 本轮结果/残余债务已同步，独立 review 的字节校验问题已复现并修复、复核无新阻塞，以本地提交交付该增量；F-04 未整体通过，计划保持 active，不 push/PR。
 
 ## 意外与发现
+
+2026-10-01 只读核对发现，启动并发 `Q=1` 的第二次创建在 Supervisor 侧可确定返回 `rejected-before-acquire` 并删除准备资源，但 Host 侧将其当作普通 Error；由于记录已标记 `submitted` 而未 `settled`，`CanvasPanelManager` 后续会把同节点永久视为 pending/unknown。该问题与容量数值无关，是直接的新建可用性阻塞。固定十会话结果不提供把 `N` 变成产品上限的证据；移除总 N 也会错误移除 final snapshot/unknown 的保护，因此活动会话计数与责任槽必须分账。
 
 2026-10-01，10.14的B交互安排在完整后缀之后，`overlap=false`不抵消原恢复通过。10.15只改变原动作顺序与readiness/判定，未增加数据或sleep，就观察到B51ms应用时A由12推进到18且仍未追平；本次来源hash与原输入一致、revision6502，随后原内容/身份/无历史及清理全部通过。该事实补齐具名组合，不能推导一般性能保证或将10.14改记重叠。
 

@@ -8,7 +8,7 @@ const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs
 const { captureInstalledExtensionReceipt } = require('./installed-execution-candidate.cjs');
 const { resolveLegacyRuntimeSupervisorPaths, resolveSystemdUserRuntimeSupervisorPaths } = require('./runtime-reload-paths.cjs');
 const { completedMarker, assertControl, assertRuntimeDiscarded, readIdentity, sameLiveIdentity,
-  exitedIdentity, assertSnapshotNode, replaySnapshotTail, snapshotTail } = require('./runtime-reload-contract.cjs');
+  exitedIdentity, assertSnapshotNode, replaySnapshotTail, snapshotTail, readSnapshotHandshake } = require('./runtime-reload-contract.cjs');
 
 const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
 const controlPath = process.env.DEV_SESSION_CANVAS_RELOAD_CONTROL;
@@ -384,8 +384,17 @@ async function setupSnapshot(launcher, installedVsix) {
     catch (error) { if (error.code === 'ENOENT') return ''; throw error; }
   }, text => /^READY:\d+x\d+\n$/.test(text));
   const dimensions = /^READY:(\d+)x(\d+)\n$/.exec(ready);
-  const cols = Number(dimensions[1]), rows = Number(dimensions[2]);
-  assert(cols >= 64 && rows >= 5);
+  const initialCols = Number(dimensions[1]), initialRows = Number(dimensions[2]);
+  assert(initialCols >= 64 && initialRows >= 5);
+  // Resize after the PTY subject exists; startup geometry can race the first Webview resize.
+  const beforeResize = (await probe()).nodes.find(entry => entry.nodeId === node.id);
+  await command('dispatchWebviewMessage', { type: 'webview/resizeNode', payload: {
+    nodeId: node.id, position: node.position,
+    size: { width: node.size.width + 20, height: node.size.height + 20 }
+  } }, surface);
+  await poll('post-start terminal resize applied', async () =>
+    (await probe()).nodes.find(entry => entry.nodeId === node.id),
+  value => value && (value.terminalCols !== beforeResize?.terminalCols || value.terminalRows !== beforeResize?.terminalRows));
   const processes = await snapshotProcessIdentities(providerPath);
   assert(sameLiveIdentity(beforeExec.provider, processes.provider));
   assert.equal(processes.identity.pid, beforeExec.identity.pid);
@@ -397,14 +406,18 @@ async function setupSnapshot(launcher, installedVsix) {
   await recordOwnership();
   const subjectNonce = control.nonce.replaceAll('-', '');
   const expectedHash = hash(subjectNonce);
-  await dom({ kind: 'sendExecutionInput', nodeId: node.id, data: `nonce:${subjectNonce}\nsize\n` });
-  const expectedPrefix = `${ready}HASH:${expectedHash}\nSIZE:${cols}x${rows}\n`;
-  await poll('ready nonce and dimensions actually applied', async () => {
+  await dom({ kind: 'sendExecutionInput', nodeId: node.id, data: `nonce:${subjectNonce}\n` });
+  await poll('subject nonce response applied', async () => fs.readFile(`${auditPrefix}-written.bin`, 'utf8'),
+    written => written === `${ready}HASH:${expectedHash}\n`);
+  await dom({ kind: 'sendExecutionInput', nodeId: node.id, data: 'size\n' });
+  const confirmed = await poll('ready nonce and dimensions actually applied', async () => {
     const page = (await probe()).nodes.find(entry => entry.nodeId === node.id);
-    return { page, written: await fs.readFile(`${auditPrefix}-written.bin`, 'utf8') };
-  }, value => value.written === expectedPrefix && value.page?.terminalCols === cols && value.page.terminalRows === rows &&
+    const written = await fs.readFile(`${auditPrefix}-written.bin`, 'utf8');
+    return { page, handshake: readSnapshotHandshake(written, ready, subjectNonce, page) };
+  }, value => value.handshake &&
     value.page.terminalVisibleLines.join('').includes(`HASH:${expectedHash}`) &&
-    value.page.terminalVisibleLines.join('').includes(`SIZE:${cols}x${rows}`));
+    value.page.terminalVisibleLines.join('').includes(`SIZE:${value.handshake.cols}x${value.handshake.rows}`));
+  const { cols, rows, expectedPrefix } = confirmed.handshake;
   const saved = await command('flushPersistedState');
   assert(saved.exists && !saved.lastError);
   assert.equal(getNode(saved.snapshot, node.id).metadata.terminal.liveSession, true);
@@ -420,7 +433,8 @@ async function setupSnapshot(launcher, installedVsix) {
   const current = await snapshot();
   const result = { nonce: control.nonce, mode: 'snapshot-only', pass: true, ui: await live(launcher.ui),
     host: owned.host, a: { id: node.id, ...processes, executionId: initial.payload.executionSessionId,
-      cols, rows, auditPrefix, expectedPrefix, providerPath }, diskPaths: [saved.snapshotPath, rootFile],
+      initialReady: ready, initialCols, initialRows, cols, rows, auditPrefix, expectedPrefix, providerPath },
+    diskPaths: [saved.snapshotPath, rootFile],
     frameId: current.surfaceLifecycle[surface].frameId };
   await live(processes.provider);
   await live(processes.identity);
