@@ -1721,6 +1721,8 @@ DeepSeek 官方接口提供 Codex 所需的 Responses 路径和 Claude 所需的
 
 选定窄修同时处理这两个事实：永久离开一开始封闭原事件/执行准入；若开始时已有strict mutation，普通路径保留首次拒绝，带owner报告路径将相关域记为未确认，不能只等部分Core就宣布已结算。原delete继续沿原绑定执行并保留真实结果，不重发、不补造取消，也不将外层reset放入它自身等待的pending集合。非永久boundary每次已有等待点之后及reset/template既有提交复核点检查永久关闭，不允许旧续体继续清maps、写盘或发布；正常无冲突重置保持。永久结果不是OS强制退出的承诺，此修正不新增全局锁、root drain、事务框架或任意并发矩阵。普通和带owner两入口须各有窄回归，现有首次结果复用/原46项保持；真实reload仍另行验收。
 
+上述窄修已完成：原46项、Terminal/Agent真实start replacement两项及ordinary/owner重叠两项共50项通过，`.debug/a6-permanent-mutation-fixed-20261001-01.log` 保留修后结果；root与独立reviewer均复跑通过，Host145/145、typecheck/localization通过。ordinary首次Error复用；owner相关域保持首次unconfirmed，真实删除仅一次，放行后旧reset拒绝且lateWrites为空。owner用例是受控client顺序，真实transport在deactivation被dispose后仍可能诚实返回unconfirmed，不代证原ACK必到达。未改永久结果为成功，也不关闭真实reload/多根UI。
+
 ## 33. Darwin 产品原生接入
 
 ### 33.1 运行前原生契约（2026-10-01）
@@ -1830,6 +1832,10 @@ run `36821963386`/job `110239281754` 使用 `72ca0efe`，修后原Node四例全�
 输入b1628715经已注册手动入口的run36832581851实际执行原八场景，整轮failure；安全摘要为 `.debug/agent-ci-macos-36832581851-summary/summary.json`。Codex Runtime natural、Runtime stop、snapshot-only natural前三场passed；两natural取得真实DeepSeek响应/nonce、turn.completed、无metadata fallback与实际source EOF，Runtime stop仍为主动处置。第四场snapshot-only stop在原 `agent-candidate-tests.cjs:170` 的 `assert(serializedTerminalState?.data)` 首败，Claude四场not-run，未自动重试。
 
 失败摘要明确记录：status=stopped、liveSession=false、exitCode=0、serializedStatePresent=true但serializedStateBytes=0、outputSequence=15，原reader applied且finalOutputSequence=15，实际source=eof；四场cleanup的bindings/failures/forcedSignals/active均0。该事实只定位到非空字符串断言，不能凭EOF/序号宣布尾部完整，也不能凭空串认定正文丢失；原raw没有发布，不从摘要还原内容。产品 `normalizeSerializedTerminalState()` 接受空字符串，故下一直接核对合法空屏与丢内容的区分判据，不先删除原断言或盲目重跑。此前Linux第三轮snapshot stop的根因仍未知，不因场景名相同追认同一根因或已修复。凭据在该平台的两个natural实际可用，不要求用户重复配置认证。
+
+独立复核进一步限定：上述failureState来自故障时Host metadata，不是断言现场savedNode直接落盘值；下一在原断言之前，针对本次snapshot-only已有输入计算具名终态证据，原非空断言暂不改。读取实际savedNode、原help-probe、最终probe与getHostMessages；同一执行/reader最终序号、快照序号/尺寸、实际页面全文/光标与同尺寸hydrate后的快照逐项对账。只有初始checkpoint、连续output区间及resize revision/尺寸顺序完整时，才用现有headless xterm独立重放对比；200条环形记录裁剪、缺区间/尺寸、投影恢复或换代须明确无法判定，不能用拼接文本或仅看清屏escape代替。
+
+该诊断只增加固定枚举/布尔/计数/hash的 `snapshotEvidence` 安全摘要，缺证据保持unknown；raw/快照正文不发布，同一key内容扫描继续执行。局部用既有xterm验证合法空屏、正常非空、丢正文/错cursor/序号/缺消息不能误判；不建通用replay框架或扩场景。之后只运行一次原macOS矩阵取得新输入事实，失败即停；旧failure与原真值断言不追改。是否将非空判据替换为终态一致性，依据新证据另行判断，不预设“合法清屏”结论。
 
 ## 34. Windows 产品原生接入
 

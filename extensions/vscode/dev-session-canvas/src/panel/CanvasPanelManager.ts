@@ -3827,6 +3827,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async prepareForDeactivation(): Promise<HostDeactivationReport | void> {
+    this.closeRuntimeSupervisorEventAdmission();
     if (this.nonNativeExecutionOwner?.options.capabilities.includes('execution-owner-boundary-v1')) {
       return this.prepareNonNativeDeactivation();
     }
@@ -3836,6 +3837,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async prepareOrdinaryDeactivation(): Promise<void> {
+    this.nonNativeExecutionOwner?.closeAdmission(true);
+    if (this.strictRuntimeMutationBoundary) {
+      throw new Error('Host deactivation is unconfirmed because a Runtime mutation is still pending.');
+    }
     const nextStartupConfiguration = this.readStartupConfiguration();
     await this.prepareForHostBoundary({
       preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
@@ -3850,6 +3855,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const scheduler = owner.options.scheduler;
     const startedAt = scheduler.now();
     const deadline = startedAt + owner.options.budgets.boundaryMs!;
+    const hadPendingRuntimeMutation = this.strictRuntimeMutationBoundary !== undefined;
     const persistenceRecords = this.hasNonNativeHostPersistence()
       ? Array.from(this.nonNativeHostExecutions.values()).filter(record => record.persistence) : [];
     if (this.hasNonNativeHostPersistence()) this.nonNativeFinalPersistenceDeadline = deadline;
@@ -3934,6 +3940,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const persistence = await Promise.all(persistenceRecords.map(record => record.persistence!.promise));
       const incomplete = persistence.find(saved => saved.kind !== 'saved' && saved.kind !== 'not-required');
       if (incomplete) return { kind: incomplete.kind === 'failed' ? 'failed' : 'unconfirmed', reason: incomplete.reason };
+      if (hadPendingRuntimeMutation) {
+        return { kind: 'unconfirmed', reason: 'A Runtime mutation was pending when Host deactivation began.' };
+      }
       return { kind: 'settled' };
     });
     return result;
@@ -3982,6 +3991,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const capturedNodes = candidate ? this.state.nodes.map(node => `${node.kind}:${node.id}`).sort().join('\n') : undefined;
     const checkBoundary = (): void => {
+      if (!options.permanentExecutionClose) this.assertCanvasMutationAdmissionOpen();
       if (!candidate) return;
       if (this.getExecutionCandidateScheduler().now() >= this.strictRuntimeMutationBoundary!.deadline ||
         this.state.nodes.map(node => `${node.kind}:${node.id}`).sort().join('\n') !== capturedNodes) {
@@ -3999,9 +4009,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (ownedClose) await ownedClose;
     checkBoundary();
     await this.waitForPendingRuntimeSupervisorStateCallbacks();
+    checkBoundary();
     await this.waitForPendingRuntimeSupervisorOperations();
     checkBoundary();
     await this.flushAllExecutionSessionStatesForHostBoundary();
+    checkBoundary();
     for (const [kind, sessions] of [
       ['agent', this.agentSessions],
       ['terminal', this.terminalSessions]
@@ -4070,6 +4082,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!options.permanentExecutionClose) this.assertRuntimeSupervisorStateCallbacksSettled();
   }
 
+  private assertCanvasMutationAdmissionOpen(): void {
+    if (!this.isRuntimeSupervisorEventAdmitted()) {
+      throw new Error('Host permanent boundary has closed canvas mutation admission.');
+    }
+  }
+
   private captureCanvasResetIdentity(
     nodes: readonly CanvasNodeSummary[]
   ): (currentNodes: readonly CanvasNodeSummary[]) => boolean {
@@ -4111,6 +4129,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async resetState(options: { clearAgentCliResolutionCache?: boolean; reason?: string } = {}): Promise<void> {
+    this.assertCanvasMutationAdmissionOpen();
     const previousNodeCount = this.state.nodes.length;
     const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
     if (workspaceFolders.length > 1) {
@@ -4131,6 +4150,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         throw new Error(vscode.l10n.t('The canvas changed while its reset was pending. The reset was not applied.'));
       }
     }
+    this.assertCanvasMutationAdmissionOpen();
     this.assertRuntimeSupervisorStateCallbacksSettled();
     if (options.clearAgentCliResolutionCache) {
       this.clearAgentCliResolutionCache();
@@ -5662,6 +5682,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       quietOnFailure?: boolean;
     }
   ): Promise<string[]> {
+    this.assertCanvasMutationAdmissionOpen();
     const isMultiRootWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 1;
     const resolvedAgentProviders = await this.validateCanvasTemplateForApply(storedTemplate.template);
     const operationLabel = options?.reset ? vscode.l10n.t('reset') : vscode.l10n.t('apply');
@@ -5751,6 +5772,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const originalNodes = this.state.nodes.filter(node => originalNodeIds.has(node.id));
         const isCurrentRootNodes = this.captureCanvasResetIdentity(originalNodes);
         const assertCurrentRoot = (): CanvasGroupSummary => {
+          this.assertCanvasMutationAdmissionOpen();
           const currentRoot = (this.state.groups ?? []).find(group => group.id === rootId &&
             isWorkspaceRootGroup(group) && resolveWorkspaceRootPathForGroup(group) === rootPath);
           const currentNodeIds = collectWorkspaceRootOwnedNodeIds(this.state, rootPath, rootId);
@@ -5770,6 +5792,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           allowRuntimeSupervisorRestart: false,
           invalidatePendingExecutionOperations: true
         });
+        this.assertCanvasMutationAdmissionOpen();
         this.assertRuntimeSupervisorStateCallbacksSettled();
         if (!isCurrentCanvas(this.state.nodes)) {
           throw new Error(vscode.l10n.t('The canvas changed while its reset was pending. The reset was not applied.'));
@@ -5777,6 +5800,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     }
 
+    this.assertCanvasMutationAdmissionOpen();
     const applyResult = applyCanvasTemplateToState(applyBaseState, storedTemplate.template, {
       preferredCenter,
       targetGroupId: targetGroupIdForApply,

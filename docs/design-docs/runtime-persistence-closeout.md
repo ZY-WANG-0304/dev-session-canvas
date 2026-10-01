@@ -24,7 +24,7 @@ updated_at: 2026-10-01
 
 ## 1. 状态与目的
 
-当前B2/A5与B3/A6（2026-10-01）：macOS run `36829311235`/353bb575完整success且六份页面原报告已独立核对，尾部90002行、光标(6,2)、Runtime无历史及两模式清理通过。Windows run `36830583121`/f35c023c的Node/Electron构建与页面步骤显示success，但完整artifact缺重开/清理及snapshot completed，不能计作两模式页面通过；按生产接入34.11定位退出传播，Agent暂不调度。此前非TTY、Canvas ready超时和Electron构建顺序失败分别保留，不追认通过或宣称系统keychain缺陷已证实。A6非root提交身份及callback保护已有46次局部生命周期回归，完整reload/多根仍未代证。34.10接线已局部验证，下一先运行原macOS八场景，不新增模型矩阵。F-04、其余A1至A6、packaged和默认准入仍开放。
+当前B2/A5与B3/A6（2026-10-01）：macOS Terminal run36829311235六报告已核对；首轮真实Agent36832581851前三Codex场passed，第四snapshot stop因非空快照断言失败，Claude未跑，按生产接入33.10取终态证据，不盲目重跑或归因为丢内容。Windows36830583121绿灯缺五报告已确认code.cmd转交误作宿主完成，34.12窄修后36834158313真实exit1，首败reader identity前提，Agent仍未调度。A6永久退出后旧reset写盘先红已修，50次Host回归及独立复核通过；真实reload/多根UI不代证。旧失败、EOF/尾部、真实Agent及既定矩阵不削减，F-04、其余A1至A6、packaged/Remote和默认准入仍开放；当前只处理上述具名产品/判定缺口，不追加通用工具阶段。
 
 当前 A1 结果与下一项（2026-10-01）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整exit0；B回复51ms实际应用，同一Webview动作中A的块号12到18均未追平2560，随后ready后13137.248ms完整恢复。原1500ms/不重置30秒、原执行及新reader、完整后缀/独立journal/hash/自然no-history与两份cleanup均通过，outer forcedSignals/failures为空。声明输入下的真实离线追赶交互组合已覆盖；10.14的overlap=false和全部旧失败保持。下一推进原B2/A5的macOS/Windows产品provider、namespace、匹配Node/Electron及packaged接入，不追加此组合或工具阶段；F-04总体和其他A项继续开放。
 

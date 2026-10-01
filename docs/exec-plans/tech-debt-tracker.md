@@ -23,7 +23,7 @@
 
 ## 技术债列表
 
-2026-10-01 B2/A5与B3/A6：macOS `36829311235`/353bb575完成原Node/Electron和两模式Terminal/Webview、completed重开并核对六报告。Windows `36830583121`/f35c023c虽job success，但完整artifact缺重开/清理及snapshot completed，不能计页面通过，按生产接入34.11定位。Windows非TTY/构建顺序及macOS旧ready超时失败保留，不宣称系统keychain缺陷已证实。非root提交身份/callback保护已46次局部回归，完整reload不代证。34.10接线已局部验证，下一先macOS原八场景，Windows先收口上述直接判定缺口。剩余F-04/A1至A6、其他架构/运行时、packaged/Remote与默认准入按有限清单，不另增工具债务或重开已完成容量组合。
+2026-10-01 B2/A5与B3/A6：macOS Terminal36829311235六报告核对通过，真实Agent36832581851前三Codex场passed、第四snapshot stop空快照真值断言首败、Claude未跑，33.10只补该判定需要的终态证据。Windows36830583121绿灯缺报告已确认CLI转交误判，34.12窄修后36834158313真实exit1，当前reader identity前提尚待原报告定位，Agent未调度。32.21新增永久退出后旧reset写入缺陷已先红后修，原46+真实start2+普通/owner重叠2共50项、Host145/typecheck/localization及独立复核通过，不代证真实reload/多根UI。所有旧失败保留；剩余F-04/A1至A6、六资产/运行时、packaged/Remote与默认准入按有限清单，不另增通用工具债务。
 
 2026-09-30 当前 Runtime 重构收尾入口：`docs/design-docs/runtime-persistence-closeout.md`。合并测试进程的 Heap 64 MiB / RSS 128 MiB 重列为初始观察预算，不是独立 Supervisor/每会话产品预算；原阈值、结果和 exit 1 保持，不追认通过。暂停仅为压线的优化和自动前置 profiler，当前推进 B2 正式启动接入，真实分进程、多会话资源与交互评估并入 A1，并据资源模型论证正式预算。已证无界积压、重复物化、取消等待累积等结构问题不因口径调整失效。F-04 仍开放，F-05 不重开归档，F-03 另列 R1；B3、真实 Agent/Webview/跨平台、尾部与最终 A1 至 A6 不削减，不等待用户选择工程预算。下列 dated 记录、旧 L/PI 分类及“下一步”保留为历史，不自动执行；尤其旧 profiler 下一步不再作为 B2 前置。
 

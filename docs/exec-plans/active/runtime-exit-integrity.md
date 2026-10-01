@@ -104,7 +104,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01) 按34.10补齐Windows真实Agent的产品cmd入口、原对象观察、临时配置DACL及受限workflow；六项局部测试、typecheck/env/Electron输入通过，不代证Windows原生PowerShell或Agent。
 - [ ] 通过已注册workflow的 `real_agents=true` 和单选 `real_agent_platform=macos/windows` 依次运行各自原八场景并核对脱敏报告；不新增场景或自动重试，剩余产品责任按有限收尾清单。
 - [x] (2026-10-01) b1628715的macOS首次run36832581851已回收：前三Codex场passed、snapshot stop原非空快照断言首败、Claude四场not-run，四cleanup均零残留；33.10保留具体空串/序号/reader/EOF事实，未盲目重跑，Windows仍未调度。
-- [ ] 沿32.21原Host脚本补Terminal/Agent真实start replacement各一例、reset等待期间正式deactivation一例；未复现前不预设业务修正，不代证真实reload/多根UI。
+- [x] (2026-10-01) 32.21真实start replacement两例通过，reset/delete与永久deactivation重叠先红后窄修；ordinary首次拒绝/owner未确认和旧续体拒绝共50项、Host145/typecheck/localization通过，独立审查及root复跑绿。
+- [ ] 33.10仅在原snapshot stop断言前计算保存快照/独立重放/页面终态固定证据，原非空断言和失败保留，先局部检查再一次新输入，不扩大矩阵。
 
 - [x] (2026-10-01) 核对macOS短路径超时与新paused-stop首败、Windows两轮READY前失败；保留原artifact及exit1，明确CRLF摘要差异不代表旧源码，详见生产接入33.8/34.8。
 - [x] (2026-10-01) 完成macOS真实EOF/取消分支和失败后消费等待、Windows启动收据及现成cmd原生回归接线；两product self-test、session bridge、Windows Electron输入与diff检查通过，均为本地局部证据。
@@ -935,6 +936,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-01 A6具名缺陷已修：普通永久入口有pending mutation时复用首次拒绝，owner相关域保持unconfirmed；原delete仅一次，旧reset放行后无迟到清理/保存/发布。50项Host生命周期及Host145/typecheck/localization通过、独立审查无确定阻塞。Windows926889c0的36834158313已传播实际宿主exit1，reader identity前提失败仍需原证据定位；同输入macOS Terminal36834158241工作流success，未将其绿灯扩大成新的全平台结论。
 
 2026-10-01最新：Windows launcher/必需报告窄修完成受控验证，等待原生复验；macOS Agent原八场景在第四项明确首败并停止，安全摘要已独立回收，认证不再是该平台前提，完整A4仍未过。A6真实start replacement两项通过、reset与永久退出重叠一项失败，不把新增用例数量当产品通过；当前只处理这三个直接产品/判定缺口。
 
@@ -2145,3 +2148,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-01，Windows绿灯反证）：完整artifact核对否定两模式页面已通过的推断，记录CLI转交时间反证及34.12窄修设计；b1628715冻结后只调度macOS原八场景。补32.21三例局部A6运行前边界，未削减实际reload/多根责任。
 
 修订记录（2026-10-01，真实Agent首败与有限修正）：33.10记录macOS实际前三过/第四空快照断言失败/后四未跑；34.12记录launcher及phase报告先红后绿。32.21的两项真实start已通过、永久退出与旧reset重叠已先红，不追认旧样本或扩大工具门槛。
+
+修订记录（2026-10-01，永久退出旧续体修复）：同步32.21最小admission/首次结果保护与50项回归；33.10仍保留原断言，只登记直接终态证据补充。Windows实际exit1和macOS同输入Terminal绿灯各自分账，完整reload/多根/平台与分发不代证。

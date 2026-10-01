@@ -929,7 +929,7 @@ async function testReaderWaitCannotPersistOrNotifyAfterRootChanges(mode) {
   }
 }
 
-async function testCompletedDeleteWaitCannotCloseOrNotifyReplacement(kind, replace, replacementPoint = 'delete') {
+async function testCompletedDeleteWaitCannotCloseOrNotifyReplacement(kind, replace, replacementPoint = 'delete', realStart = false) {
   const f = await makeRootHost();
   if (kind === 'agent') makeRootAAgent(f);
   const deletion = deferred();
@@ -939,9 +939,9 @@ async function testCompletedDeleteWaitCannotCloseOrNotifyReplacement(kind, repla
   const abnormalNotifications = [];
   const readers = new Map();
   const readerKey = `editor:${kind}:${f.node.id}`;
-  const successor = { ...makeSession(), sessionId: 'delete-successor', runtimeSessionId: 'delete-successor',
+  let successor = { ...makeSession(), sessionId: 'delete-successor', runtimeSessionId: 'delete-successor',
     terminalProjectionMode: 'terminal-stream-v1', terminalStreamPaged: true, terminalAuthorityId: 'successor-authority' };
-  const successorNode = {
+  let successorNode = {
     ...structuredClone(f.node), title: 'Replacement during completed delete',
     metadata: { [kind]: { ...f.node.metadata[kind], runtimeSessionId: 'delete-successor' } }
   };
@@ -1014,7 +1014,53 @@ async function testCompletedDeleteWaitCannotCloseOrNotifyReplacement(kind, repla
   assert.equal(f.host.getExecutionSessions(kind).has(f.node.id), false,
     'original session is retired before its remote delete returns');
 
-  if (replace && replacementPoint === 'delete') installReplacement();
+  if (realStart) {
+    const creates = [];
+    Object.assign(f.host, {
+      getTerminalShellPath: () => '/controlled/shell', getTerminalShellArgs: () => [],
+      getTerminalScrollback: () => 1000, getExecutionNodeCwd: () => '/controlled',
+      resolveExecutionEnvironment: async () => ({}),
+      getPreferredRuntimeSupervisorClient: async () => ({ client: f.client,
+        backend: f.host.getRuntimeHostBackend(), runtimeStoragePath: '/controlled/runtime' }),
+      createConfiguredAgentFileActivitySession: () => ({ extraArgs: [], extraEnv: {}, dispose: async () => {} }),
+      bindAgentFileActivitySession() {}
+    });
+    f.client.supportsExecutionCandidateProfile = profile => profile === 'linux-owner-v1-candidate';
+    f.client.supportsTerminalSessionStream = () => true;
+    f.client.supportsTerminalPagedRead = () => true;
+    f.client.supportsTerminalPagedCompletion = () => true;
+    f.client.subscribeSession = async () => undefined;
+    f.client.createSession = async request => {
+      creates.push(request);
+      return { kind: request.kind, sessionId: request.sessionId, live: true,
+        lifecycle: kind === 'agent' ? 'running' : 'live', provider: kind === 'agent' ? 'codex' : undefined,
+        runtimeBackend: 'legacy-detached', runtimeGuarantee: 'best-effort',
+        displayLabel: request.displayLabel, launchMode: request.launchMode, shellPath: request.launchSpec.file,
+        cwd: request.launchSpec.cwd, cols: request.launchSpec.cols, rows: request.launchSpec.rows,
+        scrollback: request.scrollback, output: '', outputSequence: 0, terminalStreamPaged: true,
+        terminalAuthorityId: 'successor-authority', terminalRevision: 0 };
+    };
+    // The actual startup owns the node/session/binding; this Host-only test keeps its reader controlled.
+    f.host.activeSurface = undefined;
+    if (kind === 'terminal') await f.host.startTerminalSessionWithSupervisor(f.node.id, 80, 24);
+    else await f.host.startAgentSessionWithSupervisor(f.node.id, 80, 24, 'codex',
+      { command: '/controlled/codex', label: 'Controlled Codex', requestedCommand: 'codex' },
+      '/controlled/codex', [], { supported: false, strategy: 'none' }, 'start');
+    f.host.activeSurface = 'editor';
+    successor = f.host.getExecutionSessions(kind).get(f.node.id);
+    successorNode = f.host.state.nodes.find(node => node.id === f.node.id);
+    assert.equal(creates.length, 1, 'The real startup must create exactly one replacement while old delete waits.');
+    assert.equal(successor?.runtimeSessionId, creates[0].sessionId);
+    assert.notEqual(successor, f.session);
+    assert.notEqual(successor.runtimeSessionId, 'session-1');
+    readers.set(readerKey, 'successor-reader');
+    console.log(`completed delete real startup observation: ${JSON.stringify({ kind, creates: creates.length,
+      originalDeleteStillPending: f.host.pendingRuntimeSupervisorStateCallbacks.size === 1,
+      replacementSession: successor.runtimeSessionId,
+      replacementSaved: f.persisted.some(entry => entry.state.nodes.some(node => node.id === f.node.id &&
+        node.metadata[kind]?.runtimeSessionId === successor.runtimeSessionId)) })}`);
+  } else if (replace && replacementPoint === 'delete') installReplacement();
+  const continuationMessageIndex = realStart ? messages.length : 0;
   deletion.resolve({ kind: 'legacy-acknowledged' });
   await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
 
@@ -1023,7 +1069,7 @@ async function testCompletedDeleteWaitCannotCloseOrNotifyReplacement(kind, repla
     assert.strictEqual(f.host.state.nodes.find(node => node.id === f.node.id), successorNode);
     assert.strictEqual(f.host.getExecutionSessions(kind).get(f.node.id), successor);
     assert.equal(f.host.runtimeSessionBindings.get(f.host.buildRuntimeSessionBindingKey(
-      kind, 'delete-successor', '/controlled/runtime', 'legacy-detached')).runtimeSessionId, 'delete-successor');
+      kind, successor.runtimeSessionId, '/controlled/runtime', 'legacy-detached')).runtimeSessionId, successor.runtimeSessionId);
   } else {
     assert.equal(f.host.getExecutionSessions(kind).has(f.node.id), false);
     assert.equal(f.host.state.nodes.find(node => node.id === f.node.id).metadata[kind].terminalHistoryDiscarded, true);
@@ -1031,8 +1077,8 @@ async function testCompletedDeleteWaitCannotCloseOrNotifyReplacement(kind, repla
   assert.deepEqual({
     closedReaders,
     abnormalNotifications,
-    errorNotifications: messages.filter(message => message.type === 'host/error').length,
-    finalNotifications: messages.filter(message =>
+    errorNotifications: messages.slice(continuationMessageIndex).filter(message => message.type === 'host/error').length,
+    finalNotifications: messages.slice(continuationMessageIndex).filter(message =>
       message.type === 'host/executionSnapshot' || message.type === 'host/executionExit')
       .map(message => ({ type: message.type, executionSessionId: message.payload.executionSessionId }))
   }, {
@@ -1044,6 +1090,104 @@ async function testCompletedDeleteWaitCannotCloseOrNotifyReplacement(kind, repla
     ]
   }, 'a completed delete continuation can only finish notifications for its original execution');
   if (replace) assert.equal(readers.get(readerKey), 'successor-reader');
+  if (realStart) {
+    f.host.disposeManagedExecutionSession(successor);
+    f.host.disposeRuntimeSupervisorClients();
+  }
+}
+
+async function testResetDeleteWaitOverlapsPermanentDeactivation(withOwner = false) {
+  const f = await makeRootHost();
+  const deletion = deferred();
+  const deletionStarted = deferred();
+  const events = [];
+  const foldersBefore = vscodeWorkspace.workspaceFolders;
+  const persist = f.host.persistState;
+  f.host.state = { ...f.host.state, nodes: [f.node], groups: [] };
+  f.node.groupId = undefined;
+  f.host.terminalSessions.delete(f.nodeB.id);
+  f.host.unbindRuntimeSession('session-2', '/controlled/runtime', 'terminal', 'legacy-detached');
+  Object.assign(f.host, {
+    executionCandidateProfile: 'linux-owner-v1-candidate',
+    getMultiRootWorkspaceFoldersForComposition: () => [],
+    getAgentCliConfig: () => ({ defaultProvider: 'codex' }),
+    appliedStartupConfiguration: { runtimePersistenceEnabled: true },
+    readStartupConfiguration: () => ({ runtimePersistenceEnabled: true }),
+    persistState: options => { events.push({ type: 'persist', reason: options.reason }); return persist(options); },
+    postState: type => events.push({ type, nodeIds: f.host.state.nodes.map(node => node.id) })
+  });
+  if (withOwner) {
+    const scheduler = f.host.getExecutionCandidateScheduler();
+    f.host.nonNativeExecutionOwner = {
+      options: { capabilities: ['execution-owner-boundary-v1'], scheduler, budgets: { boundaryMs: 20000 } },
+      closeAdmission: permanent => events.push({ type: 'owner-admission-closed', permanent }),
+      list: () => [], get: () => undefined, snapshot: () => ({ pending: 0 }),
+      close: async () => ({ kind: 'settled', pending: [] })
+    };
+  }
+  f.client.deleteSessionStrict = request => {
+    f.deletes.push(request.sessionId);
+    events.push({ type: 'strict-delete', sessionId: request.sessionId });
+    deletionStarted.resolve();
+    return { first: deletion.promise, current: () => undefined };
+  };
+  let reset;
+  let deactivation;
+  try {
+    vscodeWorkspace.workspaceFolders = [];
+    reset = f.host.resetState().then(() => { events.push({ type: 'reset-returned' }); return {}; }, error => {
+      events.push({ type: 'reset-rejected', error: error.message }); return { error };
+    });
+    await Promise.race([deletionStarted.promise, reset.then(() => assert.fail('Reset did not reach strict delete.'))]);
+    deactivation = f.host.prepareForDeactivation().then(report => {
+      events.push({ type: 'deactivation-returned', report, nodeIds: f.host.state.nodes.map(node => node.id) }); return { report };
+    }, error => { events.push({ type: 'deactivation-rejected', error: error.message }); return { error }; });
+    await sleep();
+    assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, false);
+    f.client.options.onSessionState({ kind: 'terminal', sessionId: 'session-1', live: false,
+      lifecycle: 'closed', output: '', cols: 80, rows: 24, outputSequence: 2 });
+    assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks?.size ?? 0, 0,
+      'The permanent gate must reject a late callback from the original client.');
+    events.push({ type: 'release-delete' });
+    deletion.resolve({ kind: 'legacy-acknowledged' });
+    const [resetResult, deactivationResult] = await Promise.all([reset, deactivation]);
+    const permanentIndex = events.findIndex(event => ['deactivation-returned', 'deactivation-rejected'].includes(event.type));
+    const lateWrites = permanentIndex < 0 ? [] : events.slice(permanentIndex + 1).filter(event =>
+      event.type === 'persist' || event.type === 'host/stateUpdated');
+    console.log(`reset/deactivation overlap observation: ${JSON.stringify({ withOwner, events, lateWrites,
+      resetError: resetResult.error?.message ?? null, deactivationError: deactivationResult.error?.message ?? null,
+      finalNodeIds: f.host.state.nodes.map(node => node.id), deletes: f.deletes })}`);
+    assert.match(resetResult.error?.message ?? '', /closed canvas mutation admission/);
+    if (withOwner) {
+      assert.equal(deactivationResult.error, undefined);
+      assert.equal(deactivationResult.report.kind, 'unconfirmed');
+      assert.equal(deactivationResult.report.canvasSnapshot.kind, 'unconfirmed');
+      assert.equal(deactivationResult.report.local.kind, 'settled');
+      assert.equal(deactivationResult.report.remoteDetach.kind, 'settled');
+      assert.strictEqual(await f.host.prepareForDeactivation(), deactivationResult.report,
+        'The original unconfirmed owner report remains frozen after the delete later acknowledges.');
+      assert(events.some(event => event.type === 'owner-admission-closed' && event.permanent === true));
+    } else {
+      assert.match(deactivationResult.error?.message ?? '', /deactivation is unconfirmed.*mutation is still pending/);
+      await assert.rejects(f.host.prepareForDeactivation(), error => error === deactivationResult.error,
+        'The first ordinary deactivation rejection remains the same error after mutation settlement.');
+    }
+    assert.deepEqual(lateWrites, [], 'A frozen permanent boundary cannot be followed by an old reset save or publication.');
+    assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, false);
+    assert.deepEqual(f.host.state.nodes.map(node => node.id), [f.node.id]);
+    assert.strictEqual(f.host.terminalSessions.get(f.node.id), f.session,
+      'The stale reset continuation cannot clear the original Host session map.');
+    assert.equal(f.host.runtimeSessionBindings.size, 1);
+    assert([...f.host.strictRuntimeDeletes.values()].some(record =>
+      f.host.currentStrictRuntimeDeleteResult(record)?.kind === 'legacy-acknowledged'),
+      'The already-issued delete retains its actual acknowledgment, not an invented cancellation.');
+    assert.deepEqual(f.deletes, ['session-1']);
+  } finally {
+    deletion.resolve({ kind: 'legacy-acknowledged' });
+    await Promise.all([reset, deactivation]);
+    f.host.disposeRuntimeSupervisorClients();
+    vscodeWorkspace.workspaceFolders = foldersBefore;
+  }
 }
 
 async function testFullRootTemplateResetCannotLoseNewExecutionDuringDelete(mode) {
@@ -1563,4 +1707,15 @@ for (const outcome of ['same-id-replacement', 'unchanged', 'strict-failure', 'pe
 if (nonRootResetFailures.length > 0) {
   throw new AggregateError(nonRootResetFailures, 'non-root reset identity boundary regressions');
 }
+const remainingA6Failures = [];
+for (const [name, run] of [
+  ['terminal-real-start-during-old-delete', () => testCompletedDeleteWaitCannotCloseOrNotifyReplacement('terminal', true, 'delete', true)],
+  ['agent-real-start-during-old-delete', () => testCompletedDeleteWaitCannotCloseOrNotifyReplacement('agent', true, 'delete', true)],
+  ['reset-delete-and-permanent-deactivation', () => testResetDeleteWaitOverlapsPermanentDeactivation(false)],
+  ['reset-delete-and-owner-deactivation', () => testResetDeleteWaitOverlapsPermanentDeactivation(true)]
+]) {
+  try { await run(); console.log(`finite A6 Host boundary passed: ${name}`); }
+  catch (error) { console.error(`finite A6 Host boundary failed: ${name}: ${error.stack}`); remainingA6Failures.push(error); }
+}
+if (remainingA6Failures.length) throw new AggregateError(remainingA6Failures, 'finite A6 Host boundary regressions');
 console.log('runtime Host deactivation integrity tests passed (flush, admission, stale overwrite, callback tracking, idempotence)');
