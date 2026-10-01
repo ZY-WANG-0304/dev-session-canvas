@@ -1785,6 +1785,16 @@ run `36821963386`/job `110239281754` 使用 `72ca0efe`，修后原Node四例全�
 
 修正只在两份macOS验收workflow：Terminal输出根使用本job私有的 `$RUNNER_TEMP/dsc-terminal`，归档同一目录；真实Agent原始工作根使用 `$RUNNER_TEMP/dsc-agent`，仍只上传原脱敏 `agent-ci-report/`。最长固定Agent场景的socket路径在已知runner根下为88字节，不改通用smoke runner、不用symlink改变真实root、不削减内容或退出断言。Node已通过不代表Agent或两模式Electron通过，修后继续原输入验收。
 
+### 33.8 短路径后首败与停止场景的真实 EOF
+
+短路径输入 `32e4ab9c` 的 run `36822748979` 在 job 的20分钟上限被取消。Node四例及Electron编译已完成，VS Code日志中的socket路径为75字符且未再出现ENOTSOCK；标准输出只确认到workbench启动。不能因标准输出没有test日志就断言Extension Host从未运行，也没有完成/重开或产品清理的通过证据。原artifact `11144487527` 保留，需从既有宿主日志定位实际阻塞，不把job取消写成尾部产品断言失败。
+
+随后 `86c53365` 的手动run `36825479993` 在Node `paused-stop` 首败，namespace/normal通过，partial-create、Electron及Webview均未执行。本轮SIGHUP后已取得真实source EOF（finalFrame17），但测试只等待 `cancelOutput` 接受才恢复其自身消费gate。源已经结束时owner无需再发取消，导致整场45秒到期。原17帧重组与output完全一致，READY换行规范化后的16397字节与writer保存字节相同，SHA256为 `d2f2eab0ebb2629c573a5b6f259d711b55e0a776d9d0628eaa9427711afb4cd9`；这只证明已保存写入，不承诺被信号打断后的未来写入。五组资源均released，provider已关闭，cleanup无强制信号。失败后cleanup恢复gate却未等最终消费即dispose tracker，故末次 `2 !== 17` 不能独立认定为产品尾部丢失。
+
+最小修正保持同四例、SIGHUP、原预算和全部消费/终态/资源断言：收到原source EOF或原取消接受后恢复消费；最终source按实际EOF或interrupted分别核对，stop始终不声称自然任务完成。失败清理仍只在原35秒内等在途消费后释放tracker，不延长产品期限。原输入和两个失败结果保留，不追认通过、不另增诊断矩阵；修后原生结果另记。
+
+本地同一 `--self-test` 已覆盖EOF、原取消接受、错operationId、unknown不放行，以及整场已拒绝但16批消费仍在途时须到seal17才dispose。真实headless tracker验证最后序号17；不执行Darwin原生调用，也不替代新一轮平台验收。
+
 ## 34. Windows 产品原生接入
 
 ### 34.1 运行前原生契约（2026-10-01）
@@ -1878,3 +1888,11 @@ Windows主体安全期限180秒、原进程对象观察期限270秒、失败后�
 第二轮run `36822343054`/job `110240436059` 使用 `22376acd`，source/资产十二项/四例self-test全部通过，随后builder在调用MSVC前拒绝hook摘要，原生四例未执行。冻结LF摘要为 `ec2357ffdf512151c21a52326ad3396aaa650b83e5c4a31153d216a155f68ecc`，本轮实际文件摘要为 `b339840a98e7ad5106384473d94bde68dd3e8d34028dad64f09e5a6453bf8422`。独立核对本机与官方nodejs/node v25.6.0、node-gyp v12.1.0原始hook均为前者，1003字节、41个LF；仅把这41个LF改为CRLF后，1044字节精确得到本轮摘要。未完成官方Windows zip整包下载核验，不宣称其内部npm版本已核实。
 
 因此正式builder和manifest校验只接受上述两个精确raw摘要，保留并编译原字节，manifest记录实际摘要；不自动归一化任意来源，不接受第三个hash。新增局部检查两种已知输入通过、混合换行和任一源码字节变化拒绝；不改变native实现、四例、预算或退出判据。第二轮exit1和后续未运行项保留，修后实际编译与运行另记。
+
+### 34.8 Windows 启动前失败与最小定位输入
+
+`86c53365` 的push run `36823205778` 与手动run `36825483498` 均实际编译/装载成功、namespace通过，在normal等待READY时失败，后两例及Electron未执行。两次输出均只有39字节的ConPTY控制序列，原cmd对象code1退出、真实source EOF、五组本方资源released；没有主体READY、challenge或退出收据，cleanup正确记unsafe，不能以资源释放代替主体身份。两份原始artifact保留。`sources.json` 与本地LF摘要不同已确认完全由Windows checkout的CRLF造成，逐一变换后三份test/subject/observer摘要相同；不是旧源码，也不是序列化丢字段。字段缺失是因为READY前未赋主体/observer。
+
+本轮只增加直接影响启动判定的固定输入：先运行现有 `test-execution-session-bridge.mjs` 的Windows原生cmd参数分支；原.cmd增加进入及原退出码收据；主体在原TTY断言前记录固定启动事实，并通过uncaughtExceptionMonitor记录原异常而不改变默认失败退出。原执行已settled且仍无READY时及时明确失败，不再空等45秒。真实TTY、PPID、challenge、SafeHandle退出、安全超时拒绝和尾部断言不变，不绕开cmd，不先改native或shell产品代码。上述收据不是退出完整性验收通过，下一仅依据新证据定位启动链。
+
+本地product self-test新增非TTY启动拒绝检查，确认exit1、启动/异常收据形成且无READY；原session bridge与Windows Electron输入测试亦通过。Linux上的这些局部检查不执行Windows API，尤其不能从启动收据代替原对象退出证据。

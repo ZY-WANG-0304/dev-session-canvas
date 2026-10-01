@@ -87,10 +87,21 @@ async function selfTest() {
   const commands = job.steps.map(step => step.run ?? '').join('\n');
   assert.match(commands, /--execution-profile=macos-owner-v1-candidate/);
   assert.doesNotMatch(commands, /scripts\/diagnostics|DEEPSEEK|continue-on-error/);
+  const cancel = [{ message: { type: 'cancelOutput', operationId: 'original-cancel' } }];
+  const accepted = [{ message: { type: 'operationObservation', operationId: 'original-cancel', result: { kind: 'accepted' } } }];
+  assert.equal(pausedOutputBoundary({ source: { kind: 'eof' } }, [], []), 'eof');
+  assert.equal(pausedOutputBoundary({}, cancel, accepted), 'cancel-accepted');
+  assert.equal(pausedOutputBoundary({ source: { kind: 'eof' } }, cancel, accepted), 'eof');
+  for (const source of [undefined, { kind: 'unknown' }, { kind: 'interrupted' }]) {
+    assert.equal(pausedOutputBoundary({ source }, [], []), undefined);
+    assert.equal(pausedOutputBoundary({ source }, cancel,
+      [{ message: { ...accepted[0].message, operationId: 'another-cancel' } }]), undefined);
+  }
   const { SerializedTerminalStateTracker } = await load('extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts');
   const tracker = new SerializedTerminalStateTracker(119, 41, { scrollback: 100 });
   const emptyTracker = new SerializedTerminalStateTracker(119, 41, { scrollback: 100 });
   const unconsumedTracker = new SerializedTerminalStateTracker(119, 41, { scrollback: 100 });
+  const cleanupTracker = new SerializedTerminalStateTracker(119, 41, { scrollback: 100 });
   try {
     const identity = { executionId: 'self-test', generation: 'terminal-hooks' };
     const batch = (sequence, text) => ({ identity, sequence, frameId: sequence, text, byteLength: Buffer.byteLength(text) });
@@ -121,8 +132,37 @@ async function selfTest() {
     assert.equal((await emptyTracker.flush()).outputSequence, 0);
     assert.equal(emptyTracker.terminal.buffer.active.cursorX, 0);
     assert.equal(emptyTracker.terminal.buffer.active.cursorY, 0);
-  } finally { tracker.dispose(); emptyTracker.dispose(); unconsumedTracker.dispose(); }
+    const cleanupSnapshot = { adapter: { pendingBytes: 16, pendingFrames: 16, seal: seal(17), resources: {} } };
+    const cleanupState = { tracker: cleanupTracker, probe: { consumed: '' }, taskSettled: true, children: [],
+      execution: { snapshot: () => cleanupSnapshot }, transport: { snapshot: () => ({ closed: true }) } };
+    const cleanupHooks = createTerminalHooks(cleanupState);
+    await cleanupHooks.consume([batch(1, 'READY\r\n')]);
+    let draining;
+    cleanupState.resume = () => {
+      draining = (async () => {
+        for (let sequence = 2; sequence <= 17; sequence++) await cleanupHooks.consume([batch(sequence, 'x')]);
+        cleanupSnapshot.adapter.pendingBytes = 0;
+        cleanupSnapshot.adapter.pendingFrames = 0;
+        cleanupSnapshot.terminal = { kind: 'applied', finalRevision: await cleanupHooks.flushFinal(seal(17)) };
+      })();
+    };
+    const cleanupResult = await cleanup({}, cleanupState);
+    await draining;
+    assert.equal(cleanupResult.safe, true);
+    assert.equal(cleanupResult.consumptionSettled, true);
+    assert.equal(cleanupSnapshot.terminal.finalRevision, 17, 'Scenario rejection must not dispose an in-flight terminal consumer.');
+  } finally { tracker.dispose(); emptyTracker.dispose(); unconsumedTracker.dispose(); cleanupTracker.dispose(); }
   console.log('macOS product input self-test passed (no native loading, process claims or PTYs).');
+}
+
+function pausedOutputBoundary(adapter, commands, controls) {
+  if (adapter.source?.kind === 'eof') return 'eof';
+  const command = commands.find(event => event.message.type === 'cancelOutput')?.message;
+  if (command && controls.some(event => event.message.type === 'operationObservation' &&
+      event.message.operationId === command.operationId && event.message.result.kind === 'accepted')) {
+    return 'cancel-accepted';
+  }
+  return undefined;
 }
 
 function createTerminalHooks(state, consumptionGate = () => undefined) {
@@ -299,11 +339,8 @@ async function providerCase(context, state, scenario) {
       execution.snapshot().adapter.resources['pty-child']?.current?.kind === 'released',
     context.deadline, 'subject reaped while paused');
     assert.equal(execution.snapshot().adapter.consumedThrough, consumed);
-    await until(() => {
-      const command = commands.find(event => event.message.type === 'cancelOutput')?.message;
-      return command && controls.some(event => event.message.type === 'operationObservation' &&
-        event.message.operationId === command.operationId && event.message.result.kind === 'accepted');
-    }, context.deadline, 'original owner output cancellation accepted');
+    await until(() => pausedOutputBoundary(execution.snapshot().adapter, commands, controls),
+      context.deadline, 'actual source EOF or original owner output cancellation accepted');
     state.resume();
   }
   await until(() => execution.snapshot().settled, context.deadline, 'product resources and terminal settlement');
@@ -332,12 +369,16 @@ async function providerCase(context, state, scenario) {
       newlineAddedBytes: Buffer.byteLength(output) - written.length, screen: assertScreen(state.tracker) };
   }
   assert.deepEqual(snapshot.adapter.process, { kind: 'signaled', signal: 'SIGHUP' });
-  assert.equal(snapshot.adapter.source.kind, 'interrupted');
+  if (snapshot.adapter.source.kind !== 'eof') {
+    assert.equal(snapshot.adapter.source.kind, 'interrupted');
+    assert.equal(pausedOutputBoundary(snapshot.adapter, commands, controls), 'cancel-accepted');
+  }
   const cancelled = normalizeNewlines(state.probe.output());
   assert.match(cancelled, /^READY:107x33\nx+$/);
   assert.ok(cancelled.length <= 'READY:107x33\n'.length + 256 * 4096);
   const written = await fs.readFile(`${prefix}-written.bin`);
-  return { snapshot, sourceEofClaim: false, observedBytes: Buffer.byteLength(state.probe.output()),
+  return { snapshot, sourceEofClaim: snapshot.adapter.source.kind === 'eof', naturalTaskCompletionClaim: false,
+    observedBytes: Buffer.byteLength(state.probe.output()),
     writerRecordedBytes: written.length, writerRecordedSha256: hash(written),
     allReceivedFramesConsumed: true, fullWriterDrainClaim: false,
     writerReceiptBoundary: 'A signal may interrupt a successful write before its audit append; no complete-write receipt is claimed.' };
@@ -371,12 +412,24 @@ async function cleanup(context, state) {
   }
   try { await until(() => state.taskSettled, deadline, 'fixed scenario task settled'); }
   catch (error) { errors.push(String(error)); }
+  let consumptionSettled = !state.execution;
+  if (state.execution) {
+    try {
+      await until(() => {
+        const snapshot = state.execution.snapshot();
+        return snapshot.adapter?.pendingBytes === 0 && snapshot.adapter.pendingFrames === 0 &&
+          (!snapshot.adapter.seal || snapshot.terminal);
+      }, deadline, 'accepted consumption and final terminal outcome before tracker disposal');
+      consumptionSettled = true;
+    } catch (error) { errors.push(String(error)); }
+  }
   const resources = state.execution?.snapshot().adapter?.resources;
   const safe = errors.length === 0 && forcedSignals.length === 0 && state.children.every(record => record.result)
     && (!state.transport || state.transport.snapshot().closed)
     && (!resources || Object.values(resources).every(resource => resource.current?.kind === 'released'));
-  state.tracker?.dispose();
-  return { safe, taskSettled: state.taskSettled, errors, forcedSignals, resources, transport: state.transport?.snapshot() };
+  if (consumptionSettled) state.tracker?.dispose();
+  return { safe, taskSettled: state.taskSettled, consumptionSettled, errors, forcedSignals, resources,
+    transport: state.transport?.snapshot() };
 }
 
 async function main() {

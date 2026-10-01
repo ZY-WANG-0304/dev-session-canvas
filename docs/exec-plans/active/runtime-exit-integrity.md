@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前执行入口（2026-10-01，B2/A5）：macOS第四轮run `36821963386` 修后原Node四例及匹配Electron编译通过，实际Terminal尚未执行产品断言，live-runtime先被VS Code测试路径长度挡住，snapshot-only未运行；只缩短workflow工作根，见33.7。Windows第二轮run `36822343054` 纯输入通过，但Windows Node自带hook摘要不同，在编译前拒绝；须核对源码，不放宽来源校验。Darwin真实Agent原八场接线已完成，未运行。继续原平台产品及分发验收，保留全部首败，不新增工具矩阵或关闭总体。
+当前执行入口（2026-10-01，B2/A5）：macOS短路径run `36822748979` 的VS Code启动后job超时，未取得产品清理结论；新run `36825479993` paused-stop因真实EOF已到但测试仍等待取消而首败，按生产接入33.8仅修正消费gate和失败后tracker释放顺序。Windows `36823205778`/`36825483498` 编译及namespace通过，normal在主体READY前code1退出，cleanup unsafe；按34.8增加有限启动收据和既有原生cmd回归，不先改业务。hash差异已确认为CRLF而非旧源码。当前只收口这些具体启动/判定阻塞，随后继续原平台产品及分发验收；真实Agent/Webview和F-04均未关闭，不增加工具矩阵。
 
 当前执行入口（2026-10-01，优先于后面的历史下一步）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整exit0；真实新Host追赶时B51ms应用、A同动作12到18未追平2560，随后ready后13137.248ms完整恢复，原身份/hash/no-history及两份cleanup通过、outer forcedSignals/failures为空。该B1/A1组合收口，下一按生产接入第33节推进B2/A5的macOS产品接入：共享Unix owner、Darwin原生provider、两authority工厂/构建与namespace，保留独立profile/generation、匹配Node/Electron和packaged责任。该平台目前只有运行前设计，没有新平台通过；Windows、其余A项和总体仍开放，原10.14/旧失败及Agent snapshot stop具名未决项不改。
 
@@ -89,6 +89,10 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 范围包含 Linux/macOS/Windows、Agent/Terminal，以及由 Supervisor 托管的 live-runtime 和直接由 Host 托管的 snapshot-only。结束后 Runtime 重开仍不恢复进程或历史，Supervisor/机器故障后仍无需恢复；F-03 root 归属、F-04 容量整体模型和 F-05 已取消的历史归档不在此项顺手改造。不必等待其他重构完成，但本项未通过验收前不得宣称本次重构的退出完整性已经完成。
 
 ## 进度
+
+- [x] (2026-10-01) 核对macOS短路径超时与新paused-stop首败、Windows两轮READY前失败；保留原artifact及exit1，明确CRLF摘要差异不代表旧源码，详见生产接入33.8/34.8。
+- [x] (2026-10-01) 完成macOS真实EOF/取消分支和失败后消费等待、Windows启动收据及现成cmd原生回归接线；两product self-test、session bridge、Windows Electron输入与diff检查通过，均为本地局部证据。
+- [ ] 执行上述新输入对应原生验证；macOS真实Agent、Windows真实Agent、两模式Webview、packaged和其余A1至A6仍按原有限清单收尾，不把新收据当作产品通过。
 
 - [x] (2026-10-01，B2/A5) 修后macOS原Node四例通过，匹配Electron编译通过；VS Code长socket路径启动失败与未运行场景分别保留，workflow改用短私有工作根。Windows两轮分别停在路径夹具和明确hook来源检查，均未进入native执行。
 - [x] (2026-10-01，B2/A5) 保存macOS前三轮失败及未运行项，第三轮normal已证明主体尾部/真实EOF/终态/本方资源；共享scheduler早唤醒机制确定性先红后修，原期限与未确认语义保持。
@@ -391,6 +395,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-10-01：macOS暂停停止的源已真实EOF时，原测试等待不会再发出的取消，自己保持消费gate到整场到期；失败后立即dispose tracker又污染最终消费快照。Windows两轮READY前code1尚无主体进入证据，不能从空字段推断旧版本或对象泄漏。精确来源和原始字节比较见生产接入33.8/34.8；这些是当前具体判定/启动问题，不扩为通用工具健壮性。
+
 2026-10-01，Darwin工作区下的VS Code用户目录使main.sock长达118字节，超过103限制，尚未启动产品Host；改为job私有短根，Terminal最长76、Agent最长88字节，测试语义不变。Windows官方Node包含的hook摘要与本机Linux来源不同，当前拒绝正确；差异未核实前不能宣称可编译或直接放宽hash。
 
 2026-10-01，macOS第三轮partial-create实际已释放本方三个资源，但结束期限后仍缺首次结论；共享timer浮点提前触发可丢失唯一通知，确定性测试证明机制存在。工件没有各timer进入时间，故不声称直接测得该轮调度时间。Windows独立复核另确认native标准异常需转Napi异常、输入错误不能提前销毁仍有尾部的reader，两项有先红回归；包装器终态不得单独代证实际CLI主体结束，原生验收须保留这项判断。
@@ -653,6 +659,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-10-01 / Codex：保留原生首败，只修改与本轮判定直接有关的输入。macOS停止允许真实EOF或明确取消，并始终区分主动停止与自然任务完成；Windows先取得launcher/subject启动收据和现成cmd回归，不在缺证据时改产品。所有原尾部、消费、身份、资源及时间预算保持。下一仍为原有限平台/产品验收，不循环原输入筛选绿色。
+
 2026-10-01，保持固定预算并在共享scheduler复核原deadline，提前唤醒重排而非延长时间或放宽结果；属于B2产品收尾的直接缺陷，不是工具通用增强。Windows按独立HPCON/process/input/source责任接线，合法外部句柄引用不作为泄漏；新增Darwin身份helper仅服务原真实Agent八场，不进入产品依赖。详见生产接入33.5、33.6与34节。
 
 - 决策：macOS先在同一有限workflow验证Node产品provider，再用匹配Electron产物直接跑原Terminal真实页面与重开；不使用诊断export代替产品，也不将Node通过代证UI。
@@ -893,6 +901,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-01：两次手动run `36825479993`/`36825483498` 均失败，不能以已通过的Node normal/namespace或资源释放关闭平台验收。macOS确认了一处测试等待冲突；Windows确认失败在READY前但原因待新启动收据。此前“Windows旧源码”推断已撤销并改为CRLF事实。没有新的真实Agent、Webview或分发通过，也没有默认启用新profile。
 
 2026-10-01当前平台增量：macOS第三轮只有前三例通过，第四例失败及后续未验仍保留；Windows局部源码/模块证据不能关闭A5。修scheduler后继续原实际平台验收，不追加诊断框架或复跑已完成容量组合，F-04、完整退出交付及既定剩余A项保持开放。
 
@@ -2081,3 +2091,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-01，第三轮实际部分通过）：同步 run36811935908/8e081c19 的 Codex前三passed、snapshot stop failed、Claude四not-run；两个natural取得新配置真实响应/EOF及原断言通过，不回推前轮。只设计既有first-failure固定行列/原节点有限状态/reader布尔的安全摘要补证，不改业务或断言，三轮原结果保留。
 
 修订记录（2026-10-01，第四轮Linux八场景通过）：同步run36812745671/736f9ddd的8passed、四natural真实响应/EOF/原断言、八cleanup零值和stop source分账；十buildHashes仅report改变，第三snapshot stop failure未复现且根因未知，不追认或声称修复。凭据已在Linux实证可用，返回原有限产品清单并保留具名未决项，不追加CI捕获循环或新框架，整体未关闭。
+
+修订记录（2026-10-01，平台首败分类）：保留macOS短路径超时及paused-stop等待冲突、Windows两轮READY前失败；修正EOF/取消测试分支及tracker清理顺序，补最小Windows启动事实。CRLF差异不写成旧输入；本地局部回归通过，原生修后结果待验，原产品完成定义不变。

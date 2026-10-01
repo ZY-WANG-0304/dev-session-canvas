@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -179,6 +179,7 @@ async function selfTest() {
   assert.equal(job['runs-on'], 'windows-latest');
   assert.equal(job.steps.find(step => step.uses === 'actions/setup-node@v4').with['node-version'], '25.6.0');
   const commands = job.steps.map(step => step.run ?? '').join('\n');
+  assert.match(commands, /node scripts\/test\/test-execution-session-bridge\.mjs/);
   assert.match(commands, /--execution-profile=windows-owner-v1-candidate/);
   assert.doesNotMatch(commands, /scripts\/diagnostics|DEEPSEEK|continue-on-error/);
   const observerSource = await fs.readFile('scripts/test/fixtures/windows-execution-observer.ps1', 'utf8');
@@ -206,6 +207,20 @@ async function selfTest() {
     resources: Object.fromEntries(RESOURCE_IDS.map(id => [id, { current: { kind: 'released' } }])) };
   assert.equal(cleanupResourcesSafe([allReleased]), false, 'Safe cleanup also requires the actual subject exit');
   assert.equal(cleanupResourcesSafe([{ ...allReleased, subjectExit: subjectExit(observedSubject) }]), true);
+  const startupDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-windows-subject-startup-'));
+  try {
+    const prefix = path.join(startupDirectory, 'A');
+    const result = spawnSync(process.execPath, [path.resolve('scripts/test/fixtures/windows-execution-subject.mjs'), prefix],
+      { stdio: 'pipe', encoding: 'utf8', timeout: 5000 });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 1, 'Non-TTY startup must retain the original failing exit status');
+    const receipt = JSON.parse(await fs.readFile(`${prefix}-startup.json`, 'utf8'));
+    assert.equal(receipt.pid, result.pid); assert.equal(receipt.ppid, process.pid);
+    assert.equal(receipt.version, process.version); assert.equal(receipt.executable, process.execPath);
+    assert.equal(receipt.stdinTTY, false); assert.equal(receipt.stdoutTTY, false);
+    assert.match(await fs.readFile(`${prefix}-uncaught-error.txt`, 'utf8'), /requires fixed Node and a real ConPTY terminal/);
+    await assert.rejects(fs.access(`${prefix}-ready.json`), { code: 'ENOENT' });
+  } finally { await fs.rm(startupDirectory, { recursive: true, force: true }); }
   const { SerializedTerminalStateTracker: Tracker } = await load('extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts');
   const tracker = new Tracker(119, 41, { scrollback: 100000 });
   const record = { tracker, consumed: '', paused: false };
@@ -218,7 +233,7 @@ async function selfTest() {
   await assert.rejects(hooks.flushFinal({ lastDataSequence: 3 }), /sealed output sequence/);
   assertTail(tracker);
   tracker.dispose();
-  console.log('Windows product input self-test passed; parser/workflow only, no native calls.');
+  console.log('Windows product input self-test passed; parser/workflow and rejected non-TTY startup only, no native calls.');
 }
 
 async function namespaceCase(context, state) {
@@ -276,7 +291,10 @@ async function startSubject(context, state, key, scrollback = 100) {
   const started = await before(start.first, context.deadline, `${key} startup`);
   assert.equal(started.kind, 'started');
   record.started = started;
-  await until(() => visibleText(record.tracker).includes('READY:107x33'), context.deadline, `${key} real TTY ready`);
+  await until(() => visibleText(record.tracker).includes('READY:107x33') || record.execution.snapshot().settled,
+    context.deadline, `${key} real TTY ready`);
+  assert(visibleText(record.tracker).includes('READY:107x33'),
+    `The original launcher settled before real TTY readiness: ${JSON.stringify(record.execution.snapshot().adapter.process)}`);
   const ready = JSON.parse(await fs.readFile(`${record.prefix}-ready.json`, 'utf8'));
   assert.equal(ready.ppid, started.pid, 'The cmd launcher must be the real subject parent');
   assert.notEqual(ready.pid, started.pid);

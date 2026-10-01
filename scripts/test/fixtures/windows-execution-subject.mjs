@@ -2,11 +2,18 @@ import { appendFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
+const prefix = process.argv[2];
+if (!prefix || !path.isAbsolute(prefix)) throw new Error('An absolute evidence prefix is required');
+process.on('uncaughtExceptionMonitor', error => {
+  try { writeFileSync(`${prefix}-uncaught-error.txt`, `${error.stack ?? error}\n`, { flag: 'wx' }); }
+  catch { /* Preserve the original uncaught failure and its exit status. */ }
+});
+writeFileSync(`${prefix}-startup.json`, JSON.stringify({ pid: process.pid, ppid: process.ppid,
+  platform: process.platform, version: process.version, executable: process.execPath,
+  argv: process.argv, cwd: process.cwd(), stdinTTY: process.stdin.isTTY === true, stdoutTTY: process.stdout.isTTY === true }), { flag: 'wx' });
 if (process.platform !== 'win32' || process.version !== 'v25.6.0' || !process.stdin.isTTY || !process.stdout.isTTY) {
   throw new Error('The Windows product subject requires fixed Node and a real ConPTY terminal');
 }
-const prefix = process.argv[2];
-if (!prefix || !path.isAbsolute(prefix)) throw new Error('An absolute evidence prefix is required');
 const safety = setTimeout(() => {
   writeFileSync(`${prefix}-safety.json`, JSON.stringify({ pid: process.pid, ppid: process.ppid,
     kind: 'safety-timeout', exitCode: 124 }), { flag: 'wx' });
