@@ -19,6 +19,8 @@ updated_at: 2026-10-01
 
 # 退出完整性生产接入与故障域收敛
 
+最新 A1/B1 结果（2026-10-01，覆盖后续历史入口）：固定 `10/1` schema2 Linux Electron 候选的 `color`/`size` 多会话校准均通过内容、预算观察与产品 cleanup；峰值总 RSS 为 3,876,724,736 / 3,954,757,632 bytes，仅代表该声明输入。随后同候选 `2/1` `color` Host detach/reconnect 通过：旧 Host 消失后原 Supervisor、主体和 session/reader 身份保持，B 在 A 尚未追平时 53.4ms 应用，Host ready 后 15,538.456ms 追平，reconnect/outer cleanup 均通过。两项不关闭 F-04、默认准入、跨平台/packaged 或未填页面格，不再重复成功矩阵或扩展通用工具前置。
+
 ## 1. 当前结论与阶段边界
 
 当前入口（2026-10-01，以本段优先）：第47节新固定installed包的原A6多根组合已独立核对通过：A真实root EISDIR仍保留来源/binding，原reader applied(finalRevision4)，B原执行实际nonce交互24.9ms，产品reset与独立空闲Supervisor清理通过。旧包首败不追认，该多根格不再排队；snapshot-only实际Host离开、A2/A3剩余页面责任及F-04总体仍开放。当前按第49节落实B2/A5兼容要求与构建来源分离，六资产、正常分发/默认准入和最终同版本验收尚未完成，不追加通用工具阶段。
