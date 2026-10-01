@@ -13,6 +13,24 @@ const agentStatuses = new Set(['idle', 'starting', 'waiting-input', 'running', '
   'resume-failed', 'suspended', 'stopping', 'stopped', 'error', 'interrupted']);
 const readerSettlementKinds = new Set(['applied', 'cancelled', 'lost', 'legacy-released']);
 const geometryKeys = ['cols', 'rows', 'cursorX', 'cursorY', 'viewportY', 'bufferType'];
+const observationFailures = new Set(['helper-start-failed', 'helper-ended-before-release', 'helper-input-failed',
+  'helper-stderr-budget', 'helper-response-budget', 'helper-invalid-response', 'helper-request-deadline',
+  'helper-request-failed', 'original-process-unknown', 'missing-original-process', 'wrapper-ended-while-cli-live',
+  'fixed-event-budget', 'sample-failed', 'cleanup-observation-unknown', 'helper-release-deadline', 'process-observation-unknown']);
+const observationOperations = new Set(['initialize', 'launch', 'root', 'sample', 'cleanup']);
+const signalledActions = new Set(['terminated-original-handle', 'SIGKILL-after-product-cleanup-failed']);
+const unconfirmedActions = new Set(['original-handle-signal-unconfirmed', 'signal-unconfirmed']);
+const cleanupActions = new Set([...signalledActions, ...unconfirmedActions, 'unknown-identity-no-signal',
+  'already-exited', 'already-absent-no-signal', 'already-ended-no-signal',
+  'identity-changed-no-signal', 'identity-unconfirmed-no-signal']);
+
+function cleanupSignalSummary(actions) {
+  if (!Array.isArray(actions)) return { forcedSignals: null, unconfirmedSignals: null, cleanupActionKinds: null };
+  const kinds = actions.map(entry => cleanupActions.has(entry?.action) ? entry.action : 'unclassified');
+  const unconfirmed = kinds.filter(kind => unconfirmedActions.has(kind) || kind === 'unclassified').length;
+  return { forcedSignals: unconfirmed ? null : kinds.filter(kind => signalledActions.has(kind)).length,
+    unconfirmedSignals: unconfirmed, cleanupActionKinds: kinds };
+}
 
 function snapshotGeometrySummary(value, dimensionsOnly = false) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -153,10 +171,16 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
       },
       sourceDisposition: dispositions.has(source?.detail?.sourceDisposition?.kind)
         ? source.detail.sourceDisposition.kind : null,
+      processObservation: {
+        failureKinds: Array.isArray(processes?.failures) ? processes.failures.map(entry =>
+          observationFailures.has(entry?.kind) ? entry.kind : 'unclassified') : null,
+        failedOperations: Array.isArray(processes?.samples) ? processes.samples.filter(entry => entry?.complete !== true)
+          .map(entry => observationOperations.has(entry?.operation) ? entry.operation : 'unclassified') : null
+      },
       authentication: { exitCode: integer(auth?.exitCode), loggedIn: boolean(auth?.loggedIn),
         configurationParsed: boolean(auth?.configurationParsed), networkAuthenticationVerifiedByPreflight: false },
       cleanup: { bindings: count(cleanup?.runtime?.bindings), failures: count(processes?.failures),
-        forcedSignals: count(remainder?.forcedSignals ?? cleanup?.forcedSignals),
+        ...cleanupSignalSummary(remainder?.forcedSignals ?? cleanup?.forcedSignals),
         remainingActiveProcesses: processEntries && (!windows || windowsObservationComplete)
           ? processEntries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role) &&
             (windows ? !windowsExitConfirmed(entry)

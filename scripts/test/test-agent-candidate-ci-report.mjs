@@ -120,6 +120,30 @@ try {
   const windowsEmptyReport = JSON.parse(await fs.readFile(path.join(windowsEmptyDirectory, 'summary.json'), 'utf8'));
   assert.equal(windowsEmptyReport.scenarios[0].cleanup.windowsObservationComplete, false);
   assert.equal(windowsEmptyReport.scenarios[0].cleanup.remainingActiveProcesses, null);
+  for (const [index, entry] of [
+    { action: 'unknown-identity-no-signal', forced: 0, unconfirmed: 0 },
+    { action: 'terminated-original-handle', forced: 1, unconfirmed: 0 },
+    { action: 'original-handle-signal-unconfirmed', forced: null, unconfirmed: 1 },
+    { action: key, forced: null, unconfirmed: 1 }
+  ].entries()) {
+    await fs.writeFile(path.join(artifacts, 'remaining-resources.json'), JSON.stringify({
+      forcedSignals: [{ action: entry.action, pid: 1234, path: key }] }));
+    await fs.writeFile(path.join(artifacts, 'process-observations.json'), JSON.stringify({ error: key, entries: [],
+      failures: [{ kind: 'helper-request-failed', error: key }, { kind: key }],
+      samples: [{ operation: 'launch', complete: true }, { operation: 'sample', error: key }, { operation: key }] }));
+    const target = path.join(root, `cleanup-actions-${index}`);
+    await writeAgentCandidateCIReport({ ...options, directory: target, scenarios: [scenario], failed: true,
+      input: { platform: 'win32' } });
+    const safeText = await fs.readFile(path.join(target, 'summary.json'), 'utf8');
+    const row = JSON.parse(safeText).scenarios[0];
+    assert.equal(row.cleanup.forcedSignals, entry.forced);
+    assert.equal(row.cleanup.unconfirmedSignals, entry.unconfirmed);
+    assert.deepEqual(row.cleanup.cleanupActionKinds, [entry.action === key ? 'unclassified' : entry.action]);
+    assert.deepEqual(row.processObservation, { failureKinds: ['helper-request-failed', 'unclassified'],
+      failedOperations: ['sample', 'unclassified'] });
+    assert.equal(safeText.includes(key), false);
+  }
+  await fs.unlink(path.join(artifacts, 'remaining-resources.json'));
   const enumCases = [
     { status: 'starting', outcome: 'lost', local: true },
     { status: 'waiting-input', outcome: 'cancelled', local: false },

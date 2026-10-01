@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前唯一执行队列（2026-10-01）：A3第38节两例、A6第39节真实Runtime reload已取得有限通过，不重复已完成容量/重连组合。macOS唯一重跑36850339021 / 4f613e7a的真实Codex/Claude原八场全部passed，cleanup全零，Codex空snapshot经新Host重开；此前间歇失败仍未定位，不追认为修复。Windows产品36846733819进一步核对为Webview完整尾部已到、Supervisor closed/EOF但Host节点仍live，取代宿主启动失败的初判。第42节已排队turn遇socket背压丢失drain唤醒已独立先红后绿，下一完成review后固定一次原Windows产品复验，不能预称该CI根因已修。Windows Agent36846756417的Codex四场通过；Claude首场natural响应已核验但cliObserved=false，先定位Windows启动链观察，缺outputSequence本身符合Runtime completed无历史，不当作没输出证据。A5六资产/Remote/默认分发、F-04和其余A1至A6继续开放，不扩通用诊断工具门槛。下述各“当前/下一”段落是原时点记录，不构成追加队列。
+当前唯一执行队列（2026-10-01）：A3第38节两例、A6第39节Runtime reload有限通过，macOS36850339021原八场真实Agent通过但旧间歇失败未定位，不重复已完成组合。c851d028已修第42节socket drain丢唤醒及第43节Claude预登记参数差异；Windows产品36852373473的原Node/两模式页面步骤成功，491MB工件下载超时，字段级独立复核仍未完成，不能倒推旧CI唯一因果。Windows Agent36852378637首Codex natural通过、第二stop观察unknown/CLI未登记，Claude未跑；第45节只修主动stop前原身份观察屏障，保留45秒绝对截止与旧失败，安全摘要区分无信号动作与实际信号，下一固定原八场。并行按第44节自主准备隔离Remote SSH/实际Server Node/固定Node VSIX，不使用用户SSH凭据或Electron冒充远端。A5六资产/默认分发仍有真实生产接线待办，F-04与其余A1至A6不关闭、不扩通用诊断门槛。后续历史“当前/下一”不构成追加队列。
 
 该队列实际增量：e10ad8aa的Windows36841262535已通过私有目录/全部文件ACL及原isolatedCheck，随后Darwin observer夹具混用Windows路径规则首败；只在夹具显式path.posix，原角色断言保持，三条observer/CLI局部命令通过。macOS36841263618仍按原矩阵运行中，未宣称结果。A3第38节冻结真实单surface切换/跨Host reader两例，A5第37节固定部署目标在实现；均不重跑已完成容量组合。
 
@@ -105,6 +105,9 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01，第41节有限重跑) 36850339021原八场真实Agent均passed、四natural真实响应/EOF、八cleanup全零，Codex空snapshot严格验收及新Host重开通过；旧三轮失败保持且根因未知。
 - [ ] 固定新输入复验原Windows产品组合；Claude真实CLI观察识别仍需定位，不用放宽生命周期断言或通用工具扩张代替。
 - [x] (2026-10-01，第43节) Claude fresh产品追加session ID导致预登记cmd尾串不匹配已由实际resolver/builder复现；验收输入显式同一UUID窄修与CLI/observer/配置/report回归通过，Windows原生待验。Host通知共享夹具缺诊断依赖仅补记录函数后原npm信用整链通过，未改旧断言。
+- [ ] c851d028固定输入的Windows产品36852373473、Windows Agent36852378637正在原矩阵首次复验，未取得新原生结果。
+- [x] (2026-10-01，第45节) 两run已回收步骤/安全摘要：产品job success但大工件下载超时未独立核对；Agent第二Codex stop观察unknown失败，后六项not-run。实际旧driver基线复现未取得CLI句柄就resize/stop，新增完整原链/绝对期限屏障及迟到拒绝回归通过，旧失败不归零。
+- [ ] A5第44节Remote仅使用现有loopback临时sshd/密钥：先真实Remote Host probe并构建固定匹配Node VSIX，再原两模式四阶段安装验收；不索要用户SSH凭据，不以本地Electron代证远端。
 - [x] (2026-10-01) 第39节固定VSIX真实Reload Window首轮exit0，9297ms；同UI、新Host/frame/readId、原Supervisor/provider/主体、新nonce11ms应用、B空completed无新执行、A最终applied和零bindings/pending/nodes、fallback=[]均经root独立核对。局部7/7及原launcher环境回归通过，不代证其他A6。
 - [x] (2026-10-01) 4f015c81已推送，Windows36843457341全部前置通过并进入首个真实Codex场景；首败storage路径断言，后七项not-run，observer未知/原failure保留，不记作通过。
 - [x] (2026-10-01) Windows storage containment窄修及4/4纯测完成，改用realpath+平台relative严格子路径并保留拒绝边界；尚未重跑原矩阵。
@@ -445,6 +448,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-10-01，第45节：已接收到EOF不代表此刻Host/reader已完成；失败快照stopping不能单独证明终态遗失。旧报告forcedSignals计的是fallback actions长度，unknown-identity-no-signal也计1，不能当已发送信号。新报告固定动作白名单并区分未知，不改旧文件。独立review发现await观察后迟到ready可能越过原45秒，已在同入口加绝对截止回查，不增加等待预算。
+
 2026-10-01，第42节：实际Server已排队发送后遇socket背压会留下ready subscription却没有drain监听，恢复可写仍不发最终状态；这是跨平台逻辑缺陷，不因本次Windows发现而限定Windows。CI工件的因果尚待修后产品复验。macOS第二场的lastRuntimeError只证明运行时错误被观察，Host消费失败/断连也会写此字段，不能特指CLI spawn失败；每场workspace/user-data/runtimeDir隔离，也没有前一场状态污染的确定证据。
 
 2026-10-01，第43节：Windows Claude未被observer识别有确定参数差异，产品追加UUID但harness未登记；采用一次显式fresh session ID使两者相同，不能以该局部修正代证原生wrapper/CLI退出已通过。
@@ -737,6 +742,9 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+- 决策：主动stop只在原45秒就绪窗口内等待已保留且live的完整Windows启动链，不改变natural、产品停止策略或句柄身份；失败报告仅增固定kind/operation/action，不取raw Agent日志。理由：修复本次具体验收前提并明确安全事实，不将通用观察器健壮性设为前置。日期/作者：2026-10-01 / Codex。
+
+- 决策：第44节复用本机隔离Remote SSH资源，先取得实际server Node再构建对应固定包，验收保留原Terminal矩阵与安装来源检查，不放宽factory或复制用户SSH凭据。理由：这是既定A5缺口，已具备自主准备条件；本地Electron与远端Node不能混作同一资产。日期/作者：2026-10-01 / Codex。
 - 决策：Claude验收输入预先选择一次有效session UUID，实际产品和严格观察器共用，不修改业务启动或放宽身份匹配。理由：消除固定输入误差同时保留实际启动链、句柄与退出规则，不将JSON quoting的初始猜测误写成根因。日期/作者：2026-10-01 / Codex。
 
 - 决策：只修第42节已确认的socket调度丢唤醒，保留单批信用、公平、尾部及EOF规则；Windows原native组合重新取得独立证据。macOS原矩阵一次全绿记为该固定输入通过，旧间歇失败继续具名保留，不再抓红重跑。
@@ -1009,6 +1017,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-01，第45节：Windows产品复验步骤成功，Agent新失败限于Codex stop观察，Claude修后仍无原生通过声明；已完成原driver先红后绿及安全report窄修，继续原矩阵而非追加场景。Remote第44节使用现有资源自主准备，六资产/旧运行时/分发仍需生产实现，不将剩余工作称作只缺测试。
 
 2026-10-01：macOS36850339021完整真实Agent八场的安全摘要已回收，无凭据或raw Agent日志下载。Windows产品阻塞定位到最终状态，已排队发送的背压唤醒窄修和局部回归完成，等待review及原平台复验；Claude observer尚未取得通过。A3/A6已完成子项不再重复，F-04、A5及整体重构仍未关闭。
 
@@ -2251,3 +2261,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-01，Windows基线及写失败组合）：记录原Windows六报告通过、首次Agent无凭据配置前置失败，以及第36节四个参数化模块用例与root复跑；未改业务/权限/预算，未知根因不预判。
 
 修订记录（2026-10-01，最终状态与有限重跑）：同步第42节Windows传播分类、跨平台socket唤醒先红后绿和macOS原八场通过，保留旧失败、未知因果与剩余有限验收，更新四活章节。
+
+修订记录（2026-10-01，主动停止观察与Remote）：同步第45节两个固定run结果、原句柄/截止屏障与安全摘要语义，登记第44节实际远端Node包和安装范围；保留A5生产接线、F-04及全部旧证据，不改变完成定义。

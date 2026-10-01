@@ -2134,3 +2134,25 @@ macOS唯一重跑现已回收：`36850339021` / `4f613e7a` 的真实Codex/Claude
 最小方案只修改固定验收输入：每个Claude场景在发起创建前生成一个有效UUID，将 `--session-id` 置于原参数末尾，观察器和产品custom command共用这一数组。实际产品识别已有session flag后保留同一ID、不重复追加，仍走正常fresh launch与原有session身份语义。`agent-candidate-cli.cjs` 保存该窄参数构造，`agent-candidate-tests.cjs` 使用它；纯测试调用实际resume resolver、launch builder、command parser和Windows spawn resolver验证完整tail相等及原JSON/空tools参数保持。不得改PowerShell为宽松子串匹配、补认未持有的进程、按PID消失认退出或放宽旧断言。纯测通过后只重新运行原Windows八场，仍保留原失败及真实wrapper/CLI生命周期门禁。
 
 本轮实现及验证：上述三文件窄修已完成，原无ID的产品追加差异仍在回归中复现；两个lifecycle的实际产品方法、parser和Windows spawn resolver组合通过。CLI、Windows/Darwin observer、DeepSeek配置、安全CI report及语法检查通过，未运行Windows原生。第42节整体npm命令另暴露旧 `test-terminal-available-credit.mjs` 共享夹具缺 `recordDiagnosticEvent`，与85f08d8e基线一致；仅补可观察diagnostics依赖、保持旧断言后整条命令通过，不修改业务。下一固定新提交各一次原Windows产品和Agent矩阵，不增加平台/场景或自动重试。
+
+固定输入 `c851d028` 已推送：Windows产品为 `36852373473`，Windows原八场Agent为 `36852378637`，均仅首次调度。Supervisor94/94和Host147/147局部回归再次通过；未回收workflow前不写原生通过。
+
+## 44. A5 Remote SSH 的有限安装验收
+
+本机已有 `vscode-remote-ssh-fixture.mjs` 的loopback临时sshd、临时密钥、独立server目录及所需程序，不需要读取用户SSH配置/私钥或向用户索要远程机器。既有Remote smoke是开发扩展/fake Agent，不代证候选或installed。本项仍是原A5执行端选择与两模式Terminal验收，不增加真实Agent的平台笛卡尔积，也不声称同机loopback证明跨机器网络故障恢复。
+
+先用无产品执行的真实Remote Host probe确认同一固定VS Code commit的server Node、execPath、版本/ABI/N-API及libc；probe不启动Terminal/Agent。仅使用该隔离server Node和原Linux builder生成匹配Node资产，再由原显式build/packager形成冻结VSIX。现有Electron包与精确runtime gate保持，不把Electron资产改标签成Node，也不放宽工厂兼容性。输入准备与正式验收分开，验收不得自动重建或重试取绿。
+
+新增有限Remote runner复用 `prepareRuntime/createRemoteSSHFixture/launchPreparedVSCodeScenario`，沿真实server CLI安装固定包，使用只有测试脚本的workspace driver；逐文件hash、manifest和实际扩展路径收据沿第35节。原installed helper允许显式选择Node输入，缺省仍严格Electron；两种运行时分别核对实际tuple。Remote wrapper只从本轮fixture经明确SetEnv传入的控制文件读取固定phase/mode/artifacts/expectation，然后调用原 `execution-candidate-tests.cjs`，不依赖本地环境经SSH隐式传递，不改原尾部断言。
+
+唯一正式矩阵仍是Runtime/editor和snapshot-only/panel的complete/reopen四次真实Host启动，使用原90000行、100000 scrollback、成功写入凭证、UTF-8/ANSI/OSC尾部、光标和reader applied检查；Runtime重开空历史/无新执行，snapshot-only恢复原快照。每次另断言 `vscode.env.remoteName=ssh-remote`、workspace authority为本轮alias、Host execPath在本轮server目录内且无Electron字段，并与固定Node资产匹配。清理先走原reset/退出/绑定及本方资源检查，再释放本轮sshd/server；任何fixture兜底清理动作分账，不能覆盖产品失败。只证明Linux x64/glibc远端子项，其他架构、六资产、默认分发与A1/F-04未因此完成。
+
+Remote URI边界补充：Remote Extension Host可能将workspace URI转换为 `file:`；必须记录原API值，不伪造authority。若实际API仍有remote authority则严格匹配本轮alias；若为file，则以 `remoteName`、私有server execPath、启动器remote target及本轮SSH链共同确认，不能仅凭本地路径声称远端。
+
+## 45. Windows 固定复验回收与主动停止前的观察屏障
+
+`c851d028` 的Windows产品 `36852373473` job success，原Node及两模式Terminal/Webview/重开步骤通过；完整工件尚在回收，不能只凭job为全部字段盖章，也不能从一次成功倒推第42节丢唤醒为旧失败唯一根因。Windows Agent `36852378637` 首场Codex natural通过，第二场Codex stop在 `poll` 的observer错误检查处失败，Claude四场均未执行，不能称第43节原生修复已验。安全摘要显示stopping/live=true、sequence40、source EOF但尚未reader settlement，observer cleanup两failure、四unknown；不据此把进行中的终态写成产品丢尾。
+
+源码确认主动stop场景缺少测试同步：页面就绪/resize后立即发stop，CLI原始句柄却只在产品完成后才要求出现。PowerShell通过CIM发现再取得原始句柄，两者之间CLI可被本次测试自身的stop结束，导致观察为unknown。该可达顺序是应修的验收前提，尚不是该run的唯一因果证明。最小修正仅Windows主动stop：在原交互就绪的同一截止窗口中同时等待已验证且仍live的Host/对应owner/provider/cmd及实际CLI原始身份（Codex含node wrapper），然后才发送原stop动作；不增加窗口、不放宽句柄身份/结束检查，natural路径不变。
+
+安全摘要只增既有固定failure kind、失败request operation和清理action kind白名单，不发布命令、路径、PID或原始错误。旧 `forcedSignals=1` 是actions数组计数，其中可能是 `unknown-identity-no-signal`，不能直接写成确有一个强制信号；新报告将实际信号与unknown/no-signal区分，旧报告字节保持。先验证晚到/未知/已退出CLI均不能越过stop屏障，再以固定输入复验原八场，不增加通用观察框架或任意竞态矩阵。

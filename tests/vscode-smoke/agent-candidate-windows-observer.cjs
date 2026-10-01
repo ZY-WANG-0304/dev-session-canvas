@@ -9,6 +9,24 @@ const ended = entry => entry.observationUnknown !== true && entry.exitConfirmed 
 const recordFields = new Set(['pid', 'ppid', 'startTicks', 'executable', 'role', 'wrapperKind', 'firstPpid',
   'firstParentStartTicks', 'hasExited', 'exitConfirmed', 'exitCode', 'observationUnknown']);
 
+function hasLiveWindowsStartupChain(result, provider, mode) {
+  if (result.error || result.failures.length || !['codex', 'claude'].includes(provider) ||
+      !['live-runtime', 'snapshot-only'].includes(mode)) return false;
+  const one = (role, wrapperKind) => {
+    const entries = result.entries.filter(entry => entry.role === role &&
+      (wrapperKind === undefined || entry.wrapperKind === wrapperKind));
+    const entry = entries.length === 1 ? entries[0] : undefined;
+    return entry && entry.observationUnknown === false && entry.hasExited === false &&
+      entry.exitConfirmed === false && entry.exitCode === null ? entry : undefined;
+  };
+  const host = one('host');
+  const owner = mode === 'live-runtime' ? one('supervisor') : host;
+  const chain = [owner, one('provider'), one('wrapper', 'cmd'),
+    ...(provider === 'codex' ? [one('wrapper', 'node')] : []), one('cli')];
+  return Boolean(host && chain.every((entry, index) => entry && (index === 0 ||
+    (entry.firstPpid === chain[index - 1].pid && entry.firstParentStartTicks === chain[index - 1].startTicks))));
+}
+
 class WindowsAgentProcessObserver {
   constructor(cli, smokeHostRoot, options) {
     assert.equal(options?.backend, 'windows-safehandle-v1');
@@ -173,4 +191,4 @@ class WindowsAgentProcessObserver {
       samples: this.samples, timingScope: 'Retained original process objects; object disappearance is not required.' };
   }
 }
-module.exports = { WindowsAgentProcessObserver, ended };
+module.exports = { WindowsAgentProcessObserver, ended, hasLiveWindowsStartupChain };

@@ -8,6 +8,7 @@ const { stripVTControlCharacters } = require('node:util');
 const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { AgentProcessObserver, executionEnded } = require('./agent-candidate-process-observer.cjs');
+const { hasLiveWindowsStartupChain } = require('./agent-candidate-windows-observer.cjs');
 const { invokeCLI, buildClaudeCandidateArguments } = require('./agent-candidate-cli.cjs');
 const { collectSnapshotEvidence, acceptsEmptySnapshotStop } = require('./agent-candidate-snapshot-evidence.cjs');
 const { runEmptySnapshotReopen } = require('./agent-candidate-reopen.cjs');
@@ -444,6 +445,7 @@ async function readHello(metadata) {
 
 async function interactAndStop() {
   const seenPrompts = new Set();
+  const readyDeadline = Date.now() + 45000;
   await poll('real CLI interactive readiness', async () => {
     const value = await probe();
     const text = textOf(value);
@@ -460,9 +462,11 @@ async function interactAndStop() {
         return '';
       }
     }
+    if (process.platform === 'win32') await observer.sample();
     return text;
-  }, text => /(?:codex|claude)/i.test(text) &&
-    (/(?:help|shortcuts|ask|prompt|Try|Send)/i.test(text) || /›\s*\[/i.test(text)), 45000);
+  }, text => Date.now() < readyDeadline && /(?:codex|claude)/i.test(text) &&
+    (/(?:help|shortcuts|ask|prompt|Try|Send)/i.test(text) || /›\s*\[/i.test(text)) &&
+    (process.platform !== 'win32' || hasLiveWindowsStartupChain(observer.result(), config.provider, config.mode)), 45000);
   const readyProbe = await probe();
   // Keep the stop matrix focused on resize, product stop, tail settlement and
   // cleanup; provider-specific help/setup screens are recorded but not a gate.

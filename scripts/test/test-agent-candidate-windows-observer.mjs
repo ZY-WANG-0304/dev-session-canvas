@@ -6,10 +6,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import observerModule from '../../tests/vscode-smoke/agent-candidate-windows-observer.cjs';
 import genericObserver from '../../tests/vscode-smoke/agent-candidate-process-observer.cjs';
 
-const { WindowsAgentProcessObserver, ended } = observerModule;
+const { WindowsAgentProcessObserver, ended, hasLiveWindowsStartupChain } = observerModule;
 const helperSource = await fs.readFile(new URL('../../tests/vscode-smoke/agent-candidate-process-observer.ps1', import.meta.url), 'utf8');
 assert.match(helperSource, /\$PSModuleAutoLoadingPreference = 'None'/u);
 assert.match(helperSource, /\$env:PSModulePath = \[IO.Path\]::Combine\(\$PSHOME, 'Modules'\)/u);
@@ -29,6 +30,68 @@ const host = record(1, 'host');
 const chain = [host, record(2, 'provider', 1), record(3, 'wrapper', 2, 'cmd'),
   record(4, 'wrapper', 3, 'node'), record(5, 'cli', 4)];
 const exited = value => ({ ...value, hasExited: true, exitConfirmed: true, exitCode: 0 });
+const startup = entries => ({ entries, failures: [] });
+assert.equal(hasLiveWindowsStartupChain(startup(chain), 'codex', 'snapshot-only'), true);
+for (let index = 0; index < chain.length; index++) {
+  assert.equal(hasLiveWindowsStartupChain(startup(chain.filter((_, item) => item !== index)), 'codex', 'snapshot-only'), false,
+    'A visible prompt cannot substitute for any missing startup identity.');
+  assert.equal(hasLiveWindowsStartupChain(startup(chain.map((entry, item) => item === index ? exited(entry) : entry)),
+    'codex', 'snapshot-only'), false, 'An already ended subject cannot admit a live stop observation.');
+}
+assert.equal(hasLiveWindowsStartupChain({ ...startup(chain), error: 'unknown' }, 'codex', 'snapshot-only'), false);
+assert.equal(hasLiveWindowsStartupChain(startup(chain.map(entry => entry.role === 'cli'
+  ? { ...entry, firstParentStartTicks: 'win32:wrong' } : entry)), 'codex', 'snapshot-only'), false);
+assert.equal(hasLiveWindowsStartupChain(startup(chain.map(entry => entry.role === 'cli'
+  ? { ...entry, observationUnknown: true } : entry)), 'codex', 'snapshot-only'), false);
+const liveRuntimeChain = [host, record(6, 'supervisor'), record(2, 'provider', 6), ...chain.slice(2)];
+assert.equal(hasLiveWindowsStartupChain(startup(liveRuntimeChain), 'codex', 'live-runtime'), true);
+assert.equal(hasLiveWindowsStartupChain(startup(chain), 'codex', 'live-runtime'), false);
+const claudeChain = [host, ...chain.slice(1, 3), record(5, 'cli', 3)];
+assert.equal(hasLiveWindowsStartupChain(startup(claudeChain), 'claude', 'snapshot-only'), true);
+const baselineRef = process.argv.find(value => value.startsWith('--driver-baseline-ref='))?.slice('--driver-baseline-ref='.length);
+const oldDriver = baselineRef ? spawnSync('git', ['show', `${baselineRef}:tests/vscode-smoke/agent-candidate-tests.cjs`],
+  { encoding: 'utf8' }) : undefined;
+if (oldDriver) assert.equal(oldDriver.status, 0, 'Read the exact committed driver baseline.');
+const driverSource = oldDriver?.stdout ?? await fs.readFile(new URL('../../tests/vscode-smoke/agent-candidate-tests.cjs', import.meta.url), 'utf8');
+const driverAst = ts.createSourceFile('agent-candidate-tests.cjs', driverSource, ts.ScriptTarget.Latest, true);
+const interact = driverAst.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'interactAndStop');
+assert(interact);
+for (const outcome of ['ready', 'unknown', 'late']) {
+  let samples = 0;
+  let now = 0;
+  let columns = 80;
+  let stopped = false;
+  const observed = { async sample() { samples++; if (outcome === 'late' && samples === 2) now = 45001; }, result() {
+    return samples < 2 ? startup(chain.slice(0, -1)) : { ...startup(chain), ...(outcome === 'unknown' ? { error: 'unknown' } : {}) };
+  } };
+  const context = {
+    process: { platform: 'win32' }, config: { provider: 'codex', mode: 'snapshot-only' },
+    Date: { now: () => now },
+    nodeId: 'test-node', observer: observed, hasLiveWindowsStartupChain, actions: [],
+    probe: async () => ({ nodes: [{ nodeId: 'test-node', terminalCols: columns }] }),
+    textOf: () => 'Codex prompt help', snapshot: async () => ({}),
+    currentNode: () => ({ position: { x: 0, y: 0 } }), writeJson: async () => {}, dom: async () => {},
+    poll: async (label, read, accept, budget) => {
+      if (label === 'real CLI interactive readiness') assert.equal(budget, 45000, 'Keep the original readiness budget.');
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const value = await read();
+        if (accept(value)) return value;
+        assert.equal(stopped, false, 'An incomplete startup observation must not send stop.');
+        if (observed.result().error) throw new Error('unknown');
+      }
+      throw new Error('readiness did not wait for the original CLI');
+    },
+    dispatch: async type => {
+      assert(samples >= 2, 'The actual driver must wait for the CLI handle before resize/stop.');
+      if (type === 'webview/resizeNode') columns = 64;
+      if (type === 'webview/stopExecutionSession') stopped = true;
+    }
+  };
+  const run = new Function(...Object.keys(context), `return (${interact.getText(driverAst)});`)(...Object.values(context));
+  if (outcome !== 'ready') await assert.rejects(run(), /unknown|readiness/);
+  else await run();
+  assert.equal(stopped, outcome === 'ready');
+}
 function fixture() {
   let records = [host];
   let responseTransform = value => value;
