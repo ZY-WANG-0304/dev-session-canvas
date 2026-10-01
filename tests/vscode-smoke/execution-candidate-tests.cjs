@@ -5,6 +5,7 @@ const { createHash } = require('node:crypto');
 const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const windows = require('./windows-execution-candidate.cjs');
+const { captureInstalledExtensionReceipt } = require('./installed-execution-candidate.cjs');
 
 const mode = process.env.DEV_SESSION_CANVAS_CANDIDATE_MODE;
 const phase = process.env.DEV_SESSION_CANVAS_CANDIDATE_PHASE;
@@ -73,7 +74,10 @@ async function run() {
   assert(['complete', 'reopen'].includes(phase));
   assert(artifacts);
   try {
-    await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
+    const extension = await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
+    const installedExpectation = process.env.DEV_SESSION_CANVAS_INSTALLED_VSIX_EXPECTATION;
+    const installedVsix = installedExpectation
+      ? await captureInstalledExtensionReceipt(extension, installedExpectation) : undefined;
     await waitForCommand(vscode, 'devSessionCanvas.__test.getDebugState');
     await openSurface();
     if (process.platform === 'win32') {
@@ -82,7 +86,8 @@ async function run() {
     }
     assert.equal(vscode.workspace.getConfiguration('terminal.integrated').get('scrollback'), 100000);
     await writeJson(`${phase}-environment.json`, { mode, phase, surface, pid: process.pid,
-      versions: process.versions, vscode: vscode.version, executable: process.execPath });
+      versions: process.versions, vscode: vscode.version, executable: process.execPath,
+      ...(installedVsix ? { installedVsix } : {}) });
     if (phase === 'complete') await complete();
     else await reopen();
   } catch (error) {

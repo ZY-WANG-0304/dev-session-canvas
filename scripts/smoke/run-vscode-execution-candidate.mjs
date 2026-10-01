@@ -6,15 +6,20 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { build } from 'esbuild';
 import capacityFormat from '../../tests/vscode-smoke/fixtures/execution-capacity-subject.cjs';
+import installedReceipts from '../../tests/vscode-smoke/installed-execution-candidate.cjs';
+import { assertInstalledCandidateSelection, installCandidateVsix, prepareInstalledCandidateDriver,
+  prepareInstalledVsixInput } from './installed-execution-candidate.mjs';
 import { ensureVSCodeExecutable, launchPreparedVSCodeScenario, prepareMainSmokeHostExtension,
   prepareRuntime, resolveStagedSmokeTestPath, runInsideXvfb, shouldReRunInsideXvfb } from './vscode-smoke-runner.mjs';
 
 const projectRoot = process.cwd();
 const { values } = parseArgs({ options: { output: { type: 'string' }, mode: { type: 'string' },
+  'installed-vsix': { type: 'string' },
   'capacity-sessions': { type: 'string' },
   'capacity-reconnect': { type: 'boolean', default: false },
   'capacity-calibration': { type: 'boolean', default: false } } });
 const capacitySelected = values['capacity-calibration'] || values['capacity-reconnect'];
+assertInstalledCandidateSelection(values);
 assert(['linux', 'darwin', 'win32'].includes(process.platform), 'This finite product acceptance requires a supported native platform.');
 assert(!capacitySelected || process.platform === 'linux', 'The fixed capacity workload requires Linux process identity observation.');
 assert(values.output, 'Specify a new --output evidence directory.');
@@ -31,12 +36,14 @@ if (shouldReRunInsideXvfb()) process.exit(runInsideXvfb(fileURLToPath(import.met
 const output = path.resolve(values.output);
 await fs.mkdir(output);
 const runId = randomUUID();
+const installedInput = values['installed-vsix']
+  ? await prepareInstalledVsixInput(values['installed-vsix'], output) : undefined;
 const vscodeExecutablePath = await ensureVSCodeExecutable(projectRoot);
 const dist = path.join(projectRoot, 'extensions/vscode/dev-session-canvas/dist');
 const platformName = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux';
 const assetTarget = process.platform === 'win32' ? `win32-${process.arch}`
   : process.platform === 'darwin' ? `darwin-${process.arch}` : 'linux-x64-glibc';
-const manifest = JSON.parse(await fs.readFile(path.join(dist,
+const manifest = installedInput ? installedInput.manifest : JSON.parse(await fs.readFile(path.join(dist,
   `native/${platformName}-execution-candidate/${assetTarget}/manifest.json`), 'utf8'));
 assert.equal(manifest.runtime.name, 'electron', 'Use the matching Electron candidate build, not a Node addon.');
 assert.equal(manifest.profile, `${platformName}-owner-v1-candidate`);
@@ -45,12 +52,19 @@ assert.equal(manifest.arch, process.arch);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const sourceHashes = {};
 for (const file of ['extension.js', 'runtime-supervisor.js', `${platformName}-execution-provider.js`, 'webview.js']) {
-  sourceHashes[file] = hash(await fs.readFile(path.join(dist, file)));
+  sourceHashes[file] = installedInput ? installedInput.payloadHashes[`dist/${file}`]
+    : hash(await fs.readFile(path.join(dist, file)));
 }
 for (const file of ['scripts/smoke/run-vscode-execution-candidate.mjs',
   'tests/vscode-smoke/execution-candidate-tests.cjs',
   'tests/vscode-smoke/fixtures/execution-candidate-subject.cjs']) {
   sourceHashes[file] = hash(await fs.readFile(path.join(projectRoot, file)));
+}
+if (installedInput) {
+  for (const file of ['scripts/smoke/installed-execution-candidate.mjs',
+    'tests/vscode-smoke/installed-execution-candidate.cjs']) {
+    sourceHashes[file] = hash(await fs.readFile(path.join(projectRoot, file)));
+  }
 }
 if (process.platform === 'win32') {
   assert.equal(process.arch, 'x64'); assert.equal(process.version, 'v25.6.0');
@@ -68,9 +82,13 @@ if (capacitySelected) {
   process.exit(0);
 }
 await fs.writeFile(path.join(output, 'input.json'), `${JSON.stringify({
-  schemaVersion: 1, scope: `A2/A3 finite ${process.platform} two-mode real Terminal and actual Electron Webview; not A4/A5 closure`,
+  schemaVersion: 1, scope: installedInput
+    ? 'A5 finite Linux installed candidate: original two-mode Terminal/Webview complete/reopen; not full distribution, notifier, Agent or other-platform acceptance'
+    : `A2/A3 finite ${process.platform} two-mode real Terminal and actual Electron Webview; not A4/A5 closure`,
   vscodeExecutablePath, subjectExecutable: process.execPath, subjectVersions: process.versions,
   assetManifest: manifest, sourceHashes, lineCount: 90000, scrollback: 100000,
+  ...(installedInput ? { installedVsix: { path: installedInput.vsixPath, sha256: installedInput.vsixSha256,
+    payloadHashes: installedInput.payloadHashes, companionScope: installedInput.companionScope } } : {}),
   partialSelection: values.mode !== undefined,
   scenarios: modes.map(mode => ({ mode, surface: mode === 'live-runtime' ? 'editor' : 'panel' }))
 }, null, 2)}\n`);
@@ -87,8 +105,16 @@ for (const [index, mode] of modes.entries()) {
       'terminal.integrated.scrollback': 100000 } });
   const workspacePath = path.join(debugRoot, 'workspace');
   await fs.mkdir(workspacePath);
-  const smokeHostRoot = await prepareMainSmokeHostExtension({ projectRoot, targetRoot: path.join(debugRoot, 'smoke-host') });
   try {
+    const smokeHostRoot = path.join(debugRoot, installedInput ? 'test-driver' : 'smoke-host');
+    let installedDriver;
+    if (installedInput) {
+      await installCandidateVsix({ vscodeExecutablePath, runtime, input: installedInput });
+      installedDriver = await prepareInstalledCandidateDriver({ projectRoot, targetRoot: smokeHostRoot,
+        input: installedInput, extensionsDir: runtime.extensionsDir, artifactsDir: runtime.artifactsDir });
+    } else {
+      await prepareMainSmokeHostExtension({ projectRoot, targetRoot: smokeHostRoot });
+    }
     let completed;
     for (const phase of ['complete', 'reopen']) {
       await launchPreparedVSCodeScenario({ projectRoot, runtime, vscodeExecutablePath, workspacePath,
@@ -97,11 +123,16 @@ for (const [index, mode] of modes.entries()) {
         disableExtensions: false, disableWorkspaceTrust: true,
         extensionTestsEnv: { DEV_SESSION_CANVAS_CANDIDATE_MODE: mode,
           DEV_SESSION_CANVAS_CANDIDATE_PHASE: phase,
+          ...(installedDriver ? { DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1' } : {}),
+          DEV_SESSION_CANVAS_INSTALLED_VSIX_EXPECTATION: installedDriver?.expectationPath ?? '',
           DEV_SESSION_CANVAS_CANDIDATE_SUBJECT_NODE: process.execPath } });
       const read = async name => JSON.parse(await fs.readFile(path.join(runtime.artifactsDir, `${name}.json`), 'utf8'));
       const environment = await read(`${phase}-environment`);
       assert.equal(environment.mode, mode, `${phase} environment must match the selected mode.`);
       assert.equal(environment.phase, phase, 'The actual Extension Host must run the selected phase.');
+      if (installedDriver) {
+        installedReceipts.assertInstalledExtensionReceipt(environment.installedVsix, installedDriver.expectation);
+      }
       if (phase === 'complete') {
         completed = await read('completed');
         assert.equal(completed.pass, true, `${mode}/complete must pass before reopening.`);

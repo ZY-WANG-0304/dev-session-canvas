@@ -1839,6 +1839,8 @@ run `36821963386`/job `110239281754` 使用 `72ca0efe`，修后原Node四例全�
 
 上述evidence-only接线已实施于 `agent-candidate-snapshot-evidence.cjs`、原Agent测试与受限CI report，未改业务、runner或原truthy断言。重放只使用初始checkpoint、连续output及resize操作，后续终态snapshot只作对账，不能覆写重放来制造一致；满200条窗口、缺区间/resize/exit、reader换代和恢复snapshot均保留unknown。helper自身摘要随安全证据发布，页面投影独立性明确为not-proven。helper及report定向回归、workflow契约通过，包含“空终值及页面不能洗掉重放非空正文”负例；这些不是原macOS失败的根因结论，新原生输入仍待固定一次执行。
 
+固定一次新输入6d622bee的run36836757674仍整轮failure：前三Codex场passed，第四snapshot stop原truthy断言在188行拒绝，Claude四场not-run。安全摘要保存在 `.debug/agent-ci-macos-36836757674-summary/`，actual savedNode的空串有效、快照/metadata/reader最终序号均13，reader lifecycle匹配；原help页面有11条非空可见行。最终hydrate与页面的geometry/visible不一致，但全文非空行对账为true；62条消息未满窗，独立重放因execution-changed保守unknown，故不能判定合法清屏或丢正文，更不能改为通过。四cleanup仍零残留。下一仅核对该两种具名未知的现有消息/布局生产语义，不自动复跑或扩展通用诊断框架，原两次macOS失败与Linux具名未决项继续分账。
+
 ## 34. Windows 产品原生接入
 
 ### 34.1 运行前原生契约（2026-10-01）
@@ -2008,3 +2010,15 @@ CLI选择、Windows observer、原Unix observer、CI summary、私有配置、�
 每次complete/reopen的environment收据必须记录实际extensionPath、业务id/version/main和实际安装文件摘要，校验规范路径位于本轮extensionsDir而非workspace、driver或解包目录，并与同一VSIX预期一致。外层保留原phase、mode、node id、pass及空bindings报告检查；进程exit0不能代证。固定两模式complete/reopen共四次Host启动，90002行、UTF-8、ANSI最终光标、原reader settlement、Runtime无历史和snapshot-only恢复断言保持，失败即停并保留第一现场，不自动重试。
 
 直接调用 `node scripts/release/package-vsix.mjs` 保存明确选定的匹配Linux Electron candidate dist；不调用会重建stock的npm打包命令。实施前先核对资产仍匹配当前源码并记录来源；未运行或前置失败不能记为installed通过。此设计不预支macOS/Windows、真实Agent、Remote或六资产支持格，Windows installer接线风险不设为Linux前置。
+
+接线及七组有限纯测试已完成，原Windows输入回归仅在VM context声明installedInput=undefined以继续原非installed分支，原断言不变。主线独立review及两项复跑通过。业务采用6d622bee的production候选构建、原 `.debug/linux-shared-owner-20261001-assets` 匹配Electron资产，owner/shared-owner/patch摘要逐一核对未变；调用原packager生成固定 `dev-session-canvas-0.25.0.vsix`，SHA256为 `604494fdebc917d3e12b54fceec75a764ed064e486dd0e76ff20513ddca61656`。此包仅本地验收，不发布。
+
+首轮 `.debug/a5-installed-candidate-20261001-first/` 原两模式四次Host启动完整exit0。四份environment收据均为实际VS Code1.117.0/Electron39.8.7/Node22.22.1/ABI140，主扩展来自各自隔离extensions目录，原manifest加载身份和八份业务/native文件摘要匹配同一冻结VSIX，driver没有业务dist。六份completed/reopened/cleanup报告全部通过，原节点id保持；两个主体均成功写入5580102bytes，原90002行/UTF-8/ANSI与光标(6,2)检查通过，source均真实EOF。Runtime最终applied1407、节点650bytes、重开无历史；snapshot-only最终applied1391、节点5767032bytes，重开保留5580063字符快照。两cleanup的Host bindings及pending operations均0，后续按本轮独立目录查无残留命令行进程；不把该检查扩大为全部OS资源证明。该固定Linux installed子项收口，不关闭其余A5、Agent/Remote或默认启用。
+
+## 36. A1/A2 文件系统失败的有限组合验证
+
+既有高层journal/flush拒绝和persistState替身已覆盖失败保留责任，但不能代证真实异步写入错误贯穿生产消费/删除顺序。只补两类输入，各沿原Terminal/Agent参数化，不重跑成功容量矩阵，不先改业务，不以模拟故障冒充实际OS满盘。
+
+A1在 `test-supervisor-execution-owner-wiring.mjs` 复用实际Server/TerminalSessionJournal，仅让目标journal路径的 `fs.promises.appendFile` 对一条短output抛带ENOSPC的原错误，不替换journal.appendOutput/flush。必须保留terminalJournalError、consumedThrough=0且无consumed ACK、原session/journal责任；stop请求不等于进程已退或settled/applied，另一已存在会话仍可消费。失败注入移除后不伪造恢复已损失的来源，按原fixture清理责任。
+
+A2在 `test-host-execution-owner-wiring.mjs` 的真实persistenceFixture中种原Runtime绑定和已保存文件，通过将root临时文件路径占用为目录触发实际writer失败，调用原 `applyCompletedRuntimeSupervisorSnapshot`，不替换persistState。必须拒绝保存、旧root/workspace文件仍可读，原runtimeSessionId/runtimeStoragePath、binding及managed session未释放，strict delete为零。该验证不声称实际Webview告警/控制可用性已验，也不替代保存成功路径或旧live共存；出现直接失败再据证据设计最小业务修正。

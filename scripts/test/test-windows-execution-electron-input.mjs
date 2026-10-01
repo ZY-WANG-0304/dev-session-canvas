@@ -128,6 +128,7 @@ async function controlledPhases(changeReports) {
   const output = '/fixed-output';
   const execute = () => vm.runInNewContext(`(async () => { ${phaseLoop} })()`, {
     assert, path, modes: ['live-runtime', 'snapshot-only'], output, projectRoot: '/fixed-project', runId: 'fixed',
+    installedInput: undefined,
     vscodeExecutablePath: '/fixed-Code.exe', process: { platform: 'win32', env: { SystemRoot: 'C:\\Windows' }, execPath: '/fixed-node' },
     fs: {
       async mkdir() {},

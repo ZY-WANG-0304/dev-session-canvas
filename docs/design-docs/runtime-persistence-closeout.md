@@ -34,6 +34,8 @@ updated_at: 2026-10-01
 
 当前 A5 边界（2026-10-01）：产品candidate已在Linux x64/glibc、Darwin arm64取得各自固定Node/Electron及Terminal页面证据；Windows x64已有Node四例与Electron构建，页面最终证据不全，不能把workflow绿灯作验收。三平台都不再是仅有stock诊断，但其余架构、运行时兼容、packaged与Remote SSH仍需原清单验收。用户选定的真实Codex/Claude + DeepSeek及仓库级 `DEEPSEEK_API_KEY` 已在Linux八场景取得有限实际通过，macOS/Windows接线不代证响应或退出。仍不绑定Environment/分支、不上传本机登录，secret仅交给最终验收step，raw不上传；Windows临时配置在写key前验证私有DACL，进程退出用原SafeHandle事实而非对象消失。普通构建仍stock，F-04和完整A5未关闭。
 
+同日新增结果以生产接入33.10/35为准：macOS真实Agent两次均前三Codex场passed、snapshot stop原非空断言失败、Claude未跑；新取证确认实际saved空串但geometry/visible不符和execution-changed未知，不按空串预判正文丢失或合法清屏。Linux固定production VSIX 604494fd在 `.debug/a5-installed-candidate-20261001-first/` 四次真实安装路径Host验证首次通过，四份路径/摘要收据与六份完成/重开/清理报告齐全，原90002行/最终光标/EOF及两模式保存语义保持。该Linux installed子项不再排队，但其他平台packaged、Remote、运行时兼容与默认准入仍开放；第36节两类文件系统失败组合直接服务A1/A2，不扩通用工具。
+
 2026-09-28，用户先要求暂停自动追加阶段，随后明确不承担清单确认，要求代理依据重构目标作出判断。本文件据此收口为已选定的工程完成定义与有限工作顺序，不再等待用户批准工程清单或选择技术预算。最初核对基线为 `ba2c148b`，草案保存在 `2d375606`，工程裁决保存在 `8dd82629`。其后已按既定顺序启动 B1，过程见 `runtime-persistence-capacity-closeout` active 计划；局部修复不代表整体容量通过，2026-09-29 最新实际链同预算样本 2x/4x 的 heap/RSS 仍超限，状态保持验证中。没有新增 runner 或发布动作。
 
 当前决定（2026-09-30，预算口径与推进顺序）：按用户要求，合并进程样本的额外 heap/RSS 64/128 MiB 只作为该拓扑的观察信号，不作为真实分进程产品预算，也不再作为进入 B2 的前置门槛。原阈值、数值、断言、exit 1 与全部历史证据保持，不追认为通过。F-04/B1/A1 仍未完成；B2 已补齐启动 profile、隔离 generation、Linux candidate namespace 排他、实际 extension 两模式入口与匹配 Linux Electron 资产，当前进入既定真实验收，真实分进程、多会话资源/交互预算由 A1 在实际生产候选上评估。普通构建仍 stock，profiler 可用于具体归因但不默认前置。本决定取代旧记录中“先对同一合并进程采样归因并达到原门槛，再接 B2”的工作顺序，具体边界见第 3.1、8 节。
