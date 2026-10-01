@@ -202,13 +202,14 @@ try {
     for (const arch of ['x64', 'arm64']) {
       const value = fixture(arch);
       const source = writeFixture(`selection-${arch}`, value);
+      const canonicalSource = await fs.promises.realpath(source);
       const selection = await resolveExecutionBuildSelection([...candidateArgs(source), '--execution-admission=10:1'], '/missing/dist');
-      assert.deepEqual(selection, { profile, source, admissionLimits: { executions: 10, starting: 1 } });
+      assert.deepEqual(selection, { profile, source: canonicalSource, admissionLimits: { executions: 10, starting: 1 } });
       assert(Object.isFrozen(selection) && Object.isFrozen(selection.admissionLimits));
       value.manifest.runtime = { ...value.manifest.runtime, name: 'electron', version: '39.8.7' };
       fs.writeFileSync(path.join(source, 'manifest.json'), JSON.stringify(value.manifest));
       assert.deepEqual(await resolveExecutionBuildSelection(candidateArgs(source), '/missing/dist'),
-        { profile, source, admissionLimits: { executions: 2, starting: 1 } });
+        { profile, source: canonicalSource, admissionLimits: { executions: 2, starting: 1 } });
     }
   });
   await test('Windows selection rejects unpaired watch foreign profiles and changed dependencies before clearing dist', async () => {

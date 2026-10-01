@@ -1767,6 +1767,8 @@ DeepSeek 官方接口提供 Codex 所需的 Responses 路径和 Claude 所需的
 
 对应独立 workflow `runtime-real-agent-macos.yml` 只手动触发，不与无凭据Node/Terminal产物混传；Node25.6.0、Python3.12.10、psutil7.0.0双架构wheel hash、固定CLI与VS Code/Electron版本在运行前固定。helper用libproc按已确认父PID读取直接后代，避免psutil children实现扫描整机ppid表；末次cleanup也检查observer错误，不将最后采样失败遗漏为通过。仅原八场串行、最多四次预定模型任务、无harness重试，先取得匹配Electron/Terminal产品证据再执行；官方模型/原中转服务不在本轮声明范围。
 
+Darwin观察接线已实现，Linux原身份路径保持；JS单在途/亲缘/参数不归档/unknown/cleanup定向检查及Python六组受控检查通过。独立复核发现libproc可返回`0 + errno`表示失败，已先红并修正为unknown，只有errno为0的空结果可认无后代。Linux/macOS两workflow的固定输入、仅单步骤secret、无原始产物上传及shell语法检查通过；此处仍无新的macOS真实Agent运行结果。
+
 ### 33.6 第三次 Darwin 运行与共享 deadline 修正
 
 输入 `3bde0880c4116d9be66cd06fba17da07f28022f4` 的 run `36820565903`/job `110235031971` 保留失败。Darwin arm64/Node25.6.0 的编译、namespace、normal、paused-stop 及各自清理通过；normal 取得 exit7、真实 EOF、成功写入全量对账、颜色/尺寸/最终光标和五项资源释放。partial-create 正确取得启动失败、无 child/source、三项已取得资源释放与空终态应用，但 45 秒外层观察到期，owner 原 13 秒结束期限后仍无 `closeObservation.first`。其清理安全且无额外信号，不追认为整场通过；Electron/Webview 后置步骤仍 skipped。原 artifact `macos-product-provider-36820565903-1` 和 `.debug/macos-product-36820565903/` 保留。
@@ -1846,3 +1848,19 @@ Windows profile显式为 `windows-owner-v1-candidate`，隔离generation为 `ter
 namespace复用Node的Windows named-pipe listener，不增加新的native mutex API。名称由规范化 `realpath(storageDir)`（Windows不区分大小写比较）摘要形成，不包含backend/PID；同一Windows运行环境和registry必须竞争同一名称。Node所用libuv的 `uv_pipe_bind2` 通过 `FILE_FLAG_FIRST_PIPE_INSTANCE` 排斥已有server（已核对libuv v1.51.0 `src/win/pipe.c`），实际竞争/退出重取仍需原生验收。claim listener持到进程退出且unref，业务listener关闭不释放它；Windows endpoint先用连接确认未占用，不对named pipe做文件unlink。该范围仅本版参与者和本机存储slot，不是另列R1的root稳定归属实现。
 
 共享provider控制IPC和独立fd4输出保留原帧/信用/消费屏障；Windows使用 `overlapped` stdio，防止同步管道写阻塞provider控制线程。真实Windows普通pipe及实际ConPTY验收必须证明该封装可用，不能仅删除平台guard就记为平台通过。provider终止仍只作用于已具备原父清理授权的直接child，不按PID强杀会话包装器或外部对象。
+
+### 34.6 Windows Electron 与真实 Terminal 两模式接线
+
+Windows Node 四例之后只增加既定的真实 Electron Terminal 两模式 `complete -> reopen`，不接入 capacity、reconnect、真实 Agent 或 packaged，不改34.4四例输入及其计时/清理。固定 Windows x64、VS Code1.117.0，须通过实际 Code.exe 的 `ELECTRON_RUN_AS_NODE=1` 确认 Electron39.8.7、Node22.22.1、ABI140；外层及受控写入主体仍为 Node25.6.0。重新使用现有 Windows builder 编译 Electron 资产，不能复用 Node25 addon/import library。Electron官方39.8.7 headers SHA256为 `af6712ab16c436b9288ece2f0173924c74008446346bda3457d07b769f402eda`，win-x64/node.lib 为 `ee92beea67d0f12ef058adc52d0f5344e1005153c9487d0f4d63cab91111421a`；沿用固定 node-gyp delay-load hook，实际装载仍须原生验证。
+
+保留现有 Unix shell/exec 与验收行为。Windows 真实 Terminal 显式使用系统 cmd.exe、`/d /q`；专用受控.cmd在独立物理行等待Node主体后执行 `exit %errorlevel%`，不以 `/b` 返回交互提示符，也不在启动同一行预展开退出码。受控路径拒绝cmd会再解释的未支持字符，不建设通用shell解析器。Windows专用主体先READY，测试取得原SafeHandle后，通过实际PTY随机challenge及PID/PPID回执绑定主体，再放行固定输出；结束只接受该原对象的HasExited与exit0，不把未知/PID消失当成退出，不要求合法引用的系统对象消失。
+
+Windows写入使用真实Node TTY write完成回调，保留原90000编号行、Unicode逐字节尾部、ANSI和拆分CSI，以及相同成功写入字节数量/摘要。成功回调的源字节另外保存，ConPTY输出可有合法VT重写，产品判据仍是实际Webview的90002行严格内容、最终光标(6,2)、原reader最终sequence、Runtime结束丢正文/重开空白和snapshot-only保留/重开恢复。若NodeTTY自身对逐字节UTF8解码存在差异，保存源与实际状态，保留失败，不删除Unicode断言，也不未经定位归因于产品尾部丢失。
+
+Windows主体安全期限180秒、原进程对象观察期限270秒、失败后额外观察清理30秒，只约束本轮受控夹具，不改产品预算；safety回执或exit124不能通过，清理未确认记unsafe，不强杀未知PID。原生首败保留并停止后续阶段。新增脚本/observer/worker和编译来源摘要一并归档；仍须分别证明Windows编译、装载及两模式实际执行，本节冻结时无此原生通过声明。
+
+### 34.7 首次 Windows runner 的路径夹具失败
+
+输入 `72ca0efe6ac0148529d5ff22209953797bded9d2` 的run `36821938613`/job `110239195433` 保留exit1。依赖安装、MSVC初始化、source契约及资产纯测试前九项通过，第十项构建选择断言比较了短路径 `C:\\Users\\RUNNER~1\\...` 与 `fs.promises.realpath` 返回的长路径 `C:\\Users\\runneradmin\\...` 而失败。Node编译、四例原生执行均skipped，也没有build/evidence目录可上传；不能写成Windows ConPTY产品失败。
+
+修正仅将两处selection预期设为同一来源目录的 `await fs.promises.realpath(source)`；测试仍精确核对返回的规范路径、profile与不可变准入策略，不改产品路径校验、不改原始来源目录、不隐藏失败。Linux本地十二项纯检查修后通过，真实Windows修后结果仍待运行。

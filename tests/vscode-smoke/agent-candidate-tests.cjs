@@ -69,12 +69,12 @@ function codexPath() {
 
 async function run() {
   config = JSON.parse(await fs.readFile(process.env.DEV_SESSION_CANVAS_AGENT_CANDIDATE_CONFIG, 'utf8'));
-  assert.equal(process.platform, 'linux');
+  assert(['linux', 'darwin'].includes(process.platform));
   if (config.authOnly === true) return runAuthenticationOnly();
   assert(['codex', 'claude'].includes(config.provider));
   assert(['natural', 'stop'].includes(config.lifecycle));
   assert(['live-runtime', 'snapshot-only'].includes(config.mode));
-  observer = new AgentProcessObserver(config.cli, config.smokeHostRoot);
+  observer = new AgentProcessObserver(config.cli, config.smokeHostRoot, config.processObserver);
   let failure;
   try {
     await verifyAuthentication();
@@ -116,7 +116,8 @@ async function run() {
       assert(config.permittedStorageRoots.some(root => metadata.runtimeStoragePath.startsWith(`${root}${path.sep}`)),
         'Supervisor storage must belong to this isolated test.');
       hello = await readHello(metadata);
-      assert(hello.capabilities?.executionCandidateProfiles?.includes('linux-owner-v1-candidate'));
+      assert(hello.capabilities?.executionCandidateProfiles?.includes(process.platform === 'darwin'
+        ? 'macos-owner-v1-candidate' : 'linux-owner-v1-candidate'));
       await observer.addRoot(hello.pid, 'supervisor');
     }
     await poll('real xterm reader mounted', probe, value => value.nodes.some(node =>
@@ -213,13 +214,15 @@ async function run() {
       }
       await writeJson('remaining-resources.json', { remaining, forcedSignals, after: observer.result() });
     }
+    if (observer.error) failure ??= new Error(observer.error);
+    if (observer.failures.length) failure ??= new Error('Process observation or wrapper lifecycle verification failed.');
     await writeJson('process-observations.json', observer.result());
     await writeJson('actions.json', actions);
     await writeJson('result.json', { name: config.name, pass: !failure, error: failure ? String(failure) : undefined,
       plannedModelTurns: config.lifecycle === 'natural' ? 1 : 0,
       cliObserved: observer.result().entries.some(entry => entry.role === 'cli'), naturalResponseVerified,
       modelRequestCount: 'not observed directly', automaticHarnessRetries: 0,
-      scope: 'Actual Linux Agent CLI + candidate owner + Webview; not A3 large-tail or A5 acceptance.' });
+      scope: `Actual ${process.platform} Agent CLI + candidate owner + Webview; not A3 large-tail or A5 acceptance.` });
   }
   if (failure) throw failure;
 }

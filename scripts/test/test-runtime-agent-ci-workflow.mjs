@@ -94,4 +94,74 @@ for (const candidate of acceptance.steps.filter(candidate => candidate.run)) {
   assert.equal(syntax.status, 0, `Invalid shell syntax in ${candidate.name}: ${syntax.stderr}`);
 }
 
-console.log('runtime real Agent CI workflow contract tests passed');
+const macWorkflow = yaml.load(await readFile('.github/workflows/runtime-real-agent-macos.yml', 'utf8'));
+assert.deepEqual(Object.keys(macWorkflow.on), ['workflow_dispatch'], 'Real Agent runs require explicit manual dispatch.');
+assert.deepEqual(macWorkflow.permissions, { contents: 'read' });
+assert.equal(macWorkflow.env, undefined, 'Credentials must not enter workflow-wide environment.');
+assert.deepEqual(macWorkflow.concurrency, acceptance.concurrency, 'Linux and macOS share one finite acceptance lane.');
+assert.deepEqual(Object.keys(macWorkflow.jobs), ['real-agent-macos']);
+const macAcceptance = macWorkflow.jobs['real-agent-macos'];
+assert.equal(macAcceptance['runs-on'], 'macos-latest');
+assert.equal(macAcceptance['timeout-minutes'], 40);
+assert.equal(macAcceptance.if, undefined);
+assert.equal(macAcceptance.environment, undefined);
+assert.equal(macAcceptance.strategy, undefined, 'Real Agent acceptance must not fan out into a matrix.');
+assert.equal(macAcceptance.env, undefined, 'Preparation must not inherit the Agent credential.');
+const macStep = name => {
+  const found = macAcceptance.steps.find(candidate => candidate.name === name);
+  assert.ok(found, `Missing macOS acceptance step: ${name}`);
+  return found;
+};
+for (const name of ['Checkout acceptance source', 'Setup fixed Agent Node.js', 'Install locked dependencies',
+  'Install fixed real Agent CLIs', 'Run finite real Agent acceptance']) {
+  assert.deepEqual(macStep(name), step(name), `macOS must preserve the shared ${name} contract.`);
+}
+const python = macStep('Setup fixed process observer Python');
+assert.equal(python.uses, 'actions/setup-python@v5');
+assert.equal(python.with['python-version'], '3.12.10');
+const observer = macStep('Prepare isolated process observer');
+assert.match(observer.run, /python -m venv "\$RUNNER_TEMP\/agent-observer"/u);
+assert.match(observer.run, /"\$RUNNER_TEMP\/agent-observer\/bin\/python" -m pip install --only-binary=:all: --require-hashes --requirement scripts\/test\/fixtures\/darwin-agent-observer-requirements\.txt/u);
+assert.match(observer.run, /echo "DEV_SESSION_CANVAS_AGENT_OBSERVER_PYTHON=\$RUNNER_TEMP\/agent-observer\/bin\/python" >> "\$GITHUB_ENV"/u);
+const requirements = await readFile('scripts/test/fixtures/darwin-agent-observer-requirements.txt', 'utf8');
+assert.deepEqual(requirements.trim().split(/\s+/u), [
+  'psutil==7.0.0',
+  '--hash=sha256:101d71dc322e3cffd7cea0650b09b3d08b8e7c4109dd6809fe452dfd00e58b25',
+  '--hash=sha256:39db632f6bb862eeccf56660871433e111b6ea58f2caea825571951d4b6aa3da'
+], 'The observer accepts only the fixed macOS x64 and arm64 psutil wheels.');
+const macChecks = macStep('Check real Agent workflow contract');
+assert.match(macChecks.run, /node scripts\/test\/test-runtime-agent-ci-workflow\.mjs/u);
+assert.match(macChecks.run, /node scripts\/test\/test-agent-candidate-process-observer\.mjs/u);
+assert.match(macChecks.run, /"\$DEV_SESSION_CANVAS_AGENT_OBSERVER_PYTHON" -B scripts\/test\/test-agent-candidate-process-observer\.py/u);
+assert.ok(macAcceptance.steps.indexOf(python) < macAcceptance.steps.indexOf(observer));
+assert.ok(macAcceptance.steps.indexOf(observer) < macAcceptance.steps.indexOf(macChecks));
+const macVSCode = macStep('Prepare fixed VS Code');
+assert.match(macVSCode.run, /version: '1\.117\.0'/u);
+assert.match(macVSCode.run, /platform: process\.arch === 'arm64' \? 'darwin-arm64' : 'darwin'/u);
+assert.match(macVSCode.run, /DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=/u);
+const macBuild = macStep('Build fixed Electron execution candidate');
+assert.match(macBuild.run, /assert\.equal\(process\.versions\.electron, "39\.8\.7"\)/u);
+assert.match(macBuild.run, /assert\.equal\(process\.versions\.node, "22\.22\.1"\)/u);
+assert.match(macBuild.run, /assert\.equal\(process\.versions\.modules, "140"\)/u);
+assert.match(macBuild.run, /af6712ab16c436b9288ece2f0173924c74008446346bda3457d07b769f402eda/u);
+assert.match(macBuild.run, /ELECTRON_RUN_AS_NODE=1 .*macos-execution-candidate-assets\.mjs build/u);
+assert.match(macBuild.run, /--execution-profile=macos-owner-v1-candidate --execution-assets/u);
+const macRun = macStep('Run finite real Agent acceptance');
+assert.deepEqual(macAcceptance.steps.filter(candidate => JSON.stringify(candidate).includes('secrets.')), [macRun]);
+for (const preparation of macAcceptance.steps.slice(0, macAcceptance.steps.indexOf(macRun))) {
+  assert.equal(preparation.env, undefined, `Preparation cannot receive credential environment: ${preparation.name}`);
+  assert.doesNotMatch(JSON.stringify(preparation), /DEEPSEEK_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY|secrets\./u);
+}
+const macUpload = macStep('Upload sanitized real Agent report');
+assert.deepEqual(macAcceptance.steps.slice(macAcceptance.steps.indexOf(macRun) + 1), [macUpload],
+  'Only sanitized report upload may follow credential-bearing acceptance.');
+assert.deepEqual(macUpload, { ...upload, with: { ...upload.with,
+  name: 'runtime-real-agent-macos-${{ github.run_id }}-${{ github.run_attempt }}' } });
+assert.deepEqual(macAcceptance.steps.filter(candidate => candidate.uses?.startsWith('actions/upload-artifact@')), [macUpload],
+  'Raw Agent output, temporary credentials and home directories must never be uploaded.');
+for (const candidate of macAcceptance.steps.filter(candidate => candidate.run)) {
+  const syntax = spawnSync('bash', ['-n'], { input: candidate.run, encoding: 'utf8' });
+  assert.equal(syntax.status, 0, `Invalid shell syntax in macOS ${candidate.name}: ${syntax.stderr}`);
+}
+
+console.log('runtime real Agent CI workflow contract tests passed for Linux and macOS');

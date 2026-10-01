@@ -24,6 +24,10 @@ try {
   const text = await fs.readFile(path.join(directory, 'summary.json'), 'utf8');
   const summary = JSON.parse(text);
   assert.equal(summary.pass, true);
+  assert.equal(summary.platform, 'unknown', 'Do not label legacy evidence as a newly tested platform.');
+  const macDirectory = path.join(root, 'darwin-report');
+  await writeAgentCandidateCIReport({ ...options, directory: macDirectory, input: { platform: 'darwin' } });
+  assert.equal(JSON.parse(await fs.readFile(path.join(macDirectory, 'summary.json'), 'utf8')).platform, 'darwin');
   assert.equal(summary.scenarios.length, 8);
   assert.equal(summary.scenarios[0].cleanup.forcedSignals, 0);
   assert.equal(summary.scenarios[0].sourceDisposition, null, 'Do not infer EOF from pass or exit.');

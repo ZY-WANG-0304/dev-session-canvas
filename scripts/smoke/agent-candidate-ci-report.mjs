@@ -104,9 +104,11 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
     const version = input?.cli?.[provider]?.version;
     safeVersions[provider] = /^(?:codex-cli )?\d+\.\d+\.\d+(?: \(Claude Code\))?$/.test(version ?? '') ? version : null;
   }
+  const platform = ['linux', 'darwin'].includes(input?.platform) ? input.platform : 'unknown';
   const report = {
     schemaVersion: 1,
-    scope: 'Linux real Codex/Claude CLI + DeepSeek + candidate Host/Webview; not cross-platform closure.',
+    scope: 'Real Codex/Claude CLI + DeepSeek + candidate Host/Webview on the recorded platform; not cross-platform closure.',
+    platform,
     backend: 'deepseek', model: 'deepseek-flash', cli: safeVersions,
     phase: ['prepare', 'native-assets', 'complete', 'credential-cleanup'].includes(phase) || rows.some(row => row.name === phase)
       ? phase : 'unknown',

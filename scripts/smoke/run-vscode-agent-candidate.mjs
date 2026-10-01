@@ -20,7 +20,7 @@ const authOnly = values['auth-only'] === true;
 assert(['existing', 'deepseek'].includes(values.backend), 'Unsupported Agent acceptance backend.');
 assert(!values['ci-report'] || values.backend === 'deepseek', 'CI reports require the isolated DeepSeek backend.');
 assert(!(authOnly && values.backend === 'deepseek'), 'DeepSeek authentication is verified by the real natural scenarios.');
-assert.equal(process.platform, 'linux');
+assert(['linux', 'darwin'].includes(process.platform), 'The fixed Agent acceptance supports Linux or macOS.');
 assert(values.output, 'Specify a new --output evidence directory.');
 if (shouldReRunInsideXvfb()) process.exit(runInsideXvfb(fileURLToPath(import.meta.url), projectRoot));
 const output = path.resolve(values.output);
@@ -65,6 +65,17 @@ const authReferences = backendConfiguration?.authReferences ?? { CODEX_HOME: pro
   CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude') };
 const nodeInterpreter = { entry: process.execPath, realpath: await fs.realpath(process.execPath), version: process.version };
 assert.equal(nodeInterpreter.version, 'v25.6.0', 'This fixed Agent input requires the installed Node 25.6.0.');
+let processObserver;
+if (process.platform === 'darwin') {
+  const python = process.env.DEV_SESSION_CANVAS_AGENT_OBSERVER_PYTHON;
+  assert(python && path.isAbsolute(python), 'Darwin Agent acceptance requires its explicit psutil Python interpreter.');
+  await fs.access(python, constants.X_OK);
+  const check = spawnSync(python, ['-c', 'import sys, psutil; assert sys.platform == "darwin"; assert psutil.__version__ == "7.0.0"; print(sys.version.split()[0])'],
+    { encoding: 'utf8', timeout: 10000, maxBuffer: 4096 });
+  assert.equal(check.status, 0, 'Darwin process identity dependency is unavailable.');
+  assert.equal(check.stdout.trim(), '3.12.10', 'Darwin process identity requires the pinned Python runtime.');
+  processObserver = { python, pythonVersion: check.stdout.trim(), psutilVersion: '7.0.0' };
+}
 const codexEnvironment = { ...process.env, PATH: `${path.dirname(nodeInterpreter.entry)}${path.delimiter}${process.env.PATH ?? ''}` };
 const cli = {};
 for (const [provider, version] of [['codex', '0.157.1'], ['claude', '2.1.280']]) {
@@ -85,20 +96,28 @@ const testCommandReferences = { DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: cli.codex
 const codexIsolation = authOnly ? undefined : inspectCodexIsolation({ cli, codexEnvironment, workspaceRoot, authReferences });
 phase = 'native-assets';
 const dist = path.join(projectRoot, 'extensions/vscode/dev-session-canvas/dist');
+const platformName = process.platform === 'darwin' ? 'macos' : 'linux';
+const assetTarget = process.platform === 'darwin' ? `darwin-${process.arch}` : 'linux-x64-glibc';
 const assetManifest = JSON.parse(await fs.readFile(path.join(dist,
-  'native/linux-execution-candidate/linux-x64-glibc/manifest.json'), 'utf8'));
-assert.equal(assetManifest.profile, 'linux-owner-v1-candidate');
+  `native/${platformName}-execution-candidate/${assetTarget}/manifest.json`), 'utf8'));
+assert.equal(assetManifest.profile, `${platformName}-owner-v1-candidate`);
+assert.equal(assetManifest.platform, process.platform);
+assert.equal(assetManifest.arch, process.arch);
 assert.equal(assetManifest.runtime.name, 'electron');
 const hashes = {};
 for (const file of ['extensions/vscode/dev-session-canvas/dist/extension.js',
   'extensions/vscode/dev-session-canvas/dist/runtime-supervisor.js',
-  'extensions/vscode/dev-session-canvas/dist/linux-execution-provider.js',
+  `extensions/vscode/dev-session-canvas/dist/${platformName}-execution-provider.js`,
   'extensions/vscode/dev-session-canvas/dist/webview.js',
   'scripts/smoke/run-vscode-agent-candidate.mjs', 'tests/vscode-smoke/agent-candidate-tests.cjs',
   'scripts/smoke/agent-candidate-deepseek.mjs', 'scripts/smoke/agent-candidate-ci-report.mjs',
   'tests/vscode-smoke/agent-candidate-process-observer.cjs',
   'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts']) {
   hashes[file] = createHash('sha256').update(await fs.readFile(path.join(projectRoot, file))).digest('hex');
+}
+if (processObserver) {
+  const helper = 'tests/vscode-smoke/agent-candidate-process-observer.py';
+  hashes[helper] = createHash('sha256').update(await fs.readFile(path.join(projectRoot, helper))).digest('hex');
 }
 const runtimePaths = await build({ entryPoints: [path.join(projectRoot,
   'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts')],
@@ -110,7 +129,8 @@ scenarios = authOnly ? [{ name: 'auth-only', authOnly: true, state: 'not-run' }]
 const writeJson = (file, data) => fs.writeFile(path.join(output, file), `${JSON.stringify(data, null, 2)}\n`);
 input = { schemaVersion: 1,
   scope: authOnly ? 'Real Host auth-only diagnosis; not A4 product acceptance'
-    : 'A4 finite Linux real CLI acceptance; not A3/A5 closure',
+    : `A4 finite ${process.platform} real CLI acceptance; not A3/A5 closure`,
+  platform: process.platform, processObserver,
   runId, cli, nodeInterpreter, authReferences, testCommandReferences, codexIsolation, workspaceRoot, assetManifest, hashes,
   backend: backendConfiguration?.descriptor ?? { backend: 'existing', model: 'existing-cli-configuration' },
   scenarioCount: scenarios.length, plannedModelTurns: authOnly ? 0 : 4,
@@ -138,7 +158,7 @@ for (const [index, scenario] of scenarios.entries()) {
   const smokeHostRoot = await prepareMainSmokeHostExtension({ projectRoot, targetRoot: path.join(debugRoot, 'smoke-host') });
   await fs.writeFile(resolveStagedSmokeTestPath(smokeHostRoot, 'agent-candidate-runtime-paths.cjs'),
     runtimePaths.outputFiles[0].contents);
-  const config = { ...scenario, cli: cli[scenario.provider], nodeInterpreter, testCommandReferences, workspacePath,
+  const config = { ...scenario, cli: cli[scenario.provider], nodeInterpreter, testCommandReferences, workspacePath, processObserver,
     backend: values.backend,
     ...(backendConfiguration ? { claudeSettingsPath: backendConfiguration.claudeSettingsPath } : {}),
     ...(authOnly ? { cliCandidates: cli, expectedAuthReferences: authReferences } : {}),
