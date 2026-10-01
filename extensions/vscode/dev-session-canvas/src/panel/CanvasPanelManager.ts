@@ -12381,6 +12381,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.terminalReadRelay.completeRemote(`${surface}:${kind}:${nodeId}`, remoteCompletion)));
       }
       assertCompletionCurrent();
+      if (remoteCompletion?.finalRevision !== undefined) {
+        // Reader completion is independent of saving the lightweight completed node.
+        for (const surface of ['editor', 'panel'] as const) {
+          assertCompletionCurrent();
+          const completed = this.terminalReadRelay.getCompleted(`${surface}:${kind}:${nodeId}`);
+          if (completed?.sessionId === remoteCompletion.sessionId &&
+              completed.authorityId === remoteCompletion.authorityId &&
+              completed.finalRevision === remoteCompletion.finalRevision) {
+            await this.postExecutionSnapshot(kind, nodeId, { surface, executionSessionId: snapshot.sessionId });
+          }
+        }
+      }
+      assertCompletionCurrent();
       await this.persistState({
         reason: 'runtime-supervisor-completed-snapshot',
         workspaceStateMode: 'skip',

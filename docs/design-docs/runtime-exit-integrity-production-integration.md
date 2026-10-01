@@ -2211,6 +2211,14 @@ Codex snapshot-only stop为空、最终sequence11，完整初始回放与saved/p
 
 保持障碍存在，再经B原页面的 `measureCapacityInteraction` 发送新nonce，要求同主体、provider、Supervisor及reader收到真实 `DSC_A1_REPLY_<nonce>` 并在原1500ms内应用。该交互后的合法保存可能更新磁盘，不能把第一失败快照不变要求扩大到后续所有写入；也不预设移除障碍后会自动重试A保存。结束时只对本轮仍为空、同inode且非symlink的障碍执行rmdir，再走原reset；reset返回不代替零bindings/pending/nodes及本方主体/provider实际退出检查。必要的孤立idle Supervisor正常TERM单独记账，任何失败、未知或兜底动作不覆盖原结果。实际运行前保留harness来源，首次失败保留，不自动重试取绿。
 
+2026-10-01唯一首轮 `.debug/a6-root-failure-20261001-first/` 为exit1：真实root A EISDIR与completion callback失败已观察，第一冻结三文件hash均未改、两原binding保留；A实际EOF/finalRevision4，原reader收到完整marker页，但15秒内没有final notification/applied，故B故障后交互尚未执行。清理另在registry仍有两条旧记录处失败；本轮主体/provider/Supervisor/UI六PID独立核对均已消失、障碍已移除，outer fallback只有obstacle-already-absent，无兜底信号。首轮失败和资源释放事实分别保留，不能声称cleanup通过。
+
+源码直接解释final通知缺口：`handleRuntimeSupervisorState()` 等 `applyCompletedRuntimeSupervisorSnapshot()` 保存成功后才发布终态；relay已completeRemote固定了最终revision，但root保存异常阻断后续发布。选择在原identity/reader已固定后、落盘前复用 `postExecutionSnapshot()` 向仍存在的completed reader发布已确认final水位；不新建reader、不宣称保存成功、不删除原来源或binding。页面必须真实应用并回执，发布本身不是applied，read失败/cancelled仍独立。原root失败方法测试先增加该断言再修；保持旧回滚、root隔离、节点replacement及strict deadline保护，正常成功路径的后续同终态通知允许原协议去重。
+
+清理的registry断言另有验收顺序错误：Supervisor无SIGTERM handler，正常协调保存路径是idle shutdown；不能把立即TERM解释为flush完成。只在产品reset已释放bindings/主体之后，按原清理截止等真实registry空记录落盘，再对本方孤立idle Supervisor独立TERM并检查退出。没有增加崩溃后历史恢复承诺，不通过修改registry或延长预算取得绿色。修后需要新固定包才可复验产品改动，原604494fd失败不追认。
+
+原实际Host/root writer用例加入已有reader后在原实现确定性失败，日志 `.debug/a6-root-final-notification-before-20261001.log` 保留exit1；预保存通知窄修后两类root EISDIR仍抛出、原文件/metadata/binding/managed session不变，页面final发布与实际回执分开断言成立，Host147/147、Runtime completed、typecheck与A6纯测通过。独立只读复审无新阻塞；新路径只在协商finalRevision的既有reader生效，surface失效后的relay清理和原身份/期限保护保持。尚未以新包跑原生，不将旧包首败追认通过。
+
 ## 48. A2/A3 已结束快照的尺寸归属
 
 第46节Claude的安全摘要中，published final是66x21，saved metadata是96x30，replay没有resize snapshot。发布比较包含geometry，因此false至少由尺寸差异触发；replay按66x21消费、saved按96x30直接恢复，也不是同尺寸对照。`resizedSavedMatchesPage` 从saved metadata尺寸开始再resize到96x30，不能补回原尺寸历史。buffer true仅比较去空行/右侧空白后的文本，不证明完整终态；viewportY不是baseY，不能用cursorY加viewportY相等推导逻辑光标相等。仍保留本次八场原执行/退出断言通过，未证明非空停止后的画面/重开等价，也未证明正文丢失或macOS PTY缺陷。
@@ -2224,3 +2232,7 @@ Codex snapshot-only stop为空、最终sequence11，完整初始回放与saved/p
 既有Playwright六例首轮为4过/2失败，工件冻结于 `.debug/a2-snapshot-webview-20261001-first/`。两类snapshot恢复和scrollback四例通过；两类final snapshot不覆盖live backlog的复合谓词失败，尚待核对失败条件，不根据Host局部修复追认为通过。该浏览器harness不运行本次Host方法，结果与原macOS Agent比较分账，不能将其自动归因于六行保护。
 
 补齐四项snapshot分支的submitted/replacement负向回归后，原序列化测试入口和新增16/16全部通过。尺寸修复只关闭这一具名结构缺陷，非空snapshot实际页面及重开格仍需原A2/A3证据，不以headless代替页面。
+
+冻结Playwright trace/probe的只读对账确认，两例实际都有完整live tail、都没有替换正文，唯一失败是要求 `[Dev Session Canvas]` 退出banner。第32.4节早已选定exit不再向xterm注入合成正文以保护尾部/光标；当前源码与dist均如此，因此旧fixture与现行契约冲突，不是本次Host guard回归。仅将同一组tail/最终snapshot用例中的banner断言改为不存在，保留尾部及禁止快照替换断言，再运行这四例与原四例恢复/scrollback；旧4/6现场保持，不能追认为通过，也不修改业务恢复banner。冻结trace没有内嵌bundle字节，不声称已从trace回证其SHA。
+
+修正旧fixture后的八项定向Playwright全部通过：两类tail不注入正文、final snapshot不替换backlog、序列化恢复与scrollback恢复各两例。未改Webview业务，原4/6仍失败；该结果不代证新Host尺寸保护的真实installed组合或原macOS非空stop因果。

@@ -1802,6 +1802,22 @@ for (const kind of ['terminal', 'agent']) {
     f.host.getExecutionSessions(kind).set(session.nodeId, managed);
     f.host.executionCandidateProfile = EXECUTION_CANDIDATE_PROFILE;
     f.host.terminalReadRelay = new RuntimeTerminalReadRelay();
+    const posted = [];
+    const settled = [];
+    f.host.postMessage = (message, surface) => posted.push({ message, surface });
+    f.host.surfaceLifecycle = { editor: { terminalReadSettlementV1: true } };
+    const readKey = `editor:${kind}:${session.nodeId}`;
+    const readId = `root-failure-${kind}-reader`;
+    await f.host.terminalReadRelay.open(readKey, {
+      openTerminalRead: async () => ({ readId, sessionId: session.sessionId, authorityId, headRevision: 1,
+        settlementMode: 'final-application-v1', checkpoint: { version: 1, sessionId: session.sessionId,
+          authorityId, revision: 0, cols: 80, rows: 24, scrollback: 100, createdAtMs: 1,
+          serializedState: { format: 'xterm-serialize-v1', data: '', outputSequence: 0 } } }),
+      readTerminalPage: async params => ({ ...params, revision: 1, headRevision: 1,
+        events: [{ type: 'output', revision: 1, createdAtMs: 2, data: 'original-final-tail' }] }),
+      closeTerminalRead: async params => { settled.push(params); return { ok: true, settlement: 'recorded' }; }
+    }, session.sessionId, authorityId, 'editor', undefined, 'final-application-v1');
+    await f.host.terminalReadRelay.read(readKey, { readId, sessionId: session.sessionId, authorityId, afterRevision: 0 });
     f.host.isRuntimePersistenceEnabled = () => true;
     f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
     let strictDeletes = 0;
@@ -1826,6 +1842,18 @@ for (const kind of ['terminal', 'agent']) {
       });
       await assert.rejects(f.host.applyCompletedRuntimeSupervisorSnapshot(session.nodeId, kind, snapshot),
         /EISDIR|illegal operation on a directory/i);
+      const final = posted.find(entry => entry.message.type === 'host/executionTerminalAvailable' &&
+        entry.message.payload.completed === true);
+      assert(final, 'A failed root save must not hide the confirmed final watermark from the original reader.');
+      assert.equal(final.surface, 'editor');
+      assert.equal(final.message.payload.executionSessionId, session.sessionId);
+      assert.equal(final.message.payload.authorityId, authorityId);
+      assert.equal(final.message.payload.finalRevision, 1);
+      assert.deepEqual(settled, [], 'Publishing the final watermark is not a reader application acknowledgement.');
+      assert.equal((await f.host.closeExecutionTerminalRead('editor', { nodeId: session.nodeId, kind,
+        executionSessionId: session.sessionId, authorityId, readId,
+        outcome: { kind: 'applied', finalRevision: 1 } })).settlement, 'recorded');
+      assert.equal(settled.length, 1);
       assert.deepEqual(f.writes, [f.rootFile], 'the original root writer fails before a workspace save');
       assert.equal(await readFile(f.rootFile, 'utf8'), beforeRoot);
       assert.equal(await readFile(f.workspaceFile, 'utf8'), beforeWorkspace);

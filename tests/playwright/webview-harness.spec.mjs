@@ -15161,7 +15161,7 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
-  test(`${executionKind} exit preserves buffered tail output before the exit banner`, async ({ page }) => {
+  test(`${executionKind} exit preserves buffered tail output without synthetic terminal text`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const tailUsageLine = 'Token usage: input=12 output=34 total=46';
     const tailResumeLine = 'To continue this session, run: codex resume session-tail-123';
@@ -15186,14 +15186,14 @@ for (const executionKind of ['agent', 'terminal']) {
       return (
         visibleLines.some((line) => line.includes(tailUsageLine)) &&
         visibleLines.some((line) => line.includes(tailResumeLine)) &&
-        visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))
+        !visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))
       );
     });
 
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(tailUsageLine))).toBe(true);
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(tailResumeLine))).toBe(true);
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
-      true
+      false
     );
   });
 }
@@ -15252,14 +15252,14 @@ for (const executionKind of ['agent', 'terminal']) {
       const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
       return (
         visibleLines.some((line) => line.includes(liveBufferedLine)) &&
-        visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`)) &&
+        !visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`)) &&
         !visibleLines.some((line) => line.includes(replacementOnlyLine))
       );
     });
 
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(liveBufferedLine))).toBe(true);
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
-      true
+      false
     );
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(replacementOnlyLine))).toBe(false);
   });

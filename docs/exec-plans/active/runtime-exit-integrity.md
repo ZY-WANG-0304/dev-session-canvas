@@ -100,10 +100,12 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
-- [ ] (2026-10-01，第47节) 实施独立A6固定包双root实际页面场景；运行前冻结A保存失败/B原1500ms交互和本方清理，先纯测/审查再唯一原生运行。
+- [x] (2026-10-01，第47节) 独立A6纯测/审查及固定旧包唯一首轮完成，exit1保留；真实EISDIR、原来源/磁盘保留与EOF成立，但final通知被保存失败阻断，B故障后交互未执行，cleanup registry断言另失败。
+- [x] (2026-10-01，第47节) 已有reader/root writer先红后修final水位发布与落盘耦合，Host147/147、completed/typecheck/A6纯测与独立复审通过；清理改为等真实空registry再独立TERM。
+- [ ] (2026-10-01，第47节) 新固定包只复验原多根组合，不放宽applied/尾部或旧失败。
 - [x] (2026-10-01，第48节) 实际Host/headless先红3过/9失败后六行snapshot尺寸保护使原12项通过，独立Host147/147、Runtime completed与typecheck通过；不证明原macOSrun唯一因果。
 - [x] (2026-10-01，第48节) 新增submitted/replacement负向组合及原序列化入口回归通过，新增16/16。
-- [ ] (2026-10-01，第48节) 既有页面四例通过、两例final backlog复合谓词首败已冻结，只定位直接相关条件；非空snapshot实际页面及重开不由headless代证。
+- [x] (2026-10-01，第48节) 页面旧fixture错误要求合成exit banner，按32.4既定契约改为无合成正文且原tail/不替换不变，相关八例通过；原4/6保留。非空snapshot实际页面/重开不由此代证。
 - [x] (2026-10-01，第42节) Windows36846733819已从初步宿主启动分类收窄为最终状态传播/消费阻塞；页面完整90000行与registry closed/EOF不代替Host完成和释放。
 - [x] (2026-10-01，第42节) queued-final-state/drain最小回归在原Server超时exit1；socket级集中唤醒后Host credit全组、client28/28、paged completion四组合及typecheck通过，尚未据此声称Windows原生失败修复。
 - [x] (2026-10-01，第41节有限重跑) 36850339021原八场真实Agent均passed、四natural真实响应/EOF、八cleanup全零，Codex空snapshot严格验收及新Host重开通过；旧三轮失败保持且根因未知。
@@ -454,6 +456,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-10-01，第47节真实首败揭示relay固定final revision并不等于页面收到final水位，root保存失败阻断了后续通知；尾部页已收到仍无法完成applied回执。另Supervisor不处理SIGTERM，不能以本方立即TERM后的陈旧registry判定正常协调shutdown失败，也不把实际PID已消失冒充完整cleanup通过。
+
 2026-10-01，第48节实际Host先红证明同一snapshot错标后，即使绝对光标行和非空文字相同，可见画面仍不同；不能用文字相等代替终态完整性。既有页面六例的两例final backlog首败在不执行本次Host方法的浏览器harness中发生，先核对具体谓词，不把它当作新guard回归或工具扩张理由。
 
 2026-10-01，第48节只读核对：Claude final为66x21、saved为96x30，replay无resize，当前false不是同尺寸比较。Host无session resize确实只改metadata尺寸，原snapshot不变；这是独立可验证的跨平台风险，但原生摘要缺事件时序，尚不能写成本轮唯一因果。去空白文本buffer相同和cursorY+viewportY相同均不证明完整终态。
@@ -754,6 +758,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+- 决策：将既有reader的已确认final水位发布放在root最终保存之前，保存失败继续保留原binding/来源；A6清理在原截止内等空registry后才单独TERM。理由：终端事实与磁盘成功是不同责任，不能互相冒充或由写失败无限阻断；默认信号退出不提供协调flush承诺。日期/作者：2026-10-01 / Codex。
+
 - 决策：用六行no-session保护冻结已保存snapshot及其geometry，新candidate仅按原身份推进独立viewport，局部测试接入原序列化入口。理由：页面新尺寸是新执行的输入，不是重新标记旧快照的依据；不需迁移格式、重写终端或重跑模型。日期/作者：2026-10-01 / Codex。
 
 - 决策：第47节只用已有固定installed包补A6双root实际EISDIR与B交互；第48节将非空snapshot差异收窄为实际Host尺寸归属的先红和最小修正。理由：两项直接对应既定产品阻塞，可在本地有限输入验证，不扩大工具或模型矩阵；保存内容与geometry须保持同一状态来源。日期/作者：2026-10-01 / Codex。
@@ -1035,6 +1041,10 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-01，第47节已完成final发布/保存独立性的先红和最小修正，第48节旧banner断言按既定契约修正后八项页面回归通过；旧首败都保留。新installed原多根组合尚待构建/复验，默认启用及整体F-04/B2/A5仍未完成。
+
+2026-10-01，第47节首次真实多根组合失败已冻结，未完成B故障后交互；本方资源独立核对无残留，但registry清理断言失败不改绿。下一只修两项直接阻塞原场景的明确原因，不新增D3/D4或任意并发矩阵。
 
 2026-10-01，第48节已有确定产品缺陷的先红和最小修复；原12项、147项Host及completed/typecheck通过。页面首轮4/6保持失败结果，新增负向组合待回归，A6固定包实验另行运行中，不把局部绿色或测试数扩大为A2/A3/F-04整体完成。
 
