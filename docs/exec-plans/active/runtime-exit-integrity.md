@@ -462,6 +462,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-10-01，固定六格workflow只存在主题分支时，首次 `gh workflow run` 未找到注册项、没有启动实验；增加仅当前分支和该workflow自身路径的push入口，不放开普通源码触发。既有macOS/Windows产品run36872496523/36872496520已因兼容实现推送启动，尚待回收，不增加Agent请求。
+
 2026-10-01，第49节：构建宿主N-API10并非addon要求；显式API8可被真实Node16加载。glibc2.35本机产物实际要求2.34，同源码在固定buster构建后实际要求2.14，因此不能用构建tuple相等或修改manifest数字替代兼容构建。Windows候选/MD确实额外导入VC runtime，静态CRT选择依上游/模块边界作工程修正；官方ConPTY固定版本声明17763，不抄README的18309。
 
 2026-10-01，第47节真实首败揭示relay固定final revision并不等于页面收到final水位，root保存失败阻断了后续通知；尾部页已收到仍无法完成applied回执。修后新包原场景取得真实EISDIR与原reader applied4、B24.9ms及清理通过，证明两项责任可独立完成。Supervisor不处理SIGTERM，复验先观察空registry落盘再外部TERM，不冒称正常协调shutdown；旧首败不改。
@@ -765,6 +767,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 真实链路只有 Windows .cmd/.bat 会被 bridge 包 cmd /d /s /c，POSIX Agent 不由扩展另加运行 shell。本机 Codex npm JS 源码会等待 child，而旧 fake-provider 多是 exec；新增等待/非等待启动器对照补齐了这一层受控证据，不等于真实 provider 通过。首次启动诊断因错误要求 Linux spawn-helper 而在 spawn 前失败，0 个原生样本，已保留；12 s 进程内 timer 不能约束同步 probe 阻塞，外部 watchdog 与新增 fatal handler 故障注入仍缺。
 
 ## 决策记录
+
+- 决策：六资产首次注册仅增加当前主题分支/本workflow路径的push入口，保留手动触发与无凭据边界。理由：GitHub未注册非默认分支新workflow，不能通过重复dispatch获得结果；不为注册先合入未验收实现，也不在普通源码push重复六格。日期/作者：2026-10-01 / Codex。
 
 - 决策：按第49节分离三平台实际requirements与构建来源，六资产汇入原build并按执行端返回原profile；只在兼容基线编译且同产物加载后登记有限通过，默认启用仍等原验收。理由：既不能以精确构建版本阻止兼容宿主，也不能删gate而放过实际库依赖；旧OS环境单独询问，不把一般工具完备作为前置。日期/作者：2026-10-01 / Codex。
 

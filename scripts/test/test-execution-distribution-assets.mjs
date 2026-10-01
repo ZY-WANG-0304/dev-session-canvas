@@ -12,7 +12,10 @@ import { assertLinuxDistributionBaseline, checksumFor, distributionTargets, runt
 const require = createRequire(import.meta.url);
 const { checkNativeLoad } = require('../build/check-execution-native-load.cjs');
 const workflow = yaml.load(fs.readFileSync('.github/workflows/runtime-execution-assets.yml', 'utf8'));
-assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
+assert.deepEqual(workflow.on, { workflow_dispatch: null, push: {
+  branches: ['runtime-persistence-session-state-refactor'],
+  paths: ['.github/workflows/runtime-execution-assets.yml']
+} });
 assert.deepEqual(workflow.permissions, { contents: 'read' });
 assert.equal(workflow.env, undefined);
 assert.deepEqual(Object.keys(workflow.jobs), ['native-assets']);
@@ -110,4 +113,4 @@ try {
   assert.deepEqual(fs.readdirSync(path.join(extracted, 'darwin-arm64')).sort(), runtimeFiles(manifest).sort());
   if (process.platform !== 'win32') assert(fs.statSync(path.join(extracted, 'darwin-arm64/spawn-helper')).mode & 0o111);
 } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
-console.log('Execution distribution contract passed (six manual targets, checksums, Linux limits, mock loading and runtime-only archive; no network or native execution).');
+console.log('Execution distribution contract passed (six targets, manual/limited-bootstrap triggers, checksums, Linux limits, mock loading and runtime-only archive; no network or native execution).');

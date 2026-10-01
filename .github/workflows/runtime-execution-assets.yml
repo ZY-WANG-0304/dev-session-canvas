@@ -2,6 +2,9 @@ name: Execution Native Distribution Assets
 
 on:
   workflow_dispatch:
+  push:
+    branches: [runtime-persistence-session-state-refactor]
+    paths: [.github/workflows/runtime-execution-assets.yml]
 
 permissions:
   contents: read
