@@ -8,7 +8,8 @@ import esbuild from 'esbuild';
 const { outputFiles } = await esbuild.build({
   entryPoints: {
     transport: path.resolve('extensions/vscode/dev-session-canvas/src/panel/executionProviderTransport.ts'),
-    owner: path.resolve('extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle.ts')
+    owner: path.resolve('extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle.ts'),
+    protocol: path.resolve('extensions/vscode/dev-session-canvas/src/common/executionLifecycle.ts')
   },
   outdir: '/controlled-parent-cleanup-build',
   bundle: true,
@@ -23,6 +24,10 @@ const ownerSource = outputFiles.find(file => path.basename(file.path) === 'owner
 const ownerModule = { exports: {} };
 new Function('require', 'module', 'exports', ownerSource)(require, ownerModule, ownerModule.exports);
 const { ExecutionOwnerLifecycle } = ownerModule.exports;
+const protocolModule = { exports: {} };
+new Function('require', 'module', 'exports', outputFiles.find(file => path.basename(file.path) === 'protocol.js').text)(
+  require, protocolModule, protocolModule.exports);
+const { EXECUTION_CANDIDATE_BUDGETS } = protocolModule.exports;
 
 function scheduler() {
   let now = 0;
@@ -82,6 +87,7 @@ function harness(options = {}) {
   const messages = [];
   const events = [];
   let spawns = 0;
+  const spawnOptions = [];
   child.kill = signal => {
     signals.push({ child, signal, at: clock.now() });
     options.onKill?.(signal);
@@ -92,11 +98,11 @@ function harness(options = {}) {
   // Only Node process/stream/time boundaries are substituted; cleanup runs in the real module.
   new Function('require', 'module', 'exports', 'process', 'setTimeout', 'clearTimeout', 'setImmediate', transportSource)(
     specifier => {
-      if (specifier === 'node:child_process') return { spawn() { spawns++; return child; } };
+      if (specifier === 'node:child_process') return { spawn(_file, _args, config) { spawns++; spawnOptions.push(config); return child; } };
       if (specifier === 'node:perf_hooks') return { performance: { now: clock.now } };
       assert.equal(specifier, 'node:path');
       return require(specifier);
-    }, module, module.exports, { platform: 'linux', env: {} },
+    }, module, module.exports, { platform: options.platform ?? 'linux', env: {} },
     (callback, milliseconds) => clock.scheduleDeadline(clock.now() + milliseconds, callback),
     cancel => cancel(), callback => clock.scheduleTask(callback)
   );
@@ -117,7 +123,7 @@ function harness(options = {}) {
     resourceAcquired: resource => events.push(['acquired', resource])
   };
   return {
-    transport, clock, child, output, stderr, input, signals, messages, events,
+    transport, clock, child, output, stderr, input, signals, messages, events, spawnOptions,
     get spawns() { return spawns; },
     connect() { transport.connect(sink); child.emit('spawn'); },
     release() {
@@ -137,6 +143,173 @@ function harness(options = {}) {
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
 const budget = canSignal => ({ termDeadline: 100, killDeadline: 200, canSignal });
+
+test('the real scheduler rearms early timers and cancellation follows the current timer', () => {
+  let now = 100.25;
+  let nextId = 0;
+  const timers = new Map();
+  const module = { exports: {} };
+  new Function('require', 'module', 'exports', 'setTimeout', 'clearTimeout', transportSource)(
+    specifier => specifier === 'node:perf_hooks' ? { performance: { now: () => now } } : require(specifier),
+    module, module.exports,
+    (callback, delay) => {
+      const id = ++nextId;
+      timers.set(id, { callback, delay });
+      return id;
+    }, id => timers.delete(id)
+  );
+  const actual = module.exports.createNodeExecutionScheduler();
+  const fire = time => {
+    now = time;
+    const [id, timer] = timers.entries().next().value;
+    timers.delete(id);
+    timer.callback();
+  };
+  let calls = 0;
+  const cancel = actual.scheduleDeadline(113.9, () => { calls++; assert.ok(now >= 113.9); });
+  fire(113.25);
+  assert.equal(calls, 0, 'an early timer cannot consume the only deadline notification');
+  assert.equal(timers.size, 1);
+  fire(114.25);
+  assert.equal(calls, 1);
+  assert.equal(timers.size, 0);
+  cancel();
+  assert.equal(calls, 1);
+
+  const cancelled = actual.scheduleDeadline(130.9, () => { calls++; });
+  fire(130.25);
+  assert.equal(timers.size, 1);
+  cancelled();
+  cancelled();
+  assert.equal(timers.size, 0);
+  assert.equal(calls, 1);
+  actual.scheduleDeadline(120, () => { calls++; });
+  fire(131.25);
+  assert.equal(calls, 2, 'expired deadlines still run asynchronously once');
+  assert.throws(() => actual.scheduleDeadline(NaN, () => {}), /Invalid observation deadline/);
+});
+
+test('a partial startup retains unknown facts but publishes the original owner deadline after an early timer', async () => {
+  let now = 100.25;
+  let nextId = 0;
+  const timers = new Map();
+  const tasks = [];
+  const module = { exports: {} };
+  new Function('require', 'module', 'exports', 'setTimeout', 'clearTimeout', 'setImmediate', transportSource)(
+    specifier => specifier === 'node:perf_hooks' ? { performance: { now: () => now } } : require(specifier),
+    module, module.exports,
+    (callback, delay) => {
+      const id = ++nextId;
+      timers.set(id, { callback, at: now + delay });
+      return id;
+    }, id => timers.delete(id), callback => tasks.push(callback)
+  );
+  const actual = module.exports.createNodeExecutionScheduler();
+  const continuations = { get taskCount() { return tasks.length; }, runTask: () => tasks.shift()?.() };
+  const fireNext = time => {
+    const [id, timer] = [...timers.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+    assert.ok(time >= now);
+    now = time;
+    timers.delete(id);
+    timer.callback();
+  };
+  let sink;
+  let identity;
+  let finalFlushes = 0;
+  const owner = new ExecutionOwnerLifecycle({
+    kind: 'non-native',
+    capabilities: ['execution-lifecycle-v1', 'execution-close-observation-v1', 'execution-parent-cleanup-v1'],
+    scheduler: actual, budgets: EXECUTION_CANDIDATE_BUDGETS,
+    createTransport(binding) {
+      identity = binding;
+      return {
+        parentControl: Object.freeze({
+          identity, scheduler: actual,
+          expectedNativeResourceIds: Object.freeze(['pty-master', 'pty-child', 'pty-source', 'pty-creation']),
+          closed: Promise.resolve({ kind: 'closed', exitCode: 0, signal: null }),
+          terminate: () => assert.fail('partial startup cannot transfer unknown subject ownership')
+        }),
+        connect(value) {
+          sink = value;
+          sink.message({ type: 'ready', identity, capabilities: ['execution-lifecycle-v1'] });
+        },
+        send(message) {
+          if (message.type === 'start') {
+            for (const resourceId of ['pty-master', 'pty-creation']) {
+              sink.message({ type: 'resourceAcquired', identity, resourceId });
+            }
+            sink.message({ type: 'operationObservation', identity, operationId: message.operationId,
+              result: { kind: 'failed', stage: 'pty-create', reason: 'controlled partial startup' } });
+          } else if (message.type === 'requestStop' || message.type === 'cancelOutput') {
+            sink.message({ type: 'operationObservation', identity, operationId: message.operationId,
+              result: { kind: 'accepted' } });
+          }
+          return Promise.resolve();
+        }
+      };
+    }
+  });
+  const record = owner.reserve('partial-start-early-deadline');
+  const start = record.start({ file: '/controlled/subject', args: [] }, {
+    consume: async () => {}, flushFinal: async () => { finalFlushes++; return 0; }
+  });
+  assert.equal((await start.first).kind, 'failed');
+  sink.message({ type: 'processResult', identity, result: { kind: 'unconfirmed', reason: 'no child acquired' } });
+  sink.message({ type: 'sourceEnd', identity, finalFrameId: 0,
+    disposition: { kind: 'unknown', reason: 'no source acquired' } });
+  for (const resourceId of ['pty-master', 'pty-creation']) {
+    sink.message({ type: 'resourceResult', identity, resourceId, operationId: `${resourceId}-release`,
+      result: { kind: 'released' } });
+  }
+  sink.controlResourceResult({ kind: 'released' });
+  await flush(continuations);
+  const observation = record.snapshot().closeObservation;
+  assert.equal(observation.trigger, 'failure');
+  assert.equal(observation.startedAt, 100.25);
+  assert.equal(observation.finishAt, 13100.25, 'the candidate failure budget remains 13 seconds');
+  const first = record.requestStop('join-partial-start-observation');
+  for (const at of [observation.forceAt, observation.cancelAt, observation.parentCleanup.at]) {
+    fireNext(at);
+    await flush(continuations);
+  }
+  assert.equal(timers.size, 1, 'only the original final deadline remains');
+  fireNext(observation.finishAt - 0.25);
+  await flush(continuations);
+  assert.equal(record.snapshot().closeObservation.first, undefined);
+  assert.equal(timers.size, 1, 'the early notification must be rearmed for this same owner');
+  fireNext(observation.finishAt);
+  await flush(continuations);
+  assert.equal((await first).kind, 'unconfirmed');
+  const snapshot = record.snapshot();
+  assert.equal(snapshot.closeObservation.first.kind, 'unconfirmed');
+  assert.equal(snapshot.closeObservation.finishAt, observation.finishAt);
+  assert.equal(snapshot.adapter.process.kind, 'unconfirmed');
+  assert.equal(snapshot.adapter.source.kind, 'unknown');
+  assert.equal(snapshot.adapter.resources['pty-child'], undefined);
+  assert.equal(snapshot.adapter.resources['pty-source'], undefined);
+  for (const id of ['pty-master', 'pty-creation', 'provider-control']) {
+    assert.equal(snapshot.adapter.resources[id].current.kind, 'released');
+  }
+  assert.equal(snapshot.terminal.kind, 'applied');
+  assert.equal(finalFlushes, 1);
+  assert.equal(snapshot.settled, false);
+  record.settleReaders('lost');
+  assert.equal(record.snapshot().retired, false);
+  assert.ok(owner.snapshot().blockedReason);
+  assert.equal(timers.size, 0);
+});
+
+test('Windows provider stdio explicitly uses overlapped pipes without changing IPC or direct-child ownership', () => {
+  for (const platform of ['linux', 'darwin', 'win32']) {
+    const h = harness({ platform });
+    h.connect();
+    assert.deepEqual(h.spawnOptions[0].stdio, platform === 'win32'
+      ? ['overlapped', 'ignore', 'overlapped', 'ipc', 'overlapped'] : ['pipe', 'ignore', 'pipe', 'ipc', 'pipe']);
+    assert.equal(h.spawnOptions[0].detached, false);
+    assert.equal(h.spawnOptions[0].shell, false);
+    h.release();
+  }
+});
 
 test('the opt-in capability retains the original immutable binding without acquiring a child', () => {
   const identity = { executionId: 'original-control', generation: 'binding-1' };

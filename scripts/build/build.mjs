@@ -8,6 +8,8 @@ import { importCandidateAssets as importLinuxCandidateAssets,
   readCandidateAssets as readLinuxCandidateAssets } from './linux-execution-candidate-assets.mjs';
 import { importCandidateAssets as importMacosCandidateAssets,
   readCandidateAssets as readMacosCandidateAssets } from './macos-execution-candidate-assets.mjs';
+import { importCandidateAssets as importWindowsCandidateAssets,
+  readCandidateAssets as readWindowsCandidateAssets } from './windows-execution-candidate-assets.mjs';
 
 const require = createRequire(import.meta.url);
 const xtermBrowserMainEntryPath = require.resolve('@xterm/xterm/lib/xterm.js');
@@ -36,8 +38,8 @@ export async function resolveExecutionBuildSelection(args, distDirectory = mainE
   const source = values['execution-assets'];
   const admission = values['execution-admission'];
   if (profile === undefined && source === undefined && admission === undefined) return {};
-  if (!['linux-owner-v1-candidate', 'macos-owner-v1-candidate'].includes(profile) || !source) {
-    throw new Error('Specify a supported --execution-profile (linux-owner-v1-candidate or macos-owner-v1-candidate) and --execution-assets together.');
+  if (!['linux-owner-v1-candidate', 'macos-owner-v1-candidate', 'windows-owner-v1-candidate'].includes(profile) || !source) {
+    throw new Error('Specify a supported --execution-profile (linux-owner-v1-candidate, macos-owner-v1-candidate or windows-owner-v1-candidate) and --execution-assets together.');
   }
   if (values.watch) throw new Error('Execution candidate watch builds are not supported.');
   const admissionParts = admission === undefined ? [2, 1]
@@ -57,7 +59,8 @@ export async function resolveExecutionBuildSelection(args, distDirectory = mainE
   if (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
     throw new Error('Execution candidate assets must be outside the dist directory cleared by the build.');
   }
-  (profile === 'macos-owner-v1-candidate' ? readMacosCandidateAssets : readLinuxCandidateAssets)(sourceDirectory);
+  (profile === 'windows-owner-v1-candidate' ? readWindowsCandidateAssets
+    : profile === 'macos-owner-v1-candidate' ? readMacosCandidateAssets : readLinuxCandidateAssets)(sourceDirectory);
   return Object.freeze({ profile, source: sourceDirectory, admissionLimits });
 }
 
@@ -117,6 +120,19 @@ const macosExecutionProviderConfig = {
   outfile: fromMainExtensionDist('macos-execution-provider.js')
 };
 
+const windowsExecutionProviderConfig = {
+  ...linuxExecutionProviderConfig,
+  entryPoints: [fromMainExtensionRoot('src/panel/windowsExecutionProviderMain.ts')],
+  external: ['node-pty'],
+  outfile: fromMainExtensionDist('windows-execution-provider.js')
+};
+
+const windowsExecutionOutputWorkerConfig = {
+  ...linuxExecutionProviderConfig,
+  entryPoints: [fromMainExtensionRoot('src/panel/windowsExecutionOutputWorker.ts')],
+  outfile: fromMainExtensionDist('windows-execution-output-worker.js')
+};
+
 const webviewConfig = {
   entryPoints: {
     webview: fromMainExtensionRoot('src/webview/main.tsx'),
@@ -162,10 +178,13 @@ async function runBuild() {
       esbuild.build(supervisorLauncherConfig),
       esbuild.build(linuxExecutionProviderConfig),
       esbuild.build(macosExecutionProviderConfig),
+      esbuild.build(windowsExecutionProviderConfig),
+      esbuild.build(windowsExecutionOutputWorkerConfig),
       esbuild.build(webviewConfig)
     ]);
     if (selection.profile) {
-      (selection.profile === 'macos-owner-v1-candidate' ? importMacosCandidateAssets : importLinuxCandidateAssets)(
+      (selection.profile === 'windows-owner-v1-candidate' ? importWindowsCandidateAssets
+        : selection.profile === 'macos-owner-v1-candidate' ? importMacosCandidateAssets : importLinuxCandidateAssets)(
         { source: selection.source, dist: mainExtensionDistRoot });
       await fs.writeFile(fromMainExtensionDist('execution-candidate-selection.json'), `${JSON.stringify({
         schemaVersion: 1, profile: selection.profile, admissionLimits: selection.admissionLimits
@@ -179,6 +198,8 @@ async function runBuild() {
   const supervisorLauncherContext = await esbuild.context(supervisorLauncherConfig);
   const linuxExecutionProviderContext = await esbuild.context(linuxExecutionProviderConfig);
   const macosExecutionProviderContext = await esbuild.context(macosExecutionProviderConfig);
+  const windowsExecutionProviderContext = await esbuild.context(windowsExecutionProviderConfig);
+  const windowsExecutionOutputWorkerContext = await esbuild.context(windowsExecutionOutputWorkerConfig);
   const webviewContext = await esbuild.context(webviewConfig);
 
   await Promise.all([
@@ -187,6 +208,8 @@ async function runBuild() {
     supervisorLauncherContext.watch(),
     linuxExecutionProviderContext.watch(),
     macosExecutionProviderContext.watch(),
+    windowsExecutionProviderContext.watch(),
+    windowsExecutionOutputWorkerContext.watch(),
     webviewContext.watch()
   ]);
 }

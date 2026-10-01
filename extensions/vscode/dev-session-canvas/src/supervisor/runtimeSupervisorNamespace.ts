@@ -7,9 +7,10 @@ const ENDPOINT_PROBE_TIMEOUT_MS = 1000;
 export function assertRuntimeSupervisorNamespaceSupport(nativeClaim?: (storageDir: string) => void): void {
   if (process.platform === 'darwin' && typeof nativeClaim === 'function' && typeof process.getuid === 'function') return;
   const [major, minor] = process.versions.node.split('.').map(Number);
-  if (process.platform !== 'linux' || !Number.isInteger(major) || !Number.isInteger(minor)
-    || major < 20 || (major === 20 && minor < 8) || typeof process.getuid !== 'function') {
-    throw new Error('Runtime Supervisor namespace ownership requires Linux and Node >=20.8.');
+  if (!['linux', 'win32'].includes(process.platform) || !Number.isInteger(major) || !Number.isInteger(minor)
+    || major < 20 || (major === 20 && minor < 8)
+    || (process.platform === 'linux' && typeof process.getuid !== 'function')) {
+    throw new Error('Runtime Supervisor namespace ownership requires a supported platform and Node >=20.8.');
   }
 }
 
@@ -20,12 +21,14 @@ export async function acquireRuntimeSupervisorNamespace(storageDir: string,
     nativeClaim!(await fs.realpath(storageDir));
     return undefined;
   }
-  const identity = { uid: process.getuid!(), storageDir: await fs.realpath(storageDir) };
+  const canonicalStorageDir = await fs.realpath(storageDir);
+  const identity = process.platform === 'win32' ? { storageDir: canonicalStorageDir.toLowerCase() }
+    : { uid: process.getuid!(), storageDir: canonicalStorageDir };
   const digest = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
   const owner = net.createServer((socket) => socket.destroy());
   await new Promise<void>((resolve, reject) => {
     owner.once('error', reject);
-    owner.listen(`\0dsc-runtime-owner-${digest}`, () => {
+    owner.listen(process.platform === 'win32' ? `\\\\.\\pipe\\dsc-runtime-owner-${digest}` : `\0dsc-runtime-owner-${digest}`, () => {
       owner.removeListener('error', reject);
       resolve();
     });
@@ -36,6 +39,10 @@ export async function acquireRuntimeSupervisorNamespace(storageDir: string,
 }
 
 export async function prepareRuntimeSupervisorSocketPath(socketPath: string): Promise<void> {
+  if (process.platform === 'win32') {
+    await probeEndpoint(socketPath);
+    return;
+  }
   const before = await socketStat(socketPath);
   if (!before) return;
   if (!before.isSocket()) throw new Error('Runtime Supervisor endpoint is not a socket.');

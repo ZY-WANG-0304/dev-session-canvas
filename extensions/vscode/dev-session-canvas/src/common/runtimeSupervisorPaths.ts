@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import * as os from 'os';
 import * as path from 'path';
 
-import { EXECUTION_CANDIDATE_PROFILE, MACOS_EXECUTION_CANDIDATE_PROFILE,
+import { EXECUTION_CANDIDATE_PROFILE, MACOS_EXECUTION_CANDIDATE_PROFILE, WINDOWS_EXECUTION_CANDIDATE_PROFILE,
   assertExecutionCandidateProfile, type ExecutionCandidateProfile } from './executionLifecycle';
 import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
@@ -25,7 +25,8 @@ const RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR = 'runtime-supervisor-generations';
 export const CURRENT_RUNTIME_SUPERVISOR_GENERATION = 'terminal-stream-v1';
 const EXECUTION_CANDIDATE_GENERATIONS: Readonly<Record<ExecutionCandidateProfile, string>> = Object.freeze({
   [EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-v1',
-  [MACOS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-macos-v1'
+  [MACOS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-macos-v1',
+  [WINDOWS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-windows-v1'
 });
 
 type PathModuleLike = typeof path.posix | typeof path.win32;

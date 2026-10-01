@@ -1,0 +1,3 @@
+@echo off
+"%DSC_EXECUTION_NODE%" "%DSC_EXECUTION_SUBJECT%" "%DSC_EXECUTION_PREFIX%"
+exit /b %errorlevel%

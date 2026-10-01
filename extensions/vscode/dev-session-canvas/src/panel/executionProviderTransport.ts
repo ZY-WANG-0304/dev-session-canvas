@@ -17,8 +17,17 @@ export function createNodeExecutionScheduler(): ExecutionScheduler {
     scheduleDeadline(deadline, callback) {
       const remaining = deadline - performance.now();
       if (!Number.isFinite(remaining) || remaining > 0x7fffffff) throw new Error('Invalid observation deadline');
-      const timer = setTimeout(callback, Math.max(0, remaining));
-      return () => clearTimeout(timer);
+      let cancelled = false;
+      const wake = (): void => {
+        if (cancelled) return;
+        const left = deadline - performance.now();
+        // Node timers can wake before a fractional monotonic deadline.
+        if (left > 0) { timer = setTimeout(wake, Math.ceil(left)); return; }
+        cancelled = true;
+        callback();
+      };
+      let timer = setTimeout(wake, Math.max(0, Math.ceil(remaining)));
+      return () => { cancelled = true; clearTimeout(timer); };
     }
   };
 }
@@ -82,8 +91,8 @@ export class ExecutionProviderTransport implements ExecutionTransport {
   private killRequested = false;
 
   constructor(options: ExecutionProviderTransportOptions) {
-    if (process.platform !== 'linux' && process.platform !== 'darwin') {
-      throw new Error('Execution provider transport requires a supported POSIX platform');
+    if (!['linux', 'darwin', 'win32'].includes(process.platform)) {
+      throw new Error('Execution provider transport requires a supported platform');
     }
     assertExecutionIdentity(options.identity);
     if (!isAbsolute(options.executable) || !isAbsolute(options.entryPoint)) throw new Error('Provider paths must be explicit and absolute');
@@ -119,7 +128,8 @@ export class ExecutionProviderTransport implements ExecutionTransport {
     try {
       this.child = spawn(this.options.executable,
         [this.options.entryPoint, this.options.identity.executionId, this.options.identity.generation, ...this.options.args!],
-        { stdio: ['pipe', 'ignore', 'pipe', 'ipc', 'pipe'], shell: false, detached: false,
+        { stdio: process.platform === 'win32' ? ['overlapped', 'ignore', 'overlapped', 'ipc', 'overlapped']
+          : ['pipe', 'ignore', 'pipe', 'ipc', 'pipe'], shell: false, detached: false,
           env: this.options.env ?? process.env, serialization: 'json' });
     } catch {
       this.reportFault('Provider spawn failed before a child handle was returned');

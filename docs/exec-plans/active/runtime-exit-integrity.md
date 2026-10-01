@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前执行入口（2026-10-01，macOS产品接入）：第33节共享Unix原生owner、Darwin provider/factory/profile/generation/namespace及compile-only资产入口已实施，局部契约验证通过；共享改动后的Linux两模式实际Terminal完成/重开在 `.debug/linux-shared-owner-20261001-smoke/` 完整exit0，保留90002行/光标及各自历史策略。下一只在授权GitHub runner运行冻结的macOS Node四场，并接原两模式实际Electron/Webview完成重开，首次失败与未到达项分账，不增加工具前置。Windows核心并行实施但尚未原生验证；真实Agent、package及其余A1至A6未关闭。
+当前执行入口（2026-10-01，B2/A5）：macOS run `36820565903` 的Node编译、namespace/normal/paused-stop及清理通过，partial-create资源释放但原13秒关闭首报缺失，整场45秒失败、Electron/Webview未运行。共享scheduler提前通知丢失机制已先红并修，保持原预算/unknown，详见33.6；此前两轮失败保留。Windows核心/独立reader、工厂、profile/namespace、匹配Node/Electron资产入口与局部回归已实施，但尚无原生通过。下一对修后macOS执行原四例与实际Terminal两模式，并推进Windows原四例；Darwin真实Agent观察接线只补原八场的安全身份来源，真实Agent、package及其余A1至A6未关闭。
 
 当前执行入口（2026-10-01，优先于后面的历史下一步）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整exit0；真实新Host追赶时B51ms应用、A同动作12到18未追平2560，随后ready后13137.248ms完整恢复，原身份/hash/no-history及两份cleanup通过、outer forcedSignals/failures为空。该B1/A1组合收口，下一按生产接入第33节推进B2/A5的macOS产品接入：共享Unix owner、Darwin原生provider、两authority工厂/构建与namespace，保留独立profile/generation、匹配Node/Electron和packaged责任。该平台目前只有运行前设计，没有新平台通过；Windows、其余A项和总体仍开放，原10.14/旧失败及Agent snapshot stop具名未决项不改。
 
@@ -90,6 +90,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [x] (2026-10-01，B2/A5) 保存macOS前三轮失败及未运行项，第三轮normal已证明主体尾部/真实EOF/终态/本方资源；共享scheduler早唤醒机制确定性先红后修，原期限与未确认语义保持。
+- [x] (2026-10-01，B2/A5) Windows ConPTY核心、独立输出worker、有界交互、工厂/profile/namespace及匹配资产构建接线完成局部验证；同步调用异常与输入EPIPE影响输出两项先红后修，详见34节，不计作Windows原生通过。
 - [x] (2026-10-01) 第33节macOS生产原生与共享两authority接线、平台资产构建和有限验收入口已实施；仅源码/受控测试通过，不冒称Darwin实际通过。共享头重新编译后Linux原两模式Terminal四次launch全部exit0。
 - [ ] 执行第33.3冻结macOS Node四场和原两模式实际Electron/Webview验收，保存首败/清理和not-run；继续原A5，不新增诊断阶段。
 - [x] (2026-10-01，B1/A1) 容量设计10.15原两主体重连只提前B交互，固定一次完整exit0；B51ms应用时A12到18，随后13137.248ms追平，原身份/完整后缀/hash/no-history和两份cleanup通过。旧10.14/失败保留，不重复成功矩阵或关闭总体。
@@ -388,6 +390,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-10-01，macOS第三轮partial-create实际已释放本方三个资源，但结束期限后仍缺首次结论；共享timer浮点提前触发可丢失唯一通知，确定性测试证明机制存在。工件没有各timer进入时间，故不声称直接测得该轮调度时间。Windows独立复核另确认native标准异常需转Napi异常、输入错误不能提前销毁仍有尾部的reader，两项有先红回归；包装器终态不得单独代证实际CLI主体结束，原生验收须保留这项判断。
+
 2026-10-01，Darwin创建时临时资源不是固定全取得；若parent要求六个可选native ID全部释放，普通低fd路径会被误判未结算。改为实际创建事务聚合，native逐项实际取得/释放仍保留；共享原生头后的Linux实际Terminal双模式回归通过，不能据此推导Darwin系统调用通过。
 
 2026-10-01，10.15将原B动作提前到新reader已挂载/A已有编号内容后，就实际观察到同一Webview动作中A12到18、B51ms应用；随后原完整后缀在ready后13137.248ms通过。无需sleep、扩大负载或暂停消费，10.14此前overlap=false仅说明当时动作安排未覆盖该组合。本次独立source26214425bytes/hash/revision6502、原执行及新reader、自然无历史和两份cleanup均通过，但不构成一般容量或平台保证。
@@ -646,6 +650,8 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+2026-10-01，保持固定预算并在共享scheduler复核原deadline，提前唤醒重排而非延长时间或放宽结果；属于B2产品收尾的直接缺陷，不是工具通用增强。Windows按独立HPCON/process/input/source责任接线，合法外部句柄引用不作为泄漏；新增Darwin身份helper仅服务原真实Agent八场，不进入产品依赖。详见生产接入33.5、33.6与34节。
+
 - 决策：macOS先在同一有限workflow验证Node产品provider，再用匹配Electron产物直接跑原Terminal真实页面与重开；不使用诊断export代替产品，也不将Node通过代证UI。
   理由：复用既定验收覆盖A5实际缺口，失败停止后续并保留原断言，避免另起工具阶段。
   日期/作者：2026-10-01 / Codex。
@@ -884,6 +890,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-01当前平台增量：macOS第三轮只有前三例通过，第四例失败及后续未验仍保留；Windows局部源码/模块证据不能关闭A5。修scheduler后继续原实际平台验收，不追加诊断框架或复跑已完成容量组合，F-04、完整退出交付及既定剩余A项保持开放。
 
 2026-10-01，第33节产品实施与原Linux回归已形成可追溯增量，Darwin原生/实际页面仍待首次runner，Windows尚在独立实现。这里不关闭F-04、A5或整体计划；旧证据和已知Agent stop间歇未决项保持。
 

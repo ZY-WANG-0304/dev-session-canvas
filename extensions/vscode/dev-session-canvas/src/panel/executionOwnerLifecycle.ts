@@ -8,6 +8,7 @@ import {
   EXECUTION_CANDIDATE_BUDGETS,
   EXECUTION_CANDIDATE_PROFILE,
   MACOS_EXECUTION_CANDIDATE_PROFILE,
+  WINDOWS_EXECUTION_CANDIDATE_PROFILE,
   validateLaunchSpec,
   type AuthorityResult,
   type DataBatch,
@@ -63,7 +64,11 @@ export interface MacosExecutionOwnerOptions extends Omit<LinuxExecutionOwnerOpti
   readonly claimNamespace: (storageDir: string) => void;
 }
 
-export type NativeExecutionOwnerOptions = LinuxExecutionOwnerOptions | MacosExecutionOwnerOptions;
+export interface WindowsExecutionOwnerOptions extends Omit<LinuxExecutionOwnerOptions, 'kind'> {
+  readonly kind: 'windows-provider';
+}
+
+export type NativeExecutionOwnerOptions = LinuxExecutionOwnerOptions | MacosExecutionOwnerOptions | WindowsExecutionOwnerOptions;
 export type ExecutionOwnerOptions = NonNativeExecutionOwnerOptions | NativeExecutionOwnerOptions;
 
 export interface ExecutionOwnerHooks {
@@ -110,13 +115,14 @@ export class ExecutionOwnerLifecycle {
   private closing?: Promise<OwnerCloseResult>;
 
   constructor(options: ExecutionOwnerOptions) {
-    if (!['non-native', 'linux-provider', 'macos-provider'].includes(options.kind) || typeof options.createTransport !== 'function') {
+    if (!['non-native', 'linux-provider', 'macos-provider', 'windows-provider'].includes(options.kind) || typeof options.createTransport !== 'function') {
       throw new Error('An explicitly injected execution provider is required');
     }
     if (options.kind !== 'non-native' && (options.profile === undefined || options.profileMode === undefined)) {
       throw new Error('Native execution provider requires an explicit candidate profile and mode');
     }
     if ((options.kind === 'linux-provider' && options.profile !== EXECUTION_CANDIDATE_PROFILE) ||
+        (options.kind === 'windows-provider' && options.profile !== WINDOWS_EXECUTION_CANDIDATE_PROFILE) ||
         (options.kind === 'macos-provider' && (options.profile !== MACOS_EXECUTION_CANDIDATE_PROFILE ||
           typeof options.claimNamespace !== 'function'))) {
       throw new Error('Native execution provider profile or namespace capability does not match its platform.');

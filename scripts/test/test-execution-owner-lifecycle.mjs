@@ -1118,6 +1118,23 @@ try {
     assert.equal(record.snapshot().retired, true);
   });
 
+  test('native platform kinds cannot borrow another platform profile or omit the Darwin namespace claim', () => {
+    let acquired = 0;
+    const options = { ...candidateOptions, capabilities: candidateCapabilities,
+      createTransport() { acquired++; throw new Error('No transport in construction'); } };
+    const profiles = { 'linux-provider': 'linux-owner-v1-candidate', 'macos-provider': 'macos-owner-v1-candidate',
+      'windows-provider': 'windows-owner-v1-candidate' };
+    for (const [kind, profile] of Object.entries(profiles)) {
+      const claim = kind === 'macos-provider' ? { claimNamespace() {} } : {};
+      assert.doesNotThrow(() => harness({ ...options, kind, profile, ...claim }));
+      for (const foreign of Object.values(profiles).filter(value => value !== profile)) {
+        assert.throws(() => harness({ ...options, kind, profile: foreign, ...claim }), /does not match/);
+      }
+    }
+    assert.throws(() => harness({ ...options, kind: 'macos-provider', profile: profiles['macos-provider'] }), /does not match/);
+    assert.equal(acquired, 0);
+  });
+
   test('owned input and resize use the original execution while paused output consumes independently', async () => {
     const h = candidateHarness();
     const pending = deferred();

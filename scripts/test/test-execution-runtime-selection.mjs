@@ -16,7 +16,7 @@ const extensionFile = path.join(root, 'extensions/vscode/dev-session-canvas/src/
 const extensionSource = fs.readFileSync(extensionFile, 'utf8');
 const ast = ts.createSourceFile(extensionFile, extensionSource, ts.ScriptTarget.Latest, true);
 const require = createRequire(import.meta.url);
-const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-execution-selection-'));
+const temporary = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-execution-selection-')));
 const profile = 'linux-owner-v1-candidate';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const binary = Buffer.alloc(64);
@@ -47,7 +47,8 @@ const test = async (name, run) => { await run(); passed++; console.log(`PASS ${n
 
 async function activationFixture(compiledProfile, factoryError) {
   const observed = { factory: [], constructors: [] };
-  const ownerOptions = Object.freeze({ kind: compiledProfile === 'macos-owner-v1-candidate' ? 'macos-provider' : 'linux-provider',
+  const ownerOptions = Object.freeze({ kind: compiledProfile === 'windows-owner-v1-candidate' ? 'windows-provider'
+    : compiledProfile === 'macos-owner-v1-candidate' ? 'macos-provider' : 'linux-provider',
     profile: compiledProfile ?? profile, profileMode: 'snapshot-only' });
   const stop = new Error('Captured real activate constructor boundary.');
   const modules = new Map();
@@ -69,7 +70,8 @@ async function activationFixture(compiledProfile, factoryError) {
     plugins: [{ name: 'activation-boundaries', setup(build) {
       build.onResolve({ filter: /.*/ }, args => {
         if (args.importer === extensionFile && modules.has(args.path)) return { path: args.path, namespace: 'activation' };
-        if (args.path === './linuxExecutionOwnerFactory' || args.path === './macosExecutionOwnerFactory') {
+        if (args.path === './linuxExecutionOwnerFactory' || args.path === './macosExecutionOwnerFactory'
+          || args.path === './windowsExecutionOwnerFactory') {
           return { path: 'owner-factory', namespace: 'activation' };
         }
       });
@@ -79,7 +81,8 @@ async function activationFixture(compiledProfile, factoryError) {
             if (globalThis.factoryError) throw globalThis.factoryError;
             return globalThis.ownerOptions;
           }
-          export const createMacosExecutionOwnerOptions = createLinuxExecutionOwnerOptions;`
+          export const createMacosExecutionOwnerOptions = createLinuxExecutionOwnerOptions;
+          export const createWindowsExecutionOwnerOptions = createLinuxExecutionOwnerOptions;`
         : modules.get(args.path), loader: 'js' }));
     } }] });
   const context = { module: { exports: {} }, require, observed, ownerOptions, stop, factoryError, TextEncoder, TextDecoder,
@@ -187,6 +190,21 @@ try {
     assert.equal(f.observed.factory[0].mode, 'snapshot-only');
     assert.equal(f.observed.constructors[0][1].kind, 'macos-provider');
     assert.equal(f.observed.constructors[0][2], macProfile);
+  });
+  await test('Windows activation selects its factory and refuses incompatible assets without stock fallback', async () => {
+    const windowsProfile = 'windows-owner-v1-candidate';
+    const f = await activationFixture(windowsProfile);
+    assert.throws(f.activate, error => error === f.stop);
+    assert.equal(f.observed.factory.length, 1);
+    assert.equal(f.observed.factory[0].profile, windowsProfile);
+    assert.equal(f.observed.factory[0].mode, 'snapshot-only');
+    assert.equal(f.observed.constructors[0][1].kind, 'windows-provider');
+    assert.equal(f.observed.constructors[0][2], windowsProfile);
+    const error = new Error('Windows candidate runtime mismatch: modules.');
+    const invalid = await activationFixture(windowsProfile, error);
+    assert.throws(invalid.activate, received => received === error);
+    assert.equal(invalid.observed.factory.length, 1);
+    assert.equal(invalid.observed.constructors.length, 0);
   });
   console.log(`Execution runtime selection: ${passed}/${passed} pure cases passed (real activate entry, controlled constructor/factory, no native).`);
 } finally {

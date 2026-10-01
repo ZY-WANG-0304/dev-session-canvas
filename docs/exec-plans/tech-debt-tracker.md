@@ -23,7 +23,7 @@
 
 ## 技术债列表
 
-2026-10-01 B2/A5平台接入：macOS生产owner/provider/factory/namespace与构建已实施，只有源码/受控契约证据；共享原生头后的Linux Terminal两模式实际完成/重开通过，不等于Darwin通过。第33.3的固定Node四场及实际Electron/Webview入口进入授权runner验收，Windows核心仍在接线；真实Agent、package及其余A项保持原清单，不另增诊断工具债务或重开已完成容量组合。
+2026-10-01 B2/A5平台接入：macOS第三轮run `36820565903` 的Node编译/前三例及清理通过，partial-create资源释放但首报缺失而失败，Electron未运行；共享scheduler早通知机制已先红后修，原生修后结果待验，见33.6。Windows核心/独立reader/工厂/namespace/构建已局部验证，原生、真实Agent、package及其余A项仍按原清单开放；不另增诊断工具债务或重开已完成容量组合，历史失败不追认。
 
 2026-09-30 当前 Runtime 重构收尾入口：`docs/design-docs/runtime-persistence-closeout.md`。合并测试进程的 Heap 64 MiB / RSS 128 MiB 重列为初始观察预算，不是独立 Supervisor/每会话产品预算；原阈值、结果和 exit 1 保持，不追认通过。暂停仅为压线的优化和自动前置 profiler，当前推进 B2 正式启动接入，真实分进程、多会话资源与交互评估并入 A1，并据资源模型论证正式预算。已证无界积压、重复物化、取消等待累积等结构问题不因口径调整失效。F-04 仍开放，F-05 不重开归档，F-03 另列 R1；B3、真实 Agent/Webview/跨平台、尾部与最终 A1 至 A6 不削减，不等待用户选择工程预算。下列 dated 记录、旧 L/PI 分类及“下一步”保留为历史，不自动执行；尤其旧 profiler 下一步不再作为 B2 前置。
 

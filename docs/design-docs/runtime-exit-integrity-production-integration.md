@@ -1765,6 +1765,16 @@ DeepSeek 官方接口提供 Codex 所需的 Responses 路径和 Claude 所需的
 
 失败清理只针对本观察器已证明属于原启动链的provider/wrapper/CLI，重新核对同一birth identity与executable；helper或API不可用时不按PID补杀。本轮新增依赖仅服务既定真实Agent安全/判定，不成为Terminal或其他平台的通用前置。保持专用DeepSeek凭据步骤与脱敏report，原始配置/日志不上传；Node/Terminal的无凭据workflow不混入Agent私有产物。具体helper源码与运行时摘要随A4输入固定，尚未取得新macOS真实Agent结果。
 
+对应独立 workflow `runtime-real-agent-macos.yml` 只手动触发，不与无凭据Node/Terminal产物混传；Node25.6.0、Python3.12.10、psutil7.0.0双架构wheel hash、固定CLI与VS Code/Electron版本在运行前固定。helper用libproc按已确认父PID读取直接后代，避免psutil children实现扫描整机ppid表；末次cleanup也检查observer错误，不将最后采样失败遗漏为通过。仅原八场串行、最多四次预定模型任务、无harness重试，先取得匹配Electron/Terminal产品证据再执行；官方模型/原中转服务不在本轮声明范围。
+
+### 33.6 第三次 Darwin 运行与共享 deadline 修正
+
+输入 `3bde0880c4116d9be66cd06fba17da07f28022f4` 的 run `36820565903`/job `110235031971` 保留失败。Darwin arm64/Node25.6.0 的编译、namespace、normal、paused-stop 及各自清理通过；normal 取得 exit7、真实 EOF、成功写入全量对账、颜色/尺寸/最终光标和五项资源释放。partial-create 正确取得启动失败、无 child/source、三项已取得资源释放与空终态应用，但 45 秒外层观察到期，owner 原 13 秒结束期限后仍无 `closeObservation.first`。其清理安全且无额外信号，不追认为整场通过；Electron/Webview 后置步骤仍 skipped。原 artifact `macos-product-provider-36820565903-1` 和 `.debug/macos-product-36820565903/` 保留。
+
+直接代码路径在共享 `createNodeExecutionScheduler()`：把浮点剩余毫秒直接交给 Node `setTimeout`，timer 回调可能早于单调时钟 deadline。owner 的 `advanceCloseObservation()` 正确拒绝提前结算，却没有另一次通知；若最后一次 timer 提前，首次结果永久 pending。原工件未记录每次 timer 实际进入时间，不能声称已直接测得该次提前；使用真实 scheduler 源码、仅替换 Node 时钟和 timer 的确定性回归已先红，证明这一跨平台机制确实存在。它不是 Darwin PTY 缺陷或测试要求过严。
+
+正式修正只在该共享 scheduler：首次剩余时间仍校验有限且不超过 Node timer 范围，按剩余量向上取整；每次唤醒复核原绝对 deadline，提前则重新安排同一 deadline，不延长预算、不执行业务回调。到期仅调用一次，取消作用于当前 timer 且幂等；不改变 owner 的首报、unknown、隔离、内容或资源语义。现有 parent-control 回归覆盖提前唤醒、重排后取消、已过期和非法期限；原 owner/adapter/Host/Supervisor 回归继续执行。修后按原 macOS 固定输入重新运行，旧失败不删除，也不从该局部修正推断其他平台已经原生通过。
+
 ## 34. Windows 产品原生接入
 
 ### 34.1 运行前原生契约（2026-10-01）
@@ -1803,4 +1813,36 @@ reader 一次只投递一个不超过 4096-byte 的新 Uint8Array，并 transfer
 
 运行时配套文件直接来自锁定包的 `third_party/conpty/1.25.260303002/win10-{arch}`，保留 `conpty.node` 与相邻 `conpty/conpty.dll`、`conpty/OpenConsole.exe` 的布局。manifest 的 `binary` 固定为 addon，`dependencies` 按上述两个配套文件的固定顺序记录 SHA256；三文件均校验 DOS/PE32+ 头、目标架构及 DLL/EXE 类型。源码 provenance 包含 owner、patch、原始及 patched ConPTY、路径工具、配套头、Node headers、node-addon-api、node.lib 和 delay-load hook 的摘要。导入前还要求正式 provider 与 output-worker 的两个 JS 入口存在，不复制编译输入，不接受旧目录覆盖。
 
-build/import 均不加载 addon、不调用原生函数、不启动 OpenConsole，manifest 的验证声明严格为 `compiled=true`、`nativeLoaded=false`、`nativeCalls=false`、`productValidated=false`。本地 `test-windows-execution-candidate-assets.mjs` 九项纯测试通过，覆盖精确清单与路径、三资产独立摘要/PE 声明、两个 JS 入口、MSVC 参数与 delay-load 输入、版本/ABI、外平台构建拒绝及锁定依赖布局；合成 PE 只验证校验逻辑，读取真实 DLL/EXE 也不执行它们。本段没有新增 Windows 原生结果，不关闭既定 Windows 编译/加载、Terminal/真实 Agent、Host/Webview 或打包验收。
+build/import 均不加载 addon、不调用原生函数、不启动 OpenConsole，manifest 的验证声明严格为 `compiled=true`、`nativeLoaded=false`、`nativeCalls=false`、`productValidated=false`。本地 `test-windows-execution-candidate-assets.mjs` 十二项纯测试通过，覆盖精确清单与路径、三资产独立摘要/PE 声明、两个 JS 入口、MSVC 参数与 delay-load 输入、版本/ABI、外平台构建拒绝及锁定依赖布局；合成 PE 只验证校验逻辑，读取真实 DLL/EXE 也不执行它们。本段没有新增 Windows 原生结果，不关闭既定 Windows 编译/加载、Terminal/真实 Agent、Host/Webview 或打包验收。
+
+### 34.4 固定 Windows Node 产品验收输入
+
+2026-10-01 冻结第一轮实际 Windows Node 输入：Node 25.6.0、Windows x64 runner、锁定 ConPTY DLL、正式 factory/Main/worker/channel/owner 与实际 headless parser。固定四例为 `namespace`、`normal`、`paused-stop`、`paused-cancel`，每例观察 45 秒、独立清理 35 秒，fixture 主体自身寿命 25 秒；两个暂停例至多两个同时执行，同 owner 的 A 收尾与 B 交互不改变原 2/1 准入、输出信用或产品结束预算。保存完整 schedule、构建/源码摘要、首个结果、真实帧/控制和清理；首次失败后停止获取新案例，不自动重跑筛选通过。本轮不运行旧诊断或增加通用工具前置。
+
+namespace 使用实际 `acquireRuntimeSupervisorNamespace`：原 authority 取得规范 storage 归属、竞争者被拒绝、原 authority 自然退出后新进程可重取；不把其他合法句柄引用已退出进程对象作为失败，也不关闭它们。controlled `.cmd` launcher 等待本轮真实 Node TTY 主体并传播退出码；由现有 `resolveExecutionSessionSpawnSpec` 和 node-pty 参数编码构造命令，不另造 Windows shell 解析。主体回执保存自己的 PID/PPID，须对应 provider 启动的 cmd PID；这是受控包装链，不是真实 Agent 验收。
+
+normal 经产品 input 发送随机 nonce 并收到其 hash，resize 到 119x41 后读取真实 PTY 尺寸；主体再写 90000 条编号行、Unicode/ANSI 自身尾部并正常 exit 7。writer 原始写入、完成回执和 ConPTY 实际输出分别保存；ConPTY 可以重写 VT 表达，不能声称二者字节相同。将原始写入独立重放到相同 headless terminal，严格核对完整编号文本、Unicode 尾部、最终光标及颜色；主体正常退出、真实 source EOF、全部收到帧的消费、最后终态和本方五组资源释放分别通过才算本例通过。
+
+两个暂停例先让 A 写 256×4096-byte 固定负载，暂停 authority 消费直到原 16-frame 信用用满，再调用产品 `requestStop`。在 A 尚未 settled 的区间，B 必须处理新 nonce 并在 1500ms 内由真实消费者应用响应，不以 write 被接受冒充交互完成。`paused-stop` 在 provider 接受 stop 后立即恢复 A 消费，source 按实际 EOF/interrupted 记录，不称自然任务完成；`paused-cancel` 则继续暂停，直到原 owner 按原预算发出的 `cancelOutput` 被接受后才恢复，并必须明确 interrupted。两例都要求已收到的帧全部消费及本方资源释放，不承诺杀停后的 writer 全文或普通后代未来输出；B 正常结束后同样检查完成和资源，不按 PID 清理包装器后声称实际主体已终止。
+
+原生执行前再次审查确认验收缺口：仅等 cmd 包装器退出，可能漏掉仍在运行的真实 Node 主体，且可能把 fixture 25 秒安全退出误算为产品停止成功。四例范围不变，改为在主体 READY 后由独立 PowerShell 小观察器显式取得并保留 `System.Diagnostics.Process.SafeHandle`；校验该原对象的可执行文件并记录 StartTime，再要求原终端主体响应本轮专用随机 challenge 并写入 PID/PPID 回执，确认观察取得时仍是本次执行主体。随后只从同一保留对象读取 HasExited/ExitCode，不重按 PID 获取、不要求系统进程对象消失、不关闭其他进程的句柄。观察器自身最多运行既定 45+35 秒观察/清理窗口，只处置自己的观察句柄，不杀主体。
+
+每个创建成功的实际主体都必须取得上述身份绑定与退出证据，两个暂停例显式拒绝 exit124；fixture 在触发安全定时器时先写不可覆盖的 safety 回执，该回执存在即不允许将任何最终退出码归为产品验收通过。normal/peer 的原对象退出码还须分别为7/0。35秒清理 safe 同时要求本方资源释放、原 provider 关闭以及所有已创建实际主体的已绑定原对象确认退出；未取得可靠主体身份或退出事实时记 unsafe。安全定时器导致的实际终止可以帮助清理收口，但不能追认产品停止通过。本次只加上述固定主体观察及其局部判定检查，不新建通用进程管理或清理框架。
+
+实现前独立源码审查找到两个必须先修的核心缺陷：同步 DLL 加载/导出错误抛出的 std::exception 会越过锁定 node-addon-api 的 Napi::Error 边界；输入 EPIPE 被误送到 consumer-failure 路径，会直接 terminate 仍能交付尾部的 reader。前者已转换为 Napi::Error 并保留已有资源账本，source 断言修前 exit1/修后通过；后者已有 pending 输出时注入 EPIPE 的回归修前 terminates=1/exit1，修后仅封闭输入，原输出继续 ACK 和真实 EOF，pipe 测试现六项通过。Main 的 `.cmd` 接线、changed-worker 和缺 native export 三项受控回归也通过。这些是直接生产风险修复与局部证据，不是新 Windows 原生通过。
+
+workflow 仅承接该固定 Node 输入，使用只读仓库权限和显式 manual/窄路径 push，不接模型凭据、不运行真实 Agent、不扩大为 Electron/Host/Webview/packaged 矩阵。上述既定验收仍在有限总清单中开放；本节冻结时尚未执行 Windows CI。
+
+本地 `test-windows-execution-product.mjs --self-test` 通过：同一真实消费回调将 `batch.sequence` 写入 tracker，等待 `drain()` 解析完成，最后 `flushFinal` 严格核对 seal 对应序号；覆盖 90000 条编号行、Unicode/ANSI 尾部、最终光标和错误 seal 拒绝，并校验有限 workflow。该夹具已吸收 macOS 原生首轮暴露的“未传输出序号导致无效 final revision”问题，不把夹具修正当作 Windows 产品原生通过。避免在每个数据帧消费时重复序列化整份历史，最终快照与独立内容比对仍保留。provider core 六项、source 契约、Main 三项、reader 四项和 pipe 六项重新通过；provider/Main/pipes/reader/worker 及 namespace fixture 的严格独立 TypeScript 检查、两个新 mjs 语法检查与 diff 空白检查通过。上述均为 Linux 上的局部结果，无 Windows native 编译、装载、ConPTY 或实际包装链通过声明。
+
+主体观察补充后同一自测再次通过，复用实际 `subjectExit`、产品退出判定和 cleanup 资源谓词，覆盖：原对象退出接受、主体未退出拒绝、StartTime 不一致拒绝、challenge 未绑定拒绝、exit124 拒绝、先 safety 后其他退出码拒绝，以及五组资源全部 released 仍不能代替主体退出。PowerShell 源契约确认只在取得时调用一次 GetProcessById、立即保留 SafeHandle、同对象等待及读取退出事实且没有 kill API；本地没有 PowerShell，不声称该脚本已通过 Windows/.NET 原生调用。新脚本随源码摘要归档，四例及所有产品预算未扩张。
+
+独立只读复核未发现上述主体观察补丁的新确定性 blocker，复跑同一 self-test 和两个 mjs 语法检查通过；此结论仍不覆盖 Windows PowerShell、ConPTY 与实际包装链原生执行。
+
+### 34.5 共享生产选择与 namespace 运行前契约
+
+Windows profile显式为 `windows-owner-v1-candidate`，隔离generation为 `terminal-exit-windows-v1`；构建仅接受匹配资产与成对选择，普通构建仍stock。factory同时核对三份PE、版本/ABI、manifest及provider/worker入口摘要，构造不加载native；snapshot-only归Host、Runtime归Supervisor，旧live绑定不迁移。
+
+namespace复用Node的Windows named-pipe listener，不增加新的native mutex API。名称由规范化 `realpath(storageDir)`（Windows不区分大小写比较）摘要形成，不包含backend/PID；同一Windows运行环境和registry必须竞争同一名称。Node所用libuv的 `uv_pipe_bind2` 通过 `FILE_FLAG_FIRST_PIPE_INSTANCE` 排斥已有server（已核对libuv v1.51.0 `src/win/pipe.c`），实际竞争/退出重取仍需原生验收。claim listener持到进程退出且unref，业务listener关闭不释放它；Windows endpoint先用连接确认未占用，不对named pipe做文件unlink。该范围仅本版参与者和本机存储slot，不是另列R1的root稳定归属实现。
+
+共享provider控制IPC和独立fd4输出保留原帧/信用/消费屏障；Windows使用 `overlapped` stdio，防止同步管道写阻塞provider控制线程。真实Windows普通pipe及实际ConPTY验收必须证明该封装可用，不能仅删除平台guard就记为平台通过。provider终止仍只作用于已具备原父清理授权的直接child，不按PID强杀会话包装器或外部对象。

@@ -77,8 +77,8 @@ class ExecutionProviderChannel {
   private failure?: Error;
 
   public constructor(identity: ExecutionIdentity, private readonly options: ExecutionProviderChannelOptions) {
-    if (!['linux', 'darwin'].includes(process.platform) || typeof process.send !== 'function' || !process.connected) {
-      throw new Error('Execution provider channel requires a connected supported POSIX Node IPC child.');
+    if (!['linux', 'darwin', 'win32'].includes(process.platform) || typeof process.send !== 'function' || !process.connected) {
+      throw new Error('Execution provider channel requires a connected supported Node IPC child.');
     }
     assertExecutionIdentity(identity);
     this.identity = Object.freeze({ ...identity });

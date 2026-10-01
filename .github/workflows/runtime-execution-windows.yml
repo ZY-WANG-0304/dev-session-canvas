@@ -1,0 +1,82 @@
+name: Windows Product Execution Provider
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - runtime-persistence-session-state-refactor
+    paths:
+      - .github/workflows/runtime-execution-windows.yml
+      - extensions/vscode/dev-session-canvas/native/windows-execution-owner.h
+      - extensions/vscode/dev-session-canvas/src/panel/windowsExecution*.ts
+      - scripts/build/windows-execution-provider-patch.mjs
+      - scripts/build/windows-execution-candidate-assets.mjs
+      - scripts/test/test-windows-execution-product.mjs
+      - scripts/test/fixtures/windows-execution-*
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-execution-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  product-provider:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout fixed product input
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup fixed Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '25.6.0'
+          cache: npm
+      - name: Setup x64 compiler environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check bounded product input
+        run: |
+          node scripts/test/test-windows-execution-provider-source.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/test/test-windows-execution-candidate-assets.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/test/test-windows-execution-product.mjs --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile actual Node candidate and explicit product build
+        shell: pwsh
+        run: |
+          $headers = Join-Path $env:RUNNER_TEMP 'windows-node-headers.tar.gz'
+          $nodeLib = Join-Path $env:RUNNER_TEMP 'windows-node.lib'
+          Invoke-WebRequest https://nodejs.org/dist/v25.6.0/node-v25.6.0-headers.tar.gz -OutFile $headers
+          Invoke-WebRequest https://nodejs.org/dist/v25.6.0/win-x64/node.lib -OutFile $nodeLib
+          if ((Get-FileHash $headers -Algorithm SHA256).Hash.ToLowerInvariant() -ne '6e6662d6081f36bb3896df42a331e9ccbb4286fda72daf7bc7fb5bfb18fa8ed0') { throw 'Node headers hash mismatch' }
+          if ((Get-FileHash $nodeLib -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'f7201b932d898bdbf78aee7add288d2263c4791f1502068ad11b6c14675c6324') { throw 'Node import library hash mismatch' }
+          $include = Join-Path $env:RUNNER_TEMP 'windows-node-headers'
+          New-Item -ItemType Directory -Path $include | Out-Null
+          tar --extract --gzip --file $headers --strip-components=1 --directory $include
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hook = node -p "require('path').join(require('path').dirname(process.execPath), 'node_modules/npm/node_modules/node-gyp/src/win_delay_load_hook.cc')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/build/windows-execution-candidate-assets.mjs build --output windows-product-build --dependency-root "$env:GITHUB_WORKSPACE/node_modules" --headers "$include/include/node" --node-lib $nodeLib --delay-load-hook $hook
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/build/build.mjs --execution-profile=windows-owner-v1-candidate --execution-assets windows-product-build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run fixed real product provider cases
+        run: node scripts/test/test-windows-execution-product.mjs --output windows-product-evidence
+      - name: Preserve first build and product evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-product-provider-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            windows-product-build/
+            windows-product-evidence/
+          if-no-files-found: warn
+          retention-days: 14
