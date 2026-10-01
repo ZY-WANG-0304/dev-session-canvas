@@ -102,13 +102,15 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [ ] (2026-10-01，第50节) 复用一次UI真实reload设施，实施snapshot-only单Terminal实际Host离开验收及schema2 installed要求适配；先冻结当前包，独立成功写入/原磁盘保存/新页面及原进程释放对账，不代证已离开旧reader的applied或EOF。
 - [x] (2026-10-01，第47节) 独立A6纯测/审查及固定旧包唯一首轮完成，exit1保留；真实EISDIR、原来源/磁盘保留与EOF成立，但final通知被保存失败阻断，B故障后交互未执行，cleanup registry断言另失败。
 - [x] (2026-10-01，第47节) 已有reader/root writer先红后修final水位发布与落盘耦合，Host147/147、completed/typecheck/A6纯测与独立复审通过；清理改为等真实空registry再独立TERM。
 - [x] (2026-10-01，第47节) 新固定包c4df29f5的原多根组合唯一复验exit0，input/installed/case/cleanup独立核对及冻结断言重放通过；A真实EISDIR/原binding/EOF与原reader applied4、B原执行24.9ms和空registry落盘后清理均成立，旧首败不改。
 - [x] (2026-10-01，第49节) 三平台schema2分离构建来源与实际要求，Linux arm64选择/旧Node同名namespace、Windows静态addon CRT、六资产聚合及执行端profile选择已实施；统一资产回归、typecheck、Host147/Supervisor94通过，默认仍stock。
 - [x] (2026-10-01，第49节) 实际Node16/25同名namespace双向互斥通过；另用固定buster/glibc2.28编译的同一x64 addon在旧容器、Node25和当前Electron成功factory检查/加载，无PTY，不代证旧OS页面。
 - [x] (2026-10-01，第49节) 固定六格无凭据workflow及最小build/load脚本已形成，窄测试通过；本地整条Linux x64构建/基线/Node16与25同产物加载/归档exit0，glibc分别2.28/2.35。独立复核只补失败时已有产物保留，不生成成功摘要。
-- [ ] (2026-10-01，第49节) 首次六格远端构建/同产物最低与当前宿主装载，随后原产品验收与默认准入；最低macOS/Windows隔离环境已询问，尚未作支持政策变更。
+- [x] (2026-10-01，第49节) 六格首轮36872829936/deb5dc9c attempt1已执行，整体failure保留；Linux/macOS四格成功且产物独立hash/import复核，Windows ARM64 job成功待回收，x64原120秒编译超时/文件锁致失败artifact上传也失败，未进入load。
+- [ ] (2026-10-01，第49节) 仅Windows x64同输入/同期限一次job重跑attempt2待回收，其余五格不重跑；随后原产品验收与默认准入。最低macOS/Windows隔离环境已询问，尚未作支持政策变更。
 - [x] (2026-10-01，第48节) 实际Host/headless先红3过/9失败后六行snapshot尺寸保护使原12项通过，独立Host147/147、Runtime completed与typecheck通过；不证明原macOSrun唯一因果。
 - [x] (2026-10-01，第48节) 新增submitted/replacement负向组合及原序列化入口回归通过，新增16/16。
 - [x] (2026-10-01，第48节) 页面旧fixture错误要求合成exit banner，按32.4既定契约改为无合成正文且原tail/不替换不变，相关八例通过；原4/6保留。非空snapshot实际页面/重开不由此代证。
@@ -462,6 +464,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-10-01，第49节跨runner聚合发现Windows实际CRLF owner/patch原始hash与Linux checkout不同；两项均经LF→CRLF独立重算精确吻合。Windows ARM64双宿主native加载成立，但旧产物不能通过当前Linux原始source gate，不改manifest、不误称旧代码。已注册workflow可改为手动Windows两格，并在checkout前关闭autocrlf，复用已验四格而不重复它们。
+
 2026-10-01，固定六格workflow只存在主题分支时，首次 `gh workflow run` 未找到注册项、没有启动实验；增加仅当前分支和该workflow自身路径的push入口，不放开普通源码触发。既有macOS/Windows产品run36872496523/36872496520已因兼容实现推送启动，尚待回收，不增加Agent请求。
 
 2026-10-01，第49节：构建宿主N-API10并非addon要求；显式API8可被真实Node16加载。glibc2.35本机产物实际要求2.34，同源码在固定buster构建后实际要求2.14，因此不能用构建tuple相等或修改manifest数字替代兼容构建。Windows候选/MD确实额外导入VC runtime，静态CRT选择依上游/模块边界作工程修正；官方ConPTY固定版本声明17763，不抄README的18309。
@@ -768,6 +772,9 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+- 决策：分发runner按git对象字节checkout，保留原source/hash gate；已注册后撤bootstrap push，仅用固定Windows两格重建受CRLF影响的资产。理由：构建来源须能在聚合机独立复核，不能凭语义近似追改历史hash；这是现有六资产路径的确定阻塞，不扩一般归档兼容框架。日期/作者：2026-10-01 / Codex。
+
+- 决策：A6剩余只补第50节snapshot-only单Terminal真实reload组合，旧reader离开和新页面应用分开结算。理由：Runtime真实reload及直接Host方法各自不能承担该用户流程，但已有activation-driver、主体和安装收据足以复用；不新增通用工具或平台矩阵。日期/作者：2026-10-01 / Codex。
 - 决策：六资产首次注册仅增加当前主题分支/本workflow路径的push入口，保留手动触发与无凭据边界。理由：GitHub未注册非默认分支新workflow，不能通过重复dispatch获得结果；不为注册先合入未验收实现，也不在普通源码push重复六格。日期/作者：2026-10-01 / Codex。
 
 - 决策：按第49节分离三平台实际requirements与构建来源，六资产汇入原build并按执行端返回原profile；只在兼容基线编译且同产物加载后登记有限通过，默认启用仍等原验收。理由：既不能以精确构建版本阻止兼容宿主，也不能删gate而放过实际库依赖；旧OS环境单独询问，不把一般工具完备作为前置。日期/作者：2026-10-01 / Codex。

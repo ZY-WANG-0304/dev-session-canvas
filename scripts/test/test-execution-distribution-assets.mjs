@@ -12,28 +12,44 @@ import { assertLinuxDistributionBaseline, checksumFor, distributionTargets, runt
 const require = createRequire(import.meta.url);
 const { checkNativeLoad } = require('../build/check-execution-native-load.cjs');
 const workflow = yaml.load(fs.readFileSync('.github/workflows/runtime-execution-assets.yml', 'utf8'));
-assert.deepEqual(workflow.on, { workflow_dispatch: null, push: {
-  branches: ['runtime-persistence-session-state-refactor'],
-  paths: ['.github/workflows/runtime-execution-assets.yml']
-} });
+assert.deepEqual(workflow.on, { workflow_dispatch: { inputs: { windows_only: {
+  description: 'Build only Windows x64 and ARM64 assets', type: 'boolean', required: false, default: false
+} } } });
 assert.deepEqual(workflow.permissions, { contents: 'read' });
 assert.equal(workflow.env, undefined);
 assert.deepEqual(Object.keys(workflow.jobs), ['native-assets']);
 const job = workflow.jobs['native-assets'];
 assert.equal(job.environment, undefined);
 assert.equal(job.strategy['fail-fast'], false);
-assert.deepEqual(job.strategy.matrix.include, distributionTargets.map(({ name, runner, arch, compilerArch }) =>
+assert.deepEqual(Object.keys(job.strategy.matrix).sort(), ['asset', 'exclude']);
+assert.deepEqual(job.strategy.matrix.asset, distributionTargets.map(({ name, runner, arch, compilerArch }) =>
   ({ target: name, runner, arch, ...(compilerArch ? { compilerArch } : {}) })));
-assert.equal(job['runs-on'], '${{ matrix.runner }}');
+const exclusion = /^\$\{\{ inputs\.windows_only && fromJSON\('([^']+)'\) \|\| fromJSON\('\[\]'\) \}\}$/.exec(job.strategy.matrix.exclude);
+assert(exclusion, 'The only matrix selection is the fixed windows_only boolean.');
+const excluded = JSON.parse(exclusion[1]);
+assert.deepEqual(excluded, job.strategy.matrix.asset.filter(asset => !asset.target.startsWith('win32-')).map(asset => ({ asset })));
+for (const windowsOnly of [false, true]) {
+  const omitted = windowsOnly ? excluded.map(entry => entry.asset.target) : [];
+  assert.deepEqual(job.strategy.matrix.asset.filter(asset => !omitted.includes(asset.target)).map(asset => asset.target),
+    windowsOnly ? ['win32-x64', 'win32-arm64'] : distributionTargets.map(target => target.name));
+}
+assert.equal(job['runs-on'], '${{ matrix.asset.runner }}');
+const checkoutIndex = job.steps.findIndex(step => step.uses === 'actions/checkout@v4');
+assert(checkoutIndex > 0);
+assert.deepEqual(job.steps[checkoutIndex - 1], { name: 'Preserve source bytes on Windows checkout',
+  if: "runner.os == 'Windows'", shell: 'pwsh', run: 'git config --global core.autocrlf false' });
 assert.equal(job.steps.find(step => step.uses === 'actions/checkout@v4').with['persist-credentials'], false);
 assert.deepEqual(job.steps.find(step => step.uses === 'actions/setup-node@v4').with,
-  { 'node-version': '25.6.0', architecture: '${{ matrix.arch }}', cache: 'npm' });
+  { 'node-version': '25.6.0', architecture: '${{ matrix.asset.arch }}', cache: 'npm' });
+assert.deepEqual(job.steps.find(step => step.uses === 'ilammy/msvc-dev-cmd@v1').with,
+  { arch: '${{ matrix.asset.compilerArch }}' });
+assert.doesNotMatch(JSON.stringify(workflow), /matrix\.(?:target|runner|arch|compilerArch)\b/);
 assert.equal(job.steps.find(step => step.uses === 'actions/upload-artifact@v4').with.path, 'execution-asset-artifacts/');
 const evidenceUpload = job.steps.find(step => step.name === 'Preserve available build and load evidence');
 assert.equal(evidenceUpload.uses, 'actions/upload-artifact@v4');
 assert.equal(evidenceUpload.if, 'always()');
 assert.equal(evidenceUpload.with['if-no-files-found'], 'warn');
-const assetPath = '${{ runner.temp }}/execution-assets/${{ matrix.target }}';
+const assetPath = '${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}';
 assert.deepEqual(evidenceUpload.with.path.trim().split('\n'), [
   `${assetPath}/manifest.json`, `${assetPath}/execution-owner.node`, `${assetPath}/spawn-helper`,
   `${assetPath}/conpty.node`, `${assetPath}/conpty/conpty.dll`, `${assetPath}/conpty/OpenConsole.exe`,
@@ -113,4 +129,4 @@ try {
   assert.deepEqual(fs.readdirSync(path.join(extracted, 'darwin-arm64')).sort(), runtimeFiles(manifest).sort());
   if (process.platform !== 'win32') assert(fs.statSync(path.join(extracted, 'darwin-arm64/spawn-helper')).mode & 0o111);
 } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
-console.log('Execution distribution contract passed (six targets, manual/limited-bootstrap triggers, checksums, Linux limits, mock loading and runtime-only archive; no network or native execution).');
+console.log('Execution distribution contract passed (manual six-target or Windows-only matrix, checkout source bytes, checksums, Linux limits, mock loading and runtime-only archive; no network or native execution).');

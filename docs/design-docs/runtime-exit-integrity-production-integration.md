@@ -2272,3 +2272,21 @@ Linux旧Node原生互斥使用 `.debug/linux-native-namespace-20261001/assets`�
 本地整条命令 `node scripts/build/build-execution-distribution-assets.mjs --target=linux-x64-glibc --output=.debug/execution-assets-integration-20261001/linux-x64-glibc --artifacts=.debug/execution-assets-integration-20261001/artifacts` 已exit0。该次addon SHA256 `b99f8083d3351828deb6d12e8edae313805c1ad4550d07429a0c8d5a15aad46c`、manifest SHA256 `792d662d708753dc4bbf8570cec37f8db1d8bc71bead2008c2ae9ba8091fd5fa` 在两份报告完全一致，实际宿主glibc分别2.28/2.35；tar SHA256 `1c0a609c2db80b38a1e7b2a96c17134d4efd3148e967671b6ea454cd164ec882`。此结果证明构建、基线检查、双宿主加载及归档整条Linux x64路径，不声称不同输出路径间可复现二进制，也不补造其他五格或产品通过。固定分发窄测试与独立复核只服务该路径，不增设通用工具门槛。
 
 `f2414f98` 推送后首次手动调度因GitHub尚未注册非默认分支新workflow而未启动，不计原生失败。注册入口仅允许当前 `runtime-persistence-session-state-refactor` 分支、且只匹配该workflow自身文件变化的push，普通源码push不触发六格；原 `workflow_dispatch` 保留，仍无secret。此次代码推送已按既有规则触发macOS产品 `36872496523` 与Windows产品 `36872496520`，用于受影响兼容/CRT路径原回归，不重排真实Agent请求。结果待独立回收，不能仅凭作业状态关闭产品门槛。
+
+首轮六格run `36872829936` / `deb5dc9c` attempt1保留整体failure：Linux与macOS四格构建/双宿主加载/归档成功，已下载runtime-only产物、核对commit/manifest/binary/tar摘要并用原平台import再次校验，见 `.debug/execution-assets-36872829936/four-assets-crosscheck.json`。Linux两架构最低容器glibc2.28、当前宿主2.39；macOS两架构实际Darwin24.6.0，不能声称旧OS通过。Windows ARM64也job success，产物仍待回收；Windows x64在原120秒compiler预算触发 `spawnSync cl.exe ETIMEDOUT`，尚未生成manifest或执行load。仍持有未完成addon的link进程使失败证据上传再报EBUSY，原日志已保存，不能宣称失败artifact完整。完全同源码、runner image与MSVC版本的原Windows产品构建已通过，因此只安排该x64 job同输入/同期限的一次attempt2，不修改业务或放宽预算；没有唯一根因结论，首败不改，也不重复其余五格。
+
+Windows ARM64原产物已下载，官方Electron22.3.14/Node16.17.1与当前Node25.6.0均为实际arm64，同一二进制/manifest及tar摘要一致。然而Linux聚合import拒绝owner来源摘要：独立计算确认owner与patch两项均精确等于当前提交源码经Windows默认LF→CRLF转换后的hash，不是旧代码，原产物不改。此为跨runner构建来源不一致的分发阻塞，不是native加载或PTY失败。修正限定在隔离分发runner checkout前关闭autocrlf，以git对象LF字节编译并保留原始hash门禁；不让import猜测或重写已有manifest。workflow已注册，移除首次bootstrap push，回到手动触发并提供固定Windows两格选择，只重建受影响两格、复用已核对四格，默认仍完整六格。原x64同输入attempt2及五格结果照实保留，不从新LF产物倒推旧超时根因。
+
+原x64唯一attempt2已job success（14:07:59至14:09:30），同一编译预算未变；其余五格在attempt2列表中的开始/结束仍为attempt1原时间，未重新执行。该成功不解释原编译慢点或追认失败artifact已保存，CRLF分发责任仍须新LF输入处理。
+
+## 50. A6 snapshot-only 实际 Host 离开
+
+原第39节Runtime真实reload不负责结束Supervisor执行，原S12直接调用Host方法又不是实际VS Code关闭，因此仍缺snapshot-only的真实永久离开组合。本项只复用 `run-vscode-runtime-reload-candidate.mjs` 的独立activation-driver、一次UI启动和180秒总体期限（保留30秒清理），新增明确的snapshot-only选择；默认Runtime固定输入及旧证据不改，不另建诊断设施或增加平台矩阵。
+
+先冻结当前installed Linux VSIX；installed helper按schema2实际requirements判断兼容，不要求Node编译资产的构建tuple与Electron运行tuple相等。schema1历史包继续原严格断言，schema2不猜补旧要求。聚合selection的platform必须映射到实际Linux profile，逐文件hash与安装路径仍严格核对，不能仅删除旧断言让包通过。
+
+固定流程为全新root、单Terminal：关闭Runtime Persistence，实际创建节点并用exec启动原 `scripts/test/fixtures/linux-lifecycle-subject.mjs`，先在真实页面确认ready/nonce/尺寸，再记录原Host/provider/主体身份、节点及frame。写交接收据后直接发 `workbench.action.reloadWindow`，不预先stop、不调用测试版prepareForDeactivation。原主体仅在实际SIGHUP后输出中文/ANSI尾部，独立保存成功written字节、signal与exit7凭证。新Host须属于同UI，旧Host/provider/主体已退出，同节点closed/snapshot-only/exit7且没有live binding或pendingLaunch；先读取原磁盘状态，再操作恢复或flush，避免新保存掩盖旧Host未保存。
+
+用成功written字节的独立headless回放、原磁盘snapshot与新Webview全文/中文位置及最终光标(6,4)核对，不只检查marker。新Host不得为此节点启动新执行，产品reset及本方资源清理通过且无fallback才计通过。原旧reader事件只是旧Host内存ring，未取得可靠收据时不反推其applied或完整EOF；旧surface实际离开可结算lost/cancelled，新页面应用单独验。该边界不削弱主进程成功写入尾部保存或最终页面完整性，本例仅关闭实际Host离开格，模块内EOF/逐资源契约仍由原证据承担。
+
+证据归因补充：恢复panel的onView可先于测试activation-driver自动激活产品。因此“先读磁盘”只承诺先于driver自己的activation/attach/flush命令，并记录读盘前后产品isActive；不声称两份具体文件一定由旧Host最后写入，收据明确 `oldHostExclusiveDiskWriteClaim:false`。本例仍严格要求只在真实退出SIGHUP后产生的完整尾部可恢复、旧执行资源退出且没有重启，证明用户离开与恢复流程，不用新Host事件替旧Host内部结算背书。
