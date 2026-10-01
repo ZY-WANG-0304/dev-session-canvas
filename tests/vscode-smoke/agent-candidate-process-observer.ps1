@@ -1,5 +1,10 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+$PSModuleAutoLoadingPreference = 'None'
+$env:PSModulePath = [IO.Path]::Combine($PSHOME, 'Modules')
+foreach ($module in @('Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Management', 'CimCmdlets')) {
+  Import-Module -Name ([IO.Path]::Combine($env:PSModulePath, $module, $module + '.psd1')) -ErrorAction Stop
+}
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 Add-Type -TypeDefinition @'

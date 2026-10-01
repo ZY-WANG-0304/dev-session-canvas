@@ -10,6 +10,12 @@ import observerModule from '../../tests/vscode-smoke/agent-candidate-windows-obs
 import genericObserver from '../../tests/vscode-smoke/agent-candidate-process-observer.cjs';
 
 const { WindowsAgentProcessObserver, ended } = observerModule;
+const helperSource = await fs.readFile(new URL('../../tests/vscode-smoke/agent-candidate-process-observer.ps1', import.meta.url), 'utf8');
+assert.match(helperSource, /\$PSModuleAutoLoadingPreference = 'None'/u);
+assert.match(helperSource, /\$env:PSModulePath = \[IO.Path\]::Combine\(\$PSHOME, 'Modules'\)/u);
+assert.match(helperSource, /@\('Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Management', 'CimCmdlets'\)/u);
+assert.match(helperSource, /Import-Module -Name \(\[IO.Path\]::Combine\(\$env:PSModulePath, \$module, \$module \+ '\.psd1'\)\) -ErrorAction Stop/u);
+assert(helperSource.indexOf('Import-Module') < helperSource.indexOf('New-Object'));
 const originalSystemRoot = process.env.SystemRoot;
 process.env.SystemRoot ??= path.resolve('fixture-system-root');
 const absolute = name => path.resolve('fixed-windows-fixture', name);
