@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/active/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/active/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
-updated_at: 2026-10-01
+updated_at: 2026-10-02
 ---
 
 # Runtime Persistence 有限收尾与完成定义
@@ -27,6 +27,8 @@ updated_at: 2026-10-01
 最新状态（2026-10-01，覆盖本节后续历史入口）：A1 的固定 `10/1` schema2 Linux Electron 候选已完成 `color` 与 `size` 两个场景，内容/交互/来源 hash/自然无历史/产品 cleanup 均通过；峰值总 RSS 分别为 3,876,724,736 与 3,954,757,632 bytes，仍仅是该声明工作负载的观察结果，不构成 `N=10` 产品上限或通用 SLA。随后同候选 `2/1` 的真实 Host detach/reconnect `color` 组合通过：旧 Host 消失后原 Supervisor、主体和 session/reader 身份保持，B 在 A 尚未追平时 53.4ms 实际应用，Host ready 后 15,538.456ms 追平，reconnect/outer cleanup 均通过。两项均不关闭 F-04、跨平台/packaged、A2/A3 未填页面格或默认准入；不再重复成功矩阵，不把工具边界追加为前置。
 
 同一最新范围内，六架构 schema2 分发候选的 Windows x64/ARM64 attempt2 已完成并与已核对四格合并，固定聚合/VSIX SHA 通过；这只关闭构建、加载与归档链，不代证最低旧 OS、各目标完整产品支持或默认准入。A6 snapshot-only Host 离开和 A3 双 Host 共享 root 的既有真实证据也已对齐为已覆盖，旧失败与未观察字段继续保留。
+
+验收环境决策（2026-10-02）：本次重构采用现代 GitHub-hosted runner 作为支持与验收基线。`.github/workflows/runtime-execution-assets.yml` 的固定六格为 `ubuntu-24.04`、`ubuntu-24.04-arm`、`macos-15-intel`、`macos-15`、`windows-2025`、`windows-11-arm`；已取得的宿主记录为 Ubuntu 24.04、macOS 15.7.9、Windows Server 2025（10.0.26100）和 Windows 11 ARM64。六格资产结果只证明对应构建/加载/归档，产品 workflow 的 `macos-latest`/`windows-latest` 仍是浮动标签（近期 macOS 产品 job 曾解析到 macOS 26.6.2），不能写成同一固定版本。macOS 10.13/10.14、Windows 10 1809 及其他低版本不再是本次重构前置；现代 runner 通过不反向证明旧系统，低版本问题留待实际报告后单独修复。
 
 现有直接回归（2026-10-01）保持绿色：`test-runtime-host-output-credit.mjs` 的真实 socket 背压/控制/尾部/compact 生命周期、`test-execution-output-sequence.mjs` 的 output/resize/scrollback 顺序，以及 `test-terminal-paged-projection.mjs` 的 39/39 Webview settlement、Host batch 10/10、分页 compaction/取消/重试均通过；这些是必要结构回归，不替代真实跨平台页面或最终容量准入。
 
@@ -216,3 +218,5 @@ B2 会改变实际 provider、信用与消费链，最终启用产物必须复�
 前版 `2d375606` 只读核对与文档检查通过，容量与退出两路独立复核未发现范围阻塞；该证据不表示用户批准了草案或产品验收通过。本次按用户要求由代理承担工程裁决，变更完成定义状态、预算责任和工作顺序，历史实验/断言不改。原始审核见 `webview-host-supervisor-architecture-review.md`，容量进展见 `runtime-persistence-storage-reevaluation.md` 第 9 节，退出接线与有限证据见 `runtime-exit-integrity-production-integration.md`，契约以 `docs/product-specs/runtime-persistence-modes.md` 第 9、10 节为准。
 
 2026-10-01 回收 macOS 新 helper 结果：`36858038984` 的 Node/provider 四场与 Electron Terminal 两模式 complete/reopen/cleanup 已按中央目录独立核对，`36858502983` 的真实 Codex/Claude 八场安全摘要为通过。Claude snapshot-only stop 保存非空状态，按既定规则未执行重开；本轮replay complete但终态比较false与历史诊断unknown分别保留，旧 helper 首败和所有旧工件保持。Windows固定产品/Agent、Remote Linux x64 loopback及随后第47节实际多根失败隔离已移出当前队列；A5六资产/兼容/默认分发、A1/F-04、A2/A3剩余页面格和A6 snapshot-only实际Host离开仍是直接责任。第48节尺寸结构缺陷局部修复不代证非空stop实际重开，不重排Agent矩阵或追加工具验证。
+
+修订记录（2026-10-02，现代 runner 验收基线）：根据用户决定，将现代 GitHub-hosted runner 固定矩阵作为本次支持与验收输入，移除旧系统作为本轮前置的表述；保留旧系统构建要求、历史失败和未验证事实，不改写为兼容通过，也不修改平台版本声明。浮动 `latest` 产品 job 的实际镜像版本必须随 run 记录，不能用固定资产 runner 版本替代。

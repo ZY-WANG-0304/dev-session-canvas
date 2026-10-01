@@ -14,7 +14,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-10-01
+updated_at: 2026-10-02
 ---
 
 # 退出完整性生产接入与故障域收敛
@@ -22,6 +22,8 @@ updated_at: 2026-10-01
 最新 A1/B1 结果（2026-10-01，覆盖后续历史入口）：固定 `10/1` schema2 Linux Electron 候选的 `color`/`size` 多会话校准均通过内容、预算观察与产品 cleanup；峰值总 RSS 为 3,876,724,736 / 3,954,757,632 bytes，仅代表该声明输入。随后同候选 `2/1` `color` Host detach/reconnect 通过：旧 Host 消失后原 Supervisor、主体和 session/reader 身份保持，B 在 A 尚未追平时 53.4ms 应用，Host ready 后 15,538.456ms 追平，reconnect/outer cleanup 均通过。两项不关闭 F-04、默认准入、跨平台/packaged 或未填页面格，不再重复成功矩阵或扩展通用工具前置。
 
 同日分发补充：Windows x64/ARM64 的修后 attempt2 已成功，和先前四格合并后的六目标 schema2 import、聚合与固定 VSIX SHA 均通过；这仍只证明分发构建/加载/归档路径，不代证最低旧 OS 或各目标完整产品验收。A6 snapshot-only Host 离开及 A3 双 Host 共享 root 的既有真实 evidence 已在执行计划中对齐，旧失败和未观察字段不改。
+
+验收环境决策（2026-10-02）：本次重构以现代 GitHub-hosted runner 作为支持基线。固定资产 workflow 的六格为 `ubuntu-24.04`、`ubuntu-24.04-arm`、`macos-15-intel`、`macos-15`、`windows-2025`、`windows-11-arm`；实际记录的宿主为 Ubuntu 24.04、macOS 15.7.9、Windows Server 2025（10.0.26100）和 Windows 11 ARM64。产品 provider/真实 Agent workflow 中的 `macos-latest`、`windows-latest` 仍是浮动标签（近期 macOS 产品 job 解析到 macOS 26.6.2），运行时必须记录当次宿主版本，不能用固定资产矩阵替代产品证据。macOS 10.13/10.14、Windows 10 1809 及其他低版本不阻塞本轮验收，也不由现代 runner 结果获得兼容声明；后续按真实报告单独修复。
 
 ## 1. 当前结论与阶段边界
 
@@ -2257,7 +2259,7 @@ Linux先覆盖x64/arm64 glibc两个已有打包目标，编译明确NAPI_VERSION
 
 Linux旧Node通过原nativeClaim接口竞争与现代Node相同的uid/真实storage路径JSON摘要、同名abstract socket；不是新增文件锁。native句柄带close-on-exec且持有到authority退出，准备工厂不加载native，只有Runtime Supervisor取得namespace时加载无PTY操作的claim导出。现代Node继续原net.Server路径，snapshot-only不取得Supervisor namespace。旧与新宿主互斥需真实socket对照；N-API可加载不代证旧Node全部JS/PTY/页面兼容。
 
-后续macOS沿已固定10.13/11.0及实际Mach-O下限接入独立requirements；Windows沿真实ConPTY/CRT依赖确定下限，不能只抄PE声明或用未知值作生产通过。六资产必须用同一正式产物跨既定Node/Electron加载，再接正常聚合/实际执行端选择与默认准入。当前仅明确实施输入，默认仍关闭，不扩通用依赖扫描器，也不重排已经完成的Agent矩阵；最低OS真机证据和最终生产版本验收仍独立。
+历史构建来源仍记录 macOS 10.13/11.0 Mach-O 下限及 Windows ConPTY/CRT 供应方要求；这些 requirements 元数据不构成本次重构的旧 OS 兼容验收或默认支持承诺。六资产必须用同一正式产物跨既定 Node/Electron 加载，再接正常聚合、实际执行端选择与默认准入。当前仅明确实施输入，默认仍关闭，不扩通用依赖扫描器，也不重排已经完成的 Agent 矩阵；旧最低 OS 的真机兼容不属于本次重构前置，最终生产版本验收仍独立。
 
 六资产聚合沿现有build/import实现：新增互斥的显式 `--execution-assets-set` 输入目录，必须且仅包含linux-x64-glibc、linux-arm64-glibc、darwin-x64、darwin-arm64、win32-x64、win32-arm64六个具名子目录，各自先完成原平台manifest/字节校验再清理dist。编译期选择标记使用 `platform`，激活时根据实际 `process.platform/process.arch` 返回原三种具体profile及factory；Remote取远端宿主事实，不看UI端或环境变量。单平台显式candidate入口保留供原验收，`platform`不进入Supervisor协议作为新profile。缺资产、不支持的平台/架构或原生加载失败均不得静默回落stock。普通构建暂不默认开启，待正式六资产与准入验收收口后切换，不能以显式聚合存在宣称交付完成。
 
@@ -2269,7 +2271,7 @@ Linux旧Node原生互斥使用 `.debug/linux-native-namespace-20261001/assets`�
 
 随后另在固定官方 `node@sha256:674750127bbf45f52660ada71ed1f1491d15e94c16583bff6df0df2489481049` 的Debian buster/glibc2.28/Node16.17.1容器中编译一次，仓库只读、独立输出、构建无网络，生成 `.debug/linux-compatibility-20261001/assets`。addon SHA256 `b9e1e200d5b944c8c2ab5374734870015059bd7f2041f4008e3b27e0e4bdfc63`，真实要求GLIBC2.14/GLIBCXX3.4.22/CXXABI1.3.9、N-API8；这不是将产品支持下限扩大到glibc2.14。经原import与实际factory，完全同一字节在该旧容器、宿主Node25.6.0以及VS Code1.117.0的Electron39.8.7/Node22.22.1成功加载并核对导出，均未调用执行API。三次使用同一二进制而非按runtime重编，证明此Linux x64资产的有限装载兼容；旧系统PTY/页面、其他架构、最终生产预算与默认启用不由此通过。首次按tag拉镜像的TLS超时是环境前置失败，固定digest随后成功，不当作产品缺陷。
 
-剩余先由无凭据、手动workflow构建固定六格并对同一产物做最低/当前宿主加载，再沿原A1至A6补最终产品回归；不新增Agent模型矩阵。最新GitHub托管runner仍不能证明macOS10.13/10.14或Windows1809，已单独向用户询问可用隔离环境，不擅自改变支持政策，也不将此环境缺口扩大为停止其他工程工作的理由。
+剩余先由无凭据、手动workflow构建固定六格并对同一产物做最低/当前宿主加载，再沿原A1至A6补最终产品回归；不新增Agent模型矩阵。最新GitHub托管runner仍不能证明macOS10.13/10.14或Windows1809，但这些旧环境不再是本次重构的验收前置；保留该事实，不将现代 runner 结果扩写为旧系统支持，低版本兼容按后续实际报告单独处理。
 
 固定分发入口为 `.github/workflows/runtime-execution-assets.yml` 与 `scripts/build/build-execution-distribution-assets.mjs`：六个实际架构runner各构建一次，Linux使用按架构锁定digest的buster容器；macOS/Windows使用固定Node25.6.0 headers，供应方下载均核对官方SHASUMS。同一资产分别在最低Node16.17.1与当前Node25.6.0加载；Windows ARM64没有该版独立Node发行包，明确使用官方Electron22.3.14的ARM64/Node16.17.1加载，不冒称独立Node或旧Windows。主控与加载器均检查实际架构，归档仅含runtime文件并保留Unix执行位。没有PTY、Agent、secret或默认激活。成功摘要的 `nativeLoaded` 不代替 `productValidated`；失败保留原exit及已存在的runtime文件/两份load报告，不伪造成功摘要，不将输入下载目录作为工件。
 
@@ -2308,3 +2310,5 @@ Windows ARM64原产物已下载，官方Electron22.3.14/Node16.17.1与当前Node
 同日补齐一项直接启动责任缺口：Supervisor 明确返回 `rejected-before-acquire` 时，Host 只清理对应的 candidate start reservation，并将未取得资源的节点置为可重试错误；网络、能力或资源状态未知仍保留原 reservation/quarantine。Terminal/Agent 同节点重试回归已随 Host wiring 达到 149/149。该修复不改变 Q=1 的 acquire 限制，也不把十会话校准升格为产品并发上限。
 
 首轮和第二轮 setup 失败后的 `Local final snapshot persistence is pending` 仍按 §26.3 解释为安全拒绝：`persistNonNativeHostFinal()` 已写出 root-local 与 workspace snapshot，owner 资源也已退出，但 workspaceState Promise 尚未完成时 reset 不删除节点、不伪报 cleanup 成功。该恢复分支不代表健康 Reload 路径失败；若未来要保证“自然结束后立即 reset/delete 必须成功”，需另立 bounded persistence 等待验收，不能用本次失败清理改写既定契约。
+
+修订记录（2026-10-02，旧系统边界收口）：用户决定本次重构使用现代 GitHub-hosted runner 即足够，不再等待 macOS 10.13/10.14 或 Windows 10 1809。固定六格、产品 workflow 的浮动标签及旧版本未验证事实均保留；不把现代 runner 结果外推为旧系统兼容，低版本问题在收到实际报告后另行修复。

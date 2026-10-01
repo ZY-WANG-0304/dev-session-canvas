@@ -2,6 +2,8 @@
 
 当前状态：草案。本文档用于收口 `Agent` / `Terminal` 在关闭画布、关闭 VSCode 与重新打开后的运行时持久化语义，重点区分“恢复上下文”与“真实进程继续存在”两种不同承诺。第 9 节的已结束无历史边界与第 10 节的退出完整性交付范围已获用户确认；不因此将其余开放问题或具体实现标为已确认。
 
+验收基线（2026-10-02）：本次重构以现代 GitHub-hosted runner 作为环境基线。固定六格资产矩阵使用 `ubuntu-24.04`、`ubuntu-24.04-arm`、`macos-15-intel`、`macos-15`、`windows-2025` 和 `windows-11-arm`，实际记录的宿主分别为 Ubuntu 24.04、macOS 15.7.9、Windows Server 2025（10.0.26100）和 Windows 11 ARM64，用于资产构建、加载和归档；Terminal/Agent 产品验收仍以各 workflow 当次记录的现代 runner 为准（`latest` 标签必须记录实际镜像版本）。任何现代 runner 结果都不外推到 macOS 10.13/10.14、Windows 10 1809 或其他旧系统。
+
 ## 1. 用户问题
 
 当前画布已经可以恢复对象图、节点标题、尺寸、最近输出摘要和部分 `Agent` 恢复上下文，但这还不能满足更强的工作连续性诉求：
@@ -172,8 +174,10 @@
 - 实际主进程退出后普通后代继续输出仅作 PTY 生命周期、EOF、挂断与取消诊断，不以收到它们的未来输出作为独立产品验收门槛。若主动取消或触及期限，不能伪装成完整 EOF；这不豁免主进程尾部及既有内容的收尾要求。
 - 启动包装程序与实际 Agent CLI 分开记录身份和退出事件；真实启动链的生命周期另行验证，不能用通用后代实验代替真实 provider 证据。
 - 当前读者读完或取消后回收临时资源，Runtime 重开仍无 completed 正文且不自动执行；旧 live session 保持原 Supervisor 绑定，升级 Host 不替旧实现补造完整性保证。
-- Linux/macOS/Windows 原生 PTY、实际 VS Code/Electron 与 packaged 路径分别留证；Windows 记录 builtin/DLL 路径，真实 provider 与 fake-provider 证据分开。未具备 runner 的项目仍未完成，支持范围调整或发布例外须另行确认。
+- Linux/macOS/Windows 原生 PTY、实际 VS Code/Electron 与 packaged 路径分别留证；Windows 记录 builtin/DLL 路径，真实 provider 与 fake-provider 证据分开。本次只要求上述现代 runner 作为验收输入；旧系统环境缺失不阻塞本次重构，但现代 runner 结果不得宣称旧系统兼容。
 
 冻结的后代实验、原始断言和失败结果继续保留，不修改旧测试求绿，也不追认历史失败为通过。macOS 后代场景失败不能单独证明 Agent / Terminal 产品退出缺陷，亦不能据此宣布 macOS 全部验收通过；产品阻塞与底层诊断的重新分类及理由见退出完整性设计第 18 节。
 
 设计和完整矩阵见 `docs/design-docs/runtime-exit-integrity.md`，推进计划见 `docs/exec-plans/active/runtime-exit-integrity.md`。候选实验前固定版本、重复轮次、资源和等待预算，保留首次失败，不靠延长等待、放宽内容断言或重跑到成功收口。该项未通过前不能宣布本次重构的退出完整性已完成。
+
+旧系统兼容边界（2026-10-02）：macOS 10.13/10.14、Windows 10 1809 及其他低版本不属于本次重构的验收前置，也不因现代 runner 通过而被视为已验证。后续若收到低版本的实际兼容报告，再按独立问题修复和验收；在此之前不修改 `engines` 或平台守卫来伪造最低版本提升。

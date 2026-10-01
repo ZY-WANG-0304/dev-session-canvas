@@ -4,7 +4,7 @@
 
 当前收尾更新（2026-10-01）：固定六架构候选包已完成字节聚合并独立加载，A6 snapshot-only 的同一冻结 VSIX 已在 `.debug/a6-snapshot-real-reload-20261001-post-start-resize/` 完成一次真实 `Reload Window` 通过。该运行覆盖实际尺寸交接、SIGHUP 尾部、双文件保存、新 Host 页面恢复、原资源退出、无重启执行和 cleanup；首轮尺寸前置失败与其 cleanup 的 pending 保存仍原样保留。A1/F-04 继续按有限收尾推进：十会话是声明输入而非产品上限，活动会话的 O(N) 成本与最终保存/unknown 责任槽分账；Q=1 的 `rejected-before-acquire` Host 预约清理已由 e2a53372 修复并以 149/149 回归确认，不再作为当前代码阻塞。不要再追加通用诊断工具门槛。
 
-当前工程状态补充（2026-10-01，第49节）：三平台schema2、Linux旧Node同名namespace和六资产聚合已提交，固定六格无凭据workflow完成局部复核；本地Linux x64整条构建/双宿主加载/归档已通过。下一只首次运行六格原生分发矩阵，再继续下段有限五包；不是重新实施已完成的兼容代码。最低OS真机环境与现代runner验证分账，普通构建仍stock。
+当前工程状态补充（2026-10-02，第49节）：三平台schema2、Linux旧Node同名namespace和六资产聚合已提交，固定六格无凭据workflow完成复核；本地Linux x64整条构建/双宿主加载/归档已通过。现代 runner 作为本次验收基线已足够，不再等待 macOS 10.13/10.14 或 Windows 10 1809；这些旧系统仍未验证，后续仅在收到实际报告时单独修复。产品 workflow 的 `macos-latest`/`windows-latest` 仍需按当次运行记录宿主版本，普通构建仍 stock。
 
 当前唯一执行队列（2026-10-01）：Windows真实Agent36854266396 attempt2原八场、Windows产品36852373473原Terminal六报告/四环境、macOS新helper产品36858038984、macOS真实Agent36858502983、A3第38节两例及A6第39节Runtime reload均已独立核对，不重复排队；所有attempt1与历史失败保留。第44节Remote Linux x64 loopback原四阶段及第47节新固定包A6实际多根组合也已独立通过：A真实EISDIR仍保来源/binding，原reader applied4，B原执行nonce24.9ms，空registry落盘后独立清理通过，旧首败不改。macOS Claude snapshot-only stop非空保存未重开，第48节局部尺寸修复不代证该页面格。其余只按有限收尾第8节五包：六资产/兼容/正常分发与准入、A1最终结构及关键回归、A2/A3未填页面格、A6 snapshot-only实际Host离开、剩余installed/support与最终证据表。当前第49节正在实施Linux schema2实际requirements、arm64及旧Node同名namespace；F-04及默认启用未完成，不增加通用工具阶段，后续历史“当前/下一”不构成追加队列。
 
@@ -2347,3 +2347,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-01，实际多根收口与生产兼容）：将第47节新包通过及旧首败分账，移出已完成的多根格；第49节实施三平台schema2、旧Node同名namespace、六资产聚合与真实执行端选择，登记Linux x64同产物旧glibc/新Node/Electron装载通过。四个活章节与步骤同步，六格原生构建、最低OS与最终产品验收仍开放，默认stock及原尾部完整性要求不变。
 
 修订记录（2026-10-01，固定分发整体路径）：记录无凭据六格构建输入、Windows ARM64最低宿主替代的准确身份、本地Linux x64整条实际通过与失败工件保留。原生远端尚待执行，不以load/局部测试替代产品验收，不新设通用诊断前置。
+
+修订记录（2026-10-02，现代 runner 基线）：用户确认本次重构不等待低版本系统。固定六格现代 runner（Ubuntu 24.04、macOS 15、Windows 2025/11 ARM）承担 native 资产构建、加载与归档；跨平台 Terminal/Agent 产品验收由各 workflow 的当次现代 runner 证据承担。macOS 10.13/10.14、Windows 10 1809 及其他旧系统不作前置，也不由现代结果反推兼容。产品 `latest` job 仍按实际 run 记录镜像版本（例如 macOS 26.6.2、Windows Server 2025），低版本问题保留为后续按报告处理的独立事项，不改变退出完整性和真实 Agent/Webview 验收要求。

@@ -1,6 +1,6 @@
 # 收口 Runtime Persistence 的容量与交互成本
 
-当前收口（2026-10-01，覆盖后续历史“下一步”）：固定 `10/1` schema2 Linux Electron 候选已完成 `color`/`size` 两场景；两场均 `measurementAndContentPass=true`、预算观察 `pass=true`、产品 cleanup `pass=true`，峰值总 RSS 为 3,876,724,736 / 3,954,757,632 bytes。该结果只关闭声明输入，不形成产品并发上限。随后同候选 `2/1` 真实 Host detach/reconnect `color` 通过：旧 Host/原 Supervisor 绑定保持，A 离线期间 B 在追平前 53.4ms 应用，Host ready 后 15,538.456ms 完成追平，reader 身份、journal/hash、自然 no-history 和 reconnect/outer cleanup 均成立。A1/F-04 仍开放；不重复这两个成功组合，不追加通用工具验证，下一只处理既定跨平台/分发与剩余 A1/A2/A3 格。
+当前收口（2026-10-02，覆盖后续历史“下一步”）：固定 `10/1` schema2 Linux Electron 候选已完成 `color`/`size` 两场景；两场均 `measurementAndContentPass=true`、预算观察 `pass=true`、产品 cleanup `pass=true`，峰值总 RSS 为 3,876,724,736 / 3,954,757,632 bytes。该结果只关闭声明输入，不形成产品并发上限。随后同候选 `2/1` 真实 Host detach/reconnect `color` 通过：旧 Host/原 Supervisor 绑定保持，A 离线期间 B 在追平前 53.4ms 应用，Host ready 后 15,538.456ms 完成追平，reader 身份、journal/hash、自然 no-history 和 reconnect/outer cleanup 均成立。现代 GitHub runner 版本已作为本次跨平台验收基线，旧 macOS/Windows 系统不再阻塞本计划；该决定不改变 F-04、真实 packaged/Agent/Webview、尾部完整性或最终准入要求。A1/F-04 仍开放；不重复这两个成功组合，不追加通用工具验证，下一只处理既定跨平台/分发与剩余 A1/A2/A3 格。
 
 同日现有结构回归复核保持通过：Host output credit 的真实 socket 背压、控制/尾部/compact 生命周期，output/resize/scrollback 顺序，以及 terminal paged projection 的 Webview 39/39、Host batch 10/10 与 compaction/取消/重试均通过；仅作为直接结构护栏，不升级为完整 A1 资源或跨平台页面证据。
 
@@ -271,6 +271,8 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 修订记录（2026-09-29，取消等待）：修复直接无界登记并保留严格消费语义；红绿日志在 `.debug/runtime-line-context-cancellation-20260929/`，唯一实际链输入与结果在 `.debug/owned-runtime-capacity-cancellation-first-20260929/`。仍有 2x/4x 内存失败，下一仅针对实际分配来源取证；不继续盲目修热点、不加诊断框架、不覆盖前轮失败。
 
 修订记录（2026-09-30，预算口径与 B2 顺序）：用户要求先纠正合并进程观察阈值与产品资源预算的混用，再推进 B2。新增具名当前决定并同步四个活章节、工作计划、具体步骤与 A1 验收，原数值/阈值/exit 1/历史证据保留；profiler 不再默认前置，F-04 仍未完成。当前 B2 只传递启动 profile 并校验隔离 generation，不默认启用或开放 Host cold-start；同 namespace 排他首次启动仍属随后的具体生产接入，不新增诊断阶段。
+
+修订记录（2026-10-02，现代 runner 基线）：用户确认本次重构不等待低版本系统。固定六格现代 GitHub runner（Linux 24.04、macOS 15、Windows 2025/11 ARM）承担 native 资产构建、加载与归档；跨平台 Terminal/Agent 产品验收由各 provider/Agent workflow 的当次现代 runner 证据承担。macOS 10.13/10.14、Windows 10 1809 及其他旧系统不作前置，也不由现代结果反推兼容。旧版本问题保留为后续按报告处理的独立事项，不改变当前 A1/F-04 和退出完整性验收。
 
 修订记录（2026-09-30，B2 安全首次启动）：同步显式 Manager 新建许可、bound 不重启、Linux namespace claim 与 candidate systemd 策略；extension 默认仍关闭，snapshot-only 不改。保留前一增量及全部容量历史，当前剩余指向扩展两模式入口、匹配资产和既定 A1 至 A6，不扩诊断阶段。
 
