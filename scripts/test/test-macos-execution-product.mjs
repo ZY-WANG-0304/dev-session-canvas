@@ -89,11 +89,63 @@ async function selfTest() {
   assert.doesNotMatch(commands, /scripts\/diagnostics|DEEPSEEK|continue-on-error/);
   const { SerializedTerminalStateTracker } = await load('extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts');
   const tracker = new SerializedTerminalStateTracker(119, 41, { scrollback: 100 });
-  tracker.write('\u001b[3J\u001b[2J\u001b[HROOT\r\n\u001b[3;5H\u001b[31m\u4e2d\u6587\u001b[0m\u001b[5;7H');
-  await tracker.flush();
-  assertScreen(tracker);
-  tracker.dispose();
+  const emptyTracker = new SerializedTerminalStateTracker(119, 41, { scrollback: 100 });
+  const unconsumedTracker = new SerializedTerminalStateTracker(119, 41, { scrollback: 100 });
+  try {
+    const identity = { executionId: 'self-test', generation: 'terminal-hooks' };
+    const batch = (sequence, text) => ({ identity, sequence, frameId: sequence, text, byteLength: Buffer.byteLength(text) });
+    const seal = lastDataSequence => ({ ...identity, lastDataSequence,
+      source: { kind: 'eof', lastDataSequence }, process: { kind: 'exited', exitCode: 7 } });
+    const state = { tracker, probe: { consumed: '' } };
+    let resume;
+    const gate = new Promise(resolve => { resume = resolve; });
+    let paused = true;
+    const hooks = createTerminalHooks(state, () => paused ? gate : undefined);
+    const first = batch(1, '\u001b[3J\u001b[2J\u001b[HROOT\r\n');
+    const pending = hooks.consume([first]);
+    assert.equal(state.probe.consumed, '', 'Paused consumption must not enter the tracker.');
+    paused = false; resume();
+    await pending;
+    assert.equal((await tracker.flush()).outputSequence, 1);
+    const rest = [batch(2, '\u001b[3;5H\u001b[31m\u4e2d\u6587'), batch(3, '\u001b[0m\u001b[5;7H')];
+    await hooks.consume(rest);
+    assert.equal(state.probe.consumed, [first, ...rest].map(value => value.text).join(''));
+    assert.equal(await hooks.flushFinal(seal(3)), 3);
+    assertScreen(tracker);
+    await assert.rejects(hooks.flushFinal(seal(4)), /match the final seal/);
+    await assert.rejects(createTerminalHooks({ tracker: unconsumedTracker, probe: { consumed: '' } })
+      .flushFinal(seal(1)), /match the final seal/);
+    const emptyHooks = createTerminalHooks({ tracker: emptyTracker, probe: { consumed: '' } });
+    await emptyHooks.consume([]);
+    assert.equal(await emptyHooks.flushFinal(seal(0)), 0);
+    assert.equal((await emptyTracker.flush()).outputSequence, 0);
+    assert.equal(emptyTracker.terminal.buffer.active.cursorX, 0);
+    assert.equal(emptyTracker.terminal.buffer.active.cursorY, 0);
+  } finally { tracker.dispose(); emptyTracker.dispose(); unconsumedTracker.dispose(); }
   console.log('macOS product input self-test passed (no native loading, process claims or PTYs).');
+}
+
+function createTerminalHooks(state, consumptionGate = () => undefined) {
+  return {
+    async consume(batches) {
+      const gate = consumptionGate();
+      if (gate) await gate;
+      for (const batch of batches) {
+        state.probe.consumed += batch.text;
+        state.tracker.write(batch.text, { outputSequence: batch.sequence });
+      }
+      await state.tracker.flush();
+    },
+    async flushFinal(seal) {
+      let final = await state.tracker.flush();
+      if (seal.lastDataSequence === 0 && final.outputSequence === undefined) {
+        state.tracker.markOutputSequence(0);
+        final = await state.tracker.flush();
+      }
+      assert.equal(final.outputSequence, seal.lastDataSequence, 'The flushed terminal sequence must match the final seal.');
+      return final.outputSequence;
+    }
+  };
 }
 
 function assertScreen(tracker) {
@@ -193,14 +245,7 @@ async function providerCase(context, state, scenario) {
   const prefix = path.join(context.directory, 'subject');
   const start = execution.start({ file: process.execPath, args: [context.subjectPath, prefix], cwd: context.directory,
     env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: context.directory, TERM: 'xterm-256color', LANG: 'en_US.UTF-8' },
-    cols: 107, rows: 33, stopStrategy: 'hangup' }, {
-    async consume(batches) {
-      if (paused) await gate;
-      for (const batch of batches) { state.probe.consumed += batch.text; state.tracker.write(batch.text); }
-      await state.tracker.flush();
-    },
-    async flushFinal() { return (await state.tracker.flush()).outputSequence; }
-  });
+    cols: 107, rows: 33, stopStrategy: 'hangup' }, createTerminalHooks(state, () => paused ? gate : undefined));
   const started = await before(start.first, context.deadline, 'product start result');
   if (scenario === 'partial-create') {
     assert.equal(state.helperChanged, true);

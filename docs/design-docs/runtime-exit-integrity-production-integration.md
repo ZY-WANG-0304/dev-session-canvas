@@ -1751,7 +1751,19 @@ DeepSeek 官方接口提供 Codex 所需的 Responses 路径和 Claude 所需的
 
 首跑为 push run `36819133440`，输入 `dcac5b8299de7ad941a8d9ce045cf9c66ace04fd`，job `110230671679` 在 `Check bounded provider input` 失败。源码契约检查和资产测试前三项已通过；第四项 `test-macos-execution-candidate-assets.mjs:113` 的路径严格相等断言失败：实际导入目录为 `/private/var/folders/...`，夹具期望为 `/var/folders/...`。`importCandidateAssets` 已按既定契约对 dist 使用 realpath，测试却直接以 `os.tmpdir()` 的别名路径建立预期。这是已定位的测试夹具路径错误，不是 Mach-O、PTY 或产品退出结果。
 
-修正仅将 macOS 资产与工厂纯测试的临时根在创建后规范化，保持原资产目录、摘要、可执行位和拒绝覆盖断言；资产测试增加一项合成目录别名回归，确认 read/import/build-selection 返回既定规范路径，没有修改产品路径校验或放宽断言。本地 Linux/Node25.6.0 上资产12/12、工厂两个受控架构和 product `--self-test` 通过；这些不是 Darwin 原生验证。首跑的 Node 编译、四个产品场景、VS Code 准备、Electron 编译和两模式 Webview complete/reopen 均 skipped，没有生成对应 build/evidence 目录，因此归档步骤没有上传产物。首败 run/log 保留，尚无修正后 runner 结果，不将未执行项计为通过，也不自动重复运行旧输入。
+修正仅将 macOS 资产与工厂纯测试的临时根在创建后规范化，保持原资产目录、摘要、可执行位和拒绝覆盖断言；资产测试增加一项合成目录别名回归，确认 read/import/build-selection 返回既定规范路径，没有修改产品路径校验或放宽断言。本地 Linux/Node25.6.0 上资产12/12、工厂两个受控架构和 product `--self-test` 通过；这些不是 Darwin 原生验证。首跑的 Node 编译、四个产品场景、VS Code 准备、Electron 编译和两模式 Webview complete/reopen 均 skipped，没有生成对应 build/evidence 目录，因此归档步骤没有上传产物。首败 run/log 保留；该次修正完成时尚无修正后 runner 结果，不将未执行项计为通过，也不自动重复运行旧输入。
+
+第二次运行是新输入 `8002b315bb76543f9c797eb6dd848b59922a4be2` 的手动 run `36819790191`，job `110232683885`。受控输入检查与实际 Darwin arm64/Node25.6.0/ABI141 编译通过；namespace 场的三个真实 authority 验证原锁 inode 不变、竞争拒绝和退出后重取，场景及清理均通过。normal 为本轮首个失败，记录的外层结果是 45000 ms 整场观察到期。其 `evidence.json` 已显示 adapter `state=settled`、`acceptedThrough=consumedThrough=6`、进程自然 exit7、真实 source EOF、pendingBytes/pendingFrames 为0，五项本方资源均 released；但 terminal 为 `failed`，原因 `Invalid final terminal revision`，owner 因 final-flush 不确认而隔离。normal 清理 `safe=true`、`taskSettled=true`、无错误或额外信号，不能据此把整场或后置写回执/终态断言追认为通过。原产物保留在 artifact `macos-product-provider-36819790191-1`，本地核对目录为 `.debug/macos-product-36819790191/`；paused-stop、partial-create 未运行，VS Code/Electron/两模式 Webview 后续步骤全部 skipped。
+
+确定原因在验收 harness 的 tracker 接线：`consume` 调用 `tracker.write(batch.text)` 时没有传入输出序号，随后 `flushFinal` 从真实 flush 结果读取到 `undefined`。`DataBatch` 的实际字段为 `sequence`，`lastDataSequence` 属于 `OutputSeal`，不是 batch 属性。修正只在本 runner 共用的终端 hooks 中传入 `{ outputSequence: batch.sequence }`，最终先完成真实 tracker flush，再严格核对其序号等于 seal；只有无任何输出、seal 为0且 tracker 未设序号时，显式标记空流0并再次真实 flush，不为非零缺失消费补造 revision。原原生、退出、资源、EOF、写回执、终态与暂停取消断言保持。局部 `--self-test` 直接执行同一套 `consume/flushFinal` 回调，覆盖暂停门、多批序号1/2/3、真实中文颜色/光标、零输出、未消费非零 seal 和 seal 超前拒绝，语法与作用域差异检查通过；没有新 PTY/native/runner 执行或第三次结果。
+
+### 33.5 既定真实 Agent 验收的 Darwin 进程身份来源
+
+原A4观察器只支持Linux `/proc`，不能删除guard后把macOS的不可读PID认成已退出。继续保留现有八场、真实npm包装器、nonce/EOF/页面/持久化断言和有限安全清理；仅为本轮实际macOS输入增加进程身份来源，不重建诊断框架。
+
+选用固定 `psutil==7.0.0` 的成熟系统进程API，作为CI验收依赖而非产品运行依赖。小型只读helper一次查询已确认root及原来记录的PID，返回birth identity、ppid、状态、executable、argv和直接后代，不读取环境或整机进程表，不归档未过滤命令参数。Darwin身份使用系统提供的启动秒/微秒，不用 `ps lstart` 的秒级字符串，不把PID存活当作同一进程。采样仍是单在途，保留实际采样耗时及观察区间，不宣称精确退出时序；访问失败记unknown并阻止成功判定，不能补为absent或零。
+
+失败清理只针对本观察器已证明属于原启动链的provider/wrapper/CLI，重新核对同一birth identity与executable；helper或API不可用时不按PID补杀。本轮新增依赖仅服务既定真实Agent安全/判定，不成为Terminal或其他平台的通用前置。保持专用DeepSeek凭据步骤与脱敏report，原始配置/日志不上传；Node/Terminal的无凭据workflow不混入Agent私有产物。具体helper源码与运行时摘要随A4输入固定，尚未取得新macOS真实Agent结果。
 
 ## 34. Windows 产品原生接入
 
