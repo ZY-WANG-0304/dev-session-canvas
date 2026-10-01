@@ -2106,3 +2106,9 @@ A3修正夹具的最终纯测试在当前工作树通过7组，新增receipt只�
 同一提交的Windows产品Provider run `36846733819` 在实际Terminal/Webview/completed reopen步骤失败，构建和前置产品provider均成功，日志只证明Electron启动到`workbench#open()`，未形成可核对的产品报告。该失败目前只分类为产品workflow/宿主启动阶段阻塞，不能归因storage containment（修正后的helper尚未进入该步骤的可核对报告），也不能以进程退出或大artifact存在宣称产品通过。macOS产品Provider run `36846734096`成功，但仍不代证macOS Agent。
 
 下一门禁保持有限：提交当前A3 receipt/文档后，先按原输入复核Windows产品启动失败的第一现场；再触发一次macOS真实Agent固定矩阵，单独取得其Codex/Claude结果。未完成Claude完整矩阵、Windows产品Provider、macOS Agent、A5六资产/Remote/默认分发和F-04前，不宣布跨平台或总体退出完整性交付；不把诊断工具通用增强重新设为前置。
+
+## 41. macOS Agent 矩阵的第二次失败定位
+
+当前提交 `85f08d8e` 的macOS Agent run `36849214028` 在 `codex-live-runtime-natural` 完整通过（真实响应、source EOF、cleanup），随后 `codex-live-runtime-stop` 在 `agent-candidate-tests.cjs:137` 的 `lastRuntimeError` 检查失败；认证、构建和首场均已通过，后六场未运行。安全摘要保存在 `.debug/macos-agent-36849214028/summary.json`，未发布原始CLI或环境内容。
+
+该结果与此前macOS run `36832581851`、`36836757674` 的场景间失败相互印证，但失败位置不同：两次此前运行分别在 `codex-snapshot-only-stop` 的 reader settlement/完成保存断言处停止，当前运行更早在第二场启动状态失败。不能据此宣称固定可复现的单一业务根因，也不能把一次首场通过扩展为macOS矩阵通过；当前分类为macOS候选场景间启动/收尾稳定性阻塞，下一次只允许一次同输入重跑用于区分环境波动与确定性产品缺陷，仍保留三次失败现场与原断言。
