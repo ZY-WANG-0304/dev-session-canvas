@@ -1,5 +1,7 @@
 # 收口 Runtime Persistence 的容量与交互成本
 
+当前收口（2026-10-01，覆盖后续历史“下一步”）：固定 `10/1` schema2 Linux Electron 候选已完成 `color`/`size` 两场景；两场均 `measurementAndContentPass=true`、预算观察 `pass=true`、产品 cleanup `pass=true`，峰值总 RSS 为 3,876,724,736 / 3,954,757,632 bytes。该结果只关闭声明输入，不形成产品并发上限。随后同候选 `2/1` 真实 Host detach/reconnect `color` 通过：旧 Host/原 Supervisor 绑定保持，A 离线期间 B 在追平前 53.4ms 应用，Host ready 后 15,538.456ms 完成追平，reader 身份、journal/hash、自然 no-history 和 reconnect/outer cleanup 均成立。A1/F-04 仍开放；不重复这两个成功组合，不追加通用工具验证，下一只处理既定跨平台/分发与剩余 A1/A2/A3/A6 格。
+
 本 ExecPlan 按 `docs/PLANS.md` 维护，承接 `docs/design-docs/runtime-persistence-closeout.md` 的 B1/A1，不是新的退出诊断阶段。输入为 `8dd82629`。F-04 目标是长历史不再要求每层常驻/一次性复制完整后缀，实际在途数据有约束，恢复不挤掉交互；F-05 的无 completed 历史与退出尾部保证不变。工程判断由代理承担，不等待用户选择预算。
 
 当前B2依赖（2026-10-01）：macOS修后run `36827234930` Node四例与Electron编译通过，旧artifact进一步定位为Canvas ready超时且未创建Terminal，按生产接入33.9隔离临时宿主Secret Storage环境依赖。Windows run `36827234960` 确认主体标准流非TTY，34.9最小句柄设置修后原生待验。A6非root提交竞态按32.21修正。继续既定平台产品验收，不改变已通过的10.15、不新增容量重复矩阵，不关闭F-04、本计划或正式准入。
@@ -27,6 +29,8 @@
 
 - [x] (2026-10-01，B1/A1输入) 设计10.15在运行前冻结原两主体color离线恢复的交互顺序/同动作前后块号/1500ms与不重置30秒判据，保留旧indexed-pages及全部内容/身份/清理。
 - [x] (2026-10-01，B1/A1有限验收) 原test窄调及runner判据摘要后，`.debug/a1-host-reconnect-20261001-overlap/` 固定一次完整 exit 0：B51ms应用、A12到18未追平、ready后13137.248ms完整恢复，原身份/hash/no-history及两份cleanup通过，无强杀；不关闭总体或重跑求次数。
+- [x] (2026-10-01，B1/A1声明容量) `.debug/a1-ten-session-20261001-schema2-10-1/` 的 `color`/`size` 两场景在显式 `10/1` schema2 候选上完整通过；内容、交互、预算观察、journal/hash、自然无历史和产品 cleanup 均通过，峰值总 RSS 分别 3,876,724,736 / 3,954,757,632 bytes。仅关闭固定声明输入，不形成 `N=10` 上限或一般 SLA。
+- [x] (2026-10-01，B1/A2 Host重连) `.debug/a1-host-reconnect-20261001-schema2-2-1/color/` `2/1` detach/reconnect 完整通过；A 未追平时 B 53.4ms 实际应用，Host ready 后 15,538.456ms 追平，原 Supervisor/session/reader 身份、离线来源、终端尺寸、完整后缀、自然 no-history 与 reconnect/outer cleanup 均成立。该组合不外推为全部 F-04/A2。
 - [x] (2026-09-30) 固定真实 Host 两次 launch 已执行；原执行身份/绑定、新 reader 与离线 source receipt 成立，但 `tail-observed` 在原 30 秒期限只到 1404/2560 块。四轮 exit 1 保留，末轮清理通过，B 新交互/独立 journal hash/自然无历史未到达，不记整体通过。
 - [x] (2026-09-30) 按容量设计 10.13 修复每页整段重扫：只保留单段认证偏移索引，每页释放读取保护。96 页读取量由先红 116286624 bytes 降到 <=2×1211319 bytes，完整性/取消/compact 回归通过；同输入实际冷恢复 `indexed-pages` exit 0，详见 10.14。
 - [x] (2026-09-30) B2 已接实际候选扩展与匹配 Electron 资产，Runtime/editor 和修后 snapshot-only 的对应有限完成/真实重开证据分别成立；后者 `snapshot-normalization-fixed` 单选 exit 0，旧 live 投影、夹具字段及真实重开失败均保留。Host 110/110 等回归通过；不是 A1 容量结果，不重跑合并阈值样本。

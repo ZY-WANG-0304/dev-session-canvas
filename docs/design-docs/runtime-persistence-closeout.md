@@ -24,6 +24,10 @@ updated_at: 2026-10-01
 
 ## 1. 状态与目的
 
+最新状态（2026-10-01，覆盖本节后续历史入口）：A1 的固定 `10/1` schema2 Linux Electron 候选已完成 `color` 与 `size` 两个场景，内容/交互/来源 hash/自然无历史/产品 cleanup 均通过；峰值总 RSS 分别为 3,876,724,736 与 3,954,757,632 bytes，仍仅是该声明工作负载的观察结果，不构成 `N=10` 产品上限或通用 SLA。随后同候选 `2/1` 的真实 Host detach/reconnect `color` 组合通过：旧 Host 消失后原 Supervisor、主体和 session/reader 身份保持，B 在 A 尚未追平时 53.4ms 实际应用，Host ready 后 15,538.456ms 追平，reconnect/outer cleanup 均通过。两项均不关闭 F-04、跨平台/packaged、A2/A3 未填页面格或默认准入；不再重复成功矩阵，不把工具边界追加为前置。
+
+本轮唯一未提交代码是 `scripts/smoke/run-vscode-execution-candidate.mjs` 的 schema2 资产兼容：允许 Node/Electron runtime provenance、允许 `profile=platform` 聚合选择，并仅在 Windows Electron 资产上检查 Electron 版本字段。该变更已由候选构建、installed-candidate 13 项测试和上述真实运行覆盖，待与本轮证据一并提交；历史失败与原阈值保持不变。
+
 当前有限增量（2026-10-01，以本段优先）：Windows36854266396 attempt2真实Codex/Claude原八场、36852373473原Terminal两模式六结果/四环境已独立核对；原前置失败与整包下载124不改。A3第38节两例、A6第39节真实Runtime reload及第47节新固定包实际多根保存失败/B交互均有限通过，不重复排队；第47节A真实EISDIR仍保来源/binding、原reader applied4，B原执行nonce24.9ms，空registry落盘后独立清理通过，旧首败保持。Remote固定Node VSIX原四阶段和macOS新helper产品/真实Agent原矩阵已收口各自固定格；Claude snapshot-only stop非空保存未重开，第48节局部尺寸修复不代证其实际页面/重开。A6仍保留snapshot-only实际Host离开。六资产/兼容/默认分发/准入及F-04、其余A1至A6未完成，当前沿第49节实施兼容要求，按第8节有限剩余映射推进，不增加通用工具门槛；历史不是追加队列。
 
 当前B2/A5与B3/A6（2026-10-01）：macOS 新 helper 的产品 Terminal/Webview 与真实 Agent 原八场已按生产接入第46节回收；旧 helper 首败和历史诊断未知保持。Windows36830583121绿灯缺五报告已确认code.cmd转交误作宿主完成，34.12窄修后36834158313真实exit1，后续36854266396 attempt2 的新固定矩阵已独立通过；snapshot-only stop 保存非空状态时不要求重开，不能倒推空态重开。A6永久退出后旧reset写盘先红已修，50次Host回归及独立复核通过；真实reload/多根UI不代证。旧失败、EOF/尾部、真实Agent及既定矩阵不削减，F-04、其余A1至A6、packaged/Remote和默认准入仍开放；当前只处理有限收尾清单，不追加通用工具阶段。

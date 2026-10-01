@@ -1,5 +1,7 @@
 # 交付跨平台执行会话退出完整性
 
+最新 A1/B1 结果（2026-10-01，覆盖后续历史入口）：固定 `10/1` schema2 Linux Electron 候选的 `color`/`size` 真实多会话校准均通过内容、预算观察和产品 cleanup，仍只是声明负载；同候选 `2/1` `color` Host detach/reconnect 也通过，B 在 A 尚未追平时 53.4ms 应用，旧 Supervisor 与 reader/session 身份保持，Host ready 后 15,538.456ms 追平。该结果解除具名容量/离线交互组合，不关闭 F-04、默认准入、跨平台/packaged 或其他 A 格；不重复成功矩阵，不新增通用诊断门槛。
+
 当前收尾更新（2026-10-01）：固定六架构候选包已完成字节聚合并独立加载，A6 snapshot-only 的同一冻结 VSIX 已在 `.debug/a6-snapshot-real-reload-20261001-post-start-resize/` 完成一次真实 `Reload Window` 通过。该运行覆盖实际尺寸交接、SIGHUP 尾部、双文件保存、新 Host 页面恢复、原资源退出、无重启执行和 cleanup；首轮尺寸前置失败与其 cleanup 的 pending 保存仍原样保留。A1/F-04 继续按有限收尾推进：十会话是声明输入而非产品上限，活动会话的 O(N) 成本与最终保存/unknown 责任槽分账；Q=1 保留且其 `rejected-before-acquire` Host 预约泄漏是下一项直接代码阻塞。不要再追加通用诊断工具门槛。
 
 当前工程状态补充（2026-10-01，第49节）：三平台schema2、Linux旧Node同名namespace和六资产聚合已提交，固定六格无凭据workflow完成局部复核；本地Linux x64整条构建/双宿主加载/归档已通过。下一只首次运行六格原生分发矩阵，再继续下段有限五包；不是重新实施已完成的兼容代码。最低OS真机环境与现代runner验证分账，普通构建仍stock。
@@ -106,6 +108,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 - [x] (2026-10-01，第50节) 同一冻结 VSIX 的 A6 snapshot-only 真实 Reload Window 复验通过：主体启动后真实 resize 后唯一 nonce/SIZE 握手、完整 SIGHUP 中文/ANSI 尾部、双路径 snapshot、实际新 Host 页面重放、原 provider/主体退出、无新执行、无 binding/pending operation 与 cleanup 均通过；首轮尺寸错误和失败路径 pending cleanup 保留。
 - [x] (2026-10-01，B2/A1) 修复 Q=1 `rejected-before-acquire` 的类型化 Host 预约清理，并补 terminal/agent 同节点重试回归；未知连接/能力/资源结果继续 sticky quarantine，Host wiring 149/149 通过。
+- [x] (2026-10-01，B1/A1) 显式 `10/1` schema2 Linux Electron 候选的 `color`/`size` 多会话校准通过；内容、交互、资源观察、来源/hash、自然无历史和 cleanup 均成立，结果不升级为产品并发上限。
+- [x] (2026-10-01，B1/A2) 同候选 `2/1` 真实 Host detach/reconnect `color` 通过；新 Host 在 A 尚未追平时实际应用 B（53.4ms），保持原 Supervisor/session/reader 身份并在 ready 后 15,538.456ms 追平，reconnect/outer cleanup 通过。F-04 总体和其余平台/页面格继续开放。
 
 - [x] (2026-10-01，第50节) snapshot-only一次UI真实reload接线及schema2 installed适配完成，installed13/reload11/typecheck和原窄回归通过；原Runtime固定包与主体/整体期限保持，自动activation与driver读盘分账，旧reader/EOF及独占落盘不代证。
 - [ ] (2026-10-01，第50节) 冻结当前包后一次实际snapshot-only Host离开验收，独立成功写入/磁盘来源/新页面及原进程释放对账；未取得真实结果前不关闭A6。

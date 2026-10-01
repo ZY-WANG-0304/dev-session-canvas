@@ -48,7 +48,8 @@ const assetTarget = process.platform === 'win32' ? `win32-${process.arch}`
   : process.platform === 'darwin' ? `darwin-${process.arch}` : 'linux-x64-glibc';
 const manifest = installedInput ? installedInput.manifest : JSON.parse(await fs.readFile(path.join(dist,
   `native/${platformName}-execution-candidate/${assetTarget}/manifest.json`), 'utf8'));
-assert.equal(manifest.runtime.name, 'electron', 'Use the matching Electron candidate build, not a Node addon.');
+assert(['node', 'electron'].includes(manifest.runtime.name),
+  'Use a schema2 candidate asset with explicit runtime provenance.');
 assert.equal(manifest.profile, `${platformName}-owner-v1-candidate`);
 assert.equal(manifest.platform, process.platform);
 assert.equal(manifest.arch, process.arch);
@@ -71,8 +72,10 @@ if (installedInput) {
 }
 if (process.platform === 'win32') {
   assert.equal(process.arch, 'x64'); assert.equal(process.version, 'v25.6.0');
-  assert.equal(manifest.runtime.version, '39.8.7'); assert.equal(manifest.runtime.node, '22.22.1');
-  assert.equal(manifest.runtime.modules, '140');
+  if (manifest.runtime.name === 'electron') {
+    assert.equal(manifest.runtime.version, '39.8.7'); assert.equal(manifest.runtime.node, '22.22.1');
+    assert.equal(manifest.runtime.modules, '140');
+  }
   for (const file of ['windows-execution-output-worker.js']) sourceHashes[file] = hash(await fs.readFile(path.join(dist, file)));
   for (const file of ['windows-execution-candidate.cjs', 'fixtures/execution-candidate-windows.cjs',
     'fixtures/execution-candidate-windows.cmd', 'fixtures/execution-candidate-windows-observer.ps1']) {
@@ -171,7 +174,9 @@ async function runCapacityCalibration() {
   const selectionBytes = await fs.readFile(path.join(dist, 'execution-candidate-selection.json'));
   const selection = JSON.parse(selectionBytes);
   assert.equal(selection.schemaVersion, 1);
-  assert.equal(selection.profile, manifest.profile);
+  assert(selection.profile === manifest.profile || (selection.profile === 'platform'
+    && selection.platform === undefined && manifest.platform === process.platform && manifest.arch === process.arch),
+    'The explicit selection must resolve to this platform asset.');
   assert.deepEqual(selection.admissionLimits, { executions: workload.sessionCount, starting: 1 },
     'Build the matching explicit admission selection before running this workload.');
   sourceHashes['execution-candidate-selection.json'] = hash(selectionBytes);
