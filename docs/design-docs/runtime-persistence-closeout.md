@@ -24,6 +24,8 @@ updated_at: 2026-10-01
 
 ## 1. 状态与目的
 
+当前有限增量（2026-10-01，以本段优先）：第39节固定Linux installed VSIX的一次真实Runtime Reload Window首轮通过，同UI而Host/frame/readId更换，原执行保持、新nonce11ms应用、completed空重开、最终applied与清理均独立核对；A3修正后 `.debug/a3-reader-isolation-20261001-fixed/` live双Host与snapshot-only两例完整exit0，跨Host同execution/B原readId、90000行尾部/EOF/applied、无历史和cleanup通过，首败保留。Windows36843457341已进入真实Agent但首场storage路径断言失败，窄realpath/platform-relative修正已通过4/4纯测，原失败仍不追认；macOS36843430053新target产品Terminal/Webview/reopen workflow success。macOS Agent空态重开及A4原矩阵、六资产/兼容/Remote、其他A1至A6及默认准入继续开放，不追加通用工具阶段。后续dated段落保留各原时点事实，不是重复队列。
+
 当前B2/A5与B3/A6（2026-10-01）：macOS Terminal run36829311235六报告已核对；首轮真实Agent36832581851前三Codex场passed，第四snapshot stop因非空快照断言失败，Claude未跑，按生产接入33.10取终态证据，不盲目重跑或归因为丢内容。Windows36830583121绿灯缺五报告已确认code.cmd转交误作宿主完成，34.12窄修后36834158313真实exit1，首败reader identity前提，Agent仍未调度。A6永久退出后旧reset写盘先红已修，50次Host回归及独立复核通过；真实reload/多根UI不代证。旧失败、EOF/尾部、真实Agent及既定矩阵不削减，F-04、其余A1至A6、packaged/Remote和默认准入仍开放；当前只处理上述具名产品/判定缺口，不追加通用工具阶段。
 
 当前 A1 结果与下一项（2026-10-01）：容量设计10.15的 `.debug/a1-host-reconnect-20261001-overlap/` 固定一次运行完整exit0；B回复51ms实际应用，同一Webview动作中A的块号12到18均未追平2560，随后ready后13137.248ms完整恢复。原1500ms/不重置30秒、原执行及新reader、完整后缀/独立journal/hash/自然no-history与两份cleanup均通过，outer forcedSignals/failures为空。声明输入下的真实离线追赶交互组合已覆盖；10.14的overlap=false和全部旧失败保持。下一推进原B2/A5的macOS/Windows产品provider、namespace、匹配Node/Electron及packaged接入，不追加此组合或工具阶段；F-04总体和其他A项继续开放。

@@ -205,6 +205,67 @@ try {
   assert.deepEqual(invalidSnapshot.pageGeometryMatches,
     { cols: null, rows: null, cursorX: null, cursorY: null, viewportY: null, bufferType: null });
   assert.equal(invalidSnapshotText.includes(key), false);
+  for (const entry of scenarios) await fs.writeFile(path.join(options.output, entry.name, 'artifacts', 'result.json'),
+    JSON.stringify({ pass: true }));
+  const reopenFields = ['attempted', 'newHost', 'sameRuntime', 'sameWorkspace', 'sameUserData', 'persistedNodeLoaded',
+    'stoppedNodeRetained', 'emptyStateRetained', 'sequenceRetained', 'freshPage', 'pageBufferEmpty',
+    'pageCursorOrigin', 'pageViewportOrigin', 'pageNormalBuffer', 'noNewExecution', 'cleanupComplete'];
+  await fs.writeFile(path.join(stopArtifacts, 'result.json'), JSON.stringify({ pass: true, reopenRequired: true }));
+  const missingReopenDirectory = path.join(root, 'missing-reopen-report');
+  await writeAgentCandidateCIReport({ ...options, directory: missingReopenDirectory });
+  const missingReopen = JSON.parse(await fs.readFile(path.join(missingReopenDirectory, 'summary.json'), 'utf8'));
+  assert.equal(missingReopen.pass, false, 'A passed first Host cannot substitute for the required second Host report.');
+  const missingRow = missingReopen.scenarios.find(row => row.name === stopped.name);
+  assert.equal(missingRow.pass, false);
+  assert.equal(missingRow.snapshotReopen.required, true);
+  assert.equal(missingRow.snapshotReopen.reportPresent, false);
+  assert.equal(missingRow.snapshotReopen.pass, false);
+  const reopenDir = path.join(stopArtifacts, 'reopen');
+  await fs.mkdir(reopenDir);
+  const reopenReport = { schemaVersion: 1, pass: true,
+    ...Object.fromEntries(reopenFields.map(field => [field, true])), raw: key, error: key, savedState: { data: key } };
+  await fs.writeFile(path.join(reopenDir, 'reopen-result.json'), JSON.stringify(reopenReport));
+  const reopenedDirectory = path.join(root, 'reopened-report');
+  await writeAgentCandidateCIReport({ ...options, directory: reopenedDirectory });
+  const reopenedText = await fs.readFile(path.join(reopenedDirectory, 'summary.json'), 'utf8');
+  const reopened = JSON.parse(reopenedText);
+  assert.equal(reopened.pass, true);
+  assert.deepEqual(reopened.scenarios.find(row => row.name === stopped.name).snapshotReopen,
+    { required: true, reportPresent: true, pass: true, ...Object.fromEntries(reopenFields.map(field => [field, true])) });
+  assert.equal(reopenedText.includes(key), false);
+  for (const [index, field] of [...reopenFields, 'pass'].entries()) {
+    await fs.writeFile(path.join(reopenDir, 'reopen-result.json'), JSON.stringify({ ...reopenReport, [field]: key }));
+    const invalidDirectory = path.join(root, `invalid-reopen-report-${index}`);
+    await writeAgentCandidateCIReport({ ...options, directory: invalidDirectory });
+    const invalidText = await fs.readFile(path.join(invalidDirectory, 'summary.json'), 'utf8');
+    const invalid = JSON.parse(invalidText);
+    assert.equal(invalid.pass, false, field);
+    const invalidRow = invalid.scenarios.find(row => row.name === stopped.name);
+    assert.equal(invalidRow.pass, false, field);
+    assert.equal(invalidRow.snapshotReopen[field], field === 'pass' ? false : null);
+    assert.equal(invalidText.includes(key), false, field);
+  }
+  await fs.writeFile(path.join(stopArtifacts, 'result.json'), JSON.stringify({ pass: true,
+    reopenRequired: true, reopenHandoffReady: key }));
+  const invalidDecisionDirectory = path.join(root, 'invalid-reopen-decision-report');
+  await writeAgentCandidateCIReport({ ...options, directory: invalidDecisionDirectory });
+  const invalidDecisionText = await fs.readFile(path.join(invalidDecisionDirectory, 'summary.json'), 'utf8');
+  assert.equal(JSON.parse(invalidDecisionText).pass, false);
+  assert.equal(JSON.parse(invalidDecisionText).scenarios.find(row => row.name === stopped.name).pass, false);
+  assert.equal(invalidDecisionText.includes(key), false);
+  await fs.writeFile(path.join(stopArtifacts, 'result.json'), JSON.stringify({ pass: true,
+    reopenRequired: false, reopenHandoffReady: true }));
+  const contradictoryDecisionDirectory = path.join(root, 'contradictory-reopen-decision-report');
+  await writeAgentCandidateCIReport({ ...options, directory: contradictoryDecisionDirectory });
+  const contradictoryDecisionText = await fs.readFile(path.join(contradictoryDecisionDirectory, 'summary.json'), 'utf8');
+  assert.equal(JSON.parse(contradictoryDecisionText).pass, false);
+  assert.equal(contradictoryDecisionText.includes(key), false);
+  await fs.writeFile(path.join(reopenDir, 'reopen-result.json'), JSON.stringify(reopenReport));
+  await fs.writeFile(path.join(stopArtifacts, 'result.json'), JSON.stringify({ pass: false, reopenRequired: true }));
+  const originalFailureDirectory = path.join(root, 'original-failure-reopen-report');
+  await writeAgentCandidateCIReport({ ...options, directory: originalFailureDirectory });
+  const originalFailure = JSON.parse(await fs.readFile(path.join(originalFailureDirectory, 'summary.json'), 'utf8'));
+  assert.equal(originalFailure.pass, false, 'Even a complete reopen report cannot erase a first-stage failure.');
   console.log('Agent candidate CI report: fixed fields, missing evidence, failed run, and secret refusal passed.');
 } finally {
   await fs.rm(root, { recursive: true, force: true });

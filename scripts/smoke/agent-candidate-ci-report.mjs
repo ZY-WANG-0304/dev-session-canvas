@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
+import reopenHelpers from '../../tests/vscode-smoke/agent-candidate-reopen.cjs';
 
 const count = value => Array.isArray(value) ? value.length : null;
 const boolean = value => typeof value === 'boolean' ? value : null;
@@ -74,6 +75,13 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
       (!scenario.name.startsWith('codex-') ||
         processEntries.some(entry => entry.role === 'wrapper' && entry.wrapperKind === 'node'));
     const completed = await read('completed');
+    const reopen = await read('reopen/reopen-result');
+    const reopenRequired = result?.reopenRequired === true || result?.reopenHandoffReady === true ||
+      (scenario.name.endsWith('-snapshot-only-stop') && completed?.savedNode?.metadata?.agent?.serializedTerminalState?.data === '');
+    const reopenDecisionValid = (result?.reopenRequired === undefined || typeof result.reopenRequired === 'boolean') &&
+      (result?.reopenHandoffReady === undefined || typeof result.reopenHandoffReady === 'boolean') &&
+      !(result?.reopenHandoffReady === true && result?.reopenRequired !== true);
+    const reopenPassed = reopenHelpers.reopenReportPassed(reopen);
     const firstFailure = await read('first-failure');
     const failureSnapshot = await read('first-failure-snapshot');
     const events = await read('completed-events') ?? await read('first-failure-events');
@@ -107,7 +115,7 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
     rows.push({
       name: scenario.name,
       state: ['not-run', 'started', 'passed', 'failed'].includes(scenario.state) ? scenario.state : 'unknown',
-      pass: boolean(result?.pass),
+      pass: !reopenDecisionValid || (reopenRequired && !reopenPassed) ? false : boolean(result?.pass),
       cliObserved: boolean(result?.cliObserved),
       naturalResponseVerified: boolean(result?.naturalResponseVerified),
       failureLocation: failureLocation ? { file: 'agent-candidate-tests.cjs',
@@ -127,6 +135,10 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
       } : null,
       snapshotEvidence: scenario.name.endsWith('-snapshot-only-stop')
         ? snapshotEvidenceSummary(await read('snapshot-evidence')) : null,
+      snapshotReopen: scenario.name.endsWith('-snapshot-only-stop') ? {
+        required: reopenDecisionValid ? reopenRequired : null, reportPresent: reopen !== undefined, pass: reopenPassed,
+        ...Object.fromEntries(reopenHelpers.REOPEN_CHECKS.map(key => [key, boolean(reopen?.[key])]))
+      } : null,
       cliEvidence: {
         turnCompleted: records ? records.some(record => record.type === 'turn.completed') : null,
         turnFailed: records ? records.some(record => record.type === 'turn.failed') : null,

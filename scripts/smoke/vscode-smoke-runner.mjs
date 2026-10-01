@@ -431,7 +431,9 @@ export function buildVSCodeArgs(options, platform = process.platform) {
     args.push('--disable-workspace-trust');
   }
 
-  args.push(`--extensionTestsPath=${options.extensionTestsPath}`);
+  if (options.extensionTestsPath) {
+    args.push(`--extensionTestsPath=${options.extensionTestsPath}`);
+  }
   const extensionDevelopmentPaths = Array.isArray(options.extensionDevelopmentPath)
     ? options.extensionDevelopmentPath
     : [options.extensionDevelopmentPath];

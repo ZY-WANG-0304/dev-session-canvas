@@ -23,6 +23,8 @@
 
 ## 技术债列表
 
+2026-10-01最新有限增量：第39节真实Linux Runtime Reload Window首轮exit0、同UI/新Host/原执行/新reader、completed空重开与清理均独立核对，固定子项不再排队；snapshot-only reload、多根、其余A1至A6不代证。Windows36843457341越过无凭据前置后首败storage路径断言，后七场未跑，保留清理观察未知，先核对路径语义。macOS36841263618已证明连续空终态与独立resize后页面一致，严格空态判据及真实重开待新证据；A5新target产品报告待回收，六资产/兼容/Remote和默认准入仍开放。当前队列以有限收尾及active计划首段为准，以下dated记录均保留原时点含义。
+
 2026-10-01 B2/A5与B3/A6：macOS Terminal36829311235六报告核对通过，真实Agent36832581851前三Codex场passed、第四snapshot stop空快照真值断言首败、Claude未跑，33.10所需终态证据已接入，定向回归与独立复核通过，原断言不改，待一次原矩阵。Windows36830583121绿灯缺报告已确认CLI转交误判，34.12窄修后36834158313真实exit1，原小报告确认mounted早于reader身份返回；共享原30秒poll已先红后绿，待原流水线，Agent未调度。32.21新增永久退出后旧reset写入缺陷已先红后修，原46+真实start2+普通/owner重叠2共50项、Host145/typecheck/localization及独立复核通过，不代证真实reload/多根UI。第35节固定VSIX实际安装接线开始，不把原payload smoke算installed通过。所有旧失败保留；剩余F-04/A1至A6、六资产/运行时、Remote与默认准入按有限清单，不另增通用工具债务。
 
 同日更新：33.10固定一次macOS36836757674仍第四场原断言失败，新saved/reader证据明确但独立回放与页面几何未判定，不盲重跑。第35节Linux fixed VSIX installed首次四次Host/六结果通过，包SHA604494fd、实际安装路径和八文件hash已核对，该子项不重复排队；第36节只补A1/A2实际文件系统失败组合，原高层替身不误算同链验证。其余责任仍依有限收尾清单。

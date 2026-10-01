@@ -9,10 +9,12 @@ const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { AgentProcessObserver, executionEnded } = require('./agent-candidate-process-observer.cjs');
 const { invokeCLI } = require('./agent-candidate-cli.cjs');
-const { collectSnapshotEvidence } = require('./agent-candidate-snapshot-evidence.cjs');
+const { collectSnapshotEvidence, acceptsEmptySnapshotStop } = require('./agent-candidate-snapshot-evidence.cjs');
+const { runEmptySnapshotReopen } = require('./agent-candidate-reopen.cjs');
 const { resolveExecutionSessionSpawnSpec } = require('./agent-candidate-spawn-spec.cjs');
 const { resolveLegacyRuntimeSupervisorPaths,
   resolveSystemdUserRuntimeSupervisorPaths } = require('./agent-candidate-runtime-paths.cjs');
+const { assertRuntimeStorageContained } = require('./runtime-storage-containment.cjs');
 
 const command = (name, ...args) => vscode.commands.executeCommand(`devSessionCanvas.__test.${name}`, ...args);
 const snapshot = () => command('getDebugState');
@@ -73,12 +75,32 @@ function codexPath() {
 async function run() {
   config = JSON.parse(await fs.readFile(process.env.DEV_SESSION_CANVAS_AGENT_CANDIDATE_CONFIG, 'utf8'));
   assert(['linux', 'darwin', 'win32'].includes(process.platform));
+  if (config.stage === 'empty-snapshot-reopen') return runEmptySnapshotReopen({
+    config, hostPid: process.pid, workspaceFolders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) ?? [],
+    activate: async () => {
+      await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
+      await waitForCommand(vscode, 'devSessionCanvas.__test.getDebugState');
+    },
+    command,
+    openCanvas: () => vscode.commands.executeCommand(config.surface === 'editor'
+      ? 'devSessionCanvas.openCanvasInEditor' : 'devSessionCanvas.openCanvasInPanel'),
+    probe: id => poll('reopened Agent reader mounted', probe, value => value.nodes.some(node =>
+      node.nodeId === id && node.terminalCols > 1 && node.terminalRows > 0)),
+    assertBuffer: async (id, expectedLines) => {
+      await dom({ kind: 'assertExecutionTerminalBuffer', nodeId: id, expectedLines });
+      return true;
+    },
+    readJson: async file => JSON.parse(await fs.readFile(file, 'utf8')), writeJson
+  });
   if (config.authOnly === true) return runAuthenticationOnly();
   assert(['codex', 'claude'].includes(config.provider));
   assert(['natural', 'stop'].includes(config.lifecycle));
   assert(['live-runtime', 'snapshot-only'].includes(config.mode));
   observer = new AgentProcessObserver(config.cli, config.smokeHostRoot, config.processObserver);
   let failure;
+  let reopenRequired = false;
+  let reopenHandoff;
+  let reopenHandoffReady = false;
   try {
     await verifyAuthentication();
     await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
@@ -118,8 +140,7 @@ async function run() {
     assert.equal(currentNode(active).metadata.agent.persistenceMode, config.mode);
     if (config.mode === 'live-runtime') {
       const metadata = currentNode(active).metadata.agent;
-      assert(config.permittedStorageRoots.some(root => metadata.runtimeStoragePath.startsWith(`${root}${path.sep}`)),
-        'Supervisor storage must belong to this isolated test.');
+      await assertRuntimeStorageContained(metadata.runtimeStoragePath, config.permittedStorageRoots, process.platform);
       hello = await readHello(metadata);
       assert(hello.capabilities?.executionCandidateProfiles?.includes(process.platform === 'darwin'
         ? 'macos-owner-v1-candidate' : process.platform === 'win32'
@@ -168,8 +189,8 @@ async function run() {
       }
       assert(Buffer.byteLength(JSON.stringify(savedNode)) < 16384);
     } else {
+      let snapshotEvidence;
       if (config.lifecycle === 'stop') {
-        let snapshotEvidence;
         try {
           snapshotEvidence = await collectSnapshotEvidence({ savedNode, nodeId, executionId,
             messages: await command('getHostMessages'), events: await command('getDiagnosticEvents'),
@@ -185,7 +206,11 @@ async function run() {
         }
         await writeJson('snapshot-evidence.json', snapshotEvidence);
       }
-      assert(savedNode.metadata.agent.serializedTerminalState?.data);
+      if (config.lifecycle === 'stop' && savedNode.metadata.agent.serializedTerminalState?.data === '') {
+        assert(acceptsEmptySnapshotStop({ ...config, savedNode, evidence: snapshotEvidence }),
+          'Empty snapshot-only stop requires complete output, reader, saved-state and page evidence.');
+        reopenRequired = true;
+      } else assert(savedNode.metadata.agent.serializedTerminalState?.data);
       const settlements = await command('getDiagnosticEvents');
       assert(settlements.some(event => matchesSettlement(event) &&
         event.detail.outcome.finalOutputSequence === savedNode.metadata.agent.outputSequence));
@@ -219,16 +244,22 @@ async function run() {
     await archive('completed', { node: currentNode(ended), savedNode, hello, executionId,
       resultKind: config.lifecycle === 'natural' ? 'natural-completion' : 'explicit-product-stop',
       sourceEofClaim: config.lifecycle === 'natural' ? 'requires product source evidence; not inferred from exit' : false });
+    if (reopenRequired) reopenHandoff = { schemaVersion: 1, originalChecksPassed: true,
+      hostPid: process.pid, nodeId, workspacePath: config.workspacePath, userDataDir: config.userDataDir,
+      runtimeDir: config.runtimeDir,
+      snapshotPath: saved.snapshotPath, readerFrameId: initial.lifecycle.frameId,
+      savedState: savedNode.metadata.agent.serializedTerminalState, outputSequence: savedNode.metadata.agent.outputSequence };
   } catch (error) {
     failure = error;
     await archive('first-failure', { error: String(error), stack: error.stack, nodeId, executionId, hello });
   } finally {
     try {
       try {
-        await command('resetState');
+        if (!reopenHandoff || failure) await command('resetState');
         await observer.sample();
         await writeJson('cleanup.json', { runtime: await command('getRuntimeSupervisorState'),
-          snapshot: await snapshot(), process: observer.result(), forcedSignals: [] });
+          snapshot: await snapshot(), process: observer.result(), forcedSignals: [],
+          completedNodePreservedForReopen: !!reopenHandoff && !failure });
       } catch (error) {
         failure ??= error;
         await writeJson('product-cleanup-failure.json', { error: String(error) });
@@ -248,14 +279,34 @@ async function run() {
         }
         await writeJson('remaining-resources.json', { remaining, forcedSignals, after: observer.result() });
       }
-    } finally { await observer.dispose?.(); }
+    } catch (error) { failure ??= error; }
+    finally {
+      try { await observer.dispose?.(); }
+      catch (error) { failure ??= error; }
+    }
     if (observer.error) failure ??= new Error(observer.error);
     if (observer.failures.length) failure ??= new Error('Process observation or wrapper lifecycle verification failed.');
+    if (reopenHandoff && !failure) {
+      try {
+        await writeJson('reopen-handoff.json', reopenHandoff);
+        reopenHandoffReady = true;
+      } catch (error) { failure ??= error; }
+    }
+    if (reopenHandoff && failure) {
+      try {
+        await command('resetState');
+        await writeJson('cleanup.json', { runtime: await command('getRuntimeSupervisorState'),
+          snapshot: await snapshot(), process: observer.result(), forcedSignals: [], completedNodePreservedForReopen: false });
+      } catch (error) {
+        await writeJson('product-cleanup-failure.json', { error: String(error) });
+      }
+    }
     await writeJson('process-observations.json', observer.result());
     await writeJson('actions.json', actions);
     await writeJson('result.json', { name: config.name, pass: !failure, error: failure ? String(failure) : undefined,
       plannedModelTurns: config.lifecycle === 'natural' ? 1 : 0,
       cliObserved: observer.result().entries.some(entry => entry.role === 'cli'), naturalResponseVerified,
+      reopenRequired, reopenHandoffReady,
       modelRequestCount: 'not observed directly', automaticHarnessRetries: 0,
       scope: `Actual ${process.platform} Agent CLI + candidate owner + Webview; not A3 large-tail or A5 acceptance.` });
   }

@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { Terminal } = require('@xterm/headless');
 const { SerializeAddon } = require('@xterm/addon-serialize');
-const { collectSnapshotEvidence } = require('../../tests/vscode-smoke/agent-candidate-snapshot-evidence.cjs');
+const { collectSnapshotEvidence, acceptsEmptySnapshotStop } = require('../../tests/vscode-smoke/agent-candidate-snapshot-evidence.cjs');
 const clone = value => structuredClone(value);
 const write = (terminal, text) => new Promise(resolve => terminal.write(text, resolve));
 const frame = { surface: 'panel', mode: 'active', generation: 1, frameId: 'f1' };
@@ -34,7 +34,8 @@ async function fixture({ blank = false, resize = false } = {}) {
       messages.push(snapshot(true));
     }
     if (blank) await output('\x1bc');
-    const savedNode = { id: 'n1', metadata: { agent: { lastCols: terminal.cols, lastRows: terminal.rows,
+    const savedNode = { id: 'n1', status: 'stopped', metadata: { agent: { liveSession: false,
+      persistenceMode: 'snapshot-only', lastCols: terminal.cols, lastRows: terminal.rows,
       outputSequence: sequence, serializedTerminalState: state() } } };
     messages.push(snapshot(false));
     messages.push({ type: 'host/executionExit', lifecycle: frame, payload: { nodeId: 'n1', executionSessionId: 'e1',
@@ -202,4 +203,37 @@ for (const [reason, mutate] of [
   assert.equal(result.replayReason, reason);
   assert.equal(result.replayMatchesSaved, null);
 }
-console.log('Agent snapshot evidence: strict initial schema, independent page resize, retained direct differences, and later-boundary rejection passed.');
+const eligible = evidence => acceptsEmptySnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
+  savedNode: blank.savedNode, evidence });
+assert.equal(eligible(blankEvidence), true, 'Complete output followed by a legal reset can produce an empty final snapshot.');
+assert.equal(eligible(resizedEvidence), true, 'Only dimensions may differ before the independent resize comparison.');
+for (const field of ['savedNodeMatched', 'savedStatePresent', 'savedStateValid', 'readerApplied', 'readerLifecycleMatched',
+  'sequenceMatched', 'helpProbePresent', 'finalProbePresent', 'pageBufferMatched', 'replayComplete',
+  'replayMatchesSaved', 'publishedFinalMatchesSaved']) {
+  for (const invalid of [false, null, undefined, 'true']) {
+    assert.equal(eligible({ ...blankEvidence, [field]: invalid }), false, `${field} must be observed true.`);
+  }
+}
+for (const patch of [
+  { replayInitialSequence: 1 }, { savedOutputSequence: 0 }, { snapshotOutputSequence: 0 },
+  { readerFinalOutputSequence: 0 }, { replayOutputMessages: 0 }, { helpNonEmptyLines: 0 },
+  { messageCount: 200 }, { replayReason: 'unknown' }, { savedDataBytes: 1 },
+  { savedDataSha256: '0'.repeat(64) }, { replayStateSha256: '0'.repeat(64) },
+  { hydratedStateSha256: null }, { pageGeometryMatches: { ...blankEvidence.pageGeometryMatches, cursorX: null } },
+  { savedMatchesPage: false, resizedSavedMatchesPage: false }
+]) assert.equal(eligible({ ...blankEvidence, ...patch }), false, JSON.stringify(patch));
+for (const field of ['cursorX', 'cursorY', 'viewportY', 'bufferType']) {
+  assert.equal(eligible({ ...resizedEvidence,
+    pageGeometryMatches: { ...resizedEvidence.pageGeometryMatches, [field]: false } }), false, field);
+}
+for (const field of ['resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched',
+  'resizedSavedPageBufferMatched', 'resizedSavedMatchesPage']) {
+  assert.equal(eligible({ ...resizedEvidence, [field]: null }), false, field);
+}
+assert.equal(eligible(overwrittenEvidence), false, 'An empty saved state cannot erase unmatched replay output.');
+for (const patch of [{ mode: 'live-runtime' }, { lifecycle: 'natural' }, { savedNode: nonempty.savedNode },
+  { savedNode: { ...blank.savedNode, status: 'running' } }, { savedNode: undefined }]) {
+  assert.equal(acceptsEmptySnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
+    savedNode: blank.savedNode, evidence: blankEvidence, ...patch }), false);
+}
+console.log('Agent snapshot evidence: strict replay, independent resize, and complete empty-stop acceptance checks passed.');

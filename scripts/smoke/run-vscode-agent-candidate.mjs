@@ -12,6 +12,7 @@ import { build } from 'esbuild';
 import { createDeepSeekConfiguration } from './agent-candidate-deepseek.mjs';
 import { writeAgentCandidateCIReport } from './agent-candidate-ci-report.mjs';
 import cliHelpers from '../../tests/vscode-smoke/agent-candidate-cli.cjs';
+import reopenHelpers from '../../tests/vscode-smoke/agent-candidate-reopen.cjs';
 import { ensureVSCodeExecutable, launchPreparedVSCodeScenario, prepareMainSmokeHostExtension,
   prepareRuntime, resolveStagedSmokeTestPath, runInsideXvfb, shouldReRunInsideXvfb } from './vscode-smoke-runner.mjs';
 
@@ -129,6 +130,8 @@ for (const file of ['extensions/vscode/dev-session-canvas/dist/extension.js',
   'scripts/smoke/agent-candidate-deepseek.mjs', 'scripts/smoke/agent-candidate-ci-report.mjs',
   'tests/vscode-smoke/agent-candidate-process-observer.cjs',
   'tests/vscode-smoke/agent-candidate-cli.cjs',
+  'tests/vscode-smoke/agent-candidate-snapshot-evidence.cjs', 'tests/vscode-smoke/agent-candidate-reopen.cjs',
+  'tests/vscode-smoke/runtime-storage-containment.cjs',
   'extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts',
   'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts']) {
   hashes[file] = createHash('sha256').update(await fs.readFile(path.join(projectRoot, file))).digest('hex');
@@ -189,6 +192,7 @@ for (const [index, scenario] of scenarios.entries()) {
     ...(authOnly ? { cliCandidates: cli, expectedAuthReferences: authReferences } : {}),
     ...(scenario.provider === 'codex' ? { codexIsolation } : {}),
     surface: scenario.mode === 'live-runtime' ? 'editor' : 'panel', artifactDir: runtime.artifactsDir,
+    userDataDir: runtime.userDataDir, runtimeDir: runtime.runtimeDir,
     smokeHostRoot, permittedStorageRoots: [runtime.userDataDir, runtime.runtimeDir, runtime.homeDir] };
   const configPath = path.join(debugRoot, 'scenario.json');
   await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
@@ -202,6 +206,36 @@ for (const [index, scenario] of scenarios.entries()) {
       extensionTestsEnv: { ...authReferences, ...testCommandReferences,
         CODEX_UPDATE_ON_STARTUP: 'false',
         DEV_SESSION_CANVAS_AGENT_CANDIDATE_CONFIG: configPath } });
+    if (!authOnly) await reopenHelpers.completeEmptySnapshotReopen({
+      firstResult: JSON.parse(await fs.readFile(path.join(runtime.artifactsDir, 'result.json'), 'utf8')),
+      launch: async () => {
+        const artifactDir = path.join(runtime.artifactsDir, 'reopen');
+        await fs.mkdir(artifactDir);
+        const reopenConfigPath = path.join(debugRoot, 'reopen-scenario.json');
+        await fs.writeFile(reopenConfigPath, `${JSON.stringify({ ...config, stage: 'empty-snapshot-reopen', artifactDir,
+          reopenHandoffPath: path.join(runtime.artifactsDir, 'reopen-handoff.json') }, null, 2)}\n`);
+        // Reuse the original storage and workspace; prepareRuntime would erase the state under test.
+        try {
+          await launchPreparedVSCodeScenario({ projectRoot,
+            runtime: { ...runtime, artifactsDir: artifactDir, environment: { ...runtime.environment,
+              DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR: artifactDir } },
+            vscodeExecutablePath, workspacePath, extensionDevelopmentPath: smokeHostRoot,
+            extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'agent-candidate-tests.cjs'),
+            disableExtensions: false, disableWorkspaceTrust: true,
+            extensionTestsEnv: { DEV_SESSION_CANVAS_AGENT_CANDIDATE_CONFIG: reopenConfigPath } });
+        } catch (error) {
+          // Keep a fixed, non-secret second-stage outcome even when the Host never reaches the test module.
+          await fs.writeFile(path.join(artifactDir, 'reopen-result.json'), `${JSON.stringify({ schemaVersion: 1,
+            pass: false, attempted: true, ...Object.fromEntries(reopenHelpers.REOPEN_CHECKS
+              .filter(key => key !== 'attempted').map(key => [key, false])) })}\n`);
+          throw error;
+        }
+      },
+      readReport: async () => {
+        try { return JSON.parse(await fs.readFile(path.join(runtime.artifactsDir, 'reopen', 'reopen-result.json'), 'utf8')); }
+        catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
+      }
+    });
     scenario.state = 'passed';
     await writeJson('schedule.json', scenarios);
   } catch (error) {

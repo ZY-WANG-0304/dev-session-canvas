@@ -9,16 +9,19 @@ import capacityFormat from '../../tests/vscode-smoke/fixtures/execution-capacity
 import installedReceipts from '../../tests/vscode-smoke/installed-execution-candidate.cjs';
 import { assertInstalledCandidateSelection, installCandidateVsix, prepareInstalledCandidateDriver,
   prepareInstalledVsixInput } from './installed-execution-candidate.mjs';
+import { assertReaderIsolationSelection, runReaderIsolation } from './execution-reader-isolation.mjs';
 import { ensureVSCodeExecutable, launchPreparedVSCodeScenario, prepareMainSmokeHostExtension,
   prepareRuntime, resolveStagedSmokeTestPath, runInsideXvfb, shouldReRunInsideXvfb } from './vscode-smoke-runner.mjs';
 
 const projectRoot = process.cwd();
 const { values } = parseArgs({ options: { output: { type: 'string' }, mode: { type: 'string' },
   'installed-vsix': { type: 'string' },
+  'reader-isolation': { type: 'boolean', default: false },
   'capacity-sessions': { type: 'string' },
   'capacity-reconnect': { type: 'boolean', default: false },
   'capacity-calibration': { type: 'boolean', default: false } } });
 const capacitySelected = values['capacity-calibration'] || values['capacity-reconnect'];
+assertReaderIsolationSelection(values);
 assertInstalledCandidateSelection(values);
 assert(['linux', 'darwin', 'win32'].includes(process.platform), 'This finite product acceptance requires a supported native platform.');
 assert(!capacitySelected || process.platform === 'linux', 'The fixed capacity workload requires Linux process identity observation.');
@@ -76,6 +79,10 @@ if (process.platform === 'win32') {
     const relative = `tests/vscode-smoke/${file}`;
     sourceHashes[relative] = hash(await fs.readFile(path.join(projectRoot, relative)));
   }
+}
+if (values['reader-isolation']) {
+  await runReaderIsolation({ projectRoot, output, runId, vscodeExecutablePath, manifest, sourceHashes });
+  process.exit(0);
 }
 if (capacitySelected) {
   await runCapacityCalibration();

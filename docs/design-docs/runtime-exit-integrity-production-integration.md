@@ -2086,3 +2086,13 @@ snapshot-only例只有一个Host，在相同gate处由panel切editor，保持原
 固定Runtime例只创建A/B两个Terminal，不运行容量负载：A复用capacity主体的b角色做ready/ping/finish；B写一条固定marker正常退出，须当前页完整应用并落盘completed无历史。记录A原execution/backend/storage、Supervisor/provider/主体身份，旧Host和reader/frame；原子写phase=verify后发真正reload命令。新driver确认旧Host退出、新Host及reader/frame不同，外层确认原UI child/PID/startTicks/executable不变；A沿原Supervisor/provider/主体和execution重连，在真实页面新nonce ping响应通过，B保持closed/no-history且attach空终態、不启动新进程。最后A经原输入finish自然完成、reader applied、无历史、bindings/pending归零，再关闭本轮窗口。
 
 reload前持久交接原资源身份及隔离storage，失败先保存首次事实并由当前driver走产品reset；新Host未起来时只允许外层核实原PID/startTicks/executable后清理本轮责任，不PID-only或泛杀进程树，fallback signal单列且不称产品清理通过。本例不覆写原证据、不重跑冷恢复容量，也不代证snapshot-only旧Host结束收尾、多根失败隔离或全部A6。
+
+2026-10-01首轮 `.debug/a6-real-reload-20261001-first/` 完整exit0，整体9297ms。固定包SHA604494fd与两Host实际安装路径/payload摘要均核对；UI PID4052117保持，Host4052471换为4053129，frame及readId更换，A原Supervisor/provider/主体和backend/storage/session保持。reload后新nonce在实际xterm中11ms应用，B原completed保持空attach/无历史且无新start事件；A随后自然完成、原新reader最终applied，bindings/pending/nodes均0，fallback为空。root重新读取独立收据并执行同一严格校验通过；局部7/7和原launcher环境回归通过。清理收据采样时磁盘registry仍有此前live快照，不能称该采样已落盘清空；本轮自有idle Supervisor正常SIGTERM退出后，实际registry为sessions=[]。该一次真实Runtime reload子项不再排队，其他A6边界保持。
+
+同日A3第38节首跑 `.debug/a3-reader-isolation-20261001-first/` 在live-runtime attacher的“恢复原live绑定”处超时；owner与attacher使用不同的VS Code user-data，因此各自生成不同 workspace storage，attacher只看到默认引导节点，未进入主体、reader或CLI验收。该失败是夹具存储拓扑与“同一root”前提冲突，不是产品通过或产品缺陷证据；snapshot-only未因首例失败进入。后续修正必须保持真实双Host、原持久化路径和不注入metadata，且保留该原始失败。
+
+同日修正后 `.debug/a3-reader-isolation-20261001-fixed/` 完整exit0。A3夹具仍使用两个独立Host/user-data，但在B启动前从owner `dumpHostDiagnostics().storage.extensionStoragePath`复制已flush的扩展持久化目录到B对应workspace-storage slot；排除VS Code锁、SQLite与socket，源/目标hash均为 `0cee0d04...28fa8`，B真实 `state/loadSelected` 命中复制的 `canvas-state.json`，metadata中的runtime binding仍指向owner实际Supervisor。live-runtime两Host PID1491/2600共享同一execution，B保留初始readId；A完成editor→panel→editor，最终两端revision 1405、90000行主体尾部/光标/EOF/applied/no-history均通过。snapshot-only单Host最终revision 1402、完整buffer/EOF/applied和保存快照通过；两例cleanup均无强杀。该夹具证明真实surface与跨Host reader隔离，不代证慢消费者、force/delete、其他平台或全部A3。
+
+Windows Agent `36843457341` 首场在 `agent-candidate-tests.cjs:121` 的测试 storage containment 断言失败，发生在Supervisor hello、observer和CLI生命周期验收之前；Windows盘符大小写与VS Code `fsPath`规范化可使旧 `startsWith` 误拒绝合法子路径。新增的窄 helper/test改用realpath与平台relative严格子路径判断，仍拒绝父目录、相邻前缀、跨盘和symlink逃逸；原失败不追认通过，下一次固定原矩阵前需确认新helper已进入source hash。
+
+macOS产品workflow `36843430053` 在4f015c81上完成固定部署目标编译及两模式Terminal/Webview/completed reopen步骤，job success；原artifact仍保留为平台证据，未将本地Linux或历史macOS Agent失败改写为Agent通过。六资产、旧OS API、Remote及默认分发仍开放。

@@ -232,4 +232,33 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
   return evidence;
 }
 
-module.exports = { collectSnapshotEvidence };
+function acceptsEmptySnapshotStop({ mode, lifecycle: completion, savedNode, evidence: value }) {
+  const metadata = savedNode?.metadata?.agent;
+  const saved = metadata?.serializedTerminalState;
+  if (mode !== 'snapshot-only' || completion !== 'stop' || savedNode?.status !== 'stopped' ||
+      metadata?.liveSession !== false || metadata.persistenceMode !== mode || !serialized(saved) || saved.data !== '' ||
+      !integer(saved.outputSequence) || saved.outputSequence === 0 || metadata.outputSequence !== saved.outputSequence ||
+      !value || value.schemaVersion !== 1) return false;
+  const required = ['savedNodeMatched', 'savedStatePresent', 'savedStateValid', 'readerApplied', 'readerLifecycleMatched',
+    'sequenceMatched', 'helpProbePresent', 'finalProbePresent', 'pageBufferMatched', 'replayComplete',
+    'replayMatchesSaved', 'publishedFinalMatchesSaved'];
+  if (required.some(key => value[key] !== true) || value.replayReason !== 'complete' ||
+      value.replayInitialSequence !== 0 ||
+      value.savedDataBytes !== 0 || value.savedDataSha256 !== hash('') ||
+      !/^[a-f0-9]{64}$/.test(value.hydratedStateSha256 ?? '') || value.hydratedStateSha256 !== value.replayStateSha256 ||
+      !['savedOutputSequence', 'snapshotOutputSequence', 'readerFinalOutputSequence']
+        .every(key => value[key] === saved.outputSequence) ||
+      !integer(value.replayOutputMessages) || value.replayOutputMessages === 0 ||
+      !integer(value.helpNonEmptyLines) || value.helpNonEmptyLines === 0 ||
+      !integer(value.messageCount) || value.messageCount === 0 || value.messageCount >= 200 ||
+      !['cursorX', 'cursorY', 'viewportY', 'bufferType'].every(key => value.pageGeometryMatches?.[key] === true)) return false;
+  const direct = ['pageGeometryMatched', 'pageVisibleMatched', 'savedMatchesPage', 'replayMatchesPage']
+    .every(key => value[key] === true) && ['cols', 'rows'].every(key => value.pageGeometryMatches?.[key] === true);
+  const resized = ['cols', 'rows'].every(key => typeof value.pageGeometryMatches?.[key] === 'boolean') &&
+    ['cols', 'rows'].some(key => value.pageGeometryMatches[key] === false) &&
+    ['resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched', 'resizedSavedPageBufferMatched',
+      'resizedSavedMatchesPage'].every(key => value[key] === true);
+  return direct || resized;
+}
+
+module.exports = { collectSnapshotEvidence, acceptsEmptySnapshotStop };

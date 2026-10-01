@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前唯一执行队列（2026-10-01）：A4先收口Windows无凭据私有配置前置的安全失败字段，以及macOS终态证据已核实的三个初始消息schema盲点。保留原15秒/DACL、truthy断言、停止时机和全部旧失败；局部复核后各固定一次原平台输入，不开通用工具或重采循环。A5沿既有平台builder处理真实兼容/分发缺口，A2/A3/A6未覆盖组合继续按有限收尾清单；无需用户重复配置key或先缩减支持范围。下述各“当前/下一”段落是原时点记录，不构成追加队列。
+当前唯一执行队列（2026-10-01）：A3第38节修正后两例已完成，首败保留，不重复该组合。下一是A4按33.10已取得的完整空终态证据实施严格空态判据及真实新Host重开，再固定一次原macOS Agent矩阵。Windows36843457341已越过全部无凭据前置并进入真实Agent，首场在隔离storage路径断言失败；窄helper/test已完成，下一固定矩阵只验证该判定修正，不把旧失败当产品缺陷。A5 macOS产品run36843430053在新target下成功，六资产/兼容/Remote仍开放。A6第39节真实Runtime reload首轮已通过，不重跑已完成容量/重连组合；无需用户重复配置key或先缩减支持范围。下述各“当前/下一”段落是原时点记录，不构成追加队列。
 
 该队列实际增量：e10ad8aa的Windows36841262535已通过私有目录/全部文件ACL及原isolatedCheck，随后Darwin observer夹具混用Windows路径规则首败；只在夹具显式path.posix，原角色断言保持，三条observer/CLI局部命令通过。macOS36841263618仍按原矩阵运行中，未宣称结果。A3第38节冻结真实单surface切换/跨Host reader两例，A5第37节固定部署目标在实现；均不重跑已完成容量组合。
 
@@ -100,6 +100,10 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [x] (2026-10-01) 第39节固定VSIX真实Reload Window首轮exit0，9297ms；同UI、新Host/frame/readId、原Supervisor/provider/主体、新nonce11ms应用、B空completed无新执行、A最终applied和零bindings/pending/nodes、fallback=[]均经root独立核对。局部7/7及原launcher环境回归通过，不代证其他A6。
+- [x] (2026-10-01) 4f015c81已推送，Windows36843457341全部前置通过并进入首个真实Codex场景；首败storage路径断言，后七项not-run，observer未知/原failure保留，不记作通过。
+- [x] (2026-10-01) Windows storage containment窄修及4/4纯测完成，改用realpath+平台relative严格子路径并保留拒绝边界；尚未重跑原矩阵。
+- [ ] A3双Host夹具需先共享同一root持久化路径而保持独立Host，再固定真实两例；A4严格空态判据/真实重开与A3两例正在实施/复核。macOS原产品36843430053的新target编译与页面步骤成功，artifact已保留。
 - [x] (2026-10-01) 34.12安全失败属性两文件已实施并独立复跑原DeepSeek配置测试通过；不携带原错误/路径/凭据，也不将killed或耗时当成超时证明。Windows原生复验待固定提交。
 - [x] (2026-10-01) 33.10旧Linux输入只读核对确定三个初始消息schema盲点及几何尺寸差异；序列化再编码差异单独保留，不推断macOS空屏正确。
 - [x] (2026-10-01) 33.10三个严格初始规则及独立resize对账已实施，helper/report两项先红后绿，root复跑及workflow契约通过；旧Linux完整0至12回放、字节比较false、原几何false均保留。
@@ -107,8 +111,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01) A5第37节固定macOS部署目标及两个实际Mach-O检查已实施，资产18/18、selection11/11、factory两架构mock及root复跑通过；旧26.0资产拒绝且摘要不变。
 - [ ] 原macOS产品workflow验证新target实际编译/装载；旧OS API、六资产分发/默认准入仍开放。
 - [x] (2026-10-01) Windows36841262535证明原私有配置前置解除；其后模拟Darwin的path夹具单行修正通过局部回归，原失败不改，真实Agent仍未到达。
-- [ ] A3第38节固定Runtime双Host原reader取消隔离及snapshot-only单Host切surface两例；先复用原主体/launcher实施并复核，再采新证据。
-- [ ] A6第39节以独立activation-driver和同UI一次spawn验收真实Reload Window；180秒固定窗口，不复跑冷恢复容量，先局部实施/复核。
+- [x] (2026-10-01) A3首跑失败已定位为独立user-data导致不同workspace-storage；修正后固定目录 `.debug/a3-reader-isolation-20261001-fixed/` 完整exit0。live两Host PID1491/2600同execution、B原readId持续、A切surface、最终revision1405/90000行/EOF/applied/no-history/cleanup通过；snapshot-only revision1402及完整保存/EOF/applied/cleanup通过。首败保留，不代证慢消费者/force-delete/其他平台。
+- [x] (2026-10-01) A6第39节以独立activation-driver和同UI一次spawn验收真实Runtime Reload Window；固定180秒内首轮通过，证据及未覆盖范围见本节首条。
 - [x] (2026-10-01) Windows新增启动收据确认非TTY真实前置失败；macOS旧artifact宿主日志确认Canvas ready超时而非test module未启动，原结果保留。
 - [x] (2026-10-01，A6) 原38次回归通过后两例完整非root重置入口先红，原日志保留；32.21冻结身份复核边界。
 - [x] (2026-10-01) 34.9的ConPTY四行标准句柄修正已先红后绿，十条Windows相关局部命令通过；33.9的macOS临时宿主参数及三平台参数/Secret过滤回归通过，不代证原生。
@@ -436,6 +440,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
+2026-10-01，第39节真实reload无需第二次launcher：一次UI进程内Host确实更换，原执行经新reader继续交互并完整自然结束。cleanup的registry是异步磁盘快照，bindings/进程释放证据不能偷换为同一时刻registry已清空；本次在自有idle Supervisor正常退出后独立读盘为sessions=[]。Windows36843457341首败是storage containment前置，窄修已通过4/4纯测但尚未原生复验。A3首跑暴露不同user-data拓扑冲突；修正为有限扩展存储快照复制后两例原生通过，首败保留，继续排除慢消费者/其他平台。
+
 2026-10-01：旧Linux消息的合法inactive前缀、初始嵌套缺零序号和完全等价初始重复会使新helper返回unknown。只读有限变体已证明必要性；完整回放与saved再hydrate的序列化字串仍不同，不能以终端可见行相同倒写字节一致。Windows安全字段已通过局部回归，实际前置根因仍须原平台事实。
 
 2026-10-01：Windows新run36840316777仍前置failure，但首次明确到inspect-directory后、build-acl前被终止（15021ms、SIGTERM、killed）。尚未分辨文件系统与PowerShell模块自动加载，不能称已确诊。A5静态资产核对发现macOS实际minos26.0由构建机默认引入，Linux实际GLIBC_2.34也高于stock2.28；精确manifest宿主N-API10不等于addon真实最低8。
@@ -722,6 +728,10 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+- 决策：将第39节一次真实Runtime reload记为完成子项，不重复冷恢复/容量或用它代证snapshot-only、多根及跨平台。Windows新首败只按已知storage路径断言定位，原失败与清理未知保留。
+  理由：已有同UI、异Host、原主体、真实页面与独立清理收据；新的路径断言失败尚不足以证明CLI/终端失败。
+  日期/作者：2026-10-01 / Codex。
+
 - 决策：依据36841263618的完整重放/空终态/页面尺寸对账，后续只对证据完整的snapshot-only-stop空字符串采用33.10强判据，并在原主体结束后由新Host实际重开；原failure与未跑项不变。理由：内容完整要求不等于非空字符串，不应强保留Agent自己清除的画面，但不能仅以空快照自证正确。日期/作者：2026-10-01 / Codex。
 
 - 决策：仅修正33.10三个已由真实旧输入证明的初始schema识别，附加resize对账保留原几何差异；34.12只增白名单错误属性。理由：直接解除当前原生验收证据盲点，不弱化产品/权限断言、不扩通用oracle。日期/作者：2026-10-01 / Codex。
@@ -984,6 +994,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-01，第39节 `.debug/a6-real-reload-20261001-first/` 首轮exit0，经root独立对账通过，固定VSIX实际安装、一次UI真实reload、原执行继续及completed空重开已建立有限产品证据。Windows36843457341首个真实Agent场景因storage路径前提失败，macOS新target产品run尚待回收；不把前置解除、CLI final文件或workflow步骤成功当完整Agent/平台验收。当前仍按开头唯一队列推进，F-04与总体验收未关闭。
 
 2026-10-01：macOS36841263618首次给出完整0至13独立回放与saved空态相等，页面差异仅尺寸且独立resize后全部一致；本轮仍第四failure/后四not-run，未来新判据另取新结果。A5固定部署目标的离线修正已完成；A3/A6真实流程实现中，既定总清单不扩张。Windows真实observer初始化10秒无回应仍是具名前置，显式系统模块依赖待原生核验，不增加观察预算。
 
