@@ -76,6 +76,32 @@ try {
   assert.equal(warningText.includes(key), false);
   assert.equal(warningText.includes(scenario.nonce), false);
   assert.equal(warningText.includes('Defaulting to fallback metadata'), false);
+  const enumCases = [
+    { status: 'starting', outcome: 'lost', local: true },
+    { status: 'waiting-input', outcome: 'cancelled', local: false },
+    { status: 'stopping', outcome: 'applied', local: true },
+    { status: 'resume-failed', outcome: 'legacy-released', local: false },
+    { status: 'waiting', outcome: 'unknown', local: true, unsupported: true },
+    { status: key, outcome: key, local: false, unsupported: true }
+  ];
+  for (const [index, entry] of enumCases.entries()) {
+    await fs.writeFile(path.join(artifacts, 'first-failure-snapshot.json'), JSON.stringify({ state: { nodes: [
+      { id: 'n1', status: entry.status, metadata: { agent: { liveSession: true } } }
+    ] } }));
+    await fs.writeFile(path.join(artifacts, 'first-failure-events.json'), JSON.stringify([
+      { kind: entry.local ? 'execution/localTerminalReaderSettled' : 'runtime/terminalReadSettled',
+        detail: { nodeId: 'n1', ...(entry.local ? { executionSessionId: 'e1' } : { sessionId: 'e1' }),
+          outcome: { kind: entry.outcome, reason: key } } }
+    ]));
+    const enumDirectory = path.join(root, `enum-report-${index}`);
+    await writeAgentCandidateCIReport({ ...options, directory: enumDirectory, scenarios: [scenario], failed: true });
+    const enumText = await fs.readFile(path.join(enumDirectory, 'summary.json'), 'utf8');
+    const failureState = JSON.parse(enumText).scenarios[0].failureState;
+    assert.equal(failureState.status, entry.unsupported ? null : entry.status);
+    assert.equal(failureState.readerSettlementObserved, true);
+    assert.equal(failureState.readerSettlementKind, entry.unsupported ? null : entry.outcome);
+    assert.equal(enumText.includes(key), false, 'Unknown status, outcome and reason text must remain private.');
+  }
   console.log('Agent candidate CI report: fixed fields, missing evidence, failed run, and secret refusal passed.');
 } finally {
   await fs.rm(root, { recursive: true, force: true });

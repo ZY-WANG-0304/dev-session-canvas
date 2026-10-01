@@ -2,7 +2,7 @@
 
 本 ExecPlan 按 `docs/PLANS.md` 维护，承接 `docs/design-docs/runtime-persistence-closeout.md` 的 B1/A1，不是新的退出诊断阶段。输入为 `8dd82629`。F-04 目标是长历史不再要求每层常驻/一次性复制完整后缀，实际在途数据有约束，恢复不挤掉交互；F-05 的无 completed 历史与退出尾部保证不变。工程判断由代理承担，不等待用户选择预算。
 
-当前入口（2026-09-30，覆盖后面的历史下一步）：10.13 已实施 reader-local 单段认证偏移索引并接通 Webview/Host 两消费链，10.14 的 `indexed-pages` 同输入实际重连完整 exit 0；Host ready 后 13.01 秒追平 2560 块、B 32.6ms，独立来源 hash/自然 no-history/清理通过，原 30 秒期限不改。同一新 2/1 构建的真实 Codex/Claude 两模式 natural/stop 八场景也已完整 exit 0。原四次重连 exit 1 保留，该固定冷恢复阻塞解除，不能关闭全部 F-04/A1。剩余必要产品组合、平台接入与分发继续按有限收尾契约；2026-10-01 用户已选 DeepSeek 专用 CI 且 repository Secret 已确认，Linux 真实 Agent CI 尚待结果，凭据不再列为用户阻塞。macOS/Windows provider、build、namespace 等平台工程仍未完成，不重跑成功矩阵求次数。
+当前入口（2026-09-30，覆盖后面的历史下一步）：10.13 已实施 reader-local 单段认证偏移索引并接通 Webview/Host 两消费链，10.14 的 `indexed-pages` 同输入实际重连完整 exit 0；Host ready 后 13.01 秒追平 2560 块、B 32.6ms，独立来源 hash/自然 no-history/清理通过，原 30 秒期限不改。同一新 2/1 构建的真实 Codex/Claude 两模式 natural/stop 八场景也已完整 exit 0。原四次重连 exit 1 保留，该固定冷恢复阻塞解除，不能关闭全部 F-04/A1。剩余必要产品组合、平台接入与分发继续按有限收尾契约；2026-10-01 第四轮 DeepSeek CI `36812745671` 的 Linux 真实 Agent 八场景有限通过，专用凭据已实证可用，不再列为用户阻塞。第三轮 Codex snapshot-only stop 间歇失败本轮未复现、根因未定位，不声称已修；macOS/Windows provider、build、namespace 工程仍未完成，不追加 CI 捕获循环或关闭总体。
 
 最新进展（2026-09-30）：显式 10/1 candidate 的 `.debug/a1-ten-session-20260930-probe-fixed/` color/size 十 Terminal 三档完整 exit 0，每例 27 次实际响应全部应用，最大 1365.5/1323ms；原运行前资源预算、来源 hash、自然退出无历史和清理通过，见容量设计 10.12。1280 档两例观察到同 reader 隐藏恢复的追赶交互重叠，不是 Host 离线恢复；两个 probe 前置 exit 1、v18 与更早失败保持。下一只推进原 A1/A2 的固定真实 Host 两次 launch 重连（10.11），不关闭 F-04、其余 A 项或正式准入，不新增工具阶段或 profiler 前置。
 
@@ -167,7 +167,7 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 本计划只含三个可验证里程碑：真实调用链/预算及先红；直接产品修复与定向验证；相同负载容量和交互结果及总体缺口分账。它们不生成新的子阶段。checkpoint 先红直接禁止其校验构造全历史数组，原正确性回归须继续通过；socket/待写设计只沿已核对链路落实，不引入通用消息框架。
 
-当前按 B1 对 B2 的依赖继续既有生产验收，不新增容量工具里程碑。显式准入、固定十 Terminal 和 10.11 真实重连已分别取得有限通过，后者实现/证据见 10.13/10.14。同一 2/1 新构建的真实 Agent 收尾八场景已通过，后续依有限收尾契约补未覆盖产品组合/平台/分发，不能将旧研究条目整批重开。用户已选定 DeepSeek 专用 CI，repository secret 已确认，Linux 真实 Agent CI 验收待完成，不再把凭据列为当前用户阻塞，也不上传本机登录态；macOS/Windows provider、build、namespace 工程仍开放。candidate bound 不重启、旧 live 原绑定、普通构建 stock 不变，未确认格子不得由局部成功代证。
+当前按 B1 对 B2 的依赖继续既有生产验收，不新增容量工具里程碑。显式准入、固定十 Terminal 和 10.11 真实重连已分别取得有限通过，后者实现/证据见 10.13/10.14。同一 2/1 新构建的真实 Agent 收尾八场景已通过，后续依有限收尾契约补未覆盖产品组合/平台/分发，不能将旧研究条目整批重开。第四轮 DeepSeek CI 的 Linux 真实 Agent 八场景有限通过，凭据已实证可用，不再是用户阻塞，也不上传本机登录；第三轮 Codex snapshot-only stop 间歇失败仍未定位，未复现不等于修复，macOS/Windows provider、build、namespace 工程和总体 F-04 仍开放。candidate bound 不重启、旧 live 原绑定、普通构建 stock 不变，未确认格子不得由局部成功代证。
 
 ## 具体步骤
 

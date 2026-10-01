@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前执行入口（2026-10-01）：第三轮 run `36811935908`/`8e081c19` 前三场 Codex Runtime natural/stop、snapshot-only natural passed，两 natural 取得真实响应/nonce/turn.completed/实际 EOF 和全部原断言通过；配置修正有这两个新远端有效证据，不回推前轮根因或成功。第四场 snapshot-only stop failed，first-failure 实际 source=eof，raw=null、diag=[]、cleanup 四项0，Claude 四场未跑。下一仅从已保存 first-failure stack/snapshot/events 提取固定测试行列、原节点状态/exit code/快照存在及字节数/输出序列、reader 结算存在布尔，定位失败断言；不发内容、不改业务/原断言或盲目重跑。全部旧 run 保留，F-04/完整 A5/跨平台仍开放。
+当前执行入口（2026-10-01）：第四轮 run `36812745671`/`736f9ddd` 的 Linux/DeepSeek 原八场景全部 passed，四 natural 真实 nonce/EOF 与原 Webview/持久化断言通过，八 cleanup 的 bindings/failures/forcedSignals/active 均0。stop source 分别为 Codex Runtime eof、Codex snapshot interrupted、Claude两模式eof，均仍是主动停止。第三轮 snapshot-only stop failure 本轮未复现；两轮仅报告/文档变更，业务和断言未变，根因仍未知，具名保留而不声称修复。当前回到原有限产品清单的剩余组合、B3状态替换、平台/分发与准入，不为抓红自动追加CI/框架；四轮结果保持，Linux凭据已实证可用，F-04/完整A5/macOS/Windows未关闭。
 
 当前状态（2026-09-30）：有界索引顺序读取已实施，`.debug/a1-host-reconnect-20260930-indexed-pages/` 同一 2/1 Electron candidate 完整 exit 0，新 Host ready 1422.291ms、完整应用 14431.416ms、追平 13009.125ms；B 响应 32.6ms、独立 journal/hash、原执行身份及新 reader、完整保留后缀、自然 closed/no-history 和两份 cleanup 通过，outer `forcedSignals=[]`。原 30 秒和完整性边界保持，四轮旧 exit 1 不追认；解除的是该固定冷恢复阻塞，不关闭整个 F-04/A1 至 A6。真实重连追赶交互重叠为 false，不能从追平后 B 响应推断。同一新 2/1 构建 A4 `.debug/a4-real-agent-20260930-indexed-pages/` 八场景也已完整 exit 0，natural 四项响应/实际 source EOF 通过，stop 保留主动停止，八份 cleanup 无 binding/process failure/forcedSignals；Claude stop 为 startup/auth 等待界面，不代表完成模型任务。具体结果见生产接入 32.19，不追加工具阶段。
 
@@ -119,7 +119,9 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-01，第二轮 CI) run `36810562601`/`37bdf12b` 在 Ubuntu22.04 通过 sandbox/安装/构建，首场 Codex Runtime natural failed、其余七场 not-run，整轮 failure 保留。安全摘要 CLI/配置已到、响应未验证、source=null，四 cleanup 计数为 0；586 bytes 只发布长度/hash，不等于模型或 EOF 通过。
 - [x] (2026-10-01，首场有限定位) 固定 Codex0.157.1 假 key/loopback 证明：缺 catalog 时成功 SSE/exit0/nonce/turn.completed 仍伴随 metadata item.error，原严格断言拒绝。私有单模型最小 catalog 修后无 item.error、等价断言通过；仅证明本地配置缺口/修正，不还原远端586bytes。报告 cliEvidence 五布尔与 first-failure source 已实现并通过定向测试。
 - [x] (2026-10-01，配置修后 CI) run `36811935908`/`8e081c19` 前三场 Codex Runtime natural/stop、snapshot-only natural passed，两 natural 真实响应/nonce/turn.completed/source EOF 与原断言通过。第四场 snapshot-only stop failed、source=eof/raw=null/diag=[]，四已运行场景 cleanup 四项为0，Claude四场not-run；整轮仍 failure，不追认前轮。
-- [ ] (2026-10-01，snapshot stop 有限定位) 在原安全摘要提取已保存 first-failure 的固定测试行列、原节点状态/exit code/快照存在及字节数/输出序列、匹配原执行的 reader 结算存在布尔；枚举/布尔/数值经原扫描，缺失未知，不发布内容，不改业务/断言/期限或盲目重跑。
+- [x] (2026-10-01，snapshot stop 固定摘要) 原报告已接 first-failure 固定测试行列/原节点有限状态/匹配reader结算布尔，保留扫描和缺失未知，不发布内容或改业务/断言。第四轮未复现失败，字段接入不等于根因已定位。
+- [x] (2026-10-01，第四轮 Linux CI) run `36812745671`/`736f9ddd` 八场景全部passed，四natural真实nonce/EOF与原Webview/持久化断言通过，八cleanup四计数均0；stop的eof/interrupted均按主动处置登记。Linux专用凭据/固定真实CLI有效，不代证macOS/Windows或F-04完成。
+- [ ] (2026-10-01，A4/A6 具名未决项) 第三轮 Codex snapshot-only stop failure 第四轮未复现，期间仅报告/文档变更，根因未知、不宣称已修。随原有限清单的相关产品路径继续必要定位，不自动追加CI捕获循环或重排全部历史待办。
 - [x] (2026-09-30，A6) 32.8 完整 candidate reset 先红后补破坏性提交前在途责任复核：首次中止保留节点/session/binding/client，原 callback 完成保存/delete 后重试成功；生命周期回归 38 次、typecheck 通过，不追加 drain/锁，永久关闭原屏障保持。真实 Host reload 和其余 A6 不由此代证。
 
 以下 checklist 保留历史执行状态，不与本次有限清单累加；例如 S12 的后续旧写者定位已由 S13/S14 承接，不再次排队。
@@ -378,7 +380,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
-2026-10-01，第三轮两个 Codex natural 已取得真实 DeepSeek 响应/匹配/turn.completed/source EOF 与原断言通过，表明修正配置可用于这两个新场景；不能因此还原或追认第二轮586bytes。新的 snapshot-only stop failure 已有实际 source=eof，但 raw/CLI证据缺失、diag为空，不能据此确定快照/reader/状态哪个断言失败。现有 first-failure 记录可提取固定行列和有限状态，补这些字段只服务本次定位；内存失败快照不冒充持久化读回，source EOF/cleanup也不代证reader已应用或保存完成。
+2026-10-01，第四轮八场景全部通过，四natural真实响应/nonce/source EOF及原Webview/持久化断言建立Linux固定CLI/凭据实际可用证据，不能追改第二轮586bytes或第三轮snapshot stop failure。第三与第四轮十个buildHashes只有report脚本变化，其余九项含四dist/runner/原test/helper一致；新增定位字段在全绿轮没有失败样本，故仍不知道第三轮哪个断言失败。Codex snapshot stop第四轮source=interrupted、其余stop=eof，均是主动处置，不能凭source类型把stop改为自然完成或认定第三轮被修复。
 
 2026-09-30 `indexed-pages` 同构建真实 Agent 复验完整 exit 0，Codex/Claude × 两模式 × natural/stop 八场景的 schedule/result 均通过。natural 四项 `naturalResponseVerified=true` 且真实 completed event source=eof；stop 四项 `sourceEofClaim=false`，其中 Claude 实际 startup/auth 等待界面可停止，不代表完成模型任务。八份 cleanup 无残留 binding、process failure 或 forcedSignals。Host wiring 145/145、Client 28/28 也通过；当前证据覆盖新构建，不把旧 dist 记录追认为新构建通过。
 
@@ -637,6 +639,7 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 - 决策：第二轮首场失败只补既有固定安全摘要的 turn 完成/失败、nonce 匹配、missing-model-metadata 分类及 first-failure 实际 source，再以假 key/loopback 复现确认原因；当前不写 catalog 根因或修改严格断言。理由：现有宽分类不足以区别 warning 与请求失败，必要判定事实可用有限布尔/枚举补齐，无须发布原文、扩诊断框架或重跑求绿。日期/作者：2026-10-01，Codex。
 - 决策：本地 loopback 确认配置缺口后，仅补私有单 deepseek-flash 最小 catalog、forced_login_method=api 与 reasoning=high，必要 instructions 使用固定短句，省略固定版本 ignored 的 preferred_auth_method；原严格 warning 断言保持。理由：修正真实配置可消除本地成功响应时的 metadata item.error，无须更改业务、模型/版本/期限/沙箱或抄长模板；远端原文不可回推，新 CI 仍须独立验收。日期/作者：2026-10-01，Codex。
 - 决策：第三轮 snapshot-only stop 失败只从已保存 first-failure stack/snapshot/events 提取固定测试行列、原节点有限状态与匹配 reader 结算是否存在，再判断具体断言，不先改业务或重新跑求绿。理由：source EOF/cleanup已知但缺具体失败位置，枚举/布尔/数值足以补该判定，不需公开原文、放宽断言或增加工具框架。日期/作者：2026-10-01，Codex。
+- 决策：第四轮固定Linux八场景通过后返回原有限产品清单，把第三轮snapshot stop间歇失败保留为A4/A6具名未决项，不自动追加CI循环抓红或宣称修复。理由：两轮仅report/docs变更、没有业务修复因果，原失败须保留；新八场景只证明本轮Linux固定输入和凭据有效，其他产品组合、B3、平台/分发责任仍开放。日期/作者：2026-10-01，Codex。
 
 - 决策：有界索引读取及 `indexed-pages` 完整真实重连只解除原固定冷恢复阻塞，原四轮失败、全部预算和来源断言保持；同构建 A4 已完整通过，后续返回原有限清单，而不是再加工具或重复冷恢复/Agent 矩阵。理由：原执行/新 reader、完整应用/独立 journal 与自然无历史现已实际到达，B 只证明追平后交互，未覆盖项仍独立；性能改动后的真实 Agent 已取得新构建有限证据，不依赖旧 dist 代证。日期/作者：2026-09-30，Codex。
 - 决策：将两轮真实冷恢复 30 秒未追平列为 F-04/A1/A2 直接阻塞，不延长期限、不裁剪尾部或借十会话热路径通过关闭。下一仅拟有界顺序读优化，冻结 segment 首个相关页发布前仍完整校验，尾部篡改、身份/取消/compact 和页/在途边界保持，先定向验证再原输入真实复验。理由：逐页重扫放大已由源码确认，但全部耗时未归因；消除具体重复工作可以直接服务原产品验收，无需新诊断框架。日期/作者：2026-09-30，Codex。
@@ -865,7 +868,7 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 
 ## 结果与复盘
 
-2026-10-01 第三轮 `36811935908`/`8e081c19` 安全摘要保存在 `.debug/agent-ci-36811935908-summary/summary.json`：前三场 Codex passed，两 natural 的真实响应/nonce/turn.completed/source EOF 和全部原断言通过；第四场 snapshot-only stop failed，source=eof/raw=null/diag=[]，四已运行场景 cleanup四项0，Claude四场not-run。取得的是新配置的两个自然场景有效证据，不是整个八场景通过，也不追改第二轮根因/失败。当前只补 first-failure 固定定位字段，全部原结果保留，不关闭 F-04/全部 A5。
+2026-10-01 第四轮 `36812745671`/`736f9ddd` 的 `.debug/agent-ci-36812745671-summary/summary.json` 记录整轮success/8passed，四natural真实响应/nonce/EOF和原断言通过，八cleanup四计数均0。stop的Codex snapshot interrupted和其他三项eof按主动处置分账。前三轮原证据保持，尤其第三轮snapshot stop failure本轮未复现但无业务/断言改动，根因未知、不算已修；有限字段接入没有新失败位置可供定位。Linux认证路径不再是用户阻塞，当前回到原产品清单并保留该具名未决项，不关闭F-04/完整A5/跨平台。
 
 当前 A1/A2 的固定冷恢复阻塞已在 `indexed-pages` 新证据中解除：读取索引窄修已实施，原输入/30 秒下 13009.125ms 追平，来源 hash/revision6499、原主体/绑定/新 reader、完整后缀、B32.6ms、自然 no-history 与两 cleanup 全部实际通过。四轮旧 exit 1 和证据局限原样保留，B 发生于追平后，overlap=false；同一新构建 A4 八场景也已完整 exit 0，自然响应/EOF、主动停止和清理分账，Claude stop 仅代表实际 startup/auth 等待状态可停止。不把局部完成扩大为整个 F-04/A1 至 A6、A3 独立大尾部或跨平台，也不重新安排工具阶段。
 
@@ -1053,7 +1056,7 @@ S5输入为a32b1510，仅本运行时树修改。实际实现是`extensions/vsco
 
 ## 工作计划
 
-生产接入 32.20 的配置修正已在第三轮两个真实 Codex natural 场景有效，当前只在既有 `agent-candidate-ci-report.mjs` 从已保存 first-failure 提取白名单字段：固定测试文件行列、原节点状态/exit code/快照存在与UTF-8字节数/输出序列，以及匹配 reader 结算存在布尔。缺失未知、原扫描保持，不发布内容/ID/任意路径；定向测试确认后凭具体失败断言决定必要修正，不改原业务/断言或立即重跑矩阵。既有模型/版本/期限/沙箱/secret filter、私有配置清理与安全摘要边界保持。
+生产接入32.20的固定摘要和第四轮Linux真实八场景已完成各自有限验证，不再把CI凭据或该报告列为待接通。下一直接回到有限收尾清单的剩余用户组合、B3/A6状态替换、macOS/Windows产品provider/namespace/构建/分发及最终准入；第三轮Codex snapshot stop间歇失败随相关既有产品路径作必要定位，不能因本轮未复现就删除或宣称修复。不给该失败自动追加CI捕获循环，不重新排全部历史待办，不新增工具框架；原完整性/安全与旧live边界保持。
 
 有界索引读取和固定 A1/A2 冷恢复已完成各自有限验证，保留完整冻结段校验、页/在途及尾部篡改边界，不再将它们列为拟实现。同一新 2/1 candidate 的 A4 本机八场景已完整 exit 0；其余 A 项、B3、跨平台/分发与准入沿原有限清单，不因新结果自动追加工具阶段或重复已通过矩阵。真实重连追赶交互重叠仍未覆盖，2026-10-01 新 CI 后端需取得自身证据，不能用本机 Linux 两 Terminal/八 Agent 场景结果替代。
 
@@ -1175,7 +1178,7 @@ S1 最终定向32/32、typecheck 复跑、既有 bridge 回归、独立复审及
 
 ## 具体步骤
 
-本增量工作目录为仓库根。第三轮实际结果在 `.debug/agent-ci-36811935908-summary/summary.json`，前三passed、第四failed、后四not-run全部保持。只沿 32.20 补现有报告对已存 first-failure stack/snapshot/events 的固定行列与有限状态提取，运行原 report 定向测试及相关语法检查；未知不补造，先定位具体断言再决定是否需要新输入，不直接重复八场景。原模型/端点/版本、私有 `0700/0600` 配置、自然响应/EOF/Webview/cleanup 与 stop 断言保持，report_ready 后只上传安全摘要。
+本增量工作目录为仓库根。第四轮安全摘要在 `.debug/agent-ci-36812745671-summary/summary.json`，原八场景passed、四natural实际响应/EOF、八cleanup零残留已核对；前三轮目录及failure均保留。固定first-failure摘要已实施，第三轮snapshot stop未在第四轮重现，不靠再次dispatch获得根因。当前以有限收尾文档中的原B/A编号选择剩余直接产品项，并把该间歇失败随相关路径核对；若形成确切复现或原因再修订32.20，不改变原断言、期限或安全工件边界。
 
 当前已实施索引读取，并用匹配新 2/1 candidate 在 `.debug/a1-host-reconnect-20260930-indexed-pages/` 完成原 `--capacity-reconnect` 输入，exit 0；原四轮失败全部保留。协议脚本仅更新 HEAD 已存在的 await fresh/admission/return 顺序断言，修后 `.debug/journal-index-supervisor-protocol-attach-assertion-fixed.log` 通过，旧静态失败不覆盖；Webview 两个 global 夹具缺失修后 39/39+10/10 通过。`node scripts/smoke/run-vscode-agent-candidate.mjs --output .debug/a4-real-agent-20260930-indexed-pages` 已完整 exit 0，八场景逐项结果和 cleanup 见生产接入 32.19；Host wiring 145/145、Client 28/28 也通过。不追加同矩阵，下面旧步骤只记录当时操作，不作为下一任务队列。
 
@@ -1391,7 +1394,7 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 
 ## 验证与验收
 
-DeepSeek CI 的新增验收只覆盖 32.20 的固定 Linux/Electron 原八场景，Node/CLI/VSCode/Electron 版本及模型配置必须与输入一致。第三轮两个 Codex natural 已取得真实目标响应/source EOF/Webview与两模式原断言通过，Runtime stop passed但仍是主动停止；snapshot-only stop failed、Claude四场未跑，不能合成整轮通过。失败场景的source EOF/cleanup不替代reader应用/保存成功；只补固定行列/状态/数值/结算布尔，first-failure内存快照不代证正式落盘，不发布内容或放宽断言。此前loopback与两次CI各有独立边界；私有配置dispose、raw/HOME随临时VM销毁和扫描/report_ready上传边界保持。
+DeepSeek CI 的新增通过只覆盖32.20固定Linux/Electron原八场景：第四轮四natural已取得真实目标响应/nonce、source EOF、Webview和两模式原断言通过，四stop仍按主动处置登记，八cleanup四计数均0。该success不抹去第三轮snapshot stop failure，未复现且无业务/断言变更意味着根因仍待定位，不是已修复证明；不要求重复CI求绿或抓红来替代具体分析。first-failure内存快照不代证正式落盘，source EOF不单独代证reader/保存。跨平台、F-04及原剩余A项不削减，私有配置dispose、raw/HOME临时VM销毁、安全摘要扫描/report_ready规则保持。
 
 固定十 Terminal 已按容量重评 10.10 的原预算完整通过：Supervisor RSS 1280 MiB、Host RSS 640 MiB、renderer-group RSS 1536 MiB、十 provider 合计 1024 MiB、十主体合计 768 MiB、总 RSS 5 GiB、Host isolate heapUsed 192 MiB；交互 1500ms、单档追平 30 秒。实际数值和未知量归档 10.12，只适用于声明运行时/固定负载，不是一般产品 SLA 或最大会话数；旧失败及 A4 旧 dist 边界保持。10.11 两次真实 Host launch 的固定输入经有界索引读取修正后完整通过：旧 Host 消失后产出来源、新 Host 恢复原执行及新 reader、实际后缀/独立 hash、B 响应与自然无历史/清理均到达；原 30 秒/1500ms/每例 10 分钟界限不变，总 RSS 5 GiB 仅为实验保护。追平为 13.009 秒，B 输入发生在追平后，未覆盖离线追赶交互重叠。同一新 2/1 构建 A4 八场景完整 exit 0，natural 实际 EOF 与 stop 非 EOF claim 分账；该有限结果不把来源/尾部、A3 大尾部、其他 A 项或跨平台/分发移出验收。
 
@@ -2040,3 +2043,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-01，本地配置缺口复现）：固定 CLI 假 key/loopback 确认缺 catalog 时成功响应仍产生 metadata item.error；私有单模型最小 catalog、短 instructions 及固定版本可用认证配置修后通过原等价严格断言，未修改业务或期限。报告五布尔/first-failure source 已通过定向测试；不还原远端586bytes，新 CI 仍待，旧失败保留。
 
 修订记录（2026-10-01，第三轮实际部分通过）：同步 run36811935908/8e081c19 的 Codex前三passed、snapshot stop failed、Claude四not-run；两个natural取得新配置真实响应/EOF及原断言通过，不回推前轮。只设计既有first-failure固定行列/原节点有限状态/reader布尔的安全摘要补证，不改业务或断言，三轮原结果保留。
+
+修订记录（2026-10-01，第四轮Linux八场景通过）：同步run36812745671/736f9ddd的8passed、四natural真实响应/EOF/原断言、八cleanup零值和stop source分账；十buildHashes仅report改变，第三snapshot stop failure未复现且根因未知，不追认或声称修复。凭据已在Linux实证可用，返回原有限产品清单并保留具名未决项，不追加CI捕获循环或新框架，整体未关闭。

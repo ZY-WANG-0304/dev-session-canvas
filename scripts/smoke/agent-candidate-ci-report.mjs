@@ -8,6 +8,9 @@ const count = value => Array.isArray(value) ? value.length : null;
 const boolean = value => typeof value === 'boolean' ? value : null;
 const integer = value => Number.isSafeInteger(value) ? value : null;
 const dispositions = new Set(['eof', 'interrupted', 'error', 'unknown']);
+const agentStatuses = new Set(['idle', 'starting', 'waiting-input', 'running', 'resuming', 'resume-ready',
+  'resume-failed', 'suspended', 'stopping', 'stopped', 'error', 'interrupted']);
+const readerSettlementKinds = new Set(['applied', 'cancelled', 'lost', 'legacy-released']);
 
 export async function writeAgentCandidateCIReport({ directory, output, input, scenarios, phase, failed, apiKey, failureMessage = '' }) {
   const rows = [];
@@ -58,7 +61,7 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
       failureLocation: failureLocation ? { file: 'agent-candidate-tests.cjs',
         line: Number(failureLocation[1]), column: Number(failureLocation[2]) } : null,
       failureState: failureNode ? {
-        status: ['idle', 'running', 'waiting', 'stopped', 'error'].includes(failureNode.status) ? failureNode.status : null,
+        status: agentStatuses.has(failureNode.status) ? failureNode.status : null,
         liveSession: boolean(failureAgent?.liveSession),
         exitCode: integer(failureAgent?.lastExitCode),
         outputSequence: integer(failureAgent?.outputSequence),
@@ -66,7 +69,7 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
         serializedStateBytes: typeof failureAgent?.serializedTerminalState?.data === 'string'
           ? Buffer.byteLength(failureAgent.serializedTerminalState.data) : null,
         readerSettlementObserved: Array.isArray(events) ? readerSettlement !== undefined : null,
-        readerSettlementKind: ['applied', 'cancelled'].includes(readerSettlement?.detail?.outcome?.kind)
+        readerSettlementKind: readerSettlementKinds.has(readerSettlement?.detail?.outcome?.kind)
           ? readerSettlement.detail.outcome.kind : null,
         readerFinalOutputSequence: integer(readerSettlement?.detail?.outcome?.finalOutputSequence)
       } : null,

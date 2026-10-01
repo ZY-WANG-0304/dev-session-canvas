@@ -17,16 +17,18 @@ related_plans:
   - docs/exec-plans/active/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/active/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
-updated_at: 2026-09-30
+updated_at: 2026-10-01
 ---
 
 # Runtime Persistence 有限收尾与完成定义
 
 ## 1. 状态与目的
 
+当前 CI 有限结果（2026-10-01）：run `36812745671`/`736f9ddd` 的 Linux 真实 Codex/Claude + DeepSeek 两模式 natural/stop 八场景全部 passed，四 natural 真实 nonce/EOF 及原 Webview/持久化断言通过，八份 cleanup 的 bindings/failures/forcedSignals/active 均0。专用 CI 凭据和临时配置已由这些实际响应证明可用，不再是待用户处理的认证阻塞；stop 的 eof/interrupted 仍按主动处置记录。第三轮 `36811935908` 的 Codex snapshot-only stop failure 本轮未复现，且只有报告/文档变化，业务与断言未变；根因未知，保留为具名间歇失败，不能宣称已修复或追认通过。详细证据见生产接入32.20，不自动增加CI捕获循环，F-04/完整A5/macOS/Windows边界不变。
+
 当前 A1/A2 状态（2026-09-30）：有界索引顺序读取已实施，`.debug/a1-host-reconnect-20260930-indexed-pages/` 在同一 2/1 Electron candidate 上完整 exit 0，新 Host ready 1422.291ms、完整应用 14431.416ms、追平 13009.125ms；B32.6ms、独立 journal/hash、原执行及新 reader、完整保留后缀、自然 closed/no-history 与两份 cleanup 通过，outer `forcedSignals=[]`。原 30 秒界限与完整冻结段/尾部篡改检测保持，四轮旧 exit 1 不追认。该固定冷恢复阻塞已解除，但追赶交互重叠为 false，不关闭整个 F-04/其他 A 项。同一新 2/1 构建 A4 `indexed-pages` 八场景完整 exit 0：natural 四项响应/实际 source EOF 通过，stop 保留主动停止，八份 cleanup 均无 binding/process failure/forcedSignals。Claude stop 为 startup/auth 等待界面，不代表模型任务完成；详见生产接入 32.19。跨平台/分发及外部认证边界不变。
 
-当前 A5 边界（2026-10-01）：产品 candidate 仍只有 Linux x64/glibc，macOS/Windows 现有冻结诊断和 stock workflow 不提供 `execution-lifecycle-v1` 产品能力。已授权 GitHub runner 仍可承接 Terminal/native，但还需对应产品 provider、namespace、Node/Electron 构建及 packaged 接入，不能只删平台守卫。用户已选定真实 Codex/Claude CLI 共用 DeepSeek 后端，并添加仓库级 `DEEPSEEK_API_KEY`；只读 API 已确认 Secret 名称存在，不读取值。按用户要求不绑定 Environment、不限制分支，不上传本机登录凭据。先在已有 Linux 八场景接通受控临时 CLI 配置、手动 workflow 与安全报告，再沿既定平台接入复用；Secret 存在不等于认证或验收通过，不削减真实响应、Webview、尾部及跨平台要求。历史查询见生产接入 32.17，当前决策见 32.20。
+当前 A5 边界（2026-10-01）：产品 candidate 仍只有 Linux x64/glibc，macOS/Windows 现有冻结诊断和 stock workflow 不提供 `execution-lifecycle-v1` 产品能力。已授权 GitHub runner 仍可承接 Terminal/native，但还需对应产品 provider、namespace、Node/Electron 构建及 packaged 接入，不能只删平台守卫。用户选定的真实 Codex/Claude + DeepSeek 与仓库级 `DEEPSEEK_API_KEY` 已在第四轮 Linux 八场景取得有限实际通过，不再只依赖 secret metadata；预检不冒充网络认证。仍按用户要求不绑定 Environment/分支、不上传本机登录，沿既定平台工程接入复用临时配置与安全报告；Linux 的认证/响应通过不代证其他平台、尾部或全部产品验收。历史查询见32.17、当前证据见32.20。
 
 2026-09-28，用户先要求暂停自动追加阶段，随后明确不承担清单确认，要求代理依据重构目标作出判断。本文件据此收口为已选定的工程完成定义与有限工作顺序，不再等待用户批准工程清单或选择技术预算。最初核对基线为 `ba2c148b`，草案保存在 `2d375606`，工程裁决保存在 `8dd82629`。其后已按既定顺序启动 B1，过程见 `runtime-persistence-capacity-closeout` active 计划；局部修复不代表整体容量通过，2026-09-29 最新实际链同预算样本 2x/4x 的 heap/RSS 仍超限，状态保持验证中。没有新增 runner 或发布动作。
 
@@ -109,7 +111,7 @@ A1 的容量/交互预算和 B2 的生产收尾预算由代理负责选定并论
 
 A5 沿用既定平台、架构和运行时支持承诺，逐格标记通过、失败、未验或明确不支持；不能只跑 Linux 再称全部完成。只有存在真实相同的实现/环境与有效来源证明才复用证据，不能用 Node 产物冒充 Electron，也不能因没有方便的 CLI 凭据或 runner 就删除真实 Agent/平台要求。支持范围缩减、发布例外须另获用户确认；不默认要求所有诊断负例与所有环境做无意义笛卡尔积。
 
-A5 当前缺的是 macOS/Windows 的产品 provider/namespace/匹配 Node、Electron 与 packaged 接入，不只是把 Linux 候选放到 runner 上运行。原 GitHub runner 授权继续覆盖既定 Terminal/native 验证；冻结 macOS/Windows 诊断 API 和 stock node-pty workflow 不能代证新 candidate。2026-10-01 用户已经配置仓库级 DeepSeek Secret，不再等待原中转服务或官方账号凭据选择；固定 CLI 的 DeepSeek 兼容性、真实响应与退出检查仍需实际验证。使用独立临时配置及步骤级凭据，保留通用 smoke Secret 过滤，只发布不含凭据或原始 CLI 日志的有限报告。结果明确标识真实 CLI 加 DeepSeek 后端，不冒称官方模型或原中转通过；平台工程、认证配置与实际通过分别记录，不新增工具门槛。
+A5 当前缺的是 macOS/Windows 的产品 provider/namespace/匹配 Node、Electron 与 packaged 接入，不只是把 Linux 候选放到 runner 上运行。原 GitHub runner 授权继续覆盖既定 Terminal/native；冻结诊断 API 和 stock node-pty workflow 不能代证新 candidate。2026-10-01 的第四轮已证明固定真实 CLI + DeepSeek 在 Linux/Electron 原八场景可用，凭据不再是待用户选择的阻塞；第三轮 Codex snapshot stop 的具名间歇失败仍未知，不被本轮通过抹去。独立临时配置、步骤级凭据、通用 Secret 过滤和安全有限报告保持，不冒称官方模型、原中转或其他平台通过；平台工程与实际验收分别记录，不新增工具门槛。
 
 主进程成功写入终端的尾部，以及自身已接收、排队、消费中的内容仍必须完整交付和应用；不承诺程序尚未 flush 的应用缓冲。超时、主动截断、socket close 与进程 exit 不能冒充完整 EOF。Terminal/Agent 主体存活时正常接收同终端后代输出；主体退出后的普通后代未来输出不作为产品门槛。启动器下实际 Agent CLI 仍是主体。上述边界不因清单收窄而改变。
 
@@ -146,7 +148,7 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 
 ## 8. 推进约束与证据归档
 
-当前工程顺序按 2026-09-30 决定推进：保留 B1 已完成修复与未完成责任，固定 A1/A2 冷恢复经有界索引读取修正后已在原 30 秒内通过，旧失败保持。同一新 2/1 candidate 的 A4 真实 Agent 八场景也已完整 exit 0；当前沿原清单补齐剩余用户流程、B3 有限状态替换、跨平台/分发与最终准入，汇总 A1 至 A6 后才宣布整体交付。索引/测试维护均服务具体产品路径，不扩大工具工作，不重复已通过矩阵增加计数；真实离线追赶交互重叠未覆盖与整个 F-04 仍开放，A4 不代证 A3 独立大尾部或全部 A5。
+当前工程顺序按有限收尾定义推进：保留 B1 修复与未完责任、固定 A1/A2 冷恢复的原期限通过及本机/CI 各自 A4 有限结果，所有旧失败保持。第四轮 DeepSeek CI 八场景通过后，直接回到原清单的剩余用户流程、B3 有限状态替换、跨平台/分发与最终准入；第三轮 Codex snapshot-only stop 间歇失败列为 A4/A6 具名未决项，结合相关既有路径定位，不把未复现当作已修复，也不为抓红自动追加 CI。汇总 A1 至 A6 才能宣布整体交付，不重排全部历史待办或增加工具计数；真实离线追赶交互重叠、F-04、A3独立大尾部和完整A5仍开放。
 
 B2 会改变实际 provider、信用与消费链，最终启用产物必须复核 A1 的关键容量/交互项，不能用 B1 对此前路径的通过替新产物背书；这是最终回归，不另立容量研究或工具项目。
 
