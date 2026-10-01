@@ -14,7 +14,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-exit-integrity.md
-updated_at: 2026-09-25
+updated_at: 2026-10-02
 ---
 
 # 执行会话退出完整性交付
@@ -22,6 +22,8 @@ updated_at: 2026-09-25
 ## 1. 已确认范围与决策状态
 
 当前接入条件以`runtime-exit-integrity-production-integration.md`第16节为准：两owner正常关闭入口、Linux已有外部控制与L-01至L-05分层门槛已收口。下一S4仅做默认关闭、无native的实际authority准入/消费/收尾接线；真实PTY业务接入仍缺正常关闭失败处置、最终reader等必要能力，不因静态核对或此前2/2关闭PI-01/02/03。无新实验或业务改动，整体仍比较中/验证中；以下原生结果及当时“下一步”保持历史，不覆盖当前顺序。
+
+当前支持基线（2026-10-02）：本次重构的原生、VS Code/Electron、Terminal/Agent 及 packaged 验收以现代 GitHub-hosted runner 的实际版本为准；固定资产使用 Ubuntu 24.04、macOS 15、Windows Server 2025/Windows 11 ARM，产品 `latest` runner 必须在每次结果中记录实际镜像版本。macOS 10.13/10.14、Windows 10 1809 及其他旧系统不属于本轮前置，也不由现代结果反推兼容；后续只有收到真实低版本报告时才单独定位。该边界不削减退出完整性、真实 Agent/Webview 或跨平台现代环境验收，也不改变历史证据。
 
 当前S3有限结果见 `runtime-exit-integrity-production-integration.md` 第15.8至15.10节，仍比较中/验证中：输入3f8ebcae在Linux/Node22.23.2修后唯一两场景采集2/2，normal live终态、flood暂停消费时停止/回收及已读内容移交通过，资源首报/当前均released且无fault。独立核对9份输入源码与原始内容，首次0/2的18文件逐项未变，不追认旧失败。仅本地固定场景通过，未接业务或验证其他平台；下一步收口Linux正常关闭及卡住时的最小控制责任，再推进authority接线，不扩异常崩溃全矩阵或通用工具，无runner/push。
 
@@ -179,7 +181,7 @@ U1-3由同一个真实wait线程先跳过一次waitpid并保留合成-1/ECHILD�
 | 受控 node-pty fork/adapter，独占 reader 并重做完成契约 | 保留现有启动/输入/resize，局部替换源读取与退出归并；Linux 实验支持局部可行性 | 当前优先验证候选。不是给旧 onExit 包一层；Windows native/worker/pipe 也要提供可信结束，不能只改 Unix JS。轮询原型不直接升格生产。 |
 | 替换 native provider，例如 portable-pty 加 N-API 或私有 helper | 将读取与 process wait 分离，不继承 Node TTY reader 或 node-pty 的 JS timer | 需要新的原生构建/打包、线程与取消模型、Windows ConPTY 关闭顺序；保留为成本更高的对照，尚未运行。 |
 
-`panel/runtimeHostBackend.ts` 的 `resolveSupervisorExecPath()` 默认使用 `process.execPath`，snapshot-only 也在 Host 内运行；npm lockfile 不能单独决定这些路径的 libuv。扩展仍声明 `engines.vscode: ^1.80.0`，本轮只有 1.117.0 的内置运行时证据。若方案依赖较新宿主修正，必须显式解决最低版本与 capability gate，不能只换 shell Node 或静默提高最低版本。N-API 二进制兼容也不能代替 libuv 行为验证。
+`panel/runtimeHostBackend.ts` 的 `resolveSupervisorExecPath()` 默认使用 `process.execPath`，snapshot-only 也在 Host 内运行；npm lockfile 不能单独决定这些路径的 libuv。本次重构以 VS Code `1.117.0` / Electron `39.8.7` 及现代 runner 的实际运行时证据作为验收基线；扩展现有 `engines.vscode: ^1.80.0` 声明仍是独立的清单兼容元数据，不把本轮结果扩写为旧宿主兼容，也不为旧系统另设前置矩阵。N-API 二进制兼容仍不能代替现代宿主上的 libuv 行为验证。
 
 Windows `useConptyDll` 只是子候选：它避开默认 native-exit 静默 timer，但 worker dispose 的强制结束路径仍存在。需要实际 OS build、builtin/DLL、native exit、pipe/worker EOF、`ClosePseudoConsole` 与持续读取的顺序证据；不能把这个开关当作全平台修复。
 
@@ -209,7 +211,7 @@ Supervisor/local Host 在 adapter 最终事件后才封闭 admission，先收敛
 | Linux Remote SSH | 无本轮候选实测 | 记录实际执行端版本，不用本地 Electron 代替远程 extension host；验证断连与当前读者结算。 |
 | macOS 原生 | arm64 / Darwin 25.6.0 / Node 22.23.2：公共接口 15 项基线；新增 42 项 reader 对照，候选 15 项达标、后代两组 6 项未达标 | 补主进程尾部、最终状态、资源释放、实际启动链与宿主验证。leader/write/EOF 后 master 对照保留为诊断，后代失败不独立阻塞产品；也不能将普通场景通过泛化为全平台验收，或把 Linux EIO/取消策略直接推广。 |
 | Windows 原生 | Server 2025 x64 / Node 22.23.2：两轮各 63 项；修订 Job 夹具并验证存活/TTY 后候选 18 次完整、3 次明确取消；原 worker 每轮 42 次资源 guard 失败 | 补 native handle 释放/增长、并发输入、真正 stop/强制停止与实际 VS Code。独立 worker 自然退出不等于全部 OS 句柄归零或完整生产候选已选定。 |
-| 声明支持的宿主范围 | `^1.80.0` 仍未改变 | 选型时明确最低支持宿主与代表性矩阵；在验证前不能将 1.117.0 的结果泛化到全部支持版本。 |
+| 声明支持的宿主范围 | 本轮验收基线为现代 VS Code/Electron；`^1.80.0` 清单声明暂不因本次重构改写 | 现代 runner 的代表性矩阵必须通过；旧宿主/旧系统不属于本轮前置，若后续出现真实兼容报告再单独修复和验收。 |
 
 里程碑一还未结束：生产 reader、会话收尾/取消边界、资源/输入预算和具体 wire API 尚未选定，实际 Agent 启动链仍待验证。原生 Windows/macOS 候选已执行，Windows 修订夹具后达标，macOS 后代场景仍未满足冻结诊断门槛；这项失败不独立阻塞产品选型，不再把“没有平台 runner”作为原因。不能据此直接修改业务、去掉旧兼容、宣布全平台已修复或关闭退出完整性债务。
 
