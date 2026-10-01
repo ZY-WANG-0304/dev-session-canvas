@@ -152,6 +152,13 @@ try {
     savedOutputSequence: 15, snapshotOutputSequence: 15, readerFinalOutputSequence: 15, sequenceMatched: true,
     savedDataSha256: 'a'.repeat(64), helperSha256: 'b'.repeat(64), replayComplete: true,
     replayReason: 'complete', replayMatchesSaved: true, savedMatchesPage: true, replayMatchesPage: true,
+    replayInactivePrefixSnapshots: 1, replayEquivalentInitialSnapshots: 1, replayInitialZeroSequenceInferred: true,
+    savedGeometry: { cols: 66, rows: 21, cursorX: 0, cursorY: 0, viewportY: 0, bufferType: 'normal', raw: key },
+    pageGeometry: { cols: 96, rows: 30, cursorX: 0, cursorY: 0, viewportY: 0, bufferType: 'normal' },
+    publishedGeometry: { cols: 66, rows: 21, raw: key },
+    pageGeometryMatches: { cols: false, rows: false, cursorX: true, cursorY: true, viewportY: true, bufferType: true, raw: key },
+    resizedSavedPageGeometryMatched: true, resizedSavedPageVisibleMatched: true,
+    resizedSavedPageBufferMatched: true, resizedSavedMatchesPage: true,
     pageProjectionIndependence: 'not-proven', raw: key, snapshot: { data: key }, error: key };
   await fs.writeFile(path.join(stopArtifacts, 'snapshot-evidence.json'), JSON.stringify(snapshotEvidence));
   await fs.writeFile(path.join(stopArtifacts, 'result.json'), JSON.stringify({ pass: false }));
@@ -165,18 +172,38 @@ try {
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.replayMatchesSaved, true);
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.pageProjectionIndependence, 'not-proven');
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.savedDataSha256, 'a'.repeat(64));
+  assert.equal(snapshotReport.scenarios[0].snapshotEvidence.replayInitialZeroSequenceInferred, true);
+  assert.equal(snapshotReport.scenarios[0].snapshotEvidence.replayEquivalentInitialSnapshots, 1);
+  assert.deepEqual(snapshotReport.scenarios[0].snapshotEvidence.savedGeometry,
+    { cols: 66, rows: 21, cursorX: 0, cursorY: 0, viewportY: 0, bufferType: 'normal' });
+  assert.deepEqual(snapshotReport.scenarios[0].snapshotEvidence.publishedGeometry, { cols: 66, rows: 21 });
+  assert.deepEqual(snapshotReport.scenarios[0].snapshotEvidence.pageGeometryMatches,
+    { cols: false, rows: false, cursorX: true, cursorY: true, viewportY: true, bufferType: true });
+  assert.equal(snapshotReport.scenarios[0].snapshotEvidence.resizedSavedMatchesPage, true);
   assert.equal(snapshotText.includes(key), false);
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.raw, undefined);
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.snapshot, undefined);
   await fs.writeFile(path.join(stopArtifacts, 'snapshot-evidence.json'), JSON.stringify({ ...snapshotEvidence,
     replayReason: key, replayMatchesSaved: key, savedDataBytes: -1, savedDataSha256: key,
+    replayInitialZeroSequenceInferred: key, replayInactivePrefixSnapshots: -1,
+    savedGeometry: { cols: key, rows: -1, cursorX: key, bufferType: key }, pageGeometry: key,
+    publishedGeometry: { cols: key, rows: -1, raw: key }, pageGeometryMatches: { cols: key, raw: key },
+    resizedSavedPageGeometryMatched: key, resizedSavedPageVisibleMatched: key,
+    resizedSavedPageBufferMatched: key, resizedSavedMatchesPage: key,
     pageProjectionIndependence: 'independent', helperSha256: `invalid ${key}` }));
   const invalidSnapshotDirectory = path.join(root, 'invalid-snapshot-report');
   await writeAgentCandidateCIReport({ ...options, directory: invalidSnapshotDirectory, scenarios: [stopped], failed: true });
   const invalidSnapshotText = await fs.readFile(path.join(invalidSnapshotDirectory, 'summary.json'), 'utf8');
   const invalidSnapshot = JSON.parse(invalidSnapshotText).scenarios[0].snapshotEvidence;
   for (const field of ['replayReason', 'replayMatchesSaved', 'savedDataBytes', 'savedDataSha256',
-    'pageProjectionIndependence', 'helperSha256']) assert.equal(invalidSnapshot[field], null, field);
+    'pageProjectionIndependence', 'helperSha256', 'replayInitialZeroSequenceInferred', 'replayInactivePrefixSnapshots',
+    'resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched', 'resizedSavedPageBufferMatched',
+    'resizedSavedMatchesPage', 'pageGeometry']) assert.equal(invalidSnapshot[field], null, field);
+  assert.deepEqual(invalidSnapshot.savedGeometry,
+    { cols: null, rows: null, cursorX: null, cursorY: null, viewportY: null, bufferType: null });
+  assert.deepEqual(invalidSnapshot.publishedGeometry, { cols: null, rows: null });
+  assert.deepEqual(invalidSnapshot.pageGeometryMatches,
+    { cols: null, rows: null, cursorX: null, cursorY: null, viewportY: null, bufferType: null });
   assert.equal(invalidSnapshotText.includes(key), false);
   console.log('Agent candidate CI report: fixed fields, missing evidence, failed run, and secret refusal passed.');
 } finally {

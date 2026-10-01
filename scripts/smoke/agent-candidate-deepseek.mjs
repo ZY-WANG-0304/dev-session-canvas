@@ -23,13 +23,14 @@ $ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 [Console]::Out.WriteLine('private-directory-stage:inspect-directory')
 $directory = $env:DSC_PRIVATE_CREDENTIAL_DIRECTORY
-$item = Get-Item -LiteralPath $directory -Force
-if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Invalid private directory' }
-if (@(Get-ChildItem -LiteralPath $directory -Force).Count -ne 0) { throw 'Private directory is not empty' }
+$item = [IO.DirectoryInfo]::new($directory)
+if (-not $item.Exists -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Invalid private directory' }
+if ($item.GetFileSystemInfos().Length -ne 0) { throw 'Private directory is not empty' }
 [Console]::Out.WriteLine('private-directory-stage:build-acl')
 $current = [Security.Principal.WindowsIdentity]::GetCurrent().User
 $system = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
-$identities = @($current, $system) | Sort-Object -Property Value -Unique
+$identities = @($current)
+if ($current.Value -ne $system.Value) { $identities += $system }
 $acl = [Security.AccessControl.DirectorySecurity]::new()
 $acl.SetOwner($current)
 $acl.SetAccessRuleProtection($true, $false)
@@ -40,14 +41,17 @@ foreach ($identity in $identities) {
   $acl.AddAccessRule($rule)
 }
 [Console]::Out.WriteLine('private-directory-stage:set-acl')
-Set-Acl -LiteralPath $directory -AclObject $acl
+$item.SetAccessControl($acl)
 [Console]::Out.WriteLine('private-directory-stage:verify-acl')
-$actual = Get-Acl -LiteralPath $directory
+$actual = $item.GetAccessControl()
 if (-not $actual.AreAccessRulesProtected -or $actual.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $current.Value) { throw 'Private directory protection mismatch' }
 $rules = @($actual.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
 if ($rules.Count -ne @($identities).Count) { throw 'Private directory rule count mismatch' }
 foreach ($identity in $identities) {
-  $matching = @($rules | Where-Object { $_.IdentityReference.Value -eq $identity.Value })
+  $matching = @()
+  foreach ($candidate in $rules) {
+    if ($candidate.IdentityReference.Value -eq $identity.Value) { $matching += $candidate }
+  }
   if ($matching.Count -ne 1) { throw 'Private directory identity mismatch' }
   $rule = $matching[0]
   if ($rule.IsInherited -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or

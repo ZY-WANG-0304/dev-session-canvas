@@ -119,7 +119,7 @@ A1 的容量/交互预算和 B2 的生产收尾预算由代理负责选定并论
 
 A5 沿用既定平台、架构和运行时支持承诺，逐格标记通过、失败、未验或明确不支持；不能只跑 Linux 再称全部完成。只有存在真实相同的实现/环境与有效来源证明才复用证据，不能用 Node 产物冒充 Electron，也不能因没有方便的 CLI 凭据或 runner 就删除真实 Agent/平台要求。支持范围缩减、发布例外须另获用户确认；不默认要求所有诊断负例与所有环境做无意义笛卡尔积。
 
-A5 当前缺的是 macOS/Windows 的产品 provider/namespace/匹配 Node、Electron 与 packaged 接入，不只是把 Linux 候选放到 runner 上运行。原 GitHub runner 授权继续覆盖既定 Terminal/native；冻结诊断 API 和 stock node-pty workflow 不能代证新 candidate。2026-10-01 的第四轮已证明固定真实 CLI + DeepSeek 在 Linux/Electron 原八场景可用，凭据不再是待用户选择的阻塞；第三轮 Codex snapshot stop 的具名间歇失败仍未知，不被本轮通过抹去。独立临时配置、步骤级凭据、通用 Secret 过滤和安全有限报告保持，不冒称官方模型、原中转或其他平台通过；平台工程与实际验收分别记录，不新增工具门槛。
+A5 当前已取得Linux/macOS/Windows候选的两模式Terminal/Webview有限实证，Linux固定VSIX installed也已通过；未覆盖架构、其他平台packaged、Remote及默认分发/兼容仍开放，不能继续写成只有Linux实现，也不能泛称全平台完成。第37节固定构建基线修正顺序，保留原支持范围而不从新构建机版本倒推最低OS。冻结诊断 API 和 stock node-pty workflow 不能代证新 candidate。2026-10-01 的第四轮已证明固定真实 CLI + DeepSeek 在 Linux/Electron 原八场景可用，凭据不再是待用户选择的阻塞；macOS snapshot stop与Windows无凭据前置的直接失败按33.10/34.12定位。第三轮Linux Codex snapshot stop仍为具名间歇失败，不被后轮通过抹去。独立临时配置、步骤级凭据、通用 Secret 过滤和安全有限报告保持，不冒称官方模型、原中转或其他平台Agent通过；平台工程与实际验收分别记录，不新增工具门槛。
 
 主进程成功写入终端的尾部，以及自身已接收、排队、消费中的内容仍必须完整交付和应用；不承诺程序尚未 flush 的应用缓冲。超时、主动截断、socket close 与进程 exit 不能冒充完整 EOF。Terminal/Agent 主体存活时正常接收同终端后代输出；主体退出后的普通后代未来输出不作为产品门槛。启动器下实际 Agent CLI 仍是主体。上述边界不因清单收窄而改变。
 

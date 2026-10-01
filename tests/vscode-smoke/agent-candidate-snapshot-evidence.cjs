@@ -15,6 +15,11 @@ const lifecycle = value => ['panel', 'editor'].includes(value?.surface) && ['act
   ? [value.surface, value.mode, value.generation, value.frameId] : undefined;
 const same = isDeepStrictEqual;
 const write = (terminal, data) => new Promise(resolve => terminal.write(data, resolve));
+const terminalGeometry = state => Object.fromEntries(['cols', 'rows', 'cursorX', 'cursorY', 'viewportY', 'bufferType']
+  .map(key => [key, state[key]]));
+const pageGeometry = probe => probe && ({ cols: probe.terminalCols, rows: probe.terminalRows,
+  cursorX: probe.terminalCursorX, cursorY: probe.terminalCursorY, viewportY: probe.terminalViewportY,
+  bufferType: probe.terminalBufferType });
 
 function runtime(cols, rows, scrollback) {
   const terminal = new Terminal({ cols, rows, scrollback, allowProposedApi: true });
@@ -35,7 +40,9 @@ function readTerminal({ terminal, addon }) {
 async function comparePage(state, probe, assertBuffer) {
   const observed = probe && ['terminalCols', 'terminalRows', 'terminalCursorX', 'terminalCursorY', 'terminalViewportY']
     .every(key => integer(probe[key])) && Array.isArray(probe.terminalVisibleLines);
-  if (!observed) return { geometry: null, visible: null, buffer: null, matches: null };
+  if (!observed) return { geometry: null, fields: null, visible: null, buffer: null, matches: null };
+  const observedGeometry = pageGeometry(probe);
+  const fields = Object.fromEntries(Object.entries(terminalGeometry(state)).map(([key, value]) => [key, value === observedGeometry[key]]));
   const geometry = state.cols === probe.terminalCols && state.rows === probe.terminalRows &&
     state.cursorX === probe.terminalCursorX && state.cursorY === probe.terminalCursorY &&
     state.viewportY === probe.terminalViewportY && state.bufferType === probe.terminalBufferType;
@@ -43,7 +50,7 @@ async function comparePage(state, probe, assertBuffer) {
   let buffer = null;
   try { buffer = await assertBuffer(state.lines.filter(line => line.length > 0)) === true; }
   catch { buffer = null; }
-  return { geometry, visible, buffer, matches: !geometry || !visible || buffer === false ? false : buffer };
+  return { geometry, fields, visible, buffer, matches: !geometry || !visible || buffer === false ? false : buffer };
 }
 
 // This diagnostic never feeds later snapshots back into the replay terminal.
@@ -51,21 +58,39 @@ async function replayMessages({ messages, nodeId, executionId, scrollback, final
   const unknown = reason => ({ reason, complete: false });
   if (!Array.isArray(messages)) return unknown('messages-missing');
   if (messages.length >= 200) return unknown('message-window-full');
-  const relevant = messages.filter(message => message.payload?.nodeId === nodeId &&
+  const allRelevant = messages.filter(message => message.payload?.nodeId === nodeId &&
     ['host/executionSnapshot', 'host/executionOutput', 'host/executionExit'].includes(message.type));
+  const firstIndex = allRelevant.findIndex(message => message.payload.executionSessionId === executionId);
+  if (firstIndex < 0) return unknown('initial-checkpoint-missing');
+  const relevant = allRelevant.slice(firstIndex);
   if (relevant.some(message => message.payload.executionSessionId !== executionId)) return unknown('execution-changed');
   const first = relevant[0];
   const initial = first?.payload;
+  const identity = lifecycle(first.lifecycle);
+  const prefix = allRelevant.slice(0, firstIndex);
+  if (prefix.some(message => message.type !== 'host/executionSnapshot' ||
+      message.payload.executionSessionId !== undefined || message.payload.liveSession !== false ||
+      message.payload.output !== '' || message.payload.outputSequence !== undefined ||
+      message.payload.serializedTerminalState !== undefined || message.payload.terminalRead !== undefined ||
+      message.payload.terminalStream !== undefined || !identity || !same(lifecycle(message.lifecycle), identity))) {
+    return unknown('execution-changed');
+  }
+  const initialState = initial.serializedTerminalState;
+  const initialZero = initial.outputSequence === 0 && initial.output === '' &&
+    initial.terminalRead === undefined && initial.terminalStream === undefined &&
+    initialState?.format === 'xterm-serialize-v1' && initialState.data === '' &&
+    initialState.outputSequence === undefined && (initialState.viewportY === undefined || initialState.viewportY === 0);
   if (first?.type !== 'host/executionSnapshot' || initial.liveSession !== true || !dimensions(initial) ||
-      !serialized(initial.serializedTerminalState) || initial.outputSequence !== initial.serializedTerminalState.outputSequence) {
+      (!initialZero && (!serialized(initialState) || initial.outputSequence !== initialState.outputSequence))) {
     return unknown('initial-checkpoint-missing');
   }
-  const identity = lifecycle(first.lifecycle);
   if (!identity || relevant.some(message => !same(lifecycle(message.lifecycle), identity))) return unknown('reader-changed');
   const state = runtime(initial.cols, initial.rows, scrollback);
   const result = { complete: false, reason: 'unknown', initialSequence: initial.outputSequence,
+    inactivePrefixSnapshots: prefix.length, equivalentInitialSnapshots: 0, initialZeroSequenceInferred: initialZero,
     outputMessages: 0, resizeSnapshots: 0, finalSnapshot: undefined };
   let sequence = initial.outputSequence;
+  let initialPhase = true;
   let finalSeen = false;
   let exitSeen = false;
   try {
@@ -73,6 +98,11 @@ async function replayMessages({ messages, nodeId, executionId, scrollback, final
     if (initial.serializedTerminalState.viewportY !== undefined) state.terminal.scrollToLine(initial.serializedTerminalState.viewportY);
     for (const message of relevant.slice(1)) {
       const payload = message.payload;
+      if (initialPhase && message.type === 'host/executionSnapshot' && same(payload, initial)) {
+        result.equivalentInitialSnapshots += 1;
+        continue;
+      }
+      initialPhase = false;
       if (message.type === 'host/executionOutput') {
         if (finalSeen || !integer(payload.outputStartSequence) || !integer(payload.outputSequence) ||
             payload.outputStartSequence !== sequence + 1 || payload.outputSequence < payload.outputStartSequence ||
@@ -138,11 +168,15 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
     savedRows: integer(metadata?.lastRows) ? metadata.lastRows : null,
     messageCount: Array.isArray(messages) ? messages.length : null,
     pageGeometryMatched: null, pageVisibleMatched: null, pageBufferMatched: null, savedMatchesPage: null,
+    savedGeometry: null, pageGeometry: pageGeometry(page) ?? null, publishedGeometry: null, pageGeometryMatches: null,
+    resizedSavedPageGeometryMatched: null, resizedSavedPageVisibleMatched: null,
+    resizedSavedPageBufferMatched: null, resizedSavedMatchesPage: null,
     hydratedStateSha256: null, replayStateSha256: null, replayComplete: false, replayReason: 'unknown',
     replayInitialSequence: null, replayOutputMessages: null, replayResizeSnapshots: null,
+    replayInactivePrefixSnapshots: null, replayEquivalentInitialSnapshots: null, replayInitialZeroSequenceInferred: null,
     replayMatchesSaved: null, replayMatchesPage: null, publishedFinalMatchesSaved: null,
     pageProjectionIndependence: 'not-proven' };
-  let hydrated;
+  let hydrated, resized;
   try {
     if (!evidence.savedNodeMatched || !serialized(saved) || !dimensions({ cols: metadata?.lastCols, rows: metadata?.lastRows })) {
       evidence.replayReason = 'saved-state-invalid';
@@ -152,9 +186,11 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
     await write(hydrated.terminal, saved.data);
     if (saved.viewportY !== undefined) hydrated.terminal.scrollToLine(saved.viewportY);
     const savedState = readTerminal(hydrated);
+    evidence.savedGeometry = terminalGeometry(savedState);
     evidence.hydratedStateSha256 = hash(JSON.stringify(savedState));
     const pageComparison = await comparePage(savedState, page, assertBuffer);
     evidence.pageGeometryMatched = pageComparison.geometry;
+    evidence.pageGeometryMatches = pageComparison.fields;
     evidence.pageVisibleMatched = pageComparison.visible;
     evidence.pageBufferMatched = pageComparison.buffer;
     evidence.savedMatchesPage = pageComparison.matches;
@@ -164,16 +200,35 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
     evidence.replayInitialSequence = replay.initialSequence ?? null;
     evidence.replayOutputMessages = replay.outputMessages ?? null;
     evidence.replayResizeSnapshots = replay.resizeSnapshots ?? null;
-    if (replay.finalSnapshot) evidence.publishedFinalMatchesSaved =
-      same(replay.finalSnapshot.serializedTerminalState, saved) &&
-      replay.finalSnapshot.cols === metadata.lastCols && replay.finalSnapshot.rows === metadata.lastRows;
+    evidence.replayInactivePrefixSnapshots = replay.inactivePrefixSnapshots ?? null;
+    evidence.replayEquivalentInitialSnapshots = replay.equivalentInitialSnapshots ?? null;
+    evidence.replayInitialZeroSequenceInferred = replay.initialZeroSequenceInferred ?? null;
+    if (replay.finalSnapshot) {
+      evidence.publishedGeometry = { cols: replay.finalSnapshot.cols, rows: replay.finalSnapshot.rows };
+      evidence.publishedFinalMatchesSaved = same(replay.finalSnapshot.serializedTerminalState, saved) &&
+        replay.finalSnapshot.cols === metadata.lastCols && replay.finalSnapshot.rows === metadata.lastRows;
+    }
     if (replay.complete) {
       evidence.replayStateSha256 = hash(JSON.stringify(replay.state));
       evidence.replayMatchesSaved = same(replay.state, savedState);
       evidence.replayMatchesPage = (await comparePage(replay.state, page, assertBuffer)).matches;
     }
+    if (dimensions({ cols: page?.terminalCols, rows: page?.terminalRows })) {
+      // This extra reflow neither changes direct comparisons nor imports page content/cursor/viewport.
+      try {
+        resized = runtime(metadata.lastCols, metadata.lastRows, scrollback);
+        await write(resized.terminal, saved.data);
+        if (saved.viewportY !== undefined) resized.terminal.scrollToLine(saved.viewportY);
+        resized.terminal.resize(page.terminalCols, page.terminalRows);
+        const comparison = await comparePage(readTerminal(resized), page, assertBuffer);
+        evidence.resizedSavedPageGeometryMatched = comparison.geometry;
+        evidence.resizedSavedPageVisibleMatched = comparison.visible;
+        evidence.resizedSavedPageBufferMatched = comparison.buffer;
+        evidence.resizedSavedMatchesPage = comparison.matches;
+      } catch { /* Optional reflow evidence stays unknown without changing direct results. */ }
+    }
   } catch { evidence.replayComplete = false; evidence.replayReason = 'evidence-computation-failed'; }
-  finally { hydrated?.terminal.dispose(); }
+  finally { hydrated?.terminal.dispose(); resized?.terminal.dispose(); }
   return evidence;
 }
 

@@ -114,25 +114,32 @@ try {
     const check = `
 $ErrorActionPreference = 'Stop'
 $current = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$allowed = @($current, 'S-1-5-18') | Sort-Object -Unique
-foreach ($file in ($env:DSC_ACL_CHECK_PATHS | ConvertFrom-Json)) {
-  $acl = Get-Acl -LiteralPath $file
+$allowed = @($current)
+if ($current -ne 'S-1-5-18') { $allowed += 'S-1-5-18' }
+for ($index = 0; $index -lt [int]$env:DSC_ACL_CHECK_COUNT; $index++) {
+  $file = [Environment]::GetEnvironmentVariable('DSC_ACL_CHECK_PATH_' + $index)
+  $item = if ([IO.Directory]::Exists($file)) { [IO.DirectoryInfo]::new($file) } else { [IO.FileInfo]::new($file) }
+  $acl = $item.GetAccessControl()
   $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
   if ($rules.Count -ne $allowed.Count) { throw 'Credential ACL identity mismatch' }
   foreach ($identity in $allowed) {
-    $matching = @($rules | Where-Object { $_.IdentityReference.Value -eq $identity })
+    $matching = @()
+    foreach ($rule in $rules) {
+      if ($rule.IdentityReference.Value -eq $identity) { $matching += $rule }
+    }
     if ($matching.Count -ne 1 -or $matching[0].AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
         $matching[0].FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl) { throw 'Credential ACL permission mismatch' }
   }
 }
 `;
     const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT;
+    const checkedPaths = [first.directory, ...Object.values(first.authReferences), codexConfigPath,
+      modelCatalogPath, first.claudeSettingsPath];
     const nativeAcl = spawnSync(path.win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
       ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(check, 'utf16le').toString('base64')], {
         encoding: 'utf8', timeout: 15000, windowsHide: true,
-        env: { SystemRoot: systemRoot, WINDIR: systemRoot, DSC_ACL_CHECK_PATHS: JSON.stringify([
-          first.directory, ...Object.values(first.authReferences), codexConfigPath, modelCatalogPath, first.claudeSettingsPath
-        ]) }
+        env: { SystemRoot: systemRoot, WINDIR: systemRoot, DSC_ACL_CHECK_COUNT: String(checkedPaths.length),
+          ...Object.fromEntries(checkedPaths.map((file, index) => [`DSC_ACL_CHECK_PATH_${index}`, file])) }
       });
     assert.equal(nativeAcl.status, 0, nativeAcl.stderr);
   }
@@ -211,7 +218,9 @@ foreach ($file in ($env:DSC_ACL_CHECK_PATHS | ConvertFrom-Json)) {
       assert.match(script, /SetAccessRuleProtection\(\$true, \$false\)/u);
       assert.match(script, /GetCurrent\(\)\.User/u);
       assert.match(script, /S-1-5-18/u);
-      assert.match(script, /Set-Acl[\s\S]+Get-Acl[\s\S]+GetAccessRules/u);
+      assert.match(script, /SetAccessControl[\s\S]+GetAccessControl[\s\S]+GetAccessRules/u);
+      assert.match(script, /DirectoryInfo\]::new[\s\S]+\.Exists[\s\S]+ReparsePoint[\s\S]+GetFileSystemInfos/u);
+      assert.doesNotMatch(script, /Get-Item|Get-ChildItem|Get-Acl|Set-Acl|Sort-Object|Where-Object|Import-Module/u);
       assert.deepEqual([...script.matchAll(/WriteLine\('private-directory-stage:([^']+)'\)/gu)]
         .map(match => match[1]), stages);
       if (result instanceof Error) throw result;

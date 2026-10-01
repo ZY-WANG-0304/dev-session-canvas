@@ -17,7 +17,7 @@ async function fixture({ blank = false, resize = false } = {}) {
     excludeAltBuffer: false, excludeModes: false }), viewportY: terminal.buffer.active.viewportY, outputSequence: sequence });
   const snapshot = liveSession => ({ type: 'host/executionSnapshot', lifecycle: frame,
     payload: { nodeId: 'n1', executionSessionId: 'e1', cols: terminal.cols, rows: terminal.rows,
-      liveSession, outputSequence: sequence, serializedTerminalState: state() } });
+      liveSession, output: '', outputSequence: sequence, serializedTerminalState: state() } });
   const messages = [snapshot(true)];
   const output = async text => {
     const start = sequence + 1;
@@ -65,12 +65,86 @@ assert.equal(blankEvidence.savedMatchesPage, true);
 assert.equal(blankEvidence.pageProjectionIndependence, 'not-proven');
 assert.equal(JSON.stringify(blankEvidence).includes('VISIBLE BEFORE RESET'), false);
 
+const initialSchema = { ...blank, messages: clone(blank.messages) };
+delete initialSchema.messages[0].payload.serializedTerminalState.outputSequence;
+const inactivePrefix = clone(initialSchema.messages[0]);
+delete inactivePrefix.payload.executionSessionId;
+delete inactivePrefix.payload.outputSequence;
+delete inactivePrefix.payload.serializedTerminalState;
+inactivePrefix.payload.liveSession = false;
+initialSchema.messages.splice(1, 0, clone(initialSchema.messages[0]));
+initialSchema.messages.unshift(inactivePrefix);
+const originalInitialMessages = clone(initialSchema.messages);
+const initialEvidence = await collectSnapshotEvidence(initialSchema);
+assert.equal(initialEvidence.replayComplete, true, 'The recorded production initial schema must replay without relaxing later boundaries.');
+assert.equal(initialEvidence.replayInactivePrefixSnapshots, 1);
+assert.equal(initialEvidence.replayEquivalentInitialSnapshots, 1);
+assert.equal(initialEvidence.replayInitialZeroSequenceInferred, true);
+assert.equal(initialEvidence.replayMatchesSaved, true);
+assert.deepEqual(initialSchema.messages, originalInitialMessages, 'Evidence normalization must not rewrite original messages.');
+
+const pageResized = { ...blank, finalProbe: clone(blank.finalProbe) };
+pageResized.finalProbe.nodes[0].terminalCols = 48;
+pageResized.finalProbe.nodes[0].terminalRows = 7;
+pageResized.finalProbe.nodes[0].terminalVisibleLines = Array(7).fill('');
+const resizedEvidence = await collectSnapshotEvidence(pageResized);
+assert.equal(resizedEvidence.pageGeometryMatched, false);
+assert.equal(resizedEvidence.pageVisibleMatched, false);
+assert.equal(resizedEvidence.savedMatchesPage, false);
+assert.deepEqual(resizedEvidence.savedGeometry, { cols: 40, rows: 5, cursorX: 0, cursorY: 0, viewportY: 0, bufferType: 'normal' });
+assert.deepEqual(resizedEvidence.pageGeometry, { cols: 48, rows: 7, cursorX: 0, cursorY: 0, viewportY: 0, bufferType: 'normal' });
+assert.deepEqual(resizedEvidence.publishedGeometry, { cols: 40, rows: 5 });
+assert.deepEqual(resizedEvidence.pageGeometryMatches,
+  { cols: false, rows: false, cursorX: true, cursorY: true, viewportY: true, bufferType: true });
+assert.equal(resizedEvidence.resizedSavedPageGeometryMatched, true);
+assert.equal(resizedEvidence.resizedSavedPageVisibleMatched, true);
+assert.equal(resizedEvidence.resizedSavedPageBufferMatched, true);
+assert.equal(resizedEvidence.resizedSavedMatchesPage, true);
+assert.equal(resizedEvidence.replayMatchesSaved, true, 'The extra resize must not change direct replay comparison.');
+const pageMovedCursor = { ...pageResized, finalProbe: clone(pageResized.finalProbe) };
+pageMovedCursor.finalProbe.nodes[0].terminalCursorX = 3;
+assert.equal((await collectSnapshotEvidence(pageMovedCursor)).resizedSavedMatchesPage, false,
+  'The independent resize must not copy the page cursor.');
+const pageMovedViewport = { ...pageResized, finalProbe: clone(pageResized.finalProbe) };
+pageMovedViewport.finalProbe.nodes[0].terminalViewportY = 1;
+assert.equal((await collectSnapshotEvidence(pageMovedViewport)).resizedSavedMatchesPage, false,
+  'The independent resize must not copy the page viewport.');
+
+for (const mutate of [
+  value => { value.messages[0].payload.output = 'unexpected prelaunch output'; },
+  value => { value.messages[0].payload.outputSequence = 0; },
+  value => { value.messages[0].payload.serializedTerminalState = clone(blank.messages[0].payload.serializedTerminalState); },
+  value => { value.messages[0].payload.terminalRead = {}; },
+  value => { value.messages[0].payload.terminalStream = {}; },
+  value => { value.messages[0].payload.liveSession = true; },
+  value => { value.messages[0].lifecycle.frameId = 'other-reader'; },
+  value => { value.messages[0].payload.executionSessionId = 'other-execution'; },
+  value => { value.messages.splice(4, 0, value.messages.shift()); },
+  value => { value.messages[1].payload.serializedTerminalState.data = 'not empty'; },
+  value => { value.messages[1].payload.serializedTerminalState.viewportY = 1; },
+  value => { value.messages[1].payload.outputSequence = 1; },
+  value => { value.messages[1].payload.terminalRead = {}; },
+  value => { value.messages[1].payload.terminalStream = {}; },
+  value => { value.messages[2].payload.cols += 1; },
+  value => { value.messages.at(-2).payload.serializedTerminalState.outputSequence = undefined; }
+]) {
+  const invalid = { ...initialSchema, messages: clone(initialSchema.messages) };
+  mutate(invalid);
+  const result = await collectSnapshotEvidence(invalid);
+  assert.equal(result.replayComplete, false, 'Only the recorded strict initial schema is eligible.');
+  assert.equal(result.replayMatchesSaved, null);
+}
+
 const nonempty = await fixture({ resize: true });
 const nonemptyEvidence = await collectSnapshotEvidence(nonempty);
 assert(nonemptyEvidence.savedDataBytes > 0);
 assert.equal(nonemptyEvidence.replayResizeSnapshots, 1);
 assert.equal(nonemptyEvidence.replayMatchesSaved, true);
 assert.equal(nonemptyEvidence.savedMatchesPage, true);
+const repeatedResize = { ...nonempty, messages: clone(nonempty.messages) };
+repeatedResize.messages.splice(3, 0, clone(repeatedResize.messages[2]));
+assert.equal((await collectSnapshotEvidence(repeatedResize)).replayReason, 'projection-recovery-or-unknown-snapshot',
+  'A repeated checkpoint after a resize remains an unsupported recovery, not an initial duplicate.');
 
 const tampered = { ...nonempty, savedNode: clone(nonempty.savedNode) };
 tampered.savedNode.metadata.agent.serializedTerminalState.data = '';
@@ -115,7 +189,8 @@ for (const [reason, mutate] of [
   ['output-range-missing', value => { value.messages[1].payload.outputStartSequence += 1; }],
   ['output-range-missing', value => { value.messages.splice(1, 1); }],
   ['reader-changed', value => { value.messages[1].lifecycle = { ...value.messages[1].lifecycle, frameId: 'changed' }; }],
-  ['projection-recovery-or-unknown-snapshot', value => { value.messages.splice(1, 0, clone(value.messages[0])); }],
+  // Initial duplicates now have a production meaning; preserve the original rejection after output begins.
+  ['projection-recovery-or-unknown-snapshot', value => { value.messages.splice(2, 0, clone(value.messages[0])); }],
   ['message-window-full', value => { while (value.messages.length < 200) value.messages.push({ type: 'host/stateUpdated' }); }],
   ['snapshot-invalid', value => { value.messages.at(-2).payload.serializedTerminalState.outputSequence += 1; }],
   ['exit-boundary-missing', value => { value.messages.pop(); }]
@@ -127,4 +202,4 @@ for (const [reason, mutate] of [
   assert.equal(result.replayReason, reason);
   assert.equal(result.replayMatchesSaved, null);
 }
-console.log('Agent snapshot evidence: legal blank, nonempty resize, tampering, cursor, sequence, and missing evidence passed.');
+console.log('Agent snapshot evidence: strict initial schema, independent page resize, retained direct differences, and later-boundary rejection passed.');

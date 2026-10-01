@@ -174,6 +174,8 @@ Host 输出32ms/16ms调度、750ms延迟上限和256KiB分页都不是退出完�
 
 ## 6. 兼容与分发支持
 
+本节前期现状保留为历史；当前A5构建/默认分发收尾以第37节为准，平台provider及Node/Electron的实际增量见32至35节。
+
 新路径分别协商主体/源/资源事实及 reader settlement 能力，不能凭已有分页能力推导退出完整性。旧 live 继续使用 metadata 中的 backend/storage/session/executionKind 及原 generation 绑定，不迁移、不重启、不补造新能力。旧 client 接新服务使用明确旧分支；只有双方 opt-in 才发送新 mandatory 字段。
 
 新路径启用后，新创建只使用具备完整能力的新 generation；当前目标缺能力时明确拒绝新路径，不能静默回落旧 generation 或声称新保证。默认关闭的有限切片未启用时仍走既有路径，不计作新能力验收。启用新能力的 generation 命名和显式回退规则需在接入时冻结，不能在旧 live 所在 storage 原地重启服务。root 稳定归属仍由 F-03 独立设计。
@@ -1845,6 +1847,8 @@ run `36821963386`/job `110239281754` 使用 `72ca0efe`，修后原Node四例全�
 
 该旧 Linux 输入按三条规则内存核对可完整重放0至12，共10个output、无resize，published final与saved相同。replayMatchesSaved仍为false：几何/光标/viewport/所有行均相同，但原重放序列化为656字节，而hydrate再serialize为650字节；不做ANSI归一或改为true。旧saved66×21与page96×30的原geometry/visible均false，仅将独立hydrate resize到page尺寸后对账一致。后续允许额外记录这一具名resize对账，不覆盖原比较、不设置page光标/viewport、不复制page正文，也不宣称真实resize顺序已证。原truthy断言和停止时机保持；局部回归及原输入离线复核后，至多一次原macOS矩阵用于填补这次已知采集盲点，不自动失败重试。
 
+三个严格初始规则和独立resize对账已在原四个helper/report/test文件实施。helper/report新增回归各自先红后绿，日志 `.debug/mac-snapshot-initial-schema-original-20261001-01.log` 与 `.debug/mac-snapshot-fields-original-20261001-01.log` 及各自fixed记录保留；root复跑两测试和workflow契约通过。旧Linux原消息无需改写即可回放，原replayMatchesSaved=false及geometry/visible=false保持，新resize几何/可见行true但历史完整buffer未存，整项保持null。原重复负例移至输出之后，继续拒绝后续恢复；新非法前缀、非空缺序号、resize后重复和敏感文本负例保持。原truthy与停止时机未改，macOS新原生输入仍待运行。
+
 ## 34. Windows 产品原生接入
 
 ### 34.1 运行前原生契约（2026-10-01）
@@ -2011,6 +2015,10 @@ CLI选择、Windows observer、原Unix observer、CI summary、私有配置、�
 
 为定位这一安全前置，选定只在原配置helper及其测试补固定字段错误属性：配置stage、PowerShell最近白名单阶段、code整数/具名OS码、signal白名单、killed布尔、durationMs与原timeoutMs、readyTokenMatched和stderrPresent。脚本只增加少量固定阶段标记，验证仍须全部原DACL规则及最终ready；不记录原stdout/stderr、路径、env、command、cause或原错误文本，也不打印key。execFile没有权威timedOut字段，不能把killed/耗时写成已确认超时。原通用报错、15000ms、fail-closed及清理不变；局部测试验证安全字段与key/raw不泄露后，仅复验原Windows前置/矩阵，不建立通用诊断设施。测试后段外层10000ms小于内层15000ms另记尚未到达的风险，不据此归因本次失败或提前放宽。
 
+固定9f342320的Windows run36840316777/job110297648135仍在无凭据前置首个配置失败；安全字段为protect-directory、inspect-directory、code=null、signal=SIGTERM、killed=true、durationMs=15021、timeoutMs=15000、ready=false、stderrPresent=false。原日志 `.debug/windows-agent-36840316777-job.log` 保留。它限定到Get-Item/Get-ChildItem所在检查段，未到build-acl，不能确认是具体cmdlet、模块自动加载还是文件系统耗时；CLI和真实Agent仍未运行。
+
+下一窄修选定在固定Windows PowerShell 5.1脚本内直接使用.NET Framework的DirectoryInfo/FileInfo与GetAccessControl/SetAccessControl，避免私有最小env路径隐式依赖Management/Utility模块自动加载。目录存在、非reparse point、空目录、owner、禁止继承、仅当前SID/SYSTEM及精确FullControl/继承flags的检查全部保留；SID去重/逐条匹配用语言内建循环。原独立文件ACL验收同样用明确固定字段传入路径和.NET读取，不通过继承任意环境解决。不增权限、不修改15秒或外层10秒，不预判该依赖消除必然修好；局部契约及原Windows前置/矩阵另取一次新证据，旧失败不改。
+
 ## 35. A5 固定 VSIX 的实际安装路径
 
 本项只补既定A5的Linux installed candidate，不新增平台诊断，也不代证完整分发准入。现有 `run-vscode-vsix-smoke.mjs` 重建stock并改装development扩展，正确范围仅为payload smoke；不能把它当成未改装VSIX的安装证据。选定在 `scripts/smoke/run-vscode-execution-candidate.mjs` 新增显式 `--installed-vsix`，只接收固定文件，不自动重建或选择最新包，首轮不与capacity选择混用。
@@ -2034,3 +2042,13 @@ A1在 `test-supervisor-execution-owner-wiring.mjs` 复用实际Server/TerminalSe
 A2在 `test-host-execution-owner-wiring.mjs` 的真实persistenceFixture中种原Runtime绑定和已保存文件，通过将root临时文件路径占用为目录触发实际writer失败，调用原 `applyCompletedRuntimeSupervisorSnapshot`，不替换persistState。必须拒绝保存、旧root/workspace文件仍可读，原runtimeSessionId/runtimeStoragePath、binding及managed session未释放，strict delete为零。该验证不声称实际Webview告警/控制可用性已验，也不替代保存成功路径或旧live共存；出现直接失败再据证据设计最小业务修正。
 
 两类各Terminal/Agent实际模块用例通过，未修改业务。A1验证实际异步append错误进入journal.writeError及Supervisor authorityFailure，原manifest未提升、已接收内容仍在原session/tracker、没有consumed ACK且请求stop不冒充退出；另一session消费成功，去除注入后flush仍拒绝原错误。fixture清理仅逐个assert.rejects事先登记的原错误，不吞未知失败或清掉业务错误。A2验证root临时路径目录导致实际EISDIR，原root/workspace字节未变，原Runtime身份/state/rootStates/binding/managed保留，dispose和strict delete均0。Supervisor94/94、Host147/147及root独立完整复跑通过，日志为 `.debug/a1-journal-enospc-supervisor-wiring-20261001.log`、`.debug/a2-root-save-failure-host-wiring-20261001.log`。无实际OS满盘、Webview或原生新通过声明，剩余A1/A2按有限清单继续。
+
+## 37. A5 构建基线与默认分发收尾
+
+当前精确runtime tuple是候选来源/准入限制，不直接等于真实ABI下限。已只读核对Linux installed addon的N-API注册返回8，manifest的10只是构建宿主观测；该候选ELF实际最高要求GLIBC_2.34，而锁定stock为2.28。macOS旧候选36825479993的addon/helper实际Mach-O minos均26.0，stock arm64为11.0、x64为10.7。这些是二进制静态事实，不代表旧系统实际装载结果。不能将新构建机版本倒推产品最低要求，也不能只删gate而忽略真实系统库依赖。
+
+有限实现方向是保留完整构建tuple/hash来源，另明确实际N-API/OS/架构/系统库要求；沿既有builder在原支持基线编译，六资产完整打包并按实际执行端选择。Linux旧宿主需要与新宿主竞争同名abstract socket的native claim，不另设互不相干的锁；Windows named pipe不直接继承Linux的Node20.8门槛。继续使用原Extension Host executable，不捆绑Node、不新增下载器；Remote按远端平台。旧live不迁移、缺新能力不静默回落；本段不是默认启用或平台通过声明。
+
+本次先独立修正macOS构建下限：`macos-execution-candidate-assets.mjs` 的共用target参数固定arm64=11.0、x64=10.13，addon/helper都显式带 `-mmacosx-version-min`，不开放任意target覆盖。arm64与原资产及Apple Silicon起点一致；VS Code1.80.0官方.yarnrc使用Electron22.3.14，其支持基线为10.13，因此x64不跟随stock声明的10.7，也不偷升到10.15/26。保留C++17，不将语言标准当OS下限。build/read/import共同检查两个实际Mach-O的LC_BUILD_VERSION或LC_VERSION_MIN_MACOSX及固定目标；缺失/冲突/截断或错误平台拒绝，不能仅相信manifest或编译参数。原runtime factory精确gate暂不改，hash/路径/目标校验保持。
+
+必须独立保留API兼容风险：候选及锁定stock均无条件使用POSIX_SPAWN_SETSID，而Apple XNU10.13/10.14对应头中该位尚未定义，10.15系列才有该flag。固定链接target不证明旧系统PTY创建可用，也不因此提高产品支持线；正式兼容验收仍须处理。此次仅原builder/资产纯测试和既有macOS构建入口验证，不追加一般兼容框架。旧26.0产物与结果保留，不重新包装为已修正产物。

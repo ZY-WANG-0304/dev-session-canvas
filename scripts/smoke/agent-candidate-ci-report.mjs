@@ -11,18 +11,29 @@ const dispositions = new Set(['eof', 'interrupted', 'error', 'unknown']);
 const agentStatuses = new Set(['idle', 'starting', 'waiting-input', 'running', 'resuming', 'resume-ready',
   'resume-failed', 'suspended', 'stopping', 'stopped', 'error', 'interrupted']);
 const readerSettlementKinds = new Set(['applied', 'cancelled', 'lost', 'legacy-released']);
+const geometryKeys = ['cols', 'rows', 'cursorX', 'cursorY', 'viewportY', 'bufferType'];
+
+function snapshotGeometrySummary(value, dimensionsOnly = false) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const keys = dimensionsOnly ? ['cols', 'rows'] : geometryKeys;
+  return Object.fromEntries(keys.map(name => [name, name === 'bufferType'
+    ? ['normal', 'alternate'].includes(value[name]) ? value[name] : null
+    : Number.isSafeInteger(value[name]) && value[name] >= 0 ? value[name] : null]));
+}
 
 function snapshotEvidenceSummary(value) {
   if (!value || typeof value !== 'object') return null;
   const result = { schemaVersion: value.schemaVersion === 1 ? 1 : null };
   for (const name of ['savedNodeMatched', 'savedStatePresent', 'savedStateValid', 'readerApplied', 'readerLifecycleMatched', 'sequenceMatched',
     'helpProbePresent', 'finalProbePresent', 'pageGeometryMatched', 'pageVisibleMatched', 'pageBufferMatched',
-    'savedMatchesPage', 'replayComplete', 'replayMatchesSaved', 'replayMatchesPage', 'publishedFinalMatchesSaved']) {
+    'savedMatchesPage', 'replayComplete', 'replayMatchesSaved', 'replayMatchesPage', 'publishedFinalMatchesSaved',
+    'replayInitialZeroSequenceInferred', 'resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched',
+    'resizedSavedPageBufferMatched', 'resizedSavedMatchesPage']) {
     result[name] = boolean(value[name]);
   }
   for (const name of ['savedDataBytes', 'savedOutputSequence', 'snapshotOutputSequence', 'readerFinalOutputSequence',
     'helpNonEmptyLines', 'savedCols', 'savedRows', 'messageCount', 'replayInitialSequence',
-    'replayOutputMessages', 'replayResizeSnapshots']) {
+    'replayOutputMessages', 'replayResizeSnapshots', 'replayInactivePrefixSnapshots', 'replayEquivalentInitialSnapshots']) {
     result[name] = Number.isSafeInteger(value[name]) && value[name] >= 0 ? value[name] : null;
   }
   for (const name of ['helperSha256', 'savedDataSha256', 'hydratedStateSha256', 'replayStateSha256']) {
@@ -34,6 +45,12 @@ function snapshotEvidenceSummary(value) {
     'final-sequence-mismatch', 'saved-state-invalid', 'evidence-computation-failed', 'evidence-inputs-unavailable']
     .includes(value.replayReason) ? value.replayReason : null;
   result.pageProjectionIndependence = value.pageProjectionIndependence === 'not-proven' ? 'not-proven' : null;
+  result.savedGeometry = snapshotGeometrySummary(value.savedGeometry);
+  result.pageGeometry = snapshotGeometrySummary(value.pageGeometry);
+  result.publishedGeometry = snapshotGeometrySummary(value.publishedGeometry, true);
+  result.pageGeometryMatches = value.pageGeometryMatches && typeof value.pageGeometryMatches === 'object' &&
+    !Array.isArray(value.pageGeometryMatches)
+    ? Object.fromEntries(geometryKeys.map(name => [name, boolean(value.pageGeometryMatches[name])])) : null;
   return result;
 }
 
