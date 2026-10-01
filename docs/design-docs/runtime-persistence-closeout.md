@@ -233,4 +233,6 @@ macOS 真实 Agent 仍是具名未决。第一次 run `36906574728` 的 Codex �
 
 静态核对显示第二次 `line 153` 是验收脚本的异步读取竞态：Webview xterm 的挂载探针先成功，但 Host 还可能在等待 Supervisor 分页 reader 后才把带 `executionSessionId` 的 `host/executionSnapshot` 写入测试消息；脚本原先只读一次消息。现已在 `tests/vscode-smoke/agent-candidate-tests.cjs` 保持原 30 秒上限轮询该 identity，未改弱任何产品断言。首轮 `line 50` 的 xterm 尺寸超时仍保持为独立未决；因此 macOS Agent 尚未重新取得完整矩阵通过，不能把这次 harness 修正写成业务修复。
 
-因此当前整体完成定义不变：A1/F-04、A2/A3 页面责任、macOS Agent 未决项及最终生产准入仍开放；现代 runner 只确定本次重构的支持/验收基线，不将缺少 macOS 10.13/10.14 或 Windows 10 1809 环境解释为本轮阻塞，也不由现代结果反推低版本兼容。
+因此当前整体完成定义不变：A1/F-04、A2/A3 页面责任、非空 snapshot stop 的页面/重开等价及最终生产准入仍开放；现代 runner 只确定本次重构的支持/验收基线，不将缺少 macOS 10.13/10.14 或 Windows 10 1809 环境解释为本轮阻塞，也不由现代结果反推低版本兼容。
+
+随后提交 `56cec10c` 的 harness 窄修已在现代 macOS runner run `36911430020` 得到完整回收：Codex/Claude 的 `live-runtime` 与 `snapshot-only`、`natural` 与 `stop` 八场全部通过，四个 natural 场景都有实际 CLI 响应/EOF，cleanup 的 bindings/failures/forced/active 全为零。该结果关闭现代 macOS Agent 的具名矩阵，旧 run `36906574728`、`36909378525` 及更早失败作为历史保留；非空 `claude-snapshot-only-stop` 未按规则执行重开，页面 projection independence 和 A2/A3 非空 snapshot stop 等价不因此通过。整体仍只剩 A1/F-04、A2/A3 页面责任、最终生产准入等既定责任，低版本不作本轮前置。
