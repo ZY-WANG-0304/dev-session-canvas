@@ -24,7 +24,7 @@ updated_at: 2026-10-01
 
 ## 1. 状态与目的
 
-当前有限增量（2026-10-01，以本段优先）：Windows36854266396 attempt2真实Codex/Claude原八场、36852373473原Terminal两模式六结果/四环境已独立核对；原前置失败与整包下载124不改。A3第38节两例及A6第39节真实Runtime reload保留原输入有限通过，不重复排队。Remote固定Node VSIX的原四阶段经单次全文观察窄修后完整exit0，原30秒和90002行/光标/EOF/applied、两模式重开及独立清理保持，旧首败不追认；Linux x64 loopback格收口。新 helper 的 macOS run36858038984已完成 Node/provider 四场和 Electron Terminal 两模式 complete/reopen/cleanup，真实 Agent run36858502983 的 Codex/Claude 八场安全摘要也已通过；Claude snapshot-only stop 因保存非空状态未执行重开，边界单独保留。六资产/兼容/默认分发/准入及F-04、剩余A1至A6仍未完成，按第8节有限剩余映射推进，不增加通用工具门槛；历史不是追加队列。
+当前有限增量（2026-10-01，以本段优先）：Windows36854266396 attempt2真实Codex/Claude原八场、36852373473原Terminal两模式六结果/四环境已独立核对；原前置失败与整包下载124不改。A3第38节两例、A6第39节真实Runtime reload及第47节新固定包实际多根保存失败/B交互均有限通过，不重复排队；第47节A真实EISDIR仍保来源/binding、原reader applied4，B原执行nonce24.9ms，空registry落盘后独立清理通过，旧首败保持。Remote固定Node VSIX原四阶段和macOS新helper产品/真实Agent原矩阵已收口各自固定格；Claude snapshot-only stop非空保存未重开，第48节局部尺寸修复不代证其实际页面/重开。A6仍保留snapshot-only实际Host离开。六资产/兼容/默认分发/准入及F-04、其余A1至A6未完成，当前沿第49节实施兼容要求，按第8节有限剩余映射推进，不增加通用工具门槛；历史不是追加队列。
 
 当前B2/A5与B3/A6（2026-10-01）：macOS 新 helper 的产品 Terminal/Webview 与真实 Agent 原八场已按生产接入第46节回收；旧 helper 首败和历史诊断未知保持。Windows36830583121绿灯缺五报告已确认code.cmd转交误作宿主完成，34.12窄修后36834158313真实exit1，后续36854266396 attempt2 的新固定矩阵已独立通过；snapshot-only stop 保存非空状态时不要求重开，不能倒推空态重开。A6永久退出后旧reset写盘先红已修，50次Host回归及独立复核通过；真实reload/多根UI不代证。旧失败、EOF/尾部、真实Agent及既定矩阵不削减，F-04、其余A1至A6、packaged/Remote和默认准入仍开放；当前只处理有限收尾清单，不追加通用工具阶段。
 
@@ -165,10 +165,10 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 | B2/A5生产工程 | 最低ABI/OS/库要求与构建来源分离、Linux arm64/旧Node同名namespace、macOS旧系统原生确认、六资产聚合与实际执行端选择、正常打包/默认启用/生产准入 | 三平台已有provider、同PID主体与逐资源责任；第37节Windows namespace窄修、第46节新helper在最新arm64 runner的原流程通过；不另建server或下载器 |
 | A1/F-04最终收口 | 逐层正文/在途上界、旧协议边界、最终准入；最终产物关键容量回归，仅补原输入未覆盖的attach中output/resize/scrollback与live compact组合 | 容量10.12十会话color/size预算、10.15实际Host离线追赶时B交互；原socket/compact/resize用例，不重建compact工具、不压旧64/128门槛 |
 | A2/A3未填页面格 | 慢消费者最终write应用、force/delete/读失败的不同结算、新旧generation实际共存；第46节Claude非空stop最终视口/光标诊断差异的有限语义核对；只补现有证据不能承担的真实页面责任 | 第36节journal ENOSPC/root EISDIR、completed轻量writer与旧binding受控回归、第38节surface/双Host reader、既有大尾部与停止证据；不做平台笛卡尔积或新增满盘研究 |
-| A6有限用户入口 | 实际多根root A失败/B页面继续交互、snapshot-only实际Host离开边界 | 50项真实Host方法受控回归含完整template/replacement/等待窗口，及第39节Runtime真实reload；注入B输出不冒充真实交互，已完成顺序不整轮重排 |
+| A6有限用户入口 | snapshot-only实际Host离开边界 | 50项真实Host方法受控回归含完整template/replacement/等待窗口、第39节Runtime真实reload及第47节Linux installed多根真实EISDIR/B原页面24.9ms交互；原reader applied4与独立清理通过，旧首败不改，已完成格不重复排队 |
 | A5支持与总体结账 | 其他平台installed/未覆盖架构与最低环境格、最终同一生产版本A1至A6证据表 | Linux固定VSIX及Remote Node原四阶段已通过；三平台真实Agent各原输入有限通过，改变实际启动链后只复验受影响原流程；旧OS缺环境不伪称新runner已证明 |
 
-当前工程顺序按有限收尾定义推进：保留 B1 修复与未完责任、固定 A1/A2 冷恢复的原期限通过及本机/CI 各自 A4 有限结果，所有旧失败保持。10.15固定一次已证明真实离线追赶时B51ms实际应用、A12到18未追平，随后原完整后缀在不重置30秒内完成，身份/hash/no-history/cleanup均通过。下一推进原B2/A5的macOS/Windows产品provider、namespace、匹配Node/Electron构建与packaged接入，不是重开平台诊断或只增加runner。其余用户流程、B3状态替换、分发与最终准入保持；第三轮Codex snapshot stop具名间歇失败未定位，不把未复现当已修或为抓红追加CI。汇总A1至A6才宣布整体交付，不重排历史或增加工具阶段，F-04/A3/完整A5仍开放。
+当前工程顺序按有限收尾定义推进：保留B1修复与未完责任、A1/A2原期限通过、各自A4有限结果及全部旧失败，第47节多根格从剩余队列移出。当前落实生产接入第49节的B2/A5 Linux schema2实际requirements、arm64及旧Node同名namespace，随后沿原六资产/正常分发/生产准入责任收口，不重开平台诊断或只增加runner。A2/A3未填页面格、A6 snapshot-only实际Host离开及最终同版本回归仍保留；第三轮Codex snapshot stop具名间歇失败不因未复现称已修，也不为抓红追加CI。汇总A1至A6才宣布整体交付，F-04和完整A5仍开放。
 
 B2 会改变实际 provider、信用与消费链，最终启用产物必须复核 A1 的关键容量/交互项，不能用 B1 对此前路径的通过替新产物背书；这是最终回归，不另立容量研究或工具项目。
 
@@ -190,4 +190,4 @@ B2 会改变实际 provider、信用与消费链，最终启用产物必须复�
 
 前版 `2d375606` 只读核对与文档检查通过，容量与退出两路独立复核未发现范围阻塞；该证据不表示用户批准了草案或产品验收通过。本次按用户要求由代理承担工程裁决，变更完成定义状态、预算责任和工作顺序，历史实验/断言不改。原始审核见 `webview-host-supervisor-architecture-review.md`，容量进展见 `runtime-persistence-storage-reevaluation.md` 第 9 节，退出接线与有限证据见 `runtime-exit-integrity-production-integration.md`，契约以 `docs/product-specs/runtime-persistence-modes.md` 第 9、10 节为准。
 
-2026-10-01 回收 macOS 新 helper 结果：`36858038984` 的 Node/provider 四场与 Electron Terminal 两模式 complete/reopen/cleanup 已按中央目录独立核对，`36858502983` 的真实 Codex/Claude 八场安全摘要为通过。Claude snapshot-only stop 保存非空状态，按既定规则未执行重开；本轮replay complete但终态比较false与历史诊断unknown分别保留，旧 helper 首败和所有旧工件保持。Windows 固定产品/Agent与Remote Linux x64 loopback子项也已从“待回收”移出当前队列；A5六资产/兼容/默认分发、A1/F-04、A2/A3剩余页面格和A6多根失败隔离仍是直接剩余责任，不因本轮通过继续追加工具验证。生产接入第47节以固定包补实际多根失败/B交互，第48节以实际Host先红定位已结束snapshot尺寸错标，不重排Agent矩阵。
+2026-10-01 回收 macOS 新 helper 结果：`36858038984` 的 Node/provider 四场与 Electron Terminal 两模式 complete/reopen/cleanup 已按中央目录独立核对，`36858502983` 的真实 Codex/Claude 八场安全摘要为通过。Claude snapshot-only stop 保存非空状态，按既定规则未执行重开；本轮replay complete但终态比较false与历史诊断unknown分别保留，旧 helper 首败和所有旧工件保持。Windows固定产品/Agent、Remote Linux x64 loopback及随后第47节实际多根失败隔离已移出当前队列；A5六资产/兼容/默认分发、A1/F-04、A2/A3剩余页面格和A6 snapshot-only实际Host离开仍是直接责任。第48节尺寸结构缺陷局部修复不代证非空stop实际重开，不重排Agent矩阵或追加工具验证。

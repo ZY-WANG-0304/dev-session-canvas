@@ -2,8 +2,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { fixedVsixSha256, sameLiveIdentity, exitedIdentity, completedMarker } = require('./runtime-reload-contract.cjs');
+const { sameLiveIdentity, exitedIdentity, completedMarker } = require('./runtime-reload-contract.cjs');
 
+const fixedVsixSha256 = 'c4df29f55088f279a35a584441ae5eff15491f996ed3275f534e7cb7121bee6e';
 const hash = value => createHash('sha256').update(value).digest('hex');
 const bindingKeys = ['runtimeBackend', 'runtimeStoragePath', 'runtimeSessionId'];
 

@@ -21,6 +21,8 @@ updated_at: 2026-10-01
 
 ## 1. 当前结论与阶段边界
 
+当前入口（2026-10-01，以本段优先）：第47节新固定installed包的原A6多根组合已独立核对通过：A真实root EISDIR仍保留来源/binding，原reader applied(finalRevision4)，B原执行实际nonce交互24.9ms，产品reset与独立空闲Supervisor清理通过。旧包首败不追认，该多根格不再排队；snapshot-only实际Host离开、A2/A3剩余页面责任及F-04总体仍开放。当前按第49节落实B2/A5兼容要求与构建来源分离，六资产、正常分发/默认准入和最终同版本验收尚未完成，不追加通用工具阶段。
+
 当前B2/A5入口（2026-10-01）：macOS36829311235/353bb575完成两模式Terminal/Webview和重开，六报告已核对；首轮真实Agent36832581851前三Codex场passed、第四snapshot stop空快照真值断言首败、Claude未跑，见33.10。Windows36830583121虽job success却缺五份最终报告，34.12已确认code.cmd转交误作宿主完成并实施窄修，待原流水线复验，Agent未调度。A6三项真实Host入口新增两绿一红，永久退出后旧reset写入按32.21处理。普通构建仍stock，其他架构/运行时、packaged/Remote、剩余A1至A6与F-04未关闭，后面的旧当前/下一按各自历史输入理解。
 
 当前 CI 状态（2026-10-01）：第四轮 run `36812745671`/`736f9ddd` 在 Linux/DeepSeek 原八场景全部 passed，四 natural 已有真实目标响应/nonce、source EOF 与原 Webview/持久化断言通过，八份 cleanup 四计数均0。stop 仍为主动停止，source 分别是 Codex Runtime eof、Codex snapshot-only interrupted、Claude 两模式 eof，不改写自然终止。第三轮 Codex snapshot-only stop 的失败本轮未复现；本轮仅修改报告/文档，业务与断言未变，根因仍未知，保留为具名间歇失败，不宣称已修。当前返回原有限产品清单，不为捕获红项自动追加 CI/工具，四轮原结果保持，详见32.20；F-04/完整A5/macOS/Windows仍未关闭。
@@ -2205,11 +2207,11 @@ Codex snapshot-only stop为空、最终sequence11，完整初始回放与saved/p
 
 ## 47. A6 实际多根保存失败与另一画板交互
 
-本项只补既定A6的实际页面格：同一真实installed VS Code窗口中两个root的Runtime Terminal，A自然结束但root快照保存失败时，B仍能通过原Webview/PTY往返交互。固定使用第35/39节已有Electron VSIX，不重建、不启用默认产品路径、不改变root runtime归属。新runner和workspace driver独立于原共享矩阵；运行前核对固定包hash、安装来源与原生tuple，纯测只检查本场景断言和本方清理边界，不增加通用诊断能力。
+本项只补既定A6的实际页面格：同一真实installed VS Code窗口中两个root的Runtime Terminal，A自然结束但root快照保存失败时，B仍能通过原Webview/PTY往返交互。首轮固定使用第35/39节已有Electron VSIX，不重建；发现直接产品缺陷后的新包复验另列如下。两轮均不启用默认产品路径、不改变root runtime归属。新runner和workspace driver独立于原共享矩阵；运行前核对固定包hash、安装来源与原生tuple，纯测只检查本场景断言和本方清理边界，不增加通用诊断能力。
 
 两个节点经原 `webview/createDemoNode(targetGroupId)` 入口落在不同root，正常保存后只读确认各自root快照与workspace快照。随后仅在A的 `root-local-canvas/<root hash>/canvas-state.json.tmp` 创建本轮拥有的空目录，触发原 `writeFileSync` 的真实EISDIR；不改workspace storage或runtime文件。A自然退出后，先只读取原diagnostics/debug state/Host messages/Supervisor与磁盘，冻结第一次失败和原binding/session责任；此之前不调用会写盘的flush或dump。主进程退出、真实EOF、尾部marker及同reader applied分别检查，保存失败不得清掉唯一来源/绑定或误重启执行。
 
-保持障碍存在，再经B原页面的 `measureCapacityInteraction` 发送新nonce，要求同主体、provider、Supervisor及reader收到真实 `DSC_A1_REPLY_<nonce>` 并在原1500ms内应用。该交互后的合法保存可能更新磁盘，不能把第一失败快照不变要求扩大到后续所有写入；也不预设移除障碍后会自动重试A保存。结束时只对本轮仍为空、同inode且非symlink的障碍执行rmdir，再走原reset；reset返回不代替零bindings/pending/nodes及本方主体/provider实际退出检查。必要的孤立idle Supervisor正常TERM单独记账，任何失败、未知或兜底动作不覆盖原结果。实际运行前保留harness来源，首次失败保留，不自动重试取绿。
+保持障碍存在，再经B原页面的 `measureCapacityInteraction` 发送新nonce，要求同主体、provider、Supervisor及reader收到真实 `DSC_A1_REPLY_<nonce>` 并在原1500ms内应用。该交互后的合法保存可能更新磁盘，不能把第一失败快照不变要求扩大到后续所有写入；也不预设移除障碍后会自动重试A保存。结束时只对本轮仍为空、同inode且非symlink的障碍执行rmdir，再走原reset；reset返回不代替零bindings/pending/nodes及本方主体/provider实际退出检查。必要的孤立idle Supervisor外部TERM单独记账，不称协调shutdown；任何失败、未知或兜底动作不覆盖原结果。实际运行前保留harness来源，首次失败保留，不自动重试取绿。
 
 2026-10-01唯一首轮 `.debug/a6-root-failure-20261001-first/` 为exit1：真实root A EISDIR与completion callback失败已观察，第一冻结三文件hash均未改、两原binding保留；A实际EOF/finalRevision4，原reader收到完整marker页，但15秒内没有final notification/applied，故B故障后交互尚未执行。清理另在registry仍有两条旧记录处失败；本轮主体/provider/Supervisor/UI六PID独立核对均已消失、障碍已移除，outer fallback只有obstacle-already-absent，无兜底信号。首轮失败和资源释放事实分别保留，不能声称cleanup通过。
 
@@ -2217,7 +2219,13 @@ Codex snapshot-only stop为空、最终sequence11，完整初始回放与saved/p
 
 清理的registry断言另有验收顺序错误：Supervisor无SIGTERM handler，正常协调保存路径是idle shutdown；不能把立即TERM解释为flush完成。只在产品reset已释放bindings/主体之后，按原清理截止等真实registry空记录落盘，再对本方孤立idle Supervisor独立TERM并检查退出。没有增加崩溃后历史恢复承诺，不通过修改registry或延长预算取得绿色。修后需要新固定包才可复验产品改动，原604494fd失败不追认。
 
-原实际Host/root writer用例加入已有reader后在原实现确定性失败，日志 `.debug/a6-root-final-notification-before-20261001.log` 保留exit1；预保存通知窄修后两类root EISDIR仍抛出、原文件/metadata/binding/managed session不变，页面final发布与实际回执分开断言成立，Host147/147、Runtime completed、typecheck与A6纯测通过。独立只读复审无新阻塞；新路径只在协商finalRevision的既有reader生效，surface失效后的relay清理和原身份/期限保护保持。尚未以新包跑原生，不将旧包首败追认通过。
+原实际Host/root writer用例加入已有reader后在原实现确定性失败，日志 `.debug/a6-root-final-notification-before-20261001.log` 保留exit1；预保存通知窄修后两类root EISDIR仍抛出、原文件/metadata/binding/managed session不变，页面final发布与实际回执分开断言成立，Host147/147、Runtime completed、typecheck与A6纯测通过。独立只读复审无新阻塞；新路径只在协商finalRevision的既有reader生效，surface失效后的relay清理和原身份/期限保护保持。此处为新包原生复验前的局部证据，不将旧包首败追认通过。
+
+修正业务输入已固定为 `0f5b52ef`，由原production显式2/1构建及直接packager生成 `.debug/a6-root-failure-package-20261001/candidate.vsix`，SHA256 `c4df29f55088f279a35a584441ae5eff15491f996ed3275f534e7cb7121bee6e`；包内关键文件与源码摘要保存在 `frozen-input.json`。复用经source hash校验的原Linux Electron资产，addon仍 `5b3140051b110e45aa8d608682371a602e25596da187957e479f95a7b086e70f`，未修改native或生产默认准入。仅将独立A6 runner固定输入切换为此新包，在新目录 `.debug/a6-root-failure-20261001-final-publication/` 唯一复验原组合，预算、尾部、reader、B交互及清理标准不变；原staged首轮源码/hash/失败仍保留。
+
+复验完整exit0并经独立只读对账：14项input源码摘要、7项staged副本和路径模块匹配，包冻结6项源码与上述commit一致，8项payload在VSIX/实际安装/收据间相同。Host为VS Code1.117.0/Electron39.8.7/Node22.22.1/ABI140；冻结case/cleanup断言独立重放通过。A再次真实EISDIR，首次观察的root A2736 bytes、root B2725 bytes、workspace5972 bytes均与baseline同SHA；归档snapshot按实际写盘格式重构后的SHA也一致，两条原binding保留。A主体exit0/source EOF，完整marker通过实际xterm断言，原reader `1f61e165-8537-447e-b7b7-85ebaf7e7b4d` 记录applied(finalRevision4)。B在原障碍仍存在时24.900000095ms应用新nonce，page revision5到6沿原reader/session/authority，主体/provider/Supervisor身份不变、新start事件为0。
+
+产品reset后bindings/pending/nodes均0，两provider与两主体均after=null；registryBeforeSignal、TERM后及独立核对时实际registry均为空，原Supervisor亦不存在，UI实际exit0。外部TERM不代证正常shutdown；原首轮超时及cleanup失败不改绿。本节仅关闭该Linux installed Runtime多根失败隔离格，不代证Agent、其他平台、自动保存重试或root稳定runtime归属，两root仍共享原Supervisor；snapshot-only实际Host离开及有限清单其余责任保持。
 
 ## 48. A2/A3 已结束快照的尺寸归属
 
@@ -2236,3 +2244,15 @@ Codex snapshot-only stop为空、最终sequence11，完整初始回放与saved/p
 冻结Playwright trace/probe的只读对账确认，两例实际都有完整live tail、都没有替换正文，唯一失败是要求 `[Dev Session Canvas]` 退出banner。第32.4节早已选定exit不再向xterm注入合成正文以保护尾部/光标；当前源码与dist均如此，因此旧fixture与现行契约冲突，不是本次Host guard回归。仅将同一组tail/最终snapshot用例中的banner断言改为不存在，保留尾部及禁止快照替换断言，再运行这四例与原四例恢复/scrollback；旧4/6现场保持，不能追认为通过，也不修改业务恢复banner。冻结trace没有内嵌bundle字节，不声称已从trace回证其SHA。
 
 修正旧fixture后的八项定向Playwright全部通过：两类tail不注入正文、final snapshot不替换backlog、序列化恢复与scrollback恢复各两例。未改Webview业务，原4/6仍失败；该结果不代证新Host尺寸保护的真实installed组合或原macOS非空stop因果。
+
+## 49. B2/A5 兼容要求与构建来源分离
+
+本项落实第37节已有分发决策，不新增支持平台或改最低支持政策。构建资产采用schemaVersion=2，保留原runtime/libc/source/hash为构建来源，新增requirements记录实际需求；旧schema1冻结包及其结果不改、不猜补字段。各平台逐项接入，尚未切换的平台继续原严格门禁，不能因Linux完成就宣称六资产已交付。
+
+Linux先覆盖x64/arm64 glibc两个已有打包目标，编译明确NAPI_VERSION=8。requirements.napi固定为8；requirements.linux中的glibcMinimum/glibcxxMinimum/cxxabiMinimum由最终ELF的版本依赖表计算，build与import均核对真实字节，不从构建机版本猜测。运行端检查实际平台/架构、有效N-API且至少8、glibc及其数字版本下限；不比较Node/Electron名称、modules或完整版本相等。GLIBCXX/CXXABI不从glibc推断、不扫描任意系统库，由正式provider加载时动态链接器检查，加载失败必须拒绝创建，不能降级为正常完成。当前本机GLIBC_2.34产物只能声明2.34，不冒充原打包基线2.28；兼容基线重编仍属后续六资产收口。
+
+Linux旧Node通过原nativeClaim接口竞争与现代Node相同的uid/真实storage路径JSON摘要、同名abstract socket；不是新增文件锁。native句柄带close-on-exec且持有到authority退出，准备工厂不加载native，只有Runtime Supervisor取得namespace时加载无PTY操作的claim导出。现代Node继续原net.Server路径，snapshot-only不取得Supervisor namespace。旧与新宿主互斥需真实socket对照；N-API可加载不代证旧Node全部JS/PTY/页面兼容。
+
+后续macOS沿已固定10.13/11.0及实际Mach-O下限接入独立requirements；Windows沿真实ConPTY/CRT依赖确定下限，不能只抄PE声明或用未知值作生产通过。六资产必须用同一正式产物跨既定Node/Electron加载，再接正常聚合/实际执行端选择与默认准入。当前仅明确实施输入，默认仍关闭，不扩通用依赖扫描器，也不重排已经完成的Agent矩阵；最低OS真机证据和最终生产版本验收仍独立。
+
+六资产聚合沿现有build/import实现：新增互斥的显式 `--execution-assets-set` 输入目录，必须且仅包含linux-x64-glibc、linux-arm64-glibc、darwin-x64、darwin-arm64、win32-x64、win32-arm64六个具名子目录，各自先完成原平台manifest/字节校验再清理dist。编译期选择标记使用 `platform`，激活时根据实际 `process.platform/process.arch` 返回原三种具体profile及factory；Remote取远端宿主事实，不看UI端或环境变量。单平台显式candidate入口保留供原验收，`platform`不进入Supervisor协议作为新profile。缺资产、不支持的平台/架构或原生加载失败均不得静默回落stock。普通构建暂不默认开启，待正式六资产与准入验收收口后切换，不能以显式聚合存在宣称交付完成。

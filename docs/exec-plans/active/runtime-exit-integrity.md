@@ -1,6 +1,6 @@
 # 交付跨平台执行会话退出完整性
 
-当前唯一执行队列（2026-10-01）：Windows真实Agent36854266396 attempt2原八场、Windows产品36852373473原Terminal六报告/四环境、macOS新helper产品36858038984、macOS真实Agent36858502983、A3第38节两例及A6第39节Runtime reload均已独立核对，不重复排队；所有attempt1与历史失败保留。第44节Remote同一固定Node VSIX经单次全文观察窄修后原四阶段完整exit0，真实Server Node22.22.1/ABI127、原90002行/尾部/光标/EOF/applied与两模式重开、清理通过，首败不改；该Linux x64 loopback格收口。macOS新helper八场Agent摘要为本轮通过，但Claude snapshot-only stop 保存非空状态，未执行重开，不能扩大为该场景重开通过。其余只按有限收尾第8节五包：六资产/兼容/正常分发与准入、A1最终结构及关键回归、A2/A3未填页面格、A6实际多根失败隔离/本地Host离开、剩余installed/support与最终证据表。F-04及默认启用未完成，不增加通用工具阶段；后续历史“当前/下一”不构成追加队列。
+当前唯一执行队列（2026-10-01）：Windows真实Agent36854266396 attempt2原八场、Windows产品36852373473原Terminal六报告/四环境、macOS新helper产品36858038984、macOS真实Agent36858502983、A3第38节两例及A6第39节Runtime reload均已独立核对，不重复排队；所有attempt1与历史失败保留。第44节Remote Linux x64 loopback原四阶段及第47节新固定包A6实际多根组合也已独立通过：A真实EISDIR仍保来源/binding，原reader applied4，B原执行nonce24.9ms，空registry落盘后独立清理通过，旧首败不改。macOS Claude snapshot-only stop非空保存未重开，第48节局部尺寸修复不代证该页面格。其余只按有限收尾第8节五包：六资产/兼容/正常分发与准入、A1最终结构及关键回归、A2/A3未填页面格、A6 snapshot-only实际Host离开、剩余installed/support与最终证据表。当前第49节正在实施Linux schema2实际requirements、arm64及旧Node同名namespace；F-04及默认启用未完成，不增加通用工具阶段，后续历史“当前/下一”不构成追加队列。
 
 该队列实际增量：e10ad8aa的Windows36841262535已通过私有目录/全部文件ACL及原isolatedCheck，随后Darwin observer夹具混用Windows路径规则首败；只在夹具显式path.posix，原角色断言保持，三条observer/CLI局部命令通过。macOS36841263618仍按原矩阵运行中，未宣称结果。A3第38节冻结真实单surface切换/跨Host reader两例，A5第37节固定部署目标在实现；均不重跑已完成容量组合。
 
@@ -102,7 +102,8 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 - [x] (2026-10-01，第47节) 独立A6纯测/审查及固定旧包唯一首轮完成，exit1保留；真实EISDIR、原来源/磁盘保留与EOF成立，但final通知被保存失败阻断，B故障后交互未执行，cleanup registry断言另失败。
 - [x] (2026-10-01，第47节) 已有reader/root writer先红后修final水位发布与落盘耦合，Host147/147、completed/typecheck/A6纯测与独立复审通过；清理改为等真实空registry再独立TERM。
-- [ ] (2026-10-01，第47节) 新固定包只复验原多根组合，不放宽applied/尾部或旧失败。
+- [x] (2026-10-01，第47节) 新固定包c4df29f5的原多根组合唯一复验exit0，input/installed/case/cleanup独立核对及冻结断言重放通过；A真实EISDIR/原binding/EOF与原reader applied4、B原执行24.9ms和空registry落盘后清理均成立，旧首败不改。
+- [ ] (2026-10-01，第49节，实施中) Linux schema2将实际N-API/ELF requirements与构建来源分离，接入arm64及旧Node同名namespace；尚未形成兼容/六资产/默认准入通过，不重排已完成平台矩阵。
 - [x] (2026-10-01，第48节) 实际Host/headless先红3过/9失败后六行snapshot尺寸保护使原12项通过，独立Host147/147、Runtime completed与typecheck通过；不证明原macOSrun唯一因果。
 - [x] (2026-10-01，第48节) 新增submitted/replacement负向组合及原序列化入口回归通过，新增16/16。
 - [x] (2026-10-01，第48节) 页面旧fixture错误要求合成exit banner，按32.4既定契约改为无合成正文且原tail/不替换不变，相关八例通过；原4/6保留。非空snapshot实际页面/重开不由此代证。
@@ -456,7 +457,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 意外与发现
 
-2026-10-01，第47节真实首败揭示relay固定final revision并不等于页面收到final水位，root保存失败阻断了后续通知；尾部页已收到仍无法完成applied回执。另Supervisor不处理SIGTERM，不能以本方立即TERM后的陈旧registry判定正常协调shutdown失败，也不把实际PID已消失冒充完整cleanup通过。
+2026-10-01，第47节真实首败揭示relay固定final revision并不等于页面收到final水位，root保存失败阻断了后续通知；尾部页已收到仍无法完成applied回执。修后新包原场景取得真实EISDIR与原reader applied4、B24.9ms及清理通过，证明两项责任可独立完成。Supervisor不处理SIGTERM，复验先观察空registry落盘再外部TERM，不冒称正常协调shutdown；旧首败不改。
 
 2026-10-01，第48节实际Host先红证明同一snapshot错标后，即使绝对光标行和非空文字相同，可见画面仍不同；不能用文字相等代替终态完整性。既有页面六例的两例final backlog首败在不执行本次Host方法的浏览器harness中发生，先核对具体谓词，不把它当作新guard回归或工具扩张理由。
 
@@ -758,7 +759,7 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
-- 决策：将既有reader的已确认final水位发布放在root最终保存之前，保存失败继续保留原binding/来源；A6清理在原截止内等空registry后才单独TERM。理由：终端事实与磁盘成功是不同责任，不能互相冒充或由写失败无限阻断；默认信号退出不提供协调flush承诺。日期/作者：2026-10-01 / Codex。
+- 决策：将既有reader的已确认final水位发布放在root最终保存之前，保存失败继续保留原binding/来源；A6清理在原截止内等空registry后才单独TERM。理由：终端事实与磁盘成功是不同责任，不能互相冒充或由写失败无限阻断；默认信号退出不提供协调flush承诺。新包原组合独立通过后关闭此多根格，不追加同格复验；snapshot-only实际Host离开仍保留。日期/作者：2026-10-01 / Codex。
 
 - 决策：用六行no-session保护冻结已保存snapshot及其geometry，新candidate仅按原身份推进独立viewport，局部测试接入原序列化入口。理由：页面新尺寸是新执行的输入，不是重新标记旧快照的依据；不需迁移格式、重写终端或重跑模型。日期/作者：2026-10-01 / Codex。
 
@@ -1042,7 +1043,7 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 
 ## 结果与复盘
 
-2026-10-01，第47节已完成final发布/保存独立性的先红和最小修正，第48节旧banner断言按既定契约修正后八项页面回归通过；旧首败都保留。新installed原多根组合尚待构建/复验，默认启用及整体F-04/B2/A5仍未完成。
+2026-10-01，第47节新installed原多根组合唯一复验完整exit0，来源/hash与冻结case/cleanup独立核对通过。A首失败三文件hash及两binding保留、source EOF/完整marker/原reader applied4，B原身份nonce24.9ms，reset零责任及空registry后独立清理均成立；该格收口，旧包失败不追认。第48节旧banner断言按既定契约修正后八项页面回归通过，但非空snapshot实际页面/重开仍开放。当前第49节继续B2/A5兼容接入，默认启用及整体F-04未完成。
 
 2026-10-01，第47节首次真实多根组合失败已冻结，未完成B故障后交互；本方资源独立核对无残留，但registry清理断言失败不改绿。下一只修两项直接阻塞原场景的明确原因，不新增D3/D4或任意并发矩阵。
 
@@ -1280,6 +1281,8 @@ S5输入为a32b1510，仅本运行时树修改。实际实现是`extensions/vsco
 
 ## 工作计划
 
+当前工作以顶部唯一队列为准：第47节多根失败隔离已收口，不重复运行；A6只保留snapshot-only实际Host离开边界。按第49节正在实施Linux schema2实际requirements、arm64和旧Node同名namespace，再沿原有限清单完成兼容/分发与同版本必要验收；不改最低支持、不重排Agent或工具矩阵。以下阶段安排保留原时点含义。
+
 生产接入32.20的固定摘要/第四轮Linux真实八场景及容量10.15离线追赶交互已完成各自有限验证，不再把CI凭据、该报告或该重叠组合列为待完成。下一按生产接入第33节实现macOS共享Unix owner、Darwin原生provider、两authority工厂、匹配构建与namespace，沿原B2/A5产品边界推进；真实Darwin/packaged未验，Windows、其他用户组合、B3/A6和最终准入保持。第三轮Codex snapshot stop间歇失败随相关既有产品路径作必要定位，不因未复现删除或称已修；不自动追加CI捕获循环或工具框架，原完整性/安全与旧live边界保持。
 
 有界索引读取和固定A1/A2冷恢复已完成各自有限验证，保留完整冻结段校验、页/在途及尾部篡改边界，不再将它们列为拟实现。同一新2/1 candidate的A4本机八场景已完整exit0；10.15真实重连追赶交互与32.20的DeepSeek CI分别取得自己的固定输入证据，不相互代证或回写历史。其余A项、B3、跨平台/分发与准入沿原有限清单，不因新结果自动追加工具阶段或重复已通过矩阵。
@@ -1401,6 +1404,8 @@ S1 最终定向32/32、typecheck 复跑、既有 bridge 回归、独立复审及
 在原生 Linux/macOS/Windows、实际 Node 与 VS Code/Electron 上分别记录结果，fake-provider 与真实 Agent provider 分开。完整运行相关自动化和 packaged smoke，失败不能靠放宽 90000 行断言、增长等待、重跑到成功或把退出改为“未知”收口。剩余问题需明确修复或经用户确认的范围调整；不能把“环境不具备”写成通过。全部达标后再更新设计状态和技术债、归档本计划。
 
 ## 具体步骤
+
+第47节已在新目录 `.debug/a6-root-failure-20261001-final-publication/` 用固定VSIX c4df29f5唯一复验原组合，完整exit0；独立只读重放冻结case/cleanup断言，并对账input、installed、首失败文件hash、原reader/执行身份和实际资源退出，结果见设计第47节。当前步骤转入第49节Linux schema2 requirements/arm64/旧Node同名namespace实现及其直接回归，尚无兼容通过声明；不继续执行下列历史下一步。
 
 容量10.15已在仓库根固定一次运行 `node scripts/smoke/run-vscode-execution-candidate.mjs --capacity-reconnect --output=.debug/a1-host-reconnect-20261001-overlap`，完整exit0；新目录的reconnect-result、独立journal与两份cleanup已直接核对，结果见10.15，不再待运行。下一按生产接入第33节落实macOS产品原生/工厂/namespace与匹配Node/Electron资产，Linux本轮通过不写成Darwin通过，原失败目录不动。
 
@@ -1619,6 +1624,8 @@ runner 合入后的本轮先运行 `npm run typecheck`、`npm run test:execution
 全量套件如有已登记的基线阻断，保留首错并解释隔离验证覆盖和残余缺口，不伪称全量通过。任何 native 或发布依赖调整都在方案中明确，不能顺手升级整个工具链。
 
 ## 验证与验收
+
+第47节有限验收已通过：Linux installed两root/两Terminal，共享原Supervisor；A保存EISDIR不删原来源，EOF、完整尾部与原reader applied(finalRevision4)分开成立，B新nonce24.9ms<1500ms且原身份不变，三份首失败快照原SHA保持，reset后bindings/pending/nodes=0，空registry先于外部TERM。原首败保留；此证据不代证Agent、其他平台、自动重试/root稳定归属或snapshot-only实际Host离开，最后一项仍在A6剩余队列。第49节兼容实施也不得用该新包运行冒充旧Node/最低OS通过。
 
 容量10.15的固定一次结果已覆盖真实Host离线追赶交互：同一Webview动作A12到18、B51ms实际应用，随后ready后13137.248ms完整恢复；原执行/新reader、完整后缀/独立hash/自然no-history和两份cleanup均通过。原1500ms与不重置30秒、10分钟及资源安全保护保持；10.14的overlap=false和旧失败仍按各自输入记录。下一macOS按生产接入第33节保留两模式、真实主体/Webview、EOF/取消/尾部和本方资源责任，编译、受控模块或Linux通过均不能代替该平台实际验收，F-04与总体仍未关闭。
 
