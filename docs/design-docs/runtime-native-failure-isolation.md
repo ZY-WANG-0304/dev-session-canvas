@@ -11,7 +11,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/runtime-exit-integrity.md
+  - docs/exec-plans/completed/runtime-exit-integrity.md
 updated_at: 2026-09-25
 ---
 

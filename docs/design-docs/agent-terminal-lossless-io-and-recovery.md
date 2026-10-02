@@ -28,10 +28,12 @@ related_plans:
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/active/execution-input-responsiveness.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
-updated_at: 2026-09-20
+updated_at: 2026-10-02
 ---
 
 # Agent / Terminal 无损输入输出与恢复
+
+2026-10-02 当前口径：F-04当前支持路径按资源模型和生产准入结账，F-05 Runtime结束无历史不变；默认owned接入、有限页面/退出责任和最终受影响包验收见 `runtime-exit-integrity-production-integration.md` §53.1与 `runtime-persistence-closeout.md` §8。63847969/run36979378644三平台两模式installed及六Agent snapshot-stop独立通过，未变容量/natural等证据复用。下列带日期记录及第10节旧增量保留原阶段描述，不再把“比较中”“待重评”或旧全量路径作为当前新路径状态；旧协议成本、未知历史因果及root归属仍分别保留。
 
 2026-09-16 架构审核补充：第 10.10、10.11、10.13–10.15 节的现行实现保持不变，但 checkpoint 长期拒绝后的全后缀内存/传输，以及 completed 恢复数据内联画板，已分别登记为高优先级架构重评 F-04/F-05。候选与 tmux、VS Code、WezTerm 对照见 `docs/design-docs/runtime-persistence-storage-reevaluation.md`。本文“已选定”表示当前仍适用的方案，不代表上述容量/归档边界已被认可为长期最终架构；新方案保持“比较中”，本轮未放宽无损保证。
 

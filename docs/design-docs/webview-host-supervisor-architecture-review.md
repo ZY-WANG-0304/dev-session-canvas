@@ -17,7 +17,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
   - docs/product-specs/canvas-multi-root-workspace-support.md
 related_plans:
-  - docs/exec-plans/active/runtime-exit-integrity.md
+  - docs/exec-plans/completed/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-terminal-cross-platform-diagnosis.md
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
@@ -35,7 +35,7 @@ updated_at: 2026-10-02
 
 ## 2. Findings
 
-2026-10-02 状态核对：F-04 当前支持路径已按容量设计§10.17的资源模型、生产准入与受影响 Runtime 最终验收结账，F-05 新 completed 无历史路径保持收口。既有十会话/重连/compact与原64/128观察失败保留，不承诺任意规模固定RSS。整体退出完整性仍未交付，Windows 非空 Codex snapshot-only 状态差异留在 A2/A4；实际有限队列见 `docs/design-docs/runtime-persistence-closeout.md` 和生产接入§53，不追加容量或通用工具阶段。F-03 独立后续规划，不作为容量/退出收尾的前置。下文保留审核基线、当时的缺陷和历史结果，不把已由后续增量替代的描述或诊断建议累加为当前待办。
+2026-10-02 状态核对：F-04 当前支持路径按容量设计§10.17的资源模型、生产准入与受影响 Runtime 验收结账，F-05 新 completed 无历史路径保持收口。63847969修复确认的SGR22样式损失，最终run36979378644三平台两模式installed与六真实Agent snapshot-stop独立通过，退出完整性有限交付进入整体审查/PR；旧756B精确触发链仍未知，不追认旧失败。既有十会话/重连/compact与原64/128观察失败保留，不承诺任意规模固定RSS。当前证据见 `docs/design-docs/runtime-persistence-closeout.md` §8及生产接入§53.1，不追加容量或通用工具阶段。F-03独立后续规划，F-01/F-02未由本次泛化解决。下文保留审核基线、当时缺陷和历史结果，不把已替代的描述或诊断建议累加为当前待办。
 
 2026-09-16 的补充审核将 Runtime Persistence 容量与 completed 归档提升为优先重评项。以下按本轮优先级排列，保留原有编号以便追踪；F-04/F-05 对应讨论中的问题 2、3，是用户确认需要重评的设计决策，不是已证明违反现行规格的实现回归。
 
@@ -159,7 +159,7 @@ F-04/F-05 的受控证据及限制见重评设计第 3 节，可通过诊断脚�
 
 F-04/F-05 已按 `runtime-persistence-storage-reevaluation.md` 分阶段推进。用户确认故障后不要求进程/历史恢复，随后明确正常结束重开也无需历史，F-05 已按 `runtime-completed-no-history.md` 取消内联和归档；当前页未消费尾部仍需收齐。F-04 已实施 checkpoint 独立查询、有界 Supervisor 缓存、live 消费驱动分页及新模式退出分页，整体权威终端模型仍在比较，不预设第二个 server。下一阶段聚焦在途预算、总恢复时间、全量扫描及旧协议容量；暂时断连不能直接认定为进程崩溃，也不改变旧 live 原绑定。
 
-2026-09-20，用户同意将退出完整性作为本次重构独立交付项，范围与验收见 `docs/design-docs/runtime-exit-integrity.md` 和 `docs/product-specs/runtime-persistence-modes.md` 第 10 节，推进见 `docs/exec-plans/active/runtime-exit-integrity.md`。它覆盖两类执行节点、Runtime/snapshot-only 及 Linux/macOS/Windows；与 F-04/F-05 分别验收，不等待 F-03，也不因取消兼容而自动解决。自然零/非零退出都要收齐当前读者尾部，取消和强制截断不能冒充完整排空；旧 live 保留原绑定和实际能力限制。本次只登记文档，技术方案未选定、业务未修复、原生平台缺口未关闭；不能将范围批准写成已交付。
+2026-09-20，用户同意将退出完整性作为本次重构独立交付项，范围与验收见 `docs/design-docs/runtime-exit-integrity.md` 和 `docs/product-specs/runtime-persistence-modes.md` 第 10 节，推进见 `docs/exec-plans/completed/runtime-exit-integrity.md`。它覆盖两类执行节点、Runtime/snapshot-only 及 Linux/macOS/Windows；与 F-04/F-05 分别验收，不等待 F-03，也不因取消兼容而自动解决。自然零/非零退出都要收齐当前读者尾部，取消和强制截断不能冒充完整排空；旧 live 保留原绑定和实际能力限制。本次只登记文档，技术方案未选定、业务未修复、原生平台缺口未关闭；不能将范围批准写成已交付。
 
 随后方案验证已有 Linux 独占 reader 的隔离对照，详见退出完整性设计第 8 节；推荐继续比较受控 provider 与共享收尾 adapter，尚未接入业务。消费者侧还需区分应用到 final revision 与取消：当前 closeTerminalRead 同时用于两者，释放来源不能自证页面已应用。此项与原始输出已缺失是不同边界，不把局部 reader 通过扩大为整条链路已修复。
 

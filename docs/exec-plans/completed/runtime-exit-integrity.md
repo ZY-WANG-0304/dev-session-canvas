@@ -1,8 +1,14 @@
 # 交付跨平台执行会话退出完整性
 
-当前执行入口（2026-10-02，§53，取代下面历史入口）：按用户顺序先完成F-04资源账/生产准入/本地实际消费信用/候选冷启动，再收口已证页面缺陷和正常build/package/default，最后受影响的真实Agent、Webview、现代跨平台与安装包验收。十会话、重连、compact及未受影响原生矩阵复用，历史失败保留不排队，root归属另列、旧OS和诊断框架增强不作前置。
+归档状态（2026-10-02）：有限工程、必要验收及文档整体复审已完成，独立review未发现新的确定性产品blocker；两处文档历史口径/准入时点已修正。产品与验收代码冻结63847969，最终CI36979378644通过且工件独立核验；后续仅提交、最新head核对和PR/合并流程，未经用户许可不合并。历史未勾条目不重新排队，残余风险已在技术债登记。
 
-当前具名阻塞：新包71b41035的Windows run36972376905已通过Runtime安装及两Codex Runtime场景，但Codex snapshot-only stop的756-byte/seq66状态恢复语义不相等，不能按正文一致放行。仅补既有摘要的固定布尔分类，并用同包复用已过安装、只定位失败单格及未跑Claude；Linux36972593736与macOS36972826194各四Runtime Agent、三平台Runtime安装工件均已独立核验成功。原失败、旧hash与所有尾部判据保持，尚不宣布整体完成。
+当前结账（2026-10-02，覆盖所有历史入口）：有限B1/F-04、B2退出/页面/默认分发及B3生命周期保护已实施，63847969的最终普通VSIX/run36979378644三平台两模式installed和六真实Agent snapshot-stop独立通过。旧多会话/重连/compact、Runtime Agent/natural及六native按实际未变输入复用；原64/128、旧失败、未知字段不改。当前只剩最终文档/最新head审查和PR，不新增产品阶段；合并须用户明确许可。正式证据与资源/兼容边界以有限收尾§8、生产接入§53.1为准。
+
+当前风险分账：SGR22已证样式损失经固定源码补丁、原stock红对照及新三平台受影响验收关闭；Windows Codex实际24个非空prefix无差异/unknown，三Claude非空1947B原页面和新Host通过。旧36972376905的756B精确控制序列未还原，保留为非阻塞残余，仅新版本再现、当前确定性路径或用户报告才重开。root稳定归属、旧OS及通用诊断增强不是本计划未完成项；内部not-live toast与legacy边界登记技术债。
+
+### 历史阶段快照
+
+以下“当前/下一”和未勾条目保存各自时点，不代表尚需执行。新的完成账在进度开头；历史失败不追认通过，历史未采集场景不填造结果。
 
 该固定单格36973937774通过的是0-byte/seq67清屏后状态，并未定位旧非空差异；四Claude36973985435已独立核验，包含1947-byte/seq21非空stop、新Host重开及零cleanup。至此F-04所需十二Runtime Agent与三平台安装全部结账。唯一prefix分类run36976601577已证实际非空状态12个有字符cell的Bold不保真、0空cell差异，其他类别相同，18项hash独立通过；final清屏0B/seq68通过不抵消它。当前转为生产codec的SGR22联动窄修及直接验证，不再扩诊断；旧756B终态具体控制序列仍未知，修正不追认旧失败。设计见生产接入§53末尾。
 
@@ -40,7 +46,7 @@ A4 `.debug/a4-real-agent-20260930-capacity-regression` 的 Codex/Claude × Runti
 
 ### 历史阶段入口
 
-2026-09-28 B1 实施入口为 `docs/exec-plans/active/runtime-persistence-capacity-closeout.md`，已完成局部结构修正；当时将合并进程内存超限列为 B1 阻塞的判断由 2026-09-30 当前预算决策取代，原样本失败不改。下述“本轮没有实施”等描述仅代表当时记录。
+2026-09-28 B1 实施入口为 `docs/exec-plans/completed/runtime-persistence-capacity-closeout.md`，已完成局部结构修正；当时将合并进程内存超限列为 B1 阻塞的判断由 2026-09-30 当前预算决策取代，原样本失败不改。下述“本轮没有实施”等描述仅代表当时记录。
 
 本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计、实施和验收。当前最新阶段是下段S16，覆盖本计划历史S15及更早记录的“当前/下一”描述。2026-09-20 用户确认“退出完整性”属于本次 Runtime Persistence 重构的独立交付项。立项基线为 `388ec2b3`，方案阶段基线为 `a5112fb5`；PR #294 合并后，13 个重构提交已 rebase 至 `origin/main@5965adb8`，原生收尾阶段基线为 `10d40e63`。以下为S12阶段历史：修后输入`54c3bc00`只复验Runtime单例一次，1/1、partialSelection=true，实际Host detach/同执行恢复/自然完成自动清理/空历史重开及正常Supervisor关闭落盘通过，见生产接入31.7至31.9。首轮1/2和全部旧工件保持，不合并为首次全绿。本轮无业务或测试源码改动；旧Host关闭报告后仍登记延迟保存，尚不能证明关闭后无迟到写盘，下一限定核对该产品生命周期风险，不追加工具或原生样本。候选默认关闭，整体计划active，不push/PR，不冒称UI/Electron/Agent或跨平台通过。
 
@@ -114,11 +120,19 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [x] (2026-10-02，最终有限验收) 63847969/run36979378644普通默认包实体及140成员/六native/权限独立核对；三平台两模式installed完整90002行、四cell样式、尾部/reader/新Host/cleanup与六真实Agent snapshot-stop独立通过。三个安全报告15/16/18项hash匹配；Windows24非空prefix无差异/unknown。
+- [x] (2026-10-02，复用与产品review) 独立复核未发现新的确定性产品blocker；复用未变容量/退出核心/natural/Remote证据，有限完成表与旧精确因果残余已入文档，不新增诊断或容量矩阵。
+- [x] (2026-10-02，归档) 完成整体代码/文档复审及必要口径修正，归档本计划并同步有效引用；后续提交的latest-head复核与PR属于协作收尾，合并仍须用户许可，不再开启产品阶段。
+
+### 历史进度账
+
+以下勾选保留当时执行结果；尤其未勾的工具研究、旧首次失败和后续已替代安排不再作为当前待办，也不因最终通过改成历史绿色。
+
 - [x] (2026-10-02，最终包) Supervisor退休存储99/99及新包三平台Runtime安装、十二Runtime Agent场景独立核验通过，F-04完成；原六资产/不变bundle证据复用，尾部/reader/失败保留不变。
 - [x] (2026-10-02，有限分类) 默认关闭的清屏前非空prefix诊断、空/非空cell差异计数已实施；snapshot-evidence/CI-report两测试及独立review通过，原final判据不变。
 - [x] (2026-10-02，A2/A4分类) 唯一run36976601577在seq14的586B非空prefix确认12个有字符cell Bold不相等、0空cell差异，其余类别均同；final0B/seq68通过、18项hash独立核验。未宣称旧756B控制序列已知，无新增诊断阶段。
 - [x] (2026-10-02，codec窄修) 固定原源SGR22补丁、postinstall/normal build、双入口及producer profile完成；tracker先红后绿、stock失败对照仍被原oracle拒绝、三条Chromium及原定向回归/typecheck通过。首次CJS命名导出加载失败已修且原样保留。
-- [ ] (2026-10-02，受影响包) 从修后commit正常构建新VSIX，复用六native，运行三平台installed两模式（固定四cell非空尾部）及六个真实Codex/Claude snapshot-only-stop。未改natural/容量/重连/compact不重复；新包通过前不宣布整体完成。
+- [x] (2026-10-02，受影响包) 修后63847969/run36979378644普通新VSIX、三平台installed两模式与六snapshot-stop已独立核验，见进度首项和生产接入§53.1；未改natural/容量/重连/compact不重复。
 - [x] (2026-10-02，§53) Agent/Terminal direct/checkpoint保存viewport与慢write提前fit共六例先红，restore屏障和viewport修后18项定向Chromium通过；不声称新增本地credit或最终版本通过。
 - [x] (2026-10-02，§53) 生产准入实现活动/待结算分账，adapter101/owner50项通过；candidate冷启动仅在排他namespace后清理本代运行账，namespace11/legacy与Supervisor94项通过。
 - [x] (2026-10-02，§53) Host最终保存准入与新协商本地write信用完成，Host154、controller46/Host batch10及8项受影响Chromium通过；普通六资产build/package本地exit0，包/选择已独立核对。
@@ -819,6 +833,10 @@ runner 首轮 macOS 是 CRCRLF oracle 误报而非短读；Windows 是内容通�
 
 ## 决策记录
 
+- 决策：以63847969新包严格受影响验收及已有效的未变证据关闭B1至B3，不再为旧756B精确序列追加捕获循环。SGR22已确认修复与旧运行精确因果未知分别登记，三平台stop无模型turn不代证natural模型响应。
+  理由：已具备原stock失败、生产修正、实际非空四cell/CLI前缀、原reader和新Host的独立证据；继续无期限追索旧终态不能替代当前产品风险判断。没有缩减尾部、页面、真实Agent或跨平台验收。
+  日期/作者：2026-10-02 / Codex，独立复审复核。
+
 2026-10-02 / Codex：实施§53和容量§10.17的有限收尾；production选择platform与统一不可变准入，缺匹配资产failclosed；同ref六资产通过既有校验供应normal build、clean-checkout验证及发布打包。页面只修已证restore/fit/viewport与实际消费信用，不扩大工具或低OS矩阵。工程选择自主执行，最终成功仍需受影响真实产品证据。
 
 - 决策：新报告使用显式 schema2 并拒绝缺失字段；旧 schema1 只按历史解释。首页面和新 Host 页面各自通过，合法 resize 用独立回放核对；失败阶段和清理前事实仅复用现有记录。理由：这些是当前 A2/A3/A4 安全判定直接缺口，不构成通用工具增强。定向回归及审核后仅一次原 Linux 矩阵，不盲重跑或猜修产品。日期/作者：2026-10-02 / Codex。
@@ -1116,7 +1134,7 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 
 ## 结果与复盘
 
-2026-10-02最终容量结账：固定生产包71b41035/run36971460243的三平台Runtime installed、十二Runtime Agent和既有多会话/重连/compact共同完成F-04受影响验收；B3有限入口亦已覆盖。Windows Codex非空snapshot的原语义差异仍独立阻塞整体结账，Claude同包非空1947-byte/seq21已通过新Host重开。唯一新增是原回放内一次首差分类，不变业务或final判据；两测试和独立review已通过，待该一次取证后判断。下面为历史增量结果。
+2026-10-02最终产品结账：F-04有限资源模型、F-05无历史和退出完整性分别完成。生产路径默认owned且六目标可分发，已证页面/生命周期缺陷与SGR22 codec缺陷修复；63847969/run36979378644最终包三平台安装及六snapshot-stop独立核验通过，未改容量/natural/Runtime/Remote证据按原范围复用。没有修改旧阈值、断言或失败，也没有宣称任意会话数固定RSS、旧OS、全部历史负例或旧756B精确同因。当前只做文档/最新head整体复审和PR，随后归档，不再追加工具阶段。经验是把产品完成定义与诊断完备性分开，逐项说明复用依据而非以测试数量代替交付。下面为历史增量结果。
 
 2026-10-02：生产准入/冷启动/本地消费信用已入库7f1e1887，原六项页面回归及新增两项credit组合通过。普通build/package本地成功，六目标production包检查通过；独立review和冻结提交最终受影响验收仍进行。总体退出完整性与F-04保持开放；不把历史观察阈值、旧失败或工具增强作为新自动阶段。
 
@@ -2428,3 +2446,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-02，分类后产品判断）：唯一真实prefix确认有字符Bold不保真，排除空cell解释；进入已有SGR22反例的有限生产修正，选择固定源码构建而非升级整库或放宽oracle。必要验收为既有tracker、实际页面重开及受影响新包，历史756B失败具体因果不倒填。
 
 修订记录（2026-10-02，SGR22实施）：生产补丁及仅installed启用的固定样式尾部已完成，本地原反例先红/修后与三条Chromium通过；记录CJS导出接入首败，未追认。冻结新包验收为三平台原installed两模式与六snapshot-stop Agent，不重复未受影响成功矩阵。
+
+修订记录（2026-10-02，最终归档）：新包三平台安装与六Agent stop独立通过，有限完成表和正式方案已同步，旧精确因果/内部toast/legacy入技术债。整体复审修正文档的历史默认开关与Q=1时点，不改代码或原断言；计划移至completed，后续只走latest-head核对和PR/用户合并许可。

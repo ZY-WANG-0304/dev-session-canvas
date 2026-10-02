@@ -13,7 +13,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/runtime-exit-integrity.md
+  - docs/exec-plans/completed/runtime-exit-integrity.md
 updated_at: 2026-10-02
 ---
 
@@ -130,7 +130,7 @@ U1-3由同一个真实wait线程先跳过一次waitpid并保留合成-1/ECHILD�
 
 第20阶段历史入口记录：原入口在最后`verifySaved`动态导入入口自身形成top-level-await循环并exit13，原失败保留，不能称原CLI已修好。新增只读独立入口 `verify-native-failure-v1.mjs` 直接导入冻结verifier；`standalone-verification.log`记录离线重放exit1，仍为3通过、1失败、2未运行且仅原U1-1失败，没有新增native执行。该入口缺陷与U1-1冻结判据失败分别记录，原driver、verifier、测试、原始证据、原断言和历史结果均保留。
 
-执行入口为 `docs/exec-plans/active/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
+执行入口为 `docs/exec-plans/completed/runtime-exit-integrity.md`。第 7–17 节记录早期 reader、runner 与收尾契约对照，第 18 节收口职责澄清，第 19–28 节记录屏障、受控启动链、取消所有权和同进程资源，第 29–34 节记录资源归因、Windows 正常对象语义及已知 HPCON 最终 Close。最新138条原生会话支持 bundled DLL 自然路径的最终释放责任，原四个 no-close 资源失败仍保留；不把正常 Process 引用存续当系统缺陷，也不宣布具体旧句柄身份已确认。
 
 第35–39节承接 provider/adapter 生命周期契约及D1/D2新诊断，分版证据记录在 `docs/design-docs/runtime-execution-lifecycle-contract.md`。D1本地及三平台模型通过，D2原校验器三平台各24条及全部下载复核通过，但独立审计发现Windows G07三条真实提前关闭前提未建立；原绿色结果、首版缺口及历史失败均保留。第38节冻结的新Windows-only三模式各三次补证已按cf359040/run35631266321 attempt1完成，九项原verifier及独立原始审计通过，结果见第39节；只补新样本的真实关闭/存活与负控证据，不追认旧三条、不修改guard及预算。第40节保留原生异常和unknown owner有界隔离的设计冻结记录，第41–43节承接已实施的D3/D4 v1两次runner及D3 v2窄修正。v1跨pipe顺序误判、真实预算迟到和writer核验债务分别保留；b4db41cc唯一v2 runner的完整下载/审计已在第44节完成，当前先另冻并补三独立settlement、不可变首次观察、有界unconfirmed、writer协议/预算及D4完整身份重放，不启动W1/U1。Windows builtin、其余通知/环境销毁、正长度 readable-buffer、真正Close挂起、并发与真实 Agent/Host/Webview/packaged 仍待验证，具体 reader、wire API、生产取消和预算未选定。macOS 普通后代控制实验仅作诊断，不是无条件前置。不能把局部证据当作里程碑一/产品验收完成，设计保持比较中/验证中。
 

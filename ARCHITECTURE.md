@@ -502,11 +502,13 @@ docs/                           根目录正式文档知识库
 
 已确认结束的 Runtime 节点只保存布局、配置与退出状态，不保存终端正文或自动启动意图。`CanvasPanelManager.applyCompletedRuntimeSupervisorSnapshot()` 等轻量节点写入窗口及实际 root-local 加载源后再解除绑定并退役 Supervisor 会话；失败保留来源。支持 `terminalPagedCompletionV1` 时，当前读者按原 socket/readId 从 Supervisor 分页收尾，Host relay 只保留身份和 final revision，不聚合完整终态；退役后禁止新 attach/open，最后读者关闭或断连再物理删除。旧能力仍使用临时完整终态兼容。Webview 读完、关闭或失效即释放，新页面不读取该来源；旧 generation 客户端须等待读者和 close RPC 结束后退役。`common/completedRuntimeHistory.ts` 加载时迁移可明确识别的旧 Supervisor completed stream。Provider 自己的会话文件和直接 snapshot-only 模式不变。
 
-F-04 已选定资源模型与生产准入，当前进入有限收尾，见 `docs/design-docs/runtime-persistence-storage-reevaluation.md` §10.17 与 `docs/design-docs/runtime-exit-integrity-production-integration.md` §53。Supervisor 正文缓存、journal 分页与 Host / Webview 消费信用约束缓存和在途正文，不把累计历史复制到每层；完整尚需来源仍保留于 journal。总资源仍包含各会话 scrollback / geometry 的终端模型、活动 provider、逐 reader 页面和 journal segment 元数据，不能声称总 RSS 与历史或会话数无关。checkpoint 拒绝或慢 reader 保护期间磁盘可以增长，满盘明确失败，不能丢弃未消费尾部换取容量。
+F-04 当前支持路径已按有限资源模型、生产准入及受影响 Runtime 验收结账，见 `docs/design-docs/runtime-persistence-storage-reevaluation.md` §10.17 与 `docs/design-docs/runtime-exit-integrity-production-integration.md` §53。Supervisor 正文缓存、journal 分页与 Host / Webview 消费信用约束缓存和在途正文，不把累计历史复制到每层；完整尚需来源仍保留于 journal。总资源仍包含各会话 scrollback / geometry 的终端模型、活动 provider、逐 reader 页面和 journal segment 元数据，不能声称总 RSS 与历史或会话数无关。checkpoint 拒绝或慢 reader 保护期间磁盘可以增长，满盘明确失败，不能丢弃未消费尾部换取容量。
 
 生产准入为 `{ executions: null, starting: 1, pending: 2 }`，不将实验中的 2 或 10 个会话变成活动会话上限。在实际 owner 的准入范围内，准备、停止/收尾、未结算 reader、最终保存等责任达到 2 时拒绝新获取，不排无限队列；Supervisor 还合并已退出 owner、但仍在 `sessions` 中等待 Host 保存或 journal 删除的责任，按对象身份去重，成功移除才释放。已准入会话同时结束可以产生超过 2 项真实责任，仍全部保留并停止新准入；unknown 继续阻止新建。旧 finite / legacy 策略与原 live 绑定保持。
 
-已通过的多会话、重连及 attach/compact 证据直接复用；旧合并测试进程的 Heap 64 MiB / RSS 128 MiB 仅保留为观察预算及历史失败，不是产品内存硬门槛。普通构建、六目标资产打包与默认 owned 选择已接线；最终版本受影响的真实 Agent、Webview、现代跨平台及安装包验收仍在收口，不能据模块测试宣布 F-04 或整体重构完成。旧协议成本单列，root 稳定归属另列计划，旧系统兼容不作本轮前置。
+已通过的多会话、重连及 attach/compact 证据直接复用；旧合并测试进程的 Heap 64 MiB / RSS 128 MiB 仅保留为观察预算及历史失败，不是产品内存硬门槛。普通构建、六目标资产打包与默认 owned 选择已接线，三平台 Runtime 安装与真实 Agent 证据已承担 F-04 的受影响验收，不因独立的 snapshot-only 状态问题重新追加容量阶段。旧协议成本单列，root 稳定归属另列计划，旧系统兼容不作本轮前置。
+
+最终序列化修正 `63847969` 对 Host 与 Supervisor 共用的 `xterm-serialize-v1` producer 增加固定 SGR 22 Bold/Dim 联动补丁及 profile 标识，安装和普通构建校验补丁，不放宽终态语义判据。对应 run `36979378644` 的三平台两模式安装及六个真实 Agent snapshot-only stop 已独立核对通过，最终受影响验收已收口；未受改动影响的既有证据复用。整体审查与 PR 尚待完成，本轮验收完成不代替整体收尾；最终证据与历史失败分账见生产接入 §53 和 `docs/design-docs/runtime-persistence-closeout.md` §8。
 
 2026-09-17 确认的运行时边界：Supervisor 崩溃或执行机器重启后，不要求恢复原进程或终端历史；正常结束重开同样不保留正文，不取消画板保存。Supervisor 与 PTY 均存活时的 Host/Webview 重建、关闭再打开 VS Code 和连接中断仍需维持原会话，通信失败本身不证明进程已结束。新 owned generation 只有在冷启动取得 namespace 排他权后才清理自身陈旧 registry / journal，不重放故障前正文；健康 Supervisor 的客户端断连不触发清理，旧 generation 与旧 live 绑定不动。不新增独立历史 server 或 completed 归档。
 

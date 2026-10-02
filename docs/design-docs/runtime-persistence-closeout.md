@@ -1,7 +1,7 @@
 ---
 title: Runtime Persistence 有限收尾与完成定义
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 执行编排域
@@ -14,8 +14,8 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/runtime-persistence-capacity-closeout.md
-  - docs/exec-plans/active/runtime-exit-integrity.md
+  - docs/exec-plans/completed/runtime-persistence-capacity-closeout.md
+  - docs/exec-plans/completed/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
 updated_at: 2026-10-02
 ---
@@ -24,9 +24,13 @@ updated_at: 2026-10-02
 
 ## 1. 状态与目的
 
-当前唯一推进顺序（2026-10-02，覆盖下列历史“下一项”）：按容量设计§10.17完成生产准入、snapshot-only实际写入信用及候选冷启动边界，复用十会话、重连和compact证据；按生产接入§53完成已证页面restore/fit/viewport问题，再完成正常build/package/default。最后只复验这些改动影响的真实Agent、Webview、现代跨平台与安装包，整体审查后进入合并流程。旧64/128观察不再驱动优化，root稳定归属单列，旧OS和工具通用健壮性不作前置。已完成的有限页面回归不等于最终版本通过；普通工程取舍不再交用户确认。
+当前完成定义（2026-10-02，覆盖下列历史“下一项”）：B1/F-04容量、资源边界与生产准入，B2退出完整性/有限页面责任及正常默认分发，B3有限生命周期保护均按§8证据表结账。最终产品代码为63847969，普通构建新VSIX为run36979378644；仅复验受影响安装/状态保存，复用既有多会话、重连、compact和未改的真实Agent自然退出证据。文档同步和最新head整体审查后进入PR，不自动合并。旧64/128观察不再驱动优化，root稳定归属单列，旧OS和工具通用健壮性不作前置。
 
-当前实施进展（同日，§53）：生产准入、Host最终保存/退休存储责任、local实际write信用、candidate冷启动及已证页面修复均已入库。71b41035/run36971460243已按正常默认构建生成固定生产VSIX，六native复用原源码/hash不变的36966903790；新包仅Supervisor可执行payload变化，Host/Webview/provider逐字节未变。三平台Runtime installed及十二真实Runtime Agent场景均已独立核验，Windows四Claude由36973985435补齐，其中snapshot stop非空1947-byte/seq21语义及新Host重开通过。F-04按既定资源模型结账；Windows Codex原756-byte/seq66语义差异仍阻塞A2/A4，36973937774的0-byte通过不解释旧非空失败。仅对该格执行一次已限定的清屏前分类取证，历史多会话/重连/compact和无关snapshot格不重排，不宣布整体完成。
+最终版本事实（同日，§53）：63847969的新VSIX为5861603 bytes、SHA256 `53874020710281f611d2ace9d266692e92bf866f0ff0e5871a355530237d176d`，六native复用36966903790/92b3aa4a。相对71b41035旧包，Host/Supervisor/Webview三个bundle已变化，provider/native未变，不能继续使用“Host/Webview/snapshot未改”的旧复用理由。固定SGR22补丁有原stock失败对照，最终三平台两模式installed与六snapshot-stop用于受影响结账；Windows Codex24个实际非空prefix无语义差异和unknown，Claude三平台非空1947B保存/新Host通过。旧756B终态的精确控制序列仍未知，不追认旧失败或声称已证明完全同因。原始run、输入及当前证据详见§53末尾。
+
+### 历史实施记录
+
+下列日期入口保留各自时点，不覆盖§3正式方案和§8最终证据表；历史“未完成”“下一步”及旧未提交状态不是当前执行队列。
 
 当前有限增量（2026-10-02，r23）：固定现代 Linux Electron 候选执行 `--capacity-attach-compact` 的两 Terminal 实际 Webview attach/compact 场景通过。该运行覆盖动态 scrollback、两次 resize、首个 checkpoint、同一分页 reader 持续消费、约 18 MiB 后置输出跨过实际 16 MiB journal compaction 阈值、current/previous recovery candidate 以及 compact 后 reader 交互；页面输出、尺寸、scrollback、reader identity、自然结束无 completed 历史和本方资源清理均通过，未出现 `runtime/terminalPagedReadFailed` 或 Host page error。最终 manifest 的 `currentCheckpoint.revision=6579`、`previousCheckpoint.revision=6502`、`retainedStartRevision=6503`、`lastRevision=11185` 与 previous candidate 的连续事件可读性均按 manifest/候选工件核对；不强行把最新 checkpoint RPC 返回值等同于 durable manifest generation。证据保存在 `.debug/a1-attach-compact-20261002-r23/compact/artifacts/`。该结果只关闭现代 Linux Electron 的固定 attach/compact 组合，不关闭 F-04/A1 总体，不替代真实 Agent、其余 Webview/页面责任、跨平台/packaged、退出完整性或最终生产准入；不改变 64/128 MiB 合并进程观察阈值及其历史 `exit 1`。
 
@@ -84,17 +88,21 @@ updated_at: 2026-10-02
 
 ## 3. 正式方案
 
-2026-10-02最新具名产品阻塞：唯一Windows分类run36976601577已确认真实Codex非空prefix的12个有字符cell Bold不保真，其他语义类别相同，不是空cell差异。按生产接入§53直接修固定serializer的SGR22联动，并验证实际保存/新Host页面与受影响包；分类到此停止，不新开工具阶段。原756B终态的具体控制序列仍未知，旧失败不追认；F-04资源模型结账不回退。
+2026-10-02已确认产品缺陷的收口：Windows分类run36976601577确认真实Codex非空prefix中12个有字符cell的Bold不保真；63847969修正固定serializer的SGR22联动，原stock失败对照与未放宽的状态oracle保持。新包的受控四cell保存/重开和真实CLI非空prefix检查承担回归，分类到此停止。旧756B终态具体控制序列保留未知，只有当前版本新非空不保真、当前确定性路径或实际用户报告才重开，不自动追加抓取循环。
 
-本次重构只收口以下三个产品项。B1/F-04 的工程和受影响Runtime验收现已完成，B3 的有限入口已覆盖；B2仍有下述具名状态差异待判断，不能以容量完成宣称整体完成。沿用现有 Supervisor、缓存/分页与无 completed 历史路径，不另建历史 server，不新增事务框架或终端引擎/mux/数据库替换。以下为当前结账口径，后续带日期的实施段落保留原时点。
+本次重构只收口以下三个产品项，工程与必要受影响验收已按有限范围完成，最终整体审查与合并流程另行结账。沿用现有 Supervisor、缓存/分页与无 completed 历史路径，不另建历史 server，不新增事务框架或终端引擎/mux/数据库替换。以下为当前结账口径，后续带日期的实施段落保留原时点。
 
 | 编号 | 当前缺口与产品影响 | 结束条件 |
 | --- | --- | --- |
 | B1 容量与恢复，F-04 | 已完成：正文缓存/分页/信用/索引与取消责任修正，§10.17资源模型和生产准入、默认包及三平台Runtime接线；十会话/重连/compact证据复用 | A1已结账。保留O(N)、O(segment metadata)、慢reader/checkpoint拒绝时磁盘增长、旧协议成本与原64/128失败，不承诺任意会话数固定RSS；后续发现具体回归才重新打开 |
-| B2 退出完整性成为可用产品能力 | 已默认启用owned实现、六目标正常分发、现代三平台安装/Runtime Agent通过；Windows Codex snapshot-only stop非空语义差异尚未解释，空态复验通过不抵消它 | 原A2/A4状态差异完成产品/判据判断并经必要验证后，汇总A2至A5再整体审查；真实Agent、页面、尾部和原reader结算不能以历史绿灯或局部fixture替代 |
+| B2 退出完整性成为可用产品能力 | 已默认启用owned实现、六目标正常分发、现代三平台实际安装/Agent接线；已证页面责任与SGR22缺陷修复，最终受影响证据见A2至A5 | 当前产品阻塞已按严格内容/状态/reader和新Host验收关闭；旧精确因果未知单列风险，不以空态通过替代非空保真，不要求通用工具完备 |
 | B3 生命周期不串代 | §32.21完整替换/永久退出受控回归，§38双Host、§39/50两模式实际reload、§47多根真实保存失败隔离及§53旧generation共存均已具名通过 | A6有限范围已覆盖，不要求任意并发排列或全局锁。原snapshot reload未观察的旧reader/EOF与排他写者字段保留，不外推新保证；root稳定归属仍独立 |
 
-A1/F-04 的准入口径已由只读源码核对收敛：固定十会话是声明输入，不是产品 `N=10` 上限；活动会话资源按用户显式需求随 `O(N)` 增长，不承诺任意 N 下固定 RSS。payload 32 KiB、pending 256 KiB/16 帧、page 64 KiB/256 事件、credit 在 tracker 消费并 journal flush 后返还继续作为每会话硬边界。最终保存、未结算 reader 和 unknown/quarantine 责任不能随意增长，需使用独立有限责任槽；达到槽位时停止新建并报告具名 failure/unknown，已有会话仍可安全消费。启动并发 `Q=1` 保留为 acquire 限制，不形成隐藏队列；第二个新建应在取得 provider/journal 前得到可重试的 busy 结果。
+A1/F-04 的准入口径已由只读源码核对收敛：固定十会话是声明输入，不是产品 `N=10` 上限；活动会话资源按用户显式需求随 `O(N)` 增长，不承诺任意 N 下固定 RSS。payload 32 KiB、pending 256 KiB/16 帧、page 64 KiB/256 事件、credit 在 tracker 消费并 journal flush 后返还继续作为每会话硬边界。最终保存、未结算 reader 和 unknown/quarantine 责任计入独立有限责任槽，达到pending门槛时在journal/provider获取前拒绝新建，已有会话仍可安全消费。启动并发 `Q=1` 是另一项provider acquire限制，不形成隐藏队列；它在执行启动阶段拒绝，已准备的journal/session由明确 `rejected-before-acquire` 路径清理，不能写成Q=1也先于journal创建。
+
+### 历史接入与预算快照
+
+以下段落及§3.1保留当时的默认开关、缺口和样本结果；当前默认platform、正式准入及有限验收已由§8结账，不将历史未完成表述重复排队。其完整性判据继续有效。
 
 当前发现的 Q=1 直接缺口已完成最窄修复：Supervisor 的 `rejected-before-acquire` 会清理准备中的 journal/session，Host 现在只对这一明确结果清除 `candidateRuntimeStarts`、将未绑定节点置为可重试的 error，并保留连接断开、能力不符或资源释放未知的 sticky unknown/quarantine。Terminal/Agent 同节点拒绝后重试回归已加入 Host wiring，149/149 通过。正式候选默认准入仍需完成 A1 责任槽与跨平台验收，不能用此局部修复或十会话绿色代替。
 
@@ -112,7 +120,7 @@ B2 初始接线缺口中的 Client/backend/launcher profile 传递及 candidate 
 
 生产接入设计的 L-01 至 L-05、PI-01 至 PI-06 只用于追溯上述责任，不能把历史表中的旧缺口全文重复排队。新拓扑中 provider 失效、owner 消失时的孤儿风险、允许动作和未知结果仍须确认，但不新增机器崩溃后恢复、任意故障全部清零或逐个托管后代的承诺。
 
-### 3.1 当前 B2 有限接入范围
+### 3.1 历史 B2 有限接入范围
 
 具体契约见 `runtime-exit-integrity-production-integration.md` 第 32 至 32.2 节，实际验收增量见 32.3 至 32.11。`src/panel/runtimeSupervisorClient.ts`、`src/panel/runtimeHostBackend.ts` 的显式启动选项，detached 路径的 `src/supervisor/runtimeSupervisorLauncher.ts`，以及 systemd 直接启动 `runtimeSupervisorMain.ts` 的参数保留同一 profile；`src/common/runtimeSupervisorPaths.ts` 与 Supervisor 入口共同约束候选仅使用独立 `terminal-exit-v1` generation，不把 profile 补到旧 live 的 storage slot。未知 profile 或 profile/generation 不匹配在连接/启动副作用前明确拒绝，连接后仍校验真实 hello 的 profile 与 reader 能力；省略 profile 的旧路径保持兼容。
 
@@ -137,21 +145,21 @@ B2 初始接线缺口中的 Client/backend/launcher profile 传递及 candidate 
 
 A1 的容量/交互预算和 B2 的生产收尾预算由代理负责选定并论证，不是等待用户确认的前置。先利用既有样本与已实现限额、实际队列所有权和支持环境成本，在验收运行前登记具名数值、来源及失败含义；缺测量时只允许一次有固定输入的校准，不循环试数直到绿色。记录会话数、输出量/持续时间、scrollback、慢读/离线时长、缓存/在途和内存预算、可交互时间及到期结果；对比相同输入的基线，架构性判据仍须满足。现有 1 MiB/2048 是缓存实现值，候选自然 8 秒/主动 13 秒/整体 20 秒不自动升格为生产指标；本次未测得的数值不伪造为结论，也不承诺新的对外 SLA。
 
-当前候选准入已按生产接入 32.16 分离为同一不可变策略；省略仍为 executions=2、starting=1，构建十 Terminal 验收时显式选 10/1。固定十会话只用于声明输入，不能升格为产品会话上限；Q=1 的明确拒绝预约泄漏已由 `e2a53372` 以 `rejected-before-acquire` 窄修并回归，正式启用仍需把活动会话资源与未结算责任槽分账，并完成真实分进程多会话预算。真实模块默认/非默认、unknown 停排与保存占槽回归保持，不以两会话通过替代既定十会话验收。
+历史候选预算快照（32.16时点，已由§8及容量§10.17取代）：当时准入分离为同一不可变策略，省略为executions=2、starting=1，十Terminal验收显式选10/1。固定十会话只用于声明输入，不能升格为产品上限；Q=1明确拒绝预约泄漏由 `e2a53372` 窄修并回归。当时尚需活动/未结算分账与分进程预算，现已结账；真实模块默认/非默认、unknown停排和保存占槽回归继续有效，不以两会话代替既定十会话。
 
-早期容量证据只有 fixture 编码量，后续已有模块与合并 authority 进程的 heap/RSS、受控浏览器交互及真实 Terminal 链样本，但仍未形成实际分进程、多会话生产候选的完整资源/交互预算。A1 应按实际进程所有权与共享/逐会话成本登记资源模型、数值依据、裕量和失败含义，不直接沿用合并夹具的 64/128 MiB 为产品准入线，也不从旧结果中扣除未量化成本来制造通过。固定验收负载不是新增产品会话数上限，不能通过缩小 scrollback、静默限制用户并发或削减支持环境来达标。
+历史预算进展：早期仅有fixture编码量，随后形成模块/合并authority的heap/RSS、浏览器与真实Terminal链样本，但当时尚无分进程多会话预算；后续资源模型与证据已收口至容量§10.17。A1仍按实际所有权、共享/逐会话成本及运行前预算解释结果，不沿用合并夹具64/128为产品准入线，不扣除未量化成本造绿。固定负载不是会话上限，不能缩scrollback、静默限并发或减支持范围达标。
 
 运行期存储失败采用现有完整性目标下的 fail-closed 原则：不能继续声明输出可完整恢复，不能丢弃唯一已接受来源或持续无界积压来掩盖失败，必须反馈具名失败。可安全背压时保持可取消消费与控制；不能继续安全接收时走既有显式失败/停止结算，不以正常完成掩盖中断。具体背压阈值及实际入口的修正由 B1 负责，B2 的截止时间只限定观察/处置，不改变内容、页面或资源事实；两者均不另开通用预算研究。
 
 A5 沿用既定平台、架构和运行时支持承诺，逐格标记通过、失败、未验或明确不支持；不能只跑 Linux 再称全部完成。只有存在真实相同的实现/环境与有效来源证明才复用证据，不能用 Node 产物冒充 Electron，也不能因没有方便的 CLI 凭据或 runner 就删除真实 Agent/平台要求。支持范围缩减、发布例外须另获用户确认；不默认要求所有诊断负例与所有环境做无意义笛卡尔积。
 
-A5 当前已取得Linux/macOS/Windows候选的两模式Terminal/Webview有限实证，Linux固定VSIX installed也已通过；未覆盖架构、其他平台packaged、Remote及默认分发/兼容仍开放，不能继续写成只有Linux实现，也不能泛称全平台完成。第37节固定构建基线修正顺序，保留原支持范围而不从新构建机版本倒推最低OS。冻结诊断 API 和 stock node-pty workflow 不能代证新 candidate。2026-10-01 的第四轮已证明固定真实 CLI + DeepSeek 在 Linux/Electron 原八场景可用，凭据不再是待用户选择的阻塞；macOS snapshot stop与Windows无凭据前置的直接失败按33.10/34.12定位。第三轮Linux Codex snapshot stop仍为具名间歇失败，不被后轮通过抹去。独立临时配置、步骤级凭据、通用 Secret 过滤和安全有限报告保持，不冒称官方模型、原中转或其他平台Agent通过；平台工程与实际验收分别记录，不新增工具门槛。
+A5历史阶段记录（第37节时点，不覆盖§8当前证据）：当时三平台候选两模式Terminal/Webview和Linux installed已有实证，其他packaged/Remote/默认分发仍开放。随后已按§53.1及具名复用结账，不以构建机倒推最低OS，也不以冻结诊断API或stock workflow代证owned产品。2026-10-01第四轮证明固定CLI+DeepSeek的Linux原八场可用；第三轮Codex间歇失败仍保留，不被后轮抹去。独立临时配置、步骤级凭据、Secret过滤和安全摘要继续有效，不冒称官方模型/原中转或未跑平台通过。
 
 主进程成功写入终端的尾部，以及自身已接收、排队、消费中的内容仍必须完整交付和应用；不承诺程序尚未 flush 的应用缓冲。超时、主动截断、socket close 与进程 exit 不能冒充完整 EOF。Terminal/Agent 主体存活时正常接收同终端后代输出；主体退出后的普通后代未来输出不作为产品门槛。启动器下实际 Agent CLI 仍是主体。上述边界不因清单收窄而改变。
 
 ## 5. 整体完成定义
 
-只有以下条件同时成立，才称本次重构完成；目前尚未成立：
+以下是本次重构的有限完成定义。工程及必要验收按§8已结账；文档和最新head整体审查通过后可进入合并，合并本身仍须用户明确许可：
 
 1. F-04 在已登记的支持路径和工程负载预算内通过 A1，并满足第 3 节的容量/背压判据；剩余旧协议成本有准确兼容边界。不得只交分页或以小样本未 OOM 关闭容量问题；仍被正式支持的新路径若达不到要求，应修复，而不是换名延期。
 2. F-05 已完成的新路径在 A2 保持无 completed 正文、无自动恢复进程；当前页尾部、保存失败与旧 live 保护不回退，不重新引入归档项目。
@@ -184,7 +192,7 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 
 2026-10-01第49节工程增量：三平台requirements/schema2与六资产聚合已实现；首轮四格与修后 Windows x64/ARM64 attempt2 均已取得，六目标 import/聚合/固定 VSIX 及本地 Linux x64 build/load/archive 均通过。该结果关闭分发构建链，不代证最低旧 OS、各目标完整产品验收或普通默认启用；不重开已经通过的 Agent 矩阵，也不把分发脚本扩为通用诊断框架。
 
-当前剩余交付只按下表结账，不以历史阶段、工具边界或重复绿色另开队列。各包可复用已有效证据；“剩余”不表示每格都必须新写脚本或重跑全部平台。
+下表保留最终验收前的工作包映射，状态已由后面的“当前证据表”取代，不是新增待办。各包按有效证据复用，不因旧“剩余”重复编写脚本或重跑全部平台。
 
 | 交付包 | 直接剩余责任 | 可复用且不重复立项 |
 | --- | --- | --- |
@@ -199,13 +207,17 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 | 项目 | 当前结论 | 直接剩余 |
 | --- | --- | --- |
 | A1 / F-04 | 已完成：复用实际 owned 的 `10/1` color/size、`2/1` Host reconnect、r23/r24 attach/resize/scrollback/live compact；§10.17资源模型/准入及Host160、Supervisor99、页面13补齐信用/退休存储/resize/fit；新包三平台Runtime installed及十二Runtime Agent场景独立通过 | 无新增A1矩阵；不压旧64/128，不把独立snapshot状态差异误记为容量缺陷，不代证整体重构完成 |
-| A2 | live原身份重连、completed无历史、snapshot-only保存/重开、保存失败保护及generation共存具名证据已通过；新包未改Host/Webview/snapshot-only实现，Windows Claude非空stop和新Host重开已补齐 | Windows非空Codex stop恢复语义差异；新Host重开不得替代原页面，旧live不升级为全部新保证 |
-| A3 | 双Host/surface、多reader/大尾部、controller46/Host10和正常bundle页面13覆盖慢write/fit、viewport、credit、读错及非成功结算；新包三平台Runtime installed已独立核验通过 | 上述真实Agent终态剩余；不复跑旧reader矩阵，已有not-live toast作为具名非阻塞风险保持 |
-| A4 | 新包Linux36972593736/macOS36972826194各四Runtime Agent通过，Windows36972376905两个Codex Runtime与36973985435四Claude通过；未变snapshot路径复用旧包具名结果 | Windows Codex非空snapshot stop有限分类取证；原八场名称及natural EOF/主动stop语义保持，不新增Agent矩阵 |
-| A5 | 新clean-SHA包71b41035/run36971460243普通build/package/default成功，原六资产schema2/source/hash、生产选择和两mac helper权限独立核对；三平台实际Runtime安装、尾部/终态/重开/清理及来源hash均独立核验通过 | A2/A4剩余收口后整体review/PR；六资产、Remote和无关snapshot installed不重复，旧OS不前置 |
+| A2 | live原身份重连、completed无历史、保存失败保护及generation共存已具名通过；63847969新包三平台两模式installed及六snapshot-stop补齐改变serializer后的原页面/保存/新Host | 无当前直接阻塞；旧756B精确因果保留未知，新Host重开不替代原页面，旧live不升级为全部新保证 |
+| A3 | 双Host/surface、多reader/大尾部、controller46/Host10和正常bundle页面13覆盖慢write/fit、viewport、credit、读错及非成功结算；最终新包两模式完整90002行及四cell样式/终态/重开验收 | 不复跑旧reader矩阵；已知not-live内部栈toast作为非阻塞风险保持，不能由此宣称任意页面排列完备 |
+| A4 | 复用71b41035三平台十二Runtime Agent及未改natural路径；63847969/run36979378644六个Codex/Claude snapshot-stop独立通过，Windows24非空prefix无差异/unknown，三平台Claude1947B新Host通过 | 无新增Agent矩阵；本轮stop无模型turn，不替代旧natural实际响应/EOF；各报告selectedPass=true、全八场pass=false且六格not-run如实保留 |
+| A5 | 63847969/run36979378644正常build/package/default；5861603B/53874020…实体包、140成员、六schema2/native及两mac helper100755独立核对，三平台两模式实际安装与受影响产品验收 | 最终文档整体review/PR；六资产与Remote复用具名证据，六目标build/load不扩大为六架构全部产品矩阵，旧OS不前置 |
 | A6 | Runtime reload、snapshot-only reload、双 Host 失败/替换和多根交互固定组合通过 | 仅在产品明确区分 `closeWindow` 与 `reloadWindow` 时另立单项；否则不再重复 Host 离开实验 |
 
-复用理由：十会话与重连/compact已走当前owned provider、journal、Host credit和单段索引核心；默认选择、资产聚合和新建门禁不替换这些核心，cold-start清理不改变健康Supervisor重连。新增local credit/resize与paged-events gate不由旧证据代证，其直接时序由本轮实际Host和Chromium测试承担，最终安装包已验证受影响集成。F-04完成不等于整体完成；只有本表剩余项有效，不从历史“未验”全文追加工作。
+复用理由：十会话与重连/compact已走当前owned provider、journal、Host credit和单段索引核心；默认选择、资产聚合和新建门禁不替换这些核心，cold-start清理不改变健康Supervisor重连。local credit/resize与paged-events gate由实际Host和Chromium测试承担，最终安装包验证受影响集成。63847969只改变serializer、producer profile和受控页面断言，不改变owner/source结算、准入、信用、分页、索引或保留策略，因此不重跑容量/退出核心及natural模型请求；保存与页面保真不能复用旧未改bundle理由，已用新包复验。只有本表剩余项有效，不从历史“未验”全文追加工作。
+
+### 历史推进与归档说明
+
+以下旧顺序、失败和暂时状态保留原时点；最终结论以本节证据表及生产接入§53末尾为准。
 
 当前工程顺序按有限收尾定义推进：保留 B1 修复与未完责任、A1/A2 原期限通过、各自 A4 有限结果及全部旧失败；第47节多根格、A3 双 Host 格、A6 snapshot-only Host 离开格、r23/r24 attach/compact 格及六资产构建格均已移出剩余队列。下一只收口 A1 最终生产候选的容量/交互模型、A2/A3 仍未由现有证据承担的页面语义、实际支持与最终同版本准入，不重开平台诊断或只增加 runner。第三轮 Codex snapshot stop 具名间歇失败不因未复现称已修，也不为抓红追加 CI。汇总 A1 至 A6 才宣布整体交付，F-04 和完整 A5 仍开放。
 

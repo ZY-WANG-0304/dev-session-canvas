@@ -1,7 +1,7 @@
 ---
 title: 退出完整性生产接入与故障域收敛
-decision_status: 比较中
-validation_status: 验证中
+decision_status: 已选定
+validation_status: 已验证
 domains:
   - 执行编排域
   - VSCode 集成域
@@ -13,13 +13,25 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/runtime-exit-integrity.md
+  - docs/exec-plans/completed/runtime-exit-integrity.md
 updated_at: 2026-10-02
 ---
 
 # 退出完整性生产接入与故障域收敛
 
-当前实施入口（2026-10-02，§53）：用户明确先F-04容量/资源/准入，再有限页面修复，最后正常构建/默认启用及受影响最终验收。当前页面viewport与慢write/fit已先红；实现必须与§10.17资源边界一起收口，不追加通用诊断阶段。
+当前结账入口（2026-10-02，§53）：F-04资源/准入、已证页面restore/慢write/fit/viewport、正常默认build/package与生产接线已完成。63847969修正固定serializer的SGR22 Bold/Dim损失，新包36979378644的三现代平台受影响安装与六个真实Agent snapshot-stop均已独立核对通过。当前进入最终文档审查与PR，不自动合并；“已验证”仅指本节正式方案及§53有限验收，不追认历史失败，不代表所有诊断负例、旧系统或任意规模通过。
+
+## 正式方案
+
+默认构建由 `scripts/build/build.mjs` 选择platform provider并要求六目标资产完整可验证，`scripts/release/package-vsix.mjs` 打包实际执行端所需的N-API资产与macOS helper执行权限。`ExecutionOwnerLifecycle` 与 `ExecutionSessionAdapter` 作为Host snapshot-only和Supervisor live-runtime共用的生命周期实现；Linux/macOS采用独立Unix owner，Windows采用ConPTY owner与输出worker。缺资产或缺消费信用能力明确拒绝新建，不静默回退stock；旧live沿metadata原绑定继续使用原能力。
+
+主进程退出、source EOF/中断、已接收消费完成、逐reader应用和资源释放分别结算。已成功写入及本方接收/排队的尾部须完整应用，取消、超时和读失败不能冒充EOF；主体退出后的普通后代未来输出不托管，启动器下实际Agent CLI仍是主体。`CanvasPanelManager.ts`等待原reader与最终保存，失败保留来源和责任；Runtime只保存轻量节点，snapshot-only仍保存终端状态。`webview/main.tsx`和controller跨真实write完成屏障处理restore/fit、viewport与回执，页面关闭、读失败和成功应用不能混写。
+
+准入及正文边界以容量设计§10.17为准，正常构建启用 `{ executions: null, starting: 1, pending: 2 }`。`scripts/shared/ensure-xterm-serialize-patch.mjs`仅在锁定版本和三个上游源码hash后修正SGR22清除Bold/Dim的联动，并生成CJS/ESM及匹配map；`common/serializedTerminalState.ts`验证补丁标记并将其纳入producer profile。旧已损失样式不宣称可逆恢复，fingerprint与journal profile精确匹配不放宽。正式验收由§53固定新包的受影响矩阵与未改路径的具名旧证据共同组成，不以旧全矩阵重跑、任意ANSI完备证明或旧OS作为前置。
+
+### 历史阶段入口
+
+以下带日期的阶段摘要、失败和“下一步”保留当时含义，不覆盖当前正式方案与§53最终证据。
 
 当前 §52 增量（2026-10-02）：`1d784d8b` / Linux `36935000098` 原八场真实 Agent 验收通过，包含 Codex 空快照与 Claude 1262-byte 非空快照的首页面独立重排和 schema2 新 Host 重开；四 natural 响应/EOF、八场零 cleanup 通过。旧两次首场超时根因未知，不为复现而重跑；固定 Linux 结果不代证其他平台新判据、慢写/最终 fit、F-04 或默认生产准入。
 
@@ -2452,3 +2464,25 @@ Windows同包run36969509496 installed已独立核对：四phase实际安装路�
 有限修正已实施，本地tracker先红明确B的Bold预期true但恢复false；修后dim→bold、bold+dim→dim/保持bold及仅cursor属性变化通过，原checkpoint完整fingerprint也通过。原stock源码编译为独立失败对照，仍由同一helper拒绝原损失；新CJS/ESM、source map、未知源拒绝及缺补丁标记拒绝有定向回归。首次Chromium仅在模块加载发现新CJS缺Node ESM命名导出，没有执行用例；改CJS构建为node保留公开导入合同后，正常platform build再次成功，三条实际页面用例通过（固定四cell、错误样式和stock损失拒绝、原Agent/Terminal restore）。原CLI/protocol/applied-wait/reader-isolation、tracker/snapshot/report、journal、完成快照resize16及typecheck通过，不称完整npm test绿色。
 
 实际installed变体只在原expectation存在时启用：最后一行仍`DSC_CANDIDATE_ANSI`，四字母依次dim、bold、bold+dim、dim；全正文90002行及最终光标(6,2)不变。原默认/reader输入5580102B和旧hash保持；新输入独立为5580126B、SHA256 `0daf5de959d4b886dee2104b10c924013166bc7021bbe6b859defb23fa88f8ad`。snapshot-only新Host再次核对四cell，Runtime重开不恢复它们。修后最终范围为同一新VSIX三平台installed原两模式及Codex/Claude各snapshot-only-stop，共六Agent格；不重跑未变的natural退出、容量/重连/compact或六native供应。当前尚未执行新包原生验收，原包证据保持其原输入。
+
+### 53.1 最终生产版本与有限验收结账
+
+2026-10-02，最终产品代码 `6384796922dfe6d36b4b26c7eeb3974845bf616c` 的唯一受影响run `36979378644` 已成功完成。普通build/package生成VSIX `5861603` bytes、SHA256 `53874020710281f611d2ace9d266692e92bf866f0ff0e5871a355530237d176d`，receipt明确native来自 `36966903790/92b3aa4a`，不是把旧包重新命名。独立ZIP审计核对140个成员及权限，六个schema2的binary/helper hash全部一致，两macOS helper仍为100755；selection为platform及production `{executions:null,starting:1,pending:2}`。相对71b41035旧包仅Host、Supervisor、Webview三个bundle及VSCE README链接变化，provider和native逐字节相同。Host/Supervisor含补丁标记与新producer profile；审计存于 `.debug/ci-36966903790-final/package-36979378644-audit/independent-audit.json`。
+
+三平台安装均从该实体VSIX进入真实Host，原两模式complete/reopen/cleanup通过。每平台writer凭证核对包含UTF-8/ANSI/OSC的完整成功写入字节5580126B及前述0daf5de9…hash；冻结harness在真实Webview严格核对90002行、四个字符Bold/Dim与最终CSI光标(6,2)，不宣称该installed动作另做了OSC标题断言。独立审计另从保存的非空snapshot hydrate核对全文90002行与四cell，不把JSON记录误称为原页面逐cell归档。Linux/macOS/Windows各8/9/11项installed payload、9/9/14项input source及每平台6项validator hash与实际VSIX和63847969对应。具体有限结果：
+
+| 平台 | Runtime final/applied | snapshot final/applied | 实际页面几何与重开 |
+| --- | --- | --- | --- |
+| Ubuntu 22.04 x64 | 1429/1429 | 1403/1403 | 两模式112×28，viewport89975；Runtime555B轻量节点重开无正文，snapshot5580090B保存状态与新Host匹配 |
+| macOS 15 arm64 | 7618/7618 | 7940/7940 | Runtime112×28/viewport89975，snapshot112×29/89974；Runtime556B轻量节点重开无正文，snapshot5580090B与新Host匹配 |
+| Windows Server 2025 x64 | 1380/1380 | 1381/1381 | 两模式122×30/viewport89973；snapshot最后data序列1380与final1381分别核对，不能将控制事件当丢正文 |
+
+原reader应用、保存语义、实际新Host、零binding/pending/registry与cleanup全部成立。Windows四Host依次Runtime8704→8504、snapshot5664→3668，snapshot节点5766995B、状态5580090 UTF-8 bytes/5580085 JS chars；原进程身份/句柄hasExited及exit0通过，不要求对象在外部句柄尚存时消失，也不声称ConPTY原始源字节恒等。Linux/macOS已知not-live内部栈toast保留为具名非阻塞项，完整尾部与状态通过不将toast抹去。安装原件与input/environment/subject凭证存于 `.debug/ci-36966903790-final/installed-36979378644-independent/{linux,macos,windows}/`，每平台包含两个mode的complete/reopen/cleanup。
+
+同包六个真实Agent snapshot-only-stop独立通过：固定Codex0.157.1、Claude2.1.280，DeepSeek配置不变。Linux/macOS/Windows Codex最终分别0B/seq13、0B/seq13、0B/seq63；Claude均1947B，序列6/10/21。原保存、reader/final、独立回放首次字节与完整语义、原页面及schema2新Host保存/无新执行/cleanup保持严格通过。Windows Codex完整连续回放中检查了24个实际非空output/resize前缀，mismatch=false、unknown=false；它覆盖实际观察到的状态，不是所有可能中间状态的完备证明。六场均为主动stop，source=eof不改写为自然结束；plannedModelTurns=0，实际模型响应/自然EOF沿用未改natural路径的具名既有证据。各安全报告 `selectedPass=true`、整八场 `pass=false`、其余六场not-run，不能写成本run重跑全部Agent矩阵。
+
+三个Agent报告分别15/16/18项source/product hash对固定63847969与实体VSIX独立复算一致；安全summary SHA256依次为Linux `f99f6a123d08481472c5941c0424186b9c09e86503f1f0a96dbde7b5813b0bb5`、macOS `0c6b36954acf757f54eaeb42af5533e4b88a95eb26cbcf6e268d4fbb9d38303e`、Windows `e1c78874a00493db9c8f697628e48da66d51b7fa794a2ce380b5b941d380c503`。只有脱敏摘要回收，raw日志和凭据未上传/下载；本地归档在 `.debug/ci-36966903790-final/agent-{linux,macos,windows}-36979378644-audit/summary.json`。
+
+据此关闭已确认SGR22缺陷及A2/A4当前状态验收缺口。原stock受控失败、新生产修复、实际非空四cell恢复与真实CLI前缀各自提供证据，不以最终0B绿色代替非空保真。旧 `36972376905` 的756B精确控制序列未捕获，不能宣称已证明完全同因或追认旧失败；作为非阻塞残余保留，只有当前版本再次非空不保真、发现当前确定性路径或实际用户报告才重开，不追加捕获循环。
+
+63847969未改变owner/source/reader结算、准入、信用、分页/索引、journal保留和provider/native，故十会话/重连/compact、十二Runtime Agent、natural和Remote证据按原范围复用。最终独立代码复审覆盖上述生产责任与正常默认构建，未发现新的确定性产品blocker；没有逐行重审全部历史原生C++，也未重跑未受影响矩阵。既有完整npm test基线失败未改，不声明全套绿色。工程与必要验收至此满足有限完成定义；最后文档/最新head审查及PR之后仍需用户授权才合并，不发布Marketplace或创建release tag。

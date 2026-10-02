@@ -52,7 +52,7 @@
 - Runtime 进程已结束时只持久化轻量节点；当前页面可读完最后输出，新页面不重放已结束历史
 - 用户可辨认“当前附着的是 live 进程”还是“恢复的是历史状态”
 
-默认执行实现与用户开关是两条独立选择：正常构建默认采用当前平台的 owned 原生 provider；`devSessionCanvas.runtimePersistence.enabled` 仍只决定由 Host 管理 `snapshot-only`，还是由 Supervisor 管理 `live-runtime`。关闭开关不回退 stock，也不会因为 provider 是独立进程就获得跨 Host 存活保证。原生资产缺失必须明确失败，不能静默换用旧执行实现；已有 live 绑定沿用原 backend / storage / session，不自动迁移。本项描述当前生产接线，不代表最终真实 Agent、Webview、跨平台和安装包验收已经完成，状态见 `docs/design-docs/runtime-exit-integrity-production-integration.md` §53。
+默认执行实现与用户开关是两条独立选择：正常构建默认采用当前平台的 owned 原生 provider；`devSessionCanvas.runtimePersistence.enabled` 仍只决定由 Host 管理 `snapshot-only`，还是由 Supervisor 管理 `live-runtime`。关闭开关不回退 stock，也不会因为 provider 是独立进程就获得跨 Host 存活保证。原生资产缺失必须明确失败，不能静默换用旧执行实现；已有 live 绑定沿用原 backend / storage / session，不自动迁移。正常构建、打包及默认启用已实现；F-04 的有限资源模型和受影响 Runtime 验收已结账，最终序列化修正的真实 Agent、Webview、跨平台和安装包验收与整体审查单独结账，状态见第 10 节及 `docs/design-docs/runtime-exit-integrity-production-integration.md` §53。
 
 ## 5. 不在范围内
 
@@ -132,9 +132,11 @@
 
 Supervisor 中执行与 reader 已退休，不等于存储责任已完成：仍保留在 `sessions`、等待 Host 保存轻量终态、等待 journal 删除或删除失败的会话也计入同一 `pending: 2`。新建必须在 journal / provider 获取前合并这些责任，与 owner 仍持有的同一对象去重；不以尚未设置 `retiring` 漏计待保存会话，只有成功删除存储并移除 session 后才释放额度。失败保留原来源，不能为恢复准入提前 dispose 终端状态、丢尾或伪报保存成功；unknown 保持拒绝新准入，旧显式 finite / legacy 策略不变。
 
-已存在会话同时结束时仍全部保留真实责任和尾部，因此未结算责任可以超过 2；此数值是新资源准入背压，不是所有时刻责任数量的绝对上限。正文 / reader 在途有界、磁盘失败明确报告，不能通过丢弃未消费尾部或伪报完成换取容量；旧合并测试进程 Heap 64 MiB / RSS 128 MiB 只保留观察和原失败记录，不作产品硬预算。已有多会话、重连与 compact 证据复用，最终版本受影响验收未收口前不宣布 F-04 完成。
+已存在会话同时结束时仍全部保留真实责任和尾部，因此未结算责任可以超过 2；此数值是新资源准入背压，不是所有时刻责任数量的绝对上限。正文 / reader 在途有界、磁盘失败明确报告，不能通过丢弃未消费尾部或伪报完成换取容量；旧合并测试进程 Heap 64 MiB / RSS 128 MiB 只保留观察和原失败记录，不作产品硬预算。已有多会话、重连与 compact 证据复用，有限资源模型、生产准入和三平台受影响 Runtime 安装及真实 Agent 证据已完成 F-04 当前支持路径的验收。该结论不承诺任意会话数下固定 RSS，不回填旧协议保证，也不代替第 10 节退出完整性与整体审查。
 
 2026-09-17 新确认：正常结束的 Runtime 节点重新打开时不恢复进程、不保留终端历史。保留节点、布局、启动配置与退出状态；不自动 start/resume。当前已打开页面仍收齐最后输出，重开、Host/Webview 重建后不提供已结束内容。Provider 自己的会话存储和直接 `snapshot-only` 模式不在本次改变。正式方案见 `docs/design-docs/runtime-completed-no-history.md`；此决定取代下文阶段记录中的“正常 completed 保留待确认”和“必须持久化完整 handoff”，独立归档不再是默认下一步。仍活着的 Agent 等待输入不属于结束。
+
+以下决策与增量段落保留 2026-09-16 起的历史状态，其中“待确认”“未选定”和“未完成验收”不构成当前待办。当前正式资源模型、缓存/在途约束、磁盘失败处理及验收依据已收口于 `docs/design-docs/runtime-persistence-storage-reevaluation.md` §10.17；总磁盘硬配额和任意规模固定资源承诺不在该有限模型内。下列完整性要求继续有效，逐项证据与剩余边界统一见 `docs/design-docs/runtime-persistence-closeout.md` §8，不改写旧阈值或失败。
 
 2026-09-16，用户确认当前完整 journal 后缀的内存/恢复传输成本，以及 completed 恢复数据进入画板 JSON 后的反复重写，是需要优先重新评估的架构问题，分别对应 `docs/design-docs/webview-host-supervisor-architecture-review.md` 的 F-04/F-05。这不等于现有实现已被证明违反本文的完整性语义，也不表示本轮接受截断历史或新存储格式；实现仍遵循现行 lossless 设计。
 
@@ -164,17 +166,19 @@ Supervisor 中执行与 reader 已退休，不等于存储责任已完成：仍�
 
 ## 10. 退出完整性独立交付
 
-2026-09-20，用户确认将退出完整性纳入本次 Runtime Persistence 重构，作为独立正确性交付项，与容量优化、取消 completed 历史分别验收。完成其他重构不会自动关闭这一问题。已确认的是范围和验收目标；reader、依赖版本、结束原因的接口及用户呈现仍待方案验证，本次仅登记文档，不直接修改业务代码。
+当前实施与验收入口（2026-10-02）：两模式已接入 owned provider、逐 reader 结算、最终页面应用及保存/资源释放责任；正常构建、六目标资产分发与默认启用已实现。正式机制、有限预算与已知边界见 `docs/design-docs/runtime-exit-integrity-production-integration.md` §53，A1 至 A6 的有效证据与有限剩余见 `docs/design-docs/runtime-persistence-closeout.md` §8。最终序列化修正 `63847969` 的 run `36979378644` 已独立核对三平台两模式安装及六个真实 Agent snapshot-only stop，包含非空终态语义、原页面与新 Host 重开及资源清理要求，最终受影响验收已收口。未受改动影响的 natural/Runtime 等既有证据复用，本轮 stop 不扩写为模型请求验收；整体审查与 PR 尚待完成。历史失败保留，旧 756-byte 差异的精确控制序列未还原，不将旧失败追认通过，也不宣称已证明其完全同因。
+
+立项记录（2026-09-20，以下方案状态仅指当时）：用户确认将退出完整性纳入本次 Runtime Persistence 重构，作为独立正确性交付项，与容量优化、取消 completed 历史分别验收。完成其他重构不会自动关闭这一问题。已确认的是范围和验收目标；reader、依赖版本、结束原因的接口及用户呈现仍待方案验证，本次仅登记文档，不直接修改业务代码。
 
 自然终止指非显式取消、非强制截断的会话结束，包含零和非零退出码。对当前仍有效的消费者，会话主进程已成功写入终端的尾部必须完整、按序交付和应用，不能缺尾、重复或破坏字符及终端控制序列；自身已接收、排队或消费中的内容也不能因提前清理而丢弃。不承诺恢复程序自身尚未 flush、未写入终端的应用缓冲。退出码反映执行结果，不证明输出完整；主进程退出、真实输出结束、消费者完成应用和主动取消必须区分，不能用 EOF、socket close、静默计时或 final revision 单独替代，也不能把超时或主动截断标记为完整 EOF。
 
 同日补充职责边界：画板管理 Terminal / Agent 执行会话及其终端资源，不把每个后代作为独立托管对象。Terminal 内的命令、子进程和后台任务由 shell、应用及操作系统管理，Agent 工具命令及其后代由 Agent 管理。实际会话主进程退出后，不默认承诺维持节点或终端以等待这些后代结束或接收未来输出；主进程仍运行时，同一终端收到的输出仍正常处理，不能按后代来源忽略。父子关系与前后台关系是不同维度，不能仅凭父进程先退出就称其后代为交互式 shell 后台作业。这项边界同样适用于两类节点，不改变轻量节点的保存规则。
 
-启动链是独立例外：`Supervisor → cmd.exe / CLI 启动器 → 实际 Agent CLI` 中，实际 CLI 是执行主体，不是可排除的工具后代。必须验证启动链能正确代表实际执行主体的生命周期，不能未经证明就把包装程序退出当作 Agent 结束。具体收尾边界、取消条件和时间预算仍待设计确认，本次不选定实现。
+启动链是独立例外：`Supervisor → cmd.exe / CLI 启动器 → 实际 Agent CLI` 中，实际 CLI 是执行主体，不是可排除的工具后代。必须验证启动链能正确代表实际执行主体的生命周期，不能未经证明就把包装程序退出当作 Agent 结束。立项时尚未选定具体收尾边界、取消条件和时间预算；当前方案与逐项验证状态以本节开头的正式入口为准，不用普通后代诊断代替真实启动链验收。
 
 范围覆盖 Agent/Terminal、live-runtime Supervisor 与 snapshot-only 直接 Host 路径，以及 Linux/macOS/Windows 的实际受支持执行环境。Remote SSH 按执行端平台验收。这里纳入 snapshot-only 的共同退出正确性，不改变它的快照保留或关闭语义；第 9 节 Runtime 结束后不恢复进程和正文、Supervisor/机器故障后无需恢复的边界也不变。
 
-验收必须满足以下结果，具体机制与数值预算在方案阶段明确，当前均不标为已通过：
+验收必须继续满足以下结果，具体机制与数值预算已在生产接入方案中登记，是否通过按有限证据表逐项判断；既不把历史“未验”重排为新阶段，也不把局部或旧版本通过外推为所有组合通过：
 
 - 严格大输出、非零退出、UTF-8 与 ANSI/OSC 尾片、慢消费和多读者均完整交付；以独立写入完成凭证和逐层内容对账验证，不仅观察退出事件或末尾 marker。原生 Windows ConPTY 的合法转换按终端语义校验。
 - stop 请求不立即切断输出；正常排空、强制停止、显式 delete 取消和读取错误可辨认，不能把中断写成完整交付。一个读者取消不截断其他有效读者，也不要求重新创建已删除页面来展示尾部。
@@ -187,6 +191,6 @@ Supervisor 中执行与 reader 已退休，不等于存储责任已完成：仍�
 
 冻结的后代实验、原始断言和失败结果继续保留，不修改旧测试求绿，也不追认历史失败为通过。macOS 后代场景失败不能单独证明 Agent / Terminal 产品退出缺陷，亦不能据此宣布 macOS 全部验收通过；产品阻塞与底层诊断的重新分类及理由见退出完整性设计第 18 节。
 
-设计和完整矩阵见 `docs/design-docs/runtime-exit-integrity.md`，推进计划见 `docs/exec-plans/active/runtime-exit-integrity.md`。候选实验前固定版本、重复轮次、资源和等待预算，保留首次失败，不靠延长等待、放宽内容断言或重跑到成功收口。该项未通过前不能宣布本次重构的退出完整性已完成。
+历史契约与诊断矩阵见 `docs/design-docs/runtime-exit-integrity.md`，当前正式方案及有效验收入口见本节开头，推进计划见 `docs/exec-plans/completed/runtime-exit-integrity.md`。候选实验前固定版本、重复轮次、资源和等待预算，保留首次失败，不靠延长等待、放宽内容断言或重跑到成功收口。退出完整性的既定受影响验收未结账前不能宣布该项完成；全部 A1 至 A6 与整体审查另按有限收尾定义判断。
 
 旧系统兼容边界（2026-10-02）：macOS 10.13/10.14、Windows 10 1809 及其他低版本不属于本次重构的验收前置，也不因现代 runner 通过而被视为已验证。后续若收到低版本的实际兼容报告，再按独立问题修复和验收；在此之前不修改 `engines` 或平台守卫来伪造最低版本提升。

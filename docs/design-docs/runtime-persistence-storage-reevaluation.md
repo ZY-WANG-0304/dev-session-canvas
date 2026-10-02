@@ -1,7 +1,7 @@
 ---
 title: Runtime Persistence 容量与会话归档架构重评
-decision_status: 比较中
-validation_status: 验证中
+decision_status: 已选定
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 执行编排域
@@ -14,19 +14,27 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/runtime-persistence-capacity-closeout.md
+  - docs/exec-plans/completed/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-checkpoint-only-refresh.md
   - docs/exec-plans/completed/runtime-journal-bounded-cache.md
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
-  - docs/exec-plans/active/runtime-exit-integrity.md
+  - docs/exec-plans/completed/runtime-exit-integrity.md
 updated_at: 2026-10-02
 ---
 
 # Runtime Persistence 容量与会话归档架构重评
 
-当前结账入口（2026-10-02，§10.17）：F-04 当前支持路径已完成资源模型、生产准入、本地消费信用、冷启动及退休存储责任修正；正常默认构建的固定生产包已补齐受影响的三平台 Runtime installed 与十二个真实 Agent Runtime 场景。十会话、重连与 r23/r24 证据复用，原64/128观察阈值及失败保持，不承诺任意会话数或历史长度下固定RSS。Windows 非空 Codex snapshot-only 状态差异仍由 A2/A4 和退出计划独立收尾，不因容量完成而弱化；整体审查与合并尚未完成，不追加容量或通用工具阶段。
+当前结账入口（2026-10-02，§10.17）：F-04 当前支持路径已完成资源模型、生产准入、本地消费信用、冷启动及退休存储责任修正；正常默认构建的固定生产包已补齐受影响的三平台 Runtime installed 与十二个真实 Agent Runtime 场景。十会话、重连与 r23/r24 证据复用，原64/128观察阈值及失败保持，不承诺任意会话数或历史长度下固定RSS。随后63847969仅修正已确认的SGR22序列化损失及定向页面验收，不改变准入、信用、索引和journal保留策略；最终包与状态保真结账见生产接入§53。本文“已验证”只指下述正式方案及声明负载，不包含历史未采用候选或任意规模保证。
+
+## 正式方案
+
+沿用现有 Supervisor，不另建历史 server 或数据库。`supervisor/terminalSessionJournal.ts` 保留仍需的完整来源，以有限正文缓存、消费驱动分页和 reader-local 单段索引供恢复使用；`supervisor/runtimeSupervisorMain.ts`、`panel/CanvasPanelManager.ts` 与 Webview 在真实消费后返还信用，不将所有历史复制到各层或排进无界队列。正常结束的 Runtime 节点由 Host 保存轻量终态，当前 reader 收齐尾部后释放来源，新页面不重放历史；F-05具体规则见 `runtime-completed-no-history.md`。
+
+生产准入由 `common/executionLifecycle.ts`、`ExecutionOwnerLifecycle` 与 Host/Supervisor 共同执行 `{ executions: null, starting: 1, pending: 2 }`：活动会话不设隐藏总数上限，已有未结算责任达到2时拒绝新的资源获取；同时结束的既有会话仍完整保留责任。Host最终保存和owner退休后仍保留的Supervisor存储都必须计入，unknown阻止新准入。新generation冷启动只在取得namespace排他权后清理自身陈旧运行账，不改变健康重连和旧live绑定。
+
+终端模型随用户scrollback/geometry与会话数增长，provider成本为O(N)，journal元数据为O(segment数)。checkpoint拒绝或慢reader可以使磁盘增长，存储失败明确失败且保留来源，不能丢尾或无界转存内存。§10.12十会话、§10.15实际Host重连交互、§10.16 attach/compact及§10.17直接边界回归共同承担验收；旧64/128观察失败保留，不转成正式固定RSS承诺。旧协议的全量兼容成本和root稳定归属独立登记，不回填新保证。
 
 ## 1. 范围与决策状态
 
@@ -222,7 +230,7 @@ Supervisor、Host、Webview 各自需要每会话及全局缓存/在途预算；
 
 ## 9. 当前结论与下一阶段
 
-退出完整性按 `docs/exec-plans/active/runtime-exit-integrity.md` 独立推进：先选定可验证的读取/生命周期契约并补齐原生候选对照，再实施和验收。自然非零退出同样需要完整尾部，stop/delete/强制中断与正常排空分别表达，旧 live 继续原绑定且不追授新完整性保证。该项未完成不能宣布本次重构的退出完整性收口；F-04 的容量比较可独立推进，F-05 的无历史决定也不因此撤销。
+退出完整性按 `docs/exec-plans/completed/runtime-exit-integrity.md` 独立推进：先选定可验证的读取/生命周期契约并补齐原生候选对照，再实施和验收。自然非零退出同样需要完整尾部，stop/delete/强制中断与正常排空分别表达，旧 live 继续原绑定且不追授新完整性保证。该项未完成不能宣布本次重构的退出完整性收口；F-04 的容量比较可独立推进，F-05 的无历史决定也不因此撤销。
 
 2026-09-20 补充职责边界：Terminal/Agent 不默认在实际主进程退出后继续等待普通后代或接收未来输出；这不豁免主进程尾部、已有内容、最终状态和 reader 资源释放，也不排除启动器下实际 Agent CLI 的生命周期。普通后代实验和失败保留为诊断，不单独阻塞产品选型；具体收尾/取消/预算仍待确认，重评理由见 `docs/design-docs/runtime-exit-integrity.md` 第 18 节。
 
@@ -244,7 +252,7 @@ F-04 继续重评。首选验证方向为第 6.3 节的 server 生命周期模�
 
 ## 10. B1 容量收尾：当前实施范围与工程预算
 
-2026-09-28，从 `8dd82629` 开始执行有限收尾 B1，过程见 `docs/exec-plans/active/runtime-persistence-capacity-closeout.md`。本节取代前文历史“下一阶段”的执行顺序，仍沿当前 Supervisor/缓存/分页方向。F-04 未整体通过；不重开 F-05 归档、不改变退出完整性或 F-03 边界。
+2026-09-28，从 `8dd82629` 开始执行有限收尾 B1，过程见 `docs/exec-plans/completed/runtime-persistence-capacity-closeout.md`。本节取代前文历史“下一阶段”的执行顺序，仍沿当前 Supervisor/缓存/分页方向。F-04 未整体通过；不重开 F-05 归档、不改变退出完整性或 F-03 边界。
 
 源码已确认正常 live checkpoint 的 `commitCheckpointOnWriteChain()` 经完整 verifier 保留全历史 events/checksums/recordByteEnds，独立于有界事件缓存。选定最小修正为提交专用摘要校验：逐段验证所有记录与 manifest，只保留本次 current/previous checkpoint 和分段边界需要的 checksum，不保留完整 payload 或每条记录的校验数组；必须保持损坏拒绝、连续性、双代 fallback、原子 manifest 提交。公开完整读取与旧恢复接口暂不变，不把它们冒称新路径容量已通过。
 
@@ -574,7 +582,7 @@ B交互完成后继续原完整保留后缀poll，沿原恢复轮计时基点使
 
 本节选定的资源边界与生产准入已实施，模块回归、正常默认构建及受影响 Runtime 最终验收已完成，F-04 当前支持路径据此结账。正常新路径的资源模型为：各会话用户指定 scrollback/geometry 的有限终端模型之和，活动执行/provider 的 O(N) 成本，逐 reader 的单页与单段索引成本，以及 O(保留 journal segment 数) 的元数据。正文缓存和在途窗口不随累计历史增长，但不能声称整个 RSS 与任意历史或会话数无关。磁盘为完整尚需来源，checkpoint 拒绝或慢 reader 保护时可继续增长；ENOSPC 必须明确失败，不能裁掉未消费尾部或无限转入内存。沿用§10.10/10.12运行前预算及实际十会话 color/size、§10.15重连、§10.16 compact证据；64/128只保留旧观察，不新设同类全局内存硬阈值。
 
-生产准入在 `executionLifecycle.ts` 显式选 `{executions:null, starting:1, pending:2}`：不把试验N=2或10变成活动会话上限。稳定running主体按用户请求承担资源；准备/启动、停止/收尾、未结算reader、snapshot-only最终保存是未完成责任，创建前已有两项此类责任时拒绝获取新资源，无隐藏队列。已准入的N个活动会话可同时结束，责任数会超过2，必须保留而不是截断；此时禁止新建，直至真实结算低于阈值。此策略限制的是以新建不断累积未结算责任的能力，不宣称责任数永远不超过2。unknown继续sticky停新准入，输入/尾部/逐资源与结束预算不变；原显式有限 `{executions:N,starting:Q}` 保持旧候选与具名回归兼容。`ExecutionAuthority`、`ExecutionOwnerLifecycle` 和Host保存保护使用同一不可变策略，必须在provider/journal副作用前拒绝，旧live不迁移或重启。
+生产准入在 `executionLifecycle.ts` 显式选 `{executions:null, starting:1, pending:2}`：不把试验N=2或10变成活动会话上限。稳定running主体按用户请求承担资源；准备/启动、停止/收尾、未结算reader、snapshot-only最终保存是未完成责任，创建前已有两项此类责任时拒绝获取新资源，无隐藏队列。已准入的N个活动会话可同时结束，责任数会超过2，必须保留而不是截断；此时禁止新建，直至真实结算低于阈值。此策略限制的是以新建不断累积未结算责任的能力，不宣称责任数永远不超过2。unknown继续sticky停新准入，输入/尾部/逐资源与结束预算不变；原显式有限 `{executions:N,starting:Q}` 保持旧候选与具名回归兼容。`ExecutionAuthority`、`ExecutionOwnerLifecycle` 和Host保存保护使用同一不可变策略。Supervisor的pending门禁在journal/provider副作用前；另一个starting=1门禁在provider获取前判定，其已经准备的journal/session在明确拒绝路径清理，不能混称两者均先于journal。旧live不迁移或重启。
 
 最终review补齐同一责任账的遗漏：owner在执行/终端/reader退休后删除record，但Supervisor仍可能保留等待Host completed保存、慢journal删除或删除失败的session/tracker。这些也计入生产pending，不以owner退休当作存储责任已完成。`createSession()` 在reserve及journal/provider副作用前，将owner的admissionPending与仍在sessions但已脱离owner的retired会话数相加，达到原pending阈值即返回既有rejected-before-acquire；没有独立排队或新限额。owner仍持有的对象不重复计数，只有成功remove session才释放残余计数；不只检查retiring标志，不提早dispose tracker，不强迫活跃会话停止。finite/legacy兼容保持，失败保留与真实尾部/reader结算不变。用现有Supervisor wiring验证慢保存前置、慢删除/失败保留、混合owner pending及真正移除后恢复，不另开容量矩阵。
 

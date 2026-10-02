@@ -1,8 +1,14 @@
 # 收口 Runtime Persistence 的容量与交互成本
 
-当前唯一执行入口（2026-10-02，用户收尾顺序）：按容量设计§10.17先完成资源模型、生产准入、snapshot-only实际消费信用与candidate冷启动边界；复用既有十会话/重连/compact。随后按生产接入§53修复已先红viewport和慢write/fit，完成正常build/package/default并只复验受影响最终矩阵，进入整体review。普通工程决定自主完成，不重跑无关矩阵、不优化旧64/128或追加工具阶段。
+归档状态（2026-10-02）：F-04当前支持路径、有限资源模型及生产准入完成，整体代码/文档复审未发现新的确定性产品blocker。既有十会话/重连/compact与最终受影响包证据已结账，残余O(N)/segment/磁盘、legacy和旧观察失败保留。移至completed不表示已合并；后续提交/latest-head/PR流程独立处理，不再追加容量阶段。
 
-当前结账（2026-10-02，覆盖后续历史状态）：F-04工程与受影响Runtime验收完成。71b41035固定新包三平台Runtime installed及十二真实Runtime Agent场景已独立核验（Windows Claude由36973985435补齐），retired存储准入99项回归和旧十会话/重连/compact证据共同承担资源边界。仍保留O(N)/O(segment)、旧协议和磁盘增长边界，不承诺固定RSS。退出计划中的Windows Codex非空snapshot语义差异独立未决，容量不因该问题重开研究；本计划仅待随整体review/PR完成文档归档，不表示整个重构可合并。
+当前结账（2026-10-02，覆盖历史执行顺序）：F-04资源模型、生产准入、消费信用、冷启动及退休存储责任已完成，旧十会话/重连/compact与受影响Runtime最终证据共同结账。后续63847969的SGR22修复未改这些核心，run36979378644补齐新包三平台两模式installed及六真实Agent snapshot-stop；无需重开容量研究或压旧64/128。现在仅随整体最新文档复审/PR归档，不新增工程阶段。
+
+保留边界：活动会话O(N)、journal segment元数据O(segment)、旧协议成本、慢reader/checkpoint拒绝时磁盘增长及原64/128失败均不改变。最终包仅改变Host/Supervisor serializer和Webview定向断言，不再声称Host/Webview未变；新状态保存验收不由旧包代证。Windows原756B精确因果未知单列非阻塞风险，root归属仍独立，旧OS和通用工具增强不作本计划前置。
+
+### 历史实施记录
+
+以下入口及当时未勾项保留原时点，不是当前待办；正式资源模型见容量设计§10.17，最终证据表见有限收尾§8和生产接入§53.1。
 
 当前收口（2026-10-02，覆盖后续历史“下一步”）：r23 固定现代 Linux Electron `--capacity-attach-compact` 两 Terminal 实际 attach/compact 通过；动态 scrollback、两次 resize、首个 checkpoint、同一分页 reader、约 18 MiB 后置输出跨过实际 16 MiB journal compaction 阈值、current/previous candidate、retained prefix、页面输出/尺寸/scrollback、reader identity、自然 no-history 与 cleanup 均成立，未出现 `runtime/terminalPagedReadFailed` 或 Host page error。durable manifest 的 current/previous 为 revision 6579/6502，retained start 6503，journal head 11185；previous candidate 事件连续可读。该结果只关闭现代 Linux Electron 固定组合，不形成产品并发上限或整体 F-04/A1 通过。随后既有 `10/1` schema2 color/size 与 `2/1` detach/reconnect 结果继续有效；现代 GitHub runner 版本是本次跨平台验收基线，旧 macOS/Windows 系统不再阻塞本计划。以上不改变真实 Agent/Webview、packaged、尾部完整性、跨平台产品准入或 64/128 MiB 历史阈值；不重复已通过组合，不追加通用工具验证，下一只处理既定剩余格。
 
@@ -29,6 +35,13 @@
 已完成的结构修复不重开；当前生产源有界化依赖 B2 的 owned 接入，因此不能以合并进程样本先变绿为前提阻止真实链形成。最终 A1 要给出实际各进程与多会话总量的资源/交互结果，不能拿旧合并阈值代替，也不能在转向 B2 时关闭本计划。
 
 ## 进度
+
+- [x] (2026-10-02，最终影响确认) 63847969不改变准入/信用/分页/索引/保留，既有多会话、重连和compact证据继续有效；新VSIX36979378644受影响两模式三平台installed及六snapshot-stop独立通过，无新增A1矩阵。
+- [x] (2026-10-02，归档) 完成整体代码/文档复审、准入口径修正和技术债登记，归档并更新引用；latest-head/PR及用户合并许可不作为新容量问题。
+
+### 历史进度账
+
+下列未勾条目仅表示当时未完，不追认旧失败通过或重新排队已被当前结账替代的安排。
 
 - [x] (2026-10-02，新包) 71b41035/run36971460243复用未改六native完成普通默认build/package；唯一VSIX/source/hash/六目标及mac helper权限独立核对。新包三平台Runtime installed step全部成功，Linux/macOS各四Runtime Agent及Windows两Codex Runtime通过；Windows非空snapshot语义差异仍在A2/A4，不用它推断新容量缺陷，最终证据账仍需收齐。
 - [x] (2026-10-02，最终review) Supervisor退休存储责任已按§10.17补生产pending去重计数，原wiring先红/修后99/99、typecheck/protocol通过；新包三平台Runtime安装及十二真实Agent Runtime场景已独立通过，复用未改native及既有多会话证据，不新增容量矩阵。
@@ -130,6 +143,10 @@
 
 ## 决策记录
 
+- 决策：F-04按§10.17及有效多会话证据完成，最终serializer窄修只补受影响安装/保存验收，不重跑容量矩阵；工程完成后归档，旧观察预算和失败保留。
+  理由：本轮确认无界结构问题已修，剩余O(N)/元数据/磁盘增长属于显式资源模型，不能仅为旧合并进程阈值继续优化。最终包hash与实际改动范围已独立核对。
+  日期/作者：2026-10-02 / Codex，独立复审复核。
+
 2026-10-02 / Codex：最终review发现的Supervisor退休后存储责任仍属原F-04，必须修而非降低冻结包门槛。计入原pending阈值、与owner去重并在真实remove后释放，不提前销毁或丢尾。产品变更使旧包不能作为修后准入证明；未改原生源的六资产和未受影响矩阵继续复用。
 2026-10-02 / Codex：最终验收由同一冻结提交生产六资产、普通build/package一次，三现代平台使用唯一VSIX/hash并仅运行受影响Terminal/Webview与原Agent八场。复用旧多会话/重连/compact，旧64/128观察、旧OS和通用工具不前置；凭据仅最后Agent step可见。
 
@@ -187,7 +204,7 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 
 ## 结果与复盘
 
-2026-10-02最终容量结账：§10.17选定资源模型、生产准入、本地消费信用、冷启动和退休存储责任全部实施并有先红/修后护栏。旧多会话/重连/compact与新包三平台安装、十二Runtime Agent结果共同关闭F-04当前支持路径，无新容量矩阵或旧64/128压线优化。Windows Codex非空snapshot差异是另一个明确保留的状态验收责任，不作为容量失败，也不因F-04完成被弱化；整体review/PR与归档待退出计划结账。下面保留各增量当时结果。
+2026-10-02最终容量结账：§10.17资源模型、生产准入、本地消费信用、冷启动和退休存储责任已实施并有先红/修后护栏。旧多会话/重连/compact与新包三平台安装、十二Runtime Agent共同关闭F-04当前支持路径，无旧64/128压线优化。最终63847969 serializer修复的受影响安装/页面/六Agent验收另已通过，不回填旧未变bundle理由，也不重开容量研究。当前只剩文档/最新head整体复审、PR和归档；旧756B精确因果、legacy及not-live toast分别入技术债。下面保留各增量当时结果。
 
 2026-10-02：资源/准入/冷启动与实际消费信用已入库7f1e1887，Host154、controller46/Host batch10及直接页面回归已通过；普通build/package本地通过。最终同提交包和现代原生受影响验收尚待执行，不以本地包或历史矩阵代证F-04完成。
 
@@ -349,3 +366,5 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 修订记录（2026-10-02，有限复验进展）：Linux36969390582单格空态严格通过，不解释原非空快照差异；Windows36969509496安装step通过待独立核对、Linux四未跑格36969789786已排队。Darwin摘要计数修正与原观察失败分账，产品bytes未变。历史B1/预算未勾项已由§10.17/§53及既有分进程证据承接，标明不生成新容量阶段；F-04最终只待既定同包集成和整体review。
 
 修订记录（2026-10-02，最终review修正）：Supervisor owner退休后存储责任漏计属于直接F-04问题，已先红后绿并保持原清理/尾部；新包只验受影响Runtime链。三平台旧包installed均独立通过，Linux剩余四Claude和macOS两Claude通过；Windows旧非空snapshot-stop差异按§53独立语义判断，不猜成丢尾或无害。原生供应复用原六tar/summary并由当前import验source/hash，新包记当前产品commit，不能将旧包冒充修后准入。
+
+修订记录（2026-10-02，最终归档）：确认63847969只改变serializer及定向断言，新包三平台受影响installed/Agent独立通过，未改资源核心与旧多会话证据复用。最终文档分清pending与Q=1副作用边界、历史状态与当前结论，归档本计划，不压旧64/128、不追认旧失败，不追加容量或诊断阶段。
