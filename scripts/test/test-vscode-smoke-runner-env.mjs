@@ -2,12 +2,17 @@ import assert from 'assert';
 import os from 'os';
 import path from 'path';
 import { promises as fs } from 'fs';
+import childProcess from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { syncBuiltinESMExports } from 'node:module';
+import { PassThrough } from 'node:stream';
 
 import {
   buildVSCodeArgs,
   buildVSCodeChildEnv,
   prepareRuntime,
-  resolveVSCodeSmokeDebugRoot
+  resolveVSCodeSmokeDebugRoot,
+  spawnPreparedVSCodeScenario
 } from '../smoke/vscode-smoke-runner.mjs';
 
 const originalElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
@@ -41,20 +46,73 @@ try {
     path.join(os.tmpdir(), 'dsc-smoke-debug-root')
   );
 
-  const args = buildVSCodeArgs({
+  const argsOptions = {
     workspacePath: '/workspace/project',
     userDataDir: '/tmp/dsc-smoke/trusted/user-data',
     extensionsDir: '/tmp/dsc-smoke/trusted/extensions',
     extensionTestsPath: '/workspace/project/tests/vscode-smoke/extension-tests.cjs',
     extensionDevelopmentPath: '/workspace/project',
     extraLaunchArgs: ['--locale=zh-cn']
-  });
-  assert.ok(args.includes('--password-store=basic'));
-  if (process.platform === 'linux') {
-    assert.ok(args.includes('--disable-gpu'));
-    assert.ok(args.includes('--disable-dev-shm-usage'));
+  };
+  for (const platform of ['linux', 'darwin', 'win32']) {
+    assert.deepStrictEqual(buildVSCodeArgs(argsOptions, platform), [
+      argsOptions.workspacePath,
+      '--disable-extensions',
+      '--log=trace',
+      `--user-data-dir=${argsOptions.userDataDir}`,
+      `--extensions-dir=${argsOptions.extensionsDir}`,
+      '--no-sandbox',
+      '--disable-gpu-sandbox',
+      ...(platform === 'linux' ? ['--disable-gpu', '--disable-dev-shm-usage'] : []),
+      '--password-store=basic',
+      ...(platform === 'darwin' ? ['--use-inmemory-secretstorage'] : []),
+      '--disable-updates',
+      '--skip-welcome',
+      '--skip-release-notes',
+      '--locale=zh-cn',
+      `--extensionTestsPath=${argsOptions.extensionTestsPath}`,
+      `--extensionDevelopmentPath=${argsOptions.extensionDevelopmentPath}`
+    ], `${platform} smoke launch arguments`);
   }
-  assert.ok(args.includes('--locale=zh-cn'));
+  assert.deepStrictEqual(buildVSCodeArgs(argsOptions), buildVSCodeArgs(argsOptions, process.platform));
+
+  const launchRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-original-vscode-process-'));
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const originalSpawn = childProcess.spawn;
+  let spawned;
+  let child;
+  try {
+    const executable = path.join(launchRoot, 'Code.exe');
+    await fs.writeFile(executable, 'Controlled launch identity; not executed.');
+    await fs.mkdir(path.join(launchRoot, 'bin'));
+    await fs.writeFile(path.join(launchRoot, 'bin', 'code.cmd'), 'Controlled non-waiting CLI; not executed.');
+    Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'win32' });
+    childProcess.spawn = (file, args, options) => {
+      spawned = { file, args, options };
+      child = new EventEmitter();
+      child.stdout = new PassThrough(); child.stderr = new PassThrough();
+      return child;
+    };
+    syncBuiltinESMExports();
+    const handle = await spawnPreparedVSCodeScenario({ ...argsOptions, projectRoot: launchRoot,
+      vscodeExecutablePath: executable,
+      runtime: { userDataDir: argsOptions.userDataDir, extensionsDir: argsOptions.extensionsDir, environment: {} } });
+    assert.equal(spawned.file, executable, 'Extension tests must observe Code.exe, not the non-waiting code.cmd CLI');
+    assert.equal(spawned.options.shell, false, 'The test process must not be replaced by an intermediate command shell');
+    let finished = false;
+    const completed = handle.completed.then(() => { finished = true; });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(finished, false, 'Acceptance cannot finish before the original Code process exits');
+    child.emit('exit', 0, null);
+    await completed;
+    assert.equal(finished, true);
+  } finally {
+    child?.emit('exit', 0, null);
+    childProcess.spawn = originalSpawn;
+    syncBuiltinESMExports();
+    Object.defineProperty(process, 'platform', originalPlatform);
+    await fs.rm(launchRoot, { recursive: true, force: true });
+  }
 
   const debugRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-smoke-runner-env-'));
   try {

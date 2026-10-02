@@ -20,7 +20,8 @@ related_plans:
   - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
   - docs/exec-plans/completed/canvas-add-folder-root-placement.md
   - docs/exec-plans/completed/sidebar-workspace-worktree-actions.md
-updated_at: 2026-07-17
+  - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
+updated_at: 2026-09-16
 ---
 
 # 画布多根 workspace 组合视图设计
@@ -131,11 +132,21 @@ live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点�
 
 ### 6.8 Multi-root live runtime 恢复语义
 
+2026-09-16 审核补充：本节记录当前已实现的 slot 绑定与恢复契约。新建会话的归属设计需要修订；用户已确认 root 稳定 runtime 的方向，具体方案与改造尚未落地，见下方“待修订设计问题”和 `docs/design-docs/webview-host-supervisor-architecture-review.md` 的 F-03。下述旧 session 恢复约束在过渡期仍需保留。
+
 `Agent` / `Terminal` 的后端进程由 runtime supervisor 和 provider/shell 持有，canvas 只是 display surface；multi-root、single-root 或两个 VS Code 窗口同时打开时，不应因为显示形态不同而阻止恢复同一个 live runtime。display node id 只服务渲染、选择、连线、布局和 `decomposeMultiRootCanvasState()`；runtime binding id 以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威。这里的 `runtimeStoragePath` 必须是 VS Code 分配给该窗口/会话的具体 extension storage slot；同一个 root 可能同时存在多个 `workspaceStorage` slot，它们必须被视为不同 runtime，不能退化成只按 root path 绑定。
 
 多根恢复不应再整体以 `multi-root-workspace` block；宿主应按 composed execution node 找回所属 root-local metadata，用其中保存的 `runtimeBackend`、`runtimeStoragePath`、`runtimeSessionId` 和节点类型 attach 原 session。attach、output 和 state event 更新当前窗口里的 display node；持久化时继续依赖现有 decompose 还原成 root-local node id。多窗口控制语义定义为 shared runtime：output 由 supervisor 多播，input、stop 和 delete 作用到同一 backend session，resize 第一版采用 last-writer-wins。
 
 `paneGallery` 只改变 display surface。`dynamic` / `grid` root pane 和 thumbnail 模式 active root 主窗格可以承载 terminal input，仍使用同一个 runtime binding key；缩略图可以显示 live runtime 状态与 attention 提示、hydrate / attach execution snapshot，并跟随正常执行生命周期同步，但不直接承载由缩略图内用户交互触发的 terminal input、start / stop、编辑、拖拽、创建或 drop 消息。必须避免用当前 multi-root workspace 的 storage path 猜 runtime，也不能用同 root 的当前 slot 回填旧 live-runtime snapshot。对于已有 root-local snapshot，如果 `persistenceMode` 是 `live-runtime` 且存在 `runtimeSessionId`，但缺少 `runtimeStoragePath`，宿主不能把它隐式指到 multi-root workspace storage 或同 root 的当前 storage slot；应通过兼容迁移明确补齐原 root-local runtime storage，或显式降级为历史恢复并记录诊断，避免 attach 到错误 supervisor 或误报找不到 session。当前 `runtimeSessionBindings` 是一条 runtime key 对应一个 display node，这对单根窗口和多根窗口同时 attach 成立，因为两个窗口各有自己的 Host / Manager；`paneGallery` 若在同一个 Host 内同时可见多个 root pane，仍必须保证同一 runtime 只由所属 root pane 的一个 display node 承载；若未来同一个 Host 内允许同一 runtime 被多个 display node 同时呈现，应把 binding value 改成 subscribers/list。
+
+#### 待修订设计问题：画板归属与运行时归属不一致
+
+`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `startAgentSessionWithSupervisor()` 与 `startTerminalSessionWithSupervisor()` 当前均不向 `getPreferredRuntimeSupervisorClient()` 传入节点 root；`getRuntimeHostBaseStoragePath()` 默认从创建窗口的 extension storage slot 派生当前 generation。因此不同 root 可共用同一 Supervisor，同 root 在不同窗口新建的会话又可分散到多个 Supervisor。现有 metadata 恢复保住了原绑定，但没有消除新建会话的窗口归属。这是本节当前设计决策需要调整的问题，不是已证明违反当前规格的实现 bug。
+
+用户确认的目标是让多根 workspace 作为各 root 画板的组合视图：同一运行环境、用户存储范围、root 身份及 Supervisor generation 应确定稳定的 runtime 归属；单根与多根中的 Agent / Terminal 新建路径须一起调整。具体身份规范化、存储布局、并发发现/启动和 backend fallback 尚待后续设计。旧 live session 继续连接 metadata 中的原 Supervisor，新会话才使用新 root 归属；不能仅改写地址宣称迁移完成。旧 Supervisor 随其全部旧会话结束、相关引用与 RPC 收敛而退役，包括它仍承载的其他 root 会话。
+
+本次只登记审核与设计问题。详细事实、风险及待执行的建议验收场景统一见 `docs/design-docs/webview-host-supervisor-architecture-review.md` 的 F-03 和第 6 节，运行时改造另开 ExecPlan。
 
 ## 7. 风险与取舍
 

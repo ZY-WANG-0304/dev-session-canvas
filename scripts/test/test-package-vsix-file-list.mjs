@@ -28,7 +28,7 @@ const packageJson = JSON.parse(
 const stageRoot = mkdtempSync(path.join(os.tmpdir(), 'dsc-main-vsix-list-'));
 
 try {
-  stageMainPackageFiles(stageRoot, packageJson, 'README.marketplace.md');
+  stageMainPackageFiles(stageRoot, packageJson, 'README.marketplace.md', { developmentComparison: true });
 
   const command = resolveCommand(vsceEntry, ['ls']);
   const result = spawnSync(command.file, command.args, {

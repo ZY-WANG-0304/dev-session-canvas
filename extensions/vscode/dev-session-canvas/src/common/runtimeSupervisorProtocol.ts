@@ -9,8 +9,10 @@ import type {
   AgentNodeStatus
 } from './protocol';
 import type { SerializedTerminalState } from './serializedTerminalState';
-import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
+import type { TerminalStreamAttachPayload, TerminalStreamCheckpoint, TerminalStreamEvent } from './terminalSessionStream';
+import type { TerminalStreamPage, TerminalStreamReadDescriptor } from './terminalStreamPaging';
 import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
+import type { ExecutionCandidateProfile, SourceDisposition } from './executionLifecycle';
 
 export interface RuntimeSupervisorPaths {
   storageDir: string;
@@ -32,6 +34,12 @@ export interface RuntimeSupervisorHelloResult {
     terminalSessionStreamV1?: true;
     terminalProjectionSnapshotV1?: true;
     terminalAppliedRevisionAckV1?: true;
+    terminalCheckpointRefreshV1?: true;
+    terminalPagedReadV1?: true;
+    terminalPagedCompletionV1?: true;
+    terminalHostOutputCreditV1?: true;
+    terminalReadSettlementV1?: true;
+    executionCandidateProfiles?: readonly ExecutionCandidateProfile[];
   };
 }
 
@@ -56,6 +64,11 @@ export interface RuntimeSupervisorSessionSnapshot {
   terminalAuthorityId?: string;
   terminalRevision?: number;
   terminalStream?: TerminalStreamAttachPayload;
+  terminalStreamPaged?: true;
+  capabilities?: { terminalReadSettlementV1?: true };
+  terminalFinalRevision?: number;
+  /** The sealed source outcome; final application or a process exit alone does not establish EOF. */
+  terminalSourceDisposition?: SourceDisposition;
   displayLabel: string;
   launchMode: PendingExecutionLaunch;
   provider?: AgentProviderKind;
@@ -105,6 +118,7 @@ export const RUNTIME_SUPERVISOR_ERROR_CODES = {
   systemdCommandFailed: 'DEV_SESSION_CANVAS_RUNTIME_SYSTEMD_COMMAND_FAILED',
   terminalAuthorityMismatch: 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_AUTHORITY_MISMATCH',
   terminalRevisionInvalid: 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_REVISION_INVALID',
+  terminalHostCursorCompacted: 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_HOST_CURSOR_COMPACTED',
   terminalJournalUnavailable: 'DEV_SESSION_CANVAS_RUNTIME_TERMINAL_JOURNAL_UNAVAILABLE'
 } as const;
 
@@ -124,6 +138,7 @@ export type RuntimeSupervisorMessageId =
   | 'agentSessionEnded'
   | 'terminalStopped'
   | 'terminalSessionEnded'
+  | 'terminalOutputIncomplete'
   | 'recoveredHistoryOnly'
   | 'agentExitedSignal'
   | 'agentExitedCode'
@@ -155,7 +170,10 @@ export interface RuntimeSupervisorMessageDescriptor {
   params?: Record<string, string>;
 }
 
+export type RuntimeTerminalStreamMode = 'paged' | 'paged-until-exit';
+
 export interface RuntimeSupervisorCreateSessionParams {
+  executionProfile?: ExecutionCandidateProfile;
   kind: ExecutionNodeKind;
   sessionId?: string;
   displayLabel: string;
@@ -167,27 +185,95 @@ export interface RuntimeSupervisorCreateSessionParams {
   resumeStoragePath?: string;
   launchSpec: SerializedExecutionSessionLaunchSpec;
   deferSubscription?: boolean;
+  terminalStreamMode?: RuntimeTerminalStreamMode;
 }
 
 export interface RuntimeSupervisorAttachSessionParams {
   sessionId: string;
   deferSubscription?: boolean;
+  terminalStreamMode?: RuntimeTerminalStreamMode;
+}
+
+export interface RuntimeSupervisorOpenTerminalReadParams {
+  sessionId: string;
+  authorityId: string;
+  consumerId: 'editor' | 'panel';
+  settlementMode?: 'final-application-v1';
+}
+
+export type RuntimeSupervisorTerminalReadOutcome =
+  | { kind: 'applied'; finalRevision: number }
+  | { kind: 'cancelled'; reason: string };
+
+export interface RuntimeSupervisorCloseTerminalReadParams {
+  sessionId: string;
+  authorityId: string;
+  readId: string;
+  outcome?: RuntimeSupervisorTerminalReadOutcome;
+}
+
+export interface RuntimeSupervisorCloseTerminalReadResult {
+  ok: true;
+  settlement?: 'recorded' | 'duplicate' | 'unconfirmed';
+}
+
+export interface RuntimeSupervisorReadTerminalPageParams extends Omit<RuntimeSupervisorCloseTerminalReadParams, 'outcome'> {
+  afterRevision: number;
 }
 
 export interface RuntimeSupervisorGetSessionSnapshotParams {
   sessionId: string;
 }
 
+export interface RuntimeSupervisorGetSessionCheckpointParams {
+  sessionId: string;
+  authorityId: string;
+  afterCheckpointRevision: number;
+}
+
+export interface RuntimeSupervisorSessionCheckpointResult {
+  sessionId: string;
+  authorityId: string;
+  revision: number;
+  checkpoint?: TerminalStreamCheckpoint;
+}
+
 export interface RuntimeSupervisorSubscribeSessionParams {
   sessionId: string;
   authorityId: string;
   afterRevision: number;
+  terminalStreamMode?: RuntimeTerminalStreamMode;
+  hostOutputCredit?: 'journal-pages-v1';
+}
+
+export interface RuntimeSupervisorAckTerminalBatchParams {
+  sessionId: string;
+  authorityId: string;
+  subscriptionId: string;
+  batchId: number;
+  outcome: 'consumed' | 'cancelled';
+}
+
+export interface RuntimeSupervisorSessionTerminalBatch {
+  sessionId: string;
+  kind: ExecutionNodeKind;
+  authorityId: string;
+  subscriptionId: string;
+  batchId: number;
+  afterRevision: number;
+  revision: number;
+  events: TerminalStreamEvent[];
+  /** Local Supervisor wall-clock timestamp for cross-process latency diagnostics only. */
+  emittedAtMs?: number;
+  snapshot?: RuntimeSupervisorSessionSnapshot;
+  error?: string;
 }
 
 export interface RuntimeSupervisorSubscribeSessionResult {
   sessionId: string;
   authorityId: string;
   revision: number;
+  subscriptionId?: string;
 }
 
 export interface RuntimeSupervisorAckSessionRevisionParams {
@@ -226,9 +312,29 @@ export interface RuntimeSupervisorStopSessionParams {
 
 export interface RuntimeSupervisorDeleteSessionParams {
   sessionId: string;
+  /** Retire an ended session while existing socket-bound readers drain. */
+  preserveTerminalReads?: true;
 }
 
 export type RuntimeSupervisorRequest =
+  | {
+      type: 'request';
+      id: string;
+      method: 'openTerminalRead';
+      params: RuntimeSupervisorOpenTerminalReadParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'readTerminalPage';
+      params: RuntimeSupervisorReadTerminalPageParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'closeTerminalRead';
+      params: RuntimeSupervisorCloseTerminalReadParams;
+    }
   | {
       type: 'request';
       id: string;
@@ -255,6 +361,12 @@ export type RuntimeSupervisorRequest =
   | {
       type: 'request';
       id: string;
+      method: 'getSessionCheckpoint';
+      params: RuntimeSupervisorGetSessionCheckpointParams;
+    }
+  | {
+      type: 'request';
+      id: string;
       method: 'subscribeSession';
       params: RuntimeSupervisorSubscribeSessionParams;
     }
@@ -263,6 +375,12 @@ export type RuntimeSupervisorRequest =
       id: string;
       method: 'ackSessionRevision';
       params: RuntimeSupervisorAckSessionRevisionParams;
+    }
+  | {
+      type: 'request';
+      id: string;
+      method: 'ackTerminalBatch';
+      params: RuntimeSupervisorAckTerminalBatchParams;
     }
   | {
       type: 'request';
@@ -302,9 +420,13 @@ export type RuntimeSupervisorResponse =
       ok: true;
       result:
         | RuntimeSupervisorHelloResult
+        | TerminalStreamReadDescriptor
+        | TerminalStreamPage
         | RuntimeSupervisorSessionSnapshot
+        | RuntimeSupervisorSessionCheckpointResult
         | RuntimeSupervisorSubscribeSessionResult
         | RuntimeSupervisorAckSessionRevisionResult
+        | RuntimeSupervisorCloseTerminalReadResult
         | {
             ok: true;
           };
@@ -317,6 +439,11 @@ export type RuntimeSupervisorResponse =
     };
 
 export type RuntimeSupervisorEvent =
+  | {
+      type: 'event';
+      event: 'sessionTerminalBatch';
+      payload: RuntimeSupervisorSessionTerminalBatch;
+    }
   | {
       type: 'event';
       event: 'sessionOutput';
@@ -355,6 +482,9 @@ export type RuntimeSupervisorMessage =
   | RuntimeSupervisorEvent;
 
 export interface RuntimeSupervisorClientEventHandlers {
+  onSessionTerminalBatch?: (
+    payload: RuntimeSupervisorSessionTerminalBatch, isCurrent: () => boolean
+  ) => Promise<'consumed' | 'cancelled'>;
   onSessionOutput?: (event: Extract<RuntimeSupervisorEvent, { event: 'sessionOutput' }>['payload']) => void;
   onSessionTerminalEvent?: (
     event: Extract<RuntimeSupervisorEvent, { event: 'sessionTerminalEvent' }>['payload']
@@ -493,6 +623,8 @@ export function formatRuntimeSupervisorMessageDescriptor(
       return 'Terminal stopped.';
     case 'terminalSessionEnded':
       return 'Terminal session ended.';
+    case 'terminalOutputIncomplete':
+      return `Output is incomplete: ${params.reason ?? '<unknown>'}`;
     case 'recoveredHistoryOnly':
       return 'The session supervisor did not retain the original live runtime. Only history results were restored.';
     case 'agentExitedSignal':
@@ -620,6 +752,7 @@ function isRuntimeSupervisorMessageId(value: string): value is RuntimeSupervisor
     case 'agentSessionEnded':
     case 'terminalStopped':
     case 'terminalSessionEnded':
+    case 'terminalOutputIncomplete':
     case 'recoveredHistoryOnly':
     case 'agentExitedSignal':
     case 'agentExitedCode':

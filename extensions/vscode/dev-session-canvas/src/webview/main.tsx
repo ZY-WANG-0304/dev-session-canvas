@@ -50,6 +50,9 @@ import type {
   ExecutionNodeKind,
   FileListNodeEntrySummary,
   HostToWebviewMessage,
+  LocalTerminalCompletion,
+  LocalOutputReceipt,
+  LocalTerminalOutcome,
   WebviewDomAction,
   WebviewClipboardTextSource,
   WebviewLifecycleIdentity,
@@ -67,6 +70,7 @@ import {
   normalizeCanvasMultiRootPresentationMode,
   normalizeCanvasOverviewMode,
   normalizeCanvasOverviewZoomThreshold,
+  normalizeLocalTerminalCompletion,
   normalizeCanvasStrongTerminalAttentionReminderMode
 } from '../common/protocol';
 import {
@@ -112,6 +116,7 @@ import type {
   ExecutionTerminalController,
   ExecutionTerminalRegistry
 } from './executionTerminalTypes';
+import { TerminalPagedProjection } from './terminalPagedProjection';
 import { createCanvasNodeChrome } from './canvasNodeChrome';
 import { createExecutionSessionNodeTypes } from './executionSessionNodes';
 import {
@@ -525,11 +530,13 @@ const EXECUTION_TERMINAL_MAX_QUEUED_WRITES_PER_CONTROLLER = 1;
 const EXECUTION_TERMINAL_SNAPSHOT_RESTORE_STAGGER_MS = 32;
 const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_STAGGER_MS = 96;
 const EXECUTION_TERMINAL_INPUT_SNAPSHOT_RESTORE_MAX_DEFER_MS = 480;
-const EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS = 256 * 1024;
+// Match the journal page bound so paged output yields between sessions.
+const EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS = 64 * 1024;
 const EXECUTION_TERMINAL_APPLIED_ACK_INTERVAL_MS = 40;
 const EXECUTION_MAIN_THREAD_LAG_INTERVAL_MS = 500;
 const EXECUTION_MAIN_THREAD_LAG_REPORT_THRESHOLD_MS = 120;
 const executionPerformanceDiagnosticSamples: ExecutionPerformanceDiagnosticPayload[] = [];
+const terminalDrainDiagnosticAtMs = new Map<string, number>();
 let nextExecutionInputSequence = 1;
 const pendingExecutionInputAcks = new Map<number, PendingExecutionInputAck>();
 let lastExecutionInputAtMs = Number.NEGATIVE_INFINITY;
@@ -749,6 +756,25 @@ function reportExecutionPerformanceDiagnostic(
   } catch {
     // Ignore telemetry failures; performance diagnostics must not affect input/output.
   }
+}
+
+function reportTerminalDrainDiagnostic(payload: ExecutionPerformanceDiagnosticPayload): void {
+  // Keep transport tracing below one sample per 100 ms per terminal so diagnostics do not
+  // become the source of the scheduling delay being measured.
+  const key = `${payload.nodeId ?? ''}:${payload.kind ?? ''}`;
+  const now = Date.now();
+  const previous = terminalDrainDiagnosticAtMs.get(key) ?? Number.NEGATIVE_INFINITY;
+  // Preserve the small reply page used by the capacity probe even when its
+  // preceding availability hint was sampled in the same window.
+  const isSmallPageReceipt = payload.reason === 'terminal-page-received' &&
+    (payload.replayOutputCharacters ?? 0) <= 1024;
+  if (!isSmallPageReceipt && now - previous < 100) return;
+  terminalDrainDiagnosticAtMs.set(key, now);
+  if (terminalDrainDiagnosticAtMs.size > 256) {
+    terminalDrainDiagnosticAtMs.clear();
+    terminalDrainDiagnosticAtMs.set(key, now);
+  }
+  reportExecutionPerformanceDiagnostic(payload, { force: true });
 }
 
 function normalizeExecutionPerformanceDiagnosticForWebview(
@@ -1662,9 +1688,46 @@ function App(): JSX.Element {
           requestId: message.payload.requestId,
           executionSessionId: message.payload.executionSessionId,
           outputSequence: message.payload.outputSequence,
+          localOutputReceipt: message.payload.localOutputReceipt,
           serializedTerminalState: message.payload.serializedTerminalState,
-          terminalStream: message.payload.terminalStream
+          terminalStream: message.payload.terminalStream,
+          terminalRead: message.payload.terminalRead
         });
+        break;
+      case 'host/executionTerminalAvailable':
+        setExecutionTerminalTitles((current) => mergeTerminalTitleProjectionFromOutput(current, { ...message.payload, chunk: '' }));
+        reportTerminalDrainDiagnostic(
+          {
+            source: 'webview-terminal-drain',
+            nodeId: message.payload.nodeId,
+            kind: message.payload.kind,
+            executionSessionId: message.payload.executionSessionId,
+            sequence: message.payload.revision,
+            reason: 'terminal-available-received',
+            webviewEpochMs: Date.now(),
+            success: true
+          }
+        );
+        executionTerminalRegistry.get(message.payload.nodeId)?.controller.terminalAvailable(
+          message.payload.executionSessionId, message.payload.authorityId, message.payload.revision,
+          message.payload.completed, message.payload.finalRevision
+        );
+        if (message.payload.receiptId) {
+          // Receipt releases notification credit, not terminal application or settlement.
+          postMessage({ type: 'webview/executionTerminalAvailableReceived', payload: {
+            nodeId: message.payload.nodeId,
+            kind: message.payload.kind,
+            executionSessionId: message.payload.executionSessionId,
+            authorityId: message.payload.authorityId,
+            receiptId: message.payload.receiptId
+          } });
+        }
+        break;
+      case 'host/executionTerminalPage':
+        executionTerminalRegistry.get(message.payload.nodeId)?.controller.applyTerminalPage(
+          message.payload.readId, message.payload.requestId, message.payload.page,
+          message.payload.readClosed ? message.payload.error : undefined
+        );
         break;
       case 'host/executionOutput':
         setExecutionTerminalTitles((current) =>
@@ -1682,7 +1745,8 @@ function App(): JSX.Element {
           outputSequence: message.payload.outputSequence,
           terminalAuthorityId: message.payload.terminalAuthorityId,
           terminalStartRevision: message.payload.terminalStartRevision,
-          terminalRevision: message.payload.terminalRevision
+          terminalRevision: message.payload.terminalRevision,
+          localOutputReceipt: message.payload.localOutputReceipt
         });
         break;
       case 'host/executionTerminalEvent':
@@ -1707,7 +1771,8 @@ function App(): JSX.Element {
           nodeId: message.payload.nodeId,
           kind: message.payload.kind,
           executionSessionId: message.payload.executionSessionId,
-          message: message.payload.message
+          message: message.payload.message,
+          localCompletion: message.payload.localCompletion
         });
         break;
       case 'host/executionFileLinksResolved':
@@ -1770,7 +1835,10 @@ function App(): JSX.Element {
       hostMessageHandlerRef.current(event.data);
     };
     window.addEventListener('message', listener);
-    postMessage({ type: 'webview/ready' });
+    postMessage({ type: 'webview/ready', payload: { capabilities: {
+      terminalReadSettlementV1: true, terminalLocalSettlementV1: true, terminalAvailableReceiptV1: true,
+      terminalLocalOutputCreditV1: true
+    } } });
 
     return () => {
       window.removeEventListener('message', listener);
@@ -7062,21 +7130,38 @@ function resolveContextMenuScreenPosition(screenX: number, screenY: number): { x
 }
 
 function routeExecutionTerminalSnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void {
-  executionTerminalRegistry.get(detail.nodeId)?.controller.applySnapshot(detail);
+  const controller = executionTerminalRegistry.get(detail.nodeId)?.controller;
+  if (controller && controller.kind === detail.kind) controller.applySnapshot(detail);
+  else if (detail.localOutputReceipt && detail.executionSessionId) {
+    postMessage({ type: 'webview/executionLocalOutputApplied', payload: {
+      nodeId: detail.nodeId, kind: detail.kind, executionSessionId: detail.executionSessionId,
+      ...detail.localOutputReceipt, outcome: 'cancelled', reason: 'controller-unmounted'
+    } });
+  }
 }
 
 function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type: 'output' }>): void {
   const startedAt = readPerformanceNow();
   const controller = executionTerminalRegistry.get(detail.nodeId)?.controller;
   try {
-    controller?.enqueueOutput(detail.chunk, {
+    if (!controller || controller.kind !== detail.kind) {
+      if (detail.localOutputReceipt && detail.executionSessionId) {
+        postMessage({ type: 'webview/executionLocalOutputApplied', payload: {
+          nodeId: detail.nodeId, kind: detail.kind, executionSessionId: detail.executionSessionId,
+          ...detail.localOutputReceipt, outcome: 'cancelled', reason: 'controller-unmounted'
+        } });
+      }
+      return;
+    }
+    controller.enqueueOutput(detail.chunk, {
       persisted: detail.persisted,
       outputStartSequence: detail.outputStartSequence,
       outputSequence: detail.outputSequence,
       executionSessionId: detail.executionSessionId,
       terminalAuthorityId: detail.terminalAuthorityId,
       terminalStartRevision: detail.terminalStartRevision,
-      terminalRevision: detail.terminalRevision
+      terminalRevision: detail.terminalRevision,
+      localOutputReceipt: detail.localOutputReceipt
     });
     reportExecutionPerformanceDiagnostic(
       {
@@ -7114,7 +7199,17 @@ function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type
 }
 
 function routeExecutionTerminalExit(detail: Extract<ExecutionHostEvent, { type: 'exit' }>): void {
-  executionTerminalRegistry.get(detail.nodeId)?.controller.showExit(detail.message, detail.executionSessionId);
+  const controller = executionTerminalRegistry.get(detail.nodeId)?.controller;
+  const localCompletion = normalizeLocalTerminalCompletion(detail.localCompletion);
+  if (controller && controller.kind === detail.kind) {
+    controller.showExit(detail.message, detail.executionSessionId, detail.localCompletion);
+  } else if (localCompletion) {
+    postMessage({ type: 'webview/executionLocalTerminalSettled', payload: {
+      nodeId: detail.nodeId, kind: detail.kind,
+      executionSessionId: localCompletion.executionSessionId,
+      outcome: { kind: 'cancelled', reason: 'controller-unavailable' }
+    } });
+  }
 }
 
 function scheduleExecutionTerminalSnapshotWrite(entry: PendingExecutionTerminalSnapshotWrite): void {
@@ -7505,20 +7600,48 @@ function createExecutionTerminalController(
   options?: {
     onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
     onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
+    beginSnapshotRestore?: () => (() => void);
+    onReadError?: (message: string) => void;
     beginSnapshotRestoreDiagnosticsSuppression?: () => (() => void) | undefined;
   }
 ): ExecutionTerminalController {
   let pendingOutput = '';
   let pendingPersistBarrier = false;
   let pendingExitMessage: string | undefined;
+  let localCompletion: (LocalTerminalCompletion & {
+    generation: number;
+    state: 'waiting' | 'queued' | 'settled';
+  }) | undefined;
   let disposed = false;
   let writeGeneration = 0;
+  let failedWriteGeneration: number | undefined;
   let queuedWriteCount = 0;
   let writeChain: Promise<void> = Promise.resolve();
+  let writeChainGeneration = 0;
   let currentExecutionSessionId: string | undefined;
   const supersededExecutionSessionIds = new Set<string>();
   let projectedExecutionSessionId: string | undefined;
   let currentLocalOutputSequence = 0;
+  let localProjectionSequenceTracked = false;
+  type LocalOutputCredit = LocalOutputReceipt & { executionSessionId: string; generation: number };
+  let pendingLocalOutputCredit: LocalOutputCredit | undefined;
+  const rejectLocalOutputReceipt = (
+    receipt: LocalOutputReceipt | undefined, executionSessionId: string | undefined, reason: string
+  ): void => {
+    if (!receipt || !executionSessionId) return;
+    postMessage({ type: 'webview/executionLocalOutputApplied', payload: {
+      nodeId, kind, executionSessionId, ...receipt, outcome: 'cancelled', reason
+    } });
+  };
+  const settleLocalOutputCredit = (credit: LocalOutputCredit | undefined, applied: boolean, reason = 'terminal-write-failed'): void => {
+    if (!credit || pendingLocalOutputCredit !== credit) return;
+    pendingLocalOutputCredit = undefined;
+    postMessage({ type: 'webview/executionLocalOutputApplied', payload: {
+      nodeId, kind, executionSessionId: credit.executionSessionId,
+      receiptId: credit.receiptId, outputSequence: credit.outputSequence,
+      outcome: applied ? 'applied' : 'cancelled', ...(applied ? {} : { reason })
+    } });
+  };
   let currentTerminalAuthorityId: string | undefined;
   let currentTerminalRevision = 0;
   let pendingOutputBoundaries: Array<{
@@ -7528,6 +7651,7 @@ function createExecutionTerminalController(
     terminalAuthorityId?: string;
     terminalStartRevision?: number;
     terminalRevision?: number;
+    localOutputCredit?: LocalOutputCredit;
   }> = [];
   let appliedTerminalAuthorityId: string | undefined;
   let appliedTerminalRevision = 0;
@@ -7538,12 +7662,34 @@ function createExecutionTerminalController(
   let pendingProjectionBarrier = false;
   let projectionRecoveryRequested = false;
   let projectionRecoveryEpoch = 0;
+  const snapshotRestoreReleases = new Set<() => void>();
+  const beginSnapshotRestore = (): (() => void) => {
+    const release = options?.beginSnapshotRestore?.();
+    const finish = (): void => {
+      if (!snapshotRestoreReleases.delete(finish)) return;
+      release?.();
+    };
+    snapshotRestoreReleases.add(finish);
+    return finish;
+  };
+  const finishSnapshotRestore = (
+    detail: Extract<ExecutionHostEvent, { type: 'snapshot' }> | undefined,
+    release: (() => void) | undefined, applied: boolean, generation: number
+  ): boolean => {
+    let callbackFailed = false;
+    try { if (applied && detail) options?.onSnapshotApplied?.(detail); }
+    catch { callbackFailed = true; }
+    try { release?.(); }
+    catch { callbackFailed = true; }
+    if (callbackFailed && !disposed && generation === writeGeneration) failedWriteGeneration = generation;
+    return applied && !callbackFailed;
+  };
 
   const normalizeOutputSequence = (value: number | undefined): number | undefined =>
     typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
 
   const queueTerminalWrite = (
-    writer: (done: (applied?: boolean) => void, markStarted?: () => void) => void,
+    writer: (done: (applied?: boolean) => void, markStarted: () => void, failed: () => void) => void,
     detail?: {
       reason: string;
       characters?: number;
@@ -7556,9 +7702,13 @@ function createExecutionTerminalController(
     onComplete?: (applied: boolean) => void
   ): void => {
     const generation = writeGeneration;
+    const previousGeneration = writeChainGeneration;
+    writeChainGeneration = generation;
     queuedWriteCount += 1;
     writeChain = writeChain
-      .catch(() => undefined)
+      .catch(() => {
+        if (!disposed && previousGeneration === writeGeneration) failedWriteGeneration = previousGeneration;
+      })
       .then(
         () =>
           new Promise<void>((resolve) => {
@@ -7573,32 +7723,54 @@ function createExecutionTerminalController(
             const markStarted = (): void => {
               startedAt = readPerformanceNow();
             };
-            writer((applied = true) => {
+            let finished = false;
+            const done = (applied = true): void => {
+              if (finished) return;
+              finished = true;
               queuedWriteCount = Math.max(0, queuedWriteCount - 1);
-              reportExecutionPerformanceDiagnostic(
-                {
-                  source: 'webview-terminal-write',
-                  nodeId,
-                  kind,
-                  reason: detail?.reason,
-                  durationMs: readPerformanceNow() - startedAt,
-                  characters: detail?.characters,
-                  checkpointCharacters: detail?.checkpointCharacters,
-                  replayEventCount: detail?.replayEventCount,
-                  replayOutputCharacters: detail?.replayOutputCharacters,
-                  checkpointRevision: detail?.checkpointRevision,
-                  targetRevision: detail?.targetRevision,
-                  queuedWriteCount,
-                  bufferLength: terminal.buffer.active.length
-                },
-                {
-                  minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS,
-                  minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
+              try {
+                reportExecutionPerformanceDiagnostic(
+                  {
+                    source: 'webview-terminal-write',
+                    nodeId,
+                    kind,
+                    reason: detail?.reason,
+                    durationMs: readPerformanceNow() - startedAt,
+                    characters: detail?.characters,
+                    checkpointCharacters: detail?.checkpointCharacters,
+                    replayEventCount: detail?.replayEventCount,
+                    replayOutputCharacters: detail?.replayOutputCharacters,
+                    checkpointRevision: detail?.checkpointRevision,
+                    targetRevision: detail?.targetRevision,
+                    queuedWriteCount,
+                    bufferLength: terminal.buffer.active.length
+                  },
+                  {
+                    force: detail?.reason === 'paged-events' &&
+                      (detail.replayOutputCharacters ?? 0) <= 1024,
+                    minDurationMs: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_DURATION_MS,
+                    minCharacters: EXECUTION_PERFORMANCE_DIAGNOSTIC_MIN_CHARACTERS
+                  }
+                );
+              } catch {
+                if (!disposed && generation === writeGeneration) failedWriteGeneration = generation;
+              }
+              try {
+                if ((!applied || failedWriteGeneration === generation) && pendingLocalOutputCredit?.generation === generation) {
+                  settleLocalOutputCredit(pendingLocalOutputCredit, false);
                 }
-              );
-              onComplete?.(applied);
-              resolve();
-            }, markStarted);
+                onComplete?.(applied && !disposed && generation === writeGeneration && failedWriteGeneration !== generation);
+              } catch {
+                if (!disposed && generation === writeGeneration) failedWriteGeneration = generation;
+                if (pendingLocalOutputCredit?.generation === generation) settleLocalOutputCredit(pendingLocalOutputCredit, false);
+              } finally { resolve(); }
+            };
+            const failed = (): void => {
+              if (!disposed && generation === writeGeneration) failedWriteGeneration = generation;
+              done(false);
+            };
+            try { writer(done, markStarted, failed); }
+            catch { failed(); }
           })
       );
   };
@@ -7619,6 +7791,10 @@ function createExecutionTerminalController(
   };
 
   const beginExecutionSessionGeneration = (executionSessionId: string): void => {
+    settleLocalCompletion({ kind: 'cancelled', reason: 'execution-replaced' });
+    settleLocalOutputCredit(pendingLocalOutputCredit, false, 'execution-replaced');
+    for (const release of snapshotRestoreReleases) release();
+    localCompletion = undefined;
     if (
       currentExecutionSessionId !== undefined &&
       currentExecutionSessionId !== executionSessionId
@@ -7632,8 +7808,10 @@ function createExecutionTerminalController(
     pendingExitMessage = undefined;
     removePendingExecutionTerminalDrain(controller);
     writeGeneration += 1;
+    failedWriteGeneration = undefined;
     currentExecutionSessionId = executionSessionId;
     currentLocalOutputSequence = 0;
+    localProjectionSequenceTracked = false;
     currentTerminalAuthorityId = undefined;
     currentTerminalRevision = 0;
     hasAppliedSnapshot = false;
@@ -7733,16 +7911,6 @@ function createExecutionTerminalController(
     }
   };
 
-  const queueExitWrite = (message: string): void => {
-    options?.onContentWillChange?.('exit');
-    queueTerminalWrite((done) => {
-      terminal.write(`\r\n[Dev Session Canvas] ${message}\r\n`, done);
-    }, {
-      reason: 'exit',
-      characters: message.length
-    });
-  };
-
   const postAttachSnapshotRequest = (): void => {
     if (projectionRecoveryRequested) {
       return;
@@ -7762,31 +7930,123 @@ function createExecutionTerminalController(
   };
 
   const flushDeferredExitIfReady = (): void => {
+    flushLocalCompletionIfReady();
     if (
       pendingPersistBarrier ||
       pendingProjectionBarrier ||
       pendingOutput.length > 0 ||
-      pendingExitMessage === undefined
+      pendingExitMessage === undefined ||
+      (localCompletion !== undefined && localCompletion.state !== 'settled')
     ) {
       return;
     }
 
-    const message = pendingExitMessage;
     pendingExitMessage = undefined;
-    queueExitWrite(message);
+  };
+
+  const settleLocalCompletion = (outcome: LocalTerminalOutcome): void => {
+    const completion = localCompletion;
+    if (!completion || completion.state === 'settled') return;
+    completion.state = 'settled';
+    try {
+      postMessage({ type: 'webview/executionLocalTerminalSettled', payload: {
+        nodeId, kind, executionSessionId: completion.executionSessionId, outcome
+      } });
+    } catch {
+      if (completion.generation === writeGeneration) failedWriteGeneration = writeGeneration;
+    }
+  };
+
+  const flushLocalCompletionIfReady = (): void => {
+    const completion = localCompletion;
+    if (!completion || completion.state !== 'waiting') return;
+    if (failedWriteGeneration === completion.generation) {
+      settleLocalCompletion({ kind: 'cancelled', reason: 'terminal-write-failed' });
+      return;
+    }
+    if (currentTerminalAuthorityId || pagedProjection.active ||
+        currentLocalOutputSequence > completion.finalOutputSequence) {
+      settleLocalCompletion({ kind: 'cancelled', reason: 'local-projection-conflict' });
+      return;
+    }
+    if (hasAppliedSnapshot && !localProjectionSequenceTracked) postAttachSnapshotRequest();
+    if (!hasAppliedSnapshot || !localProjectionSequenceTracked ||
+        projectedExecutionSessionId !== completion.executionSessionId ||
+        currentExecutionSessionId !== completion.executionSessionId ||
+        currentLocalOutputSequence !== completion.finalOutputSequence ||
+        pendingPersistBarrier || pendingProjectionBarrier || projectionRecoveryRequested || pendingOutput.length > 0) return;
+
+    completion.state = 'queued';
+    // This sentinel follows every queued snapshot/output write, including final zero.
+    queueTerminalWrite((done) => terminal.write('', done), { reason: 'local-final-application' }, (applied) => {
+      if (localCompletion !== completion || completion.state === 'settled') return;
+      const sameProjection = completion.generation === writeGeneration &&
+        currentExecutionSessionId === completion.executionSessionId &&
+        projectedExecutionSessionId === completion.executionSessionId &&
+        currentTerminalAuthorityId === undefined && !pagedProjection.active &&
+        localProjectionSequenceTracked && currentLocalOutputSequence === completion.finalOutputSequence &&
+        !pendingPersistBarrier && !pendingProjectionBarrier && !projectionRecoveryRequested && pendingOutput.length === 0;
+      settleLocalCompletion(applied && sameProjection
+        ? { kind: 'applied', finalOutputSequence: completion.finalOutputSequence }
+        : { kind: 'cancelled', reason: 'terminal-write-failed' });
+      flushDeferredExitIfReady();
+    });
   };
 
   const controller: ExecutionTerminalController = {
     nodeId,
     kind,
+    terminalAvailable(sessionId, authorityId, revision, completed, finalRevision) {
+      pagedProjection.available(sessionId, authorityId, revision, completed, finalRevision);
+    },
+    applyTerminalPage(readId, requestId, page, closedError) {
+      pagedProjection.accept(readId, requestId, page, closedError);
+    },
     applySnapshot(detail) {
+      const receipt = detail.localOutputReceipt;
+      const rejectReceipt = (reason: string): void => rejectLocalOutputReceipt(receipt, detail.executionSessionId, reason);
       if (disposed) {
+        rejectReceipt('controller-disposed');
+        return;
+      }
+      if (receipt && (!detail.executionSessionId || receipt.outputSequence !== detail.outputSequence ||
+          detail.terminalRead !== undefined || detail.terminalStream !== undefined ||
+          (detail.executionSessionId === currentExecutionSessionId &&
+            (pagedProjection.active || currentTerminalAuthorityId !== undefined || pendingLocalOutputCredit !== undefined)))) {
+        rejectReceipt('local-projection-conflict');
+        return;
+      }
+      if (receipt && detail.executionSessionId === currentExecutionSessionId && receipt.outputSequence < currentLocalOutputSequence) {
+        rejectReceipt('local-output-sequence-stale');
+        return;
+      }
+      if (detail.terminalRead !== undefined) {
+        if (detail.terminalRead.sessionId !== detail.executionSessionId ||
+            (detail.executionSessionId && supersededExecutionSessionIds.has(detail.executionSessionId))) {
+          return;
+        }
+        if (currentExecutionSessionId !== detail.executionSessionId && detail.executionSessionId) {
+          beginExecutionSessionGeneration(detail.executionSessionId);
+        }
+        settleLocalCompletion({ kind: 'cancelled', reason: 'projection-replaced' });
+        settleLocalOutputCredit(pendingLocalOutputCredit, false, 'projection-replaced');
+        if (capacityCalibrationProbe && (capacityCalibrationProbe.readers.some((reader) => reader.nodeId === nodeId) ||
+            capacityCalibrationProbe.readers.length < 10)) {
+          capacityCalibrationProbe.readers = capacityCalibrationProbe.readers.filter((reader) => reader.nodeId !== nodeId);
+          capacityCalibrationProbe.readers.push({ nodeId, readId: detail.terminalRead.readId,
+            sessionId: detail.terminalRead.sessionId, authorityId: detail.terminalRead.authorityId });
+        }
+        if (pagedProjection.start(detail.terminalRead)) {
+          projectionRecoveryRequested = false;
+          projectionRecoveryEpoch += 1;
+        }
         return;
       }
       if (
         detail.executionSessionId !== undefined &&
         supersededExecutionSessionIds.has(detail.executionSessionId)
       ) {
+        rejectReceipt('execution-replaced');
         return;
       }
       const snapshotSequence = normalizeOutputSequence(detail.outputSequence);
@@ -7799,7 +8059,15 @@ function createExecutionTerminalController(
         (snapshotSequence === undefined || terminalStream.revision === snapshotSequence);
       if (hasTerminalStreamField && !hasValidTerminalStream) {
         // A malformed authoritative payload must not fall back to a raw tail.
+        rejectReceipt('local-projection-conflict');
         return;
+      }
+      if (pagedProjection.active && !detail.liveSession && !hasValidTerminalStream) {
+        rejectReceipt('local-projection-conflict');
+        return;
+      }
+      if (pagedProjection.active && !detail.liveSession && hasValidTerminalStream) {
+        pagedProjection.stop();
       }
 
       const sessionChanged =
@@ -7809,9 +8077,11 @@ function createExecutionTerminalController(
       const projectionTransitionPending = currentExecutionSessionId !== projectedExecutionSessionId;
       if (sessionChanged && projectionTransitionPending) {
         // A newer output generation already selected another session; this snapshot is stale.
+        rejectReceipt('execution-replaced');
         return;
       }
       if (sessionChanged && detail.executionSessionId !== undefined) {
+        pagedProjection.stop();
         beginExecutionSessionGeneration(detail.executionSessionId);
       }
       const projectionSessionChanged =
@@ -7819,8 +8089,9 @@ function createExecutionTerminalController(
         detail.executionSessionId !== projectedExecutionSessionId;
       const isProjectionRecovery =
         hasAppliedSnapshot && !projectionSessionChanged && projectionRecoveryRequested;
-      if (hasAppliedSnapshot && !projectionSessionChanged && !isProjectionRecovery) {
+      if (hasAppliedSnapshot && !projectionSessionChanged && !isProjectionRecovery && !receipt) {
         // Snapshots create projections; they do not replace a healthy live backlog.
+        flushDeferredExitIfReady();
         return;
       }
       if (isProjectionRecovery) {
@@ -7832,6 +8103,7 @@ function createExecutionTerminalController(
             terminalStream.revision < currentTerminalRevision
           )
         ) {
+          rejectReceipt('local-projection-conflict');
           return;
         }
       }
@@ -7865,7 +8137,7 @@ function createExecutionTerminalController(
         if (pendingProjectionBarrier) {
           postAttachSnapshotRequest();
         }
-      } else if (projectionSessionChanged || !hasAppliedSnapshot || isProjectionRecovery) {
+      } else if (projectionSessionChanged || !hasAppliedSnapshot || isProjectionRecovery || receipt) {
         currentTerminalAuthorityId = undefined;
         currentTerminalRevision = 0;
         const pendingOutputCanBeReconciled =
@@ -7888,12 +8160,21 @@ function createExecutionTerminalController(
         if (snapshotSequence !== undefined) {
           currentLocalOutputSequence = Math.max(currentLocalOutputSequence, snapshotSequence);
         }
+        localProjectionSequenceTracked = snapshotSequence !== undefined && Number.isSafeInteger(snapshotSequence) &&
+          (!isProjectionRecovery || snapshotSequence >= currentLocalOutputSequence);
       }
       hasAppliedSnapshot = true;
       projectedExecutionSessionId = detail.executionSessionId ?? projectedExecutionSessionId;
       const recoveryEpoch = projectionRecoveryEpoch;
+      const snapshotGeneration = writeGeneration;
+      const credit: LocalOutputCredit | undefined = receipt && detail.executionSessionId
+        ? { ...receipt, executionSessionId: detail.executionSessionId, generation: writeGeneration }
+        : pendingLocalOutputCredit && pendingLocalOutputCredit.executionSessionId === detail.executionSessionId &&
+          snapshotSequence !== undefined && snapshotSequence >= pendingLocalOutputCredit.outputSequence
+          ? pendingLocalOutputCredit : undefined;
+      if (credit) pendingLocalOutputCredit = credit;
       options?.onContentWillChange?.('snapshot');
-      options?.onSnapshotApplied?.(detail);
+      let releaseSnapshotRestore: (() => void) | undefined;
       const checkpointCharacters =
         terminalStream?.checkpoint.serializedState.data.length ??
         detail.serializedTerminalState?.data.length ??
@@ -7904,40 +8185,47 @@ function createExecutionTerminalController(
         0
       );
       queueTerminalWrite(
-        (done, markStarted) => {
+        (done, markStarted, failed) => {
           const snapshotWriteGeneration = writeGeneration;
           let finished = false;
+          let releaseSnapshotRestoreDiagnosticsSuppression: (() => void) | undefined;
           const finishSnapshotWrite = (snapshotDone?: () => void, applied = true): void => {
             if (finished) {
               snapshotDone?.();
               return;
             }
             finished = true;
-            snapshotDone?.();
-            done(applied);
+            try { releaseSnapshotRestoreDiagnosticsSuppression?.(); }
+            catch { applied = false; }
+            try { snapshotDone?.(); }
+            catch { applied = false; }
+            if (applied) done();
+            else failed();
           };
           scheduleExecutionTerminalSnapshotWrite({
             nodeId,
             kind,
             queuedAtMs: readPerformanceNow(),
             run: (snapshotDone) => {
-              if (disposed || snapshotWriteGeneration !== writeGeneration) {
+              if (finished || disposed || snapshotWriteGeneration !== writeGeneration) {
                 finishSnapshotWrite(snapshotDone, false);
                 return;
               }
-              markStarted?.();
-              const releaseSnapshotRestoreDiagnosticsSuppression =
-                options?.beginSnapshotRestoreDiagnosticsSuppression?.();
-              restoreExecutionTerminalSnapshot(terminal, detail, () => {
-                if (projectionRecoveryEpoch === recoveryEpoch) {
-                  projectionRecoveryRequested = false;
-                  if (pendingProjectionBarrier) {
-                    postAttachSnapshotRequest();
-                  }
-                }
-                releaseSnapshotRestoreDiagnosticsSuppression?.();
-                finishSnapshotWrite(snapshotDone);
-              });
+              const current = (): boolean => !disposed && snapshotWriteGeneration === writeGeneration;
+              try {
+                markStarted();
+                releaseSnapshotRestore = beginSnapshotRestore();
+                releaseSnapshotRestoreDiagnosticsSuppression = options?.beginSnapshotRestoreDiagnosticsSuppression?.();
+                restoreExecutionTerminalSnapshot(terminal, detail, () => {
+                  try {
+                    if (current() && projectionRecoveryEpoch === recoveryEpoch) {
+                      projectionRecoveryRequested = false;
+                      if (pendingProjectionBarrier) postAttachSnapshotRequest();
+                    }
+                    finishSnapshotWrite(snapshotDone, current());
+                  } catch { finishSnapshotWrite(snapshotDone, false); }
+                }, () => finishSnapshotWrite(snapshotDone, false), current);
+              } catch { finishSnapshotWrite(snapshotDone, false); }
             },
             cancel: () => finishSnapshotWrite(undefined, false)
           });
@@ -7951,12 +8239,15 @@ function createExecutionTerminalController(
           checkpointRevision: terminalStream?.checkpoint.revision,
           targetRevision: terminalStream?.revision
         },
-        (applied) => {
+        (writeApplied) => {
+          const applied = finishSnapshotRestore(detail, releaseSnapshotRestore, writeApplied, snapshotGeneration);
+          settleLocalOutputCredit(credit, applied);
           if (applied && terminalStream) {
             markTerminalRevisionApplied(terminalStream.authorityId, terminalStream.revision, {
               immediate: true
             });
           }
+          flushDeferredExitIfReady();
         }
       );
       if (pendingOutput.length > 0 && !pendingPersistBarrier && !pendingProjectionBarrier) {
@@ -7968,11 +8259,19 @@ function createExecutionTerminalController(
       if (disposed) {
         return;
       }
-
+      pagedProjection.stop('projection-recovery');
       postAttachSnapshotRequest();
     },
     enqueueOutput(chunk, outputOptions) {
+      const receipt = outputOptions?.localOutputReceipt;
+      const rejectReceipt = (reason: string): void =>
+        rejectLocalOutputReceipt(receipt, outputOptions?.executionSessionId, reason);
       if (disposed) {
+        rejectReceipt('controller-disposed');
+        return;
+      }
+      if (pagedProjection.active && outputOptions?.executionSessionId === currentExecutionSessionId) {
+        rejectReceipt('local-projection-conflict');
         return;
       }
 
@@ -7982,10 +8281,16 @@ function createExecutionTerminalController(
       const terminalRevision = normalizeOutputSequence(outputOptions?.terminalRevision);
       const terminalAuthorityId = outputOptions?.terminalAuthorityId;
       const outputExecutionSessionId = outputOptions?.executionSessionId;
+      if (receipt && (!outputExecutionSessionId || receipt.outputSequence !== outputSequence || terminalAuthorityId !== undefined ||
+          (outputExecutionSessionId === currentExecutionSessionId && pendingLocalOutputCredit !== undefined))) {
+        rejectReceipt('local-projection-conflict');
+        return;
+      }
       if (
         outputExecutionSessionId !== undefined &&
         supersededExecutionSessionIds.has(outputExecutionSessionId)
       ) {
+        rejectReceipt('execution-replaced');
         return;
       }
       if (outputExecutionSessionId !== undefined && currentExecutionSessionId !== outputExecutionSessionId) {
@@ -8027,6 +8332,7 @@ function createExecutionTerminalController(
       } else if (outputSequence !== undefined) {
         if (outputSequence <= currentLocalOutputSequence) {
           if (chunk) {
+            rejectReceipt('local-output-sequence-stale');
             return;
           }
         } else {
@@ -8035,13 +8341,21 @@ function createExecutionTerminalController(
             outputStartSequence !== currentLocalOutputSequence + 1 ||
             outputStartSequence > outputSequence
           ) {
+            rejectReceipt('local-output-sequence-gap');
             postAttachSnapshotRequest();
             return;
           }
           currentLocalOutputSequence = outputSequence;
         }
       }
+      const credit: LocalOutputCredit | undefined = receipt && outputExecutionSessionId
+        ? { ...receipt, executionSessionId: outputExecutionSessionId, generation: writeGeneration } : undefined;
+      if (credit) pendingLocalOutputCredit = credit;
       if (chunk) {
+        if (!terminalAuthorityId &&
+            (outputSequence === undefined || !Number.isSafeInteger(outputSequence))) {
+          localProjectionSequenceTracked = false;
+        }
         pendingOutput += chunk;
         const hasValidOutputSequenceRange =
           outputStartSequence !== undefined &&
@@ -8057,9 +8371,18 @@ function createExecutionTerminalController(
             : {}),
           terminalAuthorityId,
           terminalStartRevision,
-          terminalRevision
+          terminalRevision,
+          localOutputCredit: credit
         });
         options?.onContentWillChange?.('output');
+      } else if (credit) {
+        if (pendingPersistBarrier || pendingProjectionBarrier) {
+          settleLocalOutputCredit(credit, false, 'local-output-blocked');
+        } else {
+          if (pendingOutput.length > 0) controller.flushPendingOutput();
+          queueTerminalWrite(done => terminal.write('', done), { reason: 'local-empty-output' },
+            applied => settleLocalOutputCredit(credit, applied));
+        }
       }
       if (
         terminalAuthorityId &&
@@ -8130,8 +8453,46 @@ function createExecutionTerminalController(
         }
       });
     },
-    showExit(message, executionSessionId) {
+    showExit(message, executionSessionId, requestedLocalCompletion) {
+      if (requestedLocalCompletion !== undefined) {
+        const completion = normalizeLocalTerminalCompletion(requestedLocalCompletion);
+        if (!completion) return;
+        if (disposed || completion.executionSessionId !== executionSessionId ||
+            (currentExecutionSessionId !== undefined && completion.executionSessionId !== currentExecutionSessionId) ||
+            pagedProjection.active || currentTerminalAuthorityId !== undefined) {
+          postMessage({ type: 'webview/executionLocalTerminalSettled', payload: {
+            nodeId, kind, executionSessionId: completion.executionSessionId,
+            outcome: { kind: 'cancelled', reason: disposed ? 'controller-disposed' : 'local-projection-conflict' }
+          } });
+          return;
+        }
+        if (localCompletion) {
+          if (localCompletion.executionSessionId !== completion.executionSessionId ||
+              localCompletion.finalOutputSequence !== completion.finalOutputSequence) {
+            settleLocalCompletion({ kind: 'cancelled', reason: 'local-completion-conflict' });
+            flushDeferredExitIfReady();
+          }
+          return;
+        }
+        if (currentExecutionSessionId === undefined) beginExecutionSessionGeneration(completion.executionSessionId);
+        localCompletion = { ...completion, generation: writeGeneration, state: 'waiting' };
+        pendingExitMessage = message || undefined;
+        if (pendingOutput.length > 0 && !pendingPersistBarrier && !pendingProjectionBarrier) {
+          scheduleExecutionTerminalDrain(controller);
+        }
+        flushDeferredExitIfReady();
+        return;
+      }
       if (disposed) {
+        return;
+      }
+      if (localCompletion && localCompletion.state !== 'settled') {
+        pendingExitMessage = message;
+        flushDeferredExitIfReady();
+        return;
+      }
+      if (pagedProjection.active) {
+        pagedProjection.showExit(message, executionSessionId);
         return;
       }
       if (
@@ -8152,7 +8513,6 @@ function createExecutionTerminalController(
         scheduleExecutionTerminalDrain(controller);
         return;
       }
-      queueExitWrite(message);
     },
     refreshVisibleRows() {
       if (disposed) {
@@ -8179,6 +8539,7 @@ function createExecutionTerminalController(
       pendingOutput = pendingOutput.slice(chunkLength);
       let remainingRevisionCharacters = chunk.length;
       let completedRevision: number | undefined;
+      let completedLocalOutputCredit: LocalOutputCredit | undefined;
       while (remainingRevisionCharacters > 0 && pendingOutputBoundaries.length > 0) {
         const boundary = pendingOutputBoundaries[0];
         const consumedCharacters = Math.min(remainingRevisionCharacters, boundary.remainingCharacters);
@@ -8186,6 +8547,7 @@ function createExecutionTerminalController(
         remainingRevisionCharacters -= consumedCharacters;
         if (boundary.remainingCharacters === 0) {
           completedRevision = boundary.terminalRevision;
+          completedLocalOutputCredit = boundary.localOutputCredit ?? completedLocalOutputCredit;
           pendingOutputBoundaries.shift();
         }
       }
@@ -8198,9 +8560,11 @@ function createExecutionTerminalController(
         reason: 'output',
         characters: chunk.length
       }, (applied) => {
+        settleLocalOutputCredit(completedLocalOutputCredit, applied);
         if (applied && outputAuthorityId && completedRevision !== undefined) {
           markTerminalRevisionApplied(outputAuthorityId, completedRevision);
         }
+        flushDeferredExitIfReady();
       });
       flushDeferredExitIfReady();
       return chunk.length;
@@ -8215,7 +8579,11 @@ function createExecutionTerminalController(
       return pendingPersistBarrier || pendingProjectionBarrier;
     },
     dispose() {
+      settleLocalOutputCredit(pendingLocalOutputCredit, false, 'controller-disposed');
+      settleLocalCompletion({ kind: 'cancelled', reason: 'controller-disposed' });
+      pagedProjection.stop('controller-disposed');
       disposed = true;
+      for (const release of snapshotRestoreReleases) release();
       pendingOutput = '';
       pendingOutputBoundaries = [];
       pendingPersistBarrier = false;
@@ -8242,64 +8610,119 @@ function createExecutionTerminalController(
     }
   };
 
+  const pagedProjection = new TerminalPagedProjection({
+    request: (read, afterRevision, requestId) => {
+      reportTerminalDrainDiagnostic(
+        {
+          source: 'webview-terminal-drain',
+          nodeId,
+          kind,
+          executionSessionId: read.sessionId,
+          sequence: afterRevision,
+          requestId,
+          reason: 'terminal-page-requested',
+          webviewEpochMs: Date.now(),
+          success: true
+        }
+      );
+      postMessage({
+        type: 'webview/readExecutionTerminalPage', payload: {
+          nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId,
+          readId: read.readId, requestId, afterRevision
+        }
+      });
+    },
+    close: (read, outcome) => postMessage({ type: 'webview/closeExecutionTerminalRead', payload: {
+      nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId,
+      ...(outcome ? { outcome } : {})
+    } }),
+    checkpoint: (read, current, applied) => {
+      const detail: Extract<ExecutionHostEvent, { type: 'snapshot' }> = {
+        type: 'snapshot', nodeId, kind, output: '', cols: read.checkpoint.cols, rows: read.checkpoint.rows,
+        liveSession: true, executionSessionId: read.sessionId, outputSequence: read.checkpoint.revision,
+        terminalStream: { version: 1, sessionId: read.sessionId, authorityId: read.authorityId,
+          checkpoint: read.checkpoint, revision: read.checkpoint.revision, events: [] }
+      };
+      options?.onContentWillChange?.('snapshot');
+      let releaseSnapshotRestore: (() => void) | undefined;
+      const snapshotGeneration = writeGeneration;
+      queueTerminalWrite((done, _markStarted, failed) => {
+        if (!current()) { done(false); return; }
+        releaseSnapshotRestore = beginSnapshotRestore();
+        const release = options?.beginSnapshotRestoreDiagnosticsSuppression?.();
+        restoreExecutionTerminalSnapshot(terminal, detail, () => { release?.(); done(current()); },
+          () => { release?.(); failed(); }, current);
+      }, { reason: 'paged-checkpoint', checkpointRevision: read.checkpoint.revision }, (success) => {
+        const restored = finishSnapshotRestore(detail, releaseSnapshotRestore, success && current(), snapshotGeneration);
+        applied(restored && current());
+      });
+    },
+    events: (events, current, applied) => {
+      options?.onContentWillChange?.('output');
+      let releaseSnapshotRestore: (() => void) | undefined;
+      const snapshotGeneration = writeGeneration;
+      reportTerminalDrainDiagnostic(
+        {
+          source: 'webview-terminal-drain',
+          nodeId,
+          kind,
+          executionSessionId: currentExecutionSessionId,
+          reason: 'terminal-page-received',
+          replayEventCount: events.length,
+          replayOutputCharacters: events.reduce((size, event) =>
+            size + (event.type === 'output' ? event.data.length : 0), 0),
+          webviewEpochMs: Date.now(),
+          success: true
+        }
+      );
+      queueTerminalWrite((done, _markStarted, failed) => {
+        if (!current()) { done(false); return; }
+        releaseSnapshotRestore = beginSnapshotRestore();
+        applyTerminalStreamEvents(terminal, events, () => done(current()), current, failed);
+      }, { reason: 'paged-events', replayEventCount: events.length,
+        replayOutputCharacters: events.reduce((size, event) => size + (event.type === 'output' ? event.data.length : 0), 0)
+      }, (success) => {
+        const restored = finishSnapshotRestore(undefined, releaseSnapshotRestore, success && current(), snapshotGeneration);
+        applied(restored && current());
+      });
+    },
+    // Exit status is rendered by the node UI, outside the subject's terminal buffer.
+    exit: flushDeferredExitIfReady,
+    error: options?.onReadError
+  });
+
   return controller;
 }
 
-function restoreExecutionTerminalSnapshot(
+function applyTerminalStreamEvents(
   terminal: Terminal,
-  detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>,
-  onRestored?: () => void
+  events: readonly import('../common/terminalSessionStream').TerminalStreamEvent[],
+  done: () => void,
+  current: () => boolean = () => true,
+  failed?: () => void
 ): void {
-  const finishRestore = (): void => {
-    window.requestAnimationFrame(() => {
-      if (terminal.rows > 0) {
-        terminal.refresh(0, terminal.rows - 1);
+  const apply = (start: number): void => {
+    try {
+      if (!current()) {
+        done();
+        return;
       }
-    });
-    onRestored?.();
-  };
-
-  if (detail.terminalStream !== undefined) {
-    const terminalStream = normalizeTerminalStreamAttachPayload(detail.terminalStream);
-    if (
-      !terminalStream ||
-      detail.executionSessionId === undefined ||
-      terminalStream.sessionId !== detail.executionSessionId
-    ) {
-      // Fail closed: raw output is not a valid fallback for a rejected authority payload.
-      onRestored?.();
-      return;
-    }
-
-    const { checkpoint, events } = terminalStream;
-    terminal.options.scrollback = checkpoint.scrollback;
-    if (terminal.cols !== checkpoint.cols || terminal.rows !== checkpoint.rows) {
-      terminal.resize(checkpoint.cols, checkpoint.rows);
-    }
-    terminal.reset();
-
-    const applyEvent = (startIndex: number): void => {
-      let index = startIndex;
+      let index = start;
       while (index < events.length) {
         const event = events[index];
         if (event.type === 'output') {
           let outputBatch = '';
           while (index < events.length) {
             const outputEvent = events[index];
-            if (outputEvent.type !== 'output') {
-              break;
-            }
-            if (
-              outputBatch.length > 0 &&
-              outputBatch.length + outputEvent.data.length > EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS
-            ) {
+            if (outputEvent.type !== 'output' || (outputBatch.length > 0 &&
+                outputBatch.length + outputEvent.data.length > EXECUTION_TERMINAL_SNAPSHOT_OUTPUT_BATCH_MAX_CHARACTERS)) {
               break;
             }
             outputBatch += outputEvent.data;
             index += 1;
           }
           // Resize/options changes must run after xterm leaves its parser callback.
-          terminal.write(outputBatch, () => window.setTimeout(() => applyEvent(index), 0));
+          terminal.write(outputBatch, () => window.setTimeout(() => apply(index), 0));
           return;
         }
         if (event.type === 'resize') {
@@ -8309,52 +8732,124 @@ function restoreExecutionTerminalSnapshot(
         }
         index += 1;
       }
-      finishRestore();
-    };
-
-    if (checkpoint.serializedState.data) {
-      terminal.write(checkpoint.serializedState.data, () => applyEvent(0));
-    } else {
-      applyEvent(0);
+      done();
+    } catch (error) {
+      if (failed) failed();
+      else throw error;
     }
-    return;
+  };
+  apply(0);
+}
+
+function restoreExecutionTerminalSnapshot(
+  terminal: Terminal,
+  detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>,
+  onRestored?: () => void,
+  onFailed?: () => void,
+  current: () => boolean = () => true
+): void {
+  if (!current()) { onRestored?.(); return; }
+  const finishRestore = (): void => {
+    try {
+      window.requestAnimationFrame(() => {
+        if (current() && terminal.rows > 0) terminal.refresh(0, terminal.rows - 1);
+      });
+      onRestored?.();
+    } catch (error) {
+      if (onFailed) onFailed();
+      else throw error;
+    }
+  };
+
+  try {
+    if (detail.terminalStream !== undefined) {
+      const terminalStream = normalizeTerminalStreamAttachPayload(detail.terminalStream);
+      if (
+        !terminalStream ||
+        detail.executionSessionId === undefined ||
+        terminalStream.sessionId !== detail.executionSessionId
+      ) {
+        // Fail closed: raw output is not a valid fallback for a rejected authority payload.
+        if (onFailed) onFailed();
+        else onRestored?.();
+        return;
+      }
+
+      const { checkpoint, events } = terminalStream;
+      terminal.options.scrollback = checkpoint.scrollback;
+      if (terminal.cols !== checkpoint.cols || terminal.rows !== checkpoint.rows) {
+        terminal.resize(checkpoint.cols, checkpoint.rows);
+      }
+      terminal.reset();
+
+      const applyEvents = (): void => {
+        try {
+          if (current() && checkpoint.serializedState.viewportY !== undefined) {
+            terminal.scrollToLine(checkpoint.serializedState.viewportY);
+          }
+          applyTerminalStreamEvents(terminal, events, finishRestore, current, onFailed);
+        } catch (error) {
+          if (onFailed) onFailed();
+          else throw error;
+        }
+      };
+
+      if (checkpoint.serializedState.data || onFailed) {
+        // Explicit completion also crosses xterm's callback for an empty checkpoint.
+        terminal.write(checkpoint.serializedState.data, () => window.setTimeout(applyEvents, 0));
+      } else {
+        applyEvents();
+      }
+      return;
+    }
+
+    const snapshotOutputSequence = normalizeTerminalSnapshotOutputSequence(detail.outputSequence);
+    const serializedTerminalStateOutputSequence = normalizeTerminalSnapshotOutputSequence(
+      detail.serializedTerminalState?.outputSequence
+    );
+    const serializedTerminalState =
+      detail.serializedTerminalState !== undefined &&
+      (
+        snapshotOutputSequence === undefined ||
+        serializedTerminalStateOutputSequence === snapshotOutputSequence
+      )
+        ? detail.serializedTerminalState
+        : undefined;
+
+    const restoreCols = detail.cols > 1 ? detail.cols : terminal.cols;
+    const restoreRows = detail.rows > 0 ? detail.rows : terminal.rows;
+    if (restoreCols > 1 && restoreRows > 0 && (terminal.cols !== restoreCols || terminal.rows !== restoreRows)) {
+      terminal.resize(restoreCols, restoreRows);
+    }
+    terminal.reset();
+
+    if (serializedTerminalState) {
+      terminal.write(serializedTerminalState.data, () => {
+        try {
+          if (current() && serializedTerminalState.viewportY !== undefined) {
+            terminal.scrollToLine(serializedTerminalState.viewportY);
+          }
+          finishRestore();
+        } catch (error) {
+          if (onFailed) onFailed();
+          else throw error;
+        }
+      });
+      return;
+    }
+
+    if (detail.output || onFailed) {
+      terminal.write(detail.output, () => {
+        finishRestore();
+      });
+      return;
+    }
+
+    finishRestore();
+  } catch (error) {
+    if (onFailed) onFailed();
+    else throw error;
   }
-
-  const snapshotOutputSequence = normalizeTerminalSnapshotOutputSequence(detail.outputSequence);
-  const serializedTerminalStateOutputSequence = normalizeTerminalSnapshotOutputSequence(
-    detail.serializedTerminalState?.outputSequence
-  );
-  const serializedTerminalState =
-    detail.serializedTerminalState !== undefined &&
-    (
-      snapshotOutputSequence === undefined ||
-      serializedTerminalStateOutputSequence === snapshotOutputSequence
-    )
-      ? detail.serializedTerminalState
-      : undefined;
-
-  const restoreCols = detail.cols > 1 ? detail.cols : terminal.cols;
-  const restoreRows = detail.rows > 0 ? detail.rows : terminal.rows;
-  if (restoreCols > 1 && restoreRows > 0 && (terminal.cols !== restoreCols || terminal.rows !== restoreRows)) {
-    terminal.resize(restoreCols, restoreRows);
-  }
-  terminal.reset();
-
-  if (serializedTerminalState) {
-    terminal.write(serializedTerminalState.data, () => {
-      finishRestore();
-    });
-    return;
-  }
-
-  if (detail.output) {
-    terminal.write(detail.output, () => {
-      finishRestore();
-    });
-    return;
-  }
-
-  finishRestore();
 }
 
 function normalizeTerminalSnapshotOutputSequence(value: number | undefined): number | undefined {
@@ -8476,6 +8971,8 @@ function ensureEmbeddedTerminalThemeObservers(): void {
   };
 }
 
+let capacityCalibrationProbe: WebviewProbeSnapshot['capacityCalibration'];
+
 function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
   const nodeElements = Array.from(
     document.querySelectorAll<HTMLElement>('[data-node-id][data-node-kind]')
@@ -8507,7 +9004,12 @@ function collectWebviewProbeSnapshot(): WebviewProbeSnapshot {
     edges,
     groupCount: groups.length,
     groups,
-    selectedGroupIds: groups.filter((group) => group.selected).map((group) => group.groupId)
+    selectedGroupIds: groups.filter((group) => group.selected).map((group) => group.groupId),
+    capacityCalibration: capacityCalibrationProbe ? {
+      ...capacityCalibrationProbe,
+      browserReportedHeapUsed: (performance as Performance & { memory?: { usedJSHeapSize: number } })
+        .memory?.usedJSHeapSize
+    } : undefined
   };
 }
 
@@ -8655,6 +9157,8 @@ function readProbeExecutionTerminalState(
   | 'terminalSelectionText'
   | 'terminalCols'
   | 'terminalRows'
+  | 'terminalCursorX'
+  | 'terminalCursorY'
   | 'terminalViewportY'
   | 'terminalVisibleLines'
   | 'terminalTextareaLeft'
@@ -8673,6 +9177,8 @@ function readProbeExecutionTerminalState(
     terminalSelectionText: terminal.terminal.getSelection(),
     terminalCols: terminal.terminal.cols > 0 ? terminal.terminal.cols : undefined,
     terminalRows: terminal.terminal.rows > 0 ? terminal.terminal.rows : undefined,
+    terminalCursorX: terminal.terminal.buffer.active.cursorX,
+    terminalCursorY: terminal.terminal.buffer.active.cursorY,
     terminalViewportY:
       terminal.terminal.buffer.active.viewportY >= 0 ? terminal.terminal.buffer.active.viewportY : undefined,
     terminalVisibleLines: readProbeTerminalVisibleLines(terminal.terminal),
@@ -8780,6 +9286,77 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
+      case 'configureCapacityCalibration': {
+        capacityCalibrationProbe = action.enabled ? { readers: [] } : undefined;
+        break;
+      }
+      case 'measureCapacityInteraction': {
+        const entry = executionTerminalRegistry.get(action.nodeId);
+        const calibration = capacityCalibrationProbe;
+        const load = executionTerminalRegistry.get(action.loadNodeId);
+        if (!entry || !load || !calibration) throw new Error('Capacity calibration terminal is not enabled and mounted.');
+        const reply = `DSC_A1_REPLY_${action.nonce}`;
+        const lastLoadBlock = () => {
+          const buffer = load.terminal.buffer.active;
+          for (let index = buffer.length - 1; index >= Math.max(0, buffer.length - 10); index -= 1) {
+            const match = /^(\d{8}):x{69}$/.exec(buffer.getLine(index)?.translateToString(true) ?? '');
+            if (match) return Number(match[1]);
+          }
+          return 0;
+        };
+        const loadLastBlockBefore = lastLoadBlock();
+        let started = 0;
+        await new Promise<void>((resolve) => {
+          const settle = (applied: boolean) => {
+            clearTimeout(timer);
+            listener.dispose();
+            calibration.interaction = { nodeId: action.nodeId, nonce: action.nonce,
+              elapsedMs: performance.now() - started, applied,
+              loadLastBlockBefore, loadLastBlockAfter: lastLoadBlock() };
+            resolve();
+          };
+          const listener = entry.terminal.onWriteParsed(() => {
+            const buffer = entry.terminal.buffer.active;
+            // Replies may remain near the cursor before the terminal scrolls.
+            const cursorLine = buffer.baseY + buffer.cursorY;
+            const start = Math.max(0, cursorLine - 10);
+            const end = Math.min(buffer.length, cursorLine + 11);
+            for (let index = start; index < end; index += 1) {
+              if (buffer.getLine(index)?.translateToString(true) === reply) { settle(true); return; }
+            }
+          });
+          const timer = window.setTimeout(() => settle(false), 1500);
+          started = performance.now();
+          entry.terminal.input(`ping:${action.nonce}\r`);
+        });
+        break;
+      }
+      case 'assertCapacityTerminalSuffix': {
+        const entry = executionTerminalRegistry.get(action.nodeId);
+        if (!entry || !capacityCalibrationProbe) throw new Error('Capacity calibration terminal is not enabled and mounted.');
+        const terminal = entry.terminal;
+        if (terminal.cols < 78 || terminal.options.scrollback !== 100000 || terminal.buffer.active.type !== 'normal') {
+          throw new Error('Capacity suffix requires the fixed unwrapped normal-buffer dimensions and scrollback.');
+        }
+        const totalRows = action.blocks * 128;
+        const retainedRows = Math.min(totalRows, 100000 + terminal.rows - 1);
+        const buffer = terminal.buffer.active;
+        if (buffer.length !== Math.max(terminal.rows, retainedRows + 1)) {
+          throw new Error(`Capacity suffix pending: ${buffer.length} rows, expected ${retainedRows + 1}.`);
+        }
+        // Compare the complete retained suffix without allocating a second transcript.
+        for (let index = 0; index < retainedRows; index += 1) {
+          const block = Math.floor((totalRows - retainedRows + index) / 128) + 1;
+          const expected = `${String(block).padStart(8, '0')}:${'x'.repeat(69)}`;
+          if (buffer.getLine(index)?.translateToString(true) !== expected) {
+            throw new Error(`Capacity suffix pending or corrupt at retained row ${index}.`);
+          }
+        }
+        if (buffer.getLine(retainedRows)?.translateToString(true) !== '' || buffer.cursorX !== 0) {
+          throw new Error('Capacity suffix final blank row/cursor differs.');
+        }
+        break;
+      }
       case 'assertExecutionTerminalBuffer': {
         const entry = executionTerminalRegistry.get(action.nodeId);
         if (!entry) {
@@ -8787,15 +9364,20 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         }
 
         const actualLines: string[] = [];
+        const intensityRows = new Map<number, number>();
         for (let index = 0; index < entry.terminal.buffer.active.length; index += 1) {
           const line = entry.terminal.buffer.active.getLine(index)?.translateToString(true) ?? '';
-          if (line.length > 0) {
+          if (line.length > 0 && (action.linePrefix === undefined || line.startsWith(action.linePrefix))) {
+            if (action.expectedIntensities?.some((expected) => expected.lineIndex === actualLines.length)) {
+              intensityRows.set(actualLines.length, index);
+            }
             actualLines.push(line);
           }
         }
         if (actualLines.length !== action.expectedLines.length) {
           throw new Error(
-            `Execution terminal ${action.nodeId} has ${actualLines.length} non-empty lines; expected ${action.expectedLines.length}.`
+            `Execution terminal ${action.nodeId} has ${actualLines.length} non-empty lines; expected ${action.expectedLines.length}. ` +
+            `First lines: ${JSON.stringify(actualLines.slice(0, 2))}; last lines: ${JSON.stringify(actualLines.slice(-3))}.`
           );
         }
         const mismatchIndex = actualLines.findIndex((line, index) => line !== action.expectedLines[index]);
@@ -8804,6 +9386,15 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
             `Execution terminal ${action.nodeId} differs at line ${mismatchIndex + 1}: ` +
             `expected ${JSON.stringify(action.expectedLines[mismatchIndex])}, received ${JSON.stringify(actualLines[mismatchIndex])}.`
           );
+        }
+        for (const expected of action.expectedIntensities ?? []) {
+          const row = intensityRows.get(expected.lineIndex);
+          const cell = row === undefined ? undefined : entry.terminal.buffer.active.getLine(row)?.getCell(expected.column);
+          if (!cell || (cell.isBold() !== 0) !== expected.bold || (cell.isDim() !== 0) !== expected.dim) {
+            throw new Error(
+              `Execution terminal ${action.nodeId} differs in intensity at line ${expected.lineIndex + 1}, column ${expected.column + 1}.`
+            );
+          }
         }
         break;
       }

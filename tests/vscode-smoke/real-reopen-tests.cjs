@@ -141,7 +141,9 @@ async function runSetupPhase() {
   await sendExecutionInput(
     completedTerminalNode.id,
     'terminal',
-    `echo ${COMPLETED_TERMINAL_SETUP_OUTPUT}; sleep 2; echo ${COMPLETED_TERMINAL_REOPEN_OUTPUT}; exit\r`
+    `echo ${COMPLETED_TERMINAL_SETUP_OUTPUT}; ` +
+      `while kill -0 ${process.pid} 2>/dev/null; do sleep 0.1; done; ` +
+      `echo ${COMPLETED_TERMINAL_REOPEN_OUTPUT}; exit\r`
   );
 
   await waitForSnapshot((currentSnapshot) => {
@@ -248,9 +250,7 @@ async function runVerifyPhase() {
         currentCompletedTerminal.metadata?.terminal?.persistenceMode === 'snapshot-only' &&
         currentCompletedTerminal.metadata.terminal.liveSession === false &&
         currentCompletedTerminal.metadata.terminal.runtimeSessionId === undefined &&
-        readTerminalStreamProjectionText(currentCompletedTerminal.metadata.terminal.terminalStream).includes(
-          COMPLETED_TERMINAL_REOPEN_OUTPUT
-        )
+        currentCompletedTerminal.metadata.terminal.terminalHistoryDiscarded === true
     );
   }, 35000);
 
@@ -306,16 +306,15 @@ async function runVerifyPhase() {
   assert.strictEqual(completedTerminalNode.metadata.terminal.attachmentState, 'history-restored');
   assert.strictEqual(completedTerminalNode.metadata.terminal.liveSession, false);
   assert.strictEqual(completedTerminalNode.metadata.terminal.runtimeSessionId, undefined);
-  assert.strictEqual(
-    completedTerminalNode.metadata.terminal.terminalStream?.sessionId,
-    expected.completedTerminalSessionId
-  );
-  assert.ok(
-    readTerminalStreamProjectionText(completedTerminalNode.metadata.terminal.terminalStream).includes(
-      COMPLETED_TERMINAL_REOPEN_OUTPUT
-    ),
-    'Terminal completed while the Host was offline must retain its authoritative final stream after reopen.'
-  );
+  assert.strictEqual(completedTerminalNode.metadata.terminal.terminalHistoryDiscarded, true);
+  for (const key of ['terminalStream', 'serializedTerminalState', 'recentOutput', 'pendingLaunch']) {
+    assert.strictEqual(completedTerminalNode.metadata.terminal[key], undefined,
+      `Terminal completed while Host was offline must not restore ${key}.`);
+  }
+  const persisted = await flushPersistedState();
+  assert.strictEqual(persisted.lastError, undefined);
+  assert.ok(!JSON.stringify(persisted.snapshot).includes(COMPLETED_TERMINAL_REOPEN_OUTPUT),
+    'Offline-completed terminal content must not enter the saved canvas.');
 
   await sendExecutionInput(agentDisplayNodeId, 'agent', 'AFTER_REOPEN_AGENT\r');
   await sendExecutionInput(terminalDisplayNodeId, 'terminal', `echo ${TERMINAL_POST_REOPEN_OUTPUT}\r`);
@@ -583,23 +582,10 @@ function findExpectedCompletedTerminalNode(snapshot, expected) {
     }
     return Boolean(
       node.id === expected.completedTerminalNodeId ||
-        node.metadata?.terminal?.runtimeSessionId === expected.completedTerminalSessionId ||
-        node.metadata?.terminal?.terminalStream?.sessionId === expected.completedTerminalSessionId
+        node.id.endsWith(`:${expected.completedTerminalNodeId}`) ||
+        node.metadata?.terminal?.runtimeSessionId === expected.completedTerminalSessionId
     );
   });
-}
-
-function readTerminalStreamProjectionText(terminalStream) {
-  if (
-    typeof terminalStream?.checkpoint?.serializedState?.data !== 'string' ||
-    !Array.isArray(terminalStream.events)
-  ) {
-    return '';
-  }
-  return terminalStream.checkpoint.serializedState.data + terminalStream.events
-    .filter((event) => event?.type === 'output' && typeof event.data === 'string')
-    .map((event) => event.data)
-    .join('');
 }
 
 function assertExpectedWorkspaceShape() {

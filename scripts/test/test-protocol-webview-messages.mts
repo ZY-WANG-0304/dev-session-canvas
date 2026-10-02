@@ -6,6 +6,8 @@ import {
   extractWebviewMessageLifecycle,
   isWebviewDomAction,
   normalizeCanvasMultiRootPresentationMode,
+  normalizeLocalTerminalCompletion,
+  normalizeLocalTerminalOutcome,
   parseWebviewMessage,
   type HostToWebviewMessage
 } from '../../extensions/vscode/dev-session-canvas/src/common/protocol.ts';
@@ -25,7 +27,132 @@ assert.equal(
 );
 
 const hardwrapLinkText = 'src/webview/executionTerminalNativeInteractions.ts:1600:12';
+const terminalReadPayload = {
+  nodeId: 'terminal', kind: 'terminal', executionSessionId: 'session', authorityId: 'authority',
+  readId: 'reader', requestId: 'page-request', afterRevision: 0
+};
+assert.deepEqual(parseWebviewMessage({ type: 'webview/readExecutionTerminalPage', payload: terminalReadPayload }), {
+  type: 'webview/readExecutionTerminalPage', payload: terminalReadPayload
+});
+for (const patch of [{ readId: '' }, { requestId: '' }, { afterRevision: -1 }, { afterRevision: 0.5 },
+  { afterRevision: Number.MAX_SAFE_INTEGER + 1 }, { kind: 'note' }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/readExecutionTerminalPage', payload: { ...terminalReadPayload, ...patch } }), null);
+}
+assert.equal(parseWebviewMessage({ type: 'webview/closeExecutionTerminalRead', payload: terminalReadPayload })?.type,
+  'webview/closeExecutionTerminalRead');
+assert.deepEqual(parseWebviewMessage({ type: 'webview/ready' }), { type: 'webview/ready' });
+assert.deepEqual(parseWebviewMessage({ type: 'webview/ready', payload: {
+  capabilities: { terminalReadSettlementV1: true }
+} }), { type: 'webview/ready', payload: { capabilities: { terminalReadSettlementV1: true } } });
+for (const payload of [null, 'invalid', { capabilities: null }, { capabilities: { terminalReadSettlementV1: false } },
+  { capabilities: { terminalReadSettlementV1: 'true' } }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/ready', payload }), null);
+}
+for (const outcome of [{ kind: 'applied', finalRevision: 0 }, { kind: 'cancelled', reason: 'surface disposed' }]) {
+  assert.deepEqual(parseWebviewMessage({ type: 'webview/closeExecutionTerminalRead',
+    payload: { ...terminalReadPayload, outcome } }), {
+    type: 'webview/closeExecutionTerminalRead', payload: {
+      nodeId: 'terminal', kind: 'terminal', executionSessionId: 'session', authorityId: 'authority', readId: 'reader', outcome
+    }
+  });
+}
+for (const outcome of [null, {}, { kind: 'applied', finalRevision: -1 }, { kind: 'applied', finalRevision: 0.5 },
+  { kind: 'applied', finalRevision: Number.MAX_SAFE_INTEGER + 1 }, { kind: 'applied', finalRevision: '0' },
+  { kind: 'cancelled', reason: '  ' }, { kind: 'cancelled', reason: 'x'.repeat(1025) }, { kind: 'lost' }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/closeExecutionTerminalRead',
+    payload: { ...terminalReadPayload, outcome } }), null, 'invalid outcome must not become a legacy close');
+}
 const hardwrapPath = 'src/webview/executionTerminalNativeInteractions.ts';
+
+for (const capabilities of [{ terminalLocalSettlementV1: true },
+  { terminalReadSettlementV1: true, terminalLocalSettlementV1: true }]) {
+  assert.deepEqual(parseWebviewMessage({ type: 'webview/ready', payload: { capabilities } }),
+    { type: 'webview/ready', payload: { capabilities } });
+}
+for (const terminalLocalSettlementV1 of [false, null, 'true', 1]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/ready', payload: {
+    capabilities: { terminalReadSettlementV1: true, terminalLocalSettlementV1 }
+  } }), null);
+}
+for (const capabilities of [{ terminalAvailableReceiptV1: true },
+  { terminalReadSettlementV1: true, terminalLocalSettlementV1: true, terminalAvailableReceiptV1: true }]) {
+  assert.deepEqual(parseWebviewMessage({ type: 'webview/ready', payload: { capabilities } }),
+    { type: 'webview/ready', payload: { capabilities } });
+}
+for (const terminalAvailableReceiptV1 of [false, null, 'true', 1]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/ready', payload: {
+    capabilities: { terminalReadSettlementV1: true, terminalAvailableReceiptV1 }
+  } }), null);
+}
+const availableReceiptPayload = {
+  nodeId: 'terminal', kind: 'terminal', executionSessionId: 'session', authorityId: 'authority', receiptId: 'receipt'
+};
+for (const kind of ['terminal', 'agent']) {
+  const payload = { ...availableReceiptPayload, kind };
+  assert.deepEqual(parseWebviewMessage({ type: 'webview/executionTerminalAvailableReceived', payload }), {
+    type: 'webview/executionTerminalAvailableReceived', payload
+  });
+}
+for (const field of ['nodeId', 'executionSessionId', 'authorityId', 'receiptId']) {
+  for (const value of [undefined, null, '', 1, 'x'.repeat(257)]) {
+    assert.equal(parseWebviewMessage({ type: 'webview/executionTerminalAvailableReceived',
+      payload: { ...availableReceiptPayload, [field]: value } }), null);
+  }
+}
+for (const payload of [undefined, null, {}, { ...availableReceiptPayload, kind: 'note' }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/executionTerminalAvailableReceived', payload }), null);
+}
+assert.deepEqual(parseWebviewMessage({ type: 'webview/executionTerminalAvailableReceived', payload: {
+  ...availableReceiptPayload, revision: 42, outcome: { kind: 'applied', finalRevision: 42 }
+} }), { type: 'webview/executionTerminalAvailableReceived', payload: availableReceiptPayload },
+'Notification receipt must not acquire application or settlement semantics.');
+const localIdentity = { nodeId: 'terminal', kind: 'terminal', executionSessionId: 'local-session' };
+const localCredit = { ...localIdentity, receiptId: 'local-receipt', outputSequence: 0, outcome: 'applied' };
+for (const outcome of ['applied', 'cancelled']) {
+  const payload = { ...localCredit, outcome };
+  assert.deepEqual(parseWebviewMessage({ type: 'webview/executionLocalOutputApplied', payload }),
+    { type: 'webview/executionLocalOutputApplied', payload });
+}
+for (const patch of [{ nodeId: '' }, { kind: 'note' }, { executionSessionId: '' }, { receiptId: '' },
+  { receiptId: 'x'.repeat(257) }, { outputSequence: -1 }, { outputSequence: 0.5 },
+  { outputSequence: Number.MAX_SAFE_INTEGER + 1 }, { outputSequence: '0' }, { outcome: 'eof' },
+  { reason: 'x'.repeat(257) }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/executionLocalOutputApplied', payload: { ...localCredit, ...patch } }), null);
+}
+assert.deepEqual(parseWebviewMessage({ type: 'webview/ready', payload: { capabilities: {
+  terminalLocalOutputCreditV1: true
+} } }), { type: 'webview/ready', payload: { capabilities: { terminalLocalOutputCreditV1: true } } });
+assert.equal(parseWebviewMessage({ type: 'webview/ready', payload: { capabilities: {
+  terminalLocalOutputCreditV1: false
+} } }), null);
+const completion = { executionSessionId: 'local-session', finalOutputSequence: 0 };
+assert.deepEqual(normalizeLocalTerminalCompletion(completion), completion);
+for (const patch of [{ executionSessionId: '' }, { executionSessionId: 'x'.repeat(257) },
+  { finalOutputSequence: -1 }, { finalOutputSequence: 0.5 }, { finalOutputSequence: '0' },
+  { finalOutputSequence: Number.MAX_SAFE_INTEGER + 1 }]) {
+  assert.equal(normalizeLocalTerminalCompletion({ ...completion, ...patch }), undefined);
+}
+for (const outcome of [{ kind: 'applied', finalOutputSequence: 0 }, { kind: 'applied', finalOutputSequence: 17 },
+  { kind: 'cancelled', reason: 'controller-disposed' }]) {
+  assert.deepEqual(normalizeLocalTerminalOutcome(outcome), outcome);
+  const payload = { ...localIdentity, outcome };
+  assert.deepEqual(parseWebviewMessage({ type: 'webview/executionLocalTerminalSettled', payload }),
+    { type: 'webview/executionLocalTerminalSettled', payload });
+}
+for (const outcome of [undefined, null, {}, { kind: 'applied', finalRevision: 0 },
+  { kind: 'applied', finalOutputSequence: -1 }, { kind: 'applied', finalOutputSequence: 0.5 },
+  { kind: 'applied', finalOutputSequence: Number.MAX_SAFE_INTEGER + 1 },
+  { kind: 'applied', finalOutputSequence: '0' }, { kind: 'cancelled', reason: '' },
+  { kind: 'cancelled', reason: ' ' }, { kind: 'cancelled', reason: 'x'.repeat(1025) }, { kind: 'lost' }]) {
+  assert.equal(normalizeLocalTerminalOutcome(outcome), undefined);
+  assert.equal(parseWebviewMessage({ type: 'webview/executionLocalTerminalSettled',
+    payload: { ...localIdentity, outcome } }), null);
+}
+for (const patch of [{ nodeId: '' }, { nodeId: 'x'.repeat(257) }, { kind: 'note' },
+  { executionSessionId: '' }, { executionSessionId: 'x'.repeat(257) }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/executionLocalTerminalSettled',
+    payload: { ...localIdentity, ...patch, outcome: { kind: 'applied', finalOutputSequence: 0 } } }), null);
+}
 
 const hardwrapResolveMessage = {
   type: 'webview/resolveExecutionFileLinks',
@@ -1665,5 +1792,39 @@ assert.equal(
   false,
   'xterm buffer 断言必须拒绝非字符串行。'
 );
+
+assert.equal(isWebviewDomAction({ kind: 'assertExecutionTerminalBuffer', nodeId: 'terminal',
+  expectedLines: ['ROW_1', 'ROW_2'], linePrefix: 'ROW_' }), true);
+assert.equal(isWebviewDomAction({ kind: 'assertExecutionTerminalBuffer', nodeId: 'terminal',
+  expectedLines: ['ROW_1'], linePrefix: 1 }), false);
+const intensityAction = { kind: 'assertExecutionTerminalBuffer', nodeId: 'terminal',
+  expectedLines: ['DSC_CANDIDATE_ANSI'], expectedIntensities: [
+    { lineIndex: 0, column: 14, bold: false, dim: true },
+    { lineIndex: 0, column: 15, bold: true, dim: false },
+    { lineIndex: 0, column: 16, bold: true, dim: true },
+    { lineIndex: 0, column: 17, bold: false, dim: true }
+  ] };
+assert.equal(isWebviewDomAction(intensityAction), true);
+for (const invalid of [null, {}, Array(5).fill(intensityAction.expectedIntensities[0]),
+  [{ lineIndex: -1, column: 14, bold: false, dim: true }],
+  [{ lineIndex: 1, column: 14, bold: false, dim: true }],
+  [{ lineIndex: 0.5, column: 14, bold: false, dim: true }],
+  [{ lineIndex: 0, column: -1, bold: false, dim: true }],
+  [{ lineIndex: 0, column: 14.5, bold: false, dim: true }],
+  [{ lineIndex: 0, column: 14, bold: 'false', dim: true }],
+  [{ lineIndex: 0, column: 14, bold: false }]]) {
+  assert.equal(isWebviewDomAction({ ...intensityAction, expectedIntensities: invalid }), false);
+}
+
+for (const count of [2, 10, 11]) {
+  const probeMessage = { type: 'webview/testProbeResult', payload: { requestId: 'capacity', snapshot: {
+    documentTitle: 'capacity', hasDocumentFocus: true, hasCanvasShell: true, hasReactFlow: true,
+    toastMessage: null, executionLinkTooltipText: null, nodeCount: 0, nodes: [], edgeCount: 0, edges: [],
+    capacityCalibration: { readers: Array.from({ length: count }, (_, index) => ({ nodeId: `node-${index}`,
+      readId: `read-${index}`, sessionId: `session-${index}`, authorityId: `authority-${index}` })) }
+  } } };
+  assert.equal(Boolean(parseWebviewMessage(probeMessage)), count <= 10,
+    'The fixed ten-session probe must survive Host validation without accepting unbounded reader lists.');
+}
 
 console.log('protocol webview message tests passed');

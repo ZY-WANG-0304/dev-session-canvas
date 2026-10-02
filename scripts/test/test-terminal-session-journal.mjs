@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -56,6 +58,18 @@ try {
     verifyTerminalSessionJournal
   } = require(outfile);
 
+  const capacityCheck = spawnSync(process.execPath, [
+    '--expose-gc', '--input-type=commonjs', '-e',
+    `(${verifyCheckpointScanRetainedHeap.toString()})(${JSON.stringify(outfile)}, ${JSON.stringify(tempDir)})`
+  ], { encoding: 'utf8', timeout: 120000 });
+  assert.equal(capacityCheck.status, 0,
+    `checkpoint scan capacity regression failed:\n${capacityCheck.stdout}\n${capacityCheck.stderr}`);
+  process.stdout.write(capacityCheck.stdout);
+
+  await verifyBoundedCacheAndPagedReads(TerminalSessionJournal, resolveTerminalJournalSessionDirectory);
+  await verifyChunkedPageReads(TerminalSessionJournal, resolveTerminalJournalSessionDirectory);
+  await verifyCheckpointSummaryIntegrity(TerminalSessionJournal, resolveTerminalJournalSessionDirectory);
+
   const storageDir = path.join(tempDir, 'runtime-storage');
   const sessionId = 'journal-test-session';
   const authorityId = 'journal-test-authority';
@@ -89,7 +103,7 @@ try {
 
   journal.releaseMemoryThrough(2);
   assert.deepEqual(
-    journal.getEventsAfter(2).map((event) => event.revision),
+    (await journal.getEventsAfter(2)).map((event) => event.revision),
     [3, 4],
     'checkpoint cache may release memory without deleting persisted journal records.'
   );
@@ -821,4 +835,514 @@ try {
   console.log('terminalSessionJournal tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+async function verifyBoundedCacheAndPagedReads(Journal, resolveDirectory) {
+  const storageDir = path.join(tempDir, 'bounded-cache');
+  const options = {
+    storageDir,
+    sessionId: 'bounded-history',
+    authorityId: 'bounded-authority',
+    initialCols: 80,
+    initialRows: 24,
+    initialScrollback: 1000,
+    eventCacheMaxBytes: 1000,
+    eventCacheMaxEvents: 3,
+    segmentMaxBytes: 1200,
+    flushDelayMs: 60000,
+    checkpointProfiles
+  };
+  const journal = await Journal.create(options);
+  const expected = [];
+  for (let index = 0; index < 30; index += 1) {
+    expected.push(index % 3 === 0
+      ? journal.appendOutput(`output-${index}:${'\u4e2d'.repeat(index === 15 ? 2000 : 160)}\r\n`)
+      : index % 3 === 1 ? journal.appendResize(80 + index, 24) : journal.appendScrollback(1000 + index));
+    const cache = journal.getCacheStats();
+    assert.ok(cache.encodedBytes <= cache.maxBytes);
+    assert.ok(cache.eventCount <= cache.maxEvents);
+  }
+  assert.ok(journal.getCacheStats().eventCount < expected.length);
+  assert.equal(journal.getRetainedStartRevision(), 1, 'cache eviction must not compact the journal.');
+  assert.deepEqual(await journal.getEventsAfter(0), expected, 'unflushed evicted data must remain recoverable.');
+  const cache = journal.getCacheStats();
+  const cachedEvents = await journal.getEventsAfter(expected.length - cache.eventCount);
+  assert.equal(cache.encodedBytes, cachedEvents.reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event)), 0));
+  assert.deepEqual(cachedEvents, expected.slice(-cache.eventCount));
+  cachedEvents[0].data = 'caller-mutation';
+  assert.deepEqual(await journal.getEventsAfter(0), expected, 'read results must not mutate the journal.');
+
+  const pages = [];
+  for await (const page of journal.readEventPagesAfter(2, {
+    throughRevision: 26, pageMaxBytes: 400, pageMaxEvents: 2
+  })) {
+    const bytes = Buffer.byteLength(JSON.stringify(page));
+    assert.ok(page.length <= 2);
+    assert.ok(bytes <= 400 || page.length === 1, 'oversized events must occupy their own page.');
+    pages.push(...page);
+  }
+  assert.deepEqual(pages, expected.slice(2, 26));
+
+  const reopened = await Journal.open(options);
+  assert.ok(reopened.getCacheStats().encodedBytes <= 1000);
+  assert.ok(reopened.getCacheStats().eventCount <= 3);
+  reopened.releaseMemoryThrough(reopened.getRevision());
+  assert.deepEqual(reopened.getCacheStats(), { eventCount: 0, encodedBytes: 0, maxEvents: 3, maxBytes: 1000 });
+  assert.deepEqual(await reopened.getEventsAfter(0), expected, 'open must rebuild trusted segment anchors.');
+
+  const iterator = journal.readEventPagesAfter(0, { pageMaxEvents: 1 });
+  const firstPage = await iterator.next();
+  assert.deepEqual(firstPage.value, expected.slice(0, 1));
+  const appended = journal.appendOutput('later-live-output\r\n');
+  await journal.flush();
+  await assert.rejects(journal.commitCheckpoint(
+    createCheckpoint(options.sessionId, options.authorityId, appended.revision), { force: true }
+  ), /active readers/u);
+  await assert.rejects(journal.delete(), /active readers/u);
+  const pinnedEvents = [...firstPage.value];
+  for await (const page of iterator) {
+    pinnedEvents.push(...page);
+  }
+  assert.deepEqual(pinnedEvents, expected, 'a reader must not include output appended after its frozen head.');
+  expected.push(appended);
+  assert.deepEqual(await journal.getEventsAfter(0), expected);
+
+  const cancelled = journal.readEventPagesAfter(0, { pageMaxEvents: 1 });
+  await cancelled.next();
+  await cancelled.return();
+  const unpinned = journal.createPageReader({ pageMaxEvents: 1 });
+  assert.deepEqual(await unpinned.readAfter(0), expected.slice(0, 1));
+  assert.equal((await journal.commitCheckpoint(
+    createCheckpoint(options.sessionId, options.authorityId, appended.revision), { force: true }
+  )).committed, true, 'cancelled reads must release their compaction pin.');
+  const next = journal.appendOutput('after-checkpoint\r\n');
+  await journal.commitCheckpoint(createCheckpoint(options.sessionId, options.authorityId, next.revision), { force: true });
+  assert.ok(journal.getRetainedStartRevision() > 1);
+  await assert.rejects(unpinned.readAfter(0), /Invalid terminal journal revision/u,
+    'authenticated offsets do not authorize access to a compacted prefix.');
+  unpinned.dispose();
+  await assert.rejects(journal.getEventsAfter(0), /Invalid terminal journal revision/u);
+  journal.releaseMemoryThrough(next.revision);
+  assert.deepEqual(await journal.getEventsAfter(appended.revision), [next], 'retained anchors survive compaction.');
+  await assert.rejects(journal.getEventsAfter(-1), /Invalid terminal journal revision/u);
+  await assert.rejects(journal.getEventsAfter(next.revision + 1), /Invalid terminal journal revision/u);
+  await assert.rejects(journal.readEventPagesAfter(next.revision, { pageMaxEvents: 0 }).next(), /page limits/u);
+  const deleting = journal.delete();
+  await assert.rejects(journal.getEventsAfter(next.revision), /deleted/u);
+  assert.throws(() => journal.appendOutput('after-delete'), /deleted/u);
+  await deleting;
+  await journal.delete();
+  await assert.rejects(journal.getEventsAfter(next.revision), /deleted/u);
+
+  const corrupt = await Journal.create({ ...options, sessionId: 'corrupt-page', eventCacheMaxBytes: 0 });
+  corrupt.appendOutput('original-content\r\n');
+  await corrupt.flush();
+  const directory = resolveDirectory(storageDir, 'corrupt-page');
+  const manifest = await readManifest(directory);
+  const file = path.join(directory, manifest.segments[0].file);
+  const original = await readFile(file, 'utf8');
+  for (const replacement of [
+    original.slice(0, -5),
+    original.replace('original-content', 'modified-content'),
+    original.replace('bounded-authority', 'foreign-authority')
+  ]) {
+    await writeFile(file, replacement);
+    await assert.rejects(corrupt.readEventPagesAfter(0).next(), /truncated|checksum or revision mismatch/u);
+  }
+  const tampered = JSON.parse(original);
+  tampered.data = tampered.data.replace('original', 'modified');
+  const { checksum: _checksum, ...tamperedBody } = tampered;
+  tampered.checksum = createHash('sha256').update(JSON.stringify(tamperedBody)).digest('hex');
+  await writeFile(file, `${JSON.stringify(tampered)}\n`);
+  await assert.rejects(corrupt.readEventPagesAfter(0).next(), /checksum anchor mismatch/u,
+    'self-consistent rewritten data must fail the trusted writer checksum anchor before yielding.');
+  await writeFile(file, `${original}uncommitted-garbage`);
+  assert.equal((await corrupt.getEventsAfter(0))[0].data, 'original-content\r\n',
+    'reads must be limited to the frozen committed byte prefix.');
+  await rm(file);
+  await assert.rejects(corrupt.getEventsAfter(0), /ENOENT/u);
+  await corrupt.delete();
+
+  const failed = await Journal.create({ ...options, sessionId: 'write-failure', eventCacheMaxBytes: 0 });
+  failed.appendOutput('only-in-pending-write\r\n');
+  const failedDirectory = resolveDirectory(storageDir, 'write-failure');
+  await rm(failedDirectory, { recursive: true });
+  await writeFile(failedDirectory, 'not-a-directory');
+  await assert.rejects(failed.getEventsAfter(0), /ENOTDIR|ENOENT/u,
+    'eviction plus write failure must never become an empty successful read.');
+  await assert.rejects(failed.flush(), /ENOTDIR|ENOENT/u);
+  await failed.delete();
+}
+
+async function verifyCheckpointScanRetainedHeap(outfile, tempDirectory) {
+  const assert = require('node:assert/strict');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { TerminalSessionJournal } = require(outfile);
+  const MiB = 1024 * 1024;
+  const sessionId = 'checkpoint-scan-capacity';
+  const authorityId = 'checkpoint-scan-capacity-authority';
+  const journal = await TerminalSessionJournal.create({
+    storageDir: path.join(tempDirectory, sessionId), sessionId, authorityId,
+    initialCols: 80, initialRows: 24, initialScrollback: 1000,
+    eventCacheMaxBytes: 0, eventCacheMaxEvents: 0,
+    segmentMaxBytes: MiB, flushDelayMs: 60000,
+    checkpointProfiles: { 'xterm-serialize-v1': 'capacity-test-profile' }
+  });
+  for (let index = 0; index < 2048; index += 1) {
+    journal.appendOutput(`${index}:` + 'x'.repeat(16 * 1024));
+    if (index % 32 === 31) await journal.flush();
+  }
+  await journal.flush();
+  global.gc();
+  const baseline = process.memoryUsage().heapUsed;
+  let peak = baseline;
+  let scannedSegments = 0;
+  const originalReadFile = fs.promises.readFile;
+  fs.promises.readFile = async (...args) => {
+    if (String(args[0]).endsWith('.ndjson')) {
+      global.gc();
+      peak = Math.max(peak, process.memoryUsage().heapUsed);
+      scannedSegments += 1;
+    }
+    return originalReadFile(...args);
+  };
+  let result;
+  try {
+    result = await journal.commitCheckpoint({
+      version: 1, sessionId, authorityId, revision: journal.getRevision(),
+      cols: 80, rows: 24, scrollback: 1000, createdAtMs: Date.now(),
+      serializedState: {
+        format: 'xterm-serialize-v1', data: 'bounded-checkpoint', outputSequence: journal.getRevision()
+      }
+    }, { force: true });
+  } finally {
+    fs.promises.readFile = originalReadFile;
+  }
+  assert.equal(result.committed, true);
+  assert.ok(scannedSegments >= 32, 'the capacity fixture must verify the whole retained journal.');
+  const retainedHeap = peak - baseline;
+  console.log(`checkpoint scan retained heap: ${retainedHeap} bytes across ${scannedSegments} segments`);
+  assert.ok(retainedHeap < 12 * MiB,
+    `checkpoint verification must not retain all 32 MiB of journal payload; retained heap was ${retainedHeap} bytes.`);
+  await journal.delete();
+}
+
+async function verifyChunkedPageReads(Journal, resolveDirectory) {
+  const storageDir = path.join(tempDir, 'chunked-page-reads');
+  const options = {
+    storageDir, sessionId: 'large-segment-small-page', authorityId: 'chunked-authority',
+    initialCols: 80, initialRows: 24, initialScrollback: 1000,
+    segmentMaxBytes: 2 * 1024 * 1024, eventCacheMaxBytes: 0, flushDelayMs: 60000,
+    checkpointProfiles
+  };
+  const journal = await Journal.create(options);
+  const payloadFor = index => `${String(index).padStart(6, '0')}:${'\u4e2d'.repeat(4096)}\r\n`;
+  for (let index = 0; index < 96; index += 1) journal.appendOutput(payloadFor(index));
+  await journal.flush();
+  const directory = resolveDirectory(storageDir, options.sessionId);
+  const manifest = await readManifest(directory);
+  assert.equal(manifest.segments.length, 1);
+  const segment = manifest.segments[0];
+  assert.ok(segment.bytes > 1024 * 1024, 'the first-page fixture must exceed 1 MiB in a single segment.');
+  const file = path.join(directory, segment.file);
+  const original = await readFile(file, 'utf8');
+
+  const stats = await withShortSegmentReads(async () => {
+    const reader = journal.readEventPagesAfter(0, { pageMaxBytes: 32 * 1024, pageMaxEvents: 1 });
+    try {
+      const firstPage = await reader.next();
+      assert.equal(firstPage.value.length, 1);
+      assert.equal(firstPage.value[0].revision, 1);
+      assert.equal(firstPage.value[0].data, payloadFor(0));
+      await assert.rejects(journal.commitCheckpoint(
+        createCheckpoint(options.sessionId, options.authorityId, journal.getRevision()), { force: true }
+      ), /active readers/u);
+      await assert.rejects(journal.delete(), /active readers/u);
+    } finally {
+      await reader.return();
+    }
+  });
+  assert.equal(stats.bytesRead, segment.bytes, 'a small first page must verify the complete frozen segment.');
+  assert.ok(stats.readCalls > 1000, 'the fixture must exercise repeated short reads.');
+  assert.ok(stats.utf8Splits > 0, 'short reads must split multibyte UTF-8 sequences.');
+  assert.equal(stats.openHandles, 0, 'returning a paged reader must close its file handle.');
+
+  const sequentialStats = await withShortSegmentReads(async () => {
+    let revision = 0;
+    for await (const page of journal.readEventPagesAfter(0, { pageMaxBytes: 32 * 1024, pageMaxEvents: 1 })) {
+      assert.equal(page.length, 1);
+      assert.equal(page[0].revision, ++revision);
+      assert.equal(page[0].data, payloadFor(revision - 1));
+    }
+    assert.equal(revision, 96);
+  });
+  assert.ok(sequentialStats.bytesRead <= segment.bytes * 2,
+    `sequential pages must not rescan the complete segment per page; read ${sequentialStats.bytesRead} bytes for ${segment.bytes}.`);
+  assert.equal(sequentialStats.openHandles, 0);
+
+  const cursor = journal.createPageReader({ pageMaxBytes: 32 * 1024, pageMaxEvents: 1 });
+  const cursorStats = await withShortSegmentReads(async () => {
+    for (let revision = 0; revision < 96; revision += 1) {
+      const page = await cursor.readAfter(revision, 96);
+      assert.equal(page.length, 1);
+      assert.equal(page[0].revision, revision + 1);
+      assert.equal(page[0].data, payloadFor(revision));
+      assert.equal(journal.activeReaders, 0, 'consumer credit waits must not pin checkpoint compaction.');
+    }
+    assert.deepEqual(await cursor.readAfter(96, 96), []);
+  });
+  assert.ok(cursorStats.bytesRead <= segment.bytes * 2,
+    'separate page requests on one reader must reuse its authenticated offsets.');
+  assert.equal(cursorStats.openHandles, 0);
+  const retry = await cursor.readAfter(95, 96);
+  assert.equal(retry[0].data, payloadFor(95), 'retrying a sent revision must re-read the same page.');
+
+  const savedRecords = original.trimEnd().split('\n');
+  const modifiedRecord = JSON.parse(savedRecords[1]);
+  modifiedRecord.data = modifiedRecord.data.replace('000001:', '999999:');
+  const { checksum: _oldPageChecksum, ...modifiedBody } = modifiedRecord;
+  modifiedRecord.checksum = createHash('sha256').update(JSON.stringify(modifiedBody)).digest('hex');
+  const modifiedRecords = [...savedRecords];
+  modifiedRecords[1] = JSON.stringify(modifiedRecord);
+  await writeFile(file, `${modifiedRecords.join('\n')}\n`);
+  await assert.rejects(cursor.readAfter(1, 96), /checksum anchor mismatch/u,
+    'recomputed checksums in a later page must not replace the previously authenticated endpoint.');
+  await writeFile(file, original);
+  cursor.dispose();
+  await assert.rejects(cursor.readAfter(0, 96), /disposed/u);
+
+  const cancelled = journal.createPageReader({ pageMaxEvents: 1 });
+  const flush = journal.flush.bind(journal);
+  let releaseFlush;
+  journal.flush = () => new Promise(resolve => { releaseFlush = resolve; });
+  try {
+    const pending = cancelled.readAfter(0, 96);
+    assert.equal(journal.activeReaders, 1);
+    cancelled.dispose();
+    releaseFlush();
+    await assert.rejects(pending, /disposed/u, 'disposal during an in-flight read must not deliver a page.');
+    assert.equal(journal.activeReaders, 0);
+  } finally {
+    journal.flush = flush;
+  }
+
+  const closing = journal.createPageReader({ pageMaxEvents: 1 });
+  const readPages = journal.readPages.bind(journal);
+  journal.readPages = (...args) => {
+    const source = readPages(...args);
+    return {
+      [Symbol.asyncIterator]() { return this; },
+      next: (...params) => source.next(...params),
+      return: async () => {
+        const result = await source.return();
+        closing.dispose();
+        return result;
+      }
+    };
+  };
+  try {
+    await assert.rejects(closing.readAfter(0, 96), /disposed/u,
+      'disposal while releasing the completed page must reject rather than publish that page.');
+    assert.equal(journal.activeReaders, 0);
+  } finally {
+    journal.readPages = readPages;
+  }
+
+  const tailRecordStart = original.lastIndexOf('\n', original.length - 2) + 1;
+  const rewrittenTail = JSON.parse(original.slice(tailRecordStart));
+  rewrittenTail.data = rewrittenTail.data.replace('000095:', '000096:');
+  const { checksum: _checksum, ...tailBody } = rewrittenTail;
+  rewrittenTail.checksum = createHash('sha256').update(JSON.stringify(tailBody)).digest('hex');
+  for (const [replacement, expectedError] of [
+    [original.replace('000095:', '000096:'), /checksum or revision mismatch/u],
+    [`${original.slice(0, tailRecordStart)}${JSON.stringify(rewrittenTail)}\n`, /checksum anchor mismatch/u]
+  ]) {
+    assert.equal(Buffer.byteLength(replacement), segment.bytes);
+    await writeFile(file, replacement);
+    const failedStats = await withShortSegmentReads(async () => {
+      await assert.rejects(journal.readEventPagesAfter(0, {
+        throughRevision: 1, pageMaxBytes: 32 * 1024, pageMaxEvents: 1
+      }).next(), expectedError, 'page-external tail corruption must be rejected before yielding the first page.');
+    });
+    assert.equal(failedStats.openHandles, 0, 'failed verification must close its reader handle.');
+  }
+  await writeFile(file, `${original}uncommitted-garbage`);
+  const prefixStats = await withShortSegmentReads(async () => {
+    const reader = journal.readEventPagesAfter(0, { throughRevision: 1, pageMaxEvents: 1 });
+    try {
+      assert.equal((await reader.next()).value[0].data, payloadFor(0));
+    } finally {
+      await reader.return();
+    }
+  });
+  assert.equal(prefixStats.bytesRead, segment.bytes, 'reads must not consume bytes beyond the frozen prefix.');
+  await writeFile(file, original);
+  const refreshed = journal.createPageReader({ pageMaxEvents: 1 });
+  await refreshed.readAfter(0, 96);
+  journal.appendOutput(payloadFor(96));
+  await journal.flush();
+  const refreshedStats = await withShortSegmentReads(async () => {
+    assert.equal((await refreshed.readAfter(96, 97))[0].data, payloadFor(96));
+  });
+  const appendedSegment = (await readManifest(directory)).segments[0];
+  assert.equal(refreshedStats.bytesRead, appendedSegment.bytes,
+    'an appended segment must be fully reauthenticated instead of inheriting an older prefix index.');
+  assert.equal(journal.activeReaders, 0);
+  refreshed.dispose();
+  const truncatedStats = await withShortSegmentReads(async () => {
+    await assert.rejects(journal.readEventPagesAfter(0, { pageMaxEvents: 1 }).next(), /truncated/u);
+  }, 4000);
+  assert.equal(truncatedStats.openHandles, 0, 'an unexpected zero-byte read must release the reader.');
+  assert.equal((await journal.commitCheckpoint(
+    createCheckpoint(options.sessionId, options.authorityId, journal.getRevision()), { force: true }
+  )).committed, true, 'cancelled and failed reads must release the compaction pin.');
+  await journal.delete();
+
+  const oversized = await Journal.create({ ...options, sessionId: 'oversized-record', segmentMaxBytes: 64 * 1024 });
+  const oversizedData = `oversized:${'\u4e2d'.repeat(70 * 1024)}\r\n`;
+  oversized.appendOutput(oversizedData);
+  await oversized.flush();
+  const oversizedStats = await withShortSegmentReads(async () => {
+    const reader = oversized.readEventPagesAfter(0, { pageMaxBytes: 32 * 1024, pageMaxEvents: 1 });
+    try {
+      const page = (await reader.next()).value;
+      assert.equal(page.length, 1);
+      assert.equal(page[0].data, oversizedData, 'a record larger than a read chunk must remain a single event.');
+      assert.ok(Buffer.byteLength(JSON.stringify(page)) > 32 * 1024,
+        'the existing oversized-single-event page exception must remain supported.');
+      assert.equal((await reader.next()).done, true);
+    } finally {
+      await reader.return();
+    }
+  });
+  assert.equal(oversizedStats.openHandles, 0);
+  await oversized.delete();
+
+  async function withShortSegmentReads(action, endAfterBytes = Number.POSITIVE_INFINITY) {
+    const stats = { bytesRead: 0, readCalls: 0, utf8Splits: 0, openHandles: 0 };
+    const originalOpen = fs.promises.open;
+    fs.promises.open = async (...args) => {
+      const handle = await originalOpen(...args);
+      if (String(args[0]).startsWith(storageDir) && String(args[0]).endsWith('.ndjson')) {
+        stats.openHandles += 1;
+        const originalRead = handle.read.bind(handle);
+        const originalClose = handle.close.bind(handle);
+        handle.read = async (buffer, offset, length, position) => {
+          assert.ok(length <= 64 * 1024,
+            `paged journal reads must request at most 64 KiB, requested ${length} bytes.`);
+          assert.ok(buffer.byteLength <= 64 * 1024, 'the read buffer must not materialize the complete segment.');
+          if (stats.bytesRead >= endAfterBytes) return { bytesRead: 0, buffer };
+          const result = await originalRead(buffer, offset, Math.min(length, 997), position);
+          stats.readCalls += 1;
+          stats.bytesRead += result.bytesRead;
+          const lastByte = buffer[offset + result.bytesRead - 1];
+          if (lastByte >= 0xc2 && lastByte <= 0xf4) stats.utf8Splits += 1;
+          return result;
+        };
+        handle.close = async () => {
+          await originalClose();
+          stats.openHandles -= 1;
+        };
+      }
+      return handle;
+    };
+    try {
+      await action();
+      return stats;
+    } finally {
+      fs.promises.open = originalOpen;
+    }
+  }
+}
+
+async function verifyCheckpointSummaryIntegrity(Journal, resolveDirectory) {
+  const cases = [
+    {
+      name: 'incomplete-tail', expected: /incomplete final record/u,
+      mutate: async ({ firstSegment, firstContents }) => writeFile(firstSegment, firstContents.slice(0, -1))
+    },
+    {
+      name: 'invalid-json', expected: /not valid JSON/u,
+      mutate: async ({ firstSegment, firstContents }) =>
+        writeFile(firstSegment, `!\n${firstContents.slice(firstContents.indexOf('\n') + 1)}`)
+    },
+    {
+      name: 'foreign-authority', expected: /checksum or revision mismatch/u,
+      mutate: async ({ firstSegment, firstContents, authorityId }) =>
+        writeFile(firstSegment, firstContents.replace(authorityId, 'foreign-authority'))
+    },
+    {
+      name: 'manifest-prefix', expected: /manifest prefix mismatch/u,
+      mutate: async ({ directory, manifest }) => {
+        manifest.segments[0].bytes -= 1;
+        await rewriteManifest(directory, manifest);
+      }
+    },
+    {
+      name: 'manifest-tail-checksum', expected: /manifest checksum mismatch/u,
+      mutate: async ({ directory, manifest }) => {
+        manifest.lastChecksum = '0'.repeat(64);
+        await rewriteManifest(directory, manifest);
+      }
+    },
+    {
+      name: 'raw-byte-length', expected: /segment manifest mismatch/u,
+      mutate: async ({ firstSegment }) => {
+        const bytes = await readFile(firstSegment);
+        const replacement = Buffer.from('\ufffd');
+        const offset = bytes.indexOf(replacement);
+        assert.ok(offset >= 0);
+        // Invalid UTF-8 decodes to the same character, but the persisted byte count changes.
+        await writeFile(firstSegment, Buffer.concat([
+          bytes.subarray(0, offset), Buffer.from([0xff]), bytes.subarray(offset + replacement.length)
+        ]));
+      }
+    },
+    {
+      name: 'extra-empty-segment', expected: /segment manifest mismatch/u,
+      mutate: async ({ directory, manifest }) =>
+        writeFile(path.join(directory, `segment-${String(manifest.lastRevision + 1).padStart(16, '0')}.ndjson`), '')
+    },
+    {
+      name: 'stale-manifest', expected: /segment manifest mismatch/u,
+      mutate: async ({ directory, prefixManifest }) => rewriteManifest(directory, prefixManifest)
+    }
+  ];
+  for (const test of cases) {
+    const storageDir = path.join(tempDir, 'checkpoint-summary-integrity');
+    const sessionId = test.name;
+    const authorityId = `authority-${test.name}`;
+    const journal = await Journal.create({
+      storageDir, sessionId, authorityId, initialCols: 80, initialRows: 24, initialScrollback: 1000,
+      segmentMaxBytes: 8192, eventCacheMaxBytes: 0, flushDelayMs: 60000, checkpointProfiles
+    });
+    for (let index = 0; index < 3; index += 1) journal.appendOutput(`prefix-${index}\ufffd\r\n`);
+    await generationFallbackCommit(journal, sessionId, authorityId, 3);
+    const directory = resolveDirectory(storageDir, sessionId);
+    const prefixManifest = await readManifest(directory);
+    journal.appendOutput('tail-4\r\n');
+    journal.appendOutput('tail-5\r\n');
+    await journal.flush();
+    const manifest = await readManifest(directory);
+    const firstSegment = path.join(directory, manifest.segments[0].file);
+    const firstContents = await readFile(firstSegment, 'utf8');
+    await test.mutate({ directory, manifest, prefixManifest, firstSegment, firstContents, authorityId });
+    const manifestBefore = await readFile(path.join(directory, 'manifest.json'), 'utf8');
+    const filesBefore = (await readdir(directory)).sort();
+    await assert.rejects(generationFallbackCommit(journal, sessionId, authorityId, 5), test.expected,
+      `summary verification must fail closed for ${test.name}.`);
+    assert.equal(await readFile(path.join(directory, 'manifest.json'), 'utf8'), manifestBefore,
+      `failed ${test.name} verification must not promote a checkpoint manifest.`);
+    assert.deepEqual((await readdir(directory)).sort(), filesBefore,
+      `failed ${test.name} verification must not delete a fallback or retained segment.`);
+    await journal.delete();
+  }
+
+  async function rewriteManifest(directory, manifest) {
+    const { checksum: _checksum, ...body } = manifest;
+    await writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify({
+      ...body, checksum: createHash('sha256').update(JSON.stringify(body)).digest('hex')
+    }, null, 2)}\n`);
+  }
 }

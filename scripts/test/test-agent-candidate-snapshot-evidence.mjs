@@ -1,0 +1,606 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { runInThisContext } from 'node:vm';
+import { build } from 'esbuild';
+import { SerializeAddon as NodeImportedSerializeAddon } from '@xterm/addon-serialize';
+import { patchSerializeAddonSource, SERIALIZE_PATCH_ID } from '../shared/ensure-xterm-serialize-patch.mjs';
+const require = createRequire(import.meta.url);
+const { Terminal } = require('@xterm/headless');
+const { SerializeAddon } = require('@xterm/addon-serialize');
+const { collectSnapshotEvidence, acceptsEmptySnapshotStop, acceptsSnapshotStop } =
+  require('../../tests/vscode-smoke/agent-candidate-snapshot-evidence.cjs');
+const addonRoot = path.dirname(require.resolve('@xterm/addon-serialize/package.json'));
+const originalSource = readFileSync(path.join(addonRoot, 'src/SerializeAddon.ts'), 'utf8');
+assert.equal(SerializeAddon.devSessionCanvasPatch, SERIALIZE_PATCH_ID);
+assert.equal(NodeImportedSerializeAddon, SerializeAddon, 'Keep Node ESM named imports from the CJS package entry working.');
+const esmAddon = await import(pathToFileURL(path.join(addonRoot, 'lib/addon-serialize.mjs')).href);
+assert.equal(esmAddon.SerializeAddon.devSessionCanvasPatch, SERIALIZE_PATCH_ID);
+for (const name of ['addon-serialize.js.map', 'addon-serialize.mjs.map']) {
+  const map = JSON.parse(readFileSync(path.join(addonRoot, 'lib', name), 'utf8'));
+  const sourceIndex = map.sources.findIndex(source => source.endsWith('/src/SerializeAddon.ts'));
+  assert(sourceIndex >= 0);
+  assert.equal(map.sourcesContent[sourceIndex], patchSerializeAddonSource(originalSource), 'Each map describes the patched source.');
+}
+assert.throws(() => patchSerializeAddonSource(`${originalSource}\n`), /Unexpected upstream/);
+const stockBuild = await build({ stdin: { contents: originalSource, resolveDir: addonRoot,
+  sourcefile: 'src/SerializeAddon.ts', loader: 'ts' }, bundle: true, write: false,
+format: 'cjs', platform: 'neutral', target: 'es2020',
+nodePaths: [path.join(path.dirname(require.resolve('@xterm/xterm/package.json')), 'src')], logLevel: 'silent' });
+const stockModule = { exports: {} };
+runInThisContext(`(function (module, exports) {${stockBuild.outputFiles[0].text}\n})`)(stockModule, stockModule.exports);
+const StockSerializeAddon = stockModule.exports.SerializeAddon;
+assert.equal(StockSerializeAddon.devSessionCanvasPatch, undefined, 'The failing control compiles untouched upstream source.');
+const helperPath = require.resolve('../../tests/vscode-smoke/agent-candidate-snapshot-evidence.cjs');
+const helperRequire = createRequire(helperPath);
+const stockHelperModule = { exports: {} };
+// Only replace the codec in this control; run the unchanged independent semantic oracle.
+runInThisContext(`(function (require, module, exports, __filename) {${readFileSync(helperPath, 'utf8')}\n})`)(
+  name => name === '@xterm/addon-serialize' ? stockModule.exports : helperRequire(name),
+  stockHelperModule, stockHelperModule.exports, helperPath);
+const stockCollectSnapshotEvidence = stockHelperModule.exports.collectSnapshotEvidence;
+const clone = value => structuredClone(value);
+const write = (terminal, text) => new Promise(resolve => terminal.write(text, resolve));
+const frame = { surface: 'panel', mode: 'active', generation: 1, frameId: 'f1' };
+const replayComparisonFields = ['replaySavedGeometryMatched', 'replaySavedLinesMatched', 'replaySavedVisibleMatched',
+  'replaySavedSerializedMatched', 'replaySerializedMatchesSavedData'];
+const acceptsNonempty = (value, evidence) => acceptsSnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
+  savedNode: value.savedNode, evidence });
+const semanticFlags = ['Bold', 'Dim', 'Italic', 'Underline', 'Overline', 'Blink', 'Inverse', 'Invisible', 'Strikethrough'];
+const matchedFields = keys => Object.fromEntries(keys.map(key => [key, true]));
+const matchedSemanticBuffer = () => ({ ...matchedFields(['type', 'cursorX', 'cursorY', 'baseY', 'viewportY',
+  'lineCount', 'lineWidths', 'wrapped', 'chars', 'width', 'foreground', 'background']), flags: matchedFields(semanticFlags) });
+const matchedSemantics = (alternate = false) => ({ ...matchedFields(['cols', 'rows', 'activeBuffer', 'alternatePresent']),
+  normal: matchedSemanticBuffer(), alternate: alternate ? matchedSemanticBuffer() : null,
+  modes: matchedFields(['applicationCursorKeysMode', 'applicationKeypadMode', 'bracketedPasteMode', 'insertMode',
+    'originMode', 'reverseWraparoundMode', 'sendFocusMode', 'wraparoundMode', 'mouseTrackingMode']),
+  cursorStyle: { foreground: true, background: true, flags: matchedFields(semanticFlags) } });
+
+async function fixture({ blank = false, resize = false, outputText = 'VISIBLE BEFORE RESET', Addon = SerializeAddon } = {}) {
+  const terminal = new Terminal({ cols: 40, rows: 5, scrollback: 10000, allowProposedApi: true });
+  const addon = new Addon();
+  terminal.loadAddon(addon);
+  let sequence = 0;
+  const state = () => ({ format: 'xterm-serialize-v1', data: addon.serialize({ scrollback: 10000,
+    excludeAltBuffer: false, excludeModes: false }), viewportY: terminal.buffer.active.viewportY, outputSequence: sequence });
+  const snapshot = liveSession => ({ type: 'host/executionSnapshot', lifecycle: frame,
+    payload: { nodeId: 'n1', executionSessionId: 'e1', cols: terminal.cols, rows: terminal.rows,
+      liveSession, output: '', outputSequence: sequence, serializedTerminalState: state() } });
+  const messages = [snapshot(true)];
+  const output = async text => {
+    const start = sequence + 1;
+    await write(terminal, text);
+    sequence += 1;
+    messages.push({ type: 'host/executionOutput', lifecycle: frame,
+      payload: { nodeId: 'n1', executionSessionId: 'e1', outputStartSequence: start, outputSequence: sequence, chunk: text } });
+  };
+  try {
+    await output(outputText);
+    if (resize) {
+      terminal.resize(32, 4);
+      sequence += 1;
+      messages.push(snapshot(true));
+    }
+    if (blank) await output('\x1bc');
+    const savedNode = { id: 'n1', status: 'stopped', metadata: { agent: { liveSession: false,
+      persistenceMode: 'snapshot-only', lastCols: terminal.cols, lastRows: terminal.rows,
+      outputSequence: sequence, serializedTerminalState: state() } } };
+    messages.push(snapshot(false));
+    messages.push({ type: 'host/executionExit', lifecycle: frame, payload: { nodeId: 'n1', executionSessionId: 'e1',
+      localCompletion: { executionSessionId: 'e1', finalOutputSequence: sequence } } });
+    const buffer = terminal.buffer.active;
+    const lines = Array.from({ length: buffer.length }, (_, index) => buffer.getLine(index)?.translateToString(true) ?? '');
+    const finalProbe = { nodes: [{ nodeId: 'n1', terminalCols: terminal.cols, terminalRows: terminal.rows,
+      terminalCursorX: buffer.cursorX, terminalCursorY: buffer.cursorY, terminalViewportY: buffer.viewportY,
+      terminalBufferType: buffer.type,
+      terminalVisibleLines: Array.from({ length: terminal.rows }, (_, index) => lines[buffer.viewportY + index] ?? '') }] };
+    return { savedNode, nodeId: 'n1', executionId: 'e1', messages,
+      events: [{ kind: 'execution/localTerminalReaderSettled', detail: { nodeId: 'n1', executionSessionId: 'e1',
+        lifecycle: frame, outcome: { kind: 'applied', finalOutputSequence: sequence } } }],
+      helpProbe: { nodes: [{ nodeId: 'n1', terminalVisibleLines: ['VISIBLE BEFORE RESET'] }] }, finalProbe,
+      assertBuffer: async expected => JSON.stringify(expected) === JSON.stringify(lines.filter(line => line.length > 0)) };
+  } finally { terminal.dispose(); }
+}
+
+const blank = await fixture({ blank: true });
+const blankEvidence = await collectSnapshotEvidence(blank);
+assert.equal(blankEvidence.savedDataBytes, 0);
+assert.equal(blankEvidence.sequenceMatched, true);
+assert.equal(blankEvidence.readerLifecycleMatched, true);
+assert.equal(blankEvidence.replayComplete, true);
+assert.equal(blankEvidence.replayMatchesSaved, true);
+assert.equal(blankEvidence.replayMatchesPage, true);
+assert.equal(blankEvidence.savedMatchesPage, true);
+assert.equal(blankEvidence.pageProjectionIndependence, 'not-proven');
+assert.equal(JSON.stringify(blankEvidence).includes('VISIBLE BEFORE RESET'), false);
+for (const field of replayComparisonFields) assert.equal(blankEvidence[field], true, field);
+assert.equal(blankEvidence.replayBufferLineCount, 5);
+assert.equal(blankEvidence.savedBufferLineCount, 5);
+assert.equal(blankEvidence.replaySerializedBytes, 0);
+assert.equal(blankEvidence.hydratedSerializedBytes, 0);
+assert.deepEqual(blankEvidence.replaySavedSemanticMatches, matchedSemantics());
+assert.equal(blankEvidence.prefixSemanticEvidence, null);
+
+async function observePrefixHydration(value, enabled, failFirstPrefix = false, collect = collectSnapshotEvidence) {
+  const original = Terminal.prototype.loadAddon;
+  let created = 0;
+  try {
+    Terminal.prototype.loadAddon = function (addon) {
+      created += 1;
+      original.call(this, addon);
+      if (failFirstPrefix && created === 3) addon.serialize = () => { throw new Error('fixed prefix diagnostic failure'); };
+    };
+    return { evidence: await collect({ ...value, diagnoseNonemptyPrefixes: enabled }),
+      created };
+  } finally { Terminal.prototype.loadAddon = original; }
+}
+const prefixReset = await fixture({ blank: true, resize: true, outputText: '\x1b[2mA\x1b[22;1mB', Addon: StockSerializeAddon });
+const disabledPrefix = await observePrefixHydration(prefixReset, false, false, stockCollectSnapshotEvidence);
+assert.equal(disabledPrefix.created, 3, 'Disabled diagnostics must not create prefix hydration terminals.');
+assert.equal(disabledPrefix.evidence.prefixSemanticEvidence, null);
+const detectedPrefix = await observePrefixHydration(prefixReset, true, false, stockCollectSnapshotEvidence);
+assert.equal(detectedPrefix.created, 4, 'A mismatch stops further hydration even before a nonempty resize.');
+assert.deepEqual({ ...detectedPrefix.evidence, prefixSemanticEvidence: null }, disabledPrefix.evidence,
+  'Prefix diagnostics cannot change final replay, hash, page or strict acceptance facts.');
+assert.equal(detectedPrefix.evidence.savedDataBytes, 0);
+assert.equal(detectedPrefix.evidence.replaySavedSemanticMatched, true);
+assert.equal(acceptsNonempty(prefixReset, detectedPrefix.evidence), true);
+const prefixDifference = detectedPrefix.evidence.prefixSemanticEvidence;
+assert.equal(prefixDifference.checkedNonempty, 1);
+assert.equal(prefixDifference.mismatch, true);
+assert.equal(prefixDifference.unknown, false);
+assert.equal(prefixDifference.firstUnknown, null);
+assert.equal(prefixDifference.firstMismatch.outputSequence, 1);
+assert(prefixDifference.firstMismatch.savedBytes > 0);
+assert(prefixDifference.firstMismatch.hydratedBytes > 0);
+assert.equal(prefixDifference.firstMismatch.replaySavedSemanticMatched, false);
+assert.equal(prefixDifference.firstMismatch.replaySavedSemanticMatches.normal.flags.Bold, false);
+assert(prefixDifference.firstMismatch.differentNonemptyCells > 0);
+assert.equal(prefixDifference.firstMismatch.differentEmptyCells, 0);
+assert.notEqual(prefixDifference.firstMismatch.replaySemanticStateSha256, prefixDifference.firstMismatch.hydratedSemanticStateSha256);
+const fixedPrefixReset = await fixture({ blank: true, resize: true, outputText: '\x1b[2mA\x1b[22;1mB' });
+const fixedPrefixEvidence = await collectSnapshotEvidence({ ...fixedPrefixReset, diagnoseNonemptyPrefixes: true });
+assert.deepEqual(fixedPrefixEvidence.prefixSemanticEvidence,
+  { checkedNonempty: 2, mismatch: false, unknown: false, firstMismatch: null, firstUnknown: null });
+assert.equal(fixedPrefixEvidence.savedDataBytes, 0);
+assert.equal(fixedPrefixEvidence.replaySavedSemanticMatched, true);
+const harmlessPrefix = await observePrefixHydration(blank, true);
+assert.deepEqual(harmlessPrefix.evidence.prefixSemanticEvidence,
+  { checkedNonempty: 1, mismatch: false, unknown: false, firstMismatch: null, firstUnknown: null });
+assert.deepEqual({ ...harmlessPrefix.evidence, prefixSemanticEvidence: null }, blankEvidence);
+const failedPrefix = await observePrefixHydration(blank, true, true);
+assert.deepEqual({ ...failedPrefix.evidence, prefixSemanticEvidence: null }, blankEvidence,
+  'An optional diagnostic failure must not change the original final result.');
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.unknown, true);
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.mismatch, false);
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.checkedNonempty, 1);
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.firstUnknown.outputSequence, 1);
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.firstUnknown.replaySavedSemanticMatched, null);
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.firstUnknown.replaySavedSemanticMatches, null);
+
+const initialSchema = { ...blank, messages: clone(blank.messages) };
+delete initialSchema.messages[0].payload.serializedTerminalState.outputSequence;
+const inactivePrefix = clone(initialSchema.messages[0]);
+delete inactivePrefix.payload.executionSessionId;
+delete inactivePrefix.payload.outputSequence;
+delete inactivePrefix.payload.serializedTerminalState;
+inactivePrefix.payload.liveSession = false;
+initialSchema.messages.splice(1, 0, clone(initialSchema.messages[0]));
+initialSchema.messages.unshift(inactivePrefix);
+const originalInitialMessages = clone(initialSchema.messages);
+const initialEvidence = await collectSnapshotEvidence(initialSchema);
+assert.equal(initialEvidence.replayComplete, true, 'The recorded production initial schema must replay without relaxing later boundaries.');
+assert.equal(initialEvidence.replayInactivePrefixSnapshots, 1);
+assert.equal(initialEvidence.replayEquivalentInitialSnapshots, 1);
+assert.equal(initialEvidence.replayInitialZeroSequenceInferred, true);
+assert.equal(initialEvidence.replayMatchesSaved, true);
+assert.deepEqual(initialSchema.messages, originalInitialMessages, 'Evidence normalization must not rewrite original messages.');
+
+const pageResized = { ...blank, finalProbe: clone(blank.finalProbe) };
+pageResized.finalProbe.nodes[0].terminalCols = 48;
+pageResized.finalProbe.nodes[0].terminalRows = 7;
+pageResized.finalProbe.nodes[0].terminalVisibleLines = Array(7).fill('');
+const resizedEvidence = await collectSnapshotEvidence(pageResized);
+assert.equal(resizedEvidence.pageGeometryMatched, false);
+assert.equal(resizedEvidence.pageVisibleMatched, false);
+assert.equal(resizedEvidence.savedMatchesPage, false);
+assert.deepEqual(resizedEvidence.savedGeometry, { cols: 40, rows: 5, cursorX: 0, cursorY: 0, viewportY: 0, bufferType: 'normal' });
+assert.deepEqual(resizedEvidence.pageGeometry, { cols: 48, rows: 7, cursorX: 0, cursorY: 0, viewportY: 0, bufferType: 'normal' });
+assert.deepEqual(resizedEvidence.publishedGeometry, { cols: 40, rows: 5 });
+assert.deepEqual(resizedEvidence.pageGeometryMatches,
+  { cols: false, rows: false, cursorX: true, cursorY: true, viewportY: true, bufferType: true });
+assert.equal(resizedEvidence.resizedSavedPageGeometryMatched, true);
+assert.equal(resizedEvidence.resizedSavedPageVisibleMatched, true);
+assert.equal(resizedEvidence.resizedSavedPageBufferMatched, true);
+assert.equal(resizedEvidence.resizedSavedMatchesPage, true);
+assert.equal(resizedEvidence.replayMatchesSaved, true, 'The extra resize must not change direct replay comparison.');
+const pageMovedCursor = { ...pageResized, finalProbe: clone(pageResized.finalProbe) };
+pageMovedCursor.finalProbe.nodes[0].terminalCursorX = 3;
+assert.equal((await collectSnapshotEvidence(pageMovedCursor)).resizedSavedMatchesPage, false,
+  'The independent resize must not copy the page cursor.');
+const pageMovedViewport = { ...pageResized, finalProbe: clone(pageResized.finalProbe) };
+pageMovedViewport.finalProbe.nodes[0].terminalViewportY = 1;
+assert.equal((await collectSnapshotEvidence(pageMovedViewport)).resizedSavedMatchesPage, false,
+  'The independent resize must not copy the page viewport.');
+
+for (const mutate of [
+  value => { value.messages[0].payload.output = 'unexpected prelaunch output'; },
+  value => { value.messages[0].payload.outputSequence = 0; },
+  value => { value.messages[0].payload.serializedTerminalState = clone(blank.messages[0].payload.serializedTerminalState); },
+  value => { value.messages[0].payload.terminalRead = {}; },
+  value => { value.messages[0].payload.terminalStream = {}; },
+  value => { value.messages[0].payload.liveSession = true; },
+  value => { value.messages[0].lifecycle.frameId = 'other-reader'; },
+  value => { value.messages[0].payload.executionSessionId = 'other-execution'; },
+  value => { value.messages.splice(4, 0, value.messages.shift()); },
+  value => { value.messages[1].payload.serializedTerminalState.data = 'not empty'; },
+  value => { value.messages[1].payload.serializedTerminalState.viewportY = 1; },
+  value => { value.messages[1].payload.outputSequence = 1; },
+  value => { value.messages[1].payload.terminalRead = {}; },
+  value => { value.messages[1].payload.terminalStream = {}; },
+  value => { value.messages[2].payload.cols += 1; },
+  value => { value.messages.at(-2).payload.serializedTerminalState.outputSequence = undefined; }
+]) {
+  const invalid = { ...initialSchema, messages: clone(initialSchema.messages) };
+  mutate(invalid);
+  const result = await collectSnapshotEvidence(invalid);
+  assert.equal(result.replayComplete, false, 'Only the recorded strict initial schema is eligible.');
+  assert.equal(result.replayMatchesSaved, null);
+  assert.equal(result.replaySavedSemanticMatches, null);
+}
+
+const nonempty = await fixture({ resize: true });
+const nonemptyEvidence = await collectSnapshotEvidence(nonempty);
+assert(nonemptyEvidence.savedDataBytes > 0);
+assert.equal(nonemptyEvidence.replayResizeSnapshots, 1);
+assert.equal(nonemptyEvidence.replayMatchesSaved, true);
+assert.equal(nonemptyEvidence.savedMatchesPage, true);
+for (const field of replayComparisonFields) assert.equal(nonemptyEvidence[field], true, field);
+assert.equal(nonemptyEvidence.replayBufferLineCount, 4);
+assert.equal(nonemptyEvidence.savedBufferLineCount, 4);
+assert.equal(nonemptyEvidence.replaySerializedBytes, Buffer.byteLength(nonempty.savedNode.metadata.agent.serializedTerminalState.data));
+assert.equal(nonemptyEvidence.hydratedSerializedBytes, nonemptyEvidence.replaySerializedBytes);
+assert.equal(JSON.stringify(nonemptyEvidence).includes('VISIBLE BEFORE RESET'), false);
+assert.equal(nonemptyEvidence.replaySavedSemanticMatched, true);
+assert.equal(nonemptyEvidence.replaySemanticStateSha256, nonemptyEvidence.hydratedSemanticStateSha256);
+
+const normalized = await fixture({ outputText: '\x1b[100mA\x1b[48;5;8mB\x1b[0m' });
+const normalizedEvidence = await collectSnapshotEvidence(normalized);
+assert.equal(normalizedEvidence.replaySerializedBytes - normalizedEvidence.hydratedSerializedBytes, 6);
+assert.equal(normalizedEvidence.replayMatchesSaved, false, 'The historical byte-sensitive result stays false.');
+assert.equal(normalizedEvidence.replaySavedSerializedMatched, false);
+assert.notEqual(normalizedEvidence.replayStateSha256, normalizedEvidence.hydratedStateSha256);
+assert.equal(normalizedEvidence.replaySerializedMatchesSavedData, true);
+assert.equal(normalizedEvidence.replaySavedSemanticMatched, true);
+assert.deepEqual(normalizedEvidence.replaySavedSemanticMatches, matchedSemantics());
+assert.equal(normalizedEvidence.replaySemanticStateSha256, normalizedEvidence.hydratedSemanticStateSha256);
+assert.equal(normalizedEvidence.savedMatchesPage, true);
+assert.equal(normalizedEvidence.replayMatchesPage, true);
+assert.equal(acceptsNonempty(normalized, normalizedEvidence), true,
+  'Equivalent palette encodings do not require the serializer to emit byte-identical output twice.');
+
+for (const [name, outputText] of [
+  ['dim to bold', '\x1b[2mA\x1b[22;1mB'],
+  ['bold and dim to dim', '\x1b[1;2mA\x1b[22;2mB']
+]) {
+  const value = await fixture({ outputText, Addon: StockSerializeAddon });
+  const evidence = await stockCollectSnapshotEvidence(value);
+  assert.equal(evidence.replaySavedGeometryMatched, true, name);
+  assert.equal(evidence.replaySavedLinesMatched, true, name);
+  assert.equal(evidence.replaySavedVisibleMatched, true, name);
+  assert.equal(evidence.replaySerializedMatchesSavedData, true, name);
+  assert.equal(evidence.replaySavedSemanticMatched, false, name);
+  assert.notEqual(evidence.replaySemanticStateSha256, evidence.hydratedSemanticStateSha256, name);
+  assert.equal(evidence.replaySavedSemanticMatches.normal.chars, true, name);
+  assert(['Bold', 'Dim'].some(flag => evidence.replaySavedSemanticMatches.normal.flags[flag] === false), name);
+  assert.equal(acceptsNonempty(value, evidence), false, `${name}: unchanged text cannot hide lost style.`);
+  const fixed = await fixture({ outputText });
+  const fixedEvidence = await collectSnapshotEvidence(fixed);
+  assert.equal(fixedEvidence.replaySavedSemanticMatched, true, name);
+  assert.deepEqual(fixedEvidence.replaySavedSemanticMatches, matchedSemantics(), name);
+  assert.equal(fixedEvidence.replaySemanticStateSha256, fixedEvidence.hydratedSemanticStateSha256, name);
+  assert.equal(acceptsNonempty(fixed, fixedEvidence), true, name);
+}
+
+for (const [name, transform, category] of [
+  ['content', data => data.replace('VISIBLE', 'HIDDEN!'), ['normal', 'chars']],
+  ['cell style', data => `\x1b[31m${data}\x1b[0m`, ['normal', 'foreground']],
+  ['cursor style', data => `${data}\x1b[31m`, ['cursorStyle', 'foreground']],
+  ['cursor position', data => `${data}\x1b[1D`, ['normal', 'cursorX']],
+  ['mode', data => `${data}\x1b[?2004h`, ['modes', 'bracketedPasteMode']]
+]) {
+  const value = await fixture();
+  const data = transform(value.savedNode.metadata.agent.serializedTerminalState.data);
+  value.savedNode.metadata.agent.serializedTerminalState.data = data;
+  value.messages.at(-2).payload.serializedTerminalState.data = data;
+  const evidence = await collectSnapshotEvidence(value);
+  assert.equal(evidence.publishedFinalMatchesSaved, true, name);
+  assert.equal(evidence.replayComplete, true, name);
+  assert.equal(evidence.replaySavedSemanticMatched, false, name);
+  assert.equal(evidence.replaySavedSemanticMatches[category[0]][category[1]], false, name);
+  assert.equal(evidence.replaySerializedMatchesSavedData, false, name);
+  assert.equal(acceptsNonempty(value, evidence), false, name);
+  if (name !== 'content') assert.equal(evidence.replaySavedLinesMatched, true, name);
+  if (name !== 'cursor position') assert.equal(evidence.replaySavedGeometryMatched, true, name);
+}
+
+for (const [index, sgr] of [1, 2, 3, 4, 53, 5, 7, 8, 9].entries()) {
+  const value = await fixture();
+  const data = `\x1b[${sgr}m${value.savedNode.metadata.agent.serializedTerminalState.data}`;
+  value.savedNode.metadata.agent.serializedTerminalState.data = data;
+  value.messages.at(-2).payload.serializedTerminalState.data = data;
+  const evidence = await collectSnapshotEvidence(value);
+  const expected = matchedSemantics();
+  expected.normal.flags[semanticFlags[index]] = false;
+  expected.cursorStyle.flags[semanticFlags[index]] = false;
+  assert.deepEqual(evidence.replaySavedSemanticMatches, expected, semanticFlags[index]);
+  assert.equal(evidence.replaySavedSemanticMatched, false);
+  assert.equal(acceptsNonempty(value, evidence), false);
+}
+const strikethrough = await fixture({ outputText: '\x1b[9mSTRIKETHROUGH' });
+const strikethroughEvidence = await collectSnapshotEvidence(strikethrough);
+assert.equal(strikethroughEvidence.replaySavedSemanticMatched, true, 'A signed nonzero style bitmask is observable.');
+assert.deepEqual(strikethroughEvidence.replaySavedSemanticMatches, matchedSemantics());
+assert.equal(acceptsNonempty(strikethrough, strikethroughEvidence), true);
+const esmIntensity = await fixture({ outputText: '\x1b[2mA\x1b[22;1mB', Addon: esmAddon.SerializeAddon });
+const esmIntensityEvidence = await collectSnapshotEvidence(esmIntensity);
+assert.equal(esmIntensityEvidence.replaySavedSemanticMatched, true, 'The ESM package entry preserves the same intensity transition.');
+assert.equal(acceptsNonempty(esmIntensity, esmIntensityEvidence), true);
+
+for (const [mode, sequence] of [
+  ['applicationCursorKeysMode', '\x1b[?1h'], ['applicationKeypadMode', '\x1b='],
+  ['bracketedPasteMode', '\x1b[?2004h'], ['insertMode', '\x1b[4h'], ['originMode', '\x1b[?6h'],
+  ['reverseWraparoundMode', '\x1b[?45h'], ['sendFocusMode', '\x1b[?1004h'],
+  ['wraparoundMode', '\x1b[?7l'], ['mouseTrackingMode', '\x1b[?1000h']
+]) {
+  const value = await fixture();
+  const data = `${value.savedNode.metadata.agent.serializedTerminalState.data}${sequence}`;
+  value.savedNode.metadata.agent.serializedTerminalState.data = data;
+  value.messages.at(-2).payload.serializedTerminalState.data = data;
+  const evidence = await collectSnapshotEvidence(value);
+  assert.equal(evidence.replaySavedSemanticMatches.modes[mode], false, mode);
+  assert.equal(evidence.replaySavedSemanticMatched, false, mode);
+}
+
+for (const [name, transform, category] of [
+  ['cell background', data => `\x1b[41m${data}\x1b[0m`, ['normal', 'background']],
+  ['cursor background', data => `${data}\x1b[41m`, ['cursorStyle', 'background']],
+  ['cell width', data => data.replace('VISIBLE', '\u4e2dISIBLE'), ['normal', 'width']]
+]) {
+  const value = await fixture();
+  const data = transform(value.savedNode.metadata.agent.serializedTerminalState.data);
+  value.savedNode.metadata.agent.serializedTerminalState.data = data;
+  value.messages.at(-2).payload.serializedTerminalState.data = data;
+  const evidence = await collectSnapshotEvidence(value);
+  assert.equal(evidence.replaySavedSemanticMatches[category[0]][category[1]], false, name);
+  assert.equal(evidence.replaySavedSemanticMatched, false, name);
+}
+
+const wrapped = await fixture({ outputText: `${'a'.repeat(40)}B` });
+wrapped.savedNode.metadata.agent.serializedTerminalState.data = `${'a'.repeat(40)}\r\nB`;
+wrapped.messages.at(-2).payload.serializedTerminalState.data = wrapped.savedNode.metadata.agent.serializedTerminalState.data;
+const wrappedEvidence = await collectSnapshotEvidence(wrapped);
+assert.equal(wrappedEvidence.replaySavedGeometryMatched, true);
+assert.equal(wrappedEvidence.replaySavedLinesMatched, true);
+assert.equal(wrappedEvidence.replaySavedSemanticMatched, false, 'Explicit newlines cannot replace line-wrap semantics.');
+assert.equal(wrappedEvidence.replaySavedSemanticMatches.normal.wrapped, false);
+assert.equal(wrappedEvidence.replaySavedSemanticMatches.normal.chars, true);
+assert.equal(acceptsNonempty(wrapped, wrappedEvidence), false);
+
+const activeAlternate = await fixture({ outputText: 'NORMAL\x1b[?1049hALTERNATE' });
+const activeAlternateEvidence = await collectSnapshotEvidence(activeAlternate);
+assert.equal(activeAlternateEvidence.replaySavedSemanticMatched, true, 'An active alternate buffer must survive hydration.');
+assert.deepEqual(activeAlternateEvidence.replaySavedSemanticMatches, matchedSemantics(true));
+assert.equal(acceptsNonempty(activeAlternate, activeAlternateEvidence), true);
+for (const [name, transform, category] of [
+  ['alternate content', data => data.replace('ALTERNATE', 'DIFFERENT'), ['alternate', 'chars']],
+  ['normal content while alternate active', data => data.replace('NORMAL', 'CHANGE'), ['normal', 'chars']],
+  ['alternate cursor', data => `${data}\x1b[1D`, ['alternate', 'cursorX']]
+]) {
+  const value = { ...activeAlternate, savedNode: clone(activeAlternate.savedNode), messages: clone(activeAlternate.messages) };
+  const data = transform(value.savedNode.metadata.agent.serializedTerminalState.data);
+  value.savedNode.metadata.agent.serializedTerminalState.data = data;
+  value.messages.at(-2).payload.serializedTerminalState.data = data;
+  const evidence = await collectSnapshotEvidence(value);
+  assert.equal(evidence.replaySavedSemanticMatches[category[0]][category[1]], false, name);
+  assert.equal(evidence.replaySavedSemanticMatched, false, name);
+}
+const dormantAlternate = await fixture({ outputText: 'NORMAL\x1b[?1049hALTERNATE\x1b[?1049l' });
+const dormantAlternateEvidence = await collectSnapshotEvidence(dormantAlternate);
+assert.equal(dormantAlternateEvidence.replaySavedSemanticMatched, true, 'Dormant alternate content is outside serializer persistence.');
+assert.deepEqual(dormantAlternateEvidence.replaySavedSemanticMatches, matchedSemantics());
+assert.equal(acceptsNonempty(dormantAlternate, dormantAlternateEvidence), true);
+const synchronized = await fixture({ outputText: 'SYNCHRONIZED\x1b[?2026h' });
+const synchronizedEvidence = await collectSnapshotEvidence(synchronized);
+assert.equal(synchronizedEvidence.replaySavedSemanticMatched, true, 'Transient synchronized output is not persisted by the serializer.');
+assert.equal(acceptsNonempty(synchronized, synchronizedEvidence), true);
+
+const modesDescriptor = Object.getOwnPropertyDescriptor(Terminal.prototype, 'modes');
+try {
+  Object.defineProperty(Terminal.prototype, 'modes', { ...modesDescriptor,
+    get() { return { ...modesDescriptor.get.call(this), reverseWraparoundMode: undefined }; } });
+  const unsupported = await collectSnapshotEvidence(nonempty);
+  assert.equal(unsupported.replayComplete, true);
+  assert.equal(unsupported.replayMatchesSaved, true, 'Unsupported semantic reads must preserve the original replay facts.');
+  assert.equal(unsupported.replayStateSha256, nonemptyEvidence.replayStateSha256);
+  assert.equal(unsupported.hydratedStateSha256, nonemptyEvidence.hydratedStateSha256);
+  assert.equal(unsupported.replaySavedSemanticMatched, null);
+  assert.equal(unsupported.replaySavedSemanticMatches, null);
+  assert.equal(unsupported.replaySemanticStateSha256, null);
+  assert.equal(unsupported.hydratedSemanticStateSha256, null);
+  assert.equal(acceptsNonempty(nonempty, unsupported), false);
+} finally { Object.defineProperty(Terminal.prototype, 'modes', modesDescriptor); }
+
+const styleProbe = new Terminal({ cols: 40, rows: 5 });
+const stylePrototype = Object.getPrototypeOf(styleProbe._core._inputHandler._curAttrData);
+const originalStrikethrough = stylePrototype.isStrikethrough;
+styleProbe.dispose();
+try {
+  for (const invalid of [undefined, NaN, 0.5, '1', true]) {
+    stylePrototype.isStrikethrough = () => invalid;
+    const unsupported = await collectSnapshotEvidence(nonempty);
+    assert.equal(unsupported.replaySavedSemanticMatched, null);
+    assert.equal(unsupported.replaySavedSemanticMatches, null);
+    assert.equal(unsupported.replaySemanticStateSha256, null);
+    assert.equal(unsupported.hydratedSemanticStateSha256, null);
+    assert.equal(acceptsNonempty(nonempty, unsupported), false);
+  }
+} finally { stylePrototype.isStrikethrough = originalStrikethrough; }
+
+for (const field of ['replaySerializedMatchesSavedData', 'replaySavedSemanticMatched']) {
+  for (const invalid of [false, null, undefined, 'true']) {
+    assert.equal(acceptsNonempty(normalized, { ...normalizedEvidence, [field]: invalid }), false, field);
+  }
+}
+for (const field of ['replaySemanticStateSha256', 'hydratedSemanticStateSha256']) {
+  for (const invalid of [null, undefined, '0'.repeat(64), 'invalid']) {
+    assert.equal(acceptsNonempty(normalized, { ...normalizedEvidence, [field]: invalid }), false, field);
+  }
+}
+const repeatedResize = { ...nonempty, messages: clone(nonempty.messages) };
+repeatedResize.messages.splice(3, 0, clone(repeatedResize.messages[2]));
+assert.equal((await collectSnapshotEvidence(repeatedResize)).replayReason, 'projection-recovery-or-unknown-snapshot',
+  'A repeated checkpoint after a resize remains an unsupported recovery, not an initial duplicate.');
+
+const tampered = { ...nonempty, savedNode: clone(nonempty.savedNode) };
+tampered.savedNode.metadata.agent.serializedTerminalState.data = '';
+const tamperedEvidence = await collectSnapshotEvidence(tampered);
+assert.equal(tamperedEvidence.replayComplete, true);
+assert.equal(tamperedEvidence.replayMatchesSaved, false);
+assert.equal(tamperedEvidence.savedMatchesPage, false);
+assert.equal(tamperedEvidence.replayMatchesPage, true);
+assert.equal(tamperedEvidence.publishedFinalMatchesSaved, false);
+for (const field of replayComparisonFields) assert.equal(tamperedEvidence[field], false, field);
+assert.equal(tamperedEvidence.hydratedSerializedBytes, 0);
+assert(tamperedEvidence.replaySerializedBytes > 0);
+
+const overwritten = { ...nonempty, savedNode: clone(tampered.savedNode), messages: clone(nonempty.messages),
+  finalProbe: clone(nonempty.finalProbe), assertBuffer: async expected => expected.length === 0 };
+overwritten.messages.at(-2).payload.serializedTerminalState.data = '';
+overwritten.finalProbe.nodes[0].terminalCursorX = 0;
+overwritten.finalProbe.nodes[0].terminalVisibleLines.fill('');
+const overwrittenEvidence = await collectSnapshotEvidence(overwritten);
+assert.equal(overwrittenEvidence.savedMatchesPage, true);
+assert.equal(overwrittenEvidence.publishedFinalMatchesSaved, true);
+assert.equal(overwrittenEvidence.replayMatchesSaved, false,
+  'An empty final snapshot and page must not erase nonempty output from the independent replay.');
+assert.equal(overwrittenEvidence.replayMatchesPage, false);
+
+const wrongCursor = { ...nonempty, finalProbe: clone(nonempty.finalProbe) };
+wrongCursor.finalProbe.nodes[0].terminalCursorX += 1;
+assert.equal((await collectSnapshotEvidence(wrongCursor)).savedMatchesPage, false);
+const wrongSequence = { ...nonempty, savedNode: clone(nonempty.savedNode) };
+wrongSequence.savedNode.metadata.agent.outputSequence += 1;
+assert.equal((await collectSnapshotEvidence(wrongSequence)).sequenceMatched, false);
+const wrongReader = { ...blank, events: clone(blank.events) };
+wrongReader.events[0].detail.lifecycle.frameId = 'other-reader';
+assert.equal((await collectSnapshotEvidence(wrongReader)).readerLifecycleMatched, false);
+const missingResize = { ...nonempty, messages: clone(nonempty.messages) };
+missingResize.messages.splice(2, 1);
+const missingResizeEvidence = await collectSnapshotEvidence(missingResize);
+assert.equal(missingResizeEvidence.replayComplete, false);
+assert.equal(missingResizeEvidence.replayMatchesSaved, null);
+for (const field of [...replayComparisonFields, 'replayBufferLineCount', 'replaySerializedBytes',
+  'replaySavedSemanticMatched', 'replaySemanticStateSha256']) {
+  assert.equal(missingResizeEvidence[field], null, field);
+}
+assert.equal(missingResizeEvidence.savedBufferLineCount, 4, 'Observed saved-state facts remain available when replay is unknown.');
+assert.equal(missingResizeEvidence.hydratedSerializedBytes, nonemptyEvidence.hydratedSerializedBytes);
+assert.equal(missingResizeEvidence.hydratedSemanticStateSha256, nonemptyEvidence.hydratedSemanticStateSha256);
+const unknownPage = { ...blank, assertBuffer: async () => { throw new Error('probe transport unavailable'); } };
+assert.equal((await collectSnapshotEvidence(unknownPage)).savedMatchesPage, null);
+
+for (const [reason, mutate] of [
+  ['initial-checkpoint-missing', value => value.messages.shift()],
+  ['output-range-missing', value => { value.messages[1].payload.outputStartSequence += 1; }],
+  ['output-range-missing', value => { value.messages.splice(1, 1); }],
+  ['reader-changed', value => { value.messages[1].lifecycle = { ...value.messages[1].lifecycle, frameId: 'changed' }; }],
+  // Initial duplicates now have a production meaning; preserve the original rejection after output begins.
+  ['projection-recovery-or-unknown-snapshot', value => { value.messages.splice(2, 0, clone(value.messages[0])); }],
+  ['message-window-full', value => { while (value.messages.length < 200) value.messages.push({ type: 'host/stateUpdated' }); }],
+  ['snapshot-invalid', value => { value.messages.at(-2).payload.serializedTerminalState.outputSequence += 1; }],
+  ['exit-boundary-missing', value => { value.messages.pop(); }]
+]) {
+  const value = { ...blank, messages: clone(blank.messages) };
+  mutate(value);
+  const result = await collectSnapshotEvidence(value);
+  assert.equal(result.replayComplete, false, reason);
+  assert.equal(result.replayReason, reason);
+  assert.equal(result.replayMatchesSaved, null);
+}
+const eligible = evidence => acceptsEmptySnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
+  savedNode: blank.savedNode, evidence });
+const nonemptyEligible = evidence => acceptsSnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
+  savedNode: nonempty.savedNode, evidence });
+assert.equal(eligible(blankEvidence), true, 'Complete output followed by a legal reset can produce an empty final snapshot.');
+assert.equal(eligible(resizedEvidence), true, 'Only dimensions may differ before the independent resize comparison.');
+assert.equal(nonemptyEligible(nonemptyEvidence), true, 'A valid nonempty snapshot stop is eligible for a second Host.');
+assert.equal(nonemptyEligible({ ...nonemptyEvidence, pageGeometryMatched: false, pageVisibleMatched: false,
+  savedMatchesPage: false, replayMatchesPage: false }), false,
+  'A second Host cannot excuse failed original-page checks.');
+assert.equal(nonemptyEligible(await collectSnapshotEvidence(wrongCursor)), false);
+const nonemptyReflow = await fixture({ outputText: 'abcdefghij\r\nTAIL\r\n' });
+Object.assign(nonemptyReflow.finalProbe.nodes[0], { terminalCols: 4, terminalRows: 6,
+  terminalCursorX: 0, terminalCursorY: 4, terminalViewportY: 0,
+  terminalVisibleLines: ['abcd', 'efgh', 'ij', 'TAIL', '', ''] });
+nonemptyReflow.assertBuffer = async expected => JSON.stringify(expected) === JSON.stringify(['abcd', 'efgh', 'ij', 'TAIL']);
+const nonemptyReflowEvidence = await collectSnapshotEvidence(nonemptyReflow);
+const reflowEligible = evidence => acceptsSnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
+  savedNode: nonemptyReflow.savedNode, evidence });
+assert.equal(nonemptyReflowEvidence.pageGeometryMatches.cursorY, false,
+  'Independent reflow may change the cursor without copying the observed cursor.');
+assert.equal(nonemptyReflowEvidence.savedMatchesPage, false);
+assert.equal(nonemptyReflowEvidence.replayMatchesSaved, true);
+assert.equal(nonemptyReflowEvidence.resizedSavedMatchesPage, true);
+assert.equal(reflowEligible(nonemptyReflowEvidence), true);
+for (const field of ['pageGeometryMatched', 'pageVisibleMatched', 'pageBufferMatched', 'savedMatchesPage', 'replayMatchesPage']) {
+  assert.equal(nonemptyEligible({ ...nonemptyEvidence, [field]: false }), false, field);
+}
+for (const field of ['resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched',
+  'resizedSavedPageBufferMatched', 'resizedSavedMatchesPage']) {
+  for (const invalid of [false, null, undefined]) {
+    assert.equal(reflowEligible({ ...nonemptyReflowEvidence, [field]: invalid }), false, field);
+  }
+}
+for (const [name, mutate] of [
+  ['cursor', value => { value.finalProbe.nodes[0].terminalCursorY = 2; }],
+  ['viewport', value => { value.finalProbe.nodes[0].terminalViewportY = 1; }],
+  ['visible content', value => { value.finalProbe.nodes[0].terminalVisibleLines[0] = 'incorrect'; }],
+  ['unknown buffer', value => { value.assertBuffer = async () => { throw new Error('buffer unavailable'); }; }]
+]) {
+  const invalid = { ...nonemptyReflow, finalProbe: clone(nonemptyReflow.finalProbe) };
+  mutate(invalid);
+  assert.equal(reflowEligible(await collectSnapshotEvidence(invalid)), false, name);
+}
+for (const field of ['savedNodeMatched', 'savedStatePresent', 'savedStateValid', 'readerApplied', 'readerLifecycleMatched',
+  'sequenceMatched', 'helpProbePresent', 'finalProbePresent', 'pageBufferMatched', 'replayComplete',
+  'replayMatchesSaved', 'publishedFinalMatchesSaved']) {
+  for (const invalid of [false, null, undefined, 'true']) {
+    assert.equal(eligible({ ...blankEvidence, [field]: invalid }), false, `${field} must be observed true.`);
+  }
+}
+for (const patch of [
+  { replayInitialSequence: 1 }, { savedOutputSequence: 0 }, { snapshotOutputSequence: 0 },
+  { readerFinalOutputSequence: 0 }, { replayOutputMessages: 0 }, { helpNonEmptyLines: 0 },
+  { messageCount: 200 }, { replayReason: 'unknown' }, { savedDataBytes: 1 },
+  { savedDataSha256: '0'.repeat(64) }, { replayStateSha256: '0'.repeat(64) },
+  { hydratedStateSha256: null }, { pageGeometryMatches: { ...blankEvidence.pageGeometryMatches, cursorX: null } },
+  { savedMatchesPage: false, resizedSavedMatchesPage: false }
+]) assert.equal(eligible({ ...blankEvidence, ...patch }), false, JSON.stringify(patch));
+for (const field of ['cursorX', 'cursorY', 'viewportY', 'bufferType']) {
+  assert.equal(eligible({ ...resizedEvidence,
+    pageGeometryMatches: { ...resizedEvidence.pageGeometryMatches, [field]: false } }), false, field);
+}
+for (const field of ['resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched',
+  'resizedSavedPageBufferMatched', 'resizedSavedMatchesPage']) {
+  assert.equal(eligible({ ...resizedEvidence, [field]: null }), false, field);
+}
+assert.equal(eligible(overwrittenEvidence), false, 'An empty saved state cannot erase unmatched replay output.');
+for (const patch of [{ mode: 'live-runtime' }, { lifecycle: 'natural' }, { savedNode: nonempty.savedNode },
+  { savedNode: { ...blank.savedNode, status: 'running' } }, { savedNode: undefined }]) {
+  assert.equal(acceptsEmptySnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
+    savedNode: blank.savedNode, evidence: blankEvidence, ...patch }), false);
+}
+console.log('Agent snapshot evidence: strict replay, semantic hydration, independent reflow, and original-page stop checks passed.');

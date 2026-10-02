@@ -1,9 +1,10 @@
 ---
 title: 画布多根 workspace 组合视图规格
 status: 已确认
-updated_at: 2026-07-17
+updated_at: 2026-09-16
 related_designs:
   - docs/design-docs/canvas-multi-root-workspace-support.md
+  - docs/design-docs/webview-host-supervisor-architecture-review.md
 related_plans:
   - docs/exec-plans/active/canvas-multi-root-composed-canvas-rewrite.md
   - docs/exec-plans/completed/canvas-multi-root-pane-gallery-mode.md
@@ -128,6 +129,14 @@ related_plans:
 - 如果添加 folder 后 Panel Webview 发生同 generation frame refresh，新增 root 分组的聚焦请求仍会在当前 frame 上 replay 并完成动画。
 - 创建 `Agent` / `Terminal` 时，节点 `metadata.cwd` 等于目标 root 路径或显式 Explorer cwd。
 - 在 `paneGallery` 的 `dynamic` / `grid` root pane 中交互只写入对应 root-local state；在 thumbnail 模式非 active root 缩略图中允许只读预加载与 execution snapshot 同步；单击 root 不切换 active root，双击非 active root 缩略图只切换 active root，active root 占位不响应单击 / 双击切换，不会发送由缩略图或占位内用户交互触发的 create / drag / edit / terminal input / start / stop / drop 等消息，也不会因缩略图内用户交互写入 root-local state。
+
+## 待修订方向：Root 稳定 runtime 归属
+
+2026-09-16 架构审核确认：画板内容按 root 归属，但新建 Agent / Terminal 的 Supervisor 默认按创建窗口的 workspace storage slot 归属。功能范围第 16、17 项及当前 slot 验收条目明确保留具体 slot；本问题属于需要修订的设计决策，不将当前实现判为违反这些条目的 bug。
+
+用户已确认的目标是：多根 workspace 应是各 root 画板的组合视图，同 root 单独打开或作为多根子画板打开时都访问自己的 runtime。新会话归属应按同一运行环境、用户存储范围、root 身份及 Supervisor generation 稳定确定，单根和多根创建路径必须一起调整。该目标尚未实现；身份规范化、具体存储布局与 Supervisor 发现等方案另行设计。
+
+旧 live session 继续按完整 metadata 连接原 Supervisor，新会话进入新 root 归属。旧 Supervisor 需待其旧会话及相关引用/RPC 收敛后退役，不能改写地址后将旧进程视为已迁移。原 slot 恢复验收继续适用于这些旧会话。后续必须增加“在不同窗口分别新建、仍归属同 root runtime”的验收，现有“从另一个窗口 attach 已有会话”不能代替它。详细建议场景见 `docs/design-docs/webview-host-supervisor-architecture-review.md` 第 6 节；均为待实现、待执行，不计入本规格已通过的验证。
 
 ## 验证状态
 

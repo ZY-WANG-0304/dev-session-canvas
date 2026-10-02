@@ -45,7 +45,8 @@ export class ExecutionTerminalLineContextTracker {
   private pendingWriteData = '';
   private pendingWriteDrainTimer: NodeJS.Timeout | undefined;
   private operationChain: Promise<void> = Promise.resolve();
-  private readonly disposedSignal = createDeferred<void>();
+  private operationError: Error | undefined;
+  private readonly disposalWaiters = new Set<() => void>();
 
   public constructor(cols: number, rows: number, options: ExecutionTerminalLineContextTrackerOptions) {
     this.pathStyle = options.pathStyle;
@@ -145,13 +146,33 @@ export class ExecutionTerminalLineContextTracker {
     return this.currentCwd;
   }
 
+  public async flush(): Promise<void> {
+    if (this.disposed) {
+      throw new Error('Terminal line context tracker was disposed before output consumption completed.');
+    }
+
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteData = this.takePendingWriteData();
+    this.enqueueOperation(() => this.drainWriteData(pendingWriteData));
+    await this.awaitPendingOperations();
+    if (this.disposed) {
+      throw new Error('Terminal line context tracker was disposed before output consumption completed.');
+    }
+    if (this.operationError) {
+      throw this.operationError;
+    }
+  }
+
   public dispose(): void {
     if (this.disposed) {
       return;
     }
 
     this.disposed = true;
-    this.disposedSignal.resolve();
+    for (const cancel of this.disposalWaiters) {
+      cancel();
+    }
+    this.disposalWaiters.clear();
     this.clearPendingWriteDrainTimer();
     this.pendingWriteData = '';
     this.terminal.dispose();
@@ -166,7 +187,10 @@ export class ExecutionTerminalLineContextTracker {
 
         await operation();
       })
-      .catch(() => {});
+      .catch((error) => {
+        // Legacy lookups remain best effort; strict consumption credit must observe earlier failures.
+        this.operationError ??= error instanceof Error ? error : new Error(String(error));
+      });
   }
 
   private schedulePendingWriteDrain(): void {
@@ -209,7 +233,25 @@ export class ExecutionTerminalLineContextTracker {
   }
 
   private async awaitPendingOperations(): Promise<void> {
-    await Promise.race([this.operationChain, this.disposedSignal.promise]);
+    await this.awaitOperationOrDisposal(this.operationChain);
+  }
+
+  private async awaitOperationOrDisposal(operation: Promise<void>): Promise<void> {
+    // A shared pending cancellation Promise would retain one reaction per completed wait.
+    let cancel!: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      cancel = resolve;
+      if (this.disposed) {
+        resolve();
+      } else {
+        this.disposalWaiters.add(cancel);
+      }
+    });
+    try {
+      await Promise.race([operation, cancelled]);
+    } finally {
+      this.disposalWaiters.delete(cancel);
+    }
   }
 
   private async writeInternal(chunk: string): Promise<void> {
@@ -360,12 +402,11 @@ export class ExecutionTerminalLineContextTracker {
     const previousLength = terminal.buffer.active.length;
     const previousBaseY = terminal.buffer.active.baseY;
     const previousCursorLine = previousBaseY + terminal.buffer.active.cursorY;
-    await Promise.race([
+    await this.awaitOperationOrDisposal(
       new Promise<void>((resolve) => {
         terminal.write(segment.data, () => resolve());
-      }),
-      this.disposedSignal.promise
-    ]);
+      })
+    );
 
     if (this.disposed || terminal !== this.terminal) {
       return;
@@ -607,16 +648,4 @@ function parseOsc7WorkingDirectory(value: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void } {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-
-  return {
-    promise,
-    resolve
-  };
 }

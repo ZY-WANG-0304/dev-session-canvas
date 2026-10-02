@@ -216,7 +216,21 @@ jobs:
 
       - name: Run marketplace test suite
         id: test_marketplace
-        run: npm run test:marketplace
+        run: |
+          if [[ ! -f scripts/build/assemble-execution-distribution-assets.mjs ]]; then
+            npm run test:marketplace
+          else
+            npm run typecheck:marketplace
+            npm run test:marketplace-shared
+            npm run test:marketplace-api
+            npm run test:marketplace-web
+            npm run test:marketplace-production-config
+            npm run test:marketplace-vscode-preview-preflight
+            npm run test:marketplace-browser-e2e
+            # This marketplace UI fixture is a stock comparison, not runtime production acceptance.
+            node scripts/build/build.mjs --execution-profile=stock
+            node scripts/smoke/run-template-marketplace-vscode-e2e.mjs
+          fi
 
       - name: Run production config check
         id: test_production_config

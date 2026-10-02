@@ -402,6 +402,7 @@
   "Terminal root": "Terminal 所属 root",
   "Terminal root selection was canceled.": "已取消选择 Terminal root。",
   "Terminal session ended.": "Terminal 会话已结束。",
+  "Output is incomplete: {reason}": "输出不完整：{reason}",
   "Terminal session exited unexpectedly.": "Terminal 会话异常退出。",
   "Terminal shell {shell} ended with exit code {code}.{suffix}": "Terminal shell {shell} 以退出码 {code} 结束。{suffix}",
   "Terminal shell {shell} ended.{suffix}": "Terminal shell {shell} 已结束。{suffix}",
@@ -1041,5 +1042,13 @@
   "No Canvas group was found to clear.": "未找到要清空的画布分组。",
   "No Canvas scope was found to clear.": "未找到要清空的画布范围。",
   "The Canvas group was cleared, so the install command was not sent.": "画布分组已清空，因此未发送安装命令。",
-  "The current runtime namespace is occupied by an incompatible supervisor. Existing legacy sessions can continue in compatibility mode, but this new session could not start.": "当前运行时命名空间被不兼容的 supervisor 占用。既有旧会话可以继续以兼容模式运行，但本次新会话无法启动。"
+  "The current runtime namespace is occupied by an incompatible supervisor. Existing legacy sessions can continue in compatibility mode, but this new session could not start.": "当前运行时命名空间被不兼容的 supervisor 占用。既有旧会话可以继续以兼容模式运行，但本次新会话无法启动。",
+  "Runtime session updates are still pending. Please try again after they finish.": "运行时会话更新尚未完成，请等待完成后重试。",
+  "The workspace root changed while its template reset was pending. The template was not applied.": "等待模板重置期间，工作区根目录的画板已发生变化。模板未应用。",
+  "The canvas changed while its reset was pending. The reset was not applied.": "等待重置期间，画板已发生变化。重置未应用。",
+  "Session ended with exit code {code}.": "会话已结束，退出码为 {code}。",
+  "Session exited due to signal {signal}.": "会话因信号 {signal} 退出。",
+  "Session terminated: {reason}": "会话已终止：{reason}",
+  "{message} Output is incomplete: {reason}": "{message} 输出不完整：{reason}",
+  "This non-native test execution does not support terminal input.": "此非原生测试执行不支持终端输入。"
 }

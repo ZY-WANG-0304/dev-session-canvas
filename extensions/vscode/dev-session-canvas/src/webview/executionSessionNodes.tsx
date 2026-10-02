@@ -165,6 +165,8 @@ export interface ExecutionSessionNodeDependencies {
     options?: {
       onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
       onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
+      beginSnapshotRestore?: () => (() => void);
+      onReadError?: (message: string) => void;
       beginSnapshotRestoreDiagnosticsSuppression?: () => (() => void) | undefined;
     }
   ) => ExecutionTerminalController;
@@ -310,6 +312,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       if (!frame || !container) {
         return;
       }
+      let terminalDisposed = false;
+      let snapshotRestoresInProgress = 0;
 
       function cancelDeferredShrinkFit(): void {
         if (deferredShrinkFitTimerRef.current !== undefined) {
@@ -339,6 +343,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
       let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
       const controller = deps.createExecutionTerminalController(id, 'agent', terminal, {
+        onReadError: message => data.onShowTransientError?.(message),
         onContentWillChange: (reason) => {
           if (reason !== 'snapshot') {
             nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
@@ -350,6 +355,15 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           } else {
             nativeInteractions?.invalidateLinkResolutionCache('negative');
           }
+        },
+        beginSnapshotRestore: () => {
+          snapshotRestoresInProgress += 1;
+          resizeReporter.cancelPending();
+          cancelDeferredShrinkFit();
+          return () => {
+            snapshotRestoresInProgress -= 1;
+            if (!terminalDisposed && snapshotRestoresInProgress === 0) scheduleDeferredShrinkFit(0);
+          };
         },
         onSnapshotApplied: (detail) => {
           resizeReporter.acknowledge({ cols: detail.cols, rows: detail.rows });
@@ -492,6 +506,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         allowShrinkDuringRestore?: boolean;
         refreshAfterFit?: boolean;
       } = {}): void {
+        if (terminalDisposed || snapshotRestoresInProgress > 0) return;
         if (options.reportMode !== 'immediate') {
           if (nodeResizeActiveRef.current) {
             resizeReporter.cancelPending();
@@ -620,6 +635,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       controller.requestAttachSnapshot();
 
       return () => {
+        terminalDisposed = true;
         dataDisposable.dispose();
         selectionDisposable.dispose();
         resizeDisposable.dispose();
@@ -1023,6 +1039,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       if (!frame || !container) {
         return;
       }
+      let terminalDisposed = false;
+      let snapshotRestoresInProgress = 0;
 
       function cancelDeferredShrinkFit(): void {
         if (deferredShrinkFitTimerRef.current !== undefined) {
@@ -1052,6 +1070,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
       let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;
       const controller = deps.createExecutionTerminalController(id, 'terminal', terminal, {
+        onReadError: message => data.onShowTransientError?.(message),
         onContentWillChange: (reason) => {
           if (reason !== 'snapshot') {
             nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
@@ -1063,6 +1082,15 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           } else {
             nativeInteractions?.invalidateLinkResolutionCache('negative');
           }
+        },
+        beginSnapshotRestore: () => {
+          snapshotRestoresInProgress += 1;
+          resizeReporter.cancelPending();
+          cancelDeferredShrinkFit();
+          return () => {
+            snapshotRestoresInProgress -= 1;
+            if (!terminalDisposed && snapshotRestoresInProgress === 0) scheduleDeferredShrinkFit(0);
+          };
         },
         onSnapshotApplied: (detail) => {
           resizeReporter.acknowledge({ cols: detail.cols, rows: detail.rows });
@@ -1205,6 +1233,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         allowShrinkDuringRestore?: boolean;
         refreshAfterFit?: boolean;
       } = {}): void {
+        if (terminalDisposed || snapshotRestoresInProgress > 0) return;
         if (options.reportMode !== 'immediate') {
           if (nodeResizeActiveRef.current) {
             resizeReporter.cancelPending();
@@ -1329,6 +1358,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       controller.requestAttachSnapshot();
 
       return () => {
+        terminalDisposed = true;
         dataDisposable.dispose();
         selectionDisposable.dispose();
         resizeDisposable.dispose();

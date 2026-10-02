@@ -21,8 +21,22 @@
 
 ```bash
 npm install
+```
+
+普通 build、watch 与正式 VSIX 使用六目标原生执行资产，不再因缺文件自动回退旧实现。先对所选源码运行 GitHub Actions 的 `Execution Native Distribution Assets`，下载同一次成功运行的六份 `execution-native-<target>-<runId>` 工件到同一目录；保留每目标的 `.tar.gz` 与 `-summary.json`。用实际运行 ID 和该运行的完整 commit SHA 设置 `RUN_ID`、`INPUT_SHA` 后执行：
+
+```bash
+for target in linux-x64-glibc linux-arm64-glibc darwin-x64 darwin-arm64 win32-x64 win32-arm64; do
+  gh run download "$RUN_ID" --name "execution-native-$target-$RUN_ID" --dir native-archives
+done
+node scripts/build/assemble-execution-distribution-assets.mjs \
+  --source native-archives --output generated/execution-assets --input-sha "$INPUT_SHA"
 npm run build
 ```
+
+聚合器要求六组文件直接位于 `native-archives`，不会搜索其他运行。聚合目录必须不存在，重做时使用新目录并通过 `DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET` 的绝对路径指定。资产校验绑定原生源码、依赖及二进制hash；只改Host/Webview而未改这些输入时可复用已有匹配资产。发布与预合并验证工作流自动准备同ref资产，clean-checkout验证需继承该环境变量。
+
+仅做无原生功能的页面开发或历史对照，可显式运行 `npm run build -- --execution-profile=stock`；单目标原生调试仍使用显式 `--execution-profile` 与 `--execution-assets`。这些都不是默认生产构建，正式 `npm run package:vsix` 会拒绝不完整或非生产准入的资产。不要将 `--development-comparison` 生成的开发对照包用于发布或生产验收。
 
 发布前打包检查：
 

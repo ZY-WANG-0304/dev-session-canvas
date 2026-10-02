@@ -1,0 +1,386 @@
+name: Runtime Production Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      reuse_package_run:
+        description: Reuse runtime-production-package-<run ID> from a successful package job
+        type: string
+        default: ''
+      reuse_native_run:
+        description: Reuse unchanged native archives from an original package run, then build a new VSIX
+        type: string
+        default: ''
+      platform:
+        description: Platforms to verify; a subset requires package reuse
+        type: choice
+        options: [all, linux, macos, windows]
+        default: all
+      agent_scenarios:
+        description: Exact fixed Agent scenario names, comma-separated; empty runs all eight
+        type: string
+        default: ''
+      installed_mode:
+        description: Installed modes; live-runtime is only for a Supervisor-only affected check
+        type: choice
+        options: [all, live-runtime]
+        default: all
+      skip_installed:
+        description: Reuse existing installed evidence; requires package reuse
+        type: boolean
+        default: false
+      installed_evidence_run:
+        description: Passed installed run for the same package; empty uses the original package run
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-production-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  input:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      package_run: ${{ steps.selection.outputs.package_run }}
+      package_commit: ${{ steps.selection.outputs.package_commit }}
+      native_run: ${{ steps.selection.outputs.native_run }}
+      native_commit: ${{ steps.selection.outputs.native_commit }}
+      installed_evidence_commit: ${{ steps.selection.outputs.installed_evidence_commit }}
+      matrix: ${{ steps.selection.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate fixed selection and immutable package reuse
+        id: selection
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DSC_REUSE_RUN: ${{ inputs.reuse_package_run }}
+          DSC_NATIVE_RUN: ${{ inputs.reuse_native_run }}
+          DSC_PLATFORM: ${{ inputs.platform }}
+          DSC_SCENARIOS: ${{ inputs.agent_scenarios }}
+          DSC_INSTALLED_MODE: ${{ inputs.installed_mode }}
+          DSC_SKIP_INSTALLED: ${{ inputs.skip_installed }}
+          DSC_INSTALLED_EVIDENCE_RUN: ${{ inputs.installed_evidence_run }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs/promises';
+          import { execFileSync } from 'node:child_process';
+          import cli from './tests/vscode-smoke/agent-candidate-cli.cjs';
+          const { DSC_REUSE_RUN: reuse, DSC_NATIVE_RUN: nativeReuse, DSC_PLATFORM: platform, DSC_SCENARIOS: scenarios,
+            DSC_INSTALLED_MODE: installedMode,
+            DSC_SKIP_INSTALLED: skip, DSC_INSTALLED_EVIDENCE_RUN: installedRun,
+            GITHUB_SHA: head, GITHUB_RUN_ID: current, GITHUB_REPOSITORY: repository } = process.env;
+          const platforms = [{ os: 'ubuntu-22.04', platform: 'linux' }, { os: 'macos-15', platform: 'macos' },
+            { os: 'windows-2025', platform: 'windows' }];
+          assert(['all', ...platforms.map(item => item.platform)].includes(platform));
+          const selectedPlatforms = platforms.filter(item => platform === 'all' || item.platform === platform);
+          assert(['true', 'false'].includes(skip));
+          assert(['all', 'live-runtime'].includes(installedMode));
+          cli.selectAgentCandidateScenarios(scenarios);
+          assert(!(reuse && nativeReuse), 'Choose whole-package or native-only reuse, not both.');
+          assert(skip !== 'true' || reuse, 'Skipping installed acceptance requires whole-package reuse.');
+          assert(!installedRun || (reuse && skip === 'true'), 'Separate installed evidence requires package reuse and skipping installed acceptance.');
+          assert(reuse || nativeReuse || (platform === 'all' && scenarios === '' && skip === 'false' && installedMode === 'all'),
+            'Partial acceptance requires an explicit immutable package or native run.');
+          let packageCommit = head;
+          let nativeCommit = head;
+          let installedCommit = '';
+          const sourceRun = reuse || nativeReuse;
+          if (sourceRun) {
+            assert(/^[1-9][0-9]*$/.test(sourceRun) && sourceRun.trim() === sourceRun, 'Source run must be a decimal run ID.');
+            assert.notEqual(sourceRun, current);
+            const get = async (suffix, runId = sourceRun) => {
+              const response = await fetch(`https://api.github.com/repos/${repository}/actions/runs/${runId}${suffix}`, {
+                headers: { authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' }
+              });
+              assert(response.ok, 'The requested original package run must be readable.');
+              return response.json();
+            };
+            const run = await get('');
+            assert.equal(run.path, '.github/workflows/runtime-production-acceptance.yml');
+            assert.equal(run.head_repository.full_name, repository);
+            const jobs = await get('/jobs?filter=latest&per_page=100');
+            assert(jobs.jobs.some(job => job.name === 'package' && job.conclusion === 'success'),
+              'The original package job must have succeeded.');
+            let installedJobs = jobs;
+            if (installedRun) {
+              assert(/^[1-9][0-9]*$/.test(installedRun) && installedRun.trim() === installedRun, 'Installed evidence run must be a decimal run ID.');
+              assert.notEqual(installedRun, current);
+              const source = await get('', installedRun);
+              assert.equal(source.path, '.github/workflows/runtime-production-acceptance.yml');
+              assert.equal(source.head_repository.full_name, repository);
+              assert(/^[a-f0-9]{40}$/.test(source.head_sha));
+              installedCommit = source.head_sha;
+              installedJobs = await get('/jobs?filter=latest&per_page=100', installedRun);
+            }
+            if (skip === 'true') for (const item of selectedPlatforms) {
+              assert(installedJobs.jobs.some(job => job.name === `product (${item.os}, ${item.platform})`
+                && job.steps?.some(step => (step.name === 'Installed Terminal and Webview final acceptance'
+                    || (installedMode === 'live-runtime' && step.name === 'Installed Runtime Terminal and Webview affected acceptance'))
+                  && step.conclusion === 'success')),
+                'Skipping installed acceptance requires an original passed installed step on every selected platform.');
+            }
+            assert(/^[a-f0-9]{40}$/.test(run.head_sha));
+            if (nativeReuse) nativeCommit = run.head_sha;
+            if (reuse) {
+              packageCommit = run.head_sha;
+              const changed = execFileSync('git', ['diff', '--no-renames', '--name-only', '-z', packageCommit, head], { encoding: 'utf8' })
+                .split('\0').filter(Boolean);
+              assert(changed.every(file => file === 'ARCHITECTURE.md' || file.startsWith('docs/') || file.startsWith('scripts/smoke/')
+                || file.startsWith('scripts/test/') || file.startsWith('tests/vscode-smoke/')
+                || file === '.github/workflows/runtime-production-acceptance.yml'),
+                'Package reuse permits only documentation and acceptance harness changes, not product inputs.');
+            }
+          }
+          await fs.appendFile(process.env.GITHUB_OUTPUT, `package_run=${reuse || current}\npackage_commit=${packageCommit}\n`
+            + `native_run=${nativeReuse || current}\nnative_commit=${nativeCommit}\n`
+            + `installed_evidence_commit=${installedCommit}\n`
+            + `matrix=${JSON.stringify({ include: selectedPlatforms })}\n`);
+          NODE
+
+  native-assets:
+    needs: input
+    if: inputs.reuse_package_run == '' && inputs.reuse_native_run == ''
+    uses: ./.github/workflows/runtime-execution-assets.yml
+    with:
+      input_ref: ${{ github.sha }}
+
+  package:
+    needs: [input, native-assets]
+    if: ${{ always() && needs.input.result == 'success' && inputs.reuse_package_run == '' && (needs.native-assets.result == 'success' || (inputs.reuse_native_run != '' && needs.native-assets.result == 'skipped')) }}
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '25.6.0'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: execution-native-*-${{ needs.input.outputs.native_run }}
+          merge-multiple: true
+          path: native-archives
+          run-id: ${{ needs.input.outputs.native_run }}
+          github-token: ${{ github.token }}
+      - name: Assemble source-verified production assets
+        env:
+          DSC_NATIVE_COMMIT: ${{ needs.input.outputs.native_commit }}
+        run: |
+          node scripts/build/assemble-execution-distribution-assets.mjs --source native-archives --output generated/execution-assets --input-sha "$DSC_NATIVE_COMMIT"
+          echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$GITHUB_WORKSPACE/generated/execution-assets" >> "$GITHUB_ENV"
+      - name: Build and package through normal defaults
+        env:
+          DSC_NATIVE_RUN: ${{ needs.input.outputs.native_run }}
+          DSC_NATIVE_COMMIT: ${{ needs.input.outputs.native_commit }}
+        run: |
+          npm run build
+          npm run package:vsix
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs/promises';
+          import { createHash } from 'node:crypto';
+          const root = 'extensions/vscode/dev-session-canvas';
+          const { name, version } = JSON.parse(await fs.readFile(`${root}/package.json`, 'utf8'));
+          const bytes = await fs.readFile(`${name}-${version}.vsix`);
+          await fs.mkdir('production-package');
+          await fs.writeFile('production-package/product.vsix', bytes);
+          await fs.writeFile('production-package/receipt.json', JSON.stringify({
+            inputCommit: process.env.GITHUB_SHA, sha256: createHash('sha256').update(bytes).digest('hex'), name, version,
+            nativeAssets: { run: process.env.DSC_NATIVE_RUN, inputCommit: process.env.DSC_NATIVE_COMMIT }
+          }, null, 2));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-production-package-${{ github.run_id }}
+          path: production-package/
+          if-no-files-found: error
+          retention-days: 14
+
+  product:
+    needs: [input, package]
+    if: ${{ always() && needs.input.result == 'success' && (needs.package.result == 'success' || (inputs.reuse_package_run != '' && needs.package.result == 'skipped')) }}
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.input.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 55
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Preserve source bytes on Windows checkout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '25.6.0'
+          cache: npm
+      - name: Linux desktop and sandbox dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y xvfb xauth bubblewrap libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libxtst6
+          bwrap --unshare-user --ro-bind / / /usr/bin/true
+      - uses: actions/setup-python@v5
+        if: runner.os == 'macOS'
+        with:
+          python-version: '3.12.10'
+      - name: Darwin process observer
+        if: runner.os == 'macOS'
+        run: |
+          python -m venv "$RUNNER_TEMP/agent-observer"
+          "$RUNNER_TEMP/agent-observer/bin/python" -m pip install --only-binary=:all: --require-hashes --requirement scripts/test/fixtures/darwin-agent-observer-requirements.txt
+          echo "DEV_SESSION_CANVAS_AGENT_OBSERVER_PYTHON=$RUNNER_TEMP/agent-observer/bin/python" >> "$GITHUB_ENV"
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime-production-package-${{ needs.input.outputs.package_run }}
+          path: production-package
+          run-id: ${{ needs.input.outputs.package_run }}
+          github-token: ${{ github.token }}
+      - name: Verify package identity and use its exact application bytes
+        env:
+          DSC_PACKAGE_COMMIT: ${{ needs.input.outputs.package_commit }}
+          DSC_PACKAGE_RUN: ${{ needs.input.outputs.package_run }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          import JSZip from 'jszip';
+          const receipt = JSON.parse(await fs.readFile('production-package/receipt.json', 'utf8'));
+          const bytes = await fs.readFile('production-package/product.vsix');
+          assert.equal(receipt.inputCommit, process.env.DSC_PACKAGE_COMMIT);
+          assert.equal(receipt.sha256, createHash('sha256').update(bytes).digest('hex'));
+          await fs.writeFile('production-package/reuse-receipt.json', JSON.stringify({ ...receipt,
+            packageRun: process.env.DSC_PACKAGE_RUN, harnessCommit: process.env.GITHUB_SHA }, null, 2));
+          const zip = await JSZip.loadAsync(bytes);
+          for (const entry of Object.values(zip.files)) {
+            if (entry.dir || !entry.name.startsWith('extension/dist/')) continue;
+            const relative = entry.name.slice('extension/'.length);
+            assert(!relative.split('/').includes('..'));
+            const target = path.join('extensions/vscode/dev-session-canvas', relative);
+            await fs.mkdir(path.dirname(target), { recursive: true });
+            await fs.writeFile(target, await entry.async('nodebuffer'), { mode: entry.unixPermissions ? entry.unixPermissions & 0o777 : 0o644 });
+          }
+          const selection = JSON.parse(await fs.readFile('extensions/vscode/dev-session-canvas/dist/execution-candidate-selection.json', 'utf8'));
+          assert.equal(selection.profile, 'platform');
+          assert.deepEqual(selection.admissionLimits, { executions: null, starting: 1, pending: 2 });
+          NODE
+      - name: Download passed installed package identity
+        if: inputs.installed_evidence_run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: runtime-production-input-${{ matrix.platform }}-${{ inputs.installed_evidence_run }}
+          path: installed-evidence
+          run-id: ${{ inputs.installed_evidence_run }}
+          github-token: ${{ github.token }}
+      - name: Verify installed evidence uses this exact package
+        if: inputs.installed_evidence_run != ''
+        env:
+          DSC_PACKAGE_RUN: ${{ needs.input.outputs.package_run }}
+          DSC_INSTALLED_EVIDENCE_COMMIT: ${{ needs.input.outputs.installed_evidence_commit }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs/promises';
+          const current = JSON.parse(await fs.readFile('production-package/receipt.json', 'utf8'));
+          const original = JSON.parse(await fs.readFile('installed-evidence/receipt.json', 'utf8'));
+          const evidence = JSON.parse(await fs.readFile('installed-evidence/reuse-receipt.json', 'utf8'));
+          assert.deepEqual(original, current, 'Installed evidence must identify the same fixed package.');
+          assert.deepEqual(evidence, { ...current, packageRun: process.env.DSC_PACKAGE_RUN,
+            harnessCommit: process.env.DSC_INSTALLED_EVIDENCE_COMMIT }, 'Installed evidence package/harness identity mismatch.');
+          NODE
+      - name: Preserve exact package identity
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-production-input-${{ matrix.platform }}-${{ github.run_id }}
+          path: |
+            production-package/receipt.json
+            production-package/reuse-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Prepare fixed VS Code
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          import { downloadAndUnzipVSCode } from '@vscode/test-electron';
+          const platform = process.platform === 'win32' ? 'win32-x64-archive'
+            : process.platform === 'darwin' ? 'darwin-arm64' : 'linux-x64';
+          const executable = await downloadAndUnzipVSCode({ version: '1.117.0', platform,
+            cachePath: path.join(process.env.RUNNER_TEMP, 'product-vscode') });
+          await fs.appendFile(process.env.GITHUB_ENV, `DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=${executable}\n`);
+          NODE
+      - name: Installed Terminal and Webview final acceptance
+        id: installed
+        if: ${{ !inputs.skip_installed && inputs.installed_mode == 'all' }}
+        run: node scripts/smoke/run-vscode-execution-candidate.mjs --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-installed"
+      - name: Installed Runtime Terminal and Webview affected acceptance
+        id: installed_runtime
+        if: ${{ !inputs.skip_installed && inputs.installed_mode == 'live-runtime' }}
+        run: node scripts/smoke/run-vscode-execution-candidate.mjs --mode=live-runtime --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-installed"
+      - name: Upload installed evidence before Agent credentials are available
+        if: always() && (steps.installed.outcome != 'skipped' || steps.installed_runtime.outcome != 'skipped')
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-production-installed-${{ matrix.platform }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/dsc-installed/input.json
+            ${{ runner.temp }}/dsc-installed/installed-vsix-input.json
+            ${{ runner.temp }}/dsc-installed/first-failure.json
+            ${{ runner.temp }}/dsc-installed/*/artifacts/*.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Install fixed real Agent CLIs
+        run: npm install --global --no-audit --no-fund @openai/codex@0.157.1 @anthropic-ai/claude-code@2.1.280
+      - name: Real Agent final acceptance
+        id: real_agents
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DSC_AGENT_SCENARIOS: ${{ inputs.agent_scenarios }}
+        run: |
+          umask 077
+          if node scripts/smoke/run-vscode-agent-candidate.mjs --backend=deepseek --ci-report agent-ci-report --output "$RUNNER_TEMP/dsc-agent" --scenarios "$DSC_AGENT_SCENARIOS" > "$RUNNER_TEMP/agent-candidate.log" 2>&1; then
+            echo 'Requested Agent scenarios passed; full-matrix status remains in agent-ci-report/'
+          else
+            echo 'Real Agent acceptance failed; sanitized report: agent-ci-report/' >&2
+            exit 1
+          fi
+      - name: Upload sanitized Agent evidence only
+        if: always() && steps.real_agents.outputs.report_ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-production-agent-${{ matrix.platform }}-${{ github.run_id }}
+          path: agent-ci-report/
+          if-no-files-found: error
+          retention-days: 14

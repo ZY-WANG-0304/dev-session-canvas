@@ -38,6 +38,17 @@ const scenarioFilter = parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_
 
 const scenarios = [
   {
+    name: 'runtime-completed-no-history',
+    description: 'Runtime completion drains current output without retaining history',
+    focusedOnly: true,
+    disableWorkspaceTrust: true
+  },
+  {
+    name: 'runtime-checkpoint-refresh',
+    description: 'Runtime paged terminal projection smoke',
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'trusted',
     description: 'Trusted workspace smoke',
     disableWorkspaceTrust: true
@@ -61,7 +72,7 @@ async function main() {
   }
 
   for (const scenario of scenarios) {
-    if (!shouldRunScenario(scenario.name)) {
+    if (!shouldRunScenario(scenario.name) || (scenario.focusedOnly && !scenarioFilter)) {
       continue;
     }
 

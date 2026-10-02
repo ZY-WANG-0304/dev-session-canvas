@@ -62,6 +62,7 @@ async function run() {
   let previousGenerationStreamTerminalSessionId;
   let previousGenerationStreamRuntimeStoragePath;
   let currentTerminalSessionId;
+  let scenarioPassed = false;
 
   try {
     await setRuntimePersistenceEnabled(true);
@@ -144,32 +145,12 @@ async function run() {
         previousGenerationStreamTerminalSnapshot
       })
     );
+    await waitForSnapshot(legacyNodesAreAttached, 30000);
     await simulateRuntimeReload();
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
 
-    let snapshot = await waitForSnapshot((currentSnapshot) => {
-      const agentNode = findOptionalNodeById(currentSnapshot, LEGACY_AGENT_NODE_ID);
-      const terminalNode = findOptionalNodeById(currentSnapshot, LEGACY_TERMINAL_NODE_ID);
-      const previousGenerationStreamNode = findOptionalNodeById(
-        currentSnapshot,
-        PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID
-      );
-      return Boolean(
-        agentNode?.metadata?.agent?.liveSession &&
-          agentNode.metadata.agent.attachmentState === 'attached-live' &&
-          agentNode.metadata.agent.terminalProjectionMode === 'legacy-interactive' &&
-          agentNode.metadata.agent.recentOutput?.includes(LEGACY_AGENT_MARKER) &&
-          terminalNode?.metadata?.terminal?.liveSession &&
-          terminalNode.metadata.terminal.attachmentState === 'attached-live' &&
-          terminalNode.metadata.terminal.terminalProjectionMode === 'legacy-interactive' &&
-          terminalNode.metadata.terminal.recentOutput?.includes(LEGACY_TERMINAL_MARKER) &&
-          previousGenerationStreamNode?.metadata?.terminal?.liveSession &&
-          previousGenerationStreamNode.metadata.terminal.attachmentState === 'attached-live' &&
-          previousGenerationStreamNode.metadata.terminal.terminalProjectionMode === 'terminal-stream-v1' &&
-          previousGenerationStreamNode.metadata.terminal.recentOutput?.includes(PREVIOUS_GENERATION_STREAM_MARKER)
-      );
-    }, 30000);
+    let snapshot = await waitForSnapshot(legacyNodesAreAttached, 30000);
     assertLegacyInteractiveNode(findNodeById(snapshot, LEGACY_AGENT_NODE_ID), 'agent', LEGACY_AGENT_MARKER);
     assertLegacyInteractiveNode(findNodeById(snapshot, LEGACY_TERMINAL_NODE_ID), 'terminal', LEGACY_TERMINAL_MARKER);
     assert.strictEqual(
@@ -437,7 +418,15 @@ async function run() {
       (currentSnapshot) => !findOptionalNodeById(currentSnapshot, currentTerminalNode.id),
       30000
     );
+    scenarioPassed = true;
   } finally {
+    let resetError;
+    try {
+      await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    } catch (error) {
+      resetError = error;
+      console.error('Legacy upgrade product reset failed before fixture cleanup:', error);
+    }
     if (supervisorPaths) {
       for (const sessionId of [legacyAgentSessionId, legacyTerminalSessionId].filter(Boolean)) {
         await sendRuntimeSupervisorRequest(supervisorPaths, 'deleteSession', { sessionId }).catch(() => undefined);
@@ -455,9 +444,34 @@ async function run() {
     }
     await stopProcess(legacySupervisorProcess);
     await stopProcess(previousGenerationStreamSupervisorProcess);
-    await vscode.commands.executeCommand(COMMAND_IDS.testResetState).catch(() => undefined);
     await setRuntimePersistenceEnabled(previousRuntimePersistenceEnabled).catch(() => undefined);
+    if (scenarioPassed && resetError) {
+      throw resetError;
+    }
   }
+}
+
+function legacyNodesAreAttached(currentSnapshot) {
+  const agentNode = findOptionalNodeById(currentSnapshot, LEGACY_AGENT_NODE_ID);
+  const terminalNode = findOptionalNodeById(currentSnapshot, LEGACY_TERMINAL_NODE_ID);
+  const previousGenerationStreamNode = findOptionalNodeById(
+    currentSnapshot,
+    PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID
+  );
+  return Boolean(
+    agentNode?.metadata?.agent?.liveSession &&
+      agentNode.metadata.agent.attachmentState === 'attached-live' &&
+      agentNode.metadata.agent.terminalProjectionMode === 'legacy-interactive' &&
+      agentNode.metadata.agent.recentOutput?.includes(LEGACY_AGENT_MARKER) &&
+      terminalNode?.metadata?.terminal?.liveSession &&
+      terminalNode.metadata.terminal.attachmentState === 'attached-live' &&
+      terminalNode.metadata.terminal.terminalProjectionMode === 'legacy-interactive' &&
+      terminalNode.metadata.terminal.recentOutput?.includes(LEGACY_TERMINAL_MARKER) &&
+      previousGenerationStreamNode?.metadata?.terminal?.liveSession &&
+      previousGenerationStreamNode.metadata.terminal.attachmentState === 'attached-live' &&
+      previousGenerationStreamNode.metadata.terminal.terminalProjectionMode === 'terminal-stream-v1' &&
+      previousGenerationStreamNode.metadata.terminal.recentOutput?.includes(PREVIOUS_GENERATION_STREAM_MARKER)
+  );
 }
 
 function createLegacyRuntimeState({

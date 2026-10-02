@@ -1,0 +1,99 @@
+name: macOS Real Agent Execution Acceptance
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      DEEPSEEK_API_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-real-agent-acceptance
+  cancel-in-progress: false
+
+jobs:
+  real-agent-macos:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout acceptance source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup fixed Agent Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '25.6.0'
+          cache: npm
+      - name: Setup fixed process observer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Prepare isolated process observer
+        run: |
+          python -m venv "$RUNNER_TEMP/agent-observer"
+          "$RUNNER_TEMP/agent-observer/bin/python" -m pip install --only-binary=:all: --require-hashes --requirement scripts/test/fixtures/darwin-agent-observer-requirements.txt
+          echo "DEV_SESSION_CANVAS_AGENT_OBSERVER_PYTHON=$RUNNER_TEMP/agent-observer/bin/python" >> "$GITHUB_ENV"
+      - name: Check real Agent workflow contract
+        run: |
+          node scripts/test/test-agent-candidate-deepseek.mjs
+          node scripts/test/test-agent-candidate-ci-report.mjs
+          node scripts/test/test-runtime-agent-ci-workflow.mjs
+          node scripts/test/test-agent-candidate-process-observer.mjs
+          "$DEV_SESSION_CANVAS_AGENT_OBSERVER_PYTHON" -B scripts/test/test-agent-candidate-process-observer.py
+      - name: Install fixed real Agent CLIs
+        run: npm install --global --no-audit --no-fund @openai/codex@0.157.1 @anthropic-ai/claude-code@2.1.280
+      - name: Prepare fixed VS Code
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          import { downloadAndUnzipVSCode } from '@vscode/test-electron';
+          const executable = await downloadAndUnzipVSCode({
+            version: '1.117.0',
+            platform: process.arch === 'arm64' ? 'darwin-arm64' : 'darwin',
+            cachePath: path.join(process.env.RUNNER_TEMP, 'agent-vscode')
+          });
+          await fs.appendFile(process.env.GITHUB_ENV, `DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=${executable}\n`);
+          NODE
+      - name: Build fixed Electron execution candidate
+        run: |
+          ELECTRON_RUN_AS_NODE=1 "$DEV_SESSION_CANVAS_VSCODE_EXECUTABLE" -e 'const assert = require("node:assert/strict"); assert.equal(process.versions.electron, "39.8.7"); assert.equal(process.versions.node, "22.22.1"); assert.equal(process.versions.modules, "140");'
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/agent-electron-headers.tar.gz" https://artifacts.electronjs.org/headers/dist/v39.8.7/node-v39.8.7-headers.tar.gz
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          const bytes = await fs.readFile(path.join(process.env.RUNNER_TEMP, 'agent-electron-headers.tar.gz'));
+          assert.equal(createHash('sha256').update(bytes).digest('hex'), 'af6712ab16c436b9288ece2f0173924c74008446346bda3457d07b769f402eda');
+          NODE
+          mkdir "$RUNNER_TEMP/agent-electron-headers"
+          tar --extract --gzip --file "$RUNNER_TEMP/agent-electron-headers.tar.gz" --strip-components=1 --directory "$RUNNER_TEMP/agent-electron-headers"
+          ELECTRON_RUN_AS_NODE=1 "$DEV_SESSION_CANVAS_VSCODE_EXECUTABLE" scripts/build/macos-execution-candidate-assets.mjs build --output "$RUNNER_TEMP/agent-native-assets" --dependency-root "$GITHUB_WORKSPACE/node_modules" --headers "$RUNNER_TEMP/agent-electron-headers/include/node"
+          node scripts/build/build.mjs --execution-profile=macos-owner-v1-candidate --execution-assets "$RUNNER_TEMP/agent-native-assets"
+      - name: Run finite real Agent acceptance
+        id: real_agents
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          umask 077
+          if node scripts/smoke/run-vscode-agent-candidate.mjs --backend=deepseek --ci-report agent-ci-report --output "$RUNNER_TEMP/dsc-agent" > "$RUNNER_TEMP/agent-candidate.log" 2>&1; then
+            echo 'Real Agent acceptance passed; sanitized report: agent-ci-report/'
+          else
+            echo 'Real Agent acceptance failed; sanitized report: agent-ci-report/' >&2
+            exit 1
+          fi
+      - name: Upload sanitized real Agent report
+        if: always() && steps.real_agents.outputs.report_ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-real-agent-macos-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agent-ci-report/
+          if-no-files-found: error
+          retention-days: 14

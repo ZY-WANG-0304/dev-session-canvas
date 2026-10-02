@@ -13,11 +13,12 @@
 
 从最高层看，DevSessionCanvas 是一个运行在 VSCode 内的 workspace extension。它把一张无限 2D 画布放进 VSCode 的编辑区或 panel，并把 `agent | terminal | note` 三类节点投影到这张画布上。
 
-系统当前由三个协同运行时组成：
+系统当前的主要协同运行时与执行边界如下：
 
 - `Extension Host`：workspace 绑定画布状态与节点到会话映射的权威位置，负责命令、Webview 生命周期、workspace trust、持久化以及 Agent / Terminal 编排。
 - `Webview`：负责画布渲染、节点交互、内嵌终端前端和局部 UI 状态。
 - `Runtime Supervisor`：仅在 `live-runtime` 持久化模式下参与；负责在 VSCode 生命周期之外托管执行会话，并作为该会话 terminal event、revision、checkpoint 与 journal 的唯一运行时权威。正常运行时新会话使用当前协议代 Supervisor；扩展升级的退役窗口允许旧、新 Supervisor 按独立 storage / control endpoint 并行存在，每个会话始终只绑定其中一个进程。
+- `Execution Provider`：正常构建默认按 Linux / macOS / Windows 选择 owned 原生 provider，由所在 Host 或 Supervisor 的 `ExecutionOwnerLifecycle` 持有执行、输出、消费者与资源结算责任；provider 在独立进程中操作 PTY / ConPTY。它不是用户的 Runtime Persistence 开关，也不使 `snapshot-only` 进程获得跨 Host 存活保证。
 
 主路径可以概括为：
 
@@ -36,13 +37,15 @@
 
 ```text
 CanvasPanelManager
-  -> executionSessionBridge / agentCliResolver
-  -> runtimeSupervisorClient（可选；升级退役窗口可按 runtimeStoragePath 路由多个实例）
-  -> runtimeSupervisorMain
-  -> supervisor 按 authority + revision 持久化 output / resize / scrollback journal
-  -> checkpoint + 连续 journal / live event 回流到 Host
-  -> Host 校验、调度并投影到 Webview
+  -> agentCliResolver / 启动配置
+  -> 按持久化模式选择 owner
+     snapshot-only: Host ExecutionOwnerLifecycle
+     live-runtime: runtimeSupervisorClient -> Supervisor ExecutionOwnerLifecycle
+  -> executionOwnerFactory / executionProviderTransport
+  -> 平台 provider 子进程 -> 原生 PTY / ConPTY
 ```
+
+`live-runtime` 的 Supervisor 按 authority + revision 记录 output / resize / scrollback journal，新能力使用 checkpoint + 消费驱动分页，Host 转发有界页面，Webview 实际应用后继续读取；旧能力保留兼容 stream。`snapshot-only` 由 Host 维护终端状态并以页面实际应用回执约束本地输出信用。旧 live 绑定仍按原 `runtimeStoragePath` 路由，不因默认 provider 变化迁移或重启；显式 stock 对照构建保留 `executionSessionBridge` 路径。
 
 这意味着当前项目不是“前端自己维护数据的 Web 白板”，也不是“独立桌面 app”。它的核心架构前提始终是：**VSCode 宿主掌握 workspace 绑定状态，Webview 负责呈现与交互；`live-runtime` 会话的进程与终端历史权威下沉到生命周期更长的 supervisor。**
 
@@ -138,6 +141,8 @@ docs/                           根目录正式文档知识库
 - `runtimeSupervisorProtocol.ts`
   - `RuntimeSupervisorSessionSnapshot`
   - `RuntimeSupervisorRequest` / `RuntimeSupervisorEvent`
+- `executionLifecycle.ts`
+  - 执行身份、provider 协议、结束事实与准入策略
 - `serializedTerminalState.ts`
 - `terminalSessionStream.ts`
 - `terminalProjectionRefreshScheduler.ts`
@@ -175,8 +180,14 @@ docs/                           根目录正式文档知识库
 - `agentCliResolver.ts`
   - 解析 `codex` / `claude` CLI 启动命令与来源
 - `executionSessionBridge.ts`
-  - 对 `node-pty` 的最小抽象
-  - 定义 `ExecutionSessionProcess`
+  - 保留 stock / legacy 路径的 `node-pty` 抽象与 `ExecutionSessionProcess`
+  - 提供共享启动参数适配，不再是默认执行实现的唯一入口
+- `executionRuntimeSelection.ts` / `executionOwnerFactory.ts`
+  - 根据构建选择及执行端平台加载 owned provider 资产与准入策略
+- `executionOwnerLifecycle.ts` / `executionSessionAdapter.ts`
+  - 执行、输出、消费者及逐资源责任的独立观察与结算
+- `executionProviderTransport.ts` / 各平台 `*ExecutionProviderMain.ts`
+  - Host / Supervisor 到独立原生 provider 的 IPC 与有界输出通道
 - `runtimeSupervisorClient.ts`
   - 宿主与 supervisor 的 socket 客户端
 - `runtimeHostBackend.ts`
@@ -199,7 +210,7 @@ docs/                           根目录正式文档知识库
 
 - `CanvasPanelManager` 是当前 workspace 绑定画布状态的唯一权威入口；Webview 不应成为节点图和执行会话映射的唯一来源。
 - `editor` 与 `panel` 只是同一逻辑画布的两种宿主承载面，而不是两套独立状态。
-- `executionSessionBridge.ts` 是 `node-pty` 接入边界；其余层不应直接加载或控制 `node-pty`。
+- 默认执行经 owner / adapter / provider 协议接入，原生 PTY / ConPTY 仅在平台 provider 进程中获取。`executionSessionBridge.ts` 保留 stock / legacy 的 `node-pty` 接入；Windows provider 可复用其启动参数与 `node-pty` 的命令行编码工具，但不回退到 stock PTY 生命周期。UI 与共享模型不得直接加载或控制原生终端。
 - `runtimeSupervisorClient.ts` 只通过协议与 socket 和 supervisor 通信，不应假设与 supervisor 共享内存或共享对象实例；`CanvasPanelManager` 必须按 backend 与 runtime storage identity 管理 client，不能把一个 workspace 强制收敛为永远只有一个 Supervisor 进程。
 - trust、配置和恢复模式判断必须在宿主侧生效，不能只靠 Webview 隐藏按钮。
 
@@ -327,7 +338,7 @@ docs/                           根目录正式文档知识库
   - supervisor server
   - 会话注册表、socket server、terminal revision、输出广播、空闲退出
 - `terminalSessionJournal.ts`
-  - 每会话完整分段 journal、checksum chain、原子 manifest 与崩溃尾部恢复
+  - 每会话完整分段 journal、checksum chain、原子 manifest 与恢复读取校验；新 owned generation 冷启动不重放故障前正文
 - `runtimeSupervisorLauncher.ts`
 
 这里主要负责：
@@ -335,9 +346,10 @@ docs/                           根目录正式文档知识库
 - 在宿主之外维持执行会话存活。
 - 通过 `runtimeSupervisorProtocol.ts` 提供 create / attach / get snapshot / subscribe / applied-revision ACK / write / resize / scrollback / stop / delete 等请求。
 - 为每个新会话分配稳定 authority，按同一连续 revision 记录 output、resize 与 scrollback。
-- 完整保留分段 journal；checkpoint 只作为恢复加速缓存，不删除旧 journal segment。
+- 保留可恢复的分段 journal；只有通过 eligibility、producer profile、双代回退与 retention 门禁的 checkpoint 才允许回收完整前缀 segment，不能按缓存大小直接删历史。
 - 以静态 checkpoint+journal 和延迟订阅的两阶段切点补齐 Host attach 间隙，再切换到 live event。
-- 按 `socket + session + consumerId` 分别保存 panel/editor 的 applied-revision 水位；该水位不推进 authority revision，也不触发 journal compact。
+- 按 `socket + session + consumerId` 分别保存 panel/editor 的 applied-revision 水位；该水位不推进 authority revision、不授予 checkpoint 资格，只收紧 compact 的删除上界。
+- 在新建获取 journal / provider 前执行生产准入；已从 owner 退休但仍保留于 `sessions` 的待保存、慢删除或删除失败责任继续占 pending，成功移除 session 后才释放。
 
 架构不变量：
 
@@ -386,6 +398,11 @@ docs/                           根目录正式文档知识库
   - `extensions/vscode/dev-session-canvas/src/common/protocol.ts`
   - `CanvasNodeSummary` 及其 `agent / terminal / note` 元数据
 - `执行编排域`
+  - `extensions/vscode/dev-session-canvas/src/common/executionLifecycle.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionOwnerFactory.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionProviderTransport.ts`
   - `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts`
   - `extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts`
   - `extensions/vscode/dev-session-canvas/src/panel/runtimeHostBackend.ts`
@@ -415,6 +432,10 @@ docs/                           根目录正式文档知识库
   - `extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts`
   - 其余 `extensions/vscode/dev-session-canvas/src/common/*` 共享纯模型与纯工具
 - `适配与基础设施层`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionProviderTransport.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/*ExecutionOwnerFactory.ts` / `*ExecutionProvider*.ts`
   - `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts`
   - `extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts`
   - `extensions/vscode/dev-session-canvas/src/panel/runtimeHostBackend.ts`
@@ -456,9 +477,10 @@ docs/                           根目录正式文档知识库
 
 ### 6.3 执行边界
 
-- 真实执行进程通过 `ExecutionSessionProcess` 抽象接入。
+- 正常构建的真实执行进程经 `ExecutionOwnerLifecycle`、adapter 和独立平台 provider 接入；`ExecutionSessionProcess` 仅保留 stock / legacy 路径。普通构建默认选择 `platform` 和生产准入，原生资产缺失必须失败，不能静默回退到 stock。
 - `agent` 和 `terminal` 都属于执行型节点，但 UI 呈现不同、生命周期规则不同。
 - supervisor 负责“会话继续活着”以及 `live-runtime` 终端历史连续，宿主负责“把会话映射回画布对象并表达给用户”。
+- 默认 owned provider 与 `devSessionCanvas.runtimePersistence.enabled` 相互独立：开关仍只选择 Host 的 `snapshot-only` 或 Supervisor 的 `live-runtime`；关闭开关不等于使用 stock 执行实现。
 
 ### 6.4 信任与安全边界
 
@@ -476,7 +498,19 @@ docs/                           根目录正式文档知识库
 
 ### 恢复与持久化
 
-当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、完整 terminal journal 和 checkpoint cache。Reload Window 后的新 Host 必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。Host 的 `terminalStream` 只是恢复缓存：新投影 attach 前和无 attach 的 10–12 秒错峰周期内可通过只读 snapshot RPC 收敛，并把 RPC 期间的连续 live tail 无损合并；任何失败都保留旧健康缓存，不能按大小丢弃事件。
+当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、可校验 terminal journal 和 checkpoint。仍运行的会话在 Reload Window 后必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。支持 `terminalPagedReadV1` 时，live Host 只保留身份、head 和有限摘要，不复制完整 `terminalStream`；Webview 从 checkpoint 开始逐页读取，应用完上一页才请求下一页，读者的安全恢复基点参与 journal 保留。只支持旧 stream 能力时，Host 继续维护完整后缀，并在投影 attach 前和 10–12 秒错峰周期内优先用 `terminalCheckpointRefreshV1` 查询新的 checkpoint；更旧 Supervisor 继续原 snapshot RPC。
+
+已确认结束的 Runtime 节点只保存布局、配置与退出状态，不保存终端正文或自动启动意图。`CanvasPanelManager.applyCompletedRuntimeSupervisorSnapshot()` 等轻量节点写入窗口及实际 root-local 加载源后再解除绑定并退役 Supervisor 会话；失败保留来源。支持 `terminalPagedCompletionV1` 时，当前读者按原 socket/readId 从 Supervisor 分页收尾，Host relay 只保留身份和 final revision，不聚合完整终态；退役后禁止新 attach/open，最后读者关闭或断连再物理删除。旧能力仍使用临时完整终态兼容。Webview 读完、关闭或失效即释放，新页面不读取该来源；旧 generation 客户端须等待读者和 close RPC 结束后退役。`common/completedRuntimeHistory.ts` 加载时迁移可明确识别的旧 Supervisor completed stream。Provider 自己的会话文件和直接 snapshot-only 模式不变。
+
+F-04 当前支持路径已按有限资源模型、生产准入及受影响 Runtime 验收结账，见 `docs/design-docs/runtime-persistence-storage-reevaluation.md` §10.17 与 `docs/design-docs/runtime-exit-integrity-production-integration.md` §53。Supervisor 正文缓存、journal 分页与 Host / Webview 消费信用约束缓存和在途正文，不把累计历史复制到每层；完整尚需来源仍保留于 journal。总资源仍包含各会话 scrollback / geometry 的终端模型、活动 provider、逐 reader 页面和 journal segment 元数据，不能声称总 RSS 与历史或会话数无关。checkpoint 拒绝或慢 reader 保护期间磁盘可以增长，满盘明确失败，不能丢弃未消费尾部换取容量。
+
+生产准入为 `{ executions: null, starting: 1, pending: 2 }`，不将实验中的 2 或 10 个会话变成活动会话上限。在实际 owner 的准入范围内，准备、停止/收尾、未结算 reader、最终保存等责任达到 2 时拒绝新获取，不排无限队列；Supervisor 还合并已退出 owner、但仍在 `sessions` 中等待 Host 保存或 journal 删除的责任，按对象身份去重，成功移除才释放。已准入会话同时结束可以产生超过 2 项真实责任，仍全部保留并停止新准入；unknown 继续阻止新建。旧 finite / legacy 策略与原 live 绑定保持。
+
+已通过的多会话、重连及 attach/compact 证据直接复用；旧合并测试进程的 Heap 64 MiB / RSS 128 MiB 仅保留为观察预算及历史失败，不是产品内存硬门槛。普通构建、六目标资产打包与默认 owned 选择已接线，三平台 Runtime 安装与真实 Agent 证据已承担 F-04 的受影响验收，不因独立的 snapshot-only 状态问题重新追加容量阶段。旧协议成本单列，root 稳定归属另列计划，旧系统兼容不作本轮前置。
+
+最终序列化修正 `63847969` 对 Host 与 Supervisor 共用的 `xterm-serialize-v1` producer 增加固定 SGR 22 Bold/Dim 联动补丁及 profile 标识，安装和普通构建校验补丁，不放宽终态语义判据。对应 run `36979378644` 的三平台两模式安装及六个真实 Agent snapshot-only stop 已独立核对通过，最终受影响验收已收口；未受改动影响的既有证据复用。整体审查与 PR 尚待完成，本轮验收完成不代替整体收尾；最终证据与历史失败分账见生产接入 §53 和 `docs/design-docs/runtime-persistence-closeout.md` §8。
+
+2026-09-17 确认的运行时边界：Supervisor 崩溃或执行机器重启后，不要求恢复原进程或终端历史；正常结束重开同样不保留正文，不取消画板保存。Supervisor 与 PTY 均存活时的 Host/Webview 重建、关闭再打开 VS Code 和连接中断仍需维持原会话，通信失败本身不证明进程已结束。新 owned generation 只有在冷启动取得 namespace 排他权后才清理自身陈旧 registry / journal，不重放故障前正文；健康 Supervisor 的客户端断连不触发清理，旧 generation 与旧 live 绑定不动。不新增独立历史 server 或 completed 归档。
 
 ### Remote / Local 拓扑
 
@@ -484,7 +518,7 @@ docs/                           根目录正式文档知识库
 
 ### 执行兼容性
 
-`node-pty`、Electron ABI、`systemd --user`、shell 路径与平台兼容性都属于架构级关注点，不只是实现细节。相关改动默认需要同时检查宿主路径、supervisor 路径和 smoke 覆盖。
+平台 provider 原生资产与 ABI、stock / legacy 的 `node-pty`、`systemd --user`、shell 路径与平台兼容性都属于架构级关注点，不只是实现细节。相关改动默认需要同时检查 Host / Supervisor owner 路径、原生 provider 与 smoke 覆盖。现代 runner 通过不外推为低版本系统兼容。
 
 ### 可观测性与验证
 
@@ -513,6 +547,11 @@ docs/                           根目录正式文档知识库
 - 改侧栏显示和快捷动作：
   - `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts`
 - 改 Agent / Terminal 启动、停止、恢复、输出桥：
+  - `extensions/vscode/dev-session-canvas/src/panel/executionRuntimeSelection.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionOwnerFactory.ts`
+  - `extensions/vscode/dev-session-canvas/src/panel/executionProviderTransport.ts`
   - `extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts`
   - `extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts`
   - `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts`

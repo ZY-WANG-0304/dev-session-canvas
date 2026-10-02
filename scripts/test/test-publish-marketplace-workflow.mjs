@@ -25,7 +25,12 @@ const openVsxJob = job('publish-open-vsx');
 const visualStudioJob = job('publish-visual-studio');
 const finalizeJob = job('finalize');
 
-assert.deepEqual(Object.keys(workflow.jobs), ['prepare', 'publish-open-vsx', 'publish-visual-studio', 'finalize']);
+assert.deepEqual(Object.keys(workflow.jobs), ['resolve-runtime-input', 'native-assets', 'prepare', 'publish-open-vsx', 'publish-visual-studio', 'finalize']);
+assert.deepEqual(prepareJob.needs, ['resolve-runtime-input', 'native-assets']);
+assert.equal(job('native-assets').uses, './.github/workflows/runtime-execution-assets.yml');
+assert.equal(job('native-assets').with.input_ref, '${{ needs.resolve-runtime-input.outputs.input_ref }}');
+assert.equal(job('native-assets').if, "needs.resolve-runtime-input.outputs.needs_assets == 'true'");
+assert.equal(step('prepare', 'Checkout release ref').with.ref, '${{ needs.resolve-runtime-input.outputs.input_ref }}');
 assert.match(
   workflowText,
   /concurrency:\n\s+group: marketplace-release-/u,
@@ -34,6 +39,13 @@ assert.match(
 
 assert.equal(prepareJob['timeout-minutes'], 90, 'release verification needs enough time for the full test and clean-checkout gates');
 const releaseVerificationStep = step('prepare', 'Verify release input');
+const assembleStep = step('prepare', 'Assemble same-ref native runtime assets');
+assert(prepareJob.steps.indexOf(assembleStep) < prepareJob.steps.indexOf(releaseVerificationStep));
+assert.match(assembleStep.run, /DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/);
+assert.match(assembleStep.run, /--input-sha "\$\{\{ needs.resolve-runtime-input.outputs.input_ref \}\}"/);
+const nativeDownload = step('prepare', 'Download same-run native runtime assets');
+assert.equal(nativeDownload.with.pattern, 'execution-native-*-${{ github.run_id }}');
+assert.equal(nativeDownload.with['run-id'], undefined);
 assert.match(releaseVerificationStep.run, /npm run release:verify -- --version/u);
 assert.match(
   releaseVerificationStep.run,
