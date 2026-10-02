@@ -144,7 +144,9 @@ try {
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(asset.directory, 'manifest.json'))), expected.manifest);
       assert.equal(fs.existsSync(path.join(asset.directory, 'ignored-input.cc')), false);
       for (const [file, bytes] of expected.files) assert.deepEqual(fs.readFileSync(path.join(asset.directory, file)), bytes);
-      if (expected.manifest.helper) assert.ok(fs.statSync(path.join(asset.directory, 'spawn-helper')).mode & 0o111);
+      if (expected.manifest.helper && process.platform !== 'win32') {
+        assert.ok(fs.statSync(path.join(asset.directory, 'spawn-helper')).mode & 0o111);
+      }
     }
     const selectionPath = path.join(dist, 'execution-candidate-selection.json');
     const selection = { schemaVersion: 1, profile: 'platform',

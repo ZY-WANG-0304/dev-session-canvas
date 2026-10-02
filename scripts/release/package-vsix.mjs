@@ -14,6 +14,8 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import assert from 'node:assert/strict';
 import { parseArgs } from 'node:util';
+import { createHash } from 'node:crypto';
+import JSZip from 'jszip';
 import { readPackagedExecutionAssetSet } from '../build/execution-candidate-assets-set.mjs';
 
 const projectRoot = resolveProjectRoot();
@@ -23,10 +25,6 @@ const isWindows = process.platform === 'win32';
 const isMainModule = process.argv[1]
   ? import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
   : false;
-
-if (isMainModule) {
-  process.exit(main());
-}
 
 function resolveProjectRoot() {
   const cwd = process.cwd();
@@ -54,7 +52,7 @@ export function assertProductionExecutionPackage(dist) {
   return readPackagedExecutionAssetSet(dist);
 }
 
-export function main(args = process.argv.slice(2)) {
+export async function main(args = process.argv.slice(2)) {
   const { values } = parseArgs({ args, options: { 'development-comparison': { type: 'boolean' } } });
   const packageJsonPath = path.join(mainExtensionRoot, 'package.json');
   const vsceEntry = resolveVsceEntry(projectRoot);
@@ -124,7 +122,10 @@ export function main(args = process.argv.slice(2)) {
 
     if (result.status === 0) {
       const vsixFilename = `${packageJson.name}-${packageJson.version}.vsix`;
-      copyFileSync(path.join(stagePackageRoot, vsixFilename), path.join(projectRoot, vsixFilename));
+      const packaged = readFileSync(path.join(stagePackageRoot, vsixFilename));
+      const normalized = await ensureCandidateHelperPermissions(packaged,
+        { required: values['development-comparison'] !== true });
+      writeFileSync(path.join(projectRoot, vsixFilename), normalized);
       console.log(`已生成 ${path.join(projectRoot, vsixFilename)}`);
     }
 
@@ -132,6 +133,30 @@ export function main(args = process.argv.slice(2)) {
   } finally {
     rmSync(stageRoot, { recursive: true, force: true });
   }
+}
+
+export async function ensureCandidateHelperPermissions(bytes, { required = true } = {}) {
+  const zip = await JSZip.loadAsync(bytes);
+  let changed = false;
+  for (const arch of ['x64', 'arm64']) {
+    const prefix = `extension/dist/native/macos-execution-candidate/darwin-${arch}/`;
+    const helper = zip.file(`${prefix}spawn-helper`);
+    if (!required && !helper) continue;
+    assert(helper, `Packaged macOS ${arch} execution helper is missing`);
+    const manifestFile = zip.file(`${prefix}manifest.json`);
+    assert(manifestFile, `Packaged macOS ${arch} execution manifest is missing`);
+    const manifest = JSON.parse(await manifestFile.async('string'));
+    assert.equal(manifest.helper?.file, 'spawn-helper');
+    assert.equal(createHash('sha256').update(await helper.async('nodebuffer')).digest('hex'),
+      manifest.helper.sha256, 'Packaged execution helper hash does not match');
+    if (helper.unixPermissions !== 0o100755) {
+      helper.unixPermissions = 0o100755;
+      changed = true;
+    }
+  }
+  // VSCE's new, unsigned ZIP uses UNIX modes even on Windows, whose stat omits execute bits.
+  // Keep already-correct packages byte-identical; only foreign helper modes need normalization.
+  return changed ? zip.generateAsync({ type: 'nodebuffer', platform: 'UNIX', compression: 'DEFLATE' }) : bytes;
 }
 
 function resolveVsceDocRef(gitRoot) {
@@ -569,3 +594,7 @@ export function resolveCommand(vsceEntry, packageArgs, options = {}) {
 }
 
 const WINDOWS_CMD_META_CHARS_REGEXP = /([()\][%!^"`<>&|;, *?])/g;
+
+if (isMainModule) {
+  process.exit(await main());
+}

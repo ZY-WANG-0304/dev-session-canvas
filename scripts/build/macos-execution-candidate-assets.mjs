@@ -24,7 +24,9 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
 function readRegular(file, executable = false) {
   const stat = fs.lstatSync(file);
-  assert(stat.isFile() && (!executable || (stat.mode & 0o111)), `Expected a regular${executable ? ' executable' : ''} file: ${file}`);
+  // Windows can validate foreign asset bytes, but its stat mode has no POSIX executable bit.
+  assert(stat.isFile() && (!executable || process.platform === 'win32' || (stat.mode & 0o111)),
+    `Expected a regular${executable ? ' executable' : ''} file: ${file}`);
   return fs.readFileSync(file);
 }
 

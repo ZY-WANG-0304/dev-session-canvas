@@ -33,6 +33,7 @@
 - [x] (2026-10-02，§53) review确认并修复held-credit下resize链积压及paged-events提前fit；Host156、controller46/Host10、正常platform bundle上13项定向Chromium通过，原deadline/尾部与红证据保持。
 - [x] (2026-10-02，§53) 总体review确认缺Host-credit的历史candidate仍可获生产新建，有限修正为替换/delete/create前拒绝；先红与Host160/typecheck通过，旧live保持。注册run36965171860主动取消且未执行package/product；最终workflow已注册并回到manual-only。
 - [ ] (2026-10-02，§53) 以冻结提交运行同一VSIX的受影响Agent/Webview/现代三平台/安装包验收，随后整体review；F-04总体未关闭。
+- [x] (2026-10-02，§53首次CI) run36965693411的四Unix资产通过，Windows两架构在macOS helper的POSIX mode聚合检查首败，package/product未执行。跨宿主读权限与新VSIX固定helper元数据已修，distribution/package-command/file-list、mac18/assetset8通过；原失败保留，原最终CI仍待验。
 
 - [x] (2026-10-02) 复核Runtime热路径上界及O(N)/O(segment)资源账，确认总N混用pending、snapshot-only投递信用和candidate冷启动重放三个直接边界缺口；沿§10.17选定有限修正。
 - [x] 完成不可变production准入与Host最终保存责任分账，保留unknown/旧finite策略/获取前拒绝，定向先红后绿。
@@ -327,3 +328,5 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 随后提交 `30f421b3` 的 Linux 真实 Agent run `36917661214` 与同输入复跑 `36918349766` 均在首场 Codex natural 超时，节点保持 `waiting-input`/`liveSession=true`，cleanup 后无残留，后七场未执行。两次失败根因未定：通用 poll 行号不确定具体等待点，cleanup 后事实不证明失败前 CLI 已退出，不能写成已确认 Agent/Host 生命周期缺陷。§52 的有限 harness 修正只处理真实页面判据和已有第一现场脱敏；`1d784d8b` 的单次原 Linux 矩阵 `36935000098` 已八场通过，四 natural 实际响应/EOF、两snapshot stop独立重排及schema2新Host重开、八场零cleanup均成立，Claude1262bytes/seq5补齐该固定Linux非空格。11个源码hash独立对账，4个构建hash仅按报告保留未本地重建；旧超时仍未解释，不再为抓红重跑。F-04/A1、慢写/最终fit与平台新判据、最终准入责任不变，不扩工具或放宽原断言。
 
 修订记录（2026-10-02，最终生产接线）：§10.17与§53的准入/信用/冷启动及页面先红修正已实现，正常build/package与六目标选择本地检查成功。review只修已确认resize链积压及paged fit，并撤回不成立的重复准入疑点；保留全部首败。下一使用同一冻结提交/VSIX的受影响原矩阵，旧provider矩阵改手动避免重复，历史多会话和旧预算不重跑。本记录同步当前进度、发现、决策及复盘，不宣称最终验收完成。
+
+修订记录（2026-10-02，最终分发首败）：保留run36965693411的Windows跨宿主权限首败，明确不是PTY退出结果；只修普通Windows资产读取和新VSIX两份macOS helper的权限，定向回归通过。最终同包验收仍开放，不重跑历史多会话，不增加诊断门槛。

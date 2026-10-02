@@ -2386,3 +2386,9 @@ macOS 真实 Agent 的第一次 run `36906574728` 与唯一允许的同输入重
 总体review同时确认两个origin/main既有边界，非本次新增阻塞：Agent连接失败可能走 `maybeFallbackAgentLiveRuntimeToResume()` 新CLI resume；legacy client在外层no-restart连接成功后到普通request之间断连，request的无参ensureConnected仍允许在同旧namespace启动Supervisor。两者不等于恢复旧PTY，不应宣传为“所有旧会话在任意断连下都绝不启动进程”。本次不扩大legacy修复；新candidate普通request仍默认不重启，健康旧live按原backend/storage/session连接且不为升级迁移，残余项入技术债。
 
 Host-credit门槛已有限修正：`prepareExecutionCandidateReplacement()` 首句的生产admission拒绝缺能力peer，发生在旧绑定delete、launchSpec准备及submit/create之前；全局hello、旧live attach和namespace策略不变。实际Terminal/Agent入口先红为缺credit仍进入submit；修后Host160/160、typecheck、workflow契约及diff检查通过，覆盖无旧绑定/有旧绑定拒绝、支持credit正常新建、production和finite旧live兼容保持。workflow注册现已完成，一次性push入口撤去，修后冻结提交只manual调度一次最终验收。
+
+最终run36965693411 / aafcd52b首次结果为failure：四个Unix资产job通过，Windows x64/ARM64均在新增聚合fixture的macOS helper可执行位检查失败，原日志冻结 `.debug/ci-36965693411-initial/windows-x64-native-job.log` 与 `windows-arm64-native-job.log`。package/product未运行，无Agent请求；这是构建宿主文件权限语义错误，不是Windows终端退出失败。源码确认普通Windows platform build也受影响，不能只skip测试。
+
+选定跨宿主修正：Windows可验证外平台资产的regular文件、hash、Mach-O与完整manifest，但不从不支持POSIX exec bit的stat推断不可执行；Unix实际构建/import仍严格检查exec。由于VSCE沿用宿主mode，正式VSIX另在其新生成、未签名产物中校验两份macOS candidate helper的manifest/hash并固定UNIX权限100755，正确包保持原bytes；其余payload不改，不修改已有签名包、不构造通用ZIP转换框架。Windows本地普通build/package不因此降级为不支持，Linux正式聚合仍校验真实权限；修后只回到既定分发/最终验收。
+
+上述修正定向回归已通过：distribution契约（含模拟Windows无exec位、Unix严格拒绝、hash/regular仍拒绝）、macOS资产18项、资产集8项、package-command（DOS/UNIX及VSCE Windows mode、payload/metadata保留、坏hash/缺helper拒绝）和package-file-list。`package-vsix.mjs`只将新包权限归一化所需的入口改为async并在常量初始化后调用；不改执行生命周期，不将这些本地通过当作Windows原生或最终安装通过。

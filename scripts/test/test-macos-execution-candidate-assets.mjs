@@ -227,7 +227,8 @@ try {
       assert.deepEqual(fs.readdirSync(imported.directory).sort(), ['execution-owner.node', 'manifest.json', 'spawn-helper']);
       assert.deepEqual(fs.readFileSync(path.join(imported.directory, 'execution-owner.node')), value.binary);
       assert.deepEqual(fs.readFileSync(path.join(imported.directory, 'spawn-helper')), value.helper);
-      assert(fs.statSync(path.join(imported.directory, 'spawn-helper')).mode & 0o111);
+      if (process.platform !== 'win32') assert(fs.statSync(path.join(imported.directory, 'spawn-helper')).mode & 0o111);
+      assert.deepEqual(readCandidateAssets(imported.directory).helper, value.helper);
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(imported.directory, 'manifest.json'))), value.manifest);
       assert.throws(() => importCandidateAssets({ source, dist }), /EEXIST/);
     }
@@ -238,7 +239,7 @@ try {
     fs.mkdirSync(dist);
     fs.writeFileSync(path.join(dist, 'macos-execution-provider.js'), '/* controlled worker boundary */');
     const alias = path.join(temporary, 'temporary-alias');
-    fs.symlinkSync(temporary, alias, 'dir');
+    fs.symlinkSync(temporary, alias, process.platform === 'win32' ? 'junction' : 'dir');
     const sourceAlias = path.join(alias, path.basename(source));
     const distAlias = path.join(alias, path.basename(dist));
     assert.notEqual(sourceAlias, fs.realpathSync(sourceAlias));
@@ -248,13 +249,15 @@ try {
     assert.deepEqual(await resolveExecutionBuildSelection(candidateArgs(sourceAlias), '/missing/dist'),
       { profile, source, admissionLimits: { executions: 2, starting: 1 } });
   });
-  await test('nonexecutable or redirected helper is rejected before import', () => {
+  await test('POSIX nonexecutable and every host nonregular helpers reject before import', () => {
     const source = writeFixture('helper-validation');
     const helper = path.join(source, 'spawn-helper');
     fs.chmodSync(helper, 0o644);
-    assert.throws(() => readCandidateAssets(source), /executable/);
+    if (process.platform === 'win32') assert.deepEqual(readCandidateAssets(source).helper, fixture().helper);
+    else assert.throws(() => readCandidateAssets(source), /executable/);
     fs.renameSync(helper, `${helper}.original`);
-    fs.symlinkSync(`${helper}.original`, helper);
+    if (process.platform === 'win32') fs.mkdirSync(helper);
+    else fs.symlinkSync(`${helper}.original`, helper);
     assert.throws(() => readCandidateAssets(source), /regular/);
   });
   await test('old macOS 26 targets reject before read or import can stage either asset', () => {
@@ -350,7 +353,8 @@ try {
     fs.cpSync(source, inside, { recursive: true });
     await assert.rejects(resolveExecutionBuildSelection(candidateArgs(inside), dist), /outside/);
     fs.chmodSync(path.join(source, 'spawn-helper'), 0o644);
-    await assert.rejects(resolveExecutionBuildSelection(candidateArgs(source), dist), /executable/);
+    if (process.platform === 'win32') assert.equal((await resolveExecutionBuildSelection(candidateArgs(source), dist)).source, source);
+    else await assert.rejects(resolveExecutionBuildSelection(candidateArgs(source), dist), /executable/);
     assert.equal(fs.readFileSync(path.join(dist, 'retained.txt'), 'utf8'), 'unchanged');
     assert.deepEqual(await resolveExecutionBuildSelection(['--execution-profile=stock'], dist), {});
     assert.deepEqual(await resolveExecutionBuildSelection(['--production', '--execution-profile=stock'], dist), {});

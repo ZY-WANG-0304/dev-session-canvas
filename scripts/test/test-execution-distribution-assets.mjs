@@ -9,6 +9,7 @@ import yaml from 'js-yaml';
 import { assertLinuxDistributionBaseline, checksumFor, distributionTargets, runtimeFiles }
   from '../build/build-execution-distribution-assets.mjs';
 import { assembleExecutionDistributionAssets } from '../build/assemble-execution-distribution-assets.mjs';
+import { readCandidateAssets as readMacosAssets } from '../build/macos-execution-candidate-assets.mjs';
 import { writeExecutionAssetSet } from './fixtures/execution-candidate-assets-set.mjs';
 
 const require = createRequire(import.meta.url);
@@ -105,6 +106,37 @@ try {
   }
   const output = path.join(temporary, 'assembled');
   assert.equal(assembleExecutionDistributionAssets({ source: archives, output, inputCommit }).assets.length, 6);
+  const macos = targets.find(target => target.name === 'darwin-x64');
+  const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+  const lstat = fs.lstatSync;
+  try {
+    // Exercise the host boundary on every runner, including the missing execute bits Windows reports.
+    fs.lstatSync = (...args) => {
+      const stat = lstat(...args);
+      if (path.basename(args[0]) === 'spawn-helper') stat.mode &= ~0o111;
+      return stat;
+    };
+    for (const platform of ['linux', 'darwin']) {
+      Object.defineProperty(process, 'platform', { value: platform });
+      assert.throws(() => readMacosAssets(macos.directory), /executable/);
+    }
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    assert.deepEqual(readMacosAssets(macos.directory).manifest, macos.manifest);
+    const helper = path.join(macos.directory, 'spawn-helper');
+    const helperBytes = fs.readFileSync(helper);
+    fs.appendFileSync(helper, 'changed');
+    assert.throws(() => readMacosAssets(macos.directory), /hash/);
+    fs.writeFileSync(helper, helperBytes);
+    fs.lstatSync = (...args) => {
+      const stat = lstat(...args);
+      if (path.basename(args[0]) === 'spawn-helper') stat.isFile = () => false;
+      return stat;
+    };
+    assert.throws(() => readMacosAssets(macos.directory), /regular/);
+  } finally {
+    Object.defineProperty(process, 'platform', platformDescriptor);
+    fs.lstatSync = lstat;
+  }
   assert.throws(() => assembleExecutionDistributionAssets({ source: archives, output, inputCommit }), /overwrite/);
   const rejected = path.join(temporary, 'rejected');
   assert.throws(() => assembleExecutionDistributionAssets({ source: archives, output: rejected,

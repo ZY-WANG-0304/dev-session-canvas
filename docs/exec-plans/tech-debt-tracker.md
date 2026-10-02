@@ -28,7 +28,7 @@
 
 ## 技术债列表
 
-2026-10-02 当前有限收尾以生产接入§53为准：local实际消费信用、生产准入、candidate冷启动、慢restore/paged-events的fit及viewport、Host单任务/latest resize已有定向通过和普通六资产build/package本地证据。历史失败不再构成自动队列；F-04最终验收尚待同一clean-SHA包的三现代平台结果。总体review发现缺Host credit的旧candidate仍可新建，是当前直接阻塞，修复中而非延期项。旧预算、旧OS与通用工具不作前置。
+2026-10-02 当前有限收尾以生产接入§53为准：local实际消费信用、生产准入、candidate冷启动、慢restore/paged-events的fit及viewport、Host单任务/latest resize已有定向通过和普通六资产build/package本地证据。历史失败不再构成自动队列；F-04最终验收尚待同一clean-SHA包的三现代平台结果。总体review发现的缺Host credit旧candidate新建门禁已在aafcd52b修复，Host160/typecheck通过，健康旧live兼容保持。run36965693411在Windows跨宿主macOS helper权限检查首败，尚未运行package/product；必要权限修正及定向回归已完成，原日志保留，待最终CI。旧预算、旧OS与通用工具不作前置。
 
 2026-10-02 当前 A2/A3/A4 补充：`1d784d8b` / Linux `36935000098` 原八场通过，四natural实际响应/EOF、Claude1262-byte/seq5非空stop的首页面独立重排/schema2新Host和八场零cleanup成立。Linux旧 `36917661214`/`36918349766` 首场超时根因未定，不能用cleanup后状态倒推失败前CLI已退出，也不由本轮成功追认修复。当前剩余为原慢写/最终fit/保存viewport应用、其他平台新判据、F-04和最终准入，不重跑固定Linux格、不扩诊断工具；`main.tsx` snapshot通知早于write、fit无回调屏障及未显式恢复viewport仅为只读实现差异，未证明本次或历史失败因果。
 

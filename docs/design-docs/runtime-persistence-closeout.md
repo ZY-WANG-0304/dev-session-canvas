@@ -192,16 +192,18 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 | A6有限用户入口 | 当前冻结 VSIX 的 snapshot-only Host 离开已覆盖；只有在产品另行区分 `closeWindow` 与 `reloadWindow` 语义时才需单列新输入 | 50项真实 Host 方法受控回归含完整 template/replacement/等待窗口、第39节 Runtime reload、第50节 snapshot-only reload 及第47节 Linux installed 多根真实 EISDIR/B 原页面 24.9ms 交互；旧 reader/EOF 未观察字段和旧首败不改，不重复已完成格 |
 | A5支持与总体结账 | 其他平台installed/未覆盖架构、现代支持路径的完整 packaged 产品、默认启用与最终同一生产版本A1至A6证据表 | Linux固定VSIX及Remote Node原四阶段已通过；三平台真实Agent各原输入有限通过，改变实际启动链后只复验受影响原流程；旧OS缺环境不伪称新runner已证明，且不阻塞本次重构 |
 
-当前证据表（2026-10-01，面向收尾而非重新排队）：
+当前证据表（2026-10-02，§53 最终版本结账；历史段落不形成新队列）：
 
 | 项目 | 当前结论 | 直接剩余 |
 | --- | --- | --- |
-| A1 / F-04 | `10/1` color/size、`2/1` Host detach/reconnect 与 r23/r24 两会话 attach/resize/scrollback/live compact 固定组合通过，资源/交互只按声明输入记录 | 最终支持路径容量模型、慢消费者/重连/输入控制组合与准入责任槽 |
-| A2 | live 原执行重连、completed 无历史、snapshot-only 保存/重开及保存失败组合已有有限证据 | 仍需把未由现有证据承担的页面/慢消费者/失败结算语义收口，不重跑已通过矩阵 |
-| A3 | 双 Host/surface、多 reader、大尾部和 A6 reload 已取得固定页面证据 | 真实支持路径的慢消费者/读错/force-delete 组合及跨平台同版本页面结账 |
-| A4 | Linux/Electron 及 macOS 新 helper、Windows attempt2 的固定 Agent/Terminal 子矩阵已有通过；自然 EOF 与主动 stop 分账 | 非空 snapshot stop 的页面等价仍保持具名未决，不扩大为新的 Agent 矩阵 |
-| A5 | 六资产 schema2 构建、加载、聚合、固定 VSIX 与 Linux Remote 子项通过 | 最低旧 OS、各目标完整 packaged 产品、默认启用/生产准入与最终同版本证据 |
+| A1 / F-04 | 复用实际 owned 的 `10/1` color/size、`2/1` Host reconnect、r23/r24 attach/resize/scrollback/live compact；§10.17资源模型/准入及Host160、页面13补齐新credit/resize/fit结构责任 | 最终正常分发包的实际安装/交互与证据结账；未发现需要再独立运行的A1矩阵，不压旧64/128 |
+| A2 | live原身份重连、completed无历史、snapshot-only保存/重开、保存失败保护及generation兼容由具名旧证据和本轮入口回归承担 | 当前包两模式complete/reopen和真实Agent非空stop原页面/新Host对账，不把旧live兼容升级为全部新保证 |
+| A3 | 双Host/surface、多reader与大尾部已有真实证据；本轮controller46/Host10和页面13覆盖慢write/fit、viewport、credit、读错及非成功结算 | 当前包真实Webview与三平台尾部/最终状态/失败清理的受影响组合；不复跑完整旧reader矩阵 |
+| A4 | 三平台原真实CLI矩阵及Linux§52非空stop+reopen通过，CLI版本/DeepSeek与自然EOF/主动stop分账 | 用同一最终包内dist在三现代平台运行原八场，只回收受影响Agent/Webview接线；不新增Agent矩阵 |
+| A5 | 六资产schema2与Linux Remote已有证据；普通platform build/package和production选择本地通过，缺credit新建已拒绝且不迁移旧live | clean-SHA六资产供应与同一VSIX三平台实际安装、正常默认启用结果；旧系统不作前置 |
 | A6 | Runtime reload、snapshot-only reload、双 Host 失败/替换和多根交互固定组合通过 | 仅在产品明确区分 `closeWindow` 与 `reloadWindow` 时另立单项；否则不再重复 Host 离开实验 |
+
+复用理由：十会话与重连/compact已走当前owned provider、journal、Host credit和单段索引核心；默认选择、资产聚合和新建门禁不替换这些核心，cold-start清理不改变健康Supervisor重连。新增local credit/resize与paged-events gate不由旧证据代证，其直接时序由本轮实际Host和Chromium测试承担，最终安装包运行再验证真实集成。当前还不能提前称F-04或整体完成，只有本表剩余项有效，不从历史“未验”全文追加工作。
 
 当前工程顺序按有限收尾定义推进：保留 B1 修复与未完责任、A1/A2 原期限通过、各自 A4 有限结果及全部旧失败；第47节多根格、A3 双 Host 格、A6 snapshot-only Host 离开格、r23/r24 attach/compact 格及六资产构建格均已移出剩余队列。下一只收口 A1 最终生产候选的容量/交互模型、A2/A3 仍未由现有证据承担的页面语义、实际支持与最终同版本准入，不重开平台诊断或只增加 runner。第三轮 Codex snapshot stop 具名间歇失败不因未复现称已修，也不为抓红追加 CI。汇总 A1 至 A6 才宣布整体交付，F-04 和完整 A5 仍开放。
 
