@@ -120,7 +120,11 @@ const assetManifest = JSON.parse(await fs.readFile(path.join(dist,
 assert.equal(assetManifest.profile, `${platformName}-owner-v1-candidate`);
 assert.equal(assetManifest.platform, process.platform);
 assert.equal(assetManifest.arch, process.arch);
-assert.equal(assetManifest.runtime.name, 'electron');
+if (assetManifest.schemaVersion === 2) {
+  assert(['node', 'electron'].includes(assetManifest.runtime.name), 'Schema2 assets require explicit build provenance.');
+} else {
+  assert.equal(assetManifest.runtime.name, 'electron');
+}
 const hashes = {};
 for (const file of ['extensions/vscode/dev-session-canvas/dist/extension.js',
   'extensions/vscode/dev-session-canvas/dist/runtime-supervisor.js',

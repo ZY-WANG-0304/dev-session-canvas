@@ -29,26 +29,38 @@ function fromMainExtensionDist(relativePath) {
 const isWatch = process.argv.includes('--watch');
 const isProduction = process.argv.includes('--production');
 
-export async function resolveExecutionBuildSelection(args, distDirectory = mainExtensionDistRoot) {
+export const productionExecutionAdmission = Object.freeze({ executions: null, starting: 1, pending: 2 });
+
+export async function resolveExecutionBuildSelection(args, distDirectory = mainExtensionDistRoot, {
+  env = process.env, defaultAssetSet = path.join(projectRoot, 'generated', 'execution-assets')
+} = {}) {
   const { values } = parseArgs({ args, options: {
     watch: { type: 'boolean' }, production: { type: 'boolean' },
     'execution-profile': { type: 'string' }, 'execution-assets': { type: 'string' },
     'execution-assets-set': { type: 'string' },
     'execution-admission': { type: 'string' }
   } });
-  const assetSet = values['execution-assets-set'];
+  const explicitProfile = values['execution-profile'];
+  if (explicitProfile === 'stock') {
+    if (values['execution-assets-set'] !== undefined || values['execution-assets'] !== undefined
+      || values['execution-admission'] !== undefined) {
+      throw new Error('Explicit stock comparison builds cannot select execution assets or admission limits.');
+    }
+    return {};
+  }
+  const assetSet = values['execution-assets-set'] ?? (explicitProfile === undefined
+    && values['execution-assets'] === undefined ? env.DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET || defaultAssetSet : undefined);
   if (assetSet !== undefined && (values['execution-profile'] !== undefined || values['execution-assets'] !== undefined)) {
     throw new Error('--execution-assets-set is mutually exclusive with --execution-profile and --execution-assets.');
   }
   const profile = assetSet !== undefined ? 'platform' : values['execution-profile'];
   const source = assetSet ?? values['execution-assets'];
   const admission = values['execution-admission'];
-  if (profile === undefined && source === undefined && admission === undefined) return {};
   if ((!['linux-owner-v1-candidate', 'macos-owner-v1-candidate', 'windows-owner-v1-candidate'].includes(profile)
     && assetSet === undefined) || !source) {
     throw new Error('Specify a supported --execution-profile (linux-owner-v1-candidate, macos-owner-v1-candidate or windows-owner-v1-candidate) and --execution-assets together.');
   }
-  if (values.watch) throw new Error('Execution candidate watch builds are not supported.');
+  if (values.watch && profile !== 'platform') throw new Error('Single-target execution candidate watch builds are not supported.');
   const admissionParts = admission === undefined ? [2, 1]
     : /^\d+:\d+$/.test(admission) ? admission.split(':').map(Number) : [];
   const [executions, starting] = admissionParts;
@@ -56,8 +68,12 @@ export async function resolveExecutionBuildSelection(args, distDirectory = mainE
     || !Number.isSafeInteger(starting) || starting <= 0 || starting > executions) {
     throw new Error('Execution admission must be positive safe integers N:Q with Q <= N.');
   }
-  const admissionLimits = Object.freeze({ executions, starting });
-  const sourceDirectory = await fs.realpath(source);
+  const admissionLimits = admission === undefined && profile === 'platform'
+    ? productionExecutionAdmission : Object.freeze({ executions, starting });
+  const sourceDirectory = await fs.realpath(source).catch(error => {
+    if (error.code !== 'ENOENT' || profile !== 'platform') throw error;
+    throw new Error(`Default platform execution assets are missing at ${source}. Supply --execution-assets-set or DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET; stock comparison requires explicit --execution-profile=stock.`, { cause: error });
+  });
   const dist = await fs.realpath(distDirectory).catch(error => {
     if (error.code !== 'ENOENT') throw error;
     return path.resolve(distDirectory);
@@ -194,15 +210,7 @@ async function runBuild() {
       esbuild.build(windowsExecutionOutputWorkerConfig),
       esbuild.build(webviewConfig)
     ]);
-    if (selection.profile) {
-      (selection.profile === 'platform' ? importExecutionCandidateAssetSet
-        : selection.profile === 'windows-owner-v1-candidate' ? importWindowsCandidateAssets
-        : selection.profile === 'macos-owner-v1-candidate' ? importMacosCandidateAssets : importLinuxCandidateAssets)(
-        { source: selection.source, dist: mainExtensionDistRoot });
-      await fs.writeFile(fromMainExtensionDist('execution-candidate-selection.json'), `${JSON.stringify({
-        schemaVersion: 1, profile: selection.profile, admissionLimits: selection.admissionLimits
-      }, null, 2)}\n`);
-    }
+    await stageExecutionSelection(selection);
     return;
   }
 
@@ -215,16 +223,37 @@ async function runBuild() {
   const windowsExecutionOutputWorkerContext = await esbuild.context(windowsExecutionOutputWorkerConfig);
   const webviewContext = await esbuild.context(webviewConfig);
 
-  await Promise.all([
-    extensionContext.watch(),
-    supervisorContext.watch(),
-    supervisorLauncherContext.watch(),
-    linuxExecutionProviderContext.watch(),
-    macosExecutionProviderContext.watch(),
-    windowsExecutionProviderContext.watch(),
-    windowsExecutionOutputWorkerContext.watch(),
-    webviewContext.watch()
-  ]);
+  const contexts = [extensionContext, supervisorContext, supervisorLauncherContext,
+    linuxExecutionProviderContext, macosExecutionProviderContext, windowsExecutionProviderContext,
+    windowsExecutionOutputWorkerContext, webviewContext];
+  try {
+    await Promise.all(contexts.map(context => context.rebuild()));
+    await stageExecutionSelection(selection);
+    await Promise.all([
+      extensionContext.watch(),
+      supervisorContext.watch(),
+      supervisorLauncherContext.watch(),
+      linuxExecutionProviderContext.watch(),
+      macosExecutionProviderContext.watch(),
+      windowsExecutionProviderContext.watch(),
+      windowsExecutionOutputWorkerContext.watch(),
+      webviewContext.watch()
+    ]);
+  } catch (error) {
+    await Promise.all(contexts.map(context => context.dispose()));
+    throw error;
+  }
+}
+
+async function stageExecutionSelection(selection) {
+  if (!selection.profile) return;
+  (selection.profile === 'platform' ? importExecutionCandidateAssetSet
+    : selection.profile === 'windows-owner-v1-candidate' ? importWindowsCandidateAssets
+    : selection.profile === 'macos-owner-v1-candidate' ? importMacosCandidateAssets : importLinuxCandidateAssets)(
+    { source: selection.source, dist: mainExtensionDistRoot });
+  await fs.writeFile(fromMainExtensionDist('execution-candidate-selection.json'), `${JSON.stringify({
+    schemaVersion: 1, profile: selection.profile, admissionLimits: selection.admissionLimits
+  }, null, 2)}\n`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

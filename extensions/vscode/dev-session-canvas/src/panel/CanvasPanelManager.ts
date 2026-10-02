@@ -587,6 +587,11 @@ interface NonNativeHostExecution {
   business?: NonNativeHostBusiness;
   mutationError?: string;
   resizeObservation?: InteractionObservation;
+  resizeTaskPending?: boolean;
+  pendingResize?: {
+    cols: number; rows: number; deadline: number;
+    resolve: () => void; reject: (error: unknown) => void;
+  };
   finalTerminal?: SerializedTerminalState;
   localReaders?: Map<CanvasSurfaceLocation, LocalExecutionReader>;
   launchSpec?: Readonly<Pick<LaunchSpec, 'file' | 'cwd'>>;
@@ -17345,36 +17350,63 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private resizeNonNativeHostExecution(record: NonNativeHostExecution, cols: number, rows: number): Promise<void> {
     const deadline = this.nonNativeExecutionOwner!.options.scheduler.now() + EXECUTION_INTERACTION_LIMITS.observationMs;
+    return new Promise<void>((resolve, reject) => {
+      // A merged control request is not an acknowledgement of a native geometry change.
+      record.pendingResize?.resolve();
+      record.pendingResize = { cols, rows, deadline, resolve, reject };
+      if (!record.resizeTaskPending) this.queueNonNativeHostResize(record);
+    });
+  }
+
+  private queueNonNativeHostResize(record: NonNativeHostExecution): void {
+    record.resizeTaskPending = true;
     const operation = record.terminalChain.then(async () => {
-      this.assertNonNativeHostMutation(record);
-      if (record.cols === cols && record.rows === rows) return;
-      const observation = record.execution.resize(cols, rows, deadline);
-      record.resizeObservation = observation;
-      const result = await observation.first;
-      if (result.kind === 'unconfirmed') {
-        record.mutationError = `Terminal resize effect is unconfirmed: ${result.reason}`;
-      }
-      if (result.kind !== 'resized') throw new Error(`Owned terminal resize was ${result.kind}.`);
+      const request = record.pendingResize;
+      record.pendingResize = undefined;
+      if (!request) return;
+      const { cols, rows, deadline } = request;
       try {
-        const node = this.state.nodes.find(value => value.id === record.nodeId && value.kind === record.kind);
-        if (!this.isNonNativeHostRecordCurrent(record) || record.mutationError || record.finalRevision !== undefined ||
-          !node || (record.persistence && node.metadata?.[record.kind] !== record.persistence.metadata)) {
-          throw new Error('The original resize authority binding changed.');
+        this.assertNonNativeHostMutation(record);
+        if (deadline <= this.nonNativeExecutionOwner!.options.scheduler.now()) {
+          throw new Error('Host terminal resize expired before execution.');
         }
-        const revision = record.terminalRevision + 1;
-        record.tracker.resize(cols, rows, { outputSequence: revision });
-        record.business!.lineContextTracker.resize(cols, rows);
-        record.terminalRevision = revision; record.cols = cols; record.rows = rows;
-        this.projectNonNativeHostBusiness(record);
-        await this.publishNonNativeHostMutation(record);
-      } catch (error) {
-        record.mutationError = `Terminal resize applied but authority commit failed: ${formatUnknownError(error)}`;
-        throw error;
-      }
+        if (record.cols !== cols || record.rows !== rows) {
+          const observation = record.execution.resize(cols, rows, deadline);
+          record.resizeObservation = observation;
+          const result = await observation.first;
+          if (result.kind === 'unconfirmed') {
+            record.mutationError = `Terminal resize effect is unconfirmed: ${result.reason}`;
+          }
+          if (result.kind !== 'resized') throw new Error(`Owned terminal resize was ${result.kind}.`);
+          try {
+            const node = this.state.nodes.find(value => value.id === record.nodeId && value.kind === record.kind);
+            if (!this.isNonNativeHostRecordCurrent(record) || record.mutationError || record.finalRevision !== undefined ||
+              !node || (record.persistence && node.metadata?.[record.kind] !== record.persistence.metadata)) {
+              throw new Error('The original resize authority binding changed.');
+            }
+            const revision = record.terminalRevision + 1;
+            record.tracker.resize(cols, rows, { outputSequence: revision });
+            record.business!.lineContextTracker.resize(cols, rows);
+            record.terminalRevision = revision; record.cols = cols; record.rows = rows;
+            this.projectNonNativeHostBusiness(record);
+            await this.publishNonNativeHostMutation(record);
+          } catch (error) {
+            record.mutationError = `Terminal resize applied but authority commit failed: ${formatUnknownError(error)}`;
+            throw error;
+          }
+        }
+        request.resolve();
+      } catch (error) { request.reject(error); }
+    }, error => {
+      record.pendingResize?.reject(error);
+      record.pendingResize = undefined;
     });
     // Preserve accepted output consumption; flushFinal rejects any uncertain authority state.
     record.terminalChain = operation.catch(() => {});
-    return operation;
+    void operation.then(() => {
+      record.resizeTaskPending = false;
+      if (record.pendingResize) this.queueNonNativeHostResize(record);
+    });
   }
 
   private async publishNonNativeHostMutation(record: NonNativeHostExecution): Promise<void> {

@@ -2,22 +2,6 @@ name: Windows Product Execution Provider
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - runtime-persistence-session-state-refactor
-    paths:
-      - .github/workflows/runtime-execution-windows.yml
-      - extensions/vscode/dev-session-canvas/native/windows-execution-owner.h
-      - extensions/vscode/dev-session-canvas/src/panel/windowsExecution*.ts
-      - scripts/build/windows-execution-provider-patch.mjs
-      - scripts/build/windows-execution-candidate-assets.mjs
-      - scripts/test/test-windows-execution-product.mjs
-      - scripts/test/fixtures/windows-execution-*
-      - scripts/smoke/run-vscode-execution-candidate.mjs
-      - tests/vscode-smoke/execution-candidate-tests.cjs
-      - tests/vscode-smoke/windows-execution-candidate.cjs
-      - tests/vscode-smoke/fixtures/execution-candidate-windows*
-      - scripts/test/test-windows-execution-electron-input.mjs
 
 permissions:
   contents: read

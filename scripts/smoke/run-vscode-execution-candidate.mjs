@@ -47,7 +47,7 @@ const vscodeExecutablePath = await ensureVSCodeExecutable(projectRoot);
 const dist = path.join(projectRoot, 'extensions/vscode/dev-session-canvas/dist');
 const platformName = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux';
 const assetTarget = process.platform === 'win32' ? `win32-${process.arch}`
-  : process.platform === 'darwin' ? `darwin-${process.arch}` : 'linux-x64-glibc';
+  : process.platform === 'darwin' ? `darwin-${process.arch}` : `linux-${process.arch}-glibc`;
 const manifest = installedInput ? installedInput.manifest : JSON.parse(await fs.readFile(path.join(dist,
   `native/${platformName}-execution-candidate/${assetTarget}/manifest.json`), 'utf8'));
 assert(['node', 'electron'].includes(manifest.runtime.name),
@@ -73,12 +73,13 @@ if (installedInput) {
   }
 }
 if (process.platform === 'win32') {
-  assert.equal(process.arch, 'x64'); assert.equal(process.version, 'v25.6.0');
+  assert.equal(process.version, 'v25.6.0');
   if (manifest.runtime.name === 'electron') {
     assert.equal(manifest.runtime.version, '39.8.7'); assert.equal(manifest.runtime.node, '22.22.1');
     assert.equal(manifest.runtime.modules, '140');
   }
-  for (const file of ['windows-execution-output-worker.js']) sourceHashes[file] = hash(await fs.readFile(path.join(dist, file)));
+  for (const file of ['windows-execution-output-worker.js']) sourceHashes[file] = installedInput
+    ? installedInput.payloadHashes[`dist/${file}`] : hash(await fs.readFile(path.join(dist, file)));
   for (const file of ['windows-execution-candidate.cjs', 'fixtures/execution-candidate-windows.cjs',
     'fixtures/execution-candidate-windows.cmd', 'fixtures/execution-candidate-windows-observer.ps1']) {
     const relative = `tests/vscode-smoke/${file}`;
@@ -95,7 +96,7 @@ if (capacitySelected) {
 }
 await fs.writeFile(path.join(output, 'input.json'), `${JSON.stringify({
   schemaVersion: 1, scope: installedInput
-    ? 'A5 finite Linux installed candidate: original two-mode Terminal/Webview complete/reopen; not full distribution, notifier, Agent or other-platform acceptance'
+    ? `A5 finite ${process.platform}/${process.arch} installed candidate: original two-mode Terminal/Webview complete/reopen; not full distribution, notifier, Agent or other-platform acceptance`
     : `A2/A3 finite ${process.platform} two-mode real Terminal and actual Electron Webview; not A4/A5 closure`,
   vscodeExecutablePath, subjectExecutable: process.execPath, subjectVersions: process.versions,
   assetManifest: manifest, sourceHashes, lineCount: 90000, scrollback: 100000,

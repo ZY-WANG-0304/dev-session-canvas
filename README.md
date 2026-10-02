@@ -135,7 +135,7 @@ Installing `Dev Session Canvas` automatically installs the companion extension `
 
 For developers, the recommended path is to build from source and install through an Extension Development Host, rather than manually installing a `.vsix`.
 
-Minimum workflow:
+Prepare the matching six-target native runtime assets as described in [CONTRIBUTING.md](CONTRIBUTING.md#本地准备), then run:
 
 ```bash
 npm install

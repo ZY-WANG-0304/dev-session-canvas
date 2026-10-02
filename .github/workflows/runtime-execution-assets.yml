@@ -1,6 +1,12 @@
 name: Execution Native Distribution Assets
 
 on:
+  workflow_call:
+    inputs:
+      input_ref:
+        description: Immutable source commit for all six native assets
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       windows_only:
@@ -13,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: runtime-execution-assets-${{ github.ref }}
+  group: runtime-execution-assets-${{ github.workflow }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -51,6 +57,8 @@ jobs:
           ]') || fromJSON('[]') }}
     runs-on: ${{ matrix.asset.runner }}
     timeout-minutes: 20
+    env:
+      DEV_SESSION_CANVAS_EXECUTION_INPUT_SHA: ${{ inputs.input_ref || github.sha }}
     steps:
       - name: Preserve source bytes on Windows checkout
         if: runner.os == 'Windows'
@@ -60,6 +68,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ inputs.input_ref || github.sha }}
       - name: Setup actual target Node
         uses: actions/setup-node@v4
         with:
@@ -80,7 +89,8 @@ jobs:
       - name: Upload runtime files and finite load summary
         uses: actions/upload-artifact@v4
         with:
-          name: execution-native-${{ matrix.asset.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: execution-native-${{ matrix.asset.target }}-${{ github.run_id }}
+          overwrite: true
           path: execution-asset-artifacts/
           if-no-files-found: error
           retention-days: 14

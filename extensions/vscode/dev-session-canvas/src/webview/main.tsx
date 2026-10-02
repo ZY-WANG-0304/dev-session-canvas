@@ -7673,11 +7673,11 @@ function createExecutionTerminalController(
     return finish;
   };
   const finishSnapshotRestore = (
-    detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>,
+    detail: Extract<ExecutionHostEvent, { type: 'snapshot' }> | undefined,
     release: (() => void) | undefined, applied: boolean, generation: number
   ): boolean => {
     let callbackFailed = false;
-    try { if (applied) options?.onSnapshotApplied?.(detail); }
+    try { if (applied && detail) options?.onSnapshotApplied?.(detail); }
     catch { callbackFailed = true; }
     try { release?.(); }
     catch { callbackFailed = true; }
@@ -8659,6 +8659,8 @@ function createExecutionTerminalController(
     },
     events: (events, current, applied) => {
       options?.onContentWillChange?.('output');
+      let releaseSnapshotRestore: (() => void) | undefined;
+      const snapshotGeneration = writeGeneration;
       reportTerminalDrainDiagnostic(
         {
           source: 'webview-terminal-drain',
@@ -8674,11 +8676,14 @@ function createExecutionTerminalController(
         }
       );
       queueTerminalWrite((done, _markStarted, failed) => {
+        if (!current()) { done(false); return; }
+        releaseSnapshotRestore = beginSnapshotRestore();
         applyTerminalStreamEvents(terminal, events, () => done(current()), current, failed);
       }, { reason: 'paged-events', replayEventCount: events.length,
         replayOutputCharacters: events.reduce((size, event) => size + (event.type === 'output' ? event.data.length : 0), 0)
       }, (success) => {
-        applied(success && current());
+        const restored = finishSnapshotRestore(undefined, releaseSnapshotRestore, success && current(), snapshotGeneration);
+        applied(restored && current());
       });
     },
     // Exit status is rendered by the node UI, outside the subject's terminal buffer.

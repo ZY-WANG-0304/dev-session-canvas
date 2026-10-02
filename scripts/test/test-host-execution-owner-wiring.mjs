@@ -13,7 +13,7 @@ const bundled = await esbuild.build({
       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
       export { ExecutionOwnerLifecycle } from './extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle';
       export { encodeOutputFrame } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
-      export { EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
+      export { EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION, EXECUTION_INTERACTION_LIMITS } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
       export { RuntimeTerminalReadRelay } from './extensions/vscode/dev-session-canvas/src/panel/runtimeTerminalReadRelay';
       export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
       export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
@@ -61,7 +61,7 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   path.resolve('scripts/test/host-owner-wiring.cjs'), path.resolve('scripts/test')
 );
 const { CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
-  RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION,
+  RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION, EXECUTION_INTERACTION_LIMITS,
   testEnvironment, testWindow } = loaded.exports;
 
 function deferred() {
@@ -2236,7 +2236,8 @@ function candidateFixture(options = {}) {
   f.host.executionCandidateProfile = EXECUTION_CANDIDATE_PROFILE;
   f.host.activeSurface = 'editor';
   f.host.surfaceLifecycle = { editor: { generation: 1, mode: 'active', frameId: 'candidate-editor',
-    ready: true, bootstrapAck: true, terminalLocalSettlementV1: true, terminalReadSettlementV1: true },
+    ready: true, bootstrapAck: true, terminalLocalSettlementV1: true, terminalReadSettlementV1: true,
+    ...(options.outputCredit ? { terminalLocalOutputCreditV1: true } : {}) },
     panel: { generation: 1, mode: 'inactive', frameId: 'candidate-panel', ready: false, bootstrapAck: false } };
   f.host.resolveRuntimeStoragePath = value => value || '/controlled/current-runtime';
   f.host.getPersistedRuntimeStoragePath = metadata => metadata.runtimeStoragePath;
@@ -2252,6 +2253,34 @@ function candidateFixture(options = {}) {
   }
   return { ...f, owner, injection, posted, start };
 }
+
+test('candidate Host retains both admitted preparations when production or finite reservation capacity is full', async () => {
+  for (const admissionLimits of [EXECUTION_PRODUCTION_ADMISSION, { executions: 2, starting: 1 }]) {
+    const f = candidateFixture({ admissionLimits });
+    f.host.activeSurface = undefined;
+    const gates = [deferred(), deferred()];
+    const records = [];
+    const launches = gates.map((gate, index) => f.host.startNonNativeHostExecution(
+      index ? 'agent' : 'terminal', index ? 'agent-1' : 'terminal-1', 80, 24, () => gate.promise));
+    try {
+      assert.equal(f.owner.snapshot().admissionPending, 2);
+      await assert.rejects(f.host.startNonNativeHostExecution('terminal', 'third', 80, 24,
+        async () => ({ file: '/controlled/shell', args: [], env: {} })), /capacity/);
+      gates[0].resolve({ file: '/controlled/shell', args: [], env: {} });
+      records.push(await completed(f.clock, launches[0], 'first existing reservation'));
+      gates[1].resolve({ file: '/controlled/agent', args: [], env: {} });
+      records.push(await completed(f.clock, launches[1], 'second existing reservation'));
+      assert.equal(f.providers.length, 2);
+      assert.equal(f.owner.snapshot().admissionPending, 0);
+    } finally {
+      for (const record of records) {
+        record.business?.cancelActivityPoll?.();
+        record.business?.lineContextTracker.dispose();
+        record.tracker.dispose();
+      }
+    }
+  }
+});
 
 function candidateRuntimeFixture(options = {}) {
   const f = candidateFixture(options);
@@ -3065,8 +3094,8 @@ for (const kind of ['terminal', 'agent']) {
   });
 }
 
-async function interactiveHostFixture(kind = 'terminal', providerKind = 'codex') {
-  const f = candidateFixture();
+async function interactiveHostFixture(kind = 'terminal', providerKind = 'codex', options = {}) {
+  const f = candidateFixture(options);
   const persist = f.host.persistState.bind(f.host);
   f.host.persistState = async (...args) => { await persist(...args); };
   if (kind === 'agent') {
@@ -3099,6 +3128,79 @@ async function interactiveHostFixture(kind = 'terminal', providerKind = 'codex')
   }
   return { ...f, record, provider, requests, reply, cleanup };
 }
+
+test('held local output credit retains only the latest unstarted Host resize request', async () => {
+  const messages = [];
+  const f = await interactiveHostFixture('terminal', 'codex', {
+    outputCredit: true, onHostMessage: message => messages.push(message)
+  });
+  const acknowledge = message => f.host.handleLocalExecutionOutputApplied('editor', {
+    nodeId: 'terminal-1', kind: 'terminal', executionSessionId: f.record.execution.identity.executionId,
+    ...message.payload.localOutputReceipt, outcome: 'applied'
+  }, f.host.getSurfaceLifecycleIdentity('editor'), f.webviews.editor);
+  try {
+    await until(f.clock, () => messages.some(message => message.payload?.localOutputReceipt), 'initial credited snapshot');
+    acknowledge(messages.find(message => message.payload?.localOutputReceipt));
+    await until(f.clock, () => f.record.localReaders.get('editor').initialPublished, 'initial snapshot applied');
+    f.provider.output(1, 'held-before-resize\r\n');
+    await until(f.clock, () => messages.some(message => message.type === 'host/executionOutput'), 'held output receipt');
+    let merged = 0;
+    const changes = Array.from({ length: 24 }, (_, index) =>
+      f.host.resizeNonNativeHostExecution(f.record, 120 + index, 40).then(() => { merged += 1; }));
+    const allChanges = Promise.all(changes);
+    void allChanges.catch(() => {});
+    await pump(f.clock, () => merged === 23);
+    assert.equal(merged, 23, 'superseded controls must settle without retaining a chain continuation each');
+    assert.equal(f.requests.filter(request => request.type === 'resize').length, 0);
+    acknowledge(messages.find(message => message.type === 'host/executionOutput'));
+    await until(f.clock, () => f.requests.some(request => request.type === 'resize'), 'latest desired resize');
+    const resize = f.requests.find(request => request.type === 'resize');
+    assert.equal(resize.cols, 143);
+    assert.equal(resize.rows, 40);
+    let laterMerged = false;
+    const laterSuperseded = f.host.resizeNonNativeHostExecution(f.record, 144, 41).then(() => { laterMerged = true; });
+    const laterLatest = f.host.resizeNonNativeHostExecution(f.record, 145, 42);
+    void laterLatest.catch(() => {});
+    await until(f.clock, () => laterMerged, 'in-flight resize keeps one latest target');
+    assert.equal(f.requests.filter(request => request.type === 'resize').length, 1);
+    f.reply(resize, { kind: 'resized' });
+    await until(f.clock, () => messages.filter(message => message.type === 'host/executionSnapshot').length === 2,
+      'resized terminal snapshot');
+    const resizingChain = f.record.terminalChain;
+    f.provider.output(2, 'output-before-latest-resize\r\n');
+    await until(f.clock, () => f.record.terminalChain !== resizingChain, 'accepted output queued before latest resize');
+    acknowledge(messages.filter(message => message.type === 'host/executionSnapshot').at(-1));
+    await completed(f.clock, allChanges, 'merged Host resize requests');
+    await until(f.clock, () => messages.filter(message => message.type === 'host/executionOutput').length === 2,
+      'accepted output is not overtaken by latest resize');
+    assert.equal(f.requests.filter(request => request.type === 'resize').length, 1);
+    acknowledge(messages.filter(message => message.type === 'host/executionOutput').at(-1));
+    await until(f.clock, () => f.requests.filter(request => request.type === 'resize').length === 2, 'later latest native resize');
+    const lastResize = f.requests.filter(request => request.type === 'resize').at(-1);
+    assert.equal(lastResize.cols, 145);
+    assert.equal(lastResize.rows, 42);
+    assert.equal(f.record.cols, 143);
+    assert.equal(f.record.rows, 40);
+    f.reply(lastResize, { kind: 'resized' });
+    await until(f.clock, () => messages.filter(message => message.type === 'host/executionSnapshot').length === 3,
+      'later latest snapshot');
+    acknowledge(messages.filter(message => message.type === 'host/executionSnapshot').at(-1));
+    await completed(f.clock, Promise.all([laterSuperseded, laterLatest]), 'later native geometry confirmation');
+    assert.equal(f.record.cols, 145);
+    assert.equal(f.record.rows, 42);
+    f.provider.output(3, 'hold-until-original-resize-deadline\r\n');
+    await until(f.clock, () => messages.filter(message => message.type === 'host/executionOutput').length === 3, 'deadline output held');
+    const expired = assert.rejects(f.host.resizeNonNativeHostExecution(f.record, 146, 43), /expired before execution/);
+    f.clock.elapse(f.clock.now() + EXECUTION_INTERACTION_LIMITS.observationMs + 1);
+    acknowledge(messages.filter(message => message.type === 'host/executionOutput').at(-1));
+    await completed(f.clock, expired, 'original resize deadline still applies');
+    assert.equal(f.requests.filter(request => request.type === 'resize').length, 2);
+    assert.equal(f.record.mutationError, undefined, 'a nonexecuted expired control cannot claim an unknown native mutation');
+  } finally {
+    f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-complete');
+    await f.cleanup();
+  }
+});
 
 function prepareInitialTerminalInput(f, text = 'controlled-install\n') {
   delete f.host.dropPendingTerminalInitialInput;

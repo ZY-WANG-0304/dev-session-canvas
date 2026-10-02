@@ -2364,3 +2364,17 @@ macOS 真实 Agent 的第一次 run `36906574728` 与唯一允许的同输入重
 页面窄修已完成本地验证：六个先红案例修后通过；共18个定向Chromium测试覆盖Agent/Terminal保存viewport、慢write/fit、连续resize单次提交、serialized重建、分页末页/最终光标和错误提示不注入正文。controller 39/39、Host batch 10/10通过。此结果尚不包含新增本地消费信用、最终默认版本或真实Agent复验，不据局部绿色关闭整体收尾。
 
 后续本地信用已补actual controller与页面回归：controller46/46、Host batch10/10和Host154/154通过；显式stock仅用于最新页面bundle的8个受影响Chromium测试通过，其中两例覆盖慢write回执、健康本地final snapshot真实应用、unmount/无controller取消，六例复验restore/fit/viewport。新增notify异常先红原cancel close数0而预期1，修后将通知/屏障释放异常作为应用失败且仍向paged consumer结算，不吞错误。stock页面测试不代证默认provider/正式打包，最终正常六资产版本仍需实际验证。
+
+最终受影响验收使用一个固定输入的 `runtime-production-acceptance.yml`：同commit六资产聚合，执行普通build和package一次得到唯一VSIX/hash，现代Linux/macOS/Windows按顺序安装同一包并运行原两模式Terminal/Webview complete/reopen，再用该包内相同dist字节运行原真实Codex/Claude八场。既有Linux-only installed driver只补平台资产/实际CLI安装差异，不改变正文、最终状态、重开无新执行和cleanup断言。schema2资产的Node/Electron字段是编译来源，Agent runner不能仍硬要求编译来源为Electron；实际加载资格由生产validator与实际VSCode运行证明。凭据仅最后Agent step可见，安装证据先上传，Agent只上传既有白名单摘要，不上传raw。该workflow未运行前不计通过，不扩通用诊断框架，不复跑旧原生场景矩阵。
+
+本地普通 `npm run build` 与 `npm run package:vsix` 已 exit0；显式资产集环境变量指向此前通过校验且当前原生源码未变的六目标资产。生成 `dev-session-canvas-0.25.0.vsix` 为5857476 bytes，SHA256 `1e4f0a724878d1ce8d5a194238491590197830e1f65e08d7282f69a81d9f291a`，独立ZIP检查确认六manifest、platform选择与 `{ executions: null, starting: 1, pending: 2 }`。这是dirty-tree本地接线验证，不是最终clean-SHA包或跨平台通过；最终workflow必须从冻结提交重建六资产及唯一包，不沿用这个hash作新结果。
+
+独立复核补充有限集成边界：模板市场服务部署的原 `test:marketplace` 会间接调用普通build，却没有原生资产输入。该服务的既有页面套件展开为相同子项，VSCode fixture显式stock，仅验证模板业务，不能冒充Runtime production验收；历史tag保留旧入口。最终Windows产品checkout与原生生产者一致关闭autocrlf，避免源码hash由换行转换产生虚假失配。review中曾怀疑prepare后二次准入会重复要求空slot，下钻确认 `assertAdmission()` 只复核关闭/能力/绑定，容量仅在 `reserve()` 判定，该疑点不成立，不修改业务。
+
+剩余定向核对仍限原资源与页面责任：本地输出credit未释放时，重复resize不得在Host构造无界Promise链；若先红证实，应在进入链前按既有独立resize交互上限拒绝或有限合并，不能丢已接受正文或把未知resize写成成功。分页checkpoint之后的事件write与容器fit组合也只在现有page harness定位；未证前不扩大为产品缺陷、任意时序承诺或新的诊断阶段。
+
+上述两项已取得直接先红：Host held-credit下24个resize等待全部保留，按容量§10.17采用单任务加latest desired；分页事件的真实Chromium延迟write对照中，Agent在尾部应用前由79x28变为67x22，Terminal也出现未在完成后恢复容器尺寸。旧目录 `.debug/a2-a3-paged-fit-before-fix-20261002/` 保留；修正复用实例级restore屏障覆盖当前events页，直到其最后write callback，不重复snapshot通知或重置grace。取消/代际变化/异常仍释放屏障并非成功结算；正文、最终revision、应用后fit和reader仅真实完成后关闭均保留断言。
+
+修后有限回归：Host156/156含production/旧finite双prepare原本有效的澄清、24请求合并、native在途最新目标、已接纳输出先于后续resize与原5000ms过期不调用provider。正常platform bundle上的13项Chromium全部通过，覆盖新增两种节点慢paged-events、慢snapshot、saved viewport、local credit、remote settlement与ANSI尾部；controller46/Host10、typecheck及模板部署/安装/聚合/发布workflow定向测试通过。两份paged-fit红证据与 `.debug/a2-a3-paged-fit-after-fix-20261002/` 绿证据分开保留；普通本地包仍需更新到该修复，最终CI尚未通过。旧macOS/Windows provider workflow只撤销主题分支自动触发，手动入口、原native断言及历史结果保留，避免最终打包验收之外重复运行旧矩阵。
+
+修后普通package再次exit0，独立ZIP检查仍为六目标platform与production准入；本地新包5857673 bytes / SHA256 `28a89027a2a6c1fda3201bccb7b0d072766fb86c3d4fd8c3814460a50113bfcc`。该包包含resize与分页fit修正，但仍是dirty-tree本地构建，最终CI使用clean提交新包的独立hash，不能混用两份输入。

@@ -96,7 +96,21 @@ assert.ok(
   'workflow must install Playwright browsers before running marketplace E2E tests'
 );
 
-assert.equal(step('Run marketplace test suite').run, 'npm run test:marketplace');
+const marketplaceTests = step('Run marketplace test suite').run;
+const { scripts } = JSON.parse(await readFile('package.json', 'utf8'));
+assert.match(marketplaceTests, /if \[\[ ! -f scripts\/build\/assemble-execution-distribution-assets\.mjs \]\]; then\n\s+npm run test:marketplace/u,
+  'historical deploy refs must retain their original test entry point');
+assert.equal(scripts['test:marketplace-e2e'], 'npm run test:marketplace-browser-e2e && npm run test:marketplace-vscode-e2e');
+assert.equal(scripts['test:marketplace-vscode-e2e'], 'npm run test:marketplace-vscode-fixture-e2e');
+assert.equal(scripts['test:marketplace-vscode-fixture-e2e'],
+  'npm run build && node scripts/smoke/run-template-marketplace-vscode-e2e.mjs');
+assert.deepEqual(marketplaceTests.split('\n').map(line => line.trim()).filter(line => /^(?:npm|node) /u.test(line)), [
+  'npm run test:marketplace',
+  ...scripts['test:marketplace'].split(' && ').flatMap(command => command === 'npm run test:marketplace-e2e'
+    ? ['npm run test:marketplace-browser-e2e', 'node scripts/build/build.mjs --execution-profile=stock',
+      'node scripts/smoke/run-template-marketplace-vscode-e2e.mjs'] : [command])
+], 'deploy must retain the full marketplace suite while its independent VSCode fixture explicitly selects stock');
+assert.match(marketplaceTests, /stock comparison, not runtime production acceptance/u);
 assert.equal(step('Run production config check').run, 'npm run test:marketplace-production-config');
 assert.equal(step('Run production D1 migration').run, 'npm run -w @dev-session-canvas/template-marketplace db:migrate:production');
 assert.equal(step('Verify production D1 data').run, 'npm run -w @dev-session-canvas/template-marketplace db:verify:production');

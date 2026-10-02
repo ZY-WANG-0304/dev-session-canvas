@@ -302,4 +302,46 @@ if (process.platform === 'win32') {
   }
 }
 
-console.log(`runtime real Agent CI workflow contract tests passed for Linux, macOS and Windows; native shell syntax: ${process.platform === 'win32' ? 'PowerShell' : 'Bash'}`);
+const production = yaml.load(await readFile('.github/workflows/runtime-production-acceptance.yml', 'utf8'));
+assert.deepEqual(Object.keys(production.on), ['workflow_dispatch']);
+assert.deepEqual(production.permissions, { contents: 'read' });
+assert.equal(production.env, undefined);
+assert.equal(production.jobs['native-assets'].uses, './.github/workflows/runtime-execution-assets.yml');
+assert.deepEqual(production.jobs['native-assets'].with, { input_ref: '${{ github.sha }}' });
+assert.equal(production.jobs.package.needs, 'native-assets');
+const finalProduct = production.jobs.product;
+assert.equal(finalProduct.needs, 'package');
+assert.equal(finalProduct.strategy['max-parallel'], 1, 'Real Agent final platforms run in one finite lane.');
+assert.deepEqual(finalProduct.strategy.matrix.include.map(item => item.os), ['ubuntu-22.04', 'macos-15', 'windows-2025']);
+assert.equal(finalProduct.env, undefined);
+const preserveBytes = finalProduct.steps.find(candidate => candidate.name === 'Preserve source bytes on Windows checkout');
+assert.deepEqual(preserveBytes, { name: 'Preserve source bytes on Windows checkout',
+  if: "runner.os == 'Windows'", shell: 'pwsh', run: 'git config --global core.autocrlf false' });
+assert(finalProduct.steps.indexOf(preserveBytes) < finalProduct.steps.findIndex(candidate => candidate.uses === 'actions/checkout@v4'),
+  'Installed native source hashes must see the same bytes as the asset producer.');
+const finalSecretStep = finalProduct.steps.find(candidate => candidate.id === 'real_agents');
+assert.deepEqual(finalSecretStep.env, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}' });
+assert.equal(finalSecretStep['continue-on-error'], undefined);
+assert.deepEqual(finalProduct.steps.filter(candidate => JSON.stringify(candidate).includes('secrets.')), [finalSecretStep]);
+assert.match(finalSecretStep.run, /> "\$RUNNER_TEMP\/agent-candidate\.log" 2>&1/u);
+assert.doesNotMatch(finalSecretStep.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/u);
+const afterSecret = finalProduct.steps.slice(finalProduct.steps.indexOf(finalSecretStep) + 1);
+assert.equal(afterSecret.length, 1);
+assert.equal(afterSecret[0].uses, 'actions/upload-artifact@v4');
+assert.equal(afterSecret[0].with.path, 'agent-ci-report/');
+assert.equal(afterSecret[0].if, "always() && steps.real_agents.outputs.report_ready == 'true'");
+assert.match(finalProduct.steps.find(candidate => candidate.id === 'installed').run, /--installed-vsix production-package\/product\.vsix/u);
+for (const job of [production.jobs.package, finalProduct]) {
+  assert.equal(job.steps.find(candidate => candidate.uses === 'actions/checkout@v4').with.ref, '${{ github.sha }}');
+  for (const candidate of job.steps.filter(candidate => candidate.run)) {
+    if (process.platform !== 'win32') {
+      const syntax = spawnSync('bash', ['-n'], { input: candidate.run, encoding: 'utf8' });
+      assert.equal(syntax.status, 0, `Invalid final acceptance shell in ${candidate.name}: ${syntax.stderr}`);
+    }
+  }
+}
+assert.match(production.jobs.package.steps.find(candidate => candidate.name === 'Build and package through normal defaults').run,
+  /npm run build\n\s*npm run package:vsix/u);
+assert.doesNotMatch(JSON.stringify(production), /--development-comparison|--execution-profile=stock|--execution-admission=/u);
+
+console.log(`runtime real Agent CI workflow contract tests passed for Linux, macOS and Windows plus the fixed production package lane; native shell syntax: ${process.platform === 'win32' ? 'PowerShell' : 'Bash'}`);

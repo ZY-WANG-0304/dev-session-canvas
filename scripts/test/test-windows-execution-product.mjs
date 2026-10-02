@@ -172,8 +172,8 @@ async function selfTest() {
   assert.equal(frames([size, payload.subarray(0, -1)]).incompleteBytes, size.length + payload.length - 1);
   const workflow = yaml.load(await fs.readFile('.github/workflows/runtime-execution-windows.yml', 'utf8'));
   assert.deepEqual(workflow.permissions, { contents: 'read' });
-  assert(Object.hasOwn(workflow.on, 'workflow_dispatch'));
-  assert.deepEqual(workflow.on.push.branches, ['runtime-persistence-session-state-refactor']);
+  assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch'],
+    'The historical provider matrix remains manual; final production acceptance owns the affected package run.');
   assert.equal(Object.keys(workflow.jobs).length, 1);
   const job = workflow.jobs['product-provider'];
   assert.equal(job['runs-on'], 'windows-latest');

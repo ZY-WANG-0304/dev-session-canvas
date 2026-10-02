@@ -2,23 +2,6 @@ name: macOS Product Execution Provider
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - runtime-persistence-session-state-refactor
-    paths:
-      - .github/workflows/runtime-execution-macos.yml
-      - extensions/vscode/dev-session-canvas/native/macos-execution-owner.h
-      - extensions/vscode/dev-session-canvas/native/unix-execution-owner.h
-      - extensions/vscode/dev-session-canvas/src/panel/macosExecutionOwnerFactory.ts
-      - extensions/vscode/dev-session-canvas/src/panel/macosExecutionProviderMain.ts
-      - scripts/build/macos-execution-provider-patch.mjs
-      - scripts/build/macos-execution-candidate-assets.mjs
-      - scripts/smoke/vscode-smoke-runner.mjs
-      - scripts/test/test-macos-execution-product.mjs
-      - scripts/test/test-macos-execution-spawn-helper.mjs
-      - scripts/test/test-vscode-smoke-runner-env.mjs
-      - scripts/test/fixtures/macos-execution-subject.mjs
-      - scripts/test/fixtures/macos-execution-namespace.ts
 
 permissions:
   contents: read

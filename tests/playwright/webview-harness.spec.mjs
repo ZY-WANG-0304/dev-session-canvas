@@ -17008,6 +17008,67 @@ for (const executionKind of ['agent', 'terminal']) {
     });
   });
 
+  test(`${executionKind} slow paged event write prevents premature fit and settles after its tail`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const executionSessionId = `${executionKind}-slow-page`;
+    const authorityId = `${executionKind}-slow-authority`;
+    const readId = `${executionKind}-slow-reader`;
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const ready = await waitForExecutionTerminalReady(page, nodeId);
+    const restoreCols = ready.terminalCols + 12;
+    const restoreRows = ready.terminalRows + 6;
+    const stream = await createTerminalStreamPayload({
+      sessionId: executionSessionId, authorityId, checkpointRevision: 1,
+      checkpointCols: ready.terminalCols, checkpointRows: ready.terminalRows,
+      checkpointOutput: 'SLOW-PAGED-CHECKPOINT\r\n',
+      events: [
+        { type: 'resize', revision: 2, cols: restoreCols, rows: restoreRows },
+        { type: 'output', revision: 3, data: 'SLOW-PAGED-TAIL\r\n' }
+      ]
+    });
+    await clearPostedMessages(page);
+    await dispatchExecutionSnapshot(page, {
+      nodeId, kind: executionKind, output: '', executionSessionId, outputSequence: 1,
+      terminalRead: { readId, sessionId: executionSessionId, authorityId, checkpoint: stream.checkpoint,
+        headRevision: 3, settlementMode: 'final-application-v1' }
+    });
+    const request = await waitForPostedMessageByType(page, 'webview/readExecutionTerminalPage');
+    await holdXtermParser(page);
+    try {
+      await page.evaluate(({ request, stream }) => {
+        window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable', payload: {
+          ...request, revision: 3, completed: true, finalRevision: 3
+        } });
+        window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload: {
+          ...request, page: { readId: request.readId, sessionId: stream.sessionId, authorityId: stream.authorityId,
+            afterRevision: 1, revision: 3, headRevision: 3, events: stream.events }
+        } });
+      }, { request: request.payload, stream });
+      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
+      await page.waitForTimeout(1200);
+      const container = nodeById(page, nodeId).locator('.terminal-viewport');
+      await container.evaluate(element => { element.style.width = 'calc(100% - 8px)'; });
+      await settleWebview(page, 2);
+      await container.evaluate(element => { element.style.width = ''; });
+      await settleWebview(page, 2);
+      const pending = await readProbeNode(page, nodeId, 0);
+      expect(pending.terminalVisibleLines.join('\n')).not.toContain('SLOW-PAGED-TAIL');
+      expect({ cols: pending.terminalCols, rows: pending.terminalRows }).toEqual({ cols: restoreCols, rows: restoreRows });
+      expect(await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).toHaveLength(0);
+      expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(0);
+    } finally { await page.evaluate(() => window.__slowSnapshotWrite.release()); }
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('SLOW-PAGED-TAIL');
+    const closes = await waitForPostedMessagesByTypeMatch(page, 'webview/closeExecutionTerminalRead', messages => messages.length === 1);
+    expect(closes[0].payload.outcome).toEqual({ kind: 'applied', finalRevision: 3 });
+    await expect.poll(async () => {
+      const terminal = await readProbeNode(page, nodeId, 0);
+      return { cols: terminal.terminalCols, rows: terminal.terminalRows };
+    }).toEqual({ cols: ready.terminalCols, rows: ready.terminalRows });
+    const text = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect((text.match(/SLOW-PAGED-TAIL/gu) ?? [])).toHaveLength(1);
+  });
+
   for (const recoveryKind of ['snapshot', 'checkpoint']) {
     test(`${executionKind} ${recoveryKind} restore retains the saved non-bottom viewport`, async ({ page }) => {
       const nodeId = `${executionKind}-zoom`;

@@ -7,24 +7,26 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import esbuild from 'esbuild';
 import JSZip from 'jszip';
-import { validateCandidateManifest } from '../build/linux-execution-candidate-assets.mjs';
+import { validateCandidateManifest as validateLinuxManifest } from '../build/linux-execution-candidate-assets.mjs';
+import { validateCandidateManifest as validateMacosManifest } from '../build/macos-execution-candidate-assets.mjs';
+import { validateCandidateManifest as validateWindowsManifest } from '../build/windows-execution-candidate-assets.mjs';
+import installedReceipts from '../../tests/vscode-smoke/installed-execution-candidate.cjs';
 import { buildVSCodeChildEnv, stageSmokeTestSuite } from './vscode-smoke-runner.mjs';
 
 const execFileAsync = promisify(execFile);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-const assetRoot = 'dist/native/linux-execution-candidate/linux-x64-glibc';
 const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
-export const installedCandidateFiles = [
-  'dist/extension.js', 'dist/runtime-supervisor.js', 'dist/linux-execution-provider.js',
-  'dist/webview.js', 'dist/webview.css', 'dist/execution-candidate-selection.json',
-  `${assetRoot}/manifest.json`, `${assetRoot}/execution-owner.node`
-];
+const { installedCandidateLayout } = installedReceipts;
+export const installedCandidateFiles = (platform = process.platform, arch = process.arch) =>
+  installedCandidateLayout(platform, arch).files;
 
 async function prepareRuntimeValidation(output) {
   const panel = './extensions/vscode/dev-session-canvas/src/panel';
   const sources = [];
   const built = await esbuild.build({ stdin: { contents:
     `export { resolveLinuxExecutionProviderAssets } from '${panel}/linuxExecutionOwnerFactory';\n`
+    + `export { resolveMacosExecutionProviderAssets } from '${panel}/macosExecutionOwnerFactory';\n`
+    + `export { resolveWindowsExecutionProviderAssets } from '${panel}/windowsExecutionOwnerFactory';\n`
     + `export { assertExecutionAssetRuntime, assertMinimumExecutionLibraryVersion } from '${panel}/executionAssetCompatibility';\n`,
     resolveDir: projectRoot, sourcefile: 'installed-runtime-validation-entry.js' },
     absWorkingDir: projectRoot, bundle: true, write: false, platform: 'node', format: 'cjs', target: 'node16',
@@ -47,15 +49,18 @@ async function prepareRuntimeValidation(output) {
 export function assertInstalledCandidateSelection(values, platform = process.platform, arch = process.arch) {
   if (values['installed-vsix'] === undefined) return;
   assert(values['installed-vsix'].trim(), 'Specify the fixed candidate VSIX path.');
-  assert.equal(platform, 'linux', 'Installed candidate acceptance currently selects Linux only.');
-  assert.equal(arch, 'x64', 'Installed candidate acceptance selects the verified linux-x64-glibc asset.');
-  assert(!values['capacity-calibration'] && !values['capacity-reconnect'] && values['capacity-sessions'] === undefined,
+  installedCandidateLayout(platform, arch);
+  assert(!values['capacity-calibration'] && !values['capacity-reconnect'] && !values['capacity-attach-compact']
+    && values['capacity-sessions'] === undefined,
     'Installed candidate acceptance cannot be combined with a capacity workload.');
   assert.equal(values.mode, undefined, 'Installed candidate acceptance runs both original persistence modes.');
 }
 
-export async function prepareInstalledVsixInput(vsixPath, output, { runtimeName = 'electron' } = {}) {
+export async function prepareInstalledVsixInput(vsixPath, output,
+  { runtimeName = 'electron', platform = process.platform, arch = process.arch } = {}) {
   assert(['electron', 'node'].includes(runtimeName), 'Installed acceptance requires an explicit supported runtime.');
+  const layout = installedCandidateLayout(platform, arch);
+  const { assetRoot } = layout;
   const sourcePath = await fs.realpath(path.resolve(vsixPath));
   const bytes = await fs.readFile(sourcePath);
   const zip = await JSZip.loadAsync(bytes);
@@ -70,21 +75,26 @@ export async function prepareInstalledVsixInput(vsixPath, output, { runtimeName 
   assert.equal(typeof packageManifest.version, 'string');
   assert.equal(packageManifest.main, './dist/extension.js', 'Use the unmodified product entry point.');
   const payloadHashes = {};
-  let manifest, selection, binary;
-  for (const relative of installedCandidateFiles) {
+  const payload = new Map();
+  let manifest, selection;
+  for (const relative of layout.files) {
     const contents = await read(relative);
+    payload.set(relative, contents);
     payloadHashes[relative] = hash(contents);
     if (relative === `${assetRoot}/manifest.json`) manifest = JSON.parse(contents.toString('utf8'));
-    if (relative === `${assetRoot}/execution-owner.node`) binary = contents;
     if (relative === 'dist/execution-candidate-selection.json') selection = JSON.parse(contents.toString('utf8'));
   }
-  assert.equal(manifest.profile, 'linux-owner-v1-candidate');
-  assert.equal(manifest.platform, 'linux');
-  assert.equal(manifest.arch, 'x64');
+  assert.equal(manifest.profile, layout.profile);
+  assert.equal(manifest.platform, platform);
+  assert.equal(manifest.arch, arch);
   assert([1, 2].includes(manifest.schemaVersion), 'Installed acceptance requires asset schema1 or schema2.');
   if (manifest.schemaVersion === 2) {
-    validateCandidateManifest(manifest, binary);
+    const binary = payload.get(layout.binary);
+    if (platform === 'linux') validateLinuxManifest(manifest, binary);
+    else if (platform === 'darwin') validateMacosManifest(manifest, binary, payload.get(layout.helper));
+    else validateWindowsManifest(manifest, binary, layout.dependencies.map(file => payload.get(file)));
   } else {
+    assert(platform === 'linux' && arch === 'x64', 'Historical schema1 acceptance is limited to Linux x64.');
     assert.equal(manifest.runtime.name, runtimeName, `Installed acceptance requires the matching ${runtimeName} asset.`);
   }
   if (manifest.schemaVersion === 1 && runtimeName === 'node') {
@@ -94,11 +104,11 @@ export async function prepareInstalledVsixInput(vsixPath, output, { runtimeName 
     assert.equal(manifest.libc?.name, 'glibc');
     assert.match(manifest.libc?.version ?? '', /^\d+\.\d+(?:\.\d+)?$/);
   }
-  assert.equal(manifest.binary.file, 'execution-owner.node');
-  assert.equal(manifest.binary.sha256, payloadHashes[`${assetRoot}/execution-owner.node`]);
+  assert.equal(manifest.binary.file, path.posix.basename(layout.binary));
+  assert.equal(manifest.binary.sha256, payloadHashes[layout.binary]);
   assert.equal(selection.schemaVersion, 1);
   assert(selection.profile === manifest.profile || (manifest.schemaVersion === 2 && selection.profile === 'platform'),
-    'Installed selection must resolve to the verified Linux profile.');
+    'Installed selection must resolve to the verified platform profile.');
   const runtimeValidation = manifest.schemaVersion === 2 ? await prepareRuntimeValidation(output) : undefined;
   // Install the exact bytes inspected here, even if the caller's original package later changes.
   const frozenVsixPath = path.join(output, 'candidate.vsix');
@@ -125,13 +135,27 @@ export async function prepareInstalledCandidateDriver({ projectRoot, targetRoot,
   return { expectation, expectationPath };
 }
 
-export function installedCandidateInstallCommand({ vscodeExecutablePath, runtime, input }) {
-  assert.equal(process.platform, 'linux', 'The fixed VSIX installer currently selects Linux only.');
+export function installedCandidateInstallCommand({ vscodeExecutablePath, runtime, input }, platform = process.platform) {
+  assert(['linux', 'darwin', 'win32'].includes(platform), 'The fixed VSIX installer requires a supported platform.');
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const executableDirectory = paths.dirname(vscodeExecutablePath);
+  const env = buildVSCodeChildEnv(runtime.environment);
+  const args = [`--user-data-dir=${runtime.userDataDir}`, `--extensions-dir=${runtime.extensionsDir}`,
+    '--install-extension', input.vsixPath, '--force', '--do-not-include-pack-dependencies'];
+  let file;
+  if (platform === 'win32') {
+    // Wait for the real CLI process, not a cmd.exe launcher that can return before installation.
+    file = vscodeExecutablePath;
+    args.unshift(paths.join(executableDirectory, 'resources', 'app', 'out', 'cli.js'));
+    env.ELECTRON_RUN_AS_NODE = '1';
+  } else {
+    file = platform === 'darwin'
+      ? paths.join(paths.dirname(executableDirectory), 'Resources', 'app', 'bin', 'code')
+      : paths.join(executableDirectory, 'bin', 'code');
+  }
   return {
-    file: path.join(path.dirname(vscodeExecutablePath), 'bin', 'code'),
-    args: [`--user-data-dir=${runtime.userDataDir}`, `--extensions-dir=${runtime.extensionsDir}`,
-      '--install-extension', input.vsixPath, '--force', '--do-not-include-pack-dependencies'],
-    options: { env: buildVSCodeChildEnv(runtime.environment), shell: false, timeout: 120000, maxBuffer: 4 * 1024 ** 2 }
+    file, args,
+    options: { env, shell: false, timeout: 120000, maxBuffer: 4 * 1024 ** 2 }
   };
 }
 

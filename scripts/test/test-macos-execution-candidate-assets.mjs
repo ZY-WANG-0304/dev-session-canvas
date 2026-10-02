@@ -352,8 +352,8 @@ try {
     fs.chmodSync(path.join(source, 'spawn-helper'), 0o644);
     await assert.rejects(resolveExecutionBuildSelection(candidateArgs(source), dist), /executable/);
     assert.equal(fs.readFileSync(path.join(dist, 'retained.txt'), 'utf8'), 'unchanged');
-    assert.deepEqual(await resolveExecutionBuildSelection([], dist), {});
-    assert.deepEqual(await resolveExecutionBuildSelection(['--production'], dist), {});
+    assert.deepEqual(await resolveExecutionBuildSelection(['--execution-profile=stock'], dist), {});
+    assert.deepEqual(await resolveExecutionBuildSelection(['--production', '--execution-profile=stock'], dist), {});
   });
   await test('formal macOS entry is bundled but asset import stays profile-selected', () => {
     const build = fs.readFileSync(path.join(root, 'scripts/build/build.mjs'), 'utf8');

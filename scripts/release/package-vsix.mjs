@@ -12,6 +12,9 @@ import {
 import os from 'os';
 import path from 'path';
 import { pathToFileURL } from 'url';
+import assert from 'node:assert/strict';
+import { parseArgs } from 'node:util';
+import { readPackagedExecutionAssetSet } from '../build/execution-candidate-assets-set.mjs';
 
 const projectRoot = resolveProjectRoot();
 const mainExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas');
@@ -42,7 +45,17 @@ function resolveProjectRoot() {
   return cwd;
 }
 
-export function main() {
+export function assertProductionExecutionPackage(dist) {
+  const selection = JSON.parse(readFileSync(path.join(dist, 'execution-candidate-selection.json'), 'utf8'));
+  assert.equal(selection.schemaVersion, 1, 'Unknown execution package selection schema');
+  assert.equal(selection.profile, 'platform', 'Formal packages require the default platform execution profile');
+  assert.deepEqual(selection.admissionLimits, { executions: null, starting: 1, pending: 2 },
+    'Formal packages require production execution admission');
+  return readPackagedExecutionAssetSet(dist);
+}
+
+export function main(args = process.argv.slice(2)) {
+  const { values } = parseArgs({ args, options: { 'development-comparison': { type: 'boolean' } } });
   const packageJsonPath = path.join(mainExtensionRoot, 'package.json');
   const vsceEntry = resolveVsceEntry(projectRoot);
   const gitValidationRoot =
@@ -83,7 +96,8 @@ export function main() {
   mkdirSync(stagePackageRoot, { recursive: true });
 
   try {
-    stageMainPackageFiles(stagePackageRoot, packageJson, readmePath);
+    stageMainPackageFiles(stagePackageRoot, packageJson, readmePath,
+      { developmentComparison: values['development-comparison'] === true });
 
     packageArgs.push('--readme-path', readmePath);
 
@@ -376,7 +390,8 @@ function assertMainPackageInputsExist() {
   }
 }
 
-export function stageMainPackageFiles(stagePackageRoot, packageJson, readmePath) {
+export function stageMainPackageFiles(stagePackageRoot, packageJson, readmePath, { developmentComparison = false } = {}) {
+  if (!developmentComparison) assertProductionExecutionPackage(path.join(mainExtensionRoot, 'dist'));
   const stagedPackageJson = JSON.parse(JSON.stringify(packageJson));
   delete stagedPackageJson.scripts;
   stagedPackageJson.dependencies = packageJson.dependencies?.['node-pty']

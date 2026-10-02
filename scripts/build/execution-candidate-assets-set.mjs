@@ -21,21 +21,28 @@ export function readExecutionCandidateAssetSet(source) {
   assert.deepEqual(entries.map(entry => entry.name).sort(), targets.map(target => target.name).sort(),
     'Execution asset set must contain exactly the six named target directories');
   assert(entries.every(entry => entry.isDirectory()), 'Execution asset set targets must be real directories, not symlink aliases');
-  const assets = targets.map(target => {
-    const candidateDirectory = path.join(directory, target.name);
-    const { manifest } = target.read(candidateDirectory);
-    assert.equal(manifest.platform, target.platform, `Execution asset target platform mismatch: ${target.name}`);
-    assert.equal(manifest.arch, target.arch, `Execution asset target architecture mismatch: ${target.name}`);
-    assert.equal(manifest.profile, target.profile, `Execution asset target profile mismatch: ${target.name}`);
-    // Leaf checks in platform readers do not detect redirected parent directories such as conpty/.
-    for (const asset of [manifest.binary, manifest.helper, ...(manifest.dependencies ?? [])].filter(Boolean)) {
-      const file = path.join(candidateDirectory, asset.file);
-      assert.equal(fs.realpathSync(file), file, 'Execution asset files must not use symlink aliases');
-    }
-    return Object.freeze({ name: target.name, directory: candidateDirectory,
-      profile: target.profile, platform: target.platform, arch: target.arch });
-  });
+  const assets = targets.map(target => readTarget(target, path.join(directory, target.name)));
   return Object.freeze({ directory, assets: Object.freeze(assets) });
+}
+
+function readTarget(target, candidateDirectory) {
+  const { manifest } = target.read(candidateDirectory);
+  assert.equal(manifest.platform, target.platform, `Execution asset target platform mismatch: ${target.name}`);
+  assert.equal(manifest.arch, target.arch, `Execution asset target architecture mismatch: ${target.name}`);
+  assert.equal(manifest.profile, target.profile, `Execution asset target profile mismatch: ${target.name}`);
+  // Leaf checks in platform readers do not detect redirected parent directories such as conpty/.
+  for (const asset of [manifest.binary, manifest.helper, ...(manifest.dependencies ?? [])].filter(Boolean)) {
+    const file = path.join(candidateDirectory, asset.file);
+    assert.equal(fs.realpathSync(file), file, 'Execution asset files must not use symlink aliases');
+  }
+  return Object.freeze({ name: target.name, directory: candidateDirectory,
+    profile: target.profile, platform: target.platform, arch: target.arch });
+}
+
+export function readPackagedExecutionAssetSet(dist) {
+  const directory = path.resolve(dist);
+  return targets.map(target => readTarget(target, path.join(directory, 'native',
+    `${target.profile.split('-owner-')[0]}-execution-candidate`, target.name)));
 }
 
 export function importExecutionCandidateAssetSet({ source, dist }) {

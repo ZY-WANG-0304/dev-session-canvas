@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import esbuild from 'esbuild';
 import ts from 'typescript';
-import { resolveExecutionBuildSelection } from '../build/build.mjs';
+import { productionExecutionAdmission, resolveExecutionBuildSelection } from '../build/build.mjs';
 import { LINUX_EXECUTION_EXPORTS, NODE_PTY_UNIX_SHA256 } from '../build/linux-execution-provider-patch.mjs';
 import { linuxExecutionElf } from './fixtures/linux-execution-elf.mjs';
 import { readLinuxExecutionRequirements } from '../build/linux-execution-elf.mjs';
@@ -98,10 +98,19 @@ async function activationFixture(compiledProfile, factoryError, host = { platfor
 }
 
 try {
-  await test('ordinary and production builds remain stock with no asset lookup', async () => {
-    assert.deepEqual(await resolveExecutionBuildSelection([], '/missing/dist'), {});
-    assert.deepEqual(await resolveExecutionBuildSelection(['--production'], '/missing/dist'), {});
-    assert.deepEqual(await resolveExecutionBuildSelection(['--watch'], '/missing/dist'), {});
+  await test('production build admission matches the execution lifecycle contract', async () => {
+    const result = await esbuild.build({ entryPoints: [path.join(root,
+      'extensions/vscode/dev-session-canvas/src/common/executionLifecycle.ts')],
+    bundle: true, write: false, platform: 'node', format: 'cjs' });
+    const context = { module: { exports: {} }, TextEncoder, TextDecoder };
+    vm.runInNewContext(result.outputFiles[0].text, context);
+    assert.deepEqual(JSON.parse(JSON.stringify(context.module.exports.EXECUTION_PRODUCTION_ADMISSION)),
+      productionExecutionAdmission);
+  });
+  await test('stock comparison builds require explicit selection and never look up assets', async () => {
+    for (const args of [[], ['--production'], ['--watch']]) {
+      assert.deepEqual(await resolveExecutionBuildSelection(['--execution-profile=stock', ...args], '/missing/dist'), {});
+    }
   });
   await test('explicit build selection accepts offline Node and Electron manifests without loading native', async () => {
     const expected = { profile, source, admissionLimits: { executions: 2, starting: 1 } };
@@ -121,7 +130,8 @@ try {
     assert.equal(fs.readFileSync(path.join(dist, 'retained.txt'), 'utf8'), 'unchanged');
   });
   await test('stock unpaired and malformed admission input rejects without changing dist', async () => {
-    for (const args of [['--execution-admission=10:1'], ['--production', '--execution-admission=10:1'],
+    for (const args of [['--execution-profile=stock', '--execution-admission=10:1'],
+      ['--execution-profile=stock', `--execution-assets-set=${source}`],
       [`--execution-profile=${profile}`, '--execution-admission=10:1'],
       [`--execution-assets=${source}`, '--execution-admission=10:1'],
       ['--execution-profile=other', `--execution-assets=${source}`, '--execution-admission=10:1']]) {
@@ -155,7 +165,7 @@ try {
     await assert.rejects(resolveExecutionBuildSelection(candidateArgs(dist), dist), /outside/);
     assert.equal(fs.readFileSync(path.join(dist, 'retained.txt'), 'utf8'), 'unchanged');
   });
-  await test('real ordinary activate stays stock despite candidate-looking environment', async () => {
+  await test('explicit stock bundle activate ignores candidate-looking environment', async () => {
     const f = await activationFixture(undefined);
     assert.throws(f.activate, error => error === f.stop);
     assert.equal(f.observed.factory.length, 0);

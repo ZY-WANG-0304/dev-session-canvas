@@ -5,6 +5,7 @@ import path from 'node:path';
 import { resolveExecutionBuildSelection } from '../build/build.mjs';
 import { importExecutionCandidateAssetSet, readExecutionCandidateAssetSet } from '../build/execution-candidate-assets-set.mjs';
 import { writeExecutionAssetSet } from './fixtures/execution-candidate-assets-set.mjs';
+import { assertProductionExecutionPackage } from '../release/package-vsix.mjs';
 
 const temporary = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-execution-asset-set-')));
 const dist = path.join(temporary, 'dist');
@@ -38,7 +39,7 @@ try {
       assert.equal(asset.profile, targets[index].manifest.profile);
       assert.equal(asset.arch, targets[index].manifest.arch);
     }
-    for (const [args, admissionLimits] of [[[], { executions: 2, starting: 1 }],
+    for (const [args, admissionLimits] of [[[], { executions: null, starting: 1, pending: 2 }],
       [['--production', '--execution-admission=10:2'], { executions: 10, starting: 2 }]]) {
       const selection = await resolveExecutionBuildSelection([...setArgs(directory), ...args], dist);
       assert.deepEqual(selection, { profile: 'platform', source: directory, admissionLimits });
@@ -46,10 +47,28 @@ try {
       assert.ok(Object.isFrozen(selection.admissionLimits));
     }
   });
-  await test('set input excludes single-target flags watch mode and malformed admission', async () => {
+  await test('normal and production builds default to the complete platform set with explicit input precedence', async () => {
+    const { directory } = fixture();
+    const options = { env: {}, defaultAssetSet: directory };
+    for (const args of [[], ['--production'], ['--watch']]) {
+      const selection = await resolveExecutionBuildSelection(args, dist, options);
+      assert.equal(selection.profile, 'platform');
+      assert.equal(selection.source, directory);
+      assert.deepEqual(selection.admissionLimits, { executions: null, starting: 1, pending: 2 });
+    }
+    assert.equal((await resolveExecutionBuildSelection([], dist, {
+      env: { DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET: directory }, defaultAssetSet: '/missing'
+    })).source, directory);
+    assert.equal((await resolveExecutionBuildSelection(setArgs(directory), dist, {
+      env: { DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET: '/missing' }, defaultAssetSet: '/missing'
+    })).source, directory);
+    await assert.rejects(resolveExecutionBuildSelection([], dist, { env: {}, defaultAssetSet: '/missing' }),
+      /Default platform execution assets are missing/);
+  });
+  await test('set input excludes single-target flags and malformed admission', async () => {
     const { directory } = fixture();
     for (const args of [['--execution-profile=linux-owner-v1-candidate'], [`--execution-assets=${directory}`],
-      ['--execution-profile=platform'], ['--execution-profile='], ['--execution-assets='], ['--watch'],
+      ['--execution-profile=platform'], ['--execution-profile='], ['--execution-assets='],
       ['--execution-admission=0:1'], ['--execution-admission=1:2']]) {
       await assert.rejects(resolveExecutionBuildSelection([...setArgs(directory), ...args], dist));
     }
@@ -127,6 +146,20 @@ try {
       for (const [file, bytes] of expected.files) assert.deepEqual(fs.readFileSync(path.join(asset.directory, file)), bytes);
       if (expected.manifest.helper) assert.ok(fs.statSync(path.join(asset.directory, 'spawn-helper')).mode & 0o111);
     }
+    const selectionPath = path.join(dist, 'execution-candidate-selection.json');
+    const selection = { schemaVersion: 1, profile: 'platform',
+      admissionLimits: { executions: null, starting: 1, pending: 2 } };
+    assert.throws(() => assertProductionExecutionPackage(dist), /ENOENT/);
+    fs.writeFileSync(selectionPath, JSON.stringify(selection));
+    assert.equal(assertProductionExecutionPackage(dist).length, 6);
+    for (const altered of [{ ...selection, profile: 'linux-owner-v1-candidate' },
+      { ...selection, admissionLimits: { executions: 10, starting: 1 } }]) {
+      fs.writeFileSync(selectionPath, JSON.stringify(altered));
+      assert.throws(() => assertProductionExecutionPackage(dist), /Formal packages/);
+    }
+    fs.writeFileSync(selectionPath, JSON.stringify(selection));
+    fs.appendFileSync(path.join(imported[5].directory, imported[5].manifest.binary.file), 'corrupt');
+    assert.throws(() => assertProductionExecutionPackage(dist), /hash/);
   });
   console.log(`Execution asset set: ${passed}/${passed} pure cases passed (synthetic manifests and image headers, no native loads or product build).`);
 } finally {

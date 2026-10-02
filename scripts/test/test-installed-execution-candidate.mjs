@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -11,17 +12,20 @@ import receipts from '../../tests/vscode-smoke/installed-execution-candidate.cjs
 import { writeExecutionAssetSet } from './fixtures/execution-candidate-assets-set.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+const require = createRequire(import.meta.url);
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-installed-candidate-'));
 let checks = 0;
 try {
   const selected = { 'installed-vsix': '/fixed/candidate.vsix' };
-  assertInstalledCandidateSelection(selected, 'linux', 'x64');
+  for (const platform of ['linux', 'darwin', 'win32']) {
+    for (const arch of ['x64', 'arm64']) assertInstalledCandidateSelection(selected, platform, arch);
+  }
   for (const addition of [{ 'capacity-calibration': true }, { 'capacity-reconnect': true },
-    { 'capacity-sessions': '2' }, { mode: 'live-runtime' }]) {
+    { 'capacity-attach-compact': true }, { 'capacity-sessions': '2' }, { mode: 'live-runtime' }]) {
     assert.throws(() => assertInstalledCandidateSelection({ ...selected, ...addition }, 'linux', 'x64'));
   }
-  assert.throws(() => assertInstalledCandidateSelection(selected, 'win32', 'x64'));
-  assert.throws(() => assertInstalledCandidateSelection(selected, 'linux', 'arm64'));
+  assert.throws(() => assertInstalledCandidateSelection(selected, 'freebsd', 'x64'));
+  assert.throws(() => assertInstalledCandidateSelection(selected, 'linux', 'ia32'));
   assert.throws(() => assertInstalledCandidateSelection({ 'installed-vsix': ' ' }, 'linux', 'x64'));
   checks += 1;
 
@@ -32,7 +36,7 @@ try {
   const manifest = { schemaVersion: 1, profile: 'linux-owner-v1-candidate', platform: 'linux', arch: 'x64',
     runtime: { name: 'electron', version: '39.8.7', node: '22.22.1', modules: '140' },
     binary: { file: 'execution-owner.node', sha256: hash(binary) } };
-  const payload = Object.fromEntries(installedCandidateFiles.map(file => [file, Buffer.from(`fixed:${file}`)]));
+  const payload = Object.fromEntries(installedCandidateFiles('linux', 'x64').map(file => [file, Buffer.from(`fixed:${file}`)]));
   payload['dist/native/linux-execution-candidate/linux-x64-glibc/manifest.json'] = Buffer.from(JSON.stringify(manifest));
   payload['dist/native/linux-execution-candidate/linux-x64-glibc/execution-owner.node'] = binary;
   payload['dist/execution-candidate-selection.json'] = Buffer.from(JSON.stringify({ schemaVersion: 1, profile: manifest.profile }));
@@ -163,7 +167,8 @@ try {
     { ...manifest, libc: nodeManifest.libc }), /matching glibc/);
   checks += 1;
 
-  const schema2Assets = writeExecutionAssetSet(path.join(root, 'schema2-assets'))[0];
+  const schema2AssetSet = writeExecutionAssetSet(path.join(root, 'schema2-assets'));
+  const schema2Assets = schema2AssetSet[0];
   const schema2Manifest = { ...schema2Assets.manifest,
     runtime: { name: 'node', version: '16.17.1', node: '16.17.1', modules: '93', napi: '8' } };
   const schema2Binary = schema2Assets.files.get('execution-owner.node');
@@ -208,7 +213,7 @@ try {
   schema2Zip.file(`extension/${nativeManifestPath}`, JSON.stringify(schema2Manifest));
   schema2Zip.file('extension/dist/execution-candidate-selection.json', JSON.stringify({ schemaVersion: 1, profile: 'windows-owner-v1-candidate' }));
   await fs.writeFile(invalidSchema2, await schema2Zip.generateAsync({ type: 'nodebuffer' }));
-  await assert.rejects(prepareInstalledVsixInput(invalidSchema2, invalidSchema2Output), /verified Linux profile/);
+  await assert.rejects(prepareInstalledVsixInput(invalidSchema2, invalidSchema2Output), /verified platform profile/);
   checks += 1;
 
   const schema2Extensions = path.join(root, 'schema2-extensions');
@@ -258,6 +263,69 @@ try {
   await captureSchema2(schema2Runtime);
   checks += 1;
 
+  const receiptSource = await fs.readFile('tests/vscode-smoke/installed-execution-candidate.cjs', 'utf8');
+  for (const target of schema2AssetSet.slice(1)) {
+    const { platform, arch } = target.manifest;
+    const layout = receipts.installedCandidateLayout(platform, arch);
+    const targetPayload = Object.fromEntries(installedCandidateFiles(platform, arch)
+      .map(file => [file, Buffer.from(`fixed:${file}`)]));
+    targetPayload[`${layout.assetRoot}/manifest.json`] = Buffer.from(JSON.stringify(target.manifest));
+    targetPayload['dist/execution-candidate-selection.json'] = Buffer.from(JSON.stringify({ schemaVersion: 1, profile: 'platform' }));
+    for (const [file, bytes] of target.files) targetPayload[`${layout.assetRoot}/${file}`] = bytes;
+    const targetZip = new JSZip();
+    targetZip.file('extension/package.json', JSON.stringify(packageManifest));
+    for (const [file, bytes] of Object.entries(targetPayload)) targetZip.file(`extension/${file}`, bytes);
+    const targetSource = path.join(root, `${target.name}.vsix`);
+    await fs.writeFile(targetSource, await targetZip.generateAsync({ type: 'nodebuffer' }));
+    const targetOutput = path.join(root, `${target.name}-evidence`);
+    await fs.mkdir(targetOutput);
+    const targetInput = await prepareInstalledVsixInput(targetSource, targetOutput, { platform, arch });
+    assert.deepEqual(Object.keys(targetInput.payloadHashes), layout.files);
+    for (const [file, bytes] of Object.entries(targetPayload)) assert.equal(targetInput.payloadHashes[file], hash(bytes));
+
+    const targetExtensions = path.join(root, `${target.name}-extensions`);
+    const targetInstalled = path.join(targetExtensions, 'devsessioncanvas.dev-session-canvas-0.25.0');
+    await fs.mkdir(targetInstalled, { recursive: true });
+    await fs.writeFile(path.join(targetInstalled, 'package.json'), JSON.stringify(installedManifest));
+    for (const [file, bytes] of Object.entries(targetPayload)) {
+      await fs.mkdir(path.dirname(path.join(targetInstalled, file)), { recursive: true });
+      await fs.writeFile(path.join(targetInstalled, file), bytes);
+      if (file === layout.helper) await fs.chmod(path.join(targetInstalled, file), 0o755);
+    }
+    const targetExpected = { ...targetInput, extensionsDir: await fs.realpath(targetExtensions) };
+    const targetExpectation = path.join(targetOutput, 'expectation.json');
+    await fs.writeFile(targetExpectation, JSON.stringify(targetExpected));
+    const validatorModule = { exports: {} };
+    // Only OS version observation is synthetic; invoke each frozen product factory on exact fixture bytes.
+    vm.runInNewContext(await fs.readFile(targetInput.runtimeValidation.file, 'utf8'), {
+      module: validatorModule, Buffer, TextEncoder, TextDecoder,
+      require: id => id === 'node:os' ? { release: () => platform === 'darwin' ? '25.0.0' : '10.0.26100' } : require(id)
+    });
+    const receiptModule = { exports: {} };
+    vm.runInNewContext(receiptSource, { module: receiptModule, process,
+      require: id => id === targetInput.runtimeValidation.file ? validatorModule.exports : require(id) });
+    const targetRuntime = { ...schema2Runtime, platform, arch };
+    const capture = () => receiptModule.exports.captureInstalledExtensionReceipt(
+      { ...extension, extensionPath: targetInstalled }, targetExpectation, targetRuntime);
+    const targetReceipt = await capture();
+    receipts.assertInstalledExtensionReceipt(JSON.parse(JSON.stringify(targetReceipt)), targetExpected);
+    if (layout.helper) assert.equal(targetReceipt.nativeAssetValidation.helperSha256, targetInput.payloadHashes[layout.helper]);
+    if (layout.worker) assert.equal(targetReceipt.nativeAssetValidation.workerSha256, targetInput.payloadHashes[layout.worker]);
+    for (const file of [layout.helper, layout.worker, ...layout.dependencies].filter(Boolean)) {
+      await fs.appendFile(path.join(targetInstalled, file), 'changed');
+      await assert.rejects(capture(), `${target.name} must reject changed installed ${file}`);
+      await fs.writeFile(path.join(targetInstalled, file), targetPayload[file]);
+    }
+    for (const file of [layout.helper, ...layout.dependencies].filter(Boolean)) {
+      targetZip.file(`extension/${file}`, Buffer.concat([targetPayload[file], Buffer.from('changed')]));
+      const rejectedSource = path.join(root, `${target.name}-invalid.vsix`);
+      await fs.writeFile(rejectedSource, await targetZip.generateAsync({ type: 'nodebuffer' }));
+      await assert.rejects(prepareInstalledVsixInput(rejectedSource, targetOutput, { platform, arch }), /hash/);
+      targetZip.file(`extension/${file}`, targetPayload[file]);
+    }
+    checks += 1;
+  }
+
   await fs.writeFile(path.join(installedPath, 'dist/extension.js'), 'wrong installed bytes');
   await assert.rejects(receipts.captureInstalledExtensionReceipt(extension, driver.expectationPath, runtime));
   await fs.writeFile(path.join(installedPath, 'dist/extension.js'), payload['dist/extension.js']);
@@ -273,14 +341,28 @@ try {
   await assert.rejects(receipts.captureInstalledExtensionReceipt(extension, driver.expectationPath, runtime), /must be inside/);
   checks += 1;
 
+  const installRuntime = { userDataDir: '/isolated/user-data', extensionsDir, environment: { HOME: '/isolated/home' } };
   const install = installedCandidateInstallCommand({ vscodeExecutablePath: '/fixed/VSCode/code', input,
-    runtime: { userDataDir: '/isolated/user-data', extensionsDir, environment: { HOME: '/isolated/home' } } });
+    runtime: installRuntime }, 'linux');
   assert.equal(install.file, '/fixed/VSCode/bin/code');
   assert.deepEqual(install.args, ['--user-data-dir=/isolated/user-data', `--extensions-dir=${extensionsDir}`,
     '--install-extension', input.vsixPath, '--force', '--do-not-include-pack-dependencies']);
   assert.equal(install.options.shell, false);
   assert.equal(install.options.env.HOME, '/isolated/home');
   assert(!install.args.some(argument => argument.includes('extensionDevelopmentPath')));
+  const macInstall = installedCandidateInstallCommand({ vscodeExecutablePath: '/fixed/Code.app/Contents/MacOS/Electron',
+    input, runtime: installRuntime }, 'darwin');
+  assert.equal(macInstall.file, '/fixed/Code.app/Contents/Resources/app/bin/code');
+  assert.deepEqual(macInstall.args, install.args);
+  assert.equal(macInstall.options.shell, false);
+  const windowsExecutable = 'C:\\fixed\\Code.exe';
+  const windowsInstall = installedCandidateInstallCommand({ vscodeExecutablePath: windowsExecutable,
+    input, runtime: installRuntime }, 'win32');
+  assert.equal(windowsInstall.file, windowsExecutable);
+  assert.deepEqual(windowsInstall.args, ['C:\\fixed\\resources\\app\\out\\cli.js', ...install.args]);
+  assert.equal(windowsInstall.options.shell, false);
+  assert.equal(windowsInstall.options.env.ELECTRON_RUN_AS_NODE, '1');
+  assert.equal(windowsInstall.options.env.HOME, '/isolated/home');
   checks += 1;
 
   const source = await fs.readFile('scripts/smoke/run-vscode-execution-candidate.mjs', 'utf8');

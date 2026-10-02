@@ -8,11 +8,15 @@ import path from 'node:path';
 import yaml from 'js-yaml';
 import { assertLinuxDistributionBaseline, checksumFor, distributionTargets, runtimeFiles }
   from '../build/build-execution-distribution-assets.mjs';
+import { assembleExecutionDistributionAssets } from '../build/assemble-execution-distribution-assets.mjs';
+import { writeExecutionAssetSet } from './fixtures/execution-candidate-assets-set.mjs';
 
 const require = createRequire(import.meta.url);
 const { checkNativeLoad } = require('../build/check-execution-native-load.cjs');
 const workflow = yaml.load(fs.readFileSync('.github/workflows/runtime-execution-assets.yml', 'utf8'));
-assert.deepEqual(workflow.on, { workflow_dispatch: { inputs: { windows_only: {
+assert.deepEqual(workflow.on, { workflow_call: { inputs: { input_ref: {
+  description: 'Immutable source commit for all six native assets', required: true, type: 'string'
+} } }, workflow_dispatch: { inputs: { windows_only: {
   description: 'Build only Windows x64 and ARM64 assets', type: 'boolean', required: false, default: false
 } } } });
 assert.deepEqual(workflow.permissions, { contents: 'read' });
@@ -39,12 +43,17 @@ assert(checkoutIndex > 0);
 assert.deepEqual(job.steps[checkoutIndex - 1], { name: 'Preserve source bytes on Windows checkout',
   if: "runner.os == 'Windows'", shell: 'pwsh', run: 'git config --global core.autocrlf false' });
 assert.equal(job.steps.find(step => step.uses === 'actions/checkout@v4').with['persist-credentials'], false);
+assert.equal(job.steps.find(step => step.uses === 'actions/checkout@v4').with.ref, '${{ inputs.input_ref || github.sha }}');
+assert.equal(job.env.DEV_SESSION_CANVAS_EXECUTION_INPUT_SHA, '${{ inputs.input_ref || github.sha }}');
 assert.deepEqual(job.steps.find(step => step.uses === 'actions/setup-node@v4').with,
   { 'node-version': '25.6.0', architecture: '${{ matrix.asset.arch }}', cache: 'npm' });
 assert.deepEqual(job.steps.find(step => step.uses === 'ilammy/msvc-dev-cmd@v1').with,
   { arch: '${{ matrix.asset.compilerArch }}' });
 assert.doesNotMatch(JSON.stringify(workflow), /matrix\.(?:target|runner|arch|compilerArch)\b/);
 assert.equal(job.steps.find(step => step.uses === 'actions/upload-artifact@v4').with.path, 'execution-asset-artifacts/');
+assert.equal(job.steps.find(step => step.uses === 'actions/upload-artifact@v4').with.name,
+  'execution-native-${{ matrix.asset.target }}-${{ github.run_id }}');
+assert.equal(job.steps.find(step => step.uses === 'actions/upload-artifact@v4').with.overwrite, true);
 const evidenceUpload = job.steps.find(step => step.name === 'Preserve available build and load evidence');
 assert.equal(evidenceUpload.uses, 'actions/upload-artifact@v4');
 assert.equal(evidenceUpload.if, 'always()');
@@ -75,8 +84,47 @@ for (const [field, value] of Object.entries({ glibcMinimum: '2.34', glibcxxMinim
   assert.throws(() => assertLinuxDistributionBaseline({ linux: { ...baseline.linux, [field]: value } }));
 }
 
-const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-distribution-'));
+const temporary = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-distribution-')));
 try {
+  const sourceSet = path.join(temporary, 'source-set');
+  const targets = writeExecutionAssetSet(sourceSet);
+  const archives = path.join(temporary, 'archives');
+  fs.mkdirSync(archives);
+  const inputCommit = 'a'.repeat(40);
+  for (const target of targets) {
+    const files = runtimeFiles(target.manifest);
+    const archive = path.join(archives, `${target.name}.tar.gz`);
+    const packed = spawnSync('tar', ['--create', '--gzip', '--file', archive, '--directory', sourceSet,
+      ...files.map(file => `${target.name}/${file}`)], { encoding: 'utf8' });
+    assert.equal(packed.status, 0, packed.stderr);
+    fs.writeFileSync(path.join(archives, `${target.name}-summary.json`), JSON.stringify({
+      schemaVersion: 1, inputCommit, target: target.name, files,
+      archiveSha256: createHash('sha256').update(fs.readFileSync(archive)).digest('hex'),
+      nativeLoaded: true, executionApiCalled: false, productValidated: false
+    }));
+  }
+  const output = path.join(temporary, 'assembled');
+  assert.equal(assembleExecutionDistributionAssets({ source: archives, output, inputCommit }).assets.length, 6);
+  assert.throws(() => assembleExecutionDistributionAssets({ source: archives, output, inputCommit }), /overwrite/);
+  const rejected = path.join(temporary, 'rejected');
+  assert.throws(() => assembleExecutionDistributionAssets({ source: archives, output: rejected,
+    inputCommit: 'b'.repeat(40) }), /provenance/);
+  assert.equal(fs.existsSync(rejected), false);
+  fs.appendFileSync(path.join(archives, `${targets[5].name}.tar.gz`), 'changed');
+  assert.throws(() => assembleExecutionDistributionAssets({ source: archives, output: rejected, inputCommit }), /hash/);
+  assert.equal(fs.existsSync(rejected), false, 'Incomplete native sets never become build inputs');
+  const first = targets[0];
+  fs.writeFileSync(path.join(first.directory, 'unexpected.cc'), 'not a runtime file');
+  const firstArchive = path.join(archives, `${first.name}.tar.gz`);
+  const repacked = spawnSync('tar', ['--create', '--gzip', '--file', firstArchive, '--directory', sourceSet,
+    ...runtimeFiles(first.manifest).map(file => `${first.name}/${file}`), `${first.name}/unexpected.cc`], { encoding: 'utf8' });
+  assert.equal(repacked.status, 0, repacked.stderr);
+  const firstSummaryPath = path.join(archives, `${first.name}-summary.json`);
+  const firstSummary = JSON.parse(fs.readFileSync(firstSummaryPath));
+  fs.writeFileSync(firstSummaryPath, JSON.stringify({ ...firstSummary,
+    archiveSha256: createHash('sha256').update(fs.readFileSync(firstArchive)).digest('hex') }));
+  assert.throws(() => assembleExecutionDistributionAssets({ source: archives, output: rejected, inputCommit }), /Unexpected archive member/);
+  assert.equal(fs.existsSync(rejected), false);
   const assets = path.join(temporary, 'darwin-arm64');
   fs.mkdirSync(assets);
   const bytes = Buffer.from('synthetic input; never loaded by require');

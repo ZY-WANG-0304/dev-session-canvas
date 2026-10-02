@@ -29,11 +29,13 @@
 ## 进度
 
 - [x] (2026-10-02，§10.17) 生产准入分账、Host最终保存占槽、本地write信用与mount竞态、candidate冷启动已实现；adapter101、owner50、Host154、namespace11、Supervisor94、controller46/Host batch10及协议/typecheck回归通过。旧十会话/重连/compact未重跑。
-- [ ] (2026-10-02，§53) 正常默认platform构建、同ref六资产与严格正式VSIX打包接线进行中；只在最终同版本补受影响Agent/Webview/现代平台/安装包验收，F-04总体未关闭。
+- [x] (2026-10-02，§53) 正常默认platform构建、同ref六资产聚合与严格正式VSIX接线完成；普通build/package本地exit0，六目标/production选择已独立检查。本地包hash见§53，不冒充clean-SHA最终包。
+- [x] (2026-10-02，§53) review确认并修复held-credit下resize链积压及paged-events提前fit；Host156、controller46/Host10、正常platform bundle上13项定向Chromium通过，原deadline/尾部与红证据保持。
+- [ ] (2026-10-02，§53) 以冻结提交运行同一VSIX的受影响Agent/Webview/现代三平台/安装包验收，随后整体review；F-04总体未关闭。
 
 - [x] (2026-10-02) 复核Runtime热路径上界及O(N)/O(segment)资源账，确认总N混用pending、snapshot-only投递信用和candidate冷启动重放三个直接边界缺口；沿§10.17选定有限修正。
-- [ ] 完成不可变production准入与Host最终保存责任分账，保留unknown/旧finite策略/获取前拒绝，定向先红后绿。
-- [ ] 完成本地页面实际write信用和取消/错误结算；新candidate取得排他namespace后不加载陈旧Runtime正文，legacy保留。
+- [x] 完成不可变production准入与Host最终保存责任分账，保留unknown/旧finite策略/获取前拒绝，定向先红后绿。
+- [x] 完成本地页面实际write信用和取消/错误结算；新candidate取得排他namespace后不加载陈旧Runtime正文，legacy保留。
 - [ ] 按§53修复已证页面问题，完成正常构建/打包/默认启用及受影响最终真实验收；无关成功矩阵复用，最后整体review/PR。
 
 - [x] (2026-10-01) 只读重评 A1 正式资源口径：十会话固定负载是声明输入而非产品并发上限；活动会话按用户需求承担 O(N) 资源成本，不承诺任意 N 的固定 RSS；payload/pending/page/credit 硬边界与最终保存、reader、unknown 责任保护保持。
@@ -73,6 +75,8 @@
 - [x] (2026-09-28) 本轮结果/残余债务已同步，独立 review 的字节校验问题已复现并修复、复核无新阻塞，以本地提交交付该增量；F-04 未整体通过，计划保持 active，不 push/PR。
 
 ## 意外与发现
+
+2026-10-02，§53：普通package会重建dist，已接统一资产输入并独立校验最终六目标选择。模板服务原页面测试间接走普通build，在没有六资产时会失败，现以同等子套件的显式stock fixture维持该独立业务测试，不作为Runtime证据。review的prepare后重复容量疑点经owner实现核对不成立，未改业务；慢credit下resize等待和paged event/fit组合仍按现有harness有限核对。
 
 2026-10-02：现行两/十槽同时计活动主体与收尾责任，不能直接当产品并发上限；snapshot-only只有postMessage投递等待，页面pendingOutput没有消费信用；candidate新Supervisor仍全量loadRegistry/replay。资源模型还包含保留segment元数据，不应宣称全RSS与历史无关。页面viewport和慢write/fit六个Chromium回归另由§53冻结先红。
 
@@ -117,6 +121,8 @@
 通知合并的独立 review 命中同 readId 重附着：relay 可返回旧 descriptor，页面对此不执行新 reader 的初始强制拉取，清掉较新 pending 会遗失唤醒。最终实现保留同身份通知信用，于 snapshot 后显式合并当前 session revision/title；原 receipt 有效但重复无效，frame/执行身份替换后的旧 receipt 无效。这样重复 attach 也不绕过单在途限额。另保留原通用 postMessage 的 void 契约，只让提示取得原投递 Promise，避免把其他 catch 续体改成等待投递。stock node-pty 的公共 pause 不足以证明退出 drain，故当前生产源有界化不能靠简单暂停补丁关闭。
 
 ## 决策记录
+
+2026-10-02 / Codex：最终验收由同一冻结提交生产六资产、普通build/package一次，三现代平台使用唯一VSIX/hash并仅运行受影响Terminal/Webview与原Agent八场。复用旧多会话/重连/compact，旧64/128观察、旧OS和通用工具不前置；凭据仅最后Agent step可见。
 
 - 决策：生产采用无固定活动N、Q=1、pending准入阈值2，既有N同时结束可超过阈值但保留责任并停新建；本地输出以实际write回执背压，新candidate冷启动只处理已取得namespace的自身陈旧数据。理由：沿既有所有权补齐真实结构边界，不靠旧内存压线或丢尾达标。日期/作者：2026-10-02 / Codex。
 
@@ -171,6 +177,8 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 2026-09-28 / Codex：选定 Host 独立订阅信用，不借用 editor/panel reader；正文页后等待严格 line-context flush，状态同样受信用约束但不因普通 chunk 触发额外全画板保存。正常退役保留游标来源，而 delete RPC 不等其调用方待发的批次 ACK。断连释放旧责任；可读范围内恢复原消费 revision，已合法 compact 的旧游标具名拒绝并显式重建 checkpoint 基线，不追认缺失业务事件已消费。重连另行重新打开 Webview reader；一般损坏不套用该回退。这些均为本次传输改动的直接正确性要求，不新增工具门槛。
 
 ## 结果与复盘
+
+2026-10-02：资源/准入/冷启动与实际消费信用已入库7f1e1887，Host154、controller46/Host batch10及直接页面回归已通过；普通build/package本地通过。最终同提交包和现代原生受影响验收尚待执行，不以本地包或历史矩阵代证F-04完成。
 
 2026-10-02本轮结构责任已有上述模块回归，页面六个具体先红修后通过；当前剩余转为正式默认产物与受影响最终验收，而不是新的容量研究或工具阶段。本地信用从消息投递推进到真实写入，初始mount与取消明确分账；不改变既有尾部与结果预算。
 
@@ -316,3 +324,5 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 修订记录（2026-10-02，非空 snapshot stop 重开收口）：上述历史 run 的非空 stop 不追认通过。验收 harness 现统一要求 snapshot-only stop 在首 Host 完成保存/reader/replay 后启动新 Host；空快照保持原 origin 断言，非空快照严格核对保存内容、可见行、尺寸、光标、viewport、buffer 类型、序列和无新执行。定向 fixture/CI/helper 回归已通过，真实现代 runner 复验尚未运行；该项仍归 A2/A3 页面责任，不改变 F-04/A1 范围或低版本边界。
 
 随后提交 `30f421b3` 的 Linux 真实 Agent run `36917661214` 与同输入复跑 `36918349766` 均在首场 Codex natural 超时，节点保持 `waiting-input`/`liveSession=true`，cleanup 后无残留，后七场未执行。两次失败根因未定：通用 poll 行号不确定具体等待点，cleanup 后事实不证明失败前 CLI 已退出，不能写成已确认 Agent/Host 生命周期缺陷。§52 的有限 harness 修正只处理真实页面判据和已有第一现场脱敏；`1d784d8b` 的单次原 Linux 矩阵 `36935000098` 已八场通过，四 natural 实际响应/EOF、两snapshot stop独立重排及schema2新Host重开、八场零cleanup均成立，Claude1262bytes/seq5补齐该固定Linux非空格。11个源码hash独立对账，4个构建hash仅按报告保留未本地重建；旧超时仍未解释，不再为抓红重跑。F-04/A1、慢写/最终fit与平台新判据、最终准入责任不变，不扩工具或放宽原断言。
+
+修订记录（2026-10-02，最终生产接线）：§10.17与§53的准入/信用/冷启动及页面先红修正已实现，正常build/package与六目标选择本地检查成功。review只修已确认resize链积压及paged fit，并撤回不成立的重复准入疑点；保留全部首败。下一使用同一冻结提交/VSIX的受影响原矩阵，旧provider矩阵改手动避免重复，历史多会话和旧预算不重跑。本记录同步当前进度、发现、决策及复盘，不宣称最终验收完成。

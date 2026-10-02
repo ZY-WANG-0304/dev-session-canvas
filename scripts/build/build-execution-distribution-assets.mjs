@@ -71,6 +71,13 @@ async function checkedDownload(base, filename, destination, inputs) {
 }
 
 export async function buildDistributionAssets({ targetName, output, artifacts }) {
+  const revision = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' });
+  assert.equal(revision.status, 0, 'Native assets require an immutable checkout revision');
+  const inputCommit = revision.stdout.trim();
+  assert.match(inputCommit, /^[a-f0-9]{40}$/);
+  if (process.env.DEV_SESSION_CANVAS_EXECUTION_INPUT_SHA) {
+    assert.equal(inputCommit, process.env.DEV_SESSION_CANVAS_EXECUTION_INPUT_SHA, 'Native asset checkout differs from requested input');
+  }
   const target = distributionTargets.find(entry => entry.name === targetName);
   assert(target, 'Choose one of the fixed six execution asset targets');
   assert.equal(process.platform, target.platform, 'The build host must match its target platform');
@@ -153,7 +160,7 @@ export async function buildDistributionAssets({ targetName, output, artifacts })
   const files = runtimeFiles(manifest);
   run('tar', ['--create', '--gzip', '--file', archive, '--directory', path.dirname(directory),
     ...files.map(file => `${target.name}/${file}`)]);
-  const summary = { schemaVersion: 1, inputCommit: process.env.GITHUB_SHA ?? null, target: target.name, inputs,
+  const summary = { schemaVersion: 1, inputCommit, target: target.name, inputs,
     build: { runtime: manifest.runtime, requirements: manifest.requirements, sources: manifest.sources,
       compiler: manifest.compiler ?? null }, files, loads,
     archiveSha256: createHash('sha256').update(fs.readFileSync(archive)).digest('hex'),
