@@ -2700,28 +2700,69 @@ for (const kind of ['terminal', 'agent']) {
     }
   });
 
-  test(`S9 ${kind} old live attachment preserves original binding without new profile requirements`, async () => {
-    const f = candidateRuntimeFixture();
-    const previous = addCandidateLegacyBinding(f, kind, 'systemd-user');
-    f.client.supportsExecutionCandidateProfile = () => assert.fail('old attachment is not new admission');
-    f.host.getPreferredRuntimeSupervisorClient = () => assert.fail('old attachment must not select a new Supervisor');
-    delete f.host.surfaceLifecycle.editor.terminalReadSettlementV1;
-    let attached = 0;
-    await f.host.attachPersistedRuntimeSession(kind, previous.nodeId, previous.sessionId, async () => {
-      attached += 1;
-      return { snapshot: { sessionId: previous.sessionId, kind, runtimeBackend: 'legacy-detached', live: true },
-        terminalProjectionMode: 'legacy' };
-    });
-    assert.equal(attached, 1);
-    assert.equal(f.applies.length, 1);
-    assert.equal(f.subscriptions[0][1], previous.runtimeStoragePath);
-    const binding = [...f.host.runtimeSessionBindings.values()][0];
-    assert.equal(binding.runtimeSessionId, previous.sessionId);
-    assert.equal(binding.runtimeStoragePath, previous.runtimeStoragePath);
-    assert.equal(binding.runtimeBackend, previous.backendKind);
-    assert.equal(binding.kind, kind);
+  test(`production ${kind} rejects missing Host output credit before replacing bindings or preparing a launch`, async () => {
+    for (const previousBinding of [false, true]) {
+      const f = candidateRuntimeFixture({ admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+      f.client.supportsTerminalHostOutputCredit = () => false;
+      if (previousBinding) addCandidateLegacyBinding(f, kind);
+      const before = structuredClone(f.host.state);
+      const bindings = [...f.host.runtimeSessionBindings.entries()];
+      const effects = [];
+      f.host.deleteRuntimeSupervisorSessionStrict = () => { effects.push('delete'); assert.fail('must reject before deleting'); };
+      f.host[kind === 'agent' ? 'buildAgentLaunchSpec' : 'buildTerminalLaunchSpec'] = () => {
+        effects.push('prepare'); assert.fail('must reject before preparing the launch');
+      };
+      f.host.submitExecutionCandidateStart = () => { effects.push('submit'); assert.fail('must reject before submitting'); };
+      await completed(f.clock, f.start(kind), `${kind} missing production credit`);
+      assert(f.errors.some(message => /Host output consumption credit/.test(message)), f.errors.join('\n'));
+      assert.deepEqual(effects, []);
+      assert.equal(f.creates.length, 0);
+      assert.equal(f.providers.length, 0);
+      assert.equal(f.applies.length, 0);
+      assert.equal(f.subscriptions.length, 0);
+      assert.equal(f.persisted.length, 0);
+      assert.deepEqual(f.host.state, before);
+      assert.deepEqual([...f.host.runtimeSessionBindings.entries()], bindings);
+      assert.equal(f.host.candidateRuntimeStarts.size, 0);
+    }
+  });
+
+  test(`production ${kind} admits new Runtime execution when Host output credit is supported`, async () => {
+    const f = candidateRuntimeFixture({ admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+    f.client.supportsTerminalHostOutputCredit = () => true;
+    await completed(f.clock, f.start(kind), `${kind} production credit admission`);
+    assert.deepEqual(f.errors, []);
+    assert.equal(f.creates.length, 1);
+    assert.equal(f.creates[0].executionProfile, EXECUTION_CANDIDATE_PROFILE);
     assert.equal(f.providers.length, 0);
-    assert.equal(f.creates.length, 0);
+    assert.equal(f.subscriptions.length, 1);
+  });
+
+  test(`S9 ${kind} old live attachment preserves original binding without new profile requirements`, async () => {
+    for (const admissionLimits of [undefined, EXECUTION_PRODUCTION_ADMISSION]) {
+      const f = candidateRuntimeFixture({ admissionLimits });
+      const previous = addCandidateLegacyBinding(f, kind, 'systemd-user');
+      f.client.supportsExecutionCandidateProfile = () => assert.fail('old attachment is not new admission');
+      f.client.supportsTerminalHostOutputCredit = () => assert.fail('old attachment does not require production credit');
+      f.host.getPreferredRuntimeSupervisorClient = () => assert.fail('old attachment must not select a new Supervisor');
+      delete f.host.surfaceLifecycle.editor.terminalReadSettlementV1;
+      let attached = 0;
+      await f.host.attachPersistedRuntimeSession(kind, previous.nodeId, previous.sessionId, async () => {
+        attached += 1;
+        return { snapshot: { sessionId: previous.sessionId, kind, runtimeBackend: 'legacy-detached', live: true },
+          terminalProjectionMode: 'legacy' };
+      });
+      assert.equal(attached, 1);
+      assert.equal(f.applies.length, 1);
+      assert.equal(f.subscriptions[0][1], previous.runtimeStoragePath);
+      const binding = [...f.host.runtimeSessionBindings.values()][0];
+      assert.equal(binding.runtimeSessionId, previous.sessionId);
+      assert.equal(binding.runtimeStoragePath, previous.runtimeStoragePath);
+      assert.equal(binding.runtimeBackend, previous.backendKind);
+      assert.equal(binding.kind, kind);
+      assert.equal(f.providers.length, 0);
+      assert.equal(f.creates.length, 0);
+    }
   });
 
   test(`S9 ${kind} failed old live deletion preserves original metadata through the outer start entry`, async () => {

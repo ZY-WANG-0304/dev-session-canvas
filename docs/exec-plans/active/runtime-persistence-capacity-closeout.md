@@ -31,6 +31,7 @@
 - [x] (2026-10-02，§10.17) 生产准入分账、Host最终保存占槽、本地write信用与mount竞态、candidate冷启动已实现；adapter101、owner50、Host154、namespace11、Supervisor94、controller46/Host batch10及协议/typecheck回归通过。旧十会话/重连/compact未重跑。
 - [x] (2026-10-02，§53) 正常默认platform构建、同ref六资产聚合与严格正式VSIX接线完成；普通build/package本地exit0，六目标/production选择已独立检查。本地包hash见§53，不冒充clean-SHA最终包。
 - [x] (2026-10-02，§53) review确认并修复held-credit下resize链积压及paged-events提前fit；Host156、controller46/Host10、正常platform bundle上13项定向Chromium通过，原deadline/尾部与红证据保持。
+- [x] (2026-10-02，§53) 总体review确认缺Host-credit的历史candidate仍可获生产新建，有限修正为替换/delete/create前拒绝；先红与Host160/typecheck通过，旧live保持。注册run36965171860主动取消且未执行package/product；最终workflow已注册并回到manual-only。
 - [ ] (2026-10-02，§53) 以冻结提交运行同一VSIX的受影响Agent/Webview/现代三平台/安装包验收，随后整体review；F-04总体未关闭。
 
 - [x] (2026-10-02) 复核Runtime热路径上界及O(N)/O(segment)资源账，确认总N混用pending、snapshot-only投递信用和candidate冷启动重放三个直接边界缺口；沿§10.17选定有限修正。

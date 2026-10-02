@@ -574,6 +574,8 @@ B交互完成后继续原完整保留后缀poll，沿原恢复轮计时基点使
 
 生产准入在 `executionLifecycle.ts` 显式选 `{executions:null, starting:1, pending:2}`：不把试验N=2或10变成活动会话上限。稳定running主体按用户请求承担资源；准备/启动、停止/收尾、未结算reader、snapshot-only最终保存是未完成责任，创建前已有两项此类责任时拒绝获取新资源，无隐藏队列。已准入的N个活动会话可同时结束，责任数会超过2，必须保留而不是截断；此时禁止新建，直至真实结算低于阈值。此策略限制的是以新建不断累积未结算责任的能力，不宣称责任数永远不超过2。unknown继续sticky停新准入，输入/尾部/逐资源与结束预算不变；原显式有限 `{executions:N,starting:Q}` 保持旧候选与具名回归兼容。`ExecutionAuthority`、`ExecutionOwnerLifecycle` 和Host保存保护使用同一不可变策略，必须在provider/journal副作用前拒绝，旧live不迁移或重启。
 
+生产新建还必须在替换旧绑定、准备启动和发送create之前验证当前Supervisor支持 `terminalHostOutputCreditV1`。历史candidate可能共用generation并支持旧profile/read-settlement却没有Host信用，不能只凭profile握手允许新建后降回无credit推送。门槛只在生产新建入口收紧，全局hello与健康旧live的兼容attach不变；缺能力明确拒绝，不能重启旧Supervisor或篡改metadata换地址。此处“不重启”约束新生产绑定与升级处置，不追认legacy普通request的既有默认restart竞态或Agent既有CLI resume为新保证，见生产接入§53与技术债。
+
 源码复核确认 snapshot-only `postLocalExecutionReaderMessage` 仅等待消息投递，非paged页面可不断累积pendingOutput。新本地路径必须以当前reader的实际xterm应用回执返还单批信用，页面替换/取消释放等待但不能伪造applied；身份/序列错误回执不释放信用，结束仍等待原final边界。初始snapshot也要跨实际write，不能让后续正文抢跑；输出/resize控制与消费不能形成循环等待。只接入现有Host/Webview/协议与测试，不新增诊断设施。旧协议/raw兼容成本单列，不为它们回填新保证。
 
 协议由 `terminalLocalOutputCreditV1` 协商，snapshot/output携带独立receiptId及outputSequence；回执只表明该批实际应用或取消，不替代最终reader结算。初始snapshot早于组件mount时，页面明确cancel为controller-unmounted；之后原surface的显式attach可建立新reader，若attach早于取消到达则等待旧attach后重新判断，不能继承一个已取消结果形成死锁。已冻结final后禁止新reader，旧reader的取消结果保留在诊断记录；不增加页面正文缓存或超时成功路径。

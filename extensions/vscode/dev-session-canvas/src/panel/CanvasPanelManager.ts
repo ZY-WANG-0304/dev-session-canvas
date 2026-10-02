@@ -10479,6 +10479,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (client && !client.supportsExecutionCandidateProfile(profile)) {
         throw new Error('The runtime supervisor does not support the execution candidate profile.');
       }
+      if (client && this.nonNativeExecutionOwner?.admissionLimits.pending !== undefined &&
+          !client.supportsTerminalHostOutputCredit()) {
+        throw new Error('The runtime supervisor does not support Host output consumption credit for new executions.');
+      }
       return;
     }
     const owner = this.nonNativeExecutionOwner;

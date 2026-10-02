@@ -114,6 +114,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-02，§53) 生产准入实现活动/待结算分账，adapter101/owner50项通过；candidate冷启动仅在排他namespace后清理本代运行账，namespace11/legacy与Supervisor94项通过。
 - [x] (2026-10-02，§53) Host最终保存准入与新协商本地write信用完成，Host154、controller46/Host batch10及8项受影响Chromium通过；普通六资产build/package本地exit0，包/选择已独立核对。
 - [x] (2026-10-02，§53) review确认两项有限缺口，Host合并未开始resize并保留deadline，paged-events复用真实write完成屏障；Host156、controller46/Host10、13项受影响Chromium及typecheck通过，先红保留。
+- [x] (2026-10-02，§53) 生产新建另强制Host-output-credit，实际两kind缺cap的先红与Host160/typecheck回归通过，不改变旧live兼容。注册run36965171860因该review缺口主动取消，package/product未运行，不计产品通过或失败。
 - [ ] (2026-10-02，§53) 冻结提交运行同一最终VSIX的三现代平台Terminal/Webview/真实Agent验收，随后整体review；不复跑无关成功矩阵。
 
 - [x] (2026-10-02) 复核 `36917661214`/`36918349766`：公开摘要不足以确定 poll 阶段或失败前 CLI 生命周期，撤回确定性根因推断，原失败保留。

@@ -2,11 +2,6 @@ name: Runtime Production Acceptance
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - runtime-persistence-session-state-refactor
-    paths:
-      - .github/workflows/runtime-production-acceptance.yml
 
 permissions:
   contents: read
