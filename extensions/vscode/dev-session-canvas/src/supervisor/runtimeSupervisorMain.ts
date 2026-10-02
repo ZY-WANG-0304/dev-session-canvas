@@ -521,9 +521,17 @@ export class RuntimeSupervisorServer {
     if (this.executionProfile !== undefined) {
       this.namespaceClaim = await acquireRuntimeSupervisorNamespace(this.paths.storageDir, nativeClaim);
       await prepareRuntimeSupervisorSocketPath(this.paths.socketPath);
+      const canonicalStorageDir = await fs.promises.realpath(this.paths.storageDir);
+      assertExecutionCandidateRuntimeSupervisorStorageDir(canonicalStorageDir, this.executionProfile);
+      if (path.resolve(this.paths.registryPath) !== path.join(path.resolve(this.paths.storageDir), 'registry.json')) {
+        throw new Error('Execution candidate registry must belong to its isolated runtime storage.');
+      }
+      // Only a new exclusive owner may discard stale runtime history; reconnects never enter this path.
+      await fs.promises.rm(path.join(canonicalStorageDir, 'registry.json'), { force: true });
+      await fs.promises.rm(path.join(canonicalStorageDir, 'terminal-journals'), { recursive: true, force: true });
     }
     ensureSocketDirectoryReady(this.paths);
-    await this.loadRegistry();
+    if (this.executionProfile === undefined) await this.loadRegistry();
     this.assertOwnedAdmissionOpen();
     await this.listen();
     this.scheduleIdleShutdownIfNeeded();

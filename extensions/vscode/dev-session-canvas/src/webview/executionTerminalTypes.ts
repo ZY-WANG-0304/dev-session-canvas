@@ -1,7 +1,7 @@
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
-import type { ExecutionNodeKind, LocalTerminalCompletion } from '../common/protocol';
+import type { ExecutionNodeKind, LocalOutputReceipt, LocalTerminalCompletion } from '../common/protocol';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from '../common/terminalSessionStream';
 import type { TerminalStreamPage, TerminalStreamReadDescriptor } from '../common/terminalStreamPaging';
@@ -20,6 +20,7 @@ export type ExecutionHostEvent =
       requestId?: string;
       executionSessionId?: string;
       outputSequence?: number;
+      localOutputReceipt?: LocalOutputReceipt;
       serializedTerminalState?: SerializedTerminalState;
       terminalStream?: TerminalStreamAttachPayload;
       terminalRead?: TerminalStreamReadDescriptor;
@@ -37,6 +38,7 @@ export type ExecutionHostEvent =
       terminalAuthorityId?: string;
       terminalStartRevision?: number;
       terminalRevision?: number;
+      localOutputReceipt?: LocalOutputReceipt;
     }
   | {
       type: 'terminal-event';
@@ -72,6 +74,7 @@ export interface ExecutionTerminalController {
       terminalAuthorityId?: string;
       terminalStartRevision?: number;
       terminalRevision?: number;
+      localOutputReceipt?: LocalOutputReceipt;
     }
   ): void;
   applyTerminalEvent(detail: Extract<ExecutionHostEvent, { type: 'terminal-event' }>): void;

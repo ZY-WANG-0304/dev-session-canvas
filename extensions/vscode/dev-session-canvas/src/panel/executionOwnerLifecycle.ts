@@ -5,6 +5,7 @@ import {
   assertExecutionCandidateProfile,
   assertExecutionIdentity,
   assertCandidateLaunchSpec,
+  hasExecutionAdmissionCapacity,
   EXECUTION_CANDIDATE_BUDGETS,
   EXECUTION_CANDIDATE_PROFILE,
   MACOS_EXECUTION_CANDIDATE_PROFILE,
@@ -177,8 +178,9 @@ export class ExecutionOwnerLifecycle {
   reserve(key: string, executionId: string = randomUUID()): OwnedExecution {
     this.assertAdmission();
     if (!key || this.records.has(key)) throw new Error('Execution owner key is already reserved or invalid');
-    // Include preparation and final reader responsibility in the same finite capacity.
-    if (this.records.size >= this.admissionLimits.executions) throw new Error('Execution owner capacity exhausted');
+    if (!hasExecutionAdmissionCapacity(this.admissionLimits, {
+      executions: this.records.size, pending: this.pendingAdmissionCount()
+    })) throw new Error('Execution owner capacity exhausted');
     const identity = Object.freeze({ executionId, generation: randomUUID() });
     assertExecutionIdentity(identity);
     const record = new OwnedExecution(this, key, identity);
@@ -208,9 +210,16 @@ export class ExecutionOwnerLifecycle {
     return true;
   }
 
+  private pendingAdmissionCount(): number {
+    let pending = 0;
+    for (const record of this.records.values()) if (record.isAdmissionPending()) pending += 1;
+    return pending;
+  }
+
   snapshot() {
     const { closing, permanent, blockedReason } = this.authority.snapshot();
-    return Object.freeze({ closing, permanent, blockedReason, pending: this.records.size });
+    return Object.freeze({ closing, permanent, blockedReason, pending: this.records.size,
+      admissionPending: this.pendingAdmissionCount() });
   }
 
   assertAdmission(record?: OwnedExecution): void {
@@ -376,6 +385,12 @@ export class OwnedExecution {
     this.evaluate();
   }
 
+  isAdmissionPending(): boolean {
+    // Running work has per-execution costs; preparation and unsettled exit work block new admission.
+    return this.stopRequested || this.closeObservation !== undefined ||
+      !this.execution || this.execution.isAdmissionPending();
+  }
+
   snapshot() {
     const adapter = this.execution?.snapshot();
     const settled = this.settledCommitted || this.abandoned
@@ -384,6 +399,7 @@ export class OwnedExecution {
     return Object.freeze({
       identity: this.identity, key: this.key, adapter, terminal: this.terminal,
       readerOutcome: this.readerOutcome, settled, retired: settled && this.readerOutcome !== 'pending',
+      admissionPending: this.isAdmissionPending(),
       stopRequested: this.stopRequested,
       ...(this.closeObservation ? { closeObservation: this.closeObservationSnapshot(adapter, settled) } : {})
     });

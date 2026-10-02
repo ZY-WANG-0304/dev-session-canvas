@@ -751,10 +751,19 @@ async function verifyControllerSettlement(directory) {
     const terminal = new Terminal({ cols: 80, rows: 24, scrollback: 100, allowProposedApi: true });
     terminal.refresh = () => {};
     let snapshotNotifications = 0;
-    const diagnostics = { failNext: false, released: 0, releaseFails: false };
+    const restores = { active: 0, started: 0, released: 0 };
+    const diagnostics = { failNext: false, released: 0, releaseFails: false, snapshotNotificationFails: false };
     const controller = createController(terminal, message => messages.push(message), {
       onReadError: message => { readErrors.push(message); },
-      onSnapshotApplied: () => { snapshotNotifications++; },
+      onSnapshotApplied: () => {
+        snapshotNotifications++;
+        if (diagnostics.snapshotNotificationFails) throw new Error('controlled snapshot application notification failure');
+      },
+      beginSnapshotRestore: () => {
+        restores.active++;
+        restores.started++;
+        return () => { restores.active--; restores.released++; };
+      },
       beginSnapshotRestoreDiagnosticsSuppression: () => () => {
         diagnostics.released++;
         if (diagnostics.releaseFails) throw new Error('controlled suppression release failure');
@@ -776,9 +785,10 @@ async function verifyControllerSettlement(directory) {
     const requests = () => messages.filter(message => message.type === 'webview/readExecutionTerminalPage');
     const closes = () => messages.filter(message => message.type === 'webview/closeExecutionTerminalRead');
     const localResults = () => messages.filter(message => message.type === 'webview/executionLocalTerminalSettled');
-    const localStart = (output = '', outputSequence = 0, executionSessionId = 'session') => controller.applySnapshot({
+    const outputCredits = () => messages.filter(message => message.type === 'webview/executionLocalOutputApplied');
+    const localStart = (output = '', outputSequence = 0, executionSessionId = 'session', localOutputReceipt) => controller.applySnapshot({
       type: 'snapshot', nodeId: 'node', kind: environment.kind ?? 'terminal', output, outputSequence,
-      cols: 80, rows: 24, liveSession: true, executionSessionId
+      cols: 80, rows: 24, liveSession: true, executionSessionId, localOutputReceipt
     });
     const localFinish = (finalOutputSequence = 0, executionSessionId = 'session', message = 'ended') =>
       controller.showExit(message, executionSessionId, { executionSessionId, finalOutputSequence });
@@ -790,11 +800,103 @@ async function verifyControllerSettlement(directory) {
         headRevision: Math.max(headRevision, request.afterRevision + events.length), events
       });
     };
-    return { terminal, controller, messages, readErrors, diagnostics, descriptor, start, requests, closes, sendPage,
-      localStart, localFinish, localResults,
+    return { terminal, controller, messages, readErrors, diagnostics, restores, descriptor, start, requests, closes, sendPage,
+      localStart, localFinish, localResults, outputCredits,
       snapshotNotifications: () => snapshotNotifications,
-      dispose() { controller.dispose(); terminal.dispose(); } };
+      dispose() {
+        controller.dispose();
+        assert.equal(restores.active, 0, 'disposal releases every snapshot fit barrier');
+        assert.equal(restores.started, restores.released, 'each snapshot fit barrier releases exactly once');
+        terminal.dispose();
+      } };
   };
+
+  await check('local snapshot credit waits for actual application even after a healthy snapshot', async () => {
+    const f = fixture();
+    const write = f.terminal.write.bind(f.terminal);
+    const callbacks = [];
+    f.terminal.write = (text, done) => write(text, () => callbacks.push(done));
+    try {
+      for (const [index, output] of ['', 'FINAL-SNAPSHOT'].entries()) {
+        const receipt = { receiptId: `snapshot-${index}`, outputSequence: index };
+        f.localStart(output, index, 'session', receipt);
+        await until(() => callbacks.length === 1, 'credit snapshot parser callback');
+        assert.equal(f.outputCredits().length, index, 'delivery and parsing alone do not return credit');
+        callbacks.shift()();
+        await until(() => f.outputCredits().length === index + 1, 'snapshot application credit');
+        assert.deepEqual(f.outputCredits()[index].payload, {
+          nodeId: 'node', kind: 'terminal', executionSessionId: 'session', ...receipt, outcome: 'applied'
+        });
+      }
+      assert.match(f.terminal.buffer.active.getLine(0).translateToString(true), /FINAL-SNAPSHOT/);
+    } finally { f.dispose(); }
+  });
+
+  await check('local output credit waits for partial drains and the empty output callback', async () => {
+    const f = fixture();
+    try {
+      f.localStart();
+      await until(() => f.controller.getQueuedWriteCount() === 0, 'credit baseline');
+      const write = f.terminal.write.bind(f.terminal);
+      const callbacks = [];
+      f.terminal.write = (text, done) => write(text, () => callbacks.push(done));
+      f.controller.enqueueOutput('FULL-TAIL', { executionSessionId: 'session', outputStartSequence: 1, outputSequence: 1,
+        localOutputReceipt: { receiptId: 'tail', outputSequence: 1 } });
+      f.controller.flushPendingOutput(4);
+      await until(() => callbacks.length === 1, 'partial parser callback');
+      callbacks.shift()();
+      await until(() => f.controller.getQueuedWriteCount() === 0, 'partial drain applied');
+      assert.equal(f.outputCredits().length, 0);
+      f.controller.flushPendingOutput();
+      await until(() => callbacks.length === 1, 'last partial parser callback');
+      assert.equal(f.outputCredits().length, 0);
+      callbacks.shift()();
+      await until(() => f.outputCredits().length === 1, 'full tail credit');
+      f.controller.enqueueOutput('BEFORE-EMPTY', { executionSessionId: 'session', outputStartSequence: 2, outputSequence: 2 });
+      f.controller.enqueueOutput('', { executionSessionId: 'session', outputStartSequence: 2, outputSequence: 2,
+        localOutputReceipt: { receiptId: 'empty', outputSequence: 2 } });
+      await until(() => callbacks.length === 1, 'earlier pending output parser callback');
+      assert.match(f.terminal.buffer.active.getLine(0).translateToString(true), /BEFORE-EMPTY/);
+      assert.equal(f.outputCredits().length, 1);
+      callbacks.shift()();
+      await until(() => callbacks.length === 1, 'empty output parser callback');
+      assert.equal(f.outputCredits().length, 1);
+      callbacks.shift()();
+      await until(() => f.outputCredits().length === 2, 'empty output credit');
+      assert.deepEqual(f.outputCredits().map(message => [message.payload.receiptId, message.payload.outcome]),
+        [['tail', 'applied'], ['empty', 'applied']]);
+    } finally { f.dispose(); }
+  });
+
+  for (const boundary of ['dispose', 'replacement', 'write-error']) {
+    await check(`local output credit cancels on ${boundary} without acknowledging a stale callback`, async () => {
+      const f = fixture();
+      try {
+        f.localStart();
+        await until(() => f.controller.getQueuedWriteCount() === 0, 'cancel credit baseline');
+        const write = f.terminal.write.bind(f.terminal);
+        let release;
+        f.terminal.write = (text, done) => {
+          if (boundary === 'write-error') throw new Error('controlled credit write failure');
+          write(text, () => { release = done; });
+        };
+        f.controller.enqueueOutput('CANCEL-TAIL', { executionSessionId: 'session', outputStartSequence: 1, outputSequence: 1,
+          localOutputReceipt: { receiptId: 'cancel-me', outputSequence: 1 } });
+        f.controller.flushPendingOutput(4);
+        if (boundary !== 'write-error') {
+          await until(() => release !== undefined, 'held old-generation parser callback');
+          if (boundary === 'dispose') f.controller.dispose();
+          else f.controller.enqueueOutput('NEW', { executionSessionId: 'next-session', outputSequence: 1 });
+        }
+        await until(() => f.outputCredits().length === 1, 'cancelled output credit');
+        assert.equal(f.outputCredits()[0].payload.outcome, 'cancelled');
+        assert.equal(f.outputCredits()[0].payload.executionSessionId, 'session');
+        release?.();
+        await until(() => f.controller.getQueuedWriteCount() === 0, 'cancelled callback drain');
+        assert.equal(f.outputCredits().length, 1);
+      } finally { f.dispose(); }
+    });
+  }
 
   for (const kind of ['terminal', 'agent']) {
     for (const mode of ['runtime', 'local', 'legacy-paged', 'legacy-stream']) {
@@ -893,7 +995,8 @@ async function verifyControllerSettlement(directory) {
       f.start();
       f.controller.terminalAvailable('session', 'authority', 0, true, 0);
       await callbackReady.promise;
-      assert.equal(f.snapshotNotifications(), 1);
+      assert.equal(f.snapshotNotifications(), 0, 'snapshot applied must wait for the actual write callback');
+      assert.equal(f.restores.active, 1);
       assert.equal(f.closes().length, 0);
       assert.equal(f.requests().length, 0);
       assert.equal(f.controller.getQueuedWriteCount(), 1);
@@ -901,6 +1004,8 @@ async function verifyControllerSettlement(directory) {
       await until(() => f.closes().length === 1, 'empty checkpoint callback settlement');
       assert.deepEqual(f.closes()[0].payload.outcome, { kind: 'applied', finalRevision: 0 });
       assert.equal(f.controller.getQueuedWriteCount(), 0);
+      assert.equal(f.snapshotNotifications(), 1);
+      assert.equal(f.restores.active, 0);
     } finally { f.dispose(); }
   });
 
@@ -1014,13 +1119,14 @@ async function verifyControllerSettlement(directory) {
     });
   }
 
-  for (const failure of ['diagnostics', 'delivery']) {
+  for (const failure of ['diagnostics', 'snapshot-notification', 'delivery']) {
     await check(`${failure} callback failure settles the real write queue without manufacturing delivery`, async () => {
       const f = fixture();
       const push = f.messages.push.bind(f.messages);
       let deliveryAttempted = false;
       try {
         if (failure === 'diagnostics') f.diagnostics.failNext = true;
+        else if (failure === 'snapshot-notification') f.diagnostics.snapshotNotificationFails = true;
         else f.messages.push = message => {
           if (message.type === 'webview/closeExecutionTerminalRead' && !deliveryAttempted) {
             deliveryAttempted = true;
@@ -1055,6 +1161,7 @@ async function verifyControllerSettlement(directory) {
       f.controller.terminalAvailable('session', 'authority', 0, true, 0);
       await callbackReady.promise;
       f.controller.dispose();
+      assert.equal(f.restores.active, 0, 'cancellation releases fit without waiting for a stale parser callback');
       assert.deepEqual(f.closes()[0].payload.outcome, { kind: 'cancelled', reason: 'controller-disposed' });
       release();
       await new Promise(resolve => setTimeout(resolve, 10));
@@ -1122,14 +1229,16 @@ async function verifyControllerSettlement(directory) {
       assert.equal(f.localResults().length, 0, 'no snapshot is not an applied empty terminal');
       f.localStart();
       await until(() => snapshotTasks.length === 1, 'scheduled local snapshot');
-      assert.equal(f.snapshotNotifications(), 1);
+      assert.equal(f.snapshotNotifications(), 0, 'queued snapshot has not been applied');
       assert.equal(callbacks.length, 0);
       snapshotTasks.shift().run(() => { schedulerFinished++; });
       await until(() => callbacks.length === 1, 'empty snapshot callback');
       assert.equal(f.localResults().length, 0);
+      assert.equal(f.snapshotNotifications(), 0, 'snapshot applied must wait for the actual write callback');
       callbacks.shift()();
       await until(() => callbacks.length === 1, 'empty final barrier callback');
       assert.equal(schedulerFinished, 1);
+      assert.equal(f.snapshotNotifications(), 1);
       assert.equal(f.localResults().length, 0);
       callbacks.shift()();
       await until(() => f.localResults().length === 1, 'empty local completion');
@@ -1194,7 +1303,7 @@ async function verifyControllerSettlement(directory) {
     } finally { f.dispose(); }
   });
 
-  for (const failure of ['scheduled snapshot', 'suppression release', 'output', 'final sentinel']) {
+  for (const failure of ['scheduled snapshot', 'suppression release', 'snapshot-notification', 'output', 'final sentinel']) {
     await check(`local ${failure} failure cancels and releases the actual queue`, async () => {
       const snapshotTasks = [];
       const f = fixture('reader', 0, null, { snapshotTasks });
@@ -1205,6 +1314,7 @@ async function verifyControllerSettlement(directory) {
         const write = f.terminal.write.bind(f.terminal);
         if (failure === 'scheduled snapshot') f.terminal.reset = () => { throw new Error('scheduled reset failed'); };
         if (failure === 'suppression release') f.diagnostics.releaseFails = true;
+        if (failure === 'snapshot-notification') f.diagnostics.snapshotNotificationFails = true;
         snapshotTasks.shift().run(() => { schedulerFinished++; });
         await until(() => f.controller.getQueuedWriteCount() === 0, 'local snapshot failure cleanup');
         f.terminal.write = (text, done) => {
@@ -1222,6 +1332,7 @@ async function verifyControllerSettlement(directory) {
         assert.deepEqual(f.localResults()[0].payload.outcome, { kind: 'cancelled', reason: 'terminal-write-failed' });
         assert.equal(schedulerFinished, 1);
         assert.equal(f.diagnostics.released, 1);
+        assert.equal(f.restores.active, 0);
       } finally { f.dispose(); }
     });
   }

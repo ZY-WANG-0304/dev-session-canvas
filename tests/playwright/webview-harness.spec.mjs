@@ -15876,7 +15876,7 @@ test('agent attention final output is not starved behind flooded nodes', async (
     expect(probeNode?.attentionIndicatorVisible).toBe(true);
     expect(visibleLines.some((line) => line.includes(`ATTENTION-FINAL-OUTPUT-${nodeId}`))).toBe(true);
     expect(visibleLines.some((line) => line.includes(`[Dev Session Canvas] Attention final complete ${nodeId}`))).toBe(
-      true
+      false
     );
   }
 });
@@ -16644,11 +16644,11 @@ for (const readClosed of [false, true]) {
         authorityId: stream.authorityId, output: '', cols: stream.checkpoint.cols, rows: stream.checkpoint.rows };
       const snapshot = { ...payload, liveSession: false, outputSequence: 1,
         terminalRead: { readId: 'remote-reader', sessionId: stream.sessionId, authorityId: stream.authorityId,
-          checkpoint: stream.checkpoint, headRevision: 2 } };
+          checkpoint: stream.checkpoint, headRevision: 2, settlementMode: 'final-application-v1' } };
       window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionSnapshot', payload: snapshot });
       window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionSnapshot', payload: snapshot });
       window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable',
-        payload: { ...payload, revision: 2, completed: true } });
+        payload: { ...payload, revision: 2, completed: true, finalRevision: 2 } });
       window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionExit',
         payload: { ...payload, message: 'REMOTE-EXIT' } });
     }, { nodeId, stream });
@@ -16661,17 +16661,26 @@ for (const readClosed of [false, true]) {
       readId: request.readId, sessionId: stream.sessionId, authorityId: stream.authorityId,
       afterRevision: 1, revision: 2, headRevision: 2, events: stream.events
     } }) });
-    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText(readClosed ? 'REMOTE-READ-INTERRUPTED' : 'REMOTE-EXIT');
+    if (readClosed) {
+      await expect(page.locator('[data-toast-kind="error"]')).toHaveText('REMOTE-READ-INTERRUPTED');
+    } else {
+      await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('REMOTE-FINAL-OUTPUT');
+    }
     const text = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
     expect(text).toContain('REMOTE-CHECKPOINT');
+    expect(text).not.toContain('REMOTE-EXIT');
+    expect(text).not.toContain('REMOTE-READ-INTERRUPTED');
     if (readClosed) {
-      expect(text).not.toContain('REMOTE-EXIT');
+      expect(text).not.toContain('REMOTE-FINAL-OUTPUT');
       await page.waitForTimeout(500);
     } else {
       expect((text.match(/REMOTE-FINAL-OUTPUT/gu) ?? [])).toHaveLength(1);
-      expect(text.indexOf('REMOTE-FINAL-OUTPUT')).toBeLessThan(text.indexOf('REMOTE-EXIT'));
     }
-    expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(1);
+    const closes = await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead');
+    expect(closes).toHaveLength(1);
+    expect(closes[0].payload.outcome).toEqual(readClosed
+      ? { kind: 'cancelled', reason: 'terminal-reader-closed' }
+      : { kind: 'applied', finalRevision: 2 });
     expect(await readPostedMessagesByType(page, 'webview/readExecutionTerminalPage')).toHaveLength(1);
   });
 }
@@ -16715,6 +16724,7 @@ test('terminal consumes paged recovery through ANSI boundaries and drains the fi
       }, { nodeId, kind: 'terminal', executionSessionId, authorityId });
       await settleWebview(page, 2);
       expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).not.toContain('PAGED-EXIT');
+      expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(0);
     }
     await page.evaluate((payload) => {
       window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload });
@@ -16725,8 +16735,9 @@ test('terminal consumes paged recovery through ANSI boundaries and drains the fi
         revision: event.revision, headRevision: 8, events: [event]
       } });
   }
-  await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('PAGED-EXIT');
-  const text = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+  await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('PAGED-TAIL');
+  const finalProbe = await readProbeNode(page, nodeId, 0);
+  const text = finalProbe.terminalVisibleLines.join('\n');
   expect(text).toContain('PAGED-CHECKPOINT');
   expect(text).toContain('PAGED-ANSI');
   expect(text).toContain('\ud83d\ude80');
@@ -16734,8 +16745,11 @@ test('terminal consumes paged recovery through ANSI boundaries and drains the fi
   expect(text).not.toContain('RAW-TAIL-MUST-NOT-APPLY');
   expect(text).not.toContain('ALT-PAGED');
   expect(text).not.toContain('\ufffd');
-  expect(text.indexOf('PAGED-TAIL')).toBeLessThan(text.indexOf('PAGED-EXIT'));
+  expect(text).not.toContain('PAGED-EXIT');
   expect((text.match(/PAGED-TAIL/gu) ?? [])).toHaveLength(1);
+  expect(finalProbe).toMatchObject({
+    terminalCursorX: 0, terminalCursorY: 4, terminalViewportY: 0, terminalBufferType: 'normal'
+  });
   expect(await readPostedMessagesByType(page, 'webview/readExecutionTerminalPage')).toHaveLength(stream.events.length);
   const closes = await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead');
   expect(closes).toHaveLength(1);
@@ -16859,7 +16873,175 @@ for (const executionKind of ['agent', 'terminal']) {
   });
 }
 
+async function holdXtermParser(page) {
+  await page.evaluate(() => {
+    const schedule = window.setTimeout.bind(window);
+    const held = [];
+    // Hold only xterm's parser work, leaving the real component fit timers active.
+    window.setTimeout = (callback, delay, ...args) => {
+      if (typeof callback === 'function' && callback.toString().includes('._innerWrite(')) {
+        const timer = schedule(() => {}, 60_000);
+        held.push({ callback, args, timer });
+        return timer;
+      }
+      return schedule(callback, delay, ...args);
+    };
+    window.__slowSnapshotWrite = {
+      pending: () => held.length,
+      release() {
+        window.setTimeout = schedule;
+        for (const { callback, args, timer } of held.splice(0)) {
+          window.clearTimeout(timer);
+          callback(...args);
+        }
+      }
+    };
+  });
+}
+
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} local output credit follows actual writes and cancels when the page unmounts`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const executionSessionId = `${executionKind}-credit-session`;
+    await openHarness(page);
+    const ready = await waitForPostedMessageByType(page, 'webview/ready', { includeLifecycle: true });
+    expect(ready.payload.capabilities.terminalLocalOutputCreditV1).toBe(true);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const terminal = await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId, kind: executionKind, output: 'CREDIT-BASE\r\n', executionSessionId, outputSequence: 0,
+      cols: terminal.terminalCols, rows: terminal.terminalRows
+    });
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('CREDIT-BASE');
+    await clearPostedMessages(page);
+    await holdXtermParser(page);
+    try {
+      await dispatchExecutionOutput(page, {
+        nodeId, kind: executionKind, chunk: 'CREDIT-TAIL\r\n', executionSessionId,
+        outputStartSequence: 1, outputSequence: 1, localOutputReceipt: { receiptId: 'tail', outputSequence: 1 }
+      });
+      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
+      expect(await readPostedMessagesByType(page, 'webview/executionLocalOutputApplied')).toHaveLength(0);
+      expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).not.toContain('CREDIT-TAIL');
+    } finally { await page.evaluate(() => window.__slowSnapshotWrite.release()); }
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('CREDIT-TAIL');
+    const credits = await waitForPostedMessagesByTypeMatch(page, 'webview/executionLocalOutputApplied', messages => messages.length === 1);
+    expect(credits[0].payload).toEqual({ nodeId, kind: executionKind, executionSessionId,
+      receiptId: 'tail', outputSequence: 1, outcome: 'applied' });
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId, kind: executionKind, output: 'CREDIT-FINAL-SNAPSHOT\r\n', executionSessionId, outputSequence: 1,
+      cols: terminal.terminalCols, rows: terminal.terminalRows,
+      localOutputReceipt: { receiptId: 'final-snapshot', outputSequence: 1 }
+    });
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('CREDIT-FINAL-SNAPSHOT');
+    await waitForPostedMessagesByTypeMatch(page, 'webview/executionLocalOutputApplied', messages => messages.length === 2);
+    await holdXtermParser(page);
+    try {
+      await dispatchExecutionOutput(page, {
+        nodeId, kind: executionKind, chunk: 'CANCELLED-CREDIT-TAIL', executionSessionId,
+        outputStartSequence: 2, outputSequence: 2, localOutputReceipt: { receiptId: 'cancelled-tail', outputSequence: 2 }
+      });
+      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
+      await updateHostState(page, createEmptyCanvasState());
+      const cancelled = await waitForPostedMessagesByTypeMatch(page, 'webview/executionLocalOutputApplied', messages => messages.length === 3);
+      expect(cancelled[2].payload).toEqual({ nodeId, kind: executionKind, executionSessionId,
+        receiptId: 'cancelled-tail', outputSequence: 2, outcome: 'cancelled', reason: 'controller-disposed' });
+    } finally { await page.evaluate(() => window.__slowSnapshotWrite.release()); }
+    await settleWebview(page, 2);
+    expect(await readPostedMessagesByType(page, 'webview/executionLocalOutputApplied')).toHaveLength(3);
+    await dispatchExecutionOutput(page, {
+      nodeId, kind: executionKind, chunk: 'UNMOUNTED', executionSessionId,
+      outputSequence: 3, localOutputReceipt: { receiptId: 'unmounted-output', outputSequence: 3 }
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId, kind: executionKind, output: 'UNMOUNTED', executionSessionId,
+      outputSequence: 3, localOutputReceipt: { receiptId: 'unmounted-snapshot', outputSequence: 3 }
+    });
+    const unmounted = await readPostedMessagesByType(page, 'webview/executionLocalOutputApplied');
+    expect(unmounted.slice(3).map(message => message.payload)).toEqual([
+      { nodeId, kind: executionKind, executionSessionId, receiptId: 'unmounted-output', outputSequence: 3,
+        outcome: 'cancelled', reason: 'controller-unmounted' },
+      { nodeId, kind: executionKind, executionSessionId, receiptId: 'unmounted-snapshot', outputSequence: 3,
+        outcome: 'cancelled', reason: 'controller-unmounted' }
+    ]);
+  });
+
+  test(`${executionKind} slow snapshot write prevents premature fit and refits after application`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const ready = await waitForExecutionTerminalReady(page, nodeId);
+    const restoreCols = ready.terminalCols + 12;
+    const restoreRows = ready.terminalRows + 6;
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      'SLOW-SNAPSHOT-TAIL\r\n', restoreCols, restoreRows
+    );
+    await clearPostedMessages(page);
+    await holdXtermParser(page);
+    try {
+      await dispatchExecutionSnapshot(page, {
+        nodeId, kind: executionKind, output: '', cols: restoreCols, rows: restoreRows,
+        liveSession: true, serializedTerminalState
+      });
+      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
+      await page.waitForTimeout(1200);
+      const pending = await readProbeNode(page, nodeId, 0);
+      const prematureResizes = await readPostedMessagesByType(page, 'webview/resizeExecutionSession');
+      expect(pending.terminalVisibleLines.join('\n')).not.toContain('SLOW-SNAPSHOT-TAIL');
+      expect({ cols: pending.terminalCols, rows: pending.terminalRows }).toEqual({
+        cols: restoreCols, rows: restoreRows
+      });
+      expect(prematureResizes).toHaveLength(0);
+    } finally {
+      await page.evaluate(() => window.__slowSnapshotWrite.release());
+    }
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('SLOW-SNAPSHOT-TAIL');
+    await expect.poll(async () => {
+      const terminal = await readProbeNode(page, nodeId, 0);
+      return { cols: terminal.terminalCols, rows: terminal.terminalRows };
+    }).toEqual({ cols: ready.terminalCols, rows: ready.terminalRows });
+    const resizeMessages = await waitForPostedMessagesByTypeMatch(page, 'webview/resizeExecutionSession',
+      messages => messages.length === 1);
+    expect(resizeMessages[0].payload).toMatchObject({
+      nodeId, kind: executionKind, cols: ready.terminalCols, rows: ready.terminalRows
+    });
+  });
+
+  for (const recoveryKind of ['snapshot', 'checkpoint']) {
+    test(`${executionKind} ${recoveryKind} restore retains the saved non-bottom viewport`, async ({ page }) => {
+      const nodeId = `${executionKind}-zoom`;
+      await openHarness(page);
+      await bootstrap(page, createLiveExecutionNodeState(executionKind));
+      const ready = await waitForExecutionTerminalReady(page, nodeId);
+      const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+        createScrollableTerminalOutput(120), ready.terminalCols, ready.terminalRows
+      );
+      serializedTerminalState.viewportY = 17;
+      const detail = {
+        nodeId, kind: executionKind, output: '', cols: ready.terminalCols,
+        rows: ready.terminalRows, liveSession: true, executionSessionId: 'viewport-session',
+        outputSequence: 1
+      };
+      if (recoveryKind === 'snapshot') {
+        serializedTerminalState.outputSequence = 1;
+        detail.serializedTerminalState = serializedTerminalState;
+      } else {
+        const stream = await createTerminalStreamPayload({
+          sessionId: detail.executionSessionId, authorityId: 'viewport-authority',
+          checkpointOutput: createScrollableTerminalOutput(120), checkpointRevision: 1,
+          checkpointCols: ready.terminalCols, checkpointRows: ready.terminalRows
+        });
+        stream.checkpoint.serializedState.viewportY = 17;
+        detail.terminalStream = stream;
+      }
+      await dispatchExecutionSnapshot(page, detail);
+      await expect.poll(async () => (await readProbeNode(page, nodeId, 0))?.terminalViewportY).toBe(17);
+      const restored = await readProbeNode(page, nodeId, 0);
+      expect(restored.terminalVisibleLines[0]).toContain('ROW-017');
+    });
+  }
+
   test(`${executionKind} snapshot restore still refits after node movement during the shrink grace`, async ({
     page
   }) => {
@@ -18024,6 +18206,7 @@ async function dispatchExecutionSnapshot(
     executionSessionId,
     terminalTitle,
     outputSequence,
+    localOutputReceipt,
     serializedTerminalState,
     terminalStream,
     terminalRead
@@ -18047,6 +18230,7 @@ async function dispatchExecutionSnapshot(
       executionSessionId,
       terminalTitle,
       outputSequence,
+      localOutputReceipt,
       serializedTerminalState,
       terminalStream,
       terminalRead
@@ -18065,6 +18249,7 @@ async function dispatchExecutionOutput(
     persisted,
     outputStartSequence,
     outputSequence,
+    localOutputReceipt,
     terminalAuthorityId,
     terminalStartRevision,
     terminalRevision
@@ -18086,6 +18271,7 @@ async function dispatchExecutionOutput(
       persisted,
       outputStartSequence,
       outputSequence,
+      localOutputReceipt,
       terminalAuthorityId,
       terminalStartRevision,
       terminalRevision

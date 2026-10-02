@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ExecutionOwnerLifecycle, type ExecutionOwnerOptions, type OwnedExecution, type OwnerCloseResult } from './executionOwnerLifecycle';
 import { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_INTERACTION_LIMITS,
-  assertExecutionCandidateProfile, assertExecutionCandidateCapabilities, type ExecutionCandidateProfile,
+  assertExecutionCandidateProfile, assertExecutionCandidateCapabilities, hasExecutionAdmissionCapacity, type ExecutionCandidateProfile,
   type AuthorityResult, type ExecutionIdentity, type LaunchSpec } from '../common/executionLifecycle';
 import type { ExecutionScheduler, InteractionObservation } from './executionSessionAdapter';
 import {
@@ -629,6 +629,9 @@ interface LocalExecutionReader {
   initialPublished: boolean;
   finalPublication?: Promise<boolean>;
   finalPublishedSequence?: number;
+  outputCredit?: boolean;
+  pendingOutputReceipt?: { receiptId: string; outputSequence: number; resolve: (applied: boolean) => void };
+  publication?: Promise<void>;
 }
 
 interface SupervisorExecutionSession extends ManagedExecutionSessionBase {
@@ -692,6 +695,7 @@ interface CanvasSurfaceLifecycleState {
   bootstrapAck: boolean;
   terminalReadSettlementV1?: true;
   terminalLocalSettlementV1?: true;
+  terminalLocalOutputCreditV1?: true;
   terminalAvailableReceiptV1?: true;
 }
 
@@ -10476,6 +10480,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!owner || owner.options.profile !== profile || owner.options.profileMode !== mode) {
       throw new Error('The execution candidate provider factory is unavailable for snapshot-only.');
     }
+    if (surface && owner.admissionLimits.pending !== undefined &&
+        this.surfaceLifecycle[surface].terminalLocalOutputCreditV1 !== true) {
+      throw new Error('The current terminal page does not support local output consumption credit.');
+    }
     assertExecutionCandidateCapabilities(owner.options.capabilities, mode);
     owner.assertAdmission();
   }
@@ -12826,11 +12834,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private markSurfaceReady(
     surface: CanvasSurfaceLocation, lifecycle?: WebviewLifecycleIdentity,
-    capabilities?: { terminalReadSettlementV1?: true; terminalLocalSettlementV1?: true; terminalAvailableReceiptV1?: true }
+    capabilities?: { terminalReadSettlementV1?: true; terminalLocalSettlementV1?: true;
+      terminalLocalOutputCreditV1?: true; terminalAvailableReceiptV1?: true }
   ): void {
     this.clearTerminalAvailableNotifications(surface);
     if (this.surfaceLifecycle[surface].frameId !== lifecycle?.frameId ||
-        this.surfaceLifecycle[surface].terminalLocalSettlementV1 !== capabilities?.terminalLocalSettlementV1) {
+        this.surfaceLifecycle[surface].terminalLocalSettlementV1 !== capabilities?.terminalLocalSettlementV1 ||
+        this.surfaceLifecycle[surface].terminalLocalOutputCreditV1 !== capabilities?.terminalLocalOutputCreditV1) {
       this.cancelLocalExecutionReaders(surface, 'cancelled', 'surface-ready-changed');
     }
     if (this.surfaceLifecycle[surface].frameId !== lifecycle?.frameId ||
@@ -12845,6 +12855,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       frameId: lifecycle?.frameId,
       terminalReadSettlementV1: capabilities?.terminalReadSettlementV1,
       terminalLocalSettlementV1: capabilities?.terminalLocalSettlementV1,
+      terminalLocalOutputCreditV1: capabilities?.terminalLocalOutputCreditV1,
       terminalAvailableReceiptV1: capabilities?.terminalAvailableReceiptV1,
       bootstrapAck: false
     };
@@ -13487,6 +13498,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/executionLocalTerminalSettled':
         void this.handleLocalExecutionTerminalSettled(sourceSurface, parsedMessage.payload, lifecycle, sourceWebview);
+        return;
+      case 'webview/executionLocalOutputApplied':
+        this.handleLocalExecutionOutputApplied(sourceSurface, parsedMessage.payload, lifecycle, sourceWebview);
         return;
       case 'webview/updateViewportCenter':
         this.lastVisibleCanvasCenterBySurface[sourceSurface] = parsedMessage.payload.visibleCenter;
@@ -17024,7 +17038,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!owner) throw new Error('Non-native execution owner is not configured.');
     const key = this.getExecutionSessionOperationKey(kind, nodeId);
     const persistsFinal = this.hasNonNativeHostPersistence();
-    if (persistsFinal && (this.nonNativeHostExecutions.has(key) || this.nonNativeHostExecutions.size >= owner.admissionLimits.executions)) {
+    const retainedRecords = [...this.nonNativeHostExecutions.values()];
+    const pending = retainedRecords.filter(record => {
+      const snapshot = record.execution.snapshot();
+      return snapshot.admissionPending || (snapshot.retired && record.persistence &&
+        record.persistence.result?.kind !== 'saved' && record.persistence.result?.kind !== 'not-required');
+    }).length;
+    if (persistsFinal && (this.nonNativeHostExecutions.has(key) || !hasExecutionAdmissionCapacity(owner.admissionLimits,
+      { executions: retainedRecords.length, pending }))) {
       throw new Error('Local final snapshot responsibility still occupies the execution key or Host capacity.');
     }
     const execution = owner.reserve(key);
@@ -20650,28 +20671,71 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async postLocalExecutionReaderMessage(
     record: NonNativeHostExecution, reader: LocalExecutionReader, message: HostToWebviewMessage
   ): Promise<boolean> {
-    if (!this.isLocalExecutionReaderCurrent(record, reader)) {
-      this.settleLocalExecutionReader(record, reader, { kind: 'lost', reason: 'surface-no-longer-current' });
-      return false;
-    }
+    const previousPublication = reader.publication;
+    let finishPublication!: () => void;
+    const publication = new Promise<void>(resolve => { finishPublication = resolve; });
+    reader.publication = publication;
     let cancel!: () => void;
     const cancelled = new Promise<false>(resolve => { cancel = () => resolve(false); });
     reader.pendingPublications.add(cancel);
+    let receipt: LocalExecutionReader['pendingOutputReceipt'];
     try {
+      await Promise.race([previousPublication, cancelled]);
+      if (!this.isLocalExecutionReaderCurrent(record, reader)) {
+        this.settleLocalExecutionReader(record, reader, { kind: 'lost', reason: 'surface-no-longer-current' });
+        return false;
+      }
+      let applied = Promise.resolve(true);
+      if (reader.outputCredit && (message.type === 'host/executionSnapshot' || message.type === 'host/executionOutput')) {
+        const outputSequence = message.payload.outputSequence;
+        if (outputSequence === undefined || !Number.isSafeInteger(outputSequence) || outputSequence < 0) {
+          throw new Error('Local output credit requires an exact sequence.');
+        }
+        applied = new Promise<boolean>(resolve => { receipt = { receiptId: randomUUID(), outputSequence, resolve }; });
+        reader.pendingOutputReceipt = receipt;
+        const localOutputReceipt = { receiptId: receipt!.receiptId, outputSequence };
+        message = message.type === 'host/executionSnapshot'
+          ? { ...message, payload: { ...message.payload, localOutputReceipt } }
+          : { ...message, payload: { ...message.payload, localOutputReceipt } };
+      }
       const prepared = { ...message, lifecycle: reader.lifecycle };
       this.recordHostMessage(reader.lifecycle.surface, prepared, true);
-      // Cancellation releases consumption even when the Webview delivery promise never resolves.
-      const published = await Promise.race([
+      // Delivery is not consumption. Cancellation releases both waits without granting application credit.
+      const delivered = await Promise.race([
         Promise.resolve(reader.webview.postMessage(prepared)), cancelled
       ]);
-      if (published === true && this.isLocalExecutionReaderCurrent(record, reader)) return true;
+      if (delivered === true && await Promise.race([applied, cancelled]) &&
+          this.isLocalExecutionReaderCurrent(record, reader)) return true;
       this.settleLocalExecutionReader(record, reader, { kind: 'lost', reason: 'webview-publication-rejected' });
     } catch {
       this.settleLocalExecutionReader(record, reader, { kind: 'lost', reason: 'webview-publication-failed' });
     } finally {
+      if (receipt && reader.pendingOutputReceipt === receipt) reader.pendingOutputReceipt = undefined;
+      receipt?.resolve(false);
       reader.pendingPublications.delete(cancel);
+      finishPublication();
+      if (reader.publication === publication) reader.publication = undefined;
     }
     return false;
+  }
+
+  private handleLocalExecutionOutputApplied(
+    surface: CanvasSurfaceLocation,
+    payload: Extract<WebviewToHostMessage, { type: 'webview/executionLocalOutputApplied' }>['payload'],
+    lifecycle?: WebviewLifecycleIdentity,
+    sourceWebview?: vscode.Webview
+  ): void {
+    const record = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(payload.kind, payload.nodeId));
+    const reader = record?.localReaders?.get(surface);
+    const receipt = reader?.pendingOutputReceipt;
+    if (!record || !reader || !receipt || !reader.outputCredit || reader.webview !== sourceWebview ||
+        !this.sameLocalExecutionLifecycle(reader.lifecycle, lifecycle) ||
+        !this.isLocalExecutionReaderCurrent(record, reader) ||
+        payload.executionSessionId !== record.execution.identity.executionId ||
+        payload.receiptId !== receipt.receiptId || payload.outputSequence !== receipt.outputSequence) return;
+    if (payload.outcome === 'applied') receipt.resolve(true);
+    else this.settleLocalExecutionReader(record, reader,
+      { kind: 'cancelled', reason: payload.reason || 'page-output-cancelled' });
   }
 
   private localExecutionSnapshotMessage(
@@ -20701,11 +20765,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.settleLocalExecutionReader(record, reader, { kind: 'lost', reason: 'surface-replaced' });
       reader = undefined;
     }
-    if (reader?.outcome) return;
-    if (reader?.attachPromise) return reader.attachPromise;
+    if (reader?.attachPromise) {
+      await reader.attachPromise;
+      // An eager snapshot may precede mount. A mounted attach must not inherit its cancelled result.
+      if (!reader.outcome) return;
+    }
+    if (reader?.outcome) {
+      if (!reader.outputCredit || record.readerAdmissionClosed) return;
+      if (!this.sameLocalExecutionLifecycle(lifecycle, this.getSurfaceLifecycleIdentity(surface)) ||
+          webview !== this.getSurfaceMessageWebview(surface) || !this.isInteractiveSurface(surface)) return;
+      const current = record.localReaders.get(surface);
+      if (current !== reader) return this.postLocalExecutionSnapshot(record, options);
+      reader = undefined;
+    }
     if (record.readerAdmissionClosed && (!reader || !record.finalTerminal)) return;
     if (!reader) {
-      reader = { lifecycle, webview, pendingPublications: new Set(), initialPublished: false };
+      reader = { lifecycle, webview, pendingPublications: new Set(), initialPublished: false,
+        outputCredit: this.surfaceLifecycle[surface].terminalLocalOutputCreditV1 === true };
       // Admission precedes all tracker work and survives the final-flush admission boundary.
       record.localReaders.set(surface, reader);
     }

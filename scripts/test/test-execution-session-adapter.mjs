@@ -100,7 +100,7 @@ try {
 
   const require = createRequire(import.meta.url);
   const { encodeOutputFrame, OutputCreditWindow, parseProviderMessage, parseParentMessage, validateLaunchSpec,
-    normalizeExecutionAdmissionLimits, EXECUTION_CANDIDATE_PROFILE,
+    normalizeExecutionAdmissionLimits, EXECUTION_PRODUCTION_ADMISSION, hasExecutionAdmissionCapacity, EXECUTION_CANDIDATE_PROFILE,
     EXECUTION_INTERACTION_LIMITS } = require(path.join(tempDir, 'executionLifecycle.cjs'));
   const { createExecutionAuthority, prepareExecution } = require(path.join(tempDir, 'executionSessionAdapter.cjs'));
   const tests = [];
@@ -219,6 +219,81 @@ try {
       }
     };
   }
+
+  test('production admission bounds pending responsibility without imposing a running-session maximum', async () => {
+    assert.deepEqual(EXECUTION_PRODUCTION_ADMISSION, { executions: null, starting: 1, pending: 2 });
+    assert.ok(Object.isFrozen(EXECUTION_PRODUCTION_ADMISSION));
+    const policy = normalizeExecutionAdmissionLimits(EXECUTION_PRODUCTION_ADMISSION);
+    assert.deepEqual(policy, EXECUTION_PRODUCTION_ADMISSION);
+    assert.equal(hasExecutionAdmissionCapacity(policy, { executions: 10, pending: 1 }), true);
+    assert.equal(hasExecutionAdmissionCapacity(policy, { executions: 10, pending: 2 }), false);
+    for (const invalid of [{ executions: null, starting: 1 }, { executions: null, starting: 1, pending: 0 },
+      { executions: null, starting: 3, pending: 2 }, { executions: 2, starting: 1, pending: 2 },
+      { executions: null, starting: 1, pending: Infinity }]) {
+      assert.throws(() => normalizeExecutionAdmissionLimits(invalid), /admission/);
+    }
+    const authority = createExecutionAuthority(policy);
+    const scheduler = createScheduler();
+    const running = [];
+    for (let index = 0; index < 11; index++) {
+      const h = createHarness({ authority, scheduler });
+      await h.started();
+      running.push(h);
+    }
+    assert.equal(authority.snapshot().active, 11);
+    assert.equal(authority.snapshot().admissionPending, 0);
+    running[0].output(1, 'bounded-live-consumption');
+    await settle(scheduler);
+    assert.ok(running[0].snapshot().pendingBytes > 0);
+    assert.equal(authority.snapshot().admissionPending, 0, 'normal bounded live output is not an exit responsibility slot');
+    const preparation = createHarness({ authority, scheduler });
+    const starting = createHarness({ authority, scheduler });
+    assert.equal(authority.snapshot().admissionPending, 2);
+    assert.throws(() => createHarness({ authority, scheduler }), /capacity/);
+    await starting.started();
+    assert.equal(authority.snapshot().admissionPending, 1);
+    assert.equal(preparation.session.cancelReservation(), true);
+    for (const h of running) h.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    assert.equal(authority.snapshot().admissionPending, 11, 'existing executions may close together; their obligations are retained');
+    assert.throws(() => createHarness({ authority, scheduler }), /capacity/);
+    for (const h of running) await h.retire();
+    assert.equal(authority.snapshot().admissionPending, 0);
+    await starting.retire();
+  });
+
+  test('production admission retains one start allowance and sticky unknown quarantine', async () => {
+    const authority = createExecutionAuthority(EXECUTION_PRODUCTION_ADMISSION);
+    const scheduler = createScheduler();
+    const first = createHarness({ authority, scheduler });
+    const second = createHarness({ authority, scheduler });
+    await first.start();
+    const denied = await second.start();
+    assert.equal((await denied.first).kind, 'rejected-before-acquire');
+    assert.equal(second.connectCount, 0);
+    first.message({ type: 'operationObservation', operationId: 'start', result: { kind: 'started', pid: 1234 } });
+    await settle(scheduler);
+    first.sink.controlResourceResult({ kind: 'unknown', reason: 'unconfirmed provider release' });
+    assert.throws(() => createHarness({ authority, scheduler }), /quarantined/);
+    first.sink.controlResourceResult({ kind: 'released' });
+    await first.retire();
+    assert.ok(authority.snapshot().blockedReason);
+    assert.throws(() => createHarness({ authority, scheduler }), /quarantined/);
+  });
+
+  test('production admission observes a transport boundary before the next adapter task', async () => {
+    const authority = createExecutionAuthority(EXECUTION_PRODUCTION_ADMISSION);
+    const scheduler = createScheduler();
+    const first = createHarness({ authority, scheduler });
+    const second = createHarness({ authority, scheduler });
+    await first.started();
+    await second.started();
+    first.sink.dataEnded();
+    second.sink.exited();
+    assert.equal(first.snapshot().state, 'running');
+    assert.equal(second.snapshot().state, 'running');
+    assert.equal(authority.snapshot().admissionPending, 2);
+    assert.throws(() => createHarness({ authority, scheduler }), /capacity/);
+  });
 
   test('admission limits preserve S1 defaults and validate a frozen independent policy', () => {
     assert.deepEqual(normalizeExecutionAdmissionLimits(), { executions: 2, starting: 1 });

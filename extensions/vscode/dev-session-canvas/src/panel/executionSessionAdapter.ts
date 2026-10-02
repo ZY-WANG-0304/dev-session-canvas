@@ -4,6 +4,7 @@ import {
   assertExecutionIdentity,
   assertParentMessageSize,
   decodeOutputPayload,
+  hasExecutionAdmissionCapacity,
   normalizeExecutionAdmissionLimits,
   parseProviderMessage,
   sameExecutionIdentity,
@@ -150,7 +151,9 @@ export class ExecutionAuthority {
     if (this.blockedReason) throw new Error('Execution authority is quarantined');
     if (this.closing) throw new Error('Execution authority is closing');
     if (this.executions.has(identity.executionId)) throw new Error('Execution identity already reserved');
-    if (this.executions.size >= this.admissionLimits.executions) throw new Error('Execution capacity exhausted');
+    if (!hasExecutionAdmissionCapacity(this.admissionLimits, {
+      executions: this.executions.size, pending: this.pendingAdmissionCount()
+    })) throw new Error('Execution capacity exhausted');
     this.executions.set(identity.executionId, { identity, execution });
   }
 
@@ -187,8 +190,16 @@ export class ExecutionAuthority {
     return true;
   }
 
-  snapshot(): Readonly<{ active: number; starting: number; blockedReason?: string; closing: boolean; permanent: boolean }> {
+  private pendingAdmissionCount(): number {
+    let pending = 0;
+    for (const { execution } of this.executions.values()) if (execution.isAdmissionPending()) pending += 1;
+    return pending;
+  }
+
+  snapshot(): Readonly<{ active: number; starting: number; admissionPending: number;
+    blockedReason?: string; closing: boolean; permanent: boolean }> {
     return Object.freeze({ active: this.executions.size, starting: this.starting.size,
+      admissionPending: this.pendingAdmissionCount(),
       blockedReason: this.blockedReason, closing: this.closing, permanent: this.permanent });
   }
 }
@@ -584,6 +595,11 @@ export class PreparedExecution {
     } else if (result.kind === 'resized') this.finishInteraction(interaction, result);
     else this.finishInteraction(interaction, this.interactionFailure(interaction, result.kind, result.reason,
       interaction.writtenBytes + (bytes ?? 0)));
+  }
+
+  isAdmissionPending(): boolean {
+    return this.state !== 'running' || this.process !== undefined || this.source !== undefined ||
+      this.firstFault !== undefined || this.controlDisconnected || this.providerExited || this.outputEnded || this.outputClosed;
   }
 
   snapshot() {

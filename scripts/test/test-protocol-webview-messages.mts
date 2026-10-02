@@ -107,6 +107,24 @@ assert.deepEqual(parseWebviewMessage({ type: 'webview/executionTerminalAvailable
 } }), { type: 'webview/executionTerminalAvailableReceived', payload: availableReceiptPayload },
 'Notification receipt must not acquire application or settlement semantics.');
 const localIdentity = { nodeId: 'terminal', kind: 'terminal', executionSessionId: 'local-session' };
+const localCredit = { ...localIdentity, receiptId: 'local-receipt', outputSequence: 0, outcome: 'applied' };
+for (const outcome of ['applied', 'cancelled']) {
+  const payload = { ...localCredit, outcome };
+  assert.deepEqual(parseWebviewMessage({ type: 'webview/executionLocalOutputApplied', payload }),
+    { type: 'webview/executionLocalOutputApplied', payload });
+}
+for (const patch of [{ nodeId: '' }, { kind: 'note' }, { executionSessionId: '' }, { receiptId: '' },
+  { receiptId: 'x'.repeat(257) }, { outputSequence: -1 }, { outputSequence: 0.5 },
+  { outputSequence: Number.MAX_SAFE_INTEGER + 1 }, { outputSequence: '0' }, { outcome: 'eof' },
+  { reason: 'x'.repeat(257) }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/executionLocalOutputApplied', payload: { ...localCredit, ...patch } }), null);
+}
+assert.deepEqual(parseWebviewMessage({ type: 'webview/ready', payload: { capabilities: {
+  terminalLocalOutputCreditV1: true
+} } }), { type: 'webview/ready', payload: { capabilities: { terminalLocalOutputCreditV1: true } } });
+assert.equal(parseWebviewMessage({ type: 'webview/ready', payload: { capabilities: {
+  terminalLocalOutputCreditV1: false
+} } }), null);
 const completion = { executionSessionId: 'local-session', finalOutputSequence: 0 };
 assert.deepEqual(normalizeLocalTerminalCompletion(completion), completion);
 for (const patch of [{ executionSessionId: '' }, { executionSessionId: 'x'.repeat(257) },

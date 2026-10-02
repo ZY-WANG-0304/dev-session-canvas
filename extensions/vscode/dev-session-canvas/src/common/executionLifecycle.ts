@@ -156,18 +156,33 @@ export const S1_LIMITS = Object.freeze({
   starting: 1
 });
 
-export interface ExecutionAdmissionLimits {
-  readonly executions: number;
-  readonly starting: number;
-}
+export type ExecutionAdmissionLimits =
+  | Readonly<{ executions: number; starting: number; pending?: never }>
+  | Readonly<{ executions: null; starting: number; pending: number }>;
+
+export const EXECUTION_PRODUCTION_ADMISSION: ExecutionAdmissionLimits = Object.freeze({
+  executions: null, starting: 1, pending: 2
+});
 
 export function normalizeExecutionAdmissionLimits(value?: ExecutionAdmissionLimits): ExecutionAdmissionLimits {
   const record = value === undefined ? S1_LIMITS
-    : readRecord(value, 'Execution admission limits', ['executions', 'starting']);
-  const executions = readInteger(record.executions, 'Execution admission executions', 1);
+    : readRecord(value, 'Execution admission limits', ['executions', 'starting', 'pending']);
   const starting = readInteger(record.starting, 'Execution admission starting', 1);
+  if (record.executions === null) {
+    const pending = readInteger('pending' in record ? record.pending : undefined, 'Execution admission pending', 1);
+    if (starting > pending) throw new RangeError('Execution admission starting must not exceed pending capacity.');
+    return Object.freeze({ executions: null, starting, pending });
+  }
+  if ('pending' in record) throw new TypeError('Finite execution admission does not accept pending capacity.');
+  const executions = readInteger(record.executions, 'Execution admission executions', 1);
   if (starting > executions) throw new RangeError('Execution admission starting must not exceed executions.');
   return Object.freeze({ executions, starting });
+}
+
+export function hasExecutionAdmissionCapacity(
+  limits: ExecutionAdmissionLimits, counts: Readonly<{ executions: number; pending: number }>
+): boolean {
+  return limits.executions === null ? counts.pending < limits.pending : counts.executions < limits.executions;
 }
 
 const textEncoder = new TextEncoder();

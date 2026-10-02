@@ -416,6 +416,11 @@ export interface LocalTerminalCompletion {
   finalOutputSequence: number;
 }
 
+export interface LocalOutputReceipt {
+  receiptId: string;
+  outputSequence: number;
+}
+
 export type LocalTerminalOutcome =
   | { kind: 'applied'; finalOutputSequence: number }
   | { kind: 'cancelled'; reason: string };
@@ -742,6 +747,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       payload?: { capabilities?: {
         terminalReadSettlementV1?: true;
         terminalLocalSettlementV1?: true;
+        terminalLocalOutputCreditV1?: true;
         terminalAvailableReceiptV1?: true;
       } };
     }
@@ -950,6 +956,16 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         executionSessionId: string;
         authorityId: string;
         revision: number;
+      };
+    }
+  | {
+      type: 'webview/executionLocalOutputApplied';
+      payload: LocalOutputReceipt & {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        outcome: 'applied' | 'cancelled';
+        reason?: string;
       };
     }
   | {
@@ -1319,6 +1335,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'host/executionSnapshot';
       payload: {
+        localOutputReceipt?: LocalOutputReceipt;
         nodeId: string;
         kind: ExecutionNodeKind;
         requestId?: string;
@@ -1366,6 +1383,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'host/executionOutput';
       payload: {
+        localOutputReceipt?: LocalOutputReceipt;
         nodeId: string;
         kind: ExecutionNodeKind;
         executionSessionId?: string;
@@ -1632,13 +1650,16 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     const capabilities = isRecord(value.payload.capabilities) ? value.payload.capabilities : {};
     const remote = capabilities.terminalReadSettlementV1;
     const local = capabilities.terminalLocalSettlementV1;
+    const localCredit = capabilities.terminalLocalOutputCreditV1;
     const availableReceipt = capabilities.terminalAvailableReceiptV1;
     if ((remote !== undefined && remote !== true) || (local !== undefined && local !== true) ||
-        (availableReceipt !== undefined && availableReceipt !== true)) return null;
-    return remote === true || local === true || availableReceipt === true
+        (availableReceipt !== undefined && availableReceipt !== true) ||
+        (localCredit !== undefined && localCredit !== true)) return null;
+    return remote === true || local === true || availableReceipt === true || localCredit === true
       ? { type: value.type, payload: { capabilities: {
           ...(remote === true ? { terminalReadSettlementV1: true as const } : {}),
           ...(local === true ? { terminalLocalSettlementV1: true as const } : {}),
+          ...(localCredit === true ? { terminalLocalOutputCreditV1: true as const } : {}),
           ...(availableReceipt === true ? { terminalAvailableReceiptV1: true as const } : {})
         } } }
       : { type: value.type };
@@ -1864,6 +1885,21 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         targetGroupId
       }
     };
+  }
+
+  if (value.type === 'webview/executionLocalOutputApplied') {
+    const payload = isRecord(value.payload) ? value.payload : undefined;
+    if (!payload || typeof payload.nodeId !== 'string' || !payload.nodeId || payload.nodeId.length > 256 ||
+        !isExecutionNodeKind(payload.kind) || typeof payload.executionSessionId !== 'string' ||
+        !payload.executionSessionId || payload.executionSessionId.length > 256 ||
+        typeof payload.receiptId !== 'string' || !payload.receiptId || payload.receiptId.length > 256 ||
+        !Number.isSafeInteger(payload.outputSequence) || (payload.outputSequence as number) < 0 ||
+        (payload.outcome !== 'applied' && payload.outcome !== 'cancelled') ||
+        (payload.reason !== undefined && (typeof payload.reason !== 'string' || payload.reason.length > 256))) return null;
+    return { type: value.type, payload: { nodeId: payload.nodeId, kind: payload.kind,
+      executionSessionId: payload.executionSessionId, receiptId: payload.receiptId,
+      outputSequence: payload.outputSequence as number, outcome: payload.outcome,
+      ...(typeof payload.reason === 'string' ? { reason: payload.reason } : {}) } };
   }
 
   if (value.type === 'webview/executionLocalTerminalSettled') {

@@ -19,6 +19,8 @@ updated_at: 2026-10-02
 
 # 退出完整性生产接入与故障域收敛
 
+当前实施入口（2026-10-02，§53）：用户明确先F-04容量/资源/准入，再有限页面修复，最后正常构建/默认启用及受影响最终验收。当前页面viewport与慢write/fit已先红；实现必须与§10.17资源边界一起收口，不追加通用诊断阶段。
+
 当前 §52 增量（2026-10-02）：`1d784d8b` / Linux `36935000098` 原八场真实 Agent 验收通过，包含 Codex 空快照与 Claude 1262-byte 非空快照的首页面独立重排和 schema2 新 Host 重开；四 natural 响应/EOF、八场零 cleanup 通过。旧两次首场超时根因未知，不为复现而重跑；固定 Linux 结果不代证其他平台新判据、慢写/最终 fit、F-04 或默认生产准入。
 
 最新 A1/B1 结果（2026-10-01，覆盖后续历史入口）：固定 `10/1` schema2 Linux Electron 候选的 `color`/`size` 多会话校准均通过内容、预算观察与产品 cleanup；峰值总 RSS 为 3,876,724,736 / 3,954,757,632 bytes，仅代表该声明输入。随后同候选 `2/1` `color` Host detach/reconnect 通过：旧 Host 消失后原 Supervisor、主体和 session/reader 身份保持，B 在 A 尚未追平时 53.4ms 应用，Host ready 后 15,538.456ms 追平，reconnect/outer cleanup 均通过。两项不关闭 F-04、默认准入、跨平台/packaged 或未填页面格，不再重复成功矩阵或扩展通用工具前置。
@@ -2344,3 +2346,21 @@ macOS 真实 Agent 的第一次 run `36906574728` 与唯一允许的同输入重
 上述单次原生输入已在 run `36935000098` / `1d784d8b` 全部通过。实际 Agent job 为 `ubuntu-22.04`，不是六资产 workflow 的 Ubuntu 24.04；Codex `0.157.1`、Claude `2.1.280`、DeepSeek `deepseek-flash`。四 natural 的响应/EOF 和八场零 cleanup 均成立；stop 仍按主动停止解释，不能因为 source=eof 把它写成自然完成。Codex snapshot stop 保存 0 bytes/seq14，Claude 非空保存 1262 bytes/seq5；保存66x21到页面96x30的独立重排比较全匹配，Claude viewport10到8保持原事实，两场 schema2 新Host严格读盘/页面/无新执行/cleanup均通过，非空不伪装 empty/origin。报告 `.debug/ci-36935000098-schema2/runtime-real-agent-linux-36935000098-1/summary.json` 的源码hash与冻结提交核对，未上传raw。两次旧超时未复现、根因未确定，不能宣称修复或由本轮补造旧第一现场。
 
 仍在既定 A2/A3 内的边界：`main.tsx` 的 `onSnapshotApplied` 先于排队快照 write，`executionSessionNodes.tsx` 的 fit 不以 write callback 为屏障；serialized-state restore 分支也未显式 scrollToLine(saved.viewportY)。新 oracle 则先完成 hydrate 再 resize。当前固定页面通过不证明任意慢写或 fit 前后所有时序均通过，也不证明保存 viewport 与默认底部不同的组合；新Host断言还可能在延迟fit前满足。只读差异供原慢消费者/终态责任定位，不据此扩大本次失败因果、削弱oracle或追加平台诊断框架。
+
+## 53. F-04 优先的有限产品收尾
+
+资源模型、生产准入和snapshot-only信用按容量重评§10.17实施，正常启动不借candidate永远关闭规避交付。先完成结构责任与模块回归，再固定正常构建、打包、默认启用版本，最后一次收集受影响真实Agent/Webview/现代跨平台/安装包证据。旧多会话、重连/compact以及未受影响矩阵直接复用；root归属另列，旧OS不作前置，旧失败保留不自动排队。工程取舍由代理承担。
+
+既定页面责任已出现直接先红：实际Chromium的Agent/Terminal direct snapshot及checkpoint四例保存viewport17却恢复到底部99；`.debug/a2-a3-saved-viewport-before-fix-20261002/`冻结。实际延迟xterm既有write timer两例在write完成前，Agent从79x28被fit成67x22、Terminal从76x28变64x22，`.debug/a2-a3-slow-fit-before-fix-20261002/`冻结；原controller/headless测试也证明snapshot应用通知提前于write完成。这些证据只证明所列产品路径，不推断既有Agent超时因果。
+
+选定最小修正为终端实例级restore屏障：ordinary与paged snapshot开始前取得、成功/失败/取消均释放；屏障期间自动和手动fit不改变正在恢复的终端尺寸，释放后按真实容器重排。`onSnapshotApplied`仅在真实write完成且原generation仍有效时通知/ack，不把入队当应用；不得延长源/reader结束预算或吞错误。direct serialized字节应用后恢复保存viewport；checkpoint在其本体write完成后恢复checkpoint viewport，再按原顺序应用后续事件，让后续真实输出自然推进视口。只用现有controller与Agent/Terminal组件，不建通用布局锁。
+
+失败结算复用既有reader失败/取消/force-delete与页面测试。旧测试若仍要求把exit/read-error提示写入终端正文，须按已批准的UI提示契约改成提示可见、reader具名非成功结算、原正文不变；保留旧红，不能通过删除内容或settlement断言取绿。恢复/resize修正后的慢write、最终cursor/viewport、过期generation和失败释放必须有定向回归，再由最终原生矩阵覆盖实际产品接入。
+
+正常构建选定 `platform` 加生产准入，而不是按是否碰巧存在资产目录静默切回 stock。六目标输入来自显式参数、`DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET` 或固定 generated 目录；原资产 manifest、源码摘要和 binary hash 校验继续使用，缺失即失败。显式单平台构建保留开发用途，stock 仅作显式历史对照；正式 package 必须再次验证完整六目标和 production selection，不能通过 package 内部重新 build 回退到旧实现。watch 可以复用已验证的全量资产，但不放宽单目标开发输入的限制。
+
+发布/预合并验证链复用六资产 workflow：先固定输入 commit，同一 ref 构建和聚合，检查各 summary 的 inputCommit 与 archive hash，再按既有 runtime 文件清单展开并调用 asset-set 校验。CI 输入不依赖 `.debug`、latest 或任意其他分支的二进制。`release:verify` 本身包含 clean-checkout 打包检查，因此须在 verify 前准备资产并继承明确绝对路径；实际发布打包仍在 release verify 通过后执行，不改历史 Release 已有 VSIX。六资产编译是生产产物供应步骤，不重新扩成所有已通过 native 生命周期矩阵。
+
+页面窄修已完成本地验证：六个先红案例修后通过；共18个定向Chromium测试覆盖Agent/Terminal保存viewport、慢write/fit、连续resize单次提交、serialized重建、分页末页/最终光标和错误提示不注入正文。controller 39/39、Host batch 10/10通过。此结果尚不包含新增本地消费信用、最终默认版本或真实Agent复验，不据局部绿色关闭整体收尾。
+
+后续本地信用已补actual controller与页面回归：controller46/46、Host batch10/10和Host154/154通过；显式stock仅用于最新页面bundle的8个受影响Chromium测试通过，其中两例覆盖慢write回执、健康本地final snapshot真实应用、unmount/无controller取消，六例复验restore/fit/viewport。新增notify异常先红原cancel close数0而预期1，修后将通知/屏障释放异常作为应用失败且仍向paged consumer结算，不吞错误。stock页面测试不代证默认provider/正式打包，最终正常六资产版本仍需实际验证。

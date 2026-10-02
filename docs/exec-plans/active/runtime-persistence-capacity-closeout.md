@@ -1,5 +1,7 @@
 # 收口 Runtime Persistence 的容量与交互成本
 
+当前唯一执行入口（2026-10-02，用户收尾顺序）：按容量设计§10.17先完成资源模型、生产准入、snapshot-only实际消费信用与candidate冷启动边界；复用既有十会话/重连/compact。随后按生产接入§53修复已先红viewport和慢write/fit，完成正常build/package/default并只复验受影响最终矩阵，进入整体review。普通工程决定自主完成，不重跑无关矩阵、不优化旧64/128或追加工具阶段。
+
 当前收口（2026-10-02，覆盖后续历史“下一步”）：r23 固定现代 Linux Electron `--capacity-attach-compact` 两 Terminal 实际 attach/compact 通过；动态 scrollback、两次 resize、首个 checkpoint、同一分页 reader、约 18 MiB 后置输出跨过实际 16 MiB journal compaction 阈值、current/previous candidate、retained prefix、页面输出/尺寸/scrollback、reader identity、自然 no-history 与 cleanup 均成立，未出现 `runtime/terminalPagedReadFailed` 或 Host page error。durable manifest 的 current/previous 为 revision 6579/6502，retained start 6503，journal head 11185；previous candidate 事件连续可读。该结果只关闭现代 Linux Electron 固定组合，不形成产品并发上限或整体 F-04/A1 通过。随后既有 `10/1` schema2 color/size 与 `2/1` detach/reconnect 结果继续有效；现代 GitHub runner 版本是本次跨平台验收基线，旧 macOS/Windows 系统不再阻塞本计划。以上不改变真实 Agent/Webview、packaged、尾部完整性、跨平台产品准入或 64/128 MiB 历史阈值；不重复已通过组合，不追加通用工具验证，下一只处理既定剩余格。
 
 同日现有结构回归复核保持通过：Host output credit 的真实 socket 背压、控制/尾部/compact 生命周期，output/resize/scrollback 顺序，以及 terminal paged projection 的 Webview 39/39、Host batch 10/10 与 compaction/取消/重试均通过；仅作为直接结构护栏，不升级为完整 A1 资源或跨平台页面证据。
@@ -25,6 +27,14 @@
 已完成的结构修复不重开；当前生产源有界化依赖 B2 的 owned 接入，因此不能以合并进程样本先变绿为前提阻止真实链形成。最终 A1 要给出实际各进程与多会话总量的资源/交互结果，不能拿旧合并阈值代替，也不能在转向 B2 时关闭本计划。
 
 ## 进度
+
+- [x] (2026-10-02，§10.17) 生产准入分账、Host最终保存占槽、本地write信用与mount竞态、candidate冷启动已实现；adapter101、owner50、Host154、namespace11、Supervisor94、controller46/Host batch10及协议/typecheck回归通过。旧十会话/重连/compact未重跑。
+- [ ] (2026-10-02，§53) 正常默认platform构建、同ref六资产与严格正式VSIX打包接线进行中；只在最终同版本补受影响Agent/Webview/现代平台/安装包验收，F-04总体未关闭。
+
+- [x] (2026-10-02) 复核Runtime热路径上界及O(N)/O(segment)资源账，确认总N混用pending、snapshot-only投递信用和candidate冷启动重放三个直接边界缺口；沿§10.17选定有限修正。
+- [ ] 完成不可变production准入与Host最终保存责任分账，保留unknown/旧finite策略/获取前拒绝，定向先红后绿。
+- [ ] 完成本地页面实际write信用和取消/错误结算；新candidate取得排他namespace后不加载陈旧Runtime正文，legacy保留。
+- [ ] 按§53修复已证页面问题，完成正常构建/打包/默认启用及受影响最终真实验收；无关成功矩阵复用，最后整体review/PR。
 
 - [x] (2026-10-01) 只读重评 A1 正式资源口径：十会话固定负载是声明输入而非产品并发上限；活动会话按用户需求承担 O(N) 资源成本，不承诺任意 N 的固定 RSS；payload/pending/page/credit 硬边界与最终保存、reader、unknown 责任保护保持。
 - [x] (2026-10-01) 修复 Q=1 在明确 `rejected-before-acquire` 后遗留 `candidateRuntimeStarts` 的 Host 预约，并以 Terminal/Agent 同一节点重试回归验证；不得清理网络/能力/资源未知结果，Host wiring 149/149 通过。
@@ -63,6 +73,8 @@
 - [x] (2026-09-28) 本轮结果/残余债务已同步，独立 review 的字节校验问题已复现并修复、复核无新阻塞，以本地提交交付该增量；F-04 未整体通过，计划保持 active，不 push/PR。
 
 ## 意外与发现
+
+2026-10-02：现行两/十槽同时计活动主体与收尾责任，不能直接当产品并发上限；snapshot-only只有postMessage投递等待，页面pendingOutput没有消费信用；candidate新Supervisor仍全量loadRegistry/replay。资源模型还包含保留segment元数据，不应宣称全RSS与历史无关。页面viewport和慢write/fit六个Chromium回归另由§53冻结先红。
 
 2026-10-01 只读核对发现，启动并发 `Q=1` 的第二次创建在 Supervisor 侧可确定返回 `rejected-before-acquire` 并删除准备资源，但 Host 侧将其当作普通 Error；由于记录已标记 `submitted` 而未 `settled`，`CanvasPanelManager` 后续会把同节点永久视为 pending/unknown。该问题与容量数值无关，曾是直接的新建可用性阻塞；`e2a53372` 已仅针对这一明确结果清理 reservation、恢复可重试 error，并以 Terminal/Agent 同节点重试回归收口，未知连接/能力/资源结果仍保持隔离。该历史发现和首报保留，不再列为当前未修复项。固定十会话结果不提供把 `N` 变成产品上限的证据；移除总 N 也会错误移除 final snapshot/unknown 的保护，因此活动会话计数与责任槽必须分账。
 
@@ -105,6 +117,8 @@
 通知合并的独立 review 命中同 readId 重附着：relay 可返回旧 descriptor，页面对此不执行新 reader 的初始强制拉取，清掉较新 pending 会遗失唤醒。最终实现保留同身份通知信用，于 snapshot 后显式合并当前 session revision/title；原 receipt 有效但重复无效，frame/执行身份替换后的旧 receipt 无效。这样重复 attach 也不绕过单在途限额。另保留原通用 postMessage 的 void 契约，只让提示取得原投递 Promise，避免把其他 catch 续体改成等待投递。stock node-pty 的公共 pause 不足以证明退出 drain，故当前生产源有界化不能靠简单暂停补丁关闭。
 
 ## 决策记录
+
+- 决策：生产采用无固定活动N、Q=1、pending准入阈值2，既有N同时结束可超过阈值但保留责任并停新建；本地输出以实际write回执背压，新candidate冷启动只处理已取得namespace的自身陈旧数据。理由：沿既有所有权补齐真实结构边界，不靠旧内存压线或丢尾达标。日期/作者：2026-10-02 / Codex。
 
 2026-10-01 / Codex：返回原F-04/B1/A1，按10.15将B真实交互移到A部分恢复/B已挂载时，同一Webview动作保存前后块号且两者均小于2560；原1500ms及同一个30秒总追平期限、来源/身份/无历史/清理不变。理由是补现有离线恢复交互缺口，不增加负载/sleep/工具阶段；未重叠只能报未覆盖失败，不自动判产品退化。
 
@@ -157,6 +171,10 @@ owned 信用等待 tracker 和 journal 完整 flush，后者包括已搬入 writ
 2026-09-28 / Codex：选定 Host 独立订阅信用，不借用 editor/panel reader；正文页后等待严格 line-context flush，状态同样受信用约束但不因普通 chunk 触发额外全画板保存。正常退役保留游标来源，而 delete RPC 不等其调用方待发的批次 ACK。断连释放旧责任；可读范围内恢复原消费 revision，已合法 compact 的旧游标具名拒绝并显式重建 checkpoint 基线，不追认缺失业务事件已消费。重连另行重新打开 Webview reader；一般损坏不套用该回退。这些均为本次传输改动的直接正确性要求，不新增工具门槛。
 
 ## 结果与复盘
+
+2026-10-02本轮结构责任已有上述模块回归，页面六个具体先红修后通过；当前剩余转为正式默认产物与受影响最终验收，而不是新的容量研究或工具阶段。本地信用从消息投递推进到真实写入，初始mount与取消明确分账；不改变既有尾部与结果预算。
+
+2026-10-02当前进行中：资源账和直接缺口已确认，设计已冻结；业务修正和最终默认版本验收尚未完成。已有十会话/重连/compact不重开，最终以同一生产版本受影响证据关闭F-04，不将设计或局部fixture当完成。
 
 当前增量（2026-10-01）已完成10.15实施与固定一次真实运行，`.debug/a1-host-reconnect-20261001-overlap/` 完整exit0、overlapAcceptance=covered。B51ms应用、A12到18；HostReady1501.906ms/fullApply14639.154ms/catchup13137.248ms，原30秒与1500ms不改。原执行/新reader、完整后缀、source26214425bytes/SHA `0167208c8b0fcf6bd465c0c19064d3f7584429ef32e4cbb2841f1e147ee5ed98`、revision6502/color-state、自然no-history和两份cleanup通过，outer forcedSignals/failures为空。旧indexed-pages及失败不改；下一B2/A5跨平台产品接入，F-04和其他A项未关闭。
 

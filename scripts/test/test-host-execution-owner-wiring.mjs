@@ -13,7 +13,7 @@ const bundled = await esbuild.build({
       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
       export { ExecutionOwnerLifecycle } from './extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle';
       export { encodeOutputFrame } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
-      export { EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
+      export { EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
       export { RuntimeTerminalReadRelay } from './extensions/vscode/dev-session-canvas/src/panel/runtimeTerminalReadRelay';
       export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
       export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
@@ -61,7 +61,7 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   path.resolve('scripts/test/host-owner-wiring.cjs'), path.resolve('scripts/test')
 );
 const { CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
-  RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS,
+  RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION,
   testEnvironment, testWindow } = loaded.exports;
 
 function deferred() {
@@ -247,6 +247,38 @@ for (const kind of ['terminal', 'agent']) {
     } finally { record.tracker.dispose(); }
   });
 }
+
+test('production Host admits eleven live subjects but retains final-save responsibility in the pending budget', async () => {
+  const f = fixture({ admissionLimits: EXECUTION_PRODUCTION_ADMISSION, capabilities: persistenceCapabilities,
+    budgets: { naturalDrainMs: 15, boundaryMs: 50 } });
+  const saves = [];
+  const records = [];
+  f.host.persistState = () => { const save = deferred(); saves.push(save); return save.promise; };
+  const start = index => {
+    const nodeId = `production-${index}`;
+    f.host.state.nodes.push({ id: nodeId, kind: 'terminal', metadata: {} });
+    return f.host.startNonNativeHostExecution('terminal', nodeId, 80, 24,
+      async () => ({ file: '/controlled/shell', args: [], env: {} }));
+  };
+  try {
+    for (let index = 0; index < 11; index++) records.push(await completed(f.clock, start(index), 'production live start'));
+    assert.equal(f.providers.length, 11);
+    assert.equal(f.owner.snapshot().admissionPending, 0);
+    for (const provider of f.providers.slice(0, 2)) { provider.process(); provider.seal(0); provider.release(); }
+    await until(f.clock, () => saves.length === 2 && records.slice(0, 2).every(record => record.execution.snapshot().retired),
+      'native and reader retired while saves are held');
+    assert.equal(f.owner.snapshot().admissionPending, 0, 'save responsibility outlives the owner map');
+    await assert.rejects(start(11), /Host capacity/);
+    assert.equal(f.providers.length, 11, 'no new acquisition when two final saves remain');
+    saves[0].resolve();
+    await until(f.clock, () => records[0].persistence.result?.kind === 'saved', 'original first save');
+    records.push(await completed(f.clock, start(12), 'admission after real save'));
+    assert.equal(f.providers.length, 12);
+  } finally {
+    for (const save of saves) save.resolve();
+    for (const record of records) record.tracker.dispose();
+  }
+});
 
 test('constructor injection requires strict Test mode, not a smoke environment override', () => {
   const f = fixture();
@@ -547,7 +579,8 @@ function localFixture(options = {}) {
   }
   function ready(surface = 'editor', enabled = options.readyCapability !== false, lifecycle) {
     host.activeSurface = surface;
-    send(surface, 'webview/ready', enabled ? { capabilities: { terminalLocalSettlementV1: true } } : undefined, lifecycle);
+    send(surface, 'webview/ready', enabled ? { capabilities: { terminalLocalSettlementV1: true,
+      ...(options.outputCredit ? { terminalLocalOutputCreditV1: true } : {}) } } : undefined, lifecycle);
     host.surfaceLifecycle[surface].bootstrapAck = true;
   }
   async function attach(kind, surface = 'editor') {
@@ -578,6 +611,93 @@ function localFixture(options = {}) {
   ready();
   return { ...f, posted, webviews, send, ready, attach, settle, completions, finish };
 }
+
+for (const kind of ['terminal', 'agent']) {
+  test(`${kind} local consumption credit waits for exact page application, including initial and final snapshots`, async () => {
+    const f = localFixture({ outputCredit: true });
+    const { record, provider } = await f.started(kind);
+    const messages = () => f.posted.filter(entry => entry.message.payload?.localOutputReceipt);
+    const receipt = (entry, overrides = {}, lifecycle) => {
+      const { payload } = entry.message;
+      f.send('editor', 'webview/executionLocalOutputApplied', { nodeId: payload.nodeId, kind,
+        executionSessionId: payload.executionSessionId, ...payload.localOutputReceipt,
+        outcome: 'applied', ...overrides }, lifecycle);
+    };
+    try {
+      await until(f.clock, () => f.posted.length > 0, 'initial snapshot delivery');
+      const initial = f.posted.find(entry => entry.message.type === 'host/executionSnapshot');
+      assert.ok(initial.message.payload.localOutputReceipt, 'initial snapshot must require application credit');
+      const reader = record.localReaders.get('editor');
+      assert.equal(reader.initialPublished, false, 'postMessage true is not page consumption');
+      provider.output(1, 'page-credit-tail');
+      await pump(f.clock);
+      assert.equal(record.execution.snapshot().adapter.consumedThrough, 0);
+      receipt(initial, { receiptId: 'wrong-receipt' });
+      receipt(initial, { outputSequence: 99 });
+      receipt(initial, { executionSessionId: 'old-subject' });
+      receipt(initial, {}, { ...initial.message.lifecycle, frameId: 'old-frame' });
+      await pump(f.clock);
+      assert.equal(reader.initialPublished, false);
+      receipt(initial);
+      await until(f.clock, () => messages().length === 2, 'first credited output');
+      assert.equal(record.execution.snapshot().adapter.consumedThrough, 0);
+      provider.output(2, 'second-credit-tail');
+      await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 2, 'accepted continuous source tail');
+      provider.process(); provider.seal(2); provider.release();
+      await pump(f.clock);
+      assert.equal(messages().length, 2, 'a slow page admits no second body publication');
+      assert.equal(record.finalRevision, undefined, 'final flush cannot overtake held consumption');
+      receipt(initial);
+      await pump(f.clock);
+      assert.equal(messages().length, 2, 'duplicate old receipt grants no new credit');
+      receipt(messages()[1]);
+      await until(f.clock, () => messages().length === 3, 'second credited output');
+      receipt(messages()[2]);
+      await pump(f.clock, () => messages().length === 4);
+      assert.equal(messages().length, 4, `final snapshot: ${JSON.stringify(record.execution.snapshot())}`);
+      assert.equal(f.completions().length, 0, 'exit follows final snapshot application');
+      receipt(messages()[3]);
+      await until(f.clock, () => f.completions().length === 1, 'credited final publication');
+      assert.equal(record.execution.snapshot().readerOutcome, 'pending', 'output receipt is not final settlement');
+      f.settle(kind, record, { kind: 'applied', finalOutputSequence: 2 });
+      await until(f.clock, () => record.execution.snapshot().retired, 'reader final settlement');
+    } finally {
+      f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-cleanup');
+      record.tracker.dispose();
+    }
+  });
+}
+
+test('local mount racing a cancelled eager snapshot retries with a new reader instead of deadlocking', async () => {
+  const f = localFixture({ outputCredit: true });
+  const { record, provider } = await f.started('terminal');
+  try {
+    await until(f.clock, () => f.posted.some(entry => entry.message.type === 'host/executionSnapshot'), 'eager snapshot');
+    const first = f.posted.find(entry => entry.message.type === 'host/executionSnapshot').message;
+    assert.ok(first.payload.localOutputReceipt);
+    const oldReader = record.localReaders.get('editor');
+    const attach = f.host.postLocalExecutionSnapshot(record, { surface: 'editor' });
+    f.send('editor', 'webview/executionLocalOutputApplied', { nodeId: 'terminal-1', kind: 'terminal',
+      executionSessionId: record.execution.identity.executionId, ...first.payload.localOutputReceipt,
+      outcome: 'cancelled', reason: 'controller-unmounted' });
+    await until(f.clock, () => f.posted.filter(entry => entry.message.type === 'host/executionSnapshot').length === 2,
+      'mounted reader retry');
+    const second = f.posted.filter(entry => entry.message.type === 'host/executionSnapshot')[1].message;
+    assert.notEqual(record.localReaders.get('editor'), oldReader);
+    assert.equal(oldReader.outcome.kind, 'cancelled');
+    f.send('editor', 'webview/executionLocalOutputApplied', { nodeId: 'terminal-1', kind: 'terminal',
+      executionSessionId: record.execution.identity.executionId, ...second.payload.localOutputReceipt, outcome: 'applied' });
+    await completed(f.clock, attach, 'new mounted initial application');
+    assert.equal(record.localReaders.get('editor').initialPublished, true);
+    provider.output(1, 'cancel-held-write');
+    await until(f.clock, () => f.posted.some(entry => entry.message.type === 'host/executionOutput'), 'held local write');
+    f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'surface-hidden');
+    await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'cancel releases wait');
+    assert.equal(record.localReaders.get('editor').outcome.kind, 'cancelled');
+    provider.process(); provider.seal(1); provider.release();
+    await until(f.clock, () => record.execution.snapshot().settled, 'cancelled reader native settlement');
+  } finally { record.tracker.dispose(); }
+});
 
 for (const kind of ['terminal', 'agent']) {
   test(`${kind} local final settlement requires the exact published identity, not an ordinary application ACK`, async () => {
@@ -955,7 +1075,8 @@ async function loadActualLocalController() {
   return module.exports.createController;
 }
 
-test('actual local Host to main/headless to Host preserves owner responsibility until the real tail callback', async () => {
+for (const outputCredit of [false, true]) {
+test(`actual local Host to main/headless to Host preserves owner responsibility until the real tail callback (credit=${outputCredit})`, async () => {
   const createController = await loadActualLocalController();
   const { Terminal } = createRequire(import.meta.url)('@xterm/headless');
   const terminal = new Terminal({ cols: 80, rows: 24, scrollback: 100, allowProposedApi: true });
@@ -972,7 +1093,7 @@ test('actual local Host to main/headless to Host preserves owner responsibility 
       releaseTail = done;
     } else done?.();
   });
-  const f = localFixture({ onHostMessage: message => {
+  const f = localFixture({ outputCredit, onHostMessage: message => {
     const p = message.payload;
     if (message.type === 'host/executionSnapshot') controller.applySnapshot({ ...p, type: 'snapshot' });
     if (message.type === 'host/executionOutput') {
@@ -995,8 +1116,15 @@ test('actual local Host to main/headless to Host preserves owner responsibility 
     provider.process();
     provider.seal(1);
     provider.release();
-    await until(f.clock, () => f.completions().length === 1, 'real local final barrier announcement');
-    assert.equal(record.finalRevision, 1);
+    if (outputCredit) {
+      await pump(f.clock);
+      assert.equal(f.completions().length, 0, 'the actual write holds final publication behind source credit');
+      assert.equal(record.execution.snapshot().adapter.consumedThrough, 0);
+      assert.equal(record.finalRevision, undefined);
+    } else {
+      await until(f.clock, () => f.completions().length === 1, 'real local final barrier announcement');
+      assert.equal(record.finalRevision, 1);
+    }
     assert.equal(record.execution.snapshot().readerOutcome, 'pending');
     assert.equal(f.owner.snapshot().pending, 1);
     assert.equal(pageMessages.filter(message => message.type === 'webview/executionLocalTerminalSettled').length, 0);
@@ -1020,6 +1148,7 @@ test('actual local Host to main/headless to Host preserves owner responsibility 
     record.tracker.dispose();
   }
 });
+}
 
 const closeObservationCapabilities = ['execution-lifecycle-v1', 'execution-close-observation-v1'];
 

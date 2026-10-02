@@ -51,6 +51,7 @@ import type {
   FileListNodeEntrySummary,
   HostToWebviewMessage,
   LocalTerminalCompletion,
+  LocalOutputReceipt,
   LocalTerminalOutcome,
   WebviewDomAction,
   WebviewClipboardTextSource,
@@ -1687,6 +1688,7 @@ function App(): JSX.Element {
           requestId: message.payload.requestId,
           executionSessionId: message.payload.executionSessionId,
           outputSequence: message.payload.outputSequence,
+          localOutputReceipt: message.payload.localOutputReceipt,
           serializedTerminalState: message.payload.serializedTerminalState,
           terminalStream: message.payload.terminalStream,
           terminalRead: message.payload.terminalRead
@@ -1743,7 +1745,8 @@ function App(): JSX.Element {
           outputSequence: message.payload.outputSequence,
           terminalAuthorityId: message.payload.terminalAuthorityId,
           terminalStartRevision: message.payload.terminalStartRevision,
-          terminalRevision: message.payload.terminalRevision
+          terminalRevision: message.payload.terminalRevision,
+          localOutputReceipt: message.payload.localOutputReceipt
         });
         break;
       case 'host/executionTerminalEvent':
@@ -1833,7 +1836,8 @@ function App(): JSX.Element {
     };
     window.addEventListener('message', listener);
     postMessage({ type: 'webview/ready', payload: { capabilities: {
-      terminalReadSettlementV1: true, terminalLocalSettlementV1: true, terminalAvailableReceiptV1: true
+      terminalReadSettlementV1: true, terminalLocalSettlementV1: true, terminalAvailableReceiptV1: true,
+      terminalLocalOutputCreditV1: true
     } } });
 
     return () => {
@@ -7126,21 +7130,38 @@ function resolveContextMenuScreenPosition(screenX: number, screenY: number): { x
 }
 
 function routeExecutionTerminalSnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void {
-  executionTerminalRegistry.get(detail.nodeId)?.controller.applySnapshot(detail);
+  const controller = executionTerminalRegistry.get(detail.nodeId)?.controller;
+  if (controller && controller.kind === detail.kind) controller.applySnapshot(detail);
+  else if (detail.localOutputReceipt && detail.executionSessionId) {
+    postMessage({ type: 'webview/executionLocalOutputApplied', payload: {
+      nodeId: detail.nodeId, kind: detail.kind, executionSessionId: detail.executionSessionId,
+      ...detail.localOutputReceipt, outcome: 'cancelled', reason: 'controller-unmounted'
+    } });
+  }
 }
 
 function queueExecutionTerminalOutput(detail: Extract<ExecutionHostEvent, { type: 'output' }>): void {
   const startedAt = readPerformanceNow();
   const controller = executionTerminalRegistry.get(detail.nodeId)?.controller;
   try {
-    controller?.enqueueOutput(detail.chunk, {
+    if (!controller || controller.kind !== detail.kind) {
+      if (detail.localOutputReceipt && detail.executionSessionId) {
+        postMessage({ type: 'webview/executionLocalOutputApplied', payload: {
+          nodeId: detail.nodeId, kind: detail.kind, executionSessionId: detail.executionSessionId,
+          ...detail.localOutputReceipt, outcome: 'cancelled', reason: 'controller-unmounted'
+        } });
+      }
+      return;
+    }
+    controller.enqueueOutput(detail.chunk, {
       persisted: detail.persisted,
       outputStartSequence: detail.outputStartSequence,
       outputSequence: detail.outputSequence,
       executionSessionId: detail.executionSessionId,
       terminalAuthorityId: detail.terminalAuthorityId,
       terminalStartRevision: detail.terminalStartRevision,
-      terminalRevision: detail.terminalRevision
+      terminalRevision: detail.terminalRevision,
+      localOutputReceipt: detail.localOutputReceipt
     });
     reportExecutionPerformanceDiagnostic(
       {
@@ -7579,6 +7600,7 @@ function createExecutionTerminalController(
   options?: {
     onContentWillChange?: (reason: ExecutionTerminalContentChangeReason) => void;
     onSnapshotApplied?: (detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>) => void;
+    beginSnapshotRestore?: () => (() => void);
     onReadError?: (message: string) => void;
     beginSnapshotRestoreDiagnosticsSuppression?: () => (() => void) | undefined;
   }
@@ -7601,6 +7623,25 @@ function createExecutionTerminalController(
   let projectedExecutionSessionId: string | undefined;
   let currentLocalOutputSequence = 0;
   let localProjectionSequenceTracked = false;
+  type LocalOutputCredit = LocalOutputReceipt & { executionSessionId: string; generation: number };
+  let pendingLocalOutputCredit: LocalOutputCredit | undefined;
+  const rejectLocalOutputReceipt = (
+    receipt: LocalOutputReceipt | undefined, executionSessionId: string | undefined, reason: string
+  ): void => {
+    if (!receipt || !executionSessionId) return;
+    postMessage({ type: 'webview/executionLocalOutputApplied', payload: {
+      nodeId, kind, executionSessionId, ...receipt, outcome: 'cancelled', reason
+    } });
+  };
+  const settleLocalOutputCredit = (credit: LocalOutputCredit | undefined, applied: boolean, reason = 'terminal-write-failed'): void => {
+    if (!credit || pendingLocalOutputCredit !== credit) return;
+    pendingLocalOutputCredit = undefined;
+    postMessage({ type: 'webview/executionLocalOutputApplied', payload: {
+      nodeId, kind, executionSessionId: credit.executionSessionId,
+      receiptId: credit.receiptId, outputSequence: credit.outputSequence,
+      outcome: applied ? 'applied' : 'cancelled', ...(applied ? {} : { reason })
+    } });
+  };
   let currentTerminalAuthorityId: string | undefined;
   let currentTerminalRevision = 0;
   let pendingOutputBoundaries: Array<{
@@ -7610,6 +7651,7 @@ function createExecutionTerminalController(
     terminalAuthorityId?: string;
     terminalStartRevision?: number;
     terminalRevision?: number;
+    localOutputCredit?: LocalOutputCredit;
   }> = [];
   let appliedTerminalAuthorityId: string | undefined;
   let appliedTerminalRevision = 0;
@@ -7620,6 +7662,28 @@ function createExecutionTerminalController(
   let pendingProjectionBarrier = false;
   let projectionRecoveryRequested = false;
   let projectionRecoveryEpoch = 0;
+  const snapshotRestoreReleases = new Set<() => void>();
+  const beginSnapshotRestore = (): (() => void) => {
+    const release = options?.beginSnapshotRestore?.();
+    const finish = (): void => {
+      if (!snapshotRestoreReleases.delete(finish)) return;
+      release?.();
+    };
+    snapshotRestoreReleases.add(finish);
+    return finish;
+  };
+  const finishSnapshotRestore = (
+    detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>,
+    release: (() => void) | undefined, applied: boolean, generation: number
+  ): boolean => {
+    let callbackFailed = false;
+    try { if (applied) options?.onSnapshotApplied?.(detail); }
+    catch { callbackFailed = true; }
+    try { release?.(); }
+    catch { callbackFailed = true; }
+    if (callbackFailed && !disposed && generation === writeGeneration) failedWriteGeneration = generation;
+    return applied && !callbackFailed;
+  };
 
   const normalizeOutputSequence = (value: number | undefined): number | undefined =>
     typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
@@ -7692,9 +7756,13 @@ function createExecutionTerminalController(
                 if (!disposed && generation === writeGeneration) failedWriteGeneration = generation;
               }
               try {
+                if ((!applied || failedWriteGeneration === generation) && pendingLocalOutputCredit?.generation === generation) {
+                  settleLocalOutputCredit(pendingLocalOutputCredit, false);
+                }
                 onComplete?.(applied && !disposed && generation === writeGeneration && failedWriteGeneration !== generation);
               } catch {
                 if (!disposed && generation === writeGeneration) failedWriteGeneration = generation;
+                if (pendingLocalOutputCredit?.generation === generation) settleLocalOutputCredit(pendingLocalOutputCredit, false);
               } finally { resolve(); }
             };
             const failed = (): void => {
@@ -7724,6 +7792,8 @@ function createExecutionTerminalController(
 
   const beginExecutionSessionGeneration = (executionSessionId: string): void => {
     settleLocalCompletion({ kind: 'cancelled', reason: 'execution-replaced' });
+    settleLocalOutputCredit(pendingLocalOutputCredit, false, 'execution-replaced');
+    for (const release of snapshotRestoreReleases) release();
     localCompletion = undefined;
     if (
       currentExecutionSessionId !== undefined &&
@@ -7933,7 +8003,21 @@ function createExecutionTerminalController(
       pagedProjection.accept(readId, requestId, page, closedError);
     },
     applySnapshot(detail) {
+      const receipt = detail.localOutputReceipt;
+      const rejectReceipt = (reason: string): void => rejectLocalOutputReceipt(receipt, detail.executionSessionId, reason);
       if (disposed) {
+        rejectReceipt('controller-disposed');
+        return;
+      }
+      if (receipt && (!detail.executionSessionId || receipt.outputSequence !== detail.outputSequence ||
+          detail.terminalRead !== undefined || detail.terminalStream !== undefined ||
+          (detail.executionSessionId === currentExecutionSessionId &&
+            (pagedProjection.active || currentTerminalAuthorityId !== undefined || pendingLocalOutputCredit !== undefined)))) {
+        rejectReceipt('local-projection-conflict');
+        return;
+      }
+      if (receipt && detail.executionSessionId === currentExecutionSessionId && receipt.outputSequence < currentLocalOutputSequence) {
+        rejectReceipt('local-output-sequence-stale');
         return;
       }
       if (detail.terminalRead !== undefined) {
@@ -7945,6 +8029,7 @@ function createExecutionTerminalController(
           beginExecutionSessionGeneration(detail.executionSessionId);
         }
         settleLocalCompletion({ kind: 'cancelled', reason: 'projection-replaced' });
+        settleLocalOutputCredit(pendingLocalOutputCredit, false, 'projection-replaced');
         if (capacityCalibrationProbe && (capacityCalibrationProbe.readers.some((reader) => reader.nodeId === nodeId) ||
             capacityCalibrationProbe.readers.length < 10)) {
           capacityCalibrationProbe.readers = capacityCalibrationProbe.readers.filter((reader) => reader.nodeId !== nodeId);
@@ -7961,6 +8046,7 @@ function createExecutionTerminalController(
         detail.executionSessionId !== undefined &&
         supersededExecutionSessionIds.has(detail.executionSessionId)
       ) {
+        rejectReceipt('execution-replaced');
         return;
       }
       const snapshotSequence = normalizeOutputSequence(detail.outputSequence);
@@ -7973,9 +8059,11 @@ function createExecutionTerminalController(
         (snapshotSequence === undefined || terminalStream.revision === snapshotSequence);
       if (hasTerminalStreamField && !hasValidTerminalStream) {
         // A malformed authoritative payload must not fall back to a raw tail.
+        rejectReceipt('local-projection-conflict');
         return;
       }
       if (pagedProjection.active && !detail.liveSession && !hasValidTerminalStream) {
+        rejectReceipt('local-projection-conflict');
         return;
       }
       if (pagedProjection.active && !detail.liveSession && hasValidTerminalStream) {
@@ -7989,6 +8077,7 @@ function createExecutionTerminalController(
       const projectionTransitionPending = currentExecutionSessionId !== projectedExecutionSessionId;
       if (sessionChanged && projectionTransitionPending) {
         // A newer output generation already selected another session; this snapshot is stale.
+        rejectReceipt('execution-replaced');
         return;
       }
       if (sessionChanged && detail.executionSessionId !== undefined) {
@@ -8000,7 +8089,7 @@ function createExecutionTerminalController(
         detail.executionSessionId !== projectedExecutionSessionId;
       const isProjectionRecovery =
         hasAppliedSnapshot && !projectionSessionChanged && projectionRecoveryRequested;
-      if (hasAppliedSnapshot && !projectionSessionChanged && !isProjectionRecovery) {
+      if (hasAppliedSnapshot && !projectionSessionChanged && !isProjectionRecovery && !receipt) {
         // Snapshots create projections; they do not replace a healthy live backlog.
         flushDeferredExitIfReady();
         return;
@@ -8014,6 +8103,7 @@ function createExecutionTerminalController(
             terminalStream.revision < currentTerminalRevision
           )
         ) {
+          rejectReceipt('local-projection-conflict');
           return;
         }
       }
@@ -8047,7 +8137,7 @@ function createExecutionTerminalController(
         if (pendingProjectionBarrier) {
           postAttachSnapshotRequest();
         }
-      } else if (projectionSessionChanged || !hasAppliedSnapshot || isProjectionRecovery) {
+      } else if (projectionSessionChanged || !hasAppliedSnapshot || isProjectionRecovery || receipt) {
         currentTerminalAuthorityId = undefined;
         currentTerminalRevision = 0;
         const pendingOutputCanBeReconciled =
@@ -8076,8 +8166,15 @@ function createExecutionTerminalController(
       hasAppliedSnapshot = true;
       projectedExecutionSessionId = detail.executionSessionId ?? projectedExecutionSessionId;
       const recoveryEpoch = projectionRecoveryEpoch;
+      const snapshotGeneration = writeGeneration;
+      const credit: LocalOutputCredit | undefined = receipt && detail.executionSessionId
+        ? { ...receipt, executionSessionId: detail.executionSessionId, generation: writeGeneration }
+        : pendingLocalOutputCredit && pendingLocalOutputCredit.executionSessionId === detail.executionSessionId &&
+          snapshotSequence !== undefined && snapshotSequence >= pendingLocalOutputCredit.outputSequence
+          ? pendingLocalOutputCredit : undefined;
+      if (credit) pendingLocalOutputCredit = credit;
       options?.onContentWillChange?.('snapshot');
-      options?.onSnapshotApplied?.(detail);
+      let releaseSnapshotRestore: (() => void) | undefined;
       const checkpointCharacters =
         terminalStream?.checkpoint.serializedState.data.length ??
         detail.serializedTerminalState?.data.length ??
@@ -8117,6 +8214,7 @@ function createExecutionTerminalController(
               const current = (): boolean => !disposed && snapshotWriteGeneration === writeGeneration;
               try {
                 markStarted();
+                releaseSnapshotRestore = beginSnapshotRestore();
                 releaseSnapshotRestoreDiagnosticsSuppression = options?.beginSnapshotRestoreDiagnosticsSuppression?.();
                 restoreExecutionTerminalSnapshot(terminal, detail, () => {
                   try {
@@ -8141,7 +8239,9 @@ function createExecutionTerminalController(
           checkpointRevision: terminalStream?.checkpoint.revision,
           targetRevision: terminalStream?.revision
         },
-        (applied) => {
+        (writeApplied) => {
+          const applied = finishSnapshotRestore(detail, releaseSnapshotRestore, writeApplied, snapshotGeneration);
+          settleLocalOutputCredit(credit, applied);
           if (applied && terminalStream) {
             markTerminalRevisionApplied(terminalStream.authorityId, terminalStream.revision, {
               immediate: true
@@ -8163,10 +8263,15 @@ function createExecutionTerminalController(
       postAttachSnapshotRequest();
     },
     enqueueOutput(chunk, outputOptions) {
+      const receipt = outputOptions?.localOutputReceipt;
+      const rejectReceipt = (reason: string): void =>
+        rejectLocalOutputReceipt(receipt, outputOptions?.executionSessionId, reason);
       if (disposed) {
+        rejectReceipt('controller-disposed');
         return;
       }
       if (pagedProjection.active && outputOptions?.executionSessionId === currentExecutionSessionId) {
+        rejectReceipt('local-projection-conflict');
         return;
       }
 
@@ -8176,10 +8281,16 @@ function createExecutionTerminalController(
       const terminalRevision = normalizeOutputSequence(outputOptions?.terminalRevision);
       const terminalAuthorityId = outputOptions?.terminalAuthorityId;
       const outputExecutionSessionId = outputOptions?.executionSessionId;
+      if (receipt && (!outputExecutionSessionId || receipt.outputSequence !== outputSequence || terminalAuthorityId !== undefined ||
+          (outputExecutionSessionId === currentExecutionSessionId && pendingLocalOutputCredit !== undefined))) {
+        rejectReceipt('local-projection-conflict');
+        return;
+      }
       if (
         outputExecutionSessionId !== undefined &&
         supersededExecutionSessionIds.has(outputExecutionSessionId)
       ) {
+        rejectReceipt('execution-replaced');
         return;
       }
       if (outputExecutionSessionId !== undefined && currentExecutionSessionId !== outputExecutionSessionId) {
@@ -8221,6 +8332,7 @@ function createExecutionTerminalController(
       } else if (outputSequence !== undefined) {
         if (outputSequence <= currentLocalOutputSequence) {
           if (chunk) {
+            rejectReceipt('local-output-sequence-stale');
             return;
           }
         } else {
@@ -8229,12 +8341,16 @@ function createExecutionTerminalController(
             outputStartSequence !== currentLocalOutputSequence + 1 ||
             outputStartSequence > outputSequence
           ) {
+            rejectReceipt('local-output-sequence-gap');
             postAttachSnapshotRequest();
             return;
           }
           currentLocalOutputSequence = outputSequence;
         }
       }
+      const credit: LocalOutputCredit | undefined = receipt && outputExecutionSessionId
+        ? { ...receipt, executionSessionId: outputExecutionSessionId, generation: writeGeneration } : undefined;
+      if (credit) pendingLocalOutputCredit = credit;
       if (chunk) {
         if (!terminalAuthorityId &&
             (outputSequence === undefined || !Number.isSafeInteger(outputSequence))) {
@@ -8255,9 +8371,18 @@ function createExecutionTerminalController(
             : {}),
           terminalAuthorityId,
           terminalStartRevision,
-          terminalRevision
+          terminalRevision,
+          localOutputCredit: credit
         });
         options?.onContentWillChange?.('output');
+      } else if (credit) {
+        if (pendingPersistBarrier || pendingProjectionBarrier) {
+          settleLocalOutputCredit(credit, false, 'local-output-blocked');
+        } else {
+          if (pendingOutput.length > 0) controller.flushPendingOutput();
+          queueTerminalWrite(done => terminal.write('', done), { reason: 'local-empty-output' },
+            applied => settleLocalOutputCredit(credit, applied));
+        }
       }
       if (
         terminalAuthorityId &&
@@ -8414,6 +8539,7 @@ function createExecutionTerminalController(
       pendingOutput = pendingOutput.slice(chunkLength);
       let remainingRevisionCharacters = chunk.length;
       let completedRevision: number | undefined;
+      let completedLocalOutputCredit: LocalOutputCredit | undefined;
       while (remainingRevisionCharacters > 0 && pendingOutputBoundaries.length > 0) {
         const boundary = pendingOutputBoundaries[0];
         const consumedCharacters = Math.min(remainingRevisionCharacters, boundary.remainingCharacters);
@@ -8421,6 +8547,7 @@ function createExecutionTerminalController(
         remainingRevisionCharacters -= consumedCharacters;
         if (boundary.remainingCharacters === 0) {
           completedRevision = boundary.terminalRevision;
+          completedLocalOutputCredit = boundary.localOutputCredit ?? completedLocalOutputCredit;
           pendingOutputBoundaries.shift();
         }
       }
@@ -8433,6 +8560,7 @@ function createExecutionTerminalController(
         reason: 'output',
         characters: chunk.length
       }, (applied) => {
+        settleLocalOutputCredit(completedLocalOutputCredit, applied);
         if (applied && outputAuthorityId && completedRevision !== undefined) {
           markTerminalRevisionApplied(outputAuthorityId, completedRevision);
         }
@@ -8451,9 +8579,11 @@ function createExecutionTerminalController(
       return pendingPersistBarrier || pendingProjectionBarrier;
     },
     dispose() {
+      settleLocalOutputCredit(pendingLocalOutputCredit, false, 'controller-disposed');
       settleLocalCompletion({ kind: 'cancelled', reason: 'controller-disposed' });
       pagedProjection.stop('controller-disposed');
       disposed = true;
+      for (const release of snapshotRestoreReleases) release();
       pendingOutput = '';
       pendingOutputBoundaries = [];
       pendingPersistBarrier = false;
@@ -8514,14 +8644,17 @@ function createExecutionTerminalController(
           checkpoint: read.checkpoint, revision: read.checkpoint.revision, events: [] }
       };
       options?.onContentWillChange?.('snapshot');
-      options?.onSnapshotApplied?.(detail);
+      let releaseSnapshotRestore: (() => void) | undefined;
+      const snapshotGeneration = writeGeneration;
       queueTerminalWrite((done, _markStarted, failed) => {
         if (!current()) { done(false); return; }
+        releaseSnapshotRestore = beginSnapshotRestore();
         const release = options?.beginSnapshotRestoreDiagnosticsSuppression?.();
         restoreExecutionTerminalSnapshot(terminal, detail, () => { release?.(); done(current()); },
           () => { release?.(); failed(); }, current);
       }, { reason: 'paged-checkpoint', checkpointRevision: read.checkpoint.revision }, (success) => {
-        applied(success && current());
+        const restored = finishSnapshotRestore(detail, releaseSnapshotRestore, success && current(), snapshotGeneration);
+        applied(restored && current());
       });
     },
     events: (events, current, applied) => {
@@ -8644,7 +8777,17 @@ function restoreExecutionTerminalSnapshot(
       }
       terminal.reset();
 
-      const applyEvents = (): void => applyTerminalStreamEvents(terminal, events, finishRestore, current, onFailed);
+      const applyEvents = (): void => {
+        try {
+          if (current() && checkpoint.serializedState.viewportY !== undefined) {
+            terminal.scrollToLine(checkpoint.serializedState.viewportY);
+          }
+          applyTerminalStreamEvents(terminal, events, finishRestore, current, onFailed);
+        } catch (error) {
+          if (onFailed) onFailed();
+          else throw error;
+        }
+      };
 
       if (checkpoint.serializedState.data || onFailed) {
         // Explicit completion also crosses xterm's callback for an empty checkpoint.
@@ -8677,7 +8820,15 @@ function restoreExecutionTerminalSnapshot(
 
     if (serializedTerminalState) {
       terminal.write(serializedTerminalState.data, () => {
-        finishRestore();
+        try {
+          if (current() && serializedTerminalState.viewportY !== undefined) {
+            terminal.scrollToLine(serializedTerminalState.viewportY);
+          }
+          finishRestore();
+        } catch (error) {
+          if (onFailed) onFailed();
+          else throw error;
+        }
       });
       return;
     }

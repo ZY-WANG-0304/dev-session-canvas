@@ -61,7 +61,7 @@ try {
     outExtension: { '.js': '.cjs' }
   });
   const { ExecutionOwnerLifecycle } = require(path.join(tempDir, 'owner.cjs'));
-  const { encodeOutputFrame, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS,
+  const { encodeOutputFrame, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION,
     assertExecutionCandidateCapabilities } = require(path.join(tempDir, 'protocol.cjs'));
   const { SerializedTerminalStateTracker } = require(path.join(tempDir, 'tracker.cjs'));
 
@@ -121,6 +121,78 @@ try {
     assert.throws(() => h.owner.reserve('a'), /capability/);
     assert.equal(h.factories(), 0);
     assert.throws(() => harness({ budgets: { ...budgets, settleMs: Infinity } }), /finite/);
+  });
+
+  test('production owner admits eleven running sessions but retains preparation and final-reader slots', async () => {
+    const h = harness({ admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+    const records = [];
+    for (let index = 0; index < 11; index++) records.push(await h.start(`running-${index}`));
+    assert.equal(h.owner.snapshot().pending, 11, 'the original pending count still includes every owned execution');
+    assert.equal(h.owner.snapshot().admissionPending, 0);
+    const first = h.owner.reserve('preparation-a');
+    const second = h.owner.reserve('preparation-b');
+    assert.equal(h.owner.snapshot().admissionPending, 2);
+    assert.throws(() => h.owner.reserve('preparation-overflow'), /capacity/);
+    first.abandon('prepared task cancelled');
+    second.abandon('prepared task cancelled');
+    for (const record of records) {
+      h.message(record, { type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+    }
+    assert.equal(h.owner.snapshot().admissionPending, 11);
+    assert.throws(() => h.owner.reserve('closing-overflow'), /capacity/);
+    for (const record of records) await h.complete(record);
+    assert.equal(h.owner.authority.snapshot().active, 0);
+    assert.equal(h.owner.snapshot().admissionPending, 11, 'adapter retirement cannot erase final reader responsibility');
+    assert.throws(() => h.owner.reserve('reader-overflow'), /capacity/);
+    for (const record of records.slice(0, 10)) record.settleReaders('settled');
+    assert.equal(h.owner.snapshot().admissionPending, 1);
+    const next = h.owner.reserve('next-preparation');
+    assert.equal(h.owner.snapshot().admissionPending, 2);
+    assert.throws(() => h.owner.reserve('next-overflow'), /capacity/);
+    next.abandon('test cleanup');
+    records.at(-1).settleReaders('settled');
+    assert.equal(h.owner.snapshot().pending, 0);
+  });
+
+  test('production owner counts stop and final-flush responsibility without shortening tail work', async () => {
+    const h = harness({ admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+    const flush = deferred();
+    const stopped = await h.start('stop');
+    const finishing = await h.start('final-flush', { flushFinal: () => flush.promise });
+    void stopped.requestStop('user-stop');
+    await h.complete(finishing);
+    assert.equal(h.owner.snapshot().admissionPending, 2);
+    assert.throws(() => h.owner.reserve('must-wait'), /capacity/);
+    assert.equal(finishing.snapshot().terminal, undefined);
+    flush.resolve(0);
+    await h.scheduler.drain();
+    assert.equal(finishing.snapshot().terminal.kind, 'applied');
+    assert.equal(h.owner.snapshot().admissionPending, 2, 'the final reader remains responsible after flush');
+    finishing.settleReaders('settled');
+    assert.equal(h.owner.snapshot().admissionPending, 1);
+    const next = h.owner.reserve('available-slot');
+    next.abandon('test cleanup');
+    await h.complete(stopped);
+    stopped.settleReaders('settled');
+  });
+
+  test('production owner keeps unknown admission sticky while original live consumers still progress', async () => {
+    const h = harness({ admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+    const unknown = await h.start('unknown');
+    let received = '';
+    const live = await h.start('live', { consume: async batches => { received += batches.map(batch => batch.text).join(''); } });
+    h.transports.get(unknown.identity.executionId).sink.controlResourceResult({ kind: 'unknown', reason: 'release unknown' });
+    assert.throws(() => h.owner.reserve('blocked'), /closed/);
+    h.frame(live, 1, 'original-consumer');
+    await h.scheduler.drain();
+    assert.equal(received, 'original-consumer');
+    h.transports.get(unknown.identity.executionId).sink.controlResourceResult({ kind: 'released' });
+    await h.complete(unknown);
+    unknown.settleReaders('settled');
+    await h.complete(live, 1);
+    live.settleReaders('settled');
+    assert.ok(h.owner.snapshot().blockedReason);
+    assert.throws(() => h.owner.reserve('still-blocked'), /closed/);
   });
 
   test('owner shares a frozen admission policy across preparation and authority', () => {
