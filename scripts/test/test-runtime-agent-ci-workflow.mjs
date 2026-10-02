@@ -303,7 +303,10 @@ if (process.platform === 'win32') {
 }
 
 const production = yaml.load(await readFile('.github/workflows/runtime-production-acceptance.yml', 'utf8'));
-assert.deepEqual(Object.keys(production.on), ['workflow_dispatch']);
+assert.deepEqual(Object.keys(production.on), ['workflow_dispatch', 'push']);
+assert.deepEqual(production.on.push, { branches: ['runtime-persistence-session-state-refactor'],
+  paths: ['.github/workflows/runtime-production-acceptance.yml'] },
+  'Branch-only registration must not trigger the final matrix for unrelated product or documentation pushes.');
 assert.deepEqual(production.permissions, { contents: 'read' });
 assert.equal(production.env, undefined);
 assert.equal(production.jobs['native-assets'].uses, './.github/workflows/runtime-execution-assets.yml');

@@ -2378,3 +2378,5 @@ macOS 真实 Agent 的第一次 run `36906574728` 与唯一允许的同输入重
 修后有限回归：Host156/156含production/旧finite双prepare原本有效的澄清、24请求合并、native在途最新目标、已接纳输出先于后续resize与原5000ms过期不调用provider。正常platform bundle上的13项Chromium全部通过，覆盖新增两种节点慢paged-events、慢snapshot、saved viewport、local credit、remote settlement与ANSI尾部；controller46/Host10、typecheck及模板部署/安装/聚合/发布workflow定向测试通过。两份paged-fit红证据与 `.debug/a2-a3-paged-fit-after-fix-20261002/` 绿证据分开保留；普通本地包仍需更新到该修复，最终CI尚未通过。旧macOS/Windows provider workflow只撤销主题分支自动触发，手动入口、原native断言及历史结果保留，避免最终打包验收之外重复运行旧矩阵。
 
 修后普通package再次exit0，独立ZIP检查仍为六目标platform与production准入；本地新包5857673 bytes / SHA256 `28a89027a2a6c1fda3201bccb7b0d072766fb86c3d4fd8c3814460a50113bfcc`。该包包含resize与分页fit修正，但仍是dirty-tree本地构建，最终CI使用clean提交新包的独立hash，不能混用两份输入。
+
+提交08fa3372已rebase/push后，新workflow因尚未在GitHub注册，CLI名称查找失败、REST dispatch返回404，没有产生验收结果。沿既有分支注册方式，仅增加当前主题分支且仅该workflow文件变更的push触发；此次注册推送直接作为唯一最终验收输入，不再另发manual重复运行。后续普通产品/文档推送不会触发该矩阵。
