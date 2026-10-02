@@ -14,6 +14,9 @@ const lifecycle = value => ['panel', 'editor'].includes(value?.surface) && ['act
   integer(value?.generation) && typeof value?.frameId === 'string' && value.frameId.length > 0
   ? [value.surface, value.mode, value.generation, value.frameId] : undefined;
 const same = isDeepStrictEqual;
+const semanticStyleFlags = ['Bold', 'Dim', 'Italic', 'Underline', 'Overline', 'Blink', 'Inverse', 'Invisible', 'Strikethrough'];
+const semanticModeNames = ['applicationCursorKeysMode', 'applicationKeypadMode', 'bracketedPasteMode', 'insertMode',
+  'originMode', 'reverseWraparoundMode', 'sendFocusMode', 'wraparoundMode', 'mouseTrackingMode'];
 const write = (terminal, data) => new Promise(resolve => terminal.write(data, resolve));
 const terminalGeometry = state => Object.fromEntries(['cols', 'rows', 'cursorX', 'cursorY', 'viewportY', 'bufferType']
   .map(key => [key, state[key]]));
@@ -54,10 +57,10 @@ function readSemanticState(terminal) {
         throw new Error('Unknown terminal color mode.');
       };
       return { foreground: color('Fg'), background: color('Bg'),
-        flags: ['Bold', 'Dim', 'Italic', 'Underline', 'Overline', 'Blink', 'Inverse', 'Invisible', 'Strikethrough']
+        flags: semanticStyleFlags
           .map(name => {
             const value = cell[`is${name}`]();
-            if (!integer(value)) throw new Error('Unknown terminal style.');
+            if (!Number.isSafeInteger(value)) throw new Error('Unknown terminal style.');
             return value !== 0;
           }) };
     };
@@ -81,8 +84,7 @@ function readSemanticState(terminal) {
         }) };
     };
     const modes = {};
-    for (const name of ['applicationCursorKeysMode', 'applicationKeypadMode', 'bracketedPasteMode', 'insertMode',
-      'originMode', 'reverseWraparoundMode', 'sendFocusMode', 'wraparoundMode']) {
+    for (const name of semanticModeNames.slice(0, -1)) {
       const value = terminal.modes[name];
       if (typeof value !== 'boolean') throw new Error('Unknown terminal mode.');
       modes[name] = value;
@@ -99,6 +101,36 @@ function readSemanticState(terminal) {
       // The pinned serializer uses this same attribute object to restore the current cursor style.
       cursorStyle: style(terminal._core._inputHandler._curAttrData) };
   } catch { return undefined; }
+}
+
+function compareSemanticState(left, right) {
+  if (!left || !right) return null;
+  const flags = compare => Object.fromEntries(semanticStyleFlags.map((name, index) => [name, compare(index)]));
+  const buffer = (a, b) => {
+    if (!a || !b) return null;
+    const linesMatch = compare => a.lines.length === b.lines.length &&
+      a.lines.every((line, index) => compare(line, b.lines[index]));
+    const cellsMatch = compare => linesMatch((line, other) => line.cells.length === other.cells.length &&
+      line.cells.every((cell, index) => compare(cell, other.cells[index])));
+    return { ...Object.fromEntries(['type', 'cursorX', 'cursorY', 'baseY', 'viewportY'].map(name => [name, a[name] === b[name]])),
+      lineCount: a.lines.length === b.lines.length,
+      lineWidths: linesMatch((line, other) => line.cells.length === other.cells.length),
+      wrapped: linesMatch((line, other) => line.wrapped === other.wrapped),
+      chars: cellsMatch((cell, other) => cell.chars === other.chars),
+      width: cellsMatch((cell, other) => cell.width === other.width),
+      foreground: cellsMatch((cell, other) => same(cell.foreground, other.foreground)),
+      background: cellsMatch((cell, other) => same(cell.background, other.background)),
+      flags: flags(index => cellsMatch((cell, other) => cell.flags[index] === other.flags[index])) };
+  };
+  // Only fixed boolean categories leave this comparison; terminal contents stay private.
+  return { cols: left.cols === right.cols, rows: left.rows === right.rows,
+    activeBuffer: left.activeBuffer === right.activeBuffer,
+    alternatePresent: (left.alternate !== null) === (right.alternate !== null),
+    normal: buffer(left.normal, right.normal), alternate: buffer(left.alternate, right.alternate),
+    modes: Object.fromEntries(semanticModeNames.map(name => [name, left.modes[name] === right.modes[name]])),
+    cursorStyle: { foreground: same(left.cursorStyle.foreground, right.cursorStyle.foreground),
+      background: same(left.cursorStyle.background, right.cursorStyle.background),
+      flags: flags(index => left.cursorStyle.flags[index] === right.cursorStyle.flags[index]) } };
 }
 
 async function comparePage(state, probe, assertBuffer) {
@@ -242,7 +274,8 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
     replayMatchesSaved: null, replayMatchesPage: null, publishedFinalMatchesSaved: null,
     replaySavedGeometryMatched: null, replaySavedLinesMatched: null, replaySavedVisibleMatched: null,
     replaySavedSerializedMatched: null, replaySerializedMatchesSavedData: null,
-    replaySavedSemanticMatched: null, replaySemanticStateSha256: null, hydratedSemanticStateSha256: null,
+    replaySavedSemanticMatched: null, replaySavedSemanticMatches: null,
+    replaySemanticStateSha256: null, hydratedSemanticStateSha256: null,
     replayBufferLineCount: null, savedBufferLineCount: null, replaySerializedBytes: null, hydratedSerializedBytes: null,
     pageProjectionIndependence: 'not-proven' };
   let hydrated, resized;
@@ -294,6 +327,7 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
       if (replay.semanticState) evidence.replaySemanticStateSha256 = hash(JSON.stringify(replay.semanticState));
       if (replay.semanticState && savedSemanticState) {
         evidence.replaySavedSemanticMatched = same(replay.semanticState, savedSemanticState);
+        evidence.replaySavedSemanticMatches = compareSemanticState(replay.semanticState, savedSemanticState);
       }
       evidence.replayMatchesPage = (await comparePage(replay.state, page, assertBuffer)).matches;
     }

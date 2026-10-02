@@ -29,6 +29,10 @@ on:
         description: Reuse existing installed evidence; requires package reuse
         type: boolean
         default: false
+      installed_evidence_run:
+        description: Passed installed run for the same package; empty uses the original package run
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -49,6 +53,7 @@ jobs:
       package_commit: ${{ steps.selection.outputs.package_commit }}
       native_run: ${{ steps.selection.outputs.native_run }}
       native_commit: ${{ steps.selection.outputs.native_commit }}
+      installed_evidence_commit: ${{ steps.selection.outputs.installed_evidence_commit }}
       matrix: ${{ steps.selection.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +71,7 @@ jobs:
           DSC_SCENARIOS: ${{ inputs.agent_scenarios }}
           DSC_INSTALLED_MODE: ${{ inputs.installed_mode }}
           DSC_SKIP_INSTALLED: ${{ inputs.skip_installed }}
+          DSC_INSTALLED_EVIDENCE_RUN: ${{ inputs.installed_evidence_run }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -74,7 +80,8 @@ jobs:
           import cli from './tests/vscode-smoke/agent-candidate-cli.cjs';
           const { DSC_REUSE_RUN: reuse, DSC_NATIVE_RUN: nativeReuse, DSC_PLATFORM: platform, DSC_SCENARIOS: scenarios,
             DSC_INSTALLED_MODE: installedMode,
-            DSC_SKIP_INSTALLED: skip, GITHUB_SHA: head, GITHUB_RUN_ID: current, GITHUB_REPOSITORY: repository } = process.env;
+            DSC_SKIP_INSTALLED: skip, DSC_INSTALLED_EVIDENCE_RUN: installedRun,
+            GITHUB_SHA: head, GITHUB_RUN_ID: current, GITHUB_REPOSITORY: repository } = process.env;
           const platforms = [{ os: 'ubuntu-22.04', platform: 'linux' }, { os: 'macos-15', platform: 'macos' },
             { os: 'windows-2025', platform: 'windows' }];
           assert(['all', ...platforms.map(item => item.platform)].includes(platform));
@@ -84,16 +91,18 @@ jobs:
           cli.selectAgentCandidateScenarios(scenarios);
           assert(!(reuse && nativeReuse), 'Choose whole-package or native-only reuse, not both.');
           assert(skip !== 'true' || reuse, 'Skipping installed acceptance requires whole-package reuse.');
+          assert(!installedRun || (reuse && skip === 'true'), 'Separate installed evidence requires package reuse and skipping installed acceptance.');
           assert(reuse || nativeReuse || (platform === 'all' && scenarios === '' && skip === 'false' && installedMode === 'all'),
             'Partial acceptance requires an explicit immutable package or native run.');
           let packageCommit = head;
           let nativeCommit = head;
+          let installedCommit = '';
           const sourceRun = reuse || nativeReuse;
           if (sourceRun) {
             assert(/^[1-9][0-9]*$/.test(sourceRun) && sourceRun.trim() === sourceRun, 'Source run must be a decimal run ID.');
             assert.notEqual(sourceRun, current);
-            const get = async suffix => {
-              const response = await fetch(`https://api.github.com/repos/${repository}/actions/runs/${sourceRun}${suffix}`, {
+            const get = async (suffix, runId = sourceRun) => {
+              const response = await fetch(`https://api.github.com/repos/${repository}/actions/runs/${runId}${suffix}`, {
                 headers: { authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' }
               });
               assert(response.ok, 'The requested original package run must be readable.');
@@ -105,8 +114,19 @@ jobs:
             const jobs = await get('/jobs?filter=latest&per_page=100');
             assert(jobs.jobs.some(job => job.name === 'package' && job.conclusion === 'success'),
               'The original package job must have succeeded.');
+            let installedJobs = jobs;
+            if (installedRun) {
+              assert(/^[1-9][0-9]*$/.test(installedRun) && installedRun.trim() === installedRun, 'Installed evidence run must be a decimal run ID.');
+              assert.notEqual(installedRun, current);
+              const source = await get('', installedRun);
+              assert.equal(source.path, '.github/workflows/runtime-production-acceptance.yml');
+              assert.equal(source.head_repository.full_name, repository);
+              assert(/^[a-f0-9]{40}$/.test(source.head_sha));
+              installedCommit = source.head_sha;
+              installedJobs = await get('/jobs?filter=latest&per_page=100', installedRun);
+            }
             if (skip === 'true') for (const item of selectedPlatforms) {
-              assert(jobs.jobs.some(job => job.name === `product (${item.os}, ${item.platform})`
+              assert(installedJobs.jobs.some(job => job.name === `product (${item.os}, ${item.platform})`
                 && job.steps?.some(step => (step.name === 'Installed Terminal and Webview final acceptance'
                     || (installedMode === 'live-runtime' && step.name === 'Installed Runtime Terminal and Webview affected acceptance'))
                   && step.conclusion === 'success')),
@@ -126,6 +146,7 @@ jobs:
           }
           await fs.appendFile(process.env.GITHUB_OUTPUT, `package_run=${reuse || current}\npackage_commit=${packageCommit}\n`
             + `native_run=${nativeReuse || current}\nnative_commit=${nativeCommit}\n`
+            + `installed_evidence_commit=${installedCommit}\n`
             + `matrix=${JSON.stringify({ include: selectedPlatforms })}\n`);
           NODE
 
@@ -274,6 +295,30 @@ jobs:
           const selection = JSON.parse(await fs.readFile('extensions/vscode/dev-session-canvas/dist/execution-candidate-selection.json', 'utf8'));
           assert.equal(selection.profile, 'platform');
           assert.deepEqual(selection.admissionLimits, { executions: null, starting: 1, pending: 2 });
+          NODE
+      - name: Download passed installed package identity
+        if: inputs.installed_evidence_run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: runtime-production-input-${{ matrix.platform }}-${{ inputs.installed_evidence_run }}
+          path: installed-evidence
+          run-id: ${{ inputs.installed_evidence_run }}
+          github-token: ${{ github.token }}
+      - name: Verify installed evidence uses this exact package
+        if: inputs.installed_evidence_run != ''
+        env:
+          DSC_PACKAGE_RUN: ${{ needs.input.outputs.package_run }}
+          DSC_INSTALLED_EVIDENCE_COMMIT: ${{ needs.input.outputs.installed_evidence_commit }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs/promises';
+          const current = JSON.parse(await fs.readFile('production-package/receipt.json', 'utf8'));
+          const original = JSON.parse(await fs.readFile('installed-evidence/receipt.json', 'utf8'));
+          const evidence = JSON.parse(await fs.readFile('installed-evidence/reuse-receipt.json', 'utf8'));
+          assert.deepEqual(original, current, 'Installed evidence must identify the same fixed package.');
+          assert.deepEqual(evidence, { ...current, packageRun: process.env.DSC_PACKAGE_RUN,
+            harnessCommit: process.env.DSC_INSTALLED_EVIDENCE_COMMIT }, 'Installed evidence package/harness identity mismatch.');
           NODE
       - name: Preserve exact package identity
         uses: actions/upload-artifact@v4

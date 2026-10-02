@@ -2,6 +2,8 @@
 
 当前执行入口（2026-10-02，§53，取代下面历史入口）：按用户顺序先完成F-04资源账/生产准入/本地实际消费信用/候选冷启动，再收口已证页面缺陷和正常build/package/default，最后受影响的真实Agent、Webview、现代跨平台与安装包验收。十会话、重连、compact及未受影响原生矩阵复用，历史失败保留不排队，root归属另列、旧OS和诊断框架增强不作前置。
 
+当前具名阻塞：新包71b41035的Windows run36972376905已通过Runtime安装及两Codex Runtime场景，但Codex snapshot-only stop的756-byte/seq66状态恢复语义不相等，不能按正文一致放行。仅补既有摘要的固定布尔分类，并用同包复用已过安装、只定位失败单格及未跑Claude；Linux36972593736与macOS36972826194各四Runtime Agent已独立核验成功，安装工件待完整核对。原失败、旧hash与所有尾部判据保持，尚不宣布整体完成。
+
 当前唯一执行入口（2026-10-02，§52）：判据窄修 `1d784d8b` 的唯一 Linux run `36935000098` 原八场通过，包含空/非空 snapshot stop 首页面独立重排与 schema2 新Host重开；四 natural 响应/EOF、八场零cleanup。旧两次 `30f421b3` 首场超时根因未知，不宣称产品修复、不为抓红重跑。当前回到有限清单 A1/F-04、A2/A3 慢写/最终状态及平台新判据、最终生产准入；已完成固定 Linux 格不重排，历史入口不构成追加队列，不追加工具门槛。
 
 最新 A1/B1 结果（2026-10-01，覆盖后续历史入口）：固定 `10/1` schema2 Linux Electron 候选的 `color`/`size` 真实多会话校准均通过内容、预算观察和产品 cleanup，仍只是声明负载；同候选 `2/1` `color` Host detach/reconnect 也通过，B 在 A 尚未追平时 53.4ms 应用，旧 Supervisor 与 reader/session 身份保持，Host ready 后 15,538.456ms 追平。该结果解除具名容量/离线交互组合，不关闭 F-04、默认准入、跨平台/packaged 或其他 A 格；不重复成功矩阵，不新增通用诊断门槛。

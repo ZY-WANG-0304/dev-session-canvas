@@ -80,6 +80,25 @@ function snapshotGeometrySummary(value, dimensionsOnly = false) {
     : Number.isSafeInteger(value[name]) && value[name] >= 0 ? value[name] : null]));
 }
 
+function snapshotSemanticMatchesSummary(value) {
+  const fields = (source, keys) => source && typeof source === 'object' && !Array.isArray(source)
+    ? Object.fromEntries(keys.map(name => [name, boolean(source[name])])) : null;
+  const flags = source => fields(source,
+    ['Bold', 'Dim', 'Italic', 'Underline', 'Overline', 'Blink', 'Inverse', 'Invisible', 'Strikethrough']);
+  const buffer = source => {
+    const result = fields(source, ['type', 'cursorX', 'cursorY', 'baseY', 'viewportY', 'lineCount', 'lineWidths',
+      'wrapped', 'chars', 'width', 'foreground', 'background']);
+    return result ? { ...result, flags: flags(source.flags) } : null;
+  };
+  const result = fields(value, ['cols', 'rows', 'activeBuffer', 'alternatePresent']);
+  if (!result) return null;
+  const cursorStyle = fields(value.cursorStyle, ['foreground', 'background']);
+  return { ...result, normal: buffer(value.normal), alternate: buffer(value.alternate),
+    modes: fields(value.modes, ['applicationCursorKeysMode', 'applicationKeypadMode', 'bracketedPasteMode', 'insertMode',
+      'originMode', 'reverseWraparoundMode', 'sendFocusMode', 'wraparoundMode', 'mouseTrackingMode']),
+    cursorStyle: cursorStyle ? { ...cursorStyle, flags: flags(value.cursorStyle.flags) } : null };
+}
+
 function snapshotEvidenceSummary(value) {
   if (!value || typeof value !== 'object') return null;
   const result = { schemaVersion: value.schemaVersion === 1 ? 1 : null };
@@ -115,6 +134,7 @@ function snapshotEvidenceSummary(value) {
   result.pageGeometryMatches = value.pageGeometryMatches && typeof value.pageGeometryMatches === 'object' &&
     !Array.isArray(value.pageGeometryMatches)
     ? Object.fromEntries(geometryKeys.map(name => [name, boolean(value.pageGeometryMatches[name])])) : null;
+  result.replaySavedSemanticMatches = snapshotSemanticMatchesSummary(value.replaySavedSemanticMatches);
   return result;
 }
 

@@ -12,6 +12,15 @@ const replayComparisonFields = ['replaySavedGeometryMatched', 'replaySavedLinesM
   'replaySavedSerializedMatched', 'replaySerializedMatchesSavedData'];
 const acceptsNonempty = (value, evidence) => acceptsSnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
   savedNode: value.savedNode, evidence });
+const semanticFlags = ['Bold', 'Dim', 'Italic', 'Underline', 'Overline', 'Blink', 'Inverse', 'Invisible', 'Strikethrough'];
+const matchedFields = keys => Object.fromEntries(keys.map(key => [key, true]));
+const matchedSemanticBuffer = () => ({ ...matchedFields(['type', 'cursorX', 'cursorY', 'baseY', 'viewportY',
+  'lineCount', 'lineWidths', 'wrapped', 'chars', 'width', 'foreground', 'background']), flags: matchedFields(semanticFlags) });
+const matchedSemantics = (alternate = false) => ({ ...matchedFields(['cols', 'rows', 'activeBuffer', 'alternatePresent']),
+  normal: matchedSemanticBuffer(), alternate: alternate ? matchedSemanticBuffer() : null,
+  modes: matchedFields(['applicationCursorKeysMode', 'applicationKeypadMode', 'bracketedPasteMode', 'insertMode',
+    'originMode', 'reverseWraparoundMode', 'sendFocusMode', 'wraparoundMode', 'mouseTrackingMode']),
+  cursorStyle: { foreground: true, background: true, flags: matchedFields(semanticFlags) } });
 
 async function fixture({ blank = false, resize = false, outputText = 'VISIBLE BEFORE RESET' } = {}) {
   const terminal = new Terminal({ cols: 40, rows: 5, scrollback: 10000, allowProposedApi: true });
@@ -75,6 +84,7 @@ assert.equal(blankEvidence.replayBufferLineCount, 5);
 assert.equal(blankEvidence.savedBufferLineCount, 5);
 assert.equal(blankEvidence.replaySerializedBytes, 0);
 assert.equal(blankEvidence.hydratedSerializedBytes, 0);
+assert.deepEqual(blankEvidence.replaySavedSemanticMatches, matchedSemantics());
 
 const initialSchema = { ...blank, messages: clone(blank.messages) };
 delete initialSchema.messages[0].payload.serializedTerminalState.outputSequence;
@@ -144,6 +154,7 @@ for (const mutate of [
   const result = await collectSnapshotEvidence(invalid);
   assert.equal(result.replayComplete, false, 'Only the recorded strict initial schema is eligible.');
   assert.equal(result.replayMatchesSaved, null);
+  assert.equal(result.replaySavedSemanticMatches, null);
 }
 
 const nonempty = await fixture({ resize: true });
@@ -169,6 +180,7 @@ assert.equal(normalizedEvidence.replaySavedSerializedMatched, false);
 assert.notEqual(normalizedEvidence.replayStateSha256, normalizedEvidence.hydratedStateSha256);
 assert.equal(normalizedEvidence.replaySerializedMatchesSavedData, true);
 assert.equal(normalizedEvidence.replaySavedSemanticMatched, true);
+assert.deepEqual(normalizedEvidence.replaySavedSemanticMatches, matchedSemantics());
 assert.equal(normalizedEvidence.replaySemanticStateSha256, normalizedEvidence.hydratedSemanticStateSha256);
 assert.equal(normalizedEvidence.savedMatchesPage, true);
 assert.equal(normalizedEvidence.replayMatchesPage, true);
@@ -187,15 +199,17 @@ for (const [name, outputText] of [
   assert.equal(evidence.replaySerializedMatchesSavedData, true, name);
   assert.equal(evidence.replaySavedSemanticMatched, false, name);
   assert.notEqual(evidence.replaySemanticStateSha256, evidence.hydratedSemanticStateSha256, name);
+  assert.equal(evidence.replaySavedSemanticMatches.normal.chars, true, name);
+  assert(['Bold', 'Dim'].some(flag => evidence.replaySavedSemanticMatches.normal.flags[flag] === false), name);
   assert.equal(acceptsNonempty(value, evidence), false, `${name}: unchanged text cannot hide lost style.`);
 }
 
-for (const [name, transform] of [
-  ['content', data => data.replace('VISIBLE', 'HIDDEN!')],
-  ['cell style', data => `\x1b[31m${data}\x1b[0m`],
-  ['cursor style', data => `${data}\x1b[31m`],
-  ['cursor position', data => `${data}\x1b[1D`],
-  ['mode', data => `${data}\x1b[?2004h`]
+for (const [name, transform, category] of [
+  ['content', data => data.replace('VISIBLE', 'HIDDEN!'), ['normal', 'chars']],
+  ['cell style', data => `\x1b[31m${data}\x1b[0m`, ['normal', 'foreground']],
+  ['cursor style', data => `${data}\x1b[31m`, ['cursorStyle', 'foreground']],
+  ['cursor position', data => `${data}\x1b[1D`, ['normal', 'cursorX']],
+  ['mode', data => `${data}\x1b[?2004h`, ['modes', 'bracketedPasteMode']]
 ]) {
   const value = await fixture();
   const data = transform(value.savedNode.metadata.agent.serializedTerminalState.data);
@@ -205,10 +219,59 @@ for (const [name, transform] of [
   assert.equal(evidence.publishedFinalMatchesSaved, true, name);
   assert.equal(evidence.replayComplete, true, name);
   assert.equal(evidence.replaySavedSemanticMatched, false, name);
+  assert.equal(evidence.replaySavedSemanticMatches[category[0]][category[1]], false, name);
   assert.equal(evidence.replaySerializedMatchesSavedData, false, name);
   assert.equal(acceptsNonempty(value, evidence), false, name);
   if (name !== 'content') assert.equal(evidence.replaySavedLinesMatched, true, name);
   if (name !== 'cursor position') assert.equal(evidence.replaySavedGeometryMatched, true, name);
+}
+
+for (const [index, sgr] of [1, 2, 3, 4, 53, 5, 7, 8, 9].entries()) {
+  const value = await fixture();
+  const data = `\x1b[${sgr}m${value.savedNode.metadata.agent.serializedTerminalState.data}`;
+  value.savedNode.metadata.agent.serializedTerminalState.data = data;
+  value.messages.at(-2).payload.serializedTerminalState.data = data;
+  const evidence = await collectSnapshotEvidence(value);
+  const expected = matchedSemantics();
+  expected.normal.flags[semanticFlags[index]] = false;
+  expected.cursorStyle.flags[semanticFlags[index]] = false;
+  assert.deepEqual(evidence.replaySavedSemanticMatches, expected, semanticFlags[index]);
+  assert.equal(evidence.replaySavedSemanticMatched, false);
+  assert.equal(acceptsNonempty(value, evidence), false);
+}
+const strikethrough = await fixture({ outputText: '\x1b[9mSTRIKETHROUGH' });
+const strikethroughEvidence = await collectSnapshotEvidence(strikethrough);
+assert.equal(strikethroughEvidence.replaySavedSemanticMatched, true, 'A signed nonzero style bitmask is observable.');
+assert.deepEqual(strikethroughEvidence.replaySavedSemanticMatches, matchedSemantics());
+assert.equal(acceptsNonempty(strikethrough, strikethroughEvidence), true);
+
+for (const [mode, sequence] of [
+  ['applicationCursorKeysMode', '\x1b[?1h'], ['applicationKeypadMode', '\x1b='],
+  ['bracketedPasteMode', '\x1b[?2004h'], ['insertMode', '\x1b[4h'], ['originMode', '\x1b[?6h'],
+  ['reverseWraparoundMode', '\x1b[?45h'], ['sendFocusMode', '\x1b[?1004h'],
+  ['wraparoundMode', '\x1b[?7l'], ['mouseTrackingMode', '\x1b[?1000h']
+]) {
+  const value = await fixture();
+  const data = `${value.savedNode.metadata.agent.serializedTerminalState.data}${sequence}`;
+  value.savedNode.metadata.agent.serializedTerminalState.data = data;
+  value.messages.at(-2).payload.serializedTerminalState.data = data;
+  const evidence = await collectSnapshotEvidence(value);
+  assert.equal(evidence.replaySavedSemanticMatches.modes[mode], false, mode);
+  assert.equal(evidence.replaySavedSemanticMatched, false, mode);
+}
+
+for (const [name, transform, category] of [
+  ['cell background', data => `\x1b[41m${data}\x1b[0m`, ['normal', 'background']],
+  ['cursor background', data => `${data}\x1b[41m`, ['cursorStyle', 'background']],
+  ['cell width', data => data.replace('VISIBLE', '\u4e2dISIBLE'), ['normal', 'width']]
+]) {
+  const value = await fixture();
+  const data = transform(value.savedNode.metadata.agent.serializedTerminalState.data);
+  value.savedNode.metadata.agent.serializedTerminalState.data = data;
+  value.messages.at(-2).payload.serializedTerminalState.data = data;
+  const evidence = await collectSnapshotEvidence(value);
+  assert.equal(evidence.replaySavedSemanticMatches[category[0]][category[1]], false, name);
+  assert.equal(evidence.replaySavedSemanticMatched, false, name);
 }
 
 const wrapped = await fixture({ outputText: `${'a'.repeat(40)}B` });
@@ -218,15 +281,32 @@ const wrappedEvidence = await collectSnapshotEvidence(wrapped);
 assert.equal(wrappedEvidence.replaySavedGeometryMatched, true);
 assert.equal(wrappedEvidence.replaySavedLinesMatched, true);
 assert.equal(wrappedEvidence.replaySavedSemanticMatched, false, 'Explicit newlines cannot replace line-wrap semantics.');
+assert.equal(wrappedEvidence.replaySavedSemanticMatches.normal.wrapped, false);
+assert.equal(wrappedEvidence.replaySavedSemanticMatches.normal.chars, true);
 assert.equal(acceptsNonempty(wrapped, wrappedEvidence), false);
 
 const activeAlternate = await fixture({ outputText: 'NORMAL\x1b[?1049hALTERNATE' });
 const activeAlternateEvidence = await collectSnapshotEvidence(activeAlternate);
 assert.equal(activeAlternateEvidence.replaySavedSemanticMatched, true, 'An active alternate buffer must survive hydration.');
+assert.deepEqual(activeAlternateEvidence.replaySavedSemanticMatches, matchedSemantics(true));
 assert.equal(acceptsNonempty(activeAlternate, activeAlternateEvidence), true);
+for (const [name, transform, category] of [
+  ['alternate content', data => data.replace('ALTERNATE', 'DIFFERENT'), ['alternate', 'chars']],
+  ['normal content while alternate active', data => data.replace('NORMAL', 'CHANGE'), ['normal', 'chars']],
+  ['alternate cursor', data => `${data}\x1b[1D`, ['alternate', 'cursorX']]
+]) {
+  const value = { ...activeAlternate, savedNode: clone(activeAlternate.savedNode), messages: clone(activeAlternate.messages) };
+  const data = transform(value.savedNode.metadata.agent.serializedTerminalState.data);
+  value.savedNode.metadata.agent.serializedTerminalState.data = data;
+  value.messages.at(-2).payload.serializedTerminalState.data = data;
+  const evidence = await collectSnapshotEvidence(value);
+  assert.equal(evidence.replaySavedSemanticMatches[category[0]][category[1]], false, name);
+  assert.equal(evidence.replaySavedSemanticMatched, false, name);
+}
 const dormantAlternate = await fixture({ outputText: 'NORMAL\x1b[?1049hALTERNATE\x1b[?1049l' });
 const dormantAlternateEvidence = await collectSnapshotEvidence(dormantAlternate);
 assert.equal(dormantAlternateEvidence.replaySavedSemanticMatched, true, 'Dormant alternate content is outside serializer persistence.');
+assert.deepEqual(dormantAlternateEvidence.replaySavedSemanticMatches, matchedSemantics());
 assert.equal(acceptsNonempty(dormantAlternate, dormantAlternateEvidence), true);
 const synchronized = await fixture({ outputText: 'SYNCHRONIZED\x1b[?2026h' });
 const synchronizedEvidence = await collectSnapshotEvidence(synchronized);
@@ -243,10 +323,27 @@ try {
   assert.equal(unsupported.replayStateSha256, nonemptyEvidence.replayStateSha256);
   assert.equal(unsupported.hydratedStateSha256, nonemptyEvidence.hydratedStateSha256);
   assert.equal(unsupported.replaySavedSemanticMatched, null);
+  assert.equal(unsupported.replaySavedSemanticMatches, null);
   assert.equal(unsupported.replaySemanticStateSha256, null);
   assert.equal(unsupported.hydratedSemanticStateSha256, null);
   assert.equal(acceptsNonempty(nonempty, unsupported), false);
 } finally { Object.defineProperty(Terminal.prototype, 'modes', modesDescriptor); }
+
+const styleProbe = new Terminal({ cols: 40, rows: 5 });
+const stylePrototype = Object.getPrototypeOf(styleProbe._core._inputHandler._curAttrData);
+const originalStrikethrough = stylePrototype.isStrikethrough;
+styleProbe.dispose();
+try {
+  for (const invalid of [undefined, NaN, 0.5, '1', true]) {
+    stylePrototype.isStrikethrough = () => invalid;
+    const unsupported = await collectSnapshotEvidence(nonempty);
+    assert.equal(unsupported.replaySavedSemanticMatched, null);
+    assert.equal(unsupported.replaySavedSemanticMatches, null);
+    assert.equal(unsupported.replaySemanticStateSha256, null);
+    assert.equal(unsupported.hydratedSemanticStateSha256, null);
+    assert.equal(acceptsNonempty(nonempty, unsupported), false);
+  }
+} finally { stylePrototype.isStrikethrough = originalStrikethrough; }
 
 for (const field of ['replaySerializedMatchesSavedData', 'replaySavedSemanticMatched']) {
   for (const invalid of [false, null, undefined, 'true']) {

@@ -310,11 +310,12 @@ assert.deepEqual(Object.keys(production.on), ['workflow_dispatch'],
 assert.deepEqual(production.permissions, { contents: 'read' });
 assert.equal(production.env, undefined);
 const productionInputs = production.on.workflow_dispatch.inputs;
-assert.deepEqual(Object.keys(productionInputs), ['reuse_package_run', 'reuse_native_run', 'platform', 'agent_scenarios', 'installed_mode', 'skip_installed']);
+assert.deepEqual(Object.keys(productionInputs), ['reuse_package_run', 'reuse_native_run', 'platform', 'agent_scenarios', 'installed_mode', 'skip_installed', 'installed_evidence_run']);
 assert.equal(productionInputs.reuse_package_run.default, '');
 assert.equal(productionInputs.reuse_native_run.default, '');
 assert.equal(productionInputs.agent_scenarios.default, '');
 assert.equal(productionInputs.skip_installed.default, false);
+assert.equal(productionInputs.installed_evidence_run.default, '');
 assert.equal(productionInputs.platform.default, 'all');
 assert.equal(productionInputs.installed_mode.default, 'all');
 assert.deepEqual(productionInputs.installed_mode.options, ['all', 'live-runtime']);
@@ -331,9 +332,10 @@ const evaluateSelection = new Function('assert', 'fs', 'execFileSync', 'cli', 'f
 const platforms = [{ os: 'ubuntu-22.04', platform: 'linux' }, { os: 'macos-15', platform: 'macos' },
   { os: 'windows-2025', platform: 'windows' }];
 async function selection({ values = {}, changed = [], packageSuccess = true, installedPlatforms = ['linux'],
-  installedMode = 'all', sourcePath = '.github/workflows/runtime-production-acceptance.yml', repository = 'owner/repo' } = {}) {
+  installedMode = 'all', sourcePath = '.github/workflows/runtime-production-acceptance.yml', repository = 'owner/repo',
+  evidencePlatforms = ['linux'], evidenceMode = 'live-runtime', evidencePath = sourcePath, evidenceRepository = repository } = {}) {
   const env = { DSC_REUSE_RUN: '', DSC_NATIVE_RUN: '', DSC_PLATFORM: 'all', DSC_SCENARIOS: '', DSC_SKIP_INSTALLED: 'false',
-    DSC_INSTALLED_MODE: 'all',
+    DSC_INSTALLED_MODE: 'all', DSC_INSTALLED_EVIDENCE_RUN: '',
     GITHUB_SHA: 'b'.repeat(40), GITHUB_RUN_ID: '999', GITHUB_REPOSITORY: 'owner/repo',
     GITHUB_OUTPUT: '/controlled-output', GH_TOKEN: 'controlled-token', ...values };
   let output = '', requests = 0;
@@ -346,14 +348,19 @@ async function selection({ values = {}, changed = [], packageSuccess = true, ins
     }, cliHelpers, async (url, options) => {
       requests++;
       assert.equal(options.headers.authorization, 'Bearer controlled-token');
-      assert(url.startsWith('https://api.github.com/repos/owner/repo/actions/runs/123'));
+      const separateEvidence = url.startsWith('https://api.github.com/repos/owner/repo/actions/runs/456');
+      assert(separateEvidence || url.startsWith('https://api.github.com/repos/owner/repo/actions/runs/123'));
+      const passedPlatforms = separateEvidence ? evidencePlatforms : installedPlatforms;
+      const passedMode = separateEvidence ? evidenceMode : installedMode;
       return { ok: true, async json() {
         return url.includes('/jobs?') ? { jobs: [{ name: 'package', conclusion: packageSuccess ? 'success' : 'failure' },
-          ...platforms.filter(item => installedPlatforms.includes(item.platform)).map(item => ({
+          ...platforms.filter(item => passedPlatforms.includes(item.platform)).map(item => ({
             name: `product (${item.os}, ${item.platform})`, steps: [{
-              name: installedMode === 'all' ? 'Installed Terminal and Webview final acceptance'
+              name: passedMode === 'all' ? 'Installed Terminal and Webview final acceptance'
                 : 'Installed Runtime Terminal and Webview affected acceptance', conclusion: 'success' }] }))] }
-          : { path: sourcePath, head_repository: { full_name: repository }, head_sha: 'a'.repeat(40) };
+          : { path: separateEvidence ? evidencePath : sourcePath,
+            head_repository: { full_name: separateEvidence ? evidenceRepository : repository },
+            head_sha: (separateEvidence ? 'c' : 'a').repeat(40) };
       } };
     }, { env });
   return { values: Object.fromEntries(output.trim().split('\n').map(line => {
@@ -388,6 +395,19 @@ await assert.rejects(selection({ values: { DSC_NATIVE_RUN: '123', DSC_SKIP_INSTA
 await assert.rejects(selection({ values: { DSC_NATIVE_RUN: '123' }, packageSuccess: false }), /must have succeeded/);
 await assert.rejects(selection({ values: replayValues, installedMode: 'live-runtime' }), /original passed installed step/);
 await selection({ values: { ...replayValues, DSC_INSTALLED_MODE: 'live-runtime' }, installedMode: 'live-runtime' });
+const separateValues = { ...replayValues, DSC_INSTALLED_MODE: 'live-runtime', DSC_INSTALLED_EVIDENCE_RUN: '456' };
+const separate = await selection({ values: separateValues, installedPlatforms: [] });
+assert.equal(separate.requests, 4);
+assert.equal(separate.values.installed_evidence_commit, 'c'.repeat(40));
+assert.equal(separate.values.package_commit, 'a'.repeat(40));
+await assert.rejects(selection({ values: separateValues, evidencePlatforms: [] }), /original passed installed step/);
+await assert.rejects(selection({ values: { ...separateValues, DSC_INSTALLED_MODE: 'all' } }), /original passed installed step/);
+await assert.rejects(selection({ values: separateValues, evidencePath: 'wrong-workflow.yml' }));
+await assert.rejects(selection({ values: separateValues, evidenceRepository: 'another/repo' }));
+for (const changes of [{ DSC_SKIP_INSTALLED: 'false' }, { DSC_REUSE_RUN: '' },
+  { DSC_INSTALLED_EVIDENCE_RUN: '456\n' }, { DSC_INSTALLED_EVIDENCE_RUN: '999' }]) {
+  await assert.rejects(selection({ values: { ...separateValues, ...changes } }));
+}
 await assert.rejects(selection({ values: { DSC_INSTALLED_MODE: 'live-runtime' } }), /Partial acceptance/);
 for (const file of ['extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
   'scripts/build/build.mjs', 'scripts/native/linux-owner.cc', 'package-lock.json',
@@ -469,6 +489,33 @@ const verifyPackage = finalProduct.steps.find(candidate => candidate.name === 'V
 assert.match(verifyPackage.run, /assert\.equal\(receipt\.inputCommit, process\.env\.DSC_PACKAGE_COMMIT\)/);
 assert.match(verifyPackage.run, /assert\.equal\(receipt\.sha256, createHash\('sha256'\)\.update\(bytes\)\.digest\('hex'\)\)/);
 assert.match(verifyPackage.run, /reuse-receipt\.json/);
+const installedDownload = finalProduct.steps.find(candidate => candidate.name === 'Download passed installed package identity');
+assert.equal(installedDownload.if, "inputs.installed_evidence_run != ''");
+assert.deepEqual(installedDownload.with, {
+  name: 'runtime-production-input-${{ matrix.platform }}-${{ inputs.installed_evidence_run }}',
+  path: 'installed-evidence', 'run-id': '${{ inputs.installed_evidence_run }}', 'github-token': '${{ github.token }}'
+});
+const installedIdentity = finalProduct.steps.find(candidate => candidate.name === 'Verify installed evidence uses this exact package');
+assert.equal(installedIdentity.if, installedDownload.if);
+assert(finalProduct.steps.indexOf(installedIdentity) < finalProduct.steps.indexOf(finalSecretStep));
+const identityScript = installedIdentity.run.split("node --input-type=module <<'NODE'\n")[1].split('\nNODE')[0]
+  .replace(/^import .*;\n/gm, '');
+const evaluateInstalledIdentity = new Function('assert', 'fs', 'process', `return (async () => { ${identityScript} })();`);
+const packageReceipt = { inputCommit: 'a'.repeat(40), sha256: 'd'.repeat(64), name: 'dev-session-canvas', version: '0.25.0' };
+const samePackageEvidence = { ...packageReceipt, packageRun: '123', harnessCommit: 'c'.repeat(40) };
+async function verifyInstalledIdentity(original = packageReceipt, evidence = samePackageEvidence) {
+  const files = { 'production-package/receipt.json': packageReceipt,
+    'installed-evidence/receipt.json': original, 'installed-evidence/reuse-receipt.json': evidence };
+  await evaluateInstalledIdentity(assert, { async readFile(file) { return JSON.stringify(files[file]); } },
+    { env: { DSC_PACKAGE_RUN: '123', DSC_INSTALLED_EVIDENCE_COMMIT: 'c'.repeat(40) } });
+}
+await verifyInstalledIdentity();
+for (const mutation of [{ inputCommit: 'e'.repeat(40) }, { sha256: 'f'.repeat(64) },
+  { packageRun: '124' }, { harnessCommit: 'e'.repeat(40) }]) {
+  await assert.rejects(verifyInstalledIdentity(packageReceipt, { ...samePackageEvidence, ...mutation }));
+}
+await assert.rejects(verifyInstalledIdentity({ ...packageReceipt, sha256: 'f'.repeat(64) }));
+await assert.rejects(verifyInstalledIdentity(null, null));
 for (const job of [inputJob, production.jobs.package, finalProduct]) {
   assert.equal(job.steps.find(candidate => candidate.uses === 'actions/checkout@v4').with.ref, '${{ github.sha }}');
   for (const candidate of job.steps.filter(candidate => candidate.run)) {

@@ -255,6 +255,19 @@ try {
   }
   const stopped = { ...scenarios.find(value => value.name === 'codex-snapshot-only-stop'), state: 'failed' };
   const stopArtifacts = path.join(options.output, stopped.name, 'artifacts');
+  const booleanFields = names => Object.fromEntries(names.map((name, index) => [name, index % 2 === 0]));
+  const styleFlags = booleanFields(['Bold', 'Dim', 'Italic', 'Underline', 'Overline', 'Blink', 'Inverse', 'Invisible', 'Strikethrough']);
+  const bufferMatches = { ...booleanFields(['type', 'cursorX', 'cursorY', 'baseY', 'viewportY', 'lineCount', 'lineWidths',
+    'wrapped', 'chars', 'width', 'foreground', 'background']), flags: styleFlags };
+  const semanticMatches = { ...booleanFields(['cols', 'rows', 'activeBuffer', 'alternatePresent']),
+    normal: bufferMatches, alternate: bufferMatches,
+    modes: booleanFields(['applicationCursorKeysMode', 'applicationKeypadMode', 'bracketedPasteMode', 'insertMode',
+      'originMode', 'reverseWraparoundMode', 'sendFocusMode', 'wraparoundMode', 'mouseTrackingMode']),
+    cursorStyle: { foreground: true, background: false, flags: styleFlags } };
+  const mapSemanticLeaves = (value, leaf, privateFields = false) => typeof value === 'boolean' ? leaf(value)
+    : { ...Object.fromEntries(Object.entries(value).map(([name, entry]) =>
+      [name, mapSemanticLeaves(entry, leaf, privateFields)])),
+    ...(privateFields ? { raw: key, [key]: true, cells: [{ chars: key }], path: key, ansi: key } : {}) };
   const snapshotEvidence = { schemaVersion: 1, savedStatePresent: true, savedStateValid: true, savedDataBytes: 0,
     savedOutputSequence: 15, snapshotOutputSequence: 15, readerFinalOutputSequence: 15, sequenceMatched: true,
     savedDataSha256: 'a'.repeat(64), helperSha256: 'b'.repeat(64), replayComplete: true,
@@ -262,6 +275,7 @@ try {
     replaySavedGeometryMatched: true, replaySavedLinesMatched: true, replaySavedVisibleMatched: true,
     replaySavedSerializedMatched: false, replaySerializedMatchesSavedData: true,
     replaySavedSemanticMatched: true, replaySemanticStateSha256: 'c'.repeat(64), hydratedSemanticStateSha256: 'c'.repeat(64),
+    replaySavedSemanticMatches: mapSemanticLeaves(semanticMatches, value => value, true),
     semanticState: { cells: [{ chars: key }] },
     replayBufferLineCount: 21, savedBufferLineCount: 21, replaySerializedBytes: 10, hydratedSerializedBytes: 0,
     replayInactivePrefixSnapshots: 1, replayEquivalentInitialSnapshots: 1, replayInitialZeroSequenceInferred: true,
@@ -302,17 +316,21 @@ try {
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.raw, undefined);
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.snapshot, undefined);
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.semanticState, undefined);
+  assert.deepEqual(snapshotReport.scenarios[0].snapshotEvidence.replaySavedSemanticMatches, semanticMatches,
+    'Only the fixed boolean categories survive, including at every nested boundary.');
   await fs.writeFile(path.join(stopArtifacts, 'snapshot-evidence.json'), JSON.stringify({ ...snapshotEvidence,
-    replaySavedSemanticMatched: false }));
+    replaySavedSemanticMatched: false, replaySavedSemanticMatches: null }));
   const semanticMismatchDirectory = path.join(root, 'semantic-mismatch-report');
   await writeAgentCandidateCIReport({ ...options, directory: semanticMismatchDirectory, scenarios: [stopped], failed: true });
   const semanticMismatchReport = JSON.parse(await fs.readFile(path.join(semanticMismatchDirectory, 'summary.json'), 'utf8'));
   assert.equal(semanticMismatchReport.scenarios[0].snapshotEvidence.replaySavedSemanticMatched, false);
+  assert.equal(semanticMismatchReport.scenarios[0].snapshotEvidence.replaySavedSemanticMatches, null);
   await fs.writeFile(path.join(stopArtifacts, 'snapshot-evidence.json'), JSON.stringify({ ...snapshotEvidence,
     replayReason: key, replayMatchesSaved: key, savedDataBytes: -1, savedDataSha256: key,
     replaySavedGeometryMatched: key, replaySavedLinesMatched: key, replaySavedVisibleMatched: key,
     replaySavedSerializedMatched: key, replaySerializedMatchesSavedData: key,
     replaySavedSemanticMatched: key, replaySemanticStateSha256: key, hydratedSemanticStateSha256: 'invalid',
+    replaySavedSemanticMatches: mapSemanticLeaves(semanticMatches, () => key, true),
     replayBufferLineCount: key, savedBufferLineCount: -1, replaySerializedBytes: key, hydratedSerializedBytes: -1,
     replayInitialZeroSequenceInferred: key, replayInactivePrefixSnapshots: -1,
     savedGeometry: { cols: key, rows: -1, cursorX: key, bufferType: key }, pageGeometry: key,
@@ -337,6 +355,8 @@ try {
   assert.deepEqual(invalidSnapshot.publishedGeometry, { cols: null, rows: null });
   assert.deepEqual(invalidSnapshot.pageGeometryMatches,
     { cols: null, rows: null, cursorX: null, cursorY: null, viewportY: null, bufferType: null });
+  assert.deepEqual(invalidSnapshot.replaySavedSemanticMatches, mapSemanticLeaves(semanticMatches, () => null),
+    'Unknown semantic categories must stay null, never truthy strings or inferred matches.');
   assert.equal(invalidSnapshotText.includes(key), false);
   for (const entry of scenarios) await fs.writeFile(path.join(options.output, entry.name, 'artifacts', 'result.json'),
     JSON.stringify({ pass: true }));
