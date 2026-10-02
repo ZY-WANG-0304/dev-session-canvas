@@ -35,6 +35,7 @@
 - [ ] (2026-10-02，§53) 以冻结提交运行同一VSIX的受影响Agent/Webview/现代三平台/安装包验收，随后整体review；F-04总体未关闭。
 - [x] (2026-10-02，§53首次CI) run36965693411的四Unix资产通过，Windows两架构在macOS helper的POSIX mode聚合检查首败，package/product未执行。跨宿主读权限与新VSIX固定helper元数据已修，distribution/package-command/file-list、mac18/assetset8通过；原失败保留，原最终CI仍待验。
 - [x] (2026-10-02，§53共存) 当前默认产物的原legacy-supervisor-upgrade单场景通过旧Agent/Terminal、前generation stream与新candidate绑定/交互/退役及清理；三次fixture前置/顺序失败保留，仅修等待完整附着和reset清理顺序。F-04只读总体review未发现新确定性blocker，无新增A1矩阵。
+- [ ] (2026-10-02，§53同包结果) run36966903790六native/package成功，Linux/macOS installed各四phase通过；Linux Agent前三过、第四完整快照比较失败、后四未跑；macOS前六过、第七观察unknown/cleanup failure1、第八未跑。Windows官方versioned CLI布局与driver flat假设冲突，未进产品。只修入口并复用同包失败/未跑格，F-04既有容量证据不重复。
 
 - [x] (2026-10-02) 复核Runtime热路径上界及O(N)/O(segment)资源账，确认总N混用pending、snapshot-only投递信用和candidate冷启动重放三个直接边界缺口；沿§10.17选定有限修正。
 - [x] 完成不可变production准入与Host最终保存责任分账，保留unknown/旧finite策略/获取前拒绝，定向先红后绿。
@@ -333,3 +334,7 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 修订记录（2026-10-02，最终分发首败）：保留run36965693411的Windows跨宿主权限首败，明确不是PTY退出结果；只修普通Windows资产读取和新VSIX两份macOS helper的权限，定向回归通过。最终同包验收仍开放，不重跑历史多会话，不增加诊断门槛。
 
 修订记录（2026-10-02，共存结账）：补齐旧raw/stream与当前默认candidate实际共存、自然退役及本方清理。现有fixture仅修异步恢复前置与清理顺序，原失败分账；92b3aa4a/run36966903790正在完成唯一同包验收，后续只有受影响结果回收与整体review，不另开容量阶段。
+
+修订记录（2026-10-02，同包首个产品失败）：记录Linux Agent第四场终态对照不一致，前三场及installed通过不被抹去。现有摘要不能确定具体不同字段，只补固定非敏感等值/长度并限定同包失败场景；有限取证只服务当前判定，原尾部/状态/重开断言不变。
+
+修订记录（2026-10-02，同包回收与有限复验决策）：补macOS installed/六Agent已过及第七unknown，Windows确定性入口假设修正只影响安装driver。按生产接入§53同包校验/选择复验，保留原失败及未跑格；不因验证接线重复多会话、内存或原生矩阵，F-04最终完成仍等待必要产品结果与整体review。

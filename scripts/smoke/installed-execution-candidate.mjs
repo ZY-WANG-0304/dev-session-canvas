@@ -135,7 +135,7 @@ export async function prepareInstalledCandidateDriver({ projectRoot, targetRoot,
   return { expectation, expectationPath };
 }
 
-export function installedCandidateInstallCommand({ vscodeExecutablePath, runtime, input }, platform = process.platform) {
+export function installedCandidateInstallCommand({ vscodeExecutablePath, runtime, input, windowsLauncher }, platform = process.platform) {
   assert(['linux', 'darwin', 'win32'].includes(platform), 'The fixed VSIX installer requires a supported platform.');
   const paths = platform === 'win32' ? path.win32 : path.posix;
   const executableDirectory = paths.dirname(vscodeExecutablePath);
@@ -144,9 +144,17 @@ export function installedCandidateInstallCommand({ vscodeExecutablePath, runtime
     '--install-extension', input.vsixPath, '--force', '--do-not-include-pack-dependencies'];
   let file;
   if (platform === 'win32') {
+    assert.equal(paths.basename(vscodeExecutablePath).toLowerCase(), 'code.exe');
+    assert.equal(typeof windowsLauncher, 'string', 'Read the fixed VS Code bin/code.cmd launcher before installing.');
+    const lines = windowsLauncher.split(/\r?\n/).map(line => line.trim());
+    assert(lines.some(line => /^@?set (?:ELECTRON_RUN_AS_NODE=1|"ELECTRON_RUN_AS_NODE=1")$/i.test(line)),
+      'The Windows launcher must select Electron Node mode.');
+    const entries = lines.map(line => /^"%~dp0\.\.\\Code\.exe" "%~dp0\.\.\\((?:[a-f0-9]{10}\\)?resources\\app\\out\\cli\.js)" %\*$/i.exec(line))
+      .filter(Boolean);
+    assert.equal(entries.length, 1, 'The Windows launcher must name one fixed flat or versioned CLI entry.');
     // Wait for the real CLI process, not a cmd.exe launcher that can return before installation.
     file = vscodeExecutablePath;
-    args.unshift(paths.join(executableDirectory, 'resources', 'app', 'out', 'cli.js'));
+    args.unshift(paths.join(executableDirectory, entries[0][1]));
     env.ELECTRON_RUN_AS_NODE = '1';
   } else {
     file = platform === 'darwin'
@@ -162,7 +170,12 @@ export function installedCandidateInstallCommand({ vscodeExecutablePath, runtime
 export async function installCandidateVsix(options) {
   assert.equal(hash(await fs.readFile(options.input.vsixPath)), options.input.vsixSha256,
     'The fixed VSIX must still match the inspected bytes before installation.');
-  const command = installedCandidateInstallCommand(options);
+  const windowsLauncher = process.platform === 'win32'
+    ? await fs.readFile(path.join(path.dirname(options.vscodeExecutablePath), 'bin', 'code.cmd'), 'utf8') : undefined;
+  const command = installedCandidateInstallCommand({ ...options, windowsLauncher });
+  if (process.platform === 'win32') {
+    assert((await fs.lstat(command.args[0])).isFile(), 'The Windows launcher CLI entry must be a regular file.');
+  }
   const logPath = path.join(options.runtime.artifactsDir, 'installed-vsix-cli.json');
   try {
     const { stdout, stderr } = await execFileAsync(command.file, command.args, command.options);

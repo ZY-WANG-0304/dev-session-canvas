@@ -28,7 +28,9 @@
 
 ## 技术债列表
 
-2026-10-02 当前有限收尾以生产接入§53为准：local实际消费信用、生产准入、candidate冷启动、慢restore/paged-events的fit及viewport、Host单任务/latest resize已有定向通过和普通六资产build/package本地证据。历史失败不再构成自动队列；F-04最终验收尚待同一clean-SHA包的三现代平台结果。总体review发现的缺Host credit旧candidate新建门禁已在aafcd52b修复，Host160/typecheck通过，健康旧live兼容保持。run36965693411在Windows跨宿主macOS helper权限检查首败，尚未运行package/product；必要权限修正及定向回归已完成，原日志保留，待最终CI。旧预算、旧OS与通用工具不作前置。
+2026-10-02 当前有限收尾以生产接入§53为准：local实际消费信用、生产准入、candidate冷启动、慢restore/paged-events的fit及viewport、Host单任务/latest resize已有定向通过，缺Host-credit的新建门禁已修复。92b3aa4a/run36966903790六native与普通package全部通过，Linux/macOS installed各四phase通过；Linux Agent前三过、第四完整快照比较false、后四未跑，macOS前六过、第七观察unknown/cleanup failure1、第八未跑。Windows官方versioned CLI布局与driver flat假设冲突，尚未进入产品。仅修入口及固定安全摘要，按同包失败/未跑格复验；不推断已证丢尾，不追认绿色，F-04最终证据仍未齐备。run36965693411的Windows跨宿主权限首败和全部历史失败保留，不变成新队列。旧预算、旧OS与通用工具不作前置。
+
+2026-10-02 有限UI残余：上述Linux/macOS installed自然退出的finalProbe包含 `Runtime session … is not live` 及内部栈toast。完整90002行、最终光标(6,2)、EOF/applied和清理通过；事件环缺对应RPC时间，不能确认具体触发源或本次回归。`CanvasPanelManager.ts`候选Runtime resize catch使用formatUnknownError，退出与迟到viewport resize竞态是可解释路径，但未证明本次因果。本轮不扩大为尾部阻塞或追加矩阵；后续在可复现同类通知时核对session身份/终态并收敛错误呈现，不吞没真正live控制失败。关联生产接入§53、`tests/vscode-smoke/execution-candidate-tests.cjs`与`src/supervisor/runtimeSupervisorMain.ts`的requireLiveSession。
 
 2026-10-02 当前 A2/A3/A4 补充：`1d784d8b` / Linux `36935000098` 原八场通过，四natural实际响应/EOF、Claude1262-byte/seq5非空stop的首页面独立重排/schema2新Host和八场零cleanup成立。Linux旧 `36917661214`/`36918349766` 首场超时根因未定，不能用cleanup后状态倒推失败前CLI已退出，也不由本轮成功追认修复。当前剩余为原慢写/最终fit/保存viewport应用、其他平台新判据、F-04和最终准入，不重跑固定Linux格、不扩诊断工具；`main.tsx` snapshot通知早于write、fit无回调屏障及未显式恢复viewport仅为只读实现差异，未证明本次或历史失败因果。
 

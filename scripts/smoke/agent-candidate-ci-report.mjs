@@ -84,13 +84,16 @@ function snapshotEvidenceSummary(value) {
   for (const name of ['savedNodeMatched', 'savedStatePresent', 'savedStateValid', 'readerApplied', 'readerLifecycleMatched', 'sequenceMatched',
     'helpProbePresent', 'finalProbePresent', 'pageGeometryMatched', 'pageVisibleMatched', 'pageBufferMatched',
     'savedMatchesPage', 'replayComplete', 'replayMatchesSaved', 'replayMatchesPage', 'publishedFinalMatchesSaved',
+    'replaySavedGeometryMatched', 'replaySavedLinesMatched', 'replaySavedVisibleMatched',
+    'replaySavedSerializedMatched', 'replaySerializedMatchesSavedData',
     'replayInitialZeroSequenceInferred', 'resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched',
     'resizedSavedPageBufferMatched', 'resizedSavedMatchesPage']) {
     result[name] = boolean(value[name]);
   }
   for (const name of ['savedDataBytes', 'savedOutputSequence', 'snapshotOutputSequence', 'readerFinalOutputSequence',
     'helpNonEmptyLines', 'savedCols', 'savedRows', 'messageCount', 'replayInitialSequence',
-    'replayOutputMessages', 'replayResizeSnapshots', 'replayInactivePrefixSnapshots', 'replayEquivalentInitialSnapshots']) {
+    'replayOutputMessages', 'replayResizeSnapshots', 'replayInactivePrefixSnapshots', 'replayEquivalentInitialSnapshots',
+    'replayBufferLineCount', 'savedBufferLineCount', 'replaySerializedBytes', 'hydratedSerializedBytes']) {
     result[name] = Number.isSafeInteger(value[name]) && value[name] >= 0 ? value[name] : null;
   }
   for (const name of ['helperSha256', 'savedDataSha256', 'hydratedStateSha256', 'replayStateSha256']) {
@@ -259,6 +262,19 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
     safeVersions[provider] = /^(?:codex-cli )?\d+\.\d+\.\d+(?: \(Claude Code\))?$/.test(version ?? '') ? version : null;
   }
   const platform = ['linux', 'darwin', 'win32'].includes(input?.platform) ? input.platform : 'unknown';
+  const fixedScenarioNames = ['codex', 'claude'].flatMap(provider => ['live-runtime', 'snapshot-only'].flatMap(mode =>
+    ['natural', 'stop'].map(lifecycle => `${provider}-${mode}-${lifecycle}`)));
+  const requestedNames = input?.selectedScenarioNames === undefined ? fixedScenarioNames : input.selectedScenarioNames;
+  const selectionValid = Array.isArray(requestedNames) && requestedNames.length > 0 &&
+    new Set(requestedNames).size === requestedNames.length && requestedNames.every(name => fixedScenarioNames.includes(name)) &&
+    (input?.partialSelection === undefined || input.partialSelection === (requestedNames.length < fixedScenarioNames.length));
+  const selectedScenarioNames = selectionValid ? fixedScenarioNames.filter(name => requestedNames.includes(name)) : [];
+  const partialSelection = selectionValid ? selectedScenarioNames.length < fixedScenarioNames.length : null;
+  const selectedRows = rows.filter(row => selectedScenarioNames.includes(row.name));
+  const selectedPass = selectionValid && !failed && selectedRows.length === selectedScenarioNames.length &&
+    selectedScenarioNames.every(name => selectedRows.filter(row => row.name === name).length === 1) &&
+    selectedRows.every(row => row.state === 'passed' && row.pass === true) &&
+    rows.filter(row => !selectedScenarioNames.includes(row.name)).every(row => row.state === 'not-run');
   const report = {
     schemaVersion: 1,
     scope: 'Real Codex/Claude CLI + DeepSeek + candidate Host/Webview on the recorded platform; not cross-platform closure.',
@@ -266,8 +282,10 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
     backend: 'deepseek', model: 'deepseek-flash', cli: safeVersions,
     phase: ['prepare', 'native-assets', 'complete', 'credential-cleanup'].includes(phase) || rows.some(row => row.name === phase)
       ? phase : 'unknown',
-    pass: !failed && rows.length === 8 && rows.every(row => row.state === 'passed' && row.pass === true),
-    plannedModelTurns: 4, automaticHarnessRetries: 0,
+    pass: partialSelection === false && selectedPass && rows.length === 8 && new Set(rows.map(row => row.name)).size === 8,
+    selectedScenarioNames, partialSelection, selectedPass,
+    plannedModelTurns: selectionValid ? selectedScenarioNames.filter(name => name.endsWith('-natural')).length : null,
+    automaticHarnessRetries: 0,
     failureClasses: failed ? classifyFailure(failureMessage) : [],
     scenarios: rows,
     buildHashes: Object.fromEntries(Object.entries(input?.hashes ?? {}).filter(([name, hash]) =>

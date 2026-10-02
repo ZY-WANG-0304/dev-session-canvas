@@ -175,6 +175,9 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
     replayInitialSequence: null, replayOutputMessages: null, replayResizeSnapshots: null,
     replayInactivePrefixSnapshots: null, replayEquivalentInitialSnapshots: null, replayInitialZeroSequenceInferred: null,
     replayMatchesSaved: null, replayMatchesPage: null, publishedFinalMatchesSaved: null,
+    replaySavedGeometryMatched: null, replaySavedLinesMatched: null, replaySavedVisibleMatched: null,
+    replaySavedSerializedMatched: null, replaySerializedMatchesSavedData: null,
+    replayBufferLineCount: null, savedBufferLineCount: null, replaySerializedBytes: null, hydratedSerializedBytes: null,
     pageProjectionIndependence: 'not-proven' };
   let hydrated, resized;
   try {
@@ -187,6 +190,8 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
     if (saved.viewportY !== undefined) hydrated.terminal.scrollToLine(saved.viewportY);
     const savedState = readTerminal(hydrated);
     evidence.savedGeometry = terminalGeometry(savedState);
+    evidence.savedBufferLineCount = savedState.lines.length;
+    evidence.hydratedSerializedBytes = Buffer.byteLength(savedState.serialized);
     evidence.hydratedStateSha256 = hash(JSON.stringify(savedState));
     const pageComparison = await comparePage(savedState, page, assertBuffer);
     evidence.pageGeometryMatched = pageComparison.geometry;
@@ -211,6 +216,13 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
     if (replay.complete) {
       evidence.replayStateSha256 = hash(JSON.stringify(replay.state));
       evidence.replayMatchesSaved = same(replay.state, savedState);
+      evidence.replaySavedGeometryMatched = same(terminalGeometry(replay.state), terminalGeometry(savedState));
+      evidence.replaySavedLinesMatched = same(replay.state.lines, savedState.lines);
+      evidence.replaySavedVisibleMatched = same(replay.state.visibleLines, savedState.visibleLines);
+      evidence.replaySavedSerializedMatched = replay.state.serialized === savedState.serialized;
+      evidence.replaySerializedMatchesSavedData = replay.state.serialized === saved.data;
+      evidence.replayBufferLineCount = replay.state.lines.length;
+      evidence.replaySerializedBytes = Buffer.byteLength(replay.state.serialized);
       evidence.replayMatchesPage = (await comparePage(replay.state, page, assertBuffer)).matches;
     }
     if (dimensions({ cols: page?.terminalCols, rows: page?.terminalRows })) {

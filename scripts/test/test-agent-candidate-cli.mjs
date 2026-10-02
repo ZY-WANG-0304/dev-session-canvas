@@ -7,6 +7,31 @@ import { build, transform } from 'esbuild';
 import ts from 'typescript';
 import cliHelpers from '../../tests/vscode-smoke/agent-candidate-cli.cjs';
 
+assert.equal(cliHelpers.agentCandidateScenarioNames.length, 8);
+for (const value of [undefined, '', cliHelpers.agentCandidateScenarioNames.join(',')]) {
+  assert.deepEqual(cliHelpers.selectAgentCandidateScenarios(value), {
+    selectedScenarioNames: [...cliHelpers.agentCandidateScenarioNames], partialSelection: false, plannedModelTurns: 4
+  });
+}
+assert.deepEqual(cliHelpers.selectAgentCandidateScenarios('codex-snapshot-only-stop'), {
+  selectedScenarioNames: ['codex-snapshot-only-stop'], partialSelection: true, plannedModelTurns: 0
+});
+assert.deepEqual(cliHelpers.selectAgentCandidateScenarios('claude-snapshot-only-natural,codex-live-runtime-natural'), {
+  selectedScenarioNames: ['codex-live-runtime-natural', 'claude-snapshot-only-natural'], partialSelection: true, plannedModelTurns: 2
+});
+assert.deepEqual(cliHelpers.selectAgentCandidateScenarios(undefined, { authOnly: true }), {
+  selectedScenarioNames: [], partialSelection: false, plannedModelTurns: 0
+});
+for (const value of ['unknown', 'codex-snapshot-only-stop,', ',codex-snapshot-only-stop',
+  'codex-snapshot-only-stop,codex-snapshot-only-stop', 'codex-snapshot-only-stop;echo injected',
+  'codex-snapshot-only-stop\n', ' codex-snapshot-only-stop', 1]) {
+  assert.throws(() => cliHelpers.selectAgentCandidateScenarios(value));
+}
+assert.throws(() => cliHelpers.selectAgentCandidateScenarios('', { authOnly: true }));
+const driverSource = await fs.readFile('scripts/smoke/run-vscode-agent-candidate.mjs', 'utf8');
+assert.match(driverSource, /if \(!authOnly && !scenarioSelection\.selectedScenarioNames\.includes\(scenario\.name\)\) continue;/);
+assert.match(driverSource, /scenarioCount: scenarios\.length, \.\.\.scenarioSelection/);
+
 const bundled = await build({ entryPoints: ['extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts'],
   bundle: true, platform: 'node', format: 'cjs', write: false, external: ['node-pty'] });
 const module = { exports: {} };

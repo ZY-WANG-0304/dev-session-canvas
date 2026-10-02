@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import yaml from 'js-yaml';
+import cliHelpers from '../../tests/vscode-smoke/agent-candidate-cli.cjs';
 
 const source = await readFile('.github/workflows/runtime-exit-integrity-native.yml', 'utf8');
 const workflow = yaml.load(source);
@@ -307,13 +308,95 @@ assert.deepEqual(Object.keys(production.on), ['workflow_dispatch'],
   'After branch-only registration, final acceptance must run only on explicit dispatch.');
 assert.deepEqual(production.permissions, { contents: 'read' });
 assert.equal(production.env, undefined);
+const productionInputs = production.on.workflow_dispatch.inputs;
+assert.deepEqual(Object.keys(productionInputs), ['reuse_package_run', 'platform', 'agent_scenarios', 'skip_installed']);
+assert.equal(productionInputs.reuse_package_run.default, '');
+assert.equal(productionInputs.agent_scenarios.default, '');
+assert.equal(productionInputs.skip_installed.default, false);
+assert.equal(productionInputs.platform.default, 'all');
+assert.deepEqual(productionInputs.platform.options, ['all', 'linux', 'macos', 'windows']);
+const inputJob = production.jobs.input;
+assert.deepEqual(inputJob.permissions, { contents: 'read', actions: 'read' });
+assert.equal(inputJob.steps[0].with['fetch-depth'], 0);
+const inputStep = inputJob.steps.find(candidate => candidate.id === 'selection');
+assert(!inputStep.run.includes('${{'), 'Dispatch values must enter through environment, never shell interpolation.');
+const selectionScript = inputStep.run.split("node --input-type=module <<'NODE'\n")[1].split('\nNODE')[0]
+  .replace(/^import .*;\n/gm, '');
+const evaluateSelection = new Function('assert', 'fs', 'execFileSync', 'cli', 'fetch', 'process',
+  `return (async () => { ${selectionScript} })();`);
+const platforms = [{ os: 'ubuntu-22.04', platform: 'linux' }, { os: 'macos-15', platform: 'macos' },
+  { os: 'windows-2025', platform: 'windows' }];
+async function selection({ values = {}, changed = [], packageSuccess = true, installedPlatforms = ['linux'],
+  sourcePath = '.github/workflows/runtime-production-acceptance.yml', repository = 'owner/repo' } = {}) {
+  const env = { DSC_REUSE_RUN: '', DSC_PLATFORM: 'all', DSC_SCENARIOS: '', DSC_SKIP_INSTALLED: 'false',
+    GITHUB_SHA: 'b'.repeat(40), GITHUB_RUN_ID: '999', GITHUB_REPOSITORY: 'owner/repo',
+    GITHUB_OUTPUT: '/controlled-output', GH_TOKEN: 'controlled-token', ...values };
+  let output = '', requests = 0;
+  await evaluateSelection(assert, { async appendFile(file, text) { assert.equal(file, env.GITHUB_OUTPUT); output += text; } },
+    (command, args, options) => {
+      assert.equal(command, 'git');
+      assert.deepEqual(args, ['diff', '--no-renames', '--name-only', '-z', 'a'.repeat(40), 'b'.repeat(40)]);
+      assert.equal(options.encoding, 'utf8');
+      return changed.join('\0');
+    }, cliHelpers, async (url, options) => {
+      requests++;
+      assert.equal(options.headers.authorization, 'Bearer controlled-token');
+      assert(url.startsWith('https://api.github.com/repos/owner/repo/actions/runs/123'));
+      return { ok: true, async json() {
+        return url.includes('/jobs?') ? { jobs: [{ name: 'package', conclusion: packageSuccess ? 'success' : 'failure' },
+          ...platforms.filter(item => installedPlatforms.includes(item.platform)).map(item => ({
+            name: `product (${item.os}, ${item.platform})`, steps: [{
+              name: 'Installed Terminal and Webview final acceptance', conclusion: 'success' }] }))] }
+          : { path: sourcePath, head_repository: { full_name: repository }, head_sha: 'a'.repeat(40) };
+      } };
+    }, { env });
+  return { values: Object.fromEntries(output.trim().split('\n').map(line => {
+    const split = line.indexOf('='); return [line.slice(0, split), line.slice(split + 1)];
+  })), requests };
+}
+const normalSelection = await selection();
+assert.equal(normalSelection.requests, 0);
+assert.equal(normalSelection.values.package_run, '999');
+assert.equal(normalSelection.values.package_commit, 'b'.repeat(40));
+assert.deepEqual(JSON.parse(normalSelection.values.matrix), { include: platforms });
+const replayValues = { DSC_REUSE_RUN: '123', DSC_PLATFORM: 'linux', DSC_SCENARIOS: 'codex-snapshot-only-stop',
+  DSC_SKIP_INSTALLED: 'true' };
+const replay = await selection({ values: replayValues,
+  changed: ['docs/design-docs/current.md', 'scripts/smoke/run-vscode-agent-candidate.mjs',
+    'scripts/test/test-runtime-agent-ci-workflow.mjs', 'tests/vscode-smoke/agent-candidate-cli.cjs',
+    '.github/workflows/runtime-production-acceptance.yml'] });
+assert.equal(replay.requests, 2);
+assert.equal(replay.values.package_run, '123');
+assert.equal(replay.values.package_commit, 'a'.repeat(40));
+assert.deepEqual(JSON.parse(replay.values.matrix), { include: [platforms[0]] });
+for (const file of ['extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
+  'scripts/build/build.mjs', 'scripts/native/linux-owner.cc', 'package-lock.json',
+  'extensions/vscode/dev-session-canvas/package.json', 'scripts/release/package-vsix.mjs']) {
+  await assert.rejects(selection({ values: replayValues, changed: [file] }), /not product inputs/);
+}
+await assert.rejects(selection({ values: replayValues, packageSuccess: false }), /must have succeeded/);
+await assert.rejects(selection({ values: replayValues, installedPlatforms: [] }), /original passed installed step/);
+await assert.rejects(selection({ values: { ...replayValues, DSC_PLATFORM: 'all' } }), /original passed installed step/);
+await assert.rejects(selection({ values: replayValues, sourcePath: 'another-workflow.yml' }));
+await assert.rejects(selection({ values: replayValues, repository: 'another/repo' }));
+for (const values of [{ DSC_REUSE_RUN: '1;echo injected' }, { DSC_REUSE_RUN: '123\n' },
+  { DSC_REUSE_RUN: '999' }, { DSC_PLATFORM: 'linux' }, { DSC_SKIP_INSTALLED: 'true' },
+  { DSC_SCENARIOS: 'codex-snapshot-only-stop' }, { DSC_PLATFORM: 'other' },
+  { DSC_REUSE_RUN: '123', DSC_SCENARIOS: 'not-a-scenario' }]) {
+  await assert.rejects(selection({ values }));
+}
 assert.equal(production.jobs['native-assets'].uses, './.github/workflows/runtime-execution-assets.yml');
+assert.equal(production.jobs['native-assets'].needs, 'input');
+assert.equal(production.jobs['native-assets'].if, "inputs.reuse_package_run == ''");
 assert.deepEqual(production.jobs['native-assets'].with, { input_ref: '${{ github.sha }}' });
 assert.equal(production.jobs.package.needs, 'native-assets');
+assert.equal(production.jobs.package.if, "inputs.reuse_package_run == ''");
 const finalProduct = production.jobs.product;
-assert.equal(finalProduct.needs, 'package');
+assert.deepEqual(finalProduct.needs, ['input', 'package']);
+assert.match(finalProduct.if, /always\(\).*needs\.input\.result == 'success'.*needs\.package\.result == 'success'.*inputs\.reuse_package_run != ''.*needs\.package\.result == 'skipped'/);
+assert.deepEqual(finalProduct.permissions, { contents: 'read', actions: 'read' });
 assert.equal(finalProduct.strategy['max-parallel'], 1, 'Real Agent final platforms run in one finite lane.');
-assert.deepEqual(finalProduct.strategy.matrix.include.map(item => item.os), ['ubuntu-22.04', 'macos-15', 'windows-2025']);
+assert.equal(finalProduct.strategy.matrix, '${{ fromJSON(needs.input.outputs.matrix) }}');
 assert.equal(finalProduct.env, undefined);
 const preserveBytes = finalProduct.steps.find(candidate => candidate.name === 'Preserve source bytes on Windows checkout');
 assert.deepEqual(preserveBytes, { name: 'Preserve source bytes on Windows checkout',
@@ -321,10 +404,13 @@ assert.deepEqual(preserveBytes, { name: 'Preserve source bytes on Windows checko
 assert(finalProduct.steps.indexOf(preserveBytes) < finalProduct.steps.findIndex(candidate => candidate.uses === 'actions/checkout@v4'),
   'Installed native source hashes must see the same bytes as the asset producer.');
 const finalSecretStep = finalProduct.steps.find(candidate => candidate.id === 'real_agents');
-assert.deepEqual(finalSecretStep.env, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}' });
+assert.deepEqual(finalSecretStep.env, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}',
+  DSC_AGENT_SCENARIOS: '${{ inputs.agent_scenarios }}' });
 assert.equal(finalSecretStep['continue-on-error'], undefined);
 assert.deepEqual(finalProduct.steps.filter(candidate => JSON.stringify(candidate).includes('secrets.')), [finalSecretStep]);
 assert.match(finalSecretStep.run, /> "\$RUNNER_TEMP\/agent-candidate\.log" 2>&1/u);
+assert.match(finalSecretStep.run, /--scenarios "\$DSC_AGENT_SCENARIOS"/u);
+assert(!finalSecretStep.run.includes('${{'));
 assert.doesNotMatch(finalSecretStep.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/u);
 const afterSecret = finalProduct.steps.slice(finalProduct.steps.indexOf(finalSecretStep) + 1);
 assert.equal(afterSecret.length, 1);
@@ -332,7 +418,15 @@ assert.equal(afterSecret[0].uses, 'actions/upload-artifact@v4');
 assert.equal(afterSecret[0].with.path, 'agent-ci-report/');
 assert.equal(afterSecret[0].if, "always() && steps.real_agents.outputs.report_ready == 'true'");
 assert.match(finalProduct.steps.find(candidate => candidate.id === 'installed').run, /--installed-vsix production-package\/product\.vsix/u);
-for (const job of [production.jobs.package, finalProduct]) {
+assert.equal(finalProduct.steps.find(candidate => candidate.id === 'installed').if, '${{ !inputs.skip_installed }}');
+const download = finalProduct.steps.find(candidate => candidate.uses === 'actions/download-artifact@v4');
+assert.deepEqual(download.with, { name: 'runtime-production-package-${{ needs.input.outputs.package_run }}',
+  path: 'production-package', 'run-id': '${{ needs.input.outputs.package_run }}', 'github-token': '${{ github.token }}' });
+const verifyPackage = finalProduct.steps.find(candidate => candidate.name === 'Verify package identity and use its exact application bytes');
+assert.match(verifyPackage.run, /assert\.equal\(receipt\.inputCommit, process\.env\.DSC_PACKAGE_COMMIT\)/);
+assert.match(verifyPackage.run, /assert\.equal\(receipt\.sha256, createHash\('sha256'\)\.update\(bytes\)\.digest\('hex'\)\)/);
+assert.match(verifyPackage.run, /reuse-receipt\.json/);
+for (const job of [inputJob, production.jobs.package, finalProduct]) {
   assert.equal(job.steps.find(candidate => candidate.uses === 'actions/checkout@v4').with.ref, '${{ github.sha }}');
   for (const candidate of job.steps.filter(candidate => candidate.run)) {
     if (process.platform !== 'win32') {

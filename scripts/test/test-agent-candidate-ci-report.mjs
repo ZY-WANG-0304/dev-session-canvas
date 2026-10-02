@@ -24,6 +24,10 @@ try {
   const text = await fs.readFile(path.join(directory, 'summary.json'), 'utf8');
   const summary = JSON.parse(text);
   assert.equal(summary.pass, true);
+  assert.equal(summary.selectedPass, true);
+  assert.equal(summary.partialSelection, false);
+  assert.deepEqual(summary.selectedScenarioNames, scenarios.map(value => value.name));
+  assert.equal(summary.plannedModelTurns, 4);
   assert.equal(summary.platform, 'unknown', 'Do not label legacy evidence as a newly tested platform.');
   const macDirectory = path.join(root, 'darwin-report');
   await writeAgentCandidateCIReport({ ...options, directory: macDirectory, input: { platform: 'darwin' } });
@@ -38,6 +42,46 @@ try {
   assert.equal(summary.scenarios[0].cliEvidence.lastMessageMatches, null);
   assert.equal(summary.scenarios[0].pollStage, null);
   assert.equal(summary.scenarios[0].processObservation.beforeCleanup, null);
+  const selectedScenarioNames = ['codex-snapshot-only-stop'];
+  const partialScenarios = scenarios.map(value => ({ ...value,
+    state: selectedScenarioNames.includes(value.name) ? 'passed' : 'not-run' }));
+  const partialDirectory = path.join(root, 'partial-report');
+  await writeAgentCandidateCIReport({ ...options, directory: partialDirectory, scenarios: partialScenarios,
+    input: { selectedScenarioNames, partialSelection: true, plannedModelTurns: 0 } });
+  const partial = JSON.parse(await fs.readFile(path.join(partialDirectory, 'summary.json'), 'utf8'));
+  assert.equal(partial.pass, false, 'One selected pass must not claim the complete eight-scenario matrix.');
+  assert.equal(partial.selectedPass, true);
+  assert.equal(partial.partialSelection, true);
+  assert.equal(partial.plannedModelTurns, 0);
+  assert.deepEqual(partial.selectedScenarioNames, selectedScenarioNames);
+  assert.equal(partial.scenarios.length, 8);
+  assert.equal(partial.scenarios.filter(value => value.state === 'not-run').length, 7);
+  const partialFailedDirectory = path.join(root, 'partial-failed-report');
+  await writeAgentCandidateCIReport({ ...options, directory: partialFailedDirectory, scenarios: partialScenarios,
+    failed: true, input: { selectedScenarioNames, partialSelection: true } });
+  assert.equal(JSON.parse(await fs.readFile(path.join(partialFailedDirectory, 'summary.json'), 'utf8')).selectedPass, false);
+  const duplicateRowsDirectory = path.join(root, 'partial-duplicate-rows-report');
+  await writeAgentCandidateCIReport({ ...options, directory: duplicateRowsDirectory,
+    scenarios: [scenarios[0], scenarios[0]],
+    input: { selectedScenarioNames: [scenarios[0].name, scenarios[1].name], partialSelection: true } });
+  assert.equal(JSON.parse(await fs.readFile(path.join(duplicateRowsDirectory, 'summary.json'), 'utf8')).selectedPass, false,
+    'Duplicated selected rows must not hide a missing selected scenario.');
+  for (const [label, selection] of [
+    ['unknown', { selectedScenarioNames: [key], partialSelection: true }],
+    ['duplicate', { selectedScenarioNames: [...selectedScenarioNames, ...selectedScenarioNames], partialSelection: true }],
+    ['contradictory', { selectedScenarioNames, partialSelection: false }]
+  ]) {
+    const selectedDirectory = path.join(root, `invalid-selection-${label}`);
+    await writeAgentCandidateCIReport({ ...options, directory: selectedDirectory, scenarios: partialScenarios, input: selection });
+    const selectedText = await fs.readFile(path.join(selectedDirectory, 'summary.json'), 'utf8');
+    const invalid = JSON.parse(selectedText);
+    assert.equal(invalid.pass, false);
+    assert.equal(invalid.selectedPass, false);
+    assert.equal(invalid.partialSelection, null);
+    assert.equal(invalid.plannedModelTurns, null);
+    assert.deepEqual(invalid.selectedScenarioNames, []);
+    assert.equal(selectedText.includes(key), false);
+  }
   await assert.rejects(writeAgentCandidateCIReport({ ...options, directory }), { code: 'EEXIST' });
   const failedDirectory = path.join(root, 'failure-report');
   await writeAgentCandidateCIReport({ ...options, directory: failedDirectory, failed: true, phase: 'prepare', scenarios: [] });
@@ -180,6 +224,9 @@ try {
     savedOutputSequence: 15, snapshotOutputSequence: 15, readerFinalOutputSequence: 15, sequenceMatched: true,
     savedDataSha256: 'a'.repeat(64), helperSha256: 'b'.repeat(64), replayComplete: true,
     replayReason: 'complete', replayMatchesSaved: true, savedMatchesPage: true, replayMatchesPage: true,
+    replaySavedGeometryMatched: true, replaySavedLinesMatched: true, replaySavedVisibleMatched: true,
+    replaySavedSerializedMatched: false, replaySerializedMatchesSavedData: true,
+    replayBufferLineCount: 21, savedBufferLineCount: 21, replaySerializedBytes: 10, hydratedSerializedBytes: 0,
     replayInactivePrefixSnapshots: 1, replayEquivalentInitialSnapshots: 1, replayInitialZeroSequenceInferred: true,
     savedGeometry: { cols: 66, rows: 21, cursorX: 0, cursorY: 0, viewportY: 0, bufferType: 'normal', raw: key },
     pageGeometry: { cols: 96, rows: 30, cursorX: 0, cursorY: 0, viewportY: 0, bufferType: 'normal' },
@@ -198,6 +245,11 @@ try {
   assert.equal(snapshotReport.scenarios[0].pass, false);
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.savedDataBytes, 0);
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.replayMatchesSaved, true);
+  for (const field of ['replaySavedGeometryMatched', 'replaySavedLinesMatched', 'replaySavedVisibleMatched',
+    'replaySavedSerializedMatched', 'replaySerializedMatchesSavedData', 'replayBufferLineCount',
+    'savedBufferLineCount', 'replaySerializedBytes', 'hydratedSerializedBytes']) {
+    assert.equal(snapshotReport.scenarios[0].snapshotEvidence[field], snapshotEvidence[field], field);
+  }
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.pageProjectionIndependence, 'not-proven');
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.savedDataSha256, 'a'.repeat(64));
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.replayInitialZeroSequenceInferred, true);
@@ -213,6 +265,9 @@ try {
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.snapshot, undefined);
   await fs.writeFile(path.join(stopArtifacts, 'snapshot-evidence.json'), JSON.stringify({ ...snapshotEvidence,
     replayReason: key, replayMatchesSaved: key, savedDataBytes: -1, savedDataSha256: key,
+    replaySavedGeometryMatched: key, replaySavedLinesMatched: key, replaySavedVisibleMatched: key,
+    replaySavedSerializedMatched: key, replaySerializedMatchesSavedData: key,
+    replayBufferLineCount: key, savedBufferLineCount: -1, replaySerializedBytes: key, hydratedSerializedBytes: -1,
     replayInitialZeroSequenceInferred: key, replayInactivePrefixSnapshots: -1,
     savedGeometry: { cols: key, rows: -1, cursorX: key, bufferType: key }, pageGeometry: key,
     publishedGeometry: { cols: key, rows: -1, raw: key }, pageGeometryMatches: { cols: key, raw: key },
@@ -224,6 +279,9 @@ try {
   const invalidSnapshotText = await fs.readFile(path.join(invalidSnapshotDirectory, 'summary.json'), 'utf8');
   const invalidSnapshot = JSON.parse(invalidSnapshotText).scenarios[0].snapshotEvidence;
   for (const field of ['replayReason', 'replayMatchesSaved', 'savedDataBytes', 'savedDataSha256',
+    'replaySavedGeometryMatched', 'replaySavedLinesMatched', 'replaySavedVisibleMatched',
+    'replaySavedSerializedMatched', 'replaySerializedMatchesSavedData', 'replayBufferLineCount',
+    'savedBufferLineCount', 'replaySerializedBytes', 'hydratedSerializedBytes',
     'pageProjectionIndependence', 'helperSha256', 'replayInitialZeroSequenceInferred', 'replayInactivePrefixSnapshots',
     'resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched', 'resizedSavedPageBufferMatched',
     'resizedSavedMatchesPage', 'pageGeometry']) assert.equal(invalidSnapshot[field], null, field);

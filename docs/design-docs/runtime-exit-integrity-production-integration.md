@@ -2398,3 +2398,13 @@ Host-credit门槛已有限修正：`prepareExecutionCandidateReplacement()` 首�
 该场景首两次输入因外层临时目录加原scenario名称超过Unix socket上限，在启动旧主体前失败；第三次输入进入旧执行后，fixture未等待setPersistedState触发的异步恢复完成就模拟reload，被安全门禁拒绝。`.debug/a2-generation-coexistence-aafcd52b-` 前缀下的 `first-20261002`、`shorttmp-20261002`、`socketfit-20261002` 三目录保留原日志，不写成产品尾部失败或历史通过。只在现有fixture复用原三节点完整附着谓词、原30秒等待后触发一次reload；清理改为Supervisor活着时先产品reset，再清理fixture进程，避免先杀源再要求确认。未改业务、原内容/身份/退役断言或期限；语法、completed-history、runtimeSupervisorPaths与唯一修后实跑通过。
 
 提交92b3aa4a已启动最终manual run36966903790；它只收回既定六资产供应、唯一VSIX正常构建和三现代平台受影响验收。F-04最终只读复核未发现新确定性blocker，资源模型继续保留O(N)、O(retained segments)、单超大事件页例外与checkpoint拒绝时磁盘增长；本地resize合并不泛化为所有RPC的固定队列上限。最终结果尚未齐备，F-04及整体完成不提前关闭。
+
+该run六native与普通package已全部成功。唯一VSIX为5857706 bytes、SHA256 `1f923bfb0b78542ba72875f9705ccbca7390308339cd7e3b5261230820b6bc76`，源码为92b3aa4a2adc7cbaa6e12ea22f4012a58adf42d2；独立解包确认六schema2、platform/production策略及两mac helper的100755权限。Linux installed两模式的complete/reopen原断言通过，真实Agent前三Codex通过、第四snapshot-only-stop于tests.cjs:223失败，Claude四场未跑。失败时主体已退出、reader applied12、保存806bytes/seq12、cleanup全零；saved/page几何与非空buffer、published保存一致、replay/page一致，但完整replay/saved对象比较false，尚未重开。不把该失败归因为尾部丢失或无害序列化差异。
+
+现有安全摘要不足以区分完整lines（包含空行）与serialized差异。同版xterm的9个固定ANSI/resize受控输入均幂等，未证明原判据错误；不改deepStrictEqual/hash/accepts。只追加原snapshotEvidence的固定几何、完整lines、visible、serialized相等布尔，以及行数/序列化长度和replay serialized对原saved.data的相等布尔，全部经原脱敏白名单，不发布raw。为遵守不重复已通过矩阵的约束，现有最终workflow允许显式复用具名成功package工件、限定原Agent场景；必须核对receipt/产品输入未变，未选场景保留not-run且不得报告完整八场pass。先对同包Linux失败格有限取证，再依据实际差异决定是否存在需要修复的产品缺陷，不增加通用诊断阶段。
+
+同包其余平台已回收：macOS installed四phase通过，两个模式各90000行/5580102bytes、EOF及reader applied、最终光标(6,2)、保存viewport和重开均符合原断言；Runtime重开无历史/新执行，snapshot精确恢复。macOS真实Agent前六过，第七Claude snapshot-only-natural在poll观察失败，主体/Host/provider为unknown且cleanup failure1，第八未跑；不能以清理后状态推断失败前退出，也不能归入Linux的完整快照比较差异。Linux/macOS Runtime installed的not-live toast登记为非阻塞UI残余，现有完整尾部结果不因此失效，也不宣称已定位通知的具体RPC。
+
+Windows未进入安装后的产品或Agent：固定官方VS Code1.117.0 ZIP根为Code.exe，CLI位于10c8e557c8/resources/app/out/cli.js，原driver硬编码flat路径失败。官方bin/code.cmd的实际命令提供该版本目录，ZIP目录与该入口字节已分别冻结，不推断PTY有错。有限修正读取同根bin/code.cmd，仅接受声明ELECTRON_RUN_AS_NODE且唯一指向同根Code.exe、可选十六进制版本目录、固定resources/app/out/cli.js和原参数转发的官方形态；验证目标文件存在，仍直接execFile并等待Code.exe，不执行任意cmd或扫描任意JS。旧flat入口继续支持，歧义和越界拒绝。
+
+后续范围固定为同包Linux失败单格取证、未执行的四Claude格，macOS仅原失败及未执行两格，Windows安装及八Agent格。已通过installed仅凭原run对应step成功才能skip；复用同时校验同仓workflow、成功package、receipt/hash及生产输入未变，产品代码改动必须使复用失败。保留原run36966903790的failure，不以新的局部结果覆盖它，不重建六资产或重跑已通过多会话证据。

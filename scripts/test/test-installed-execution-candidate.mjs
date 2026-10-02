@@ -356,13 +356,27 @@ try {
   assert.deepEqual(macInstall.args, install.args);
   assert.equal(macInstall.options.shell, false);
   const windowsExecutable = 'C:\\fixed\\Code.exe';
-  const windowsInstall = installedCandidateInstallCommand({ vscodeExecutablePath: windowsExecutable,
-    input, runtime: installRuntime }, 'win32');
-  assert.equal(windowsInstall.file, windowsExecutable);
-  assert.deepEqual(windowsInstall.args, ['C:\\fixed\\resources\\app\\out\\cli.js', ...install.args]);
-  assert.equal(windowsInstall.options.shell, false);
-  assert.equal(windowsInstall.options.env.ELECTRON_RUN_AS_NODE, '1');
-  assert.equal(windowsInstall.options.env.HOME, '/isolated/home');
+  const windowsLauncher = prefix => `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"%~dp0..\\Code.exe" "%~dp0..\\${prefix}resources\\app\\out\\cli.js" %*\r\n`;
+  for (const prefix of ['', '10c8e557c8\\']) {
+    const windowsInstall = installedCandidateInstallCommand({ vscodeExecutablePath: windowsExecutable,
+      input, runtime: installRuntime, windowsLauncher: windowsLauncher(prefix) }, 'win32');
+    assert.equal(windowsInstall.file, windowsExecutable);
+    assert.deepEqual(windowsInstall.args, [`C:\\fixed\\${prefix}resources\\app\\out\\cli.js`, ...install.args]);
+    assert.equal(windowsInstall.options.shell, false);
+    assert.equal(windowsInstall.options.env.ELECTRON_RUN_AS_NODE, '1');
+    assert.equal(windowsInstall.options.env.HOME, '/isolated/home');
+  }
+  for (const launcher of [undefined, '', windowsLauncher('').replace('set ELECTRON_RUN_AS_NODE=1', ''),
+    windowsLauncher('..\\'), windowsLauncher('unexpected\\'), windowsLauncher('10c8e557c8\\').replace('cli.js', 'other.js'),
+    windowsLauncher('').replace('Code.exe', 'Other.exe'), windowsLauncher('') + windowsLauncher('10c8e557c8\\'),
+    windowsLauncher('').replace('%*', '%* & echo extra')]) {
+    assert.throws(() => installedCandidateInstallCommand({ vscodeExecutablePath: windowsExecutable,
+      input, runtime: installRuntime, windowsLauncher: launcher }, 'win32'));
+  }
+  const installerSource = await fs.readFile('scripts/smoke/installed-execution-candidate.mjs', 'utf8');
+  assert.match(installerSource, /fs\.readFile\(path\.join\(path\.dirname\(options\.vscodeExecutablePath\), 'bin', 'code\.cmd'\), 'utf8'\)/);
+  assert.match(installerSource, /await fs\.lstat\(command\.args\[0\]\)\)\.isFile\(\)/);
+  assert.match(installerSource, /await execFileAsync\(command\.file, command\.args, command\.options\)/);
   checks += 1;
 
   const source = await fs.readFile('scripts/smoke/run-vscode-execution-candidate.mjs', 'utf8');

@@ -8,6 +8,8 @@ const { collectSnapshotEvidence, acceptsEmptySnapshotStop, acceptsSnapshotStop }
 const clone = value => structuredClone(value);
 const write = (terminal, text) => new Promise(resolve => terminal.write(text, resolve));
 const frame = { surface: 'panel', mode: 'active', generation: 1, frameId: 'f1' };
+const replayComparisonFields = ['replaySavedGeometryMatched', 'replaySavedLinesMatched', 'replaySavedVisibleMatched',
+  'replaySavedSerializedMatched', 'replaySerializedMatchesSavedData'];
 
 async function fixture({ blank = false, resize = false, outputText = 'VISIBLE BEFORE RESET' } = {}) {
   const terminal = new Terminal({ cols: 40, rows: 5, scrollback: 10000, allowProposedApi: true });
@@ -66,6 +68,11 @@ assert.equal(blankEvidence.replayMatchesPage, true);
 assert.equal(blankEvidence.savedMatchesPage, true);
 assert.equal(blankEvidence.pageProjectionIndependence, 'not-proven');
 assert.equal(JSON.stringify(blankEvidence).includes('VISIBLE BEFORE RESET'), false);
+for (const field of replayComparisonFields) assert.equal(blankEvidence[field], true, field);
+assert.equal(blankEvidence.replayBufferLineCount, 5);
+assert.equal(blankEvidence.savedBufferLineCount, 5);
+assert.equal(blankEvidence.replaySerializedBytes, 0);
+assert.equal(blankEvidence.hydratedSerializedBytes, 0);
 
 const initialSchema = { ...blank, messages: clone(blank.messages) };
 delete initialSchema.messages[0].payload.serializedTerminalState.outputSequence;
@@ -143,6 +150,12 @@ assert(nonemptyEvidence.savedDataBytes > 0);
 assert.equal(nonemptyEvidence.replayResizeSnapshots, 1);
 assert.equal(nonemptyEvidence.replayMatchesSaved, true);
 assert.equal(nonemptyEvidence.savedMatchesPage, true);
+for (const field of replayComparisonFields) assert.equal(nonemptyEvidence[field], true, field);
+assert.equal(nonemptyEvidence.replayBufferLineCount, 4);
+assert.equal(nonemptyEvidence.savedBufferLineCount, 4);
+assert.equal(nonemptyEvidence.replaySerializedBytes, Buffer.byteLength(nonempty.savedNode.metadata.agent.serializedTerminalState.data));
+assert.equal(nonemptyEvidence.hydratedSerializedBytes, nonemptyEvidence.replaySerializedBytes);
+assert.equal(JSON.stringify(nonemptyEvidence).includes('VISIBLE BEFORE RESET'), false);
 const repeatedResize = { ...nonempty, messages: clone(nonempty.messages) };
 repeatedResize.messages.splice(3, 0, clone(repeatedResize.messages[2]));
 assert.equal((await collectSnapshotEvidence(repeatedResize)).replayReason, 'projection-recovery-or-unknown-snapshot',
@@ -156,6 +169,9 @@ assert.equal(tamperedEvidence.replayMatchesSaved, false);
 assert.equal(tamperedEvidence.savedMatchesPage, false);
 assert.equal(tamperedEvidence.replayMatchesPage, true);
 assert.equal(tamperedEvidence.publishedFinalMatchesSaved, false);
+for (const field of replayComparisonFields) assert.equal(tamperedEvidence[field], false, field);
+assert.equal(tamperedEvidence.hydratedSerializedBytes, 0);
+assert(tamperedEvidence.replaySerializedBytes > 0);
 
 const overwritten = { ...nonempty, savedNode: clone(tampered.savedNode), messages: clone(nonempty.messages),
   finalProbe: clone(nonempty.finalProbe), assertBuffer: async expected => expected.length === 0 };
@@ -183,6 +199,11 @@ missingResize.messages.splice(2, 1);
 const missingResizeEvidence = await collectSnapshotEvidence(missingResize);
 assert.equal(missingResizeEvidence.replayComplete, false);
 assert.equal(missingResizeEvidence.replayMatchesSaved, null);
+for (const field of [...replayComparisonFields, 'replayBufferLineCount', 'replaySerializedBytes']) {
+  assert.equal(missingResizeEvidence[field], null, field);
+}
+assert.equal(missingResizeEvidence.savedBufferLineCount, 4, 'Observed saved-state facts remain available when replay is unknown.');
+assert.equal(missingResizeEvidence.hydratedSerializedBytes, nonemptyEvidence.hydratedSerializedBytes);
 const unknownPage = { ...blank, assertBuffer: async () => { throw new Error('probe transport unavailable'); } };
 assert.equal((await collectSnapshotEvidence(unknownPage)).savedMatchesPage, null);
 

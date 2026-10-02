@@ -118,6 +118,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [ ] (2026-10-02，§53) 冻结提交运行同一最终VSIX的三现代平台Terminal/Webview/真实Agent验收，随后整体review；不复跑无关成功矩阵。
 - [x] (2026-10-02，§53首次CI) run36965693411四Unix资产成功、Windows两架构聚合fixture误判macOS helper POSIX exec bit失败，原日志保留；package/product未执行，不记为终端退出缺陷。必要跨宿主资产/包权限接线已修，distribution/package-command/file-list、mac18/assetset8通过，原最终CI仍待验。
 - [x] (2026-10-02，§53共存) 当前默认产物的原legacy-supervisor-upgrade单场景完整通过三旧执行/新candidate的原绑定、input/resize、旧自然退役和新交互及清理；保留fixture三次前置/顺序失败，唯一修后通过不冒充真实Agent或installed。
+- [ ] (2026-10-02，§53同包结果) run36966903790六native/package成功，Linux/macOS installed各四phase通过；Linux Agent前三过、第四完整快照比较失败、后四未跑；macOS前六过、第七观察unknown/cleanup failure1、第八未跑。Windows官方versioned CLI布局与driver flat假设冲突，未进产品。只修该入口、补固定非敏感字段并按同包失败/未跑格定向复验；原断言及失败不变。
 
 - [x] (2026-10-02) 复核 `36917661214`/`36918349766`：公开摘要不足以确定 poll 阶段或失败前 CLI 生命周期，撤回确定性根因推断，原失败保留。
 - [x] (2026-10-02，§52) 实施真实 reopen schema2、首页面独立对账及现有第一现场脱敏摘要；reopen/snapshot-evidence/CI-report 三项、CLI/process-observer/Windows-observer/DeepSeek 四项定向脚本、语法和 diff 检查通过，独立审核无新增确定性阻塞。
@@ -2400,3 +2401,7 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-02，最终分发首败）：保留run36965693411的Windows跨宿主权限首败，明确不是PTY退出结果；只修普通Windows资产读取和新VSIX两份macOS helper的权限，定向回归通过。最终同包验收仍开放，不重复历史产品矩阵或追加工具阶段。
 
 修订记录（2026-10-02，共存结账）：补齐当前默认产物下旧raw/stream与新candidate的实际绑定、交互、退役及清理；只修原fixture异步恢复前置与reset顺序，原失败保持。92b3aa4a/run36966903790正在执行最终同包验收，未出结果的格子保持未验，不增加产品矩阵。
+
+修订记录（2026-10-02，同包首个产品失败）：保留Linux Agent第四场完整回放/保存比较失败，主体/reader/清理已正常不代表终态验收通过。只补原报告固定字段并复用同包失败场景，保持完整比较与尾部判据，禁止局部取证伪报完整八场通过。
+
+修订记录（2026-10-02，同包回收与有限复验决策）：macOS installed及六Agent通过独立核对，原第七unknown不倒推产品因果；Windows仅修官方versioned CLI入口。复用同一VSIX必须核对生产输入未变，skip installed必须有原平台成功step；Linux先失败单格再四未跑格，macOS两格，Windows安装及八格，不重复其余成功矩阵。设计与具体证据见生产接入§53。

@@ -6,6 +6,22 @@ const { constants } = require('node:fs');
 const { createRequire } = require('node:module');
 const path = require('node:path');
 
+const agentCandidateScenarioNames = Object.freeze(['codex', 'claude'].flatMap(provider =>
+  ['live-runtime', 'snapshot-only'].flatMap(mode => ['natural', 'stop'].map(lifecycle =>
+    `${provider}-${mode}-${lifecycle}`))));
+
+function selectAgentCandidateScenarios(value, { authOnly = false } = {}) {
+  assert(value === undefined || typeof value === 'string', 'Scenario selection must be a comma-separated string.');
+  assert(!authOnly || value === undefined, 'Auth-only diagnosis cannot select product scenarios.');
+  const requested = value === undefined || value === '' ? [...agentCandidateScenarioNames] : value.split(',');
+  assert(requested.length > 0 && requested.every(name => agentCandidateScenarioNames.includes(name)),
+    'Select only exact names from the fixed eight Agent scenarios.');
+  assert.equal(new Set(requested).size, requested.length, 'Do not repeat an Agent scenario.');
+  const selectedScenarioNames = authOnly ? [] : agentCandidateScenarioNames.filter(name => requested.includes(name));
+  return { selectedScenarioNames, partialSelection: !authOnly && selectedScenarioNames.length !== agentCandidateScenarioNames.length,
+    plannedModelTurns: selectedScenarioNames.filter(name => name.endsWith('-natural')).length };
+}
+
 function invokeCLI(resolveSpawn, file, args, options = {}, platform = process.platform) {
   const spec = resolveSpawn({ file, args, env: options.env ?? process.env }, platform);
   return spawnSync(spec.file, typeof spec.args === 'string' ? [spec.args] : spec.args,
@@ -68,4 +84,5 @@ function buildClaudeCandidateArguments({ lifecycle, configurationArguments = [],
   return [...args, '--session-id', sessionId];
 }
 
-module.exports = { invokeCLI, findExecutable, windowsCliManifest, buildClaudeCandidateArguments };
+module.exports = { invokeCLI, findExecutable, windowsCliManifest, buildClaudeCandidateArguments,
+  agentCandidateScenarioNames, selectAgentCandidateScenarios };

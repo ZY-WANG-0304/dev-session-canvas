@@ -18,8 +18,9 @@ import { ensureVSCodeExecutable, launchPreparedVSCodeScenario, prepareMainSmokeH
 
 const projectRoot = process.cwd();
 const { values } = parseArgs({ options: { output: { type: 'string' }, 'auth-only': { type: 'boolean' },
-  backend: { type: 'string', default: 'existing' }, 'ci-report': { type: 'string' } } });
+  backend: { type: 'string', default: 'existing' }, 'ci-report': { type: 'string' }, scenarios: { type: 'string' } } });
 const authOnly = values['auth-only'] === true;
+const scenarioSelection = cliHelpers.selectAgentCandidateScenarios(values.scenarios, { authOnly });
 assert(['existing', 'deepseek'].includes(values.backend), 'Unsupported Agent acceptance backend.');
 assert(!values['ci-report'] || values.backend === 'deepseek', 'CI reports require the isolated DeepSeek backend.');
 assert(!(authOnly && values.backend === 'deepseek'), 'DeepSeek authentication is verified by the real natural scenarios.');
@@ -163,7 +164,7 @@ input = { schemaVersion: 1,
   platform: process.platform, processObserver,
   runId, cli, nodeInterpreter, authReferences, testCommandReferences, codexIsolation, workspaceRoot, assetManifest, hashes,
   backend: backendConfiguration?.descriptor ?? { backend: 'existing', model: 'existing-cli-configuration' },
-  scenarioCount: scenarios.length, plannedModelTurns: authOnly ? 0 : 4,
+  scenarioCount: scenarios.length, ...scenarioSelection,
   retryScope: 'No harness retries; provider-internal transport attempts are not inferred from invocation count.',
   naturalTimeoutMs: 120000, stopTimeoutMs: 30000,
   environmentPolicy: 'Existing smoke secret filtering and isolated HOME; private CLI configuration references only.',
@@ -173,6 +174,7 @@ await writeJson('schedule.json', scenarios);
 const vscodeExecutablePath = await ensureVSCodeExecutable(projectRoot);
 
 for (const [index, scenario] of scenarios.entries()) {
+  if (!authOnly && !scenarioSelection.selectedScenarioNames.includes(scenario.name)) continue;
   phase = scenario.name;
   const debugRoot = path.join(output, scenario.name);
   const workspacePath = path.join(workspaceRoot, scenario.name);
@@ -250,6 +252,7 @@ for (const [index, scenario] of scenarios.entries()) {
   }
 }
 console.log(`${authOnly ? 'Real Host auth-only diagnosis completed; not A4 product acceptance'
+  : scenarioSelection.partialSelection ? 'Selected Agent scenarios passed; unselected scenarios remain not-run'
   : 'Finite real Agent candidate acceptance passed'}: ${output}`);
 phase = 'complete';
 }
