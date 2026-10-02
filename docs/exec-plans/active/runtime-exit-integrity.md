@@ -124,7 +124,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 - [x] (2026-10-02，§52) 实施真实 reopen schema2、首页面独立对账及现有第一现场脱敏摘要；reopen/snapshot-evidence/CI-report 三项、CLI/process-observer/Windows-observer/DeepSeek 四项定向脚本、语法和 diff 检查通过，独立审核无新增确定性阻塞。
 - [x] (2026-10-02，§52) 唯一 Linux 原矩阵 `36935000098` / `1d784d8b` 八场通过；四 natural 响应/EOF、两snapshot stop原页面独立重排/schema2新Host及八场零cleanup。Claude保存1262bytes/seq5，新增非空格成立，不放宽原尾部，不回写旧超时。
 - [x] (2026-10-02，§52) 独立只读核对安全摘要：11个源码hash匹配冻结1d784d8b，八场原检查、两场reflow/schema2和零cleanup一致；4个构建hash仅保留报告记录，未本地重建，不把报告核对称为raw/产物全文重算。
-- [ ] (2026-10-02，原 A2/A3) 慢写/最终 fit 与保存 viewport 的实际应用责任仍未由本固定样本覆盖，其他平台新判据、F-04 和最终准入按有限清单保留；不另立通用诊断阶段。
+- [x] (2026-10-02，原 A2/A3由§53承接) 慢write、最终fit与保存viewport已完成直接先红/修复和Host160、controller46/Host10、页面13定向验证；当前只剩顶部同包受影响真实集成，不再列为未实施页面责任或另立诊断阶段。
 
 - [x] (2026-10-01，第50节) 同一冻结 VSIX 的 A6 snapshot-only 真实 Reload Window 复验通过：主体启动后真实 resize 后唯一 nonce/SIZE 握手、完整 SIGHUP 中文/ANSI 尾部、双路径 snapshot、实际新 Host 页面重放、原 provider/主体退出、无新执行、无 binding/pending operation 与 cleanup 均通过；首轮尺寸错误和失败路径 pending cleanup 保留。
 - [x] (2026-10-01，B2/A1) 修复 Q=1 `rejected-before-acquire` 的类型化 Host 预约清理，并补 terminal/agent 同节点重试回归；未知连接/能力/资源结果继续 sticky quarantine，Host wiring 149/149 通过。
@@ -2405,3 +2405,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-02，同包首个产品失败）：保留Linux Agent第四场完整回放/保存比较失败，主体/reader/清理已正常不代表终态验收通过。只补原报告固定字段并复用同包失败场景，保持完整比较与尾部判据，禁止局部取证伪报完整八场通过。
 
 修订记录（2026-10-02，同包回收与有限复验决策）：macOS installed及六Agent通过独立核对，原第七unknown不倒推产品因果；Windows仅修官方versioned CLI入口。复用同一VSIX必须核对生产输入未变，skip installed必须有原平台成功step；Linux先失败单格再四未跑格，macOS两格，Windows安装及八格，不重复其余成功矩阵。设计与具体证据见生产接入§53。
+
+修订记录（2026-10-02，有限复验进展）：Linux36969390582单格空态seq11完整比较/原页面/schema2重开及零cleanup通过，不解释原806-byte/seq12非空失败，保留间歇事实而不循环捕获。Windows36969509496安装step通过、工件待独立回收；Linux四未跑Claude格36969789786已排队。macOS报告将psutil非终态误计unknown的窄修只纠正摘要，原process-observation-unknown与cleanup failure保持；当前定向测试通过，原失败根因仍未定。已覆盖的慢write/fit/viewport历史未勾项标清由§53承接，不追加任务。

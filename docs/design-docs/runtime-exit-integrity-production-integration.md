@@ -2408,3 +2408,7 @@ Host-credit门槛已有限修正：`prepareExecutionCandidateReplacement()` 首�
 Windows未进入安装后的产品或Agent：固定官方VS Code1.117.0 ZIP根为Code.exe，CLI位于10c8e557c8/resources/app/out/cli.js，原driver硬编码flat路径失败。官方bin/code.cmd的实际命令提供该版本目录，ZIP目录与该入口字节已分别冻结，不推断PTY有错。有限修正读取同根bin/code.cmd，仅接受声明ELECTRON_RUN_AS_NODE且唯一指向同根Code.exe、可选十六进制版本目录、固定resources/app/out/cli.js和原参数转发的官方形态；验证目标文件存在，仍直接execFile并等待Code.exe，不执行任意cmd或扫描任意JS。旧flat入口继续支持，歧义和越界拒绝。
 
 后续范围固定为同包Linux失败单格取证、未执行的四Claude格，macOS仅原失败及未执行两格，Windows安装及八Agent格。已通过installed仅凭原run对应step成功才能skip；复用同时校验同仓workflow、成功package、receipt/hash及生产输入未变，产品代码改动必须使复用失败。保留原run36966903790的failure，不以新的局部结果覆盖它，不重建六资产或重跑已通过多会话证据。
+
+同包Linux单格run36969390582 / 5f6f90e3已selectedPass=true，完整pass=false且其余七格not-run；产品四bundle hash仍与原VSIX一致。该次Codex snapshot-only-stop为合法空态seq11/112x38，原完整对象/hash、所有新增等值字段、reader applied、schema2新Host重开及零cleanup通过。原失败为806-byte/seq12非空态，不能把这次空态通过解释为原差异已消除或已定位；其作为未解释间歇结果保留，不增加捕获循环。继续原未跑Claude四格，非空保存仍走同一严格判据。
+
+macOS摘要复核发现独立计数错误：Darwin helper将psutil非终态字符串原样返回，而报告以Linux单字母集合判断live，导致合法active条目也被计unknown。因此原Host/provider/CLI三个unknown计数不能证明三个身份均观察失败；撤回该推断。原observer的process-observation-unknown一条、poll失败与cleanup failure1仍成立，根因未定。有限修正只让报告按实际平台识别已有psutil非终态枚举，observationUnknown和active优先、未知状态不猜补；不改observer、产品或pass/cleanup判据，不追改旧工件。

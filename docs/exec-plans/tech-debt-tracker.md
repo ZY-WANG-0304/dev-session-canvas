@@ -32,6 +32,8 @@
 
 2026-10-02 有限UI残余：上述Linux/macOS installed自然退出的finalProbe包含 `Runtime session … is not live` 及内部栈toast。完整90002行、最终光标(6,2)、EOF/applied和清理通过；事件环缺对应RPC时间，不能确认具体触发源或本次回归。`CanvasPanelManager.ts`候选Runtime resize catch使用formatUnknownError，退出与迟到viewport resize竞态是可解释路径，但未证明本次因果。本轮不扩大为尾部阻塞或追加矩阵；后续在可复现同类通知时核对session身份/终态并收敛错误呈现，不吞没真正live控制失败。关联生产接入§53、`tests/vscode-smoke/execution-candidate-tests.cjs`与`src/supervisor/runtimeSupervisorMain.ts`的requireLiveSession。
 
+2026-10-02 同包复核边界：Linux36969390582的Codex snapshot stop为空态seq11，原严格比较及新Host重开通过，不能解释36966903790的806-byte/seq12非空比较失败；该间歇结果保留，后续如再次取得具名非空差异则用现有等值/长度字段定位，不为捕获追加循环。macOS原报告三个角色unknown计数受Darwin psutil字符串误用Linux状态集合影响，已只修摘要映射并回归，不能据旧计数认定三个身份失败；原observer一条process-observation-unknown及cleanup failure1仍未解释，不追认原场景通过。
+
 2026-10-02 当前 A2/A3/A4 补充：`1d784d8b` / Linux `36935000098` 原八场通过，四natural实际响应/EOF、Claude1262-byte/seq5非空stop的首页面独立重排/schema2新Host和八场零cleanup成立。Linux旧 `36917661214`/`36918349766` 首场超时根因未定，不能用cleanup后状态倒推失败前CLI已退出，也不由本轮成功追认修复。当前剩余为原慢写/最终fit/保存viewport应用、其他平台新判据、F-04和最终准入，不重跑固定Linux格、不扩诊断工具；`main.tsx` snapshot通知早于write、fit无回调屏障及未显式恢复viewport仅为只读实现差异，未证明本次或历史失败因果。
 
 2026-10-02 现代 runner 生产验收的具名矩阵已补齐：固定六资产 run `36906440380`（Ubuntu 24.04 x64/arm64、macOS 15 x64/arm64、Windows Server 2025 x64、Windows 11 ARM64）、macOS Product Provider `36906440973` 与 Windows Product Provider `36907160402` 均成功；Windows 真实 Agent `36906573764` 的 Codex `0.157.1`、Claude `2.1.280`、DeepSeek 八场全部通过，四个 natural 场景有实际响应/EOF，cleanup bindings/failures/forced/active 全为零。上述只关闭具名现代组合，不关闭 F-04/A1、全部 A5、默认准入或旧系统兼容；Node.js 20 弃用 annotation 与 macOS `ENTRYNOTSUPPORTED` artifact warning 保留且不阻塞。

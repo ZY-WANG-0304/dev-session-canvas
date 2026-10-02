@@ -128,6 +128,41 @@ try {
   assert.equal(warningText.includes(key), false);
   assert.equal(warningText.includes(scenario.nonce), false);
   assert.equal(warningText.includes('Defaulting to fallback metadata'), false);
+  await fs.writeFile(path.join(artifacts, 'process-observations.json'), JSON.stringify({
+    error: key, failures: [{ kind: 'process-observation-unknown', reason: key }], samples: [], entries: []
+  }));
+  const darwinStates = [
+    ...['idle', 'running', 'sleeping', 'stopped'].map(state => ({ entry: { state, active: true }, outcome: 'live' })),
+    { entry: { state: 'running', active: false }, outcome: 'ended' },
+    { entry: { state: 'sleeping', active: true, observationUnknown: true }, outcome: 'unknown' },
+    { entry: { state: 'stopped', active: false, observationUnknown: true }, outcome: 'unknown' },
+    ...['Z', 'X'].map(state => ({ entry: { state, active: true }, outcome: 'ended' })),
+    ...['?', 'R', 'disk-sleep', key].map(state => ({ entry: { state, active: true }, outcome: 'unknown' })),
+    { entry: { state: 'idle' }, outcome: 'unknown' },
+    { entry: { state: 'running', active: 1 }, outcome: 'unknown' }
+  ];
+  for (const [index, { entry, outcome }] of darwinStates.entries()) {
+    await fs.writeFile(path.join(artifacts, 'first-failure-process.json'), JSON.stringify({
+      error: key, entries: [{ role: 'cli', ...entry }]
+    }));
+    const target = path.join(root, `darwin-state-${index}`);
+    await writeAgentCandidateCIReport({ ...options, directory: target, scenarios: [scenario], failed: true,
+      input: { platform: 'darwin' } });
+    const safeText = await fs.readFile(path.join(target, 'summary.json'), 'utf8');
+    const report = JSON.parse(safeText);
+    const row = report.scenarios[0];
+    assert.deepEqual(row.processObservation.beforeCleanup.roles.cli,
+      { observed: 1, live: 0, ended: 0, unknown: 0, [outcome]: 1 });
+    assert.equal(row.processObservation.beforeCleanup.observationError, true);
+    assert.deepEqual(row.processObservation.failureKinds, ['process-observation-unknown']);
+    assert.deepEqual(row.processObservation.failedOperations, []);
+    assert.equal(row.cleanup.failures, 1);
+    assert.equal(row.pass, false);
+    assert.equal(report.pass, false);
+    assert.equal(report.selectedPass, false);
+    assert.equal(safeText.includes(key), false);
+  }
+  await fs.unlink(path.join(artifacts, 'first-failure-process.json'));
   await fs.writeFile(path.join(artifacts, 'process-observations.json'), JSON.stringify({ failures: [], entries: [
     { platform: 'win32', role: 'cli', active: true, hasExited: true, exitConfirmed: true, exitCode: 0 },
     { platform: 'win32', role: 'wrapper', active: false, state: 'Z', hasExited: false, exitConfirmed: false },

@@ -37,7 +37,9 @@ const pollStages = new Map([
   ['reopened Agent snapshot applied', 'reopened-agent-snapshot-applied']
 ].map(([label, stage]) => [`Error: Timed out: ${label}`, stage]));
 const processRoles = ['host', 'supervisor', 'provider', 'wrapper', 'cli'];
-const unixLiveStates = new Set(['R', 'S', 'D', 'T', 't', 'K', 'W', 'P', 'I', 'U']);
+const linuxLiveStates = new Set(['R', 'S', 'D', 'T', 't', 'K', 'W', 'P', 'I', 'U']);
+// Nonterminal PROC_STATUSES from the pinned psutil 7.0.0 Darwin helper.
+const darwinLiveStates = new Set(['idle', 'running', 'sleeping', 'stopped']);
 
 function beforeCleanupProcesses(value, platform) {
   if (!Array.isArray(value?.entries)) return null;
@@ -54,7 +56,7 @@ function beforeCleanupProcesses(value, platform) {
           entry.exitConfirmed === false && entry.exitCode === null) state = 'live';
       } else if (['linux', 'darwin'].includes(platform)) {
         if (entry.active === false || (entry.active === true && ['Z', 'X'].includes(entry.state))) state = 'ended';
-        else if (entry.active === true && unixLiveStates.has(entry.state)) state = 'live';
+        else if (entry.active === true && (platform === 'darwin' ? darwinLiveStates : linuxLiveStates).has(entry.state)) state = 'live';
       }
     }
     counts[state] += 1;
