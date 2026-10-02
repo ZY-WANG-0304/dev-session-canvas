@@ -88,6 +88,7 @@ function snapshotEvidenceSummary(value) {
     'savedMatchesPage', 'replayComplete', 'replayMatchesSaved', 'replayMatchesPage', 'publishedFinalMatchesSaved',
     'replaySavedGeometryMatched', 'replaySavedLinesMatched', 'replaySavedVisibleMatched',
     'replaySavedSerializedMatched', 'replaySerializedMatchesSavedData',
+    'replaySavedSemanticMatched',
     'replayInitialZeroSequenceInferred', 'resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched',
     'resizedSavedPageBufferMatched', 'resizedSavedMatchesPage']) {
     result[name] = boolean(value[name]);
@@ -98,7 +99,8 @@ function snapshotEvidenceSummary(value) {
     'replayBufferLineCount', 'savedBufferLineCount', 'replaySerializedBytes', 'hydratedSerializedBytes']) {
     result[name] = Number.isSafeInteger(value[name]) && value[name] >= 0 ? value[name] : null;
   }
-  for (const name of ['helperSha256', 'savedDataSha256', 'hydratedStateSha256', 'replayStateSha256']) {
+  for (const name of ['helperSha256', 'savedDataSha256', 'hydratedStateSha256', 'replayStateSha256',
+    'replaySemanticStateSha256', 'hydratedSemanticStateSha256']) {
     result[name] = typeof value[name] === 'string' && /^[a-f0-9]{64}$/.test(value[name]) ? value[name] : null;
   }
   result.replayReason = ['unknown', 'complete', 'messages-missing', 'message-window-full', 'execution-changed',

@@ -28,6 +28,10 @@
 
 ## 技术债列表
 
+2026-10-02 最终review增量（覆盖下列旧状态）：Supervisor owner退休但session仍等存储清理的漏计已按容量§10.17修正，99项原wiring/typecheck/protocol通过，尚待新包受影响Runtime链。旧92b3aa4包三平台installed均独立通过，Linux四Claude36969789786、macOS两Claude36970044255补齐各自未跑格；Windows36969509496第四Codex stop旧判据仍失败、后四未跑。六native不变，按§53只重建产品并复验受影响格。
+
+2026-10-02 现有上游serializer边界：headless6.0.0/serialize0.14.0固定ANSI对照发现低索引palette编码非幂等但可无损，也发现dim/bold转换的SGR22顺序会损失样式。后者不是本轮新增codec，当前作为非空snapshot语义验收的拒绝负例；真实Agent若命中不得宣称通过。Windows原6B差异仍未由原始字段证明是哪类。后续codec专项应沿实际命中用例修复或升级锁定依赖，不泛化为本轮先完成所有ANSI组合/更换终端库。关联生产接入§53与既有snapshot-evidence测试。
+
 2026-10-02 当前有限收尾以生产接入§53为准：local实际消费信用、生产准入、candidate冷启动、慢restore/paged-events的fit及viewport、Host单任务/latest resize已有定向通过，缺Host-credit的新建门禁已修复。92b3aa4a/run36966903790六native与普通package全部通过，Linux/macOS installed各四phase通过；Linux Agent前三过、第四完整快照比较false、后四未跑，macOS前六过、第七观察unknown/cleanup failure1、第八未跑。Windows官方versioned CLI布局与driver flat假设冲突，尚未进入产品。仅修入口及固定安全摘要，按同包失败/未跑格复验；不推断已证丢尾，不追认绿色，F-04最终证据仍未齐备。run36965693411的Windows跨宿主权限首败和全部历史失败保留，不变成新队列。旧预算、旧OS与通用工具不作前置。
 
 2026-10-02 有限UI残余：上述Linux/macOS installed自然退出的finalProbe包含 `Runtime session … is not live` 及内部栈toast。完整90002行、最终光标(6,2)、EOF/applied和清理通过；事件环缺对应RPC时间，不能确认具体触发源或本次回归。`CanvasPanelManager.ts`候选Runtime resize catch使用formatUnknownError，退出与迟到viewport resize竞态是可解释路径，但未证明本次因果。本轮不扩大为尾部阻塞或追加矩阵；后续在可复现同类通知时核对session身份/终态并收敛错误呈现，不吞没真正live控制失败。关联生产接入§53、`tests/vscode-smoke/execution-candidate-tests.cjs`与`src/supervisor/runtimeSupervisorMain.ts`的requireLiveSession。

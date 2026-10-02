@@ -37,6 +37,70 @@ function readTerminal({ terminal, addon }) {
     serialized: addon.serialize({ scrollback: terminal.options.scrollback, excludeAltBuffer: false, excludeModes: false }) };
 }
 
+function readSemanticState(terminal) {
+  try {
+    const style = cell => {
+      const color = prefix => {
+        const modes = ['Default', 'Palette', 'RGB'].map(name => cell[`is${prefix}${name}`]());
+        if (!modes.every(value => typeof value === 'boolean') || modes.filter(Boolean).length !== 1) {
+          throw new Error('Unknown terminal color mode.');
+        }
+        if (modes[0]) return ['default'];
+        const value = cell[`get${prefix}Color`]();
+        if (!integer(value)) throw new Error('Unknown terminal color.');
+        // SGR 30/40 and SGR 38/48;5 use the same palette despite different internal modes.
+        if (modes[1] && value <= 255) return ['palette', value];
+        if (modes[2] && value <= 0xffffff) return ['rgb', value];
+        throw new Error('Unknown terminal color mode.');
+      };
+      return { foreground: color('Fg'), background: color('Bg'),
+        flags: ['Bold', 'Dim', 'Italic', 'Underline', 'Overline', 'Blink', 'Inverse', 'Invisible', 'Strikethrough']
+          .map(name => {
+            const value = cell[`is${name}`]();
+            if (!integer(value)) throw new Error('Unknown terminal style.');
+            return value !== 0;
+          }) };
+    };
+    const bufferState = buffer => {
+      if (!['normal', 'alternate'].includes(buffer.type) ||
+          !['cursorX', 'cursorY', 'baseY', 'viewportY', 'length'].every(name => integer(buffer[name]))) {
+        throw new Error('Unknown terminal buffer.');
+      }
+      return { type: buffer.type, cursorX: buffer.cursorX, cursorY: buffer.cursorY,
+        baseY: buffer.baseY, viewportY: buffer.viewportY,
+        lines: Array.from({ length: buffer.length }, (_, row) => {
+          const line = buffer.getLine(row);
+          if (!integer(line.length) || typeof line.isWrapped !== 'boolean') throw new Error('Unknown terminal line.');
+          return { wrapped: line.isWrapped, cells: Array.from({ length: line.length }, (_, col) => {
+            const cell = line.getCell(col);
+            const chars = cell.getChars();
+            const width = cell.getWidth();
+            if (typeof chars !== 'string' || ![0, 1, 2].includes(width)) throw new Error('Unknown terminal cell.');
+            return { chars, width, ...style(cell) };
+          }) };
+        }) };
+    };
+    const modes = {};
+    for (const name of ['applicationCursorKeysMode', 'applicationKeypadMode', 'bracketedPasteMode', 'insertMode',
+      'originMode', 'reverseWraparoundMode', 'sendFocusMode', 'wraparoundMode']) {
+      const value = terminal.modes[name];
+      if (typeof value !== 'boolean') throw new Error('Unknown terminal mode.');
+      modes[name] = value;
+    }
+    modes.mouseTrackingMode = terminal.modes.mouseTrackingMode;
+    if (!['none', 'x10', 'vt200', 'drag', 'any'].includes(modes.mouseTrackingMode)) throw new Error('Unknown mouse mode.');
+    if (!dimensions(terminal) || !['normal', 'alternate'].includes(terminal.buffer.active.type)) {
+      throw new Error('Unknown terminal geometry.');
+    }
+    return { cols: terminal.cols, rows: terminal.rows, activeBuffer: terminal.buffer.active.type,
+      normal: bufferState(terminal.buffer.normal),
+      alternate: terminal.buffer.active.type === 'alternate' ? bufferState(terminal.buffer.alternate) : null,
+      modes,
+      // The pinned serializer uses this same attribute object to restore the current cursor style.
+      cursorStyle: style(terminal._core._inputHandler._curAttrData) };
+  } catch { return undefined; }
+}
+
 async function comparePage(state, probe, assertBuffer) {
   const observed = probe && ['terminalCols', 'terminalRows', 'terminalCursorX', 'terminalCursorY', 'terminalViewportY']
     .every(key => integer(probe[key])) && Array.isArray(probe.terminalVisibleLines);
@@ -135,7 +199,8 @@ async function replayMessages({ messages, nodeId, executionId, scrollback, final
     }
     if (!finalSeen || !exitSeen) return { ...result, reason: 'exit-boundary-missing' };
     if (sequence !== finalSequence) return { ...result, reason: 'final-sequence-mismatch' };
-    return { ...result, complete: true, reason: 'complete', state: readTerminal(state) };
+    return { ...result, complete: true, reason: 'complete', state: readTerminal(state),
+      semanticState: readSemanticState(state.terminal) };
   } finally { state.terminal.dispose(); }
 }
 
@@ -177,6 +242,7 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
     replayMatchesSaved: null, replayMatchesPage: null, publishedFinalMatchesSaved: null,
     replaySavedGeometryMatched: null, replaySavedLinesMatched: null, replaySavedVisibleMatched: null,
     replaySavedSerializedMatched: null, replaySerializedMatchesSavedData: null,
+    replaySavedSemanticMatched: null, replaySemanticStateSha256: null, hydratedSemanticStateSha256: null,
     replayBufferLineCount: null, savedBufferLineCount: null, replaySerializedBytes: null, hydratedSerializedBytes: null,
     pageProjectionIndependence: 'not-proven' };
   let hydrated, resized;
@@ -189,6 +255,8 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
     await write(hydrated.terminal, saved.data);
     if (saved.viewportY !== undefined) hydrated.terminal.scrollToLine(saved.viewportY);
     const savedState = readTerminal(hydrated);
+    const savedSemanticState = readSemanticState(hydrated.terminal);
+    if (savedSemanticState) evidence.hydratedSemanticStateSha256 = hash(JSON.stringify(savedSemanticState));
     evidence.savedGeometry = terminalGeometry(savedState);
     evidence.savedBufferLineCount = savedState.lines.length;
     evidence.hydratedSerializedBytes = Buffer.byteLength(savedState.serialized);
@@ -223,6 +291,10 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
       evidence.replaySerializedMatchesSavedData = replay.state.serialized === saved.data;
       evidence.replayBufferLineCount = replay.state.lines.length;
       evidence.replaySerializedBytes = Buffer.byteLength(replay.state.serialized);
+      if (replay.semanticState) evidence.replaySemanticStateSha256 = hash(JSON.stringify(replay.semanticState));
+      if (replay.semanticState && savedSemanticState) {
+        evidence.replaySavedSemanticMatched = same(replay.semanticState, savedSemanticState);
+      }
       evidence.replayMatchesPage = (await comparePage(replay.state, page, assertBuffer)).matches;
     }
     if (dimensions({ cols: page?.terminalCols, rows: page?.terminalRows })) {
@@ -282,13 +354,15 @@ function acceptsSnapshotStop({ mode, lifecycle: completion, savedNode, evidence:
       !value || value.schemaVersion !== 1) return false;
   // Keep the existing empty-stop contract unchanged, including its reset-specific assertions.
   if (saved.data === '') return acceptsEmptySnapshotStop({ mode, lifecycle: completion, savedNode, evidence: value });
+  // Preserve raw encoding comparisons as evidence; restored semantics need not have a canonical SGR encoding.
   const required = ['savedNodeMatched', 'savedStatePresent', 'savedStateValid', 'readerApplied',
     'readerLifecycleMatched', 'sequenceMatched', 'helpProbePresent', 'finalProbePresent',
-    'replayComplete', 'replayMatchesSaved', 'publishedFinalMatchesSaved'];
+    'replayComplete', 'replaySerializedMatchesSavedData', 'replaySavedSemanticMatched', 'publishedFinalMatchesSaved'];
   if (required.some(key => value[key] !== true) || value.replayReason !== 'complete' ||
       value.replayInitialSequence !== 0 || value.savedDataBytes <= 0 ||
       value.savedDataBytes !== Buffer.byteLength(saved.data) || value.savedDataSha256 !== hash(saved.data) ||
-      !/^[a-f0-9]{64}$/.test(value.hydratedStateSha256 ?? '') || value.hydratedStateSha256 !== value.replayStateSha256 ||
+      !/^[a-f0-9]{64}$/.test(value.hydratedSemanticStateSha256 ?? '') ||
+      value.hydratedSemanticStateSha256 !== value.replaySemanticStateSha256 ||
       !['savedOutputSequence', 'snapshotOutputSequence', 'readerFinalOutputSequence']
         .every(key => value[key] === saved.outputSequence) ||
       !integer(value.replayOutputMessages) || value.replayOutputMessages === 0 ||

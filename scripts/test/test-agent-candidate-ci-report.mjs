@@ -261,6 +261,8 @@ try {
     replayReason: 'complete', replayMatchesSaved: true, savedMatchesPage: true, replayMatchesPage: true,
     replaySavedGeometryMatched: true, replaySavedLinesMatched: true, replaySavedVisibleMatched: true,
     replaySavedSerializedMatched: false, replaySerializedMatchesSavedData: true,
+    replaySavedSemanticMatched: true, replaySemanticStateSha256: 'c'.repeat(64), hydratedSemanticStateSha256: 'c'.repeat(64),
+    semanticState: { cells: [{ chars: key }] },
     replayBufferLineCount: 21, savedBufferLineCount: 21, replaySerializedBytes: 10, hydratedSerializedBytes: 0,
     replayInactivePrefixSnapshots: 1, replayEquivalentInitialSnapshots: 1, replayInitialZeroSequenceInferred: true,
     savedGeometry: { cols: 66, rows: 21, cursorX: 0, cursorY: 0, viewportY: 0, bufferType: 'normal', raw: key },
@@ -282,7 +284,8 @@ try {
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.replayMatchesSaved, true);
   for (const field of ['replaySavedGeometryMatched', 'replaySavedLinesMatched', 'replaySavedVisibleMatched',
     'replaySavedSerializedMatched', 'replaySerializedMatchesSavedData', 'replayBufferLineCount',
-    'savedBufferLineCount', 'replaySerializedBytes', 'hydratedSerializedBytes']) {
+    'savedBufferLineCount', 'replaySerializedBytes', 'hydratedSerializedBytes',
+    'replaySavedSemanticMatched', 'replaySemanticStateSha256', 'hydratedSemanticStateSha256']) {
     assert.equal(snapshotReport.scenarios[0].snapshotEvidence[field], snapshotEvidence[field], field);
   }
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.pageProjectionIndependence, 'not-proven');
@@ -298,10 +301,18 @@ try {
   assert.equal(snapshotText.includes(key), false);
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.raw, undefined);
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.snapshot, undefined);
+  assert.equal(snapshotReport.scenarios[0].snapshotEvidence.semanticState, undefined);
+  await fs.writeFile(path.join(stopArtifacts, 'snapshot-evidence.json'), JSON.stringify({ ...snapshotEvidence,
+    replaySavedSemanticMatched: false }));
+  const semanticMismatchDirectory = path.join(root, 'semantic-mismatch-report');
+  await writeAgentCandidateCIReport({ ...options, directory: semanticMismatchDirectory, scenarios: [stopped], failed: true });
+  const semanticMismatchReport = JSON.parse(await fs.readFile(path.join(semanticMismatchDirectory, 'summary.json'), 'utf8'));
+  assert.equal(semanticMismatchReport.scenarios[0].snapshotEvidence.replaySavedSemanticMatched, false);
   await fs.writeFile(path.join(stopArtifacts, 'snapshot-evidence.json'), JSON.stringify({ ...snapshotEvidence,
     replayReason: key, replayMatchesSaved: key, savedDataBytes: -1, savedDataSha256: key,
     replaySavedGeometryMatched: key, replaySavedLinesMatched: key, replaySavedVisibleMatched: key,
     replaySavedSerializedMatched: key, replaySerializedMatchesSavedData: key,
+    replaySavedSemanticMatched: key, replaySemanticStateSha256: key, hydratedSemanticStateSha256: 'invalid',
     replayBufferLineCount: key, savedBufferLineCount: -1, replaySerializedBytes: key, hydratedSerializedBytes: -1,
     replayInitialZeroSequenceInferred: key, replayInactivePrefixSnapshots: -1,
     savedGeometry: { cols: key, rows: -1, cursorX: key, bufferType: key }, pageGeometry: key,
@@ -316,6 +327,7 @@ try {
   for (const field of ['replayReason', 'replayMatchesSaved', 'savedDataBytes', 'savedDataSha256',
     'replaySavedGeometryMatched', 'replaySavedLinesMatched', 'replaySavedVisibleMatched',
     'replaySavedSerializedMatched', 'replaySerializedMatchesSavedData', 'replayBufferLineCount',
+    'replaySavedSemanticMatched', 'replaySemanticStateSha256', 'hydratedSemanticStateSha256',
     'savedBufferLineCount', 'replaySerializedBytes', 'hydratedSerializedBytes',
     'pageProjectionIndependence', 'helperSha256', 'replayInitialZeroSequenceInferred', 'replayInactivePrefixSnapshots',
     'resizedSavedPageGeometryMatched', 'resizedSavedPageVisibleMatched', 'resizedSavedPageBufferMatched',

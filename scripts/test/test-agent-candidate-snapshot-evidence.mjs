@@ -10,6 +10,8 @@ const write = (terminal, text) => new Promise(resolve => terminal.write(text, re
 const frame = { surface: 'panel', mode: 'active', generation: 1, frameId: 'f1' };
 const replayComparisonFields = ['replaySavedGeometryMatched', 'replaySavedLinesMatched', 'replaySavedVisibleMatched',
   'replaySavedSerializedMatched', 'replaySerializedMatchesSavedData'];
+const acceptsNonempty = (value, evidence) => acceptsSnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
+  savedNode: value.savedNode, evidence });
 
 async function fixture({ blank = false, resize = false, outputText = 'VISIBLE BEFORE RESET' } = {}) {
   const terminal = new Terminal({ cols: 40, rows: 5, scrollback: 10000, allowProposedApi: true });
@@ -156,6 +158,106 @@ assert.equal(nonemptyEvidence.savedBufferLineCount, 4);
 assert.equal(nonemptyEvidence.replaySerializedBytes, Buffer.byteLength(nonempty.savedNode.metadata.agent.serializedTerminalState.data));
 assert.equal(nonemptyEvidence.hydratedSerializedBytes, nonemptyEvidence.replaySerializedBytes);
 assert.equal(JSON.stringify(nonemptyEvidence).includes('VISIBLE BEFORE RESET'), false);
+assert.equal(nonemptyEvidence.replaySavedSemanticMatched, true);
+assert.equal(nonemptyEvidence.replaySemanticStateSha256, nonemptyEvidence.hydratedSemanticStateSha256);
+
+const normalized = await fixture({ outputText: '\x1b[100mA\x1b[48;5;8mB\x1b[0m' });
+const normalizedEvidence = await collectSnapshotEvidence(normalized);
+assert.equal(normalizedEvidence.replaySerializedBytes - normalizedEvidence.hydratedSerializedBytes, 6);
+assert.equal(normalizedEvidence.replayMatchesSaved, false, 'The historical byte-sensitive result stays false.');
+assert.equal(normalizedEvidence.replaySavedSerializedMatched, false);
+assert.notEqual(normalizedEvidence.replayStateSha256, normalizedEvidence.hydratedStateSha256);
+assert.equal(normalizedEvidence.replaySerializedMatchesSavedData, true);
+assert.equal(normalizedEvidence.replaySavedSemanticMatched, true);
+assert.equal(normalizedEvidence.replaySemanticStateSha256, normalizedEvidence.hydratedSemanticStateSha256);
+assert.equal(normalizedEvidence.savedMatchesPage, true);
+assert.equal(normalizedEvidence.replayMatchesPage, true);
+assert.equal(acceptsNonempty(normalized, normalizedEvidence), true,
+  'Equivalent palette encodings do not require the serializer to emit byte-identical output twice.');
+
+for (const [name, outputText] of [
+  ['dim to bold', '\x1b[2mA\x1b[22;1mB'],
+  ['bold and dim to dim', '\x1b[1;2mA\x1b[22;2mB']
+]) {
+  const value = await fixture({ outputText });
+  const evidence = await collectSnapshotEvidence(value);
+  assert.equal(evidence.replaySavedGeometryMatched, true, name);
+  assert.equal(evidence.replaySavedLinesMatched, true, name);
+  assert.equal(evidence.replaySavedVisibleMatched, true, name);
+  assert.equal(evidence.replaySerializedMatchesSavedData, true, name);
+  assert.equal(evidence.replaySavedSemanticMatched, false, name);
+  assert.notEqual(evidence.replaySemanticStateSha256, evidence.hydratedSemanticStateSha256, name);
+  assert.equal(acceptsNonempty(value, evidence), false, `${name}: unchanged text cannot hide lost style.`);
+}
+
+for (const [name, transform] of [
+  ['content', data => data.replace('VISIBLE', 'HIDDEN!')],
+  ['cell style', data => `\x1b[31m${data}\x1b[0m`],
+  ['cursor style', data => `${data}\x1b[31m`],
+  ['cursor position', data => `${data}\x1b[1D`],
+  ['mode', data => `${data}\x1b[?2004h`]
+]) {
+  const value = await fixture();
+  const data = transform(value.savedNode.metadata.agent.serializedTerminalState.data);
+  value.savedNode.metadata.agent.serializedTerminalState.data = data;
+  value.messages.at(-2).payload.serializedTerminalState.data = data;
+  const evidence = await collectSnapshotEvidence(value);
+  assert.equal(evidence.publishedFinalMatchesSaved, true, name);
+  assert.equal(evidence.replayComplete, true, name);
+  assert.equal(evidence.replaySavedSemanticMatched, false, name);
+  assert.equal(evidence.replaySerializedMatchesSavedData, false, name);
+  assert.equal(acceptsNonempty(value, evidence), false, name);
+  if (name !== 'content') assert.equal(evidence.replaySavedLinesMatched, true, name);
+  if (name !== 'cursor position') assert.equal(evidence.replaySavedGeometryMatched, true, name);
+}
+
+const wrapped = await fixture({ outputText: `${'a'.repeat(40)}B` });
+wrapped.savedNode.metadata.agent.serializedTerminalState.data = `${'a'.repeat(40)}\r\nB`;
+wrapped.messages.at(-2).payload.serializedTerminalState.data = wrapped.savedNode.metadata.agent.serializedTerminalState.data;
+const wrappedEvidence = await collectSnapshotEvidence(wrapped);
+assert.equal(wrappedEvidence.replaySavedGeometryMatched, true);
+assert.equal(wrappedEvidence.replaySavedLinesMatched, true);
+assert.equal(wrappedEvidence.replaySavedSemanticMatched, false, 'Explicit newlines cannot replace line-wrap semantics.');
+assert.equal(acceptsNonempty(wrapped, wrappedEvidence), false);
+
+const activeAlternate = await fixture({ outputText: 'NORMAL\x1b[?1049hALTERNATE' });
+const activeAlternateEvidence = await collectSnapshotEvidence(activeAlternate);
+assert.equal(activeAlternateEvidence.replaySavedSemanticMatched, true, 'An active alternate buffer must survive hydration.');
+assert.equal(acceptsNonempty(activeAlternate, activeAlternateEvidence), true);
+const dormantAlternate = await fixture({ outputText: 'NORMAL\x1b[?1049hALTERNATE\x1b[?1049l' });
+const dormantAlternateEvidence = await collectSnapshotEvidence(dormantAlternate);
+assert.equal(dormantAlternateEvidence.replaySavedSemanticMatched, true, 'Dormant alternate content is outside serializer persistence.');
+assert.equal(acceptsNonempty(dormantAlternate, dormantAlternateEvidence), true);
+const synchronized = await fixture({ outputText: 'SYNCHRONIZED\x1b[?2026h' });
+const synchronizedEvidence = await collectSnapshotEvidence(synchronized);
+assert.equal(synchronizedEvidence.replaySavedSemanticMatched, true, 'Transient synchronized output is not persisted by the serializer.');
+assert.equal(acceptsNonempty(synchronized, synchronizedEvidence), true);
+
+const modesDescriptor = Object.getOwnPropertyDescriptor(Terminal.prototype, 'modes');
+try {
+  Object.defineProperty(Terminal.prototype, 'modes', { ...modesDescriptor,
+    get() { return { ...modesDescriptor.get.call(this), reverseWraparoundMode: undefined }; } });
+  const unsupported = await collectSnapshotEvidence(nonempty);
+  assert.equal(unsupported.replayComplete, true);
+  assert.equal(unsupported.replayMatchesSaved, true, 'Unsupported semantic reads must preserve the original replay facts.');
+  assert.equal(unsupported.replayStateSha256, nonemptyEvidence.replayStateSha256);
+  assert.equal(unsupported.hydratedStateSha256, nonemptyEvidence.hydratedStateSha256);
+  assert.equal(unsupported.replaySavedSemanticMatched, null);
+  assert.equal(unsupported.replaySemanticStateSha256, null);
+  assert.equal(unsupported.hydratedSemanticStateSha256, null);
+  assert.equal(acceptsNonempty(nonempty, unsupported), false);
+} finally { Object.defineProperty(Terminal.prototype, 'modes', modesDescriptor); }
+
+for (const field of ['replaySerializedMatchesSavedData', 'replaySavedSemanticMatched']) {
+  for (const invalid of [false, null, undefined, 'true']) {
+    assert.equal(acceptsNonempty(normalized, { ...normalizedEvidence, [field]: invalid }), false, field);
+  }
+}
+for (const field of ['replaySemanticStateSha256', 'hydratedSemanticStateSha256']) {
+  for (const invalid of [null, undefined, '0'.repeat(64), 'invalid']) {
+    assert.equal(acceptsNonempty(normalized, { ...normalizedEvidence, [field]: invalid }), false, field);
+  }
+}
 const repeatedResize = { ...nonempty, messages: clone(nonempty.messages) };
 repeatedResize.messages.splice(3, 0, clone(repeatedResize.messages[2]));
 assert.equal((await collectSnapshotEvidence(repeatedResize)).replayReason, 'projection-recovery-or-unknown-snapshot',
@@ -199,11 +301,13 @@ missingResize.messages.splice(2, 1);
 const missingResizeEvidence = await collectSnapshotEvidence(missingResize);
 assert.equal(missingResizeEvidence.replayComplete, false);
 assert.equal(missingResizeEvidence.replayMatchesSaved, null);
-for (const field of [...replayComparisonFields, 'replayBufferLineCount', 'replaySerializedBytes']) {
+for (const field of [...replayComparisonFields, 'replayBufferLineCount', 'replaySerializedBytes',
+  'replaySavedSemanticMatched', 'replaySemanticStateSha256']) {
   assert.equal(missingResizeEvidence[field], null, field);
 }
 assert.equal(missingResizeEvidence.savedBufferLineCount, 4, 'Observed saved-state facts remain available when replay is unknown.');
 assert.equal(missingResizeEvidence.hydratedSerializedBytes, nonemptyEvidence.hydratedSerializedBytes);
+assert.equal(missingResizeEvidence.hydratedSemanticStateSha256, nonemptyEvidence.hydratedSemanticStateSha256);
 const unknownPage = { ...blank, assertBuffer: async () => { throw new Error('probe transport unavailable'); } };
 assert.equal((await collectSnapshotEvidence(unknownPage)).savedMatchesPage, null);
 
@@ -298,4 +402,4 @@ for (const patch of [{ mode: 'live-runtime' }, { lifecycle: 'natural' }, { saved
   assert.equal(acceptsEmptySnapshotStop({ mode: 'snapshot-only', lifecycle: 'stop',
     savedNode: blank.savedNode, evidence: blankEvidence, ...patch }), false);
 }
-console.log('Agent snapshot evidence: strict replay, independent reflow, and original-page empty/nonempty stop checks passed.');
+console.log('Agent snapshot evidence: strict replay, semantic hydration, independent reflow, and original-page stop checks passed.');

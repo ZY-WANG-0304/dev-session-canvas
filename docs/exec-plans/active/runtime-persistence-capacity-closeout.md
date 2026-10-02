@@ -28,6 +28,7 @@
 
 ## 进度
 
+- [ ] (2026-10-02，最终review) Supervisor退休存储责任已按§10.17补生产pending去重计数，原wiring先红/修后99/99、typecheck/protocol通过；剩余新包三平台Runtime集成，复用未改native及既有多会话证据，不新增容量矩阵。
 - [x] (2026-10-02，§10.17) 生产准入分账、Host最终保存占槽、本地write信用与mount竞态、candidate冷启动已实现；adapter101、owner50、Host154、namespace11、Supervisor94、controller46/Host batch10及协议/typecheck回归通过。旧十会话/重连/compact未重跑。
 - [x] (2026-10-02，§53) 正常默认platform构建、同ref六资产聚合与严格正式VSIX接线完成；普通build/package本地exit0，六目标/production选择已独立检查。本地包hash见§53，不冒充clean-SHA最终包。
 - [x] (2026-10-02，§53) review确认并修复held-credit下resize链积压及paged-events提前fit；Host156、controller46/Host10、正常platform bundle上13项定向Chromium通过，原deadline/尾部与红证据保持。
@@ -126,6 +127,7 @@
 
 ## 决策记录
 
+2026-10-02 / Codex：最终review发现的Supervisor退休后存储责任仍属原F-04，必须修而非降低冻结包门槛。计入原pending阈值、与owner去重并在真实remove后释放，不提前销毁或丢尾。产品变更使旧包不能作为修后准入证明；未改原生源的六资产和未受影响矩阵继续复用。
 2026-10-02 / Codex：最终验收由同一冻结提交生产六资产、普通build/package一次，三现代平台使用唯一VSIX/hash并仅运行受影响Terminal/Webview与原Agent八场。复用旧多会话/重连/compact，旧64/128观察、旧OS和通用工具不前置；凭据仅最后Agent step可见。
 
 - 决策：生产采用无固定活动N、Q=1、pending准入阈值2，既有N同时结束可超过阈值但保留责任并停新建；本地输出以实际write回执背压，新candidate冷启动只处理已取得namespace的自身陈旧数据。理由：沿既有所有权补齐真实结构边界，不靠旧内存压线或丢尾达标。日期/作者：2026-10-02 / Codex。
@@ -340,3 +342,5 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 修订记录（2026-10-02，同包回收与有限复验决策）：补macOS installed/六Agent已过及第七unknown，Windows确定性入口假设修正只影响安装driver。按生产接入§53同包校验/选择复验，保留原失败及未跑格；不因验证接线重复多会话、内存或原生矩阵，F-04最终完成仍等待必要产品结果与整体review。
 
 修订记录（2026-10-02，有限复验进展）：Linux36969390582单格空态严格通过，不解释原非空快照差异；Windows36969509496安装step通过待独立核对、Linux四未跑格36969789786已排队。Darwin摘要计数修正与原观察失败分账，产品bytes未变。历史B1/预算未勾项已由§10.17/§53及既有分进程证据承接，标明不生成新容量阶段；F-04最终只待既定同包集成和整体review。
+
+修订记录（2026-10-02，最终review修正）：Supervisor owner退休后存储责任漏计属于直接F-04问题，已先红后绿并保持原清理/尾部；新包只验受影响Runtime链。三平台旧包installed均独立通过，Linux剩余四Claude和macOS两Claude通过；Windows旧非空snapshot-stop差异按§53独立语义判断，不猜成丢尾或无害。原生供应复用原六tar/summary并由当前import验source/hash，新包记当前产品commit，不能将旧包冒充修后准入。

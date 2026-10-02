@@ -110,6 +110,7 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
+- [ ] (2026-10-02，最终review) Supervisor退休存储计数已先红/修后99/99、typecheck/protocol通过；snapshot非空采用精确原字节加独立cell/modes/cursor语义，原deep/hash与空态保持，三测试通过。剩余新包三平台Runtime和Windows未跑/新判据格；原六资产/不变bundle证据复用，尾部/reader/失败保留不变。
 - [x] (2026-10-02，§53) Agent/Terminal direct/checkpoint保存viewport与慢write提前fit共六例先红，restore屏障和viewport修后18项定向Chromium通过；不声称新增本地credit或最终版本通过。
 - [x] (2026-10-02，§53) 生产准入实现活动/待结算分账，adapter101/owner50项通过；candidate冷启动仅在排他namespace后清理本代运行账，namespace11/legacy与Supervisor94项通过。
 - [x] (2026-10-02，§53) Host最终保存准入与新协商本地write信用完成，Host154、controller46/Host batch10及8项受影响Chromium通过；普通六资产build/package本地exit0，包/选择已独立核对。
@@ -2407,3 +2408,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-02，同包回收与有限复验决策）：macOS installed及六Agent通过独立核对，原第七unknown不倒推产品因果；Windows仅修官方versioned CLI入口。复用同一VSIX必须核对生产输入未变，skip installed必须有原平台成功step；Linux先失败单格再四未跑格，macOS两格，Windows安装及八格，不重复其余成功矩阵。设计与具体证据见生产接入§53。
 
 修订记录（2026-10-02，有限复验进展）：Linux36969390582单格空态seq11完整比较/原页面/schema2重开及零cleanup通过，不解释原806-byte/seq12非空失败，保留间歇事实而不循环捕获。Windows36969509496安装step通过、工件待独立回收；Linux四未跑Claude格36969789786已排队。macOS报告将psutil非终态误计unknown的窄修只纠正摘要，原process-observation-unknown与cleanup failure保持；当前定向测试通过，原失败根因仍未定。已覆盖的慢write/fit/viewport历史未勾项标清由§53承接，不追加任务。
+
+修订记录（2026-10-02，最终review修正）：Windows两模式installed、Linux四Claude及macOS两Claude已独立通过各自固定旧包格，原Windows非空stop仅定位到二次序列化6B变化，仍失败。有限本地对照证明无损编码变化与真实bold/dim损失都存在，非空验收改为精确保存字节加独立完整语义，保持旧事实并拒绝样式丢失。Supervisor存储退休准入遗漏已用原99项脚本修正，必须新包验影响链；workflow复用具名原六native，不复跑无关矩阵。

@@ -39,7 +39,8 @@ const lifecycleBundle = await esbuild.build({
 const lifecycleModule = { exports: {} };
 new Function('module', 'exports', 'require', lifecycleBundle.outputFiles[0].text)(
   lifecycleModule, lifecycleModule.exports, require);
-const { encodeOutputFrame, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS } = lifecycleModule.exports;
+const { encodeOutputFrame, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS,
+  EXECUTION_PRODUCTION_ADMISSION } = lifecycleModule.exports;
 const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-supervisor-owner-'));
 const fixtures = [];
 const expectedJournalWriteFailures = new WeakMap();
@@ -70,6 +71,7 @@ function fixture(capabilities = ['execution-lifecycle-v1'], behavior = {}) {
   const server = new RuntimeSupervisorServer({ storageDir, registryPath: path.join(storageDir, 'registry.json') },
     'legacy-detached', 'best-effort', {
       kind: 'non-native', capabilities, scheduler,
+      ...(behavior.admissionLimits ? { admissionLimits: behavior.admissionLimits } : {}),
       ...(behavior.profile ? { profile: behavior.profile, profileMode: behavior.profileMode ?? 'live-runtime' } : {}),
       budgets: { startMs: 100, gracefulMs: 10, forceMs: 10, cancelMs: 10, settleMs: 10, ...behavior.budgets },
       createTransport(identity) {
@@ -1635,6 +1637,129 @@ try {
     f.server.server = f.listener;
     return f;
   };
+
+  const productionRetirementFixture = () => fixture(boundaryCapabilities, {
+    budgets: { naturalDrainMs: 15, boundaryMs: 100 }, admissionLimits: EXECUTION_PRODUCTION_ADMISSION
+  });
+  const retainCompleted = async (f, kind) => {
+    const result = await f.create(kind);
+    result.transport.output(`${kind}-retained-retirement-tail`);
+    await f.until(() => result.session.ownedExecution.snapshot().adapter.consumedThrough === 1,
+      'retained retirement tail consumed');
+    await finish(f, result.session, result.transport);
+    assert.equal(result.session.ownedExecution.snapshot().retired, true);
+    assert.equal(f.server.executionOwner.get(result.session.sessionId), undefined);
+    assert.strictEqual(f.server.sessions.get(result.session.sessionId), result.session);
+    return result;
+  };
+  const assertRetirementCapacityRejected = async f => {
+    const beforeTransports = f.transports.length;
+    const beforeSessions = [...f.server.sessions.keys()];
+    const beforeOwner = f.server.executionOwner.snapshot();
+    const createJournal = TerminalSessionJournal.create;
+    let journalCreates = 0;
+    TerminalSessionJournal.create = function (...args) {
+      journalCreates++;
+      return createJournal.apply(this, args);
+    };
+    try {
+      await assert.rejects(f.server.createSession(f.socket,
+        params(`40000000-0000-4000-8000-${String(++fixtureId).padStart(12, '0')}`)),
+      { message: 'Execution start was rejected-before-acquire.' });
+    } finally { TerminalSessionJournal.create = createJournal; }
+    assert.equal(journalCreates, 0, 'retirement admission must precede journal acquisition');
+    assert.equal(f.transports.length, beforeTransports, 'retirement admission must precede provider creation');
+    assert.deepEqual([...f.server.sessions.keys()], beforeSessions);
+    assert.deepEqual(f.server.executionOwner.snapshot(), beforeOwner);
+  };
+
+  for (const mode of ['awaiting-host-save', 'slow-delete', 'failed-delete']) {
+    await check(`production admission retains completed storage responsibility during ${mode}`, async () => {
+      const f = productionRetirementFixture();
+      const retained = [await retainCompleted(f, 'terminal'), await retainCompleted(f, 'agent')];
+      assert.equal(f.server.executionOwner.snapshot().pending, 0);
+      const deletes = retained.map(({ session }) => ({ session,
+        remove: session.terminalJournal.delete.bind(session.terminalJournal), gate: deferred(), entered: false }));
+      try {
+        if (mode === 'slow-delete') {
+          for (const item of deletes) {
+            item.session.terminalJournal.delete = async () => {
+              item.entered = true;
+              await item.gate.promise;
+              await item.remove();
+            };
+            item.deleting = f.server.deleteSession({ sessionId: item.session.sessionId });
+          }
+          await f.until(() => deletes.every(item => item.entered), 'both original journal deletions started');
+        } else if (mode === 'failed-delete') {
+          for (const item of deletes) {
+            item.session.terminalJournal.delete = async () => { throw new Error('retained journal deletion failed'); };
+            await assert.rejects(f.server.deleteSession({ sessionId: item.session.sessionId }),
+              /retained journal deletion failed/u);
+          }
+        } else {
+          assert.ok(deletes.every(item => !item.session.retiring),
+            'completed sessions waiting for Host save have not received deletion yet');
+        }
+        await assertRetirementCapacityRejected(f);
+        for (const { session } of deletes) {
+          assert.strictEqual(f.server.sessions.get(session.sessionId), session);
+          assert.match(session.terminalStateTracker.getSerializedState().data, /retained-retirement-tail/u);
+        }
+        assert.equal(f.server.executionOwner.snapshot().blockedReason, undefined);
+        deletes[0].gate.resolve();
+        if (deletes[0].deleting) await deletes[0].deleting;
+        else {
+          deletes[0].session.terminalJournal.delete = deletes[0].remove;
+          await f.server.deleteSession({ sessionId: deletes[0].session.sessionId });
+        }
+        assert.equal(f.server.sessions.has(deletes[0].session.sessionId), false);
+        const next = await f.create();
+        assert.equal(next.session.live, true, 'successful removal returns production admission');
+        await finish(f, next.session, next.transport);
+        await f.server.deleteSession({ sessionId: next.session.sessionId });
+      } finally {
+        for (const item of deletes) {
+          item.gate.resolve();
+          if (item.deleting) await item.deleting;
+          item.session.terminalJournal.delete = item.remove;
+          if (f.server.sessions.has(item.session.sessionId)) {
+            await f.server.deleteSession({ sessionId: item.session.sessionId });
+          }
+        }
+      }
+    });
+  }
+
+  await check('production admission combines retained storage with one unsettled owner without double counting', async () => {
+    const f = productionRetirementFixture();
+    const retained = await retainCompleted(f, 'terminal');
+    const pending = await f.create('agent');
+    const reader = await openReader(f, pending.session);
+    await finish(f, pending.session, pending.transport);
+    assert.equal(pending.session.ownedExecution.snapshot().retired, false);
+    assert.equal(f.server.executionOwner.snapshot().admissionPending, 1);
+    await assertRetirementCapacityRejected(f);
+    await f.server.deleteSession({ sessionId: retained.session.sessionId });
+    const next = await f.create();
+    assert.equal(next.session.live, true, 'the remaining owner is counted once');
+    assertSettlement(await closeReader(f, reader, { kind: 'cancelled', reason: 'mixed retirement test complete' }), 'recorded');
+    await f.server.deleteSession({ sessionId: pending.session.sessionId });
+    await finish(f, next.session, next.transport);
+    await f.server.deleteSession({ sessionId: next.session.sessionId });
+  });
+
+  await check('finite admission preserves its existing completed storage semantics', async () => {
+    const f = boundaryFixture();
+    const first = await retainCompleted(f, 'terminal');
+    const second = await retainCompleted(f, 'agent');
+    const next = await f.create();
+    assert.equal(next.session.live, true);
+    await finish(f, next.session, next.transport);
+    for (const { session } of [first, second, next]) {
+      await f.server.deleteSession({ sessionId: session.sessionId });
+    }
+  });
 
   for (const kind of ['terminal', 'agent']) {
     await check(`${kind} boundary saves real journal after reader application and confirms original socket/server close`, async () => {

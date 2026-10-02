@@ -309,11 +309,14 @@ assert.deepEqual(Object.keys(production.on), ['workflow_dispatch'],
 assert.deepEqual(production.permissions, { contents: 'read' });
 assert.equal(production.env, undefined);
 const productionInputs = production.on.workflow_dispatch.inputs;
-assert.deepEqual(Object.keys(productionInputs), ['reuse_package_run', 'platform', 'agent_scenarios', 'skip_installed']);
+assert.deepEqual(Object.keys(productionInputs), ['reuse_package_run', 'reuse_native_run', 'platform', 'agent_scenarios', 'installed_mode', 'skip_installed']);
 assert.equal(productionInputs.reuse_package_run.default, '');
+assert.equal(productionInputs.reuse_native_run.default, '');
 assert.equal(productionInputs.agent_scenarios.default, '');
 assert.equal(productionInputs.skip_installed.default, false);
 assert.equal(productionInputs.platform.default, 'all');
+assert.equal(productionInputs.installed_mode.default, 'all');
+assert.deepEqual(productionInputs.installed_mode.options, ['all', 'live-runtime']);
 assert.deepEqual(productionInputs.platform.options, ['all', 'linux', 'macos', 'windows']);
 const inputJob = production.jobs.input;
 assert.deepEqual(inputJob.permissions, { contents: 'read', actions: 'read' });
@@ -327,8 +330,9 @@ const evaluateSelection = new Function('assert', 'fs', 'execFileSync', 'cli', 'f
 const platforms = [{ os: 'ubuntu-22.04', platform: 'linux' }, { os: 'macos-15', platform: 'macos' },
   { os: 'windows-2025', platform: 'windows' }];
 async function selection({ values = {}, changed = [], packageSuccess = true, installedPlatforms = ['linux'],
-  sourcePath = '.github/workflows/runtime-production-acceptance.yml', repository = 'owner/repo' } = {}) {
-  const env = { DSC_REUSE_RUN: '', DSC_PLATFORM: 'all', DSC_SCENARIOS: '', DSC_SKIP_INSTALLED: 'false',
+  installedMode = 'all', sourcePath = '.github/workflows/runtime-production-acceptance.yml', repository = 'owner/repo' } = {}) {
+  const env = { DSC_REUSE_RUN: '', DSC_NATIVE_RUN: '', DSC_PLATFORM: 'all', DSC_SCENARIOS: '', DSC_SKIP_INSTALLED: 'false',
+    DSC_INSTALLED_MODE: 'all',
     GITHUB_SHA: 'b'.repeat(40), GITHUB_RUN_ID: '999', GITHUB_REPOSITORY: 'owner/repo',
     GITHUB_OUTPUT: '/controlled-output', GH_TOKEN: 'controlled-token', ...values };
   let output = '', requests = 0;
@@ -346,7 +350,8 @@ async function selection({ values = {}, changed = [], packageSuccess = true, ins
         return url.includes('/jobs?') ? { jobs: [{ name: 'package', conclusion: packageSuccess ? 'success' : 'failure' },
           ...platforms.filter(item => installedPlatforms.includes(item.platform)).map(item => ({
             name: `product (${item.os}, ${item.platform})`, steps: [{
-              name: 'Installed Terminal and Webview final acceptance', conclusion: 'success' }] }))] }
+              name: installedMode === 'all' ? 'Installed Terminal and Webview final acceptance'
+                : 'Installed Runtime Terminal and Webview affected acceptance', conclusion: 'success' }] }))] }
           : { path: sourcePath, head_repository: { full_name: repository }, head_sha: 'a'.repeat(40) };
       } };
     }, { env });
@@ -369,6 +374,20 @@ assert.equal(replay.requests, 2);
 assert.equal(replay.values.package_run, '123');
 assert.equal(replay.values.package_commit, 'a'.repeat(40));
 assert.deepEqual(JSON.parse(replay.values.matrix), { include: [platforms[0]] });
+const nativeOnly = await selection({ values: { DSC_NATIVE_RUN: '123', DSC_PLATFORM: 'linux',
+  DSC_SCENARIOS: 'codex-live-runtime-natural' }, changed: ['extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts'] });
+assert.equal(nativeOnly.values.package_run, '999');
+assert.equal(nativeOnly.values.package_commit, 'b'.repeat(40));
+assert.equal(nativeOnly.values.native_run, '123');
+assert.equal(nativeOnly.values.native_commit, 'a'.repeat(40));
+assert.equal(normalSelection.values.native_run, '999');
+assert.equal(normalSelection.values.native_commit, 'b'.repeat(40));
+await assert.rejects(selection({ values: { DSC_NATIVE_RUN: '123', DSC_REUSE_RUN: '123' } }), /not both/);
+await assert.rejects(selection({ values: { DSC_NATIVE_RUN: '123', DSC_SKIP_INSTALLED: 'true' } }), /whole-package reuse/);
+await assert.rejects(selection({ values: { DSC_NATIVE_RUN: '123' }, packageSuccess: false }), /must have succeeded/);
+await assert.rejects(selection({ values: replayValues, installedMode: 'live-runtime' }), /original passed installed step/);
+await selection({ values: { ...replayValues, DSC_INSTALLED_MODE: 'live-runtime' }, installedMode: 'live-runtime' });
+await assert.rejects(selection({ values: { DSC_INSTALLED_MODE: 'live-runtime' } }), /Partial acceptance/);
 for (const file of ['extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
   'scripts/build/build.mjs', 'scripts/native/linux-owner.cc', 'package-lock.json',
   'extensions/vscode/dev-session-canvas/package.json', 'scripts/release/package-vsix.mjs']) {
@@ -387,10 +406,20 @@ for (const values of [{ DSC_REUSE_RUN: '1;echo injected' }, { DSC_REUSE_RUN: '12
 }
 assert.equal(production.jobs['native-assets'].uses, './.github/workflows/runtime-execution-assets.yml');
 assert.equal(production.jobs['native-assets'].needs, 'input');
-assert.equal(production.jobs['native-assets'].if, "inputs.reuse_package_run == ''");
+assert.equal(production.jobs['native-assets'].if, "inputs.reuse_package_run == '' && inputs.reuse_native_run == ''");
 assert.deepEqual(production.jobs['native-assets'].with, { input_ref: '${{ github.sha }}' });
-assert.equal(production.jobs.package.needs, 'native-assets');
-assert.equal(production.jobs.package.if, "inputs.reuse_package_run == ''");
+assert.deepEqual(production.jobs.package.needs, ['input', 'native-assets']);
+assert.match(production.jobs.package.if, /always\(\).*needs\.input\.result == 'success'.*inputs\.reuse_package_run == ''.*needs\.native-assets\.result == 'success'.*inputs\.reuse_native_run != ''.*needs\.native-assets\.result == 'skipped'/);
+assert.deepEqual(production.jobs.package.permissions, { contents: 'read', actions: 'read' });
+assert.deepEqual(production.jobs.package.steps.find(step => step.uses === 'actions/download-artifact@v4').with, {
+  pattern: 'execution-native-*-${{ needs.input.outputs.native_run }}', 'merge-multiple': true,
+  path: 'native-archives', 'run-id': '${{ needs.input.outputs.native_run }}', 'github-token': '${{ github.token }}'
+});
+const assembleNative = production.jobs.package.steps.find(step => step.name === 'Assemble source-verified production assets');
+assert.equal(assembleNative.env.DSC_NATIVE_COMMIT, '${{ needs.input.outputs.native_commit }}');
+assert.match(assembleNative.run, /assemble-execution-distribution-assets\.mjs.*--input-sha "\$DSC_NATIVE_COMMIT"/);
+assert.match(production.jobs.package.steps.find(step => step.name === 'Build and package through normal defaults').run,
+  /nativeAssets: \{ run: process\.env\.DSC_NATIVE_RUN, inputCommit: process\.env\.DSC_NATIVE_COMMIT \}/);
 const finalProduct = production.jobs.product;
 assert.deepEqual(finalProduct.needs, ['input', 'package']);
 assert.match(finalProduct.if, /always\(\).*needs\.input\.result == 'success'.*needs\.package\.result == 'success'.*inputs\.reuse_package_run != ''.*needs\.package\.result == 'skipped'/);
@@ -418,7 +447,11 @@ assert.equal(afterSecret[0].uses, 'actions/upload-artifact@v4');
 assert.equal(afterSecret[0].with.path, 'agent-ci-report/');
 assert.equal(afterSecret[0].if, "always() && steps.real_agents.outputs.report_ready == 'true'");
 assert.match(finalProduct.steps.find(candidate => candidate.id === 'installed').run, /--installed-vsix production-package\/product\.vsix/u);
-assert.equal(finalProduct.steps.find(candidate => candidate.id === 'installed').if, '${{ !inputs.skip_installed }}');
+assert.equal(finalProduct.steps.find(candidate => candidate.id === 'installed').if,
+  "${{ !inputs.skip_installed && inputs.installed_mode == 'all' }}");
+assert.equal(finalProduct.steps.find(candidate => candidate.id === 'installed_runtime').if,
+  "${{ !inputs.skip_installed && inputs.installed_mode == 'live-runtime' }}");
+assert.match(finalProduct.steps.find(candidate => candidate.id === 'installed_runtime').run, /--mode=live-runtime/);
 const download = finalProduct.steps.find(candidate => candidate.uses === 'actions/download-artifact@v4');
 assert.deepEqual(download.with, { name: 'runtime-production-package-${{ needs.input.outputs.package_run }}',
   path: 'production-package', 'run-id': '${{ needs.input.outputs.package_run }}', 'github-token': '${{ github.token }}' });

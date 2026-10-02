@@ -106,7 +106,7 @@ import {
   locateCodexSessionId
 } from '../common/codexSessionIdLocator';
 import { extractClaudeCommandRuntimeSessionFlag } from '../common/agentLaunchPresets';
-import { assertExecutionCandidateCapabilities, assertExecutionCandidateProfile, EXECUTION_INTERACTION_LIMITS,
+import { assertExecutionCandidateCapabilities, assertExecutionCandidateProfile, hasExecutionAdmissionCapacity, EXECUTION_INTERACTION_LIMITS,
   type AuthorityResult, type DataBatch, type ExecutionCandidateProfile, type LaunchSpec, type ProcessResult
 } from '../common/executionLifecycle';
 import type { InteractionObservation, OperationObservation } from '../panel/executionSessionAdapter';
@@ -784,6 +784,21 @@ export class RuntimeSupervisorServer {
       : params.resumeSessionId;
     const startedAtMs = Date.now();
     const scrollback = normalizeTerminalScrollback(params.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
+    const owner = this.executionOwner;
+    if (owner?.admissionLimits.executions === null) {
+      owner.assertAdmission();
+      const owned = owner.snapshot();
+      let retainedRetirements = 0;
+      for (const retained of this.sessions.values()) {
+        const execution = retained.ownedExecution;
+        if (execution?.snapshot().retired && owner.get(execution.key) !== execution) retainedRetirements++;
+      }
+      // Reader retirement does not release the terminal model or its pending storage cleanup.
+      if (!hasExecutionAdmissionCapacity(owner.admissionLimits, {
+        executions: owned.pending + retainedRetirements,
+        pending: owned.admissionPending + retainedRetirements
+      })) throw new Error('Execution start was rejected-before-acquire.');
+    }
     const ownedExecution = this.executionOwner?.reserve(sessionId, sessionId);
     let terminalJournal: TerminalSessionJournal;
     try {
