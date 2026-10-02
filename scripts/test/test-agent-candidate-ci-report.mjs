@@ -268,6 +268,11 @@ try {
     : { ...Object.fromEntries(Object.entries(value).map(([name, entry]) =>
       [name, mapSemanticLeaves(entry, leaf, privateFields)])),
     ...(privateFields ? { raw: key, [key]: true, cells: [{ chars: key }], path: key, ansi: key } : {}) };
+  const prefixRecord = { outputSequence: 3, savedBytes: 15, hydratedBytes: 12,
+    differentEmptyCells: 0, differentNonemptyCells: 1,
+    replaySavedSemanticMatched: false, replaySavedSemanticMatches: semanticMatches,
+    replaySemanticStateSha256: 'd'.repeat(64), hydratedSemanticStateSha256: 'e'.repeat(64) };
+  const prefixEvidence = { checkedNonempty: 2, mismatch: true, unknown: false, firstMismatch: prefixRecord, firstUnknown: null };
   const snapshotEvidence = { schemaVersion: 1, savedStatePresent: true, savedStateValid: true, savedDataBytes: 0,
     savedOutputSequence: 15, snapshotOutputSequence: 15, readerFinalOutputSequence: 15, sequenceMatched: true,
     savedDataSha256: 'a'.repeat(64), helperSha256: 'b'.repeat(64), replayComplete: true,
@@ -276,6 +281,9 @@ try {
     replaySavedSerializedMatched: false, replaySerializedMatchesSavedData: true,
     replaySavedSemanticMatched: true, replaySemanticStateSha256: 'c'.repeat(64), hydratedSemanticStateSha256: 'c'.repeat(64),
     replaySavedSemanticMatches: mapSemanticLeaves(semanticMatches, value => value, true),
+    prefixSemanticEvidence: { ...prefixEvidence, raw: key, [key]: true,
+      firstMismatch: { ...prefixRecord, raw: key, path: key, ansi: key, [key]: true,
+        replaySavedSemanticMatches: mapSemanticLeaves(semanticMatches, value => value, true) } },
     semanticState: { cells: [{ chars: key }] },
     replayBufferLineCount: 21, savedBufferLineCount: 21, replaySerializedBytes: 10, hydratedSerializedBytes: 0,
     replayInactivePrefixSnapshots: 1, replayEquivalentInitialSnapshots: 1, replayInitialZeroSequenceInferred: true,
@@ -318,19 +326,26 @@ try {
   assert.equal(snapshotReport.scenarios[0].snapshotEvidence.semanticState, undefined);
   assert.deepEqual(snapshotReport.scenarios[0].snapshotEvidence.replaySavedSemanticMatches, semanticMatches,
     'Only the fixed boolean categories survive, including at every nested boundary.');
+  assert.deepEqual(snapshotReport.scenarios[0].snapshotEvidence.prefixSemanticEvidence, prefixEvidence);
   await fs.writeFile(path.join(stopArtifacts, 'snapshot-evidence.json'), JSON.stringify({ ...snapshotEvidence,
-    replaySavedSemanticMatched: false, replaySavedSemanticMatches: null }));
+    replaySavedSemanticMatched: false, replaySavedSemanticMatches: null, prefixSemanticEvidence: null }));
   const semanticMismatchDirectory = path.join(root, 'semantic-mismatch-report');
   await writeAgentCandidateCIReport({ ...options, directory: semanticMismatchDirectory, scenarios: [stopped], failed: true });
   const semanticMismatchReport = JSON.parse(await fs.readFile(path.join(semanticMismatchDirectory, 'summary.json'), 'utf8'));
   assert.equal(semanticMismatchReport.scenarios[0].snapshotEvidence.replaySavedSemanticMatched, false);
   assert.equal(semanticMismatchReport.scenarios[0].snapshotEvidence.replaySavedSemanticMatches, null);
+  assert.equal(semanticMismatchReport.scenarios[0].snapshotEvidence.prefixSemanticEvidence, null);
   await fs.writeFile(path.join(stopArtifacts, 'snapshot-evidence.json'), JSON.stringify({ ...snapshotEvidence,
     replayReason: key, replayMatchesSaved: key, savedDataBytes: -1, savedDataSha256: key,
     replaySavedGeometryMatched: key, replaySavedLinesMatched: key, replaySavedVisibleMatched: key,
     replaySavedSerializedMatched: key, replaySerializedMatchesSavedData: key,
     replaySavedSemanticMatched: key, replaySemanticStateSha256: key, hydratedSemanticStateSha256: 'invalid',
     replaySavedSemanticMatches: mapSemanticLeaves(semanticMatches, () => key, true),
+    prefixSemanticEvidence: { checkedNonempty: -1, mismatch: key, unknown: key, raw: key,
+      firstUnknown: key, firstMismatch: { outputSequence: key, savedBytes: -1, hydratedBytes: key,
+        differentEmptyCells: -1, differentNonemptyCells: key,
+        replaySavedSemanticMatched: key, replaySavedSemanticMatches: mapSemanticLeaves(semanticMatches, () => key, true),
+        replaySemanticStateSha256: key, hydratedSemanticStateSha256: key, raw: key, [key]: true } },
     replayBufferLineCount: key, savedBufferLineCount: -1, replaySerializedBytes: key, hydratedSerializedBytes: -1,
     replayInitialZeroSequenceInferred: key, replayInactivePrefixSnapshots: -1,
     savedGeometry: { cols: key, rows: -1, cursorX: key, bufferType: key }, pageGeometry: key,
@@ -357,6 +372,11 @@ try {
     { cols: null, rows: null, cursorX: null, cursorY: null, viewportY: null, bufferType: null });
   assert.deepEqual(invalidSnapshot.replaySavedSemanticMatches, mapSemanticLeaves(semanticMatches, () => null),
     'Unknown semantic categories must stay null, never truthy strings or inferred matches.');
+  assert.deepEqual(invalidSnapshot.prefixSemanticEvidence, { checkedNonempty: null, mismatch: null, unknown: null,
+    firstUnknown: null, firstMismatch: { outputSequence: null, savedBytes: null, hydratedBytes: null,
+      differentEmptyCells: null, differentNonemptyCells: null,
+      replaySavedSemanticMatched: null, replaySavedSemanticMatches: mapSemanticLeaves(semanticMatches, () => null),
+      replaySemanticStateSha256: null, hydratedSemanticStateSha256: null } });
   assert.equal(invalidSnapshotText.includes(key), false);
   for (const entry of scenarios) await fs.writeFile(path.join(options.output, entry.name, 'artifacts', 'result.json'),
     JSON.stringify({ pass: true }));

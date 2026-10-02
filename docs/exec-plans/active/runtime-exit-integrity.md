@@ -2,7 +2,9 @@
 
 当前执行入口（2026-10-02，§53，取代下面历史入口）：按用户顺序先完成F-04资源账/生产准入/本地实际消费信用/候选冷启动，再收口已证页面缺陷和正常build/package/default，最后受影响的真实Agent、Webview、现代跨平台与安装包验收。十会话、重连、compact及未受影响原生矩阵复用，历史失败保留不排队，root归属另列、旧OS和诊断框架增强不作前置。
 
-当前具名阻塞：新包71b41035的Windows run36972376905已通过Runtime安装及两Codex Runtime场景，但Codex snapshot-only stop的756-byte/seq66状态恢复语义不相等，不能按正文一致放行。仅补既有摘要的固定布尔分类，并用同包复用已过安装、只定位失败单格及未跑Claude；Linux36972593736与macOS36972826194各四Runtime Agent已独立核验成功，安装工件待完整核对。原失败、旧hash与所有尾部判据保持，尚不宣布整体完成。
+当前具名阻塞：新包71b41035的Windows run36972376905已通过Runtime安装及两Codex Runtime场景，但Codex snapshot-only stop的756-byte/seq66状态恢复语义不相等，不能按正文一致放行。仅补既有摘要的固定布尔分类，并用同包复用已过安装、只定位失败单格及未跑Claude；Linux36972593736与macOS36972826194各四Runtime Agent、三平台Runtime安装工件均已独立核验成功。原失败、旧hash与所有尾部判据保持，尚不宣布整体完成。
+
+该固定单格36973937774通过的是0-byte/seq67清屏后状态，并未定位旧非空差异；四Claude36973985435已独立核验，包含1947-byte/seq21非空stop、新Host重开及零cleanup。至此F-04所需十二Runtime Agent与三平台安装全部结账。当前唯一剩余取证是在原有界事后回放中默认关闭的清屏前非空prefix分类，限定一次Windows原Codex-stop输入；诊断未知不改final验收。实现、两项定向测试及独立review通过，未运行新CI；首差及空/非空cell计数不直接证明旧756-byte终态的根因，也不证明空cell差异不可见。设计及停止条件见生产接入§53末尾。
 
 当前唯一执行入口（2026-10-02，§52）：判据窄修 `1d784d8b` 的唯一 Linux run `36935000098` 原八场通过，包含空/非空 snapshot stop 首页面独立重排与 schema2 新Host重开；四 natural 响应/EOF、八场零cleanup。旧两次 `30f421b3` 首场超时根因未知，不宣称产品修复、不为抓红重跑。当前回到有限清单 A1/F-04、A2/A3 慢写/最终状态及平台新判据、最终生产准入；已完成固定 Linux 格不重排，历史入口不构成追加队列，不追加工具门槛。
 
@@ -112,7 +114,9 @@ S1阶段已实施 无 native 核心：主运行时树新增共享类型/校验�
 
 ## 进度
 
-- [ ] (2026-10-02，最终review) Supervisor退休存储计数已先红/修后99/99、typecheck/protocol通过；snapshot非空采用精确原字节加独立cell/modes/cursor语义，原deep/hash与空态保持，三测试通过。剩余新包三平台Runtime和Windows未跑/新判据格；原六资产/不变bundle证据复用，尾部/reader/失败保留不变。
+- [x] (2026-10-02，最终包) Supervisor退休存储99/99及新包三平台Runtime安装、十二Runtime Agent场景独立核验通过，F-04完成；原六资产/不变bundle证据复用，尾部/reader/失败保留不变。
+- [x] (2026-10-02，有限分类) 默认关闭的清屏前非空prefix诊断、空/非空cell差异计数已实施；snapshot-evidence/CI-report两测试及独立review通过，原final判据不变。
+- [ ] (2026-10-02，A2/A4) 仅对Windows Codex snapshot-stop执行一次上述分类输入；旧756-byte语义差异未闭环，0-byte复验通过及Claude非空1947-byte通过均不代证其根因。若无因果证据则保留具名未决，不自动追加诊断。
 - [x] (2026-10-02，§53) Agent/Terminal direct/checkpoint保存viewport与慢write提前fit共六例先红，restore屏障和viewport修后18项定向Chromium通过；不声称新增本地credit或最终版本通过。
 - [x] (2026-10-02，§53) 生产准入实现活动/待结算分账，adapter101/owner50项通过；candidate冷启动仅在排他namespace后清理本代运行账，namespace11/legacy与Supervisor94项通过。
 - [x] (2026-10-02，§53) Host最终保存准入与新协商本地write信用完成，Host154、controller46/Host batch10及8项受影响Chromium通过；普通六资产build/package本地exit0，包/选择已独立核对。
@@ -1109,6 +1113,8 @@ S16决定只修普通completed在reader/persist等待窗口的身份复核与局
 - 决策：区分命令失败与输出失败、自然排空与主动取消，旧会话仍保留原绑定。理由：非零退出同样可能有重要错误尾部；兼容不能补造旧 provider 未提供的完整性保证。日期/作者：2026-09-20 / Codex。
 
 ## 结果与复盘
+
+2026-10-02最终容量结账：固定生产包71b41035/run36971460243的三平台Runtime installed、十二Runtime Agent和既有多会话/重连/compact共同完成F-04受影响验收；B3有限入口亦已覆盖。Windows Codex非空snapshot的原语义差异仍独立阻塞整体结账，Claude同包非空1947-byte/seq21已通过新Host重开。唯一新增是原回放内一次首差分类，不变业务或final判据；两测试和独立review已通过，待该一次取证后判断。下面为历史增量结果。
 
 2026-10-02：生产准入/冷启动/本地消费信用已入库7f1e1887，原六项页面回归及新增两项credit组合通过。普通build/package本地成功，六目标production包检查通过；独立review和冻结提交最终受影响验收仍进行。总体退出完整性与F-04保持开放；不把历史观察阈值、旧失败或工具增强作为新自动阶段。
 
@@ -2414,3 +2420,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-02，最终review修正）：Windows两模式installed、Linux四Claude及macOS两Claude已独立通过各自固定旧包格，原Windows非空stop仅定位到二次序列化6B变化，仍失败。有限本地对照证明无损编码变化与真实bold/dim损失都存在，非空验收改为精确保存字节加独立完整语义，保持旧事实并拒绝样式丢失。Supervisor存储退休准入遗漏已用原99项脚本修正，必须新包验影响链；workflow复用具名原六native，不复跑无关矩阵。
 
 修订记录（2026-10-02，Runtime单模式入口）：71b41035/run36971460243新包成功，三平台受影响验收被同一旧installed选择断言拒绝，产品与Agent尚未运行。修正原选择校验允许live-runtime、保留默认双模式/容量互斥，并由workflow回归实际调用；18项installed及workflow契约测试通过。失败原run36971460243、36971610714、36971751584不改，后续复用新包补原影响格，不重建native或另开工具阶段。
+
+修订记录（2026-10-02，容量结账与最后分类）：按独立核验收口F-04、同步Windows四Claude结果及有限A2/A4剩余；清屏前prefix只记录首差、计数与白名单摘要，异常不影响final，定向测试和独立review通过。只运行一次新分类输入，不由中间首差推定旧终态根因，不再自动扩诊断范围。

@@ -133,6 +133,61 @@ function compareSemanticState(left, right) {
       flags: flags(index => left.cursorStyle.flags[index] === right.cursorStyle.flags[index]) } };
 }
 
+async function compareNonemptyPrefix(state, sequence, scrollback, evidence) {
+  if (!evidence || evidence.mismatch) return;
+  const record = { outputSequence: sequence, savedBytes: null, hydratedBytes: null,
+    differentEmptyCells: null, differentNonemptyCells: null,
+    replaySavedSemanticMatched: null, replaySavedSemanticMatches: null,
+    replaySemanticStateSha256: null, hydratedSemanticStateSha256: null };
+  const unknown = () => { evidence.unknown = true; evidence.firstUnknown ??= record; };
+  let hydrated;
+  try {
+    const data = state.addon.serialize({ scrollback, excludeAltBuffer: false, excludeModes: false });
+    if (data.length === 0) return;
+    evidence.checkedNonempty += 1;
+    record.savedBytes = Buffer.byteLength(data);
+    const semantic = readSemanticState(state.terminal);
+    if (semantic) record.replaySemanticStateSha256 = hash(JSON.stringify(semantic));
+    hydrated = runtime(state.terminal.cols, state.terminal.rows, scrollback);
+    await write(hydrated.terminal, data);
+    hydrated.terminal.scrollToLine(state.terminal.buffer.active.viewportY);
+    record.hydratedBytes = Buffer.byteLength(hydrated.addon.serialize({ scrollback,
+      excludeAltBuffer: false, excludeModes: false }));
+    const restored = readSemanticState(hydrated.terminal);
+    if (restored) record.hydratedSemanticStateSha256 = hash(JSON.stringify(restored));
+    if (!semantic || !restored) { unknown(); return; }
+    record.replaySavedSemanticMatched = same(semantic, restored);
+    record.replaySavedSemanticMatches = compareSemanticState(semantic, restored);
+    if (!record.replaySavedSemanticMatched) {
+      const counts = countSemanticCellDifferences(semantic, restored);
+      record.differentEmptyCells = counts?.empty ?? null;
+      record.differentNonemptyCells = counts?.nonempty ?? null;
+      evidence.mismatch = true;
+      evidence.firstMismatch = record;
+    }
+  } catch { unknown(); }
+  finally {
+    try { hydrated?.terminal.dispose(); } catch { unknown(); }
+  }
+}
+
+function countSemanticCellDifferences(left, right) {
+  const result = { empty: 0, nonempty: 0 };
+  for (const name of ['normal', 'alternate']) {
+    const a = left[name], b = right[name];
+    if (!a && !b) continue;
+    if (!a || !b || a.lines.length !== b.lines.length) return null;
+    for (let row = 0; row < a.lines.length; row += 1) {
+      const cells = a.lines[row].cells, other = b.lines[row].cells;
+      if (cells.length !== other.length) return null;
+      for (let col = 0; col < cells.length; col += 1) {
+        if (!same(cells[col], other[col])) result[cells[col].chars === '' && other[col].chars === '' ? 'empty' : 'nonempty'] += 1;
+      }
+    }
+  }
+  return result;
+}
+
 async function comparePage(state, probe, assertBuffer) {
   const observed = probe && ['terminalCols', 'terminalRows', 'terminalCursorX', 'terminalCursorY', 'terminalViewportY']
     .every(key => integer(probe[key])) && Array.isArray(probe.terminalVisibleLines);
@@ -150,8 +205,10 @@ async function comparePage(state, probe, assertBuffer) {
 }
 
 // This diagnostic never feeds later snapshots back into the replay terminal.
-async function replayMessages({ messages, nodeId, executionId, scrollback, finalSequence }) {
-  const unknown = reason => ({ reason, complete: false });
+async function replayMessages({ messages, nodeId, executionId, scrollback, finalSequence, diagnoseNonemptyPrefixes }) {
+  const prefixSemanticEvidence = diagnoseNonemptyPrefixes === true
+    ? { checkedNonempty: 0, mismatch: false, unknown: false, firstMismatch: null, firstUnknown: null } : null;
+  const unknown = reason => ({ reason, complete: false, prefixSemanticEvidence });
   if (!Array.isArray(messages)) return unknown('messages-missing');
   if (messages.length >= 200) return unknown('message-window-full');
   const allRelevant = messages.filter(message => message.payload?.nodeId === nodeId &&
@@ -184,7 +241,7 @@ async function replayMessages({ messages, nodeId, executionId, scrollback, final
   const state = runtime(initial.cols, initial.rows, scrollback);
   const result = { complete: false, reason: 'unknown', initialSequence: initial.outputSequence,
     inactivePrefixSnapshots: prefix.length, equivalentInitialSnapshots: 0, initialZeroSequenceInferred: initialZero,
-    outputMessages: 0, resizeSnapshots: 0, finalSnapshot: undefined };
+    outputMessages: 0, resizeSnapshots: 0, finalSnapshot: undefined, prefixSemanticEvidence };
   let sequence = initial.outputSequence;
   let initialPhase = true;
   let finalSeen = false;
@@ -206,6 +263,7 @@ async function replayMessages({ messages, nodeId, executionId, scrollback, final
         await write(state.terminal, payload.chunk);
         sequence = payload.outputSequence;
         result.outputMessages += 1;
+        await compareNonemptyPrefix(state, sequence, scrollback, prefixSemanticEvidence);
       } else if (message.type === 'host/executionSnapshot') {
         if (!dimensions(payload) || !serialized(payload.serializedTerminalState) ||
             payload.outputSequence !== payload.serializedTerminalState.outputSequence) {
@@ -223,6 +281,7 @@ async function replayMessages({ messages, nodeId, executionId, scrollback, final
           if (readTerminal(state).serialized !== payload.serializedTerminalState.data) {
             return { ...result, reason: 'resize-checkpoint-mismatch' };
           }
+          await compareNonemptyPrefix(state, sequence, scrollback, prefixSemanticEvidence);
         } else return { ...result, reason: 'projection-recovery-or-unknown-snapshot' };
       } else if (!finalSeen || exitSeen || payload.localCompletion?.executionSessionId !== executionId ||
           payload.localCompletion.finalOutputSequence !== sequence) {
@@ -237,7 +296,7 @@ async function replayMessages({ messages, nodeId, executionId, scrollback, final
 }
 
 async function collectSnapshotEvidence({ savedNode, nodeId, executionId, messages, events, helpProbe, finalProbe,
-  assertBuffer, scrollback = 10000 }) {
+  assertBuffer, scrollback = 10000, diagnoseNonemptyPrefixes = false }) {
   const metadata = savedNode?.metadata?.agent;
   const saved = metadata?.serializedTerminalState;
   const help = nodeProbe(helpProbe, nodeId);
@@ -276,6 +335,7 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
     replaySavedSerializedMatched: null, replaySerializedMatchesSavedData: null,
     replaySavedSemanticMatched: null, replaySavedSemanticMatches: null,
     replaySemanticStateSha256: null, hydratedSemanticStateSha256: null,
+    prefixSemanticEvidence: null,
     replayBufferLineCount: null, savedBufferLineCount: null, replaySerializedBytes: null, hydratedSerializedBytes: null,
     pageProjectionIndependence: 'not-proven' };
   let hydrated, resized;
@@ -300,7 +360,9 @@ async function collectSnapshotEvidence({ savedNode, nodeId, executionId, message
     evidence.pageVisibleMatched = pageComparison.visible;
     evidence.pageBufferMatched = pageComparison.buffer;
     evidence.savedMatchesPage = pageComparison.matches;
-    const replay = await replayMessages({ messages, nodeId, executionId, scrollback, finalSequence: saved.outputSequence });
+    const replay = await replayMessages({ messages, nodeId, executionId, scrollback,
+      finalSequence: saved.outputSequence, diagnoseNonemptyPrefixes });
+    evidence.prefixSemanticEvidence = replay.prefixSemanticEvidence;
     evidence.replayComplete = replay.complete;
     evidence.replayReason = replay.reason;
     evidence.replayInitialSequence = replay.initialSequence ?? null;

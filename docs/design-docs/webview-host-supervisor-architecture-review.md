@@ -22,7 +22,7 @@ related_plans:
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
-updated_at: 2026-09-28
+updated_at: 2026-10-02
 ---
 
 # Webview、Host 与 Runtime Supervisor 架构审核
@@ -35,11 +35,11 @@ updated_at: 2026-09-28
 
 ## 2. Findings
 
-2026-09-28 状态核对：F-04 只完成部分容量优化，F-05 新 completed 无历史路径已收口；退出完整性有实现增量和有限证据，但尚未整体交付。按用户委托，代理已选定 `docs/design-docs/runtime-persistence-closeout.md` 的完成定义及容量优先顺序，不再等待用户确认工程清单，仍停止自动扩阶段。F-03 独立后续规划，不作为容量/退出收尾的前置。下文保留审核基线、当时的缺陷和历史结果，不把已由后续增量替代的描述或诊断建议累加为当前待办。
+2026-10-02 状态核对：F-04 当前支持路径已按容量设计§10.17的资源模型、生产准入与受影响 Runtime 最终验收结账，F-05 新 completed 无历史路径保持收口。既有十会话/重连/compact与原64/128观察失败保留，不承诺任意规模固定RSS。整体退出完整性仍未交付，Windows 非空 Codex snapshot-only 状态差异留在 A2/A4；实际有限队列见 `docs/design-docs/runtime-persistence-closeout.md` 和生产接入§53，不追加容量或通用工具阶段。F-03 独立后续规划，不作为容量/退出收尾的前置。下文保留审核基线、当时的缺陷和历史结果，不把已由后续增量替代的描述或诊断建议累加为当前待办。
 
 2026-09-16 的补充审核将 Runtime Persistence 容量与 completed 归档提升为优先重评项。以下按本轮优先级排列，保留原有编号以便追踪；F-04/F-05 对应讨论中的问题 2、3，是用户确认需要重评的设计决策，不是已证明违反现行规格的实现回归。
 
-### F-04 高：checkpoint 不能推进时，完整 journal 后缀同时成为常驻内存和反复全量传输的恢复材料
+### F-04 高（审核基线；当前支持路径已收口）：checkpoint 不能推进时，完整 journal 后缀同时成为常驻内存和反复全量传输的恢复材料
 
 位置：`extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts:512`、`extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts:503`、`extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts:558`、`extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts:1508`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:10811`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:16388`。
 

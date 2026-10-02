@@ -26,9 +26,11 @@ updated_at: 2026-10-02
 
 # Runtime Persistence 容量与会话归档架构重评
 
-当前实施入口（2026-10-02，§10.17）：按用户明确顺序先完成 F-04 资源模型/生产准入，再修已证页面问题，最后正常构建/默认启用和受影响最终验收。十会话、重连与 r23/r24 证据复用；不重跑无关矩阵、不优化旧64/128观察线，不增加诊断阶段。
+当前结账入口（2026-10-02，§10.17）：F-04 当前支持路径已完成资源模型、生产准入、本地消费信用、冷启动及退休存储责任修正；正常默认构建的固定生产包已补齐受影响的三平台 Runtime installed 与十二个真实 Agent Runtime 场景。十会话、重连与 r23/r24 证据复用，原64/128观察阈值及失败保持，不承诺任意会话数或历史长度下固定RSS。Windows 非空 Codex snapshot-only 状态差异仍由 A2/A4 和退出计划独立收尾，不因容量完成而弱化；整体审查与合并尚未完成，不追加容量或通用工具阶段。
 
 ## 1. 范围与决策状态
+
+以下具名入口保留各自时点的证据与“下一步”，不再代表当前待办；当前容量结论以上述结账及§10.17为准。
 
 当前入口（2026-10-02，r23 优先于下述历史下一步）：固定现代 Linux Electron 候选的 `--capacity-attach-compact` 两 Terminal 实际 attach/compact 运行已完成。运行包含动态 scrollback、两次 resize、首个 checkpoint、同一分页 reader 持续消费、约 18 MiB 后置输出并跨过实际 16 MiB journal compaction 阈值；compact 后 current/previous recovery candidate 可读，previous 事件从 `6503` 连续到 `11185`，reader identity 保持，compact 后 reader 仍可交互，页面输出/尺寸/scrollback 与自然 no-history、cleanup 均通过。最终 manifest 以 `currentCheckpoint=6579`、`previousCheckpoint=6502`、`retainedStartRevision=6503`、`lastRevision=11185` 为权威；不要求 `getSessionCheckpoint` 最新 RPC revision 与 durable manifest generation 相等。证据见 `.debug/a1-attach-compact-20261002-r23/compact/artifacts/`。这只关闭现代 Linux Electron 固定 attach/compact 组合，不关闭 F-04/A1、真实 Agent、其余页面语义、跨平台/packaged、退出完整性或生产准入；原 64/128 MiB 观察阈值及历史失败保持。
 
@@ -570,7 +572,7 @@ B交互完成后继续原完整保留后缀poll，沿原恢复轮计时基点使
 
 ### 10.17 正式资源边界与生产准入
 
-本节选定收尾方案，结构实施已有模块回归，最终默认版本尚待验收，不把计划当作通过。正常新路径的资源模型为：各会话用户指定 scrollback/geometry 的有限终端模型之和，活动执行/provider 的 O(N) 成本，逐 reader 的单页与单段索引成本，以及 O(保留 journal segment 数) 的元数据。正文缓存和在途窗口不随累计历史增长，但不能声称整个 RSS 与任意历史或会话数无关。磁盘为完整尚需来源，checkpoint 拒绝或慢 reader 保护时可继续增长；ENOSPC 必须明确失败，不能裁掉未消费尾部或无限转入内存。沿用§10.10/10.12运行前预算及实际十会话 color/size、§10.15重连、§10.16 compact证据；64/128只保留旧观察，不新设同类全局内存硬阈值。
+本节选定的资源边界与生产准入已实施，模块回归、正常默认构建及受影响 Runtime 最终验收已完成，F-04 当前支持路径据此结账。正常新路径的资源模型为：各会话用户指定 scrollback/geometry 的有限终端模型之和，活动执行/provider 的 O(N) 成本，逐 reader 的单页与单段索引成本，以及 O(保留 journal segment 数) 的元数据。正文缓存和在途窗口不随累计历史增长，但不能声称整个 RSS 与任意历史或会话数无关。磁盘为完整尚需来源，checkpoint 拒绝或慢 reader 保护时可继续增长；ENOSPC 必须明确失败，不能裁掉未消费尾部或无限转入内存。沿用§10.10/10.12运行前预算及实际十会话 color/size、§10.15重连、§10.16 compact证据；64/128只保留旧观察，不新设同类全局内存硬阈值。
 
 生产准入在 `executionLifecycle.ts` 显式选 `{executions:null, starting:1, pending:2}`：不把试验N=2或10变成活动会话上限。稳定running主体按用户请求承担资源；准备/启动、停止/收尾、未结算reader、snapshot-only最终保存是未完成责任，创建前已有两项此类责任时拒绝获取新资源，无隐藏队列。已准入的N个活动会话可同时结束，责任数会超过2，必须保留而不是截断；此时禁止新建，直至真实结算低于阈值。此策略限制的是以新建不断累积未结算责任的能力，不宣称责任数永远不超过2。unknown继续sticky停新准入，输入/尾部/逐资源与结束预算不变；原显式有限 `{executions:N,starting:Q}` 保持旧候选与具名回归兼容。`ExecutionAuthority`、`ExecutionOwnerLifecycle` 和Host保存保护使用同一不可变策略，必须在provider/journal副作用前拒绝，旧live不迁移或重启。
 
@@ -586,6 +588,6 @@ B交互完成后继续原完整保留后缀poll，沿原恢复轮计时基点使
 
 candidate新Supervisor启动仍无条件loadRegistry并全量重放旧journal，与不提供Supervisor重启后历史恢复的契约不符于当前资源目标。新隔离generation在取得namespace排他权之后应清理该generation的陈旧registry/journal并从空运行账开始，不解析或重放旧正文；画布节点/布局/用户文档不动，旧generation和仍存活Supervisor原绑定不动，清理失败须拒绝新启动。不能仅因客户端断连执行此清理，只有新Supervisor真正取得排他namespace才允许。该行为明确取消新generation重启后的历史恢复，不影响健康Supervisor的Host/Webview重连。
 
-验证限于生产准入先红/修后回归、本地慢write信用与取消/错误回执、候选冷启动不恢复陈旧正文/legacy保持，以及实际已证页面修复。完成正常build/package后，在最终版本复验受影响的多会话关键组合、Agent/Webview、现代跨平台和installed路径；未受影响矩阵复用原证据，不为证据数量增加运行。
+验证由生产准入先红/修后回归、本地慢write信用与取消/错误回执、候选冷启动不恢复陈旧正文/legacy保持、实际已证页面修复及最终生产包的受影响 Runtime 验收共同组成。固定包 `71b41035/run36971460243` 的三平台 Runtime installed 和十二个 Runtime Agent 场景已独立通过；六 native 资产与未变产品输入、十会话/重连/compact复用既有证据，不为证据数量增加运行。该结账不代证独立 snapshot-only 状态差异、全部 A2/A4 或整体重构已完成；后者以生产接入§53和退出计划当前入口为准。
 
 实施回归：adapter101/owner50、namespace11、Supervisor94项通过。Host154/154含11个live不占pending、两个退休但未保存record仍拒绝新获取；本地信用先红为 `initial snapshot must require application credit`，修后Agent/Terminal初始/两批输出/最终snapshot、错序/错身份/旧回执、mount竞态与取消均通过。实际Host→main/headless→Host组合等待真实tail callback后才返信用/完成，旧非协商输入亦保持。controller46/46、Host batch10/10、协议与typecheck通过。两次新增fixture准备错误（遗漏owner capability及显式natural drain预算）和一次seal早于异步frame接收的错误已纠正，仅属于测试前置，不记为产品失败或原生证据。未运行新的多会话/真实Agent矩阵。

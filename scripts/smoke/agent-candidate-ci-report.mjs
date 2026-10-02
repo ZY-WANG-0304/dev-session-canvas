@@ -99,6 +99,22 @@ function snapshotSemanticMatchesSummary(value) {
     cursorStyle: cursorStyle ? { ...cursorStyle, flags: flags(value.cursorStyle.flags) } : null };
 }
 
+function snapshotPrefixSemanticSummary(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const prefix = entry => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    return { ...Object.fromEntries(['outputSequence', 'savedBytes', 'hydratedBytes', 'differentEmptyCells', 'differentNonemptyCells'].map(name =>
+      [name, Number.isSafeInteger(entry[name]) && entry[name] >= 0 ? entry[name] : null])),
+    replaySavedSemanticMatched: boolean(entry.replaySavedSemanticMatched),
+    replaySavedSemanticMatches: snapshotSemanticMatchesSummary(entry.replaySavedSemanticMatches),
+    ...Object.fromEntries(['replaySemanticStateSha256', 'hydratedSemanticStateSha256'].map(name =>
+      [name, typeof entry[name] === 'string' && /^[a-f0-9]{64}$/.test(entry[name]) ? entry[name] : null])) };
+  };
+  return { checkedNonempty: Number.isSafeInteger(value.checkedNonempty) && value.checkedNonempty >= 0 ? value.checkedNonempty : null,
+    mismatch: boolean(value.mismatch), unknown: boolean(value.unknown),
+    firstMismatch: prefix(value.firstMismatch), firstUnknown: prefix(value.firstUnknown) };
+}
+
 function snapshotEvidenceSummary(value) {
   if (!value || typeof value !== 'object') return null;
   const result = { schemaVersion: value.schemaVersion === 1 ? 1 : null };
@@ -135,6 +151,7 @@ function snapshotEvidenceSummary(value) {
     !Array.isArray(value.pageGeometryMatches)
     ? Object.fromEntries(geometryKeys.map(name => [name, boolean(value.pageGeometryMatches[name])])) : null;
   result.replaySavedSemanticMatches = snapshotSemanticMatchesSummary(value.replaySavedSemanticMatches);
+  result.prefixSemanticEvidence = snapshotPrefixSemanticSummary(value.prefixSemanticEvidence);
   return result;
 }
 

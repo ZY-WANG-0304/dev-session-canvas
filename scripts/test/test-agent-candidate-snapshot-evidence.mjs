@@ -85,6 +85,58 @@ assert.equal(blankEvidence.savedBufferLineCount, 5);
 assert.equal(blankEvidence.replaySerializedBytes, 0);
 assert.equal(blankEvidence.hydratedSerializedBytes, 0);
 assert.deepEqual(blankEvidence.replaySavedSemanticMatches, matchedSemantics());
+assert.equal(blankEvidence.prefixSemanticEvidence, null);
+
+async function observePrefixHydration(value, enabled, failFirstPrefix = false) {
+  const original = Terminal.prototype.loadAddon;
+  let created = 0;
+  try {
+    Terminal.prototype.loadAddon = function (addon) {
+      created += 1;
+      original.call(this, addon);
+      if (failFirstPrefix && created === 3) addon.serialize = () => { throw new Error('fixed prefix diagnostic failure'); };
+    };
+    return { evidence: await collectSnapshotEvidence({ ...value, diagnoseNonemptyPrefixes: enabled }),
+      created };
+  } finally { Terminal.prototype.loadAddon = original; }
+}
+const prefixReset = await fixture({ blank: true, resize: true, outputText: '\x1b[2mA\x1b[22;1mB' });
+const disabledPrefix = await observePrefixHydration(prefixReset, false);
+assert.equal(disabledPrefix.created, 3, 'Disabled diagnostics must not create prefix hydration terminals.');
+assert.equal(disabledPrefix.evidence.prefixSemanticEvidence, null);
+const detectedPrefix = await observePrefixHydration(prefixReset, true);
+assert.equal(detectedPrefix.created, 4, 'A mismatch stops further hydration even before a nonempty resize.');
+assert.deepEqual({ ...detectedPrefix.evidence, prefixSemanticEvidence: null }, disabledPrefix.evidence,
+  'Prefix diagnostics cannot change final replay, hash, page or strict acceptance facts.');
+assert.equal(detectedPrefix.evidence.savedDataBytes, 0);
+assert.equal(detectedPrefix.evidence.replaySavedSemanticMatched, true);
+assert.equal(acceptsNonempty(prefixReset, detectedPrefix.evidence), true);
+const prefixDifference = detectedPrefix.evidence.prefixSemanticEvidence;
+assert.equal(prefixDifference.checkedNonempty, 1);
+assert.equal(prefixDifference.mismatch, true);
+assert.equal(prefixDifference.unknown, false);
+assert.equal(prefixDifference.firstUnknown, null);
+assert.equal(prefixDifference.firstMismatch.outputSequence, 1);
+assert(prefixDifference.firstMismatch.savedBytes > 0);
+assert(prefixDifference.firstMismatch.hydratedBytes > 0);
+assert.equal(prefixDifference.firstMismatch.replaySavedSemanticMatched, false);
+assert.equal(prefixDifference.firstMismatch.replaySavedSemanticMatches.normal.flags.Bold, false);
+assert(prefixDifference.firstMismatch.differentNonemptyCells > 0);
+assert.equal(prefixDifference.firstMismatch.differentEmptyCells, 0);
+assert.notEqual(prefixDifference.firstMismatch.replaySemanticStateSha256, prefixDifference.firstMismatch.hydratedSemanticStateSha256);
+const harmlessPrefix = await observePrefixHydration(blank, true);
+assert.deepEqual(harmlessPrefix.evidence.prefixSemanticEvidence,
+  { checkedNonempty: 1, mismatch: false, unknown: false, firstMismatch: null, firstUnknown: null });
+assert.deepEqual({ ...harmlessPrefix.evidence, prefixSemanticEvidence: null }, blankEvidence);
+const failedPrefix = await observePrefixHydration(blank, true, true);
+assert.deepEqual({ ...failedPrefix.evidence, prefixSemanticEvidence: null }, blankEvidence,
+  'An optional diagnostic failure must not change the original final result.');
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.unknown, true);
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.mismatch, false);
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.checkedNonempty, 1);
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.firstUnknown.outputSequence, 1);
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.firstUnknown.replaySavedSemanticMatched, null);
+assert.equal(failedPrefix.evidence.prefixSemanticEvidence.firstUnknown.replaySavedSemanticMatches, null);
 
 const initialSchema = { ...blank, messages: clone(blank.messages) };
 delete initialSchema.messages[0].payload.serializedTerminalState.outputSequence;

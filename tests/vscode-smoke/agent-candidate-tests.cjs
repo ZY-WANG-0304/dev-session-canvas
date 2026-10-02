@@ -206,6 +206,8 @@ async function run() {
       if (config.lifecycle === 'stop') {
         try {
           snapshotEvidence = await collectSnapshotEvidence({ savedNode, nodeId, executionId,
+            diagnoseNonemptyPrefixes: process.platform === 'win32' && config.provider === 'codex' &&
+              config.mode === 'snapshot-only' && config.lifecycle === 'stop',
             messages: await command('getHostMessages'), events: await command('getDiagnosticEvents'),
             helpProbe: JSON.parse(await fs.readFile(path.join(config.artifactDir, 'help-probe.json'), 'utf8')),
             finalProbe: await probe(),
