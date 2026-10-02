@@ -11,6 +11,7 @@ import { importCandidateAssets as importMacosCandidateAssets,
 import { importCandidateAssets as importWindowsCandidateAssets,
   readCandidateAssets as readWindowsCandidateAssets } from './windows-execution-candidate-assets.mjs';
 import { importExecutionCandidateAssetSet, readExecutionCandidateAssetSet } from './execution-candidate-assets-set.mjs';
+import { ensureXtermSerializePatch } from '../shared/ensure-xterm-serialize-patch.mjs';
 
 const require = createRequire(import.meta.url);
 const xtermBrowserMainEntryPath = require.resolve('@xterm/xterm/lib/xterm.js');
@@ -192,6 +193,7 @@ const webviewConfig = {
 
 async function runBuild() {
   const selection = await resolveExecutionBuildSelection(process.argv.slice(2));
+  await ensureXtermSerializePatch();
   extensionConfig.define = { ...extensionConfig.define,
     __DEV_SESSION_CANVAS_EXECUTION_PROFILE__: JSON.stringify(selection.profile) ?? 'undefined',
     __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__: JSON.stringify(selection.admissionLimits) ?? 'undefined' };

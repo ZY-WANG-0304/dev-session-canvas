@@ -28,11 +28,11 @@ assert.equal(helper.terminalCommand('C:\\test space\\run.cmd', 'C:\\node.exe', '
   '"C:\\test space\\run.cmd" "C:\\node.exe" "C:\\subject.cjs" "C:\\receipt.json"\r');
 assert.throws(() => helper.terminalCommand('C:\\%TEMP%\\run.cmd', 'node', 'subject', 'receipt'), /Unsupported/);
 
-async function fixture(file, windows) {
+async function fixture(file, windows, intensityTail = false) {
   const files = new Map(), terminal = [], source = [];
   const stdin = new EventEmitter(); stdin.isTTY = true; stdin.setRawMode = () => {}; stdin.setEncoding = () => {}; stdin.pause = () => {};
   const processView = { platform: 'win32', version: 'v25.6.0', versions: { node: '25.6.0' }, pid: 7, ppid: 6,
-    argv: ['node', file, 'receipt'], execPath: 'C:\\node.exe', stdin,
+    argv: ['node', file, 'receipt', ...(!windows && intensityTail ? ['--intensity-tail'] : [])], execPath: 'C:\\node.exe', stdin,
     stdout: { isTTY: true, write(bytes, callback) { terminal.push(Buffer.from(bytes)); queueMicrotask(() => callback()); } },
     exit(code) { throw new Error(`Unexpected fixture exit ${code}`); } };
   const controlledFs = {
@@ -49,7 +49,7 @@ async function fixture(file, windows) {
     stdin.emit('data', `observe:${nonce}\r`);
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(JSON.parse(files.get('receipt.observed.json')), { pid: 7, ppid: 6, nonce });
-    stdin.emit('data', `run:${nonce}\r`);
+    stdin.emit('data', `${intensityTail ? 'run-intensity' : 'run'}:${nonce}\r`);
     for (let turn = 0; turn < 20 && !files.has('receipt'); turn++) await new Promise(resolve => setImmediate(resolve));
   }
   assert(files.has('receipt'), 'Fixed writer must finish under the controlled successful callbacks');
@@ -62,6 +62,25 @@ assert.equal(windows.receipt.sha256, unix.receipt.sha256);
 assert.equal(windows.receipt.lineCount, 90000);
 assert.deepEqual(windows.source, unix.terminal);
 assert.deepEqual(windows.terminal.subarray(Buffer.byteLength(`OBSERVED:${nonce}\r\n`)), unix.terminal);
+assert.equal(unix.receipt.bytesWritten, 5580102);
+assert.equal(unix.receipt.sha256, 'e03d6d758493454da0946cc62e7c17fb2444e39afaa7639c8a88ad271eaff48f');
+assert.equal(unix.receipt.intensityTail, undefined);
+assert.equal(windows.receipt.intensityTail, undefined);
+const styledUnix = await fixture(`${base}execution-candidate-subject.cjs`, false, true);
+const styledWindows = await fixture(`${base}execution-candidate-windows.cjs`, true, true);
+const expectedStyled = Buffer.from(unix.terminal.toString('utf8').replace(
+  '\x1b[31mDSC_CANDIDATE_ANSI\x1b[0m\r\n',
+  '\x1b[31mDSC_CANDIDATE_\x1b[2mA\x1b[22;1mN\x1b[1;2mS\x1b[22;2mI\x1b[0m\r\n'));
+assert.deepEqual(styledUnix.terminal, expectedStyled);
+assert.deepEqual(styledWindows.source, expectedStyled);
+assert.deepEqual(styledWindows.terminal.subarray(Buffer.byteLength(`OBSERVED:${nonce}\r\n`)), expectedStyled);
+for (const result of [styledUnix, styledWindows]) {
+  assert.equal(result.receipt.intensityTail, true);
+  assert.equal(result.receipt.lineCount, 90000);
+  assert.equal(result.receipt.bytesWritten, expectedStyled.length);
+  assert.equal(result.receipt.sha256, require('node:crypto').createHash('sha256').update(expectedStyled).digest('hex'));
+  assert.equal(result.receipt.terminalWriteComplete, true);
+}
 const script = await fs.readFile(`${base}execution-candidate-windows-observer.ps1`, 'utf8');
 assert.equal((script.match(/GetProcessById\(/g) ?? []).length, 1);
 assert.match(script, /\$ownedHandle = \$subject.SafeHandle/);

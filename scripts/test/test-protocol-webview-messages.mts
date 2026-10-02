@@ -1797,6 +1797,24 @@ assert.equal(isWebviewDomAction({ kind: 'assertExecutionTerminalBuffer', nodeId:
   expectedLines: ['ROW_1', 'ROW_2'], linePrefix: 'ROW_' }), true);
 assert.equal(isWebviewDomAction({ kind: 'assertExecutionTerminalBuffer', nodeId: 'terminal',
   expectedLines: ['ROW_1'], linePrefix: 1 }), false);
+const intensityAction = { kind: 'assertExecutionTerminalBuffer', nodeId: 'terminal',
+  expectedLines: ['DSC_CANDIDATE_ANSI'], expectedIntensities: [
+    { lineIndex: 0, column: 14, bold: false, dim: true },
+    { lineIndex: 0, column: 15, bold: true, dim: false },
+    { lineIndex: 0, column: 16, bold: true, dim: true },
+    { lineIndex: 0, column: 17, bold: false, dim: true }
+  ] };
+assert.equal(isWebviewDomAction(intensityAction), true);
+for (const invalid of [null, {}, Array(5).fill(intensityAction.expectedIntensities[0]),
+  [{ lineIndex: -1, column: 14, bold: false, dim: true }],
+  [{ lineIndex: 1, column: 14, bold: false, dim: true }],
+  [{ lineIndex: 0.5, column: 14, bold: false, dim: true }],
+  [{ lineIndex: 0, column: -1, bold: false, dim: true }],
+  [{ lineIndex: 0, column: 14.5, bold: false, dim: true }],
+  [{ lineIndex: 0, column: 14, bold: 'false', dim: true }],
+  [{ lineIndex: 0, column: 14, bold: false }]]) {
+  assert.equal(isWebviewDomAction({ ...intensityAction, expectedIntensities: invalid }), false);
+}
 
 for (const count of [2, 10, 11]) {
   const probeMessage = { type: 'webview/testProbeResult', payload: { requestId: 'capacity', snapshot: {

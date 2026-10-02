@@ -39,6 +39,12 @@ function load(mode, options = {}) {
       assert.equal(action.linePrefix, 'DSC_CANDIDATE_');
       assert.equal(JSON.stringify(action.expectedLines), JSON.stringify(originalLines));
       assert.equal(action.expectedLines, context.module.exports.__test.expectedLines);
+      assert.equal(JSON.stringify(action.expectedIntensities), JSON.stringify(options.installed ? [
+        { lineIndex: 90001, column: 14, bold: false, dim: true },
+        { lineIndex: 90001, column: 15, bold: true, dim: false },
+        { lineIndex: 90001, column: 16, bold: true, dim: true },
+        { lineIndex: 90001, column: 17, bold: false, dim: true }
+      ] : undefined));
       assert.equal(budget, 31000 - now);
       assert(budget > 0 && budget <= 30000);
       now += options.bufferDelay === 'remaining' ? budget : options.bufferDelay ?? 0;
@@ -46,7 +52,8 @@ function load(mode, options = {}) {
     } } }
   };
   const context = {
-    module: { exports: {} }, process: { env: { DEV_SESSION_CANVAS_CANDIDATE_MODE: mode } },
+    module: { exports: {} }, process: { env: { DEV_SESSION_CANVAS_CANDIDATE_MODE: mode,
+      ...(options.installed ? { DEV_SESSION_CANVAS_INSTALLED_VSIX_EXPECTATION: '/fixed-expectation.json' } : {}) } },
     Date: { now: () => now }, setTimeout(callback, delay) { now += delay; callback(); },
     require(name) { assert(Object.hasOwn(mocks, name), `Unexpected require ${name}`); return mocks[name]; }
   };
@@ -62,6 +69,10 @@ for (const mode of ['live-runtime', 'snapshot-only']) {
   assert.deepEqual(success.calls.map(call => call.name.split('.').at(-1)),
     ['getDiagnosticEvents', 'getDiagnosticEvents', 'getDiagnosticEvents', 'performWebviewDomAction']);
   assert.equal(success.fullAssertions()[0].args[2], 29900);
+  const installed = load(mode, { installed: true, emptyReads: 2, bufferDelay: 4 });
+  await installed.run(12);
+  assert.equal(installed.fullAssertions().length, 1);
+  assert.equal(installed.fullAssertions()[0].args[2], 29900);
 
   for (const changeEvent of [
     event => { event.detail.outcome.kind = 'cancelled'; },

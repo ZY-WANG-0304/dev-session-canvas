@@ -658,6 +658,7 @@ export type WebviewDomAction =
       nodeId: string;
       expectedLines: string[];
       linePrefix?: string;
+      expectedIntensities?: Array<{ lineIndex: number; column: number; bold: boolean; dim: boolean }>;
       delayMs?: number;
     }
   | {
@@ -3051,8 +3052,15 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
   }
 
   if (value.kind === 'assertExecutionTerminalBuffer') {
-    return Array.isArray(value.expectedLines) && value.expectedLines.every((line) => typeof line === 'string') &&
-      (value.linePrefix === undefined || typeof value.linePrefix === 'string');
+    const lines = value.expectedLines;
+    return Array.isArray(lines) && lines.every((line) => typeof line === 'string') &&
+      (value.linePrefix === undefined || typeof value.linePrefix === 'string') &&
+      (value.expectedIntensities === undefined || (Array.isArray(value.expectedIntensities) &&
+        value.expectedIntensities.length <= 4 && value.expectedIntensities.every((entry) => isRecord(entry) &&
+          typeof entry.lineIndex === 'number' && Number.isSafeInteger(entry.lineIndex) &&
+          entry.lineIndex >= 0 && entry.lineIndex < lines.length &&
+          typeof entry.column === 'number' && Number.isSafeInteger(entry.column) && entry.column >= 0 &&
+          typeof entry.bold === 'boolean' && typeof entry.dim === 'boolean')));
   }
 
   if (value.kind === 'configureCapacityCalibration') {

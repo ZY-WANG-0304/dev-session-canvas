@@ -15109,6 +15109,38 @@ test('visibility restore does not move focus onto the canvas shell', async ({ pa
   expect(afterRestore.activeElementIsCanvasShell).toBe(false);
 });
 
+test('installed intensity assertion preserves fixed terminal tail and rejects stock serializer loss', async ({ page }) => {
+  const nodeId = 'terminal-zoom';
+  const output = '\x1b[31mDSC_CANDIDATE_\x1b[2mA\x1b[22;1mN\x1b[1;2mS\x1b[22;2mI\x1b[0m\r\n';
+  const assertion = { kind: 'assertExecutionTerminalBuffer', nodeId, expectedLines: ['DSC_CANDIDATE_ANSI'],
+    expectedIntensities: [
+      { lineIndex: 0, column: 14, bold: false, dim: true },
+      { lineIndex: 0, column: 15, bold: true, dim: false },
+      { lineIndex: 0, column: 16, bold: true, dim: true },
+      { lineIndex: 0, column: 17, bold: false, dim: true }
+    ] };
+  const restore = async serializedTerminalState => {
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState('terminal'));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, { nodeId, kind: 'terminal', output: '', cols: 96, rows: 28,
+      liveSession: false, serializedTerminalState });
+    await waitForProbeNodeMatch(page, nodeId, node => node?.terminalVisibleLines.includes('DSC_CANDIDATE_ANSI'));
+  };
+  const saved = await createSerializedTerminalStateFromOutput(output, 96, 28);
+  await restore(saved);
+  await performTestDomAction(page, assertion);
+  for (const field of ['bold', 'dim']) {
+    await expectTestDomActionError(page, { ...assertion,
+      expectedIntensities: assertion.expectedIntensities.map((entry, index) => index === 1
+        ? { ...entry, [field]: !entry[field] } : entry) }, 'differs in intensity');
+  }
+  // Frozen serialize 0.14.0 output before the Bold/Dim fix; the visible text is identical.
+  await restore({ ...saved, data: '\x1b[31mDSC_CANDIDATE_\x1b[2mA\x1b[1;22mN\x1b[2mS\x1b[22mI\x1b[1B\x1b[18D\x1b[0m' });
+  await performTestDomAction(page, { ...assertion, expectedIntensities: undefined });
+  await expectTestDomActionError(page, assertion, 'differs in intensity');
+});
+
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} snapshot restore prefers serialized terminal state after rebuild`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;

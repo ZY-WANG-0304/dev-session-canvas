@@ -12,9 +12,14 @@ const XTERM_SERIALIZE_PACKAGE_VERSION = readPackageVersion(
   (require('@xterm/addon-serialize/package.json') as { version?: unknown }).version,
   '@xterm/addon-serialize'
 );
+const XTERM_SERIALIZE_PATCH_ID = 'bold-dim-v1';
+if ((SerializeAddon as typeof SerializeAddon & { devSessionCanvasPatch?: string }).devSessionCanvasPatch !== XTERM_SERIALIZE_PATCH_ID) {
+  throw new Error('The pinned terminal serializer patch is missing. Run the repository install or build step.');
+}
 export const SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE = [
   `xterm-headless@${XTERM_HEADLESS_PACKAGE_VERSION}`,
   `addon-serialize@${XTERM_SERIALIZE_PACKAGE_VERSION}`,
+  `serialize-patch=${XTERM_SERIALIZE_PATCH_ID}`,
   'safe-fingerprint-v1',
   'cell-data=exact-u32',
   'allowProposedApi=true',

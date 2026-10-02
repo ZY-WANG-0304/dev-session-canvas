@@ -32,7 +32,7 @@ const write = async (value, record = true) => {
     digest.update(bytes); bytesWritten += bytes.length;
   }
 };
-async function workload() {
+async function workload(intensityTail = false) {
   await write('\x1b[2J\x1b[H');
   for (let first = 1; first <= 90000; first += 128) {
     let block = '';
@@ -42,12 +42,15 @@ async function workload() {
     await write(block);
   }
   for (const byte of Buffer.from('DSC_CANDIDATE_UTF8_\u4e2d\u6587_\u00e9\r\n')) await write(Buffer.from([byte]));
-  await write('\x1b[31mDSC_CANDIDATE_ANSI\x1b[0m\r\n');
+  await write(intensityTail
+    ? '\x1b[31mDSC_CANDIDATE_\x1b[2mA\x1b[22;1mN\x1b[1;2mS\x1b[22;2mI\x1b[0m\r\n'
+    : '\x1b[31mDSC_CANDIDATE_ANSI\x1b[0m\r\n');
   await write('\x1b]2;DSC_CANDIDATE_FINAL_TITLE\x07');
   await write('\x1b[3;'); await write('7H');
   fs.closeSync(source);
   save('', { schemaVersion: 1, pid: process.pid, ppid: process.ppid, executable: process.execPath,
-    versions: process.versions, lineCount: 90000, bytesWritten, sha256: digest.digest('hex'), terminalWriteComplete: true });
+    versions: process.versions, lineCount: 90000, bytesWritten, sha256: digest.digest('hex'), terminalWriteComplete: true,
+    ...(intensityTail ? { intensityTail: true } : {}) });
   clearTimeout(safety); process.stdin.pause(); process.exitCode = 0;
 }
 process.stdin.setRawMode(true);
@@ -65,7 +68,9 @@ process.stdin.on('data', chunk => {
         nonce = line.slice(8);
         await write(`OBSERVED:${nonce}\r\n`, false);
         save('.observed.json', { pid: process.pid, ppid: process.ppid, nonce });
-      } else if (nonce && line === `run:${nonce}`) { running = true; await workload(); }
+      } else if (nonce && (line === `run:${nonce}` || line === `run-intensity:${nonce}`)) {
+        running = true; await workload(line === `run-intensity:${nonce}`);
+      }
       else throw new Error('Unexpected fixed writer input');
     }).catch(error => {
       save('.error.json', { error: String(error), stack: error.stack }); process.exit(126);

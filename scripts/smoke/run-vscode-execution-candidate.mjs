@@ -100,6 +100,7 @@ await fs.writeFile(path.join(output, 'input.json'), `${JSON.stringify({
     : `A2/A3 finite ${process.platform} two-mode real Terminal and actual Electron Webview; not A4/A5 closure`,
   vscodeExecutablePath, subjectExecutable: process.execPath, subjectVersions: process.versions,
   assetManifest: manifest, sourceHashes, lineCount: 90000, scrollback: 100000,
+  intensityTail: Boolean(installedInput),
   ...(installedInput ? { installedVsix: { path: installedInput.vsixPath, sha256: installedInput.vsixSha256,
     payloadHashes: installedInput.payloadHashes, companionScope: installedInput.companionScope } } : {}),
   partialSelection: values.mode !== undefined,

@@ -30,6 +30,17 @@ try {
 
   assert.match(SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE, /xterm-headless@6\.0\.0/u);
   assert.match(SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE, /addon-serialize@0\.14\.0/u);
+  assert.match(SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE, /serialize-patch=bold-dim-v1/u);
+  const unpatchedOutfile = path.join(tempDir, 'unpatched-serializedTerminalState.cjs');
+  await esbuild.build({ entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts')],
+    bundle: true, format: 'cjs', outfile: unpatchedOutfile, platform: 'node', target: 'node18',
+    plugins: [{ name: 'missing-serializer-marker', setup(build) {
+      build.onResolve({ filter: /^@xterm\/addon-serialize$/ }, () => ({ path: 'stock', namespace: 'unpatched' }));
+      build.onLoad({ filter: /.*/, namespace: 'unpatched' }, () => ({ contents: 'export class SerializeAddon {}', loader: 'js' }));
+    } }] });
+  assert.throws(() => require(unpatchedOutfile), /pinned terminal serializer patch is missing/,
+    'A missing dependency patch must fail before claiming the patched producer profile.');
+  await verifyBoldDimSnapshotRoundTrip(SerializedTerminalStateTracker);
   await verifyConsumptionDrain(SerializedTerminalStateTracker);
   await verifyLargeSnapshotRestore(SerializedTerminalStateTracker, normalizeSerializedTerminalState);
 
@@ -406,6 +417,32 @@ async function verifyLargeSnapshotRestore(Tracker, normalize) {
   } finally {
     restored?.dispose();
     producer.dispose();
+  }
+}
+
+async function verifyBoldDimSnapshotRoundTrip(Tracker) {
+  for (const [input, expected, cursor] of [
+    ['\x1b[2mA\x1b[22;1mB', [{ bold: false, dim: true }, { bold: true, dim: false }]],
+    ['\x1b[1;2mA\x1b[22;2mB', [{ bold: true, dim: true }, { bold: false, dim: true }]],
+    ['\x1b[1;2mA\x1b[22;1mB', [{ bold: true, dim: true }, { bold: true, dim: false }]],
+    ['\x1b[2mA\x1b[22;1m', [{ bold: false, dim: true }], { bold: true, dim: false }]
+  ]) {
+    const producer = new Tracker(40, 8);
+    let restored;
+    const flags = cell => ({ bold: cell.isBold() !== 0, dim: cell.isDim() !== 0 });
+    try {
+      producer.write(input, { outputSequence: 1 });
+      const state = await producer.flush();
+      restored = new Tracker(40, 8, { initialState: state, initialOutputSequence: 1 });
+      await restored.flush();
+      for (const [index, styles] of expected.entries()) {
+        assert.deepEqual(flags(producer.terminal.buffer.active.getLine(0).getCell(index)), styles);
+        assert.deepEqual(flags(restored.terminal.buffer.active.getLine(0).getCell(index)), styles,
+          'An SGR 22 transition must preserve both target Bold and Dim when a saved snapshot is restored.');
+      }
+      assert.deepEqual(flags(restored.terminal._core._inputHandler._curAttrData), cursor ?? expected.at(-1));
+      assert.equal((await producer.flushValidatedCheckpoint()).eligible, true);
+    } finally { restored?.dispose(); producer.dispose(); }
   }
 }
 

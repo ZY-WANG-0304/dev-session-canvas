@@ -10,11 +10,18 @@ const { captureInstalledExtensionReceipt } = require('./installed-execution-cand
 const mode = process.env.DEV_SESSION_CANVAS_CANDIDATE_MODE;
 const phase = process.env.DEV_SESSION_CANVAS_CANDIDATE_PHASE;
 const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
+const intensityTail = Boolean(process.env.DEV_SESSION_CANVAS_INSTALLED_VSIX_EXPECTATION);
 const surface = mode === 'live-runtime' ? 'editor' : 'panel';
 const prefix = 'DSC_CANDIDATE_';
 const expectedLines = Array.from({ length: 90000 }, (_, index) =>
   `${prefix}${String(index + 1).padStart(5, '0')}_${'0'.repeat(40)}`);
 expectedLines.push(`${prefix}UTF8_\u4e2d\u6587_\u00e9`, `${prefix}ANSI`);
+const expectedIntensities = [
+  { lineIndex: 90001, column: 14, bold: false, dim: true },
+  { lineIndex: 90001, column: 15, bold: true, dim: false },
+  { lineIndex: 90001, column: 16, bold: true, dim: true },
+  { lineIndex: 90001, column: 17, bold: false, dim: true }
+];
 const command = (name, ...args) => vscode.commands.executeCommand(`devSessionCanvas.__test.${name}`, ...args);
 const snapshot = () => command('getDebugState');
 const nodeById = (state, id) => state.state.nodes.find(node => node.id === id);
@@ -57,7 +64,8 @@ async function dispatch(type, payload) {
 
 async function assertBuffer(id, lines, timeoutMs = 30000) {
   return command('performWebviewDomAction', {
-    kind: 'assertExecutionTerminalBuffer', nodeId: id, linePrefix: prefix, expectedLines: lines
+    kind: 'assertExecutionTerminalBuffer', nodeId: id, linePrefix: prefix, expectedLines: lines,
+    ...(intensityTail && lines === expectedLines ? { expectedIntensities } : {})
   }, surface, timeoutMs);
 }
 
@@ -110,7 +118,7 @@ async function run() {
       assert.equal(process.versions.node, '22.22.1'); assert.equal(process.versions.modules, '140');
     }
     assert.equal(vscode.workspace.getConfiguration('terminal.integrated').get('scrollback'), 100000);
-    await writeJson(`${phase}-environment.json`, { mode, phase, surface, pid: process.pid,
+    await writeJson(`${phase}-environment.json`, { mode, phase, surface, pid: process.pid, intensityTail,
       versions: process.versions, vscode: vscode.version, executable: process.execPath,
       ...(installedVsix ? { installedVsix } : {}) });
     if (phase === 'complete') await complete();
@@ -201,10 +209,11 @@ async function complete() {
     const observed = await poll('original Windows writer identity response', () => optionalJson(`${receiptPath}.observed.json`), Boolean);
     windows.bindObserver(windowsObserver, observed);
     await writeJson('windows-subject-bound.json', windowsObserver);
-    await dispatch('webview/executionInput', { kind: 'terminal', nodeId: id, data: `run:${windowsObserver.nonce}\r` });
+    await dispatch('webview/executionInput', { kind: 'terminal', nodeId: id,
+      data: `${intensityTail ? 'run-intensity' : 'run'}:${windowsObserver.nonce}\r` });
   } else {
     await dispatch('webview/executionInput', { kind: 'terminal', nodeId: id,
-      data: `exec ${quote(subjectNode)} ${quote(subject)} ${quote(receiptPath)}\r` });
+      data: `exec ${quote(subjectNode)} ${quote(subject)} ${quote(receiptPath)}${intensityTail ? ' --intensity-tail' : ''}\r` });
   }
   await poll('subject successful terminal-write receipt', async () => {
     try { return JSON.parse(await fs.readFile(receiptPath, 'utf8')); }
@@ -217,11 +226,14 @@ async function complete() {
   expectBytes('\x1b[2J\x1b[H');
   for (const line of expectedLines.slice(0, 90000)) expectBytes(`${line}\r\n`);
   expectBytes(`${expectedLines[90000]}\r\n`);
-  expectBytes(`\x1b[31m${expectedLines[90001]}\x1b[0m\r\n`);
+  expectBytes(intensityTail
+    ? '\x1b[31mDSC_CANDIDATE_\x1b[2mA\x1b[22;1mN\x1b[1;2mS\x1b[22;2mI\x1b[0m\r\n'
+    : `\x1b[31m${expectedLines[90001]}\x1b[0m\r\n`);
   expectBytes('\x1b]2;DSC_CANDIDATE_FINAL_TITLE\x07\x1b[3;7H');
   assert.equal(receipt.bytesWritten, expectedBytes);
   assert.equal(receipt.sha256, digest.digest('hex'));
   assert.equal(receipt.lineCount, 90000);
+  assert.equal(receipt.intensityTail, intensityTail ? true : undefined);
   if (process.platform === 'win32') {
     assert.equal(receipt.pid, windowsObserver.subject.pid); assert.equal(receipt.ppid, windowsObserver.subject.ppid);
     const source = await fs.readFile(`${receiptPath}.source.bin`);
@@ -272,7 +284,7 @@ async function complete() {
   }
   await writeJson('completed.json', { mode, id, executionId, runtimeSessionId: metadata.runtimeSessionId,
     ...(process.platform === 'win32' ? { subjectExit: windows.exitFact(windowsObserver), sourceByteIdentityWithConptyClaim: false } : {}),
-    receipt, savedNodeBytes: Buffer.byteLength(JSON.stringify(savedNode)), finalProbe,
+    receipt, intensityTail, savedNodeBytes: Buffer.byteLength(JSON.stringify(savedNode)), finalProbe,
     runtime: await command('getRuntimeSupervisorState'), events: await command('getDiagnosticEvents'), pass: true });
 }
 
@@ -298,7 +310,7 @@ async function reopen() {
       catch (error) { if (!/Execution terminal .* (has|differs|is not mounted)/.test(String(error))) throw error; return false; }
     }, Boolean, 30000);
   }
-  await writeJson('reopened.json', { mode, id, node, probe: await probe(),
+  await writeJson('reopened.json', { mode, id, node, intensityTail, probe: await probe(),
     runtime: await command('getRuntimeSupervisorState'), pass: true });
   await command('resetState');
   const cleanup = await command('getRuntimeSupervisorState');

@@ -9364,9 +9364,13 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         }
 
         const actualLines: string[] = [];
+        const intensityRows = new Map<number, number>();
         for (let index = 0; index < entry.terminal.buffer.active.length; index += 1) {
           const line = entry.terminal.buffer.active.getLine(index)?.translateToString(true) ?? '';
           if (line.length > 0 && (action.linePrefix === undefined || line.startsWith(action.linePrefix))) {
+            if (action.expectedIntensities?.some((expected) => expected.lineIndex === actualLines.length)) {
+              intensityRows.set(actualLines.length, index);
+            }
             actualLines.push(line);
           }
         }
@@ -9382,6 +9386,15 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
             `Execution terminal ${action.nodeId} differs at line ${mismatchIndex + 1}: ` +
             `expected ${JSON.stringify(action.expectedLines[mismatchIndex])}, received ${JSON.stringify(actualLines[mismatchIndex])}.`
           );
+        }
+        for (const expected of action.expectedIntensities ?? []) {
+          const row = intensityRows.get(expected.lineIndex);
+          const cell = row === undefined ? undefined : entry.terminal.buffer.active.getLine(row)?.getCell(expected.column);
+          if (!cell || (cell.isBold() !== 0) !== expected.bold || (cell.isDim() !== 0) !== expected.dim) {
+            throw new Error(
+              `Execution terminal ${action.nodeId} differs in intensity at line ${expected.lineIndex + 1}, column ${expected.column + 1}.`
+            );
+          }
         }
         break;
       }

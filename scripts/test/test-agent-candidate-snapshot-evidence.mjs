@@ -1,10 +1,46 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { runInThisContext } from 'node:vm';
+import { build } from 'esbuild';
+import { SerializeAddon as NodeImportedSerializeAddon } from '@xterm/addon-serialize';
+import { patchSerializeAddonSource, SERIALIZE_PATCH_ID } from '../shared/ensure-xterm-serialize-patch.mjs';
 const require = createRequire(import.meta.url);
 const { Terminal } = require('@xterm/headless');
 const { SerializeAddon } = require('@xterm/addon-serialize');
 const { collectSnapshotEvidence, acceptsEmptySnapshotStop, acceptsSnapshotStop } =
   require('../../tests/vscode-smoke/agent-candidate-snapshot-evidence.cjs');
+const addonRoot = path.dirname(require.resolve('@xterm/addon-serialize/package.json'));
+const originalSource = readFileSync(path.join(addonRoot, 'src/SerializeAddon.ts'), 'utf8');
+assert.equal(SerializeAddon.devSessionCanvasPatch, SERIALIZE_PATCH_ID);
+assert.equal(NodeImportedSerializeAddon, SerializeAddon, 'Keep Node ESM named imports from the CJS package entry working.');
+const esmAddon = await import(pathToFileURL(path.join(addonRoot, 'lib/addon-serialize.mjs')).href);
+assert.equal(esmAddon.SerializeAddon.devSessionCanvasPatch, SERIALIZE_PATCH_ID);
+for (const name of ['addon-serialize.js.map', 'addon-serialize.mjs.map']) {
+  const map = JSON.parse(readFileSync(path.join(addonRoot, 'lib', name), 'utf8'));
+  const sourceIndex = map.sources.findIndex(source => source.endsWith('/src/SerializeAddon.ts'));
+  assert(sourceIndex >= 0);
+  assert.equal(map.sourcesContent[sourceIndex], patchSerializeAddonSource(originalSource), 'Each map describes the patched source.');
+}
+assert.throws(() => patchSerializeAddonSource(`${originalSource}\n`), /Unexpected upstream/);
+const stockBuild = await build({ stdin: { contents: originalSource, resolveDir: addonRoot,
+  sourcefile: 'src/SerializeAddon.ts', loader: 'ts' }, bundle: true, write: false,
+format: 'cjs', platform: 'neutral', target: 'es2020',
+nodePaths: [path.join(path.dirname(require.resolve('@xterm/xterm/package.json')), 'src')], logLevel: 'silent' });
+const stockModule = { exports: {} };
+runInThisContext(`(function (module, exports) {${stockBuild.outputFiles[0].text}\n})`)(stockModule, stockModule.exports);
+const StockSerializeAddon = stockModule.exports.SerializeAddon;
+assert.equal(StockSerializeAddon.devSessionCanvasPatch, undefined, 'The failing control compiles untouched upstream source.');
+const helperPath = require.resolve('../../tests/vscode-smoke/agent-candidate-snapshot-evidence.cjs');
+const helperRequire = createRequire(helperPath);
+const stockHelperModule = { exports: {} };
+// Only replace the codec in this control; run the unchanged independent semantic oracle.
+runInThisContext(`(function (require, module, exports, __filename) {${readFileSync(helperPath, 'utf8')}\n})`)(
+  name => name === '@xterm/addon-serialize' ? stockModule.exports : helperRequire(name),
+  stockHelperModule, stockHelperModule.exports, helperPath);
+const stockCollectSnapshotEvidence = stockHelperModule.exports.collectSnapshotEvidence;
 const clone = value => structuredClone(value);
 const write = (terminal, text) => new Promise(resolve => terminal.write(text, resolve));
 const frame = { surface: 'panel', mode: 'active', generation: 1, frameId: 'f1' };
@@ -22,9 +58,9 @@ const matchedSemantics = (alternate = false) => ({ ...matchedFields(['cols', 'ro
     'originMode', 'reverseWraparoundMode', 'sendFocusMode', 'wraparoundMode', 'mouseTrackingMode']),
   cursorStyle: { foreground: true, background: true, flags: matchedFields(semanticFlags) } });
 
-async function fixture({ blank = false, resize = false, outputText = 'VISIBLE BEFORE RESET' } = {}) {
+async function fixture({ blank = false, resize = false, outputText = 'VISIBLE BEFORE RESET', Addon = SerializeAddon } = {}) {
   const terminal = new Terminal({ cols: 40, rows: 5, scrollback: 10000, allowProposedApi: true });
-  const addon = new SerializeAddon();
+  const addon = new Addon();
   terminal.loadAddon(addon);
   let sequence = 0;
   const state = () => ({ format: 'xterm-serialize-v1', data: addon.serialize({ scrollback: 10000,
@@ -87,7 +123,7 @@ assert.equal(blankEvidence.hydratedSerializedBytes, 0);
 assert.deepEqual(blankEvidence.replaySavedSemanticMatches, matchedSemantics());
 assert.equal(blankEvidence.prefixSemanticEvidence, null);
 
-async function observePrefixHydration(value, enabled, failFirstPrefix = false) {
+async function observePrefixHydration(value, enabled, failFirstPrefix = false, collect = collectSnapshotEvidence) {
   const original = Terminal.prototype.loadAddon;
   let created = 0;
   try {
@@ -96,15 +132,15 @@ async function observePrefixHydration(value, enabled, failFirstPrefix = false) {
       original.call(this, addon);
       if (failFirstPrefix && created === 3) addon.serialize = () => { throw new Error('fixed prefix diagnostic failure'); };
     };
-    return { evidence: await collectSnapshotEvidence({ ...value, diagnoseNonemptyPrefixes: enabled }),
+    return { evidence: await collect({ ...value, diagnoseNonemptyPrefixes: enabled }),
       created };
   } finally { Terminal.prototype.loadAddon = original; }
 }
-const prefixReset = await fixture({ blank: true, resize: true, outputText: '\x1b[2mA\x1b[22;1mB' });
-const disabledPrefix = await observePrefixHydration(prefixReset, false);
+const prefixReset = await fixture({ blank: true, resize: true, outputText: '\x1b[2mA\x1b[22;1mB', Addon: StockSerializeAddon });
+const disabledPrefix = await observePrefixHydration(prefixReset, false, false, stockCollectSnapshotEvidence);
 assert.equal(disabledPrefix.created, 3, 'Disabled diagnostics must not create prefix hydration terminals.');
 assert.equal(disabledPrefix.evidence.prefixSemanticEvidence, null);
-const detectedPrefix = await observePrefixHydration(prefixReset, true);
+const detectedPrefix = await observePrefixHydration(prefixReset, true, false, stockCollectSnapshotEvidence);
 assert.equal(detectedPrefix.created, 4, 'A mismatch stops further hydration even before a nonempty resize.');
 assert.deepEqual({ ...detectedPrefix.evidence, prefixSemanticEvidence: null }, disabledPrefix.evidence,
   'Prefix diagnostics cannot change final replay, hash, page or strict acceptance facts.');
@@ -124,6 +160,12 @@ assert.equal(prefixDifference.firstMismatch.replaySavedSemanticMatches.normal.fl
 assert(prefixDifference.firstMismatch.differentNonemptyCells > 0);
 assert.equal(prefixDifference.firstMismatch.differentEmptyCells, 0);
 assert.notEqual(prefixDifference.firstMismatch.replaySemanticStateSha256, prefixDifference.firstMismatch.hydratedSemanticStateSha256);
+const fixedPrefixReset = await fixture({ blank: true, resize: true, outputText: '\x1b[2mA\x1b[22;1mB' });
+const fixedPrefixEvidence = await collectSnapshotEvidence({ ...fixedPrefixReset, diagnoseNonemptyPrefixes: true });
+assert.deepEqual(fixedPrefixEvidence.prefixSemanticEvidence,
+  { checkedNonempty: 2, mismatch: false, unknown: false, firstMismatch: null, firstUnknown: null });
+assert.equal(fixedPrefixEvidence.savedDataBytes, 0);
+assert.equal(fixedPrefixEvidence.replaySavedSemanticMatched, true);
 const harmlessPrefix = await observePrefixHydration(blank, true);
 assert.deepEqual(harmlessPrefix.evidence.prefixSemanticEvidence,
   { checkedNonempty: 1, mismatch: false, unknown: false, firstMismatch: null, firstUnknown: null });
@@ -243,8 +285,8 @@ for (const [name, outputText] of [
   ['dim to bold', '\x1b[2mA\x1b[22;1mB'],
   ['bold and dim to dim', '\x1b[1;2mA\x1b[22;2mB']
 ]) {
-  const value = await fixture({ outputText });
-  const evidence = await collectSnapshotEvidence(value);
+  const value = await fixture({ outputText, Addon: StockSerializeAddon });
+  const evidence = await stockCollectSnapshotEvidence(value);
   assert.equal(evidence.replaySavedGeometryMatched, true, name);
   assert.equal(evidence.replaySavedLinesMatched, true, name);
   assert.equal(evidence.replaySavedVisibleMatched, true, name);
@@ -254,6 +296,12 @@ for (const [name, outputText] of [
   assert.equal(evidence.replaySavedSemanticMatches.normal.chars, true, name);
   assert(['Bold', 'Dim'].some(flag => evidence.replaySavedSemanticMatches.normal.flags[flag] === false), name);
   assert.equal(acceptsNonempty(value, evidence), false, `${name}: unchanged text cannot hide lost style.`);
+  const fixed = await fixture({ outputText });
+  const fixedEvidence = await collectSnapshotEvidence(fixed);
+  assert.equal(fixedEvidence.replaySavedSemanticMatched, true, name);
+  assert.deepEqual(fixedEvidence.replaySavedSemanticMatches, matchedSemantics(), name);
+  assert.equal(fixedEvidence.replaySemanticStateSha256, fixedEvidence.hydratedSemanticStateSha256, name);
+  assert.equal(acceptsNonempty(fixed, fixedEvidence), true, name);
 }
 
 for (const [name, transform, category] of [
@@ -296,6 +344,10 @@ const strikethroughEvidence = await collectSnapshotEvidence(strikethrough);
 assert.equal(strikethroughEvidence.replaySavedSemanticMatched, true, 'A signed nonzero style bitmask is observable.');
 assert.deepEqual(strikethroughEvidence.replaySavedSemanticMatches, matchedSemantics());
 assert.equal(acceptsNonempty(strikethrough, strikethroughEvidence), true);
+const esmIntensity = await fixture({ outputText: '\x1b[2mA\x1b[22;1mB', Addon: esmAddon.SerializeAddon });
+const esmIntensityEvidence = await collectSnapshotEvidence(esmIntensity);
+assert.equal(esmIntensityEvidence.replaySavedSemanticMatched, true, 'The ESM package entry preserves the same intensity transition.');
+assert.equal(acceptsNonempty(esmIntensity, esmIntensityEvidence), true);
 
 for (const [mode, sequence] of [
   ['applicationCursorKeysMode', '\x1b[?1h'], ['applicationKeypadMode', '\x1b='],
