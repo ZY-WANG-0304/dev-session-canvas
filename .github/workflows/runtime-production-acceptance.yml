@@ -118,7 +118,7 @@ jobs:
               packageCommit = run.head_sha;
               const changed = execFileSync('git', ['diff', '--no-renames', '--name-only', '-z', packageCommit, head], { encoding: 'utf8' })
                 .split('\0').filter(Boolean);
-              assert(changed.every(file => file.startsWith('docs/') || file.startsWith('scripts/smoke/')
+              assert(changed.every(file => file === 'ARCHITECTURE.md' || file.startsWith('docs/') || file.startsWith('scripts/smoke/')
                 || file.startsWith('scripts/test/') || file.startsWith('tests/vscode-smoke/')
                 || file === '.github/workflows/runtime-production-acceptance.yml'),
                 'Package reuse permits only documentation and acceptance harness changes, not product inputs.');

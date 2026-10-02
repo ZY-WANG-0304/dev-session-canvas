@@ -2410,3 +2410,5 @@ S14 将 S13 的退出屏障接入普通生产 `prepareForHostBoundaryCore`。永
 修订记录（2026-10-02，有限复验进展）：Linux36969390582单格空态seq11完整比较/原页面/schema2重开及零cleanup通过，不解释原806-byte/seq12非空失败，保留间歇事实而不循环捕获。Windows36969509496安装step通过、工件待独立回收；Linux四未跑Claude格36969789786已排队。macOS报告将psutil非终态误计unknown的窄修只纠正摘要，原process-observation-unknown与cleanup failure保持；当前定向测试通过，原失败根因仍未定。已覆盖的慢write/fit/viewport历史未勾项标清由§53承接，不追加任务。
 
 修订记录（2026-10-02，最终review修正）：Windows两模式installed、Linux四Claude及macOS两Claude已独立通过各自固定旧包格，原Windows非空stop仅定位到二次序列化6B变化，仍失败。有限本地对照证明无损编码变化与真实bold/dim损失都存在，非空验收改为精确保存字节加独立完整语义，保持旧事实并拒绝样式丢失。Supervisor存储退休准入遗漏已用原99项脚本修正，必须新包验影响链；workflow复用具名原六native，不复跑无关矩阵。
+
+修订记录（2026-10-02，Runtime单模式入口）：71b41035/run36971460243新包成功，三平台受影响验收被同一旧installed选择断言拒绝，产品与Agent尚未运行。修正原选择校验允许live-runtime、保留默认双模式/容量互斥，并由workflow回归实际调用；18项installed及workflow契约测试通过。失败原run36971460243、36971610714、36971751584不改，后续复用新包补原影响格，不重建native或另开工具阶段。

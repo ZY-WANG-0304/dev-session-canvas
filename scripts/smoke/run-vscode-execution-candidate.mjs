@@ -96,7 +96,7 @@ if (capacitySelected) {
 }
 await fs.writeFile(path.join(output, 'input.json'), `${JSON.stringify({
   schemaVersion: 1, scope: installedInput
-    ? `A5 finite ${process.platform}/${process.arch} installed candidate: original two-mode Terminal/Webview complete/reopen; not full distribution, notifier, Agent or other-platform acceptance`
+    ? `A5 finite ${process.platform}/${process.arch} installed candidate: ${values.mode ?? 'original two-mode'} Terminal/Webview complete/reopen; not full distribution, notifier, Agent or other-platform acceptance`
     : `A2/A3 finite ${process.platform} two-mode real Terminal and actual Electron Webview; not A4/A5 closure`,
   vscodeExecutablePath, subjectExecutable: process.execPath, subjectVersions: process.versions,
   assetManifest: manifest, sourceHashes, lineCount: 90000, scrollback: 100000,

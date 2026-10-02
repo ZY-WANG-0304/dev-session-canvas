@@ -18,11 +18,18 @@ let checks = 0;
 try {
   const selected = { 'installed-vsix': '/fixed/candidate.vsix' };
   for (const platform of ['linux', 'darwin', 'win32']) {
-    for (const arch of ['x64', 'arm64']) assertInstalledCandidateSelection(selected, platform, arch);
+    for (const arch of ['x64', 'arm64']) {
+      for (const mode of [undefined, 'live-runtime']) {
+        assertInstalledCandidateSelection({ ...selected, mode }, platform, arch);
+        for (const addition of [{ 'capacity-calibration': true }, { 'capacity-reconnect': true },
+          { 'capacity-attach-compact': true }, { 'capacity-sessions': '2' }]) {
+          assert.throws(() => assertInstalledCandidateSelection({ ...selected, mode, ...addition }, platform, arch));
+        }
+      }
+    }
   }
-  for (const addition of [{ 'capacity-calibration': true }, { 'capacity-reconnect': true },
-    { 'capacity-attach-compact': true }, { 'capacity-sessions': '2' }, { mode: 'live-runtime' }]) {
-    assert.throws(() => assertInstalledCandidateSelection({ ...selected, ...addition }, 'linux', 'x64'));
+  for (const mode of ['snapshot-only', 'all', '', 'unknown']) {
+    assert.throws(() => assertInstalledCandidateSelection({ ...selected, mode }, 'linux', 'x64'));
   }
   assert.throws(() => assertInstalledCandidateSelection(selected, 'freebsd', 'x64'));
   assert.throws(() => assertInstalledCandidateSelection(selected, 'linux', 'ia32'));

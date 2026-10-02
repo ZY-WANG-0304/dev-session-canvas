@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import yaml from 'js-yaml';
 import cliHelpers from '../../tests/vscode-smoke/agent-candidate-cli.cjs';
+import { assertInstalledCandidateSelection } from '../smoke/installed-execution-candidate.mjs';
 
 const source = await readFile('.github/workflows/runtime-exit-integrity-native.yml', 'utf8');
 const workflow = yaml.load(source);
@@ -367,7 +368,7 @@ assert.deepEqual(JSON.parse(normalSelection.values.matrix), { include: platforms
 const replayValues = { DSC_REUSE_RUN: '123', DSC_PLATFORM: 'linux', DSC_SCENARIOS: 'codex-snapshot-only-stop',
   DSC_SKIP_INSTALLED: 'true' };
 const replay = await selection({ values: replayValues,
-  changed: ['docs/design-docs/current.md', 'scripts/smoke/run-vscode-agent-candidate.mjs',
+  changed: ['ARCHITECTURE.md', 'docs/design-docs/current.md', 'scripts/smoke/run-vscode-agent-candidate.mjs',
     'scripts/test/test-runtime-agent-ci-workflow.mjs', 'tests/vscode-smoke/agent-candidate-cli.cjs',
     '.github/workflows/runtime-production-acceptance.yml'] });
 assert.equal(replay.requests, 2);
@@ -452,6 +453,15 @@ assert.equal(finalProduct.steps.find(candidate => candidate.id === 'installed').
 assert.equal(finalProduct.steps.find(candidate => candidate.id === 'installed_runtime').if,
   "${{ !inputs.skip_installed && inputs.installed_mode == 'live-runtime' }}");
 assert.match(finalProduct.steps.find(candidate => candidate.id === 'installed_runtime').run, /--mode=live-runtime/);
+for (const stepId of ['installed', 'installed_runtime']) {
+  const command = finalProduct.steps.find(candidate => candidate.id === stepId).run;
+  const mode = /--mode=([^\s]+)/u.exec(command)?.[1];
+  const vsix = /--installed-vsix\s+([^\s]+)/u.exec(command)?.[1];
+  assert.equal(vsix, 'production-package/product.vsix');
+  for (const platform of ['linux', 'darwin', 'win32']) {
+    assertInstalledCandidateSelection({ 'installed-vsix': vsix, mode }, platform, 'x64');
+  }
+}
 const download = finalProduct.steps.find(candidate => candidate.uses === 'actions/download-artifact@v4');
 assert.deepEqual(download.with, { name: 'runtime-production-package-${{ needs.input.outputs.package_run }}',
   path: 'production-package', 'run-id': '${{ needs.input.outputs.package_run }}', 'github-token': '${{ github.token }}' });

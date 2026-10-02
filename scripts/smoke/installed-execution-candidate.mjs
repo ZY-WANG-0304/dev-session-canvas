@@ -53,7 +53,8 @@ export function assertInstalledCandidateSelection(values, platform = process.pla
   assert(!values['capacity-calibration'] && !values['capacity-reconnect'] && !values['capacity-attach-compact']
     && values['capacity-sessions'] === undefined,
     'Installed candidate acceptance cannot be combined with a capacity workload.');
-  assert.equal(values.mode, undefined, 'Installed candidate acceptance runs both original persistence modes.');
+  assert(values.mode === undefined || values.mode === 'live-runtime',
+    'Installed candidate acceptance runs both persistence modes or the affected live-runtime mode.');
 }
 
 export async function prepareInstalledVsixInput(vsixPath, output,
