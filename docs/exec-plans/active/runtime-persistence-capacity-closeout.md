@@ -34,6 +34,7 @@
 - [x] (2026-10-02，§53) 总体review确认缺Host-credit的历史candidate仍可获生产新建，有限修正为替换/delete/create前拒绝；先红与Host160/typecheck通过，旧live保持。注册run36965171860主动取消且未执行package/product；最终workflow已注册并回到manual-only。
 - [ ] (2026-10-02，§53) 以冻结提交运行同一VSIX的受影响Agent/Webview/现代三平台/安装包验收，随后整体review；F-04总体未关闭。
 - [x] (2026-10-02，§53首次CI) run36965693411的四Unix资产通过，Windows两架构在macOS helper的POSIX mode聚合检查首败，package/product未执行。跨宿主读权限与新VSIX固定helper元数据已修，distribution/package-command/file-list、mac18/assetset8通过；原失败保留，原最终CI仍待验。
+- [x] (2026-10-02，§53共存) 当前默认产物的原legacy-supervisor-upgrade单场景通过旧Agent/Terminal、前generation stream与新candidate绑定/交互/退役及清理；三次fixture前置/顺序失败保留，仅修等待完整附着和reset清理顺序。F-04只读总体review未发现新确定性blocker，无新增A1矩阵。
 
 - [x] (2026-10-02) 复核Runtime热路径上界及O(N)/O(segment)资源账，确认总N混用pending、snapshot-only投递信用和candidate冷启动重放三个直接边界缺口；沿§10.17选定有限修正。
 - [x] 完成不可变production准入与Host最终保存责任分账，保留unknown/旧finite策略/获取前拒绝，定向先红后绿。
@@ -330,3 +331,5 @@ A1 的正式资源/交互判定覆盖实际 Supervisor、Host、Webview、provid
 修订记录（2026-10-02，最终生产接线）：§10.17与§53的准入/信用/冷启动及页面先红修正已实现，正常build/package与六目标选择本地检查成功。review只修已确认resize链积压及paged fit，并撤回不成立的重复准入疑点；保留全部首败。下一使用同一冻结提交/VSIX的受影响原矩阵，旧provider矩阵改手动避免重复，历史多会话和旧预算不重跑。本记录同步当前进度、发现、决策及复盘，不宣称最终验收完成。
 
 修订记录（2026-10-02，最终分发首败）：保留run36965693411的Windows跨宿主权限首败，明确不是PTY退出结果；只修普通Windows资产读取和新VSIX两份macOS helper的权限，定向回归通过。最终同包验收仍开放，不重跑历史多会话，不增加诊断门槛。
+
+修订记录（2026-10-02，共存结账）：补齐旧raw/stream与当前默认candidate实际共存、自然退役及本方清理。现有fixture仅修异步恢复前置与清理顺序，原失败分账；92b3aa4a/run36966903790正在完成唯一同包验收，后续只有受影响结果回收与整体review，不另开容量阶段。

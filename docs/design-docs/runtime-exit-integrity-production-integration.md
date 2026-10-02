@@ -2392,3 +2392,9 @@ Host-credit门槛已有限修正：`prepareExecutionCandidateReplacement()` 首�
 选定跨宿主修正：Windows可验证外平台资产的regular文件、hash、Mach-O与完整manifest，但不从不支持POSIX exec bit的stat推断不可执行；Unix实际构建/import仍严格检查exec。由于VSCE沿用宿主mode，正式VSIX另在其新生成、未签名产物中校验两份macOS candidate helper的manifest/hash并固定UNIX权限100755，正确包保持原bytes；其余payload不改，不修改已有签名包、不构造通用ZIP转换框架。Windows本地普通build/package不因此降级为不支持，Linux正式聚合仍校验真实权限；修后只回到既定分发/最终验收。
 
 上述修正定向回归已通过：distribution契约（含模拟Windows无exec位、Unix严格拒绝、hash/regular仍拒绝）、macOS资产18项、资产集8项、package-command（DOS/UNIX及VSCE Windows mode、payload/metadata保留、坏hash/缺helper拒绝）和package-file-list。`package-vsix.mjs`只将新包权限归一化所需的入口改为async并在常量初始化后调用；不改执行生命周期，不将这些本地通过当作Windows原生或最终安装通过。
+
+新旧generation的既有单场景 `legacy-supervisor-upgrade` 在 `.debug/a2-generation-coexistence-aafcd52b-ready-20261002/` 完整exit0：历史5355e6a的Agent/Terminal、previous-generation stream与当前默认candidate同时存在，原绑定、input/resize、旧Supervisor自然退役及新会话继续交互的原断言全部通过。新服务实际选择 `terminal-exit-v1` / `linux-owner-v1-candidate`；三份registry最终sessions为空、画板nodes为0，新服务按原30秒idle退出且无外部signal。source/staged extension、Supervisor、Webview hash分别以c7903de5、a72af186、731a825c开头，fixture以9918e587开头；这是实际Linux开发态共存证据，旧Agent为受控fixture，不冒充真实Agent或installed。
+
+该场景首两次输入因外层临时目录加原scenario名称超过Unix socket上限，在启动旧主体前失败；第三次输入进入旧执行后，fixture未等待setPersistedState触发的异步恢复完成就模拟reload，被安全门禁拒绝。`.debug/a2-generation-coexistence-aafcd52b-` 前缀下的 `first-20261002`、`shorttmp-20261002`、`socketfit-20261002` 三目录保留原日志，不写成产品尾部失败或历史通过。只在现有fixture复用原三节点完整附着谓词、原30秒等待后触发一次reload；清理改为Supervisor活着时先产品reset，再清理fixture进程，避免先杀源再要求确认。未改业务、原内容/身份/退役断言或期限；语法、completed-history、runtimeSupervisorPaths与唯一修后实跑通过。
+
+提交92b3aa4a已启动最终manual run36966903790；它只收回既定六资产供应、唯一VSIX正常构建和三现代平台受影响验收。F-04最终只读复核未发现新确定性blocker，资源模型继续保留O(N)、O(retained segments)、单超大事件页例外与checkpoint拒绝时磁盘增长；本地resize合并不泛化为所有RPC的固定队列上限。最终结果尚未齐备，F-04及整体完成不提前关闭。
