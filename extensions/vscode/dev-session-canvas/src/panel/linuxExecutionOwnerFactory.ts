@@ -8,6 +8,7 @@ import type { LinuxExecutionOwnerOptions } from './executionOwnerLifecycle';
 import { createExecutionProviderTransport, createNodeExecutionScheduler } from './executionProviderTransport';
 import type { ExecutionScheduler } from './executionSessionAdapter';
 import { assertExecutionAssetRuntime, assertMinimumExecutionLibraryVersion } from './executionAssetCompatibility';
+import { readLinuxRuntimeGlibcVersion } from './linuxExecutionRuntimeCompatibility';
 
 declare const __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__: ExecutionAdmissionLimits | undefined;
 
@@ -52,15 +53,15 @@ export function resolveLinuxExecutionProviderAssets(distDirectory: string): Linu
   const libc = record(manifest.libc);
   const requirements = record(manifest.requirements);
   const linux = record(requirements.linux);
-  const report = process.report?.getReport() as { header?: { glibcVersionRuntime?: string } } | undefined;
   if (libc.name !== 'glibc' || linux.libc !== 'glibc') throw new Error('Linux candidate assets require glibc.');
   assertMinimumExecutionLibraryVersion(libc.version, libc.version);
-  assertMinimumExecutionLibraryVersion(report?.header?.glibcVersionRuntime, linux.glibcMinimum);
+  assertMinimumExecutionLibraryVersion(linux.glibcMinimum, linux.glibcMinimum);
   // The provider's dynamic loader checks these independently before acquiring a PTY.
   for (const key of ['glibcxxMinimum', 'cxxabiMinimum']) {
     assertMinimumExecutionLibraryVersion(linux[key], linux[key]);
   }
   assertExecutionAssetRuntime(record(manifest.runtime), requirements.napi);
+  assertMinimumExecutionLibraryVersion(readLinuxRuntimeGlibcVersion(), linux.glibcMinimum);
   const binary = record(manifest.binary);
   if (binary.file !== 'execution-owner.node' || typeof binary.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(binary.sha256)) {
     throw new Error('Invalid Linux candidate binary descriptor.');

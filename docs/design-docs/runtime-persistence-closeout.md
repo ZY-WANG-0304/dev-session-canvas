@@ -17,12 +17,14 @@ related_plans:
   - docs/exec-plans/completed/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
-updated_at: 2026-10-02
+updated_at: 2026-10-05
 ---
 
 # Runtime Persistence 有限收尾与完成定义
 
 ## 1. 状态与目的
+
+2026-10-05 激活回归补充：用户实际 Remote 调试 Host 的 `process.report.getReport` 被同进程扩展替换为空函数，触发 Linux glibc 准入误拒绝。按第 11 节单独修复与回归，不用旧安装矩阵代证扩展共存兼容，也不重开已经结账的容量、尾部或 Agent 矩阵。
 
 当前完成定义（2026-10-02，覆盖下列历史“下一项”）：B1/F-04容量、资源边界与生产准入，B2退出完整性/有限页面责任及正常默认分发，B3有限生命周期保护均按§8证据表结账。最终产品代码为63847969，普通构建新VSIX为run36979378644；仅复验受影响安装/状态保存，复用既有多会话、重连、compact和未改的真实Agent自然退出证据。文档同步和最新head整体审查后进入PR，不自动合并。旧64/128观察不再驱动优化，root稳定归属单列，旧OS和工具通用健壮性不作前置。
 
@@ -276,3 +278,23 @@ macOS 真实 Agent 仍是具名未决。第一次 run `36906574728` 的 Codex �
 该单次运行已完成：`36935000098` / `1d784d8b` 在既定 `ubuntu-22.04` Agent workflow、Codex `0.157.1`、Claude `2.1.280`、DeepSeek `deepseek-flash` 和固定 VS Code/Electron candidate 上八场通过，四 natural 均实际响应/EOF，八场 cleanup 的 bindings/failures/forcedSignals/unconfirmedSignals/active 均为零。Codex snapshot stop 为 0 bytes / seq14；Claude snapshot stop 为 1262 bytes / seq5，保存/replay/发布状态及 reader 一致。两者保存 `66x21`、原页面 `96x30`，直接 geometry/visible 比较仍为 false，独立 hydrate→resize 后的 buffer/visible/geometry 全为 true；Claude viewport 由 10 到 8 符合独立重排结果，不通过照抄页面期望消除差异。两场新 Host 均为 schema2，实际重新读盘、同存储/工作区、正文/序列保留、页面匹配、无新执行和 cleanup 全通过；旧 empty/origin 字段为 null，不冒称非空为空。
 
 安全报告位于 `.debug/ci-36935000098-schema2/runtime-real-agent-linux-36935000098-1/summary.json`，固定来源/hash 与独立内容核对另记 ExecPlan。原 `pageProjectionIndependence=not-proven` 不改，逐非空行/可见行/几何相等不扩大为逐 cell 或任意慢写、最终容器 fit 通过。源码只读核对发现 `main.tsx` 的 onSnapshotApplied 早于异步 write 完成，Agent/Terminal 的 fit 可独立触发，且 serialized-state 恢复分支未显式恢复保存 viewport；这些是原 A2/A3 慢写/状态应用需要具体验证的实现差异，不是本次通过或旧超时已经证明的缺陷因果。不得据静态线索猜修或新增通用工具门槛。
+
+## 11. 2026-10-05 共享 Extension Host 的 Linux 激活回归
+
+实际失败不是资产缺失或 glibc 过旧：用户 Remote 调试日志 `20261005T212042/exthost2/remoteexthost.log` 定位至 `resolveLinuxExecutionProviderAssets` 的 runtime glibc 参数；同一 Host 的只读 Inspector 确认 Node 24.18.1、`getReport.toString()` 为 `()=>{}`、返回 `undefined`。该 VS Code Server 自带 `extensions/copilot/dist/extension.js` 在模块入口明确替换此方法，且日志确认其已加载；同一 Server Node 独立运行报告 glibc 2.35，实际资产要求 2.14。旧 factory 在真实资产与受控同样 stub 下得到相同 `Invalid execution asset library version` 和 exit 1，保留此失败，不归类为系统或 native 资产缺陷。
+
+### 正式方案
+
+`panel/linuxExecutionRuntimeCompatibility.ts` 只负责读取当前执行环境的 glibc 版本，`linuxExecutionOwnerFactory.ts` 继续对真实版本与 manifest 下限进行严格数字比较。共享 Host 报告缺失、抛错或不提供该字段时，通过 `process.execPath`、固定内联脚本启动独立元数据子进程，使用 5 秒超时、SIGKILL、1024 字节输出上限、无 shell；不继承 `NODE_OPTIONS`、`NODE_PATH`、`VSCODE_INSPECTOR_OPTIONS` 注入，Electron 使用 `ELECTRON_RUN_AS_NODE=1`。子进程仅输出版本 JSON，不输出完整报告或环境，也不加载 native、启动 PTY、Supervisor 或 Agent。
+
+成功读取的版本按进程缓存，避免每次创建/重验会话重复派生探测；缓存的是 runtime 事实，不是资产准入结论，新的 manifest 下限每次仍校验。已知低版本直接拒绝，非法已有版本不改走其他来源；独立探测失败、超时、非零退出、未知或非法结果继续明确拒绝。不得修改其他扩展或恢复共享 `process.report`，不得跳过最低版本验证或回落 stock。macOS/Windows 的 `os.release()` 路径、native 字节、尾部结算与持久化契约均未改。
+
+本轮验证限定为 helper/factory 回归、正常构建、调试 staging 与 Linux 实际 Extension Host 激活；只复验受影响入口，不增加通用诊断框架，也不重复未受影响的真实 Agent、容量、PTY 或跨平台矩阵。验证结果另记本节，不用此前 63847969 包的通过代替本次激活检查。
+
+验证结果：`npm run typecheck`、`npm run test:execution-native-assets`（新增 helper 37/37、Linux factory 38/38及原三平台结构回归）、`test-installed-execution-candidate.mjs` 18项、`test-debug-launch-config.mjs` 均通过。无资产环境变量的普通 `npm run build` 和 `npm run prepare:debug-main-only-extension` 已通过，F5目录已更新；六份native资产未重编。实际Server Node24.18.1独立进程将report设为同样stub后，真实factory验证现有资产成功，且stub没有被恢复或覆盖。
+
+隔离Linux VS Code1.117.0/Electron窗口的同一 `runtime-compatibility-tests.cjs` 用例，对旧bundle复现相同错误（Host测试exit1），对新bundle实际 `extension.activate()` 返回且 `isActive=true`（exit0），并断言共享report仍为原stub。旧结果保存在 `.debug/activation-glibc-20261005-before/`，成功结果位于 `.debug/activation-glibc-20261005-after-absolute/` 及同名 `.log`。第一次新bundle尝试误传相对debugRoot，因测试模块路径未找到而未执行用例，保留 `.debug/activation-glibc-20261005-after/` 及其exit1，不写成产品失败或成功；修正调用为绝对路径后才取得上述结果。原用户窗口的Inspector端口随后关闭，因此未宣称已在其原窗口重新激活；用户需重新启动调试会话加载新bundle。
+
+可复用入口沿现有runner，不新增框架：`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=linux-runtime-report-unavailable node scripts/smoke/run-vscode-smoke.mjs`；需要指定独立证据目录时，`DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT` 使用新的绝对路径。该focused场景仅验证Linux激活，不纳入默认全平台smoke、不启动Terminal/Agent，也不声称新VSIX安装或macOS/Windows原生复验通过。
+
+独立复核后，激活用例补充schema1及原生profile断言，拒绝用stock构建代证本问题；最终同用例在 `.debug/activation-glibc-20261005-profile-checked/` 与同名 `.log` 取得exit0。`test-vscode-smoke-runner-env.mjs`、JS语法及diff检查通过，隔离激活窗口无残留。该追加只验证被修改的用例限定，没有重跑未受影响矩阵。

@@ -9,7 +9,7 @@ import { LINUX_EXECUTION_EXPORTS } from '../build/linux-execution-provider-patch
 
 const require = createRequire(import.meta.url);
 let forbidden = 0;
-async function loadFactory(compiledAdmission, processOverride = process) {
+async function loadFactory(compiledAdmission, processOverride = process, probe) {
   const bundle = await esbuild.build({
     entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/panel/linuxExecutionOwnerFactory.ts')],
     bundle: true, format: 'cjs', platform: 'node', write: false,
@@ -17,7 +17,10 @@ async function loadFactory(compiledAdmission, processOverride = process) {
   });
   const loaded = { exports: {} };
   new Function('require', 'module', 'exports', 'process', bundle.outputFiles[0].text)(specifier => {
-    if (specifier === 'node:child_process') return { spawn() { forbidden++; assert.fail('factory must not spawn before connect'); } };
+    if (specifier === 'node:child_process') return {
+      spawn() { forbidden++; assert.fail('factory must not spawn before connect'); },
+      spawnSync(...args) { assert(probe, 'unexpected runtime metadata probe'); return probe(...args); }
+    };
     if (specifier.endsWith('.node')) { forbidden++; assert.fail('authority must never load native'); }
     return require(specifier);
   }, loaded, loaded.exports, processOverride);
@@ -143,6 +146,28 @@ try {
     assert.equal(forbidden, 0); count++;
   }
   writeManifest(base);
+  let probes = 0;
+  const sharedHost = await loadFactory(undefined, { ...process, report: { getReport: () => undefined } }, () => {
+    probes++;
+    return { status: 0, signal: null, stdout: JSON.stringify(base.libc.version) };
+  });
+  for (const mode of ['live-runtime', 'snapshot-only']) {
+    const options = sharedHost.createLinuxExecutionOwnerOptions({ extensionRoot: directory, mode });
+    options.createTransport({ executionId: 'shared-host', generation: 'generation-1' });
+    assert.equal(probes, 1);
+    assert.equal(forbidden, 0);
+    count++;
+  }
+  const newerMinimum = structuredClone(base);
+  newerMinimum.requirements.linux.glibcMinimum = '99.0';
+  writeManifest(newerMinimum);
+  assert.throws(() => sharedHost.resolveLinuxExecutionProviderAssets(dist), /minimum/);
+  assert.equal(probes, 1);
+  writeManifest(base);
+  const incompatibleHost = await loadFactory(undefined,
+    { ...process, report: { getReport: () => ({ header: { glibcVersionRuntime: '2.17' } }) } });
+  assert.throws(() => incompatibleHost.resolveLinuxExecutionProviderAssets(dist), /minimum/);
+  count++;
   for (const versions of [
     { node: '16.17.1', modules: '93', napi: '8', electron: undefined },
     { node: '22.22.1', modules: '140', napi: '10', electron: '39.8.7' }
