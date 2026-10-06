@@ -215,7 +215,7 @@ async function createSubject(role) {
   if (currentStateAcceptance) assertCurrentStateReader(subject.reader, `${role} initial reader`);
   const fixture = path.join(__dirname, 'fixtures', role === 'a'
     ? 'execution-capacity-subject.cjs' : 'runtime-reload-completed-subject.cjs');
-  const args = role === 'a' ? ` b color ${quote(subject.receiptPath)}` : ` ${quote(subject.receiptPath)}`;
+  const args = role === 'a' ? ` a color ${quote(subject.receiptPath)}` : ` ${quote(subject.receiptPath)}`;
   await dom({ kind: 'sendExecutionInput', nodeId: node.id,
     data: `stty -echo -onlcr; exec ${quote(process.env.DEV_SESSION_CANVAS_RELOAD_SUBJECT_NODE)} ${quote(fixture)}${args}\r` });
   await captureProviderAndSubject(subject);
