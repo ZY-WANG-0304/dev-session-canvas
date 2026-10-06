@@ -275,7 +275,7 @@ async function setup(launcher) {
   await interaction(a.id, `before_${control.nonce}`);
   if (currentStateAcceptance) {
     await dom({ kind: 'sendExecutionInput', nodeId: a.id,
-      data: "printf 'DSC_RELOAD_CURRENT_STATE_MARKER\\r\\n'\r" });
+      data: 'current-state-marker\r' });
     await poll('current-state marker before reload', () => probe(), value =>
       value.nodes.some(node => node.nodeId === a.id &&
         node.terminalVisibleLines.some(line => line.includes('DSC_RELOAD_CURRENT_STATE_MARKER'))));

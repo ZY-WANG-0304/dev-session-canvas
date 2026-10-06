@@ -111,6 +111,10 @@ async function run() {
       pending = pending.slice(end + 1);
       if (!input) continue;
       enqueue(async () => {
+        if (input === 'current-state-marker' && role === 'a') {
+          await write('DSC_RELOAD_CURRENT_STATE_MARKER\\r\\n', false);
+          return;
+        }
         if (input === 'finish') {
           save({ state: 'finished' });
           clearInterval(triggerTimer);

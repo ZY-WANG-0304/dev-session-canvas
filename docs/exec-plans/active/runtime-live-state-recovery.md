@@ -12,12 +12,12 @@ Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩
 - [x] (2026-10-06) M1：固定 xterm 6.0.0 精确状态 codec，覆盖模型、parser carry、palette 和链接；有限独立语义测试通过。
 - [x] (2026-10-06) M2：接通 Supervisor、Host 转发、Webview 分块初始化与 revision 交接；保留旧能力、旧 generation 与既有读者结算。
 - [x] (2026-10-06) M3 受控验证：等状态短长历史、实际生产类组合链、未来增量/resize/尾部，以及类型检查和默认构建通过。
-- [ ] M3 实际验收：VS Code 重开、受影响 Terminal/Agent 及现代三平台安装入口。实际浏览器重建和 PaneGallery 已在当前环境 3/3 通过；真实 Electron candidate 与 Unix socket 在当前沙箱仍被拒绝，不用受控测试代证。GitHub run `37479044769` 的 Windows product job 通过；Linux current-state reload 在 VS Code 正常退出后缺少 `setup.json`，尚未形成业务判定；macOS Agent 在 `starting` 阶段失败，未观察到 Supervisor/CLI，需在补充第一现场后重跑。
+- [ ] M3 实际验收：VS Code 重开、受影响 Terminal/Agent 及现代三平台安装入口。实际浏览器重建和 PaneGallery 已在当前环境 3/3 通过；真实 Electron candidate 与 Unix socket 在当前沙箱仍被拒绝，不用受控测试代证。GitHub run `37479044769` 的 Windows product job 通过；Linux current-state reload 的首败已定位为 reload fixture 命令协议不匹配（fixture 只接受 `finish`/`produce` 等命令，driver 却向其发送 shell `printf`），不是业务协议判定；修复后仍需重跑。macOS Agent 在 `starting` 阶段失败，未观察到 Supervisor/CLI，需在补充第一现场后重跑。
 - [ ] F-04 current-state 资源准入：在真实支持入口记录完整状态长度、Supervisor 捕获峰值、Webview 组装峰值、并发会话和超限处置；8192 字符分块只限定单页，不构成总内存预算。
 
 2026-10-06 验证增量：默认 `typecheck`、`build`、debug staging、VSIX 打包和 `git diff --check` 通过；current-state codec 15/15、分页/relay 回归、reload 契约 12/12 通过，Playwright 的 Agent、Terminal 页面重建和 PaneGallery remount 3/3 通过。`test:runtime-supervisor-protocol` 在本地仅因沙箱禁止 Unix socket `listen`（`EPERM`）未运行完，不改写为产品失败或通过。现有真实 reload driver 依赖 Linux `/proc`、Linux provider/fixture 和 POSIX shell，故 CI 只在 Linux 执行 current-state reload；macOS/Windows 仍是待实现独立 observer/fixture 的跨平台验收，不移除平台断言或冒称已通过。
 
-2026-10-06 GitHub run `37479044769` 复核：package 与六个 native assets 通过，Windows product 通过。Linux current-state reload 的 Electron 退出码为 0，但 driver 未留下 `setup.json`，该结果只能归类为验收驱动 setup/收据缺失，不能推断 current-state 协议失败；macOS Agent 失败发生在 live node `starting` 阶段，sanitized 报告没有 CLI、Supervisor 或 failure class，证据不足以归因认证、启动链或产品运行时。为避免下一轮再次丢失第一现场，驱动现在在 Agent 首次失败时保存脱敏 snapshot/events，并在 reload 缺少 phase receipt 时保存 names-only artifact inventory；这些是诊断可见性修复，不改变业务判定或放宽验收。
+2026-10-06 GitHub run `37479044769` 复核：package 与六个 native assets 通过，Windows product 通过。Linux current-state reload 的 Electron 退出码为 0，但 driver 未留下 `setup.json`；工件显示失败发生在 `current-state marker before reload`，fixture 因收到未支持的 shell `printf` 命令提前退出，已按 fixture 协议改为显式 marker 命令，不涉及产品协议。macOS Agent 失败发生在 live node `starting` 阶段，sanitized 报告没有 CLI、Supervisor 或 failure class，证据不足以归因认证、启动链或产品运行时。为避免下一轮再次丢失第一现场，驱动现在在 Agent 首次失败时保存脱敏 snapshot/events，并在 reload 缺少 phase receipt 时保存 names-only artifact inventory；这些是诊断可见性修复，不改变业务判定或放宽验收。
 
 ## 意外与发现
 
