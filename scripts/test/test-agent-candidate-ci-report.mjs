@@ -103,7 +103,7 @@ try {
   await fs.writeFile(path.join(artifacts, 'first-failure.json'), JSON.stringify({ nodeId: 'n1', executionId: 'e1', error: key,
     stack: `Error: ${key}\n at run (/private/${key}/agent-candidate-tests.cjs:164:7)` }));
   await fs.writeFile(path.join(artifacts, 'first-failure-snapshot.json'), JSON.stringify({ state: { nodes: [
-    { id: 'n1', status: 'stopped', metadata: { agent: { liveSession: false, lastExitCode: 0, outputSequence: 3,
+    { id: 'n1', status: 'stopped', metadata: { agent: { liveSession: false, lastRuntimeError: 'connect ECONNREFUSED /private/socket', lastExitCode: 0, outputSequence: 3,
       serializedTerminalState: { data: key } } } }
   ] } }));
   await fs.writeFile(path.join(artifacts, 'first-failure-events.json'), JSON.stringify([
@@ -119,13 +119,14 @@ try {
   assert.equal(warningReport.scenarios[0].sourceDisposition, 'eof');
   assert.deepEqual(warningReport.scenarios[0].failureLocation, { file: 'agent-candidate-tests.cjs', line: 164, column: 7 });
   assert.deepEqual(warningReport.scenarios[0].failureState, { status: 'stopped', liveSession: false,
-    exitCode: 0, outputSequence: 3, serializedStatePresent: true,
+    runtimeErrorClass: 'connection-refused', exitCode: 0, outputSequence: 3, serializedStatePresent: true,
     serializedStateBytes: Buffer.byteLength(key), readerSettlementObserved: false,
     readerSettlementKind: null, readerFinalOutputSequence: null });
   assert.deepEqual(warningReport.scenarios[0].cliEvidence, { recordCount: 4, threadStarted: false, turnStarted: false,
     turnCompleted: true, turnFailed: false, errorObserved: true,
     expectedResponseInOutput: true, lastMessageMatches: true, modelMetadataFallback: true });
   assert.equal(warningText.includes(key), false);
+  assert.equal(warningText.includes('/private/socket'), false, 'Runtime paths must not enter the sanitized report.');
   assert.equal(warningText.includes(scenario.nonce), false);
   assert.equal(warningText.includes('Defaulting to fallback metadata'), false);
   await fs.writeFile(path.join(artifacts, 'process-observations.json'), JSON.stringify({

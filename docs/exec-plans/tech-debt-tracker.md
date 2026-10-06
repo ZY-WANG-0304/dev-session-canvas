@@ -14,6 +14,8 @@
 
 ## 近期已收口
 
+- 2026-10-06：GitHub run `37479044769` 的 package、native assets 和 Windows product 通过；Linux current-state reload 因 Electron 正常退出但缺少 `setup.json` 暂不能判定产品结果，macOS Agent 在 `starting` 阶段失败且 sanitized 报告未提供 CLI/Supervisor 第一现场。已补最小脱敏失败 snapshot/events 与 reload names-only artifact inventory，待受影响 runner 重跑后再分类；不把 harness 失败追认为产品通过，也不扩大到跨平台 current-state 实现。
+
 - 2026-10-06：B4 current-state codec、Supervisor/Host/Relay/Webview 分块交接及 controller authority/revision 接续已完成受控验证；三项 Playwright 页面重建 3/3、结算 wiring 27/27、构建/VSIX 通过。`runtime-checkpoint-refresh` smoke 已按 stateChunk/捕获后 revision 更新，但真实 VS Code 重开、真实 Agent/Terminal 和现代三平台当前状态入口仍未执行；current-state 总长度/组装峰值没有硬预算，列入 F-04 生产准入，不以单页 8192 或旧 64/128 MiB 观察阈值代替。Electron/sockets 在本地 sandbox 启动前被 EPERM/SIGTRAP 拒绝，保留原证据。
 - 2026-10-06：本地收尾复验重新通过默认构建/打包、codec 15/15、reload 契约 12/12 和 Playwright current-state 3/3；runtime supervisor protocol 仍只受沙箱 Unix socket `listen` EPERM 阻塞。current-state reload harness 明确保持 Linux-only（`/proc`、Linux provider/fixture、POSIX shell），macOS/Windows 不以静态或浏览器测试代替，待独立平台 observer/fixture 后再验收。
 - 2026-10-06：旧 History restored 节点已加入已知旧Linux systemd generation的只读核验及未提交失败重试；第二现场证明5个原目标已走历史退役，另补未写终态的stopped-runtime强停止资格，不改原unknown或共享registry。第二轮核验81/Host190/启动16/typecheck/build/debug staging通过；首轮Client28、deactivation、reader原样重跑20及首次尾部超时保持。新分支原窗口未操作、两项原生socket受限；两个native detached具名缺口见下表，不冒称所有历史节点均已修复。

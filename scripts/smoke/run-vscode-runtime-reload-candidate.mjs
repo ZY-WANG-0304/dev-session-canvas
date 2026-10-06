@@ -166,6 +166,16 @@ export async function main(args = process.argv.slice(2)) {
     failure = error;
     await write(path.join(output, 'first-failure.json'), { error: String(error), stack: error.stack, nonce,
       elapsedMs: Date.now() - startedAt, exit: typeof exit === 'symbol' ? 'timeout' : exit ?? null });
+    // Preserve the first failure boundary when the driver exits before its
+    // phase receipt. The inventory is names-only so it cannot publish runtime
+    // output or credentials, but it distinguishes driver setup failure from a
+    // product assertion that happened after setup.
+    const artifactNames = await fs.readdir(runtime.artifactsDir).catch(() => []);
+    await write(path.join(output, 'artifact-inventory.json'), {
+      nonce,
+      phase: 'driver-artifact-inventory',
+      names: artifactNames.filter(name => /^[a-zA-Z0-9._-]+$/.test(name)).sort()
+    }).catch(() => {});
   } finally {
     if (failure) {
       // These identities were recorded by this run before reload. No PID search,

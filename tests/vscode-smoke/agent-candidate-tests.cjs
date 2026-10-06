@@ -267,6 +267,15 @@ async function run() {
       savedCols: savedNode.metadata.agent.lastCols, savedRows: savedNode.metadata.agent.lastRows };
   } catch (error) {
     failure = error;
+    // Keep a sanitized snapshot at the first failure point.  Startup failures
+    // can happen before the normal completion artifacts exist, but the node
+    // metadata still tells the CI report which boundary failed.
+    let failureSnapshot;
+    let failureEvents;
+    try { failureSnapshot = await snapshot(); } catch {}
+    try { failureEvents = await command('getDiagnosticEvents'); } catch {}
+    if (failureSnapshot) await archive('first-failure-snapshot', failureSnapshot);
+    if (failureEvents) await archive('first-failure-events', failureEvents);
     await archive('first-failure', { error: String(error), stack: error.stack, nodeId, executionId, hello });
   } finally {
     try {

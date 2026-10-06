@@ -41,6 +41,19 @@ const linuxLiveStates = new Set(['R', 'S', 'D', 'T', 't', 'K', 'W', 'P', 'I', 'U
 // Nonterminal PROC_STATUSES from the pinned psutil 7.0.0 Darwin helper.
 const darwinLiveStates = new Set(['idle', 'running', 'sleeping', 'stopped']);
 
+function classifyRuntimeError(value) {
+  if (typeof value !== 'string' || !value) return null;
+  for (const [kind, pattern] of [
+    ['connection-refused', /ECONNREFUSED|connection refused/i],
+    ['missing-runtime', /ENOENT|no such file|not found/i],
+    ['permission-denied', /EACCES|EPERM|permission denied/i],
+    ['authentication', /auth|login|credential|unauthorized|\b401\b/i],
+    ['timeout', /timeout|timed out/i],
+    ['spawn-failed', /spawn|exec|launch/i]
+  ]) if (pattern.test(value)) return kind;
+  return 'unclassified';
+}
+
 function beforeCleanupProcesses(value, platform) {
   if (!Array.isArray(value?.entries)) return null;
   const roles = Object.fromEntries(processRoles.map(role => [role, { observed: 0, live: 0, ended: 0, unknown: 0 }]));
@@ -235,6 +248,7 @@ export async function writeAgentCandidateCIReport({ directory, output, input, sc
       failureState: failureNode ? {
         status: agentStatuses.has(failureNode.status) ? failureNode.status : null,
         liveSession: boolean(failureAgent?.liveSession),
+        runtimeErrorClass: classifyRuntimeError(failureAgent?.lastRuntimeError),
         exitCode: integer(failureAgent?.lastExitCode),
         outputSequence: integer(failureAgent?.outputSequence),
         serializedStatePresent: failureAgent ? failureAgent.serializedTerminalState !== undefined : null,
