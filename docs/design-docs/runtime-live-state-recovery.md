@@ -13,7 +13,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/active/runtime-live-state-recovery.md
-updated_at: 2026-10-06
+updated_at: 2026-10-07
 ---
 
 # Live 会话权威当前状态恢复
@@ -73,6 +73,8 @@ reader 的 `currentStateCheckpoint` 标记在释放冻结字符串后仍保留�
 2026-10-06 受控验证中，codec 的 1/200/1200 次重绘等状态样本均为 2632 JSON 字符；实际 Supervisor、Client、Host、Projection 与 headless xterm 组合（仅 provider/socket/OS 边界受控）的 1/400 次重绘样本均为 4329 字符，捕获前 journal 读取为零。组合测试还验证颜色与 partial CSI、R 后增量、最终光标 `(6,2)`，以及 write callback 完成前不能结算和退休资源。该结果证明所测路径的恢复工作取决于当前状态，不证明真实 UI 耗时或任意规模资源上限。
 
 固定 80 列、24 行、1000 scrollback 的普通文本样本保留 81920 cells，原 u32 JSON 的 1383643 bytes 降为 143227 bytes；导入 ANSI write 次数为零。它只是编码体积观察，不将本次数值设为新产品预算。
+
+2026-10-07 复用冻结生产 VSIX 的真实 Linux VS Code Reload Window 通过：保留原 Supervisor/执行主体，重建 Host/frame/reader 后正确导入 current-state、处理新输入回复并完成原 reader 的最终应用和清理。此次状态为 4825 字符、1 块，估计组装峰值 9650 字符；只是小状态单次实测，不替代大 scrollback 与多会话准入。此前 run `37501128715` 的失败确认是 fixture 将 CRLF 写成字面量导致 nonce 回复连行，业务 projection 已确认 revision 7；修正 fixture 而不放宽断言，保留旧失败。真实跨平台、Agent 和容量边界仍按 ExecPlan 开放。
 
 类型检查、正常默认平台构建、codec 15 项/tracker、Supervisor 104 项、Client 31 项、Host reader 27 项、Webview controller 50 项与 Host batch 10 项及分页/路径定向验证通过。F5 main-only staging 已更新，并比对 Host/Supervisor/Webview 与 execution selection 四文件和构建输入逐字节一致。当前代码还重新通过了结算 wiring 27 项、VSIX 打包和三项实际 Playwright 恢复场景（Agent、Terminal 页面重建和 PaneGallery remount，3/3）；这些场景包含 controller 全局 authority/revision 接续回归。真实 Electron candidate 在 Linux sandbox 启动阶段被 `sandbox_host_linux.cc` / `SIGTRAP` 拒绝，未进入业务测试，真实 socket protocol 仍被 EPERM 拒绝。旧原生和 Agent 已通过证据继续有效，但不能代证这条新恢复链路。
 

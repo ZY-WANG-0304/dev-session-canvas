@@ -191,7 +191,10 @@ async function complete() {
     assert(Number.isSafeInteger(reader.currentState.length) && reader.currentState.length > 0);
     assert.equal(reader.checkpoint.serializedState.data, '');
   }
-  await writeJson('started.json', { node, executionId, runtime: await command('getRuntimeSupervisorState') });
+  await writeJson('started.json', { node, executionId, initialSnapshot,
+    runtime: await command('getRuntimeSupervisorState'),
+    hostMessages: await command('getHostMessages'),
+    diagnosticEvents: await command('getDiagnosticEvents') });
   await command('clearHostMessages');
   await command('clearDiagnosticEvents');
   const receiptPath = path.join(artifacts, 'subject-write-receipt.json');

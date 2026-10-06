@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+import esbuild from 'esbuild';
 import contract from '../../tests/vscode-smoke/runtime-reload-contract.cjs';
 import { buildVSCodeArgs } from '../smoke/vscode-smoke-runner.mjs';
 import { prepareReloadDriver, selectReloadInput } from '../smoke/run-vscode-runtime-reload-candidate.mjs';
@@ -12,6 +16,7 @@ import { prepareReloadDriver, selectReloadInput } from '../smoke/run-vscode-runt
 const { assertControl, assertReloadReceipts, assertRuntimeDiscarded, sameLiveIdentity,
   exitedIdentity, signalOwned, fixedVsixSha256, assertSnapshotNode, replaySnapshotTail, snapshotTail, readSnapshotHandshake } = contract;
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const require = createRequire(import.meta.url);
 const identity = pid => ({ pid, ppid: 1, state: 'S', startTicks: String(pid * 100), executable: `/owned/${pid}` });
 const closed = () => ({ status: 'closed', metadata: { terminal: {
   terminalHistoryDiscarded: true, liveSession: false, lastExitCode: 0
@@ -66,6 +71,75 @@ test('snapshot-only requires an explicit frozen package while original Runtime p
     { mode: 'live-runtime', 'current-state': true, 'expected-vsix-sha256': 'unknown' },
     { mode: 'snapshot-only', 'current-state': true, 'expected-vsix-sha256': 'b'.repeat(64) }, { mode: 'other' }]) {
     assert.throws(() => selectReloadInput(value));
+  }
+});
+
+test('the actual compact reload fixture keeps new replies on separate lines across current-state restore', async () => {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-reload-fixture-'));
+  const { Terminal } = require('@xterm/headless');
+  const original = new Terminal({ cols: 100, rows: 10, allowProposedApi: true });
+  const restored = new Terminal({ cols: 80, rows: 5, allowProposedApi: true });
+  const timers = [];
+  const output = [];
+  const exits = [];
+  const stdin = new EventEmitter();
+  let destroyed = false;
+  Object.assign(stdin, { isTTY: true, setRawMode: () => {}, setEncoding: () => {},
+    destroy: () => { destroyed = true; } });
+  try {
+    const codecPath = path.join(temporary, 'current-state.cjs');
+    await esbuild.build({ entryPoints: [path.join(projectRoot,
+      'extensions/vscode/dev-session-canvas/src/common/terminalCurrentState.ts')],
+      outfile: codecPath, bundle: true, platform: 'node', format: 'cjs', target: 'node22' });
+    const { captureTerminalCurrentState, restoreTerminalCurrentState, createTerminalCurrentColors,
+      applyTerminalCurrentColorRequests } = require(codecPath);
+    const colors = createTerminalCurrentColors();
+    original._core._inputHandler.onColor(event => applyTerminalCurrentColorRequests(colors, event));
+    const fixturePath = path.join(projectRoot, 'tests/vscode-smoke/fixtures/execution-capacity-subject.cjs');
+    const receiptPath = path.join(temporary, 'subject.json');
+    const fixtureModule = { exports: {} };
+    const fixtureRequire = name => require(name);
+    fixtureRequire.main = fixtureModule;
+    // Execute the real command handler; only PTY I/O and process lifetime are replaced.
+    vm.runInNewContext(await fs.readFile(fixturePath, 'utf8'), {
+      module: fixtureModule, require: fixtureRequire, Buffer, console,
+      process: { argv: [process.execPath, fixturePath, 'a', 'compact', receiptPath], pid: process.pid,
+        stdin, stdout: { isTTY: true, write: (data, callback) => { output.push(data); callback(); return true; } },
+        exit: code => exits.push(code) },
+      setTimeout: (...args) => { const timer = setTimeout(...args); timers.push(timer); return timer; },
+      clearTimeout, clearInterval
+    }, { filename: fixturePath });
+    const flush = async () => {
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(exits, [], 'The fixture must accept every reload command.');
+      assert.notEqual(JSON.parse(await fs.readFile(receiptPath, 'utf8')).state, 'error');
+      return output.splice(0).join('');
+    };
+    const write = (terminal, data) => new Promise(resolve => terminal.write(data, resolve));
+    await write(original, await flush());
+    assert.equal(stdin.listenerCount('data'), 1);
+    stdin.emit('data', 'ping:before_reload\r');
+    await write(original, await flush());
+    stdin.emit('data', 'current-state-marker\r');
+    await write(original, await flush());
+    const currentState = JSON.parse(JSON.stringify(captureTerminalCurrentState(original, colors)));
+    restoreTerminalCurrentState(restored, currentState);
+    stdin.emit('data', 'ping:after_reload\r');
+    await write(restored, await flush());
+    const buffer = restored.buffer.active;
+    const lines = Array.from({ length: buffer.length }, (_, index) => buffer.getLine(index).translateToString(true));
+    assert(lines.includes('DSC_A1_REPLY_before_reload'));
+    assert(lines.includes('DSC_RELOAD_CURRENT_STATE_MARKER'), 'The restored marker must occupy its own row.');
+    assert(lines.includes('DSC_A1_REPLY_after_reload'), 'The actual interaction probe requires an exact new reply row.');
+    assert.equal(buffer.cursorX, 0);
+    stdin.emit('data', 'finish\r');
+    await flush();
+    assert.equal(destroyed, true);
+    assert.equal(JSON.parse(await fs.readFile(receiptPath, 'utf8')).state, 'finished');
+  } finally {
+    for (const timer of timers) clearTimeout(timer);
+    original.dispose(); restored.dispose();
+    await fs.rm(temporary, { recursive: true, force: true });
   }
 });
 

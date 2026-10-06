@@ -244,7 +244,9 @@ async function mountedIdentity(identityAt, mountedAt = 0, receivedIdentity = 'or
       async command(name) {
         assert.equal(name, 'getHostMessages'); reads++;
         return now >= identityAt ? [{ type: 'host/executionSnapshot',
-          payload: { nodeId: 'original-node', executionSessionId: receivedIdentity } }] : [];
+          payload: { nodeId: 'original-node', executionSessionId: receivedIdentity,
+            terminalRead: { currentState: { format: 'xterm-current-state-v1', length: 100 },
+              checkpoint: { serializedState: { data: '' } } } } }] : [];
       }
     });
   } catch (failure) { error = failure; }
@@ -268,4 +270,34 @@ for (const [identityAt, mountedAt] of [[Infinity, 0], [30000, 29950]]) {
 const wrongIdentity = await mountedIdentity(0, 0, 'different-execution');
 assert.equal(wrongIdentity.error?.code, 'ERR_ASSERTION');
 assert.equal(wrongIdentity.now, 0, 'The original Runtime execution identity equality must still reject a mismatch');
+const archiveEnd = terminalTests.indexOf('const receiptPath =', mountedEnd);
+assert(archiveEnd > mountedEnd);
+const startupMessages = [{ type: 'host/executionSnapshot', payload: { executionSessionId: 'original-execution' } }];
+const startupEvents = [{ kind: 'runtime/hostOutputConsumptionFailed', detail: { message: 'original failure' } }];
+const initialSnapshot = structuredClone(startupMessages[0]);
+const archiveCalls = [];
+let startupArchive;
+await vm.runInNewContext(`(async () => { ${terminalTests.slice(mountedEnd, archiveEnd)} })()`, {
+  node: { id: 'original-node' }, executionId: 'original-execution', initialSnapshot,
+  async command(name) {
+    archiveCalls.push(name);
+    if (name === 'getRuntimeSupervisorState') return { bindings: [{ runtimeSessionId: 'original-execution' }] };
+    if (name === 'getHostMessages') return startupMessages;
+    if (name === 'getDiagnosticEvents') return startupEvents;
+    if (name === 'clearHostMessages') { startupMessages.length = 0; return; }
+    if (name === 'clearDiagnosticEvents') { startupEvents.length = 0; return; }
+    assert.fail(`Unexpected startup archive command ${name}`);
+  },
+  async writeJson(name, value) {
+    archiveCalls.push(name);
+    startupArchive = JSON.parse(JSON.stringify(value));
+  }
+});
+assert.deepEqual(archiveCalls, ['getRuntimeSupervisorState', 'getHostMessages', 'getDiagnosticEvents',
+  'started.json', 'clearHostMessages', 'clearDiagnosticEvents']);
+assert.deepEqual(startupArchive.initialSnapshot, initialSnapshot);
+assert.deepEqual(startupArchive.hostMessages, [initialSnapshot]);
+assert.equal(startupArchive.diagnosticEvents[0].detail.message, 'original failure');
+assert.equal(startupMessages.length, 0);
+assert.equal(startupEvents.length, 0);
 console.log('Windows Electron fixed input: identity/exit, original writer byte identity, shell, workflow, required phase reports and mounted reader identity passed; no native or VS Code calls.');

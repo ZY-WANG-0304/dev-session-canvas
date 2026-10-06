@@ -12,7 +12,7 @@ Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩
 - [x] (2026-10-06) M1：固定 xterm 6.0.0 精确状态 codec，覆盖模型、parser carry、palette 和链接；有限独立语义测试通过。
 - [x] (2026-10-06) M2：接通 Supervisor、Host 转发、Webview 分块初始化与 revision 交接；保留旧能力、旧 generation 与既有读者结算。
 - [x] (2026-10-06) M3 受控验证：等状态短长历史、实际生产类组合链、未来增量/resize/尾部，以及类型检查和默认构建通过。
-- [ ] M3 实际验收：VS Code 重开、受影响 Terminal/Agent 及现代三平台安装入口。实际浏览器重建和 PaneGallery 已在当前环境 3/3 通过；真实 Electron candidate 与 Unix socket 在当前沙箱仍被拒绝，不用受控测试代证。GitHub run `37479044769` 的 Windows product job 通过；Linux current-state reload 的首败已定位为 reload fixture 命令协议不匹配（fixture 只接受 `finish`/`produce` 等命令，driver 却向其发送 shell `printf`），不是业务协议判定；修复后仍需重跑。macOS Agent 在 `starting` 阶段失败，未观察到 Supervisor/CLI，需在补充第一现场后重跑。
+- [ ] M3 实际验收：实际浏览器重建和 PaneGallery 3/3、Linux 冻结 VSIX 的真实 current-state Reload Window 已通过；run `37494231281` 的 macOS installed product 和真实 Agent 8 场景也通过。Windows 同包的 installed live-runtime 停在 Host 状态交接，定向取证中；live Agent 跨 Host 恢复和其他平台的恢复路径仍待补齐。早期沙箱启动失败与 fixture 失败保留为历史，不再作为当前环境阻塞。
 - [ ] F-04 current-state 资源准入：在真实支持入口记录完整状态长度、Supervisor 捕获峰值、Webview 组装峰值、并发会话和超限处置；8192 字符分块只限定单页，不构成总内存预算。
 
 2026-10-06 验证增量：默认 `typecheck`、`build`、debug staging、VSIX 打包和 `git diff --check` 通过；current-state codec 15/15、分页/relay 回归、reload 契约 12/12 通过，Playwright 的 Agent、Terminal 页面重建和 PaneGallery remount 3/3 通过。`test:runtime-supervisor-protocol` 在本地仅因沙箱禁止 Unix socket `listen`（`EPERM`）未运行完，不改写为产品失败或通过。现有真实 reload driver 依赖 Linux `/proc`、Linux provider/fixture 和 POSIX shell，故 CI 只在 Linux 执行 current-state reload；macOS/Windows 仍是待实现独立 observer/fixture 的跨平台验收，不移除平台断言或冒称已通过。
@@ -20,6 +20,12 @@ Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩
 2026-10-06 GitHub run `37479044769`、`37494231281` 及 Linux 定向重跑 `37500016871` 复核：package 与六个 native assets 通过，macOS installed product 通过。Linux current-state reload 的 Electron 退出码为 0，但 driver 未留下 `setup.json`；前一次工件显示 A 会话被错误声明为 `role=b`，本次工件显示修正 role 后仍误用 `color` 场景，拒绝驱动发送的 `ping`；两者均属于验收驱动参数错误，不涉及产品协议。已将 A 固定为支持交互 ping 与 marker 的 `compact` 场景，待仅 Linux current-state 再重跑确认。Windows installed live-runtime acceptance 另在自然退出结算等待处超时，尚未归因到本次 F-04 观测接线。macOS Agent 失败发生在 live node `starting` 阶段，sanitized 报告没有 CLI、Supervisor 或 failure class，证据不足以归因认证、启动链或产品运行时。为避免下一轮再次丢失第一现场，驱动现在在 Agent 首次失败时保存脱敏 snapshot/events，并在 reload 缺少 phase receipt 时保存 names-only artifact inventory；这些是诊断可见性修复，不改变业务判定或放宽验收。
 
 2026-10-06 F-04 观测接线：Webview current-state 完整组装后新增一次脱敏 performance diagnostic，记录 `currentStateLength`、`currentStateChunkCount`、最终 `currentStateOffset` 和保守的 `currentStateAssemblyPeakCharacters`；Supervisor/Host 原有 `stateLength`/chunk offset 继续保留。该接线只补资源账，不定义新的总长度阈值，也不将单页 8192 或估计峰值写成产品预算；真实 Electron 多会话、超限处置和现代三平台受影响入口仍待运行。
+
+2026-10-07 定向复核：Linux run `37501128715` 已进入真实 Reload Window 的 verify 阶段，current-state 完整组装记录为 4834 字符、1 块、估计峰值 9668 字符，但随后新 nonce 回复的整行断言失败，整轮仍为失败。实际 fixture 的 marker 写成字面量 `\\r\\n`，没有换行；新增回归执行原 fixture 的 compact ping、marker、生产 codec capture/restore、后续 ping，复现回复与 marker 连行。只将 marker 改为真实 CRLF，保留原整行、同一执行身份、最终应用及清理断言；本地 reload 契约与新增回归 13/13 通过，等待真实安装包重跑，不将受控回归代证 Electron 通过。Windows run `37494231281` 的第一现场另显示 Supervisor 会话为 closed、source EOF、final revision 1382，但 Host 节点仍为 live、outputSequence 2；这不是进程对象句柄存续的证据，也不凭超时判定尾部丢失，继续定向检查事件/订阅交接。
+
+2026-10-07 后续真实验收：原 CI 工件 `failure-getRuntimeSupervisorState.json` 明确保存了 marker 字面量与正确 nonce 回复连行，且 Webview 已 ack revision 7，确认本次失败源于 fixture 换行。当前环境原生执行已可用，未改测试启动策略；复用 run `37494231281` 的冻结 VSIX（SHA256 `8b0be701ecb29a142a6ebd1bb00e794e151e184bf70f8899a2e948e1e53ae675`），修正 fixture 后在真实 VS Code 1.117.0 完成一次 Reload Window，证据在 `.debug/b4-current-state-reload-crlf-20261007/result.json`。同一 UI、不同 Host/frame/reader、原 Supervisor/provider/subject 身份、恢复后新 nonce 回复、completed B 无历史且不重启、A 正常结束的原 reader applied、资源退出及零 fallback 全部通过。恢复状态 4825 字符、1 块、估计组装峰值 9650 字符，新 nonce 应用约 10.4 ms，整轮约 11.15 秒；这些是单次小状态观察，不代证 F-04 大 scrollback/并发准入。旧失败原样保留，不再重复排队 Linux 此用例或无改动 native 构建。
+
+同日复核 run `37494231281` 的 `runtime-production-agent-macos-37494231281/summary.json`：8 个真实 Codex/Claude 场景均通过，Host/Supervisor/provider/Webview 四个产物 hash 与上述冻结 VSIX 一致。较早 run 的 macOS `starting` 失败保留为历史，不再列为当前阻塞；该矩阵仍不证明 live Agent 跨 Host 重开。Windows 的 `started.json` 原先未保留清空前的 messages/events，因此只补保存已有 initialSnapshot、启动期 messages/events 后定向重跑；不加自动重试，不改变超时、尾部或最终状态断言，不预先修改订阅业务代码。
 
 ## 意外与发现
 
