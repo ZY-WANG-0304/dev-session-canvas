@@ -14,6 +14,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/active/runtime-live-state-recovery.md
   - docs/exec-plans/completed/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-checkpoint-only-refresh.md
@@ -21,10 +22,12 @@ related_plans:
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
-updated_at: 2026-10-02
+updated_at: 2026-10-06
 ---
 
 # Runtime Persistence 容量与会话归档架构重评
+
+2026-10-06 范围修订：下列资源模型及已取得证据保留，但它们只验证 checkpoint + journal 路径，不能据此宣称完成当前状态恢复。此前 §6.2 的 S2 方向重新纳入本轮 B4，新 codec/分块初始化与生产接线已实现，实际恢复验收仍开放，独立见 `runtime-live-state-recovery.md`；相同当前状态/scrollback 下恢复不随累计交互增长。本文原阈值、失败和旧验证结论不改写，不追加通用工具或 root 归属改造。
 
 当前结账入口（2026-10-02，§10.17）：F-04 当前支持路径已完成资源模型、生产准入、本地消费信用、冷启动及退休存储责任修正；正常默认构建的固定生产包已补齐受影响的三平台 Runtime installed 与十二个真实 Agent Runtime 场景。十会话、重连与 r23/r24 证据复用，原64/128观察阈值及失败保持，不承诺任意会话数或历史长度下固定RSS。随后63847969仅修正已确认的SGR22序列化损失及定向页面验收，不改变准入、信用、索引和journal保留策略；最终包与状态保真结账见生产接入§53。本文“已验证”只指下述正式方案及声明负载，不包含历史未采用候选或任意规模保证。
 

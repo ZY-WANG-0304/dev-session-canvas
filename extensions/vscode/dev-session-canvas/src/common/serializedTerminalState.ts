@@ -2,6 +2,12 @@ import { SerializeAddon } from '@xterm/addon-serialize';
 import { Terminal as HeadlessTerminal } from '@xterm/headless';
 
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from './terminalScrollback';
+import {
+  applyTerminalCurrentColorRequests,
+  captureTerminalCurrentState,
+  createTerminalCurrentColors,
+  type TerminalCurrentState
+} from './terminalCurrentState';
 
 export const SERIALIZED_TERMINAL_STATE_FORMAT = 'xterm-serialize-v1';
 const XTERM_HEADLESS_PACKAGE_VERSION = readPackageVersion(
@@ -130,6 +136,7 @@ export class SerializedTerminalStateTracker {
   private operationError: Error | undefined;
   private readonly colorStateSubscription: { dispose(): void } | undefined;
   private colorStateTouched = false;
+  private readonly currentColors = createTerminalCurrentColors();
   private disposed = false;
   private cachedState: SerializedTerminalState = {
     format: SERIALIZED_TERMINAL_STATE_FORMAT,
@@ -141,8 +148,9 @@ export class SerializedTerminalStateTracker {
     const runtime = this.createRuntime(cols, rows, this.scrollback);
     this.terminal = runtime.terminal;
     this.serializeAddon = runtime.serializeAddon;
-    this.colorStateSubscription = subscribeToTerminalColorRequests(this.terminal, () => {
+    this.colorStateSubscription = subscribeToTerminalColorRequests(this.terminal, (requests) => {
       this.colorStateTouched = true;
+      applyTerminalCurrentColorRequests(this.currentColors, requests);
     });
     this.refreshCachedState();
 
@@ -296,6 +304,28 @@ export class SerializedTerminalStateTracker {
       this.refreshCachedState();
     }
     return this.getSerializedState();
+  }
+
+  /** Captures an ephemeral live bootstrap, not a durable journal checkpoint. */
+  public async captureCurrentState(): Promise<TerminalCurrentState> {
+    if (this.disposed) throw new Error('Cannot capture a disposed terminal state tracker.');
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteBatch = this.takePendingWriteBatch();
+    let state: TerminalCurrentState | undefined;
+    let captureError: unknown;
+    this.enqueueOperation(async () => {
+      await this.drainWriteData(pendingWriteBatch.data, 'none', pendingWriteBatch.outputSequence);
+      try {
+        state = captureTerminalCurrentState(this.terminal, this.currentColors);
+      } catch (error) {
+        captureError = error;
+      }
+    });
+    await this.operationChain;
+    this.throwIfOperationFailed();
+    if (captureError) throw captureError;
+    if (this.disposed || !state) throw new Error('Terminal state capture did not complete.');
+    return state;
   }
 
   public async flushValidatedCheckpoint(): Promise<SerializedTerminalCheckpointValidationResult> {
@@ -497,6 +527,9 @@ export class SerializedTerminalStateTracker {
       rows,
       scrollback
     });
+    // Retain an unfinished clipboard sequence for a future Webview projection;
+    // only the Webview's existing focused handler may perform the actual copy.
+    terminal.parser.registerOscHandler(52, () => false);
     const serializeAddon = new SerializeAddon();
     terminal.loadAddon(serializeAddon as never);
     return {
@@ -637,7 +670,7 @@ function readXtermRuntime(terminal: HeadlessTerminal): XtermRuntime | undefined 
 
 function subscribeToTerminalColorRequests(
   terminal: HeadlessTerminal,
-  listener: () => void
+  listener: (requests: unknown) => void
 ): { dispose(): void } | undefined {
   const core = asRecord(asRecord(terminal)?._core);
   const input = asRecord(core?._inputHandler);

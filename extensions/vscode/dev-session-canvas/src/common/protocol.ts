@@ -747,6 +747,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       type: 'webview/ready';
       payload?: { capabilities?: {
         terminalReadSettlementV1?: true;
+        terminalCurrentStateV1?: true;
         terminalLocalSettlementV1?: true;
         terminalLocalOutputCreditV1?: true;
         terminalAvailableReceiptV1?: true;
@@ -988,6 +989,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         readId: string;
         requestId: string;
         afterRevision: number;
+        stateOffset?: number;
       };
     }
   | {
@@ -1650,15 +1652,18 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     }
     const capabilities = isRecord(value.payload.capabilities) ? value.payload.capabilities : {};
     const remote = capabilities.terminalReadSettlementV1;
+    const currentState = capabilities.terminalCurrentStateV1;
     const local = capabilities.terminalLocalSettlementV1;
     const localCredit = capabilities.terminalLocalOutputCreditV1;
     const availableReceipt = capabilities.terminalAvailableReceiptV1;
     if ((remote !== undefined && remote !== true) || (local !== undefined && local !== true) ||
+        (currentState !== undefined && currentState !== true) ||
         (availableReceipt !== undefined && availableReceipt !== true) ||
         (localCredit !== undefined && localCredit !== true)) return null;
-    return remote === true || local === true || availableReceipt === true || localCredit === true
+    return remote === true || currentState === true || local === true || availableReceipt === true || localCredit === true
       ? { type: value.type, payload: { capabilities: {
           ...(remote === true ? { terminalReadSettlementV1: true as const } : {}),
+          ...(currentState === true ? { terminalCurrentStateV1: true as const } : {}),
           ...(local === true ? { terminalLocalSettlementV1: true as const } : {}),
           ...(localCredit === true ? { terminalLocalOutputCreditV1: true as const } : {}),
           ...(availableReceipt === true ? { terminalAvailableReceiptV1: true as const } : {})
@@ -1961,11 +1966,14 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       return { type: value.type, payload: { ...identity, ...(outcome ? { outcome } : {}) } };
     }
     const afterRevision = payload.afterRevision;
+    const stateOffset = payload.stateOffset;
     if (typeof payload.requestId !== 'string' || !payload.requestId || payload.requestId.length > 256 ||
+        (stateOffset !== undefined && (typeof stateOffset !== 'number' || !Number.isSafeInteger(stateOffset) || stateOffset < 0)) ||
         typeof afterRevision !== 'number' || !Number.isSafeInteger(afterRevision) || afterRevision < 0) {
       return null;
     }
-    return { type: value.type, payload: { ...identity, requestId: payload.requestId, afterRevision } };
+    return { type: value.type, payload: { ...identity, requestId: payload.requestId, afterRevision,
+      ...(stateOffset !== undefined ? { stateOffset } : {}) } };
   }
 
   if (value.type === 'webview/executionTerminalAvailableReceived') {

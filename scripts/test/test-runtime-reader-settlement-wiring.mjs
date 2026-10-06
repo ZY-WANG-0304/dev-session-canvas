@@ -18,6 +18,7 @@ const bundled = await esbuild.build({
       export { RuntimeSupervisorServer } from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain';
       export { TerminalPagedProjection } from './extensions/vscode/dev-session-canvas/src/webview/terminalPagedProjection';
       export { encodeOutputFrame } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
+      export { restoreTerminalCurrentState } from './extensions/vscode/dev-session-canvas/src/common/terminalCurrentState';
     `,
     resolveDir: process.cwd(), sourcefile: 'runtime-reader-settlement-wiring-entry.ts'
   },
@@ -71,7 +72,8 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   path.resolve('scripts/test/runtime-reader-settlement-wiring.cjs'), path.resolve('scripts/test')
 );
 const { CanvasPanelManager, RuntimeTerminalReadRelay, TerminalAvailableNotifications, RuntimeSupervisorClient, parseWebviewMessage,
-  TerminalProjectionRefreshScheduler, RuntimeSupervisorServer, TerminalPagedProjection, encodeOutputFrame } = loaded.exports;
+  TerminalProjectionRefreshScheduler, RuntimeSupervisorServer, TerminalPagedProjection, encodeOutputFrame,
+  restoreTerminalCurrentState } = loaded.exports;
 const mode = 'final-application-v1';
 const clients = new Set();
 
@@ -128,6 +130,7 @@ async function controlledClient(options = {}) {
       readId: `read-${++nextRead}`, sessionId: params.sessionId, authorityId: params.authorityId,
       checkpoint: checkpoint(params.sessionId, params.authorityId, options.checkpointRevision ?? 0),
       headRevision: options.headRevision ?? options.checkpointRevision ?? 0,
+      ...(params.currentState ? { currentState: { format: params.currentState, length: options.currentStateData.length } } : {}),
       ...(params.settlementMode && options.echoMode !== false ? { settlementMode: params.settlementMode } : {})
     };
   }
@@ -140,10 +143,16 @@ async function controlledClient(options = {}) {
     if (request.method === 'hello') return {
       serverVersion: 1, pid: 1, runtimeBackend: 'legacy-detached', runtimeGuarantee: 'best-effort',
       capabilities: { terminalPagedReadV1: true, terminalPagedCompletionV1: true,
+        ...(options.currentStateCapability ? { terminalCurrentStateV1: true } : {}),
         ...(options.helloCapability !== false ? { terminalReadSettlementV1: true } : {}) }
     };
     if (request.method === 'openTerminalRead') return descriptor(params);
     if (request.method === 'readTerminalPage') {
+      if (params.stateOffset !== undefined) {
+        return { ...params, revision: params.afterRevision, headRevision: options.headRevision ?? params.afterRevision,
+          events: [], stateChunk: { offset: params.stateOffset,
+            data: options.currentStateData.slice(params.stateOffset, params.stateOffset + 8192) } };
+      }
       const headRevision = options.headRevision ?? params.afterRevision;
       const events = Array.from({ length: headRevision - params.afterRevision }, (_, index) => ({
         type: 'output', revision: params.afterRevision + index + 1, createdAtMs: 1, data: `tail-${index}`
@@ -231,7 +240,8 @@ async function fixture(options = {}) {
   }
   function ready(surface = 'editor', capability = options.readyCapability !== false, lifecycle) {
     host.activeSurface = surface;
-    send(surface, 'webview/ready', capability ? { capabilities: { terminalReadSettlementV1: true } } : undefined, lifecycle);
+    send(surface, 'webview/ready', capability ? { capabilities: { terminalReadSettlementV1: true,
+      ...(options.currentStateReady ? { terminalCurrentStateV1: true } : {}) } } : undefined, lifecycle);
   }
   async function open(surface = 'editor') {
     host.activeSurface = surface;
@@ -284,6 +294,53 @@ test('Host requests the negotiated mode and refuses a descriptor without its ech
   const rejected = await fixture({ echoMode: false });
   await assert.rejects(rejected.open());
   assert.equal(rejected.posted.filter(entry => entry.message.type === 'host/executionSnapshot').length, 0);
+});
+
+test('Host forwards current state chunks without acknowledging the bootstrap before application', async () => {
+  const data = JSON.stringify({ format: 'xterm-current-state-v1', cells: 'x'.repeat(9000) });
+  const f = await fixture({ currentStateCapability: true, currentStateReady: true,
+    currentStateData: data, checkpointRevision: 71, headRevision: 71 });
+  const read = await f.open();
+  assert.equal(f.rpc('openTerminalRead')[0].params.currentState, 'xterm-current-state-v1');
+  assert.equal(read.checkpoint.revision, 71);
+  assert.equal(read.currentState.length, data.length);
+  const base = { nodeId: 'terminal-1', kind: 'terminal', executionSessionId: read.sessionId,
+    authorityId: read.authorityId, readId: read.readId, afterRevision: 71 };
+  for (const offset of [0, 8192]) {
+    f.send('editor', 'webview/readExecutionTerminalPage', { ...base, requestId: `state-${offset}`, stateOffset: offset });
+    await f.host.waitForPendingRuntimeSupervisorOperations();
+    const response = f.posted.filter(entry => entry.message.type === 'host/executionTerminalPage').at(-1).message.payload;
+    assert.equal(response.page.stateChunk.offset, offset);
+    assert.equal(response.page.stateChunk.data, data.slice(offset, offset + 8192));
+    assert.equal(f.rpc('readTerminalPage').at(-1).params.stateOffset, offset);
+    assert.equal(f.relay.has('editor:terminal:terminal-1', read.sessionId), false,
+      'Delivery of bytes is not application of the current terminal model.');
+  }
+  f.send('editor', 'webview/readExecutionTerminalPage', { ...base, requestId: 'after-import' });
+  await f.host.waitForPendingRuntimeSupervisorOperations();
+  assert.equal(f.relay.has('editor:terminal:terminal-1', read.sessionId), true);
+  assert.equal(f.rpc('readTerminalPage').at(-1).params.stateOffset, undefined);
+  await f.closeMessage('editor', read, { kind: 'cancelled', reason: 'test-finished' });
+});
+
+for (const missing of ['currentStateCapability', 'currentStateReady']) {
+  test(`Host keeps legacy bootstrap when ${missing} is absent`, async () => {
+    const f = await fixture({ currentStateCapability: true, currentStateReady: true,
+      currentStateData: '{}', [missing]: false });
+    const read = await f.open();
+    assert.equal(read.currentState, undefined);
+    assert.equal(f.rpc('openTerminalRead')[0].params.currentState, undefined);
+    await f.closeMessage('editor', read, { kind: 'cancelled', reason: 'test-finished' });
+  });
+}
+
+test('Host cancels an unfinished state transfer when its Webview capability changes', async () => {
+  const f = await fixture({ currentStateCapability: true, currentStateReady: true, currentStateData: '{}' });
+  const read = await f.open();
+  f.send('editor', 'webview/ready', { capabilities: { terminalReadSettlementV1: true } });
+  await until(() => f.rpc('closeTerminalRead').length === 1, 'state reader cancellation');
+  assert.equal(f.rpc('closeTerminalRead')[0].params.readId, read.readId);
+  assert.equal(f.rpc('closeTerminalRead')[0].params.outcome.kind, 'cancelled');
 });
 
 test('wrong frame and complete-but-wrong reader identities cannot close the current reader', async () => {
@@ -400,16 +457,20 @@ test('client references and local release notification remain pending until the 
   const gate = deferred();
   const f = await fixture({ handle: request => request.method === 'closeTerminalRead' ? gate.promise : undefined });
   const read = await f.open();
+  assert.equal(f.relay.usesSession(read.sessionId), true, 'an active reader prevents historical cleanup');
+  assert.equal(f.relay.usesSession('unrelated-session'), false);
   await f.final();
   const closing = f.host.closeExecutionTerminalRead('editor', f.payload(read));
   await until(() => f.rpc('closeTerminalRead').length === 1, 'close RPC');
   assert.equal(f.relay.usesClient(f.client), true);
+  assert.equal(f.relay.usesSession(read.sessionId), true, 'a releasing reader still belongs to its original session');
   assert.equal(f.released.length, 0);
   f.relay.closeMatching(() => true);
   assert.equal(f.rpc('closeTerminalRead').length, 1);
   gate.resolve({ ok: true, settlement: 'unconfirmed' });
   assert.deepEqual(await closing, { ok: true, settlement: 'unconfirmed' });
   assert.equal(f.relay.usesClient(f.client), false);
+  assert.equal(f.relay.usesSession(read.sessionId), false, 'only release completion removes the session reference');
   assert.equal(f.released.length, 1);
   assert.equal(f.diagnostics.some(entry => entry.name === 'runtime/terminalReadSettled'), false);
   assert.equal(f.diagnostics.some(entry => entry.name === 'runtime/terminalReadSettlementUnconfirmed'), true);
@@ -429,23 +490,30 @@ test('connection loss yields unconfirmed without reconnecting or forwarding the 
 
 test('an in-flight open cancelled by a new frame closes its original descriptor once it arrives', async () => {
   const gate = deferred();
+  const closeGate = deferred();
   let opened;
   const f = await fixture({ handle: (request, descriptor) => {
     if (request.method === 'openTerminalRead') { opened = descriptor(request.params); return gate.promise; }
+    if (request.method === 'closeTerminalRead') return closeGate.promise;
   } });
   const opening = f.open();
   await until(() => opened !== undefined, 'open RPC');
+  assert.equal(f.relay.usesSession(opened.sessionId), true, 'an unresolved open prevents historical cleanup');
   f.ready('editor', true, { ...f.host.getSurfaceLifecycleIdentity('editor'), frameId: 'editor-frame-2' });
   assert.equal(f.rpc('closeTerminalRead').length, 0);
+  assert.equal(f.relay.usesSession(opened.sessionId), true, 'cancelling an unresolved open does not release its session');
   gate.resolve(opened);
-  assert.equal(await opening, undefined);
   await until(() => f.rpc('closeTerminalRead').length === 1, 'late descriptor cancellation');
+  assert.equal(f.relay.usesSession(opened.sessionId), true, 'the late descriptor remains owned while close is pending');
   const close = f.rpc('closeTerminalRead')[0].params;
   assert.equal(close.readId, opened.readId);
   assert.equal(close.sessionId, opened.sessionId);
   assert.equal(close.authorityId, opened.authorityId);
   assert.equal(close.outcome.kind, 'cancelled');
   assert.ok(close.outcome.reason);
+  closeGate.resolve({ ok: true, settlement: 'recorded' });
+  assert.equal(await opening, undefined);
+  assert.equal(f.relay.usesSession(opened.sessionId), false);
   assert.equal(f.posted.filter(entry => entry.message.type === 'host/executionSnapshot').length, 0);
 });
 
@@ -480,11 +548,15 @@ test('two surfaces retain independent reader identities and only close their own
   assert.deepEqual(f.rpc('closeTerminalRead')[1].params.outcome, { kind: 'cancelled', reason: 'panel-hidden' });
 });
 
-test('real Supervisor, client, Host and headless projection settle only after the actual tail write callback', async () => {
+const endToEndStateLengths = [];
+for (const historyRepeats of [0, 1, 400]) {
+test(`real Supervisor, client, Host and headless projection preserve tail application (current state history=${historyRepeats})`, async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-reader-wire-'));
   const deadlines = new Set();
   const scheduler = {
-    now: () => Date.now(), scheduleTask: callback => queueMicrotask(callback),
+    // Match the production contract: drain callbacks yield to provider frames
+    // instead of recursively running before the transport can deliver them.
+    now: () => Date.now(), scheduleTask: callback => setImmediate(callback),
     scheduleDeadline(at, callback) {
       const timer = setTimeout(() => { deadlines.delete(timer); callback(); }, Math.max(0, at - Date.now()));
       deadlines.add(timer);
@@ -551,6 +623,8 @@ test('real Supervisor, client, Host and headless projection settle only after th
   const stateOperations = [];
   const exits = [];
   const callbacks = [];
+  const capturedRevision = historyRepeats ? 1 : 0;
+  const finalRevision = capturedRevision + 1;
   try {
     remote = await controlledClient({ handle: async request => {
       await server.handleRequest(serverSocket, request);
@@ -567,7 +641,20 @@ test('real Supervisor, client, Host and headless projection settle only after th
     });
     session = server.sessions.get(live.sessionId);
     assert.equal(live.capabilities.terminalReadSettlementV1, true);
-    f = await fixture({ remote, sessionSnapshot: live, runtimeStoragePath: directory, onHostMessage: message => {
+    if (historyRepeats) {
+      provider.output('\x1b[2J\x1b[HOLD\x1b]4;1;#112233\x07'.repeat(historyRepeats) + '\x1b[2J\x1b[H\x1b[38;2;1;2;');
+      await until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'authoritative prefix consumed');
+      assert.equal((await session.terminalStateTracker.flushValidatedCheckpoint()).eligible, false,
+        'This is a current state restore of a model that the old ANSI checkpoint cannot represent.');
+    }
+    const pageRequests = [];
+    const readJournalPage = server.readJournalPage.bind(server);
+    server.readJournalPage = (consumer, journal, afterRevision, throughRevision) => {
+      pageRequests.push(afterRevision);
+      return readJournalPage(consumer, journal, afterRevision, throughRevision);
+    };
+    f = await fixture({ remote, currentStateReady: Boolean(historyRepeats),
+      sessionSnapshot: live, runtimeStoragePath: directory, onHostMessage: message => {
       const p = message.payload;
       if (message.type === 'host/executionSnapshot' && p.terminalRead) projection.start(p.terminalRead);
       if (message.type === 'host/executionTerminalAvailable') {
@@ -588,17 +675,26 @@ test('real Supervisor, client, Host and headless projection settle only after th
       }
     };
     projection = new TerminalPagedProjection({
-      request(read, afterRevision, requestId) {
+      request(read, afterRevision, requestId, stateOffset) {
         f.send('editor', 'webview/readExecutionTerminalPage', {
           nodeId: 'terminal-1', kind: 'terminal', executionSessionId: read.sessionId,
-          authorityId: read.authorityId, readId: read.readId, afterRevision, requestId
+          authorityId: read.authorityId, readId: read.readId, afterRevision, requestId,
+          ...(stateOffset !== undefined ? { stateOffset } : {})
         });
       },
       close(read, outcome) { f.send('editor', 'webview/closeExecutionTerminalRead', f.payload(read, outcome)); },
       checkpoint(read, current, done) {
+        assert.equal(historyRepeats, 0, 'A current-state descriptor must not apply its empty checkpoint.');
         terminal.write(read.checkpoint.serializedState.data, () => done(current()));
       },
-      events(events, current, done) {
+      currentState(read, state, current, done) {
+        assert.equal(read.checkpoint.revision, capturedRevision);
+        assert.deepEqual(state.colors.overrides, { 1: [17, 34, 51] });
+        assert.deepEqual(pageRequests, [], 'No journal must be read while transferring the state.');
+        restoreTerminalCurrentState(terminal, state);
+        done(current());
+      },
+      events(events, _revision, current, done) {
         assert.equal(events.every(event => event.type === 'output'), true);
         terminal.write(events.map(event => event.data).join(''), () => {
           if (events.length) {
@@ -611,16 +707,20 @@ test('real Supervisor, client, Host and headless projection settle only after th
     });
     const read = await f.open();
     assert.equal(read.settlementMode, mode);
+    if (historyRepeats) {
+      assert.equal(read.checkpoint.revision, capturedRevision);
+      endToEndStateLengths.push(read.currentState.length);
+    }
     await until(() => initialPageApplied, 'initial real xterm page callback');
-    provider.output('last-line\r\n\x1b[3;7H');
-    await until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'Supervisor tail consumption');
+    provider.output(`${historyRepeats ? '3m' : ''}last-line\r\n\x1b[3;7H`);
+    await until(() => session.ownedExecution.snapshot().adapter.consumedThrough === finalRevision, 'Supervisor tail consumption');
     provider.finish();
     await until(() => releaseTail !== undefined, 'actual headless tail write callback');
     const messages = f.posted.map(entry => entry.message);
     const finalIndex = messages.findIndex(message => message.type === 'host/executionTerminalAvailable' &&
-      message.payload.finalRevision === 1);
+      message.payload.finalRevision === finalRevision);
     const tailIndex = messages.findIndex(message => message.type === 'host/executionTerminalPage' &&
-      message.payload.page?.revision === 1);
+      message.payload.page?.revision === finalRevision);
     assert.ok(finalIndex >= 0 && tailIndex > finalIndex, 'fixed final must reach the projection before the tail page');
     assert.deepEqual(callbacks, ['tail-write-complete']);
     assert.equal(terminal.buffer.active.getLine(0).translateToString(true), 'last-line');
@@ -635,7 +735,8 @@ test('real Supervisor, client, Host and headless projection settle only after th
     await Promise.all(stateOperations);
     await f.host.waitForPendingRuntimeSupervisorOperations();
     await until(() => !server.sessions.has(live.sessionId), 'completed Supervisor session retirement');
-    assert.deepEqual(remote.rpc('closeTerminalRead').map(request => request.params.outcome), [{ kind: 'applied', finalRevision: 1 }]);
+    assert.deepEqual(remote.rpc('closeTerminalRead').map(request => request.params.outcome), [{ kind: 'applied', finalRevision }]);
+    assert.ok(pageRequests.every(revision => revision >= capturedRevision), 'Never replay the journal before the captured state.');
     assert.equal(session.ownedReaderResults.applied, 1);
     assert.equal(session.ownedReaderResults.cancelled, 0);
     assert.equal(session.ownedReaderResults.lost, 0);
@@ -660,6 +761,13 @@ test('real Supervisor, client, Host and headless projection settle only after th
     terminal.dispose();
     await rm(directory, { recursive: true, force: true });
   }
+});
+}
+
+test('same state uses identical end-to-end transfer size after 1 and 400 prior redraws', () => {
+  assert.equal(endToEndStateLengths.length, 2);
+  assert.equal(endToEndStateLengths[0], endToEndStateLengths[1]);
+  console.log(`end-to-end current state 1/400 redraws: ${endToEndStateLengths.join('/')} characters; pre-cut journal reads=0`);
 });
 
 try {

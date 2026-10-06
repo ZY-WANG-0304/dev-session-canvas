@@ -63,7 +63,8 @@ for (const file of ['extension.js', 'runtime-supervisor.js', `${platformName}-ex
 }
 for (const file of ['scripts/smoke/run-vscode-execution-candidate.mjs',
   'tests/vscode-smoke/execution-candidate-tests.cjs',
-  'tests/vscode-smoke/fixtures/execution-candidate-subject.cjs']) {
+  'tests/vscode-smoke/fixtures/execution-candidate-subject.cjs',
+  'tests/vscode-smoke/test-helpers.cjs']) {
   sourceHashes[file] = hash(await fs.readFile(path.join(projectRoot, file)));
 }
 if (installedInput) {
@@ -189,6 +190,7 @@ async function runCapacityCalibration() {
     'src/supervisor/terminalSessionJournal.ts'];
   for (const file of ['tests/vscode-smoke/execution-capacity-tests.cjs',
     'tests/vscode-smoke/fixtures/execution-capacity-subject.cjs',
+    'tests/vscode-smoke/test-helpers.cjs',
     ...helperSources.map(file => `extensions/vscode/dev-session-canvas/${file}`)]) {
     sourceHashes[file] = hash(await fs.readFile(path.join(projectRoot, file)));
   }

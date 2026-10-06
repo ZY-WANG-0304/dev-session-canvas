@@ -7,7 +7,7 @@ import esbuild from 'esbuild';
 const require = createRequire(import.meta.url);
 const candidateProfile = 'linux-owner-v1-candidate';
 const storageRoot = '/tmp/dsc startup"%';
-const candidateBase = path.join(storageRoot, 'runtime-supervisor-generations', 'terminal-exit-v1');
+const candidateBase = path.join(storageRoot, 'runtime-supervisor-generations', 'terminal-current-state-linux-v1');
 const stockBase = path.join(storageRoot, 'runtime-supervisor-generations', 'terminal-stream-v1');
 const startupScripts = {
   supervisorScriptPath: '/test scripts/supervisor"%.js',

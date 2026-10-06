@@ -55,11 +55,16 @@ const snapshotReceipts = () => {
 };
 
 test('snapshot-only requires an explicit frozen package while original Runtime package remains unchanged', () => {
-  assert.deepEqual(selectReloadInput({}), { mode: 'live-runtime', expectedSha256: fixedVsixSha256 });
+  assert.deepEqual(selectReloadInput({}), { mode: 'live-runtime', currentState: false, expectedSha256: fixedVsixSha256 });
   assert.deepEqual(selectReloadInput({ mode: 'snapshot-only', 'expected-vsix-sha256': 'b'.repeat(64) }),
-    { mode: 'snapshot-only', expectedSha256: 'b'.repeat(64) });
+    { mode: 'snapshot-only', currentState: false, expectedSha256: 'b'.repeat(64) });
+  assert.deepEqual(selectReloadInput({ mode: 'live-runtime', 'current-state': true, 'expected-vsix-sha256': 'c'.repeat(64) }),
+    { mode: 'live-runtime', currentState: true, expectedSha256: 'c'.repeat(64) });
   for (const value of [{ mode: 'snapshot-only' }, { mode: 'snapshot-only', 'expected-vsix-sha256': 'unknown' },
-    { mode: 'live-runtime', 'expected-vsix-sha256': 'b'.repeat(64) }, { mode: 'other' }]) {
+    { mode: 'live-runtime', 'expected-vsix-sha256': 'b'.repeat(64) },
+    { mode: 'live-runtime', 'current-state': true },
+    { mode: 'live-runtime', 'current-state': true, 'expected-vsix-sha256': 'unknown' },
+    { mode: 'snapshot-only', 'current-state': true, 'expected-vsix-sha256': 'b'.repeat(64) }, { mode: 'other' }]) {
     assert.throws(() => selectReloadInput(value));
   }
 });

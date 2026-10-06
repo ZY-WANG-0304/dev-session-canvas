@@ -18,11 +18,16 @@ const read = async file => JSON.parse(await fs.readFile(file, 'utf8'));
 
 export function selectReloadInput(values) {
   const mode = values.mode ?? 'live-runtime';
+  const currentState = values['current-state'] === true;
   assert(['live-runtime', 'snapshot-only'].includes(mode), 'Choose an explicit supported reload mode.');
+  assert(!currentState || mode === 'live-runtime', 'Current-state reload requires live-runtime mode.');
   if (mode === 'snapshot-only') assert.match(values['expected-vsix-sha256'] ?? '', /^[a-f0-9]{64}$/,
     'Snapshot-only requires the explicitly frozen package SHA256.');
+  else if (currentState) assert.match(values['expected-vsix-sha256'] ?? '', /^[a-f0-9]{64}$/,
+    'Current-state reload requires the explicitly selected package SHA256.');
   else assert.equal(values['expected-vsix-sha256'], undefined, 'The original Runtime package remains fixed.');
-  return { mode, expectedSha256: mode === 'snapshot-only' ? values['expected-vsix-sha256'] : fixedVsixSha256 };
+  return { mode, currentState, expectedSha256: mode === 'snapshot-only' || currentState
+    ? values['expected-vsix-sha256'] : fixedVsixSha256 };
 }
 
 export async function prepareReloadDriver({ projectRoot, targetRoot, input, runtime }) {
@@ -69,7 +74,7 @@ export async function prepareReloadDriver({ projectRoot, targetRoot, input, runt
 
 export async function main(args = process.argv.slice(2)) {
   const { values } = parseArgs({ args, options: { output: { type: 'string' }, 'installed-vsix': { type: 'string' },
-    mode: { type: 'string' }, 'expected-vsix-sha256': { type: 'string' } } });
+    mode: { type: 'string' }, 'expected-vsix-sha256': { type: 'string' }, 'current-state': { type: 'boolean', default: false } } });
   const selection = selectReloadInput(values);
   assert.equal(process.platform, 'linux');
   assert.equal(process.arch, 'x64');
@@ -88,9 +93,9 @@ export async function main(args = process.argv.slice(2)) {
   const nonce = randomUUID();
   const input = await prepareInstalledVsixInput(values['installed-vsix'], output);
   assert.equal(input.vsixSha256, selection.expectedSha256, 'Use exactly the explicitly frozen Linux installed package.');
-  const vscodeRoot = path.join(projectRoot, '.vscode-test/vscode-linux-x64-1.117.0');
-  const vscodeExecutablePath = await fs.realpath(path.join(vscodeRoot, 'code'));
-  const product = await read(path.join(vscodeRoot, 'resources/app/product.json'));
+  const vscodeExecutablePath = await fs.realpath(process.env.DEV_SESSION_CANVAS_VSCODE_EXECUTABLE ??
+    path.join(projectRoot, '.vscode-test/vscode-linux-x64-1.117.0', 'code'));
+  const product = await read(path.join(path.dirname(vscodeExecutablePath), 'resources/app/product.json'));
   assert.equal(product.commit, '10c8e557c8b9f9ed0a87f61f1c9a44bde731c409');
   const runtime = await prepareRuntime({ projectRoot, debugRoot: path.join(output, 'runtime'),
     runtimeDirName: `dsc-reload-${nonce}`,
@@ -119,8 +124,9 @@ export async function main(args = process.argv.slice(2)) {
   assert(Date.now() < deadlineAt - 60000, 'Preparation consumed the fixed run budget; do not launch a shortened workload.');
   const handle = await spawnPreparedVSCodeScenario({ projectRoot, runtime, workspacePath, vscodeExecutablePath,
     extensionDevelopmentPath: driverRoot, disableExtensions: false, disableWorkspaceTrust: true,
-    extensionTestsEnv: { DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1', DEV_SESSION_CANVAS_RELOAD_CONTROL: controlPath,
-      DEV_SESSION_CANVAS_INSTALLED_VSIX_EXPECTATION: driver.expectationPath,
+      extensionTestsEnv: { DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1', DEV_SESSION_CANVAS_RELOAD_CONTROL: controlPath,
+        ...(selection.currentState ? { DEV_SESSION_CANVAS_EXPECT_CURRENT_STATE: '1' } : {}),
+        DEV_SESSION_CANVAS_INSTALLED_VSIX_EXPECTATION: driver.expectationPath,
       DEV_SESSION_CANVAS_RELOAD_SUBJECT_NODE: process.execPath } });
   // Attach rejection handling immediately; early exit is evidence, never a relaunch trigger.
   const completion = handle.completed.then(() => ({ code: handle.child.exitCode, signal: handle.child.signalCode }),

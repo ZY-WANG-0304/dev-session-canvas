@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ExecutionOwnerLifecycle, type ExecutionOwnerOptions, type OwnedExecution, type OwnerCloseResult } from './executionOwnerLifecycle';
-import { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_INTERACTION_LIMITS,
+import { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_CANDIDATE_PROFILE, EXECUTION_INTERACTION_LIMITS,
   assertExecutionCandidateProfile, assertExecutionCandidateCapabilities, hasExecutionAdmissionCapacity, type ExecutionCandidateProfile,
   type AuthorityResult, type ExecutionIdentity, type LaunchSpec } from '../common/executionLifecycle';
 import type { ExecutionScheduler, InteractionObservation } from './executionSessionAdapter';
@@ -294,6 +294,8 @@ import { getWebviewHtml, getWebviewHtmlSnapshotForTest as buildWebviewHtmlSnapsh
 import { openCanvasExternalLink } from './linkOpenMode';
 import { RuntimeSupervisorClient, type StrictRuntimeDeleteObservation, type StrictRuntimeDeleteResult } from './runtimeSupervisorClient';
 import { RuntimeTerminalReadRelay } from './runtimeTerminalReadRelay';
+import { inspectStoppedLegacyRuntimeSession, type LegacyRuntimeHistoryEvidence } from './legacyRuntimeHistory';
+import { inspectRetiredNativeRuntimeNamespace } from './nativeRuntimeHistory';
 import { normalizeCompletedRuntimeHistory } from '../common/completedRuntimeHistory';
 import {
   CanvasTemplateStore,
@@ -702,6 +704,7 @@ interface CanvasSurfaceLifecycleState {
   terminalLocalSettlementV1?: true;
   terminalLocalOutputCreditV1?: true;
   terminalAvailableReceiptV1?: true;
+  terminalCurrentStateV1?: true;
 }
 
 interface CanvasTestDiagnosticEvent {
@@ -1181,6 +1184,15 @@ interface PersistedLiveRuntimeSession {
   kind?: ExecutionNodeKind;
 }
 
+type RuntimeHistoryEvidence = LegacyRuntimeHistoryEvidence | 'native-owner-absent';
+type NativeHistoryObservations = Map<string, Promise<RuntimeHistoryEvidence | undefined>>;
+
+interface RuntimeHistoryRetirement {
+  bindingKey: string;
+  isCurrent: () => boolean;
+  evidence: RuntimeHistoryEvidence;
+}
+
 interface StrictHostRuntimeDelete {
   readonly session: PersistedLiveRuntimeSession;
   readonly deadline: number;
@@ -1191,6 +1203,7 @@ interface StrictHostRuntimeDelete {
   finalizationComplete?: boolean;
   finalizationError?: string;
   finalizationUnconfirmed?: true;
+  attemptSettled?: true;
 }
 
 interface StartExecutionSessionOptions {
@@ -10498,7 +10511,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async prepareExecutionCandidateReplacement(
-    node: CanvasNodeSummary, kind: ExecutionNodeKind, token: number, client: RuntimeSupervisorClient
+    node: CanvasNodeSummary, kind: ExecutionNodeKind, token: number, client: RuntimeSupervisorClient,
+    retirement?: RuntimeHistoryRetirement
   ): Promise<() => { cols: number; rows: number } | undefined> {
     this.assertExecutionCandidateAdmission('live-runtime', client);
     const key = this.getExecutionSessionOperationKey(kind, node.id);
@@ -10509,7 +10523,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.state.nodes.some(current => current.id === node.id && current.kind === kind &&
         (previous ? this.isStrictRuntimeDeleteBindingCurrent(previous) : current.metadata?.[kind] === start.currentMetadata));
     if (!isCurrent()) throw new Error('Execution candidate launch was superseded.');
-    if (previous) await this.deleteRuntimeSupervisorSessionStrict(previous, { allowRestart: false });
+    if (retirement) {
+      if (!previous || retirement.bindingKey !== this.strictRuntimeDeleteKey(previous) || !retirement.isCurrent()) {
+        throw new Error('Historical cleanup eligibility changed before replacement.');
+      }
+      this.recordRuntimeHistoryRetirement(previous, retirement);
+    } else if (previous) await this.deleteRuntimeSupervisorSessionStrict(previous, { allowRestart: false });
     this.assertExecutionCandidateAdmission('live-runtime', client);
     if (!isCurrent()) throw new Error('Execution candidate binding changed while deleting its predecessor.');
     if (previous) this.unbindRuntimeSession(previous.sessionId, previous.runtimeStoragePath, kind, previous.backendKind);
@@ -10518,6 +10537,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (!isCurrent()) throw new Error('Execution candidate launch was superseded.');
       return start?.viewport;
     };
+  }
+
+  private async prepareNativeHistoryReplacementPreflight(
+    node: CanvasNodeSummary, kind: ExecutionNodeKind, token: number
+  ): Promise<RuntimeHistoryRetirement | undefined> {
+    const previous = this.getPersistedLiveRuntimeSessionForNode(node);
+    if (!previous || previous.backendKind !== 'legacy-detached' || !previous.runtimeStoragePath
+      || resolveRuntimeSupervisorExecutionProfile(path.join(this.resolveRuntimeStoragePath(previous.runtimeStoragePath),
+        'runtime-supervisor')) !== EXECUTION_CANDIDATE_PROFILE) return undefined;
+    const scheduler = this.getExecutionCandidateScheduler();
+    const retirement = await this.prepareStoppedLegacyHistoryRetirement(previous,
+      scheduler.now() + EXECUTION_CANDIDATE_BUDGETS.boundaryMs, undefined, true);
+    if (!retirement) return undefined;
+    // A new owner cannot restore this native execution. Keep the observation only in this unsubmitted start.
+    return { ...retirement, isCurrent: () => retirement.isCurrent()
+      && this.isExecutionSessionOperationCurrent(kind, node.id, token) };
   }
 
   private async withExecutionCandidateStart(kind: ExecutionNodeKind, nodeId: string, run: () => Promise<void>): Promise<void> {
@@ -11120,6 +11155,75 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return record.observation?.current() ?? record.result;
   }
 
+  private canRetryUnsubmittedRuntimeDelete(record: StrictHostRuntimeDelete): boolean {
+    const result = this.currentStrictRuntimeDeleteResult(record);
+    return record.attemptSettled === true && !record.finalization && !record.finalizationError &&
+      !record.finalizationUnconfirmed && (result?.kind === 'failed' || result?.kind === 'unconfirmed') &&
+      (!record.observation || (record.observation.submitted === false && record.observation.attemptSettled === true));
+  }
+
+  private async prepareStoppedLegacyHistoryRetirement(
+    session: PersistedLiveRuntimeSession, deadline: number,
+    nativeObservations?: NativeHistoryObservations, forReplacement = false
+  ): Promise<RuntimeHistoryRetirement | undefined> {
+    if (!['systemd-user', 'legacy-detached'].includes(session.backendKind)
+      || !session.nodeId || !session.kind || !session.runtimeStoragePath) return undefined;
+    const nativeHistory = session.backendKind === 'legacy-detached'
+      && resolveRuntimeSupervisorExecutionProfile(path.join(this.resolveRuntimeStoragePath(session.runtimeStoragePath),
+        'runtime-supervisor')) === EXECUTION_CANDIDATE_PROFILE;
+    if (forReplacement && !nativeHistory) return undefined;
+    const { nodeId, kind } = session;
+    const node = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
+    const metadata = node?.metadata?.[kind];
+    const key = this.getExecutionSessionOperationKey(kind, nodeId);
+    const start = this.candidateRuntimeStarts?.get(key);
+    const eligible = (): boolean => {
+      const current = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
+      const deletion = this.strictRuntimeDeletes?.get(this.strictRuntimeDeleteKey(session));
+      return (forReplacement ? Boolean(start) && !this.strictRuntimeMutationBoundary
+        : this.getExecutionCandidateScheduler().now() < deadline) && !this.nonNativeDeactivationReport &&
+        current?.metadata?.[kind] === metadata && current?.status === 'history-restored' &&
+        metadata?.attachmentState === 'history-restored' && metadata.liveSession === false &&
+        this.isStrictRuntimeDeleteBindingCurrent(session) && this.candidateRuntimeStarts?.get(key) === start && !start?.submitted &&
+        !this.getExecutionSessions(kind).has(nodeId) && !this.nonNativeExecutionOwner?.get(key) &&
+        !this.nonNativeHostExecutions.get(key) && !this.terminalReadRelay.usesSession(session.sessionId) &&
+        !this.pendingTerminalProjectionRefreshes.has(this.getTerminalProjectionRefreshKey(kind, nodeId, session.sessionId)) &&
+        !this.pendingRuntimeSupervisorStateCallbacks?.size &&
+        (!deletion || this.canRetryUnsubmittedRuntimeDelete(deletion));
+    };
+    if (!eligible() || this.getExecutionCandidateScheduler().now() >= deadline) return undefined;
+    const backend = this.getRuntimeHostBackend(session.backendKind, this.resolveRuntimeStoragePath(session.runtimeStoragePath));
+    const inspect = (): Promise<RuntimeHistoryEvidence | undefined> => new Promise(resolve => {
+      const controller = new AbortController();
+      const cancelDeadline = this.getExecutionCandidateScheduler().scheduleDeadline(deadline, () => {
+        controller.abort();
+        resolve(undefined);
+      });
+      const observation = nativeHistory
+        ? inspectRetiredNativeRuntimeNamespace(backend, controller.signal)
+        : inspectStoppedLegacyRuntimeSession(backend, { sessionId: session.sessionId, kind }, controller.signal);
+      void observation
+        .then(resolve, () => resolve(undefined)).finally(cancelDeadline);
+    });
+    const namespaceKey = this.resolveRuntimeStoragePath(session.runtimeStoragePath);
+    let observation = nativeHistory ? nativeObservations?.get(namespaceKey) : undefined;
+    if (!observation) {
+      observation = inspect();
+      if (nativeHistory) nativeObservations?.set(namespaceKey, observation);
+    }
+    const evidence = await observation;
+    return evidence && this.getExecutionCandidateScheduler().now() < deadline && eligible()
+      ? { bindingKey: this.strictRuntimeDeleteKey(session), isCurrent: eligible, evidence } : undefined;
+  }
+
+  private recordRuntimeHistoryRetirement(session: PersistedLiveRuntimeSession, retirement: RuntimeHistoryRetirement): void {
+    this.recordDiagnosticEvent('runtime/legacyHistoryRetired', {
+      nodeId: session.nodeId, kind: session.kind, sessionId: session.sessionId, runtimeStoragePath: session.runtimeStoragePath,
+      retirementEvidence: retirement.evidence,
+      reason: 'Original runtime absence permits local history cleanup; no session exit or EOF inferred; shared registry retained.'
+    });
+  }
+
   private observeStrictRuntimeDelete(
     session: PersistedLiveRuntimeSession,
     deadline: number,
@@ -11128,7 +11232,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const records = this.strictRuntimeDeletes ??= new Map();
     const key = this.strictRuntimeDeleteKey(session);
     const previous = records.get(key);
-    if (previous) {
+    if (previous && !this.canRetryUnsubmittedRuntimeDelete(previous)) {
       const current = this.currentStrictRuntimeDeleteResult(previous);
       return current ? Promise.resolve(current) : previous.first;
     }
@@ -11172,7 +11276,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         await record.finalization;
       }
       finish(result);
-    })().catch(error => finish({ kind: 'failed', reason: formatUnknownError(error) }));
+    })().catch(error => finish({ kind: 'failed', reason: formatUnknownError(error) }))
+      .finally(() => { record.attemptSettled = true; });
     return record.first;
   }
 
@@ -11193,14 +11298,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if ((result?.kind === 'legacy-acknowledged' || result?.kind === 'legacy-absent') &&
         (!record.session.nodeId || !this.isStrictRuntimeDeleteBindingCurrent(record.session))) this.strictRuntimeDeletes!.delete(key);
     }
-    const results = await Promise.all(sessions.map(async session => ({ session,
-      result: await this.observeStrictRuntimeDelete(session, deadline, preserveTerminalReads) })));
+    const nativeObservations: NativeHistoryObservations = new Map();
+    const results = await Promise.all(sessions.map(async session => {
+      const retirement = !preserveTerminalReads
+        ? await this.prepareStoppedLegacyHistoryRetirement(session, deadline, nativeObservations) : undefined;
+      return { session, retirement, result: retirement
+        ? { kind: 'legacy-history-retired' as const }
+        : await this.observeStrictRuntimeDelete(session, deadline, preserveTerminalReads) };
+    }));
+    // Other bindings may still have been awaiting evidence when this history was inspected.
+    for (const entry of results) {
+      if (entry.retirement && !entry.retirement.isCurrent()) {
+        entry.result = { kind: 'unconfirmed', reason: 'Historical cleanup eligibility changed before settlement.' };
+      }
+    }
     const failed = results.filter(({ session, result }) =>
       !this.isStrictRuntimeDeleteBindingCurrent(session) ||
-      (result.kind !== 'legacy-acknowledged' && result.kind !== 'legacy-absent'));
+      (result.kind !== 'legacy-acknowledged' && result.kind !== 'legacy-absent' && result.kind !== 'legacy-history-retired'));
     if (scheduler.now() >= deadline || failed.length) {
       throw new Error(`Runtime deletion did not complete on the original bindings: ${
         failed.length ? failed.map(({ session, result }) => `${session.sessionId}: ${result.kind}`).join(', ') : 'deadline expired'}`);
+    }
+    for (const { session, result, retirement } of results) {
+      if (result.kind === 'legacy-history-retired') this.recordRuntimeHistoryRetirement(session, retirement!);
     }
   }
 
@@ -12844,7 +12964,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private markSurfaceReady(
     surface: CanvasSurfaceLocation, lifecycle?: WebviewLifecycleIdentity,
     capabilities?: { terminalReadSettlementV1?: true; terminalLocalSettlementV1?: true;
-      terminalLocalOutputCreditV1?: true; terminalAvailableReceiptV1?: true }
+      terminalLocalOutputCreditV1?: true; terminalAvailableReceiptV1?: true; terminalCurrentStateV1?: true }
   ): void {
     this.clearTerminalAvailableNotifications(surface);
     if (this.surfaceLifecycle[surface].frameId !== lifecycle?.frameId ||
@@ -12853,7 +12973,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.cancelLocalExecutionReaders(surface, 'cancelled', 'surface-ready-changed');
     }
     if (this.surfaceLifecycle[surface].frameId !== lifecycle?.frameId ||
-        this.surfaceLifecycle[surface].terminalReadSettlementV1 !== capabilities?.terminalReadSettlementV1) {
+        this.surfaceLifecycle[surface].terminalReadSettlementV1 !== capabilities?.terminalReadSettlementV1 ||
+        this.surfaceLifecycle[surface].terminalCurrentStateV1 !== capabilities?.terminalCurrentStateV1) {
       this.terminalReadRelay.closeMatching((key) => key.startsWith(`${surface}:`));
     }
     this.clearPendingBootstrapHostMessages(surface);
@@ -12866,6 +12987,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       terminalLocalSettlementV1: capabilities?.terminalLocalSettlementV1,
       terminalLocalOutputCreditV1: capabilities?.terminalLocalOutputCreditV1,
       terminalAvailableReceiptV1: capabilities?.terminalAvailableReceiptV1,
+      terminalCurrentStateV1: capabilities?.terminalCurrentStateV1,
       bootstrapAck: false
     };
   }
@@ -15288,12 +15410,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
     const executionProfile = this.getExecutionCandidateProfile();
+    const historyRetirement = executionProfile
+      ? await this.prepareNativeHistoryReplacementPreflight(existingNode, 'agent', operationToken) : undefined;
     const { client, backend, runtimeStoragePath, fallbackReason } =
       await this.getPreferredRuntimeSupervisorClient(executionProfile ? { allowRestart: true } : {});
     const candidateSessionId = executionProfile ? randomUUID() : undefined;
     if (executionProfile) {
       try {
-        const currentViewport = await this.prepareExecutionCandidateReplacement(existingNode, 'agent', operationToken, client);
+        const currentViewport = await this.prepareExecutionCandidateReplacement(existingNode, 'agent', operationToken, client, historyRetirement);
         const viewport = currentViewport();
         if (viewport) { normalizedCols = viewport.cols; normalizedRows = viewport.rows; }
       }
@@ -15486,11 +15610,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const cwd = this.getExecutionNodeCwd(existingNode, 'terminal');
     const executionEnv = await this.resolveExecutionEnvironment('terminal', cwd);
     const executionProfile = this.getExecutionCandidateProfile();
+    const historyRetirement = executionProfile
+      ? await this.prepareNativeHistoryReplacementPreflight(existingNode, 'terminal', operationToken) : undefined;
     const { client, backend, runtimeStoragePath, fallbackReason } =
       await this.getPreferredRuntimeSupervisorClient(executionProfile ? { allowRestart: true } : {});
     const candidateSessionId = executionProfile ? randomUUID() : undefined;
     if (executionProfile) {
-      const currentViewport = await this.prepareExecutionCandidateReplacement(existingNode, 'terminal', operationToken, client);
+      const currentViewport = await this.prepareExecutionCandidateReplacement(existingNode, 'terminal', operationToken, client, historyRetirement);
       const viewport = currentViewport();
       if (viewport) { normalizedCols = viewport.cols; normalizedRows = viewport.rows; }
     }
@@ -21095,6 +21221,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const settlementMode = this.surfaceLifecycle[surface].terminalReadSettlementV1 === true &&
       session.terminalReadSettlementV1 === true && client.supportsTerminalReadSettlement()
       ? 'final-application-v1' as const : undefined;
+    const currentState = this.surfaceLifecycle[surface].terminalCurrentStateV1 === true &&
+      client.supportsTerminalCurrentState()
+      ? 'xterm-current-state-v1' as const : undefined;
     const descriptor = await this.terminalReadRelay.open(
       `${surface}:${kind}:${nodeId}`, client, session.sessionId, session.terminalAuthorityId, surface,
       (result) => {
@@ -21105,7 +21234,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
         this.retireLegacyRuntimeSupervisorClientIfUnused(
           this.getRuntimeHostBackend(session.runtimeBackend ?? 'legacy-detached', this.resolveRuntimeStoragePath(session.runtimeStoragePath)), client);
-      }, settlementMode
+      }, settlementMode, currentState
     );
     if (!descriptor) {
       return;
@@ -21131,7 +21260,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     this.recordDiagnosticEvent('runtime/terminalPagedReadOpened', {
       nodeId, kind, sessionId: session.sessionId, checkpointRevision: descriptor.checkpoint.revision,
-      headRevision: descriptor.headRevision, hostCachedEvents: session.terminalStream?.events.length ?? 0
+      headRevision: descriptor.headRevision, hostCachedEvents: session.terminalStream?.events.length ?? 0,
+      currentState: descriptor.currentState?.format, stateLength: descriptor.currentState?.length
     });
   }
 
@@ -21140,10 +21270,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     payload: Extract<WebviewToHostMessage, { type: 'webview/readExecutionTerminalPage' }>['payload']
   ): Promise<void> {
     const lifecycle = this.getSurfaceLifecycleIdentity(surface);
-    const { nodeId, kind, executionSessionId, authorityId, readId, requestId, afterRevision } = payload;
+    const { nodeId, kind, executionSessionId, authorityId, readId, requestId, afterRevision, stateOffset } = payload;
     try {
       const page = await this.terminalReadRelay.read(`${surface}:${kind}:${nodeId}`, {
-        sessionId: executionSessionId, authorityId, readId, afterRevision
+        sessionId: executionSessionId, authorityId, readId, afterRevision,
+        ...(stateOffset !== undefined ? { stateOffset } : {})
       });
       if (page) {
         this.postMessage({ type: 'host/executionTerminalPage', lifecycle, payload: {
@@ -21151,7 +21282,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         } }, surface);
         this.recordDiagnosticEvent('runtime/terminalPagePosted', {
           nodeId, kind, sessionId: executionSessionId, afterRevision, revision: page.revision,
-          headRevision: page.headRevision, events: page.events.length, bytes: Buffer.byteLength(JSON.stringify(page.events))
+          headRevision: page.headRevision, events: page.events.length,
+          bytes: Buffer.byteLength(JSON.stringify(page.stateChunk ?? page.events)),
+          ...(page.stateChunk ? { stateOffset: page.stateChunk.offset } : {})
         });
       }
     } catch (error) {

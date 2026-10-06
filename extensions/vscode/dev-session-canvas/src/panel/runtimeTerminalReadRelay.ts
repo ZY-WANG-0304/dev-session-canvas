@@ -21,6 +21,8 @@ interface ReadBinding {
   opening?: Promise<TerminalStreamReadDescriptor>;
   onReleased?: (result: RuntimeSupervisorCloseTerminalReadResult) => void;
   settlementMode?: 'final-application-v1';
+  stateSentOffset: number;
+  previousStateChunk?: { offset: number; data: string };
   releasing?: Promise<RuntimeSupervisorCloseTerminalReadResult>;
   descriptor?: TerminalStreamReadDescriptor;
   pending: boolean;
@@ -43,18 +45,21 @@ export class RuntimeTerminalReadRelay {
     authorityId: string,
     consumerId: 'editor' | 'panel',
     onReleased?: (result: RuntimeSupervisorCloseTerminalReadResult) => void,
-    settlementMode?: 'final-application-v1'
+    settlementMode?: 'final-application-v1',
+    currentState?: 'xterm-current-state-v1'
   ): Promise<TerminalStreamReadDescriptor | undefined> {
     const existing = this.reads.get(key)?.descriptor;
-    if (existing?.sessionId === sessionId && existing.authorityId === authorityId && existing.settlementMode === settlementMode) {
+    if (existing?.sessionId === sessionId && existing.authorityId === authorityId &&
+        existing.settlementMode === settlementMode && existing.currentState?.format === currentState) {
       return existing;
     }
     this.close(key, undefined, 'reader-replaced');
-    const binding: ReadBinding = { client, sessionId, authorityId, onReleased, settlementMode,
+    const binding: ReadBinding = { client, sessionId, authorityId, onReleased, settlementMode, stateSentOffset: 0,
       pending: false, appliedRevision: 0, sentRevision: 0, acknowledged: false };
     this.reads.set(key, binding);
     try {
       binding.opening = client.openTerminalRead({ sessionId, authorityId, consumerId,
+        ...(currentState ? { currentState } : {}),
         ...(settlementMode ? { settlementMode } : {}) }).then(value => {
         const descriptor = normalizeTerminalStreamRead(value);
         if (!descriptor || descriptor.sessionId !== sessionId || descriptor.authorityId !== authorityId) {
@@ -62,6 +67,7 @@ export class RuntimeTerminalReadRelay {
         }
         binding.descriptor = descriptor;
         if (descriptor.settlementMode !== settlementMode) throw new Error('Terminal reader settlement was not negotiated.');
+        if (descriptor.currentState?.format !== currentState) throw new Error('Terminal current state was not negotiated.');
         return descriptor;
       });
       const descriptor = await binding.opening;
@@ -150,6 +156,10 @@ export class RuntimeTerminalReadRelay {
     return [...this.reads.values(), ...this.releasing].some((binding) => binding.client === client);
   }
 
+  public usesSession(sessionId: string): boolean {
+    return [...this.reads.values(), ...this.releasing].some(binding => binding.sessionId === sessionId);
+  }
+
   public async read(
     key: string,
     params: RuntimeSupervisorReadTerminalPageParams
@@ -160,9 +170,24 @@ export class RuntimeTerminalReadRelay {
         binding.pending || (params.afterRevision !== binding.appliedRevision && params.afterRevision !== binding.sentRevision)) {
       throw new Error('Invalid or concurrent terminal page request.');
     }
-    // The first page request proves the Webview received and applied the checkpoint.
-    binding.acknowledged = true;
+    const stateOffset = params.stateOffset;
+    if (stateOffset !== undefined) {
+      const state = binding.descriptor.currentState;
+      if (!state || binding.acknowledged || !Number.isSafeInteger(stateOffset) || stateOffset < 0 ||
+          stateOffset >= state.length || params.afterRevision !== binding.descriptor.checkpoint.revision ||
+          (stateOffset !== binding.stateSentOffset && stateOffset !== binding.previousStateChunk?.offset)) {
+        throw new Error('Invalid terminal current state offset.');
+      }
+    } else {
+      if (binding.descriptor.currentState && binding.stateSentOffset !== binding.descriptor.currentState.length) {
+        throw new Error('Terminal current state has not been fully sent.');
+      }
+      // Only a normal page request proves the Webview imported the complete bootstrap.
+      binding.acknowledged = true;
+      binding.previousStateChunk = undefined;
+    }
     const readCompleted = (): TerminalStreamPage | undefined => {
+      if (stateOffset !== undefined) return undefined;
       const stream = binding.completed;
       if (!stream || stream.sessionId !== params.sessionId || stream.authorityId !== params.authorityId ||
           params.afterRevision < stream.checkpoint.revision || params.afterRevision > stream.revision) {
@@ -193,6 +218,21 @@ export class RuntimeTerminalReadRelay {
           page.readId !== params.readId || page.afterRevision !== params.afterRevision) {
         throw new Error('Invalid terminal page response.');
       }
+      if (stateOffset !== undefined) {
+        const chunk = page.stateChunk;
+        if (!chunk || chunk.offset !== stateOffset || page.revision !== binding.descriptor.checkpoint.revision ||
+            chunk.offset + chunk.data.length > binding.descriptor.currentState!.length ||
+            (stateOffset !== binding.stateSentOffset &&
+              (chunk.data !== binding.previousStateChunk?.data || chunk.offset + chunk.data.length !== binding.stateSentOffset))) {
+          throw new Error('Invalid terminal current state response.');
+        }
+        if (stateOffset === binding.stateSentOffset) {
+          binding.stateSentOffset += chunk.data.length;
+          binding.previousStateChunk = chunk;
+        }
+        return page;
+      }
+      if (page.stateChunk) throw new Error('Unexpected terminal current state response.');
       binding.appliedRevision = params.afterRevision;
       binding.sentRevision = page.revision;
       return page;
@@ -209,6 +249,7 @@ export class RuntimeTerminalReadRelay {
     if (params.outcome) {
       if (!binding.settlementMode || !read.settlementMode) throw new Error('Terminal reader settlement was not negotiated.');
       if (params.outcome.kind === 'applied' && (binding.pending ||
+          (read.currentState && !binding.acknowledged) ||
           binding.remoteCompletion?.finalRevision !== params.outcome.finalRevision ||
           binding.sentRevision < params.outcome.finalRevision)) {
         throw new Error('Terminal reader final revision is not fixed or has not been sent.');

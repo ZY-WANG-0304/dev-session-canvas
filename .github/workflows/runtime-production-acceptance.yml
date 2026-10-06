@@ -349,8 +349,16 @@ jobs:
         id: installed_runtime
         if: ${{ !inputs.skip_installed && inputs.installed_mode == 'live-runtime' }}
         run: node scripts/smoke/run-vscode-execution-candidate.mjs --mode=live-runtime --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-installed"
+      - name: Installed Runtime current-state reload acceptance
+        id: installed_runtime_reload
+        if: ${{ runner.os == 'Linux' && !inputs.skip_installed && (inputs.installed_mode == 'all' || inputs.installed_mode == 'live-runtime') }}
+        run: |
+          package_sha=$(sha256sum production-package/product.vsix | awk '{print $1}')
+          node scripts/smoke/run-vscode-runtime-reload-candidate.mjs \
+            --mode=live-runtime --current-state --expected-vsix-sha256 "$package_sha" \
+            --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-installed/current-state-reload"
       - name: Upload installed evidence before Agent credentials are available
-        if: always() && (steps.installed.outcome != 'skipped' || steps.installed_runtime.outcome != 'skipped')
+        if: always() && (steps.installed.outcome != 'skipped' || steps.installed_runtime.outcome != 'skipped' || steps.installed_runtime_reload.outcome != 'skipped')
         uses: actions/upload-artifact@v4
         with:
           name: runtime-production-installed-${{ matrix.platform }}-${{ github.run_id }}
@@ -359,6 +367,7 @@ jobs:
             ${{ runner.temp }}/dsc-installed/installed-vsix-input.json
             ${{ runner.temp }}/dsc-installed/first-failure.json
             ${{ runner.temp }}/dsc-installed/*/artifacts/*.json
+            ${{ runner.temp }}/dsc-installed/current-state-reload/**
           if-no-files-found: error
           retention-days: 14
       - name: Install fixed real Agent CLIs

@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 const build = await esbuild.build({
   stdin: { contents: `
     export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
-    export { normalizeTerminalStreamRead, normalizeTerminalReadOutcome } from './extensions/vscode/dev-session-canvas/src/common/terminalStreamPaging';
+    export { normalizeTerminalStreamRead, normalizeTerminalStreamPage, normalizeTerminalReadOutcome } from './extensions/vscode/dev-session-canvas/src/common/terminalStreamPaging';
   `, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, platform: 'node', format: 'cjs', write: false
 });
@@ -27,7 +27,7 @@ const guardedRequire = name => {
 };
 const loaded = { exports: {} };
 new Function('require', 'module', 'exports', build.outputFiles[0].text)(guardedRequire, loaded, loaded.exports);
-const { RuntimeSupervisorClient, normalizeTerminalStreamRead, normalizeTerminalReadOutcome } = loaded.exports;
+const { RuntimeSupervisorClient, normalizeTerminalStreamRead, normalizeTerminalStreamPage, normalizeTerminalReadOutcome } = loaded.exports;
 
 const hello = { serverVersion: 1, pid: 123, runtimeBackend: 'legacy-detached', runtimeGuarantee: 'best-effort',
   capabilities: { terminalPagedReadV1: true, terminalPagedCompletionV1: true, terminalReadSettlementV1: true } };
@@ -88,7 +88,7 @@ const test = (name, run) => tests.push({ name, run });
 
 const candidateProfile = 'linux-owner-v1-candidate';
 const candidateHello = { ...hello, capabilities: { ...hello.capabilities, executionCandidateProfiles: [candidateProfile] } };
-const candidateStorageDir = path.resolve('controlled-only/runtime-supervisor-generations/terminal-exit-v1/runtime-supervisor');
+const candidateStorageDir = path.resolve('controlled-only/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor');
 function startupClient({ executionProfile = candidateProfile, storageDir = candidateStorageDir, startSupervisor = forbidden } = {}) {
   const client = new RuntimeSupervisorClient({
     backend: { paths: { storageDir, socketPath: '/controlled-only' }, startSupervisor },
@@ -103,7 +103,7 @@ test('startup profile and generation reject before any connection or process acq
   for (const executionProfile of ['', 'unknown-profile']) {
     assert.throws(() => startupClient({ executionProfile }), /Unsupported execution candidate profile/);
   }
-  for (const storageDir of [path.resolve('old/runtime-supervisor'), candidateStorageDir.replace('terminal-exit-v1', 'terminal-stream-v1')]) {
+  for (const storageDir of [path.resolve('old/runtime-supervisor'), candidateStorageDir.replace('terminal-current-state-linux-v1', 'terminal-stream-v1')]) {
     assert.throws(() => startupClient({ storageDir }), /isolated/);
   }
 });
@@ -412,6 +412,7 @@ test('strict delete sends once on the original socket and separates old acknowle
     const params = { sessionId: `strict-${result}` };
     const observation = client.deleteSessionStrict(params, { deadline: 20, scheduler: clock });
     assert.equal(observation.submitted, true);
+    assert.equal(observation.attemptSettled, false);
     assert.strictEqual(client.deleteSessionStrict(params, { deadline: 200, scheduler: clock }), observation,
       'a second call cannot register another request or extend the original deadline');
     assert.throws(() => client.deleteSessionStrict({ ...params, preserveTerminalReads: true },
@@ -423,6 +424,7 @@ test('strict delete sends once on the original socket and separates old acknowle
       ? 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_FOUND' : undefined);
     const first = await observation.first;
     assert.equal(first.kind, result === 'acknowledged' ? 'legacy-acknowledged' : result === 'absent' ? 'legacy-absent' : 'failed');
+    assert.equal(observation.attemptSettled, true);
     assert.ok(Object.isFrozen(first));
     assert.deepEqual(observation.current(), first);
   }
@@ -438,6 +440,7 @@ test('strict delete freezes timeout before a late response without dropping or r
     const request = socket.messages.at(-1);
     if (trigger === 'timer') clock.advance(20);
     else clock.elapse(20);
+    assert.equal(observation.attemptSettled, false, 'an observation deadline is not the end of its pending request');
     assert.strictEqual(client.deleteSessionStrict(params, { deadline: 100, scheduler: clock }), observation);
     assert.equal(client.pendingRequests.size, 1, 'timeout does not cancel the original remote delete');
     socket.reply(request, { ok: true });
@@ -445,6 +448,7 @@ test('strict delete freezes timeout before a late response without dropping or r
     await turns();
     assert.equal(first.kind, 'unconfirmed');
     assert.equal(observation.current().kind, 'legacy-acknowledged');
+    assert.equal(observation.attemptSettled, true);
     assert.strictEqual(await observation.first, first);
     assert.equal(socket.messages.filter(message => message.method === 'deleteSession').length, 1);
     assert.equal(client.pendingRequests.size, 0);
@@ -480,6 +484,7 @@ test('strict delete rejects an expired stale or unrelated connecting binding bef
   const expired = client.deleteSessionStrict({ sessionId: 'expired' }, { deadline: 0, scheduler: clock });
   assert.equal((await expired.first).kind, 'unconfirmed');
   assert.equal(expired.submitted, false);
+  assert.equal(expired.attemptSettled, true);
   const stale = client.deleteSessionStrict({ sessionId: 'stale' }, { deadline: 20, scheduler: clock, isCurrent: () => false });
   assert.equal((await stale.first).kind, 'unconfirmed');
   socket.destroy();
@@ -516,6 +521,7 @@ test('strict deletion connects without restart and rechecks the original deadlin
         if (timing === 'hello-timeout') {
           clock.advance(20);
           assert.equal((await observation.first).kind, 'unconfirmed');
+          assert.equal(observation.attemptSettled, false, 'an unfinished handshake may not be retried');
           assert.strictEqual(client.deleteSessionStrict({ sessionId: timing }, { deadline: 200, scheduler: clock }), observation);
         }
         if (timing === 'stale-binding') current = false;
@@ -659,6 +665,69 @@ test('Host consumer cancellation is explicit and cannot become successful credit
   await turns(8);
   assert.equal(socket.messages.at(-1).params.outcome, 'cancelled');
   assert.equal(client.hostOutputSubscriptions.size, 0);
+});
+
+test('current state descriptor and pages require explicit, bounded protocol shapes', () => {
+  const read = { ...descriptor(openParams), currentState: { format: 'xterm-current-state-v1', length: 10 } };
+  assert.equal(normalizeTerminalStreamRead(read).currentState.length, 10);
+  assert.equal(normalizeTerminalStreamRead({ ...read, headRevision: 7 }).headRevision, 7,
+    'completion may advance the head before an opening descriptor is delivered');
+  for (const currentState of [null, {}, { format: 'wrong', length: 10 },
+    { format: 'xterm-current-state-v1', length: 0 }, { format: 'xterm-current-state-v1', length: 1.5 }]) {
+    assert.equal(normalizeTerminalStreamRead({ ...read, currentState }), undefined);
+  }
+  assert.equal(normalizeTerminalStreamRead({ ...read, checkpoint: { ...read.checkpoint,
+    serializedState: { ...read.checkpoint.serializedState, data: 'not a checkpoint' } } }), undefined);
+  const page = { readId: read.readId, sessionId: read.sessionId, authorityId: read.authorityId,
+    afterRevision: 0, revision: 0, headRevision: 7, events: [], stateChunk: { offset: 0, data: '\u0000'.repeat(8192) } };
+  assert.equal(normalizeTerminalStreamPage(page).stateChunk.data.length, 8192);
+  assert.equal(normalizeTerminalStreamPage({ ...page, stateChunk: undefined }), undefined,
+    'a bootstrap page cannot masquerade as an empty ordinary page behind head');
+  for (const stateChunk of [null, {}, { offset: -1, data: 'x' }, { offset: 0, data: '' },
+    { offset: 0, data: 'x'.repeat(8193) }]) {
+    assert.equal(normalizeTerminalStreamPage({ ...page, stateChunk }), undefined);
+  }
+  assert.equal(normalizeTerminalStreamPage({ ...page, revision: 1 }), undefined);
+  assert.equal(normalizeTerminalStreamPage({ ...page, events: [{ type: 'output', revision: 1, createdAtMs: 1, data: 'x' }] }), undefined);
+});
+
+test('current state capability is opt-in and cannot silently fall back to a checkpoint', async () => {
+  const { client, socket } = await fixture();
+  const current = { ...openParams, currentState: 'xterm-current-state-v1' };
+  assert.equal(client.supportsTerminalCurrentState(), false);
+  await assert.rejects(client.openTerminalRead(current), /current state capability/);
+  assert.equal(socket.messages.some(message => message.method === 'openTerminalRead'), false);
+  client.helloResult = { ...hello, capabilities: { terminalPagedReadV1: true,
+    terminalCurrentStateV1: true } };
+  await assert.rejects(client.openTerminalRead({ ...current, settlementMode: undefined }), /current state capability/);
+  client.helloResult = { ...hello, capabilities: { ...hello.capabilities, terminalCurrentStateV1: true } };
+  await assert.rejects(client.openTerminalRead(current), /current state was not negotiated/);
+  await turns();
+  assert.equal(socket.messages.at(-1).method, 'closeTerminalRead');
+});
+
+test('current state reads forward offsets on their original connection with or without settlement', async () => {
+  for (const settlementMode of ['final-application-v1', undefined]) {
+    const socket = new ControlledSocket();
+    const respond = socket.respond;
+    socket.respond = request => {
+      if (request.method === 'hello') return { ...hello,
+        capabilities: { ...hello.capabilities, terminalCurrentStateV1: true } };
+      if (request.method === 'openTerminalRead') return { ...descriptor(request.params),
+        currentState: { format: 'xterm-current-state-v1', length: 4 } };
+      if (request.method === 'readTerminalPage') return { ...request.params, revision: 0, headRevision: 0,
+        events: [], stateChunk: { offset: request.params.stateOffset, data: 'test' } };
+      return respond(request);
+    };
+    const { client } = await fixture(socket);
+    const read = await client.openTerminalRead({ ...openParams, settlementMode, currentState: 'xterm-current-state-v1' });
+    assert.equal(client.supportsTerminalCurrentState(), true);
+    const page = await client.readTerminalPage({ ...read, afterRevision: 0, stateOffset: 0 });
+    assert.equal(page.stateChunk.data, 'test');
+    assert.equal(socket.messages.at(-1).params.stateOffset, 0);
+    client.attachSocket(new ControlledSocket());
+    await assert.rejects(client.readTerminalPage({ ...read, afterRevision: 0, stateOffset: 0 }), /connection/);
+  }
 });
 
 try {

@@ -65,7 +65,7 @@ try {
   const candidateProfile = 'linux-owner-v1-candidate';
   const candidateBase = resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(extensionStorageDir, candidateProfile);
   const candidateStorageDir = path.join(candidateBase, 'runtime-supervisor');
-  assert.equal(candidateBase, path.join(extensionStorageDir, 'runtime-supervisor-generations', 'terminal-exit-v1'));
+  assert.equal(candidateBase, path.join(extensionStorageDir, 'runtime-supervisor-generations', 'terminal-current-state-linux-v1'));
   assert.equal(resolveRuntimeSupervisorExecutionProfile(candidateStorageDir), candidateProfile);
   assert.equal(resolveRuntimeSupervisorExecutionProfile(path.join(candidateStorageDir, '.')), candidateProfile);
   assert.doesNotThrow(() => assertExecutionCandidateRuntimeSupervisorStorageDir(candidateStorageDir, candidateProfile));
@@ -73,18 +73,31 @@ try {
   const windowsProfile = 'windows-owner-v1-candidate';
   const windowsBase = resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(extensionStorageDir, windowsProfile);
   const windowsStorage = path.join(windowsBase, 'runtime-supervisor');
-  assert.equal(windowsBase, path.join(extensionStorageDir, 'runtime-supervisor-generations', 'terminal-exit-windows-v1'));
+  assert.equal(windowsBase, path.join(extensionStorageDir, 'runtime-supervisor-generations', 'terminal-current-state-windows-v1'));
   assert.equal(resolveRuntimeSupervisorExecutionProfile(windowsStorage), windowsProfile);
   assert.doesNotThrow(() => assertExecutionCandidateRuntimeSupervisorStorageDir(windowsStorage, windowsProfile));
   assert.throws(() => assertExecutionCandidateRuntimeSupervisorStorageDir(candidateStorageDir, windowsProfile));
   assert.throws(() => assertExecutionCandidateRuntimeSupervisorStorageDir(windowsStorage, macProfile));
   const macBase = resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(extensionStorageDir, macProfile);
   const macStorage = path.join(macBase, 'runtime-supervisor');
-  assert.equal(macBase, path.join(extensionStorageDir, 'runtime-supervisor-generations', 'terminal-exit-macos-v1'));
+  assert.equal(macBase, path.join(extensionStorageDir, 'runtime-supervisor-generations', 'terminal-current-state-macos-v1'));
   assert.equal(resolveRuntimeSupervisorExecutionProfile(macStorage), macProfile);
   assert.doesNotThrow(() => assertExecutionCandidateRuntimeSupervisorStorageDir(macStorage, macProfile));
   assert.throws(() => assertExecutionCandidateRuntimeSupervisorStorageDir(candidateStorageDir, macProfile), /isolated/);
   assert.throws(() => assertExecutionCandidateRuntimeSupervisorStorageDir(macStorage, candidateProfile), /isolated/);
+  for (const [profile, generation, next] of [[candidateProfile, 'terminal-exit-v1', candidateStorageDir],
+    [macProfile, 'terminal-exit-macos-v1', macStorage], [windowsProfile, 'terminal-exit-windows-v1', windowsStorage]]) {
+    const previous = path.join(extensionStorageDir, 'runtime-supervisor-generations', generation, 'runtime-supervisor');
+    assert.equal(resolveRuntimeSupervisorExecutionProfile(previous), profile, 'Existing binding must still resolve its provider.');
+    assert.doesNotThrow(() => assertExecutionCandidateRuntimeSupervisorStorageDir(previous, profile));
+    for (const resolver of [resolveRuntimeSupervisorPathsFromStorageDir, resolveSystemdUserRuntimeSupervisorPathsFromStorageDir]) {
+      const previousPaths = resolver(previous, { platform: 'linux', env: {}, homeDir: '/home/test' });
+      const nextPaths = resolver(next, { platform: 'linux', env: {}, homeDir: '/home/test' });
+      assert.notEqual(previousPaths.socketPath, nextPaths.socketPath);
+      assert.notEqual(previousPaths.registryPath, nextPaths.registryPath);
+      if (previousPaths.unitName) assert.notEqual(previousPaths.unitName, nextPaths.unitName);
+    }
+  }
   for (const invalidStorage of [shortStorageDir, currentGenerationStorageDir, candidateBase,
     path.join(extensionStorageDir, 'terminal-exit-v1', 'runtime-supervisor'),
     path.join(candidateStorageDir, '..', '..', 'terminal-stream-v1', 'runtime-supervisor')]) {

@@ -39,6 +39,7 @@ export interface RuntimeSupervisorHelloResult {
     terminalPagedCompletionV1?: true;
     terminalHostOutputCreditV1?: true;
     terminalReadSettlementV1?: true;
+    terminalCurrentStateV1?: true;
     executionCandidateProfiles?: readonly ExecutionCandidateProfile[];
   };
 }
@@ -65,7 +66,7 @@ export interface RuntimeSupervisorSessionSnapshot {
   terminalRevision?: number;
   terminalStream?: TerminalStreamAttachPayload;
   terminalStreamPaged?: true;
-  capabilities?: { terminalReadSettlementV1?: true };
+  capabilities?: { terminalReadSettlementV1?: true; terminalCurrentStateV1?: true };
   terminalFinalRevision?: number;
   /** The sealed source outcome; final application or a process exit alone does not establish EOF. */
   terminalSourceDisposition?: SourceDisposition;
@@ -199,6 +200,7 @@ export interface RuntimeSupervisorOpenTerminalReadParams {
   authorityId: string;
   consumerId: 'editor' | 'panel';
   settlementMode?: 'final-application-v1';
+  currentState?: 'xterm-current-state-v1';
 }
 
 export type RuntimeSupervisorTerminalReadOutcome =
@@ -219,6 +221,7 @@ export interface RuntimeSupervisorCloseTerminalReadResult {
 
 export interface RuntimeSupervisorReadTerminalPageParams extends Omit<RuntimeSupervisorCloseTerminalReadParams, 'outcome'> {
   afterRevision: number;
+  stateOffset?: number;
 }
 
 export interface RuntimeSupervisorGetSessionSnapshotParams {

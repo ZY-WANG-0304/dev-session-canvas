@@ -52,6 +52,48 @@ export interface RuntimeHostBackendFactoryOptions {
   extensionMode: vscode.ExtensionMode;
 }
 
+export interface InactiveSystemdUserSupervisorObservation {
+  stateToken: string;
+  controlGroupStopped: boolean;
+}
+
+export async function observeInactiveSystemdUserSupervisor(
+  backend: RuntimeHostBackendDescriptor
+): Promise<InactiveSystemdUserSupervisorObservation | undefined> {
+  if (process.platform !== 'linux' || backend.kind !== 'systemd-user' || !backend.paths.unitName) return undefined;
+  const requiredProperties = ['Id', 'LoadState', 'ActiveState', 'SubState', 'MainPID', 'ControlPID', 'ControlGroup',
+    'Job', 'InvocationID', 'StateChangeTimestampMonotonic', 'InactiveEnterTimestampMonotonic'];
+  const properties = [...requiredProperties, 'KillMode', 'SendSIGKILL'];
+  const command = resolveSystemctlCommand();
+  try {
+    const { stdout } = await execFileAsync(command.file, [...command.prefixArgs, '--user', 'show', '--all',
+      '--no-pager', `--property=${properties.join(',')}`, backend.paths.unitName], {
+      timeout: SYSTEMD_COMMAND_TIMEOUT_MS, maxBuffer: 16384, encoding: 'utf8', windowsHide: true
+    });
+    const values = new Map<string, string>();
+    for (const line of stdout.trimEnd().split('\n')) {
+      const separator = line.indexOf('=');
+      if (separator < 1) return undefined;
+      const key = line.slice(0, separator);
+      if (!properties.includes(key) || values.has(key)) return undefined;
+      values.set(key, line.slice(separator + 1));
+    }
+    if (requiredProperties.some(key => !values.has(key)) || values.get('Id') !== backend.paths.unitName
+      || values.get('LoadState') !== 'loaded' || values.get('ActiveState') !== 'inactive'
+      || values.get('SubState') !== 'dead' || values.get('MainPID') !== '0' || values.get('ControlPID') !== '0'
+      || values.get('ControlGroup') !== '' || !['', '0'].includes(values.get('Job')!)
+      || !/^(?:[a-f0-9]{32})?$/.test(values.get('InvocationID')!)
+      || ['StateChangeTimestampMonotonic', 'InactiveEnterTimestampMonotonic']
+        .some(key => !/^[0-9]+$/.test(values.get(key)!))) return undefined;
+    return {
+      stateToken: JSON.stringify(properties.map(key => values.get(key))),
+      controlGroupStopped: values.get('KillMode') === 'control-group' && values.get('SendSIGKILL') === 'yes'
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export function listPreferredRuntimeHostBackendKinds(
   options: RuntimeHostBackendFactoryOptions
 ): RuntimeHostBackendKind[] {

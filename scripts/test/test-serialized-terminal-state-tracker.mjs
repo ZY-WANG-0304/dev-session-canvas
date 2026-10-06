@@ -42,6 +42,7 @@ try {
     'A missing dependency patch must fail before claiming the patched producer profile.');
   await verifyBoldDimSnapshotRoundTrip(SerializedTerminalStateTracker);
   await verifyConsumptionDrain(SerializedTerminalStateTracker);
+  await verifyLiveCurrentStateCapture(SerializedTerminalStateTracker);
   await verifyLargeSnapshotRestore(SerializedTerminalStateTracker, normalizeSerializedTerminalState);
 
   const tracker = new SerializedTerminalStateTracker(40, 8);
@@ -528,6 +529,48 @@ async function verifyConsumptionDrain(Tracker) {
     releaseDisposed();
     await rejected;
   } finally { releaseDisposed?.(); disposed.dispose(); }
+}
+
+async function verifyLiveCurrentStateCapture(Tracker) {
+  const tracker = new Tracker(32, 6, { scrollback: 20 });
+  try {
+    let serializations = 0;
+    const serialize = tracker.serializeAddon.serialize.bind(tracker.serializeAddon);
+    tracker.serializeAddon.serialize = (...args) => { serializations++; return serialize(...args); };
+    tracker.write('\x1b]4;1;rgb:12/34/56\x07\x1b]10;rgb:ab/cd/ef\x07CURRENT\x1b[38;2;1;', { outputSequence: 7 });
+    const state = await tracker.captureCurrentState();
+    assert.equal(state.format, 'xterm-current-state-v1');
+    assert.deepEqual(state.colors.overrides, { 1: [0x12, 0x34, 0x56], 256: [0xab, 0xcd, 0xef] });
+    assert.equal(tracker.terminal.buffer.active.getLine(0).translateToString(true), 'CURRENT');
+    assert.notEqual(state.parser.state, 0, 'Capture must retain pending CSI state rather than replay old output.');
+    assert.equal(serializations, 0, 'Capturing current state must not materialize the ANSI checkpoint as well.');
+    tracker.write('2;3m-SUFFIX\x1b]104;1\x07', { outputSequence: 8 });
+    const next = await tracker.captureCurrentState();
+    assert.equal(tracker.terminal.buffer.active.getLine(0).translateToString(true), 'CURRENT-SUFFIX');
+    assert.equal(state.colors.overrides[1][0], 0x12, 'The frozen state must not change with the live color reducer.');
+    assert.equal(next.colors.overrides[1], undefined);
+    assert.deepEqual(next.colors.overrides[256], [0xab, 0xcd, 0xef]);
+    const parserStack = tracker.terminal._core._inputHandler._parseStack;
+    parserStack.paused = true;
+    await assert.rejects(tracker.captureCurrentState(), /parser-paused/);
+    parserStack.paused = false;
+    tracker.write('-STILL-LIVE', { outputSequence: 9 });
+    await tracker.drain();
+    assert.match(tracker.terminal.buffer.active.getLine(0).translateToString(true), /STILL-LIVE/,
+      'A failed bootstrap must not poison consumption of the running session.');
+    const replies = [];
+    tracker.terminal.onData(value => replies.push(value));
+    tracker.write('\x1b]52;c;SGV', { outputSequence: 10 });
+    const clipboardCarry = await tracker.captureCurrentState();
+    assert.equal(clipboardCarry.parser.osc.id, 52);
+    assert.deepEqual(clipboardCarry.parser.osc.handlers, [{ data: 'c;SGV', hitLimit: false }],
+      'The authoritative headless model must retain unfinished OSC52 for the Webview handler.');
+    tracker.write('sbG8=\x07', { outputSequence: 11 });
+    const clipboardEnded = await tracker.captureCurrentState();
+    assert.deepEqual(clipboardEnded.parser.osc.handlers, [], 'Completed clipboard commands are not restored or replayed.');
+    assert.deepEqual(replies, [], 'The Supervisor clipboard observer must not emit terminal replies or perform a copy.');
+  } finally { tracker.dispose(); }
+  await assert.rejects(tracker.captureCurrentState(), /disposed/);
 }
 
 async function waitFor(condition, label) {

@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const vscode = require('vscode');
-const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
+const { activateVisibleExtension, expectedExecutionCandidateGeneration, waitForCommand } = require('./test-helpers.cjs');
 
 const mode = process.env.DEV_SESSION_CANVAS_READER_MODE;
 const role = process.env.DEV_SESSION_CANVAS_READER_ROLE;
@@ -164,7 +164,7 @@ async function runOwner() {
   const initialReader = await mountedReader();
   if (mode === 'live-runtime') {
     assert.equal(initialReader.executionId, node.metadata.terminal.runtimeSessionId);
-    assert.match(node.metadata.terminal.runtimeStoragePath, /terminal-exit-v1/);
+    assert.match(node.metadata.terminal.runtimeStoragePath, new RegExp(expectedExecutionCandidateGeneration()));
   }
   const saved = await command('flushPersistedState');
   assert(saved.exists && saved.snapshot?.state);

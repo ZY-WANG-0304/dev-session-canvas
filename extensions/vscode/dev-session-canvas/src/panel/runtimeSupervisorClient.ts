@@ -61,6 +61,7 @@ export interface StrictRuntimeDeleteResult {
 export interface StrictRuntimeDeleteObservation {
   readonly first: Promise<StrictRuntimeDeleteResult>;
   readonly submitted: boolean;
+  readonly attemptSettled: boolean;
   current(): StrictRuntimeDeleteResult | undefined;
 }
 
@@ -177,6 +178,10 @@ export class RuntimeSupervisorClient {
     return this.supportsTerminalPagedCompletion() && this.helloResult?.capabilities?.terminalReadSettlementV1 === true;
   }
 
+  public supportsTerminalCurrentState(): boolean {
+    return this.supportsTerminalPagedCompletion() && this.helloResult?.capabilities?.terminalCurrentStateV1 === true;
+  }
+
   public supportsTerminalHostOutputCredit(): boolean {
     return this.supportsTerminalPagedCompletion() && this.helloResult?.capabilities?.terminalHostOutputCreditV1 === true;
   }
@@ -192,8 +197,12 @@ export class RuntimeSupervisorClient {
         (params.settlementMode !== 'final-application-v1' || !this.supportsTerminalReadSettlement())) {
       throw new Error('Terminal reader settlement capability is unavailable.');
     }
+    if (params.currentState !== undefined &&
+        (params.currentState !== 'xterm-current-state-v1' || !this.supportsTerminalCurrentState())) {
+      throw new Error('Terminal current state capability is unavailable.');
+    }
     const result = await this.requestOnConnectedSocket<TerminalStreamReadDescriptor>('openTerminalRead', params, socket);
-    if (params.settlementMode === undefined) return result;
+    if (params.settlementMode === undefined && params.currentState === undefined) return result;
     if (!socket || socket !== this.socket || socket.destroyed || this.disposed) {
       throw new Error('Terminal reader connection changed while opening.');
     }
@@ -201,11 +210,12 @@ export class RuntimeSupervisorClient {
     if (!read || read.sessionId !== params.sessionId || read.authorityId !== params.authorityId) {
       throw new Error('Invalid terminal reader settlement descriptor.');
     }
-    if (read.settlementMode !== params.settlementMode) {
+    if (read.settlementMode !== params.settlementMode || read.currentState?.format !== params.currentState) {
       void this.requestOnConnectedSocket('closeTerminalRead', {
         sessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId
       }, socket).catch(() => undefined);
-      throw new Error('Terminal reader settlement was not negotiated.');
+      throw new Error(read.settlementMode !== params.settlementMode
+        ? 'Terminal reader settlement was not negotiated.' : 'Terminal current state was not negotiated.');
     }
     for (const binding of this.terminalReadConnections.values()) {
       if (binding.socket === socket && binding.sessionId === read.sessionId && binding.consumerId === params.consumerId) {
@@ -408,13 +418,14 @@ export class RuntimeSupervisorClient {
     const { deadline, scheduler, isCurrent } = options;
     const request = Object.freeze({ ...params });
     let submitted = false;
+    let attemptSettled = false;
     let first: StrictRuntimeDeleteResult | undefined;
     let current: StrictRuntimeDeleteResult | undefined;
     let resolve!: (result: StrictRuntimeDeleteResult) => void;
     let cancelDeadline: (() => void) | undefined;
     const observation: StrictRuntimeDeleteObservation = Object.freeze({
       first: new Promise<StrictRuntimeDeleteResult>(done => { resolve = done; }),
-      get submitted() { return submitted; }, current: () => current
+      get submitted() { return submitted; }, get attemptSettled() { return attemptSettled; }, current: () => current
     });
     this.strictDeletes.set(request.sessionId, { preserveTerminalReads: request.preserveTerminalReads === true, observation });
     const recordFirst = (result: StrictRuntimeDeleteResult): void => {
@@ -428,6 +439,7 @@ export class RuntimeSupervisorClient {
       if (scheduler.now() >= deadline) recordFirst({ kind: 'unconfirmed', reason: 'The strict deletion deadline was reached.' });
     };
     const finish = (result: StrictRuntimeDeleteResult): void => {
+      attemptSettled = true;
       observeDeadline();
       recordFirst(result);
       current = Object.freeze({ ...result });

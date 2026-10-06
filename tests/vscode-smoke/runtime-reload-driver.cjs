@@ -4,7 +4,7 @@ const net = require('node:net');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const vscode = require('vscode');
-const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
+const { activateVisibleExtension, expectedExecutionCandidateGeneration, waitForCommand } = require('./test-helpers.cjs');
 const { captureInstalledExtensionReceipt } = require('./installed-execution-candidate.cjs');
 const { resolveLegacyRuntimeSupervisorPaths, resolveSystemdUserRuntimeSupervisorPaths } = require('./runtime-reload-paths.cjs');
 const { completedMarker, assertControl, assertRuntimeDiscarded, readIdentity, sameLiveIdentity,
@@ -13,6 +13,7 @@ const { completedMarker, assertControl, assertRuntimeDiscarded, readIdentity, sa
 const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
 const controlPath = process.env.DEV_SESSION_CANVAS_RELOAD_CONTROL;
 const surface = 'panel';
+const currentStateAcceptance = process.env.DEV_SESSION_CANVAS_EXPECT_CURRENT_STATE === '1';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const command = (name, ...args) => vscode.commands.executeCommand(`devSessionCanvas.__test.${name}`, ...args);
 const snapshot = () => command('getDebugState');
@@ -189,7 +190,8 @@ async function createSubject(role) {
   const node = state.state.nodes.find(entry => !previous.has(entry.id) && entry.kind === 'terminal');
   const metadata = node.metadata.terminal;
   assert.equal(metadata.persistenceMode, 'live-runtime');
-  assert.match(metadata.runtimeStoragePath, /terminal-exit-v1/);
+  assert.match(metadata.runtimeStoragePath, new RegExp(currentStateAcceptance
+    ? `${expectedExecutionCandidateGeneration()}$` : 'terminal-exit-v1'));
   const relative = path.relative(path.resolve(artifacts, '..', 'user-data'), path.resolve(metadata.runtimeStoragePath));
   assert(relative && !relative.startsWith('..') && !path.isAbsolute(relative), 'Require isolated workspace storage.');
   const paths = metadata.runtimeBackend === 'systemd-user' ? resolveSystemdUserRuntimeSupervisorPaths(metadata.runtimeStoragePath)
@@ -210,6 +212,7 @@ async function createSubject(role) {
   await command('dispatchWebviewMessage', { type: 'webview/resizeNode', payload: {
     nodeId: node.id, position: node.position, size: { width: 900, height: 540 } } }, surface);
   subject.reader = await mountedReader(subject.id);
+  if (currentStateAcceptance) assertCurrentStateReader(subject.reader, `${role} initial reader`);
   const fixture = path.join(__dirname, 'fixtures', role === 'a'
     ? 'execution-capacity-subject.cjs' : 'runtime-reload-completed-subject.cjs');
   const args = role === 'a' ? ` b color ${quote(subject.receiptPath)}` : ` ${quote(subject.receiptPath)}`;
@@ -227,6 +230,13 @@ async function mountedReader(id) {
     entry.messages.some(message => message.type === 'host/executionSnapshot' && message.payload.nodeId === id && message.payload.terminalRead));
   return value.messages.findLast(message => message.type === 'host/executionSnapshot' &&
     message.payload.nodeId === id && message.payload.terminalRead).payload.terminalRead;
+}
+
+function assertCurrentStateReader(reader, label) {
+  assert.equal(reader?.currentState?.format, 'xterm-current-state-v1', `${label} must negotiate current state.`);
+  assert(Number.isSafeInteger(reader.currentState.length) && reader.currentState.length > 0,
+    `${label} must declare a non-empty current state.`);
+  assert.equal(reader.checkpoint.serializedState.data, '', `${label} must not carry an ANSI history checkpoint.`);
 }
 
 async function completed(subject) {
@@ -263,6 +273,13 @@ async function interaction(id, nonce) {
 async function setup(launcher) {
   const a = await createSubject('a');
   await interaction(a.id, `before_${control.nonce}`);
+  if (currentStateAcceptance) {
+    await dom({ kind: 'sendExecutionInput', nodeId: a.id,
+      data: "printf 'DSC_RELOAD_CURRENT_STATE_MARKER\\r\\n'\r" });
+    await poll('current-state marker before reload', () => probe(), value =>
+      value.nodes.some(node => node.nodeId === a.id &&
+        node.terminalVisibleLines.some(line => line.includes('DSC_RELOAD_CURRENT_STATE_MARKER'))));
+  }
   const b = await createSubject('b');
   await dom({ kind: 'sendExecutionInput', nodeId: b.id, data: 'finish\r' });
   const bCompleted = await completed(b);
@@ -287,6 +304,19 @@ async function verify(launcher) {
   const setup = control.setup;
   const oldHostAtVerify = await poll('original Host exited', () => readIdentity(setup.host.pid), value => exitedIdentity(setup.host, value));
   const a = { ...setup.a, reader: await mountedReader(setup.a.id) };
+  if (currentStateAcceptance) {
+    assertCurrentStateReader(a.reader, 'reloaded reader');
+    await poll('reloaded current-state descriptor diagnostic', () => command('getDiagnosticEvents'), events =>
+      events.some(event => event.kind === 'runtime/terminalPagedReadOpened' && event.detail?.nodeId === a.id &&
+        event.detail?.currentState === 'xterm-current-state-v1' &&
+        Number.isSafeInteger(event.detail?.stateLength) && event.detail.stateLength > 0));
+    await poll('reloaded current-state first chunk', () => command('getHostMessages'), messages =>
+      messages.some(message => message.type === 'host/executionTerminalPage' && message.payload.nodeId === a.id &&
+        message.payload.page?.stateChunk?.offset === 0));
+    await poll('reloaded current-state marker', () => probe(), value =>
+      value.nodes.some(node => node.nodeId === a.id &&
+        node.terminalVisibleLines.some(line => line.includes('DSC_RELOAD_CURRENT_STATE_MARKER'))));
+  }
   for (const role of ['supervisor', 'provider', 'identity']) a[role] = { ...setup.a[role], ...await live(setup.a[role]) };
   const hello = await rpc(a.supervisor.socketPath, 'hello');
   assert.equal(hello.pid, a.supervisor.pid);

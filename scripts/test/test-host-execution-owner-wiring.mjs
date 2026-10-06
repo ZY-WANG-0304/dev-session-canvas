@@ -19,6 +19,8 @@ const bundled = await esbuild.build({
       export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
       export { parseWebviewMessage } from './extensions/vscode/dev-session-canvas/src/common/protocol';
       export { env as testEnvironment, window as testWindow } from 'vscode';
+      export { testLegacyHistoryInspector } from './extensions/vscode/dev-session-canvas/src/panel/legacyRuntimeHistory';
+      export { testNativeHistoryInspector } from './extensions/vscode/dev-session-canvas/src/panel/nativeRuntimeHistory';
     `,
     resolveDir: process.cwd(), sourcefile: 'host-owner-wiring-entry.ts'
   },
@@ -26,6 +28,18 @@ const bundled = await esbuild.build({
   plugins: [{
     name: 'host-boundaries-only',
     setup(build) {
+      build.onResolve({ filter: /\/legacyRuntimeHistory$/ }, () => ({ path: 'legacyRuntimeHistory', namespace: 'legacy-history-boundary' }));
+      build.onLoad({ filter: /.*/, namespace: 'legacy-history-boundary' }, () => ({ loader: 'js', contents: `
+        const testLegacyHistoryInspector = { run: async () => undefined };
+        module.exports = { testLegacyHistoryInspector,
+          inspectStoppedLegacyRuntimeSession: (...args) => testLegacyHistoryInspector.run(...args) };
+      ` }));
+      build.onResolve({ filter: /\/nativeRuntimeHistory$/ }, () => ({ path: 'nativeRuntimeHistory', namespace: 'native-history-boundary' }));
+      build.onLoad({ filter: /.*/, namespace: 'native-history-boundary' }, () => ({ loader: 'js', contents: `
+        const testNativeHistoryInspector = { run: async () => undefined };
+        module.exports = { testNativeHistoryInspector,
+          inspectRetiredNativeRuntimeNamespace: (...args) => testNativeHistoryInspector.run(...args) };
+      ` }));
       build.onResolve({ filter: /^(vscode|node-pty|(?:node:)?child_process)$/ }, args => ({
         path: args.path, namespace: 'host-boundary'
       }));
@@ -62,7 +76,7 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
 );
 const { CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
   RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION, EXECUTION_INTERACTION_LIMITS,
-  testEnvironment, testWindow } = loaded.exports;
+  testEnvironment, testWindow, testLegacyHistoryInspector, testNativeHistoryInspector } = loaded.exports;
 
 function deferred() {
   let resolve;
@@ -2217,6 +2231,14 @@ const candidateCapabilities = [
 
 function candidateFixture(options = {}) {
   const f = localFixture({ ...options, exposeParentControl: true });
+  f.host.state.fileReferences = [];
+  f.host.state.suppressedFileActivityEdgeIds = [];
+  f.host.state.suppressedAutomaticFileArtifactNodeIds = [];
+  f.host.appliedStartupConfiguration = { filesFeatureEnabled: false };
+  f.host.fileFilterState = { includeGlobs: [], excludeGlobs: [] };
+  for (const [index, node] of f.host.state.nodes.entries()) Object.assign(node, {
+    position: { x: 800 * index, y: 0 }, size: { width: 640, height: 360 }
+  });
   const originalFactory = f.injection.createTransport;
   const injection = {
     ...f.injection, profile: EXECUTION_CANDIDATE_PROFILE, profileMode: 'snapshot-only',
@@ -2244,6 +2266,7 @@ function candidateFixture(options = {}) {
   f.host.promptAgentCliSelectionAfterCommandNotFound = () => {};
   f.host.retireLegacyRuntimeSupervisorClientIfUnused = () => {};
   f.host.pendingRuntimeSupervisorOperations = new Set();
+  f.host.pendingTerminalProjectionRefreshes = new Map();
   f.host.runtimeSupervisorClients = new Map();
   const posted = [];
   f.host.postMessage = message => posted.push(message);
@@ -2336,7 +2359,8 @@ function addCandidateLegacyBinding(f, kind, backendKind = 'legacy-detached') {
 function candidateStrictDeletes(f, behavior) {
   const calls = [];
   const connections = [];
-  f.host.getRuntimeHostBackend = (kind, runtimeStoragePath) => ({ kind, runtimeStoragePath, guarantee: 'best-effort' });
+  f.host.getRuntimeHostBackend = (kind, runtimeStoragePath) => ({ kind, runtimeStoragePath, guarantee: 'best-effort',
+    paths: { storageDir: path.join(runtimeStoragePath, 'runtime-supervisor') } });
   f.host.getRuntimeSupervisorClientForBackend = async (backend, options) => {
     connections.push({ backend, options });
     assert.equal(options.allowRestart, false);
@@ -2357,6 +2381,656 @@ function settledLegacyDelete(kind, reason) {
   return { first: Promise.resolve(result), current: () => result, submitted: true };
 }
 
+function addStoppedHistoryBinding(f, kind) {
+  const session = addCandidateLegacyBinding(f, kind, 'systemd-user');
+  const node = f.host.state.nodes.find(value => value.id === session.nodeId);
+  node.status = 'history-restored';
+  Object.assign(node.metadata[kind], { attachmentState: 'history-restored', liveSession: false,
+    lifecycle: kind === 'agent' ? 'stopped' : 'closed', lastExitCode: 0 });
+  return session;
+}
+
+function unsubmittedDelete() {
+  return { ...settledLegacyDelete('unconfirmed', 'controlled refused connection'), submitted: false, attemptSettled: true };
+}
+
+for (const evidence of ['recorded-exit', 'stopped-runtime']) {
+for (const kind of ['agent', 'terminal']) {
+  for (const action of ['delete', 'restart', 'reset']) {
+    test(`stopped legacy ${kind} history ${action} uses ${evidence} after an unsubmitted failure without rewriting its evidence`, async () => {
+      const f = candidateRuntimeFixture();
+      const session = addStoppedHistoryBinding(f, kind);
+      const metadata = f.host.state.nodes.find(value => value.id === session.nodeId).metadata[kind];
+      if (evidence === 'stopped-runtime') {
+        metadata.lifecycle = kind === 'agent' ? 'waiting-input' : 'live';
+        delete metadata.lastExitCode;
+      }
+      const originalMetadata = structuredClone(metadata);
+      const other = structuredClone(f.host.state.nodes.find(value => value.id !== session.nodeId));
+      const observation = unsubmittedDelete();
+      const strict = candidateStrictDeletes(f, () => observation);
+      let inspections = 0;
+      testLegacyHistoryInspector.run = async (backend, target) => {
+        inspections++;
+        assert.equal(backend.runtimeStoragePath, session.runtimeStoragePath);
+        assert.deepEqual(target, { sessionId: session.sessionId, kind });
+        return inspections > 1 ? evidence : undefined;
+      };
+      try {
+        await assert.rejects(f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: true }), /unconfirmed/);
+        const original = await observation.first;
+        await pump(f.clock, () => [...f.host.strictRuntimeDeletes.values()][0].attemptSettled === true);
+        if (action === 'reset') {
+          delete f.host.collectPersistedLiveRuntimeSessions;
+          await completed(f.clock, f.host.resetState(), 'stopped legacy reset');
+          assert.equal(f.host.state.nodes.length, 0);
+        } else if (action === 'delete') {
+          await completed(f.clock, f.host.deleteNode(session.nodeId), 'stopped legacy delete');
+          assert(!f.host.state.nodes.some(value => value.id === session.nodeId), JSON.stringify({
+            posted: f.posted, inspections, calls: strict.calls.length, diagnostics: f.diagnostics,
+            node: f.host.state.nodes.find(value => value.id === session.nodeId)
+          }));
+        } else {
+          await completed(f.clock, f.start(kind), 'stopped legacy restart');
+          assert.equal(f.creates.length, 1);
+          assert.notEqual(f.creates[0].sessionId, session.sessionId);
+          assert.equal(f.errors.length, 0);
+        }
+        if (action !== 'reset') assert.deepEqual(f.host.state.nodes.find(value => value.id === other.id), other);
+        assert.equal(inspections, 2);
+        assert.equal(strict.calls.length, 1, 'historical retirement does not send a second old delete');
+        assert.strictEqual(await observation.first, original);
+        assert.equal(observation.current().kind, 'unconfirmed');
+        assert.equal(f.providers.length, 0);
+        assert.deepEqual(metadata, originalMetadata, 'retirement cannot fabricate an exit or EOF on the old execution');
+        const retired = f.diagnostics.filter(event => event.name === 'runtime/legacyHistoryRetired');
+        assert.equal(retired.length, 1);
+        assert.equal(retired[0].detail.retirementEvidence, evidence);
+      } finally { testLegacyHistoryInspector.run = async () => undefined; }
+    });
+  }
+}
+}
+
+test('an ended unsubmitted delete can reconnect on a later operation, not while its original attempt is pending', async () => {
+  const f = candidateFixture();
+  const session = addCandidateLegacyBinding(f, 'terminal');
+  const first = unsubmittedDelete();
+  first.attemptSettled = false;
+  const strict = candidateStrictDeletes(f, () => strict.calls.length === 1 ? first : settledLegacyDelete('legacy-absent'));
+  await assert.rejects(f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: true }), /unconfirmed/);
+  await pump(f.clock, () => [...f.host.strictRuntimeDeletes.values()][0].attemptSettled === true);
+  await assert.rejects(f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: true }), /unconfirmed/);
+  assert.equal(strict.calls.length, 1);
+  first.attemptSettled = true;
+  await f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: true });
+  assert.equal(strict.calls.length, 2);
+  assert.equal((await first.first).kind, 'unconfirmed');
+});
+
+for (const protection of ['live', 'attached', 'submitted-start', 'submitted-delete', 'pending-delete',
+  'finalization', 'failed-finalization', 'unknown-finalization', 'reader', 'projection', 'state-callback']) {
+  test(`stopped history inspection cannot bypass ${protection}`, async () => {
+    const f = candidateRuntimeFixture();
+    const session = addStoppedHistoryBinding(f, 'agent');
+    const node = f.host.state.nodes.find(value => value.id === session.nodeId);
+    const key = f.host.getExecutionSessionOperationKey('agent', session.nodeId);
+    const strict = candidateStrictDeletes(f, () => unsubmittedDelete());
+    let inspected = 0;
+    testLegacyHistoryInspector.run = async () => { inspected++; return 'stopped-runtime'; };
+    if (protection === 'live') node.metadata.agent.liveSession = true;
+    if (protection === 'attached') f.host.agentSessions.set(session.nodeId, { owner: 'supervisor' });
+    if (protection === 'submitted-start') f.host.candidateRuntimeStarts = new Map([[key, { submitted: true }]]);
+    if (protection === 'reader') f.host.terminalReadRelay.usesSession = () => true;
+    if (protection === 'projection') f.host.pendingTerminalProjectionRefreshes.set(
+      f.host.getTerminalProjectionRefreshKey('agent', session.nodeId, session.sessionId), Promise.resolve());
+    if (protection === 'state-callback') f.host.pendingRuntimeSupervisorStateCallbacks = new Set([Promise.resolve()]);
+    if (['submitted-delete', 'pending-delete', 'finalization', 'failed-finalization', 'unknown-finalization'].includes(protection)) {
+      const result = { kind: 'unconfirmed' };
+      const record = { session, deadline: 20, first: Promise.resolve(result), result, attemptSettled: true,
+        observation: { first: Promise.resolve(result), current: () => result,
+          submitted: protection === 'submitted-delete', attemptSettled: protection !== 'pending-delete' } };
+      if (protection === 'finalization') record.finalization = Promise.resolve();
+      if (protection === 'failed-finalization') record.finalizationError = 'controlled save failure';
+      if (protection === 'unknown-finalization') record.finalizationUnconfirmed = true;
+      f.host.strictRuntimeDeletes = new Map([[f.host.strictRuntimeDeleteKey(session), record]]);
+    }
+    try {
+      await assert.rejects(f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: true }), /unconfirmed|failed|pending/);
+      assert.equal(inspected, 0);
+      assert.equal(f.creates.length, 0);
+      assert.equal(node.metadata.agent.runtimeSessionId, session.sessionId);
+    } finally { testLegacyHistoryInspector.run = async () => undefined; }
+  });
+}
+
+for (const change of ['binding', 'metadata', 'deadline']) {
+  test(`stopped history rechecks ${change} after the read-only inspection`, async () => {
+    const f = candidateRuntimeFixture();
+    const session = addStoppedHistoryBinding(f, 'terminal');
+    candidateStrictDeletes(f, () => unsubmittedDelete());
+    const gate = deferred();
+    const entered = deferred();
+    testLegacyHistoryInspector.run = async () => { entered.resolve(); return gate.promise; };
+    try {
+      const operation = f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: true });
+      const rejected = assert.rejects(operation, /unconfirmed|deadline/);
+      await entered.promise;
+      const node = f.host.state.nodes.find(value => value.id === session.nodeId);
+      if (change === 'binding') node.metadata.terminal.runtimeSessionId = 'new-binding';
+      if (change === 'metadata') node.metadata.terminal = { ...node.metadata.terminal, liveSession: true };
+      if (change === 'deadline') f.clock.advance(EXECUTION_CANDIDATE_BUDGETS.boundaryMs);
+      if (change !== 'deadline') gate.resolve('stopped-runtime');
+      await completed(f.clock, rejected, 'changed history inspection');
+      gate.resolve('stopped-runtime');
+      assert(f.host.state.nodes.some(value => value.id === session.nodeId));
+      assert.equal(f.creates.length, 0);
+    } finally { testLegacyHistoryInspector.run = async () => undefined; }
+  });
+}
+
+for (const change of ['metadata', 'reader', 'submitted-start']) {
+  test(`batch history cleanup rechecks ${change} after waiting for another binding`, async () => {
+    const f = candidateRuntimeFixture();
+    const first = addStoppedHistoryBinding(f, 'agent');
+    const second = addStoppedHistoryBinding(f, 'terminal');
+    const inspected = deferred();
+    const gate = deferred();
+    const strict = candidateStrictDeletes(f, () => unsubmittedDelete());
+    const prepare = f.host.prepareStoppedLegacyHistoryRetirement.bind(f.host);
+    f.host.prepareStoppedLegacyHistoryRetirement = async (...args) => {
+      const result = await prepare(...args);
+      if (args[0].sessionId === first.sessionId) inspected.resolve();
+      return result;
+    };
+    testLegacyHistoryInspector.run = async (_backend, target) => target.sessionId === first.sessionId ? 'stopped-runtime' : gate.promise;
+    try {
+      const operation = f.host.deleteRuntimeSupervisorSessionsWithCandidate([first, second]);
+      const rejected = assert.rejects(operation, /old-agent: unconfirmed/);
+      await inspected.promise;
+      const node = f.host.state.nodes.find(value => value.id === first.nodeId);
+      if (change === 'metadata') node.metadata.agent = { ...node.metadata.agent, liveSession: true };
+      if (change === 'reader') f.host.terminalReadRelay.usesSession = id => id === first.sessionId;
+      if (change === 'submitted-start') f.host.candidateRuntimeStarts = new Map([
+        [f.host.getExecutionSessionOperationKey(first.kind, first.nodeId), { submitted: true }]
+      ]);
+      gate.resolve('stopped-runtime');
+      await completed(f.clock, rejected, 'changed batch history eligibility');
+      assert.equal(f.host.state.nodes.length, 2);
+      assert.equal(strict.calls.length, 0);
+      assert.equal(f.diagnostics.some(event => event.name === 'runtime/legacyHistoryRetired'), false);
+    } finally { gate.resolve(undefined); testLegacyHistoryInspector.run = async () => undefined; }
+  });
+}
+
+const nativeHistoryStoragePath = '/controlled/runtime-supervisor-generations/terminal-exit-v1';
+const detachedHistoryStoragePath = '/controlled/runtime-supervisor-generations/terminal-stream-v1';
+
+function addDetachedRestoredHistoryBinding(f, kind, runtimeStoragePath = detachedHistoryStoragePath) {
+  const session = addCandidateLegacyBinding(f, kind);
+  f.host.unbindRuntimeSession(session.sessionId, session.runtimeStoragePath, kind, session.backendKind);
+  session.runtimeStoragePath = runtimeStoragePath;
+  const node = f.host.state.nodes.find(value => value.id === session.nodeId);
+  node.status = 'history-restored';
+  Object.assign(node.metadata[kind], { attachmentState: 'history-restored', liveSession: false,
+    lifecycle: kind === 'agent' ? 'stopped' : 'closed', runtimeStoragePath });
+  f.host.bindRuntimeSession(node.id, kind, session.sessionId, runtimeStoragePath, session.backendKind);
+  return session;
+}
+
+for (const kind of ['agent', 'terminal']) {
+  for (const action of ['delete', 'restart', 'reset']) {
+    test(`detached restored ${kind} ${action} uses target evidence after an unsubmitted failure`, async () => {
+      const f = candidateRuntimeFixture();
+      const session = addDetachedRestoredHistoryBinding(f, kind);
+      const metadata = f.host.state.nodes.find(node => node.id === session.nodeId).metadata[kind];
+      const originalMetadata = structuredClone(metadata);
+      const other = structuredClone(f.host.state.nodes.find(node => node.id !== session.nodeId));
+      const observation = unsubmittedDelete();
+      const strict = candidateStrictDeletes(f, () => observation);
+      let inspections = 0;
+      let preferredCalled = false;
+      let capabilityChecked = false;
+      const preferred = f.host.getPreferredRuntimeSupervisorClient;
+      const supports = f.client.supportsExecutionCandidateProfile;
+      f.host.getPreferredRuntimeSupervisorClient = async (...args) => {
+        assert.equal(inspections, 1, 'old-generation cleanup must not run as a native preflight');
+        preferredCalled = true;
+        return preferred(...args);
+      };
+      f.client.supportsExecutionCandidateProfile = (...args) => { capabilityChecked = true; return supports(...args); };
+      testNativeHistoryInspector.run = async () => assert.fail('old detached history cannot use namespace absence evidence');
+      testLegacyHistoryInspector.run = async (backend, target, signal) => {
+        assert.equal(backend.runtimeStoragePath, session.runtimeStoragePath);
+        assert.deepEqual(target, { sessionId: session.sessionId, kind });
+        assert.equal(signal.aborted, false);
+        if (++inspections === 1) return undefined;
+        if (action === 'restart') {
+          assert.equal(preferredCalled, true);
+          assert.equal(capabilityChecked, true, 'new client capability is required before old history cleanup');
+        }
+        return 'detached-recovered-history';
+      };
+      try {
+        await assert.rejects(f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: false }), /unconfirmed/);
+        await pump(f.clock, () => [...f.host.strictRuntimeDeletes.values()][0].attemptSettled === true);
+        const original = await observation.first;
+        if (action === 'delete') {
+          await completed(f.clock, f.host.deleteNode(session.nodeId), 'old detached history delete');
+          assert(!f.host.state.nodes.some(node => node.id === session.nodeId), JSON.stringify(f.posted));
+        } else if (action === 'reset') {
+          delete f.host.collectPersistedLiveRuntimeSessions;
+          await completed(f.clock, f.host.resetState(), 'old detached history reset');
+          assert.equal(f.host.state.nodes.length, 0);
+        } else {
+          await completed(f.clock, f.start(kind), 'old detached history restart');
+          assert.equal(f.creates.length, 1, JSON.stringify(f.errors));
+          assert.notEqual(f.creates[0].sessionId, session.sessionId);
+        }
+        if (action !== 'reset') assert.deepEqual(f.host.state.nodes.find(node => node.id === other.id), other);
+        assert.equal(inspections, 2);
+        assert.equal(strict.calls.length, 1);
+        assert.strictEqual(await observation.first, original);
+        assert.equal(observation.current().kind, 'unconfirmed');
+        assert.deepEqual(metadata, originalMetadata, 'restored history cleanup cannot synthesize an exit or EOF');
+        assert.equal(f.diagnostics.filter(event => event.detail?.retirementEvidence === 'detached-recovered-history').length, 1);
+        assert.equal(f.providers.length, 0);
+      } finally {
+        testLegacyHistoryInspector.run = async () => undefined;
+        testNativeHistoryInspector.run = async () => undefined;
+      }
+    });
+  }
+
+  test(`detached restored ${kind} incompatible replacement never inspects or deletes its predecessor`, async () => {
+    const f = candidateRuntimeFixture();
+    const session = addDetachedRestoredHistoryBinding(f, kind);
+    const node = f.host.state.nodes.find(value => value.id === session.nodeId);
+    const metadata = structuredClone(node.metadata[kind]);
+    const strict = candidateStrictDeletes(f, () => unsubmittedDelete());
+    f.client.supportsExecutionCandidateProfile = () => false;
+    let inspections = 0;
+    testLegacyHistoryInspector.run = async () => { inspections++; return 'detached-recovered-history'; };
+    testNativeHistoryInspector.run = async () => assert.fail('old generation cannot enter native preflight');
+    try {
+      await completed(f.clock, f.start(kind), 'old detached incompatible replacement');
+      assert(f.errors.some(message => /support.*profile/i.test(message)), JSON.stringify(f.errors));
+      assert.equal(inspections, 0);
+      assert.equal(strict.calls.length, 0);
+      assert.equal(f.creates.length, 0);
+      assert.deepEqual(node.metadata[kind], metadata);
+      assert.equal(f.diagnostics.some(event => event.detail?.retirementEvidence === 'detached-recovered-history'), false);
+    } finally {
+      testLegacyHistoryInspector.run = async () => undefined;
+      testNativeHistoryInspector.run = async () => undefined;
+    }
+  });
+}
+
+test('detached restored history in one storage does not share target-specific qualification', async () => {
+  const f = candidateRuntimeFixture();
+  const sessions = [addDetachedRestoredHistoryBinding(f, 'agent'), addDetachedRestoredHistoryBinding(f, 'terminal')];
+  const nodes = structuredClone(f.host.state.nodes);
+  const strict = candidateStrictDeletes(f, () => unsubmittedDelete());
+  const targets = [];
+  testNativeHistoryInspector.run = async () => assert.fail('old target records cannot share native owner evidence');
+  testLegacyHistoryInspector.run = async (backend, target) => {
+    assert.equal(backend.runtimeStoragePath, detachedHistoryStoragePath);
+    targets.push(target.sessionId);
+    return target.sessionId === sessions[0].sessionId ? 'detached-recovered-history' : undefined;
+  };
+  try {
+    await assert.rejects(f.host.deleteRuntimeSupervisorSessionsWithCandidate(sessions), /old-terminal: unconfirmed/);
+    assert.deepEqual(targets.sort(), sessions.map(session => session.sessionId).sort());
+    assert.equal(strict.calls.length, 1);
+    assert.equal(strict.calls[0].params.sessionId, sessions[1].sessionId);
+    assert.deepEqual(f.host.state.nodes, nodes);
+    assert.equal(f.diagnostics.some(event => event.detail?.retirementEvidence === 'detached-recovered-history'), false);
+  } finally {
+    testLegacyHistoryInspector.run = async () => undefined;
+    testNativeHistoryInspector.run = async () => undefined;
+  }
+});
+
+for (const change of ['metadata', 'reader']) {
+  test(`detached restored history rechecks ${change} after target inspection`, async () => {
+    const f = candidateRuntimeFixture();
+    const session = addDetachedRestoredHistoryBinding(f, 'agent');
+    const node = f.host.state.nodes.find(value => value.id === session.nodeId);
+    const bindings = new Map(f.host.runtimeSessionBindings);
+    candidateStrictDeletes(f, () => unsubmittedDelete());
+    const entered = deferred();
+    const gate = deferred();
+    testLegacyHistoryInspector.run = async () => { entered.resolve(); return gate.promise; };
+    testNativeHistoryInspector.run = async () => assert.fail('old generation cannot use native evidence');
+    try {
+      const rejected = assert.rejects(f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: false }), /unconfirmed/);
+      await entered.promise;
+      if (change === 'metadata') node.metadata.agent = { ...node.metadata.agent, liveSession: true };
+      if (change === 'reader') f.host.terminalReadRelay.usesSession = () => true;
+      gate.resolve('detached-recovered-history');
+      await completed(f.clock, rejected, 'old detached target eligibility changed');
+      assert.strictEqual(f.host.state.nodes.find(value => value.id === session.nodeId), node);
+      assert.deepEqual(f.host.runtimeSessionBindings, bindings);
+      assert.equal(f.diagnostics.some(event => event.detail?.retirementEvidence === 'detached-recovered-history'), false);
+    } finally {
+      gate.resolve(undefined);
+      testLegacyHistoryInspector.run = async () => undefined;
+      testNativeHistoryInspector.run = async () => undefined;
+    }
+  });
+}
+
+for (const runtimeStoragePath of [detachedHistoryStoragePath,
+  '/controlled/runtime-supervisor-generations/terminal-stream-v1-alias',
+  '/controlled/runtime-supervisor-generations/unknown-generation']) {
+  test(`detached history inspector rejection stays protected without native fallback: ${path.basename(runtimeStoragePath)}`, async () => {
+    const f = candidateRuntimeFixture();
+    const session = addDetachedRestoredHistoryBinding(f, 'terminal', runtimeStoragePath);
+    const strict = candidateStrictDeletes(f, () => unsubmittedDelete());
+    let inspections = 0;
+    testLegacyHistoryInspector.run = async () => { inspections++; return undefined; };
+    testNativeHistoryInspector.run = async () => assert.fail('rejected old history cannot fall back to native evidence');
+    try {
+      await assert.rejects(f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: false }), /unconfirmed/);
+      assert.equal(inspections, 1);
+      assert.equal(strict.calls.length, 1);
+      assert.equal(f.host.state.nodes.find(node => node.id === session.nodeId).metadata.terminal.runtimeSessionId, session.sessionId);
+      assert.equal(f.diagnostics.some(event => event.detail?.retirementEvidence === 'detached-recovered-history'), false);
+    } finally {
+      testLegacyHistoryInspector.run = async () => undefined;
+      testNativeHistoryInspector.run = async () => undefined;
+    }
+  });
+}
+
+function addNativeHistoryBinding(f, kind) {
+  const session = addCandidateLegacyBinding(f, kind);
+  f.host.unbindRuntimeSession(session.sessionId, session.runtimeStoragePath, kind, session.backendKind);
+  session.runtimeStoragePath = nativeHistoryStoragePath;
+  const node = f.host.state.nodes.find(value => value.id === session.nodeId);
+  node.status = 'history-restored';
+  Object.assign(node.metadata[kind], { attachmentState: 'history-restored', liveSession: false,
+    runtimeStoragePath: session.runtimeStoragePath });
+  f.host.bindRuntimeSession(node.id, kind, session.sessionId, session.runtimeStoragePath, session.backendKind);
+  return session;
+}
+
+function nativeHistoryStrictDeletes(f, behavior) {
+  const strict = candidateStrictDeletes(f, behavior);
+  const original = f.host.getRuntimeHostBackend;
+  f.host.getRuntimeHostBackend = (kind, runtimeStoragePath) => ({ ...original(kind, runtimeStoragePath),
+    paths: { storageDir: path.join(runtimeStoragePath, 'runtime-supervisor') } });
+  return strict;
+}
+
+for (const kind of ['agent', 'terminal']) {
+  for (const action of ['delete', 'restart', 'reset']) {
+    test(`native ${kind} history ${action} retries ended unsubmitted failure without fabricating termination`, async () => {
+      const f = candidateRuntimeFixture();
+      const session = addNativeHistoryBinding(f, kind);
+      const metadata = f.host.state.nodes.find(value => value.id === session.nodeId).metadata[kind];
+      const originalMetadata = structuredClone(metadata);
+      const other = structuredClone(f.host.state.nodes.find(value => value.id !== session.nodeId));
+      const observation = unsubmittedDelete();
+      const strict = nativeHistoryStrictDeletes(f, () => observation);
+      const preferred = f.host.getPreferredRuntimeSupervisorClient;
+      let ownerStarted = false;
+      let inspections = 0;
+      f.host.getPreferredRuntimeSupervisorClient = async (...args) => {
+        assert.equal(inspections, 2, 'native predecessor is inspected before starting the preferred Supervisor');
+        ownerStarted = true;
+        return preferred(...args);
+      };
+      testNativeHistoryInspector.run = async backend => {
+        assert.equal(ownerStarted, false, 'a newly started owner must not block its predecessor preflight');
+        assert.equal(backend.runtimeStoragePath, session.runtimeStoragePath);
+        return ++inspections > 1 ? 'native-owner-absent' : undefined;
+      };
+      try {
+        await assert.rejects(f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: false }), /unconfirmed/);
+        await pump(f.clock, () => [...f.host.strictRuntimeDeletes.values()][0].attemptSettled === true);
+        const original = await observation.first;
+        if (action === 'delete') {
+          await completed(f.clock, f.host.deleteNode(session.nodeId), 'native history delete');
+          assert(!f.host.state.nodes.some(node => node.id === session.nodeId), JSON.stringify(f.posted));
+        } else if (action === 'reset') {
+          delete f.host.collectPersistedLiveRuntimeSessions;
+          await completed(f.clock, f.host.resetState(), 'native history reset');
+          assert.equal(f.host.state.nodes.length, 0);
+        } else {
+          await completed(f.clock, f.start(kind), 'native history replacement');
+          assert.equal(f.creates.length, 1, JSON.stringify(f.errors));
+          assert.notEqual(f.creates[0].sessionId, session.sessionId);
+          assert.equal(ownerStarted, true);
+        }
+        if (action !== 'reset') assert.deepEqual(f.host.state.nodes.find(node => node.id === other.id), other);
+        assert.equal(inspections, 2);
+        assert.equal(strict.calls.length, 1);
+        assert.strictEqual(await observation.first, original);
+        assert.equal(observation.current().kind, 'unconfirmed');
+        assert.deepEqual(metadata, originalMetadata, 'native absence is not a process exit or terminal EOF');
+        assert.equal(f.providers.length, 0);
+      } finally { testNativeHistoryInspector.run = async () => undefined; }
+    });
+  }
+}
+
+test('native history batch shares one namespace observation and keeps separate target eligibility', async () => {
+  const f = candidateRuntimeFixture();
+  const sessions = [addNativeHistoryBinding(f, 'agent'), addNativeHistoryBinding(f, 'terminal')];
+  const strict = nativeHistoryStrictDeletes(f, () => unsubmittedDelete());
+  let inspections = 0;
+  testNativeHistoryInspector.run = async () => { inspections++; return 'native-owner-absent'; };
+  try {
+    await completed(f.clock, f.host.deleteRuntimeSupervisorSessionsWithCandidate(sessions), 'shared native observation');
+    assert.equal(inspections, 1);
+    assert.equal(strict.calls.length, 0);
+    assert.deepEqual(f.diagnostics.filter(event => event.detail?.retirementEvidence === 'native-owner-absent')
+      .map(event => event.detail.sessionId).sort(), sessions.map(session => session.sessionId).sort());
+  } finally { testNativeHistoryInspector.run = async () => undefined; }
+});
+
+test('native history batch cannot let shared evidence bypass a changed target reader', async () => {
+  const f = candidateRuntimeFixture();
+  const sessions = [addNativeHistoryBinding(f, 'agent'), addNativeHistoryBinding(f, 'terminal')];
+  nativeHistoryStrictDeletes(f, () => unsubmittedDelete());
+  const entered = deferred();
+  const gate = deferred();
+  let inspections = 0;
+  testNativeHistoryInspector.run = async () => { inspections++; entered.resolve(); return gate.promise; };
+  try {
+    const rejected = assert.rejects(f.host.deleteRuntimeSupervisorSessionsWithCandidate(sessions), /old-terminal: unconfirmed/);
+    await entered.promise;
+    f.host.terminalReadRelay.usesSession = sessionId => sessionId === sessions[1].sessionId;
+    gate.resolve('native-owner-absent');
+    await completed(f.clock, rejected, 'shared native evidence changed reader');
+    assert.equal(inspections, 1);
+    assert.equal(f.host.state.nodes.length, 2);
+    assert.equal(f.diagnostics.some(event => event.detail?.retirementEvidence === 'native-owner-absent'), false);
+  } finally { gate.resolve(undefined); testNativeHistoryInspector.run = async () => undefined; }
+});
+
+test('native history observation deadline aborts inspection and cannot admit its late absence result', async () => {
+  const f = candidateRuntimeFixture();
+  const session = addNativeHistoryBinding(f, 'terminal');
+  const node = f.host.state.nodes.find(value => value.id === session.nodeId);
+  const metadata = structuredClone(node.metadata.terminal);
+  const bindings = [...f.host.runtimeSessionBindings.entries()];
+  const strict = nativeHistoryStrictDeletes(f, () => unsubmittedDelete());
+  const entered = deferred();
+  const gate = deferred();
+  let signal;
+  testNativeHistoryInspector.run = async (_backend, observedSignal) => {
+    signal = observedSignal;
+    entered.resolve();
+    return gate.promise;
+  };
+  try {
+    const rejected = assert.rejects(
+      f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: false }), /unconfirmed|deadline/);
+    await entered.promise;
+    assert.equal(signal.aborted, false);
+    f.clock.advance(f.clock.now() + EXECUTION_CANDIDATE_BUDGETS.boundaryMs);
+    assert.equal(signal.aborted, true, 'the Host deadline must cancel the outstanding native inspection');
+    await completed(f.clock, rejected, 'native inspection deadline');
+    gate.resolve('native-owner-absent');
+    await pump(f.clock);
+    assert.equal(strict.calls.length, 0, 'expiration cannot dispatch a late strict deletion');
+    assert.deepEqual(f.host.runtimeSessionBindings, new Map(bindings));
+    assert.strictEqual(f.host.state.nodes.find(value => value.id === session.nodeId), node);
+    assert.deepEqual(node.metadata.terminal, metadata);
+    assert.equal(f.diagnostics.some(event => event.detail?.retirementEvidence === 'native-owner-absent'), false);
+  } finally { gate.resolve(undefined); testNativeHistoryInspector.run = async () => undefined; }
+});
+
+test('native history evidence is not cached across independent user operations', async () => {
+  const f = candidateRuntimeFixture();
+  const session = addNativeHistoryBinding(f, 'agent');
+  const strict = nativeHistoryStrictDeletes(f, () => unsubmittedDelete());
+  f.client.supportsExecutionCandidateProfile = () => false;
+  const observations = ['native-owner-absent', undefined, 'native-owner-absent'];
+  let inspections = 0;
+  testNativeHistoryInspector.run = async () => observations[inspections++];
+  try {
+    await completed(f.clock, f.start('agent'), 'native preflight before incompatible replacement');
+    assert.equal(inspections, 1);
+    assert.equal(f.creates.length, 0);
+    assert(f.host.state.nodes.some(node => node.id === session.nodeId));
+    assert.equal(f.diagnostics.some(event => event.detail?.retirementEvidence === 'native-owner-absent'), false);
+
+    await completed(f.clock, f.host.deleteNode(session.nodeId), 'independent unknown native delete');
+    assert.equal(inspections, 2, 'the next operation must inspect, even after a successful preflight');
+    assert(f.host.state.nodes.some(node => node.id === session.nodeId), 'previous absence cannot authorize the new unknown operation');
+    assert.equal(strict.calls.length, 1);
+    assert.equal(f.diagnostics.some(event => event.detail?.retirementEvidence === 'native-owner-absent'), false);
+    await pump(f.clock, () => [...f.host.strictRuntimeDeletes.values()][0].attemptSettled === true);
+
+    await completed(f.clock, f.host.deleteNode(session.nodeId), 'independent confirmed native delete');
+    assert.equal(inspections, 3);
+    assert(!f.host.state.nodes.some(node => node.id === session.nodeId));
+    assert.equal(f.diagnostics.filter(event => event.detail?.retirementEvidence === 'native-owner-absent').length, 1);
+  } finally { testNativeHistoryInspector.run = async () => undefined; }
+});
+
+for (const kind of ['agent', 'terminal']) {
+  test(`native ${kind} history remains bound when owner absence is not established`, async () => {
+    const f = candidateRuntimeFixture();
+    const session = addNativeHistoryBinding(f, kind);
+    const strict = nativeHistoryStrictDeletes(f, () => unsubmittedDelete());
+    let inspections = 0;
+    testNativeHistoryInspector.run = async () => { inspections++; return undefined; };
+    try {
+      await assert.rejects(f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: false }), /unconfirmed/);
+      assert.equal(inspections, 1);
+      assert.equal(strict.calls.length, 1);
+      assert.equal(f.host.state.nodes.find(node => node.id === session.nodeId).metadata[kind].runtimeSessionId, session.sessionId);
+    } finally { testNativeHistoryInspector.run = async () => undefined; }
+  });
+}
+
+for (const protection of ['submitted-start', 'submitted-delete', 'reader', 'finalization', 'failed-finalization', 'unknown-finalization']) {
+  test(`native owner absence cannot bypass ${protection}`, async () => {
+    const f = candidateRuntimeFixture();
+    const session = addNativeHistoryBinding(f, 'agent');
+    nativeHistoryStrictDeletes(f, () => unsubmittedDelete());
+    let inspections = 0;
+    testNativeHistoryInspector.run = async () => { inspections++; return 'native-owner-absent'; };
+    const key = f.host.getExecutionSessionOperationKey('agent', session.nodeId);
+    if (protection === 'submitted-start') f.host.candidateRuntimeStarts = new Map([[key, { submitted: true }]]);
+    if (protection === 'reader') f.host.terminalReadRelay.usesSession = () => true;
+    if (protection.includes('delete') || protection.includes('finalization')) {
+      const result = { kind: 'unconfirmed' };
+      const record = { session, deadline: 20, first: Promise.resolve(result), result, attemptSettled: true,
+        observation: { first: Promise.resolve(result), current: () => result, submitted: protection === 'submitted-delete', attemptSettled: true } };
+      if (protection === 'finalization') record.finalization = Promise.resolve();
+      if (protection === 'failed-finalization') record.finalizationError = 'controlled final save failure';
+      if (protection === 'unknown-finalization') record.finalizationUnconfirmed = true;
+      f.host.strictRuntimeDeletes = new Map([[f.host.strictRuntimeDeleteKey(session), record]]);
+    }
+    try {
+      await assert.rejects(f.host.deleteRuntimeSupervisorSessionStrict(session, { allowRestart: false }), /unconfirmed|failed|pending/);
+      assert.equal(inspections, 0);
+      assert.equal(f.host.state.nodes.find(node => node.id === session.nodeId).metadata.agent.runtimeSessionId, session.sessionId);
+    } finally { testNativeHistoryInspector.run = async () => undefined; }
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`native ${kind} restart preflight does not retire a predecessor when the new client is incompatible`, async () => {
+    const f = candidateRuntimeFixture();
+    const session = addNativeHistoryBinding(f, kind);
+    const metadata = structuredClone(f.host.state.nodes.find(node => node.id === session.nodeId).metadata[kind]);
+    const strict = nativeHistoryStrictDeletes(f, () => unsubmittedDelete());
+    f.client.supportsExecutionCandidateProfile = () => false;
+    let inspections = 0;
+    testNativeHistoryInspector.run = async () => { inspections++; return 'native-owner-absent'; };
+    try {
+      await completed(f.clock, f.start(kind), 'incompatible native replacement');
+      assert.equal(inspections, 1);
+      assert.equal(strict.calls.length, 0, 'preflight cannot delete before new-client admission');
+      assert.equal(f.creates.length, 0);
+      assert(f.errors.some(message => /support.*profile/i.test(message)), JSON.stringify(f.errors));
+      assert.deepEqual(f.host.state.nodes.find(node => node.id === session.nodeId).metadata[kind], metadata);
+      assert.equal(f.diagnostics.some(event => event.detail?.retirementEvidence === 'native-owner-absent'), false);
+    } finally { testNativeHistoryInspector.run = async () => undefined; }
+  });
+
+  for (const change of ['metadata', 'reader', 'token']) {
+    test(`native ${kind} restart rechecks ${change} after preferred startup`, async () => {
+      const f = candidateRuntimeFixture();
+      const session = addNativeHistoryBinding(f, kind);
+      nativeHistoryStrictDeletes(f, () => unsubmittedDelete());
+      const preferred = f.host.getPreferredRuntimeSupervisorClient;
+      const entered = deferred();
+      const gate = deferred();
+      let inspections = 0;
+      testNativeHistoryInspector.run = async () => { inspections++; return 'native-owner-absent'; };
+      f.host.getPreferredRuntimeSupervisorClient = async (...args) => {
+        assert.equal(inspections, 1);
+        entered.resolve();
+        await gate.promise;
+        return preferred(...args);
+      };
+      try {
+        const operation = f.start(kind);
+        await entered.promise;
+        const node = f.host.state.nodes.find(value => value.id === session.nodeId);
+        if (change === 'metadata') node.metadata[kind] = { ...node.metadata[kind], runtimeSessionId: 'replacement-binding' };
+        if (change === 'reader') f.host.terminalReadRelay.usesSession = () => true;
+        if (change === 'token') f.host.beginExecutionSessionOperation(kind, session.nodeId);
+        gate.resolve();
+        await completed(f.clock, operation, 'native replacement changed identity');
+        assert.equal(f.creates.length, 0);
+        assert(f.errors.length > 0);
+        assert.equal(node.metadata[kind].runtimeSessionId, change === 'metadata' ? 'replacement-binding' : session.sessionId);
+        assert.equal(f.diagnostics.some(event => event.detail?.retirementEvidence === 'native-owner-absent'), false);
+      } finally { gate.resolve(); testNativeHistoryInspector.run = async () => undefined; }
+    });
+  }
+
+  test(`native ${kind} replacement retains same-start absence evidence after a slow preferred startup`, async () => {
+    const f = candidateRuntimeFixture();
+    const session = addNativeHistoryBinding(f, kind);
+    const strict = nativeHistoryStrictDeletes(f, () => unsubmittedDelete());
+    const preferred = f.host.getPreferredRuntimeSupervisorClient;
+    let inspections = 0;
+    testNativeHistoryInspector.run = async () => { inspections++; return 'native-owner-absent'; };
+    f.host.getPreferredRuntimeSupervisorClient = async (...args) => {
+      assert.equal(inspections, 1);
+      f.clock.advance(f.clock.now() + EXECUTION_CANDIDATE_BUDGETS.boundaryMs + 1);
+      return preferred(...args);
+    };
+    try {
+      await completed(f.clock, f.start(kind), 'native replacement after slow startup');
+      assert.equal(f.creates.length, 1, JSON.stringify(f.errors));
+      assert.notEqual(f.creates[0].sessionId, session.sessionId);
+      assert.equal(inspections, 1, 'same-start evidence cannot reacquire a namespace now owned by the new Supervisor');
+      assert.equal(strict.calls.length, 0);
+    } finally { testNativeHistoryInspector.run = async () => undefined; }
+  });
+}
+
 function candidateRuntimeRoutingFixture() {
   const f = candidateRuntimeFixture();
   const baseStoragePath = path.resolve('/controlled/workspace-runtime');
@@ -2365,7 +3039,7 @@ function candidateRuntimeRoutingFixture() {
   f.host.resolveRuntimeStoragePath = CanvasPanelManager.prototype.resolveRuntimeStoragePath;
   f.host.getPreferredRuntimeSupervisorClient = CanvasPanelManager.prototype.getPreferredRuntimeSupervisorClient;
   return { ...f, baseStoragePath,
-    candidateStoragePath: path.join(baseStoragePath, 'runtime-supervisor-generations', 'terminal-exit-v1') };
+    candidateStoragePath: path.join(baseStoragePath, 'runtime-supervisor-generations', 'terminal-current-state-linux-v1') };
 }
 
 for (const kind of ['terminal', 'agent']) {
@@ -3713,7 +4387,11 @@ test('S10 Host uncertain resize retains its observation and accepted tail withou
   }
 });
 
-for (const { name, run, timeoutMs } of tests) {
+const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
+const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
+const selectedTests = testNamePattern ? tests.filter(({ name }) => testNamePattern.test(name)) : tests;
+assert(selectedTests.length > 0, 'Host test-name filter must select at least one test.');
+for (const { name, run, timeoutMs } of selectedTests) {
   let timeout;
   try {
     await Promise.race([
@@ -3725,4 +4403,4 @@ for (const { name, run, timeoutMs } of tests) {
   } finally { clearTimeout(timeout); }
   console.log(`ok - ${name}`);
 }
-console.log(`Host execution owner wiring: ${tests.length}/${tests.length} passed (non-native only).`);
+console.log(`Host execution owner wiring: ${selectedTests.length}/${selectedTests.length} passed (selected ${selectedTests.length}/${tests.length}; non-native only).`);

@@ -24,6 +24,12 @@ const RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR = 'runtime-supervisor-generations';
 
 export const CURRENT_RUNTIME_SUPERVISOR_GENERATION = 'terminal-stream-v1';
 const EXECUTION_CANDIDATE_GENERATIONS: Readonly<Record<ExecutionCandidateProfile, string>> = Object.freeze({
+  [EXECUTION_CANDIDATE_PROFILE]: 'terminal-current-state-linux-v1',
+  [MACOS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-current-state-macos-v1',
+  [WINDOWS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-current-state-windows-v1'
+});
+// Existing live executions keep their original owner and its negotiated capabilities.
+const PREVIOUS_EXECUTION_CANDIDATE_GENERATIONS: Readonly<Record<ExecutionCandidateProfile, string>> = Object.freeze({
   [EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-v1',
   [MACOS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-macos-v1',
   [WINDOWS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-windows-v1'
@@ -71,7 +77,8 @@ export function resolveRuntimeSupervisorExecutionProfile(storageDir: string): Ex
   if (path.basename(resolvedStorageDir) === 'runtime-supervisor' &&
       path.basename(path.dirname(generationDirectory)) === RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR) {
     return (Object.keys(EXECUTION_CANDIDATE_GENERATIONS) as ExecutionCandidateProfile[])
-      .find(profile => EXECUTION_CANDIDATE_GENERATIONS[profile] === path.basename(generationDirectory));
+      .find(profile => EXECUTION_CANDIDATE_GENERATIONS[profile] === path.basename(generationDirectory) ||
+        PREVIOUS_EXECUTION_CANDIDATE_GENERATIONS[profile] === path.basename(generationDirectory));
   }
   return undefined;
 }

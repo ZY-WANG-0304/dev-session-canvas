@@ -47,6 +47,8 @@ CanvasPanelManager
 
 `live-runtime` 的 Supervisor 按 authority + revision 记录 output / resize / scrollback journal，新能力使用 checkpoint + 消费驱动分页，Host 转发有界页面，Webview 实际应用后继续读取；旧能力保留兼容 stream。`snapshot-only` 由 Host 维护终端状态并以页面实际应用回执约束本地输出信用。旧 live 绑定仍按原 `runtimeStoragePath` 路由，不因默认 provider 变化迁移或重启；显式 stock 对照构建保留 `executionSessionBridge` 路径。
 
+当前进行中的 B4 将新 live 投影初始化改为固定 xterm 当前模型的分块导入，再从捕获 revision 接续分页；旧能力仍走 checkpoint 回放。该初始化状态不是 durable checkpoint，不推进其他读者，也不能跳过尾部。新默认 generation 与旧 owner 并存；格式、握手和受影响验收见 `docs/design-docs/runtime-live-state-recovery.md`，尚不宣称整体完成。
+
 这意味着当前项目不是“前端自己维护数据的 Web 白板”，也不是“独立桌面 app”。它的核心架构前提始终是：**VSCode 宿主掌握 workspace 绑定状态，Webview 负责呈现与交互；`live-runtime` 会话的进程与终端历史权威下沉到生命周期更长的 supervisor。**
 
 ## 2. 当前范围与非目标

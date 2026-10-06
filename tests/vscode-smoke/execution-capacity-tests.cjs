@@ -7,7 +7,7 @@ const net = require('node:net');
 const path = require('node:path');
 const { performance } = require('node:perf_hooks');
 const vscode = require('vscode');
-const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
+const { activateVisibleExtension, expectedExecutionCandidateGeneration, waitForCommand } = require('./test-helpers.cjs');
 const { resolveLegacyRuntimeSupervisorPaths, resolveSystemdUserRuntimeSupervisorPaths,
   resolveTerminalJournalSessionDirectory, SerializedTerminalStateTracker, TerminalSessionJournal,
   SERIALIZED_TERMINAL_CHECKPOINT_PROFILES } = require('./execution-capacity-runtime.cjs');
@@ -687,7 +687,7 @@ async function createSubject(role) {
   assert(node);
   const metadata = node.metadata.terminal;
   assert.equal(metadata.persistenceMode, 'live-runtime');
-  assert.match(metadata.runtimeStoragePath, /terminal-exit-v1/);
+  assert.match(metadata.runtimeStoragePath, new RegExp(expectedExecutionCandidateGeneration()));
   const ownedUserData = path.resolve(artifacts, '..', 'user-data');
   assert(path.resolve(metadata.runtimeStoragePath).startsWith(`${ownedUserData}${path.sep}`),
     'Only the isolated smoke workspace storage may be used.');

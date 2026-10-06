@@ -17,12 +17,13 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
   - docs/product-specs/canvas-multi-root-workspace-support.md
 related_plans:
+  - docs/exec-plans/active/runtime-live-state-recovery.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-terminal-cross-platform-diagnosis.md
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
-updated_at: 2026-10-02
+updated_at: 2026-10-06
 ---
 
 # Webview、Host 与 Runtime Supervisor 架构审核
@@ -39,7 +40,9 @@ updated_at: 2026-10-02
 
 2026-09-16 的补充审核将 Runtime Persistence 容量与 completed 归档提升为优先重评项。以下按本轮优先级排列，保留原有编号以便追踪；F-04/F-05 对应讨论中的问题 2、3，是用户确认需要重评的设计决策，不是已证明违反现行规格的实现回归。
 
-### F-04 高（审核基线；当前支持路径已收口）：checkpoint 不能推进时，完整 journal 后缀同时成为常驻内存和反复全量传输的恢复材料
+### F-04 高（容量已收口，live 状态恢复仍开放）：checkpoint 不能推进时，完整 journal 后缀同时成为常驻内存和反复全量传输的恢复材料
+
+2026-10-06 复核：容量、分页和生产准入的成果保持，但新投影仍从最后一个合格 checkpoint 回放累计交互；重开与 PaneGallery 重建不能保证同状态/scrollback 下恢复工作不随历史增长。将权威当前状态恢复列为本轮 B4 未完成交付，见 `runtime-live-state-recovery.md` 和对应活动计划；不把旧重连通过代证本目标，不混入 root 归属或通用诊断工具。
 
 位置：`extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts:512`、`extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts:503`、`extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts:558`、`extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts:1508`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:10811`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts:16388`。
 

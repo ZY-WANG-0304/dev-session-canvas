@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { Terminal } from '@xterm/xterm';
+import { restoreTerminalCurrentState, type TerminalCurrentState } from '../common/terminalCurrentState';
 import ReactFlow, {
   applyNodeChanges,
   Background,
@@ -1836,7 +1837,8 @@ function App(): JSX.Element {
     };
     window.addEventListener('message', listener);
     postMessage({ type: 'webview/ready', payload: { capabilities: {
-      terminalReadSettlementV1: true, terminalLocalSettlementV1: true, terminalAvailableReceiptV1: true,
+      terminalReadSettlementV1: true, terminalCurrentStateV1: true,
+      terminalLocalSettlementV1: true, terminalAvailableReceiptV1: true,
       terminalLocalOutputCreditV1: true
     } } });
 
@@ -8611,7 +8613,7 @@ function createExecutionTerminalController(
   };
 
   const pagedProjection = new TerminalPagedProjection({
-    request: (read, afterRevision, requestId) => {
+    request: (read, afterRevision, requestId, stateOffset) => {
       reportTerminalDrainDiagnostic(
         {
           source: 'webview-terminal-drain',
@@ -8628,7 +8630,8 @@ function createExecutionTerminalController(
       postMessage({
         type: 'webview/readExecutionTerminalPage', payload: {
           nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId,
-          readId: read.readId, requestId, afterRevision
+          readId: read.readId, requestId, afterRevision,
+          ...(stateOffset !== undefined ? { stateOffset } : {})
         }
       });
     },
@@ -8636,6 +8639,43 @@ function createExecutionTerminalController(
       nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId,
       ...(outcome ? { outcome } : {})
     } }),
+    currentState: (read, state, current, applied) => {
+      const detail: Extract<ExecutionHostEvent, { type: 'snapshot' }> = {
+        type: 'snapshot', nodeId, kind, output: '', cols: read.checkpoint.cols, rows: read.checkpoint.rows,
+        liveSession: true, executionSessionId: read.sessionId, outputSequence: read.checkpoint.revision,
+        terminalStream: { version: 1, sessionId: read.sessionId, authorityId: read.authorityId,
+          checkpoint: read.checkpoint, revision: read.checkpoint.revision, events: [] }
+      };
+      options?.onContentWillChange?.('snapshot');
+      let releaseSnapshotRestore: (() => void) | undefined;
+      const snapshotGeneration = writeGeneration;
+      queueTerminalWrite((done) => {
+        if (!current()) { done(false); return; }
+        releaseSnapshotRestore = beginSnapshotRestore();
+        const release = options?.beginSnapshotRestoreDiagnosticsSuppression?.();
+        try {
+          const value = state as TerminalCurrentState;
+          if (!value || value.cols !== read.checkpoint.cols || value.rows !== read.checkpoint.rows ||
+              value.scrollback !== read.checkpoint.scrollback) throw new Error('Current terminal state geometry does not match its reader.');
+          restoreTerminalCurrentState(terminal, value);
+        } finally { release?.(); }
+        done(current());
+      }, { reason: 'paged-current-state', checkpointRevision: read.checkpoint.revision,
+        characters: read.currentState?.length }, (success) => {
+        const restored = finishSnapshotRestore(detail, releaseSnapshotRestore, success && current(), snapshotGeneration);
+        if (restored && current()) {
+          if (currentTerminalAuthorityId !== read.authorityId) resetTerminalAppliedRevision();
+          currentTerminalAuthorityId = read.authorityId;
+          currentTerminalRevision = Math.max(currentTerminalRevision, read.checkpoint.revision);
+          hasAppliedSnapshot = true;
+          projectedExecutionSessionId = read.sessionId;
+          pendingProjectionBarrier = false;
+          projectionRecoveryRequested = false;
+          markTerminalRevisionApplied(read.authorityId, read.checkpoint.revision, { immediate: true });
+        }
+        applied(restored && current());
+      });
+    },
     checkpoint: (read, current, applied) => {
       const detail: Extract<ExecutionHostEvent, { type: 'snapshot' }> = {
         type: 'snapshot', nodeId, kind, output: '', cols: read.checkpoint.cols, rows: read.checkpoint.rows,
@@ -8657,7 +8697,7 @@ function createExecutionTerminalController(
         applied(restored && current());
       });
     },
-    events: (events, current, applied) => {
+    events: (events, revision, current, applied) => {
       options?.onContentWillChange?.('output');
       let releaseSnapshotRestore: (() => void) | undefined;
       const snapshotGeneration = writeGeneration;
@@ -8683,6 +8723,10 @@ function createExecutionTerminalController(
         replayOutputCharacters: events.reduce((size, event) => size + (event.type === 'output' ? event.data.length : 0), 0)
       }, (success) => {
         const restored = finishSnapshotRestore(undefined, releaseSnapshotRestore, success && current(), snapshotGeneration);
+        if (restored && current() && currentTerminalAuthorityId !== undefined) {
+          currentTerminalRevision = Math.max(currentTerminalRevision, revision);
+          markTerminalRevisionApplied(currentTerminalAuthorityId, revision);
+        }
         applied(restored && current());
       });
     },

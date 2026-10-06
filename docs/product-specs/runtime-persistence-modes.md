@@ -101,6 +101,8 @@
 
 ## 7. 验收标准
 
+2026-10-06 补齐 live 状态恢复要求：Supervisor 仍存活时，新 Host/Webview 及 PaneGallery 布局/聚焦重建应恢复当前权威终端模型和配置内 scrollback，再接续实时增量。相同当前状态、尺寸和 scrollback 下，恢复成本不随已被模型淘汰的累计交互持续增长。不能只以分页、有界内存或原进程仍存活代替这一验收；已有有效消费者的未消费输出和尾部仍须完整按序应用，不以当前状态覆盖跳过。此项仍未完成，见 `docs/design-docs/runtime-live-state-recovery.md`。
+
 以下 `live-runtime` 进程连续性与输出重连验收以 Supervisor 仍存活为前提；Supervisor 自身崩溃或执行机器重启后，可以没有可恢复的进程和终端历史，此时只需准确表达原运行时已丢失，不能伪装成原 live 会话。这个例外不改变画板节点、布局及用户文档的保存语义。2026-10-02 收尾决定明确：新实现仅在真正取得该 generation 排他运行权的冷启动时清理本 generation 陈旧执行账与终端 journal，不重放故障前正文；健康 Supervisor 的客户端断连/重连不执行清理，旧 generation 与旧 live 绑定不受影响。`strong` backend 不额外承诺机器/监督器故障后的恢复，`snapshot-only` 的现行保证不在本轮调整。
 
 - 在 `snapshot-only` 与 `live-runtime` 两档模式下，关闭画布、切换 surface 或 Webview reload 都不会无声终止当前 `Agent` / `Terminal` 会话。
@@ -110,6 +112,7 @@
 - 当系统无法重新附着到 live runtime 时，已有降级行为仍须与原进程重连区分；若已确认 Runtime 进程结束，则保留节点、布局、配置与退出结果，不恢复正文、不自动 start/resume。用户显式 provider resume 是独立动作，不受此禁用，也不等于原进程延续。
 - 当运行时持久化开关关闭时，关闭 VSCode 后系统会在刷盘最后状态后结束现有 `Agent` / `Terminal` 进程；重新打开时，系统至少恢复节点、标题、位置、尺寸、最后状态、最近输出摘要和恢复入口。
 - 当系统恢复的是历史状态而不是 live 进程时，用户能明确识别这一点，系统不会把它伪装成“仍在运行的同一会话”。
+- 对旧 Supervisor 已将目标恢复为纯历史对象、且实际运行环境重新确认原 Supervisor 不在的记录，用户可以删除该本地历史节点或以新会话重新启动，不要求故障进程补写退出码。此路径只解除历史绑定，不证明原主体/后代已退出，不伪造 EOF、正常退出或删除 RPC 成功；仅凭 History restored 标签、断连或旧错误文字不能放行。仍有 live 执行、reader、最终保存或已提交未知操作时继续保护，不能改写共享 Runtime 数据来取得资格。有限识别条件见 `docs/design-docs/runtime-persistence-closeout.md` 第 12 节。
 - 当节点处于 `live-runtime` 时，系统会把当前 runtime backend 与 guarantee 写入日志与诊断信息；节点默认 UI 只保留与当前操作直接相关的状态，不直接暴露 `systemd-user / best-effort` 这类调试字段。
 - 当 `Agent` 在 VSCode 关闭期间继续执行、重开时 PTY 仍存活，用户能看到关闭期间新增的执行结果；若已结束，则只恢复轻量终态。
 - 当用户执行 Reload Window，或关闭 VSCode 后等待 `Agent` 继续输出再重新打开时，仍在运行的节点与 runtime backend 观察到的输出顺序一致，不因 Host/Webview 重建而缺失、重复或从任意 ANSI 控制序列中间开始。

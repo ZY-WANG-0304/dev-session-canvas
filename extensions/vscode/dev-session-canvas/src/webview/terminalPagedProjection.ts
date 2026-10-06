@@ -8,10 +8,13 @@ import type { TerminalStreamEvent } from '../common/terminalSessionStream';
 import type { RuntimeSupervisorTerminalReadOutcome } from '../common/runtimeSupervisorProtocol';
 
 export interface TerminalPagedProjectionCallbacks {
-  request: (read: TerminalStreamReadDescriptor, afterRevision: number, requestId: string) => void;
+  request: (read: TerminalStreamReadDescriptor, afterRevision: number, requestId: string, stateOffset?: number) => void;
   close: (read: TerminalStreamReadDescriptor, outcome?: RuntimeSupervisorTerminalReadOutcome) => void;
   checkpoint: (read: TerminalStreamReadDescriptor, current: () => boolean, done: (applied?: boolean) => void) => void;
-  events: (events: TerminalStreamEvent[], current: () => boolean, done: (applied?: boolean) => void) => void;
+  currentState?: (read: TerminalStreamReadDescriptor, state: unknown,
+    current: () => boolean, done: (applied?: boolean) => void) => void;
+  events: (events: TerminalStreamEvent[], revision: number, current: () => boolean,
+    done: (applied?: boolean) => void) => void;
   exit: (message: string) => void;
   error?: (message: string) => void;
 }
@@ -28,6 +31,9 @@ export class TerminalPagedProjection {
   private finalRevision: number | undefined;
   private closed = false;
   private exitMessage: string | undefined;
+  private stateChunks: string[] | undefined;
+  private stateOffset = 0;
+  private stateImportPendingConfirmation = false;
 
   public constructor(private readonly callbacks: TerminalPagedProjectionCallbacks) {}
 
@@ -46,6 +52,15 @@ export class TerminalPagedProjection {
     this.read = read;
     this.revision = read.checkpoint.revision;
     this.headRevision = read.headRevision;
+    if (read.currentState) {
+      if (!this.callbacks.currentState) {
+        this.stop('current-state-import-unavailable');
+        return false;
+      }
+      this.stateChunks = [];
+      this.pull(true);
+      return true;
+    }
     this.busy = true;
     this.callbacks.checkpoint(read, () => this.read === read, (applied = true) => {
       if (this.read !== read) {
@@ -96,6 +111,10 @@ export class TerminalPagedProjection {
     const page = normalizeTerminalStreamPage(value);
     if (!page || page.readId !== read.readId || page.sessionId !== read.sessionId ||
         page.authorityId !== read.authorityId || page.afterRevision !== this.revision) {
+      if (this.stateChunks) {
+        this.stop('invalid-current-state-page');
+        return;
+      }
       this.busy = false;
       this.retryTimer = setTimeout(() => {
         this.retryTimer = undefined;
@@ -108,7 +127,39 @@ export class TerminalPagedProjection {
       return;
     }
     this.headRevision = Math.max(this.headRevision, page.headRevision);
-    this.callbacks.events(page.events, () => this.read === read, (applied = true) => {
+    if (this.stateChunks) {
+      const chunk = page.stateChunk;
+      if (!read.currentState || !chunk || chunk.offset !== this.stateOffset || !chunk.data.length ||
+          chunk.offset + chunk.data.length > read.currentState.length || page.events.length !== 0 ||
+          page.revision !== read.checkpoint.revision) {
+        this.stop('invalid-current-state-page');
+        return;
+      }
+      this.stateChunks.push(chunk.data);
+      this.stateOffset += chunk.data.length;
+      if (this.stateOffset < read.currentState.length) {
+        this.busy = false;
+        this.pull(true);
+        return;
+      }
+      let state: unknown;
+      try { state = JSON.parse(this.stateChunks.join('')); }
+      catch { this.stop('invalid-current-state-json'); return; }
+      this.stateChunks = undefined;
+      try {
+        this.callbacks.currentState!(read, state, () => this.read === read, (applied = true) => {
+          if (this.read !== read) return;
+          if (!applied) { this.stop('current-state-import-failed-or-cancelled'); return; }
+          // Only a normal page request acknowledges the imported state to the producer.
+          this.stateImportPendingConfirmation = true;
+          this.busy = false;
+          this.pull(true);
+        });
+      } catch { this.stop('current-state-import-failed-or-cancelled'); }
+      return;
+    }
+    if (page.stateChunk) { this.stop('unexpected-current-state-page'); return; }
+    this.callbacks.events(page.events, page.revision, () => this.read === read, (applied = true) => {
       if (this.read !== read) {
         return;
       }
@@ -117,6 +168,7 @@ export class TerminalPagedProjection {
         return;
       }
       this.revision = page.revision;
+      this.stateImportPendingConfirmation = false;
       this.busy = false;
       this.finishExit();
       this.pull();
@@ -145,6 +197,9 @@ export class TerminalPagedProjection {
     this.finalRevision = undefined;
     this.closed = false;
     this.exitMessage = undefined;
+    this.stateChunks = undefined;
+    this.stateOffset = 0;
+    this.stateImportPendingConfirmation = false;
   }
 
   private pull(force = false): void {
@@ -153,10 +208,12 @@ export class TerminalPagedProjection {
     }
     this.busy = true;
     this.requestId = `${this.read.readId}:${++this.requestSequence}`;
-    this.callbacks.request(this.read, this.revision, this.requestId);
+    this.callbacks.request(this.read, this.revision, this.requestId,
+      this.stateChunks ? this.stateOffset : undefined);
   }
 
   private finishExit(): void {
+    if (this.stateChunks || this.stateImportPendingConfirmation) return;
     if (this.read?.settlementMode) {
       if (this.finalRevision === undefined || this.busy || this.revision !== this.finalRevision) return;
       if (!this.closed) {

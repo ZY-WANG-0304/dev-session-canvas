@@ -1334,7 +1334,8 @@ try {
     const legacyHello = await request(legacy, legacy.socket, 'hello');
     assert.equal(legacyHello.result.capabilities.terminalReadSettlementV1, undefined);
     const old = await legacy.create();
-    assert.equal(old.result.capabilities, undefined);
+    assert.equal(old.result.capabilities.terminalReadSettlementV1, undefined);
+    assert.equal(old.result.capabilities.terminalCurrentStateV1, true);
     await finish(legacy, old.session, old.transport);
     assert.equal(legacy.server.toSnapshot(old.session).terminalFinalRevision, undefined);
 
@@ -1344,7 +1345,7 @@ try {
     const { session, transport, result } = await f.create();
     assert.equal(result.capabilities.terminalReadSettlementV1, true);
     assert.equal(result.terminalFinalRevision, undefined);
-    assert.equal(f.server.toSnapshot({ ...session, ownedReaders: undefined }).capabilities, undefined,
+    assert.equal(f.server.toSnapshot({ ...session, ownedReaders: undefined }).capabilities.terminalReadSettlementV1, undefined,
       'server support must not upgrade a session without a reader owner');
     const plain = await openReader(f, session, 'panel', f.socket, false);
     assert.equal(plain.settlementMode, undefined);
@@ -2282,6 +2283,196 @@ try {
     assert.equal(f.session.outputSequence, 1);
     assert.equal(f.session.terminalJournal.getRevision(), 1);
     assert.match(f.session.terminalStateTracker.getSerializedState().data, /tail-after-uncertain-resize/);
+  });
+
+  await check('current state bootstrap is bounded paging at R and preserves old reader history and the durable checkpoint', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const old = await openReader(f, session);
+    const durableCheckpoint = session.terminalCheckpoint;
+    transport.output('baseline-before-open\r\n');
+    await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'bootstrap baseline consumed');
+    const state = { format: 'xterm-current-state-v1', cols: session.cols, rows: session.rows,
+      scrollback: session.scrollback, controlled: '\u0000'.repeat(20000) };
+    const encoded = JSON.stringify(state);
+    session.terminalStateTracker.captureCurrentState = async () => state;
+    let pageReads = 0;
+    const readPage = f.server.readJournalPage.bind(f.server);
+    f.server.readJournalPage = (...args) => { pageReads++; return readPage(...args); };
+    const opened = await request(f, f.socket, 'openTerminalRead', { sessionId: session.sessionId,
+      authorityId: session.terminalAuthorityId, consumerId: 'panel', settlementMode: 'final-application-v1',
+      currentState: 'xterm-current-state-v1' });
+    assert.equal(opened.ok, true, JSON.stringify(opened));
+    const read = opened.result;
+    const readParams = { sessionId: read.sessionId, authorityId: read.authorityId,
+      readId: read.readId, afterRevision: read.checkpoint.revision };
+    assert.equal(read.checkpoint.revision, 1);
+    assert.equal(read.checkpoint.serializedState.data, '');
+    assert.equal(read.currentState.length, encoded.length);
+    assert.strictEqual(session.terminalCheckpoint, durableCheckpoint);
+    assert.equal(f.server.getTerminalJournalRetentionRevision(session), old.checkpoint.revision);
+    assert.equal((await request(f, f.socket, 'readTerminalPage', readParams)).ok, false,
+      'ordinary page cannot claim state import before chunks have been sent');
+    for (const stateOffset of [-1, 1, encoded.length, 0.5]) {
+      assert.equal((await request(f, f.socket, 'readTerminalPage', { ...readParams, stateOffset })).ok, false);
+    }
+    let received = '';
+    let first;
+    while (received.length < encoded.length) {
+      const response = await request(f, f.socket, 'readTerminalPage', { ...readParams, stateOffset: received.length });
+      assert.equal(response.ok, true, JSON.stringify(response));
+      const page = response.result;
+      assert.equal(page.afterRevision, 1);
+      assert.equal(page.revision, 1);
+      assert.deepEqual(page.events, []);
+      assert.ok(page.stateChunk.data.length <= 8192);
+      assert.ok(Buffer.byteLength(JSON.stringify(page)) <= 64 * 1024);
+      assert.equal(page.stateChunk.offset, received.length);
+      if (!first) {
+        first = page;
+        const retry = await request(f, f.socket, 'readTerminalPage', { ...readParams, stateOffset: 0 });
+        assert.deepEqual(retry.result, first);
+        transport.output('tail-after-R\r\n');
+        await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 2, 'bootstrap concurrent tail consumed');
+      }
+      received += page.stateChunk.data;
+    }
+    assert.equal(received, encoded);
+    assert.equal(pageReads, 0, 'bootstrap never reads the cumulative journal');
+    assert.equal((await request(f, f.socket, 'readTerminalPage', { ...readParams, stateOffset: 0 })).ok, false,
+      'only the last sent chunk may be retried');
+    const suffix = await request(f, f.socket, 'readTerminalPage', readParams);
+    assert.equal(suffix.ok, true);
+    assert.deepEqual(suffix.result.events.map(event => event.data), ['tail-after-R\r\n']);
+    assert.equal(f.server.terminalReads.get(f.socket).get(read.readId).currentState, undefined);
+    const original = await request(f, f.socket, 'readTerminalPage', { ...old, afterRevision: 0 });
+    assert.deepEqual(original.result.events.map(event => event.data), ['baseline-before-open\r\n', 'tail-after-R\r\n']);
+    assertSettlement(await closeReader(f, read, { kind: 'cancelled', reason: 'test-complete' }), 'recorded');
+    assertSettlement(await closeReader(f, old, { kind: 'cancelled', reason: 'test-complete' }), 'recorded');
+    await finish(f, session, transport);
+  });
+
+  await check('current state capture shares the terminal queue and failed capture loses only that reader', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    const gate = deferred();
+    let capturing = false;
+    session.terminalStateTracker.captureCurrentState = async () => {
+      capturing = true;
+      await gate.promise;
+      return { format: 'xterm-current-state-v1', cols: session.cols, rows: session.rows, scrollback: session.scrollback };
+    };
+    const openParams = { sessionId: session.sessionId, authorityId: session.terminalAuthorityId,
+      consumerId: 'editor', settlementMode: 'final-application-v1', currentState: 'xterm-current-state-v1' };
+    const opening = request(f, f.socket, 'openTerminalRead', openParams);
+    await f.until(() => capturing, 'current state capture entered terminal queue');
+    transport.output('queued-after-capture\r\n');
+    await f.pump();
+    assert.equal(session.terminalJournal.getRevision(), 0);
+    gate.resolve();
+    const response = await opening;
+    assert.equal(response.ok, true);
+    assert.equal(response.result.checkpoint.revision, 0);
+    await f.until(() => session.terminalJournal.getRevision() === 1, 'queued output follows capture');
+    await closeReader(f, response.result, { kind: 'cancelled', reason: 'test-complete' });
+    session.terminalStateTracker.captureCurrentState = async () => { throw new Error('unsupported controlled state'); };
+    const failed = await request(f, f.socket, 'openTerminalRead', openParams);
+    assert.equal(failed.ok, false);
+    assert.match(failed.error.message, /unsupported controlled state/);
+    assert.equal(session.ownedReaders.size, 0);
+    assert.equal(session.terminalMutationAdmissionOpen, true);
+    assert.equal(session.terminalJournalError, undefined);
+    transport.output('continues-after-capture-failure\r\n');
+    await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 2, 'capture failure leaves output live');
+    await finish(f, session, transport);
+  });
+
+  await check('current state final application requires full transfer and an import-confirming normal page', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    session.terminalStateTracker.captureCurrentState = async () => ({ format: 'xterm-current-state-v1',
+      cols: session.cols, rows: session.rows, scrollback: session.scrollback });
+    const response = await request(f, f.socket, 'openTerminalRead', { sessionId: session.sessionId,
+      authorityId: session.terminalAuthorityId, consumerId: 'editor', settlementMode: 'final-application-v1',
+      currentState: 'xterm-current-state-v1' });
+    assert.equal(response.ok, true);
+    const read = response.result;
+    transport.process(); transport.seal(); transport.release();
+    await f.until(() => session.ownedExecution.snapshot().terminal?.kind === 'applied', 'current state final R fixed');
+    assert.equal((await closeReader(f, read, { kind: 'applied', finalRevision: 0 })).ok, false);
+    const params = { sessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId, afterRevision: 0 };
+    assert.equal((await request(f, f.socket, 'readTerminalPage', { ...params, stateOffset: 0 })).ok, true);
+    assert.equal((await closeReader(f, read, { kind: 'applied', finalRevision: 0 })).ok, false,
+      'chunk transport alone cannot prove imported state');
+    assert.equal((await request(f, f.socket, 'readTerminalPage', params)).ok, true);
+    assertSettlement(await closeReader(f, read, { kind: 'applied', finalRevision: 0 }), 'recorded');
+    await f.until(() => session.ownedExecution.snapshot().settled, 'imported current state final reader settled');
+  });
+
+  await check('prepared current state chunks are not sent evidence and cannot survive reader cancellation', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    session.terminalStateTracker.captureCurrentState = async () => ({ format: 'xterm-current-state-v1',
+      cols: session.cols, rows: session.rows, scrollback: session.scrollback });
+    const response = await request(f, f.socket, 'openTerminalRead', { sessionId: session.sessionId,
+      authorityId: session.terminalAuthorityId, consumerId: 'editor', settlementMode: 'final-application-v1',
+      currentState: 'xterm-current-state-v1' });
+    assert.equal(response.ok, true);
+    const read = response.result;
+    const params = { sessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId, afterRevision: 0 };
+    const page = await f.server.readTerminalPage(f.socket, { ...params, stateOffset: 0 });
+    assert.equal(f.server.terminalReads.get(f.socket).get(read.readId).currentState.sentOffset, 0);
+    assert.equal((await request(f, f.socket, 'readTerminalPage', params)).ok, false);
+    f.server.publishTerminalRead(f.socket, 'controlled-state-publication', page);
+    assert.equal(f.server.terminalReads.get(f.socket).get(read.readId).currentState.sentOffset, read.currentState.length);
+    const retry = await f.server.readTerminalPage(f.socket, { ...params, stateOffset: 0 });
+    await closeReader(f, read, { kind: 'cancelled', reason: 'page-replaced' });
+    assert.throws(() => f.server.publishTerminalRead(f.socket, 'late-state-publication', retry), /no longer current/);
+    assert.equal(session.ownedReaders.size, 0);
+    assert.equal(f.server.terminalReads.get(f.socket).size, 0);
+    await finish(f, session, transport);
+  });
+
+  await check('completed legacy payloads never promote a current state placeholder to an ANSI checkpoint', async () => {
+    const f = fixture(readerCapabilities);
+    const { session, transport } = await f.create();
+    transport.output('old-baseline\r\n');
+    await f.until(() => session.terminalJournal.getRevision() === 1, 'old payload baseline');
+    const old = await openReader(f, session);
+    const oldCheckpoint = { ...old.checkpoint, revision: 1,
+      serializedState: { format: 'xterm-serialize-v1', data: 'old-baseline\r\n', outputSequence: 1 } };
+    session.terminalCheckpoint = oldCheckpoint;
+    f.server.terminalReads.get(f.socket).get(old.readId).checkpoint = oldCheckpoint;
+    transport.output('before-current-open\r\n');
+    await f.until(() => session.terminalJournal.getRevision() === 2, 'current payload baseline');
+    session.terminalStateTracker.captureCurrentState = async () => ({ format: 'xterm-current-state-v1',
+      cols: session.cols, rows: session.rows, scrollback: session.scrollback });
+    const response = await request(f, f.socket, 'openTerminalRead', { sessionId: session.sessionId,
+      authorityId: session.terminalAuthorityId, consumerId: 'panel', settlementMode: 'final-application-v1',
+      currentState: 'xterm-current-state-v1' });
+    assert.equal(response.ok, true);
+    const read = response.result;
+    transport.output('after-current-open\r\n');
+    await f.until(() => session.terminalJournal.getRevision() === 3, 'new durable payload baseline');
+    session.terminalCheckpoint = { ...oldCheckpoint, revision: 3,
+      serializedState: { format: 'xterm-serialize-v1', data: 'all-three-lines\r\n', outputSequence: 3 } };
+    const params = { sessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId, afterRevision: 2 };
+    assert.equal((await request(f, f.socket, 'readTerminalPage', { ...params, stateOffset: 0 })).ok, true);
+    assert.equal((await request(f, f.socket, 'readTerminalPage', params)).ok, true);
+    assert.equal(f.server.terminalReads.get(f.socket).get(read.readId).currentState, undefined);
+    session.live = false;
+    const mixed = await f.server.buildTerminalStreamAttachPayload(session);
+    assert.equal(mixed.checkpoint.revision, 1);
+    assert.equal(mixed.checkpoint.serializedState.data, 'old-baseline\r\n');
+    session.live = true;
+    await closeReader(f, old, { kind: 'cancelled', reason: 'old-surface-closed' });
+    session.live = false;
+    const currentOnly = await f.server.buildTerminalStreamAttachPayload(session);
+    assert.equal(currentOnly.checkpoint.revision, 3);
+    assert.equal(currentOnly.checkpoint.serializedState.data, 'all-three-lines\r\n');
+    session.live = true;
+    await closeReader(f, read, { kind: 'cancelled', reason: 'test-complete' });
+    await finish(f, session, transport);
   });
 
   assert.equal(forbiddenAcquisitions, 0);

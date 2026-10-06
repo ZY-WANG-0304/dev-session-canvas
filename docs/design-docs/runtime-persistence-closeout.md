@@ -1,7 +1,7 @@
 ---
 title: Runtime Persistence 有限收尾与完成定义
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 执行编排域
@@ -14,15 +14,27 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/active/runtime-live-state-recovery.md
+  - docs/exec-plans/completed/detached-restored-history-cleanup.md
+  - docs/exec-plans/completed/native-runtime-history-cleanup.md
+  - docs/exec-plans/completed/legacy-runtime-history-cleanup.md
   - docs/exec-plans/completed/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
-updated_at: 2026-10-05
+updated_at: 2026-10-06
 ---
 
 # Runtime Persistence 有限收尾与完成定义
 
 ## 1. 状态与目的
+
+2026-10-06 当前完成定义修订：live 会话状态恢复重新列为本轮未完成交付 B4。B1 容量/准入、B2 退出完整性和 B3 生命周期成果保留，但分页与旧重连通过不证明恢复成本独立于累计交互。B4 必须让新 Host/Webview 和 PaneGallery 重建从当前权威终端状态接入；相同状态和 scrollback 的恢复不能重放不断增长的历史。计划为 `docs/exec-plans/active/runtime-live-state-recovery.md`，设计为 `runtime-live-state-recovery.md`。本决定覆盖下列历史整体结账及 S2 延期表述，仅重新开放受影响验收。
+
+同日实施：固定 xterm 当前状态 codec、分块传输、Host/Webview 能力协商及新 owned generation 已接通。受控生产类链路的 1/400 次等状态重绘均传输 4329 字符，R 前 journal 读取为零，旧 reader、尾部实际应用与结算责任保留。三个受影响 Playwright 页面重建用例已 3/3 通过；真实 Linux Electron candidate 在 sandbox 启动阶段被 `sandbox_host_linux.cc:41` / `SIGTRAP` 拒绝，VS Code 重开、实际 Agent/Terminal 及现代三平台受影响恢复入口仍未验收，不能据局部通过关闭 B4 或进入可合并结论。
+
+2026-10-06第四现场：两个native目标已在用户Host以native-owner-absent清理成功；剩余旧detached terminal-stream-v1纯历史记录按第12节增加独立资格。legacy116/native39/Host95+36定向及正常build/debug staging通过，实际旧detached节点仍须用户Host执行fresh观察；不把recoveredHistoryOnly误写成进程退出，不重开历史矩阵。
+
+2026-10-06第三现场：前轮五个旧systemd目标已清理；两个native detached历史目标另按第12节补Linux原owner缺席资格与重启前置观察。helper39项、Host117项定向及构建通过，原窗口未操作、原生socket受sandbox限制；两次全量旧大快照超时保留。不将空registry或历史sessionNotFound当授权，也不重开原已完成矩阵。前两轮systemd证据见 `docs/exec-plans/completed/legacy-runtime-history-cleanup.md`。
 
 2026-10-05 激活回归补充：用户实际 Remote 调试 Host 的 `process.report.getReport` 被同进程扩展替换为空函数，触发 Linux glibc 准入误拒绝。按第 11 节单独修复与回归，不用旧安装矩阵代证扩展共存兼容，也不重开已经结账的容量、尾部或 Agent 矩阵。
 
@@ -92,10 +104,11 @@ updated_at: 2026-10-05
 
 2026-10-02已确认产品缺陷的收口：Windows分类run36976601577确认真实Codex非空prefix中12个有字符cell的Bold不保真；63847969修正固定serializer的SGR22联动，原stock失败对照与未放宽的状态oracle保持。新包的受控四cell保存/重开和真实CLI非空prefix检查承担回归，分类到此停止。旧756B终态具体控制序列保留未知，只有当前版本新非空不保真、当前确定性路径或实际用户报告才重开，不自动追加抓取循环。
 
-本次重构只收口以下三个产品项，工程与必要受影响验收已按有限范围完成，最终整体审查与合并流程另行结账。沿用现有 Supervisor、缓存/分页与无 completed 历史路径，不另建历史 server，不新增事务框架或终端引擎/mux/数据库替换。以下为当前结账口径，后续带日期的实施段落保留原时点。
+本次重构收口以下四个产品项；B1 至 B3 的有限成果保留，B4 尚未完成，不进入整体合并结账。沿用现有 Supervisor、缓存/分页与无 completed 历史路径，不另建历史 server，不替换终端引擎/mux/数据库。后续带日期的实施段落保留原时点。
 
 | 编号 | 当前缺口与产品影响 | 结束条件 |
 | --- | --- | --- |
+| B4 live 当前状态恢复 | 实施/受控验证完成，实际验收未完成：新 codec 与分块初始化不读 R 前历史；旧 Supervisor 保持原能力 | 同状态/scrollback 下恢复不依赖累计交互；权威状态、后续增量、resize 与最终尾部正确交接；完成受影响页面/重开验收，不用分页或容量绿色代证 |
 | B1 容量与恢复，F-04 | 已完成：正文缓存/分页/信用/索引与取消责任修正，§10.17资源模型和生产准入、默认包及三平台Runtime接线；十会话/重连/compact证据复用 | A1已结账。保留O(N)、O(segment metadata)、慢reader/checkpoint拒绝时磁盘增长、旧协议成本与原64/128失败，不承诺任意会话数固定RSS；后续发现具体回归才重新打开 |
 | B2 退出完整性成为可用产品能力 | 已默认启用owned实现、六目标正常分发、现代三平台实际安装/Agent接线；已证页面责任与SGR22缺陷修复，最终受影响证据见A2至A5 | 当前产品阻塞已按严格内容/状态/reader和新Host验收关闭；旧精确因果未知单列风险，不以空态通过替代非空保真，不要求通用工具完备 |
 | B3 生命周期不串代 | §32.21完整替换/永久退出受控回归，§38双Host、§39/50两模式实际reload、§47多根真实保存失败隔离及§53旧generation共存均已具名通过 | A6有限范围已覆盖，不要求任意并发排列或全局锁。原snapshot reload未观察的旧reader/EOF与排他写者字段保留，不外推新保证；root稳定归属仍独立 |
@@ -134,7 +147,7 @@ B2 初始接线缺口中的 Client/backend/launcher profile 传递及 candidate 
 
 ## 4. 必要验收，保留既定强度
 
-以下是六组产品验收，不是六轮新工具开发。复用现有脚本、runner 和可适用证据；旧输入不同或未覆盖的格子仍标未验，不累加测试数量来代替用户工作流。
+以下六组原验收保留，另补 B4 当前态恢复的受影响验收，不建立新工具阶段。新验收要求相同当前状态/scrollback、不同累计历史下不读取捕获点之前的 journal，实际重开与 PaneGallery 切换保持状态和增量交接；旧 A1 的“不要求总回放恒定”只说明当时范围，不能豁免新要求。复用原脚本、runner 和适用证据，不累加测试数量代替用户工作流。
 
 | 编号 | 固定检查范围 | 通过所需证据 |
 | --- | --- | --- |
@@ -161,13 +174,14 @@ A5历史阶段记录（第37节时点，不覆盖§8当前证据）：当时三�
 
 ## 5. 整体完成定义
 
-以下是本次重构的有限完成定义。工程及必要验收按§8已结账；文档和最新head整体审查通过后可进入合并，合并本身仍须用户明确许可：
+以下是有限完成定义。§8 保留 B1 至 B3 的结账证据，B4 仍开放；完成 B4 及受影响验收、文档和整体审查后才进入合并，合并仍须用户许可：
 
 1. F-04 在已登记的支持路径和工程负载预算内通过 A1，并满足第 3 节的容量/背压判据；剩余旧协议成本有准确兼容边界。不得只交分页或以小样本未 OOM 关闭容量问题；仍被正式支持的新路径若达不到要求，应修复，而不是换名延期。
 2. F-05 已完成的新路径在 A2 保持无 completed 正文、无自动恢复进程；当前页尾部、保存失败与旧 live 保护不回退，不重新引入归档项目。
 3. B2 退出完整性在既定两模式、真实 Agent/Webview、跨平台与分发路径通过必要验收，并形成经过审核的生产启用、预算与能力策略；原型开关一直关闭不算可用产品交付。
 4. B3 的有限风险组完成 A6，确定影响产品的缺陷已修，未验证组合不假装通过；不以任意并发/任意故障的完备证明作为终点。
 5. 一份最终支持/证据表映射 A1 至 A6，代码、规格、设计、回归和残余债务一致；没有未处置的直接产品阻塞。历史失败与后续修复分账，正式发布例外只能由用户明确接受。
+6. B4 的 live 新投影从当前权威状态恢复，同状态/scrollback 下工作不随累计交互增长；真实重开与 PaneGallery、后续增量及尾部正确，只重新验证受影响范围。
 
 不需要把所有设计候选、诊断工具、历史实验都“做完”才能达到此定义。也不允许把真实 Agent/Webview/跨平台、主进程尾部或当前有效消费者移到延期项来缩短清单。
 
@@ -176,7 +190,7 @@ A5历史阶段记录（第37节时点，不覆盖§8当前证据）：当时三�
 | 类别 | 当前处理 | 何时才升级为本轮阻塞 |
 | --- | --- | --- |
 | 通用诊断健壮性 | 无限 listener、极端错误洪泛、任意归档路径/迁移、全协议篡改/组合枚举、D4 通用资源模型继续完善，均不默认前置 | 能指明它影响 A1 至 A6 中哪一个固定实验的安全或判定，以及最小修正与结束条件；只阻塞那个实验 |
-| 尚未选定的整体替代 | S2 权威状态同步、换成熟 mux、换数据库、扩展全部 checkpoint codec，保留候选不各自立项 | B1 证据证明当前方案不能达到确认预算，且选定替代后才实施 |
+| 尚未选定的整体替代 | 换成熟 mux、换数据库及通用 checkpoint codec 扩展继续延期；live 权威当前态恢复已进入 B4，不在此列 | 直接证据证明所选方案不能满足产品契约，再有限比较替代 |
 | 旧协议与模糊遗留格式 | 旧 live 沿原 backend/storage/session/generation；不回填新保证，不为去兼容强停原进程；来源不明旧记录不强制清理 | 真实共存路径破坏新会话预算、绑定或尾部，则作为 B1/B2 直接问题；不能用此项豁免当前支持的新路径 |
 | 既定非目标与诊断 | Supervisor/机器故障后恢复、completed 历史归档、主进程退出后普通后代持续托管，不进入本次交付；OS 全对象清零也非要求 | 产品另行变更；本方资源泄漏、主体尾部丢失或真实 CLI 生命周期错误仍在本轮 |
 
@@ -298,3 +312,49 @@ macOS 真实 Agent 仍是具名未决。第一次 run `36906574728` 的 Codex �
 可复用入口沿现有runner，不新增框架：`DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=linux-runtime-report-unavailable node scripts/smoke/run-vscode-smoke.mjs`；需要指定独立证据目录时，`DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT` 使用新的绝对路径。该focused场景仅验证Linux激活，不纳入默认全平台smoke、不启动Terminal/Agent，也不声称新VSIX安装或macOS/Windows原生复验通过。
 
 独立复核后，激活用例补充schema1及原生profile断言，拒绝用stock构建代证本问题；最终同用例在 `.debug/activation-glibc-20261005-profile-checked/` 与同名 `.log` 取得exit0。`test-vscode-smoke-runner-env.mjs`、JS语法及diff检查通过，隔离激活窗口无残留。该追加只验证被修改的用例限定，没有重跑未受影响矩阵。
+
+## 12. 已停止旧 Runtime 的历史节点清理
+
+用户现场确认原 systemd-user 服务 inactive/dead/MainPID0、残留socket没有监听；目标旧 Agent 的 version1 registry 保留 live:false、stopped、lastExitCode:0，而 Host 的 History restored 节点仍绑定原 workspace slot。严格删除连接失败得到 unconfirmed，Host 复用该记录，删除与 `prepareExecutionCandidateReplacement` 均被阻塞。没有取得原删除RPC完整内部reason，不将服务状态与历史字段扩大为所有后代或其他会话已消失。
+
+### 正式方案
+
+新增 `panel/legacyRuntimeHistory.ts` 只读核验原绑定，限定 Linux systemd-user 和已知旧 generation `agent-provider-lifecycle-v1`、`terminal-stream-v1`。使用有界 `systemctl --user show` 前后确认 loaded/inactive/dead、MainPID/ControlPID为0、无ControlGroup/Job，原socket探测仅明确拒绝连接/不存在可接受；未知、活跃、超时、权限不足均拒绝。registry必须是普通有界文件/version1，唯一目标sessionId、kind及backend匹配，live严格false、Agent stopped或Terminal closed、明确整数lastExitCode；只用目标记录，不推断其他会话。前后文件或服务事实变化不能取得资格。
+
+第二现场修订：上一段的 `live:false + stopped/closed + exitCode` 保留为 `recorded-exit` 资格，但不是全部历史清理的必要条件。旧Supervisor异常结束时可能没有来得及写终态，registry.live:true只是最后保存值，不代表当前存活。新增 `stopped-runtime` 资格：仍须全部原服务/socket/文件/目标身份和Host未完责任检查，另要求有效systemd配置 `KillMode=control-group`、`SendSIGKILL=yes`，前后策略与状态一致；目标live及lifecycle须为合法旧记录，不能接受任意损坏内容。该资格确认的是原服务管理的Runtime已停止，仅解除本地历史，不补写正常退出、退出码或EOF，不承诺逃逸后代均消失。Host诊断保存具体资格来源，未知或活跃服务仍拒绝。
+
+Host 还须确认原节点与绑定仍相同、明确历史恢复、没有当前执行、已提交创建、reader（含等待open及正在release）、在途投影或最终状态应用/保存责任。历史资格按每次用户操作重新检查，并在await后及批量结果收齐时重验身份和截止时间；registry在完整服务/socket检查后再次核对文件身份。采用独立结果 `legacy-history-retired`，只授权现有节点删除或重启路径替换该节点绑定；不伪造RPC成功、进程终止、完整EOF或新退出契约通过。
+
+不改写共享registry、不删除旧Runtime目录/socket/其他会话数据，不要求启动旧Supervisor，不迁移会话，不混入root归属。原registry作为旧证据保留，当前节点与其本地明确归属文件继续由原删除/保存入口处理。只解除历史节点与旧记录的绑定不是对旧共享存储进行垃圾回收。
+
+Host 对已结束且未提交的失败观察，允许下一显式操作重新观察；已提交而结果未知、连接仍在途或finalization失败/未知，继续持有原观察，不自动重发。普通活跃删除的尾部消费、最终状态保存和资源释放要求保持。验证限定原现场类型删除/重启/再次操作、活跃与未知保护、同registry隔离及相关原回归，不扩展通用诊断设施。
+
+只读观察不是跨进程原子锁，不承诺所有后代或共享registry中的其他会话消失。当前自动化已覆盖文件原子替换、服务状态变化、socket结果与精确目标隔离；sandbox禁止本机Unix socket访问，两个真实socket场景明确跳过，不能写成实际systemd/socket端到端通过。§11及更早已验证结论保持，当前“验证中”只针对本节新增增量。
+
+本地结果：只读核验56项通过；Host184/184（含Agent/Terminal删除、重启、清空及旧unconfirmed后的再次操作、批量metadata/reader/创建竞争）、Client28/28、启动profile16/16、原Host deactivation及调试配置回归通过。reader新增责任断言通过，首次最后一个既有headless尾部用例超时、原样重跑20/20，未改预算或断言，不追认首次绿色。`typecheck`、普通`build`与Main Only调试staging均成功；独立复核未发现新增确定性问题。详细日志与首次失败分类见归档计划；未操作用户原节点/registry/service，也未重跑无改动的Agent/容量/平台矩阵。
+
+第二现场与修后结果：`2026-10-06T06-23-48-298Z`中目标Terminal `4afdc52d-4e97-47e9-94ff-d838a2405a44`在原registry保留live:true/lifecycle:live且无退出码，直接命中第一轮资格限制；同unit其余4个失败目标同类。旧registry.lastModified不能证明现存进程，原RPC内部完整reason仍未取得。新增强停止资格后，核验81项、Host190/190（两种资格分别覆盖Agent/Terminal删除、重启、清空及旧unknown保持）、启动profile16、typecheck、正常build/debug staging通过，独立复核未发现确定性问题。当前环境systemctl/socket权限受限，2原生socket例仍跳过；不宣称新分支在原窗口已实测。
+
+同包另两个Agent `0a71c75b-7846-4a48-b6ad-55cd2e92f945`、`45a796db-bcc7-41bd-86fd-ac223cc4b983`绑定native `terminal-exit-v1` 的 `legacy-detached`，不属于本节systemd资格。旧sessionNotFound文本、当前空registry及缺少业务socket不足以独立证明原owner退出，继续保护。现有 `supervisor/runtimeSupervisorNamespace.ts` 的进程级排他claim可供后续有限处理复用，但本次未取得缺席证据，也未增加新平台或通用诊断阶段；这两个节点不能写成已修复。
+
+### 第三现场：native detached 历史资格
+
+`2026-10-06T06-47-20-517Z` 确认前轮五个systemd目标已清理，剩余两个上述native目标继续unconfirmed。本轮增加独立 `native-owner-absent` 资格，限定Linux现代Node与精确terminal-exit-v1原路径：短暂取得现有UID/canonical storage排他claim，持有期间只读核对业务endpoint缺席，并有界读取当前Linux进程视图，排除同用户仍以原 `--storage-dir` 运行的Supervisor；自己的claim实际close完成后才返回资格。权限、枚举/内容、路径、期限及释放未知均拒绝，过期晚到仍释放自己的claim。`4578cd34`的早期实验Supervisor没有claim，故不能仅凭目录名或新锁空闲放行；这项进程核对只补该历史缺口，不负责子进程托管，不保证恶意修改argv、其他PID namespace或并发手动启动旧实验版。
+
+同批同存储共享一次观察，各目标独立保持原Host责任检查；资格不跨操作缓存。Agent/Terminal直接重启在preferred client可能启动新owner之前观察原历史，在新client能力检查和原身份重验之后才使用。观察必须在原20秒边界内完成并释放claim；已完成的缺席事实只在同一次未提交、metadata/start记录/token不变且无新增reader/finalization责任的启动操作内有效，不因preferred启动耗时再次失效并去争抢新owner的锁。普通删除/批量操作仍在原共享截止前结算。新Supervisor不恢复旧native会话，创建使用新sessionId；已失效或过期观察不能转成持久授权。
+
+旧活跃删除仍走严格RPC及尾部结算，不被前置历史观察替代。原registry/socket/服务不修改，不补正常退出码或EOF。旧detached terminal-stream-v1不因本次原生generation方案取得资格。实现与验证见 `docs/exec-plans/completed/native-runtime-history-cleanup.md`，原用户窗口实际结果尚未取得。
+
+本轮helper39项通过，1真实claim周期受限跳过；Host最终117/117定向通过（选中117/218），包含native28项、原systemd、严格删除/未知提交/finalization/能力准入。旧systemd helper81项、namespace路由、startup16项、typecheck、普通build及Main Only staging通过；独立复核未发现确定性blocker。两次全量Host均在未改的90,000行大快照恢复用例原15秒预算超时，尚未执行到新增用例，失败日志保留，不改阈值或把定向通过冒充完整218项通过。未重跑无改动的真实Agent、容量或跨平台矩阵。
+
+### 第四现场：旧 detached 的纯历史解绑
+
+`2026-10-06T07-54-50-905Z` 已记录两个native目标以native-owner-absent清理成功，但 `6b9de465-3089-464a-b20d-760384cdbdae` 仍失败。它与 `6397fe41-f010-4f53-b86d-be314005389c` 位于旧detached terminal-stream-v1，registry唯一目标live:false/stopped、无lastExitCode，结构化descriptor为recoveredHistoryOnly；同registry共13条含其他backend，不能借兄弟记录的退出事实授权。
+
+正式新增 `detached-recovered-history` 资格，由 `panel/legacyRuntimeHistory.ts` 逐目标核验：限定Linux已知旧generation、canonical原路径与派生endpoint，version1稳定有界registry中唯一session/kind/backend匹配、live:false、Agent stopped/Terminal closed及精确结构化recoveredHistoryOnly。前后原endpoint明确不存在/拒绝、同UID任意backend的原storage Supervisor/launcher不存在，权限/内容/超时/变化均拒绝。复用 `panel/linuxRuntimeHistoryObservation.ts` 中上轮的只读socket/proc观察，不新建服务或把不被旧版遵守的native锁当证明。
+
+这是按既定Supervisor故障后不恢复进程/历史目标作出的本地纯历史清理决策，不是退出证明。旧normalizeRecoveredSession为该对象设置process:undefined，新建/resume另用新sessionId；原authority缺席时保留节点绑定无法继续托管可能遗留的孤立进程。仅删除/替换本地历史对象，不推导原主体/全部后代消失、不补退出码或EOF、不发kill、不改共享registry/journal，也不将缺descriptor、live快照或未知状态一律放行。
+
+Host原身份、未提交/reader/finalization及共享截止保护不变；该资格逐目标检查，不进入native的storage级共享许可，也不跨preferred startup沿用。native前置观察明确限定terminal-exit-v1，旧恢复记录在新client能力校验后走当次检查。只读观察不是旧版并发启动的原子锁；限定同Linux运行环境/用户可见的进程视图，不支持恶意改argv或跨PID namespace推断。本工具的隔离/proc不包含原Host，因此只读matches为空不能宣称原owner已停止；实际授权必须在用户Host执行fresh观察。实施与结果见 `docs/exec-plans/completed/detached-restored-history-cleanup.md`。
+
+本轮legacy helper116项（含原81）、native39项通过，原3个真实socket/claim例受限跳过；Host新增旧detached14项并与旧history/B2组合95/95通过，另原S9/production/最终保存保护36/36通过，总用例232未全量重跑。typecheck、普通build、Main Only staging、调试配置检查和diff检查通过，独立复核无确定性blocker；未操作实际节点/registry/service，不以受控结果代证本次原窗口成功，旧大快照全量超时保持。

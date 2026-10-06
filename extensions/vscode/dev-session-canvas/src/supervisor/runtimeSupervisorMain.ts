@@ -29,6 +29,7 @@ import {
 } from '../common/executionTerminalTitle';
 import { assertExecutionCandidateRuntimeSupervisorStorageDir, resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
 import {
+  SERIALIZED_TERMINAL_STATE_FORMAT,
   SERIALIZED_TERMINAL_CHECKPOINT_PROFILES,
   SerializedTerminalStateTracker,
   type SerializedTerminalState
@@ -46,6 +47,7 @@ import {
   type TerminalStreamEvent
 } from '../common/terminalSessionStream';
 import {
+  TERMINAL_CURRENT_STATE_CHUNK_MAX_CHARS,
   TERMINAL_STREAM_PAGE_MAX_BYTES,
   TERMINAL_STREAM_PAGE_MAX_EVENTS,
   normalizeTerminalReadOutcome,
@@ -240,6 +242,8 @@ interface TerminalReadCursor {
   appliedRevision: number;
   sentRevision: number;
   checkpoint: TerminalStreamCheckpoint;
+  currentStateCheckpoint?: true;
+  currentState?: { data: string; sentOffset: number; previousOffset?: number };
   pageReader?: TerminalJournalPageReader;
 }
 
@@ -626,6 +630,7 @@ export class RuntimeSupervisorServer {
                 terminalAppliedRevisionAckV1: true,
                 terminalCheckpointRefreshV1: true,
                 terminalPagedReadV1: true,
+                terminalCurrentStateV1: true,
                 terminalPagedCompletionV1: true,
                 terminalHostOutputCreditV1: true,
                 ...(this.executionOwner?.options.capabilities.includes('terminal-read-settlement-v1')
@@ -1036,6 +1041,9 @@ export class RuntimeSupervisorServer {
         (params.settlementMode !== 'final-application-v1' || !session.ownedReaders)) {
       throw new Error('Terminal reader settlement capability is unavailable.');
     }
+    if (params.currentState !== undefined && params.currentState !== 'xterm-current-state-v1') {
+      throw new Error('Terminal current state format is unavailable.');
+    }
     const owned = session.ownedReaders ? this.admitOwnedTerminalReader(session, socket, params) : undefined;
     return this.enqueueTerminalOperation(session, async () => {
       this.requireSession(params.sessionId, Boolean(owned));
@@ -1051,7 +1059,25 @@ export class RuntimeSupervisorServer {
       if (!reads || socket.destroyed || (params.consumerId !== 'editor' && params.consumerId !== 'panel')) {
         throw new Error('Invalid terminal reader connection or consumer.');
       }
-      await this.createFreshSnapshot(session, 'always', false);
+      let currentState: string | undefined;
+      let checkpoint: TerminalStreamCheckpoint;
+      if (params.currentState) {
+        const revision = journal.getRevision();
+        const state = await session.terminalStateTracker.captureCurrentState();
+        if (state.format !== params.currentState || journal.getRevision() !== revision ||
+            state.cols !== session.cols || state.rows !== session.rows ||
+            state.scrollback !== session.scrollback) {
+          throw new Error('Terminal current state does not cover the accepted terminal operations.');
+        }
+        currentState = JSON.stringify(state);
+        checkpoint = { version: TERMINAL_SESSION_STREAM_VERSION, sessionId: session.sessionId,
+          authorityId: journal.getAuthorityId(), revision, cols: session.cols, rows: session.rows,
+          scrollback: session.scrollback, createdAtMs: Date.now(),
+          serializedState: { format: SERIALIZED_TERMINAL_STATE_FORMAT, data: '', outputSequence: revision } };
+      } else {
+        await this.createFreshSnapshot(session, 'always', false);
+        checkpoint = session.terminalCheckpoint!;
+      }
       if (!owned) this.assertOwnedAdmissionOpen();
       if (owned) this.assertOwnedTerminalReader(owned);
       if (session.ownedExecution) {
@@ -1062,7 +1088,6 @@ export class RuntimeSupervisorServer {
           throw new Error('Terminal reader connection closed while preparing its checkpoint.');
         }
       }
-      const checkpoint = session.terminalCheckpoint!;
       const readId = owned?.readId ?? randomUUID();
       // A socket owns at most one reader per session and surface.
       for (const [id, read] of reads) {
@@ -1071,15 +1096,19 @@ export class RuntimeSupervisorServer {
           reads.delete(id);
         }
       }
-      const cursor = { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
+      const cursor: TerminalReadCursor = { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
         consumerId: params.consumerId, appliedRevision: checkpoint.revision,
         sentRevision: owned ? -1 : checkpoint.revision,
-        checkpoint: cloneTerminalStreamCheckpoint(checkpoint) };
+        checkpoint: cloneTerminalStreamCheckpoint(checkpoint),
+        ...(currentState !== undefined ? { currentState: { data: currentState, sentOffset: 0 },
+          currentStateCheckpoint: true as const } : {}) };
       reads.set(readId, cursor);
       if (owned) owned.cursor = cursor;
       session.ownedReaderSockets?.add(socket);
       const result = { readId, sessionId: session.sessionId, authorityId: journal.getAuthorityId(),
         checkpoint: cloneTerminalStreamCheckpoint(checkpoint), headRevision: journal.getRevision(),
+        ...(currentState !== undefined ? { currentState: {
+          format: 'xterm-current-state-v1' as const, length: currentState.length } } : {}),
         ...(owned?.explicitSettlement ? { settlementMode: 'final-application-v1' as const } : {}) };
       if (owned) this.ownedTerminalReplies.set(result, owned);
       return result;
@@ -1111,6 +1140,27 @@ export class RuntimeSupervisorServer {
         }, RUNTIME_SUPERVISOR_ERROR_CODES.terminalRevisionInvalid);
       }
       const headRevision = journal.getRevision();
+      if (params.stateOffset !== undefined) {
+        const state = read.currentState;
+        const offset = params.stateOffset;
+        if (!state || !Number.isSafeInteger(offset) || offset < 0 || offset >= state.data.length ||
+            afterRevision !== read.checkpoint.revision ||
+            (offset !== state.sentOffset && offset !== state.previousOffset)) {
+          throw new Error('Invalid terminal current state offset.');
+        }
+        const result: TerminalStreamPage = { readId: read.readId, sessionId: session.sessionId,
+          authorityId: read.authorityId, afterRevision, revision: afterRevision, headRevision, events: [],
+          stateChunk: { offset, data: state.data.slice(offset, offset + TERMINAL_CURRENT_STATE_CHUNK_MAX_CHARS) } };
+        if (owned) this.ownedTerminalReplies.set(result, owned);
+        return result;
+      }
+      if (read.currentState) {
+        if (read.currentState.sentOffset !== read.currentState.data.length || afterRevision !== read.checkpoint.revision) {
+          throw new Error('Terminal current state has not been fully sent.');
+        }
+        // Only a normal page request proves the consumer has imported the complete state.
+        read.currentState = undefined;
+      }
       const events = await this.readJournalPage(read, journal, afterRevision, headRevision);
       const revision = events[events.length - 1]?.revision ?? afterRevision;
       if (owned) this.assertOwnedTerminalReader(owned);
@@ -1123,6 +1173,7 @@ export class RuntimeSupervisorServer {
       if (session.terminalCheckpoint && session.terminalCheckpoint.revision <= afterRevision &&
           session.terminalCheckpoint.revision > read.checkpoint.revision) {
         read.checkpoint = cloneTerminalStreamCheckpoint(session.terminalCheckpoint);
+        read.currentStateCheckpoint = undefined;
       }
       const result = { readId: read.readId, sessionId: session.sessionId, authorityId: read.authorityId,
         afterRevision, revision, headRevision, events };
@@ -1185,7 +1236,7 @@ export class RuntimeSupervisorServer {
       if (outcome.kind === 'applied') {
         const terminal = session.ownedExecution!.snapshot().terminal;
         if (terminal?.kind !== 'applied' || terminal.finalRevision !== outcome.finalRevision ||
-            !owned.cursor || owned.cursor.sentRevision < outcome.finalRevision) {
+            !owned.cursor || owned.cursor.currentState || owned.cursor.sentRevision < outcome.finalRevision) {
           throw new Error('Terminal reader final revision is not fixed or has not been sent.');
         }
       }
@@ -1250,6 +1301,17 @@ export class RuntimeSupervisorServer {
 
   private publishTerminalRead(socket: net.Socket, id: string, result: TerminalStreamReadDescriptor | TerminalStreamPage): void {
     const owned = this.ownedTerminalReplies.get(result);
+    const chunk = 'stateChunk' in result ? result.stateChunk : undefined;
+    const state = chunk ? this.terminalReads.get(socket)?.get(result.readId)?.currentState : undefined;
+    if (chunk && (!state || (chunk.offset !== state.sentOffset && chunk.offset !== state.previousOffset))) {
+      throw new Error('Terminal current state reply is no longer current.');
+    }
+    const markStateSent = (): void => {
+      if (chunk && state && chunk.offset === state.sentOffset) {
+        state.previousOffset = chunk.offset;
+        state.sentOffset += chunk.data.length;
+      }
+    };
     if (owned) {
       // A result may have outlived its cursor while handleRequest was awaiting it.
       if (owned.socket !== socket || owned.authorityId !== result.authorityId) {
@@ -1263,12 +1325,14 @@ export class RuntimeSupervisorServer {
         throw error;
       }
       this.assertOwnedTerminalReader(owned);
+      markStateSent();
       owned.cursor!.sentRevision = Math.max(owned.cursor!.sentRevision,
         'checkpoint' in result ? result.checkpoint.revision : result.revision);
       this.ownedTerminalReplies.delete(result);
       return;
     }
     this.writeMessage(socket, { type: 'response', id, ok: true, result });
+    markStateSent();
   }
 
   private validateTerminalReaderOutcome(outcome: unknown): RuntimeSupervisorTerminalReadOutcome {
@@ -2817,7 +2881,10 @@ export class RuntimeSupervisorServer {
         : undefined,
       terminalAuthorityId: session.terminalJournalError ? undefined : session.terminalAuthorityId,
       terminalRevision: session.terminalJournalError ? undefined : session.terminalJournal?.getRevision(),
-      ...(session.ownedReaders ? { capabilities: { terminalReadSettlementV1: true as const } } : {}),
+      capabilities: {
+        ...(session.terminalJournal && !session.terminalJournalError ? { terminalCurrentStateV1: true as const } : {}),
+        ...(session.ownedReaders ? { terminalReadSettlementV1: true as const } : {})
+      },
       ...(terminal?.kind === 'applied' ? { terminalFinalRevision: terminal.finalRevision } : {}),
       ...(source ? { terminalSourceDisposition: source.kind === 'eof'
         ? { kind: source.kind } : { kind: source.kind, reason: source.reason } } : {}),
@@ -2845,7 +2912,7 @@ export class RuntimeSupervisorServer {
     if (!session.live) {
       for (const reads of this.terminalReads.values()) {
         for (const read of reads.values()) {
-          if (read.sessionId === session.sessionId && read.authorityId === session.terminalAuthorityId &&
+          if (!read.currentStateCheckpoint && read.sessionId === session.sessionId && read.authorityId === session.terminalAuthorityId &&
               checkpoint && read.checkpoint.revision < checkpoint.revision) {
             checkpoint = read.checkpoint;
           }

@@ -184,7 +184,7 @@ export async function runReaderIsolation({ projectRoot, output, runId, vscodeExe
   assert.equal(manifest.profile, 'linux-owner-v1-candidate');
   assert.equal(manifest.platform, 'linux');
   for (const file of ['scripts/smoke/execution-reader-isolation.mjs', 'scripts/smoke/vscode-smoke-runner.mjs',
-    'tests/vscode-smoke/execution-reader-isolation-tests.cjs']) {
+    'tests/vscode-smoke/execution-reader-isolation-tests.cjs', 'tests/vscode-smoke/test-helpers.cjs']) {
     sourceHashes[file] = createHash('sha256').update(await fs.readFile(path.join(projectRoot, file))).digest('hex');
   }
   const selectionBytes = await fs.readFile(path.join(projectRoot,

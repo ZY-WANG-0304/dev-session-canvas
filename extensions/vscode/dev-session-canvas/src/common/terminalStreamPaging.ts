@@ -11,6 +11,7 @@ export { normalizeTerminalReadOutcome } from './protocol';
 // the Webview event loop while another execution is receiving input.
 export const TERMINAL_STREAM_PAGE_MAX_BYTES = 64 * 1024;
 export const TERMINAL_STREAM_PAGE_MAX_EVENTS = 256;
+export const TERMINAL_CURRENT_STATE_CHUNK_MAX_CHARS = 8192;
 
 export interface TerminalStreamReadDescriptor {
   readId: string;
@@ -19,6 +20,7 @@ export interface TerminalStreamReadDescriptor {
   checkpoint: TerminalStreamCheckpoint;
   headRevision: number;
   settlementMode?: 'final-application-v1';
+  currentState?: { format: 'xterm-current-state-v1'; length: number };
 }
 
 export interface TerminalStreamPage {
@@ -29,6 +31,7 @@ export interface TerminalStreamPage {
   revision: number;
   headRevision: number;
   events: TerminalStreamEvent[];
+  stateChunk?: { offset: number; data: string };
 }
 
 export function normalizeTerminalStreamRead(value: unknown): TerminalStreamReadDescriptor | undefined {
@@ -42,8 +45,15 @@ export function normalizeTerminalStreamRead(value: unknown): TerminalStreamReadD
       value.sessionId !== checkpoint.sessionId || value.authorityId !== checkpoint.authorityId) {
     return undefined;
   }
+  const currentState = value.currentState;
+  if (currentState !== undefined && (!isRecord(currentState) ||
+      currentState.format !== 'xterm-current-state-v1' || !Number.isSafeInteger(currentState.length) ||
+      (currentState.length as number) <= 0 ||
+      checkpoint.serializedState.data !== '')) return undefined;
   return { readId: value.readId, sessionId: checkpoint.sessionId, authorityId: checkpoint.authorityId,
     checkpoint, headRevision,
+    ...(isRecord(currentState) ? { currentState: {
+      format: 'xterm-current-state-v1' as const, length: currentState.length as number } } : {}),
     ...(value.settlementMode === 'final-application-v1' ? { settlementMode: value.settlementMode } : {}) };
 }
 
@@ -58,6 +68,16 @@ export function normalizeTerminalStreamPage(value: unknown): TerminalStreamPage 
       afterRevision > revision || revision > headRevision || !Array.isArray(value.events) ||
       value.events.length > TERMINAL_STREAM_PAGE_MAX_EVENTS) {
     return undefined;
+  }
+  if (value.stateChunk !== undefined) {
+    const chunk = value.stateChunk;
+    if (!isRecord(chunk) || !Number.isSafeInteger(chunk.offset) || (chunk.offset as number) < 0 ||
+        typeof chunk.data !== 'string' || chunk.data.length === 0 ||
+        chunk.data.length > TERMINAL_CURRENT_STATE_CHUNK_MAX_CHARS || value.events.length !== 0 ||
+        afterRevision !== revision) return undefined;
+    const page: TerminalStreamPage = { readId: value.readId, sessionId: value.sessionId, authorityId: value.authorityId,
+      afterRevision, revision, headRevision, events: [], stateChunk: { offset: chunk.offset as number, data: chunk.data } };
+    return new TextEncoder().encode(JSON.stringify(page)).length <= TERMINAL_STREAM_PAGE_MAX_BYTES ? page : undefined;
   }
   const events: TerminalStreamEvent[] = [];
   for (const rawEvent of value.events) {

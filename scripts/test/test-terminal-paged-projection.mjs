@@ -10,7 +10,7 @@ const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-paged-projection-'))
 try {
   const require = createRequire(import.meta.url);
   const modules = {};
-  for (const entry of ['common/terminalStreamPaging', 'webview/terminalPagedProjection',
+  for (const entry of ['common/terminalStreamPaging', 'common/protocol', 'webview/terminalPagedProjection',
     'panel/runtimeTerminalReadRelay', 'panel/runtimeSupervisorClient']) {
     const outfile = path.join(directory, `${path.basename(entry)}.cjs`);
     await esbuild.build({ entryPoints: [`extensions/vscode/dev-session-canvas/src/${entry}.ts`],
@@ -37,6 +37,13 @@ try {
   assert.equal(normalizeTerminalStreamPage(page(0, [oversized, event(2)])), undefined);
   assert.equal(takeTerminalStreamPage([oversized, event(2)], 0).length, 1);
   assert.equal(takeTerminalStreamPage(Array.from({ length: 300 }, (_, index) => event(index + 1)), 0).length, 256);
+  const ready = { type: 'webview/ready', payload: { capabilities: { terminalCurrentStateV1: true } } };
+  assert.deepEqual(modules.parseWebviewMessage(ready), ready);
+  assert.equal(modules.parseWebviewMessage({ ...ready, payload: { capabilities: { terminalCurrentStateV1: false } } }), null);
+  const chunkRequest = { type: 'webview/readExecutionTerminalPage', payload: { nodeId: 'n', kind: 'terminal',
+    executionSessionId: 'session', authorityId: 'authority', readId: 'reader', requestId: 'request', afterRevision: 0, stateOffset: 0 } };
+  assert.deepEqual(modules.parseWebviewMessage(chunkRequest), chunkRequest);
+  assert.equal(modules.parseWebviewMessage({ ...chunkRequest, payload: { ...chunkRequest.payload, stateOffset: -1 } }), null);
 
   const requests = [];
   const writes = [];
@@ -46,7 +53,7 @@ try {
     request: (read, afterRevision, requestId) => requests.push({ read, afterRevision, requestId }),
     close: (read) => closes.push(read),
     checkpoint: (read, current, done) => writes.push({ checkpoint: read, current, done }),
-    events: (events, current, done) => writes.push({ events, current, done }),
+    events: (events, revision, current, done) => writes.push({ events, revision, current, done }),
     exit: (message) => exits.push(message)
   });
   projection.start(descriptor);
@@ -108,6 +115,8 @@ try {
   await new Promise(resolve => setTimeout(resolve, 300));
   assert.equal(requests.length, requestCount, 'closed completed readers must not retry forever');
 
+  verifyCurrentStateProjection(TerminalPagedProjection, descriptor);
+  await verifyCurrentStateRelay(RuntimeTerminalReadRelay, descriptor);
   await verifyControllerSettlement(directory);
 
   const relay = new RuntimeTerminalReadRelay();
@@ -159,6 +168,144 @@ try {
   console.log('terminal paged projection: validation, backpressure, cancellation, retry and ephemeral completion passed');
 } finally {
   await rm(directory, { recursive: true, force: true });
+}
+
+function verifyCurrentStateProjection(TerminalPagedProjection, original) {
+  const state = { format: 'xterm-current-state-v1', value: 'STATE-CONTENT' };
+  const encoded = JSON.stringify(state);
+  const fixture = () => {
+    const descriptor = { ...original, headRevision: 7, settlementMode: 'final-application-v1',
+      checkpoint: { ...original.checkpoint, revision: 7,
+        serializedState: { ...original.checkpoint.serializedState, outputSequence: 7 } },
+      currentState: { format: state.format, length: encoded.length } };
+    const requests = [], imports = [], writes = [], closes = [], checkpoints = [];
+    const projection = new TerminalPagedProjection({
+      request: (read, afterRevision, requestId, stateOffset) => requests.push({ read, afterRevision, requestId, stateOffset }),
+      close: (read, outcome) => closes.push({ read, outcome }),
+      checkpoint: (...args) => checkpoints.push(args),
+      currentState: (read, state, current, done) => imports.push({ read, state, current, done }),
+      events: (events, revision, current, done) => writes.push({ events, revision, current, done }), exit: () => {}
+    });
+    projection.start(descriptor);
+    const chunk = (offset, data, request = requests.at(-1)) => projection.accept(descriptor.readId, request.requestId, {
+      readId: descriptor.readId, sessionId: descriptor.sessionId, authorityId: descriptor.authorityId,
+      afterRevision: 7, revision: 7, headRevision: 7, events: [], stateChunk: { offset, data }
+    });
+    const page = (events = []) => projection.accept(descriptor.readId, requests.at(-1).requestId, {
+      readId: descriptor.readId, sessionId: descriptor.sessionId, authorityId: descriptor.authorityId,
+      afterRevision: 7, revision: 7 + events.length, headRevision: 7 + events.length, events
+    });
+    return { projection, descriptor, requests, imports, writes, closes, checkpoints, chunk, page };
+  };
+  {
+    const f = fixture();
+    assert.equal(f.checkpoints.length, 0, 'state descriptor must not apply its empty geometry checkpoint');
+    assert.equal(f.requests[0].stateOffset, 0);
+    f.projection.available('session', 'authority', 7, true, 7);
+    const first = f.requests[0];
+    f.chunk(0, encoded.slice(0, 9));
+    assert.equal(f.requests[1].stateOffset, 9);
+    f.chunk(0, encoded.slice(0, 9), first);
+    assert.equal(f.requests.length, 2, 'duplicate state response cannot append twice');
+    f.chunk(9, encoded.slice(9));
+    assert.equal(f.imports.length, 1);
+    assert.deepEqual(f.imports[0].state, state);
+    assert.equal(f.closes.length, 0, 'received state is not applied terminal state');
+    assert.equal(f.requests.length, 2, 'state must finish import before requesting live pages');
+    f.imports[0].done(true);
+    assert.equal(f.requests[2].stateOffset, undefined);
+    assert.equal(f.requests[2].afterRevision, 7);
+    assert.equal(f.closes.length, 0, 'normal page confirms imported current state even when final revision equals the cut');
+    f.page();
+    assert.equal(f.closes.length, 0);
+    f.writes[0].done(true);
+    assert.deepEqual(f.closes.map(value => value.outcome), [{ kind: 'applied', finalRevision: 7 }]);
+    f.projection.stop();
+    assert.equal(f.closes.length, 1);
+  }
+  {
+    const f = fixture();
+    f.chunk(0, encoded);
+    f.imports[0].done(true);
+    f.projection.available('session', 'authority', 8, true, 8);
+    f.page([{ type: 'output', revision: 8, createdAtMs: 1, data: 'LIVE-TAIL' }]);
+    assert.equal(f.closes.length, 0);
+    f.writes[0].done(true);
+    assert.deepEqual(f.closes[0].outcome, { kind: 'applied', finalRevision: 8 });
+  }
+  for (const failure of ['offset', 'overflow', 'json', 'import', 'cancel', 'replace']) {
+    const f = fixture();
+    if (failure === 'offset') f.chunk(1, encoded);
+    if (failure === 'overflow') f.chunk(0, encoded + 'x');
+    if (failure === 'json') f.chunk(0, 'x'.repeat(encoded.length));
+    if (['import', 'cancel', 'replace'].includes(failure)) {
+      f.chunk(0, encoded);
+      const pending = f.imports[0];
+      if (failure === 'replace') f.projection.start({ ...f.descriptor, readId: 'new-reader' });
+      else if (failure === 'cancel') f.projection.stop('controller-disposed');
+      if (failure === 'import') pending.done(false);
+      else {
+        assert.equal(pending.current(), false);
+        pending.done(true);
+      }
+    }
+    assert.equal(f.closes[0].outcome.kind, 'cancelled', failure);
+    assert(!f.closes.some(value => value.outcome?.kind === 'applied'), failure);
+    assert(!f.requests.some(value => value.stateOffset === undefined), `${failure} cannot acknowledge imported state`);
+    f.projection.stop();
+  }
+  console.log('current-state paged projection: chunk ordering, import barrier, live tail, cancellation and invalid input passed');
+}
+
+async function verifyCurrentStateRelay(RuntimeTerminalReadRelay, original) {
+  const encoded = JSON.stringify({ format: 'xterm-current-state-v1', value: 'COMPLETE-STATE' });
+  const descriptor = { ...original, headRevision: 0, settlementMode: 'final-application-v1',
+    currentState: { format: 'xterm-current-state-v1', length: encoded.length } };
+  const key = 'editor:terminal:current-state';
+  const params = { sessionId: descriptor.sessionId, authorityId: descriptor.authorityId,
+    readId: descriptor.readId, afterRevision: 0 };
+  const released = [], opened = [];
+  const client = {
+    openTerminalRead: async request => { opened.push(request); return descriptor; },
+    closeTerminalRead: async request => { released.push(request); return { ok: true, settlement: 'recorded' }; },
+    readTerminalPage: async request => ({ ...params, revision: 0, headRevision: 0, events: [],
+      ...(request.stateOffset !== undefined ? { stateChunk: { offset: request.stateOffset,
+        data: encoded.slice(request.stateOffset, request.stateOffset + 10) } } : {}) })
+  };
+  const relay = new RuntimeTerminalReadRelay();
+  await relay.open(key, client, 'session', 'authority', 'editor', undefined,
+    'final-application-v1', 'xterm-current-state-v1');
+  assert.equal(opened[0].currentState, descriptor.currentState.format);
+  await relay.completeRemote(key, { sessionId: 'session', authorityId: 'authority', revision: 0, finalRevision: 0 });
+  for (const request of [params, { ...params, stateOffset: 1 }, { ...params, stateOffset: encoded.length }]) {
+    await assert.rejects(relay.read(key, request), /current state/);
+  }
+  const outcome = { kind: 'applied', finalRevision: 0 };
+  await assert.rejects(relay.settle(key, { ...params, outcome }), /not.*sent/);
+  let offset = 0;
+  while (offset < encoded.length) {
+    const page = await relay.read(key, { ...params, stateOffset: offset });
+    assert.equal(relay.has(key, 'session'), false, 'receiving any state chunk cannot acknowledge import');
+    assert.equal(relay.reads.get(key).sentRevision, 0);
+    assert.equal(relay.reads.get(key).appliedRevision, 0);
+    assert.deepEqual(await relay.read(key, { ...params, stateOffset: offset }), page, 'previous chunk retry is idempotent');
+    offset += page.stateChunk.data.length;
+  }
+  await assert.rejects(relay.settle(key, { ...params, outcome }), /not.*sent/);
+  await relay.read(key, params);
+  assert.equal(relay.has(key, 'session'), true);
+  await relay.settle(key, { ...params, outcome });
+  assert.deepEqual(released.at(-1).outcome, outcome);
+  await assert.rejects(relay.open(key, { ...client, openTerminalRead: async () => ({ ...descriptor, currentState: undefined }) },
+    'session', 'authority', 'editor', undefined, 'final-application-v1', 'xterm-current-state-v1'), /not negotiated/);
+  let finishOpen;
+  const pending = relay.open(key, { ...client, openTerminalRead: () => new Promise(resolve => { finishOpen = resolve; }) },
+    'session', 'authority', 'editor', undefined, 'final-application-v1', 'xterm-current-state-v1');
+  relay.close(key, undefined, 'controller-disposed');
+  finishOpen(descriptor);
+  assert.equal(await pending, undefined);
+  assert.equal(released.at(-1).outcome.kind, 'cancelled');
+  console.log('current-state relay: negotiated identity, offsets, import acknowledgment and late release passed');
 }
 
 async function verifyClientReconnectPolicy(RuntimeSupervisorClient) {
@@ -690,6 +837,9 @@ async function verifyControllerSettlement(directory) {
     import { TerminalPagedProjection } from './terminalPagedProjection';
     import { normalizeTerminalStreamAttachPayload } from '../common/terminalSessionStream';
     import { normalizeLocalTerminalCompletion } from '../common/protocol';
+    import { restoreTerminalCurrentState, captureTerminalCurrentState,
+      createTerminalCurrentColors, applyTerminalCurrentColorRequests } from '../common/terminalCurrentState';
+    export { captureTerminalCurrentState, createTerminalCurrentColors, applyTerminalCurrentColorRequests };
     const window = { setTimeout, clearTimeout, requestAnimationFrame: callback => setTimeout(callback, 0) };
     const readPerformanceNow = () => performance.now();
     const removePendingExecutionTerminalDrain = () => {};
@@ -720,7 +870,8 @@ async function verifyControllerSettlement(directory) {
   await esbuild.build({ stdin: { contents, resolveDir: path.dirname(filename), loader: 'ts' },
     outfile, bundle: true, platform: 'node', format: 'cjs', target: 'node18' });
   const require = createRequire(import.meta.url);
-  const { createController, routeExit } = require(outfile);
+  const { createController, routeExit, captureTerminalCurrentState,
+    createTerminalCurrentColors, applyTerminalCurrentColorRequests } = require(outfile);
   const { Terminal } = require('@xterm/headless');
   let passed = 0;
   const defer = () => {
@@ -752,7 +903,7 @@ async function verifyControllerSettlement(directory) {
     terminal.refresh = () => {};
     let snapshotNotifications = 0;
     const restores = { active: 0, started: 0, released: 0 };
-    const diagnostics = { failNext: false, released: 0, releaseFails: false, snapshotNotificationFails: false };
+    const diagnostics = { failNext: false, active: 0, released: 0, releaseFails: false, snapshotNotificationFails: false };
     const controller = createController(terminal, message => messages.push(message), {
       onReadError: message => { readErrors.push(message); },
       onSnapshotApplied: () => {
@@ -764,9 +915,13 @@ async function verifyControllerSettlement(directory) {
         restores.started++;
         return () => { restores.active--; restores.released++; };
       },
-      beginSnapshotRestoreDiagnosticsSuppression: () => () => {
-        diagnostics.released++;
-        if (diagnostics.releaseFails) throw new Error('controlled suppression release failure');
+      beginSnapshotRestoreDiagnosticsSuppression: () => {
+        diagnostics.active++;
+        return () => {
+          diagnostics.active--;
+          diagnostics.released++;
+          if (diagnostics.releaseFails) throw new Error('controlled suppression release failure');
+        };
       }
     }, () => {
       if (diagnostics.failNext) { diagnostics.failNext = false; throw new Error('controlled diagnostic callback failure'); }
@@ -810,6 +965,118 @@ async function verifyControllerSettlement(directory) {
         terminal.dispose();
       } };
   };
+
+  await check('current-state chunks import the actual buffers before consuming live tail and final revision', async () => {
+    const f = fixture('current-state-reader', 1);
+    const source = new Terminal({ cols: 80, rows: 24, scrollback: 100, allowProposedApi: true });
+    const colors = createTerminalCurrentColors();
+    source._core._inputHandler.onColor(event => applyTerminalCurrentColorRequests(colors, event));
+    const write = (terminal, text) => new Promise(resolve => terminal.write(text, resolve));
+    try {
+      await write(source, 'NORMAL-STATE\r\n\x1b[?1049hALTERNATE-STATE\x1b[2;4H');
+      const state = captureTerminalCurrentState(source, colors);
+      const encoded = JSON.stringify(state);
+      f.descriptor.currentState = { format: state.format, length: encoded.length };
+      f.start();
+      f.controller.terminalAvailable('session', 'authority', 1, true, 1);
+      for (let offset = 0; offset < encoded.length; offset += 8192) {
+        const request = f.requests().at(-1).payload;
+        assert.equal(request.stateOffset, offset);
+        f.controller.applyTerminalPage(request.readId, request.requestId, {
+          readId: request.readId, sessionId: 'session', authorityId: 'authority',
+          afterRevision: 0, revision: 0, headRevision: 1, events: [],
+          stateChunk: { offset, data: encoded.slice(offset, offset + 8192) }
+        });
+        assert.equal(f.closes().length, 0);
+      }
+      await until(() => f.requests().at(-1)?.payload.stateOffset === undefined, 'current state imported before live read');
+      assert.equal(f.snapshotNotifications(), 1);
+      assert.equal(f.terminal.buffer.active.type, 'alternate');
+      const lines = terminal => Array.from({ length: terminal.buffer.active.length }, (_, index) =>
+        terminal.buffer.active.getLine(index).translateToString(true));
+      assert(lines(f.terminal).includes('ALTERNATE-STATE'));
+      assert.deepEqual(lines(f.terminal), lines(source));
+      assert.equal(f.terminal.buffer.active.cursorX, source.buffer.active.cursorX);
+      assert.equal(f.terminal.buffer.active.cursorY, source.buffer.active.cursorY);
+      f.sendPage([{ type: 'output', revision: 1, createdAtMs: 1, data: 'LIVE-TAIL\x1b[?1049l' }]);
+      await until(() => f.closes().length === 1, 'current state live tail settlement');
+      await write(source, 'LIVE-TAIL\x1b[?1049l');
+      assert.equal(f.terminal.buffer.active.type, 'normal');
+      assert.equal(f.terminal.buffer.active.getLine(0).translateToString(true), 'NORMAL-STATE');
+      assert.equal(f.terminal.buffer.active.cursorX, source.buffer.active.cursorX);
+      assert.equal(f.terminal.buffer.active.cursorY, source.buffer.active.cursorY);
+      assert.deepEqual(f.closes()[0].payload.outcome, { kind: 'applied', finalRevision: 1 });
+      const attachRequests = () => f.messages.filter(message => message.type === 'webview/attachExecutionSession');
+      const attachCount = attachRequests().length;
+      f.controller.applyTerminalEvent({ executionSessionId: 'session', authorityId: 'authority',
+        event: { type: 'resize', revision: 2, createdAtMs: 1, cols: 90, rows: 24 } });
+      await until(() => f.controller.getQueuedWriteCount() === 0, 'future terminal event after current-state bootstrap');
+      assert.equal(attachRequests().length, attachCount, 'current-state identity must not trigger duplicate recovery attach');
+      assert.equal(f.terminal.cols, 90, 'future terminal events must continue from the imported revision');
+    } finally { source.dispose(); f.dispose(); }
+  });
+
+  await check('invalid current state never falls back to its empty checkpoint or acknowledges import', async () => {
+    const f = fixture();
+    try {
+      const encoded = JSON.stringify({ format: 'xterm-current-state-v1', cols: 80, rows: 24, scrollback: 100 });
+      f.descriptor.currentState = { format: 'xterm-current-state-v1', length: encoded.length };
+      f.start();
+      const request = f.requests()[0].payload;
+      f.controller.applyTerminalPage(request.readId, request.requestId, {
+        readId: request.readId, sessionId: 'session', authorityId: 'authority',
+        afterRevision: 0, revision: 0, headRevision: 0, events: [], stateChunk: { offset: 0, data: encoded }
+      });
+      await until(() => f.closes().length === 1, 'invalid current state is cancelled');
+      assert.equal(f.snapshotNotifications(), 0);
+      assert.equal(f.requests().length, 1);
+      assert.equal(f.closes()[0].payload.outcome.kind, 'cancelled');
+    } finally { f.dispose(); }
+  });
+
+  for (const pending of [true, false]) {
+    await check(pending
+      ? 'current-state import retains a pending OSC52 until its live suffix completes once'
+      : 'current-state import never replays an already completed OSC52', async () => {
+      const f = fixture('current-state-osc52', 1);
+      const source = new Terminal({ cols: 80, rows: 24, scrollback: 100, allowProposedApi: true });
+      const colors = createTerminalCurrentColors();
+      source._core._inputHandler.onColor(event => applyTerminalCurrentColorRequests(colors, event));
+      source.parser.registerOscHandler(52, () => false);
+      const delivered = [];
+      f.terminal.parser.registerOscHandler(52, data => {
+        delivered.push({ data, suppressed: f.diagnostics.active });
+        return false;
+      });
+      try {
+        const prefix = pending ? '\x1b]52;c;SGV' : '\x1b]52;c;SGVsbG8=\x07';
+        await new Promise(resolve => source.write(prefix, resolve));
+        const state = captureTerminalCurrentState(source, colors);
+        const encoded = JSON.stringify(state);
+        f.descriptor.currentState = { format: state.format, length: encoded.length };
+        f.start();
+        f.controller.terminalAvailable('session', 'authority', 1, true, 1);
+        for (let offset = 0; offset < encoded.length; offset += 8192) {
+          const request = f.requests().at(-1).payload;
+          assert.equal(request.stateOffset, offset);
+          f.controller.applyTerminalPage(request.readId, request.requestId, {
+            readId: request.readId, sessionId: 'session', authorityId: 'authority',
+            afterRevision: 0, revision: 0, headRevision: 1, events: [],
+            stateChunk: { offset, data: encoded.slice(offset, offset + 8192) }
+          });
+        }
+        await until(() => f.requests().at(-1)?.payload.stateOffset === undefined, 'OSC52 state imported');
+        assert.deepEqual(delivered, [], 'current-state import must not execute clipboard side effects');
+        assert.equal(f.restores.active, 0);
+        f.sendPage([{ type: 'output', revision: 1, createdAtMs: 1,
+          data: pending ? 'sbG8=\x07LIVE-TAIL' : 'LIVE-TAIL' }]);
+        await until(() => f.closes().length === 1, 'OSC52 live suffix settlement');
+        assert.deepEqual(delivered, pending ? [{ data: 'c;SGVsbG8=', suppressed: 0 }] : []);
+        assert.equal(f.terminal.buffer.active.getLine(0).translateToString(true), 'LIVE-TAIL');
+        assert.deepEqual(f.closes()[0].payload.outcome, { kind: 'applied', finalRevision: 1 });
+      } finally { source.dispose(); f.dispose(); }
+    });
+  }
 
   await check('local snapshot credit waits for actual application even after a healthy snapshot', async () => {
     const f = fixture();

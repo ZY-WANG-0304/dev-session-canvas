@@ -241,10 +241,15 @@ async function runRuntimeCheckpointRefreshSmoke() {
     await requestExecutionSnapshot('terminal', terminalNode.id, 'editor');
     await requestExecutionSnapshot('agent', agentNode.id, 'editor');
     for (const node of [terminalNode, agentNode]) {
-      await waitForDiagnosticEvents((events) => events.some((event) =>
+      const openedEvents = await waitForDiagnosticEvents((events) => events.some((event) =>
         event.kind === 'runtime/terminalPagedReadOpened' && event.detail?.nodeId === node.id &&
-        event.detail?.hostCachedEvents === 0
+        event.detail?.currentState === 'xterm-current-state-v1' &&
+        Number.isSafeInteger(event.detail?.stateLength) && event.detail.stateLength > 0
       ), 20000);
+      const opened = openedEvents.find((event) => event.kind === 'runtime/terminalPagedReadOpened' &&
+        event.detail?.nodeId === node.id && event.detail?.currentState === 'xterm-current-state-v1');
+      assert.strictEqual(opened.detail.hostCachedEvents, 0,
+        'Current-state bootstrap must not start by replaying Host cached history.');
     }
     await waitForHostMessages((messages) => messages.some((message) =>
       message.type === 'host/executionSnapshot' && message.payload.nodeId === terminalNode.id &&
@@ -270,16 +275,33 @@ async function runRuntimeCheckpointRefreshSmoke() {
       message.payload.executionSessionId === terminalSessionId &&
       message.payload.terminalRead && !message.payload.terminalStream
     ), 20000);
-    await waitForHostMessages((messages) => {
+    const terminalBootstrapMessages = await waitForHostMessages((messages) => {
+      const snapshot = messages.find((message) => message.type === 'host/executionSnapshot' &&
+        message.payload.nodeId === terminalNode.id && message.payload.terminalRead);
       const pages = messages.filter((message) => message.type === 'host/executionTerminalPage' &&
         message.payload.nodeId === terminalNode.id && message.payload.page).map((message) => message.payload.page);
-      const byRevision = new Map(pages.flatMap((page) => page.events).map((event) => [event.revision, event]));
-      const text = [...byRevision.values()].sort((a, b) => a.revision - b.revision)
-        .filter((event) => event.type === 'output').map((event) => event.data).join('');
-      assert.ok(pages.every((page) => page.events.length <= 256 &&
-        (page.events.length <= 1 || Buffer.byteLength(JSON.stringify(page.events)) <= 256 * 1024)));
-      return text.includes(marker) && (text.match(/DSC_CACHE_ROW_\d{5}_/gu) ?? []).length === rowCount;
+      if (!snapshot?.payload.terminalRead?.currentState || pages.length === 0) return false;
+      const chunks = [...new Map(pages.filter((page) => page.stateChunk)
+        .map((page) => [page.stateChunk.offset, page.stateChunk])).values()]
+        .sort((a, b) => a.offset - b.offset);
+      if (chunks.length === 0 || chunks[0].offset !== 0) return false;
+      let offset = 0;
+      for (const chunk of chunks) {
+        assert.strictEqual(chunk.offset, offset, 'Current-state chunks must be contiguous.');
+        offset += chunk.data.length;
+      }
+      assert.strictEqual(offset, snapshot.payload.terminalRead.currentState.length,
+        'Current-state chunks must cover the declared state.');
+      assert.ok(pages.filter((page) => page.stateChunk).every((page) => page.events.length === 0));
+      const events = pages.flatMap((page) => page.events);
+      assert.ok(events.every((event) => event.revision > snapshot.payload.terminalRead.checkpoint.revision),
+        'Pages after current-state import may only contain post-capture revisions.');
+      return true;
     }, 30000);
+    const terminalBootstrapReader = terminalBootstrapMessages.find((message) =>
+      message.type === 'host/executionSnapshot' && message.payload.nodeId === terminalNode.id &&
+      message.payload.terminalRead).payload.terminalRead;
+    assert.equal(terminalBootstrapReader.currentState.format, 'xterm-current-state-v1');
     await waitForWebviewProbe((probe) =>
       readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
     20000);

@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const vscode = require('vscode');
-const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
+const { activateVisibleExtension, expectedExecutionCandidateGeneration, waitForCommand } = require('./test-helpers.cjs');
 const windows = require('./windows-execution-candidate.cjs');
 const { captureInstalledExtensionReceipt } = require('./installed-execution-candidate.cjs');
 
@@ -169,8 +169,7 @@ async function complete() {
   const metadata = node.metadata.terminal;
   assert.equal(metadata.persistenceMode, mode);
   if (mode === 'live-runtime') {
-    assert.match(metadata.runtimeStoragePath, process.platform === 'win32' ? /terminal-exit-windows-v1/
-      : process.platform === 'darwin' ? /terminal-exit-macos-v1/ : /terminal-exit-v1/);
+    assert.match(metadata.runtimeStoragePath, new RegExp(expectedExecutionCandidateGeneration()));
     assert(metadata.runtimeSessionId);
   }
   await dispatch('webview/resizeNode', { nodeId: id, position: node.position,
@@ -185,7 +184,13 @@ async function complete() {
   const initialSnapshot = mounted.snapshot;
   assert(initialSnapshot, 'An actual mounted reader must expose the original execution identity.');
   const executionId = initialSnapshot.payload.executionSessionId;
-  if (mode === 'live-runtime') assert.equal(executionId, metadata.runtimeSessionId);
+  if (mode === 'live-runtime') {
+    assert.equal(executionId, metadata.runtimeSessionId);
+    const reader = initialSnapshot.payload.terminalRead;
+    assert.equal(reader?.currentState?.format, 'xterm-current-state-v1');
+    assert(Number.isSafeInteger(reader.currentState.length) && reader.currentState.length > 0);
+    assert.equal(reader.checkpoint.serializedState.data, '');
+  }
   await writeJson('started.json', { node, executionId, runtime: await command('getRuntimeSupervisorState') });
   await command('clearHostMessages');
   await command('clearDiagnosticEvents');
