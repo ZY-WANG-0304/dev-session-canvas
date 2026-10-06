@@ -172,6 +172,11 @@ assert.match(
   /Snapshots create projections; they do not replace a healthy live backlog/u,
   'Webview 不得再把 snapshot 用作健康 live backlog replacement。'
 );
+assert.match(
+  webviewSource,
+  /function normalizeExecutionPerformanceDiagnosticForWebview\([\s\S]*?currentStateLength: normalizeDiagnosticInteger\(payload\.currentStateLength\)[\s\S]*?currentStateOffset: normalizeDiagnosticInteger\(payload\.currentStateOffset\)[\s\S]*?currentStateChunkCount: normalizeDiagnosticInteger\(payload\.currentStateChunkCount\)[\s\S]*?currentStateAssemblyPeakCharacters: normalizeDiagnosticInteger\(payload\.currentStateAssemblyPeakCharacters\)/u,
+  'Webview 性能诊断归一化必须透传 current-state 的完整长度、offset、chunk 数和组装峰值。'
+);
 assert.doesNotMatch(
   webviewSource,
   /resetBacklogForSnapshot|pendingSnapshotReset|deferred-output-budget-reset/u,

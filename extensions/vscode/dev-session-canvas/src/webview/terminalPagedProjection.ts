@@ -11,6 +11,8 @@ export interface TerminalPagedProjectionCallbacks {
   request: (read: TerminalStreamReadDescriptor, afterRevision: number, requestId: string, stateOffset?: number) => void;
   close: (read: TerminalStreamReadDescriptor, outcome?: RuntimeSupervisorTerminalReadOutcome) => void;
   checkpoint: (read: TerminalStreamReadDescriptor, current: () => boolean, done: (applied?: boolean) => void) => void;
+  currentStateProgress?: (read: TerminalStreamReadDescriptor, offset: number, chunkCount: number,
+    assemblyPeakCharacters: number) => void;
   currentState?: (read: TerminalStreamReadDescriptor, state: unknown,
     current: () => boolean, done: (applied?: boolean) => void) => void;
   events: (events: TerminalStreamEvent[], revision: number, current: () => boolean,
@@ -33,6 +35,7 @@ export class TerminalPagedProjection {
   private exitMessage: string | undefined;
   private stateChunks: string[] | undefined;
   private stateOffset = 0;
+  private stateChunkCount = 0;
   private stateImportPendingConfirmation = false;
 
   public constructor(private readonly callbacks: TerminalPagedProjectionCallbacks) {}
@@ -58,6 +61,7 @@ export class TerminalPagedProjection {
         return false;
       }
       this.stateChunks = [];
+      this.stateChunkCount = 0;
       this.pull(true);
       return true;
     }
@@ -137,6 +141,14 @@ export class TerminalPagedProjection {
       }
       this.stateChunks.push(chunk.data);
       this.stateOffset += chunk.data.length;
+      this.stateChunkCount += 1;
+      if (this.stateOffset === read.currentState.length) {
+        // JSON.parse(join(...)) temporarily retains both representations; expose
+        // that bounded estimate so production evidence does not confuse chunk
+        // size with the full receiver assembly cost.
+        this.callbacks.currentStateProgress?.(read, this.stateOffset, this.stateChunkCount,
+          this.stateOffset * 2);
+      }
       if (this.stateOffset < read.currentState.length) {
         this.busy = false;
         this.pull(true);
@@ -199,6 +211,7 @@ export class TerminalPagedProjection {
     this.exitMessage = undefined;
     this.stateChunks = undefined;
     this.stateOffset = 0;
+    this.stateChunkCount = 0;
     this.stateImportPendingConfirmation = false;
   }
 

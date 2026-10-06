@@ -819,6 +819,18 @@ function normalizeExecutionPerformanceDiagnosticForWebview(
     queuedWriteCount: normalizeDiagnosticInteger(payload.queuedWriteCount),
     bufferLength: normalizeDiagnosticInteger(payload.bufferLength),
     pendingOutputLength: normalizeDiagnosticInteger(payload.pendingOutputLength),
+    ...(payload.currentStateLength !== undefined
+      ? { currentStateLength: normalizeDiagnosticInteger(payload.currentStateLength) }
+      : {}),
+    ...(payload.currentStateOffset !== undefined
+      ? { currentStateOffset: normalizeDiagnosticInteger(payload.currentStateOffset) }
+      : {}),
+    ...(payload.currentStateChunkCount !== undefined
+      ? { currentStateChunkCount: normalizeDiagnosticInteger(payload.currentStateChunkCount) }
+      : {}),
+    ...(payload.currentStateAssemblyPeakCharacters !== undefined
+      ? { currentStateAssemblyPeakCharacters: normalizeDiagnosticInteger(payload.currentStateAssemblyPeakCharacters) }
+      : {}),
     owner: payload.owner,
     lifecycleStatus: payload.lifecycleStatus,
     workspaceStateMode: payload.workspaceStateMode,
@@ -8639,6 +8651,18 @@ function createExecutionTerminalController(
       nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId,
       ...(outcome ? { outcome } : {})
     } }),
+    currentStateProgress: (read, offset, chunkCount, assemblyPeakCharacters) => {
+      reportExecutionPerformanceDiagnostic({
+        source: 'webview-terminal-drain', nodeId, kind,
+        executionSessionId: read.sessionId, reason: 'terminal-current-state-assembled',
+        checkpointRevision: read.checkpoint.revision,
+        currentStateLength: read.currentState?.length,
+        currentStateOffset: offset,
+        currentStateChunkCount: chunkCount,
+        currentStateAssemblyPeakCharacters: assemblyPeakCharacters,
+        success: true
+      }, { force: true });
+    },
     currentState: (read, state, current, applied) => {
       const detail: Extract<ExecutionHostEvent, { type: 'snapshot' }> = {
         type: 'snapshot', nodeId, kind, output: '', cols: read.checkpoint.cols, rows: read.checkpoint.rows,

@@ -19,6 +19,8 @@ Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩
 
 2026-10-06 GitHub run `37479044769` 复核：package 与六个 native assets 通过，Windows product 通过。Linux current-state reload 的 Electron 退出码为 0，但 driver 未留下 `setup.json`；工件显示失败发生在 `current-state marker before reload`，fixture 因收到未支持的 shell `printf` 命令提前退出，已按 fixture 协议改为显式 marker 命令，不涉及产品协议。macOS Agent 失败发生在 live node `starting` 阶段，sanitized 报告没有 CLI、Supervisor 或 failure class，证据不足以归因认证、启动链或产品运行时。为避免下一轮再次丢失第一现场，驱动现在在 Agent 首次失败时保存脱敏 snapshot/events，并在 reload 缺少 phase receipt 时保存 names-only artifact inventory；这些是诊断可见性修复，不改变业务判定或放宽验收。
 
+2026-10-06 F-04 观测接线：Webview current-state 完整组装后新增一次脱敏 performance diagnostic，记录 `currentStateLength`、`currentStateChunkCount`、最终 `currentStateOffset` 和保守的 `currentStateAssemblyPeakCharacters`；Supervisor/Host 原有 `stateLength`/chunk offset 继续保留。该接线只补资源账，不定义新的总长度阈值，也不将单页 8192 或估计峰值写成产品预算；真实 Electron 多会话、超限处置和现代三平台受影响入口仍待运行。
+
 ## 意外与发现
 
 `SerializedTerminalStateTracker.flushValidatedCheckpoint()` 拒绝颜色、OSC8、非 ground parser、标题栈和大于 256 Ki 字符等状态。`RuntimeSupervisorServer.openTerminalRead()` 仍选择最后一个可接受 checkpoint，因此有限分页没有使恢复摆脱历史。PaneGallery 的 mode key 切换确实卸载执行节点并重新 attach，而非只重绘。

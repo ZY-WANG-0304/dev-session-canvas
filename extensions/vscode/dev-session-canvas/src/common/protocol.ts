@@ -601,6 +601,10 @@ export interface ExecutionPerformanceDiagnosticPayload {
   queuedWriteCount?: number;
   bufferLength?: number;
   pendingOutputLength?: number;
+  currentStateLength?: number;
+  currentStateOffset?: number;
+  currentStateChunkCount?: number;
+  currentStateAssemblyPeakCharacters?: number;
   owner?: ExecutionPerformanceDiagnosticOwner;
   lifecycleStatus?: string;
   workspaceStateMode?: string;
@@ -2884,6 +2888,18 @@ function normalizeExecutionPerformanceDiagnosticPayload(
     queuedWriteCount: normalizeNonNegativeInteger(value.queuedWriteCount),
     bufferLength: normalizeNonNegativeInteger(value.bufferLength),
     pendingOutputLength: normalizeNonNegativeInteger(value.pendingOutputLength),
+    ...(value.currentStateLength !== undefined
+      ? { currentStateLength: normalizeNonNegativeInteger(value.currentStateLength) }
+      : {}),
+    ...(value.currentStateOffset !== undefined
+      ? { currentStateOffset: normalizeNonNegativeInteger(value.currentStateOffset) }
+      : {}),
+    ...(value.currentStateChunkCount !== undefined
+      ? { currentStateChunkCount: normalizeNonNegativeInteger(value.currentStateChunkCount) }
+      : {}),
+    ...(value.currentStateAssemblyPeakCharacters !== undefined
+      ? { currentStateAssemblyPeakCharacters: normalizeNonNegativeInteger(value.currentStateAssemblyPeakCharacters) }
+      : {}),
     owner: isExecutionPerformanceDiagnosticOwner(value.owner) ? value.owner : undefined,
     lifecycleStatus: typeof value.lifecycleStatus === 'string' ? value.lifecycleStatus : undefined,
     workspaceStateMode: typeof value.workspaceStateMode === 'string' ? value.workspaceStateMode : undefined,

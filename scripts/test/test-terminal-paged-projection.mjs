@@ -178,11 +178,12 @@ function verifyCurrentStateProjection(TerminalPagedProjection, original) {
       checkpoint: { ...original.checkpoint, revision: 7,
         serializedState: { ...original.checkpoint.serializedState, outputSequence: 7 } },
       currentState: { format: state.format, length: encoded.length } };
-    const requests = [], imports = [], writes = [], closes = [], checkpoints = [];
+    const requests = [], imports = [], writes = [], closes = [], checkpoints = [], progress = [];
     const projection = new TerminalPagedProjection({
       request: (read, afterRevision, requestId, stateOffset) => requests.push({ read, afterRevision, requestId, stateOffset }),
       close: (read, outcome) => closes.push({ read, outcome }),
       checkpoint: (...args) => checkpoints.push(args),
+      currentStateProgress: (...args) => progress.push(args),
       currentState: (read, state, current, done) => imports.push({ read, state, current, done }),
       events: (events, revision, current, done) => writes.push({ events, revision, current, done }), exit: () => {}
     });
@@ -195,7 +196,7 @@ function verifyCurrentStateProjection(TerminalPagedProjection, original) {
       readId: descriptor.readId, sessionId: descriptor.sessionId, authorityId: descriptor.authorityId,
       afterRevision: 7, revision: 7 + events.length, headRevision: 7 + events.length, events
     });
-    return { projection, descriptor, requests, imports, writes, closes, checkpoints, chunk, page };
+    return { projection, descriptor, requests, imports, writes, closes, checkpoints, progress, chunk, page };
   };
   {
     const f = fixture();
@@ -208,6 +209,8 @@ function verifyCurrentStateProjection(TerminalPagedProjection, original) {
     f.chunk(0, encoded.slice(0, 9), first);
     assert.equal(f.requests.length, 2, 'duplicate state response cannot append twice');
     f.chunk(9, encoded.slice(9));
+    assert.deepEqual(f.progress.map(value => value.slice(1)), [[encoded.length, 2, encoded.length * 2]],
+      'current-state progress must expose the full assembly peak, not the chunk limit');
     assert.equal(f.imports.length, 1);
     assert.deepEqual(f.imports[0].state, state);
     assert.equal(f.closes.length, 0, 'received state is not applied terminal state');

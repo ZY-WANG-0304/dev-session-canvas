@@ -56,6 +56,8 @@ Supervisor hello、Host 与 Webview ready 通过 `terminalCurrentStateV1` 协商
 
 正文通过原 `readTerminalPage` 的 `stateOffset` 逐块请求，返回 `stateChunk`，块上限 8192 UTF-16 字符，使最坏 JSON 转义也在 64 KiB 页预算内。状态块不推进 journal revision、不确认页面应用；Webview 收齐并导入后从 R 请求连续增量。每个 reader 只许一个在途块，Supervisor 保留冻结状态直到首次普通页确认或取消。冻结状态与接收端组装占用 O(当前模型) 内存，不声称常数大小，也不得保留过去 capture 的列表。
 
+为支持 F-04 的实际准入观察，Webview 在完整 current-state 组装前记录一次脱敏 performance diagnostic：状态总 UTF-16 长度、收到的块数、最终 offset，以及 `stateOffset * 2` 的组装峰值估计（`JSON.parse(join(...))` 同时保留分块和合并字符串的保守上界）。Supervisor/Host 已有 `stateLength` 和每页 `stateOffset` 记录。该诊断只用于同一生产入口的资源账，不把估计值当作 RSS 硬预算，也不改变失败、取消或降级语义。
+
 容量边界仍需作为 F-04 的生产准入项单独收口：当前协议只限制单个 `stateChunk`，尚未为完整 current-state JSON 设定总长度或接收端组装预算；Supervisor 会先形成完整字符串，Webview 也会在导入前累积并合并分块。不能把 8192 字符分页误写成总内存上界，也不在缺少实际多会话/大 scrollback 证据时擅自增加硬阈值。验收必须记录状态长度、捕获/组装峰值、并发会话和失败处置；若支持预算不足，应明确拒绝或降级到已有兼容路径，不能静默截断或宣称恢复完成。
 
 新 reader 的 R 不提升 durable checkpoint 或其他 reader。捕获在 admit reader 之后，保留与退出重叠的最终应用责任。导入失败、销毁、读取失败沿原结算；传完不等于应用完成，更不等于 EOF。结束须在真实导入及之后 final revision 全部应用后完成。
