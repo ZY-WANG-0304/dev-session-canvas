@@ -256,7 +256,7 @@ test('staged activation driver is separate, has no business dist and keeps fixed
     const driver = await fs.readFile(path.join(targetRoot, manifest.main), 'utf8');
     assert.match(driver, /workbench\.action\.reloadWindow/);
     assert.doesNotMatch(driver, /simulateRuntimeReload|prepareForDeactivation|produce:/);
-    assert.match(driver, /role === 'a' \? ` a color/);
+    assert.match(driver, /role === 'a' \? ` a compact/);
     assert(driver.indexOf("archive('original-disk'") < driver.indexOf('await activateVisibleExtension'));
     assert.match(driver, /diskReadBeforeDriverProductCalls: true/);
     assert.match(driver, /oldHostExclusiveDiskWriteClaim: false/);
