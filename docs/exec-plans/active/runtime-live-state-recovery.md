@@ -12,7 +12,9 @@ Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩
 - [x] (2026-10-06) M1：固定 xterm 6.0.0 精确状态 codec，覆盖模型、parser carry、palette 和链接；有限独立语义测试通过。
 - [x] (2026-10-06) M2：接通 Supervisor、Host 转发、Webview 分块初始化与 revision 交接；保留旧能力、旧 generation 与既有读者结算。
 - [x] (2026-10-06) M3 受控验证：等状态短长历史、实际生产类组合链、未来增量/resize/尾部，以及类型检查和默认构建通过。
-- [ ] M3 实际验收：实际浏览器重建和 PaneGallery 3/3、Linux 冻结 VSIX 的真实 current-state Reload Window 已通过；run `37494231281` 的 macOS installed product 和真实 Agent 8 场景也通过。Windows 同包的 installed live-runtime 停在 Host 状态交接，定向取证中；live Agent 跨 Host 恢复和其他平台的恢复路径仍待补齐。早期沙箱启动失败与 fixture 失败保留为历史，不再作为当前环境阻塞。
+- [x] (2026-10-07) M3 页面与 Linux Terminal 重开：实际浏览器重建和 PaneGallery 3/3、冻结 VSIX 的真实 current-state Reload Window 通过；原执行身份、未来交互、退出尾部与清理均验证。
+- [x] (2026-10-07) M3 已有安装入口的受影响回归：run `37494231281` 的 macOS installed product 和真实 Agent 8 场景通过；Windows 同包定向 run `37507579337` 的 installed live-runtime 及真实 Codex/Claude live 4 场景通过。不把旧 Windows 失败追认成通过，初始订阅偶发停滞原因仍未确认。
+- [ ] M3 恢复场景剩余：真实 live Agent 跨 Host 恢复、macOS/Windows 的对应恢复路径。已有自然结束/主动停止及 completed 重开不能代证 live 重开；早期沙箱启动失败与 fixture 失败保留为历史，不再作为当前环境阻塞。
 - [ ] F-04 current-state 资源准入：在真实支持入口记录完整状态长度、Supervisor 捕获峰值、Webview 组装峰值、并发会话和超限处置；8192 字符分块只限定单页，不构成总内存预算。
 
 2026-10-06 验证增量：默认 `typecheck`、`build`、debug staging、VSIX 打包和 `git diff --check` 通过；current-state codec 15/15、分页/relay 回归、reload 契约 12/12 通过，Playwright 的 Agent、Terminal 页面重建和 PaneGallery remount 3/3 通过。`test:runtime-supervisor-protocol` 在本地仅因沙箱禁止 Unix socket `listen`（`EPERM`）未运行完，不改写为产品失败或通过。现有真实 reload driver 依赖 Linux `/proc`、Linux provider/fixture 和 POSIX shell，故 CI 只在 Linux 执行 current-state reload；macOS/Windows 仍是待实现独立 observer/fixture 的跨平台验收，不移除平台断言或冒称已通过。
@@ -26,6 +28,10 @@ Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩
 2026-10-07 后续真实验收：原 CI 工件 `failure-getRuntimeSupervisorState.json` 明确保存了 marker 字面量与正确 nonce 回复连行，且 Webview 已 ack revision 7，确认本次失败源于 fixture 换行。当前环境原生执行已可用，未改测试启动策略；复用 run `37494231281` 的冻结 VSIX（SHA256 `8b0be701ecb29a142a6ebd1bb00e794e151e184bf70f8899a2e948e1e53ae675`），修正 fixture 后在真实 VS Code 1.117.0 完成一次 Reload Window，证据在 `.debug/b4-current-state-reload-crlf-20261007/result.json`。同一 UI、不同 Host/frame/reader、原 Supervisor/provider/subject 身份、恢复后新 nonce 回复、completed B 无历史且不重启、A 正常结束的原 reader applied、资源退出及零 fallback 全部通过。恢复状态 4825 字符、1 块、估计组装峰值 9650 字符，新 nonce 应用约 10.4 ms，整轮约 11.15 秒；这些是单次小状态观察，不代证 F-04 大 scrollback/并发准入。旧失败原样保留，不再重复排队 Linux 此用例或无改动 native 构建。
 
 同日复核 run `37494231281` 的 `runtime-production-agent-macos-37494231281/summary.json`：8 个真实 Codex/Claude 场景均通过，Host/Supervisor/provider/Webview 四个产物 hash 与上述冻结 VSIX 一致。较早 run 的 macOS `starting` 失败保留为历史，不再列为当前阻塞；该矩阵仍不证明 live Agent 跨 Host 重开。Windows 的 `started.json` 原先未保留清空前的 messages/events，因此只补保存已有 initialSnapshot、启动期 messages/events 后定向重跑；不加自动重试，不改变超时、尾部或最终状态断言，不预先修改订阅业务代码。
+
+Windows 定向 run `37507579337`（harness `43c66daa`）复用同一冻结包，native-assets/package 跳过，仅执行 installed live-runtime 与真实 Codex/Claude 的 natural/stop 四个 live 场景。安装用例 90000 行、5580126 写出字节、最终光标 `(6,2)`、原 reader applied final revision 1383、原 writer exit 0、571 字节 completed 节点、重开空历史与清理通过；不声称 ConPTY 输出与源字节逐字相同。Agent 脱敏报告为 `selectedPass=true / partialSelection=true / pass=false`，四个所选场景通过、无未知退出/强制清理/残留，未选的 snapshot-only 四项仍为 not-run，不改写全矩阵状态。原始工件保留于 `.debug/runtime-installed-windows-37494231281/`、`.debug/runtime-installed-windows-37507579337/`、`.debug/runtime-agent-windows-37507579337/`；Linux 原失败保留于 `.debug/runtime-installed-linux-37501128715/`，macOS 脱敏通过报告保留于 `.debug/runtime-agent-macos-37494231281/`。
+
+本轮 Windows 首批 `0 -> 2` 有完整 receive/flush/consumed，而旧运行丢失了清空前记录，因此未确定旧停滞原因，不能宣称业务缺陷已修复，也不能归因 Windows 对象句柄语义。当前记录为未归因的间歇性风险，不仅凭历史失败追加平台矩阵或改动业务逻辑。另一本地 stock protocol 测试的 revision 断言有明确同步风险：等待任意 revision 增长可能只看到 PTY 输入回显，marker 随后作为实时增量到达，却被断言为必须在 subscribe 返回 head 以内；这是代码支持的竞态解释，旧运行无完整时序，保持原失败，不扩大为新工具前置。
 
 ## 意外与发现
 
@@ -51,7 +57,7 @@ Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩
 
 codec 与生产接线已实现，受控生产类组合验证已证明新读者不读取 R 以前事件，状态应用后才确认 R，并在真实尾部 write callback 后结算。相同模型的 1/400 次重绘样本均传送 4329 字符；codec 的 1/200/1200 次重绘样本均为 2632 字符。它们是结构证据，不是实际 VS Code、浏览器或跨平台性能验收。
 
-整体 B4 尚未完成：受影响的三个 Playwright 浏览器用例现已在当前环境实际进入正文并通过，且覆盖 current-state 导入后 controller authority/revision 接续；但真实 Linux Electron candidate 在启动阶段遇到 `sandbox_host_linux.cc:41` 的 EPERM/SIGTRAP，未进入 VS Code 业务测试正文，真实 protocol Unix socket 监听也被 EPERM 拒绝。保留原失败，不通过修改断言或沙箱绕过取得绿色。没有修改现场节点、registry、服务或历史失败。
+整体 B4 尚未完成：受影响的三个 Playwright 浏览器用例和真实 Linux Terminal Reload Window 已通过，现代平台安装入口及受影响 Agent 生命周期结果见进度记录；剩余是真实 live Agent/其他平台恢复与 F-04 当前状态资源准入。此前 Linux Electron `sandbox_host_linux.cc:41` EPERM/SIGTRAP 及 Unix socket EPERM 保持原失败，当前环境已可执行原入口；没有通过修改断言、用户现场节点、registry、服务或历史结果取得绿色。Windows 旧停滞保持未归因风险，不因单次通过宣称修复。
 
 ## 上下文与定向
 
