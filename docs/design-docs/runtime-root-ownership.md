@@ -205,3 +205,5 @@ Windows 只读 boot UUID/SID probe 优先由系统自带 PowerShell 调用固定
 后续增量已实现 `supervisor/runtimeRootStartup.ts` 的私有启动 intent/started 原子记录与 Main 校验：缺失或冲突 token 在 claim 前拒绝，回执在 claim 后、任何 runtime 清理前发布，同 token 不得再次消费。`runtimeSupervisorStart.ts` 从 Host 提取现有启动命令，供未来短命准备流程复用；本轮未接通准备排他事务，也未改变 Manager 默认路由。新文件测试是记录语义及真实临时文件验证，Main 测试仍用受控 namespace；它们不证明跨进程启动已完成。
 
 该增量的本地记录测试、36 受控握手/启动、18 启动参数与 31 reader/client、typecheck、普通 build 通过。独立复核修复新 root systemd storage 默认创建为 0755 导致 Main 私有校验拒绝的问题，仅新代创建 0700，旧路径不改；新增参数用例核对这一差异。现有正常 live 尾部/状态/释放机制未改，不重复旧 Agent 或容量矩阵。
+
+提交 `d1fe71e7` / run `37661131732` attempt 1 三平台基础 CI 成功，实际父子身份与临时文件记录测试通过，受控握手/启动 Linux/macOS 各 36、Windows 32，typecheck 通过。旧历史清理本地回归 116 项通过、2 个 socket 用例按既有脚本跳过。启动准备排他事务、systemd manager 范围及真实中断/竞争仍开放，随后才接 P2 生产路由；不宣称 root 稳定归属已交付。
