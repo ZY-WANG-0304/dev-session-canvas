@@ -35,7 +35,11 @@
 
 ## 技术债列表
 
+2026-10-07，0.26.0 发布验证阻塞（不能据此合并发布准备 PR）：`release:verify` 在 Node 22.23.3 短路径 checkout 的 Marketplace VS Code E2E 失败。实际 list probe 已显示两条模板和英文 Install / Switch install version，`tests/vscode-smoke/template-marketplace-tests.cjs:48` 仍等待中文按钮；需修正测试 locale/文案契约并完整复验，不降低交互断言。原深路径首跑另有 Unix socket listen EINVAL，可用短路径避开，不能混作同一失败。独立 `test:notifier-smoke` 在 `notifier-companion-tests.cjs:103` 等待 companion posted diagnostic 超时，前序出现 `Local final snapshot responsibility still occupies the execution key or Host capacity`；因果尚未确认，需排查测试启动时序与生产 runtime 责任，不能直接判定为无害 fixture。影响发布完整验证与 companion 联动验收，应在发布前解决；locale/source/打包通过不替代该联动路径。证据入口为 `docs/exec-plans/active/release-0-26-0-prep.md`。
+
 2026-10-07 发布审计：`npm audit --omit=dev` 发现公开 KaTeX 公告 `GHSA-238p-pmpm-9mq7`，覆盖当前 `katex@0.16.45` 及 `micromark-extension-math` 依赖链，合计 2 low，npm 当前报告无修复版本。公告以“已经存在原型污染”为前提；`noteMarkdownPreview.ts` 显式传入 `trust: false`，本轮没有证明项目中存在前置污染路径，也不据此宣布完全不可利用。暂保留当前依赖与渲染配置，作为待验证安全风险；上游提供修复或发现前置污染路径时优先处理并重跑 Note 渲染回归。关联 `docs/exec-plans/active/release-0-26-0-prep.md`、主扩展 manifest/lockfile。独立的 markdown-it `GHSA-253c-mchw-3w2r`（linkify 长文本阻塞）本轮升级至 14.3.2；不把 KaTeX 遗留项写成零漏洞。
+
+同日全依赖 audit 为 19 项（2 low / 3 moderate / 14 high）；生产依赖只有上述 2 low，其余位于 @vscode/vsce、Tailwind、Wrangler 等开发/构建链。npm 的部分建议涉及主版本迁移，需独立工具链升级并复核构建、市场服务开发测试与 VSIX，不能直接 `audit fix --force` 混入版本物料。当前不声明全依赖零漏洞，也没有本轮实际利用证据；应在后续工具链维护中优先评估适用条件和可兼容补丁。
 
 2026-10-07 当前范围优先于下列历史结账：B1容量/准入、B2退出完整性、B3生命周期成果保留，B4权威当前态恢复及最终同包受影响验收已完成，计划归档至 `docs/exec-plans/completed/runtime-live-state-recovery.md`。剩余仅合并许可与下表具名维护风险，不自动追加产品阶段。旧sandbox拒绝及未归因间歇失败不追认通过；root稳定归属另列，不混入当前收口。
 

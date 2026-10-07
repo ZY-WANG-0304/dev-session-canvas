@@ -11,8 +11,9 @@
 - [x] (2026-10-07) 同步 origin/main，从 06e9abcf 创建 release-0-26-0-prep；保留未跟踪 image.png。
 - [x] (2026-10-07) 核对 v0.25.0 至 main 的 #292 至 #295 与正式运行时规格，选定 0.26.0。
 - [x] (2026-10-07) 同步版本、用户说明、支持边界、发布手册和契约；preflight 与 diff 检查通过。
-- [ ] 提交后执行 preflight、完整 verify 与 notifier 定向检查，记录实际结果。
-- [ ] 再次同步 main、推送并创建发布准备 PR，核对预合并检查。
+- [x] (2026-10-07) 提交后执行 preflight、完整 verify 与 notifier 定向检查；完整 verify 和 companion 联动失败，原因与证据见下文。
+- [ ] 修复发布验证阻塞后取得完整 verify 通过；当前不能合并或发布。
+- [ ] 再次同步 main、推送并创建发布准备草稿 PR；解除草稿前重跑预合并完整验证。
 
 ## 意外与发现
 
@@ -27,7 +28,7 @@
 
 ## 结果与复盘
 
-进行中。尚未发布、打 tag 或合并。除发布审计发现的 markdown-it 14.3.2 补丁升级外，不新增产品实现，相关既有风险继续由 `docs/exec-plans/tech-debt-tracker.md` 跟踪，不把本次文案复核视为新增平台验收。
+静态准备完成，发布验证被阻塞；准备草稿 PR，不宣称可合并。尚未发布、打 tag 或合并。除发布审计发现的 markdown-it 14.3.2 补丁升级外，不新增产品实现，相关既有风险继续由 `docs/exec-plans/tech-debt-tracker.md` 跟踪，不把本次文案复核视为新增平台验收。
 
 ## 上下文与定向
 
@@ -73,3 +74,17 @@
 修订记录：2026-10-07，静态输入完成；复用 run 37577646133 的六目标原生资产，聚合与当前源码默认 build 校验通过。完整验证尚待运行。
 
 修订记录：2026-10-07，首次完整 verify 停在 marketplace VS Code E2E 启动，Unix socket 深路径触发 listen EINVAL，并非业务断言。下一轮使用短路径临时 checkout 与 Node 22.23.3；不跳过用例。notifier typecheck/source 已通过。生产 audit 首次为 2 low / 1 moderate，markdown-it 升级至 14.3.2，KaTeX 无修复公告与前提边界登记技术债；后续复核实际 audit 与 Note 回归。
+
+修订记录：2026-10-07，markdown-it 链接、checklist、front matter 回归与 notifier typecheck/source 通过；生产 audit 为 2 low，全依赖为 2 low / 3 moderate / 14 high，开发链风险已登记。完整 verify 正在短路径隔离 checkout 使用 Node 22.23.3 执行，预合并 CI 尚待创建 PR 后核对。
+
+## 2026-10-07 验证记录
+
+发布输入为提交 `9dcd955d`；短路径 `/tmp/dsc026v` 从此提交独立 clone、Node 22.23.3 `npm ci`。六目标资产来自同一 run 37577646133，经聚合、source/hash 校验与默认构建成功，不使用 stock profile。
+
+通过项：preflight、diff 检查、主扩展默认 build/typecheck、Marketplace shared/API/Web 单元与浏览器 E2E、notifier typecheck/source、英中文真实宿主 locale smoke、notifier 14-file VSIX 打包、Markdown links/checklist/front matter、manifest、current-state 19/19 和 completed snapshot resize 16/16。
+
+完整 verify 首次在深路径 VS Code Unix socket listen EINVAL 停止。短路径重跑已进入真实 Marketplace 页面，显示两条模板及英文 Install / Switch install version，但测试第 48 行仍期待中文按钮，等待超时，完整命令 exit 1，后续 npm test 阶段及自动 clean-checkout 未执行。独立 notifier companion 在第 103 行等待 posted diagnostic 超时，先前有 runtime 最终 snapshot 责任占位错误；日志只能证明同时出现，尚不能确认因果。两项均登记为发布前阻塞，不使用 locale 或打包通过代证。
+
+本机完整日志：`/tmp/dsc-release-026-verify.log`（深路径首败）、`/tmp/dsc026-verify-short.log`（短路径失败）、`/tmp/dsc026-notifier.log`（联动失败）、`/tmp/dsc026-notifier-locale.log`、`/tmp/dsc026-notifier-package.log`。独立 clean-checkout 与完整 Webview 结果仍在回收中。
+
+修订记录：2026-10-07，记录具名失败并改为草稿交付；保留严格门禁，不将未完成测试视为通过，不混入未经确认的运行时代码修复。
