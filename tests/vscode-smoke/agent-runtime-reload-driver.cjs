@@ -162,22 +162,26 @@ async function setup(extension) {
 
 async function waitForAgentReady() {
   const prompts = new Set();
-  let promptError;
-  await poll('Codex interactive surface', probe, value => {
-    if (promptError) throw promptError;
+  const deadline = Math.min(Date.now() + 90000, control.deadlineAt - 30000);
+  while (Date.now() < deadline) {
+    const value = await probe();
     const text = textOf(value);
+    let handledPrompt = false;
     for (const [name, pattern] of [['workspace-trust', /(?:Yes, I trust|Do you trust|Trust this (?:folder|directory))/i],
       ['theme', /(?:Choose the text style|Choose.*theme|Select.*theme)/i],
       ['update', /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i]]) {
       if (pattern.test(text) && !prompts.has(name)) {
         prompts.add(name);
-        void dom({ kind: 'sendExecutionInput', nodeId: currentNodeId, data: name === 'update' ? '\u001b[B\r' : '\r' })
-          .catch(error => { promptError = error; });
-        return false;
+        await dom({ kind: 'sendExecutionInput', nodeId: currentNodeId, data: name === 'update' ? '\u001b[B\r' : '\r' });
+        handledPrompt = true;
+        break;
       }
     }
-    return /(?:codex|ask|prompt|send|shortcuts)/i.test(text);
-  }, 90000);
+    if (handledPrompt) { await sleep(100); continue; }
+    if (/(?:codex|ask|prompt|send|shortcuts)/i.test(text)) return;
+    await sleep(100);
+  }
+  throw new Error('Timed out: Codex interactive surface');
 }
 
 async function verify(extension) {
