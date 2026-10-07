@@ -25,7 +25,8 @@ const atomic = async (file, value) => {
   await fs.rename(next, file);
 };
 const nodeOf = (state, id) => state?.state?.nodes?.find(node => node.id === id);
-const textOf = value => value.nodes.find(node => node.nodeId === currentNodeId)?.terminalVisibleLines?.join('\n') ?? '';
+// A marker can straddle xterm's soft-wrap boundary; preserve adjacency when matching it.
+const textOf = value => value.nodes.find(node => node.nodeId === currentNodeId)?.terminalVisibleLines?.join('') ?? '';
 let config;
 let control;
 let currentNodeId;
