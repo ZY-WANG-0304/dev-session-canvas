@@ -7,6 +7,7 @@ const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs
 const { captureInstalledExtensionReceipt } = require('./installed-execution-candidate.cjs');
 const { AgentProcessObserver, executionEnded } = require('./agent-candidate-process-observer.cjs');
 const { resolveSystemdUserRuntimeSupervisorPaths, resolveLegacyRuntimeSupervisorPaths } = require('./runtime-reload-paths.cjs');
+const { resolveExecutionSessionSpawnSpec } = require('./execution-session-spawn-spec.cjs');
 const { readIdentity, sameIdentity, sameLiveIdentity, exitedIdentity } = require('./runtime-reload-contract.cjs');
 
 const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
@@ -135,6 +136,8 @@ async function setup(extension) {
   observer = new AgentProcessObserver(config.cli, extension.extensionPath, config.processObserver);
   observer.start();
   await observer.addRoot(process.pid, 'host');
+  if (process.platform === 'win32') await observer.setLaunch(resolveExecutionSessionSpawnSpec({
+    file: config.cli.entry, args: config.launchArguments, env: process.env }, 'win32'));
   const custom = [config.cli.entry, ...config.launchArguments].map(value => `'${String(value).replaceAll("'", "'\\''")}'`).join(' ');
   await command('createNode', 'agent', 'codex', { agentLaunchPreset: 'custom', agentCustomLaunchCommand: custom,
     cwdOverride: config.workspacePath });

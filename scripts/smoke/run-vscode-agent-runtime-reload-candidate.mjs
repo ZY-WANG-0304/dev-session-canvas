@@ -4,17 +4,23 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import { spawnSync } from 'node:child_process';
+import { constants } from 'node:fs';
 import { createDeepSeekConfiguration } from './agent-candidate-deepseek.mjs';
 import { installCandidateVsix, prepareInstalledVsixInput } from './installed-execution-candidate.mjs';
 import { prepareRuntime, runInsideXvfb, shouldReRunInsideXvfb, spawnPreparedVSCodeScenario,
   snapshotVSCodeLogs } from './vscode-smoke-runner.mjs';
+import cliHelpers from '../../tests/vscode-smoke/agent-candidate-cli.cjs';
+
+const require = createRequire(import.meta.url);
+let resolveSpawnSpec;
 
 const { values } = parseArgs({ options: { output: { type: 'string' }, 'installed-vsix': { type: 'string' },
   backend: { type: 'string', default: 'deepseek' } } });
-assert.equal(process.platform, 'linux', 'Agent Reload Window acceptance is currently Linux-only.');
-assert.equal(process.arch, 'x64');
+assert(['linux', 'darwin', 'win32'].includes(process.platform), 'Unsupported Agent Reload Window platform.');
+assert(process.platform !== 'win32' || process.arch === 'x64', 'Windows reload acceptance requires the x64 runner.');
 assert.equal(values.backend, 'deepseek', 'Only the isolated DeepSeek backend is supported by this entry point.');
 assert(values.output && values['installed-vsix'], 'Specify --output NEW_DIRECTORY --installed-vsix FROZEN_PACKAGE.');
 if (shouldReRunInsideXvfb()) process.exit(runInsideXvfb(fileURLToPath(import.meta.url), process.cwd()));
@@ -48,33 +54,42 @@ try {
     engines: { vscode: '^1.117.0' }, main: './agent-runtime-reload-driver.cjs',
     activationEvents: ['onStartupFinished'], extensionKind: ['workspace'] }, null, 2)}\n`);
   const staged = ['agent-runtime-reload-driver.cjs', 'test-helpers.cjs', 'installed-execution-candidate.cjs',
-    'agent-candidate-process-observer.cjs', 'agent-candidate-windows-observer.cjs', 'runtime-reload-contract.cjs'];
+    'agent-candidate-process-observer.cjs', 'agent-candidate-windows-observer.cjs',
+    'agent-candidate-process-observer.py', 'agent-candidate-process-observer.ps1', 'runtime-reload-contract.cjs'];
   for (const file of staged) await fs.copyFile(path.join(projectRoot, 'tests/vscode-smoke', file), path.join(driverRoot, file));
   const runtimePaths = path.join(driverRoot, 'runtime-reload-paths.cjs');
   await build({ entryPoints: [path.join(projectRoot,
     'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts')], outfile: runtimePaths,
     bundle: true, platform: 'node', format: 'cjs', target: 'node22', write: true, metafile: true, logLevel: 'silent' });
+  const spawnSpec = await build({ entryPoints: [path.join(projectRoot,
+    'extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts')], bundle: true,
+    platform: 'node', format: 'cjs', target: 'node22', write: false, logLevel: 'silent' });
+  await fs.writeFile(path.join(driverRoot, 'execution-session-spawn-spec.cjs'), spawnSpec.outputFiles[0].contents);
   const sourceHashes = {};
   for (const file of staged) sourceHashes[`tests/vscode-smoke/${file}`] = createHash('sha256')
     .update(await fs.readFile(path.join(projectRoot, 'tests/vscode-smoke', file))).digest('hex');
   sourceHashes['staged-runtime-reload-paths.cjs'] = createHash('sha256')
     .update(await fs.readFile(runtimePaths)).digest('hex');
+  sourceHashes['staged-execution-session-spawn-spec.cjs'] = createHash('sha256')
+    .update(await fs.readFile(path.join(driverRoot, 'execution-session-spawn-spec.cjs'))).digest('hex');
   const installedVsixExpectation = path.join(runtime.artifactsDir, 'installed-vsix-expectation.json');
   await fs.writeFile(installedVsixExpectation, `${JSON.stringify({ ...input,
     extensionsDir: await fs.realpath(runtime.extensionsDir) }, null, 2)}\n`);
   const codex = await findCodex();
   const codexIsolation = await inspectCodexIsolation({ codex, workspacePath, authReferences: backend.authReferences });
+  const processObserver = await prepareProcessObserver();
   const controlPath = path.join(runtime.artifactsDir, 'control.json');
   const configPath = path.join(runtime.artifactsDir, 'config.json');
   const config = { schemaVersion: 1, provider: 'codex', backend: 'deepseek', nonce, workspacePath,
     userDataDir: runtime.userDataDir, runtimeDir: runtime.runtimeDir, artifactDir: runtime.artifactsDir,
-    installedVsixExpectation, processObserver: undefined, cli: codex,
+    installedVsixExpectation, processObserver, cli: codex,
     launchArguments: [...codexIsolation.arguments, '--no-daemon', '--no-alt-screen', '--sandbox', 'read-only', '-a', 'never'],
     permittedStorageRoots: [runtime.userDataDir, runtime.runtimeDir, runtime.homeDir] };
   await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
   await fs.writeFile(controlPath, `${JSON.stringify({ schemaVersion: 1, phase: 'setup', nonce, deadlineAt }, null, 2)}\n`);
+  const platformName = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux';
   await fs.writeFile(path.join(output, 'input.json'), `${JSON.stringify({ schemaVersion: 1, scope:
-    'One Linux installed real Codex live-runtime Reload Window; DeepSeek backend; no fixed-eight or other-platform claim.',
+    `One ${platformName} installed real Codex live-runtime Reload Window; DeepSeek backend; no fixed-eight claim.`,
     backend: { backend: 'deepseek', model: 'deepseek-flash', credentialContentsRecorded: false }, nonce,
     deadlineAt, vsixSha256: input.vsixSha256, vscodeExecutablePath: executable, sourceHashes,
     automaticRetries: 0 }, null, 2)}\n`);
@@ -108,20 +123,51 @@ try {
 } finally { await backend?.dispose?.(); }
 
 async function findCodex() {
-  const { findExecutable } = await import('../../tests/vscode-smoke/agent-candidate-cli.cjs');
-  const entry = await findExecutable('codex');
-  const version = spawnSync(entry, ['--version'], { encoding: 'utf8', timeout: 10000, shell: false });
+  const entry = await cliHelpers.findExecutable('codex');
+  const spawnBundle = await build({ entryPoints: [path.join(projectRoot,
+    'extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts')], bundle: true,
+    platform: 'node', format: 'cjs', target: 'node22', write: false, logLevel: 'silent' });
+  const spawnModule = { exports: {} };
+  new Function('require', 'module', 'exports', spawnBundle.outputFiles[0].text)(require, spawnModule, spawnModule.exports);
+  resolveSpawnSpec = spawnModule.exports.resolveExecutionSessionSpawnSpec;
+  const version = cliHelpers.invokeCLI(resolveSpawnSpec, entry, ['--version'], {
+    encoding: 'utf8', timeout: 10000,
+    env: { ...process.env, PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH ?? ''}` }
+  });
   assert.equal(version.status, 0);
   assert.match(version.stdout.trim(), /^codex-cli \d+\.\d+\.\d+$/);
-  return { entry, realpath: await fs.realpath(entry), version: version.stdout.trim() };
+  const result = { entry, realpath: await fs.realpath(entry), version: version.stdout.trim() };
+  if (process.platform === 'win32') Object.assign(result, await cliHelpers.windowsCliManifest('codex', entry,
+    { realpath: await fs.realpath(process.execPath) }));
+  return result;
+}
+
+async function prepareProcessObserver() {
+  if (process.platform === 'darwin') {
+    const python = process.env.DEV_SESSION_CANVAS_AGENT_OBSERVER_PYTHON;
+    assert(python && path.isAbsolute(python), 'Darwin Agent reload requires its pinned observer Python.');
+    await fs.access(python, constants.X_OK);
+    const check = spawnSync(python, ['-c', 'import sys, psutil; assert sys.platform == "darwin"; assert psutil.__version__ == "7.0.0"; print(sys.version.split()[0])'],
+      { encoding: 'utf8', timeout: 10000, maxBuffer: 4096 });
+    assert.equal(check.status, 0, 'Darwin process identity dependency is unavailable.');
+    assert.equal(check.stdout.trim(), '3.12.10');
+    return { python, pythonVersion: check.stdout.trim(), psutilVersion: '7.0.0' };
+  }
+  if (process.platform === 'win32') {
+    const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    await fs.access(powershell, constants.X_OK);
+    return { backend: 'windows-safehandle-v1', powershell };
+  }
+  return undefined;
 }
 
 async function inspectCodexIsolation({ codex, workspacePath, authReferences }) {
   const args = [...['hooks', 'plugins', 'apps', 'shell_tool', 'skill_mcp_dependency_install']
     .flatMap(feature => ['--disable', feature]), '-c', 'web_search="disabled"'];
-  const invoke = command => spawnSync(codex.entry, [...args, ...command], {
+  const invoke = command => cliHelpers.invokeCLI(resolveSpawnSpec, codex.entry, [...args, ...command], {
     encoding: 'utf8', timeout: 10000, cwd: workspacePath,
-    env: { ...process.env, CODEX_HOME: authReferences.CODEX_HOME }, shell: false });
+    env: { ...process.env, CODEX_HOME: authReferences.CODEX_HOME }
+  });
   const features = invoke(['features', 'list']);
   assert.equal(features.status, 0);
   return { arguments: args, configuredServersVerifiedDisabled: true,

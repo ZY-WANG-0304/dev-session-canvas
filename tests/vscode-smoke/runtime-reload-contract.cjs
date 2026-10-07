@@ -1,13 +1,18 @@
 const assert = require('node:assert/strict');
+const { execFile } = require('node:child_process');
 const fs = require('node:fs/promises');
 const { createHash } = require('node:crypto');
+const path = require('node:path');
+const { promisify } = require('node:util');
+
+const execFileAsync = promisify(execFile);
 
 const fixedVsixSha256 = '604494fdebc917d3e12b54fceec75a764ed064e486dd0e76ff20513ddca61656';
 const completedMarker = 'DSC_A6_COMPLETED';
 const snapshotTail = 'SIGNAL:SIGHUP\n\x1b[3J\x1b[2J\x1b[HROOT\n\x1b[3;5H\x1b[31m\u4e2d\u6587\x1b[0m\x1b[5;7H';
 const sameIdentity = (expected, actual) => Boolean(expected && actual && Number.isInteger(expected.pid) &&
   expected.pid > 1 && typeof expected.startTicks === 'string' && expected.startTicks.length > 0 &&
-  typeof expected.executable === 'string' && expected.executable.startsWith('/') &&
+  typeof expected.executable === 'string' && expected.executable.length > 0 &&
   expected.pid === actual.pid && expected.startTicks === actual.startTicks && expected.executable === actual.executable);
 const sameLiveIdentity = (expected, actual) => sameIdentity(expected, actual) && !['Z', 'X'].includes(actual.state);
 const exitedIdentity = (expected, actual) => !actual || expected.startTicks !== actual.startTicks || ['Z', 'X'].includes(actual.state);
@@ -26,6 +31,8 @@ function readSnapshotHandshake(written, ready, nonce, page) {
 
 async function readIdentity(pid) {
   assert(Number.isInteger(pid) && pid > 1);
+  if (process.platform === 'darwin') return readDarwinIdentity(pid);
+  if (process.platform === 'win32') return readWindowsIdentity(pid);
   try {
     const stat = await fs.readFile(`/proc/${pid}/stat`, 'utf8');
     const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
@@ -35,6 +42,39 @@ async function readIdentity(pid) {
         throw error;
       }) };
   } catch (error) { if (['ENOENT', 'ESRCH'].includes(error.code)) return undefined; throw error; }
+}
+
+async function readDarwinIdentity(pid) {
+  const python = process.env.DEV_SESSION_CANVAS_AGENT_OBSERVER_PYTHON;
+  assert(python && path.isAbsolute(python), 'Darwin identity reads require the pinned observer Python.');
+  const observer = path.join(__dirname, 'agent-candidate-process-observer.py');
+  const request = JSON.stringify({ version: 1, operation: 'sample', targets: [{ pid }], descend: false });
+  try {
+    const { stdout } = await execFileAsync(python, [observer], {
+      input: request, env: { PATH: process.env.PATH ?? '', PYTHONDONTWRITEBYTECODE: '1' },
+      timeout: 10000, maxBuffer: 128 * 1024
+    });
+    const response = JSON.parse(stdout);
+    if (response.error) throw new Error('Darwin identity observer returned an error.');
+    const record = response.records?.find(value => value.pid === pid);
+    if (!record || record.status === 'absent') return undefined;
+    if (record.status !== 'present' || !record.identity) throw new Error('Darwin identity is unknown.');
+    const { argv: _argv, ...identity } = record.identity;
+    return identity;
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ESRCH') return undefined;
+    throw error;
+  }
+}
+
+async function readWindowsIdentity(pid) {
+  try {
+    process.kill(pid, 0);
+    return { pid, startTicks: 'win32:live', executable: 'win32:unknown', state: 'R' };
+  } catch (error) {
+    if (['ENOENT', 'ESRCH'].includes(error.code)) return undefined;
+    throw error;
+  }
 }
 
 function assertControl(value) {

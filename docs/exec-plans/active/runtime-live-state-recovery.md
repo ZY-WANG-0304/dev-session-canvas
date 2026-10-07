@@ -15,7 +15,7 @@ Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩
 - [x] (2026-10-07) M3 页面与 Linux Terminal 重开：实际浏览器重建和 PaneGallery 3/3、冻结 VSIX 的真实 current-state Reload Window 通过；原执行身份、未来交互、退出尾部与清理均验证。
 - [x] (2026-10-07) M3 已有安装入口的受影响回归：run `37494231281` 的 macOS installed product 和真实 Agent 8 场景通过；Windows 同包定向 run `37507579337` 的 installed live-runtime 及真实 Codex/Claude live 4 场景通过。不把旧 Windows 失败追认成通过，初始订阅偶发停滞原因仍未确认。
 - [x] (2026-10-07) M3 Linux/Codex 真实 live Agent 跨 Host 恢复：生产 run `37594259665` 的独立 Reload Window 验收通过；同一 Supervisor/session/authority、新 reader、后续真实输入、`terminalReadSettled=applied` 和原始资源退出均有工件证据。
-- [ ] M3 恢复场景剩余：macOS/Windows 的真实 live Agent 跨 Host 恢复路径。已有自然结束/主动停止及 completed 重开不能代证 live 重开；早期沙箱启动失败与 fixture 失败保留为历史，不再作为当前环境阻塞。Linux/Codex 的独立 `run-vscode-agent-runtime-reload-candidate.mjs` 已在具备中转服务的 runner 上完成真实 `Reload Window` 验收，不改变固定八场。
+- [ ] M3 恢复场景剩余：现代 macOS/Windows runner 的真实 live Agent 跨 Host 恢复路径。已有自然结束/主动停止及 completed 重开不能代证 live 重开；早期沙箱启动失败与 fixture 失败保留为历史，不再作为当前环境阻塞。`run-vscode-agent-runtime-reload-candidate.mjs` 已扩展为 Linux/macOS/Windows Codex 入口，待新 workflow 运行后分别登记结果，不改变固定八场。
 - [ ] F-04 current-state 资源准入：在真实支持入口记录完整状态长度、Supervisor 捕获峰值、Webview 组装峰值、并发会话和超限处置；8192 字符分块只限定单页，不构成总内存预算。
 
 2026-10-07 F-04 接线增量：既有 Linux `execution-capacity-tests.cjs` 在相同 2/10 会话、100000 scrollback、attach/compact 入口的 setup 收尾阶段优先调用 Host diagnostics，必要时在最终收尾补抓，归档每个会话的 Supervisor current-state descriptor（若诊断事件仍在 ring 中）及 Webview 完整组装长度、offset、chunk 数和保守组装峰值。该台账不设新的总长度/RSS 阈值，不截断状态；缺少完整组装事实会使该受影响 workload 失败并保留独立错误证据，原 workload 失败优先级不被工具取证错误覆盖。
@@ -30,7 +30,7 @@ Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩
 
 2026-10-07 Linux/Codex 真实验收：生产 workflow run `37594259665`（复用已成功 package run `37577646133`，只选 `codex-live-runtime-natural` 以保持本项信号聚焦）整体通过。其 `runtime-production-agent-reload-linux-37594259665` 工件中的 `verify.json` 为 `pass=true`：同一 `legacy-detached` runtime binding、同一 Supervisor/session/authority、reload 后新 reader、无第二次执行、重开后真实 Codex 回复、停止时原始 CLI/provider 资源退出；`settlement-observation.json` 严格记录当前 reader 与 `runtime/terminalReadSettled` 的 `readId` 相同，`outcome.kind=applied`、`finalRevision=139`、`settlement=recorded`，最终 `bindings=[]`。较早 run `37593044002` 的整体失败只发生在固定 Agent 矩阵的 wrapper 观测时序（其独立 reload 工件仍为 `pass=true`），保留为历史，不覆盖本次成功验收。
 
-2026-10-06 验证增量：默认 `typecheck`、`build`、debug staging、VSIX 打包和 `git diff --check` 通过；current-state codec 15/15、分页/relay 回归、reload 契约 12/12 通过，Playwright 的 Agent、Terminal 页面重建和 PaneGallery remount 3/3 通过。`test:runtime-supervisor-protocol` 在本地仅因沙箱禁止 Unix socket `listen`（`EPERM`）未运行完，不改写为产品失败或通过。现有真实 reload driver 依赖 Linux `/proc`、Linux provider/fixture 和 POSIX shell，故 CI 只在 Linux 执行 current-state reload；macOS/Windows 仍是待实现独立 observer/fixture 的跨平台验收，不移除平台断言或冒称已通过。
+2026-10-06 验证增量：默认 `typecheck`、`build`、debug staging、VSIX 打包和 `git diff --check` 通过；current-state codec 15/15、分页/relay 回归、reload 契约 12/12 通过，Playwright 的 Agent、Terminal 页面重建和 PaneGallery remount 3/3 通过。`test:runtime-supervisor-protocol` 在本地仅因沙箱禁止 Unix socket `listen`（`EPERM`）未运行完，不改写为产品失败或通过。此前真实 reload driver 仅依赖 Linux `/proc`、Linux provider/fixture 和 POSIX shell；本轮已补齐 Darwin `psutil/libproc`、Windows SafeHandle 观察与平台启动参数接线，CI 将在现代 Linux/macOS/Windows runner 执行，运行结果仍需各平台原始工件确认。
 
 2026-10-06 GitHub run `37479044769`、`37494231281` 及 Linux 定向重跑 `37500016871` 复核：package 与六个 native assets 通过，macOS installed product 通过。Linux current-state reload 的 Electron 退出码为 0，但 driver 未留下 `setup.json`；前一次工件显示 A 会话被错误声明为 `role=b`，本次工件显示修正 role 后仍误用 `color` 场景，拒绝驱动发送的 `ping`；两者均属于验收驱动参数错误，不涉及产品协议。已将 A 固定为支持交互 ping 与 marker 的 `compact` 场景，待仅 Linux current-state 再重跑确认。Windows installed live-runtime acceptance 另在自然退出结算等待处超时，尚未归因到本次 F-04 观测接线。macOS Agent 失败发生在 live node `starting` 阶段，sanitized 报告没有 CLI、Supervisor 或 failure class，证据不足以归因认证、启动链或产品运行时。为避免下一轮再次丢失第一现场，驱动现在在 Agent 首次失败时保存脱敏 snapshot/events，并在 reload 缺少 phase receipt 时保存 names-only artifact inventory；这些是诊断可见性修复，不改变业务判定或放宽验收。
 
@@ -70,7 +70,7 @@ Windows 定向 run `37507579337`（harness `43c66daa`）复用同一冻结包，
 
 codec 与生产接线已实现，受控生产类组合验证已证明新读者不读取 R 以前事件，状态应用后才确认 R，并在真实尾部 write callback 后结算。相同模型的 1/400 次重绘样本均传送 4329 字符；codec 的 1/200/1200 次重绘样本均为 2632 字符。它们是结构证据，不是实际 VS Code、浏览器或跨平台性能验收。
 
-整体 B4 尚未完成：受影响的三个 Playwright 浏览器用例、真实 Linux Terminal Reload Window 和真实 Linux/Codex Agent Reload Window 已通过，现代平台安装入口及受影响 Agent 生命周期结果见进度记录；剩余是真实 macOS/Windows live Agent 恢复与 F-04 当前状态资源准入。此前 Linux Electron `sandbox_host_linux.cc:41` EPERM/SIGTRAP 及 Unix socket EPERM 保持原失败，当前环境已可执行原入口；没有通过修改断言、用户现场节点、registry、服务或历史结果取得绿色。Windows 旧停滞保持未归因风险，不因单次通过宣称修复。
+整体 B4 尚未完成：受影响的三个 Playwright 浏览器用例、真实 Linux Terminal Reload Window 和真实 Linux/Codex Agent Reload Window 已通过，现代平台安装入口及受影响 Agent 生命周期结果见进度记录；剩余是真实 macOS/Windows live Agent 恢复与 F-04 当前状态资源准入。此前 Linux Electron `sandbox_host_linux.cc:41` EPERM/SIGTRAP 及 Unix socket EPERM 保持原失败，当前环境已可执行原入口；没有通过修改断言、用户现场节点、registry、服务或历史结果取得绿色。Windows 旧停滞保持未归因风险，不因单次通过宣称修复。旧 macOS/Windows 系统不属于本轮验收基线，现代 runner 的结果不外推到旧系统。
 
 ## 上下文与定向
 

@@ -2377,7 +2377,7 @@ macOS 真实 Agent 的第一次 run `36906574728` 与唯一允许的同输入重
 
 后续本地信用已补actual controller与页面回归：controller46/46、Host batch10/10和Host154/154通过；显式stock仅用于最新页面bundle的8个受影响Chromium测试通过，其中两例覆盖慢write回执、健康本地final snapshot真实应用、unmount/无controller取消，六例复验restore/fit/viewport。新增notify异常先红原cancel close数0而预期1，修后将通知/屏障释放异常作为应用失败且仍向paged consumer结算，不吞错误。stock页面测试不代证默认provider/正式打包，最终正常六资产版本仍需实际验证。
 
-最终受影响验收使用一个固定输入的 `runtime-production-acceptance.yml`：同commit六资产聚合，执行普通build和package一次得到唯一VSIX/hash，现代Linux/macOS/Windows按顺序安装同一包并运行原两模式Terminal/Webview complete/reopen，再用该包内相同dist字节运行原真实Codex/Claude八场。既有Linux-only installed driver只补平台资产/实际CLI安装差异，不改变正文、最终状态、重开无新执行和cleanup断言。schema2资产的Node/Electron字段是编译来源，Agent runner不能仍硬要求编译来源为Electron；实际加载资格由生产validator与实际VSCode运行证明。凭据仅最后Agent step可见，安装证据先上传，Agent只上传既有白名单摘要，不上传raw。该workflow未运行前不计通过，不扩通用诊断框架，不复跑旧原生场景矩阵。
+最终受影响验收使用一个固定输入的 `runtime-production-acceptance.yml`：同commit六资产聚合，执行普通build和package一次得到唯一VSIX/hash，现代Linux/macOS/Windows按顺序安装同一包并运行原两模式Terminal/Webview complete/reopen，再用该包内相同dist字节运行原真实Codex/Claude八场。已安装产品入口现同时复用平台资产和平台进程观察器，另运行 Codex live-runtime Reload Window；不改变正文、最终状态、重开无新执行和cleanup断言。schema2资产的Node/Electron字段是编译来源，Agent runner不能仍硬要求编译来源为Electron；实际加载资格由生产validator与实际VSCode运行证明。凭据仅最后Agent step可见，安装证据先上传，Agent只上传既有白名单摘要，不上传raw。该workflow未运行前不计通过，不扩通用诊断框架，不复跑旧原生场景矩阵。
 
 本地普通 `npm run build` 与 `npm run package:vsix` 已 exit0；显式资产集环境变量指向此前通过校验且当前原生源码未变的六目标资产。生成 `dev-session-canvas-0.25.0.vsix` 为5857476 bytes，SHA256 `1e4f0a724878d1ce8d5a194238491590197830e1f65e08d7282f69a81d9f291a`，独立ZIP检查确认六manifest、platform选择与 `{ executions: null, starting: 1, pending: 2 }`。这是dirty-tree本地接线验证，不是最终clean-SHA包或跨平台通过；最终workflow必须从冻结提交重建六资产及唯一包，不沿用这个hash作新结果。
 

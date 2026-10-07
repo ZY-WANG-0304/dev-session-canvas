@@ -464,7 +464,7 @@ assert.doesNotMatch(finalSecretStep.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/
 const reloadSecretStep = finalProduct.steps.find(candidate => candidate.id === 'real_agent_reload');
 assert.deepEqual(reloadSecretStep.env, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}' });
 assert.equal(reloadSecretStep['continue-on-error'], undefined);
-assert.equal(reloadSecretStep.if, "${{ always() && runner.os == 'Linux' && !inputs.skip_installed && (steps.installed.outcome == 'success' || steps.installed_runtime.outcome == 'success') }}");
+assert.equal(reloadSecretStep.if, "${{ always() && !inputs.skip_installed && (steps.installed.outcome == 'success' || steps.installed_runtime.outcome == 'success') }}");
 assert.match(reloadSecretStep.run, /run-vscode-agent-runtime-reload-candidate\.mjs/u);
 assert.match(reloadSecretStep.run, /--installed-vsix production-package\/product\.vsix/u);
 assert.doesNotMatch(reloadSecretStep.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/u);
