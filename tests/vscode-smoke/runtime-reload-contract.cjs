@@ -7,12 +7,14 @@ const path = require('node:path');
 const fixedVsixSha256 = '604494fdebc917d3e12b54fceec75a764ed064e486dd0e76ff20513ddca61656';
 const completedMarker = 'DSC_A6_COMPLETED';
 const snapshotTail = 'SIGNAL:SIGHUP\n\x1b[3J\x1b[2J\x1b[HROOT\n\x1b[3;5H\x1b[31m\u4e2d\u6587\x1b[0m\x1b[5;7H';
+const processIsExited = value => !value || value.hasExited === true || value.exitConfirmed === true ||
+  ['Z', 'X'].includes(value.state);
 const sameIdentity = (expected, actual) => Boolean(expected && actual && Number.isInteger(expected.pid) &&
   expected.pid > 1 && typeof expected.startTicks === 'string' && expected.startTicks.length > 0 &&
   typeof expected.executable === 'string' && expected.executable.length > 0 &&
   expected.pid === actual.pid && expected.startTicks === actual.startTicks && expected.executable === actual.executable);
-const sameLiveIdentity = (expected, actual) => sameIdentity(expected, actual) && !['Z', 'X'].includes(actual.state);
-const exitedIdentity = (expected, actual) => !actual || expected.startTicks !== actual.startTicks || ['Z', 'X'].includes(actual.state);
+const sameLiveIdentity = (expected, actual) => sameIdentity(expected, actual) && !processIsExited(actual);
+const exitedIdentity = (expected, actual) => !actual || expected.startTicks !== actual.startTicks || processIsExited(actual);
 
 function readSnapshotHandshake(written, ready, nonce, page) {
   const match = /^(READY:(\d+)x(\d+)\n)HASH:([a-f0-9]{64})\nSIZE:(\d+)x(\d+)\n$/.exec(written);
@@ -88,13 +90,42 @@ function runDarwinObserver(python, observer, request) {
 }
 
 async function readWindowsIdentity(pid) {
-  try {
-    process.kill(pid, 0);
-    return { pid, startTicks: 'win32:live', executable: 'win32:unknown', state: 'R' };
-  } catch (error) {
-    if (['ENOENT', 'ESRCH'].includes(error.code)) return undefined;
-    throw error;
-  }
+  const systemRoot = process.env.SystemRoot ?? process.env.WINDIR;
+  assert(systemRoot && path.isAbsolute(systemRoot), 'Windows identity reads require SystemRoot.');
+  const powershell = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const observer = path.join(__dirname, 'agent-candidate-process-observer.ps1');
+  const request = JSON.stringify({ version: 1, id: 1, operation: 'identity', targets: [{ pid }] });
+  const stdout = await runWindowsObserver(powershell, observer, request);
+  const response = JSON.parse(stdout.trim());
+  if (response.error) throw new Error('Windows identity observer returned an error.');
+  const record = response.records?.find(value => value.pid === pid);
+  if (!record) return undefined;
+  assert(/^win32:\d+$/.test(record.startTicks));
+  assert(typeof record.executable === 'string' && path.isAbsolute(record.executable));
+  assert(['R', 'replaced'].includes(record.state));
+  return record;
+}
+
+function runWindowsObserver(powershell, observer, request) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+      '-File', observer], { shell: false, env: { SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR,
+        TEMP: process.env.TEMP, TMP: process.env.TMP }, stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => { child.kill(); reject(Object.assign(new Error('Windows identity observer timed out.'), { code: 'ETIMEDOUT' })); }, 10000);
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', chunk => { stdout += chunk; if (stdout.length > 2 * 1024 * 1024) child.kill(); });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.once('error', error => { clearTimeout(timer); reject(error); });
+    child.once('close', (code, signal) => {
+      clearTimeout(timer);
+      if (code !== 0 || signal) reject(new Error(`Windows identity observer failed: ${stderr.slice(0, 256)}`));
+      else resolve(stdout);
+    });
+    child.stdin.end(request);
+  });
 }
 
 function assertControl(value) {

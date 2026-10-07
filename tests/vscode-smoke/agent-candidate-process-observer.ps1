@@ -63,6 +63,26 @@ function Poll-Original($entry) {
     throw 'Original process observation unavailable.'
   }
 }
+function Read-Identity($target) {
+  try {
+    $process = [Diagnostics.Process]::GetProcessById([int]$target.pid)
+    try {
+      $handle = $process.SafeHandle
+      if ($handle.IsInvalid -or $handle.IsClosed) { throw 'Invalid process handle.' }
+      $startTime = $process.StartTime.ToUniversalTime().ToFileTimeUtc()
+      $executable = $process.MainModule.FileName
+      $parentId = [AgentOriginalProcess]::ParentPid($handle)
+      if ($process.HasExited) { return [ordered]@{ status = 'absent' } }
+      $record = [ordered]@{ pid = [int]$target.pid; ppid = [int]$parentId; startTicks = "win32:$startTime";
+        executable = $executable; state = 'R' }
+      if ($null -ne $target.startTicks -and $target.startTicks -ne $record.startTicks) {
+        $record.state = 'replaced'
+      }
+      return [ordered]@{ status = 'present'; identity = $record }
+    } finally { $process.Dispose() }
+  } catch [ArgumentException] { return [ordered]@{ status = 'absent' } }
+    catch { return [ordered]@{ status = 'unknown' } }
+}
 function Acquire-Original($processId, $role, $expectedExecutable, $parent, $wrapperKind, $candidate) {
   $process = $null
   try {
@@ -163,6 +183,7 @@ try {
       $request = $line | ConvertFrom-Json
       if ($request.version -ne 1 -or $request.id -lt 1) { throw 'Invalid fixed request.' }
       $actions = @()
+      $identityRecords = @()
       switch ($request.operation) {
         'initialize' {
           if ($null -ne $configuration -or $request.cli.provider -notin @('codex', 'claude')) { throw 'Invalid initialization.' }
@@ -183,6 +204,15 @@ try {
           if ($null -eq $configuration -or $request.role -notin @('host', 'supervisor')) { throw 'Invalid root.' }
           Acquire-Original $request.pid $request.role $configuration.rootExecutable $null $null $null
         }
+        'identity' {
+          if ($null -eq $request.targets -or @($request.targets).Count -gt 64) { throw 'Invalid identity request.' }
+          foreach ($target in @($request.targets)) {
+            if ($null -eq $target.pid -or [int]$target.pid -le 0) { throw 'Invalid identity PID.' }
+            $result = Read-Identity $target
+            if ($result.status -eq 'unknown') { throw 'Process identity observation unavailable.' }
+            if ($result.status -eq 'present') { $identityRecords += $result.identity }
+          }
+        }
         'sample' {
           if ($null -eq $configuration) { throw 'Uninitialized helper.' }
           Discover-StartupChain
@@ -193,7 +223,7 @@ try {
           foreach ($target in $targets) {
             $key = "$($target.pid):$($target.startTicks)"
             $entry = $originals[$key]
-            if ($null -eq $entry -or $target.role -notin @('cli', 'wrapper', 'provider') -or
+            if ($null -eq $entry -or $target.role -notin @('cli', 'wrapper', 'provider', 'supervisor') -or
               $entry.record.role -ne $target.role -or !(Same-Path $entry.record.executable $target.executable) -or
               $entry.record.observationUnknown) { throw 'Unowned cleanup target.' }
             Poll-Original $entry
@@ -210,7 +240,11 @@ try {
         }
         default { throw 'Unsupported fixed request.' }
       }
-      $response = @{ version = 1; id = $request.id; records = @(Records); actions = $actions }
+      $response = if ($request.operation -eq 'identity') {
+        @{ version = 1; id = $request.id; records = @($identityRecords) }
+      } else {
+        @{ version = 1; id = $request.id; records = @(Records); actions = $actions }
+      }
     } catch {
       $response = @{ version = 1; id = $request.id; error = 'original-process-evidence-unavailable' }
     }

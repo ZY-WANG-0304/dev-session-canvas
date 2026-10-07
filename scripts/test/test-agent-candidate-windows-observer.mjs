@@ -12,7 +12,15 @@ import genericObserver from '../../tests/vscode-smoke/agent-candidate-process-ob
 
 const { WindowsAgentProcessObserver, ended, hasLiveWindowsStartupChain } = observerModule;
 const helperSource = await fs.readFile(new URL('../../tests/vscode-smoke/agent-candidate-process-observer.ps1', import.meta.url), 'utf8');
+const reloadContractSource = await fs.readFile(new URL('../../tests/vscode-smoke/runtime-reload-contract.cjs', import.meta.url), 'utf8');
+assert.doesNotMatch(reloadContractSource, /win32:live|win32:unknown/u,
+  'Windows reload identity must come from the SafeHandle observer, not a liveness stub.');
+assert.match(reloadContractSource, /operation: 'identity'/u,
+  'Windows reload identity must use the fixed observer protocol.');
 assert.match(helperSource, /\$PSModuleAutoLoadingPreference = 'None'/u);
+assert.match(helperSource, /'identity'/u);
+assert.match(helperSource, /status = 'unknown'/u);
+assert.match(helperSource, /status = 'absent'/u);
 assert.match(helperSource, /\$env:PSModulePath = \[IO.Path\]::Combine\(\$PSHOME, 'Modules'\)/u);
 assert.match(helperSource, /@\('Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Management', 'CimCmdlets'\)/u);
 assert.match(helperSource, /Import-Module -Name \(\[IO.Path\]::Combine\(\$env:PSModulePath, \$module, \$module \+ '\.psd1'\)\) -ErrorAction Stop/u);
