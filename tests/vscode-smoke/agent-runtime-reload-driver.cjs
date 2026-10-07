@@ -34,8 +34,7 @@ const atomic = async (file, value) => {
   await fs.rename(next, file);
 };
 const nodeOf = (state, id) => state?.state?.nodes?.find(node => node.id === id);
-// A marker can straddle xterm's soft-wrap boundary; preserve adjacency when matching it.
-const textOf = value => value.nodes.find(node => node.nodeId === currentNodeId)?.terminalVisibleLines?.join('') ?? '';
+const textOf = value => value.nodes.find(node => node.nodeId === currentNodeId)?.terminalVisibleLines?.join('\n') ?? '';
 let config;
 let control;
 let currentNodeId;
@@ -177,6 +176,11 @@ async function setup(extension) {
 
 async function waitForAgentReady() {
   const prompts = new Set();
+  const startupPrompts = [
+    /(?:Yes, I trust|Do you trust|Trust this (?:folder|directory))/i,
+    /(?:Choose the text style|Choose.*theme|Select.*theme)/i,
+    /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i
+  ];
   const deadline = Math.min(Date.now() + 90000, control.deadlineAt - 30000);
   while (Date.now() < deadline) {
     const value = await probe();
@@ -193,7 +197,15 @@ async function waitForAgentReady() {
       }
     }
     if (handledPrompt) { await sleep(100); continue; }
-    if (/(?:codex|ask|prompt|send|shortcuts)/i.test(text)) return;
+    if (startupPrompts.some(pattern => pattern.test(text))) {
+      await sleep(100);
+      continue;
+    }
+    if (/(?:Ask Codex|shortcuts|Send|Try)/i.test(text)) {
+      await sleep(300);
+      const confirmed = textOf(await probe());
+      if (!startupPrompts.some(pattern => pattern.test(confirmed))) return;
+    }
     await sleep(100);
   }
   throw new Error('Timed out: Codex interactive surface');
