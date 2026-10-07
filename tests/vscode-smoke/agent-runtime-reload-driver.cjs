@@ -7,7 +7,7 @@ const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs
 const { captureInstalledExtensionReceipt } = require('./installed-execution-candidate.cjs');
 const { AgentProcessObserver, executionEnded } = require('./agent-candidate-process-observer.cjs');
 const { resolveSystemdUserRuntimeSupervisorPaths, resolveLegacyRuntimeSupervisorPaths } = require('./runtime-reload-paths.cjs');
-const { readIdentity, sameLiveIdentity, exitedIdentity } = require('./runtime-reload-contract.cjs');
+const { readIdentity, sameIdentity, sameLiveIdentity, exitedIdentity } = require('./runtime-reload-contract.cjs');
 
 const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
 const controlPath = process.env.DEV_SESSION_CANVAS_AGENT_RELOAD_CONTROL;
@@ -184,6 +184,8 @@ async function verify(extension) {
   const setup = control.setup;
   currentNodeId = setup.nodeId;
   const oldHost = await poll('original Agent Host exited', () => readIdentity(setup.host.pid), value => exitedIdentity(setup.host, value));
+  const activation = await read('verify-activation.json');
+  assert(!sameIdentity(setup.host, activation.host), 'Reload must use a new Host identity.');
   const state = await snapshot();
   const node = nodeOf(state, setup.nodeId);
   assert(node?.metadata?.agent?.liveSession === true, 'Reload must retain the live Agent node.');
