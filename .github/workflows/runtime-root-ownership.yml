@@ -10,12 +10,17 @@ on:
       - extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts
       - extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts
       - extensions/vscode/dev-session-canvas/src/panel/runtimeExecutionEnvironment.ts
+      - extensions/vscode/dev-session-canvas/src/panel/runtimeHostBackend.ts
       - extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts
       - extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootOwner.ts
+      - extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootStartup.ts
+      - extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorLauncher.ts
+      - extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorStart.ts
       - extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts
       - scripts/test/test-runtime-root-ownership.mjs
       - scripts/test/test-runtime-execution-environment.mjs
       - scripts/test/test-runtime-root-owner-handshake.mjs
+      - scripts/test/test-runtime-root-startup.mjs
       - package.json
       - package-lock.json
 

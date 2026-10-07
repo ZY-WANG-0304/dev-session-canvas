@@ -8,12 +8,14 @@ const require = createRequire(import.meta.url);
 const candidateProfile = 'linux-owner-v1-candidate';
 const storageRoot = '/tmp/dsc startup"%';
 const candidateBase = path.join(storageRoot, 'runtime-supervisor-generations', 'terminal-current-state-linux-v1');
+const rootOwnerBase = path.join(storageRoot, 'runtime-supervisor-generations', 'terminal-root-owner-linux-v1');
 const stockBase = path.join(storageRoot, 'runtime-supervisor-generations', 'terminal-stream-v1');
 const startupScripts = {
   supervisorScriptPath: '/test scripts/supervisor"%.js',
   supervisorLauncherScriptPath: '/test scripts/launcher.js'
 };
 const backendCode = await bundle('panel/runtimeHostBackend.ts');
+const startCode = await bundle('supervisor/runtimeSupervisorStart.ts');
 const launcherCode = await bundle('supervisor/runtimeSupervisorLauncher.ts');
 let passed = 0;
 
@@ -49,6 +51,7 @@ for (const profile of [undefined, candidateProfile]) {
     assert.deepEqual(harness.effects.map(({ kind }) => kind), [
       'mkdir', 'mkdir', 'mkdir', 'chmod', 'writeFile', 'execFile', 'execFile'
     ]);
+    assert.deepEqual(harness.effects[0].args, [backend.paths.storageDir, { recursive: true }]);
     const unit = harness.effects.find(({ kind }) => kind === 'writeFile');
     assert.equal(unit.args[0], backend.paths.unitFilePath);
     assert.equal(unit.args[2], 'utf8');
@@ -70,6 +73,38 @@ for (const profile of [undefined, candidateProfile]) {
       ['systemctl', ['--user', 'daemon-reload']],
       ['systemctl', ['--user', 'start', backend.paths.unitName]]
     ]);
+  });
+}
+
+for (const kind of ['legacy-detached', 'systemd-user']) {
+  await test(`${kind} shares the standalone startup and forwards the root launch token`, async () => {
+    const harness = createHarness();
+    const backend = loadBackend(harness, kind, rootOwnerBase);
+    const runtimeLaunchToken = 'b1d709fa-a79d-4c19-a97d-c0d992a3ed83';
+    const args = { ...startupScripts, executionProfile: candidateProfile, runtimeLaunchToken };
+    await backend.startSupervisor(args);
+
+    const standalone = createHarness({ allowVscode: false });
+    await standalone.load(startCode).startRuntimeSupervisor(backend, args);
+    assert.deepEqual(standalone.effects, harness.effects);
+
+    if (kind === 'legacy-detached') {
+      assert.deepEqual(harness.effects.map(({ kind }) => kind), ['spawn', 'unref']);
+      const firstHop = harness.effects[0];
+      assert.deepEqual(firstHop.args, [...expectedBackendArgs(backend, candidateProfile),
+        '--runtime-launch-token', runtimeLaunchToken]);
+      const launcher = await runLauncher(firstHop.args);
+      assert.deepEqual(launcher.errors, []);
+      assert.deepEqual(launcher.effects.map(({ kind }) => kind), ['spawn', 'unref']);
+      assert.deepEqual(launcher.effects[0].args, [...expectedLauncherArgs(backend, candidateProfile),
+        '--runtime-launch-token', runtimeLaunchToken]);
+    } else {
+      assert.deepEqual(harness.effects[0].args, [backend.paths.storageDir, { recursive: true, mode: 0o700 }]);
+      const unit = harness.effects.find(({ kind }) => kind === 'writeFile').args[1];
+      const execStart = unit.split('\n').find((line) => line.startsWith('ExecStart='));
+      assert.ok(execStart.endsWith(` ${quoteSystemdArg('--runtime-launch-token')} ${quoteSystemdArg(runtimeLaunchToken)}`));
+      assert.equal(unit.split('\n').find((line) => line.startsWith('Restart=')), 'Restart=no');
+    }
   });
 }
 
@@ -133,7 +168,7 @@ async function bundle(relativePath) {
   return result.outputFiles[0].text;
 }
 
-function createHarness() {
+function createHarness({ allowVscode = true } = {}) {
   const effects = [];
   const errors = [];
   const fakeProcess = {
@@ -160,7 +195,7 @@ function createHarness() {
   const guardedRequire = (name) => {
     if (name === 'child_process') return childProcess;
     if (name === 'fs/promises') return fs;
-    if (name === 'vscode') return { ExtensionMode: { Test: 3 } };
+    if (name === 'vscode' && allowVscode) return { ExtensionMode: { Test: 3 } };
     if (['crypto', 'os', 'path', 'util'].includes(name)) return require(name);
     throw new Error(`Unexpected test dependency: ${name}`);
   };

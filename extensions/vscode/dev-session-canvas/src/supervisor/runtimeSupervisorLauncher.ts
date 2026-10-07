@@ -55,6 +55,11 @@ async function main(): Promise<void> {
     args.push('--execution-profile', executionProfile);
   }
 
+  const runtimeLaunchToken = readCliFlag('--runtime-launch-token');
+  if (runtimeLaunchToken) {
+    args.push('--runtime-launch-token', runtimeLaunchToken);
+  }
+
   const child = spawn(process.execPath, args, {
     detached: true,
     stdio: 'ignore',

@@ -12,7 +12,9 @@
 
 - [x] (2026-10-08) 核对设计授权、最新 main 和干净工作区，建立实现分支，带入设计。
 - [x] (2026-10-08) P1 基础代码：纯身份/路径、执行端环境识别、独立 generation 与 owner 握手已实现；默认创建路由未改。
-- [ ] P1 剩余：三平台实际环境身份、启动准备排他和中断后判定；本地子进程/socket 限制不代证通过，准备按已有 runner 取得具名证据。
+- [x] (2026-10-08) 三平台原生父进程/双子进程身份一致 probe：`6688c21e` / run `37657913544`，Windows 首败保留、相同预算失败项重试通过。
+- [x] (2026-10-08) P1 启动记录：私有 intent/started、claim 前匹配与 claim 后发布、单 token 拒绝重复消费；提取原有底层启动命令供准备流程复用。
+- [ ] P1 剩余：启动准备排他事务、systemd manager 范围核对和真实竞争/中断后判定；平台 probe 不代证这些保护。Remote 与睡眠/OS 调时等身份场景在受影响产品验收中补证。
 - [ ] P2：接入单根/多根 Agent/Terminal 创建、backend 发现、客户端缓存与退役；保留原绑定与设置语义。
 - [ ] P3：完成受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本，整体审查并同步结账。
 
@@ -32,9 +34,11 @@
 
 2026-10-08：身份、环境识别与握手分文件并行实现，主代理负责集成与启动/Host 路由。采用现有 node 脚本测试、VS Code smoke 和 GitHub runner，不另建诊断设施。未改原生资产时不触发重建；若必要修改则只补受影响产物。
 
+2026-10-08：启动准备复用短命 launcher 和独立 namespace，不在 EH 持 macOS one-shot native claim、不改 native 资产。采用每 token 唯一提交、持运行锁的主体发布 started 回执、后继正面探运行锁的结算方式，避免引入 PID 追踪。缺回执的 pending 保留 unknown；started 不代替 ready/终态/尾部结算。完整约束见设计 §4.3，实施与真实竞争验证尚未完成。
+
 ## 结果与复盘
 
-P1 身份与握手基础已实现，默认创建及原 slot 路由保持。pure owner/paths、受控握手 25 项、旧 startup 16 项、reader client 31 项、typecheck 与普通 build 通过；基础整体命令仍因原生双子进程限制失败，三平台 CI 尚未取得结果。P1 启动准备与 P2/P3 未完成，F-03 保持开放。
+P1 身份与握手基础、三平台基础 probe、启动记录与 Main 消费顺序已实现，默认创建及原 slot 路由保持。本地沙箱限制原样记录；三平台基础 CI 已取得结果，Windows 首次 probe 失败不追认。后续受控启动记录/握手与原启动回归通过，但它们不验证真实准备锁竞争。P1 启动准备事务与 P2/P3 未完成，F-03 保持开放。
 
 ## 上下文与定向
 
@@ -66,7 +70,9 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 
 本地执行：`node scripts/test/test-runtime-root-ownership.mjs`、`node scripts/test/test-runtime-supervisor-paths.mjs`、`node scripts/test/test-runtime-root-owner-handshake.mjs`（25 受控项，Windows 不含三个 POSIX 权限用例）、`npm run test:runtime-supervisor-startup-profile`（16+31）、`npm run typecheck`、`npm run build` 和 `git diff --check` 通过。`test-runtime-execution-environment.mjs` 先报告 synthetic cases passed，再在双原生子进程无输出断言 exit 1；`test-runtime-supervisor-protocol.mjs` 为 socket EPERM；namespace 首例无 claimant，均不计通过。
 
-新增 `.github/workflows/runtime-root-ownership.yml` 仅在本实现分支相关 push 或手动入口跑三现代平台的基础测试/typecheck，不含 Agent 凭据或旧原生矩阵。CI 结果后续追加，不覆盖本地失败。
+新增 `.github/workflows/runtime-root-ownership.yml` 仅在本实现分支相关 push 或手动入口跑三现代平台的基础测试/typecheck，不含 Agent 凭据或旧原生矩阵。`6688c21e` / run `37657913544`：Ubuntu 24.04/Node 22.23.3、macOS 26.6.2 arm64/Node 22.23.2 的真实父子 probe、25 受控握手及 typecheck 首次通过；Windows Server 2025/Node 22.23.3 首次 probe 约 10 秒失败。仅请求 rerun-failed-jobs 后，attempt 2 的 Windows 双子 probe、22 受控握手和 typecheck 通过，其他平台沿用原成功。预算和代码未变，原失败不改，尚不能定位偶发失败的确切原因。
+
+启动记录增量本地验证：`node scripts/test/test-runtime-root-startup.mjs`（私有临时文件与原子失败）、`node scripts/test/test-runtime-root-owner-handshake.mjs`（36 受控项）、`npm run test:runtime-supervisor-startup-profile`（18+31）、typecheck、普通 build 和 diff check 通过。同 token 第二个新 server 即使取得受控 claim，也不消费第二次、不触碰重新写入的 registry/journal 哨兵。新 root systemd storage 显式创建 0700；旧路径 mkdir/命令/环境参数保持原样。
 
 ## 接口与依赖
 
@@ -75,3 +81,5 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 修订记录：2026-10-08，按用户认可方案开始实施，固定三包与最小改动约束。
 
 修订记录：2026-10-08，基础实施独立复核补保留目录拒绝规则；记录 25 项受控结果，原生身份、启动准备与产品验收仍开放。
+
+修订记录：2026-10-08，登记三平台基础 CI 与 Windows 原失败；推进启动 token/receipt，不将文件与受控 Main 验证冒充真实启动排他已交付。
