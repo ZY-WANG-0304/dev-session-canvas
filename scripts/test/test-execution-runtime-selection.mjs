@@ -1,0 +1,263 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+import esbuild from 'esbuild';
+import ts from 'typescript';
+import { productionExecutionAdmission, resolveExecutionBuildSelection } from '../build/build.mjs';
+import { LINUX_EXECUTION_EXPORTS, NODE_PTY_UNIX_SHA256 } from '../build/linux-execution-provider-patch.mjs';
+import { linuxExecutionElf } from './fixtures/linux-execution-elf.mjs';
+import { readLinuxExecutionRequirements } from '../build/linux-execution-elf.mjs';
+
+const root = fileURLToPath(new URL('../../', import.meta.url));
+const extensionFile = path.join(root, 'extensions/vscode/dev-session-canvas/src/extension.ts');
+const extensionSource = fs.readFileSync(extensionFile, 'utf8');
+const ast = ts.createSourceFile(extensionFile, extensionSource, ts.ScriptTarget.Latest, true);
+const require = createRequire(import.meta.url);
+const temporary = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-execution-selection-')));
+const profile = 'linux-owner-v1-candidate';
+const digest = value => createHash('sha256').update(value).digest('hex');
+const binary = linuxExecutionElf();
+const manifest = { schemaVersion: 2, profile, platform: 'linux', arch: 'x64',
+  requirements: readLinuxExecutionRequirements(binary, 'x64'),
+  libc: { name: 'glibc', version: '2.35' },
+  runtime: { name: 'node', version: '22.23.2', node: '22.23.2', modules: '127', napi: '10' },
+  binary: { file: 'execution-owner.node', sha256: digest(binary) }, exports: [...LINUX_EXECUTION_EXPORTS],
+  sources: {
+    ownerSha256: digest(fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-canvas/native/linux-execution-owner.h'))),
+    sharedOwnerSha256: digest(fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-canvas/native/unix-execution-owner.h'))),
+    patchSha256: digest(fs.readFileSync(path.join(root, 'scripts/build/linux-execution-provider-patch.mjs'))),
+    nodePtySha256: NODE_PTY_UNIX_SHA256, patchedSha256: '1'.repeat(64), headersSha256: '2'.repeat(64),
+    nodeAddonApiSha256: '3'.repeat(64)
+  }, verification: { compiled: true, nativeLoaded: false, nativeCalls: false, productValidated: false } };
+const source = path.join(temporary, 'assets');
+const dist = path.join(temporary, 'dist');
+fs.mkdirSync(source);
+fs.mkdirSync(dist);
+fs.writeFileSync(path.join(source, 'manifest.json'), JSON.stringify(manifest));
+fs.writeFileSync(path.join(source, 'execution-owner.node'), binary);
+fs.writeFileSync(path.join(dist, 'retained.txt'), 'unchanged');
+const candidateArgs = source => [`--execution-profile=${profile}`, `--execution-assets=${source}`];
+let passed = 0;
+const test = async (name, run) => { await run(); passed++; console.log(`PASS ${name}`); };
+
+async function activationFixture(compiledProfile, factoryError, host = { platform: 'linux', arch: 'x64' }) {
+  const observed = { factory: [], constructors: [] };
+  const selectedProfile = compiledProfile === 'platform'
+    ? { linux: profile, darwin: 'macos-owner-v1-candidate', win32: 'windows-owner-v1-candidate' }[host.platform]
+    : compiledProfile ?? profile;
+  const ownerOptions = Object.freeze({ kind: selectedProfile === 'windows-owner-v1-candidate' ? 'windows-provider'
+    : selectedProfile === 'macos-owner-v1-candidate' ? 'macos-provider' : 'linux-provider',
+    profile: selectedProfile, profileMode: 'snapshot-only' });
+  const stop = new Error('Captured real activate constructor boundary.');
+  const modules = new Map();
+  for (const statement of ast.statements) {
+    if (!ts.isImportDeclaration(statement) || !statement.importClause || statement.importClause.isTypeOnly) continue;
+    const specifier = statement.moduleSpecifier.text;
+    if (specifier === './panel/executionRuntimeSelection' || (!specifier.startsWith('.') && specifier !== 'vscode')) continue;
+    const bindings = statement.importClause.namedBindings;
+    const exports = bindings && ts.isNamedImports(bindings)
+      ? bindings.elements.filter(element => !element.isTypeOnly).map(element => (element.propertyName ?? element.name).text)
+      : [];
+    modules.set(specifier, exports.map(name => name === 'CanvasPanelManager'
+      ? `export class CanvasPanelManager { constructor(...args) { globalThis.observed.constructors.push(args); throw globalThis.stop; } }`
+      : `export const ${name} = undefined;`).join('\n'));
+  }
+  modules.set('vscode', 'module.exports = {};');
+  const result = await esbuild.build({ entryPoints: [extensionFile], bundle: true, write: false, platform: 'node',
+    format: 'cjs', define: { __DEV_SESSION_CANVAS_EXECUTION_PROFILE__: JSON.stringify(compiledProfile) ?? 'undefined' },
+    plugins: [{ name: 'activation-boundaries', setup(build) {
+      build.onResolve({ filter: /.*/ }, args => {
+        if (args.importer === extensionFile && modules.has(args.path)) return { path: args.path, namespace: 'activation' };
+        if (args.path === './linuxExecutionOwnerFactory' || args.path === './macosExecutionOwnerFactory'
+          || args.path === './windowsExecutionOwnerFactory') {
+          return { path: 'owner-factory', namespace: 'activation' };
+        }
+      });
+      build.onLoad({ filter: /.*/, namespace: 'activation' }, args => ({ contents: args.path === 'owner-factory'
+        ? `function createOptions(options, factoryKind) {
+            globalThis.observed.factory.push({ ...options, factoryKind });
+            if (globalThis.factoryError) throw globalThis.factoryError;
+            return globalThis.ownerOptions;
+          }
+          export const createLinuxExecutionOwnerOptions = options => createOptions(options, 'linux-provider');
+          export const createMacosExecutionOwnerOptions = options => createOptions(options, 'macos-provider');
+          export const createWindowsExecutionOwnerOptions = options => createOptions(options, 'windows-provider');`
+        : modules.get(args.path), loader: 'js' }));
+    } }] });
+  const context = { module: { exports: {} }, require, observed, ownerOptions, stop, factoryError, TextEncoder, TextDecoder,
+    process: { ...host, env: { DEV_SESSION_CANVAS_EXECUTION_PROFILE: profile,
+      VSCODE_ARCH: 'ia32', VSCODE_PLATFORM: 'unsupported' } } };
+  vm.runInNewContext(result.outputFiles[0].text, context);
+  const extensionContext = { extensionUri: { fsPath: '/controlled/extension' }, extensionMode: 1 };
+  return { observed, ownerOptions, stop, extensionContext, activate: () => context.module.exports.activate(extensionContext) };
+}
+
+try {
+  await test('production build admission matches the execution lifecycle contract', async () => {
+    const result = await esbuild.build({ entryPoints: [path.join(root,
+      'extensions/vscode/dev-session-canvas/src/common/executionLifecycle.ts')],
+    bundle: true, write: false, platform: 'node', format: 'cjs' });
+    const context = { module: { exports: {} }, TextEncoder, TextDecoder };
+    vm.runInNewContext(result.outputFiles[0].text, context);
+    assert.deepEqual(JSON.parse(JSON.stringify(context.module.exports.EXECUTION_PRODUCTION_ADMISSION)),
+      productionExecutionAdmission);
+  });
+  await test('stock comparison builds require explicit selection and never look up assets', async () => {
+    for (const args of [[], ['--production'], ['--watch']]) {
+      assert.deepEqual(await resolveExecutionBuildSelection(['--execution-profile=stock', ...args], '/missing/dist'), {});
+    }
+  });
+  await test('explicit build selection accepts offline Node and Electron manifests without loading native', async () => {
+    const expected = { profile, source, admissionLimits: { executions: 2, starting: 1 } };
+    assert.deepEqual(await resolveExecutionBuildSelection(candidateArgs(source), dist), expected);
+    fs.writeFileSync(path.join(source, 'manifest.json'), JSON.stringify({ ...manifest,
+      runtime: { ...manifest.runtime, name: 'electron', version: '37.0.0' } }));
+    assert.deepEqual(await resolveExecutionBuildSelection(candidateArgs(source), dist), expected);
+    fs.writeFileSync(path.join(source, 'manifest.json'), JSON.stringify(manifest));
+  });
+  await test('candidate admission build input is explicit finite and frozen', async () => {
+    for (const [input, executions, starting] of [['10:1', 10, 1], ['10:2', 10, 2], ['1:1', 1, 1]]) {
+      const selection = await resolveExecutionBuildSelection([...candidateArgs(source), `--execution-admission=${input}`], dist);
+      assert.deepEqual(selection, { profile, source, admissionLimits: { executions, starting } });
+      assert.ok(Object.isFrozen(selection));
+      assert.ok(Object.isFrozen(selection.admissionLimits));
+    }
+    assert.equal(fs.readFileSync(path.join(dist, 'retained.txt'), 'utf8'), 'unchanged');
+  });
+  await test('stock unpaired and malformed admission input rejects without changing dist', async () => {
+    for (const args of [['--execution-profile=stock', '--execution-admission=10:1'],
+      ['--execution-profile=stock', `--execution-assets-set=${source}`],
+      [`--execution-profile=${profile}`, '--execution-admission=10:1'],
+      [`--execution-assets=${source}`, '--execution-admission=10:1'],
+      ['--execution-profile=other', `--execution-assets=${source}`, '--execution-admission=10:1']]) {
+      await assert.rejects(resolveExecutionBuildSelection(args, dist));
+    }
+    for (const input of ['', '10', '10:0', '0:1', '-1:1', '10:11', '10:1.5', 'Infinity:1',
+      '9007199254740992:1', '10:9007199254740992', '1e2:1', '10:1:1', ' 10:1']) {
+      await assert.rejects(resolveExecutionBuildSelection([...candidateArgs(source), `--execution-admission=${input}`], dist),
+        /admission/);
+    }
+    assert.equal(fs.readFileSync(path.join(dist, 'retained.txt'), 'utf8'), 'unchanged');
+  });
+  await test('unpaired unknown watch and invalid asset inputs reject before clearing dist', async () => {
+    for (const args of [[`--execution-profile=${profile}`], [`--execution-assets=${source}`],
+      ['--execution-profile=other', `--execution-assets=${source}`], [...candidateArgs(source), '--watch'],
+      candidateArgs(path.join(temporary, 'missing')), ['--unknown']]) {
+      await assert.rejects(resolveExecutionBuildSelection(args, dist));
+    }
+    fs.writeFileSync(path.join(source, 'execution-owner.node'), Buffer.from('changed'));
+    await assert.rejects(resolveExecutionBuildSelection(candidateArgs(source), dist), /hash/);
+    fs.writeFileSync(path.join(source, 'execution-owner.node'), binary);
+    assert.equal(fs.readFileSync(path.join(dist, 'retained.txt'), 'utf8'), 'unchanged');
+  });
+  await test('asset sources inside the cleared dist including aliases reject', async () => {
+    const inside = path.join(dist, 'assets');
+    fs.cpSync(source, inside, { recursive: true });
+    const alias = path.join(temporary, 'dist-alias');
+    fs.symlinkSync(dist, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    await assert.rejects(resolveExecutionBuildSelection(candidateArgs(inside), dist), /outside/);
+    await assert.rejects(resolveExecutionBuildSelection(candidateArgs(path.join(alias, 'assets')), dist), /outside/);
+    await assert.rejects(resolveExecutionBuildSelection(candidateArgs(dist), dist), /outside/);
+    assert.equal(fs.readFileSync(path.join(dist, 'retained.txt'), 'utf8'), 'unchanged');
+  });
+  await test('explicit stock bundle activate ignores candidate-looking environment', async () => {
+    const f = await activationFixture(undefined);
+    assert.throws(f.activate, error => error === f.stop);
+    assert.equal(f.observed.factory.length, 0);
+    assert.equal(f.observed.constructors.length, 1);
+    const args = f.observed.constructors[0];
+    assert.strictEqual(args[0], f.extensionContext);
+    assert.equal(args[1], undefined);
+    assert.equal(args[2], undefined);
+  });
+  await test('real candidate activate prepares local snapshot owner and passes same profile to Runtime routing', async () => {
+    const f = await activationFixture(profile);
+    assert.throws(f.activate, error => error === f.stop);
+    assert.equal(f.observed.factory.length, 1);
+    assert.equal(f.observed.factory[0].extensionRoot, '/controlled/extension');
+    assert.equal(f.observed.factory[0].mode, 'snapshot-only');
+    assert.strictEqual(f.observed.constructors[0][0], f.extensionContext);
+    assert.strictEqual(f.observed.constructors[0][1], f.ownerOptions);
+    assert.equal(f.observed.constructors[0][2], profile);
+  });
+  await test('unknown compiled profile and rejected assets never construct a stock manager', async () => {
+    const unknown = await activationFixture('unsupported');
+    assert.throws(unknown.activate, /Unknown compiled/);
+    assert.equal(unknown.observed.factory.length, 0);
+    assert.equal(unknown.observed.constructors.length, 0);
+    const error = new Error('Linux candidate runtime mismatch: modules.');
+    const invalid = await activationFixture(profile, error);
+    assert.throws(invalid.activate, received => received === error);
+    assert.equal(invalid.observed.factory.length, 1);
+    assert.equal(invalid.observed.constructors.length, 0);
+  });
+  await test('macOS activation selects the matching factory and preserves its distinct Runtime profile', async () => {
+    const macProfile = 'macos-owner-v1-candidate';
+    const f = await activationFixture(macProfile);
+    assert.throws(f.activate, error => error === f.stop);
+    assert.equal(f.observed.factory.length, 1);
+    assert.equal(f.observed.factory[0].profile, macProfile);
+    assert.equal(f.observed.factory[0].mode, 'snapshot-only');
+    assert.equal(f.observed.constructors[0][1].kind, 'macos-provider');
+    assert.equal(f.observed.constructors[0][2], macProfile);
+  });
+  await test('Windows activation selects its factory and refuses incompatible assets without stock fallback', async () => {
+    const windowsProfile = 'windows-owner-v1-candidate';
+    const f = await activationFixture(windowsProfile);
+    assert.throws(f.activate, error => error === f.stop);
+    assert.equal(f.observed.factory.length, 1);
+    assert.equal(f.observed.factory[0].profile, windowsProfile);
+    assert.equal(f.observed.factory[0].mode, 'snapshot-only');
+    assert.equal(f.observed.constructors[0][1].kind, 'windows-provider');
+    assert.equal(f.observed.constructors[0][2], windowsProfile);
+    const error = new Error('Windows candidate runtime mismatch: modules.');
+    const invalid = await activationFixture(windowsProfile, error);
+    assert.throws(invalid.activate, received => received === error);
+    assert.equal(invalid.observed.factory.length, 1);
+    assert.equal(invalid.observed.constructors.length, 0);
+  });
+  await test('platform activation resolves all six execution-host tuples to existing profiles and factories', async () => {
+    for (const [platform, selectedProfile, kind] of [
+      ['linux', profile, 'linux-provider'], ['darwin', 'macos-owner-v1-candidate', 'macos-provider'],
+      ['win32', 'windows-owner-v1-candidate', 'windows-provider']
+    ]) {
+      for (const arch of ['x64', 'arm64']) {
+        const f = await activationFixture('platform', undefined, { platform, arch });
+        assert.throws(f.activate, error => error === f.stop);
+        assert.equal(f.observed.factory.length, 1);
+        assert.equal(f.observed.factory[0].factoryKind, kind);
+        assert.equal(f.observed.factory[0].profile, selectedProfile);
+        assert.equal(f.observed.factory[0].mode, 'snapshot-only');
+        assert.strictEqual(f.observed.constructors[0][1], f.ownerOptions);
+        assert.equal(f.observed.constructors[0][2], selectedProfile);
+        assert.notEqual(f.observed.constructors[0][2], 'platform');
+      }
+    }
+  });
+  await test('platform activation rejects unsupported execution hosts before constructing any manager', async () => {
+    for (const host of [{ platform: 'freebsd', arch: 'x64' }, { platform: 'linux', arch: 'ia32' },
+      { platform: 'darwin', arch: 'ppc64' }, { platform: 'win32', arch: 'ia32' }]) {
+      const f = await activationFixture('platform', undefined, host);
+      assert.throws(f.activate, /Unsupported execution candidate/);
+      assert.equal(f.observed.factory.length, 0);
+      assert.equal(f.observed.constructors.length, 0);
+    }
+  });
+  await test('platform asset validation errors propagate without a stock manager or alternate factory', async () => {
+    for (const platform of ['linux', 'darwin', 'win32']) {
+      const error = new Error('Controlled candidate asset rejection.');
+      const f = await activationFixture('platform', error, { platform, arch: 'arm64' });
+      assert.throws(f.activate, received => received === error);
+      assert.equal(f.observed.factory.length, 1);
+      assert.equal(f.observed.constructors.length, 0);
+    }
+  });
+  console.log(`Execution runtime selection: ${passed}/${passed} pure cases passed (real activate entry, controlled constructor/factory, no native).`);
+} finally {
+  fs.rmSync(temporary, { recursive: true, force: true });
+}

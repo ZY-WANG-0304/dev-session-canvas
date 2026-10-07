@@ -4,6 +4,7 @@ import { pathToFileURL } from 'url';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import xtermHeadless from '@xterm/headless';
 import { expect, test } from '@playwright/test';
+import { transform } from 'esbuild';
 
 const { Terminal: HeadlessTerminal } = xtermHeadless;
 const PRIMARY_ACCELERATOR_KEY = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -370,6 +371,7 @@ test('lifecycle identity acks bootstrap and ignores stale bootstrap frames', asy
     generation: 1
   });
   expect(readyMessage.lifecycle.frameId).toMatch(/^frame-/);
+  expect(readyMessage.payload.capabilities.terminalAvailableReceiptV1).toBe(true);
 
   const staleState = createEmptyCanvasState();
   const currentState = createCanvasScreenshotState();
@@ -15108,6 +15110,38 @@ test('visibility restore does not move focus onto the canvas shell', async ({ pa
   expect(afterRestore.activeElementIsCanvasShell).toBe(false);
 });
 
+test('installed intensity assertion preserves fixed terminal tail and rejects stock serializer loss', async ({ page }) => {
+  const nodeId = 'terminal-zoom';
+  const output = '\x1b[31mDSC_CANDIDATE_\x1b[2mA\x1b[22;1mN\x1b[1;2mS\x1b[22;2mI\x1b[0m\r\n';
+  const assertion = { kind: 'assertExecutionTerminalBuffer', nodeId, expectedLines: ['DSC_CANDIDATE_ANSI'],
+    expectedIntensities: [
+      { lineIndex: 0, column: 14, bold: false, dim: true },
+      { lineIndex: 0, column: 15, bold: true, dim: false },
+      { lineIndex: 0, column: 16, bold: true, dim: true },
+      { lineIndex: 0, column: 17, bold: false, dim: true }
+    ] };
+  const restore = async serializedTerminalState => {
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState('terminal'));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, { nodeId, kind: 'terminal', output: '', cols: 96, rows: 28,
+      liveSession: false, serializedTerminalState });
+    await waitForProbeNodeMatch(page, nodeId, node => node?.terminalVisibleLines.includes('DSC_CANDIDATE_ANSI'));
+  };
+  const saved = await createSerializedTerminalStateFromOutput(output, 96, 28);
+  await restore(saved);
+  await performTestDomAction(page, assertion);
+  for (const field of ['bold', 'dim']) {
+    await expectTestDomActionError(page, { ...assertion,
+      expectedIntensities: assertion.expectedIntensities.map((entry, index) => index === 1
+        ? { ...entry, [field]: !entry[field] } : entry) }, 'differs in intensity');
+  }
+  // Frozen serialize 0.14.0 output before the Bold/Dim fix; the visible text is identical.
+  await restore({ ...saved, data: '\x1b[31mDSC_CANDIDATE_\x1b[2mA\x1b[1;22mN\x1b[2mS\x1b[22mI\x1b[1B\x1b[18D\x1b[0m' });
+  await performTestDomAction(page, { ...assertion, expectedIntensities: undefined });
+  await expectTestDomActionError(page, assertion, 'differs in intensity');
+});
+
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} snapshot restore prefers serialized terminal state after rebuild`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -15160,7 +15194,7 @@ for (const executionKind of ['agent', 'terminal']) {
 }
 
 for (const executionKind of ['agent', 'terminal']) {
-  test(`${executionKind} exit preserves buffered tail output before the exit banner`, async ({ page }) => {
+  test(`${executionKind} exit preserves buffered tail output without synthetic terminal text`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const tailUsageLine = 'Token usage: input=12 output=34 total=46';
     const tailResumeLine = 'To continue this session, run: codex resume session-tail-123';
@@ -15185,14 +15219,14 @@ for (const executionKind of ['agent', 'terminal']) {
       return (
         visibleLines.some((line) => line.includes(tailUsageLine)) &&
         visibleLines.some((line) => line.includes(tailResumeLine)) &&
-        visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))
+        !visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))
       );
     });
 
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(tailUsageLine))).toBe(true);
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(tailResumeLine))).toBe(true);
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
-      true
+      false
     );
   });
 }
@@ -15251,14 +15285,14 @@ for (const executionKind of ['agent', 'terminal']) {
       const visibleLines = nextProbeNode?.terminalVisibleLines ?? [];
       return (
         visibleLines.some((line) => line.includes(liveBufferedLine)) &&
-        visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`)) &&
+        !visibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`)) &&
         !visibleLines.some((line) => line.includes(replacementOnlyLine))
       );
     });
 
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(liveBufferedLine))).toBe(true);
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(`[Dev Session Canvas] ${exitMessage}`))).toBe(
-      true
+      false
     );
     expect(probeNode.terminalVisibleLines.some((line) => line.includes(replacementOnlyLine))).toBe(false);
   });
@@ -15875,7 +15909,7 @@ test('agent attention final output is not starved behind flooded nodes', async (
     expect(probeNode?.attentionIndicatorVisible).toBe(true);
     expect(visibleLines.some((line) => line.includes(`ATTENTION-FINAL-OUTPUT-${nodeId}`))).toBe(true);
     expect(visibleLines.some((line) => line.includes(`[Dev Session Canvas] Attention final complete ${nodeId}`))).toBe(
-      true
+      false
     );
   }
 });
@@ -16510,6 +16544,334 @@ test('terminal batches thousands of contiguous journal events without losing the
   expect(await readPostedMessagesByType(page, 'webview/attachExecutionSession')).toHaveLength(0);
 });
 
+for (const kind of ['terminal', 'agent']) {
+  test(`${kind} availability receipts acknowledge notification identity before page consumption`, async ({ page }) => {
+    const nodeId = `${kind}-zoom`;
+    const executionSessionId = `${kind}-receipt-session`;
+    const authorityId = `${kind}-receipt-authority`;
+    await openHarness(page);
+    const ready = await waitForPostedMessageByType(page, 'webview/ready', { includeLifecycle: true });
+    await bootstrap(page, createLiveExecutionNodeState(kind));
+    const terminal = await waitForExecutionTerminalReady(page, nodeId);
+    const stream = await createTerminalStreamPayload({
+      sessionId: executionSessionId, authorityId, checkpointRevision: 1,
+      checkpointOutput: 'RECEIPT-CHECKPOINT\r\n', checkpointCols: terminal.terminalCols, checkpointRows: terminal.terminalRows,
+      events: [{ type: 'output', revision: 2, data: 'RECEIPT-PAGE-OUTPUT\r\n' }]
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId, kind, output: '', executionSessionId, outputSequence: 1,
+      cols: terminal.terminalCols, rows: terminal.terminalRows,
+      terminalRead: { readId: `${kind}-receipt-reader`, sessionId: executionSessionId, authorityId,
+        checkpoint: stream.checkpoint, headRevision: 1 }
+    });
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('RECEIPT-CHECKPOINT');
+    const initialRequest = await waitForPostedMessageByType(page, 'webview/readExecutionTerminalPage');
+    await page.evaluate(request => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload: {
+        ...request, page: { readId: request.readId, sessionId: request.executionSessionId, authorityId: request.authorityId,
+          afterRevision: 1, revision: 1, headRevision: 1, events: [] }
+      } });
+    }, initialRequest.payload);
+    await settleWebview(page, 2);
+    await clearPostedMessages(page);
+    const payload = { nodeId, kind, executionSessionId, authorityId, receiptId: `${kind}-receipt-1` };
+    await page.evaluate(payload => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable',
+        payload: { ...payload, revision: 2, terminalTitle: 'Receipt title' } });
+    }, payload);
+    const receipt = await waitForPostedMessageByType(page, 'webview/executionTerminalAvailableReceived', { includeLifecycle: true });
+    expect(receipt).toEqual({ type: 'webview/executionTerminalAvailableReceived', payload, lifecycle: ready.lifecycle });
+    const request = await waitForPostedMessageByType(page, 'webview/readExecutionTerminalPage');
+    expect(request.payload.afterRevision).toBe(1);
+    expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).not.toContain('RECEIPT-PAGE-OUTPUT');
+    expect(await readPostedMessagesByType(page, 'webview/executionTerminalApplied')).toHaveLength(0);
+    expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(0);
+    await page.evaluate(({ request, stream }) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload: {
+        ...request, page: { readId: request.readId, sessionId: stream.sessionId, authorityId: stream.authorityId,
+          afterRevision: 1, revision: 2, headRevision: 2, events: stream.events }
+      } });
+    }, { request: request.payload, stream });
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('RECEIPT-PAGE-OUTPUT');
+    await clearPostedMessages(page);
+    await page.evaluate(({ receiptId: _receiptId, ...identity }) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable',
+        payload: { ...identity, revision: 2, terminalTitle: 'Legacy title' } });
+    }, payload);
+    await expect(nodeById(page, nodeId).locator('.window-title-context')).toContainText('Legacy title');
+    expect(await readPostedMessagesByType(page, 'webview/executionTerminalAvailableReceived')).toHaveLength(0);
+  });
+}
+
+test('availability receipts work without a terminal controller and ignore stale lifecycle notifications', async ({ page }) => {
+  await openHarness(page);
+  const ready = await waitForPostedMessageByType(page, 'webview/ready', { includeLifecycle: true });
+  await bootstrap(page, createEmptyCanvasState());
+  await clearPostedMessages(page);
+  const payload = { nodeId: 'unmounted-terminal', kind: 'terminal', executionSessionId: 'unmounted-session',
+    authorityId: 'unmounted-authority', receiptId: 'unmounted-receipt' };
+  await page.evaluate(({ payload, lifecycle }) => {
+    for (const staleLifecycle of [undefined,
+      { ...lifecycle, generation: lifecycle.generation - 1 },
+      { ...lifecycle, frameId: 'stale-frame' }]) {
+      window.__devSessionCanvasHarness.dispatchRawHostMessage({ type: 'host/executionTerminalAvailable',
+        lifecycle: staleLifecycle, payload: { ...payload, revision: 3 } });
+    }
+  }, { payload, lifecycle: ready.lifecycle });
+  await settleWebview(page, 3);
+  expect(await readPostedMessagesByType(page, 'webview/executionTerminalAvailableReceived')).toHaveLength(0);
+  await page.evaluate(payload => {
+    window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable',
+      payload: { ...payload, revision: 3 } });
+  }, payload);
+  const receipt = await waitForPostedMessageByType(page, 'webview/executionTerminalAvailableReceived', { includeLifecycle: true });
+  expect(receipt).toEqual({ type: 'webview/executionTerminalAvailableReceived', payload, lifecycle: ready.lifecycle });
+  expect(await readPostedMessagesByType(page, 'webview/readExecutionTerminalPage')).toHaveLength(0);
+  expect(await readPostedMessagesByType(page, 'webview/executionTerminalApplied')).toHaveLength(0);
+  expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(0);
+});
+
+test('terminal paged recovery handles completion before the first page request', async ({ page }) => {
+  const nodeId = 'terminal-zoom';
+  await openHarness(page);
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  const terminal = await waitForExecutionTerminalReady(page, nodeId);
+  const stream = await createTerminalStreamPayload({
+    sessionId: 'early-completed', authorityId: 'early-authority', checkpointRevision: 1,
+    checkpointOutput: 'EARLY-CHECKPOINT\r\n', checkpointCols: terminal.terminalCols, checkpointRows: terminal.terminalRows,
+    events: [{ type: 'output', revision: 2, data: 'EARLY-COMPLETED-FINAL\r\n' }]
+  });
+  await clearPostedMessages(page);
+  await page.evaluate(({ nodeId, stream }) => {
+    const payload = { nodeId, kind: 'terminal', executionSessionId: stream.sessionId, output: '',
+      cols: stream.checkpoint.cols, rows: stream.checkpoint.rows, liveSession: true };
+    window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionSnapshot', payload: {
+      ...payload, outputSequence: 1, terminalRead: { readId: 'early-reader', sessionId: stream.sessionId,
+        authorityId: stream.authorityId, checkpoint: stream.checkpoint, headRevision: 2 }
+    } });
+    window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionSnapshot', payload: {
+      ...payload, liveSession: false, outputSequence: 2, terminalStream: stream
+    } });
+  }, { nodeId, stream });
+  await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('EARLY-COMPLETED-FINAL');
+  const text = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+  expect((text.match(/EARLY-COMPLETED-FINAL/gu) ?? [])).toHaveLength(1);
+  expect(await readPostedMessagesByType(page, 'webview/readExecutionTerminalPage')).toHaveLength(0);
+  expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(1);
+});
+
+for (const readClosed of [false, true]) {
+  test(`terminal paged recovery handles early remote completion${readClosed ? ' with a disconnected reader' : ''}`, async ({ page }) => {
+    const nodeId = 'terminal-zoom';
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState('terminal'));
+    const terminal = await waitForExecutionTerminalReady(page, nodeId);
+    const stream = await createTerminalStreamPayload({
+      sessionId: 'early-remote', authorityId: 'remote-authority', checkpointRevision: 1,
+      checkpointOutput: 'REMOTE-CHECKPOINT\r\n', checkpointCols: terminal.terminalCols, checkpointRows: terminal.terminalRows,
+      events: [{ type: 'output', revision: 2, data: 'REMOTE-FINAL-OUTPUT\r\n' }]
+    });
+    await clearPostedMessages(page);
+    await page.evaluate(({ nodeId, stream }) => {
+      const payload = { nodeId, kind: 'terminal', executionSessionId: stream.sessionId,
+        authorityId: stream.authorityId, output: '', cols: stream.checkpoint.cols, rows: stream.checkpoint.rows };
+      const snapshot = { ...payload, liveSession: false, outputSequence: 1,
+        terminalRead: { readId: 'remote-reader', sessionId: stream.sessionId, authorityId: stream.authorityId,
+          checkpoint: stream.checkpoint, headRevision: 2, settlementMode: 'final-application-v1' } };
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionSnapshot', payload: snapshot });
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionSnapshot', payload: snapshot });
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable',
+        payload: { ...payload, revision: 2, completed: true, finalRevision: 2 } });
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionExit',
+        payload: { ...payload, message: 'REMOTE-EXIT' } });
+    }, { nodeId, stream });
+    const requests = await waitForPostedMessagesByTypeMatch(page, 'webview/readExecutionTerminalPage', messages => messages.length > 0);
+    const request = requests[0].payload;
+    expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).not.toContain('REMOTE-EXIT');
+    await page.evaluate(payload => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload });
+    }, { ...request, ...(readClosed ? { readClosed: true, error: 'REMOTE-READ-INTERRUPTED' } : { page: {
+      readId: request.readId, sessionId: stream.sessionId, authorityId: stream.authorityId,
+      afterRevision: 1, revision: 2, headRevision: 2, events: stream.events
+    } }) });
+    if (readClosed) {
+      await expect(page.locator('[data-toast-kind="error"]')).toHaveText('REMOTE-READ-INTERRUPTED');
+    } else {
+      await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('REMOTE-FINAL-OUTPUT');
+    }
+    const text = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect(text).toContain('REMOTE-CHECKPOINT');
+    expect(text).not.toContain('REMOTE-EXIT');
+    expect(text).not.toContain('REMOTE-READ-INTERRUPTED');
+    if (readClosed) {
+      expect(text).not.toContain('REMOTE-FINAL-OUTPUT');
+      await page.waitForTimeout(500);
+    } else {
+      expect((text.match(/REMOTE-FINAL-OUTPUT/gu) ?? [])).toHaveLength(1);
+    }
+    const closes = await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead');
+    expect(closes).toHaveLength(1);
+    expect(closes[0].payload.outcome).toEqual(readClosed
+      ? { kind: 'cancelled', reason: 'terminal-reader-closed' }
+      : { kind: 'applied', finalRevision: 2 });
+    expect(await readPostedMessagesByType(page, 'webview/readExecutionTerminalPage')).toHaveLength(1);
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`${kind} current-state bootstrap survives page rebuild without historical replay and preserves live parser tail`, async ({ page }) => {
+    test.setTimeout(60_000);
+    const nodeId = `${kind}-zoom`;
+    let state;
+    const counts = [];
+    for (const revision of [7, 700007]) {
+      await openHarness(page);
+      await bootstrap(page, createLiveExecutionNodeState(kind));
+      const ready = await waitForExecutionTerminalReady(page, nodeId);
+      state ??= await createCurrentTerminalState([
+        '\x1b]8;id=reset;https://example.com/reset\x07old\x1b]8;;\x07\x1bc'
+          + (kind === 'terminal' ? '\x1b[?1049h' : ''),
+        { cols: ready.terminalCols, rows: ready.terminalRows + 4 },
+        `\x1b[${ready.terminalRows + 4};1H\x1b]8;id=shrink;https://example.com/shrink\x07bottom\x1b]8;;\x07\x1b[1;1H`,
+        { cols: ready.terminalCols, rows: ready.terminalRows },
+        '\x1b]4;1;rgb:11/22/33\x07\x1b[31mCURRENT-STATE\x1b[0m '
+          + '\x1b]8;;https://example.com/current-state\x07LINK\x1b]8;;\x07\r\n\x1b[31'
+      ], ready.terminalCols, ready.terminalRows);
+      const restored = await importCurrentTerminalState(page, nodeId, kind, state, revision, `state-reader-${revision}`);
+      counts.push(restored.chunkRequests);
+      expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).toContain('CURRENT-STATE');
+      await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('CURRENT-STATE LINK');
+      await expect.poll(() => nodeById(page, nodeId).locator('.xterm-rows span').evaluateAll(elements => {
+        const span = elements.find(element => element.textContent?.includes('CURRENT-STATE'));
+        return span ? getComputedStyle(span).color : undefined;
+      })).toBe('rgb(17, 34, 51)');
+      await performTestDomAction(page, { kind: 'activateExecutionLink', nodeId, text: 'https://example.com/current-state' });
+      const links = await readPostedMessagesByType(page, 'webview/openExecutionLink');
+      expect(links.at(-1).payload.link).toMatchObject({ source: 'explicit', url: 'https://example.com/current-state' });
+      expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(0);
+      await page.evaluate(({ request, revision }) => {
+        window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable', payload: {
+          ...request, revision: revision + 1, completed: true, finalRevision: revision + 1
+        } });
+        window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload: {
+          ...request, page: { readId: request.readId, sessionId: request.executionSessionId,
+            authorityId: request.authorityId, afterRevision: revision, revision: revision + 1,
+            headRevision: revision + 1, events: [ { type: 'output', revision: revision + 1,
+              createdAtMs: 1, data: 'mLIVE-TAIL\x1b[0m' } ] }
+        } });
+      }, { request: restored.request, revision });
+      const closes = await waitForPostedMessagesByTypeMatch(page, 'webview/closeExecutionTerminalRead', messages => messages.length === 1);
+      expect(closes[0].payload.outcome).toEqual({ kind: 'applied', finalRevision: revision + 1 });
+      const actual = await readProbeNode(page, nodeId, 0);
+      expect(actual.terminalVisibleLines.join('\n')).toContain('LIVE-TAIL');
+      expect(actual.terminalVisibleLines.join('\n')).not.toContain('mLIVE-TAIL');
+      expect(actual).toMatchObject({ terminalCursorX: 9, terminalCursorY: 1 });
+    }
+    expect(counts[0]).toBe(counts[1]);
+  });
+}
+
+test('pane gallery current-state bootstrap restores a remounted thumbnail root without replay', async ({ page }) => {
+  test.setTimeout(60_000);
+  const canvas = createPaneGalleryCanvasState();
+  const nodeId = 'workspace-root-backend-terminal';
+  for (const node of canvas.nodes) if (node.kind === 'terminal') {
+    node.status = 'live'; node.metadata.terminal.liveSession = true; node.metadata.terminal.lifecycle = 'live';
+  }
+  await openHarness(page, { persistedState: { paneGallery: { layout: 'topThumbnails',
+    activeRootGroupId: 'workspace-root-frontend', lastOverviewLayout: 'dynamic', lastThumbnailLayout: 'topThumbnails' } } });
+  await bootstrap(page, canvas, createRuntimeContext({ multiRootPresentationMode: 'paneGallery' }));
+  const ready = await waitForExecutionTerminalReady(page, nodeId);
+  const state = await createCurrentTerminalState('THUMBNAIL-CURRENT-STATE\r\n', ready.terminalCols, ready.terminalRows);
+  const first = await importCurrentTerminalState(page, nodeId, 'terminal', state, 73, 'thumbnail-reader');
+  await page.evaluate(request => window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload: {
+    ...request, page: { readId: request.readId, sessionId: request.executionSessionId, authorityId: request.authorityId,
+      afterRevision: 73, revision: 73, headRevision: 73, events: [] }
+  } }), first.request);
+  await clearPostedMessages(page);
+  await page.locator('.pane-gallery-root-pane-thumbnail[data-pane-gallery-root-id="workspace-root-backend"]').dblclick();
+  await expect(page.locator('.pane-gallery-root-pane-main')).toHaveAttribute('data-pane-gallery-root-id', 'workspace-root-backend');
+  const cancelled = await waitForPostedMessagesByTypeMatch(page, 'webview/closeExecutionTerminalRead', messages =>
+    messages.some(message => message.payload.readId === 'thumbnail-reader'));
+  expect(cancelled.find(message => message.payload.readId === 'thumbnail-reader').payload.outcome.kind).toBe('cancelled');
+  await waitForPostedMessagesByTypeMatch(page, 'webview/attachExecutionSession', messages =>
+    messages.some(message => message.payload.nodeId === nodeId));
+  const second = await importCurrentTerminalState(page, nodeId, 'terminal', state, 73, 'main-reader');
+  expect(second.chunkRequests).toBe(first.chunkRequests);
+  expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).toContain('THUMBNAIL-CURRENT-STATE');
+});
+
+test('terminal consumes paged recovery through ANSI boundaries and drains the final page before exit', async ({ page }) => {
+  const nodeId = 'terminal-zoom';
+  const executionSessionId = 'paged-session';
+  const authorityId = 'paged-authority';
+  const readId = 'paged-reader';
+  await openHarness(page);
+  await bootstrap(page, createLiveExecutionNodeState('terminal'));
+  const terminal = await waitForExecutionTerminalReady(page, nodeId);
+  const stream = await createTerminalStreamPayload({
+    sessionId: executionSessionId, authorityId, checkpointOutput: 'PAGED-CHECKPOINT\r\n', checkpointRevision: 1,
+    checkpointCols: terminal.terminalCols, checkpointRows: terminal.terminalRows,
+    events: [
+      { type: 'output', revision: 2, data: '\u001b[31' },
+      { type: 'output', revision: 3, data: 'mPAGED-ANSI\u001b[0m\r\n' },
+      { type: 'output', revision: 4, data: '\ud83d' },
+      { type: 'output', revision: 5, data: '\ude80\r\n' },
+      { type: 'resize', revision: 6, cols: terminal.terminalCols, rows: terminal.terminalRows },
+      { type: 'scrollback', revision: 7, scrollback: 1000 },
+      { type: 'output', revision: 8, data: '\u001b[?1049hALT-PAGED\u001b[?1049lPAGED-TAIL\r\n' }
+    ]
+  });
+  await clearPostedMessages(page);
+  await dispatchExecutionSnapshot(page, {
+    nodeId, kind: 'terminal', output: 'RAW-TAIL-MUST-NOT-APPLY', executionSessionId, outputSequence: 1,
+    terminalRead: { readId, sessionId: executionSessionId, authorityId, checkpoint: stream.checkpoint, headRevision: 8 }
+  });
+  for (const event of stream.events) {
+    const requests = await waitForPostedMessagesByTypeMatch(page, 'webview/readExecutionTerminalPage',
+      (messages) => messages.some((message) => message.payload.afterRevision === event.revision - 1));
+    const request = requests.find((message) => message.payload.afterRevision === event.revision - 1);
+    if (event.revision === 8) {
+      await page.evaluate((payload) => {
+        window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable',
+          payload: { ...payload, revision: 8, completed: true } });
+        window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionExit',
+          payload: { ...payload, message: 'PAGED-EXIT' } });
+      }, { nodeId, kind: 'terminal', executionSessionId, authorityId });
+      await settleWebview(page, 2);
+      expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).not.toContain('PAGED-EXIT');
+      expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(0);
+    }
+    await page.evaluate((payload) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload });
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload });
+    }, { nodeId, kind: 'terminal', executionSessionId, authorityId, readId,
+      requestId: request.payload.requestId, page: {
+        readId, sessionId: executionSessionId, authorityId, afterRevision: event.revision - 1,
+        revision: event.revision, headRevision: 8, events: [event]
+      } });
+  }
+  await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('PAGED-TAIL');
+  const finalProbe = await readProbeNode(page, nodeId, 0);
+  const text = finalProbe.terminalVisibleLines.join('\n');
+  expect(text).toContain('PAGED-CHECKPOINT');
+  expect(text).toContain('PAGED-ANSI');
+  expect(text).toContain('\ud83d\ude80');
+  expect(text).toContain('PAGED-TAIL');
+  expect(text).not.toContain('RAW-TAIL-MUST-NOT-APPLY');
+  expect(text).not.toContain('ALT-PAGED');
+  expect(text).not.toContain('\ufffd');
+  expect(text).not.toContain('PAGED-EXIT');
+  expect((text.match(/PAGED-TAIL/gu) ?? [])).toHaveLength(1);
+  expect(finalProbe).toMatchObject({
+    terminalCursorX: 0, terminalCursorY: 4, terminalViewportY: 0, terminalBufferType: 'normal'
+  });
+  expect(await readPostedMessagesByType(page, 'webview/readExecutionTerminalPage')).toHaveLength(stream.events.length);
+  const closes = await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead');
+  expect(closes).toHaveLength(1);
+  expect(closes[0].payload.readId).toBe(readId);
+});
+
 for (const executionKind of ['agent', 'terminal']) {
   test(`${executionKind} xterm selection stays aligned under zoomed React Flow`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
@@ -16627,7 +16989,236 @@ for (const executionKind of ['agent', 'terminal']) {
   });
 }
 
+async function holdXtermParser(page) {
+  await page.evaluate(() => {
+    const schedule = window.setTimeout.bind(window);
+    const held = [];
+    // Hold only xterm's parser work, leaving the real component fit timers active.
+    window.setTimeout = (callback, delay, ...args) => {
+      if (typeof callback === 'function' && callback.toString().includes('._innerWrite(')) {
+        const timer = schedule(() => {}, 60_000);
+        held.push({ callback, args, timer });
+        return timer;
+      }
+      return schedule(callback, delay, ...args);
+    };
+    window.__slowSnapshotWrite = {
+      pending: () => held.length,
+      release() {
+        window.setTimeout = schedule;
+        for (const { callback, args, timer } of held.splice(0)) {
+          window.clearTimeout(timer);
+          callback(...args);
+        }
+      }
+    };
+  });
+}
+
 for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} local output credit follows actual writes and cancels when the page unmounts`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const executionSessionId = `${executionKind}-credit-session`;
+    await openHarness(page);
+    const ready = await waitForPostedMessageByType(page, 'webview/ready', { includeLifecycle: true });
+    expect(ready.payload.capabilities.terminalLocalOutputCreditV1).toBe(true);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const terminal = await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionSnapshot(page, {
+      nodeId, kind: executionKind, output: 'CREDIT-BASE\r\n', executionSessionId, outputSequence: 0,
+      cols: terminal.terminalCols, rows: terminal.terminalRows
+    });
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('CREDIT-BASE');
+    await clearPostedMessages(page);
+    await holdXtermParser(page);
+    try {
+      await dispatchExecutionOutput(page, {
+        nodeId, kind: executionKind, chunk: 'CREDIT-TAIL\r\n', executionSessionId,
+        outputStartSequence: 1, outputSequence: 1, localOutputReceipt: { receiptId: 'tail', outputSequence: 1 }
+      });
+      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
+      expect(await readPostedMessagesByType(page, 'webview/executionLocalOutputApplied')).toHaveLength(0);
+      expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).not.toContain('CREDIT-TAIL');
+    } finally { await page.evaluate(() => window.__slowSnapshotWrite.release()); }
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('CREDIT-TAIL');
+    const credits = await waitForPostedMessagesByTypeMatch(page, 'webview/executionLocalOutputApplied', messages => messages.length === 1);
+    expect(credits[0].payload).toEqual({ nodeId, kind: executionKind, executionSessionId,
+      receiptId: 'tail', outputSequence: 1, outcome: 'applied' });
+
+    await dispatchExecutionSnapshot(page, {
+      nodeId, kind: executionKind, output: 'CREDIT-FINAL-SNAPSHOT\r\n', executionSessionId, outputSequence: 1,
+      cols: terminal.terminalCols, rows: terminal.terminalRows,
+      localOutputReceipt: { receiptId: 'final-snapshot', outputSequence: 1 }
+    });
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('CREDIT-FINAL-SNAPSHOT');
+    await waitForPostedMessagesByTypeMatch(page, 'webview/executionLocalOutputApplied', messages => messages.length === 2);
+    await holdXtermParser(page);
+    try {
+      await dispatchExecutionOutput(page, {
+        nodeId, kind: executionKind, chunk: 'CANCELLED-CREDIT-TAIL', executionSessionId,
+        outputStartSequence: 2, outputSequence: 2, localOutputReceipt: { receiptId: 'cancelled-tail', outputSequence: 2 }
+      });
+      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
+      await updateHostState(page, createEmptyCanvasState());
+      const cancelled = await waitForPostedMessagesByTypeMatch(page, 'webview/executionLocalOutputApplied', messages => messages.length === 3);
+      expect(cancelled[2].payload).toEqual({ nodeId, kind: executionKind, executionSessionId,
+        receiptId: 'cancelled-tail', outputSequence: 2, outcome: 'cancelled', reason: 'controller-disposed' });
+    } finally { await page.evaluate(() => window.__slowSnapshotWrite.release()); }
+    await settleWebview(page, 2);
+    expect(await readPostedMessagesByType(page, 'webview/executionLocalOutputApplied')).toHaveLength(3);
+    await dispatchExecutionOutput(page, {
+      nodeId, kind: executionKind, chunk: 'UNMOUNTED', executionSessionId,
+      outputSequence: 3, localOutputReceipt: { receiptId: 'unmounted-output', outputSequence: 3 }
+    });
+    await dispatchExecutionSnapshot(page, {
+      nodeId, kind: executionKind, output: 'UNMOUNTED', executionSessionId,
+      outputSequence: 3, localOutputReceipt: { receiptId: 'unmounted-snapshot', outputSequence: 3 }
+    });
+    const unmounted = await readPostedMessagesByType(page, 'webview/executionLocalOutputApplied');
+    expect(unmounted.slice(3).map(message => message.payload)).toEqual([
+      { nodeId, kind: executionKind, executionSessionId, receiptId: 'unmounted-output', outputSequence: 3,
+        outcome: 'cancelled', reason: 'controller-unmounted' },
+      { nodeId, kind: executionKind, executionSessionId, receiptId: 'unmounted-snapshot', outputSequence: 3,
+        outcome: 'cancelled', reason: 'controller-unmounted' }
+    ]);
+  });
+
+  test(`${executionKind} slow snapshot write prevents premature fit and refits after application`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const ready = await waitForExecutionTerminalReady(page, nodeId);
+    const restoreCols = ready.terminalCols + 12;
+    const restoreRows = ready.terminalRows + 6;
+    const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+      'SLOW-SNAPSHOT-TAIL\r\n', restoreCols, restoreRows
+    );
+    await clearPostedMessages(page);
+    await holdXtermParser(page);
+    try {
+      await dispatchExecutionSnapshot(page, {
+        nodeId, kind: executionKind, output: '', cols: restoreCols, rows: restoreRows,
+        liveSession: true, serializedTerminalState
+      });
+      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
+      await page.waitForTimeout(1200);
+      const pending = await readProbeNode(page, nodeId, 0);
+      const prematureResizes = await readPostedMessagesByType(page, 'webview/resizeExecutionSession');
+      expect(pending.terminalVisibleLines.join('\n')).not.toContain('SLOW-SNAPSHOT-TAIL');
+      expect({ cols: pending.terminalCols, rows: pending.terminalRows }).toEqual({
+        cols: restoreCols, rows: restoreRows
+      });
+      expect(prematureResizes).toHaveLength(0);
+    } finally {
+      await page.evaluate(() => window.__slowSnapshotWrite.release());
+    }
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('SLOW-SNAPSHOT-TAIL');
+    await expect.poll(async () => {
+      const terminal = await readProbeNode(page, nodeId, 0);
+      return { cols: terminal.terminalCols, rows: terminal.terminalRows };
+    }).toEqual({ cols: ready.terminalCols, rows: ready.terminalRows });
+    const resizeMessages = await waitForPostedMessagesByTypeMatch(page, 'webview/resizeExecutionSession',
+      messages => messages.length === 1);
+    expect(resizeMessages[0].payload).toMatchObject({
+      nodeId, kind: executionKind, cols: ready.terminalCols, rows: ready.terminalRows
+    });
+  });
+
+  test(`${executionKind} slow paged event write prevents premature fit and settles after its tail`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const executionSessionId = `${executionKind}-slow-page`;
+    const authorityId = `${executionKind}-slow-authority`;
+    const readId = `${executionKind}-slow-reader`;
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    const ready = await waitForExecutionTerminalReady(page, nodeId);
+    const restoreCols = ready.terminalCols + 12;
+    const restoreRows = ready.terminalRows + 6;
+    const stream = await createTerminalStreamPayload({
+      sessionId: executionSessionId, authorityId, checkpointRevision: 1,
+      checkpointCols: ready.terminalCols, checkpointRows: ready.terminalRows,
+      checkpointOutput: 'SLOW-PAGED-CHECKPOINT\r\n',
+      events: [
+        { type: 'resize', revision: 2, cols: restoreCols, rows: restoreRows },
+        { type: 'output', revision: 3, data: 'SLOW-PAGED-TAIL\r\n' }
+      ]
+    });
+    await clearPostedMessages(page);
+    await dispatchExecutionSnapshot(page, {
+      nodeId, kind: executionKind, output: '', executionSessionId, outputSequence: 1,
+      terminalRead: { readId, sessionId: executionSessionId, authorityId, checkpoint: stream.checkpoint,
+        headRevision: 3, settlementMode: 'final-application-v1' }
+    });
+    const request = await waitForPostedMessageByType(page, 'webview/readExecutionTerminalPage');
+    await holdXtermParser(page);
+    try {
+      await page.evaluate(({ request, stream }) => {
+        window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalAvailable', payload: {
+          ...request, revision: 3, completed: true, finalRevision: 3
+        } });
+        window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload: {
+          ...request, page: { readId: request.readId, sessionId: stream.sessionId, authorityId: stream.authorityId,
+            afterRevision: 1, revision: 3, headRevision: 3, events: stream.events }
+        } });
+      }, { request: request.payload, stream });
+      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
+      await page.waitForTimeout(1200);
+      const container = nodeById(page, nodeId).locator('.terminal-viewport');
+      await container.evaluate(element => { element.style.width = 'calc(100% - 8px)'; });
+      await settleWebview(page, 2);
+      await container.evaluate(element => { element.style.width = ''; });
+      await settleWebview(page, 2);
+      const pending = await readProbeNode(page, nodeId, 0);
+      expect(pending.terminalVisibleLines.join('\n')).not.toContain('SLOW-PAGED-TAIL');
+      expect({ cols: pending.terminalCols, rows: pending.terminalRows }).toEqual({ cols: restoreCols, rows: restoreRows });
+      expect(await readPostedMessagesByType(page, 'webview/resizeExecutionSession')).toHaveLength(0);
+      expect(await readPostedMessagesByType(page, 'webview/closeExecutionTerminalRead')).toHaveLength(0);
+    } finally { await page.evaluate(() => window.__slowSnapshotWrite.release()); }
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText('SLOW-PAGED-TAIL');
+    const closes = await waitForPostedMessagesByTypeMatch(page, 'webview/closeExecutionTerminalRead', messages => messages.length === 1);
+    expect(closes[0].payload.outcome).toEqual({ kind: 'applied', finalRevision: 3 });
+    await expect.poll(async () => {
+      const terminal = await readProbeNode(page, nodeId, 0);
+      return { cols: terminal.terminalCols, rows: terminal.terminalRows };
+    }).toEqual({ cols: ready.terminalCols, rows: ready.terminalRows });
+    const text = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    expect((text.match(/SLOW-PAGED-TAIL/gu) ?? [])).toHaveLength(1);
+  });
+
+  for (const recoveryKind of ['snapshot', 'checkpoint']) {
+    test(`${executionKind} ${recoveryKind} restore retains the saved non-bottom viewport`, async ({ page }) => {
+      const nodeId = `${executionKind}-zoom`;
+      await openHarness(page);
+      await bootstrap(page, createLiveExecutionNodeState(executionKind));
+      const ready = await waitForExecutionTerminalReady(page, nodeId);
+      const serializedTerminalState = await createSerializedTerminalStateFromOutput(
+        createScrollableTerminalOutput(120), ready.terminalCols, ready.terminalRows
+      );
+      serializedTerminalState.viewportY = 17;
+      const detail = {
+        nodeId, kind: executionKind, output: '', cols: ready.terminalCols,
+        rows: ready.terminalRows, liveSession: true, executionSessionId: 'viewport-session',
+        outputSequence: 1
+      };
+      if (recoveryKind === 'snapshot') {
+        serializedTerminalState.outputSequence = 1;
+        detail.serializedTerminalState = serializedTerminalState;
+      } else {
+        const stream = await createTerminalStreamPayload({
+          sessionId: detail.executionSessionId, authorityId: 'viewport-authority',
+          checkpointOutput: createScrollableTerminalOutput(120), checkpointRevision: 1,
+          checkpointCols: ready.terminalCols, checkpointRows: ready.terminalRows
+        });
+        stream.checkpoint.serializedState.viewportY = 17;
+        detail.terminalStream = stream;
+      }
+      await dispatchExecutionSnapshot(page, detail);
+      await expect.poll(async () => (await readProbeNode(page, nodeId, 0))?.terminalViewportY).toBe(17);
+      const restored = await readProbeNode(page, nodeId, 0);
+      expect(restored.terminalVisibleLines[0]).toContain('ROW-017');
+    });
+  }
+
   test(`${executionKind} snapshot restore still refits after node movement during the shrink grace`, async ({
     page
   }) => {
@@ -17792,8 +18383,10 @@ async function dispatchExecutionSnapshot(
     executionSessionId,
     terminalTitle,
     outputSequence,
+    localOutputReceipt,
     serializedTerminalState,
-    terminalStream
+    terminalStream,
+    terminalRead
   }
 ) {
   await page.evaluate(
@@ -17814,8 +18407,10 @@ async function dispatchExecutionSnapshot(
       executionSessionId,
       terminalTitle,
       outputSequence,
+      localOutputReceipt,
       serializedTerminalState,
-      terminalStream
+      terminalStream,
+      terminalRead
     }
   );
 }
@@ -17831,6 +18426,7 @@ async function dispatchExecutionOutput(
     persisted,
     outputStartSequence,
     outputSequence,
+    localOutputReceipt,
     terminalAuthorityId,
     terminalStartRevision,
     terminalRevision
@@ -17852,6 +18448,7 @@ async function dispatchExecutionOutput(
       persisted,
       outputStartSequence,
       outputSequence,
+      localOutputReceipt,
       terminalAuthorityId,
       terminalStartRevision,
       terminalRevision
@@ -17920,6 +18517,60 @@ async function createSerializedTerminalStateFromOutput(output, cols = 96, rows =
   terminal.dispose();
   serializeAddon.dispose();
   return serializedTerminalState;
+}
+
+let currentStateCodec;
+async function createCurrentTerminalState(output, cols, rows) {
+  currentStateCodec ??= (async () => {
+    const source = await fs.readFile('extensions/vscode/dev-session-canvas/src/common/terminalCurrentState.ts', 'utf8');
+    const compiled = await transform(source, { loader: 'ts', format: 'esm', target: 'es2022' });
+    return import(`data:text/javascript,${encodeURIComponent(compiled.code)}`);
+  })();
+  const codec = await currentStateCodec;
+  const terminal = new HeadlessTerminal({ cols, rows, scrollback: 1000, allowProposedApi: true });
+  const colors = codec.createTerminalCurrentColors();
+  terminal._core._inputHandler.onColor(event => codec.applyTerminalCurrentColorRequests(colors, event));
+  try {
+    for (const operation of Array.isArray(output) ? output : [output]) {
+      if (typeof operation === 'string') await new Promise(resolve => terminal.write(operation, resolve));
+      else terminal.resize(operation.cols, operation.rows);
+    }
+    return codec.captureTerminalCurrentState(terminal, colors);
+  } finally { terminal.dispose(); }
+}
+
+async function importCurrentTerminalState(page, nodeId, kind, state, revision, readId) {
+  const encoded = JSON.stringify(state);
+  const sessionId = `${nodeId}-current-state`;
+  const authorityId = `${nodeId}-current-authority`;
+  await clearPostedMessages(page);
+  await dispatchExecutionSnapshot(page, { nodeId, kind, output: '', executionSessionId: sessionId,
+    cols: state.cols, rows: state.rows, outputSequence: revision, liveSession: true,
+    terminalRead: { readId, sessionId, authorityId, headRevision: revision, settlementMode: 'final-application-v1',
+      currentState: { format: state.format, length: encoded.length },
+      checkpoint: { version: 1, sessionId, authorityId, revision, cols: state.cols, rows: state.rows,
+        scrollback: state.scrollback, createdAtMs: 1,
+        serializedState: { format: 'xterm-serialize-v1', data: '', outputSequence: revision } } }
+  });
+  let chunkRequests = 0;
+  for (let offset = 0; offset < encoded.length; offset += 8192) {
+    const requests = await waitForPostedMessagesByTypeMatch(page, 'webview/readExecutionTerminalPage', messages =>
+      messages.some(message => message.payload.readId === readId && message.payload.stateOffset === offset));
+    const request = requests.find(message => message.payload.readId === readId && message.payload.stateOffset === offset).payload;
+    expect(request.afterRevision).toBe(revision);
+    chunkRequests++;
+    await page.evaluate(({ request, revision, offset, data }) =>
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/executionTerminalPage', payload: {
+        ...request, page: { readId: request.readId, sessionId: request.executionSessionId, authorityId: request.authorityId,
+          afterRevision: revision, revision, headRevision: revision, events: [], stateChunk: { offset, data } }
+      } }), { request, revision, offset, data: encoded.slice(offset, offset + 8192) });
+  }
+  const requests = await waitForPostedMessagesByTypeMatch(page, 'webview/readExecutionTerminalPage', messages =>
+    messages.some(message => message.payload.readId === readId && message.payload.stateOffset === undefined));
+  const request = requests.find(message => message.payload.readId === readId && message.payload.stateOffset === undefined).payload;
+  expect(request.afterRevision).toBe(revision);
+  expect(requests.filter(message => message.payload.readId === readId)).toHaveLength(chunkRequests + 1);
+  return { request, chunkRequests };
 }
 
 async function createTerminalStreamPayload({

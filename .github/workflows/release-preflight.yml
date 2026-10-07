@@ -16,11 +16,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify-release-contract:
-    name: Verify release contract
+  resolve-release-input:
+    name: Resolve release input
     if: ${{ github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 5
+    outputs:
+      is_release: ${{ steps.contract.outputs.is_release }}
+      version: ${{ steps.contract.outputs.version }}
+      input_ref: ${{ steps.contract.outputs.input_ref }}
     steps:
       - name: Checkout PR merge result
         uses: actions/checkout@v4
@@ -32,6 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "input_ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           mapfile -t contracts < <(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- docs/release-contracts | grep -E '^docs/release-contracts/v[0-9]+\.[0-9]+\.[0-9]+\.md$' || true)
           if [[ "${#contracts[@]}" -eq 0 ]]; then
             echo "is_release=false" >> "$GITHUB_OUTPUT"
@@ -50,17 +55,64 @@ jobs:
           echo "is_release=true" >> "$GITHUB_OUTPUT"
           echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
 
+  native-assets:
+    needs: resolve-release-input
+    if: needs.resolve-release-input.outputs.is_release == 'true'
+    uses: ./.github/workflows/runtime-execution-assets.yml
+    with:
+      input_ref: ${{ needs.resolve-release-input.outputs.input_ref }}
+
+  verify-release-contract:
+    name: Verify release contract
+    needs: [resolve-release-input, native-assets]
+    if: ${{ always() && github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Require successful release prerequisites
+        shell: bash
+        run: |
+          test "${{ needs.resolve-release-input.result }}" = success
+          if [[ "${{ needs.resolve-release-input.outputs.is_release }}" == true ]]; then
+            test "${{ needs.native-assets.result }}" = success
+          fi
+
+      - name: Checkout fixed release input
+        if: needs.resolve-release-input.outputs.is_release == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.resolve-release-input.outputs.input_ref }}
+
       - name: Setup Node.js
-        if: steps.contract.outputs.is_release == 'true'
+        if: needs.resolve-release-input.outputs.is_release == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
 
       - name: Install dependencies
-        if: steps.contract.outputs.is_release == 'true'
+        if: needs.resolve-release-input.outputs.is_release == 'true'
         run: npm ci
 
+      - name: Download same-run native runtime assets
+        if: needs.resolve-release-input.outputs.is_release == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: execution-native-*-${{ github.run_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/execution-native-archives
+
+      - name: Assemble same-ref native runtime assets
+        if: needs.resolve-release-input.outputs.is_release == 'true'
+        shell: bash
+        run: |
+          node scripts/build/assemble-execution-distribution-assets.mjs \
+            --source "$RUNNER_TEMP/execution-native-archives" \
+            --output "$RUNNER_TEMP/execution-native-platform" \
+            --input-sha "${{ needs.resolve-release-input.outputs.input_ref }}"
+          echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$RUNNER_TEMP/execution-native-platform" >> "$GITHUB_ENV"
+
       - name: Verify release contract
-        if: steps.contract.outputs.is_release == 'true'
-        run: npm run release:verify -- --version "${{ steps.contract.outputs.version }}"
+        if: needs.resolve-release-input.outputs.is_release == 'true'
+        run: npm run release:verify -- --version "${{ needs.resolve-release-input.outputs.version }}"

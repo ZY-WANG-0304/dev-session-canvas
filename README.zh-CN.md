@@ -120,7 +120,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 开发者推荐通过源码编译与 Development Host 方式安装和调试，而非手动安装 `.vsix`。
 
-最小流程：
+先按 [CONTRIBUTING.md](CONTRIBUTING.md#本地准备) 准备匹配源码的六目标原生运行时资产，再执行：
 
 ```bash
 npm install

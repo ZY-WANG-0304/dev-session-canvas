@@ -274,6 +274,30 @@ export function mergeTerminalStreamProjectionWithLiveTail(
     : undefined;
 }
 
+export function mergeTerminalStreamCheckpoint(
+  checkpointValue: unknown,
+  currentValue: unknown
+): TerminalStreamAttachPayload | undefined {
+  const checkpoint = normalizeTerminalStreamCheckpoint(checkpointValue);
+  const current = normalizeTerminalStreamAttachPayload(currentValue);
+  if (
+    !checkpoint ||
+    !current ||
+    checkpoint.sessionId !== current.sessionId ||
+    checkpoint.authorityId !== current.authorityId ||
+    checkpoint.revision < current.checkpoint.revision ||
+    checkpoint.revision > current.revision
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...current,
+    checkpoint,
+    events: current.events.filter((event) => event.revision > checkpoint.revision)
+  };
+}
+
 function normalizeIdentity(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined;

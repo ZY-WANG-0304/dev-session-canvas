@@ -29,12 +29,12 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /sessionOutputSequence = hasAuthoritativeTerminalStream[\s\S]*?\? terminalStream\.revision[\s\S]*?: Math\.max\(snapshotOutputSequence \?\? 0, outputSequenceFloor\)/u,
+  /sessionOutputSequence = paged \? snapshot\.terminalRevision! : hasAuthoritativeTerminalStream[\s\S]*?\? terminalStream\.revision[\s\S]*?: Math\.max\(snapshotOutputSequence \?\? 0, outputSequenceFloor\)/u,
   '新 authority session 必须直接采用 supervisor revision；metadata floor 只保留给 legacy session。'
 );
 assert.match(
   managerSource,
-  /terminalAuthorityId: hasAuthoritativeTerminalStream \? terminalStream\.authorityId : undefined,[\s\S]*?terminalStreamHealthy: hasAuthoritativeTerminalStream[\s\S]*?terminalStateTrusted: canTrustSupervisorTerminalState/u,
+  /terminalAuthorityId: hasAuthoritativeTerminalStream \? terminalStream\.authorityId : paged \? snapshot\.terminalAuthorityId : undefined,[\s\S]*?terminalStreamHealthy: hasAuthoritativeTerminalStream \|\| paged[\s\S]*?terminalStateTrusted: canTrustSupervisorTerminalState/u,
   'Host 必须把 authority stream 与 legacy Host tracker 的信任状态分开。'
 );
 assert.match(
@@ -104,8 +104,8 @@ assert.match(
 );
 assert.match(
   managerSource,
-  /const completedTerminalStream = getCompleteRuntimeSupervisorTerminalStream\(snapshot\);[\s\S]*?options\.historyOnUnavailable && !completedTerminalStream[\s\S]*?applyCompletedRuntimeSupervisorSnapshot/u,
-  'Host 重连到已结束但 terminal stream 完整的 Supervisor session 时必须先持久化权威终态，不能降级为 history tail。'
+  /private async applyCompletedRuntimeSupervisorSnapshot\([\s\S]*?terminalHistoryDiscarded: true,[\s\S]*?recentOutput: undefined,[\s\S]*?terminalStream: undefined/u,
+  'Runtime 已结束状态不得继续将终端正文写入画板 metadata。'
 );
 assert.match(
   managerSource,
@@ -115,7 +115,7 @@ assert.match(
 assert.match(
   managerSource,
   /runtime-supervisor-completed-snapshot'[\s\S]*?requireRootLocalDurability: true[\s\S]*?deleteRuntimeSupervisorSessionStrict/u,
-  'completed stream 必须在主快照和实际 root-local 加载源都 durable 后才能删除 Supervisor journal。'
+  '轻量 ended 状态必须在主快照和实际 root-local 加载源保存后才清理 Supervisor，防止保留悬挂 live 绑定。'
 );
 assert.match(
   managerSource,
@@ -171,6 +171,11 @@ assert.match(
   webviewSource,
   /Snapshots create projections; they do not replace a healthy live backlog/u,
   'Webview 不得再把 snapshot 用作健康 live backlog replacement。'
+);
+assert.match(
+  webviewSource,
+  /function normalizeExecutionPerformanceDiagnosticForWebview\([\s\S]*?currentStateLength: normalizeDiagnosticInteger\(payload\.currentStateLength\)[\s\S]*?currentStateOffset: normalizeDiagnosticInteger\(payload\.currentStateOffset\)[\s\S]*?currentStateChunkCount: normalizeDiagnosticInteger\(payload\.currentStateChunkCount\)[\s\S]*?currentStateAssemblyPeakCharacters: normalizeDiagnosticInteger\(payload\.currentStateAssemblyPeakCharacters\)/u,
+  'Webview 性能诊断归一化必须透传 current-state 的完整长度、offset、chunk 数和组装峰值。'
 );
 assert.doesNotMatch(
   webviewSource,

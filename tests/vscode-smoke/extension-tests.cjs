@@ -189,6 +189,16 @@ async function runSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await clearHostMessages();
   await clearDiagnosticEvents();
+  if (smokeScenario === 'runtime-completed-no-history') {
+    const { terminalNode } = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
+    await verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(terminalNode.id);
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    return;
+  }
+  if (smokeScenario === 'runtime-checkpoint-refresh') {
+    await runRuntimeCheckpointRefreshSmoke();
+    return;
+  }
   await verifyWebviewLifecycleRaceDiagnostics();
 
   if (smokeScenario === 'restricted') {
@@ -197,6 +207,168 @@ async function runSmoke() {
   }
 
   await runTrustedSmoke();
+}
+
+async function runRuntimeCheckpointRefreshSmoke() {
+  const { agentNode, terminalNode } = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
+  const marker = 'DSC_CHECKPOINT_ONLY_REFRESH';
+  const rowCount = 18000;
+  try {
+    await waitForAgentLive(agentNode.id);
+    const initial = await waitForTerminalLive(terminalNode.id);
+    const terminalSessionId = findNodeById(initial, terminalNode.id).metadata.terminal.runtimeSessionId;
+    const agentSessionId = findNodeById(initial, agentNode.id).metadata.agent.runtimeSessionId;
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: { nodeId: agentNode.id, kind: 'agent', data: 'burst 3\r' }
+    });
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: {
+        nodeId: terminalNode.id,
+        kind: 'terminal',
+        data: `printf '\\033]10;#ff0000\\007'; i=1; while [ "$i" -le ${rowCount} ]; do ` +
+          `printf 'DSC_CACHE_ROW_%05d_%064d\\r\\n' "$i" 0; i=$((i+1)); done; ` +
+          `printf '%s%s\\n' 'DSC_CHECKPOINT_' 'ONLY_REFRESH'\r`
+      }
+    });
+    await waitForSnapshot((snapshot) =>
+      findNodeById(snapshot, terminalNode.id).metadata.terminal.recentOutput?.includes(marker) &&
+      findNodeById(snapshot, agentNode.id).metadata.agent.recentOutput?.includes('[fake-agent] burst 003'),
+    20000);
+    await clearDiagnosticEvents();
+    await clearHostMessages();
+    await requestExecutionSnapshot('terminal', terminalNode.id, 'editor');
+    await requestExecutionSnapshot('agent', agentNode.id, 'editor');
+    for (const node of [terminalNode, agentNode]) {
+      const openedEvents = await waitForDiagnosticEvents((events) => events.some((event) =>
+        event.kind === 'runtime/terminalPagedReadOpened' && event.detail?.nodeId === node.id &&
+        event.detail?.currentState === 'xterm-current-state-v1' &&
+        Number.isSafeInteger(event.detail?.stateLength) && event.detail.stateLength > 0
+      ), 20000);
+      const opened = openedEvents.find((event) => event.kind === 'runtime/terminalPagedReadOpened' &&
+        event.detail?.nodeId === node.id && event.detail?.currentState === 'xterm-current-state-v1');
+      assert.strictEqual(opened.detail.hostCachedEvents, 0,
+        'Current-state bootstrap must not start by replaying Host cached history.');
+    }
+    await waitForHostMessages((messages) => messages.some((message) =>
+      message.type === 'host/executionSnapshot' && message.payload.nodeId === terminalNode.id &&
+      message.payload.terminalRead && !message.payload.terminalStream
+    ), 20000);
+    await waitForWebviewProbe((probe) =>
+      readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
+    20000);
+
+    await clearDiagnosticEvents();
+    await clearHostMessages();
+    await simulateRuntimeReload();
+    await waitForSnapshot((snapshot) => {
+      const terminal = findNodeById(snapshot, terminalNode.id).metadata.terminal;
+      const agent = findNodeById(snapshot, agentNode.id).metadata.agent;
+      return terminal.liveSession && agent.liveSession &&
+        terminal.runtimeSessionId === terminalSessionId && agent.runtimeSessionId === agentSessionId;
+    }, 20000);
+    await ensureEditorCanvasReady();
+    await requestExecutionSnapshot('terminal', terminalNode.id, 'editor');
+    await waitForHostMessages((messages) => messages.some((message) =>
+      message.type === 'host/executionSnapshot' && message.payload.nodeId === terminalNode.id &&
+      message.payload.executionSessionId === terminalSessionId &&
+      message.payload.terminalRead && !message.payload.terminalStream
+    ), 20000);
+    const terminalBootstrapMessages = await waitForHostMessages((messages) => {
+      const snapshot = messages.find((message) => message.type === 'host/executionSnapshot' &&
+        message.payload.nodeId === terminalNode.id && message.payload.terminalRead);
+      const pages = messages.filter((message) => message.type === 'host/executionTerminalPage' &&
+        message.payload.nodeId === terminalNode.id && message.payload.page).map((message) => message.payload.page);
+      if (!snapshot?.payload.terminalRead?.currentState || pages.length === 0) return false;
+      const chunks = [...new Map(pages.filter((page) => page.stateChunk)
+        .map((page) => [page.stateChunk.offset, page.stateChunk])).values()]
+        .sort((a, b) => a.offset - b.offset);
+      if (chunks.length === 0 || chunks[0].offset !== 0) return false;
+      let offset = 0;
+      for (const chunk of chunks) {
+        assert.strictEqual(chunk.offset, offset, 'Current-state chunks must be contiguous.');
+        offset += chunk.data.length;
+      }
+      assert.strictEqual(offset, snapshot.payload.terminalRead.currentState.length,
+        'Current-state chunks must cover the declared state.');
+      assert.ok(pages.filter((page) => page.stateChunk).every((page) => page.events.length === 0));
+      const events = pages.flatMap((page) => page.events);
+      assert.ok(events.every((event) => event.revision > snapshot.payload.terminalRead.checkpoint.revision),
+        'Pages after current-state import may only contain post-capture revisions.');
+      return true;
+    }, 30000);
+    const terminalBootstrapReader = terminalBootstrapMessages.find((message) =>
+      message.type === 'host/executionSnapshot' && message.payload.nodeId === terminalNode.id &&
+      message.payload.terminalRead).payload.terminalRead;
+    assert.equal(terminalBootstrapReader.currentState.format, 'xterm-current-state-v1');
+    await waitForWebviewProbe((probe) =>
+      readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
+    20000);
+    await ensureTerminalStopped(terminalNode.id);
+    await ensureAgentStopped(agentNode.id);
+    await waitForWebviewProbe((probe) =>
+      readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
+    20000);
+    const ended = await waitForSnapshot((snapshot) => [agentNode, terminalNode].every(node =>
+      findNodeById(snapshot, node.id).metadata[node.kind].terminalHistoryDiscarded === true), 20000);
+    const persisted = await flushPersistedStateSnapshot();
+    for (const node of [agentNode, terminalNode]) {
+      assertCompletedRuntimeWithoutHistory(findNodeById(ended, node.id).metadata[node.kind]);
+      const stored = persisted.state.nodes.find(candidate => candidate.id === node.id);
+      assertCompletedRuntimeWithoutHistory(stored.metadata[node.kind]);
+    }
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await clearHostMessages();
+    await simulateRuntimeReload();
+    await ensureEditorCanvasReady();
+    for (const node of [agentNode, terminalNode]) {
+      await requestExecutionSnapshot(node.kind, node.id, 'editor');
+      await waitForHostMessages(messages => messages.some(message => message.type === 'host/executionSnapshot' &&
+        message.payload.nodeId === node.id && message.payload.liveSession === false && message.payload.output === '' &&
+        !message.payload.terminalStream && !message.payload.terminalRead && !message.payload.serializedTerminalState), 20000);
+      assertCompletedRuntimeWithoutHistory(findNodeById(await getDebugSnapshot(), node.id).metadata[node.kind]);
+    }
+    const reopened = await captureWebviewProbe('editor', 2000);
+    assert.ok(!readProbeTerminalVisibleLines(reopened, terminalNode.id).join('\n').includes(marker));
+
+    // Old stream-backed completions migrate without reusing their pending launch or transcript.
+    const legacy = structuredClone((await getDebugSnapshot()).state);
+    for (const node of legacy.nodes.filter(node => node.id === agentNode.id || node.id === terminalNode.id)) {
+      const metadata = node.metadata[node.kind];
+      metadata.terminalHistoryDiscarded = undefined;
+      metadata.pendingLaunch = 'start';
+      metadata.recentOutput = 'OLD_COMPLETED_HISTORY';
+      node.summary = 'OLD_COMPLETED_HISTORY';
+      metadata.outputSequence = 1;
+      metadata.terminalStream = { version: 1, sessionId: `old-${node.id}`, authorityId: `old-${node.id}`, revision: 1,
+        checkpoint: { version: 1, sessionId: `old-${node.id}`, authorityId: `old-${node.id}`, revision: 0,
+          cols: 80, rows: 24, scrollback: 1000, createdAtMs: 1,
+          serializedState: { format: 'xterm-serialize-v1', data: '', outputSequence: 0 } },
+        events: [{ type: 'output', revision: 1, createdAtMs: 1, data: 'OLD_COMPLETED_HISTORY\r\n' }] };
+    }
+    await setPersistedState(legacy);
+    const migrated = await getDebugSnapshot();
+    for (const node of [agentNode, terminalNode]) {
+      const restored = findNodeById(migrated, node.id);
+      assertCompletedRuntimeWithoutHistory(restored.metadata[node.kind]);
+      assert.ok(!restored.summary.includes('OLD_COMPLETED_HISTORY'));
+    }
+    const migratedDisk = await flushPersistedStateSnapshot();
+    assert.ok(!JSON.stringify(migratedDisk.state).includes('OLD_COMPLETED_HISTORY'));
+  } finally {
+    await ensureAgentStopped(agentNode.id);
+    await ensureTerminalStopped(terminalNode.id);
+    await setRuntimePersistenceEnabled(false);
+  }
+}
+
+function assertCompletedRuntimeWithoutHistory(metadata) {
+  assert.strictEqual(metadata.terminalHistoryDiscarded, true);
+  assert.strictEqual(metadata.liveSession, false);
+  for (const key of ['terminalStream', 'serializedTerminalState', 'recentOutput', 'runtimeSessionId', 'pendingLaunch']) {
+    assert.strictEqual(metadata[key], undefined, `Completed runtime must not retain ${key}.`);
+  }
 }
 
 async function createBaseNodes() {
@@ -1183,7 +1355,7 @@ async function runTrustedSmoke() {
   let runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
   await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);
-  await verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(runtimePersistenceNodes.terminalNode.id);
+  await verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReconnectFallbackToResume(
     runtimePersistenceNodes.agentNode.id,
     runtimePersistenceNodes.terminalNode.id
@@ -10262,15 +10434,13 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
   }
 }
 
-async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminalNodeId) {
+async function verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(terminalNodeId) {
   const baselineSnapshot = await getDebugSnapshot();
   const terminalConfiguration = vscode.workspace.getConfiguration('terminal.integrated');
   const originalScrollback = terminalConfiguration.get('scrollback', 1000);
   const configuredScrollback = 100000;
   const lineCount = 90000;
   const markerPrefix = 'DSC_COMPLETED_STREAM';
-  const earliestMarker = `${markerPrefix}_00001_`;
-  const middleMarker = `${markerPrefix}_45000_`;
   const latestMarker = `${markerPrefix}_90000_`;
 
   await setRuntimePersistenceEnabled(true);
@@ -10334,31 +10504,29 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
       if (!node || node.metadata?.terminal?.liveSession || node.status !== 'closed') {
         return false;
       }
-      const terminalStream = node.metadata.terminal.terminalStream;
-      const streamText = readTerminalStreamProjectionText(terminalStream);
-      return Boolean(
-        terminalStream &&
-          node.metadata.terminal.serializedTerminalState === undefined &&
-          terminalStream.checkpoint.revision < terminalStream.revision &&
-          streamText.length > 5 * 1024 * 1024 &&
-          streamText.includes(earliestMarker) &&
-          streamText.includes(middleMarker) &&
-          streamText.includes(latestMarker)
-      );
+      return node.metadata.terminal.terminalHistoryDiscarded === true;
     }, 120000);
     const completedNode = findNodeById(snapshot, terminalNodeId);
-    const completedStreamText = readTerminalStreamProjectionText(
-      completedNode.metadata.terminal.terminalStream
-    );
-    assert.ok(
-      completedStreamText.length > 5 * 1024 * 1024,
-      'The fixture must exceed the validated checkpoint size limit and remain journal-backed.'
-    );
-    assert.strictEqual(
-      completedNode.metadata.terminal.serializedTerminalState,
-      undefined,
-      'An oversized unsafe head must not publish a misleading fresh serialized terminal state.'
-    );
+    assertCompletedRuntimeWithoutHistory(completedNode.metadata.terminal);
+    const expectedLines = Array.from({ length: lineCount }, (_, index) =>
+      `${markerPrefix}_${String(index + 1).padStart(5, '0')}_${'0'.repeat(32)}`);
+    assert.ok(Buffer.byteLength(expectedLines.join('\n')) > 5 * 1024 * 1024);
+    let bufferError;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        await performWebviewDomAction({ kind: 'assertExecutionTerminalBuffer', nodeId: terminalNodeId,
+          linePrefix: `${markerPrefix}_`, expectedLines }, 'editor', 30000);
+        bufferError = undefined;
+        break;
+      } catch (error) {
+        bufferError = error;
+        await sleep(1000);
+      }
+    }
+    if (bufferError) throw bufferError;
+    await performWebviewDomAction({ kind: 'scrollTerminalViewport', nodeId: terminalNodeId, lines: 1000000 });
+    await waitForWebviewProbe(probe =>
+      readProbeTerminalVisibleLines(probe, terminalNodeId).some(line => line.includes(latestMarker)), 30000);
     await waitForRuntimeSupervisorState(
       (runtimeState) =>
         !listRuntimeSupervisorSessions(runtimeState).some(
@@ -10367,19 +10535,15 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
       20000
     );
 
-    snapshot = await reloadPersistedState();
+    const persisted = await flushPersistedStateSnapshot();
+    assertCompletedRuntimeWithoutHistory(persisted.state.nodes.find(node => node.id === terminalNodeId).metadata.terminal);
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    snapshot = await simulateRuntimeReload();
+    await ensureEditorCanvasReady();
     const reloadedNode = findNodeById(snapshot, terminalNodeId);
     assert.strictEqual(reloadedNode.metadata.terminal.liveSession, false);
     assert.strictEqual(reloadedNode.status, 'closed');
-    assert.strictEqual(
-      reloadedNode.metadata.terminal.serializedTerminalState,
-      undefined,
-      'Reload must preserve the journal-backed projection without inventing a monolithic serialized state.'
-    );
-    assert.ok(
-      reloadedNode.metadata.terminal.terminalStream,
-      'Completed history must retain the trusted checkpoint plus its full journal suffix.'
-    );
+    assertCompletedRuntimeWithoutHistory(reloadedNode.metadata.terminal);
 
     await clearHostMessages();
     await requestExecutionSnapshot('terminal', terminalNodeId, 'editor');
@@ -10394,12 +10558,7 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
           ) {
             return false;
           }
-          const streamText = readTerminalStreamProjectionText(message.payload.terminalStream);
-          return (
-            streamText.includes(earliestMarker) &&
-            streamText.includes(middleMarker) &&
-            streamText.includes(latestMarker)
-          );
+          return message.payload.output === '' && !message.payload.terminalStream && !message.payload.serializedTerminalState;
         }),
       30000
     );
@@ -10408,12 +10567,15 @@ async function verifyCompletedLiveRuntimeRetainsOversizedTerminalStream(terminal
         message.type === 'host/executionSnapshot' &&
         message.payload.kind === 'terminal' &&
         message.payload.nodeId === terminalNodeId &&
-        message.payload.liveSession === false &&
-        readTerminalStreamProjectionText(message.payload.terminalStream).includes(earliestMarker) &&
-        readTerminalStreamProjectionText(message.payload.terminalStream).includes(middleMarker) &&
-        readTerminalStreamProjectionText(message.payload.terminalStream).includes(latestMarker)
+        message.payload.liveSession === false && message.payload.output === '' && !message.payload.terminalStream
     );
-    assert.ok(completedSnapshot, 'Reloaded completed terminal must expose the full terminal stream projection.');
+    assert.ok(completedSnapshot, 'Reopened completed terminal must not restore its history.');
+  } catch (error) {
+    if (artifactDir) {
+      // Preserve the completed reader before resetting storage and clearing the message ring.
+      await writeFailureArtifacts(error, path.join(artifactDir, 'completed-before-cleanup'));
+    }
+    throw error;
   } finally {
     await clearHostMessages();
     await setRuntimePersistenceEnabled(false);
@@ -13420,18 +13582,18 @@ async function verifyRestrictedDiagnostics(agentNodeId, terminalNodeId) {
   );
 }
 
-async function writeFailureArtifacts(error) {
-  if (!artifactDir) {
+async function writeFailureArtifacts(error, outputDir = artifactDir) {
+  if (!outputDir) {
     return;
   }
 
-  await fs.mkdir(artifactDir, { recursive: true });
-  await fs.writeFile(path.join(artifactDir, 'failure-error.txt'), formatError(error), 'utf8');
+  await fs.mkdir(outputDir, { recursive: true });
+  await fs.writeFile(path.join(outputDir, 'failure-error.txt'), formatError(error), 'utf8');
 
   const snapshot = await safeGet(() => getDebugSnapshot());
   if (snapshot !== undefined) {
     await fs.writeFile(
-      path.join(artifactDir, 'failure-snapshot.json'),
+      path.join(outputDir, 'failure-snapshot.json'),
       `${JSON.stringify(snapshot, null, 2)}\n`,
       'utf8'
     );
@@ -13440,7 +13602,7 @@ async function writeFailureArtifacts(error) {
   const hostMessages = await safeGet(() => getHostMessages());
   if (hostMessages !== undefined) {
     await fs.writeFile(
-      path.join(artifactDir, 'failure-host-messages.json'),
+      path.join(outputDir, 'failure-host-messages.json'),
       `${JSON.stringify(hostMessages, null, 2)}\n`,
       'utf8'
     );
@@ -13449,7 +13611,7 @@ async function writeFailureArtifacts(error) {
   const diagnosticEvents = await safeGet(() => getDiagnosticEvents());
   if (diagnosticEvents !== undefined) {
     await fs.writeFile(
-      path.join(artifactDir, 'failure-diagnostic-events.json'),
+      path.join(outputDir, 'failure-diagnostic-events.json'),
       `${JSON.stringify(diagnosticEvents, null, 2)}\n`,
       'utf8'
     );
@@ -13457,7 +13619,7 @@ async function writeFailureArtifacts(error) {
 
   if (lastWebviewProbe !== undefined) {
     await fs.writeFile(
-      path.join(artifactDir, 'failure-webview-probe.json'),
+      path.join(outputDir, 'failure-webview-probe.json'),
       `${JSON.stringify(lastWebviewProbe, null, 2)}\n`,
       'utf8'
     );
@@ -13468,7 +13630,7 @@ async function writeFailureArtifacts(error) {
   );
   if (hostDiagnosticsDump !== undefined) {
     await fs.writeFile(
-      path.join(artifactDir, 'failure-host-diagnostics-dump.json'),
+      path.join(outputDir, 'failure-host-diagnostics-dump.json'),
       `${JSON.stringify(hostDiagnosticsDump, null, 2)}\n`,
       'utf8'
     );

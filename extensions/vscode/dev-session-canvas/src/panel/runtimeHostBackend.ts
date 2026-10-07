@@ -4,11 +4,13 @@ import * as path from 'path';
 import { promisify } from 'util';
 import * as vscode from 'vscode';
 
+import type { ExecutionCandidateProfile } from '../common/executionLifecycle';
 import type {
   RuntimeHostBackendKind,
   RuntimePersistenceGuarantee
 } from '../common/protocol';
 import {
+  assertExecutionCandidateRuntimeSupervisorStorageDir,
   resolveLegacyRuntimeSupervisorPaths,
   resolveSystemdUserRuntimeSupervisorPaths
 } from '../common/runtimeSupervisorPaths';
@@ -42,11 +44,54 @@ export interface RuntimeHostBackend extends RuntimeHostBackendDescriptor {
 export interface RuntimeHostBackendStartArgs {
   supervisorScriptPath: string;
   supervisorLauncherScriptPath: string;
+  executionProfile?: ExecutionCandidateProfile;
 }
 
 export interface RuntimeHostBackendFactoryOptions {
   baseStoragePath: string;
   extensionMode: vscode.ExtensionMode;
+}
+
+export interface InactiveSystemdUserSupervisorObservation {
+  stateToken: string;
+  controlGroupStopped: boolean;
+}
+
+export async function observeInactiveSystemdUserSupervisor(
+  backend: RuntimeHostBackendDescriptor
+): Promise<InactiveSystemdUserSupervisorObservation | undefined> {
+  if (process.platform !== 'linux' || backend.kind !== 'systemd-user' || !backend.paths.unitName) return undefined;
+  const requiredProperties = ['Id', 'LoadState', 'ActiveState', 'SubState', 'MainPID', 'ControlPID', 'ControlGroup',
+    'Job', 'InvocationID', 'StateChangeTimestampMonotonic', 'InactiveEnterTimestampMonotonic'];
+  const properties = [...requiredProperties, 'KillMode', 'SendSIGKILL'];
+  const command = resolveSystemctlCommand();
+  try {
+    const { stdout } = await execFileAsync(command.file, [...command.prefixArgs, '--user', 'show', '--all',
+      '--no-pager', `--property=${properties.join(',')}`, backend.paths.unitName], {
+      timeout: SYSTEMD_COMMAND_TIMEOUT_MS, maxBuffer: 16384, encoding: 'utf8', windowsHide: true
+    });
+    const values = new Map<string, string>();
+    for (const line of stdout.trimEnd().split('\n')) {
+      const separator = line.indexOf('=');
+      if (separator < 1) return undefined;
+      const key = line.slice(0, separator);
+      if (!properties.includes(key) || values.has(key)) return undefined;
+      values.set(key, line.slice(separator + 1));
+    }
+    if (requiredProperties.some(key => !values.has(key)) || values.get('Id') !== backend.paths.unitName
+      || values.get('LoadState') !== 'loaded' || values.get('ActiveState') !== 'inactive'
+      || values.get('SubState') !== 'dead' || values.get('MainPID') !== '0' || values.get('ControlPID') !== '0'
+      || values.get('ControlGroup') !== '' || !['', '0'].includes(values.get('Job')!)
+      || !/^(?:[a-f0-9]{32})?$/.test(values.get('InvocationID')!)
+      || ['StateChangeTimestampMonotonic', 'InactiveEnterTimestampMonotonic']
+        .some(key => !/^[0-9]+$/.test(values.get(key)!))) return undefined;
+    return {
+      stateToken: JSON.stringify(properties.map(key => values.get(key))),
+      controlGroupStopped: values.get('KillMode') === 'control-group' && values.get('SendSIGKILL') === 'yes'
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export function listPreferredRuntimeHostBackendKinds(
@@ -95,6 +140,10 @@ export function createRuntimeHostBackend(
   return {
     ...descriptor,
     startSupervisor: async (args) => {
+      if (args.executionProfile !== undefined) {
+        assertExecutionCandidateRuntimeSupervisorStorageDir(paths.storageDir, args.executionProfile);
+      }
+
       if (kind === 'systemd-user') {
         await startSystemdUserSupervisor(descriptor, args);
         return;
@@ -132,6 +181,10 @@ function startLegacyDetachedSupervisor(
     childArgs.push('--control-dir', backend.paths.controlDir);
   }
 
+  if (args.executionProfile !== undefined) {
+    childArgs.push('--execution-profile', args.executionProfile);
+  }
+
   const child = spawn(executablePath, childArgs, {
     detached: true,
     env: buildSupervisorProcessEnv(),
@@ -166,7 +219,8 @@ async function startSystemdUserSupervisor(
   const unitContent = renderSystemdUserUnit({
     unitName,
     backend,
-    supervisorScriptPath: args.supervisorScriptPath
+    supervisorScriptPath: args.supervisorScriptPath,
+    executionProfile: args.executionProfile
   });
   await fs.writeFile(unitFilePath, unitContent, 'utf8');
 
@@ -219,6 +273,7 @@ function renderSystemdUserUnit(params: {
   unitName: string;
   backend: RuntimeHostBackendDescriptor;
   supervisorScriptPath: string;
+  executionProfile?: ExecutionCandidateProfile;
 }): string {
   const executablePath = resolveSupervisorExecPath();
   const execArgs = [
@@ -241,6 +296,10 @@ function renderSystemdUserUnit(params: {
     execArgs.push('--runtime-dir', params.backend.paths.runtimeDir);
   }
 
+  if (params.executionProfile !== undefined) {
+    execArgs.push('--execution-profile', params.executionProfile);
+  }
+
   return [
     '[Unit]',
     `Description=Dev Session Canvas Runtime Supervisor (${escapeSystemdValue(params.unitName)})`,
@@ -253,7 +312,7 @@ function renderSystemdUserUnit(params: {
     ),
     `WorkingDirectory=${quoteSystemdExecArg(params.backend.paths.storageDir)}`,
     `ExecStart=${execArgs.map((value) => quoteSystemdExecArg(value)).join(' ')}`,
-    'Restart=on-failure',
+    params.executionProfile === undefined ? 'Restart=on-failure' : 'Restart=no',
     'RestartSec=1',
     '',
     '[Install]',

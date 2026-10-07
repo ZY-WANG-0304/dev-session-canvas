@@ -42,8 +42,17 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Candidate builds use an isolated Supervisor generation so new sessions can
+// negotiate current-state recovery without changing existing live bindings.
+function expectedExecutionCandidateGeneration(platform = process.platform) {
+  if (platform === 'win32') return 'terminal-current-state-windows-v1';
+  if (platform === 'darwin') return 'terminal-current-state-macos-v1';
+  return 'terminal-current-state-linux-v1';
+}
+
 module.exports = {
   activateVisibleExtension,
+  expectedExecutionCandidateGeneration,
   waitForCommand,
   waitForVisibleExtension
 };

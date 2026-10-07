@@ -30,6 +30,20 @@ try {
 
   assert.match(SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE, /xterm-headless@6\.0\.0/u);
   assert.match(SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE, /addon-serialize@0\.14\.0/u);
+  assert.match(SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE, /serialize-patch=bold-dim-v1/u);
+  const unpatchedOutfile = path.join(tempDir, 'unpatched-serializedTerminalState.cjs');
+  await esbuild.build({ entryPoints: [path.resolve('extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts')],
+    bundle: true, format: 'cjs', outfile: unpatchedOutfile, platform: 'node', target: 'node18',
+    plugins: [{ name: 'missing-serializer-marker', setup(build) {
+      build.onResolve({ filter: /^@xterm\/addon-serialize$/ }, () => ({ path: 'stock', namespace: 'unpatched' }));
+      build.onLoad({ filter: /.*/, namespace: 'unpatched' }, () => ({ contents: 'export class SerializeAddon {}', loader: 'js' }));
+    } }] });
+  assert.throws(() => require(unpatchedOutfile), /pinned terminal serializer patch is missing/,
+    'A missing dependency patch must fail before claiming the patched producer profile.');
+  await verifyBoldDimSnapshotRoundTrip(SerializedTerminalStateTracker);
+  await verifyConsumptionDrain(SerializedTerminalStateTracker);
+  await verifyLiveCurrentStateCapture(SerializedTerminalStateTracker);
+  await verifyLargeSnapshotRestore(SerializedTerminalStateTracker, normalizeSerializedTerminalState);
 
   const tracker = new SerializedTerminalStateTracker(40, 8);
   tracker.write('alpha\r\n');
@@ -356,14 +370,212 @@ try {
     /injected xterm write failure/u,
     'ordinary flush must keep reporting a prior tracker operation failure.'
   );
+  await assert.rejects(failedWriteTracker.drain(), /injected xterm write failure/u,
+    'consumption drain must keep reporting a prior tracker operation failure.');
   failedWriteTracker.dispose();
 
   const disposedTracker = new SerializedTerminalStateTracker(20, 5);
   disposedTracker.write('pending-before-dispose\r\n');
   disposedTracker.dispose();
   await disposedTracker.flush();
+  await assert.rejects(disposedTracker.drain(), /disposed/u,
+    'a disposed tracker cannot acknowledge discarded pending consumption.');
 
   console.log('serializedTerminalStateTracker tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+async function verifyLargeSnapshotRestore(Tracker, normalize) {
+  const lineCount = 90000;
+  const row = index => `SNAPSHOT-${String(index).padStart(5, '0')}-${'x'.repeat(46)}`;
+  const producer = new Tracker(80, 24, { scrollback: 100000 });
+  let restored;
+  try {
+    producer.write(`${Array.from({ length: lineCount }, (_, index) => row(index)).join('\r\n')}\r\n\x1b[3;7H`,
+      { outputSequence: 9 });
+    const state = await producer.flush();
+    assert.ok(state.data.length > 5 * 1024 * 1024, 'The actual serialized scrollback must cross the former restore limit.');
+    const normalized = normalize(JSON.parse(JSON.stringify(state)));
+    assert.ok(normalized, 'A valid snapshot produced by the tracker must survive normalization regardless of history size.');
+    assert.deepEqual(normalized, state);
+    assert.deepEqual(await producer.flushValidatedCheckpoint(), { eligible: false, reason: 'serialized-state-too-large' },
+      'Accepting a persisted snapshot must not relax the independent checkpoint eligibility limit.');
+    restored = new Tracker(80, 24, { scrollback: 100000, initialState: normalized, initialOutputSequence: 9 });
+    const restoredState = await restored.flush();
+    assert.equal(restoredState.data, state.data);
+    assert.equal(restoredState.outputSequence, 9);
+    const buffer = restored.terminal.buffer.active;
+    for (let index = 0; index < lineCount; index++) {
+      assert.equal(buffer.getLine(index).translateToString(true), row(index), `Restored snapshot line ${index}`);
+    }
+    assert.equal(buffer.cursorX, 6);
+    assert.equal(buffer.cursorY, 2);
+    assert.equal(normalize({ ...state, format: 'unknown-format' }), undefined);
+    assert.equal(normalize({ ...state, data: 42 }), undefined);
+    assert.equal(normalize({ ...state, outputSequence: -1 }).outputSequence, undefined);
+    assert.equal(normalize({ ...state, outputSequence: 1.5 }).outputSequence, undefined);
+  } finally {
+    restored?.dispose();
+    producer.dispose();
+  }
+}
+
+async function verifyBoldDimSnapshotRoundTrip(Tracker) {
+  for (const [input, expected, cursor] of [
+    ['\x1b[2mA\x1b[22;1mB', [{ bold: false, dim: true }, { bold: true, dim: false }]],
+    ['\x1b[1;2mA\x1b[22;2mB', [{ bold: true, dim: true }, { bold: false, dim: true }]],
+    ['\x1b[1;2mA\x1b[22;1mB', [{ bold: true, dim: true }, { bold: true, dim: false }]],
+    ['\x1b[2mA\x1b[22;1m', [{ bold: false, dim: true }], { bold: true, dim: false }]
+  ]) {
+    const producer = new Tracker(40, 8);
+    let restored;
+    const flags = cell => ({ bold: cell.isBold() !== 0, dim: cell.isDim() !== 0 });
+    try {
+      producer.write(input, { outputSequence: 1 });
+      const state = await producer.flush();
+      restored = new Tracker(40, 8, { initialState: state, initialOutputSequence: 1 });
+      await restored.flush();
+      for (const [index, styles] of expected.entries()) {
+        assert.deepEqual(flags(producer.terminal.buffer.active.getLine(0).getCell(index)), styles);
+        assert.deepEqual(flags(restored.terminal.buffer.active.getLine(0).getCell(index)), styles,
+          'An SGR 22 transition must preserve both target Bold and Dim when a saved snapshot is restored.');
+      }
+      assert.deepEqual(flags(restored.terminal._core._inputHandler._curAttrData), cursor ?? expected.at(-1));
+      assert.equal((await producer.flushValidatedCheckpoint()).eligible, true);
+    } finally { restored?.dispose(); producer.dispose(); }
+  }
+}
+
+async function verifyConsumptionDrain(Tracker) {
+  const tracker = new Tracker(40, 8, { scrollback: 5000 });
+  const serialize = tracker.serializeAddon.serialize.bind(tracker.serializeAddon);
+  let serializations = 0;
+  tracker.serializeAddon.serialize = (...args) => { serializations++; return serialize(...args); };
+  try {
+    tracker.lastCachedStateRefreshAtMs = 0;
+    tracker.write(`${'d'.repeat(96 * 1024)}DRAIN-END\r\n`, { outputSequence: 4 });
+    await tracker.drain();
+    assert.equal(serializations, 0, 'drain must not serialize even when a multi-chunk cache refresh is overdue.');
+    assert.equal(tracker.outputSequence, 4, 'drain must wait for output sequence application.');
+    const final = await tracker.flush();
+    assert.equal(serializations, 1, 'the explicit final flush must still serialize dirty terminal state.');
+    assert.match(final.data, /DRAIN-END/u);
+    assert.equal(final.outputSequence, 4);
+  } finally { tracker.dispose(); }
+
+  const ordered = new Tracker(20, 5, { scrollback: 100 });
+  const write = ordered.terminal.write.bind(ordered.terminal);
+  let release;
+  let settled = false;
+  ordered.terminal.write = (data, callback) => write(data, () => { release = callback; });
+  try {
+    ordered.write('ordered-tail\r\n', { outputSequence: 1 });
+    ordered.resize(30, 7, { outputSequence: 2 });
+    const scrollback = ordered.setScrollback(200, { outputSequence: 3 });
+    const drained = ordered.drain().then(() => { settled = true; });
+    await waitFor(() => release !== undefined, 'the real parser callback');
+    assert.equal(settled, false, 'drain must not acknowledge a write whose real callback is held.');
+    assert.equal(ordered.terminal.cols, 20, 'resize must remain ordered after the pending parser callback.');
+    assert.equal(ordered.getScrollback(), 100);
+    release();
+    await drained;
+    await scrollback;
+    assert.equal(ordered.terminal.cols, 30);
+    assert.equal(ordered.terminal.rows, 7);
+    assert.equal(ordered.getScrollback(), 200);
+    assert.equal(ordered.outputSequence, 3);
+    assert.match((await ordered.flush()).data, /ordered-tail/u);
+  } finally { release?.(); ordered.dispose(); }
+
+  const partial = new Tracker(20, 5);
+  try {
+    partial.write('\u001b[31', { outputSequence: 1 });
+    await partial.drain();
+    assert.deepEqual(await partial.flushValidatedCheckpoint(), { eligible: false, reason: 'parser-not-ground' },
+      'consumption is not proof that a partial ANSI stream is checkpoint-safe.');
+    partial.write('mDRAIN-RED\u001b[0m\r\n', { outputSequence: 2 });
+    await partial.drain();
+    const state = await partial.flush();
+    assert.match(state.data, /\u001b\[31mDRAIN-RED/u, 'drain must preserve parser carry across consumed batches.');
+    assert.doesNotMatch(state.data, /^mDRAIN-RED/u);
+    assert.equal(state.outputSequence, 2);
+  } finally { partial.dispose(); }
+
+  for (const operation of ['write', 'resize']) {
+    const failed = new Tracker(20, 5);
+    const error = new Error(`controlled ${operation} drain failure`);
+    failed.terminal[operation] = () => { throw error; };
+    try {
+      if (operation === 'write') failed.write('unapplied');
+      else failed.resize(30, 7);
+      await assert.rejects(failed.drain(), failure => failure === error);
+      await assert.rejects(failed.drain(), failure => failure === error,
+        'an operation error must remain sticky across later consumption attempts.');
+    } finally { failed.dispose(); }
+  }
+
+  const disposed = new Tracker(20, 5);
+  const disposedWrite = disposed.terminal.write.bind(disposed.terminal);
+  let releaseDisposed;
+  disposed.terminal.write = (data, callback) => disposedWrite(data, () => { releaseDisposed = callback; });
+  try {
+    disposed.write('cannot-ack-after-dispose');
+    const drained = disposed.drain();
+    const rejected = assert.rejects(drained, /disposed/u,
+      'disposal during an in-flight parser operation must not produce a successful drain.');
+    await waitFor(() => releaseDisposed !== undefined, 'the callback held during disposal');
+    disposed.dispose();
+    releaseDisposed();
+    await rejected;
+  } finally { releaseDisposed?.(); disposed.dispose(); }
+}
+
+async function verifyLiveCurrentStateCapture(Tracker) {
+  const tracker = new Tracker(32, 6, { scrollback: 20 });
+  try {
+    let serializations = 0;
+    const serialize = tracker.serializeAddon.serialize.bind(tracker.serializeAddon);
+    tracker.serializeAddon.serialize = (...args) => { serializations++; return serialize(...args); };
+    tracker.write('\x1b]4;1;rgb:12/34/56\x07\x1b]10;rgb:ab/cd/ef\x07CURRENT\x1b[38;2;1;', { outputSequence: 7 });
+    const state = await tracker.captureCurrentState();
+    assert.equal(state.format, 'xterm-current-state-v1');
+    assert.deepEqual(state.colors.overrides, { 1: [0x12, 0x34, 0x56], 256: [0xab, 0xcd, 0xef] });
+    assert.equal(tracker.terminal.buffer.active.getLine(0).translateToString(true), 'CURRENT');
+    assert.notEqual(state.parser.state, 0, 'Capture must retain pending CSI state rather than replay old output.');
+    assert.equal(serializations, 0, 'Capturing current state must not materialize the ANSI checkpoint as well.');
+    tracker.write('2;3m-SUFFIX\x1b]104;1\x07', { outputSequence: 8 });
+    const next = await tracker.captureCurrentState();
+    assert.equal(tracker.terminal.buffer.active.getLine(0).translateToString(true), 'CURRENT-SUFFIX');
+    assert.equal(state.colors.overrides[1][0], 0x12, 'The frozen state must not change with the live color reducer.');
+    assert.equal(next.colors.overrides[1], undefined);
+    assert.deepEqual(next.colors.overrides[256], [0xab, 0xcd, 0xef]);
+    const parserStack = tracker.terminal._core._inputHandler._parseStack;
+    parserStack.paused = true;
+    await assert.rejects(tracker.captureCurrentState(), /parser-paused/);
+    parserStack.paused = false;
+    tracker.write('-STILL-LIVE', { outputSequence: 9 });
+    await tracker.drain();
+    assert.match(tracker.terminal.buffer.active.getLine(0).translateToString(true), /STILL-LIVE/,
+      'A failed bootstrap must not poison consumption of the running session.');
+    const replies = [];
+    tracker.terminal.onData(value => replies.push(value));
+    tracker.write('\x1b]52;c;SGV', { outputSequence: 10 });
+    const clipboardCarry = await tracker.captureCurrentState();
+    assert.equal(clipboardCarry.parser.osc.id, 52);
+    assert.deepEqual(clipboardCarry.parser.osc.handlers, [{ data: 'c;SGV', hitLimit: false }],
+      'The authoritative headless model must retain unfinished OSC52 for the Webview handler.');
+    tracker.write('sbG8=\x07', { outputSequence: 11 });
+    const clipboardEnded = await tracker.captureCurrentState();
+    assert.deepEqual(clipboardEnded.parser.osc.handlers, [], 'Completed clipboard commands are not restored or replayed.');
+    assert.deepEqual(replies, [], 'The Supervisor clipboard observer must not emit terminal replies or perform a copy.');
+  } finally { tracker.dispose(); }
+  await assert.rejects(tracker.captureCurrentState(), /disposed/);
+}
+
+async function waitFor(condition, label) {
+  for (let turn = 0; turn < 100 && !condition(); turn++) {
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  assert.ok(condition(), `Timed out waiting for ${label}.`);
 }

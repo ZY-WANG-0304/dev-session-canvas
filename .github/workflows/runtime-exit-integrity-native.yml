@@ -2,6 +2,21 @@ name: Runtime Exit Integrity Native Probe
 
 on:
   workflow_dispatch:
+    inputs:
+      real_agents:
+        description: Run real Codex and Claude acceptance through DeepSeek
+        type: boolean
+        required: false
+        default: false
+      real_agent_platform:
+        description: Platform for the finite real Agent acceptance
+        type: choice
+        required: false
+        default: linux
+        options:
+          - linux
+          - macos
+          - windows
   push:
     branches:
       - runtime-exit-integrity-platform-runners
@@ -22,6 +37,7 @@ concurrency:
 jobs:
   native-node-pty:
     name: Native node-pty / ${{ matrix.os }} / Node 22
+    if: github.event_name != 'workflow_dispatch' || !inputs.real_agents
     strategy:
       fail-fast: false
       matrix:
@@ -54,3 +70,100 @@ jobs:
           path: native-pty-evidence/
           if-no-files-found: warn
           retention-days: 14
+
+  real-agent-linux:
+    name: Real Agent candidate / Linux / DeepSeek
+    if: github.event_name == 'workflow_dispatch' && inputs.real_agents && inputs.real_agent_platform == 'linux'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    concurrency:
+      group: runtime-real-agent-acceptance
+      cancel-in-progress: false
+    steps:
+      - name: Checkout acceptance source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup fixed Agent Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '25.6.0'
+          cache: npm
+      - name: Install Linux desktop and sandbox dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y g++ curl ca-certificates xvfb xauth bubblewrap libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libxtst6
+          bwrap --unshare-user --ro-bind / / /usr/bin/true
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check real Agent workflow contract
+        run: |
+          node scripts/test/test-agent-candidate-deepseek.mjs
+          node scripts/test/test-agent-candidate-ci-report.mjs
+          node scripts/test/test-vscode-smoke-runner-env.mjs
+          node scripts/test/test-runtime-agent-ci-workflow.mjs
+      - name: Install fixed real Agent CLIs
+        run: npm install --global --no-audit --no-fund @openai/codex@0.157.1 @anthropic-ai/claude-code@2.1.280
+      - name: Prepare fixed VS Code
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          import { downloadAndUnzipVSCode } from '@vscode/test-electron';
+          const executable = await downloadAndUnzipVSCode({
+            version: '1.117.0',
+            platform: 'linux-x64',
+            cachePath: path.join(process.env.RUNNER_TEMP, 'agent-vscode')
+          });
+          await fs.appendFile(process.env.GITHUB_ENV, `DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=${executable}\n`);
+          NODE
+      - name: Build fixed Electron execution candidate
+        run: |
+          ELECTRON_RUN_AS_NODE=1 "$DEV_SESSION_CANVAS_VSCODE_EXECUTABLE" -e 'const assert = require("node:assert/strict"); assert.equal(process.versions.electron, "39.8.7"); assert.equal(process.versions.node, "22.22.1"); assert.equal(process.versions.modules, "140");'
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/agent-electron-headers.tar.gz" https://artifacts.electronjs.org/headers/dist/v39.8.7/node-v39.8.7-headers.tar.gz
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import fs from 'node:fs/promises';
+          import path from 'node:path';
+          const bytes = await fs.readFile(path.join(process.env.RUNNER_TEMP, 'agent-electron-headers.tar.gz'));
+          assert.equal(createHash('sha256').update(bytes).digest('hex'), 'af6712ab16c436b9288ece2f0173924c74008446346bda3457d07b769f402eda');
+          NODE
+          mkdir "$RUNNER_TEMP/agent-electron-headers"
+          tar --extract --gzip --file "$RUNNER_TEMP/agent-electron-headers.tar.gz" --strip-components=1 --directory "$RUNNER_TEMP/agent-electron-headers"
+          ELECTRON_RUN_AS_NODE=1 "$DEV_SESSION_CANVAS_VSCODE_EXECUTABLE" scripts/build/linux-execution-candidate-assets.mjs build --output "$RUNNER_TEMP/agent-native-assets" --dependency-root "$GITHUB_WORKSPACE/node_modules" --headers "$RUNNER_TEMP/agent-electron-headers/include/node" --compiler g++
+          node scripts/build/build.mjs --execution-profile=linux-owner-v1-candidate --execution-assets "$RUNNER_TEMP/agent-native-assets"
+      - name: Run finite real Agent acceptance
+        id: real_agents
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          umask 077
+          if node scripts/smoke/run-vscode-agent-candidate.mjs --backend=deepseek --ci-report agent-ci-report --output ".debug/agent-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" > "$RUNNER_TEMP/agent-candidate.log" 2>&1; then
+            echo 'Real Agent acceptance passed; sanitized report: agent-ci-report/'
+          else
+            echo 'Real Agent acceptance failed; sanitized report: agent-ci-report/' >&2
+            exit 1
+          fi
+      - name: Upload sanitized real Agent report
+        if: always() && steps.real_agents.outputs.report_ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-real-agent-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agent-ci-report/
+          if-no-files-found: error
+          retention-days: 14
+
+  real-agent-macos:
+    name: Real Agent candidate / macOS / DeepSeek
+    if: github.event_name == 'workflow_dispatch' && inputs.real_agents && inputs.real_agent_platform == 'macos'
+    uses: ./.github/workflows/runtime-real-agent-macos.yml
+    secrets:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
+  real-agent-windows:
+    name: Real Agent candidate / Windows / DeepSeek
+    if: github.event_name == 'workflow_dispatch' && inputs.real_agents && inputs.real_agent_platform == 'windows'
+    uses: ./.github/workflows/runtime-real-agent-windows.yml
+    secrets:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

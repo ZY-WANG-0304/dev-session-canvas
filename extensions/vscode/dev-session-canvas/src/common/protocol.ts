@@ -1,5 +1,7 @@
 import type { SerializedTerminalState } from './serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
+import type { TerminalStreamPage, TerminalStreamReadDescriptor } from './terminalStreamPaging';
+import type { RuntimeSupervisorTerminalReadOutcome } from './runtimeSupervisorProtocol';
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
@@ -241,6 +243,8 @@ export interface ExecutionSessionMetadata {
   lastRows?: number;
   serializedTerminalState?: SerializedTerminalState;
   terminalStream?: TerminalStreamAttachPayload;
+  /** The runtime ended; reopening keeps the node, not terminal content or an automatic launch. */
+  terminalHistoryDiscarded?: true;
   attentionPending: boolean;
 }
 
@@ -407,6 +411,20 @@ interface WebviewLifecycleEnvelope {
   lifecycle?: WebviewLifecycleIdentity;
 }
 
+export interface LocalTerminalCompletion {
+  executionSessionId: string;
+  finalOutputSequence: number;
+}
+
+export interface LocalOutputReceipt {
+  receiptId: string;
+  outputSequence: number;
+}
+
+export type LocalTerminalOutcome =
+  | { kind: 'applied'; finalOutputSequence: number }
+  | { kind: 'cancelled'; reason: string };
+
 export interface NoteMarkdownImageWorkspaceRoot {
   name: string;
   webviewResourceBaseUri: string;
@@ -470,6 +488,8 @@ export interface WebviewProbeNodeSnapshot {
   terminalSelectionText?: string;
   terminalCols?: number;
   terminalRows?: number;
+  terminalCursorX?: number;
+  terminalCursorY?: number;
   terminalViewportY?: number;
   terminalVisibleLines?: string[];
   terminalTextareaLeft?: number;
@@ -503,6 +523,12 @@ export interface WebviewProbeSnapshot {
   groupCount?: number;
   groups?: WebviewProbeGroupSnapshot[];
   selectedGroupIds?: string[];
+  capacityCalibration?: {
+    readers: Array<{ nodeId: string; readId: string; sessionId: string; authorityId: string }>;
+    browserReportedHeapUsed?: number;
+    interaction?: { nodeId: string; nonce: string; elapsedMs: number; applied: boolean;
+      loadLastBlockBefore: number; loadLastBlockAfter: number };
+  };
 }
 
 export interface WebviewProbeGroupSnapshot {
@@ -575,6 +601,10 @@ export interface ExecutionPerformanceDiagnosticPayload {
   queuedWriteCount?: number;
   bufferLength?: number;
   pendingOutputLength?: number;
+  currentStateLength?: number;
+  currentStateOffset?: number;
+  currentStateChunkCount?: number;
+  currentStateAssemblyPeakCharacters?: number;
   owner?: ExecutionPerformanceDiagnosticOwner;
   lifecycleStatus?: string;
   workspaceStateMode?: string;
@@ -631,6 +661,27 @@ export type WebviewDomAction =
       kind: 'assertExecutionTerminalBuffer';
       nodeId: string;
       expectedLines: string[];
+      linePrefix?: string;
+      expectedIntensities?: Array<{ lineIndex: number; column: number; bold: boolean; dim: boolean }>;
+      delayMs?: number;
+    }
+  | {
+      kind: 'configureCapacityCalibration';
+      nodeId: string;
+      enabled: boolean;
+      delayMs?: number;
+    }
+  | {
+      kind: 'measureCapacityInteraction';
+      nodeId: string;
+      nonce: string;
+      loadNodeId: string;
+      delayMs?: number;
+    }
+  | {
+      kind: 'assertCapacityTerminalSuffix';
+      nodeId: string;
+      blocks: 640 | 1280 | 2560;
       delayMs?: number;
     }
   | {
@@ -698,6 +749,13 @@ export type WebviewDomAction =
 export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'webview/ready';
+      payload?: { capabilities?: {
+        terminalReadSettlementV1?: true;
+        terminalCurrentStateV1?: true;
+        terminalLocalSettlementV1?: true;
+        terminalLocalOutputCreditV1?: true;
+        terminalAvailableReceiptV1?: true;
+      } };
     }
   | {
       type: 'webview/bootstrapAck';
@@ -887,6 +945,16 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
+      type: 'webview/executionTerminalAvailableReceived';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        receiptId: string;
+      };
+    }
+  | {
       type: 'webview/executionTerminalApplied';
       payload: {
         nodeId: string;
@@ -894,6 +962,49 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         executionSessionId: string;
         authorityId: string;
         revision: number;
+      };
+    }
+  | {
+      type: 'webview/executionLocalOutputApplied';
+      payload: LocalOutputReceipt & {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        outcome: 'applied' | 'cancelled';
+        reason?: string;
+      };
+    }
+  | {
+      type: 'webview/executionLocalTerminalSettled';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        outcome: LocalTerminalOutcome;
+      };
+    }
+  | {
+      type: 'webview/readExecutionTerminalPage';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        readId: string;
+        requestId: string;
+        afterRevision: number;
+        stateOffset?: number;
+      };
+    }
+  | {
+      type: 'webview/closeExecutionTerminalRead';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        readId: string;
+        outcome?: RuntimeSupervisorTerminalReadOutcome;
       };
     }
   | {
@@ -1231,6 +1342,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
   | {
       type: 'host/executionSnapshot';
       payload: {
+        localOutputReceipt?: LocalOutputReceipt;
         nodeId: string;
         kind: ExecutionNodeKind;
         requestId?: string;
@@ -1244,11 +1356,41 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         outputSequence?: number;
         serializedTerminalState?: SerializedTerminalState;
         terminalStream?: TerminalStreamAttachPayload;
+        terminalRead?: TerminalStreamReadDescriptor;
+      };
+    }
+  | {
+      type: 'host/executionTerminalAvailable';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        revision: number;
+        receiptId?: string;
+        terminalTitle?: string | null;
+        completed?: true;
+        finalRevision?: number;
+      };
+    }
+  | {
+      type: 'host/executionTerminalPage';
+      payload: {
+        nodeId: string;
+        kind: ExecutionNodeKind;
+        executionSessionId: string;
+        authorityId: string;
+        readId: string;
+        requestId: string;
+        page?: TerminalStreamPage;
+        error?: string;
+        readClosed?: true;
       };
     }
   | {
       type: 'host/executionOutput';
       payload: {
+        localOutputReceipt?: LocalOutputReceipt;
         nodeId: string;
         kind: ExecutionNodeKind;
         executionSessionId?: string;
@@ -1280,6 +1422,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
         kind: ExecutionNodeKind;
         /** Identifies the session that ended; absent only for legacy Hosts. */
         executionSessionId?: string;
+        localCompletion?: LocalTerminalCompletion;
         message: string;
       };
     }
@@ -1471,13 +1614,68 @@ function isWebviewExecutionImagePasteBase64(value: unknown): value is string {
   );
 }
 
+export function normalizeTerminalReadOutcome(value: unknown): RuntimeSupervisorTerminalReadOutcome | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.kind === 'applied' && typeof value.finalRevision === 'number' &&
+      Number.isSafeInteger(value.finalRevision) && value.finalRevision >= 0) {
+    return { kind: 'applied', finalRevision: value.finalRevision };
+  }
+  if (value.kind === 'cancelled' && typeof value.reason === 'string' &&
+      value.reason.trim().length > 0 && value.reason.length <= 1024) {
+    return { kind: 'cancelled', reason: value.reason };
+  }
+  return undefined;
+}
+
+export function normalizeLocalTerminalCompletion(value: unknown): LocalTerminalCompletion | undefined {
+  if (!isRecord(value) || typeof value.executionSessionId !== 'string' || !value.executionSessionId ||
+      value.executionSessionId.length > 256 || typeof value.finalOutputSequence !== 'number' ||
+      !Number.isSafeInteger(value.finalOutputSequence) || value.finalOutputSequence < 0) return undefined;
+  return { executionSessionId: value.executionSessionId, finalOutputSequence: value.finalOutputSequence };
+}
+
+export function normalizeLocalTerminalOutcome(value: unknown): LocalTerminalOutcome | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.kind === 'applied' && typeof value.finalOutputSequence === 'number' &&
+      Number.isSafeInteger(value.finalOutputSequence) && value.finalOutputSequence >= 0) {
+    return { kind: 'applied', finalOutputSequence: value.finalOutputSequence };
+  }
+  const cancelled = normalizeTerminalReadOutcome(value);
+  return cancelled?.kind === 'cancelled' ? cancelled : undefined;
+}
+
 export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null {
   if (!isRecord(value) || typeof value.type !== 'string') {
     return null;
   }
 
+  if (value.type === 'webview/ready') {
+    if (value.payload === undefined) return { type: value.type };
+    if (!isRecord(value.payload) || (value.payload.capabilities !== undefined && !isRecord(value.payload.capabilities))) {
+      return null;
+    }
+    const capabilities = isRecord(value.payload.capabilities) ? value.payload.capabilities : {};
+    const remote = capabilities.terminalReadSettlementV1;
+    const currentState = capabilities.terminalCurrentStateV1;
+    const local = capabilities.terminalLocalSettlementV1;
+    const localCredit = capabilities.terminalLocalOutputCreditV1;
+    const availableReceipt = capabilities.terminalAvailableReceiptV1;
+    if ((remote !== undefined && remote !== true) || (local !== undefined && local !== true) ||
+        (currentState !== undefined && currentState !== true) ||
+        (availableReceipt !== undefined && availableReceipt !== true) ||
+        (localCredit !== undefined && localCredit !== true)) return null;
+    return remote === true || currentState === true || local === true || availableReceipt === true || localCredit === true
+      ? { type: value.type, payload: { capabilities: {
+          ...(remote === true ? { terminalReadSettlementV1: true as const } : {}),
+          ...(currentState === true ? { terminalCurrentStateV1: true as const } : {}),
+          ...(local === true ? { terminalLocalSettlementV1: true as const } : {}),
+          ...(localCredit === true ? { terminalLocalOutputCreditV1: true as const } : {}),
+          ...(availableReceipt === true ? { terminalAvailableReceiptV1: true as const } : {})
+        } } }
+      : { type: value.type };
+  }
+
   if (
-    value.type === 'webview/ready' ||
     value.type === 'webview/bootstrapAck' ||
     value.type === 'webview/resetDemoState' ||
     value.type === 'webview/saveCanvasAsTemplate'
@@ -1699,6 +1897,31 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
+  if (value.type === 'webview/executionLocalOutputApplied') {
+    const payload = isRecord(value.payload) ? value.payload : undefined;
+    if (!payload || typeof payload.nodeId !== 'string' || !payload.nodeId || payload.nodeId.length > 256 ||
+        !isExecutionNodeKind(payload.kind) || typeof payload.executionSessionId !== 'string' ||
+        !payload.executionSessionId || payload.executionSessionId.length > 256 ||
+        typeof payload.receiptId !== 'string' || !payload.receiptId || payload.receiptId.length > 256 ||
+        !Number.isSafeInteger(payload.outputSequence) || (payload.outputSequence as number) < 0 ||
+        (payload.outcome !== 'applied' && payload.outcome !== 'cancelled') ||
+        (payload.reason !== undefined && (typeof payload.reason !== 'string' || payload.reason.length > 256))) return null;
+    return { type: value.type, payload: { nodeId: payload.nodeId, kind: payload.kind,
+      executionSessionId: payload.executionSessionId, receiptId: payload.receiptId,
+      outputSequence: payload.outputSequence as number, outcome: payload.outcome,
+      ...(typeof payload.reason === 'string' ? { reason: payload.reason } : {}) } };
+  }
+
+  if (value.type === 'webview/executionLocalTerminalSettled') {
+    const payload = isRecord(value.payload) ? value.payload : undefined;
+    if (!payload || typeof payload.nodeId !== 'string' || !payload.nodeId || payload.nodeId.length > 256 ||
+        !isExecutionNodeKind(payload.kind) || typeof payload.executionSessionId !== 'string' ||
+        !payload.executionSessionId || payload.executionSessionId.length > 256) return null;
+    const outcome = normalizeLocalTerminalOutcome(payload.outcome);
+    return outcome ? { type: value.type, payload: { nodeId: payload.nodeId, kind: payload.kind,
+      executionSessionId: payload.executionSessionId, outcome } } : null;
+  }
+
   if (
     value.type === 'webview/attachExecutionSession' ||
     value.type === 'webview/stopExecutionSession'
@@ -1727,6 +1950,53 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         ...(value.type === 'webview/attachExecutionSession' && minOutputSequence !== undefined
           ? { minOutputSequence }
           : {})
+      }
+    };
+  }
+
+  if (value.type === 'webview/readExecutionTerminalPage' || value.type === 'webview/closeExecutionTerminalRead') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || typeof payload.nodeId !== 'string' || !isExecutionNodeKind(payload.kind) ||
+        typeof payload.executionSessionId !== 'string' || !payload.executionSessionId ||
+        typeof payload.authorityId !== 'string' || !payload.authorityId ||
+        typeof payload.readId !== 'string' || !payload.readId || payload.readId.length > 256) {
+      return null;
+    }
+    const identity = { nodeId: payload.nodeId, kind: payload.kind, executionSessionId: payload.executionSessionId,
+      authorityId: payload.authorityId, readId: payload.readId };
+    if (value.type === 'webview/closeExecutionTerminalRead') {
+      const outcome = normalizeTerminalReadOutcome(payload.outcome);
+      if (payload.outcome !== undefined && !outcome) return null;
+      return { type: value.type, payload: { ...identity, ...(outcome ? { outcome } : {}) } };
+    }
+    const afterRevision = payload.afterRevision;
+    const stateOffset = payload.stateOffset;
+    if (typeof payload.requestId !== 'string' || !payload.requestId || payload.requestId.length > 256 ||
+        (stateOffset !== undefined && (typeof stateOffset !== 'number' || !Number.isSafeInteger(stateOffset) || stateOffset < 0)) ||
+        typeof afterRevision !== 'number' || !Number.isSafeInteger(afterRevision) || afterRevision < 0) {
+      return null;
+    }
+    return { type: value.type, payload: { ...identity, requestId: payload.requestId, afterRevision,
+      ...(stateOffset !== undefined ? { stateOffset } : {}) } };
+  }
+
+  if (value.type === 'webview/executionTerminalAvailableReceived') {
+    const payload = isRecord(value.payload) ? value.payload : null;
+    if (!payload || !isExecutionNodeKind(payload.kind) ||
+        typeof payload.nodeId !== 'string' || !payload.nodeId || payload.nodeId.length > 256 ||
+        typeof payload.executionSessionId !== 'string' || !payload.executionSessionId || payload.executionSessionId.length > 256 ||
+        typeof payload.authorityId !== 'string' || !payload.authorityId || payload.authorityId.length > 256 ||
+        typeof payload.receiptId !== 'string' || !payload.receiptId || payload.receiptId.length > 256) {
+      return null;
+    }
+    return {
+      type: value.type,
+      payload: {
+        nodeId: payload.nodeId,
+        kind: payload.kind,
+        executionSessionId: payload.executionSessionId,
+        authorityId: payload.authorityId,
+        receiptId: payload.receiptId
       }
     };
   }
@@ -2618,6 +2888,18 @@ function normalizeExecutionPerformanceDiagnosticPayload(
     queuedWriteCount: normalizeNonNegativeInteger(value.queuedWriteCount),
     bufferLength: normalizeNonNegativeInteger(value.bufferLength),
     pendingOutputLength: normalizeNonNegativeInteger(value.pendingOutputLength),
+    ...(value.currentStateLength !== undefined
+      ? { currentStateLength: normalizeNonNegativeInteger(value.currentStateLength) }
+      : {}),
+    ...(value.currentStateOffset !== undefined
+      ? { currentStateOffset: normalizeNonNegativeInteger(value.currentStateOffset) }
+      : {}),
+    ...(value.currentStateChunkCount !== undefined
+      ? { currentStateChunkCount: normalizeNonNegativeInteger(value.currentStateChunkCount) }
+      : {}),
+    ...(value.currentStateAssemblyPeakCharacters !== undefined
+      ? { currentStateAssemblyPeakCharacters: normalizeNonNegativeInteger(value.currentStateAssemblyPeakCharacters) }
+      : {}),
     owner: isExecutionPerformanceDiagnosticOwner(value.owner) ? value.owner : undefined,
     lifecycleStatus: typeof value.lifecycleStatus === 'string' ? value.lifecycleStatus : undefined,
     workspaceStateMode: typeof value.workspaceStateMode === 'string' ? value.workspaceStateMode : undefined,
@@ -2794,7 +3076,26 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
   }
 
   if (value.kind === 'assertExecutionTerminalBuffer') {
-    return Array.isArray(value.expectedLines) && value.expectedLines.every((line) => typeof line === 'string');
+    const lines = value.expectedLines;
+    return Array.isArray(lines) && lines.every((line) => typeof line === 'string') &&
+      (value.linePrefix === undefined || typeof value.linePrefix === 'string') &&
+      (value.expectedIntensities === undefined || (Array.isArray(value.expectedIntensities) &&
+        value.expectedIntensities.length <= 4 && value.expectedIntensities.every((entry) => isRecord(entry) &&
+          typeof entry.lineIndex === 'number' && Number.isSafeInteger(entry.lineIndex) &&
+          entry.lineIndex >= 0 && entry.lineIndex < lines.length &&
+          typeof entry.column === 'number' && Number.isSafeInteger(entry.column) && entry.column >= 0 &&
+          typeof entry.bold === 'boolean' && typeof entry.dim === 'boolean')));
+  }
+
+  if (value.kind === 'configureCapacityCalibration') {
+    return typeof value.enabled === 'boolean';
+  }
+  if (value.kind === 'measureCapacityInteraction') {
+    return typeof value.nonce === 'string' && /^[a-zA-Z0-9_-]{1,60}$/.test(value.nonce) &&
+      typeof value.loadNodeId === 'string';
+  }
+  if (value.kind === 'assertCapacityTerminalSuffix') {
+    return value.blocks === 640 || value.blocks === 1280 || value.blocks === 2560;
   }
 
   if (value.kind === 'dropExecutionResources') {
@@ -2984,6 +3285,10 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
       (typeof value.terminalRows === 'number' &&
         Number.isInteger(value.terminalRows) &&
         value.terminalRows > 0)) &&
+    (value.terminalCursorX === undefined ||
+      (typeof value.terminalCursorX === 'number' && Number.isInteger(value.terminalCursorX) && value.terminalCursorX >= 0)) &&
+    (value.terminalCursorY === undefined ||
+      (typeof value.terminalCursorY === 'number' && Number.isInteger(value.terminalCursorY) && value.terminalCursorY >= 0)) &&
     (value.terminalViewportY === undefined ||
       (typeof value.terminalViewportY === 'number' &&
         Number.isInteger(value.terminalViewportY) &&
@@ -3044,8 +3349,24 @@ function isWebviewProbeSnapshot(value: unknown): value is WebviewProbeSnapshot {
     (value.groups === undefined ||
       (Array.isArray(value.groups) && value.groups.every((group) => isWebviewProbeGroupSnapshot(group)))) &&
     (value.selectedGroupIds === undefined ||
-      (Array.isArray(value.selectedGroupIds) && value.selectedGroupIds.every((groupId) => typeof groupId === 'string')))
+      (Array.isArray(value.selectedGroupIds) && value.selectedGroupIds.every((groupId) => typeof groupId === 'string'))) &&
+    (value.capacityCalibration === undefined || isCapacityCalibrationProbe(value.capacityCalibration))
   );
+}
+
+function isCapacityCalibrationProbe(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.readers) || value.readers.length > 10 ||
+      !value.readers.every((reader) => isRecord(reader) &&
+        ['nodeId', 'readId', 'sessionId', 'authorityId'].every((key) => typeof reader[key] === 'string'))) return false;
+  if (value.browserReportedHeapUsed !== undefined &&
+      (typeof value.browserReportedHeapUsed !== 'number' || !Number.isFinite(value.browserReportedHeapUsed) ||
+        value.browserReportedHeapUsed < 0)) return false;
+  const sample = value.interaction;
+  return sample === undefined || (isRecord(sample) && typeof sample.nodeId === 'string' &&
+    typeof sample.nonce === 'string' && typeof sample.elapsedMs === 'number' &&
+    Number.isFinite(sample.elapsedMs) && sample.elapsedMs >= 0 && typeof sample.applied === 'boolean' &&
+    typeof sample.loadLastBlockBefore === 'number' && Number.isSafeInteger(sample.loadLastBlockBefore) &&
+    typeof sample.loadLastBlockAfter === 'number' && Number.isSafeInteger(sample.loadLastBlockAfter));
 }
 
 function isWebviewProbeGroupSnapshot(value: unknown): value is WebviewProbeGroupSnapshot {

@@ -1,9 +1,10 @@
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
-import type { ExecutionNodeKind } from '../common/protocol';
+import type { ExecutionNodeKind, LocalOutputReceipt, LocalTerminalCompletion } from '../common/protocol';
 import type { SerializedTerminalState } from '../common/serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from '../common/terminalSessionStream';
+import type { TerminalStreamPage, TerminalStreamReadDescriptor } from '../common/terminalStreamPaging';
 import type { ExecutionTerminalNativeInteractionsHandle } from './executionTerminalNativeInteractions';
 
 export type ExecutionHostEvent =
@@ -19,8 +20,10 @@ export type ExecutionHostEvent =
       requestId?: string;
       executionSessionId?: string;
       outputSequence?: number;
+      localOutputReceipt?: LocalOutputReceipt;
       serializedTerminalState?: SerializedTerminalState;
       terminalStream?: TerminalStreamAttachPayload;
+      terminalRead?: TerminalStreamReadDescriptor;
     }
   | {
       type: 'output';
@@ -35,6 +38,7 @@ export type ExecutionHostEvent =
       terminalAuthorityId?: string;
       terminalStartRevision?: number;
       terminalRevision?: number;
+      localOutputReceipt?: LocalOutputReceipt;
     }
   | {
       type: 'terminal-event';
@@ -50,12 +54,15 @@ export type ExecutionHostEvent =
       kind: ExecutionNodeKind;
       executionSessionId?: string;
       message: string;
+      localCompletion?: LocalTerminalCompletion;
     };
 
 export interface ExecutionTerminalController {
   nodeId: string;
   kind: ExecutionNodeKind;
   applySnapshot(detail: Extract<ExecutionHostEvent, { type: 'snapshot' }>): void;
+  terminalAvailable(sessionId: string, authorityId: string, revision: number, completed?: boolean, finalRevision?: number): void;
+  applyTerminalPage(readId: string, requestId: string, page?: TerminalStreamPage, closedError?: string): void;
   requestAttachSnapshot(): void;
   enqueueOutput(
     chunk: string,
@@ -67,10 +74,11 @@ export interface ExecutionTerminalController {
       terminalAuthorityId?: string;
       terminalStartRevision?: number;
       terminalRevision?: number;
+      localOutputReceipt?: LocalOutputReceipt;
     }
   ): void;
   applyTerminalEvent(detail: Extract<ExecutionHostEvent, { type: 'terminal-event' }>): void;
-  showExit(message: string, executionSessionId?: string): void;
+  showExit(message: string, executionSessionId?: string, localCompletion?: LocalTerminalCompletion): void;
   refreshVisibleRows(): void;
   flushPendingOutput(maxCharacters?: number): number;
   getPendingOutputLength(): number;

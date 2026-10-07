@@ -42,6 +42,7 @@ import {
   type CanvasSurfaceLocation,
   type WorkspaceRootCanvasRemovalImpact
 } from './panel/CanvasPanelManager';
+import { resolveExecutionRuntimeSelection } from './panel/executionRuntimeSelection';
 import { CanvasTemplateMarketplacePanelController } from './panel/CanvasTemplateMarketplacePanel';
 import { TemplateMarketplaceClient } from './panel/TemplateMarketplaceClient';
 import { localizeCanvasTemplateError } from './panel/canvasTemplateLocalization';
@@ -271,7 +272,8 @@ function describeTerminalShellConfigurationTarget(target: vscode.ConfigurationTa
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const panelManager = new CanvasPanelManager(context);
+  const executionRuntime = resolveExecutionRuntimeSelection(context.extensionUri.fsPath);
+  const panelManager = new CanvasPanelManager(context, executionRuntime.ownerOptions, executionRuntime.profile);
   const templateMarketplaceClient = new TemplateMarketplaceClient(panelManager, context, context.extensionMode);
   const templateMarketplacePanel = new CanvasTemplateMarketplacePanelController(
     templateMarketplaceClient,
@@ -825,8 +827,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export async function deactivate(): Promise<void> {
   const panelManager = activePanelManager;
-  activePanelManager = undefined;
-  await panelManager?.prepareForDeactivation();
+  try {
+    await panelManager?.prepareForDeactivation();
+  } finally {
+    if (activePanelManager === panelManager) activePanelManager = undefined;
+  }
 }
 
 function registerCommand(

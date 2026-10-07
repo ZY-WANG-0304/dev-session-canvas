@@ -391,7 +391,7 @@ export async function findExistingVSCodeExecutablePath(projectRoot) {
   return undefined;
 }
 
-export function buildVSCodeArgs(options) {
+export function buildVSCodeArgs(options, platform = process.platform) {
   const args = [];
   if (options.remoteAuthority) {
     args.push('--remote', options.remoteAuthority);
@@ -413,8 +413,9 @@ export function buildVSCodeArgs(options) {
     `--extensions-dir=${options.extensionsDir}`,
     '--no-sandbox',
     '--disable-gpu-sandbox',
-    ...resolveVSCodeSmokeStabilityArgs(),
+    ...resolveVSCodeSmokeStabilityArgs(platform),
     '--password-store=basic',
+    ...(platform === 'darwin' ? ['--use-inmemory-secretstorage'] : []),
     '--disable-updates',
     '--skip-welcome',
     '--skip-release-notes'
@@ -430,7 +431,9 @@ export function buildVSCodeArgs(options) {
     args.push('--disable-workspace-trust');
   }
 
-  args.push(`--extensionTestsPath=${options.extensionTestsPath}`);
+  if (options.extensionTestsPath) {
+    args.push(`--extensionTestsPath=${options.extensionTestsPath}`);
+  }
   const extensionDevelopmentPaths = Array.isArray(options.extensionDevelopmentPath)
     ? options.extensionDevelopmentPath
     : [options.extensionDevelopmentPath];
@@ -440,8 +443,8 @@ export function buildVSCodeArgs(options) {
   return args;
 }
 
-function resolveVSCodeSmokeStabilityArgs() {
-  if (process.platform !== 'linux') {
+function resolveVSCodeSmokeStabilityArgs(platform) {
+  if (platform !== 'linux') {
     return [];
   }
 
@@ -517,12 +520,11 @@ async function launchVSCodeTestProcess(executablePath, args, extensionTestsEnv) 
 
 function spawnVSCodeTestProcess(executablePath, args, extensionTestsEnv) {
   const fullEnv = buildVSCodeChildEnv(extensionTestsEnv);
-  const shell = process.platform === 'win32';
-  const launchPath = resolveVSCodeTestLaunchPath(executablePath);
 
-  const child = spawn(shell ? `"${launchPath}"` : launchPath, args, {
+  // The Windows CLI detaches Code.exe; observe the actual test process instead.
+  const child = spawn(executablePath, args, {
     env: fullEnv,
-    shell
+    shell: false
   });
 
   child.stdout.on('data', (chunk) => process.stdout.write(chunk));
@@ -653,13 +655,4 @@ function resolveVSCodeCliPath(vscodeExecutablePath) {
   }
 
   return path.join(path.dirname(vscodeExecutablePath), 'bin', 'code');
-}
-
-function resolveVSCodeTestLaunchPath(vscodeExecutablePath) {
-  if (process.platform !== 'win32') {
-    return vscodeExecutablePath;
-  }
-
-  const cliPath = resolveVSCodeCliPath(vscodeExecutablePath);
-  return existsSync(cliPath) ? cliPath : vscodeExecutablePath;
 }

@@ -22,7 +22,7 @@ related_plans:
   - docs/exec-plans/active/canvas-config-reload-semantics.md
   - docs/exec-plans/completed/remote-canvas-state-revert-investigation.md
   - docs/exec-plans/completed/canvas-storage-slot-recovery-fix.md
-updated_at: 2026-04-18
+updated_at: 2026-09-17
 ---
 
 # 运行时持久化与会话监督器设计
@@ -114,7 +114,7 @@ updated_at: 2026-04-18
 - 它允许 `snapshot-only` 保持较低复杂度，也允许 `live-runtime` 拿到真正的进程所有权模型，而不是继续靠词义模糊掩盖差异。
 - 在 VSCode 生态里，把重活放到独立后端进程是常见做法，但“跨 VSCode 生命周期继续存在的常驻监督器”并不是普通 workbench extension 的默认形态；只有当真实 runtime persistence 成为正式产品目标时，这个额外复杂度才是合理代价。
 
-## 6. 当前结论
+## 6. 正式方案
 
 ### 6.1 正式产品语义
 
@@ -127,7 +127,7 @@ updated_at: 2026-04-18
 - `live-runtime`
   - 除上述能力外，关闭 VSCode 后真实进程仍可继续存在。
   - 下次打开时优先重新附着到原会话。
-  - 如果会话在 VSCode 关闭期间自然结束，则恢复的是该会话的最终结果，而不是新的伪会话。
+  - 如果会话在 VSCode 关闭期间结束，只保留节点、布局、配置与退出状态，不恢复进程或终端历史，也不自动 start/resume。当前已打开页面仍收齐尾部，具体实现见 `runtime-completed-no-history.md`。
 
 同时，`live-runtime` 现在正式拆成两条 backend 路线与两档 guarantee：
 
@@ -261,7 +261,7 @@ scrollback 预算也在这里固定下来：
 - `live-runtime`
   - 若节点带有可附着的持久化会话身份，UI 先进入 `重连中`，而不是直接复用关闭前的 `运行中` / `等待输入` 标签。
   - 若监督器报告会话仍活着并完成附着，状态切回真实生命周期状态。
-  - 若监督器确认不存在该会话、会话已在离线期间自然结束、监督器不可达超时，或重新附着失败，则节点进入 `历史恢复`，不再伪装成当前 live runtime。
+  - 若监督器确认会话已结束，保持退出生命周期并清除终端正文和自动启动意图；若会话不存在或连接失败，则沿用可解释的降级路径，不再伪装成当前 live runtime。
   - 当前 backend 与 guarantee 仍需写入宿主权威状态、日志与诊断事件；节点默认 UI 不直接显示这类字段，避免把调试信息塞进主交互区。
 
 如果本次启动检测到 runtime persistence 模式与上次快照不一致，则这条“重新附着或历史恢复”的分支整体不再适用。宿主应直接丢弃旧对象图并以空白画布启动，而不是尝试把旧节点降级成 `history-restored`。这条规则同样覆盖旧的 surface 恢复元数据：模式切换后的新窗口应回到当前 `defaultSurface`，而不是恢复上次实际工作的 opposite surface。这是为了避免用户把“模式切换后的全新宿主窗口”误解成“旧模式状态仍被保留，只是没有重新附着成功”。
@@ -282,7 +282,7 @@ scrollback 预算也在这里固定下来：
   - `Terminal` 回到如 `live`、`closed` 之类的真实状态。
 - 只要节点与上下文恢复了，但系统无法重新附着到 live runtime，主状态标签就显示 `历史恢复`。
 
-第一版不单独引入新的用户可见状态 `运行时丢失`。如果实现层需要区分“监督器不可达”“session 不存在”“session 已结束”等原因，可保留内部 reason code，但对用户统一折叠为 `历史恢复`。
+第一版不单独引入新的用户可见状态 `运行时丢失`。连接失败或 session 不存在保留原降级表达；已确认结束的会话按 2026-09-17 新决策保留 `stopped` / `closed` / `error` 等真实生命周期，不用“历史恢复”暗示存在已归档正文。Supervisor 自身崩溃或机器重启后也不要求进程和历史恢复。
 
 这不意味着第一版 UI 必须一次性暴露所有内部诊断字段，但至少宿主权威状态必须能表达 `attached-live / reattaching / history-restored` 这层差异。否则用户无法判断自己看到的是“正在运行的真实进程”还是“关闭前留下的历史结果”。
 

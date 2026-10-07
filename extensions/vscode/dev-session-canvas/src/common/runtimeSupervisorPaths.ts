@@ -2,6 +2,8 @@ import { createHash } from 'crypto';
 import * as os from 'os';
 import * as path from 'path';
 
+import { EXECUTION_CANDIDATE_PROFILE, MACOS_EXECUTION_CANDIDATE_PROFILE, WINDOWS_EXECUTION_CANDIDATE_PROFILE,
+  assertExecutionCandidateProfile, type ExecutionCandidateProfile } from './executionLifecycle';
 import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
   createRuntimeSupervisorProtocolError,
@@ -21,6 +23,17 @@ const SYSTEMD_USER_SERVICE_PREFIX = 'dev-session-canvas-runtime-supervisor-';
 const RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR = 'runtime-supervisor-generations';
 
 export const CURRENT_RUNTIME_SUPERVISOR_GENERATION = 'terminal-stream-v1';
+const EXECUTION_CANDIDATE_GENERATIONS: Readonly<Record<ExecutionCandidateProfile, string>> = Object.freeze({
+  [EXECUTION_CANDIDATE_PROFILE]: 'terminal-current-state-linux-v1',
+  [MACOS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-current-state-macos-v1',
+  [WINDOWS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-current-state-windows-v1'
+});
+// Existing live executions keep their original owner and its negotiated capabilities.
+const PREVIOUS_EXECUTION_CANDIDATE_GENERATIONS: Readonly<Record<ExecutionCandidateProfile, string>> = Object.freeze({
+  [EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-v1',
+  [MACOS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-macos-v1',
+  [WINDOWS_EXECUTION_CANDIDATE_PROFILE]: 'terminal-exit-windows-v1'
+});
 
 type PathModuleLike = typeof path.posix | typeof path.win32;
 
@@ -38,6 +51,36 @@ export function resolveCurrentRuntimeSupervisorBaseStoragePath(baseStorageDir: s
     RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR,
     CURRENT_RUNTIME_SUPERVISOR_GENERATION
   );
+}
+
+export function resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(
+  baseStorageDir: string,
+  profile: ExecutionCandidateProfile
+): string {
+  assertExecutionCandidateProfile(profile);
+  return path.join(baseStorageDir, RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR, EXECUTION_CANDIDATE_GENERATIONS[profile]);
+}
+
+export function assertExecutionCandidateRuntimeSupervisorStorageDir(
+  storageDir: string,
+  profile: unknown
+): asserts profile is ExecutionCandidateProfile {
+  assertExecutionCandidateProfile(profile);
+  if (resolveRuntimeSupervisorExecutionProfile(storageDir) !== profile) {
+    throw new Error('The execution candidate requires its isolated platform runtime storage generation.');
+  }
+}
+
+export function resolveRuntimeSupervisorExecutionProfile(storageDir: string): ExecutionCandidateProfile | undefined {
+  const resolvedStorageDir = path.resolve(storageDir);
+  const generationDirectory = path.dirname(resolvedStorageDir);
+  if (path.basename(resolvedStorageDir) === 'runtime-supervisor' &&
+      path.basename(path.dirname(generationDirectory)) === RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR) {
+    return (Object.keys(EXECUTION_CANDIDATE_GENERATIONS) as ExecutionCandidateProfile[])
+      .find(profile => EXECUTION_CANDIDATE_GENERATIONS[profile] === path.basename(generationDirectory) ||
+        PREVIOUS_EXECUTION_CANDIDATE_GENERATIONS[profile] === path.basename(generationDirectory));
+  }
+  return undefined;
 }
 
 export function resolveRuntimeSupervisorPaths(

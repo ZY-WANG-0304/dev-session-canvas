@@ -2,6 +2,12 @@ import { SerializeAddon } from '@xterm/addon-serialize';
 import { Terminal as HeadlessTerminal } from '@xterm/headless';
 
 import { DEFAULT_TERMINAL_SCROLLBACK, normalizeTerminalScrollback } from './terminalScrollback';
+import {
+  applyTerminalCurrentColorRequests,
+  captureTerminalCurrentState,
+  createTerminalCurrentColors,
+  type TerminalCurrentState
+} from './terminalCurrentState';
 
 export const SERIALIZED_TERMINAL_STATE_FORMAT = 'xterm-serialize-v1';
 const XTERM_HEADLESS_PACKAGE_VERSION = readPackageVersion(
@@ -12,9 +18,14 @@ const XTERM_SERIALIZE_PACKAGE_VERSION = readPackageVersion(
   (require('@xterm/addon-serialize/package.json') as { version?: unknown }).version,
   '@xterm/addon-serialize'
 );
+const XTERM_SERIALIZE_PATCH_ID = 'bold-dim-v1';
+if ((SerializeAddon as typeof SerializeAddon & { devSessionCanvasPatch?: string }).devSessionCanvasPatch !== XTERM_SERIALIZE_PATCH_ID) {
+  throw new Error('The pinned terminal serializer patch is missing. Run the repository install or build step.');
+}
 export const SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE = [
   `xterm-headless@${XTERM_HEADLESS_PACKAGE_VERSION}`,
   `addon-serialize@${XTERM_SERIALIZE_PACKAGE_VERSION}`,
+  `serialize-patch=${XTERM_SERIALIZE_PATCH_ID}`,
   'safe-fingerprint-v1',
   'cell-data=exact-u32',
   'allowProposedApi=true',
@@ -23,7 +34,6 @@ export const SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE = [
 export const SERIALIZED_TERMINAL_CHECKPOINT_PROFILES: Readonly<Record<string, string>> = Object.freeze({
   [SERIALIZED_TERMINAL_STATE_FORMAT]: SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE
 });
-const MAX_SERIALIZED_TERMINAL_STATE_DATA_LENGTH = 5 * 1024 * 1024;
 const MAX_VALIDATED_TERMINAL_CHECKPOINT_DATA_LENGTH = 256 * 1024;
 const SERIALIZED_TERMINAL_STATE_WRITE_BATCH_DELAY_MS = 16;
 const SERIALIZED_TERMINAL_STATE_WRITE_CHUNK_CHARS = 32 * 1024;
@@ -81,7 +91,7 @@ export function normalizeSerializedTerminalState(value: unknown): SerializedTerm
     value.outputSequence >= 0
       ? value.outputSequence
       : undefined;
-  if (!format || data === undefined || data.length > MAX_SERIALIZED_TERMINAL_STATE_DATA_LENGTH) {
+  if (!format || data === undefined) {
     return undefined;
   }
 
@@ -126,6 +136,7 @@ export class SerializedTerminalStateTracker {
   private operationError: Error | undefined;
   private readonly colorStateSubscription: { dispose(): void } | undefined;
   private colorStateTouched = false;
+  private readonly currentColors = createTerminalCurrentColors();
   private disposed = false;
   private cachedState: SerializedTerminalState = {
     format: SERIALIZED_TERMINAL_STATE_FORMAT,
@@ -137,8 +148,9 @@ export class SerializedTerminalStateTracker {
     const runtime = this.createRuntime(cols, rows, this.scrollback);
     this.terminal = runtime.terminal;
     this.serializeAddon = runtime.serializeAddon;
-    this.colorStateSubscription = subscribeToTerminalColorRequests(this.terminal, () => {
+    this.colorStateSubscription = subscribeToTerminalColorRequests(this.terminal, (requests) => {
       this.colorStateTouched = true;
+      applyTerminalCurrentColorRequests(this.currentColors, requests);
     });
     this.refreshCachedState();
 
@@ -166,7 +178,7 @@ export class SerializedTerminalStateTracker {
     }
 
     if (initialOutput) {
-      this.enqueueOperation(() => this.drainWriteData(initialOutput, true, initialOutputSequence));
+      this.enqueueOperation(() => this.drainWriteData(initialOutput, 'forced', initialOutputSequence));
       return;
     }
 
@@ -212,7 +224,7 @@ export class SerializedTerminalStateTracker {
     this.clearPendingWriteDrainTimer();
     const pendingWriteBatch = this.takePendingWriteBatch();
     this.enqueueOperation(async () => {
-      await this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence);
+      await this.drainWriteData(pendingWriteBatch.data, 'forced', pendingWriteBatch.outputSequence);
       this.terminal.resize(cols, rows);
       this.markTerminalStateChanged();
       this.applyOutputSequence(options.outputSequence);
@@ -235,7 +247,7 @@ export class SerializedTerminalStateTracker {
       this.clearPendingWriteDrainTimer();
       const pendingWriteBatch = this.takePendingWriteBatch();
       this.enqueueOperation(async () => {
-        await this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence);
+        await this.drainWriteData(pendingWriteBatch.data, 'forced', pendingWriteBatch.outputSequence);
         if (this.applyOutputSequence(options.outputSequence)) {
           this.refreshCachedState();
         }
@@ -247,7 +259,7 @@ export class SerializedTerminalStateTracker {
     this.clearPendingWriteDrainTimer();
     const pendingWriteBatch = this.takePendingWriteBatch();
     this.enqueueOperation(async () => {
-      await this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence);
+      await this.drainWriteData(pendingWriteBatch.data, 'forced', pendingWriteBatch.outputSequence);
       this.terminal.options.scrollback = normalizedScrollback;
       this.scrollback = normalizedScrollback;
       this.markTerminalStateChanged();
@@ -265,6 +277,17 @@ export class SerializedTerminalStateTracker {
     };
   }
 
+  /** Wait for accepted parser work without materializing a new recovery snapshot. */
+  public async drain(): Promise<void> {
+    if (this.disposed) throw new Error('Cannot consume a disposed terminal state tracker.');
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteBatch = this.takePendingWriteBatch();
+    this.enqueueOperation(() => this.drainWriteData(pendingWriteBatch.data, 'none', pendingWriteBatch.outputSequence));
+    await this.operationChain;
+    this.throwIfOperationFailed();
+    if (this.disposed) throw new Error('Terminal state tracker was disposed before consumption completed.');
+  }
+
   public async flush(): Promise<SerializedTerminalState> {
     if (this.disposed) {
       await this.operationChain;
@@ -274,13 +297,35 @@ export class SerializedTerminalStateTracker {
 
     this.clearPendingWriteDrainTimer();
     const pendingWriteBatch = this.takePendingWriteBatch();
-    this.enqueueOperation(() => this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence));
+    this.enqueueOperation(() => this.drainWriteData(pendingWriteBatch.data, 'forced', pendingWriteBatch.outputSequence));
     await this.operationChain;
     this.throwIfOperationFailed();
     if (this.cachedStateDirty) {
       this.refreshCachedState();
     }
     return this.getSerializedState();
+  }
+
+  /** Captures an ephemeral live bootstrap, not a durable journal checkpoint. */
+  public async captureCurrentState(): Promise<TerminalCurrentState> {
+    if (this.disposed) throw new Error('Cannot capture a disposed terminal state tracker.');
+    this.clearPendingWriteDrainTimer();
+    const pendingWriteBatch = this.takePendingWriteBatch();
+    let state: TerminalCurrentState | undefined;
+    let captureError: unknown;
+    this.enqueueOperation(async () => {
+      await this.drainWriteData(pendingWriteBatch.data, 'none', pendingWriteBatch.outputSequence);
+      try {
+        state = captureTerminalCurrentState(this.terminal, this.currentColors);
+      } catch (error) {
+        captureError = error;
+      }
+    });
+    await this.operationChain;
+    this.throwIfOperationFailed();
+    if (captureError) throw captureError;
+    if (this.disposed || !state) throw new Error('Terminal state capture did not complete.');
+    return state;
   }
 
   public async flushValidatedCheckpoint(): Promise<SerializedTerminalCheckpointValidationResult> {
@@ -294,7 +339,7 @@ export class SerializedTerminalStateTracker {
     const pendingWriteBatch = this.takePendingWriteBatch();
     let result: SerializedTerminalCheckpointValidationResult | undefined;
     this.enqueueOperation(async () => {
-      await this.drainWriteData(pendingWriteBatch.data, true, pendingWriteBatch.outputSequence);
+      await this.drainWriteData(pendingWriteBatch.data, 'forced', pendingWriteBatch.outputSequence);
       if (this.pendingWriteData || this.pendingWriteDrainTimer) {
         result = rejectCheckpoint('pending-write');
         return;
@@ -354,7 +399,7 @@ export class SerializedTerminalStateTracker {
     this.pendingWriteDrainTimer = setTimeout(() => {
       this.pendingWriteDrainTimer = undefined;
       const pendingWriteBatch = this.takePendingWriteBatch();
-      this.enqueueOperation(() => this.drainWriteData(pendingWriteBatch.data, false, pendingWriteBatch.outputSequence));
+      this.enqueueOperation(() => this.drainWriteData(pendingWriteBatch.data, 'periodic', pendingWriteBatch.outputSequence));
     }, SERIALIZED_TERMINAL_STATE_WRITE_BATCH_DELAY_MS);
   }
 
@@ -379,7 +424,7 @@ export class SerializedTerminalStateTracker {
 
   private async drainWriteData(
     data: string,
-    forceRefresh: boolean,
+    refreshMode: 'forced' | 'periodic' | 'none',
     outputSequence?: number
   ): Promise<void> {
     let remainingData = data;
@@ -393,7 +438,7 @@ export class SerializedTerminalStateTracker {
       this.cachedStateDirty = true;
       // Forced drains serialize once after all chunks settle; per-chunk snapshots make large finalization quadratic.
       if (
-        !forceRefresh &&
+        refreshMode === 'periodic' &&
         Date.now() - this.lastCachedStateRefreshAtMs >= SERIALIZED_TERMINAL_STATE_CACHE_REFRESH_INTERVAL_MS
       ) {
         this.refreshCachedState();
@@ -405,7 +450,7 @@ export class SerializedTerminalStateTracker {
     }
 
     this.applyOutputSequence(outputSequence);
-    if ((forceRefresh || refreshedDuringDrain) && this.cachedStateDirty) {
+    if ((refreshMode === 'forced' || refreshedDuringDrain) && this.cachedStateDirty) {
       this.refreshCachedState();
     }
   }
@@ -482,6 +527,9 @@ export class SerializedTerminalStateTracker {
       rows,
       scrollback
     });
+    // Retain an unfinished clipboard sequence for a future Webview projection;
+    // only the Webview's existing focused handler may perform the actual copy.
+    terminal.parser.registerOscHandler(52, () => false);
     const serializeAddon = new SerializeAddon();
     terminal.loadAddon(serializeAddon as never);
     return {
@@ -622,7 +670,7 @@ function readXtermRuntime(terminal: HeadlessTerminal): XtermRuntime | undefined 
 
 function subscribeToTerminalColorRequests(
   terminal: HeadlessTerminal,
-  listener: () => void
+  listener: (requests: unknown) => void
 ): { dispose(): void } | undefined {
   const core = asRecord(asRecord(terminal)?._core);
   const input = asRecord(core?._inputHandler);

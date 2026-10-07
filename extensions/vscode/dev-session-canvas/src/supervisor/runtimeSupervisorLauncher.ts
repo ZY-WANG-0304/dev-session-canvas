@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
 
+import { assertExecutionCandidateRuntimeSupervisorStorageDir } from '../common/runtimeSupervisorPaths';
 import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
   createRuntimeSupervisorProtocolError
@@ -45,6 +46,13 @@ async function main(): Promise<void> {
   const runtimeGuarantee = readCliFlag('--runtime-guarantee');
   if (runtimeGuarantee) {
     args.push('--runtime-guarantee', runtimeGuarantee);
+  }
+
+  const executionProfileIndex = process.argv.indexOf('--execution-profile');
+  if (executionProfileIndex >= 0) {
+    const executionProfile = process.argv[executionProfileIndex + 1];
+    assertExecutionCandidateRuntimeSupervisorStorageDir(storageDir, executionProfile);
+    args.push('--execution-profile', executionProfile);
   }
 
   const child = spawn(process.execPath, args, {

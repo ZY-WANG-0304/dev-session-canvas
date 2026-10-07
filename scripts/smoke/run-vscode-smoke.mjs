@@ -38,6 +38,24 @@ const scenarioFilter = parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_
 
 const scenarios = [
   {
+    name: 'linux-runtime-report-unavailable',
+    description: 'Linux activation with the shared runtime report unavailable',
+    focusedOnly: true,
+    disableWorkspaceTrust: true,
+    testFile: 'runtime-compatibility-tests.cjs'
+  },
+  {
+    name: 'runtime-completed-no-history',
+    description: 'Runtime completion drains current output without retaining history',
+    focusedOnly: true,
+    disableWorkspaceTrust: true
+  },
+  {
+    name: 'runtime-checkpoint-refresh',
+    description: 'Runtime paged terminal projection smoke',
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'trusted',
     description: 'Trusted workspace smoke',
     disableWorkspaceTrust: true
@@ -61,7 +79,7 @@ async function main() {
   }
 
   for (const scenario of scenarios) {
-    if (!shouldRunScenario(scenario.name)) {
+    if (!shouldRunScenario(scenario.name) || (scenario.focusedOnly && !scenarioFilter)) {
       continue;
     }
 
@@ -87,7 +105,7 @@ async function main() {
       runtime,
       workspacePath: projectRoot,
       extensionDevelopmentPath: smokeHostRoot,
-      extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'extension-tests.cjs'),
+      extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, scenario.testFile ?? 'extension-tests.cjs'),
       disableExtensions: false,
       disableWorkspaceTrust: scenario.disableWorkspaceTrust,
       extensionTestsEnv: {

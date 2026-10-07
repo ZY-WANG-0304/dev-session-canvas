@@ -19,9 +19,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  resolve-runtime-input:
+    name: Resolve immutable runtime input
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.event.deleted != true && startsWith(github.ref, 'refs/tags/publish/v')) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      input_ref: ${{ steps.input.outputs.input_ref }}
+      needs_assets: ${{ steps.input.outputs.needs_assets }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: refs/tags/${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}
+      - id: input
+        shell: bash
+        run: |
+          echo "input_ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [[ -f scripts/build/assemble-execution-distribution-assets.mjs ]]; then
+            echo "needs_assets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_assets=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  native-assets:
+    needs: resolve-runtime-input
+    if: needs.resolve-runtime-input.outputs.needs_assets == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/runtime-execution-assets.yml
+    with:
+      input_ref: ${{ needs.resolve-runtime-input.outputs.input_ref }}
+
   prepare:
     name: Prepare GitHub Release Assets
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.event.deleted != true && startsWith(github.ref, 'refs/tags/publish/v')) }}
+    needs: [resolve-runtime-input, native-assets]
+    if: ${{ always() && needs.resolve-runtime-input.result == 'success' && (needs.native-assets.result == 'success' || needs.native-assets.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     outputs:
@@ -57,7 +91,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: refs/tags/${{ env.TRIGGER_TAG }}
+          ref: ${{ needs.resolve-runtime-input.outputs.input_ref }}
 
       - name: Resolve release ref
         id: ref
@@ -72,6 +106,24 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Download same-run native runtime assets
+        if: needs.resolve-runtime-input.outputs.needs_assets == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: execution-native-*-${{ github.run_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/execution-native-archives
+
+      - name: Assemble same-ref native runtime assets
+        if: needs.resolve-runtime-input.outputs.needs_assets == 'true'
+        shell: bash
+        run: |
+          node scripts/build/assemble-execution-distribution-assets.mjs \
+            --source "$RUNNER_TEMP/execution-native-archives" \
+            --output "$RUNNER_TEMP/execution-native-platform" \
+            --input-sha "${{ needs.resolve-runtime-input.outputs.input_ref }}"
+          echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$RUNNER_TEMP/execution-native-platform" >> "$GITHUB_ENV"
 
       - name: Verify release input
         shell: bash

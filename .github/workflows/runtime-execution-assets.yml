@@ -1,0 +1,112 @@
+name: Execution Native Distribution Assets
+
+on:
+  workflow_call:
+    inputs:
+      input_ref:
+        description: Immutable source commit for all six native assets
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      windows_only:
+        description: Build only Windows x64 and ARM64 assets
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-execution-assets-${{ github.workflow }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  native-assets:
+    strategy:
+      fail-fast: false
+      matrix:
+        asset:
+          - target: linux-x64-glibc
+            runner: ubuntu-24.04
+            arch: x64
+          - target: linux-arm64-glibc
+            runner: ubuntu-24.04-arm
+            arch: arm64
+          - target: darwin-x64
+            runner: macos-15-intel
+            arch: x64
+          - target: darwin-arm64
+            runner: macos-15
+            arch: arm64
+          - target: win32-x64
+            runner: windows-2025
+            arch: x64
+            compilerArch: x64
+          - target: win32-arm64
+            runner: windows-11-arm
+            arch: arm64
+            compilerArch: amd64_arm64
+        exclude: >-
+          ${{ inputs.windows_only && fromJSON('[
+          {"asset":{"target":"linux-x64-glibc","runner":"ubuntu-24.04","arch":"x64"}},
+          {"asset":{"target":"linux-arm64-glibc","runner":"ubuntu-24.04-arm","arch":"arm64"}},
+          {"asset":{"target":"darwin-x64","runner":"macos-15-intel","arch":"x64"}},
+          {"asset":{"target":"darwin-arm64","runner":"macos-15","arch":"arm64"}}
+          ]') || fromJSON('[]') }}
+    runs-on: ${{ matrix.asset.runner }}
+    timeout-minutes: 20
+    env:
+      DEV_SESSION_CANVAS_EXECUTION_INPUT_SHA: ${{ inputs.input_ref || github.sha }}
+    steps:
+      - name: Preserve source bytes on Windows checkout
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - name: Checkout fixed asset input
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.input_ref || github.sha }}
+      - name: Setup actual target Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '25.6.0'
+          architecture: ${{ matrix.asset.arch }}
+          cache: npm
+      - name: Setup target compiler
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.asset.compilerArch }}
+      - name: Install locked build dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check bounded distribution contract
+        run: node scripts/test/test-execution-distribution-assets.mjs
+      - name: Build and load the same native asset in minimum and current hosts
+        run: node scripts/build/build-execution-distribution-assets.mjs --target=${{ matrix.asset.target }} --output="${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}" --artifacts="${{ github.workspace }}/execution-asset-artifacts"
+      - name: Upload runtime files and finite load summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-native-${{ matrix.asset.target }}-${{ github.run_id }}
+          overwrite: true
+          path: execution-asset-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve available build and load evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-native-evidence-${{ matrix.asset.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/manifest.json
+            ${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/execution-owner.node
+            ${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/spawn-helper
+            ${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/conpty.node
+            ${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/conpty/conpty.dll
+            ${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/conpty/OpenConsole.exe
+            ${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}-inputs-*/minimum-load.json
+            ${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}-inputs-*/current-load.json
+          if-no-files-found: warn
+          retention-days: 14
