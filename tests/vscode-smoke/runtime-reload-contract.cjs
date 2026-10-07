@@ -1,11 +1,8 @@
 const assert = require('node:assert/strict');
-const { execFile } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const fs = require('node:fs/promises');
 const { createHash } = require('node:crypto');
 const path = require('node:path');
-const { promisify } = require('node:util');
-
-const execFileAsync = promisify(execFile);
 
 const fixedVsixSha256 = '604494fdebc917d3e12b54fceec75a764ed064e486dd0e76ff20513ddca61656';
 const completedMarker = 'DSC_A6_COMPLETED';
@@ -50,10 +47,7 @@ async function readDarwinIdentity(pid) {
   const observer = path.join(__dirname, 'agent-candidate-process-observer.py');
   const request = JSON.stringify({ version: 1, operation: 'sample', targets: [{ pid }], descend: false });
   try {
-    const { stdout } = await execFileAsync(python, [observer], {
-      input: request, env: { PATH: process.env.PATH ?? '', PYTHONDONTWRITEBYTECODE: '1' },
-      timeout: 10000, maxBuffer: 128 * 1024
-    });
+    const stdout = await runDarwinObserver(python, observer, request);
     const response = JSON.parse(stdout);
     if (response.error) throw new Error('Darwin identity observer returned an error.');
     const record = response.records?.find(value => value.pid === pid);
@@ -65,6 +59,32 @@ async function readDarwinIdentity(pid) {
     if (error.code === 'ENOENT' || error.code === 'ESRCH') return undefined;
     throw error;
   }
+}
+
+function runDarwinObserver(python, observer, request) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(python, [observer], {
+      env: { PATH: process.env.PATH ?? '', PYTHONDONTWRITEBYTECODE: '1' },
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(Object.assign(new Error('Darwin identity observer timed out.'), { code: 'ETIMEDOUT' }));
+    }, 10000);
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.once('error', error => { clearTimeout(timer); reject(error); });
+    child.once('close', (code, signal) => {
+      clearTimeout(timer);
+      if (code !== 0 || signal) reject(new Error(`Darwin identity observer failed: ${stderr.slice(0, 256)}`));
+      else resolve(stdout);
+    });
+    child.stdin.end(request);
+  });
 }
 
 async function readWindowsIdentity(pid) {
