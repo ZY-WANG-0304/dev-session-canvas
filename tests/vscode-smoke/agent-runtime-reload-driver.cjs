@@ -251,17 +251,18 @@ async function verify(extension) {
     return current?.metadata?.agent?.liveSession === false && current.status === 'stopped' &&
       current.metadata.agent.terminalHistoryDiscarded === true;
   }, 60000);
-  const events = await command('getDiagnosticEvents');
-  const settlement = events.find(event => event.kind === 'runtime/terminalReadSettled' &&
-    event.detail?.nodeId === setup.nodeId && event.detail.sessionId === setup.binding.runtimeSessionId);
+  const settlement = await poll('reloaded Agent reader settlement', async () => {
+    const events = await command('getDiagnosticEvents');
+    return events.find(event => event.kind === 'runtime/terminalReadSettled' &&
+      event.detail?.nodeId === setup.nodeId && event.detail.sessionId === setup.binding.runtimeSessionId &&
+      event.detail.readId === reader.readId);
+  }, event => event?.detail?.outcome?.kind === 'applied', 15000);
   await write('settlement-observation.json', {
     phase: 'verify', nonce: control.nonce, nodeId: setup.nodeId,
     reader: { readId: reader.readId, sessionId: reader.sessionId, authorityId: reader.authorityId },
-    settlement: settlement?.detail ?? null,
+    settlement: settlement.detail,
     runtime: await command('getRuntimeSupervisorState')
   });
-  assert(settlement && settlement.detail.readId === reader.readId &&
-    settlement.detail.outcome?.kind === 'applied');
   await poll('runtime binding removed', command.bind(null, 'getRuntimeSupervisorState'), value =>
     !value.bindings.some(binding => binding.nodeId === setup.nodeId));
   await observer.stop();
