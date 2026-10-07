@@ -158,7 +158,8 @@ async function setup(extension) {
   const before = `DSC_AGENT_RELOAD_BEFORE_${control.nonce}`;
   const beforeBaseline = countMarker(textOf(await probe()), before);
   await sendAgentTurn(currentNodeId, before);
-  await poll('pre-reload Agent response', probe, value => countMarker(textOf(value), before) > beforeBaseline, 90000);
+  await poll('pre-reload Agent response', probe,
+    value => countMarker(textOf(value), before) >= beforeBaseline + 2, 90000);
   await observer.sample();
   const resources = observer.result().entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role));
   assert(resources.some(entry => entry.role === 'cli'), 'The real Codex CLI must be observed before reload.');
@@ -229,7 +230,8 @@ async function verify(extension) {
   const after = `DSC_AGENT_RELOAD_AFTER_${control.nonce}`;
   const afterBaseline = countMarker(textOf(await probe()), after);
   await sendAgentTurn(setup.nodeId, after);
-  await poll('post-reload Agent response', probe, value => countMarker(textOf(value), after) > afterBaseline, 90000);
+  await poll('post-reload Agent response', probe,
+    value => countMarker(textOf(value), after) >= afterBaseline + 2, 90000);
   await dom({ kind: 'stopExecutionSession', nodeId: setup.nodeId });
   const ended = await poll('Agent stop final state', snapshot, value => {
     const current = nodeOf(value, setup.nodeId);
