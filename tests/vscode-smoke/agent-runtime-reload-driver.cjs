@@ -17,7 +17,13 @@ const command = (name, ...args) => vscode.commands.executeCommand(`devSessionCan
 const snapshot = () => command('getDebugState');
 const probe = () => command('captureWebviewProbe', surface, 10000);
 const dom = action => command('performWebviewDomAction', action, surface, 10000);
-const sendAgentMarker = (nodeId, marker) => dom({ kind: 'sendExecutionInput', nodeId, data: `${marker}\r` });
+const countMarker = (text, marker) => text.split(marker).length - 1;
+const sendAgentTurn = async (nodeId, marker) => {
+  // Codex treats Enter in a fast paste burst as an inserted newline; submit separately.
+  await dom({ kind: 'sendExecutionInput', nodeId, data: `Reply with exactly ${marker} and nothing else.` });
+  await sleep(200);
+  await dom({ kind: 'sendExecutionInput', nodeId, data: '\r' });
+};
 const write = (name, value) => fs.writeFile(path.join(artifacts, name), `${JSON.stringify(value, null, 2)}\n`);
 const read = async name => JSON.parse(await fs.readFile(path.join(artifacts, name), 'utf8'));
 const atomic = async (file, value) => {
@@ -150,8 +156,9 @@ async function setup(extension) {
   const reader = await mountedReader(currentNodeId);
   await waitForAgentReady();
   const before = `DSC_AGENT_RELOAD_BEFORE_${control.nonce}`;
-  await sendAgentMarker(currentNodeId, before);
-  await poll('pre-reload Agent response', probe, value => textOf(value).includes(before), 90000);
+  const beforeBaseline = countMarker(textOf(await probe()), before);
+  await sendAgentTurn(currentNodeId, before);
+  await poll('pre-reload Agent response', probe, value => countMarker(textOf(value), before) > beforeBaseline, 90000);
   await observer.sample();
   const resources = observer.result().entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role));
   assert(resources.some(entry => entry.role === 'cli'), 'The real Codex CLI must be observed before reload.');
@@ -220,8 +227,9 @@ async function verify(extension) {
   await observer.addRoot(setup.supervisor.pid, 'supervisor');
   await waitForAgentReady();
   const after = `DSC_AGENT_RELOAD_AFTER_${control.nonce}`;
-  await sendAgentMarker(setup.nodeId, after);
-  await poll('post-reload Agent response', probe, value => textOf(value).includes(after), 90000);
+  const afterBaseline = countMarker(textOf(await probe()), after);
+  await sendAgentTurn(setup.nodeId, after);
+  await poll('post-reload Agent response', probe, value => countMarker(textOf(value), after) > afterBaseline, 90000);
   await dom({ kind: 'stopExecutionSession', nodeId: setup.nodeId });
   const ended = await poll('Agent stop final state', snapshot, value => {
     const current = nodeOf(value, setup.nodeId);
