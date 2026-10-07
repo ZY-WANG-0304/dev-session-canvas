@@ -19,6 +19,11 @@ const probe = () => command('captureWebviewProbe', surface, 10000);
 const dom = action => command('performWebviewDomAction', action, surface, 10000);
 const write = (name, value) => fs.writeFile(path.join(artifacts, name), `${JSON.stringify(value, null, 2)}\n`);
 const read = async name => JSON.parse(await fs.readFile(path.join(artifacts, name), 'utf8'));
+const atomic = async (file, value) => {
+  const next = `${file}.next`;
+  await fs.writeFile(next, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx' });
+  await fs.rename(next, file);
+};
 const nodeOf = (state, id) => state?.state?.nodes?.find(node => node.id === id);
 const textOf = value => value.nodes.find(node => node.nodeId === currentNodeId)?.terminalVisibleLines?.join('\n') ?? '';
 let config;
@@ -155,7 +160,7 @@ async function setup(extension) {
   await write('ownership.json', { supervisor, resources });
   await write('setup.json', setup);
   control = { ...control, phase: 'verify', reloadRequests: 1, setup };
-  await fs.writeFile(controlPath, `${JSON.stringify(control, null, 2)}\n`);
+  await atomic(controlPath, control);
   reloading = true;
   void vscode.commands.executeCommand('workbench.action.reloadWindow').catch(error => write('reload-command-rejection.json', { error: String(error) }));
 }
