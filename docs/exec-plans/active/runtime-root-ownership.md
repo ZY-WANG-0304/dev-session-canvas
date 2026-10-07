@@ -74,6 +74,8 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 
 启动记录增量本地验证：`node scripts/test/test-runtime-root-startup.mjs`（私有临时文件与原子失败）、`node scripts/test/test-runtime-root-owner-handshake.mjs`（36 受控项）、`npm run test:runtime-supervisor-startup-profile`（18+31）、typecheck、普通 build 和 diff check 通过。同 token 第二个新 server 即使取得受控 claim，也不消费第二次、不触碰重新写入的 registry/journal 哨兵。新 root systemd storage 显式创建 0700；旧路径 mkdir/命令/环境参数保持原样。
 
+启动记录提交 `d1fe71e7` / run `37661131732` attempt 1 三平台成功：父子身份 probe、真实临时文件记录测试、Linux/macOS 各 36 及 Windows 32 个受控握手/启动用例、typecheck 均通过。未运行真实 startup-preparation 竞争，因为该入口尚未实施；不把该 CI 当作完整 P1 或产品验收。另跑 `test-legacy-runtime-history.mjs` 为 116 项通过，原有 2 个 Unix socket 用例因环境拒绝访问而按现有脚本跳过，不计原生通过。
+
 ## 接口与依赖
 
 `RuntimeOwnerDescriptorV1` 固定 schema/environmentKey/userStorageScopeKey/root/generation；路径 resolver 接受 canonical global storage 与已解析 root，不接受 Webview 自报 path。环境 helper 返回摘要及本机用户身份，失败抛出明确错误；Windows 可使用系统自带进程调用只读 native API，若能避免修改 PTY 资产则优先采用。hello owner 字段对旧 binding 可缺省，对新 root generation 必须校验。具体导出签名在 P1 实现后补齐。
