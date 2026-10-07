@@ -60,6 +60,8 @@ Supervisor hello、Host 与 Webview ready 通过 `terminalCurrentStateV1` 协商
 
 容量边界仍需作为 F-04 的生产准入项单独收口：当前协议只限制单个 `stateChunk`，尚未为完整 current-state JSON 设定总长度或接收端组装预算；Supervisor 会先形成完整字符串，Webview 也会在导入前累积并合并分块。不能把 8192 字符分页误写成总内存上界，也不在缺少实际多会话/大 scrollback 证据时擅自增加硬阈值。验收必须记录状态长度、捕获/组装峰值、并发会话和失败处置；若支持预算不足，应明确拒绝或降级到已有兼容路径，不能静默截断或宣称恢复完成。
 
+资源模型区分当前模型的有限成本和操作积压：Supervisor 捕获对象及冻结 JSON、各 reader 的冻结字符串，接收端 chunks/join/parsed state、解码 cells 与 xterm 模型均计入责任，不能只计字符串。O(当前模型 × 活动读者) 本身不是累计历史重放或已证内存缺陷，也不因此要求通用流式 codec；真正的无界取消等待则必须修复。2026-10-07 受控执行实际 `RuntimeTerminalReadRelay` 发现同 key 的 40 次在途 open 形成 40 次远端调用及 39 个 releasing binding，现有 Supervisor 活动 reader 上限不覆盖这些等待。选择同完整身份（client/session/authority/consumer/能力）的 open 共享完整初始化 Promise；每个 key 当前与待释放 binding 的总责任不超过 2（当前最多一个，全关闭时可以暂有两个待释放），再次替换若超限则明确拒绝，不能取消健康当前 reader 或无限排队。旧 descriptor 迟到后仍沿原 client 关闭并结算；取消和未知关闭不变成 applied。
+
 新 reader 的 R 不提升 durable checkpoint 或其他 reader。捕获在 admit reader 之后，保留与退出重叠的最终应用责任。导入失败、销毁、读取失败沿原结算；传完不等于应用完成，更不等于 EOF。结束须在真实导入及之后 final revision 全部应用后完成。
 
 reader 的 `currentStateCheckpoint` 标记在释放冻结字符串后仍保留，直到被真实 durable checkpoint 提升替换；legacy completed attach 不得选择这种空正文载体作为回放起点。状态块发完后发生退出，也必须等导入后的普通页确认及 final revision 实际应用，不能提前以 applied 释放来源。
@@ -69,6 +71,16 @@ reader 的 `currentStateCheckpoint` 标记在释放冻结字符串后仍保留�
 固定版本私有 API 的成本是升级时必须重新核对两端模型与 codec；当前安装已固定校验 headless/browser 6.0.0，不能以版本字符串或局部单测代证完整通过。格式与接线正在验证，B4 未完成；不将收益外推到旧 Supervisor。
 
 ## 已得证据与剩余验收
+
+当前 F-04 收口口径：同 key 的无界取消等待已修复，完整当前态采用可追溯的 O(当前模型 × 有效 reader) 来源上界，不要求恒定于配置 scrollback 或会话数的内存。已有十会话固定负载与本次填充态补证共同作为具名资源观察，不推出十个满 scrollback 同时导入通过；B 的 18.4ms 发生于导入之后，本轮 `paged-current-state` 操作约 536.9ms、main-thread lag 603ms 仍保留。没有新确认的结构性产品阻塞要求追加容量阶梯、精确 allocation peak 或 profiler；剩余交付为冻结最终源码/包并完成已受影响的 Host/reader、Windows Agent 恢复与整体审查。
+
+Windows run `37610947842` 仍未通过：最终 VT 为 workspace trust，唯一 CR 没有使其推进，缺少发送前实际 probe，内部因果时序未证实。固定 Codex `rust-v0.157.1` / `36650394c5b38c2990ccf2a3457165ca3e9d9726` 的 onboarding 在绘制后丢弃待处理输入，因此不继续依赖启动菜单按键来证明 Runtime Reload。按[官方配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)和 pinned 实现，仅在测试生成的隔离 `CODEX_HOME` 中配置精确新建空 workspace 的 `projects.<path>.trust_level="trusted"` 与 `windows.sandbox="unelevated"`；保留交互 CLI、read-only、never、禁用 shell tool、稳定 loaded composer 与真实前后两轮应答。失败额外冻结实际 Webview probe，不修改用户配置或普通 Agent 矩阵，旧失败保持。
+
+2026-10-07 填充态有限验收通过：`.debug/f04-filled-current-state-20261007-staged/` 使用最终 relay 修正后的 Linux 两会话 candidate，按原三段各 30 秒完成 2560 块后仅切换一次 panel 到 editor。新 A reader 的状态为 10200040 字符、1246 块，完整保留内容恢复约 5114.9ms，B 输入实际应用约 18.4ms；原 runtime/执行/authority 保持，新 reader 分别 final revision 6495/5 applied，cleanup 通过且完整进程 exit 0。109 个 250ms 资源样本中，switch/import 阶段 Supervisor RSS 最高约 554.3MB、renderer group 约 1703.7MB，总量最高约 2.99GB；这些是含测试开销的离散观察，不是精确捕获峰值或产品 SLA。该结果结合原十会话 live 证据，只覆盖已声明 workload；不扩展为任意并发、任意几何或全平台大状态压力通过。先前合并填充准备窗口导致的首轮超时/exit 1 保留，不追认通过。
+
+2026-10-07 同包定向回收：macOS Reload-only run `37608894493` 通过，原 provider/wrapper/CLI 在 stop 前同身份存活，新 reader 最终 applied revision 71，零 binding/pending、空 registry、零 fallback 且应用正常退出。Windows run `37608896439` 的原生 SafeHandle 保留对象测试通过，但真实 CLI 在 trust 后进入 Windows sandbox 设置菜单，未到 composer，整轮失败；只补该已证实的 non-admin sandbox onboarding 操作并保留 read-only/never/禁用 shell tool 的约束，不能据身份测试宣称 Windows Reload 完成。
+
+2026-10-07 有限补证范围：rerun5 在 `produce` 前归档 current-state，随后隐藏/恢复保持原 reader，因此其 10/10 样本只证明小初始状态组装，不能证明填满 scrollback 后的新读者成本。新增显式 `--capacity-current-state`，复用既有 Linux capacity 入口，固定两个 Terminal、color、100000 scrollback 与 2560 块输出，仅运行一次填充后的 panel 到 editor 切换。此产品切换会取消旧 panel reader，并非两个 active surface 并存；新 reader 必须保留原运行时/执行身份、恢复完整保留内容、支持 B 输入并完成自然尾部与清理。复用既有两会话安全/交互预算及 30 秒恢复观察，不重跑 color/size 全矩阵，不新增 RSS 产品阈值。记录新 descriptor、完整多块组装和进程采样；空 descriptor 不是产品失败，非空 descriptor 也不是捕获内存峰值，`2 * stateLength` 仅估计组装字符串，不包含对象、解码 cells 或整个 xterm。
 
 2026-10-07 当前增量：十会话 color/size 的 rerun5 均已通过现有 workload 与清理，当前状态最大 4705 字符、单会话保守组装峰值 9410、聚合 80618；不把测试 `10:1` 当产品上限，不将 RSS 观察值变成 SLA。Supervisor capture 独立观测仍缺失，完整 F-04 准入保持开放。Linux 真实 Codex Reload 已取得独立通过；`37605380825` 的 macOS 验证回执成功但应用退出超时、Windows 提前通过就绪判断并在首次模型响应等待时仍显示目录信任提示，两轮保持失败。该 Windows 轮次没有 ready probe，不能断言信任提示出现的精确时序；旧就绪判断允许 loading composer 的风险已有独立证据。对应验收器已定向修正，macOS/Windows 仅补同包 Reload，不重跑无影响矩阵。
 

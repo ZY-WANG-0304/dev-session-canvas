@@ -117,6 +117,7 @@ try {
 
   verifyCurrentStateProjection(TerminalPagedProjection, descriptor);
   await verifyCurrentStateRelay(RuntimeTerminalReadRelay, descriptor);
+  await verifyBoundedRelayOpens(RuntimeTerminalReadRelay, descriptor);
   await verifyControllerSettlement(directory);
 
   const relay = new RuntimeTerminalReadRelay();
@@ -168,6 +169,135 @@ try {
   console.log('terminal paged projection: validation, backpressure, cancellation, retry and ephemeral completion passed');
 } finally {
   await rm(directory, { recursive: true, force: true });
+}
+
+async function verifyBoundedRelayOpens(RuntimeTerminalReadRelay, original) {
+  const tick = () => new Promise(resolve => setImmediate(resolve));
+  const fixture = () => {
+    const relay = new RuntimeTerminalReadRelay();
+    const opens = [], closes = [], released = [];
+    const client = name => ({
+      openTerminalRead(params) {
+        return new Promise((resolve, reject) => { opens.push({ name, params, resolve, reject }); });
+      },
+      closeTerminalRead(params) {
+        return new Promise((resolve, reject) => { closes.push({ name, params, resolve, reject }); });
+      }
+    });
+    const first = client('first'), second = client('second');
+    const open = (changes = {}) => {
+      const args = { client: first, sessionId: 'session', authorityId: 'authority', consumerId: 'editor',
+        settlementMode: 'final-application-v1', currentState: 'xterm-current-state-v1', ...changes };
+      return relay.open('editor:terminal:held', args.client, args.sessionId, args.authorityId, args.consumerId,
+        result => released.push(result), args.settlementMode, args.currentState);
+    };
+    const finishOpen = (index, changes = {}) => {
+      const { params, name, resolve } = opens[index];
+      const descriptor = { ...original, readId: `${name}-${index}`, sessionId: params.sessionId,
+        authorityId: params.authorityId,
+        checkpoint: { ...original.checkpoint, sessionId: params.sessionId, authorityId: params.authorityId },
+        ...(params.settlementMode ? { settlementMode: params.settlementMode } : {}),
+        ...(params.currentState ? { currentState: { format: params.currentState, length: 100 } } : {}), ...changes };
+      resolve(descriptor);
+      return descriptor;
+    };
+    return { relay, opens, closes, released, first, second, open, finishOpen,
+      close: () => relay.close('editor:terminal:held') };
+  };
+  {
+    const f = fixture();
+    const pending = Array.from({ length: 40 }, () => f.open());
+    assert.equal(f.opens.length, 1, 'Same-identity in-flight opens must share one remote request.');
+    assert(pending.every(promise => promise === pending[0]), 'Duplicate opens must reuse the full initialization promise, not add waiting continuations.');
+    const descriptor = f.finishOpen(0);
+    assert.deepEqual(await Promise.all(pending), Array(40).fill(descriptor));
+    f.close();
+    assert.equal(f.closes.length, 1);
+    assert(f.relay.usesClient(f.first), 'The client remains owned while reader close is unresolved.');
+    assert(f.relay.usesSession('session'));
+    f.closes[0].resolve({ ok: true, settlement: 'unconfirmed' });
+    await tick();
+    assert.deepEqual(f.released, [{ ok: true, settlement: 'unconfirmed' }], 'Unknown close must not become applied.');
+    assert.equal(f.relay.usesClient(f.first), false);
+    assert.equal(f.relay.usesSession('session'), false);
+  }
+  for (const established of [false, true]) for (const changed of [
+    'client', 'sessionId', 'authorityId', 'consumerId', 'settlementMode', 'currentState'
+  ]) {
+    const f = fixture();
+    const a = f.open();
+    let old;
+    if (established) { old = f.finishOpen(0); await a; }
+    const different = { client: f.second, sessionId: 'next-session', authorityId: 'next-authority',
+      consumerId: 'panel', settlementMode: undefined, currentState: undefined };
+    const b = f.open({ [changed]: different[changed] });
+    assert.equal(f.opens.length, 2, `${changed} must not reuse a different ${established ? 'established' : 'in-flight'} reader.`);
+    old ??= f.finishOpen(0);
+    await tick();
+    assert.equal(f.closes.length, 1);
+    assert.equal(f.closes[0].name, 'first');
+    assert.deepEqual(f.closes[0].params, { sessionId: old.sessionId, authorityId: old.authorityId,
+      readId: old.readId, outcome: { kind: 'cancelled', reason: 'reader-replaced' } });
+    f.closes[0].resolve({ ok: true, settlement: 'recorded' });
+    assert.deepEqual(await a, established ? old : undefined, 'A late descriptor must only release its original binding.');
+    const current = f.finishOpen(1);
+    assert.deepEqual(await b, current);
+    f.close();
+    f.closes[1].resolve({ ok: true, settlement: 'recorded' });
+    await tick();
+  }
+  {
+    const f = fixture();
+    const first = f.open();
+    const firstRejected = assert.rejects(first, /settlement was not negotiated/);
+    const descriptor = f.finishOpen(0, { settlementMode: undefined });
+    await Promise.resolve();
+    await assert.rejects(f.open(), /settlement was not negotiated/,
+      'A descriptor assigned for eventual cleanup must not bypass pending capability validation.');
+    await firstRejected;
+    assert.equal(f.opens.length, 1);
+    assert.equal(f.closes.length, 1);
+    assert.equal(f.closes[0].name, 'first');
+    assert.equal(f.closes[0].params.readId, descriptor.readId);
+    f.closes[0].resolve({ ok: true, settlement: 'unconfirmed' });
+    await tick();
+    assert.equal(f.relay.usesClient(f.first), false);
+  }
+  {
+    const f = fixture();
+    const cancelled = f.open();
+    f.close();
+    const live = f.open({ sessionId: 'current-session' });
+    const descriptor = f.finishOpen(1);
+    assert.deepEqual(await live, descriptor);
+    for (let index = 0; index < 40; index++) {
+      await assert.rejects(f.open({ sessionId: 'third-session' }), /capacity exhausted/);
+    }
+    assert.equal(f.opens.length, 2, 'Replacement pressure must not create an unbounded remote-open chain.');
+    assert.deepEqual(await f.open({ sessionId: 'current-session' }), descriptor,
+      'Rejected replacements must not cancel the healthy current reader.');
+    assert.equal(f.closes.length, 0, 'The unresolved original descriptor is not available to close yet.');
+    f.close();
+    assert.equal(f.closes.length, 1);
+    for (let index = 0; index < 40; index++) await assert.rejects(f.open(), /capacity exhausted/);
+    assert.equal(f.opens.length, 2, 'Two cancelled but unresolved responsibilities must still block new readers.');
+    const old = f.finishOpen(0);
+    await tick();
+    assert.equal(f.closes[1].params.readId, old.readId);
+    f.closes[1].resolve({ ok: true, settlement: 'recorded' });
+    assert.equal(await cancelled, undefined);
+    const reopened = f.open();
+    f.finishOpen(2);
+    assert.equal((await reopened).readId, 'first-2', 'A settled old responsibility releases exactly one admission slot.');
+    f.closes[0].reject(new Error('close transport lost'));
+    await tick();
+    assert(f.released.some(result => result.settlement === 'unconfirmed'));
+    f.close();
+    f.closes[2].resolve({ ok: true, settlement: 'recorded' });
+    await tick();
+    assert.equal(f.relay.usesClient(f.first), false);
+  }
+  console.log('terminal read relay: bounded in-flight reuse, identity replacement, held close admission and original-client release passed');
 }
 
 function verifyCurrentStateProjection(TerminalPagedProjection, original) {

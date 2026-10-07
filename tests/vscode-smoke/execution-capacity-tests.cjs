@@ -15,9 +15,10 @@ const format = require('./fixtures/execution-capacity-subject.cjs');
 
 const scenario = process.env.DEV_SESSION_CANVAS_CAPACITY_SCENARIO;
 const capacityPhase = process.env.DEV_SESSION_CANVAS_CAPACITY_PHASE;
+const capacityCurrentState = process.env.DEV_SESSION_CANVAS_CAPACITY_CURRENT_STATE === '1';
 const workload = format.capacityWorkload(Number(process.env.DEV_SESSION_CANVAS_CAPACITY_SESSIONS ?? 2));
 const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
-const surface = 'panel';
+let surface = 'panel';
 const samples = [];
 const resourceObservations = [];
 const processes = new Map();
@@ -80,6 +81,10 @@ async function setLiveScrollback(value, subject) {
 async function run() {
   assert(['color', 'size', 'compact'].includes(scenario));
   assert(artifacts && path.isAbsolute(process.env.DEV_SESSION_CANVAS_CAPACITY_SUBJECT_NODE));
+  if (capacityCurrentState) {
+    assert(!capacityPhase && scenario === 'color' && workload.sessionCount === 2,
+      'Current-state capacity uses only the fixed color two-session surface-switch workload.');
+  }
   if (capacityPhase) {
     assert(['detach', 'reconnect', 'cleanup'].includes(capacityPhase));
     assert(scenario === 'color' && workload.sessionCount === 2, 'Only the fixed color two-session reconnect case is defined.');
@@ -89,7 +94,8 @@ async function run() {
   let detached = false;
   try {
     const operation = capacityPhase === 'detach' ? prepareDetach : capacityPhase === 'reconnect' ? reconnect
-      : capacityPhase === 'cleanup' ? prepareOwnedCleanup : scenario === 'compact' ? attachCompact : measure;
+      : capacityPhase === 'cleanup' ? prepareOwnedCleanup : capacityCurrentState ? measureCurrentState
+        : scenario === 'compact' ? attachCompact : measure;
     await Promise.race([operation(), new Promise((_, reject) => {
       deadline = setTimeout(() => { aborted = new Error('A1 case exceeded the fixed 10 minute safety bound.'); reject(aborted); }, 600000);
     })]);
@@ -109,7 +115,7 @@ async function run() {
   } finally {
     clearTimeout(deadline);
     await stopSampling();
-    if (subjects.length > 0 && !currentStateResourceObservationCaptured && capacityPhase !== 'cleanup') {
+    if (subjects.length > 0 && !currentStateResourceObservationCaptured && capacityPhase !== 'cleanup' && !capacityCurrentState) {
       try {
         await archiveCurrentStateResourceObservation();
       } catch (error) {
@@ -132,10 +138,15 @@ async function run() {
         'No forced GC, profiler, heap-budget inference or peak claim between samples.'] });
     if (!detached) await cleanup();
     if (aborted) throw aborted;
+    if (capacityCurrentState) await archive('current-state-result', { pass: true,
+      preparationBlocks: [640, 1280, 2560], preparationStageObservationMs: 30000, acceptanceBlocks: [2560],
+      evidence: ['current-state-before.json', 'current-state-descriptors.json', 'current-state-after.json',
+        'current-state-resource-observation.json', 'current-state-natural-completion.json', 'cleanup.json'],
+      scope: 'Finite Linux two-session filled-state switch, full content, B interaction, new-reader final application and product cleanup; not a general resource budget or other-platform acceptance.' });
   }
 }
 
-async function archiveCurrentStateResourceObservation() {
+async function archiveCurrentStateResourceObservation({ name = 'current-state-resource-observation', expectedReads } = {}) {
   // Allow the Webview write queue to publish the assembly receipt before taking
   // the one bounded diagnostics snapshot used by this capacity case.
   await sleep(250);
@@ -157,7 +168,13 @@ async function archiveCurrentStateResourceObservation() {
     }));
   const samples = Array.isArray(diagnostics.samples) ? diagnostics.samples : [];
   const stateSamples = samples.filter(sample => sample.source === 'webview-terminal-drain' &&
-    sample.reason === 'terminal-current-state-assembled' && typeof sample.nodeId === 'string');
+    sample.reason === 'terminal-current-state-assembled' && typeof sample.nodeId === 'string' &&
+    (!expectedReads || expectedReads.some(expected => expected.nodeId === sample.nodeId &&
+      expected.descriptor.sessionId === sample.executionSessionId &&
+      expected.descriptor.checkpoint.revision === sample.checkpointRevision &&
+      expected.lifecycle.surface === sample.lifecycle?.surface &&
+      expected.lifecycle.generation === sample.lifecycle?.generation &&
+      expected.lifecycle.frameId === sample.lifecycle?.frameId)));
   const latestByNode = new Map();
   for (const sample of stateSamples) latestByNode.set(sample.nodeId, sample);
   const observed = subjects.map(subject => latestByNode.get(subject.id)).filter(Boolean);
@@ -169,8 +186,13 @@ async function archiveCurrentStateResourceObservation() {
     assert(Number.isSafeInteger(sample.currentStateChunkCount) && sample.currentStateChunkCount > 0);
     assert(Number.isSafeInteger(sample.currentStateAssemblyPeakCharacters) &&
       sample.currentStateAssemblyPeakCharacters >= sample.currentStateLength);
+    if (expectedReads) {
+      const expected = expectedReads.find(read => read.nodeId === sample.nodeId);
+      assert.equal(sample.currentStateLength, expected.descriptor.currentState.length);
+      assert.equal(sample.currentStateChunkCount, Math.ceil(sample.currentStateLength / 8192));
+    }
   }
-  await archive('current-state-resource-observation', {
+  const observation = {
     scope: 'Current-state assembly accounting for the same real Electron capacity workload; no general RSS budget or state-length threshold.',
     sessionCount: subjects.length,
     observedSubjects: observed.map(sample => sample.nodeId),
@@ -178,9 +200,11 @@ async function archiveCurrentStateResourceObservation() {
     maxAssemblyPeakCharacters: Math.max(...observed.map(sample => sample.currentStateAssemblyPeakCharacters)),
     aggregateAssemblyPeakCharacters: observed.reduce((sum, sample) => sum + sample.currentStateAssemblyPeakCharacters, 0),
     supervisorCaptureObservations: opened,
+    ...(expectedReads ? { observedDescriptors: expectedReads } : {}),
     samples: observed.map(sample => ({
       nodeId: sample.nodeId,
       executionSessionId: sample.executionSessionId,
+      ...(expectedReads ? { lifecycle: sample.lifecycle, checkpointRevision: sample.checkpointRevision } : {}),
       currentStateLength: sample.currentStateLength,
       currentStateOffset: sample.currentStateOffset,
       currentStateChunkCount: sample.currentStateChunkCount,
@@ -192,8 +216,10 @@ async function archiveCurrentStateResourceObservation() {
       'The assembly peak is the existing conservative UTF-16 estimate, not a process memory limit.',
       'Over-limit handling remains an explicit failure or compatibility fallback; this acceptance never truncates state.'
     ]
-  });
+  };
+  await archive(name, observation);
   currentStateResourceObservationCaptured = true;
+  return observation;
 }
 
 async function initialize({ reset }) {
@@ -750,6 +776,111 @@ async function measure() {
   assert.equal(budgetObservation.pass, true, `Workload observation exceeded its predeclared budget: ${JSON.stringify(budgetObservation)}`);
 }
 
+async function observeCurrentStateDescriptors(beforeReads, deadline) {
+  const observed = new Map();
+  await poll('new editor current-state descriptors', async () => {
+    for (const message of await command('getHostMessages')) {
+      const descriptor = message.payload?.terminalRead;
+      const before = beforeReads.find(reader => reader.nodeId === message.payload?.nodeId);
+      if (message.type !== 'host/executionSnapshot' || message.lifecycle?.surface !== 'editor' ||
+          !descriptor || !before || descriptor.readId === before.readId) continue;
+      assert.equal(descriptor.sessionId, before.sessionId, 'Surface switching must retain the original session.');
+      assert.equal(descriptor.authorityId, before.authorityId, 'Surface switching must retain the original authority.');
+      assert.equal(descriptor.currentState?.format, 'xterm-current-state-v1');
+      observed.set(before.nodeId, { nodeId: before.nodeId, lifecycle: message.lifecycle, descriptor });
+    }
+    return [...observed.values()];
+  }, reads => reads.length === beforeReads.length, Math.max(0, deadline - performance.now()));
+  return [...observed.values()];
+}
+
+async function measureCurrentState() {
+  await initialize({ reset: true });
+  startSampling();
+  await idle(0);
+  baselineRss = baselines[0].meanSumRss;
+  const a = await createSubject('a');
+  const b = await createSubject('b');
+  await archiveCurrentStateResourceObservation({ name: 'initial-current-state-resource-observation' });
+  const beforeReads = subjects.map(subject => ({ nodeId: subject.id, ...subject.reader }));
+  await processSamples();
+  await confirmRuntimeIdentities();
+
+  const assertSuffix = (blocks, deadline) => poll('complete retained current-state suffix', async () => {
+    try { await dom({ kind: 'assertCapacityTerminalSuffix', nodeId: a.id, blocks }); return true; }
+    catch (error) { if (!/Capacity suffix pending/.test(String(error))) throw error; return false; }
+  }, Boolean, Math.max(0, deadline - performance.now()));
+  const preparation = [];
+  let receipt;
+  // Preserve the original per-stage preparation budget and drain before the
+  // next command. Only the final filled state enters surface-switch acceptance.
+  for (const blocks of format.blocks) {
+    phase = `current-state-fill-${blocks}`;
+    const fillStarted = performance.now();
+    const fillDeadline = fillStarted + 30000;
+    await dom({ kind: 'sendExecutionInput', nodeId: a.id, data: `produce:${blocks}\r` });
+    receipt = await poll(`fixed ${blocks}-block source receipt`, () => readReceipt(a),
+      value => value.state === 'stage-complete' && value.blocks === blocks,
+      Math.max(0, fillDeadline - performance.now()));
+    assertReceipt(receipt, blocks);
+    await assertSuffix(blocks, fillDeadline);
+    const stage = { blocks, preparationObservationMs: 30000, elapsedMs: performance.now() - fillStarted, receipt };
+    preparation.push(stage);
+    await archive(`current-state-fill-${blocks}`, stage);
+  }
+  await archive('current-state-before', { beforeReads, receipt, preparation, surface: surfaceState(await snapshot()),
+    supervisor, subjects, processes: [...processes.values()] });
+
+  phase = 'current-state-switch';
+  hidden = true;
+  await sampler;
+  await command('clearHostMessages');
+  await command('clearDiagnosticEvents');
+  const restoreStarted = performance.now();
+  const restoreDeadline = restoreStarted + 30000;
+  // Observe descriptors while the new Webview mounts so its bounded message
+  // ring cannot replace them with later state chunks before we archive them.
+  const descriptors = observeCurrentStateDescriptors(beforeReads, restoreDeadline)
+    .then(reads => ({ reads }), error => ({ error }));
+  await vscode.commands.executeCommand('devSessionCanvas.openCanvasInEditor');
+  surface = 'editor';
+  await command('waitForCanvasReady', surface, Math.max(0, restoreDeadline - performance.now()));
+  await dom({ kind: 'configureCapacityCalibration', nodeId: 'calibration', enabled: true });
+  hidden = false;
+  const observed = await descriptors;
+  if (observed.error) throw observed.error;
+  const afterReads = observed.reads;
+  const loadRead = afterReads.find(read => read.nodeId === a.id);
+  assert(loadRead.descriptor.currentState.length > 8192, 'The filled state must exercise multiple transport chunks.');
+  await archive('current-state-descriptors', { beforeReads, afterReads,
+    oldReaderDisposition: 'The supported surface switch cancels old panel readers; no applied or EOF claim is made.' });
+  phase = 'current-state-import';
+  await assertSuffix(2560, restoreDeadline);
+  const restoreElapsedMs = performance.now() - restoreStarted;
+  assert(restoreElapsedMs <= 30000, 'Current-state restoration exceeded its 30 second observation bound.');
+  const resourceObservation = await archiveCurrentStateResourceObservation({ expectedReads: afterReads });
+  await confirmRuntimeIdentities();
+  assertBindings(await snapshot(), await command('getRuntimeSupervisorState'));
+  phase = 'current-state-interaction';
+  const nonce = 'current_state_after_import';
+  await dom({ kind: 'measureCapacityInteraction', nodeId: b.id, loadNodeId: a.id, nonce });
+  const interaction = (await probe()).capacityCalibration.interaction;
+  assert.equal(interaction?.nonce, nonce);
+  assert(interaction.applied && interaction.elapsedMs <= 1500, 'B must remain interactive after current-state import.');
+  interactions.push({ ...interaction, phase });
+  await archive('current-state-after', { contentAndInteractionPass: true, naturalCompletion: 'pending', beforeReads, afterReads, receipt,
+    restoreElapsedMs, interaction, resourceObservation,
+    scope: 'One Linux two-session filled-state surface switch; serialized-character accounting and sampled RSS are not exact allocation peaks.' });
+  await finishSubjects();
+  const settlements = await poll('new readers naturally applied their final revisions', async () =>
+    (await command('getDiagnosticEvents')).filter(event => event.kind === 'runtime/terminalReadSettled' &&
+      afterReads.some(read => read.descriptor.readId === event.detail?.readId)), events =>
+    afterReads.every(read => events.some(event => event.detail.readId === read.descriptor.readId &&
+      event.detail.outcome?.kind === 'applied' && ['recorded', 'duplicate'].includes(event.detail.settlement))));
+  await archive('current-state-natural-completion', { pass: true, settlements,
+    scope: 'New editor readers applied their final revisions; old panel cancellation is not counted as completed consumption.' });
+}
+
 async function openSurface() {
   check();
   await vscode.commands.executeCommand('devSessionCanvas.openCanvasInPanel');
@@ -1037,10 +1168,13 @@ function startSampling() {
       const rss = await processSamples();
       const host = process.memoryUsage();
       const sumRss = Object.values(rss).reduce((sum, value) => sum + value, 0);
-      if (scenario !== 'compact') await command('clearHostMessages');
+      const currentStateFill = capacityCurrentState && phase.startsWith('current-state-fill-');
+      if (scenario !== 'compact' && (!capacityCurrentState || currentStateFill)) await command('clearHostMessages');
       // Keep the bounded output interaction trace intact for failure attribution;
       // idle/start phases can still clear the diagnostic ring to limit noise.
-      if (scenario !== 'compact' && !phase.startsWith('output-')) await command('clearDiagnosticEvents');
+      if (scenario !== 'compact' && (!capacityCurrentState || currentStateFill) && !phase.startsWith('output-')) {
+        await command('clearDiagnosticEvents');
+      }
       // Hidden surfaces cannot service a probe; never label stale values as current.
       const webview = hidden ? undefined : await probe();
       samples.push({ ms: tickStarted - started, phase, rss, sumRss, host,

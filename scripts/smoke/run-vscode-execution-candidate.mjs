@@ -20,8 +20,12 @@ const { values } = parseArgs({ options: { output: { type: 'string' }, mode: { ty
   'capacity-sessions': { type: 'string' },
   'capacity-reconnect': { type: 'boolean', default: false },
   'capacity-attach-compact': { type: 'boolean', default: false },
+  'capacity-current-state': { type: 'boolean', default: false },
   'capacity-calibration': { type: 'boolean', default: false } } });
-const capacitySelected = values['capacity-calibration'] || values['capacity-reconnect'] || values['capacity-attach-compact'];
+const capacitySelected = values['capacity-calibration'] || values['capacity-reconnect'] ||
+  values['capacity-attach-compact'] || values['capacity-current-state'];
+assert(!values['capacity-current-state'] || (!values['reader-isolation'] && !values['installed-vsix']),
+  'Current-state capacity acceptance is a separate development-host selection.');
 assertReaderIsolationSelection(values);
 assertInstalledCandidateSelection(values);
 assert(['linux', 'darwin', 'win32'].includes(process.platform), 'This finite product acceptance requires a supported native platform.');
@@ -30,7 +34,8 @@ assert(values.output, 'Specify a new --output evidence directory.');
 assert(values.mode === undefined || ['live-runtime', 'snapshot-only'].includes(values.mode), 'Unknown mode.');
 assert(!capacitySelected || values.mode === undefined,
   'Capacity calibration is a separate fixed live-runtime selection.');
-assert(Number([values['capacity-calibration'], values['capacity-reconnect'], values['capacity-attach-compact']].filter(Boolean).length) <= 1,
+assert(Number([values['capacity-calibration'], values['capacity-reconnect'], values['capacity-attach-compact'],
+  values['capacity-current-state']].filter(Boolean).length) <= 1,
   'Select one fixed capacity workload.');
 assert(!values['capacity-reconnect'] && !values['capacity-attach-compact'] || values['capacity-sessions'] === undefined,
   'Host reconnect uses its fixed two-session workload.');
@@ -175,7 +180,8 @@ console.log(`Finite real Electron candidate acceptance passed: ${output}`);
 async function runCapacityCalibration() {
   const reconnect = values['capacity-reconnect'];
   const attachCompact = values['capacity-attach-compact'];
-  const scenarios = reconnect ? ['color'] : attachCompact ? ['compact'] : ['color', 'size'];
+  const currentState = values['capacity-current-state'];
+  const scenarios = reconnect || currentState ? ['color'] : attachCompact ? ['compact'] : ['color', 'size'];
   const workload = capacityFormat.capacityWorkload(Number(values['capacity-sessions'] ?? 2));
   const selectionBytes = await fs.readFile(path.join(dist, 'execution-candidate-selection.json'));
   const selection = JSON.parse(selectionBytes);
@@ -199,13 +205,16 @@ async function runCapacityCalibration() {
     bundle: true, platform: 'node', format: 'cjs', target: 'node22', write: false });
   const helperBytes = helper.outputFiles[0].contents;
   await fs.writeFile(path.join(output, 'input.json'), `${JSON.stringify({ schemaVersion: 1,
-    scope: attachCompact
+    scope: currentState
+      ? 'F-04 finite Linux real Electron full current-state panel-to-editor reattach; not a general product memory budget or cross-platform closure'
+      : attachCompact
       ? 'A1 finite Linux real Electron attach/resize/scrollback/live-compaction Terminal workload; not complete A1 or a general product memory budget'
       : 'A1 finite Linux real Electron fixed Terminal workload; not complete A1 or a general product memory budget',
     runId, vscodeExecutablePath, subjectExecutable: process.execPath, subjectVersions: process.versions,
     assetManifest: manifest, selection, sourceHashes, helperSha256: hash(helperBytes), scenarios,
-    cumulativeBlocks: [640, 1280, 2560], terminalEncodedBlockBytes: 10240, scrollback: 100000,
-    sampleMs: 250, idleBaselineMs: 5000, hideMs: 5000, interactionObservationMs: 1500,
+    ...(!currentState ? { cumulativeBlocks: [640, 1280, 2560] } : {}),
+    terminalEncodedBlockBytes: 10240, scrollback: 100000,
+    sampleMs: 250, idleBaselineMs: 5000, hideMs: currentState ? 0 : 5000, interactionObservationMs: 1500,
     catchupMs: 30000, caseSafetyMs: 600000, ...workload,
     ...(reconnect ? { phases: ['detach', 'reconnect'], offlineBlocks: 2560,
       overlapAcceptance: 'v2: one actual B response applied within 1500ms with 0 < loadLastBlockBefore <= loadLastBlockAfter < 2560 in the same Webview action; catchup deadline is not reset',
@@ -214,6 +223,12 @@ async function runCapacityCalibration() {
     ...(attachCompact ? { phases: ['attach', 'dynamic-scrollback', 'resize', 'checkpoint', 'compact-retention'],
       compactNoiseBytes: 18 * 1024 ** 2,
       compactAcceptance: 'A live reader remains usable after a checkpoint promotion and journal compaction; output, resize and scrollback revisions remain contiguous.' } : {}),
+    ...(currentState ? { phases: ['fill', 'panel-to-editor', 'current-state-import', 'interaction', 'natural-cleanup'],
+      sourceCommands: [640, 1280, 2560],
+      preparationBlocks: [640, 1280, 2560], preparationStageObservationMs: 30000, acceptanceBlocks: [2560],
+      preparationScope: 'Original sequential source receipt and retained-suffix preparation budgets; only the final filled state enters one surface-switch acceptance.',
+      currentStateAcceptance: 'One final 2560-block receipt, full retained suffix on a new editor reader, unchanged original runtime identities, multi-chunk descriptor/assembly agreement and B response within 1500ms; old panel reader cancellation is not applied/EOF.',
+      resourceScope: '250ms process samples and serialized-character accounting; no exact capture/import heap peak claim.' } : {}),
     limitsScope: 'Workload-specific observation and experiment safety only; not a product session limit or general SLA.',
     oldAcceptance: reconnect ? 'Only A1/A2 live Host reconnect selected; not completed reopen or A3 closure.'
       : 'A2/A3 not selected and not combined into this result.' }, null, 2)}\n`);
@@ -235,6 +250,7 @@ async function runCapacityCalibration() {
         extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'execution-capacity-tests.cjs'),
         disableExtensions: false, disableWorkspaceTrust: true,
         extensionTestsEnv: { DEV_SESSION_CANVAS_CAPACITY_SCENARIO: scenario,
+          ...(currentState ? { DEV_SESSION_CANVAS_CAPACITY_CURRENT_STATE: '1' } : {}),
           ...(phase ? { DEV_SESSION_CANVAS_CAPACITY_PHASE: phase } : {}),
           DEV_SESSION_CANVAS_CAPACITY_SESSIONS: String(workload.sessionCount),
           DEV_SESSION_CANVAS_CAPACITY_SUBJECT_NODE: process.execPath } });

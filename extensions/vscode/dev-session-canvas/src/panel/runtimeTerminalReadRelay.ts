@@ -15,10 +15,14 @@ import type { TerminalStreamAttachPayload } from '../common/terminalSessionStrea
 import type { RuntimeSupervisorClient } from './runtimeSupervisorClient';
 
 interface ReadBinding {
+  key: string;
   client: RuntimeSupervisorClient;
   sessionId: string;
   authorityId: string;
+  consumerId: 'editor' | 'panel';
+  currentState?: 'xterm-current-state-v1';
   opening?: Promise<TerminalStreamReadDescriptor>;
+  opened?: Promise<TerminalStreamReadDescriptor | undefined>;
   onReleased?: (result: RuntimeSupervisorCloseTerminalReadResult) => void;
   settlementMode?: 'final-application-v1';
   stateSentOffset: number;
@@ -38,7 +42,7 @@ export class RuntimeTerminalReadRelay {
   private readonly reads = new Map<string, ReadBinding>();
   private readonly releasing = new Set<ReadBinding>();
 
-  public async open(
+  public open(
     key: string,
     client: RuntimeSupervisorClient,
     sessionId: string,
@@ -48,15 +52,26 @@ export class RuntimeTerminalReadRelay {
     settlementMode?: 'final-application-v1',
     currentState?: 'xterm-current-state-v1'
   ): Promise<TerminalStreamReadDescriptor | undefined> {
-    const existing = this.reads.get(key)?.descriptor;
-    if (existing?.sessionId === sessionId && existing.authorityId === authorityId &&
-        existing.settlementMode === settlementMode && existing.currentState?.format === currentState) {
-      return existing;
+    const existing = this.reads.get(key);
+    if (existing?.client === client && existing.sessionId === sessionId && existing.authorityId === authorityId &&
+        existing.consumerId === consumerId && existing.settlementMode === settlementMode && existing.currentState === currentState) {
+      return existing.opened!;
     }
+    // Cancelling an open does not release its remote responsibility until its late descriptor is closed.
+    let retained = existing ? 1 : 0;
+    for (const binding of this.releasing) if (binding.key === key) retained++;
+    if (retained >= 2) return Promise.reject(new Error('Terminal reader replacement capacity exhausted.'));
     this.close(key, undefined, 'reader-replaced');
-    const binding: ReadBinding = { client, sessionId, authorityId, onReleased, settlementMode, stateSentOffset: 0,
+    const binding: ReadBinding = { key, client, sessionId, authorityId, consumerId, currentState,
+      onReleased, settlementMode, stateSentOffset: 0,
       pending: false, appliedRevision: 0, sentRevision: 0, acknowledged: false };
     this.reads.set(key, binding);
+    binding.opened = this.openBinding(binding);
+    return binding.opened;
+  }
+
+  private async openBinding(binding: ReadBinding): Promise<TerminalStreamReadDescriptor | undefined> {
+    const { key, client, sessionId, authorityId, consumerId, settlementMode, currentState } = binding;
     try {
       binding.opening = client.openTerminalRead({ sessionId, authorityId, consumerId,
         ...(currentState ? { currentState } : {}),
