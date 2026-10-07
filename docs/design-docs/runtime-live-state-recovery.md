@@ -81,3 +81,5 @@ reader 的 `currentStateCheckpoint` 标记在释放冻结字符串后仍保留�
 现代安装入口的受影响回归已取得 macOS installed product/Agent 8 场景，以及同包 Windows 定向 run `37507579337` 的 installed live-runtime/Agent live 4 场景证据。Windows 90000 行与尾部最终光标、reader applied、completed 无历史及资源释放通过；Agent 仅所选四场景通过，不冒称完整矩阵。先前 Windows run `37494231281` 的 Host 停滞原因仍未确认，归档缺失清空前的启动批次，因此保留间歇性风险，不将重跑绿色等同业务修复。上述生命周期/安装结果也不代证真实 live Agent 跨 Host 重开。
 
 剩余只补实际 Webview/PaneGallery、VS Code 重开、真实 Terminal/Codex/Claude 的恢复后交互与退出，以及现代三平台最终包中的对应路径；并在同一受影响链路上完成 current-state 总长度/组装峰值与多会话准入记录。provider/native 未改，不重跑无影响的六架构资产矩阵，不重开 snapshot-only 历史归档或 root 归属。具体命令、失败和恢复方法保留在活动 ExecPlan，B4 在这些受影响验收和 F-04 资源边界完成前仍开放。
+
+2026-10-07 F-04 资源台账接线：现有 Linux capacity workload 的 finally 阶段从 Host diagnostics 读取 `runtime/terminalPagedReadOpened` 的 current-state descriptor（诊断事件仍在 ring 中时作为 Supervisor 侧观察），并强制要求每个受影响会话存在 Webview `terminal-current-state-assembled` 完整样本。归档包含状态长度、最终 offset、chunk 数、保守组装峰值及跨会话聚合字符量；缺失完整组装事实会使该受影响 workload 失败并保留独立错误证据，原 workload 失败不会被取证错误覆盖。该接线不引入总长度或 RSS 产品阈值，也不把 8192 字符页大小当作总资源上限；历史 capacity 结果尚未包含该台账，待下一次 Linux 原生重跑后再评估准入。

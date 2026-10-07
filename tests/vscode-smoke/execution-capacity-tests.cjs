@@ -35,6 +35,7 @@ let supervisor;
 let baselineRss;
 let started;
 let hidden = false;
+let currentStateResourceObservationCaptured = false;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const rawCommand = (name, ...args) => vscode.commands.executeCommand(`devSessionCanvas.__test.${name}`, ...args);
 const command = async (name, ...args) => { check(); const value = await rawCommand(name, ...args); check(); return value; };
@@ -108,6 +109,18 @@ async function run() {
   } finally {
     clearTimeout(deadline);
     await stopSampling();
+    if (subjects.length > 0 && !currentStateResourceObservationCaptured && capacityPhase !== 'cleanup') {
+      try {
+        await archiveCurrentStateResourceObservation();
+      } catch (error) {
+        const accountingFailure = !aborted;
+        if (accountingFailure) aborted = error;
+        await archive('current-state-resource-observation-failure', {
+          error: String(error), stack: error.stack, subjectCount: subjects.length,
+          workloadFailureAlreadyRecorded: !accountingFailure
+        });
+      }
+    }
     await archive('resource-samples', { scope: 'Actual Extension Host and confirmed Linux processes; sample overhead included.',
       samplePeriodMs: 250, samples, baselines, resourceObservations, phases: summarize(samples), processes: [...processes.values()],
       limitations: ['RSS sums double-count shared pages.', 'Host heap is this isolate; RSS includes other threads.',
@@ -118,7 +131,69 @@ async function run() {
         'The original Host test ring clones messages; periodic clearing does not remove its transient cost.',
         'No forced GC, profiler, heap-budget inference or peak claim between samples.'] });
     if (!detached) await cleanup();
+    if (aborted) throw aborted;
   }
+}
+
+async function archiveCurrentStateResourceObservation() {
+  // Allow the Webview write queue to publish the assembly receipt before taking
+  // the one bounded diagnostics snapshot used by this capacity case.
+  await sleep(250);
+  const dump = await command('dumpHostDiagnostics');
+  assert(dump?.executionPerformanceDiagnosticsPath,
+    'Host diagnostics must expose the performance sample archive for current-state acceptance.');
+  const diagnostics = JSON.parse(await fs.readFile(dump.executionPerformanceDiagnosticsPath, 'utf8'));
+  const diagnosticEventsPath = path.join(path.dirname(dump.executionPerformanceDiagnosticsPath), 'diagnostic-events.json');
+  const diagnosticEvents = JSON.parse(await fs.readFile(diagnosticEventsPath, 'utf8').catch(() => '[]'));
+  const opened = (Array.isArray(diagnosticEvents) ? diagnosticEvents : [])
+    .filter(event => event.kind === 'runtime/terminalPagedReadOpened' &&
+      event.detail?.currentState === 'xterm-current-state-v1')
+    .map(event => ({
+      nodeId: event.detail.nodeId,
+      executionSessionId: event.detail.sessionId,
+      stateLength: event.detail.stateLength,
+      checkpointRevision: event.detail.checkpointRevision,
+      headRevision: event.detail.headRevision
+    }));
+  const samples = Array.isArray(diagnostics.samples) ? diagnostics.samples : [];
+  const stateSamples = samples.filter(sample => sample.source === 'webview-terminal-drain' &&
+    sample.reason === 'terminal-current-state-assembled' && typeof sample.nodeId === 'string');
+  const latestByNode = new Map();
+  for (const sample of stateSamples) latestByNode.set(sample.nodeId, sample);
+  const observed = subjects.map(subject => latestByNode.get(subject.id)).filter(Boolean);
+  assert.equal(observed.length, subjects.length,
+    'Every capacity subject must report a complete current-state assembly sample.');
+  for (const sample of observed) {
+    assert(Number.isSafeInteger(sample.currentStateLength) && sample.currentStateLength > 0);
+    assert(Number.isSafeInteger(sample.currentStateOffset) && sample.currentStateOffset === sample.currentStateLength);
+    assert(Number.isSafeInteger(sample.currentStateChunkCount) && sample.currentStateChunkCount > 0);
+    assert(Number.isSafeInteger(sample.currentStateAssemblyPeakCharacters) &&
+      sample.currentStateAssemblyPeakCharacters >= sample.currentStateLength);
+  }
+  await archive('current-state-resource-observation', {
+    scope: 'Current-state assembly accounting for the same real Electron capacity workload; no general RSS budget or state-length threshold.',
+    sessionCount: subjects.length,
+    observedSubjects: observed.map(sample => sample.nodeId),
+    maxCurrentStateLength: Math.max(...observed.map(sample => sample.currentStateLength)),
+    maxAssemblyPeakCharacters: Math.max(...observed.map(sample => sample.currentStateAssemblyPeakCharacters)),
+    aggregateAssemblyPeakCharacters: observed.reduce((sum, sample) => sum + sample.currentStateAssemblyPeakCharacters, 0),
+    supervisorCaptureObservations: opened,
+    samples: observed.map(sample => ({
+      nodeId: sample.nodeId,
+      executionSessionId: sample.executionSessionId,
+      currentStateLength: sample.currentStateLength,
+      currentStateOffset: sample.currentStateOffset,
+      currentStateChunkCount: sample.currentStateChunkCount,
+      currentStateAssemblyPeakCharacters: sample.currentStateAssemblyPeakCharacters
+    })),
+    diagnosticSchema: diagnostics.summary ?? null,
+    limitations: [
+      'Supervisor capture is represented by the negotiated state length; no RSS inference is made from character counts.',
+      'The assembly peak is the existing conservative UTF-16 estimate, not a process memory limit.',
+      'Over-limit handling remains an explicit failure or compatibility fallback; this acceptance never truncates state.'
+    ]
+  });
+  currentStateResourceObservationCaptured = true;
 }
 
 async function initialize({ reset }) {
@@ -189,6 +264,7 @@ async function prepareDetach() {
   await createSubject('a');
   await idle(1);
   await createSubject('b');
+  await archiveCurrentStateResourceObservation();
   await idle(2);
   phase = 'detach-flush';
   const saved = await command('flushPersistedState');
@@ -357,6 +433,7 @@ async function attachCompact() {
   baselineRss = baselines[0].meanSumRss;
   const a = await createSubject('a');
   const b = await createSubject('b');
+  await archiveCurrentStateResourceObservation();
   const beforeReader = (await probe()).capacityCalibration.readers.find(reader => reader.nodeId === a.id);
 
   phase = 'dynamic-scrollback';
@@ -578,6 +655,7 @@ async function measure() {
   await idle(2);
   const peers = [b];
   for (let index = 2; index < workload.sessionCount; index += 1) peers.push(await createSubject(`b${index}`));
+  await archiveCurrentStateResourceObservation();
   if (workload.sessionCount === 10) await idle(10);
   const before = await checkpoint(a, 0);
   let previousCheckpoint = before.checkpointRevision;
