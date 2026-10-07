@@ -16,6 +16,7 @@ assert.match(helperSource, /\$PSModuleAutoLoadingPreference = 'None'/u);
 assert.match(helperSource, /\$env:PSModulePath = \[IO.Path\]::Combine\(\$PSHOME, 'Modules'\)/u);
 assert.match(helperSource, /@\('Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Management', 'CimCmdlets'\)/u);
 assert.match(helperSource, /Import-Module -Name \(\[IO.Path\]::Combine\(\$env:PSModulePath, \$module, \$module \+ '\.psd1'\)\) -ErrorAction Stop/u);
+assert.match(helperSource, /\$target\.role -notin @\('cli', 'wrapper', 'provider', 'supervisor'\)/u);
 assert(helperSource.indexOf('Import-Module') < helperSource.indexOf('New-Object'));
 const originalSystemRoot = process.env.SystemRoot;
 process.env.SystemRoot ??= path.resolve('fixture-system-root');
@@ -137,6 +138,19 @@ try {
   assert.deepEqual(await normal.observer.cleanupKnownExecution(), []);
   await normal.observer.dispose();
   assert.equal(normal.observer.error, undefined);
+
+  const supervisorCleanup = fixture();
+  await supervisorCleanup.observer.addRoot(1, 'host');
+  supervisorCleanup.records = liveRuntimeChain;
+  await supervisorCleanup.observer.sample();
+  const supervisor = liveRuntimeChain.find(value => value.role === 'supervisor');
+  const supervisorActions = await supervisorCleanup.observer.cleanupSupervisor(supervisor);
+  assert.deepEqual(supervisorActions, [{ pid: supervisor.pid, startTicks: supervisor.startTicks,
+    action: 'terminated-original-handle' }]);
+  assert.deepEqual(supervisorCleanup.requests.find(value => value.operation === 'cleanup').targets,
+    [{ pid: supervisor.pid, startTicks: supervisor.startTicks, executable: supervisor.executable, role: 'supervisor' }]);
+  assert(ended(supervisorCleanup.observer.result().entries.find(value => value.role === 'supervisor')));
+  await supervisorCleanup.observer.dispose();
 
   const missing = fixture();
   await missing.observer.addRoot(1, 'host');

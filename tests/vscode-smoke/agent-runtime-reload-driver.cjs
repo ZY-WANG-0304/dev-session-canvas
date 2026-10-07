@@ -282,10 +282,32 @@ async function verify(extension) {
 async function cleanup() {
   if (!observer) return;
   try { await command('resetState'); } catch { /* The original product failure remains authoritative. */ }
+  try { await observer.stop(); } catch { /* Preserve the original assertion. */ }
+  const remaining = observer.result().entries.filter(entry =>
+    ['cli', 'wrapper', 'provider'].includes(entry.role) && !executionEnded(entry));
+  if (remaining.length) {
+    const actions = await observer.cleanupKnownExecution();
+    await observer.sample();
+    const unresolved = observer.result().entries.filter(entry =>
+      ['cli', 'wrapper', 'provider'].includes(entry.role) && !executionEnded(entry));
+    if (unresolved.length || actions.some(action => action.action?.includes('unconfirmed'))) {
+      throw new Error(`Agent resource cleanup was not confirmed: ${JSON.stringify({ actions, unresolved })}`);
+    }
+  }
   const expected = control?.setup?.supervisor;
-  if (expected && sameLiveIdentity(expected, await readIdentity(expected.pid))) {
+  if (expected && process.platform === 'win32') {
+    if (typeof observer.cleanupSupervisor !== 'function') {
+      throw new Error('Windows Supervisor cleanup requires the SafeHandle observer.');
+    }
+    const actions = await observer.cleanupSupervisor(expected);
+    await observer.sample();
+    const supervisor = observer.result().entries.find(entry => entry.role === 'supervisor' &&
+      entry.pid === expected.pid && entry.startTicks === expected.startTicks);
+    if (!supervisor || !executionEnded(supervisor) || actions.some(action => action.action?.includes('unconfirmed'))) {
+      throw new Error(`Supervisor cleanup was not confirmed: ${JSON.stringify({ actions, supervisor })}`);
+    }
+  } else if (expected && sameLiveIdentity(expected, await readIdentity(expected.pid))) {
     process.kill(expected.pid, 'SIGTERM');
     await poll('idle Supervisor exit', () => readIdentity(expected.pid), value => exitedIdentity(expected, value), 10000);
   }
-  try { await observer.stop(); } catch { /* Preserve the original assertion. */ }
 }

@@ -176,6 +176,26 @@ class WindowsAgentProcessObserver {
       return targets.map(({ pid, startTicks }) => ({ pid, startTicks, action: 'original-handle-signal-unconfirmed' }));
     }
   }
+  async cleanupSupervisor(expected) {
+    if (this.error) return [{ action: 'unknown-identity-no-signal' }];
+    const entry = [...this.entries.values()].find(value => value.role === 'supervisor' &&
+      value.pid === expected?.pid && value.startTicks === expected?.startTicks);
+    if (!entry || entry.observationUnknown) return [{ action: 'unknown-identity-no-signal' }];
+    const target = { pid: entry.pid, startTicks: entry.startTicks, executable: entry.executable, role: 'supervisor' };
+    try {
+      const response = await this.request({ operation: 'cleanup', targets: [target] });
+      this.apply(response);
+      assert(Array.isArray(response.actions) && response.actions.length === 1);
+      const action = response.actions[0];
+      assert.equal(action.pid, target.pid);
+      assert.equal(action.startTicks, target.startTicks);
+      assert(['already-exited', 'terminated-original-handle'].includes(action.action));
+      return [action];
+    } catch {
+      this.unknown('supervisor-cleanup-observation-unknown');
+      return [{ pid: target.pid, startTicks: target.startTicks, action: 'original-handle-signal-unconfirmed' }];
+    }
+  }
   async dispose() {
     await this.stop();
     this.disposing = true;
