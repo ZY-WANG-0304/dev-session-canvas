@@ -51,7 +51,7 @@ try {
     'agent-candidate-process-observer.cjs', 'agent-candidate-windows-observer.cjs', 'runtime-reload-contract.cjs'];
   for (const file of staged) await fs.copyFile(path.join(projectRoot, 'tests/vscode-smoke', file), path.join(driverRoot, file));
   const runtimePaths = path.join(driverRoot, 'runtime-reload-paths.cjs');
-  const bundledPaths = await build({ entryPoints: [path.join(projectRoot,
+  await build({ entryPoints: [path.join(projectRoot,
     'extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts')], outfile: runtimePaths,
     bundle: true, platform: 'node', format: 'cjs', target: 'node22', write: true, metafile: true, logLevel: 'silent' });
   const sourceHashes = {};
