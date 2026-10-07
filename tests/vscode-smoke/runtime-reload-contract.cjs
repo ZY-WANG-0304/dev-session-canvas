@@ -94,8 +94,9 @@ async function readWindowsIdentity(pid) {
   assert(systemRoot && path.isAbsolute(systemRoot), 'Windows identity reads require SystemRoot.');
   const powershell = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   const observer = path.join(__dirname, 'agent-candidate-process-observer.ps1');
-  const request = JSON.stringify({ version: 1, id: 1, operation: 'identity', targets: [{ pid }] });
-  const response = await windowsIdentityClient(powershell, observer).request(request);
+  const response = await windowsIdentityClient(powershell, observer).request({
+    version: 1, operation: 'identity', targets: [{ pid }]
+  });
   if (response.error) throw new Error('Windows identity observer returned an error.');
   const record = response.records?.find(value => value.pid === pid);
   if (!record) return undefined;
@@ -124,6 +125,7 @@ class WindowsIdentityClient {
     this.child.stderr.setEncoding('utf8');
     this.child.stdout.on('data', chunk => this.receive(chunk));
     this.child.stderr.on('data', chunk => { this.stderr += chunk; });
+    this.child.stdin.on('error', error => this.fail(error));
     this.child.once('error', error => this.fail(error));
     this.child.once('close', (code, signal) => {
       if (!this.closed) this.fail(new Error(`Windows identity observer exited: ${code ?? 'null'}/${signal ?? 'none'}${this.stderr ? ` (${this.stderr.slice(0, 256)})` : ''}`));
@@ -140,7 +142,13 @@ class WindowsIdentityClient {
         reject(Object.assign(new Error('Windows identity observer timed out.'), { code: 'ETIMEDOUT' }));
       }, 10000);
       this.pending.set(id, { resolve, reject, timer });
-      this.child.stdin.write(`${JSON.stringify({ ...JSON.parse(request), id })}\n`);
+      try { this.child.stdin.write(`${JSON.stringify({ ...request, id })}\n`); }
+      catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        this.fail(error);
+        reject(error);
+      }
     });
   }
 
@@ -151,6 +159,7 @@ class WindowsIdentityClient {
       const line = this.buffer.slice(0, index); this.buffer = this.buffer.slice(index + 1);
       let response;
       try { response = JSON.parse(line); } catch { return this.fail(new Error('Windows identity observer returned invalid JSON.')); }
+      if (response.version !== 1) return this.fail(new Error('Windows identity observer returned an incompatible response.'));
       const pending = this.pending.get(response.id);
       if (!pending) return this.fail(new Error('Windows identity observer returned an unknown request.'));
       clearTimeout(pending.timer); this.pending.delete(response.id);
