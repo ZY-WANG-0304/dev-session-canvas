@@ -310,12 +310,14 @@ assert.deepEqual(Object.keys(production.on), ['workflow_dispatch'],
 assert.deepEqual(production.permissions, { contents: 'read' });
 assert.equal(production.env, undefined);
 const productionInputs = production.on.workflow_dispatch.inputs;
-assert.deepEqual(Object.keys(productionInputs), ['reuse_package_run', 'reuse_native_run', 'platform', 'agent_scenarios', 'installed_mode', 'skip_installed', 'installed_evidence_run']);
+assert.deepEqual(Object.keys(productionInputs), ['reuse_package_run', 'reuse_native_run', 'platform', 'agent_scenarios', 'installed_mode', 'skip_installed', 'installed_evidence_run', 'agent_reload_only']);
 assert.equal(productionInputs.reuse_package_run.default, '');
 assert.equal(productionInputs.reuse_native_run.default, '');
 assert.equal(productionInputs.agent_scenarios.default, '');
 assert.equal(productionInputs.skip_installed.default, false);
 assert.equal(productionInputs.installed_evidence_run.default, '');
+assert.equal(productionInputs.agent_reload_only.type, 'boolean');
+assert.equal(productionInputs.agent_reload_only.default, false);
 assert.equal(productionInputs.platform.default, 'all');
 assert.equal(productionInputs.installed_mode.default, 'all');
 assert.deepEqual(productionInputs.installed_mode.options, ['all', 'live-runtime']);
@@ -324,6 +326,7 @@ const inputJob = production.jobs.input;
 assert.deepEqual(inputJob.permissions, { contents: 'read', actions: 'read' });
 assert.equal(inputJob.steps[0].with['fetch-depth'], 0);
 const inputStep = inputJob.steps.find(candidate => candidate.id === 'selection');
+assert.equal(inputStep.env.DSC_AGENT_RELOAD_ONLY, '${{ inputs.agent_reload_only }}');
 assert(!inputStep.run.includes('${{'), 'Dispatch values must enter through environment, never shell interpolation.');
 const selectionScript = inputStep.run.split("node --input-type=module <<'NODE'\n")[1].split('\nNODE')[0]
   .replace(/^import .*;\n/gm, '');
@@ -335,7 +338,7 @@ async function selection({ values = {}, changed = [], packageSuccess = true, ins
   installedMode = 'all', sourcePath = '.github/workflows/runtime-production-acceptance.yml', repository = 'owner/repo',
   evidencePlatforms = ['linux'], evidenceMode = 'live-runtime', evidencePath = sourcePath, evidenceRepository = repository } = {}) {
   const env = { DSC_REUSE_RUN: '', DSC_NATIVE_RUN: '', DSC_PLATFORM: 'all', DSC_SCENARIOS: '', DSC_SKIP_INSTALLED: 'false',
-    DSC_INSTALLED_MODE: 'all', DSC_INSTALLED_EVIDENCE_RUN: '',
+    DSC_INSTALLED_MODE: 'all', DSC_INSTALLED_EVIDENCE_RUN: '', DSC_AGENT_RELOAD_ONLY: 'false',
     GITHUB_SHA: 'b'.repeat(40), GITHUB_RUN_ID: '999', GITHUB_REPOSITORY: 'owner/repo',
     GITHUB_OUTPUT: '/controlled-output', GH_TOKEN: 'controlled-token', ...values };
   let output = '', requests = 0;
@@ -400,6 +403,23 @@ const separate = await selection({ values: separateValues, installedPlatforms: [
 assert.equal(separate.requests, 4);
 assert.equal(separate.values.installed_evidence_commit, 'c'.repeat(40));
 assert.equal(separate.values.package_commit, 'a'.repeat(40));
+const reloadOnlyValues = { ...separateValues, DSC_AGENT_RELOAD_ONLY: 'true', DSC_SCENARIOS: '' };
+for (const platform of ['macos', 'windows']) {
+  const reloadOnly = await selection({ values: { ...reloadOnlyValues, DSC_PLATFORM: platform },
+    installedPlatforms: [], evidencePlatforms: [platform] });
+  assert.equal(reloadOnly.requests, 4);
+  assert.equal(reloadOnly.values.package_run, '123');
+  assert.equal(reloadOnly.values.installed_evidence_commit, 'c'.repeat(40));
+  assert.deepEqual(JSON.parse(reloadOnly.values.matrix), { include: platforms.filter(item => item.platform === platform) });
+}
+for (const changes of [{ DSC_AGENT_RELOAD_ONLY: 'other' }, { DSC_REUSE_RUN: '' },
+  { DSC_SKIP_INSTALLED: 'false' }, { DSC_INSTALLED_EVIDENCE_RUN: '' },
+  { DSC_SCENARIOS: 'codex-live-runtime-natural' }]) {
+  await assert.rejects(selection({ values: { ...reloadOnlyValues, ...changes } }));
+}
+await assert.rejects(selection({ values: reloadOnlyValues, evidencePlatforms: [] }), /original passed installed step/);
+await assert.rejects(selection({ values: reloadOnlyValues, changed: ['extensions/vscode/dev-session-canvas/src/extension.ts'] }), /not product inputs/);
+await assert.rejects(selection({ values: reloadOnlyValues, packageSuccess: false }), /must have succeeded/);
 await assert.rejects(selection({ values: separateValues, evidencePlatforms: [] }), /original passed installed step/);
 await assert.rejects(selection({ values: { ...separateValues, DSC_INSTALLED_MODE: 'all' } }), /original passed installed step/);
 await assert.rejects(selection({ values: separateValues, evidencePath: 'wrong-workflow.yml' }));
@@ -454,6 +474,7 @@ assert.deepEqual(preserveBytes, { name: 'Preserve source bytes on Windows checko
 assert(finalProduct.steps.indexOf(preserveBytes) < finalProduct.steps.findIndex(candidate => candidate.uses === 'actions/checkout@v4'),
   'Installed native source hashes must see the same bytes as the asset producer.');
 const finalSecretStep = finalProduct.steps.find(candidate => candidate.id === 'real_agents');
+assert.equal(finalSecretStep.if, '${{ !inputs.agent_reload_only }}');
 assert.deepEqual(finalSecretStep.env, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}',
   DSC_AGENT_SCENARIOS: '${{ inputs.agent_scenarios }}' });
 assert.equal(finalSecretStep['continue-on-error'], undefined);
@@ -464,7 +485,42 @@ assert.doesNotMatch(finalSecretStep.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/
 const reloadSecretStep = finalProduct.steps.find(candidate => candidate.id === 'real_agent_reload');
 assert.deepEqual(reloadSecretStep.env, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}' });
 assert.equal(reloadSecretStep['continue-on-error'], undefined);
-assert.equal(reloadSecretStep.if, "${{ always() && !inputs.skip_installed && (steps.installed.outcome == 'success' || steps.installed_runtime.outcome == 'success') }}");
+const reloadCondition = new Function('inputs', 'steps', 'runner', 'always', 'cancelled', 'success',
+  `return (${reloadSecretStep.if.slice(3, -2)});`);
+function canRunReload({ reloadOnly = true, skipInstalled = true, os = 'Windows', successful = true,
+  cancelled = false, outcomes = {} } = {}) {
+  const defaults = { package_identity: 'success', installed_identity: 'success', agent_clis: 'success',
+    windows_reload_identity: os === 'Windows' ? 'success' : 'skipped', installed: 'skipped',
+    installed_runtime: 'skipped', real_agents: reloadOnly ? 'skipped' : 'success' };
+  const steps = Object.fromEntries(Object.entries({ ...defaults, ...outcomes }).map(([id, outcome]) => [id, { outcome }]));
+  return reloadCondition({ agent_reload_only: reloadOnly, skip_installed: skipInstalled }, steps, { os },
+    () => true, () => cancelled, () => successful);
+}
+assert(canRunReload(), 'Reload-only must not require re-running the fixed Agent matrix or installed workload.');
+assert(canRunReload({ os: 'macOS' }));
+for (const id of ['package_identity', 'installed_identity', 'agent_clis', 'windows_reload_identity']) {
+  for (const outcome of ['failure', 'skipped', 'cancelled']) {
+    assert.equal(canRunReload({ outcomes: { [id]: outcome } }), false, `${id} ${outcome} must block Windows reload credentials.`);
+  }
+}
+assert.equal(canRunReload({ successful: false }), false, 'Reload-only cannot bypass a failed preceding step.');
+assert.equal(canRunReload({ cancelled: true }), false);
+assert.equal(canRunReload({ skipInstalled: false }), false);
+assert.equal(canRunReload({ reloadOnly: false }), false, 'Normal skip-installed selection must retain its prior no-reload behavior.');
+assert(canRunReload({ reloadOnly: false, skipInstalled: false, successful: false,
+  outcomes: { installed_runtime: 'success', real_agents: 'failure' } }),
+  'Normal reload remains independent of a fixed Agent matrix failure after installed acceptance succeeds.');
+assert.equal(canRunReload({ reloadOnly: false, skipInstalled: false,
+  outcomes: { installed_runtime: 'failure' } }), false);
+const windowsReloadIdentity = finalProduct.steps.find(candidate => candidate.id === 'windows_reload_identity');
+assert.equal(windowsReloadIdentity.if, "${{ inputs.agent_reload_only && runner.os == 'Windows' }}");
+assert.equal(windowsReloadIdentity.run, 'node scripts/test/test-agent-candidate-windows-observer.mjs');
+assert.equal(windowsReloadIdentity.env, undefined);
+assert.equal(windowsReloadIdentity['continue-on-error'], undefined);
+assert(finalProduct.steps.indexOf(windowsReloadIdentity) < finalProduct.steps.indexOf(finalSecretStep));
+assert(finalProduct.steps.indexOf(windowsReloadIdentity) < finalProduct.steps.indexOf(reloadSecretStep));
+assert.equal(finalProduct.steps.find(candidate => candidate.id === 'agent_clis').run,
+  'npm install --global --no-audit --no-fund @openai/codex@0.157.1 @anthropic-ai/claude-code@2.1.280');
 assert.match(reloadSecretStep.run, /run-vscode-agent-runtime-reload-candidate\.mjs/u);
 assert.match(reloadSecretStep.run, /--installed-vsix production-package\/product\.vsix/u);
 assert.doesNotMatch(reloadSecretStep.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/u);
@@ -501,6 +557,7 @@ const download = finalProduct.steps.find(candidate => candidate.uses === 'action
 assert.deepEqual(download.with, { name: 'runtime-production-package-${{ needs.input.outputs.package_run }}',
   path: 'production-package', 'run-id': '${{ needs.input.outputs.package_run }}', 'github-token': '${{ github.token }}' });
 const verifyPackage = finalProduct.steps.find(candidate => candidate.name === 'Verify package identity and use its exact application bytes');
+assert.equal(verifyPackage.id, 'package_identity');
 assert.match(verifyPackage.run, /assert\.equal\(receipt\.inputCommit, process\.env\.DSC_PACKAGE_COMMIT\)/);
 assert.match(verifyPackage.run, /assert\.equal\(receipt\.sha256, createHash\('sha256'\)\.update\(bytes\)\.digest\('hex'\)\)/);
 assert.match(verifyPackage.run, /reuse-receipt\.json/);
@@ -511,6 +568,7 @@ assert.deepEqual(installedDownload.with, {
   path: 'installed-evidence', 'run-id': '${{ inputs.installed_evidence_run }}', 'github-token': '${{ github.token }}'
 });
 const installedIdentity = finalProduct.steps.find(candidate => candidate.name === 'Verify installed evidence uses this exact package');
+assert.equal(installedIdentity.id, 'installed_identity');
 assert.equal(installedIdentity.if, installedDownload.if);
 assert(finalProduct.steps.indexOf(installedIdentity) < finalProduct.steps.indexOf(finalSecretStep));
 const identityScript = installedIdentity.run.split("node --input-type=module <<'NODE'\n")[1].split('\nNODE')[0]

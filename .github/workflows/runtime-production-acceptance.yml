@@ -33,6 +33,10 @@ on:
         description: Passed installed run for the same package; empty uses the original package run
         type: string
         default: ''
+      agent_reload_only:
+        description: Only real Codex Reload Window; requires explicit package and passed installed evidence reuse
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -72,6 +76,7 @@ jobs:
           DSC_INSTALLED_MODE: ${{ inputs.installed_mode }}
           DSC_SKIP_INSTALLED: ${{ inputs.skip_installed }}
           DSC_INSTALLED_EVIDENCE_RUN: ${{ inputs.installed_evidence_run }}
+          DSC_AGENT_RELOAD_ONLY: ${{ inputs.agent_reload_only }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -80,15 +85,18 @@ jobs:
           import cli from './tests/vscode-smoke/agent-candidate-cli.cjs';
           const { DSC_REUSE_RUN: reuse, DSC_NATIVE_RUN: nativeReuse, DSC_PLATFORM: platform, DSC_SCENARIOS: scenarios,
             DSC_INSTALLED_MODE: installedMode,
-            DSC_SKIP_INSTALLED: skip, DSC_INSTALLED_EVIDENCE_RUN: installedRun,
+            DSC_SKIP_INSTALLED: skip, DSC_INSTALLED_EVIDENCE_RUN: installedRun, DSC_AGENT_RELOAD_ONLY: reloadOnly,
             GITHUB_SHA: head, GITHUB_RUN_ID: current, GITHUB_REPOSITORY: repository } = process.env;
           const platforms = [{ os: 'ubuntu-22.04', platform: 'linux' }, { os: 'macos-15', platform: 'macos' },
             { os: 'windows-2025', platform: 'windows' }];
           assert(['all', ...platforms.map(item => item.platform)].includes(platform));
           const selectedPlatforms = platforms.filter(item => platform === 'all' || item.platform === platform);
           assert(['true', 'false'].includes(skip));
+          assert(['true', 'false'].includes(reloadOnly));
           assert(['all', 'live-runtime'].includes(installedMode));
           cli.selectAgentCandidateScenarios(scenarios);
+          assert(reloadOnly !== 'true' || (reuse && skip === 'true' && installedRun && scenarios === ''),
+            'Reload-only acceptance requires whole-package reuse, explicit installed evidence, skipping installed acceptance, and no matrix scenario selection.');
           assert(!(reuse && nativeReuse), 'Choose whole-package or native-only reuse, not both.');
           assert(skip !== 'true' || reuse, 'Skipping installed acceptance requires whole-package reuse.');
           assert(!installedRun || (reuse && skip === 'true'), 'Separate installed evidence requires package reuse and skipping installed acceptance.');
@@ -267,6 +275,7 @@ jobs:
           run-id: ${{ needs.input.outputs.package_run }}
           github-token: ${{ github.token }}
       - name: Verify package identity and use its exact application bytes
+        id: package_identity
         env:
           DSC_PACKAGE_COMMIT: ${{ needs.input.outputs.package_commit }}
           DSC_PACKAGE_RUN: ${{ needs.input.outputs.package_run }}
@@ -305,6 +314,7 @@ jobs:
           run-id: ${{ inputs.installed_evidence_run }}
           github-token: ${{ github.token }}
       - name: Verify installed evidence uses this exact package
+        id: installed_identity
         if: inputs.installed_evidence_run != ''
         env:
           DSC_PACKAGE_RUN: ${{ needs.input.outputs.package_run }}
@@ -370,10 +380,16 @@ jobs:
             ${{ runner.temp }}/dsc-installed/current-state-reload/**
           if-no-files-found: error
           retention-days: 14
+      - name: Windows reload process identity semantics
+        id: windows_reload_identity
+        if: ${{ inputs.agent_reload_only && runner.os == 'Windows' }}
+        run: node scripts/test/test-agent-candidate-windows-observer.mjs
       - name: Install fixed real Agent CLIs
+        id: agent_clis
         run: npm install --global --no-audit --no-fund @openai/codex@0.157.1 @anthropic-ai/claude-code@2.1.280
       - name: Real Agent final acceptance
         id: real_agents
+        if: ${{ !inputs.agent_reload_only }}
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DSC_AGENT_SCENARIOS: ${{ inputs.agent_scenarios }}
@@ -387,8 +403,13 @@ jobs:
           fi
       - name: Real live Agent Reload Window acceptance (Codex)
         id: real_agent_reload
-        if: ${{ always() && !inputs.skip_installed
-          && (steps.installed.outcome == 'success' || steps.installed_runtime.outcome == 'success') }}
+        if: ${{ always() && !cancelled() && steps.package_identity.outcome == 'success'
+          && steps.agent_clis.outcome == 'success'
+          && ((!inputs.agent_reload_only && !inputs.skip_installed
+            && (steps.installed.outcome == 'success' || steps.installed_runtime.outcome == 'success'))
+            || (inputs.agent_reload_only && success() && inputs.skip_installed
+              && steps.installed_identity.outcome == 'success'
+              && (runner.os != 'Windows' || steps.windows_reload_identity.outcome == 'success'))) }}
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
