@@ -91,9 +91,13 @@ try {
     error => ({ error: String(error), code: handle.child.exitCode, signal: handle.child.signalCode }));
   const exit = await Promise.race([completion, new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 220000))]);
   assert(!exit.timeout, 'Agent Reload Window UI did not exit within the fixed budget.');
-  const result = { pass: true, nonce, exit, elapsedMs: Date.now() - startedAt,
-    setup: JSON.parse(await fs.readFile(path.join(runtime.artifactsDir, 'setup.json'), 'utf8')),
-    verify: JSON.parse(await fs.readFile(path.join(runtime.artifactsDir, 'verify.json'), 'utf8')) };
+  assert.equal(exit.code, 0, `Agent Reload Window exited unsuccessfully: ${JSON.stringify(exit)}`);
+  const finished = JSON.parse(await fs.readFile(path.join(runtime.artifactsDir, 'driver-finished.json'), 'utf8'));
+  assert.equal(finished.pass, true, 'The phaseful Agent Reload driver did not complete successfully.');
+  const setup = JSON.parse(await fs.readFile(path.join(runtime.artifactsDir, 'setup.json'), 'utf8'));
+  const verify = JSON.parse(await fs.readFile(path.join(runtime.artifactsDir, 'verify.json'), 'utf8'));
+  assert.equal(verify.pass, true);
+  const result = { pass: true, nonce, exit, elapsedMs: Date.now() - startedAt, setup, verify };
   await fs.writeFile(path.join(output, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
   console.log(`Finite real Codex live Agent Reload Window acceptance passed: ${output}`);
 } catch (error) {
