@@ -19,7 +19,8 @@ const probe = () => command('captureWebviewProbe', surface, 10000);
 const dom = action => command('performWebviewDomAction', action, surface, 10000);
 const stripVt = value => String(value).replace(/[\u001b\u009b]\[[0-?]*[ -/]*[@-~]/g, '');
 const hasAgentMarkerResponse = (value, marker) => value.nodes.find(node => node.nodeId === currentNodeId)
-  ?.terminalVisibleLines?.some(line => stripVt(line).trim().replace(/^(?:\u2022|\*)\s*/, '') === marker) === true;
+  ?.terminalVisibleLines?.some(line => stripVt(line).trim().replace(/^(?:\u2022|\*)\s*/, '')
+    .startsWith(marker)) === true;
 const sendAgentTurn = async (nodeId, marker) => {
   // Codex treats Enter in a fast paste burst as an inserted newline; submit separately.
   await dom({ kind: 'sendExecutionInput', nodeId, data: `Reply with exactly ${marker} and nothing else.` });
