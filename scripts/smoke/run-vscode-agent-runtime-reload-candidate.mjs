@@ -47,6 +47,7 @@ try {
       'terminal.integrated.scrollback': 100000 } });
   const workspacePath = path.join(runtime.debugRoot, 'workspace');
   await fs.mkdir(workspacePath);
+  const windowsWorkspace = await configureWindowsReloadWorkspace({ backend, workspacePath, runtimeRoot: runtime.debugRoot });
   const driverRoot = path.join(runtime.debugRoot, 'activation-driver');
   await fs.mkdir(driverRoot, { recursive: true });
   await fs.writeFile(path.join(driverRoot, 'package.json'), `${JSON.stringify({
@@ -66,6 +67,8 @@ try {
     platform: 'node', format: 'cjs', target: 'node22', write: false, logLevel: 'silent' });
   await fs.writeFile(path.join(driverRoot, 'execution-session-spawn-spec.cjs'), spawnSpec.outputFiles[0].contents);
   const sourceHashes = {};
+  sourceHashes['scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs'] = createHash('sha256')
+    .update(await fs.readFile(fileURLToPath(import.meta.url))).digest('hex');
   for (const file of staged) sourceHashes[`tests/vscode-smoke/${file}`] = createHash('sha256')
     .update(await fs.readFile(path.join(projectRoot, 'tests/vscode-smoke', file))).digest('hex');
   sourceHashes['staged-runtime-reload-paths.cjs'] = createHash('sha256')
@@ -91,6 +94,7 @@ try {
   await fs.writeFile(path.join(output, 'input.json'), `${JSON.stringify({ schemaVersion: 1, scope:
     `One ${platformName} installed real Codex live-runtime Reload Window; DeepSeek backend; no fixed-eight claim.`,
     backend: { backend: 'deepseek', model: 'deepseek-flash', credentialContentsRecorded: false }, nonce,
+    ...(windowsWorkspace ? { windowsWorkspace } : {}),
     deadlineAt, vsixSha256: input.vsixSha256, vscodeExecutablePath: executable, sourceHashes,
     automaticRetries: 0 }, null, 2)}\n`);
   await installCandidateVsix({ vscodeExecutablePath: executable, runtime, input });
@@ -121,6 +125,27 @@ try {
   if (runtime) await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir).catch(() => {});
   throw error;
 } finally { await backend?.dispose?.(); }
+
+async function configureWindowsReloadWorkspace({ backend, workspacePath, runtimeRoot }) {
+  if (process.platform !== 'win32') return undefined;
+  assert.equal(backend?.descriptor?.backend, 'deepseek', 'Windows reload requires the isolated backend.');
+  for (const value of [backend.directory, backend.authReferences?.CODEX_HOME, workspacePath, runtimeRoot]) {
+    assert(typeof value === 'string' && path.isAbsolute(value), 'Windows reload isolation paths must be absolute.');
+  }
+  const workspace = await fs.realpath(workspacePath);
+  const root = await fs.realpath(runtimeRoot);
+  assert.equal(workspace, path.join(root, 'workspace'), 'Only the new isolated reload workspace may be trusted.');
+  assert.deepEqual(await fs.readdir(workspace), [], 'The reload workspace must be newly created and empty.');
+  const backendRoot = await fs.realpath(backend.directory);
+  const home = await fs.realpath(backend.authReferences.CODEX_HOME);
+  assert.equal(home, path.join(backendRoot, 'codex'), 'CODEX_HOME must belong to this isolated backend.');
+  const configPath = path.join(home, 'config.toml');
+  assert.equal(await fs.realpath(configPath), configPath, 'The isolated Codex config must not redirect elsewhere.');
+  // Configure only this owned fixture; interactive CLI readiness and the read-only/no-tools policy remain required.
+  const quotedWorkspace = JSON.stringify(workspace).replace(/\x7f/gu, '\\u007f');
+  await fs.appendFile(configPath, `\n[projects.${quotedWorkspace}]\ntrust_level = "trusted"\n\n[windows]\nsandbox = "unelevated"\n`);
+  return { workspacePath: workspace, trustLevel: 'trusted', windowsSandbox: 'unelevated', source: 'isolated-CODEX_HOME' };
+}
 
 async function findCodex() {
   const entry = await cliHelpers.findExecutable('codex');

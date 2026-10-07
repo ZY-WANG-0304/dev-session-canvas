@@ -83,6 +83,7 @@ async function run() {
   } catch (error) {
     failure = error;
     await write(`${phase}-failure.json`, { phase, nonce: control?.nonce, error: String(error), stack: error.stack });
+    try { await write('failure-webview-probe.json', await probe()); } catch { /* Preserve the first failure. */ }
     for (const name of ['getDebugState', 'getRuntimeSupervisorState', 'getDiagnosticEvents']) {
       try { await write(`failure-${name}.json`, await command(name)); } catch { /* Preserve the first failure. */ }
     }

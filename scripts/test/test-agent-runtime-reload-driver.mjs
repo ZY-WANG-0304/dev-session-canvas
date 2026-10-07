@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import ts from 'typescript';
 import contract from '../../tests/vscode-smoke/runtime-reload-contract.cjs';
 import windows from '../../tests/vscode-smoke/agent-candidate-windows-observer.cjs';
 import processObserver from '../../tests/vscode-smoke/agent-candidate-process-observer.cjs';
+import { createDeepSeekConfiguration } from '../smoke/agent-candidate-deepseek.mjs';
 
 const source = await fs.readFile('tests/vscode-smoke/agent-runtime-reload-driver.cjs', 'utf8');
 const ast = ts.createSourceFile('agent-runtime-reload-driver.cjs', source, ts.ScriptTarget.Latest, true);
@@ -13,6 +15,12 @@ const functions = new Map(ast.statements.filter(ts.isFunctionDeclaration).map(no
 const resourceFunctions = ['startProcessObserver', 'releaseProcessObserver', 'assertOriginalResourcesLive', 'originalResourcesExited'];
 const compile = (names, context) => new Function(...Object.keys(context),
   `${names.map(name => functions.get(name)).join('\n')}\nreturn { ${names.join(',')} };`)(...Object.values(context));
+const launcherSource = await fs.readFile('scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs', 'utf8');
+const launcherAst = ts.createSourceFile('reload-launcher.mjs', launcherSource, ts.ScriptTarget.Latest, true);
+const configureSource = launcherAst.statements.find(node => ts.isFunctionDeclaration(node) &&
+  node.name.text === 'configureWindowsReloadWorkspace').getText(launcherAst);
+const configureFor = (platform, filesystem = fs, paths = path) => new Function('assert', 'fs', 'path', 'process',
+  `${configureSource}\nreturn configureWindowsReloadWorkspace;`)(assert, filesystem, paths, { platform });
 const identity = (pid, role, parent = 0, wrapperKind) => ({ pid, ppid: parent, startTicks: `win32:${pid}00`,
   executable: `/isolated/${role}-${pid}.exe`, role, wrapperKind, firstPpid: parent,
   firstParentStartTicks: parent ? `win32:${parent}00` : null, platform: 'win32', active: true,
@@ -21,6 +29,65 @@ const ended = entry => ({ ...entry, active: false, hasExited: true, exitConfirme
 const chain = () => [identity(10, 'host'), identity(20, 'supervisor'), identity(30, 'provider', 20),
   identity(40, 'wrapper', 30, 'cmd'), identity(50, 'wrapper', 40, 'node'), identity(60, 'cli', 50)];
 const resources = entries => entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role));
+
+test('Windows reload config trusts only its exact empty workspace and preserves the isolated backend config', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-reload-config-test-'));
+  let backend;
+  try {
+    const fakeKey = 'test-only-secret-not-an-artifact';
+    backend = await createDeepSeekConfiguration({ apiKey: fakeKey, temporaryRoot: root });
+    const runtimeRoot = path.join(root, 'runtime');
+    const workspacePath = path.join(runtimeRoot, 'workspace');
+    await fs.mkdir(workspacePath, { recursive: true });
+    const configPath = path.join(backend.authReferences.CODEX_HOME, 'config.toml');
+    const original = await fs.readFile(configPath, 'utf8');
+    const claude = await fs.readFile(backend.claudeSettingsPath, 'utf8');
+    const models = await fs.readFile(path.join(backend.authReferences.CODEX_HOME, 'models.json'), 'utf8');
+    const receipt = await configureFor('win32')({ backend, workspacePath, runtimeRoot });
+    const appended = (await fs.readFile(configPath, 'utf8')).slice(original.length);
+    const workspace = await fs.realpath(workspacePath);
+    assert.equal(await fs.readFile(configPath, 'utf8'), original + appended, 'Do not rewrite provider/auth configuration.');
+    assert.equal(appended, `\n[projects.${JSON.stringify(workspace)}]\ntrust_level = "trusted"\n\n[windows]\nsandbox = "unelevated"\n`);
+    assert.deepEqual(receipt, { workspacePath: workspace, trustLevel: 'trusted', windowsSandbox: 'unelevated', source: 'isolated-CODEX_HOME' });
+    assert(!JSON.stringify(receipt).includes(fakeKey));
+    assert(!appended.includes(fakeKey));
+    assert.equal(await fs.readFile(backend.claudeSettingsPath, 'utf8'), claude);
+    assert.equal(await fs.readFile(path.join(backend.authReferences.CODEX_HOME, 'models.json'), 'utf8'), models);
+  } finally { await backend?.dispose(); await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('reload preconfiguration is Windows-only and rejects unowned or unknown paths before writing', async () => {
+  const noIo = new Proxy({}, { get() { throw new Error('Non-Windows must not access configuration.'); } });
+  for (const platform of ['linux', 'darwin']) assert.equal(await configureFor(platform, noIo)({}), undefined);
+  const windowsPaths = path.win32;
+  const root = 'D:\\isolated';
+  const backend = { directory: `${root}\\backend`, descriptor: { backend: 'deepseek' },
+    authReferences: { CODEX_HOME: `${root}\\backend\\codex` } };
+  const workspacePath = `${root}\\runtime\\workspace`;
+  const runtimeRoot = `${root}\\runtime`;
+  const configPath = `${root}\\backend\\codex\\config.toml`;
+  for (const problem of ['missing', 'different-workspace', 'nonempty-workspace', 'different-home', 'redirected-config']) {
+    let writes = 0;
+    const filesystem = { realpath: async value => {
+      if (problem === 'missing' && value === workspacePath) throw Object.assign(new Error('Missing workspace'), { code: 'ENOENT' });
+      if (problem === 'different-workspace' && value === workspacePath) return 'D:\\other-workspace';
+      if (problem === 'different-home' && value === backend.authReferences.CODEX_HOME) return 'D:\\user\\.codex';
+      if (problem === 'redirected-config' && value === configPath) return 'D:\\user\\.codex\\config.toml';
+      return value;
+    }, readdir: async () => problem === 'nonempty-workspace' ? ['unexpected-file'] : [],
+    appendFile: async () => { writes++; } };
+    await assert.rejects(configureFor('win32', filesystem, windowsPaths)({ backend, workspacePath, runtimeRoot }));
+    assert.equal(writes, 0, problem);
+  }
+  const writes = [];
+  const filesystem = { realpath: async value => value, readdir: async () => [],
+    appendFile: async (file, text) => writes.push({ file, text }) };
+  await configureFor('win32', filesystem, windowsPaths)({ backend, workspacePath, runtimeRoot });
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].file, configPath);
+  const key = /^\n\[projects\.(.+)\]/u.exec(writes[0].text)[1];
+  assert.equal(JSON.parse(key), workspacePath, 'Windows backslashes must remain one exact TOML key.');
+});
 
 test('Codex loading composer is not model readiness, and late onboarding still receives confirmation', async () => {
   const loading = 'model: loading /model to change\n\u203a Ask Codex to do anything\n? for shortcuts';
@@ -247,5 +314,26 @@ test('actual run quits only the isolated macOS application, leaving other platfo
     await compile(['run'], f.context).run();
     assert(f.events.includes(platform === 'darwin' ? 'workbench.action.quit' : 'workbench.action.closeWindow'));
     assert.equal(f.writes.get('driver-finished.json').pass, true);
+  }
+});
+
+test('failure captures the actual Webview probe without replacing the original failure', async () => {
+  for (const captureFails of [false, true]) {
+    const f = fixture();
+    const original = new Error('original readiness failure');
+    const visible = { nodes: [{ nodeId: 'node', terminalVisibleLines: ['Trust this folder?'] }] };
+    f.context.fs.readFile = async file => JSON.stringify(file === '/control' ? { phase: 'verify', nonce: 'nonce' } : {});
+    f.context.process.env.DEV_SESSION_CANVAS_AGENT_RELOAD_CONFIG = '/config';
+    Object.assign(f.context, {
+      activateVisibleExtension: async () => ({}), waitForCommand: async () => {},
+      captureInstalledExtensionReceipt: async () => ({}), verify: async () => { throw original; }, cleanup: async () => {},
+      probe: async () => { f.events.push('failure-probe'); if (captureFails) throw new Error('secondary probe failure'); return visible; }
+    });
+    await compile(['run'], f.context).run();
+    assert.equal(f.events.filter(value => value === 'failure-probe').length, 1);
+    assert.equal(f.writes.get('verify-failure.json').error, String(original));
+    assert.equal(f.writes.get('driver-finished.json').pass, false);
+    assert.deepEqual(f.writes.get('failure-webview-probe.json'), captureFails ? undefined : visible);
+    assert(f.writes.has('failure-getDiagnosticEvents.json'), 'A failed probe must not skip remaining evidence.');
   }
 });
