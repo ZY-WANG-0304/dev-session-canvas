@@ -181,7 +181,7 @@ async function setup(extension) {
 async function waitForAgentReady() {
   const prompts = new Set();
   const startupPrompts = [
-    /(?:Yes, I trust|Do you trust|Trust this (?:folder|directory))/i,
+    /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i,
     /(?:Choose the text style|Choose.*theme|Select.*theme)/i,
     /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i
   ];
@@ -190,7 +190,7 @@ async function waitForAgentReady() {
     const value = await probe();
     const text = textOf(value);
     let handledPrompt = false;
-    for (const [name, pattern] of [['workspace-trust', /(?:Yes, I trust|Do you trust|Trust this (?:folder|directory))/i],
+    for (const [name, pattern] of [['workspace-trust', /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i],
       ['theme', /(?:Choose the text style|Choose.*theme|Select.*theme)/i],
       ['update', /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i]]) {
       if (pattern.test(text) && !prompts.has(name)) {

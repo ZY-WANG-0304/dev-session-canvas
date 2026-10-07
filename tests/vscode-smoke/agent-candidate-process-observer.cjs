@@ -123,8 +123,11 @@ class AgentProcessObserver {
           const child = execFile(this.python, [path.join(__dirname, 'agent-candidate-process-observer.py')], {
             timeout: 3000, maxBuffer: 2 * 1024 * 1024,
             env: { PATH: process.env.PATH ?? '', PYTHONDONTWRITEBYTECODE: '1' }
-          }, (error, stdout) => {
-            if (error) return reject(new Error('Darwin process identity helper failed or exceeded its deadline.'));
+          }, (error, stdout, stderr) => {
+            if (error) {
+              const detail = String(stderr ?? '').trim().replace(/\s+/g, ' ').slice(0, 256);
+              return reject(new Error(`Darwin process identity helper failed or exceeded its deadline.${detail ? ` ${detail}` : ''}`));
+            }
             try {
               const response = JSON.parse(stdout);
               if (response.version !== 1 || response.operation !== request.operation || response.error) throw new Error('invalid response');
