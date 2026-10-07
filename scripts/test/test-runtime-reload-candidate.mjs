@@ -13,7 +13,7 @@ import contract from '../../tests/vscode-smoke/runtime-reload-contract.cjs';
 import { buildVSCodeArgs } from '../smoke/vscode-smoke-runner.mjs';
 import { prepareReloadDriver, selectReloadInput } from '../smoke/run-vscode-runtime-reload-candidate.mjs';
 
-const { assertControl, assertReloadReceipts, assertRuntimeDiscarded, sameLiveIdentity,
+const { assertControl, assertReloadReceipts, assertRuntimeDiscarded, sameIdentity, sameLiveIdentity,
   exitedIdentity, signalOwned, fixedVsixSha256, assertSnapshotNode, replaySnapshotTail, snapshotTail, readSnapshotHandshake } = contract;
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const require = createRequire(import.meta.url);
@@ -289,11 +289,20 @@ test('completed history, missing application, pending bindings and any fallback 
 
 test('owned fallback requires fresh exact PID/start/executable and does not treat PID reuse or zombie as live', async () => {
   const expected = identity(10);
+  assert(sameIdentity(expected, { ...expected }));
   assert(sameLiveIdentity(expected, { ...expected }));
+  assert(!sameIdentity(expected, { ...expected, startTicks: 'win32:reused' }));
+  assert(!sameIdentity(expected, { ...expected, executable: '/changed' }));
   assert(!sameLiveIdentity(expected, { ...expected, executable: '/changed' }));
+  assert(!sameLiveIdentity(expected, undefined));
   assert(exitedIdentity(expected, { ...expected, state: 'Z' }));
   assert(exitedIdentity(expected, { ...expected, startTicks: 'reused' }));
   assert(!exitedIdentity(expected, { ...expected, executable: '/changed' }));
+  // A retained Windows process object is not an exit by itself. Only its
+  // confirmed exit fact, a changed lifetime token, or a missing identity is terminal.
+  assert(!exitedIdentity(expected, { ...expected, state: 'object-retained' }));
+  assert(exitedIdentity(expected, { ...expected, state: 'object-retained', hasExited: true, exitConfirmed: true,
+    exitCode: 7 }));
   const signals = [];
   const kill = (...args) => signals.push(args);
   for (const actual of [undefined, { ...expected, state: 'Z' }, { ...expected, startTicks: 'reused' },
