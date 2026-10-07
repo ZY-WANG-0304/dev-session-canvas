@@ -17,13 +17,13 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
   - docs/product-specs/canvas-multi-root-workspace-support.md
 related_plans:
-  - docs/exec-plans/active/runtime-live-state-recovery.md
+  - docs/exec-plans/completed/runtime-live-state-recovery.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-terminal-cross-platform-diagnosis.md
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
-updated_at: 2026-10-06
+updated_at: 2026-10-07
 ---
 
 # Webview、Host 与 Runtime Supervisor 架构审核
@@ -36,11 +36,13 @@ updated_at: 2026-10-06
 
 ## 2. Findings
 
+2026-10-07 最新交付核对：F-04具名容量增量及重新开放的B4权威当前态恢复已完成，e38d2f72新包run37613549564三平台受影响安装/真实Codex Reload和Linux Terminal Reload独立核对通过；F-05与退出完整性成果保持。当前态恢复不再回放捕获点前累计交互，但保留O(当前模型×有效reader)、固定xterm耦合及历史未归因风险。详见有限收尾§13；F-01/F-02、F-03/root归属不由本次泛化解决，以下审核基线和历史失败不改写。
+
 2026-10-02 状态核对：F-04 当前支持路径按容量设计§10.17的资源模型、生产准入与受影响 Runtime 验收结账，F-05 新 completed 无历史路径保持收口。63847969修复确认的SGR22样式损失，最终run36979378644三平台两模式installed与六真实Agent snapshot-stop独立通过，退出完整性有限交付进入整体审查/PR；旧756B精确触发链仍未知，不追认旧失败。既有十会话/重连/compact与原64/128观察失败保留，不承诺任意规模固定RSS。当前证据见 `docs/design-docs/runtime-persistence-closeout.md` §8及生产接入§53.1，不追加容量或通用工具阶段。F-03独立后续规划，F-01/F-02未由本次泛化解决。下文保留审核基线、当时缺陷和历史结果，不把已替代的描述或诊断建议累加为当前待办。
 
 2026-09-16 的补充审核将 Runtime Persistence 容量与 completed 归档提升为优先重评项。以下按本轮优先级排列，保留原有编号以便追踪；F-04/F-05 对应讨论中的问题 2、3，是用户确认需要重评的设计决策，不是已证明违反现行规格的实现回归。
 
-### F-04 高（容量已收口，live 状态恢复仍开放）：checkpoint 不能推进时，完整 journal 后缀同时成为常驻内存和反复全量传输的恢复材料
+### F-04 高（具名容量与新 live 当前态路径已收口）：checkpoint 不能推进时，完整 journal 后缀同时成为常驻内存和反复全量传输的恢复材料
 
 2026-10-06 复核：容量、分页和生产准入的成果保持，但新投影仍从最后一个合格 checkpoint 回放累计交互；重开与 PaneGallery 重建不能保证同状态/scrollback 下恢复工作不随历史增长。将权威当前状态恢复列为本轮 B4 未完成交付，见 `runtime-live-state-recovery.md` 和对应活动计划；不把旧重连通过代证本目标，不混入 root 归属或通用诊断工具。
 

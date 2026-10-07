@@ -14,6 +14,8 @@
 
 ## 近期已收口
 
+- 2026-10-07：B4、F-04具名当前态增量和最终默认分发已收口。e38d2f72/run37613549564新VSIX的三平台installed live、Codex natural/独立Reload及Linux Terminal Reload均独立核对通过，产品有限审查无新确定性blocker，计划归档；明细见有限收尾§13。同key开读/取消等待无界责任已修，填充态10200040字符/1246块、原身份、尾部及清理通过。Windows按原handle明确确认退出，不要求对象销毁；不以旧包通过代证最终包，不追加容量/工具阶段。以下旧日期中的“待验/受限”是历史状态。
+
 - 2026-10-06：GitHub run `37479044769` 的 package、native assets 和 Windows product 通过；Linux current-state reload 的 `setup.json` 缺失已由工件定位为 fixture 不接受 driver 的 shell `printf` 命令，已改成显式 fixture marker 命令，待重跑验证。macOS Agent 在 `starting` 阶段失败且 sanitized 报告未提供 CLI/Supervisor 第一现场。已补最小脱敏失败 snapshot/events 与 reload names-only artifact inventory，待受影响 runner 重跑后再分类；不把 harness 失败追认为产品通过，也不扩大到跨平台 current-state 实现。
 
 - 2026-10-06：B4 current-state codec、Supervisor/Host/Relay/Webview 分块交接及 controller authority/revision 接续已完成受控验证；三项 Playwright 页面重建 3/3、结算 wiring 27/27、构建/VSIX 通过。`runtime-checkpoint-refresh` smoke 已按 stateChunk/捕获后 revision 更新，但真实 VS Code 重开、真实 Agent/Terminal 和现代三平台当前状态入口仍未执行；current-state 总长度/组装峰值没有硬预算，列入 F-04 生产准入，不以单页 8192 或旧 64/128 MiB 观察阈值代替。Electron/sockets 在本地 sandbox 启动前被 EPERM/SIGTRAP 拒绝，保留原证据。
@@ -33,7 +35,7 @@
 
 ## 技术债列表
 
-2026-10-06 范围修订优先于下列历史结账：B1 容量/准入、B2 退出完整性、B3 生命周期证据保留，live 权威当前状态恢复为重新开放的 B4，不是可延期增强。`docs/exec-plans/active/runtime-live-state-recovery.md` 已实现 codec 与生产分块交接，受控等状态短长历史验证通过；真实 Webview/PaneGallery、VS Code 重开、真实 Agent 和现代三平台受影响入口仍待验收，当前 sandbox 浏览器/Unix socket 拒绝不算通过。只补这些受影响场景，不扩通用工具或 root 归属。
+2026-10-07 当前范围优先于下列历史结账：B1容量/准入、B2退出完整性、B3生命周期成果保留，B4权威当前态恢复及最终同包受影响验收已完成，计划归档至 `docs/exec-plans/completed/runtime-live-state-recovery.md`。剩余仅合并许可与下表具名维护风险，不自动追加产品阶段。旧sandbox拒绝及未归因间歇失败不追认通过；root稳定归属另列，不混入当前收口。
 
 当前状态 codec 依赖固定 `@xterm/headless` / `@xterm/xterm` 6.0.0 私有模型字段，是明确的维护边界：任何 xterm 升级或生产 parser handler 变化，必须重新核对两端状态格式、未来增量与浏览器服务并补受影响回归，不得只改版本字符串。当前使用 `xterm-current-state-v1`，不承诺任意 addon/异步 paused parser 的状态迁移；不能因已登记此风险而免除 B4 的产品验收。
 
@@ -264,6 +266,9 @@ B2 已完成 typed profile/generation、安全首次启动和构建期固定候�
 
 | 日期 | 主题 | 背景与触发条件 | 影响范围 | 当前临时处理 | 建议修复时机 | 关联文档或代码路径 |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-07 | 当前状态 codec 的固定 xterm 私有模型耦合 | xterm 6.0.0 的 buffer/parser/link/palette 内部字段用于精确导入；依赖升级或新增生产 handler 会改变契约。 | live 新投影的恢复保真和未来增量交接，不涉及旧 Supervisor 热迁移。 | 固定版本/格式并先校验后导入，已覆盖现有生产 OSC52；不承诺任意 addon 或异步 paused parser。 | 升级 xterm 或改变生产 handler 前重新核对两端模型和未来后缀，只补受影响回归，不能仅更新版本字符串。 | `docs/design-docs/runtime-live-state-recovery.md`、`extensions/vscode/dev-session-canvas/src/common/terminalCurrentState.ts` |
+| 2026-10-07 | 大当前模型的同步导入与配置相关资源成本 | Linux 两会话填充态10200040字符/1246块恢复约5114.9ms，单次paged-current-state约536.9ms、main-thread lag603ms，总RSS离散峰值约2.99GB；B18.4ms在导入后。 | 大scrollback/geometry与多reader同时初始化的交互和资源成本；不是累计交互无界重放，也不是任意并发已通过。 | 逐页传输、完整身份共享open、每key当前和待释放责任最多2；保留O(当前模型×有效reader)和原内容/尾部，不设旧64/128硬阈值。 | 只有具名支持负载再现不可接受交互/资源问题或产品扩展并发保证时定向优化；不默认追加profiler、精确allocation peak或容量阶梯。 | `docs/design-docs/runtime-live-state-recovery.md`、`.debug/f04-filled-current-state-20261007-staged/`、`extensions/vscode/dev-session-canvas/src/panel/runtimeTerminalReadRelay.ts` |
+| 2026-10-07 | 历史 Windows 初始订阅停滞未归因 | run37494231281有closed/sourceEOF/final1382而Host仍live/outputSequence2，旧启动批次已清空；后续原入口通过，但不能还原当次时序。 | 原失败的因果解释和未来同类停滞，不等于已证最终版本仍有产品缺陷。 | 保留原工件与严格尾部断言，后续入口保存启动期消息；不将保留退出进程对象的正常Windows语义当作根因。 | 新版本再次出现或发现当前确定性订阅路径时使用现有具名证据定位，不为抓红自动重跑矩阵或扩展诊断框架。 | `docs/exec-plans/completed/runtime-live-state-recovery.md`、`tests/vscode-smoke/execution-candidate-tests.cjs` |
 | 2026-10-06 | 停止旧Runtime历史清理的覆盖与原生验证边界 | 两个旧Linux systemd generation分别支持recorded-exit与强停止stopped-runtime；sandbox拒绝systemctl/真实Unix socket访问，2例跳过，新分支实际用户窗口未操作。 | 未知/其他后端、既无退出记录又缺强停止事实或文件校验不符时仍严格删除；原生组合未被受控测试代证。 | 核验81项和实际Host类接线190项通过，原窗口已有第一分支退役事实；不改共享registry或把其他会话/后代写成已消失。 | 有原生权限时只补已有2例及具名现场动作；旧共享存储垃圾回收另立范围，不追加通用工具或全平台矩阵。 | `docs/design-docs/runtime-persistence-closeout.md` §12、`docs/exec-plans/completed/legacy-runtime-history-cleanup.md`、`extensions/vscode/dev-session-canvas/src/panel/legacyRuntimeHistory.ts` |
 | 2026-10-06 | native detached 历史清理的原生测试限制（具名现场已成功） | 第三现场两个Agent 0a71c75b、45a796db属legacy-detached/terminal-exit-v1；第四包记录两者native-owner-absent已清理成功。 | 实际具名节点已验证，不扩大为所有legacy或跨平台通过；更老detached另按下一条。 | helper39、Host117定向/类型/构建/staging及用户具名结果通过；两入口先观察再连接新owner，保留submitted unknown/reader/finalization。同批共享但不跨操作缓存，不写共享数据或重启旧服务。 | sandbox的1新claim周期及2旧socket例仍跳过，现场成功不追认它们通过。两次未改大快照Host全量15秒超时保留，定向不代证全量；只按具体新证据修，不新增工具或无影响矩阵。 | `docs/design-docs/runtime-persistence-closeout.md` §12、`docs/exec-plans/completed/native-runtime-history-cleanup.md`、`extensions/vscode/dev-session-canvas/src/panel/nativeRuntimeHistory.ts` |
 | 2026-10-06 | 旧detached纯历史清理的实际Host验证限制（有限实现已完成） | 第四现场6b9de465和6397fe41为旧terminal-stream-v1/recoveredHistoryOnly，没有退出码；同registry含其他backend，不可借用兄弟记录。 | 已按同环境原owner缺席+稳定精确纯历史记录允许本地解绑，不证明原node-pty/后代退出；缺标记、live、未知仍拒绝。 | legacy116/native39、Host95+36定向、类型/构建/staging及独立复核通过；native与旧记录分别路由，旧记录不使用storage许可或启动前沿用，原数据不写。 | 用户加载新调试包后原入口fresh观察；隔离工具/proc不能代证实际owner缺席。共享旧目录回收、其他PID namespace或任意legacy格式不在此修复范围；不重启旧Supervisor、不复跑无影响矩阵。 | `docs/design-docs/runtime-persistence-closeout.md` §12、`docs/exec-plans/completed/detached-restored-history-cleanup.md`、`extensions/vscode/dev-session-canvas/src/panel/legacyRuntimeHistory.ts` |

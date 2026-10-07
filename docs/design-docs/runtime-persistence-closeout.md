@@ -1,7 +1,7 @@
 ---
 title: Runtime Persistence 有限收尾与完成定义
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 执行编排域
@@ -14,23 +14,25 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/runtime-live-state-recovery.md
+  - docs/exec-plans/completed/runtime-live-state-recovery.md
   - docs/exec-plans/completed/detached-restored-history-cleanup.md
   - docs/exec-plans/completed/native-runtime-history-cleanup.md
   - docs/exec-plans/completed/legacy-runtime-history-cleanup.md
   - docs/exec-plans/completed/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
-updated_at: 2026-10-06
+updated_at: 2026-10-07
 ---
 
 # Runtime Persistence 有限收尾与完成定义
 
 ## 1. 状态与目的
 
-2026-10-06 当前完成定义修订：live 会话状态恢复重新列为本轮未完成交付 B4。B1 容量/准入、B2 退出完整性和 B3 生命周期成果保留，但分页与旧重连通过不证明恢复成本独立于累计交互。B4 必须让新 Host/Webview 和 PaneGallery 重建从当前权威终端状态接入；相同状态和 scrollback 的恢复不能重放不断增长的历史。计划为 `docs/exec-plans/active/runtime-live-state-recovery.md`，设计为 `runtime-live-state-recovery.md`。本决定覆盖下列历史整体结账及 S2 延期表述，仅重新开放受影响验收。
+2026-10-07 当前结账：B4 权威当前模型恢复与 F-04 新增责任已完成，最终产品源码 `e38d2f72` 的正常默认 build/package、本地安装和新包 run `37613549564` 的受影响三平台工件均独立核对通过；产品有限整体审查未发现新的确定性 blocker。§13给出最终同包证据和复用边界，B4计划已归档。当前进入PR文档审查与合并许可，不追加容量阶梯、profiler或通用工具阶段。历史失败、约2.99GB资源观察、xterm私有接口和旧节点现场验证限制保留，不泛称已全部修复。
 
-同日实施：固定 xterm 当前状态 codec、分块传输、Host/Webview 能力协商及新 owned generation 已接通。受控生产类链路的 1/400 次等状态重绘均传输 4329 字符，R 前 journal 读取为零，旧 reader、尾部实际应用与结算责任保留。三个受影响 Playwright 页面重建用例已 3/3 通过；真实 Linux Electron candidate 在 sandbox 启动阶段被 `sandbox_host_linux.cc:41` / `SIGTRAP` 拒绝，VS Code 重开、实际 Agent/Terminal 及现代三平台受影响恢复入口仍未验收，不能据局部通过关闭 B4 或进入可合并结论。
+2026-10-06 当前完成定义修订：live 会话状态恢复重新列为本轮未完成交付 B4。B1 容量/准入、B2 退出完整性和 B3 生命周期成果保留，但分页与旧重连通过不证明恢复成本独立于累计交互。B4 必须让新 Host/Webview 和 PaneGallery 重建从当前权威终端状态接入；相同状态和 scrollback 的恢复不能重放不断增长的历史。计划为 `docs/exec-plans/completed/runtime-live-state-recovery.md`，设计为 `runtime-live-state-recovery.md`。本决定覆盖下列历史整体结账及 S2 延期表述，仅重新开放受影响验收。
+
+同日早期实施记录：固定 xterm 当前状态 codec、分块传输、Host/Webview 能力协商及新 owned generation 已接通。受控生产类链路的 1/400 次等状态重绘均传输 4329 字符，R 前 journal 读取为零，旧 reader、尾部实际应用与结算责任保留。三个受影响 Playwright 页面重建用例已 3/3 通过；当时真实 Linux Electron candidate 在 sandbox 启动阶段被 `sandbox_host_linux.cc:41` / `SIGTRAP` 拒绝。该首败保留，后续环境恢复及真实验收以本节最新状态为准，不再把旧环境限制作为当前阻塞。
 
 2026-10-06第四现场：两个native目标已在用户Host以native-owner-absent清理成功；剩余旧detached terminal-stream-v1纯历史记录按第12节增加独立资格。legacy116/native39/Host95+36定向及正常build/debug staging通过，实际旧detached节点仍须用户Host执行fresh观察；不把recoveredHistoryOnly误写成进程退出，不重开历史矩阵。
 
@@ -104,11 +106,11 @@ updated_at: 2026-10-06
 
 2026-10-02已确认产品缺陷的收口：Windows分类run36976601577确认真实Codex非空prefix中12个有字符cell的Bold不保真；63847969修正固定serializer的SGR22联动，原stock失败对照与未放宽的状态oracle保持。新包的受控四cell保存/重开和真实CLI非空prefix检查承担回归，分类到此停止。旧756B终态具体控制序列保留未知，只有当前版本新非空不保真、当前确定性路径或实际用户报告才重开，不自动追加抓取循环。
 
-本次重构收口以下四个产品项；B1 至 B3 的有限成果保留，B4 尚未完成，不进入整体合并结账。沿用现有 Supervisor、缓存/分页与无 completed 历史路径，不另建历史 server，不替换终端引擎/mux/数据库。后续带日期的实施段落保留原时点。
+本次重构的以下四个产品项已按声明范围收口；B1至B3的有限成果保留，B4及最终新包受影响验收见§13，当前进入整体合并结账，合并本身须用户许可。沿用现有Supervisor、缓存/分页与无completed历史路径，不另建历史server，不替换终端引擎/mux/数据库。后续带日期的实施段落保留原时点。
 
 | 编号 | 当前缺口与产品影响 | 结束条件 |
 | --- | --- | --- |
-| B4 live 当前状态恢复 | 实施/受控验证完成，实际验收未完成：新 codec 与分块初始化不读 R 前历史；旧 Supervisor 保持原能力 | 同状态/scrollback 下恢复不依赖累计交互；权威状态、后续增量、resize 与最终尾部正确交接；完成受影响页面/重开验收，不用分页或容量绿色代证 |
+| B4 live 当前状态恢复 | 已完成：新codec与分块初始化不读R前历史，实际Webview/PaneGallery、Linux Terminal与三平台Codex Reload及最终新包已独立验收；旧Supervisor保持原能力 | 同状态/scrollback下恢复不依赖累计交互，权威状态、后续增量、resize与尾部正确交接；证据及配置相关资源边界见§13，不用分页或容量绿色代证 |
 | B1 容量与恢复，F-04 | 已完成：正文缓存/分页/信用/索引与取消责任修正，§10.17资源模型和生产准入、默认包及三平台Runtime接线；十会话/重连/compact证据复用 | A1已结账。保留O(N)、O(segment metadata)、慢reader/checkpoint拒绝时磁盘增长、旧协议成本与原64/128失败，不承诺任意会话数固定RSS；后续发现具体回归才重新打开 |
 | B2 退出完整性成为可用产品能力 | 已默认启用owned实现、六目标正常分发、现代三平台实际安装/Agent接线；已证页面责任与SGR22缺陷修复，最终受影响证据见A2至A5 | 当前产品阻塞已按严格内容/状态/reader和新Host验收关闭；旧精确因果未知单列风险，不以空态通过替代非空保真，不要求通用工具完备 |
 | B3 生命周期不串代 | §32.21完整替换/永久退出受控回归，§38双Host、§39/50两模式实际reload、§47多根真实保存失败隔离及§53旧generation共存均已具名通过 | A6有限范围已覆盖，不要求任意并发排列或全局锁。原snapshot reload未观察的旧reader/EOF与排他写者字段保留，不外推新保证；root稳定归属仍独立 |
@@ -218,7 +220,7 @@ F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前�
 | A6有限用户入口 | 当前冻结 VSIX 的 snapshot-only Host 离开已覆盖；只有在产品另行区分 `closeWindow` 与 `reloadWindow` 语义时才需单列新输入 | 50项真实 Host 方法受控回归含完整 template/replacement/等待窗口、第39节 Runtime reload、第50节 snapshot-only reload 及第47节 Linux installed 多根真实 EISDIR/B 原页面 24.9ms 交互；旧 reader/EOF 未观察字段和旧首败不改，不重复已完成格 |
 | A5支持与总体结账 | 其他平台installed/未覆盖架构、现代支持路径的完整 packaged 产品、默认启用与最终同一生产版本A1至A6证据表 | Linux固定VSIX及Remote Node原四阶段已通过；三平台真实Agent各原输入有限通过，改变实际启动链后只复验受影响原流程；旧OS缺环境不伪称新runner已证明，且不阻塞本次重构 |
 
-当前证据表（2026-10-02，§53 最终版本结账；历史段落不形成新队列）：
+历史证据表（2026-10-02，§53 版本结账；2026-10-07 最终 B4 增量见§13，未影响部分继续复用，历史段落不形成新队列）：
 
 | 项目 | 当前结论 | 直接剩余 |
 | --- | --- | --- |
@@ -358,3 +360,21 @@ Host 对已结束且未提交的失败观察，允许下一显式操作重新观
 Host原身份、未提交/reader/finalization及共享截止保护不变；该资格逐目标检查，不进入native的storage级共享许可，也不跨preferred startup沿用。native前置观察明确限定terminal-exit-v1，旧恢复记录在新client能力校验后走当次检查。只读观察不是旧版并发启动的原子锁；限定同Linux运行环境/用户可见的进程视图，不支持恶意改argv或跨PID namespace推断。本工具的隔离/proc不包含原Host，因此只读matches为空不能宣称原owner已停止；实际授权必须在用户Host执行fresh观察。实施与结果见 `docs/exec-plans/completed/detached-restored-history-cleanup.md`。
 
 本轮legacy helper116项（含原81）、native39项通过，原3个真实socket/claim例受限跳过；Host新增旧detached14项并与旧history/B2组合95/95通过，另原S9/production/最终保存保护36/36通过，总用例232未全量重跑。typecheck、普通build、Main Only staging、调试配置检查和diff检查通过，独立复核无确定性blocker；未操作实际节点/registry/service，不以受控结果代证本次原窗口成功，旧大快照全量超时保持。
+
+## 13. 2026-10-07 最终当前状态恢复与分发结账
+
+最终产品源码为 `e38d2f72793420eefed4c6f8e2f3de255556c38d`，默认构建的新包来自 GitHub run `37613549564`：5882375 bytes，SHA256 `a9d2a4475f697e8620511533ea585eb77bed0e6fae8df7a52f41b0ac49361752`。选择为platform、executions:null/starting:1/pending:2；用户Runtime Persistence开关默认值未改变。六架构原生输入相对run `37577646133` 未变，只复用其原生资产，从当前业务源码正常打包；实体包、schema2、owner/patch源码及binary/dependency hash、macOS helper执行权限均独立核对，不重跑原生矩阵。
+
+| 最终验收及具名复用证据 | 独立核对结果 | 边界 |
+| --- | --- | --- |
+| Ubuntu22.04 x64 / macOS15 arm64 / Windows2025 x64 installed live Terminal | 90000行和尾部、最终光标(6,2)、原reader applied/recorded revision1398/8370/1380；新Host重开同节点无正文/无新执行，binding/pending/registry清空 | Windows源receipt与ConPTY页面完整性分账，不声称源字节恒等；macOS仍有已登记not-live栈toast，不据尾部通过宣称该提示已修复 |
+| Linux Terminal真实Reload Window | Host3721→3879；原Supervisor3817/provider3829/subject3844身份保持，新frame/reader；4821字符恢复，nonce13.1ms，整轮13.002s/exit0，EOF7/applied7；completed B无历史，无fallback | 单次小状态与真实跨Host路径；大状态由下行独立承担，不外推全平台大状态压力 |
+| 三平台真实Codex独立live Reload | 新reader状态6788/8579/7134字符，final applied/recorded143/60/309；原Supervisor及实际CLI启动链保持，重开后真实应答，stop前原主体live、之后明确退出，最终空registry且零fallback | Windows退出依原SafeHandle，不要求对象消失；成功响应证据为匹配源码的严格loaded/唯一行marker检查后receipt，不声称独立重放成功画面 |
+| 三平台所选Codex natural | 实际模型响应、sourceDisposition=eof，零binding/failure/forced/unconfirmed/active残留；Windows unknown为0 | 每平台只选一场，selectedPass=true/partialSelection=true/全矩阵pass=false，其余七项not-run保持 |
+| F-04新读者填充态与准入 | Linux两会话100000 scrollback/2560块后panel→editor，新reader恢复10200040字符/1246块约5114.9ms，B输入18.4ms；final6495/5 applied、cleanup/exit0；同key完整open Promise共享和最多2项未释放责任回归通过 | 本地显式2:1候选入口，非最终VSIX同包试验，按相同relay实现复用；B输入在导入后，总RSS离散峰值约2.99GB、同步操作536.9ms/lag603ms不是产品硬预算，不代证十个满scrollback同时导入 |
+
+原始工件以run内 `runtime-production-{input,installed,agent,agent-reload}-{linux,macos,windows}-37613549564` 和 `runtime-production-package-37613549564` 为来源。Linux Codex Reload的cleanup.runtime仍是较早stopping诊断，随后重新读盘的cleanup.registry才证明最终空；不得把不同时间字段拼成“始终为空”。最后停止本次隔离空闲Supervisor的动作与产品原执行资源退出分开记录。
+
+本地默认package/installed同样exit0，证据 `.debug/f04-final-default-installed-20261007/`；current-state填充态证据 `.debug/f04-filled-current-state-20261007-staged/`。其余验收复用范围为：三个受影响Playwright页面/PaneGallery用例、等状态1/400重绘的生产组合和固定codec语义、十会话color/size与attach/compact、此前真实Claude生命周期及snapshot非空重开、两模式退出与未改Remote/native。独立Codex Reload覆盖共用恢复路径，不称Claude执行过同一种live Reload，不以这些结果声称任意addon/并发/旧Supervisor/旧OS通过。
+
+有限产品review核对了codec先验证后安装、同队列revision捕获、Host单页/offset/真实导入确认、Webview authority/revision交接和final应用，未发现新的确定性blocker。残余固定xterm私有API、O(当前模型×有效reader)成本、历史Windows订阅停滞与not-live提示均repo-local登记；§12旧detached原窗口fresh清理未由此代证。F-01/F-02与R1/root稳定归属仍独立。本轮没有版本提升、发布或自动合并；历史失败不追认通过，普通文档收尾不再触发产品矩阵。

@@ -14,7 +14,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/runtime-live-state-recovery.md
+  - docs/exec-plans/completed/runtime-live-state-recovery.md
   - docs/exec-plans/completed/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-checkpoint-only-refresh.md
@@ -22,10 +22,12 @@ related_plans:
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
-updated_at: 2026-10-06
+updated_at: 2026-10-07
 ---
 
 # Runtime Persistence 容量与会话归档架构重评
+
+2026-10-07 当前增量结账：S2/B4固定当前态codec、分块初始化及新reader交接已实现，并取得真实Webview/Terminal、三平台Codex Reload、填充态及最终e38d2f72新包验收；同key在途open/取消的无界责任已修复。采用O(当前模型×有效reader)来源责任边界，约2.99GB离散资源观察和同步导入成本不转为固定RSS承诺；具体证据见 `runtime-live-state-recovery.md` 和有限收尾§13。下列2026-10-06重新开放及早期结果保持历史，不再生成新容量或诊断队列。
 
 2026-10-06 范围修订：下列资源模型及已取得证据保留，但它们只验证 checkpoint + journal 路径，不能据此宣称完成当前状态恢复。此前 §6.2 的 S2 方向重新纳入本轮 B4，新 codec/分块初始化与生产接线已实现，实际恢复验收仍开放，独立见 `runtime-live-state-recovery.md`；相同当前状态/scrollback 下恢复不随累计交互增长。本文原阈值、失败和旧验证结论不改写，不追加通用工具或 root 归属改造。
 

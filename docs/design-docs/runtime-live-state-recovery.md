@@ -1,7 +1,7 @@
 ---
 title: Live 会话权威当前状态恢复
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - 执行编排域
   - VSCode 集成域
@@ -12,7 +12,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/runtime-live-state-recovery.md
+  - docs/exec-plans/completed/runtime-live-state-recovery.md
 updated_at: 2026-10-07
 ---
 
@@ -28,7 +28,7 @@ checkpoint + journal 分页已限制消息和在途工作，但 checkpoint 在�
 
 提高 ANSI checkpoint 阈值或频率不能修复颜色、OSC8、parser carry 等语义缺口。保留页面实例不能覆盖真实 Host/Webview 重建。替换为 tmux 等引擎会改变平台、输入和呈现契约，本次不扩大此边界。
 
-选择固定 xterm 6 同引擎状态导出/导入：Supervisor 捕获当前有限模型，客户端恢复并从同一 revision 接收增量。状态包含正常/备用 buffer、scrollback、光标、属性/模式、颜色、链接、parser/解码中间状态及 resize 语义；纯文本和仅当前屏幕不是等价状态。私有 API 版本耦合与部分 parser 处理器已做源码核对和有限未来后缀等价验证；实际浏览器服务、真实重开及跨平台恢复仍待验收。
+选择固定 xterm 6 同引擎状态导出/导入：Supervisor 捕获当前有限模型，客户端恢复并从同一 revision 接收增量。状态包含正常/备用 buffer、scrollback、光标、属性/模式、颜色、链接、parser/解码中间状态及 resize 语义；纯文本和仅当前屏幕不是等价状态。私有 API 版本耦合与部分 parser 处理器已做源码核对和有限未来后缀等价验证；实际浏览器、真实重开及现代三平台受影响恢复已按下节具名结果验收，不扩大为任意终端服务或版本兼容。
 
 ## 不变量
 
@@ -58,7 +58,7 @@ Supervisor hello、Host 与 Webview ready 通过 `terminalCurrentStateV1` 协商
 
 为支持 F-04 的实际准入观察，Webview 在完整 current-state 组装前记录一次脱敏 performance diagnostic：状态总 UTF-16 长度、收到的块数、最终 offset，以及 `stateOffset * 2` 的组装峰值估计（`JSON.parse(join(...))` 同时保留分块和合并字符串的保守上界）。Supervisor/Host 已有 `stateLength` 和每页 `stateOffset` 记录。该诊断只用于同一生产入口的资源账，不把估计值当作 RSS 硬预算，也不改变失败、取消或降级语义。
 
-容量边界仍需作为 F-04 的生产准入项单独收口：当前协议只限制单个 `stateChunk`，尚未为完整 current-state JSON 设定总长度或接收端组装预算；Supervisor 会先形成完整字符串，Webview 也会在导入前累积并合并分块。不能把 8192 字符分页误写成总内存上界，也不在缺少实际多会话/大 scrollback 证据时擅自增加硬阈值。验收必须记录状态长度、捕获/组装峰值、并发会话和失败处置；若支持预算不足，应明确拒绝或降级到已有兼容路径，不能静默截断或宣称恢复完成。
+容量边界按 F-04 的有限资源模型准入：当前协议只限制单个 `stateChunk`，没有为完整 current-state JSON 设定独立总长度硬阈值；Supervisor 会先形成完整字符串，Webview 也会在导入前累积并合并分块。不能把 8192 字符分页误写成总内存上界，也不能将字符串估计冒称捕获/解析/cell 对象的精确峰值。当前来源、责任上界、具名多会话与填充态新读者观察见下节；不另设 profiler 或全局 RSS 门槛。实际获取失败必须明确失败，不能静默截断或把未导入的状态宣称恢复完成。
 
 资源模型区分当前模型的有限成本和操作积压：Supervisor 捕获对象及冻结 JSON、各 reader 的冻结字符串，接收端 chunks/join/parsed state、解码 cells 与 xterm 模型均计入责任，不能只计字符串。O(当前模型 × 活动读者) 本身不是累计历史重放或已证内存缺陷，也不因此要求通用流式 codec；真正的无界取消等待则必须修复。2026-10-07 受控执行实际 `RuntimeTerminalReadRelay` 发现同 key 的 40 次在途 open 形成 40 次远端调用及 39 个 releasing binding，现有 Supervisor 活动 reader 上限不覆盖这些等待。选择同完整身份（client/session/authority/consumer/能力）的 open 共享完整初始化 Promise；每个 key 当前与待释放 binding 的总责任不超过 2（当前最多一个，全关闭时可以暂有两个待释放），再次替换若超限则明确拒绝，不能取消健康当前 reader 或无限排队。旧 descriptor 迟到后仍沿原 client 关闭并结算；取消和未知关闭不变成 applied。
 
@@ -68,11 +68,17 @@ reader 的 `currentStateCheckpoint` 标记在释放冻结字符串后仍保留�
 
 已核实新 Host 行上下文从 attach snapshot head 加摘要开始订阅，不回放旧 checkpoint；同 Host 断线才从自身已消费位置继续。保持该路径，不增加另一套 Host 全态恢复。`CanvasPanelManager.postPagedExecutionSnapshot()` 协商，`runtimeTerminalReadRelay.ts` 转发，`TerminalPagedProjection` 组装并调用 Webview 导入。PaneGallery 卸载重建使用同一 fresh reader，不另建终端缓存。当前状态导入完成后，Webview controller 还必须登记该 reader 的 authority、revision、已应用快照标记和 projected execution session；后续分页回调携带实际 page revision，不能只更新 projection 内部游标。否则下一条直接终端事件会把已恢复页面误判为未 attach，并触发重复 attach recovery。该接续已在 controller 回归中覆盖。
 
-固定版本私有 API 的成本是升级时必须重新核对两端模型与 codec；当前安装已固定校验 headless/browser 6.0.0，不能以版本字符串或局部单测代证完整通过。格式与接线正在验证，B4 未完成；不将收益外推到旧 Supervisor。
+固定版本私有 API 的成本是升级时必须重新核对两端模型与 codec；当前安装已固定校验 headless/browser 6.0.0，不能以版本字符串或局部单测代证完整通过。B4 的声明路径已按下节真实产品证据验收，不将收益外推到旧 Supervisor、任意 addon 或任意并发。
 
 ## 已得证据与剩余验收
 
-当前 F-04 收口口径：同 key 的无界取消等待已修复，完整当前态采用可追溯的 O(当前模型 × 有效 reader) 来源上界，不要求恒定于配置 scrollback 或会话数的内存。已有十会话固定负载与本次填充态补证共同作为具名资源观察，不推出十个满 scrollback 同时导入通过；B 的 18.4ms 发生于导入之后，本轮 `paged-current-state` 操作约 536.9ms、main-thread lag 603ms 仍保留。没有新确认的结构性产品阻塞要求追加容量阶梯、精确 allocation peak 或 profiler；剩余交付为冻结最终源码/包并完成已受影响的 Host/reader、Windows Agent 恢复与整体审查。
+当前 F-04 收口口径：同 key 的无界取消等待已修复，完整当前态采用可追溯的 O(当前模型 × 有效 reader) 来源上界，不要求恒定于配置 scrollback 或会话数的内存。已有十会话固定负载与本次填充态补证共同作为具名资源观察，不推出十个满 scrollback 同时导入通过；B 的 18.4ms 发生于导入之后，本轮 `paged-current-state` 操作约 536.9ms、main-thread lag 603ms 仍保留。没有新确认的结构性产品阻塞要求追加容量阶梯、精确 allocation peak 或 profiler。最终源码 e38d2f72 与默认本地包已构建/安装通过；新包 run `37613549564` 的受影响同包验收已独立核对，产品接线审查未发现新确定性 blocker，B4 和具名 F-04 增量收口。
+
+最终 VSIX 为5882375 bytes，SHA256 `a9d2a4475f697e8620511533ea585eb77bed0e6fae8df7a52f41b0ac49361752`，新建默认platform/null:1:2；未改原生输入复用 `37577646133`，不使用旧整包代证新relay。Linux/macOS/Windows installed live的90000行、最终光标(6,2)、reader applied1398/8370/1380、completed重开无历史与清理通过；独立Codex Reload的新状态6788/8579/7134字符，最终applied143/60/309，原执行身份和未来真实应答保持。Linux真实Terminal Reload另有4821字符、新nonce13.1ms和applied7。普通Agent每平台仅所选Codex natural通过，未跑的七项与全矩阵pass=false保持；Claude及未改snapshot/Remote证据按影响范围复用。明细、维护边界与历史失败见有限收尾§13和归档计划，不外推新性能SLA或所有平台满scrollback通过。
+
+Windows Reload-only run `37613057194` 已独立核对通过：Host 2708→712，原 Supervisor 6716/provider 10220/cmd 3580/node 6200/Codex 7712 的创建身份保持，新 reader 使用 7062 字符的 current-state，最终 applied revision 310 recorded。产品 stop 后原四个执行对象的原 handle 均明确退出，零 binding/pending/registry、零 fallback；不要求被引用的已退出进程对象消失。临时信任/unelevated 配置和 driver 来源 hash 已核对；前后实际应答按严格就绪与唯一行 marker 验证，但成功工件没有两次完整屏幕 probe，不能声称独立重放原始画面。此轮使用旧冻结包，不能替代 e38d2f72 最终 relay 新包验收。
+
+以下保留各日期的原始实施与失败记录，旧“待回收/仍开放”只反映当时时点，不覆盖本节当前结论和 ExecPlan 进度。
 
 Windows run `37610947842` 仍未通过：最终 VT 为 workspace trust，唯一 CR 没有使其推进，缺少发送前实际 probe，内部因果时序未证实。固定 Codex `rust-v0.157.1` / `36650394c5b38c2990ccf2a3457165ca3e9d9726` 的 onboarding 在绘制后丢弃待处理输入，因此不继续依赖启动菜单按键来证明 Runtime Reload。按[官方配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)和 pinned 实现，仅在测试生成的隔离 `CODEX_HOME` 中配置精确新建空 workspace 的 `projects.<path>.trust_level="trusted"` 与 `windows.sandbox="unelevated"`；保留交互 CLI、read-only、never、禁用 shell tool、稳定 loaded composer 与真实前后两轮应答。失败额外冻结实际 Webview probe，不修改用户配置或普通 Agent 矩阵，旧失败保持。
 
@@ -96,7 +102,7 @@ Windows run `37610947842` 仍未通过：最终 VT 为 workspace trust，唯一 
 
 现代安装入口的受影响回归已取得 macOS installed product/Agent 8 场景，以及同包 Windows 定向 run `37507579337` 的 installed live-runtime/Agent live 4 场景证据。Windows 90000 行与尾部最终光标、reader applied、completed 无历史及资源释放通过；Agent 仅所选四场景通过，不冒称完整矩阵。先前 Windows run `37494231281` 的 Host 停滞原因仍未确认，归档缺失清空前的启动批次，因此保留间歇性风险，不将重跑绿色等同业务修复。上述生命周期/安装结果也不代证真实 live Agent 跨 Host 重开。
 
-剩余只补实际 Webview/PaneGallery、VS Code 重开、真实 Terminal/Codex/Claude 的恢复后交互与退出，以及现代三平台最终包中的对应路径；并在同一受影响链路上完成 current-state 总长度/组装峰值与多会话准入记录。provider/native 未改，不重跑无影响的六架构资产矩阵，不重开 snapshot-only 历史归档或 root 归属。具体命令、失败和恢复方法保留在活动 ExecPlan，B4 在这些受影响验收和 F-04 资源边界完成前仍开放。
+最初验收范围包括实际 Webview/PaneGallery、VS Code 重开、真实 Terminal/Codex/Claude 的交互与退出，以及现代三平台安装入口。证据须分账：Agent 共用 current-state 跨 Host Reload 路径由独立真实 Codex 场景覆盖，Claude 的既有真实生命周期、无历史及 snapshot 重开证据仍沿用，不称 Claude 已独立执行同种 live Reload；本轮没有修改其专属启动链，也不据此追加完整平台笛卡尔积。provider/native 未改，不重跑无影响的六架构资产矩阵，不重开 snapshot-only 历史归档或 root 归属。具体命令、失败与当前剩余项以 ExecPlan 进度为准。
 
 2026-10-07 F-04 资源台账接线：现有 Linux capacity workload 在 setup 收尾阶段优先、必要时在最终收尾从 Host diagnostics 读取 `runtime/terminalPagedReadOpened` 的 current-state descriptor（诊断事件仍在 ring 中时作为 Supervisor 侧观察），并强制要求每个受影响会话存在 Webview `terminal-current-state-assembled` 完整样本。归档包含状态长度、最终 offset、chunk 数、保守组装峰值及跨会话聚合字符量；缺失完整组装事实会使该受影响 workload 失败并保留独立错误证据，原 workload 失败不会被取证错误覆盖。该接线不引入总长度或 RSS 产品阈值，也不把 8192 字符页大小当作总资源上限；历史 capacity 结果尚未包含该台账，待下一次 Linux 原生重跑后再评估准入。
 

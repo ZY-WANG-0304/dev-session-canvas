@@ -101,7 +101,7 @@
 
 ## 7. 验收标准
 
-2026-10-06 补齐 live 状态恢复要求：Supervisor 仍存活时，新 Host/Webview 及 PaneGallery 布局/聚焦重建应恢复当前权威终端模型和配置内 scrollback，再接续实时增量。相同当前状态、尺寸和 scrollback 下，恢复成本不随已被模型淘汰的累计交互持续增长。不能只以分页、有界内存或原进程仍存活代替这一验收；已有有效消费者的未消费输出和尾部仍须完整按序应用，不以当前状态覆盖跳过。此项仍未完成，见 `docs/design-docs/runtime-live-state-recovery.md`。
+2026-10-06 补齐 live 状态恢复要求：Supervisor 仍存活时，新 Host/Webview 及 PaneGallery 布局/聚焦重建应恢复当前权威终端模型和配置内 scrollback，再接续实时增量。相同当前状态、尺寸和 scrollback 下，恢复成本不随已被模型淘汰的累计交互持续增长。不能只以分页、有界内存或原进程仍存活代替这一验收；已有有效消费者的未消费输出和尾部仍须完整按序应用，不以当前状态覆盖跳过。2026-10-07 已按声明路径完成实现及受影响验收，见 `docs/design-docs/runtime-live-state-recovery.md` 和有限收尾§13；不承诺与配置scrollback/并发无关的恒定内存或零导入延迟。
 
 以下 `live-runtime` 进程连续性与输出重连验收以 Supervisor 仍存活为前提；Supervisor 自身崩溃或执行机器重启后，可以没有可恢复的进程和终端历史，此时只需准确表达原运行时已丢失，不能伪装成原 live 会话。这个例外不改变画板节点、布局及用户文档的保存语义。2026-10-02 收尾决定明确：新实现仅在真正取得该 generation 排他运行权的冷启动时清理本 generation 陈旧执行账与终端 journal，不重放故障前正文；健康 Supervisor 的客户端断连/重连不执行清理，旧 generation 与旧 live 绑定不受影响。`strong` backend 不额外承诺机器/监督器故障后的恢复，`snapshot-only` 的现行保证不在本轮调整。
 

@@ -1,6 +1,6 @@
 # 从权威当前状态恢复 live 终端
 
-本 ExecPlan 按 `docs/PLANS.md` 持续维护。它只重新打开本轮 Runtime Persistence 重构的 live 状态恢复，不重开已经完成的容量治理、退出完整性或无 completed 历史实现。
+本 ExecPlan 按 `docs/PLANS.md` 维护，于 2026-10-07 完成并归档。它只重新打开本轮 Runtime Persistence 重构的 live 状态恢复，不重开已经完成的容量治理、退出完整性或无 completed 历史实现。以下带日期的失败与阶段状态保留历史，完成结论以进度和结果为准。
 
 ## 目标与全局图景
 
@@ -17,11 +17,15 @@ Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩
 - [x] (2026-10-07) M3 Linux/Codex 真实 live Agent 跨 Host 恢复：生产 run `37594259665` 的独立 Reload Window 验收通过；同一 Supervisor/session/authority、新 reader、后续真实输入、`terminalReadSettled=applied` 和原始资源退出均有工件证据。
 - [x] (2026-10-07) 定向收口跨平台 Reload 验收器：Windows 使用真实生命周期身份和原 SafeHandle 退出事实，stop 前核对原启动链，正常清理需零绑定/零会话后再结束隔离 Supervisor；macOS 最终退出应用而非仅关闭窗口。就绪判断不再将 Codex 的 loading composer 当作可请求模型的状态。行为回归通过，原生结果待下项回收。
 - [x] (2026-10-07) M3 macOS/Codex Reload-only run `37608894493`：同一原 runtime/authority，新 reader；stop 前原 provider/wrapper/CLI 均 live，final revision 71 applied；bindings/pending/registry 清空、零 fallback、应用正常退出。
-- [ ] M3 恢复场景剩余：现代 Windows runner 的真实 live Agent 跨 Host 恢复。run `37608896439` 的原生保留句柄身份检查通过，但真实 CLI 停在 Windows sandbox onboarding，整轮失败；仅针对该实际入口修正后补验，不改变固定八场，不把原生 identity 测试代证产品 Reload。
+- [x] (2026-10-07) M3 Windows/Codex Reload-only run `37613057194`：原 Supervisor/provider/cmd/node/CLI 身份不变，Host 与 reader 更新，current-state 7062 字符；新 reader final revision 310 applied/recorded，四个原执行资源均由原 handle 明确确认退出，零 binding/pending/registry 与 fallback。历史 trust/sandbox 失败保持，不将对象仍存续当作进程仍运行。
 - [x] (2026-10-07) F-04 current-state 结构与具名资源观察：完整状态长度、分层对象/字符串责任、实际分进程采样、新 reader 准入/超限拒绝及原尾部责任已核对；8192 仅为单页限制，离散 RSS/编码字符账不冒称精确 allocation peak 或总内存硬限。
 - [x] (2026-10-07) F-04 有限受影响补证：`.debug/f04-filled-current-state-20261007-staged/` exit 0，固定两会话/color/100000 scrollback/2560 块后切换 panel 到 editor；新 reader 同原执行/authority，10200040 字符、1246 块完整恢复约 5114.9ms，B 18.4ms，新 reader final 6495/5 applied，cleanup 通过。
 - [x] (2026-10-07) F-04 直接产品修复：同完整身份共享完整初始化 Promise，每 key 当前与未释放 reader 总责任不超过 2；重复开读、身份替换、取消压力、能力校验与原 client 释放先红后绿，最终 projection/controller 50/Host batch 10 和 settlement 27 通过。
-- [ ] 冻结最终 relay 修正源码及默认生产包，补受影响 installed live/Host-reader 验收并完成整体审查；复用未改 native/provider 与已通过的无影响 Agent 场景，不再追加容量阶梯。
+- [x] (2026-10-07) 冻结最终 relay 修正源码 `e38d2f72`，正常默认 build、package:vsix 与本地安装 live-runtime 入口 exit 0；默认 admission 恢复为 executions:null/starting:1/pending:2，不以测试 2:1 作为分发默认值。
+- [x] (2026-10-07) 最终生产包 run `37613549564` 整体成功，三平台 installed live/独立 Codex Reload、Linux Terminal Reload 及每平台单个 Codex natural 工件独立核对通过。VSIX 5882375 bytes / SHA256 a9d2a4475f697e8620511533ea585eb77bed0e6fae8df7a52f41b0ac49361752；六目标原生源码/hash 未变，复用 `37577646133` 原生资产，从 e38d2f72 业务源码构建新包。
+- [x] (2026-10-07) 最终产品接线与来源/尾部/清理独立审查未发现新的确定性 blocker；当前模型同步成本、固定 xterm 私有 API、旧 Windows 未归因停滞已登记 tech-debt-tracker，计划归档。普通文档审查和 PR 更新不追加产品阶段，合并仍须用户授权。
+
+以下为带日期的原始实施记录，记录当时的待验状态；当前剩余责任以上述进度为准，历史“仍开放”不自动形成新队列。
 
 2026-10-07 F-04 接线增量：既有 Linux `execution-capacity-tests.cjs` 在相同 2/10 会话、100000 scrollback、attach/compact 入口的 setup 收尾阶段优先调用 Host diagnostics，必要时在最终收尾补抓，归档每个会话的 Supervisor current-state descriptor（若诊断事件仍在 ring 中）及 Webview 完整组装长度、offset、chunk 数和保守组装峰值。该台账不设新的总长度/RSS 阈值，不截断状态；缺少完整组装事实会使该受影响 workload 失败并保留独立错误证据，原 workload 失败优先级不被工具取证错误覆盖。
 
@@ -54,6 +58,8 @@ Windows 定向 run `37507579337`（harness `43c66daa`）复用同一冻结包，
 
 ## 意外与发现
 
+Windows run `37613057194` 的 launcher/driver/observer/contract 工件 hash 与 `31478d07` 源码一致；setup/verify 保存的唯一前后响应 marker 只有在严格 loaded composer 与独立行响应检查通过后才写出。成功工件未保存两轮完整屏幕 probe，不声称离线重放了原始画面。`reload-command-rejection` 的 `Canceled` 与新 Host 已完成 verify 同时保留，不能仅凭该命令返回值否认实际 Reload。仅在零绑定/零 pending/空 registry 后终止本次空闲 Supervisor，不要求其内核对象消失。
+
 填充态首轮 `.debug/f04-filled-current-state-20261007/` 在准备阶段以 exit 1 结束，source receipt 为 1280 块、页面到约 1122 块，未进入 surface 切换；产品 cleanup 通过。新入口误把原三段各 30 秒压成一个 30 秒窗口，故只修正为原有分段发送、每段 receipt 与 suffix 排空后继续，唯一恢复验收仍在最终 2560 块后；恢复 30 秒和 B 输入 1500ms 不变。原失败不追认通过，不据此推定产品根因。最终 relay 的 settlement 回归曾在创建 relay 前的 history=400 prefix 等待超时，保留该次 exit 1；原生容量进程结束后单独复核 27/27 通过，日志 `.debug/f04-relay-final-settlement-20261007.log`，不以该结果解释旧超时。
 
 同包 Reload-only 的 macOS run `37608894493` 已独立核对 setup、pre-stop-ownership、verify、settlement 与 cleanup：原 provider 4841、wrapper 4844、CLI 4852 在 stop 前存活，原 authority 保持且 reader 改变，当前 reader final revision 71 applied，零绑定、零 pending、空 registry 与零 fallback；最终应用退出不再超时。Windows run `37608896439` 的原生句柄测试通过，真实 CLI 在 trust 确认后停在 `Set up the Codex agent sandbox`，菜单要求 default/admin、non-admin 或 quit，最终未出现 composer；因此不是已证认证失败，也不是需要放宽模型就绪。仅补显式选择 non-admin sandbox 后继续等待完整就绪，保留 read-only/never 与禁用 shell tool 的固定约束。两次 Windows 失败均不追认通过。
@@ -74,6 +80,7 @@ run `37605380825` 复用生产包 `37577646133`，三平台 installed live-runti
 
 ## 决策记录
 
+- 决策：B4 与最终 relay 受影响交付有限结账，归档计划；真实 Agent 共用跨 Host 当前态恢复由三平台 Codex 独立 Reload 承担，Claude 专属生命周期/快照证据沿用而不冒称同种 Reload。理由：最终同包安装、未来真实应答、身份、reader 最终应用与资源清理均有工件；没有新证据要求重跑未改 provider/native、完整八场或另立容量/诊断阶段。日期：2026-10-07。
 - 决策：F-04 当前态的具名结构/资源观察收口，保留最终包与整体审查责任；不把精确 allocation peak、profiler、任意并发阶梯新增为门槛。理由：同 key 无界等待已经修复，当前态来源为用户保留模型而非累计交互；独立审查确认已有十会话与填充态新读者证据足以覆盖原具名输入，但不外推十个满 scrollback 同时导入或导入期间 B 延迟。日期：2026-10-07。
 - 决策：Windows Reload 在专用临时 CODEX_HOME 预配置唯一空 workspace trust 与 unelevated sandbox，不继续用启动菜单按键时序阻塞运行时验收。理由：固定上游在绘制后清除待处理输入，配置键已核对官方参考与固定版本源码；实际失败内部时序未证明，保留全部原结果和新增真实 failure probe。交互式 CLI/模型应答/身份/尾部要求不变。日期：2026-10-07。
 - 决策：relay 按完整原身份共享完整初始化 Promise，每 key 当前与未释放责任总量不超过 2（当前最多一个，全关闭时可暂有两个 releasing）；超限明确拒绝，不追加等待队列，不取消健康当前 reader。理由：直接修复可复现的取消等待积压，保持迟到 descriptor 的原 client 关闭、completeRemote 与最终应用责任，不为 O(当前模型) 的已选编码方案另造通用流式框架。日期：2026-10-07。
@@ -91,7 +98,9 @@ run `37605380825` 复用生产包 `37577646133`，三平台 installed live-runti
 
 codec 与生产接线已实现，受控生产类组合验证已证明新读者不读取 R 以前事件，状态应用后才确认 R，并在真实尾部 write callback 后结算。相同模型的 1/400 次重绘样本均传送 4329 字符；codec 的 1/200/1200 次重绘样本均为 2632 字符。它们是结构证据，不是实际 VS Code、浏览器或跨平台性能验收。
 
-整体 B4 尚未完成：受影响的三个 Playwright 浏览器用例、真实 Linux Terminal 和 Linux/macOS Codex Reload，以及填满 scrollback 后的 Linux 两会话新 reader 恢复已通过；现代平台安装入口及 Agent 生命周期结果见进度记录。剩余是真实 Windows live Agent 恢复、F-04 资源边界最终审查及修正后默认分发的受影响验收。填充态的 109 个 250ms 资源样本覆盖实际分进程路径，总 RSS 最高约 2.99GB，不能代替精确瞬时分配峰值或产品 SLA，也不要求追加 profiler 才承认这一有限通过。此前 Linux Electron/Unix socket 启动失败、Windows 旧停滞及新的 onboarding 失败均保持原事实；没有修改用户节点、registry、服务或历史结果取得绿色。旧 macOS/Windows 系统不是本轮验收基线。
+整体 B4 已完成声明范围：受影响的三个 Playwright 用例、等状态短长历史生产组合、真实 Linux Terminal、三平台 Codex Reload、填满 scrollback 后的 Linux 两会话新 reader，以及最终 e38d2f72 默认包的受影响验收均通过。run `37613549564` 的 installed 原 reader final revision 按 Linux/macOS/Windows 为 1398/8370/1380；Codex Reload 的新 reader 为 143/60/309，均 applied/recorded，原身份、后续真实应答与清理保持。Linux Terminal Reload 状态4821字符、整轮13.002秒、nonce13.1ms，最终applied7；三平台普通Agent报告仅 selectedPass=true，完整八场pass=false和七项not-run保持。完整来源、证据复用与边界见 `docs/design-docs/runtime-persistence-closeout.md` §13。
+
+F-04 具名结构/资源观察已经收口；填充态109个250ms样本的总RSS最高约2.99GB，不是精确瞬时分配峰值或产品SLA，不要求追加profiler。Linux Codex cleanup中的旧诊断快照仍有stopping记录，最终空registry依据随后重新读盘的独立字段，不能声称整个退出过程均为空。Windows依据原handle确认退出，不要求对象销毁。历史sandbox、订阅停滞和onboarding失败原样保留，没有修改用户节点、registry、服务或历史结果取绿；旧系统不是本轮验收基线。
 
 ## 上下文与定向
 
@@ -119,9 +128,9 @@ M3 复用测试与浏览器入口，固定相同最终模型、不同历史，�
     node scripts/test/test-runtime-supervisor-paths.mjs
     node scripts/test/test-runtime-supervisor-startup-profile.mjs
 
-有原生执行权限后，先只运行新增浏览器用例：`node scripts/test/run-playwright-webview.mjs --grep 'current-state bootstrap'`，预期三个场景通过实际 DOM、palette、链接、parser 后缀和 reader 取消断言。随后在正常默认包中新建 Terminal 和真实 Codex/Claude live 会话，执行短/长等状态重绘、重开 VS Code 和 PaneGallery 聚焦切换，核对原 session/authority 不变、新 reader 从 R 初始化、旧历史读取为零、未来输入输出及最终尾部完整，再在现代 Linux/macOS/Windows 安装入口补相同受影响恢复路径。未修改 provider/native，六架构原生构建矩阵和未影响的 snapshot-only 用例不重新排队。实际 Agent 的未来输出与退出必须由真实 CLI 产生，不能用受控 caller 替代。
+浏览器入口为 `node scripts/test/run-playwright-webview.mjs --grep 'current-state bootstrap'`，三个场景检查实际 DOM、palette、链接、parser 后缀和 reader 取消。真实入口使用正常默认包：Terminal 验证状态/scrollback、重开及尾部，三平台独立 Codex live Reload 验证原 session/authority、跨 Host 新 reader、未来真实模型交互与退出；已取得证据见进度。Claude 的既有真实生命周期、无历史和 snapshot 重开证据另行沿用，不称其独立执行过相同的 live Reload；共用恢复路径由 Codex 覆盖，不追加完整平台笛卡尔积。未修改 provider/native，六架构原生构建矩阵和未影响的 snapshot-only 用例不重新排队。实际 Agent 的未来输出与退出必须由真实 CLI 产生，不能用受控 caller 替代。
 
-Playwright 当前状态用例已通过后，真实 Electron candidate 仍需独立在可启动原生 UI 的 runner 重跑；浏览器或实际 OS 验证被沙箱阻止时记录原失败和未验证项，不用 headless 单测替代。不得触碰用户 Runtime 文件来取得绿色结果。
+早期 Playwright 通过时，真实 Electron candidate 曾因 sandbox 受限而未完成；原失败保留，后续真实入口已按进度独立取得结果，不再重复排队该历史环境项。不用 headless 单测替代实际 OS 验证，不触碰用户 Runtime 文件来取得绿色结果。
 
 ## 验证与验收
 
@@ -156,3 +165,7 @@ Playwright 当前状态用例已通过后，真实 Electron candidate 仍需独�
 修订记录：2026-10-07，登记实际 relay 可复现的在途取消等待积压及有限准入修复，当前态对象成本与无界操作积压分别处理；保持尾部、原绑定和未确认结果边界。
 
 修订记录：2026-10-07，填充态 Linux 新 reader 真实通过，独立核对 1246 块、内容、原身份、两 final applied 与 cleanup；F-04 结构/具名观察收口而最终包保持开放。Windows 新 trust 失败不追认，改用精确临时配置准备，保持真实交互验收。
+
+修订记录：2026-10-07，独立回收 Windows Reload-only 的原身份、原 handle 退出、当前 reader 结算和清理证据；冻结 e38d2f72 新业务包，只补最终受影响链路。将历史时点待办与当前有限队列分开，不追加工具或容量阶段。
+
+收口记录：2026-10-07，最终新包37613549564三平台及Linux Terminal Reload工件独立核对通过；产品有限review无新确定性blocker，登记残余并归档，不重写旧失败、不自动合并。
