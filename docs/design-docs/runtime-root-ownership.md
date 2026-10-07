@@ -1,7 +1,7 @@
 ---
 title: Root 稳定的 Runtime 归属
 decision_status: 已选定
-validation_status: 未验证
+validation_status: 验证中
 domains:
   - VSCode 集成域
   - 执行编排域
@@ -14,8 +14,9 @@ related_specs:
   - docs/product-specs/canvas-multi-root-workspace-support.md
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/active/runtime-root-ownership.md
   - docs/exec-plans/completed/runtime-root-ownership-design.md
-updated_at: 2026-10-07
+updated_at: 2026-10-08
 ---
 
 # Root 稳定的 Runtime 归属
@@ -24,7 +25,7 @@ updated_at: 2026-10-07
 
 PR #295 已合并，本文以 `origin/main@06e9abcf32828325444e8263233537f25bf042a7` 为调查基线，独立处理审核 F-03 / 有限收尾 R1。画板按 root 保存，但新建 live Terminal/Agent 仍按创建窗口的 workspace storage 派生 Supervisor。同 root 在多个窗口的新会话会分散；不同 root 则可能共享进程，增加发现、诊断、退役复杂度和进程故障影响范围。单会话 stop/delete 并不因此跨 root 生效。
 
-原多根设计 §6.8 和规格第 16、17 项曾明确选定 slot 绑定。这是修订设计决策，不倒写成实现违反当时规格。本文选定目标契约与有限实施边界；**业务代码尚未改造，产品与原生验证均未执行**。环境探针和启动竞争的可行性须在实施 P1 取得直接证据，不能由本次文档审查代证。
+原多根设计 §6.8 和规格第 16、17 项曾明确选定 slot 绑定。这是修订设计决策，不倒写成实现违反当时规格。2026-10-08 用户认可后已开始实施 P1，进度见 §8；**正常新建路由尚未切换，root 归属产品验收尚未执行**。环境探针和启动竞争的可行性须在实施 P1 取得直接证据，不能由文档审查代证。
 
 目标是多根 workspace 作为各 root 画板的组合视图：同一执行环境、用户存储范围、root 身份、Supervisor generation 确定稳定 owner（托管会话的运行时归属）。单根、多根、PaneGallery 和创建窗口不改变它。稳定指找到同一个逻辑归属，不保证 Supervisor PID 永远不变。
 
@@ -61,7 +62,7 @@ PR #295 已合并，本文以 `origin/main@06e9abcf32828325444e8263233537f25bf04
 
 ### 4.1 身份与适用环境
 
-拟在 `common/runtimeRootOwnership.ts` 定义纯 descriptor/hash/path 规则，在 `panel/runtimeExecutionEnvironment.ts` 取得执行端输入；两个文件均为计划新增。Host 从所属 root-local 画板解析 root，不接收 Webview 自报的存储目录。Descriptor 使用固定字段顺序、版本化编码，hash 仅用于命名，握手仍比较完整字段。
+在 `common/runtimeRootOwnership.ts` 定义纯 descriptor/hash/path 规则，在 `panel/runtimeExecutionEnvironment.ts` 取得执行端输入；两个文件已在 P1 基础实现中新增。Host 从所属 root-local 画板解析 root，不接收 Webview 自报的存储目录。Descriptor 使用固定字段顺序、版本化编码，hash 仅用于命名，握手仍比较完整字段。
 
     RuntimeOwnerDescriptorV1 = {
       schema: 1,
@@ -186,3 +187,11 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 复用 `test-runtime-supervisor-namespace.mjs` 的运行期 claim 基础场景、既有 `two-window-shared-runtime`/storage-slot smoke、生产接入 §53.1、有限收尾 §13/§14、当前态恢复及历史清理证据；复用不等于这些测试已证明新的 root owner。不会重复未改 PTY/reader/序列化/六资产构建矩阵。若实现改变了这些边界，必须记录具体影响并补对应原测试，不能为减少工作弱化尾部完整性。
 
 设计阶段验证仅为代码事实复核、独立文档审查、元数据/引用检查和 `git diff --check`。平台来源与并发原语是直接实施前置；永久设备标识、全局资源调度、跨机器共享盘发现、通用多写者事务和历史 GC 是可延期增强，不自动排入下一阶段。历史失败保留在原记录，不转抄为当前待办。
+
+## 8. 实施进度
+
+2026-10-08 开始 P1 身份/环境/握手基础接入，实施计划见 `docs/exec-plans/active/runtime-root-ownership.md`。仅增加明确的新 root generation，原 current-state generation 与 Manager 默认创建路由不变。原绑定不读新 owner 记录、不被静默升级；新 generation 必须核对完整身份，基础阶段只允许连接，不借旧的自动启动流程绕过尚未接入的启动准备排他。
+
+Windows 只读 boot UUID/SID probe 优先由系统自带 PowerShell 调用固定 native API，不修改 PTY addon、ConPTY 或执行资产格式；其有界失败仍为 unknown，不回退墙上时钟或窗口随机 ID。这是具体调用方式的最小化，不改变环境身份契约。三平台定向 workflow 只运行基础测试与 typecheck，不获取 Agent 凭据、不启动整套旧 PTY 矩阵。实际命令和结果在实施计划中登记；尚未执行的平台不计通过。
+
+本地 pure owner/paths、受控握手 25 项及原 startup/reader 16+31 项通过，typecheck、普通 build 与 diff 检查通过。独立复核补齐保留 root 布局中的未知/错放旧 generation 及 canonical alias 拒绝规则；拒绝不触发 connect/start/claim/cleanup/listen，能力识别仍按精确 generation 枚举。环境受控校验通过，但真实双子进程因沙箱无输出而失败；旧 protocol 在 socket `EPERM` 失败，namespace 未取得 claimant。均不跳过或追认通过，也不将不同工具调用的 namespace 差异当作同环境稳定证据。启动准备排他、三平台原生来源与 P2/P3 仍待完成；现阶段新 root client 显式拒绝未经协调的自动启动。

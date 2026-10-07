@@ -1,0 +1,47 @@
+name: Runtime Root Ownership
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [runtime-root-ownership]
+    paths:
+      - .github/workflows/runtime-root-ownership.yml
+      - extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership.ts
+      - extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts
+      - extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts
+      - extensions/vscode/dev-session-canvas/src/panel/runtimeExecutionEnvironment.ts
+      - extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts
+      - extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootOwner.ts
+      - extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts
+      - scripts/test/test-runtime-root-ownership.mjs
+      - scripts/test/test-runtime-execution-environment.mjs
+      - scripts/test/test-runtime-root-owner-handshake.mjs
+      - package.json
+      - package-lock.json
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    name: Owner identity and handshake / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check owner contracts and native environment identity
+        run: npm run test:runtime-root-ownership
+      - name: Check TypeScript
+        run: npm run typecheck
