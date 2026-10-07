@@ -201,7 +201,7 @@ A5历史阶段记录（第37节时点，不覆盖§8当前证据）：当时三�
 
 ## 7. R1：root 稳定归属独立计划登记
 
-F-03 单列为后续独立计划，尚未启动实施，不是 B1 至 B3 的前置，也不由本次收尾宣称解决。本节登记目的、边界和验收输入；具体 ExecPlan 在启动该项前单独编写，不把归属迁移混进退出计划。
+F-03 独立于 B1 至 B4，不由本次收尾宣称解决。PR #295 合并后，2026-10-07 已启动并形成独立规划设计 `docs/design-docs/runtime-root-ownership.md`，过程见 `docs/exec-plans/completed/runtime-root-ownership-design.md`；实现与原生验收未开始。新方案修订多根 §6.8 和对应规格，限定 P1 身份/存储/握手、P2 生产接线、P3 受影响验收，不把归属迁移混进退出计划，也不重开未受影响历史矩阵。
 
 目标是同一运行环境、用户存储范围、root 身份与 Supervisor generation 确定稳定归属；单根和多根 Agent/Terminal 新建必须一起修改，显示名、cwd 和创建窗口 slot 不替代 root 身份。先修订 `canvas-multi-root-workspace-support.md` 设计第 6.8 节及对应产品规格，再实现发现/创建路由与必要隔离。
 
