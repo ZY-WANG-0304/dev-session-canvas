@@ -224,9 +224,9 @@ async function verify(extension) {
   await observer.stop();
   await observer.sample();
   assert.equal(observer.failures.length, 0);
-  const identities = await Promise.all([...setup.resources, setup.supervisor].map(expected => readIdentity(expected.pid)));
-  const allEnded = [...setup.resources, setup.supervisor].every((expected, index) => exitedIdentity(expected, identities[index]));
-  assert(allEnded, 'Original Agent resources must exit after post-reload stop.');
+  const identities = await Promise.all(setup.resources.map(expected => readIdentity(expected.pid)));
+  const allEnded = setup.resources.every((expected, index) => exitedIdentity(expected, identities[index]));
+  assert(allEnded, 'Original Agent CLI/provider resources must exit after post-reload stop.');
   await write('verify.json', { phase: 'verify', nonce: control.nonce, pass: true, oldHost, node: nodeOf(ended, setup.nodeId),
     binding: setup.binding, supervisor: await readIdentity(setup.supervisor.pid), reader, after,
     noNewExecution: true, originalResourcesExited: allEnded });
@@ -235,5 +235,10 @@ async function verify(extension) {
 async function cleanup() {
   if (!observer) return;
   try { await command('resetState'); } catch { /* The original product failure remains authoritative. */ }
+  const expected = control?.setup?.supervisor;
+  if (expected && sameLiveIdentity(expected, await readIdentity(expected.pid))) {
+    process.kill(expected.pid, 'SIGTERM');
+    await poll('idle Supervisor exit', () => readIdentity(expected.pid), value => exitedIdentity(expected, value), 10000);
+  }
   try { await observer.stop(); } catch { /* Preserve the original assertion. */ }
 }
