@@ -95,8 +95,7 @@ async function readWindowsIdentity(pid) {
   const powershell = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   const observer = path.join(__dirname, 'agent-candidate-process-observer.ps1');
   const request = JSON.stringify({ version: 1, id: 1, operation: 'identity', targets: [{ pid }] });
-  const stdout = await runWindowsObserver(powershell, observer, request);
-  const response = JSON.parse(stdout.trim());
+  const response = await windowsIdentityClient(powershell, observer).request(request);
   if (response.error) throw new Error('Windows identity observer returned an error.');
   const record = response.records?.find(value => value.pid === pid);
   if (!record) return undefined;
@@ -106,26 +105,85 @@ async function readWindowsIdentity(pid) {
   return record;
 }
 
-function runWindowsObserver(powershell, observer, request) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+let identityClient;
+function windowsIdentityClient(powershell, observer) {
+  if (!identityClient) identityClient = new WindowsIdentityClient(powershell, observer);
+  return identityClient;
+}
+
+class WindowsIdentityClient {
+  constructor(powershell, observer) {
+    this.nextId = 0;
+    this.pending = new Map();
+    this.buffer = '';
+    this.stderr = '';
+    this.child = spawn(powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
       '-File', observer], { shell: false, env: { SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR,
         TEMP: process.env.TEMP, TMP: process.env.TMP }, stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => { child.kill(); reject(Object.assign(new Error('Windows identity observer timed out.'), { code: 'ETIMEDOUT' })); }, 10000);
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', chunk => { stdout += chunk; if (stdout.length > 2 * 1024 * 1024) child.kill(); });
-    child.stderr.on('data', chunk => { stderr += chunk; });
-    child.once('error', error => { clearTimeout(timer); reject(error); });
-    child.once('close', (code, signal) => {
-      clearTimeout(timer);
-      if (code !== 0 || signal) reject(new Error(`Windows identity observer failed: ${stderr.slice(0, 256)}`));
-      else resolve(stdout);
+    this.child.stdout.setEncoding('utf8');
+    this.child.stderr.setEncoding('utf8');
+    this.child.stdout.on('data', chunk => this.receive(chunk));
+    this.child.stderr.on('data', chunk => { this.stderr += chunk; });
+    this.child.once('error', error => this.fail(error));
+    this.child.once('close', (code, signal) => {
+      if (!this.closed) this.fail(new Error(`Windows identity observer exited: ${code ?? 'null'}/${signal ?? 'none'}${this.stderr ? ` (${this.stderr.slice(0, 256)})` : ''}`));
     });
-    child.stdin.end(request);
-  });
+  }
+
+  request(request) {
+    if (this.closed) return Promise.reject(new Error('Windows identity observer is closed.'));
+    const id = ++this.nextId;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        this.fail(Object.assign(new Error('Windows identity observer timed out.'), { code: 'ETIMEDOUT' }));
+        reject(Object.assign(new Error('Windows identity observer timed out.'), { code: 'ETIMEDOUT' }));
+      }, 10000);
+      this.pending.set(id, { resolve, reject, timer });
+      this.child.stdin.write(`${JSON.stringify({ ...JSON.parse(request), id })}\n`);
+    });
+  }
+
+  receive(chunk) {
+    this.buffer += chunk;
+    if (this.buffer.length > 2 * 1024 * 1024) return this.fail(new Error('Windows identity observer exceeded its response budget.'));
+    for (let index; (index = this.buffer.indexOf('\n')) !== -1;) {
+      const line = this.buffer.slice(0, index); this.buffer = this.buffer.slice(index + 1);
+      let response;
+      try { response = JSON.parse(line); } catch { return this.fail(new Error('Windows identity observer returned invalid JSON.')); }
+      const pending = this.pending.get(response.id);
+      if (!pending) return this.fail(new Error('Windows identity observer returned an unknown request.'));
+      clearTimeout(pending.timer); this.pending.delete(response.id);
+      if (response.error) pending.reject(new Error('Windows identity observer returned an error.'));
+      else pending.resolve(response);
+    }
+  }
+
+  fail(error) {
+    if (this.closed) return;
+    this.closed = true;
+    for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error); }
+    this.pending.clear();
+    this.child.kill();
+  }
+
+  async close() {
+    if (this.closed) return;
+    this.closed = true;
+    for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('Windows identity observer closed.')); }
+    this.pending.clear();
+    this.child.stdin.end();
+    await new Promise(resolve => {
+      const timer = setTimeout(() => { this.child.kill(); resolve(); }, 3000);
+      this.child.once('close', () => { clearTimeout(timer); resolve(); });
+    });
+  }
+}
+
+async function closeWindowsIdentityObserver() {
+  const client = identityClient;
+  identityClient = undefined;
+  await client?.close();
 }
 
 function assertControl(value) {
@@ -288,4 +346,4 @@ async function signalOwned(expected, signal, { read = readIdentity, kill = proce
 
 module.exports = { fixedVsixSha256, completedMarker, sameIdentity, sameLiveIdentity, exitedIdentity,
   readIdentity, readSnapshotHandshake, assertControl, assertRuntimeDiscarded, assertSnapshotNode, replaySnapshotTail, snapshotTail,
-  assertReloadReceipts, signalOwned };
+  assertReloadReceipts, signalOwned, closeWindowsIdentityObserver };

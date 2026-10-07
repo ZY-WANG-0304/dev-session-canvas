@@ -8,7 +8,7 @@ const { captureInstalledExtensionReceipt } = require('./installed-execution-cand
 const { AgentProcessObserver, executionEnded } = require('./agent-candidate-process-observer.cjs');
 const { resolveSystemdUserRuntimeSupervisorPaths, resolveLegacyRuntimeSupervisorPaths } = require('./runtime-reload-paths.cjs');
 const { resolveExecutionSessionSpawnSpec } = require('./execution-session-spawn-spec.cjs');
-const { readIdentity, sameIdentity, sameLiveIdentity, exitedIdentity } = require('./runtime-reload-contract.cjs');
+const { readIdentity, sameIdentity, sameLiveIdentity, exitedIdentity, closeWindowsIdentityObserver } = require('./runtime-reload-contract.cjs');
 
 const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
 const controlPath = process.env.DEV_SESSION_CANVAS_AGENT_RELOAD_CONTROL;
@@ -87,9 +87,10 @@ async function run() {
   } finally {
     if (!reloading) {
       try { await cleanup(); } catch (error) { failure ??= error; await write('cleanup-failure.json', { error: String(error) }); }
+      await closeWindowsIdentityObserver().catch(error => { failure ??= error; });
       await write('driver-finished.json', { nonce: control?.nonce, phase, pass: !failure });
       void vscode.commands.executeCommand('workbench.action.closeWindow').catch(console.error);
-    }
+    } else await closeWindowsIdentityObserver().catch(error => { failure ??= error; });
   }
 }
 
