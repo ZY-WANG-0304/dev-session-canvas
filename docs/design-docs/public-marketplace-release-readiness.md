@@ -16,7 +16,7 @@ related_plans:
   - docs/exec-plans/completed/github-release-assets-flow.md
   - docs/exec-plans/completed/release-0-25-0-prep.md
   - docs/exec-plans/completed/release-gate-contract.md
-updated_at: 2026-10-07
+updated_at: 2026-10-08
 ---
 
 # 公开平台发布准备
@@ -362,7 +362,7 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 
 以已合入 main 的 #293 发布契约机制、#294 原生退出验证入口和 #295 运行时容量/退出完整性/当前状态恢复为输入。相对 0.25.0，已结束持久化 Runtime 的重开语义、执行实现和恢复权威有用户可见变化，因此选择新的 0.x.0 里程碑，不使用补丁版本。主扩展与 notifier 同步为 0.26.0，保持 Preview；notifier 不增加行为。发布审计另将 markdown-it 更新至 14.3.2，修复公开长文本 linkify 阻塞公告；KaTeX 无可用补丁公告的前提与风险登记技术债，不宣称零漏洞。
 
-版本、双 CHANGELOG、英中文 README/listing、支持边界和 `docs/release-contracts/v0.26.0.md` 构成静态输入。用户说明突出健康 live 会话的当前状态恢复、退出收尾和已结束 Runtime 重开不保留正文；旧 live 绑定不迁移，snapshot-only 不因这一规则改变。限制包括监督器/机器故障无恢复保证、资源随会话/scrollback增长、旧系统未经覆盖及跨版本回退无保证。正式产品依据为 `runtime-persistence-closeout.md`、`runtime-live-state-recovery.md` 与对应产品规格，不把历史阶段性失败覆盖为从未发生。
+版本、双 CHANGELOG、英中文 README/listing、支持边界和 `docs/release-contracts/v0.26.0.md` 构成静态输入。用户说明突出类似 tmux 的健康 live 会话重新附着：Supervisor 保留原进程与权威终端模型，新页面直接导入当前状态，免去累计历史回放。scrollback 随模型导入，后续增量接续属于一致性要求，不能作为“先恢复历史再接输出”的主卖点；实际实现仍为 xterm 状态导出/导入，不新增 tmux 依赖，不将恢复收益外推为恒定耗时。另说明退出收尾和已结束 Runtime 重开不保留正文；旧 live 绑定不迁移，snapshot-only 不因这一规则改变。限制包括监督器/机器故障无恢复保证、资源随会话/scrollback增长、旧系统未经覆盖及跨版本回退无保证。正式产品依据为 `runtime-persistence-closeout.md`、`runtime-live-state-recovery.md` 与对应产品规格，不把历史阶段性失败覆盖为从未发生。
 
 六目标原生资产按当前构建规则提供；PR 预合并 ref 和最终 publish tag 各执行完整 verify。发布准备只提交输入和验证记录，不创建 tag。发布后的工件与渠道结果只由外部 manifest / Release 记录；不回写本版契约。后续 9.1 等章节中具名旧版本的描述保留历史范围，通用规则继续生效。
 

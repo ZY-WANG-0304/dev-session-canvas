@@ -18,7 +18,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段；当前发布准备目标为 `0.26.0`，上一已发布版本为 `0.25.0`。本版本聚焦运行时容量、退出完整性和健康持久化会话的当前终端状态恢复，并明确已结束持久化 Runtime 重开不保留正文的行为；snapshot-only 的历史保存规则不变。面向愿意接受早期限制、并能自行准备 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段；当前发布准备目标为 `0.26.0`，上一已发布版本为 `0.25.0`。本版本聚焦运行时容量、退出完整性和类似 tmux 的持久化会话重新附着：直接导入终端当前状态，免去累计历史回放，并明确已结束持久化 Runtime 重开不保留正文的行为；snapshot-only 的历史保存规则不变。面向愿意接受早期限制、并能自行准备 CLI 运行环境的高级用户。
 
 ![Dev Session Canvas — 在共享画布上并行管理多个 AI Agent 与 Terminal 会话](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.zh-CN.gif)
 
@@ -50,7 +50,7 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 - 执行终端链接识别覆盖原生风格 URL、文件路径、多行行号输出、高置信 TUI 硬换行 URL / 带样式文件片段、运行中输出的文件链接缓存刷新、点击时 fallback 搜索，以及文本 / 媒体目标的 VS Code 原生打开路径
 - `Agent` 与 `Terminal` 节点的 live PTY title 展示，包括 `CSI 21 t` 标题查询和由 PTY owner 回写的 `OSC l` 标题报告；标题 payload 不作为终端输出持久化
 - Agent / Terminal 稳定 resize 提交：实时预览节点外框、合并 PTY 字符网格变化，并避免纯位置移动触发 provider 重绘
-- 当前输入优先的输出调度，以及健康持久化会话的当前屏幕、配置内 scrollback 恢复和按序增量消费；已结束 Runtime 重开只保留节点与退出状态
+- 当前输入优先的输出调度，以及类似 tmux 的健康持久化会话重新附着：直接导入终端当前状态，无需逐条重放累计历史；已结束持久化 Runtime 重开只保留节点与退出状态
 - 侧栏与命令面板中的 `Codex` / `Claude Code` CLI 选择、配置文件打开入口，以及停止后节点的 `新建` / `恢复` 动作分流
 - Codex / Claude Code Agent 可从可信 session id `分叉` 出新 Agent 节点，用 provider 原生 fork 语义启动，并可为当前节点 Fork 配置向上 / 向下 / 向右落位
 - `Agent` 启动时 CLI 缺失的自动选择 / 安装补救入口

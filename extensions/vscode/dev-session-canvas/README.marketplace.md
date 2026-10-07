@@ -12,9 +12,9 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 ## 0.26.0 Highlights
 
-`0.26.0` is a new public `Preview` milestone built on `0.25.0`, focused on runtime recovery and terminal exit integrity.
+`0.26.0` is a new public `Preview` milestone built on `0.25.0`, focused on tmux-like session reattachment and terminal exit integrity.
 
-- Running persistent sessions restore the current terminal screen and configured scrollback when a window or Webview reconnects, then continue with live output while the Supervisor remains healthy
+- **Reattach to a running session, much like tmux**: the Supervisor keeps the process and current terminal state alive. Reopening a window, rebuilding a Webview, or switching Pane Gallery imports that state directly, without replaying accumulated output to reconstruct the display. This simplifies reconnection and avoids replay costs growing with the lifetime of the session
 - Open pages consume their remaining output in order before terminal completion; stopping a session is distinguished from a natural complete exit
 - **Completed persistent Runtime sessions reopen without terminal text or an automatic restart.** Nodes, layout, launch settings, and exit status remain; snapshot-only history behavior, provider session files, and explicit Agent Resume remain separate
 - Bounded runtime caches and consumption-paced reads reduce accumulated-history overhead; resources still scale with active sessions and configured scrollback

@@ -18,7 +18,7 @@ English | [简体中文](README.zh-CN.md)
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product is in public `Preview`. The release-prep target is `0.26.0`, following the published `0.25.0` baseline. This milestone focuses on runtime capacity, terminal exit integrity, and current-state recovery for healthy persistent sessions. Completed persistent Runtime sessions reopen without terminal text; snapshot-only history behavior is unchanged. It is intended for advanced users who can prepare their CLI environment and accept Preview limitations.
+The product is in public `Preview`. The release-prep target is `0.26.0`, following the published `0.25.0` baseline. This milestone focuses on runtime capacity, terminal exit integrity, and tmux-like reattachment to healthy persistent sessions through direct current-state import, without replaying accumulated output. Completed persistent Runtime sessions reopen without terminal text; snapshot-only history behavior is unchanged. It is intended for advanced users who can prepare their CLI environment and accept Preview limitations.
 
 ![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif)
 
@@ -50,7 +50,7 @@ The product is in public `Preview`. The release-prep target is `0.26.0`, followi
 - Execution-terminal link detection for native-style URLs, file paths, multiline line-number output, high-confidence TUI hard-wrapped URL / styled-file fragments, live-output file-link cache refresh, click-time fallback search, and native VS Code opening for text or media targets
 - Live PTY title display for `Agent` and `Terminal` nodes, including `CSI 21 t` title queries and owner-side `OSC l` reports without persisting title payloads as terminal output
 - Stable Agent / Terminal resize submission that previews the node frame live while coalescing PTY character-grid changes and avoiding provider redraws for position-only moves
-- Foreground-priority output scheduling and current-screen / configured-scrollback recovery for healthy persistent sessions, followed by ordered live output; completed Runtime sessions reopen with node configuration and exit status only
+- Foreground-priority output scheduling and tmux-like reattachment to healthy persistent sessions: import the current terminal state directly without replaying accumulated output; completed persistent Runtime sessions reopen with node configuration and exit status only
 - Sidebar and command-palette entry points for selecting `Codex` / `Claude Code` CLI commands, opening their config files, and separating stopped-node `New` versus `Resume` actions
 - Codex / Claude Code Agent `Fork` from a trusted session id into a new Agent node that starts with provider-native fork semantics and supports configurable up/down/right placement for current-node forks
 - Automatic CLI selection / installation recovery when an `Agent` launch cannot resolve the requested CLI

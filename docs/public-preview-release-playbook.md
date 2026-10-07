@@ -44,7 +44,7 @@
 
 当前 `npm run package:vsix` 会 staging 主扩展子包，并在打包阶段显式传入 `--readme-path README.marketplace.md`，因此最终用于发布的 VSIX 已内嵌 Marketplace 专用 README；后续 `publish --packagePath` 只上传现成 VSIX，不会再替换 README。打包脚本默认会把 README 相对资源改写到当前 `HEAD` 对应的 git ref；如果在没有 `.git` 元数据的 clean checkout、导出目录或 tarball 中打包，必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，否则不允许继续打包。
 
-本轮 listing 必须说明当前屏幕和配置内 scrollback 恢复、当前页面退出收尾、已结束 Runtime 重开无正文，以及旧 live 绑定不自动迁移。原生执行资产缺失应明确失败，不能回退旧实现；不把有限资源模型宣传成固定总内存或磁盘配额。Supervisor 崩溃与机器重启不保证恢复，现代系统验收不外推旧平台。
+本轮 listing 必须突出类似 tmux 的会话重新附着：后台保留原进程和权威终端模型，重开直接导入当前状态，免去累计历史逐条回放。scrollback 是状态的一部分，不能写成先恢复历史再追赶输出的阶段；不新增 tmux 依赖，也不承诺与状态大小无关的瞬时恢复。同时说明当前页面退出收尾、已结束 Runtime 重开无正文，以及旧 live 绑定不自动迁移。原生执行资产缺失应明确失败，不能回退旧实现；不把有限资源模型宣传成固定总内存或磁盘配额。Supervisor 崩溃与机器重启不保证恢复，现代系统验收不外推旧平台。
 
 ## release notes 定稿口径
 
@@ -54,7 +54,7 @@
 
 - 顶部版本标题为 `0.26.0 - 运行时恢复与退出完整性`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- 明确当前状态恢复、退出完整性、已结束 Runtime 重开无历史、有限资源模型、OSC 8 / 缩高修复和 notifier 版本对齐
+- 明确直接导入当前状态、免去累计历史回放的会话重新附着，以及退出完整性、已结束 Runtime 重开无历史、有限资源模型、OSC 8 / 缩高修复和 notifier 版本对齐
 - 保留监督器/机器故障不保证恢复、旧 live 协议不升级、资源随会话和 scrollback 增长、Windows Codex 翻页及旧系统兼容限制；不把具名通过扩展成任意规模保证
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 runtime persistence、local PTY、安全 compact、固定磁盘上限、跨版本回退、生成节点永久无重叠、模板市场、生产服务或 Visual Studio Marketplace 可见性误写成稳定正式版承诺
