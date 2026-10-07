@@ -15,6 +15,7 @@ Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩
 - [x] (2026-10-07) M3 页面与 Linux Terminal 重开：实际浏览器重建和 PaneGallery 3/3、冻结 VSIX 的真实 current-state Reload Window 通过；原执行身份、未来交互、退出尾部与清理均验证。
 - [x] (2026-10-07) M3 已有安装入口的受影响回归：run `37494231281` 的 macOS installed product 和真实 Agent 8 场景通过；Windows 同包定向 run `37507579337` 的 installed live-runtime 及真实 Codex/Claude live 4 场景通过。不把旧 Windows 失败追认成通过，初始订阅偶发停滞原因仍未确认。
 - [x] (2026-10-07) M3 Linux/Codex 真实 live Agent 跨 Host 恢复：生产 run `37594259665` 的独立 Reload Window 验收通过；同一 Supervisor/session/authority、新 reader、后续真实输入、`terminalReadSettled=applied` 和原始资源退出均有工件证据。
+- [x] (2026-10-07) 定向收口跨平台 Reload 验收器：Windows 使用真实生命周期身份和原 SafeHandle 退出事实，stop 前核对原启动链，正常清理需零绑定/零会话后再结束隔离 Supervisor；macOS 最终退出应用而非仅关闭窗口。就绪判断不再将 Codex 的 loading composer 当作可请求模型的状态。行为回归通过，原生结果待下项回收。
 - [ ] M3 恢复场景剩余：现代 macOS/Windows runner 的真实 live Agent 跨 Host 恢复路径。已有自然结束/主动停止及 completed 重开不能代证 live 重开；早期沙箱启动失败与 fixture 失败保留为历史，不再作为当前环境阻塞。`run-vscode-agent-runtime-reload-candidate.mjs` 已扩展为 Linux/macOS/Windows Codex 入口，待新 workflow 运行后分别登记结果，不改变固定八场。
 - [ ] F-04 current-state 资源准入：在真实支持入口记录完整状态长度、Supervisor 捕获峰值、Webview 组装峰值、并发会话和超限处置；8192 字符分块只限定单页，不构成总内存预算。
 
@@ -49,6 +50,8 @@ Windows 定向 run `37507579337`（harness `43c66daa`）复用同一冻结包，
 
 ## 意外与发现
 
+run `37605380825` 复用生产包 `37577646133`，三平台 installed live-runtime 和所选 Codex natural 场景通过，Linux 独立 Reload 也通过（当前 reader applied，final revision 129，bindings 为空）。macOS Reload 的 verify/driver 回执均通过（final revision 56），但最后一个窗口关闭后 Code 应用仍在，外层 220805ms 超时；该轮保持失败，不追认为成功。Windows 停在 pre-reload 模型响应等待，失败画面仍是目录信任提示；loading 阶段已有 composer 的代码事实解释了旧宽匹配的准入风险，但该轮缺少 ready probe，不能断言信任提示出现的精确时序。两者属于已确认需要修正的验收入口，不据此宣称产品丢尾部或认证失败。
+
 `SerializedTerminalStateTracker.flushValidatedCheckpoint()` 拒绝颜色、OSC8、非 ground parser、标题栈和大于 256 Ki 字符等状态。`RuntimeSupervisorServer.openTerminalRead()` 仍选择最后一个可接受 checkpoint，因此有限分页没有使恢复摆脱历史。PaneGallery 的 mode key 切换确实卸载执行节点并重新 attach，而非只重绘。
 
 新 Host 行上下文已经从 head 加有限摘要订阅，只有同 Host 短断线才从自身消费位置继续；无需再为行上下文引入第二套状态恢复。当前状态描述符的空 ANSI 正文也不能进入已结束会话的 legacy checkpoint 选择，故 reader 另保留 `currentStateCheckpoint` 标记直到被真正 durable checkpoint 替换。
@@ -59,6 +62,7 @@ Windows 定向 run `37507579337`（harness `43c66daa`）复用同一冻结包，
 
 ## 决策记录
 
+- 决策：新增 `agent_reload_only` 仅执行具名受影响 Reload，必须复用不可变生产包与同包、同平台已通过的 installed step 证据。Windows 同轮仅补身份读取/保留退出对象的原生测试；不重跑容量、六资产和完整 Agent 八场。理由：验收器收尾与就绪修正不改变产品字节，已通过证据不应成为重复矩阵。日期：2026-10-07。
 - 决策：增加 B4 未完成交付，保留 B1 至 B3 已取得的有限证据。理由：旧 A1 不包含历史无关恢复保证。日期：2026-10-06。
 - 决策：优先实现固定 xterm 6 的精确当前状态传递，不引入 tmux 服务或替换引擎。理由：Supervisor 已有内存终端模型，ANSI serialize 的语义缺口不能靠提高阈值解决。日期：2026-10-06。
 - 决策：新读者从捕获时刻状态开始，已有读者不可跳 revision。旧 Supervisor 保持原绑定和能力，不重启或迁移。日期：2026-10-06。
@@ -128,3 +132,5 @@ Playwright 当前状态用例已通过后，真实 Electron candidate 仍需独�
 `terminalCurrentStateV1` 在 hello/ready 协商；open 的 `currentState` 为格式字符串，描述符只含格式/长度。page 的 `stateOffset` 请求与 `stateChunk` 响应不推进 revision。8192 字符块受原一次一页限制；只有实际 publication 推进已发送位置，首次普通 R 页请求确认客户端导入并释放冻结字符串。`TerminalPagedProjection` 调用 Webview 同一写队列的 import，再请求增量；final receipt 在这次确认之前不能成功。旧能力保持 checkpoint + journal，不回填新保证。
 
 修订记录：2026-10-06，按最新要求重开 live 恢复；实施 M1/M2 并补齐受控链路证据与环境阻塞，M3 真实验收保持开放；区分资源治理与恢复复杂度，保留尾部契约和历史证据。
+
+修订记录：2026-10-07，保留 `37605380825` 原始失败与其独立成功事实，修正 Windows 原执行身份/未知退出判定、Codex loading 就绪和 macOS 应用退出；后续只使用严格同包证据复用的 Reload-only 入口，不增加通用诊断前置。默认 build、package:vsix 与 typecheck 已通过。

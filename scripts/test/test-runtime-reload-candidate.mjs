@@ -8,6 +8,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { PassThrough, Writable } from 'node:stream';
 import esbuild from 'esbuild';
 import contract from '../../tests/vscode-smoke/runtime-reload-contract.cjs';
 import { buildVSCodeArgs } from '../smoke/vscode-smoke-runner.mjs';
@@ -303,6 +304,11 @@ test('owned fallback requires fresh exact PID/start/executable and does not trea
   assert(!exitedIdentity(expected, { ...expected, state: 'object-retained' }));
   assert(exitedIdentity(expected, { ...expected, state: 'object-retained', hasExited: true, exitConfirmed: true,
     exitCode: 7 }));
+  for (const extra of [{ hasExited: true }, { exitConfirmed: true },
+    { hasExited: true, exitConfirmed: true, exitCode: 0, observationUnknown: true }]) {
+    assert(!exitedIdentity(expected, { ...expected, state: 'object-retained', ...extra }));
+    assert(!sameLiveIdentity(expected, { ...expected, state: 'object-retained', ...extra }));
+  }
   const signals = [];
   const kill = (...args) => signals.push(args);
   for (const actual of [undefined, { ...expected, state: 'Z' }, { ...expected, startTicks: 'reused' },
@@ -312,6 +318,44 @@ test('owned fallback requires fresh exact PID/start/executable and does not trea
   assert.equal(result.action, 'owned-fallback-signal');
   assert.equal(result.productCleanupPass, false);
   assert.deepEqual(signals, [[10, 'SIGTERM']]);
+});
+
+test('Windows reload reads explicit native observations and releases one persistent helper', async () => {
+  const sourcePath = path.join(projectRoot, 'tests/vscode-smoke/runtime-reload-contract.cjs');
+  const source = await fs.readFile(sourcePath, 'utf8');
+  const native = { pid: 101, ppid: 100, state: 'R', startTicks: 'win32:123456', executable: path.resolve('Code.exe') };
+  let observations = [{ pid: native.pid, status: 'present', identity: native }];
+  let spawned = 0;
+  let released = 0;
+  const requests = [];
+  const child = new EventEmitter();
+  child.stdout = new PassThrough(); child.stderr = new PassThrough();
+  child.stdin = new Writable({ write(bytes, encoding, callback) {
+    const request = JSON.parse(bytes.toString()); requests.push(request);
+    queueMicrotask(() => child.stdout.write(`${JSON.stringify({ version: 1, id: request.id, records: observations })}\n`));
+    callback();
+  } });
+  child.stdin.on('finish', () => { released++; queueMicrotask(() => child.emit('close', 0, null)); });
+  child.kill = () => child.emit('close', null, 'SIGTERM');
+  const module = { exports: {} };
+  vm.runInNewContext(source, { module, __dirname: path.dirname(sourcePath),
+    require: name => name === 'node:child_process' ? { spawn: () => { spawned++; return child; } } : require(name),
+    process: { platform: 'win32', env: { SystemRoot: path.resolve('Windows') } }, setTimeout, clearTimeout }, { filename: sourcePath });
+  const api = module.exports;
+  try {
+    assert(sameIdentity(native, await api.readIdentity(native.pid)));
+    observations = [{ pid: native.pid, status: 'present', identity: { ...native, startTicks: 'win32:234567' } }];
+    assert(!sameIdentity(native, await api.readIdentity(native.pid)), 'PID reuse must not retain the original identity.');
+    observations = [{ pid: native.pid, status: 'absent' }];
+    assert.equal(await api.readIdentity(native.pid), undefined);
+    for (const invalid of [[], [{ pid: native.pid, status: 'unknown' }], [{ pid: 102, status: 'absent' }]]) {
+      observations = invalid;
+      await assert.rejects(api.readIdentity(native.pid), 'Unknown or missing facts must not become confirmed absence.');
+    }
+    assert.equal(spawned, 1);
+    assert.equal(new Set(requests.map(request => request.id)).size, requests.length);
+  } finally { await api.closeWindowsIdentityObserver(); }
+  assert.equal(released, 1);
 });
 
 test('staged activation driver is separate, has no business dist and keeps fixed fixtures/package receipt', async () => {

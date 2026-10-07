@@ -6,6 +6,7 @@ const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { captureInstalledExtensionReceipt } = require('./installed-execution-candidate.cjs');
 const { AgentProcessObserver, executionEnded } = require('./agent-candidate-process-observer.cjs');
+const { hasLiveWindowsStartupChain } = require('./agent-candidate-windows-observer.cjs');
 const { resolveSystemdUserRuntimeSupervisorPaths, resolveLegacyRuntimeSupervisorPaths } = require('./runtime-reload-paths.cjs');
 const { resolveExecutionSessionSpawnSpec } = require('./execution-session-spawn-spec.cjs');
 const { readIdentity, sameIdentity, sameLiveIdentity, exitedIdentity, closeWindowsIdentityObserver } = require('./runtime-reload-contract.cjs');
@@ -41,6 +42,7 @@ let config;
 let control;
 let currentNodeId;
 let observer;
+let observerReleased = false;
 let phase = 'initialization';
 let reloading = false;
 
@@ -89,7 +91,8 @@ async function run() {
       try { await cleanup(); } catch (error) { failure ??= error; await write('cleanup-failure.json', { error: String(error) }); }
       await closeWindowsIdentityObserver().catch(error => { failure ??= error; });
       await write('driver-finished.json', { nonce: control?.nonce, phase, pass: !failure });
-      void vscode.commands.executeCommand('workbench.action.closeWindow').catch(console.error);
+      void vscode.commands.executeCommand(process.platform === 'darwin'
+        ? 'workbench.action.quit' : 'workbench.action.closeWindow').catch(console.error);
     } else await closeWindowsIdentityObserver().catch(error => { failure ??= error; });
   }
 }
@@ -134,11 +137,7 @@ async function setup(extension) {
   await command('resetState');
   await command('clearHostMessages');
   await command('clearDiagnosticEvents');
-  observer = new AgentProcessObserver(config.cli, extension.extensionPath, config.processObserver);
-  observer.start();
-  await observer.addRoot(process.pid, 'host');
-  if (process.platform === 'win32') await observer.setLaunch(resolveExecutionSessionSpawnSpec({
-    file: config.cli.entry, args: config.launchArguments, env: process.env }, 'win32'));
+  await startProcessObserver(extension);
   const custom = [config.cli.entry, ...config.launchArguments].map(value => `'${String(value).replaceAll("'", "'\\''")}'`).join(' ');
   await command('createNode', 'agent', 'codex', { agentLaunchPreset: 'custom', agentCustomLaunchCommand: custom,
     cwdOverride: config.workspacePath });
@@ -165,8 +164,7 @@ async function setup(extension) {
   await sendAgentTurn(currentNodeId, before);
   await poll('pre-reload Agent response', probe, value => hasAgentMarkerResponse(value, before), 90000);
   await observer.sample();
-  const resources = observer.result().entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role));
-  assert(resources.some(entry => entry.role === 'cli'), 'The real Codex CLI must be observed before reload.');
+  const resources = assertOriginalResourcesLive();
   const setup = { phase: 'setup', nonce: control.nonce, host: await readIdentity(process.pid), nodeId: currentNodeId,
     binding: { runtimeBackend: metadata.runtimeBackend, runtimeStoragePath: metadata.runtimeStoragePath,
       runtimeSessionId: metadata.runtimeSessionId }, supervisor, hello, reader, resources,
@@ -175,8 +173,72 @@ async function setup(extension) {
   await write('setup.json', setup);
   control = { ...control, phase: 'verify', reloadRequests: 1, setup };
   await atomic(controlPath, control);
+  await releaseProcessObserver();
   reloading = true;
   void vscode.commands.executeCommand('workbench.action.reloadWindow').catch(error => write('reload-command-rejection.json', { error: String(error) }));
+}
+
+async function startProcessObserver(extension) {
+  observer = new AgentProcessObserver(config.cli, extension.extensionPath, config.processObserver);
+  observerReleased = false;
+  if (process.platform === 'win32') await observer.setLaunch(resolveExecutionSessionSpawnSpec({
+    file: config.cli.entry, args: config.launchArguments, env: process.env }, 'win32'));
+  await observer.addRoot(process.pid, 'host');
+  observer.start();
+}
+
+async function releaseProcessObserver() {
+  if (!observer || observerReleased) return;
+  try {
+    await observer.stop();
+  } finally {
+    try { await observer.dispose?.(); } finally { observerReleased = true; }
+  }
+  assert(!observer.error, observer.error);
+  assert.equal(observer.failures.length, 0, 'Process observation must settle without unknown evidence.');
+}
+
+function assertOriginalResourcesLive(expected) {
+  const result = observer.result();
+  assert(!result.error, result.error);
+  assert.equal(result.failures.length, 0);
+  const resources = result.entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role));
+  const original = expected ?? resources;
+  for (const role of ['cli', 'provider']) {
+    assert.equal(original.filter(entry => entry.role === role).length, 1, `Exactly one original ${role} is required.`);
+  }
+  assert.equal(resources.length, original.length, 'Reload must retain the complete original startup resource set.');
+  for (const entry of original) {
+    const current = resources.find(value => sameLiveIdentity(entry, value));
+    assert(current && current.role === entry.role && current.wrapperKind === entry.wrapperKind &&
+      !executionEnded(current) && !current.observationUnknown, 'Original Agent startup identity must still be live.');
+  }
+  if (process.platform === 'win32') assert(hasLiveWindowsStartupChain(result, 'codex', 'live-runtime'),
+    'The original Windows provider/cmd/node/CLI chain must be retained before stop.');
+  return resources;
+}
+
+async function originalResourcesExited(resources) {
+  assert(resources?.length > 0, 'Missing original startup resources cannot count as released.');
+  await observer.sample();
+  const result = observer.result();
+  assert(!result.error, result.error);
+  assert.equal(result.failures.length, 0);
+  const checks = await Promise.all(resources.map(async expected => {
+    const actual = process.platform === 'win32'
+      ? result.entries.find(entry => sameIdentity(expected, entry))
+      : await readIdentity(expected.pid);
+    return { expected, actual: actual ?? null, exited: process.platform === 'win32'
+      ? Boolean(actual && executionEnded(actual)) : exitedIdentity(expected, actual) };
+  }));
+  return { checks, pass: checks.every(check => check.exited) };
+}
+
+function hasLoadedAgentComposer(text) {
+  const visible = stripVt(text);
+  // Codex renders this composer before onboarding too, with a "model: loading" header.
+  return /^\s*\u203a\s*Ask\s+Codex\s+to\s+do\s+anything\s*$/im.test(visible) &&
+    /\bdeepseek[- ]?flash\b/i.test(visible) && !/model:\s*loading\b/i.test(visible);
 }
 
 async function waitForAgentReady() {
@@ -206,10 +268,10 @@ async function waitForAgentReady() {
       await sleep(100);
       continue;
     }
-    if (/(?:Ask Codex|shortcuts|Send|Try)/i.test(text)) {
+    if (hasLoadedAgentComposer(text)) {
       await sleep(300);
       const confirmed = textOf(await probe());
-      if (!startupPrompts.some(pattern => pattern.test(confirmed))) return;
+      if (hasLoadedAgentComposer(confirmed) && !startupPrompts.some(pattern => pattern.test(confirmed))) return;
     }
     await sleep(100);
   }
@@ -239,14 +301,15 @@ async function verify(extension) {
   const starts = (await command('getDiagnosticEvents')).filter(event =>
     ['execution/startRequested', 'execution/started'].includes(event.kind) && event.detail?.nodeId === setup.nodeId);
   assert.deepEqual(starts, [], 'Reload must not start a second Agent.');
-  observer = new AgentProcessObserver(config.cli, extension.extensionPath, config.processObserver);
-  observer.start();
-  await observer.addRoot(process.pid, 'host');
+  await startProcessObserver(extension);
   await observer.addRoot(setup.supervisor.pid, 'supervisor');
   await waitForAgentReady();
   const after = `DSC_AGENT_RELOAD_AFTER_${control.nonce}`;
   await sendAgentTurn(setup.nodeId, after);
   await poll('post-reload Agent response', probe, value => hasAgentMarkerResponse(value, after), 90000);
+  await observer.sample();
+  const retainedResources = assertOriginalResourcesLive(setup.resources);
+  await write('pre-stop-ownership.json', { nonce: control.nonce, retainedResources });
   await command('dispatchWebviewMessage', {
     type: 'webview/stopExecutionSession', payload: { kind: 'agent', nodeId: setup.nodeId }
   }, surface);
@@ -270,45 +333,61 @@ async function verify(extension) {
   await poll('runtime binding removed', command.bind(null, 'getRuntimeSupervisorState'), value =>
     !value.bindings.some(binding => binding.nodeId === setup.nodeId));
   await observer.stop();
-  await observer.sample();
-  assert.equal(observer.failures.length, 0);
-  const identities = await Promise.all(setup.resources.map(expected => readIdentity(expected.pid)));
-  const allEnded = setup.resources.every((expected, index) => exitedIdentity(expected, identities[index]));
-  assert(allEnded, 'Original Agent CLI/provider resources must exit after post-reload stop.');
+  const resourcesExited = await poll('original Agent resources exited', () => originalResourcesExited(setup.resources),
+    value => value.pass, 10000);
   await write('verify.json', { phase: 'verify', nonce: control.nonce, pass: true, oldHost, node: nodeOf(ended, setup.nodeId),
     binding: setup.binding, supervisor: await readIdentity(setup.supervisor.pid), reader, after,
-    noNewExecution: true, originalResourcesExited: allEnded });
+    noNewExecution: true, retainedResources, resourcesExited, originalResourcesExited: resourcesExited.pass });
 }
 
 async function cleanup() {
   if (!observer) return;
-  try { await command('resetState'); } catch { /* The original product failure remains authoritative. */ }
-  try { await observer.stop(); } catch { /* Preserve the original assertion. */ }
-  const remaining = observer.result().entries.filter(entry =>
-    ['cli', 'wrapper', 'provider'].includes(entry.role) && !executionEnded(entry));
-  if (remaining.length) {
-    const actions = await observer.cleanupKnownExecution();
-    await observer.sample();
-    const unresolved = observer.result().entries.filter(entry =>
-      ['cli', 'wrapper', 'provider'].includes(entry.role) && !executionEnded(entry));
-    if (unresolved.length || actions.some(action => action.action?.includes('unconfirmed'))) {
-      throw new Error(`Agent resource cleanup was not confirmed: ${JSON.stringify({ actions, unresolved })}`);
+  let failure;
+  const receipt = { nonce: control.nonce, pass: false, fallback: [] };
+  try {
+    await command('resetState');
+    receipt.runtime = await poll('product cleanup bindings removed', command.bind(null, 'getRuntimeSupervisorState'),
+      value => value.bindings.length === 0 && value.pendingRuntimeSupervisorOperationCount === 0, 10000);
+    receipt.nodesRemaining = (await snapshot()).state.nodes.filter(node => ['terminal', 'agent'].includes(node.kind)).length;
+    assert.equal(receipt.nodesRemaining, 0);
+    await observer.stop();
+    receipt.resources = await poll('product cleanup original resources exited',
+      () => originalResourcesExited(control.setup?.resources), value => value.pass, 10000);
+    const expected = control.setup?.supervisor;
+    const binding = control.setup?.binding;
+    assert(expected && binding, 'Only the recorded isolated Supervisor may be stopped.');
+    const storage = path.resolve(binding.runtimeStoragePath);
+    assert(config.permittedStorageRoots.some(root => {
+      const relative = path.relative(path.resolve(root), storage);
+      return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
+    }), 'Supervisor storage must belong to this isolated test.');
+    const paths = runtimePaths(binding);
+    receipt.registry = await poll('isolated Supervisor registry empty', async () => JSON.parse(await fs.readFile(paths.registryPath, 'utf8')),
+      value => Array.isArray(value.sessions) && value.sessions.length === 0, 10000);
+    assert.equal((await rpc(paths.socketPath, 'hello')).pid, expected.pid);
+    if (process.platform === 'win32') {
+      receipt.supervisorActions = await observer.cleanupSupervisor(expected);
+      await poll('isolated Supervisor retained handle exited', async () => {
+        await observer.sample();
+        return observer.result().entries.find(entry => entry.role === 'supervisor' && sameIdentity(expected, entry));
+      }, value => Boolean(value && executionEnded(value)), 10000);
+      assert(receipt.supervisorActions.every(action => ['already-exited', 'terminated-original-handle'].includes(action.action)));
+    } else {
+      assert(sameLiveIdentity(expected, await readIdentity(expected.pid)));
+      process.kill(expected.pid, 'SIGTERM');
+      await poll('isolated idle Supervisor exit', () => readIdentity(expected.pid), value => exitedIdentity(expected, value), 10000);
+      receipt.supervisorActions = [{ action: 'owned-isolated-idle-supervisor-SIGTERM' }];
     }
+  } catch (error) {
+    failure = error;
+    receipt.error = String(error);
+    try {
+      if (!observerReleased) receipt.fallback = await observer.cleanupKnownExecution();
+    } catch (fallbackError) { receipt.fallbackError = String(fallbackError); }
+  } finally {
+    try { await releaseProcessObserver(); } catch (error) { failure ??= error; receipt.releaseError = String(error); }
+    receipt.pass = !failure;
+    await write('cleanup.json', receipt);
   }
-  const expected = control?.setup?.supervisor;
-  if (expected && process.platform === 'win32') {
-    if (typeof observer.cleanupSupervisor !== 'function') {
-      throw new Error('Windows Supervisor cleanup requires the SafeHandle observer.');
-    }
-    const actions = await observer.cleanupSupervisor(expected);
-    await observer.sample();
-    const supervisor = observer.result().entries.find(entry => entry.role === 'supervisor' &&
-      entry.pid === expected.pid && entry.startTicks === expected.startTicks);
-    if (!supervisor || !executionEnded(supervisor) || actions.some(action => action.action?.includes('unconfirmed'))) {
-      throw new Error(`Supervisor cleanup was not confirmed: ${JSON.stringify({ actions, supervisor })}`);
-    }
-  } else if (expected && sameLiveIdentity(expected, await readIdentity(expected.pid))) {
-    process.kill(expected.pid, 'SIGTERM');
-    await poll('idle Supervisor exit', () => readIdentity(expected.pid), value => exitedIdentity(expected, value), 10000);
-  }
+  if (failure) throw failure;
 }

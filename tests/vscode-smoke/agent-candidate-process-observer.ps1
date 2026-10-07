@@ -64,24 +64,30 @@ function Poll-Original($entry) {
   }
 }
 function Read-Identity($target) {
+  $process = $null
   try {
-    $process = [Diagnostics.Process]::GetProcessById([int]$target.pid)
+    try { $process = [Diagnostics.Process]::GetProcessById([int]$target.pid) }
+    catch [ArgumentException] { return [ordered]@{ pid = [int]$target.pid; status = 'absent' } }
     try {
       $handle = $process.SafeHandle
       if ($handle.IsInvalid -or $handle.IsClosed) { throw 'Invalid process handle.' }
+      if ($process.HasExited) { return [ordered]@{ pid = [int]$target.pid; status = 'absent' } }
       $startTime = $process.StartTime.ToUniversalTime().ToFileTimeUtc()
       $executable = $process.MainModule.FileName
       $parentId = [AgentOriginalProcess]::ParentPid($handle)
-      if ($process.HasExited) { return [ordered]@{ status = 'absent' } }
+      if ($process.HasExited) { return [ordered]@{ pid = [int]$target.pid; status = 'absent' } }
       $record = [ordered]@{ pid = [int]$target.pid; ppid = [int]$parentId; startTicks = "win32:$startTime";
         executable = $executable; state = 'R' }
       if ($null -ne $target.startTicks -and $target.startTicks -ne $record.startTicks) {
         $record.state = 'replaced'
       }
-      return [ordered]@{ status = 'present'; identity = $record }
+      return [ordered]@{ pid = [int]$target.pid; status = 'present'; identity = $record }
+    } catch {
+      # MainModule may become unavailable after exit while another handle keeps the object alive.
+      if ($process.HasExited) { return [ordered]@{ pid = [int]$target.pid; status = 'absent' } }
+      throw
     } finally { $process.Dispose() }
-  } catch [ArgumentException] { return [ordered]@{ status = 'absent' } }
-    catch { return [ordered]@{ status = 'unknown' } }
+  } catch { return [ordered]@{ pid = [int]$target.pid; status = 'unknown' } }
 }
 function Acquire-Original($processId, $role, $expectedExecutable, $parent, $wrapperKind, $candidate) {
   $process = $null
@@ -208,9 +214,7 @@ try {
           if ($null -eq $request.targets -or @($request.targets).Count -gt 64) { throw 'Invalid identity request.' }
           foreach ($target in @($request.targets)) {
             if ($null -eq $target.pid -or [int]$target.pid -le 0) { throw 'Invalid identity PID.' }
-            $result = Read-Identity $target
-            if ($result.status -eq 'unknown') { throw 'Process identity observation unavailable.' }
-            if ($result.status -eq 'present') { $identityRecords += $result.identity }
+            $identityRecords += Read-Identity $target
           }
         }
         'sample' {

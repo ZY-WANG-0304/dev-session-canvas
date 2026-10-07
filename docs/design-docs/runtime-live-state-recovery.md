@@ -70,6 +70,10 @@ reader 的 `currentStateCheckpoint` 标记在释放冻结字符串后仍保留�
 
 ## 已得证据与剩余验收
 
+2026-10-07 当前增量：十会话 color/size 的 rerun5 均已通过现有 workload 与清理，当前状态最大 4705 字符、单会话保守组装峰值 9410、聚合 80618；不把测试 `10:1` 当产品上限，不将 RSS 观察值变成 SLA。Supervisor capture 独立观测仍缺失，完整 F-04 准入保持开放。Linux 真实 Codex Reload 已取得独立通过；`37605380825` 的 macOS 验证回执成功但应用退出超时、Windows 提前通过就绪判断并在首次模型响应等待时仍显示目录信任提示，两轮保持失败。该 Windows 轮次没有 ready probe，不能断言信任提示出现的精确时序；旧就绪判断允许 loading composer 的风险已有独立证据。对应验收器已定向修正，macOS/Windows 仅补同包 Reload，不重跑无影响矩阵。
+
+跨平台 Reload 身份必须由 PID、创建时间与可执行文件共同确认；在 stop 前证明原 CLI/provider 和启动包装链仍存活，不能用停止后旧 PID 消失代证恢复。Windows 退出判定沿用原 SafeHandle 的已确认事实，句柄保留对象不构成失败，无法观察也不当成功。观察器在重开前及最终清理释放；测试只在原隔离 storage、零绑定与空 registry 得到确认后关闭其 Supervisor，强制残留清理不能形成产品通过。以上限定现有验收的有效性，不增加运行时托管职责。
+
 2026-10-06 受控验证中，codec 的 1/200/1200 次重绘等状态样本均为 2632 JSON 字符；实际 Supervisor、Client、Host、Projection 与 headless xterm 组合（仅 provider/socket/OS 边界受控）的 1/400 次重绘样本均为 4329 字符，捕获前 journal 读取为零。组合测试还验证颜色与 partial CSI、R 后增量、最终光标 `(6,2)`，以及 write callback 完成前不能结算和退休资源。该结果证明所测路径的恢复工作取决于当前状态，不证明真实 UI 耗时或任意规模资源上限。
 
 固定 80 列、24 行、1000 scrollback 的普通文本样本保留 81920 cells，原 u32 JSON 的 1383643 bytes 降为 143227 bytes；导入 ANSI write 次数为零。它只是编码体积观察，不将本次数值设为新产品预算。

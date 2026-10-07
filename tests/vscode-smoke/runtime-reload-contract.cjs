@@ -7,14 +7,17 @@ const path = require('node:path');
 const fixedVsixSha256 = '604494fdebc917d3e12b54fceec75a764ed064e486dd0e76ff20513ddca61656';
 const completedMarker = 'DSC_A6_COMPLETED';
 const snapshotTail = 'SIGNAL:SIGHUP\n\x1b[3J\x1b[2J\x1b[HROOT\n\x1b[3;5H\x1b[31m\u4e2d\u6587\x1b[0m\x1b[5;7H';
-const processIsExited = value => !value || value.hasExited === true || value.exitConfirmed === true ||
-  ['Z', 'X'].includes(value.state);
+const processIsExited = value => !value || (value.observationUnknown !== true &&
+  ((value.hasExited === true && value.exitConfirmed === true && Number.isInteger(value.exitCode)) ||
+    ['Z', 'X'].includes(value.state)));
 const sameIdentity = (expected, actual) => Boolean(expected && actual && Number.isInteger(expected.pid) &&
   expected.pid > 1 && typeof expected.startTicks === 'string' && expected.startTicks.length > 0 &&
   typeof expected.executable === 'string' && expected.executable.length > 0 &&
   expected.pid === actual.pid && expected.startTicks === actual.startTicks && expected.executable === actual.executable);
-const sameLiveIdentity = (expected, actual) => sameIdentity(expected, actual) && !processIsExited(actual);
-const exitedIdentity = (expected, actual) => !actual || expected.startTicks !== actual.startTicks || processIsExited(actual);
+const sameLiveIdentity = (expected, actual) => sameIdentity(expected, actual) && actual.observationUnknown !== true &&
+  actual.hasExited !== true && actual.exitConfirmed !== true && !processIsExited(actual);
+const exitedIdentity = (expected, actual) => !actual || (actual.observationUnknown !== true &&
+  (expected.startTicks !== actual.startTicks || processIsExited(actual)));
 
 function readSnapshotHandshake(written, ready, nonce, page) {
   const match = /^(READY:(\d+)x(\d+)\n)HASH:([a-f0-9]{64})\nSIZE:(\d+)x(\d+)\n$/.exec(written);
@@ -98,8 +101,14 @@ async function readWindowsIdentity(pid) {
     version: 1, operation: 'identity', targets: [{ pid }]
   });
   if (response.error) throw new Error('Windows identity observer returned an error.');
-  const record = response.records?.find(value => value.pid === pid);
-  if (!record) return undefined;
+  assert(Array.isArray(response.records) && response.records.length === 1,
+    'Windows identity must have an explicit observation, including absence.');
+  const observation = response.records[0];
+  assert.equal(observation.pid, pid);
+  if (observation.status === 'absent') return undefined;
+  assert.equal(observation.status, 'present', 'Windows identity observation is unknown.');
+  const record = observation.identity;
+  assert.equal(record?.pid, pid);
   assert(/^win32:\d+$/.test(record.startTicks));
   assert(typeof record.executable === 'string' && path.isAbsolute(record.executable));
   assert(['R', 'replaced'].includes(record.state));

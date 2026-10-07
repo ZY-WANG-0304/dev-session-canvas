@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import observerModule from '../../tests/vscode-smoke/agent-candidate-windows-observer.cjs';
 import genericObserver from '../../tests/vscode-smoke/agent-candidate-process-observer.cjs';
+import reloadIdentity from '../../tests/vscode-smoke/runtime-reload-contract.cjs';
 
 const { WindowsAgentProcessObserver, ended, hasLiveWindowsStartupChain } = observerModule;
 const helperSource = await fs.readFile(new URL('../../tests/vscode-smoke/agent-candidate-process-observer.ps1', import.meta.url), 'utf8');
@@ -247,12 +248,16 @@ if (!$rejected -or !$entry.record.observationUnknown -or $entry.record.exitConfi
       // The helper requires the staged provider asset even when this native check only observes a controlled root.
       await native.initialized;
       await native.addRoot(subject.pid, 'host');
+      const liveIdentity = await reloadIdentity.readIdentity(subject.pid);
+      assert(reloadIdentity.sameLiveIdentity(native.result().entries[0], liveIdentity));
       subject.stdin.end('finish\n');
       await closed;
       await native.sample();
       assert.equal(native.error, undefined);
       assert(ended(native.result().entries[0]), 'A retained exited original process must be confirmed without disappearance.');
       assert.equal(native.result().entries[0].exitCode, 7);
+      assert.equal(await reloadIdentity.readIdentity(subject.pid), undefined,
+        'A confirmed exited object held by the existing observer must not become unknown or live.');
       await native.dispose();
       assert.equal(native.error, undefined);
     } finally {
@@ -260,6 +265,7 @@ if (!$rejected -or !$entry.record.observationUnknown -or $entry.record.exitConfi
       if (subject.exitCode === null && subject.signalCode === null) subject.kill();
       await closed;
       if (native && !native.disposing) await native.dispose();
+      await reloadIdentity.closeWindowsIdentityObserver();
       await fs.rm(directory, { recursive: true, force: true });
     }
   }
