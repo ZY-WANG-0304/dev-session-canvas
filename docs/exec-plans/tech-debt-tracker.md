@@ -35,6 +35,8 @@
 
 ## 技术债列表
 
+2026-10-07，同次 0.26.0 验证另有两项阻塞：完整 Webview 首项 `canvas-shell-baseline` 稳定差异 8020 pixels，差异集中于 Agent/Terminal 标签及控制区；未更新期望图，主动中止后的其余测试不算通过。独立 clean-checkout 虽完成 npm ci 和 140-file VSIX 打包，packaged smoke 在 `verifyCreateNodeCommandQuickPick`（`extension-tests.cjs:2619`）等待诊断事件超时，尚未确认根因。发布前需分别复核视觉基准与创建节点实际链路，并重跑完整验证；Markdown 定向渲染、notifier locale 和包结构通过不能代证。追踪入口：`docs/exec-plans/active/release-0-26-0-prep.md`、草稿 PR #296。
+
 2026-10-07，0.26.0 发布验证阻塞（不能据此合并发布准备 PR）：`release:verify` 在 Node 22.23.3 短路径 checkout 的 Marketplace VS Code E2E 失败。实际 list probe 已显示两条模板和英文 Install / Switch install version，`tests/vscode-smoke/template-marketplace-tests.cjs:48` 仍等待中文按钮；需修正测试 locale/文案契约并完整复验，不降低交互断言。原深路径首跑另有 Unix socket listen EINVAL，可用短路径避开，不能混作同一失败。独立 `test:notifier-smoke` 在 `notifier-companion-tests.cjs:103` 等待 companion posted diagnostic 超时，前序出现 `Local final snapshot responsibility still occupies the execution key or Host capacity`；因果尚未确认，需排查测试启动时序与生产 runtime 责任，不能直接判定为无害 fixture。影响发布完整验证与 companion 联动验收，应在发布前解决；locale/source/打包通过不替代该联动路径。证据入口为 `docs/exec-plans/active/release-0-26-0-prep.md`。
 
 2026-10-07 发布审计：`npm audit --omit=dev` 发现公开 KaTeX 公告 `GHSA-238p-pmpm-9mq7`，覆盖当前 `katex@0.16.45` 及 `micromark-extension-math` 依赖链，合计 2 low，npm 当前报告无修复版本。公告以“已经存在原型污染”为前提；`noteMarkdownPreview.ts` 显式传入 `trust: false`，本轮没有证明项目中存在前置污染路径，也不据此宣布完全不可利用。暂保留当前依赖与渲染配置，作为待验证安全风险；上游提供修复或发现前置污染路径时优先处理并重跑 Note 渲染回归。关联 `docs/exec-plans/active/release-0-26-0-prep.md`、主扩展 manifest/lockfile。独立的 markdown-it `GHSA-253c-mchw-3w2r`（linkify 长文本阻塞）本轮升级至 14.3.2；不把 KaTeX 遗留项写成零漏洞。

@@ -13,7 +13,8 @@
 - [x] (2026-10-07) 同步版本、用户说明、支持边界、发布手册和契约；preflight 与 diff 检查通过。
 - [x] (2026-10-07) 提交后执行 preflight、完整 verify 与 notifier 定向检查；完整 verify 和 companion 联动失败，原因与证据见下文。
 - [ ] 修复发布验证阻塞后取得完整 verify 通过；当前不能合并或发布。
-- [ ] 再次同步 main、推送并创建发布准备草稿 PR；解除草稿前重跑预合并完整验证。
+- [x] (2026-10-07) 再次同步 main、推送并创建草稿 PR #296；GitHub 确认目标 main，Release Preflight 因草稿跳过。
+- [ ] 解除草稿前重跑预合并完整验证并通过，随后另行 review/合并。
 
 ## 意外与发现
 
@@ -85,6 +86,14 @@
 
 完整 verify 首次在深路径 VS Code Unix socket listen EINVAL 停止。短路径重跑已进入真实 Marketplace 页面，显示两条模板及英文 Install / Switch install version，但测试第 48 行仍期待中文按钮，等待超时，完整命令 exit 1，后续 npm test 阶段及自动 clean-checkout 未执行。独立 notifier companion 在第 103 行等待 posted diagnostic 超时，先前有 runtime 最终 snapshot 责任占位错误；日志只能证明同时出现，尚不能确认因果。两项均登记为发布前阻塞，不使用 locale 或打包通过代证。
 
-本机完整日志：`/tmp/dsc-release-026-verify.log`（深路径首败）、`/tmp/dsc026-verify-short.log`（短路径失败）、`/tmp/dsc026-notifier.log`（联动失败）、`/tmp/dsc026-notifier-locale.log`、`/tmp/dsc026-notifier-package.log`。独立 clean-checkout 与完整 Webview 结果仍在回收中。
+本机完整日志：`/tmp/dsc-release-026-verify.log`（深路径首败）、`/tmp/dsc026-verify-short.log`（短路径失败）、`/tmp/dsc026-notifier.log`（联动失败）、`/tmp/dsc026-notifier-locale.log`、`/tmp/dsc026-notifier-package.log`。独立 clean-checkout 与 Webview 结果已回收，见下段。
 
 修订记录：2026-10-07，记录具名失败并改为草稿交付；保留严格门禁，不将未完成测试视为通过，不混入未经确认的运行时代码修复。
+
+最终补充：主扩展默认 VSIX 打包通过（140 files），notifier 14-file VSIX 通过，包内版本/publisher/NLS/l10n/extensionPack/extensionDependencies 已独立读取核对。Node 22 隔离 clean-checkout 的 npm ci 与主扩展打包成功，packaged smoke 在 `extension-tests.cjs:2619` 的 `verifyCreateNodeCommandQuickPick` 等待诊断事件超时，命令 exit 1；不能把可打包等同于可发布。失败临时目录 `/tmp/dev-session-canvas-clean-checkout-aTsd2n` 保留，日志 `/tmp/dsc026-clean-vsix.log`。
+
+Webview 全套首项截图稳定差异 8020 pixels；保留失败后主动中止长矩阵，结果 31 passed / 1 failed / 1 interrupted / 349 did not run，exit 130。定向基准截图复跑仍失败，差异位于 Agent/Terminal 标签及控制区，不更新截图掩盖结果。Markdown task lists / syntax highlighting / math formulas 定向浏览器回归 1 passed，使用缓存浏览器避开重复下载；这不代证完整 Webview suite。日志及基准截图工件已复制到仓库忽略目录 `.debug/release-0-26-0/`。
+
+交付为草稿 PR https://github.com/ZY-WANG-0304/dev-session-canvas/pull/296 ，基线仍为 origin/main 06e9abcf。静态物料和依赖补丁已提交，四项验证阻塞仍待处理，不宣称发布准备已达到合并/发布门槛。未创建发布 tag、未修改外部 Release/Marketplace；原未跟踪 image.png 保留。草稿的预合并检查为 skipped，不能视为通过；解除草稿时必须对最新预合并 ref 重跑完整 verify。
+
+修订记录：2026-10-07，回收最终打包与失败检查结果，记录草稿 PR 和后续门槛；不归档仍有发布阻塞的计划。
