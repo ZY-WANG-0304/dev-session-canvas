@@ -118,7 +118,11 @@ Root 保留现有词法路径语义：使用执行端的绝对 workspace folder 
 
 冷启动分两层责任：短期的 **启动准备排他权** 保护 owner descriptor、systemd unit 与启动意图；Supervisor 自己持有现有 **运行期 namespace claim**，保护 registry、PTY 和业务 listener。启动准备排他权采用同类 OS 随进程释放的机制，独立于运行期 claim，不能让 Host 持有运行期 claim 再等待 Supervisor 获取同一锁。取得准备权后重新探测，原子发布完整 descriptor，再写 unit/启动；竞争失败者只有限等待并重新发现赢家。不得用超时删除锁文件、凭 PID kill 或覆盖赢家 unit。Host 消失只释放准备权，不撤销已启动的 owner。
 
-启动意图只保存 launch token、backend、环境/配置指纹及可核对的平台启动身份，不含会话 secret。新准备权持有者先结算前次意图：已 ready 则复用；能同时证明原 launcher/服务启动已终结且无运行期 owner 时才允许重新启动；spawn 提交与结果之间缺证据则仍 unknown。不能用意图文件年龄、单个 PID 不存在或一次 connect refused 放行。P1/R1-03 必须分别覆盖提交前、提交后/claim 前的 Host 崩溃，并给出可重试或明确未确认的结果；平台证明方法需先定向验证，不以自动清空 pending 达到绿色。
+启动意图只保存 launch token、backend、环境/配置指纹及可核对的平台启动身份，不含会话 secret。新准备权持有者先结算前次意图：已 ready 则复用；能证明前次唯一启动已产生并终结其执行主体、且无运行期 owner 时才允许重新启动；spawn 提交与结果之间缺证据则仍 unknown。不能用意图文件年龄、单个 PID 不存在或一次 connect refused 放行。P1/R1-03 必须分别覆盖提交前、提交后/claim 前的 Host 崩溃，并给出可重试或明确未确认的结果；平台证明方法需先定向验证，不以自动清空 pending 达到绿色。
+
+实施采用现有 launcher 的短命准备分支，由持准备锁的进程自己执行上述写入与一次性提交，不把锁交给 Host，也不增加常驻服务。macOS 的 native claim 只有进程级一次取得、没有 release，因此不在长期 EH 中取得准备锁；需要正面检查运行锁时另用短命进程，只探锁、不清理或监听业务。复用现有 native 字节，不为此新增原生 API。
+
+每个 launch token 在所有准备进程合计只能实际提交一次。Supervisor 核对当前 token/backend/owner/指纹，取得运行锁后原子写 `started` 回执；回执不是 ready、进程终态或尾部完成。后继持准备锁时，匹配回执证明该 token 的唯一提交已产生真实主体，成功取得同一运行锁则证明主体已退出，两者共同允许新 token 重试。没有回执，即使锁当时空闲也仍 unknown；仅回执、PID 或 socket refused 均不足。这个判据要求运行锁不提前释放、root unit 使用 `Restart=no` 且不 enable、旧 pending 不重提；不把管理员另行手动启动同 token 纳入自动启动保证。平台与中断用例仍须实测，不能由该证据推论代证 P1 完成。
 
 Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner：已有 detached 则复用 detached，已有 systemd 则复用 systemd。fallback 仅用于可证明未创建 owner 且 backend 不支持/不可用的情况；启动请求结果未知、owner claim 被占用、ready 超时或端点不可访问时保留 unknown，不能继续换 backend。systemd unit 的重写同样须持准备权、确认无原 owner/未决启动并核对配置；不能在正常重连时写入另一个窗口的 bundle 路径。冷启动新 owner 只按既有故障后不恢复规则处理自身 session 临时数据，不扫描/清理其他 root 或旧 slot。
 
@@ -195,3 +199,9 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 Windows 只读 boot UUID/SID probe 优先由系统自带 PowerShell 调用固定 native API，不修改 PTY addon、ConPTY 或执行资产格式；其有界失败仍为 unknown，不回退墙上时钟或窗口随机 ID。这是具体调用方式的最小化，不改变环境身份契约。三平台定向 workflow 只运行基础测试与 typecheck，不获取 Agent 凭据、不启动整套旧 PTY 矩阵。实际命令和结果在实施计划中登记；尚未执行的平台不计通过。
 
 本地 pure owner/paths、受控握手 25 项及原 startup/reader 16+31 项通过，typecheck、普通 build 与 diff 检查通过。独立复核补齐保留 root 布局中的未知/错放旧 generation 及 canonical alias 拒绝规则；拒绝不触发 connect/start/claim/cleanup/listen，能力识别仍按精确 generation 枚举。环境受控校验通过，但真实双子进程因沙箱无输出而失败；旧 protocol 在 socket `EPERM` 失败，namespace 未取得 claimant。均不跳过或追认通过，也不将不同工具调用的 namespace 差异当作同环境稳定证据。启动准备排他、三平台原生来源与 P2/P3 仍待完成；现阶段新 root client 显式拒绝未经协调的自动启动。
+
+基础提交 `6688c21e` 的 GitHub run `37657913544` 已取得 Ubuntu 24.04/Node 22.23.3、macOS 26.6.2 arm64/Node 22.23.2、Windows Server 2025/Node 22.23.3 的真实父进程与双子进程身份一致结果；受控握手为 Linux/macOS 各 25、Windows 22，三平台 typecheck 通过。Windows attempt 1 在约 10 秒处原生 probe 返回 unknown，保留 failure；仅重跑失败 job 的 attempt 2 用相同代码/10 秒预算通过，Linux/macOS 沿用首次成功。不将偶发失败归因为已确认系统问题，也不把本次 probe 代证睡眠/OS 调时/重启、实际 SSH 或启动竞争。
+
+后续增量已实现 `supervisor/runtimeRootStartup.ts` 的私有启动 intent/started 原子记录与 Main 校验：缺失或冲突 token 在 claim 前拒绝，回执在 claim 后、任何 runtime 清理前发布，同 token 不得再次消费。`runtimeSupervisorStart.ts` 从 Host 提取现有启动命令，供未来短命准备流程复用；本轮未接通准备排他事务，也未改变 Manager 默认路由。新文件测试是记录语义及真实临时文件验证，Main 测试仍用受控 namespace；它们不证明跨进程启动已完成。
+
+该增量的本地记录测试、36 受控握手/启动、18 启动参数与 31 reader/client、typecheck、普通 build 通过。独立复核修复新 root systemd storage 默认创建为 0755 导致 Main 私有校验拒绝的问题，仅新代创建 0700，旧路径不改；新增参数用例核对这一差异。现有正常 live 尾部/状态/释放机制未改，不重复旧 Agent 或容量矩阵。

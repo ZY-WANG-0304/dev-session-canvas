@@ -12,6 +12,8 @@ const environment = { environmentKey: 'a'.repeat(64), userIdentity: 'uid:control
 let probeError;
 let probeReads = 0;
 let controlledConnect;
+let startedReceiptError;
+let watchedSocketPath;
 const effects = [];
 const forbidden = () => assert.fail('Unexpected native provider or process acquisition.');
 const { outputFiles } = await esbuild.build({
@@ -19,6 +21,7 @@ const { outputFiles } = await esbuild.build({
     export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
     export { RuntimeSupervisorServer } from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain';
     export * from './extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership';
+    export { createRuntimeRootStartupIntent, writeRuntimeRootStartupIntent } from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootStartup';
     export { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
   `, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, platform: 'node', format: 'cjs', write: false, external: ['node-pty'],
@@ -53,13 +56,27 @@ new Function('require', 'module', 'exports', outputFiles[0].text)(name => {
     return { ...actual, mkdirSync(...args) { effects.push('mkdir'); return actual.mkdirSync(...args); },
       promises: { ...actual.promises, async rm(...args) { effects.push('cleanup'); return actual.promises.rm(...args); } } };
   }
+  if (name === 'fs/promises') {
+    const actual = require(name);
+    return { ...actual, async lstat(filename, ...args) {
+      if (filename === watchedSocketPath) effects.push('prepare-socket');
+      return actual.lstat(filename, ...args);
+    }, async rename(source, target) {
+      if (path.basename(target) === 'startup-started.json') {
+        effects.push('started');
+        if (startedReceiptError) throw startedReceiptError;
+      }
+      return actual.rename(source, target);
+    } };
+  }
   if (name === 'node-pty') return { spawn: forbidden };
   if (name === 'child_process') return { ...require(name), spawn: forbidden, fork: forbidden, execFile: forbidden };
   return require(name);
 }, loaded, loaded.exports);
 const { RuntimeSupervisorClient, RuntimeSupervisorServer, createRuntimeOwnerDescriptor,
   createRuntimeUserStorageScopeKey, resolveRuntimeRootOwnerBaseStoragePath, resolveRootRuntimeSupervisorGeneration,
-  createRuntimeOwnerCompatibilityFingerprint, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION } = loaded.exports;
+  createRuntimeOwnerCompatibilityFingerprint, createRuntimeRootStartupIntent, writeRuntimeRootStartupIntent,
+  EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION } = loaded.exports;
 const profile = ({ linux: 'linux-owner-v1-candidate', darwin: 'macos-owner-v1-candidate',
   win32: 'windows-owner-v1-candidate' })[process.platform];
 assert.ok(profile, 'Root owner tests require a supported execution platform.');
@@ -183,6 +200,52 @@ try {
     }
   });
 
+  for (const mismatch of ['missing-token', 'wrong-token', 'missing-intent', 'malformed-intent',
+    'intent-token', 'intent-backend', 'intent-owner', 'intent-fingerprint']) {
+    await test(`startup rejects ${mismatch} before claim or cleanup`, async () => {
+      const f = await fixture();
+      let token = f.intent.token;
+      if (mismatch === 'missing-token') token = undefined;
+      if (mismatch === 'wrong-token') token = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      if (mismatch === 'missing-intent') await rm(f.intentPath);
+      if (mismatch === 'malformed-intent') await writeFile(f.intentPath, '{invalid');
+      const changed = mismatch === 'intent-token' ? { token: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }
+        : mismatch === 'intent-backend' ? { backend: 'systemd-user' }
+          : mismatch === 'intent-owner' ? { owner: { ...f.descriptor, userStorageScopeKey: 'b'.repeat(64) } }
+            : mismatch === 'intent-fingerprint' ? { compatibilityFingerprint: 'b'.repeat(64) } : undefined;
+      if (changed) await writeFile(f.intentPath, JSON.stringify({ ...f.intent, ...changed }));
+      await assert.rejects(supervisor(f, { token }).start(), /launch token|intent|JSON|ENOENT|startup/i);
+      assert.deepEqual(effects, []);
+      await assert.rejects(readFile(f.startedPath), { code: 'ENOENT' });
+      await assertRetained(f);
+    });
+  }
+
+  if (process.platform !== 'win32') {
+    await test('startup rejects nonprivate intent before claim or cleanup', async () => {
+      const f = await fixture();
+      await chmod(f.intentPath, 0o644);
+      await assert.rejects(supervisor(f).start(), /private|permission|mode/i);
+      assert.deepEqual(effects, []);
+      await assertRetained(f);
+    });
+  }
+
+  await test('failed started receipt publication retains claim and prevents cleanup or listening', async () => {
+    const f = await fixture();
+    startedReceiptError = new Error('Injected started receipt publication failure.');
+    const server = supervisor(f);
+    await assert.rejects(server.start(), /receipt publication failure/);
+    assert.ok(effects.includes('claim'));
+    assert.ok(effects.indexOf('claim') < effects.indexOf('started'));
+    assert.equal(effects.includes('cleanup'), false);
+    assert.equal(effects.includes('listen'), false);
+    assert.equal(effects.includes('connect'), false);
+    await assert.rejects(readFile(f.startedPath), { code: 'ENOENT' });
+    assert.equal(await readFile(f.intentPath, 'utf8'), JSON.stringify(f.intent));
+    await assertRetained(f);
+  });
+
   await test('startup rejects redirected session storage before taking namespace ownership', async () => {
     const f = await fixture();
     const unrelated = path.join(f.globalStoragePath, 'unrelated');
@@ -257,8 +320,10 @@ try {
     server.clearIdleShutdownTimer();
     assert.equal(probeReads, 1);
     assert.ok(effects.includes('claim'));
-    assert.ok(effects.indexOf('claim') < effects.indexOf('cleanup'));
+    assert.ok(effects.indexOf('claim') < effects.indexOf('started'));
+    assert.ok(effects.indexOf('started') < effects.indexOf('cleanup'));
     assert.equal(effects.at(-1), 'listen');
+    assert.deepEqual(JSON.parse(await readFile(f.startedPath, 'utf8')), { ...f.intent, state: 'started' });
     const socket = new ControlledSocket();
     await server.handleRequest(socket, { type: 'request', id: 'hello', method: 'hello' });
     assert.deepEqual(socket.messages[0].result.runtimeOwner, f.descriptor);
@@ -269,11 +334,35 @@ try {
     assert.equal(await readFile(f.legacyRegistry, 'utf8'), 'legacy registry');
   });
 
+  await test('a second server cannot reuse a started token after acquiring the runtime claim', async () => {
+    const f = await fixture();
+    const first = supervisor(f);
+    await first.start();
+    first.clearIdleShutdownTimer();
+    const receipt = await readFile(f.startedPath, 'utf8');
+    await mkdir(path.dirname(f.journalPath), { recursive: true, mode: 0o700 });
+    await writeFile(f.registryPath, 'root registry');
+    await writeFile(f.journalPath, 'root journal');
+    effects.length = 0;
+    watchedSocketPath = f.socketPath;
+
+    await assert.rejects(supervisor(f).start(), /token has already been consumed/);
+    assert.equal(effects.filter(effect => effect === 'claim').length, 1);
+    for (const forbiddenEffect of ['started', 'prepare-socket', 'connect', 'cleanup', 'listen']) {
+      assert.equal(effects.includes(forbiddenEffect), false, `Reused token must not reach ${forbiddenEffect}.`);
+    }
+    assert.equal(await readFile(f.startedPath, 'utf8'), receipt);
+    assert.equal(await readFile(f.intentPath, 'utf8'), JSON.stringify(f.intent));
+    await assertRetained(f);
+  });
+
   await test('owner.json on legacy generation does not enable owner semantics or run probes', async () => {
     const f = await fixture();
     const storageDir = path.dirname(f.legacyRegistry);
     const ownerPath = path.join(path.dirname(storageDir), 'owner.json');
     await writeFile(ownerPath, 'invalid legacy file must stay untouched');
+    const intentPath = path.join(path.dirname(storageDir), 'startup-intent.json');
+    await writeFile(intentPath, 'legacy startup record must remain unread');
     const registry = JSON.stringify({ version: 1, sessions: [] });
     await writeFile(f.legacyRegistry, registry);
     const server = new RuntimeSupervisorServer({ storageDir, registryPath: f.legacyRegistry,
@@ -285,7 +374,9 @@ try {
     assert.equal(probeReads, 0);
     assert.equal(effects.includes('claim'), false);
     assert.equal(effects.includes('cleanup'), false);
+    assert.equal(effects.includes('started'), false);
     assert.equal(await readFile(ownerPath, 'utf8'), 'invalid legacy file must stay untouched');
+    assert.equal(await readFile(intentPath, 'utf8'), 'legacy startup record must remain unread');
     assert.equal(await readFile(f.legacyRegistry, 'utf8'), registry);
     const socket = new ControlledSocket();
     await server.handleRequest(socket, { type: 'request', id: 'hello', method: 'hello' });
@@ -303,6 +394,8 @@ async function test(name, run) {
   probeReads = 0;
   probeError = undefined;
   controlledConnect = undefined;
+  startedReceiptError = undefined;
+  watchedSocketPath = undefined;
   try { await run(); passed++; }
   catch (error) { throw new Error(name, { cause: error }); }
 }
@@ -327,8 +420,13 @@ async function fixture(overrides = {}) {
   await writeFile(registryPath, 'root registry');
   await writeFile(journalPath, 'root journal');
   await writeFile(legacyRegistry, 'legacy registry');
+  const intent = createRuntimeRootStartupIntent(descriptor, 'legacy-detached',
+    createRuntimeOwnerCompatibilityFingerprint(descriptor.generation, profile));
+  await writeRuntimeRootStartupIntent(storageDir, intent);
+  const intentPath = path.join(baseStoragePath, 'startup-intent.json');
+  const startedPath = path.join(baseStoragePath, 'startup-started.json');
   return { globalStoragePath, descriptor, baseStoragePath, storageDir, ownerPath, registryPath, journalPath,
-    legacyRegistry, socketPath: path.join(globalStoragePath, 'supervisor.sock') };
+    legacyRegistry, intent, intentPath, startedPath, socketPath: path.join(globalStoragePath, 'supervisor.sock') };
 }
 
 function clientOptions(f) {
@@ -361,7 +459,7 @@ async function connect(client, result) {
 
 function track(client) { clients.push(client); return client; }
 
-function supervisor(f) {
+function supervisor(f, { token } = { token: f.intent.token }) {
   const options = { kind: ({ linux: 'linux-provider', darwin: 'macos-provider', win32: 'windows-provider' })[process.platform],
     profile, profileMode: 'live-runtime', capabilities: ['execution-lifecycle-v1', 'execution-close-observation-v1',
       'execution-parent-cleanup-v1', 'execution-owner-boundary-v1', 'terminal-interaction-v1', 'terminal-read-settlement-v1'],
@@ -369,7 +467,7 @@ function supervisor(f) {
     claimNamespace: () => effects.push('claim'),
     scheduler: { now: () => 0, after: forbidden }, createTransport: forbidden };
   const server = new RuntimeSupervisorServer({ storageDir: f.storageDir, registryPath: f.registryPath,
-    socketPath: f.socketPath, socketLocation: 'storage' }, 'legacy-detached', 'best-effort', options, profile);
+    socketPath: f.socketPath, socketLocation: 'storage' }, 'legacy-detached', 'best-effort', options, profile, token);
   server.listen = async () => effects.push('listen');
   return server;
 }
