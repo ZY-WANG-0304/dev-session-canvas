@@ -618,9 +618,14 @@ async function attachCompact() {
   const compactDiagnostics = await command('getDiagnosticEvents');
   assert(!compactDiagnostics.some(event => event.kind === 'runtime/terminalPagedReadFailed'),
     'The compacted reader must not report a paged read failure.');
+  // A current-state/checkpoint restore may apply the Supervisor's canonical
+  // geometry after the preceding ResizeObserver sample (for example 144x38
+  // after an intermediate 143x38 fit). The post-compaction assertion must use
+  // that final checkpoint geometry rather than the earlier transient sample.
+  const finalGeometry = { cols: second.checkpoint.cols, rows: second.checkpoint.rows };
   const afterA = await poll('compacted terminal projection', probe, value => {
     const node = value.nodes.find(entry => entry.nodeId === a.id);
-    return node && node.terminalCols === resizedAgain.terminalCols && node.terminalRows === resizedAgain.terminalRows &&
+    return node && node.terminalCols === finalGeometry.cols && node.terminalRows === finalGeometry.rows &&
       node.terminalVisibleLines?.some(line => line === `DSC_A1_REPLY_${afterAProbe.nonce}`) ? node : false;
   });
   const afterBInteraction = await dom({ kind: 'measureCapacityInteraction',

@@ -457,16 +457,31 @@ const finalSecretStep = finalProduct.steps.find(candidate => candidate.id === 'r
 assert.deepEqual(finalSecretStep.env, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}',
   DSC_AGENT_SCENARIOS: '${{ inputs.agent_scenarios }}' });
 assert.equal(finalSecretStep['continue-on-error'], undefined);
-assert.deepEqual(finalProduct.steps.filter(candidate => JSON.stringify(candidate).includes('secrets.')), [finalSecretStep]);
 assert.match(finalSecretStep.run, /> "\$RUNNER_TEMP\/agent-candidate\.log" 2>&1/u);
 assert.match(finalSecretStep.run, /--scenarios "\$DSC_AGENT_SCENARIOS"/u);
 assert(!finalSecretStep.run.includes('${{'));
 assert.doesNotMatch(finalSecretStep.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/u);
-const afterSecret = finalProduct.steps.slice(finalProduct.steps.indexOf(finalSecretStep) + 1);
-assert.equal(afterSecret.length, 1);
-assert.equal(afterSecret[0].uses, 'actions/upload-artifact@v4');
-assert.equal(afterSecret[0].with.path, 'agent-ci-report/');
-assert.equal(afterSecret[0].if, "always() && steps.real_agents.outputs.report_ready == 'true'");
+const reloadSecretStep = finalProduct.steps.find(candidate => candidate.id === 'real_agent_reload');
+assert.deepEqual(reloadSecretStep.env, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}' });
+assert.equal(reloadSecretStep['continue-on-error'], undefined);
+assert.equal(reloadSecretStep.if, "${{ always() && runner.os == 'Linux' && !inputs.skip_installed && (steps.installed.outcome == 'success' || steps.installed_runtime.outcome == 'success') }}");
+assert.match(reloadSecretStep.run, /run-vscode-agent-runtime-reload-candidate\.mjs/u);
+assert.match(reloadSecretStep.run, /--installed-vsix production-package\/product\.vsix/u);
+assert.doesNotMatch(reloadSecretStep.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/u);
+assert.deepEqual(finalProduct.steps.filter(candidate => JSON.stringify(candidate).includes('secrets.')),
+  [finalSecretStep, reloadSecretStep]);
+assert.equal(finalProduct.steps.filter(candidate => candidate.run).at(-1), reloadSecretStep);
+const reloadUpload = finalProduct.steps.find(candidate => candidate.name === 'Upload live Agent Reload evidence');
+assert.equal(reloadUpload.uses, 'actions/upload-artifact@v4');
+assert.equal(reloadUpload.with['if-no-files-found'], 'error');
+assert.match(reloadUpload.with.name, /runtime-production-agent-reload-/u);
+assert.match(reloadUpload.with.path, /dsc-agent-reload/u);
+const afterSecret = finalProduct.steps.slice(finalProduct.steps.indexOf(reloadSecretStep) + 1);
+assert.equal(afterSecret.length, 2);
+assert.equal(afterSecret[0], reloadUpload);
+assert.equal(afterSecret[1].uses, 'actions/upload-artifact@v4');
+assert.equal(afterSecret[1].with.path, 'agent-ci-report/');
+assert.equal(afterSecret[1].if, "always() && steps.real_agents.outputs.report_ready == 'true'");
 assert.match(finalProduct.steps.find(candidate => candidate.id === 'installed').run, /--installed-vsix production-package\/product\.vsix/u);
 assert.equal(finalProduct.steps.find(candidate => candidate.id === 'installed').if,
   "${{ !inputs.skip_installed && inputs.installed_mode == 'all' }}");
