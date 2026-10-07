@@ -35,6 +35,8 @@
 
 ## 技术债列表
 
+2026-10-07 发布审计：`npm audit --omit=dev` 发现公开 KaTeX 公告 `GHSA-238p-pmpm-9mq7`，覆盖当前 `katex@0.16.45` 及 `micromark-extension-math` 依赖链，合计 2 low，npm 当前报告无修复版本。公告以“已经存在原型污染”为前提；`noteMarkdownPreview.ts` 显式传入 `trust: false`，本轮没有证明项目中存在前置污染路径，也不据此宣布完全不可利用。暂保留当前依赖与渲染配置，作为待验证安全风险；上游提供修复或发现前置污染路径时优先处理并重跑 Note 渲染回归。关联 `docs/exec-plans/active/release-0-26-0-prep.md`、主扩展 manifest/lockfile。独立的 markdown-it `GHSA-253c-mchw-3w2r`（linkify 长文本阻塞）本轮升级至 14.3.2；不把 KaTeX 遗留项写成零漏洞。
+
 2026-10-07 当前范围优先于下列历史结账：B1容量/准入、B2退出完整性、B3生命周期成果保留，B4权威当前态恢复及最终同包受影响验收已完成，计划归档至 `docs/exec-plans/completed/runtime-live-state-recovery.md`。剩余仅合并许可与下表具名维护风险，不自动追加产品阶段。旧sandbox拒绝及未归因间歇失败不追认通过；root稳定归属另列，不混入当前收口。
 
 当前状态 codec 依赖固定 `@xterm/headless` / `@xterm/xterm` 6.0.0 私有模型字段，是明确的维护边界：任何 xterm 升级或生产 parser handler 变化，必须重新核对两端状态格式、未来增量与浏览器服务并补受影响回归，不得只改版本字符串。当前使用 `xterm-current-state-v1`，不承诺任意 addon/异步 paused parser 的状态迁移；不能因已登记此风险而免除 B4 的产品验收。

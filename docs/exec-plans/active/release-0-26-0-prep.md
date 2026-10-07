@@ -27,7 +27,7 @@
 
 ## 结果与复盘
 
-进行中。尚未发布、打 tag 或合并。当前不存在新增产品实现，相关既有风险继续由 `docs/exec-plans/tech-debt-tracker.md` 跟踪，不把本次文案复核视为新增平台验收。
+进行中。尚未发布、打 tag 或合并。除发布审计发现的 markdown-it 14.3.2 补丁升级外，不新增产品实现，相关既有风险继续由 `docs/exec-plans/tech-debt-tracker.md` 跟踪，不把本次文案复核视为新增平台验收。
 
 ## 上下文与定向
 
@@ -71,3 +71,5 @@
 修订记录：2026-10-07，创建计划，记录版本选择、发布范围与验证路径。
 
 修订记录：2026-10-07，静态输入完成；复用 run 37577646133 的六目标原生资产，聚合与当前源码默认 build 校验通过。完整验证尚待运行。
+
+修订记录：2026-10-07，首次完整 verify 停在 marketplace VS Code E2E 启动，Unix socket 深路径触发 listen EINVAL，并非业务断言。下一轮使用短路径临时 checkout 与 Node 22.23.3；不跳过用例。notifier typecheck/source 已通过。生产 audit 首次为 2 low / 1 moderate，markdown-it 升级至 14.3.2，KaTeX 无修复公告与前提边界登记技术债；后续复核实际 audit 与 Note 回归。

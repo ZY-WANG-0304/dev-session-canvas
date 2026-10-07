@@ -360,7 +360,7 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 
 ### 9.0 当前 0.26.0 发布输入
 
-以已合入 main 的 #293 发布契约机制、#294 原生退出验证入口和 #295 运行时容量/退出完整性/当前状态恢复为输入。相对 0.25.0，已结束持久化 Runtime 的重开语义、执行实现和恢复权威有用户可见变化，因此选择新的 0.x.0 里程碑，不使用补丁版本。主扩展与 notifier 同步为 0.26.0，保持 Preview；notifier 不增加行为。
+以已合入 main 的 #293 发布契约机制、#294 原生退出验证入口和 #295 运行时容量/退出完整性/当前状态恢复为输入。相对 0.25.0，已结束持久化 Runtime 的重开语义、执行实现和恢复权威有用户可见变化，因此选择新的 0.x.0 里程碑，不使用补丁版本。主扩展与 notifier 同步为 0.26.0，保持 Preview；notifier 不增加行为。发布审计另将 markdown-it 更新至 14.3.2，修复公开长文本 linkify 阻塞公告；KaTeX 无可用补丁公告的前提与风险登记技术债，不宣称零漏洞。
 
 版本、双 CHANGELOG、英中文 README/listing、支持边界和 `docs/release-contracts/v0.26.0.md` 构成静态输入。用户说明突出健康 live 会话的当前状态恢复、退出收尾和已结束 Runtime 重开不保留正文；旧 live 绑定不迁移，snapshot-only 不因这一规则改变。限制包括监督器/机器故障无恢复保证、资源随会话/scrollback增长、旧系统未经覆盖及跨版本回退无保证。正式产品依据为 `runtime-persistence-closeout.md`、`runtime-live-state-recovery.md` 与对应产品规格，不把历史阶段性失败覆盖为从未发生。
 

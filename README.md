@@ -18,7 +18,7 @@ English | [简体中文](README.zh-CN.md)
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product is in public `Preview`. The release-prep target is `0.26.0`, following the published `0.25.0` baseline. This milestone focuses on runtime capacity, terminal exit integrity, and current-state recovery for healthy persistent sessions. Completed Runtime sessions reopen without terminal text. It is intended for advanced users who can prepare their CLI environment and accept Preview limitations.
+The product is in public `Preview`. The release-prep target is `0.26.0`, following the published `0.25.0` baseline. This milestone focuses on runtime capacity, terminal exit integrity, and current-state recovery for healthy persistent sessions. Completed persistent Runtime sessions reopen without terminal text; snapshot-only history behavior is unchanged. It is intended for advanced users who can prepare their CLI environment and accept Preview limitations.
 
 ![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif)
 
