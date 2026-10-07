@@ -764,6 +764,16 @@ function surfaceState(state) {
 async function createSubject(role) {
   phase = `start-${role}`;
   await command('createNode', 'terminal');
+  const pending = await poll(`${role} Terminal node created`, snapshot, value => {
+    const node = value.state.nodes.find(candidate => candidate.kind === 'terminal' &&
+      !subjects.some(subject => subject.id === candidate.id));
+    return node ?? false;
+  });
+  const pendingNode = pending.state.nodes.find(candidate => candidate.kind === 'terminal' &&
+    !subjects.some(subject => subject.id === candidate.id));
+  // The embedded terminal waits for its first concrete size before acquiring a runtime.
+  await command('dispatchWebviewMessage', { type: 'webview/resizeNode', payload: {
+    nodeId: pendingNode.id, position: pendingNode.position, size: { width: 900, height: 540 } } }, surface);
   const state = await poll(`real ${role} Terminal started sequentially`, snapshot,
     value => value.state.nodes.filter(node => node.kind === 'terminal' && node.metadata?.terminal?.liveSession).length === subjects.length + 1);
   const node = state.state.nodes.find(candidate => candidate.kind === 'terminal' && !subjects.some(subject => subject.id === candidate.id));
@@ -784,8 +794,6 @@ async function createSubject(role) {
   else supervisor = { ...supervisorIdentity, socketPath: paths.socketPath };
   const subject = { id: node.id, role, paths, metadata, receiptPath: path.join(artifacts, `subject-${role}.json`) };
   subjects.push(subject);
-  await command('dispatchWebviewMessage', { type: 'webview/resizeNode', payload: { nodeId: node.id,
-    position: node.position, size: { width: 900, height: 540 } } }, surface);
   const mounted = await poll('fixed actual terminal dimensions', probe, value => value.nodes.some(entry =>
     entry.nodeId === node.id && entry.terminalCols >= 78 && entry.terminalRows >= 3) &&
     value.capacityCalibration?.readers.some(reader => reader.nodeId === node.id));
