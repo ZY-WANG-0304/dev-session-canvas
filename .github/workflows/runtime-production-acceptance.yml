@@ -385,6 +385,29 @@ jobs:
             echo 'Real Agent acceptance failed; sanitized report: agent-ci-report/' >&2
             exit 1
           fi
+      - name: Real live Agent Reload Window acceptance (Linux Codex)
+        id: real_agent_reload
+        if: ${{ always() && runner.os == 'Linux' && !inputs.skip_installed
+          && (steps.installed.outcome == 'success' || steps.installed_runtime.outcome == 'success') }}
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          umask 077
+          node scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs \
+            --backend=deepseek --installed-vsix production-package/product.vsix \
+            --output "$RUNNER_TEMP/dsc-agent-reload"
+      - name: Upload live Agent Reload evidence
+        if: always() && steps.real_agent_reload.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-production-agent-reload-${{ matrix.platform }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/dsc-agent-reload/input.json
+            ${{ runner.temp }}/dsc-agent-reload/first-failure.json
+            ${{ runner.temp }}/dsc-agent-reload/runtime/artifacts/*.json
+            ${{ runner.temp }}/dsc-agent-reload/runtime/artifacts/*-output.txt
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload sanitized Agent evidence only
         if: always() && steps.real_agents.outputs.report_ready == 'true'
         uses: actions/upload-artifact@v4
