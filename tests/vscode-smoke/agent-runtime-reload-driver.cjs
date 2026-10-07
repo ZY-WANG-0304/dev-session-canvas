@@ -246,7 +246,8 @@ async function waitForAgentReady() {
   const startupPrompts = [
     /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i,
     /(?:Choose the text style|Choose.*theme|Select.*theme)/i,
-    /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i
+    /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i,
+    /Set up the Codex agent sandbox[\s\S]*1\.\s*Set up default sandbox[\s\S]*2\.\s*Use non-admin sandbox/i
   ];
   const deadline = Math.min(Date.now() + 90000, control.deadlineAt - 30000);
   while (Date.now() < deadline) {
@@ -255,10 +256,20 @@ async function waitForAgentReady() {
     let handledPrompt = false;
     for (const [name, pattern] of [['workspace-trust', /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i],
       ['theme', /(?:Choose the text style|Choose.*theme|Select.*theme)/i],
-      ['update', /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i]]) {
+      ['update', /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i],
+      ['windows-sandbox', startupPrompts[3]]]) {
       if (pattern.test(text) && !prompts.has(name)) {
+        let data = name === 'update' ? '\u001b[B\r' : '\r';
+        if (name === 'windows-sandbox') {
+          assert.equal(process.platform, 'win32', 'Only the fixed Windows input may configure its sandbox.');
+          const selectedDefault = /^\s*\u203a\s*1\.\s*Set up default sandbox/im.test(text);
+          const selectedNonAdmin = /^\s*\u203a\s*2\.\s*Use non-admin sandbox/im.test(text);
+          assert(selectedDefault || selectedNonAdmin, 'Windows sandbox selection is not confirmed.');
+          // Keep the isolated run non-elevated; the read-only/no-tools launch policy remains unchanged.
+          data = selectedDefault ? '\u001b[B\r' : '\r';
+        }
         prompts.add(name);
-        await dom({ kind: 'sendExecutionInput', nodeId: currentNodeId, data: name === 'update' ? '\u001b[B\r' : '\r' });
+        await dom({ kind: 'sendExecutionInput', nodeId: currentNodeId, data });
         handledPrompt = true;
         break;
       }

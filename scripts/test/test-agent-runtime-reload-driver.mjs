@@ -45,6 +45,36 @@ test('Codex loading composer is not model readiness, and late onboarding still r
   assert.deepEqual(inputs, [{ kind: 'sendExecutionInput', nodeId: 'node', data: '\r' }]);
 });
 
+test('Windows sandbox onboarding must be completed before the loaded composer becomes ready', async () => {
+  const ready = 'model: DeepSeek-Flash high /model to change\n\u203a Ask Codex to do anything';
+  // Text reconstructed from the frozen Windows 37608896439 registry VT at revision 124.
+  const sandbox = ['model: DeepSeek-Flash high /model to change',
+    'Set up the Codex agent sandbox to protect your files and control network access. Learn more',
+    '<https://developers.openai.com/codex/windows>',
+    '\u203a 1. Set up default sandbox (requires Administrator permissions)',
+    '  2. Use non-admin sandbox (higher risk if prompt injected)', '  3. Quit', 'enter select - esc back'].join('\n');
+  for (const selection of ['default', 'non-admin', 'unknown', 'not-dismissed']) {
+    const selected = selection === 'non-admin' ? sandbox.replace('\u203a 1.', '  1.').replace('  2.', '\u203a 2.')
+      : selection === 'unknown' ? sandbox.replace('\u203a 1.', '  1.').replace('  3.', '\u203a 3.') : sandbox;
+    let clock = 0;
+    let cursor = 0;
+    const inputs = [];
+    const screens = [ready, selected, selected, selected, ready, ready];
+    const api = compile(['hasLoadedAgentComposer', 'waitForAgentReady'], {
+      assert, process: { platform: 'win32' }, stripVt: value => value,
+      control: { deadlineAt: 40000 }, currentNodeId: 'node',
+      Date: { now: () => clock }, sleep: async ms => { clock += ms; },
+      probe: async () => selection === 'not-dismissed' ? selected : screens[cursor++],
+      textOf: value => value, dom: async action => inputs.push(action)
+    });
+    assert.equal(api.hasLoadedAgentComposer(selected), false, 'The loaded model header alone does not complete onboarding.');
+    if (['unknown', 'not-dismissed'].includes(selection)) await assert.rejects(api.waitForAgentReady());
+    else { await api.waitForAgentReady(); assert.equal(cursor, screens.length); }
+    assert.deepEqual(inputs, selection === 'unknown' ? [] : [{ kind: 'sendExecutionInput', nodeId: 'node',
+      data: selection === 'non-admin' ? '\r' : '\u001b[B\r' }]);
+  }
+});
+
 function fixture({ resetFails = false, nonemptyRegistry = false, platform = 'win32' } = {}) {
   const events = [];
   const writes = new Map();
