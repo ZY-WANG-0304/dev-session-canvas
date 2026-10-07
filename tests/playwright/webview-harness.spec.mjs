@@ -16728,9 +16728,15 @@ for (const kind of ['agent', 'terminal']) {
       await openHarness(page);
       await bootstrap(page, createLiveExecutionNodeState(kind));
       const ready = await waitForExecutionTerminalReady(page, nodeId);
-      state ??= await createCurrentTerminalState('\x1b]4;1;rgb:11/22/33\x07\x1b[31mCURRENT-STATE\x1b[0m '
-        + '\x1b]8;;https://example.com/current-state\x07LINK\x1b]8;;\x07\r\n\x1b[31',
-      ready.terminalCols, ready.terminalRows);
+      state ??= await createCurrentTerminalState([
+        '\x1b]8;id=reset;https://example.com/reset\x07old\x1b]8;;\x07\x1bc'
+          + (kind === 'terminal' ? '\x1b[?1049h' : ''),
+        { cols: ready.terminalCols, rows: ready.terminalRows + 4 },
+        `\x1b[${ready.terminalRows + 4};1H\x1b]8;id=shrink;https://example.com/shrink\x07bottom\x1b]8;;\x07\x1b[1;1H`,
+        { cols: ready.terminalCols, rows: ready.terminalRows },
+        '\x1b]4;1;rgb:11/22/33\x07\x1b[31mCURRENT-STATE\x1b[0m '
+          + '\x1b]8;;https://example.com/current-state\x07LINK\x1b]8;;\x07\r\n\x1b[31'
+      ], ready.terminalCols, ready.terminalRows);
       const restored = await importCurrentTerminalState(page, nodeId, kind, state, revision, `state-reader-${revision}`);
       counts.push(restored.chunkRequests);
       expect((await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n')).toContain('CURRENT-STATE');
@@ -18525,7 +18531,10 @@ async function createCurrentTerminalState(output, cols, rows) {
   const colors = codec.createTerminalCurrentColors();
   terminal._core._inputHandler.onColor(event => codec.applyTerminalCurrentColorRequests(colors, event));
   try {
-    await new Promise(resolve => terminal.write(output, resolve));
+    for (const operation of Array.isArray(output) ? output : [output]) {
+      if (typeof operation === 'string') await new Promise(resolve => terminal.write(operation, resolve));
+      else terminal.resize(operation.cols, operation.rows);
+    }
     return codec.captureTerminalCurrentState(terminal, colors);
   } finally { terminal.dispose(); }
 }

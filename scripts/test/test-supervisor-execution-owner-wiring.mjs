@@ -2352,6 +2352,54 @@ try {
     await finish(f, session, transport);
   });
 
+  for (const scenario of ['RIS', 'normal shrink', 'alternate shrink']) {
+    await check(`real tracker current-state readers reopen after OSC8 and ${scenario}`, async () => {
+      const f = await interactiveSupervisorFixture();
+      const { session, transport } = f;
+      const openParams = { sessionId: session.sessionId, authorityId: session.terminalAuthorityId,
+        consumerId: 'editor', settlementMode: 'final-application-v1', currentState: 'xterm-current-state-v1' };
+      const baseline = await request(f, f.socket, 'openTerminalRead', openParams);
+      assert.equal(baseline.ok, true, JSON.stringify(baseline));
+      assertSettlement(await closeReader(f, baseline.result, { kind: 'cancelled', reason: 'rebuild' }), 'recorded');
+      const link = '\x1b]8;id=review;https://example.test/review\x07';
+      transport.output(scenario === 'RIS' ? `${link}link\x1b]8;;\x07\x1bc`
+        : `${scenario === 'alternate shrink' ? '\x1b[?1049h' : ''}\x1b[39;1H${link}link\x1b]8;;\x07\x1b[1;1H`);
+      await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'OSC8 prefix consumed');
+      if (scenario !== 'RIS') {
+        const resizing = f.server.resizeSession({ sessionId: session.sessionId, cols: 113, rows: 10 });
+        await f.until(() => f.interactions.length === 1, 'height shrink requested');
+        f.reply(f.interactions[0], { kind: 'resized' });
+        await resizing;
+      }
+      let journalReads = 0;
+      const readPage = f.server.readJournalPage.bind(f.server);
+      f.server.readJournalPage = (...args) => { journalReads++; return readPage(...args); };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const opening = await request(f, f.socket, 'openTerminalRead', openParams);
+        assert.equal(opening.ok, true, JSON.stringify(opening));
+        const read = opening.result;
+        const readParams = { sessionId: read.sessionId, authorityId: read.authorityId,
+          readId: read.readId, afterRevision: read.checkpoint.revision };
+        let received = '';
+        while (received.length < read.currentState.length) {
+          const chunk = await request(f, f.socket, 'readTerminalPage', { ...readParams, stateOffset: received.length });
+          assert.equal(chunk.ok, true, JSON.stringify(chunk));
+          received += chunk.result.stateChunk.data;
+        }
+        assert.deepEqual(JSON.parse(received), await session.terminalStateTracker.captureCurrentState());
+        assert.equal(journalReads, attempt, 'Reopening must not replay pre-capture output.');
+        transport.output(`${link}future-${attempt}\x1b]8;;\x07`);
+        await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === attempt + 2, 'future output consumed');
+        const tail = await request(f, f.socket, 'readTerminalPage', readParams);
+        assert.equal(tail.ok, true, JSON.stringify(tail));
+        assert.equal(tail.result.events.length, 1);
+        assert.match(tail.result.events[0].data, new RegExp(`future-${attempt}`));
+        assertSettlement(await closeReader(f, read, { kind: 'cancelled', reason: 'rebuild' }), 'recorded');
+      }
+      await finish(f, session, transport);
+    });
+  }
+
   await check('current state capture shares the terminal queue and failed capture loses only that reader', async () => {
     const f = fixture(readerCapabilities);
     const { session, transport } = await f.create();

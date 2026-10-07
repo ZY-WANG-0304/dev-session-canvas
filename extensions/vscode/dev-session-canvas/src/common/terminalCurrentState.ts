@@ -65,7 +65,7 @@ interface CurrentParser {
 interface CurrentLink {
   id: number;
   data: { uri: string; id?: string };
-  markers: Array<{ buffer: 'normal' | 'alternate'; line: number }>;
+  markers: Array<{ buffer: 'normal' | 'alternate' | 'detached'; line: number; afterEnd?: true }>;
 }
 
 export interface TerminalCurrentState {
@@ -415,9 +415,13 @@ function captureLinks(service: Internal, normal: Internal, alternate: Internal):
     if (entry.data.id !== undefined) data.id = string(entry.data.id, 'link-id');
     const markers: CurrentLink['markers'] = array(entry.lines, 'link-lines').map(marker => {
       requireCondition(marker.isDisposed === false, 'disposed-link-marker');
-      const buffer = normal.markers.includes(marker) ? 'normal' : alternate.markers.includes(marker) ? 'alternate' : fail('unowned-link-marker');
+      const buffer = normal.markers.includes(marker) ? 'normal' : alternate.markers.includes(marker) ? 'alternate' : 'detached';
+      const line = integer(marker.line, 'link-line');
       seen.add(marker);
-      return { buffer, line: integer(marker.line, 'link-line') };
+      // RIS detaches whole buffers; bottom-row pop leaves attached markers past
+      // the end. Preserve both lifetimes without treating either as a live cell.
+      return { buffer, line, ...(buffer !== 'detached' && line >= (buffer === 'normal' ? normal : alternate).lines.length
+        ? { afterEnd: true as const } : {}) };
     });
     entries.push({ id: integer(id, 'link-number', 1), data, markers });
   }
@@ -437,6 +441,12 @@ function restoreLinks(service: Internal, state: TerminalCurrentState['links'], n
     }
     service._dataByLinkId.set(entry.id, entry);
     for (const position of source.markers) {
+      if (position.buffer === 'detached') {
+        // The old buffer receives no more events. OscLinkService only reads the
+        // inert marker's line when reusing a link; keep it off both live buffers.
+        entry.lines.push({ line: position.line, isDisposed: false });
+        continue;
+      }
       const marker = (position.buffer === 'normal' ? normal : alternate).addMarker(position.line);
       entry.lines.push(marker);
       marker.onDispose(() => service._removeMarkerFromLink(entry, marker));
@@ -592,8 +602,10 @@ function validateState(value: unknown, prepareCells = true): [Uint32Array[], Uin
     for (const field of BUFFER_FIELDS) integer(fields[field], `buffer-${field}`);
     requireCondition(fields._cols === state.cols && fields._rows === state.rows, 'buffer-geometry');
     boolean(buffer.hasScrollback, 'buffer-scrollback');
-    integer(buffer.maxLength, 'buffer-capacity', 1, state.rows + state.scrollback);
     const lines = array(buffer.lines, 'buffer-lines');
+    // An empty alternate buffer keeps its former row capacity, even on activation.
+    const capacityLimit = key === 'alternate' ? 65535 : state.rows + state.scrollback;
+    integer(buffer.maxLength, 'buffer-capacity', 1, capacityLimit);
     requireCondition(lines.length <= buffer.maxLength, 'buffer-line-count');
     for (const entry of lines) {
       const line = record(entry, 'line');
@@ -671,8 +683,16 @@ function validateState(value: unknown, prepareCells = true): [Uint32Array[], Uin
     string(link.data?.uri, 'link-uri'); if (link.data?.id !== undefined) string(link.data.id, 'link-external-id');
     for (const value of array(link.markers, 'link-markers')) {
       const marker = record(value, 'link-marker');
-      requireCondition(marker.buffer === 'normal' || marker.buffer === 'alternate', 'link-buffer');
-      integer(marker.line, 'link-line', 0, state[marker.buffer].lines.length - 1);
+      requireCondition(marker.buffer === 'normal' || marker.buffer === 'alternate' || marker.buffer === 'detached', 'link-buffer');
+      if (marker.buffer === 'detached') {
+        requireCondition(marker.afterEnd === undefined, 'detached-link-marker');
+        integer(marker.line, 'link-line', 0, 0xfffffffe);
+      } else if (marker.afterEnd !== undefined) {
+        requireCondition(marker.afterEnd === true, 'link-after-end');
+        integer(marker.line, 'link-line', state[marker.buffer].lines.length, 0xfffffffe);
+      } else {
+        integer(marker.line, 'link-line', 0, state[marker.buffer].lines.length - 1);
+      }
     }
   }
   cloneColors(state.colors);

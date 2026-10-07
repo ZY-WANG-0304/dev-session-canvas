@@ -59,12 +59,29 @@ try {
     restore(target.term, JSON.parse(JSON.stringify(state)));
     target.colors.overrides = structuredClone(state.colors.overrides);
   }
+  async function apply(runtime, operation) {
+    if (typeof operation === 'object' && !ArrayBuffer.isView(operation)) {
+      runtime.term.resize(operation.cols, operation.rows);
+    } else {
+      await write(runtime, operation);
+    }
+  }
   async function equivalent(prefix, suffixes, options = {}) {
     const source = create(options);
     const target = create({ cols: 9, rows: 3, scrollback: 2 });
     try {
-      await write(source, prefix);
+      for (const operation of Array.isArray(prefix) ? prefix : [prefix]) await apply(source, operation);
+      const before = observe(source);
+      const links = JSON.parse(JSON.stringify([...source.term._core._oscLinkService._dataByLinkId]
+        .map(([id, entry]) => ({ id, data: entry.data }))));
+      const markers = [...source.term._core._oscLinkService._dataByLinkId.values()].flatMap(entry => entry.lines);
       const state = snapshot(source);
+      assert.deepEqual(observe(source), before, 'capture must preserve visible source state');
+      assert.deepEqual(state.links.entries.map(({ id, data }) => ({ id, data })), links,
+        'capture must retain link data referenced by cells, attributes or future OSC8');
+      assert.deepEqual([...source.term._core._oscLinkService._dataByLinkId.values()].flatMap(entry => entry.lines), markers,
+        'capture must not change the source link lifetimes or affect existing readers');
+      assert.ok(markers.every(marker => !marker.isDisposed));
       await write(target, '\x1b[44mold\r\n'.repeat(12) + '\x1b]8;;https://example.test/obsolete\x07old\x1b[?1049hprevious\x1b]2;unfinished');
       hydrate(target, state);
       assert.deepEqual(snapshot(target), state, 'import must preserve the current state');
@@ -72,13 +89,8 @@ try {
       assert.deepEqual(target.replies, [], 'import must not replay historical terminal responses');
       source.replies.length = 0;
       for (const suffix of suffixes) {
-        if (typeof suffix === 'object' && !ArrayBuffer.isView(suffix)) {
-          source.term.resize(suffix.cols, suffix.rows);
-          target.term.resize(suffix.cols, suffix.rows);
-        } else {
-          await write(source, suffix);
-          await write(target, suffix);
-        }
+        await apply(source, suffix);
+        await apply(target, suffix);
         assert.deepEqual(snapshot(target), snapshot(source), 'the same future suffix must preserve equivalence');
         assert.deepEqual(observe(target), observe(source), 'future public buffer/cell observations must agree');
         assert.deepEqual(target.replies, source.replies, 'future terminal replies must be equivalent');
@@ -139,6 +151,33 @@ try {
   await check('OSC8 markers retain links across import, trim, buffer switch and new link reuse', () => equivalent(
     '\x1b]8;id=one;https://example.test/one\x1b\\line-one\r\nline-two\x1b]8;;\x1b\\\x1b[?1049h\x1b]8;;https://example.test/alt\x07alt',
     ['\x1b]8;;\x07\x1b[?1049l\x1b]8;id=one;https://example.test/one\x07more\x1b]8;;\x07', '\r\nnext'.repeat(35)]));
+
+  await check('OSC8 followed by RIS preserves capture, import and future named-link reuse', async () => {
+    for (const params of ['', 'id=reset']) {
+      const link = `\x1b]8;${params};https://example.test/reset\x07`;
+      await equivalent(`${link}old\x1b]8;;\x07\x1bc`,
+        ['plain', `${link}new\x1b]8;;\x07`, '\r\ntrim'.repeat(40), `${link}again\x1b]8;;\x07`]);
+    }
+  });
+
+  for (const buffer of ['normal', 'alternate']) {
+    await check(`OSC8 height shrink in ${buffer} preserves cells, current/saved attributes and future links`, async () => {
+      const link = '\x1b]8;id=bottom;https://example.test/bottom\x07';
+      for (const kept of ['\x1b]8;;https://example.test/kept\x07', link]) {
+        await equivalent([
+          `${buffer === 'alternate' ? '\x1b[?1049h' : ''}${kept}kept\x1b]8;;\x07`
+            + `\x1b[24;1H${link}bottom\x1b7\x1b[1;10H`,
+          { cols: 80, rows: 10 }
+        ], ['current', '\x1b8saved\x1b]8;;\x07', { cols: 80, rows: 24 },
+          `\x1b[1;1H${link}reused\x1b]8;;\x07`, '\r\ntrim'.repeat(60), `${link}again\x1b]8;;\x07`,
+          '\x1b[?1049l'], { cols: 80, rows: 24 });
+      }
+    });
+  }
+
+  await check('height shrink with zero scrollback retains the uninitialized alternate capacity', () => equivalent(
+    ['before', { cols: 80, rows: 10 }], ['\x1b[?1049halt', { cols: 80, rows: 24 }, '\x1b[?1049l'],
+    { cols: 80, rows: 24, scrollback: 0 }));
 
   await check('trimmed OSC8 links do not become retained historical maps', async () => {
     const runtime = create({ scrollback: 2 });
@@ -227,8 +266,20 @@ try {
       await write(runtime, 'must-stay');
       const original = snapshot(runtime);
       assert.throws(() => capture(runtime.term), /color-observation-required/);
-      for (const modify of [state => { state.engine = 'xterm@other'; }, state => { state.normal.lines[0].cells = '!'; }, state => { state.parser.params.params = new Array(33).fill(0); }, state => { state.mouse.protocol = 'unknown'; }]) {
+      for (const modify of [state => { state.engine = 'xterm@other'; }, state => { state.normal.lines[0].cells = '!'; }, state => { state.parser.params.params = new Array(33).fill(0); }, state => { state.mouse.protocol = 'unknown'; },
+        state => { state.alternate.maxLength = 65536; }, state => { state.normal.maxLength = state.rows + state.scrollback + 1; }, state => {
+        state.links = { nextId: 2, entries: [{ id: 1, data: { uri: 'https://example.test/invalid' },
+          markers: [{ buffer: 'normal', line: state.normal.lines.length }] }] };
+      }]) {
         const invalid = structuredClone(original); modify(invalid);
+        assert.throws(() => hydrate(runtime, invalid), /Unsupported terminal current state/);
+        assert.deepEqual(snapshot(runtime), original);
+      }
+      for (const marker of [{ buffer: 'normal', line: 0, afterEnd: true },
+        { buffer: 'normal', line: original.normal.lines.length, afterEnd: false },
+        { buffer: 'detached', line: 0, afterEnd: true }, { buffer: 'unknown', line: 0 }]) {
+        const invalid = structuredClone(original);
+        invalid.links = { nextId: 2, entries: [{ id: 1, data: { uri: 'https://example.test/invalid' }, markers: [marker] }] };
         assert.throws(() => hydrate(runtime, invalid), /Unsupported terminal current state/);
         assert.deepEqual(snapshot(runtime), original);
       }

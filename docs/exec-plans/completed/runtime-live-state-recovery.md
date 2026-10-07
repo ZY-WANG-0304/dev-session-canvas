@@ -2,11 +2,17 @@
 
 本 ExecPlan 按 `docs/PLANS.md` 维护，于 2026-10-07 完成并归档。它只重新打开本轮 Runtime Persistence 重构的 live 状态恢复，不重开已经完成的容量治理、退出完整性或无 completed 历史实现。以下带日期的失败与阶段状态保留历史，完成结论以进度和结果为准。
 
+2026-10-07 PR #295 review 更正：归档后的 `c9f9e105` 存在合法 OSC8 经 RIS/缩高后无法新建 current-state reader 的 blocker；此前“无新 blocker”和 e38d2f72 同包结论只表示修前时点。仅增加本项有限修复与定向验收，不重新启动容量、原生或诊断阶段。
+
 ## 目标与全局图景
 
 Supervisor 仍存活时，重开 VS Code、重建 Webview 或从 PaneGallery 缩略图切回执行节点，应直接得到该执行的当前终端状态和配置内 scrollback，然后接收增量。相同当前状态、尺寸和 scrollback 的恢复工作不能随过去反复重绘、颜色设置等累计交互不断增加。已有读者必须继续收齐原有增量和退出尾部，不能用当前状态覆盖其尚未消费的输出。
 
 ## 进度
+
+- [x] (2026-10-07) Review 定位与先红：真实 codec 和实际 Supervisor/tracker 的开读回归均复现 `unowned-link-marker`；缩高还发现空备用 buffer 保留旧容量的合法状态边界。
+- [x] (2026-10-07) Review 修复验收：显式保留 detached/afterEnd marker 生命周期，源端不变；补 RIS、normal/alternate 缩高、current/saved 属性、后续同名链接与扩高/trim，以及三次新 reader/未来增量。codec 19/19、tracker、Supervisor 107/107、Host/reader 27/27、浏览器 3/3、typecheck/default build 通过；修前失败保持。新 head 待 PR 复审，不自动合并；旧 VSIX 不能冒充修后安装证据，不重跑未改原生/Agent/容量矩阵。
+- [x] (2026-10-07) 非阻塞 reviewer 协议时序信号：`finalizingResizeRejected` 首败、原样复跑通过分别登记技术债，不改原断言，不代称本轮执行或完整 npm test 全绿。
 
 - [x] (2026-10-06) 核对 checkpoint + journal 路径，确认分页与容量证据不证明当前状态恢复；重新登记交付项。
 - [x] (2026-10-06) M1：固定 xterm 6.0.0 精确状态 codec，覆盖模型、parser carry、palette 和链接；有限独立语义测试通过。

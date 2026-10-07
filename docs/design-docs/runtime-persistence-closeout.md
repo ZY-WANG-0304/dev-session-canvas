@@ -363,6 +363,8 @@ Host原身份、未提交/reader/finalization及共享截止保护不变；该�
 
 ## 13. 2026-10-07 最终当前状态恢复与分发结账
 
+本节为 e38d2f72 的原验收结账。其后 PR #295 review 新发现的 OSC8 恢复 blocker 及修复验收见 §14；不能用本节旧包覆盖新 codec，也不能沿用修前“无新 blocker”作为新 head 的复审结果。
+
 最终产品源码为 `e38d2f72793420eefed4c6f8e2f3de255556c38d`，默认构建的新包来自 GitHub run `37613549564`：5882375 bytes，SHA256 `a9d2a4475f697e8620511533ea585eb77bed0e6fae8df7a52f41b0ac49361752`。选择为platform、executions:null/starting:1/pending:2；用户Runtime Persistence开关默认值未改变。六架构原生输入相对run `37577646133` 未变，只复用其原生资产，从当前业务源码正常打包；实体包、schema2、owner/patch源码及binary/dependency hash、macOS helper执行权限均独立核对，不重跑原生矩阵。
 
 | 最终验收及具名复用证据 | 独立核对结果 | 边界 |
@@ -378,3 +380,11 @@ Host原身份、未提交/reader/finalization及共享截止保护不变；该�
 本地默认package/installed同样exit0，证据 `.debug/f04-final-default-installed-20261007/`；current-state填充态证据 `.debug/f04-filled-current-state-20261007-staged/`。其余验收复用范围为：三个受影响Playwright页面/PaneGallery用例、等状态1/400重绘的生产组合和固定codec语义、十会话color/size与attach/compact、此前真实Claude生命周期及snapshot非空重开、两模式退出与未改Remote/native。独立Codex Reload覆盖共用恢复路径，不称Claude执行过同一种live Reload，不以这些结果声称任意addon/并发/旧Supervisor/旧OS通过。
 
 有限产品review核对了codec先验证后安装、同队列revision捕获、Host单页/offset/真实导入确认、Webview authority/revision交接和final应用，未发现新的确定性blocker。残余固定xterm私有API、O(当前模型×有效reader)成本、历史Windows订阅停滞与not-live提示均repo-local登记；§12旧detached原窗口fresh清理未由此代证。F-01/F-02与R1/root稳定归属仍独立。本轮没有版本提升、发布或自动合并；历史失败不追认通过，普通文档收尾不再触发产品矩阵。
+
+## 14. PR #295 OSC8 恢复修正
+
+对 c9f9e105 的 review 评论 6039924656 指出一项 P2：合法 OSC8 经 RIS 或 normal/alternate 缩高后，固定 xterm 保留 detached 或超出现有行的 marker，旧 codec 导出拒绝，导致新 current-state reader 连续开读失败。接受该 finding，先在 codec 与实际 Supervisor/tracker 上复现 RIS 失败，再以显式 marker 分类修复；不是连接重试、跳过链接数据或回退长历史。保留源模型不变，导入端重建相应生命周期、链接 ID/URI 和未来同名复用。缩高回归同时覆盖备用 buffer 的旧容量保留，错误 marker 分类/普通越界行号仍在导入前拒绝。设计细节见 `runtime-live-state-recovery.md`。
+
+本次定向验证：codec 19/19、tracker、Supervisor 107/107、Host/reader 27/27、真实浏览器 current-state 3/3、typecheck 和默认 build 通过。三类场景分别连续三次新开读、只接续 R 后增量；浏览器验证 Agent/Terminal 恢复后的链接、颜色、parser 尾部与 final applied，PaneGallery 原重建用例保持。未改 provider/PTY/容量/认证路径，不重跑其既有矩阵；没有运行完整 npm test 或新跨平台 installed/真实 Agent 矩阵，§13 的旧 VSIX 不被追认为本修正的安装证据。
+
+同条 review 的非阻塞协议测试信号另记 tech-debt-tracker：reviewer 首跑 `finalizingResizeRejected` 失败、代码不变复跑通过，固定 `delay(25)` 的原时序假设存在于基线。保留两次结果和原断言，不据此追加矩阵，也不把 reviewer 执行计成本轮 worker 新验证。此次只处理具体产品缺陷并提交新 head 待复审，不提升版本、不发布、不自动合并。

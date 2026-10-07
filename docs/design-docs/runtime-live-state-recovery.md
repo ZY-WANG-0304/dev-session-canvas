@@ -48,6 +48,10 @@ checkpoint + journal 分页已限制消息和在途工作，但 checkpoint 在�
 
 cell 正文使用 `u32-xor-rle-v1`：按 content/fg/bg 通道保存原始位模式，XOR 差分、变长整数与相同值 run 只减少表示大小，不丢弃空格属性或合并/宽字符数据。导入先校验与解码，再安装到目标自身的 buffer、parser 和 link service；旧 marker 和内存清理任务先释放，新 link marker 的释放回调仍归目标所有。颜色 accumulator 必须由 tracker 从创建起维护并显式传入，headless 缺少此数据时拒绝捕获，不静默假设默认 palette。
 
+PR #295 的 OSC8 review 补充：固定 xterm 的 RIS 会替换 buffer，高度缩小的 `lines.pop()` 不通知 marker，链接服务因此可能保留旧 buffer 或越界行的 marker。选择显式保留这两类链接生命周期数据，而不是删除链接或改变源端状态：`buffer: detached` 导入为不订阅任何当前 buffer 的惰性行记录，保留同名 OSC8 在同一行复用时的行为；`afterEnd: true` 仅允许当前 buffer 行尾以外的位置，导入为该 buffer 自己的真实 marker，后续 grow/trim/delete 仍与源端同步。普通 marker 仍须指向现有行；错误的分类、越界普通行号、disposed 或非链接 marker 仍拒绝。捕获不 dispose 原 marker，也不影响已有页面；链接 entry、命名索引、nextId、cells、current/saved attributes 均保留，不回退历史重放或修改 revision/退出结算。本格式仍属本 PR 尚未合并的 v1 模型；旧 Supervisor 不热迁移，本修正不宣称解决 xterm 自身遗留链接元数据保留问题。
+
+同一缩高回归发现未初始化的 alternate buffer 保留旧行容量，之后激活也不立即缩容。其容量按 codec 已有的最大行数 65535 校验并原样恢复，不能误用当前 rows + scrollback 拒绝合法状态；normal buffer 的容量上界及实际 line count 校验不变。零 scrollback 下缩高、激活、扩高和返回 normal 一并做未来后缀等价验证。
+
 Webview 的 `executionTerminalNativeInteractions.ts` 注册了生产 OSC52 handler，因此 tracker 同样注册无副作用的 OSC52 handler，只保存当前未完成的 payload。已完成的历史复制不重放；跨 R 尚未结束的序列导入时也不执行，只有未来结束符到达才由目标既有 handler 按焦点策略处理。payload 沿用 xterm 限制，结束即清空，目标缺少对应 handler 时明确拒绝。源码已确认 Agent/Terminal 均先注册该 handler，再请求初始快照；未增加通用 addon 迁移范围。
 
 `SerializedTerminalStateTracker.captureCurrentState()` 在原队列等待真实 parser 消费，捕获失败仅使本次初始化失败，不污染后续输出。状态只用于 live 初始化，不进入画板 JSON、registry 或 durable journal checkpoint。保留原严格 checkpoint 校验和慢 reader 来源。
@@ -71,6 +75,8 @@ reader 的 `currentStateCheckpoint` 标记在释放冻结字符串后仍保留�
 固定版本私有 API 的成本是升级时必须重新核对两端模型与 codec；当前安装已固定校验 headless/browser 6.0.0，不能以版本字符串或局部单测代证完整通过。B4 的声明路径已按下节真实产品证据验收，不将收益外推到旧 Supervisor、任意 addon 或任意并发。
 
 ## 已得证据与剩余验收
+
+2026-10-07 PR #295 review 后定向修复通过；以下 e38d2f72 的完成/同包结论为修前历史，不能代证本次 codec 修正。新增真实 xterm codec 与实际 Supervisor/tracker 新 reader 用例均先在 RIS 的 `unowned-link-marker` 失败；最终 codec 19/19、tracker、Supervisor 107/107、Host/reader 27/27、typecheck、默认 build 通过。RIS、normal/alternate 缩高后三次开读、无捕获前 journal 回放和未来增量均覆盖；codec 对比未被修改的源模型与导入模型，包含当前 cells/current/saved 属性、同名链接复用、扩高/trim 和严格拒绝错误 marker 分类。备用 buffer 旧容量的首次 `buffer-capacity` 失败保留，补零 scrollback 未来操作等价后通过。生产浏览器既有三个 current-state 用例 3/3，其中 Agent/Terminal 加入 RIS 与 normal/alternate 缩高，再检查可点击链接、颜色、parser 尾部和最终 applied。未运行完整 npm test 或新跨平台安装/真实 Agent 矩阵；新 head 仍需 PR 复审，不自动合并。
 
 当前 F-04 收口口径：同 key 的无界取消等待已修复，完整当前态采用可追溯的 O(当前模型 × 有效 reader) 来源上界，不要求恒定于配置 scrollback 或会话数的内存。已有十会话固定负载与本次填充态补证共同作为具名资源观察，不推出十个满 scrollback 同时导入通过；B 的 18.4ms 发生于导入之后，本轮 `paged-current-state` 操作约 536.9ms、main-thread lag 603ms 仍保留。没有新确认的结构性产品阻塞要求追加容量阶梯、精确 allocation peak 或 profiler。最终源码 e38d2f72 与默认本地包已构建/安装通过；新包 run `37613549564` 的受影响同包验收已独立核对，产品接线审查未发现新确定性 blocker，B4 和具名 F-04 增量收口。
 
