@@ -232,7 +232,9 @@ async function verify(extension) {
   await sendAgentTurn(setup.nodeId, after);
   await poll('post-reload Agent response', probe,
     value => countMarker(textOf(value), after) >= afterBaseline + 2, 90000);
-  await dom({ kind: 'stopExecutionSession', nodeId: setup.nodeId });
+  await command('dispatchWebviewMessage', {
+    type: 'webview/stopExecutionSession', payload: { kind: 'agent', nodeId: setup.nodeId }
+  }, surface);
   const ended = await poll('Agent stop final state', snapshot, value => {
     const current = nodeOf(value, setup.nodeId);
     return current?.metadata?.agent?.liveSession === false && current.status === 'stopped' &&
