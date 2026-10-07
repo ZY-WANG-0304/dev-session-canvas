@@ -26,6 +26,9 @@ try {
     CURRENT_RUNTIME_SUPERVISOR_GENERATION,
     resolveCurrentRuntimeSupervisorBaseStoragePath,
     resolveExecutionCandidateRuntimeSupervisorBaseStoragePath,
+    resolveRootRuntimeSupervisorGeneration,
+    resolveRootRuntimeSupervisorExecutionProfile,
+    isRootOwnerRuntimeSupervisorStorageDir,
     resolveRuntimeSupervisorExecutionProfile,
     assertExecutionCandidateRuntimeSupervisorStorageDir,
     resolveRuntimeSupervisorPathsFromStorageDir,
@@ -107,6 +110,44 @@ try {
   for (const invalidProfile of ['', 'future-profile', undefined, null]) {
     assert.throws(() => resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(extensionStorageDir, invalidProfile), /Unsupported/);
     assert.throws(() => assertExecutionCandidateRuntimeSupervisorStorageDir(candidateStorageDir, invalidProfile), /Unsupported/);
+  }
+  for (const [platform, profile, generation] of [
+    ['linux', candidateProfile, 'terminal-root-owner-linux-v1'],
+    ['darwin', macProfile, 'terminal-root-owner-macos-v1'],
+    ['win32', windowsProfile, 'terminal-root-owner-windows-v1']
+  ]) {
+    const paths = platform === 'win32' ? path.win32 : path.posix;
+    const globalStorage = platform === 'win32' ? 'C:\\Users\\Test\\Global' : '/private/user/global';
+    assert.equal(resolveRootRuntimeSupervisorGeneration(profile), generation);
+    const base = paths.join(globalStorage, 'runtime-roots-v1', 'a'.repeat(64), 'b'.repeat(64),
+      'runtime-supervisor-generations', generation);
+    const storageDir = paths.join(base, 'runtime-supervisor');
+    assert.equal(resolveRootRuntimeSupervisorExecutionProfile(storageDir, platform), profile);
+    assert.equal(resolveRuntimeSupervisorExecutionProfile(storageDir, platform), profile);
+    assert.equal(isRootOwnerRuntimeSupervisorStorageDir(storageDir, platform), true);
+    for (const invalidStorage of [base, paths.join(base, 'registry.json'),
+      paths.join(base, '..', `${generation}-unknown`, 'runtime-supervisor'),
+      paths.join(globalStorage, generation, 'runtime-supervisor')]) {
+      assert.equal(resolveRootRuntimeSupervisorExecutionProfile(invalidStorage, platform), undefined);
+      assert.equal(isRootOwnerRuntimeSupervisorStorageDir(invalidStorage, platform), false);
+    }
+    for (const oldGeneration of [
+      platform === 'linux' ? 'terminal-exit-v1' : `terminal-exit-${platform === 'darwin' ? 'macos' : 'windows'}-v1`,
+      `terminal-current-state-${platform === 'darwin' ? 'macos' : platform === 'win32' ? 'windows' : 'linux'}-v1`
+    ]) {
+      const previous = paths.join(globalStorage, 'runtime-supervisor-generations', oldGeneration, 'runtime-supervisor');
+      assert.equal(resolveRuntimeSupervisorExecutionProfile(previous, platform), profile);
+      assert.equal(isRootOwnerRuntimeSupervisorStorageDir(previous, platform), false);
+      const options = { platform, env: {}, homeDir: '/home/test', tmpDir: '/tmp', userId: 1000 };
+      const previousPaths = resolveRuntimeSupervisorPathsFromStorageDir(previous, options);
+      const rootPaths = resolveRuntimeSupervisorPathsFromStorageDir(storageDir, options);
+      assert.notEqual(rootPaths.socketPath, previousPaths.socketPath);
+      assert.notEqual(rootPaths.registryPath, previousPaths.registryPath);
+      if (platform === 'linux') {
+        assert.notEqual(resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(storageDir, options).unitName,
+          resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(previous, options).unitName);
+      }
+    }
   }
   const isolatedPathOptions = { platform: 'linux', env: {}, tmpDir: '/tmp', userId: 1000, homeDir: '/home/test' };
   for (const resolvePaths of [resolveRuntimeSupervisorPathsFromStorageDir, resolveSystemdUserRuntimeSupervisorPathsFromStorageDir]) {

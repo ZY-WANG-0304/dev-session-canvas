@@ -89,6 +89,8 @@ import {
   type RuntimeSupervisorUpdateSessionScrollbackParams,
   type RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
+import { createRuntimeOwnerCompatibilityFingerprint, type RuntimeOwnerDescriptorV1 } from '../common/runtimeRootOwnership';
+import { readRuntimeRootOwner } from './runtimeRootOwner';
 import {
   resolveTerminalJournalSessionDirectory,
   TerminalSessionJournal,
@@ -328,6 +330,7 @@ export class RuntimeSupervisorServer {
   private candidateStartAttempted = false;
   private readonly executionOwner?: ExecutionOwnerLifecycle;
   private shutdownBoundary?: SupervisorShutdownBoundary;
+  private runtimeOwner?: RuntimeOwnerDescriptorV1;
 
   public constructor(
     private readonly paths: RuntimeSupervisorPaths,
@@ -513,6 +516,10 @@ export class RuntimeSupervisorServer {
 
   public async start(): Promise<void> {
     this.assertOwnedAdmissionOpen();
+    this.runtimeOwner = await readRuntimeRootOwner(this.paths.storageDir, this.executionProfile);
+    if (this.runtimeOwner && !this.executionOwner) {
+      throw new Error('Root runtime owner requires its execution provider before startup.');
+    }
     const options = this.executionOwner?.options;
     const nativeClaim = options?.kind === 'macos-provider' || options?.kind === 'linux-provider'
       ? options.claimNamespace : undefined;
@@ -521,7 +528,7 @@ export class RuntimeSupervisorServer {
       this.candidateStartAttempted = true;
       assertRuntimeSupervisorNamespaceSupport(nativeClaim);
     }
-    fs.mkdirSync(this.paths.storageDir, { recursive: true, ...(nativeClaim ? { mode: 0o700 } : {}) });
+    fs.mkdirSync(this.paths.storageDir, { recursive: true, ...(nativeClaim || this.runtimeOwner ? { mode: 0o700 } : {}) });
     if (this.executionProfile !== undefined) {
       this.namespaceClaim = await acquireRuntimeSupervisorNamespace(this.paths.storageDir, nativeClaim);
       await prepareRuntimeSupervisorSocketPath(this.paths.socketPath);
@@ -624,6 +631,13 @@ export class RuntimeSupervisorServer {
               pid: process.pid,
               runtimeBackend: this.runtimeBackend,
               runtimeGuarantee: this.runtimeGuarantee,
+              ...(this.runtimeOwner && this.executionProfile ? {
+                runtimeOwner: this.runtimeOwner,
+                executionProfile: this.executionProfile,
+                ownerCompatibilityFingerprint: createRuntimeOwnerCompatibilityFingerprint(
+                  this.runtimeOwner.generation, this.executionProfile, this.executionOwner!.admissionLimits
+                )
+              } : {}),
               capabilities: {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
