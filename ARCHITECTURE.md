@@ -53,6 +53,8 @@ B4 已将新 live 投影初始化改为固定 xterm 当前模型的分块导入�
 
 ## 2. 当前范围与非目标
 
+独立设计增量（2026-10-07，未实现）：`docs/design-docs/runtime-root-ownership.md` 选定新 live 会话按执行环境运行实例、用户 global storage 范围、画板 root 与 generation 分配 Supervisor；单根/多根共用 resolver，Webview 和 workspace slot 不拥有新 runtime。既有 session 保留 backend/storage/session/kind 原绑定，Host 管理自己的订阅而非凭窗口退出停止共享 owner。当前代码仍是窗口 slot 新建，本文不把规划标成已交付。
+
 当前顶层范围：
 
 - 在 VSCode 内提供单一逻辑画布，支持 `editor` / `panel` 两种承载面。

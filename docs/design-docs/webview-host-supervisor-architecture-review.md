@@ -96,6 +96,8 @@ F-04 的同一最终 stream 放入最小内联画板后，调用实际 Host writ
 
 ### F-03 中：画板归属与运行时归属不一致（需要修订设计决策）
 
+2026-10-07 后续状态：PR #295 合并后，独立方案已选定于 `docs/design-docs/runtime-root-ownership.md`，原多根 §6.8 和产品第 16 项已区分新建 root 目标与旧 slot 原绑定。当前仅完成规划设计，未改业务、未执行 root 归属验收。下述 slot 规格判断保留为 2026-09-16 审核基线，不把历史实现追认为违反新规格，也不将 F-03 标为已解决。
+
 #### 已核实的实现与影响
 
 相关代码集中在 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`。当前 root-local 画板保存在按 root 身份区分的用户存储中，但新建执行会话的 Supervisor 由创建窗口的 workspace storage 决定。以下位置均针对本报告的代码基线：
