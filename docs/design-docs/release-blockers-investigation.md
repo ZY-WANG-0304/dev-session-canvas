@@ -31,7 +31,9 @@ styled 文件链接在四个物理行上限内支持软/硬混合折行。首片
 
 用户继续授权修复已登记后续项。模板按钮/文案断言改为检查实际 `fileNoteNodes.tsx`，main 的编排断言保持；QuickPick 用例在本例结束时清理自己创建的 Agent，复用 `resetCanvasAfterFinalPersistence` 的原身份保存检查、原 20 秒总预算及最多一次显式再次 reset，保留保存失败与未知结果的拒绝。生产 reset 契约不改。
 
-两项 hover 先读取真实 link range、screen rect、事件目标与 xterm 渲染/fit 时序，取得直接原因后更新正式方案；不把延长等待或重跑当作修复。过程见 `docs/exec-plans/active/release-validation-followups.md`；下文是前一阶段结果，不代表本阶段已完成。
+hover 的只读探针与行 replaceChildren 调用栈确认：链接命中和下划线 show 已成功，随后 `SelectionService._refresh → RenderService.handleSelectionChanged → DomRenderer.renderRows` 重建行并丢失 underline；linkifier 仍保存相同且 hovered/underline=true 的链接。该直接选区绘制没有普通 viewport render 的链接重验证通知。固定尺寸现场没有再次 resize；先前 fit 与鼠标目标假设不作为根因。
+
+正式修复是在终端 open 后为已有 xterm `RenderService.handleSelectionChanged` 安装有限适配，先执行原选区绘制，再读取当时 linkifier 的当前链接；只对仍 hovered 且开启 underline 的链接，通过其现有 decorations setter 重新触发绘制。复用原 range 与状态，不生成新候选、不触发 hover/open 回调、不启用低置信链接默认关闭的装饰；dispose 仅恢复仍由本适配占用的原方法。该适配依赖锁定 xterm 的内部 RenderService/当前链接接口，与已有鼠标坐标适配相同在 open/dispose 生命周期内管理；真实 xterm 的确定性选区重绘、无下划线和离开负例验证此边界。过程见 `docs/exec-plans/active/release-validation-followups.md`；下文是前一阶段结果，不代表本阶段已完成。
 
 ## 修后验证与剩余阻塞
 

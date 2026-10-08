@@ -11,21 +11,25 @@
 - [x] (2026-10-09) 核对远端 main 与 PR head，复用原失败、基线对照和 reset 补录证据。
 - [x] (2026-10-09) 模板按钮/文案断言迁到 fileNoteNodes，完整模板命令 exit 0。
 - [x] (2026-10-09) 两个 QuickPick 各自清理自己的 Agent，保留保存诊断，既有 reset helper 19/19、语法检查通过。
-- [ ] 回收真实 VSIX 的原 QuickPick 清理结果与后续完整结果。
-- [ ] 定位初次 hover 波动，取得直接原因及受控对照后修复。
+- [x] (2026-10-09) f02dafd3 真实 clean-checkout VSIX 越过两个 QuickPick 清理及原目标，后续自动启动失败；完整 npm 越过模板后在 runtime-checkpoint-refresh 启动失败，原始工件保留。
+- [x] (2026-10-09) 捕获选区绘制覆盖下划线调用栈，真实 xterm 受控用例修前失败、修后 4/4；原悬停与受控回归三轮 24/24、typecheck/build 通过。
 - [ ] 完成相关定向与完整门禁，同步文档、技术债和同一 PR。
 
 ## 意外与发现
 
 原全量 Webview 392/394，失败都在首次 hover 下划线，未进入后续持续输出。基线原脚本也复现 URL/file 首次下划线波动。reset 复核抓到 pending 后原执行 saved，但原 reset 已中止；测试误把消息派发当成会最终完成的清空操作。
 
+隔离探针初次 10 项中出现失败，追加逐行替换栈后在 file 五轮中 3 败/2 过。失败现场先正常 show，再被 `SelectionService._refresh → RenderService.handleSelectionChanged → DomRenderer.renderRows` 以无下划线内容替换；当时 cols=64/rows=22 未变化，当前 link 仍 hovered/underline=true。原始日志 `/tmp/dsc310-followup-hover-{observation,row2}.log` 与隔离 probe 的 hover-probe.json 保留，探针不提交。
+
 ## 决策记录
 
 2026-10-09 / Codex：用户继续授权覆盖已登记的模板、reset 和 hover 三类后续项。模板断言保持按钮及文案要求，仅跟随组件职责。reset 复用已有 `resetCanvasAfterFinalPersistence`，清理原用例自己的执行并保留诊断身份，20 秒总预算及一次再次操作不变。hover 尚无根因，先观察 link range、实际尺寸、事件目标、xterm linkifier 与 fit 顺序，不先猜测改动或增加等待。
 
+2026-10-09 / Codex：按直接原因修复选区重绘后的当前链接装饰，不使用 timeout、合成鼠标重试或加宽夹具。在 open 后安装 RenderService.handleSelectionChanged 适配，原绘制后只重画当前仍 hovered 且 underline=true 的链接，dispose 恢复原方法；用真实 xterm 的受控选区改变先红后绿及关闭装饰/离开负例约束，避免修改整份第三方 bundle 或增加任意观察定时器。
+
 ## 结果与复盘
 
-进行中；本节随实际验证更新。完整门禁尚未通过，不能把原失败追认为成功。
+模板、QuickPick 清理和 hover 直接根因均已修复，定向验证通过；完整 Webview 与最终包待回收。f02dafd3 的 npm/clean-checkout 已越过本轮原阻塞，在更晚的 Runtime checkpoint 启动和自动启动用例失败，原因仍在核对，不能把原失败追认为成功。
 
 ## 上下文与定向
 
