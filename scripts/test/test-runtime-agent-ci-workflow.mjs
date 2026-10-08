@@ -343,7 +343,8 @@ const platforms = [{ os: 'ubuntu-22.04', platform: 'linux' }, { os: 'macos-15', 
   { os: 'windows-2025', platform: 'windows' }];
 async function selection({ values = {}, changed = [], packageSuccess = true, installedPlatforms = ['linux'],
   installedMode = 'all', sourcePath = '.github/workflows/runtime-production-acceptance.yml', repository = 'owner/repo',
-  evidencePlatforms = ['linux'], evidenceMode = 'live-runtime', evidencePath = sourcePath, evidenceRepository = repository } = {}) {
+  evidencePlatforms = ['linux'], evidenceMode = 'live-runtime', evidencePath = sourcePath, evidenceRepository = repository,
+  sourceCommit = 'a'.repeat(40), fetchError, gitCalls = [] } = {}) {
   const env = { DSC_REUSE_RUN: '', DSC_NATIVE_RUN: '', DSC_PLATFORM: 'all', DSC_SCENARIOS: '', DSC_SKIP_INSTALLED: 'false',
     DSC_INSTALLED_MODE: 'all', DSC_INSTALLED_EVIDENCE_RUN: '', DSC_AGENT_RELOAD_ONLY: 'false', DSC_ROOT_OWNERSHIP: 'false', DSC_ROOT_CHECKS: 'all',
     GITHUB_SHA: 'b'.repeat(40), GITHUB_RUN_ID: '999', GITHUB_REPOSITORY: 'owner/repo',
@@ -352,7 +353,16 @@ async function selection({ values = {}, changed = [], packageSuccess = true, ins
   await evaluateSelection(assert, { async appendFile(file, text) { assert.equal(file, env.GITHUB_OUTPUT); output += text; } },
     (command, args, options) => {
       assert.equal(command, 'git');
-      assert.deepEqual(args, ['diff', '--no-renames', '--name-only', '-z', 'a'.repeat(40), 'b'.repeat(40)]);
+      gitCalls.push(args);
+      if (args[0] === 'fetch') {
+        assert.deepEqual(args, ['fetch', '--no-tags', 'origin', sourceCommit]);
+        assert.deepEqual(options, { stdio: 'inherit', timeout: 60000 });
+        if (fetchError) throw fetchError;
+        return '';
+      }
+      assert.deepEqual(gitCalls.slice(0, -1), [['fetch', '--no-tags', 'origin', sourceCommit]],
+        'The API-verified package source must be available even after its branch was rebased.');
+      assert.deepEqual(args, ['diff', '--no-renames', '--name-only', '-z', sourceCommit, 'b'.repeat(40)]);
       assert.equal(options.encoding, 'utf8');
       return changed.join('\0');
     }, cliHelpers, async (url, options) => {
@@ -370,12 +380,12 @@ async function selection({ values = {}, changed = [], packageSuccess = true, ins
                 : 'Installed Runtime Terminal and Webview affected acceptance', conclusion: 'success' }] }))] }
           : { path: separateEvidence ? evidencePath : sourcePath, conclusion: 'failure',
             head_repository: { full_name: separateEvidence ? evidenceRepository : repository },
-            head_sha: (separateEvidence ? 'c' : 'a').repeat(40) };
+            head_sha: separateEvidence ? 'c'.repeat(40) : sourceCommit };
       } };
     }, { env });
   return { values: Object.fromEntries(output.trim().split('\n').map(line => {
     const split = line.indexOf('='); return [line.slice(0, split), line.slice(split + 1)];
-  })), requests };
+  })), requests, gitCalls };
 }
 const normalSelection = await selection();
 assert.equal(normalSelection.requests, 0);
@@ -387,11 +397,29 @@ const replayValues = { DSC_REUSE_RUN: '123', DSC_PLATFORM: 'linux', DSC_SCENARIO
 const replay = await selection({ values: replayValues,
   changed: ['ARCHITECTURE.md', 'docs/design-docs/current.md', 'scripts/smoke/run-vscode-agent-candidate.mjs',
     'scripts/test/test-runtime-agent-ci-workflow.mjs', 'tests/vscode-smoke/agent-candidate-cli.cjs',
+    'tests/playwright/e2e/workspace-focus.mjs',
     '.github/workflows/runtime-production-acceptance.yml'] });
 assert.equal(replay.requests, 2);
 assert.equal(replay.values.package_run, '123');
 assert.equal(replay.values.package_commit, 'a'.repeat(40));
 assert.deepEqual(JSON.parse(replay.values.matrix), { include: [platforms[0]] });
+assert.deepEqual(replay.gitCalls, [
+  ['fetch', '--no-tags', 'origin', 'a'.repeat(40)],
+  ['diff', '--no-renames', '--name-only', '-z', 'a'.repeat(40), 'b'.repeat(40)]
+]);
+for (const invalidSource of [{ sourceCommit: 'a'.repeat(39) }, { sourceCommit: `${'a'.repeat(40)}\n` },
+  { sourceCommit: `${'a'.repeat(40)};echo invalid` },
+  { repository: 'another/repo' }, { sourcePath: 'wrong-workflow.yml' }, { packageSuccess: false }]) {
+  const gitCalls = [];
+  await assert.rejects(selection({ values: replayValues, ...invalidSource, gitCalls }));
+  assert.deepEqual(gitCalls, [], 'Reject unverified package sources before fetching or comparing.');
+}
+const fetchFailure = new Error('controlled original package source unavailable');
+const failedFetchCalls = [];
+await assert.rejects(selection({ values: replayValues, fetchError: fetchFailure, gitCalls: failedFetchCalls }),
+  error => error === fetchFailure);
+assert.deepEqual(failedFetchCalls, [['fetch', '--no-tags', 'origin', 'a'.repeat(40)]],
+  'Unavailable source must fail, never compare a fallback ref or accept package reuse.');
 const nativeOnly = await selection({ values: { DSC_NATIVE_RUN: '123', DSC_PLATFORM: 'linux',
   DSC_SCENARIOS: 'codex-live-runtime-natural' }, changed: ['extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts'] });
 assert.equal(nativeOnly.values.package_run, '999');
@@ -494,7 +522,8 @@ for (const changes of [{ DSC_SKIP_INSTALLED: 'false' }, { DSC_REUSE_RUN: '' },
 }
 await assert.rejects(selection({ values: { DSC_INSTALLED_MODE: 'live-runtime' } }), /Partial acceptance/);
 for (const file of ['extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
-  'scripts/build/build.mjs', 'scripts/native/linux-owner.cc', 'package-lock.json',
+  'scripts/build/build.mjs', 'scripts/native/linux-owner.cc', 'package.json', 'package-lock.json',
+  'tests/playwright-other/product-input.js',
   'extensions/vscode/dev-session-canvas/package.json', 'scripts/release/package-vsix.mjs']) {
   await assert.rejects(selection({ values: replayValues, changed: [file] }), /not product inputs/);
 }
