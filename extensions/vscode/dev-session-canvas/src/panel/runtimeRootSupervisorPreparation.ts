@@ -67,6 +67,9 @@ export async function prepareRootRuntimeSupervisor(
     let submitted = false;
     let settled = false;
     let result: RootPreparationResult | undefined;
+    let processExited = false;
+    let ipcDisconnected = false;
+    let stderrClosed = child.stderr === null;
     let stderrBytes = 0;
     let exitTimer: NodeJS.Timeout | undefined;
     const budgetTimer = setTimeout(() => finish(unconfirmed('Root runtime preparation deadline expired.')),
@@ -90,6 +93,7 @@ export async function prepareRootRuntimeSupervisor(
       child.removeListener('close', onClose);
       child.stderr?.removeListener('data', onStderr);
       child.stderr?.removeListener('error', onStderrError);
+      child.stderr?.removeListener('close', onStderrClose);
       disconnect();
       child.stderr?.destroy();
       child.unref();
@@ -121,9 +125,22 @@ export async function prepareRootRuntimeSupervisor(
       beginClose(response ?? unconfirmed('Root runtime preparation helper returned an invalid result.'));
     };
     const onError = (): void => beginClose(unconfirmed('Root runtime preparation helper failed.'));
-    const onDisconnect = (): void => beginClose(unconfirmed('Root runtime preparation IPC disconnected without a result.'));
-    const onExit = (): void => beginClose(unconfirmed('Root runtime preparation helper exited without a result.'));
+    // Node may omit aggregate close after parent-initiated disconnect. All three facts are still required.
+    const maybeClosed = (): void => {
+      if (processExited && ipcDisconnected && stderrClosed) onClose();
+    };
+    const onDisconnect = (): void => {
+      ipcDisconnected = true;
+      beginClose(unconfirmed('Root runtime preparation IPC disconnected without a result.'));
+      maybeClosed();
+    };
+    const onExit = (): void => {
+      processExited = true;
+      beginClose(unconfirmed('Root runtime preparation helper exited without a result.'));
+      maybeClosed();
+    };
     const onClose = (): void => finish(result ?? unconfirmed('Root runtime preparation helper closed without a result.'));
+    const onStderrClose = (): void => { stderrClosed = true; maybeClosed(); };
     const onStderr = (chunk: Buffer): void => {
       // Drain diagnostics without retaining payload or including it in returned errors.
       stderrBytes = Math.min(STDERR_LIMIT_BYTES + 1, stderrBytes + chunk.byteLength);
@@ -141,6 +158,7 @@ export async function prepareRootRuntimeSupervisor(
     child.once('close', onClose);
     child.stderr?.on('data', onStderr);
     child.stderr?.on('error', onStderrError);
+    child.stderr?.once('close', onStderrClose);
   });
 }
 

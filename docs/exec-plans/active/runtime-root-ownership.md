@@ -87,6 +87,8 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 
 后续仅补 R1-03 已列出的两例真实中断：临时测试 launcher 在明确 barrier 暂停，intent 前断 IPC并等 helper close；detached 已提交、Main 尚未取得运行锁时终止本轮直接跟踪的 helper，核对 pending 不重复提交、迟到 ready 后复用同 token/PID。原磁盘夹具仍独立保留，真实场景不等同完整 EH crash。wrapper 用既有运行锁原语确认退出，没有生产测试 hook 或新诊断框架；本地仍在原预检处失败，两例待 CI，不写成已通过。
 
+提交 `a11020a5` / run `37707854830` 三平台在新增中断验证失败（Linux/macOS 明确为取消后的 aggregate close 等待超时；Windows 原失败待核对日志）。最小真实 fork 复现及 Node 实现核对表明父方主动 disconnect 后，进程 exit、stderr close、IPC disconnect 均可发生而 aggregate close 不再触发。此问题也影响 Host `prepareRootRuntimeSupervisor()` 的成功结算，不只是测试：本轮修为接受标准 close，或明确观察上述三事实全齐，仍按原 30 秒总预算和 1 秒退出预算。少任一事实仍 unconfirmed，不增加时限、不把 exit 单独当释放。新增两项受控测试（总 21），正常 native 测试同时调用真实 Host helper API覆盖此路径，后续 CI 待验证；不追认原失败。
+
 ## 接口与依赖
 
 `RuntimeOwnerDescriptorV1` 固定 schema/environmentKey/userStorageScopeKey/root/generation；路径 resolver 接受 canonical global storage 与已解析 root，不接受 Webview 自报 path。环境 helper 返回摘要及本机用户身份，失败抛出明确错误；Windows 可使用系统自带进程调用只读 native API，若能避免修改 PTY 资产则优先采用。hello owner 字段对旧 binding 可缺省，对新 root generation 必须校验。具体导出签名在 P1 实现后补齐。

@@ -131,7 +131,15 @@ async function runTests() {
       child.stderr.resume();
       const messages = [];
       let childError;
-      const closed = new Promise(resolve => child.once('close', (code, signal) => resolve({ code, signal })));
+      const exited = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
+      const stderrClosed = new Promise(resolve => child.stderr.once('close', resolve));
+      const disconnected = new Promise(resolve => child.once('disconnect', resolve));
+      // Parent-initiated disconnect can suppress Node's aggregate close event.
+      // Require the actual exit and closure of both piped resources in that case.
+      const closed = Promise.race([
+        new Promise(resolve => child.once('close', (code, signal) => resolve({ code, signal }))),
+        Promise.all([exited, stderrClosed, disconnected]).then(([result]) => result)
+      ]);
       const helper = { child, closed, messages, get error() { return childError; } };
       helpers.push(helper);
       child.on('error', error => { childError = error; });
@@ -194,6 +202,9 @@ async function runTests() {
     assert.equal(await readFile(path.join(first.base, 'owner.json'), 'utf8'), ownerBytes);
     assert.equal(await readFile(path.join(first.base, 'startup-intent.json'), 'utf8'), intentBytes);
     assert.equal(await readFile(path.join(first.base, 'startup-started.json'), 'utf8'), receiptBytes);
+    assert.deepEqual(await api.prepareRootRuntimeSupervisor({ storageDir: first.storageDir, owner: first.owner,
+      executionProfile: profile, preferredBackends: ['legacy-detached'], supervisorScriptPath: supervisor,
+      supervisorLauncherScriptPath: launcher }), { kind: 'ready', backend: 'legacy-detached' });
     reused.client.dispose();
     console.log('Same-owner concurrent helpers converge and ready reuse preserves authority and token.');
 

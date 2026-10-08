@@ -140,6 +140,40 @@ await test('one spawn submits one private IPC request after spawn and waits for 
   h.assertClean();
 });
 
+await test('parent IPC disconnect needs actual exit and stderr closure when Node omits aggregate close', async () => {
+  for (const order of [['exit', 'stderr'], ['stderr', 'exit']]) {
+    const h = harness();
+    let settled = false;
+    const operation = h.prepare().then(result => { settled = true; return result; });
+    h.child.emit('spawn');
+    h.child.emit('message', { kind: 'ready', backend: 'legacy-detached' });
+    assert.equal(h.child.connected, false);
+    for (let index = 0; index < order.length; index++) {
+      if (order[index] === 'exit') h.child.emit('exit', 0, null);
+      else h.child.stderr.emit('close');
+      await Promise.resolve();
+      if (index === 0) assert.equal(settled, false);
+    }
+    assert.deepEqual(await operation, { kind: 'ready', backend: 'legacy-detached' });
+    h.assertClean();
+  }
+});
+
+await test('an exit or a closed diagnostic pipe alone cannot confirm helper release', async () => {
+  for (const missing of ['exit', 'stderr', 'ipc']) {
+    const h = harness();
+    if (missing === 'ipc') h.child.disconnect = () => { h.child.disconnectCount++; h.child.connected = false; };
+    const operation = h.prepare();
+    h.child.emit('spawn');
+    h.child.emit('message', { kind: 'ready', backend: 'legacy-detached' });
+    if (missing !== 'exit') h.child.emit('exit', 0, null);
+    if (missing !== 'stderr') h.child.stderr.emit('close');
+    h.advance(1000);
+    assert.equal((await operation).kind, 'unconfirmed');
+    h.assertClean();
+  }
+});
+
 for (const response of [{ kind: 'ready', backend: 'legacy-detached' },
   { kind: 'rejected', reason: 'Owner identity conflict.' }, { kind: 'unconfirmed', reason: 'Prior startup is unknown.' }]) {
   await test(`valid ${response.kind} outcome is retained without retry or backend fallback`, async () => {
