@@ -442,7 +442,7 @@ async function verifyCurrentStateRelay(RuntimeTerminalReadRelay, original) {
 }
 
 async function verifyClientReconnectPolicy(RuntimeSupervisorClient) {
-  const client = new RuntimeSupervisorClient({});
+  const client = new RuntimeSupervisorClient({ backend: {} });
   const attempts = [];
   client.connectWithRestart = async (allowRestart) => {
     attempts.push(allowRestart);

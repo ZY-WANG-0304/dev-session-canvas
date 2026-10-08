@@ -22,6 +22,7 @@ interface ReadBinding {
   consumerId: 'editor' | 'panel';
   currentState?: 'xterm-current-state-v1';
   opening?: Promise<TerminalStreamReadDescriptor>;
+  lateOpening?: Promise<void>;
   opened?: Promise<TerminalStreamReadDescriptor | undefined>;
   onReleased?: (result: RuntimeSupervisorCloseTerminalReadResult) => void;
   settlementMode?: 'final-application-v1';
@@ -73,9 +74,7 @@ export class RuntimeTerminalReadRelay {
   private async openBinding(binding: ReadBinding): Promise<TerminalStreamReadDescriptor | undefined> {
     const { key, client, sessionId, authorityId, consumerId, settlementMode, currentState } = binding;
     try {
-      binding.opening = client.openTerminalRead({ sessionId, authorityId, consumerId,
-        ...(currentState ? { currentState } : {}),
-        ...(settlementMode ? { settlementMode } : {}) }).then(value => {
+      const acceptDescriptor = (value: TerminalStreamReadDescriptor): TerminalStreamReadDescriptor => {
         const descriptor = normalizeTerminalStreamRead(value);
         if (!descriptor || descriptor.sessionId !== sessionId || descriptor.authorityId !== authorityId) {
           throw new Error('Invalid terminal read descriptor.');
@@ -84,7 +83,13 @@ export class RuntimeTerminalReadRelay {
         if (descriptor.settlementMode !== settlementMode) throw new Error('Terminal reader settlement was not negotiated.');
         if (descriptor.currentState?.format !== currentState) throw new Error('Terminal current state was not negotiated.');
         return descriptor;
-      });
+      };
+      binding.opening = client.openTerminalRead({ sessionId, authorityId, consumerId,
+        ...(currentState ? { currentState } : {}),
+        ...(settlementMode ? { settlementMode } : {}) }, lateRead => {
+        // Timeout rejects the UI open; the original late descriptor still belongs to this release.
+        binding.lateOpening = lateRead.then(value => { acceptDescriptor(value); }).catch(() => undefined);
+      }).then(acceptDescriptor);
       const descriptor = await binding.opening;
       if (this.reads.get(key) !== binding) {
         await this.release(binding, { kind: 'cancelled', reason: 'open-no-longer-current' });
@@ -300,6 +305,7 @@ export class RuntimeTerminalReadRelay {
     // Keep the client until a cancelled in-flight open has yielded its original descriptor.
     const send = async (): Promise<RuntimeSupervisorCloseTerminalReadResult> => {
       if (!binding.descriptor) await binding.opening?.catch(() => undefined);
+      if (!binding.descriptor) await binding.lateOpening;
       const descriptor = binding.descriptor;
       if (!descriptor) return { ok: true, settlement: 'unconfirmed' } as const;
       const result = await binding.client.closeTerminalRead({ sessionId: descriptor.sessionId,

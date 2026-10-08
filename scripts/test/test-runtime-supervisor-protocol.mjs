@@ -80,6 +80,7 @@ try {
     serializeRuntimeSupervisorError
   } = require(protocolOutfile);
   const { RuntimeSupervisorClient } = require(clientOutfile);
+  const { RuntimeSupervisorServer } = require(supervisorOutfile);
   const { mergeTerminalStreamProjectionWithLiveTail } = require(terminalSessionStreamOutfile);
   const {
     TerminalSessionJournal,
@@ -223,6 +224,13 @@ try {
     'runtime supervisor 不应再保留 Claude 挂起恢复或 suspend 文案识别链路。'
   );
 
+  await assertRuntimeSupervisorRejectsResizeDuringFinalization(
+    RuntimeSupervisorServer,
+    TerminalSessionJournal,
+    SerializedTerminalStateTracker,
+    SERIALIZED_TERMINAL_CHECKPOINT_PROFILES,
+    tempDir
+  );
   const runtimeEvidence = await assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supervisorOutfile, tempDir);
   await assertRuntimeSupervisorRestartUsesJournal(supervisorOutfile, tempDir, runtimeEvidence.marker);
   await assertRuntimeSupervisorV2CheckpointFallback(
@@ -239,6 +247,115 @@ try {
   console.log('runtimeSupervisorProtocol tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
+}
+
+async function assertRuntimeSupervisorRejectsResizeDuringFinalization(
+  RuntimeSupervisorServer,
+  TerminalSessionJournal,
+  SerializedTerminalStateTracker,
+  checkpointProfiles,
+  tempDir
+) {
+  const sessionId = 'controlled-finalization';
+  const storageDir = path.join(tempDir, sessionId);
+  const marker = 'QUEUED-FINAL-OUTPUT\r\n';
+  const tracker = new SerializedTerminalStateTracker(80, 24, { scrollback: 100, initialOutputSequence: 0 });
+  const journal = await TerminalSessionJournal.create({
+    storageDir, sessionId, initialCols: 80, initialRows: 24, initialScrollback: 100, checkpointProfiles
+  });
+  const server = new RuntimeSupervisorServer({ storageDir }, 'legacy-detached', 'best-effort');
+  // Keep the real admission, operation queue, journal and final snapshot paths.
+  server.schedulePersist = () => {};
+  server.scheduleIdleShutdownIfNeeded = () => {};
+  const messages = [];
+  const socket = { destroyed: false, write: (data) => { messages.push(JSON.parse(data)); return true; } };
+  let emitData;
+  let emitExit;
+  let resizeCalls = 0;
+  const disposedSubscriptions = [];
+  const controlledProcess = {
+    pid: 1,
+    backend: 'node-pty',
+    processName: 'controlled-terminal',
+    write() {},
+    resize() { resizeCalls += 1; },
+    kill() {},
+    onData(listener) {
+      emitData = listener;
+      return { dispose() { disposedSubscriptions.push('data'); } };
+    },
+    onExit(listener) {
+      emitExit = listener;
+      return { dispose() { disposedSubscriptions.push('exit'); } };
+    }
+  };
+  let releaseOperations;
+  const operationGate = new Promise((resolve) => { releaseOperations = resolve; });
+  const session = {
+    sessionId, kind: 'terminal', live: true, lifecycle: 'live', startedAtMs: Date.now(),
+    runtimeBackend: 'legacy-detached', runtimeGuarantee: 'best-effort', resumePhaseActive: false,
+    shellPath: process.execPath, cwd: storageDir, displayLabel: 'Controlled finalization', launchMode: 'start',
+    stopRequested: false, output: '', outputSequence: 0, cols: 80, rows: 24, scrollback: 100,
+    terminalAuthorityId: journal.getAuthorityId(), terminalJournal: journal, terminalStateTracker: tracker,
+    terminalOperationChain: operationGate, terminalMutationAdmissionOpen: true, process: controlledProcess,
+    terminalCheckpoint: {
+      version: 1, sessionId, authorityId: journal.getAuthorityId(), revision: 0,
+      cols: 80, rows: 24, scrollback: 100, createdAtMs: Date.now(), serializedState: tracker.getSerializedState()
+    }
+  };
+  server.sessions.set(sessionId, session);
+  server.subscriptions.set(socket, new Map([[sessionId, 'terminal-stream-v1']]));
+  try {
+    server.bindSessionProcess(session);
+    // Model accepted output still queued when the real exit handler closes admission.
+    emitData(marker);
+    emitExit({ exitCode: 0 });
+    assert.equal(session.terminalMutationAdmissionOpen, false, 'Exit must synchronously close mutation admission.');
+    assert.ok(session.finalizationPromise, 'Exit must queue finalization behind already accepted output.');
+    assert.equal(session.live, true, 'The operation barrier must hold finalization before live is cleared.');
+    assert.equal(session.process, controlledProcess);
+    assert.deepEqual(messages, [], 'Neither queued output nor the final state may pass the operation barrier.');
+    assert.equal(journal.getRevision(), 0);
+
+    await assert.rejects(
+      waitForPromise(server.resizeSession({ sessionId, cols: 77, rows: 19 }), 1000, 'finalizing resize rejection'),
+      { code: 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_LIVE' },
+      'Resize must reject before finalization settles, without waiting for the operation barrier.'
+    );
+    assert.equal(session.live, true);
+    assert.deepEqual(messages, []);
+    assert.deepEqual({ cols: session.cols, rows: session.rows, resizeCalls, revision: journal.getRevision() },
+      { cols: 80, rows: 24, resizeCalls: 0, revision: 0 });
+
+    releaseOperations();
+    await waitForPromise(session.finalizationPromise, 5000, 'controlled finalization');
+    assert.equal(session.terminalJournalError, undefined);
+    assert.deepEqual(messages.map((message) => message.event), ['sessionTerminalEvent', 'sessionState'],
+      'Accepted output must publish before exactly one complete final state.');
+    assert.equal(messages[0].payload.event.data, marker);
+    const snapshot = messages[1].payload;
+    assertTerminalStreamSnapshot(snapshot, 'controlled finalization snapshot');
+    assert.equal(snapshot.live, false);
+    assert.equal(snapshot.lifecycle, 'closed');
+    assert.equal(snapshot.lastExitCode, 0);
+    assert.equal(snapshot.output, marker);
+    assert.deepEqual(snapshot.terminalStream.events, [messages[0].payload.event]);
+    assert.deepEqual({ cols: snapshot.cols, rows: snapshot.rows, resizeCalls, revision: snapshot.terminalRevision },
+      { cols: 80, rows: 24, resizeCalls: 0, revision: 1 },
+      'Rejected resize must not change geometry or append a journal event during or after finalization.');
+    assert.equal(session.process, undefined);
+    assert.deepEqual(disposedSubscriptions, ['data', 'exit']);
+    console.log('runtimeSupervisor controlled finalizing resize test passed');
+  } finally {
+    releaseOperations();
+    await session.terminalOperationChain;
+    session.outputSubscription?.dispose();
+    session.exitSubscription?.dispose();
+    server.subscriptions.clear();
+    server.sessions.clear();
+    tracker.dispose();
+    await journal.flush();
+  }
 }
 
 async function assertRuntimeSupervisorClientWaitsForHello(RuntimeSupervisorClient, tempDir, checkpointCapability = false) {
@@ -490,7 +607,8 @@ async function assertRuntimeSupervisorFinalStateUsesFreshSerializedSnapshot(supe
     await waitForRuntimeSupervisorRegistrySession(
       registryPath,
       'attach-gap-terminal',
-      (session) => session.terminalRevision > attachGapSnapshot.terminalRevision
+      // PTY input echo advances revision before the child emits the replay marker.
+      (session) => session.terminalRevision > attachGapSnapshot.terminalRevision && session.output.includes(gapMarker)
     );
     const checkpointParams = {
       sessionId: 'attach-gap-terminal',
@@ -807,7 +925,10 @@ setInterval(() => undefined, 1000);
         revisionOrderEvents[orderedOutputIndex].payload.event.revision,
       'The journal must assign the scrollback revision before later output.'
     );
-    const publishedScrollbackBeforeLaterOutput = orderedScrollbackIndex < orderedOutputIndex;
+    assert.ok(
+      orderedScrollbackIndex < orderedOutputIndex,
+      'Supervisor must publish the scrollback event before later output, matching journal revision order.'
+    );
     await sendRuntimeSupervisorRequest(socket, messages, 'deleteSession', {
       sessionId: revisionOrderSessionId
     });
@@ -962,17 +1083,8 @@ setInterval(() => undefined, 1000);
       'finalization race output',
       10000
     );
-    await delay(25);
-    const finalizingResizeResponse = await sendRuntimeSupervisorRawRequest(
-      socket,
-      messages,
-      'resizeSession',
-      {
-        sessionId: finalizationRaceSessionId,
-        cols: 77,
-        rows: 19
-      }
-    );
+    // Tail output does not imply that the PTY exit callback has arrived.
+    // The controlled test separately covers rejection before final state publication.
     const finalizationRaceState = await waitForRuntimeSupervisorMessage(
       messages,
       (message) =>
@@ -989,19 +1101,14 @@ setInterval(() => undefined, 1000);
       'finalization race state',
       15000
     );
-    assert.deepEqual(
-      {
-        publishedScrollbackBeforeLaterOutput,
-        finalizingResizeRejected:
-          finalizingResizeResponse.ok === false &&
-          finalizingResizeResponse.error?.code === 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_LIVE'
-      },
-      {
-        publishedScrollbackBeforeLaterOutput: true,
-        finalizingResizeRejected: true
-      },
-      'Supervisor must publish terminal revisions in journal order and reject mutations before one complete final state.'
+    const completedResizeResponse = await sendRuntimeSupervisorRawRequest(
+      socket,
+      messages,
+      'resizeSession',
+      { sessionId: finalizationRaceSessionId, cols: 77, rows: 19 }
     );
+    assert.equal(completedResizeResponse.ok, false, 'Resize must reject after the complete final state.');
+    assert.equal(completedResizeResponse.error?.code, 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_LIVE');
     assertTerminalStreamSnapshot(finalizationRaceState.payload, 'finalization resize race final snapshot');
     assert.equal(
       finalizationRaceState.payload.terminalStream.revision,
