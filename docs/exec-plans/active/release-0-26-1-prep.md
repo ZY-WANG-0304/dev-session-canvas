@@ -11,7 +11,8 @@
 - [x] (2026-10-09) fetch origin，基于 f57b11f9 创建独立 release-0-26-1-prep worktree，保留原工作区的未提交内容。
 - [x] (2026-10-09) 确认 v0.26.0 已公开发布；核对其后主线 #297、#298、#300–#307 与正式设计。
 - [x] (2026-10-09) 同步版本、双 CHANGELOG、英中文 README/listing、支持说明、手册与发布契约。
-- [ ] 提交静态输入，在预合并结果执行 preflight、完整 verify 和 notifier / root 定向验证。
+- [x] (2026-10-09) 提交静态输入 930070ce，构建本地预合并结果 953c3ee8，preflight 和 root/notifier 定向验证通过。
+- [ ] 完整 verify、Webview 和 clean-checkout 验证执行中；首次 Marketplace socket 路径错误已改用现有短目录参数重跑。
 - [ ] 重新 fetch/rebase，推送分支并创建 main 目标的发布准备 PR，回收 CI 结果。
 
 ## 意外与发现
@@ -27,7 +28,7 @@
 
 ## 结果与复盘
 
-范围审计已完成，版本物料与验证尚在执行。没有新增产品功能或发布门禁例外。既有 root 多窗口整图并发保存、故障恢复、旧系统及桌面通知限制继续由正式设计和技术债跟踪，不因准备发版关闭。
+范围审计和静态版本物料已完成；root 身份/准备、Host 333/333、Supervisor 116/116、reader 32/32、旧历史 136 项及 notifier 类型/联动/英中文 locale 已通过，完整门禁仍在执行。没有新增产品功能或发布门禁例外。既有 root 多窗口整图并发保存、故障恢复、旧系统及桌面通知限制继续由正式设计和技术债跟踪，不因准备发版关闭。
 
 ## 上下文与定向
 
@@ -74,3 +75,21 @@ root 是 VS Code 的 workspace folder；owner 是托管该 root 持久会话的�
 不新增运行时接口或依赖；沿用 `scripts/release/release-preflight.mjs`、`scripts/release/run-clean-checkout-vsix-validation.mjs` 与 `.github/workflows/release-preflight.yml`。Node 22 为 CI 基线；原生资产按现有输入校验复用或构建。发布门禁实现保持不变。
 
 修订记录：2026-10-09，创建计划，记录主线范围、工作区隔离与完整验证要求。
+
+## 2026-10-09 验证记录
+
+静态输入提交 `930070ce` 与 `origin/main@f57b11f9` 生成本地 merge commit `953c3ee8`；`/tmp/dsc0261v` 与 `/tmp/dsc0261n` 为独立短路径 worktree，Node 22.23.3，分别 `npm ci`。默认构建使用 `/tmp/dsc-release-026-assets` 六目标集合，通过原生源码/依赖/hash 校验；此集合按 CONTRIBUTING 允许复用的同原生输入条件使用，不代表本版全平台重新验收。
+
+root ownership/preparation 全部通过，包含真实 Linux 身份的双子进程一致性，其余平台/锁仍按各测试声明为受控验证。Host execution wiring 333/333、Supervisor wiring 116/116、reader 32/32、legacy history 136 项与 notifier typecheck 通过，日志 `/tmp/dsc0261-targeted.log`。VS Code 1.141.0 的 companion、英文和简体中文 locale smoke 均退出 0，日志 `/tmp/dsc0261-notifier.log`、`/tmp/dsc0261-notifier-locale.log`；这不代证真实 OS 通知权限与桌面弹出。
+
+完整 verify 首次在 Marketplace 宿主启动前 `listen EINVAL` 失败，Unix socket 为 136 字符深路径，日志 `/tmp/dsc0261-verify.log`。用脚本已有的短目录参数重跑，不修改产品或断言：
+
+    DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets \
+    DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT=/tmp/dsc261m \
+    DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT=/tmp/dsc261mt \
+    DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT=/tmp/dsc261s \
+    npm run release:verify -- --version 0.26.1
+
+重跑日志 `/tmp/dsc0261-verify-short.log`。为完整回收已有债务，另独立运行全部 382 项 Webview（`/tmp/dsc0261-webview.log`）与无 skip 的 HEAD clean-checkout（`/tmp/dsc0261-clean-vsix.log`）；尚未回收最终结果，不声称完整通过。
+
+修订记录：2026-10-09，记录首轮验证、环境路径错误与实际通过范围，补齐跨窗口持久化默认值和后端未知状态的说明。

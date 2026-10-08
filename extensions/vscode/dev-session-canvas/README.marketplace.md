@@ -43,7 +43,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Arrange the canvas layout once from the context menu while preserving group and workspace-root boundaries
 - Clear the current ordinary group, workspace root, or entire workspace from the canvas context menu with explicit scope-aware confirmation
 - Keep canvas browsing available in `Restricted Mode` while automatically disabling execution entry points
-- Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and otherwise fall back automatically to `best-effort`
+- Provide stronger persistence guarantees through `runtimePersistence.enabled` when `systemd --user` is available on Linux local or `Remote SSH`, and use `best-effort` when the stronger backend is confirmed unavailable; an unknown startup result does not trigger another backend
 - Display live PTY titles in Agent and Terminal context rows without replacing user-authored canvas titles
 - View sidebar `Nodes` and `Session History` lists to jump to current canvas nodes and restore or fork a new `Agent` node from history
 - Manage workspace folders and git worktrees from the sidebar `Nodes` view, including adding existing worktrees and explicit confirmations before removing folders or linked worktrees
@@ -92,7 +92,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
 - First-time installs and upgrades from `0.26.0` to `0.26.1` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
 - UI language follows the VS Code locale. This release does not add an extension-specific language setting and does not translate user-owned content, terminal output, provider output, or marketplace template data
-- Supervisor-backed live recovery still depends on `runtimePersistence.enabled` and backend availability. Existing live sessions retain their original Supervisor and protocol; local snapshot-only processes do not gain a cross-Host lifetime guarantee
+- New persistent sessions depend on `runtimePersistence.enabled` and backend availability. Existing root-bound sessions retain their binding in another window, even if that window defaults persistence to off; explicitly turning persistence off still cleans up this canvas's exact bindings. Older live sessions retain their original Supervisor and protocol; local snapshot-only processes do not gain a cross-Host lifetime guarantee
 - Current-node Agent forks use `devSessionCanvas.canvas.forkPlacementDirection = up` by default. Choose `down` or `right` if preferred; the setting affects only future current-node forks and does not rearrange existing forks or Session History placement
 - The production Template Marketplace may start with an empty catalog. Production does not expose code-only seed templates; real templates must be published through the marketplace or a controlled operations flow
 - Pane Gallery only changes multi-root presentation. Single-root workspaces keep the normal canvas, and `rootGroups` remains the default multi-root mode and conservative fallback

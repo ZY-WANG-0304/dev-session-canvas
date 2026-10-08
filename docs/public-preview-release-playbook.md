@@ -76,7 +76,7 @@
 4. UI 语言跟随 VS Code locale；本版本不新增扩展自己的语言设置，也不会翻译用户内容、路径、终端输出、provider 原始输出或市场模板数据。
 5. 已结束的持久化 Runtime 重开只保留节点、配置与退出状态，不恢复正文或自动 start/resume；显式 provider Resume 和 provider 会话文件独立保留。
 6. 旧 live 会话沿用原 Supervisor、storage 与 session，不自动迁移到当前原生实现；新会话使用当前实现，旧协议不获得新完整性承诺。
-7. 跨 Host 存活仍要求 `devSessionCanvas.runtimePersistence.enabled` 与可用后端；Supervisor 崩溃或机器重启不保证恢复。snapshot-only 不承诺跨 Host 存活，且不在本轮已结束 Runtime 无历史规则的改动范围内。
+7. 新建持久会话要求开启持久化并有可用后端；已有 root 绑定在默认关闭持久化的另一窗口仍保留，用户显式关闭开关则按本画板精确绑定清理。未知启动结果不切换后端。Supervisor 崩溃或机器重启不保证恢复，snapshot-only 不承诺跨 Host 存活。
 8. `devSessionCanvas.canvas.forkPlacementDirection` 默认 `up`，也可设为 `down` 或 `right`；设置热生效于后续当前节点 Fork，不重排既有节点 / 连线，历史会话 Fork 继续使用通用邻近避碰。
 9. 模板市场生产入口默认为 `https://dscanvas.dev/templates`；生产环境不会把代码内 seed 模板暴露为正式内容，初始空目录属于当前受控状态，不代表扩展安装失败。
 10. 若用户此前显式配置过 `devSessionCanvas.runtimePersistence.enabled`、`devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled`、`devSessionCanvas.canvas.multiRootPresentationMode` 或 `devSessionCanvas.canvas.forkPlacementDirection`，升级到 `0.26.1` 后会继续沿用该明确选择；未配置 `enabledAttentionSignals` 时继续使用默认 allow-list，未配置 `multiRootPresentationMode` 时继续使用默认 `rootGroups`。
@@ -291,7 +291,7 @@ release manifest 不提交回代码库。它记录发布后事实，包括 relea
 3. 打开 GitHub Release 页面，确认 `dev-session-canvas-0.26.1.vsix`、`dev-session-canvas-notifier-0.26.1.vsix` 与 `release-manifest-0.26.1.json` 都存在于 Assets 中。
 4. 下载 release manifest，复核其中 `releaseRef`、两个 VSIX 的 `sha256`、`readmeDocRef`、`githubRelease.status`、marketplace `verified` 状态和 `tags.triggerTagStatus` 与实际发布事实一致。
 5. 在干净 profile 中优先从 Open VSX 安装或升级；另从 GitHub Release 下载 VSIX 手动安装一次，验证兜底包可成功激活并能打开主画布，同时验证 notifier 与主扩展的安装关系未被打包破坏。Visual Studio Marketplace 恢复后再补做该路径的干净 profile 安装 / 升级验证。
-6. 定向复核 `0.26.1` 用户可见主路径：PTY title 可由 OSC 0 / OSC 2 设置并展示，`CSI 21 t` 查询得到 PTY owner 的 `OSC l` 回写，title 控制序列和 payload 不进入可见输出或 journal，旧 execution session 的迟到消息不能覆盖新 session；同时确认既有 journal compact、Fork 定向落位、resize 和终态门禁主路径未回归。
+6. 定向复核 `0.26.1` 用户可见主路径：同 root 的新持久会话在同环境/存储范围跨窗口共享归属，旧 live 保持原绑定；明确拒绝后可以重试/删除，无响应请求显示结果未知；关闭持久化的 Agent / Terminal 提醒能到达 notifier，用户确认后继续输出与保存。另复核旧纯历史删除、当前态重开和已结束无正文语义。
 7. 复核生产服务状态时使用 `/api/v1/meta`、deploy tag、Cloudflare deployment id 和 production smoke 证据；不要把插件 `v0.26.1` tag 当成服务当前运行版本。
 8. 确认 issue 链接、安全邮箱与 `docs/support.md` 跳转正常。
 9. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace`、本地 CLI 依赖、multi-root shared live runtime 恢复边界、模板市场 Preview、GitHub OAuth、生产空目录和 GitHub Release assets 兜底安装口径仍被正确表达，没有被误读成稳定版承诺、真实模板预置承诺或 marketplace 可用性承诺。

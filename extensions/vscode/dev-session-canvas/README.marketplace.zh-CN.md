@@ -43,7 +43,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 可从右键菜单一次性整理画布布局，同时保留分组和 workspace root 边界
 - 可从画布右键菜单清空当前普通分组、当前 workspace root 或整个 workspace，并在执行前明确确认作用域
 - `Restricted Mode` 下保留画布浏览，执行入口自动禁用
-- 在 Linux 本地与 `Remote SSH` 的 `systemd --user` 可用时，`runtimePersistence.enabled` 提供更强的持久化保障；否则自动回退到 `best-effort`
+- 在 Linux 本地与 `Remote SSH` 的 `systemd --user` 可用时，`runtimePersistence.enabled` 提供更强的持久化保障；确认强后端不可用时使用 `best-effort`；启动结果未知时不会另启后端
 - 在 Agent / Terminal context row 展示 live PTY title，但不覆盖用户编辑的画布节点标题
 - 在侧栏查看 `节点` 与 `会话历史` 列表，支持快速定位当前画布节点并从历史恢复或分叉新 `Agent` 节点
 - 在侧栏 `节点` view 管理 workspace folder 和 git worktree，包括添加已有 worktree，并在移除 folder 或 linked worktree 前通过显式确认收口风险
@@ -92,7 +92,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
 - 首次安装与从 `0.26.0` 升级到 `0.26.1` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
 - UI 语言跟随 VS Code locale。本版本不新增扩展自己的语言设置，也不会翻译用户内容、终端输出、provider 输出或市场模板数据
-- Supervisor 支持的 live 恢复仍取决于 `runtimePersistence.enabled` 与后端可用性；旧 live 会话沿用原 Supervisor 和协议，snapshot-only 本地进程不获得跨 Host 存活保证
+- 新建持久会话取决于 `runtimePersistence.enabled` 与后端可用性。已有 root 绑定在另一窗口打开时仍保留，即使该窗口默认关闭持久化；用户显式关闭持久化仍会清理本画板的精确绑定。旧 live 沿用原 Supervisor 和协议，snapshot-only 本地进程不获得跨 Host 存活保证
 - 当前节点 Agent Fork 默认使用 `devSessionCanvas.canvas.forkPlacementDirection = up`；可改为 `down` 或 `right`，该设置只影响之后的当前节点 Fork，不重排既有 Fork 或会话历史入口的落位
 - 生产模板市场可能以空目录启动。生产环境不会把代码内 seed 模板暴露为正式内容；真实模板必须通过发布流程或受控运维流程入库
 - 窗格画廊只改变多根呈现；单根 workspace 继续显示普通画布，`rootGroups` 仍是默认多根模式和保守回退路径
