@@ -25,7 +25,7 @@ PR #306 完成了 Linux Claude 启动失败定位；合并后本轮按下述正�
 
 两组隔离 PTY 对照支持键盘语义：立即 End 在 332.377ms 发出，337.423ms 选 Yes 后 477.708ms 回退，证明 End 不消除 CLI 启动回退；另组信任页后延迟输入的 End 在 1361.268ms 发出，随后 1481.119 / 1561.870ms 再次 End，选项一直为 Yes 至 2128ms。后者只证明固定页上重复 End 不切回 No，不把延迟当正式修复。原运行和本地诊断记录均保留。
 
-`setup()` 在 hello/owner 验证完成、observer 已观察到 provider 与 CLI 后，核验并持久化 `control.startup` 与 `startup-ownership.json`，其中保存原 node、binding、supervisor 和完整资源身份。该动作早于 mountedReader、就绪交互和模型请求；成功取得首次应答后再次用该原资源集合验证，才形成完整 `control.setup` 并 Reload。保存失败不继续交互。
+`setup()` 在 hello/owner 验证完成、observer 已观察到 provider 与 CLI 后，核验并持久化 `control.startup` 与 `startup-ownership.json`，其中保存原 node、binding、supervisor 和完整资源身份。资源集合必须深拷贝：observer 会原位更新已观察对象，不能让后续 executable 等变更污染启动基线。该动作早于 mountedReader、就绪交互和模型请求；成功取得首次应答后再次用该原资源集合验证，才形成完整 `control.setup` 并 Reload。保存失败不继续交互。
 
 `cleanup()` 优先用完整 setup，否则用启动基线验证原资源退出，再按已有存储边界、owner、supervisor 身份、空 registry 条件清理隔离 Supervisor。缺失基线仍拒绝通过；基线形成前的失败和未知观察不得用事后扫描补成成功。早期 startup 基线不是应答/Reload 成功证明，cleanup 成功也不覆盖原 setup 错误。
 
@@ -121,3 +121,5 @@ node --test scripts/test/test-agent-runtime-reload-driver.mjs
 用修后实际 `waitForAgentReady()` / `hasLoadedAgentComposer()` 连接同版本直接 PTY 的有限验证：580.819ms End，586.365ms Yes，645.673ms No；681.504ms 第二次 End，686.061ms Yes；883.111ms 唯一信任 Enter，891.666ms 信任页消失，1586ms 完成真实 composer 就绪。只使用假认证、没有模型回合，不能替代真实应答 / Reload。原始证据位于本轮 `.debug/trust-actual-driver/`、`.debug/trust-before-after.json`，真实安装态结果待追加。
 
 原 VSIX 产生于 PR #306 的 4b2cf71e，后续 f3d4590c 新增的纯观察诊断脚本不参与产品构建。为复用同一包，`.github/workflows/runtime-production-acceptance.yml` 仅额外允许 `scripts/diagnostics/diagnose-claude-trust-startup.mjs` 这一具体路径；其余产品输入仍按原白名单拒绝。
+
+补充反向控制：observer 原位改变 CLI executable 时，未拷贝的 startup.resources 会一起变化，使修前断言错误通过；新增回归在该版本报 Missing expected rejection。改为保存深拷贝后拒绝该身份变化，45/45 回归再次通过。

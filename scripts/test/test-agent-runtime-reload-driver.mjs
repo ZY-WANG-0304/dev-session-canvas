@@ -895,16 +895,19 @@ test('setup persists original startup ownership before reader, readiness and mod
 });
 
 test('setup cannot promote a replaced startup identity after the model response', async () => {
-  const f = fixture({ provider: 'claude' });
-  delete f.context.control.setup;
-  f.context.sendAgentTurn = async () => {
-    f.entries = f.entries.map(entry => entry.role === 'cli' ? { ...entry, startTicks: 'replacement' } : entry);
-  };
-  await assert.rejects(compile([...resourceFunctions, 'setup'], f.context).setup({ extensionPath: '/extension' }),
-    /Original Agent startup identity must still be live/);
-  assert(f.writes.has('startup-ownership.json'));
-  assert.equal(f.writes.has('setup.json'), false);
-  assert(!f.events.includes('workbench.action.reloadWindow'));
+  for (const inPlace of [false, true]) {
+    const f = fixture({ provider: 'claude' });
+    delete f.context.control.setup;
+    f.context.sendAgentTurn = async () => {
+      if (inPlace) f.entries.find(entry => entry.role === 'cli').executable = '/changed-executable';
+      else f.entries = f.entries.map(entry => entry.role === 'cli' ? { ...entry, startTicks: 'replacement' } : entry);
+    };
+    await assert.rejects(compile([...resourceFunctions, 'setup'], f.context).setup({ extensionPath: '/extension' }),
+      /Original Agent startup identity must still be live/);
+    assert(f.writes.has('startup-ownership.json'));
+    assert.equal(f.writes.has('setup.json'), false);
+    assert(!f.events.includes('workbench.action.reloadWindow'));
+  }
 });
 
 test('startup ownership persistence failure stops before interaction; a missing baseline cannot pass cleanup', async () => {

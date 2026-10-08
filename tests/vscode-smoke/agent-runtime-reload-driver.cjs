@@ -239,7 +239,7 @@ async function recordStartupOwnership(metadata, supervisor) {
     return result.entries;
   }, entries => ['provider', 'cli'].every(role => entries.some(entry => entry.role === role)), 10000);
   let resources;
-  try { resources = assertOriginalResourcesLive(); }
+  try { resources = structuredClone(assertOriginalResourcesLive()); }
   catch (error) { await captureSetupProcessObservation(); throw error; }
   const startup = { nonce: control.nonce, nodeId: currentNodeId, supervisor, resources,
     binding: { runtimeBackend: metadata.runtimeBackend, runtimeStoragePath: metadata.runtimeStoragePath,
