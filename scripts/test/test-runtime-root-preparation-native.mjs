@@ -279,8 +279,21 @@ async function runTests() {
     console.log('A real preparation crash after detached submission does not resubmit pending intent; late ready is freshly discovered and reused.');
 
     if (process.platform === 'linux') {
-      const scope = await api.inspectRuntimeSystemdEnvironment({ supervisorLauncherScriptPath: launcher,
-        environmentKey: environment.environmentKey, userIdentityKey: createHash('sha256').update(environment.userIdentity).digest('hex') });
+      const childProcess = require('node:child_process');
+      const originalExecFile = childProcess.execFile;
+      let scope;
+      childProcess.execFile = function(file, args, options, callback) {
+        if (file !== '/usr/bin/systemd-run') return Reflect.apply(originalExecFile, this, arguments);
+        return originalExecFile.call(this, file, args, options, function(error, stdout, stderr) {
+          console.error(`Native systemd-run callback: ${JSON.stringify({ code: error?.code ?? 0,
+            signal: error?.signal ?? null, killed: error?.killed ?? false, stderr: String(stderr).slice(0, 2048) })}`);
+          return callback.call(this, error, stdout, stderr);
+        });
+      };
+      try {
+        scope = await api.inspectRuntimeSystemdEnvironment({ supervisorLauncherScriptPath: launcher,
+          environmentKey: environment.environmentKey, userIdentityKey: createHash('sha256').update(environment.userIdentity).digest('hex') });
+      } finally { childProcess.execFile = originalExecFile; }
       assert.notEqual(scope.kind, 'unknown', `Native systemd environment is unknown: ${scope.reason}`);
       if (scope.kind === 'unavailable') console.log(`systemd not-verified:${scope.reason}`);
       else {
