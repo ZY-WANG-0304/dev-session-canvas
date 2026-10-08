@@ -206,6 +206,8 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 本节先列最新结论，后续保留具名提交/run 的分阶段原始记录；历史“待执行”与失败不是当前新增待办，也不追认通过。
 
+Claude `19a00607` / `37723822196` 仍在 trust 页失败，未到原资源断言：一次独立 Down 后 revision 11 选 Yes、12 回 No，夹具未再发 Enter 或重按。这说明组合按键不足以解释之前回退，不能把分步修复当根因已解决。两端独立源码排查未发现 Webview/Host 重发、client RPC 重试、Supervisor 双写或 provider 成功字节重写；实际 Down 后也无新输入/查询，但不代证底层写入次数。仅复用现有身份白名单到 setup 失败归档，继续取得实际进程树，不改业务或资源通过条件。
+
 Claude 具名观察 run `37722835410`：attempt 1 在固定 VS Code 下载网络超时，未启动 CLI；原失败 job attempt 2 在 trust 页超时，未到资源断言，不能算两个 CLI 重现。原输出 revision 10/11 记录同一次 Down+Enter 后 Yes→No，未完成确认；仅改成现有页面闭环的一次 Down、观察 Yes 后一次 Enter，不猜 CLI 内部机制、不加自动重试、不放宽资源验收。
 
 Codex 双窗口 `37721421079` / artifact `11526510881` 独立核对完成：两窗原安装 receipt 与 topology 校验通过，两个新 Agent 共用原 owner/Supervisor，session/authority/provider/CLI 独立；四个 nonce 与 PaneGallery→rootGroups 通过，原 binding/进程保持且无新执行。multi EH 退出后 single 完成两次 stop，当前 reader 的 `applied` 由成功 driver 的严格同 session/readId 断言证明；归档未单存最终 settlement event，不称为原始末页回执可独立重放。原 registry/bindings 空、pending=0，两组共六个原执行资源及 Supervisor 正常退出，forcedSignals=[]，60,397 ms、UI exit0。剩余只有 Claude Reload 和最终审查结账。

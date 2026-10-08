@@ -47,6 +47,7 @@ let control;
 let currentNodeId;
 let observer;
 let observerReleased = false;
+let setupProcessObservationAttempted = false;
 let phase = 'initialization';
 let reloading = false;
 
@@ -88,6 +89,7 @@ async function run() {
   } catch (error) {
     failure = error;
     await write(`${phase}-failure.json`, { phase, nonce: control?.nonce, error: String(error), stack: error.stack });
+    if (phase === 'setup') await captureSetupProcessObservation();
     try { await write('failure-webview-probe.json', await probe()); } catch { /* Preserve the first failure. */ }
     for (const name of ['getDebugState', 'getRuntimeSupervisorState', 'getDiagnosticEvents']) {
       try { await write(`failure-${name}.json`, await command(name)); } catch { /* Preserve the first failure. */ }
@@ -210,16 +212,7 @@ async function setup(extension) {
   await sendAgentTurn(currentNodeId, before);
   await poll('pre-reload Agent response', probe, value => hasAgentMarkerResponse(value, before), 90000);
   await observer.sample();
-  if (config.provider === 'claude') {
-    try {
-      await write('setup-process-observation.json', { nonce: control.nonce,
-        entries: observer.result().entries.map(entry => Object.fromEntries([
-          'pid', 'ppid', 'startTicks', 'executable', 'role', 'wrapperKind', 'firstPpid', 'firstParentStartTicks',
-          'firstSeenMs', 'lastSeenMs', 'lastLiveMs', 'firstAbsentMs', 'state', 'active', 'platform',
-          'hasExited', 'exitConfirmed', 'exitCode', 'observationUnknown'
-        ].filter(key => entry[key] !== undefined).map(key => [key, entry[key]]))) });
-    } catch { /* Diagnostic failure must not replace the resource assertion. */ }
-  }
+  await captureSetupProcessObservation();
   const resources = assertOriginalResourcesLive();
   const setup = { phase: 'setup', nonce: control.nonce, host: await readIdentity(process.pid), nodeId: currentNodeId,
     binding: { runtimeBackend: metadata.runtimeBackend, runtimeStoragePath: metadata.runtimeStoragePath,
@@ -234,6 +227,19 @@ async function setup(extension) {
   await releaseProcessObserver();
   reloading = true;
   void vscode.commands.executeCommand('workbench.action.reloadWindow').catch(error => write('reload-command-rejection.json', { error: String(error) }));
+}
+
+async function captureSetupProcessObservation() {
+  if (config.provider !== 'claude' || !observer || setupProcessObservationAttempted) return;
+  setupProcessObservationAttempted = true;
+  try {
+    await write('setup-process-observation.json', { nonce: control.nonce,
+      entries: observer.result().entries.map(entry => Object.fromEntries([
+        'pid', 'ppid', 'startTicks', 'executable', 'role', 'wrapperKind', 'firstPpid', 'firstParentStartTicks',
+        'firstSeenMs', 'lastSeenMs', 'lastLiveMs', 'firstAbsentMs', 'state', 'active', 'platform',
+        'hasExited', 'exitConfirmed', 'exitCode', 'observationUnknown'
+      ].filter(key => entry[key] !== undefined).map(key => [key, entry[key]]))) });
+  } catch { /* Diagnostic failure must not replace the first setup error. */ }
 }
 
 async function startProcessObserver(extension) {
