@@ -1,11 +1,11 @@
 ---
 title: Linux Claude 信任选择页启动失败定位
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [适配与基础设施层, 宿主集成层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/linux-claude-trust-startup-diagnosis.md, docs/exec-plans/active/smoke-claude-startup-recovery.md]
+related_plans: [docs/exec-plans/completed/linux-claude-trust-startup-diagnosis.md, docs/exec-plans/completed/smoke-claude-startup-recovery.md]
 updated_at: 2026-10-09
 ---
 
@@ -13,7 +13,7 @@ updated_at: 2026-10-09
 
 ## 范围与当前结论
 
-PR #306 完成了 Linux Claude 启动失败定位；合并后本轮按下述正式方案修复验收适配，验证进行中。确认的故障机制是：Claude 2.1.280 启动时收到一次 Down 后先选中 Yes，随后在没有新增输入的受控环境中退回 No；`tests/vscode-smoke/agent-runtime-reload-driver.cjs` 的 `waitForAgentReady()` 只导航一次，100ms 轮询没有观察到短暂 Yes 时，后续一直停在 No，直到交互就绪预算到期。CLI 内部触发回退的实现原因仍未知。修复方案已选定，本文保持“验证中”，不把诊断完成或受控通过等同于真实验收通过。
+PR #306 完成了 Linux Claude 启动失败定位；合并后本轮已按下述正式方案修复验收适配，并完成固定 Linux Claude 原包验收。确认的故障机制是：Claude 2.1.280 启动时收到一次 Down 后先选中 Yes，随后在没有新增输入的受控环境中退回 No；`tests/vscode-smoke/agent-runtime-reload-driver.cjs` 的 `waitForAgentReady()` 只导航一次，100ms 轮询没有观察到短暂 Yes 时，后续一直停在 No，直到交互就绪预算到期。CLI 内部触发回退的实现原因仍未知。“已验证”仅覆盖本文固定 CLI / Linux 输入、有界交互和原资源基线测试；不外推任意调度、其他 CLI 版本或未测平台组合。
 
 原运行没有请求超时诊断，也没有信任页 Enter 或模型回合。已有 hello 成功、输入调用完成和输出送达记录，故当前证据不支持把此失败归因为 F-01 的 RPC 等待或 reader 迟到清理。该判断只覆盖本次失败路径，不宣称排除所有产品问题。
 
@@ -85,11 +85,11 @@ Yes→No  eede085aed59b6a8736384ea5c0c4db21bf9100a26b8157ecbe833fca31a95ad
 
 从实际 driver 用 TypeScript AST 提取 `waitForAgentReady()`，以原画面和受控时钟回放：t=0 看到 No 并发 Down，t=9 为 Yes，t=46 回 No，下一次 probe 在 t=100。实际函数最终完成 900 次 probe、虚拟时间 90000ms 后抛原超时；只发一次 Down，没有 Enter。把 Yes 保持可见的正向对照在 t=100 发 Enter，随后进入模拟 composer。后者仅验证 driver 分支，不是真实 CLI/模型成功。原 CI 未记录每次 probe 的准确时间，不能把这个受控调度写成原运行的逐次采样记录。
 
-根本约束在 `claudeTrustMoved`：首次看到 No 后即置为 true，此后再看到 No 只 sleep，不再导航。现有 driver 单测的 `still-visible` / `reverted` 场景本来就期待超时，保证未知页不被盲目确认，但不能证明启动页不会回退。保持当前状态单测 38/38 通过，也不代表此次失败已修复。
+原 driver 的根本约束在 `claudeTrustMoved`：首次看到 No 后即置为 true，此后再看到 No 只 sleep，不再导航。现有 driver 单测的 `still-visible` / `reverted` 场景本来就期待超时，保证未知页不被盲目确认，但不能证明启动页不会回退。PR #306 阶段单测 38/38 通过，也不代表当时失败已修复。
 
-## cleanup 的独立原因
+## 原 cleanup 失败的独立原因
 
-`setup()` 先等待 `waitForAgentReady()`、发送首次模型回合并确认应答，之后才构造 `setup.resources` 并写 `control.setup`。本次失败时 `control.json` 仍只有 setup phase、nonce、deadline，没有 setup 资源基线。
+原 `setup()` 先等待 `waitForAgentReady()`、发送首次模型回合并确认应答，之后才构造 `setup.resources` 并写 `control.setup`。本次失败时 `control.json` 仍只有 setup phase、nonce、deadline，没有 setup 资源基线。
 
 `cleanup()` 清空节点和绑定后，调用 `originalResourcesExited(control.setup?.resources)`；该函数拒绝空集合，产生 `Missing original startup resources cannot count as released.`。用实际提取函数传 `undefined` 可复现同一断言。原 `cleanup.json` 的 `pass=false` 保留：这是早退路径没有保存原身份而导致的清理证据缺口，既不能证明进程泄漏，也不能证明原资源全部退出。
 
@@ -110,16 +110,31 @@ node --test scripts/test/test-agent-runtime-reload-driver.mjs
 
 可选模式为 `plain`、`replies`、`plain-trace`、`plain-held`，单次启动最多观察 15 秒，Down 后观察 750ms。保存 summary、逐次输入/输出、最终屏幕和可选 syscall 日志；完成后终止本次子进程并删除临时配置。结果会随调度变化，未回退只记本次未观察到，不循环重试到预期结果。
 
-本轮原 CI 下载证据在 `/tmp/pr306-multi-smoke-evidence/`；本地原始实验在 `.debug/claude-trust-{plain,replies,plain-trace,plain-held}/`，归档脚本验证在 `.debug/claude-trust-packaged-trace/`，输出比对与实际 driver 回放结果在 `.debug/claude-trust-evidence-check.json`。这些本地文件不随 Git 归档；上文保留精确输入、时间、系统调用与内容 hash，远端失败证据以原运行 artifacts 为准。本次未重跑远端 smoke，未修改产品或验收 driver，原失败与 cleanup 失败状态不变。
+本轮原 CI 下载证据在 `/tmp/pr306-multi-smoke-evidence/`；本地原始实验在 `.debug/claude-trust-{plain,replies,plain-trace,plain-held}/`，归档脚本验证在 `.debug/claude-trust-packaged-trace/`，输出比对与实际 driver 回放结果在 `.debug/claude-trust-evidence-check.json`。这些本地文件不随 Git 归档；上文保留精确输入、时间、系统调用与内容 hash，远端失败证据以原运行 artifacts 为准。PR #306 诊断阶段未重跑远端 smoke，也未修改产品或验收 driver；其原失败与 cleanup 失败状态不变。
 
-## 修复验证（进行中）
+## 修复验证
 
 2026-10-09，`node --test scripts/test/test-agent-runtime-reload-driver.mjs` 45/45 通过，覆盖采样间完整回退、可见回退、迟到导航、不消失页面、导航上限、未知页面、输入错误不重试、reader/ready/model 失败时的持久化原基线、模型应答后身份替换拒绝及基线写失败拒绝继续。
 
 原 driver 与修后函数对同一受控时序（输入后 9ms Yes、46ms No，100ms probe）分别运行：原版一次 Down，2 秒缩短测试预算耗尽；修后 t=0/100ms 两次 End，t=300ms 唯一 Enter，t=700ms 通过模拟 composer 双重确认。测试没有要求旧版支持 End，旧版 Down 也按实际语义产生短暂 Yes。
 
-用修后实际 `waitForAgentReady()` / `hasLoadedAgentComposer()` 连接同版本直接 PTY 的有限验证：580.819ms End，586.365ms Yes，645.673ms No；681.504ms 第二次 End，686.061ms Yes；883.111ms 唯一信任 Enter，891.666ms 信任页消失，1586ms 完成真实 composer 就绪。只使用假认证、没有模型回合，不能替代真实应答 / Reload。原始证据位于本轮 `.debug/trust-actual-driver/`、`.debug/trust-before-after.json`，真实安装态结果待追加。
+用修后实际 `waitForAgentReady()` / `hasLoadedAgentComposer()` 连接同版本直接 PTY 的有限验证：580.819ms End，586.365ms Yes，645.673ms No；681.504ms 第二次 End，686.061ms Yes；883.111ms 唯一信任 Enter，891.666ms 信任页消失，1586ms 完成真实 composer 就绪。只使用假认证、没有模型回合，不能替代真实应答 / Reload。原始证据位于本轮 `.debug/trust-actual-driver/`、`.debug/trust-before-after.json`，真实安装态结果见下文。
 
 原 VSIX 产生于 PR #306 的 4b2cf71e，后续 f3d4590c 新增的纯观察诊断脚本不参与产品构建。为复用同一包，`.github/workflows/runtime-production-acceptance.yml` 仅额外允许 `scripts/diagnostics/diagnose-claude-trust-startup.mjs` 这一具体路径；其余产品输入仍按原白名单拒绝。
 
 补充反向控制：observer 原位改变 CLI executable 时，未拷贝的 startup.resources 会一起变化，使修前断言错误通过；新增回归在该版本报 Missing expected rejection。改为保存深拷贝后拒绝该身份变化，45/45 回归再次通过。
+
+最终候选 CI 输入为 `ccc5a3ce` / run `37828284014`，复用 `37821133377` 的原 VSIX 和 installed 通过证据，仅选 Linux Claude。此前 `a0399864` / `37828068744` 因补充不可变基线修正而请求取消。请求前最后一次观察仍在依赖安装，但最终 API 显示 Agent 步骤及 product job 已成功、整轮为 cancelled；保留该竞态事实，不用旧候选代证最终修正。
+
+### 固定 Linux Claude 安装态通过
+
+[run 37828284014](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/37828284014) / `ccc5a3ce89b8c09dd10c28a39e02cfef0f3a08d0` 已成功。独立下载并核对 artifact `11571604020`（`runtime-root-agent-reload-linux-37828284014`）：耗时 19,795ms，nonce 为 `3bb3529f-ffb4-4653-8b7c-169772c231e3`。输入和 setup/verify 两次安装 receipt 的 VSIX SHA 均为原 `e17228f4…7ac38e7b`，两份完整安装 receipt 相同；driver hash `36e316ce2a0eba23c02d011341867d080bfccf9b8e1ada623a83b6b973e42315` 与本次源码一致。
+
+- driver 完成真实 BEFORE/AFTER 应答断言、唯一 Reload；Host 从 3089 / startTicks 12683 换为 3290 / 13787。
+- startup、setup 和独立 pre-stop 记录均保留 provider 3232 / 13292、CLI 3240 / 13307；pre-stop 两原资源仍 active。Supervisor 保持 3219 / 13262，原 binding/owner 不变，未新建 execution。
+- session `a695c2ca-c1b0-4b13-97de-7528287e0524`、authority `d97eebda-9629-4154-ae15-a5dd0ca7b8b4` 不变，Reload 获得新 readId；最终该 reader 的 settlement 为 `applied / finalRevision=62`。
+- stop 后原 provider/CLI 均 `actual=null / exited=true`；cleanup `pass=true`、`fallback=[]`、binding/pending/node/registry sessions 均为空。最后按原身份主动 SIGTERM 隔离空闲 Supervisor，不宣称自然退出。
+
+`reload-command-rejection.json` 为旧 Host 的 `Canceled: Canceled`，与新 Host activation、verify 及完整结果一起保留，不误判为 Reload 未发生。成功归档没有逐次启动输入，不能据此断言本次 CI 一定触发了选择回退；实际回退恢复由上文真实 CLI 对照及确定性测试证明。本轮未注入真实安装态 setup 失败，早退 cleanup 由实际 driver 函数的受控测试覆盖，不能冒充真实失败场景实测。
+
+本轮证据下载在 `.debug/ci-37828284014/`，独立断言结果在 `.debug/ci-37828284014-verified.json`。最终文档提交不改已验收的 driver、launcher 或产品；原 `37821133377` 的失败、旧两条 CLI 未知原因及 CLI 内部回退原因均保留。基线形成前的未知失败仍拒绝 cleanup 通过，不用事后扫描猜原资源。

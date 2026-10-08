@@ -11,7 +11,7 @@
 - [x] 2026-10-09：确认合并提交、从最新 main 建独立 worktree，读取诊断及现有测试。
 - [x] 2026-10-09：固定 CLI 实测 End 选择末项、重复 End 保持 Yes；选定最多三次 End、连续两次 Yes 后唯一 Enter，设计已同步。
 - [x] 2026-10-09：实现最多三次 End、唯一确认及启动原基线；45/45 回归、修前后对照与修后实际 driver 连接真实 CLI 的回退恢复通过。
-- [ ] 用固定 Claude 版本和原 VSIX 验证；同步证据、技术债并创建新 PR。
+- [x] 2026-10-09：ccc5a3ce / 37828284014 固定 Linux 原包验收成功，独立核对 artifact 11571604020；完成设计与技术债同步，随本次新 PR 交付。
 
 ## 意外与发现
 
@@ -29,7 +29,7 @@ observer.result() 返回可被原位更新的条目。补充 executable 原位�
 
 ## 结果与复盘
 
-本地实现和定向验证完成。真实 CLI 中已观察到原样回退，第二次 End 恢复后进入 composer；早退基线受控验证通过。真实安装态应答 / Reload / 清理仍待 CI。
+实现和验证完成：45/45 定向回归、修前后负/正对照、真实 CLI 的实际回退恢复通过。ccc5a3ce / 37828284014 复用原 VSIX 完成真实 BEFORE/AFTER 应答、唯一 Reload、原 provider/CLI/Supervisor/session/authority 保持、最终 reader applied 及 cleanup 无 fallback。真实 CI 没有注入 setup 失败，早退路径仅以实际 driver 受控测试验证；历史两条 CLI 原因和 CLI 内部回退触发原因仍未知。
 
 ## 上下文与定向
 
@@ -60,3 +60,7 @@ tests/vscode-smoke/agent-runtime-reload-driver.cjs 管理真实 Agent setup、Re
 复用现有 driver、observer、node-pty 和 headless xterm；不引入产品 wire 协议或输入重试机制。新判断仅属于固定 CLI 验收适配。
 
 2026-10-09：按用户继续修复 CI 的要求建立计划，明确验收与原包复用边界。
+
+2026-10-09：最终候选 ccc5a3ce 已触发 run 37828284014（原包与 installed 证据均为 37821133377，只跑 Linux Claude）；a0399864 的 run 37828068744 因基线补充修正而请求取消；最终 API 显示 Agent / product 已成功但整轮 cancelled，保留该竞态事实，不重复运行同一输入到绿。
+
+2026-10-09：独立核对最终证据后归档计划。成功运行耗时 19,795ms，原 provider 3232 / CLI 3240 保持且 stop 后消失，Supervisor 3219 按原身份主动清理，最终 reader applied revision 62。成功 CI 不声称一定触发过启动回退，原失败和 cancelled 记录不改写；最终文档提交不改变已验收代码。
