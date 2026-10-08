@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域]
 architecture_layers: [适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/runtime-protocol-race-root-cause.md]
+related_plans: [docs/exec-plans/completed/runtime-protocol-race-root-cause.md, docs/exec-plans/completed/runtime-protocol-race-test-repair.md]
 updated_at: 2026-10-09
 ---
 
@@ -52,15 +52,23 @@ PR #306 从 `96c1e5db` rebase 至 `7a95b6ba` 后，`scripts/test/test-runtime-su
 
 因此已确认的根因是测试缺少因果同步，不是 F-01 的请求 deadline 或自动重发行为。不同运行负载可以改变两种时序出现的机会，但本轮不以概率或运行快慢代替该结论，也不需要改超时值解决这两个断言。
 
-## 后续修正方案与当前交付边界
+## 测试修正方案与交付边界
 
-本轮交付诊断与归因，**原协议测试和产品代码未修改**。
+根因调查阶段只交付诊断与归因，未修改原测试。后续按用户“进行修正”的要求实施以下测试修正；产品代码和 F-01 超时契约保持不变。
 
-订阅用例应在订阅前明确等到 registry / journal 中出现指定 `gapMarker`，同时保持回放连续、无重复和 marker 恰好一次的断言。单纯等 revision 增长或延长 sleep 都不能建立该前提。
+订阅用例在订阅前等待 registry 的 `output.includes(gapMarker)` 且 revision 已推进，同时保持回放连续、无重复和 marker 恰好一次的断言。单纯等 revision 增长或延长 sleep 都不能建立该前提。
 
-退出用例应分开验证两个责任：真实 PTY 场景等待完整非 live 终态，核验尾部完整与终态后的 resize 拒绝；“已收到退出通知、最终状态尚未发布”的中间阶段，用可控退出回调和收尾屏障做确定性服务端测试。只等待最终状态不能冒称覆盖 finalizing 窗口，也不应不断发 resize 直到某次被拒绝。
+退出用例分开验证两个责任：真实 PTY 场景等待完整非 live 终态，核验尾部完整与终态后的 resize 拒绝；“已收到退出通知、最终状态尚未发布”的中间阶段，在同一协议测试脚本新增确定性服务端测试。该测试使用实际 `RuntimeSupervisorServer.bindSessionProcess()`、`finalizeSession()`、journal 和 tracker；可控 process 回调先交付尾部输出再交付 exit，Promise 屏障挂在实际 `terminalOperationChain` 上。屏障未释放时检查 live 仍为 true、准入已关闭、终态未发布，并要求一次 resize 立即返回 `SESSION_NOT_LIVE`。释放屏障后检查尾部完整、终态只发布一次、尺寸和 journal 没有被 resize 改写。仅替换外部 process/socket 和后台调度，不替换被测收尾、快照及准入逻辑。scrollback/output 发布顺序另作独立断言。
 
-两项测试修正尚未实施，已登记技术债；后续应在协议门禁稳定性修复中完成，不把本轮确认根因当成已修复。
+只等待最终状态不能冒称覆盖 finalizing 窗口，也不反复发送 resize 直到某次被拒绝。上述修正已实现并通过完整协议门禁，技术债收口；历史根因证据保留。
+
+### 修正验证（2026-10-09）
+
+Linux / Node 25.6.0 下 `npm run test:runtime-supervisor-protocol` 完整通过：请求超时 23/23、新的确定性 finalizing 测试、真实 PTY 协议主脚本、checkpoint refresh、分页投影、completed history、paged completion、Host output credit 与 terminal available credit。日志为 `/tmp/dsc-rpc-race-test-repair-protocol.log`，不是此前失败后的复跑记录。
+
+临时内存构建做两项反向控制，不修改工作树产品源码：移除退出回调及 finalizeSession 两处同步关闭准入，新测试在“Exit must synchronously close mutation admission”失败；让 resize 跳过入口准入检查，新测试在“Resize must reject before finalization settles”失败，未靠释放屏障后的结果冒充及时拒绝。控制脚本从当前测试文件抽取同一辅助函数，记录为 `/tmp/dsc-rpc-race-test-repair-controls.log`；两项变异均被捕获。测试中的 1 秒界限仅防止坏实现使门禁悬挂，不用于判断退出阶段。
+
+本轮只修改测试与文档，无新增生产接口；未重新执行多平台真实 VS Code smoke。历史诊断及失败日志继续作为根因证据。
 
 ## 验证证据及适用范围
 

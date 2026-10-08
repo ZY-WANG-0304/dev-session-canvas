@@ -18,13 +18,9 @@
 
 后续独立修复已为新代码的明确拒绝增加 `createSessionOutcome`，覆盖 Agent/Terminal 创建、恢复、重试和删除，保留断连/资源已获取/未知结果保护。已有旧 Supervisor 不会随 Host 热更新，也不会补发原请求的结构化结果；它的普通错误、旧固定文案及更新前残留的未知记录继续保守保护。后续旧 Supervisor 退役或明确历史创建恢复工作如需解除保护，必须从原责任方获取身份匹配的资源证明；不得凭错误字符串、超时或 registry 缺项追认。关联：`docs/design-docs/runtime-admission-rejection-settlement.md`、`CanvasPanelManager.withExecutionCandidateStart`、`RuntimeSupervisorServer.createSession`。
 
-## 2026-10-09：协议回归两处同步前提待修正（根因已确认）
-
-PR #306 rebase 后在协议测试第 548 / 992 行暴露间歇失败。根因分别是：PTY 输入回显满足 revision 增长，但 marker 可能在订阅后才产生；看到尾部 marker 后固定等 25ms，不保证退出回调已关闭 mutation admission。真实 PR 场景复现 marker 后 27ms resize 成功、639ms 才收到退出回调；主线受控对照也复现相同边界。两边各 5/5 有限诊断通过，回放仍连续，实际关闭准入且尚未发布最终态时 resize 正确被拒绝。F-01 超时 client 不在这两个 raw socket 请求路径中。
-
-当前只完成根因定位，原测试未改，不能把协议门禁稳定性写成已修复。下一次协议测试修复应显式等待目标 marker；把完整终态真实 PTY 验证与可控 finalizing 窗口拒绝测试分开，保留原完整性断言，不延长 sleep 或反复 resize 直到失败。关联 `docs/design-docs/runtime-protocol-race-root-cause.md`、`docs/exec-plans/completed/runtime-protocol-race-root-cause.md`、`scripts/diagnostics/diagnose-runtime-protocol-races.mjs`。人为延后 exit 交付时出现的 EBADF 只作为受控边界证据，不追认为原历史失败事实。
-
 ## 近期已收口
+
+- 2026-10-09：协议回归两处同步前提已修正。attach gap 在订阅前等待指定 marker，真实 PTY 等完整非 live 终态后验证 resize 拒绝；新增真实串行链路屏障测试，单独覆盖退出已通知而终态尚未发布时的立即拒绝和尾部完整性，保留回放连续/恰好一次及 scrollback/output 顺序断言。完整协议门禁（含请求超时 23/23）通过；取消同步关闭准入、绕过 resize 准入的两项临时变异均被新测试捕获，无新增产品接口或技术债。历史第 548/992 行失败与自然场景 marker 后 27ms resize 成功、639ms 才退出的证据仍保留；不把受控 EBADF 追认为历史返回值。见 `docs/design-docs/runtime-protocol-race-root-cause.md`、`docs/exec-plans/completed/runtime-protocol-race-test-repair.md`。
 
 - 2026-10-08：F-01 普通 hello / RPC 缺请求级超时已专项收口。hello/连接 5 秒、普通 RPC 15 秒、ready 共用剩余预算，清理到期 pending 并返回结果未知的独立错误，不重发副作用请求。严格删除原有 first 到期 unconfirmed 及迟到 current 补证保留；不能误写成此前所有删除无界。新增 23/23 请求级测试（含真实无响应 socket）、reader/严格删除 31/31、Host 接线 296 项及协议/分页/输出信用/类型/本地化回归通过；修前 pending 不释放有对照失败证据。普通请求超时不销毁健康并发连接，hello 超时销毁未握手连接；这是相对旧审核建议的明确取舍。详见 `docs/design-docs/runtime-rpc-request-timeout.md`、`docs/exec-plans/completed/runtime-rpc-request-timeout.md`。backend 启动和文件系统不是 RPC 预算范围，多平台真实宿主未在本轮重跑。
 

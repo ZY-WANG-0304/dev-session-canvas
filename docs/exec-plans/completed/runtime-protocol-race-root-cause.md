@@ -25,6 +25,8 @@
 
 两项根因已确认为测试缺少阶段事实同步；F-01 的客户端超时不在对应 raw socket 路径中。诊断/设计交付完成，原测试修正未实施，已登记技术债。原失败与后续通过均保留，未把归因当作修复。
 
+后续修正已由 `docs/exec-plans/completed/runtime-protocol-race-test-repair.md` 独立完成：原同步条件已改、新增真实收尾链路屏障测试，完整协议门禁与两项反向控制通过。上述“未实施”保留为本次诊断交付时的历史状态。
+
 ## 上下文与定向
 
 Supervisor 是独立托管终端的进程。`extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts` 中 `bindSessionProcess()` 将 PTY 输出写入日志并赋予 revision，`subscribeSessionAtSettledRevision()` 回放订阅时已存在的事件并继续推送 live 事件；输出和回放共享同一种消息。`bindSessionProcess()` 的退出回调关闭变更准入，`resizeSession()` 通过 `requireLiveSession()` 检查该事实。`scripts/test/test-runtime-supervisor-protocol.mjs` 的两个目标用例直接向 socket 写 JSON 请求；`waitForRuntimeSupervisorMessage()` 会从数组移除找到的消息。
