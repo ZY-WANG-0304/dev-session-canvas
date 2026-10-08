@@ -12,13 +12,15 @@
 - 建议修复时机
 - 关联文档或代码路径
 
-## 2026-10-08：准入拒绝后的启动预留与删除收尾
+## 2026-10-08：旧 Supervisor 的创建拒绝仍缺资源结果
 
 0.26.0 现场旧会话 journal 写入 ENOSPC 后 owner 隔离，新建/恢复在获取资源前收到普通准入错误。Host 已设置 `submitted=true`，但只对精确的 `rejected-before-acquire` 文案释放预留，因此新节点残留 Starting/Resuming，删除被原创建待确认保护拒绝。实际两个新 session 均未创建；旧失败会话仍有未消费尾部，二者责任不能混同。
 
-本轮仅让准入错误显示首次底层原因，不改变记录释放条件或运行时恢复流程。建议后续 bugfix 使用明确的未获取资源拒绝结果完成预留释放与错误状态更新，覆盖 Agent/Terminal 创建、恢复、重试和删除，并保持断连/资源已获取/未知结果保护。已有旧 Supervisor 的错误文案也不会随 Host 热更新。关联：`docs/design-docs/runtime-admission-failure-details.md`，`CanvasPanelManager.withExecutionCandidateStart`、`terminateExecutionNodeForDeletion`、`RuntimeSupervisorServer.createSession`。此项为既有缺陷，不以本轮错误展示修复标记为完成。
+后续独立修复已为新代码的明确拒绝增加 `createSessionOutcome`，覆盖 Agent/Terminal 创建、恢复、重试和删除，保留断连/资源已获取/未知结果保护。已有旧 Supervisor 不会随 Host 热更新，也不会补发原请求的结构化结果；它的普通错误、旧固定文案及更新前残留的未知记录继续保守保护。后续旧 Supervisor 退役或明确历史创建恢复工作如需解除保护，必须从原责任方获取身份匹配的资源证明；不得凭错误字符串、超时或 registry 缺项追认。关联：`docs/design-docs/runtime-admission-rejection-settlement.md`、`CanvasPanelManager.withExecutionCandidateStart`、`RuntimeSupervisorServer.createSession`。
 
 ## 近期已收口
+
+- 2026-10-08：明确未获取资源的准入拒绝已完成启动状态与预留收尾。Host 327/327、Supervisor 116/116、客户端 32/32、现有 Supervisor 协议回归和类型检查通过；旧实现回归先红后绿。新请求可重试/删除，不解除旧故障会话隔离；旧进程及历史未知记录的边界见上。计划：`docs/exec-plans/completed/runtime-admission-rejection-settlement.md`。
 
 - 2026-10-08：PR #296 packaged smoke 的首个启动诊断超时已定位并修复：`simulateRuntimeReloadForTest` 在同一 Host 上关闭 execution owner 后未恢复准入，污染紧随其后的 QuickPick 用例。成功重载现在通过 `tryResume()` 恢复准入，拒绝恢复时显式失败；新增 4 项回归先红后绿，Node 22 完整 Host 接线 236/236、类型检查通过。真实 `test:vsix-smoke` 已越过原第 2619 行启动断言，但完整命令仍失败，后续 reset 缺口另列；不关闭 packaged smoke 总体债务。见 `docs/exec-plans/completed/packaged-smoke-reload-lifecycle.md`。
 

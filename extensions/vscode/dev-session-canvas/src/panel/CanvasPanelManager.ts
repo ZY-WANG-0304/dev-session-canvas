@@ -306,6 +306,7 @@ import {
 } from './CanvasTemplateStore';
 import {
   serializeExecutionSessionLaunchSpec,
+  getRuntimeSupervisorCreateSessionOutcome,
   RUNTIME_SUPERVISOR_ERROR_CODES,
   type RuntimeSupervisorCreateSessionParams,
   type RuntimeSupervisorCloseTerminalReadResult,
@@ -10753,14 +10754,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     starts.set(key, record);
     try { await run(); }
     catch (error) {
-      // The Supervisor has deleted the prepared session and provider before this
-      // typed result; release only that confirmed pre-acquire reservation.
-      if (error instanceof Error && error.message === 'Execution start was rejected-before-acquire.') {
-        record.submitted = false;
+      // Only the original create's explicit resource result can settle a submitted request.
+      const outcome = getRuntimeSupervisorCreateSessionOutcome(error);
+      const submittedSessionId = (record as { sessionId?: string }).sessionId;
+      if (record.submitted && !record.settled && starts.get(key) === record
+        && outcome?.sessionId === submittedSessionId && outcome?.sessionKind === kind) {
+        record.settled = true;
         const node = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
-        const submittedSessionId = (record as { sessionId?: string }).sessionId;
         if (node && node.metadata?.[kind]?.runtimeSessionId === submittedSessionId) {
-          const message = error.message;
+          const message = error instanceof Error ? error.message : String(error);
           this.state = updateExecutionNode(this.state, nodeId, kind, {
             status: 'error',
             summary: message,

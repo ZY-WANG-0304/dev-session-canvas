@@ -33,9 +33,9 @@ Supervisor 已通过 `serializeRuntimeSupervisorError` 的 `message` 返回普�
 
 ## 删除问题的独立边界
 
-Host 的 `withExecutionCandidateStart` 在请求发送前标记 `submitted=true`，仅对精确的 `Execution start was rejected-before-acquire.` 释放预留。此次普通准入错误使 `settled=false` 保持，candidate 错误分支只通知，不改变节点 Starting/Resuming；`terminateExecutionNodeForDeletion` 因原记录存在而拒绝删除。现场新会话没有创建成功，但当前消息协议未给 Host 可用于释放的明确结果。
+PR #303 时的 Host `withExecutionCandidateStart` 在请求发送前标记 `submitted=true`，仅对精确的 `Execution start was rejected-before-acquire.` 释放预留。普通准入错误使 `settled=false` 保持，candidate 错误分支只通知，不改变节点 Starting/Resuming；`terminateExecutionNodeForDeletion` 因原记录存在而拒绝删除。现场新会话没有创建成功，但当时消息协议未给 Host 可用于释放的明确结果。
 
-后续应独立修复确定未获取资源的拒绝分类及状态收尾，并保留通信中断、已取得资源和未确认结果的保护。本轮不通过匹配更长的错误字符串解除保护。该既有缺口登记在 `docs/exec-plans/tech-debt-tracker.md`。
+2026-10-08 的后续独立修复已用带会话身份的 `createSessionOutcome` 收口明确拒绝后的状态、重试及删除；正式方案和验证见 `runtime-admission-rejection-settlement.md`。通信中断、已取得资源、未确认结果及旧 Supervisor 普通错误继续保守保护。本设计的错误原因传递规则保持不变。
 
 ## 验证方法
 

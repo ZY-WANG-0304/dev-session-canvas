@@ -98,6 +98,14 @@ export interface RuntimeSupervisorErrorPayload {
   message: string;
   code?: string;
   descriptor?: RuntimeSupervisorMessageDescriptor;
+  createSessionOutcome?: RuntimeSupervisorCreateSessionOutcome;
+}
+
+/** This creation owns neither execution resources nor outstanding preparation cleanup. */
+export interface RuntimeSupervisorCreateSessionOutcome {
+  kind: 'not-acquired';
+  sessionId: string;
+  sessionKind: 'agent' | 'terminal';
 }
 
 export const RUNTIME_SUPERVISOR_ERROR_CODES = {
@@ -550,27 +558,46 @@ export function serializeRuntimeSupervisorError(error: unknown): RuntimeSupervis
   const message = error instanceof Error ? error.message : String(error);
   const code = readRuntimeSupervisorErrorCode(error);
   const descriptor = getRuntimeSupervisorErrorDescriptor(error);
+  const createSessionOutcome = getRuntimeSupervisorCreateSessionOutcome(error);
   return {
     message,
     ...(code ? { code } : {}),
-    ...(descriptor ? { descriptor } : {})
+    ...(descriptor ? { descriptor } : {}),
+    ...(createSessionOutcome ? { createSessionOutcome } : {})
   };
 }
 
 export function createRuntimeSupervisorError(
   payload: RuntimeSupervisorErrorPayload
-): Error & { code?: string; descriptor?: RuntimeSupervisorMessageDescriptor } {
-  const error = new Error(payload.message) as Error & {
-    code?: string;
-    descriptor?: RuntimeSupervisorMessageDescriptor;
-  };
+): Error & Omit<RuntimeSupervisorErrorPayload, 'message'> {
+  const error = new Error(payload.message) as Error & Omit<RuntimeSupervisorErrorPayload, 'message'>;
   if (payload.code) {
     error.code = payload.code;
   }
   if (isRuntimeSupervisorMessageDescriptor(payload.descriptor)) {
     error.descriptor = payload.descriptor;
   }
+  const createSessionOutcome = getRuntimeSupervisorCreateSessionOutcome(payload);
+  if (createSessionOutcome) error.createSessionOutcome = createSessionOutcome;
   return error;
+}
+
+export function getRuntimeSupervisorCreateSessionOutcome(error: unknown): RuntimeSupervisorCreateSessionOutcome | undefined {
+  if (!error || typeof error !== 'object' || !('createSessionOutcome' in error)) return undefined;
+  const outcome = error.createSessionOutcome;
+  if (!outcome || typeof outcome !== 'object' || !('kind' in outcome) || outcome.kind !== 'not-acquired'
+    || !('sessionId' in outcome) || typeof outcome.sessionId !== 'string' || !outcome.sessionId.trim()
+    || !('sessionKind' in outcome) || (outcome.sessionKind !== 'agent' && outcome.sessionKind !== 'terminal')) return undefined;
+  return { kind: 'not-acquired', sessionId: outcome.sessionId, sessionKind: outcome.sessionKind };
+}
+
+export function createRuntimeSupervisorCreateRejectedError(
+  error: unknown, sessionId: string, sessionKind: 'agent' | 'terminal'
+): Error {
+  return createRuntimeSupervisorError({
+    ...serializeRuntimeSupervisorError(error),
+    createSessionOutcome: { kind: 'not-acquired', sessionId, sessionKind }
+  });
 }
 
 export class RuntimeSupervisorProtocolError extends Error {

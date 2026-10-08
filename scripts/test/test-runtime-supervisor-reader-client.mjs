@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 const build = await esbuild.build({
   stdin: { contents: `
     export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
+    export { serializeRuntimeSupervisorError } from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol';
     export { normalizeTerminalStreamRead, normalizeTerminalStreamPage, normalizeTerminalReadOutcome } from './extensions/vscode/dev-session-canvas/src/common/terminalStreamPaging';
   `, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, platform: 'node', format: 'cjs', write: false
@@ -28,6 +29,7 @@ const guardedRequire = name => {
 const loaded = { exports: {} };
 new Function('require', 'module', 'exports', build.outputFiles[0].text)(guardedRequire, loaded, loaded.exports);
 const { RuntimeSupervisorClient, normalizeTerminalStreamRead, normalizeTerminalStreamPage, normalizeTerminalReadOutcome } = loaded.exports;
+const { serializeRuntimeSupervisorError } = loaded.exports;
 
 const hello = { serverVersion: 1, pid: 123, runtimeBackend: 'legacy-detached', runtimeGuarantee: 'best-effort',
   capabilities: { terminalPagedReadV1: true, terminalPagedCompletionV1: true, terminalReadSettlementV1: true } };
@@ -89,6 +91,34 @@ const test = (name, run) => tests.push({ name, run });
 const candidateProfile = 'linux-owner-v1-candidate';
 const candidateHello = { ...hello, capabilities: { ...hello.capabilities, executionCandidateProfiles: [candidateProfile] } };
 const candidateStorageDir = path.resolve('controlled-only/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor');
+
+test('create rejection crosses the original socket with only a validated resource outcome', async () => {
+  const valid = { kind: 'not-acquired', sessionId: 'rejected-session', sessionKind: 'agent' };
+  for (const outcome of [valid, undefined, null, {}, 'not-acquired', { ...valid, kind: 'unconfirmed' },
+    { ...valid, kind: 'acquired' }, { ...valid, sessionId: '' }, { ...valid, sessionId: 7 },
+    { ...valid, sessionKind: 'note' }]) {
+    const socket = new ControlledSocket();
+    socket.respond = request => {
+      if (request.method === 'hello') return candidateHello;
+      assert.equal(request.method, 'createSession');
+      queueMicrotask(() => socket.emit('data', `${JSON.stringify({ type: 'response', id: request.id, ok: false,
+        error: { message: 'Execution owner admission is closed: ENOSPC', code: 'controlled-error',
+          createSessionOutcome: outcome } })}\n`));
+    };
+    const { client } = await fixture(socket);
+    try {
+      await assert.rejects(client.createSession({ executionProfile: candidateProfile, sessionId: valid.sessionId, kind: 'agent' }), error => {
+        assert.equal(error.message, 'Execution owner admission is closed: ENOSPC');
+        assert.equal(error.code, 'controlled-error');
+        assert.deepEqual(error.createSessionOutcome, outcome === valid ? valid : undefined);
+        assert.deepEqual(serializeRuntimeSupervisorError(error).createSessionOutcome, outcome === valid ? valid : undefined);
+        return true;
+      });
+      assert.equal(client.hasPendingRequests(), false);
+    } finally { client.dispose(); }
+  }
+});
+
 function startupClient({ executionProfile = candidateProfile, storageDir = candidateStorageDir, startSupervisor = forbidden } = {}) {
   const client = new RuntimeSupervisorClient({
     backend: { paths: { storageDir, socketPath: '/controlled-only' }, startSupervisor },
