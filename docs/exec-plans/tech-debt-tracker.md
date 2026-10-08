@@ -35,6 +35,12 @@
 
 ## 技术债列表
 
+2026-10-08 测试过期问题修复（PR #296 的两项后续）：Marketplace fixture E2E 显式使用 `--locale=en` 并在宿主断言 `vscode.env.language`，统一安装、更新、回滚、举报、计数和发布成功文案；`npm run test:marketplace-vscode-e2e` 在 Node 22.23.3 / VS Code 1.118.1 真实宿主完整通过。Webview 先复现旧图 8020 pixels 差异，确认公共 fixture 的 `--timeout 300 --verbose` 触发当前默认参数校验错误，改用合法 `--model gpt-5` 并同步自定义启动用例，再生成 Linux 画布基准。截图复核确认 Agent 显示正常命令、Terminal 显示已有 cwd 行，并增加命令副标题断言，防止更新截图时接受错误状态；不放宽比较阈值。全套还暴露帮助提示中 Canvas → 画布、右键菜单新增 `clear-canvas`、启动模式归一化 fixture 混入已禁止的 Resume 目标参数等过期测试，均已按当前实现及 `docs/design-docs/agent-launch-modes-and-restart.md` 同步；产品代码未改。
+
+验证边界：本轮 `npm run test:webview` 完整执行 382 项，首次为 376 passed / 6 failed（12.2 分钟），没有中止或跳过。上述四项过期断言修复后的 12 项定向回归全部通过（画布基准、明暗 minimap、共享/内联帮助、自定义启动与 IME、右键菜单、启动模式归一化）；`npm run test:agent-launch-presets` 与 `git diff --check` 通过。构建使用现有六目标原生资产集并通过默认构建的源码/hash 校验；宿主测试通过 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT` / `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT` 设置独立短路径，避开已知 Unix socket 深路径限制。留存日志及原始截图差异位于本地忽略目录 `.debug/test-baseline-refresh/`。这不是完整 Webview 全绿结论；Windows 基准未在 Linux 上伪造，仍需原生 Windows 环境重新生成并验证。notifier companion 与 packaged smoke 两项未在本轮处理，保留原待查状态。
+
+本轮另登记 Webview 折行路径识别缺口：`tests/playwright/webview-harness.spec.mjs` 中 Agent / Terminal 的 `styled hard-wrapped code paths keep line and column suffixes` 均无法识别 `src/webview/executionTerminalNativeInteractions.ts:1600:12`。从 `origin/main` 的 `357266ad` 导出未经修改的原版 spec，在同一未改产品 bundle 上定向复验仍为 2 failed，确认本次 fixture/截图更新未引入该失败；尚未确认是识别实现还是测试输入问题。保留原断言和失败证据，不削弱行列号验证，应在下一轮终端链接修复及下一版本完整门禁前定位并通过。该缺口与已解决的 Linux 截图差异分别追踪。
+
 2026-10-08 当前结论覆盖下列 2026-10-07 的“发布阻塞”分类：用户明确授权 0.26.0 先发布、四项测试问题后修。用户已确认 Webview 差异来自基准图；Marketplace locale 矛盾有代码与 probe 证据，notifier posted diagnostic 与 packaged smoke 超时根因仍未确认，不能据“大概率测试问题”宣布产品缺陷已排除。四项仅对 0.26.0 降为接受的发布风险，失败和未执行项仍保持原状态。临时处理是该版 release:verify 的精确版本例外：保留静态、类型、定向回归、构建、同源原生资产与隔离打包，延后完整 npm test/宿主/Webview/packaged smoke。建议在下一发布准备前修复 locale 契约、按确认结果更新视觉基准、分别查明两处超时并重跑完整门禁；0.26.1 不继承例外。关联 PR #296、`docs/release-contracts/v0.26.0.md`、`scripts/release/release-preflight.mjs`、`docs/exec-plans/active/release-0-26-0-prep.md`。其余 audit 与运行时维护债务不受此授权影响。
 
 2026-10-07，同次 0.26.0 验证另有两项阻塞：完整 Webview 首项 `canvas-shell-baseline` 稳定差异 8020 pixels，差异集中于 Agent/Terminal 标签及控制区；未更新期望图，主动中止后的其余测试不算通过。独立 clean-checkout 虽完成 npm ci 和 140-file VSIX 打包，packaged smoke 在 `verifyCreateNodeCommandQuickPick`（`extension-tests.cjs:2619`）等待诊断事件超时，尚未确认根因。发布前需分别复核视觉基准与创建节点实际链路，并重跑完整验证；Markdown 定向渲染、notifier locale 和包结构通过不能代证。追踪入口：`docs/exec-plans/active/release-0-26-0-prep.md`、草稿 PR #296。

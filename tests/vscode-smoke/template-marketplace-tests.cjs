@@ -22,6 +22,7 @@ module.exports = {
 };
 
 async function run() {
+  assert.strictEqual(vscode.env.language, 'en', 'Marketplace fixture E2E requires --locale=en.');
   const port = Number(process.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_E2E_PORT);
   assert.ok(Number.isInteger(port) && port > 0, 'Expected marketplace E2E port.');
 
@@ -52,20 +53,20 @@ async function verifyMarketplacePanelOperations(fixture) {
     probe.visibleTemplateNames.includes('Panel Review Loop') &&
     probe.visibleTemplateNames.includes('Panel Release Checklist') &&
     probe.installTargetLabels.length > 0 &&
-    probe.buttonTexts.some((text) => /^(?:安装(?: v\d+)?|更新到 v\d+|已安装 v\d+)$/u.test(text))
+    probe.buttonTexts.some((text) => /^(?:Install(?: v\d+)?|Update to v\d+|Installed v\d+)$/u.test(text))
   );
   assert.ok(listProbe.installTargetLabels.length > 0, 'Expected plugin marketplace to expose install targets.');
   assert.ok(listProbe.publisherTexts.some((text) => /Codex Tester/u.test(text)), 'Expected list rows to expose publisher information.');
   assert.ok(
-    listProbe.buttonTexts.some((text) => /^(?:安装(?: v\d+)?|更新到 v\d+|已安装 v\d+)$/u.test(text)),
+    listProbe.buttonTexts.some((text) => /^(?:Install(?: v\d+)?|Update to v\d+|Installed v\d+)$/u.test(text)),
     `Expected list row to expose install split button primary action. Buttons: ${JSON.stringify(listProbe.buttonTexts)}`
   );
   assert.ok(
-    listProbe.buttonTexts.some((text) => text === '切换安装版本'),
+    listProbe.buttonTexts.some((text) => text === 'Switch install version'),
     `Expected list row to expose install split button version toggle. Buttons: ${JSON.stringify(listProbe.buttonTexts)}`
   );
-  assert.ok(!listProbe.buttonTexts.some((text) => /下载 JSON/u.test(text)), 'Expected VS Code marketplace to omit JSON download actions.');
-  assert.match(listProbe.statusText, /共 2 个模板/);
+  assert.ok(!listProbe.buttonTexts.some((text) => /Download JSON/u.test(text)), 'Expected VS Code marketplace to omit JSON download actions.');
+  assert.match(listProbe.statusText, /^2 templates$/);
 
   const searchProbe = await performMarketplaceAction({ kind: 'search', value: 'review' }, 10000);
   assert.deepStrictEqual(searchProbe.visibleTemplateNames, ['Panel Review Loop']);
@@ -80,8 +81,8 @@ async function verifyMarketplacePanelOperations(fixture) {
   );
   assert.strictEqual(detailProbe.detailTitle, 'Panel Review Loop');
   assert.ok(detailProbe.publisherTexts.some((text) => /Codex Tester/u.test(text)), 'Expected detail view to expose publisher information.');
-  assert.ok(!detailProbe.buttonTexts.some((text) => /下载 JSON/u.test(text)), 'Expected detail view to omit JSON download actions.');
-  assert.ok(detailProbe.buttonTexts.includes('举报模板'), 'Expected detail view to expose a report entry.');
+  assert.ok(!detailProbe.buttonTexts.some((text) => /Download JSON/u.test(text)), 'Expected detail view to omit JSON download actions.');
+  assert.ok(detailProbe.buttonTexts.includes('Report template'), 'Expected detail view to expose a report entry.');
   const changelogProbe = await performMarketplaceAction({ kind: 'selectDetailTab', tab: 'changelog' }, 10000);
   assert.strictEqual(changelogProbe.activeDetailTab, 'changelog');
   assert.match(changelogProbe.detailChangelogText || '', /Tighten panel detail controls/u);
@@ -93,8 +94,8 @@ async function verifyMarketplacePanelOperations(fixture) {
   if (!menuProbe.hasVersionMenu) {
     menuProbe = await waitForMarketplaceProbe((probe) => probe.hasVersionMenu);
   }
-  assert.ok(menuProbe.versionMenuItems.some((item) => /安装 v2/u.test(item)));
-  assert.ok(menuProbe.versionMenuItems.some((item) => /安装 v1/u.test(item)));
+  assert.ok(menuProbe.versionMenuItems.some((item) => /Install v2/u.test(item)));
+  assert.ok(menuProbe.versionMenuItems.some((item) => /Install v1/u.test(item)));
 
   const closedProbe = await performMarketplaceAction({ kind: 'clickOutside' }, 10000);
   assert.strictEqual(closedProbe.hasVersionMenu, false);
@@ -136,10 +137,10 @@ async function verifyMarketplacePanelOperations(fixture) {
   );
   assert.strictEqual(installedEntry.marketplace.installedVersionNumber, 2);
   const updatedProbe = await waitForMarketplaceProbe((probe) =>
-    probe.buttonTexts.some((text) => /已安装 v2/u.test(text))
+    probe.buttonTexts.some((text) => /Installed v2/u.test(text))
   );
   assert.ok(
-    updatedProbe.buttonTexts.some((text) => /已安装 v2/u.test(text)),
+    updatedProbe.buttonTexts.some((text) => /Installed v2/u.test(text)),
     `Expected latest install action to update the installed state. Buttons: ${JSON.stringify(updatedProbe.buttonTexts)}`
   );
 
@@ -147,7 +148,7 @@ async function verifyMarketplacePanelOperations(fixture) {
   if (!menuProbe.hasVersionMenu) {
     menuProbe = await waitForMarketplaceProbe((probe) => probe.hasVersionMenu);
   }
-  assert.ok(menuProbe.versionMenuItems.some((item) => /回滚到 v1/u.test(item)), 'Expected version menu to label older versions as rollback.');
+  assert.ok(menuProbe.versionMenuItems.some((item) => /Roll back to v1/u.test(item)), 'Expected version menu to label older versions as rollback.');
   await performMarketplaceAction({ kind: 'installVersion', slug: 'panel-review-loop', versionNumber: 1 }, 10000);
   installedEntry = await waitForTemplateCatalogEntry((entry) =>
     entry.marketplace?.marketTemplateSlug === 'panel-review-loop' &&
@@ -209,7 +210,7 @@ async function verifyMarketplacePanelPublish(fixture) {
                 assert.strictEqual(inputBoxCalls.length, 0);
                 assert.strictEqual(authCalls.length, 1);
                 assert.ok(
-                  informationCalls.some((call) => String(call.message).includes('模板“VS Code Publish Smoke”已发布到模板市场 v1。')),
+                  informationCalls.some((call) => String(call.message).includes('Template "VS Code Publish Smoke" has been published to Template Marketplace v1.')),
                   'Expected publish success information message.'
                 );
               },
@@ -234,7 +235,7 @@ async function verifyMarketplacePanelPublish(fixture) {
   const successProbe = await waitForMarketplaceProbe((probe) =>
     probe.view === 'publish' &&
     probe.publishedTemplate?.slug === 'vs-code-publish-smoke' &&
-    /已发布到模板市场/u.test(probe.publishStatusText || probe.statusText || '')
+    /has been published to Template Marketplace/u.test(probe.publishStatusText || probe.statusText || '')
   );
   assert.strictEqual(successProbe.publishedTemplate.name, 'VS Code Publish Smoke');
 
@@ -295,7 +296,7 @@ async function verifyMarketplacePanelPublishVersion(fixture) {
         await waitForCondition(() => fixture.publishedVersionRequests.length === 1, 20000, 'publish version request');
         assert.strictEqual(authCalls.length, 1);
         assert.ok(
-          informationCalls.some((call) => String(call.message).includes('模板“Panel Review Loop”已发布到模板市场 v3。')),
+          informationCalls.some((call) => String(call.message).includes('Template "Panel Review Loop" has been published to Template Marketplace v3.')),
           'Expected publish-version success information message.'
         );
       },
@@ -323,10 +324,10 @@ async function verifyMarketplacePanelPublishVersion(fixture) {
   const detailProbe = await waitForMarketplaceProbe((probe) =>
     probe.view === 'detail' &&
     probe.activeTemplateSlug === 'panel-review-loop' &&
-    probe.versionMenuItems.some((text) => /更新到 v3/u.test(text))
+    probe.versionMenuItems.some((text) => /Update to v3/u.test(text))
   );
   assert.ok(
-    detailProbe.versionMenuItems.some((text) => /更新到 v3/u.test(text)),
+    detailProbe.versionMenuItems.some((text) => /Update to v3/u.test(text)),
     `Expected version menu to mention v3. Items: ${JSON.stringify(detailProbe.versionMenuItems)}`
   );
 }
