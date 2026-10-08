@@ -16,6 +16,7 @@ import { ensureVSCodeExecutable, launchPreparedVSCodeScenario, prepareMainSmokeH
 const projectRoot = process.cwd();
 const { values } = parseArgs({ options: { output: { type: 'string' }, mode: { type: 'string' },
   'installed-vsix': { type: 'string' },
+  'root-owner': { type: 'boolean', default: false },
   'reader-isolation': { type: 'boolean', default: false },
   'capacity-sessions': { type: 'string' },
   'capacity-reconnect': { type: 'boolean', default: false },
@@ -28,6 +29,8 @@ assert(!values['capacity-current-state'] || (!values['reader-isolation'] && !val
   'Current-state capacity acceptance is a separate development-host selection.');
 assertReaderIsolationSelection(values);
 assertInstalledCandidateSelection(values);
+assert(!values['root-owner'] || (values['installed-vsix'] && values.mode === 'live-runtime' && !capacitySelected &&
+  !values['reader-isolation']), 'Root owner acceptance requires the installed live-runtime scenario.');
 assert(['linux', 'darwin', 'win32'].includes(process.platform), 'This finite product acceptance requires a supported native platform.');
 assert(!capacitySelected || process.platform === 'linux', 'The fixed capacity workload requires Linux process identity observation.');
 assert(values.output, 'Specify a new --output evidence directory.');
@@ -110,6 +113,7 @@ await fs.writeFile(path.join(output, 'input.json'), `${JSON.stringify({
   ...(installedInput ? { installedVsix: { path: installedInput.vsixPath, sha256: installedInput.vsixSha256,
     payloadHashes: installedInput.payloadHashes, companionScope: installedInput.companionScope } } : {}),
   partialSelection: values.mode !== undefined,
+  rootOwnerAcceptance: values['root-owner'],
   scenarios: modes.map(mode => ({ mode, surface: mode === 'live-runtime' ? 'editor' : 'panel' }))
 }, null, 2)}\n`);
 
@@ -135,6 +139,12 @@ for (const [index, mode] of modes.entries()) {
     } else {
       await prepareMainSmokeHostExtension({ projectRoot, targetRoot: smokeHostRoot });
     }
+    if (values['root-owner']) {
+      await build({ entryPoints: [path.join(projectRoot,
+        'extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership.ts')],
+        bundle: true, platform: 'node', format: 'cjs', target: 'node22',
+        outfile: resolveStagedSmokeTestPath(smokeHostRoot, 'candidate-root-ownership.cjs') });
+    }
     let completed;
     for (const phase of ['complete', 'reopen']) {
       await launchPreparedVSCodeScenario({ projectRoot, runtime, vscodeExecutablePath, workspacePath,
@@ -143,6 +153,7 @@ for (const [index, mode] of modes.entries()) {
         disableExtensions: false, disableWorkspaceTrust: true,
         extensionTestsEnv: { DEV_SESSION_CANVAS_CANDIDATE_MODE: mode,
           DEV_SESSION_CANVAS_CANDIDATE_PHASE: phase,
+          DEV_SESSION_CANVAS_ROOT_OWNER_ACCEPTANCE: values['root-owner'] ? '1' : '',
           ...(installedDriver ? { DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1' } : {}),
           DEV_SESSION_CANVAS_INSTALLED_VSIX_EXPECTATION: installedDriver?.expectationPath ?? '',
           DEV_SESSION_CANVAS_CANDIDATE_SUBJECT_NODE: process.execPath } });

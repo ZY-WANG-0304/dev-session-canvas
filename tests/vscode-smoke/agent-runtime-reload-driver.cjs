@@ -10,6 +10,9 @@ const { hasLiveWindowsStartupChain } = require('./agent-candidate-windows-observ
 const { resolveSystemdUserRuntimeSupervisorPaths, resolveLegacyRuntimeSupervisorPaths } = require('./runtime-reload-paths.cjs');
 const { resolveExecutionSessionSpawnSpec } = require('./execution-session-spawn-spec.cjs');
 const { readIdentity, sameIdentity, sameLiveIdentity, exitedIdentity, closeWindowsIdentityObserver } = require('./runtime-reload-contract.cjs');
+const { createRuntimeOwnerDescriptor, createRuntimeOwnerCompatibilityFingerprint, resolveRootRuntimeSupervisorGeneration,
+  resolveRuntimeRootOwnerGlobalStoragePath } = require('./runtime-root-ownership.cjs');
+const { assertRuntimeStorageContained } = require('./runtime-storage-containment.cjs');
 
 const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
 const controlPath = process.env.DEV_SESSION_CANVAS_AGENT_RELOAD_CONTROL;
@@ -21,7 +24,7 @@ const probe = () => command('captureWebviewProbe', surface, 10000);
 const dom = action => command('performWebviewDomAction', action, surface, 10000);
 const stripVt = value => String(value).replace(/[\u001b\u009b]\[[0-?]*[ -/]*[@-~]/g, '');
 const hasAgentMarkerResponse = (value, marker) => value.nodes.find(node => node.nodeId === currentNodeId)
-  ?.terminalVisibleLines?.some(line => stripVt(line).trim().replace(/^(?:\u2022|\*)\s*/, '')
+  ?.terminalVisibleLines?.some(line => stripVt(line).trim().replace(/^(?:\u2022|\u25cf|\u23fa|\*)\s*/, '')
     .startsWith(marker)) === true;
 const sendAgentTurn = async (nodeId, marker) => {
   // Codex treats Enter in a fast paste burst as an inserted newline; submit separately.
@@ -104,6 +107,35 @@ function runtimePaths(metadata) {
     : resolveLegacyRuntimeSupervisorPaths(metadata.runtimeStoragePath);
 }
 
+async function assertRuntimeOwnerBinding(metadata, hello) {
+  if (!config.rootOwner) return;
+  const profile = { linux: 'linux-owner-v1-candidate', darwin: 'macos-owner-v1-candidate',
+    win32: 'windows-owner-v1-candidate' }[process.platform];
+  const owner = metadata.runtimeOwner;
+  assert(owner && typeof owner === 'object', 'Root acceptance requires its original complete runtime owner.');
+  assert(['legacy-detached', 'systemd-user'].includes(metadata.runtimeBackend));
+  assert.equal(metadata.runtimeGuarantee, metadata.runtimeBackend === 'systemd-user' ? 'strong' : 'best-effort');
+  assert(typeof metadata.runtimeSessionId === 'string' && metadata.runtimeSessionId.length > 0);
+  const expected = createRuntimeOwnerDescriptor({ environmentKey: owner.environmentKey,
+    userStorageScopeKey: owner.userStorageScopeKey, rootPath: config.workspacePath,
+    generation: resolveRootRuntimeSupervisorGeneration(profile) });
+  assert.deepEqual(owner, expected, 'The original owner must identify this workspace root and platform generation.');
+  const globalStorage = resolveRuntimeRootOwnerGlobalStoragePath(runtimePaths(metadata).storageDir, owner);
+  const expectedGlobalStorage = path.join(config.userDataDir, 'User', 'globalStorage', 'devsessioncanvas.dev-session-canvas');
+  assert.equal(path.relative(await fs.realpath(expectedGlobalStorage), await fs.realpath(globalStorage)), '',
+    'Root runtime storage must belong to the installed extension in this isolated VS Code profile.');
+  await assertRuntimeStorageContained(metadata.runtimeStoragePath, config.permittedStorageRoots);
+  assert.equal(hello.serverVersion, 1);
+  assert.deepEqual(hello.runtimeOwner, owner);
+  assert.equal(hello.runtimeBackend, metadata.runtimeBackend);
+  assert.equal(hello.runtimeGuarantee, metadata.runtimeGuarantee);
+  assert.equal(hello.executionProfile, profile);
+  assert.equal(hello.ownerCompatibilityFingerprint, createRuntimeOwnerCompatibilityFingerprint(owner.generation, profile));
+  assert.equal(hello.capabilities?.terminalCurrentStateV1, true);
+  assert.equal(hello.capabilities?.terminalHostOutputCreditV1, true);
+  assert(hello.capabilities?.executionCandidateProfiles?.includes(profile));
+}
+
 function rpc(socketPath, method, id = 'agent-reload') {
   return new Promise((resolve, reject) => {
     const socket = net.createConnection(socketPath);
@@ -140,7 +172,7 @@ async function setup(extension) {
   await command('clearDiagnosticEvents');
   await startProcessObserver(extension);
   const custom = [config.cli.entry, ...config.launchArguments].map(value => `'${String(value).replaceAll("'", "'\\''")}'`).join(' ');
-  await command('createNode', 'agent', 'codex', { agentLaunchPreset: 'custom', agentCustomLaunchCommand: custom,
+  await command('createNode', 'agent', config.provider, { agentLaunchPreset: 'custom', agentCustomLaunchCommand: custom,
     cwdOverride: config.workspacePath });
   const created = await poll('Agent node created', snapshot, state => state.state.nodes.some(node => node.kind === 'agent'));
   currentNodeId = created.state.nodes.find(node => node.kind === 'agent').id;
@@ -156,6 +188,7 @@ async function setup(extension) {
   assert.equal(metadata.persistenceMode, 'live-runtime');
   const paths = runtimePaths(metadata);
   const hello = await rpc(paths.socketPath, 'hello');
+  await assertRuntimeOwnerBinding(metadata, hello);
   const supervisor = await readIdentity(hello.pid);
   assert(supervisor && supervisor.startTicks);
   await observer.addRoot(supervisor.pid, 'supervisor');
@@ -168,7 +201,9 @@ async function setup(extension) {
   const resources = assertOriginalResourcesLive();
   const setup = { phase: 'setup', nonce: control.nonce, host: await readIdentity(process.pid), nodeId: currentNodeId,
     binding: { runtimeBackend: metadata.runtimeBackend, runtimeStoragePath: metadata.runtimeStoragePath,
-      runtimeSessionId: metadata.runtimeSessionId }, supervisor, hello, reader, resources,
+      runtimeSessionId: metadata.runtimeSessionId,
+      ...(config.rootOwner ? { runtimeOwner: metadata.runtimeOwner, runtimeGuarantee: metadata.runtimeGuarantee } : {}) },
+    provider: config.provider, rootOwner: config.rootOwner === true, supervisor, hello, reader, resources,
     frameId: (await snapshot()).surfaceLifecycle[surface].frameId, before };
   await write('ownership.json', { supervisor, resources });
   await write('setup.json', setup);
@@ -214,8 +249,8 @@ function assertOriginalResourcesLive(expected) {
     assert(current && current.role === entry.role && current.wrapperKind === entry.wrapperKind &&
       !executionEnded(current) && !current.observationUnknown, 'Original Agent startup identity must still be live.');
   }
-  if (process.platform === 'win32') assert(hasLiveWindowsStartupChain(result, 'codex', 'live-runtime'),
-    'The original Windows provider/cmd/node/CLI chain must be retained before stop.');
+  if (process.platform === 'win32') assert(hasLiveWindowsStartupChain(result, config.provider, 'live-runtime'),
+    'The original Windows provider/wrapper/CLI chain must be retained before stop.');
   return resources;
 }
 
@@ -237,6 +272,10 @@ async function originalResourcesExited(resources) {
 
 function hasLoadedAgentComposer(text) {
   const visible = stripVt(text);
+  if (config.provider === 'claude') {
+    return /\bClaude Code\b/i.test(visible) && /\bdeepseek[- ]?flash\b/i.test(visible) &&
+      /^[ \t]*(?:\u276f|>)[ \t]*(?:Try\b[^\n]*)?$/im.test(visible);
+  }
   // Codex renders this composer before onboarding too, with a "model: loading" header.
   return /^\s*\u203a\s*Ask\s+Codex\s+to\s+do\s+anything\s*$/im.test(visible) &&
     /\bdeepseek[- ]?flash\b/i.test(visible) && !/model:\s*loading\b/i.test(visible);
@@ -248,17 +287,22 @@ async function waitForAgentReady() {
     /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i,
     /(?:Choose the text style|Choose.*theme|Select.*theme)/i,
     /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i,
-    /Set up the Codex agent sandbox[\s\S]*1\.\s*Set up default sandbox[\s\S]*2\.\s*Use non-admin sandbox/i
+    /Set up the Codex agent sandbox[\s\S]*1\.\s*Set up default sandbox[\s\S]*2\.\s*Use non-admin sandbox/i,
+    ...(config.provider === 'claude' ? [/Detected a custom API key[\s\S]*Do you want to use this API key/i] : [])
   ];
   const deadline = Math.min(Date.now() + 90000, control.deadlineAt - 30000);
   while (Date.now() < deadline) {
     const value = await probe();
     const text = textOf(value);
+    if (config.provider === 'claude' && /Select login method:|Not logged in|Invalid API key/i.test(text)) {
+      throw new Error('The isolated Claude API configuration did not reach its authenticated surface.');
+    }
     let handledPrompt = false;
     for (const [name, pattern] of [['workspace-trust', /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i],
       ['theme', /(?:Choose the text style|Choose.*theme|Select.*theme)/i],
       ['update', /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i],
-      ['windows-sandbox', startupPrompts[3]]]) {
+      ['windows-sandbox', startupPrompts[3]],
+      ...(config.provider === 'claude' ? [['claude-api-key', startupPrompts[4]]] : [])]) {
       if (pattern.test(text) && !prompts.has(name)) {
         let data = name === 'update' ? '\u001b[B\r' : '\r';
         if (name === 'windows-sandbox') {
@@ -287,7 +331,7 @@ async function waitForAgentReady() {
     }
     await sleep(100);
   }
-  throw new Error('Timed out: Codex interactive surface');
+  throw new Error(`Timed out: ${config.provider} interactive surface`);
 }
 
 async function verify(extension) {
@@ -300,9 +344,10 @@ async function verify(extension) {
   const node = nodeOf(state, setup.nodeId);
   assert(node?.metadata?.agent?.liveSession === true, 'Reload must retain the live Agent node.');
   const metadata = node.metadata.agent;
-  for (const [key, value] of Object.entries(setup.binding)) assert.equal(metadata[key], value);
+  for (const [key, value] of Object.entries(setup.binding)) assert.deepEqual(metadata[key], value);
   const paths = runtimePaths(metadata);
   const hello = await rpc(paths.socketPath, 'hello');
+  await assertRuntimeOwnerBinding(metadata, hello);
   assert.equal(hello.pid, setup.supervisor.pid);
   assert(sameLiveIdentity(setup.supervisor, await readIdentity(setup.supervisor.pid)));
   const reader = await mountedReader(setup.nodeId);
@@ -348,7 +393,8 @@ async function verify(extension) {
   const resourcesExited = await poll('original Agent resources exited', () => originalResourcesExited(setup.resources),
     value => value.pass, 10000);
   await write('verify.json', { phase: 'verify', nonce: control.nonce, pass: true, oldHost, node: nodeOf(ended, setup.nodeId),
-    binding: setup.binding, supervisor: await readIdentity(setup.supervisor.pid), reader, after,
+    binding: setup.binding, provider: config.provider, rootOwner: config.rootOwner === true,
+    supervisor: await readIdentity(setup.supervisor.pid), hello, reader, after,
     noNewExecution: true, retainedResources, resourcesExited, originalResourcesExited: resourcesExited.pass });
 }
 
@@ -376,7 +422,9 @@ async function cleanup() {
     const paths = runtimePaths(binding);
     receipt.registry = await poll('isolated Supervisor registry empty', async () => JSON.parse(await fs.readFile(paths.registryPath, 'utf8')),
       value => Array.isArray(value.sessions) && value.sessions.length === 0, 10000);
-    assert.equal((await rpc(paths.socketPath, 'hello')).pid, expected.pid);
+    const hello = await rpc(paths.socketPath, 'hello');
+    assert.equal(hello.pid, expected.pid);
+    await assertRuntimeOwnerBinding(binding, hello);
     if (process.platform === 'win32') {
       receipt.supervisorActions = await observer.cleanupSupervisor(expected);
       await poll('isolated Supervisor retained handle exited', async () => {

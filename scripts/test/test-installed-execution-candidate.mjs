@@ -392,7 +392,7 @@ try {
   for (const invalidReceipt of [undefined, 'missing', 'hash-mismatch']) {
     const reports = new Map(), launches = [], installs = [];
     const execute = () => vm.runInNewContext(`(async () => { ${loop} })()`, {
-      assert, path, JSON, installedReceipts: receipts, installedInput: input,
+      assert, path, JSON, installedReceipts: receipts, installedInput: input, values: {},
       modes: ['live-runtime', 'snapshot-only'], output: '/fixed-output', projectRoot: '/fixed-project', runId: 'fixed',
       vscodeExecutablePath: '/fixed/Code', process: { platform: 'linux', execPath: '/fixed-node', env: {} },
       fs: { async mkdir() {}, async writeFile(file, contents) { reports.set(file, contents); },

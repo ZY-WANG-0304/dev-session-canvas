@@ -37,6 +37,10 @@ on:
         description: Only real Codex Reload Window; requires explicit package and passed installed evidence reuse
         type: boolean
         default: false
+      root_ownership:
+        description: Root affected acceptance only; new native-reuse package, three installed Runtime checks, Linux windows and Agents
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -77,6 +81,7 @@ jobs:
           DSC_SKIP_INSTALLED: ${{ inputs.skip_installed }}
           DSC_INSTALLED_EVIDENCE_RUN: ${{ inputs.installed_evidence_run }}
           DSC_AGENT_RELOAD_ONLY: ${{ inputs.agent_reload_only }}
+          DSC_ROOT_OWNERSHIP: ${{ inputs.root_ownership }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -86,6 +91,7 @@ jobs:
           const { DSC_REUSE_RUN: reuse, DSC_NATIVE_RUN: nativeReuse, DSC_PLATFORM: platform, DSC_SCENARIOS: scenarios,
             DSC_INSTALLED_MODE: installedMode,
             DSC_SKIP_INSTALLED: skip, DSC_INSTALLED_EVIDENCE_RUN: installedRun, DSC_AGENT_RELOAD_ONLY: reloadOnly,
+            DSC_ROOT_OWNERSHIP: rootOwnership,
             GITHUB_SHA: head, GITHUB_RUN_ID: current, GITHUB_REPOSITORY: repository } = process.env;
           const platforms = [{ os: 'ubuntu-22.04', platform: 'linux' }, { os: 'macos-15', platform: 'macos' },
             { os: 'windows-2025', platform: 'windows' }];
@@ -93,6 +99,10 @@ jobs:
           const selectedPlatforms = platforms.filter(item => platform === 'all' || item.platform === platform);
           assert(['true', 'false'].includes(skip));
           assert(['true', 'false'].includes(reloadOnly));
+          assert(['true', 'false'].includes(rootOwnership));
+          assert(rootOwnership !== 'true' || (nativeReuse && !reuse && platform === 'all' &&
+            scenarios === '' && skip === 'false' && installedMode === 'live-runtime' && reloadOnly === 'false'),
+            'Root ownership acceptance requires one new native-reuse package, all installed Runtime platforms and its fixed Linux Agent selection.');
           assert(['all', 'live-runtime'].includes(installedMode));
           cli.selectAgentCandidateScenarios(scenarios);
           assert(reloadOnly !== 'true' || (reuse && skip === 'true' && installedRun && scenarios === ''),
@@ -216,6 +226,13 @@ jobs:
             nativeAssets: { run: process.env.DSC_NATIVE_RUN, inputCommit: process.env.DSC_NATIVE_COMMIT }
           }, null, 2));
           NODE
+      - name: Validate affected root acceptance inputs
+        if: inputs.root_ownership
+        run: |
+          node scripts/test/test-runtime-agent-ci-workflow.mjs
+          node scripts/test/test-installed-execution-candidate.mjs
+          node scripts/test/test-agent-runtime-reload-driver.mjs
+          node tests/vscode-smoke/root-owner-contract-tests.cjs
       - uses: actions/upload-artifact@v4
         with:
           name: runtime-production-package-${{ github.run_id }}
@@ -258,11 +275,11 @@ jobs:
           sudo apt-get install --no-install-recommends -y xvfb xauth bubblewrap libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libxtst6
           bwrap --unshare-user --ro-bind / / /usr/bin/true
       - uses: actions/setup-python@v5
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && !inputs.root_ownership
         with:
           python-version: '3.12.10'
       - name: Darwin process observer
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && !inputs.root_ownership
         run: |
           python -m venv "$RUNNER_TEMP/agent-observer"
           "$RUNNER_TEMP/agent-observer/bin/python" -m pip install --only-binary=:all: --require-hashes --requirement scripts/test/fixtures/darwin-agent-observer-requirements.txt
@@ -358,15 +375,34 @@ jobs:
       - name: Installed Runtime Terminal and Webview affected acceptance
         id: installed_runtime
         if: ${{ !inputs.skip_installed && inputs.installed_mode == 'live-runtime' }}
-        run: node scripts/smoke/run-vscode-execution-candidate.mjs --mode=live-runtime --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-installed"
+        env:
+          DSC_ROOT_OWNERSHIP: ${{ inputs.root_ownership }}
+        run: |
+          args=()
+          if [ "$DSC_ROOT_OWNERSHIP" = true ]; then args+=(--root-owner); fi
+          node scripts/smoke/run-vscode-execution-candidate.mjs --mode=live-runtime "${args[@]}" --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-installed"
       - name: Installed Runtime current-state reload acceptance
         id: installed_runtime_reload
-        if: ${{ runner.os == 'Linux' && !inputs.skip_installed && (inputs.installed_mode == 'all' || inputs.installed_mode == 'live-runtime') }}
+        if: ${{ runner.os == 'Linux' && !inputs.root_ownership && !inputs.skip_installed && (inputs.installed_mode == 'all' || inputs.installed_mode == 'live-runtime') }}
         run: |
           package_sha=$(sha256sum production-package/product.vsix | awk '{print $1}')
           node scripts/smoke/run-vscode-runtime-reload-candidate.mjs \
             --mode=live-runtime --current-state --expected-vsix-sha256 "$package_sha" \
             --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-installed/current-state-reload"
+      - name: Installed root owner two-window acceptance
+        id: root_windows
+        if: ${{ inputs.root_ownership && runner.os == 'Linux' }}
+        run: node scripts/smoke/run-vscode-root-owner-candidate.mjs --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-root-owner"
+      - name: Preserve root owner window evidence
+        if: always() && steps.root_windows.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-root-windows-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/dsc-root-owner/*.json
+            ${{ runner.temp }}/dsc-root-owner/runtime/artifacts/**
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload installed evidence before Agent credentials are available
         if: always() && (steps.installed.outcome != 'skipped' || steps.installed_runtime.outcome != 'skipped' || steps.installed_runtime_reload.outcome != 'skipped')
         uses: actions/upload-artifact@v4
@@ -386,10 +422,11 @@ jobs:
         run: node scripts/test/test-agent-candidate-windows-observer.mjs
       - name: Install fixed real Agent CLIs
         id: agent_clis
+        if: ${{ !inputs.root_ownership || runner.os == 'Linux' }}
         run: npm install --global --no-audit --no-fund @openai/codex@0.157.1 @anthropic-ai/claude-code@2.1.280
       - name: Real Agent final acceptance
         id: real_agents
-        if: ${{ !inputs.agent_reload_only }}
+        if: ${{ !inputs.agent_reload_only && !inputs.root_ownership }}
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DSC_AGENT_SCENARIOS: ${{ inputs.agent_scenarios }}
@@ -404,6 +441,7 @@ jobs:
       - name: Real live Agent Reload Window acceptance (Codex)
         id: real_agent_reload
         if: ${{ always() && !cancelled() && steps.package_identity.outcome == 'success'
+          && !inputs.root_ownership
           && steps.agent_clis.outcome == 'success'
           && ((!inputs.agent_reload_only && !inputs.skip_installed
             && (steps.installed.outcome == 'success' || steps.installed_runtime.outcome == 'success'))
@@ -417,6 +455,35 @@ jobs:
           node scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs \
             --backend=deepseek --installed-vsix production-package/product.vsix \
             --output "$RUNNER_TEMP/dsc-agent-reload"
+      - name: Real root Agent create and Reload Window acceptance
+        id: root_agent_reload
+        if: ${{ inputs.root_ownership && runner.os == 'Linux' && steps.agent_clis.outcome == 'success' }}
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          umask 077
+          failed=0
+          for provider in codex claude; do
+            if ! node scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs \
+              --backend=deepseek --provider="$provider" --root-owner \
+              --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-root-agent-$provider"; then
+              failed=1
+            fi
+          done
+          exit "$failed"
+      - name: Preserve root Agent reload evidence
+        if: always() && steps.root_agent_reload.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-root-agent-reload-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/dsc-root-agent-*/input.json
+            ${{ runner.temp }}/dsc-root-agent-*/first-failure.json
+            ${{ runner.temp }}/dsc-root-agent-*/result.json
+            ${{ runner.temp }}/dsc-root-agent-*/runtime/artifacts/*.json
+            ${{ runner.temp }}/dsc-root-agent-*/runtime/artifacts/*-output.txt
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload live Agent Reload evidence
         if: always() && steps.real_agent_reload.outcome != 'skipped'
         uses: actions/upload-artifact@v4

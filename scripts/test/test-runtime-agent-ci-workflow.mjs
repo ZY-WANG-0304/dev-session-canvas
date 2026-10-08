@@ -310,7 +310,9 @@ assert.deepEqual(Object.keys(production.on), ['workflow_dispatch'],
 assert.deepEqual(production.permissions, { contents: 'read' });
 assert.equal(production.env, undefined);
 const productionInputs = production.on.workflow_dispatch.inputs;
-assert.deepEqual(Object.keys(productionInputs), ['reuse_package_run', 'reuse_native_run', 'platform', 'agent_scenarios', 'installed_mode', 'skip_installed', 'installed_evidence_run', 'agent_reload_only']);
+assert.deepEqual(Object.keys(productionInputs), ['reuse_package_run', 'reuse_native_run', 'platform', 'agent_scenarios', 'installed_mode', 'skip_installed', 'installed_evidence_run', 'agent_reload_only', 'root_ownership']);
+assert.equal(productionInputs.root_ownership.type, 'boolean');
+assert.equal(productionInputs.root_ownership.default, false);
 assert.equal(productionInputs.reuse_package_run.default, '');
 assert.equal(productionInputs.reuse_native_run.default, '');
 assert.equal(productionInputs.agent_scenarios.default, '');
@@ -338,7 +340,7 @@ async function selection({ values = {}, changed = [], packageSuccess = true, ins
   installedMode = 'all', sourcePath = '.github/workflows/runtime-production-acceptance.yml', repository = 'owner/repo',
   evidencePlatforms = ['linux'], evidenceMode = 'live-runtime', evidencePath = sourcePath, evidenceRepository = repository } = {}) {
   const env = { DSC_REUSE_RUN: '', DSC_NATIVE_RUN: '', DSC_PLATFORM: 'all', DSC_SCENARIOS: '', DSC_SKIP_INSTALLED: 'false',
-    DSC_INSTALLED_MODE: 'all', DSC_INSTALLED_EVIDENCE_RUN: '', DSC_AGENT_RELOAD_ONLY: 'false',
+    DSC_INSTALLED_MODE: 'all', DSC_INSTALLED_EVIDENCE_RUN: '', DSC_AGENT_RELOAD_ONLY: 'false', DSC_ROOT_OWNERSHIP: 'false',
     GITHUB_SHA: 'b'.repeat(40), GITHUB_RUN_ID: '999', GITHUB_REPOSITORY: 'owner/repo',
     GITHUB_OUTPUT: '/controlled-output', GH_TOKEN: 'controlled-token', ...values };
   let output = '', requests = 0;
@@ -393,6 +395,16 @@ assert.equal(nativeOnly.values.native_run, '123');
 assert.equal(nativeOnly.values.native_commit, 'a'.repeat(40));
 assert.equal(normalSelection.values.native_run, '999');
 assert.equal(normalSelection.values.native_commit, 'b'.repeat(40));
+const rootValues = { DSC_ROOT_OWNERSHIP: 'true', DSC_NATIVE_RUN: '123', DSC_INSTALLED_MODE: 'live-runtime' };
+const rootSelection = await selection({ values: rootValues });
+assert.equal(rootSelection.values.package_commit, 'b'.repeat(40));
+assert.equal(rootSelection.values.native_run, '123');
+assert.deepEqual(JSON.parse(rootSelection.values.matrix), { include: platforms });
+for (const changes of [{ DSC_REUSE_RUN: '123' }, { DSC_NATIVE_RUN: '' }, { DSC_PLATFORM: 'linux' },
+  { DSC_INSTALLED_MODE: 'all' }, { DSC_SKIP_INSTALLED: 'true' }, { DSC_AGENT_RELOAD_ONLY: 'true' },
+  { DSC_SCENARIOS: 'codex-live-runtime-stop' }, { DSC_ROOT_OWNERSHIP: 'invalid' }]) {
+  await assert.rejects(selection({ values: { ...rootValues, ...changes } }));
+}
 await assert.rejects(selection({ values: { DSC_NATIVE_RUN: '123', DSC_REUSE_RUN: '123' } }), /not both/);
 await assert.rejects(selection({ values: { DSC_NATIVE_RUN: '123', DSC_SKIP_INSTALLED: 'true' } }), /whole-package reuse/);
 await assert.rejects(selection({ values: { DSC_NATIVE_RUN: '123' }, packageSuccess: false }), /must have succeeded/);
@@ -474,7 +486,7 @@ assert.deepEqual(preserveBytes, { name: 'Preserve source bytes on Windows checko
 assert(finalProduct.steps.indexOf(preserveBytes) < finalProduct.steps.findIndex(candidate => candidate.uses === 'actions/checkout@v4'),
   'Installed native source hashes must see the same bytes as the asset producer.');
 const finalSecretStep = finalProduct.steps.find(candidate => candidate.id === 'real_agents');
-assert.equal(finalSecretStep.if, '${{ !inputs.agent_reload_only }}');
+assert.equal(finalSecretStep.if, '${{ !inputs.agent_reload_only && !inputs.root_ownership }}');
 assert.deepEqual(finalSecretStep.env, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}',
   DSC_AGENT_SCENARIOS: '${{ inputs.agent_scenarios }}' });
 assert.equal(finalSecretStep['continue-on-error'], undefined);
@@ -487,17 +499,18 @@ assert.deepEqual(reloadSecretStep.env, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK
 assert.equal(reloadSecretStep['continue-on-error'], undefined);
 const reloadCondition = new Function('inputs', 'steps', 'runner', 'always', 'cancelled', 'success',
   `return (${reloadSecretStep.if.slice(3, -2)});`);
-function canRunReload({ reloadOnly = true, skipInstalled = true, os = 'Windows', successful = true,
+function canRunReload({ reloadOnly = true, skipInstalled = true, rootOwnership = false, os = 'Windows', successful = true,
   cancelled = false, outcomes = {} } = {}) {
   const defaults = { package_identity: 'success', installed_identity: 'success', agent_clis: 'success',
     windows_reload_identity: os === 'Windows' ? 'success' : 'skipped', installed: 'skipped',
     installed_runtime: 'skipped', real_agents: reloadOnly ? 'skipped' : 'success' };
   const steps = Object.fromEntries(Object.entries({ ...defaults, ...outcomes }).map(([id, outcome]) => [id, { outcome }]));
-  return reloadCondition({ agent_reload_only: reloadOnly, skip_installed: skipInstalled }, steps, { os },
+  return reloadCondition({ agent_reload_only: reloadOnly, skip_installed: skipInstalled, root_ownership: rootOwnership }, steps, { os },
     () => true, () => cancelled, () => successful);
 }
 assert(canRunReload(), 'Reload-only must not require re-running the fixed Agent matrix or installed workload.');
 assert(canRunReload({ os: 'macOS' }));
+assert.equal(canRunReload({ rootOwnership: true }), false, 'The root lane cannot also run the old Agent reload selection.');
 for (const id of ['package_identity', 'installed_identity', 'agent_clis', 'windows_reload_identity']) {
   for (const outcome of ['failure', 'skipped', 'cancelled']) {
     assert.equal(canRunReload({ outcomes: { [id]: outcome } }), false, `${id} ${outcome} must block Windows reload credentials.`);
@@ -524,20 +537,32 @@ assert.equal(finalProduct.steps.find(candidate => candidate.id === 'agent_clis')
 assert.match(reloadSecretStep.run, /run-vscode-agent-runtime-reload-candidate\.mjs/u);
 assert.match(reloadSecretStep.run, /--installed-vsix production-package\/product\.vsix/u);
 assert.doesNotMatch(reloadSecretStep.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/u);
+const rootSecretStep = finalProduct.steps.find(candidate => candidate.id === 'root_agent_reload');
+assert.deepEqual(rootSecretStep.env, { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY }}' });
+assert.equal(rootSecretStep.if, "${{ inputs.root_ownership && runner.os == 'Linux' && steps.agent_clis.outcome == 'success' }}");
+assert.match(rootSecretStep.run, /for provider in codex claude/);
+assert.match(rootSecretStep.run, /--provider="\$provider" --root-owner/);
+assert.match(rootSecretStep.run, /failed=1/);
+assert.match(rootSecretStep.run, /exit "\$failed"/);
+assert.equal(rootSecretStep['continue-on-error'], undefined);
+assert.doesNotMatch(rootSecretStep.run, /\bcat\b|set -x|tee|\$DEEPSEEK_API_KEY/u);
 assert.deepEqual(finalProduct.steps.filter(candidate => JSON.stringify(candidate).includes('secrets.')),
-  [finalSecretStep, reloadSecretStep]);
-assert.equal(finalProduct.steps.filter(candidate => candidate.run).at(-1), reloadSecretStep);
+  [finalSecretStep, reloadSecretStep, rootSecretStep]);
+assert.equal(finalProduct.steps.filter(candidate => candidate.run).at(-1), rootSecretStep);
 const reloadUpload = finalProduct.steps.find(candidate => candidate.name === 'Upload live Agent Reload evidence');
 assert.equal(reloadUpload.uses, 'actions/upload-artifact@v4');
 assert.equal(reloadUpload.with['if-no-files-found'], 'error');
 assert.match(reloadUpload.with.name, /runtime-production-agent-reload-/u);
 assert.match(reloadUpload.with.path, /dsc-agent-reload/u);
 const afterSecret = finalProduct.steps.slice(finalProduct.steps.indexOf(reloadSecretStep) + 1);
-assert.equal(afterSecret.length, 2);
-assert.equal(afterSecret[0], reloadUpload);
+assert.equal(afterSecret.length, 4);
+assert.equal(afterSecret[0], rootSecretStep);
 assert.equal(afterSecret[1].uses, 'actions/upload-artifact@v4');
-assert.equal(afterSecret[1].with.path, 'agent-ci-report/');
-assert.equal(afterSecret[1].if, "always() && steps.real_agents.outputs.report_ready == 'true'");
+assert.match(afterSecret[1].with.path, /dsc-root-agent-\*/);
+assert.equal(afterSecret[2], reloadUpload);
+assert.equal(afterSecret[3].uses, 'actions/upload-artifact@v4');
+assert.equal(afterSecret[3].with.path, 'agent-ci-report/');
+assert.equal(afterSecret[3].if, "always() && steps.real_agents.outputs.report_ready == 'true'");
 assert.match(finalProduct.steps.find(candidate => candidate.id === 'installed').run, /--installed-vsix production-package\/product\.vsix/u);
 assert.equal(finalProduct.steps.find(candidate => candidate.id === 'installed').if,
   "${{ !inputs.skip_installed && inputs.installed_mode == 'all' }}");
