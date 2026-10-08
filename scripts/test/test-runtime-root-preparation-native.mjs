@@ -302,8 +302,20 @@ async function runTests() {
         service.systemdPaths = api.resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(service.storageDir);
         await assert.rejects(access(service.systemdPaths.unitFilePath), { code: 'ENOENT' });
         const result = await prepare(service, ['systemd-user', 'legacy-detached']);
-        service.unitBytes = await readFile(service.systemdPaths.unitFilePath, 'utf8');
+        if (result.kind !== 'ready') {
+          try {
+            const observation = await execFileAsync('systemctl', ['--user', 'show', '--no-pager',
+              '--property=LoadState,LoadError,ActiveState,SubState,Result,ExecMainCode,ExecMainStatus', service.systemdPaths.unitName],
+            { encoding: 'utf8', timeout: 4000, maxBuffer: 8192 });
+            console.error(`Native test-owned systemd unit: ${JSON.stringify({ unit: service.systemdPaths.unitName,
+              state: observation.stdout.slice(0, 4096), stderr: observation.stderr.slice(0, 2048) })}`);
+          } catch (error) {
+            console.error(`Native test-owned systemd unit observation failed: ${JSON.stringify({
+              code: error.code, signal: error.signal, killed: error.killed, stderr: String(error.stderr ?? '').slice(0, 2048) })}`);
+          }
+        }
         assert.deepEqual(result, { kind: 'ready', backend: 'systemd-user' });
+        service.unitBytes = await readFile(service.systemdPaths.unitFilePath, 'utf8');
         const live = await connect(service, 'systemd-user');
         const intent = await readFile(path.join(service.base, 'startup-intent.json'), 'utf8');
         assert.deepEqual(await prepare(service, ['legacy-detached']), { kind: 'ready', backend: 'systemd-user' });

@@ -96,6 +96,13 @@ async function startSystemdUserSupervisor(
     }, RUNTIME_SUPERVISOR_ERROR_CODES.systemdBackendMissingPaths);
   }
 
+  const unitContent = renderSystemdUserUnit({
+    unitName,
+    backend,
+    supervisorScriptPath: args.supervisorScriptPath,
+    executionProfile: args.executionProfile,
+    runtimeLaunchToken: args.runtimeLaunchToken
+  });
   await fs.mkdir(backend.paths.storageDir, {
     recursive: true,
     ...(isRootOwnerRuntimeSupervisorStorageDir(backend.paths.storageDir) ? { mode: 0o700 } : {})
@@ -108,13 +115,6 @@ async function startSystemdUserSupervisor(
     // Best effort only.
   }
 
-  const unitContent = renderSystemdUserUnit({
-    unitName,
-    backend,
-    supervisorScriptPath: args.supervisorScriptPath,
-    executionProfile: args.executionProfile,
-    runtimeLaunchToken: args.runtimeLaunchToken
-  });
   await fs.writeFile(unitFilePath, unitContent, 'utf8');
 
   await runSystemdUserCommand(['daemon-reload']);
@@ -208,7 +208,8 @@ function renderSystemdUserUnit(params: {
     ...Object.entries(SUPERVISOR_PROCESS_ENV).map(
       ([key, value]) => `Environment=${quoteSystemdExecArg(`${key}=${value}`)}`
     ),
-    `WorkingDirectory=${quoteSystemdExecArg(params.backend.paths.storageDir)}`,
+    // WorkingDirectory is a scalar path, not an ExecStart argument list.
+    `WorkingDirectory=${escapeSystemdLiteral(params.backend.paths.storageDir)}`,
     `ExecStart=${execArgs.map((value) => quoteSystemdExecArg(value)).join(' ')}`,
     params.executionProfile === undefined ? 'Restart=on-failure' : 'Restart=no',
     'RestartSec=1',
@@ -224,7 +225,12 @@ function quoteSystemdExecArg(value: string): string {
 }
 
 function escapeSystemdValue(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%');
+  return escapeSystemdLiteral(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function escapeSystemdLiteral(value: string): string {
+  if (/[\0\r\n]/.test(value)) throw new Error('Systemd unit values must be single-line strings without NUL.');
+  return value.replace(/%/g, '%%');
 }
 
 function resolveSupervisorExecPath(): string {

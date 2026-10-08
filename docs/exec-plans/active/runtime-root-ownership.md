@@ -101,6 +101,10 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 
 `4be42817` / run `37709897962` Linux scope probe 返回 code 0 并判 available，修复了属性拒绝；随后 systemd owner 启动返回 preparation/submission unconfirmed，未得到具体底层错误。测试保留原私有目录与 unit，没有强制清理未知 Supervisor。下一步只定位该已触发的 startup 错误，不把 probe 成功记作 systemd owner 已通过。
 
+随后本机 systemd 249 `systemd-analyze verify` 对照确认共享 unit renderer 的独立语法错误：`WorkingDirectory="/tmp"` 与带空格的 quoted 路径均 exit 1/fatal，未加引号的 scalar 路径均 exit 0。已窄修该字段，保留 ExecStart 引号及 `%` 转义，CR/LF/NUL 在写 unit/调用 systemctl 前拒绝；参数29项和协调24项回归通过。新原生失败分支仅记录本轮具名 unit 的 LoadError 等状态，不改原断言，尚不把此本机结论冒充旧 CI 根因已最终确认。
+
+P2 提交 `2d3d4f82` 已 rebase 到 `origin/main@357266ad`（0.26.0 发布），无冲突；正常 typecheck、build 与 `npm run package:vsix` 通过。P3 增量仍在准备，当前包不计安装或真实 Agent 验收通过。
+
 ## 接口与依赖
 
 `RuntimeOwnerDescriptorV1` 固定 schema/environmentKey/userStorageScopeKey/root/generation；路径 resolver 接受 canonical global storage 与已解析 root，不接受 Webview 自报 path。环境 helper 返回摘要及本机用户身份，失败抛出明确错误；Windows 可使用系统自带进程调用只读 native API，若能避免修改 PTY 资产则优先采用。hello owner 字段对旧 binding 可缺省，对新 root generation 必须校验。具体导出签名在 P1 实现后补齐。

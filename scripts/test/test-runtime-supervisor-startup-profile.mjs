@@ -66,6 +66,8 @@ for (const profile of [undefined, candidateProfile]) {
     ];
     assert.equal(unit.args[1].split('\n').find((line) => line.startsWith('ExecStart=')),
       `ExecStart=${expectedArgs.map(quoteSystemdArg).join(' ')}`);
+    assert.equal(unit.args[1].split('\n').find((line) => line.startsWith('WorkingDirectory=')),
+      `WorkingDirectory=${backend.paths.storageDir.replace(/%/g, '%%')}`);
     assert.equal(unit.args[1].split('\n').find((line) => line.startsWith('Restart=')),
       profile ? 'Restart=no' : 'Restart=on-failure');
     const commands = harness.effects.filter(({ kind }) => kind === 'execFile');
@@ -103,10 +105,42 @@ for (const kind of ['legacy-detached', 'systemd-user']) {
       const unit = harness.effects.find(({ kind }) => kind === 'writeFile').args[1];
       const execStart = unit.split('\n').find((line) => line.startsWith('ExecStart='));
       assert.ok(execStart.endsWith(` ${quoteSystemdArg('--runtime-launch-token')} ${quoteSystemdArg(runtimeLaunchToken)}`));
+      assert.equal(unit.split('\n').find((line) => line.startsWith('WorkingDirectory=')),
+        `WorkingDirectory=${backend.paths.storageDir.replace(/%/g, '%%')}`);
       assert.equal(unit.split('\n').find((line) => line.startsWith('Restart=')), 'Restart=no');
     }
   });
 }
+
+for (const [base, profile] of [[stockBase, undefined], [candidateBase, candidateProfile], [rootOwnerBase, candidateProfile]]) {
+  for (const separator of ['\n', '\r', '\0']) {
+    await test(`systemd ${path.basename(base)} rejects path control ${JSON.stringify(separator)} before startup effects`, async () => {
+      const harness = createHarness();
+      const unsafeBase = path.join(`/tmp/dsc${separator}unsafe`, 'runtime-supervisor-generations', path.basename(base));
+      const backend = loadBackend(harness, 'systemd-user', unsafeBase);
+      await assert.rejects(backend.startSupervisor({ ...startupScripts, ...(profile ? { executionProfile: profile } : {}) }),
+        /single.line/);
+      assert.deepEqual(harness.effects, []);
+    });
+  }
+}
+
+await test('systemd working directory preserves literal backslashes while escaping specifiers', async () => {
+  const harness = createHarness();
+  const backend = loadBackend(harness, 'systemd-user', '/tmp/dsc back\\slash"%/runtime-supervisor-generations/terminal-stream-v1');
+  await backend.startSupervisor(startupScripts);
+  const unit = harness.effects.find(({ kind }) => kind === 'writeFile').args[1];
+  assert.equal(unit.split('\n').find(line => line.startsWith('WorkingDirectory=')),
+    `WorkingDirectory=${backend.paths.storageDir.replace(/%/g, '%%')}`);
+});
+
+await test('systemd rejects a multiline supervisor script before startup effects', async () => {
+  const harness = createHarness();
+  const backend = loadBackend(harness, 'systemd-user', rootOwnerBase);
+  await assert.rejects(backend.startSupervisor({ ...startupScripts, supervisorScriptPath: '/tmp/script\ninjected.js',
+    executionProfile: candidateProfile }), /single.line/);
+  assert.deepEqual(harness.effects, []);
+});
 
 for (const kind of ['legacy-detached', 'systemd-user']) {
   for (const profile of ['', 'future-profile']) {
