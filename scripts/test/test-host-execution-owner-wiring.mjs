@@ -193,6 +193,7 @@ function fixture(options = {}) {
   Object.assign(host, {
     context: { extensionMode: 3 },
     nonNativeExecutionOwner: owner, nonNativeHostExecutions: new Map(),
+    enabledAttentionSignals: ['bel', 'osc9', 'osc777'], attentionNotificationBridgeMode: 'none',
     agentSessions: new Map(), terminalSessions: new Map(), runtimeSessionBindings: new Map(),
     pendingTerminalInitialInputs: new Map(), pendingTerminalInitialInputDispatches: new Map(),
     executionSessionOperationTokens: new Map(), activeAssociatedNoteMarkdownEdits: new Map(),
@@ -3881,6 +3882,7 @@ async function interactiveHostFixture(kind = 'terminal', providerKind = 'codex',
     ? f.host.startAgentSession('agent-1', 113, 39, providerKind, false)
     : f.host.startTerminalSession('terminal-1', 113, 39), `${kind} interactive owner start`);
   const record = f.record(kind);
+  f.host.state.nodes.find(node => node.kind === kind).metadata[kind].cwd = '/controlled';
   const provider = f.providers[0];
   const requests = [];
   const send = provider.transport.send.bind(provider.transport);
@@ -3902,6 +3904,105 @@ async function interactiveHostFixture(kind = 'terminal', providerKind = 'codex',
     record.tracker.dispose();
   }
   return { ...f, record, provider, requests, reply, cleanup };
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`${kind} owned attention bridges split signals without blocking output and preserves final persistence`, async () => {
+    const f = await interactiveHostFixture(kind);
+    const delivery = deferred();
+    const requests = [];
+    const metadata = () => f.host.state.nodes.find(node => node.kind === kind).metadata[kind];
+    f.host.attentionNotificationBridgeMode = 'system';
+    f.host.postExecutionAttentionNotificationToCompanion = request => {
+      requests.push(request);
+      return delivery.promise;
+    };
+    let sequence = 0;
+    const output = async text => {
+      f.provider.output(++sequence, text);
+      await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === sequence,
+        'attention output consumed even while companion delivery is pending');
+    };
+    try {
+      await output('\x1b]9;split');
+      assert.equal(requests.length, 0);
+      await output(' notification\x07');
+      assert.equal(requests.length, 1);
+      assert.match(requests[0].message, /split notification/);
+      assert.equal(metadata().attentionPending, true);
+      assert.strictEqual(f.record.persistence.metadata, metadata());
+      f.host.acknowledgeExecutionAttentionForNode(f.record.nodeId);
+      assert.equal(metadata().attentionPending, false);
+      assert.strictEqual(f.record.persistence.metadata, metadata(), 'acknowledgement advances only its original binding');
+      await output('\x1b]9;split notification\x07');
+      assert.equal(requests.length, 1, 'same notification is suppressed by cooldown');
+      assert.equal(metadata().attentionPending, false);
+      f.host.enabledAttentionSignals = [];
+      await output('\x07\x1b]777;notify;title;disabled\x07');
+      assert.equal(requests.length, 1);
+      f.host.enabledAttentionSignals = ['bel', 'osc9', 'osc777'];
+      await output('\x1b]777;notify;title;enabled\x07');
+      await output('\x07');
+      assert.equal(requests.length, 3, 'OSC 777 and BEL both reach the shared bridge');
+      assert.equal(f.record.mutationError, undefined);
+      assert.strictEqual(f.record.persistence.metadata, metadata());
+      delivery.resolve({ status: 'posted', backend: 'test', activationMode: 'test-replay' });
+      await until(f.clock, () => f.diagnostics.filter(event =>
+        event.name === 'execution/attentionNotificationCompanionPosted').length === 3, 'companion diagnostics');
+      f.provider.process();
+      f.provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      f.provider.seal(sequence); f.provider.release();
+      const saved = await completed(f.clock, f.record.persistence.promise, 'attention final snapshot');
+      assert.equal(saved.kind, 'saved', saved.reason);
+    } finally {
+      delivery.resolve({ status: 'posted', backend: 'test', activationMode: 'test-replay' });
+      f.record.business.cancelActivityPoll?.();
+      f.record.business.lineContextTracker.dispose();
+      f.record.tracker.dispose();
+    }
+  });
+}
+
+for (const mode of ['none', 'workbench', 'system']) {
+  test(`owned attention ${mode} preserves node attention and workbench fallback semantics`, async () => {
+    const f = await interactiveHostFixture();
+    let companionCalls = 0;
+    let workbenchCalls = 0;
+    f.host.attentionNotificationBridgeMode = mode;
+    f.host.postExecutionAttentionNotificationToCompanion = async () => {
+      companionCalls++;
+      return { status: 'unsupported', backend: 'unsupported', activationMode: 'none' };
+    };
+    f.host.showExecutionAttentionNotification = async () => { workbenchCalls++; };
+    try {
+      f.provider.output(1, '\x1b]9;mode notification\x07');
+      await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === 1, 'mode output');
+      assert.equal(f.host.state.nodes.find(node => node.kind === 'terminal').metadata.terminal.attentionPending, true);
+      assert.equal(companionCalls, mode === 'system' ? 1 : 0);
+      assert.equal(workbenchCalls, mode === 'none' ? 0 : 1);
+    } finally { await f.cleanup(); }
+  });
+}
+
+for (const replacement of ['metadata', 'execution']) {
+  test(`owned attention rejects stale ${replacement} without adopting an unrelated persistence binding`, async () => {
+    const f = await interactiveHostFixture();
+    const original = f.record.persistence.metadata;
+    const node = f.host.state.nodes.find(node => node.kind === 'terminal');
+    if (replacement === 'metadata') node.metadata.terminal = { ...original, attentionPending: false };
+    else f.host.nonNativeHostExecutions.delete(f.record.execution.key);
+    try {
+      f.provider.output(1, '\x1b]9;stale notification\x07');
+      await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === 1, 'stale output');
+      assert.notEqual(node.metadata.terminal.attentionPending, true);
+      assert.strictEqual(f.record.persistence.metadata, original);
+      if (replacement === 'metadata') {
+        f.host.setExecutionAttentionPending('terminal', node.id, true);
+        assert.strictEqual(f.record.persistence.metadata, original, 'an unrelated metadata replacement remains a conflict');
+        assert.match(f.record.mutationError, /metadata binding changed/);
+      }
+    } finally { await f.cleanup(); }
+  });
 }
 
 test('held local output credit retains only the latest unstarted Host resize request', async () => {

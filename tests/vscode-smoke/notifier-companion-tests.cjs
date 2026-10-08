@@ -13,7 +13,6 @@ const MAIN_COMMAND_IDS = {
   testClearDiagnosticEvents: 'devSessionCanvas.__test.clearDiagnosticEvents',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
-  testStartExecutionSession: 'devSessionCanvas.__test.startExecutionSession',
   testCreateNode: 'devSessionCanvas.__test.createNode',
   testResetState: 'devSessionCanvas.__test.resetState'
 };
@@ -67,15 +66,7 @@ async function run() {
     assert.ok(agentNode, 'Expected the smoke scenario to create an agent node.');
     agentNodeId = agentNode.id;
 
-    await vscode.commands.executeCommand(
-      MAIN_COMMAND_IDS.testStartExecutionSession,
-      'agent',
-      agentNodeId,
-      120,
-      40,
-      'codex',
-      false
-    );
+    // Creating the node already schedules its execution through the Webview.
     await waitForSnapshot((currentSnapshot) => {
       const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
       return Boolean(
@@ -125,11 +116,14 @@ async function run() {
       'Companion delivery should bypass the VS Code workbench notification fallback.'
     );
 
+    await waitForHostMessages((messages) => messages
+      .filter((message) => message.type === 'host/executionOutput' && message.payload.nodeId === agentNodeId)
+      .map((message) => message.payload.chunk).join('')
+      .includes(`[fake-agent] notified ${attentionMessage}`));
     snapshot = await waitForSnapshot((currentSnapshot) => {
       const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
       return Boolean(
-        currentAgent?.metadata?.agent?.recentOutput?.includes(`[fake-agent] notified ${attentionMessage}`) &&
-          currentAgent?.metadata?.agent?.attentionPending === true
+        currentAgent?.metadata?.agent?.attentionPending === true
       );
     });
     assert.strictEqual(
@@ -186,6 +180,22 @@ async function run() {
 
     const replayedAgain = await vscode.commands.executeCommand(NOTIFIER_TEST_COMMAND_IDS.replayLastFocusAction);
     assert.strictEqual(replayedAgain, false, 'Expected focus callback tokens to be single-use.');
+
+    await dispatchWebviewMessage({ type: 'webview/selectNode', payload: { nodeId: agentNodeId } });
+    await waitForSnapshot((currentSnapshot) =>
+      currentSnapshot.state.nodes.find((node) => node.id === agentNodeId)?.metadata?.agent?.attentionPending === false
+    );
+    await clearHostMessages();
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: { nodeId: agentNodeId, kind: 'agent', data: 'raw after-attention-ack\r' }
+    });
+    await waitForHostMessages((messages) => messages
+      .filter((message) => message.type === 'host/executionOutput' && message.payload.nodeId === agentNodeId)
+      .map((message) => message.payload.chunk).join('').includes('after-attention-ack'));
+    const finalDiagnostics = await getDiagnosticEvents();
+    assert.strictEqual(finalDiagnostics.some((event) => event.kind === 'execution/ownedProjectionRejected'), false,
+      'Attention and acknowledgement must preserve the owned metadata binding.');
   } finally {
     if (agentNodeId) {
       await ensureAgentStopped(agentNodeId);

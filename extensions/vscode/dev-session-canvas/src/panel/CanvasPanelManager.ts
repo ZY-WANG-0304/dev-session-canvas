@@ -556,6 +556,11 @@ interface ExecutionAttentionNotificationState extends ExecutionAttentionSignalSt
   lastAbnormalStreamNotificationAtMs?: number;
 }
 
+interface ExecutionAttentionSession {
+  attentionSignalState?: ExecutionAttentionNotificationState;
+  displayLabel?: string;
+}
+
 interface ExecutionAttentionNotificationWorkspaceFolderContext {
   name: string;
   path: string;
@@ -607,7 +612,7 @@ interface NonNativeHostExecution {
   };
 }
 
-interface NonNativeHostBusiness {
+interface NonNativeHostBusiness extends ExecutionAttentionSession {
   buffer: string;
   terminalTitle?: string;
   terminalTitleCarryover?: string;
@@ -14577,7 +14582,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private ensureExecutionAttentionNotificationState(
-    session: ManagedExecutionSession
+    session: ExecutionAttentionSession
   ): ExecutionAttentionNotificationState {
     if (!session.attentionSignalState) {
       session.attentionSignalState = this.createExecutionAttentionNotificationState();
@@ -14609,6 +14614,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         attentionPending: pending
       })
     });
+    const owned = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+    if (owned?.persistence?.metadata === metadata) {
+      // Attention and acknowledgement are trusted Host mutations of this binding.
+      const updated = this.requireNode(nodeId, kind);
+      owned.persistence.metadata = kind === 'agent' ? ensureAgentMetadata(updated) : ensureTerminalMetadata(updated);
+    }
     this.persistState({ reason: 'execution-attention' });
     if (options.postState !== false) {
       this.postState('host/stateUpdated');
@@ -14636,7 +14647,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private bridgeExecutionAttentionSignals(
     kind: ExecutionNodeKind,
     nodeId: string,
-    session: ManagedExecutionSession,
+    session: ExecutionAttentionSession,
     chunk: string
   ): Promise<void> | void {
     const state = this.ensureExecutionAttentionNotificationState(session);
@@ -15192,7 +15203,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private buildExecutionAttentionNotificationMessage(
     kind: ExecutionNodeKind,
     nodeId: string,
-    session: ManagedExecutionSession,
+    session: ExecutionAttentionSession,
     signal: ExecutionAttentionSignal
   ): string {
     const node = this.state.nodes.find((candidate) => candidate.id === nodeId);
@@ -17427,6 +17438,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     } else if (business.lifecycleStatus === 'launching') business.lifecycleStatus = 'live';
     this.projectNonNativeHostBusiness(record);
+    if (this.isNonNativeHostRecordCurrent(record) && !record.mutationError) {
+      void this.bridgeExecutionAttentionSignals(record.kind, record.nodeId, business, observable);
+    }
     return title.terminalOutput;
   }
 
