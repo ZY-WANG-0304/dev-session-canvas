@@ -123,6 +123,47 @@ try {
     assert.throws(() => harness({ budgets: { ...budgets, settleMs: Infinity } }), /finite/);
   });
 
+  for (const synchronous of [true, false]) {
+    test(`admission preserves the original ${synchronous ? 'synchronous' : 'asynchronous'} consumption failure`, async () => {
+      const h = harness();
+      const failure = new Error("ENOSPC: no space left on device, open '/journal/manifest.json.tmp'");
+      const record = await h.start('failed', { consume() {
+        if (synchronous) throw failure;
+        return Promise.reject(failure);
+      } });
+      h.frame(record, 1, 'unconsumed-tail');
+      await h.scheduler.drain();
+      const reason = `Authority consumption failed: ${failure.message}`;
+      assert.equal(h.owner.snapshot().blockedReason, reason);
+      assert.throws(() => h.owner.reserve('next'), { message: `Execution owner admission is closed: ${reason}` });
+      assert.equal(h.factories(), 1, 'refused creation cannot acquire a new provider');
+      assert.equal(record.snapshot().adapter.consumedThrough, 0);
+      assert.equal(record.snapshot().adapter.pendingFrames, 1);
+      h.owner.authority.quarantine('later cleanup failure');
+      assert.equal(h.owner.snapshot().blockedReason, reason, 'the first cause remains authoritative');
+      assert.equal(h.owner.tryResume(), false);
+    });
+  }
+
+  test('final flush failure remains visible to subsequent creation', async () => {
+    const h = harness();
+    const failure = new Error('EIO: final terminal flush failed');
+    const record = await h.start('failed', { flushFinal: async () => { throw failure; } });
+    await h.complete(record);
+    assert.throws(() => h.owner.reserve('next'), {
+      message: `Execution owner admission is closed: Final terminal consumption failed: ${failure.message}`
+    });
+    assert.equal(record.snapshot().terminal.kind, 'failed');
+    assert.equal(h.factories(), 1);
+  });
+
+  test('ordinary owner closure has no invented failure detail', () => {
+    const h = harness();
+    h.owner.closeAdmission();
+    assert.throws(() => h.owner.reserve('next'), { message: 'Execution owner admission is closed' });
+    assert.equal(h.factories(), 0);
+  });
+
   test('production owner admits eleven running sessions but retains preparation and final-reader slots', async () => {
     const h = harness({ admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
     const records = [];

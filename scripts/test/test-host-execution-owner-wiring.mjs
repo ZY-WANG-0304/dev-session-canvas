@@ -18,7 +18,8 @@ const bundled = await esbuild.build({
       export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
       export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
       export { parseWebviewMessage } from './extensions/vscode/dev-session-canvas/src/common/protocol';
-      export { env as testEnvironment, window as testWindow } from 'vscode';
+      export { env as testEnvironment, window as testWindow, l10n as testL10n } from 'vscode';
+      export { serializeRuntimeSupervisorError, createRuntimeSupervisorError } from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol';
       export { testLegacyHistoryInspector } from './extensions/vscode/dev-session-canvas/src/panel/legacyRuntimeHistory';
       export { testNativeHistoryInspector } from './extensions/vscode/dev-session-canvas/src/panel/nativeRuntimeHistory';
       export { testRootRuntimePreparation } from './extensions/vscode/dev-session-canvas/src/panel/runtimeRootSupervisorPreparation';
@@ -85,7 +86,8 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
 );
 const { CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
   RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION, EXECUTION_INTERACTION_LIMITS,
-  testEnvironment, testWindow, testLegacyHistoryInspector, testNativeHistoryInspector, testRootRuntimePreparation,
+  testEnvironment, testWindow, testL10n, serializeRuntimeSupervisorError, createRuntimeSupervisorError,
+  testLegacyHistoryInspector, testNativeHistoryInspector, testRootRuntimePreparation,
   createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, resolveRootRuntimeSupervisorGeneration,
   resolveRuntimeRootOwnerBaseStoragePath } = loaded.exports;
 
@@ -2415,6 +2417,34 @@ function candidateRuntimeFixture(options = {}) {
   });
   return { ...f, client, backend, creates, applies, subscriptions, errors,
     setRejectBeforeAcquire: value => { rejectBeforeAcquire = value; } };
+}
+
+for (const action of ['agent', 'resume', 'terminal']) {
+  test(`${action} launch displays the serialized owner failure detail`, async () => {
+    const f = candidateRuntimeFixture();
+    f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: 'codex', label: 'Codex' });
+    const reason = "Authority consumption failed: ENOSPC: no space left on device, open '/journal/manifest.json.tmp'";
+    f.owner.authority.quarantine(reason);
+    f.client.createSession = async () => {
+      try { f.owner.assertAdmission(); }
+      catch (error) { throw createRuntimeSupervisorError(JSON.parse(JSON.stringify(serializeRuntimeSupervisorError(error)))); }
+      assert.fail('the quarantined owner must reject');
+    };
+    const originalTranslate = testL10n.t;
+    testL10n.t = (message, values = {}) => message.replace(/\{(\w+)\}/g, (match, key) => values[key] ?? match);
+    try {
+      if (action === 'resume') {
+        f.host.resolveAgentResumeContext = () => ({ supported: true, strategy: 'fake-provider' });
+      }
+      const start = action === 'resume'
+        ? f.host.startAgentSession('agent-1', 80, 24, undefined, true) : f.start(action);
+      await completed(f.clock, start, `${action} admission rejection`);
+      const messages = f.posted.filter(message => message.type === 'host/error').map(message => message.payload.message);
+      const prefix = action === 'terminal' ? 'Failed to start embedded Terminal' : `Failed to ${action === 'resume' ? 'resume' : 'start'} Codex`;
+      assert.deepEqual(messages, [`${prefix}: Execution owner admission is closed: ${reason}`]);
+      assert.equal(f.creates.length, 0);
+    } finally { testL10n.t = originalTranslate; }
+  });
 }
 
 for (const kind of ['terminal', 'agent']) {
