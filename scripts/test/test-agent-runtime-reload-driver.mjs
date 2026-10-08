@@ -17,7 +17,7 @@ const source = await fs.readFile('tests/vscode-smoke/agent-runtime-reload-driver
 const ast = ts.createSourceFile('agent-runtime-reload-driver.cjs', source, ts.ScriptTarget.Latest, true);
 const functions = new Map(ast.statements.filter(ts.isFunctionDeclaration).map(node => [node.name.text, node.getText(ast)]));
 const resourceFunctions = ['startProcessObserver', 'releaseProcessObserver', 'assertOriginalResourcesLive', 'originalResourcesExited',
-  'assertRuntimeOwnerBinding', 'captureSetupProcessObservation'];
+  'assertRuntimeOwnerBinding', 'captureSetupProcessObservation', 'recordStartupOwnership'];
 const compile = (names, context) => new Function(...Object.keys(context),
   `${names.map(name => functions.get(name)).join('\n')}\nreturn { ${names.join(',')} };`)(...Object.values(context));
 const launcherSource = await fs.readFile('scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs', 'utf8');
@@ -527,7 +527,7 @@ test('Claude readiness requires its model and composer and confirms known onboar
   let clock = 0;
   let cursor = 0;
   const inputs = [];
-  const screens = [ready, prompts[0], ...prompts, ready, ready];
+  const screens = [ready, prompts[0], prompts[0], prompts[1], prompts[1], prompts[2], ready, ready];
   const context = { assert, config: { provider: 'claude' }, process: { platform: 'linux' },
     stripVt: value => value, control: { deadlineAt: 100000 }, currentNodeId: 'node',
     Date: { now: () => clock }, sleep: async ms => { clock += ms; },
@@ -564,48 +564,90 @@ test('Claude composer recognizes observed NBSP horizontal spacing without accept
   assert.equal(probes, 2);
 });
 
-test('Claude workspace trust observes the affirmative selection before Enter and never repeats navigation', async () => {
-  // The fixed CLI page is reconstructed from run 37719142087, including its negative default.
-  const trust = [' Accessing workspace:', '', ' /isolated/workspace', '',
-    ' Quick safety check: Is this a project you created or one you trust?', '',
-    ' \u276f No, exit', '   Yes, I trust this folder', '', ' Enter to confirm \u00b7 Esc to cancel'].join('\n');
-  const ready = 'Claude Code v2.1.280\ndeepseek-flash\n\u276f Try "explain this code"';
-  const affirmative = trust.replace(' \u276f No, exit', '   No, exit')
-    .replace('   Yes, I trust this folder', ' \u276f Yes, I trust this folder');
-  for (const selection of ['no', 'yes', 'missing-cursor', 'other-cursor', 'reordered', 'unknown-page', 'still-visible', 'reverted']) {
-    const selected = selection === 'yes' ? affirmative
-      : selection === 'missing-cursor' ? trust.replace('\u276f', ' ')
-        : selection === 'other-cursor' ? trust.replace('\u276f', '\u203a')
-          : selection === 'reordered' ? trust.replace(' \u276f No, exit\n   Yes, I trust this folder',
-            '   Yes, I trust this folder\n \u276f No, exit')
-            : selection === 'unknown-page' ? trust.replace('Accessing workspace:', 'Unknown confirmation:') : trust;
-    let clock = 0, cursor = 0;
-    const inputs = [], screens = selection === 'no' ? [trust, trust, affirmative, affirmative, ready, ready]
-      : selection === 'reverted' ? [trust, affirmative, trust] : [selected, selected, ready, ready];
-    let visible;
-    const api = compile(['hasLoadedAgentComposer', 'waitForAgentReady'], {
-      assert, config: { provider: 'claude' }, process: { platform: 'linux' }, stripVt: value => value,
-      control: { deadlineAt: 32000 }, currentNodeId: 'node', Date: { now: () => clock },
-      sleep: async ms => { clock += ms; }, textOf: value => value,
-      probe: async () => {
-        visible = selection === 'still-visible' ? selected : screens[Math.min(cursor++, screens.length - 1)];
-        return visible;
-      },
-      dom: async action => {
-        assert.equal(action.data, visible === affirmative ? '\r' : '\u001b[B',
-          'Only the observed affirmative option can receive Enter; Down is a separate input.');
-        inputs.push(action);
-      }
-    });
-    if (selection === 'no' || selection === 'yes') {
-      await api.waitForAgentReady();
-      assert.equal(cursor, screens.length, 'The trust page must disappear before readiness succeeds.');
-    } else await assert.rejects(api.waitForAgentReady(), ['still-visible', 'reverted'].includes(selection)
-      ? /interactive surface/ : /Claude workspace trust selection is not confirmed/);
-    const expected = selection === 'yes' ? ['\r'] : ['no', 'reverted'].includes(selection)
-      ? ['\u001b[B', '\r'] : selection === 'still-visible' ? ['\u001b[B'] : [];
-    assert.deepEqual(inputs, expected.map(data => ({ kind: 'sendExecutionInput', nodeId: 'node', data })));
-    assert(clock <= 2000, 'The original readiness budget must not be extended.');
+const claudeTrustScreen = [' Accessing workspace:', '', ' /isolated/workspace', '',
+  ' Quick safety check: Is this a project you created or one you trust?', '',
+  ' \u276f No, exit', '   Yes, I trust this folder', '', ' Enter to confirm \u00b7 Esc to cancel'].join('\n');
+const claudeTrustYes = claudeTrustScreen.replace(' \u276f No, exit', '   No, exit')
+  .replace('   Yes, I trust this folder', ' \u276f Yes, I trust this folder');
+const claudeComposer = 'Claude Code v2.1.280\ndeepseek-flash\n\u276f Try "explain this code"';
+
+function trustFixture({ screen, input = async () => {} }) {
+  let clock = 0, visible;
+  const inputs = [];
+  const api = compile(['hasLoadedAgentComposer', 'waitForAgentReady'], {
+    assert, config: { provider: 'claude' }, process: { platform: 'linux' }, stripVt: value => value,
+    control: { deadlineAt: 32000 }, currentNodeId: 'node', Date: { now: () => clock },
+    sleep: async ms => { clock += ms; }, textOf: value => value,
+    probe: async () => { visible = screen(clock, inputs); return visible; },
+    dom: async action => {
+      assert.equal(action.data, visible === claudeTrustYes ? '\r' : '\u001b[F',
+        'Only the observed affirmative option may receive Enter; navigation selects the last option.');
+      inputs.push({ at: clock, data: action.data });
+      await input(action.data, clock);
+    }
+  });
+  return { run: api.waitForAgentReady, inputs, now: () => clock };
+}
+
+test('Claude trust keeps exact page checks and requires two consecutive affirmative observations', async () => {
+  for (const screen of [claudeTrustScreen.replace('\u276f', ' '), claudeTrustScreen.replace('\u276f', '\u203a'),
+    claudeTrustScreen.replace(' \u276f No, exit\n   Yes, I trust this folder',
+      '   Yes, I trust this folder\n \u276f No, exit'), claudeTrustScreen.replace('Accessing workspace:', 'Unknown confirmation:')]) {
+    const f = trustFixture({ screen: () => screen });
+    await assert.rejects(f.run(), /Claude workspace trust selection is not confirmed/);
+    assert.deepEqual(f.inputs, []);
+  }
+  for (const initial of [claudeTrustScreen, claudeTrustYes]) {
+    const f = trustFixture({ screen: (_now, inputs) => inputs.some(x => x.data === '\r') ? claudeComposer
+      : inputs.length ? claudeTrustYes : initial });
+    await f.run();
+    assert.deepEqual(f.inputs, initial === claudeTrustYes ? [{ at: 100, data: '\r' }]
+      : [{ at: 0, data: '\u001b[F' }, { at: 200, data: '\r' }]);
+  }
+});
+
+test('Claude trust recovers a reset even when the entire affirmative interval falls between probes', async () => {
+  // Original CI source timing relative to input: Yes at 9ms, No again at 46ms.
+  for (const resetAt of [46, 150]) {
+    const f = trustFixture({ screen: (now, inputs) => {
+      if (inputs.some(x => x.data === '\r')) return claudeComposer;
+      const moves = inputs.filter(x => x.data === '\u001b[F');
+      if (moves.length >= 2) return now >= moves.at(-1).at + 9 ? claudeTrustYes : claudeTrustScreen;
+      return moves.length && now >= 9 && now < resetAt ? claudeTrustYes : claudeTrustScreen;
+    } });
+    await f.run();
+    assert.deepEqual(f.inputs.map(x => x.data), ['\u001b[F', '\u001b[F', '\r']);
+    assert(f.inputs.at(-1).at > resetAt);
+  }
+});
+
+test('Claude trust tolerates delayed End without toggling and fails closed at its navigation bound', async () => {
+  const delayed = trustFixture({ screen: (now, inputs) => inputs.some(x => x.data === '\r') ? claudeComposer
+    : now >= 250 ? claudeTrustYes : claudeTrustScreen });
+  await delayed.run();
+  assert.deepEqual(delayed.inputs.map(x => x.data), ['\u001b[F', '\u001b[F', '\u001b[F', '\r']);
+  assert.equal(delayed.inputs.at(-1).at, 400);
+  const stuck = trustFixture({ screen: () => claudeTrustScreen });
+  await assert.rejects(stuck.run(), /navigation limit/);
+  assert.deepEqual(stuck.inputs.map(x => x.data), ['\u001b[F', '\u001b[F', '\u001b[F']);
+  assert(stuck.now() <= 2000);
+});
+
+test('Claude trust never navigates or submits again after its single confirmation', async () => {
+  for (const remaining of [claudeTrustScreen, claudeTrustYes]) {
+    const f = trustFixture({ screen: (_now, inputs) => inputs.length ? remaining : claudeTrustYes });
+    await assert.rejects(f.run(), /interactive surface/);
+    assert.deepEqual(f.inputs, [{ at: 100, data: '\r' }]);
+    assert.equal(f.now(), 2000);
+  }
+});
+
+test('Claude trust input rejection preserves unknown outcome and is never retried', async () => {
+  for (const initial of [claudeTrustScreen, claudeTrustYes]) {
+    const original = new Error('clientRequestTimeout: outcome unknown');
+    const f = trustFixture({ screen: () => initial, input: async () => { throw original; } });
+    await assert.rejects(f.run(), error => error === original);
+    assert.equal(f.inputs.length, 1);
   }
 });
 
@@ -824,6 +866,58 @@ test('Claude setup and reload retain the native provider/cmd/CLI chain without i
   await compile([...resourceFunctions, 'verify'], verified.context).verify({ extensionPath: '/extension' });
   assert.equal(verified.writes.get('verify.json').retainedResources.length, 3);
   assert.equal(verified.writes.get('verify.json').provider, 'claude');
+});
+
+test('setup persists original startup ownership before reader, readiness and model-turn failures', async () => {
+  for (const stage of ['mountedReader', 'waitForAgentReady', 'sendAgentTurn']) {
+    const f = fixture({ provider: 'claude' });
+    delete f.context.control.setup;
+    f.context.control.phase = 'setup';
+    const saved = [];
+    f.context.atomic = async (_file, value) => saved.push(structuredClone(value));
+    const failure = new Error(`${stage} failed`);
+    f.context[stage] = async () => {
+      assert.equal(saved.length, 1, 'Ownership must be durable before any fallible interaction.');
+      assert.deepEqual(saved[0].startup.resources, f.original);
+      assert.equal(saved[0].setup, undefined);
+      throw failure;
+    };
+    const api = compile([...resourceFunctions, 'setup', 'cleanup'], f.context);
+    await assert.rejects(api.setup({ extensionPath: '/extension' }), error => error === failure);
+    assert.equal(f.writes.has('setup.json'), false);
+    assert(!f.events.includes('workbench.action.reloadWindow'));
+    f.endResources();
+    await api.cleanup();
+    assert.equal(f.writes.get('cleanup.json').pass, true);
+    assert.equal(f.writes.get('cleanup.json').resourceBaseline, 'startup');
+    assert.deepEqual(f.writes.get('cleanup.json').resources.checks.map(x => x.expected), f.original);
+  }
+});
+
+test('setup cannot promote a replaced startup identity after the model response', async () => {
+  const f = fixture({ provider: 'claude' });
+  delete f.context.control.setup;
+  f.context.sendAgentTurn = async () => {
+    f.entries = f.entries.map(entry => entry.role === 'cli' ? { ...entry, startTicks: 'replacement' } : entry);
+  };
+  await assert.rejects(compile([...resourceFunctions, 'setup'], f.context).setup({ extensionPath: '/extension' }),
+    /Original Agent startup identity must still be live/);
+  assert(f.writes.has('startup-ownership.json'));
+  assert.equal(f.writes.has('setup.json'), false);
+  assert(!f.events.includes('workbench.action.reloadWindow'));
+});
+
+test('startup ownership persistence failure stops before interaction; a missing baseline cannot pass cleanup', async () => {
+  const f = fixture({ provider: 'claude' });
+  delete f.context.control.setup;
+  f.context.atomic = async () => { throw new Error('ownership write failed'); };
+  f.context.mountedReader = async () => assert.fail('No interaction before durable ownership.');
+  const api = compile([...resourceFunctions, 'setup', 'cleanup'], f.context);
+  await assert.rejects(api.setup({ extensionPath: '/extension' }), /ownership write failed/);
+  f.endResources();
+  await assert.rejects(api.cleanup(), /Missing original startup resources/);
+  assert.equal(f.writes.get('cleanup.json').pass, false);
+  assert(!f.events.includes('stop-supervisor'));
 });
 
 test('live identity proof rejects empty, missing, replaced and ended originals', () => {
