@@ -79,7 +79,9 @@ F-04 的同一最终 stream 放入最小内联画板后，调用实际 Host writ
 
 新 Host completion + writer fixture 的 Terminal/Agent 保存为 781/812 字节，小输出与约 3.8 MB stream 体积相同；原 20509666 字节最小内联容器作为诊断基线保留，同类迁移容器仅 505 字节。真实 Linux Agent/Terminal 结束重开、Host 离线结束、单根转多根及严格当前 xterm 90000 行测试已有通过样本。F-05 的新 completed 画板内联问题收口；完整终态消息/临时 Host 聚合继续属于 F-04，90000 行间歇性尾部短读继续独立跟踪，不能借取消历史宣称修复。
 
-### F-01 高：Supervisor hello 没有响应超时，5 秒 ready 上限无法覆盖已连接但无响应的 socket
+### F-01 高：Supervisor hello 没有响应超时，5 秒 ready 上限无法覆盖已连接但无响应的 socket（历史发现，已专项修复）
+
+2026-10-08：普通 hello / RPC 的请求等待已按 `docs/design-docs/runtime-rpc-request-timeout.md` 修复并完成定向验证。hello/连接 5 秒、普通 RPC 15 秒，ready 传递剩余预算；超时只报告结果未知，不自动重发副作用请求。严格删除原有到期 `unconfirmed` 及迟到补证保持，不应概括为所有删除无限等待。下文保留 2026-09-16 审核基线和当时建议；普通 RPC 到期保留并发连接是专项方案相对原建议的明确取舍。
 
 位置：`extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts:223-224`、`:227-242`、`:382-407`。
 

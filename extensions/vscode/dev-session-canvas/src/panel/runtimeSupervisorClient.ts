@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { realpathSync } from 'fs';
 import * as net from 'net';
+import { performance } from 'node:perf_hooks';
 import { ensureRuntimeRootSocketDirectory } from '../supervisor/runtimeRootOwner';
 
 import {
@@ -60,6 +61,9 @@ import {
 
 interface PendingSupervisorRequest<T> {
   socket: net.Socket;
+  deadline?: number;
+  timeout?: ReturnType<typeof setTimeout>;
+  method: string;
   resolve: (value: T) => void;
   reject: (error: Error) => void;
   // Only an actual error response can confirm legacy absence or rejection.
@@ -104,6 +108,8 @@ interface HostOutputSubscription {
 }
 
 const CLOSED_TERMINAL_READ_CONNECTION_LIMIT = 128;
+const REQUEST_TIMEOUT_MS = 15_000;
+const HELLO_TIMEOUT_MS = 5_000;
 
 export class ExecutionCandidateHandshakeError extends Error {}
 
@@ -120,6 +126,7 @@ export interface RuntimeSupervisorClientOptions extends RuntimeSupervisorClientE
 export class RuntimeSupervisorClient {
   private socket: net.Socket | undefined;
   private connectPromise: Promise<void> | undefined;
+  private cancelSocketConnection: (() => void) | undefined;
   private disposed = false;
   private buffer = '';
   private helloResult: RuntimeSupervisorHelloResult | undefined;
@@ -527,7 +534,9 @@ export class RuntimeSupervisorClient {
           return;
         }
         submitted = true;
-        await this.requestOnConnectedSocket('deleteSession', request, socket, error => { responseError = error; });
+        // The strict observation already has a deadline and must retain late evidence.
+        await this.requestOnConnectedSocket('deleteSession', request, socket, error => { responseError = error; },
+          undefined, 'strict-delete');
         finish(this.socket === socket && !socket.destroyed && !this.disposed
           ? { kind: 'legacy-acknowledged' }
           : { kind: 'unconfirmed', reason: 'The original deletion connection changed before its result was observed.' });
@@ -595,6 +604,7 @@ export class RuntimeSupervisorClient {
 
   public dispose(): void {
     this.disposed = true;
+    this.cancelSocketConnection?.();
     if (this.socket && !this.socket.destroyed) {
       this.socket.destroy();
     }
@@ -645,7 +655,8 @@ export class RuntimeSupervisorClient {
   }
 
   private requestOnConnectedSocket<T>(method: string, params?: unknown, expectedSocket?: net.Socket,
-    responseError?: (error: Error) => void, responseResult?: (value: unknown) => void): Promise<T> {
+    responseError?: (error: Error) => void, responseResult?: (value: unknown) => void,
+    deadline: number | 'strict-delete' = performance.now() + REQUEST_TIMEOUT_MS): Promise<T> {
     const socket = this.socket;
     if (!socket || socket.destroyed || this.disposed || (expectedSocket && socket !== expectedSocket)) {
       throw createRuntimeSupervisorProtocolError({
@@ -655,15 +666,30 @@ export class RuntimeSupervisorClient {
 
     const id = randomUUID();
     const promise = new Promise<T>((resolve, reject) => {
-      this.pendingRequests.set(id, {
+      const pending: PendingSupervisorRequest<unknown> = {
         socket,
+        method,
+        ...(deadline === 'strict-delete' ? {} : { deadline }),
         resolve: (value: unknown) => {
           try { responseResult?.(value); resolve(value as T); }
           catch (error) { reject(error); }
         },
         reject,
         ...(responseError ? { responseError } : {})
-      });
+      };
+      this.pendingRequests.set(id, pending);
+      if (typeof deadline === 'number') {
+        const expire = (): void => {
+          if (this.pendingRequests.get(id) !== pending) return;
+          const remaining = deadline - performance.now();
+          if (remaining > 0) {
+            pending.timeout = setTimeout(expire, Math.ceil(remaining));
+            return;
+          }
+          this.takePendingRequest(id)?.reject(this.createRequestTimeoutError(method));
+        };
+        pending.timeout = setTimeout(expire, Math.max(0, Math.ceil(deadline - performance.now())));
+      }
     });
 
     const message =
@@ -681,10 +707,12 @@ export class RuntimeSupervisorClient {
           };
 
     try {
+      if (typeof deadline === 'number' && performance.now() >= deadline) {
+        throw this.createRequestTimeoutError(method);
+      }
       socket.write(`${JSON.stringify(message)}\n`);
     } catch (error) {
-      const pending = this.pendingRequests.get(id);
-      this.pendingRequests.delete(id);
+      const pending = this.takePendingRequest(id);
       pending?.reject(error instanceof Error ? error : new Error(String(error)));
     }
     return promise;
@@ -707,7 +735,7 @@ export class RuntimeSupervisorClient {
     await this.waitForSupervisorReady();
   }
 
-  private async connectSocket(): Promise<void> {
+  private async connectSocket(deadline = performance.now() + HELLO_TIMEOUT_MS): Promise<void> {
     if (this.expectedRuntimeOwner) {
       await ensureRuntimeRootSocketDirectory(this.options.backend.paths, this.options.backend.kind, false);
     }
@@ -719,12 +747,23 @@ export class RuntimeSupervisorClient {
 
     await new Promise<void>((resolve, reject) => {
       const socket = net.createConnection(this.options.backend.paths.socketPath);
+      const timeoutError = (): Error => createRuntimeSupervisorProtocolError({
+        id: 'clientReadyTimeout'
+      }, RUNTIME_SUPERVISOR_ERROR_CODES.clientReadyTimeout);
+      const timeout = setTimeout(() => handleError(timeoutError()), Math.max(0, Math.ceil(deadline - performance.now())));
       const cleanup = (): void => {
+        clearTimeout(timeout);
+        if (this.cancelSocketConnection === cancel) this.cancelSocketConnection = undefined;
         socket.removeListener('connect', handleConnect);
         socket.removeListener('error', handleError);
       };
 
       const handleConnect = (): void => {
+        if (performance.now() >= deadline || this.disposed) {
+          handleError(this.disposed ? createRuntimeSupervisorProtocolError({ id: 'clientDisposed' },
+            RUNTIME_SUPERVISOR_ERROR_CODES.clientDisposed) : timeoutError());
+          return;
+        }
         cleanup();
         this.attachSocket(socket);
         resolve();
@@ -735,6 +774,10 @@ export class RuntimeSupervisorClient {
         socket.destroy();
         reject(error);
       };
+
+      const cancel = (): void => handleError(createRuntimeSupervisorProtocolError({ id: 'clientDisposed' },
+        RUNTIME_SUPERVISOR_ERROR_CODES.clientDisposed));
+      this.cancelSocketConnection = cancel;
 
       socket.once('connect', handleConnect);
       socket.once('error', handleError);
@@ -810,7 +853,11 @@ export class RuntimeSupervisorClient {
       if (!pending || pending.socket !== socket) {
         return;
       }
-      this.pendingRequests.delete(message.id);
+      this.takePendingRequest(message.id);
+      if (pending.deadline !== undefined && performance.now() >= pending.deadline) {
+        pending.reject(this.createRequestTimeoutError(pending.method));
+        return;
+      }
       if (message.ok) {
         pending.resolve(message.result);
       } else {
@@ -892,6 +939,11 @@ export class RuntimeSupervisorClient {
       console.error('Runtime Host output batch consumption failed:', error);
       if (isCurrent()) {
         this.hostOutputSubscriptions.delete(payload.sessionId);
+        if ((error as { code?: string })?.code === RUNTIME_SUPERVISOR_ERROR_CODES.clientRequestTimeout) {
+          // An acknowledgement may already have taken effect. Do not submit it again as cancellation.
+          socket.destroy();
+          return;
+        }
         try {
           await this.requestOnConnectedSocket('ackTerminalBatch', {
             sessionId: payload.sessionId, authorityId: payload.authorityId, subscriptionId: payload.subscriptionId,
@@ -905,19 +957,31 @@ export class RuntimeSupervisorClient {
   }
 
   private rejectAllPending(error: Error): void {
-    for (const pending of this.pendingRequests.values()) {
-      pending.reject(error);
+    for (const id of this.pendingRequests.keys()) {
+      this.takePendingRequest(id)?.reject(error);
     }
-    this.pendingRequests.clear();
   }
 
   private rejectSocketPending(socket: net.Socket, error: Error): void {
     for (const [id, pending] of this.pendingRequests) {
       if (pending.socket === socket) {
-        this.pendingRequests.delete(id);
-        pending.reject(error);
+        this.takePendingRequest(id)?.reject(error);
       }
     }
+  }
+
+  private takePendingRequest(id: string): PendingSupervisorRequest<unknown> | undefined {
+    const pending = this.pendingRequests.get(id);
+    if (pending) {
+      this.pendingRequests.delete(id);
+      clearTimeout(pending.timeout);
+    }
+    return pending;
+  }
+
+  private createRequestTimeoutError(method: string): Error {
+    return createRuntimeSupervisorProtocolError({ id: 'clientRequestTimeout', params: { method } },
+      RUNTIME_SUPERVISOR_ERROR_CODES.clientRequestTimeout);
   }
 
   private async startSupervisorProcess(): Promise<void> {
@@ -929,22 +993,23 @@ export class RuntimeSupervisorClient {
   }
 
   private async waitForSupervisorReady(): Promise<void> {
-    const deadline = Date.now() + 5000;
+    const deadline = performance.now() + HELLO_TIMEOUT_MS;
     let lastError: Error | undefined;
 
-    while (Date.now() < deadline) {
+    while (performance.now() < deadline) {
       try {
         if (!this.socket || this.socket.destroyed) {
-          await this.connectSocket();
+          await this.connectSocket(deadline);
         }
-        await this.performHelloHandshake();
+        await this.performHelloHandshake(deadline);
         return;
       } catch (error) {
         if (error instanceof ExecutionCandidateHandshakeError) throw error;
         lastError = error instanceof Error ? error : new Error(String(error));
       }
 
-      await delay(80);
+      const remaining = deadline - performance.now();
+      if (remaining > 0) await delay(Math.min(80, remaining));
     }
 
     throw lastError ?? createRuntimeSupervisorProtocolError({
@@ -952,9 +1017,20 @@ export class RuntimeSupervisorClient {
     }, RUNTIME_SUPERVISOR_ERROR_CODES.clientReadyTimeout);
   }
 
-  private async performHelloHandshake(): Promise<void> {
+  private async performHelloHandshake(deadline = performance.now() + HELLO_TIMEOUT_MS): Promise<void> {
     const socket = this.socket;
-    const result = await this.requestOnConnectedSocket<RuntimeSupervisorHelloResult>('hello', undefined, socket);
+    let result: RuntimeSupervisorHelloResult;
+    try {
+      result = await this.requestOnConnectedSocket<RuntimeSupervisorHelloResult>('hello', undefined, socket,
+        undefined, undefined, deadline);
+    } catch (error) {
+      if ((error as { code?: string })?.code === RUNTIME_SUPERVISOR_ERROR_CODES.clientRequestTimeout &&
+          socket && this.socket === socket) {
+        this.helloResult = undefined;
+        socket.destroy();
+      }
+      throw error;
+    }
     if (!socket || socket !== this.socket || socket.destroyed || this.disposed) {
       throw new Error('Runtime supervisor connection changed during handshake.');
     }

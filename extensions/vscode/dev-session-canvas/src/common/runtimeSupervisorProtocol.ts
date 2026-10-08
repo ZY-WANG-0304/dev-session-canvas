@@ -125,6 +125,7 @@ export const RUNTIME_SUPERVISOR_ERROR_CODES = {
   clientNotConnected: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_CLIENT_NOT_CONNECTED',
   clientConnectionClosed: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_CONNECTION_CLOSED',
   clientReadyTimeout: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_READY_TIMEOUT',
+  clientRequestTimeout: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_REQUEST_TIMEOUT',
   launcherMissingSupervisorScript: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_LAUNCHER_MISSING_SUPERVISOR_SCRIPT',
   launcherMissingStorageDir: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_LAUNCHER_MISSING_STORAGE_DIR',
   systemdBackendMissingPaths: 'DEV_SESSION_CANVAS_RUNTIME_SYSTEMD_BACKEND_MISSING_PATHS',
@@ -171,6 +172,7 @@ export type RuntimeSupervisorMessageId =
   | 'clientNotConnected'
   | 'clientConnectionClosed'
   | 'clientReadyTimeout'
+  | 'clientRequestTimeout'
   | 'systemdBackendMissingPaths'
   | 'systemdCommandFailed'
   | 'terminalAuthorityMismatch'
@@ -715,6 +717,8 @@ export function formatRuntimeSupervisorMessageDescriptor(
       return 'Runtime supervisor connection closed.';
     case 'clientReadyTimeout':
       return 'Timed out waiting for the runtime supervisor to start.';
+    case 'clientRequestTimeout':
+      return `Timed out waiting for runtime supervisor request ${params.method ?? '<unknown>'}. The operation may already have occurred; its result is unknown. It was not automatically retried.`;
     case 'systemdBackendMissingPaths':
       return 'The systemd-user backend is missing unit or controlDir paths.';
     case 'systemdCommandFailed':
@@ -806,6 +810,7 @@ function isRuntimeSupervisorMessageId(value: string): value is RuntimeSupervisor
     case 'clientNotConnected':
     case 'clientConnectionClosed':
     case 'clientReadyTimeout':
+    case 'clientRequestTimeout':
     case 'systemdBackendMissingPaths':
     case 'systemdCommandFailed':
     case 'terminalAuthorityMismatch':

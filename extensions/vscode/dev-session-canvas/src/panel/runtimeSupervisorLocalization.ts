@@ -150,6 +150,10 @@ export function localizeRuntimeSupervisorMessageDescriptor(
       return vscode.l10n.t('Runtime supervisor connection closed.');
     case 'clientReadyTimeout':
       return vscode.l10n.t('Timed out waiting for the runtime supervisor to start.');
+    case 'clientRequestTimeout':
+      return vscode.l10n.t('Timed out waiting for runtime supervisor request {method}. The operation may already have occurred; its result is unknown. It was not automatically retried.', {
+        method: params.method ?? vscode.l10n.t('<unknown>')
+      });
     case 'systemdBackendMissingPaths':
       return vscode.l10n.t('The systemd-user backend is missing unit or controlDir paths.');
     case 'systemdCommandFailed':
