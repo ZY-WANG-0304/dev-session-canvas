@@ -90,6 +90,9 @@ for (const cause of ['No medium found', 'No such file or directory', 'Connection
     { kind: 'unavailable', reason: 'user-bus-unavailable' });
   }
 }
+const missingBusAddress = 'Failed to connect to bus: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined (consider using --machine=<user>@.host --user to connect to bus of other user)';
+await check({ execError: Object.assign(new Error('missing bus address'), { code: 1 }), stderr: `${missingBusAddress}\n` },
+  { kind: 'unavailable', reason: 'user-bus-address-missing' });
 for (const response of [{ environmentKey: 'c'.repeat(64) }, { userIdentityKey: 'c'.repeat(64) }]) {
   await check({ response }, { kind: 'unavailable', reason: 'execution-scope-mismatch' });
 }
@@ -99,6 +102,10 @@ for (const changes of [
     stderr: 'Failed to connect to bus: No medium found' },
   { execError: Object.assign(new Error('signal'), { code: 1, signal: 'SIGTERM' }),
     stderr: 'Failed to connect to bus: Connection refused' },
+  { execError: Object.assign(new Error('timeout'), { code: 1, killed: true }), stderr: missingBusAddress },
+  { execError: Object.assign(new Error('signal'), { code: 1, signal: 'SIGTERM' }), stderr: missingBusAddress },
+  { execError: Object.assign(new Error('spawn failure'), { code: 'EACCES' }), stderr: missingBusAddress },
+  { execError: Object.assign(new Error('other diagnostics'), { code: 1 }), stderr: `${missingBusAddress}\nPermission denied` },
   { execError: Object.assign(new Error('output overflow'), { code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' }) },
   { execError: Object.assign(new Error('failure'), { code: 1 }), stderr: 'Failed to connect to bus: Permission denied' },
   { execError: Object.assign(new Error('failed unit'), { code: 1 }), stderr: 'Failed to start transient service unit' }
