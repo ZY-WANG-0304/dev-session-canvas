@@ -18,16 +18,19 @@
 
 后续独立修复已为新代码的明确拒绝增加 `createSessionOutcome`，覆盖 Agent/Terminal 创建、恢复、重试和删除，保留断连/资源已获取/未知结果保护。已有旧 Supervisor 不会随 Host 热更新，也不会补发原请求的结构化结果；它的普通错误、旧固定文案及更新前残留的未知记录继续保守保护。后续旧 Supervisor 退役或明确历史创建恢复工作如需解除保护，必须从原责任方获取身份匹配的资源证明；不得凭错误字符串、超时或 registry 缺项追认。关联：`docs/design-docs/runtime-admission-rejection-settlement.md`、`CanvasPanelManager.withExecutionCandidateStart`、`RuntimeSupervisorServer.createSession`。
 
-## 2026-10-09：取消 0.26.1 后四项验证阻塞已定位、尚未修复
+## 2026-10-09：四项验证阻塞已修复，完整门禁仍有后续失败
 
-发布准备 PR #308 已关闭，定位基线 origin/main@f57b11f9。以下结论补充并更新本文件原有折行链接、相对 shell 与主题断言待查记录；只完成定位，不关闭债务。详见 `docs/design-docs/release-blockers-investigation.md` 与 `docs/exec-plans/completed/release-blockers-investigation.md`。
+发布准备 PR #308 已关闭。PR #310 在 `origin/main@f57b11f9` 上定位并修复四项原失败：清单入口显式构建双扩展、主题断言跟随实际组件、styled 路径支持四物理行内软/硬混合折行、owned local 确认启动后记录同身份诊断。双 dist 移开后的正式清单入口、主题/typecheck/build、原 hardwrap 22/22、新混合折行 12/12、Host 336/336 通过；真实 VSIX 已越过相对 shell 的 started、live 快照和真实 PWD 输出断言。原始引入证据保留，详见 `docs/design-docs/release-blockers-investigation.md` 与 `docs/exec-plans/completed/release-blockers-repair.md`。
 
-| 问题与触发 | 已确认机制及影响 | 当前边界与修复时机 |
+后续失败单独跟踪，不能把四项具名修复写成完整 npm / packaged 门禁通过，也不恢复 0.26.1 发布：
+
+| 触发与影响 | 证据及当前边界 | 后续修复时机与入口 |
 | --- | --- | --- |
-| 干净 npm test 的 notifier/dist 缺失 | a781334e 新增 notifier staging，未补更早的 build；父提交清单通过，子提交 ENOENT，仅 build:notifier 后通过。影响本地和 CI 的清洁门禁。 | 手动构建只是诊断控制；下次恢复完整门禁前显式接通双扩展构建依赖。 |
-| theme-color-tokens main 源码导入断言 | 26e945ad 把状态色使用者迁到 canvasNodeChrome，断言仍扫描 main；父/子原脚本由通过变失败。没有证据证明呈现映射丢失。 | 更新实际组件或行为断言，不补无用导入；下次完整门禁前处理。 |
-| Agent/Terminal styled hardwrap 行列路径 | c9f1ba32 原 detector 不支持混合软/硬折行；7f1e1887 恢复后 fit 把测试 120 列变为窄视口，父提交 2 过、子提交 2 败；仅加宽节点两项通过。影响窄节点混合折行链接及回归测试。 | 明确纯硬折行夹具与混合折行产品支持边界，保留真实坐标/缩进/样式/文件验证；不能只加宽后宣布产品修复。 |
-| packaged 相对 shell 的 started 超时 | c1b6bc8b 引入 owned local 分支漏 started 诊断，08fa3372 默认选择该路径；真实 VSIX 有 live 快照、正确 PWD 输出、EOF/saved，受控长期执行也缺事件。 | 补齐实际 started 事件契约或用启动快照与真实 marker 验收 shell/cwd，并分开覆盖诊断；核对 2 秒进程后置 live 等待，不延长 timeout 代替修复。 |
+| 完整 npm test 到 `test:canvas-templates` 失败 | 第 1188 行仍要求 main.tsx 包含创建缺失关联 Markdown 文件按钮，实际组件已迁到 fileNoteNodes.tsx；测试与两输入相对基线未变，导出 f57b11f9 原脚本同样失败。属于另一处既有源码断言漂移。 | 下一次恢复完整门禁前，将断言对齐真实职责并执行完整 npm test；不能仅删除断言。入口为 `scripts/test/test-canvas-templates.mjs`。 |
+| 全部 Webview 的两项 Terminal 初次 hover 下划线失败 | URL/file 用例在持续输出步骤前读到空下划线；导出 f57b11f9 两用例五轮为 9 过/1 败（URL），单独 file 十轮为 5 过/5 败，证实修前也存在波动；当前 PR 原样定向复跑 2/2，保留原全量失败，未确认根因。 | 下次完整 Webview 门禁前核对合成鼠标事件、渲染与 fit 顺序，保留真实 hover 断言；不盲加等待、重试或宣布原全量通过。入口为 `webview-harness.spec.mjs` 的 `keeps hovered links active` / `reuses file link resolution`。 |
+| clean-checkout VSIX 后续 QuickPick reset 超时 | 实现提交 8d432d41 的 VS Code 1.141.0 运行在 `verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent` 第 3142 行等待空画布失败；前例 custom Agent 已 stopped，finally 清除了原次首败消息/诊断。仅增加失败补录的独立 VSIX 复核仍在原行失败，确认 final persistence pending 中止 reset，同执行随后 saved；不能追认原次工件或宣称已做去除诊断的因果对照。 | 下次 packaged 完整验收前按 `tests/vscode-smoke/reset-canvas.cjs` 的原执行身份、saved/not-required 与共用时限适配清理流程，再完整复验。产品 pending 中止契约不变，不盲重试或放宽 timeout。 |
+
+完整 Webview 为 392 passed / 2 failed（12.0 分钟），两失败及基线对照见上表，原 hardwrap 与新增混合折行均通过。Windows/macOS、真实 TUI 的更宽范围未在本轮验证，继续保留各原计划边界；本项没有引入版本例外或放宽发布门禁。
 
 ## 近期已收口
 

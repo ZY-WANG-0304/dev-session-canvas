@@ -1,31 +1,58 @@
 ---
-title: 四项发布验证阻塞定位
+title: 四项发布验证阻塞定位与修复
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/release-blockers-investigation.md, docs/exec-plans/active/release-blockers-repair.md]
+related_plans: [docs/exec-plans/completed/release-blockers-investigation.md, docs/exec-plans/completed/release-blockers-repair.md]
 updated_at: 2026-10-09
 ---
 
-# 四项发布验证阻塞定位
+# 四项发布验证阻塞定位与修复
 
 ## 背景与范围
 
-用户于 2026-10-09 取消 0.26.1 发布，准备 PR [#308](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/308) 已关闭，release 分支的计划已归档。没有合并、tag 或发布。本次基于 `origin/main@f57b11f970ce27f28c731d81a2ed3228ba27f67d`，只定位四项失败，交付根因、引入过程、复现证据与修复边界；没有修改产品、测试断言、版本或门禁。
+用户于 2026-10-09 取消 0.26.1 发布，准备 PR [#308](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/308) 已关闭，release 分支的计划已归档。没有合并、tag 或发布。调查阶段基于 `origin/main@f57b11f970ce27f28c731d81a2ed3228ba27f67d`，只定位四项失败，交付根因、引入过程、复现证据与修复边界；当时没有修改产品、测试断言、版本或门禁。用户随后要求在 [PR #310](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/310) 继续修复，新增实现提交为 `8d432d41`，不恢复版本发布。
 
 原发布验证中，全量 Webview 为 380 passed / 2 failed；完整 verify 先后暴露 notifier 产物缺失和主题源码断言，独立 clean-checkout VSIX smoke 暴露相对 shell 等待超时。它们不属于同一根因，也不因取消发布而自动解决。
 
 ## 正式方案：四项修复
 
-2026-10-09 用户要求在 PR #310 继续修复。下文原调查证据保持历史口径；本节为新增实现方案，验证结果尚待回收，不恢复 0.26.1 发布。
+2026-10-09 用户要求在 PR #310 继续修复。下文原调查证据保持历史口径；本节记录新增实现方案，修后结果单列，不恢复 0.26.1 发布。
 
 清单检查由根 test:package-vsix-file-list 入口先构建主扩展及 notifier，再执行原 staging/文件断言。主题检查分别验证 main 的标签 descriptor 和 canvasNodeChrome 等实际呈现模块的共享 tone 使用，保留 CSS/token 与共享映射检查。
 
 styled 文件链接在四个物理行上限内支持软/硬混合折行。首片段仍须贴行尾；软续行从第一列延续相同 ANSI 样式，硬续行仍要求允许的缩进；前片段后的 prose 不可被跨越。必须实际经过硬换行才属于 hardwrap 候选，纯软换行继续由现有 detector 处理。每物理片段独立保留 cell 范围，点击与 hover 使用原映射；URL 检测、Host 路径验证与长度/候选数限制不放宽。不会取消恢复后 fit 或加宽原失败用例。
 
-owned local 在 operation.first 返回 started 后记录 execution/started，以原 executionId、kind/nodeId 与实际 file/cwd/尺寸关联，失败/拒绝不记录成功。相对 shell smoke 保留 metadata 和 started 校验，改为核对同会话已交付 live 快照与真实 PWD marker，不要求短命进程在后置轮询时仍存活。
+`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `startNonNativeHostExecution()` 在 operation.first 返回 started 后记录 execution/started，以原 executionId、kind/nodeId 与实际 file/cwd/尺寸关联，失败/拒绝不记录成功。相对 shell smoke 保留 metadata 和 started 校验，改为核对同会话已交付 live 快照与真实 PWD marker，不要求短命进程在后置轮询时仍存活。
+
+## 修后验证与剩余阻塞
+
+验证实现提交 `8d432d41`，Node 22.23.3。本文“已验证”只指原四项修复。以下结果只关闭原四项的具名失败，不表示完整发布门禁通过。
+
+| 验证 | 实际结果 |
+| --- | --- |
+| 移开主扩展与 notifier 两份 dist 后执行 `npm run test:package-vsix-file-list` | 自动构建两份产物，原文件清单断言通过。 |
+| `npm run test:theme-color-tokens` | 源码/token 与共享状态呈现测试均通过。 |
+| `npm run typecheck`、默认 `npm run build` | 通过，默认构建校验六目标原生资产输入。 |
+| 原 hard-wrapped Playwright 用例 | 22/22 通过，保持原默认节点尺寸及行列目标断言。 |
+| 新混合折行 Playwright 用例 | 12/12 通过，覆盖续段软折行、中文宽字符前缀、样式变化、缺缩进、prose 和四物理行上限；正例验证三个 hover 片段，负例检查未送出 hardwrap 候选。 |
+| Host 启动诊断与完整接线 | 新用例修前首个正例失败（0 个 started），修后 3/3；完整 336/336 通过。 |
+| 全部 Webview | 392 passed / 2 failed（12.0 分钟），失败为另两项初次 hover 下划线用例；原 hardwrap 与新增混合折行均通过。 |
+| `npm test` | exit 1，已越过清单与主题，停在 `test:canvas-templates` 第 1188 行旧源码断言。 |
+| `npm run validate:clean-checkout:vsix -- --keep-temp` | 隔离 npm ci、真实默认打包完成，相对 shell 用例通过；后续 QuickPick reset 等待超时，完整命令 exit 1。 |
+
+完整 Webview 中另外两项 Terminal 用例在首次 hover 下划线断言失败：`keeps hovered links active while live output continues` 与 `reuses file link resolution while live output continues`（修后第 7010 / 7079 行），尚未注入后面的持续输出；页面无 JavaScript 异常。独立导出 `f57b11f9`、默认 build 后执行同样的原用例：两用例各重复五次为 9 passed / 1 failed（URL 首次下划线），文件用例再重复十次为 5 passed / 5 failed（同一首次下划线，基线第 7033 行）。当前 PR 原样定向复跑为 2/2 通过（`/tmp/dsc310-head-hover-recheck.log`），不覆盖原全量失败。两项修前也可失败；这证明既有波动，不证明其根因或故障率不变，后续需核对合成 hover、真实渲染与 fit 时序，不盲加等待或重试。基线定向运行与剩余全量 Webview 部分并行，不能当作独占负载下的性能测量。日志 `/tmp/dsc310-baseline-hover-matched.log`、`/tmp/dsc310-baseline-hover-file.log`，工件在 `/tmp/dsc310-baseline-bq4og7kr/.debug/{playwright/results,hover-file-repeat}/`；首次筛选误加标题起始锚点未匹配用例，不计为执行。
+
+`test:canvas-templates` 要求 `main.tsx` 包含 `data-node-action-id="create-missing-associated-markdown-file"`，实际组件已在 `fileNoteNodes.tsx`。测试及两个输入文件相对基线均未改变；从 `f57b11f9` 导出树执行原脚本也在同一行失败。因此这是另外一处既有源码断言漂移，后续应对齐真实组件并重跑完整 npm test，本 PR 没有删除或绕过该断言。
+
+真实 VSIX 使用 VS Code 1.141.0，失败位于 `verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent()` 第 3142 行，尚未进入该用例的 YOLO 创建。上一个用例留下的 custom Agent 已收到 SIGINT、状态 stopped，但单次 `webview/resetDemoState` 后节点仍在。现有消息处理异步调用 reset，错误走 `host/error`；它不是等待清空完成的 API。原用例 finally 清除了首败消息/诊断，因此原次失败的具体拒绝原因不能补写为已捕获。
+
+为核对后续阻塞，在同一导出树仅给该用例增加 catch：调用既有 `writeFailureArtifacts` 保存到独立目录后原样抛错；没有更改产品或断言。独立目录的真实 VSIX 复核仍在第 3142 行失败，抓到 `Local final snapshot persistence is pending: agent:agent-1-35b0f1ee-617b-42ed-a3f6-edebc0def94c`。同一执行 `a21a9363-1b02-45f6-9b10-3dc208ef21b9` 于 20:40:48.904Z 记录 started、20:40:53.868Z 记录 EOF、20:40:53.889Z 记录 `localFinalPersistence: saved`，清理前仍无 state/reset。这与已选定的“pending 时中止原 reset，保存后须另行操作”契约一致，属于后续尚未适配该契约的 smoke 清理路径。另有 `Owned terminal mutation admission is closed`，不将其混为保存失败。该复核证明本次复核的直接拒绝，不追认原次缺失工件，也不声称做过去除新增诊断的因果对照。
+
+后续按 `tests/vscode-smoke/reset-canvas.cjs` 的原执行身份、saved/not-required 和共用时限约束修正该用例清理，再完整复验；禁止盲重试、吞保存错误或将超时记为通过。复核补录代码已还原，不作为本 PR 新修复。
+修后日志为 `/tmp/dsc310-{filelist-clean,theme,typecheck,hardwrap-first,mixed-final,started-before,started-after,host,webview-all,npm-test,clean-vsix}.log`；基线模板复现为 `/tmp/dsc310-canvas-templates-baseline.log`。VSIX 原失败保留于 `/tmp/dev-session-canvas-clean-checkout-Mc3X4K/repo/.debug/vscode-vsix-smoke/smoke-runtime/artifacts/`，清理前的最后节点快照包含在 smoke 日志的 AssertionError 中。reset 补录复核日志为 `/tmp/dsc310-reset-probe-with-ref.log`，工件在同一导出树 `.debug/vscode-vsix-smoke-reset-probe/smoke-runtime/artifacts/reset-first-failure/`；首次补录命令因导出树缺 git ref 在打包前停止，显式传入原实现 SHA 的 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` 后才完成上述复核。临时文件不是长期事实来源，以上具名输入与结果作为仓库内摘要。剩余完整门禁问题登记于 `docs/exec-plans/tech-debt-tracker.md`。
 
 ## 根因与修前证据
 
@@ -117,11 +144,11 @@ owned local 在 operation.first 返回 started 后记录 execution/started，以
 
 修复边界：明确并补齐 owned local 的启动诊断契约，事件须来自真实 started 结果并携带相同会话、shellPath/cwd；或者将该 smoke 改为等待启动快照与真实 marker 来验证原本的 shell/cwd 行为，并单独覆盖诊断契约。不能跳过用例或靠延长 timeout 解决。短命 shell 应以已经捕获的启动/输出事实验收，不应必须在后续任意轮询时仍存活。
 
-## 验证方法与证据入口
+## 调查阶段的验证方法与证据入口
 
-所有本轮 Node 命令使用 Node 22.23.3，浏览器为 Playwright 锁定的 Chromium 147.0.7727.15。历史工作树使用各自 npm ci；相邻提交的 lockfile 没有变化时复用刚安装的依赖。主线默认 build 通过六目标原生资产源码/依赖/hash 校验；历史 Webview 测试按历史默认 build 执行，不代证历史包或跨平台行为。
+所有调查阶段 Node 命令使用 Node 22.23.3，浏览器为 Playwright 锁定的 Chromium 147.0.7727.15。历史工作树使用各自 npm ci；相邻提交的 lockfile 没有变化时复用刚安装的依赖。主线默认 build 通过六目标原生资产源码/依赖/hash 校验；历史 Webview 测试按历史默认 build 执行，不代证历史包或跨平台行为。
 
-主线复现（仓库根）：
+修前主线复现（`f57b11f9` 仓库根，修后清单入口行为已改变）：
 
     npm ci
     DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/path/to/validated-assets npm run build
@@ -135,12 +162,12 @@ Playwright runner 固定使用工作树 `.playwright-browsers`，会覆盖外部
 
 关键本地日志：`/tmp/dsci-filelist-{before,after}.log`、`/tmp/dsci1-{before,after,after-build}.log`、`/tmp/dsc-theme-introduction/*.log`、`/tmp/dsci-hardwrap-{original,probe,wide}.log`、`/tmp/dscih-hardwrap.log`、`/tmp/dscij-{before,after,counterfactual}-hardwrap.log`、`/tmp/dsci-owned-start.log`。原真实宿主 JSON 位于 `/tmp/dev-session-canvas-clean-checkout-L2msFs/repo/.debug/current-host-diagnostics/2026-10-08T19-31-06-714Z/{host-messages,diagnostic-events}.json`。临时文件不是长期结论来源，上面的输入、输出摘要、提交和方法才是可复查记录。
 
-本次没有重跑完整 npm test、全部 Webview 或全部 VSIX smoke；原完整失败事实保留，定向诊断结果不能外推门禁通过。修复四项后仍需独立按新任务重新验证。
+调查阶段没有重跑完整 npm test、全部 Webview 或全部 VSIX smoke；原完整失败事实保留，定向诊断结果不能外推门禁通过。后续修复阶段的实际执行结果见本文“修后验证与剩余阻塞”。
 
 
 ### 受控 Host 事件探针复现
 
-在干净调查 worktree 根目录创建临时脚本（不提交），复用原 wiring fixture 的真实类加载与边界注入。Python 只在测试文件尾部插入观察用例，不改写产品方法：
+在基线 `f57b11f9` 的干净调查 worktree 根目录创建临时脚本（不提交），复用原 wiring fixture 的真实类加载与边界注入。Python 只在测试文件尾部插入观察用例，不改写产品方法。下面的零事件断言只用于复现修前缺陷，不适用于修后代码：
 
 ```python
 from pathlib import Path
