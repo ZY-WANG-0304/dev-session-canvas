@@ -10,10 +10,13 @@ on:
       - extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts
       - extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts
       - extensions/vscode/dev-session-canvas/src/panel/runtimeExecutionEnvironment.ts
+      - extensions/vscode/dev-session-canvas/src/panel/runtimeRootSupervisorPreparation.ts
+      - extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts
       - extensions/vscode/dev-session-canvas/src/panel/runtimeHostBackend.ts
       - extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts
       - extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootOwner.ts
       - extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootStartup.ts
+      - extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts
       - extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorLauncher.ts
       - extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorStart.ts
       - extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts
@@ -21,15 +24,20 @@ on:
       - scripts/test/test-runtime-execution-environment.mjs
       - scripts/test/test-runtime-root-owner-handshake.mjs
       - scripts/test/test-runtime-root-startup.mjs
+      - scripts/test/test-runtime-root-owner-storage.mjs
+      - scripts/test/test-runtime-root-preparation*.mjs
+      - scripts/test/test-runtime-systemd-environment.mjs
+      - scripts/build/build.mjs
       - package.json
       - package-lock.json
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   foundation:
-    name: Owner identity and handshake / ${{ matrix.os }}
+    name: Owner startup coordination / ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -37,6 +45,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
+      - name: Preserve source bytes on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -50,3 +61,19 @@ jobs:
         run: npm run test:runtime-root-ownership
       - name: Check TypeScript
         run: npm run typecheck
+      - name: Check controlled startup boundaries
+        run: npm run test:runtime-root-preparation
+      - name: Download unchanged validated native assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: execution-native-*-37479044769
+          merge-multiple: true
+          path: native-archives
+          run-id: 37479044769
+          github-token: ${{ github.token }}
+      - name: Verify and assemble native distribution
+        run: node scripts/build/assemble-execution-distribution-assets.mjs --source native-archives --output generated/execution-assets --input-sha 2bdfc311a2fcf4911c09a5bbf86c35579dc12522
+      - name: Build normal production bundles
+        run: npm run build
+      - name: Check native startup coordination
+        run: node scripts/test/test-runtime-root-preparation-native.mjs

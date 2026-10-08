@@ -104,7 +104,7 @@ interface HostOutputSubscription {
 
 const CLOSED_TERMINAL_READ_CONNECTION_LIMIT = 128;
 
-class ExecutionCandidateHandshakeError extends Error {}
+export class ExecutionCandidateHandshakeError extends Error {}
 
 export interface RuntimeSupervisorClientOptions extends RuntimeSupervisorClientEventHandlers {
   backend: RuntimeHostBackend;
