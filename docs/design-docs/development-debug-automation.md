@@ -163,6 +163,8 @@ updated_at: 2026-10-08
 
 2026-10-08 模拟重载增量验证：新增 4 项 Host 回归在原实现上失败、修复后通过，Node 22 完整 Host 接线测试 236/236 和类型检查通过。真实 VSIX smoke 已越过原启动诊断超时，但在后续 reset 的最终快照保存 pending 处失败；该结果不代表完整第二层验证通过，剩余责任按技术债和本轮完成计划继续追踪。
 
+2026-10-08 reset 后续定位：原 VSIX 栈和 6 项真实 Host 受控测试确认，owner 关闭与最终保存是独立完成点；reset 按生产接入 §26.3 在保存 pending 时已拒绝，晚到 saved 不会续跑该操作。原 QuickPick 夹具只派发一次并轮询空画布，与现有可中止契约不一致；排队 resize 的准入错误不是该拒绝的必要原因。保存成功后再次 reset 可清空，保存失败仍保留，详见 `canvas-reset-final-persistence.md`。本轮未改生产代码或原 smoke，完整 packaged gate 保留失败。
+
 完成后至少要满足以下验证：
 
 1. `npm run build`

@@ -1874,6 +1874,88 @@ async function assertFinalSaveRetainsHost(f, record, kind, expected) {
   assert.strictEqual(f.record(kind), record);
 }
 
+for (const kind of ['agent', 'terminal']) {
+  for (const outcome of ['saved', 'failed']) {
+    test(`${kind} reset final persistence aborts while pending and preserves the later ${outcome} outcome`, async () => {
+      const f = await persistenceFixture();
+      const gate = deferred();
+      const entered = deferred();
+      const originalUpdate = f.host.context.workspaceState.update;
+      f.host.context.workspaceState.update = async (...args) => {
+        entered.resolve();
+        await gate.promise;
+        if (outcome === 'failed') throw new Error('controlled reset final update failure');
+        return originalUpdate(...args);
+      };
+      let record;
+      try {
+        const started = await f.started(kind);
+        record = started.record;
+        const provider = started.provider;
+        const nodeIds = f.host.state.nodes.map(node => node.id);
+        const resetEvents = () => f.diagnostics.filter(event => event.name === 'state/reset');
+        let resetResult;
+        const resetting = f.host.resetState({ reason: 'pending-final-save-investigation' }).then(
+          () => { resetResult = { kind: 'resolved' }; },
+          error => { resetResult = { kind: 'rejected', error }; }
+        );
+        await until(f.clock, () => provider.messages.some(message => message.type === 'requestStop'), 'reset requested stop');
+        assert.equal(resetResult, undefined, 'reset must await the original execution close');
+        // No resize or other terminal mutation is needed to reproduce the reset refusal.
+        provider.output(1, `${kind}-reset-final-tail`);
+        await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 1, 'reset accepted final tail');
+        provider.process(); provider.seal(1); provider.release();
+        await completed(f.clock, entered.promise, 'reset final workspace update entered');
+        await completed(f.clock, resetting, 'reset pending save refusal');
+        assert.equal(resetResult.kind, 'rejected');
+        assert.match(resetResult.error.message, /Local final snapshot persistence is pending/);
+        assert.equal(record.execution.snapshot().retired, true);
+        assert.equal(record.persistence.submitted, true);
+        assert.equal(record.persistence.result, undefined);
+        assert.strictEqual(f.record(kind), record);
+        assert.equal(f.owner.snapshot().pending, 0, 'execution retirement does not include Host persistence');
+        assert.equal(f.owner.snapshot().closing, true);
+        assert.deepEqual(f.host.state.nodes.map(node => node.id), nodeIds);
+        assert.equal(resetEvents().length, 0);
+        const writesBeforeSettlement = [...f.writes];
+        for (const filename of [f.rootFile, f.workspaceFile]) {
+          const disk = await f.read(filename);
+          const metadata = disk.state.nodes.find(node => node.id === `${kind}-1`).metadata[kind];
+          assert.match(metadata.serializedTerminalState.data, new RegExp(`${kind}-reset-final-tail`));
+          assert.equal(metadata.outputSequence, 1, 'the file is final even though workspaceState remains pending');
+        }
+        gate.resolve();
+        const saved = await completed(f.clock, record.persistence.promise, 'reset original final save settled');
+        assert.equal(saved.kind, outcome);
+        assert.equal(f.diagnostics.filter(event => event.name === 'execution/localFinalPersistence').length, 1);
+        assert.equal(resetResult.kind, 'rejected', 'late settlement must not rewrite the original reset outcome');
+        assert.deepEqual(f.host.state.nodes.map(node => node.id), nodeIds, 'settlement does not resume an aborted reset');
+        assert.equal(resetEvents().length, 0);
+        assert.equal(f.owner.snapshot().closing, true, 'only a successful explicit reset resumes admission');
+        assert.deepEqual(f.writes, writesBeforeSettlement, 'settlement does not resubmit persistence');
+        if (outcome === 'saved') {
+          assert.equal(f.record(kind), undefined, 'successful final persistence releases its original record');
+          await completed(f.clock, f.host.resetState({ reason: 'explicit-reset-after-save' }), 'explicit reset after saved');
+          await f.host.pendingWorkspaceStateUpdate;
+          assert.equal(f.host.state.nodes.length, 0);
+          assert.equal((await f.read()).state.nodes.length, 0);
+          assert.equal((await f.read(f.rootFile)).state.nodes.length, 0);
+          assert.equal(resetEvents().length, 1);
+          assert.equal(f.owner.snapshot().closing, false);
+        } else {
+          assert.match(saved.reason, /controlled reset final update failure/);
+          await assert.rejects(completed(f.clock, f.host.resetState(), 'explicit reset after failed save'),
+            /Local final snapshot persistence is failed/);
+          assert.strictEqual(f.record(kind), record);
+          assert.deepEqual(f.host.state.nodes.map(node => node.id), nodeIds);
+          assert.deepEqual(f.writes, writesBeforeSettlement, 'a second reset must not bypass a failed save');
+          assert.equal(resetEvents().length, 0);
+        }
+      } finally { gate.resolve(); record?.tracker.dispose(); await f.cleanup(); }
+    });
+  }
+}
+
 test('explicit Host capacity includes retired executions whose original final save is still pending', async () => {
   const f = await persistenceFixture({ admissionLimits: { executions: 10, starting: 1 } });
   const saved = deferred();
@@ -2291,6 +2373,64 @@ function candidateFixture(options = {}) {
       : f.host.startTerminalSession('terminal-1', 80, 24);
   }
   return { ...f, owner, injection, posted, start };
+}
+
+for (const queuedResize of [false, true]) {
+  test(`profile reset final persistence rejects independently of a queued resize (${queuedResize})`, async () => {
+    const f = candidateFixture();
+    const save = deferred();
+    const mutation = deferred();
+    let finalWrites = 0;
+    f.host.persistState = async options => {
+      if (options?.reason === 'local-final-snapshot') {
+        finalWrites++;
+        await save.promise;
+      }
+    };
+    let record;
+    try {
+      await completed(f.clock, f.start('agent'), 'profile Agent start');
+      record = f.record('agent');
+      const provider = f.providers[0];
+      f.host.assertNonNativeHostMutation(record);
+      let resized;
+      if (queuedResize) {
+        record.terminalChain = mutation.promise;
+        resized = assert.rejects(f.host.resizeNonNativeHostExecution(record, 100, 30),
+          /Owned terminal mutation admission is closed/);
+      }
+      const resetting = assert.rejects(f.host.resetState(), /Local final snapshot persistence is pending/);
+      assert.equal(record.execution.snapshot().stopRequested, true);
+      mutation.resolve();
+      if (resized) await completed(f.clock, resized, 'queued resize refused after stop');
+      assert.equal(record.mutationError, undefined, 'a refused resize must not mark the final terminal authority uncertain');
+      assert.equal(provider.messages.some(message => message.type === 'resize'), false);
+      provider.output(1, 'profile-reset-final-tail');
+      await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 1, 'profile reset final tail');
+      provider.process(); provider.seal(1);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release',
+        result: { kind: 'released' } });
+      provider.release();
+      await completed(f.clock, resetting, 'profile reset pending save refusal');
+      assert.equal(finalWrites, 1);
+      assert.equal(record.execution.snapshot().retired, true);
+      assert.equal(record.persistence.result, undefined);
+      assert.equal(f.host.strictRuntimeMutationBoundary, undefined, 'the failed command is no longer in flight');
+      assert.equal(f.host.state.nodes.length, 2);
+      save.resolve();
+      assert.equal((await completed(f.clock, record.persistence.promise, 'profile final save')).kind, 'saved');
+      assert.equal(f.host.state.nodes.length, 2, 'successful persistence does not resume the rejected reset');
+      await completed(f.clock, f.host.resetState(), 'profile explicit reset after save');
+      assert.equal(f.host.state.nodes.length, 0);
+      assert.equal(f.owner.snapshot().closing, false);
+      assert.equal(finalWrites, 1, 'explicit reset does not repeat the original final save');
+    } finally {
+      save.resolve(); mutation.resolve();
+      record?.business?.cancelActivityPoll?.();
+      record?.business?.lineContextTracker.dispose();
+      record?.tracker.dispose();
+    }
+  });
 }
 
 function simulatedReloadFixture() {
