@@ -962,14 +962,16 @@ export class PreparedExecution {
         if (this.pending.length) this.dependencies.scheduler.scheduleTask(() => this.beginConsumption());
         this.maybeRetire();
         this.changed();
-      }, () => this.consumptionFailed());
-    } catch { this.consumptionFailed(); }
+      }, error => this.consumptionFailed(error));
+    } catch (error) { this.consumptionFailed(error); }
   }
 
-  private consumptionFailed(): void {
+  private consumptionFailed(error: unknown): void {
     this.consuming = false;
-    this.authorityFailure = Object.freeze({ kind: 'failed', throughDataSequence: this.consumedThrough, reason: 'Authority consumption failed' });
-    this.fault('Authority consumption failed');
+    const detail = (error instanceof Error ? error.message : typeof error === 'string' ? error : '').trim();
+    const reason = detail ? `Authority consumption failed: ${detail}` : 'Authority consumption failed';
+    this.authorityFailure = Object.freeze({ kind: 'failed', throughDataSequence: this.consumedThrough, reason });
+    this.fault(reason);
     this.changed();
   }
 

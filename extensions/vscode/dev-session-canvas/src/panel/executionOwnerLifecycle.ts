@@ -224,7 +224,9 @@ export class ExecutionOwnerLifecycle {
 
   assertAdmission(record?: OwnedExecution): void {
     const state = this.authority.snapshot();
-    if (state.closing || state.blockedReason) throw new Error('Execution owner admission is closed');
+    if (state.closing || state.blockedReason) {
+      throw new Error(`Execution owner admission is closed${state.blockedReason ? `: ${state.blockedReason}` : ''}`);
+    }
     if (!this.options.capabilities.includes('execution-lifecycle-v1')) throw new Error('Execution lifecycle capability is required');
     if (record && this.records.get(record.key) !== record) throw new Error('Execution reservation is no longer current');
   }
@@ -612,7 +614,9 @@ export class OwnedExecution {
       this.owner.authority.quarantine(this.callbackFailure);
     }
     finally { this.finalObserverPending = false; }
-    if (this.terminal.kind === 'failed') this.owner.authority.quarantine('Final terminal consumption failed');
+    if (this.terminal.kind === 'failed') {
+      this.owner.authority.quarantine(`Final terminal consumption failed: ${this.terminal.reason}`);
+    }
     this.evaluate();
   }
 

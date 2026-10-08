@@ -1313,13 +1313,28 @@ try {
     h.consumptions[0].reject(new Error('intentional-consumption-failure'));
     await settle(h.scheduler);
     const first = await waiting;
-    assert.deepEqual(first, { kind: 'failed', throughDataSequence: 0, reason: 'Authority consumption failed' });
+    assert.deepEqual(first, { kind: 'failed', throughDataSequence: 0,
+      reason: 'Authority consumption failed: intentional-consumption-failure' });
     h.sink.controlResourceResult({ kind: 'released' });
     await settle(h.scheduler);
     assert.strictEqual(await h.session.waitForSealedConsumption(), first);
     assert.equal(h.snapshot().pendingFrames, 1);
     assert.notEqual(h.snapshot().state, 'settled');
   });
+
+  for (const failure of ['plain failure', new Error(''), undefined, { unexpected: 'object' }]) {
+    test(`consumption failure handles ${typeof failure === 'string' ? 'string detail' : String(failure)} without serializing arbitrary values`, async () => {
+      const h = createHarness();
+      await h.started();
+      h.output(1, 'retained');
+      await settle(h.scheduler);
+      h.consumptions[0].reject(failure);
+      await settle(h.scheduler);
+      const reason = typeof failure === 'string' ? `Authority consumption failed: ${failure}` : 'Authority consumption failed';
+      assert.equal(h.authority.snapshot().blockedReason, reason);
+      assert.equal(h.snapshot().pendingFrames, 1);
+    });
+  }
 
   test('state notifications coalesce settled facts and preserve first unknown after late release', async () => {
     const observed = [];
