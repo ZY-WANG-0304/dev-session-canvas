@@ -284,6 +284,7 @@ test('webview bundle emits ready and matches the baseline screenshot', async ({ 
 
   await expect(nodeById(page, 'agent-1').locator('[data-probe-field="provider"]')).toHaveCount(0);
   await expect(nodeById(page, 'agent-1').locator('[data-probe-field="title"]')).toHaveValue('Agent 1');
+  await expect(nodeById(page, 'agent-1').locator('.window-title-subtitle')).toHaveText('codex --model gpt-5');
   await expect(nodeById(page, 'terminal-1').locator('[data-probe-field="title"]')).toHaveValue('Terminal 1');
   await expect(nodeById(page, 'note-1').locator('[data-probe-field="title"]')).toHaveValue('回看 smoke test');
   await expect(page.locator('.canvas-shell')).toHaveScreenshot('canvas-shell-baseline.png', {
@@ -4248,7 +4249,7 @@ test('right-click create menu validates custom agent launch commands before crea
   const customInput = menu.locator('[data-context-menu-custom-input="true"]');
   const confirmButton = menu.locator('[data-context-menu-custom-confirm="true"]');
   await expect(menu.locator('.canvas-context-menu-dismiss')).toHaveCount(0);
-  await expect(customInput).toHaveValue('codex --timeout 300 --verbose');
+  await expect(customInput).toHaveValue('codex --model gpt-5');
 
   await customInput.fill('python not-agent');
   await expect(confirmButton).toBeDisabled();
@@ -4350,7 +4351,7 @@ test('right-click custom agent launch input ignores IME Enter before composition
   await menu.locator('[data-context-menu-launch-preset="launch-custom"]').click();
 
   const customInput = menu.locator('[data-context-menu-custom-input="true"]');
-  await simulateImeCompositionOnTextField(page, customInput, 'codex --timeout 300 --verbose --yolo');
+  await simulateImeCompositionOnTextField(page, customInput, 'codex --model gpt-5 --yolo');
 
   await expect(menu).toBeVisible();
   await expect(menu.locator('[data-context-menu-custom-confirm="true"]')).toBeEnabled();
@@ -4543,7 +4544,7 @@ test('canvas renders a shared execution help entry with tooltip text', async ({ 
   const helpTooltip = page.locator('.execution-node-help-tooltip.is-visible');
   await expect(helpTooltip).toContainText('执行节点使用提示');
   await expect(helpTooltip).toContainText(
-    '1. 拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径'
+    '1. 拖拽文件到画布后按 Shift，再拖到终端或节点即可插入路径'
   );
   await expect(helpTooltip).toContainText(
     '4. 如需让 Agent 完成后主动提醒，请先在对应的 Agent CLI（Claude Code 或 Codex）中启用通知。'
@@ -5102,7 +5103,7 @@ for (const executionKind of ['agent', 'terminal']) {
     await helpTrigger.hover();
     await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText('执行节点使用提示');
     await expect(page.locator('.execution-node-help-tooltip.is-visible')).toContainText(
-      '1. 拖拽文件到 Canvas 后按 Shift，再拖到终端或节点即可插入路径'
+      '1. 拖拽文件到画布后按 Shift，再拖到终端或节点即可插入路径'
     );
   });
 
@@ -11630,7 +11631,7 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
           ).filter(Boolean)
         )
     )
-    .toEqual(['note', 'terminal', 'codex', 'claude', 'create-empty-group', 'arrange-canvas-layout', 'apply', 'reset', 'save-canvas-template']);
+    .toEqual(['note', 'terminal', 'codex', 'claude', 'create-empty-group', 'arrange-canvas-layout', 'clear-canvas', 'apply', 'reset', 'save-canvas-template']);
 
   await menu.locator('[data-context-menu-kind="note"]').click();
 
@@ -14903,11 +14904,11 @@ test('right-click launch preset descriptions normalize conflicting default launc
       agentLaunchDefaults: {
         codex: {
           command: 'codex',
-          defaultArgs: '--model gpt-5.2 resume --last --sandbox danger-full-access'
+          defaultArgs: '--model gpt-5.2 --sandbox danger-full-access'
         },
         claude: {
           command: 'claude',
-          defaultArgs: '--model sonnet --resume session-123 --permission-mode acceptEdits'
+          defaultArgs: '--model sonnet --permission-mode acceptEdits'
         }
       }
     })
@@ -14928,15 +14929,15 @@ test('right-click launch preset descriptions normalize conflicting default launc
     .click();
 
   const yoloPreset = menu.locator('[data-context-menu-launch-preset="launch-yolo"]');
-  await expect(yoloPreset).toContainText('codex --yolo --model gpt-5.2 resume --last');
+  await expect(yoloPreset).toContainText('codex --yolo --model gpt-5.2');
   await expect(yoloPreset).toContainText('自动批准执行模式：');
   await expect(yoloPreset).not.toContainText('danger-full-access');
   await expect(yoloPreset.locator('.canvas-context-menu-copy-detail')).toContainText(
-    'codex --yolo --model gpt-5.2 resume --last'
+    'codex --yolo --model gpt-5.2'
   );
 
   const sandboxPreset = menu.locator('[data-context-menu-launch-preset="launch-sandbox"]');
-  await expect(sandboxPreset).toContainText('codex --sandbox workspace-write --model gpt-5.2 resume --last');
+  await expect(sandboxPreset).toContainText('codex --sandbox workspace-write --model gpt-5.2');
   await expect(sandboxPreset).toContainText('受限权限安全模式：');
   await expect(sandboxPreset).not.toContainText('danger-full-access');
 
@@ -14947,7 +14948,7 @@ test('right-click launch preset descriptions normalize conflicting default launc
 
   const claudeYoloPreset = menu.locator('[data-context-menu-launch-preset="launch-yolo"]');
   await expect(claudeYoloPreset).toContainText(
-    'claude --dangerously-skip-permissions --model sonnet --resume session-123'
+    'claude --dangerously-skip-permissions --model sonnet'
   );
   await expect(claudeYoloPreset).toContainText('自动批准执行模式：');
   await expect(claudeYoloPreset).not.toContainText('acceptEdits');
@@ -17719,7 +17720,7 @@ function createRuntimeContext(overrides = {}) {
     agentLaunchDefaults: {
       codex: {
         command: 'codex',
-        defaultArgs: '--timeout 300 --verbose'
+        defaultArgs: '--model gpt-5'
       },
       claude: {
         command: 'claude',

@@ -68,6 +68,7 @@ async function main() {
     extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'template-marketplace-tests.cjs'),
     disableExtensions: false,
     disableWorkspaceTrust: true,
+    extraLaunchArgs: ['--locale=en'],
     extensionTestsEnv
   });
 
