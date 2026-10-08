@@ -6,7 +6,7 @@ import {
   type CanvasTemplate
 } from '../common/canvasTemplates';
 import { COMMAND_IDS } from '../common/extensionIdentity';
-import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
+import { getVersionedWebviewResourceUri } from '../panel/webviewResourceUri';
 import { CanvasPanelManager } from '../panel/CanvasPanelManager';
 import { localizeCanvasTemplateStoreIssue } from '../panel/canvasTemplateLocalization';
 import type { CanvasTemplateCatalog } from '../panel/CanvasTemplateStore';

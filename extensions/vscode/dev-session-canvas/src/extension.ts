@@ -81,7 +81,7 @@ import {
 } from './sidebar/CanvasSidebarSessionHistoryView';
 import { CanvasSidebarTemplateView } from './sidebar/CanvasSidebarTemplateView';
 import { CanvasSidebarView, getCanvasSidebarSummaryItems } from './sidebar/CanvasSidebarView';
-import { isTestHarnessMode } from './common/testHarness';
+import { isTestHarnessMode } from './panel/testHarness';
 
 const execFileAsync = promisify(execFile);
 

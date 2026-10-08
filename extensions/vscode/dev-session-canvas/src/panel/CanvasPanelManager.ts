@@ -233,7 +233,7 @@ import {
 } from '../common/terminalSessionStream';
 import { TerminalProjectionRefreshScheduler } from '../common/terminalProjectionRefreshScheduler';
 import { TerminalAvailableNotifications } from './terminalAvailableNotifications';
-import { isTestHarnessMode } from '../common/testHarness';
+import { isTestHarnessMode } from './testHarness';
 import {
   resolveNoteMarkdownLinkTarget,
   type NoteMarkdownFileSelection,
@@ -259,11 +259,11 @@ import {
   createExecutionSessionProcess,
   type DisposableLike,
   type ExecutionSessionExitEvent,
-  type ExecutionSessionLaunchSpec,
   type ExecutionSessionProcess,
   isIncompatibleNodePtyRuntimeError,
   isMissingNodePtyDependencyError
 } from './executionSessionBridge';
+import type { ExecutionSessionLaunchSpec } from '../common/executionSessionLaunchSpec';
 import {
   isExplicitRelativePath,
   isAgentCliResolutionError,

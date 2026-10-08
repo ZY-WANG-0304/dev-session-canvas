@@ -17,7 +17,7 @@ import {
 } from '../common/extensionIdentity';
 import type { CanvasGroupSummary, CanvasNodeKind, CanvasNodeMetadata, CanvasNodeSummary } from '../common/protocol';
 import { formatExecutionCwdLabel } from '../common/executionCwdLabel';
-import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
+import { getVersionedWebviewResourceUri } from '../panel/webviewResourceUri';
 import type { CanvasPanelManager, CanvasSidebarNodeListSnapshot } from '../panel/CanvasPanelManager';
 
 const SIDEBAR_NODE_DANGLING_CSI_FRAGMENT_PATTERN = /(?:^|\s)\[\?[0-9;:<>=$]*[ -/]*[@-~](?=\s|$)/g;
