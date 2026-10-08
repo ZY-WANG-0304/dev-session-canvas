@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/release-blockers-investigation.md` | 取消 0.26.1 发布后定位四项门禁失败 | 执行编排域、VSCode 集成域 / 宿主集成层、画布呈现层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/release-blockers-investigation.md` | 2026-10-09 |
 | `docs/design-docs/linux-claude-trust-startup-diagnosis.md` | Linux Claude 有界 End 恢复与不可变启动基线；固定原包真实应答/Reload/清理已通过 | 执行编排域、VSCode 集成域 / 适配与基础设施层、宿主集成层、画布呈现层 | 已选定 | 已验证 | `docs/exec-plans/completed/linux-claude-trust-startup-diagnosis.md`、`docs/exec-plans/completed/smoke-claude-startup-recovery.md` | 2026-10-09 |
 | `docs/design-docs/runtime-protocol-race-root-cause.md` | 两处协议回归同步前提已修正；确定性收尾窗口与完整门禁验证通过 | 执行编排域 / 适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-protocol-race-root-cause.md`、`docs/exec-plans/completed/runtime-protocol-race-test-repair.md` | 2026-10-09 |
 | `docs/design-docs/runtime-rpc-request-timeout.md` | F-01：请求等待有界；reader 超时保留迟到清理，严格删除保留补证 | 执行编排域 / 适配与基础设施层、共享模型与编排层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-rpc-request-timeout.md`、`docs/exec-plans/completed/runtime-reader-open-timeout-cleanup.md` | 2026-10-09 |
