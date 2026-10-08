@@ -1464,29 +1464,18 @@ async function collectHardWrappedLinksForBufferLine(
     }
 
     const context = readHardWrappedLineContext(options.terminal, startLineIndex);
-    if (!context) {
-      continue;
+    if (context) {
+      pushLinks(collectHardWrappedUrlLinks(
+        options, context, requestedLineIndex, tooltipController, hoverOverlayController
+      ));
     }
-
-    pushLinks(
-      collectHardWrappedUrlLinks(
-        options,
-        context,
-        requestedLineIndex,
-        tooltipController,
-        hoverOverlayController
-      )
-    );
-    pushLinks(
-      await collectHardWrappedStyledFileLinks(
-        options,
-        context,
-        requestedLineIndex,
-        tooltipController,
-        fileLinkResolutionCache,
-        hoverOverlayController
-      )
-    );
+    const styledContext = readHardWrappedLineContext(options.terminal, startLineIndex, true);
+    if (styledContext) {
+      pushLinks(await collectHardWrappedStyledFileLinks(
+        options, styledContext, requestedLineIndex, tooltipController,
+        fileLinkResolutionCache, hoverOverlayController
+      ));
+    }
     if (links.length >= EXECUTION_MAX_RESOLVED_LINKS_PER_LINE) {
       break;
     }
@@ -1635,7 +1624,7 @@ function collectHardWrappedStyledFileLinkCandidates(
   const candidates: HardWrappedFileLinkCandidate[] = [];
   const firstLineSpans = readStyledTextSpans(terminal, context.startLine);
   for (const firstSpan of firstLineSpans) {
-    if (!isHardWrappedStartStyledSpan(context, firstSpan)) {
+    if (!isStyledFragmentAtLineEnd(context, firstSpan)) {
       continue;
     }
 
@@ -1646,17 +1635,37 @@ function collectHardWrappedStyledFileLinkCandidates(
       }
     ];
     let fullText = firstSpan.text;
+    let hasHardBreak = false;
+    let incompleteSoftWrap = false;
 
     for (let lineOffset = 1; lineOffset < context.lines.length; lineOffset += 1) {
+      const previous = fragments[fragments.length - 1];
+      if (!isStyledFragmentAtLineEnd(context, previous)) break;
+      const isSoftWrap = context.lines[lineOffset].isWrapped;
+      // An empty wide-character padding cell is allowed; actual whitespace at
+      // a soft edge must not be stripped out of a path.
+      const previousLine = context.lines[lineOffset - 1];
+      if (isSoftWrap) {
+        for (let column = previous.bufferRange.end.x; column < terminal.cols; column += 1) {
+          if (previousLine.getCell(column)?.getChars()) {
+            incompleteSoftWrap = true;
+            break;
+          }
+        }
+        if (incompleteSoftWrap) break;
+      }
       const nextSpan = readHardWrappedContinuationStyledSpan(
         terminal,
         context.startLine + lineOffset,
-        firstSpan.signature
+        firstSpan.signature,
+        isSoftWrap
       );
       if (!nextSpan) {
+        incompleteSoftWrap = isSoftWrap;
         break;
       }
 
+      hasHardBreak ||= !isSoftWrap;
       fullText += nextSpan.text;
       if (fullText.length > EXECUTION_MAX_RESOLVED_LINK_LENGTH) {
         break;
@@ -1667,7 +1676,12 @@ function collectHardWrappedStyledFileLinkCandidates(
       });
     }
 
-    if (fragments.length < 2 || fullText.length > EXECUTION_MAX_RESOLVED_LINK_LENGTH) {
+    const lastFragment = fragments[fragments.length - 1];
+    const continuesBeyondWindow = lastFragment.bufferRange.end.y === context.endLine + 1
+      && isStyledFragmentAtLineEnd(context, lastFragment)
+      && terminal.buffer.active.getLine(context.endLine + 1)?.isWrapped;
+    if (!hasHardBreak || incompleteSoftWrap || continuesBeyondWindow ||
+      fullText.length > EXECUTION_MAX_RESOLVED_LINK_LENGTH) {
       continue;
     }
 
@@ -1719,21 +1733,24 @@ function collectHardWrappedStyledFileLinkCandidates(
   return candidates;
 }
 
-function isHardWrappedStartStyledSpan(context: WrappedLineContext, span: StyledTextSpan): boolean {
-  const lineText = getWrappedContextLineText(context, 0);
-  return lineText.slice(span.bufferRange.end.x).trim().length === 0;
+function isStyledFragmentAtLineEnd(context: WrappedLineContext, span: HardWrappedLinkFragment): boolean {
+  const line = context.lines[span.bufferRange.end.y - 1 - context.startLine];
+  return line.translateToString(true, span.bufferRange.end.x).trim().length === 0;
 }
 
 function readHardWrappedContinuationStyledSpan(
   terminal: Terminal,
   lineIndex: number,
-  signature: string
+  signature: string,
+  isSoftWrap = false
 ): StyledTextSpan | undefined {
   const lineText = terminal.buffer.active.getLine(lineIndex)?.translateToString(true) ?? '';
   const leadingWhitespace = lineText.match(/^\s*/)?.[0].length ?? 0;
   if (
-    leadingWhitespace <= 0 ||
-    leadingWhitespace > EXECUTION_HARD_WRAPPED_LINK_CONTINUATION_MAX_PREFIX
+    isSoftWrap ? leadingWhitespace !== 0 : (
+      leadingWhitespace <= 0 ||
+      leadingWhitespace > EXECUTION_HARD_WRAPPED_LINK_CONTINUATION_MAX_PREFIX
+    )
   ) {
     return undefined;
   }
@@ -3353,7 +3370,8 @@ function isMacintosh(): boolean {
 
 function readHardWrappedLineContext(
   terminal: Terminal,
-  startLine: number
+  startLine: number,
+  includeSoftWrap = false
 ): WrappedLineContext | undefined {
   const initialLine = terminal.buffer.active.getLine(startLine);
   if (!initialLine || initialLine.isWrapped) {
@@ -3368,7 +3386,7 @@ function readHardWrappedLineContext(
     }
 
     const line = terminal.buffer.active.getLine(lineIndex);
-    if (!line || line.isWrapped) {
+    if (!line || (!includeSoftWrap && line.isWrapped)) {
       break;
     }
 

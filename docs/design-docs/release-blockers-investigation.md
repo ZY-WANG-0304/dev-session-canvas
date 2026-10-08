@@ -1,11 +1,11 @@
 ---
 title: 四项发布验证阻塞定位
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/release-blockers-investigation.md]
+related_plans: [docs/exec-plans/completed/release-blockers-investigation.md, docs/exec-plans/active/release-blockers-repair.md]
 updated_at: 2026-10-09
 ---
 
@@ -17,7 +17,17 @@ updated_at: 2026-10-09
 
 原发布验证中，全量 Webview 为 380 passed / 2 failed；完整 verify 先后暴露 notifier 产物缺失和主题源码断言，独立 clean-checkout VSIX smoke 暴露相对 shell 等待超时。它们不属于同一根因，也不因取消发布而自动解决。
 
-## 正式方案：定位结论与后续修复边界
+## 正式方案：四项修复
+
+2026-10-09 用户要求在 PR #310 继续修复。下文原调查证据保持历史口径；本节为新增实现方案，验证结果尚待回收，不恢复 0.26.1 发布。
+
+清单检查由根 test:package-vsix-file-list 入口先构建主扩展及 notifier，再执行原 staging/文件断言。主题检查分别验证 main 的标签 descriptor 和 canvasNodeChrome 等实际呈现模块的共享 tone 使用，保留 CSS/token 与共享映射检查。
+
+styled 文件链接在四个物理行上限内支持软/硬混合折行。首片段仍须贴行尾；软续行从第一列延续相同 ANSI 样式，硬续行仍要求允许的缩进；前片段后的 prose 不可被跨越。必须实际经过硬换行才属于 hardwrap 候选，纯软换行继续由现有 detector 处理。每物理片段独立保留 cell 范围，点击与 hover 使用原映射；URL 检测、Host 路径验证与长度/候选数限制不放宽。不会取消恢复后 fit 或加宽原失败用例。
+
+owned local 在 operation.first 返回 started 后记录 execution/started，以原 executionId、kind/nodeId 与实际 file/cwd/尺寸关联，失败/拒绝不记录成功。相对 shell smoke 保留 metadata 和 started 校验，改为核对同会话已交付 live 快照与真实 PWD marker，不要求短命进程在后置轮询时仍存活。
+
+## 根因与修前证据
 
 ### 1. notifier 文件清单测试新增了构建依赖，npm test 未补前置
 

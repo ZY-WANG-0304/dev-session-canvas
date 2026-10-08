@@ -2746,7 +2746,7 @@ async function verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot() {
       cwdOverride: targetDirectory
     });
 
-    let snapshot = await waitForSnapshot(
+    const snapshot = await waitForSnapshot(
       (currentSnapshot) =>
         currentSnapshot.state.nodes.some(
           (node) =>
@@ -2765,7 +2765,7 @@ async function verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot() {
     assert.ok(terminalNode, 'Expected cwd-scoped Terminal to store workspace-resolved relative shell path.');
     terminalNodeId = terminalNode.id;
 
-    await waitForDiagnosticEvents(
+    const startedEvents = await waitForDiagnosticEvents(
       (events) =>
         events.some(
           (event) =>
@@ -2777,8 +2777,21 @@ async function verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot() {
         ),
       20000
     );
-    snapshot = await waitForTerminalLive(terminalNode.id);
-    assert.strictEqual(findNodeById(snapshot, terminalNode.id).metadata.terminal.cwd, targetDirectory);
+    const started = startedEvents.find(event => event.kind === 'execution/started' &&
+      event.detail?.kind === 'terminal' && event.detail?.nodeId === terminalNode.id);
+    const executionSessionId = started.detail.sessionId;
+    assert.ok(executionSessionId, 'Expected the confirmed start to identify its execution session.');
+    await waitForHostMessages(messages => {
+      const sessionMessages = messages.filter(message => message.payload?.nodeId === terminalNode.id &&
+        message.payload?.kind === 'terminal' && message.payload?.executionSessionId === executionSessionId);
+      const wasLive = sessionMessages.some(message => message.type === 'host/executionSnapshot' &&
+        message.payload.liveSession === true);
+      const output = sessionMessages.filter(message => message.type === 'host/executionOutput')
+        .map(message => message.payload.chunk).join('');
+      const snapshots = sessionMessages.filter(message => message.type === 'host/executionSnapshot')
+        .flatMap(message => [message.payload.output ?? '', message.payload.serializedTerminalState?.data ?? '']);
+      return wasLive && [output, ...snapshots].some(text => text.includes(`relative-shell:${targetDirectory}`));
+    }, 20000);
   } finally {
     if (terminalNodeId) {
       await ensureTerminalStopped(terminalNodeId).catch(() => {});
