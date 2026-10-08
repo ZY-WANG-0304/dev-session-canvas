@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/release-blockers-investigation.md, docs/exec-plans/completed/release-blockers-repair.md, docs/exec-plans/completed/release-validation-followups.md]
+related_plans: [docs/exec-plans/completed/release-blockers-investigation.md, docs/exec-plans/completed/release-blockers-repair.md, docs/exec-plans/completed/release-validation-followups.md, docs/exec-plans/completed/pr310-hardwrap-review-boundary.md]
 updated_at: 2026-10-09
 ---
 
@@ -36,6 +36,14 @@ hover 的只读探针与行 replaceChildren 调用栈确认：链接命中和下
 正式修复是在终端 open 后为已有 xterm `RenderService.handleSelectionChanged` 安装有限适配，先执行原选区绘制，再读取当时 linkifier 的当前链接；只对仍 hovered 且开启 underline 的链接，通过其现有 decorations setter 重新触发绘制。复用原 range 与状态，不生成新候选、不触发 hover/open 回调、不启用低置信链接默认关闭的装饰；dispose 仅恢复仍由本适配占用的原方法。该适配依赖锁定 xterm 的内部 RenderService/当前链接接口，与已有鼠标坐标适配相同在 open/dispose 生命周期内管理；真实 xterm 的确定性选区重绘、无下划线和离开负例验证此边界。过程见 `docs/exec-plans/completed/release-validation-followups.md`；本轮与前一阶段的验证结果分别记录于下文。
 
 ## 后续修复验证与完整门禁边界（2026-10-09）
+
+### Review 补充：路径终止后的软折行
+
+review 5463038114 / 行内评论 4224295004 指出 d747a126 的新增回归：完整路径硬续段满行后，默认样式右括号或空格说明软折到下一行，循环找不到 nextSpan 即拒绝；四行窗口末尾也仅凭下一行 isWrapped 拒绝。Reviewer 的真实 xterm 与 Agent/Terminal 对照确认 main 成功、head 失败，此前全量 398/398 没有覆盖该边界。
+
+正式补充方案：`executionTerminalNativeInteractions.ts::collectHardWrappedStyledFileLinkCandidates` 在循环内和四行窗口末尾共用 `startsWithUnstyledPathTerminator`，只将下一行首 cell 上默认样式的真实分隔符视为路径结束，保留已收集片段并继续原完整路径解析与 Host 校验。分隔符包括空白、闭合括号、引号、逗号和分号；空 cell 不能作为终止证据。显式样式变化、默认样式的路径续写字符、缺失真实内容和真正窗口外续段仍拒绝；不改变四物理行上限，也不将尾随文本并入候选或 hover。
+
+新增 Agent/Terminal 共 26 项回归，覆盖两行/四行路径的无后缀、默认括号、默认空格说明，以及默认样式路径续写、显式样式变化、空软折行和窗口外同样式续段。按实际 terminalCols 构造，不加宽节点；正例校验完整目标/行列后缀和两/四段 hover，负例校验无截断候选送往 Host。最终四行夹具在旧构建上为 2 passed / 2 failed（无后缀通过、括号失败），修后新增用例及既有相关回归 **68/68 通过（1.7 分钟）**，类型检查、默认构建、`test:execution-terminal-links` 和 diff 检查通过。本轮没有重跑完整 npm、全部 Webview、真实 VSIX 或跨平台宿主；不以定向通过覆盖下文完整门禁失败。初版四硬行夹具的 hover 歧义及原始结果保留于计划，不算作本 review 的产品修复。证据见 `docs/exec-plans/completed/pr310-hardwrap-review-boundary.md`，下文为上轮结果。
 
 本文“已验证”限于四项原失败及本轮模板、QuickPick、hover 具名修复，完整门禁的启动阻塞单列。模板与 QuickPick 修复为 `f02dafd3`，hover 修复为 `a8f057b1`。`test:canvas-templates` exit 0，`test:smoke-reset-fixture` 19/19，脚本语法、typecheck 和 build 通过。真实 xterm 的受控选区正例在适配为空实现时稳定失败，修后与三个负例/清理用例共 4/4；它们连同 Agent/Terminal 原 URL/file 悬停用例三轮共 24/24，通过真实鼠标/选区、可见下划线、持续输出和既有目标断言，未加重试或改快照。
 

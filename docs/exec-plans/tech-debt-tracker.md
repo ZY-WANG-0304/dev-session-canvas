@@ -44,6 +44,8 @@
 
 ## 近期已收口
 
+- 2026-10-09：PR #310 review 的满行路径终止边界已修复。默认样式括号/空格说明软折到下一行时，循环内和四行窗口末尾使用同一真实 cell 终止证据，保留完整链接；真正续段、样式变化、缺失内容和超出窗口继续拒绝。新增 26 项及既有链接/悬停/选区回归 68/68，typecheck/build/路径解析通过；最终四行夹具修前无后缀 2/2、括号 0/2。既有完整 npm/VSIX 启动阻塞仍见上表，本轮未重跑这些门禁，也不声明 review 已批准。见 `docs/design-docs/release-blockers-investigation.md`、`docs/exec-plans/completed/pr310-hardwrap-review-boundary.md`。
+
 - 2026-10-09：PR #306 review 的 openTerminalRead 超时遗失迟到资源清理已修正。调用者 15 秒得到未知结果，原请求保留 ID/socket 并向 relay 交付迟到 descriptor，只沿原 client cancelled close；旧 reader 不关闭新绑定，每 key 两个责任上限不因超时失效。直接调用由 client 清理，错误/断连/close 超时不伪造 applied、不重发。旧 head 两项组合反向对照失败；新增 14 项回归后请求测试 37/37、reader 32/32、Host 333/333、完整协议门禁与类型检查通过，无新增技术债。见 `docs/design-docs/runtime-rpc-request-timeout.md`、`docs/exec-plans/completed/runtime-reader-open-timeout-cleanup.md`。
 
 - 2026-10-09：协议回归两处同步前提已修正。attach gap 在订阅前等待指定 marker，真实 PTY 等完整非 live 终态后验证 resize 拒绝；新增真实串行链路屏障测试，单独覆盖退出已通知而终态尚未发布时的立即拒绝和尾部完整性，保留回放连续/恰好一次及 scrollback/output 顺序断言。完整协议门禁（含请求超时 23/23）通过；取消同步关闭准入、绕过 resize 准入的两项临时变异均被新测试捕获，无新增产品接口或技术债。历史第 548/992 行失败与自然场景 marker 后 27ms resize 成功、639ms 才退出的证据仍保留；不把受控 EBADF 追认为历史返回值。见 `docs/design-docs/runtime-protocol-race-root-cause.md`、`docs/exec-plans/completed/runtime-protocol-race-test-repair.md`。

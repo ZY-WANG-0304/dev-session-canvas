@@ -6419,6 +6419,80 @@ for (const executionKind of ['agent', 'terminal']) {
     });
   }
 
+  for (const pathLines of [2, 4]) {
+    for (const [suffixName, suffix] of [['no-suffix', ''], ['closing-paren', ')'], ['prose', ' explanation']]) {
+      test(`${executionKind} hard-wrapped styled path boundary accepts ${pathLines} lines before ${suffixName}`, async ({ page }) => {
+        const nodeId = `${executionKind}-zoom`;
+        await openHarness(page);
+        await bootstrap(page, createLiveExecutionNodeState(executionKind));
+        const ready = await waitForExecutionTerminalReady(page, nodeId);
+        const tail = '.ts:1:2';
+        // One hard continuation occupies the remaining physical rows. Soft
+        // rows cannot introduce competing hardwrap candidates under the mouse.
+        const fragments = ['src/webview/',
+          'b'.repeat((pathLines - 1) * ready.terminalCols - 4 - tail.length) + tail];
+        const text = fragments.join('');
+        await page.evaluate(next => window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([next]), text);
+        await dispatchExecutionSnapshot(page, {
+          nodeId, kind: executionKind,
+          output: fragments.map((fragment, index) =>
+            `${index === 0 ? '    at (' : '    '}\x1b[94m${fragment}\x1b[39m`
+            + (index === fragments.length - 1 ? suffix : '')).join('\r\n') + '\r\n',
+          cols: ready.terminalCols, rows: ready.terminalRows, liveSession: true
+        });
+        await settleWebview(page, 4);
+        await performTestDomAction(page, { kind: 'activateExecutionLink', nodeId, text });
+        await expect.poll(() => readLastOpenedExecutionLink(page, nodeId)).toMatchObject({
+          linkKind: 'file', text, path: text.replace(/:1:2$/, ''),
+          line: 1, column: 2, source: 'hardwrap'
+        });
+        try {
+          await performTestDomAction(page, { kind: 'hoverExecutionLink', nodeId, text });
+          await expect.poll(() => readHardWrappedLinkHoverSegmentCount(page, nodeId)).toBe(pathLines);
+        } finally {
+          await performTestDomAction(page, { kind: 'clearExecutionLinkHover', nodeId }).catch(() => {});
+        }
+      });
+    }
+
+    const rejectedContinuations = ['default-path-text', 'different-style', 'missing-content',
+      ...(pathLines === 4 ? ['same-style-outside-window'] : [])];
+    for (const continuation of rejectedContinuations) {
+      test(`${executionKind} hard-wrapped styled path boundary rejects ${continuation} after ${pathLines} lines`, async ({ page }) => {
+        const nodeId = `${executionKind}-zoom`;
+        await openHarness(page);
+        await bootstrap(page, createLiveExecutionNodeState(executionKind));
+        const ready = await waitForExecutionTerminalReady(page, nodeId);
+        const fragments = ['src/webview/',
+          'b'.repeat((pathLines - 1) * ready.terminalCols - 4 - '.ts'.length) + '.ts'];
+        const truncatedText = fragments.join('');
+        const fullText = truncatedText + '.more:1:2';
+        // ECH erases a real wrapped cell without changing the line's soft-wrap flag.
+        const suffix = continuation === 'missing-content' ? '\x1b[39m \x1b[1G\x1b[1X'
+          : `${continuation === 'default-path-text' ? '\x1b[39m'
+            : continuation === 'different-style' ? '\x1b[91m' : '\x1b[94m'}.more:1:2\x1b[39m`;
+        await page.evaluate(next => window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(next),
+          [truncatedText, fullText]);
+        await dispatchExecutionSnapshot(page, {
+          nodeId, kind: executionKind,
+          output: fragments.map((fragment, index) =>
+            `${index === 0 ? '    at (' : '    '}\x1b[94m${fragment}`
+            + (index === fragments.length - 1 ? suffix : '\x1b[39m')).join('\r\n') + '\r\n',
+          cols: ready.terminalCols, rows: ready.terminalRows, liveSession: true
+        });
+        await settleWebview(page, 4);
+        await expectTestDomActionError(page,
+          { kind: 'activateExecutionLink', nodeId, text: truncatedText }, 'was not detected');
+        await expectTestDomActionError(page,
+          { kind: 'activateExecutionLink', nodeId, text: fullText }, 'was not detected');
+        const requests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+        expect(requests.flatMap(request => request.payload.candidates)
+          .filter(candidate => candidate.source === 'hardwrap'
+            && [truncatedText, fullText].includes(candidate.text))).toEqual([]);
+      });
+    }
+  }
+
   test(`${executionKind} styled hard-wrapped file fragments are not joined through prose`, async ({
     page
   }) => {

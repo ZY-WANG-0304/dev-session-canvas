@@ -1661,7 +1661,7 @@ function collectHardWrappedStyledFileLinkCandidates(
         isSoftWrap
       );
       if (!nextSpan) {
-        incompleteSoftWrap = isSoftWrap;
+        incompleteSoftWrap = isSoftWrap && !startsWithUnstyledPathTerminator(context.lines[lineOffset]);
         break;
       }
 
@@ -1677,9 +1677,10 @@ function collectHardWrappedStyledFileLinkCandidates(
     }
 
     const lastFragment = fragments[fragments.length - 1];
+    const nextLine = terminal.buffer.active.getLine(context.endLine + 1);
     const continuesBeyondWindow = lastFragment.bufferRange.end.y === context.endLine + 1
       && isStyledFragmentAtLineEnd(context, lastFragment)
-      && terminal.buffer.active.getLine(context.endLine + 1)?.isWrapped;
+      && nextLine?.isWrapped && !startsWithUnstyledPathTerminator(nextLine);
     if (!hasHardBreak || incompleteSoftWrap || continuesBeyondWindow ||
       fullText.length > EXECUTION_MAX_RESOLVED_LINK_LENGTH) {
       continue;
@@ -1731,6 +1732,13 @@ function collectHardWrappedStyledFileLinkCandidates(
   }
 
   return candidates;
+}
+
+function startsWithUnstyledPathTerminator(line: IBufferLine): boolean {
+  const cell = line.getCell(0);
+  // A default-style separator can wrap after a complete styled path. A blank
+  // cell or path text (with missing/changed styling) is not proof of its end.
+  return Boolean(cell?.isAttributeDefault() && /^[\s)\]}>"'`,;]$/u.test(cell.getChars()));
 }
 
 function isStyledFragmentAtLineEnd(context: WrappedLineContext, span: HardWrappedLinkFragment): boolean {
