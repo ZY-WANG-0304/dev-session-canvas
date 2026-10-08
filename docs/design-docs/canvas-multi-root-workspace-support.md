@@ -133,7 +133,7 @@ live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点�
 
 ### 6.8 Multi-root live runtime 恢复语义
 
-2026-10-07 设计修订：新建归属采用 `docs/design-docs/runtime-root-ownership.md` 的环境/用户存储/root/generation 方案，单根和多根同时调整；本节区分新建目标与旧 session 原绑定。新设计已选定但尚未实现、未运行验收，当前代码仍走窗口 slot。2026-09-16 F-03 的问题判断与旧 slot 证据保留，不把设计修订倒写成现有实现违反当时规格。
+2026-10-07 设计修订：新建归属采用 `docs/design-docs/runtime-root-ownership.md` 的环境/用户存储/root/generation 方案，单根和多根同时调整；本节区分新建目标与旧 session 原绑定。2026-10-08 两类创建接线已实现并通过受控回归，原生 systemd 修后与多窗口产品验收仍开放。2026-09-16 F-03 的问题判断与旧 slot 证据保留，不把设计修订倒写成现有实现违反当时规格。
 
 `Agent` / `Terminal` 的后端进程由 runtime supervisor 和 provider/shell 持有，canvas 只是 display surface；multi-root、single-root 或两个 VS Code 窗口同时打开时，不应因为显示形态不同而阻止恢复同一个 live runtime。display node id 只服务渲染、选择、连线、布局和 `decomposeMultiRootCanvasState()`；已有 session 的 runtime binding 仍以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威。旧 session 的 `runtimeStoragePath` 必须保留创建时的具体 extension storage slot；同 root 的多个旧 slot 不能互相替代。新 session 则保存新 root owner 的完整地址，不能继续把“具体 workspace slot”当作所有新会话的目标归属。
 
@@ -147,7 +147,7 @@ live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点�
 
 正式目标是由执行端环境运行实例、用户 global storage 范围、画板词法 root 身份和 generation 确定 owner，在用户级存储下按 root 隔离，按需启动。窗口 slot、root 显示名、cwd 和 PaneGallery 布局不参与新建身份。rootless 窗口保留显式 slot 例外；解析失败不是该例外。环境不得只用 Remote URI 或 remoteName 推断；发现握手、双 Host 启动准备排他、backend unknown 不 fallback、每会话设置与旧 client 退役均按新设计执行。旧 live session 继续连接 metadata 中的原 Supervisor，新会话才使用新 root 归属；不能仅改写地址宣称迁移完成。旧 Supervisor 随其全部旧会话结束、相关 reader 与 RPC 收敛而退役，包括它仍承载的其他 root 会话。
 
-本次只交付规划设计。有限 P1 至 P3 与 R1-01 至 R1-08 验收见 `docs/design-docs/runtime-root-ownership.md`，原审核第 6 节保留为输入；新场景尚未执行，不构成 root 稳定 runtime 已实现的证据。运行时改造另开 ExecPlan。
+有限 P1 至 P3 与 R1-01 至 R1-08 验收见 `docs/design-docs/runtime-root-ownership.md`，实施进度见 `docs/exec-plans/active/runtime-root-ownership.md`；原审核第 6 节保留为输入，不构成 root 稳定 runtime 产品验收已完成的证据。
 
 ## 7. 风险与取舍
 

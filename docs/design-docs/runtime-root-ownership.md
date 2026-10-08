@@ -25,7 +25,7 @@ updated_at: 2026-10-08
 
 PR #295 已合并，本文以 `origin/main@06e9abcf32828325444e8263233537f25bf042a7` 为调查基线，独立处理审核 F-03 / 有限收尾 R1。画板按 root 保存，但新建 live Terminal/Agent 仍按创建窗口的 workspace storage 派生 Supervisor。同 root 在多个窗口的新会话会分散；不同 root 则可能共享进程，增加发现、诊断、退役复杂度和进程故障影响范围。单会话 stop/delete 并不因此跨 root 生效。
 
-原多根设计 §6.8 和规格第 16、17 项曾明确选定 slot 绑定。这是修订设计决策，不倒写成实现违反当时规格。2026-10-08 用户认可后已开始实施 P1，进度见 §8；**正常新建路由尚未切换，root 归属产品验收尚未执行**。环境探针和启动竞争的可行性须在实施 P1 取得直接证据，不能由文档审查代证。
+原多根设计 §6.8 和规格第 16、17 项曾明确选定 slot 绑定。这是修订设计决策，不倒写成实现违反当时规格。2026-10-08 用户认可后已实施身份、启动准备与 P2 生产接线，进度见 §8；**正常新建已按 root 选路，仍待原生 systemd 修后验证及受影响产品验收，不宣称整体交付**。环境探针和启动竞争的可行性须取得直接证据，不能由文档审查代证。
 
 目标是多根 workspace 作为各 root 画板的组合视图：同一执行环境、用户存储范围、root 身份、Supervisor generation 确定稳定 owner（托管会话的运行时归属）。单根、多根、PaneGallery 和创建窗口不改变它。稳定指找到同一个逻辑归属，不保证 Supervisor PID 永远不变。
 
@@ -108,6 +108,8 @@ Root 保留现有词法路径语义：使用执行端的绝对 workspace folder 
 
 新 metadata 仍保存完整 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind`，并增加版本化 owner descriptor 或其可校验引用。`runtimeStoragePath` 仍指 generation base，不能混淆为内部 `runtime-supervisor` 目录。Owner 用于新建选路和防串接，完整 binding 用于所有已存在会话的 attach/input/resize/stop/delete，二者不能互相代替。会话 authority、epoch、reader 身份规则不变。
 
+`runtimeOwner` 的归一化结果保留三态：未提供的 `undefined` 仅表示旧格式，合法值为完整 descriptor，提供过但校验失败的输入（含读回的 `null`）归一化为 `null`。后者保留原 backend/storage/session，连接入口明确拒绝，不清绑定伪造终止；有 owner 值或 `null` 而缺路径时，旧 slot 回填与缺地址清理均不适用。只有明确清除原绑定时才同步清除 owner。
+
 旧 live 无 owner 字段时走原协议/原路径，不推导当前 root 新地址；旧缺路径的迁移或历史降级保持原有受控规则。新格式缺失或不匹配 descriptor 时拒绝附着，不降成旧格式绕过握手。远端只连接当前执行端的端点，不引入跨机器 RPC。目录权限保持用户私有，descriptor、registry 和 endpoint 验证不允许任意 metadata 指令创建/清除其他目录；未知/不安全路径失败关闭。
 
 ### 4.3 发现、启动竞争与 backend
@@ -126,9 +128,9 @@ Root 保留现有词法路径语义：使用执行端的绝对 workspace folder 
 
 Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner：已有 detached 则复用 detached，已有 systemd 则复用 systemd。fallback 仅用于可证明未创建 owner 且 backend 不支持/不可用的情况；启动请求结果未知、owner claim 被占用、ready 超时或端点不可访问时保留 unknown，不能继续换 backend。systemd unit 的重写同样须持准备权、确认无原 owner/未决启动并核对配置；不能在正常重连时写入另一个窗口的 bundle 路径。冷启动新 owner 只按既有故障后不恢复规则处理自身 session 临时数据，不扫描/清理其他 root 或旧 slot。
 
-具体范围核对采用 `systemd-run --user` 执行短命、只读的 launcher 环境 probe，比较 nonce、执行环境摘要和用户摘要；不从 D-Bus 返回的 PID 推断本地 `/proc` 身份，因为两者可能属于不同 PID namespace。探针的启动 job、运行、停止各有限时，调用方另有 15 秒/16 KiB 预算；明确工具/总线不可用或摘要不符才判为 unavailable，权限、超时和格式错误均保留 unknown。该 probe 不创建会话、不替代 owner 握手，也不证明所有系统排队条件下的后代绝对退出时限。
+具体范围核对采用 `systemd-run --user` 执行短命、只读的 launcher 环境 probe，比较 nonce、执行环境摘要和用户摘要；不从 D-Bus 返回的 PID 推断本地 `/proc` 身份，因为两者可能属于不同 PID namespace。探针使用服务启动 10 秒、运行 10 秒、停止 2 秒预算及 control-group 清理，调用方另有 15 秒/16 KiB 预算；不传入实测 manager 拒绝的 transient job timeout 属性。排队 job 可能在调用方超时后才执行只读 probe，超时继续 unknown，不重试弱化参数、不据此启动会话或 fallback，也不冒充 probe 已退出。明确工具/总线不可用或摘要不符才判为 unavailable，权限、超时和格式错误均保留 unknown。该 probe 不创建会话、不替代 owner 握手，也不证明所有系统排队条件下的后代绝对退出时限。
 
-准备调用的 Host 总预算为 30 秒；结果返回后最多等 helper close 1 秒且不超总预算。超时或 IPC 断开只表示结果未确认，不代表 helper 已退出、准备权已释放或 Supervisor 已停止。持锁 helper 在取消检查点停止后续动作；intent 已发布而提交未确认时保持 pending，后续不得自动擦除。launcher 与 Supervisor 构建使用相同资源准入常量，避免启动意图和实际兼容指纹不一致。
+准备调用的 Host 总预算为 30 秒；结果返回后最多等 helper 资源关闭 1 秒且不超总预算。完成依据是标准 close，或进程 exit、stderr close、IPC disconnect 三个事实均已观察到；父方主动 disconnect 可令 Node 不再发 aggregate close，不能只等该事件，也不能只用 exit。超时或 IPC 断开只表示结果未确认，不代表 helper 已退出、准备权已释放或 Supervisor 已停止。持锁 helper 在取消检查点停止后续动作；intent 已发布而提交未确认时保持 pending，后续不得自动擦除。launcher 与 Supervisor 构建使用相同资源准入常量，避免启动意图和实际兼容指纹不一致。
 
 该调整在 `panel/runtimeHostBackend.ts`、`panel/runtimeSupervisorClient.ts`、`supervisor/runtimeSupervisorNamespace.ts` 与 `runtimeSupervisorMain.ts` 内有限落地，不增加全局发现 server 或数据库。跨 Host 的唯一性必须用真实两个进程证明，单 client Promise 不代证。
 
@@ -140,7 +142,7 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 已有 session 的有效 scrollback 和终端状态以 Supervisor 为权威；附着、窗口打开和 root 重排不重新套用该窗口默认值。用户显式改设置时，沿用当前作用于本 Host 已附着 session 的热更新语义，按 Supervisor 实际接受顺序 last-writer-wins，并向所有消费者传播实际值；不自动反向重发本窗口偏好。输入和 stop/delete 仍是共享 session 控制，resize 保持既有 last-writer-wins。新建其他 session 可以使用另一组配置，不扩成全仓库设置同步。
 
-持久化模式按 session 的实际归属处理。新窗口的默认开关不能把已附着 live session 悄悄转为 Host-owned；用户明确关闭持久化时继续按已有模式切换契约处理本画板精确绑定，允许共享视图看到会话结束，但绝不按 root 直接 kill Supervisor。单纯关闭窗口或移除保留画板的 root 只释放本 Host 的订阅、reader 和 client。
+持久化模式按 session 的实际归属处理。新窗口的默认开关不能把已附着 live session 悄悄转为 Host-owned；原 root binding 可在窗口默认 false 时重连，但不能绕过 workspace trust。默认 false 的普通关闭/模拟 reload 保留 root 原绑定并只释放本 Host 责任；用户明确 true→false 仍严格清理本画板精确绑定，失败保留原绑定，不提前 dispose，绝不按 root 直接 kill Supervisor。旧 slot 保持原有设置契约；不为本项增加设置 receipt 或改写 loadState 重置规则。移除保留画板的 root 同样只释放本 Host 的订阅、reader 和 client。
 
 一 root 一进程会增加多 root 的固定开销。只在首次新建需要时启动，不为显示空 root 或历史节点预热 Supervisor；保留已交付的每 owner 资源准入、当前态恢复和空闲退出机制。不能把原单 Supervisor 十会话证据当成十 root 十进程预算；P3 增补具名三 root/双窗口样本，记录实际进程数、内存、reader 与交互，不恢复旧 64/128 MiB 硬门槛，不承诺任意 root 数固定总 RSS。
 
@@ -179,7 +181,7 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 ## 7. 验收计划与证据复用
 
-以下均为 **待实现、待执行**，不改变 PR #295 或旧 slot 验证结果。
+以下是有限验收清单；具体已执行层级见 §8 与实施计划，不由受控回归代证真实产品场景，也不改变 PR #295 或旧 slot 验证结果。
 
 | ID | 有限输入 | 判定与层级 |
 | --- | --- | --- |
@@ -197,6 +199,12 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 设计阶段验证仅为代码事实复核、独立文档审查、元数据/引用检查和 `git diff --check`。平台来源与并发原语是直接实施前置；永久设备标识、全局资源调度、跨机器共享盘发现、通用多写者事务和历史 GC 是可延期增强，不自动排入下一阶段。历史失败保留在原记录，不转抄为当前待办。
 
 ## 8. 实施进度
+
+当前状态：P2 已将 Agent/Terminal 单根、多根新建切至显式 root target；已有 attach/input/resize/stop/delete 沿原 owner 与完整 binding。受控 wiring 250 项、Canvas context、Host deactivation、completed 无历史回归、typecheck 与正常 build 通过。root 在环境解析、旧绑定清理、owner 获取和 create 返回期间变化会拒绝过时结果；未知 create 保留原责任。真实产品验收尚未执行。以下段落保留分阶段证据，所述“默认路由不变”仅指当时提交。
+
+P2 独立审查修复恢复 bucket 等连接期间换绑定的竞态：在 await 前捕获原完整 binding，成功 attach 和失败降级均需核对；24 个受控组合先红后绿。`4be42817` / run `37709897962` Linux 的 systemd 范围 probe 修后已 available，但实际 owner 提交仍 unconfirmed，原目录/unit保留，不将范围通过代证启动成功。
+
+原生协调 run `37709150155` / `a5f68f17` 的 macOS、Windows 全组通过，Linux 的同 owner 汇聚、真实 Host helper、intent 前取消与提交后崩溃/迟到 ready 已通过，systemd probe 失败并明确报 `Cannot set property JobTimeoutUSec, or unknown property`。因此只移除不支持的 job 属性，保留服务阶段与调用预算，40 项受控 systemd 判定通过，原生修后结果仍待验证。早先 run `37707854830` 的 IPC close 失败和 run `37708504120` 的测试导出缺失原结果保留；后者为夹具缺陷，不扩写为产品缺陷。
 
 2026-10-08 开始 P1 身份/环境/握手基础接入，实施计划见 `docs/exec-plans/active/runtime-root-ownership.md`。仅增加明确的新 root generation，原 current-state generation 与 Manager 默认创建路由不变。原绑定不读新 owner 记录、不被静默升级；新 generation 必须核对完整身份，基础阶段只允许连接，不借旧的自动启动流程绕过尚未接入的启动准备排他。
 

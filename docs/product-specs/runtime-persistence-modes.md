@@ -6,7 +6,7 @@
 
 ## 1. 用户问题
 
-Root 归属增量（2026-10-07，已选定、待实现）：新建 `live-runtime` Terminal/Agent 按同一执行环境运行实例、用户 global storage 范围、画板 root 与 Supervisor generation 路由，单根和多根一致；不是创建窗口的 workspace slot。已有会话仍按完整 backend/storage/session/kind 原绑定，不能改地址迁移。环境重启不恢复进程，窗口重开不改变环境身份。snapshot-only 的 Host 归属不变；未知 root/环境不能静默切换模式或 slot。有限方案和验收见 `docs/design-docs/runtime-root-ownership.md`，不由下列历史验证代证。
+Root 归属增量（2026-10-08，接线已实现、产品验收中）：新建 `live-runtime` Terminal/Agent 按同一执行环境运行实例、用户 global storage 范围、画板 root 与 Supervisor generation 路由，单根和多根一致；不是创建窗口的 workspace slot。已有会话仍按完整 backend/storage/session/kind 原绑定，不能改地址迁移。环境重启不恢复进程，窗口重开不改变环境身份。snapshot-only 的 Host 归属不变；未知 root/环境不能静默切换模式或 slot。新窗口默认 false 不结束原 root live，显式关闭仍严格处理选中绑定。有限方案和验收见 `docs/design-docs/runtime-root-ownership.md`，不由下列历史验证代证。
 
 当前画布已经可以恢复对象图、节点标题、尺寸、最近输出摘要和部分 `Agent` 恢复上下文，但这还不能满足更强的工作连续性诉求：
 

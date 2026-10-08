@@ -359,6 +359,8 @@ async function verifyReaderClientRetirement() {
   host.terminalSessions = new Map();
   host.getRuntimeStoragePathFromBackend = () => '/old-generation';
   host.getRuntimeHostBaseStoragePath = () => '/current-generation';
+  host.getMultiRootWorkspaceFoldersForComposition = () => [];
+  host.preferredRootRuntimeBackends = new Map();
   host.resolveRuntimeStoragePath = value => value;
   host.buildRuntimeSupervisorClientKey = () => 'old-client';
   let pending = false;
