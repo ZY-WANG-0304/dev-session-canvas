@@ -761,6 +761,40 @@ test('actual setup releases retained observer handles before requesting Reload W
   await compile([...resourceFunctions, 'setup'], f.context).setup({ extensionPath: '/extension' });
   assert(f.events.indexOf('dispose') < f.events.indexOf('workbench.action.reloadWindow'));
   assert.equal(f.writes.get('setup.json').resources.length, 4);
+  assert.equal(f.writes.has('setup-process-observation.json'), false);
+});
+
+test('Claude setup records safe process identities before rejecting duplicate CLI without replacing the first error', async () => {
+  for (const diagnosticFails of [false, true]) {
+    const f = fixture({ provider: 'claude' });
+    const cli = f.entries.find(entry => entry.role === 'cli');
+    f.entries.push({ ...ended(cli), pid: 61, ppid: cli.pid, firstPpid: cli.pid,
+      startTicks: 'win32:6100', firstParentStartTicks: cli.startTicks,
+      argv: ['private-argument'], env: { SECRET: 'private-environment' } });
+    const write = f.context.write;
+    f.context.write = async (name, value) => {
+      if (name === 'setup-process-observation.json' && diagnosticFails) throw new Error('diagnostic write failed');
+      await write(name, value);
+    };
+    await assert.rejects(compile([...resourceFunctions, 'setup'], f.context).setup({ extensionPath: '/extension' }),
+      error => error.code === 'ERR_ASSERTION' && error.message.includes('Exactly one original cli is required.'));
+    assert.equal(f.writes.has('setup.json'), false);
+    assert(!f.events.includes('workbench.action.reloadWindow'));
+    if (!diagnosticFails) {
+      const observation = f.writes.get('setup-process-observation.json');
+      assert.equal(observation.nonce, 'nonce');
+      const originals = observation.entries.filter(entry => entry.role === 'cli');
+      assert.deepEqual(originals.map(({ pid, ppid, startTicks, firstPpid, active }) =>
+        ({ pid, ppid, startTicks, firstPpid, active })), [
+        { pid: 60, ppid: 40, startTicks: 'win32:6000', firstPpid: 40, active: true },
+        { pid: 61, ppid: 60, startTicks: 'win32:6100', firstPpid: 60, active: false }
+      ]);
+      assert.equal(originals[1].firstParentStartTicks, 'win32:6000');
+      assert(!/argv|env|private-argument|private-environment/.test(JSON.stringify(observation)));
+    }
+  }
+  const workflow = await fs.readFile('.github/workflows/runtime-production-acceptance.yml', 'utf8');
+  assert(workflow.includes('${{ runner.temp }}/dsc-root-agent-*/runtime/artifacts/*.json'));
 });
 
 test('Claude setup and reload retain the native provider/cmd/CLI chain without inventing a Codex node wrapper', async () => {
