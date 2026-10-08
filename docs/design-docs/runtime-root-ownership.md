@@ -229,7 +229,7 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 独立 `pre-stop-ownership.json` 证明原 provider/CLI 在产品 stop 前仍为相同身份且 live。随后原两资源均 `actual=null / exited=true`；最终 reader 具名 settlement 为 `applied / finalRevision=53`，binding 空、pending=0。cleanup `pass=true`，registry sessions 空、nodes=0、`fallback=[]`。收尾只在原隔离 Supervisor 已空闲并通过身份核对后发出 `owned-isolated-idle-supervisor-SIGTERM`；这是夹具主动清理，**不作为 Supervisor 自然退出证据**，自然 idle 仍只引用此前双窗口/边界组的实际观察。
 
-**历史失败与未知仍保留。** `37721390485` 的两条 `cli` 缺原身份/父关系归档，根因仍未知；`37722835410` attempt 2 和 `37723822196` 的 trust Yes→No 保留失败。2026-10-09 对新失败 `37821133377` 的定向定位确认：同版 Claude 直接 PTY 在内核只读一次 Down 后也回退，原输出增量与受控复现一致；driver 的一次性导航和 100ms 轮询可因此等待到期。具体证据与边界见 `linux-claude-trust-startup-diagnosis.md`；CLI 内部触发原因未确认，也不追认旧运行的底层写次数。本轮仅定位，未修复交互或 setup 早退资源基线，原 cleanup 失败不等于资源泄漏结论。现有一次性身份白名单诊断覆盖成功断言前与 setup 失败清理前，未记录 argv/env，未改变资源通过条件。
+**历史失败与未知仍保留。** `37721390485` 的两条 `cli` 缺原身份/父关系归档，根因仍未知；`37722835410` attempt 2 和 `37723822196` 的 trust Yes→No 保留失败。2026-10-09 对新失败 `37821133377` 的定向定位确认：同版 Claude 直接 PTY 在内核只读一次 Down 后也回退，原输出增量与受控复现一致；driver 的一次性导航和 100ms 轮询可因此等待到期。具体证据与边界见 `linux-claude-trust-startup-diagnosis.md`；CLI 内部触发原因未确认，也不追认旧运行的底层写次数。PR #306 当时仅定位，原 cleanup 失败不等于资源泄漏结论；合并后的修复采用有界 End 导航与交互前不可变原资源基线，`ccc5a3ce` / `37828284014` 已通过固定 Linux 原包应答、Reload 与清理，具体边界见上述诊断文档，不改写旧失败。现有一次性身份白名单诊断覆盖成功断言前与 setup 失败清理前，未记录 argv/env，未改变资源通过条件。
 
 ### 8.2 分阶段记录
 

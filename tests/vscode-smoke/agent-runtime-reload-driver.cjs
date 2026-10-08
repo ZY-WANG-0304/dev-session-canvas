@@ -206,6 +206,7 @@ async function setup(extension) {
   const supervisor = await readIdentity(hello.pid);
   assert(supervisor && supervisor.startTicks);
   await observer.addRoot(supervisor.pid, 'supervisor');
+  const startup = await recordStartupOwnership(metadata, supervisor);
   const reader = await mountedReader(currentNodeId);
   await waitForAgentReady();
   const before = `DSC_AGENT_RELOAD_BEFORE_${control.nonce}`;
@@ -213,7 +214,7 @@ async function setup(extension) {
   await poll('pre-reload Agent response', probe, value => hasAgentMarkerResponse(value, before), 90000);
   await observer.sample();
   await captureSetupProcessObservation();
-  const resources = assertOriginalResourcesLive();
+  const resources = assertOriginalResourcesLive(startup.resources);
   const setup = { phase: 'setup', nonce: control.nonce, host: await readIdentity(process.pid), nodeId: currentNodeId,
     binding: { runtimeBackend: metadata.runtimeBackend, runtimeStoragePath: metadata.runtimeStoragePath,
       runtimeSessionId: metadata.runtimeSessionId,
@@ -227,6 +228,28 @@ async function setup(extension) {
   await releaseProcessObserver();
   reloading = true;
   void vscode.commands.executeCommand('workbench.action.reloadWindow').catch(error => write('reload-command-rejection.json', { error: String(error) }));
+}
+
+async function recordStartupOwnership(metadata, supervisor) {
+  await poll('Agent startup resources observed', async () => {
+    await observer.sample();
+    const result = observer.result();
+    assert(!result.error, result.error);
+    assert.equal(result.failures.length, 0);
+    return result.entries;
+  }, entries => ['provider', 'cli'].every(role => entries.some(entry => entry.role === role)), 10000);
+  let resources;
+  try { resources = structuredClone(assertOriginalResourcesLive()); }
+  catch (error) { await captureSetupProcessObservation(); throw error; }
+  const startup = { nonce: control.nonce, nodeId: currentNodeId, supervisor, resources,
+    binding: { runtimeBackend: metadata.runtimeBackend, runtimeStoragePath: metadata.runtimeStoragePath,
+      runtimeSessionId: metadata.runtimeSessionId,
+      ...(config.rootOwner ? { runtimeOwner: metadata.runtimeOwner, runtimeGuarantee: metadata.runtimeGuarantee } : {}) } };
+  await write('startup-ownership.json', startup);
+  const next = { ...control, startup };
+  await atomic(controlPath, next);
+  control = next;
+  return startup;
 }
 
 async function captureSetupProcessObservation() {
@@ -312,7 +335,8 @@ function hasLoadedAgentComposer(text) {
 
 async function waitForAgentReady() {
   const prompts = new Set();
-  let claudeTrustMoved = false;
+  let claudeTrustNavigations = 0;
+  let claudeTrustAffirmative = false;
   const startupPrompts = [
     /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i,
     /(?:Choose the text style|Choose.*theme|Select.*theme)/i,
@@ -325,6 +349,8 @@ async function waitForAgentReady() {
   while (Date.now() < deadline) {
     const value = await probe();
     const text = textOf(value);
+    const previouslyAffirmative = claudeTrustAffirmative;
+    claudeTrustAffirmative = false;
     if (config.provider === 'claude' && /Select login method:|Not logged in|Invalid API key/i.test(text)) {
       throw new Error('The isolated Claude API configuration did not reach its authenticated surface.');
     }
@@ -344,13 +370,15 @@ async function waitForAgentReady() {
             && /^[ \t]*Enter to confirm[ \t]+\u00b7[ \t]+Esc to cancel[ \t]*$/m.test(text)
             && selectedNo !== selectedYes, 'Claude workspace trust selection is not confirmed.');
           if (selectedNo) {
-            if (!claudeTrustMoved) {
-              claudeTrustMoved = true;
-              await dom({ kind: 'sendExecutionInput', nodeId: currentNodeId, data: '\u001b[B' });
-            }
+            assert(claudeTrustNavigations < 3, 'Claude workspace trust navigation limit reached.');
+            claudeTrustNavigations++;
+            // Fixed Claude 2.1.280: End selects Yes without toggling on delayed/repeated navigation.
+            await dom({ kind: 'sendExecutionInput', nodeId: currentNodeId, data: '\u001b[F' });
             handledPrompt = true;
             break;
           }
+          claudeTrustAffirmative = true;
+          if (!previouslyAffirmative) { handledPrompt = true; break; }
           data = '\r';
         }
         if (name === 'windows-sandbox') {
@@ -449,7 +477,9 @@ async function verify(extension) {
 async function cleanup() {
   if (!observer) return;
   let failure;
-  const receipt = { nonce: control.nonce, pass: false, fallback: [] };
+  const receipt = { nonce: control.nonce, pass: false, fallback: [],
+    resourceBaseline: control.setup ? 'setup' : control.startup ? 'startup' : 'missing' };
+  const original = control.setup ?? control.startup;
   try {
     await command('resetState');
     receipt.runtime = await poll('product cleanup bindings removed', command.bind(null, 'getRuntimeSupervisorState'),
@@ -458,9 +488,9 @@ async function cleanup() {
     assert.equal(receipt.nodesRemaining, 0);
     await observer.stop();
     receipt.resources = await poll('product cleanup original resources exited',
-      () => originalResourcesExited(control.setup?.resources), value => value.pass, 10000);
-    const expected = control.setup?.supervisor;
-    const binding = control.setup?.binding;
+      () => originalResourcesExited(original?.resources), value => value.pass, 10000);
+    const expected = original?.supervisor;
+    const binding = original?.binding;
     assert(expected && binding, 'Only the recorded isolated Supervisor may be stopped.');
     const storage = path.resolve(binding.runtimeStoragePath);
     assert(config.permittedStorageRoots.some(root => {
