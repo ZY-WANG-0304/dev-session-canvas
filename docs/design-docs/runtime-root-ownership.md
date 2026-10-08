@@ -104,6 +104,8 @@ Root 保留现有词法路径语义：使用执行端的绝对 workspace folder 
 
 `rootKey` 是版本化 root descriptor 的 SHA-256；user scope 已由 base 限定并在 owner descriptor 中核对。保留现有 `runtime-supervisor-generations/<generation>/runtime-supervisor` 结构，以复用 `common/runtimeSupervisorPaths.ts` 的 endpoint、长 Unix socket 路径处理与平台 provider 选择。`owner.json` 位于 generation base，不混入会清理 registry 的 session 数据目录；它是身份与启动配置描述，不是“进程当前存活”的证明。
 
+新 root generation 的业务端点同样必须稳定，不能由窗口的 `XDG_RUNTIME_DIR`、`TMPDIR`、`XDG_STATE_HOME` 或 `HOME` 决定。POSIX 使用固定 `/tmp/dsc-root-<uid>` 内按 storage 摘要和 backend 区分的短 socket，Windows 保持按 storage 摘要命名的 pipe；不新增端点发现记录，也不把这些环境变量扩进 owner 身份。POSIX 目录必须属于当前 UID、为非 symlink 的 0700 目录，发现、连接及清理 socket 前分别验证；不安全时拒绝，不通过 chmod 接管已有目录。此调整只适用尚未发布的新 root generation，旧 workspace slot 的地址规则保持不变。持久 session 数据仍在用户私有 global storage，不回落临时目录。
+
 为三平台分别分配新的 root-owner generation，与 `terminal-current-state-*-v1` 区分；它包含 owner 握手及当前态能力，不按每个窗口、扩展 patch 版本或启动 UUID 派生。协议/provider 不兼容才换 generation，同一兼容代中的绝对扩展安装路径不参与 owner key。stock 显式对照也必须隔离，不借目录假装当前原生能力。
 
 新 metadata 仍保存完整 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind`，并增加版本化 owner descriptor 或其可校验引用。`runtimeStoragePath` 仍指 generation base，不能混淆为内部 `runtime-supervisor` 目录。Owner 用于新建选路和防串接，完整 binding 用于所有已存在会话的 attach/input/resize/stop/delete，二者不能互相代替。会话 authority、epoch、reader 身份规则不变。
@@ -143,6 +145,8 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 已有 session 的有效 scrollback 和终端状态以 Supervisor 为权威；附着、窗口打开和 root 重排不重新套用该窗口默认值。用户显式改设置时，沿用当前作用于本 Host 已附着 session 的热更新语义，按 Supervisor 实际接受顺序 last-writer-wins，并向所有消费者传播实际值；不自动反向重发本窗口偏好。输入和 stop/delete 仍是共享 session 控制，resize 保持既有 last-writer-wins。新建其他 session 可以使用另一组配置，不扩成全仓库设置同步。
 
 持久化模式按 session 的实际归属处理。新窗口的默认开关不能把已附着 live session 悄悄转为 Host-owned；原 root binding 可在窗口默认 false 时重连，但不能绕过 workspace trust。默认 false 的普通关闭/模拟 reload 保留 root 原绑定并只释放本 Host 责任；用户明确 true→false 仍严格清理本画板精确绑定，失败保留原绑定，不提前 dispose，绝不按 root 直接 kill Supervisor。旧 slot 保持原有设置契约；不为本项增加设置 receipt 或改写 loadState 重置规则。移除保留画板的 root 同样只释放本 Host 的订阅、reader 和 client。
+
+默认 false 的窗口若重连失败，原 binding 或无效 owner 仍阻止 snapshot-only 新建本地替身；必须先显式结算原执行。Host-owned 入口在预留和异步准备后均核对，不因 managed session map 为空便覆盖原绑定。这是失败关闭，不新增自动迁移或隐式切模式流程。正常 completed 收尾的严格删除仍携带完成前捕获的完整 owner，不能只清 Host metadata 而遗漏 Supervisor session 记录。
 
 一 root 一进程会增加多 root 的固定开销。只在首次新建需要时启动，不为显示空 root 或历史节点预热 Supervisor；保留已交付的每 owner 资源准入、当前态恢复和空闲退出机制。不能把原单 Supervisor 十会话证据当成十 root 十进程预算；P3 增补具名三 root/双窗口样本，记录实际进程数、内存、reader 与交互，不恢复旧 64/128 MiB 硬门槛，不承诺任意 root 数固定总 RSS。
 
@@ -199,6 +203,10 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 设计阶段验证仅为代码事实复核、独立文档审查、元数据/引用检查和 `git diff --check`。平台来源与并发原语是直接实施前置；永久设备标识、全局资源调度、跨机器共享盘发现、通用多写者事务和历史 GC 是可延期增强，不自动排入下一阶段。历史失败保留在原记录，不转抄为当前待办。
 
 ## 8. 实施进度
+
+独立审查进一步确认并修复三项产品缺口：completed 严格删除漏传 owner、默认 false 的本地启动绕过未结算原 binding、同 root socket 受窗口 XDG/TMP 环境变化影响。前两项在 Agent/Terminal 定向用例先红后绿，Host wiring 264 项通过；端点纯函数与安全目录检查通过，真实跨环境 helper 复用尚待执行。安装验收新增原 session 在 Supervisor registry 已删除及无 completedCleanupFailed 的检查，不再只依据 Host bindings=0；它不将 registry 缺项单独当作任意进程退出证据。
+
+夹具修后 `970cd2ee` / run `37713396864` Windows installed 通过；待运行的 Linux 同包 run `37713487916` 在上述产品问题确认后取消。原包已证尾部/最终视口事实保留，但未包含新增 Supervisor 删除检查，不能据此宣称完整 root 收尾通过。产品修复改变 bundle 后将重新正常打包；未变 native assets 仍复用。尚未发布的分支 root-v1 旧 socket 不被猜测迁移，若存在该分支旧 live 须继续用原包结算；已发布旧 slot 地址完全不变。
 
 P3 首轮 `7741de5d` / run `37711694734` 已实际执行：正常 package 成功，Linux/macOS 已安装 Runtime Terminal/Webview 通过；这一步的重开是 completed 空节点，不代证 live 恢复。Windows 在 owner 路径断言失败，日志中实际与预期仅盘符及 User/globalStorage 大小写不同，属于夹具错误；改用平台 path.relative 判定路径等价，并保留不同路径和 POSIX 大小写拒绝的受控测试。Linux 双窗口在五分钟观察期内没有 driver 激活或最终回执，原归档只有一个窗口；已定位先安装产品生成 profile inventory、后仅写入测试扩展目录的加载缺口。上述失败保留，真实 Agent 步骤未执行，不记录为产品通过或产品缺陷。
 

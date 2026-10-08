@@ -54,6 +54,28 @@ try {
   }
   checks += 1;
 
+  const rootRetirementAssertion = candidateTests.slice(candidateTests.indexOf('async function assertCompletedRootRuntimeDeleted('),
+    candidateTests.indexOf('\nasync function run()'));
+  for (const [sessions, events, passes] of [
+    [[], [], true],
+    [[{ sessionId: 'other' }], [], true],
+    [[{ sessionId: 'original' }], [], false],
+    [[], [{ kind: 'runtime/completedSessionCleanupFailed', detail: { sessionId: 'original' } }], false]
+  ]) {
+    const verify = () => vm.runInNewContext(`(async () => { ${rootRetirementAssertion}
+      return assertCompletedRootRuntimeDeleted({ runtimeStoragePath: '/original-storage', runtimeSessionId: 'original' }); })()`, {
+      assert, path, command: async () => events,
+      fs: { readFile: async file => {
+        assert.equal(file, '/original-storage/runtime-supervisor/registry.json');
+        return JSON.stringify({ version: 1, sessions });
+      } },
+      poll: async (_label, read, accept) => assert(accept(await read()))
+    });
+    if (passes) assert.equal((await verify()).targetRecordRemoved, true);
+    else await assert.rejects(verify());
+  }
+  checks += 1;
+
   const packageManifest = { publisher: 'devsessioncanvas', name: 'dev-session-canvas', version: '0.25.0',
     main: './dist/extension.js', displayName: '%extension.displayName%',
     extensionPack: ['devsessioncanvas.dev-session-canvas-notifier'] };

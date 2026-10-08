@@ -14,6 +14,11 @@ let probeReads = 0;
 let controlledConnect;
 let startedReceiptError;
 let watchedSocketPath;
+let socketDirectoryFault;
+let socketDirectoryWrites = 0;
+const socketDirectory = process.platform === 'win32' ? undefined : `/tmp/dsc-root-${process.getuid()}`;
+let socketFixtureDirectory;
+const remapSocketDirectory = filename => filename === socketDirectory ? socketFixtureDirectory : filename;
 const effects = [];
 const forbidden = () => assert.fail('Unexpected native provider or process acquisition.');
 const { outputFiles } = await esbuild.build({
@@ -21,6 +26,7 @@ const { outputFiles } = await esbuild.build({
     export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
     export { RuntimeSupervisorServer } from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain';
     export * from './extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership';
+    export { resolveRuntimeSupervisorPathsFromStorageDir } from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths';
     export { createRuntimeRootStartupIntent, writeRuntimeRootStartupIntent } from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootStartup';
     export { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
   `, resolveDir: process.cwd(), loader: 'ts' },
@@ -53,14 +59,28 @@ new Function('require', 'module', 'exports', outputFiles[0].text)(name => {
   } };
   if (name === 'fs') {
     const actual = require(name);
-    return { ...actual, mkdirSync(...args) { effects.push('mkdir'); return actual.mkdirSync(...args); },
+    return { ...actual, mkdirSync(filename, ...args) { effects.push('mkdir'); return actual.mkdirSync(remapSocketDirectory(filename), ...args); },
+      chmodSync(filename, ...args) { return actual.chmodSync(remapSocketDirectory(filename), ...args); },
       promises: { ...actual.promises, async rm(...args) { effects.push('cleanup'); return actual.promises.rm(...args); } } };
   }
   if (name === 'fs/promises') {
     const actual = require(name);
-    return { ...actual, async lstat(filename, ...args) {
+    return { ...actual, async mkdir(filename, ...args) {
+      if (filename === socketDirectory) socketDirectoryWrites++;
+      return actual.mkdir(remapSocketDirectory(filename), ...args);
+    }, async lstat(filename, ...args) {
       if (filename === watchedSocketPath) effects.push('prepare-socket');
-      return actual.lstat(filename, ...args);
+      if (filename === socketDirectory && socketDirectoryFault === 'missing') {
+        throw Object.assign(new Error('Missing root socket directory'), { code: 'ENOENT' });
+      }
+      const state = await actual.lstat(remapSocketDirectory(filename), ...args);
+      if (filename === socketDirectory && socketDirectoryFault) {
+        if (socketDirectoryFault === 'symlink') state.isDirectory = () => false;
+        if (socketDirectoryFault === 'foreign') state.uid++;
+        if (socketDirectoryFault === 'permissions') state.mode = (state.mode & ~0o777) | 0o755;
+        if (socketDirectoryFault === 'special') state.mode |= 0o1000;
+      }
+      return state;
     }, async rename(source, target) {
       if (path.basename(target) === 'startup-started.json') {
         effects.push('started');
@@ -76,11 +96,13 @@ new Function('require', 'module', 'exports', outputFiles[0].text)(name => {
 const { RuntimeSupervisorClient, RuntimeSupervisorServer, createRuntimeOwnerDescriptor,
   createRuntimeUserStorageScopeKey, resolveRuntimeRootOwnerBaseStoragePath, resolveRootRuntimeSupervisorGeneration,
   createRuntimeOwnerCompatibilityFingerprint, createRuntimeRootStartupIntent, writeRuntimeRootStartupIntent,
-  EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION } = loaded.exports;
+  resolveRuntimeSupervisorPathsFromStorageDir, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION } = loaded.exports;
 const profile = ({ linux: 'linux-owner-v1-candidate', darwin: 'macos-owner-v1-candidate',
   win32: 'windows-owner-v1-candidate' })[process.platform];
 assert.ok(profile, 'Root owner tests require a supported execution platform.');
 const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'dsc-root-handshake-')));
+socketFixtureDirectory = path.join(directory, 'controlled-socket-directory');
+await mkdir(socketFixtureDirectory, { mode: 0o700 });
 const clients = [];
 let fixtureSequence = 0;
 let passed = 0;
@@ -172,6 +194,36 @@ try {
     await assert.rejects(client.ensureConnected(), { code: 'ENOENT' });
     assert.deepEqual(effects, ['connect']);
   });
+
+  if (process.platform !== 'win32') {
+    for (const fault of ['missing', 'symlink', 'foreign', 'permissions', 'special']) {
+      await test(`root client rejects ${fault} endpoint directory without creating, repairing, or connecting`, async () => {
+        const client = track(new RuntimeSupervisorClient(clientOptions(root)));
+        socketDirectoryFault = fault;
+        await assert.rejects(client.ensureConnected(), /directory|private|permission/i);
+        await assert.rejects(client.connectStrictDeleteSocket(100, { now: () => 0, scheduleDeadline: forbidden }), /directory|private|permission/i);
+        assert.equal(socketDirectoryWrites, 0);
+        assert.deepEqual(effects, []);
+      });
+      if (fault !== 'missing') await test(`root startup rejects ${fault} endpoint directory before claim or cleanup`, async () => {
+        const f = await fixture();
+        socketDirectoryFault = fault;
+        await assert.rejects(supervisor(f).start(), /directory|private|permission/i);
+        assert.deepEqual(effects, []);
+        await assertRetained(f);
+      });
+    }
+    await test('root endpoint override cannot redirect startup or client connection', async () => {
+      const f = await fixture();
+      f.socketPath = path.join(f.globalStoragePath, 'redirected.sock');
+      const client = track(new RuntimeSupervisorClient(clientOptions(f)));
+      await assert.rejects(client.ensureConnected(), /stable owner address/);
+      await assert.rejects(supervisor(f).start(), /stable owner address/);
+      assert.deepEqual(effects, []);
+      assert.equal(socketDirectoryWrites, 0);
+      await assertRetained(f);
+    });
+  }
 
   for (const mismatch of ['missing', 'malformed', 'root-path', 'environment', 'scope', 'probe-unknown']) {
     await test(`startup rejects ${mismatch} before claim, cleanup, or socket exposure`, async () => {
@@ -396,6 +448,8 @@ async function test(name, run) {
   controlledConnect = undefined;
   startedReceiptError = undefined;
   watchedSocketPath = undefined;
+  socketDirectoryFault = undefined;
+  socketDirectoryWrites = 0;
   try { await run(); passed++; }
   catch (error) { throw new Error(name, { cause: error }); }
 }
@@ -426,7 +480,7 @@ async function fixture(overrides = {}) {
   const intentPath = path.join(baseStoragePath, 'startup-intent.json');
   const startedPath = path.join(baseStoragePath, 'startup-started.json');
   return { globalStoragePath, descriptor, baseStoragePath, storageDir, ownerPath, registryPath, journalPath,
-    legacyRegistry, intent, intentPath, startedPath, socketPath: path.join(globalStoragePath, 'supervisor.sock') };
+    legacyRegistry, intent, intentPath, startedPath, socketPath: resolveRuntimeSupervisorPathsFromStorageDir(storageDir).socketPath };
 }
 
 function clientOptions(f) {

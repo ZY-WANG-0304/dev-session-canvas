@@ -167,6 +167,17 @@ export function resolveLegacyRuntimeSupervisorPathsFromStorageDir(
     };
   }
 
+  if (isRootOwnerRuntimeSupervisorStorageDir(storageDir, platform)) {
+    const runtimeDir = resolveRootRuntimeSocketDirectory(options);
+    return {
+      storageDir,
+      runtimeDir,
+      socketPath: pathModule.join(runtimeDir, `d-${digest}.sock`),
+      registryPath,
+      socketLocation: 'runtime-private'
+    };
+  }
+
   const storageSocketPath = pathModule.join(storageDir, STORAGE_SOCKET_FILE_NAME);
   if (isUnixSocketPathWithinLimit(storageSocketPath)) {
     return {
@@ -244,7 +255,11 @@ export function resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(
   const registryPath = pathModule.join(storageDir, 'registry.json');
   const homeDir = resolveHomeDirectory(options, pathModule);
   const configHome = resolveConfigHome(options, pathModule, homeDir);
-  const controlPath = resolveSystemdControlPath(options, pathModule, homeDir, digest);
+  const rootOwner = isRootOwnerRuntimeSupervisorStorageDir(storageDir, platform);
+  const controlDir = rootOwner ? resolveRootRuntimeSocketDirectory(options) : undefined;
+  const controlPath = controlDir
+    ? { controlDir, socketPath: pathModule.join(controlDir, `s-${digest}.sock`) }
+    : resolveSystemdControlPath(options, pathModule, homeDir, digest);
 
   return {
     storageDir,
@@ -260,6 +275,16 @@ export function resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(
       `${SYSTEMD_USER_SERVICE_PREFIX}${digest}.service`
     )
   };
+}
+
+function resolveRootRuntimeSocketDirectory(options: RuntimeSupervisorPathResolutionOptions): string {
+  const userId = options.userId ?? process.getuid?.();
+  if (!((typeof userId === 'number' && Number.isSafeInteger(userId) && userId >= 0)
+    || (typeof userId === 'string' && /^(?:0|[1-9][0-9]*)$/.test(userId) && Number.isSafeInteger(Number(userId))))) {
+    throw new Error('Root runtime socket directory requires a known OS user identity.');
+  }
+  // Root owners must remain discoverable across different Host XDG/HOME/TMP environments.
+  return path.posix.join('/tmp', `dsc-root-${userId}`);
 }
 
 function resolvePrivateRuntimeDirCandidates(

@@ -90,7 +90,7 @@ import {
   type RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
 import { createRuntimeOwnerCompatibilityFingerprint, type RuntimeOwnerDescriptorV1 } from '../common/runtimeRootOwnership';
-import { readRuntimeRootOwner } from './runtimeRootOwner';
+import { ensureRuntimeRootSocketDirectory, readRuntimeRootOwner } from './runtimeRootOwner';
 import {
   assertRuntimeRootStartupIntentMatches,
   readRuntimeRootStartupIntent,
@@ -540,6 +540,7 @@ export class RuntimeSupervisorServer {
         )
       });
       rootStartupIntent = intent;
+      await ensureRuntimeRootSocketDirectory(this.paths, this.runtimeBackend, true);
     }
     const options = this.executionOwner?.options;
     const nativeClaim = options?.kind === 'macos-provider' || options?.kind === 'linux-provider'

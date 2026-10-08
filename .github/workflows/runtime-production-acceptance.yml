@@ -243,6 +243,8 @@ jobs:
       - name: Validate affected root acceptance inputs
         if: inputs.root_ownership
         run: |
+          node scripts/test/test-runtime-completed-history.mjs
+          node scripts/test/test-host-execution-owner-wiring.mjs
           node scripts/test/test-runtime-agent-ci-workflow.mjs
           node scripts/test/test-installed-execution-candidate.mjs
           node scripts/test/test-agent-runtime-reload-driver.mjs

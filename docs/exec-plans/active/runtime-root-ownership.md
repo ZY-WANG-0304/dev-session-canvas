@@ -20,9 +20,12 @@
 - [x] (2026-10-08) P2 主接线：两类单根/多根新建显式 root；metadata/原绑定/缓存/设置边界与正常 build、受控回归已接通。
 - [x] (2026-10-08) P2 独立审查修复 restore bucket await 期间换绑定竞态，24 个定向组合先红后绿，原失效 owner 拒绝与原 client 退休屏障保留。
 - [x] (2026-10-08) P3 首轮正常同版 package 与 Linux/macOS installed Runtime Terminal/Webview 通过；Windows 路径夹具失败及 Linux 双窗未激活失败原样保留。
+- [x] (2026-10-08) 修复两项夹具并同包验证Windows；独立审查三项产品缺口修后受控回归通过，正常build/VSIX通过，待修后原生与安装验证。
 - [ ] P3：完成受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本，整体审查并同步结账。
 
 ## 意外与发现
+
+本轮独立产品审查确认三处受影响缺口：正常completed严格删除漏传owner，被root校验拒绝；默认false窗口恢复失败后，snapshot-only入口可能绕过原binding启动替身；业务socket仍受XDG/TMP环境改变，稳定owner在另一窗口无法被发现（运行锁仍阻止双启）。这些是产品阻塞，不是通用工具增强。分别补完整owner、Host-owned启动保护及新root固定短端点，沿用原尾部/reader/unknown结算。
 
 P3 run `37711694734` 的 Windows installed 日志直接显示规范化 owner 路径与 realpath 仅大小写不同；严格字符串断言不适用 Windows 路径。修正夹具判定，不改产品词法 root 身份。Linux 双窗口 zip 文件列表没有任何 activated/failure/ready driver 回执，只有 window1；当前安装顺序先建立产品 profile inventory、再直接放入 driver 目录，VS Code 的 inventory 扫描不会自动登记该目录。修复明确加载缺口后仍须真实重试，不能只凭静态定位将失败改绿。
 
@@ -39,6 +42,8 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 独立复核又发现保留的 `runtime-roots-v1` 布局中未知或错放的旧 generation 会被当作 legacy。已将保留布局识别与受支持 generation 精确枚举分开，Client/Supervisor 对 lexical 与 canonical alias 均拒绝；新增六个用例确认无 connect/start/claim/cleanup/listen 副作用，旧 registry/journal 不变。
 
 ## 决策记录
+
+2026-10-08：审查发现产品阻塞后，取消尚未开始的同包Linux run `37713487916`。Windows夹具定向 run `37713396864` 已success，但它只证明既有断言范围，不证明漏测的Supervisor completed记录已删除。接下来产品修复改变bundle，必须重新正常打包，并补受影响安装/Agent/root端点验收；旧成功的尾部事实保留，不把已知缺口藏在Host bindings=0后面。固定端点选用POSIX UID私有短目录，只对新root代生效，复用已有目录校验，不引入端点数据库。
 
 2026-10-08：同包的夹具定向重试使用 production workflow 原有 reuse_package_run、platform、skip_installed 和 installed_evidence_run；仅增加 root_checks 的固定选择。包身份仍要求产品输入无变化，安装证据仍核对平台具名成功步骤及相同 VSIX hash，允许原 run 因后续另一场景失败。这样保留原失败且不重复成功矩阵，不建立新 runner 或通用诊断阶段。
 
@@ -119,6 +124,8 @@ P3 本地受控：Agent reload 21项、安装包输入/收据18项、新双窗�
 P3 首轮 `7741de5d` / run `37711694734` package 成功，Linux/macOS installed Runtime Terminal/Webview 成功，Windows路径断言失败、Linux双窗driver未激活失败，真实Agent未运行。本机 VS Code 1.117 的隔离CLI对照确认旧install→stage顺序的profile只登记产品，新stage→install顺序同时登记driver和产品；修正顺序并在原input保存具名driver登记结果，不改变业务扩展或注入metadata。对照目录为 `/tmp/root-owner-profile-old-order-kxBhDO` 和 `/tmp/root-owner-profile-order-EtWHDq`，这是scanner证据而非完整产品验收。
 
 本次补证：安装包夹具19项、双窗口原39个拒绝项及6项登记/顺序拒绝、Canvas context与纯root ownership通过。R1-01新增两类节点共12组root顺序/显示名变化，及两类rootless→folder仍attach旧slot的完整binding断言；均为受控Host，不代证Remote或真实EH。workflow选择/凭据门控受控断言通过，20个生产Bash步骤用直接 `/bin/bash` 原生语法检查通过；原完整Node测试仍在spawnSync Bash处超时124，未记通过。产品输入不变，后续复用首轮原VSIX只重试失败/缺失格。
+
+随后独立审查的产品修复已通过：completed-history两类×新旧binding 4项实际经过生产strict-delete校验，缺owner先红后绿；Host本地入口14项先红后绿，总wiring264项通过；Canvas context、deactivation与typecheck通过。端点paths、握手46项、preparation25项、storage、startup29项、reader/client31项与preparation-client21项通过；握手覆盖只读连接/strict-delete在不安全UID目录无副作用拒绝，Main在socket清理前拒绝。独立复核无新增确定blocker，正常build与package:vsix通过。安装夹具20项加入目标registry删除检查，真实POSIX跨XDG/HOME/TMP helper复用写入已有native脚本，均待修后CI。未更改native资产，禁止将旧包结果当作新字节已验证。
 
 ## 接口与依赖
 
