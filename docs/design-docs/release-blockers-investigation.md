@@ -1,11 +1,11 @@
 ---
 title: 四项发布验证阻塞定位与修复
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/release-blockers-investigation.md, docs/exec-plans/completed/release-blockers-repair.md]
+related_plans: [docs/exec-plans/completed/release-blockers-investigation.md, docs/exec-plans/completed/release-blockers-repair.md, docs/exec-plans/active/release-validation-followups.md]
 updated_at: 2026-10-09
 ---
 
@@ -26,6 +26,12 @@ updated_at: 2026-10-09
 styled 文件链接在四个物理行上限内支持软/硬混合折行。首片段仍须贴行尾；软续行从第一列延续相同 ANSI 样式，硬续行仍要求允许的缩进；前片段后的 prose 不可被跨越。必须实际经过硬换行才属于 hardwrap 候选，纯软换行继续由现有 detector 处理。每物理片段独立保留 cell 范围，点击与 hover 使用原映射；URL 检测、Host 路径验证与长度/候选数限制不放宽。不会取消恢复后 fit 或加宽原失败用例。
 
 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `startNonNativeHostExecution()` 在 operation.first 返回 started 后记录 execution/started，以原 executionId、kind/nodeId 与实际 file/cwd/尺寸关联，失败/拒绝不记录成功。相对 shell smoke 保留 metadata 和 started 校验，改为核对同会话已交付 live 快照与真实 PWD marker，不要求短命进程在后置轮询时仍存活。
+
+## 后续修复方案（2026-10-09）
+
+用户继续授权修复已登记后续项。模板按钮/文案断言改为检查实际 `fileNoteNodes.tsx`，main 的编排断言保持；QuickPick 用例在本例结束时清理自己创建的 Agent，复用 `resetCanvasAfterFinalPersistence` 的原身份保存检查、原 20 秒总预算及最多一次显式再次 reset，保留保存失败与未知结果的拒绝。生产 reset 契约不改。
+
+两项 hover 先读取真实 link range、screen rect、事件目标与 xterm 渲染/fit 时序，取得直接原因后更新正式方案；不把延长等待或重跑当作修复。过程见 `docs/exec-plans/active/release-validation-followups.md`；下文是前一阶段结果，不代表本阶段已完成。
 
 ## 修后验证与剩余阻塞
 

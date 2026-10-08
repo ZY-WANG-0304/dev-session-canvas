@@ -68,3 +68,7 @@ Node 22.23.3 定向 6/6 通过。定位阶段未修改生产代码，故不把�
 完整验证又在 `verifyTerminalShellPathRefreshesStoppedTerminalNode()` 的 finally 清理发现同类 pending，故该入口复用相同 helper。此处同一节点曾重启，helper 在第一次 reset 前捕获已有 final 诊断身份；对明确报 pending 的节点，基线中已经结算的 executionId/generation 不可能是此次尚未完成的保存，必须排除。其余期望节点仍接受本次创建后较早完成的结果；QuickPick 保留全程诊断，不再中途清空。两个入口清理期间都不重启或复用节点 ID，新的冲突身份仍失败。新增 19 项纯测覆盖这条身份保护、完整 20 秒总时限与全部拒绝分支。
 
 最终验证：Linux / Node 22.23.3 / VS Code 1.126.0，纯测 19/19，三个脚本语法与 diff 检查通过。最终真实 VSIX smoke 保留了 QuickPick 第一次 pending、原 Claude not-required/原 Codex saved 和第二次 reset 空画布的完整日志，见 `.debug/reset-final-persistence/vsix-fixture-verified.log`。原 reset 阻塞已消除；完整命令仍在后续 `verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot()` 等待 execution/started 时失败，exit 1。这个独立失败不在本次修改范围，产品/夹具责任仍待定位，原等待断言未改。没有重跑或宣称 clean-checkout gate 通过。
+
+## PR #310 后续 QuickPick 清理（2026-10-09）
+
+`verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits` 现在在完成行为断言后，用相同 helper 清理本例新建的 custom Agent，避免将 live 执行交给下一用例的初始消息 reset。`verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent` 的 finally 按捕获的本例 Codex Agent 清理，保留其全程诊断；未捕获到本例节点时不授权未知 pending 的再次操作。两处仍使用真实 testResetState Promise、原 20 秒总预算和最多一次显式再次 reset。模板断言与 hover 后续修复过程见 `docs/exec-plans/active/release-validation-followups.md`，真实 VSIX 结果待回收。

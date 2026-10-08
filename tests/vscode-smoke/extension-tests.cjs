@@ -3116,12 +3116,19 @@ async function verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits()
       ),
     20000
   );
+  await resetCanvasAfterFinalPersistence({
+    reset: () => vscode.commands.executeCommand(COMMAND_IDS.testResetState),
+    getSnapshot: getDebugSnapshot,
+    getDiagnosticEvents,
+    expectedExecutions: [customAgentNode]
+  });
 }
 
 async function verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent() {
   const configuration = vscode.workspace.getConfiguration();
   const originalCodexDefaultArgs = configuration.get('devSessionCanvas.agent.codexDefaultArgs', '');
   const conflictingCodexDefaultArgs = '--model gpt-5.2 --yolo';
+  let codexAgentNode;
 
   await clearHostMessages();
   await clearDiagnosticEvents();
@@ -3154,7 +3161,7 @@ async function verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent() {
       );
     }, 20000);
 
-    const codexAgentNode = snapshot.state.nodes.find(
+    codexAgentNode = snapshot.state.nodes.find(
       (node) =>
         node.kind === 'agent' &&
         node.metadata?.agent?.provider === 'codex' &&
@@ -3187,10 +3194,12 @@ async function verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent() {
         ),
       20000
     );
-    await clearDiagnosticEvents();
-    await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
-    const snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
-    assert.strictEqual(snapshot.state.nodes.length, 0);
+    await resetCanvasAfterFinalPersistence({
+      reset: () => vscode.commands.executeCommand(COMMAND_IDS.testResetState),
+      getSnapshot: getDebugSnapshot,
+      getDiagnosticEvents,
+      expectedExecutions: codexAgentNode ? [codexAgentNode] : []
+    });
   }
 }
 
