@@ -27,7 +27,7 @@
     npm run test:notifier-smoke
     npm run test:notifier-locale-smoke
 
-验证过程见 `docs/exec-plans/active/release-0-26-1-prep.md` 与 PR checks。只有 review 和 required checks 通过后才能合并；发布 tag 必须另在合并后的 main release commit 创建。
+验证过程见 `docs/exec-plans/completed/release-0-26-1-prep.md` 与 PR checks。只有 review 和 required checks 通过后才能合并；发布 tag 必须另在合并后的 main release commit 创建。
 
 ## 当前发布素材
 

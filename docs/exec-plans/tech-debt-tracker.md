@@ -21,7 +21,7 @@
 - 独立 clean-checkout 的主 VSIX 打包成功，随后 packaged smoke 在 `verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot` 第 2768 行等待 `execution/started` 超时。现场有原目标 startRequested、EOF 和最终 saved；这复现下方 #305 后登记的路径，产品/夹具具体责任仍待确认，完整安装门禁不能记为通过。
 - 独立完整 Webview 回归 382 项全部执行，380 passed / 2 failed（12.2 分钟）。失败仅为 Agent / Terminal 的 `styled hard-wrapped code paths keep line and column suffixes`，属于下方既有折行路径缺口；基准截图及其余 380 项通过。不得关闭该项或以基准截图通过代证。
 
-临时交付保持草稿、未打发布 tag。root 归属/准备、Host 333、Supervisor 116、reader 32、旧历史 136、notifier companion/英中文 locale 与双包检查已有本轮通过，不能代证上述门禁。应在 0.26.1 解除草稿之前逐项定位、修复并对最新预合并结果重跑完整 verify。复现命令、版本与本机日志见 `docs/exec-plans/active/release-0-26-1-prep.md`；核心日志为 `/tmp/dsc0261-verify-short.log`、`/tmp/dsc0261-pr-verify.log`、`/tmp/dsc0261-clean-vsix.log`、`/tmp/dsc0261-webview.log`。
+临时交付保持草稿、未打发布 tag。root 归属/准备、Host 333、Supervisor 116、reader 32、旧历史 136、notifier companion/英中文 locale 与双包检查已有本轮通过，不能代证上述门禁。应在 0.26.1 解除草稿之前逐项定位、修复并对最新预合并结果重跑完整 verify。复现命令、版本与本机日志见 `docs/exec-plans/completed/release-0-26-1-prep.md`；核心日志为 `/tmp/dsc0261-verify-short.log`、`/tmp/dsc0261-pr-verify.log`、`/tmp/dsc0261-clean-vsix.log`、`/tmp/dsc0261-webview.log`。
 
 ## 2026-10-08：旧 Supervisor 的创建拒绝仍缺资源结果
 

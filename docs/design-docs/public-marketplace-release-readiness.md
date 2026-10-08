@@ -10,7 +10,7 @@ architecture_layers:
   - 适配与基础设施层
 related_specs: []
 related_plans:
-  - docs/exec-plans/active/release-0-26-1-prep.md
+  - docs/exec-plans/completed/release-0-26-1-prep.md
   - docs/exec-plans/active/release-0-26-0-prep.md
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
   - docs/exec-plans/active/publish-tag-release-flow.md
