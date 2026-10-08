@@ -28,6 +28,8 @@
 
 ## 意外与发现
 
+`cc1b5ec8` / `37722835410` attempt 1 同包 input/安装身份通过，但固定 VS Code 下载发生 HTTPS ETIMEDOUT/ENETUNREACH，未启动 Claude；仅原失败 job 同代码重跑。attempt 2 在 trust 页超时，尚未资源观察：唯一 Down+Enter 写入后 revision 10 选中 Yes，revision 11 在无新输入时回到 No。不能推断 CLI 内部原因；仅将精确 Claude 页改为一次 Down、观察 Yes 选中再一次 Enter，原总预算/未知页拒绝/资源断言保持，不循环自动重按。
+
 最新 main PR #298 仅测试和文档，实施分支无冲突 rebase 至 `b94ba3cb`，产品打包输入与原 `502934e1` 完全相同。后续 `35e159a9` / `37722179566` 在 input 因原包提交不再是 fetch 到的分支祖先而 `bad object` 失败，没有运行 Claude；只补原包 SHA 显式获取及纯 Playwright 验收目录白名单，仍保持原同包比较与内容 hash，不通过重跑产品包回避归档身份。
 
 `32f4990f` / `37721390485` Claude 已通过实际 readiness 和 BEFORE assistant nonce，随后原启动资源断言记录两个 `cli`，未进入 Reload。原归档未保存 observer entries/events，不能判断第二条是历史辅助进程还是重复执行；观察器按可执行文件分类且断言统计完整历史，但代码可能性不等于本次根因。保持数量/身份/退出断言，仅在既有 sample 后、断言前保存现有无 argv/env 的资源观察结果，再同包定向核对，不扩大通用诊断阶段。

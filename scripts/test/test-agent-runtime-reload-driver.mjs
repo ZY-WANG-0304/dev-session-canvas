@@ -564,36 +564,48 @@ test('Claude composer recognizes observed NBSP horizontal spacing without accept
   assert.equal(probes, 2);
 });
 
-test('Claude workspace trust confirms only the observed affirmative option once', async () => {
+test('Claude workspace trust observes the affirmative selection before Enter and never repeats navigation', async () => {
   // The fixed CLI page is reconstructed from run 37719142087, including its negative default.
   const trust = [' Accessing workspace:', '', ' /isolated/workspace', '',
     ' Quick safety check: Is this a project you created or one you trust?', '',
     ' \u276f No, exit', '   Yes, I trust this folder', '', ' Enter to confirm \u00b7 Esc to cancel'].join('\n');
   const ready = 'Claude Code v2.1.280\ndeepseek-flash\n\u276f Try "explain this code"';
-  for (const selection of ['no', 'yes', 'missing-cursor', 'other-cursor', 'reordered', 'unknown-page', 'still-visible']) {
-    const selected = selection === 'yes' ? trust.replace(' \u276f No, exit', '   No, exit')
-      .replace('   Yes, I trust this folder', ' \u276f Yes, I trust this folder')
+  const affirmative = trust.replace(' \u276f No, exit', '   No, exit')
+    .replace('   Yes, I trust this folder', ' \u276f Yes, I trust this folder');
+  for (const selection of ['no', 'yes', 'missing-cursor', 'other-cursor', 'reordered', 'unknown-page', 'still-visible', 'reverted']) {
+    const selected = selection === 'yes' ? affirmative
       : selection === 'missing-cursor' ? trust.replace('\u276f', ' ')
         : selection === 'other-cursor' ? trust.replace('\u276f', '\u203a')
           : selection === 'reordered' ? trust.replace(' \u276f No, exit\n   Yes, I trust this folder',
             '   Yes, I trust this folder\n \u276f No, exit')
             : selection === 'unknown-page' ? trust.replace('Accessing workspace:', 'Unknown confirmation:') : trust;
     let clock = 0, cursor = 0;
-    const inputs = [], screens = [selected, selected, ready, ready];
+    const inputs = [], screens = selection === 'no' ? [trust, trust, affirmative, affirmative, ready, ready]
+      : selection === 'reverted' ? [trust, affirmative, trust] : [selected, selected, ready, ready];
+    let visible;
     const api = compile(['hasLoadedAgentComposer', 'waitForAgentReady'], {
       assert, config: { provider: 'claude' }, process: { platform: 'linux' }, stripVt: value => value,
       control: { deadlineAt: 32000 }, currentNodeId: 'node', Date: { now: () => clock },
       sleep: async ms => { clock += ms; }, textOf: value => value,
-      probe: async () => selection === 'still-visible' ? selected : screens[cursor++],
-      dom: async action => inputs.push(action)
+      probe: async () => {
+        visible = selection === 'still-visible' ? selected : screens[Math.min(cursor++, screens.length - 1)];
+        return visible;
+      },
+      dom: async action => {
+        assert.equal(action.data, visible === affirmative ? '\r' : '\u001b[B',
+          'Only the observed affirmative option can receive Enter; Down is a separate input.');
+        inputs.push(action);
+      }
     });
     if (selection === 'no' || selection === 'yes') {
       await api.waitForAgentReady();
       assert.equal(cursor, screens.length, 'The trust page must disappear before readiness succeeds.');
-    } else await assert.rejects(api.waitForAgentReady(), selection === 'still-visible'
+    } else await assert.rejects(api.waitForAgentReady(), ['still-visible', 'reverted'].includes(selection)
       ? /interactive surface/ : /Claude workspace trust selection is not confirmed/);
-    assert.deepEqual(inputs, ['no', 'yes', 'still-visible'].includes(selection)
-      ? [{ kind: 'sendExecutionInput', nodeId: 'node', data: selection === 'yes' ? '\r' : '\u001b[B\r' }] : []);
+    const expected = selection === 'yes' ? ['\r'] : ['no', 'reverted'].includes(selection)
+      ? ['\u001b[B', '\r'] : selection === 'still-visible' ? ['\u001b[B'] : [];
+    assert.deepEqual(inputs, expected.map(data => ({ kind: 'sendExecutionInput', nodeId: 'node', data })));
+    assert(clock <= 2000, 'The original readiness budget must not be extended.');
   }
 });
 
