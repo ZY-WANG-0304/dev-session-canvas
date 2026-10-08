@@ -169,7 +169,21 @@ async function complete() {
   const metadata = node.metadata.terminal;
   assert.equal(metadata.persistenceMode, mode);
   if (mode === 'live-runtime') {
-    assert.match(metadata.runtimeStoragePath, new RegExp(expectedExecutionCandidateGeneration()));
+    if (process.env.DEV_SESSION_CANVAS_ROOT_OWNER_ACCEPTANCE === '1') {
+      const ownerApi = require('./candidate-root-ownership.cjs');
+      const owner = ownerApi.parseRuntimeOwnerDescriptor(metadata.runtimeOwner);
+      const rootPath = path.resolve(vscode.workspace.workspaceFolders[0].uri.fsPath);
+      assert.equal(owner.root.normalizedPath, process.platform === 'win32' ? rootPath.toLowerCase() : rootPath);
+      const platformName = { linux: 'linux', darwin: 'macos', win32: 'windows' }[process.platform];
+      assert.equal(owner.generation, `terminal-root-owner-${platformName}-v1`);
+      const globalStorage = ownerApi.resolveRuntimeRootOwnerGlobalStoragePath(
+        path.join(metadata.runtimeStoragePath, 'runtime-supervisor'), owner);
+      assert.equal(await fs.realpath(globalStorage), globalStorage);
+      await writeJson('root-owner-binding.json', { owner, globalStorage, runtimeStoragePath: metadata.runtimeStoragePath,
+        backend: metadata.runtimeBackend, sessionId: metadata.runtimeSessionId });
+    } else {
+      assert.match(metadata.runtimeStoragePath, new RegExp(expectedExecutionCandidateGeneration()));
+    }
     assert(metadata.runtimeSessionId);
   }
   await dispatch('webview/resizeNode', { nodeId: id, position: node.position,

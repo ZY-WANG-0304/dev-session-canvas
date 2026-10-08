@@ -56,7 +56,7 @@ related_plans:
 13. 多根组合视图中，用户创建或重连连线时，两个端点必须属于同一个 root 分组；跨 root 连线被拒绝。
 14. 文件活动自动节点、file-activity edge 和 suppression id 在多根组合视图中按 root 命名空间重建，不跨 root 共享；`file` / `file-list` 在各自 root 内按 owner Agent 最近公共父分组归属，没有公共用户分组时归属对应 `workspace-root`。
 15. 多根组合视图中的 live 文件活动记录按 owner 节点所属 root 生成 root-namespaced `fileReferences.id`；旧的未命名空间化引用在重建时按 root scope 迁移或补 namespace。
-16. 单根与多根的 `Agent` / `Terminal` 新建应由同一执行环境、用户存储范围、画板 root 身份和 Supervisor generation 确定稳定归属，不依赖创建窗口 slot；具体方案见 `docs/design-docs/runtime-root-ownership.md`，本条新建语义待实现。恢复时 display node id 只服务渲染、选择、连线、布局和拆回 root-local；已有 session 仍以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威。旧 session 必须保留原具体 VS Code `workspaceStorage` slot，新 session 保存新 root owner 的完整地址，不通过重写地址迁移旧进程。
+16. 单根与多根的 `Agent` / `Terminal` 新建应由同一执行环境、用户存储范围、画板 root 身份和 Supervisor generation 确定稳定归属，不依赖创建窗口 slot；具体方案见 `docs/design-docs/runtime-root-ownership.md`，本条接线已实现、产品验收中。恢复时 display node id 只服务渲染、选择、连线、布局和拆回 root-local；已有 session 仍以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威。旧 session 必须保留原具体 VS Code `workspaceStorage` slot，新 session 保存新 root owner 的完整地址，不通过重写地址迁移旧进程。
 17. 多根窗口不能用当前 multi-root workspace storage path 猜 runtime；同一个 root 的多个 storage slot 也不能互相替代，必须使用 root-local metadata 中保存的完整 `runtimeStoragePath`。旧 snapshot 缺少 `runtimeStoragePath` 时必须迁移或显式降级为历史恢复，并记录诊断。
 18. 全局 fit view、初始自动 fit、动态最小缩放和 MiniMap 把所有系统 root 分组作为一等空间对象纳入；multi-root 下全局 fit view 默认包含所有 root 分组。
 19. 当 VSCode workspace folder 变化新增 root 时，如果该 root 在 multi-root overlay 中还没有位置，系统应以当前画布可见中心为锚点，选择离该中心最近且不与已有 root 分组重叠的可用位置；已有 overlay root 位置不被重新计算。

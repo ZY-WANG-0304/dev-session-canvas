@@ -16,7 +16,7 @@
 - [x] (2026-10-08) P1 启动记录：私有 intent/started、claim 前匹配与 claim 后发布、单 token 拒绝重复消费；提取原有底层启动命令供准备流程复用。
 - [x] (2026-10-08) P1 准备事务实现：短命持锁 launcher、单次提交 IPC、私有 descriptor 发布和 systemd 实际环境探针；受控测试与正常 build 通过，默认路由未改。
 - [x] (2026-10-08) P1 原生竞争/中断：macOS、Windows 完整组通过；Linux detached 汇聚、真实 Host helper、intent 前取消、提交后中断及迟到 ready 通过，systemd 单列未完成。
-- [ ] P1 剩余：systemd 范围 probe 修后通过，但实际 owner 启动仍返回 unconfirmed，待直接定位；Remote 与睡眠/OS 调时等身份场景在受影响产品验收中补证。
+- [x] (2026-10-08) P1 原生协调最终组：`bd4dab3d` / run `37710935919` 三平台通过，Linux 真实 systemd 启动/复用/idle已通过；Remote 与睡眠/OS 调时等未执行身份场景保留于 P3 证据清单。
 - [x] (2026-10-08) P2 主接线：两类单根/多根新建显式 root；metadata/原绑定/缓存/设置边界与正常 build、受控回归已接通。
 - [x] (2026-10-08) P2 独立审查修复 restore bucket await 期间换绑定竞态，24 个定向组合先红后绿，原失效 owner 拒绝与原 client 退休屏障保留。
 - [ ] P3：完成受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本，整体审查并同步结账。
@@ -47,7 +47,7 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 
 ## 结果与复盘
 
-P1 身份与握手基础、三平台基础 probe、启动记录与准备事务已实现，macOS/Windows 原生协调全组及 Linux detached 直接证据已取得。P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。Linux systemd 实际启动、P3 多窗口/Agent/Webview/安装包仍未完成，F-03 保持开放。历史失败和本地沙箱限制原样保留，不追认通过。
+P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 多窗口/Agent/Webview/安装包与剩余具名场景仍未完成，F-03 保持开放。历史失败和本地沙箱限制原样保留，不追认通过。
 
 ## 上下文与定向
 
@@ -104,6 +104,12 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 随后本机 systemd 249 `systemd-analyze verify` 对照确认共享 unit renderer 的独立语法错误：`WorkingDirectory="/tmp"` 与带空格的 quoted 路径均 exit 1/fatal，未加引号的 scalar 路径均 exit 0。已窄修该字段，保留 ExecStart 引号及 `%` 转义，CR/LF/NUL 在写 unit/调用 systemctl 前拒绝；参数29项和协调24项回归通过。新原生失败分支仅记录本轮具名 unit 的 LoadError 等状态，不改原断言，尚不把此本机结论冒充旧 CI 根因已最终确认。
 
 P2 提交 `2d3d4f82` 已 rebase 到 `origin/main@357266ad`（0.26.0 发布），无冲突；正常 typecheck、build 与 `npm run package:vsix` 通过。P3 增量仍在准备，当前包不计安装或真实 Agent 验收通过。
+
+`bd4dab3d` / run `37710935919` 三平台原生最终组全绿，Linux日志明确记录 native systemd startup passed、detached preference reused existing systemd owner，以及闲置退出和正面claim释放后替换；不含PTY。此前两次systemd失败保持原结论，不删除或改绿。
+
+P3 第一组固定执行：`gh workflow run runtime-production-acceptance.yml --ref runtime-root-ownership -f reuse_native_run=37479044769 -f platform=all -f installed_mode=live-runtime -f root_ownership=true`。工作流重新产出同版VSIX，不复用旧产品；三平台仅跑已装Runtime Terminal/Webview，Linux跑新双窗口三root及真实Codex/Claude创建重连。`run-vscode-root-owner-candidate.mjs` 六分钟上限、独立安装测试扩展、同一user-data/profile和实际两EH；未选择故障注入、旧slot、设置差异、remove/readd，不将这些遗漏计作通过。每CLI两轮真实nonce、无工具、无自动重试，不重跑八场矩阵。完成后按R1-01至08核对剩余，不自动加新阶段。
+
+P3 本地受控：Agent reload 21项、安装包输入/收据18项、新双窗口合同39个拒绝场景及staging/真实stdin subject通过；不计实际VS Code。双窗口关闭旧EH后由存续multi保存完整画板再重开，避免把原有跨窗口整图覆盖问题混作本次运行时归属；此顺序显式记入输入/回执，不声称并发保存仲裁已解决。工作流测试的真实Bash子进程在本地沙箱挂起，主动终止exit130；仅以受控stub核对workflow选择/凭据/产物契约通过，不将stub当Bash语法验证，CI package中运行原完整测试。
 
 ## 接口与依赖
 

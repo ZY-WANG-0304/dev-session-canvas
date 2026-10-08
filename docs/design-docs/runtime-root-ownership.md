@@ -25,7 +25,7 @@ updated_at: 2026-10-08
 
 PR #295 已合并，本文以 `origin/main@06e9abcf32828325444e8263233537f25bf042a7` 为调查基线，独立处理审核 F-03 / 有限收尾 R1。画板按 root 保存，但新建 live Terminal/Agent 仍按创建窗口的 workspace storage 派生 Supervisor。同 root 在多个窗口的新会话会分散；不同 root 则可能共享进程，增加发现、诊断、退役复杂度和进程故障影响范围。单会话 stop/delete 并不因此跨 root 生效。
 
-原多根设计 §6.8 和规格第 16、17 项曾明确选定 slot 绑定。这是修订设计决策，不倒写成实现违反当时规格。2026-10-08 用户认可后已实施身份、启动准备与 P2 生产接线，进度见 §8；**正常新建已按 root 选路，仍待原生 systemd 修后验证及受影响产品验收，不宣称整体交付**。环境探针和启动竞争的可行性须取得直接证据，不能由文档审查代证。
+原多根设计 §6.8 和规格第 16、17 项曾明确选定 slot 绑定。这是修订设计决策，不倒写成实现违反当时规格。2026-10-08 用户认可后已实施身份、启动准备与 P2 生产接线，进度见 §8；**正常新建已按 root 选路，三平台原生协调已通过，受影响产品验收仍开放，不宣称整体交付**。环境探针和启动竞争的可行性须取得直接证据，不能由文档审查代证。
 
 目标是多根 workspace 作为各 root 画板的组合视图：同一执行环境、用户存储范围、root 身份、Supervisor generation 确定稳定 owner（托管会话的运行时归属）。单根、多根、PaneGallery 和创建窗口不改变它。稳定指找到同一个逻辑归属，不保证 Supervisor PID 永远不变。
 
@@ -199,6 +199,10 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 设计阶段验证仅为代码事实复核、独立文档审查、元数据/引用检查和 `git diff --check`。平台来源与并发原语是直接实施前置；永久设备标识、全局资源调度、跨机器共享盘发现、通用多写者事务和历史 GC 是可延期增强，不自动排入下一阶段。历史失败保留在原记录，不转抄为当前待办。
 
 ## 8. 实施进度
+
+`bd4dab3d` / run `37710935919` 三平台全部通过：Linux 除 detached 及中断组外，实际 systemd 环境 probe、owner 启动、detached 偏好复用 systemd owner 和正常 idle 退役均通过。macOS/Windows 同 root 汇聚、真实 Host helper、中断、未知不重提和正面 claim 释放后重启通过。该脚本没有 PTY，不代证 Terminal/Agent/Webview 产品体验。旧 run 的失败仍保留。
+
+P3 固定入口为 production workflow 的显式 `root_ownership=true`，复用未变六资产重新正常打包一次。新同版包跑三平台已装 Runtime Terminal/Webview，Linux 同 profile 的真实单 A / 多根 A,B,C 两窗口各自新建、关闭/重开、3-owner RSS 单样本与正常退役，以及 Codex/Claude 各一次两轮 nonce 的真实创建/Reload。旧八场 Agent 默认选择保持，不对本轮选择宣称全矩阵通过。双窗口使用实际安装产品和独立测试扩展，不注入节点 metadata；同名 root 不同用户目录不算汇聚。该具名场景不覆盖 owner 故障、设置差异、legacy slot、移除重加或资源增长曲线，剩余 §7 各格仍需按实际证据单列。
 
 当前状态：P2 已将 Agent/Terminal 单根、多根新建切至显式 root target；已有 attach/input/resize/stop/delete 沿原 owner 与完整 binding。受控 wiring 250 项、Canvas context、Host deactivation、completed 无历史回归、typecheck 与正常 build 通过。root 在环境解析、旧绑定清理、owner 获取和 create 返回期间变化会拒绝过时结果；未知 create 保留原责任。真实产品验收尚未执行。以下段落保留分阶段证据，所述“默认路由不变”仅指当时提交。
 
