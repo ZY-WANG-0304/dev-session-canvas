@@ -126,6 +126,10 @@ Root 保留现有词法路径语义：使用执行端的绝对 workspace folder 
 
 Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner：已有 detached 则复用 detached，已有 systemd 则复用 systemd。fallback 仅用于可证明未创建 owner 且 backend 不支持/不可用的情况；启动请求结果未知、owner claim 被占用、ready 超时或端点不可访问时保留 unknown，不能继续换 backend。systemd unit 的重写同样须持准备权、确认无原 owner/未决启动并核对配置；不能在正常重连时写入另一个窗口的 bundle 路径。冷启动新 owner 只按既有故障后不恢复规则处理自身 session 临时数据，不扫描/清理其他 root 或旧 slot。
 
+具体范围核对采用 `systemd-run --user` 执行短命、只读的 launcher 环境 probe，比较 nonce、执行环境摘要和用户摘要；不从 D-Bus 返回的 PID 推断本地 `/proc` 身份，因为两者可能属于不同 PID namespace。探针的启动 job、运行、停止各有限时，调用方另有 15 秒/16 KiB 预算；明确工具/总线不可用或摘要不符才判为 unavailable，权限、超时和格式错误均保留 unknown。该 probe 不创建会话、不替代 owner 握手，也不证明所有系统排队条件下的后代绝对退出时限。
+
+准备调用的 Host 总预算为 30 秒；结果返回后最多等 helper close 1 秒且不超总预算。超时或 IPC 断开只表示结果未确认，不代表 helper 已退出、准备权已释放或 Supervisor 已停止。持锁 helper 在取消检查点停止后续动作；intent 已发布而提交未确认时保持 pending，后续不得自动擦除。launcher 与 Supervisor 构建使用相同资源准入常量，避免启动意图和实际兼容指纹不一致。
+
 该调整在 `panel/runtimeHostBackend.ts`、`panel/runtimeSupervisorClient.ts`、`supervisor/runtimeSupervisorNamespace.ts` 与 `runtimeSupervisorMain.ts` 内有限落地，不增加全局发现 server 或数据库。跨 Host 的唯一性必须用真实两个进程证明，单 client Promise 不代证。
 
 ### 4.4 创建、设置与资源边界
@@ -207,3 +211,5 @@ Windows 只读 boot UUID/SID probe 优先由系统自带 PowerShell 调用固定
 该增量的本地记录测试、36 受控握手/启动、18 启动参数与 31 reader/client、typecheck、普通 build 通过。独立复核修复新 root systemd storage 默认创建为 0755 导致 Main 私有校验拒绝的问题，仅新代创建 0700，旧路径不改；新增参数用例核对这一差异。现有正常 live 尾部/状态/释放机制未改，不重复旧 Agent 或容量矩阵。
 
 提交 `d1fe71e7` / run `37661131732` attempt 1 三平台基础 CI 成功，实际父子身份与临时文件记录测试通过，受控握手/启动 Linux/macOS 各 36、Windows 32，typecheck 通过。旧历史清理本地回归 116 项通过、2 个 socket 用例按既有脚本跳过。启动准备排他事务、systemd manager 范围及真实中断/竞争仍开放，随后才接 P2 生产路由；不宣称 root 稳定归属已交付。
+
+后续实现已接通短命 launcher 准备事务及 Host IPC 调用：私有路径逐级验证，持准备权后重新发现两类 endpoint，已有 owner 不重写 descriptor，pending 不重提，正面运行锁 probe 后才写新 intent/提交。受控测试覆盖私有文件、19 项 Host 生命周期、33 项 systemd 环境判定和 24 项协调/取消边界；原启动参数 18 项、reader/client 31 项、typecheck 和普通 build 通过。实际双进程竞争待新的正常 bundle 验证，默认 Manager 路由仍不变。CI 复用 run `37479044769` 的已验证六架构资产并核对原 SHA/当前原生源码，不重建未变资产。

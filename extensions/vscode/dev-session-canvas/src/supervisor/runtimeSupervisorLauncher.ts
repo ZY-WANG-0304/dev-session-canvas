@@ -8,6 +8,39 @@ import {
 } from '../common/runtimeSupervisorProtocol';
 
 async function main(): Promise<void> {
+  if (process.argv.includes('--probe-root-environment')) {
+    const nonce = readCliFlag('--probe-root-environment');
+    if (!nonce || !/^[a-f0-9-]{36}$/.test(nonce)) throw new Error('Invalid environment probe nonce.');
+    const { readRuntimeExecutionEnvironment } = await import('../panel/runtimeExecutionEnvironment');
+    const { createHash } = await import('crypto');
+    const environment = await readRuntimeExecutionEnvironment();
+    process.stdout.write(`${JSON.stringify({ schema: 1, nonce, environmentKey: environment.environmentKey,
+      userIdentityKey: createHash('sha256').update(environment.userIdentity).digest('hex') })}\n`);
+    return;
+  }
+  if (process.argv.includes('--prepare-root-runtime')) {
+    if (!process.send || !process.connected) throw new Error('Root preparation requires a live Host IPC channel.');
+    let accepted = false;
+    const watchdog = setTimeout(() => process.exit(1), 30_000);
+    process.once('message', async (request: import('../panel/runtimeRootSupervisorPreparation').RootPreparationRequest) => {
+      accepted = true;
+      try {
+        const { prepareRuntimeRootSupervisor } = await import('./runtimeRootPreparation');
+        const result = await prepareRuntimeRootSupervisor(request, () => !process.connected);
+        if (process.connected) process.send!(result, () => process.exit(0));
+        else process.exit(0);
+      } catch { process.exit(1); }
+    });
+    process.once('disconnect', () => { if (!accepted) process.exit(0); });
+    watchdog.unref();
+    return;
+  }
+  if (process.argv.includes('--probe-root-runtime')) {
+    const { claimRootRuntimeForProbe } = await import('./runtimeRootPreparation');
+    await claimRootRuntimeForProbe(readCliPathFlag('--storage-dir')!, readCliFlag('--execution-profile'), path.dirname(__dirname));
+    process.stdout.write('root-runtime-unowned\n', () => process.exit(0));
+    return;
+  }
   const supervisorScriptPath = readCliPathFlag('--supervisor-script');
   const storageDir = readCliPathFlag('--storage-dir');
   if (!supervisorScriptPath) {

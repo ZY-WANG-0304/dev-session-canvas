@@ -14,7 +14,8 @@
 - [x] (2026-10-08) P1 基础代码：纯身份/路径、执行端环境识别、独立 generation 与 owner 握手已实现；默认创建路由未改。
 - [x] (2026-10-08) 三平台原生父进程/双子进程身份一致 probe：`6688c21e` / run `37657913544`，Windows 首败保留、相同预算失败项重试通过。
 - [x] (2026-10-08) P1 启动记录：私有 intent/started、claim 前匹配与 claim 后发布、单 token 拒绝重复消费；提取原有底层启动命令供准备流程复用。
-- [ ] P1 剩余：启动准备排他事务、systemd manager 范围核对和真实竞争/中断后判定；平台 probe 不代证这些保护。Remote 与睡眠/OS 调时等身份场景在受影响产品验收中补证。
+- [x] (2026-10-08) P1 准备事务实现：短命持锁 launcher、单次提交 IPC、私有 descriptor 发布和 systemd 实际环境探针；受控测试与正常 build 通过，默认路由未改。
+- [ ] P1 剩余：正常 bundle 的真实竞争/中断后判定及 systemd manager 实测；受控测试不代证。Remote 与睡眠/OS 调时等身份场景在受影响产品验收中补证。
 - [ ] P2：接入单根/多根 Agent/Terminal 创建、backend 发现、客户端缓存与退役；保留原绑定与设置语义。
 - [ ] P3：完成受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本，整体审查并同步结账。
 
@@ -36,9 +37,11 @@
 
 2026-10-08：启动准备复用短命 launcher 和独立 namespace，不在 EH 持 macOS one-shot native claim、不改 native 资产。采用每 token 唯一提交、持运行锁的主体发布 started 回执、后继正面探运行锁的结算方式，避免引入 PID 追踪。缺回执的 pending 保留 unknown；started 不代替 ready/终态/尾部结算。完整约束见设计 §4.3，实施与真实竞争验证尚未完成。
 
+2026-10-08：systemd 范围验证使用实际 transient launcher probe，不使用 D-Bus PID 对照本地 `/proc` 的推断，避免跨 PID namespace 的坐标混淆。只增加固定的 probe 模式、nonce/摘要核对及有限 job/运行预算，不新增常驻服务。Host 30 秒结算不当作 helper 退出证据；真实测试观察 close 或实际 claim 释放。
+
 ## 结果与复盘
 
-P1 身份与握手基础、三平台基础 probe、启动记录与 Main 消费顺序已实现，默认创建及原 slot 路由保持。本地沙箱限制原样记录；三平台基础 CI 已取得结果，Windows 首次 probe 失败不追认。后续受控启动记录/握手与原启动回归通过，但它们不验证真实准备锁竞争。P1 启动准备事务与 P2/P3 未完成，F-03 保持开放。
+P1 身份与握手基础、三平台基础 probe、启动记录与 Main 消费顺序、准备事务已实现，默认创建及原 slot 路由保持。本地沙箱限制原样记录；三平台基础 CI 已取得结果，Windows 首次 probe 失败不追认。受控启动记录/协调与原启动回归通过，但它们不验证真实准备锁竞争。P1 原生协调验收与 P2/P3 未完成，F-03 保持开放。
 
 ## 上下文与定向
 
@@ -75,6 +78,10 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 启动记录增量本地验证：`node scripts/test/test-runtime-root-startup.mjs`（私有临时文件与原子失败）、`node scripts/test/test-runtime-root-owner-handshake.mjs`（36 受控项）、`npm run test:runtime-supervisor-startup-profile`（18+31）、typecheck、普通 build 和 diff check 通过。同 token 第二个新 server 即使取得受控 claim，也不消费第二次、不触碰重新写入的 registry/journal 哨兵。新 root systemd storage 显式创建 0700；旧路径 mkdir/命令/环境参数保持原样。
 
 启动记录提交 `d1fe71e7` / run `37661131732` attempt 1 三平台成功：父子身份 probe、真实临时文件记录测试、Linux/macOS 各 36 及 Windows 32 个受控握手/启动用例、typecheck 均通过。未运行真实 startup-preparation 竞争，因为该入口尚未实施；不把该 CI 当作完整 P1 或产品验收。另跑 `test-legacy-runtime-history.mjs` 为 116 项通过，原有 2 个 Unix socket 用例因环境拒绝访问而按现有脚本跳过，不计原生通过。
+
+准备事务本地增量：`test-runtime-root-owner-storage.mjs`（真实私有文件）、`test-runtime-root-preparation-client.mjs`（19 受控项）、`test-runtime-systemd-environment.mjs`（33 受控项）、`test-runtime-root-preparation.mjs`（24 受控项）、原 startup/reader 18+31、typecheck、普通 build 通过。聚合入口为 `npm run test:runtime-root-preparation`。本机 user bus 为 EPERM，不记录 systemd 原生通过。接下来只增加真实 owner 竞争/复用/退役的有限测试，复用 run `37479044769` / 原资产 SHA `2bdfc311a2fcf4911c09a5bbf86c35579dc12522`；资产源码未变，assembler 继续验证来源，不重跑六架构构建。
+
+`test-runtime-root-preparation-native.mjs` 使用正常 build 的 launcher/Main，覆盖同 root 两准备进程收敛、已有 owner 复用、不同 root 隔离、真实运行锁占用、闲置退出后新 token。Linux 先做实际 systemd probe；可用时验证新建/跨偏好复用，明确 unavailable 则单列 not-verified，unknown 失败。清理仅在 helper close、正面运行锁释放和本轮 systemd unit inactive 后处理具名资源，不 kill 未知进程。pending 场景是磁盘夹具，不能代证真实提交中断。本地执行在 launcher 环境预检得到空 stdout 而失败，尚未提交任何 Supervisor；保留这个结果，由三平台 CI 取得实际协调证据。复用资产的原 run 总结果为 failure，六个 native-assets job 与 package 均为 success，只复用这些原生产物，不追认原 run 整体验收。
 
 ## 接口与依赖
 

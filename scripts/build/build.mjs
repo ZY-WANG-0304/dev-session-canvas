@@ -199,6 +199,8 @@ async function runBuild() {
     __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__: JSON.stringify(selection.admissionLimits) ?? 'undefined' };
   supervisorConfig.define = { ...supervisorConfig.define,
     __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__: JSON.stringify(selection.admissionLimits) ?? 'undefined' };
+  supervisorLauncherConfig.define = { ...supervisorLauncherConfig.define,
+    __DEV_SESSION_CANVAS_EXECUTION_ADMISSION__: JSON.stringify(selection.admissionLimits) ?? 'undefined' };
   await fs.rm(mainExtensionDistRoot, { recursive: true, force: true });
 
   if (!isWatch) {
