@@ -216,6 +216,15 @@ async function boundarySingle() {
 }
 
 async function boundaryMulti() {
+  // Workspace roots change Webview resource options and reload its frame independently of Host state.
+  const waitForRootFrame = previous => {
+    assert(typeof previous === 'string' && previous.length > 0, 'Require the original frame before changing roots.');
+    return poll('C folder change frame ready', snapshot, value => {
+      const lifecycle = value.surfaceLifecycle[surface];
+      return value.surfaceReady[surface] && lifecycle.ready && lifecycle.bootstrapAck &&
+        typeof lifecycle.frameId === 'string' && lifecycle.frameId !== previous;
+    });
+  };
   const subjects = [];
   for (const key of ['a', 'b', 'c']) subjects.push(await createSubject(`multi-${key}`, control.roots[key]));
   environment.globalStorage = await fs.realpath(environment.globalStorage);
@@ -241,30 +250,38 @@ async function boundaryMulti() {
   }, value => value.page?.terminalCols >= 80 && value.page.terminalCols === value.state.cols
     && value.page.terminalRows === value.state.rows && value.state.scrollback === 2500
     && (value.state.cols !== resizeBefore.cols || value.state.rows !== resizeBefore.rows));
+  let previousFrame = (await snapshot()).surfaceLifecycle[surface].frameId;
   await vscode.commands.executeCommand('devSessionCanvas.removeFolderFromWorkspace', control.roots.c, false);
   await poll('C removed with keep', async () => ({ roots: vscode.workspace.workspaceFolders,
     state: await snapshot() }), value => !value.roots.some(folder => folder.uri.fsPath === control.roots.c)
       && !nodeBySession(value.state, c.binding.runtimeSessionId)
       && !value.state.state.groups.some(group => group.workspaceRootPath === control.roots.c));
+  await waitForRootFrame(previousFrame);
   const kept = await sessionSnapshot(c);
   assert.equal(kept.live, true);
+  previousFrame = (await snapshot()).surfaceLifecycle[surface].frameId;
   assert(vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders.length, 0,
     { uri: vscode.Uri.file(control.roots.c), name: 'c' }));
+  await waitForRootFrame(previousFrame);
   const readded = await inspectSubject(await liveNode(c.binding.runtimeSessionId), c.rootPath, c.label, c.receiptPath);
   assertBinding(readded.binding, c.binding);
   for (const key of ['supervisor', 'provider', 'identity']) assert(sameLiveIdentity(c[key], readded[key]));
   assert.equal(readded.reader.authorityId, c.reader.authorityId);
   const keepInteraction = await interact(c.binding.runtimeSessionId);
+  previousFrame = (await snapshot()).surfaceLifecycle[surface].frameId;
   await vscode.commands.executeCommand('devSessionCanvas.removeFolderFromWorkspace', control.roots.c, true);
   await poll('C removed with clear', async () => ({ roots: vscode.workspace.workspaceFolders,
     state: await snapshot() }), value => !value.roots.some(folder => folder.uri.fsPath === control.roots.c)
       && !nodeBySession(value.state, c.binding.runtimeSessionId)
       && !value.state.state.groups.some(group => group.workspaceRootPath === control.roots.c));
+  await waitForRootFrame(previousFrame);
   await poll('cleared C subject exited', () => readIdentity(c.identity.pid), value => exitedIdentity(c.identity, value));
+  previousFrame = (await snapshot()).surfaceLifecycle[surface].frameId;
   assert(vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders.length, 0,
     { uri: vscode.Uri.file(control.roots.c), name: 'c' }));
   await poll('cleared C readded empty', snapshot, value => value.state.groups.some(group => group.workspaceRootPath === control.roots.c)
     && !nodeBySession(value, c.binding.runtimeSessionId));
+  await waitForRootFrame(previousFrame);
   const afterClear = [await interact(a.binding.runtimeSessionId), await interact(b.binding.runtimeSessionId)];
   // The fault is an explicit stimulus against this fixture's freshly verified owner, not successful EOF.
   const injected = await signalOwned(a.supervisor, 'SIGKILL');

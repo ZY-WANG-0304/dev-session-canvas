@@ -26,6 +26,8 @@
 
 ## 意外与发现
 
+后续归档定位：Terminal `37719235540` 的 B resize 已通过，C keep/readd 时 probe 早于新 Webview JS 加载；四次 root 变更增加等待新 frameId/ready/bootstrapAck，原 5 秒 probe 和总预算不变。实际 driver 四阶段回归先红后绿；没有失败瞬间 lifecycle，不能推断更细丢弃位置。Codex `37719440437` 两窗创建与 BEFORE、multi 的 gallery 往返和 AFTER 通过，single 在 AFTER 前 mountedReader 超时；读取历史消息环中快照的脆弱点明确，但本次是否淘汰缺直接证据。Claude `4ea33105` / `37720113628` 已进入带 model 的真实界面，NBSP 提示符不符合夹具正则导致 readiness 超时；只修已确认匹配问题，不将失败计作 root 产品缺陷。
+
 `21bcd483` / `37719142087` 的 Claude 已越过 Security notes，后续实际信任页默认选中 `No, exit`，夹具直接 Enter 导致 exit 1，未进入 Reload。仅对精确固定页面核对选项后 Down+Enter；已选 Yes 则 Enter，未知布局拒绝且等待页面消失。33 项受控测试及原失败页重放通过，产品包不变，仅重试 Claude。`37719235540` Terminal 边界组在 single 原 reader 应用 scrollback/nonce 后发生 Webview probe 超时；`37719440437` Codex 双窗口失败。两项原始结果保留，根因仍在核对，不能计入产品通过或预判产品缺陷。
 
 Linux run `37715894411` 双窗与 Codex 已通过；Claude 首错是 setup 的 `Timed out: claude interactive surface`，真实页面停在固定 CLI v2.1.280 的 `Security notes:` / `Press Enter to continue`。仅补该精确 onboarding 提示的一次 Enter；未知提示不自动确认，确认后仍须真实 model/composer 与 nonce。原失败未进入 Reload，不能判作 root 产品故障。cleanup 已到 nodes/bindings/pending=0，但因 setup 未完成而缺原进程资源回执，原退出证明断言仍失败；不放宽该断言或追认资源已退出。
