@@ -125,6 +125,7 @@ async function main() {
     const values = boundaryFixture(); mutate(values);
     assert.throws(() => assertBoundaryCase(...values));
   }
+  await checkBoundaryFrameReadiness();
   assertContained('/fixture/user-data', '/fixture/user-data/owned');
   for (const value of ['/fixture/user-data', '/fixture/user-data-elsewhere/owner', '/fixture/user-data/../outside']) {
     assert.throws(() => assertContained('/fixture/user-data', value));
@@ -170,7 +171,85 @@ async function main() {
       /before the first extension install/);
     await runSubject(temporary);
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
-  console.log(`Root-owner controlled contract cases passed (${negativeCases.length} baseline and 11 boundary rejection cases, profile registration and staging order, selection, real stdin subject); no native VS Code execution claim.`);
+  console.log(`Root-owner controlled contract cases passed (${negativeCases.length} baseline and 11 boundary rejection cases, four current-frame boundaries, profile registration and staging order, selection, real stdin subject); no native VS Code execution claim.`);
+}
+
+async function checkBoundaryFrameReadiness() {
+  const ts = require('typescript');
+  const source = await fs.readFile(path.join(__dirname, 'root-owner-driver.cjs'), 'utf8');
+  const ast = ts.createSourceFile('root-owner-driver.cjs', source, ts.ScriptTarget.Latest, true);
+  const body = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name.text === 'boundaryMulti').getText(ast);
+  const roots = { a: '/fixture/a', b: '/fixture/b', c: '/fixture/c' };
+  const subjects = ['a', 'b', 'c'].map(key => ({ label: `multi-${key}`, rootPath: roots[key],
+    binding: { runtimeSessionId: key }, supervisor: identity(100), provider: identity(200),
+    identity: identity(300), reader: { authorityId: `authority-${key}` } }));
+  let folders = Object.values(roots), changed = 0, observed = 0, acknowledged = 0, scrollback = 2000, resized = false, cleared = false;
+  const frames = [];
+  const node = sessionId => ({ id: sessionId, position: { x: 0, y: 0 }, metadata: { terminal: { runtimeSessionId: sessionId } } });
+  const snapshot = async () => {
+    const step = changed === 0 ? 3 : Math.min(observed++, 3);
+    const lifecycle = { frameId: `frame-${step === 0 ? changed - 1 : changed}`, ready: step !== 1, bootstrapAck: step === 0 || step === 3 };
+    if (step === 3) acknowledged = changed;
+    frames.push({ changed, ...lifecycle });
+    return { state: { nodes: subjects.filter(value => folders.includes(value.rootPath) && !(cleared && value.rootPath === roots.c))
+      .map(value => node(value.binding.runtimeSessionId)),
+      groups: folders.map(workspaceRootPath => ({ workspaceRootPath })) },
+      surfaceReady: { panel: lifecycle.ready }, surfaceLifecycle: { panel: lifecycle } };
+  };
+  const changeFolders = next => { assert.equal(acknowledged, changed, 'Do not overlap two root-triggered frame reloads.'); folders = next; changed++; observed = 0; };
+  const done = new Error('four boundaries verified');
+  const context = { assert, path, control: { roots }, surface: 'panel', environment: { globalStorage: '/fixture/global' },
+    fs: { realpath: async value => value }, createSubject: async label => subjects.find(value => value.label === label),
+    flush: async () => {}, archive: async () => {}, waitFile: async () => ({ subject: {} }), assertTopology: () => {},
+    liveNode: async id => node(id), focus: async () => {}, dispatch: async () => { resized = true; },
+    snapshot, nodeBySession: (state, id) => state.state.nodes.find(value => value.id === id),
+    sessionSnapshot: async subject => ({ sessionId: subject.binding.runtimeSessionId, live: true,
+      scrollback, cols: resized ? 100 : 120, rows: resized ? 30 : 35 }),
+    probe: async () => ({ nodes: [{ nodeId: 'b', terminalCols: 100, terminalRows: 30 }] }),
+    poll: async (label, get, accept) => {
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const value = await get();
+        if (accept(value)) {
+          if (label === 'C folder change frame ready') {
+            assert.deepEqual(value.surfaceLifecycle.panel, { frameId: `frame-${changed}`, ready: true, bootstrapAck: true },
+              'An old ready frame or new unacknowledged frame cannot satisfy the boundary.');
+            assert.equal(value.surfaceReady.panel, true);
+          }
+          return value;
+        }
+      }
+      throw new Error('current frame did not settle');
+    },
+    vscode: { Uri: { file: value => value }, ConfigurationTarget: { Workspace: 2 }, workspace: {
+      get workspaceFolders() { return folders.map(fsPath => ({ uri: { fsPath } })); },
+      getConfiguration: () => ({ update: async (_key, value) => { scrollback = value; } }),
+      updateWorkspaceFolders: () => { changeFolders([...folders, roots.c]); return true; }
+    }, commands: { executeCommand: async (name, _root, clear) => {
+      if (name === 'devSessionCanvas.removeFolderFromWorkspace') {
+        cleared ||= clear === true;
+        changeFolders(folders.filter(value => value !== roots.c));
+      }
+    } } },
+    inspectSubject: async () => {
+      assert.equal(acknowledged, changed, 'C inspection must wait for the readded frame ready and bootstrap ack.');
+      return subjects[2];
+    }, assertBinding: () => {}, sameLiveIdentity: () => true, readIdentity: async () => undefined, exitedIdentity: () => true,
+    interact: async id => {
+      assert.equal(acknowledged, changed, 'Page interaction cannot use a stale frame.');
+      if (id === 'a') throw done;
+      return interaction(id);
+    }
+  };
+  const run = new Function(...Object.keys(context), `${body}\nreturn boundaryMulti;`)(...Object.values(context));
+  await assert.rejects(run(), error => error === done);
+  assert.equal(changed, 4); assert.equal(acknowledged, 4);
+  for (let change = 1; change <= 4; change++) {
+    const values = frames.filter(value => value.changed === change);
+    assert(values.some(value => value.frameId === `frame-${change - 1}` && value.ready && value.bootstrapAck));
+    assert(values.some(value => value.frameId === `frame-${change}` && !value.ready));
+    assert(values.some(value => value.frameId === `frame-${change}` && value.ready && !value.bootstrapAck));
+    assert(values.some(value => value.frameId === `frame-${change}` && value.ready && value.bootstrapAck));
+  }
 }
 
 async function runSubject(temporary) {

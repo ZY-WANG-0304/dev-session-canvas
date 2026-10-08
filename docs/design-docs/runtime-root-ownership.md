@@ -206,6 +206,10 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 本节先列最新结论，后续保留具名提交/run 的分阶段原始记录；历史“待执行”与失败不是当前新增待办，也不追认通过。
 
+`37719235540` 已定位到 C keep/readd 后的 `inspectSubject/focus`，B resize 已执行通过。原 probe 在新 Webview JS 加载前发出；root 变更使 VS Code 更新 localResourceRoots 并重载页面，旧 ready 与 Host live binding 不能证明新 frame 就绪。仅在四次 remove/readd 分别等待不同 frameId、ready 和 bootstrapAck，原 5 秒 probe 与总预算保持；实际 driver 的四个阶段先红后绿。没有失败瞬间 lifecycle 回执，不能更具体断言请求被哪个 frame 丢弃，原失败仍保留。
+
+`37719440437` 已取得两窗独立 Agent 创建、两次 BEFORE 应答和 multi 的 PaneGallery/rootGroups 往返及 AFTER 应答；single 在 AFTER 输入前的 mountedReader 超时。其判据依赖最近 200 条消息中的历史快照，存在确定夹具脆弱点，但缺失败瞬间 probe/messages，不能证明本次就是记录淘汰或产品挂载故障。`4ea33105` / `37720113628` Claude 已进入真实 deepseek-flash 输入界面，但提示符后的 NBSP 不被现有空白正则接受，仍未进入 Reload；仅修精确输入匹配，不放宽真实应答或资源退出。
+
 剩余验收首轮：`21bcd483` / `37719142087` 的 Claude 已通过 Security notes，随后信任页默认选中 `No, exit`，夹具直接 Enter 导致 CLI exit 1。仅改为精确核对该页选项后 Down+Enter，已选 Yes 则 Enter，未知布局拒绝；实际失败页面与 33 项受控测试通过，真实 Reload 仍待重试。`37719235540` 的 Terminal 边界组已记录原 reader 的 scrollback 应用与 nonce，随后 Webview probe 超时；`37719440437` 的 Codex 双窗口也失败，均待按原始归档定位，不预判产品根因。
 
 最新受影响结果：`37714907772` 修后同包三平台 installed 与 macOS/Windows Codex Reload 均通过；`789888d3` / `37715894411` 同包 Linux 双窗及 Codex 通过，Claude 因固定 CLI security-notes 确认页未处理而在 setup 失败，保留原失败及缺原资源回执的清理断言。精确提示处理的受控测试先红后绿，不修改产品或泛化为自动确认任意提示；仅重试 Claude，不重复 Codex。
