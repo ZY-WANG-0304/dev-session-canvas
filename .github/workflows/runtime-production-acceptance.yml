@@ -179,6 +179,7 @@ jobs:
                 .split('\0').filter(Boolean);
               assert(changed.every(file => file === 'ARCHITECTURE.md' || file.startsWith('docs/') || file.startsWith('scripts/smoke/')
                 || file.startsWith('scripts/test/') || file.startsWith('tests/vscode-smoke/') || file.startsWith('tests/playwright/')
+                || file === 'scripts/diagnostics/diagnose-claude-trust-startup.mjs'
                 || file === '.github/workflows/runtime-production-acceptance.yml'),
                 'Package reuse permits only documentation and acceptance harness changes, not product inputs.');
             }

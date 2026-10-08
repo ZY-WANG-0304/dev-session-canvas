@@ -119,3 +119,5 @@ node --test scripts/test/test-agent-runtime-reload-driver.mjs
 原 driver 与修后函数对同一受控时序（输入后 9ms Yes、46ms No，100ms probe）分别运行：原版一次 Down，2 秒缩短测试预算耗尽；修后 t=0/100ms 两次 End，t=300ms 唯一 Enter，t=700ms 通过模拟 composer 双重确认。测试没有要求旧版支持 End，旧版 Down 也按实际语义产生短暂 Yes。
 
 用修后实际 `waitForAgentReady()` / `hasLoadedAgentComposer()` 连接同版本直接 PTY 的有限验证：580.819ms End，586.365ms Yes，645.673ms No；681.504ms 第二次 End，686.061ms Yes；883.111ms 唯一信任 Enter，891.666ms 信任页消失，1586ms 完成真实 composer 就绪。只使用假认证、没有模型回合，不能替代真实应答 / Reload。原始证据位于本轮 `.debug/trust-actual-driver/`、`.debug/trust-before-after.json`，真实安装态结果待追加。
+
+原 VSIX 产生于 PR #306 的 4b2cf71e，后续 f3d4590c 新增的纯观察诊断脚本不参与产品构建。为复用同一包，`.github/workflows/runtime-production-acceptance.yml` 仅额外允许 `scripts/diagnostics/diagnose-claude-trust-startup.mjs` 这一具体路径；其余产品输入仍按原白名单拒绝。

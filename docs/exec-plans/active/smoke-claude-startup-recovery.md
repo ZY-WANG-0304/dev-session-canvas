@@ -15,6 +15,8 @@
 
 ## 意外与发现
 
+原包产生后 PR #306 又添加了纯观察脚本 scripts/diagnostics/diagnose-claude-trust-startup.mjs，现有 package 复用白名单不含该路径。复核其不参与产品构建后，给该单一文件添加复用例外；不泛化放行所有 diagnostics，也不重打未变产品。
+
 当前 Webview probe 只有最终屏幕，不能保证看到两次采样之间的 Yes；因此不能把重复读到 No 当成前一次导航已经消费。原始 setup.resources 仅在模型应答后生成。Windows observer 持有原进程 handle，不能用新的 PID 扫描替代。
 
 ## 决策记录
