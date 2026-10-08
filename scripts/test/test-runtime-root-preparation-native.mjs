@@ -95,6 +95,7 @@ async function runTests() {
       export * from './extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership';
       export * from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths';
       export * from './extensions/vscode/dev-session-canvas/src/panel/runtimeExecutionEnvironment';
+      export { prepareRootRuntimeSupervisor } from './extensions/vscode/dev-session-canvas/src/panel/runtimeRootSupervisorPreparation';
       export * from './extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment';
       export * from './extensions/vscode/dev-session-canvas/src/panel/executionOwnerFactory';
       export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
@@ -103,6 +104,7 @@ async function runTests() {
       export * from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorNamespace';
     `, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', outfile: supportPath });
     api = require(supportPath);
+    assert.equal(typeof api.prepareRootRuntimeSupervisor, 'function');
     const environment = await api.readRuntimeExecutionEnvironment();
     const nonce = randomUUID();
     const preflight = await runLauncher(['--probe-root-environment', nonce]);
