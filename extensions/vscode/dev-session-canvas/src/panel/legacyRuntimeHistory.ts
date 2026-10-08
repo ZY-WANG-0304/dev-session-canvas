@@ -28,13 +28,17 @@ export async function inspectStoppedLegacyRuntimeSession(
     || !['agent', 'terminal'].includes(session.kind)) return undefined;
   try {
     const storageDir = backend.paths.storageDir;
-    const generationDir = path.dirname(storageDir);
+    const baseStorageDir = path.dirname(storageDir);
+    const detached = backend.kind === 'legacy-detached';
+    const knownGeneration = LEGACY_HISTORY_GENERATIONS.has(path.basename(baseStorageDir))
+      && path.basename(path.dirname(baseStorageDir)) === 'runtime-supervisor-generations';
+    // Before generations, VS Code stored the detached runtime directly in the extension's workspace slot.
+    const unversionedWorkspace = detached && path.basename(baseStorageDir) === 'devsessioncanvas.dev-session-canvas'
+      && path.basename(path.dirname(path.dirname(baseStorageDir))) === 'workspaceStorage';
     if (!path.isAbsolute(storageDir) || path.resolve(storageDir) !== storageDir
       || path.basename(storageDir) !== 'runtime-supervisor'
-      || !LEGACY_HISTORY_GENERATIONS.has(path.basename(generationDir))
-      || path.basename(path.dirname(generationDir)) !== 'runtime-supervisor-generations'
+      || (!knownGeneration && !unversionedWorkspace)
       || await fs.realpath(storageDir) !== storageDir || signal?.aborted) return undefined;
-    const detached = backend.kind === 'legacy-detached';
     const expected = detached ? resolveLegacyRuntimeSupervisorPathsFromStorageDir(storageDir)
       : resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(storageDir);
     const pathKeys = detached ? ['registryPath', 'socketPath', 'runtimeDir', 'socketLocation']

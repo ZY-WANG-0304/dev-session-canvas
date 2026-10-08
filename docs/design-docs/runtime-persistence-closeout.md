@@ -14,6 +14,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/completed/unversioned-runtime-history-cleanup.md
   - docs/exec-plans/completed/runtime-live-state-recovery.md
   - docs/exec-plans/completed/detached-restored-history-cleanup.md
   - docs/exec-plans/completed/native-runtime-history-cleanup.md
@@ -21,7 +22,7 @@ related_plans:
   - docs/exec-plans/completed/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
-updated_at: 2026-10-07
+updated_at: 2026-10-08
 ---
 
 # Runtime Persistence 有限收尾与完成定义
@@ -360,6 +361,16 @@ Host 对已结束且未提交的失败观察，允许下一显式操作重新观
 Host原身份、未提交/reader/finalization及共享截止保护不变；该资格逐目标检查，不进入native的storage级共享许可，也不跨preferred startup沿用。native前置观察明确限定terminal-exit-v1，旧恢复记录在新client能力校验后走当次检查。只读观察不是旧版并发启动的原子锁；限定同Linux运行环境/用户可见的进程视图，不支持恶意改argv或跨PID namespace推断。本工具的隔离/proc不包含原Host，因此只读matches为空不能宣称原owner已停止；实际授权必须在用户Host执行fresh观察。实施与结果见 `docs/exec-plans/completed/detached-restored-history-cleanup.md`。
 
 本轮legacy helper116项（含原81）、native39项通过，原3个真实socket/claim例受限跳过；Host新增旧detached14项并与旧history/B2组合95/95通过，另原S9/production/最终保存保护36/36通过，总用例232未全量重跑。typecheck、普通build、Main Only staging、调试配置检查和diff检查通过，独立复核无确定性blocker；未操作实际节点/registry/service，不以受控结果代证本次原窗口成功，旧大快照全量超时保持。
+
+### 第五现场：无 generation 的旧 workspace storage
+
+2026-10-08 诊断包 `2026-10-08T04-09-28-237Z` 的 `7db0bb3f-7499-401d-a895-be47b507fbc7` 与 `ee2e3793-fa87-4387-812c-c6187944bba9` 分别绑定普通 slot 和 `-1` slot 下的原始 `devsessioncanvas.dev-session-canvas/runtime-supervisor`，没有 generation 层。Host 为 history-restored/liveSession:false；原 registry 唯一目标为 legacy-detached、live:false、stopped、recoveredHistoryOnly。0.26.0 路径门禁在进程/socket及registry核验之前拒绝这两种布局，随后只能请求原 Supervisor 严格删除。本次只读端点探测分别 ECONNREFUSED、ENOENT；原诊断未保留当次删除的内部 reason，不把当前探测冒充历史日志。
+
+正式方案：`panel/legacyRuntimeHistory.ts` 增加 Linux legacy-detached 的 `workspaceStorage/<slot>/devsessioncanvas.dev-session-canvas/runtime-supervisor` 已知布局资格，支持普通与 indexed slot，不限定用户数据根或 slot hash。复用第四现场逐目标的 canonical 路径、派生 endpoint、稳定 version1 registry、精确 kind/backend/recoveredHistoryOnly、前后同环境进程/socket检查。无 generation 的 systemd、未知 generation 和其他目录形状不因此放行。Host 原身份、在途创建/删除、reader、最终保存及截止时间保护不变。
+
+该路径返回既有 detached-recovered-history，只授权删除本地节点或替换历史绑定，不要求缺席 Supervisor 补确认，不证明旧主体/后代退出，不重启或修改旧共享数据。实施与验证记录见 `docs/exec-plans/completed/unversioned-runtime-history-cleanup.md`。
+
+验证结果：新增原始slot回归先红后绿；legacy helper136项、native40项、Host定向149/149（选中149/250，非原生边界）、typecheck、默认build和Main Only staging/config通过。本环境原有3项真实socket/claim用例均执行，无跳过。两个具名现场记录使用原Host endpoint环境只读核验均返回 detached-recovered-history，registry SHA256前后不变；用户窗口实际删除尚未执行。Host首跑缺xterm补丁、build首跑缺默认原生资产均保留原失败；补齐仓库要求后通过，六目标资产复用已安装0.26.0并校验当前源码/二进制hash，未重跑跨平台原生矩阵。
 
 ## 13. 2026-10-07 最终当前状态恢复与分发结账
 
