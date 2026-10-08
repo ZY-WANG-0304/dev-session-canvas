@@ -22,6 +22,56 @@ const nativeSocketsAvailable = await new Promise(resolve => {
 });
 
 try {
+  for (const slot of ['legacy-slot', 'legacy-slot-1']) {
+    for (const kind of ['agent', 'terminal']) {
+      await test(`unversioned detached ${slot} ${kind} permits only local restored history cleanup`, async () => {
+        const f = await fixture({ detached: true, kind,
+          baseStorageRelativePath: path.join('workspaceStorage', slot, 'devsessioncanvas.dev-session-canvas') });
+        const before = await fs.stat(f.backend.paths.registryPath);
+        assert.equal(await f.inspect(), 'detached-recovered-history');
+        assert.equal(f.calls.length, 0);
+        assert.equal(f.observation.scans, 2);
+        assert.equal(f.observation.sockets, 2);
+        assert.equal(await fs.readFile(f.backend.paths.registryPath, 'utf8'), f.bytes);
+        const after = await fs.stat(f.backend.paths.registryPath);
+        assert.equal(after.ino, before.ino);
+        assert.equal(after.mtimeMs, before.mtimeMs);
+        assert.equal(after.ctimeMs, before.ctimeMs);
+      });
+    }
+  }
+
+  const unversionedPath = path.join('workspaceStorage', 'legacy-slot', 'devsessioncanvas.dev-session-canvas');
+  for (const options of [
+    { detached: false },
+    { baseStorageRelativePath: path.join('unrelatedStorage', 'legacy-slot', 'devsessioncanvas.dev-session-canvas') },
+    { baseStorageRelativePath: path.join('workspaceStorage', 'legacy-slot', 'other-extension') },
+    { baseStorageRelativePath: path.join('runtime-supervisor-generations', 'devsessioncanvas.dev-session-canvas') },
+    { patch: { live: true } }, { patch: { lastExitMessageDescriptor: undefined } },
+    { patch: { kind: 'terminal' } }, { patch: { runtimeBackend: 'systemd-user' } },
+    { registry: { version: 1, sessions: [] } },
+    { socketResult: 'connect' }, { socketResult: 'EACCES' },
+    { processes: { 42: { error: 'EACCES' } } },
+    { processes: backend => ({ 42: { argv: ['node', '/old-supervisor', '--storage-dir', backend.paths.storageDir] } }) }
+  ]) {
+    await test(`unversioned history retains layout and evidence protections: ${JSON.stringify(options)}`, async () => {
+      const f = await fixture({ detached: true, baseStorageRelativePath: unversionedPath, ...options });
+      assert.equal(await f.inspect(), undefined);
+      assert.equal(await fs.readFile(f.backend.paths.registryPath, 'utf8'), f.bytes);
+    });
+  }
+
+  await test('unversioned registry replacement still rejects history cleanup', async () => {
+    const f = await fixture({ detached: true, baseStorageRelativePath: unversionedPath, onProcScan: async scan => {
+      if (scan !== 2) return;
+      const replacement = `${f.backend.paths.registryPath}.replacement`;
+      await fs.writeFile(replacement, f.bytes);
+      await fs.rename(replacement, f.backend.paths.registryPath);
+    } });
+    assert.equal(await f.inspect(), undefined);
+    assert.equal(f.observation.scans, 2);
+  });
+
   for (const generation of ['agent-provider-lifecycle-v1', 'terminal-stream-v1']) {
     for (const kind of ['agent', 'terminal']) {
       await test(`${generation} ${kind} permits stopped legacy history without changing any registry entry`, async () => {
@@ -528,7 +578,8 @@ async function fixture(options = {}) {
   }
   const generationDir = options.malformedShape ? 'unrelated-generations' : 'runtime-supervisor-generations';
   backend = load(backendCode).createRuntimeHostBackend(options.detached ? 'legacy-detached' : 'systemd-user', {
-    baseStoragePath: path.join(dir, generationDir, options.generation ?? 'agent-provider-lifecycle-v1'), extensionMode: 3
+    baseStoragePath: path.join(dir, options.baseStorageRelativePath
+      ?? path.join(generationDir, options.generation ?? 'agent-provider-lifecycle-v1')), extensionMode: 3
   });
   fakeProcess.platform = options.platform ?? 'linux';
   backend.kind = options.backendKind ?? (options.detached ? 'legacy-detached' : 'systemd-user');

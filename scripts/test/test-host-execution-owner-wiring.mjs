@@ -2622,6 +2622,8 @@ for (const change of ['metadata', 'reader', 'submitted-start']) {
 
 const nativeHistoryStoragePath = '/controlled/runtime-supervisor-generations/terminal-exit-v1';
 const detachedHistoryStoragePath = '/controlled/runtime-supervisor-generations/terminal-stream-v1';
+const unversionedHistoryStoragePaths = ['legacy-slot', 'legacy-slot-1'].map(slot =>
+  `/controlled/workspaceStorage/${slot}/devsessioncanvas.dev-session-canvas`);
 
 function addDetachedRestoredHistoryBinding(f, kind, runtimeStoragePath = detachedHistoryStoragePath) {
   const session = addCandidateLegacyBinding(f, kind);
@@ -2635,11 +2637,12 @@ function addDetachedRestoredHistoryBinding(f, kind, runtimeStoragePath = detache
   return session;
 }
 
-for (const kind of ['agent', 'terminal']) {
+for (const [runtimeStoragePath, kind] of [detachedHistoryStoragePath, ...unversionedHistoryStoragePaths]
+  .flatMap(storage => ['agent', 'terminal'].map(kind => [storage, kind]))) {
   for (const action of ['delete', 'restart', 'reset']) {
-    test(`detached restored ${kind} ${action} uses target evidence after an unsubmitted failure`, async () => {
+    test(`detached restored ${kind} ${action} uses target evidence after an unsubmitted failure: ${runtimeStoragePath}`, async () => {
       const f = candidateRuntimeFixture();
-      const session = addDetachedRestoredHistoryBinding(f, kind);
+      const session = addDetachedRestoredHistoryBinding(f, kind, runtimeStoragePath);
       const metadata = f.host.state.nodes.find(node => node.id === session.nodeId).metadata[kind];
       const originalMetadata = structuredClone(metadata);
       const other = structuredClone(f.host.state.nodes.find(node => node.id !== session.nodeId));
@@ -2699,9 +2702,9 @@ for (const kind of ['agent', 'terminal']) {
     });
   }
 
-  test(`detached restored ${kind} incompatible replacement never inspects or deletes its predecessor`, async () => {
+  test(`detached restored ${kind} incompatible replacement never inspects or deletes its predecessor: ${runtimeStoragePath}`, async () => {
     const f = candidateRuntimeFixture();
-    const session = addDetachedRestoredHistoryBinding(f, kind);
+    const session = addDetachedRestoredHistoryBinding(f, kind, runtimeStoragePath);
     const node = f.host.state.nodes.find(value => value.id === session.nodeId);
     const metadata = structuredClone(node.metadata[kind]);
     const strict = candidateStrictDeletes(f, () => unsubmittedDelete());
@@ -2778,7 +2781,7 @@ for (const change of ['metadata', 'reader']) {
   });
 }
 
-for (const runtimeStoragePath of [detachedHistoryStoragePath,
+for (const runtimeStoragePath of [detachedHistoryStoragePath, ...unversionedHistoryStoragePaths,
   '/controlled/runtime-supervisor-generations/terminal-stream-v1-alias',
   '/controlled/runtime-supervisor-generations/unknown-generation']) {
   test(`detached history inspector rejection stays protected without native fallback: ${path.basename(runtimeStoragePath)}`, async () => {
