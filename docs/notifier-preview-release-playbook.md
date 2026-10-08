@@ -17,6 +17,8 @@ PR check 针对由最新 PR head 与基准分支生成的预合并结果运行�
 
 ## 0.26.0 发布前检查
 
+本版用户已授权将 companion posted diagnostic 超时延后修复，根因未确认；typecheck/build/source 和独立打包仍是授权验证范围，locale 历史通过不代证 companion。以 `docs/release-contracts/v0.26.0.md` 的一次性例外为准，下一版本恢复完整要求。
+
 本版 notifier 无行为变化，随主扩展统一使用 `docs/release-contracts/v0.26.0.md`。先完成双阶段发布验证，并执行 notifier build / typecheck、source、companion 和英中文 locale smoke；两份 VSIX 必须保留安装依赖、本地化资源与当前 README。真实桌面通知点击与市场自动补齐仍按发布后验证步骤在实际宿主复核，staged smoke 不代证这些路径。
 
 ## 当前发布素材

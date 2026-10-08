@@ -15,6 +15,8 @@
 
 ## 0.26.0 发布前检查
 
+本版按 2026-10-08 用户授权采用一次性验证例外，精确范围见 `docs/release-contracts/v0.26.0.md`。命令名仍为 release:verify，但输出必须区分“授权范围通过”和“完整测试通过”；后者本版没有取得。四项具名测试问题延后，保留检查与双阶段同 ref 验证仍必须通过。本段对本版优先于下述默认完整门禁要求；其他版本不继承例外。
+
 在已提交的准备分支运行 preflight 与完整 verify；完整 verify 使用 HEAD，不能验证未提交的版本修改。按 `CONTRIBUTING.md` 提供匹配六目标原生资产，并将其绝对路径通过 `DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET` 传入 clean-checkout。PR workflow 自动构建预合并 ref 的同源资产。另复核 notifier build、source、companion / locale smoke 和双 VSIX 安装关系。
 
     npm run release:preflight -- --version 0.26.0

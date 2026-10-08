@@ -31,6 +31,41 @@ try {
     'run validate:clean-checkout:vsix -- --ref HEAD'
   ]);
 
+  const fakeNpmEnv = {
+    PATH: `${path.join(tempDir, 'bin')}${path.delimiter}${process.env.PATH || ''}`,
+    RELEASE_PREFLIGHT_TEST_LOG: verificationLogPath
+  };
+  await writeFixture(tempDir, '0.26.0');
+  await writeFile(verificationLogPath, '');
+  const authorized = runPreflight(['--verify'], fakeNpmEnv, '0.26.0');
+  assert.equal(authorized.status, 0, authorized.stderr || authorized.stdout);
+  assert.match(authorized.stdout, /用户授权范围验证通过/u);
+  assert.doesNotMatch(authorized.stdout, /发布完整验证通过/u);
+  const authorizedCommands = (await readFile(verificationLogPath, 'utf8')).trim().split(/\r?\n/u);
+  assert.ok(authorizedCommands.includes('run typecheck'));
+  assert.ok(authorizedCommands.includes('run test:terminal-current-state'));
+  assert.ok(authorizedCommands.includes('run test:notifier-source'));
+  assert.ok(authorizedCommands.includes('run build'));
+  assert.ok(authorizedCommands.includes('run build:notifier'));
+  assert.ok(!authorizedCommands.includes('run test'));
+  assert.equal(authorizedCommands.at(-1), 'run validate:clean-checkout:vsix -- --ref HEAD --skip-vsix-smoke');
+
+  const failedAuthorizedCheck = runPreflight(['--verify'], {
+    ...fakeNpmEnv, RELEASE_PREFLIGHT_TEST_FAIL: 'run typecheck'
+  }, '0.26.0');
+  assert.notEqual(failedAuthorizedCheck.status, 0);
+  assert.doesNotMatch(failedAuthorizedCheck.stdout, /用户授权范围验证通过/u);
+
+  await writeFixture(tempDir, '0.26.1');
+  await writeFile(verificationLogPath, '');
+  const nextRelease = runPreflight(['--verify'], fakeNpmEnv, '0.26.1');
+  assert.equal(nextRelease.status, 0, nextRelease.stderr || nextRelease.stdout);
+  assert.deepEqual((await readFile(verificationLogPath, 'utf8')).trim().split(/\r?\n/u), [
+    'run test:release-preflight', 'run test:release-preflight-workflow', 'run test',
+    'run validate:clean-checkout:vsix -- --ref HEAD'
+  ]);
+  await writeFixture(tempDir, version);
+
   await writeFile(
     path.join(tempDir, 'extensions', 'vscode', 'dev-session-canvas', 'CHANGELOG.md'),
     `# Changelog\n\n## ${version}\n\n- 发布准备分支仍需重新执行版本同步后的完整分层 gate\n`,
@@ -94,8 +129,8 @@ try {
   await rm(tempDir, { recursive: true, force: true });
 }
 
-function runPreflight(args = [], extraEnv = {}) {
-  return spawnSync(process.execPath, [scriptPath, '--version', version, ...args], {
+function runPreflight(args = [], extraEnv = {}, targetVersion = version) {
+  return spawnSync(process.execPath, [scriptPath, '--version', targetVersion, ...args], {
     cwd: tempDir,
     env: {
       ...process.env,
@@ -110,14 +145,14 @@ async function writeFakeNpm(binDir) {
   if (process.platform === 'win32') {
     await writeFile(
       path.join(binDir, 'npm.cmd'),
-      '@echo off\r\necho %*>> "%RELEASE_PREFLIGHT_TEST_LOG%"\r\nexit /b 0\r\n',
+      '@echo off\r\necho %*>> "%RELEASE_PREFLIGHT_TEST_LOG%"\r\nif "%*"=="%RELEASE_PREFLIGHT_TEST_FAIL%" exit /b 1\r\nexit /b 0\r\n',
       'utf8'
     );
     return;
   }
   await writeFile(
     path.join(binDir, 'npm'),
-    '#!/usr/bin/env sh\necho "$*" >> "$RELEASE_PREFLIGHT_TEST_LOG"\nexit 0\n',
+    '#!/usr/bin/env sh\necho "$*" >> "$RELEASE_PREFLIGHT_TEST_LOG"\nif [ "$*" = "$RELEASE_PREFLIGHT_TEST_FAIL" ]; then exit 1; fi\nexit 0\n',
     { encoding: 'utf8', mode: 0o755 }
   );
 }

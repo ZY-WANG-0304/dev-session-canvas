@@ -35,6 +35,8 @@
 
 ## 技术债列表
 
+2026-10-08 当前结论覆盖下列 2026-10-07 的“发布阻塞”分类：用户明确授权 0.26.0 先发布、四项测试问题后修。用户已确认 Webview 差异来自基准图；Marketplace locale 矛盾有代码与 probe 证据，notifier posted diagnostic 与 packaged smoke 超时根因仍未确认，不能据“大概率测试问题”宣布产品缺陷已排除。四项仅对 0.26.0 降为接受的发布风险，失败和未执行项仍保持原状态。临时处理是该版 release:verify 的精确版本例外：保留静态、类型、定向回归、构建、同源原生资产与隔离打包，延后完整 npm test/宿主/Webview/packaged smoke。建议在下一发布准备前修复 locale 契约、按确认结果更新视觉基准、分别查明两处超时并重跑完整门禁；0.26.1 不继承例外。关联 PR #296、`docs/release-contracts/v0.26.0.md`、`scripts/release/release-preflight.mjs`、`docs/exec-plans/active/release-0-26-0-prep.md`。其余 audit 与运行时维护债务不受此授权影响。
+
 2026-10-07，同次 0.26.0 验证另有两项阻塞：完整 Webview 首项 `canvas-shell-baseline` 稳定差异 8020 pixels，差异集中于 Agent/Terminal 标签及控制区；未更新期望图，主动中止后的其余测试不算通过。独立 clean-checkout 虽完成 npm ci 和 140-file VSIX 打包，packaged smoke 在 `verifyCreateNodeCommandQuickPick`（`extension-tests.cjs:2619`）等待诊断事件超时，尚未确认根因。发布前需分别复核视觉基准与创建节点实际链路，并重跑完整验证；Markdown 定向渲染、notifier locale 和包结构通过不能代证。追踪入口：`docs/exec-plans/active/release-0-26-0-prep.md`、草稿 PR #296。
 
 2026-10-07，0.26.0 发布验证阻塞（不能据此合并发布准备 PR）：`release:verify` 在 Node 22.23.3 短路径 checkout 的 Marketplace VS Code E2E 失败。实际 list probe 已显示两条模板和英文 Install / Switch install version，`tests/vscode-smoke/template-marketplace-tests.cjs:48` 仍等待中文按钮；需修正测试 locale/文案契约并完整复验，不降低交互断言。原深路径首跑另有 Unix socket listen EINVAL，可用短路径避开，不能混作同一失败。独立 `test:notifier-smoke` 在 `notifier-companion-tests.cjs:103` 等待 companion posted diagnostic 超时，前序出现 `Local final snapshot responsibility still occupies the execution key or Host capacity`；因果尚未确认，需排查测试启动时序与生产 runtime 责任，不能直接判定为无害 fixture。影响发布完整验证与 companion 联动验收，应在发布前解决；locale/source/打包通过不替代该联动路径。证据入口为 `docs/exec-plans/active/release-0-26-0-prep.md`。
