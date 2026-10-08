@@ -204,6 +204,16 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 ## 8. 实施进度
 
+最新受影响结果：`37714907772` 修后同包三平台 installed 与 macOS/Windows Codex Reload 均通过；`789888d3` / `37715894411` 同包 Linux 双窗及 Codex 通过，Claude 因固定 CLI security-notes 确认页未处理而在 setup 失败，保留原失败及缺原资源回执的清理断言。精确提示处理的受控测试先红后绿，不修改产品或泛化为自动确认任意提示；仅重试 Claude，不重复 Codex。
+
+双窗真实结果为四个独立 Terminal、三个 owner、三个实际 EH（含重开），50,341 ms 完成；三 owner RSS 单点为 98,828,288 / 97,263,616 / 93,208,576 bytes，multi EH 为 229,154,816 bytes。原进程无 fallback signal，正常 idle 观察 30,103 ms 后全退出。这是有限分进程样本，不是总容量预算或长期增长结论。
+
+`37716185554` 同包 Remote-SSH 完成：实际 Server Node、产品未安装/无画板 probe、后续两个 EH 与 root binding 的 environmentKey 一致；安装 payload/validator/hash 已核对，completed 目标 registry 删除、尾部/最终应用与空节点重开通过，fixture cleanup 无残留。实际backend为detached，不代证Remote systemd、live SSH断网恢复或睡眠/调时/Fast Startup。
+
+R1-06按原定受控层级收口：既有binding保持/无效owner拒绝/旧unconfirmed fresh观察，加本轮真实生产方法的old-slot A/B + root C组合，证明A clear成功/失败均不改B/C或中断输出；旧client在B attached/reattaching、最后reader与close RPC期间不提前释放，最终只退役旧client。对应`test-canvas-execution-context.mjs`、`test-runtime-host-deactivation-integrity.mjs`、`test-runtime-completed-history.mjs`及Host wiring已有结果，不要求再跑旧slot OS矩阵。
+
+剩余真实输入仅组成两组：固定Codex的multi先行/single独立创建与PaneGallery切换，以及Terminal反向创建的差异shell/env/scrollback、显式scrollback/resize、C keep/readd/clear与A owner故障后B交互。继续复用当前VSIX，不增加provider或三平台组合。故障A的已知资源清理必须单列fixture责任，不冒充完整EOF或正常idle；原三平台尾部和失败结算证据保持。
+
 产品修复 `f2e05a63` / run `37714762684` 三平台原生协调全部通过，含真实跨 XDG/HOME/TMP helper 复用与 Linux systemd 启动/复用/闲置退役。最终产品包 `502934e1` / run `37714907772` 的 Linux/macOS installed Terminal/Webview（包括新增 registry 精确删除）及 macOS 真实 Codex root-owner Reload 已通过，Windows仍在执行。Linux 双窗已进入真实会话但首次终端 REPLY 断言失败；确认夹具在关闭 ONLCR 后仅输出 LF，改 CRLF 并用真实 subject stdout + xterm 做先红后绿回归，保留原断言及失败，尚待同包重试。不能由此关闭 R1-04 或整体 F-03。
 
 本次同包补证沿用 production workflow，`root_checks=remote` 单独选择既有 Linux loopback Remote-SSH 路径，不加入默认全组、不获取 Agent 凭据。执行端环境函数在无产品/无画板的真实远端 EH 内采样，与后续两 EH 和产品节点 binding 对比；schema2 继续核对冻结 validator/hash。只补受影响 live-runtime 创建/完成/重开，不代证 live SSH 断网恢复、跨机器、睡眠/OS 调时或 Fast Startup。所需同包身份/安装成功门控和私钥归档排除均有受控回归，尚无本轮真实 Remote 通过结论。

@@ -20,10 +20,13 @@
 - [x] (2026-10-08) P2 主接线：两类单根/多根新建显式 root；metadata/原绑定/缓存/设置边界与正常 build、受控回归已接通。
 - [x] (2026-10-08) P2 独立审查修复 restore bucket await 期间换绑定竞态，24 个定向组合先红后绿，原失效 owner 拒绝与原 client 退休屏障保留。
 - [x] (2026-10-08) P3 首轮正常同版 package 与 Linux/macOS installed Runtime Terminal/Webview 通过；Windows 路径夹具失败及 Linux 双窗未激活失败原样保留。
-- [x] (2026-10-08) 修复两项夹具并同包验证Windows；独立审查三项产品缺口修后受控回归、正常build/VSIX和三平台原生协调通过。新包Linux/macOS安装与macOS真实Codex Reload通过，Windows仍在执行。
+- [x] (2026-10-08) 修复两项夹具并同包验证Windows；独立审查三项产品缺口修后受控回归、正常build/VSIX和三平台原生协调通过。修后同包三平台安装及三平台真实Codex Reload通过。
+- [x] (2026-10-08) Linux真实双窗口四会话/三owner/关闭重开/正常idle及实际Remote-SSH身份和完成重开通过。旧slot A/B与新root C共存及最后reader/RPC退役组合回归补齐，R1-06按受控层级收口。
 - [ ] P3：完成受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本，整体审查并同步结账。
 
 ## 意外与发现
+
+Linux run `37715894411` 双窗与 Codex 已通过；Claude 首错是 setup 的 `Timed out: claude interactive surface`，真实页面停在固定 CLI v2.1.280 的 `Security notes:` / `Press Enter to continue`。仅补该精确 onboarding 提示的一次 Enter；未知提示不自动确认，确认后仍须真实 model/composer 与 nonce。原失败未进入 Reload，不能判作 root 产品故障。cleanup 已到 nodes/bindings/pending=0，但因 setup 未完成而缺原进程资源回执，原退出证明断言仍失败；不放宽该断言或追认资源已退出。
 
 修后 run `37714907772` 双窗口已激活并创建真实 subject，但首次 REPLY 的终端行前缀断言超时。subject 在 driver 关闭 ONLCR 后仍只输出 LF；用实际 subject stdout 输入仓库 xterm，80/100 列均复现 REPLY 缩进/折行而精确匹配失败。仅将 subject READY/REPLY 改为 CRLF，原 driver 断言不放宽，受控回归先红后绿。原 artifact 没有终端原文，因此不声称已证明该次 REPLY 到达，只确认夹具错误足以产生此症状；完整链路仍需同包重试。
 
@@ -61,7 +64,7 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 
 ## 结果与复盘
 
-P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd 与跨 XDG/HOME/TMP 复用；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 修后同版包的 Linux/macOS installed Terminal/Webview 与 macOS 真实 Codex Reload 已通过，多窗口、Linux真实Agent、Windows及剩余具名场景仍未完成，F-03 保持开放。历史失败和本地沙箱限制原样保留，不追认通过。
+P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd 与跨 XDG/HOME/TMP 复用；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 修后同版包的三平台 installed Terminal/Webview、三平台真实 Codex Reload、Linux双窗与Remote已通过。只剩Claude具名失败重试、反向创建/PaneGallery与工作区/设置/故障边界组合、整体审查，F-03保持开放；旧slot保障按明确受控层级复用，不扩成新的OS矩阵。历史失败和本地沙箱限制原样保留，不追认通过。
 
 ## 上下文与定向
 
@@ -132,6 +135,10 @@ P3 首轮 `7741de5d` / run `37711694734` package 成功，Linux/macOS installed 
 随后独立审查的产品修复已通过：completed-history两类×新旧binding 4项实际经过生产strict-delete校验，缺owner先红后绿；Host本地入口14项先红后绿，总wiring264项通过；Canvas context、deactivation与typecheck通过。端点paths、握手46项、preparation25项、storage、startup29项、reader/client31项与preparation-client21项通过；握手覆盖只读连接/strict-delete在不安全UID目录无副作用拒绝，Main在socket清理前拒绝。独立复核无新增确定blocker，正常build与package:vsix通过。安装夹具20项加入目标registry删除检查，真实POSIX跨XDG/HOME/TMP helper复用写入已有native脚本，均待修后CI。未更改native资产，禁止将旧包结果当作新字节已验证。
 
 ## 接口与依赖
+
+2026-10-08 有限补证入口已实现但尚未原生执行：Terminal `--boundaries` 从multi先行，分别冻结两EH的shell/环境sentinel/scrollback，验证显式scrollback经原reader到实际nonce，resize必须实际改变尺寸且页面与authority一致；C keep/readd与精确clear，最后故障注入已确认身份的A并保持B交互。A故障及其已知资源fixture清理单列，不计正常EOF；B/C仍自然退役。Codex `--root-window-pair` 固定Linux x64、四次model turn，复用原Agent隔离和observer，不新增provider矩阵；两窗独立创建、PaneGallery往返、当前reader applied与原资源退出、registry清空及正常idle分别核对。受控Agent32项、Terminal原39+新增11拒绝项和真实stdin渲染、安装receipt20项通过。工作流三个固定选择必须Linux+同包reuse+明确已通过installed证据；`all`不扩大，Terminal不得获取Agent凭据。原Node workflow test的spawnSync Bash仍受本地沙箱限制，独立直接Bash的24段语法与5组provider选择通过，不把受控stub冒充完整原生测试。
+
+同日整体只读审查覆盖`789888d3`相对`origin/main@357266ad`的17个产品src文件，未发现新的确定性blocker；descriptor/namespace拒绝、准备事务/unknown、hello与strict delete、原binding恢复和默认false保护均与设计一致。补跑握手46、准备25、helper21、Canvas context与startup记录通过。后续待合入的仅验收/文档修改，不改本次同包产品字节。OS睡眠、调时与Fast Startup未实测保留残余，不用合成结果代证；按仓库review规则，未证明影响主路径的额外系统行为不自动变成新的硬件/工具前置。
 
 `RuntimeOwnerDescriptorV1` 固定 schema/environmentKey/userStorageScopeKey/root/generation；路径 resolver 接受 canonical global storage 与已解析 root，不接受 Webview 自报 path。环境 helper 返回摘要及本机用户身份，失败抛出明确错误；Windows 可使用系统自带进程调用只读 native API，若能避免修改 PTY 资产则优先采用。hello owner 字段对旧 binding 可缺省，对新 root generation 必须校验。具体导出签名在 P1 实现后补齐。
 

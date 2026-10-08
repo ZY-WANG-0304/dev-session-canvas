@@ -6,7 +6,7 @@ const { randomUUID } = require('node:crypto');
 const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { captureInstalledExtensionReceipt } = require('./installed-execution-candidate.cjs');
-const { readIdentity, sameLiveIdentity, exitedIdentity } = require('./runtime-reload-contract.cjs');
+const { readIdentity, sameLiveIdentity, exitedIdentity, signalOwned } = require('./runtime-reload-contract.cjs');
 const { bindingKeys, assertBinding, assertContained, assertTopology, assertRestored } = require('./root-owner-contract.cjs');
 const { resolveLegacyRuntimeSupervisorPaths, resolveSystemdUserRuntimeSupervisorPaths,
   resolveRuntimeRootOwnerGlobalStoragePath, assertRuntimeOwnerDescriptor } = require('./root-owner-runtime-paths.cjs');
@@ -65,6 +65,7 @@ async function run(context) {
   }
   const host = await readIdentity(process.pid);
   await archive(`activated-${role}`, { host, workspaceRoots: roots });
+  if (control.boundaries) process.env.DSC_ROOT_WINDOW_MARKER = role;
   const launcher = await waitFile('launcher');
   let ancestor = host;
   for (let depth = 0; ancestor && ancestor.pid !== launcher.ui.pid && depth < 12; depth++) {
@@ -80,6 +81,11 @@ async function run(context) {
     versions: process.versions, installedVsix,
     globalStorage: path.join(path.dirname(context.globalStorageUri.fsPath), 'devsessioncanvas.dev-session-canvas') };
   await archive(`environment-${role}`, environment);
+  if (control.boundaries) {
+    if (role === 'multi') await boundaryMulti();
+    else { assert.equal(role, 'single'); await boundarySingle(); }
+    return;
+  }
   if (role === 'single') await initialSingle();
   else if (role === 'multi') await multiWindow();
   else await reopenedSingle();
@@ -177,6 +183,126 @@ async function flush() {
   assertContained(control.userDataDir, result.snapshotPath);
 }
 
+const sessionSnapshot = subject => rpc(subject.socketPath, 'getSessionSnapshot', {
+  sessionId: subject.binding.runtimeSessionId
+});
+
+async function boundarySingle() {
+  const multi = await waitFile('multi-ready'), original = multi.subjects[0];
+  const restored = await inspectSubject(await liveNode(original.binding.runtimeSessionId),
+    original.rootPath, original.label, original.receiptPath);
+  assertRestored(original, restored);
+  assert.equal((await sessionSnapshot(restored)).scrollback, 2000, 'Attach must not apply this window default.');
+  const subject = await createSubject('single-a', control.roots.a);
+  environment.globalStorage = await fs.realpath(environment.globalStorage);
+  await flush();
+  await focus(await liveNode(original.binding.runtimeSessionId));
+  await archive('single-ready', { ...environment, subject, restored });
+  await waitFile('boundary-settings');
+  const pages = await poll('shared reader receives the explicit scrollback change', () => command('getHostMessages'), values =>
+    values.some(message => message.type === 'host/executionTerminalPage'
+      && message.payload.executionSessionId === original.binding.runtimeSessionId
+      && message.payload.authorityId === original.reader.authorityId
+      && message.payload.page?.events.some(event => event.type === 'scrollback' && event.scrollback === 2500)));
+  const page = pages.findLast(message => message.type === 'host/executionTerminalPage'
+    && message.payload.executionSessionId === original.binding.runtimeSessionId
+    && message.payload.page?.events.some(event => event.type === 'scrollback' && event.scrollback === 2500));
+  const interaction = await interact(original.binding.runtimeSessionId);
+  assert.equal((await sessionSnapshot(subject)).scrollback, 10000, 'A peer setting does not rewrite an unattached session.');
+  await archive('single-settings-applied', { page: page.payload, interaction });
+  await waitFile('boundary-done');
+  await archive('single-finished', { pass: true, host: environment.host });
+  void vscode.commands.executeCommand('workbench.action.closeWindow').catch(() => {});
+}
+
+async function boundaryMulti() {
+  const subjects = [];
+  for (const key of ['a', 'b', 'c']) subjects.push(await createSubject(`multi-${key}`, control.roots[key]));
+  environment.globalStorage = await fs.realpath(environment.globalStorage);
+  await flush();
+  const multi = { ...environment, subjects };
+  await archive('multi-ready', multi);
+  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(control.roots.a), { forceNewWindow: true });
+  const single = await waitFile('single-ready');
+  assertTopology(single, multi, control.roots);
+  const [a, b, c] = subjects;
+  assert.equal((await sessionSnapshot(a)).scrollback, 2000);
+  await vscode.workspace.getConfiguration('terminal.integrated').update('scrollback', 2500, vscode.ConfigurationTarget.Workspace);
+  await poll('explicit authority scrollback update', () => sessionSnapshot(a), value => value.scrollback === 2500);
+  await archive('boundary-settings', { scrollback: 2500 });
+  const settings = await waitFile('single-settings-applied');
+  const nodeB = await liveNode(b.binding.runtimeSessionId);
+  await focus(nodeB);
+  const resizeBefore = await sessionSnapshot(b);
+  await dispatch('webview/resizeNode', { nodeId: nodeB.id, position: nodeB.position, size: { width: 880, height: 480 } });
+  const resized = await poll('B resize applied to the authority and actual page', async () => {
+    const state = await sessionSnapshot(b), page = (await probe()).nodes.find(node => node.nodeId === nodeB.id);
+    return { state, page };
+  }, value => value.page?.terminalCols >= 80 && value.page.terminalCols === value.state.cols
+    && value.page.terminalRows === value.state.rows && value.state.scrollback === 2500
+    && (value.state.cols !== resizeBefore.cols || value.state.rows !== resizeBefore.rows));
+  await vscode.commands.executeCommand('devSessionCanvas.removeFolderFromWorkspace', control.roots.c, false);
+  await poll('C removed with keep', async () => ({ roots: vscode.workspace.workspaceFolders,
+    state: await snapshot() }), value => !value.roots.some(folder => folder.uri.fsPath === control.roots.c)
+      && !nodeBySession(value.state, c.binding.runtimeSessionId)
+      && !value.state.state.groups.some(group => group.workspaceRootPath === control.roots.c));
+  const kept = await sessionSnapshot(c);
+  assert.equal(kept.live, true);
+  assert(vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders.length, 0,
+    { uri: vscode.Uri.file(control.roots.c), name: 'c' }));
+  const readded = await inspectSubject(await liveNode(c.binding.runtimeSessionId), c.rootPath, c.label, c.receiptPath);
+  assertBinding(readded.binding, c.binding);
+  for (const key of ['supervisor', 'provider', 'identity']) assert(sameLiveIdentity(c[key], readded[key]));
+  assert.equal(readded.reader.authorityId, c.reader.authorityId);
+  const keepInteraction = await interact(c.binding.runtimeSessionId);
+  await vscode.commands.executeCommand('devSessionCanvas.removeFolderFromWorkspace', control.roots.c, true);
+  await poll('C removed with clear', async () => ({ roots: vscode.workspace.workspaceFolders,
+    state: await snapshot() }), value => !value.roots.some(folder => folder.uri.fsPath === control.roots.c)
+      && !nodeBySession(value.state, c.binding.runtimeSessionId)
+      && !value.state.state.groups.some(group => group.workspaceRootPath === control.roots.c));
+  await poll('cleared C subject exited', () => readIdentity(c.identity.pid), value => exitedIdentity(c.identity, value));
+  assert(vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders.length, 0,
+    { uri: vscode.Uri.file(control.roots.c), name: 'c' }));
+  await poll('cleared C readded empty', snapshot, value => value.state.groups.some(group => group.workspaceRootPath === control.roots.c)
+    && !nodeBySession(value, c.binding.runtimeSessionId));
+  const afterClear = [await interact(a.binding.runtimeSessionId), await interact(b.binding.runtimeSessionId)];
+  // The fault is an explicit stimulus against this fixture's freshly verified owner, not successful EOF.
+  const injected = await signalOwned(a.supervisor, 'SIGKILL');
+  assert.equal(injected.action, 'owned-fallback-signal', 'Require the fault to target the original live owner.');
+  await archive('boundary-fault', { expected: a.supervisor, injected, disposition: 'injected-owner-loss-not-eof' });
+  await poll('original A owner exited', () => readIdentity(a.supervisor.pid), value => exitedIdentity(a.supervisor, value));
+  const faultInteraction = await interact(b.binding.runtimeSessionId);
+  const bAfter = await inspectSubject(await liveNode(b.binding.runtimeSessionId), b.rootPath, b.label, b.receiptPath);
+  assertBinding(bAfter.binding, b.binding);
+  for (const key of ['supervisor', 'provider', 'identity']) assert(sameLiveIdentity(b[key], bAfter[key]));
+  assert.equal(bAfter.reader.authorityId, b.reader.authorityId);
+  const faultFixtureCleanup = [];
+  for (const subject of [a, single.subject]) for (const key of ['identity', 'provider']) {
+    faultFixtureCleanup.push(await signalOwned(subject[key], 'SIGTERM'));
+  }
+  await sleep(1000);
+  for (const subject of [a, single.subject]) for (const key of ['identity', 'provider']) {
+    if (sameLiveIdentity(subject[key], await readIdentity(subject[key].pid))) {
+      faultFixtureCleanup.push(await signalOwned(subject[key], 'SIGKILL'));
+    }
+  }
+  await archive('boundary-result', { order: 'multi-before-single', settings, resizeBefore, resized, kept, readded,
+    keepInteraction, clearSession: c.binding.runtimeSessionId, afterClear, faultInteraction, bAfter,
+    faultDisposition: 'injected-owner-loss-not-eof', faultFixtureCleanup });
+  await dom({ kind: 'sendExecutionInput', nodeId: (await liveNode(b.binding.runtimeSessionId)).id, data: 'exit\r' });
+  await settled([b]);
+  await archive('boundary-done', { pass: true });
+  await waitFile('single-finished');
+  await poll('single Host exited', () => readIdentity(single.host.pid), value => exitedIdentity(single.host, value));
+  await flush();
+  const runtime = await command('getRuntimeSupervisorState');
+  assert(runtime.bindings.every(binding => [a.binding.runtimeSessionId, single.subject.binding.runtimeSessionId]
+    .includes(binding.runtimeSessionId)), 'Only faulted A bindings may remain unconfirmed.');
+  assert.equal(runtime.pendingRuntimeSupervisorOperationCount, 0);
+  await archive('multi-finished', { pass: true, runtime });
+  void vscode.commands.executeCommand('workbench.action.closeWindow').catch(() => {});
+}
+
 async function liveNode(sessionId) {
   const state = await poll('original live binding', snapshot, value => {
     const node = nodeBySession(value, sessionId);
@@ -255,7 +381,10 @@ async function inspectSubject(node, rootPath, label, receiptPath) {
     message.type === 'host/executionSnapshot' && message.payload.nodeId === node.id && message.payload.terminalRead));
   const reader = messages.findLast(message => message.type === 'host/executionSnapshot' &&
     message.payload.nodeId === node.id && message.payload.terminalRead).payload.terminalRead;
-  return { label, rootPath, nodeId: node.id, binding, ...owner, identity, provider, reader, receiptPath };
+  return { label, rootPath, nodeId: node.id, binding, ...owner, identity, provider, reader, receiptPath,
+    ...(control.boundaries ? { windowMarker: receipt.windowMarker, configuration: {
+      shellPath: node.metadata.terminal.shellPath, scrollback: (await sessionSnapshot({ ...owner, binding })).scrollback
+    } } : {}) };
 }
 
 async function interact(sessionId) {
@@ -286,7 +415,7 @@ async function sampleOwner(expected) {
   return { identity: expected, rssBytes: Number(match[1]) * 1024, sameIdentity: true };
 }
 
-function rpc(socketPath, method) {
+function rpc(socketPath, method, params) {
   return new Promise((resolve, reject) => {
     const socket = net.createConnection(socketPath), id = randomUUID();
     let data = '', done = false;
@@ -294,7 +423,7 @@ function rpc(socketPath, method) {
     const timer = setTimeout(() => finish(new Error(`Supervisor ${method} timed out.`)), 5000);
     socket.once('error', finish);
     socket.once('end', () => finish(new Error('Supervisor closed without a complete response.')));
-    socket.once('connect', () => socket.write(`${JSON.stringify({ type: 'request', id, method })}\n`));
+    socket.once('connect', () => socket.write(`${JSON.stringify({ type: 'request', id, method, params })}\n`));
     socket.on('data', bytes => {
       data += bytes.toString();
       if (data.length > 65536) return finish(new Error('Supervisor response exceeded the fixed limit.'));

@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { assertCase, assertContained, assertDriverProfileRegistration } = require('./root-owner-contract.cjs');
+const { assertCase, assertBoundaryCase, assertContained, assertDriverProfileRegistration } = require('./root-owner-contract.cjs');
 
 const identity = pid => ({ pid, startTicks: String(pid * 100), executable: '/fixture/node', state: 'S', ppid: 2 });
 const interaction = sessionId => ({ applied: true, marker: 'DSC_ROOT_REPLY_abcd-1234', sessionId });
@@ -88,6 +88,43 @@ async function main() {
     mutate(values);
     assert.throws(() => assertCase(...values), undefined, name);
   }
+  const boundaryFixture = () => {
+    const [single, multi, reopened] = fixture();
+    single.subject.windowMarker = 'single';
+    single.subject.configuration = { shellPath: '/bin/sh', scrollback: 10000 };
+    for (const subject of multi.subjects) {
+      subject.windowMarker = 'multi';
+      subject.configuration = { shellPath: '/bin/bash', scrollback: 2000 };
+    }
+    single.restored = reopened.subjects[1];
+    const result = { order: 'multi-before-single', settings: {
+      page: { executionSessionId: 'a2', authorityId: 'authority-a2', page: { events: [{ type: 'scrollback', scrollback: 2500 }] } },
+      interaction: interaction('a2') }, resizeBefore: { sessionId: 'b1', cols: 120, rows: 35 },
+      resized: { state: { sessionId: 'b1', terminalAuthorityId: 'authority-b1',
+        scrollback: 2500, cols: 100, rows: 30 }, page: { terminalCols: 100, terminalRows: 30 } },
+      kept: { sessionId: 'c1', live: true }, readded: structuredClone(multi.subjects[2]),
+      clearSession: 'c1', faultDisposition: 'injected-owner-loss-not-eof', bAfter: structuredClone(multi.subjects[1]),
+      keepInteraction: interaction('c1'), afterClear: [interaction('a2'), interaction('b1')], faultInteraction: interaction('b1') };
+    result.readded.reader.readId += '-readded';
+    return [single, multi, result];
+  };
+  assertBoundaryCase(...boundaryFixture());
+  for (const mutate of [
+    ([single]) => { single.subject.windowMarker = 'multi'; },
+    ([single]) => { single.subject.configuration.scrollback = 2000; },
+    ([, multi]) => { multi.subjects[0].configuration.shellPath = '/bin/sh'; },
+    ([,, result]) => { result.settings.page.page.events = []; },
+    ([,, result]) => { result.resized.page.terminalCols--; },
+    ([,, result]) => { result.resizeBefore = { ...result.resized.state }; },
+    ([,, result]) => { result.kept.live = false; },
+    ([,, result]) => { result.readded.binding.runtimeSessionId = 'replacement'; },
+    ([,, result]) => { result.clearSession = 'b1'; },
+    ([,, result]) => { result.faultInteraction.sessionId = 'a2'; },
+    ([,, result]) => { result.bAfter.supervisor.pid++; }
+  ]) {
+    const values = boundaryFixture(); mutate(values);
+    assert.throws(() => assertBoundaryCase(...values));
+  }
   assertContained('/fixture/user-data', '/fixture/user-data/owned');
   for (const value of ['/fixture/user-data', '/fixture/user-data-elsewhere/owner', '/fixture/user-data/../outside']) {
     assert.throws(() => assertContained('/fixture/user-data', value));
@@ -97,6 +134,8 @@ async function main() {
     path.join(projectRoot, 'scripts/smoke/run-vscode-root-owner-candidate.mjs')));
   const args = ['--output', '/fixture/output', '--installed-vsix', '/fixture/candidate.vsix'];
   assert.equal(parseRootOwnerSelection(args, 'linux', 'x64').output, '/fixture/output');
+  assert.equal(parseRootOwnerSelection(args, 'linux', 'x64').boundaries, false);
+  assert.equal(parseRootOwnerSelection([...args, '--boundaries'], 'linux', 'x64').boundaries, true);
   for (const [platform, arch] of [['darwin', 'x64'], ['linux', 'arm64'], ['win32', 'x64']]) {
     assert.throws(() => parseRootOwnerSelection(args, platform, arch));
   }
@@ -131,7 +170,7 @@ async function main() {
       /before the first extension install/);
     await runSubject(temporary);
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
-  console.log(`Root-owner controlled contract cases passed (${negativeCases.length} rejection cases, profile registration and staging order, selection, real stdin subject); no native VS Code execution claim.`);
+  console.log(`Root-owner controlled contract cases passed (${negativeCases.length} baseline and 11 boundary rejection cases, profile registration and staging order, selection, real stdin subject); no native VS Code execution claim.`);
 }
 
 async function runSubject(temporary) {

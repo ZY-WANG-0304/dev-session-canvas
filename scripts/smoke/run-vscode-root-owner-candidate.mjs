@@ -12,7 +12,7 @@ import { prepareInstalledVsixInput, prepareInstalledCandidateDriver, installCand
 import { prepareRuntime, spawnPreparedVSCodeScenario, ensureVSCodeExecutable,
   shouldReRunInsideXvfb, runInsideXvfb, snapshotVSCodeLogs } from './vscode-smoke-runner.mjs';
 
-const { assertCase, assertContained, assertDriverProfileRegistration } = contract;
+const { assertCase, assertBoundaryCase, assertContained, assertDriverProfileRegistration } = contract;
 const { readIdentity, sameLiveIdentity, exitedIdentity, signalOwned } = identity;
 async function write(file, value) {
   const pending = `${file}.pending-${process.pid}`;
@@ -29,7 +29,8 @@ const roles = ['single', 'multi', 'single-reopened'];
 export function parseRootOwnerSelection(args, platform = process.platform, arch = process.arch) {
   assert.equal(platform, 'linux');
   assert.equal(arch, 'x64');
-  const { values } = parseArgs({ args, options: { output: { type: 'string' }, 'installed-vsix': { type: 'string' } } });
+  const { values } = parseArgs({ args, options: { output: { type: 'string' }, 'installed-vsix': { type: 'string' },
+    boundaries: { type: 'boolean', default: false } } });
   assert(values.output?.trim() && values['installed-vsix']?.trim(),
     'Specify --output NEW_DIRECTORY --installed-vsix ROOT_OWNER_PACKAGE.');
   return values;
@@ -127,7 +128,9 @@ async function execute(output, values, projectRoot) {
     c: path.join(runtime.debugRoot, 'root-c') };
   for (const root of Object.values(roots)) await fs.mkdir(root);
   const multiWorkspace = path.join(runtime.debugRoot, 'root-owner.code-workspace');
-  await write(multiWorkspace, { folders: Object.entries(roots).map(([name, folder]) => ({ name, path: folder })) });
+  await write(multiWorkspace, { folders: Object.entries(roots).map(([name, folder]) => ({ name, path: folder })),
+    ...(values.boundaries ? { settings: { 'devSessionCanvas.terminal.shellPath': '/bin/bash',
+      'devSessionCanvas.terminal.shellArgs': ['--noprofile', '--norc'], 'terminal.integrated.scrollback': 2000 } } : {}) });
   // The first CLI install inventories existing unpacked extensions for the default profile.
   const driver = await prepareRootOwnerDriver({ projectRoot, runtime, input });
   await installCandidateVsix({ vscodeExecutablePath: executable, runtime, input });
@@ -135,13 +138,16 @@ async function execute(output, values, projectRoot) {
     await read(path.join(runtime.extensionsDir, 'extensions.json')), driver.targetRoot);
   const control = { schema: 1, roots, multiWorkspace, artifacts: runtime.artifactsDir,
     userDataDir: runtime.userDataDir, subjectExecutable: await fs.realpath(process.execPath),
-    installedExpectation: driver.expectationPath, deadlineAt };
+    installedExpectation: driver.expectationPath, deadlineAt, boundaries: values.boundaries };
   const controlPath = path.join(runtime.artifactsDir, 'control.json');
   await write(controlPath, control);
   await write(path.join(output, 'input.json'), { schema: 1, nonce, startedAt, deadlineAt, roots,
-    scope: 'Linux installed VSIX; one profile; actual single-A and multi-[A,B,C] Hosts; independent A sessions; surviving multi saves after peer exit and interaction, before single reopens; three-owner final idle exit.',
-    excluded: ['concurrent canvas-write arbitration', 'Agent credentials or continuity', 'injected owner fault',
-      'setting divergence', 'legacy slot', 'root remove/readd', 'capacity scaling'],
+    scope: values.boundaries
+      ? 'Linux installed VSIX; multi first then single; independent Terminal settings; C keep/readd/clear; owned A fault while original B handles real I/O.'
+      : 'Linux installed VSIX; one profile; actual single-A and multi-[A,B,C] Hosts; independent A sessions; surviving multi saves after peer exit and interaction, before single reopens; three-owner final idle exit.',
+    excluded: ['concurrent canvas-write arbitration', 'Agent credentials or continuity', 'legacy slot', 'capacity scaling',
+      ...(values.boundaries ? ['graceful completion of faulted A'] : ['injected owner fault', 'setting divergence', 'root remove/readd'])],
+    boundaries: values.boundaries,
     vsixSha256: input.vsixSha256, vscodeExecutablePath: executable,
     vscodeVersion: vscodePackage.version, vscodeCommit: product.commit, sourceHashes: driver.sourceHashes,
     driverProfileRegistration,
@@ -149,7 +155,8 @@ async function execute(output, values, projectRoot) {
     boundMs: 360000, cleanupReservationMs: 60000, automaticBuild: false, automaticRetry: false,
     productEntryUnmodified: true, metadataInjection: false, uiSpawnCount: 1 });
   assert(Date.now() < deadlineAt - 150000, 'Preparation exhausted the fixed budget; do not launch.');
-  const handle = await spawnPreparedVSCodeScenario({ projectRoot, runtime, workspacePath: roots.a,
+  const handle = await spawnPreparedVSCodeScenario({ projectRoot, runtime,
+    workspacePath: values.boundaries ? multiWorkspace : roots.a,
     vscodeExecutablePath: executable, extensionDevelopmentPath: [], disableExtensions: false,
     disableWorkspaceTrust: true, extensionTestsEnv: { DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1',
       DEV_SESSION_CANVAS_ROOT_OWNER_CONTROL: controlPath } });
@@ -178,14 +185,21 @@ async function execute(output, values, projectRoot) {
     }
     assert.equal(finished?.pass, true, 'The bounded scenario must produce its final receipt.');
     const single = await artifact('single-ready'), multi = await artifact('multi-ready');
-    const reopened = await artifact('single-reopened-ready'), closed = await artifact('after-close');
-    assertCase(single, multi, reopened, closed);
-    for (const receipt of [single, multi, reopened]) {
+    let receipts;
+    if (values.boundaries) {
+      assertBoundaryCase(single, multi, await artifact('boundary-result'));
+      receipts = [single, multi];
+    } else {
+      const reopened = await artifact('single-reopened-ready'), closed = await artifact('after-close');
+      assertCase(single, multi, reopened, closed);
+      receipts = [single, multi, reopened];
+    }
+    for (const receipt of receipts) {
       installed.assertInstalledExtensionReceipt(receipt.installedVsix, driver.expectation);
       assert.equal(receipt.vscode, vscodePackage.version);
     }
     assert.equal((await artifact('single-finished')).pass, true);
-    assert.equal(finished.runtime.bindings.length, 0);
+    if (!values.boundaries) assert.equal(finished.runtime.bindings.length, 0);
     assert.equal(finished.runtime.pendingRuntimeSupervisorOperationCount, 0);
     assert(await bounded(completion, Math.min(deadlineAt - 45000, Date.now() + 15000)), 'Native UI did not close.');
     assert.equal(exit.code, 0); assert.equal(exit.signal, null); assert(!exit.error);
@@ -204,10 +218,15 @@ async function execute(output, values, projectRoot) {
       observations.push({ expected, after: after ?? null, exited: exitedIdentity(expected, after) });
     }
     await write(path.join(output, 'idle-cleanup.json'), { observations, idleElapsedMs: Date.now() - idleStartedAt,
-      owners: owners.length, forcedSignals: [], allExited: observations.every(entry => entry.exited) });
+      owners: owners.length, naturalIdleOwners: values.boundaries ? owners.slice(1) : owners,
+      faultedOwner: values.boundaries ? owners[0] : undefined,
+      faultFixtureCleanup: values.boundaries ? (await artifact('boundary-result')).faultFixtureCleanup : undefined,
+      forcedSignals: [], allExited: observations.every(entry => entry.exited) });
     assert(observations.every(entry => entry.exited), 'All known original processes must exit without fallback.');
     await write(path.join(output, 'result.json'), { pass: true, nonce, exit, elapsedMs: Date.now() - startedAt,
-      ownerCount: 3, independentlyCreatedSessions: 4, realHostCount: 3, forcedSignals: [] });
+      ownerCount: 3, independentlyCreatedSessions: 4, realHostCount: values.boundaries ? 2 : 3,
+      scenario: values.boundaries ? 'root-boundaries' : 'root-window-pair',
+      fault: values.boundaries ? await artifact('boundary-fault') : undefined, forcedSignals: [] });
   } catch (error) {
     failure = error;
     await write(path.join(output, 'first-failure.json'), { error: String(error), stack: error.stack,

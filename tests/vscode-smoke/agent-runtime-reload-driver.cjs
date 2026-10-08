@@ -57,7 +57,7 @@ exports.activate = () => {
 };
 
 async function poll(label, get, accept, timeoutMs = 30000) {
-  const deadline = Math.min(Date.now() + timeoutMs, control.deadlineAt - 30000);
+  const deadline = Math.min(Date.now() + timeoutMs, control.deadlineAt - (config?.rootWindowPair ? 45000 : 30000));
   while (Date.now() < deadline) {
     const value = await get();
     if (accept(value)) return value;
@@ -72,6 +72,7 @@ async function run() {
   try {
     control = JSON.parse(await fs.readFile(controlPath, 'utf8'));
     config = JSON.parse(await fs.readFile(process.env.DEV_SESSION_CANVAS_AGENT_RELOAD_CONFIG, 'utf8'));
+    if (config.rootWindowPair) { await runRootWindowPair(); return; }
     phase = control.phase;
     await write(`${phase}-activation.json`, { phase, host: await readIdentity(process.pid), nonce: control.nonce });
     const extension = await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
@@ -91,13 +92,13 @@ async function run() {
       try { await write(`failure-${name}.json`, await command(name)); } catch { /* Preserve the first failure. */ }
     }
   } finally {
-    if (!reloading) {
+    if (!config?.rootWindowPair && !reloading) {
       try { await cleanup(); } catch (error) { failure ??= error; await write('cleanup-failure.json', { error: String(error) }); }
       await closeWindowsIdentityObserver().catch(error => { failure ??= error; });
       await write('driver-finished.json', { nonce: control?.nonce, phase, pass: !failure });
       void vscode.commands.executeCommand(process.platform === 'darwin'
         ? 'workbench.action.quit' : 'workbench.action.closeWindow').catch(console.error);
-    } else await closeWindowsIdentityObserver().catch(error => { failure ??= error; });
+    } else if (!config?.rootWindowPair) await closeWindowsIdentityObserver().catch(error => { failure ??= error; });
   }
 }
 
@@ -234,11 +235,12 @@ async function releaseProcessObserver() {
   assert.equal(observer.failures.length, 0, 'Process observation must settle without unknown evidence.');
 }
 
-function assertOriginalResourcesLive(expected) {
+function assertOriginalResourcesLive(expected, excluded = []) {
   const result = observer.result();
   assert(!result.error, result.error);
   assert.equal(result.failures.length, 0);
-  const resources = result.entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role));
+  const resources = result.entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role) &&
+    !excluded.some(original => sameIdentity(original, entry)));
   const original = expected ?? resources;
   for (const role of ['cli', 'provider']) {
     assert.equal(original.filter(entry => entry.role === role).length, 1, `Exactly one original ${role} is required.`);
@@ -288,9 +290,10 @@ async function waitForAgentReady() {
     /(?:Choose the text style|Choose.*theme|Select.*theme)/i,
     /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i,
     /Set up the Codex agent sandbox[\s\S]*1\.\s*Set up default sandbox[\s\S]*2\.\s*Use non-admin sandbox/i,
-    ...(config.provider === 'claude' ? [/Detected a custom API key[\s\S]*Do you want to use this API key/i] : [])
+    ...(config.provider === 'claude' ? [/Detected a custom API key[\s\S]*Do you want to use this API key/i,
+      /Security notes:[\s\S]*Press Enter to continue(?:\u2026|\.{3})/i] : [])
   ];
-  const deadline = Math.min(Date.now() + 90000, control.deadlineAt - 30000);
+  const deadline = Math.min(Date.now() + 90000, control.deadlineAt - (config.rootWindowPair ? 45000 : 30000));
   while (Date.now() < deadline) {
     const value = await probe();
     const text = textOf(value);
@@ -302,7 +305,8 @@ async function waitForAgentReady() {
       ['theme', /(?:Choose the text style|Choose.*theme|Select.*theme)/i],
       ['update', /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i],
       ['windows-sandbox', startupPrompts[3]],
-      ...(config.provider === 'claude' ? [['claude-api-key', startupPrompts[4]]] : [])]) {
+      ...(config.provider === 'claude' ? [['claude-api-key', startupPrompts[4]],
+        ['claude-security-notes', startupPrompts[5]]] : [])]) {
       if (pattern.test(text) && !prompts.has(name)) {
         let data = name === 'update' ? '\u001b[B\r' : '\r';
         if (name === 'windows-sandbox') {
@@ -448,6 +452,230 @@ async function cleanup() {
     try { await releaseProcessObserver(); } catch (error) { failure ??= error; receipt.releaseError = String(error); }
     receipt.pass = !failure;
     await write('cleanup.json', receipt);
+  }
+  if (failure) throw failure;
+}
+
+async function pairPublish(name, value) {
+  const file = path.join(artifacts, `pair-${name}.json`), pending = `${file}.pending-${process.pid}`;
+  await fs.writeFile(pending, JSON.stringify(value), { flag: 'wx' });
+  await fs.link(pending, file);
+  await fs.unlink(pending);
+}
+
+async function pairWait(name) {
+  return poll(`pair ${name}`, async () => {
+    const failures = (await fs.readdir(artifacts)).filter(file => /^pair-.*-failure\.json$/.test(file));
+    assert.deepEqual(failures, [], 'The other window must not fail.');
+    try {
+      const value = await read(`pair-${name}.json`);
+      assert.notEqual(value.pass, false, 'The peer did not finish successfully.');
+      return value;
+    }
+    catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
+  }, Boolean, 180000);
+}
+
+function pairNode(state, sessionId) {
+  return state.state.nodes.find(node => node.kind === 'agent' && node.metadata?.agent?.runtimeSessionId === sessionId);
+}
+
+function assertPairTopology(multi, single) {
+  assert.notEqual(multi.host.pid, single.host.pid, 'Require two actual Extension Hosts.');
+  for (const key of ['runtimeOwner', 'runtimeBackend', 'runtimeStoragePath', 'runtimeGuarantee']) {
+    assert.deepEqual(single.binding[key], multi.binding[key], `Both new Agents must share ${key}.`);
+  }
+  assert(sameLiveIdentity(multi.supervisor, single.supervisor));
+  assert.notEqual(multi.binding.runtimeSessionId, single.binding.runtimeSessionId, 'The second window must create a new Agent.');
+  assert.notEqual(multi.reader.authorityId, single.reader.authorityId);
+  for (const role of ['cli', 'provider']) {
+    const first = multi.resources.filter(entry => entry.role === role), second = single.resources.filter(entry => entry.role === role);
+    assert.equal(first.length, 1); assert.equal(second.length, 1);
+    assert(!sameIdentity(first[0], second[0]), `Each new Agent requires its own ${role}.`);
+  }
+}
+
+async function pairCapture(sessionId, expected, creatingRole) {
+  const state = await poll('pair original live Agent', snapshot, value => {
+    const node = pairNode(value, sessionId);
+    return node?.metadata.agent.liveSession === true && node.metadata.agent.attachmentState === 'attached-live';
+  }, 45000);
+  const node = pairNode(state, sessionId);
+  currentNodeId = node.id;
+  await vscode.commands.executeCommand('devSessionCanvas.__internal.focusNode', node.id);
+  await command('dispatchWebviewMessage', { type: 'webview/resizeNode', payload: {
+    nodeId: node.id, position: node.position, size: { width: 960, height: 700 } } }, surface);
+  const binding = Object.fromEntries(['runtimeOwner', 'runtimeBackend', 'runtimeStoragePath', 'runtimeSessionId',
+    'runtimeGuarantee'].map(key => [key, node.metadata.agent[key]]));
+  const hello = await rpc(runtimePaths(binding).socketPath, 'hello');
+  await assertRuntimeOwnerBinding(binding, hello);
+  const supervisor = await readIdentity(hello.pid);
+  assert(supervisor && supervisor.startTicks);
+  if (creatingRole) {
+    await observer.addRoot(supervisor.pid, 'supervisor');
+    await pairPublish(`${creatingRole}-owner`, { binding, supervisor });
+  }
+  const reader = await mountedReader(node.id);
+  assert.equal(reader.sessionId, sessionId);
+  assert(typeof reader.authorityId === 'string' && reader.authorityId.length > 0);
+  assert(typeof reader.readId === 'string' && reader.readId.length > 0);
+  if (expected) {
+    assert.deepEqual(binding, expected.binding);
+    assert(sameLiveIdentity(expected.supervisor, supervisor));
+    assert.equal(reader.authorityId, expected.reader.authorityId);
+    for (const resource of expected.resources) assert(sameLiveIdentity(resource, await readIdentity(resource.pid)),
+      'The original Agent process must remain live.');
+  }
+  return { nodeId: node.id, binding, hello, supervisor, reader, host: await readIdentity(process.pid) };
+}
+
+async function pairTurn(subject, marker) {
+  await pairCapture(subject.binding.runtimeSessionId, subject);
+  await waitForAgentReady();
+  await sendAgentTurn(currentNodeId, marker);
+  await poll('pair real Agent nonce response', probe, value => hasAgentMarkerResponse(value, marker), 90000);
+  return { marker, sessionId: subject.binding.runtimeSessionId, applied: true };
+}
+
+async function pairCreate(role, excluded = []) {
+  const before = await snapshot(), ids = new Set(before.state.nodes.map(node => node.id));
+  const group = before.state.groups?.find(entry => entry.role === 'workspace-root' &&
+    entry.workspaceRootPath === config.workspacePath);
+  if (role === 'multi') assert(group, 'Create through the actual multi-root A group.');
+  const custom = [config.cli.entry, ...config.launchArguments].map(value => `'${String(value).replaceAll("'", "'\\''")}'`).join(' ');
+  await command('dispatchWebviewMessage', { type: 'webview/createDemoNode', payload: {
+    kind: 'agent', agentProvider: config.provider, agentLaunchPreset: 'custom', agentCustomLaunchCommand: custom,
+    cwd: config.workspacePath, ...(group ? { targetGroupId: group.id,
+      preferredPosition: { x: group.position.x + 40, y: group.position.y + 40 } } : {})
+  } }, surface);
+  const created = await poll('pair independently created Agent', snapshot, value => value.state.nodes.some(node =>
+    !ids.has(node.id) && node.kind === 'agent' && node.metadata?.agent?.liveSession === true), 60000);
+  const node = created.state.nodes.find(entry => !ids.has(entry.id) && entry.kind === 'agent');
+  assert.equal(node.metadata.agent.persistenceMode, 'live-runtime');
+  const subject = await pairCapture(node.metadata.agent.runtimeSessionId, undefined, role);
+  await waitForAgentReady();
+  await observer.sample();
+  subject.resources = structuredClone(assertOriginalResourcesLive(undefined, excluded));
+  const provider = subject.resources.find(entry => entry.role === 'provider');
+  assert.equal(provider.ppid, subject.supervisor.pid);
+  let ancestor = subject.resources.find(entry => entry.role === 'cli');
+  for (let depth = 0; ancestor && ancestor.pid !== provider.pid && depth < 8; depth++) ancestor = await readIdentity(ancestor.ppid);
+  assert(sameLiveIdentity(provider, ancestor), 'The new CLI must descend from its new original provider.');
+  await pairPublish(`${role}-ownership`, subject);
+  subject.interaction = await pairTurn(subject, `DSC_ROOT_PAIR_${role.toUpperCase()}_BEFORE_${control.nonce}`);
+  const saved = await command('flushPersistedState');
+  assert(saved.exists && !saved.lastError);
+  await pairPublish(`${role}-created`, subject);
+  return subject;
+}
+
+async function pairSwitchGallery(subject) {
+  const roots = (await snapshot()).state.groups.filter(group => group.role === 'workspace-root').map(group => group.id);
+  assert.equal(roots.length, 2);
+  const observations = [];
+  await command('clearDiagnosticEvents');
+  for (const mode of ['paneGallery', 'rootGroups']) {
+    await command('clearHostMessages');
+    await vscode.workspace.getConfiguration('devSessionCanvas').update('canvas.multiRootPresentationMode', mode,
+      vscode.ConfigurationTarget.Workspace);
+    await poll(`pair ${mode} context`, () => command('getHostMessages'), messages => messages.some(message =>
+      message.type === 'host/stateUpdated' && message.payload.runtime.multiRootPresentationMode === mode));
+    // PaneGallery renders each root's contents without the composed root group frames.
+    const rendered = await poll(`pair ${mode} rendered`, probe, value => roots.every(id =>
+      value.groups.some(group => group.groupId === id) === (mode === 'rootGroups')));
+    const current = await pairCapture(subject.binding.runtimeSessionId, subject);
+    observations.push({ mode, binding: current.binding, reader: current.reader, rootFrames: rendered.groups.map(group => group.groupId) });
+  }
+  const starts = (await command('getDiagnosticEvents')).filter(event =>
+    ['execution/startRequested', 'execution/started'].includes(event.kind));
+  assert.deepEqual(starts, [], 'Presentation changes must not start an execution.');
+  return observations;
+}
+
+async function pairStop(subject) {
+  const current = await pairCapture(subject.binding.runtimeSessionId, subject);
+  await command('dispatchWebviewMessage', { type: 'webview/stopExecutionSession', payload: {
+    kind: 'agent', nodeId: current.nodeId } }, surface);
+  await poll('pair Agent stop settled', async () => ({ state: await snapshot(), events: await command('getDiagnosticEvents'),
+    runtime: await command('getRuntimeSupervisorState') }), value => {
+    const node = nodeOf(value.state, current.nodeId);
+    return node?.status === 'stopped' && node.metadata.agent.liveSession === false && node.metadata.agent.terminalHistoryDiscarded === true &&
+      !value.runtime.bindings.some(binding => binding.nodeId === current.nodeId) && value.events.some(event =>
+        event.kind === 'runtime/terminalReadSettled' && event.detail?.sessionId === current.binding.runtimeSessionId &&
+        event.detail?.readId === current.reader.readId && event.detail?.outcome?.kind === 'applied');
+  }, 30000);
+  return poll('pair original Agent resources exited', () => originalResourcesExited(subject.resources), value => value.pass, 10000);
+}
+
+async function runRootWindowPair() {
+  assert.equal(process.platform, 'linux'); assert.equal(config.provider, 'codex'); assert.equal(config.rootOwner, true);
+  const role = vscode.workspace.workspaceFile?.fsPath === config.multiWorkspace ? 'multi' : 'single';
+  phase = `pair-${role}`;
+  let failure;
+  try {
+    const roots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+    assert.deepEqual(roots, role === 'multi' ? [config.workspacePath, config.peerRoot]
+      : [config.workspacePath]);
+    const host = await readIdentity(process.pid);
+    const launcher = await pairWait('launcher');
+    let ancestor = host;
+    for (let depth = 0; ancestor && ancestor.pid !== launcher.ui.pid && depth < 12; depth++) ancestor = await readIdentity(ancestor.ppid);
+    assert(sameLiveIdentity(launcher.ui, ancestor), 'Both Hosts must belong to the original isolated application.');
+    await pairPublish(`${role}-activation`, { host, roots });
+    const extension = await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
+    await waitForCommand(vscode, 'devSessionCanvas.__test.getDebugState');
+    const installedVsix = await captureInstalledExtensionReceipt(extension, config.installedVsixExpectation);
+    await pairPublish(`${role}-environment`, { installedVsix, host, roots });
+    await vscode.commands.executeCommand('devSessionCanvas.openCanvasInEditor');
+    await command('waitForCanvasReady', surface, 30000);
+    await startProcessObserver(extension);
+    if (role === 'multi') {
+      assert.equal((await snapshot()).state.nodes.filter(node => node.kind === 'agent').length, 0);
+      const multi = await pairCreate(role);
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(config.workspacePath), { forceNewWindow: true });
+      const single = await pairWait('single-created');
+      assertPairTopology(multi, single);
+      const gallery = await pairSwitchGallery(multi);
+      const interaction = await pairTurn(multi, `DSC_ROOT_PAIR_MULTI_AFTER_${control.nonce}`);
+      await pairPublish('multi-verified', { pass: true, gallery, interaction });
+      await pairWait('single-verified');
+    } else {
+      const multi = await pairWait('multi-created');
+      const inherited = await pairCapture(multi.binding.runtimeSessionId, multi);
+      assert.notEqual(inherited.reader.readId, multi.reader.readId);
+      await observer.addRoot(multi.supervisor.pid, 'supervisor');
+      await observer.sample();
+      assertOriginalResourcesLive(multi.resources);
+      const single = await pairCreate(role, multi.resources);
+      assertPairTopology(multi, single);
+      await pairWait('multi-verified');
+      const interaction = await pairTurn(single, `DSC_ROOT_PAIR_SINGLE_AFTER_${control.nonce}`);
+      await pairCapture(multi.binding.runtimeSessionId, multi);
+      await pairPublish('single-verified', { pass: true, interaction, multiSession: multi.binding.runtimeSessionId,
+        singleSession: single.binding.runtimeSessionId });
+      await pairWait('multi-finished');
+      await poll('pair original multi Host exited', () => readIdentity(multi.host.pid), value => exitedIdentity(multi.host, value));
+      // The surviving single has both A nodes; its save follows the stale multi Host's exit.
+      const saved = await command('flushPersistedState');
+      assert(saved.exists && !saved.lastError);
+      const stopped = [];
+      for (const subject of [multi, single]) stopped.push(await pairStop(subject));
+      const registry = await poll('pair original registry empty', async () =>
+        JSON.parse(await fs.readFile(runtimePaths(single.binding).registryPath, 'utf8')),
+      value => Array.isArray(value.sessions) && value.sessions.length === 0);
+      const runtime = await command('getRuntimeSupervisorState');
+      assert.equal(runtime.bindings.length, 0); assert.equal(runtime.pendingRuntimeSupervisorOperationCount, 0);
+      await pairPublish('cleanup', { pass: true, stopped, registry, runtime, forcedSignals: [] });
+    }
+  } catch (error) {
+    failure = error;
+    await pairPublish(`${role}-failure`, { error: String(error), stack: error.stack }).catch(() => {});
+    if (observer) await write(`pair-${role}-fallback.json`, { pass: false,
+      actions: await observer.cleanupKnownExecution().catch(cleanupError => [{ error: String(cleanupError) }]) });
+  } finally {
+    try { await releaseProcessObserver(); } catch (error) { failure ??= error; }
+    await pairPublish(`${role}-finished`, { pass: !failure }).catch(() => {});
+    void vscode.commands.executeCommand('workbench.action.closeWindow').catch(() => {});
   }
   if (failure) throw failure;
 }

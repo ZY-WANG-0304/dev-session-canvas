@@ -5,7 +5,8 @@ const readline = require('node:readline');
 const [receiptPath, nonce] = process.argv.slice(2);
 assert(receiptPath && /^[a-f0-9-]+$/.test(nonce));
 const pending = `${receiptPath}.pending-${process.pid}`;
-fs.writeFileSync(pending, `${JSON.stringify({ schema: 1, nonce, pid: process.pid, state: 'ready' })}\n`, { flag: 'wx' });
+fs.writeFileSync(pending, `${JSON.stringify({ schema: 1, nonce, pid: process.pid, state: 'ready',
+  windowMarker: process.env.DSC_ROOT_WINDOW_MARKER })}\n`, { flag: 'wx' });
 fs.linkSync(pending, receiptPath);
 fs.unlinkSync(pending);
 process.stdout.write(`DSC_ROOT_READY_${nonce}\r\n`);

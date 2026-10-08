@@ -44,7 +44,7 @@ on:
       root_checks:
         description: Root scope; partial retries require exact package reuse and explicit installed evidence when skipping
         type: choice
-        options: [all, window-pair, agents, installed, remote]
+        options: [all, window-pair, agents, installed, remote, claude, boundaries, agent-window-pair]
         default: all
 
 permissions:
@@ -106,7 +106,7 @@ jobs:
           assert(['true', 'false'].includes(skip));
           assert(['true', 'false'].includes(reloadOnly));
           assert(['true', 'false'].includes(rootOwnership));
-          assert(['all', 'window-pair', 'agents', 'installed', 'remote'].includes(rootChecks));
+          assert(['all', 'window-pair', 'agents', 'installed', 'remote', 'claude', 'boundaries', 'agent-window-pair'].includes(rootChecks));
           assert(rootOwnership === 'true' || rootChecks === 'all', 'Root checks require root ownership acceptance.');
           if (rootOwnership === 'true') {
             assert(scenarios === '' && installedMode === 'live-runtime' && reloadOnly === 'false',
@@ -118,6 +118,9 @@ jobs:
             assert(rootChecks !== 'window-pair' || platform === 'linux', 'Root window-pair acceptance is Linux-only.');
             assert(rootChecks !== 'remote' || (platform === 'linux' && reuse && skip === 'true' && installedRun),
               'Root Remote SSH acceptance requires Linux, exact-package reuse and explicit passed installed evidence.');
+            assert(!['claude', 'boundaries', 'agent-window-pair'].includes(rootChecks)
+              || (platform === 'linux' && reuse && skip === 'true' && installedRun),
+              'Focused root acceptance requires Linux, exact-package reuse and explicit passed installed evidence.');
           }
           assert(['all', 'live-runtime'].includes(installedMode));
           cli.selectAgentCandidateScenarios(scenarios);
@@ -450,6 +453,22 @@ jobs:
             ${{ runner.temp }}/dsc-root-remote/live-runtime/artifacts/**
           if-no-files-found: error
           retention-days: 14
+      - name: Installed root owner boundary acceptance
+        id: root_boundaries
+        if: ${{ inputs.root_ownership && inputs.root_checks == 'boundaries' && runner.os == 'Linux'
+          && inputs.skip_installed && steps.package_identity.outcome == 'success'
+          && steps.installed_identity.outcome == 'success' }}
+        run: node scripts/smoke/run-vscode-root-owner-candidate.mjs --boundaries --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-root-boundaries"
+      - name: Preserve root owner boundary evidence
+        if: always() && steps.root_boundaries.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-root-boundaries-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/dsc-root-boundaries/*.json
+            ${{ runner.temp }}/dsc-root-boundaries/runtime/artifacts/**
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload installed evidence before Agent credentials are available
         if: always() && (steps.installed.outcome != 'skipped' || steps.installed_runtime.outcome != 'skipped' || steps.installed_runtime_reload.outcome != 'skipped')
         uses: actions/upload-artifact@v4
@@ -469,7 +488,8 @@ jobs:
         run: node scripts/test/test-agent-candidate-windows-observer.mjs
       - name: Install fixed real Agent CLIs
         id: agent_clis
-        if: ${{ !inputs.root_ownership || inputs.root_checks == 'all' || inputs.root_checks == 'agents' }}
+        if: ${{ !inputs.root_ownership || inputs.root_checks == 'all' || inputs.root_checks == 'agents'
+          || ((inputs.root_checks == 'claude' || inputs.root_checks == 'agent-window-pair') && runner.os == 'Linux') }}
         run: npm install --global --no-audit --no-fund @openai/codex@0.157.1 @anthropic-ai/claude-code@2.1.280
       - name: Real Agent final acceptance
         id: real_agents
@@ -504,18 +524,24 @@ jobs:
             --output "$RUNNER_TEMP/dsc-agent-reload"
       - name: Real root Agent create and Reload Window acceptance
         id: root_agent_reload
-        if: ${{ inputs.root_ownership && (inputs.root_checks == 'all' || inputs.root_checks == 'agents')
+        if: ${{ inputs.root_ownership && (inputs.root_checks == 'all' || inputs.root_checks == 'agents'
+          || (inputs.root_checks == 'claude' && runner.os == 'Linux' && inputs.skip_installed))
           && steps.package_identity.outcome == 'success' && steps.agent_clis.outcome == 'success'
           && ((!inputs.skip_installed && steps.installed_runtime.outcome == 'success')
             || (inputs.skip_installed && steps.installed_identity.outcome == 'success'))
           && (runner.os != 'Windows' || steps.windows_reload_identity.outcome == 'success') }}
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DSC_ROOT_CHECKS: ${{ inputs.root_checks }}
         run: |
           umask 077
           failed=0
           providers=(codex)
-          if [ "$RUNNER_OS" = Linux ]; then providers+=(claude); fi
+          if [ "$DSC_ROOT_CHECKS" = claude ]; then
+            providers=(claude)
+          elif [ "$RUNNER_OS" = Linux ]; then
+            providers+=(claude)
+          fi
           for provider in "${providers[@]}"; do
             if ! node scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs \
               --backend=deepseek --provider="$provider" --root-owner \
@@ -535,6 +561,30 @@ jobs:
             ${{ runner.temp }}/dsc-root-agent-*/result.json
             ${{ runner.temp }}/dsc-root-agent-*/runtime/artifacts/*.json
             ${{ runner.temp }}/dsc-root-agent-*/runtime/artifacts/*-output.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Real root Agent two-window acceptance
+        id: root_agent_window_pair
+        if: ${{ inputs.root_ownership && inputs.root_checks == 'agent-window-pair' && runner.os == 'Linux'
+          && inputs.skip_installed && steps.package_identity.outcome == 'success'
+          && steps.installed_identity.outcome == 'success' && steps.agent_clis.outcome == 'success' }}
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          umask 077
+          node scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs \
+            --backend=deepseek --provider=codex --root-owner --root-window-pair \
+            --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-root-agent-window-pair"
+      - name: Preserve root Agent two-window evidence
+        if: always() && steps.root_agent_window_pair.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-root-agent-window-pair-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/dsc-root-agent-window-pair/input.json
+            ${{ runner.temp }}/dsc-root-agent-window-pair/first-failure.json
+            ${{ runner.temp }}/dsc-root-agent-window-pair/result.json
+            ${{ runner.temp }}/dsc-root-agent-window-pair/runtime/artifacts/*.json
           if-no-files-found: error
           retention-days: 14
       - name: Upload live Agent Reload evidence
