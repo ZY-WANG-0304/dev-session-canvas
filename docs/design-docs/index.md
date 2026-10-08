@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/linux-claude-trust-startup-diagnosis.md` | Linux Claude 单次 Down 后选择回退与 driver 一次性导航竞态已定位；修复与真实验收待完成 | 执行编排域、VSCode 集成域 / 适配与基础设施层、宿主集成层、画布呈现层 | 待探索 | 验证中 | `docs/exec-plans/completed/linux-claude-trust-startup-diagnosis.md` | 2026-10-09 |
 | `docs/design-docs/runtime-protocol-race-root-cause.md` | 两处协议回归同步前提已修正；确定性收尾窗口与完整门禁验证通过 | 执行编排域 / 适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-protocol-race-root-cause.md`、`docs/exec-plans/completed/runtime-protocol-race-test-repair.md` | 2026-10-09 |
 | `docs/design-docs/runtime-rpc-request-timeout.md` | F-01：请求等待有界；reader 超时保留迟到清理，严格删除保留补证 | 执行编排域 / 适配与基础设施层、共享模型与编排层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-rpc-request-timeout.md`、`docs/exec-plans/completed/runtime-reader-open-timeout-cleanup.md` | 2026-10-09 |
 | `docs/design-docs/runtime-admission-failure-details.md` | 执行准入拒绝保留磁盘等底层错误原因；预留收尾由后续独立设计收口 | 执行编排域、VSCode 集成域 / 适配与基础设施层、宿主集成层 | 已选定 | 已验证 | `docs/product-specs/runtime-persistence-modes.md` | 2026-10-08 |
@@ -96,7 +97,7 @@
 | `docs/design-docs/execution-session-platform-compatibility.md` | 执行会话后端从 Linux 原型收口到 Linux/macOS/Windows 统一 PTY 路线，并补宿主侧 CLI 命令发现策略与剩余平台差异记录 | VSCode 集成域、执行编排域、协作对象域 / 宿主集成层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/execution-session-platform-compatibility.md`、`docs/exec-plans/active/agent-shell-environment-inheritance.md` | 2026-05-09 |
 | `docs/design-docs/task-note-editable-nodes.md` | Task 与 Note 从占位卡片升级为可编辑真实节点的字段与状态分层设计 | 画布交互域、协作对象域、项目状态域 / 画布呈现层、共享模型与编排层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/task-note-editable-nodes.md` | 2026-03-28 |
 | `docs/design-docs/vscode-canvas-runtime-architecture.md` | VSCode 内无限画布的运行时边界、技术路线与初步选型 | VSCode 集成域、画布交互域、协作对象域、执行编排域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 验证中 | `docs/exec-plans/completed/canvas-architecture-research.md`、`docs/exec-plans/completed/agent-session-surface-alignment.md`、`docs/exec-plans/completed/agent-special-terminal.md`、`docs/exec-plans/completed/execution-session-platform-compatibility.md`、`docs/exec-plans/completed/canvas-surface-configurable-host.md` | 2026-04-28 |
-| `docs/design-docs/runtime-root-ownership.md` | F-03/R1 新建归属与原绑定保护有限交付完成；P1至P3、R1-01至R1-08具名证据收口，历史失败与未归因边界保留 | VSCode 集成域、执行编排域、项目状态域 / 宿主集成层、共享模型与编排层、适配与基础设施层 | 已选定 | 已验证 | `docs/product-specs/canvas-multi-root-workspace-support.md`、`docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-root-ownership-design.md`、`docs/exec-plans/completed/runtime-root-ownership.md` | 2026-10-08 |
+| `docs/design-docs/runtime-root-ownership.md` | F-03/R1 新建归属与原绑定保护有限交付完成；P1至P3、R1-01至R1-08具名证据收口，历史失败与未归因边界保留 | VSCode 集成域、执行编排域、项目状态域 / 宿主集成层、共享模型与编排层、适配与基础设施层 | 已选定 | 已验证 | `docs/product-specs/canvas-multi-root-workspace-support.md`、`docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-root-ownership-design.md`、`docs/exec-plans/completed/runtime-root-ownership.md` | 2026-10-09 |
 
 ## 维护约定
 
