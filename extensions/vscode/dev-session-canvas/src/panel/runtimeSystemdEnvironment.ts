@@ -43,6 +43,9 @@ export async function inspectRuntimeSystemdEnvironment(
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           resolve({ kind: 'unavailable', reason: 'systemd-run-unavailable' });
         } else if (typeof error.code === 'number' && !error.killed && !error.signal &&
+          stderr.trim() === 'Failed to connect to bus: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined (consider using --machine=<user>@.host --user to connect to bus of other user)') {
+          resolve({ kind: 'unavailable', reason: 'user-bus-address-missing' });
+        } else if (typeof error.code === 'number' && !error.killed && !error.signal &&
           /^Failed to connect to bus: (?:No medium found|No such file or directory|Connection refused)(?: \(consider using --machine=<user>@\.host --user to connect to bus of other user\))?$/.test(stderr.trim())) {
           resolve({ kind: 'unavailable', reason: 'user-bus-unavailable' });
         } else {

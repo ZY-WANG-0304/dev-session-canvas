@@ -83,6 +83,10 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 
 `test-runtime-root-preparation-native.mjs` 使用正常 build 的 launcher/Main，覆盖同 root 两准备进程收敛、已有 owner 复用、不同 root 隔离、真实运行锁占用、闲置退出后新 token。Linux 先做实际 systemd probe；可用时验证新建/跨偏好复用，明确 unavailable 则单列 not-verified，unknown 失败。清理仅在 helper close、正面运行锁释放和本轮 systemd unit inactive 后处理具名资源，不 kill 未知进程。pending 场景是磁盘夹具，不能代证真实提交中断。本地执行在 launcher 环境预检得到空 stdout 而失败，尚未提交任何 Supervisor；保留这个结果，由三平台 CI 取得实际协调证据。复用资产的原 run 总结果为 failure，六个 native-assets job 与 package 均为 success，只复用这些原生产物，不追认原 run 整体验收。
 
+提交 `d72b90e2` / run `37706950213`：三平台正常装配/build、受控准备与 typecheck 通过，macOS/Windows 的真实协调全组通过；Linux 已通过同 owner 并发/复用，在 systemd probe 返回 `unknown/environment-probe-failed` 后失败，正常闲置清理完成。该日志没有原 stderr，因此不能把根因预写为总线地址缺失。另行本地定向复现了 systemd 的完整 `$DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined` 固定错误行；新增只匹配这行的 unavailable 分类（独立 reason `user-bus-address-missing`），38 受控测试通过，其他权限/超时/附加诊断继续 unknown。
+
+后续仅补 R1-03 已列出的两例真实中断：临时测试 launcher 在明确 barrier 暂停，intent 前断 IPC并等 helper close；detached 已提交、Main 尚未取得运行锁时终止本轮直接跟踪的 helper，核对 pending 不重复提交、迟到 ready 后复用同 token/PID。原磁盘夹具仍独立保留，真实场景不等同完整 EH crash。wrapper 用既有运行锁原语确认退出，没有生产测试 hook 或新诊断框架；本地仍在原预检处失败，两例待 CI，不写成已通过。
+
 ## 接口与依赖
 
 `RuntimeOwnerDescriptorV1` 固定 schema/environmentKey/userStorageScopeKey/root/generation；路径 resolver 接受 canonical global storage 与已解析 root，不接受 Webview 自报 path。环境 helper 返回摘要及本机用户身份，失败抛出明确错误；Windows 可使用系统自带进程调用只读 native API，若能避免修改 PTY 资产则优先采用。hello owner 字段对旧 binding 可缺省，对新 root generation 必须校验。具体导出签名在 P1 实现后补齐。
