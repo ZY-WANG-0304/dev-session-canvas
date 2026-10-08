@@ -106,18 +106,50 @@ test('pair uses original session identity across composed node IDs and presentat
     if (changed === 'binding') current.runtimeStoragePath += '-other';
     const state = { state: { nodes: [{ id: 'composed-id', kind: 'agent', position: { x: 0, y: 0 }, metadata: {
       agent: { ...current, liveSession: true, attachmentState: 'attached-live' } } }] } };
-    const api = compile(['pairNode', 'pairCapture'], { assert, currentNodeId: undefined, surface: 'editor',
-      process: { pid: 10 }, snapshot: async () => state, command: async () => {},
+    let attachRequests = 0;
+    const api = compile(['pairNode', 'pairCapture'], { assert, currentNodeId: undefined, surface: 'editor', randomUUID: () => 'request',
+      process: { pid: 10 }, snapshot: async () => state, command: async (name, message, target) => {
+        if (message?.type !== 'webview/attachExecutionSession') return;
+        assert.equal(name, 'dispatchWebviewMessage'); assert.equal(target, 'editor');
+        assert.deepEqual(message.payload, { kind: 'agent', nodeId: 'composed-id', executionSessionId: 'session', requestId: 'request' });
+        attachRequests++;
+      },
       poll: async (_label, get, accept) => { const value = await get(); assert(accept(value)); return value; },
       vscode: { commands: { executeCommand: async () => {} } }, runtimePaths: () => ({ socketPath: '/socket' }),
       rpc: async () => ({ pid: 20 }), assertRuntimeOwnerBinding: async () => {}, sameLiveIdentity: contract.sameLiveIdentity,
       readIdentity: async pid => pid === 20 ? supervisor : pid === 30 ? { ...cli, startTicks: changed === 'process' ? 'replaced' : '300' }
         : { pid: 10 },
-      mountedReader: async id => { assert.equal(id, 'composed-id'); return { sessionId: 'session',
+      mountedReader: async (id, requested) => {
+        assert.equal(attachRequests, 1); assert.equal(id, 'composed-id');
+        assert.deepEqual(requested, { requestId: 'request', sessionId: 'session', authorityId: 'authority' });
+        return { sessionId: 'session',
         authorityId: changed === 'authority' ? 'changed' : 'authority', readId: 'new' }; }
     });
     if (changed) await assert.rejects(api.pairCapture('session', expected));
     else assert.equal((await api.pairCapture('session', expected)).reader.readId, 'new');
+  }
+});
+
+test('pair reader requires its requested snapshot and actual mounted page, not an old message cache', async () => {
+  for (const changed of [undefined, 'missing', 'request', 'node', 'session', 'authority', 'read', 'page', 'columns']) {
+    const requested = { requestId: 'fresh-request', sessionId: 'original-session', authorityId: 'original-authority' };
+    const fresh = { type: 'host/executionSnapshot', payload: { nodeId: 'node', requestId: requested.requestId,
+      terminalRead: { sessionId: requested.sessionId, authorityId: requested.authorityId, readId: 'current-reader' } } };
+    if (changed === 'request') fresh.payload.requestId = 'other-request';
+    if (changed === 'node') fresh.payload.nodeId = 'other-node';
+    if (changed === 'session') fresh.payload.terminalRead.sessionId = 'replacement-session';
+    if (changed === 'authority') fresh.payload.terminalRead.authorityId = 'replacement-authority';
+    if (changed === 'read') fresh.payload.terminalRead.readId = '';
+    const old = { type: 'host/executionSnapshot', payload: { nodeId: 'node', requestId: 'old-request',
+      terminalRead: { sessionId: requested.sessionId, authorityId: requested.authorityId, readId: 'old-reader' } } };
+    const messages = changed === 'missing' ? [old] : [old, fresh];
+    const api = compile(['mountedReader'], { assert,
+      probe: async () => ({ nodes: changed === 'page' ? [] : [{ nodeId: 'node', terminalCols: changed === 'columns' ? 63 : 100 }] }),
+      command: async name => { assert.equal(name, 'getHostMessages'); return messages; },
+      poll: async (_label, get, accept) => { const value = await get(); assert(accept(value)); return value; }
+    });
+    if (changed) await assert.rejects(api.mountedReader('node', requested), undefined, changed);
+    else assert.equal((await api.mountedReader('node', requested)).readId, 'current-reader');
   }
 });
 
@@ -201,7 +233,7 @@ test('pair archives the checked owner before reader mounting or CLI readiness ca
   const supervisor = { pid: 20, startTicks: '200', executable: '/code', state: 'S' };
   const state = { state: { nodes: [{ id: 'node', kind: 'agent', position: { x: 0, y: 0 }, metadata: {
     agent: { ...binding, liveSession: true, attachmentState: 'attached-live' } } }] } };
-  const api = compile(['pairNode', 'pairCapture'], { assert, currentNodeId: undefined, surface: 'editor',
+  const api = compile(['pairNode', 'pairCapture'], { assert, currentNodeId: undefined, surface: 'editor', randomUUID: () => 'request',
     snapshot: async () => state, command: async () => {}, vscode: { commands: { executeCommand: async () => {} } },
     poll: async (_label, get, accept) => { const value = await get(); assert(accept(value)); return value; },
     runtimePaths: () => ({ socketPath: '/socket' }), rpc: async () => ({ pid: 20 }),
@@ -334,6 +366,31 @@ test('the fixed pair creates in multi first and stops both original sessions onl
       assert.equal(records.get('cleanup').pass, true);
     }
     assert(events.indexOf('release') < events.indexOf('workbench.action.closeWindow'));
+  }
+});
+
+test('pair failure captures existing probe and Host messages once before closing without replacing the first error', async () => {
+  for (const probeFails of [false, true]) {
+    const failure = new Error('original pair failure'), events = [], written = new Map();
+    const context = { assert, phase: '', config: { rootOwner: true, provider: 'codex', multiWorkspace: '/multi',
+      workspacePath: '/A', peerRoot: '/B' }, process: { platform: 'linux', pid: 10 }, observer: undefined,
+      vscode: { workspace: { workspaceFolders: [{ uri: { fsPath: '/A' } }] }, commands: {
+        executeCommand: async () => events.push('close') } },
+      readIdentity: async () => ({ pid: 10 }), pairWait: async () => { throw failure; },
+      pairPublish: async (name, value) => { events.push(name); written.set(name, value); },
+      write: async (name, value) => { events.push(name); written.set(name, value); },
+      probe: async () => { events.push('probe'); if (probeFails) throw new Error('probe failed'); return { actual: 'page' }; },
+      command: async name => { assert.equal(name, 'getHostMessages'); events.push(name); return [{ actual: 'message' }]; },
+      releaseProcessObserver: async () => events.push('release')
+    };
+    await assert.rejects(compile(['runRootWindowPair'], context).runRootWindowPair(), error => error === failure);
+    assert.equal(written.get('single-failure').error, String(failure));
+    assert.equal(written.get('single-finished').pass, false);
+    assert.equal(events.filter(value => value === 'probe').length, 1);
+    assert.equal(events.filter(value => value === 'getHostMessages').length, 1);
+    if (!probeFails) assert.deepEqual(written.get('pair-single-failure-webview-probe.json'), { actual: 'page' });
+    assert.deepEqual(written.get('pair-single-failure-host-messages.json'), [{ actual: 'message' }]);
+    assert(events.indexOf('pair-single-failure-host-messages.json') < events.indexOf('close'));
   }
 });
 
@@ -487,6 +544,24 @@ test('Claude readiness requires its model and composer and confirms known onboar
     const rejected = compile(['hasLoadedAgentComposer', 'waitForAgentReady'], { ...context, probe: async () => text });
     await assert.rejects(rejected.waitForAgentReady(), /authenticated surface/);
   }
+});
+
+test('Claude composer recognizes observed NBSP horizontal spacing without accepting another line or missing model', async () => {
+  const ready = 'Claude Code v2.1.280\ndeepseek-flash\n\u276f\u00a0';
+  let clock = 0, probes = 0;
+  const api = compile(['hasLoadedAgentComposer', 'waitForAgentReady'], {
+    assert, config: { provider: 'claude' }, stripVt: value => value, control: { deadlineAt: 32000 }, currentNodeId: 'node',
+    Date: { now: () => clock }, sleep: async ms => { clock += ms; }, textOf: value => value,
+    probe: async () => { probes++; return ready; }, dom: async () => assert.fail('A ready composer needs no input.')
+  });
+  assert.equal(api.hasLoadedAgentComposer(ready), true);
+  for (const notReady of ['Claude Code v2.1.280\ndeepseek-flash\n\u276f\u00a0not a composer',
+    'Claude Code v2.1.280\n\u276f\u00a0', 'deepseek-flash\n\u276f\u00a0',
+    'Claude Code v2.1.280\ndeepseek-\nflash\n\u276f\u00a0']) {
+    assert.equal(api.hasLoadedAgentComposer(notReady), false);
+  }
+  await api.waitForAgentReady();
+  assert.equal(probes, 2);
 });
 
 test('Claude workspace trust confirms only the observed affirmative option once', async () => {

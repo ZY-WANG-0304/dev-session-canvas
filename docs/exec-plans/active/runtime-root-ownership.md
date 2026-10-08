@@ -22,6 +22,7 @@
 - [x] (2026-10-08) P3 首轮正常同版 package 与 Linux/macOS installed Runtime Terminal/Webview 通过；Windows 路径夹具失败及 Linux 双窗未激活失败原样保留。
 - [x] (2026-10-08) 修复两项夹具并同包验证Windows；独立审查三项产品缺口修后受控回归、正常build/VSIX和三平台原生协调通过。修后同包三平台安装及三平台真实Codex Reload通过。
 - [x] (2026-10-08) Linux真实双窗口四会话/三owner/关闭重开/正常idle及实际Remote-SSH身份和完成重开通过。旧slot A/B与新root C共存及最后reader/RPC退役组合回归补齐，R1-06按受控层级收口。
+- [x] (2026-10-08) `97f1df49` / `37720714756` 同包 Terminal 反向创建、设置/resize、C keep/readd/clear 和 A 故障隔离通过；独立原始合同/安装 receipt 复核通过，故障 A 不计正常 EOF。
 - [ ] P3：完成受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本，整体审查并同步结账。
 
 ## 意外与发现
@@ -52,6 +53,8 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 
 ## 决策记录
 
+2026-10-08：只修两项可证明的 Agent 夹具问题。Claude composer 支持实际 U+00A0 水平空白，保持 model 与两次就绪确认；pairCapture 使用原 attach API 的唯一 requestId 获取当前 reader 快照，不依赖消息环长期保留旧项，并保持实际页面、原 session/authority/进程及 nonce 断言。同 reader 的 relay 与页面按现有实现复用，不重置终端或创建执行；默认 Reload 路径不改。失败时原有 probe/messages 各保存一次，不新建诊断 API。36 项测试先红后绿，实际 Claude 失败页重放通过；不据此关闭真实两组验收。
+
 2026-10-08：R1-02 复用既有隔离 loopback Remote-SSH runner，仅增加 root-owner 的 live-runtime 选择及真实 EH 环境采样。无产品/无画板的 probe 和后续两 EH 比较同一执行环境 key，再核对安装产品的真实 binding；不把合成 URI 或本机 shell 代作 Remote 证据。schema2 使用已有冻结产品 validator/hash 验证 API，不新增兼容规则。production workflow 的 `root_checks=remote` 只接受 Linux、明确同包 reuse 和已通过安装证据，不安装 Agent CLI/传凭据；归档仅允许具名回执，不上传 SSH 私钥或整个 fixture。Remote 和双窗夹具变化不重打产品包、不重跑未受影响原生矩阵。
 
 2026-10-08：审查发现产品阻塞后，取消尚未开始的同包Linux run `37713487916`。Windows夹具定向 run `37713396864` 已success，但它只证明既有断言范围，不证明漏测的Supervisor completed记录已删除。接下来产品修复改变bundle，必须重新正常打包，并补受影响安装/Agent/root端点验收；旧成功的尾部事实保留，不把已知缺口藏在Host bindings=0后面。固定端点选用POSIX UID私有短目录，只对新root代生效，复用已有目录校验，不引入端点数据库。
@@ -68,7 +71,9 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 
 ## 结果与复盘
 
-P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd 与跨 XDG/HOME/TMP 复用；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 修后同版包的三平台 installed Terminal/Webview、三平台真实 Codex Reload、Linux双窗与Remote已通过。只剩Claude具名失败重试、反向创建/PaneGallery与工作区/设置/故障边界组合、整体审查，F-03保持开放；旧slot保障按明确受控层级复用，不扩成新的OS矩阵。历史失败和本地沙箱限制原样保留，不追认通过。
+P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd 与跨 XDG/HOME/TMP 复用；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 修后同版包的三平台 installed Terminal/Webview、三平台真实 Codex Reload、Linux双窗与Remote及Terminal边界已通过。只剩Claude和Codex双窗口具名失败重试、整体审查结账，F-03保持开放；旧slot保障按明确受控层级复用，不扩成新的OS矩阵。历史失败和本地沙箱限制原样保留，不追认通过。
+
+Terminal 边界 run `37720714756` / artifact `11525926721`：独立运行原 `assertBoundaryCase` 和两窗 installed receipt 均通过，同 VSIX SHA256 `a37f0c3e5afeba5132b5f5eb88104bb36d0670887572c44adbc05cd91097203f`。实际 B 从125x28到109x24，C保留重加仍原会话且nonce成功，clear重加为空；A故障后B原进程/authority与交互保持。54,421ms完成、pending=0、UI exit0，B/C正常idle观察27,917ms。A是明确SIGKILL输入，其4个子资源在清理观察时已退出，仍保留A未知binding/registry，不把全14个原身份最后absent或无额外信号写成A正常EOF。尾部复用既有未改实现证据，不由本次资源退出单独代证。
 
 ## 上下文与定向
 
