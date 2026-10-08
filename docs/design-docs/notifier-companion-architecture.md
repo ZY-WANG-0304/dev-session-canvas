@@ -15,7 +15,7 @@ related_plans:
   - docs/exec-plans/completed/standard-monorepo-and-doc-knowledge-base.md
   - docs/exec-plans/active/cross-plan-coordination.md
   - docs/exec-plans/completed/notifier-bilingual-support-cleanup.md
-updated_at: 2026-07-07
+updated_at: 2026-10-08
 ---
 
 # UI 侧 Notifier Companion 架构
@@ -71,6 +71,9 @@ updated_at: 2026-07-07
 - 第一版允许不同平台在点击回调能力上存在 `direct-action`、`protocol`、`none` 三种能力差异；平台退化需要被显式暴露，而不是被伪装成“所有平台都已完整支持”。
 
 ### 5.3 核心规则与不变量
+
+- 默认 owned provider 的 snapshot-only Agent / Terminal 输出必须在 `CanvasPanelManager.consumeNonNativeHostBusinessOutput` 复用 `bridgeExecutionAttentionSignals`，由每个执行记录保存分块解析 carryover 与通知冷却。桥接不等待 companion 返回，避免通知后端阻塞终端消费。
+- 设置或确认 `attentionPending` 时，仅当 owned 记录仍绑定变更前的同一 metadata，才推进其最终保存绑定；外部 metadata 替换仍必须拒绝，旧执行的迟到输出不得提醒同 ID 的新节点。
 
 - 正式安装真相固定为“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` + `api:none`”；跨 host 协作必须依赖异步 commands 和结构化协议，而不是额外引入跨扩展 JS API。
 - 外部通知系统看到的 callback URI 只能携带一次性 token；真实 `focusAction` 只能保存在 companion 内部 pending table 中，避免把任意命令载荷直接暴露给 OS 通知层。
@@ -290,6 +293,8 @@ companion 当前会把点击回调能力显式收口成 `activationMode`：
 5. 当前远端 notifier 联调只支持“从远端仓库窗口发起”的 `Run Dev Session Canvas + Notifier (Remote Window)`；不要在本地 clone 窗口里手工把 `${workspaceFolder}` 误当成远端路径
 
 ## 9. 当前验证状态
+
+2026-10-08 对 PR #296 合并提交的调查确认：owned snapshot-only 输出漏接 attention 桥接。真实宿主已收到 OSC 9，但节点 attention 为 false、companion 无请求；直接调用 companion 返回 posted。去掉 smoke 重复启动后，占位异常消失而通知仍超时。该缺口属于主扩展接线，本次已按上述规则修复。新增 7 项 owned attention 回归覆盖 Agent / Terminal 的分块 OSC 9、OSC 777、BEL、开关、冷却、异步投递、工作台回退、旧记录隔离及提醒确认后的最终保存；它们在修复前代码上首先因通知请求数为 0 失败。完整 Host 接线回归 261/261、attention parser、终端分页回归（真实 controller 50/50、Host batch 10/10）与 typecheck 通过。使用六目标默认资产构建双扩展，在短路径隔离目录以 VS Code 1.126.0 运行 companion smoke 通过，覆盖投递、单次 callback、居中且保留提醒，并复验用户确认后继续输出与正常停止。smoke 跟随创建节点后的自动启动，并从实际 host/executionOutput 验证 fake agent 输出，不依赖 owned live metadata 不投影的 recentOutput。真实 OS 通知弹出与其他平台本轮未重新验收；历史失败仍保留。
 
 截至 2026-07-07，本设计对应的第一版实现与本地化补充 smoke 已确认以下仓库内验证：
 
