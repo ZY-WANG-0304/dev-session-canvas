@@ -15,11 +15,17 @@
 - [x] (2026-10-08) 三平台原生父进程/双子进程身份一致 probe：`6688c21e` / run `37657913544`，Windows 首败保留、相同预算失败项重试通过。
 - [x] (2026-10-08) P1 启动记录：私有 intent/started、claim 前匹配与 claim 后发布、单 token 拒绝重复消费；提取原有底层启动命令供准备流程复用。
 - [x] (2026-10-08) P1 准备事务实现：短命持锁 launcher、单次提交 IPC、私有 descriptor 发布和 systemd 实际环境探针；受控测试与正常 build 通过，默认路由未改。
-- [ ] P1 剩余：正常 bundle 的真实竞争/中断后判定及 systemd manager 实测；受控测试不代证。Remote 与睡眠/OS 调时等身份场景在受影响产品验收中补证。
-- [ ] P2：接入单根/多根 Agent/Terminal 创建、backend 发现、客户端缓存与退役；保留原绑定与设置语义。
+- [x] (2026-10-08) P1 原生竞争/中断：macOS、Windows 完整组通过；Linux detached 汇聚、真实 Host helper、intent 前取消、提交后中断及迟到 ready 通过，systemd 单列未完成。
+- [ ] P1 剩余：systemd 范围 probe 修后通过，但实际 owner 启动仍返回 unconfirmed，待直接定位；Remote 与睡眠/OS 调时等身份场景在受影响产品验收中补证。
+- [x] (2026-10-08) P2 主接线：两类单根/多根新建显式 root；metadata/原绑定/缓存/设置边界与正常 build、受控回归已接通。
+- [x] (2026-10-08) P2 独立审查修复 restore bucket await 期间换绑定竞态，24 个定向组合先红后绿，原失效 owner 拒绝与原 client 退休屏障保留。
 - [ ] P3：完成受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本，整体审查并同步结账。
 
 ## 意外与发现
+
+run `37709150155` 的 Linux 原始 stderr 明确为 transient manager 拒绝 `JobTimeoutUSec`，此前缺总线地址的分类没有解释或修复此失败。移除两项 job timeout 属性，改服务 `TimeoutStartSec=10s`，保留运行/停止及调用预算；排队可晚启动的只读 probe 不创建 owner，调用超时保持 unknown。不能把这次参数失败写成环境身份不同或不可用，也不能靠失败后重试弱化参数。
+
+P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后续成功/失败必须仍比对 await 前原完整 binding，不能 await 后重新捕获新 metadata 却继续用旧 client。该竞态直接影响 root 绑定正确性，本轮定向修复，不扩展通用并发事务。
 
 设计阶段已经确认 client key 含 backend/storage、已有 namespace claim 与 reader/RPC 屏障可以复用；全局 preferred backend 和窗口默认 storage 才是路由修改入口。环境 API 在 Remote EH 可呈现 file URI/空 authority，因此不能由 URI 或 Webview 决定执行环境。具体平台识别实现及结果在此追加，不预写通过。
 
@@ -41,7 +47,7 @@
 
 ## 结果与复盘
 
-P1 身份与握手基础、三平台基础 probe、启动记录与 Main 消费顺序、准备事务已实现，默认创建及原 slot 路由保持。本地沙箱限制原样记录；三平台基础 CI 已取得结果，Windows 首次 probe 失败不追认。受控启动记录/协调与原启动回归通过，但它们不验证真实准备锁竞争。P1 原生协调验收与 P2/P3 未完成，F-03 保持开放。
+P1 身份与握手基础、三平台基础 probe、启动记录与准备事务已实现，macOS/Windows 原生协调全组及 Linux detached 直接证据已取得。P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。Linux systemd 实际启动、P3 多窗口/Agent/Webview/安装包仍未完成，F-03 保持开放。历史失败和本地沙箱限制原样保留，不追认通过。
 
 ## 上下文与定向
 
@@ -65,7 +71,7 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 
 ## 幂等性与恢复
 
-测试使用本轮私有目录和会话，清理只处理可证明归属的资源；不改用户 registry、旧节点或系统服务。实施期间不更换正常默认 generation，直到接线与必要身份验证满足 P2 门槛。版本回退保留实际原绑定，不通过改 metadata 或 kill 旧 owner 恢复工作区。未知启动责任保留并 fresh 观察，不按文件年龄清空。
+测试使用本轮私有目录和会话，清理只处理可证明归属的资源；不改用户 registry、旧节点或系统服务。P2 正常新建采用独立 root generation；rootless/显式 stock 及旧 binding 保持原址，未通过的产品格继续开放。版本回退保留实际原绑定，不通过改 metadata 或 kill 旧 owner 恢复工作区。未知启动责任保留并 fresh 观察，不按文件年龄清空。
 
 ## 证据与备注
 
@@ -89,6 +95,12 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 
 提交 `a11020a5` / run `37707854830` 三平台在新增中断验证失败（Linux/macOS 明确为取消后的 aggregate close 等待超时；Windows 原失败待核对日志）。最小真实 fork 复现及 Node 实现核对表明父方主动 disconnect 后，进程 exit、stderr close、IPC disconnect 均可发生而 aggregate close 不再触发。此问题也影响 Host `prepareRootRuntimeSupervisor()` 的成功结算，不只是测试：本轮修为接受标准 close，或明确观察上述三事实全齐，仍按原 30 秒总预算和 1 秒退出预算。少任一事实仍 unconfirmed，不增加时限、不把 exit 单独当释放。新增两项受控测试（总 21），正常 native 测试同时调用真实 Host helper API覆盖此路径，后续 CI 待验证；不追认原失败。
 
+最新增量本地：Host wiring 250 项（含两类18项 root 创建/跨 await/stale/unknown 回归）、Canvas context、Host deactivation、completed 无历史、typecheck、普通 build 通过。默认 false 的新窗口恢复 root live 不触发转换；显式关闭持久化仍严格清理，失败不 dispose。已有 loadState 实测受控路径足够，无新增配置 receipt。未把这些回归计作真实多窗口/Agent/Webview 通过。
+
+原生 `37708504120` 因测试 bundle 未导出 Host helper API失败，修复夹具后 `37708720165` 与 `37709150155` macOS/Windows通过；Linux已走过真实中断组但 systemd 失败。`37709150155` 捕获 manager 拒绝 JobTimeoutUSec 的直接原因，40项受控系统探针和24项协调用例修后通过，仍需新 CI。上述失败独立保留，不追认绿色。
+
+`4be42817` / run `37709897962` Linux scope probe 返回 code 0 并判 available，修复了属性拒绝；随后 systemd owner 启动返回 preparation/submission unconfirmed，未得到具体底层错误。测试保留原私有目录与 unit，没有强制清理未知 Supervisor。下一步只定位该已触发的 startup 错误，不把 probe 成功记作 systemd owner 已通过。
+
 ## 接口与依赖
 
 `RuntimeOwnerDescriptorV1` 固定 schema/environmentKey/userStorageScopeKey/root/generation；路径 resolver 接受 canonical global storage 与已解析 root，不接受 Webview 自报 path。环境 helper 返回摘要及本机用户身份，失败抛出明确错误；Windows 可使用系统自带进程调用只读 native API，若能避免修改 PTY 资产则优先采用。hello owner 字段对旧 binding 可缺省，对新 root generation 必须校验。具体导出签名在 P1 实现后补齐。
@@ -98,3 +110,5 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 修订记录：2026-10-08，基础实施独立复核补保留目录拒绝规则；记录 25 项受控结果，原生身份、启动准备与产品验收仍开放。
 
 修订记录：2026-10-08，登记三平台基础 CI 与 Windows 原失败；推进启动 token/receipt，不将文件与受控 Main 验证冒充真实启动排他已交付。
+
+修订记录：2026-10-08，切换 P2 创建与原绑定接线，记录异步 restore 修复；有限 P3 复用安装包和真实 Agent runner，新增同一存储范围双窗口场景。systemd 保留未确认结果与直接定位待办。

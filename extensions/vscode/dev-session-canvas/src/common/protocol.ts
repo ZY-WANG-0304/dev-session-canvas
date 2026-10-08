@@ -2,6 +2,7 @@ import type { SerializedTerminalState } from './serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
 import type { TerminalStreamPage, TerminalStreamReadDescriptor } from './terminalStreamPaging';
 import type { RuntimeSupervisorTerminalReadOutcome } from './runtimeSupervisorProtocol';
+import type { RuntimeOwnerDescriptorV1 } from './runtimeRootOwnership';
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
@@ -229,6 +230,8 @@ export interface ExecutionSessionMetadata {
   runtimeBackend?: RuntimeHostBackendKind;
   runtimeGuarantee?: RuntimePersistenceGuarantee;
   runtimeStoragePath?: string;
+  /** Undefined is legacy metadata; null preserves an explicitly invalid owner without clearing its binding. */
+  runtimeOwner?: RuntimeOwnerDescriptorV1 | null;
   liveSession: boolean;
   runtimeSessionId?: string;
   lastRuntimeError?: string;

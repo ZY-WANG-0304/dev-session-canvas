@@ -25,6 +25,7 @@ export function normalizeCompletedRuntimeHistory(
     liveSession: false,
     runtimeSessionId: undefined,
     runtimeStoragePath: undefined,
+    runtimeOwner: undefined,
     runtimeBackend: undefined,
     runtimeGuarantee: undefined,
     terminalProjectionMode: undefined,

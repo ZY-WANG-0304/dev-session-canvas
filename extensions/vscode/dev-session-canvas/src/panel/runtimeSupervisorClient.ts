@@ -211,6 +211,11 @@ export class RuntimeSupervisorClient {
     return this.helloResult;
   }
 
+  public matchesRuntimeOwner(expected: RuntimeOwnerDescriptorV1 | undefined): boolean {
+    return expected === undefined ? this.expectedRuntimeOwner === undefined
+      : runtimeOwnerDescriptorsEqual(this.expectedRuntimeOwner, expected);
+  }
+
   public supportsTerminalProjectionSnapshot(): boolean {
     return this.helloResult?.capabilities?.terminalProjectionSnapshotV1 === true;
   }
