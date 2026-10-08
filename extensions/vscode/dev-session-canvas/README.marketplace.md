@@ -17,7 +17,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - **Keep new persistent sessions tied to their workspace folder across windows**: the same execution environment, user storage scope, folder, and compatible runtime generation share an owner. Single-root, multi-root, and Pane Gallery views follow that ownership; existing live sessions retain their original bindings
 - Startup failures show the underlying cause. When a rejected launch is confirmed to have acquired no resources and finished cleanup, the node leaves Starting / Resuming and can be retried or deleted
 - Unresponsive Supervisor handshakes and ordinary requests return a timeout. The operation may already have happened; it is not automatically retried, and late terminal-reader resources still get cleaned up
-- Restore deletion of legacy history-only nodes with sufficient cleanup evidence
+- Restore deletion of Linux legacy history-only nodes with sufficient cleanup evidence
 - Restore attention signals and notification bridging from Agent / Terminal output when runtime persistence is disabled; the notifier package keeps its existing delivery and click behavior
 - **Completed persistent sessions still reopen without terminal text or an automatic restart.** Live current-state reattachment, snapshot-only history, provider session files, and explicit Resume keep their existing boundaries
 

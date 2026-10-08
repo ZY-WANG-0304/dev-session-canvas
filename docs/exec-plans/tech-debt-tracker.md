@@ -12,6 +12,17 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-09：0.26.1 完整发布门禁仍未收口
+
+发布准备 PR #308 基于 `origin/main@f57b11f9`，仅改版本与静态物料；Node 22.23.3 / VS Code 1.141.0 的预合并验证暴露下列阻塞。它们影响本版解除草稿和发布资格，不由 0.26.0 的一次性授权覆盖，也不据测试失败直接断言全部是产品缺陷。
+
+- 干净 `npm ci` 后，`release:verify` 在 `test:package-vsix-file-list` 读取 notifier/dist 时 ENOENT。`npm test` 在此之前通过 Marketplace 构建主扩展，但 notifier build 排在后面的 smoke。Release Preflight 的 npm ci → verify 也没有明确准备 notifier 产物。临时显式 `npm run build:notifier` 仅用于继续收集失败，不算默认干净门禁已通过；应在本版完整门禁前补齐测试入口或验证流程的明确构建依赖。代码：`package.json`、`scripts/test/test-package-vsix-file-list.mjs`、`.github/workflows/release-preflight.yml`。
+- 上述前置构建后，PR 预合并 `3445fc85` 的原 verify 在 `test-theme-color-tokens.mjs:178` 失败：源码正则要求 main.tsx 的 `canvasStatusToneClass as statusToneClass`，实际 main.tsx 不再包含该导入。两份文件与基线 main 相同；已确认断言与源码不一致，尚未将整个主题呈现判为正确或错误。应按当前状态呈现结构修复有意义的测试并重跑，不能为匹配正则添加无用导入。
+- 独立 clean-checkout 的主 VSIX 打包成功，随后 packaged smoke 在 `verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot` 第 2768 行等待 `execution/started` 超时。现场有原目标 startRequested、EOF 和最终 saved；这复现下方 #305 后登记的路径，产品/夹具具体责任仍待确认，完整安装门禁不能记为通过。
+- 独立完整 Webview 回归 382 项全部执行，380 passed / 2 failed（12.2 分钟）。失败仅为 Agent / Terminal 的 `styled hard-wrapped code paths keep line and column suffixes`，属于下方既有折行路径缺口；基准截图及其余 380 项通过。不得关闭该项或以基准截图通过代证。
+
+临时交付保持草稿、未打发布 tag。root 归属/准备、Host 333、Supervisor 116、reader 32、旧历史 136、notifier companion/英中文 locale 与双包检查已有本轮通过，不能代证上述门禁。应在 0.26.1 解除草稿之前逐项定位、修复并对最新预合并结果重跑完整 verify。复现命令、版本与本机日志见 `docs/exec-plans/active/release-0-26-1-prep.md`；核心日志为 `/tmp/dsc0261-verify-short.log`、`/tmp/dsc0261-pr-verify.log`、`/tmp/dsc0261-clean-vsix.log`、`/tmp/dsc0261-webview.log`。
+
 ## 2026-10-08：旧 Supervisor 的创建拒绝仍缺资源结果
 
 0.26.0 现场旧会话 journal 写入 ENOSPC 后 owner 隔离，新建/恢复在获取资源前收到普通准入错误。Host 已设置 `submitted=true`，但只对精确的 `rejected-before-acquire` 文案释放预留，因此新节点残留 Starting/Resuming，删除被原创建待确认保护拒绝。实际两个新 session 均未创建；旧失败会话仍有未消费尾部，二者责任不能混同。

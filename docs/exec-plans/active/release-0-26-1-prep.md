@@ -12,8 +12,10 @@
 - [x] (2026-10-09) 确认 v0.26.0 已公开发布；核对其后主线 #297、#298、#300–#307 与正式设计。
 - [x] (2026-10-09) 同步版本、双 CHANGELOG、英中文 README/listing、支持说明、手册与发布契约。
 - [x] (2026-10-09) 提交静态输入 930070ce，构建本地预合并结果 953c3ee8，preflight 和 root/notifier 定向验证通过。
-- [ ] 完整 verify、Webview 和 clean-checkout 验证执行中；首次 Marketplace socket 路径错误已改用现有短目录参数重跑。
-- [ ] 重新 fetch/rebase，推送分支并创建 main 目标的发布准备 PR，回收 CI 结果。
+- [x] (2026-10-09) 回收完整 verify、Webview 与 clean-checkout：完整门禁失败，Webview 380 passed / 2 failed，packaged 相对 shell 诊断超时；详细阻塞见下文。
+- [x] (2026-10-09) fetch/rebase 后推送并创建草稿 PR #308，目标 main，head 568465a8 / 预合并 3445fc85；草稿 CI skipped，不计通过。
+- [x] (2026-10-09) 同步验证记录与技术债，草稿 PR 保留完整失败事实。
+- [ ] 修复构建前置、主题源码断言、折行链接与相对 shell 验证阻塞，再对最新预合并结果通过完整门禁，方可解除草稿。
 
 ## 意外与发现
 
@@ -28,7 +30,7 @@
 
 ## 结果与复盘
 
-范围审计和静态版本物料已完成；root 身份/准备、Host 333/333、Supervisor 116/116、reader 32/32、旧历史 136 项及 notifier 类型/联动/英中文 locale 已通过，完整门禁仍在执行。没有新增产品功能或发布门禁例外。既有 root 多窗口整图并发保存、故障恢复、旧系统及桌面通知限制继续由正式设计和技术债跟踪，不因准备发版关闭。
+0.26.1 静态发布准备已完成并交付草稿 PR #308；root 身份/准备、Host 333/333、Supervisor 116/116、reader 32/32、旧历史 136 项及 notifier 类型/联动/英中文 locale 已通过。完整门禁未通过：干净构建前置与主题源码断言失败、Webview 380/382 通过、packaged 相对 shell 诊断超时；本版尚不可合并或发布，计划保持 active，阻塞已登记技术债。没有新增产品功能或发布门禁例外。既有 root 多窗口整图并发保存、故障恢复、旧系统及桌面通知限制继续由正式设计和技术债跟踪，不因准备发版关闭。
 
 ## 上下文与定向
 
@@ -90,6 +92,20 @@ root ownership/preparation 全部通过，包含真实 Linux 身份的双子进�
     DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT=/tmp/dsc261s \
     npm run release:verify -- --version 0.26.1
 
-重跑日志 `/tmp/dsc0261-verify-short.log`。为完整回收已有债务，另独立运行全部 382 项 Webview（`/tmp/dsc0261-webview.log`）与无 skip 的 HEAD clean-checkout（`/tmp/dsc0261-clean-vsix.log`）；尚未回收最终结果，不声称完整通过。
+重跑日志 `/tmp/dsc0261-verify-short.log`。为完整回收已有债务，另独立运行全部 382 项 Webview（`/tmp/dsc0261-webview.log`）与无 skip 的 HEAD clean-checkout（`/tmp/dsc0261-clean-vsix.log`）；最终结果见下文；两项均未取得完整通过。
 
 修订记录：2026-10-09，记录首轮验证、环境路径错误与实际通过范围，补齐跨窗口持久化默认值和后端未知状态的说明。
+
+### 发布阻塞回收
+
+短目录完整 verify 已通过 Marketplace 真宿主与完整协议回归，随后在 `test:package-vsix-file-list` 因 notifier `dist` 不存在失败；`npm test` 在该检查前只经 Marketplace 构建主扩展，notifier build 要到之后的 smoke 才执行。Node 22 的干净 `npm ci` 不会生成这个产物；已有 notifier/dist 的工作树可能掩盖该前置依赖。当前 Release Preflight 只有 npm ci 后直接 verify，同样缺少明确的 notifier 构建步骤。原失败保留；在独立 `/tmp/dsc0261p` 检出 PR 预合并 `3445fc85`，显式先 `npm run build:notifier` 再运行原 verify 以继续回收剩余失败，不把它记成默认干净门禁已通过，日志 `/tmp/dsc0261-pr-verify.log`。
+
+HEAD clean-checkout 已完成隔离 npm ci 与主 VSIX 打包，随后真实 VS Code 1.141.0 的 packaged smoke 再现 `verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot` 第 2768 行等待 `execution/started` 超时，命令 exit 1。现场有目标 startRequested、EOF、最终 saved，但没有测试要求的 started；这是此前 #305 后单列的同一待查路径，不将原因猜成产品或测试。临时检出保留在 `/tmp/dev-session-canvas-clean-checkout-L2msFs`，日志 `/tmp/dsc0261-clean-vsix.log`。
+
+独立 notifier VSIX 打包成功（14 files），主/notifier 两包的 0.26.1、publisher、当前 README、NLS/l10n 和 extensionPack/extensionDependencies/api 关系已通过 ZIP 读取核对。独立 Webview 全套 382 项完整执行（12.2 分钟），结果 380 passed / 2 failed，exit 1。失败仅为 Agent / Terminal 的 `styled hard-wrapped code paths keep line and column suffixes`；两者均无法检测 `src/webview/executionTerminalNativeInteractions.ts:1600:12`。基准截图及其余 380 项通过，未修改断言或截图。失败 trace / screenshot 位于 `/tmp/dsc0261v/.debug/playwright/results`。
+
+修订记录：2026-10-09，登记草稿 PR 与已确认的验证阻塞，保持发布准备范围，未修改产品或测试断言，也未引入门禁豁免。
+
+预合并 `3445fc85` 在显式 notifier build 后已通过 file-list 与发布脚本回归，随后停止于 `test-theme-color-tokens.mjs:178`：正则要求 main.tsx 存在 `canvasStatusToneClass as statusToneClass`，实际源码无该导入，原 main 两文件同样如此。日志 `/tmp/dsc0261-pr-verify.log`，exit 1；npm test 后续步骤未由此命令执行，不声称通过。与构建前置、折行链接、相对 shell 诊断一起登记 `tech-debt-tracker.md` 的 0.26.1 节；没有通过添加无用导入、改基准或跳过断言消除失败。
+
+修订记录：2026-10-09，回收全部 382 项 Webview 和所有已启动验证的退出结果，记录四类门禁阻塞与草稿交付；0.26.1 不继承旧版授权，后续修复后需重新验证最新预合并结果。发布前检查仍为 active，不能把静态物料完成等同于发布资格。
