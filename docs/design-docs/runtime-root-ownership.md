@@ -204,6 +204,10 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 ## 8. 实施进度
 
+产品修复 `f2e05a63` / run `37714762684` 三平台原生协调全部通过，含真实跨 XDG/HOME/TMP helper 复用与 Linux systemd 启动/复用/闲置退役。最终产品包 `502934e1` / run `37714907772` 的 Linux/macOS installed Terminal/Webview（包括新增 registry 精确删除）及 macOS 真实 Codex root-owner Reload 已通过，Windows仍在执行。Linux 双窗已进入真实会话但首次终端 REPLY 断言失败；确认夹具在关闭 ONLCR 后仅输出 LF，改 CRLF 并用真实 subject stdout + xterm 做先红后绿回归，保留原断言及失败，尚待同包重试。不能由此关闭 R1-04 或整体 F-03。
+
+本次同包补证沿用 production workflow，`root_checks=remote` 单独选择既有 Linux loopback Remote-SSH 路径，不加入默认全组、不获取 Agent 凭据。执行端环境函数在无产品/无画板的真实远端 EH 内采样，与后续两 EH 和产品节点 binding 对比；schema2 继续核对冻结 validator/hash。只补受影响 live-runtime 创建/完成/重开，不代证 live SSH 断网恢复、跨机器、睡眠/OS 调时或 Fast Startup。所需同包身份/安装成功门控和私钥归档排除均有受控回归，尚无本轮真实 Remote 通过结论。
+
 独立审查进一步确认并修复三项产品缺口：completed 严格删除漏传 owner、默认 false 的本地启动绕过未结算原 binding、同 root socket 受窗口 XDG/TMP 环境变化影响。前两项在 Agent/Terminal 定向用例先红后绿，Host wiring 264 项通过；端点纯函数与安全目录检查通过，真实跨环境 helper 复用尚待执行。安装验收新增原 session 在 Supervisor registry 已删除及无 completedCleanupFailed 的检查，不再只依据 Host bindings=0；它不将 registry 缺项单独当作任意进程退出证据。
 
 夹具修后 `970cd2ee` / run `37713396864` Windows installed 通过；待运行的 Linux 同包 run `37713487916` 在上述产品问题确认后取消。原包已证尾部/最终视口事实保留，但未包含新增 Supervisor 删除检查，不能据此宣称完整 root 收尾通过。产品修复改变 bundle 后将重新正常打包；未变 native assets 仍复用。尚未发布的分支 root-v1 旧 socket 不被猜测迁移，若存在该分支旧 live 须继续用原包结算；已发布旧 slot 地址完全不变。

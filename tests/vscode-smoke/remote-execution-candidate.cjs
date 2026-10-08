@@ -1,5 +1,21 @@
 const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
+const fs = require('node:fs/promises');
 const path = require('node:path');
+const { assertInstalledCandidateRuntime } = require('./installed-execution-candidate.cjs');
+
+async function assertRemoteInstalledRuntime(runtime, expected) {
+  assert.equal(expected.runtimeName, 'node');
+  let compatibility;
+  if (expected.manifest.schemaVersion === 2) {
+    const validator = expected.runtimeValidation;
+    assert(validator && path.isAbsolute(validator.file), 'Remote schema2 acceptance requires the frozen product validator.');
+    assert.equal(createHash('sha256').update(await fs.readFile(validator.file)).digest('hex'), validator.sha256,
+      'Remote runtime validator hash changed.');
+    compatibility = require(validator.file)(runtime);
+  }
+  assertInstalledCandidateRuntime(runtime, expected.manifest, 'node', compatibility);
+}
 
 function assertInside(root, file) {
   const relative = path.relative(root, file);
@@ -28,6 +44,20 @@ function assertRemoteHost(receipt, control) {
   assert.match(receipt.versions.napi, /^\d+$/);
   assert.match(receipt.glibc, /^\d+\.\d+(?:\.\d+)?$/);
   assert.match(receipt.executableSha256, /^[a-f0-9]{64}$/);
+  if (control.rootOwner) {
+    assert.match(receipt.environmentKey ?? '', /^[a-f0-9]{64}$/);
+    assert.equal(receipt.environmentSample, 'before-product-test');
+  }
+}
+
+function assertRemoteEnvironmentStable(probe, host) {
+  assert.equal(probe.productPresent, false);
+  assert.equal(probe.productActive, false);
+  assert.match(probe.environmentKey ?? '', /^[a-f0-9]{64}$/);
+  assert.equal(probe.environmentSample, 'before-product-test');
+  assert.equal(host.environmentSample, probe.environmentSample);
+  assert.notEqual(host.pid, probe.pid, 'Compare separate actual Remote Extension Hosts.');
+  assert.equal(host.environmentKey, probe.environmentKey, 'Remote Host reopen must retain the actual execution environment key.');
 }
 
 function assertRemoteCompletion(completed, mode) {
@@ -49,4 +79,5 @@ function assertRemoteCompletion(completed, mode) {
   return { sourceDisposition: 'eof', finalRevision, applied: true };
 }
 
-module.exports = { assertInside, assertRemoteHost, assertRemoteCompletion };
+module.exports = { assertInside, assertRemoteHost, assertRemoteCompletion, assertRemoteInstalledRuntime,
+  assertRemoteEnvironmentStable };
