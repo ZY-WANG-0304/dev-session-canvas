@@ -4,6 +4,8 @@ import * as path from 'path';
 
 import { EXECUTION_CANDIDATE_PROFILE, MACOS_EXECUTION_CANDIDATE_PROFILE, WINDOWS_EXECUTION_CANDIDATE_PROFILE,
   assertExecutionCandidateProfile, type ExecutionCandidateProfile } from './executionLifecycle';
+import { resolveRootRuntimeSupervisorProfileFromGeneration } from './runtimeRootOwnership';
+export { resolveRootRuntimeSupervisorGeneration } from './runtimeRootOwnership';
 import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
   createRuntimeSupervisorProtocolError,
@@ -71,16 +73,56 @@ export function assertExecutionCandidateRuntimeSupervisorStorageDir(
   }
 }
 
-export function resolveRuntimeSupervisorExecutionProfile(storageDir: string): ExecutionCandidateProfile | undefined {
-  const resolvedStorageDir = path.resolve(storageDir);
-  const generationDirectory = path.dirname(resolvedStorageDir);
-  if (path.basename(resolvedStorageDir) === 'runtime-supervisor' &&
-      path.basename(path.dirname(generationDirectory)) === RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR) {
+export function resolveRuntimeSupervisorExecutionProfile(
+  storageDir: string,
+  platform: NodeJS.Platform = process.platform
+): ExecutionCandidateProfile | undefined {
+  const paths = resolveRuntimeSupervisorPathModule(platform);
+  const resolvedStorageDir = paths.resolve(storageDir);
+  const generationDirectory = paths.dirname(resolvedStorageDir);
+  if (paths.basename(resolvedStorageDir) === 'runtime-supervisor' &&
+      paths.basename(paths.dirname(generationDirectory)) === RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR) {
+    const generation = paths.basename(generationDirectory);
+    const rootProfile = resolveRootRuntimeSupervisorProfileFromGeneration(generation);
+    if (rootProfile) return rootProfile;
     return (Object.keys(EXECUTION_CANDIDATE_GENERATIONS) as ExecutionCandidateProfile[])
-      .find(profile => EXECUTION_CANDIDATE_GENERATIONS[profile] === path.basename(generationDirectory) ||
-        PREVIOUS_EXECUTION_CANDIDATE_GENERATIONS[profile] === path.basename(generationDirectory));
+      .find(profile => EXECUTION_CANDIDATE_GENERATIONS[profile] === generation ||
+        PREVIOUS_EXECUTION_CANDIDATE_GENERATIONS[profile] === generation);
   }
   return undefined;
+}
+
+export function resolveRootRuntimeSupervisorExecutionProfile(
+  storageDir: string,
+  platform: NodeJS.Platform = process.platform
+): ExecutionCandidateProfile | undefined {
+  const paths = resolveRuntimeSupervisorPathModule(platform);
+  const resolvedStorageDir = paths.resolve(storageDir);
+  const generationDirectory = paths.dirname(resolvedStorageDir);
+  if (paths.basename(resolvedStorageDir) !== 'runtime-supervisor' ||
+      paths.basename(paths.dirname(generationDirectory)) !== RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR) return undefined;
+  return resolveRootRuntimeSupervisorProfileFromGeneration(paths.basename(generationDirectory));
+}
+
+export function isRootOwnerRuntimeSupervisorStorageDir(
+  storageDir: string,
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  return resolveRootRuntimeSupervisorExecutionProfile(storageDir, platform) !== undefined;
+}
+
+export function isRuntimeRootStorageNamespace(
+  storageDir: string,
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  const paths = resolveRuntimeSupervisorPathModule(platform);
+  const resolved = paths.resolve(storageDir);
+  const segments = resolved.slice(paths.parse(resolved).root.length).split(paths.sep);
+  const names = platform === 'win32' ? segments.map(segment => segment.toLowerCase()) : segments;
+  return names.length >= 6
+    && names[names.length - 6] === 'runtime-roots-v1'
+    && names[names.length - 3] === RUNTIME_SUPERVISOR_GENERATIONS_SUBDIR
+    && names[names.length - 1] === 'runtime-supervisor';
 }
 
 export function resolveRuntimeSupervisorPaths(
@@ -122,6 +164,17 @@ export function resolveLegacyRuntimeSupervisorPathsFromStorageDir(
       socketPath: `\\\\.\\pipe\\dev-session-canvas-${digest}`,
       registryPath,
       socketLocation: 'named-pipe'
+    };
+  }
+
+  if (isRootOwnerRuntimeSupervisorStorageDir(storageDir, platform)) {
+    const runtimeDir = resolveRootRuntimeSocketDirectory(options);
+    return {
+      storageDir,
+      runtimeDir,
+      socketPath: pathModule.join(runtimeDir, `d-${digest}.sock`),
+      registryPath,
+      socketLocation: 'runtime-private'
     };
   }
 
@@ -202,7 +255,11 @@ export function resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(
   const registryPath = pathModule.join(storageDir, 'registry.json');
   const homeDir = resolveHomeDirectory(options, pathModule);
   const configHome = resolveConfigHome(options, pathModule, homeDir);
-  const controlPath = resolveSystemdControlPath(options, pathModule, homeDir, digest);
+  const rootOwner = isRootOwnerRuntimeSupervisorStorageDir(storageDir, platform);
+  const controlDir = rootOwner ? resolveRootRuntimeSocketDirectory(options) : undefined;
+  const controlPath = controlDir
+    ? { controlDir, socketPath: pathModule.join(controlDir, `s-${digest}.sock`) }
+    : resolveSystemdControlPath(options, pathModule, homeDir, digest);
 
   return {
     storageDir,
@@ -218,6 +275,16 @@ export function resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(
       `${SYSTEMD_USER_SERVICE_PREFIX}${digest}.service`
     )
   };
+}
+
+function resolveRootRuntimeSocketDirectory(options: RuntimeSupervisorPathResolutionOptions): string {
+  const userId = options.userId ?? process.getuid?.();
+  if (!((typeof userId === 'number' && Number.isSafeInteger(userId) && userId >= 0)
+    || (typeof userId === 'string' && /^(?:0|[1-9][0-9]*)$/.test(userId) && Number.isSafeInteger(Number(userId))))) {
+    throw new Error('Root runtime socket directory requires a known OS user identity.');
+  }
+  // Root owners must remain discoverable across different Host XDG/HOME/TMP environments.
+  return path.posix.join('/tmp', `dsc-root-${userId}`);
 }
 
 function resolvePrivateRuntimeDirCandidates(

@@ -4,8 +4,7 @@ const { createReadStream } = require('node:fs');
 const { createHash } = require('node:crypto');
 const path = require('node:path');
 const vscode = require('vscode');
-const { assertInside, assertRemoteHost } = require('./remote-execution-candidate.cjs');
-const { assertInstalledCandidateRuntime } = require('./installed-execution-candidate.cjs');
+const { assertInside, assertRemoteHost, assertRemoteInstalledRuntime } = require('./remote-execution-candidate.cjs');
 
 async function fileHash(file) {
   const hash = createHash('sha256');
@@ -33,6 +32,8 @@ async function run() {
     const serverDataRoot = await fs.realpath(path.join(control.serverRoot, serverProduct.serverDataFolderName));
     assertInside(serverDataRoot, executable);
     const folders = vscode.workspace.workspaceFolders ?? [];
+    const executionEnvironment = control.rootOwner
+      ? await require('./candidate-root-ownership.cjs').readRuntimeExecutionEnvironment() : undefined;
     const receipt = { schemaVersion: 1, phase: control.phase, mode: control.mode,
       pid: process.pid, remoteName: vscode.env.remoteName, platform: process.platform, arch: process.arch,
       versions: process.versions, glibc: process.report.getReport().header.glibcVersionRuntime,
@@ -42,6 +43,8 @@ async function run() {
       workspacePath: folders.length === 1 ? await fs.realpath(folders[0].uri.fsPath) : null,
       workspaces: folders.map(folder => ({ scheme: folder.uri.scheme, authority: folder.uri.authority,
         path: folder.uri.path })),
+      ...(executionEnvironment ? { environmentKey: executionEnvironment.environmentKey,
+        environmentSample: 'before-product-test' } : {}),
       productPresent: Boolean(vscode.extensions.getExtension('devsessioncanvas.dev-session-canvas')),
       productActive: vscode.extensions.getExtension('devsessioncanvas.dev-session-canvas')?.isActive ?? false };
     // Record the actual API URI; remote hosts may decode vscode-remote into file URIs.
@@ -54,13 +57,15 @@ async function run() {
     assert(['live-runtime', 'snapshot-only'].includes(control.mode));
     const expected = JSON.parse(await fs.readFile(control.expectationPath, 'utf8'));
     assert.equal(expected.runtimeName, 'node');
-    assertInstalledCandidateRuntime(process, expected.manifest, 'node');
+    if (control.rootOwner) assert.equal(control.mode, 'live-runtime');
+    await assertRemoteInstalledRuntime(process, expected);
     Object.assign(process.env, {
       DEV_SESSION_CANVAS_CANDIDATE_MODE: control.mode,
       DEV_SESSION_CANVAS_CANDIDATE_PHASE: control.phase,
       DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR: control.artifactsDir,
       DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1',
       DEV_SESSION_CANVAS_INSTALLED_VSIX_EXPECTATION: control.expectationPath,
+      DEV_SESSION_CANVAS_ROOT_OWNER_ACCEPTANCE: control.rootOwner ? '1' : '',
       DEV_SESSION_CANVAS_CANDIDATE_SUBJECT_NODE: executable
     });
     await require('./execution-candidate-tests.cjs').run();

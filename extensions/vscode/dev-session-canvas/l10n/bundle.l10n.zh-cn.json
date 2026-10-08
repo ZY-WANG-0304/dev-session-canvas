@@ -1050,5 +1050,6 @@
   "Session exited due to signal {signal}.": "会话因信号 {signal} 退出。",
   "Session terminated: {reason}": "会话已终止：{reason}",
   "{message} Output is incomplete: {reason}": "{message} 输出不完整：{reason}",
-  "This non-native test execution does not support terminal input.": "此非原生测试执行不支持终端输入。"
+  "This non-native test execution does not support terminal input.": "此非原生测试执行不支持终端输入。",
+  "The original Runtime execution is still bound. Settle it before starting a local execution.": "节点仍绑定原运行时执行。请先完成原执行的清理，再启动本地执行。"
 }

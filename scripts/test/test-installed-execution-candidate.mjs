@@ -36,6 +36,46 @@ try {
   assert.throws(() => assertInstalledCandidateSelection({ 'installed-vsix': ' ' }, 'linux', 'x64'));
   checks += 1;
 
+  const candidateTests = await fs.readFile('tests/vscode-smoke/execution-candidate-tests.cjs', 'utf8');
+  const canonicalOwnerAssertion = candidateTests.split('\n').find(line =>
+    line.includes('assert.equal(path.relative(await fs.realpath(globalStorage), globalStorage)'));
+  assert(canonicalOwnerAssertion, 'Exercise the installed root-owner path assertion.');
+  for (const [paths, actual, expected, matches] of [
+    [path.win32, 'D:\\User\\globalStorage\\dsc', 'd:\\user\\globalstorage\\dsc', true],
+    [path.win32, 'D:\\User\\globalStorage\\other', 'd:\\user\\globalstorage\\dsc', false],
+    [path.posix, '/User/globalStorage/dsc', '/User/globalStorage/dsc', true],
+    [path.posix, '/User/globalStorage/dsc', '/user/globalstorage/dsc', false]
+  ]) {
+    const verify = () => vm.runInNewContext(`(async () => { ${canonicalOwnerAssertion} })()`, {
+      assert, path: paths, globalStorage: expected, fs: { realpath: async () => actual }
+    });
+    if (matches) await verify();
+    else await assert.rejects(verify());
+  }
+  checks += 1;
+
+  const rootRetirementAssertion = candidateTests.slice(candidateTests.indexOf('async function assertCompletedRootRuntimeDeleted('),
+    candidateTests.indexOf('\nasync function run()'));
+  for (const [sessions, events, passes] of [
+    [[], [], true],
+    [[{ sessionId: 'other' }], [], true],
+    [[{ sessionId: 'original' }], [], false],
+    [[], [{ kind: 'runtime/completedSessionCleanupFailed', detail: { sessionId: 'original' } }], false]
+  ]) {
+    const verify = () => vm.runInNewContext(`(async () => { ${rootRetirementAssertion}
+      return assertCompletedRootRuntimeDeleted({ runtimeStoragePath: '/original-storage', runtimeSessionId: 'original' }); })()`, {
+      assert, path, command: async () => events,
+      fs: { readFile: async file => {
+        assert.equal(file, '/original-storage/runtime-supervisor/registry.json');
+        return JSON.stringify({ version: 1, sessions });
+      } },
+      poll: async (_label, read, accept) => assert(accept(await read()))
+    });
+    if (passes) assert.equal((await verify()).targetRecordRemoved, true);
+    else await assert.rejects(verify());
+  }
+  checks += 1;
+
   const packageManifest = { publisher: 'devsessioncanvas', name: 'dev-session-canvas', version: '0.25.0',
     main: './dist/extension.js', displayName: '%extension.displayName%',
     extensionPack: ['devsessioncanvas.dev-session-canvas-notifier'] };
@@ -392,7 +432,7 @@ try {
   for (const invalidReceipt of [undefined, 'missing', 'hash-mismatch']) {
     const reports = new Map(), launches = [], installs = [];
     const execute = () => vm.runInNewContext(`(async () => { ${loop} })()`, {
-      assert, path, JSON, installedReceipts: receipts, installedInput: input,
+      assert, path, JSON, installedReceipts: receipts, installedInput: input, values: {},
       modes: ['live-runtime', 'snapshot-only'], output: '/fixed-output', projectRoot: '/fixed-project', runId: 'fixed',
       vscodeExecutablePath: '/fixed/Code', process: { platform: 'linux', execPath: '/fixed-node', env: {} },
       fs: { async mkdir() {}, async writeFile(file, contents) { reports.set(file, contents); },

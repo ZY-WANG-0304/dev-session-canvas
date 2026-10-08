@@ -12,6 +12,7 @@ const source = await readFile(filename, 'utf8');
 const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
 const manager = ast.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'CanvasPanelManager');
 const methods = ['applyCompletedRuntimeSupervisorSnapshot', 'postExecutionExitWithFinalSnapshot',
+  'assertRuntimeBindingOwner', 'deleteRuntimeSupervisorSessionStrict',
   'isRuntimeSupervisorEventAdmitted', 'invalidateRuntimeSupervisorClientEpoch', 'postCompletedTerminalAvailable',
   'flushLiveExecutionState', 'flushExecutionStateSyncTimer',
   'readExecutionTerminalPage', 'retireLegacyRuntimeSupervisorClientIfUnused',
@@ -21,7 +22,8 @@ const methods = ['applyCompletedRuntimeSupervisorSnapshot', 'postExecutionExitWi
   return method.getText(ast);
 });
 const functions = ['getCompleteRuntimeSupervisorTerminalStream', 'normalizeExecutionOutputSequence',
-  'buildExecutionMetadataPatch', 'buildAgentMetadataPatch', 'buildTerminalMetadataPatch'].map(name => {
+  'buildExecutionMetadataPatch', 'buildAgentMetadataPatch', 'buildTerminalMetadataPatch', 'normalizeRuntimeStoragePath',
+  'normalizeWorkspaceRootPathForComposition'].map(name => {
   const fn = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
   assert.ok(fn, name);
   return fn.getText(ast);
@@ -30,6 +32,9 @@ const bundle = await esbuild.build({ stdin: { contents: `
   import fs from 'node:fs';
   import path from 'node:path';
   import { normalizeCompletedRuntimeHistory } from './common/completedRuntimeHistory';
+  import { createRuntimeOwnerDescriptor, parseRuntimeOwnerDescriptor, resolveRootRuntimeSupervisorGeneration,
+    resolveRuntimeRootOwnerBaseStoragePath, resolveRuntimeRootOwnerGlobalStoragePath } from './common/runtimeRootOwnership';
+  import { isRootOwnerRuntimeSupervisorStorageDir, isRuntimeRootStorageNamespace } from './common/runtimeSupervisorPaths';
   import { cloneTerminalStreamAttachPayload, normalizeTerminalStreamAttachPayload, normalizeTerminalStreamRevision } from './common/terminalSessionStream';
   import { RuntimeTerminalReadRelay } from './panel/runtimeTerminalReadRelay';
   import { TerminalAvailableNotifications } from './panel/terminalAvailableNotifications';
@@ -47,11 +52,13 @@ const bundle = await esbuild.build({ stdin: { contents: `
     nodes: state.nodes.map(node => node.id === id ? { ...node, ...patch } : node) });
   ${functions.join('\n')}
   class Harness { ${methods.join('\n')} }
-  export { Harness, RuntimeTerminalReadRelay, TerminalAvailableNotifications, normalizeCompletedRuntimeHistory, buildExecutionMetadataPatch };
+  export { Harness, RuntimeTerminalReadRelay, TerminalAvailableNotifications, normalizeCompletedRuntimeHistory, buildExecutionMetadataPatch,
+    createRuntimeOwnerDescriptor, resolveRootRuntimeSupervisorGeneration, resolveRuntimeRootOwnerBaseStoragePath };
 `, resolveDir: sourceRoot, loader: 'ts' }, bundle: true, write: false, format: 'cjs', platform: 'node' });
 const module = { exports: {} };
 new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(module, module.exports, createRequire(import.meta.url));
-const { Harness, RuntimeTerminalReadRelay, TerminalAvailableNotifications, normalizeCompletedRuntimeHistory, buildExecutionMetadataPatch } = module.exports;
+const { Harness, RuntimeTerminalReadRelay, TerminalAvailableNotifications, normalizeCompletedRuntimeHistory, buildExecutionMetadataPatch,
+  createRuntimeOwnerDescriptor, resolveRootRuntimeSupervisorGeneration, resolveRuntimeRootOwnerBaseStoragePath } = module.exports;
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-completed-history-'));
 try {
   for (const kind of ['terminal', 'agent']) {
@@ -100,7 +107,9 @@ try {
   await verifyTransientReaders();
   await verifyReopenDuringSave();
   await verifyRemoteCompletion();
+  await verifyCompletedBindingOwner();
   await verifyReaderClientRetirement();
+  await verifyReaderClientRetirement(true);
   console.log('runtime completed history tests passed (production handoff, save failure, migration, lifecycle and transient drain)');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
@@ -174,6 +183,47 @@ async function complete(kind, output) {
   assertNoHistory(result.host.state.nodes[0].metadata[kind]);
   assert.equal(result.calls.deleted, true);
   return { ...result, file };
+}
+
+async function verifyCompletedBindingOwner() {
+  const profile = { linux: 'linux-owner-v1-candidate', darwin: 'macos-owner-v1-candidate',
+    win32: 'windows-owner-v1-candidate' }[process.platform];
+  const rootOwner = createRuntimeOwnerDescriptor({ environmentKey: 'a'.repeat(64), userStorageScopeKey: 'b'.repeat(64),
+    rootPath: path.join(tempDir, 'root'), generation: resolveRootRuntimeSupervisorGeneration(profile) });
+  const rootStorage = resolveRuntimeRootOwnerBaseStoragePath(path.join(tempDir, 'global-storage'), rootOwner);
+  for (const kind of ['terminal', 'agent']) {
+    for (const ownership of ['legacy', 'root']) {
+      const { host, snapshot, calls } = harness(kind, makeStream('completed-owned-source'));
+      const binding = { backendKind: 'legacy-detached', sessionId: snapshot.sessionId, kind,
+        runtimeStoragePath: ownership === 'root' ? rootStorage : path.join(tempDir, 'original-workspace-slot'),
+        runtimeOwner: ownership === 'root' ? rootOwner : undefined };
+      Object.assign(host.state.nodes[0].metadata[kind], {
+        runtimeStoragePath: binding.runtimeStoragePath, runtimeOwner: binding.runtimeOwner
+      });
+      const dispatched = [], diagnostics = [];
+      host.getPersistedRuntimeStoragePath = metadata => metadata.runtimeStoragePath;
+      host.getExecutionCandidateProfile = () => profile;
+      host.recordDiagnosticEvent = (name, detail) => diagnostics.push({ name, detail });
+      host.deleteRuntimeSupervisorSessionStrict = Harness.prototype.deleteRuntimeSupervisorSessionStrict;
+      host.deleteRuntimeSupervisorSessionsWithCandidate = async sessions => {
+        assert.equal(calls.saved, true, 'The original binding cleanup follows the completed node save.');
+        dispatched.push(...sessions);
+      };
+      if (ownership === 'root') {
+        await assert.rejects(host.deleteRuntimeSupervisorSessionStrict({ ...binding, runtimeOwner: undefined },
+          { allowRestart: false }), /storage and owner descriptor do not match/,
+        'The production strict-delete entry must reject root storage when its owner is omitted.');
+        assert.equal(dispatched.length, 0);
+      }
+      await host.applyCompletedRuntimeSupervisorSnapshot('node', kind, snapshot);
+      assert.deepEqual(diagnostics, [], `${kind} ${ownership} completion cleanup must not lose its original owner.`);
+      assert.equal(dispatched.length, 1);
+      assert.deepEqual({ ...dispatched[0], runtimeOwner: dispatched[0].runtimeOwner }, binding,
+        `${kind} ${ownership} completion dispatches the exact original binding.`);
+      assertNoHistory(host.state.nodes[0].metadata[kind]);
+      assert.equal(host.state.nodes[0].metadata[kind].runtimeOwner, undefined);
+    }
+  }
 }
 
 async function verifyTransientReaders() {
@@ -352,13 +402,15 @@ async function verifyRemoteCompletion() {
   }
 }
 
-async function verifyReaderClientRetirement() {
+async function verifyReaderClientRetirement(withRootOwner = false) {
   const { host } = harness('terminal', makeStream('reader'));
   host.state = { nodes: [] };
   host.agentSessions = new Map();
   host.terminalSessions = new Map();
   host.getRuntimeStoragePathFromBackend = () => '/old-generation';
   host.getRuntimeHostBaseStoragePath = () => '/current-generation';
+  host.getMultiRootWorkspaceFoldersForComposition = () => [];
+  host.preferredRootRuntimeBackends = new Map();
   host.resolveRuntimeStoragePath = value => value;
   host.buildRuntimeSupervisorClientKey = () => 'old-client';
   let pending = false;
@@ -377,6 +429,44 @@ async function verifyReaderClientRetirement() {
   host.runtimeSupervisorClients = new Map([['old-client', client]]);
   const retire = () => Harness.prototype.retireLegacyRuntimeSupervisorClientIfUnused.call(host,
     { kind: 'legacy-detached' }, client);
+  let rootClient, rootNode, rootSession;
+  if (withRootOwner) {
+    const profile = { linux: 'linux-owner-v1-candidate', darwin: 'macos-owner-v1-candidate',
+      win32: 'windows-owner-v1-candidate' }[process.platform];
+    const owner = createRuntimeOwnerDescriptor({ environmentKey: 'a'.repeat(64), userStorageScopeKey: 'b'.repeat(64),
+      rootPath: path.join(tempDir, 'root-c'), generation: resolveRootRuntimeSupervisorGeneration(profile) });
+    const storage = resolveRuntimeRootOwnerBaseStoragePath(path.join(tempDir, 'global-storage'), owner);
+    rootNode = { id: 'root-c', kind: 'terminal', metadata: { terminal: {
+      runtimeBackend: 'legacy-detached', runtimeStoragePath: storage, runtimeOwner: owner,
+      runtimeSessionId: 'root-session', persistenceMode: 'live-runtime', attachmentState: 'attached-live'
+    } } };
+    rootSession = { owner: 'supervisor', runtimeBackend: 'legacy-detached', runtimeStoragePath: storage,
+      runtimeOwner: owner, runtimeSessionId: 'root-session' };
+    rootClient = { hasPendingRequests: () => false,
+      dispose: () => assert.fail('Old slot retirement cannot dispose the current root owner client.') };
+    const rootBackend = { kind: 'legacy-detached', runtimeStoragePath: storage };
+    host.getRuntimeStoragePathFromBackend = backend => backend.runtimeStoragePath ?? '/old-generation';
+    host.buildRuntimeSupervisorClientKey = backend => backend.runtimeStoragePath === storage ? 'root-client' : 'old-client';
+    host.getMultiRootWorkspaceFoldersForComposition = () => [{ path: owner.root.normalizedPath }];
+    host.preferredRootRuntimeBackends.set(storage, { owner, kind: rootBackend.kind });
+    host.getPersistedRuntimeStoragePath = metadata => metadata.runtimeStoragePath;
+    host.runtimeSupervisorClients.set('root-client', rootClient);
+    host.state.nodes.push(rootNode);
+    host.terminalSessions.set(rootNode.id, rootSession);
+    host.terminalSessions.set('old-root-b', { owner: 'supervisor', runtimeBackend: 'legacy-detached',
+      runtimeStoragePath: '/old-generation', runtimeSessionId: 'old-b-session' });
+    retire();
+    assert.equal(disposed, false, 'An old slot session in root B pins the client after root A is removed.');
+    host.terminalSessions.delete('old-root-b');
+    host.state.nodes.push({ id: 'old-root-b', kind: 'terminal', metadata: { terminal: {
+      runtimeBackend: 'legacy-detached', runtimeStoragePath: '/old-generation',
+      runtimeSessionId: 'old-b-session', persistenceMode: 'live-runtime', attachmentState: 'reattaching'
+    } } });
+    retire();
+    assert.equal(disposed, false, 'A pending old-slot reattach still pins only its original client.');
+    host.state.nodes = [rootNode];
+    Harness.prototype.retireLegacyRuntimeSupervisorClientIfUnused.call(host, rootBackend, rootClient);
+  }
   await host.terminalReadRelay.open('editor:terminal:node', client, 'session', 'authority', 'editor', retire);
   retire();
   assert.equal(disposed, false, 'an existing terminal reader pins the old generation client');
@@ -386,5 +476,10 @@ async function verifyReaderClientRetirement() {
   finishClose();
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(disposed, true);
-  assert.equal(host.runtimeSupervisorClients.size, 0);
+  assert.equal(host.runtimeSupervisorClients.size, withRootOwner ? 1 : 0);
+  if (withRootOwner) {
+    assert.strictEqual(host.runtimeSupervisorClients.get('root-client'), rootClient);
+    assert.strictEqual(host.state.nodes[0], rootNode);
+    assert.strictEqual(host.terminalSessions.get(rootNode.id), rootSession);
+  }
 }

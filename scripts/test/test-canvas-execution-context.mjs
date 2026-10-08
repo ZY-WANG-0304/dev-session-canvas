@@ -21,14 +21,22 @@ try {
     'buildExecutionAttentionNotificationTitleForWorkspace',
     'createNextState',
     'downgradeLiveRuntimeNodesMissingRuntimeStoragePath',
+    'hydrateRuntimeStoragePaths',
     'normalizeState',
     'reconcileDefaultExecutionMetadataCwd',
+    'reconcileRuntimeNodesInArray',
     'resolveTerminalShellPathForConfigurationCwd'
   ];
 
   await esbuild.build({
     stdin: {
-      contents: `export { ${exportedHelpers.join(', ')} } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';`,
+      contents: `
+        export { CanvasPanelManager, ${exportedHelpers.join(', ')} } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
+        export { createRuntimeOwnerDescriptor, resolveRootRuntimeSupervisorGeneration, resolveRuntimeRootOwnerBaseStoragePath }
+          from './extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership';
+        export { namespaceCanvasObjectId } from './extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition';
+        export { workspace as vscodeWorkspace } from 'vscode';
+      `,
       resolveDir: process.cwd(),
       sourcefile: 'canvas-execution-context-entry.ts'
     },
@@ -130,12 +138,20 @@ try {
 
   const require = createRequire(import.meta.url);
   const {
+    CanvasPanelManager,
     buildExecutionAttentionNotificationTitleForWorkspace,
     createNextState,
+    createRuntimeOwnerDescriptor,
     downgradeLiveRuntimeNodesMissingRuntimeStoragePath,
+    hydrateRuntimeStoragePaths,
     normalizeState,
+    namespaceCanvasObjectId,
     reconcileDefaultExecutionMetadataCwd,
-    resolveTerminalShellPathForConfigurationCwd
+    reconcileRuntimeNodesInArray,
+    resolveRootRuntimeSupervisorGeneration,
+    resolveRuntimeRootOwnerBaseStoragePath,
+    resolveTerminalShellPathForConfigurationCwd,
+    vscodeWorkspace
   } = require(outfile);
 
   const emptyState = {
@@ -362,6 +378,485 @@ try {
     '缺少 runtimeStoragePath 的 Terminal 降级后不应继续参与 runtime cleanup 或后续 attach。'
   );
 
+  const profile = ({ linux: 'linux-owner-v1-candidate', darwin: 'macos-owner-v1-candidate',
+    win32: 'windows-owner-v1-candidate' })[process.platform];
+  const runtimeOwner = createRuntimeOwnerDescriptor({
+    environmentKey: 'a'.repeat(64), userStorageScopeKey: 'b'.repeat(64), rootPath: workspaceRoot,
+    generation: resolveRootRuntimeSupervisorGeneration(profile)
+  });
+  const runtimeStoragePath = resolveRuntimeRootOwnerBaseStoragePath(path.join(tempDir, 'global-storage'), runtimeOwner);
+  const legacyRuntimeStoragePath = path.join(tempDir, 'original-workspace-slot');
+  const currentWorkspaceSlot = path.join(tempDir, 'different-workspace-slot');
+  function runtimeNode(kind, binding) {
+    const source = kind === 'agent' ? createdAgentState.nodes[0] : createdTerminalState.nodes[0];
+    return {
+      ...source, id: `${kind}-runtime-owner`, status: 'reattaching',
+      metadata: { [kind]: {
+        ...source.metadata[kind], persistenceMode: 'live-runtime', attachmentState: 'reattaching',
+        runtimeBackend: 'legacy-detached', runtimeSessionId: `${kind}-original-session`, liveSession: false,
+        ...binding
+      } }
+    };
+  }
+  for (const kind of ['agent', 'terminal']) {
+    const initial = { ...emptyState, nodes: [runtimeNode(kind, { runtimeOwner, runtimeStoragePath })] };
+    const normalized = normalizeState(initial, 'codex');
+    const restored = normalizeState(JSON.parse(JSON.stringify(normalized)), 'codex');
+    for (const state of [normalized, restored, hydrateRuntimeStoragePaths(restored, currentWorkspaceSlot)]) {
+      const metadata = state.nodes[0].metadata[kind];
+      assert.deepEqual(metadata.runtimeOwner, runtimeOwner, `${kind} retains its complete owner across persistence.`);
+      assert.equal(metadata.runtimeStoragePath, runtimeStoragePath);
+      assert.equal(metadata.runtimeBackend, 'legacy-detached');
+      assert.equal(metadata.runtimeSessionId, `${kind}-original-session`);
+      assert.equal(metadata.attachmentState, 'reattaching');
+    }
+
+    const missingPath = normalizeState({ ...emptyState, nodes: [runtimeNode(kind, { runtimeOwner })] }, 'codex');
+    const retainedMissingPath = hydrateRuntimeStoragePaths(missingPath, currentWorkspaceSlot).nodes[0].metadata[kind];
+    assert.deepEqual(retainedMissingPath.runtimeOwner, runtimeOwner);
+    assert.equal(retainedMissingPath.runtimeStoragePath, undefined, `${kind} owner cannot inherit a workspace slot.`);
+    assert.equal(retainedMissingPath.runtimeSessionId, `${kind}-original-session`);
+    assert.equal(retainedMissingPath.runtimeBackend, 'legacy-detached');
+
+    for (const owner of [runtimeOwner, null]) {
+      const original = normalizeState({ ...emptyState, nodes: [runtimeNode(kind, { runtimeOwner: owner })] }, 'codex');
+      const result = downgradeLiveRuntimeNodesMissingRuntimeStoragePath(original, missingRuntimeStoragePathReason);
+      assert.equal(result.downgradedCount, 0, `${kind} owner binding without a path must remain available for validation.`);
+      assert.deepEqual(result.state, original);
+    }
+    for (const owner of [runtimeOwner, null, undefined]) {
+      const node = runtimeNode(kind, { runtimeOwner: owner, runtimeStoragePath });
+      for (const reason of ['runtime-persistence-disabled', 'workspace-untrusted']) {
+        const [reconciled] = reconcileRuntimeNodesInArray([node], new Map(), new Map(), {
+          allowLiveRuntimeReconnect: false, liveRuntimeReconnectBlockReason: reason
+        });
+        const mayReconnect = owner !== undefined && reason === 'runtime-persistence-disabled';
+        assert.equal(reconciled.status, mayReconnect ? 'reattaching' : 'history-restored');
+        assert.equal(reconciled.metadata[kind].attachmentState,
+          mayReconnect || reason === 'workspace-untrusted' ? 'reattaching' : 'history-restored');
+        assert.deepEqual(reconciled.metadata[kind].runtimeOwner, owner);
+        assert.equal(reconciled.metadata[kind].runtimeSessionId, `${kind}-original-session`);
+      }
+    }
+
+    const liveSession = {
+      owner: 'supervisor', runtimeOwner, runtimeBackend: 'legacy-detached', runtimeStoragePath,
+      runtimeSessionId: `${kind}-live-session`, buffer: '', terminalStateTrusted: false,
+      lifecycleStatus: kind === 'agent' ? 'running' : 'live', displayLabel: kind,
+      cwd: workspaceRoot, shellPath: '/bin/bash', outputSequence: 0, cols: 80, rows: 24
+    };
+    for (const sessionOwner of ['supervisor', 'local']) {
+      const session = { ...liveSession, owner: sessionOwner };
+      const sessions = new Map([[initial.nodes[0].id, session]]);
+      const reconciled = reconcileRuntimeNodesInArray(
+        initial.nodes, kind === 'agent' ? sessions : new Map(), kind === 'terminal' ? sessions : new Map()
+      )[0].metadata[kind];
+      assert.deepEqual(reconciled.runtimeOwner, sessionOwner === 'supervisor' ? runtimeOwner : undefined);
+      assert.equal(reconciled.runtimeStoragePath, sessionOwner === 'supervisor' ? runtimeStoragePath : undefined);
+      assert.equal(reconciled.runtimeBackend, sessionOwner === 'supervisor' ? 'legacy-detached' : undefined);
+      assert.equal(reconciled.runtimeSessionId, `${kind}-live-session`);
+    }
+
+    const missingOwner = normalizeState({ ...emptyState, nodes: [runtimeNode(kind, { runtimeStoragePath })] }, 'codex');
+    const retainedMissingOwner = hydrateRuntimeStoragePaths(missingOwner, currentWorkspaceSlot).nodes[0].metadata[kind];
+    assert.equal(retainedMissingOwner.runtimeOwner, undefined);
+    assert.equal(retainedMissingOwner.runtimeStoragePath, runtimeStoragePath);
+    assert.equal(retainedMissingOwner.runtimeSessionId, `${kind}-original-session`);
+    assert.equal(retainedMissingOwner.runtimeBackend, 'legacy-detached');
+
+    for (const invalidOwner of [null, { ...runtimeOwner, schema: 2 }, { ...runtimeOwner, environmentKey: '' }]) {
+      for (const originalPath of [undefined, runtimeStoragePath, legacyRuntimeStoragePath]) {
+        const invalid = normalizeState({ ...emptyState, nodes: [runtimeNode(kind, {
+          runtimeOwner: invalidOwner, runtimeStoragePath: originalPath
+        })] }, 'codex');
+        const readBack = normalizeState(JSON.parse(JSON.stringify(invalid)), 'codex');
+        for (const state of [invalid, readBack, hydrateRuntimeStoragePaths(readBack, currentWorkspaceSlot)]) {
+          const metadata = state.nodes[0].metadata[kind];
+          assert.equal(metadata.runtimeOwner, null, `${kind} retains the invalid-owner marker instead of becoming legacy.`);
+          assert.equal(metadata.runtimeStoragePath, originalPath);
+          assert.equal(metadata.runtimeBackend, 'legacy-detached');
+          assert.equal(metadata.runtimeSessionId, `${kind}-original-session`);
+          assert.equal(metadata.persistenceMode, 'live-runtime');
+          assert.equal(metadata.attachmentState, 'reattaching');
+          assert.equal(metadata.terminalHistoryDiscarded, undefined);
+        }
+      }
+    }
+
+    for (const runtimeBackend of ['legacy-detached', 'systemd-user']) {
+      const legacy = normalizeState({ ...emptyState, nodes: [runtimeNode(kind, {
+        runtimeBackend, runtimeStoragePath: legacyRuntimeStoragePath
+      })] }, 'codex');
+      const metadata = hydrateRuntimeStoragePaths(legacy, currentWorkspaceSlot).nodes[0].metadata[kind];
+      assert.equal(metadata.runtimeOwner, undefined);
+      assert.equal(metadata.runtimeStoragePath, legacyRuntimeStoragePath);
+      assert.equal(metadata.runtimeBackend, runtimeBackend);
+      assert.equal(metadata.runtimeSessionId, `${kind}-original-session`);
+      assert.equal(metadata.attachmentState, 'reattaching');
+    }
+    const legacyMissingPath = normalizeState({ ...emptyState, nodes: [runtimeNode(kind, {})] }, 'codex');
+    const hydratedLegacy = hydrateRuntimeStoragePaths(legacyMissingPath, currentWorkspaceSlot).nodes[0].metadata[kind];
+    assert.equal(hydratedLegacy.runtimeStoragePath, currentWorkspaceSlot);
+    assert.equal(hydratedLegacy.runtimeOwner, undefined);
+    assert.equal(hydratedLegacy.runtimeSessionId, `${kind}-original-session`);
+  }
+
+  const rootA = process.platform === 'win32' ? workspaceRoot.toLowerCase() : workspaceRoot;
+  const rootB = path.join(path.dirname(rootA), 'other-root');
+  const removedRoot = path.join(path.dirname(rootA), 'removed-root');
+  const originalWorkspaceFolders = vscodeWorkspace.workspaceFolders;
+  function setRootFolders(roots) {
+    vscodeWorkspace.workspaceFolders = roots.map((root, index) => ({ name: `root-${index}`, uri: { fsPath: root } }));
+  }
+  const rootGroups = [
+    { id: 'root-a-group', role: 'workspace-root', workspaceRootPath: rootA },
+    { id: 'root-b-group', role: 'workspace-root', workspaceRootPath: rootB },
+    { id: 'nested-a-group', parentGroupId: 'root-a-group' }
+  ];
+  const rootHost = Object.create(CanvasPanelManager.prototype);
+  rootHost.state = { ...emptyState, groups: rootGroups };
+  rootHost.executionSessionOperationTokens = new Map();
+  try {
+    for (const kind of ['agent', 'terminal']) {
+      const plainNode = runtimeNode(kind, { cwd: removedRoot });
+      const rootANode = { ...plainNode, id: namespaceCanvasObjectId(rootA, plainNode.id), groupId: 'nested-a-group' };
+      setRootFolders([rootA]);
+      assert.equal(rootHost.resolveExecutionNodeRuntimeRoot(plainNode), rootA, `${kind} single-root ownership ignores cwd.`);
+      assert.equal(rootHost.resolveExecutionNodeRuntimeRoot(rootANode), rootA);
+      setRootFolders([rootA, rootB]);
+      assert.equal(rootHost.resolveExecutionNodeRuntimeRoot(rootANode), rootA, `${kind} keeps the same root in a multi-root canvas.`);
+      assert.equal(rootHost.resolveExecutionNodeRuntimeRoot({ ...plainNode, groupId: 'nested-a-group' }), rootA);
+      assert.equal(rootHost.resolveExecutionNodeRuntimeRoot({
+        ...plainNode, id: namespaceCanvasObjectId(rootB, plainNode.id)
+      }), rootB);
+      for (const folders of [
+        [{ path: rootB, name: 'root-1' }, { path: rootA, name: 'root-0' }],
+        [{ path: rootA, name: 'renamed-a' }, { path: rootB, name: 'renamed-b' }],
+        [{ path: rootB, name: 'same-display-name' }, { path: rootA, name: 'same-display-name' }]
+      ]) {
+        vscodeWorkspace.workspaceFolders = folders.map(folder => ({ name: folder.name, uri: { fsPath: folder.path } }));
+        for (const [node, expectedRoot] of [
+          [rootANode, rootA],
+          [{ ...plainNode, id: namespaceCanvasObjectId(rootB, plainNode.id), groupId: 'root-b-group' }, rootB]
+        ]) {
+          const resolvedRoot = rootHost.resolveExecutionNodeRuntimeRoot(node);
+          assert.equal(resolvedRoot, expectedRoot, `${kind} root order and display names cannot change the resolved owner root.`);
+          const expectedOwner = createRuntimeOwnerDescriptor({ ...runtimeOwner, rootPath: expectedRoot });
+          const actualOwner = createRuntimeOwnerDescriptor({ ...runtimeOwner, rootPath: resolvedRoot });
+          assert.deepEqual(actualOwner, expectedOwner, `${kind} reordered or renamed folders retain the complete owner.`);
+          assert.equal(resolveRuntimeRootOwnerBaseStoragePath(path.join(tempDir, 'global-storage'), actualOwner),
+            resolveRuntimeRootOwnerBaseStoragePath(path.join(tempDir, 'global-storage'), expectedOwner));
+        }
+      }
+      setRootFolders([rootA, rootB]);
+      assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot({
+        ...rootANode, id: namespaceCanvasObjectId(rootB, plainNode.id)
+      }), /disagree/, `${kind} conflicting namespace and group cannot choose an owner.`);
+      assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot(plainNode), /no confirmed runtime root/,
+        `${kind} cannot infer a multi-root owner from cwd.`);
+      assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot({
+        ...plainNode, id: namespaceCanvasObjectId(removedRoot, plainNode.id)
+      }), /missing or ambiguous/);
+      setRootFolders([rootB]);
+      assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot({ ...plainNode, groupId: 'nested-a-group' }),
+        /no longer in this workspace/);
+      assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot(rootANode), /missing or ambiguous/);
+
+      setRootFolders([]);
+      assert.equal(rootHost.resolveExecutionNodeRuntimeRoot(plainNode), undefined,
+        `${kind} is rootless only with no folders or root identity evidence.`);
+      assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot(rootANode), /missing or ambiguous/);
+      assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot({ ...plainNode, groupId: 'nested-a-group' }),
+        /no longer in this workspace/);
+
+      for (const whitespaceRoot of [` ${rootA}`, `${rootA} `]) {
+        setRootFolders([whitespaceRoot]);
+        assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot(plainNode), /root|identit/i,
+          `${kind} must reject whitespace-boundary workspace paths before normalization.`);
+        setRootFolders([rootA]);
+        rootHost.state.groups = [{ ...rootGroups[0], workspaceRootPath: whitespaceRoot }];
+        assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot({ ...plainNode, groupId: 'root-a-group' }),
+          /no longer in this workspace/);
+        rootHost.state.groups = rootGroups;
+      }
+      setRootFolders(['relative-root']);
+      assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot(plainNode), /unambiguous/);
+      setRootFolders([rootA]);
+      rootHost.state.groups = [{ ...rootGroups[0], workspaceRootPath: undefined }];
+      assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot({ ...plainNode, groupId: 'root-a-group' }),
+        /no longer in this workspace/);
+      setRootFolders([process.cwd()]);
+      rootHost.state.groups = [{ ...rootGroups[0], workspaceRootPath: '.' }];
+      assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot({ ...plainNode, groupId: 'root-a-group' }),
+        /root|identit/i, `${kind} cannot resolve a relative persisted root group against the Host cwd.`);
+      for (const folders of [[], [rootA], [rootA, rootB]]) {
+        setRootFolders(folders);
+        for (const groups of [
+          [],
+          [{ id: 'broken-group', parentGroupId: 'removed-parent' }],
+          [{ id: 'broken-group', parentGroupId: 'broken-group' }],
+          [{ id: 'broken-group', parentGroupId: 'cycle-peer' }, { id: 'cycle-peer', parentGroupId: 'broken-group' }]
+        ]) {
+          rootHost.state.groups = groups;
+          assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot({ ...plainNode, groupId: 'broken-group' }),
+            /group|root|identit/i, `${kind} dangling or cyclic group identity cannot fall back to another root.`);
+        }
+      }
+      setRootFolders([]);
+      rootHost.state.groups = [{ id: 'ordinary-group' }];
+      assert.equal(rootHost.resolveExecutionNodeRuntimeRoot({ ...plainNode, groupId: 'ordinary-group' }), undefined,
+        `${kind} an ordinary rootless group provides no workspace-root identity.`);
+      rootHost.state.groups = rootGroups;
+      setRootFolders([rootA, rootA]);
+      assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot(plainNode), /unambiguous/);
+
+      setRootFolders([rootA, rootB]);
+      const movingNode = { ...plainNode, groupId: 'root-a-group' };
+      rootHost.state.nodes = [movingNode];
+      const operationKey = rootHost.getExecutionSessionOperationKey(kind, movingNode.id);
+      rootHost.executionSessionOperationTokens.set(operationKey, 1);
+      const capturedRoot = rootHost.resolveExecutionNodeRuntimeRoot(movingNode);
+      rootHost.assertExecutionRuntimeRootCurrent(kind, movingNode.id, 1, capturedRoot);
+      await Promise.resolve();
+      rootHost.state.nodes = [{ ...movingNode, groupId: 'root-b-group' }];
+      assert.throws(() => rootHost.assertExecutionRuntimeRootCurrent(kind, movingNode.id, 1, capturedRoot),
+        /runtime root changed/, `${kind} rejects a changed root after an asynchronous boundary.`);
+      rootHost.state.nodes = [movingNode];
+      rootHost.executionSessionOperationTokens.set(operationKey, 2);
+      assert.throws(() => rootHost.assertExecutionRuntimeRootCurrent(kind, movingNode.id, 1, capturedRoot), /changed/);
+      rootHost.executionSessionOperationTokens.set(operationKey, 1);
+      setRootFolders([rootB]);
+      assert.throws(() => rootHost.assertExecutionRuntimeRootCurrent(kind, movingNode.id, 1, capturedRoot),
+        /no longer in this workspace/);
+      rootHost.state.nodes = [];
+      assert.throws(() => rootHost.assertExecutionRuntimeRootCurrent(kind, movingNode.id, 1, capturedRoot), /Could not find/);
+    }
+  } finally {
+    vscodeWorkspace.workspaceFolders = originalWorkspaceFolders;
+  }
+
+  function makePreferenceHost(nodes, enabled = false) {
+    return Object.assign(Object.create(CanvasPanelManager.prototype), {
+      state: { ...emptyState, nodes },
+      appliedStartupConfiguration: { runtimePersistenceEnabled: enabled, filesFeatureEnabled: true, defaultSurface: 'panel' },
+      agentSessions: new Map(), terminalSessions: new Map(), runtimeSessionBindings: new Map(),
+      preferredRootRuntimeBackends: new Map(), runtimeSupervisorClients: new Map(),
+      context: { workspaceState: { get: () => undefined } },
+      getExtensionStoragePath: () => currentWorkspaceSlot,
+      recordDiagnosticEvent() {}, getAgentCliConfig: () => ({ defaultProvider: 'codex' }),
+      reconcileCanvasFileArtifacts: state => state,
+      materializeNoteMarkdownRecoverableDraftFiles: state => state
+    });
+  }
+  const originalWorkspaceTrusted = vscodeWorkspace.isTrusted;
+  try {
+    for (const kind of ['agent', 'terminal']) {
+      setRootFolders([]);
+      const legacyNode = runtimeNode(kind, { runtimeStoragePath: legacyRuntimeStoragePath });
+      const host = makePreferenceHost([legacyNode], true);
+      Object.assign(host, {
+        context: { ...host.context, globalStorageUri: { fsPath: path.join(tempDir, 'transition-global-storage') } },
+        getExecutionCandidateProfile: () => profile,
+        getRuntimeHostBaseStoragePath: () => legacyRuntimeStoragePath,
+        runtimeExecutionEnvironmentPromise: Promise.resolve({ environmentKey: runtimeOwner.environmentKey, userIdentity: 'uid:1000' })
+      });
+      const rootlessTarget = await host.resolveRuntimeCreationTarget(host.resolveExecutionNodeRuntimeRoot(legacyNode));
+      assert.deepEqual(rootlessTarget, { rootPath: undefined, runtimeStoragePath: legacyRuntimeStoragePath },
+        `${kind} a genuinely rootless creation retains its original workspace slot.`);
+      const originalBinding = structuredClone(host.getPersistedLiveRuntimeSessionForNode(legacyNode));
+
+      setRootFolders([rootA]);
+      const newNode = kind === 'agent' ? createdAgentState.nodes[0] : createdTerminalState.nodes[0];
+      const newTarget = await host.resolveRuntimeCreationTarget(host.resolveExecutionNodeRuntimeRoot(newNode));
+      assert.equal(newTarget.rootPath, rootA);
+      assert.equal(newTarget.runtimeOwner.root.normalizedPath, rootA);
+      assert.equal(newTarget.runtimeOwner.generation, resolveRootRuntimeSupervisorGeneration(profile));
+      assert.notEqual(newTarget.runtimeStoragePath, rootlessTarget.runtimeStoragePath,
+        `${kind} adding a folder changes only the target for a new execution.`);
+      host.state = hydrateRuntimeStoragePaths(normalizeState(host.state, 'codex'), currentWorkspaceSlot);
+      assert.deepEqual(host.getPersistedLiveRuntimeSessionForNode(host.state.nodes[0]), originalBinding,
+        `${kind} rootless-to-folder restoration must not migrate the old backend, path, session, kind or owner.`);
+      assert.deepEqual(host.collectPersistedLiveRuntimeSessions(), [originalBinding]);
+
+      const client = {}, attached = [];
+      host.getRuntimeSupervisorClientForKind = async (backend, options, storage, owner) => {
+        assert.equal(backend, originalBinding.backendKind);
+        assert.deepEqual(options, {});
+        assert.equal(storage, originalBinding.runtimeStoragePath);
+        assert.equal(owner, undefined, `${kind} the old slot cannot inherit the new folder owner.`);
+        return client;
+      };
+      host.requestRuntimeSupervisorSessionAttach = async (actualClient, sessionId) => {
+        assert.strictEqual(actualClient, client);
+        assert.equal(sessionId, originalBinding.sessionId);
+      };
+      host.attachPersistedRuntimeSession = async (nodeKind, nodeId, sessionId, request, options) => {
+        assert.deepEqual(options.originalBinding, originalBinding);
+        attached.push({ kind: nodeKind, nodeId, sessionId });
+        await request();
+      };
+      await host.restoreLiveRuntimeSessions();
+      assert.deepEqual(attached, [{ kind, nodeId: originalBinding.nodeId, sessionId: originalBinding.sessionId }],
+        `${kind} adding a folder still dispatches reattach to the original slot session.`);
+      assert.deepEqual(host.collectPersistedLiveRuntimeSessions(), [originalBinding]);
+    }
+
+    for (const kind of ['agent', 'terminal']) {
+      const rootNode = runtimeNode(kind, { runtimeOwner, runtimeStoragePath });
+      const legacyNode = { ...runtimeNode(kind, { runtimeStoragePath: legacyRuntimeStoragePath }), id: `${kind}-legacy` };
+      const host = makePreferenceHost([rootNode, legacyNode]);
+      assert.equal(host.getLiveRuntimeReconnectBlockReason(rootNode.metadata[kind]), undefined);
+      assert.equal(host.getLiveRuntimeReconnectBlockReason({ runtimeOwner: null }), undefined);
+      assert.equal(host.getLiveRuntimeReconnectBlockReason(legacyNode.metadata[kind]), 'runtime-persistence-disabled');
+      vscodeWorkspace.isTrusted = false;
+      assert.equal(host.getLiveRuntimeReconnectBlockReason(rootNode.metadata[kind]), 'workspace-untrusted');
+      assert.equal(host.getLiveRuntimeReconnectBlockReason(), 'workspace-untrusted');
+      vscodeWorkspace.isTrusted = true;
+
+      const deleted = [];
+      const attached = [];
+      host.deleteRuntimeSupervisorSessions = async sessions => deleted.push(...sessions);
+      host.getRuntimeSupervisorClientForKind = async (backend, _options, storage, owner) => {
+        assert.equal(backend, 'legacy-detached');
+        assert.equal(storage, runtimeStoragePath);
+        assert.deepEqual(owner, runtimeOwner);
+        return {};
+      };
+      host.requestRuntimeSupervisorSessionAttach = async (_client, sessionId) => ({ sessionId });
+      host.attachPersistedRuntimeSession = async (nodeKind, nodeId, sessionId, request) => {
+        attached.push({ nodeKind, nodeId, sessionId, result: await request() });
+      };
+      await host.restoreLiveRuntimeSessions();
+      assert.deepEqual(deleted.map(session => session.nodeId), [legacyNode.id]);
+      assert.deepEqual(attached.map(session => session.nodeId), [rootNode.id]);
+      assert.deepEqual(host.state.nodes, [rootNode, legacyNode], 'Default persistence settings do not rewrite original bindings.');
+      vscodeWorkspace.isTrusted = false;
+      await host.restoreLiveRuntimeSessions();
+      assert.equal(deleted.length, 1);
+      assert.equal(attached.length, 1, 'Untrusted workspaces neither attach nor delete root sessions.');
+      vscodeWorkspace.isTrusted = true;
+
+      Object.assign(host, {
+        getCanvasFileViewConfiguration: () => ({}),
+        loadPersistedCanvasSnapshot: () => undefined,
+        loadPersistedRootLocalCanvasSnapshot: rootPath => ({
+          state: { ...emptyState, nodes: rootPath === rootA ? [rootNode] : [] }, runtimePersistenceEnabled: true
+        }),
+        getRootLocalCanvasSnapshotPath: () => path.join(tempDir, 'root-local-snapshot.json')
+      });
+      for (const roots of [[rootA], [rootA, rootB]]) {
+        setRootFolders(roots);
+        const loaded = host.loadReconciledState();
+        const restored = loaded.nodes.find(node => node.kind === kind);
+        assert.ok(restored, `${kind} shared root-local snapshot is loaded by a new default-false workspace slot.`);
+        assert.equal(restored.status, 'reattaching');
+        assert.deepEqual(restored.metadata[kind].runtimeOwner, runtimeOwner);
+        assert.equal(restored.metadata[kind].runtimeStoragePath, runtimeStoragePath);
+      }
+    }
+
+    for (const kind of ['agent', 'terminal']) {
+      for (const connectionFails of [false, true]) {
+        for (const changed of ['none', 'backend', 'storage', 'owner', 'session', 'removed']) {
+          const node = runtimeNode(kind, { runtimeOwner, runtimeStoragePath });
+          const host = makePreferenceHost([node], true);
+          const requested = [];
+          const applied = [];
+          const restored = [];
+          const retired = [];
+          let resolveConnection;
+          let rejectConnection;
+          const connection = new Promise((resolve, reject) => {
+            resolveConnection = resolve;
+            rejectConnection = reject;
+          });
+          const originalClient = {};
+          Object.assign(host, {
+            executionSessionOperationTokens: new Map(),
+            getRuntimeSupervisorClientForKind: (_backend, _options, storage, owner) => {
+              assert.equal(storage, runtimeStoragePath);
+              assert.deepEqual(owner, runtimeOwner);
+              return connection;
+            },
+            requestRuntimeSupervisorSessionAttach: async (client, sessionId) => {
+              assert.equal(client, originalClient);
+              requested.push(sessionId);
+              return { snapshot: { kind, sessionId, live: true }, terminalProjectionMode: 'terminal-stream-v1' };
+            },
+            bindRuntimeSession() {},
+            applyRuntimeSupervisorSnapshot: async (_nodeId, _kind, snapshot) => { applied.push(snapshot.sessionId); },
+            subscribeRuntimeSupervisorTerminalStream: async () => {},
+            markExecutionNodeAsHistoryRestored: nodeId => restored.push(nodeId),
+            maybeFallbackAgentLiveRuntimeToResume: () => false,
+            retireLegacyRuntimeSupervisorClientIfUnused: (_backend, client) => retired.push(client)
+          });
+          const restoring = host.restoreLiveRuntimeSessions();
+          const patch = changed === 'backend' ? { runtimeBackend: 'systemd-user' }
+            : changed === 'storage' ? { runtimeStoragePath: `${runtimeStoragePath}-replacement` }
+              : changed === 'owner' ? { runtimeOwner: { ...runtimeOwner, environmentKey: 'b'.repeat(64) } }
+                : changed === 'session' ? { runtimeSessionId: 'replacement-session' } : {};
+          if (changed === 'removed') host.state.nodes = [];
+          else if (changed !== 'none') host.state.nodes = [{ ...node,
+            metadata: { ...node.metadata, [kind]: { ...node.metadata[kind], ...patch } } }];
+          const currentState = host.state;
+          if (connectionFails) rejectConnection(new Error('The original owner is unavailable.'));
+          else resolveConnection(originalClient);
+          await restoring;
+          const label = `${kind}/${connectionFails ? 'failed' : 'ready'}/${changed}`;
+          assert.deepEqual(requested, changed === 'none' && !connectionFails ? [node.metadata[kind].runtimeSessionId] : [],
+            `${label}: a superseded bucket must not dispatch an attach to its original client.`);
+          assert.deepEqual(applied, requested, `${label}: only the unchanged original binding accepts its snapshot.`);
+          assert.deepEqual(restored, changed === 'none' && connectionFails ? [node.id] : [],
+            `${label}: the original connection failure must not downgrade a replacement binding.`);
+          if (!connectionFails) assert.ok(retired.includes(originalClient),
+            `${label}: even a fully superseded bucket reaches the original client's retirement check.`);
+          assert.equal(host.state, currentState, `${label}: stale connection settlement leaves current state untouched.`);
+        }
+      }
+    }
+
+    for (const [enabled, nextEnabled, expectedDeleted, rejectDeletion = false] of [
+      [false, false, ['legacy-terminal']], [false, true, ['legacy-terminal']],
+      [true, true, []], [true, false, ['agent-runtime-owner', 'legacy-terminal']],
+      [true, false, ['agent-runtime-owner', 'legacy-terminal'], true]
+    ]) {
+      const rootNode = runtimeNode('agent', { runtimeOwner, runtimeStoragePath });
+      const legacyNode = { ...runtimeNode('terminal', { runtimeStoragePath: legacyRuntimeStoragePath }), id: 'legacy-terminal' };
+      const host = makePreferenceHost([rootNode, legacyNode], enabled);
+      const deleted = [];
+      let disposed = 0;
+      Object.assign(host, {
+        executionCandidateProfile: profile,
+        readStartupConfiguration: () => ({ runtimePersistenceEnabled: nextEnabled }),
+        terminalProjectionRefreshScheduler: { clearMatching() {} },
+        waitForPendingRuntimeSupervisorOperations: async () => undefined,
+        flushAllExecutionSessionStatesForHostBoundary: async () => undefined,
+        flushDeferredCanvasStatePersist: async () => undefined,
+        waitForPendingWorkspaceStateUpdates: async () => undefined,
+        clearPendingTerminalInitialInputs() {},
+        deleteRuntimeSupervisorSessions: async (sessions, options) => {
+          assert.equal(options.allowRestart, false);
+          assert.equal(options.requireExistingClient, true);
+          deleted.push(...sessions);
+          if (rejectDeletion) throw new Error('Original binding deletion is unconfirmed.');
+        },
+        disposeRuntimeSupervisorClients: () => { disposed += 1; }
+      });
+      if (rejectDeletion) {
+        await assert.rejects(host.prepareOrdinaryDeactivation(), /Original binding deletion is unconfirmed/);
+      } else {
+        await host.prepareOrdinaryDeactivation();
+      }
+      assert.deepEqual(deleted.map(session => session.nodeId), expectedDeleted,
+        'Ordinary boundaries preserve root bindings by actual ownership without changing legacy deletion rules.');
+      assert.equal(disposed, rejectDeletion ? 0 : 1);
+      assert.deepEqual(host.state.nodes, [rootNode, legacyNode]);
+    }
+  } finally {
+    vscodeWorkspace.workspaceFolders = originalWorkspaceFolders;
+    vscodeWorkspace.isTrusted = originalWorkspaceTrusted;
+  }
+
   const managerSource = await readFile('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts', 'utf8');
   const managerSourceWithoutProviderNativeSessionBranching = managerSource
     .replace(
@@ -376,6 +871,7 @@ try {
     .replace(/\nfunction isClaudeForkSessionLaunch\([\s\S]*?\n\}/u, '\n')
     .replace(/\nfunction formatForkTitle\([\s\S]*?\n\}/u, '\n')
     .replace(/\nfunction formatHistoryForkTitle\([\s\S]*?\n\}/u, '\n')
+    .replace(/'fork-layer'/gu, "'agent-placement-layer'")
     .replace(/Claude Agent nodes do not support Ctrl-Z\/fg\. Use stop, resume, or fork instead\./gu, 'Claude Agent Ctrl-Z unsupported');
   const runtimeBindingKeyFunction = managerSource.match(
     /private buildRuntimeSessionBindingKey\([\s\S]*?\n  \}/u

@@ -102,6 +102,20 @@ function assertRuntimeDiscarded(metadata) {
   }
 }
 
+async function assertCompletedRootRuntimeDeleted(metadata) {
+  const registryPath = path.join(metadata.runtimeStoragePath, 'runtime-supervisor', 'registry.json');
+  await poll('original root Runtime record deleted after reader settlement', async () => {
+    const events = await command('getDiagnosticEvents');
+    assert(!events.some(event => event.kind === 'runtime/completedSessionCleanupFailed' &&
+      event.detail?.sessionId === metadata.runtimeSessionId), 'Original root Runtime cleanup must not fail.');
+    const registry = JSON.parse(await fs.readFile(registryPath, 'utf8'));
+    assert.equal(registry.version, 1);
+    assert(Array.isArray(registry.sessions));
+    return !registry.sessions.some(session => session.sessionId === metadata.runtimeSessionId);
+  }, Boolean);
+  return { registryPath, sessionId: metadata.runtimeSessionId, targetRecordRemoved: true };
+}
+
 async function run() {
   assert(['live-runtime', 'snapshot-only'].includes(mode));
   assert(['complete', 'reopen'].includes(phase));
@@ -169,7 +183,21 @@ async function complete() {
   const metadata = node.metadata.terminal;
   assert.equal(metadata.persistenceMode, mode);
   if (mode === 'live-runtime') {
-    assert.match(metadata.runtimeStoragePath, new RegExp(expectedExecutionCandidateGeneration()));
+    if (process.env.DEV_SESSION_CANVAS_ROOT_OWNER_ACCEPTANCE === '1') {
+      const ownerApi = require('./candidate-root-ownership.cjs');
+      const owner = ownerApi.parseRuntimeOwnerDescriptor(metadata.runtimeOwner);
+      const rootPath = path.resolve(vscode.workspace.workspaceFolders[0].uri.fsPath);
+      assert.equal(owner.root.normalizedPath, process.platform === 'win32' ? rootPath.toLowerCase() : rootPath);
+      const platformName = { linux: 'linux', darwin: 'macos', win32: 'windows' }[process.platform];
+      assert.equal(owner.generation, `terminal-root-owner-${platformName}-v1`);
+      const globalStorage = ownerApi.resolveRuntimeRootOwnerGlobalStoragePath(
+        path.join(metadata.runtimeStoragePath, 'runtime-supervisor'), owner);
+      assert.equal(path.relative(await fs.realpath(globalStorage), globalStorage), '');
+      await writeJson('root-owner-binding.json', { owner, globalStorage, runtimeStoragePath: metadata.runtimeStoragePath,
+        backend: metadata.runtimeBackend, sessionId: metadata.runtimeSessionId });
+    } else {
+      assert.match(metadata.runtimeStoragePath, new RegExp(expectedExecutionCandidateGeneration()));
+    }
     assert(metadata.runtimeSessionId);
   }
   await dispatch('webview/resizeNode', { nodeId: id, position: node.position,
@@ -272,6 +300,7 @@ async function complete() {
   const saved = await command('flushPersistedState');
   assert(saved.exists && saved.snapshot?.state);
   const savedNode = saved.snapshot.state.nodes.find(entry => entry.id === id);
+  let rootRetirement;
   if (mode === 'live-runtime') {
     assertRuntimeDiscarded(nodeById(ended, id).metadata.terminal);
     assertRuntimeDiscarded(savedNode.metadata.terminal);
@@ -281,6 +310,9 @@ async function complete() {
     await poll('same Runtime reader applied settlement', () => command('getDiagnosticEvents'), events =>
       events.some(event => event.kind === 'runtime/terminalReadSettled' && event.detail?.nodeId === id &&
         event.detail.sessionId === executionId && event.detail.outcome?.kind === 'applied'));
+    if (process.env.DEV_SESSION_CANVAS_ROOT_OWNER_ACCEPTANCE === '1') {
+      rootRetirement = await assertCompletedRootRuntimeDeleted(metadata);
+    }
   } else {
     assert(savedNode.metadata.terminal.serializedTerminalState?.data.includes(`${prefix}90000_`),
       'Snapshot-only keeps its final snapshot.');
@@ -291,6 +323,7 @@ async function complete() {
         event.detail.outcome.finalOutputSequence === savedNode.metadata.terminal.outputSequence));
   }
   await writeJson('completed.json', { mode, id, executionId, runtimeSessionId: metadata.runtimeSessionId,
+    ...(rootRetirement ? { rootRetirement } : {}),
     ...(process.platform === 'win32' ? { subjectExit: windows.exitFact(windowsObserver), sourceByteIdentityWithConptyClaim: false } : {}),
     receipt, intensityTail, savedNodeBytes: Buffer.byteLength(JSON.stringify(savedNode)), finalProbe,
     runtime: await command('getRuntimeSupervisorState'), events: await command('getDiagnosticEvents'), pass: true });

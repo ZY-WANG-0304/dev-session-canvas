@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
 const fs = require('node:fs/promises');
 const net = require('node:net');
 const path = require('node:path');
@@ -10,6 +11,9 @@ const { hasLiveWindowsStartupChain } = require('./agent-candidate-windows-observ
 const { resolveSystemdUserRuntimeSupervisorPaths, resolveLegacyRuntimeSupervisorPaths } = require('./runtime-reload-paths.cjs');
 const { resolveExecutionSessionSpawnSpec } = require('./execution-session-spawn-spec.cjs');
 const { readIdentity, sameIdentity, sameLiveIdentity, exitedIdentity, closeWindowsIdentityObserver } = require('./runtime-reload-contract.cjs');
+const { createRuntimeOwnerDescriptor, createRuntimeOwnerCompatibilityFingerprint, resolveRootRuntimeSupervisorGeneration,
+  resolveRuntimeRootOwnerGlobalStoragePath } = require('./runtime-root-ownership.cjs');
+const { assertRuntimeStorageContained } = require('./runtime-storage-containment.cjs');
 
 const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
 const controlPath = process.env.DEV_SESSION_CANVAS_AGENT_RELOAD_CONTROL;
@@ -21,7 +25,7 @@ const probe = () => command('captureWebviewProbe', surface, 10000);
 const dom = action => command('performWebviewDomAction', action, surface, 10000);
 const stripVt = value => String(value).replace(/[\u001b\u009b]\[[0-?]*[ -/]*[@-~]/g, '');
 const hasAgentMarkerResponse = (value, marker) => value.nodes.find(node => node.nodeId === currentNodeId)
-  ?.terminalVisibleLines?.some(line => stripVt(line).trim().replace(/^(?:\u2022|\*)\s*/, '')
+  ?.terminalVisibleLines?.some(line => stripVt(line).trim().replace(/^(?:\u2022|\u25cf|\u23fa|\*)\s*/, '')
     .startsWith(marker)) === true;
 const sendAgentTurn = async (nodeId, marker) => {
   // Codex treats Enter in a fast paste burst as an inserted newline; submit separately.
@@ -43,6 +47,7 @@ let control;
 let currentNodeId;
 let observer;
 let observerReleased = false;
+let setupProcessObservationAttempted = false;
 let phase = 'initialization';
 let reloading = false;
 
@@ -54,7 +59,7 @@ exports.activate = () => {
 };
 
 async function poll(label, get, accept, timeoutMs = 30000) {
-  const deadline = Math.min(Date.now() + timeoutMs, control.deadlineAt - 30000);
+  const deadline = Math.min(Date.now() + timeoutMs, control.deadlineAt - (config?.rootWindowPair ? 45000 : 30000));
   while (Date.now() < deadline) {
     const value = await get();
     if (accept(value)) return value;
@@ -69,6 +74,7 @@ async function run() {
   try {
     control = JSON.parse(await fs.readFile(controlPath, 'utf8'));
     config = JSON.parse(await fs.readFile(process.env.DEV_SESSION_CANVAS_AGENT_RELOAD_CONFIG, 'utf8'));
+    if (config.rootWindowPair) { await runRootWindowPair(); return; }
     phase = control.phase;
     await write(`${phase}-activation.json`, { phase, host: await readIdentity(process.pid), nonce: control.nonce });
     const extension = await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
@@ -83,18 +89,19 @@ async function run() {
   } catch (error) {
     failure = error;
     await write(`${phase}-failure.json`, { phase, nonce: control?.nonce, error: String(error), stack: error.stack });
+    if (phase === 'setup') await captureSetupProcessObservation();
     try { await write('failure-webview-probe.json', await probe()); } catch { /* Preserve the first failure. */ }
     for (const name of ['getDebugState', 'getRuntimeSupervisorState', 'getDiagnosticEvents']) {
       try { await write(`failure-${name}.json`, await command(name)); } catch { /* Preserve the first failure. */ }
     }
   } finally {
-    if (!reloading) {
+    if (!config?.rootWindowPair && !reloading) {
       try { await cleanup(); } catch (error) { failure ??= error; await write('cleanup-failure.json', { error: String(error) }); }
       await closeWindowsIdentityObserver().catch(error => { failure ??= error; });
       await write('driver-finished.json', { nonce: control?.nonce, phase, pass: !failure });
       void vscode.commands.executeCommand(process.platform === 'darwin'
         ? 'workbench.action.quit' : 'workbench.action.closeWindow').catch(console.error);
-    } else await closeWindowsIdentityObserver().catch(error => { failure ??= error; });
+    } else if (!config?.rootWindowPair) await closeWindowsIdentityObserver().catch(error => { failure ??= error; });
   }
 }
 
@@ -102,6 +109,35 @@ function runtimePaths(metadata) {
   return metadata.runtimeBackend === 'systemd-user'
     ? resolveSystemdUserRuntimeSupervisorPaths(metadata.runtimeStoragePath)
     : resolveLegacyRuntimeSupervisorPaths(metadata.runtimeStoragePath);
+}
+
+async function assertRuntimeOwnerBinding(metadata, hello) {
+  if (!config.rootOwner) return;
+  const profile = { linux: 'linux-owner-v1-candidate', darwin: 'macos-owner-v1-candidate',
+    win32: 'windows-owner-v1-candidate' }[process.platform];
+  const owner = metadata.runtimeOwner;
+  assert(owner && typeof owner === 'object', 'Root acceptance requires its original complete runtime owner.');
+  assert(['legacy-detached', 'systemd-user'].includes(metadata.runtimeBackend));
+  assert.equal(metadata.runtimeGuarantee, metadata.runtimeBackend === 'systemd-user' ? 'strong' : 'best-effort');
+  assert(typeof metadata.runtimeSessionId === 'string' && metadata.runtimeSessionId.length > 0);
+  const expected = createRuntimeOwnerDescriptor({ environmentKey: owner.environmentKey,
+    userStorageScopeKey: owner.userStorageScopeKey, rootPath: config.workspacePath,
+    generation: resolveRootRuntimeSupervisorGeneration(profile) });
+  assert.deepEqual(owner, expected, 'The original owner must identify this workspace root and platform generation.');
+  const globalStorage = resolveRuntimeRootOwnerGlobalStoragePath(runtimePaths(metadata).storageDir, owner);
+  const expectedGlobalStorage = path.join(config.userDataDir, 'User', 'globalStorage', 'devsessioncanvas.dev-session-canvas');
+  assert.equal(path.relative(await fs.realpath(expectedGlobalStorage), await fs.realpath(globalStorage)), '',
+    'Root runtime storage must belong to the installed extension in this isolated VS Code profile.');
+  await assertRuntimeStorageContained(metadata.runtimeStoragePath, config.permittedStorageRoots);
+  assert.equal(hello.serverVersion, 1);
+  assert.deepEqual(hello.runtimeOwner, owner);
+  assert.equal(hello.runtimeBackend, metadata.runtimeBackend);
+  assert.equal(hello.runtimeGuarantee, metadata.runtimeGuarantee);
+  assert.equal(hello.executionProfile, profile);
+  assert.equal(hello.ownerCompatibilityFingerprint, createRuntimeOwnerCompatibilityFingerprint(owner.generation, profile));
+  assert.equal(hello.capabilities?.terminalCurrentStateV1, true);
+  assert.equal(hello.capabilities?.terminalHostOutputCreditV1, true);
+  assert(hello.capabilities?.executionCandidateProfiles?.includes(profile));
 }
 
 function rpc(socketPath, method, id = 'agent-reload') {
@@ -126,7 +162,17 @@ function rpc(socketPath, method, id = 'agent-reload') {
   });
 }
 
-async function mountedReader(id) {
+async function mountedReader(id, requested) {
+  if (requested) {
+    const matches = message => message.type === 'host/executionSnapshot' && message.payload.nodeId === id &&
+      message.payload.requestId === requested.requestId && message.payload.terminalRead?.sessionId === requested.sessionId &&
+      typeof message.payload.terminalRead.authorityId === 'string' && message.payload.terminalRead.authorityId.length > 0 &&
+      typeof message.payload.terminalRead.readId === 'string' && message.payload.terminalRead.readId.length > 0 &&
+      (requested.authorityId === undefined || message.payload.terminalRead.authorityId === requested.authorityId);
+    return (await poll('live Agent reader', async () => ({ probe: await probe(), messages: await command('getHostMessages') }),
+      value => value.probe.nodes.some(node => node.nodeId === id && node.terminalCols >= 64) &&
+        value.messages.some(matches))).messages.findLast(matches).payload.terminalRead;
+  }
   return (await poll('live Agent reader', async () => ({ probe: await probe(), messages: await command('getHostMessages') }),
     value => value.probe.nodes.some(node => node.nodeId === id && node.terminalCols >= 64) &&
       value.messages.some(message => message.type === 'host/executionSnapshot' && message.payload.nodeId === id &&
@@ -140,7 +186,7 @@ async function setup(extension) {
   await command('clearDiagnosticEvents');
   await startProcessObserver(extension);
   const custom = [config.cli.entry, ...config.launchArguments].map(value => `'${String(value).replaceAll("'", "'\\''")}'`).join(' ');
-  await command('createNode', 'agent', 'codex', { agentLaunchPreset: 'custom', agentCustomLaunchCommand: custom,
+  await command('createNode', 'agent', config.provider, { agentLaunchPreset: 'custom', agentCustomLaunchCommand: custom,
     cwdOverride: config.workspacePath });
   const created = await poll('Agent node created', snapshot, state => state.state.nodes.some(node => node.kind === 'agent'));
   currentNodeId = created.state.nodes.find(node => node.kind === 'agent').id;
@@ -156,6 +202,7 @@ async function setup(extension) {
   assert.equal(metadata.persistenceMode, 'live-runtime');
   const paths = runtimePaths(metadata);
   const hello = await rpc(paths.socketPath, 'hello');
+  await assertRuntimeOwnerBinding(metadata, hello);
   const supervisor = await readIdentity(hello.pid);
   assert(supervisor && supervisor.startTicks);
   await observer.addRoot(supervisor.pid, 'supervisor');
@@ -165,10 +212,13 @@ async function setup(extension) {
   await sendAgentTurn(currentNodeId, before);
   await poll('pre-reload Agent response', probe, value => hasAgentMarkerResponse(value, before), 90000);
   await observer.sample();
+  await captureSetupProcessObservation();
   const resources = assertOriginalResourcesLive();
   const setup = { phase: 'setup', nonce: control.nonce, host: await readIdentity(process.pid), nodeId: currentNodeId,
     binding: { runtimeBackend: metadata.runtimeBackend, runtimeStoragePath: metadata.runtimeStoragePath,
-      runtimeSessionId: metadata.runtimeSessionId }, supervisor, hello, reader, resources,
+      runtimeSessionId: metadata.runtimeSessionId,
+      ...(config.rootOwner ? { runtimeOwner: metadata.runtimeOwner, runtimeGuarantee: metadata.runtimeGuarantee } : {}) },
+    provider: config.provider, rootOwner: config.rootOwner === true, supervisor, hello, reader, resources,
     frameId: (await snapshot()).surfaceLifecycle[surface].frameId, before };
   await write('ownership.json', { supervisor, resources });
   await write('setup.json', setup);
@@ -177,6 +227,19 @@ async function setup(extension) {
   await releaseProcessObserver();
   reloading = true;
   void vscode.commands.executeCommand('workbench.action.reloadWindow').catch(error => write('reload-command-rejection.json', { error: String(error) }));
+}
+
+async function captureSetupProcessObservation() {
+  if (config.provider !== 'claude' || !observer || setupProcessObservationAttempted) return;
+  setupProcessObservationAttempted = true;
+  try {
+    await write('setup-process-observation.json', { nonce: control.nonce,
+      entries: observer.result().entries.map(entry => Object.fromEntries([
+        'pid', 'ppid', 'startTicks', 'executable', 'role', 'wrapperKind', 'firstPpid', 'firstParentStartTicks',
+        'firstSeenMs', 'lastSeenMs', 'lastLiveMs', 'firstAbsentMs', 'state', 'active', 'platform',
+        'hasExited', 'exitConfirmed', 'exitCode', 'observationUnknown'
+      ].filter(key => entry[key] !== undefined).map(key => [key, entry[key]]))) });
+  } catch { /* Diagnostic failure must not replace the first setup error. */ }
 }
 
 async function startProcessObserver(extension) {
@@ -199,11 +262,12 @@ async function releaseProcessObserver() {
   assert.equal(observer.failures.length, 0, 'Process observation must settle without unknown evidence.');
 }
 
-function assertOriginalResourcesLive(expected) {
+function assertOriginalResourcesLive(expected, excluded = []) {
   const result = observer.result();
   assert(!result.error, result.error);
   assert.equal(result.failures.length, 0);
-  const resources = result.entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role));
+  const resources = result.entries.filter(entry => ['cli', 'wrapper', 'provider'].includes(entry.role) &&
+    !excluded.some(original => sameIdentity(original, entry)));
   const original = expected ?? resources;
   for (const role of ['cli', 'provider']) {
     assert.equal(original.filter(entry => entry.role === role).length, 1, `Exactly one original ${role} is required.`);
@@ -214,8 +278,8 @@ function assertOriginalResourcesLive(expected) {
     assert(current && current.role === entry.role && current.wrapperKind === entry.wrapperKind &&
       !executionEnded(current) && !current.observationUnknown, 'Original Agent startup identity must still be live.');
   }
-  if (process.platform === 'win32') assert(hasLiveWindowsStartupChain(result, 'codex', 'live-runtime'),
-    'The original Windows provider/cmd/node/CLI chain must be retained before stop.');
+  if (process.platform === 'win32') assert(hasLiveWindowsStartupChain(result, config.provider, 'live-runtime'),
+    'The original Windows provider/wrapper/CLI chain must be retained before stop.');
   return resources;
 }
 
@@ -237,6 +301,10 @@ async function originalResourcesExited(resources) {
 
 function hasLoadedAgentComposer(text) {
   const visible = stripVt(text);
+  if (config.provider === 'claude') {
+    return /\bClaude Code\b/i.test(visible) && /\bdeepseek[- ]?flash\b/i.test(visible) &&
+      /^[ \t\u00a0]*(?:\u276f|>)[ \t\u00a0]*(?:Try\b[^\n]*)?$/im.test(visible);
+  }
   // Codex renders this composer before onboarding too, with a "model: loading" header.
   return /^\s*\u203a\s*Ask\s+Codex\s+to\s+do\s+anything\s*$/im.test(visible) &&
     /\bdeepseek[- ]?flash\b/i.test(visible) && !/model:\s*loading\b/i.test(visible);
@@ -244,23 +312,47 @@ function hasLoadedAgentComposer(text) {
 
 async function waitForAgentReady() {
   const prompts = new Set();
+  let claudeTrustMoved = false;
   const startupPrompts = [
     /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i,
     /(?:Choose the text style|Choose.*theme|Select.*theme)/i,
     /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i,
-    /Set up the Codex agent sandbox[\s\S]*1\.\s*Set up default sandbox[\s\S]*2\.\s*Use non-admin sandbox/i
+    /Set up the Codex agent sandbox[\s\S]*1\.\s*Set up default sandbox[\s\S]*2\.\s*Use non-admin sandbox/i,
+    ...(config.provider === 'claude' ? [/Detected a custom API key[\s\S]*Do you want to use this API key/i,
+      /Security notes:[\s\S]*Press Enter to continue(?:\u2026|\.{3})/i] : [])
   ];
-  const deadline = Math.min(Date.now() + 90000, control.deadlineAt - 30000);
+  const deadline = Math.min(Date.now() + 90000, control.deadlineAt - (config.rootWindowPair ? 45000 : 30000));
   while (Date.now() < deadline) {
     const value = await probe();
     const text = textOf(value);
+    if (config.provider === 'claude' && /Select login method:|Not logged in|Invalid API key/i.test(text)) {
+      throw new Error('The isolated Claude API configuration did not reach its authenticated surface.');
+    }
     let handledPrompt = false;
     for (const [name, pattern] of [['workspace-trust', /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i],
       ['theme', /(?:Choose the text style|Choose.*theme|Select.*theme)/i],
       ['update', /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i],
-      ['windows-sandbox', startupPrompts[3]]]) {
+      ['windows-sandbox', startupPrompts[3]],
+      ...(config.provider === 'claude' ? [['claude-api-key', startupPrompts[4]],
+        ['claude-security-notes', startupPrompts[5]]] : [])]) {
       if (pattern.test(text) && !prompts.has(name)) {
         let data = name === 'update' ? '\u001b[B\r' : '\r';
+        if (name === 'workspace-trust' && config.provider === 'claude') {
+          const selectedNo = /^[ \t]*\u276f[ \t]+No, exit[ \t]*\r?\n[ \t]+Yes, I trust this folder[ \t]*$/m.test(text);
+          const selectedYes = /^[ \t]+No, exit[ \t]*\r?\n[ \t]*\u276f[ \t]+Yes, I trust this folder[ \t]*$/m.test(text);
+          assert(/^[ \t]*Accessing workspace:[ \t]*$/m.test(text)
+            && /^[ \t]*Enter to confirm[ \t]+\u00b7[ \t]+Esc to cancel[ \t]*$/m.test(text)
+            && selectedNo !== selectedYes, 'Claude workspace trust selection is not confirmed.');
+          if (selectedNo) {
+            if (!claudeTrustMoved) {
+              claudeTrustMoved = true;
+              await dom({ kind: 'sendExecutionInput', nodeId: currentNodeId, data: '\u001b[B' });
+            }
+            handledPrompt = true;
+            break;
+          }
+          data = '\r';
+        }
         if (name === 'windows-sandbox') {
           assert.equal(process.platform, 'win32', 'Only the fixed Windows input may configure its sandbox.');
           const selectedDefault = /^\s*\u203a\s*1\.\s*Set up default sandbox/im.test(text);
@@ -287,7 +379,7 @@ async function waitForAgentReady() {
     }
     await sleep(100);
   }
-  throw new Error('Timed out: Codex interactive surface');
+  throw new Error(`Timed out: ${config.provider} interactive surface`);
 }
 
 async function verify(extension) {
@@ -300,9 +392,10 @@ async function verify(extension) {
   const node = nodeOf(state, setup.nodeId);
   assert(node?.metadata?.agent?.liveSession === true, 'Reload must retain the live Agent node.');
   const metadata = node.metadata.agent;
-  for (const [key, value] of Object.entries(setup.binding)) assert.equal(metadata[key], value);
+  for (const [key, value] of Object.entries(setup.binding)) assert.deepEqual(metadata[key], value);
   const paths = runtimePaths(metadata);
   const hello = await rpc(paths.socketPath, 'hello');
+  await assertRuntimeOwnerBinding(metadata, hello);
   assert.equal(hello.pid, setup.supervisor.pid);
   assert(sameLiveIdentity(setup.supervisor, await readIdentity(setup.supervisor.pid)));
   const reader = await mountedReader(setup.nodeId);
@@ -348,7 +441,8 @@ async function verify(extension) {
   const resourcesExited = await poll('original Agent resources exited', () => originalResourcesExited(setup.resources),
     value => value.pass, 10000);
   await write('verify.json', { phase: 'verify', nonce: control.nonce, pass: true, oldHost, node: nodeOf(ended, setup.nodeId),
-    binding: setup.binding, supervisor: await readIdentity(setup.supervisor.pid), reader, after,
+    binding: setup.binding, provider: config.provider, rootOwner: config.rootOwner === true,
+    supervisor: await readIdentity(setup.supervisor.pid), hello, reader, after,
     noNewExecution: true, retainedResources, resourcesExited, originalResourcesExited: resourcesExited.pass });
 }
 
@@ -376,7 +470,9 @@ async function cleanup() {
     const paths = runtimePaths(binding);
     receipt.registry = await poll('isolated Supervisor registry empty', async () => JSON.parse(await fs.readFile(paths.registryPath, 'utf8')),
       value => Array.isArray(value.sessions) && value.sessions.length === 0, 10000);
-    assert.equal((await rpc(paths.socketPath, 'hello')).pid, expected.pid);
+    const hello = await rpc(paths.socketPath, 'hello');
+    assert.equal(hello.pid, expected.pid);
+    await assertRuntimeOwnerBinding(binding, hello);
     if (process.platform === 'win32') {
       receipt.supervisorActions = await observer.cleanupSupervisor(expected);
       await poll('isolated Supervisor retained handle exited', async () => {
@@ -400,6 +496,235 @@ async function cleanup() {
     try { await releaseProcessObserver(); } catch (error) { failure ??= error; receipt.releaseError = String(error); }
     receipt.pass = !failure;
     await write('cleanup.json', receipt);
+  }
+  if (failure) throw failure;
+}
+
+async function pairPublish(name, value) {
+  const file = path.join(artifacts, `pair-${name}.json`), pending = `${file}.pending-${process.pid}`;
+  await fs.writeFile(pending, JSON.stringify(value), { flag: 'wx' });
+  await fs.link(pending, file);
+  await fs.unlink(pending);
+}
+
+async function pairWait(name) {
+  return poll(`pair ${name}`, async () => {
+    const failures = (await fs.readdir(artifacts)).filter(file => /^pair-.*-failure\.json$/.test(file));
+    assert.deepEqual(failures, [], 'The other window must not fail.');
+    try {
+      const value = await read(`pair-${name}.json`);
+      assert.notEqual(value.pass, false, 'The peer did not finish successfully.');
+      return value;
+    }
+    catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
+  }, Boolean, 180000);
+}
+
+function pairNode(state, sessionId) {
+  return state.state.nodes.find(node => node.kind === 'agent' && node.metadata?.agent?.runtimeSessionId === sessionId);
+}
+
+function assertPairTopology(multi, single) {
+  assert.notEqual(multi.host.pid, single.host.pid, 'Require two actual Extension Hosts.');
+  for (const key of ['runtimeOwner', 'runtimeBackend', 'runtimeStoragePath', 'runtimeGuarantee']) {
+    assert.deepEqual(single.binding[key], multi.binding[key], `Both new Agents must share ${key}.`);
+  }
+  assert(sameLiveIdentity(multi.supervisor, single.supervisor));
+  assert.notEqual(multi.binding.runtimeSessionId, single.binding.runtimeSessionId, 'The second window must create a new Agent.');
+  assert.notEqual(multi.reader.authorityId, single.reader.authorityId);
+  for (const role of ['cli', 'provider']) {
+    const first = multi.resources.filter(entry => entry.role === role), second = single.resources.filter(entry => entry.role === role);
+    assert.equal(first.length, 1); assert.equal(second.length, 1);
+    assert(!sameIdentity(first[0], second[0]), `Each new Agent requires its own ${role}.`);
+  }
+}
+
+async function pairCapture(sessionId, expected, creatingRole) {
+  const state = await poll('pair original live Agent', snapshot, value => {
+    const node = pairNode(value, sessionId);
+    return node?.metadata.agent.liveSession === true && node.metadata.agent.attachmentState === 'attached-live';
+  }, 45000);
+  const node = pairNode(state, sessionId);
+  currentNodeId = node.id;
+  await vscode.commands.executeCommand('devSessionCanvas.__internal.focusNode', node.id);
+  await command('dispatchWebviewMessage', { type: 'webview/resizeNode', payload: {
+    nodeId: node.id, position: node.position, size: { width: 960, height: 700 } } }, surface);
+  const binding = Object.fromEntries(['runtimeOwner', 'runtimeBackend', 'runtimeStoragePath', 'runtimeSessionId',
+    'runtimeGuarantee'].map(key => [key, node.metadata.agent[key]]));
+  const hello = await rpc(runtimePaths(binding).socketPath, 'hello');
+  await assertRuntimeOwnerBinding(binding, hello);
+  const supervisor = await readIdentity(hello.pid);
+  assert(supervisor && supervisor.startTicks);
+  if (creatingRole) {
+    await observer.addRoot(supervisor.pid, 'supervisor');
+    await pairPublish(`${creatingRole}-owner`, { binding, supervisor });
+  }
+  const requestId = randomUUID();
+  await command('dispatchWebviewMessage', { type: 'webview/attachExecutionSession', payload: {
+    kind: 'agent', nodeId: node.id, executionSessionId: sessionId, requestId } }, surface);
+  const reader = await mountedReader(node.id, { requestId, sessionId, authorityId: expected?.reader.authorityId });
+  assert.equal(reader.sessionId, sessionId);
+  assert(typeof reader.authorityId === 'string' && reader.authorityId.length > 0);
+  assert(typeof reader.readId === 'string' && reader.readId.length > 0);
+  if (expected) {
+    assert.deepEqual(binding, expected.binding);
+    assert(sameLiveIdentity(expected.supervisor, supervisor));
+    assert.equal(reader.authorityId, expected.reader.authorityId);
+    for (const resource of expected.resources) assert(sameLiveIdentity(resource, await readIdentity(resource.pid)),
+      'The original Agent process must remain live.');
+  }
+  return { nodeId: node.id, binding, hello, supervisor, reader, host: await readIdentity(process.pid) };
+}
+
+async function pairTurn(subject, marker) {
+  await pairCapture(subject.binding.runtimeSessionId, subject);
+  await waitForAgentReady();
+  await sendAgentTurn(currentNodeId, marker);
+  await poll('pair real Agent nonce response', probe, value => hasAgentMarkerResponse(value, marker), 90000);
+  return { marker, sessionId: subject.binding.runtimeSessionId, applied: true };
+}
+
+async function pairCreate(role, excluded = []) {
+  const before = await snapshot(), ids = new Set(before.state.nodes.map(node => node.id));
+  const group = before.state.groups?.find(entry => entry.role === 'workspace-root' &&
+    entry.workspaceRootPath === config.workspacePath);
+  if (role === 'multi') assert(group, 'Create through the actual multi-root A group.');
+  const custom = [config.cli.entry, ...config.launchArguments].map(value => `'${String(value).replaceAll("'", "'\\''")}'`).join(' ');
+  await command('dispatchWebviewMessage', { type: 'webview/createDemoNode', payload: {
+    kind: 'agent', agentProvider: config.provider, agentLaunchPreset: 'custom', agentCustomLaunchCommand: custom,
+    cwd: config.workspacePath, ...(group ? { targetGroupId: group.id,
+      preferredPosition: { x: group.position.x + 40, y: group.position.y + 40 } } : {})
+  } }, surface);
+  const created = await poll('pair independently created Agent', snapshot, value => value.state.nodes.some(node =>
+    !ids.has(node.id) && node.kind === 'agent' && node.metadata?.agent?.liveSession === true), 60000);
+  const node = created.state.nodes.find(entry => !ids.has(entry.id) && entry.kind === 'agent');
+  assert.equal(node.metadata.agent.persistenceMode, 'live-runtime');
+  const subject = await pairCapture(node.metadata.agent.runtimeSessionId, undefined, role);
+  await waitForAgentReady();
+  await observer.sample();
+  subject.resources = structuredClone(assertOriginalResourcesLive(undefined, excluded));
+  const provider = subject.resources.find(entry => entry.role === 'provider');
+  assert.equal(provider.ppid, subject.supervisor.pid);
+  let ancestor = subject.resources.find(entry => entry.role === 'cli');
+  for (let depth = 0; ancestor && ancestor.pid !== provider.pid && depth < 8; depth++) ancestor = await readIdentity(ancestor.ppid);
+  assert(sameLiveIdentity(provider, ancestor), 'The new CLI must descend from its new original provider.');
+  await pairPublish(`${role}-ownership`, subject);
+  subject.interaction = await pairTurn(subject, `DSC_ROOT_PAIR_${role.toUpperCase()}_BEFORE_${control.nonce}`);
+  const saved = await command('flushPersistedState');
+  assert(saved.exists && !saved.lastError);
+  await pairPublish(`${role}-created`, subject);
+  return subject;
+}
+
+async function pairSwitchGallery(subject) {
+  const roots = (await snapshot()).state.groups.filter(group => group.role === 'workspace-root').map(group => group.id);
+  assert.equal(roots.length, 2);
+  const observations = [];
+  await command('clearDiagnosticEvents');
+  for (const mode of ['paneGallery', 'rootGroups']) {
+    await command('clearHostMessages');
+    await vscode.workspace.getConfiguration('devSessionCanvas').update('canvas.multiRootPresentationMode', mode,
+      vscode.ConfigurationTarget.Workspace);
+    await poll(`pair ${mode} context`, () => command('getHostMessages'), messages => messages.some(message =>
+      message.type === 'host/stateUpdated' && message.payload.runtime.multiRootPresentationMode === mode));
+    // PaneGallery renders each root's contents without the composed root group frames.
+    const rendered = await poll(`pair ${mode} rendered`, probe, value => roots.every(id =>
+      value.groups.some(group => group.groupId === id) === (mode === 'rootGroups')));
+    const current = await pairCapture(subject.binding.runtimeSessionId, subject);
+    observations.push({ mode, binding: current.binding, reader: current.reader, rootFrames: rendered.groups.map(group => group.groupId) });
+  }
+  const starts = (await command('getDiagnosticEvents')).filter(event =>
+    ['execution/startRequested', 'execution/started'].includes(event.kind));
+  assert.deepEqual(starts, [], 'Presentation changes must not start an execution.');
+  return observations;
+}
+
+async function pairStop(subject) {
+  const current = await pairCapture(subject.binding.runtimeSessionId, subject);
+  await command('dispatchWebviewMessage', { type: 'webview/stopExecutionSession', payload: {
+    kind: 'agent', nodeId: current.nodeId } }, surface);
+  await poll('pair Agent stop settled', async () => ({ state: await snapshot(), events: await command('getDiagnosticEvents'),
+    runtime: await command('getRuntimeSupervisorState') }), value => {
+    const node = nodeOf(value.state, current.nodeId);
+    return node?.status === 'stopped' && node.metadata.agent.liveSession === false && node.metadata.agent.terminalHistoryDiscarded === true &&
+      !value.runtime.bindings.some(binding => binding.nodeId === current.nodeId) && value.events.some(event =>
+        event.kind === 'runtime/terminalReadSettled' && event.detail?.sessionId === current.binding.runtimeSessionId &&
+        event.detail?.readId === current.reader.readId && event.detail?.outcome?.kind === 'applied');
+  }, 30000);
+  return poll('pair original Agent resources exited', () => originalResourcesExited(subject.resources), value => value.pass, 10000);
+}
+
+async function runRootWindowPair() {
+  assert.equal(process.platform, 'linux'); assert.equal(config.provider, 'codex'); assert.equal(config.rootOwner, true);
+  const role = vscode.workspace.workspaceFile?.fsPath === config.multiWorkspace ? 'multi' : 'single';
+  phase = `pair-${role}`;
+  let failure;
+  try {
+    const roots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+    assert.deepEqual(roots, role === 'multi' ? [config.workspacePath, config.peerRoot]
+      : [config.workspacePath]);
+    const host = await readIdentity(process.pid);
+    const launcher = await pairWait('launcher');
+    let ancestor = host;
+    for (let depth = 0; ancestor && ancestor.pid !== launcher.ui.pid && depth < 12; depth++) ancestor = await readIdentity(ancestor.ppid);
+    assert(sameLiveIdentity(launcher.ui, ancestor), 'Both Hosts must belong to the original isolated application.');
+    await pairPublish(`${role}-activation`, { host, roots });
+    const extension = await activateVisibleExtension(vscode, 'devsessioncanvas.dev-session-canvas');
+    await waitForCommand(vscode, 'devSessionCanvas.__test.getDebugState');
+    const installedVsix = await captureInstalledExtensionReceipt(extension, config.installedVsixExpectation);
+    await pairPublish(`${role}-environment`, { installedVsix, host, roots });
+    await vscode.commands.executeCommand('devSessionCanvas.openCanvasInEditor');
+    await command('waitForCanvasReady', surface, 30000);
+    await startProcessObserver(extension);
+    if (role === 'multi') {
+      assert.equal((await snapshot()).state.nodes.filter(node => node.kind === 'agent').length, 0);
+      const multi = await pairCreate(role);
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(config.workspacePath), { forceNewWindow: true });
+      const single = await pairWait('single-created');
+      assertPairTopology(multi, single);
+      const gallery = await pairSwitchGallery(multi);
+      const interaction = await pairTurn(multi, `DSC_ROOT_PAIR_MULTI_AFTER_${control.nonce}`);
+      await pairPublish('multi-verified', { pass: true, gallery, interaction });
+      await pairWait('single-verified');
+    } else {
+      const multi = await pairWait('multi-created');
+      const inherited = await pairCapture(multi.binding.runtimeSessionId, multi);
+      assert.notEqual(inherited.reader.readId, multi.reader.readId);
+      await observer.addRoot(multi.supervisor.pid, 'supervisor');
+      await observer.sample();
+      assertOriginalResourcesLive(multi.resources);
+      const single = await pairCreate(role, multi.resources);
+      assertPairTopology(multi, single);
+      await pairWait('multi-verified');
+      const interaction = await pairTurn(single, `DSC_ROOT_PAIR_SINGLE_AFTER_${control.nonce}`);
+      await pairCapture(multi.binding.runtimeSessionId, multi);
+      await pairPublish('single-verified', { pass: true, interaction, multiSession: multi.binding.runtimeSessionId,
+        singleSession: single.binding.runtimeSessionId });
+      await pairWait('multi-finished');
+      await poll('pair original multi Host exited', () => readIdentity(multi.host.pid), value => exitedIdentity(multi.host, value));
+      // The surviving single has both A nodes; its save follows the stale multi Host's exit.
+      const saved = await command('flushPersistedState');
+      assert(saved.exists && !saved.lastError);
+      const stopped = [];
+      for (const subject of [multi, single]) stopped.push(await pairStop(subject));
+      const registry = await poll('pair original registry empty', async () =>
+        JSON.parse(await fs.readFile(runtimePaths(single.binding).registryPath, 'utf8')),
+      value => Array.isArray(value.sessions) && value.sessions.length === 0);
+      const runtime = await command('getRuntimeSupervisorState');
+      assert.equal(runtime.bindings.length, 0); assert.equal(runtime.pendingRuntimeSupervisorOperationCount, 0);
+      await pairPublish('cleanup', { pass: true, stopped, registry, runtime, forcedSignals: [] });
+    }
+  } catch (error) {
+    failure = error;
+    await pairPublish(`${role}-failure`, { error: String(error), stack: error.stack }).catch(() => {});
+    try { await write(`pair-${role}-failure-webview-probe.json`, await probe()); } catch { /* Preserve the first failure. */ }
+    try { await write(`pair-${role}-failure-host-messages.json`, await command('getHostMessages')); } catch { /* Preserve the first failure. */ }
+    if (observer) await write(`pair-${role}-fallback.json`, { pass: false,
+      actions: await observer.cleanupKnownExecution().catch(cleanupError => [{ error: String(cleanupError) }]) });
+  } finally {
+    try { await releaseProcessObserver(); } catch (error) { failure ??= error; }
+    await pairPublish(`${role}-finished`, { pass: !failure }).catch(() => {});
+    void vscode.commands.executeCommand('workbench.action.closeWindow').catch(() => {});
   }
   if (failure) throw failure;
 }

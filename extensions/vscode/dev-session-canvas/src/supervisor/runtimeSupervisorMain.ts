@@ -89,6 +89,14 @@ import {
   type RuntimeSupervisorUpdateSessionScrollbackParams,
   type RuntimeSupervisorWriteInputParams
 } from '../common/runtimeSupervisorProtocol';
+import { createRuntimeOwnerCompatibilityFingerprint, type RuntimeOwnerDescriptorV1 } from '../common/runtimeRootOwnership';
+import { ensureRuntimeRootSocketDirectory, readRuntimeRootOwner } from './runtimeRootOwner';
+import {
+  assertRuntimeRootStartupIntentMatches,
+  readRuntimeRootStartupIntent,
+  writeRuntimeRootStartupStarted,
+  type RuntimeRootStartupIntentV1
+} from './runtimeRootStartup';
 import {
   resolveTerminalJournalSessionDirectory,
   TerminalSessionJournal,
@@ -328,13 +336,15 @@ export class RuntimeSupervisorServer {
   private candidateStartAttempted = false;
   private readonly executionOwner?: ExecutionOwnerLifecycle;
   private shutdownBoundary?: SupervisorShutdownBoundary;
+  private runtimeOwner?: RuntimeOwnerDescriptorV1;
 
   public constructor(
     private readonly paths: RuntimeSupervisorPaths,
     private readonly runtimeBackend: RuntimeHostBackendKind,
     private readonly runtimeGuarantee: RuntimePersistenceGuarantee,
     ownerOptions?: ExecutionOwnerOptions,
-    private readonly executionProfile: ExecutionCandidateProfile | undefined = ownerOptions?.profile
+    private readonly executionProfile: ExecutionCandidateProfile | undefined = ownerOptions?.profile,
+    private readonly runtimeLaunchToken?: string
   ) {
     if (this.executionProfile !== undefined) {
       assertExecutionCandidateProfile(this.executionProfile);
@@ -513,6 +523,25 @@ export class RuntimeSupervisorServer {
 
   public async start(): Promise<void> {
     this.assertOwnedAdmissionOpen();
+    this.runtimeOwner = await readRuntimeRootOwner(this.paths.storageDir, this.executionProfile);
+    if (this.runtimeOwner && !this.executionOwner) {
+      throw new Error('Root runtime owner requires its execution provider before startup.');
+    }
+    let rootStartupIntent: RuntimeRootStartupIntentV1 | undefined;
+    if (this.runtimeOwner) {
+      if (!this.runtimeLaunchToken) throw new Error('Root runtime owner requires an explicit runtime launch token.');
+      const intent = await readRuntimeRootStartupIntent(this.paths.storageDir, this.runtimeOwner);
+      assertRuntimeRootStartupIntentMatches(intent, {
+        token: this.runtimeLaunchToken,
+        backend: this.runtimeBackend,
+        owner: this.runtimeOwner,
+        compatibilityFingerprint: createRuntimeOwnerCompatibilityFingerprint(
+          this.runtimeOwner.generation, this.executionProfile!, this.executionOwner!.admissionLimits
+        )
+      });
+      rootStartupIntent = intent;
+      await ensureRuntimeRootSocketDirectory(this.paths, this.runtimeBackend, true);
+    }
     const options = this.executionOwner?.options;
     const nativeClaim = options?.kind === 'macos-provider' || options?.kind === 'linux-provider'
       ? options.claimNamespace : undefined;
@@ -521,9 +550,10 @@ export class RuntimeSupervisorServer {
       this.candidateStartAttempted = true;
       assertRuntimeSupervisorNamespaceSupport(nativeClaim);
     }
-    fs.mkdirSync(this.paths.storageDir, { recursive: true, ...(nativeClaim ? { mode: 0o700 } : {}) });
+    fs.mkdirSync(this.paths.storageDir, { recursive: true, ...(nativeClaim || this.runtimeOwner ? { mode: 0o700 } : {}) });
     if (this.executionProfile !== undefined) {
       this.namespaceClaim = await acquireRuntimeSupervisorNamespace(this.paths.storageDir, nativeClaim);
+      if (rootStartupIntent) await writeRuntimeRootStartupStarted(this.paths.storageDir, rootStartupIntent);
       await prepareRuntimeSupervisorSocketPath(this.paths.socketPath);
       const canonicalStorageDir = await fs.promises.realpath(this.paths.storageDir);
       assertExecutionCandidateRuntimeSupervisorStorageDir(canonicalStorageDir, this.executionProfile);
@@ -624,6 +654,13 @@ export class RuntimeSupervisorServer {
               pid: process.pid,
               runtimeBackend: this.runtimeBackend,
               runtimeGuarantee: this.runtimeGuarantee,
+              ...(this.runtimeOwner && this.executionProfile ? {
+                runtimeOwner: this.runtimeOwner,
+                executionProfile: this.executionProfile,
+                ownerCompatibilityFingerprint: createRuntimeOwnerCompatibilityFingerprint(
+                  this.runtimeOwner.generation, this.executionProfile, this.executionOwner!.admissionLimits
+                )
+              } : {}),
               capabilities: {
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
@@ -3898,7 +3935,8 @@ async function main(): Promise<void> {
     executionOwnerOptions = createNativeExecutionOwnerOptions({ extensionRoot: path.dirname(__dirname),
       mode: 'live-runtime', profile: executionProfile });
   }
-  const server = new RuntimeSupervisorServer(paths, runtimeBackend, runtimeGuarantee, executionOwnerOptions, executionProfile);
+  const server = new RuntimeSupervisorServer(paths, runtimeBackend, runtimeGuarantee, executionOwnerOptions,
+    executionProfile, readCliFlag('--runtime-launch-token'));
   await server.start();
 }
 

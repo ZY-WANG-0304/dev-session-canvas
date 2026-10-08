@@ -313,10 +313,18 @@ import {
   type RuntimeSupervisorSessionSnapshot
 } from '../common/runtimeSupervisorProtocol';
 import {
+  isRootOwnerRuntimeSupervisorStorageDir,
+  isRuntimeRootStorageNamespace,
   resolveCurrentRuntimeSupervisorBaseStoragePath,
   resolveExecutionCandidateRuntimeSupervisorBaseStoragePath,
   resolveRuntimeSupervisorExecutionProfile
 } from '../common/runtimeSupervisorPaths';
+import { createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, parseRuntimeOwnerDescriptor,
+  resolveRootRuntimeSupervisorGeneration, resolveRuntimeRootOwnerBaseStoragePath,
+  resolveRuntimeRootOwnerGlobalStoragePath, runtimeOwnerDescriptorsEqual,
+  type RuntimeOwnerDescriptorV1 } from '../common/runtimeRootOwnership';
+import { readRuntimeExecutionEnvironment, type RuntimeExecutionEnvironment } from './runtimeExecutionEnvironment';
+import { prepareRootRuntimeSupervisor } from './runtimeRootSupervisorPreparation';
 import {
   localizeRuntimeSupervisorError,
   localizeRuntimeSupervisorSnapshotExitMessage
@@ -539,6 +547,7 @@ interface ManagedExecutionSessionBase {
   runtimeGuarantee?: RuntimePersistenceGuarantee;
   runtimeStoragePath?: string;
   runtimeSessionId?: string;
+  runtimeOwner?: RuntimeOwnerDescriptorV1 | null;
   agentProvider?: AgentProviderKind;
   agentResume?: AgentResumeContext;
   agentActivity?: AgentActivityHeuristicState;
@@ -1173,7 +1182,14 @@ interface ConnectedRuntimeSupervisorClient {
   client: RuntimeSupervisorClient;
   backend: RuntimeHostBackend;
   runtimeStoragePath: string;
+  runtimeOwner?: RuntimeOwnerDescriptorV1;
   fallbackReason?: string;
+}
+
+interface RuntimeCreationTarget {
+  rootPath: string | undefined;
+  runtimeStoragePath: string;
+  runtimeOwner?: RuntimeOwnerDescriptorV1;
 }
 
 interface RuntimeSupervisorSessionAttachResult {
@@ -1185,6 +1201,7 @@ interface PersistedLiveRuntimeSession {
   backendKind: RuntimeHostBackendKind;
   sessionId: string;
   runtimeStoragePath?: string;
+  runtimeOwner?: RuntimeOwnerDescriptorV1 | null;
   nodeId?: string;
   kind?: ExecutionNodeKind;
 }
@@ -1432,6 +1449,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly runtimeSupervisorClients = new Map<string, RuntimeSupervisorClient>();
   private preferredRuntimeHostBackendKind: RuntimeHostBackendKind | undefined;
   private preferredRuntimeHostBackendFallbackReason: string | undefined;
+  private readonly preferredRootRuntimeBackends = new Map<string, {
+    owner: RuntimeOwnerDescriptorV1; kind: RuntimeHostBackendKind;
+  }>();
+  private runtimeExecutionEnvironmentPromise?: Promise<RuntimeExecutionEnvironment>;
   // Resolved CLI paths are observations of the current shell/workspace environment, not persisted user choices.
   private readonly agentCliResolutionCache: Record<string, AgentCliResolutionCacheEntry>;
   private readonly agentFileActivitySessions = new Map<string, AgentFileActivitySession>();
@@ -3787,6 +3808,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const nextStartupConfiguration = this.readStartupConfiguration();
     await this.prepareForHostBoundary({
       preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
+      preserveRootRuntimeBindings: !this.isRuntimePersistenceEnabled(),
       allowRuntimeSupervisorRestart: false
     });
 
@@ -3875,6 +3897,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const nextStartupConfiguration = this.readStartupConfiguration();
     await this.prepareForHostBoundary({
       preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
+      preserveRootRuntimeBindings: !this.isRuntimePersistenceEnabled(),
       allowRuntimeSupervisorRestart: false,
       permanentExecutionClose: true
     });
@@ -3981,6 +4004,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async prepareForHostBoundary(options: {
     preserveLiveRuntime: boolean;
+    preserveRootRuntimeBindings?: boolean;
     allowRuntimeSupervisorRestart: boolean;
     invalidatePendingExecutionOperations?: boolean;
     permanentExecutionClose?: boolean;
@@ -4012,6 +4036,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async prepareForHostBoundaryCore(options: {
     preserveLiveRuntime: boolean;
+    preserveRootRuntimeBindings?: boolean;
     allowRuntimeSupervisorRestart: boolean;
     invalidatePendingExecutionOperations?: boolean;
     permanentExecutionClose?: boolean;
@@ -4062,7 +4087,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.waitForPendingWorkspaceStateUpdates();
     checkBoundary();
 
-    const persistedRuntimeSessions = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessions();
+    const persistedRuntimeSessions = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessions()
+      .filter(session => !options.preserveRootRuntimeBindings || session.runtimeOwner === undefined);
     if (candidate && persistedRuntimeSessions.length > 0) {
       await this.deleteRuntimeSupervisorSessions(persistedRuntimeSessions, {
         allowRestart: false,
@@ -6558,6 +6584,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private resolveRuntimeStoragePath(runtimeStoragePath: string | undefined): string {
     return normalizeRuntimeStoragePath(runtimeStoragePath) ?? this.getExtensionStoragePath();
+  }
+
+  private assertRuntimeBindingOwner(
+    runtimeStoragePath: string | undefined,
+    runtimeOwner: RuntimeOwnerDescriptorV1 | null | undefined
+  ): RuntimeOwnerDescriptorV1 | undefined {
+    if (runtimeOwner === null) throw new Error('The original runtime owner descriptor is invalid.');
+    const baseStoragePath = normalizeRuntimeStoragePath(runtimeStoragePath);
+    if (runtimeOwner !== undefined && !baseStoragePath) {
+      throw new Error('The original root runtime binding is missing its storage path.');
+    }
+    const storageDir = path.join(baseStoragePath ?? this.getExtensionStoragePath(), 'runtime-supervisor');
+    const rootStorage = isRootOwnerRuntimeSupervisorStorageDir(storageDir);
+    if ((isRuntimeRootStorageNamespace(storageDir) && !rootStorage) || rootStorage !== (runtimeOwner !== undefined)) {
+      throw new Error('The original runtime storage and owner descriptor do not match.');
+    }
+    const owner = runtimeOwner === undefined ? undefined : parseRuntimeOwnerDescriptor(runtimeOwner);
+    if (owner) resolveRuntimeRootOwnerGlobalStoragePath(storageDir, owner);
+    try {
+      const canonical = fs.realpathSync(storageDir);
+      if ((owner || isRuntimeRootStorageNamespace(canonical)) &&
+          normalizeWorkspaceRootPathForComposition(canonical) !== normalizeWorkspaceRootPathForComposition(storageDir)) {
+        throw new Error('A root runtime binding cannot use a redirected storage path.');
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    return owner;
   }
 
   private getRuntimeStoragePathFromBackend(backend: RuntimeHostBackend): string {
@@ -10052,7 +10106,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const operation = this.getRuntimeSupervisorClientForKind(
         backendKind,
         {},
-        session.runtimeStoragePath
+        session.runtimeStoragePath,
+        session.runtimeOwner
       ).then((client) =>
         client.updateSessionScrollback({
           sessionId: session.runtimeSessionId,
@@ -10091,13 +10146,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return this.agentSessions.size > 0 || this.terminalSessions.size > 0;
   }
 
-  private getLiveRuntimeReconnectBlockReason(): LiveRuntimeReconnectBlockReason | undefined {
-    if (!this.isRuntimePersistenceEnabled()) {
-      return 'runtime-persistence-disabled';
-    }
-
+  private getLiveRuntimeReconnectBlockReason(
+    originalBinding?: { runtimeOwner?: RuntimeOwnerDescriptorV1 | null }
+  ): LiveRuntimeReconnectBlockReason | undefined {
     if (!vscode.workspace.isTrusted) {
       return 'workspace-untrusted';
+    }
+
+    if (!this.isRuntimePersistenceEnabled() && originalBinding?.runtimeOwner === undefined) {
+      return 'runtime-persistence-disabled';
     }
 
     return undefined;
@@ -10116,6 +10173,108 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return profile
       ? resolveExecutionCandidateRuntimeSupervisorBaseStoragePath(this.getExtensionStoragePath(), profile)
       : resolveCurrentRuntimeSupervisorBaseStoragePath(this.getExtensionStoragePath());
+  }
+
+  private resolveExecutionNodeRuntimeRoot(node: CanvasNodeSummary): string | undefined {
+    if ((vscode.workspace.workspaceFolders ?? []).some(folder =>
+      !path.isAbsolute(folder.uri.fsPath) || folder.uri.fsPath.trim() !== folder.uri.fsPath)) {
+      throw new Error('Workspace roots do not have unambiguous canvas runtime identities.');
+    }
+    const folders = this.getMultiRootWorkspaceFoldersForComposition();
+    if (folders.some(folder => !path.isAbsolute(folder.path) || folder.path.trim() !== folder.path) ||
+        new Set(folders.map(folder => folder.path)).size !== folders.length) {
+      throw new Error('Workspace roots do not have unambiguous canvas runtime identities.');
+    }
+    const namespace = splitNamespacedCanvasObjectId(node.id);
+    const namespaceRoots = namespace
+      ? folders.filter(folder => denamespaceCanvasObjectId(folder.path, node.id) !== undefined) : [];
+    if (namespace && namespaceRoots.length !== 1) throw new Error('The node runtime root is missing or ambiguous.');
+    const groups = this.state.groups ?? [];
+    const seen = new Set<string>();
+    let groupId = node.groupId;
+    while (groupId) {
+      const group = groups.find(candidate => candidate.id === groupId);
+      if (!group || seen.has(groupId)) throw new Error('The node runtime group ancestry is incomplete.');
+      seen.add(groupId);
+      groupId = group.parentGroupId;
+    }
+    const rootGroupId = resolveContainingWorkspaceRootGroupId(this.state.groups ?? [], node.groupId);
+    const rootGroup = rootGroupId ? this.state.groups?.find(group => group.id === rootGroupId) : undefined;
+    const groupPath = rootGroup && resolveWorkspaceRootPathForGroup(rootGroup);
+    if (rootGroup && (!groupPath || typeof rootGroup.workspaceRootPath !== 'string' ||
+        !path.isAbsolute(rootGroup.workspaceRootPath) || rootGroup.workspaceRootPath.trim() !== rootGroup.workspaceRootPath ||
+        normalizeWorkspaceRootPathForComposition(rootGroup.workspaceRootPath) !== groupPath ||
+        !folders.some(folder => folder.path === groupPath))) {
+      throw new Error('The node runtime root is no longer in this workspace.');
+    }
+    const namespacedPath = namespaceRoots[0]?.path;
+    if (groupPath && namespacedPath && groupPath !== namespacedPath) {
+      throw new Error('The node namespace and root group disagree on runtime ownership.');
+    }
+    const rootPath = groupPath ?? namespacedPath ?? (folders.length === 1 ? folders[0].path : undefined);
+    if (!rootPath && (folders.length > 0 || rootGroup || namespace)) {
+      throw new Error('The node has no confirmed runtime root.');
+    }
+    return rootPath;
+  }
+
+  private assertExecutionRuntimeRootCurrent(kind: ExecutionNodeKind, nodeId: string, token: number,
+    rootPath: string | undefined): void {
+    if (!this.isExecutionSessionOperationCurrent(kind, nodeId, token) ||
+        this.resolveExecutionNodeRuntimeRoot(this.requireNode(nodeId, kind)) !== rootPath) {
+      throw new Error('The execution node or its runtime root changed during startup.');
+    }
+  }
+
+  private async resolveRuntimeCreationTarget(rootPath: string | undefined): Promise<RuntimeCreationTarget> {
+    const profile = this.getExecutionCandidateProfile();
+    // Explicit stock comparisons and rootless canvases retain their isolated workspace slot.
+    if (!profile || rootPath === undefined) return { rootPath, runtimeStoragePath: this.getRuntimeHostBaseStoragePath() };
+    const globalStorage = this.context.globalStorageUri.fsPath;
+    await fs.promises.mkdir(globalStorage, { recursive: true, mode: 0o700 });
+    const canonicalGlobalStorage = await fs.promises.realpath(globalStorage);
+    const pending = this.runtimeExecutionEnvironmentPromise ??= readRuntimeExecutionEnvironment();
+    let environment: RuntimeExecutionEnvironment;
+    try { environment = await pending; }
+    catch (error) {
+      if (this.runtimeExecutionEnvironmentPromise === pending) this.runtimeExecutionEnvironmentPromise = undefined;
+      throw error;
+    }
+    const runtimeOwner = createRuntimeOwnerDescriptor({ environmentKey: environment.environmentKey,
+      userStorageScopeKey: createRuntimeUserStorageScopeKey(environment.userIdentity, canonicalGlobalStorage),
+      rootPath, generation: resolveRootRuntimeSupervisorGeneration(profile) });
+    return { rootPath, runtimeOwner,
+      runtimeStoragePath: resolveRuntimeRootOwnerBaseStoragePath(canonicalGlobalStorage, runtimeOwner) };
+  }
+
+  private async getRootRuntimeSupervisorClient(target: RuntimeCreationTarget): Promise<ConnectedRuntimeSupervisorClient> {
+    const owner = target.runtimeOwner;
+    const profile = this.getExecutionCandidateProfile();
+    if (!owner || !profile) throw new Error('Root runtime preparation requires a confirmed owner and native profile.');
+    const cached = this.preferredRootRuntimeBackends.get(target.runtimeStoragePath);
+    if (cached) {
+      const backend = this.getRuntimeHostBackend(cached.kind, target.runtimeStoragePath);
+      try {
+        const client = await this.getRuntimeSupervisorClientForBackend(backend,
+          { allowRestart: false, expectedRuntimeOwner: owner });
+        return { client, backend, runtimeStoragePath: target.runtimeStoragePath, runtimeOwner: owner };
+      } catch {
+        this.preferredRootRuntimeBackends.delete(target.runtimeStoragePath);
+      }
+    }
+    const prepared = await prepareRootRuntimeSupervisor({
+      storageDir: path.join(target.runtimeStoragePath, 'runtime-supervisor'), owner, executionProfile: profile,
+      preferredBackends: listPreferredRuntimeHostBackendKinds({ baseStoragePath: target.runtimeStoragePath,
+        extensionMode: this.context.extensionMode }),
+      supervisorScriptPath: this.getRuntimeSupervisorScriptPath(),
+      supervisorLauncherScriptPath: this.getRuntimeSupervisorLauncherScriptPath()
+    });
+    if (prepared.kind !== 'ready') throw new Error(prepared.reason);
+    const backend = this.getRuntimeHostBackend(prepared.backend, target.runtimeStoragePath);
+    const client = await this.getRuntimeSupervisorClientForBackend(backend,
+      { allowRestart: false, expectedRuntimeOwner: owner });
+    this.preferredRootRuntimeBackends.set(target.runtimeStoragePath, { owner, kind: prepared.backend });
+    return { client, backend, runtimeStoragePath: target.runtimeStoragePath, runtimeOwner: owner };
   }
 
   private getRuntimeSupervisorScriptPath(): string {
@@ -10273,6 +10432,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       client.dispose();
     }
     this.runtimeSupervisorClients.clear();
+    this.preferredRootRuntimeBackends.clear();
   }
 
   private retireLegacyRuntimeSupervisorClientIfUnused(
@@ -10283,7 +10443,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const currentGenerationRuntimeStoragePath = this.resolveRuntimeStoragePath(
       this.getRuntimeHostBaseStoragePath()
     );
-    if (runtimeStoragePath === currentGenerationRuntimeStoragePath) {
+    const currentFolders = this.getMultiRootWorkspaceFoldersForComposition();
+    const currentRoot = this.preferredRootRuntimeBackends.get(runtimeStoragePath);
+    if ((currentRoot && currentFolders.some(folder => folder.path === currentRoot.owner.root.normalizedPath)) ||
+        (runtimeStoragePath === currentGenerationRuntimeStoragePath &&
+          (currentFolders.length === 0 || !this.getExecutionCandidateProfile()))) {
       return;
     }
 
@@ -10340,14 +10504,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       deferConnection?: true;
       allowClosedAdmission?: boolean;
       requireExistingClient?: boolean;
+      expectedRuntimeOwner?: RuntimeOwnerDescriptorV1 | null;
     } = {}
   ): Promise<RuntimeSupervisorClient> {
     if (!options.allowClosedAdmission && !this.isRuntimeSupervisorEventAdmitted()) {
       throw new Error('Host permanent boundary has closed runtime client admission.');
     }
     const runtimeStoragePath = this.getRuntimeStoragePathFromBackend(backend);
+    const expectedRuntimeOwner = this.assertRuntimeBindingOwner(runtimeStoragePath, options.expectedRuntimeOwner);
     const clientKey = this.buildRuntimeSupervisorClientKey(backend);
     let client = this.runtimeSupervisorClients.get(clientKey);
+    if (client && !client.matchesRuntimeOwner(expectedRuntimeOwner)) {
+      throw new Error('The cached runtime client belongs to a different owner descriptor.');
+    }
     if (!client && options.requireExistingClient) {
       throw new Error('The original Runtime client is no longer available for boundary cleanup.');
     }
@@ -10356,6 +10525,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       client = new RuntimeSupervisorClient({
         backend,
         executionProfile: resolveRuntimeSupervisorExecutionProfile(backend.paths.storageDir),
+        expectedRuntimeOwner,
         supervisorScriptPath: this.getRuntimeSupervisorScriptPath(),
         supervisorLauncherScriptPath: this.getRuntimeSupervisorLauncherScriptPath(),
         onSessionOutput: (event) =>
@@ -10406,23 +10576,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async getRuntimeSupervisorClientForKind(
     kind: RuntimeHostBackendKind,
     options: { allowRestart?: boolean; allowClosedAdmission?: boolean; requireExistingClient?: boolean } = {},
-    runtimeStoragePath?: string
+    runtimeStoragePath?: string,
+    runtimeOwner?: RuntimeOwnerDescriptorV1 | null
   ): Promise<RuntimeSupervisorClient> {
     // Missing storage in a persisted binding means the original workspace slot, not the new-session generation.
+    const expectedRuntimeOwner = this.assertRuntimeBindingOwner(runtimeStoragePath, runtimeOwner);
     const backend = this.getRuntimeHostBackend(kind, this.resolveRuntimeStoragePath(runtimeStoragePath));
     return this.getRuntimeSupervisorClientForBackend(
       backend,
-      { ...options, allowRestart: resolveRuntimeSupervisorExecutionProfile(backend.paths.storageDir)
+      { ...options, expectedRuntimeOwner, allowRestart: resolveRuntimeSupervisorExecutionProfile(backend.paths.storageDir)
         ? false : options.allowRestart ?? false }
     );
   }
 
   private async getPreferredRuntimeSupervisorClient(
+    target: RuntimeCreationTarget,
     options: { allowRestart?: boolean } = {}
   ): Promise<ConnectedRuntimeSupervisorClient> {
+    if (target.runtimeOwner) return this.getRootRuntimeSupervisorClient(target);
     if (this.preferredRuntimeHostBackendKind) {
       try {
-        const backend = this.getRuntimeHostBackend(this.preferredRuntimeHostBackendKind);
+        const backend = this.getRuntimeHostBackend(this.preferredRuntimeHostBackendKind, target.runtimeStoragePath);
         return {
           client: await this.getRuntimeSupervisorClientForBackend(backend, options),
           backend,
@@ -10436,7 +10610,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const preferredKinds = listPreferredRuntimeHostBackendKinds({
-      baseStoragePath: this.getRuntimeHostBaseStoragePath(),
+      baseStoragePath: target.runtimeStoragePath,
       extensionMode: this.context.extensionMode
     });
     let lastError: Error | undefined;
@@ -10444,7 +10618,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     for (const kind of preferredKinds) {
       try {
-        const backend = this.getRuntimeHostBackend(kind);
+        const backend = this.getRuntimeHostBackend(kind, target.runtimeStoragePath);
         const client = await this.getRuntimeSupervisorClientForBackend(backend, options);
         this.preferredRuntimeHostBackendKind = kind;
         this.preferredRuntimeHostBackendFallbackReason = fallbackReason;
@@ -10520,9 +10694,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async prepareExecutionCandidateReplacement(
-    node: CanvasNodeSummary, kind: ExecutionNodeKind, token: number, client: RuntimeSupervisorClient,
-    retirement?: RuntimeHistoryRetirement
+    node: CanvasNodeSummary, kind: ExecutionNodeKind, token: number, client: RuntimeSupervisorClient | undefined,
+    retirement?: RuntimeHistoryRetirement, assertRootCurrent?: () => void
   ): Promise<() => { cols: number; rows: number } | undefined> {
+    assertRootCurrent?.();
     this.assertExecutionCandidateAdmission('live-runtime', client);
     const key = this.getExecutionSessionOperationKey(kind, node.id);
     const start = this.candidateRuntimeStarts?.get(key);
@@ -10540,10 +10715,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } else if (previous) await this.deleteRuntimeSupervisorSessionStrict(previous, { allowRestart: false });
     this.assertExecutionCandidateAdmission('live-runtime', client);
     if (!isCurrent()) throw new Error('Execution candidate binding changed while deleting its predecessor.');
+    assertRootCurrent?.();
     if (previous) this.unbindRuntimeSession(previous.sessionId, previous.runtimeStoragePath, kind, previous.backendKind);
     return () => {
       this.assertExecutionCandidateAdmission('live-runtime', client);
       if (!isCurrent()) throw new Error('Execution candidate launch was superseded.');
+      assertRootCurrent?.();
+      if (retirement && !retirement.isCurrent()) throw new Error('Historical cleanup eligibility changed before creation.');
       return start?.viewport;
     };
   }
@@ -10592,6 +10770,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               runtimeBackend: undefined,
               runtimeGuarantee: undefined,
               runtimeStoragePath: undefined,
+              runtimeOwner: undefined,
               runtimeSessionId: undefined,
               liveSession: false,
               pendingLaunch: undefined,
@@ -10723,7 +10902,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     kind: ExecutionNodeKind,
     nodeId: string,
     token: number,
-    expectedBackendKind: RuntimeHostBackendKind
+    expectedBackendKind: RuntimeHostBackendKind,
+    target: RuntimeCreationTarget
   ): boolean {
     if (!this.isExecutionSessionOperationCurrent(kind, nodeId, token)) {
       return false;
@@ -10733,9 +10913,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!node) {
       return false;
     }
+    try {
+      if (this.resolveExecutionNodeRuntimeRoot(node) !== target.rootPath) return false;
+    } catch { return false; }
 
     const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
-    return metadata.persistenceMode === 'live-runtime' && metadata.runtimeBackend === expectedBackendKind;
+    return metadata.persistenceMode === 'live-runtime' && metadata.runtimeBackend === expectedBackendKind &&
+      this.getPersistedRuntimeStoragePath(metadata) === target.runtimeStoragePath &&
+      (metadata.runtimeOwner === target.runtimeOwner || runtimeOwnerDescriptorsEqual(metadata.runtimeOwner, target.runtimeOwner));
   }
 
   private recordIgnoredExecutionSessionOperation(
@@ -10794,14 +10979,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     attachSession: () => Promise<RuntimeSupervisorSessionAttachResult>,
     options: {
       allowAttachedTerminalStreamRecovery?: boolean;
+      originalBinding?: PersistedLiveRuntimeSession;
       onSettled?: () => void;
     } = {}
   ): Promise<void> {
     const operationToken = this.beginExecutionSessionOperation(kind, nodeId);
+    const originalBinding = options.originalBinding ?? this.getPersistedLiveRuntimeSessionForNode(this.requireNode(nodeId, kind));
+    const isOriginalBindingCurrent = (): boolean => Boolean(originalBinding &&
+      this.isStrictRuntimeDeleteBindingCurrent(originalBinding));
 
     try {
+      if (!isOriginalBindingCurrent()) {
+        this.recordIgnoredExecutionSessionOperation(kind, nodeId, 'attach', runtimeSessionId);
+        return;
+      }
       const { snapshot, terminalProjectionMode } = await attachSession();
-      if (!this.shouldApplyRuntimeAttachResult(kind, nodeId, operationToken, runtimeSessionId, options)) {
+      if (!isOriginalBindingCurrent() || !this.shouldApplyRuntimeAttachResult(kind, nodeId, operationToken, runtimeSessionId, options)) {
         this.recordIgnoredExecutionSessionOperation(kind, nodeId, 'attach', runtimeSessionId);
         return;
       }
@@ -10839,10 +11032,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       await this.subscribeRuntimeSupervisorTerminalStream(
         snapshot,
-        runtimeStoragePath
+        runtimeStoragePath,
+        metadata.runtimeOwner
       );
     } catch (error) {
-      if (!this.isExecutionSessionOperationCurrent(kind, nodeId, operationToken)) {
+      if (!isOriginalBindingCurrent() || !this.isExecutionSessionOperationCurrent(kind, nodeId, operationToken)) {
         this.recordIgnoredExecutionSessionOperation(kind, nodeId, 'attach', runtimeSessionId);
         return;
       }
@@ -10873,7 +11067,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async subscribeRuntimeSupervisorTerminalStream(
     snapshot: RuntimeSupervisorSessionSnapshot,
-    runtimeStoragePath: string | undefined
+    runtimeStoragePath: string | undefined,
+    runtimeOwner?: RuntimeOwnerDescriptorV1 | null
   ): Promise<void> {
     if (!snapshot.live) {
       return;
@@ -10894,7 +11089,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const client = await this.getRuntimeSupervisorClientForKind(
       snapshot.runtimeBackend,
       paged ? { allowRestart: false } : {},
-      runtimeStoragePath
+      runtimeStoragePath,
+      runtimeOwner
     );
     if (!client.supportsTerminalSessionStream()) {
       return;
@@ -10923,10 +11119,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (liveRuntimeReconnectBlockReason === 'runtime-persistence-disabled') {
-      await this.deleteRuntimeSupervisorSessions(this.collectPersistedLiveRuntimeSessions(), {
+      await this.deleteRuntimeSupervisorSessions(this.collectPersistedLiveRuntimeSessions()
+        .filter(session => session.runtimeOwner === undefined), {
         allowRestart: false
       });
-      return;
     }
 
     const reconnectableNodes = this.state.nodes.filter((node) => {
@@ -10934,6 +11130,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const metadata = ensureAgentMetadata(node);
         return (
           metadata.persistenceMode === 'live-runtime' &&
+          this.getLiveRuntimeReconnectBlockReason(metadata) === undefined &&
           metadata.runtimeSessionId &&
           metadata.attachmentState === 'reattaching'
         );
@@ -10943,6 +11140,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const metadata = ensureTerminalMetadata(node);
         return (
           metadata.persistenceMode === 'live-runtime' &&
+          this.getLiveRuntimeReconnectBlockReason(metadata) === undefined &&
           metadata.runtimeSessionId &&
           metadata.attachmentState === 'reattaching'
         );
@@ -10957,35 +11155,49 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const nodesByBackend = new Map<
       string,
-      { backendKind: RuntimeHostBackendKind; runtimeStoragePath: string; nodes: CanvasNodeSummary[] }
+      { backendKind: RuntimeHostBackendKind; runtimeStoragePath?: string;
+        runtimeOwner?: RuntimeOwnerDescriptorV1 | null; ownerConflict: boolean;
+        entries: { node: CanvasNodeSummary; binding: PersistedLiveRuntimeSession }[] }
     >();
     for (const node of reconnectableNodes) {
+      const binding = this.getPersistedLiveRuntimeSessionForNode(node);
+      if (!binding) continue;
       const metadata = node.kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
       const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
-      const runtimeStoragePath = this.resolveRuntimeStoragePath(this.getPersistedRuntimeStoragePath(metadata));
-      const bucketKey = `${backendKind}:${runtimeStoragePath}`;
+      const runtimeStoragePath = this.getPersistedRuntimeStoragePath(metadata);
+      const bucketKey = `${backendKind}:${this.resolveRuntimeStoragePath(runtimeStoragePath)}`;
       const bucket = nodesByBackend.get(bucketKey);
       if (bucket) {
-        bucket.nodes.push(node);
+        bucket.ownerConflict ||= !runtimeBindingOwnersEqual(bucket.runtimeOwner, metadata.runtimeOwner);
+        bucket.entries.push({ node, binding });
       } else {
         nodesByBackend.set(bucketKey, {
           backendKind,
           runtimeStoragePath,
-          nodes: [node]
+          runtimeOwner: metadata.runtimeOwner,
+          ownerConflict: false,
+          entries: [{ node, binding }]
         });
       }
     }
 
-    for (const { backendKind, runtimeStoragePath, nodes } of nodesByBackend.values()) {
+    for (const { backendKind, runtimeStoragePath, runtimeOwner, ownerConflict, entries } of nodesByBackend.values()) {
       let client: RuntimeSupervisorClient;
       try {
-        client = await this.getRuntimeSupervisorClientForKind(backendKind, {}, runtimeStoragePath);
+        if (ownerConflict) throw new Error('Original runtime bindings disagree about their owner descriptor.');
+        client = await this.getRuntimeSupervisorClientForKind(backendKind, {}, runtimeStoragePath, runtimeOwner);
       } catch (error) {
         const message = localizeRuntimeSupervisorError(
           error,
           error instanceof Error ? error.message : vscode.l10n.t('Could not connect to the runtime supervisor.')
         ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Could not connect to the runtime supervisor.'));
-        for (const node of nodes) {
+        for (const { node, binding } of entries) {
+          const currentNode = this.state.nodes.find(current => current.id === node.id && current.kind === node.kind);
+          const currentBinding = currentNode && this.getPersistedLiveRuntimeSessionForNode(currentNode);
+          // An unchanged invalid-owner sentinel still receives a diagnostic, never permission to attach.
+          const sameInvalidBinding = currentBinding?.runtimeOwner === null && binding.runtimeOwner === null &&
+            this.strictRuntimeDeleteKey(currentBinding) === this.strictRuntimeDeleteKey(binding);
+          if (!sameInvalidBinding && !this.isStrictRuntimeDeleteBindingCurrent(binding)) continue;
           if (
             node.kind === 'agent' &&
             this.maybeFallbackAgentLiveRuntimeToResume(node.id, message)
@@ -11003,14 +11215,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
 
       await Promise.all(
-        nodes.map(async (node) => {
-          const runtimeSessionId =
-            node.kind === 'agent'
-              ? ensureAgentMetadata(node).runtimeSessionId
-              : ensureTerminalMetadata(node).runtimeSessionId;
-          if (!runtimeSessionId) {
-            return;
-          }
+        entries.map(async ({ node, binding }) => {
+          if (!this.isStrictRuntimeDeleteBindingCurrent(binding)) return;
+          const runtimeSessionId = binding.sessionId;
 
           await this.attachPersistedRuntimeSession(
             node.kind as ExecutionNodeKind,
@@ -11018,13 +11225,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             runtimeSessionId,
             () => this.requestRuntimeSupervisorSessionAttach(client, runtimeSessionId),
             {
+              originalBinding: binding,
               onSettled: () => this.retireLegacyRuntimeSupervisorClientIfUnused(
-                this.getRuntimeHostBackend(backendKind, runtimeStoragePath),
+                this.getRuntimeHostBackend(backendKind, this.resolveRuntimeStoragePath(runtimeStoragePath)),
                 client
               )
             }
           );
         })
+      );
+      this.retireLegacyRuntimeSupervisorClientIfUnused(
+        this.getRuntimeHostBackend(backendKind, this.resolveRuntimeStoragePath(runtimeStoragePath)), client
       );
     }
   }
@@ -11064,7 +11275,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private collectPersistedLiveRuntimeSessions(): PersistedLiveRuntimeSession[] {
-    const sessionKeys = new Set<string>();
+    const sessionOwners = new Map<string, RuntimeOwnerDescriptorV1 | null | undefined>();
     const sessions: PersistedLiveRuntimeSession[] = [];
     for (const node of this.state.nodes) {
       if (node.kind === 'agent') {
@@ -11073,12 +11284,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
           const runtimeStoragePath = this.getPersistedRuntimeStoragePath(metadata);
           const key = `${backendKind}:${runtimeStoragePath ?? ''}:${metadata.runtimeSessionId}`;
-          if (!sessionKeys.has(key)) {
-            sessionKeys.add(key);
+          if (sessionOwners.has(key) && !runtimeBindingOwnersEqual(sessionOwners.get(key), metadata.runtimeOwner)) {
+            throw new Error('Original runtime bindings disagree about their owner descriptor.');
+          }
+          if (!sessionOwners.has(key)) {
+            sessionOwners.set(key, metadata.runtimeOwner);
             sessions.push({
               backendKind,
               sessionId: metadata.runtimeSessionId,
               runtimeStoragePath,
+              runtimeOwner: metadata.runtimeOwner,
               nodeId: node.id, kind: node.kind
             });
           }
@@ -11092,12 +11307,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
           const runtimeStoragePath = this.getPersistedRuntimeStoragePath(metadata);
           const key = `${backendKind}:${runtimeStoragePath ?? ''}:${metadata.runtimeSessionId}`;
-          if (!sessionKeys.has(key)) {
-            sessionKeys.add(key);
+          if (sessionOwners.has(key) && !runtimeBindingOwnersEqual(sessionOwners.get(key), metadata.runtimeOwner)) {
+            throw new Error('Original runtime bindings disagree about their owner descriptor.');
+          }
+          if (!sessionOwners.has(key)) {
+            sessionOwners.set(key, metadata.runtimeOwner);
             sessions.push({
               backendKind,
               sessionId: metadata.runtimeSessionId,
               runtimeStoragePath,
+              runtimeOwner: metadata.runtimeOwner,
               nodeId: node.id, kind: node.kind
             });
           }
@@ -11118,6 +11337,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           backendKind: normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached',
           sessionId: metadata.runtimeSessionId,
           runtimeStoragePath: this.getPersistedRuntimeStoragePath(metadata),
+          runtimeOwner: metadata.runtimeOwner,
           nodeId: node.id, kind: node.kind
         };
       }
@@ -11131,6 +11351,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           backendKind: normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached',
           sessionId: metadata.runtimeSessionId,
           runtimeStoragePath: this.getPersistedRuntimeStoragePath(metadata),
+          runtimeOwner: metadata.runtimeOwner,
           nodeId: node.id, kind: node.kind
         };
       }
@@ -11152,7 +11373,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!session.nodeId || !session.kind) return true;
     const node = this.state.nodes.find(candidate => candidate.id === session.nodeId && candidate.kind === session.kind);
     const current = node && this.getPersistedLiveRuntimeSessionForNode(node);
-    return Boolean(current && this.strictRuntimeDeleteKey(current) === this.strictRuntimeDeleteKey(session));
+    return Boolean(current && this.strictRuntimeDeleteKey(current) === this.strictRuntimeDeleteKey(session)
+      && runtimeBindingOwnersEqual(current.runtimeOwner, session.runtimeOwner));
   }
 
   private currentStrictRuntimeDeleteResult(record: StrictHostRuntimeDelete): StrictRuntimeDeleteResult | undefined {
@@ -11175,6 +11397,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session: PersistedLiveRuntimeSession, deadline: number,
     nativeObservations?: NativeHistoryObservations, forReplacement = false
   ): Promise<RuntimeHistoryRetirement | undefined> {
+    this.assertRuntimeBindingOwner(session.runtimeStoragePath, session.runtimeOwner);
     if (!['systemd-user', 'legacy-detached'].includes(session.backendKind)
       || !session.nodeId || !session.kind || !session.runtimeStoragePath) return undefined;
     const nativeHistory = session.backendKind === 'legacy-detached'
@@ -11238,9 +11461,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     deadline: number,
     preserveTerminalReads?: true
   ): Promise<StrictRuntimeDeleteResult> {
+    this.assertRuntimeBindingOwner(session.runtimeStoragePath, session.runtimeOwner);
     const records = this.strictRuntimeDeletes ??= new Map();
     const key = this.strictRuntimeDeleteKey(session);
     const previous = records.get(key);
+    if (previous && !runtimeBindingOwnersEqual(previous.session.runtimeOwner, session.runtimeOwner)) {
+      throw new Error('The original runtime deletion owner descriptor changed.');
+    }
     if (previous && !this.canRetryUnsubmittedRuntimeDelete(previous)) {
       const current = this.currentStrictRuntimeDeleteResult(previous);
       return current ? Promise.resolve(current) : previous.first;
@@ -11273,7 +11500,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
       const backend = this.getRuntimeHostBackend(session.backendKind, this.resolveRuntimeStoragePath(session.runtimeStoragePath));
-      const client = await this.getRuntimeSupervisorClientForBackend(backend, { allowRestart: false, deferConnection: true });
+      const client = await this.getRuntimeSupervisorClientForBackend(backend, {
+        allowRestart: false, deferConnection: true, expectedRuntimeOwner: session.runtimeOwner
+      });
       if (scheduler.now() >= deadline || !current()) {
         finish({ kind: 'unconfirmed', reason: 'Runtime deletion expired or changed before dispatch.' });
         return;
@@ -11294,6 +11523,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     sessions: PersistedLiveRuntimeSession[],
     preserveTerminalReads?: true
   ): Promise<void> {
+    for (const session of sessions) this.assertRuntimeBindingOwner(session.runtimeStoragePath, session.runtimeOwner);
     if (sessions.some(session => session.nodeId && session.kind &&
       this.candidateRuntimeStarts?.get(this.getExecutionSessionOperationKey(session.kind, session.nodeId))?.submitted)) {
       throw new Error('The original runtime creation is still pending or unconfirmed; deletion cannot bypass it.');
@@ -11342,6 +11572,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       requireExistingClient?: boolean;
     }
   ): Promise<void> {
+    this.assertRuntimeBindingOwner(session.runtimeStoragePath, session.runtimeOwner);
     if (this.getExecutionCandidateProfile()) {
       await this.deleteRuntimeSupervisorSessionsWithCandidate([session], options.preserveTerminalReads);
       return;
@@ -11351,6 +11582,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     try {
       client = await this.getRuntimeSupervisorClientForBackend(backend, {
         allowRestart: resolveRuntimeSupervisorExecutionProfile(backend.paths.storageDir) ? false : options.allowRestart,
+        expectedRuntimeOwner: session.runtimeOwner,
         allowClosedAdmission: options.allowClosedAdmission,
         requireExistingClient: options.requireExistingClient
       });
@@ -11374,6 +11606,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     sessions: PersistedLiveRuntimeSession[],
     options: { allowRestart: boolean; allowClosedAdmission?: boolean; requireExistingClient?: boolean }
   ): Promise<void> {
+    for (const session of sessions) this.assertRuntimeBindingOwner(session.runtimeStoragePath, session.runtimeOwner);
     if (sessions.length === 0) {
       return;
     }
@@ -11384,30 +11617,35 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const sessionsByBackend = new Map<
       string,
-      { backendKind: RuntimeHostBackendKind; runtimeStoragePath?: string; sessionIds: string[] }
+      { backendKind: RuntimeHostBackendKind; runtimeStoragePath?: string;
+        runtimeOwner?: RuntimeOwnerDescriptorV1 | null; sessionIds: string[] }
     >();
     for (const session of sessions) {
       const bucketKey = `${session.backendKind}:${this.resolveRuntimeStoragePath(session.runtimeStoragePath)}`;
       const bucket = sessionsByBackend.get(bucketKey);
       if (bucket) {
+        if (!runtimeBindingOwnersEqual(bucket.runtimeOwner, session.runtimeOwner)) {
+          throw new Error('Original runtime bindings disagree about their owner descriptor.');
+        }
         bucket.sessionIds.push(session.sessionId);
       } else {
         sessionsByBackend.set(bucketKey, {
           backendKind: session.backendKind,
           runtimeStoragePath: session.runtimeStoragePath,
+          runtimeOwner: session.runtimeOwner,
           sessionIds: [session.sessionId]
         });
       }
     }
 
-    for (const { backendKind, runtimeStoragePath, sessionIds } of sessionsByBackend.values()) {
+    for (const { backendKind, runtimeStoragePath, runtimeOwner, sessionIds } of sessionsByBackend.values()) {
       let client: RuntimeSupervisorClient;
       try {
         client = await this.getRuntimeSupervisorClientForKind(backendKind, {
           allowRestart: options.allowRestart,
           allowClosedAdmission: options.allowClosedAdmission,
           requireExistingClient: options.requireExistingClient
-        }, runtimeStoragePath);
+        }, runtimeStoragePath, runtimeOwner);
       } catch {
         continue;
       }
@@ -11529,6 +11767,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options: {
       outputSequenceFloor?: number;
       terminalProjectionMode?: RuntimeTerminalProjectionMode;
+      runtimeOwner?: RuntimeOwnerDescriptorV1 | null;
     } = {}
   ): SupervisorExecutionSession {
     const agentActivity =
@@ -11570,6 +11809,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       runtimeBackend: snapshot.runtimeBackend,
       runtimeGuarantee: snapshot.runtimeGuarantee,
       runtimeStoragePath: this.resolveRuntimeStoragePath(runtimeStoragePath),
+      runtimeOwner: options.runtimeOwner,
       runtimeSessionId: snapshot.sessionId,
       terminalProjectionMode,
       terminalAuthorityId: hasAuthoritativeTerminalStream ? terminalStream.authorityId : paged ? snapshot.terminalAuthorityId : undefined,
@@ -11675,11 +11915,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private updateSupervisorExecutionSessionFromSnapshot(
     session: SupervisorExecutionSession,
     snapshot: RuntimeSupervisorSessionSnapshot,
-    runtimeStoragePath: string
+    runtimeStoragePath: string,
+    runtimeOwner?: RuntimeOwnerDescriptorV1 | null
   ): void {
     session.runtimeBackend = snapshot.runtimeBackend;
     session.runtimeGuarantee = snapshot.runtimeGuarantee;
     session.runtimeStoragePath = runtimeStoragePath;
+    session.runtimeOwner = runtimeOwner;
     session.runtimeSessionId = snapshot.sessionId;
     session.terminalReadSettlementV1 = snapshot.capabilities?.terminalReadSettlementV1 === true;
     session.shellPath = snapshot.shellPath;
@@ -12223,14 +12465,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.reconnectTimer = setTimeout(() => {
       session.reconnectTimer = undefined;
       if (!this.isRuntimeSupervisorEventAdmitted() ||
-          this.getExecutionSessions(kind).get(nodeId) !== session || this.getLiveRuntimeReconnectBlockReason()) {
+          this.getExecutionSessions(kind).get(nodeId) !== session || this.getLiveRuntimeReconnectBlockReason(session)) {
         return;
       }
       session.reconnectPending = true;
       const operation = (async () => {
         try {
           const client = await this.getRuntimeSupervisorClientForKind(
-            session.runtimeBackend ?? 'legacy-detached', { allowRestart: false }, session.runtimeStoragePath
+            session.runtimeBackend ?? 'legacy-detached', { allowRestart: false }, session.runtimeStoragePath, session.runtimeOwner
           );
           if (session.hostOutputCredit && client.supportsTerminalHostOutputCredit()) {
             // An existing Host resumes its consumed cursor, not the latest attach snapshot's head.
@@ -12261,7 +12503,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           await this.applyRuntimeSupervisorSnapshot(nodeId, kind, result.snapshot, {
             postSnapshot: true, terminalProjectionMode: result.terminalProjectionMode
           });
-          await this.subscribeRuntimeSupervisorTerminalStream(result.snapshot, session.runtimeStoragePath);
+          await this.subscribeRuntimeSupervisorTerminalStream(result.snapshot, session.runtimeStoragePath, session.runtimeOwner);
         } catch (failure) {
           const current = this.getExecutionSessions(kind).get(nodeId);
           if (current?.owner !== 'supervisor' || current.runtimeSessionId !== session.runtimeSessionId ||
@@ -12336,10 +12578,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         preservedTrustedSupervisorSession ??
         this.createSupervisorExecutionSession(snapshot, runtimeStoragePath, {
           outputSequenceFloor,
-          terminalProjectionMode
+          terminalProjectionMode,
+          runtimeOwner: existingRuntimeMetadata.runtimeOwner
         });
       if (preservedTrustedSupervisorSession) {
-        this.updateSupervisorExecutionSessionFromSnapshot(session, snapshot, runtimeStoragePath);
+        this.updateSupervisorExecutionSessionFromSnapshot(session, snapshot, runtimeStoragePath, existingRuntimeMetadata.runtimeOwner);
       } else {
         this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId);
         this.disposeManagedExecutionSession(existingSession);
@@ -12363,6 +12606,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           runtimeBackend: session.runtimeBackend,
           runtimeGuarantee: session.runtimeGuarantee,
           runtimeStoragePath,
+          runtimeOwner: session.runtimeOwner,
           liveSession: true,
           runtimeSessionId: session.runtimeSessionId,
           lastRuntimeError: undefined,
@@ -12490,6 +12734,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         runtimeBackend: preserveRuntimeBinding ? currentMetadata.runtimeBackend : undefined,
         runtimeGuarantee: preserveRuntimeBinding ? currentMetadata.runtimeGuarantee : undefined,
         runtimeStoragePath: preserveRuntimeBinding ? currentMetadata.runtimeStoragePath : undefined,
+        runtimeOwner: preserveRuntimeBinding ? currentMetadata.runtimeOwner : undefined,
         liveSession: false,
         runtimeSessionId: preserveRuntimeBinding ? snapshot.sessionId : undefined,
         pendingLaunch: undefined,
@@ -12624,7 +12869,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         {
           backendKind: runtimeBackend,
           sessionId: snapshot.sessionId,
-          runtimeStoragePath, kind
+          runtimeStoragePath, runtimeOwner: currentMetadata.runtimeOwner, kind
         },
         {
           allowRestart: false,
@@ -12699,6 +12944,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         runtimeBackend: snapshot?.runtimeBackend ?? currentMetadata.runtimeBackend,
         runtimeGuarantee: snapshot?.runtimeGuarantee ?? currentMetadata.runtimeGuarantee,
         runtimeStoragePath: currentMetadata.runtimeStoragePath,
+        runtimeOwner: currentMetadata.runtimeOwner,
         liveSession: false,
         runtimeSessionId,
         lastRuntimeError: reason,
@@ -12758,6 +13004,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const metadata = ensureAgentMetadata(existingNode);
+    if (metadata.runtimeOwner !== undefined || isRuntimeRootStorageNamespace(path.join(
+      this.resolveRuntimeStoragePath(metadata.runtimeStoragePath), 'runtime-supervisor'
+    ))) return false;
     if (!canResumeAgentFromMetadata(metadata)) {
       return false;
     }
@@ -12788,6 +13037,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         runtimeGuarantee: metadata.runtimeGuarantee,
         liveSession: false,
         runtimeSessionId: undefined,
+        runtimeOwner: undefined,
         pendingLaunch: 'resume',
         shellPath: metadata.shellPath,
         cwd: metadata.cwd,
@@ -15418,26 +15668,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<void> {
     const operationToken = this.beginExecutionSessionOperation('agent', nodeId);
     const existingNode = this.requireNode(nodeId, 'agent');
+    const rootPath = this.resolveExecutionNodeRuntimeRoot(existingNode);
+    const assertRootCurrent = (): void => this.assertExecutionRuntimeRootCurrent('agent', nodeId, operationToken, rootPath);
     const existingMetadata = ensureAgentMetadata(existingNode);
     const cwd = this.getExecutionNodeCwd(existingNode, 'agent');
     const executionEnv = await this.resolveExecutionEnvironment('agent', cwd);
+    assertRootCurrent();
     await this.disposeAgentFileActivitySession(nodeId);
-    const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
+    assertRootCurrent();
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
     const executionProfile = this.getExecutionCandidateProfile();
     const historyRetirement = executionProfile
       ? await this.prepareNativeHistoryReplacementPreflight(existingNode, 'agent', operationToken) : undefined;
-    const { client, backend, runtimeStoragePath, fallbackReason } =
-      await this.getPreferredRuntimeSupervisorClient(executionProfile ? { allowRestart: true } : {});
+    assertRootCurrent();
+    const currentViewport = executionProfile
+      ? await this.prepareExecutionCandidateReplacement(existingNode, 'agent', operationToken, undefined, historyRetirement, assertRootCurrent)
+      : undefined;
+    const target = await this.resolveRuntimeCreationTarget(rootPath);
+    assertRootCurrent();
+    const { client, backend, runtimeStoragePath, runtimeOwner, fallbackReason } =
+      await this.getPreferredRuntimeSupervisorClient(target, executionProfile ? { allowRestart: true } : {});
+    assertRootCurrent();
+    this.assertExecutionCandidateAdmission('live-runtime', client);
     const candidateSessionId = executionProfile ? randomUUID() : undefined;
-    if (executionProfile) {
-      try {
-        const currentViewport = await this.prepareExecutionCandidateReplacement(existingNode, 'agent', operationToken, client, historyRetirement);
-        const viewport = currentViewport();
-        if (viewport) { normalizedCols = viewport.cols; normalizedRows = viewport.rows; }
-      }
-      catch (error) { await fileActivitySession.dispose(); throw error; }
-    }
+    const viewport = currentViewport?.();
+    if (viewport) { normalizedCols = viewport.cols; normalizedRows = viewport.rows; }
+    const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
     if (!client.supportsTerminalSessionStream()) {
       await fileActivitySession.dispose();
       this.recordDiagnosticEvent('runtime/legacySupervisorCreateRejected', {
@@ -15480,6 +15736,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         runtimeBackend: backend.kind,
         runtimeGuarantee: backend.guarantee,
         runtimeStoragePath,
+        runtimeOwner,
         liveSession: false,
         runtimeSessionId: candidateSessionId,
         pendingLaunch: undefined,
@@ -15520,7 +15777,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             : await this.getRuntimeSupervisorClientForKind(
                 previousBackendKind,
                 {},
-                previousRuntimeStoragePath
+                previousRuntimeStoragePath,
+                existingMetadata.runtimeOwner
               );
         await previousClient.deleteSession({
           sessionId: previousRuntimeSessionId
@@ -15549,6 +15807,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
     let snapshot: RuntimeSupervisorSessionSnapshot;
     try {
+      assertRootCurrent();
       if (executionProfile) this.submitExecutionCandidateStart('agent', nodeId, candidateSessionId!, client);
       snapshot = await client.createSession({
         ...(executionProfile ? { executionProfile, sessionId: candidateSessionId } : {}),
@@ -15570,7 +15829,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw error;
     }
     if (executionProfile) this.settleExecutionCandidateStart('agent', nodeId, candidateSessionId!, snapshot);
-    if (!this.shouldApplyRuntimeCreateResult('agent', nodeId, operationToken, backend.kind)) {
+    if (!this.shouldApplyRuntimeCreateResult('agent', nodeId, operationToken, backend.kind, target)) {
       this.recordIgnoredExecutionSessionOperation('agent', nodeId, 'create', snapshot.sessionId);
       await fileActivitySession.dispose();
       await this.deleteRuntimeSupervisorSessionBestEffort(client, snapshot.sessionId);
@@ -15601,7 +15860,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.applyRuntimeSupervisorSnapshot(nodeId, 'agent', snapshot, {
       postSnapshot: true
     });
-    await this.subscribeRuntimeSupervisorTerminalStream(snapshot, runtimeStoragePath);
+    await this.subscribeRuntimeSupervisorTerminalStream(snapshot, runtimeStoragePath, runtimeOwner);
   }
 
   private async startTerminalSessionWithSupervisor(
@@ -15620,21 +15879,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<void> {
     const operationToken = this.beginExecutionSessionOperation('terminal', nodeId);
     const existingNode = this.requireNode(nodeId, 'terminal');
+    const rootPath = this.resolveExecutionNodeRuntimeRoot(existingNode);
+    const assertRootCurrent = (): void => this.assertExecutionRuntimeRootCurrent('terminal', nodeId, operationToken, rootPath);
     const existingMetadata = ensureTerminalMetadata(existingNode);
     const shellPath = this.getTerminalShellPath();
     const cwd = this.getExecutionNodeCwd(existingNode, 'terminal');
     const executionEnv = await this.resolveExecutionEnvironment('terminal', cwd);
+    assertRootCurrent();
     const executionProfile = this.getExecutionCandidateProfile();
     const historyRetirement = executionProfile
       ? await this.prepareNativeHistoryReplacementPreflight(existingNode, 'terminal', operationToken) : undefined;
-    const { client, backend, runtimeStoragePath, fallbackReason } =
-      await this.getPreferredRuntimeSupervisorClient(executionProfile ? { allowRestart: true } : {});
+    assertRootCurrent();
+    const currentViewport = executionProfile
+      ? await this.prepareExecutionCandidateReplacement(existingNode, 'terminal', operationToken, undefined, historyRetirement, assertRootCurrent)
+      : undefined;
+    const target = await this.resolveRuntimeCreationTarget(rootPath);
+    assertRootCurrent();
+    const { client, backend, runtimeStoragePath, runtimeOwner, fallbackReason } =
+      await this.getPreferredRuntimeSupervisorClient(target, executionProfile ? { allowRestart: true } : {});
+    assertRootCurrent();
+    this.assertExecutionCandidateAdmission('live-runtime', client);
     const candidateSessionId = executionProfile ? randomUUID() : undefined;
-    if (executionProfile) {
-      const currentViewport = await this.prepareExecutionCandidateReplacement(existingNode, 'terminal', operationToken, client, historyRetirement);
-      const viewport = currentViewport();
-      if (viewport) { normalizedCols = viewport.cols; normalizedRows = viewport.rows; }
-    }
+    const viewport = currentViewport?.();
+    if (viewport) { normalizedCols = viewport.cols; normalizedRows = viewport.rows; }
     if (!client.supportsTerminalSessionStream()) {
       this.recordDiagnosticEvent('runtime/legacySupervisorCreateRejected', {
         kind: 'terminal',
@@ -15670,6 +15937,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         runtimeBackend: backend.kind,
         runtimeGuarantee: backend.guarantee,
         runtimeStoragePath,
+        runtimeOwner,
         liveSession: false,
         runtimeSessionId: candidateSessionId,
         pendingLaunch: undefined,
@@ -15704,7 +15972,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             : await this.getRuntimeSupervisorClientForKind(
                 previousBackendKind,
                 {},
-                previousRuntimeStoragePath
+                previousRuntimeStoragePath,
+                existingMetadata.runtimeOwner
               );
         await previousClient.deleteSession({
           sessionId: previousRuntimeSessionId
@@ -15720,6 +15989,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       );
     }
 
+    assertRootCurrent();
     if (executionProfile) this.submitExecutionCandidateStart('terminal', nodeId, candidateSessionId!, client);
     const snapshot = await client.createSession({
       ...(executionProfile ? { executionProfile, sessionId: candidateSessionId } : {}),
@@ -15735,7 +16005,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       )
     });
     if (executionProfile) this.settleExecutionCandidateStart('terminal', nodeId, candidateSessionId!, snapshot);
-    if (!this.shouldApplyRuntimeCreateResult('terminal', nodeId, operationToken, backend.kind)) {
+    if (!this.shouldApplyRuntimeCreateResult('terminal', nodeId, operationToken, backend.kind, target)) {
       this.recordIgnoredExecutionSessionOperation('terminal', nodeId, 'create', snapshot.sessionId);
       await this.deleteRuntimeSupervisorSessionBestEffort(client, snapshot.sessionId);
       return;
@@ -15756,7 +16026,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.applyRuntimeSupervisorSnapshot(nodeId, 'terminal', snapshot, {
       postSnapshot: true
     });
-    await this.subscribeRuntimeSupervisorTerminalStream(snapshot, runtimeStoragePath);
+    await this.subscribeRuntimeSupervisorTerminalStream(snapshot, runtimeStoragePath, runtimeOwner);
   }
 
   private async startAgentSession(
@@ -16045,6 +16315,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             runtimeStoragePath: currentMetadata.runtimeStoragePath,
             liveSession: false,
             runtimeSessionId: undefined,
+            runtimeOwner: undefined,
             shellPath: cliSpec.command,
             cwd,
             terminalTitle: undefined,
@@ -16267,6 +16538,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             runtimeBackend: undefined,
             runtimeGuarantee: undefined,
             runtimeStoragePath: undefined,
+            runtimeOwner: undefined,
             liveSession: false,
             runtimeSessionId: undefined,
             pendingLaunch: undefined,
@@ -16378,6 +16650,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           runtimeBackend: undefined,
           runtimeGuarantee: undefined,
           runtimeStoragePath: undefined,
+          runtimeOwner: undefined,
           liveSession: true,
           runtimeSessionId: undefined,
           pendingLaunch: undefined,
@@ -16440,6 +16713,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           runtimeBackend: undefined,
           runtimeGuarantee: undefined,
           runtimeStoragePath: undefined,
+          runtimeOwner: undefined,
           liveSession: false,
           runtimeSessionId: undefined,
           pendingLaunch: undefined,
@@ -17148,7 +17422,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const metadata = buildExecutionMetadataPatch(this.state, record.nodeId, record.kind, {
       lifecycle: status, persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
       terminalProjectionMode: undefined, runtimeBackend: undefined, runtimeGuarantee: undefined,
-      runtimeStoragePath: undefined, runtimeSessionId: undefined, liveSession: false, pendingLaunch: undefined,
+      runtimeStoragePath: undefined, runtimeOwner: undefined, runtimeSessionId: undefined, liveSession: false, pendingLaunch: undefined,
       terminalStream: undefined, terminalHistoryDiscarded: undefined,
       shellPath: record.launchSpec?.file, cwd: record.launchSpec?.cwd,
       recentOutput: recentOutput || undefined, terminalTitle: undefined,
@@ -17198,6 +17472,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       { executions: retainedRecords.length, pending }))) {
       throw new Error('Local final snapshot responsibility still occupies the execution key or Host capacity.');
     }
+    const assertRuntimeUnbound = (): void => {
+      const node = this.requireNode(nodeId, kind);
+      const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
+      if (metadata.runtimeOwner !== undefined || this.getPersistedLiveRuntimeSessionForNode(node)) {
+        throw new Error(vscode.l10n.t('The original Runtime execution is still bound. Settle it before starting a local execution.'));
+      }
+    };
+    assertRuntimeUnbound();
     const execution = owner.reserve(key);
     let record: NonNativeHostExecution | undefined;
     let rejectedBeforeAcquire = false;
@@ -17226,6 +17508,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.nonNativeHostExecutions.set(key, record);
       const prepared = await prepare();
       this.assertExecutionCandidateAdmission('snapshot-only');
+      assertRuntimeUnbound();
       const spec: LaunchSpec = {
         file: prepared.file, args: prepared.args ?? [], cwd: prepared.cwd,
         ...(owner.options.profile ? { cols, rows, stopStrategy: kind === 'agent' && agent?.provider !== 'claude'
@@ -17833,6 +18116,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             runtimeStoragePath: currentMetadata.runtimeStoragePath,
             liveSession: false,
             runtimeSessionId: undefined,
+            runtimeOwner: undefined,
             shellPath,
             cwd,
             terminalTitle: undefined,
@@ -18024,6 +18308,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             runtimeBackend: undefined,
             runtimeGuarantee: undefined,
             runtimeStoragePath: undefined,
+            runtimeOwner: undefined,
             liveSession: false,
             runtimeSessionId: undefined,
             pendingLaunch: undefined,
@@ -18096,6 +18381,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           runtimeBackend: undefined,
           runtimeGuarantee: undefined,
           runtimeStoragePath: undefined,
+          runtimeOwner: undefined,
           liveSession: true,
           runtimeSessionId: undefined,
           pendingLaunch: undefined,
@@ -18153,6 +18439,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           runtimeBackend: undefined,
           runtimeGuarantee: undefined,
           runtimeStoragePath: undefined,
+          runtimeOwner: undefined,
           liveSession: false,
           runtimeSessionId: undefined,
           pendingLaunch: undefined,
@@ -18350,7 +18637,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       !activeSession.terminalStreamHealthy &&
       metadata.persistenceMode === 'live-runtime' &&
       metadata.runtimeSessionId === activeSession.runtimeSessionId &&
-      this.getLiveRuntimeReconnectBlockReason() === undefined
+      this.getLiveRuntimeReconnectBlockReason(activeSession) === undefined
     ) {
       if (activeSession.terminalStreamPaged) {
         this.reconnectPagedRuntimeSession(kind, nodeId, activeSession);
@@ -18368,7 +18655,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.getRuntimeSupervisorClientForKind(
             backendKind,
             {},
-            activeSession.runtimeStoragePath
+            activeSession.runtimeStoragePath,
+            activeSession.runtimeOwner
           ).then((client) => {
             attachClient = client;
             return this.requestRuntimeSupervisorSessionAttach(client, runtimeSessionId);
@@ -18390,7 +18678,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       metadata.persistenceMode === 'live-runtime' &&
       metadata.runtimeSessionId &&
       metadata.attachmentState === 'reattaching' &&
-      this.getLiveRuntimeReconnectBlockReason() === undefined
+      this.getLiveRuntimeReconnectBlockReason(metadata) === undefined
     ) {
       const backendKind = normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? 'legacy-detached';
       const runtimeStoragePath = this.getPersistedRuntimeStoragePath(metadata);
@@ -18404,7 +18692,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         () => this.getRuntimeSupervisorClientForKind(
           backendKind,
           {},
-          runtimeStoragePath
+          runtimeStoragePath,
+          metadata.runtimeOwner
         ).then((client) => {
           attachClient = client;
           return this.requestRuntimeSupervisorSessionAttach(client, runtimeSessionId);
@@ -18533,7 +18822,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const client = await this.getRuntimeSupervisorClientForKind(
       backendKind,
       {},
-      expectedSession.runtimeStoragePath
+      expectedSession.runtimeStoragePath,
+      expectedSession.runtimeOwner
     );
     if (client.supportsTerminalCheckpointRefresh()) {
       const previousStream = expectedSession.terminalStream;
@@ -18739,7 +19029,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const operation = this.getRuntimeSupervisorClientForKind(
       backendKind,
       { allowRestart: false },
-      session.runtimeStoragePath
+      session.runtimeStoragePath,
+      session.runtimeOwner
     )
       .then((client) => {
         if (!client.supportsTerminalAppliedRevisionAck()) {
@@ -18876,7 +19167,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const operation = this.getRuntimeSupervisorClientForKind(
           backendKind,
           {},
-          session.runtimeStoragePath
+          session.runtimeStoragePath,
+          session.runtimeOwner
         ).then((client) =>
           client.writeInput({
             sessionId: session.runtimeSessionId,
@@ -19464,7 +19756,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (session.owner === 'supervisor' && this.getExecutionCandidateProfile()) {
       const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
-      const resizing = this.getRuntimeSupervisorClientForKind(backendKind, {}, session.runtimeStoragePath)
+      const resizing = this.getRuntimeSupervisorClientForKind(backendKind, {}, session.runtimeStoragePath, session.runtimeOwner)
         .then(client => client.resizeSession({ sessionId: session.runtimeSessionId, cols: normalizedCols, rows: normalizedRows }))
         .then(() => {
           if (this.getExecutionSessions(kind).get(nodeId) !== session || session.stopRequested) return;
@@ -19488,7 +19780,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     } else {
       const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
       this.trackRuntimeSupervisorOperation(
-        this.getRuntimeSupervisorClientForKind(backendKind, {}, session.runtimeStoragePath)
+        this.getRuntimeSupervisorClientForKind(backendKind, {}, session.runtimeStoragePath, session.runtimeOwner)
           .then((client) =>
             client.resizeSession({
               sessionId: session.runtimeSessionId,
@@ -19577,7 +19869,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const client = await this.getRuntimeSupervisorClientForKind(
         backendKind,
         {},
-        session.runtimeStoragePath
+        session.runtimeStoragePath,
+        session.runtimeOwner
       );
       await client.stopSession({
         sessionId: session.runtimeSessionId
@@ -19645,6 +19938,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           backendKind,
           sessionId: attachedSession.runtimeSessionId,
           runtimeStoragePath: attachedSession.runtimeStoragePath,
+          runtimeOwner: attachedSession.runtimeOwner,
           nodeId: node.id, kind: node.kind
         },
         {
@@ -20025,7 +20319,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const backendKind = normalizeRuntimeHostBackendKind(session.runtimeBackend) ?? 'legacy-detached';
       const backend = this.getRuntimeHostBackend(backendKind, this.resolveRuntimeStoragePath(session.runtimeStoragePath));
       if (options.terminateProcess) {
-        const operation = this.getRuntimeSupervisorClientForKind(backendKind, {}, session.runtimeStoragePath)
+        const operation = this.getRuntimeSupervisorClientForKind(backendKind, {}, session.runtimeStoragePath, session.runtimeOwner)
           .then((client) =>
             client.deleteSession({
               sessionId: session.runtimeSessionId
@@ -20745,10 +21039,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           ? {
               runtimeBackend: session.runtimeBackend,
               runtimeGuarantee: session.runtimeGuarantee,
-              runtimeStoragePath: session.runtimeStoragePath
+              runtimeStoragePath: session.runtimeStoragePath,
+              runtimeOwner: session.runtimeOwner
             }
           : {
-              runtimeStoragePath: undefined
+              runtimeStoragePath: undefined,
+              runtimeOwner: undefined
             }),
         liveSession: true,
         runtimeSessionId: session.runtimeSessionId,
@@ -21231,7 +21527,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       !this.state.nodes.find((node) => node.id === nodeId)?.metadata?.[kind]?.terminalHistoryDiscarded &&
       JSON.stringify(this.getSurfaceLifecycleIdentity(surface)) === JSON.stringify(lifecycle);
     const client = await this.getRuntimeSupervisorClientForKind(
-      session.runtimeBackend ?? 'legacy-detached', { allowRestart: false }, session.runtimeStoragePath
+      session.runtimeBackend ?? 'legacy-detached', { allowRestart: false }, session.runtimeStoragePath, session.runtimeOwner
     );
     if (!isCurrent()) {
       return;
@@ -26712,6 +27008,7 @@ function hydrateRuntimeStoragePaths(
       if (
         metadata.persistenceMode === 'live-runtime' &&
         metadata.runtimeSessionId &&
+        metadata.runtimeOwner === undefined &&
         !normalizeRuntimeStoragePath(metadata.runtimeStoragePath)
       ) {
         didMutate = true;
@@ -26734,6 +27031,7 @@ function hydrateRuntimeStoragePaths(
       if (
         metadata.persistenceMode === 'live-runtime' &&
         metadata.runtimeSessionId &&
+        metadata.runtimeOwner === undefined &&
         !normalizeRuntimeStoragePath(metadata.runtimeStoragePath)
       ) {
         didMutate = true;
@@ -26777,6 +27075,7 @@ function downgradeLiveRuntimeNodesMissingRuntimeStoragePath(
       if (
         metadata.persistenceMode === 'live-runtime' &&
         metadata.runtimeSessionId &&
+        metadata.runtimeOwner === undefined &&
         !normalizeRuntimeStoragePath(metadata.runtimeStoragePath)
       ) {
         downgradedCount += 1;
@@ -26792,6 +27091,7 @@ function downgradeLiveRuntimeNodesMissingRuntimeStoragePath(
               runtimeBackend: undefined,
               runtimeGuarantee: undefined,
               runtimeStoragePath: undefined,
+              runtimeOwner: undefined,
               runtimeSessionId: undefined,
               liveSession: false,
               pendingLaunch: undefined,
@@ -26810,6 +27110,7 @@ function downgradeLiveRuntimeNodesMissingRuntimeStoragePath(
       if (
         metadata.persistenceMode === 'live-runtime' &&
         metadata.runtimeSessionId &&
+        metadata.runtimeOwner === undefined &&
         !normalizeRuntimeStoragePath(metadata.runtimeStoragePath)
       ) {
         downgradedCount += 1;
@@ -26825,6 +27126,7 @@ function downgradeLiveRuntimeNodesMissingRuntimeStoragePath(
               runtimeBackend: undefined,
               runtimeGuarantee: undefined,
               runtimeStoragePath: undefined,
+              runtimeOwner: undefined,
               runtimeSessionId: undefined,
               liveSession: false,
               pendingLaunch: undefined,
@@ -27687,6 +27989,7 @@ function createAgentMetadata(
     runtimeBackend: undefined,
     runtimeGuarantee: undefined,
     runtimeStoragePath: undefined,
+    runtimeOwner: undefined,
     liveSession: false,
     pendingLaunch: undefined,
     lastCols: DEFAULT_TERMINAL_COLS,
@@ -27707,6 +28010,7 @@ function createTerminalMetadata(nodeId: string): TerminalNodeMetadata {
     runtimeBackend: undefined,
     runtimeGuarantee: undefined,
     runtimeStoragePath: undefined,
+    runtimeOwner: undefined,
     liveSession: false,
     pendingLaunch: undefined,
     lastCols: DEFAULT_TERMINAL_COLS,
@@ -27782,6 +28086,19 @@ function normalizeRuntimeStoragePath(value: unknown): string | undefined {
 
   const normalized = value.trim();
   return normalized ? path.normalize(normalized) : undefined;
+}
+
+function normalizeRuntimeOwner(value: unknown): RuntimeOwnerDescriptorV1 | null | undefined {
+  if (value === undefined) return undefined;
+  try { return parseRuntimeOwnerDescriptor(value); }
+  catch { return null; }
+}
+
+function runtimeBindingOwnersEqual(
+  left: RuntimeOwnerDescriptorV1 | null | undefined,
+  right: RuntimeOwnerDescriptorV1 | null | undefined
+): boolean {
+  return left === undefined && right === undefined || runtimeOwnerDescriptorsEqual(left, right);
 }
 
 function normalizeRuntimeAttachmentState(
@@ -28019,6 +28336,7 @@ function normalizeMetadata(
         ? agent.resumeStoragePath
         : undefined;
     const runtimeStoragePath = normalizeRuntimeStoragePath(agent.runtimeStoragePath);
+    const runtimeOwner = normalizeRuntimeOwner(agent.runtimeOwner);
     const resumeSupported = doesAgentResumeStrategyRequireSupport(resumeStrategy);
     const preSuspendLifecycle = normalizeOptionalAgentLifecycle(agent.preSuspendLifecycle);
 
@@ -28071,6 +28389,7 @@ function normalizeMetadata(
         runtimeBackend,
         runtimeGuarantee,
         runtimeStoragePath,
+        runtimeOwner,
         liveSession,
         runtimeSessionId,
         lastRuntimeError:
@@ -28171,6 +28490,7 @@ function normalizeMetadata(
       runtimeBackend
     );
     const runtimeStoragePath = normalizeRuntimeStoragePath(terminal.runtimeStoragePath);
+    const runtimeOwner = normalizeRuntimeOwner(terminal.runtimeOwner);
 
     return {
       terminal: {
@@ -28199,6 +28519,7 @@ function normalizeMetadata(
         runtimeBackend,
         runtimeGuarantee,
         runtimeStoragePath,
+        runtimeOwner,
         liveSession,
         runtimeSessionId,
         lastRuntimeError:
@@ -28456,12 +28777,14 @@ function reconcileAgentNodesInArray(
               ? {
                   runtimeBackend: liveSession.runtimeBackend,
                   runtimeGuarantee: liveSession.runtimeGuarantee,
-                  runtimeStoragePath: liveSession.runtimeStoragePath
+                  runtimeStoragePath: liveSession.runtimeStoragePath,
+                  runtimeOwner: liveSession.runtimeOwner
                 }
               : {
                   runtimeBackend: undefined,
                   runtimeGuarantee: undefined,
-                  runtimeStoragePath: undefined
+                  runtimeStoragePath: undefined,
+                  runtimeOwner: undefined
                 }),
             liveSession: true,
             runtimeSessionId: liveSession.runtimeSessionId,
@@ -28489,7 +28812,8 @@ function reconcileAgentNodesInArray(
       metadata.runtimeSessionId &&
       (metadata.liveSession || metadata.attachmentState === 'reattaching')
     ) {
-    if (!options.allowLiveRuntimeReconnect) {
+      if (!options.allowLiveRuntimeReconnect &&
+          (metadata.runtimeOwner === undefined || options.liveRuntimeReconnectBlockReason !== 'runtime-persistence-disabled')) {
         const liveRuntimeReconnectBlockReason =
           options.liveRuntimeReconnectBlockReason ?? 'runtime-persistence-disabled';
         return {
@@ -28653,12 +28977,14 @@ function reconcileTerminalNodesInArray(
               ? {
                   runtimeBackend: liveSession.runtimeBackend,
                   runtimeGuarantee: liveSession.runtimeGuarantee,
-                  runtimeStoragePath: liveSession.runtimeStoragePath
+                  runtimeStoragePath: liveSession.runtimeStoragePath,
+                  runtimeOwner: liveSession.runtimeOwner
                 }
               : {
                   runtimeBackend: undefined,
                   runtimeGuarantee: undefined,
-                  runtimeStoragePath: undefined
+                  runtimeStoragePath: undefined,
+                  runtimeOwner: undefined
                 }),
             liveSession: true,
             runtimeSessionId: liveSession.runtimeSessionId,
@@ -28681,7 +29007,8 @@ function reconcileTerminalNodesInArray(
       metadata.runtimeSessionId &&
       (metadata.liveSession || metadata.attachmentState === 'reattaching')
     ) {
-      if (!options.allowLiveRuntimeReconnect) {
+      if (!options.allowLiveRuntimeReconnect &&
+          (metadata.runtimeOwner === undefined || options.liveRuntimeReconnectBlockReason !== 'runtime-persistence-disabled')) {
         const liveRuntimeReconnectBlockReason =
           options.liveRuntimeReconnectBlockReason ?? 'runtime-persistence-disabled';
         return {

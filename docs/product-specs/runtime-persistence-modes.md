@@ -6,6 +6,8 @@
 
 ## 1. 用户问题
 
+Root 归属增量（2026-10-08，有限交付完成）：新建 `live-runtime` Terminal/Agent 按同一执行环境运行实例、用户 global storage 范围、画板 root 与 Supervisor generation 路由，单根和多根一致；不是创建窗口的 workspace slot。已有会话仍按完整 backend/storage/session/kind 原绑定，不能改地址迁移。环境重启不恢复进程，窗口重开不改变环境身份。snapshot-only 的 Host 归属不变；未知 root/环境不能静默切换模式或 slot。新窗口默认 false 不结束原 root live，显式关闭仍严格处理选中绑定。P1 至 P3 与 R1-01 至 R1-08 的具名输入及证据复用已收口，分层结果见 `docs/design-docs/runtime-root-ownership.md` §8，过程见 `docs/exec-plans/completed/runtime-root-ownership.md`；不由下列历史验证代证，也不泛化为 F-01/F-02 或所有 multi-root/UI 组合已验证。Claude 间歇信任页回退及旧两 CLI 观察的根因仍未知，最终成功不追认旧失败已修复。
+
 当前画布已经可以恢复对象图、节点标题、尺寸、最近输出摘要和部分 `Agent` 恢复上下文，但这还不能满足更强的工作连续性诉求：
 
 - 用户关闭画布或切换宿主 surface 时，不希望正在工作的 `Agent` / `Terminal` 被无声杀死。

@@ -13,6 +13,7 @@ import type { TerminalStreamAttachPayload, TerminalStreamCheckpoint, TerminalStr
 import type { TerminalStreamPage, TerminalStreamReadDescriptor } from './terminalStreamPaging';
 import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
 import type { ExecutionCandidateProfile, SourceDisposition } from './executionLifecycle';
+import type { RuntimeOwnerDescriptorV1 } from './runtimeRootOwnership';
 
 export interface RuntimeSupervisorPaths {
   storageDir: string;
@@ -30,6 +31,9 @@ export interface RuntimeSupervisorHelloResult {
   pid: number;
   runtimeBackend: RuntimeHostBackendKind;
   runtimeGuarantee: RuntimePersistenceGuarantee;
+  runtimeOwner?: RuntimeOwnerDescriptorV1;
+  executionProfile?: ExecutionCandidateProfile;
+  ownerCompatibilityFingerprint?: string;
   capabilities?: {
     terminalSessionStreamV1?: true;
     terminalProjectionSnapshotV1?: true;

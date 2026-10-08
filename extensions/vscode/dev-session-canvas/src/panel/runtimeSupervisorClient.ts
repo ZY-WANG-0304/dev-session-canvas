@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
+import { realpathSync } from 'fs';
 import * as net from 'net';
+import { ensureRuntimeRootSocketDirectory } from '../supervisor/runtimeRootOwner';
 
 import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
@@ -42,7 +44,19 @@ import {
 import type { RuntimeHostBackend } from './runtimeHostBackend';
 import type { ExecutionScheduler } from './executionSessionAdapter';
 import type { ExecutionCandidateProfile } from '../common/executionLifecycle';
-import { assertExecutionCandidateRuntimeSupervisorStorageDir } from '../common/runtimeSupervisorPaths';
+import {
+  assertExecutionCandidateRuntimeSupervisorStorageDir,
+  isRootOwnerRuntimeSupervisorStorageDir,
+  isRuntimeRootStorageNamespace,
+  resolveRootRuntimeSupervisorGeneration
+} from '../common/runtimeSupervisorPaths';
+import {
+  createRuntimeOwnerCompatibilityFingerprint,
+  assertRuntimeOwnerDescriptor,
+  runtimeOwnerDescriptorsEqual,
+  resolveRuntimeRootOwnerGlobalStoragePath,
+  type RuntimeOwnerDescriptorV1
+} from '../common/runtimeRootOwnership';
 
 interface PendingSupervisorRequest<T> {
   socket: net.Socket;
@@ -91,13 +105,14 @@ interface HostOutputSubscription {
 
 const CLOSED_TERMINAL_READ_CONNECTION_LIMIT = 128;
 
-class ExecutionCandidateHandshakeError extends Error {}
+export class ExecutionCandidateHandshakeError extends Error {}
 
 export interface RuntimeSupervisorClientOptions extends RuntimeSupervisorClientEventHandlers {
   backend: RuntimeHostBackend;
   supervisorScriptPath: string;
   supervisorLauncherScriptPath: string;
   executionProfile?: ExecutionCandidateProfile;
+  expectedRuntimeOwner?: RuntimeOwnerDescriptorV1;
   onDisconnected?: (error?: Error) => void;
   onTerminalBatchSettled?: () => void;
 }
@@ -108,6 +123,7 @@ export class RuntimeSupervisorClient {
   private disposed = false;
   private buffer = '';
   private helloResult: RuntimeSupervisorHelloResult | undefined;
+  private readonly expectedRuntimeOwner?: RuntimeOwnerDescriptorV1;
   private readonly pendingRequests = new Map<string, PendingSupervisorRequest<unknown>>();
   private readonly terminalReadConnections = new Map<string, TerminalReadConnection>();
   private readonly hostOutputSubscriptions = new Map<string, HostOutputSubscription>();
@@ -118,6 +134,41 @@ export class RuntimeSupervisorClient {
   private strictDeleteConnection?: Promise<net.Socket>;
 
   public constructor(private readonly options: RuntimeSupervisorClientOptions) {
+    const storageDir = options.backend.paths?.storageDir;
+    const rootOwnerStorage = storageDir !== undefined && isRootOwnerRuntimeSupervisorStorageDir(storageDir);
+    if (storageDir !== undefined) {
+      if (isRuntimeRootStorageNamespace(storageDir) && !rootOwnerStorage) {
+        throw new Error('Reserved root runtime storage requires a supported root owner generation.');
+      }
+      try {
+        const canonicalStorageDir = realpathSync(storageDir);
+        const canonicalRootOwner = isRootOwnerRuntimeSupervisorStorageDir(canonicalStorageDir);
+        if (isRuntimeRootStorageNamespace(canonicalStorageDir) && !canonicalRootOwner) {
+          throw new Error('Reserved root runtime storage requires a supported root owner generation.');
+        }
+        if (!rootOwnerStorage && canonicalRootOwner) {
+          throw new Error('Root runtime owner cannot be opened through a legacy storage alias.');
+        }
+      } catch (error) {
+        if (!(error instanceof Error) || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+    if (rootOwnerStorage !== (options.expectedRuntimeOwner !== undefined)) {
+      throw new Error('Root runtime owner storage requires an explicit matching owner descriptor; legacy storage cannot adopt one.');
+    }
+    if (rootOwnerStorage) {
+      if (options.executionProfile === undefined) {
+        throw new Error('Root runtime owner requires an explicit execution profile.');
+      }
+      assertRuntimeOwnerDescriptor(options.expectedRuntimeOwner);
+      if (options.expectedRuntimeOwner.generation !== resolveRootRuntimeSupervisorGeneration(options.executionProfile)) {
+        throw new Error('Root runtime owner generation does not match its execution profile.');
+      }
+      resolveRuntimeRootOwnerGlobalStoragePath(storageDir!, options.expectedRuntimeOwner);
+      this.expectedRuntimeOwner = Object.freeze({
+        ...options.expectedRuntimeOwner, root: Object.freeze({ ...options.expectedRuntimeOwner.root })
+      });
+    }
     if (options.executionProfile !== undefined) {
       assertExecutionCandidateRuntimeSupervisorStorageDir(options.backend.paths.storageDir, options.executionProfile);
     }
@@ -129,6 +180,9 @@ export class RuntimeSupervisorClient {
         id: 'clientDisposed'
       }, RUNTIME_SUPERVISOR_ERROR_CODES.clientDisposed);
     }
+    if (this.expectedRuntimeOwner && options.allowRestart === true) {
+      throw new Error('Root runtime owner startup requires coordinated preparation; automatic startup is unavailable.');
+    }
 
     if (this.connectPromise) {
       return this.connectPromise;
@@ -138,7 +192,7 @@ export class RuntimeSupervisorClient {
       return;
     }
 
-    const allowRestart = options.allowRestart ?? (this.options.executionProfile === undefined);
+    const allowRestart = options.allowRestart ?? (!this.expectedRuntimeOwner && this.options.executionProfile === undefined);
     const connectPromise = this.connectWithRestart(allowRestart);
     this.connectPromise = connectPromise;
     void connectPromise.then(
@@ -156,6 +210,11 @@ export class RuntimeSupervisorClient {
       }, RUNTIME_SUPERVISOR_ERROR_CODES.clientNotConnected);
     }
     return this.helloResult;
+  }
+
+  public matchesRuntimeOwner(expected: RuntimeOwnerDescriptorV1 | undefined): boolean {
+    return expected === undefined ? this.expectedRuntimeOwner === undefined
+      : runtimeOwnerDescriptorsEqual(this.expectedRuntimeOwner, expected);
   }
 
   public supportsTerminalProjectionSnapshot(): boolean {
@@ -504,8 +563,14 @@ export class RuntimeSupervisorClient {
     return operation;
   }
 
-  private connectStrictDeleteSocket(deadline: number, scheduler: ExecutionScheduler): Promise<net.Socket> {
+  private async connectStrictDeleteSocket(deadline: number, scheduler: ExecutionScheduler): Promise<net.Socket> {
     const original = this.socket;
+    if (this.expectedRuntimeOwner) {
+      await ensureRuntimeRootSocketDirectory(this.options.backend.paths, this.options.backend.kind, false);
+      if (scheduler.now() >= deadline || this.disposed || this.socket !== original) {
+        throw new Error('The original strict connection expired or was replaced.');
+      }
+    }
     return new Promise((resolve, reject) => {
       const socket = net.createConnection(this.options.backend.paths.socketPath);
       let finished = false;
@@ -643,6 +708,9 @@ export class RuntimeSupervisorClient {
   }
 
   private async connectSocket(): Promise<void> {
+    if (this.expectedRuntimeOwner) {
+      await ensureRuntimeRootSocketDirectory(this.options.backend.paths, this.options.backend.kind, false);
+    }
     if (this.disposed) {
       throw createRuntimeSupervisorProtocolError({
         id: 'clientDisposed'
@@ -890,12 +958,34 @@ export class RuntimeSupervisorClient {
     if (!socket || socket !== this.socket || socket.destroyed || this.disposed) {
       throw new Error('Runtime supervisor connection changed during handshake.');
     }
+    if (this.expectedRuntimeOwner && !this.helloMatchesRuntimeOwner(result)) {
+      this.helloResult = undefined;
+      socket.destroy();
+      throw new ExecutionCandidateHandshakeError('Runtime supervisor owner descriptor, backend, or compatibility does not match.');
+    }
     if (this.options.executionProfile !== undefined && !helloSupportsExecutionCandidateProfile(result, this.options.executionProfile)) {
       this.helloResult = undefined;
       socket.destroy();
       throw new ExecutionCandidateHandshakeError('Runtime supervisor execution candidate profile or reader capability is unavailable.');
     }
     this.helloResult = result;
+  }
+
+  private helloMatchesRuntimeOwner(result: RuntimeSupervisorHelloResult): boolean {
+    try {
+      return result.serverVersion === 1
+        && runtimeOwnerDescriptorsEqual(this.expectedRuntimeOwner, result.runtimeOwner)
+        && result.runtimeBackend === this.options.backend.kind
+        && result.runtimeGuarantee === this.options.backend.guarantee
+        && result.executionProfile === this.options.executionProfile
+        && result.ownerCompatibilityFingerprint === createRuntimeOwnerCompatibilityFingerprint(
+          this.expectedRuntimeOwner!.generation, this.options.executionProfile!
+        )
+        && result.capabilities?.terminalCurrentStateV1 === true
+        && result.capabilities.terminalHostOutputCreditV1 === true;
+    } catch {
+      return false;
+    }
   }
 
   private clearConnectPromise(connectPromise: Promise<void>): void {
