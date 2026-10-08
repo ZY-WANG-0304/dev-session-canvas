@@ -131,5 +131,49 @@ function assertCase(single, multi, reopened, closed) {
   }
 }
 
+function assertBoundaryCase(single, multi, result) {
+  assertTopology(single, multi, single.roots);
+  assert.equal(result.order, 'multi-before-single');
+  assertRestored(multi.subjects[0], single.restored);
+  assert.equal(single.subject.windowMarker, 'single');
+  assert.deepEqual(single.subject.configuration, { shellPath: '/bin/sh', scrollback: 10000 });
+  for (const subject of multi.subjects) {
+    assert.equal(subject.windowMarker, 'multi');
+    assert.deepEqual(subject.configuration, { shellPath: '/bin/bash', scrollback: 2000 });
+  }
+  const [a, b, c] = multi.subjects;
+  assert.equal(result.settings.page.executionSessionId, a.binding.runtimeSessionId);
+  assert.equal(result.settings.page.authorityId, a.reader.authorityId);
+  assert(result.settings.page.page.events.some(event => event.type === 'scrollback' && event.scrollback === 2500));
+  assert.equal(result.resized.state.sessionId, b.binding.runtimeSessionId);
+  assert.equal(result.resized.state.terminalAuthorityId, b.reader.authorityId);
+  assert.equal(result.resized.state.scrollback, 2500);
+  assert.equal(result.resizeBefore.sessionId, b.binding.runtimeSessionId);
+  assert(result.resized.state.cols !== result.resizeBefore.cols || result.resized.state.rows !== result.resizeBefore.rows,
+    'An unchanged viewport cannot demonstrate the requested resize.');
+  assert(result.resized.state.cols >= 80 && result.resized.state.rows >= 5);
+  assert.equal(result.resized.state.cols, result.resized.page.terminalCols);
+  assert.equal(result.resized.state.rows, result.resized.page.terminalRows);
+  assert.equal(result.kept.sessionId, c.binding.runtimeSessionId);
+  assert.equal(result.kept.live, true);
+  assertRestored(c, result.readded);
+  assert.equal(result.clearSession, c.binding.runtimeSessionId);
+  assert.equal(result.faultDisposition, 'injected-owner-loss-not-eof');
+  assertSubject(result.bAfter, single.roots.b);
+  assertBinding(result.bAfter.binding, b.binding);
+  for (const role of ['supervisor', 'provider', 'identity']) {
+    for (const key of ['pid', 'startTicks', 'executable']) assert.equal(result.bAfter[role][key], b[role][key]);
+  }
+  assert.equal(result.bAfter.reader.authorityId, b.reader.authorityId);
+  assert.equal(result.afterClear.length, 2);
+  for (const [receipt, sessionId] of [[result.settings.interaction, a.binding.runtimeSessionId],
+    [result.keepInteraction, c.binding.runtimeSessionId], [result.afterClear[0], a.binding.runtimeSessionId],
+    [result.afterClear[1], b.binding.runtimeSessionId], [result.faultInteraction, b.binding.runtimeSessionId]]) {
+    assert.equal(receipt.applied, true);
+    assert.equal(receipt.sessionId, sessionId);
+    assert.match(receipt.marker, /^DSC_ROOT_REPLY_[a-f0-9-]+$/);
+  }
+}
+
 module.exports = { bindingKeys, assertBinding, assertContained, assertTopology, assertRestored, assertCase,
-  assertDriverProfileRegistration };
+  assertBoundaryCase, assertDriverProfileRegistration };

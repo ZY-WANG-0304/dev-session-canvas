@@ -117,7 +117,7 @@ related_plans:
 - 在 multi-root workspace 中运行 Agent 产生新的文件活动时，新写入的 `fileReferences.id` 带所属 root namespace；删除该自动文件节点后的 suppression 在重载后仍生效。
 - 一个 root-local live runtime 节点在 multi-root 重启后按原 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 重新附着，离线期间输出可见。
 - 同一个 root 被多个 VS Code slot 打开时，旧 runtime 仍按原完整 `runtimeStoragePath` 区分；没有 `runtimeStoragePath` 的旧 live-runtime root-local snapshot 不会被同 root 当前 slot 或新 root owner 隐式接管。
-- 新建归属的待实施验收：同 root 在单根与不同多根窗口分别新建 Agent/Terminal 时归属同 owner；不同 root 隔离，旧 live 原绑定与新 owner 并存。完整有限矩阵见 `docs/design-docs/runtime-root-ownership.md` §7，既有跨窗口 attach 验证不代证它。
+- 新建归属验收：同 root 在单根与不同多根窗口分别新建 Agent/Terminal 时归属同 owner；不同 root 隔离，旧 live 原绑定与新 owner 并存。完整有限矩阵见 `docs/design-docs/runtime-root-ownership.md` §7，当前分层结果见 §8，既有跨窗口 attach 验证不代证它。
 - 单根窗口与 multi-root 窗口同时打开同一 root-local live runtime 时，output 在两个窗口可见；input、stop、delete 作用于同一 backend session；resize 第一版按 last-writer-wins 处理。
 - 旧 snapshot 缺少 `runtimeStoragePath` 时，不会隐式 attach 到当前 multi-root workspace storage；系统必须迁移或明确降级为历史恢复。
 - 在 multi-root workspace 中，空 root 分组没有节点时也会被全局 fit view 纳入；右下角 MiniMap 能看出多个 root 分组的相对布局。
@@ -137,7 +137,7 @@ related_plans:
 
 2026-09-16 架构审核确认：画板内容按 root 归属，但新建 Agent / Terminal 的 Supervisor 默认按创建窗口的 workspace storage slot 归属。当时功能范围第 16、17 项及 slot 验收条目明确保留具体 slot；本问题是修订设计决策，不将当前实现倒写成违反当时规格的 bug。2026-10-07 已修订新建目标，旧 slot 恢复条目继续有效，代码尚未改造。
 
-多根 workspace 是各 root 画板的组合视图，同 root 单独打开或作为多根子画板打开时都访问自己的 runtime。正式方案见 `docs/design-docs/runtime-root-ownership.md`：执行端用户级存储按环境运行实例/root/generation 分开，保留现有路径型 root 身份，不按 cwd、显示名或窗口配置重定归属。单根和多根创建路径一起调整；双窗口启动须唯一，已有 owner 未确认不可连时不能另起第二个。关闭窗口、移除但保留画板只 detach，显式 stop/clear 仍只作用于选中绑定。真正无 root 的窗口保留显式 slot 例外；未知环境或 root 不能用该例外兜底。方案已选定，产品验证未开始。
+多根 workspace 是各 root 画板的组合视图，同 root 单独打开或作为多根子画板打开时都访问自己的 runtime。正式方案见 `docs/design-docs/runtime-root-ownership.md`：执行端用户级存储按环境运行实例/root/generation 分开，保留现有路径型 root 身份，不按 cwd、显示名或窗口配置重定归属。单根和多根创建路径一起调整；双窗口启动须唯一，已有 owner 未确认不可连时不能另起第二个。关闭窗口、移除但保留画板只 detach，显式 stop/clear 仍只作用于选中绑定。真正无 root 的窗口保留显式 slot 例外；未知环境或 root 不能用该例外兜底。当前实现已接线，三平台安装、Codex重连、Linux双窗口与Remote身份路径已通过，剩余有限场景仍在验收中；不提前宣称整体完成。
 
 旧 live session 继续按完整 metadata 连接原 Supervisor，新会话进入新 root 归属。旧 Supervisor 需待其旧会话及相关引用/RPC 收敛后退役，不能改写地址后将旧进程视为已迁移。原 slot 恢复验收继续适用于这些旧会话。后续必须增加“在不同窗口分别新建、仍归属同 root runtime”的验收，现有“从另一个窗口 attach 已有会话”不能代替它。详细建议场景见 `docs/design-docs/webview-host-supervisor-architecture-review.md` 第 6 节；均为待实现、待执行，不计入本规格已通过的验证。
 

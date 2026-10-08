@@ -26,7 +26,7 @@ const configureSource = launcherAst.statements.find(node => ts.isFunctionDeclara
   node.name.text === 'configureWindowsReloadWorkspace').getText(launcherAst);
 const configureFor = (platform, filesystem = fs, paths = path) => new Function('assert', 'fs', 'path', 'process',
   `${configureSource}\nreturn configureWindowsReloadWorkspace;`)(assert, filesystem, paths, { platform });
-const launchFunctions = ['selectAgentReloadProvider', 'buildAgentReloadLaunchArguments'];
+const launchFunctions = ['selectAgentReloadProvider', 'buildAgentReloadLaunchArguments', 'assertRootWindowPairSelection'];
 const launchApi = new Function('assert', 'path', 'cliHelpers', launcherAst.statements.filter(node =>
   ts.isFunctionDeclaration(node) && launchFunctions.includes(node.name.text)).map(node => node.getText(launcherAst)).join('\n') +
   `\nreturn { ${launchFunctions.join(',')} };`)(assert, path, cliHelpers);
@@ -49,6 +49,292 @@ test('reload provider selection preserves Codex default and rejects unrecognized
   assert.equal(launchApi.selectAgentReloadProvider(), 'codex');
   assert.equal(launchApi.selectAgentReloadProvider('claude'), 'claude');
   for (const provider of ['', 'all', 'other']) assert.throws(() => launchApi.selectAgentReloadProvider(provider));
+});
+
+test('the explicit root window pair is fixed to Linux x64 Codex and leaves default reload selection unchanged', () => {
+  const selected = { 'root-window-pair': true, 'root-owner': true, provider: 'codex' };
+  launchApi.assertRootWindowPairSelection(selected, 'linux', 'x64');
+  for (const [platform, arch, changes] of [['darwin', 'arm64', {}], ['win32', 'x64', {}], ['linux', 'arm64', {}],
+    ['linux', 'x64', { provider: 'claude' }], ['linux', 'x64', { 'root-owner': false }]]) {
+    assert.throws(() => launchApi.assertRootWindowPairSelection({ ...selected, ...changes }, platform, arch));
+    launchApi.assertRootWindowPairSelection({ ...selected, ...changes, 'root-window-pair': false }, platform, arch);
+  }
+  assert.match(launcherSource, /extensionDevelopmentPath: rootWindowPair \? \[\] : driverRoot/);
+  assert(launcherSource.indexOf("name: 'agent-runtime-reload-driver'") < launcherSource.indexOf('await installCandidateVsix('));
+});
+
+test('fixed pair topology rejects attach-only, changed owner and replacement startup identities', () => {
+  const resource = (pid, role) => ({ pid, ppid: 20, startTicks: String(pid * 10), executable: `/fixture/${role}`, state: 'S', role });
+  const multi = { host: resource(10, 'host'), binding: { runtimeOwner: { root: 'A' }, runtimeBackend: 'legacy-detached',
+    runtimeStoragePath: '/private/storage', runtimeGuarantee: 'best-effort', runtimeSessionId: 'multi' },
+    supervisor: resource(20, 'supervisor'), reader: { sessionId: 'multi', authorityId: 'multi-authority' },
+    resources: [resource(30, 'provider'), resource(40, 'cli')] };
+  const single = { ...structuredClone(multi), host: resource(11, 'host'),
+    binding: { ...structuredClone(multi.binding), runtimeSessionId: 'single' },
+    reader: { sessionId: 'single', authorityId: 'single-authority' }, resources: [resource(31, 'provider'), resource(41, 'cli')] };
+  const api = compile(['assertPairTopology'], { assert, sameIdentity: contract.sameIdentity, sameLiveIdentity: contract.sameLiveIdentity });
+  api.assertPairTopology(multi, single);
+  for (const mutate of [value => { value.host = multi.host; }, value => { value.binding.runtimeOwner = null; },
+    value => { value.binding.runtimeStoragePath += '-other'; }, value => { value.binding.runtimeBackend = 'systemd-user'; },
+    value => { value.binding.runtimeGuarantee = 'strong'; }, value => { value.binding.runtimeSessionId = multi.binding.runtimeSessionId; },
+    value => { value.supervisor.startTicks += '1'; }, value => { value.reader.authorityId = multi.reader.authorityId; },
+    value => { value.resources[0] = multi.resources[0]; }, value => { value.resources[1] = multi.resources[1]; }]) {
+    const changed = structuredClone(single); mutate(changed);
+    assert.throws(() => api.assertPairTopology(multi, changed));
+  }
+});
+
+test('pair resource separation excludes only the recorded original peer identities', () => {
+  const f = fixture({ platform: 'linux' });
+  const peer = resources(f.entries).map(entry => ({ ...entry, pid: entry.pid + 100, startTicks: `${entry.pid + 100}00` }));
+  f.entries = [...f.entries, ...peer];
+  const api = compile(resourceFunctions, f.context);
+  assert.throws(() => api.assertOriginalResourcesLive(f.original));
+  assert.deepEqual(api.assertOriginalResourcesLive(f.original, peer), f.original);
+  f.entries = f.entries.map(entry => entry.pid === peer[0].pid ? { ...entry, startTicks: 'replaced' } : entry);
+  assert.throws(() => api.assertOriginalResourcesLive(f.original, peer));
+});
+
+test('pair uses original session identity across composed node IDs and presentation reader remounts', async () => {
+  for (const changed of [undefined, 'binding', 'authority', 'process']) {
+    const binding = { runtimeOwner: { root: 'A' }, runtimeBackend: 'legacy-detached', runtimeStoragePath: '/private/storage',
+      runtimeSessionId: 'session', runtimeGuarantee: 'best-effort' };
+    const supervisor = { pid: 20, startTicks: '200', executable: '/code', state: 'S' };
+    const cli = { pid: 30, startTicks: '300', executable: '/codex', state: 'S' };
+    const expected = { nodeId: 'uncomposed-id', binding, supervisor, reader: { authorityId: 'authority', readId: 'old' }, resources: [cli] };
+    const current = structuredClone(binding);
+    if (changed === 'binding') current.runtimeStoragePath += '-other';
+    const state = { state: { nodes: [{ id: 'composed-id', kind: 'agent', position: { x: 0, y: 0 }, metadata: {
+      agent: { ...current, liveSession: true, attachmentState: 'attached-live' } } }] } };
+    const api = compile(['pairNode', 'pairCapture'], { assert, currentNodeId: undefined, surface: 'editor',
+      process: { pid: 10 }, snapshot: async () => state, command: async () => {},
+      poll: async (_label, get, accept) => { const value = await get(); assert(accept(value)); return value; },
+      vscode: { commands: { executeCommand: async () => {} } }, runtimePaths: () => ({ socketPath: '/socket' }),
+      rpc: async () => ({ pid: 20 }), assertRuntimeOwnerBinding: async () => {}, sameLiveIdentity: contract.sameLiveIdentity,
+      readIdentity: async pid => pid === 20 ? supervisor : pid === 30 ? { ...cli, startTicks: changed === 'process' ? 'replaced' : '300' }
+        : { pid: 10 },
+      mountedReader: async id => { assert.equal(id, 'composed-id'); return { sessionId: 'session',
+        authorityId: changed === 'authority' ? 'changed' : 'authority', readId: 'new' }; }
+    });
+    if (changed) await assert.rejects(api.pairCapture('session', expected));
+    else assert.equal((await api.pairCapture('session', expected)).reader.readId, 'new');
+  }
+});
+
+test('PaneGallery round trip observes actual group frames and rejects a replacement execution', async () => {
+  for (const starts of [[], [{ kind: 'execution/started' }]]) {
+    let mode = 'rootGroups';
+    const updates = [], captures = [], cleared = [];
+    const subject = { binding: { runtimeSessionId: 'original' } };
+    const api = compile(['pairSwitchGallery'], { assert,
+      snapshot: async () => ({ state: { groups: ['A', 'B'].map(id => ({ id, role: 'workspace-root' })) } }),
+      vscode: { ConfigurationTarget: { Workspace: 2 }, workspace: { getConfiguration: section => {
+        assert.equal(section, 'devSessionCanvas'); return { update: async (key, value, target) => {
+          assert.equal(key, 'canvas.multiRootPresentationMode'); assert.equal(target, 2); mode = value; updates.push(value);
+        } }; } } },
+      command: async name => {
+        if (name.startsWith('clear')) { cleared.push(name); return; }
+        if (name === 'getDiagnosticEvents') return starts;
+        return [{ type: 'host/stateUpdated', payload: { runtime: { multiRootPresentationMode: mode } } }];
+      },
+      probe: async () => ({ groups: mode === 'paneGallery' ? [] : ['A', 'B'].map(groupId => ({ groupId })) }),
+      poll: async (_label, get, accept) => { const value = await get(); assert(accept(value)); return value; },
+      pairCapture: async (id, expected) => { assert.equal(expected, subject); captures.push(id); return { binding: subject.binding, reader: {} }; }
+    });
+    if (starts.length) await assert.rejects(api.pairSwitchGallery(subject));
+    else assert.deepEqual((await api.pairSwitchGallery(subject)).map(value => value.mode), ['paneGallery', 'rootGroups']);
+    assert.deepEqual(updates, ['paneGallery', 'rootGroups']);
+    assert.deepEqual(captures, ['original', 'original']);
+    assert.deepEqual(cleared, ['clearDiagnosticEvents', 'clearHostMessages', 'clearHostMessages']);
+  }
+});
+
+test('pair Agent creation targets the actual composed root and archives ownership before the first model turn', async () => {
+  const events = [], writes = new Map();
+  const group = { id: 'actual-A', role: 'workspace-root', workspaceRootPath: '/private/A', position: { x: 10, y: 20 } };
+  const old = { id: 'old', kind: 'agent', metadata: { agent: { liveSession: true, runtimeSessionId: 'old-session' } } };
+  const created = { id: 'new', kind: 'agent', metadata: { agent: { liveSession: true, persistenceMode: 'live-runtime', runtimeSessionId: 'new-session' } } };
+  const provider = { pid: 30, ppid: 20, startTicks: '300', state: 'S', executable: '/provider', role: 'provider' };
+  const cli = { pid: 40, ppid: 30, startTicks: '400', state: 'S', executable: '/codex', role: 'cli' };
+  const originals = [provider, cli], excluded = [{ pid: 50 }];
+  let dispatched = false;
+  const api = compile(['pairCreate'], { assert, structuredClone, surface: 'editor', control: { nonce: 'nonce' },
+    config: { provider: 'codex', workspacePath: '/private/A', cli: { entry: '/private/codex' }, launchArguments: ['--no-daemon'] },
+    snapshot: async () => ({ state: { nodes: dispatched ? [old, created] : [old], groups: [group] } }),
+    command: async (name, ...args) => {
+      events.push(name);
+      if (name === 'dispatchWebviewMessage') {
+        const message = args[0]; assert.equal(message.type, 'webview/createDemoNode');
+        assert.deepEqual(message.payload, { kind: 'agent', agentProvider: 'codex', agentLaunchPreset: 'custom',
+          agentCustomLaunchCommand: "'/private/codex' '--no-daemon'", cwd: '/private/A', targetGroupId: 'actual-A',
+          preferredPosition: { x: 50, y: 60 } });
+        dispatched = true;
+      }
+      if (name === 'flushPersistedState') return { exists: true };
+    },
+    poll: async (_label, get, accept) => { const value = await get(); assert(accept(value)); return value; },
+    pairCapture: async (sessionId, expected, role) => {
+      assert.equal(sessionId, 'new-session'); assert.equal(expected, undefined); assert.equal(role, 'multi');
+      events.push('observe-supervisor', 'multi-owner');
+      return { binding: { runtimeSessionId: sessionId }, supervisor: { pid: 20 } };
+    },
+    observer: { addRoot: async () => events.push('observe-supervisor'), sample: async () => {} },
+    waitForAgentReady: async () => events.push('ready'),
+    assertOriginalResourcesLive: (expected, prior) => { assert.equal(expected, undefined); assert.equal(prior, excluded); return originals; },
+    readIdentity: async pid => { assert.equal(pid, 30); return provider; }, sameLiveIdentity: contract.sameLiveIdentity,
+    pairPublish: async (name, value) => { events.push(name); writes.set(name, structuredClone(value)); },
+    pairTurn: async () => { events.push('model-turn'); return { applied: true }; }
+  });
+  const result = await api.pairCreate('multi', excluded);
+  assert(events.indexOf('multi-owner') < events.indexOf('ready'));
+  assert(events.indexOf('multi-ownership') < events.indexOf('model-turn'));
+  assert(events.indexOf('flushPersistedState') < events.indexOf('multi-created'));
+  originals[0].startTicks = 'mutated-observer-entry';
+  assert.equal(result.resources[0].startTicks, '300', 'Keep immutable original identities while the observer updates.');
+  assert.equal(writes.get('multi-created').interaction.applied, true);
+});
+
+test('pair archives the checked owner before reader mounting or CLI readiness can fail', async () => {
+  const events = [];
+  const binding = { runtimeOwner: { root: 'A' }, runtimeBackend: 'legacy-detached', runtimeStoragePath: '/private/storage',
+    runtimeSessionId: 'session', runtimeGuarantee: 'best-effort' };
+  const supervisor = { pid: 20, startTicks: '200', executable: '/code', state: 'S' };
+  const state = { state: { nodes: [{ id: 'node', kind: 'agent', position: { x: 0, y: 0 }, metadata: {
+    agent: { ...binding, liveSession: true, attachmentState: 'attached-live' } } }] } };
+  const api = compile(['pairNode', 'pairCapture'], { assert, currentNodeId: undefined, surface: 'editor',
+    snapshot: async () => state, command: async () => {}, vscode: { commands: { executeCommand: async () => {} } },
+    poll: async (_label, get, accept) => { const value = await get(); assert(accept(value)); return value; },
+    runtimePaths: () => ({ socketPath: '/socket' }), rpc: async () => ({ pid: 20 }),
+    assertRuntimeOwnerBinding: async () => events.push('checked-owner'), readIdentity: async () => supervisor,
+    observer: { addRoot: async () => events.push('observe-supervisor') },
+    pairPublish: async (name, receipt) => { assert.equal(name, 'multi-owner'); assert.deepEqual(receipt, { binding, supervisor }); events.push('receipt'); },
+    mountedReader: async () => { events.push('reader'); throw new Error('reader mount failed'); }
+  });
+  await assert.rejects(api.pairCapture('session', undefined, 'multi'), /reader mount failed/);
+  assert.deepEqual(events, ['checked-owner', 'observe-supervisor', 'receipt', 'reader']);
+});
+
+test('pair stop requires the current reader applied settlement and original resource exits', async () => {
+  for (const changed of [undefined, 'readId', 'sessionId', 'outcome', 'binding', 'history', 'live', 'resources']) {
+    const expected = { binding: { runtimeSessionId: 'session' }, resources: ['original'] };
+    const detail = { sessionId: 'session', readId: 'current-reader', outcome: { kind: 'applied' } };
+    if (changed === 'readId') detail.readId = 'old-reader';
+    if (changed === 'sessionId') detail.sessionId = 'other-session';
+    if (changed === 'outcome') detail.outcome.kind = 'detached';
+    let stopped = false;
+    const api = compile(['pairStop'], { assert, surface: 'editor',
+      pairCapture: async (id, subject) => {
+        assert.equal(id, 'session'); assert.equal(subject, expected);
+        return { nodeId: 'current-node', binding: expected.binding, reader: { readId: 'current-reader' } };
+      },
+      command: async (name, message) => {
+        if (name === 'dispatchWebviewMessage') {
+          assert.deepEqual(message, { type: 'webview/stopExecutionSession', payload: { kind: 'agent', nodeId: 'current-node' } });
+          stopped = true; return;
+        }
+        if (name === 'getDiagnosticEvents') return [{ kind: 'runtime/terminalReadSettled', detail }];
+        return { bindings: changed === 'binding' ? [{ nodeId: 'current-node' }] : [] };
+      },
+      snapshot: async () => ({ state: { nodes: [{ id: 'current-node', status: 'stopped', metadata: {
+        agent: { liveSession: changed === 'live', terminalHistoryDiscarded: changed !== 'history' } } }] } }),
+      nodeOf: (state, id) => state.state.nodes.find(node => node.id === id),
+      poll: async (_label, get, accept) => { const value = await get(); assert(accept(value)); return value; },
+      originalResourcesExited: async originals => { assert.equal(originals, expected.resources); return { pass: changed !== 'resources' }; }
+    });
+    if (changed) await assert.rejects(api.pairStop(expected));
+    else assert.equal((await api.pairStop(expected)).pass, true);
+    assert(stopped);
+  }
+});
+
+test('pair fallback signals only recorded live original identities under its private storage', async () => {
+  const body = launcherAst.statements.find(node => ts.isFunctionDeclaration(node) &&
+    node.name.text === 'cleanupRootWindowPair').getText(launcherAst);
+  for (const outside of [false, true]) {
+    const resource = (pid, role) => ({ pid, startTicks: String(pid * 10), executable: `/fixture/${role}`, state: 'S', role });
+    const ui = resource(10, 'ui'), host = resource(11, 'host'), supervisor = resource(20, 'supervisor');
+    const cli = resource(30, 'cli'), provider = resource(40, 'provider');
+    const current = new Map([ui, host, supervisor, provider, { ...cli, startTicks: 'replacement' }].map(value => [value.pid, value]));
+    const killed = [], written = new Map();
+    const binding = { runtimeStoragePath: outside ? '/private/elsewhere' : '/private/profile/User/globalStorage/root' };
+    const receipts = new Map([['pair-multi-activation.json', { host }], ['pair-multi-owner.json', { binding, supervisor }],
+      ['pair-multi-ownership.json', { binding, supervisor, resources: [cli, provider] }]]);
+    const identities = { ...contract, readIdentity: async pid => current.get(pid),
+      signalOwned: (original, signal) => contract.signalOwned(original, signal, {
+        read: async pid => current.get(pid), kill: pid => { killed.push(pid); current.delete(pid); }
+      }) };
+    const filesystem = { readFile: async file => {
+      const receipt = receipts.get(path.basename(file));
+      if (!receipt) throw Object.assign(new Error('missing receipt'), { code: 'ENOENT' });
+      return JSON.stringify(receipt);
+    }, writeFile: async (file, data) => written.set(path.basename(file), JSON.parse(data)) };
+    const cleanup = new Function('assert', 'fs', 'path', 'identity', 'setTimeout', `${body}\nreturn cleanupRootWindowPair;`)(
+      assert, filesystem, path, identities, callback => { callback(); });
+    const run = cleanup({ artifactsDir: '/private/artifacts', userDataDir: '/private/profile' }, ui);
+    if (outside) { await assert.rejects(run); assert.deepEqual(killed, []); }
+    else {
+      await run;
+      assert.deepEqual(killed, [10, 11, 20, 40]);
+      assert(!killed.includes(cli.pid), 'PID reuse cannot authorize a signal.');
+      const receipt = written.get('pair-fallback.json');
+      assert.equal(receipt.pass, false);
+      assert.deepEqual(receipt.missing, ['single-activation', 'single-owner', 'single-ownership']);
+      assert.deepEqual(receipt.remaining, []);
+    }
+  }
+});
+
+test('the fixed pair creates in multi first and stops both original sessions only after the multi Host exits', async () => {
+  for (const role of ['multi', 'single']) {
+    const events = [], records = new Map();
+    const multi = { binding: { runtimeSessionId: 'multi' }, supervisor: { pid: 20 }, host: { pid: 11 }, reader: { readId: 'old' }, resources: ['original'] };
+    const single = { binding: { runtimeSessionId: 'single' }, supervisor: { pid: 20 }, host: { pid: 12 } };
+    const ui = { pid: 10, startTicks: '100', executable: '/code', state: 'S' };
+    const context = { assert, path, phase: '', currentNodeId: '', observer: { addRoot: async () => {}, sample: async () => {} },
+      config: { rootOwner: true, provider: 'codex', rootWindowPair: true, multiWorkspace: '/private/multi.code-workspace',
+        workspacePath: '/private/A', peerRoot: '/private/B', installedVsixExpectation: '/private/expected.json' },
+      control: { nonce: 'nonce' }, process: { platform: 'linux', pid: role === 'multi' ? 11 : 12 }, surface: 'editor',
+      vscode: { workspace: { workspaceFile: role === 'multi' ? { fsPath: '/private/multi.code-workspace' } : undefined,
+        workspaceFolders: (role === 'multi' ? ['/private/A', '/private/B'] : ['/private/A']).map(fsPath => ({ uri: { fsPath } })) },
+      Uri: { file: value => value }, commands: { executeCommand: async (name, target) => {
+        events.push(name); if (name === 'vscode.openFolder') assert.equal(target, '/private/A');
+      } } },
+      readIdentity: async pid => pid === 10 ? ui : { pid, ppid: 10, startTicks: String(pid * 10), executable: '/code', state: 'S' },
+      sameLiveIdentity: contract.sameLiveIdentity, exitedIdentity: () => true,
+      pairWait: async name => { events.push(`wait:${name}`); return name === 'launcher' ? { ui }
+        : name === 'multi-created' ? multi : name === 'single-created' ? single : { pass: true }; },
+      pairPublish: async (name, value) => { events.push(`publish:${name}`); records.set(name, value); },
+      activateVisibleExtension: async () => ({}), waitForCommand: async () => {}, captureInstalledExtensionReceipt: async () => ({ hash: 'fixed' }),
+      startProcessObserver: async () => events.push('observe'), releaseProcessObserver: async () => events.push('release'),
+      snapshot: async () => ({ state: { nodes: [] } }),
+      pairCreate: async (actualRole, excluded) => { assert.equal(actualRole, role); events.push(`create:${actualRole}`);
+        assert.equal(excluded, role === 'single' ? multi.resources : undefined); return role === 'multi' ? multi : single; },
+      assertPairTopology: (first, second) => { assert.equal(first, multi); assert.equal(second, single); },
+      pairSwitchGallery: async value => { assert.equal(value, multi); events.push('gallery'); return []; },
+      pairTurn: async value => { events.push(`turn:${value.binding.runtimeSessionId}`); return { applied: true }; },
+      pairCapture: async () => ({ reader: { readId: 'single-reader' } }), assertOriginalResourcesLive: () => {},
+      poll: async (label, get, accept) => { events.push(label); const value = await get(); assert(accept(value)); return value; },
+      pairStop: async value => { events.push(`stop:${value.binding.runtimeSessionId}`); return { pass: true }; },
+      command: async name => { events.push(name); return name === 'flushPersistedState' ? { exists: true }
+        : { bindings: [], pendingRuntimeSupervisorOperationCount: 0 }; },
+      runtimePaths: () => ({ registryPath: '/private/registry.json' }), fs: { readFile: async () => '{"sessions":[]}' }
+    };
+    await compile(['runRootWindowPair'], context).runRootWindowPair();
+    assert.equal(records.get(`${role}-finished`).pass, true);
+    assert(!events.includes('resetState'));
+    if (role === 'multi') {
+      assert(events.indexOf('create:multi') < events.indexOf('vscode.openFolder'));
+      assert(events.indexOf('wait:single-created') < events.indexOf('gallery'));
+      assert(events.indexOf('gallery') < events.indexOf('turn:multi'));
+      assert(!events.some(value => value.startsWith('stop:')));
+    } else {
+      assert(events.indexOf('wait:multi-created') < events.indexOf('create:single'));
+      assert(events.indexOf('pair original multi Host exited') < events.indexOf('flushPersistedState'));
+      assert(events.indexOf('flushPersistedState') < events.indexOf('stop:multi'));
+      assert.equal(records.get('cleanup').pass, true);
+    }
+    assert(events.indexOf('release') < events.indexOf('workbench.action.closeWindow'));
+  }
 });
 
 test('Claude reload uses the existing isolated tool-free interactive launch with one fixed session identity', () => {
@@ -199,6 +485,27 @@ test('Claude readiness requires its model and composer and confirms known onboar
   for (const text of ['Select login method:', 'Not logged in', 'Invalid API key']) {
     const rejected = compile(['hasLoadedAgentComposer', 'waitForAgentReady'], { ...context, probe: async () => text });
     await assert.rejects(rejected.waitForAgentReady(), /authenticated surface/);
+  }
+});
+
+test('Claude security notes require their exact continuation prompt and dismissal before a model turn', async () => {
+  const security = 'Welcome to Claude Code v2.1.280\nSecurity notes:\n1. Claude can make mistakes.\nPress Enter to continue\u2026';
+  const ready = 'Claude Code v2.1.280\ndeepseek-flash\n\u276f Try "explain this code"';
+  for (const outcome of ['dismissed', 'still-visible', 'unrecognized']) {
+    let clock = 0, cursor = 0;
+    const inputs = [];
+    const screens = [security, security, ready, ready];
+    const api = compile(['hasLoadedAgentComposer', 'waitForAgentReady'], {
+      assert, config: { provider: 'claude' }, process: { platform: 'linux' }, stripVt: value => value,
+      control: { deadlineAt: 32000 }, currentNodeId: 'node', Date: { now: () => clock },
+      sleep: async ms => { clock += ms; }, textOf: value => value,
+      probe: async () => outcome === 'still-visible' ? security : outcome === 'unrecognized'
+        ? 'Unknown prompt\nPress Enter to continue\u2026' : screens[cursor++],
+      dom: async action => inputs.push(action)
+    });
+    if (outcome === 'dismissed') { await api.waitForAgentReady(); assert.equal(cursor, screens.length); }
+    else await assert.rejects(api.waitForAgentReady(), /interactive surface/);
+    assert.deepEqual(inputs, outcome === 'unrecognized' ? [] : [{ kind: 'sendExecutionInput', nodeId: 'node', data: '\r' }]);
   }
 });
 

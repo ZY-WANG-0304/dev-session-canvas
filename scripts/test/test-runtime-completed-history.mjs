@@ -109,6 +109,7 @@ try {
   await verifyRemoteCompletion();
   await verifyCompletedBindingOwner();
   await verifyReaderClientRetirement();
+  await verifyReaderClientRetirement(true);
   console.log('runtime completed history tests passed (production handoff, save failure, migration, lifecycle and transient drain)');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
@@ -401,7 +402,7 @@ async function verifyRemoteCompletion() {
   }
 }
 
-async function verifyReaderClientRetirement() {
+async function verifyReaderClientRetirement(withRootOwner = false) {
   const { host } = harness('terminal', makeStream('reader'));
   host.state = { nodes: [] };
   host.agentSessions = new Map();
@@ -428,6 +429,44 @@ async function verifyReaderClientRetirement() {
   host.runtimeSupervisorClients = new Map([['old-client', client]]);
   const retire = () => Harness.prototype.retireLegacyRuntimeSupervisorClientIfUnused.call(host,
     { kind: 'legacy-detached' }, client);
+  let rootClient, rootNode, rootSession;
+  if (withRootOwner) {
+    const profile = { linux: 'linux-owner-v1-candidate', darwin: 'macos-owner-v1-candidate',
+      win32: 'windows-owner-v1-candidate' }[process.platform];
+    const owner = createRuntimeOwnerDescriptor({ environmentKey: 'a'.repeat(64), userStorageScopeKey: 'b'.repeat(64),
+      rootPath: path.join(tempDir, 'root-c'), generation: resolveRootRuntimeSupervisorGeneration(profile) });
+    const storage = resolveRuntimeRootOwnerBaseStoragePath(path.join(tempDir, 'global-storage'), owner);
+    rootNode = { id: 'root-c', kind: 'terminal', metadata: { terminal: {
+      runtimeBackend: 'legacy-detached', runtimeStoragePath: storage, runtimeOwner: owner,
+      runtimeSessionId: 'root-session', persistenceMode: 'live-runtime', attachmentState: 'attached-live'
+    } } };
+    rootSession = { owner: 'supervisor', runtimeBackend: 'legacy-detached', runtimeStoragePath: storage,
+      runtimeOwner: owner, runtimeSessionId: 'root-session' };
+    rootClient = { hasPendingRequests: () => false,
+      dispose: () => assert.fail('Old slot retirement cannot dispose the current root owner client.') };
+    const rootBackend = { kind: 'legacy-detached', runtimeStoragePath: storage };
+    host.getRuntimeStoragePathFromBackend = backend => backend.runtimeStoragePath ?? '/old-generation';
+    host.buildRuntimeSupervisorClientKey = backend => backend.runtimeStoragePath === storage ? 'root-client' : 'old-client';
+    host.getMultiRootWorkspaceFoldersForComposition = () => [{ path: owner.root.normalizedPath }];
+    host.preferredRootRuntimeBackends.set(storage, { owner, kind: rootBackend.kind });
+    host.getPersistedRuntimeStoragePath = metadata => metadata.runtimeStoragePath;
+    host.runtimeSupervisorClients.set('root-client', rootClient);
+    host.state.nodes.push(rootNode);
+    host.terminalSessions.set(rootNode.id, rootSession);
+    host.terminalSessions.set('old-root-b', { owner: 'supervisor', runtimeBackend: 'legacy-detached',
+      runtimeStoragePath: '/old-generation', runtimeSessionId: 'old-b-session' });
+    retire();
+    assert.equal(disposed, false, 'An old slot session in root B pins the client after root A is removed.');
+    host.terminalSessions.delete('old-root-b');
+    host.state.nodes.push({ id: 'old-root-b', kind: 'terminal', metadata: { terminal: {
+      runtimeBackend: 'legacy-detached', runtimeStoragePath: '/old-generation',
+      runtimeSessionId: 'old-b-session', persistenceMode: 'live-runtime', attachmentState: 'reattaching'
+    } } });
+    retire();
+    assert.equal(disposed, false, 'A pending old-slot reattach still pins only its original client.');
+    host.state.nodes = [rootNode];
+    Harness.prototype.retireLegacyRuntimeSupervisorClientIfUnused.call(host, rootBackend, rootClient);
+  }
   await host.terminalReadRelay.open('editor:terminal:node', client, 'session', 'authority', 'editor', retire);
   retire();
   assert.equal(disposed, false, 'an existing terminal reader pins the old generation client');
@@ -437,5 +476,10 @@ async function verifyReaderClientRetirement() {
   finishClose();
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(disposed, true);
-  assert.equal(host.runtimeSupervisorClients.size, 0);
+  assert.equal(host.runtimeSupervisorClients.size, withRootOwner ? 1 : 0);
+  if (withRootOwner) {
+    assert.strictEqual(host.runtimeSupervisorClients.get('root-client'), rootClient);
+    assert.strictEqual(host.state.nodes[0], rootNode);
+    assert.strictEqual(host.terminalSessions.get(rootNode.id), rootSession);
+  }
 }
