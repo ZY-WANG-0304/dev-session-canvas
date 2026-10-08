@@ -204,6 +204,8 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 P2 独立审查修复恢复 bucket 等连接期间换绑定的竞态：在 await 前捕获原完整 binding，成功 attach 和失败降级均需核对；24 个受控组合先红后绿。`4be42817` / run `37709897962` Linux 的 systemd 范围 probe 修后已 available，但实际 owner 提交仍 unconfirmed，原目录/unit保留，不将范围通过代证启动成功。
 
+本机 systemd 249 另直接确认共享 renderer 将 WorkingDirectory 当作 ExecStart 参数加引号会令 unit fatal；已改 scalar path，保留指令自身转义，启动参数29项与协调24项通过。仍待原生 manager 新结果，不追认旧 run 通过。P2 已同步 main 的0.26.0发布；正常 build/VSIX 打包通过，不代证安装验收。
+
 原生协调 run `37709150155` / `a5f68f17` 的 macOS、Windows 全组通过，Linux 的同 owner 汇聚、真实 Host helper、intent 前取消与提交后崩溃/迟到 ready 已通过，systemd probe 失败并明确报 `Cannot set property JobTimeoutUSec, or unknown property`。因此只移除不支持的 job 属性，保留服务阶段与调用预算，40 项受控 systemd 判定通过，原生修后结果仍待验证。早先 run `37707854830` 的 IPC close 失败和 run `37708504120` 的测试导出缺失原结果保留；后者为夹具缺陷，不扩写为产品缺陷。
 
 2026-10-08 开始 P1 身份/环境/握手基础接入，实施计划见 `docs/exec-plans/active/runtime-root-ownership.md`。仅增加明确的新 root generation，原 current-state generation 与 Manager 默认创建路由不变。原绑定不读新 owner 记录、不被静默升级；新 generation 必须核对完整身份，基础阶段只允许连接，不借旧的自动启动流程绕过尚未接入的启动准备排他。
