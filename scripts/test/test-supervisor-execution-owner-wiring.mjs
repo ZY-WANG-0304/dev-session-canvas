@@ -434,6 +434,61 @@ try {
     assert.equal(f.server.executionOwner.snapshot().pending, 0);
   });
 
+  for (const rejection of ['closed', 'capacity']) {
+    await check(`${rejection} admission reports no acquisition before journal or provider preparation`, async () => {
+      const f = fixture(['execution-lifecycle-v1'], { admissionLimits: { executions: 1, starting: 1 } });
+      const original = TerminalSessionJournal.create;
+      let journalCreates = 0;
+      TerminalSessionJournal.create = async (...args) => { journalCreates++; return original(...args); };
+      try {
+        if (rejection === 'closed') f.server.executionOwner.closeAdmission();
+        else f.server.executionOwner.reserve('existing-reservation');
+        const before = f.server.executionOwner.snapshot().pending;
+        const response = await request(f, f.socket, 'createSession', params('admission-rejected'));
+        assert.equal(response.ok, false);
+        assert.deepEqual(response.error.createSessionOutcome, {
+          kind: 'not-acquired', sessionId: 'admission-rejected', sessionKind: 'terminal'
+        });
+        assert.equal(journalCreates, 0);
+        assert.equal(f.transports.length, 0);
+        assert.equal(f.server.sessions.size, 0);
+        assert.equal(f.server.executionOwner.snapshot().pending, before);
+      } finally { TerminalSessionJournal.create = original; }
+    });
+  }
+
+  await check('duplicate existing session cannot claim no acquisition even after admission closes', async () => {
+    const f = fixture();
+    const { session } = await f.create();
+    f.server.executionOwner.closeAdmission();
+    const response = await request(f, f.socket, 'createSession', params(session.sessionId));
+    assert.equal(response.ok, false);
+    assert.equal(response.error.createSessionOutcome, undefined);
+    assert.strictEqual(f.server.sessions.get(session.sessionId), session);
+  });
+
+  await check('unconfirmed start retains the acquired control resource and sends no no-acquisition result', async () => {
+    const f = fixture(['execution-lifecycle-v1'], { holdReady: true });
+    const response = request(f, f.socket, 'createSession', params('unknown-start'));
+    await f.until(() => f.transports.length === 1, 'original start entered');
+    await f.advance(100);
+    const rejected = await response;
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.error.createSessionOutcome, undefined);
+    assert.ok(f.server.sessions.has('unknown-start'));
+    assert.equal(f.server.executionOwner.snapshot().pending, 1);
+  });
+
+  await check('snapshot failure after successful acquisition does not authorize creation cleanup', async () => {
+    const f = fixture();
+    f.server.toAttachSnapshot = async () => { throw new Error('snapshot failed after start'); };
+    const response = await request(f, f.socket, 'createSession', params('snapshot-failed'));
+    assert.equal(response.ok, false);
+    assert.equal(response.error.createSessionOutcome, undefined);
+    assert.ok(f.server.sessions.has('snapshot-failed'));
+    assert.equal(f.server.executionOwner.snapshot().pending, 1);
+  });
+
   await check('shutdown reserves before journal await and cancels delayed start after cleanup', async () => {
     const f = fixture();
     const entered = deferred();
@@ -443,10 +498,18 @@ try {
     try {
       const sessionId = '40000000-0000-4000-8000-000000000002';
       const creating = f.server.createSession(f.socket, params(sessionId));
-      const rejected = assert.rejects(creating, /admission is closed/u);
+      const rejected = assert.rejects(creating, error => {
+        assert.match(error.message, /admission is closed/u);
+        assert.deepEqual(error.createSessionOutcome, { kind: 'not-acquired', sessionId, sessionKind: 'terminal' });
+        return true;
+      });
       await entered.promise;
       assert.equal(f.server.executionOwner.snapshot().pending, 1);
-      await assert.rejects(f.server.createSession(f.socket, params(sessionId)), /reserved/u);
+      await assert.rejects(f.server.createSession(f.socket, params(sessionId)), error => {
+        assert.match(error.message, /reserved/u);
+        assert.equal(error.createSessionOutcome, undefined);
+        return true;
+      });
       const closing = f.server.prepareForShutdown('test shutdown');
       assert.equal(f.server.executionOwner.snapshot().closing, true);
       assert.equal(f.server.executionOwner.snapshot().pending, 1);
@@ -465,7 +528,11 @@ try {
     TerminalSessionJournal.create = async () => { throw new Error('partial journal creation'); };
     try {
       await assert.rejects(f.server.createSession(f.socket,
-        params('40000000-0000-4000-8000-000000000003')), /partial journal/u);
+        params('40000000-0000-4000-8000-000000000003')), error => {
+          assert.match(error.message, /partial journal/u);
+          assert.equal(error.createSessionOutcome, undefined);
+          return true;
+        });
       assert.equal(f.transports.length, 0);
       assert.equal(f.server.executionOwner.snapshot().pending, 1);
       await f.advance(40);
@@ -475,10 +542,61 @@ try {
     } finally { TerminalSessionJournal.create = original; }
   });
 
+  await check('failed pre-acquire journal cleanup cannot report no acquisition', async () => {
+    const f = fixture();
+    const original = TerminalSessionJournal.create;
+    let restoreDelete;
+    TerminalSessionJournal.create = async (...args) => {
+      const journal = await original(...args);
+      const remove = journal.delete.bind(journal);
+      restoreDelete = () => { journal.delete = remove; };
+      journal.delete = async () => { throw new Error('controlled journal cleanup failure'); };
+      f.server.executionOwner.closeAdmission();
+      return journal;
+    };
+    try {
+      const response = await request(f, f.socket, 'createSession', params('cleanup-failed'));
+      assert.equal(response.ok, false);
+      assert.equal(response.error.message, 'controlled journal cleanup failure');
+      assert.equal(response.error.createSessionOutcome, undefined);
+      assert.equal(f.transports.length, 0);
+      assert.equal(f.server.executionOwner.snapshot().pending, 1);
+      assert.ok(f.server.sessions.has('cleanup-failed'));
+    } finally { TerminalSessionJournal.create = original; restoreDelete?.(); }
+  });
+
+  await check('start admission rejected before control acquisition reports no acquisition after journal cleanup', async () => {
+    const f = fixture();
+    const original = TerminalSessionJournal.create;
+    let journal;
+    TerminalSessionJournal.create = async (...args) => {
+      journal = await original(...args);
+      assert.equal(fs.existsSync(journal.sessionDirectory), true);
+      f.server.executionOwner.closeAdmission();
+      return journal;
+    };
+    try {
+      const response = await request(f, f.socket, 'createSession', params('start-admission-rejected'));
+      assert.equal(response.ok, false);
+      assert.deepEqual(response.error.createSessionOutcome, {
+        kind: 'not-acquired', sessionId: 'start-admission-rejected', sessionKind: 'terminal'
+      });
+      assert.equal(f.transports.length, 0);
+      assert.equal(f.server.executionOwner.snapshot().pending, 0);
+      assert.equal(f.server.sessions.size, 0);
+      assert.ok(journal);
+      assert.equal(fs.existsSync(journal.sessionDirectory), false);
+    } finally { TerminalSessionJournal.create = original; }
+  });
+
   await check('acquired start failure keeps the owner responsibility', async () => {
     const f = fixture(['execution-lifecycle-v1'], { connectThrows: true });
     await assert.rejects(f.server.createSession(f.socket,
-      params('40000000-0000-4000-0000-000000000006')), /failed/u);
+      params('40000000-0000-4000-0000-000000000006')), error => {
+        assert.match(error.message, /failed/u);
+        assert.equal(error.createSessionOutcome, undefined);
+        return true;
+      });
     assert.equal(f.server.executionOwner.snapshot().pending, 1);
     assert.equal(f.server.sessions.size, 1);
     const session = [...f.server.sessions.values()][0];
@@ -593,6 +711,9 @@ try {
           assert.equal(response.ok, false);
           assert.equal(response.error.message,
             `Execution owner admission is closed: Authority consumption failed: ${failure.message}`);
+          assert.deepEqual(response.error.createSessionOutcome, {
+            kind: 'not-acquired', sessionId: 'new-after-journal-failure', sessionKind: kind
+          });
           assert.equal(f.transports.length, 2, 'rejected creation cannot acquire another provider');
           assert.equal(f.server.sessions.has('new-after-journal-failure'), false);
           assert.strictEqual(session.terminalJournalError, failure);

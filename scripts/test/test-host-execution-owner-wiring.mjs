@@ -2398,7 +2398,8 @@ function candidateRuntimeFixture(options = {}) {
     supportsTerminalPagedRead: () => false,
     supportsExecutionCandidateProfile: profile => profile === EXECUTION_CANDIDATE_PROFILE,
     async createSession(request) {
-      if (rejectBeforeAcquire) throw new Error('Execution start was rejected-before-acquire.');
+      if (rejectBeforeAcquire) throw createRuntimeSupervisorError({ message: 'Execution start was rejected-before-acquire.',
+        createSessionOutcome: { kind: 'not-acquired', sessionId: request.sessionId, sessionKind: request.kind } });
       creates.push(request);
       return { sessionId: request.sessionId, kind: request.kind, runtimeBackend: backend.kind,
         live: true, lifecycle: request.kind === 'agent' ? 'running' : 'live' };
@@ -2420,6 +2421,81 @@ function candidateRuntimeFixture(options = {}) {
 }
 
 for (const action of ['agent', 'resume', 'terminal']) {
+  for (const rejection of ['plain-admission', 'legacy-string', 'acquired', 'unconfirmed', 'wrong-session', 'wrong-kind', 'malformed']) {
+    test(`${action} retains original creation protection for ${rejection}`, async () => {
+      const f = candidateRuntimeFixture();
+      const kind = action === 'terminal' ? 'terminal' : 'agent';
+      const nodeId = `${kind}-1`;
+      let creates = 0;
+      f.client.createSession = async request => {
+        creates++;
+        const outcome = { kind: 'not-acquired', sessionId: request.sessionId, sessionKind: kind };
+        if (rejection === 'acquired' || rejection === 'unconfirmed') outcome.kind = rejection;
+        if (rejection === 'wrong-session') outcome.sessionId = 'different-session';
+        if (rejection === 'wrong-kind') outcome.sessionKind = kind === 'agent' ? 'terminal' : 'agent';
+        if (rejection === 'malformed') delete outcome.sessionId;
+        throw createRuntimeSupervisorError({ message: rejection === 'legacy-string'
+          ? 'Execution start was rejected-before-acquire.' : 'Execution owner admission is closed: controlled failure',
+          ...(['plain-admission', 'legacy-string'].includes(rejection) ? {} : { createSessionOutcome: outcome }) });
+      };
+      f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: 'codex', label: 'Codex' });
+      f.host.resolveAgentResumeContext = () => ({ supported: true, strategy: 'fake-provider' });
+      const start = () => action === 'resume'
+        ? f.host.startAgentSession(nodeId, 80, 24, undefined, true) : f.start(kind);
+      await completed(f.clock, start(), 'unconfirmed creation');
+      const original = f.host.state.nodes.find(node => node.id === nodeId);
+      assert.equal(original.status, action === 'terminal' ? 'launching' : action === 'resume' ? 'resuming' : 'starting');
+      assert.ok(original.metadata[kind].runtimeSessionId);
+      assert.equal(f.host.candidateRuntimeStarts.size, 1);
+      await completed(f.clock, start(), 'protected retry');
+      await completed(f.clock, f.host.deleteNode(nodeId), 'protected delete');
+      assert.equal(creates, 1);
+      assert.equal(f.host.candidateRuntimeStarts.size, 1);
+      assert.ok(f.host.state.nodes.some(node => node.id === nodeId));
+    });
+  }
+
+  for (const nextAction of ['retry', 'delete']) {
+    test(`${action} settles a typed admission rejection and allows ${nextAction}`, async () => {
+      const f = candidateRuntimeFixture();
+      const kind = action === 'terminal' ? 'terminal' : 'agent';
+      const nodeId = `${kind}-1`;
+      const reason = 'Execution owner admission is closed: Authority consumption failed: ENOSPC';
+      const create = f.client.createSession;
+      const requests = [];
+      f.client.createSession = async request => {
+        requests.push(request);
+        throw createRuntimeSupervisorError(JSON.parse(JSON.stringify({ message: reason,
+          createSessionOutcome: { kind: 'not-acquired', sessionId: request.sessionId, sessionKind: kind } })));
+      };
+      f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: 'codex', label: 'Codex' });
+      f.host.resolveAgentResumeContext = () => ({ supported: true, strategy: 'fake-provider', sessionId: 'resume-original' });
+      const start = () => action === 'resume'
+        ? f.host.startAgentSession(nodeId, 80, 24, undefined, true) : f.start(kind);
+      await completed(f.clock, start(), 'typed admission rejection');
+      const node = f.host.state.nodes.find(node => node.id === nodeId);
+      assert.equal(node.status, 'error');
+      assert.equal(node.metadata[kind].lifecycle, 'error');
+      assert.equal(node.metadata[kind].lastRuntimeError, reason);
+      for (const key of ['runtimeSessionId', 'runtimeStoragePath', 'runtimeBackend', 'runtimeOwner', 'pendingLaunch']) {
+        assert.equal(node.metadata[kind][key], undefined, key);
+      }
+      assert.equal(node.metadata[kind].liveSession, false);
+      if (action === 'resume') assert.equal(node.metadata.agent.resumeSessionId, 'resume-original');
+      assert.equal(f.host.candidateRuntimeStarts.size, 0);
+      assert.equal(requests.length, 1);
+      if (nextAction === 'retry') {
+        f.client.createSession = create;
+        await completed(f.clock, start(), 'retry after admission rejection');
+        assert.equal(f.creates.length, 1);
+        assert.notEqual(f.creates[0].sessionId, requests[0].sessionId);
+      } else {
+        await completed(f.clock, f.host.deleteNode(nodeId), 'delete after admission rejection');
+        assert.equal(f.host.state.nodes.some(node => node.id === nodeId), false);
+      }
+    });
+  }
+
   test(`${action} launch displays the serialized owner failure detail`, async () => {
     const f = candidateRuntimeFixture();
     f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: 'codex', label: 'Codex' });
@@ -2448,6 +2524,36 @@ for (const action of ['agent', 'resume', 'terminal']) {
 }
 
 for (const kind of ['terminal', 'agent']) {
+  for (const replacement of ['node-binding', 'start-record']) {
+    test(`${kind} late no-acquisition reply preserves a replacement ${replacement}`, async () => {
+      const f = candidateRuntimeFixture();
+      const nodeId = `${kind}-1`;
+      const entered = deferred();
+      const reply = deferred();
+      f.client.createSession = async request => {
+        entered.resolve(request);
+        await reply.promise;
+        throw createRuntimeSupervisorError({ message: 'original creation rejected',
+          createSessionOutcome: { kind: 'not-acquired', sessionId: request.sessionId, sessionKind: kind } });
+      };
+      const starting = f.start(kind);
+      await completed(f.clock, entered.promise, 'original creation submitted');
+      const node = f.host.state.nodes.find(node => node.id === nodeId);
+      const metadata = { ...node.metadata[kind], runtimeSessionId: 'replacement-session' };
+      node.metadata[kind] = metadata;
+      node.status = kind === 'agent' ? 'running' : 'live';
+      const key = f.host.getExecutionSessionOperationKey(kind, nodeId);
+      const newRecord = { submitted: true, settled: false, sessionId: 'replacement-session' };
+      if (replacement === 'start-record') f.host.candidateRuntimeStarts.set(key, newRecord);
+      reply.resolve();
+      await completed(f.clock, starting, 'late rejection');
+      assert.strictEqual(f.host.state.nodes.find(node => node.id === nodeId).metadata[kind], metadata);
+      assert.equal(node.status, kind === 'agent' ? 'running' : 'live');
+      if (replacement === 'start-record') assert.strictEqual(f.host.candidateRuntimeStarts.get(key), newRecord);
+      else assert.equal(f.host.candidateRuntimeStarts.size, 0);
+    });
+  }
+
   for (const bindingKind of ['root', 'invalid-owner', 'legacy']) {
     for (const timing of ['before-prepare', 'during-prepare']) {
       test(`snapshot-only ${kind} rejects ${bindingKind} Runtime responsibility ${timing}`, async () => {

@@ -67,6 +67,7 @@ import {
   createRuntimeSupervisorProtocolError,
   formatRuntimeSupervisorMessageDescriptor,
   serializeRuntimeSupervisorError,
+  createRuntimeSupervisorCreateRejectedError,
   type RuntimeSupervisorAttachSessionParams,
   type RuntimeSupervisorAckSessionRevisionParams,
   type RuntimeSupervisorAckSessionRevisionResult,
@@ -799,7 +800,6 @@ export class RuntimeSupervisorServer {
     if (this.executionProfile && !this.executionOwner) {
       throw new Error('Execution candidate provider factory is unavailable.');
     }
-    this.assertOwnedAdmissionOpen();
     const sessionId = params.sessionId?.trim() || randomUUID();
     if (this.sessions.has(sessionId)) {
       throw createRuntimeSupervisorProtocolError({
@@ -827,21 +827,32 @@ export class RuntimeSupervisorServer {
     const startedAtMs = Date.now();
     const scrollback = normalizeTerminalScrollback(params.scrollback, DEFAULT_TERMINAL_SCROLLBACK);
     const owner = this.executionOwner;
-    if (owner?.admissionLimits.executions === null) {
-      owner.assertAdmission();
-      const owned = owner.snapshot();
-      let retainedRetirements = 0;
-      for (const retained of this.sessions.values()) {
-        const execution = retained.ownedExecution;
-        if (execution?.snapshot().retired && owner.get(execution.key) !== execution) retainedRetirements++;
+    let ownedExecution: OwnedExecution | undefined;
+    try {
+      this.assertOwnedAdmissionOpen();
+      if (owner?.admissionLimits.executions === null) {
+        owner.assertAdmission();
+        const owned = owner.snapshot();
+        let retainedRetirements = 0;
+        for (const retained of this.sessions.values()) {
+          const execution = retained.ownedExecution;
+          if (execution?.snapshot().retired && owner.get(execution.key) !== execution) retainedRetirements++;
+        }
+        // Reader retirement does not release the terminal model or its pending storage cleanup.
+        if (!hasExecutionAdmissionCapacity(owner.admissionLimits, {
+          executions: owned.pending + retainedRetirements,
+          pending: owned.admissionPending + retainedRetirements
+        })) throw new Error('Execution start was rejected-before-acquire.');
       }
-      // Reader retirement does not release the terminal model or its pending storage cleanup.
-      if (!hasExecutionAdmissionCapacity(owner.admissionLimits, {
-        executions: owned.pending + retainedRetirements,
-        pending: owned.admissionPending + retainedRetirements
-      })) throw new Error('Execution start was rejected-before-acquire.');
+      ownedExecution = owner?.reserve(sessionId, sessionId);
+    } catch (error) {
+      // No await or resource acquisition precedes this rejection. An existing
+      // reservation may belong to an earlier, still unconfirmed create.
+      if (owner && !owner.get(sessionId) && !this.sessions.has(sessionId)) {
+        throw createRuntimeSupervisorCreateRejectedError(error, sessionId, params.kind);
+      }
+      throw error;
     }
-    const ownedExecution = this.executionOwner?.reserve(sessionId, sessionId);
     let terminalJournal: TerminalSessionJournal;
     try {
       terminalJournal = await TerminalSessionJournal.create({
@@ -861,7 +872,8 @@ export class RuntimeSupervisorServer {
       await terminalJournal.delete();
       ownedExecution.abandon('Supervisor closed during terminal journal preparation.');
       this.advanceOwnedShutdown();
-      throw new Error('Supervisor shutdown admission is closed.');
+      throw createRuntimeSupervisorCreateRejectedError(
+        new Error('Supervisor shutdown admission is closed.'), sessionId, params.kind);
     }
     let process: ExecutionSessionProcess | undefined;
     try {
@@ -961,7 +973,7 @@ export class RuntimeSupervisorServer {
         terminalStateTracker.dispose();
         ownedExecution.abandon('Execution start was rejected before acquiring a provider.');
         this.advanceOwnedShutdown();
-        throw error;
+        throw createRuntimeSupervisorCreateRejectedError(error, sessionId, params.kind);
       }
     } else {
       this.bindSessionProcess(session);
