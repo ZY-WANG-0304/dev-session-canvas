@@ -206,6 +206,8 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 ### 8.1 当前有限结论
 
+2026-10-08 rebase 更新：PR #297 已接入 `origin/main@3cd2f997` 的 #300 模拟重载准入、#301 无代次旧历史清理和 #302 owned 提醒桥接。相对原交付 head `6c3e2bd8`，产品增量仅为这三项主线修复，不改变 root owner 方案；冲突只涉及一个测试名称和三份文档，保留双方覆盖与记录。整合后的 Host 接线 293/293、历史清理 134 项（另 2 个原生 Unix socket 用例因沙箱限制跳过）、Canvas context、Host deactivation、completed history、typecheck、正常 build 通过。下述同包事实仍对应原具名提交/run；当前 head 不再与 `502934e1` 产品输入完全相同，本次没有新打包安装或重跑真实 Agent/跨平台矩阵，不能把旧 VSIX hash 当成整合后产物的身份。
+
 截至 `3771be4d` / run `37725028656`，P1 至 P3 及 R1-01 至 R1-08 已按以下有限输入、证据层级和排除项收口。Linux 最终产品包仍来自 `502934e1` / `37714907772`，VSIX SHA256 为 `a37f0c3e5afeba5132b5f5eb88104bb36d0670887572c44adbc05cd91097203f`；后续 harness 修复复用该包，不重打未变产品或重复已通过矩阵。此状态不是“所有历史失败已定位”，也不覆盖未列出的 provider/OS 全组合。
 
 | ID | 本轮收口证据 | 层级与保留边界 |

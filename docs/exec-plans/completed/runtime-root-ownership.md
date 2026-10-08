@@ -4,6 +4,8 @@
 
 交付入口修正：用户要求继续使用原 PR #297，设计、完整实现、有限验收及审查记录统一归入其源分支 `docs-runtime-root-ownership-design`；重复创建的 #299 不再作为交付入口。分阶段实施不要求拆成多个 PR，此调整不改变产品输入或验收结论，也不授权合并。
 
+最新基线更新：2026-10-08 按用户要求 rebase 至 `origin/main@3cd2f997`，保留 #300、#301、#302 的模拟重载准入、无代次旧历史清理及 owned 提醒桥接。冲突仅一处测试名称与三份文档，双方保护和证据均保留；旧包证据继续适用其具名输入，但当前整合 head 已包含主线产品修复，不能再声称与 `502934e1` 零差异。整合验证与边界见“结果与复盘”。
+
 2026-10-08 有限交付结账：P1 至 P3 和 R1-01 至 R1-08 已按正式设计 §8 的具名证据及层级收口，F-03 已完成。最后同包 Claude Reload 的原始资源与结算回执已独立核对；当前只进入实现 PR 审查，不追加 P4。下文 dated 失败和当时的“尚未/下一步”保留为实施历史，不构成当前待办；已知残余登记于技术债追踪，不能用最终成功倒推旧失败已修复。
 
 ## 目标与全局图景
@@ -88,6 +90,8 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 2026-10-08：systemd 范围验证使用实际 transient launcher probe，不使用 D-Bus PID 对照本地 `/proc` 的推断，避免跨 PID namespace 的坐标混淆。只增加固定的 probe 模式、nonce/摘要核对及有限 job/运行预算，不新增常驻服务。Host 30 秒结算不当作 helper 退出证据；真实测试观察 close 或实际 claim 释放。
 
 ## 结果与复盘
+
+Rebase 整合验证：Host 接线 293/293、legacy history 134 项（另 2 个原生 Unix socket 用例因本地沙箱限制跳过）、Canvas context、Host deactivation integrity、completed history、typecheck、正常 build 均通过。新主线业务差异保留，root 原绑定屏障、模拟重载成功恢复准入、旧历史布局限制及提醒桥接的当前 record/metadata 守卫同时成立；测试冲突只合并名称与 storage 参数，不改断言。本次仅更新 PR，未执行新包安装或真实 Agent/跨平台矩阵；下述原 VSIX 及原生结果不改写成整合后新字节的验证。
 
 P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd 与跨 XDG/HOME/TMP 复用；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 修后同版包的三平台 installed Terminal/Webview、三平台真实 Codex Reload、Linux Claude Reload、双窗与 Remote、Terminal 边界及 Codex 双窗口已通过，F-03 有限交付收口。旧 slot 保障按明确受控层级复用，不扩成新的 OS 矩阵；历史失败和本地沙箱限制原样保留，不追认通过。
 
@@ -190,3 +194,5 @@ P3 首轮 `7741de5d` / run `37711694734` package 成功，Linux/macOS installed 
 修订记录：2026-10-08，最后 Claude 同包 Reload 与原始资源结算独立复核通过，P3/F-03 按有限 R1 合同收口并归档；同步设计、规格与技术债，保留全部历史失败及未实测边界，进入实现 PR 而不新增阶段。
 
 修订记录：2026-10-08，按用户要求将交付收敛回原 PR #297，纠正不必要的设计/实现 PR 拆分；仅更新交付记录，产品字节、原证据和未确认风险保持。
+
+修订记录：2026-10-08，rebase 至 `3cd2f997` 并保留三项主线修复，完成受影响整合回归，明确原包证据与当前 head 产品输入的区别；不扩展原生矩阵，也不追认沙箱跳过为通过。
