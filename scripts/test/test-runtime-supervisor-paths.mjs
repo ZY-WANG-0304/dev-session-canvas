@@ -125,6 +125,33 @@ try {
     assert.equal(resolveRootRuntimeSupervisorExecutionProfile(storageDir, platform), profile);
     assert.equal(resolveRuntimeSupervisorExecutionProfile(storageDir, platform), profile);
     assert.equal(isRootOwnerRuntimeSupervisorStorageDir(storageDir, platform), true);
+    const rootOptions = { platform, env: {}, homeDir: '/home/test', tmpDir: '/tmp', userId: 1000 };
+    const rootPaths = resolveRuntimeSupervisorPathsFromStorageDir(storageDir, rootOptions);
+    const rootDigest = createHash('sha1').update(storageDir).digest('hex').slice(0, 24);
+    assert.equal(rootPaths.socketPath, platform === 'win32' ? `\\\\.\\pipe\\dev-session-canvas-${rootDigest}`
+      : `/tmp/dsc-root-1000/d-${rootDigest}.sock`);
+    for (const variation of [
+      { env: { XDG_RUNTIME_DIR: '/run/user/1000', XDG_STATE_HOME: '/state', XDG_CONFIG_HOME: '/config', HOME: '/other', TMPDIR: '/scratch' } },
+      { homeDir: '/home/' + 'x'.repeat(120), tmpDir: '/other-tmp' },
+      { env: { XDG_RUNTIME_DIR: 'relative', XDG_STATE_HOME: 'relative', XDG_CONFIG_HOME: 'relative', HOME: 'relative', TMPDIR: 'relative' } }
+    ]) {
+      assert.deepEqual(resolveRuntimeSupervisorPathsFromStorageDir(storageDir, { ...rootOptions, ...variation }), rootPaths);
+      if (platform === 'linux') {
+        const service = resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(storageDir, { ...rootOptions, ...variation });
+        assert.equal(service.socketPath, `/tmp/dsc-root-1000/s-${rootDigest}.sock`);
+        assert.equal(service.controlDir, rootPaths.runtimeDir);
+        assert.notEqual(service.socketPath, rootPaths.socketPath);
+        assert.equal(service.registryPath, rootPaths.registryPath);
+      }
+    }
+    if (platform !== 'win32') {
+      assert.ok(Buffer.byteLength(rootPaths.socketPath) <= 104);
+      assert.notEqual(resolveRuntimeSupervisorPathsFromStorageDir(storageDir, { ...rootOptions, userId: 1001 }).socketPath,
+        rootPaths.socketPath);
+      for (const userId of ['shared', '../other', '01', -1, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+        assert.throws(() => resolveRuntimeSupervisorPathsFromStorageDir(storageDir, { ...rootOptions, userId }), /OS user/);
+      }
+    }
     for (const invalidStorage of [base, paths.join(base, 'registry.json'),
       paths.join(base, '..', `${generation}-unknown`, 'runtime-supervisor'),
       paths.join(globalStorage, generation, 'runtime-supervisor')]) {

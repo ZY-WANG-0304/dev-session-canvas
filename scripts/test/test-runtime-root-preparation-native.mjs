@@ -125,10 +125,10 @@ async function runTests() {
       roots.push(value);
       return value;
     }
-    function launchPreparation(value, preferredBackends = ['legacy-detached'], launcherScript = launcher) {
+    function launchPreparation(value, preferredBackends = ['legacy-detached'], launcherScript = launcher, environment = childEnvironment) {
       value.attempted = true;
       const child = fork(launcher, ['--prepare-root-runtime'], {
-        env: childEnvironment, stdio: ['ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true
+        env: environment, stdio: ['ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true
       });
       child.stderr.resume();
       const messages = [];
@@ -151,8 +151,8 @@ async function runTests() {
         supervisorLauncherScriptPath: launcherScript }, error => { if (error) childError = error; }));
       return helper;
     }
-    async function prepare(value, preferredBackends = ['legacy-detached'], launcherScript = launcher) {
-      const helper = launchPreparation(value, preferredBackends, launcherScript);
+    async function prepare(value, preferredBackends = ['legacy-detached'], launcherScript = launcher, environment = childEnvironment) {
+      const helper = launchPreparation(value, preferredBackends, launcherScript, environment);
       const result = await bounded(helper.closed, 40000, 'Native preparation helper did not close within its watchdog budget.');
       assert.equal(helper.error, undefined, 'Native preparation helper must start and send its request successfully.');
       assert.equal(result.code, 0, 'Native preparation helper must exit normally.');
@@ -173,10 +173,11 @@ async function runTests() {
       barriers.push(barrier);
       return barrier;
     }
-    async function connect(value, kind = 'legacy-detached') {
+    async function connect(value, kind = 'legacy-detached', environment = childEnvironment) {
+      const pathOptions = { env: environment, tmpDir: environment.TMPDIR ?? os.tmpdir(), homeDir: environment.HOME };
       const client = new api.RuntimeSupervisorClient({ backend: { kind, guarantee: kind === 'systemd-user' ? 'strong' : 'best-effort',
-        label: 'native test', paths: kind === 'systemd-user' ? api.resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(value.storageDir)
-          : api.resolveRuntimeSupervisorPathsFromStorageDir(value.storageDir),
+        label: 'native test', paths: kind === 'systemd-user' ? api.resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(value.storageDir, pathOptions)
+          : api.resolveRuntimeSupervisorPathsFromStorageDir(value.storageDir, pathOptions),
         startSupervisor: () => assert.fail('The native test client cannot start a Supervisor.') },
       executionProfile: profile, expectedRuntimeOwner: value.owner, supervisorScriptPath: supervisor,
       supervisorLauncherScriptPath: launcher });
@@ -204,6 +205,20 @@ async function runTests() {
     assert.equal(await readFile(path.join(first.base, 'owner.json'), 'utf8'), ownerBytes);
     assert.equal(await readFile(path.join(first.base, 'startup-intent.json'), 'utf8'), intentBytes);
     assert.equal(await readFile(path.join(first.base, 'startup-started.json'), 'utf8'), receiptBytes);
+    const alternateEnvironment = { ...childEnvironment, XDG_RUNTIME_DIR: '/tmp', XDG_STATE_HOME: '/tmp',
+      XDG_CONFIG_HOME: path.join(directory, 'unused-config'), HOME: path.join(directory, 'unused-home'),
+      TMPDIR: path.join(directory, 'unused-tmp') };
+    if (process.platform !== 'win32') {
+      assert.deepEqual(await prepare(first, ['legacy-detached'], launcher, alternateEnvironment),
+        { kind: 'ready', backend: 'legacy-detached' });
+      const alternate = await connect(first, 'legacy-detached', alternateEnvironment);
+      assert.equal(alternate.hello.pid, a.hello.pid);
+      alternate.client.dispose();
+      assert.equal(await readFile(path.join(first.base, 'startup-intent.json'), 'utf8'), intentBytes);
+      assert.equal(await readFile(path.join(first.base, 'startup-started.json'), 'utf8'), receiptBytes);
+      for (const name of ['unused-config', 'unused-home', 'unused-tmp']) assert.equal(await exists(path.join(directory, name)), false);
+      console.log('A real helper with different XDG/HOME/TMP reused the same detached owner without a new launch.');
+    }
     assert.deepEqual(await api.prepareRootRuntimeSupervisor({ storageDir: first.storageDir, owner: first.owner,
       executionProfile: profile, preferredBackends: ['legacy-detached'], supervisorScriptPath: supervisor,
       supervisorLauncherScriptPath: launcher }), { kind: 'ready', backend: 'legacy-detached' });
@@ -323,6 +338,14 @@ async function runTests() {
         assert.equal(reusedService.hello.pid, live.hello.pid);
         assert.equal(await readFile(path.join(service.base, 'startup-intent.json'), 'utf8'), intent);
         assert.equal(await readFile(service.systemdPaths.unitFilePath, 'utf8'), service.unitBytes);
+        assert.deepEqual(await prepare(service, ['legacy-detached'], launcher, alternateEnvironment),
+          { kind: 'ready', backend: 'systemd-user' });
+        const alternateService = await connect(service, 'systemd-user', alternateEnvironment);
+        assert.equal(alternateService.hello.pid, live.hello.pid);
+        alternateService.client.dispose();
+        assert.equal(await readFile(path.join(service.base, 'startup-intent.json'), 'utf8'), intent);
+        assert.equal(await readFile(service.systemdPaths.unitFilePath, 'utf8'), service.unitBytes);
+        for (const name of ['unused-config', 'unused-home', 'unused-tmp']) assert.equal(await exists(path.join(directory, name)), false);
         reusedService.client.dispose();
         live.client.dispose();
         console.log('Native systemd startup passed and detached preference reused the existing systemd owner.');

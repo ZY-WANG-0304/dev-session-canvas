@@ -4,6 +4,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 
 import type { ExecutionCandidateProfile } from '../common/executionLifecycle';
+import type { RuntimeHostBackendKind } from '../common/protocol';
+import type { RuntimeSupervisorPaths } from '../common/runtimeSupervisorProtocol';
 import {
   assertRuntimeOwnerDescriptor,
   createRuntimeUserStorageScopeKey,
@@ -15,11 +17,30 @@ import {
 import {
   isRootOwnerRuntimeSupervisorStorageDir,
   isRuntimeRootStorageNamespace,
+  resolveLegacyRuntimeSupervisorPathsFromStorageDir,
+  resolveSystemdUserRuntimeSupervisorPathsFromStorageDir,
   resolveRootRuntimeSupervisorExecutionProfile
 } from '../common/runtimeSupervisorPaths';
 import { readRuntimeExecutionEnvironment } from '../panel/runtimeExecutionEnvironment';
 
 const MAX_OWNER_BYTES = 16 * 1024;
+
+export async function ensureRuntimeRootSocketDirectory(
+  paths: RuntimeSupervisorPaths,
+  backend: RuntimeHostBackendKind,
+  create: boolean
+): Promise<void> {
+  if (process.platform === 'win32' || !isRootOwnerRuntimeSupervisorStorageDir(paths.storageDir)) return;
+  const expected = backend === 'systemd-user'
+    ? resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(paths.storageDir)
+    : resolveLegacyRuntimeSupervisorPathsFromStorageDir(paths.storageDir);
+  const directory = expected.controlDir ?? expected.runtimeDir!;
+  if (paths.socketPath !== expected.socketPath ||
+      (paths.controlDir ?? paths.runtimeDir ?? path.dirname(paths.socketPath)) !== directory) {
+    throw new Error('Root runtime endpoint does not match its stable owner address.');
+  }
+  await ensurePrivateOwnerDirectory(directory, create);
+}
 
 export async function readRuntimeRootOwner(
   storageDir: string,
@@ -144,9 +165,11 @@ export async function publishRuntimeRootOwner(storageDir: string, owner: Runtime
   }
 }
 
-async function ensurePrivateOwnerDirectory(directory: string): Promise<void> {
-  try { await fs.mkdir(directory, { mode: 0o700 }); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+async function ensurePrivateOwnerDirectory(directory: string, create = true): Promise<void> {
+  if (create) {
+    try { await fs.mkdir(directory, { mode: 0o700 }); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+  }
   const stat = await fs.lstat(directory);
   if (!stat.isDirectory()) throw new Error('Runtime owner directory must not be a symlink or another file type.');
   assertPrivateStorage(stat, 0o700);

@@ -96,6 +96,12 @@ try {
         if (options.lockBlocked) throw new Error('Occupied preparation claim');
       } },
       'controlled:runtimeRootOwner': { ...io,
+        async ensureRuntimeRootSocketDirectory(_paths, kind, create) {
+          effects.push('socket-directory');
+          assert.equal(kind, 'legacy-detached');
+          assert.equal(create, true);
+          if (options.unsafeSocketDirectory) throw new Error('Unsafe root socket directory.');
+        },
         async prepareRuntimeRootOwnerDirectories(...args) {
           effects.push('prepare');
           const value = await io.prepareRuntimeRootOwnerDirectories(...args);
@@ -171,6 +177,12 @@ try {
     const f = await fixture();
     assert.equal((await f.worker.prepareRuntimeRootSupervisor({ ...f.request, preferredBackends: [] }, () => false)).kind, 'rejected');
     assert.deepEqual(f.effects, []);
+  });
+  await test('unsafe endpoint directory blocks discovery, claims, and launch submission', async () => {
+    const f = await fixture({ unsafeSocketDirectory: true });
+    assert.equal((await f.run()).kind, 'unconfirmed');
+    assert.deepEqual(f.effects, ['prepare', 'socket-directory']);
+    assertNoSubmission(f);
   });
   await test('preparation loser discovers but never publishes or starts', async () => {
     const f = await fixture({ lockBlocked: true });

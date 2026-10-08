@@ -12860,7 +12860,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         {
           backendKind: runtimeBackend,
           sessionId: snapshot.sessionId,
-          runtimeStoragePath, kind
+          runtimeStoragePath, runtimeOwner: currentMetadata.runtimeOwner, kind
         },
         {
           allowRestart: false,
@@ -17457,6 +17457,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       { executions: retainedRecords.length, pending }))) {
       throw new Error('Local final snapshot responsibility still occupies the execution key or Host capacity.');
     }
+    const assertRuntimeUnbound = (): void => {
+      const node = this.requireNode(nodeId, kind);
+      const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
+      if (metadata.runtimeOwner !== undefined || this.getPersistedLiveRuntimeSessionForNode(node)) {
+        throw new Error(vscode.l10n.t('The original Runtime execution is still bound. Settle it before starting a local execution.'));
+      }
+    };
+    assertRuntimeUnbound();
     const execution = owner.reserve(key);
     let record: NonNativeHostExecution | undefined;
     let rejectedBeforeAcquire = false;
@@ -17485,6 +17493,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.nonNativeHostExecutions.set(key, record);
       const prepared = await prepare();
       this.assertExecutionCandidateAdmission('snapshot-only');
+      assertRuntimeUnbound();
       const spec: LaunchSpec = {
         file: prepared.file, args: prepared.args ?? [], cwd: prepared.cwd,
         ...(owner.options.profile ? { cols, rows, stopStrategy: kind === 'agent' && agent?.provider !== 'claude'

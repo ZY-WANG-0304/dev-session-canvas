@@ -15,7 +15,8 @@ import type { RuntimeHostBackend } from '../panel/runtimeHostBackend';
 import type { RootPreparationRequest, RootPreparationResult } from '../panel/runtimeRootSupervisorPreparation';
 import { ExecutionCandidateHandshakeError, RuntimeSupervisorClient } from '../panel/runtimeSupervisorClient';
 import { inspectRuntimeSystemdEnvironment } from '../panel/runtimeSystemdEnvironment';
-import { prepareRuntimeRootOwnerDirectories, publishRuntimeRootOwner, readRuntimeRootOwner } from './runtimeRootOwner';
+import { ensureRuntimeRootSocketDirectory, prepareRuntimeRootOwnerDirectories,
+  publishRuntimeRootOwner, readRuntimeRootOwner } from './runtimeRootOwner';
 import { createRuntimeRootStartupIntent, inspectRuntimeRootStartup, writeRuntimeRootStartupIntent } from './runtimeRootStartup';
 import { acquireRuntimeSupervisorNamespace } from './runtimeSupervisorNamespace';
 import { startRuntimeSupervisor } from './runtimeSupervisorStart';
@@ -36,6 +37,8 @@ export async function prepareRuntimeRootSupervisor(
   const unconfirmed = (reason: string): RootPreparationResult => ({ kind: 'unconfirmed', reason });
   try {
     const { preparationDir } = await prepareRuntimeRootOwnerDirectories(request.storageDir, request.owner);
+    if (isCancelled()) return unconfirmed('Root runtime preparation was cancelled.');
+    await ensureRuntimeRootSocketDirectory(backend(request, 'legacy-detached').paths, 'legacy-detached', true);
     if (isCancelled()) return unconfirmed('Root runtime preparation was cancelled.');
     const native = createNativeExecutionOwnerOptions({ extensionRoot: path.dirname(path.dirname(request.supervisorScriptPath)),
       profile: request.executionProfile, mode: 'live-runtime' });

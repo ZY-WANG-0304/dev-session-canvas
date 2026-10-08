@@ -2359,6 +2359,75 @@ function candidateRuntimeFixture(options = {}) {
     setRejectBeforeAcquire: value => { rejectBeforeAcquire = value; } };
 }
 
+for (const kind of ['terminal', 'agent']) {
+  for (const bindingKind of ['root', 'invalid-owner', 'legacy']) {
+    for (const timing of ['before-prepare', 'during-prepare']) {
+      test(`snapshot-only ${kind} rejects ${bindingKind} Runtime responsibility ${timing}`, async () => {
+        const gate = deferred();
+        let preparations = 0, reservations = 0;
+        const f = candidateFixture({ environment: async () => {
+          preparations += 1;
+          await gate.promise;
+          return { TEST: 'value' };
+        } });
+        f.host.activeSurface = undefined;
+        const reserve = f.owner.reserve.bind(f.owner);
+        f.owner.reserve = key => { reservations += 1; return reserve(key); };
+        const node = f.host.state.nodes.find(value => value.kind === kind);
+        const runtimeOwner = bindingKind === 'root' ? createRuntimeOwnerDescriptor({
+          environmentKey: 'a'.repeat(64), userStorageScopeKey: 'b'.repeat(64),
+          rootPath: path.resolve('/controlled/root'), generation: resolveRootRuntimeSupervisorGeneration(EXECUTION_CANDIDATE_PROFILE)
+        }) : bindingKind === 'invalid-owner' ? null : undefined;
+        const original = { persistenceMode: 'live-runtime', attachmentState: 'history-restored', liveSession: false,
+          lifecycle: kind === 'agent' ? 'stopped' : 'closed', provider: kind === 'agent' ? 'codex' : undefined,
+          runtimeOwner, ...(bindingKind === 'invalid-owner' ? {} : {
+            runtimeBackend: 'legacy-detached', runtimeSessionId: 'original-session',
+            runtimeStoragePath: bindingKind === 'root'
+              ? resolveRuntimeRootOwnerBaseStoragePath(path.resolve('/controlled/global-storage'), runtimeOwner)
+              : '/controlled/original-workspace-slot'
+          }) };
+        if (timing === 'before-prepare') { node.metadata[kind] = original; gate.resolve(); }
+        const starting = f.start(kind);
+        const rejected = assert.rejects(starting, /original Runtime execution.*bound/);
+        if (timing === 'during-prepare') {
+          await until(f.clock, () => preparations === 1, `${kind} local preparation entered`);
+          f.host.state.nodes.find(value => value.kind === kind).metadata[kind] = original;
+          gate.resolve();
+        }
+        await completed(f.clock, rejected, `${kind} retained Runtime binding refused`);
+        assert.equal(preparations, timing === 'before-prepare' ? 0 : 1);
+        assert.equal(reservations, timing === 'before-prepare' ? 0 : 1);
+        assert.equal(f.providers.length, 0, 'No provider may be acquired for a retained Runtime binding.');
+        assert.equal(f.owner.snapshot().pending, 0);
+        assert.equal(f.host.nonNativeHostExecutions.size, 0);
+        assert.deepEqual(f.host.state.nodes.find(value => value.kind === kind).metadata[kind], original,
+          'A refusal preserves the original binding, including null.');
+      });
+    }
+  }
+  test(`snapshot-only ${kind} starts an already-settled node without a Runtime binding`, async () => {
+    const f = candidateFixture();
+    f.host.activeSurface = undefined;
+    const node = f.host.state.nodes.find(value => value.kind === kind);
+    node.metadata[kind] = { persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
+      lifecycle: kind === 'agent' ? 'stopped' : 'closed', liveSession: false, terminalHistoryDiscarded: true };
+    await completed(f.clock, f.start(kind), `${kind} settled local start`);
+    const record = f.record(kind);
+    try {
+      assert.equal(f.providers.length, 1);
+      f.providers[0].process();
+      f.providers[0].message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release',
+        result: { kind: 'released' } });
+      f.providers[0].seal(0); f.providers[0].release();
+      await until(f.clock, () => record.execution.snapshot().settled, `${kind} settled local finalization`);
+    } finally {
+      record.tracker.dispose();
+      record.business?.cancelActivityPoll?.();
+      record.business?.lineContextTracker.dispose();
+    }
+  });
+}
+
 function addCandidateLegacyBinding(f, kind, backendKind = 'legacy-detached') {
   const node = f.host.state.nodes.find(value => value.kind === kind);
   const sessionId = `old-${kind}`;

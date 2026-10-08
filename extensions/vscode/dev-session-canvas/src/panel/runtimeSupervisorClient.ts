@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { realpathSync } from 'fs';
 import * as net from 'net';
+import { ensureRuntimeRootSocketDirectory } from '../supervisor/runtimeRootOwner';
 
 import {
   RUNTIME_SUPERVISOR_ERROR_CODES,
@@ -562,8 +563,14 @@ export class RuntimeSupervisorClient {
     return operation;
   }
 
-  private connectStrictDeleteSocket(deadline: number, scheduler: ExecutionScheduler): Promise<net.Socket> {
+  private async connectStrictDeleteSocket(deadline: number, scheduler: ExecutionScheduler): Promise<net.Socket> {
     const original = this.socket;
+    if (this.expectedRuntimeOwner) {
+      await ensureRuntimeRootSocketDirectory(this.options.backend.paths, this.options.backend.kind, false);
+      if (scheduler.now() >= deadline || this.disposed || this.socket !== original) {
+        throw new Error('The original strict connection expired or was replaced.');
+      }
+    }
     return new Promise((resolve, reject) => {
       const socket = net.createConnection(this.options.backend.paths.socketPath);
       let finished = false;
@@ -701,6 +708,9 @@ export class RuntimeSupervisorClient {
   }
 
   private async connectSocket(): Promise<void> {
+    if (this.expectedRuntimeOwner) {
+      await ensureRuntimeRootSocketDirectory(this.options.backend.paths, this.options.backend.kind, false);
+    }
     if (this.disposed) {
       throw createRuntimeSupervisorProtocolError({
         id: 'clientDisposed'
