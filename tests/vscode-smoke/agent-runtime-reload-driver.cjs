@@ -306,6 +306,7 @@ function hasLoadedAgentComposer(text) {
 
 async function waitForAgentReady() {
   const prompts = new Set();
+  let claudeTrustMoved = false;
   const startupPrompts = [
     /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i,
     /(?:Choose the text style|Choose.*theme|Select.*theme)/i,
@@ -336,7 +337,15 @@ async function waitForAgentReady() {
           assert(/^[ \t]*Accessing workspace:[ \t]*$/m.test(text)
             && /^[ \t]*Enter to confirm[ \t]+\u00b7[ \t]+Esc to cancel[ \t]*$/m.test(text)
             && selectedNo !== selectedYes, 'Claude workspace trust selection is not confirmed.');
-          data = selectedNo ? '\u001b[B\r' : '\r';
+          if (selectedNo) {
+            if (!claudeTrustMoved) {
+              claudeTrustMoved = true;
+              await dom({ kind: 'sendExecutionInput', nodeId: currentNodeId, data: '\u001b[B' });
+            }
+            handledPrompt = true;
+            break;
+          }
+          data = '\r';
         }
         if (name === 'windows-sandbox') {
           assert.equal(process.platform, 'win32', 'Only the fixed Windows input may configure its sandbox.');
