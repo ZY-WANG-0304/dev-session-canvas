@@ -53,7 +53,7 @@ B4 已将新 live 投影初始化改为固定 xterm 当前模型的分块导入�
 
 ## 2. 当前范围与非目标
 
-Root 归属增量（2026-10-08，接线已实现、产品验收中）：新 live 会话按执行环境运行实例、用户 global storage 范围、画板 root 与 generation 分配 Supervisor；单根/多根共用 resolver，Webview 和 workspace slot 不拥有新 runtime。既有 session 保留 backend/storage/session/kind 原绑定，Host 管理自己的订阅而非凭窗口退出停止共享 owner。原生协调、同版安装包与具名产品验证的层级和剩余场景见 `docs/design-docs/runtime-root-ownership.md`，不把部分通过标成整体已交付。
+Root 归属增量（2026-10-08，有限交付完成）：新 live 会话按执行环境运行实例、用户 global storage 范围、画板 root 与 generation 分配 Supervisor；单根/多根共用 resolver，Webview 和 workspace slot 不拥有新 runtime。既有 session 保留 backend/storage/session/kind 原绑定，Host 管理自己的订阅而非凭窗口退出停止共享 owner。P1 至 P3 与 R1-01 至 R1-08 的具名输入及证据复用已收口，原生协调、同版安装包和产品验证的分层依据见 `docs/design-docs/runtime-root-ownership.md` §8，执行记录见 `docs/exec-plans/completed/runtime-root-ownership.md`。这不表示 F-01/F-02 或整体 multi-root/UI 已完成验证，历史失败与未归因风险继续保留。
 
 当前顶层范围：
 

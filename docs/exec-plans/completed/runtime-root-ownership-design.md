@@ -2,6 +2,8 @@
 
 本 ExecPlan 按 `docs/PLANS.md` 持续维护，覆盖设计研究而非业务实现。基线为 PR #295 合并后的 `origin/main@06e9abcf32828325444e8263233537f25bf042a7`，工作分支 `docs-runtime-root-ownership-design`。本轮只修改设计、产品约束和规划记录，不操作用户节点、registry、Supervisor 或原生资源。
 
+归档边界：下文“未验证/F-03 开放”是设计阶段结论；后续实施已于 2026-10-08 按有限 R1 合同完成，见 `docs/exec-plans/completed/runtime-root-ownership.md` 和正式设计 §8。本计划保留原阶段事实，不将后续运行证据倒填为设计阶段已执行。
+
 ## 目标与全局图景
 
 多根 workspace 是各 root 画板的组合视图。同一个 root 在单根窗口和多根 workspace 中新建 Terminal/Agent 时，应归属同一运行环境、同一用户存储范围、同一 root 身份和 Supervisor generation 所确定的运行时，不取决于创建窗口的 workspace storage slot。旧 live 会话继续按持久化 backend/storage/session/kind 连接，不能只重写路径声称完成迁移。

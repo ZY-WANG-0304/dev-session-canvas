@@ -1,7 +1,7 @@
 ---
 title: Root 稳定的 Runtime 归属
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains:
   - VSCode 集成域
   - 执行编排域
@@ -14,7 +14,7 @@ related_specs:
   - docs/product-specs/canvas-multi-root-workspace-support.md
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
-  - docs/exec-plans/active/runtime-root-ownership.md
+  - docs/exec-plans/completed/runtime-root-ownership.md
   - docs/exec-plans/completed/runtime-root-ownership-design.md
 updated_at: 2026-10-08
 ---
@@ -23,9 +23,9 @@ updated_at: 2026-10-08
 
 ## 1. 问题与范围
 
-PR #295 已合并，本文以 `origin/main@06e9abcf32828325444e8263233537f25bf042a7` 为调查基线，独立处理审核 F-03 / 有限收尾 R1。画板按 root 保存，但新建 live Terminal/Agent 仍按创建窗口的 workspace storage 派生 Supervisor。同 root 在多个窗口的新会话会分散；不同 root 则可能共享进程，增加发现、诊断、退役复杂度和进程故障影响范围。单会话 stop/delete 并不因此跨 root 生效。
+PR #295 已合并，本文以 `origin/main@06e9abcf32828325444e8263233537f25bf042a7` 为调查基线，独立处理审核 F-03 / 有限收尾 R1。调查时画板按 root 保存，但新建 live Terminal/Agent 仍按创建窗口的 workspace storage 派生 Supervisor。同 root 在多个窗口的新会话会分散；不同 root 则可能共享进程，增加发现、诊断、退役复杂度和进程故障影响范围。单会话 stop/delete 并不因此跨 root 生效。
 
-原多根设计 §6.8 和规格第 16、17 项曾明确选定 slot 绑定。这是修订设计决策，不倒写成实现违反当时规格。2026-10-08 用户认可后已实施身份、启动准备与 P2 生产接线，进度见 §8；**正常新建已按 root 选路，三平台原生协调已通过，受影响产品验收仍开放，不宣称整体交付**。环境探针和启动竞争的可行性须取得直接证据，不能由文档审查代证。
+原多根设计 §6.8 和规格第 16、17 项曾明确选定 slot 绑定。这是修订设计决策，不倒写成实现违反当时规格。2026-10-08 用户认可后已完成身份、启动准备、P2 生产接线与 P3 受影响产品有限验收，结果见 §8；**正常新建按 root 选路，三平台原生协调、已安装产品、具名多窗口/Remote/边界场景及真实 Codex/Claude 原身份 Reload 已取得证据，R1-01 至 R1-08 按所列层级收口**。本文的“已验证”仅覆盖这些具名输入与证据复用范围，不扩大到未测平台组合、环境变化或容量承诺；历史失败和仍未知的 Claude 间歇行为保留。
 
 目标是多根 workspace 作为各 root 画板的组合视图：同一执行环境、用户存储范围、root 身份、Supervisor generation 确定稳定 owner（托管会话的运行时归属）。单根、多根、PaneGallery 和创建窗口不改变它。稳定指找到同一个逻辑归属，不保证 Supervisor PID 永远不变。
 
@@ -170,7 +170,7 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 | P2 生产接线 | 两类创建显式 root、backend 发现和启动串行、缓存分桶、旧绑定路由、设置与 client 退役 | 受控 Host/Supervisor 回归覆盖正反路径，实际路径不存在隐式窗口 fallback；构建/typecheck 通过。不得只改 multi-root |
 | P3 受影响产品验收 | 正常构建/VSIX、多窗口单根/多根创建与恢复、平台端点、旧 live 共存、跨 root 故障和有限资源样本 | §7 各具名场景有明确结果、复用证据与残余风险，随后整体审查；没有自动 P4 工具阶段 |
 
-本设计阶段只完成调查、选择、规格修订与文档审查。实施启动时按本表另建执行 ExecPlan；不把 P1 至 P3 写成此次已完成。实现完成定义是用户在单根和不同多根窗口分别新建 Terminal/Agent 后看见同 root 同 owner、不同 root 隔离，旧 live 仍可操作且最后责任正确结算。只有 attach 已有 session 成功不满足新建归属验收。
+设计阶段只完成调查、选择、规格修订与文档审查；后续 P1 至 P3 的实施和有限验收现已按 §8 收口，执行记录归档至 `docs/exec-plans/completed/runtime-root-ownership.md`。实现完成定义是用户在单根和不同多根窗口分别新建 Terminal/Agent 后看见同 root 同 owner、不同 root 隔离，旧 live 仍可操作且最后责任正确结算。只有 attach 已有 session 成功不满足新建归属验收；未测边界不由完成状态代证。
 
 ## 6. 失败语义与边界
 
@@ -202,9 +202,36 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 设计阶段验证仅为代码事实复核、独立文档审查、元数据/引用检查和 `git diff --check`。平台来源与并发原语是直接实施前置；永久设备标识、全局资源调度、跨机器共享盘发现、通用多写者事务和历史 GC 是可延期增强，不自动排入下一阶段。历史失败保留在原记录，不转抄为当前待办。
 
-## 8. 实施进度
+## 8. 实施与验收结果
 
-本节先列最新结论，后续保留具名提交/run 的分阶段原始记录；历史“待执行”与失败不是当前新增待办，也不追认通过。
+### 8.1 当前有限结论
+
+截至 `3771be4d` / run `37725028656`，P1 至 P3 及 R1-01 至 R1-08 已按以下有限输入、证据层级和排除项收口。Linux 最终产品包仍来自 `502934e1` / `37714907772`，VSIX SHA256 为 `a37f0c3e5afeba5132b5f5eb88104bb36d0670887572c44adbc05cd91097203f`；后续 harness 修复复用该包，不重打未变产品或重复已通过矩阵。此状态不是“所有历史失败已定位”，也不覆盖未列出的 provider/OS 全组合。
+
+| ID | 本轮收口证据 | 层级与保留边界 |
+| --- | --- | --- |
+| R1-01 | owner/paths 纯函数、Canvas context 与 Host wiring 的身份相等/隔离、缺失/歧义拒绝、原 binding 保留 | 按既定词法路径规则验证；不承诺 inode、别名合并或目录移动后的 live 迁移 |
+| R1-02 | 三平台真实父子进程环境一致性；Linux systemd 范围核对；`37716185554` 无产品/无画板 Remote EH 与后续两 EH、root binding 摘要相同 | 真实 Remote 为 Linux loopback SSH/detached 的创建、完成、重开；睡眠、调时、Fast Startup、live SSH 断网恢复未实测 |
+| R1-03 | 三平台原生协调最终 `37714762684`，含同 owner 汇聚、真实 Host helper、中断、未知不重提、正面 claim 释放后重启，以及 Linux systemd/detached 发现复用 | 具名原生进程与受控故障输入，不用单 client Promise 代证跨 Host；未知仍不 fallback |
+| R1-04 | Terminal 双窗口 `37715894411` 与 multi 先行边界 `37720714756`；Codex 双窗口 `37721421079` 的独立新建、四 nonce、PaneGallery 往返；Claude 原身份 Reload `37725028656` | 新建与 attach 分别核对；固定 Linux Codex 双窗口，不外推 Claude 双窗口或全平台组合 |
+| R1-05 | 三 root/双窗口真实样本及原进程自然 idle；`37720714756` 的 C keep/readd/clear、A owner 故障后 B 原身份交互 | 三 owner RSS 为单点样本，不是容量曲线；A 故障 SIGKILL 与 unconfirmed 原 binding 单列，不冒充正常 EOF 或全清空 |
+| R1-06 | 既有原 binding/无效 owner/旧 unconfirmed fresh 观察，加真实生产方法的 old-slot A/B 与 root C 受控组合 | A clear 成功/失败不影响 B/C，最后 reader/close RPC 后才退役旧 client；按既定受控层级，不追加旧 slot OS 矩阵 |
+| R1-07 | `37720714756` 两窗口差异 shell/env/scrollback、原 reader 显式 scrollback、B resize、C keep/readd/clear；原模式切换与关闭回归 | 显式变化与页面/authority 同步，原会话配置不被 attach 覆盖；尾部/最终视口复用未改边界的既有证据 |
+| R1-08 | `37714907772` 同版三平台 installed 与 macOS/Windows Codex Reload；`37715894411` Linux Codex；`37725028656` Linux Claude | 每个平台核对其冻结包与安装 receipt；Linux 后续组复用同一 VSIX，不声称旧八场或新 provider/OS 全矩阵重跑 |
+
+**Claude 最新成功证据。** `3771be4d` / `37725028656` attempt 1 全部成功，artifact `11527536604` 的 setup、verify、pre-stop ownership、settlement 与 cleanup 已独立逐项复核，耗时 12,910 ms。setup/verify 两份安装 receipt 的 VSIX SHA 和 payloadHashes 相同，归档 driver/observer source hash 与此次 harness 一致。该包仍为上述原 Linux VSIX，不由新打包替代原输入。
+
+`setup-process-observation.json` 本轮只记录一个 `cli`：PID `3048` / startTicks `6858`，父 provider 为 `3040` / `6850`，其父 Supervisor 为 `3027` / `6822`。CLI 的两个短命子记录 `3070`、`3103` 已为 `descendant / executable=null / Z / active=false`；这只能说明本轮可见的树，不证明旧 run 的第二条 `cli` 就是这类子进程。严格“一个原 CLI、一个 provider”断言未放宽。
+
+一次真实 Reload 将 EH 从 `2910` / `6595` 换为 `3112` / `7247`，`reloadRequests=1`；原完整 owner/backend/storage/guarantee 与 session `7b0884b1-834f-40a3-b8df-9b744de731dd` 保持，Supervisor 原身份不变。authority `fbf13aec-eee7-40ff-a7ad-bf9c6b860aab` 不变，reader 从 `994282c4-4754-4ee6-9ce6-48edbe6792a6` 换为 `9294c682-bfa5-4372-9bfa-6160aee3e059`；实际 BEFORE/AFTER nonce 均通过，`noNewExecution=true`。归档的 reload command `Canceled` 不单独作失败判断，真实新 EH、原身份和 AFTER 回复已证明 Reload 完成。
+
+独立 `pre-stop-ownership.json` 证明原 provider/CLI 在产品 stop 前仍为相同身份且 live。随后原两资源均 `actual=null / exited=true`；最终 reader 具名 settlement 为 `applied / finalRevision=53`，binding 空、pending=0。cleanup `pass=true`，registry sessions 空、nodes=0、`fallback=[]`。收尾只在原隔离 Supervisor 已空闲并通过身份核对后发出 `owned-isolated-idle-supervisor-SIGTERM`；这是夹具主动清理，**不作为 Supervisor 自然退出证据**，自然 idle 仍只引用此前双窗口/边界组的实际观察。
+
+**历史未知仍保留。** `37721390485` 的两条 `cli` 缺原身份/父关系归档；`37722835410` attempt 2 和 `37723822196` 的 trust Yes→No 回退也没有已确认根因。单独 Down 仍会回退，已排查路径未见显式重复写不等于已证明 CLI 内部或底层机制；此次成功不追认这些失败为已修复。现有一次性身份白名单诊断覆盖成功断言前与 setup 失败清理前，未记录 argv/env，未改变资源通过条件。
+
+### 8.2 分阶段记录
+
+以下保留具名提交/run 的分阶段原始记录；当前结论以 §8.1 为准，历史“待执行”与失败不是当前新增待办，也不追认通过。
 
 Claude `19a00607` / `37723822196` 仍在 trust 页失败，未到原资源断言：一次独立 Down 后 revision 11 选 Yes、12 回 No，夹具未再发 Enter 或重按。这说明组合按键不足以解释之前回退，不能把分步修复当根因已解决。两端独立源码排查未发现 Webview/Host 重发、client RPC 重试、Supervisor 双写或 provider 成功字节重写；实际 Down 后也无新输入/查询，但不代证底层写入次数。仅复用现有身份白名单到 setup 失败归档，继续取得实际进程树，不改业务或资源通过条件。
 
@@ -258,7 +285,7 @@ P2 独立审查修复恢复 bucket 等连接期间换绑定的竞态：在 await
 
 原生协调 run `37709150155` / `a5f68f17` 的 macOS、Windows 全组通过，Linux 的同 owner 汇聚、真实 Host helper、intent 前取消与提交后崩溃/迟到 ready 已通过，systemd probe 失败并明确报 `Cannot set property JobTimeoutUSec, or unknown property`。因此只移除不支持的 job 属性，保留服务阶段与调用预算，40 项受控 systemd 判定通过，原生修后结果仍待验证。早先 run `37707854830` 的 IPC close 失败和 run `37708504120` 的测试导出缺失原结果保留；后者为夹具缺陷，不扩写为产品缺陷。
 
-2026-10-08 开始 P1 身份/环境/握手基础接入，实施计划见 `docs/exec-plans/active/runtime-root-ownership.md`。仅增加明确的新 root generation，原 current-state generation 与 Manager 默认创建路由不变。原绑定不读新 owner 记录、不被静默升级；新 generation 必须核对完整身份，基础阶段只允许连接，不借旧的自动启动流程绕过尚未接入的启动准备排他。
+2026-10-08 开始 P1 身份/环境/握手基础接入，实施计划见 `docs/exec-plans/completed/runtime-root-ownership.md`。仅增加明确的新 root generation，原 current-state generation 与 Manager 默认创建路由不变。原绑定不读新 owner 记录、不被静默升级；新 generation 必须核对完整身份，基础阶段只允许连接，不借旧的自动启动流程绕过尚未接入的启动准备排他。
 
 Windows 只读 boot UUID/SID probe 优先由系统自带 PowerShell 调用固定 native API，不修改 PTY addon、ConPTY 或执行资产格式；其有界失败仍为 unknown，不回退墙上时钟或窗口随机 ID。这是具体调用方式的最小化，不改变环境身份契约。三平台定向 workflow 只运行基础测试与 typecheck，不获取 Agent 凭据、不启动整套旧 PTY 矩阵。实际命令和结果在实施计划中登记；尚未执行的平台不计通过。
 

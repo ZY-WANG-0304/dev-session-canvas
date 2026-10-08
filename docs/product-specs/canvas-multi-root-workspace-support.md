@@ -1,13 +1,14 @@
 ---
 title: 画布多根 workspace 组合视图规格
 status: 已确认
-updated_at: 2026-10-07
+updated_at: 2026-10-08
 related_designs:
   - docs/design-docs/canvas-multi-root-workspace-support.md
   - docs/design-docs/webview-host-supervisor-architecture-review.md
   - docs/design-docs/runtime-root-ownership.md
 related_plans:
   - docs/exec-plans/completed/runtime-root-ownership-design.md
+  - docs/exec-plans/completed/runtime-root-ownership.md
   - docs/exec-plans/active/canvas-multi-root-composed-canvas-rewrite.md
   - docs/exec-plans/completed/canvas-multi-root-pane-gallery-mode.md
   - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
@@ -56,7 +57,7 @@ related_plans:
 13. 多根组合视图中，用户创建或重连连线时，两个端点必须属于同一个 root 分组；跨 root 连线被拒绝。
 14. 文件活动自动节点、file-activity edge 和 suppression id 在多根组合视图中按 root 命名空间重建，不跨 root 共享；`file` / `file-list` 在各自 root 内按 owner Agent 最近公共父分组归属，没有公共用户分组时归属对应 `workspace-root`。
 15. 多根组合视图中的 live 文件活动记录按 owner 节点所属 root 生成 root-namespaced `fileReferences.id`；旧的未命名空间化引用在重建时按 root scope 迁移或补 namespace。
-16. 单根与多根的 `Agent` / `Terminal` 新建应由同一执行环境、用户存储范围、画板 root 身份和 Supervisor generation 确定稳定归属，不依赖创建窗口 slot；具体方案见 `docs/design-docs/runtime-root-ownership.md`，本条接线已实现、产品验收中。恢复时 display node id 只服务渲染、选择、连线、布局和拆回 root-local；已有 session 仍以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威。旧 session 必须保留原具体 VS Code `workspaceStorage` slot，新 session 保存新 root owner 的完整地址，不通过重写地址迁移旧进程。
+16. 单根与多根的 `Agent` / `Terminal` 新建应由同一执行环境、用户存储范围、画板 root 身份和 Supervisor generation 确定稳定归属，不依赖创建窗口 slot；具体方案见 `docs/design-docs/runtime-root-ownership.md`，本条有限交付已完成，验收限于 §7、§8 的具名输入与证据复用。恢复时 display node id 只服务渲染、选择、连线、布局和拆回 root-local；已有 session 仍以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威。旧 session 必须保留原具体 VS Code `workspaceStorage` slot，新 session 保存新 root owner 的完整地址，不通过重写地址迁移旧进程。
 17. 多根窗口不能用当前 multi-root workspace storage path 猜 runtime；同一个 root 的多个 storage slot 也不能互相替代，必须使用 root-local metadata 中保存的完整 `runtimeStoragePath`。旧 snapshot 缺少 `runtimeStoragePath` 时必须迁移或显式降级为历史恢复，并记录诊断。
 18. 全局 fit view、初始自动 fit、动态最小缩放和 MiniMap 把所有系统 root 分组作为一等空间对象纳入；multi-root 下全局 fit view 默认包含所有 root 分组。
 19. 当 VSCode workspace folder 变化新增 root 时，如果该 root 在 multi-root overlay 中还没有位置，系统应以当前画布可见中心为锚点，选择离该中心最近且不与已有 root 分组重叠的可用位置；已有 overlay root 位置不被重新计算。
@@ -133,13 +134,13 @@ related_plans:
 - 创建 `Agent` / `Terminal` 时，节点 `metadata.cwd` 等于目标 root 路径或显式 Explorer cwd。
 - 在 `paneGallery` 的 `dynamic` / `grid` root pane 中交互只写入对应 root-local state；在 thumbnail 模式非 active root 缩略图中允许只读预加载与 execution snapshot 同步；单击 root 不切换 active root，双击非 active root 缩略图只切换 active root，active root 占位不响应单击 / 双击切换，不会发送由缩略图或占位内用户交互触发的 create / drag / edit / terminal input / start / stop / drop 等消息，也不会因缩略图内用户交互写入 root-local state。
 
-## Root 稳定 runtime 归属（已接线、验收中）
+## Root 稳定 runtime 归属（有限交付完成）
 
 2026-09-16 架构审核确认：画板内容按 root 归属，但当时新建 Agent / Terminal 的 Supervisor 默认按创建窗口的 workspace storage slot 归属。当时功能范围第 16、17 项及 slot 验收条目明确保留具体 slot；本问题是修订设计决策，不倒写成实现违反当时规格的 bug。2026-10-07 修订新建目标，2026-10-08 完成两类创建接线；旧 slot 恢复条目继续有效。
 
-多根 workspace 是各 root 画板的组合视图，同 root 单独打开或作为多根子画板打开时都访问自己的 runtime。正式方案见 `docs/design-docs/runtime-root-ownership.md`：执行端用户级存储按环境运行实例/root/generation 分开，保留现有路径型 root 身份，不按 cwd、显示名或窗口配置重定归属。单根和多根创建路径一起调整；双窗口启动须唯一，已有 owner 未确认不可连时不能另起第二个。关闭窗口、移除但保留画板只 detach，显式 stop/clear 仍只作用于选中绑定。真正无 root 的窗口保留显式 slot 例外；未知环境或 root 不能用该例外兜底。当前实现已接线，三平台安装、Codex重连、Linux双窗口与Remote身份路径已通过，剩余有限场景仍在验收中；不提前宣称整体完成。
+多根 workspace 是各 root 画板的组合视图，同 root 单独打开或作为多根子画板打开时都访问自己的 runtime。正式方案见 `docs/design-docs/runtime-root-ownership.md`：执行端用户级存储按环境运行实例/root/generation 分开，保留现有路径型 root 身份，不按 cwd、显示名或窗口配置重定归属。单根和多根创建路径一起调整；双窗口启动须唯一，已有 owner 未确认不可连时不能另起第二个。关闭窗口、移除但保留画板只 detach，显式 stop/clear 仍只作用于选中绑定。真正无 root 的窗口保留显式 slot 例外；未知环境或 root 不能用该例外兜底。2026-10-08 已完成 P1 至 P3 与 R1-01 至 R1-08 的有限交付，分层证据包含三平台原生协调、安装与 Codex 重连、Linux Terminal 边界和 Agent 双窗口、Remote 身份及最终 Claude Reload；各自仅证明具名输入，不把 root 归属收口扩大为整体 multi-root/UI 已验证。
 
-旧 live session 继续按完整 metadata 连接原 Supervisor，新会话进入新 root 归属。旧 Supervisor 需待其旧会话及相关引用/RPC 收敛后退役，不能改写地址后将旧进程视为已迁移。原 slot 恢复验收继续适用于这些旧会话。“在不同窗口分别新建、仍归属同 root runtime”的验收不能由已有跨窗attach证据代替。原建议场景见 `docs/design-docs/webview-host-supervisor-architecture-review.md` 第 6 节；当前分层验证结果以 `docs/design-docs/runtime-root-ownership.md` §8 为准，不将原建议本身记为通过。
+旧 live session 继续按完整 metadata 连接原 Supervisor，新会话进入新 root 归属。旧 Supervisor 需待其旧会话及相关引用/RPC 收敛后退役，不能改写地址后将旧进程视为已迁移。原 slot 恢复验收继续适用于这些旧会话。“在不同窗口分别新建、仍归属同 root runtime”的验收不能由已有跨窗 attach 证据代替。原审核第 6 节只是历史建议输入，不是当前待办或已执行证据；有限结果以 `docs/design-docs/runtime-root-ownership.md` §8 和 `docs/exec-plans/completed/runtime-root-ownership.md` 为准。历史失败保持，Claude 间歇信任页回退及旧两 CLI 观察仍未归因，不能由最终成功宣称修复。
 
 ## 验证状态
 

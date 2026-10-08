@@ -22,7 +22,8 @@ related_plans:
   - docs/exec-plans/completed/sidebar-workspace-worktree-actions.md
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-root-ownership-design.md
-updated_at: 2026-10-07
+  - docs/exec-plans/completed/runtime-root-ownership.md
+updated_at: 2026-10-08
 ---
 
 # 画布多根 workspace 组合视图设计
@@ -133,7 +134,7 @@ live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点�
 
 ### 6.8 Multi-root live runtime 恢复语义
 
-2026-10-07 设计修订：新建归属采用 `docs/design-docs/runtime-root-ownership.md` 的环境/用户存储/root/generation 方案，单根和多根同时调整；本节区分新建目标与旧 session 原绑定。2026-10-08 两类创建接线已实现，三平台原生协调（含Linux systemd）、安装和Codex重连、Linux双窗与Remote身份已通过；剩余有限产品组合仍开放，具体层级和原失败见新设计 §8。2026-09-16 F-03的问题判断与旧slot证据保留，不把设计修订倒写成实现违反当时规格。
+2026-10-07 设计修订：新建归属采用 `docs/design-docs/runtime-root-ownership.md` 的环境/用户存储/root/generation 方案，单根和多根同时调整；本节区分新建目标与旧 session 原绑定。2026-10-08 已完成两类创建接线及 P1 至 P3、R1-01 至 R1-08 的有限交付，三平台原生协调（含 Linux systemd）、同版安装与 Codex 重连、Linux Terminal 边界和 Agent 双窗、Remote 身份及最终 Claude Reload 的具名证据见新设计 §8。2026-09-16 F-03 的问题判断与旧 slot 证据保留，不把设计修订倒写成实现违反当时规格，也不据 root 归属结果将本设计整体改为已验证。
 
 `Agent` / `Terminal` 的后端进程由 runtime supervisor 和 provider/shell 持有，canvas 只是 display surface；multi-root、single-root 或两个 VS Code 窗口同时打开时，不应因为显示形态不同而阻止恢复同一个 live runtime。display node id 只服务渲染、选择、连线、布局和 `decomposeMultiRootCanvasState()`；已有 session 的 runtime binding 仍以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威。旧 session 的 `runtimeStoragePath` 必须保留创建时的具体 extension storage slot；同 root 的多个旧 slot 不能互相替代。新 session 则保存新 root owner 的完整地址，不能继续把“具体 workspace slot”当作所有新会话的目标归属。
 
@@ -141,13 +142,13 @@ live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点�
 
 `paneGallery` 只改变 display surface。`dynamic` / `grid` root pane 和 thumbnail 模式 active root 主窗格可以承载 terminal input，仍使用同一个 runtime binding key；缩略图可以显示 live runtime 状态与 attention 提示、hydrate / attach execution snapshot，并跟随正常执行生命周期同步，但不直接承载由缩略图内用户交互触发的 terminal input、start / stop、编辑、拖拽、创建或 drop 消息。必须避免用当前 multi-root workspace 的 storage path 猜 runtime，也不能用同 root 的当前 slot 回填旧 live-runtime snapshot。对于已有 root-local snapshot，如果 `persistenceMode` 是 `live-runtime` 且存在 `runtimeSessionId`，但缺少 `runtimeStoragePath`，宿主不能把它隐式指到 multi-root workspace storage 或同 root 的当前 storage slot；应通过兼容迁移明确补齐原 root-local runtime storage，或显式降级为历史恢复并记录诊断，避免 attach 到错误 supervisor 或误报找不到 session。当前 `runtimeSessionBindings` 是一条 runtime key 对应一个 display node，这对单根窗口和多根窗口同时 attach 成立，因为两个窗口各有自己的 Host / Manager；`paneGallery` 若在同一个 Host 内同时可见多个 root pane，仍必须保证同一 runtime 只由所属 root pane 的一个 display node 承载；若未来同一个 Host 内允许同一 runtime 被多个 display node 同时呈现，应把 binding value 改成 subscribers/list。
 
-#### Root 稳定的新建归属（已接线、验收中）
+#### Root 稳定的新建归属（有限交付完成）
 
 原审核基线中，`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `startAgentSessionWithSupervisor()` 与 `startTerminalSessionWithSupervisor()` 均未向 `getPreferredRuntimeSupervisorClient()` 传入节点 root，`getRuntimeHostBaseStoragePath()` 默认从创建窗口的 extension storage slot 派生 generation，导致不同root共享Supervisor、同root在不同窗口新建的会话分散。当前已将两类新建改为显式root target并通过准备事务发现原owner；metadata恢复继续沿原绑定。保留这段设计修订背景，不将旧设计行为倒写成违反当时规格的实现bug。
 
 正式目标是由执行端环境运行实例、用户 global storage 范围、画板词法 root 身份和 generation 确定 owner，在用户级存储下按 root 隔离，按需启动。窗口 slot、root 显示名、cwd 和 PaneGallery 布局不参与新建身份。rootless 窗口保留显式 slot 例外；解析失败不是该例外。环境不得只用 Remote URI 或 remoteName 推断；发现握手、双 Host 启动准备排他、backend unknown 不 fallback、每会话设置与旧 client 退役均按新设计执行。旧 live session 继续连接 metadata 中的原 Supervisor，新会话才使用新 root 归属；不能仅改写地址宣称迁移完成。旧 Supervisor 随其全部旧会话结束、相关 reader 与 RPC 收敛而退役，包括它仍承载的其他 root 会话。
 
-有限 P1 至 P3 与 R1-01 至 R1-08 验收见 `docs/design-docs/runtime-root-ownership.md`，实施进度见 `docs/exec-plans/active/runtime-root-ownership.md`；原审核第 6 节保留为输入，不构成 root 稳定 runtime 产品验收已完成的证据。
+有限 P1 至 P3 与 R1-01 至 R1-08 验收见 `docs/design-docs/runtime-root-ownership.md` §8，执行记录见 `docs/exec-plans/completed/runtime-root-ownership.md`。原审核第 6 节只是历史建议输入，不是当前待办，也不能独立充当验收证据；F-01/F-02、复杂跨 pane 交互和整体 multi-root/UI 验证不由本次泛化完成。Claude 间歇信任页回退及旧两 CLI 观察的根因仍未知，保留失败，不因最终成功追认修复。
 
 ## 7. 风险与取舍
 
@@ -164,6 +165,8 @@ root-local global storage 与旧 workspace storage 并存，用户可能有迁�
 清空画板验证必须覆盖 multi-root 下的 product boundary：命令和右键 workspace 级确认文案说明会清空每个 root 并保留 root section；清空后当前 composed state 不再有普通节点、用户分组、root 内连线或文件活动记录，但仍有每个当前 workspace folder 的 `role === "workspace-root"` 分组；root-local snapshot 被写为空，后续重载不会恢复旧节点；执行节点对应 live runtime 被终止；workspace folder、磁盘目录、git worktree 和 root section overlay 位置不被删除。右键 scoped 清空还必须覆盖：root section / `paneGallery` root pane 默认只清空当前 root；普通用户分组默认只清空该分组内容并保留分组框；二级菜单的 workspace 选项才触发全局清空；所有 scoped 清空都先经过 modal，取消不变更 state。定向自动化至少覆盖静态源码断言、`npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run test:ui-copy-localization`、`npm run test:canvas-multi-root-composition` 和 `git diff --check`；真实 VS Code multi-root smoke 可作为后续补充验证。
 
 ## 9. 当前验证状态
+
+2026-10-08 root 归属增量已按 §6.8 的有限范围完成。此结论只覆盖独立 root owner 方案的具名验证与证据复用，不替换下列 UI、拖拽、规模及人工验证边界；本设计整体仍为 `验证中`。
 
 2026-07-17 补充：`sideThumbnails` 在窄于 `900px` 时继续只把右侧 rail 退化到底部，不新增标题行、不改变 root title 尺寸或位置，也不下移缩略画板内容。底部标题消失的根因是 React Flow 内部节点与 thumbnail hit layer 的高 `z-index` 逃逸出未建立 stacking context 的 flow shell，在宽扁缩略图中覆盖了 sibling root header；修复仅为 flow shell 建立 `z-index: 0` stacking context，保留原有 root header `z-index: 5`。新增 Webview Playwright 回归，从可纵向滚动的 `1000px` 右侧 rail 缩窄到 `800px` 底部 rail，验证可见 root header 仍位于原 pane 左上角、宽度保持轻量标签规格，并且 header 在命中测试和层叠顺序上都高于画板内容。
 

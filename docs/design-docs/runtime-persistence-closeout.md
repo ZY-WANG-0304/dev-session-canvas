@@ -14,6 +14,7 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/completed/runtime-root-ownership.md
   - docs/exec-plans/completed/runtime-live-state-recovery.md
   - docs/exec-plans/completed/detached-restored-history-cleanup.md
   - docs/exec-plans/completed/native-runtime-history-cleanup.md
@@ -21,7 +22,7 @@ related_plans:
   - docs/exec-plans/completed/runtime-persistence-capacity-closeout.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
-updated_at: 2026-10-07
+updated_at: 2026-10-08
 ---
 
 # Runtime Persistence 有限收尾与完成定义
@@ -198,13 +199,13 @@ A5历史阶段记录（第37节时点，不覆盖§8当前证据）：当时三�
 
 原审核 F-01 连接超时与 F-02 依赖方向继续各自登记，本次不据旧报告推断它们已解决，也不自动扩成修完全部架构问题。若某项实际阻塞本清单的重连或产品验收，按对应 B 项处理必要部分并保留证据；通用分层重构不作为新前置。
 
-## 7. R1：root 稳定归属独立计划登记
+## 7. R1：root 稳定归属独立有限交付
 
-F-03 独立于 B1 至 B4，不由本次收尾宣称解决。PR #295 合并后，2026-10-07 已启动并形成独立规划设计 `docs/design-docs/runtime-root-ownership.md`，过程见 `docs/exec-plans/completed/runtime-root-ownership-design.md`；实现与原生验收未开始。新方案修订多根 §6.8 和对应规格，限定 P1 身份/存储/握手、P2 生产接线、P3 受影响验收，不把归属迁移混进退出计划，也不重开未受影响历史矩阵。
+F-03 独立于 B1 至 B4，不由旧收尾结果代证。PR #295 合并后，2026-10-07 形成独立规划设计 `docs/design-docs/runtime-root-ownership.md`，2026-10-08 已完成 P1 身份/存储/握手、P2 生产接线、P3 受影响验收的有限交付。R1-01 至 R1-08 的具名输入与证据复用见该设计 §7、§8，设计和实施计划分别归档于 `docs/exec-plans/completed/runtime-root-ownership-design.md`、`docs/exec-plans/completed/runtime-root-ownership.md`；不把归属变更混进退出计划，也不重开未受影响历史矩阵。
 
-目标是同一运行环境、用户存储范围、root 身份与 Supervisor generation 确定稳定归属；单根和多根 Agent/Terminal 新建必须一起修改，显示名、cwd 和创建窗口 slot 不替代 root 身份。先修订 `canvas-multi-root-workspace-support.md` 设计第 6.8 节及对应产品规格，再实现发现/创建路由与必要隔离。
+当前新建由同一运行环境、用户存储范围、root 身份与 Supervisor generation 确定稳定归属；单根和多根 Agent/Terminal 使用同一路由，显示名、cwd 和创建窗口 slot 不替代 root 身份。`canvas-multi-root-workspace-support.md` 设计第 6.8 节及对应规格已同步发现/创建路由与必要隔离。
 
-旧 live 继续连接 metadata 中原 backend/storage/session/kind，不能只改地址声称迁移；新会话用新归属，旧 Supervisor 随原会话及相关责任结束而退役。独立验收包括单根/多根双向新建、不同窗口 slot、并发创建、新旧 generation 共存、不同 root 故障隔离及环境/用户身份边界。当前 B3 只保护现有 root 状态与绑定，不预支这些保证。
+旧 live 继续连接 metadata 中原 backend/storage/session/kind，不能只改地址声称迁移；新会话用新归属，旧 Supervisor 随原会话及相关责任结束而退役。原审核第 6 节只是历史建议，不是当前待办或逐项已执行证明。最终同包 Terminal 边界、Codex 双窗口与 Claude Reload 见 run `37720714756`、`37721421079`、`37725028656`，其余分层证据按 root 设计复用；F-01/F-02 和整体 multi-root/UI 不由此泛化关闭。Claude 间歇信任页回退及旧两 CLI 观察根因仍未知，最终成功不追认失败已修复。
 
 ## 8. 推进约束与证据归档
 
