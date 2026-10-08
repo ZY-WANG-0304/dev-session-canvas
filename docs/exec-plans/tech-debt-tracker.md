@@ -18,19 +18,29 @@
 
 后续独立修复已为新代码的明确拒绝增加 `createSessionOutcome`，覆盖 Agent/Terminal 创建、恢复、重试和删除，保留断连/资源已获取/未知结果保护。已有旧 Supervisor 不会随 Host 热更新，也不会补发原请求的结构化结果；它的普通错误、旧固定文案及更新前残留的未知记录继续保守保护。后续旧 Supervisor 退役或明确历史创建恢复工作如需解除保护，必须从原责任方获取身份匹配的资源证明；不得凭错误字符串、超时或 registry 缺项追认。关联：`docs/design-docs/runtime-admission-rejection-settlement.md`、`CanvasPanelManager.withExecutionCandidateStart`、`RuntimeSupervisorServer.createSession`。
 
-## 2026-10-09：四项验证阻塞已修复，完整门禁仍有后续失败
+## 2026-10-09：四项原失败及模板/reset/hover 后续修复，完整门禁仍有启动阻塞
 
 发布准备 PR #308 已关闭。PR #310 在 `origin/main@f57b11f9` 上定位并修复四项原失败：清单入口显式构建双扩展、主题断言跟随实际组件、styled 路径支持四物理行内软/硬混合折行、owned local 确认启动后记录同身份诊断。双 dist 移开后的正式清单入口、主题/typecheck/build、原 hardwrap 22/22、新混合折行 12/12、Host 336/336 通过；真实 VSIX 已越过相对 shell 的 started、live 快照和真实 PWD 输出断言。原始引入证据保留，详见 `docs/design-docs/release-blockers-investigation.md` 与 `docs/exec-plans/completed/release-blockers-repair.md`。
 
-后续失败单独跟踪，不能把四项具名修复写成完整 npm / packaged 门禁通过，也不恢复 0.26.1 发布：
+本轮继续修复后的结果如下，不能把具名修复写成完整 npm / packaged 门禁通过，也不恢复 0.26.1 发布：
 
 | 触发与影响 | 证据及当前边界 | 后续修复时机与入口 |
 | --- | --- | --- |
-| 完整 npm test 到 `test:canvas-templates` 失败 | 第 1188 行仍要求 main.tsx 包含创建缺失关联 Markdown 文件按钮，实际组件已迁到 fileNoteNodes.tsx；测试与两输入相对基线未变，导出 f57b11f9 原脚本同样失败。属于另一处既有源码断言漂移。 | 下一次恢复完整门禁前，将断言对齐真实职责并执行完整 npm test；不能仅删除断言。入口为 `scripts/test/test-canvas-templates.mjs`。 |
-| 全部 Webview 的两项 Terminal 初次 hover 下划线失败 | URL/file 用例在持续输出步骤前读到空下划线；导出 f57b11f9 两用例五轮为 9 过/1 败（URL），单独 file 十轮为 5 过/5 败，证实修前也存在波动；当前 PR 原样定向复跑 2/2，保留原全量失败，未确认根因。 | 下次完整 Webview 门禁前核对合成鼠标事件、渲染与 fit 顺序，保留真实 hover 断言；不盲加等待、重试或宣布原全量通过。入口为 `webview-harness.spec.mjs` 的 `keeps hovered links active` / `reuses file link resolution`。 |
-| clean-checkout VSIX 后续 QuickPick reset 超时 | 实现提交 8d432d41 的 VS Code 1.141.0 运行在 `verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent` 第 3142 行等待空画布失败；前例 custom Agent 已 stopped，finally 清除了原次首败消息/诊断。仅增加失败补录的独立 VSIX 复核仍在原行失败，确认 final persistence pending 中止 reset，同执行随后 saved；不能追认原次工件或宣称已做去除诊断的因果对照。 | 下次 packaged 完整验收前按 `tests/vscode-smoke/reset-canvas.cjs` 的原执行身份、saved/not-required 与共用时限适配清理流程，再完整复验。产品 pending 中止契约不变，不盲重试或放宽 timeout。 |
+| 模板源码断言，已修复 | f02dafd3 将缺失关联 Markdown 按钮/文案检查迁到 fileNoteNodes.tsx，保留原断言，完整模板命令通过，npm test 已越过此处。 | 无剩余具名缺口；源码职责再迁移时同步检查。入口 `scripts/test/test-canvas-templates.mjs`。 |
+| Terminal 初次 hover，已修复 | 捕获选区直接重绘覆盖下划线、当前链接仍 hovered 的调用栈；a8f057b1 在原绘制后重画当前仍启用的装饰。真实 xterm 正例修前失败，修后 4/4；原 Agent/Terminal URL/file 用例和新回归三轮 24/24。 | 适配依赖当前 xterm 内部接口，升级依赖必须执行真实选区回归与原悬停测试；不依赖 timeout/retry。入口 `executionTerminalSelectionLinkRendering.ts` 与 `execution-terminal-selection-links.spec.mjs`。 |
+| 两处 QuickPick 清理，已修复 | f02dafd3 各自清理本例 Agent，保留诊断，helper 19/19；真实 clean-checkout 已通过一次 reset 与 pending→同执行 saved→第二次 reset 两条路径。a8f057b1 的全包运行在更早的 shell 重启失败，未到这两处。 | 原身份、20 秒总预算、至多一次再次 reset 与生产 pending 中止契约保持。入口 `tests/vscode-smoke/reset-canvas.cjs`、两个 QuickPick 用例。 |
 
-完整 Webview 为 392 passed / 2 failed（12.0 分钟），两失败及基线对照见上表，原 hardwrap 与新增混合折行均通过。Windows/macOS、真实 TUI 的更宽范围未在本轮验证，继续保留各原计划边界；本项没有引入版本例外或放宽发布门禁。
+前一轮完整 Webview 为 392 passed / 2 failed，失败及基线对照仍在正式设计保留；最终 a8f057b1 全量 Webview 398/398 通过（11.6 分钟）。Windows/macOS、真实 TUI 的更宽范围未在本轮验证，继续保留各原计划边界；本项没有引入版本例外或放宽发布门禁。
+
+新暴露的启动问题按 `docs/workflows/TECH_DEBT.md` 单独登记，不扩写成已确认的 fixture 问题。它们仍阻塞完整门禁；当前定向修复证据成立不等于已有可合并/可发布结论。下一次恢复 npm / packaged 验收前优先定位，不能吞错误或放宽保护：
+
+| 背景与触发 | 影响、当前边界与后续入口 |
+| --- | --- |
+| Runtime checkpoint：umask 0002 下 globalStorage 为 0775，root 准备失败 | 未修改的真实目录检查明确拒绝组可写目录；0077 独立目录对照中 Agent live，但 Terminal 又 `rejected-before-acquire`。权限和资源准入是两层问题，后者原因待查；未放宽生产权限检查。入口 `runtimeRootOwner.ts`、`runtimeRootPreparation.ts`、`runRuntimeCheckpointRefreshSmoke`；原工件 `/tmp/dsc310fs/runtime-checkpoint-refresh/artifacts`，对照 `/tmp/dsc310cpprivate/runtime-checkpoint-refresh/artifacts`。 |
+| 最终包 shell 停止后立即重启，旧 key/容量仍占用 | saved 早于重启，不能归为保存 pending；需捕获原 owner 退役/reader 责任，明确测试时序与产品恢复责任。禁止盲重试和提前释放 key。入口 `verifyTerminalShellPathRefreshesStoppedTerminalNode:3325`、`startNonNativeHostExecution` / `retireNonNativeHostExecution`；工件 `/tmp/dev-session-canvas-clean-checkout-eeYcdR/repo/.debug/vscode-vsix-smoke/smoke-runtime/artifacts`。 |
+| 前一包 resize / persisted reload 后自动启动超时 | f02dafd3 已通过修复的 QuickPick，后来出现 creation admission closed、metadata/resize authority binding changed；需检查状态重载是否替换原执行绑定，责任未确认。入口 `verifyNodeResizePersistence` / `verifyAutoStartOnCreate:4909`、`reloadPersistedStateForTest`；工件 `/tmp/dev-session-canvas-clean-checkout-Fi8Bvo/repo/.debug/vscode-vsix-smoke/smoke-runtime/artifacts`。 |
+
+本轮方案、受控验证及上述独立失败的证据边界见 `docs/design-docs/release-blockers-investigation.md`、`docs/exec-plans/completed/release-validation-followups.md`。
 
 ## 近期已收口
 

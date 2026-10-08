@@ -13,7 +13,8 @@ related_specs: []
 related_plans:
   - docs/exec-plans/completed/packaged-smoke-reset-fixture.md
   - docs/exec-plans/completed/canvas-reset-final-persistence-investigation.md
-updated_at: 2026-10-08
+  - docs/exec-plans/completed/release-validation-followups.md
+updated_at: 2026-10-09
 ---
 
 # Reset 最终保存时序与 packaged smoke 失败定位
@@ -71,4 +72,6 @@ Node 22.23.3 定向 6/6 通过。定位阶段未修改生产代码，故不把�
 
 ## PR #310 后续 QuickPick 清理（2026-10-09）
 
-`verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits` 现在在完成行为断言后，用相同 helper 清理本例新建的 custom Agent，避免将 live 执行交给下一用例的初始消息 reset。`verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent` 的 finally 按捕获的本例 Codex Agent 清理，保留其全程诊断；未捕获到本例节点时不授权未知 pending 的再次操作。两处仍使用真实 testResetState Promise、原 20 秒总预算和最多一次显式再次 reset。模板断言与 hover 后续修复过程见 `docs/exec-plans/active/release-validation-followups.md`，真实 VSIX 结果待回收。
+`verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits` 现在在完成行为断言后，用相同 helper 清理本例新建的 custom Agent，避免将 live 执行交给下一用例的初始消息 reset。`verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent` 的 finally 按捕获的本例 Codex Agent 清理，保留其全程诊断；未捕获到本例节点时不授权未知 pending 的再次操作。两处仍使用真实 testResetState Promise、原 20 秒总预算和最多一次显式再次 reset。模板断言与 hover 后续修复过程见 `docs/exec-plans/completed/release-validation-followups.md`。
+
+f02dafd3 的真实 clean-checkout VSIX（Linux、VS Code 1.141.0）已通过上述两个清理路径：custom Agent 一次 reset 成功，Codex pending 后确认同执行 saved，再次 reset 清空。日志为 `/tmp/dsc310-followup-clean-vsix.log`，约第 3796 / 3947 行；19 项 helper 纯测仍通过。完整命令在后续 `verifyAutoStartOnCreate` 失败，不能外推整体通过。包含后续 hover 修复的 a8f057b1 再次打包，在更早的 shell 停止后重启被旧执行责任拒绝，尚未进入这两个 QuickPick；该次保存成功早于重启请求，并非同一 pending 保存现场，详见 `release-blockers-investigation.md`。

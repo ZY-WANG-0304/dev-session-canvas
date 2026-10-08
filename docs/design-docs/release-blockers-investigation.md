@@ -1,11 +1,11 @@
 ---
 title: 四项发布验证阻塞定位与修复
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/release-blockers-investigation.md, docs/exec-plans/completed/release-blockers-repair.md, docs/exec-plans/active/release-validation-followups.md]
+related_plans: [docs/exec-plans/completed/release-blockers-investigation.md, docs/exec-plans/completed/release-blockers-repair.md, docs/exec-plans/completed/release-validation-followups.md]
 updated_at: 2026-10-09
 ---
 
@@ -33,11 +33,27 @@ styled 文件链接在四个物理行上限内支持软/硬混合折行。首片
 
 hover 的只读探针与行 replaceChildren 调用栈确认：链接命中和下划线 show 已成功，随后 `SelectionService._refresh → RenderService.handleSelectionChanged → DomRenderer.renderRows` 重建行并丢失 underline；linkifier 仍保存相同且 hovered/underline=true 的链接。该直接选区绘制没有普通 viewport render 的链接重验证通知。固定尺寸现场没有再次 resize；先前 fit 与鼠标目标假设不作为根因。
 
-正式修复是在终端 open 后为已有 xterm `RenderService.handleSelectionChanged` 安装有限适配，先执行原选区绘制，再读取当时 linkifier 的当前链接；只对仍 hovered 且开启 underline 的链接，通过其现有 decorations setter 重新触发绘制。复用原 range 与状态，不生成新候选、不触发 hover/open 回调、不启用低置信链接默认关闭的装饰；dispose 仅恢复仍由本适配占用的原方法。该适配依赖锁定 xterm 的内部 RenderService/当前链接接口，与已有鼠标坐标适配相同在 open/dispose 生命周期内管理；真实 xterm 的确定性选区重绘、无下划线和离开负例验证此边界。过程见 `docs/exec-plans/active/release-validation-followups.md`；下文是前一阶段结果，不代表本阶段已完成。
+正式修复是在终端 open 后为已有 xterm `RenderService.handleSelectionChanged` 安装有限适配，先执行原选区绘制，再读取当时 linkifier 的当前链接；只对仍 hovered 且开启 underline 的链接，通过其现有 decorations setter 重新触发绘制。复用原 range 与状态，不生成新候选、不触发 hover/open 回调、不启用低置信链接默认关闭的装饰；dispose 仅恢复仍由本适配占用的原方法。该适配依赖锁定 xterm 的内部 RenderService/当前链接接口，与已有鼠标坐标适配相同在 open/dispose 生命周期内管理；真实 xterm 的确定性选区重绘、无下划线和离开负例验证此边界。过程见 `docs/exec-plans/completed/release-validation-followups.md`；本轮与前一阶段的验证结果分别记录于下文。
 
-## 修后验证与剩余阻塞
+## 后续修复验证与完整门禁边界（2026-10-09）
 
-验证实现提交 `8d432d41`，Node 22.23.3。本文“已验证”只指原四项修复。以下结果只关闭原四项的具名失败，不表示完整发布门禁通过。
+本文“已验证”限于四项原失败及本轮模板、QuickPick、hover 具名修复，完整门禁的启动阻塞单列。模板与 QuickPick 修复为 `f02dafd3`，hover 修复为 `a8f057b1`。`test:canvas-templates` exit 0，`test:smoke-reset-fixture` 19/19，脚本语法、typecheck 和 build 通过。真实 xterm 的受控选区正例在适配为空实现时稳定失败，修后与三个负例/清理用例共 4/4；它们连同 Agent/Terminal 原 URL/file 悬停用例三轮共 24/24，通过真实鼠标/选区、可见下划线、持续输出和既有目标断言，未加重试或改快照。
+
+`f02dafd3` 的 clean-checkout VSIX 已越过两项 QuickPick 清理：一次直接 reset 成功，另一次先 pending、原 Codex saved 后第二次 reset 成功。后续自动启动测试失败，完整命令 exit 1。`a8f057b1` 的独立 clean-checkout 完成 npm ci 与真实打包，但在更早的 `verifyTerminalShellPathRefreshesStoppedTerminalNode:3325` 重启失败，未到这两项 QuickPick。不同运行的阶段与结果分别保留，不追认最终包全程通过。
+
+最终 `a8f057b1` 全量 Webview **398/398 通过（11.6 分钟）**，包含原悬停、硬折行及新增真实选区回归；没有更新快照或重试失败。完整 npm test 越过原模板断言后，在 Runtime checkpoint 场景启动失败。下面是新的门禁阻塞及已确认边界；它们不影响本轮具名用例修复的证据，但完整门禁尚不能宣称通过或据此恢复发布。
+
+| 后续现场 | 证据与下一步 |
+| --- | --- |
+| Runtime checkpoint 的 root 准备失败 | 原 `/tmp/dsc310fs/runtime-checkpoint-refresh` 的扩展 globalStorage 为 0775，当前 shell umask 0002；调用未修改的真实 `prepareRuntimeRootOwnerDirectories` 对该目录检查，明确返回不得由其他用户写入的权限拒绝。隔离目录以 umask 0077 重跑，目录为 0700，Agent 已 live 且打开当前态分页读，消除了原准备失败；Terminal 又被 `rejected-before-acquire` 拒绝，尚未定位其资源准入原因。权限对照不是完整 checkpoint 通过。root 准备代码与 origin/main 相同，没有放宽权限保护。 |
+| shell 停止后重启被旧执行责任拒绝 | 最终包在 `startNonNativeHostExecution` 的执行 key/容量保护拒绝。原 Terminal 的 saved 为 21:07:55.706Z，重启请求为 21:07:55.834Z，reader 仅在 finally 的 Host boundary 于 21:07:55.839Z cancelled。保存成功不等于 owner 已 retired；尚无原请求时 owner 完整快照，不能将拒绝写成保存 pending 或确定归因于 reader。需按原 executionId/generation 检查退役条件，不能盲重试或提前释放 key。 |
+| 前一包后续自动启动等待失败 | f02dafd3 在 resize/persisted-state reload 之后的 `verifyAutoStartOnCreate:4909` 超时；有 creation admission closed、Terminal 原 metadata binding changed 和 resize authority binding changed，失败快照中 Agent resume-ready、Terminal interrupted。需要核对测试内存状态替换与原执行绑定，产品/夹具责任尚未确认。 |
+
+证据：定向日志 `/tmp/dsc310-followup-{templates,selection-before,selection-after,hover-fixed,typecheck,build}.log`；完整命令 `/tmp/dsc310-followup-{npm,clean-vsix,final-vsix,webview}.log`。两次 clean-checkout 为 `/tmp/dev-session-canvas-clean-checkout-{Fi8Bvo,eeYcdR}/repo`，各自 `.debug/vscode-vsix-smoke/smoke-runtime/artifacts` 保留首败。权限原目录只读检查为 `/tmp/dsc310-followup-storage-permission-probe.log`，0077 对照为 `/tmp/dsc310-followup-checkpoint-private.log` 与 `/tmp/dsc310cpprivate/runtime-checkpoint-refresh/artifacts`。这些新失败按 `docs/workflows/TECH_DEBT.md` 登记独立后续项；未发现当前三项修复引入它们的证据，也未做完整基线对照来排除所有影响。跨平台真实宿主未重跑。
+
+## 原四项修复验证与当时剩余阻塞（历史阶段）
+
+本历史阶段验证实现提交 `8d432d41`，Node 22.23.3；当时“已验证”只指原四项修复。以下结果只关闭原四项的具名失败，不表示完整发布门禁通过。
 
 | 验证 | 实际结果 |
 | --- | --- |

@@ -13,7 +13,8 @@
 - [x] (2026-10-09) 两个 QuickPick 各自清理自己的 Agent，保留保存诊断，既有 reset helper 19/19、语法检查通过。
 - [x] (2026-10-09) f02dafd3 真实 clean-checkout VSIX 越过两个 QuickPick 清理及原目标，后续自动启动失败；完整 npm 越过模板后在 runtime-checkpoint-refresh 启动失败，原始工件保留。
 - [x] (2026-10-09) 捕获选区绘制覆盖下划线调用栈，真实 xterm 受控用例修前失败、修后 4/4；原悬停与受控回归三轮 24/24、typecheck/build 通过。
-- [ ] 完成相关定向与完整门禁，同步文档、技术债和同一 PR。
+- [x] (2026-10-09) 最终 a8f057b1 clean-checkout 已完成打包，shell 重启因旧执行责任拒绝，完整 exit 1；原 npm 的 0775 权限拒绝经真实目录检查和 0077 独立运行对照确认，后者 Agent live、Terminal 又被资源准入拒绝，完整场景仍失败。
+- [x] (2026-10-09) 完整 Webview 398/398（11.6 分钟），npm/VSIX 首败如实保留；同步正式文档与独立后续债务，归档本计划，沿 PR #310 分支交付。
 
 ## 意外与发现
 
@@ -27,9 +28,11 @@
 
 2026-10-09 / Codex：按直接原因修复选区重绘后的当前链接装饰，不使用 timeout、合成鼠标重试或加宽夹具。在 open 后安装 RenderService.handleSelectionChanged 适配，原绘制后只重画当前仍 hovered 且 underline=true 的链接，dispose 恢复原方法；用真实 xterm 的受控选区改变先红后绿及关闭装饰/离开负例约束，避免修改整份第三方 bundle 或增加任意观察定时器。
 
+2026-10-09 / Codex：完整命令的新启动失败依工作流登记为独立后续项。本次权限对照只改独立测试进程的 umask，不修改产品保护；shell 重启现场 saved 早于 start，但未捕获原 owner 完整状态，不把错误概称为保存 pending。前一包在后续 persisted reload 的绑定拒绝也单列；没有用当前局部修复或未做的基线对照声明新失败无害。
+
 ## 结果与复盘
 
-模板、QuickPick 清理和 hover 直接根因均已修复，定向验证通过；完整 Webview 与最终包待回收。f02dafd3 的 npm/clean-checkout 已越过本轮原阻塞，在更晚的 Runtime checkpoint 启动和自动启动用例失败，原因仍在核对，不能把原失败追认为成功。
+模板、QuickPick 清理和 hover 直接根因均已修复，定向验证通过；最终 a8f057b1 完整 Webview 398/398 通过（11.6 分钟），包含原两项首 hover 失败及四项新增真实 xterm 回归。f02dafd3 的 npm/clean-checkout 已越过本轮原阻塞，在 Runtime checkpoint 启动和自动启动用例失败；a8f057b1 最终包在更早的 shell 重启被旧执行责任拒绝。最终保存和执行退役不能混同。已将具名修复与新的完整门禁阻塞分别记录，不恢复 0.26.1 发布。
 
 ## 上下文与定向
 
@@ -49,7 +52,7 @@ Webview 的 `executionTerminalNativeInteractions.ts::hoverLinkForTest` 通过查
     npm run test:smoke-reset-fixture
     node --check tests/vscode-smoke/extension-tests.cjs
     npm run build
-    node scripts/test/run-playwright-webview.mjs --grep 'keeps hovered links active|reuses file link resolution'
+    node scripts/test/run-playwright-webview.mjs --grep 'keeps hovered links active|reuses file link resolution|selection draw|selection redraw|selection link rendering' --repeat-each=3
     npm test
     npm run test:webview
     npm run validate:clean-checkout:vsix -- --keep-temp
@@ -73,3 +76,5 @@ Webview 的 `executionTerminalNativeInteractions.ts::hoverLinkForTest` 通过查
 优先复用既有测试入口、reset helper 和 xterm 事件，不增加依赖或产品重试接口。若实际 hover 根因涉及产品行为，先将已确认方案写回正式设计，再最小修复。
 
 修订记录：2026-10-09，根据继续修复授权创建计划，明确三类后续问题及先观察后修 hover 的顺序。
+
+修订记录：2026-10-09，收口模板/QuickPick/hover 三类具名修复；记录完整 Webview 398/398 与完整 npm/VSIX 的新启动失败、权限对照及证据限制，移入 completed。
