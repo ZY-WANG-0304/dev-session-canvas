@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { randomUUID } = require('node:crypto');
 const fs = require('node:fs/promises');
 const net = require('node:net');
 const path = require('node:path');
@@ -159,7 +160,17 @@ function rpc(socketPath, method, id = 'agent-reload') {
   });
 }
 
-async function mountedReader(id) {
+async function mountedReader(id, requested) {
+  if (requested) {
+    const matches = message => message.type === 'host/executionSnapshot' && message.payload.nodeId === id &&
+      message.payload.requestId === requested.requestId && message.payload.terminalRead?.sessionId === requested.sessionId &&
+      typeof message.payload.terminalRead.authorityId === 'string' && message.payload.terminalRead.authorityId.length > 0 &&
+      typeof message.payload.terminalRead.readId === 'string' && message.payload.terminalRead.readId.length > 0 &&
+      (requested.authorityId === undefined || message.payload.terminalRead.authorityId === requested.authorityId);
+    return (await poll('live Agent reader', async () => ({ probe: await probe(), messages: await command('getHostMessages') }),
+      value => value.probe.nodes.some(node => node.nodeId === id && node.terminalCols >= 64) &&
+        value.messages.some(matches))).messages.findLast(matches).payload.terminalRead;
+  }
   return (await poll('live Agent reader', async () => ({ probe: await probe(), messages: await command('getHostMessages') }),
     value => value.probe.nodes.some(node => node.nodeId === id && node.terminalCols >= 64) &&
       value.messages.some(message => message.type === 'host/executionSnapshot' && message.payload.nodeId === id &&
@@ -276,7 +287,7 @@ function hasLoadedAgentComposer(text) {
   const visible = stripVt(text);
   if (config.provider === 'claude') {
     return /\bClaude Code\b/i.test(visible) && /\bdeepseek[- ]?flash\b/i.test(visible) &&
-      /^[ \t]*(?:\u276f|>)[ \t]*(?:Try\b[^\n]*)?$/im.test(visible);
+      /^[ \t\u00a0]*(?:\u276f|>)[ \t\u00a0]*(?:Try\b[^\n]*)?$/im.test(visible);
   }
   // Codex renders this composer before onboarding too, with a "model: loading" header.
   return /^\s*\u203a\s*Ask\s+Codex\s+to\s+do\s+anything\s*$/im.test(visible) &&
@@ -523,7 +534,10 @@ async function pairCapture(sessionId, expected, creatingRole) {
     await observer.addRoot(supervisor.pid, 'supervisor');
     await pairPublish(`${creatingRole}-owner`, { binding, supervisor });
   }
-  const reader = await mountedReader(node.id);
+  const requestId = randomUUID();
+  await command('dispatchWebviewMessage', { type: 'webview/attachExecutionSession', payload: {
+    kind: 'agent', nodeId: node.id, executionSessionId: sessionId, requestId } }, surface);
+  const reader = await mountedReader(node.id, { requestId, sessionId, authorityId: expected?.reader.authorityId });
   assert.equal(reader.sessionId, sessionId);
   assert(typeof reader.authorityId === 'string' && reader.authorityId.length > 0);
   assert(typeof reader.readId === 'string' && reader.readId.length > 0);
@@ -678,6 +692,8 @@ async function runRootWindowPair() {
   } catch (error) {
     failure = error;
     await pairPublish(`${role}-failure`, { error: String(error), stack: error.stack }).catch(() => {});
+    try { await write(`pair-${role}-failure-webview-probe.json`, await probe()); } catch { /* Preserve the first failure. */ }
+    try { await write(`pair-${role}-failure-host-messages.json`, await command('getHostMessages')); } catch { /* Preserve the first failure. */ }
     if (observer) await write(`pair-${role}-fallback.json`, { pass: false,
       actions: await observer.cleanupKnownExecution().catch(cleanupError => [{ error: String(cleanupError) }]) });
   } finally {

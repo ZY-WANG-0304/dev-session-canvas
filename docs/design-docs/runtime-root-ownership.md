@@ -206,6 +206,8 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 本节先列最新结论，后续保留具名提交/run 的分阶段原始记录；历史“待执行”与失败不是当前新增待办，也不追认通过。
 
+最新 Terminal 边界结果：`97f1df49` / `37720714756` 同包重试通过，artifact `11525926721` 的独立合同和两窗安装 receipt 复核通过，VSIX SHA256 为 `a37f0c3e5afeba5132b5f5eb88104bb36d0670887572c44adbc05cd91097203f`。multi 先行、四会话/三 owner，差异 shell/env/scrollback、原 reader 的显式 scrollback、B 125x28→109x24 且页面与 authority 同步通过；C keep/readd 保持原 binding/进程/authority 并有 nonce，clear 后空 readd、A/B 仍可交互，A owner 故障后 B 原身份和 nonce 通过。54,421 ms 完成，pending=0；B/C 自然 idle 观察 27,917 ms 后原资源退出，无额外强制信号。A Supervisor 的 SIGKILL 是明确故障输入，子资源已退出但仍保留 A 的 unconfirmed binding/旧 registry，不声称 A 正常 EOF 或全 registry 清空。此组不新增独立末页 applied 证明，尾部沿用未改实现的既有证据。剩余仅 Claude Reload、Codex 双窗口重试及最终审查结账。
+
 `37719235540` 已定位到 C keep/readd 后的 `inspectSubject/focus`，B resize 已执行通过。原 probe 在新 Webview JS 加载前发出；root 变更使 VS Code 更新 localResourceRoots 并重载页面，旧 ready 与 Host live binding 不能证明新 frame 就绪。仅在四次 remove/readd 分别等待不同 frameId、ready 和 bootstrapAck，原 5 秒 probe 与总预算保持；实际 driver 的四个阶段先红后绿。没有失败瞬间 lifecycle 回执，不能更具体断言请求被哪个 frame 丢弃，原失败仍保留。
 
 `37719440437` 已取得两窗独立 Agent 创建、两次 BEFORE 应答和 multi 的 PaneGallery/rootGroups 往返及 AFTER 应答；single 在 AFTER 输入前的 mountedReader 超时。其判据依赖最近 200 条消息中的历史快照，存在确定夹具脆弱点，但缺失败瞬间 probe/messages，不能证明本次就是记录淘汰或产品挂载故障。`4ea33105` / `37720113628` Claude 已进入真实 deepseek-flash 输入界面，但提示符后的 NBSP 不被现有空白正则接受，仍未进入 Reload；仅修精确输入匹配，不放宽真实应答或资源退出。
