@@ -18,7 +18,7 @@ English | [简体中文](README.zh-CN.md)
 
 DevSessionCanvas is a multi-session collaboration canvas extension for VS Code. It provides a shared canvas that gives `Agent` and `Terminal` sessions a global view, helping you manage multiple development execution sessions inside a single workspace.
 
-The product is in public `Preview`. The release-prep target is `0.26.0`, following the published `0.25.0` baseline. This milestone focuses on runtime capacity, terminal exit integrity, and tmux-like reattachment to healthy persistent sessions through direct current-state import, without replaying accumulated output. Completed persistent Runtime sessions reopen without terminal text; snapshot-only history behavior is unchanged. It is intended for advanced users who can prepare their CLI environment and accept Preview limitations.
+The product is in public `Preview`. The release-prep target is `0.26.1`, following the published `0.26.0` baseline. This patch makes new persistent sessions share a runtime owner for the same workspace folder across windows in the same execution environment and user storage scope. It also fixes startup rejection handling, request waits, legacy history cleanup, and attention notification bridging when runtime persistence is disabled. Existing live sessions retain their original bindings; completed persistent sessions still reopen without terminal text. It is intended for advanced users who can prepare their CLI environment and accept Preview limitations.
 
 ![Dev Session Canvas — multi-agent workbench with parallel AI agent and terminal sessions on a shared canvas](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif)
 
@@ -97,14 +97,14 @@ This README keeps the comparison user-facing and brief. The full technical check
 
 ## Project Status
 
-The project has completed its initial research, design, and MVP validation and is in public `Preview`. See the [0.26.0 release contract](docs/release-contracts/v0.26.0.md) and [main extension changelog](extensions/vscode/dev-session-canvas/CHANGELOG.md) for this milestone. The last published version remains `0.25.0` until publication. There is no stable-release commitment.
+The project has completed its initial research, design, and MVP validation and is in public `Preview`. See the [0.26.1 release contract](docs/release-contracts/v0.26.1.md) and [main extension changelog](extensions/vscode/dev-session-canvas/CHANGELOG.md) for this patch. The last published version remains `0.26.0` until publication. There is no stable-release commitment.
 
 Explicit conclusions:
 
 - The current version is `Preview`, not a stable release.
 - `Restricted Mode` is supported with limited capability messaging. Execution entry points such as `Agent` and `Terminal` are disabled in an untrusted workspace.
 - `Virtual Workspace` is not supported. `vscode.dev`, GitHub Repositories, and other purely virtual filesystem windows are outside the release scope.
-- The intended primary public distribution channel remains `Visual Studio Marketplace`, with `Open VSX` as a same-version supplemental channel; for the `0.26.0` release-day gate, GitHub Release assets plus verified Open VSX publication remain the allowed completion path while Visual Studio Marketplace visibility is still recorded as deferred.
+- The intended primary public distribution channel remains `Visual Studio Marketplace`, with `Open VSX` as a same-version supplemental channel; for the `0.26.1` release-day gate, GitHub Release assets plus verified Open VSX publication remain the allowed completion path while Visual Studio Marketplace visibility is still recorded as deferred.
 - Declared Linux, macOS, Windows, and Remote SSH paths have Preview validation. Native assets cover Linux glibc, macOS, and Windows on x64/arm64; modern-system evidence does not establish older-system or musl compatibility. Windows Codex history cannot page upward yet. Release verification must still run on the PR merge result and final tag.
 - The product still depends on local CLI availability and workspace-extension runtime conditions, so it is better suited to advanced users who can prepare `codex` or `claude` CLI themselves.
 
@@ -116,10 +116,10 @@ Related entry points:
 
 ## Preview Distribution
 
-Public distribution is intended to happen through public extension registries. Official VS Code is still intended to use the `Visual Studio Marketplace` as the primary path, while `Open VSX` is the supplemental path for compatible hosts. During `0.26.0`, GitHub Release assets remain the release-day artifact mirror and manual-install fallback, and Open VSX is the required marketplace completion gate; Visual Studio Marketplace publication is still attempted, but if public visibility remains unavailable it is treated as a deferred channel rather than a release blocker. `.vsix` files are otherwise kept as build artifacts and release-verification inputs rather than ordinary distribution files.
+Public distribution is intended to happen through public extension registries. Official VS Code is still intended to use the `Visual Studio Marketplace` as the primary path, while `Open VSX` is the supplemental path for compatible hosts. During `0.26.1`, GitHub Release assets remain the release-day artifact mirror and manual-install fallback, and Open VSX is the required marketplace completion gate; Visual Studio Marketplace publication is still attempted, but if public visibility remains unavailable it is treated as a deferred channel rather than a release blocker. `.vsix` files are otherwise kept as build artifacts and release-verification inputs rather than ordinary distribution files.
 
 - Public `Preview` users should install through the extension registry configured by their host rather than by manually distributing a `.vsix`
-- `Visual Studio Marketplace` remains the intended official VS Code installation path, but it must not be announced as available until both the main extension and notifier are publicly visible there; for `0.26.0`, a deferred VSM state does not block completion through GitHub Release assets plus verified Open VSX
+- `Visual Studio Marketplace` remains the intended official VS Code installation path, but it must not be announced as available until both the main extension and notifier are publicly visible there; for `0.26.1`, a deferred VSM state does not block completion through GitHub Release assets plus verified Open VSX
 - `Open VSX` does not change the official VS Code Marketplace path and does not expand the compatibility-support matrix by itself
 
 ## Desktop Notification Companion (Auto-Installed)
@@ -154,7 +154,7 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 
 - The product is still in `Preview` and should not be treated as a stable production tool.
 - `Virtual Workspace` is not supported.
-- The public `Preview` distribution path is intended to consolidate around `Visual Studio Marketplace` with same-version `Open VSX` mirroring. `0.25.0` remains the last published baseline while Visual Studio Marketplace visibility remains deferred; `0.26.0` keeps the same release-day completion gate unless VSM visibility recovers, and future release-day publication still requires manual execution and review.
+- The public `Preview` distribution path is intended to consolidate around `Visual Studio Marketplace` with same-version `Open VSX` mirroring. `0.26.0` remains the last published baseline while Visual Studio Marketplace visibility remains deferred; `0.26.1` keeps the same release-day completion gate unless VSM visibility recovers, and future release-day publication still requires manual execution and review.
 - Persistent recovery depends on the setting and backend. Supervisor crashes, machine restarts, and power loss do not guarantee recovery of the original process or terminal history. Existing live sessions retain their original binding. Snapshot-only processes do not survive Host lifecycle boundaries, and cross-version data rollback is not guaranteed.
 - Directed current-node Fork placement has automated geometry and interaction coverage, but final visual review of layer spacing and `fork` labels across panel and editor surfaces is still pending. Automatic File nodes still select positions from an estimated footprint that may be narrower than their rendered path label.
 - PNG execution links have real VS Code Host coverage, while GIF / MP4 use the same native opener without separate real-host fixtures. A resolved `vscode.open` command only confirms editor-service acceptance, not final model load success.
