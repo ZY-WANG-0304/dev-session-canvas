@@ -206,6 +206,10 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 本节先列最新结论，后续保留具名提交/run 的分阶段原始记录；历史“待执行”与失败不是当前新增待办，也不追认通过。
 
+Codex 双窗口 `37721421079` / artifact `11526510881` 独立核对完成：两窗原安装 receipt 与 topology 校验通过，两个新 Agent 共用原 owner/Supervisor，session/authority/provider/CLI 独立；四个 nonce 与 PaneGallery→rootGroups 通过，原 binding/进程保持且无新执行。multi EH 退出后 single 完成两次 stop，当前 reader 的 `applied` 由成功 driver 的严格同 session/readId 断言证明；归档未单存最终 settlement event，不称为原始末页回执可独立重放。原 registry/bindings 空、pending=0，两组共六个原执行资源及 Supervisor 正常退出，forcedSignals=[]，60,397 ms、UI exit0。剩余只有 Claude Reload 和最终审查结账。
+
+实施分支已无冲突 rebase 至 `origin/main@b94ba3cb`（PR #298 仅测试与文档），产品打包输入与 `502934e1` 相同。`35e159a9` / `37722179566` 在 input 阶段因旧包提交不再是 fetch 到的分支祖先而报 `bad object 502934e1...`，没有运行产品或 Claude。修正仅为显式获取 API 已确认的原包 SHA，并允许纯 `tests/playwright/` 验收变更；仍拒绝任何产品输入差异，不重打包或重复已通过矩阵。
+
 `32f4990f` 的 Codex 双窗口 run `37721421079` 成功，原始资源与最终 reader 回执正在独立核对；同提交 Claude `37721390485` 已得到真实 BEFORE assistant nonce，随后因原启动资源集合出现两个 `cli` 失败，未进入 Reload。现有归档缺这两个记录的身份/父关系，不把同 executable 分类机制直接当已证根因；仅补既有 observer 结果的一次归档，保留原断言及首次失败。
 
 最新 Terminal 边界结果：`97f1df49` / `37720714756` 同包重试通过，artifact `11525926721` 的独立合同和两窗安装 receipt 复核通过，VSIX SHA256 为 `a37f0c3e5afeba5132b5f5eb88104bb36d0670887572c44adbc05cd91097203f`。multi 先行、四会话/三 owner，差异 shell/env/scrollback、原 reader 的显式 scrollback、B 125x28→109x24 且页面与 authority 同步通过；C keep/readd 保持原 binding/进程/authority 并有 nonce，clear 后空 readd、A/B 仍可交互，A owner 故障后 B 原身份和 nonce 通过。54,421 ms 完成，pending=0；B/C 自然 idle 观察 27,917 ms 后原资源退出，无额外强制信号。A Supervisor 的 SIGKILL 是明确故障输入，子资源已退出但仍保留 A 的 unconfirmed binding/旧 registry，不声称 A 正常 EOF 或全 registry 清空。此组不新增独立末页 applied 证明，尾部沿用未改实现的既有证据。剩余仅 Claude Reload、Codex 双窗口重试及最终审查结账。

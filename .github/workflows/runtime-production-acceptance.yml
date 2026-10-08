@@ -169,14 +169,16 @@ jobs:
                   && step.conclusion === 'success')),
                 'Skipping installed acceptance requires an original passed installed step on every selected platform.');
             }
-            assert(/^[a-f0-9]{40}$/.test(run.head_sha));
+            assert(typeof run.head_sha === 'string' && run.head_sha.length === 40 && /^[a-f0-9]{40}$/.test(run.head_sha));
             if (nativeReuse) nativeCommit = run.head_sha;
             if (reuse) {
               packageCommit = run.head_sha;
+              // A rebased branch may no longer make the original package commit reachable from fetched refs.
+              execFileSync('git', ['fetch', '--no-tags', 'origin', packageCommit], { stdio: 'inherit', timeout: 60000 });
               const changed = execFileSync('git', ['diff', '--no-renames', '--name-only', '-z', packageCommit, head], { encoding: 'utf8' })
                 .split('\0').filter(Boolean);
               assert(changed.every(file => file === 'ARCHITECTURE.md' || file.startsWith('docs/') || file.startsWith('scripts/smoke/')
-                || file.startsWith('scripts/test/') || file.startsWith('tests/vscode-smoke/')
+                || file.startsWith('scripts/test/') || file.startsWith('tests/vscode-smoke/') || file.startsWith('tests/playwright/')
                 || file === '.github/workflows/runtime-production-acceptance.yml'),
                 'Package reuse permits only documentation and acceptance harness changes, not product inputs.');
             }

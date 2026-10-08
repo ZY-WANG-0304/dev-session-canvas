@@ -23,9 +23,12 @@
 - [x] (2026-10-08) 修复两项夹具并同包验证Windows；独立审查三项产品缺口修后受控回归、正常build/VSIX和三平台原生协调通过。修后同包三平台安装及三平台真实Codex Reload通过。
 - [x] (2026-10-08) Linux真实双窗口四会话/三owner/关闭重开/正常idle及实际Remote-SSH身份和完成重开通过。旧slot A/B与新root C共存及最后reader/RPC退役组合回归补齐，R1-06按受控层级收口。
 - [x] (2026-10-08) `97f1df49` / `37720714756` 同包 Terminal 反向创建、设置/resize、C keep/readd/clear 和 A 故障隔离通过；独立原始合同/安装 receipt 复核通过，故障 A 不计正常 EOF。
+- [x] (2026-10-08) `32f4990f` / `37721421079` 同包 Codex 双窗口独立创建/四次应答/PaneGallery、原进程保持与当前 reader 结算、空 registry 和正常 idle 通过，归档独立核对完成。
 - [ ] P3：完成受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本，整体审查并同步结账。
 
 ## 意外与发现
+
+最新 main PR #298 仅测试和文档，实施分支无冲突 rebase 至 `b94ba3cb`，产品打包输入与原 `502934e1` 完全相同。后续 `35e159a9` / `37722179566` 在 input 因原包提交不再是 fetch 到的分支祖先而 `bad object` 失败，没有运行 Claude；只补原包 SHA 显式获取及纯 Playwright 验收目录白名单，仍保持原同包比较与内容 hash，不通过重跑产品包回避归档身份。
 
 `32f4990f` / `37721390485` Claude 已通过实际 readiness 和 BEFORE assistant nonce，随后原启动资源断言记录两个 `cli`，未进入 Reload。原归档未保存 observer entries/events，不能判断第二条是历史辅助进程还是重复执行；观察器按可执行文件分类且断言统计完整历史，但代码可能性不等于本次根因。保持数量/身份/退出断言，仅在既有 sample 后、断言前保存现有无 argv/env 的资源观察结果，再同包定向核对，不扩大通用诊断阶段。
 
@@ -73,7 +76,9 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 
 ## 结果与复盘
 
-P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd 与跨 XDG/HOME/TMP 复用；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 修后同版包的三平台 installed Terminal/Webview、三平台真实 Codex Reload、Linux双窗与Remote及Terminal边界已通过。只剩Claude和Codex双窗口具名失败重试、整体审查结账，F-03保持开放；旧slot保障按明确受控层级复用，不扩成新的OS矩阵。历史失败和本地沙箱限制原样保留，不追认通过。
+P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd 与跨 XDG/HOME/TMP 复用；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 修后同版包的三平台 installed Terminal/Webview、三平台真实 Codex Reload、Linux双窗与Remote、Terminal边界及Codex双窗口已通过。只剩Claude具名失败定位/重试、整体审查结账，F-03保持开放；旧slot保障按明确受控层级复用，不扩成新的OS矩阵。历史失败和本地沙箱限制原样保留，不追认通过。
+
+Codex 双窗口 `37721421079` / artifact `11526510881`：原 driver hash、两 installed receipt 和实际 topology 断言独立重放通过；两实际 EH、两个独立新session/authority/provider/CLI、一个原Supervisor，四次nonce与gallery往返通过。multi EH先退出，single两次stop必须经过当时reader的同session/readId applied事件断言，随后registry/bindings空、pending=0，六个执行资源及Supervisor正常退出，forcedSignals=[]，60,397ms、UI exit0。artifact未单独保存最终settlement event，不能把成功路径断言或nonce布尔扩写为末页原始回执。
 
 Terminal 边界 run `37720714756` / artifact `11525926721`：独立运行原 `assertBoundaryCase` 和两窗 installed receipt 均通过，同 VSIX SHA256 `a37f0c3e5afeba5132b5f5eb88104bb36d0670887572c44adbc05cd91097203f`。实际 B 从125x28到109x24，C保留重加仍原会话且nonce成功，clear重加为空；A故障后B原进程/authority与交互保持。54,421ms完成、pending=0、UI exit0，B/C正常idle观察27,917ms。A是明确SIGKILL输入，其4个子资源在清理观察时已退出，仍保留A未知binding/registry，不把全14个原身份最后absent或无额外信号写成A正常EOF。尾部复用既有未改实现证据，不由本次资源退出单独代证。
 
