@@ -20,6 +20,8 @@
 
 ## 近期已收口
 
+- 2026-10-09：PR #306 review 的 openTerminalRead 超时遗失迟到资源清理已修正。调用者 15 秒得到未知结果，原请求保留 ID/socket 并向 relay 交付迟到 descriptor，只沿原 client cancelled close；旧 reader 不关闭新绑定，每 key 两个责任上限不因超时失效。直接调用由 client 清理，错误/断连/close 超时不伪造 applied、不重发。旧 head 两项组合反向对照失败；新增 14 项回归后请求测试 37/37、reader 32/32、Host 333/333、完整协议门禁与类型检查通过，无新增技术债。见 `docs/design-docs/runtime-rpc-request-timeout.md`、`docs/exec-plans/completed/runtime-reader-open-timeout-cleanup.md`。
+
 - 2026-10-09：协议回归两处同步前提已修正。attach gap 在订阅前等待指定 marker，真实 PTY 等完整非 live 终态后验证 resize 拒绝；新增真实串行链路屏障测试，单独覆盖退出已通知而终态尚未发布时的立即拒绝和尾部完整性，保留回放连续/恰好一次及 scrollback/output 顺序断言。完整协议门禁（含请求超时 23/23）通过；取消同步关闭准入、绕过 resize 准入的两项临时变异均被新测试捕获，无新增产品接口或技术债。历史第 548/992 行失败与自然场景 marker 后 27ms resize 成功、639ms 才退出的证据仍保留；不把受控 EBADF 追认为历史返回值。见 `docs/design-docs/runtime-protocol-race-root-cause.md`、`docs/exec-plans/completed/runtime-protocol-race-test-repair.md`。
 
 - 2026-10-08：F-01 普通 hello / RPC 缺请求级超时已专项收口。hello/连接 5 秒、普通 RPC 15 秒、ready 共用剩余预算，清理到期 pending 并返回结果未知的独立错误，不重发副作用请求。严格删除原有 first 到期 unconfirmed 及迟到 current 补证保留；不能误写成此前所有删除无界。新增 23/23 请求级测试（含真实无响应 socket）、reader/严格删除 31/31、Host 接线 296 项及协议/分页/输出信用/类型/本地化回归通过；修前 pending 不释放有对照失败证据。普通请求超时不销毁健康并发连接，hello 超时销毁未握手连接；这是相对旧审核建议的明确取舍。详见 `docs/design-docs/runtime-rpc-request-timeout.md`、`docs/exec-plans/completed/runtime-rpc-request-timeout.md`。backend 启动和文件系统不是 RPC 预算范围，多平台真实宿主未在本轮重跑。

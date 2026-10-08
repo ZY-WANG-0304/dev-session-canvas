@@ -13,6 +13,7 @@ const require = createRequire(import.meta.url);
 const build = await esbuild.build({
   stdin: { contents: `
     export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
+    export { RuntimeTerminalReadRelay } from './extensions/vscode/dev-session-canvas/src/panel/runtimeTerminalReadRelay';
     export * from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol';
   `, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, platform: 'node', format: 'cjs', write: false
@@ -87,6 +88,225 @@ function assertUnknown(error, method) {
   assert.equal(restored.code, timeoutCode);
   assert.deepEqual(protocol.getRuntimeSupervisorErrorDescriptor(restored), error.descriptor);
   return true;
+}
+
+function readerFixture(t) {
+  return fixture(t).then(f => {
+    f.client.helloResult = { ...hello, capabilities: {
+      terminalPagedReadV1: true, terminalPagedCompletionV1: true, terminalReadSettlementV1: true,
+      terminalCurrentStateV1: true
+    } };
+    const relay = new protocol.RuntimeTerminalReadRelay();
+    const released = [];
+    const open = (key = 'editor:s') => relay.open(key, f.client, 's', 'a', 'editor',
+      result => released.push(result), 'final-application-v1', 'xterm-current-state-v1');
+    return { ...f, relay, released, open };
+  });
+}
+function readerDescriptor(request, readId = 'late-reader') {
+  const { sessionId, authorityId, settlementMode, currentState } = request.params;
+  return { sessionId, authorityId, readId, headRevision: 0,
+    ...(settlementMode ? { settlementMode } : {}),
+    ...(currentState ? { currentState: { format: currentState, length: 100 } } : {}),
+    checkpoint: { version: 1, sessionId, authorityId, revision: 0,
+      cols: 80, rows: 24, scrollback: 100, createdAtMs: 1,
+      serializedState: { format: 'xterm-serialize-v1', data: '', outputSequence: 0 } } };
+}
+const requestsFor = (socket, method) => socket.messages.filter(request => request.method === method);
+
+for (const trigger of ['timer', 'response']) for (const closed of [false, true]) {
+  test(`reader open timeout via ${trigger} retains late cleanup when surface is ${closed ? 'closed' : 'current'}`, { timeout: 2000 }, async t => {
+    const { client, socket, clock, relay, released, open } = await readerFixture(t);
+    const opening = open();
+    const rejected = assert.rejects(opening, error => assertUnknown(error, 'openTerminalRead'));
+    await turns();
+    const request = requestsFor(socket, 'openTerminalRead')[0];
+    if (closed) relay.close('editor:s');
+    if (trigger === 'timer') {
+      clock.advance(15_001);
+      await rejected;
+      assert.equal(socket.destroyed, false);
+      assert.equal(client.hasPendingRequests(), true, 'The original client still owns late resource cleanup.');
+      assert.equal(relay.usesClient(client), true, 'Timeout must not drop the releasing binding.');
+      assert.deepEqual(released, []);
+    } else {
+      clock.now += 15_001; // Response arrives after deadline, before the timer is dispatched.
+    }
+    socket.reply(request, readerDescriptor(request));
+    await rejected;
+    await turns();
+    const closes = requestsFor(socket, 'closeTerminalRead');
+    assert.equal(closes.length, 1, 'The late descriptor must be cancelled once on its original client.');
+    assert.deepEqual(closes[0].params, { sessionId: 's', authorityId: 'a', readId: 'late-reader',
+      outcome: { kind: 'cancelled', reason: closed ? 'reader-closed' : 'open-failed' } });
+    assert.deepEqual(released, [], 'Sending close alone does not confirm settlement.');
+    socket.reply(closes[0], { ok: true, settlement: 'recorded' });
+    await turns();
+    assert.deepEqual(released, [{ ok: true, settlement: 'recorded' }]);
+    assert.equal(relay.usesClient(client), false);
+    assert.equal(relay.usesSession('s'), false);
+    assert.equal(client.hasPendingRequests(), false);
+    assert.equal(clock.timers.size, 0);
+    assert.equal(socket.destroyed, false);
+    socket.reply(request, readerDescriptor(request));
+    await turns();
+    assert.equal(requestsFor(socket, 'openTerminalRead').length, 1);
+    assert.equal(requestsFor(socket, 'closeTerminalRead').length, 1);
+  });
+}
+
+test('reader open late cleanup cannot close the replacement reader on the same client', { timeout: 2000 }, async t => {
+  const { client, socket, clock, relay, released, open } = await readerFixture(t);
+  const first = assert.rejects(open(), error => assertUnknown(error, 'openTerminalRead'));
+  await turns();
+  const oldRequest = requestsFor(socket, 'openTerminalRead')[0];
+  relay.close('editor:s');
+  clock.advance(15_000);
+  await first;
+  const replacement = open();
+  await turns();
+  const newRequest = requestsFor(socket, 'openTerminalRead')[1];
+  socket.reply(newRequest, readerDescriptor(newRequest, 'current-reader'));
+  const current = await replacement;
+  socket.reply(oldRequest, readerDescriptor(oldRequest));
+  await turns();
+  const close = requestsFor(socket, 'closeTerminalRead')[0];
+  assert.equal(close.params.readId, 'late-reader');
+  socket.reply(close, { ok: true, settlement: 'duplicate' });
+  await turns();
+  assert.deepEqual(released, [{ ok: true, settlement: 'duplicate' }]);
+  assert.equal(relay.usesClient(client), true);
+  const page = client.readTerminalPage({ ...current, afterRevision: 0 });
+  await turns();
+  const pageRequest = requestsFor(socket, 'readTerminalPage')[0];
+  assert.equal(pageRequest.params.readId, 'current-reader');
+  socket.reply(pageRequest, { ...pageRequest.params, revision: 0, headRevision: 0, events: [] });
+  await page;
+  relay.close('editor:s');
+  socket.reply(requestsFor(socket, 'closeTerminalRead')[1], { ok: true, settlement: 'recorded' });
+  await turns();
+  assert.equal(client.hasPendingRequests(), false);
+});
+
+test('reader open timeouts retain the existing per-key replacement limit', { timeout: 2000 }, async t => {
+  const { socket, clock, relay, released, open } = await readerFixture(t);
+  for (let index = 0; index < 2; index++) {
+    const rejected = assert.rejects(open(), error => assertUnknown(error, 'openTerminalRead'));
+    await turns();
+    relay.close('editor:s');
+    clock.advance(15_000);
+    await rejected;
+  }
+  await assert.rejects(open(), /replacement capacity exhausted/);
+  assert.equal(requestsFor(socket, 'openTerminalRead').length, 2);
+  assert.deepEqual(released, []);
+  socket.destroy();
+  await turns();
+  assert.deepEqual(released, [{ ok: true, settlement: 'unconfirmed' }, { ok: true, settlement: 'unconfirmed' }]);
+});
+
+test('reader open replaced before timeout releases its late descriptor through the original client', { timeout: 2000 }, async t => {
+  const first = await readerFixture(t);
+  const second = await readerFixture(t);
+  const rejected = assert.rejects(first.open(), error => assertUnknown(error, 'openTerminalRead'));
+  await turns();
+  const request = requestsFor(first.socket, 'openTerminalRead')[0];
+  const replacement = first.relay.open('editor:s', second.client, 's', 'a', 'editor',
+    undefined, 'final-application-v1', 'xterm-current-state-v1');
+  await turns();
+  const newRequest = requestsFor(second.socket, 'openTerminalRead')[0];
+  second.socket.reply(newRequest, readerDescriptor(newRequest, 'new-client-reader'));
+  await replacement;
+  first.clock.advance(15_000);
+  await rejected;
+  assert.equal(first.relay.usesClient(first.client), true);
+  first.socket.reply(request, readerDescriptor(request));
+  await turns();
+  const close = requestsFor(first.socket, 'closeTerminalRead')[0];
+  assert.equal(close.params.outcome.reason, 'reader-replaced');
+  first.socket.reply(close, { ok: true, settlement: 'recorded' });
+  await turns();
+  assert.deepEqual(first.released, [{ ok: true, settlement: 'recorded' }]);
+  assert.equal(requestsFor(second.socket, 'closeTerminalRead').length, 0);
+  assert.equal(first.relay.usesClient(first.client), false);
+  assert.equal(first.relay.usesClient(second.client), true);
+  first.relay.close('editor:s');
+  second.socket.reply(requestsFor(second.socket, 'closeTerminalRead')[0], { ok: true, settlement: 'recorded' });
+  await turns();
+});
+
+for (const outcome of ['error-response', 'disconnect', 'replacement', 'dispose']) {
+  test(`reader open late ${outcome} releases responsibility without claiming application or changing sockets`, { timeout: 2000 }, async t => {
+    const { client, socket, clock, relay, released, open } = await readerFixture(t);
+    const rejected = assert.rejects(open(), error => assertUnknown(error, 'openTerminalRead'));
+    await turns();
+    const request = requestsFor(socket, 'openTerminalRead')[0];
+    relay.close('editor:s');
+    clock.advance(15_000);
+    await rejected;
+    let next;
+    if (outcome === 'error-response') socket.reply(request, undefined, { message: 'open failed' });
+    if (outcome === 'disconnect') socket.destroy();
+    if (outcome === 'dispose') client.dispose();
+    if (outcome === 'replacement') {
+      next = new Socket();
+      client.attachSocket(next);
+      await client.ensureConnected();
+    }
+    await turns();
+    socket.reply(request, readerDescriptor(request));
+    await turns();
+    assert.deepEqual(released, [{ ok: true, settlement: 'unconfirmed' }]);
+    assert.equal(relay.usesClient(client), false);
+    assert.equal(client.hasPendingRequests(), false);
+    assert.equal(requestsFor(socket, 'openTerminalRead').length, 1);
+    assert.equal(requestsFor(socket, 'closeTerminalRead').length, 0);
+    if (next) assert.deepEqual(next.messages.map(request => request.method), ['hello']);
+    assert.equal(clock.timers.size, 0);
+  });
+}
+
+test('reader open late close timeout stays unconfirmed and is not resubmitted', { timeout: 2000 }, async t => {
+  const { client, socket, clock, released, open } = await readerFixture(t);
+  const rejected = assert.rejects(open(), error => assertUnknown(error, 'openTerminalRead'));
+  await turns();
+  const request = requestsFor(socket, 'openTerminalRead')[0];
+  clock.advance(15_000);
+  await rejected;
+  socket.reply(request, readerDescriptor(request));
+  await turns();
+  const close = requestsFor(socket, 'closeTerminalRead')[0];
+  assert.ok(close);
+  clock.advance(15_000);
+  await turns();
+  assert.deepEqual(released, [{ ok: true, settlement: 'unconfirmed' }]);
+  socket.reply(close, { ok: true, settlement: 'recorded' });
+  await turns();
+  assert.deepEqual(released, [{ ok: true, settlement: 'unconfirmed' }]);
+  assert.equal(requestsFor(socket, 'closeTerminalRead').length, 1);
+  assert.equal(client.hasPendingRequests(), false);
+});
+
+for (const settlementMode of [undefined, 'final-application-v1']) {
+test(`reader open without a relay still closes its late ${settlementMode ?? 'legacy'} resource on the original socket`, { timeout: 2000 }, async t => {
+  const { client, socket, clock } = await readerFixture(t);
+  const rejected = assert.rejects(client.openTerminalRead({ sessionId: 's', authorityId: 'a', consumerId: 'editor',
+    ...(settlementMode ? { settlementMode } : {}) }), error => assertUnknown(error, 'openTerminalRead'));
+  await turns();
+  const request = requestsFor(socket, 'openTerminalRead')[0];
+  clock.advance(15_000);
+  await rejected;
+  socket.reply(request, readerDescriptor(request));
+  await turns();
+  const close = requestsFor(socket, 'closeTerminalRead')[0];
+  assert.equal(close.params.readId, 'late-reader');
+  assert.equal(close.params.outcome?.kind, settlementMode ? 'cancelled' : undefined);
+  socket.reply(close, settlementMode ? { ok: true, settlement: 'recorded' } : { ok: true });
+  await turns();
+  assert.equal(client.hasPendingRequests(), false);
+  assert.equal(socket.destroyed, false);
+  assert.equal(requestsFor(socket, 'openTerminalRead').length, 1);
+});
 }
 
 for (const method of ['getSessionSnapshot', 'createSession', 'writeInput', 'resizeSession', 'stopSession', 'deleteSession']) {

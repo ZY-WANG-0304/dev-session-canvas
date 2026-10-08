@@ -24,7 +24,7 @@
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `docs/design-docs/runtime-protocol-race-root-cause.md` | 两处协议回归同步前提已修正；确定性收尾窗口与完整门禁验证通过 | 执行编排域 / 适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-protocol-race-root-cause.md`、`docs/exec-plans/completed/runtime-protocol-race-test-repair.md` | 2026-10-09 |
-| `docs/design-docs/runtime-rpc-request-timeout.md` | F-01：普通请求等待有界、结果未知与严格删除迟到补证 | 执行编排域 / 适配与基础设施层、共享模型与编排层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-rpc-request-timeout.md` | 2026-10-08 |
+| `docs/design-docs/runtime-rpc-request-timeout.md` | F-01：请求等待有界；reader 超时保留迟到清理，严格删除保留补证 | 执行编排域 / 适配与基础设施层、共享模型与编排层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-rpc-request-timeout.md`、`docs/exec-plans/completed/runtime-reader-open-timeout-cleanup.md` | 2026-10-09 |
 | `docs/design-docs/runtime-admission-failure-details.md` | 执行准入拒绝保留磁盘等底层错误原因；预留收尾由后续独立设计收口 | 执行编排域、VSCode 集成域 / 适配与基础设施层、宿主集成层 | 已选定 | 已验证 | `docs/product-specs/runtime-persistence-modes.md` | 2026-10-08 |
 | `docs/design-docs/runtime-admission-rejection-settlement.md` | 明确未获取资源结果结算创建拒绝，恢复重试和删除；断连、旧协议及未知责任继续保护 | 执行编排域、VSCode 集成域 / 共享模型与编排层、适配与基础设施层、宿主集成层 | 已选定 | 已验证 | `docs/product-specs/runtime-persistence-modes.md` | 2026-10-08 |
 | `docs/design-docs/runtime-live-state-recovery.md` | B4及具名F-04证据保留；PR295的OSC8重置/缩高marker恢复已定向修正验证，源端不变，新head待复审，旧e38d2f72包不代证修正 | 执行编排域、VSCode 集成域 / 共享模型与编排层、宿主集成层、画布呈现层 | 已选定 | 已验证 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-live-state-recovery.md` | 2026-10-07 |

@@ -66,6 +66,7 @@ interface PendingSupervisorRequest<T> {
   method: string;
   resolve: (value: T) => void;
   reject: (error: Error) => void;
+  expire: () => void;
   // Only an actual error response can confirm legacy absence or rejection.
   responseError?: (error: Error) => void;
 }
@@ -256,7 +257,9 @@ export class RuntimeSupervisorClient {
     return helloSupportsExecutionCandidateProfile(this.helloResult, profile);
   }
 
-  public async openTerminalRead(params: RuntimeSupervisorOpenTerminalReadParams): Promise<TerminalStreamReadDescriptor> {
+  public async openTerminalRead(params: RuntimeSupervisorOpenTerminalReadParams,
+    onTimeout?: (lateRead: Promise<TerminalStreamReadDescriptor>) => void
+  ): Promise<TerminalStreamReadDescriptor> {
     await this.ensureConnected({ allowRestart: false });
     const socket = this.socket;
     if (params.settlementMode !== undefined &&
@@ -267,8 +270,26 @@ export class RuntimeSupervisorClient {
         (params.currentState !== 'xterm-current-state-v1' || !this.supportsTerminalCurrentState())) {
       throw new Error('Terminal current state capability is unavailable.');
     }
-    const result = await this.requestOnConnectedSocket<TerminalStreamReadDescriptor>('openTerminalRead', params, socket);
-    if (params.settlementMode === undefined && params.currentState === undefined) return result;
+    const result = await this.requestOnConnectedSocket<TerminalStreamReadDescriptor>(
+      'openTerminalRead', params, socket, undefined, undefined, performance.now() + REQUEST_TIMEOUT_MS,
+      lateResponse => {
+        const lateRead = lateResponse.then(value => this.bindTerminalReadResult(params, value, socket, true));
+        if (onTimeout) onTimeout(lateRead);
+        else {
+          // A direct caller has already received timeout and cannot release a descriptor it never saw.
+          void lateRead.then(read => this.closeTerminalRead({
+            sessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId,
+            ...(read.settlementMode ? { outcome: { kind: 'cancelled' as const, reason: 'open-timed-out' } } : {})
+          })).catch(() => undefined);
+        }
+      });
+    return this.bindTerminalReadResult(params, result, socket);
+  }
+
+  private bindTerminalReadResult(params: RuntimeSupervisorOpenTerminalReadParams,
+    result: TerminalStreamReadDescriptor, socket: net.Socket | undefined, late = false
+  ): TerminalStreamReadDescriptor {
+    if (!late && params.settlementMode === undefined && params.currentState === undefined) return result;
     if (!socket || socket !== this.socket || socket.destroyed || this.disposed) {
       throw new Error('Terminal reader connection changed while opening.');
     }
@@ -283,9 +304,12 @@ export class RuntimeSupervisorClient {
       throw new Error(read.settlementMode !== params.settlementMode
         ? 'Terminal reader settlement was not negotiated.' : 'Terminal current state was not negotiated.');
     }
-    for (const binding of this.terminalReadConnections.values()) {
-      if (binding.socket === socket && binding.sessionId === read.sessionId && binding.consumerId === params.consumerId) {
-        binding.closed = true;
+    // A late descriptor exists only for cleanup; it must not retire a newer reader's local binding.
+    if (!late) {
+      for (const binding of this.terminalReadConnections.values()) {
+        if (binding.socket === socket && binding.sessionId === read.sessionId && binding.consumerId === params.consumerId) {
+          binding.closed = true;
+        }
       }
     }
     this.terminalReadConnections.set(read.readId, { socket, sessionId: read.sessionId,
@@ -656,7 +680,8 @@ export class RuntimeSupervisorClient {
 
   private requestOnConnectedSocket<T>(method: string, params?: unknown, expectedSocket?: net.Socket,
     responseError?: (error: Error) => void, responseResult?: (value: unknown) => void,
-    deadline: number | 'strict-delete' = performance.now() + REQUEST_TIMEOUT_MS): Promise<T> {
+    deadline: number | 'strict-delete' = performance.now() + REQUEST_TIMEOUT_MS,
+    onTimeout?: (lateResponse: Promise<T>) => void): Promise<T> {
     const socket = this.socket;
     if (!socket || socket.destroyed || this.disposed || (expectedSocket && socket !== expectedSocket)) {
       throw createRuntimeSupervisorProtocolError({
@@ -675,6 +700,23 @@ export class RuntimeSupervisorClient {
           catch (error) { reject(error); }
         },
         reject,
+        expire: () => {
+          const error = this.createRequestTimeoutError(method);
+          if (onTimeout) {
+            // End only the caller's wait. Keep the original ID/socket until the resource can be released.
+            clearTimeout(pending.timeout);
+            pending.timeout = undefined;
+            pending.deadline = undefined;
+            const lateResponse = new Promise<T>((resolveLate, rejectLate) => {
+              pending.resolve = value => resolveLate(value as T);
+              pending.reject = rejectLate;
+            });
+            onTimeout(lateResponse);
+            reject(error);
+          } else {
+            this.takePendingRequest(id)?.reject(error);
+          }
+        },
         ...(responseError ? { responseError } : {})
       };
       this.pendingRequests.set(id, pending);
@@ -686,7 +728,7 @@ export class RuntimeSupervisorClient {
             pending.timeout = setTimeout(expire, Math.ceil(remaining));
             return;
           }
-          this.takePendingRequest(id)?.reject(this.createRequestTimeoutError(method));
+          pending.expire();
         };
         pending.timeout = setTimeout(expire, Math.max(0, Math.ceil(deadline - performance.now())));
       }
@@ -853,11 +895,11 @@ export class RuntimeSupervisorClient {
       if (!pending || pending.socket !== socket) {
         return;
       }
-      this.takePendingRequest(message.id);
       if (pending.deadline !== undefined && performance.now() >= pending.deadline) {
-        pending.reject(this.createRequestTimeoutError(pending.method));
-        return;
+        pending.expire();
+        if (this.pendingRequests.get(message.id) !== pending) return;
       }
+      this.takePendingRequest(message.id);
       if (message.ok) {
         pending.resolve(message.result);
       } else {
