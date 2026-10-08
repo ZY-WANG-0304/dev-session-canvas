@@ -31,8 +31,9 @@ export async function inspectRuntimeSystemdEnvironment(
     execFile('/usr/bin/systemd-run', [
       '--user', '--wait', '--pipe', '--collect', '--quiet', '--no-ask-password',
       `--unit=dsc-root-scope-${nonce}`,
-      '--property=RuntimeMaxSec=10s', '--property=TimeoutStopSec=2s', '--property=KillMode=control-group',
-      '--property=JobTimeoutSec=10s', '--property=JobRunningTimeoutSec=10s',
+      // Transient job timeout properties vary by manager; these bound service phases, not queue time.
+      '--property=TimeoutStartSec=10s', '--property=RuntimeMaxSec=10s',
+      '--property=TimeoutStopSec=2s', '--property=KillMode=control-group',
       '--setenv=ELECTRON_RUN_AS_NODE=1', '--setenv=ELECTRON_NO_ATTACH_CONSOLE=1',
       process.execPath, options.supervisorLauncherScriptPath, '--probe-root-environment', nonce
     ], {

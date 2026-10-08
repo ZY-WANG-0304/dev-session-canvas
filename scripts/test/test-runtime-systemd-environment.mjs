@@ -47,6 +47,7 @@ function fixture(changes = {}) {
 async function check(changes, expected, input = options) {
   const harness = fixture(changes);
   assert.deepEqual(await harness.inspect(input), expected);
+  assert.ok(harness.calls.length <= 1, 'probe failures must not retry with a weaker property set');
   passed += 1;
   return harness;
 }
@@ -60,8 +61,8 @@ assert.equal(call.file, '/usr/bin/systemd-run');
 assert.deepEqual(call.args, [
   '--user', '--wait', '--pipe', '--collect', '--quiet', '--no-ask-password',
   `--unit=dsc-root-scope-${nonce}`,
-  '--property=RuntimeMaxSec=10s', '--property=TimeoutStopSec=2s', '--property=KillMode=control-group',
-  '--property=JobTimeoutSec=10s', '--property=JobRunningTimeoutSec=10s',
+  '--property=TimeoutStartSec=10s', '--property=RuntimeMaxSec=10s',
+  '--property=TimeoutStopSec=2s', '--property=KillMode=control-group',
   '--setenv=ELECTRON_RUN_AS_NODE=1', '--setenv=ELECTRON_NO_ATTACH_CONSOLE=1',
   '/test node', options.supervisorLauncherScriptPath, '--probe-root-environment', nonce
 ]);
@@ -108,7 +109,11 @@ for (const changes of [
   { execError: Object.assign(new Error('other diagnostics'), { code: 1 }), stderr: `${missingBusAddress}\nPermission denied` },
   { execError: Object.assign(new Error('output overflow'), { code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' }) },
   { execError: Object.assign(new Error('failure'), { code: 1 }), stderr: 'Failed to connect to bus: Permission denied' },
-  { execError: Object.assign(new Error('failed unit'), { code: 1 }), stderr: 'Failed to start transient service unit' }
+  { execError: Object.assign(new Error('failed unit'), { code: 1 }), stderr: 'Failed to start transient service unit' },
+  { execError: Object.assign(new Error('unsupported job property'), { code: 1 }),
+    stderr: 'Failed to start transient service unit: Cannot set property JobTimeoutUSec, or unknown property.' },
+  { execError: Object.assign(new Error('unsupported running job property'), { code: 1 }),
+    stderr: 'Failed to start transient service unit: Cannot set property JobRunningTimeoutUSec, or unknown property.' }
 ]) {
   await check(changes, { kind: 'unknown', reason: 'environment-probe-failed' });
 }
