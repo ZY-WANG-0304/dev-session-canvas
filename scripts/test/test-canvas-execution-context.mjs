@@ -529,6 +529,26 @@ try {
       assert.equal(rootHost.resolveExecutionNodeRuntimeRoot({
         ...plainNode, id: namespaceCanvasObjectId(rootB, plainNode.id)
       }), rootB);
+      for (const folders of [
+        [{ path: rootB, name: 'root-1' }, { path: rootA, name: 'root-0' }],
+        [{ path: rootA, name: 'renamed-a' }, { path: rootB, name: 'renamed-b' }],
+        [{ path: rootB, name: 'same-display-name' }, { path: rootA, name: 'same-display-name' }]
+      ]) {
+        vscodeWorkspace.workspaceFolders = folders.map(folder => ({ name: folder.name, uri: { fsPath: folder.path } }));
+        for (const [node, expectedRoot] of [
+          [rootANode, rootA],
+          [{ ...plainNode, id: namespaceCanvasObjectId(rootB, plainNode.id), groupId: 'root-b-group' }, rootB]
+        ]) {
+          const resolvedRoot = rootHost.resolveExecutionNodeRuntimeRoot(node);
+          assert.equal(resolvedRoot, expectedRoot, `${kind} root order and display names cannot change the resolved owner root.`);
+          const expectedOwner = createRuntimeOwnerDescriptor({ ...runtimeOwner, rootPath: expectedRoot });
+          const actualOwner = createRuntimeOwnerDescriptor({ ...runtimeOwner, rootPath: resolvedRoot });
+          assert.deepEqual(actualOwner, expectedOwner, `${kind} reordered or renamed folders retain the complete owner.`);
+          assert.equal(resolveRuntimeRootOwnerBaseStoragePath(path.join(tempDir, 'global-storage'), actualOwner),
+            resolveRuntimeRootOwnerBaseStoragePath(path.join(tempDir, 'global-storage'), expectedOwner));
+        }
+      }
+      setRootFolders([rootA, rootB]);
       assert.throws(() => rootHost.resolveExecutionNodeRuntimeRoot({
         ...rootANode, id: namespaceCanvasObjectId(rootB, plainNode.id)
       }), /disagree/, `${kind} conflicting namespace and group cannot choose an owner.`);
@@ -630,6 +650,57 @@ try {
   }
   const originalWorkspaceTrusted = vscodeWorkspace.isTrusted;
   try {
+    for (const kind of ['agent', 'terminal']) {
+      setRootFolders([]);
+      const legacyNode = runtimeNode(kind, { runtimeStoragePath: legacyRuntimeStoragePath });
+      const host = makePreferenceHost([legacyNode], true);
+      Object.assign(host, {
+        context: { ...host.context, globalStorageUri: { fsPath: path.join(tempDir, 'transition-global-storage') } },
+        getExecutionCandidateProfile: () => profile,
+        getRuntimeHostBaseStoragePath: () => legacyRuntimeStoragePath,
+        runtimeExecutionEnvironmentPromise: Promise.resolve({ environmentKey: runtimeOwner.environmentKey, userIdentity: 'uid:1000' })
+      });
+      const rootlessTarget = await host.resolveRuntimeCreationTarget(host.resolveExecutionNodeRuntimeRoot(legacyNode));
+      assert.deepEqual(rootlessTarget, { rootPath: undefined, runtimeStoragePath: legacyRuntimeStoragePath },
+        `${kind} a genuinely rootless creation retains its original workspace slot.`);
+      const originalBinding = structuredClone(host.getPersistedLiveRuntimeSessionForNode(legacyNode));
+
+      setRootFolders([rootA]);
+      const newNode = kind === 'agent' ? createdAgentState.nodes[0] : createdTerminalState.nodes[0];
+      const newTarget = await host.resolveRuntimeCreationTarget(host.resolveExecutionNodeRuntimeRoot(newNode));
+      assert.equal(newTarget.rootPath, rootA);
+      assert.equal(newTarget.runtimeOwner.root.normalizedPath, rootA);
+      assert.equal(newTarget.runtimeOwner.generation, resolveRootRuntimeSupervisorGeneration(profile));
+      assert.notEqual(newTarget.runtimeStoragePath, rootlessTarget.runtimeStoragePath,
+        `${kind} adding a folder changes only the target for a new execution.`);
+      host.state = hydrateRuntimeStoragePaths(normalizeState(host.state, 'codex'), currentWorkspaceSlot);
+      assert.deepEqual(host.getPersistedLiveRuntimeSessionForNode(host.state.nodes[0]), originalBinding,
+        `${kind} rootless-to-folder restoration must not migrate the old backend, path, session, kind or owner.`);
+      assert.deepEqual(host.collectPersistedLiveRuntimeSessions(), [originalBinding]);
+
+      const client = {}, attached = [];
+      host.getRuntimeSupervisorClientForKind = async (backend, options, storage, owner) => {
+        assert.equal(backend, originalBinding.backendKind);
+        assert.deepEqual(options, {});
+        assert.equal(storage, originalBinding.runtimeStoragePath);
+        assert.equal(owner, undefined, `${kind} the old slot cannot inherit the new folder owner.`);
+        return client;
+      };
+      host.requestRuntimeSupervisorSessionAttach = async (actualClient, sessionId) => {
+        assert.strictEqual(actualClient, client);
+        assert.equal(sessionId, originalBinding.sessionId);
+      };
+      host.attachPersistedRuntimeSession = async (nodeKind, nodeId, sessionId, request, options) => {
+        assert.deepEqual(options.originalBinding, originalBinding);
+        attached.push({ kind: nodeKind, nodeId, sessionId });
+        await request();
+      };
+      await host.restoreLiveRuntimeSessions();
+      assert.deepEqual(attached, [{ kind, nodeId: originalBinding.nodeId, sessionId: originalBinding.sessionId }],
+        `${kind} adding a folder still dispatches reattach to the original slot session.`);
+      assert.deepEqual(host.collectPersistedLiveRuntimeSessions(), [originalBinding]);
+    }
+
     for (const kind of ['agent', 'terminal']) {
       const rootNode = runtimeNode(kind, { runtimeOwner, runtimeStoragePath });
       const legacyNode = { ...runtimeNode(kind, { runtimeStoragePath: legacyRuntimeStoragePath }), id: `${kind}-legacy` };

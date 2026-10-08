@@ -200,11 +200,15 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 ## 8. 实施进度
 
+P3 首轮 `7741de5d` / run `37711694734` 已实际执行：正常 package 成功，Linux/macOS 已安装 Runtime Terminal/Webview 通过；这一步的重开是 completed 空节点，不代证 live 恢复。Windows 在 owner 路径断言失败，日志中实际与预期仅盘符及 User/globalStorage 大小写不同，属于夹具错误；改用平台 path.relative 判定路径等价，并保留不同路径和 POSIX 大小写拒绝的受控测试。Linux 双窗口在五分钟观察期内没有 driver 激活或最终回执，原归档只有一个窗口；已定位先安装产品生成 profile inventory、后仅写入测试扩展目录的加载缺口。上述失败保留，真实 Agent 步骤未执行，不记录为产品通过或产品缺陷。
+
+后续仅修改验收入口时复用 run `37711694734` 的原 VSIX，使用既有包 hash 和具名 installed 成功步骤核对，不重新 build 或重复 Linux/macOS installed。`root_checks=installed/window-pair/agents` 分别选择失败安装项、Linux 双窗口及真实 CLI Reload；跳过安装必须提供该平台同包已通过的 installed 证据。macOS/Windows 各补 Codex root-owner Reload，Linux 补 Codex/Claude，不重跑旧八场矩阵。身份、设置、旧 slot 共存及故障隔离的剩余具名产品输入仍保持开放，未通过工具修改自动销账。
+
 `bd4dab3d` / run `37710935919` 三平台全部通过：Linux 除 detached 及中断组外，实际 systemd 环境 probe、owner 启动、detached 偏好复用 systemd owner 和正常 idle 退役均通过。macOS/Windows 同 root 汇聚、真实 Host helper、中断、未知不重提和正面 claim 释放后重启通过。该脚本没有 PTY，不代证 Terminal/Agent/Webview 产品体验。旧 run 的失败仍保留。
 
 P3 固定入口为 production workflow 的显式 `root_ownership=true`，复用未变六资产重新正常打包一次。新同版包跑三平台已装 Runtime Terminal/Webview，Linux 同 profile 的真实单 A / 多根 A,B,C 两窗口各自新建、关闭/重开、3-owner RSS 单样本与正常退役，以及 Codex/Claude 各一次两轮 nonce 的真实创建/Reload。旧八场 Agent 默认选择保持，不对本轮选择宣称全矩阵通过。双窗口使用实际安装产品和独立测试扩展，不注入节点 metadata；同名 root 不同用户目录不算汇聚。该具名场景不覆盖 owner 故障、设置差异、legacy slot、移除重加或资源增长曲线，剩余 §7 各格仍需按实际证据单列。
 
-当前状态：P2 已将 Agent/Terminal 单根、多根新建切至显式 root target；已有 attach/input/resize/stop/delete 沿原 owner 与完整 binding。受控 wiring 250 项、Canvas context、Host deactivation、completed 无历史回归、typecheck 与正常 build 通过。root 在环境解析、旧绑定清理、owner 获取和 create 返回期间变化会拒绝过时结果；未知 create 保留原责任。真实产品验收尚未执行。以下段落保留分阶段证据，所述“默认路由不变”仅指当时提交。
+当前状态：P2 已将 Agent/Terminal 单根、多根新建切至显式 root target；已有 attach/input/resize/stop/delete 沿原 owner 与完整 binding。受控 wiring 250 项、Canvas context、Host deactivation、completed 无历史回归、typecheck 与正常 build 通过。root 在环境解析、旧绑定清理、owner 获取和 create 返回期间变化会拒绝过时结果；未知 create 保留原责任。真实产品验收已开始但尚未完成。以下段落保留分阶段证据，所述“默认路由不变”仅指当时提交。
 
 P2 独立审查修复恢复 bucket 等连接期间换绑定的竞态：在 await 前捕获原完整 binding，成功 attach 和失败降级均需核对；24 个受控组合先红后绿。`4be42817` / run `37709897962` Linux 的 systemd 范围 probe 修后已 available，但实际 owner 提交仍 unconfirmed，原目录/unit保留，不将范围通过代证启动成功。
 
