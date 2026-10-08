@@ -210,6 +210,16 @@ async function setup(extension) {
   await sendAgentTurn(currentNodeId, before);
   await poll('pre-reload Agent response', probe, value => hasAgentMarkerResponse(value, before), 90000);
   await observer.sample();
+  if (config.provider === 'claude') {
+    try {
+      await write('setup-process-observation.json', { nonce: control.nonce,
+        entries: observer.result().entries.map(entry => Object.fromEntries([
+          'pid', 'ppid', 'startTicks', 'executable', 'role', 'wrapperKind', 'firstPpid', 'firstParentStartTicks',
+          'firstSeenMs', 'lastSeenMs', 'lastLiveMs', 'firstAbsentMs', 'state', 'active', 'platform',
+          'hasExited', 'exitConfirmed', 'exitCode', 'observationUnknown'
+        ].filter(key => entry[key] !== undefined).map(key => [key, entry[key]]))) });
+    } catch { /* Diagnostic failure must not replace the resource assertion. */ }
+  }
   const resources = assertOriginalResourcesLive();
   const setup = { phase: 'setup', nonce: control.nonce, host: await readIdentity(process.pid), nodeId: currentNodeId,
     binding: { runtimeBackend: metadata.runtimeBackend, runtimeStoragePath: metadata.runtimeStoragePath,

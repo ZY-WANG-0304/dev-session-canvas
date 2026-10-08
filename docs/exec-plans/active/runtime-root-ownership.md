@@ -27,6 +27,8 @@
 
 ## 意外与发现
 
+`32f4990f` / `37721390485` Claude 已通过实际 readiness 和 BEFORE assistant nonce，随后原启动资源断言记录两个 `cli`，未进入 Reload。原归档未保存 observer entries/events，不能判断第二条是历史辅助进程还是重复执行；观察器按可执行文件分类且断言统计完整历史，但代码可能性不等于本次根因。保持数量/身份/退出断言，仅在既有 sample 后、断言前保存现有无 argv/env 的资源观察结果，再同包定向核对，不扩大通用诊断阶段。
+
 后续归档定位：Terminal `37719235540` 的 B resize 已通过，C keep/readd 时 probe 早于新 Webview JS 加载；四次 root 变更增加等待新 frameId/ready/bootstrapAck，原 5 秒 probe 和总预算不变。实际 driver 四阶段回归先红后绿；没有失败瞬间 lifecycle，不能推断更细丢弃位置。Codex `37719440437` 两窗创建与 BEFORE、multi 的 gallery 往返和 AFTER 通过，single 在 AFTER 前 mountedReader 超时；读取历史消息环中快照的脆弱点明确，但本次是否淘汰缺直接证据。Claude `4ea33105` / `37720113628` 已进入带 model 的真实界面，NBSP 提示符不符合夹具正则导致 readiness 超时；只修已确认匹配问题，不将失败计作 root 产品缺陷。
 
 `21bcd483` / `37719142087` 的 Claude 已越过 Security notes，后续实际信任页默认选中 `No, exit`，夹具直接 Enter 导致 exit 1，未进入 Reload。仅对精确固定页面核对选项后 Down+Enter；已选 Yes 则 Enter，未知布局拒绝且等待页面消失。33 项受控测试及原失败页重放通过，产品包不变，仅重试 Claude。`37719235540` Terminal 边界组在 single 原 reader 应用 scrollback/nonce 后发生 Webview probe 超时；`37719440437` Codex 双窗口失败。两项原始结果保留，根因仍在核对，不能计入产品通过或预判产品缺陷。
