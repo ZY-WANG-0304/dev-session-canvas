@@ -11,6 +11,7 @@ architecture_layers:
   - 适配与基础设施层
 related_specs: []
 related_plans:
+  - docs/exec-plans/completed/packaged-smoke-reset-fixture.md
   - docs/exec-plans/completed/canvas-reset-final-persistence-investigation.md
 updated_at: 2026-10-08
 ---
@@ -19,7 +20,7 @@ updated_at: 2026-10-08
 
 ## 背景与范围
 
-#300 修复模拟 reload 后未恢复执行准入，完整 packaged smoke 随后在 `verifyCreateNodeCommandQuickPick()` 的 reset 空画布断言失败。本轮任务是定位该失败及产品/夹具责任；“已验证”仅指下述因果链和现有契约，未修改产品、原 smoke 断言或重跑完整 packaged gate，不声明该门禁通过。
+#300 修复模拟 reload 后未恢复执行准入，完整 packaged smoke 随后在 `verifyCreateNodeCommandQuickPick()` 的 reset 空画布断言失败。本 PR 先定位该失败及产品/夹具责任，随后按用户要求修复夹具；“已验证”仅指明确列出的定位与用例范围，不声明完整 packaged gate 已通过。
 
 ## 已确认的因果链
 
@@ -50,10 +51,20 @@ resize 在真正提交原生尺寸修改前被 guard 拒绝，该分支不设置
 
 产品负责这条立即中止、不会自动续跑的行为，以及失败后仍关闭准入、需用户再次 reset 的操作体验。夹具负责其“单次发出后必然最终清空”的断言；该假设与当前策略不一致。将责任拆开不等于把失败简单归为测试问题：若产品目标要求运行中 Agent 一次 reset 就能收尾，应先把有限等待的截止点、失败/未知保留、节点身份保护及保存迟到后的行为写成新契约，再实现并验收。
 
-若继续沿现有产品契约修订 smoke，应显式覆盖“pending 被拒绝且节点保留 → 原保存成功 → 再次 reset 清空”的分支；保存 failed/unconfirmed 必须报失败。不能无条件吞掉 host/error、定时重试 reset、提前强开准入或延长空画布轮询。本轮未改原用例；完整 packaged / clean-checkout 验证仍属原债务的后续交付。
+若继续沿现有产品契约修订 smoke，应显式覆盖“pending 被拒绝且节点保留 → 原保存成功 → 再次 reset 清空”的分支；保存 failed/unconfirmed 必须报失败。不能无条件吞掉 host/error、定时重试 reset、提前强开准入或延长空画布轮询。定位阶段未改原用例；后续夹具修复按下节实施，完整 packaged / clean-checkout 门禁以实际运行结果为准。
 
 ## 验证与边界
 
 `scripts/test/test-host-execution-owner-wiring.mjs` 新增 6 项测试，全部调用真实 Host/owner 方法。4 项分别使用 Agent/Terminal 与保存成功/失败：从运行中执行发起 reset，暂扣真实 `workspaceState.update()`，读回真实 root/workspace 文件，验证原 reset 拒绝、晚到保存不恢复操作；成功后显式再次 reset 写出空文件并恢复准入，失败后再次 reset 保留原记录且不追加写入。另 2 项启用当前 execution profile，比较有/无排队 resize，验证同一 reset 结果、真实 resize guard、关闭边界解除及保存后再次 reset 成功。
 
-Node 22.23.3 定向 6/6 通过。本轮未修改生产代码，故不把测试描述为“先红后绿的修复”；它们是现有行为的确定性复现及恢复/失败边界验证。完整 Host 接线 302/302、脚本语法与 diff 检查通过，日志见关联完成计划。注入的 provider 和 workspaceState 不是实际 VS Code/PTY；原 packaged 工件提供真实宿主失败证据，但本轮没有真实宿主再次 reset 成功的运行证据，也不扩称跨平台验收。
+Node 22.23.3 定向 6/6 通过。定位阶段未修改生产代码，故不把上述六项测试描述为“先红后绿的修复”；它们是现有行为的确定性复现及恢复/失败边界验证。完整 Host 接线 302/302、脚本语法与 diff 检查通过，日志见关联完成计划。注入的 provider 和 workspaceState 不是实际 VS Code/PTY；原 packaged 工件提供真实宿主失败证据；定位阶段没有真实宿主再次 reset 成功的运行证据，后续夹具验证单独记录，不扩称跨平台验收。
+
+## Smoke 夹具修复方案（2026-10-08）
+
+用户已要求在同一 PR 修复 reset 夹具。`verifyCreateNodeCommandQuickPick()` 的收尾改为调用已有 `__test.resetState`，取得真实命令结果。正常成功直接断言空画布；仅明确匹配本用例新建 Agent 的 `Local final snapshot persistence is pending` 才进入观察。两项原执行的 `execution/localFinalPersistence` 必须均为 saved/not-required，具备唯一 executionId/generation，且原节点集合仍保留，然后最多再发起一次 reset。failed/unconfirmed、意外节点/身份、超时或第二次拒绝均直接失败。整个步骤共用原 20 秒上限，不为保存或重试重新计时。
+
+这里的 testResetState 会在成功清理后同步清解析缓存，符合独立用例的清理目的；真实 Host reset 保护保持，其他 smoke 仍覆盖 Webview reset 消息。实现与真实打包验证进度见 `docs/exec-plans/completed/packaged-smoke-reset-fixture.md`。
+
+完整验证又在 `verifyTerminalShellPathRefreshesStoppedTerminalNode()` 的 finally 清理发现同类 pending，故该入口复用相同 helper。此处同一节点曾重启，helper 在第一次 reset 前捕获已有 final 诊断身份；对明确报 pending 的节点，基线中已经结算的 executionId/generation 不可能是此次尚未完成的保存，必须排除。其余期望节点仍接受本次创建后较早完成的结果；QuickPick 保留全程诊断，不再中途清空。两个入口清理期间都不重启或复用节点 ID，新的冲突身份仍失败。新增 19 项纯测覆盖这条身份保护、完整 20 秒总时限与全部拒绝分支。
+
+最终验证：Linux / Node 22.23.3 / VS Code 1.126.0，纯测 19/19，三个脚本语法与 diff 检查通过。最终真实 VSIX smoke 保留了 QuickPick 第一次 pending、原 Claude not-required/原 Codex saved 和第二次 reset 空画布的完整日志，见 `.debug/reset-final-persistence/vsix-fixture-verified.log`。原 reset 阻塞已消除；完整命令仍在后续 `verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot()` 等待 execution/started 时失败，exit 1。这个独立失败不在本次修改范围，产品/夹具责任仍待定位，原等待断言未改。没有重跑或宣称 clean-checkout gate 通过。

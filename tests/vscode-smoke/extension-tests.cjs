@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
+const { resetCanvasAfterFinalPersistence } = require('./reset-canvas.cjs');
 
 const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
 const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
@@ -2628,7 +2629,6 @@ async function verifyCreateNodeCommandQuickPick() {
     20000
   );
 
-  await clearDiagnosticEvents();
   await setQuickPickSelections(['create-agent-default', 'agent-launch-accept-current']);
   await vscode.commands.executeCommand(COMMAND_IDS.createNode);
 
@@ -2656,7 +2656,6 @@ async function verifyCreateNodeCommandQuickPick() {
     20000
   );
 
-  await clearDiagnosticEvents();
   await setQuickPickSelections(['create-note']);
   await vscode.commands.executeCommand(COMMAND_IDS.createNode);
 
@@ -2665,8 +2664,12 @@ async function verifyCreateNodeCommandQuickPick() {
   }, 20000);
   assert.ok(snapshot.state.nodes.some((node) => node.kind === 'note'));
 
-  await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
-  snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
+  snapshot = await resetCanvasAfterFinalPersistence({
+    reset: () => vscode.commands.executeCommand(COMMAND_IDS.testResetState),
+    getSnapshot: getDebugSnapshot,
+    getDiagnosticEvents,
+    expectedExecutions: [claudeAgentNode, codexAgentNode]
+  });
   assert.strictEqual(snapshot.state.nodes.length, 0);
 
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
@@ -3310,7 +3313,12 @@ async function verifyTerminalShellPathRefreshesStoppedTerminalNode() {
     if (terminalNodeId) {
       await ensureTerminalStopped(terminalNodeId).catch(() => {});
     }
-    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    await resetCanvasAfterFinalPersistence({
+      reset: () => vscode.commands.executeCommand(COMMAND_IDS.testResetState),
+      getSnapshot: getDebugSnapshot,
+      getDiagnosticEvents,
+      expectedExecutions: terminalNodeId ? [{ kind: 'terminal', id: terminalNodeId }] : []
+    });
     await restoreTerminalShellSetting('devSessionCanvas.terminal.shell', originalShellSetting);
     await restoreTerminalShellSetting('devSessionCanvas.terminal.shellPath', originalShellPathSetting);
   }

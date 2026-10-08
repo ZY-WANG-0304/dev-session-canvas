@@ -75,3 +75,5 @@ Host 受控测试使用独立临时目录，finally 释放 tracker 和保存闸�
 复用真实 `CanvasPanelManager`、`ExecutionOwnerLifecycle`、`SerializedTerminalStateTracker`、现有注入 provider 和 workspaceState 边界，不增加运行时依赖、公共接口、保存预算或自动重试机制。
 
 修订记录：2026-10-08 创建定位计划；同日根据原 VSIX 和六项受控复现收口原因、责任与验证边界，移入 completed。未改变原 packaged gate 的失败状态。
+
+后续：用户要求同一 PR 进一步修复夹具，已按 `docs/exec-plans/completed/packaged-smoke-reset-fixture.md` 完成原 reset 用例收尾；真实 VSIX 确认 pending 后原保存结算及第二次 reset 空画布。完整 gate 的下一阻塞为独立的相对 shell 启动诊断等待，原失败仍保留。
