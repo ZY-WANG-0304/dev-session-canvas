@@ -2,6 +2,8 @@
 
 本 ExecPlan 按 `docs/PLANS.md` 维护。用户于 2026-10-08 认可 `docs/design-docs/runtime-root-ownership.md` 并要求开始实施、不要添加不必要设计。实现分支 `runtime-root-ownership` 从 `origin/main@06e9abcf` 建立，带入尚未合并的设计 PR #297 提交；不擅自合并该 PR。
 
+2026-10-08 有限交付结账：P1 至 P3 和 R1-01 至 R1-08 已按正式设计 §8 的具名证据及层级收口，F-03 已完成。最后同包 Claude Reload 的原始资源与结算回执已独立核对；当前只进入实现 PR 审查，不追加 P4。下文 dated 失败和当时的“尚未/下一步”保留为实施历史，不构成当前待办；已知残余登记于技术债追踪，不能用最终成功倒推旧失败已修复。
+
 ## 目标与全局图景
 
 同一 root 在单根与不同多根窗口中创建 Terminal/Agent 时，应进入同一执行环境、用户存储范围、root 身份及 generation 决定的 Supervisor。不同 root 按需使用不同 owner，旧 live 沿原 backend/storage/session/kind 操作。owner 是逻辑归属，不是永久 PID；OS 重启不承诺恢复进程或历史，VS Code/SSH 重连不改变仍在运行环境的身份。
@@ -24,9 +26,12 @@
 - [x] (2026-10-08) Linux真实双窗口四会话/三owner/关闭重开/正常idle及实际Remote-SSH身份和完成重开通过。旧slot A/B与新root C共存及最后reader/RPC退役组合回归补齐，R1-06按受控层级收口。
 - [x] (2026-10-08) `97f1df49` / `37720714756` 同包 Terminal 反向创建、设置/resize、C keep/readd/clear 和 A 故障隔离通过；独立原始合同/安装 receipt 复核通过，故障 A 不计正常 EOF。
 - [x] (2026-10-08) `32f4990f` / `37721421079` 同包 Codex 双窗口独立创建/四次应答/PaneGallery、原进程保持与当前 reader 结算、空 registry 和正常 idle 通过，归档独立核对完成。
-- [ ] P3：完成受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本，整体审查并同步结账。
+- [x] (2026-10-08) `3771be4d` / `37725028656` 同包 Claude 实际 Reload、原 owner/session/authority/进程保持、最终 reader applied 与精确资源清理通过；artifact `11527536604` 独立核对完成。
+- [x] (2026-10-08) P3：受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本及产品差异审查完成，按 R1-01 至 R1-08 结账并归档计划；历史未知与未实测边界单列，不自动扩展前置。
 
 ## 意外与发现
+
+`3771be4d` / `37725028656` 成功不解释历史间歇失败。本轮 setup 树只有一个原 CLI，另两个记录为已退出的 descendant（executable=null、Z），不能据此认定 `37721390485` 的第二条 CLI 来自相同原因；`37722835410` / `37723822196` 的信任选项回退也未定位。失败 catch 仅复用既有身份白名单观察，先存首次错误、观察失败不覆盖它，38 项受控测试通过，没有修改产品输入或放宽原断言。
 
 `19a00607` / `37723822196` 单独 Down 也出现 Yes→No，未发送 Enter、未到原资源断言，因此之前组合输入不是充分根因。Webview→Host 与 client→Supervisor→provider/native 两端只读核查未见显式重复写路径；Down 后真实事件也无新输入或查询应答，但静态核查不等于实际写入次数证明。停止追加延时/重复导航；仅把已有 setup 进程身份白名单用于失败捕获，先保留首错，不扩大字段/接口/矩阵，Claude 根因仍未知。
 
@@ -62,6 +67,8 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 
 ## 决策记录
 
+2026-10-08：以具名有限合同完成 F-03，而非要求 provider × 平台 × 创建顺序全交叉矩阵。最终 VSIX 自 `502934e1` / `37714907772` 起产品输入未变，后续只补受影响夹具和实际格；三平台 installed/Codex、Linux Claude、真实双窗、Remote 和受控旧 slot 组合共同覆盖 R1。原 PTY、当前状态恢复及容量证据复用，不由 owner 相同推导新的尾部或长期内存证明。已知 CLI 间歇首败及 OS 额外边界按触发条件追踪，不自动扩为工具阶段；理由是未发现新的确定性产品阻塞，且所有原身份、unknown、尾部及清理断言保持。
+
 2026-10-08：只修两项可证明的 Agent 夹具问题。Claude composer 支持实际 U+00A0 水平空白，保持 model 与两次就绪确认；pairCapture 使用原 attach API 的唯一 requestId 获取当前 reader 快照，不依赖消息环长期保留旧项，并保持实际页面、原 session/authority/进程及 nonce 断言。同 reader 的 relay 与页面按现有实现复用，不重置终端或创建执行；默认 Reload 路径不改。失败时原有 probe/messages 各保存一次，不新建诊断 API。36 项测试先红后绿，实际 Claude 失败页重放通过；不据此关闭真实两组验收。
 
 2026-10-08：R1-02 复用既有隔离 loopback Remote-SSH runner，仅增加 root-owner 的 live-runtime 选择及真实 EH 环境采样。无产品/无画板的 probe 和后续两 EH 比较同一执行环境 key，再核对安装产品的真实 binding；不把合成 URI 或本机 shell 代作 Remote 证据。schema2 使用已有冻结产品 validator/hash 验证 API，不新增兼容规则。production workflow 的 `root_checks=remote` 只接受 Linux、明确同包 reuse 和已通过安装证据，不安装 Agent CLI/传凭据；归档仅允许具名回执，不上传 SSH 私钥或整个 fixture。Remote 和双窗夹具变化不重打产品包、不重跑未受影响原生矩阵。
@@ -80,7 +87,11 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 
 ## 结果与复盘
 
-P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd 与跨 XDG/HOME/TMP 复用；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 修后同版包的三平台 installed Terminal/Webview、三平台真实 Codex Reload、Linux双窗与Remote、Terminal边界及Codex双窗口已通过。只剩Claude具名失败定位/重试、整体审查结账，F-03保持开放；旧slot保障按明确受控层级复用，不扩成新的OS矩阵。历史失败和本地沙箱限制原样保留，不追认通过。
+P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd 与跨 XDG/HOME/TMP 复用；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 修后同版包的三平台 installed Terminal/Webview、三平台真实 Codex Reload、Linux Claude Reload、双窗与 Remote、Terminal 边界及 Codex 双窗口已通过，F-03 有限交付收口。旧 slot 保障按明确受控层级复用，不扩成新的 OS 矩阵；历史失败和本地沙箱限制原样保留，不追认通过。
+
+最终 Claude `37725028656` / artifact `11527536604`：一次 Reload 将 EH `2910/6595` 换为 `3112/7247`（PID/startTicks），原 Supervisor `3027/6822`、provider `3040/6850`、唯一 CLI `3048/6858` 身份保持。完整 owner/backend/storage/guarantee/session、authority 不变且 reader 更新，BEFORE/AFTER 真实 nonce 通过、noNewExecution=true；独立 pre-stop 仍观察原 provider/CLI 活跃，产品 stop 后二者均消失，最终 reader applied 至 revision 53。bindings/registry/nodes 为空、pending=0、fallback=[]；仅对已空闲的本轮隔离 Supervisor 发 SIGTERM，不将该动作表述为自然 idle 退出。两阶段安装 payload 相同，VSIX 仍为 `a37f0c3e5afeba5132b5f5eb88104bb36d0670887572c44adbc05cd91097203f`。
+
+本交付不宣称睡眠/OS 调时/Fast Startup、Remote live 断网或 Remote systemd 已实测，也不承诺任意 root 数固定 RSS 或画板多写者事务。双窗测试刻意采用具名保存/关闭顺序；三 owner RSS 仅为分进程样本。历史 Claude 两条 CLI 与信任选项回退仍未知，触发条件和证据入口已进入 `docs/exec-plans/tech-debt-tracker.md`。这些边界不减弱原会话尾部、最终状态、reader 与 RPC 结算要求。
 
 Codex 双窗口 `37721421079` / artifact `11526510881`：原 driver hash、两 installed receipt 和实际 topology 断言独立重放通过；两实际 EH、两个独立新session/authority/provider/CLI、一个原Supervisor，四次nonce与gallery往返通过。multi EH先退出，single两次stop必须经过当时reader的同session/readId applied事件断言，随后registry/bindings空、pending=0，六个执行资源及Supervisor正常退出，forcedSignals=[]，60,397ms、UI exit0。artifact未单独保存最终settlement event，不能把成功路径断言或nonce布尔扩写为末页原始回执。
 
@@ -113,6 +124,8 @@ P3 复用设计 §7 的 R1-01 至 R1-08，按具体改动执行最小受影响�
 ## 证据与备注
 
 设计 PR #297 当前 OPEN；实现分支包含其已认可文档，不自动 merge。后续将定向命令、结果、原生与受控证明范围写入本节及正式设计，不建立新的证据归档体系。
+
+以下按实施顺序保存当时结果；当前有限验收以“结果与复盘”和正式设计 §8 为准。最终包来源 `502934e1` 在 rebase 后对应 `f5bed327`，最新基线为 `origin/main@b94ba3cb`，原 run SHA 不改写。对原包提交与最终实现的 extensions、packages、manifest/lockfile、build/execution-assets 输入比较无差异；后续不重复打包或未受影响矩阵。
 
 本地执行：`node scripts/test/test-runtime-root-ownership.mjs`、`node scripts/test/test-runtime-supervisor-paths.mjs`、`node scripts/test/test-runtime-root-owner-handshake.mjs`（25 受控项，Windows 不含三个 POSIX 权限用例）、`npm run test:runtime-supervisor-startup-profile`（16+31）、`npm run typecheck`、`npm run build` 和 `git diff --check` 通过。`test-runtime-execution-environment.mjs` 先报告 synthetic cases passed，再在双原生子进程无输出断言 exit 1；`test-runtime-supervisor-protocol.mjs` 为 socket EPERM；namespace 首例无 claimant，均不计通过。
 
@@ -171,3 +184,5 @@ P3 首轮 `7741de5d` / run `37711694734` package 成功，Linux/macOS installed 
 修订记录：2026-10-08，切换 P2 创建与原绑定接线，记录异步 restore 修复；有限 P3 复用安装包和真实 Agent runner，新增同一存储范围双窗口场景。systemd 保留未确认结果与直接定位待办。
 
 修订记录：2026-10-08，登记P3首轮部分成功与两项夹具失败，修复profile加载/Windows路径断言，补R1-01缺项及同包定向入口；不重新打包、不扩大通用工具验收。
+
+修订记录：2026-10-08，最后 Claude 同包 Reload 与原始资源结算独立复核通过，P3/F-03 按有限 R1 合同收口并归档；同步设计、规格与技术债，保留全部历史失败及未实测边界，进入实现 PR 而不新增阶段。

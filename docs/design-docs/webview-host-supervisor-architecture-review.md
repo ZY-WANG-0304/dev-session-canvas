@@ -17,13 +17,14 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
   - docs/product-specs/canvas-multi-root-workspace-support.md
 related_plans:
+  - docs/exec-plans/completed/runtime-root-ownership.md
   - docs/exec-plans/completed/runtime-live-state-recovery.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
   - docs/exec-plans/completed/runtime-terminal-cross-platform-diagnosis.md
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
-updated_at: 2026-10-07
+updated_at: 2026-10-08
 ---
 
 # Webview、Host 与 Runtime Supervisor 架构审核
@@ -35,6 +36,8 @@ updated_at: 2026-10-07
 这不是某个待合并 MR 的差异审查，因此下列问题描述的是当前主线基线。严重度表示对当前架构和用户主路径的影响，不等同于仓库 Code Review 流程中的“必须拒绝合并”标签。
 
 ## 2. Findings
+
+2026-10-08 独立 root 归属交付核对：F-03/R1 已按 `docs/design-docs/runtime-root-ownership.md` §7、§8 的 P1 至 P3 与 R1-01 至 R1-08 具名输入和证据复用完成，计划已归档至 `docs/exec-plans/completed/runtime-root-ownership.md`。最终同包 Terminal 边界、Codex 双窗口与 Claude Reload 分别见 run `37720714756`、`37721421079`、`37725028656`；原有分层证据和失败保留。该结论不关闭 F-01/F-02，也不代表整体 multi-root/UI 或第 6 节历史建议的所有组合已验证。Claude 间歇信任页回退及旧两 CLI 观察仍未归因，最终通过不证明旧失败已修复。
 
 2026-10-07 最新交付核对：F-04具名容量增量及重新开放的B4权威当前态恢复已完成，e38d2f72新包run37613549564三平台受影响安装/真实Codex Reload和Linux Terminal Reload独立核对通过；F-05与退出完整性成果保持。当前态恢复不再回放捕获点前累计交互，但保留O(当前模型×有效reader)、固定xterm耦合及历史未归因风险。详见有限收尾§13；F-01/F-02、F-03/root归属不由本次泛化解决，以下审核基线和历史失败不改写。
 
@@ -94,9 +97,11 @@ F-04 的同一最终 stream 放入最小内联画板后，调用实际 Host writ
 
 建议：把 `ExecutionSessionLaunchSpec` 的纯可序列化部分移动到 `common`，由 `executionSessionBridge.ts` 只保留 `ExecutionSessionProcess` 和 node-pty 适配；将 `webviewResourceUri.ts`、`testHarness.ts` 移到明确的 Host/sidebar 基础设施目录，或拆成不依赖 `vscode` 的纯 helper 与 Host adapter。补一条静态依赖守卫，扫描 `src/common` 禁止 `vscode`、`react`、`node-pty` 和 `../panel` 导入。
 
-### F-03 中：画板归属与运行时归属不一致（需要修订设计决策）
+### F-03 中：画板归属与运行时归属不一致（root 归属有限交付已完成）
 
-2026-10-07 后续状态：PR #295 合并后，独立方案已选定于 `docs/design-docs/runtime-root-ownership.md`，原多根 §6.8 和产品第 16 项已区分新建 root 目标与旧 slot 原绑定。当前仅完成规划设计，未改业务、未执行 root 归属验收。下述 slot 规格判断保留为 2026-09-16 审核基线，不把历史实现追认为违反新规格，也不将 F-03 标为已解决。
+2026-10-08 当前状态：新建 root 归属与旧 session 原绑定保护已按独立方案有限交付，范围与证据见本节开头的最新核对。下述 slot 规格判断、代码位置和“后续设计”表述保留为 2026-09-16 审核基线，不把历史实现追认为违反新规格，也不将历史建议扩成新的待办。
+
+2026-10-07 规划记录：PR #295 合并后，独立方案已选定于 `docs/design-docs/runtime-root-ownership.md`，原多根 §6.8 和产品第 16 项已区分新建 root 目标与旧 slot 原绑定。当时仅完成规划设计，未改业务、未执行 root 归属验收，尚不能标为已解决。
 
 #### 已核实的实现与影响
 
@@ -154,7 +159,7 @@ F-04/F-05 是本轮高优先级的容量与归档架构重评，F-01 是连接�
 
 `test:runtime-supervisor-protocol` 的 10-agent capacity 样本为 `agentCount=10`、`allOutputCompleteMs=300.16`、`inputEchoMs=30.35`，只能说明现有基准场景通过，不能覆盖无响应 hello。真实 VS Code Webview、Windows、Remote SSH 和长时间 socket 背压未在本轮运行。
 
-F-03 补充审核只复核代码调用、现行第 6.8 节和产品规格，并检查文档链接及 `git diff --check`；没有修改运行时代码，没有重跑首次审核的运行时测试。第 6 节全部是后续改造的建议验收场景，尚未执行，不能作为 root 稳定 runtime 已实现的证据。
+F-03 补充审核当时只复核代码调用、第 6.8 节和产品规格，并检查文档链接及 `git diff --check`；没有修改运行时代码，没有重跑首次审核的运行时测试。第 6 节记录的是当时尚未执行的建议场景，不作为当前待办或独立验收证据；2026-10-08 的有限交付以 root 设计 §8 为准。
 
 F-04/F-05 的受控证据及限制见重评设计第 3 节，可通过诊断脚本重跑。上游对照只核对固定 commit 的文档与源码，未运行 tmux、VS Code 或 WezTerm 的跨平台持久化实验；原始链接见 `docs/references/terminal-persistence-open-source-survey.md`。
 
@@ -172,11 +177,13 @@ F-04/F-05 已按 `runtime-persistence-storage-reevaluation.md` 分阶段推进�
 
 同日职责澄清：Terminal/Agent 都只托管执行会话与终端资源，不默认在实际主进程退出后等待普通后代结束或接收未来输出；运行中收到的后代输出仍正常处理。主进程尾部、既有队列/消费内容、最终状态和资源释放仍是交付义务，启动器下的实际 Agent CLI 仍须验证主体生命周期。后代实验保留为底层诊断，macOS 后代失败不独立阻塞产品，也不等于真实 Agent 缺陷或平台已通过；阻塞重评与下一步见退出完整性设计第 18 节，具体收尾/取消/预算未定。
 
-F-03 的产品方向已由用户确认；具体设计与运行时改造另开 ExecPlan，覆盖单根和多根新建、稳定 root identity、Supervisor 发现与并发启动、backend 选择、旧 session 原绑定恢复及退役。现有设计第 6.8 节与产品规格已标出待修订边界；改造时再将新建归属正式收口为 root 语义，并保留旧 slot 恢复契约，不能把整份设计直接标成 root 稳定 runtime 已实现或已验证。
+F-03 已通过独立 `runtime-root-ownership.md` 设计与 completed ExecPlan 收口单根/多根新建、稳定 root identity、Supervisor 发现与并发启动、backend 选择及旧 session 原绑定保护。多根设计 §6.8 与产品规格已同步 root 语义并保留旧 slot 恢复契约；有限交付不扩大为整份多根设计或所有历史建议组合已验证。
 
-## 6. F-03 建议验收场景（待实现、待执行）
+## 6. F-03 历史建议验收场景（非当前待办）
 
-以下场景覆盖 Agent 与 Terminal，并记录创建窗口、root identity、backend、runtime storage/control endpoint、generation、Supervisor PID、session id 和 terminal authority。稳定性主要比较逻辑归属和 endpoint；进程重启后的 PID 不必保持不变。不同节点的新会话应有各自的 session id，共享 Supervisor 不等于复用同一 session。
+以下保留 2026-09-16 的建议输入，不逐行追认已执行，也不在 R1 有限交付后重新排队。现行验收范围及分层结果以 `docs/design-docs/runtime-root-ownership.md` §7、§8 为准。
+
+原建议覆盖 Agent 与 Terminal，并记录创建窗口、root identity、backend、runtime storage/control endpoint、generation、Supervisor PID、session id 和 terminal authority。稳定性主要比较逻辑归属和 endpoint；进程重启后的 PID 不必保持不变。不同节点的新会话应有各自的 session id，共享 Supervisor 不等于复用同一 session。
 
 | 场景 | 建议验收结果 |
 | --- | --- |
