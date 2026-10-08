@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.26.0
+
+- 与主扩展 `0.26.0` 同版本发布。主扩展更新运行时恢复、退出收尾与已结束会话保存语义；notifier 的通知投递、协议、后端选择、点击回跳与本地化行为不变。
+- 继续通过主扩展 `extensionPack` 自动安装 notifier，notifier 单独安装时通过单向 `extensionDependencies` 补齐主扩展；建议两者一起升级。
+- 仍为公开 `Preview`，桌面通知与点击回跳受本机权限和平台后端支持约束。
+
 ## 0.25.0
 
 - 与主扩展 `0.25.0` 对齐：本轮主扩展重新实现 PTY title 展示，并明确相对 `0.24.5` 的 Runtime Supervisor 恢复、checkpoint 和输入调度边界；notifier companion 不引入新的通知投递行为、协议、后端选择、点击回跳语义或本地化边界变化。

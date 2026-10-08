@@ -10,15 +10,18 @@ architecture_layers:
   - 适配与基础设施层
 related_specs: []
 related_plans:
+  - docs/exec-plans/active/release-0-26-0-prep.md
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
   - docs/exec-plans/active/publish-tag-release-flow.md
   - docs/exec-plans/completed/github-release-assets-flow.md
   - docs/exec-plans/completed/release-0-25-0-prep.md
   - docs/exec-plans/completed/release-gate-contract.md
-updated_at: 2026-09-17
+updated_at: 2026-10-08
 ---
 
 # 公开平台发布准备
+
+当前准备版本为 `0.26.0`，上一已发布版本为 `0.25.0`；本版正式范围见第 9.0 节与发布契约。以下日期记录保留历史含义，不覆盖当前范围。
 
 > 2026-09-15 初始范围审计（目标版本随后于 2026-09-16 按用户更正为 `0.25.0`）：已从最新 `origin/main` 创建 `release-0-25-0-prep`，当前基线为 `44c025056f3e63019b53f528951ea1d15ce1539d`。审计开始时根 workspace、主扩展和 notifier manifest 仍为 `0.24.3`，正式发布手册与 README 也仍停留在 `0.24.3`；后续版本同步已将当前发布准备分支统一更新为 `0.25.0`。远端存在 `v0.24.5` tag（`a9e27873aa01c1d1f1e43b4303ff697ce618c8cf`），但它不是当前 `origin/main` 的祖先；两条线从 `7eb3864b855d85b7c18d0162b99d5896d13af4d6` 分叉。
 >
@@ -354,6 +357,16 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 - 若只解决 publisher / PAT 而不先治理发布包，公开发布过程会被包体污染、内容漂移和不可重复打包持续阻断。
 
 ## 9. 正式方案
+
+### 9.0 当前 0.26.0 发布输入
+
+2026-10-08 用户授权本版先发布、后修四项已记录的测试问题。截图差异由用户确认为基准问题；Marketplace locale、notifier 联动与 packaged smoke 的记录不追认为产品通过，后两项根因仍未确认。`scripts/release/release-preflight.mjs` 仅对精确版本 0.26.0 使用授权验证范围：preflight 与门禁回归、主扩展/notifier 类型检查、Markdown 与终端状态/已结束历史定向测试、notifier source、默认 build 和 HEAD clean-checkout 打包，延后完整 npm test、宿主联动及 Webview 全套。任何保留检查失败仍阻断；输出必须标明授权例外，不能声称完整验证通过。0.26.1 及其他版本沿用完整门禁，不提供任意跳过开关。PR 和发布 tag 使用相同入口，仍要求 main 合并提交、六目标同源资产、双包与渠道核验。
+
+以已合入 main 的 #293 发布契约机制、#294 原生退出验证入口和 #295 运行时容量/退出完整性/当前状态恢复为输入。相对 0.25.0，已结束持久化 Runtime 的重开语义、执行实现和恢复权威有用户可见变化，因此选择新的 0.x.0 里程碑，不使用补丁版本。主扩展与 notifier 同步为 0.26.0，保持 Preview；notifier 不增加行为。发布审计另将 markdown-it 更新至 14.3.2，修复公开长文本 linkify 阻塞公告；KaTeX 无可用补丁公告的前提与风险登记技术债，不宣称零漏洞。
+
+版本、双 CHANGELOG、英中文 README/listing、支持边界和 `docs/release-contracts/v0.26.0.md` 构成静态输入。用户说明突出类似 tmux 的健康 live 会话重新附着：Supervisor 保留原进程与权威终端模型，新页面直接导入当前状态，免去累计历史回放。scrollback 随模型导入，后续增量接续属于一致性要求，不能作为“先恢复历史再接输出”的主卖点；实际实现仍为 xterm 状态导出/导入，不新增 tmux 依赖，不将恢复收益外推为恒定耗时。另说明退出收尾和已结束 Runtime 重开不保留正文；旧 live 绑定不迁移，snapshot-only 不因这一规则改变。限制包括监督器/机器故障无恢复保证、资源随会话/scrollback增长、旧系统未经覆盖及跨版本回退无保证。正式产品依据为 `runtime-persistence-closeout.md`、`runtime-live-state-recovery.md` 与对应产品规格，不把历史阶段性失败覆盖为从未发生。
+
+六目标原生资产按当前构建规则提供；PR 预合并 ref 和最终 publish tag 各执行完整 verify。发布准备只提交输入和验证记录，不创建 tag。发布后的工件与渠道结果只由外部 manifest / Release 记录；不回写本版契约。后续 9.1 等章节中具名旧版本的描述保留历史范围，通用规则继续生效。
 
 ### 9.1 方案说明
 

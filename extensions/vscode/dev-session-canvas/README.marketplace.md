@@ -10,16 +10,16 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.25.0 Highlights
+## 0.26.0 Highlights
 
-The public `0.25.0` release is a new `Preview` milestone relative to `0.24.5`. It intentionally rolls back part of the `0.24.5` Runtime Supervisor recovery, checkpoint, and input-scheduling surface, then reimplements PTY title display on the current release input. It should not be read as a linear accumulation of every `0.24.5` runtime guarantee.
+`0.26.0` is a new public `Preview` milestone built on `0.25.0`, focused on tmux-like session reattachment and terminal exit integrity.
 
-- Agent and Terminal nodes can display the live PTY title set by OSC 0 / OSC 2 while preserving the user-authored node title, Agent launch command, Terminal shell path, and workspace context
-- TUI programs can query the current title with `CSI 21 t`; the actual PTY owner reports it with `OSC l`, and title control sequences or title payloads stay out of visible output, recent output, terminal streams, checkpoints, and journals
-- Title payloads remove control characters, fold whitespace, and enforce a bounded length; malformed or unterminated payloads fail closed instead of leaking possible title text into durable output
-- Titles belong to the live execution session and clear when the session ends. Late output, title events, and terminal-state messages from an older execution session cannot overwrite a newer session
-- The main extension and `Dev Session Canvas Notifier` remain version-aligned, with no new user setting or notifier delivery behavior in this release
-- The existing Preview canvas, Agent / Terminal lifecycle, basic journal / checkpoint paths, Fork, resize, multi-root, and notifier installation topology remain subject to the final release gate
+- **Reattach to a running session, much like tmux**: the Supervisor keeps the process and current terminal state alive. Reopening a window, rebuilding a Webview, or switching Pane Gallery imports that state directly, without replaying accumulated output to reconstruct the display. This simplifies reconnection and avoids replay costs growing with the lifetime of the session
+- Open pages consume their remaining output in order before terminal completion; stopping a session is distinguished from a natural complete exit
+- **Completed persistent Runtime sessions reopen without terminal text or an automatic restart.** Nodes, layout, launch settings, and exit status remain; snapshot-only history behavior, provider session files, and explicit Agent Resume remain separate
+- Bounded runtime caches and consumption-paced reads reduce accumulated-history overhead; resources still scale with active sessions and configured scrollback
+- Terminal state restoration fixes include OSC 8 hyperlink resets and screen recovery after reducing terminal height
+- Main extension and notifier stay version-aligned, with existing settings and notification behavior preserved
 
 ## Core Capabilities
 
@@ -61,13 +61,14 @@ The public `0.25.0` release is a new `Preview` milestone relative to `0.24.5`. I
 
 ## Support Scope And Limits
 
+- Native assets cover Linux glibc, macOS, and Windows on x64/arm64. Validation uses modern systems and does not establish compatibility with older operating systems or Linux musl.
 - The `Remote SSH` main path is validated and usable, and it remains the best-validated recommended environment
 - Linux and macOS local workspaces now have functional validation for the `Preview` main path
 - Windows local workspaces now have functional validation for the `Preview` main path, with one explicit known limitation: when using `Codex`, embedded session history still cannot page upward
 - Real older-binary upgrade smoke currently covers Linux / Unix sockets. Windows named-pipe and systemd generation isolation have path-level coverage, not a complete cross-platform real-upgrade matrix
-- A strict 90,000-line completed-terminal stress case has intermittently stopped short at the final tail even though other full runs pass; final-tail completeness for one extreme output burst remains under validation
-- Journal compaction is deliberately conservative: unsafe or oversized checkpoints keep the complete journal, so this release does not promise a fixed disk cap, a complete long-term retention policy, or cross-version journal rollback compatibility
-- Relative to `0.24.5`, this release does not promise background recovery status or progress notifications, bounded dead-PTY recovery, explicit-Resume-only startup, bounded checkpoint projection / rejection diagnostics, or strict FIFO single-in-flight input scheduling; Runtime Supervisor behavior remains Preview- and backend-dependent
+- Declared 90,000-line terminal completion and real Agent reload paths have targeted validation; this does not promise arbitrary concurrency, output volume, or full-scrollback performance on every platform
+- Runtime resources scale with sessions, terminal size, and scrollback. There is no fixed total memory or disk cap, zero-latency recovery, or cross-version journal rollback guarantee
+- Completed persistent Runtime sessions reopen with node configuration and exit status only. Supervisor crashes or machine restarts do not guarantee recovery of the original process or terminal text
 - Directed Fork placement has automated geometry and interaction coverage, but final visual review of layer spacing and `fork` labels across panel and editor surfaces is still pending
 - PNG link opening has real VS Code Host coverage. GIF and MP4 share the same generic opener and registered VS Code editors, but do not yet have separate real-host fixtures; a resolved `vscode.open` command means the editor service accepted the request, not that the target model necessarily loaded successfully
 - Resize coalescing has Webview regressions and trusted Host smoke coverage, but still awaits manual journal review with real Codex / Claude TUI processes. Multi-touch across different nodes or Pane Gallery surfaces is outside the current support scope
@@ -87,14 +88,14 @@ The public `0.25.0` release is a new `Preview` milestone relative to `0.24.5`. I
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.24.5` to `0.25.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- First-time installs and upgrades from `0.25.0` to `0.26.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
 - UI language follows the VS Code locale. This release does not add an extension-specific language setting and does not translate user-owned content, terminal output, provider output, or marketplace template data
-- Supervisor-backed recovery still depends on `runtimePersistence.enabled` and backend availability. This release does not promise the `0.24.5` background recovery state / progress surface, bounded dead-PTY replay, bounded checkpoint projection, or strict FIFO input behavior; local PTYs do not gain a cross-Host lifetime guarantee, and Preview releases do not promise rollback compatibility for runtime journals
+- Supervisor-backed live recovery still depends on `runtimePersistence.enabled` and backend availability. Existing live sessions retain their original Supervisor and protocol; local snapshot-only processes do not gain a cross-Host lifetime guarantee
 - Current-node Agent forks use `devSessionCanvas.canvas.forkPlacementDirection = up` by default. Choose `down` or `right` if preferred; the setting affects only future current-node forks and does not rearrange existing forks or Session History placement
 - The production Template Marketplace may start with an empty catalog. Production does not expose code-only seed templates; real templates must be published through the marketplace or a controlled operations flow
 - Pane Gallery only changes multi-root presentation. Single-root workspaces keep the normal canvas, and `rootGroups` remains the default multi-root mode and conservative fallback
 - Layout arrangement is an explicit one-shot action. It does not offer undo, run continuously, or move nodes across ordinary groups or workspace roots
-- If you previously set `devSessionCanvas.runtimePersistence.enabled`, `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, `devSessionCanvas.canvas.multiRootPresentationMode`, or `devSessionCanvas.canvas.forkPlacementDirection`, upgrading to `0.25.0` preserves that explicit choice
+- If you previously set `devSessionCanvas.runtimePersistence.enabled`, `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, `devSessionCanvas.canvas.multiRootPresentationMode`, or `devSessionCanvas.canvas.forkPlacementDirection`, upgrading to `0.26.0` preserves that explicit choice
 - Image paste files are temporary extension-storage attachments, not workspace files. They are retained long enough for Agent context reuse and then cleaned by the background TTL maintenance task
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
@@ -131,7 +132,7 @@ The public `0.25.0` release is a new `Preview` milestone relative to `0.24.5`. I
 ## Rollback Guidance
 
 - If the current version blocks your workflow, disable or uninstall the extension first
-- Prefer waiting for a later `0.25.x` fix release rather than trying to downgrade manually; stop important sessions before changing versions because Supervisor journals do not promise cross-version rollback compatibility
+- Prefer waiting for a later `0.26.x` fix release rather than trying to downgrade manually; stop important sessions before changing versions because Supervisor journals do not promise cross-version rollback compatibility
 - If you must roll back, reinstall the target version and verify workspace state again. Compatibility between Preview versions is not guaranteed
 - For support boundaries, issue reporting, and security guidance, use the links below
 

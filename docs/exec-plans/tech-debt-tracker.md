@@ -35,6 +35,16 @@
 
 ## 技术债列表
 
+2026-10-08 当前结论覆盖下列 2026-10-07 的“发布阻塞”分类：用户明确授权 0.26.0 先发布、四项测试问题后修。用户已确认 Webview 差异来自基准图；Marketplace locale 矛盾有代码与 probe 证据，notifier posted diagnostic 与 packaged smoke 超时根因仍未确认，不能据“大概率测试问题”宣布产品缺陷已排除。四项仅对 0.26.0 降为接受的发布风险，失败和未执行项仍保持原状态。临时处理是该版 release:verify 的精确版本例外：保留静态、类型、定向回归、构建、同源原生资产与隔离打包，延后完整 npm test/宿主/Webview/packaged smoke。建议在下一发布准备前修复 locale 契约、按确认结果更新视觉基准、分别查明两处超时并重跑完整门禁；0.26.1 不继承例外。关联 PR #296、`docs/release-contracts/v0.26.0.md`、`scripts/release/release-preflight.mjs`、`docs/exec-plans/active/release-0-26-0-prep.md`。其余 audit 与运行时维护债务不受此授权影响。
+
+2026-10-07，同次 0.26.0 验证另有两项阻塞：完整 Webview 首项 `canvas-shell-baseline` 稳定差异 8020 pixels，差异集中于 Agent/Terminal 标签及控制区；未更新期望图，主动中止后的其余测试不算通过。独立 clean-checkout 虽完成 npm ci 和 140-file VSIX 打包，packaged smoke 在 `verifyCreateNodeCommandQuickPick`（`extension-tests.cjs:2619`）等待诊断事件超时，尚未确认根因。发布前需分别复核视觉基准与创建节点实际链路，并重跑完整验证；Markdown 定向渲染、notifier locale 和包结构通过不能代证。追踪入口：`docs/exec-plans/active/release-0-26-0-prep.md`、草稿 PR #296。
+
+2026-10-07，0.26.0 发布验证阻塞（不能据此合并发布准备 PR）：`release:verify` 在 Node 22.23.3 短路径 checkout 的 Marketplace VS Code E2E 失败。实际 list probe 已显示两条模板和英文 Install / Switch install version，`tests/vscode-smoke/template-marketplace-tests.cjs:48` 仍等待中文按钮；需修正测试 locale/文案契约并完整复验，不降低交互断言。原深路径首跑另有 Unix socket listen EINVAL，可用短路径避开，不能混作同一失败。独立 `test:notifier-smoke` 在 `notifier-companion-tests.cjs:103` 等待 companion posted diagnostic 超时，前序出现 `Local final snapshot responsibility still occupies the execution key or Host capacity`；因果尚未确认，需排查测试启动时序与生产 runtime 责任，不能直接判定为无害 fixture。影响发布完整验证与 companion 联动验收，应在发布前解决；locale/source/打包通过不替代该联动路径。证据入口为 `docs/exec-plans/active/release-0-26-0-prep.md`。
+
+2026-10-07 发布审计：`npm audit --omit=dev` 发现公开 KaTeX 公告 `GHSA-238p-pmpm-9mq7`，覆盖当前 `katex@0.16.45` 及 `micromark-extension-math` 依赖链，合计 2 low，npm 当前报告无修复版本。公告以“已经存在原型污染”为前提；`noteMarkdownPreview.ts` 显式传入 `trust: false`，本轮没有证明项目中存在前置污染路径，也不据此宣布完全不可利用。暂保留当前依赖与渲染配置，作为待验证安全风险；上游提供修复或发现前置污染路径时优先处理并重跑 Note 渲染回归。关联 `docs/exec-plans/active/release-0-26-0-prep.md`、主扩展 manifest/lockfile。独立的 markdown-it `GHSA-253c-mchw-3w2r`（linkify 长文本阻塞）本轮升级至 14.3.2；不把 KaTeX 遗留项写成零漏洞。
+
+同日全依赖 audit 为 19 项（2 low / 3 moderate / 14 high）；生产依赖只有上述 2 low，其余位于 @vscode/vsce、Tailwind、Wrangler 等开发/构建链。npm 的部分建议涉及主版本迁移，需独立工具链升级并复核构建、市场服务开发测试与 VSIX，不能直接 `audit fix --force` 混入版本物料。当前不声明全依赖零漏洞，也没有本轮实际利用证据；应在后续工具链维护中优先评估适用条件和可兼容补丁。
+
 2026-10-07 当前范围优先于下列历史结账：B1容量/准入、B2退出完整性、B3生命周期成果保留，B4权威当前态恢复及最终同包受影响验收已完成，计划归档至 `docs/exec-plans/completed/runtime-live-state-recovery.md`。剩余仅合并许可与下表具名维护风险，不自动追加产品阶段。旧sandbox拒绝及未归因间歇失败不追认通过；root稳定归属另列，不混入当前收口。
 
 当前状态 codec 依赖固定 `@xterm/headless` / `@xterm/xterm` 6.0.0 私有模型字段，是明确的维护边界：任何 xterm 升级或生产 parser handler 变化，必须重新核对两端状态格式、未来增量与浏览器服务并补受影响回归，不得只改版本字符串。当前使用 `xterm-current-state-v1`，不承诺任意 addon/异步 paused parser 的状态迁移；不能因已登记此风险而免除 B4 的产品验收。

@@ -4,6 +4,8 @@
 
 ## 适用对象
 
+当前发布准备版本为 `0.26.0`，上一已发布版本为 `0.25.0`。完整用户变更见主扩展 CHANGELOG；新版本尚未发布时，请通过 GitHub Release 的实际版本判断下载内容。
+
 本版本更适合以下用户：
 
 - 愿意接受 `Preview` 限制的高级用户
@@ -43,6 +45,12 @@
 - 与 README 支持矩阵直接冲突的行为回归
 
 ## 不承诺范围
+
+`0.26.0` 的持久化运行时采用类似 tmux 的重新附着：以 Supervisor 健康且原会话存活为前提，直接导入其持有的终端当前状态，无需回放累计历史来重建画面。配置内 scrollback 是当前状态的一部分。已结束 Runtime 重开只保留节点、配置和退出状态，不保留正文或自动执行；升级前请另行保存需要留存的输出。snapshot-only 与 provider 自身会话存储不受这项历史保存变更影响。
+
+Supervisor 崩溃、机器重启或断电后不保证进程/终端历史恢复；资源随会话数、终端尺寸和 scrollback 增长，不承诺固定总内存、总磁盘硬配额或零延迟。旧 live 会话不自动迁移到新协议，跨版本运行时数据回退不保证兼容。
+
+当前原生资产支持 Linux glibc、macOS 和 Windows 的 x64/arm64。验证采用现代系统，不能外推旧 macOS、旧 Windows 或 Linux musl。Windows Codex 节点内历史向上翻页限制仍保留；Dev Container / Codespaces 尚不属于 live-runtime 正式支持范围。
 
 以下内容不作为公开 `Preview` 的支持承诺：
 

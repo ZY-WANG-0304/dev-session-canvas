@@ -40,8 +40,10 @@ async function main() {
   console.log(`发布输入 preflight 通过：v${options.version}`);
 
   if (options.verify) {
-    runFullVerification();
-    console.log(`发布完整验证通过：v${options.version}`);
+    runFullVerification(options.version);
+    console.log(options.version === '0.26.0'
+      ? 'v0.26.0 用户授权范围验证通过；完整测试和宿主/视觉验收仍有延后项，见发布契约。'
+      : `发布完整验证通过：v${options.version}`);
   }
 }
 
@@ -232,9 +234,24 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function runFullVerification() {
+function runFullVerification(version) {
   runNpm(['run', 'test:release-preflight']);
   runNpm(['run', 'test:release-preflight-workflow']);
+  // One-release exception explicitly authorized on 2026-10-08; later versions keep the full gate.
+  if (version === '0.26.0') {
+    console.warn('v0.26.0 授权例外：延后完整 npm test、Marketplace 宿主 E2E、notifier 联动、Webview 全套与 packaged smoke。');
+    for (const script of [
+      'typecheck', 'typecheck:notifier', 'test:extension-manifest',
+      'test:note-markdown-links', 'test:note-markdown-source-map',
+      'test:note-markdown-file-association', 'test:note-markdown-checklists',
+      'test:note-markdown-front-matter', 'test:terminal-current-state',
+      'test:runtime-completed-history', 'test:notifier-source', 'build', 'build:notifier'
+    ]) {
+      runNpm(['run', script]);
+    }
+    runNpm(['run', 'validate:clean-checkout:vsix', '--', '--ref', 'HEAD', '--skip-vsix-smoke']);
+    return;
+  }
   runNpm(['run', 'test']);
   runNpm(['run', 'validate:clean-checkout:vsix', '--', '--ref', 'HEAD']);
 }
