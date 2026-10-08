@@ -3803,6 +3803,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.postState('host/stateUpdated');
     }
 
+    // A simulated reload reuses the owner instead of constructing a new Host.
+    if (this.nonNativeExecutionOwner && !this.nonNativeExecutionOwner.tryResume()) {
+      throw new Error('Execution owner admission could not resume after simulated reload.');
+    }
     this.scheduleRestoreLiveRuntimeSessions();
 
     return this.getDebugSnapshot();

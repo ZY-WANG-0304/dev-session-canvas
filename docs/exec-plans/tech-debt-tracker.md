@@ -14,6 +14,8 @@
 
 ## 近期已收口
 
+- 2026-10-08：PR #296 packaged smoke 的首个启动诊断超时已定位并修复：`simulateRuntimeReloadForTest` 在同一 Host 上关闭 execution owner 后未恢复准入，污染紧随其后的 QuickPick 用例。成功重载现在通过 `tryResume()` 恢复准入，拒绝恢复时显式失败；新增 4 项回归先红后绿，Node 22 完整 Host 接线 236/236、类型检查通过。真实 `test:vsix-smoke` 已越过原第 2619 行启动断言，但完整命令仍失败，后续 reset 缺口另列；不关闭 packaged smoke 总体债务。见 `docs/exec-plans/completed/packaged-smoke-reload-lifecycle.md`。
+
 - 2026-10-07：B4、F-04具名当前态增量和最终默认分发已收口。e38d2f72/run37613549564新VSIX的三平台installed live、Codex natural/独立Reload及Linux Terminal Reload均独立核对通过，产品有限审查无新确定性blocker，计划归档；明细见有限收尾§13。同key开读/取消等待无界责任已修，填充态10200040字符/1246块、原身份、尾部及清理通过。Windows按原handle明确确认退出，不要求对象销毁；不以旧包通过代证最终包，不追加容量/工具阶段。以下旧日期中的“待验/受限”是历史状态。
 
 - 2026-10-06：GitHub run `37479044769` 的 package、native assets 和 Windows product 通过；Linux current-state reload 的 `setup.json` 缺失已由工件定位为 fixture 不接受 driver 的 shell `printf` 命令，已改成显式 fixture marker 命令，待重跑验证。macOS Agent 在 `starting` 阶段失败且 sanitized 报告未提供 CLI/Supervisor 第一现场。已补最小脱敏失败 snapshot/events 与 reload names-only artifact inventory，待受影响 runner 重跑后再分类；不把 harness 失败追认为产品通过，也不扩大到跨平台 current-state 实现。
@@ -34,6 +36,8 @@
 - 2026-07-06：`trusted smoke` 的 live-runtime scrollback reload 超时技术债已收口。本轮确认历史 `waitForRuntimeSupervisorState()` 超时未在稳定后的 Linux headless runner 中复现；新增 `--disable-gpu` / `--disable-dev-shm-usage` 后，最小 VS Code extension test、定向 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory()` 和完整 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:smoke` 均通过。过程中发现的 `CodeWindow: detected unresponsive` 可由最小 extension test 复现，判定为 VS Code/Electron/Xvfb 启动层问题，并由同一 runner 参数缓解；完整 smoke 另一次失败来自 editor tab-switch 终端提示符换行差异，已把断言收窄到本用例真正关心的 marker viewport 行。该收口不扩大到非 Linux headless / Remote SSH 长断开等独立验证缺口。
 
 ## 技术债列表
+
+2026-10-08 packaged smoke 修后复验：原 `verifyCreateNodeCommandQuickPick` 的启动事件超时已消除，完整用例继续到 `extension-tests.cjs:2669` 的 reset 空画布断言后失败。Host 先返回 `Local final snapshot persistence is pending`，随后同一 Agent 的 `execution/localFinalPersistence` 记录 `submitted=true, result.kind=saved`，但 reset 没有完成。另有 `Owned terminal mutation admission is closed` 消息，尚未确认其与 reset 的因果关系。原测试从运行中 Agent 直接 reset，不能通过强制开放准入、吞掉保存错误或延长轮询追认为通过。需单独核对 reset 的执行结算与最终保存完成时序，补齐回归并重新完成 clean-checkout packaged smoke；在此之前总体门禁仍未通过。证据：`.debug/packaged-smoke-reload/vsix-smoke.log`、`.debug/packaged-smoke-reload/artifacts/`；关联 `CanvasPanelManager.closeNonNativeHostExecutions`、`assertNonNativeHostPersistenceComplete`、`docs/exec-plans/completed/packaged-smoke-reload-lifecycle.md`。本轮不将该后续失败归类为已确认的测试问题。
 
 2026-10-08 测试过期问题修复（PR #296 的两项后续）：Marketplace fixture E2E 显式使用 `--locale=en` 并在宿主断言 `vscode.env.language`，统一安装、更新、回滚、举报、计数和发布成功文案；`npm run test:marketplace-vscode-e2e` 在 Node 22.23.3 / VS Code 1.118.1 真实宿主完整通过。Webview 先复现旧图 8020 pixels 差异，确认公共 fixture 的 `--timeout 300 --verbose` 触发当前默认参数校验错误，改用合法 `--model gpt-5` 并同步自定义启动用例，再生成 Linux 画布基准。截图复核确认 Agent 显示正常命令、Terminal 显示已有 cwd 行，并增加命令副标题断言，防止更新截图时接受错误状态；不放宽比较阈值。全套还暴露帮助提示中 Canvas → 画布、右键菜单新增 `clear-canvas`、启动模式归一化 fixture 混入已禁止的 Resume 目标参数等过期测试，均已按当前实现及 `docs/design-docs/agent-launch-modes-and-restart.md` 同步；产品代码未改。
 

@@ -16,7 +16,8 @@ related_plans:
   - docs/exec-plans/completed/test-automation-hardening.md
   - docs/exec-plans/completed/debug-automation-next-six.md
   - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
-updated_at: 2026-06-09
+  - docs/exec-plans/completed/packaged-smoke-reload-lifecycle.md
+updated_at: 2026-10-08
 ---
 
 # 开发调试与自动化验证
@@ -153,11 +154,14 @@ updated_at: 2026-06-09
 - VS Code build task 可以在缺少根 `node_modules` 时自举执行 `npm ci`，但不改变发布态 package manifest；CI、发布与命令行验证仍应把 `npm ci` 当作显式环境准备步骤。
 - 真实宿主 smoke 与 Playwright harness 分工固定：前者负责集成闭环与运行时语义，后者负责 Webview UI / 截图回归；两者互补，不能互相宣称覆盖对方的验证范围。
 - 宿主侧 test-only 能力只在 `ExtensionMode.Test` 或约定测试 harness 下暴露，用于读取状态、等待 ready、派发消息和采集 probe；发布态与日常 F5 不应把这些命令当成产品接口。
+- `CanvasPanelManager.simulateRuntimeReloadForTest()` 复用同一个 Host 实例，因此在边界清理和状态重载成功后，必须调用 execution owner 的 `tryResume()` 恢复新执行准入，并检查恢复结果。边界失败、遗留执行或永久关闭不得被测试钩子强行放开；真实重启仍由新实例建立 owner。对应回归须通过真实 Host 方法验证重载后 Agent / Terminal 可启动，以及失败路径仍关闭准入。
 - smoke / Playwright 失败时必须留下可追溯调试产物，包括真实 Webview probe、宿主消息、宿主诊断时间线、VS Code logs、截图与 trace；Remote-SSH real-reopen 产物需继续独立落到 `.debug/vscode-smoke/remote-ssh-real-reopen/artifacts/`，避免与本地场景混淆。
 - trusted / restricted smoke 中的子流程如果显式打开、切换或销毁主画布 surface，必须在返回前恢复调用方期望的 surface，或让后续 probe / DOM action 显式传入当前 surface；不能依赖测试顺序里的隐式 active surface。默认无参的真实 Webview probe 只表示 editor surface，因此新增场景若可能把主画布切到 panel，必须调用 `ensureEditorCanvasReady()` 复位或改用 `waitForWebviewProbeOnSurface(surface, ...)`。
 - 当产品语义要求“复用已打开 Canvas surface”时，smoke 不应只在用例结尾复位 surface，还必须在触发命令后断言 active surface 没有被默认承载面配置改写。也就是说，surface hygiene 既要保护后续测试顺序，也要覆盖用户可见的承载面行为。
 
 ## 8. 验证方法
+
+2026-10-08 模拟重载增量验证：新增 4 项 Host 回归在原实现上失败、修复后通过，Node 22 完整 Host 接线测试 236/236 和类型检查通过。真实 VSIX smoke 已越过原启动诊断超时，但在后续 reset 的最终快照保存 pending 处失败；该结果不代表完整第二层验证通过，剩余责任按技术债和本轮完成计划继续追踪。
 
 完成后至少要满足以下验证：
 

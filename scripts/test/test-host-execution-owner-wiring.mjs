@@ -2277,6 +2277,63 @@ function candidateFixture(options = {}) {
   return { ...f, owner, injection, posted, start };
 }
 
+function simulatedReloadFixture() {
+  const f = candidateFixture();
+  Object.assign(f.host, {
+    readStartupConfiguration: () => ({ ...f.host.appliedStartupConfiguration }),
+    shouldPreserveLiveRuntimeAcrossHostBoundary: () => false,
+    applyWorkbenchContextKeys() {}, refreshStorageRecoverySelection() {},
+    loadStoredCanvasFileFilterState: () => f.host.fileFilterState,
+    loadReconciledState: () => f.host.state,
+    readCanvasTemplateInitializedFlag: () => true,
+    loadStoredSurface: () => 'editor',
+    isInteractiveSurface: () => false,
+    scheduleRestoreLiveRuntimeSessions() {},
+    getDebugSnapshot: () => ({ state: f.host.state })
+  });
+  return f;
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`simulated reload reopens admission for a new ${kind} execution`, async () => {
+    const f = simulatedReloadFixture();
+    for (let reload = 0; reload < 2; reload++) {
+      await completed(f.clock, f.host.simulateRuntimeReloadForTest(), 'simulated reload');
+      assert.equal(f.owner.snapshot().closing, false, 'a successful simulated reload must reopen its reused owner');
+    }
+    try {
+      await completed(f.clock, f.start(kind), `${kind} start after simulated reload`);
+      assert.equal(f.providers.length, 1);
+      assert.equal(f.providers[0].messages[0].type, 'start');
+      assert.ok(f.diagnostics.some(event => event.name === 'execution/startRequested' && event.detail.kind === kind));
+    } finally {
+      const record = f.record(kind);
+      record?.business?.cancelActivityPoll?.();
+      record?.business?.lineContextTracker.dispose();
+      record?.tracker.dispose();
+    }
+  });
+}
+
+test('simulated reload keeps admission closed when the Host boundary fails', async () => {
+  const f = simulatedReloadFixture();
+  f.host.waitForPendingWorkspaceStateUpdates = async () => { throw new Error('controlled save failure'); };
+  await assert.rejects(completed(f.clock, f.host.simulateRuntimeReloadForTest(), 'failed simulated reload'),
+    /controlled save failure/);
+  assert.equal(f.owner.snapshot().closing, true);
+  assert.throws(() => f.owner.reserve('after-failed-reload'), /admission is closed/);
+});
+
+test('simulated reload reports failure instead of reopening a permanently closed owner', async () => {
+  const f = simulatedReloadFixture();
+  f.owner.closeAdmission(true);
+  await assert.rejects(completed(f.clock, f.host.simulateRuntimeReloadForTest(), 'permanent simulated reload'),
+    /Execution owner admission could not resume after simulated reload/);
+  assert.equal(f.owner.snapshot().closing, true);
+  assert.equal(f.owner.snapshot().permanent, true);
+  assert.throws(() => f.owner.reserve('after-permanent-close'), /admission is closed/);
+});
+
 test('candidate Host retains both admitted preparations when production or finite reservation capacity is full', async () => {
   for (const admissionLimits of [EXECUTION_PRODUCTION_ADMISSION, { executions: 2, starting: 1 }]) {
     const f = candidateFixture({ admissionLimits });
