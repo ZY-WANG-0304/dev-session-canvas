@@ -135,7 +135,7 @@ async function main() {
 }
 
 async function runSubject(temporary) {
-  const receiptPath = path.join(temporary, 'subject.json'), nonce = 'abcd-1234';
+  const receiptPath = path.join(temporary, 'subject.json'), nonce = 'df744a07-a21d-4bf6-99ae-e9c8c8d7bef4';
   const inputPath = path.join(temporary, 'stdin.txt'), outputPath = path.join(temporary, 'stdout.txt');
   const errorPath = path.join(temporary, 'stderr.txt');
   await fs.writeFile(inputPath, `ping ${nonce}\nexit\n`, { flag: 'wx' });
@@ -149,7 +149,20 @@ async function runSubject(temporary) {
       child.once('close', (code, signal) => { clearTimeout(timer); resolve({ code, signal }); });
     });
     assert.deepEqual(await exit, { code: 0, signal: null }, await fs.readFile(errorPath, 'utf8'));
-    assert.equal(await fs.readFile(outputPath, 'utf8'), `DSC_ROOT_READY_${nonce}\nDSC_ROOT_REPLY_${nonce}\n`);
+    const renderedOutput = await fs.readFile(outputPath, 'utf8');
+    assert.equal(renderedOutput, `DSC_ROOT_READY_${nonce}\r\nDSC_ROOT_REPLY_${nonce}\r\n`);
+    const { Terminal } = require('@xterm/headless');
+    for (const cols of [80, 100]) {
+      const terminal = new Terminal({ cols, rows: 5, allowProposedApi: true });
+      try {
+        // The driver disables ONLCR, so the subject's bytes reach xterm unchanged.
+        await new Promise(resolve => terminal.write(renderedOutput, resolve));
+        const lines = Array.from({ length: terminal.buffer.active.length }, (_, index) =>
+          terminal.buffer.active.getLine(index).translateToString(true));
+        assert.deepEqual(lines.filter(line => line.startsWith('DSC_ROOT_REPLY_')), [`DSC_ROOT_REPLY_${nonce}`]);
+        assert.equal(terminal.buffer.active.cursorX, 0);
+      } finally { terminal.dispose(); }
+    }
     const receipt = JSON.parse(await fs.readFile(receiptPath, 'utf8'));
     assert.equal(receipt.pid, child.pid); assert.equal(receipt.nonce, nonce); assert.equal(receipt.state, 'ready');
   } finally { await input.close(); await output.close(); await errors.close(); }

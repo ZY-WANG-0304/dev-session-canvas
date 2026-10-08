@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
+import { build } from 'esbuild';
 import { createRemoteSSHFixture } from './vscode-remote-ssh-fixture.mjs';
 import { prepareInstalledCandidateDriver, prepareInstalledVsixInput } from './installed-execution-candidate.mjs';
 import { buildVSCodeChildEnv, ensureVSCodeExecutable, prepareRuntime, resolveStagedSmokeTestPath,
@@ -20,11 +21,31 @@ const readJson = async file => JSON.parse(await fs.readFile(file, 'utf8'));
 
 export function parseRemoteSelection(args) {
   const { values } = parseArgs({ args, options: { output: { type: 'string' }, probe: { type: 'boolean' },
-    'installed-vsix': { type: 'string' } } });
+    'installed-vsix': { type: 'string' }, 'root-owner': { type: 'boolean', default: false } } });
   assert(values.output?.trim(), 'Specify a new --output directory.');
   assert(Boolean(values.probe) !== Boolean(values['installed-vsix']), 'Select --probe or one fixed --installed-vsix.');
   if (values['installed-vsix'] !== undefined) assert(values['installed-vsix'].trim(), 'Specify a fixed VSIX file.');
+  assert(!values['root-owner'] || values['installed-vsix'], 'Root-owner Remote acceptance requires an installed VSIX.');
   return values;
+}
+
+export function remoteCandidateModes(values) {
+  return values['root-owner'] ? ['live-runtime'] : ['live-runtime', 'snapshot-only'];
+}
+
+export async function prepareRemoteRootOwnerHelper(projectRoot, targetRoot) {
+  const file = resolveStagedSmokeTestPath(targetRoot, 'candidate-root-ownership.cjs');
+  const source = './extensions/vscode/dev-session-canvas/src';
+  const bundled = await build({ stdin: { contents:
+    `export * from '${source}/common/runtimeRootOwnership';\n`
+    + `export { readRuntimeExecutionEnvironment } from '${source}/panel/runtimeExecutionEnvironment';\n`,
+    sourcefile: 'remote-root-owner-entry.js', resolveDir: projectRoot }, absWorkingDir: projectRoot,
+    bundle: true, platform: 'node', format: 'cjs', target: 'node22', outfile: file, metafile: true, logLevel: 'silent' });
+  const sourceHashes = {};
+  for (const source of Object.keys(bundled.metafile.inputs).filter(name => name !== 'remote-root-owner-entry.js')) {
+    sourceHashes[source] = createHash('sha256').update(await fs.readFile(path.resolve(projectRoot, source))).digest('hex');
+  }
+  return { sha256: createHash('sha256').update(await fs.readFile(file)).digest('hex'), sourceHashes };
 }
 
 export function remoteInstallCommand(fixture, serverNode, input, extensionsDir) {
@@ -104,9 +125,17 @@ export async function runRemoteCandidate(values) {
       'tests/vscode-smoke/execution-candidate-tests.cjs']) {
       sourceHashes[file] = createHash('sha256').update(await fs.readFile(path.join(projectRoot, file))).digest('hex');
     }
+    const workspacePath = path.join(output, 'probe-workspace');
+    await fs.mkdir(workspacePath);
+    const probeDriver = path.join(output, 'probe-driver');
+    await prepareProbeDriver(projectRoot, probeDriver);
+    const rootHelper = values['root-owner'] ? await prepareRemoteRootOwnerHelper(projectRoot, probeDriver) : undefined;
     await writeJson(path.join(output, 'input.json'), { schemaVersion: 1, runId,
       scope: values.probe ? 'Actual loopback Remote SSH Server Node probe; no product execution.'
-        : 'Linux x64 loopback Remote SSH installed Terminal two modes complete/reopen; no Agent or all-A5 claim.',
+        : values['root-owner'] ? 'Linux x64 actual loopback Remote SSH root-owner Terminal live-runtime complete/reopen; environment sampled in a product-absent Host without a canvas, then compared before product tests in two subsequent actual Hosts.'
+          : 'Linux x64 loopback Remote SSH installed Terminal two modes complete/reopen; no Agent or all-A5 claim.',
+      excluded: ['cross-machine network recovery', 'OS sleep or time adjustment', 'Windows Fast Startup'],
+      rootOwner: values['root-owner'], modes: values.probe ? [] : remoteCandidateModes(values), rootHelper,
       vscodeVersion: desktopPackage.version, vscodeCommit: product.commit, vscodeExecutablePath,
       sourceHashes, vsixSha256: installedInput?.vsixSha256, automaticBuild: false, automaticRetry: false });
     fixture = await createRemoteSSHFixture({ debugRoot: output,
@@ -129,13 +158,9 @@ export async function runRemoteCandidate(values) {
       'remote.SSH.remotePlatform': { [fixture.hostAlias]: 'linux' },
       'remote.SSH.serverInstallPath': { [fixture.hostAlias]: fixture.remoteAgentDir } };
     await writeUserSettings(runtime.userDataDir, remoteSettings);
-    const workspacePath = path.join(output, 'probe-workspace');
-    await fs.mkdir(workspacePath);
-    const probeDriver = path.join(output, 'probe-driver');
-    await prepareProbeDriver(projectRoot, probeDriver);
     const toRemoteUri = file => `vscode-remote://${fixture.remoteAuthority}${encodeURI(file)}`;
     const baseControl = { schemaVersion: 1, vscodeVersion: desktopPackage.version, vscodeCommit: product.commit,
-      serverRoot: await fs.realpath(fixture.remoteAgentDir), remoteAuthority: fixture.remoteAuthority };
+      serverRoot: await fs.realpath(fixture.remoteAgentDir), remoteAuthority: fixture.remoteAuthority, rootOwner: values['root-owner'] };
     const runPhase = async (activeRuntime, driver, control) => {
       await fs.writeFile(controlFile, `${JSON.stringify(control, null, 2)}\n`, { mode: 0o600 });
       await launch({ projectRoot, runtime: activeRuntime, vscodeExecutablePath,
@@ -153,14 +178,14 @@ export async function runRemoteCandidate(values) {
     assert.equal(probe.productPresent, false);
     await writeJson(path.join(output, 'server-runtime.json'), probe);
     if (installedInput) {
-      receipts.assertInstalledCandidateRuntime({ platform: probe.platform, arch: probe.arch,
+      await remote.assertRemoteInstalledRuntime({ platform: probe.platform, arch: probe.arch,
         versions: probe.versions, report: { getReport: () => ({ header: { glibcVersionRuntime: probe.glibc } }) } },
-      installedInput.manifest, 'node');
+      installedInput);
       const extensionsDir = path.join(probe.serverDataRoot, 'extensions');
       await fs.mkdir(extensionsDir, { recursive: true });
       const install = remoteInstallCommand(fixture, probe.executable, installedInput, extensionsDir);
       await runCommand(install.file, install.args, runtime.environment, path.join(output, 'remote-vsix-install.json'));
-      for (const [index, mode] of ['live-runtime', 'snapshot-only'].entries()) {
+      for (const [index, mode] of remoteCandidateModes(values).entries()) {
         const activeRuntime = await prepareRuntime({ debugRoot: path.join(output, mode),
           runtimeDirName: `dsc-remote-candidate-${runId}-${index}`, userSettings: remoteSettings });
         clientRoots.push(activeRuntime.userDataDir);
@@ -173,6 +198,8 @@ export async function runRemoteCandidate(values) {
         const driverRoot = path.join(activeRuntime.debugRoot, 'test-driver');
         const driver = await prepareInstalledCandidateDriver({ projectRoot, targetRoot: driverRoot,
           input: installedInput, extensionsDir, artifactsDir: activeRuntime.artifactsDir });
+        if (rootHelper) assert.deepEqual(await prepareRemoteRootOwnerHelper(projectRoot, driverRoot), rootHelper,
+          'Each Remote Host must use the same frozen root environment helper.');
         await writeJson(path.join(driverRoot, 'remote-control.json'), { schemaVersion: 1, controlFile });
         let completed, completeHost;
         for (const phase of ['complete', 'reopen']) {
@@ -181,11 +208,17 @@ export async function runRemoteCandidate(values) {
             workspacePath: await fs.realpath(workspace), artifactsDir: activeRuntime.artifactsDir,
             expectationPath: driver.expectationPath });
           assert.equal(host.executableSha256, probe.executableSha256, 'The actual Server Node input must remain fixed.');
+          if (values['root-owner']) remote.assertRemoteEnvironmentStable(probe, host);
           const environment = await readJson(path.join(activeRuntime.artifactsDir, `${phase}-environment.json`));
           assert.equal(environment.mode, mode); assert.equal(environment.phase, phase);
           assert.equal(environment.pid, host.pid);
           receipts.assertInstalledExtensionReceipt(environment.installedVsix, driver.expectation);
           if (phase === 'complete') {
+            if (values['root-owner']) {
+              const binding = await readJson(path.join(activeRuntime.artifactsDir, 'root-owner-binding.json'));
+              assert.equal(binding.owner.environmentKey, host.environmentKey,
+                'The installed product binding must use the pre-Webview Remote execution environment.');
+            }
             completeHost = host;
             completed = await readJson(path.join(activeRuntime.artifactsDir, 'completed.json'));
             await writeJson(path.join(activeRuntime.artifactsDir, 'source-applied-crosscheck.json'),
@@ -216,7 +249,8 @@ export async function runRemoteCandidate(values) {
   if (failure) throw failure;
   assert.equal(cleanup?.pass, true, 'Fixture cleanup must be observed separately from product success.');
   assert.equal(forcedClientSignals.length, 0, 'A timed-out Remote phase is not accepted.');
-  console.log(`Remote ${values.probe ? 'Server Node probe' : 'installed two-mode Terminal matrix'} passed: ${output}`);
+  console.log(`Remote ${values.probe ? 'Server Node probe' : values['root-owner']
+    ? 'installed root-owner live-runtime Terminal' : 'installed two-mode Terminal matrix'} passed: ${output}`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

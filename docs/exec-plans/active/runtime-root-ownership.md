@@ -20,10 +20,12 @@
 - [x] (2026-10-08) P2 主接线：两类单根/多根新建显式 root；metadata/原绑定/缓存/设置边界与正常 build、受控回归已接通。
 - [x] (2026-10-08) P2 独立审查修复 restore bucket await 期间换绑定竞态，24 个定向组合先红后绿，原失效 owner 拒绝与原 client 退休屏障保留。
 - [x] (2026-10-08) P3 首轮正常同版 package 与 Linux/macOS installed Runtime Terminal/Webview 通过；Windows 路径夹具失败及 Linux 双窗未激活失败原样保留。
-- [x] (2026-10-08) 修复两项夹具并同包验证Windows；独立审查三项产品缺口修后受控回归通过，正常build/VSIX通过，待修后原生与安装验证。
+- [x] (2026-10-08) 修复两项夹具并同包验证Windows；独立审查三项产品缺口修后受控回归、正常build/VSIX和三平台原生协调通过。新包Linux/macOS安装与macOS真实Codex Reload通过，Windows仍在执行。
 - [ ] P3：完成受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本，整体审查并同步结账。
 
 ## 意外与发现
+
+修后 run `37714907772` 双窗口已激活并创建真实 subject，但首次 REPLY 的终端行前缀断言超时。subject 在 driver 关闭 ONLCR 后仍只输出 LF；用实际 subject stdout 输入仓库 xterm，80/100 列均复现 REPLY 缩进/折行而精确匹配失败。仅将 subject READY/REPLY 改为 CRLF，原 driver 断言不放宽，受控回归先红后绿。原 artifact 没有终端原文，因此不声称已证明该次 REPLY 到达，只确认夹具错误足以产生此症状；完整链路仍需同包重试。
 
 本轮独立产品审查确认三处受影响缺口：正常completed严格删除漏传owner，被root校验拒绝；默认false窗口恢复失败后，snapshot-only入口可能绕过原binding启动替身；业务socket仍受XDG/TMP环境改变，稳定owner在另一窗口无法被发现（运行锁仍阻止双启）。这些是产品阻塞，不是通用工具增强。分别补完整owner、Host-owned启动保护及新root固定短端点，沿用原尾部/reader/unknown结算。
 
@@ -43,6 +45,8 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 
 ## 决策记录
 
+2026-10-08：R1-02 复用既有隔离 loopback Remote-SSH runner，仅增加 root-owner 的 live-runtime 选择及真实 EH 环境采样。无产品/无画板的 probe 和后续两 EH 比较同一执行环境 key，再核对安装产品的真实 binding；不把合成 URI 或本机 shell 代作 Remote 证据。schema2 使用已有冻结产品 validator/hash 验证 API，不新增兼容规则。production workflow 的 `root_checks=remote` 只接受 Linux、明确同包 reuse 和已通过安装证据，不安装 Agent CLI/传凭据；归档仅允许具名回执，不上传 SSH 私钥或整个 fixture。Remote 和双窗夹具变化不重打产品包、不重跑未受影响原生矩阵。
+
 2026-10-08：审查发现产品阻塞后，取消尚未开始的同包Linux run `37713487916`。Windows夹具定向 run `37713396864` 已success，但它只证明既有断言范围，不证明漏测的Supervisor completed记录已删除。接下来产品修复改变bundle，必须重新正常打包，并补受影响安装/Agent/root端点验收；旧成功的尾部事实保留，不把已知缺口藏在Host bindings=0后面。固定端点选用POSIX UID私有短目录，只对新root代生效，复用已有目录校验，不引入端点数据库。
 
 2026-10-08：同包的夹具定向重试使用 production workflow 原有 reuse_package_run、platform、skip_installed 和 installed_evidence_run；仅增加 root_checks 的固定选择。包身份仍要求产品输入无变化，安装证据仍核对平台具名成功步骤及相同 VSIX hash，允许原 run 因后续另一场景失败。这样保留原失败且不重复成功矩阵，不建立新 runner 或通用诊断阶段。
@@ -57,7 +61,7 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 
 ## 结果与复盘
 
-P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 同版包及 Linux/macOS installed Terminal/Webview 已通过，多窗口、真实 Agent、Windows 安装与剩余具名场景仍未完成，F-03 保持开放。历史失败和本地沙箱限制原样保留，不追认通过。
+P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd 与跨 XDG/HOME/TMP 复用；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 修后同版包的 Linux/macOS installed Terminal/Webview 与 macOS 真实 Codex Reload 已通过，多窗口、Linux真实Agent、Windows及剩余具名场景仍未完成，F-03 保持开放。历史失败和本地沙箱限制原样保留，不追认通过。
 
 ## 上下文与定向
 
