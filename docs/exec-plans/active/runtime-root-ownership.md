@@ -26,6 +26,8 @@
 
 ## 意外与发现
 
+`21bcd483` / `37719142087` 的 Claude 已越过 Security notes，后续实际信任页默认选中 `No, exit`，夹具直接 Enter 导致 exit 1，未进入 Reload。仅对精确固定页面核对选项后 Down+Enter；已选 Yes 则 Enter，未知布局拒绝且等待页面消失。33 项受控测试及原失败页重放通过，产品包不变，仅重试 Claude。`37719235540` Terminal 边界组在 single 原 reader 应用 scrollback/nonce 后发生 Webview probe 超时；`37719440437` Codex 双窗口失败。两项原始结果保留，根因仍在核对，不能计入产品通过或预判产品缺陷。
+
 Linux run `37715894411` 双窗与 Codex 已通过；Claude 首错是 setup 的 `Timed out: claude interactive surface`，真实页面停在固定 CLI v2.1.280 的 `Security notes:` / `Press Enter to continue`。仅补该精确 onboarding 提示的一次 Enter；未知提示不自动确认，确认后仍须真实 model/composer 与 nonce。原失败未进入 Reload，不能判作 root 产品故障。cleanup 已到 nodes/bindings/pending=0，但因 setup 未完成而缺原进程资源回执，原退出证明断言仍失败；不放宽该断言或追认资源已退出。
 
 修后 run `37714907772` 双窗口已激活并创建真实 subject，但首次 REPLY 的终端行前缀断言超时。subject 在 driver 关闭 ONLCR 后仍只输出 LF；用实际 subject stdout 输入仓库 xterm，80/100 列均复现 REPLY 缩进/折行而精确匹配失败。仅将 subject READY/REPLY 改为 CRLF，原 driver 断言不放宽，受控回归先红后绿。原 artifact 没有终端原文，因此不声称已证明该次 REPLY 到达，只确认夹具错误足以产生此症状；完整链路仍需同包重试。
@@ -140,7 +142,7 @@ P3 首轮 `7741de5d` / run `37711694734` package 成功，Linux/macOS installed 
 
 同日整体只读审查覆盖`789888d3`相对`origin/main@357266ad`的17个产品src文件，未发现新的确定性blocker；descriptor/namespace拒绝、准备事务/unknown、hello与strict delete、原binding恢复和默认false保护均与设计一致。补跑握手46、准备25、helper21、Canvas context与startup记录通过。后续待合入的仅验收/文档修改，不改本次同包产品字节。OS睡眠、调时与Fast Startup未实测保留残余，不用合成结果代证；按仓库review规则，未证明影响主路径的额外系统行为不自动变成新的硬件/工具前置。
 
-`RuntimeOwnerDescriptorV1` 固定 schema/environmentKey/userStorageScopeKey/root/generation；路径 resolver 接受 canonical global storage 与已解析 root，不接受 Webview 自报 path。环境 helper 返回摘要及本机用户身份，失败抛出明确错误；Windows 可使用系统自带进程调用只读 native API，若能避免修改 PTY 资产则优先采用。hello owner 字段对旧 binding 可缺省，对新 root generation 必须校验。具体导出签名在 P1 实现后补齐。
+`common/runtimeRootOwnership.ts` 的 `createRuntimeOwnerDescriptor()` 构造固定 schema/environmentKey/userStorageScopeKey/root/generation，`createRuntimeUserStorageScopeKey()` 和 `resolveRuntimeRootOwnerBaseStoragePath()` 接受 canonical global storage 与已解析 root，不接受 Webview 自报 path。`panel/runtimeExecutionEnvironment.ts` 的 `readRuntimeExecutionEnvironment(): Promise<RuntimeExecutionEnvironment>` 返回摘要及本机用户身份，失败抛出明确错误；Windows 通过系统 PowerShell 调用只读 native API，未修改 PTY 资产。hello owner 字段对旧 binding 可缺省，对新 root generation 必须校验。
 
 修订记录：2026-10-08，按用户认可方案开始实施，固定三包与最小改动约束。
 

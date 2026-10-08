@@ -74,7 +74,7 @@ PR #295 已合并，本文以 `origin/main@06e9abcf32828325444e8263233537f25bf04
 
 `environmentKey` 是 **实际 Extension Host 执行环境的运行实例**，不是 UI 客户端、SSH 别名、`remoteName` 或窗口 ID。同一次 OS/容器运行内，各窗口必须得到相同值；环境重建或机器重启允许产生新值，因为产品不承诺跨此边界保留 live 进程。重连 SSH 或重启 VS Code 不应改变该值。这样无需为已死亡进程维持永久设备身份，也不能借 reboot 改写旧 binding。
 
-选定以平台提供的启动与隔离范围信息生成摘要，不在 `globalState` 随机生成一个会被复制或共享的“机器 ID”。P1 的来源为 Linux `/proc/sys/kernel/random/boot_id` 及 `/proc/self/ns/{pid,mnt,user,net}`，macOS `sysctl kern.bootsessionuuid`，Windows 经小型只读 native probe 读取 `SystemBootEnvironmentInformation.BootIdentifier`；Unix uid、Windows SID 属用户范围。不采用 `kern.boottime`、CIM `LastBootUpTime` 或近似 uptime，因为墙上时钟变化可能导致同一活跃环境换 key。平台适配须使用结构化 API/输出，设有界失败；具体调用、权限与稳定性仍待 P1 同宿主双进程/重连核对，读取不支持则 unknown，**不得带着猜测进入 P2 默认接线**。只增加有限 probe，不建立身份服务；若需更新原生资产，必须补受影响构建/加载验证，不能以“复用旧矩阵”跳过新字节。原始 OS 标识不写遥测、公开工件或节点 metadata，仅保留私有摘要与来源版本。
+选定以平台提供的启动与隔离范围信息生成摘要，不在 `globalState` 随机生成一个会被复制或共享的“机器 ID”。P1 的来源为 Linux `/proc/sys/kernel/random/boot_id` 及 `/proc/self/ns/{pid,mnt,user,net}`，macOS `sysctl kern.bootsessionuuid`，Windows 经小型只读 native probe 读取 `SystemBootEnvironmentInformation.BootIdentifier`；Unix uid、Windows SID 属用户范围。不采用 `kern.boottime`、CIM `LastBootUpTime` 或近似 uptime，因为墙上时钟变化可能导致同一活跃环境换 key。平台适配使用结构化 API/输出，设有界失败；三平台同宿主父子进程、实际 Linux systemd 及 Remote-SSH 多 EH 已取得具名一致性证据（§8），P2 已接线。读取不支持仍为 unknown；睡眠、OS 调时、Fast Startup 和 live SSH 断网恢复没有直接实测，不由既有结果外推。只增加有限 probe，不建立身份服务；若需更新原生资产，必须补受影响构建/加载验证，不能以“复用旧矩阵”跳过新字节。原始 OS 标识不写遥测、公开工件或节点 metadata，仅保留私有摘要与来源版本。
 
 Linux 的 namespace 必须覆盖实际端点/进程可见范围；若 systemd user manager 与 EH 不处于可证明相同的范围，不跨范围启动，按 §4.3 判断能否使用 detached。Host 与 Supervisor 各自取得环境信息，Supervisor 在 claim、清理 registry/journal 或开放 endpoint 前核对，不能只信 Host 传入的 hash。容器重建视为新环境；容器内身份来源未知则拒绝新建 live，已有 UI/历史仍可打开。共享 HOME 在不同宿主 epoch 下使用不同环境目录，不依赖检测“是否网络盘”；不承诺管理员复制活跃 VM 内存及 OS epoch 后仍识别克隆。不用 `local`、空串或随机每窗口 ID 兜底。虚拟 workspace 不在支持范围，沿用 manifest 限制。
 
@@ -203,6 +203,10 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 设计阶段验证仅为代码事实复核、独立文档审查、元数据/引用检查和 `git diff --check`。平台来源与并发原语是直接实施前置；永久设备标识、全局资源调度、跨机器共享盘发现、通用多写者事务和历史 GC 是可延期增强，不自动排入下一阶段。历史失败保留在原记录，不转抄为当前待办。
 
 ## 8. 实施进度
+
+本节先列最新结论，后续保留具名提交/run 的分阶段原始记录；历史“待执行”与失败不是当前新增待办，也不追认通过。
+
+剩余验收首轮：`21bcd483` / `37719142087` 的 Claude 已通过 Security notes，随后信任页默认选中 `No, exit`，夹具直接 Enter 导致 CLI exit 1。仅改为精确核对该页选项后 Down+Enter，已选 Yes 则 Enter，未知布局拒绝；实际失败页面与 33 项受控测试通过，真实 Reload 仍待重试。`37719235540` 的 Terminal 边界组已记录原 reader 的 scrollback 应用与 nonce，随后 Webview probe 超时；`37719440437` 的 Codex 双窗口也失败，均待按原始归档定位，不预判产品根因。
 
 最新受影响结果：`37714907772` 修后同包三平台 installed 与 macOS/Windows Codex Reload 均通过；`789888d3` / `37715894411` 同包 Linux 双窗及 Codex 通过，Claude 因固定 CLI security-notes 确认页未处理而在 setup 失败，保留原失败及缺原资源回执的清理断言。精确提示处理的受控测试先红后绿，不修改产品或泛化为自动确认任意提示；仅重试 Claude，不重复 Codex。
 
