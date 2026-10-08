@@ -28,6 +28,8 @@
 
 ## 意外与发现
 
+`19a00607` / `37723822196` 单独 Down 也出现 Yes→No，未发送 Enter、未到原资源断言，因此之前组合输入不是充分根因。Webview→Host 与 client→Supervisor→provider/native 两端只读核查未见显式重复写路径；Down 后真实事件也无新输入或查询应答，但静态核查不等于实际写入次数证明。停止追加延时/重复导航；仅把已有 setup 进程身份白名单用于失败捕获，先保留首错，不扩大字段/接口/矩阵，Claude 根因仍未知。
+
 `cc1b5ec8` / `37722835410` attempt 1 同包 input/安装身份通过，但固定 VS Code 下载发生 HTTPS ETIMEDOUT/ENETUNREACH，未启动 Claude；仅原失败 job 同代码重跑。attempt 2 在 trust 页超时，尚未资源观察：唯一 Down+Enter 写入后 revision 10 选中 Yes，revision 11 在无新输入时回到 No。不能推断 CLI 内部原因；仅将精确 Claude 页改为一次 Down、观察 Yes 选中再一次 Enter，原总预算/未知页拒绝/资源断言保持，不循环自动重按。
 
 最新 main PR #298 仅测试和文档，实施分支无冲突 rebase 至 `b94ba3cb`，产品打包输入与原 `502934e1` 完全相同。后续 `35e159a9` / `37722179566` 在 input 因原包提交不再是 fetch 到的分支祖先而 `bad object` 失败，没有运行 Claude；只补原包 SHA 显式获取及纯 Playwright 验收目录白名单，仍保持原同包比较与内容 hash，不通过重跑产品包回避归档身份。

@@ -17,7 +17,7 @@ const source = await fs.readFile('tests/vscode-smoke/agent-runtime-reload-driver
 const ast = ts.createSourceFile('agent-runtime-reload-driver.cjs', source, ts.ScriptTarget.Latest, true);
 const functions = new Map(ast.statements.filter(ts.isFunctionDeclaration).map(node => [node.name.text, node.getText(ast)]));
 const resourceFunctions = ['startProcessObserver', 'releaseProcessObserver', 'assertOriginalResourcesLive', 'originalResourcesExited',
-  'assertRuntimeOwnerBinding'];
+  'assertRuntimeOwnerBinding', 'captureSetupProcessObservation'];
 const compile = (names, context) => new Function(...Object.keys(context),
   `${names.map(name => functions.get(name)).join('\n')}\nreturn { ${names.join(',')} };`)(...Object.values(context));
 const launcherSource = await fs.readFile('scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs', 'utf8');
@@ -717,7 +717,8 @@ function fixture({ resetFails = false, nonemptyRegistry = false, platform = 'win
     resources: original, frameId: 'old-frame' };
   const control = { phase: 'verify', nonce: 'nonce', deadlineAt: Date.now() + 100000, setup };
   const context = {
-    assert, path, observer, observerReleased: false, currentNodeId: 'node', reloading: false, phase: 'verify',
+    assert, path, observer, observerReleased: false, setupProcessObservationAttempted: false,
+    currentNodeId: 'node', reloading: false, phase: 'verify',
     config: { provider, cli: { entry: `/${provider}.cmd` }, launchArguments: [], permittedStorageRoots: ['/isolated'], workspacePath: '/isolated/workspace' },
     control, controlPath: '/control', artifacts: '/artifacts', surface: 'editor',
     process: { pid: 10, platform, env: {}, kill() { throw new Error('Windows cleanup must not signal a PID.'); } },
@@ -969,5 +970,47 @@ test('failure captures the actual Webview probe without replacing the original f
     assert.equal(f.writes.get('driver-finished.json').pass, false);
     assert.deepEqual(f.writes.get('failure-webview-probe.json'), captureFails ? undefined : visible);
     assert(f.writes.has('failure-getDiagnosticEvents.json'), 'A failed probe must not skip remaining evidence.');
+  }
+});
+
+test('Claude setup failure captures the same safe process observation once before cleanup and preserves its first error', async () => {
+  for (const scenario of ['early', 'resource', 'diagnostic-failed', 'resource-diagnostic-failed', 'codex']) {
+    const f = fixture({ provider: scenario === 'codex' ? 'codex' : 'claude' });
+    const original = new Error('original readiness failure');
+    const config = f.context.config;
+    f.context.fs.readFile = async file => JSON.stringify(file === '/control' ? { phase: 'setup', nonce: 'nonce' } : config);
+    f.context.process.env.DEV_SESSION_CANVAS_AGENT_RELOAD_CONFIG = '/config';
+    f.entries[0].argv = ['private-argument'];
+    f.entries[0].env = { SECRET: 'private-environment' };
+    if (scenario.startsWith('resource')) f.entries.push({ ...f.entries.find(entry => entry.role === 'cli'), pid: 61, startTicks: 'win32:6100' });
+    Object.assign(f.context, {
+      activateVisibleExtension: async () => ({}), waitForCommand: async () => {},
+      captureInstalledExtensionReceipt: async () => ({}), cleanup: async () => f.events.push('cleanup'),
+      waitForAgentReady: async () => { if (!scenario.startsWith('resource')) throw original; }
+    });
+    const write = f.context.write;
+    f.context.write = async (name, value) => {
+      if (name === 'setup-process-observation.json') {
+        f.events.push('observation-attempt');
+        if (scenario.endsWith('diagnostic-failed')) throw new Error('diagnostic write failed');
+      }
+      await write(name, value);
+    };
+    await compile(['run', 'setup', ...resourceFunctions], f.context).run();
+    assert.equal(f.events.filter(event => event === 'observation-attempt').length, scenario === 'codex' ? 0 : 1);
+    const failure = f.writes.get('setup-failure.json');
+    if (scenario.startsWith('resource')) assert.match(failure.error, /Exactly one original cli is required/);
+    else assert.equal(failure.error, String(original));
+    assert.equal(f.writes.get('driver-finished.json').pass, false);
+    if (scenario !== 'codex') {
+      assert(f.events.indexOf('observation-attempt') < f.events.indexOf('cleanup'));
+      if (!scenario.startsWith('resource')) assert(f.events.indexOf('write:setup-failure.json') < f.events.indexOf('observation-attempt'));
+    }
+    if (scenario === 'early' || scenario === 'resource') {
+      const observation = f.writes.get('setup-process-observation.json');
+      assert.equal(observation.nonce, 'nonce');
+      assert.equal(observation.entries.length, f.entries.length);
+      assert(!/argv|env|private-argument|private-environment/.test(JSON.stringify(observation)));
+    }
   }
 });
