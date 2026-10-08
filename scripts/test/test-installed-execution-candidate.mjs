@@ -36,6 +36,24 @@ try {
   assert.throws(() => assertInstalledCandidateSelection({ 'installed-vsix': ' ' }, 'linux', 'x64'));
   checks += 1;
 
+  const candidateTests = await fs.readFile('tests/vscode-smoke/execution-candidate-tests.cjs', 'utf8');
+  const canonicalOwnerAssertion = candidateTests.split('\n').find(line =>
+    line.includes('assert.equal(path.relative(await fs.realpath(globalStorage), globalStorage)'));
+  assert(canonicalOwnerAssertion, 'Exercise the installed root-owner path assertion.');
+  for (const [paths, actual, expected, matches] of [
+    [path.win32, 'D:\\User\\globalStorage\\dsc', 'd:\\user\\globalstorage\\dsc', true],
+    [path.win32, 'D:\\User\\globalStorage\\other', 'd:\\user\\globalstorage\\dsc', false],
+    [path.posix, '/User/globalStorage/dsc', '/User/globalStorage/dsc', true],
+    [path.posix, '/User/globalStorage/dsc', '/user/globalstorage/dsc', false]
+  ]) {
+    const verify = () => vm.runInNewContext(`(async () => { ${canonicalOwnerAssertion} })()`, {
+      assert, path: paths, globalStorage: expected, fs: { realpath: async () => actual }
+    });
+    if (matches) await verify();
+    else await assert.rejects(verify());
+  }
+  checks += 1;
+
   const packageManifest = { publisher: 'devsessioncanvas', name: 'dev-session-canvas', version: '0.25.0',
     main: './dist/extension.js', displayName: '%extension.displayName%',
     extensionPack: ['devsessioncanvas.dev-session-canvas-notifier'] };

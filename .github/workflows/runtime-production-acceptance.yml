@@ -38,9 +38,14 @@ on:
         type: boolean
         default: false
       root_ownership:
-        description: Root affected acceptance only; new native-reuse package, three installed Runtime checks, Linux windows and Agents
+        description: Root affected acceptance; fresh native-reuse package or exact-package partial retry
         type: boolean
         default: false
+      root_checks:
+        description: Root scope; partial retries require exact package reuse and explicit installed evidence when skipping
+        type: choice
+        options: [all, window-pair, agents, installed]
+        default: all
 
 permissions:
   contents: read
@@ -82,6 +87,7 @@ jobs:
           DSC_INSTALLED_EVIDENCE_RUN: ${{ inputs.installed_evidence_run }}
           DSC_AGENT_RELOAD_ONLY: ${{ inputs.agent_reload_only }}
           DSC_ROOT_OWNERSHIP: ${{ inputs.root_ownership }}
+          DSC_ROOT_CHECKS: ${{ inputs.root_checks }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -91,7 +97,7 @@ jobs:
           const { DSC_REUSE_RUN: reuse, DSC_NATIVE_RUN: nativeReuse, DSC_PLATFORM: platform, DSC_SCENARIOS: scenarios,
             DSC_INSTALLED_MODE: installedMode,
             DSC_SKIP_INSTALLED: skip, DSC_INSTALLED_EVIDENCE_RUN: installedRun, DSC_AGENT_RELOAD_ONLY: reloadOnly,
-            DSC_ROOT_OWNERSHIP: rootOwnership,
+            DSC_ROOT_OWNERSHIP: rootOwnership, DSC_ROOT_CHECKS: rootChecks,
             GITHUB_SHA: head, GITHUB_RUN_ID: current, GITHUB_REPOSITORY: repository } = process.env;
           const platforms = [{ os: 'ubuntu-22.04', platform: 'linux' }, { os: 'macos-15', platform: 'macos' },
             { os: 'windows-2025', platform: 'windows' }];
@@ -100,9 +106,17 @@ jobs:
           assert(['true', 'false'].includes(skip));
           assert(['true', 'false'].includes(reloadOnly));
           assert(['true', 'false'].includes(rootOwnership));
-          assert(rootOwnership !== 'true' || (nativeReuse && !reuse && platform === 'all' &&
-            scenarios === '' && skip === 'false' && installedMode === 'live-runtime' && reloadOnly === 'false'),
-            'Root ownership acceptance requires one new native-reuse package, all installed Runtime platforms and its fixed Linux Agent selection.');
+          assert(['all', 'window-pair', 'agents', 'installed'].includes(rootChecks));
+          assert(rootOwnership === 'true' || rootChecks === 'all', 'Root checks require root ownership acceptance.');
+          if (rootOwnership === 'true') {
+            assert(scenarios === '' && installedMode === 'live-runtime' && reloadOnly === 'false',
+              'Root acceptance uses its fixed Agent selection and live-runtime installed mode.');
+            assert(reuse || (nativeReuse && platform === 'all' && skip === 'false' && rootChecks === 'all'),
+              'Fresh root acceptance requires one native-reuse package and all platforms; partial checks require exact-package reuse.');
+            assert(!reuse || (rootChecks === 'installed' ? skip === 'false' : skip === 'true' && installedRun),
+              'Root retries must reuse explicit installed evidence unless installed checks are the selected scope.');
+            assert(rootChecks !== 'window-pair' || platform === 'linux', 'Root window-pair acceptance is Linux-only.');
+          }
           assert(['all', 'live-runtime'].includes(installedMode));
           cli.selectAgentCandidateScenarios(scenarios);
           assert(reloadOnly !== 'true' || (reuse && skip === 'true' && installedRun && scenarios === ''),
@@ -275,11 +289,11 @@ jobs:
           sudo apt-get install --no-install-recommends -y xvfb xauth bubblewrap libgtk-3-0 libnss3 libasound2 libgbm1 libxss1 libxtst6
           bwrap --unshare-user --ro-bind / / /usr/bin/true
       - uses: actions/setup-python@v5
-        if: runner.os == 'macOS' && !inputs.root_ownership
+        if: runner.os == 'macOS' && (!inputs.root_ownership || inputs.root_checks == 'all' || inputs.root_checks == 'agents')
         with:
           python-version: '3.12.10'
       - name: Darwin process observer
-        if: runner.os == 'macOS' && !inputs.root_ownership
+        if: runner.os == 'macOS' && (!inputs.root_ownership || inputs.root_checks == 'all' || inputs.root_checks == 'agents')
         run: |
           python -m venv "$RUNNER_TEMP/agent-observer"
           "$RUNNER_TEMP/agent-observer/bin/python" -m pip install --only-binary=:all: --require-hashes --requirement scripts/test/fixtures/darwin-agent-observer-requirements.txt
@@ -391,7 +405,7 @@ jobs:
             --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-installed/current-state-reload"
       - name: Installed root owner two-window acceptance
         id: root_windows
-        if: ${{ inputs.root_ownership && runner.os == 'Linux' }}
+        if: ${{ inputs.root_ownership && runner.os == 'Linux' && (inputs.root_checks == 'all' || inputs.root_checks == 'window-pair') }}
         run: node scripts/smoke/run-vscode-root-owner-candidate.mjs --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-root-owner"
       - name: Preserve root owner window evidence
         if: always() && steps.root_windows.outcome != 'skipped'
@@ -418,11 +432,11 @@ jobs:
           retention-days: 14
       - name: Windows reload process identity semantics
         id: windows_reload_identity
-        if: ${{ inputs.agent_reload_only && runner.os == 'Windows' }}
+        if: ${{ runner.os == 'Windows' && (inputs.agent_reload_only || (inputs.root_ownership && (inputs.root_checks == 'all' || inputs.root_checks == 'agents'))) }}
         run: node scripts/test/test-agent-candidate-windows-observer.mjs
       - name: Install fixed real Agent CLIs
         id: agent_clis
-        if: ${{ !inputs.root_ownership || runner.os == 'Linux' }}
+        if: ${{ !inputs.root_ownership || inputs.root_checks == 'all' || inputs.root_checks == 'agents' }}
         run: npm install --global --no-audit --no-fund @openai/codex@0.157.1 @anthropic-ai/claude-code@2.1.280
       - name: Real Agent final acceptance
         id: real_agents
@@ -457,13 +471,19 @@ jobs:
             --output "$RUNNER_TEMP/dsc-agent-reload"
       - name: Real root Agent create and Reload Window acceptance
         id: root_agent_reload
-        if: ${{ inputs.root_ownership && runner.os == 'Linux' && steps.agent_clis.outcome == 'success' }}
+        if: ${{ inputs.root_ownership && (inputs.root_checks == 'all' || inputs.root_checks == 'agents')
+          && steps.package_identity.outcome == 'success' && steps.agent_clis.outcome == 'success'
+          && ((!inputs.skip_installed && steps.installed_runtime.outcome == 'success')
+            || (inputs.skip_installed && steps.installed_identity.outcome == 'success'))
+          && (runner.os != 'Windows' || steps.windows_reload_identity.outcome == 'success') }}
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           umask 077
           failed=0
-          for provider in codex claude; do
+          providers=(codex)
+          if [ "$RUNNER_OS" = Linux ]; then providers+=(claude); fi
+          for provider in "${providers[@]}"; do
             if ! node scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs \
               --backend=deepseek --provider="$provider" --root-owner \
               --installed-vsix production-package/product.vsix --output "$RUNNER_TEMP/dsc-root-agent-$provider"; then
@@ -475,7 +495,7 @@ jobs:
         if: always() && steps.root_agent_reload.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
-          name: runtime-root-agent-reload-${{ github.run_id }}
+          name: runtime-root-agent-reload-${{ matrix.platform }}-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/dsc-root-agent-*/input.json
             ${{ runner.temp }}/dsc-root-agent-*/first-failure.json

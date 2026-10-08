@@ -178,7 +178,7 @@ async function complete() {
       assert.equal(owner.generation, `terminal-root-owner-${platformName}-v1`);
       const globalStorage = ownerApi.resolveRuntimeRootOwnerGlobalStoragePath(
         path.join(metadata.runtimeStoragePath, 'runtime-supervisor'), owner);
-      assert.equal(await fs.realpath(globalStorage), globalStorage);
+      assert.equal(path.relative(await fs.realpath(globalStorage), globalStorage), '');
       await writeJson('root-owner-binding.json', { owner, globalStorage, runtimeStoragePath: metadata.runtimeStoragePath,
         backend: metadata.runtimeBackend, sessionId: metadata.runtimeSessionId });
     } else {

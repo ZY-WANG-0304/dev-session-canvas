@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { assertCase, assertContained } = require('./root-owner-contract.cjs');
+const { assertCase, assertContained, assertDriverProfileRegistration } = require('./root-owner-contract.cjs');
 
 const identity = pid => ({ pid, startTicks: String(pid * 100), executable: '/fixture/node', state: 'S', ppid: 2 });
 const interaction = sessionId => ({ applied: true, marker: 'DSC_ROOT_REPLY_abcd-1234', sessionId });
@@ -108,6 +108,7 @@ async function main() {
     await fs.mkdir(runtime.extensionsDir); await fs.mkdir(runtime.artifactsDir);
     const staged = await prepareRootOwnerDriver({ projectRoot, runtime, input: { schemaVersion: 1 } });
     const stagedRoot = path.join(runtime.extensionsDir, 'devsessioncanvas-tests.root-owner-driver-0.0.0');
+    assert.equal(staged.targetRoot, stagedRoot);
     const manifest = JSON.parse(await fs.readFile(path.join(stagedRoot, 'package.json'), 'utf8'));
     assert.equal(manifest.main, './tests/vscode-smoke/root-owner-driver.cjs');
     assert.deepEqual(manifest.activationEvents, ['onStartupFinished']);
@@ -117,9 +118,20 @@ async function main() {
       'resolveRuntimeRootOwnerGlobalStoragePath', 'assertRuntimeOwnerDescriptor']) assert.equal(typeof helpers[name], 'function');
     assert.match(staged.sourceHashes['staged-root-owner-runtime-paths.cjs'], /^[a-f0-9]{64}$/);
     assert.equal(staged.expectation.extensionsDir, await fs.realpath(runtime.extensionsDir));
+    const registration = { identifier: { id: 'devsessioncanvas-tests.root-owner-driver' }, version: '0.0.0',
+      location: { scheme: 'file', path: stagedRoot }, relativeLocation: path.basename(stagedRoot) };
+    assert.equal(assertDriverProfileRegistration([registration], stagedRoot), registration);
+    for (const inventory of [[], [registration, registration], [{ ...registration, version: '1.0.0' }],
+      [{ ...registration, location: { scheme: 'file', path: `${stagedRoot}-other` } }],
+      [{ ...registration, relativeLocation: 'other-driver' }]]) {
+      assert.throws(() => assertDriverProfileRegistration(inventory, stagedRoot));
+    }
+    await fs.writeFile(path.join(runtime.extensionsDir, 'extensions.json'), '[]\n', { flag: 'wx' });
+    await assert.rejects(() => prepareRootOwnerDriver({ projectRoot, runtime, input: { schemaVersion: 1 } }),
+      /before the first extension install/);
     await runSubject(temporary);
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
-  console.log(`Root-owner controlled contract cases passed (${negativeCases.length} rejection cases, staging, selection, real stdin subject); no native VS Code execution claim.`);
+  console.log(`Root-owner controlled contract cases passed (${negativeCases.length} rejection cases, profile registration and staging order, selection, real stdin subject); no native VS Code execution claim.`);
 }
 
 async function runSubject(temporary) {

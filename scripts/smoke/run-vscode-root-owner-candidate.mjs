@@ -12,7 +12,7 @@ import { prepareInstalledVsixInput, prepareInstalledCandidateDriver, installCand
 import { prepareRuntime, spawnPreparedVSCodeScenario, ensureVSCodeExecutable,
   shouldReRunInsideXvfb, runInsideXvfb, snapshotVSCodeLogs } from './vscode-smoke-runner.mjs';
 
-const { assertCase, assertContained } = contract;
+const { assertCase, assertContained, assertDriverProfileRegistration } = contract;
 const { readIdentity, sameLiveIdentity, exitedIdentity, signalOwned } = identity;
 async function write(file, value) {
   const pending = `${file}.pending-${process.pid}`;
@@ -49,6 +49,8 @@ async function bounded(promise, deadlineAt) {
 }
 
 export async function prepareRootOwnerDriver({ projectRoot, runtime, input }) {
+  assert(!await maybeRead(path.join(runtime.extensionsDir, 'extensions.json')),
+    'Stage the root-owner driver before the first extension install initializes the default profile.');
   const targetRoot = path.join(runtime.extensionsDir, 'devsessioncanvas-tests.root-owner-driver-0.0.0');
   const driver = await prepareInstalledCandidateDriver({ projectRoot, targetRoot, input,
     extensionsDir: runtime.extensionsDir, artifactsDir: runtime.artifactsDir });
@@ -76,7 +78,7 @@ export async function prepareRootOwnerDriver({ projectRoot, runtime, input }) {
   }
   for (const [name, file] of [['staged-root-owner-runtime-paths.cjs', helper],
     ['staged-driver-package.json', path.join(targetRoot, 'package.json')]]) sourceHashes[name] = hash(await fs.readFile(file));
-  return { ...driver, sourceHashes };
+  return { ...driver, sourceHashes, targetRoot };
 }
 
 async function collectOwned(runtime, roots, ui) {
@@ -126,8 +128,11 @@ async function execute(output, values, projectRoot) {
   for (const root of Object.values(roots)) await fs.mkdir(root);
   const multiWorkspace = path.join(runtime.debugRoot, 'root-owner.code-workspace');
   await write(multiWorkspace, { folders: Object.entries(roots).map(([name, folder]) => ({ name, path: folder })) });
-  await installCandidateVsix({ vscodeExecutablePath: executable, runtime, input });
+  // The first CLI install inventories existing unpacked extensions for the default profile.
   const driver = await prepareRootOwnerDriver({ projectRoot, runtime, input });
+  await installCandidateVsix({ vscodeExecutablePath: executable, runtime, input });
+  const driverProfileRegistration = assertDriverProfileRegistration(
+    await read(path.join(runtime.extensionsDir, 'extensions.json')), driver.targetRoot);
   const control = { schema: 1, roots, multiWorkspace, artifacts: runtime.artifactsDir,
     userDataDir: runtime.userDataDir, subjectExecutable: await fs.realpath(process.execPath),
     installedExpectation: driver.expectationPath, deadlineAt };
@@ -139,6 +144,7 @@ async function execute(output, values, projectRoot) {
       'setting divergence', 'legacy slot', 'root remove/readd', 'capacity scaling'],
     vsixSha256: input.vsixSha256, vscodeExecutablePath: executable,
     vscodeVersion: vscodePackage.version, vscodeCommit: product.commit, sourceHashes: driver.sourceHashes,
+    driverProfileRegistration,
     subjectExecutable: control.subjectExecutable, subjectVersions: process.versions,
     boundMs: 360000, cleanupReservationMs: 60000, automaticBuild: false, automaticRetry: false,
     productEntryUnmodified: true, metadataInjection: false, uiSpawnCount: 1 });

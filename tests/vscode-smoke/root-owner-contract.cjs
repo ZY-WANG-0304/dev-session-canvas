@@ -3,6 +3,18 @@ const path = require('node:path');
 
 const bindingKeys = ['runtimeBackend', 'runtimeStoragePath', 'runtimeSessionId', 'runtimeOwner'];
 
+function assertDriverProfileRegistration(inventory, targetRoot) {
+  assert(Array.isArray(inventory), 'The default extension profile must have an inventory.');
+  const entries = inventory.filter(entry => entry.identifier?.id === 'devsessioncanvas-tests.root-owner-driver');
+  assert.equal(entries.length, 1, 'The default profile must register the independent root-owner driver exactly once.');
+  const entry = entries[0];
+  assert.equal(entry.version, '0.0.0');
+  assert.equal(entry.location?.scheme, 'file');
+  assert.equal(entry.location?.path, targetRoot);
+  assert.equal(entry.relativeLocation, path.basename(targetRoot));
+  return entry;
+}
+
 function assertIdentity(value) {
   assert(Number.isInteger(value.pid) && value.pid > 1);
   assert.match(value.startTicks, /^\d+$/);
@@ -119,4 +131,5 @@ function assertCase(single, multi, reopened, closed) {
   }
 }
 
-module.exports = { bindingKeys, assertBinding, assertContained, assertTopology, assertRestored, assertCase };
+module.exports = { bindingKeys, assertBinding, assertContained, assertTopology, assertRestored, assertCase,
+  assertDriverProfileRegistration };

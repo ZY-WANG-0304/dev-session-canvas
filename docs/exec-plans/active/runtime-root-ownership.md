@@ -19,9 +19,12 @@
 - [x] (2026-10-08) P1 原生协调最终组：`bd4dab3d` / run `37710935919` 三平台通过，Linux 真实 systemd 启动/复用/idle已通过；Remote 与睡眠/OS 调时等未执行身份场景保留于 P3 证据清单。
 - [x] (2026-10-08) P2 主接线：两类单根/多根新建显式 root；metadata/原绑定/缓存/设置边界与正常 build、受控回归已接通。
 - [x] (2026-10-08) P2 独立审查修复 restore bucket await 期间换绑定竞态，24 个定向组合先红后绿，原失效 owner 拒绝与原 client 退休屏障保留。
+- [x] (2026-10-08) P3 首轮正常同版 package 与 Linux/macOS installed Runtime Terminal/Webview 通过；Windows 路径夹具失败及 Linux 双窗未激活失败原样保留。
 - [ ] P3：完成受影响真实多窗口、Agent/Webview、现代三平台与安装包验收、有限资源样本，整体审查并同步结账。
 
 ## 意外与发现
+
+P3 run `37711694734` 的 Windows installed 日志直接显示规范化 owner 路径与 realpath 仅大小写不同；严格字符串断言不适用 Windows 路径。修正夹具判定，不改产品词法 root 身份。Linux 双窗口 zip 文件列表没有任何 activated/failure/ready driver 回执，只有 window1；当前安装顺序先建立产品 profile inventory、再直接放入 driver 目录，VS Code 的 inventory 扫描不会自动登记该目录。修复明确加载缺口后仍须真实重试，不能只凭静态定位将失败改绿。
 
 run `37709150155` 的 Linux 原始 stderr 明确为 transient manager 拒绝 `JobTimeoutUSec`，此前缺总线地址的分类没有解释或修复此失败。移除两项 job timeout 属性，改服务 `TimeoutStartSec=10s`，保留运行/停止及调用预算；排队可晚启动的只读 probe 不创建 owner，调用超时保持 unknown。不能把这次参数失败写成环境身份不同或不可用，也不能靠失败后重试弱化参数。
 
@@ -37,6 +40,8 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 
 ## 决策记录
 
+2026-10-08：同包的夹具定向重试使用 production workflow 原有 reuse_package_run、platform、skip_installed 和 installed_evidence_run；仅增加 root_checks 的固定选择。包身份仍要求产品输入无变化，安装证据仍核对平台具名成功步骤及相同 VSIX hash，允许原 run 因后续另一场景失败。这样保留原失败且不重复成功矩阵，不建立新 runner 或通用诊断阶段。
+
 2026-10-08：先做不会改变默认新建路由的基础增量，取得环境/握手直接证据后再接生产。理由是已选定设计要求未知身份不得启用，不能为了快速更换路径绕过它。P1 不引入用户设置或长期 feature flag；现有入口只在 P2 完整接线后切换。
 
 2026-10-08：身份、环境识别与握手分文件并行实现，主代理负责集成与启动/Host 路由。采用现有 node 脚本测试、VS Code smoke 和 GitHub runner，不另建诊断设施。未改原生资产时不触发重建；若必要修改则只补受影响产物。
@@ -47,7 +52,7 @@ P2 独立审查确认：按原 bucket 等 client 期间节点可能改绑，后�
 
 ## 结果与复盘
 
-P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 多窗口/Agent/Webview/安装包与剩余具名场景仍未完成，F-03 保持开放。历史失败和本地沙箱限制原样保留，不追认通过。
+P1 身份/握手/准备事务的三平台原生协调已通过，包括 Linux 真实 systemd；P2 已切换两类默认新建并保留旧 binding，正常 build、受控回归及具名 restore 竞态修复通过。P3 同版包及 Linux/macOS installed Terminal/Webview 已通过，多窗口、真实 Agent、Windows 安装与剩余具名场景仍未完成，F-03 保持开放。历史失败和本地沙箱限制原样保留，不追认通过。
 
 ## 上下文与定向
 
@@ -111,6 +116,10 @@ P3 第一组固定执行：`gh workflow run runtime-production-acceptance.yml --
 
 P3 本地受控：Agent reload 21项、安装包输入/收据18项、新双窗口合同39个拒绝场景及staging/真实stdin subject通过；不计实际VS Code。双窗口关闭旧EH后由存续multi保存完整画板再重开，避免把原有跨窗口整图覆盖问题混作本次运行时归属；此顺序显式记入输入/回执，不声称并发保存仲裁已解决。工作流测试的真实Bash子进程在本地沙箱挂起，主动终止exit130；仅以受控stub核对workflow选择/凭据/产物契约通过，不将stub当Bash语法验证，CI package中运行原完整测试。
 
+P3 首轮 `7741de5d` / run `37711694734` package 成功，Linux/macOS installed Runtime Terminal/Webview 成功，Windows路径断言失败、Linux双窗driver未激活失败，真实Agent未运行。本机 VS Code 1.117 的隔离CLI对照确认旧install→stage顺序的profile只登记产品，新stage→install顺序同时登记driver和产品；修正顺序并在原input保存具名driver登记结果，不改变业务扩展或注入metadata。对照目录为 `/tmp/root-owner-profile-old-order-kxBhDO` 和 `/tmp/root-owner-profile-order-EtWHDq`，这是scanner证据而非完整产品验收。
+
+本次补证：安装包夹具19项、双窗口原39个拒绝项及6项登记/顺序拒绝、Canvas context与纯root ownership通过。R1-01新增两类节点共12组root顺序/显示名变化，及两类rootless→folder仍attach旧slot的完整binding断言；均为受控Host，不代证Remote或真实EH。workflow选择/凭据门控受控断言通过，20个生产Bash步骤用直接 `/bin/bash` 原生语法检查通过；原完整Node测试仍在spawnSync Bash处超时124，未记通过。产品输入不变，后续复用首轮原VSIX只重试失败/缺失格。
+
 ## 接口与依赖
 
 `RuntimeOwnerDescriptorV1` 固定 schema/environmentKey/userStorageScopeKey/root/generation；路径 resolver 接受 canonical global storage 与已解析 root，不接受 Webview 自报 path。环境 helper 返回摘要及本机用户身份，失败抛出明确错误；Windows 可使用系统自带进程调用只读 native API，若能避免修改 PTY 资产则优先采用。hello owner 字段对旧 binding 可缺省，对新 root generation 必须校验。具体导出签名在 P1 实现后补齐。
@@ -122,3 +131,5 @@ P3 本地受控：Agent reload 21项、安装包输入/收据18项、新双窗�
 修订记录：2026-10-08，登记三平台基础 CI 与 Windows 原失败；推进启动 token/receipt，不将文件与受控 Main 验证冒充真实启动排他已交付。
 
 修订记录：2026-10-08，切换 P2 创建与原绑定接线，记录异步 restore 修复；有限 P3 复用安装包和真实 Agent runner，新增同一存储范围双窗口场景。systemd 保留未确认结果与直接定位待办。
+
+修订记录：2026-10-08，登记P3首轮部分成功与两项夹具失败，修复profile加载/Windows路径断言，补R1-01缺项及同包定向入口；不重新打包、不扩大通用工具验收。
