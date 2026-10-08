@@ -133,13 +133,13 @@ related_plans:
 - 创建 `Agent` / `Terminal` 时，节点 `metadata.cwd` 等于目标 root 路径或显式 Explorer cwd。
 - 在 `paneGallery` 的 `dynamic` / `grid` root pane 中交互只写入对应 root-local state；在 thumbnail 模式非 active root 缩略图中允许只读预加载与 execution snapshot 同步；单击 root 不切换 active root，双击非 active root 缩略图只切换 active root，active root 占位不响应单击 / 双击切换，不会发送由缩略图或占位内用户交互触发的 create / drag / edit / terminal input / start / stop / drop 等消息，也不会因缩略图内用户交互写入 root-local state。
 
-## 已选定、待实施：Root 稳定 runtime 归属
+## Root 稳定 runtime 归属（已接线、验收中）
 
-2026-09-16 架构审核确认：画板内容按 root 归属，但新建 Agent / Terminal 的 Supervisor 默认按创建窗口的 workspace storage slot 归属。当时功能范围第 16、17 项及 slot 验收条目明确保留具体 slot；本问题是修订设计决策，不将当前实现倒写成违反当时规格的 bug。2026-10-07 已修订新建目标，旧 slot 恢复条目继续有效，代码尚未改造。
+2026-09-16 架构审核确认：画板内容按 root 归属，但当时新建 Agent / Terminal 的 Supervisor 默认按创建窗口的 workspace storage slot 归属。当时功能范围第 16、17 项及 slot 验收条目明确保留具体 slot；本问题是修订设计决策，不倒写成实现违反当时规格的 bug。2026-10-07 修订新建目标，2026-10-08 完成两类创建接线；旧 slot 恢复条目继续有效。
 
 多根 workspace 是各 root 画板的组合视图，同 root 单独打开或作为多根子画板打开时都访问自己的 runtime。正式方案见 `docs/design-docs/runtime-root-ownership.md`：执行端用户级存储按环境运行实例/root/generation 分开，保留现有路径型 root 身份，不按 cwd、显示名或窗口配置重定归属。单根和多根创建路径一起调整；双窗口启动须唯一，已有 owner 未确认不可连时不能另起第二个。关闭窗口、移除但保留画板只 detach，显式 stop/clear 仍只作用于选中绑定。真正无 root 的窗口保留显式 slot 例外；未知环境或 root 不能用该例外兜底。当前实现已接线，三平台安装、Codex重连、Linux双窗口与Remote身份路径已通过，剩余有限场景仍在验收中；不提前宣称整体完成。
 
-旧 live session 继续按完整 metadata 连接原 Supervisor，新会话进入新 root 归属。旧 Supervisor 需待其旧会话及相关引用/RPC 收敛后退役，不能改写地址后将旧进程视为已迁移。原 slot 恢复验收继续适用于这些旧会话。后续必须增加“在不同窗口分别新建、仍归属同 root runtime”的验收，现有“从另一个窗口 attach 已有会话”不能代替它。详细建议场景见 `docs/design-docs/webview-host-supervisor-architecture-review.md` 第 6 节；均为待实现、待执行，不计入本规格已通过的验证。
+旧 live session 继续按完整 metadata 连接原 Supervisor，新会话进入新 root 归属。旧 Supervisor 需待其旧会话及相关引用/RPC 收敛后退役，不能改写地址后将旧进程视为已迁移。原 slot 恢复验收继续适用于这些旧会话。“在不同窗口分别新建、仍归属同 root runtime”的验收不能由已有跨窗attach证据代替。原建议场景见 `docs/design-docs/webview-host-supervisor-architecture-review.md` 第 6 节；当前分层验证结果以 `docs/design-docs/runtime-root-ownership.md` §8 为准，不将原建议本身记为通过。
 
 ## 验证状态
 

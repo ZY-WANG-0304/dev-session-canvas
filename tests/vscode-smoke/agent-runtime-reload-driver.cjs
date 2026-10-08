@@ -309,6 +309,14 @@ async function waitForAgentReady() {
         ['claude-security-notes', startupPrompts[5]]] : [])]) {
       if (pattern.test(text) && !prompts.has(name)) {
         let data = name === 'update' ? '\u001b[B\r' : '\r';
+        if (name === 'workspace-trust' && config.provider === 'claude') {
+          const selectedNo = /^[ \t]*\u276f[ \t]+No, exit[ \t]*\r?\n[ \t]+Yes, I trust this folder[ \t]*$/m.test(text);
+          const selectedYes = /^[ \t]+No, exit[ \t]*\r?\n[ \t]*\u276f[ \t]+Yes, I trust this folder[ \t]*$/m.test(text);
+          assert(/^[ \t]*Accessing workspace:[ \t]*$/m.test(text)
+            && /^[ \t]*Enter to confirm[ \t]+\u00b7[ \t]+Esc to cancel[ \t]*$/m.test(text)
+            && selectedNo !== selectedYes, 'Claude workspace trust selection is not confirmed.');
+          data = selectedNo ? '\u001b[B\r' : '\r';
+        }
         if (name === 'windows-sandbox') {
           assert.equal(process.platform, 'win32', 'Only the fixed Windows input may configure its sandbox.');
           const selectedDefault = /^\s*\u203a\s*1\.\s*Set up default sandbox/im.test(text);

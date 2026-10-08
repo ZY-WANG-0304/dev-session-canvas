@@ -464,7 +464,8 @@ test('Windows sandbox onboarding must be completed before the loaded composer be
 
 test('Claude readiness requires its model and composer and confirms known onboarding before a model turn', async () => {
   const ready = 'Claude Code v2.1.280\ndeepseek-flash\n\u276f Try "explain this code"';
-  const prompts = ['Choose the text style\n1. Dark mode', 'Trust this folder?\n1. Yes, I trust',
+  const prompts = ['Choose the text style\n1. Dark mode',
+    'Accessing workspace:\n /isolated/workspace\n  No, exit\n\u276f Yes, I trust this folder\nEnter to confirm \u00b7 Esc to cancel',
     'Detected a custom API key\nDo you want to use this API key?'];
   let clock = 0;
   let cursor = 0;
@@ -485,6 +486,39 @@ test('Claude readiness requires its model and composer and confirms known onboar
   for (const text of ['Select login method:', 'Not logged in', 'Invalid API key']) {
     const rejected = compile(['hasLoadedAgentComposer', 'waitForAgentReady'], { ...context, probe: async () => text });
     await assert.rejects(rejected.waitForAgentReady(), /authenticated surface/);
+  }
+});
+
+test('Claude workspace trust confirms only the observed affirmative option once', async () => {
+  // The fixed CLI page is reconstructed from run 37719142087, including its negative default.
+  const trust = [' Accessing workspace:', '', ' /isolated/workspace', '',
+    ' Quick safety check: Is this a project you created or one you trust?', '',
+    ' \u276f No, exit', '   Yes, I trust this folder', '', ' Enter to confirm \u00b7 Esc to cancel'].join('\n');
+  const ready = 'Claude Code v2.1.280\ndeepseek-flash\n\u276f Try "explain this code"';
+  for (const selection of ['no', 'yes', 'missing-cursor', 'other-cursor', 'reordered', 'unknown-page', 'still-visible']) {
+    const selected = selection === 'yes' ? trust.replace(' \u276f No, exit', '   No, exit')
+      .replace('   Yes, I trust this folder', ' \u276f Yes, I trust this folder')
+      : selection === 'missing-cursor' ? trust.replace('\u276f', ' ')
+        : selection === 'other-cursor' ? trust.replace('\u276f', '\u203a')
+          : selection === 'reordered' ? trust.replace(' \u276f No, exit\n   Yes, I trust this folder',
+            '   Yes, I trust this folder\n \u276f No, exit')
+            : selection === 'unknown-page' ? trust.replace('Accessing workspace:', 'Unknown confirmation:') : trust;
+    let clock = 0, cursor = 0;
+    const inputs = [], screens = [selected, selected, ready, ready];
+    const api = compile(['hasLoadedAgentComposer', 'waitForAgentReady'], {
+      assert, config: { provider: 'claude' }, process: { platform: 'linux' }, stripVt: value => value,
+      control: { deadlineAt: 32000 }, currentNodeId: 'node', Date: { now: () => clock },
+      sleep: async ms => { clock += ms; }, textOf: value => value,
+      probe: async () => selection === 'still-visible' ? selected : screens[cursor++],
+      dom: async action => inputs.push(action)
+    });
+    if (selection === 'no' || selection === 'yes') {
+      await api.waitForAgentReady();
+      assert.equal(cursor, screens.length, 'The trust page must disappear before readiness succeeds.');
+    } else await assert.rejects(api.waitForAgentReady(), selection === 'still-visible'
+      ? /interactive surface/ : /Claude workspace trust selection is not confirmed/);
+    assert.deepEqual(inputs, ['no', 'yes', 'still-visible'].includes(selection)
+      ? [{ kind: 'sendExecutionInput', nodeId: 'node', data: selection === 'yes' ? '\r' : '\u001b[B\r' }] : []);
   }
 });
 

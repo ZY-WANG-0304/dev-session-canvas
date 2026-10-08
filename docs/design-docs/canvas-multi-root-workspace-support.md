@@ -133,7 +133,7 @@ live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点�
 
 ### 6.8 Multi-root live runtime 恢复语义
 
-2026-10-07 设计修订：新建归属采用 `docs/design-docs/runtime-root-ownership.md` 的环境/用户存储/root/generation 方案，单根和多根同时调整；本节区分新建目标与旧 session 原绑定。2026-10-08 两类创建接线已实现并通过受控回归，原生 systemd 修后与多窗口产品验收仍开放。2026-09-16 F-03 的问题判断与旧 slot 证据保留，不把设计修订倒写成现有实现违反当时规格。
+2026-10-07 设计修订：新建归属采用 `docs/design-docs/runtime-root-ownership.md` 的环境/用户存储/root/generation 方案，单根和多根同时调整；本节区分新建目标与旧 session 原绑定。2026-10-08 两类创建接线已实现，三平台原生协调（含Linux systemd）、安装和Codex重连、Linux双窗与Remote身份已通过；剩余有限产品组合仍开放，具体层级和原失败见新设计 §8。2026-09-16 F-03的问题判断与旧slot证据保留，不把设计修订倒写成实现违反当时规格。
 
 `Agent` / `Terminal` 的后端进程由 runtime supervisor 和 provider/shell 持有，canvas 只是 display surface；multi-root、single-root 或两个 VS Code 窗口同时打开时，不应因为显示形态不同而阻止恢复同一个 live runtime。display node id 只服务渲染、选择、连线、布局和 `decomposeMultiRootCanvasState()`；已有 session 的 runtime binding 仍以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威。旧 session 的 `runtimeStoragePath` 必须保留创建时的具体 extension storage slot；同 root 的多个旧 slot 不能互相替代。新 session 则保存新 root owner 的完整地址，不能继续把“具体 workspace slot”当作所有新会话的目标归属。
 
@@ -141,9 +141,9 @@ live 文件活动进入宿主时，`recordAgentFileActivity()` 以 owner 节点�
 
 `paneGallery` 只改变 display surface。`dynamic` / `grid` root pane 和 thumbnail 模式 active root 主窗格可以承载 terminal input，仍使用同一个 runtime binding key；缩略图可以显示 live runtime 状态与 attention 提示、hydrate / attach execution snapshot，并跟随正常执行生命周期同步，但不直接承载由缩略图内用户交互触发的 terminal input、start / stop、编辑、拖拽、创建或 drop 消息。必须避免用当前 multi-root workspace 的 storage path 猜 runtime，也不能用同 root 的当前 slot 回填旧 live-runtime snapshot。对于已有 root-local snapshot，如果 `persistenceMode` 是 `live-runtime` 且存在 `runtimeSessionId`，但缺少 `runtimeStoragePath`，宿主不能把它隐式指到 multi-root workspace storage 或同 root 的当前 storage slot；应通过兼容迁移明确补齐原 root-local runtime storage，或显式降级为历史恢复并记录诊断，避免 attach 到错误 supervisor 或误报找不到 session。当前 `runtimeSessionBindings` 是一条 runtime key 对应一个 display node，这对单根窗口和多根窗口同时 attach 成立，因为两个窗口各有自己的 Host / Manager；`paneGallery` 若在同一个 Host 内同时可见多个 root pane，仍必须保证同一 runtime 只由所属 root pane 的一个 display node 承载；若未来同一个 Host 内允许同一 runtime 被多个 display node 同时呈现，应把 binding value 改成 subscribers/list。
 
-#### 已选定、待实施：Root 稳定的新建归属
+#### Root 稳定的新建归属（已接线、验收中）
 
-`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `startAgentSessionWithSupervisor()` 与 `startTerminalSessionWithSupervisor()` 当前均不向 `getPreferredRuntimeSupervisorClient()` 传入节点 root；`getRuntimeHostBaseStoragePath()` 默认从创建窗口的 extension storage slot 派生当前 generation。因此不同 root 可共用同一 Supervisor，同 root 在不同窗口新建的会话又可分散到多个 Supervisor。现有 metadata 恢复保住了原绑定，但没有消除新建会话的窗口归属。这是本节当前设计决策需要调整的问题，不是已证明违反当前规格的实现 bug。
+原审核基线中，`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `startAgentSessionWithSupervisor()` 与 `startTerminalSessionWithSupervisor()` 均未向 `getPreferredRuntimeSupervisorClient()` 传入节点 root，`getRuntimeHostBaseStoragePath()` 默认从创建窗口的 extension storage slot 派生 generation，导致不同root共享Supervisor、同root在不同窗口新建的会话分散。当前已将两类新建改为显式root target并通过准备事务发现原owner；metadata恢复继续沿原绑定。保留这段设计修订背景，不将旧设计行为倒写成违反当时规格的实现bug。
 
 正式目标是由执行端环境运行实例、用户 global storage 范围、画板词法 root 身份和 generation 确定 owner，在用户级存储下按 root 隔离，按需启动。窗口 slot、root 显示名、cwd 和 PaneGallery 布局不参与新建身份。rootless 窗口保留显式 slot 例外；解析失败不是该例外。环境不得只用 Remote URI 或 remoteName 推断；发现握手、双 Host 启动准备排他、backend unknown 不 fallback、每会话设置与旧 client 退役均按新设计执行。旧 live session 继续连接 metadata 中的原 Supervisor，新会话才使用新 root 归属；不能仅改写地址宣称迁移完成。旧 Supervisor 随其全部旧会话结束、相关 reader 与 RPC 收敛而退役，包括它仍承载的其他 root 会话。
 
