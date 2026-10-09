@@ -589,6 +589,8 @@ interface LocalExecutionSession extends ManagedExecutionSessionBase {
   exitSubscription: DisposableLike | undefined;
 }
 
+type NonNativeHostResizeResult = 'applied' | 'superseded' | 'cancelled';
+
 interface NonNativeHostExecution {
   canvasRootPath?: string;
   canvasLocalNodeId?: string;
@@ -608,8 +610,9 @@ interface NonNativeHostExecution {
   resizeObservation?: InteractionObservation;
   resizeTaskPending?: boolean;
   pendingResize?: {
-    cols: number; rows: number; deadline: number;
-    resolve: () => void; reject: (error: unknown) => void;
+    cols: number; rows: number; deadline?: number;
+    resolve: (result: NonNativeHostResizeResult) => void; reject: (error: unknown) => void;
+    cancelDeadline: () => void;
   };
   finalTerminal?: SerializedTerminalState;
   localReaders?: Map<CanvasSurfaceLocation, LocalExecutionReader>;
@@ -17677,7 +17680,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           this.settleLocalExecutionReaderAggregate(active);
         },
         fault: reason => this.recordDiagnosticEvent('execution/nonNativeFault', { kind, nodeId: active.nodeId, reason }),
-        changed: () => { this.retireNonNativeHostExecution(active); }
+        changed: () => {
+          this.queueNonNativeHostResize(active);
+          this.retireNonNativeHostExecution(active);
+        }
       });
       const result = await operation.first;
       rejectedBeforeAcquire = result.kind === 'rejected-before-acquire';
@@ -17698,6 +17704,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       return active;
     } catch (error) {
+      record?.pendingResize?.reject(error);
+      if (record) record.pendingResize = undefined;
       if (kind === 'terminal' && record) this.dropPendingTerminalInitialInput(record.nodeId, formatUnknownError(error));
       if (!execution.snapshot().adapter || rejectedBeforeAcquire) {
         if (record?.persistence) this.settleNonNativeHostPersistence(record, { kind: 'not-required' });
@@ -17851,26 +17859,84 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private resizeNonNativeHostExecution(record: NonNativeHostExecution, cols: number, rows: number): Promise<void> {
-    const deadline = this.nonNativeExecutionOwner!.options.scheduler.now() + EXECUTION_INTERACTION_LIMITS.observationMs;
-    return new Promise<void>((resolve, reject) => {
+  private resizeNonNativeHostExecution(record: NonNativeHostExecution, cols: number, rows: number): Promise<NonNativeHostResizeResult> {
+    return new Promise<NonNativeHostResizeResult>((resolve, reject) => {
       // A merged control request is not an acknowledgement of a native geometry change.
-      record.pendingResize?.resolve();
-      record.pendingResize = { cols, rows, deadline, resolve, reject };
-      if (!record.resizeTaskPending) this.queueNonNativeHostResize(record);
+      record.pendingResize?.resolve('superseded');
+      const request: NonNullable<NonNativeHostExecution['pendingResize']> = {
+        cols, rows, cancelDeadline: () => {},
+        resolve: result => { request.cancelDeadline(); resolve(result); },
+        reject: error => { request.cancelDeadline(); reject(error); }
+      };
+      record.pendingResize = request;
+      this.queueNonNativeHostResize(record);
     });
   }
 
+  private getNonNativeHostResizeAdmission(record: NonNativeHostExecution): 'pending' | 'ready' | 'cancelled' {
+    if (record.mutationError) throw new Error(record.mutationError);
+    const snapshot = record.execution.snapshot();
+    const adapter = snapshot.adapter;
+    const authority = this.nonNativeExecutionOwner!.authority.snapshot();
+    const failure = authority.blockedReason ?? adapter?.firstFault ?? adapter?.authorityFailure?.reason ??
+      (snapshot.closeObservation?.trigger === 'failure' ? snapshot.closeObservation.reason : undefined);
+    if (failure) throw new Error(failure);
+    // A retired record may already have left the Host map; it cannot acquire a new geometry.
+    if (snapshot.retired) return 'cancelled';
+    const node = this.state.nodes.find(value => value.id === record.nodeId && value.kind === record.kind);
+    if (!this.isNonNativeHostRecordCurrent(record) || !node ||
+        (record.persistence && node.metadata?.[record.kind] !== record.persistence.metadata)) {
+      throw new Error('The original resize authority binding changed.');
+    }
+    if (snapshot.stopRequested || snapshot.settled || snapshot.closeObservation || authority.closing ||
+        record.finalRevision !== undefined || adapter?.process || adapter?.source || adapter?.seal ||
+        adapter?.interactions.closedReason) return 'cancelled';
+    return record.business && adapter?.state === 'running' ? 'ready' : 'pending';
+  }
+
   private queueNonNativeHostResize(record: NonNativeHostExecution): void {
+    const pending = record.pendingResize;
+    if (!pending) return;
+    try {
+      const admission = this.getNonNativeHostResizeAdmission(record);
+      // Startup output must remain consumable while the provider has not confirmed started.
+      if (admission === 'pending') return;
+      if (admission === 'cancelled') {
+        pending.resolve('cancelled');
+        record.pendingResize = undefined;
+        return;
+      }
+    } catch (error) {
+      pending.reject(error);
+      record.pendingResize = undefined;
+      return;
+    }
+    // A viewport intent waits on startup's lifecycle budget. Its interaction budget starts
+    // once the execution is ready, and is not renewed by output or later lifecycle events.
+    if (pending.deadline === undefined) {
+      const scheduler = this.nonNativeExecutionOwner!.options.scheduler;
+      pending.deadline = scheduler.now() + EXECUTION_INTERACTION_LIMITS.observationMs;
+      pending.cancelDeadline = scheduler.scheduleDeadline(pending.deadline, () => {
+        if (record.pendingResize !== pending) return;
+        record.pendingResize = undefined;
+        pending.reject(new Error('Host terminal resize expired before execution.'));
+      });
+    }
+    if (record.resizeTaskPending) return;
     record.resizeTaskPending = true;
     const operation = record.terminalChain.then(async () => {
       const request = record.pendingResize;
       record.pendingResize = undefined;
       if (!request) return;
+      request.cancelDeadline();
       const { cols, rows, deadline } = request;
       try {
+        if (this.getNonNativeHostResizeAdmission(record) === 'cancelled') {
+          request.resolve('cancelled');
+          return;
+        }
         this.assertNonNativeHostMutation(record);
-        if (deadline <= this.nonNativeExecutionOwner!.options.scheduler.now()) {
+        if (deadline === undefined || deadline <= this.nonNativeExecutionOwner!.options.scheduler.now()) {
           throw new Error('Host terminal resize expired before execution.');
         }
         if (record.cols !== cols || record.rows !== rows) {
@@ -17879,6 +17945,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           const result = await observation.first;
           if (result.kind === 'unconfirmed') {
             record.mutationError = `Terminal resize effect is unconfirmed: ${result.reason}`;
+          }
+          if (result.kind === 'cancelled') {
+            request.resolve('cancelled');
+            return;
           }
           if (result.kind !== 'resized') throw new Error(`Owned terminal resize was ${result.kind}.`);
           try {
@@ -17898,7 +17968,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             throw error;
           }
         }
-        request.resolve();
+        request.resolve('applied');
       } catch (error) { request.reject(error); }
     }, error => {
       record.pendingResize?.reject(error);
@@ -17946,6 +18016,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     owner.closeAdmission(permanent);
     for (const execution of owner.list()) {
       const record = this.nonNativeHostExecutions.get(execution.key);
+      if (record) this.queueNonNativeHostResize(record);
       if (record?.localReaders) {
         record.readerAdmissionClosed = true;
         for (const reader of record.localReaders.values()) {
@@ -19770,9 +19841,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private resizeExecutionSession(kind: ExecutionNodeKind, nodeId: string, cols: number, rows: number): void {
     const ownedRecord = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
-    if (ownedRecord?.business) {
+    if (ownedRecord && this.nonNativeExecutionOwner?.options.profile) {
       void this.resizeNonNativeHostExecution(ownedRecord, normalizeTerminalCols(cols), normalizeTerminalRows(rows))
-        .catch(error => this.postMessage({ type: 'host/error', payload: { message: formatUnknownError(error) } }));
+        .catch(error => {
+          const message = formatUnknownError(error);
+          this.recordDiagnosticEvent('execution/resizeRejected', { kind, nodeId: ownedRecord.nodeId,
+            executionSessionId: ownedRecord.execution.identity.executionId, reason: 'owned-resize-failed', message });
+          this.postMessage({ type: 'host/error', payload: { message } });
+        });
       return;
     }
     if (this.nonNativeExecutionOwner?.get(this.getExecutionSessionOperationKey(kind, nodeId))) {
@@ -19888,7 +19964,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         record.business.cancelActivityPoll?.(); record.business.cancelActivityPoll = undefined;
         this.projectNonNativeHostBusiness(record);
       }
-      const result = await owned.requestStop('host-stop');
+      const stopping = owned.requestStop('host-stop');
+      if (record) this.queueNonNativeHostResize(record);
+      const result = await stopping;
       if (result.kind !== 'settled') throw new Error('Non-native Host stop is unconfirmed.');
       return;
     }
@@ -19986,7 +20064,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       } else {
         owned.settleReaders('cancelled');
       }
-      const result = await owned.requestStop('host-delete');
+      const stopping = owned.requestStop('host-delete');
+      if (record) this.queueNonNativeHostResize(record);
+      const result = await stopping;
       if (result.kind !== 'settled') throw new Error('Non-native Host deletion is unconfirmed.');
       if (record) this.assertNonNativeHostPersistenceComplete([record]);
       return;

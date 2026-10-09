@@ -170,6 +170,7 @@ module.exports = {
 async function run() {
   try {
     await runSmoke();
+    await assertNoOwnedResizeFailures();
   } catch (error) {
     await writeFailureArtifacts(error);
     throw error;
@@ -12127,7 +12128,15 @@ async function clearHostMessages() {
 }
 
 async function clearDiagnosticEvents() {
+  await assertNoOwnedResizeFailures();
   await vscode.commands.executeCommand(COMMAND_IDS.testClearDiagnosticEvents);
+}
+
+async function assertNoOwnedResizeFailures() {
+  if (!['trusted', 'local-execution-flow', 'owned-canvas-reconciliation'].includes(smokeScenario)) return;
+  const failures = (await getDiagnosticEvents()).filter(event =>
+    event.kind === 'execution/resizeRejected' && event.detail?.reason === 'owned-resize-failed');
+  assert.deepStrictEqual(failures, [], 'Local resize failures must be checked before diagnostics are cleared.');
 }
 
 function findSidebarSummaryItem(items, id) {

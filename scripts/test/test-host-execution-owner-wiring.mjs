@@ -2400,8 +2400,7 @@ for (const queuedResize of [false, true]) {
       let resized;
       if (queuedResize) {
         record.terminalChain = mutation.promise;
-        resized = assert.rejects(f.host.resizeNonNativeHostExecution(record, 100, 30),
-          /Owned terminal mutation admission is closed/);
+        resized = f.host.resizeNonNativeHostExecution(record, 100, 30).then(result => assert.equal(result, 'cancelled'));
       }
       const resetting = assert.rejects(f.host.resetState(), /Local final snapshot persistence is pending/);
       assert.equal(record.execution.snapshot().stopRequested, true);
@@ -5505,6 +5504,272 @@ for (const kind of ['agent', 'terminal']) {
         message.payload.message === `This ${kind === 'agent' ? 'Agent' : 'Terminal'} is already running.`));
       assert.equal(original.execution.snapshot().stopRequested, false);
     } finally { original?.business?.cancelActivityPoll?.(); original?.business?.lineContextTracker.dispose(); original?.tracker.dispose(); }
+  });
+}
+
+
+function startupResizeFixture(kind, waitingAt, options = {}) {
+  const preparing = deferred();
+  const f = candidateFixture({ ...options, ...(waitingAt === 'prepare' ? { environment: async () => {
+    const result = await preparing.promise; if (result instanceof Error) throw result; return result;
+  } } : {}) });
+  const originalFactory = f.injection.createTransport;
+  let held;
+  let released = false;
+  f.injection.createTransport = identity => {
+    const transport = originalFactory(identity);
+    const connect = transport.connect.bind(transport);
+    transport.connect = sink => connect({ ...sink, message(message) {
+      if (!released && message.type === waitingAt && (waitingAt !== 'operationObservation' || message.operationId === 'owner-start')) held = result => sink.message(result ? { ...message, result } : message);
+      else sink.message(message);
+    } });
+    return transport;
+  };
+  const owner = new ExecutionOwnerLifecycle(f.injection);
+  f.host.nonNativeExecutionOwner = owner;
+  const starting = f.start(kind);
+  void starting.catch(() => {});
+  return { ...f, owner, starting,
+    waiting: () => waitingAt === 'prepare' ? Boolean(f.record(kind)) : Boolean(held),
+    release: result => { released = true; if (waitingAt === 'prepare') preparing.resolve(result ?? {}); else held(result); },
+    async cleanup() {
+      const record = f.record(kind);
+      const provider = f.providers[0];
+      if (provider && record && !record.execution.snapshot().settled) {
+        provider.process();
+        provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+        provider.seal(record.lastDataSequence); provider.release();
+        await pump(f.clock, () => record.execution.snapshot().settled);
+      }
+      record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose();
+    }
+  };
+}
+
+for (const kind of ['agent', 'terminal']) {
+  for (const waitingAt of ['prepare', 'ready', 'operationObservation']) {
+    test(`startup resize ${kind} retains latest viewport while waiting for ${waitingAt}`, async () => {
+      const f = startupResizeFixture(kind, waitingAt);
+      try {
+        await until(f.clock, f.waiting, 'startup barrier');
+        const record = f.record(kind);
+        const identity = record.execution.identity;
+        const chain = record.terminalChain;
+        f.host.resizeExecutionSession(kind, `${kind}-1`, 101, 31);
+        f.host.resizeExecutionSession(kind, `${kind}-1`, 107, 37);
+        await pump(f.clock, () => true);
+        assert.equal(record.pendingResize?.cols, 107, 'latest viewport must be retained');
+        assert.equal(record.terminalChain, chain, 'waiting for start cannot block output consumption');
+        assert.equal(f.posted.some(message => message.type === 'host/error'), false);
+        assert.equal(f.providers[0]?.messages.some(message => message.type === 'resize') ?? false, false);
+        if (waitingAt === 'operationObservation') {
+          f.providers[0].output(1, 'accepted-before-start-confirmation\r\n');
+          await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'startup output consumed');
+        }
+        f.release();
+        await completed(f.clock, f.starting, 'original started');
+        await until(f.clock, () => f.providers[0].messages.some(message => message.type === 'resize'), 'latest viewport dispatch');
+        const requests = f.providers[0].messages.filter(message => message.type === 'resize');
+        assert.equal(requests.length, 1);
+        assert.deepEqual(requests[0].identity, identity);
+        assert.equal(requests[0].cols, 107); assert.equal(requests[0].rows, 37);
+        assert.equal(record.cols, 80, 'only native confirmation may change authority dimensions');
+        f.providers[0].message({ type: 'interactionObservation', interactionId: requests[0].interactionId, result: { kind: 'resized' } });
+        await until(f.clock, () => record.cols === 107 && record.rows === 37, 'confirmed viewport commit');
+        assert.equal(record.pendingResize, undefined);
+        assert.equal(f.providers.length, 1);
+        assert.equal(f.posted.some(message => message.type === 'host/error'), false);
+        if (waitingAt === 'operationObservation') assert.match(record.tracker.getSerializedState().data, /accepted-before-start-confirmation/);
+      } finally { await f.cleanup(); }
+    });
+  }
+}
+
+
+for (const waitingAt of ['prepare', 'operationObservation']) {
+  test(`startup resize rejects original pending intent when ${waitingAt} fails`, async () => {
+    const f = startupResizeFixture('terminal', waitingAt);
+    try {
+      await until(f.clock, f.waiting, 'failing startup barrier');
+      const record = f.record('terminal');
+      const resizing = assert.rejects(f.host.resizeNonNativeHostExecution(record, 99, 29), /preparation failed|start was failed|controlled start failed/);
+      const starting = assert.rejects(f.starting, /preparation failed|start was failed|controlled start failed/);
+      f.release(waitingAt === 'prepare' ? new Error('controlled preparation failed')
+        : { kind: 'failed', stage: 'spawn', reason: 'controlled start failed' });
+      await completed(f.clock, starting, 'startup failure');
+      await completed(f.clock, resizing, 'pending viewport failure');
+      assert.equal(record.pendingResize, undefined);
+      assert.equal(f.providers[0]?.messages.some(message => message.type === 'resize') ?? false, false);
+      assert.equal(record.cols, 80);
+    } finally { await f.cleanup(); }
+  });
+}
+
+test('startup resize waits for startup budget and receives a fresh interaction budget when ready', async () => {
+  const f = startupResizeFixture('terminal', 'ready');
+  try {
+    await until(f.clock, f.waiting, 'unready provider');
+    const record = f.record('terminal');
+    const resizing = f.host.resizeNonNativeHostExecution(record, 101, 31);
+    f.clock.advance(EXECUTION_INTERACTION_LIMITS.observationMs + 1);
+    assert.equal(record.pendingResize.deadline, undefined, 'starting is not a submitted terminal interaction');
+    f.release();
+    await completed(f.clock, f.starting, 'later original startup');
+    await until(f.clock, () => f.providers[0].messages.some(message => message.type === 'resize'), 'late startup viewport');
+    const request = f.providers[0].messages.find(message => message.type === 'resize');
+    f.providers[0].message({ type: 'interactionObservation', interactionId: request.interactionId, result: { kind: 'resized' } });
+    assert.equal(await completed(f.clock, resizing, 'viewport after long startup'), 'applied');
+    assert.equal(record.cols, 101);
+  } finally { await f.cleanup(); }
+});
+
+test('startup resize settles when the original provider startup times out', async () => {
+  const f = startupResizeFixture('terminal', 'ready');
+  try {
+    await until(f.clock, f.waiting, 'provider never ready');
+    const record = f.record('terminal');
+    const resizing = assert.rejects(f.host.resizeNonNativeHostExecution(record, 101, 31));
+    const starting = assert.rejects(f.starting, /unconfirmed|failed/);
+    f.clock.advance(EXECUTION_CANDIDATE_BUDGETS.startMs);
+    await completed(f.clock, starting, 'startup observation deadline');
+    await completed(f.clock, resizing, 'startup timeout settles viewport');
+    assert.equal(record.pendingResize, undefined);
+    assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false);
+    assert.equal(record.cols, 80);
+  } finally { await f.cleanup(); }
+});
+
+test('startup resize is cancelled immediately when Host stops an execution still preparing', async () => {
+  const f = startupResizeFixture('terminal', 'prepare');
+  try {
+    await until(f.clock, f.waiting, 'preparing original');
+    const record = f.record('terminal');
+    const resizing = f.host.resizeNonNativeHostExecution(record, 101, 31);
+    const stopping = f.host.stopExecutionSession('terminal', 'terminal-1');
+    assert.equal(await completed(f.clock, resizing, 'preparation viewport cancellation'), 'cancelled');
+    assert.equal(record.pendingResize, undefined);
+    const starting = assert.rejects(f.starting);
+    f.release();
+    await completed(f.clock, starting, 'cancelled preparation');
+    await completed(f.clock, stopping, 'preparation stop');
+    assert.equal(f.providers.length, 0);
+  } finally { await f.cleanup(); }
+});
+
+for (const boundary of ['stop', 'source', 'authority-close']) {
+  test(`startup resize cancels before dispatch at ${boundary} without changing final state`, async () => {
+    const f = startupResizeFixture('terminal', 'operationObservation');
+    try {
+      await until(f.clock, f.waiting, 'started observation held');
+      const record = f.record('terminal');
+      const resizing = f.host.resizeNonNativeHostExecution(record, 101, 31);
+      if (boundary === 'stop') void record.execution.requestStop('test-before-started');
+      if (boundary === 'source') f.providers[0].seal(0);
+      if (boundary === 'authority-close') f.owner.closeAdmission(false);
+      f.release();
+      await completed(f.clock, f.starting, 'startup result with closing boundary');
+      assert.equal(await completed(f.clock, resizing, 'cancelled viewport intent'), 'cancelled');
+      assert.equal(record.pendingResize, undefined);
+      assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false);
+      assert.equal(f.posted.some(message => message.type === 'host/error'), false);
+      assert.equal(record.cols, 80); assert.equal(record.rows, 24);
+      assert.equal(record.terminalRevision, 0);
+      assert.equal(record.mutationError, undefined);
+    } finally { await f.cleanup(); }
+  });
+}
+
+for (const boundary of ['stop', 'source']) {
+  test(`queued resize cancels at ${boundary} after running admission and preserves the tail`, async () => {
+    const f = await interactiveHostFixture();
+    const held = deferred();
+    try {
+      f.record.terminalChain = held.promise;
+      const resizing = f.host.resizeNonNativeHostExecution(f.record, 101, 31);
+      if (boundary === 'stop') void f.record.execution.requestStop('test-pending-viewport');
+      else f.provider.seal(0);
+      held.resolve();
+      assert.equal(await completed(f.clock, resizing, 'no longer live viewport'), 'cancelled');
+      assert.equal(f.requests.length, 0);
+      assert.equal(f.record.cols, 113); assert.equal(f.record.terminalRevision, 0);
+      assert.equal(f.record.mutationError, undefined);
+      assert.equal(f.posted.some(message => message.type === 'host/error'), false);
+    } finally { held.resolve(); await f.cleanup(); }
+  });
+}
+
+test('startup resize keeps quarantine errors instead of classifying them as viewport cancellation', async () => {
+  const f = startupResizeFixture('terminal', 'ready');
+  try {
+    await until(f.clock, f.waiting, 'startup before quarantine');
+    const record = f.record('terminal');
+    const resizing = assert.rejects(f.host.resizeNonNativeHostExecution(record, 101, 31), /controlled quarantine/);
+    f.owner.authority.quarantine('controlled quarantine');
+    f.host.queueNonNativeHostResize(record);
+    await completed(f.clock, resizing, 'quarantined pending viewport');
+    assert.equal(record.pendingResize, undefined);
+    assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false);
+  } finally { await f.cleanup(); }
+});
+
+
+test('startup resize lets real page output credit complete before started and serializes only the confirmed viewport', async () => {
+  const messages = [];
+  const f = startupResizeFixture('terminal', 'operationObservation', {
+    outputCredit: true, onHostMessage: message => messages.push(message)
+  });
+  const acknowledge = message => f.send('editor', 'webview/executionLocalOutputApplied', {
+    nodeId: message.payload.nodeId, kind: 'terminal', executionSessionId: message.payload.executionSessionId,
+    ...message.payload.localOutputReceipt, outcome: 'applied'
+  }, message.lifecycle);
+  try {
+    await until(f.clock, f.waiting, 'held started with page credit');
+    const record = f.record('terminal');
+    const attach = f.host.postLocalExecutionSnapshot(record, { surface: 'editor' });
+    await until(f.clock, () => messages.some(message => message.payload?.localOutputReceipt), 'pre-start attach');
+    const firstResize = f.host.resizeNonNativeHostExecution(record, 101, 31);
+    const resizing = f.host.resizeNonNativeHostExecution(record, 107, 37);
+    assert.equal(await firstResize, 'superseded');
+    acknowledge(messages.find(message => message.payload?.localOutputReceipt));
+    await completed(f.clock, attach, 'pre-start snapshot applied');
+    f.providers[0].output(1, 'startup-page-credit-tail\r\n');
+    await until(f.clock, () => messages.some(message => message.type === 'host/executionOutput'), 'pre-start output delivered');
+    assert.equal(record.execution.snapshot().adapter.consumedThrough, 0);
+    acknowledge(messages.find(message => message.type === 'host/executionOutput'));
+    await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'page consumption while awaiting started');
+    assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false);
+    f.release();
+    await completed(f.clock, f.starting, 'started after page consumption');
+    await until(f.clock, () => f.providers[0].messages.some(message => message.type === 'resize'), 'ready viewport request');
+    const request = f.providers[0].messages.find(message => message.type === 'resize');
+    f.providers[0].message({ type: 'interactionObservation', interactionId: request.interactionId, result: { kind: 'resized' } });
+    await until(f.clock, () => messages.some(message => message.type === 'host/executionSnapshot' && message.payload.cols === 107), 'confirmed resized snapshot');
+    const snapshot = messages.find(message => message.type === 'host/executionSnapshot' && message.payload.cols === 107);
+    assert.equal(snapshot.payload.rows, 37);
+    assert.match(snapshot.payload.serializedTerminalState.data, /startup-page-credit-tail/);
+    acknowledge(snapshot);
+    assert.equal(await completed(f.clock, resizing, 'page applied confirmed geometry'), 'applied');
+    assert.equal(f.posted.some(message => message.type === 'host/error'), false);
+  } finally { f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-complete'); await f.cleanup(); }
+});
+
+for (const queued of [false, true]) {
+  test(`startup resize refuses a replaced metadata binding before native dispatch (${queued})`, async () => {
+    const f = startupResizeFixture('terminal', 'ready');
+    const held = deferred();
+    try {
+      await until(f.clock, f.waiting, 'original metadata');
+      const record = f.record('terminal');
+      if (queued) { f.release(); await completed(f.clock, f.starting, 'running before held queue'); record.terminalChain = held.promise; }
+      const resizing = assert.rejects(f.host.resizeNonNativeHostExecution(record, 101, 31), /original resize authority binding changed/);
+      const node = f.host.state.nodes.find(node => node.id === 'terminal-1');
+      node.metadata = { terminal: { ...node.metadata.terminal } };
+      if (queued) held.resolve();
+      else { f.release(); await completed(f.clock, f.starting, 'started with replaced metadata'); }
+      await completed(f.clock, resizing, 'original binding rejected');
+      assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false);
+      assert.equal(record.cols, 80);
+    } finally { held.resolve(); await f.cleanup(); }
   });
 }
 

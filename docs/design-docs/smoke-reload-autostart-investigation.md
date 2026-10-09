@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md]
+related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md]
 updated_at: 2026-10-10
 ---
 
@@ -119,6 +119,16 @@ Agent 执行流的 burst、分段 hello、sleep、slowspin，以及 Terminal she
 
 移除全部临时产品诊断后，用原 Host/owner/adapter 和可控 provider 做四项特征验证：Agent/Terminal 分别拦住 ready，以及拦住 ready 后的 started 确认。四项都复现相同错误、无原生 resize 消息且原尺寸不变；释放屏障后同执行进入 running，先前请求没有自动补发，再发相同请求则确认成功并更新尺寸。**4/4 通过表示诊断预期成立，不表示缺陷已修复。** 可复跑 patch 与证据见 `docs/references/smoke-reload-autostart/resize-characterization.patch`、`resize-diagnostic.patch`、`resize-admission-evidence.json`。
 
-后续修复应在 Host 协调准备中、starting、running 与关闭阶段：启动期间保留最新尺寸意图，确认同一执行 started 后再应用，失败/取消时明确结算。不得在正文消费链上等待一个依赖正文消费才能完成的启动事件；不能放宽底层未就绪准入、假装 native resize 已完成，或取消停止/最终保存/隔离保护。本次仅完成定位与边界记录，未实施该修复。
+后续修复应在 Host 协调准备中、starting、running 与关闭阶段：启动期间保留最新尺寸意图，确认同一执行 started 后再应用，失败/取消时明确结算。不得在正文消费链上等待一个依赖正文消费才能完成的启动事件；不能放宽底层未就绪准入、假装 native resize 已完成，或取消停止/最终保存/隔离保护。该诊断轮仅完成定位与边界记录；后续实施见下一节。
+
+## 启动期间尺寸同步的正式方案
+
+用户授权 PR #314 继续修复后，`CanvasPanelManager` 沿用每条原执行的单个 `pendingResize` 保留最新视口意图。准备中与 adapter starting 时不占用 `terminalChain` 等待；确认运行后才将 resize 排到当时的正文消费链后。准备失败与生命周期改变结算 pending 等待。启动前只保留一个视口意图，provider 启动受 owner 原有启动期限约束；执行首次就绪后才为该尺寸请求建立 5 秒交互期限。进入交互阶段后期限不因输出或生命周期事件续期，新意图替换旧意图时拥有自己的期限。
+
+Host 内部结果区分 applied、superseded 和 cancelled：只有原生确认后提交 tracker 才算 applied；正常停止、源结束或最终状态到达时，尚未派发的请求按 cancelled 结算，不产生用户错误，也不改变原生尺寸/快照。已发送的交互由 adapter 原有观察负责；已确认 resize 即使紧邻关闭也完成原 tracker 提交，failed/unconfirmed、绑定替换或提交失败仍报告错误。底层协议和 RuntimePersistence 开启路径不改变。`resizeExecutionSession` 也接收本地执行准备阶段的尺寸意图；Host stop/delete/close 在准备尚未安装 owner 回调时仍显式结算 pending 请求。真正失败使用带原执行身份的 `execution/resizeRejected`（`owned-resize-failed`）记录后继续展示错误。默认三个 smoke 场景在清理诊断及结束前检查该错误，保留原空 toast 断言。
+
+2026-10-10 实施验证：完整 Host **376/376**（新增 20 项）、类型检查、VSIX 构建与打包通过。回归覆盖准备/ready/started 三个窗口的 Agent/Terminal 最新尺寸、慢启动与启动超时、准备/启动失败、准备中停止、正常停止/源结束/authority 关闭、真实页面输出消费确认与 metadata 替换拒绝；复用原有已确认 resize 紧邻 stop/exit、未知效果与 tracker 提交失败、root 路由迁移和最终保存验证。旧实现的最新尺寸保留回归修前失败，修后通过。
+
+默认真实 VSIX 的 owned reconciliation 与 local execution flow 均通过；trusted 通过原页面 probe、执行重启与普通 attention bridge，清理诊断前检查未发现本地 resize 失败。完整命令仍在独立异常退出通知等待处失败，未把这次结果写成发布门禁通过。源码改动限定 Host 尺寸编排与 smoke 失败检查，无临时诊断探针。证据见 `docs/references/smoke-reload-autostart/resize-repair-evidence.json`，执行过程见 `docs/exec-plans/completed/owned-startup-resize.md`。
 
 旧两次失败缺少瞬时状态，不能追认每一次历史 toast 都发生于 starting。本次两次诊断运行均通过原 `verifyRealWebviewProbe`，随后在执行重启及通知场景捕获同类 starting 错误；还捕获一次 `stopRequested=true` 的 Host 层 `Owned terminal mutation admission is closed.`，这是另一种拒绝，需要单独明确过期尺寸请求的结算语义。两次诊断完整流程最终均在 `verifyAgentAbnormalInterruptionNotifications` 等待 `execution/attentionNotificationPosted` 超时，节点已 error、退出码 27、attentionPending=false；通知根因尚未定位。普通 attention bridge 场景在这两次运行中完成，但完整门禁仍未通过。
