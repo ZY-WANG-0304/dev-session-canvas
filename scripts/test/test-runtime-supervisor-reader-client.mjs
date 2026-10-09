@@ -138,7 +138,21 @@ test('startup profile and generation reject before any connection or process acq
   }
 });
 
-test('connection preparation forwards the selected profile once; stock startup arguments remain unchanged', async () => {
+test('connection preparation pins the client before hello has registered an RPC', async () => {
+  const socket = new ControlledSocket();
+  controlledConnect = () => socket;
+  const client = startupClient({ executionProfile: null });
+  try {
+    const connection = client.ensureConnected({ allowRestart: false });
+    assert.equal(client.pendingRequests.size, 0);
+    assert.equal(client.hasPendingRequests(), true, 'An in-flight connection must not be retired as an idle client.');
+    socket.emit('connect');
+    await connection;
+    assert.equal(client.hasPendingRequests(), false);
+  } finally { client.dispose(); controlledConnect = undefined; }
+});
+
+test('explicit connection preparation starts once; concurrent bound callers do not add startup attempts', async () => {
   for (const executionProfile of [candidateProfile, null]) {
     let connects = 0;
     const starts = [];
@@ -154,10 +168,13 @@ test('connection preparation forwards the selected profile once; stock startup a
       queueMicrotask(() => socket.emit('connect'));
       return socket;
     };
-    const client = startupClient({ executionProfile, startSupervisor: async args => starts.push(args) });
+    const client = startupClient({ executionProfile, startSupervisor: async args => {
+      starts.push(args);
+      if (starts.length > 1) throw new Error('bound endpoint absent');
+    } });
     try {
-      const preparation = executionProfile ? { allowRestart: true } : {};
-      await Promise.all([client.ensureConnected(preparation), client.ensureConnected(preparation)]);
+      await Promise.all([client.ensureConnected({ allowRestart: true }), client.ensureConnected(),
+        client.ensureConnected({ allowRestart: false })]);
       assert.deepEqual(starts, [{ supervisorScriptPath: '/supervisor', supervisorLauncherScriptPath: '/launcher',
         ...(executionProfile ? { executionProfile } : {}) }]);
       assert.equal(connects, 2);
@@ -168,6 +185,14 @@ test('connection preparation forwards the selected profile once; stock startup a
         assert.equal(socket.messages.at(-1).params.executionProfile, candidateProfile);
         assert.equal(connects, 2, 'create must use the already accepted original connection');
       }
+      socket.destroy();
+      controlledConnect = () => {
+        const absent = new ControlledSocket();
+        queueMicrotask(() => absent.emit('error', Object.assign(new Error('bound endpoint absent'), { code: 'ENOENT' })));
+        return absent;
+      };
+      await assert.rejects(client.hello(), /bound endpoint absent/);
+      assert.equal(starts.length, 1, 'An explicit preparation must not grant future operations startup permission.');
     } finally { client.dispose(); controlledConnect = undefined; }
   }
 });
@@ -235,6 +260,61 @@ test('selected profile defaults to no restart for bound operations and preserves
       await assert.rejects(run(client), /bound endpoint absent/);
       assert.equal(connects, 1);
       assert.equal(starts, 0);
+    } finally { client.dispose(); controlledConnect = undefined; }
+  }
+});
+
+test('legacy operations cannot restart after outer connection success and may reconnect to a healthy original endpoint', async () => {
+  const operations = [
+    { run: client => client.ensureConnected() },
+    { run: client => client.ensureConnected({ allowRestart: false }) },
+    { run: client => client.hello() },
+    { method: 'createSession', run: client => client.createSession({ sessionId: 'bound' }) },
+    { method: 'attachSession', run: client => client.attachSession({ sessionId: 'bound' }) },
+    { method: 'getSessionSnapshot', run: client => client.getSessionSnapshot({ sessionId: 'bound' }) },
+    { method: 'getSessionCheckpoint', run: client => client.getSessionCheckpoint({ sessionId: 'bound' }) },
+    { method: 'subscribeSession', run: client => client.subscribeSession({ sessionId: 'bound', authorityId: 'original', afterRevision: 0 }) },
+    { method: 'ackSessionRevision', run: client => client.ackSessionRevision({ sessionId: 'bound', authorityId: 'original', revision: 0 }) },
+    { method: 'writeInput', run: client => client.writeInput({ sessionId: 'bound', data: 'input' }) },
+    { method: 'resizeSession', run: client => client.resizeSession({ sessionId: 'bound', cols: 80, rows: 24 }) },
+    { method: 'updateSessionScrollback', run: client => client.updateSessionScrollback({ sessionId: 'bound', scrollback: 100 }) },
+    { method: 'stopSession', run: client => client.stopSession({ sessionId: 'bound' }) },
+    { method: 'deleteSession', run: client => client.deleteSession({ sessionId: 'bound' }) }
+  ];
+  const storageDirs = [path.resolve('controlled-only/runtime-supervisor'),
+    path.resolve('controlled-only/runtime-supervisor-generations/terminal-stream-v1/runtime-supervisor')];
+  for (const storageDir of storageDirs) for (const { method, run } of operations) {
+    let starts = 0;
+    let connects = 0;
+    let endpointAvailable = true;
+    const sockets = [];
+    controlledConnect = () => {
+      connects++;
+      const socket = new ControlledSocket();
+      sockets.push(socket);
+      socket.respond = request => request.method === 'hello' ? hello : { sessionId: 'bound', live: true };
+      queueMicrotask(() => endpointAvailable ? socket.emit('connect') : socket.emit('error',
+        Object.assign(new Error('bound endpoint absent'), { code: 'ECONNREFUSED' })));
+      return socket;
+    };
+    const client = startupClient({ executionProfile: null, storageDir, startSupervisor: async () => {
+      starts++;
+      throw new Error('bound endpoint absent');
+    } });
+    try {
+      await client.ensureConnected({ allowRestart: false });
+      sockets[0].destroy();
+      endpointAvailable = false;
+      await assert.rejects(run(client), /bound endpoint absent/);
+      assert.equal(starts, 0, `${method ?? 'connection'} must not start an old runtime namespace.`);
+      assert.equal(connects, 2);
+      assert.equal(client.hasPendingRequests(), false);
+      endpointAvailable = true;
+      await run(client);
+      assert.equal(starts, 0);
+      assert.equal(connects, 3, 'A no-start connection failure must not prevent a later original-endpoint reconnect.');
+      assert.deepEqual(sockets[2].messages.map(request => request.method), method ? ['hello', method] : ['hello']);
+      assert.equal(sockets[0].messages.length, 1, 'The original connection must not receive a replayed operation.');
     } finally { client.dispose(); controlledConnect = undefined; }
   }
 });
@@ -440,7 +520,9 @@ test('strict delete sends once on the original socket and separates old acknowle
     const clock = deleteClock();
     socket.respond = () => undefined;
     const params = { sessionId: `strict-${result}` };
-    const observation = client.deleteSessionStrict(params, { deadline: 20, scheduler: clock });
+    const settled = [];
+    const observation = client.deleteSessionStrict(params, { deadline: 20, scheduler: clock,
+      onSettled: () => settled.push({ result: observation.current(), pending: client.hasPendingRequests() }) });
     assert.equal(observation.submitted, true);
     assert.equal(observation.attemptSettled, false);
     assert.strictEqual(client.deleteSessionStrict(params, { deadline: 200, scheduler: clock }), observation,
@@ -457,6 +539,7 @@ test('strict delete sends once on the original socket and separates old acknowle
     assert.equal(observation.attemptSettled, true);
     assert.ok(Object.isFrozen(first));
     assert.deepEqual(observation.current(), first);
+    assert.deepEqual(settled, [{ result: first, pending: false }], 'Retirement observes the actual settled result after RPC release.');
   }
 });
 
@@ -466,11 +549,14 @@ test('strict delete freezes timeout before a late response without dropping or r
     const clock = deleteClock();
     socket.respond = () => undefined;
     const params = { sessionId: `strict-${trigger}` };
-    const observation = client.deleteSessionStrict(params, { deadline: 20, scheduler: clock });
+    const settled = [];
+    const observation = client.deleteSessionStrict(params, { deadline: 20, scheduler: clock,
+      onSettled: () => settled.push({ result: observation.current(), pending: client.hasPendingRequests() }) });
     const request = socket.messages.at(-1);
     if (trigger === 'timer') clock.advance(20);
     else clock.elapse(20);
     assert.equal(observation.attemptSettled, false, 'an observation deadline is not the end of its pending request');
+    assert.deepEqual(settled, [], 'The observation deadline cannot authorize client retirement.');
     assert.strictEqual(client.deleteSessionStrict(params, { deadline: 100, scheduler: clock }), observation);
     assert.equal(client.pendingRequests.size, 1, 'timeout does not cancel the original remote delete');
     socket.reply(request, { ok: true });
@@ -482,7 +568,54 @@ test('strict delete freezes timeout before a late response without dropping or r
     assert.strictEqual(await observation.first, first);
     assert.equal(socket.messages.filter(message => message.method === 'deleteSession').length, 1);
     assert.equal(client.pendingRequests.size, 0);
+    assert.deepEqual(settled, [{ result: observation.current(), pending: false }]);
+    assert.equal(settled[0].result.kind, 'legacy-acknowledged', 'Late completion remains distinct from the first timeout.');
   }
+});
+
+test('strict delete pins the client after batched RPC responses until every observation settles', async () => {
+  const { client, socket } = await fixture();
+  const clock = deleteClock();
+  socket.respond = () => undefined;
+  const settled = [];
+  const observations = ['first', 'second'].map(sessionId => client.deleteSessionStrict({ sessionId }, {
+    deadline: 20, scheduler: clock,
+    onSettled: () => settled.push({ pending: client.hasPendingRequests(),
+      attempts: observations.map(observation => observation.attemptSettled) })
+  }));
+  const requests = socket.messages.filter(message => message.method === 'deleteSession');
+  assert.equal(requests.length, 2);
+  socket.emit('data', requests.map(request => JSON.stringify({ type: 'response', id: request.id,
+    ok: true, result: { ok: true } })).join('\n') + '\n');
+  assert.equal(client.pendingRequests.size, 0);
+  assert.equal(client.hasPendingRequests(), true, 'Draining RPC responses is not strict-delete settlement.');
+  assert.deepEqual(observations.map(observation => observation.attemptSettled), [false, false]);
+  await Promise.all(observations.map(observation => observation.first));
+  assert.deepEqual(settled, [
+    { pending: true, attempts: [true, false] },
+    { pending: false, attempts: [true, true] }
+  ]);
+});
+
+test('strict delete connection failure notifies retirement only after the original connection attempt settles', async () => {
+  const clock = deleteClock();
+  const socket = new ControlledSocket();
+  controlledConnect = () => socket;
+  const client = startupClient({ executionProfile: null });
+  const settled = [];
+  try {
+    const observation = client.deleteSessionStrict({ sessionId: 'missing-runtime' }, { deadline: 20, scheduler: clock,
+      onSettled: () => settled.push({ result: observation.current(), pending: client.hasPendingRequests(),
+        connection: client.strictDeleteConnection }) });
+    assert.equal(client.hasPendingRequests(), true);
+    assert.deepEqual(settled, []);
+    socket.emit('error', Object.assign(new Error('original endpoint absent'), { code: 'ECONNREFUSED' }));
+    const first = await observation.first;
+    assert.equal(first.kind, 'unconfirmed');
+    assert.equal(observation.submitted, false);
+    assert.equal(observation.attemptSettled, true);
+    assert.deepEqual(settled, [{ result: first, pending: false, connection: undefined }]);
+  } finally { client.dispose(); controlledConnect = undefined; }
 });
 
 test('strict delete retains uncertainty after disconnect replacement or write failure and never reconnects', async () => {
@@ -504,6 +637,9 @@ test('strict delete retains uncertainty after disconnect replacement or write fa
     assert.equal(first.kind, 'unconfirmed');
     assert.strictEqual(client.deleteSessionStrict(params, { deadline: 100, scheduler: clock }), observation);
     assert.equal(observation.submitted, true);
+    assert.equal(observation.attemptSettled, true);
+    assert.equal(client.strictDeletes.size, 1, 'Submitted unknown results still prevent deletion replay.');
+    assert.equal(client.hasPendingRequests(), false, 'Settled unknown records must not pin an otherwise idle client.');
     assert.equal(next?.messages.filter(message => message.method === 'deleteSession').length ?? 0, 0);
   }
 });
@@ -540,6 +676,8 @@ test('strict deletion connects without restart and rechecks the original deadlin
       const observation = client.deleteSessionStrict({ sessionId: timing },
         { deadline: 20, scheduler: clock, isCurrent: () => current });
       assert.equal(acquisitions, 1);
+      assert.equal(client.pendingRequests.size, 0);
+      assert.equal(client.hasPendingRequests(), true, 'An original strict-delete connection pins the client before hello.');
       if (timing === 'connect-cutoff') clock.elapse(20);
       if (timing === 'connect-timeout') clock.advance(20);
       else socket.emit('connect');

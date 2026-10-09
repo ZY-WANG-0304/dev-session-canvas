@@ -20,7 +20,7 @@ related_plans:
   - docs/exec-plans/completed/agent-running-state-detection.md
   - docs/exec-plans/completed/execution-lifecycle-recovery-and-autostart.md
   - docs/exec-plans/completed/claude-agent-ctrl-z-containment.md
-updated_at: 2026-07-11
+updated_at: 2026-10-09
 ---
 
 # 执行节点生命周期、恢复与自动启动设计
@@ -138,19 +138,19 @@ updated_at: 2026-07-11
 恢复边界明确如下：
 
 - `Terminal`：同一扩展进程内跨 surface 可重附着；扩展重载后不承诺完整活动态恢复，只显式标记为 `interrupted`。
-- `Agent`：若节点带有 `live-runtime` 身份，则扩展重载后先尝试 reattach 原 live runtime；只有在 reattach 不可用且节点仍持有 provider 原生显式 session identity 时，才降级到 provider resume；若 provider 不支持或上下文缺失，则分别落到 `resume-failed`、`interrupted` 或历史态。
+- `Agent`：若节点带有 `live-runtime` 身份，则扩展重载后只尝试 reattach 原 live runtime，失败保留原绑定与错误，不自动 provider resume。snapshot-only 仍按 provider 原生显式 session identity 进行既有恢复；用户显式 resume 与原 PTY 重连分开，已有绑定必须先结算。2026-10-09 的旧协议统一规则见 `runtime-legacy-reconnect-retirement.md`。
 
 当问题变成“关闭整个 VSCode 后重新打开”时，本文件里的生命周期状态还需要叠加运行时持久化文档定义的附着态语义。第一版的用户可见规则是：
 
 - 只要节点带着 `live-runtime` 的会话身份重新进入恢复流程，且系统尚未确认 live runtime 仍存在，主状态标签显示 `重连中`。
 - 若重新附着成功，再切回本文件定义的真实生命周期状态。
-- 若无法重新附着，`Terminal` 显示 `历史恢复`；`Agent` 则先检查是否存在可用 provider resume 上下文，若有则转成 `resume-ready` 并继续自动恢复，否则才显示 `历史恢复`。
+- 若无法重新附着，`Terminal` 与 `Agent` 均显示 `历史恢复` 并保留原绑定，不因 Agent 有 provider resume 上下文而自动新建进程。该状态不证明原执行已退出。
 
 自动启动边界明确如下：
 
 - 新建 `Agent` / `Terminal` 节点时，宿主只写入“待启动意图”，不立即同步拉起进程。
 - 节点在 Webview 中完成尺寸测量后，由统一的启动消息把待启动意图转成真正的 fresh start 或 resume。
-- 已持久化的待恢复 `Agent` 节点也使用同一条机制进入自动恢复。
+- snapshot-only 已持久化的待恢复 `Agent` 节点也使用同一条机制进入自动恢复；live-runtime 旧 history-restored 的自动 fallback resume 意图在加载时取消，保留 provider identity 供显式操作。
 
 对 `Agent` 的 provider 启动上下文与恢复身份，还需要补充以下硬约束：
 
@@ -185,7 +185,7 @@ updated_at: 2026-07-11
 1. `Agent` 与 `Terminal` 在 UI 上能展示不同的生命周期状态，而不是都退化为“运行中 / 未运行”。
 2. 新建执行节点后，无需手动点启动按钮，节点会自动进入 fresh start。
 3. 扩展重载后，live 的 `Terminal` 节点被标记为 `interrupted`。
-4. 扩展重载后，live 的 `Agent` 节点只有在具备可信恢复上下文时，才会自动进入 `resuming` 并尽量恢复。
+4. 扩展重载后，snapshot-only 的 `Agent` 节点只有在具备可信恢复上下文时才自动进入 `resuming`；live-runtime 优先且仅重连原执行，失败不自动 resume、不丢原绑定。
 5. 恢复失败时，`Agent` 节点进入 `resume-failed` 并显示明确失败原因。
 6. Claude Agent 在同一 live 会话中按 `Ctrl-Z` 时不应把 `\u001a` 写入 provider PTY；Webview 显示明确错误提示，宿主和 runtime supervisor 也拒绝该输入。普通 Terminal 与非 Claude Agent 不受这条 Claude 专属阻断规则影响。
 7. 旧 `suspended` Agent snapshot 仍可渲染，但不再出现“恢复”或“恢复中”入口；用户只能停止后重启。

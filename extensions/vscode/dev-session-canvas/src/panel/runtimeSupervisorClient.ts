@@ -88,6 +88,7 @@ export interface StrictRuntimeDeleteOptions {
   readonly deadline: number;
   readonly scheduler: ExecutionScheduler;
   readonly isCurrent?: () => boolean;
+  readonly onSettled?: () => void;
 }
 
 interface TerminalReadConnection {
@@ -200,7 +201,7 @@ export class RuntimeSupervisorClient {
       return;
     }
 
-    const allowRestart = options.allowRestart ?? (!this.expectedRuntimeOwner && this.options.executionProfile === undefined);
+    const allowRestart = options.allowRestart === true;
     const connectPromise = this.connectWithRestart(allowRestart);
     this.connectPromise = connectPromise;
     void connectPromise.then(
@@ -388,7 +389,11 @@ export class RuntimeSupervisorClient {
   }
 
   public hasPendingRequests(): boolean {
-    return this.pendingRequests.size > 0 || [...this.hostOutputSubscriptions.values()].some(binding => binding.consuming);
+    // Batched responses leave the RPC map before strict-delete continuations settle.
+    return this.connectPromise !== undefined || this.strictDeleteConnection !== undefined
+      || this.pendingRequests.size > 0
+      || [...this.strictDeletes.values()].some(binding => !binding.observation.attemptSettled)
+      || [...this.hostOutputSubscriptions.values()].some(binding => binding.consuming);
   }
 
   public async createSession(
@@ -534,6 +539,8 @@ export class RuntimeSupervisorClient {
       recordFirst(result);
       current = Object.freeze({ ...result });
       if (!submitted || result.kind !== 'unconfirmed') this.strictDeletes.delete(request.sessionId);
+      try { options.onSettled?.(); }
+      catch (error) { console.error('Runtime deletion settlement notification failed:', error); }
     };
     const canSubmit = (socket?: net.Socket): boolean => {
       observeDeadline();

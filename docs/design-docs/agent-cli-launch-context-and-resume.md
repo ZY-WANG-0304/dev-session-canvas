@@ -17,7 +17,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/agent-cli-launch-context-and-resume.md
   - docs/exec-plans/active/agent-shell-environment-inheritance.md
-updated_at: 2026-05-09
+updated_at: 2026-10-09
 ---
 
 # Agent CLI 启动上下文与显式恢复设计
@@ -153,7 +153,7 @@ updated_at: 2026-05-09
 
 `Agent` 自动恢复的正式规则如下：
 
-- 如果节点当前还带着 `live-runtime` 身份，系统先尝试重新附着原 runtime；只有在 reattach 不可用时，才允许降级到 provider resume。
+- 如果节点当前还带着 `live-runtime` 身份，系统只尝试重新附着原 runtime；reattach 不可用时保留原绑定与错误，不自动降级到 provider resume。旧协议及旧 history-restored 的自动降级意图同样适用；用户显式 resume 仍需先结算已有绑定。2026-10-09 的统一规则见 `runtime-legacy-reconnect-retirement.md`，snapshot-only 的既有自动恢复不变。
 - 节点只有在持有 provider 原生显式 session identity 时，才可以进入 `resume-ready`。
 - 自动恢复必须调用 provider 的显式目标恢复接口，而不是恢复“最近一次会话”。
 - `resume --last`、交互式 picker 和类似的“最近会话”入口可以作为人工调试手段存在，但不属于正式产品行为。

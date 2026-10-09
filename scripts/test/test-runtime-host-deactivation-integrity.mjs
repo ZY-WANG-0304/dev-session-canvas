@@ -304,9 +304,17 @@ async function testOriginalRootBindingValidation() {
       ...agent.node.metadata.terminal, runtimeOwner, runtimeStoragePath: base,
       resumeStrategy: 'claude-session-id', resumeSessionId: 'resumable-provider-session'
     } } }];
-    const before = structuredClone(agent.host.state);
-    assert.equal(agent.host.maybeFallbackAgentLiveRuntimeToResume(agent.node.id, 'unknown root owner'), false);
-    assert.deepEqual(agent.host.state, before, 'root discovery failure cannot clear a binding via legacy automatic resume');
+    agent.host.terminalSessions.clear();
+    agent.host.agentSessions.set(agent.node.id, { ...agent.session, runtimeOwner, runtimeStoragePath: base });
+    agent.host.disposeAgentFileActivitySession = async () => undefined;
+    agent.host.handleRuntimeSupervisorDisconnected('legacy-detached', base, new Error('unknown root owner'));
+    const metadata = agent.host.state.nodes[0].metadata.agent;
+    assert.equal(agent.host.state.nodes[0].status, 'history-restored');
+    assert.deepEqual(metadata.runtimeOwner, runtimeOwner);
+    assert.equal(metadata.runtimeStoragePath, base);
+    assert.equal(metadata.runtimeSessionId, agent.session.runtimeSessionId);
+    assert.equal(metadata.pendingLaunch, undefined, 'root discovery failure cannot become an automatic CLI resume');
+    assert.equal(metadata.lastRuntimeError, 'unknown root owner');
   }
 
   const legacy = makeHost();
