@@ -11,8 +11,9 @@
 - [x] (2026-10-09) 按用户要求关闭 PR #311，确认未合并；原用户工作树及旧准备分支保留。
 - [x] (2026-10-09) fetch 最新 origin/main，基线为 `78c58c2a2cecd053199c9bada6084868f9255877`；新建 `release-0-26-1-from-main` 分支与 `/tmp/dsc261b` 工作树。
 - [x] (2026-10-09) 复核 v0.26.0 之后已合并范围，统一版本与发布文档，补充 #312 用户语义；静态 preflight 通过。
-- [ ] 在固定预合并提交执行 preflight、完整 verify 和发布契约补充验证，保留实际结果。
-- [ ] 收口验证记录与遗留债务，fetch/rebase 后推送并建立新 PR；失败时保持草稿。
+- [x] (2026-10-09) 固定预合并 preflight、完整 verify、VSIX 与补充验证已执行；完整门禁首败保留，Webview 424/424 通过。
+- [x] (2026-10-09) 汇总新一轮验证和技术债，完成草稿 PR 交付材料；最终 head 复核及 PR 链接记录在新 PR。
+- [ ] 后续独立定位并修复执行准入/退役阻塞，完整门禁通过后才可转为可合并状态。
 
 ## 意外与发现
 
@@ -28,7 +29,7 @@
 
 ## 结果与复盘
 
-本轮尚在准备，未获得完整验证通过结论。结果将按实际运行更新，不将旧定向测试外推为当前发布准入。
+静态输入已完成；新基线的完整 verify 与独立 VSIX smoke 均失败，尚不具备合并或发布条件。root/Host/Supervisor/reader 定向、notifier 联动与双语、旧协议重连宿主场景均通过；Webview 全套 424/424 通过（12.1 分钟）。静态材料可交付，发布准入仍阻塞。
 
 ## 上下文与定向
 
@@ -75,3 +76,25 @@ preflight/verify 在固定预合并工作树重复执行，使用独立短 `/tmp
 不新增产品接口或依赖。使用现有 `scripts/release/release-preflight.mjs`、`scripts/release/run-clean-checkout-vsix-validation.mjs` 和 npm 脚本，不修改门禁或继承 0.26.0 豁免。
 
 修订记录：2026-10-09，根据用户放弃 #311 并从最新 main 重做的要求建立新计划，明确 #312 范围及私有隔离验证环境。
+
+
+## 本轮验证记录
+
+准备提交 `c938f7839240ff59a71b2b07c694261ec9ffe68a` 与 `origin/main@78c58c2a2cecd053199c9bada6084868f9255877` 在 `/tmp/dsc261c` 生成预合并 `26572ad2af94438921a82fe0cd8c491ef581cd9c`。该树执行真实 npm ci、preflight 与完整 release:verify。环境采用上述 Node 22/VS Code 1.141.0、匹配六目标资产、umask 0077；Marketplace 数据目录 `/tmp/d26bm`、临时目录 `/tmp/d26bt`、Runtime smoke `/tmp/d26bs`。预合并结果与准备树的产品/测试源码相同。
+
+preflight 与门禁回归通过；npm test 越过 #309 依赖守卫、Marketplace 浏览器/VS Code E2E、旧协议重连和协议检查等前置项，在 `runRuntimeCheckpointRefreshSmoke:252` 等待 Agent live 超时。现场 globalStorage 为 0700；Terminal 已获得 runtime session 并打开 `xterm-current-state-v1` 分页读取，Agent 报 `Execution start was rejected-before-acquire`。本轮已越过原目录权限拒绝，资源获取前拒绝的具体原因仍待定位；尚未执行 18,000 行输出、reload 与 completed 验证。日志 `/tmp/dsc261b-verify.log`，工件 `/tmp/d26bs/runtime-checkpoint-refresh/artifacts`。不得把 finally 清理后的 Terminal closed 当成原启动失败。
+
+同一预合并 ref 的 `validate:clean-checkout:vsix -- --ref HEAD --keep-temp` 完成全新 npm ci、主扩展打包及真实 VS Code 安装 smoke，最后在 `verifyAutoStartOnCreate:4943` 超时。现场包含 creation admission closed、旧最终快照责任占用 execution key/Host 容量，以及 original execution metadata binding changed。本轮已越过 shell 重启和两处 QuickPick，但没有证明旧责任竞态已解决。日志 `/tmp/dsc261b-vsix.log`；工件 `/tmp/dev-session-canvas-clean-checkout-akdQNG/repo/.debug/vscode-vsix-smoke/smoke-runtime/artifacts`。
+
+在准备树另外执行 root ownership/preparation、Host wiring 336/336、Supervisor wiring 116/116、reader client 36/36、reader settlement 27/27、Host deactivation、legacy history 136 例及 notifier typecheck/source，全部 exit 0；逐项命令与结果见 `/tmp/dsc261b-directed-results.json`，日志 `/tmp/dsc261b-directed.log`。notifier build、companion、en/zh-cn locale smoke 和 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=runtime-legacy-reconnect` 的具名宿主 smoke 全部通过，见 `/tmp/dsc261b-extra-smoke-results.json` 与 `/tmp/dsc261b-extra-smoke.log`。旧协议宿主证据目录 `/tmp/d26bl`；它使用受控 provider 身份和一个真实 Terminal 端点，不外推为真实 Codex/Claude 或旧二进制升级矩阵。
+
+六目标资产在当前源码上通过 manifest/binary/source hash 校验，见 `/tmp/dsc261b-assets.log`。同一干净检出另外打包 notifier，双 VSIX 均为 0.26.1/Preview，英中文本地化及主扩展 extensionPack / notifier extensionDependencies 关系正确；见 `/tmp/dsc261b-notifier-package.log` 与 `/tmp/dsc261b-vsix-inventory.log`。包内关系不代证市场自动补齐安装和真实桌面通知送达/点击。
+
+Webview 全套 `npm run test:webview` 424/424 通过（12.1 分钟），没有重试失败用例或更新快照；日志 `/tmp/dsc261b-webview.log`。此证据来自本轮最新主线源代码，不沿用 #311 的结果，也不替代已失败的完整门禁。
+
+修订记录：2026-10-09，记录新基线、私有目录环境、Agent 准入拒绝与 VSIX 自动启动超时；单列已通过的旧协议宿主及 notifier/运行时定向检查。
+
+
+交付前复核：本记录提交后，在 `/tmp/dsc261c` 从最新 origin/main 与最终准备 head 重新生成预合并结果，继续使用 umask 0077 执行 `release:preflight -- --version 0.26.1` 和 `release:verify -- --version 0.26.1`。为避免污染首轮现场，Marketplace/临时目录/Runtime smoke 分别为 `/tmp/d26bfm`、`/tmp/d26bft`、`/tmp/d26bfs`；日志为 `/tmp/dsc261b-final-preflight.log`、`/tmp/dsc261b-final-verify.log`。最终准备/预合并 SHA 和退出结果写入 PR，不为回填同次验证再修改发布输入。第一轮与最终 head 之间只有验证记录变化，不扩大旧平台或真实 Agent 证据。
+
+修订记录：2026-10-09，补齐 Webview 424/424 完整结果，整理新草稿交付材料及最终 head 复核入口；保留独立启动/退役修复待办。
