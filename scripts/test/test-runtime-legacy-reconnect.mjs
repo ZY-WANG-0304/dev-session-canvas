@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -29,7 +30,11 @@ module.exports = { spawn: blocked, spawnSync: blocked, fork: blocked,
 const bundle = await esbuild.build({
   stdin: {
     contents: `export { CanvasPanelManager, reconcileAgentNodesInArray }
-      from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';`,
+      from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
+      export { RuntimeSupervisorClient }
+        from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
+      export { RUNTIME_SUPERVISOR_ERROR_CODES }
+        from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol';`,
     resolveDir: cwd,
     loader: 'ts'
   },
@@ -54,7 +59,8 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundle.o
   createRequire(import.meta.url), loaded, loaded.exports,
   path.resolve('scripts/test/runtime-legacy-reconnect.cjs'), path.resolve('scripts/test')
 );
-const { CanvasPanelManager, reconcileAgentNodesInArray } = loaded.exports;
+const { CanvasPanelManager, reconcileAgentNodesInArray, RuntimeSupervisorClient,
+  RUNTIME_SUPERVISOR_ERROR_CODES } = loaded.exports;
 
 function makeHost(kind = 'agent') {
   const node = {
@@ -316,6 +322,77 @@ for (const withFinalization of [false, true]) {
   assert.equal(frozenFirst.kind, 'unconfirmed', 'Late retirement does not rewrite the first timeout as success.');
   assert.deepEqual(f.host.getPersistedLiveRuntimeSessionForNode(f.host.state.nodes[0]), original);
 }
+for (const outcomes of [['success', 'success'], ['success', 'sessionNotFound'],
+  ['sessionNotFound', 'success'], ['sessionNotFound', 'sessionNotFound']]) {
+  const f = makeHost('agent');
+  f.node.status = 'history-restored';
+  f.node.metadata.agent.attachmentState = 'history-restored';
+  const sibling = structuredClone(f.node);
+  sibling.id = 'agent-sibling';
+  sibling.metadata.agent.runtimeSessionId = 'sibling-session';
+  f.host.state.nodes.push(sibling);
+  const originals = f.host.state.nodes.map(node => f.host.getPersistedLiveRuntimeSessionForNode(node));
+  const backend = f.host.getRuntimeHostBackend(originals[0].backendKind, originals[0].runtimeStoragePath);
+  const key = f.host.buildRuntimeSupervisorClientKey(backend);
+  const socket = new EventEmitter();
+  socket.destroyed = false;
+  socket.setEncoding = () => undefined;
+  socket.destroy = () => { socket.destroyed = true; socket.emit('close'); };
+  const requests = [];
+  socket.write = line => {
+    const request = JSON.parse(line);
+    if (request.method === 'hello') {
+      queueMicrotask(() => socket.emit('data', `${JSON.stringify({ type: 'response', id: request.id,
+        ok: true, result: { serverVersion: 1, pid: 123, runtimeBackend: 'legacy-detached',
+          runtimeGuarantee: 'best-effort' } })}\n`));
+    } else {
+      assert.equal(request.method, 'deleteSession');
+      requests.push(request);
+    }
+    return true;
+  };
+  const client = new RuntimeSupervisorClient({ backend,
+    supervisorScriptPath: '/never', supervisorLauncherScriptPath: '/never' });
+  const disposals = [];
+  const dispose = client.dispose.bind(client);
+  client.dispose = () => {
+    disposals.push(originals.map(original => f.host.strictRuntimeDeletes.get(
+      f.host.strictRuntimeDeleteKey(original)).observation.attemptSettled));
+    dispose();
+  };
+  f.host.runtimeSupervisorClients.set(key, client);
+  f.host.retireLegacyRuntimeSupervisorClientIfUnused = CanvasPanelManager.prototype.retireLegacyRuntimeSupervisorClientIfUnused;
+  f.host.getRuntimeSupervisorClientForBackend = async () => client;
+  f.host.prepareStoppedLegacyHistoryRetirement = async () => undefined;
+  f.host.getExecutionCandidateScheduler = () => ({ now: () => 0,
+    scheduleDeadline: () => () => undefined });
+  try {
+    client.attachSocket(socket);
+    await client.performHelloHandshake();
+    const deletion = f.host.deleteRuntimeSupervisorSessionsWithCandidate(originals);
+    await new Promise(resolve => setImmediate(resolve));
+    const first = originals.map(original => f.host.strictRuntimeDeletes.get(f.host.strictRuntimeDeleteKey(original)).first);
+    assert.deepEqual(requests.map(request => request.params.sessionId), originals.map(original => original.sessionId));
+    assert.deepEqual(disposals, [], 'Both original deletion attempts keep their shared client alive.');
+    // One data event settles both RPCs before either strict observation consumes its response.
+    socket.emit('data', requests.map((request, index) => JSON.stringify({ type: 'response', id: request.id,
+      ...(outcomes[index] === 'success' ? { ok: true, result: { ok: true } }
+        : { ok: false, error: { code: RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound, message: 'Original session absent' } })
+    })).join('\n') + '\n');
+    const [, firstResults] = await Promise.all([deletion, Promise.all(first)]);
+    const expected = outcomes.map(outcome => outcome === 'success' ? 'legacy-acknowledged' : 'legacy-absent');
+    assert.deepEqual(firstResults.map(result => result.kind), expected,
+      `${outcomes}: one settled attempt cannot retire the socket before its sibling observes the original response.`);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(disposals, [[true, true]], 'Retirement waits for both strict observations, not just an empty RPC map.');
+    assert.equal(f.host.runtimeSupervisorClients.has(key), false);
+    const again = await Promise.all(originals.map(original => f.host.observeStrictRuntimeDelete(original, 1000)));
+    assert.deepEqual(again.map(result => result.kind), expected, 'Later Host operations reuse the confirmed original outcomes.');
+    await f.host.deleteRuntimeSupervisorSessionsWithCandidate(originals);
+    assert.deepEqual(firstResults.map(result => result.kind), expected, 'Client retirement does not rewrite first outcomes.');
+    assert.equal(requests.length, 2, 'Rechecking settled results does not submit replacement deletion attempts.');
+  } finally { dispose(); }
+}
 for (const liveSession of [false, true]) {
   for (const attachmentState of ['attached-live', 'reattaching', 'history-restored']) {
     const incomplete = makeHost('agent');
@@ -342,4 +419,4 @@ const [resumable] = reconcileAgentNodesInArray([snapshotOnly.node]);
 assert.equal(resumable.status, 'resume-ready', 'Existing snapshot-only resume behavior remains separate.');
 assert.equal(resumable.metadata.agent.pendingLaunch, 'resume');
 
-console.log('Legacy reconnect tests passed: original bindings, healthy attach, no automatic resume, explicit startup, strict replacement.');
+console.log('Legacy reconnect tests passed: original bindings, healthy attach, no automatic resume, explicit startup, strict replacement, shared deletion retirement.');

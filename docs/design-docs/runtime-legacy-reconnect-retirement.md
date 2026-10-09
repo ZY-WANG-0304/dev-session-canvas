@@ -45,6 +45,8 @@ updated_at: 2026-10-09
 
 client 的 hasPendingRequests 同时覆盖 connectPromise 和 strictDeleteConnection。Host 在失败恢复/非分页断连及 stock 删除完成或失败后重检；生产 strict delete 使用专用 onSettled 通知，首次 deadline 不发通知、也不改原 unconfirmed，实际尝试结算后再等既有 Host finalization。通知仅重检本 Host 缓存，reader、其他会话或连接仍持有责任时继续保留。
 
+同一个 socket data 可以同步排空多条 RPC 响应，但各条 strict delete 的异步结算尚未完成。因此 hasPendingRequests 还必须覆盖 strictDeletes 中 attemptSettled=false 的观察，最后一条实际尝试结算后才允许退役。已结算但结果仍未知的记录继续防止重发，却不单独长期持有 client；不能用 strictDeletes 非空代替未结算判断。
+
 ## 验收
 
 以真实 client 方法及 Host 方法的受控 fixture 验证：旧连接成功后断连、普通 hello/读写/attach/delete 不启动 backend；显式创建仍可以准备 stock/candidate，root 协调不变。健康旧协议可附着，Agent 有 resume identity 但重连失败仍保留 binding、不排队新 CLI；历史自动 fallback 记录重开不自动启动，snapshot-only 与用户显式 resume 不被禁用。
@@ -56,3 +58,5 @@ client 的 hasPendingRequests 同时覆盖 connectPromise 和 strictDeleteConnec
 2026-10-09：有限契约已验证。client 35/35、timeout 37/37（完成通知后另补迟到证据 1/1）、新 Host 恢复回归、Host deactivation/completed、分页投影（实际 writer 50/50、Host batch 10/10）、协议、root 握手 46 项及 startup 29 项通过；Host wiring 定向 127/127，不是全文件 336 项。类型检查、默认构建、语法及 diff check 通过，独立复核无新确定性 blocker。
 
 Linux / VS Code 1.117.0 的 `runtime-legacy-reconnect` 两场景通过：默认 native 构建中显式创建一个 Terminal 端点，缺失原会话的 Agent/Terminal 保留绑定，旧 pending resume 记录不自动启动。此处验证实际 Host/Webview 接线，旧传输竞态由受控 client 与 Host 用例覆盖，不把它写成历史二进制升级、真实 Codex/Claude 或跨平台验收。前三轮目录权限/夹具启动前置失败、第四轮通过和清理记录见 completed ExecPlan；历史失败保留，不用本轮结果追认旧平台通过。
+
+2026-10-09（PR #312 review 修复）：同 data 并行严格删除先红后绿。真实 Host 批量入口及真实 client 覆盖两条 success/sessionNotFound 的四种组合，最后观察结算后才退役；再次整批操作不重发。client 36/36、timeout 37/37、Host legacy reconnect/deactivation/completed、Host wiring 定向 15/15（选自 336 项）、类型、默认构建及 diff check 通过。独立复核通过；已结算未知记录不持有 client，deadline、迟到证据与 finalization 不变，未重复无影响的原生、Agent 或页面矩阵。

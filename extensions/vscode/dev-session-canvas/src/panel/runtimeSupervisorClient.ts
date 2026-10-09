@@ -389,8 +389,11 @@ export class RuntimeSupervisorClient {
   }
 
   public hasPendingRequests(): boolean {
+    // Batched responses leave the RPC map before strict-delete continuations settle.
     return this.connectPromise !== undefined || this.strictDeleteConnection !== undefined
-      || this.pendingRequests.size > 0 || [...this.hostOutputSubscriptions.values()].some(binding => binding.consuming);
+      || this.pendingRequests.size > 0
+      || [...this.strictDeletes.values()].some(binding => !binding.observation.attemptSettled)
+      || [...this.hostOutputSubscriptions.values()].some(binding => binding.consuming);
   }
 
   public async createSession(

@@ -573,6 +573,30 @@ test('strict delete freezes timeout before a late response without dropping or r
   }
 });
 
+test('strict delete pins the client after batched RPC responses until every observation settles', async () => {
+  const { client, socket } = await fixture();
+  const clock = deleteClock();
+  socket.respond = () => undefined;
+  const settled = [];
+  const observations = ['first', 'second'].map(sessionId => client.deleteSessionStrict({ sessionId }, {
+    deadline: 20, scheduler: clock,
+    onSettled: () => settled.push({ pending: client.hasPendingRequests(),
+      attempts: observations.map(observation => observation.attemptSettled) })
+  }));
+  const requests = socket.messages.filter(message => message.method === 'deleteSession');
+  assert.equal(requests.length, 2);
+  socket.emit('data', requests.map(request => JSON.stringify({ type: 'response', id: request.id,
+    ok: true, result: { ok: true } })).join('\n') + '\n');
+  assert.equal(client.pendingRequests.size, 0);
+  assert.equal(client.hasPendingRequests(), true, 'Draining RPC responses is not strict-delete settlement.');
+  assert.deepEqual(observations.map(observation => observation.attemptSettled), [false, false]);
+  await Promise.all(observations.map(observation => observation.first));
+  assert.deepEqual(settled, [
+    { pending: true, attempts: [true, false] },
+    { pending: false, attempts: [true, true] }
+  ]);
+});
+
 test('strict delete connection failure notifies retirement only after the original connection attempt settles', async () => {
   const clock = deleteClock();
   const socket = new ControlledSocket();
@@ -613,6 +637,9 @@ test('strict delete retains uncertainty after disconnect replacement or write fa
     assert.equal(first.kind, 'unconfirmed');
     assert.strictEqual(client.deleteSessionStrict(params, { deadline: 100, scheduler: clock }), observation);
     assert.equal(observation.submitted, true);
+    assert.equal(observation.attemptSettled, true);
+    assert.equal(client.strictDeletes.size, 1, 'Submitted unknown results still prevent deletion replay.');
+    assert.equal(client.hasPendingRequests(), false, 'Settled unknown records must not pin an otherwise idle client.');
     assert.equal(next?.messages.filter(message => message.method === 'deleteSession').length ?? 0, 0);
   }
 });

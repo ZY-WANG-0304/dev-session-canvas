@@ -14,6 +14,7 @@
 - [x] (2026-10-09) 完成 client/Host/退役调用链和产品契约核对，写入正式方案与受影响验收。
 - [x] (2026-10-09) 定向回归先红确认默认重启、连接期误报空闲和 Agent 自动 resume；已实施 client/Host 最小修复，补缺失 ID 的旧意图及 strict delete 迟到结算后的退役通知。
 - [x] (2026-10-09) 健康旧绑定、新建显式启动、失败保留身份、其他会话及 reader 隔离的定向回归通过；有限真实 VS Code smoke 通过，独立复核无新确定性 blocker，文档同步并归档，交付同一主题分支。
+- [x] (2026-10-09) 处理 PR #312 review 的并行严格删除提前退役问题：真实 Host/client 同 data 双成功响应先红复现，补未结算观察保护；四种成功/不存在组合、重复整批操作、定向回归、类型、构建及独立复核通过，更新原 PR。
 
 ## 意外与发现
 
@@ -28,6 +29,8 @@
 2026-10-09：将连接与创建职责分开；原绑定失败不是创建授权。协议能力仍按实际协商，不把旧传输宣称为新分页或尾部保证。具体代码落点与回归根据调用链核对补齐，不引入第二套服务或通用状态框架。
 
 2026-10-09：smoke 只验证受影响恢复与页面路径，不把建两个新执行作为历史恢复前提。目录采用既有私有权限前提，静态节点输入避免与启动准入相争；保留每次失败，不将环境或夹具问题扩成新的工具阶段。
+
+2026-10-09（PR #312 review）：RPC map 排空不能证明并行 strict delete 全部结算。同批双响应先红结果为 legacy-acknowledged / unconfirmed；第一条 onSettled 误退役 client，使第二条丢失原 socket 身份。复用 strictDeletes 的 attemptSettled 状态扩展忙碌判断，不新增计数器或生命周期框架；已结算未知记录不阻止退役，首次 deadline、迟到证据和 Host finalization 不变。本修复只补受影响 client/Host 回归，不重跑未受影响的原生、真实 Agent、容量或 Webview 矩阵。
 
 ## 上下文与定向
 
@@ -49,6 +52,8 @@
 
 Host 接线只选受影响项：`DEV_SESSION_CANVAS_HOST_TEST_FILTER='strict|legacy|original|retir|root' node scripts/test/test-host-execution-owner-wiring.mjs`，127/127（全文件 336 项中选 127），不称全量通过。最终类型、默认构建、smoke 两入口语法及 diff check 均通过。
 
+PR #312 review 修复的定向验证：client 新断言先红（RPC map 已清空但观察未结算时 hasPendingRequests=false），修复后 reader-client 36/36；真实 Host/client 同 data 双成功先红为 acknowledged/unconfirmed，最终实际 `deleteRuntimeSupervisorSessionsWithCandidate()` 的 success/success、success/sessionNotFound、sessionNotFound/success、sessionNotFound/sessionNotFound 四组合均绿，重复整批操作仍仅两条删除。request-timeout 37/37、legacy-reconnect、Host deactivation、completed history 通过；Host wiring 使用 `DEV_SESSION_CANVAS_HOST_TEST_FILTER='S9 .*delete|old live deletion|strict delete'` 选取 15/336，15/15 通过。`npm run typecheck`、`npm run build`、`git diff --check` 通过；独立复核另跑 client 36/36 和 Host 集成回归，未发现新确定性 blocker。未重跑未受影响的真实 Agent、Webview 或原生矩阵。
+
 Linux / VS Code 1.117.0 的两个真实 Host/Webview 场景通过，使用默认 native 产物、受控 provider 元数据和一个显式 Terminal 端点，不是历史 Supervisor 二进制升级或真实 Codex/Claude 验收。复现命令如下，需可用 VS Code/Xvfb，并使用新隔离目录保留此前结果：
 
     DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=runtime-legacy-reconnect DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT=/tmp/dsc-legacy-reconnect-r4 node -e 'process.umask(0o077); import("./scripts/smoke/run-vscode-smoke.mjs")'
@@ -69,3 +74,5 @@ Linux / VS Code 1.117.0 的两个真实 Host/Webview 场景通过，使用默认
 修订记录：2026-10-09 创建有限计划，先核对已登记的旧协议语义差异，再落实最小修复。
 
 修订记录：2026-10-09 完成实现、独立复核和受影响验收；补记缺失 ID、严格删除完成通知及三次 smoke 前置失败，归档有限交付，不扩大测试框架。
+
+修订记录：2026-10-09 按 PR #312 review 补并行严格删除观察的退役保护，记录先红后绿及实际批量入口回归；不改未知结果、尾部或共享服务边界。
