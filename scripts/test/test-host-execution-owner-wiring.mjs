@@ -4477,6 +4477,35 @@ async function interactiveHostFixture(kind = 'terminal', providerKind = 'codex',
 }
 
 for (const kind of ['agent', 'terminal']) {
+  test(`${kind} owned started diagnostic uses the confirmed execution identity and launch spec`, async () => {
+    const f = await interactiveHostFixture(kind);
+    try {
+      const events = f.diagnostics.filter(entry => entry.name === 'execution/started');
+      assert.equal(events.length, 1);
+      const { spec, identity } = f.provider.messages.find(message => message.type === 'start');
+      const detail = events[0].detail;
+      assert.equal(detail.kind, kind);
+      assert.equal(detail.nodeId, `${kind}-1`);
+      assert.equal(detail.sessionId, identity.executionId);
+      assert.equal(detail.sessionId, f.record.execution.identity.executionId);
+      assert.equal(detail.shellPath, spec.file);
+      assert.equal(detail.cwd, spec.cwd);
+      assert.equal(detail.cols, spec.cols);
+      assert.equal(detail.rows, spec.rows);
+      assert.deepEqual(detail.launchArgs, spec.args);
+      if (kind === 'agent') assert.equal(detail.provider, 'codex');
+    } finally { await f.cleanup(); }
+  });
+}
+
+test('owned preparation rejection does not emit a started diagnostic', async () => {
+  const f = candidateFixture({ environment: async () => { throw new Error('start preparation rejected'); } });
+  await assert.rejects(f.start('terminal'), /start preparation rejected/);
+  assert.equal(f.providers.length, 0);
+  assert.equal(f.diagnostics.some(entry => entry.name === 'execution/started'), false);
+});
+
+for (const kind of ['agent', 'terminal']) {
   test(`${kind} owned attention bridges split signals without blocking output and preserves final persistence`, async () => {
     const f = await interactiveHostFixture(kind);
     const delivery = deferred();

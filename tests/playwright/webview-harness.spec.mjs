@@ -6373,6 +6373,126 @@ for (const executionKind of ['agent', 'terminal']) {
       );
   });
 
+  for (const variant of ['continuation', 'wide-prefix', 'style-change', 'missing-indent', 'prose', 'line-limit']) {
+    test(`${executionKind} mixed hard-wrapped styled paths respect ${variant}`, async ({ page }) => {
+      const nodeId = `${executionKind}-zoom`;
+      const first = variant === 'continuation' ? 'src/webview/'
+        : variant === 'line-limit' ? `src/${'long-path-'.repeat(22)}`
+        : 'src/webview/executionTerminalNativeInteractions.';
+      const second = variant === 'continuation'
+        ? 'executionTerminalNativeInteractionsWithLongContinuationFileName.ts:1600:12'
+        : 'ts:1600:12';
+      const text = first + second;
+      const prefix = variant === 'wide-prefix' ? '    中文错误定位调用详情 (' : '    at renderTerminalLink (';
+      const secondStyle = variant === 'style-change' ? '\x1b[91m' : '\x1b[94m';
+      const indent = variant === 'missing-indent' ? '' : '      ';
+      const prose = variant === 'prose' ? ' crashed' : '';
+      const accepted = variant === 'continuation' || variant === 'wide-prefix';
+      await openHarness(page);
+      await page.evaluate(next => window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(next), [text]);
+      await bootstrap(page, createLiveExecutionNodeState(executionKind));
+      await waitForExecutionTerminalReady(page, nodeId);
+      await dispatchExecutionSnapshot(page, {
+        nodeId, kind: executionKind,
+        output: `${prefix}\x1b[94m${first}\x1b[39m${prose}\r\n${indent}${secondStyle}${second}\x1b[39m)\r\n`,
+        cols: 120, rows: 28, liveSession: true
+      });
+      await settleWebview(page, 4);
+      if (!accepted) {
+        await expectTestDomActionError(page, { kind: 'activateExecutionLink', nodeId, text }, 'was not detected');
+        const requests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+        expect(requests.flatMap(request => request.payload.candidates)
+          .filter(candidate => candidate.source === 'hardwrap')).toEqual([]);
+        return;
+      }
+      await performTestDomAction(page, { kind: 'activateExecutionLink', nodeId, text });
+      await expect.poll(() => readLastOpenedExecutionLink(page, nodeId)).toMatchObject({
+        linkKind: 'file', text, path: text.replace(/:1600:12$/, ''),
+        line: 1600, column: 12, source: 'hardwrap'
+      });
+      try {
+        await performTestDomAction(page, { kind: 'hoverExecutionLink', nodeId, text });
+        await expect.poll(() => readHardWrappedLinkHoverSegmentCount(page, nodeId)).toBe(3);
+      } finally {
+        await performTestDomAction(page, { kind: 'clearExecutionLinkHover', nodeId }).catch(() => {});
+      }
+    });
+  }
+
+  for (const pathLines of [2, 4]) {
+    for (const [suffixName, suffix] of [['no-suffix', ''], ['closing-paren', ')'], ['prose', ' explanation']]) {
+      test(`${executionKind} hard-wrapped styled path boundary accepts ${pathLines} lines before ${suffixName}`, async ({ page }) => {
+        const nodeId = `${executionKind}-zoom`;
+        await openHarness(page);
+        await bootstrap(page, createLiveExecutionNodeState(executionKind));
+        const ready = await waitForExecutionTerminalReady(page, nodeId);
+        const tail = '.ts:1:2';
+        // One hard continuation occupies the remaining physical rows. Soft
+        // rows cannot introduce competing hardwrap candidates under the mouse.
+        const fragments = ['src/webview/',
+          'b'.repeat((pathLines - 1) * ready.terminalCols - 4 - tail.length) + tail];
+        const text = fragments.join('');
+        await page.evaluate(next => window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts([next]), text);
+        await dispatchExecutionSnapshot(page, {
+          nodeId, kind: executionKind,
+          output: fragments.map((fragment, index) =>
+            `${index === 0 ? '    at (' : '    '}\x1b[94m${fragment}\x1b[39m`
+            + (index === fragments.length - 1 ? suffix : '')).join('\r\n') + '\r\n',
+          cols: ready.terminalCols, rows: ready.terminalRows, liveSession: true
+        });
+        await settleWebview(page, 4);
+        await performTestDomAction(page, { kind: 'activateExecutionLink', nodeId, text });
+        await expect.poll(() => readLastOpenedExecutionLink(page, nodeId)).toMatchObject({
+          linkKind: 'file', text, path: text.replace(/:1:2$/, ''),
+          line: 1, column: 2, source: 'hardwrap'
+        });
+        try {
+          await performTestDomAction(page, { kind: 'hoverExecutionLink', nodeId, text });
+          await expect.poll(() => readHardWrappedLinkHoverSegmentCount(page, nodeId)).toBe(pathLines);
+        } finally {
+          await performTestDomAction(page, { kind: 'clearExecutionLinkHover', nodeId }).catch(() => {});
+        }
+      });
+    }
+
+    const rejectedContinuations = ['default-path-text', 'different-style', 'missing-content',
+      ...(pathLines === 4 ? ['same-style-outside-window'] : [])];
+    for (const continuation of rejectedContinuations) {
+      test(`${executionKind} hard-wrapped styled path boundary rejects ${continuation} after ${pathLines} lines`, async ({ page }) => {
+        const nodeId = `${executionKind}-zoom`;
+        await openHarness(page);
+        await bootstrap(page, createLiveExecutionNodeState(executionKind));
+        const ready = await waitForExecutionTerminalReady(page, nodeId);
+        const fragments = ['src/webview/',
+          'b'.repeat((pathLines - 1) * ready.terminalCols - 4 - '.ts'.length) + '.ts'];
+        const truncatedText = fragments.join('');
+        const fullText = truncatedText + '.more:1:2';
+        // ECH erases a real wrapped cell without changing the line's soft-wrap flag.
+        const suffix = continuation === 'missing-content' ? '\x1b[39m \x1b[1G\x1b[1X'
+          : `${continuation === 'default-path-text' ? '\x1b[39m'
+            : continuation === 'different-style' ? '\x1b[91m' : '\x1b[94m'}.more:1:2\x1b[39m`;
+        await page.evaluate(next => window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(next),
+          [truncatedText, fullText]);
+        await dispatchExecutionSnapshot(page, {
+          nodeId, kind: executionKind,
+          output: fragments.map((fragment, index) =>
+            `${index === 0 ? '    at (' : '    '}\x1b[94m${fragment}`
+            + (index === fragments.length - 1 ? suffix : '\x1b[39m')).join('\r\n') + '\r\n',
+          cols: ready.terminalCols, rows: ready.terminalRows, liveSession: true
+        });
+        await settleWebview(page, 4);
+        await expectTestDomActionError(page,
+          { kind: 'activateExecutionLink', nodeId, text: truncatedText }, 'was not detected');
+        await expectTestDomActionError(page,
+          { kind: 'activateExecutionLink', nodeId, text: fullText }, 'was not detected');
+        const requests = await readPostedMessagesByType(page, 'webview/resolveExecutionFileLinks');
+        expect(requests.flatMap(request => request.payload.candidates)
+          .filter(candidate => candidate.source === 'hardwrap'
+            && [truncatedText, fullText].includes(candidate.text))).toEqual([]);
+      });
+    }
+  }
+
   test(`${executionKind} styled hard-wrapped file fragments are not joined through prose`, async ({
     page
   }) => {

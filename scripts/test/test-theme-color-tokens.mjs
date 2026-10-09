@@ -3,6 +3,12 @@ import { readFile } from 'node:fs/promises';
 
 const mainWebviewStyles = await readText('extensions/vscode/dev-session-canvas/src/webview/styles.css');
 const mainWebviewSource = await readText('extensions/vscode/dev-session-canvas/src/webview/main.tsx');
+const statusComponentSources = await Promise.all(
+  ['canvasNodeChrome', 'fileNoteNodes', 'paneGallerySurface'].map(async (name) => ({
+    name,
+    source: await readText(`extensions/vscode/dev-session-canvas/src/webview/${name}.tsx`)
+  }))
+);
 const designSystemSource = await readText('docs/UI.md');
 const multiRootDesignSource = await readText('docs/design-docs/canvas-multi-root-workspace-support.md');
 const multiRootSpecSource = await readText('docs/product-specs/canvas-multi-root-workspace-support.md');
@@ -177,7 +183,7 @@ const noteStatusFunction = extractCssRange(
 );
 assert.match(
   mainWebviewSource,
-  /canvasNodeStatusLabelDescriptor[\s\S]*canvasStatusLabelDescriptor[\s\S]*canvasStatusToneClass as statusToneClass/u,
+  /canvasNodeStatusLabelDescriptor[\s\S]*canvasStatusLabelDescriptor/u,
   'Main webview should use the shared canvas node status presentation descriptors.'
 );
 assert.doesNotMatch(
@@ -185,6 +191,13 @@ assert.doesNotMatch(
   /function (?:canvasNoteStatusLabelDescriptor|canvasStatusLabelDescriptor|statusToneClass)\(/u,
   'Main webview should not keep local status descriptor or tone mappings that can drift.'
 );
+for (const { name, source } of statusComponentSources) {
+  assert.match(source, /canvasStatusToneClass as statusToneClass[\s\S]*from ['"]\.\.\/common\/canvasNodeStatusPresentation['"]/u,
+    `${name} should import the shared status tone mapping.`);
+  assert.match(source, /statusToneClass\(/u, `${name} should use the shared status tone mapping.`);
+  assert.doesNotMatch(source, /function (?:canvasNoteStatusLabelDescriptor|canvasStatusLabelDescriptor|statusToneClass)\(/u,
+    `${name} should not duplicate the shared status mapping.`);
+}
 assert.match(
   statusToneFunction,
   /case 'launching':\s*case 'starting':\s*return 'tone-starting';/u,

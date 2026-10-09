@@ -17630,6 +17630,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const result = await operation.first;
       rejectedBeforeAcquire = result.kind === 'rejected-before-acquire';
       if (result.kind !== 'started') throw new Error(`Non-native Host start was ${result.kind}.`);
+      this.recordDiagnosticEvent('execution/started', {
+        kind, nodeId, sessionId: execution.identity.executionId,
+        cols, rows, shellPath: spec.file, cwd: spec.cwd, launchArgs: spec.args,
+        ...(agent ? {
+          provider: agent.provider, launchMode: agent.launchMode,
+          resumeStrategy: agent.resumeContext.strategy,
+          resumeSessionId: agent.resumeContext.sessionId ?? null,
+          resumeStoragePath: agent.resumeContext.storagePath ?? null
+        } : {})
+      });
       if (active.business) this.projectNonNativeHostBusiness(active);
       if (active.localReaders && this.activeSurface) {
         void this.postLocalExecutionSnapshot(active, { surface: this.activeSurface });

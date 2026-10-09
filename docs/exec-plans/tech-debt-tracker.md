@@ -18,7 +18,33 @@
 
 后续独立修复已为新代码的明确拒绝增加 `createSessionOutcome`，覆盖 Agent/Terminal 创建、恢复、重试和删除，保留断连/资源已获取/未知结果保护。已有旧 Supervisor 不会随 Host 热更新，也不会补发原请求的结构化结果；它的普通错误、旧固定文案及更新前残留的未知记录继续保守保护。后续旧 Supervisor 退役或明确历史创建恢复工作如需解除保护，必须从原责任方获取身份匹配的资源证明；不得凭错误字符串、超时或 registry 缺项追认。关联：`docs/design-docs/runtime-admission-rejection-settlement.md`、`CanvasPanelManager.withExecutionCandidateStart`、`RuntimeSupervisorServer.createSession`。
 
+## 2026-10-09：四项原失败及模板/reset/hover 后续修复，完整门禁仍有启动阻塞
+
+发布准备 PR #308 已关闭。PR #310 在 `origin/main@f57b11f9` 上定位并修复四项原失败：清单入口显式构建双扩展、主题断言跟随实际组件、styled 路径支持四物理行内软/硬混合折行、owned local 确认启动后记录同身份诊断。双 dist 移开后的正式清单入口、主题/typecheck/build、原 hardwrap 22/22、新混合折行 12/12、Host 336/336 通过；真实 VSIX 已越过相对 shell 的 started、live 快照和真实 PWD 输出断言。原始引入证据保留，详见 `docs/design-docs/release-blockers-investigation.md` 与 `docs/exec-plans/completed/release-blockers-repair.md`。
+
+本轮继续修复后的结果如下，不能把具名修复写成完整 npm / packaged 门禁通过，也不恢复 0.26.1 发布：
+
+| 触发与影响 | 证据及当前边界 | 后续修复时机与入口 |
+| --- | --- | --- |
+| 模板源码断言，已修复 | f02dafd3 将缺失关联 Markdown 按钮/文案检查迁到 fileNoteNodes.tsx，保留原断言，完整模板命令通过，npm test 已越过此处。 | 无剩余具名缺口；源码职责再迁移时同步检查。入口 `scripts/test/test-canvas-templates.mjs`。 |
+| Terminal 初次 hover，已修复 | 捕获选区直接重绘覆盖下划线、当前链接仍 hovered 的调用栈；a8f057b1 在原绘制后重画当前仍启用的装饰。真实 xterm 正例修前失败，修后 4/4；原 Agent/Terminal URL/file 用例和新回归三轮 24/24。 | 适配依赖当前 xterm 内部接口，升级依赖必须执行真实选区回归与原悬停测试；不依赖 timeout/retry。入口 `executionTerminalSelectionLinkRendering.ts` 与 `execution-terminal-selection-links.spec.mjs`。 |
+| 两处 QuickPick 清理，已修复 | f02dafd3 各自清理本例 Agent，保留诊断，helper 19/19；真实 clean-checkout 已通过一次 reset 与 pending→同执行 saved→第二次 reset 两条路径。a8f057b1 的全包运行在更早的 shell 重启失败，未到这两处。 | 原身份、20 秒总预算、至多一次再次 reset 与生产 pending 中止契约保持。入口 `tests/vscode-smoke/reset-canvas.cjs`、两个 QuickPick 用例。 |
+
+前一轮完整 Webview 为 392 passed / 2 failed，失败及基线对照仍在正式设计保留；最终 a8f057b1 全量 Webview 398/398 通过（11.6 分钟）。Windows/macOS、真实 TUI 的更宽范围未在本轮验证，继续保留各原计划边界；本项没有引入版本例外或放宽发布门禁。
+
+新暴露的启动问题按 `docs/workflows/TECH_DEBT.md` 单独登记，不扩写成已确认的 fixture 问题。它们仍阻塞完整门禁；当前定向修复证据成立不等于已有可合并/可发布结论。下一次恢复 npm / packaged 验收前优先定位，不能吞错误或放宽保护：
+
+| 背景与触发 | 影响、当前边界与后续入口 |
+| --- | --- |
+| Runtime checkpoint：umask 0002 下 globalStorage 为 0775，root 准备失败 | 未修改的真实目录检查明确拒绝组可写目录；0077 独立目录对照中 Agent live，但 Terminal 又 `rejected-before-acquire`。权限和资源准入是两层问题，后者原因待查；未放宽生产权限检查。入口 `runtimeRootOwner.ts`、`runtimeRootPreparation.ts`、`runRuntimeCheckpointRefreshSmoke`；原工件 `/tmp/dsc310fs/runtime-checkpoint-refresh/artifacts`，对照 `/tmp/dsc310cpprivate/runtime-checkpoint-refresh/artifacts`。 |
+| 最终包 shell 停止后立即重启，旧 key/容量仍占用 | saved 早于重启，不能归为保存 pending；需捕获原 owner 退役/reader 责任，明确测试时序与产品恢复责任。禁止盲重试和提前释放 key。入口 `verifyTerminalShellPathRefreshesStoppedTerminalNode:3325`、`startNonNativeHostExecution` / `retireNonNativeHostExecution`；工件 `/tmp/dev-session-canvas-clean-checkout-eeYcdR/repo/.debug/vscode-vsix-smoke/smoke-runtime/artifacts`。 |
+| 前一包 resize / persisted reload 后自动启动超时 | f02dafd3 已通过修复的 QuickPick，后来出现 creation admission closed、metadata/resize authority binding changed；需检查状态重载是否替换原执行绑定，责任未确认。入口 `verifyNodeResizePersistence` / `verifyAutoStartOnCreate:4909`、`reloadPersistedStateForTest`；工件 `/tmp/dev-session-canvas-clean-checkout-Fi8Bvo/repo/.debug/vscode-vsix-smoke/smoke-runtime/artifacts`。 |
+
+本轮方案、受控验证及上述独立失败的证据边界见 `docs/design-docs/release-blockers-investigation.md`、`docs/exec-plans/completed/release-validation-followups.md`。
+
 ## 近期已收口
+
+- 2026-10-09：PR #310 review 的满行路径终止边界已修复。默认样式括号/空格说明软折到下一行时，循环内和四行窗口末尾使用同一真实 cell 终止证据，保留完整链接；真正续段、样式变化、缺失内容和超出窗口继续拒绝。新增 26 项及既有链接/悬停/选区回归 68/68，typecheck/build/路径解析通过；最终四行夹具修前无后缀 2/2、括号 0/2。既有完整 npm/VSIX 启动阻塞仍见上表，本轮未重跑这些门禁，也不声明 review 已批准。见 `docs/design-docs/release-blockers-investigation.md`、`docs/exec-plans/completed/pr310-hardwrap-review-boundary.md`。
 
 - 2026-10-09：PR #306 review 的 openTerminalRead 超时遗失迟到资源清理已修正。调用者 15 秒得到未知结果，原请求保留 ID/socket 并向 relay 交付迟到 descriptor，只沿原 client cancelled close；旧 reader 不关闭新绑定，每 key 两个责任上限不因超时失效。直接调用由 client 清理，错误/断连/close 超时不伪造 applied、不重发。旧 head 两项组合反向对照失败；新增 14 项回归后请求测试 37/37、reader 32/32、Host 333/333、完整协议门禁与类型检查通过，无新增技术债。见 `docs/design-docs/runtime-rpc-request-timeout.md`、`docs/exec-plans/completed/runtime-reader-open-timeout-cleanup.md`。
 
@@ -59,13 +85,13 @@
 
 2026-10-08 reset 夹具修复（PR #305）：QuickPick 清理按已有产品契约显式处理一次 pending，保留本用例全程诊断，待原两执行 saved/not-required 后最多再发一次 reset；失败/未知、错误或冲突身份与超时不放行，全程仍 20 秒。完整复验又发现前置 shell 切换用例的同类 reset，已接入同一 helper；对重启节点排除第一次 reset 前已经结算的旧身份，防止旧 saved 冒充当前保存。19 项纯测、脚本语法与 diff 检查通过；最终真实 VSIX 已记录 QuickPick pending → 原 Claude not-required/Codex saved → 第二次 reset 空画布，原 reset 夹具阻塞收口，生产/resize 未改。计划见 `docs/exec-plans/completed/packaged-smoke-reset-fixture.md`。
 
-新的后续待定位项：完整 packaged smoke 的第一次和最终复验均停在 `verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot()` 的 execution/started 诊断等待（最终 `extension-tests.cjs:2768`），exit 1。现场有该相对 shell Terminal 的 startRequested、EOF、localFinalPersistence saved，但缺少用例要求的 started 事件；具体产品/夹具责任仍待核对，不在本次 reset 修复中放宽断言。完整 packaged / clean-checkout 门禁仍未通过。日志与工件：`.debug/reset-final-persistence/vsix-fixture-first.log`、`fixture-first-artifacts/`、`vsix-fixture-verified.log`、`fixture-verified-artifacts/`；第二次前置 reset 首败独立保留于 `vsix-fixture-final.log`、`fixture-second-artifacts/`。
+新的后续待定位项：完整 packaged smoke 的第一次和最终复验均停在 `verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot()` 的 execution/started 诊断等待（最终 `extension-tests.cjs:2768`），exit 1。现场有该相对 shell Terminal 的 startRequested、EOF、localFinalPersistence saved，但缺少用例要求的 started 事件；该历史现场当时未归因；2026-10-09 已确认 owned local 缺 started 诊断，shell/cwd 实际执行正确，见本文四项定位记录；不在 reset 修复中放宽断言。完整 packaged / clean-checkout 门禁仍未通过。日志与工件：`.debug/reset-final-persistence/vsix-fixture-first.log`、`fixture-first-artifacts/`、`vsix-fixture-verified.log`、`fixture-verified-artifacts/`；第二次前置 reset 首败独立保留于 `vsix-fixture-final.log`、`fixture-second-artifacts/`。
 
 2026-10-08 测试过期问题修复（PR #296 的两项后续）：Marketplace fixture E2E 显式使用 `--locale=en` 并在宿主断言 `vscode.env.language`，统一安装、更新、回滚、举报、计数和发布成功文案；`npm run test:marketplace-vscode-e2e` 在 Node 22.23.3 / VS Code 1.118.1 真实宿主完整通过。Webview 先复现旧图 8020 pixels 差异，确认公共 fixture 的 `--timeout 300 --verbose` 触发当前默认参数校验错误，改用合法 `--model gpt-5` 并同步自定义启动用例，再生成 Linux 画布基准。截图复核确认 Agent 显示正常命令、Terminal 显示已有 cwd 行，并增加命令副标题断言，防止更新截图时接受错误状态；不放宽比较阈值。全套还暴露帮助提示中 Canvas → 画布、右键菜单新增 `clear-canvas`、启动模式归一化 fixture 混入已禁止的 Resume 目标参数等过期测试，均已按当前实现及 `docs/design-docs/agent-launch-modes-and-restart.md` 同步；产品代码未改。
 
 验证边界：本轮 `npm run test:webview` 完整执行 382 项，首次为 376 passed / 6 failed（12.2 分钟），没有中止或跳过。上述四项过期断言修复后的 12 项定向回归全部通过（画布基准、明暗 minimap、共享/内联帮助、自定义启动与 IME、右键菜单、启动模式归一化）；`npm run test:agent-launch-presets` 与 `git diff --check` 通过。构建使用现有六目标原生资产集并通过默认构建的源码/hash 校验；宿主测试通过 `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT` / `DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT` 设置独立短路径，避开已知 Unix socket 深路径限制。留存日志及原始截图差异位于本地忽略目录 `.debug/test-baseline-refresh/`。这不是完整 Webview 全绿结论；Windows 基准未在 Linux 上伪造，仍需原生 Windows 环境重新生成并验证。notifier companion 与 packaged smoke 两项未在本轮处理，保留原待查状态。
 
-本轮另登记 Webview 折行路径识别缺口：`tests/playwright/webview-harness.spec.mjs` 中 Agent / Terminal 的 `styled hard-wrapped code paths keep line and column suffixes` 均无法识别 `src/webview/executionTerminalNativeInteractions.ts:1600:12`。从 `origin/main` 的 `357266ad` 导出未经修改的原版 spec，在同一未改产品 bundle 上定向复验仍为 2 failed，确认本次 fixture/截图更新未引入该失败；尚未确认是识别实现还是测试输入问题。保留原断言和失败证据，不削弱行列号验证，应在下一轮终端链接修复及下一版本完整门禁前定位并通过。该缺口与已解决的 Linux 截图差异分别追踪。
+本轮另登记 Webview 折行路径识别缺口：`tests/playwright/webview-harness.spec.mjs` 中 Agent / Terminal 的 `styled hard-wrapped code paths keep line and column suffixes` 均无法识别 `src/webview/executionTerminalNativeInteractions.ts:1600:12`。从 `origin/main` 的 `357266ad` 导出未经修改的原版 spec，在同一未改产品 bundle 上定向复验仍为 2 failed，确认本次 fixture/截图更新未引入该失败；2026-10-09 已以父/子提交与实际 buffer 确认恢复后 fit 暴露混合折行不被识别，见本文四项定位记录。保留原断言和失败证据，不削弱行列号验证，应在下一轮终端链接修复及下一版本完整门禁前定位并通过。该缺口与已解决的 Linux 截图差异分别追踪。
 
 2026-10-08 notifier companion 后续收口：PR #296 的 posted diagnostic 超时已确认是主扩展 owned snapshot-only 输出漏接 attention bridge 的产品缺陷。原输出包含 OSC 9 而 attention=false、companion 无请求，直接调用 companion 成功；去掉测试重复启动后占位异常消失而超时仍复现。本次为 Agent / Terminal 复用原 bridge，并仅对同 metadata 绑定的提醒/确认推进 owned 最终保存引用，保留外部替换与旧执行隔离。新增 7 项回归先红后绿，完整 Host 接线 261/261、attention parser、终端分页回归、typecheck 通过；默认六目标资产双扩展构建及 VS Code 1.126.0 真实 companion smoke 通过，覆盖通知、单次 callback、居中保留提醒、用户确认后继续输出与停止。smoke 去掉重复启动，并从实际输出消息核对 fake agent 文本，不再等待 owned live metadata 不提供的 recentOutput。关闭此项通知联动缺口；不把原发布失败追认为通过，也不代证其他延后门禁、真实 OS 通知或其他平台。依据见 `docs/design-docs/notifier-companion-architecture.md` 第 9 节；本地证据 `/tmp/dsc-notifier-fix-before.log`、`/tmp/dsc-notifier-fix-host-tests.log`、`/tmp/dsc-notifier-fix-smoke-final.log`。
 

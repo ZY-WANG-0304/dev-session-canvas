@@ -26,6 +26,7 @@ import {
 } from '../common/executionTerminalLinks';
 import { canvasOverviewInertProps, CanvasNodeInteractionBoundary, ChromeTitleEditor } from './canvasUiSurface';
 import { stopCanvasEvent } from './canvasDomEvents';
+import { preserveExecutionLinkOnSelectionRedraw } from './executionTerminalSelectionLinkRendering';
 import {
   setupExecutionTerminalNativeInteractions,
   type ExecutionTerminalNativeInteractionsHandle
@@ -408,6 +409,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
       terminal.loadAddon(fitAddon);
       terminal.open(container);
+      const disposeSelectionLinkRendering = preserveExecutionLinkOnSelectionRedraw(terminal);
       deps.executionTerminalRegistry.set(id, {
         terminal,
         fitAddon,
@@ -636,6 +638,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
 
       return () => {
         terminalDisposed = true;
+        disposeSelectionLinkRendering();
         dataDisposable.dispose();
         selectionDisposable.dispose();
         resizeDisposable.dispose();
@@ -1135,6 +1138,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
       terminal.loadAddon(fitAddon);
       terminal.open(container);
+      const disposeSelectionLinkRendering = preserveExecutionLinkOnSelectionRedraw(terminal);
       deps.executionTerminalRegistry.set(id, {
         terminal,
         fitAddon,
@@ -1359,6 +1363,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
 
       return () => {
         terminalDisposed = true;
+        disposeSelectionLinkRendering();
         dataDisposable.dispose();
         selectionDisposable.dispose();
         resizeDisposable.dispose();
