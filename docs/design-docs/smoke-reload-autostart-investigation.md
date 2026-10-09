@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md]
+related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md]
 updated_at: 2026-10-10
 ---
 
@@ -107,4 +107,18 @@ Agent 执行流的 burst、分段 hello、sleep、slowspin，以及 Terminal she
 
 默认源码及 VSIX smoke 增加 `local-execution-flow`，独立验证这组 Agent/Terminal 操作；默认入口仍执行 trusted。2026-10-10 最终结果：正文正反例 14/14、Host 356/356、completed-snapshot resize 16/16、runner 检查和 VSIX 内 typecheck/build/package 通过。默认 VSIX 中 owned reconciliation 与 local execution flow 两个阶段通过，完整命令仍失败。
 
-最新完整失败在 `verifyRealWebviewProbe` 的 `toastMessage === null`：页面残留 `Execution terminal interaction admission is closed or unsupported`，调用栈为 `queueNonNativeHostResize → OwnedExecution.resize → ExecutionSessionAdapter.interact`。两次完整运行分别捕获相同错误。本轮只能确认原生 resize 的准入错误传到了页面，不能仅从最终已停止并保存的节点快照推断它一定发生在 stop 而非启动或源通道关闭阶段；精确触发时序尚待定位。保留该页面错误断言和全部首次失败，不能清 toast、忽略 resize 错误或用具名阶段成功替代完整发布门禁。过程与证据见 `docs/exec-plans/completed/smoke-current-execution-output.md`、`docs/references/smoke-reload-autostart/output-assertion-evidence.json`。
+该轮完整失败在 `verifyRealWebviewProbe` 的 `toastMessage === null`：页面残留 `Execution terminal interaction admission is closed or unsupported`，调用栈为 `queueNonNativeHostResize → OwnedExecution.resize → ExecutionSessionAdapter.interact`。两次完整运行分别捕获相同错误，当时未保留拒绝瞬间状态，不能从最终已停止并保存的节点快照推断它发生在 stop。后续专项诊断见下一节。保留该页面错误断言和全部首次失败，不能清 toast、忽略 resize 错误或用具名阶段成功替代完整发布门禁。过程与证据见 `docs/exec-plans/completed/smoke-current-execution-output.md`、`docs/references/smoke-reload-autostart/output-assertion-evidence.json`。
+
+## 原生 resize 准入错误的后续定位
+
+2026-10-10 在 `15328fe9` 产品代码上只增加状态和调用栈记录，两次真实 VSIX trusted 均捕获启动期间的同类错误，共四次。请求来自 VS Code 的真实 `$onMessage` / Webview 回调，内容为 Agent 的 77×26 尺寸同步；不是测试合成 resize。拒绝瞬间 adapter 为 `starting`，`interactionCapable=false`；原 owner `stopRequested=false`、`closing=false`，没有隔离原因，也没有 process/source/seal 或交互关闭原因。同执行在约 1.3–2.0 秒后又收到 running 阶段的 resize 请求。未混用旧版本资产或执行旧版本升级，现有证据指向启动协调缺口。
+
+因果链如下：`startNonNativeHostExecution` 在等待 provider 就绪和 started 之前已经建立 `record.business`；页面 `executionSessionNodes.tsx` 的终端 fit 在已应用快照后正常报告尺寸，未以 adapter 的 running 为前提；Host 的 `resizeExecutionSession` 看到 business 就将请求放入 `terminalChain`，`assertNonNativeHostMutation` 没有阻止 starting 阶段派发。底层 `ExecutionSessionAdapter.interact` 要求已声明交互能力且状态为 running，因此正确拒绝；Host 把拒绝作为 `host/error` 发到页面。测试随后读取到 toast，暴露了产品缺陷。
+
+测试调用 `startFixtureExecutions` 时使用 80×24，而实际页面为 77×26，会增加同步尺寸落入启动窗口的机会，但尺寸变化本身是正常页面行为。用户在启动中调整节点、页面自动 fit 或重启已有终端都可能需要同样协调；具体场景频率尚未统计。将 smoke 的启动尺寸硬改为页面尺寸或增加固定等待，不能修复 Host 接收到合法视口意图时的处理缺口。
+
+移除全部临时产品诊断后，用原 Host/owner/adapter 和可控 provider 做四项特征验证：Agent/Terminal 分别拦住 ready，以及拦住 ready 后的 started 确认。四项都复现相同错误、无原生 resize 消息且原尺寸不变；释放屏障后同执行进入 running，先前请求没有自动补发，再发相同请求则确认成功并更新尺寸。**4/4 通过表示诊断预期成立，不表示缺陷已修复。** 可复跑 patch 与证据见 `docs/references/smoke-reload-autostart/resize-characterization.patch`、`resize-diagnostic.patch`、`resize-admission-evidence.json`。
+
+后续修复应在 Host 协调准备中、starting、running 与关闭阶段：启动期间保留最新尺寸意图，确认同一执行 started 后再应用，失败/取消时明确结算。不得在正文消费链上等待一个依赖正文消费才能完成的启动事件；不能放宽底层未就绪准入、假装 native resize 已完成，或取消停止/最终保存/隔离保护。本次仅完成定位与边界记录，未实施该修复。
+
+旧两次失败缺少瞬时状态，不能追认每一次历史 toast 都发生于 starting。本次两次诊断运行均通过原 `verifyRealWebviewProbe`，随后在执行重启及通知场景捕获同类 starting 错误；还捕获一次 `stopRequested=true` 的 Host 层 `Owned terminal mutation admission is closed.`，这是另一种拒绝，需要单独明确过期尺寸请求的结算语义。两次诊断完整流程最终均在 `verifyAgentAbnormalInterruptionNotifications` 等待 `execution/attentionNotificationPosted` 超时，节点已 error、退出码 27、attentionPending=false；通知根因尚未定位。普通 attention bridge 场景在这两次运行中完成，但完整门禁仍未通过。

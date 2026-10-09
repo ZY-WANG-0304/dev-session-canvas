@@ -1,0 +1,376 @@
+{
+  "date": "2026-10-10",
+  "baseCommit": "15328fe930afec3918613d2c262e7037cfa30ce1",
+  "purpose": "定位 resize 准入错误，未实施产品修复；特征用例的通过表示成功复现缺陷，不是门禁修复通过。",
+  "environment": {
+    "platform": "Linux x64",
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "provider": "当前原生 PTY provider",
+    "agent": "仓库 fake Agent",
+    "terminal": "真实 bash",
+    "runtimePersistence": false
+  },
+  "historicalLimit": "此前两次 verifyRealWebviewProbe 失败没有保留拒绝瞬间状态，不能逐次追认它们都发生于 starting。本次在同一代码和真实页面路径复现相同异常及调用栈。",
+  "runs": [
+    {
+      "name": "vsix-trusted-diagnostic-1",
+      "source": "重新打包含只读诊断的 VSIX",
+      "originalProbe": "通过；未清 toast 或放宽断言",
+      "finalOutcome": "失败：verifyAgentAbnormalInterruptionNotifications 等待 execution/attentionNotificationPosted 超时",
+      "nativeStartupRejections": [
+        {
+          "atEpochMs": 1791568756753,
+          "phase": "await startFixtureExecutions(agentNode.id, terminalNode.id);",
+          "request": {
+            "nodeId": "agent-1-43b0e821-cb82-4100-86ba-07e9d3f43a69",
+            "kind": "agent",
+            "cols": 77,
+            "rows": 26
+          },
+          "sourceSurface": "editor",
+          "sourceStack": [
+            "\tat t.handleActiveWebviewMessage (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:221:82160)",
+            "\tat t.handleWebviewMessage (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:221:71740)",
+            "\tat Kp.value (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:219:27076)",
+            "\tat T._deliver (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:28:3617)",
+            "\tat T.fire (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:28:3935)",
+            "\tat xP.$onMessage (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:192:89486)"
+          ],
+          "owner": {
+            "identity": {
+              "executionId": "6d815fe8-a967-4b71-b0fb-7ed85299bd3f",
+              "generation": "74e8e9eb-875d-4ac7-8eb0-bce05b805d6d"
+            },
+            "key": "agent:agent-1-43b0e821-cb82-4100-86ba-07e9d3f43a69",
+            "readerOutcome": "pending",
+            "settled": false,
+            "retired": false,
+            "admissionPending": true,
+            "stopRequested": false
+          },
+          "adapter": {
+            "identity": {
+              "executionId": "6d815fe8-a967-4b71-b0fb-7ed85299bd3f",
+              "generation": "74e8e9eb-875d-4ac7-8eb0-bce05b805d6d"
+            },
+            "state": "starting",
+            "acceptedThrough": 0,
+            "consumedThrough": 0,
+            "pendingBytes": 0,
+            "pendingFrames": 0,
+            "rawBytes": 0,
+            "rejectedDataBytes": 0,
+            "interactions": {
+              "pending": 0,
+              "inputBytes": 0
+            },
+            "resourceLedgerIncomplete": false,
+            "transport": {
+              "disconnected": false,
+              "exited": false,
+              "dataEnded": false,
+              "dataClosed": false
+            },
+            "resources": {
+              "provider-control": {}
+            }
+          },
+          "interactionCapable": false,
+          "authority": {
+            "active": 1,
+            "starting": 1,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "sameExecutionLaterResize": {
+            "state": "running",
+            "afterMs": 1995,
+            "cols": 77,
+            "rows": 26
+          }
+        },
+        {
+          "atEpochMs": 1791568763420,
+          "phase": "await verifyExecutionAttentionNotificationBridge(agentNode.id, noteNode.id);",
+          "request": {
+            "nodeId": "agent-1-43b0e821-cb82-4100-86ba-07e9d3f43a69",
+            "kind": "agent",
+            "cols": 77,
+            "rows": 26
+          },
+          "sourceSurface": "editor",
+          "sourceStack": [
+            "\tat t.handleActiveWebviewMessage (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:221:82160)",
+            "\tat t.handleWebviewMessage (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:221:71740)",
+            "\tat Kp.value (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:219:27076)",
+            "\tat T._deliver (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:28:3617)",
+            "\tat T.fire (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:28:3935)",
+            "\tat xP.$onMessage (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:192:89486)"
+          ],
+          "owner": {
+            "identity": {
+              "executionId": "41cdf960-53ec-4aec-8c6e-47a5d08619bb",
+              "generation": "ad0c7afa-9b72-4dc8-8d51-525b259630d9"
+            },
+            "key": "agent:agent-1-43b0e821-cb82-4100-86ba-07e9d3f43a69",
+            "readerOutcome": "pending",
+            "settled": false,
+            "retired": false,
+            "admissionPending": true,
+            "stopRequested": false
+          },
+          "adapter": {
+            "identity": {
+              "executionId": "41cdf960-53ec-4aec-8c6e-47a5d08619bb",
+              "generation": "ad0c7afa-9b72-4dc8-8d51-525b259630d9"
+            },
+            "state": "starting",
+            "acceptedThrough": 0,
+            "consumedThrough": 0,
+            "pendingBytes": 0,
+            "pendingFrames": 0,
+            "rawBytes": 0,
+            "rejectedDataBytes": 0,
+            "interactions": {
+              "pending": 0,
+              "inputBytes": 0
+            },
+            "resourceLedgerIncomplete": false,
+            "transport": {
+              "disconnected": false,
+              "exited": false,
+              "dataEnded": false,
+              "dataClosed": false
+            },
+            "resources": {
+              "provider-control": {}
+            }
+          },
+          "interactionCapable": false,
+          "authority": {
+            "active": 1,
+            "starting": 1,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "sameExecutionLaterResize": {
+            "state": "running",
+            "afterMs": 1384,
+            "cols": 77,
+            "rows": 26
+          }
+        }
+      ],
+      "otherResizeRejections": [
+        {
+          "atEpochMs": 1791568745456,
+          "phase": "await verifyExplorerResourceExecutionNodeCreation();",
+          "kind": "agent",
+          "stopRequested": true,
+          "adapterState": "closing",
+          "error": "Owned terminal mutation admission is closed."
+        }
+      ],
+      "localArtifacts": ".debug/resize-rca/run1-artifacts"
+    },
+    {
+      "name": "vsix-trusted-diagnostic-2",
+      "source": "复用同一已打包 payload，重新建立独立 profile",
+      "originalProbe": "通过；未清 toast 或放宽断言",
+      "finalOutcome": "失败：verifyAgentAbnormalInterruptionNotifications 等待 execution/attentionNotificationPosted 超时",
+      "nativeStartupRejections": [
+        {
+          "atEpochMs": 1791568951331,
+          "phase": "await startFixtureExecutions(agentNode.id, terminalNode.id);",
+          "request": {
+            "nodeId": "agent-1-34232c07-0aca-49ad-8802-0a74cf28dda9",
+            "kind": "agent",
+            "cols": 77,
+            "rows": 26
+          },
+          "sourceSurface": "editor",
+          "sourceStack": [
+            "\tat t.handleActiveWebviewMessage (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:221:82160)",
+            "\tat t.handleWebviewMessage (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:221:71740)",
+            "\tat Kp.value (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:219:27076)",
+            "\tat T._deliver (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:28:3617)",
+            "\tat T.fire (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:28:3935)",
+            "\tat xP.$onMessage (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:192:89486)"
+          ],
+          "owner": {
+            "identity": {
+              "executionId": "db9944ac-b832-44ac-98c4-3535c8f13ef0",
+              "generation": "a79a3310-0d34-460f-bde7-fa93602a8e75"
+            },
+            "key": "agent:agent-1-34232c07-0aca-49ad-8802-0a74cf28dda9",
+            "readerOutcome": "pending",
+            "settled": false,
+            "retired": false,
+            "admissionPending": true,
+            "stopRequested": false
+          },
+          "adapter": {
+            "identity": {
+              "executionId": "db9944ac-b832-44ac-98c4-3535c8f13ef0",
+              "generation": "a79a3310-0d34-460f-bde7-fa93602a8e75"
+            },
+            "state": "starting",
+            "acceptedThrough": 0,
+            "consumedThrough": 0,
+            "pendingBytes": 0,
+            "pendingFrames": 0,
+            "rawBytes": 0,
+            "rejectedDataBytes": 0,
+            "interactions": {
+              "pending": 0,
+              "inputBytes": 0
+            },
+            "resourceLedgerIncomplete": false,
+            "transport": {
+              "disconnected": false,
+              "exited": false,
+              "dataEnded": false,
+              "dataClosed": false
+            },
+            "resources": {
+              "provider-control": {}
+            }
+          },
+          "interactionCapable": false,
+          "authority": {
+            "active": 1,
+            "starting": 1,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "sameExecutionLaterResize": {
+            "state": "running",
+            "afterMs": 2027,
+            "cols": 77,
+            "rows": 26
+          }
+        },
+        {
+          "atEpochMs": 1791568957968,
+          "phase": "await verifyExecutionAttentionNotificationBridge(agentNode.id, noteNode.id);",
+          "request": {
+            "nodeId": "agent-1-34232c07-0aca-49ad-8802-0a74cf28dda9",
+            "kind": "agent",
+            "cols": 77,
+            "rows": 26
+          },
+          "sourceSurface": "editor",
+          "sourceStack": [
+            "\tat t.handleActiveWebviewMessage (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:221:82160)",
+            "\tat t.handleWebviewMessage (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:221:71740)",
+            "\tat Kp.value (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js:219:27076)",
+            "\tat T._deliver (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:28:3617)",
+            "\tat T.fire (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:28:3935)",
+            "\tat xP.$onMessage (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:192:89486)"
+          ],
+          "owner": {
+            "identity": {
+              "executionId": "68a0e0e3-90cf-48fb-a5eb-460da2aa27e7",
+              "generation": "45822c61-8158-41f8-91cb-afd889f7789f"
+            },
+            "key": "agent:agent-1-34232c07-0aca-49ad-8802-0a74cf28dda9",
+            "readerOutcome": "pending",
+            "settled": false,
+            "retired": false,
+            "admissionPending": true,
+            "stopRequested": false
+          },
+          "adapter": {
+            "identity": {
+              "executionId": "68a0e0e3-90cf-48fb-a5eb-460da2aa27e7",
+              "generation": "45822c61-8158-41f8-91cb-afd889f7789f"
+            },
+            "state": "starting",
+            "acceptedThrough": 0,
+            "consumedThrough": 0,
+            "pendingBytes": 0,
+            "pendingFrames": 0,
+            "rawBytes": 0,
+            "rejectedDataBytes": 0,
+            "interactions": {
+              "pending": 0,
+              "inputBytes": 0
+            },
+            "resourceLedgerIncomplete": false,
+            "transport": {
+              "disconnected": false,
+              "exited": false,
+              "dataEnded": false,
+              "dataClosed": false
+            },
+            "resources": {
+              "provider-control": {}
+            }
+          },
+          "interactionCapable": false,
+          "authority": {
+            "active": 1,
+            "starting": 1,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "sameExecutionLaterResize": {
+            "state": "running",
+            "afterMs": 1316,
+            "cols": 77,
+            "rows": 26
+          }
+        }
+      ],
+      "otherResizeRejections": [
+        {
+          "atEpochMs": 1791568939730,
+          "phase": "await verifyExplorerResourceExecutionNodeCreation();",
+          "kind": "agent",
+          "stopRequested": true,
+          "adapterState": "closing",
+          "error": "Owned terminal mutation admission is closed."
+        }
+      ],
+      "localArtifacts": ".debug/resize-rca/run2-artifacts"
+    }
+  ],
+  "controlled": {
+    "productCode": "移除全部临时诊断后的 15328fe9 产品代码",
+    "result": "4/4 passed",
+    "cases": [
+      "Agent：ready 前 拒绝 resize，同身份 running 后相同尺寸成功",
+      "Agent：ready 后 started 确认前 拒绝 resize，同身份 running 后相同尺寸成功",
+      "Terminal：ready 前 拒绝 resize，同身份 running 后相同尺寸成功",
+      "Terminal：ready 后 started 确认前 拒绝 resize，同身份 running 后相同尺寸成功"
+    ],
+    "assertions": [
+      "state=starting；无 stopRequested/source/process/seal/closedReason/authority closing/blockedReason",
+      "Host 发布原 adapter 异常，provider 未收到 resize，原 80×24 尺寸不变",
+      "同执行 started 后原请求没有自动补发",
+      "再次发送同样的 101×31 请求，确认 resized 后原执行尺寸更新且无新增错误",
+      "原执行资源与消费者完成结算"
+    ],
+    "command": "DEV_SESSION_CANVAS_HOST_TEST_FILTER='resize RCA' node scripts/test/test-host-execution-owner-wiring.mjs",
+    "localLog": ".debug/resize-rca/controlled-clean.log"
+  },
+  "patches": {
+    "resize-diagnostic.patch": {
+      "sha256": "c146c021e904b34766a8fa08a4d237967d8fa164a0ec596343d702a6d758bf35"
+    },
+    "resize-characterization.patch": {
+      "sha256": "a32432f01e0aeb82e2c55aa6495f215513a3cecc81423eec4c9cb2b5d60f133a"
+    }
+  },
+  "conclusion": "插件 Host 在业务记录建立后即派发 resize，未协调 starting 与运行就绪。底层 adapter 正确拒绝未就绪交互；测试的后续空 toast 检查只是较晚暴露该缺陷。没有证据把它归为旧版本不兼容或 source 关闭。",
+  "followups": [
+    "启动期间保存最新尺寸意图，started 后按原身份应用；保持停止/最终保存/隔离保护并处理失败或取消，不延迟正文消费造成循环等待",
+    "另有 stopRequested=true 的 Host 层 resize 拒绝，需明确过期视口请求的结算语义",
+    "两次诊断完整 trusted 均在异常退出通知事件等待超时；节点 error/lastExitCode=27、attentionPending=false，通知根因尚未定位"
+  ]
+}

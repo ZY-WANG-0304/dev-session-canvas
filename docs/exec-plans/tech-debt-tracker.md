@@ -20,7 +20,11 @@ PR #314 已实施具名修复：同 ID 重读保留原 metadata/status；root + 
 
 2026-10-10 继续修正测试：burst/hello/sleep/slowspin 和 Terminal shell 输出已按原 executionId/generation 的实际快照/连续输出验证，正文正反例 14/14；停止摘要按实际退出结果验证，停止后 resize 保留最终快照原尺寸与正文。额外修复了正常原生 Agent/Terminal 重复启动没有进入 already-running 分支的问题，Host 356/356（新增 2 项）、快照尺寸 16/16 通过。默认 VSIX 的 owned reconciliation 与新增 local-execution-flow 均通过，旧 burst 阻塞已收口。通知用例两处同类正文条件已迁移，但独立 UI 路径尚未原生复验；其他未触达的 Runtime/恢复/压力场景不能由本次结果代证。
 
-剩余发布门禁：完整 trusted 两次在 `verifyRealWebviewProbe` 的空 toast 断言捕获原生 resize 的 `Execution terminal interaction admission is closed or unsupported`；栈指向 `queueNonNativeHostResize → OwnedExecution.resize → ExecutionSessionAdapter.interact`。最终节点已停止、原保存成功，但这不能确定 resize 错误发生在启动、停止还是源通道关闭阶段。下一次需按原执行身份记录 resize 请求/出队、owner/adapter 状态和关闭事件，确认时序后补受控回归；不能清除 toast 或吞错以放行测试。证据：`docs/references/smoke-reload-autostart/output-assertion-evidence.json`、`.debug/pr314-output/run2-artifacts`、`run5-artifacts`。完整门禁仍阻塞 0.26.1 发布。关联 `docs/exec-plans/completed/smoke-current-execution-output.md`。
+剩余发布门禁（2026-10-10 专项定位）：原生 resize 的 `Execution terminal interaction admission is closed or unsupported` 已在两次真实 VSIX 运行中捕获四次 starting 阶段实例。请求来自真实页面自动 fit；Host 在 business 建立后就派发 resize，尚未等 provider ready/started，底层因此拒绝。拒绝时无停止请求、process/source/seal 或 authority 隔离。移除临时产品探针后的 Agent/Terminal × ready 前/started 前四项特征对照均复现，running 后同请求成功；这是插件启动协调缺口，不能靠调整 smoke 等待或清 toast 解决。后续需保留最新尺寸意图，在原执行 started 后应用并处理失败/取消，保持正文消费、关闭与最终保存约束。本次未实施修复，仍阻塞 0.26.1 发布。
+
+旧两次页面 probe 失败没有瞬时状态，不能逐次追认都是启动窗口；新诊断在更晚的重启场景捕获同类错误，并额外发现一次 stopRequested=true 的 Host 层 `Owned terminal mutation admission is closed.`。后者的过期视口请求语义仍待修复时核对，不能混入 starting 准入错误。过程与可复跑证据：`docs/exec-plans/completed/resize-admission-investigation.md`、`docs/references/smoke-reload-autostart/resize-admission-evidence.json` 及相邻两个 resize patch；历史失败工件继续保留。
+
+新触达的独立门禁：两次只读诊断运行通过普通 `verifyExecutionAttentionNotificationBridge`，但 `verifyAgentAbnormalInterruptionNotifications` 在退出 27 后等待 `execution/attentionNotificationPosted` 超时；节点为 error、lastExitCode=27、attentionPending=false。该通知问题尚未定位为测试还是产品，未放宽断言；应在 resize 修复后继续定位，完整 trusted 通过前不能视为发布验证完成。
 
 workspace trust / editor deserialize 已审计共用入口，但独立 UI 路径、真实窗口 Reload、跨版本及 Remote SSH 不在本轮原生验收范围，继续依赖各自验证矩阵。
 
