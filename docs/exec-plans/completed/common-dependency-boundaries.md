@@ -13,12 +13,14 @@
 - [x] (2026-10-09) 将主扩展的 `webviewResourceUri` 与 `testHarness` 移到 Host `panel/` 目录，并为独立 notifier extension 保留同语义的本地 Host helper。
 - [x] (2026-10-09) 增加 TypeScript AST 共享层依赖守卫，并接入普通测试入口。
 - [x] (2026-10-09) 运行类型检查、构建和受影响的协议/Host/执行桥测试，更新设计与技术债记录。
+- [x] (2026-10-09) 按 PR #309 评论 `4225688072` 修复静态模块名漏检：识别带第二参数的动态 import 和无插值模板字符串，补充拒绝与允许用例；新增回归先失败、修复后通过。
 
 ## 意外与发现
 
 - 目前唯一的 `common -> panel` 是 `runtimeSupervisorProtocol.ts` 对启动类型的 type-only 导入；它没有运行时副作用，但仍违反共享契约层的依赖方向。
 - `webviewResourceUri.ts` 和主扩展的 `testHarness.ts` 当前只由 Extension Host/sidebar 使用，未进入 Webview 或 Supervisor bundle；notifier 是独立 Host extension，因此在自身 `src/testHarness.ts` 保留同语义实现，避免跨扩展反向依赖。
 - `runtimeSupervisorMain.ts` 对 `panel/executionSessionBridge` 的 node-pty 依赖属于现有 Supervisor 适配链，不是本轮 `src/common` 边界问题；本计划不搬迁整个执行后端。
+- PR #309 review 确认初版守卫漏掉 `import('../panel/testHarness', {})`、无插值模板形式的 import 和 require。它们都是静态模块名，不属于动态变量的非目标边界；当前生产源码未使用这些形式。本轮直接修复，不遗留为通用工具增强待办。
 
 ## 决策记录
 
@@ -34,12 +36,19 @@
 - 决策：静态守卫只检查 `src/common` 内的静态 import/export、`require()`、动态 `import()` 和 `import()` 类型字面量；禁止 VS Code、React、node-pty 以及 common 之外的仓库相对模块。
   理由：覆盖 type-only 和 re-export 等容易漏检的语法，同时避免把动态变量或完整循环依赖分析引入本次小范围任务。
   日期/作者：2026-10-09 / Codex。
+- 决策：使用 TypeScript `isStringLiteralLike` 识别普通字符串和无插值模板；require/import 调用有参数时检查首参，动态 import 的第二参数不改变依赖判定。
+  理由：补齐 review 中已经确定的静态语法漏检；变量、带插值模板和表达式求值仍不在守卫范围。
+  日期/作者：2026-10-09 / Codex。
 
 ## 结果与复盘
 
 已完成最小收口：`ExecutionSessionLaunchSpec` 现在由 `common` 定义，主扩展的 VS Code 绑定 helper 位于 `panel/`，notifier 保持独立 Host helper；所有生产调用者已改为直接导入新位置，没有兼容 re-export。AST 守卫覆盖普通 import、type-only import、re-export、`require()`、`import()`、`import()` 类型和 `import = require()`，当前 38 个 common 源文件无违规。
 
 验证结果：`npm run test:common-dependencies`、主扩展和 notifier typecheck、`npm run build`、`npm run test:runtime-supervisor-protocol`、`npm run test:execution-session-bridge`、`npm run test:notifier-source`、`npm run test:protocol-webview-messages`、`npm run test:ui-copy-localization` 以及 `git diff --check` 均通过。未新增真实 Agent、跨平台或 Runtime 诊断矩阵，因为本次只改变模块位置和静态依赖边界；F-02 技术债待本分支合并后关闭。
+
+Review 修复：分支已 rebase 到 `origin/main@f6b65580`。保留原 7 类语法 fixture，另增 4 个必须拒绝的静态调用和 8 个合法或非静态调用对照。仅加回归时 `npm run test:common-dependencies` 返回 exit 1，断言带第二参数的动态 import 应被拒绝却得到 0 个违规；修正两处识别后原命令通过，38 个真实 common 文件无违规。本轮不修改业务模块，不重跑未受影响的 Runtime/Agent/跨平台矩阵。
+
+Rebase 后重新执行 `npm run typecheck`、`npm run typecheck:notifier`、`npm run build`、`npm run build:notifier` 和 `git diff --check` 均通过。独立复核另在临时 common 目录运行真实守卫：review 三种违规形式分别返回 exit 1，合法同目录模板 import（带第二参数）及 Node builtin 模板 require 返回 exit 0；未发现新 blocker。未运行全量 `npm test`。
 
 ## 验证方式
 

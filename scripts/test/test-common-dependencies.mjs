@@ -23,7 +23,7 @@ async function collectSourceFiles(directory) {
 function getStaticModuleSpecifiers(sourceFile) {
   const imports = [];
   const add = (specifier, node, syntax) => {
-    if (ts.isStringLiteral(specifier)) {
+    if (specifier && ts.isStringLiteralLike(specifier)) {
       imports.push({ value: specifier.text, node, syntax });
     }
   };
@@ -38,7 +38,7 @@ function getStaticModuleSpecifiers(sourceFile) {
       add(argument, node, 'import-type');
     } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
       add(node.moduleReference.expression, node, 'import-equals');
-    } else if (ts.isCallExpression(node) && node.arguments.length === 1) {
+    } else if (ts.isCallExpression(node) && node.arguments.length >= 1) {
       const expression = node.expression;
       const isRequire = ts.isIdentifier(expression) && expression.text === 'require';
       const isDynamicImport = expression.kind === ts.SyntaxKind.ImportKeyword;
@@ -87,6 +87,28 @@ const fixtureSource = [
 ].join('\n');
 const fixtureViolations = inspectFile(fixturePath, fixtureSource);
 assert.equal(fixtureViolations.length, 7, `Guard fixture coverage changed: ${fixtureViolations.join('; ')}`);
+
+for (const source of [
+  "void import('../panel/testHarness', {});",
+  'void import(`../panel/testHarness`);',
+  'require(`vscode`);',
+  'void import(`../panel/testHarness`, {});'
+]) {
+  assert.equal(inspectFile(fixturePath, source).length, 1, `Static dependency must be rejected: ${source}`);
+}
+
+for (const source of [
+  "void import('./protocol', {});",
+  'void import(`./protocol`);',
+  'require(`@xterm/headless/package.json`);',
+  'void import(`./protocol`, {});',
+  'void import(moduleName, {});',
+  'void import(`../panel/${moduleName}`);',
+  'require(moduleName);',
+  'require(`${packageName}`);'
+]) {
+  assert.deepEqual(inspectFile(fixturePath, source), [], `Allowed or non-static dependency: ${source}`);
+}
 
 const sourceFiles = await collectSourceFiles(commonRoot);
 const violations = [];

@@ -17,6 +17,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
   - docs/product-specs/canvas-multi-root-workspace-support.md
 related_plans:
+  - docs/exec-plans/completed/common-dependency-boundaries.md
   - docs/exec-plans/completed/runtime-root-ownership.md
   - docs/exec-plans/completed/runtime-live-state-recovery.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
@@ -24,7 +25,7 @@ related_plans:
   - docs/exec-plans/completed/webview-host-supervisor-architecture-review.md
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/completed/runtime-completed-no-history.md
-updated_at: 2026-10-08
+updated_at: 2026-10-09
 ---
 
 # Webview、Host 与 Runtime Supervisor 架构审核
@@ -100,6 +101,8 @@ F-04 的同一最终 stream 放入最小内联画板后，调用实际 Host writ
 建议：把 `ExecutionSessionLaunchSpec` 的纯可序列化部分移动到 `common`，由 `executionSessionBridge.ts` 只保留 `ExecutionSessionProcess` 和 node-pty 适配；将 `webviewResourceUri.ts`、`testHarness.ts` 移到明确的 Host/sidebar 基础设施目录，或拆成不依赖 `vscode` 的纯 helper 与 Host adapter。补一条静态依赖守卫，扫描 `src/common` 禁止 `vscode`、`react`、`node-pty` 和 `../panel` 导入。
 
 2026-10-09 实施决策：本轮采用最小收口方案。新增 `src/common/executionSessionLaunchSpec.ts` 承载 `ExecutionSessionLaunchSpec`，`runtimeSupervisorProtocol.ts`、`CanvasPanelManager.ts` 和 `executionSessionBridge.ts` 直接从该模块导入；主扩展的 `webviewResourceUri.ts` 与 `testHarness.ts` 移到 `src/panel/`，独立 notifier extension 在自身 `src/testHarness.ts` 保留同语义 Host helper。以上调整保持原有 VS Code URI 版本查询、文件失败回退、测试模式环境变量和 `ExtensionMode.Test` 语义不变。不搬迁 `executionSessionBridge` 的 node-pty 运行时适配，也不把 Supervisor 对该适配器的既有依赖扩大为新的 F-02 范围。`scripts/test/test-common-dependencies.mjs` 通过 TypeScript AST 检查 `src/common` 的静态 import/export、`require`、动态 import 与 import type，禁止 VS Code/React/node-pty 及 common 之外的仓库相对依赖，并接入普通 `npm test`。实现与验证记录见 `docs/exec-plans/completed/common-dependency-boundaries.md`，本分支合并后可关闭 F-02 技术债。
+
+2026-10-09 PR #309 review 修正：守卫的静态模块名同时包含普通字符串和无插值模板字符串；require/import 调用检查首参，动态 import 带第二参数仍需验证依赖。新增拒绝和允许对照用例，保留变量、带插值模板及表达式求值不在覆盖范围的边界；不新增运行时诊断或通用解析框架。
 
 ### F-03 中：画板归属与运行时归属不一致（root 归属有限交付已完成）
 
