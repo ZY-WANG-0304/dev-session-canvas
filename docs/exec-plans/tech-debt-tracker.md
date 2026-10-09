@@ -12,6 +12,14 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-09：活动本地执行在画布重读和 workspace root 重组时失去绑定
+
+PR #313 自启动超时已定位：`setPersistedStateForTest` / `reloadPersistedStateForTest` 重建 metadata，`reconcileRuntimeNodes` 只认识旧 session map，遗漏当前 `nonNativeHostExecutions`。原生复现中旧执行仍 running，但节点被恢复成 resume-ready/interrupted；同 ID 恢复因原 key 占用拒绝。真实 VS Code 已保存 workspace 从一个 root 添加到两个 root 时，同 Host 内节点 ID 加 root 前缀，旧执行未迁移或退休，另启动了一条同 resume session 的 Agent。属于正式产品生命周期缺陷，不能仅调整 smoke 顺序后放行发布。
+
+本轮只定位，不改变产品和正式 smoke。下一次修复须明确活动执行与节点 ID/metadata 的迁移或先结算后替换规则，保留尾部保存、失败责任及同 key 保护，覆盖 Agent/Terminal、同 ID 重读和 root 重映射；同时隔离侧栏/布局 seed 与创建自启动测试。workspace trust 和 editor deserialize 调用点需要审计，尚未复现；跨版本与真实窗口 Reload 矩阵不由当前实验代证。应在继续 0.26.1 发布前修复并重跑完整门禁。关联：`docs/design-docs/smoke-reload-autostart-investigation.md`、`docs/exec-plans/completed/smoke-reload-autostart-investigation.md`、`CanvasPanelManager.loadReconciledState` / `reconcileSeededStateForTest` / `onDidChangeWorkspaceFolders`。
+
+另有模拟 reload 的完成条件缺口：原执行 retired 后 `closeNonNativeHostExecutions` 立即检查最终保存，原生实验首次返回 pending，保存随后成功；显式等待原保存完成并再次模拟 reload 后，两节点均能新启动。修复模拟生命周期测试时应明确等待真实保存结果，保留首个失败与最终身份；不要将它归入仍有 running 执行时的原超时，也不要据此声称真正的永久 deactivation 未等待保存。
+
 ## 2026-10-08：旧 Supervisor 的创建拒绝仍缺资源结果
 
 0.26.0 现场旧会话 journal 写入 ENOSPC 后 owner 隔离，新建/恢复在获取资源前收到普通准入错误。Host 已设置 `submitted=true`，但只对精确的 `rejected-before-acquire` 文案释放预留，因此新节点残留 Starting/Resuming，删除被原创建待确认保护拒绝。实际两个新 session 均未创建；旧失败会话仍有未消费尾部，二者责任不能混同。
