@@ -6,6 +6,10 @@ English (default) | [简体中文](README.marketplace.zh-CN.md)
 
 It is not a standalone replacement for the main extension. Canvas state, node execution, and attention detection still belong to `Dev Session Canvas`; the notifier focuses on turning those requests into visible, diagnosable desktop notifications and, where the platform supports it, a click path back into the relevant VS Code window.
 
+## 0.26.1 Update
+
+Upgrade both extensions to `0.26.1` to restore attention notification requests from Agent / Terminal output when runtime persistence is disabled. This fix is in the main extension; notifier delivery backends, click callbacks, permissions, and localization remain unchanged. Desktop delivery stays best-effort.
+
 ## When It Helps
 
 - The main extension runs in `Remote SSH`, WSL, or a Dev Container, but the alert should appear on your local desktop.

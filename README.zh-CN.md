@@ -18,7 +18,7 @@
 
 DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通过一张共享画布为 `Agent` 与 `Terminal` 提供全局视角，帮助你在同一个工作区里同时管理多个开发执行会话。
 
-产品已进入公开 `Preview` 阶段；当前发布准备目标为 `0.26.0`，上一已发布版本为 `0.25.0`。本版本聚焦运行时容量、退出完整性和类似 tmux 的持久化会话重新附着：直接导入终端当前状态，免去累计历史回放，并明确已结束持久化 Runtime 重开不保留正文的行为；snapshot-only 的历史保存规则不变。面向愿意接受早期限制、并能自行准备 CLI 运行环境的高级用户。
+产品已进入公开 `Preview` 阶段；当前发布准备目标为 `0.26.1`，上一已发布版本为 `0.26.0`。本修复版让同一执行环境和用户存储范围内、同一工程目录的新增持久会话跨窗口共享运行时归属，并修复启动拒绝收尾、请求等待、旧历史清理和关闭运行时持久化时的提醒桥接。同时修复窄终端中带样式文件链接的折行识别、行列号与选区重绘后的悬停下划线。旧运行时重连失败保留原绑定和错误，不隐式重启 Supervisor 或自动恢复 provider 会话。已有 live 会话保留原绑定；已结束持久会话重开仍不保留终端正文。面向愿意接受早期限制、并能自行准备 CLI 运行环境的高级用户。
 
 ![Dev Session Canvas — 在共享画布上并行管理多个 AI Agent 与 Terminal 会话](extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.zh-CN.gif)
 
@@ -82,14 +82,14 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## 项目状态
 
-项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。`0.26.0` 发布范围见[发布契约](docs/release-contracts/v0.26.0.md)和[主扩展 CHANGELOG](extensions/vscode/dev-session-canvas/CHANGELOG.md)；发布前最新已发布版本仍为 `0.25.0`。不提供稳定正式版承诺。
+项目已完成首轮研究、设计与 MVP 验证，处于公开 `Preview` 阶段。`0.26.1` 发布范围见[发布契约](docs/release-contracts/v0.26.1.md)和[主扩展 CHANGELOG](extensions/vscode/dev-session-canvas/CHANGELOG.md)；发布前最新已发布版本仍为 `0.26.0`。不提供稳定正式版承诺。
 
 明确结论：
 
 - 版本定位为 `Preview`，尚未达到稳定正式版。
 - 支持 `Restricted Mode` 有限能力声明；`Agent` / `Terminal` 等执行型入口在未信任 workspace 下会被禁用。
 - 不支持 `Virtual Workspace`；`vscode.dev`、GitHub Repositories 等纯虚拟文件系统窗口不在发布范围内。
-- 公开发布主渠道目标仍以 `Visual Studio Marketplace` 为主，`Open VSX` 作为同版本补充渠道；`0.26.0` release-day 完成门禁继续允许在 Visual Studio Marketplace 仍不可见时，依赖 GitHub Release assets 加已验证的 Open VSX 完成本轮发布，并把 VSM 状态记录为 deferred。
+- 公开发布主渠道目标仍以 `Visual Studio Marketplace` 为主，`Open VSX` 作为同版本补充渠道；`0.26.1` release-day 完成门禁继续允许在 Visual Studio Marketplace 仍不可见时，依赖 GitHub Release assets 加已验证的 Open VSX 完成本轮发布，并把 VSM 状态记录为 deferred。
 - Linux、macOS、Windows 与 Remote SSH 的声明路径已有 Preview 验证。原生资产覆盖 Linux glibc、macOS、Windows x64/arm64，现代系统证据不外推旧系统或 musl。Windows Codex 历史向上翻页限制仍保留；发布前还需预合并与最终 tag 的完整验证。
 - 仍依赖本地 CLI 和 workspace extension 运行条件，更适合愿意自行准备 `codex` / `claude` CLI 的高级用户。
 
@@ -101,10 +101,10 @@ DevSessionCanvas 是一个面向 VS Code 的多会话协作画布扩展。它通
 
 ## Preview 分发
 
-对外分发目标是通过公开扩展市场发布；官方 VS Code 仍计划以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。`0.26.0` 中，GitHub Release assets 继续作为 release-day 工件镜像和手动安装兜底入口，Open VSX 是当前必须验证通过的 marketplace 完成门禁；Visual Studio Marketplace 仍会尝试发布，但 public visibility 若仍不可用，则作为 deferred channel 记录而不阻塞本轮完成。除此之外，`.vsix` 仍仅保留为构建工件和发布验证输入。
+对外分发目标是通过公开扩展市场发布；官方 VS Code 仍计划以 `Visual Studio Marketplace` 为主路径，`Open VSX` 作为 VS Code 兼容宿主的补充渠道。`0.26.1` 中，GitHub Release assets 继续作为 release-day 工件镜像和手动安装兜底入口，Open VSX 是当前必须验证通过的 marketplace 完成门禁；Visual Studio Marketplace 仍会尝试发布，但 public visibility 若仍不可用，则作为 deferred channel 记录而不阻塞本轮完成。除此之外，`.vsix` 仍仅保留为构建工件和发布验证输入。
 
 - 公开 `Preview` 用户应通过当前宿主配置的扩展市场安装，而非手动分发 `.vsix`
-- `Visual Studio Marketplace` 仍是官方 VS Code 安装主路径目标，但只有在主扩展和 notifier 均公开可见后才对外宣称可用；`0.26.0` 可在 VSM deferred 的状态下，通过 GitHub Release assets 加已验证的 Open VSX 完成本轮发布
+- `Visual Studio Marketplace` 仍是官方 VS Code 安装主路径目标，但只有在主扩展和 notifier 均公开可见后才对外宣称可用；`0.26.1` 可在 VSM deferred 的状态下，通过 GitHub Release assets 加已验证的 Open VSX 完成本轮发布
 - `Open VSX` 不改变当前 VS Code 官方市场主路径，也不额外承诺所有兼容宿主的完整支持矩阵
 
 ## 桌面通知 companion（自动安装）
@@ -139,7 +139,7 @@ npm run build
 
 - 仍处于 `Preview`，不应按稳定生产工具看待。
 - 不支持 `Virtual Workspace`。
-- 公开 `Preview` 的分发主路径目标仍是 `Visual Studio Marketplace`，并补充 `Open VSX` 同版本发布；`0.25.0` 仍是上一已发布基线，`0.26.0` 沿用 GitHub Release assets 加 Open VSX verified 的完成门禁，后续 release-day 仍需手工执行与复核。
+- 公开 `Preview` 的分发主路径目标仍是 `Visual Studio Marketplace`，并补充 `Open VSX` 同版本发布；`0.26.0` 仍是上一已发布基线，`0.26.1` 沿用 GitHub Release assets 加 Open VSX verified 的完成门禁，后续 release-day 仍需手工执行与复核。
 - 持久化恢复仍取决于开关与后端。Supervisor 崩溃、机器重启或断电后不保证原进程和终端历史恢复；旧 live 会话沿用原绑定。snapshot-only 进程不承诺跨 Host 存活，不保证跨版本数据回退。
 - 当前节点 Fork 定向落位已有自动化几何与交互覆盖，但 panel / editor 两种承载面的层间距与 `fork` 标签仍待最终人工视觉验收；自动 File 节点仍按可能小于真实路径标签宽度的估算 footprint 选位。
 - PNG 执行链接已有真实 VS Code Host 覆盖，GIF / MP4 走同一原生 opener 但尚无各自的真实宿主 fixture；`vscode.open` resolve 只确认 editor service 已受理，不保证目标 model 最终加载成功。

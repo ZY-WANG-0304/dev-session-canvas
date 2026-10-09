@@ -2,6 +2,14 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-10-09：放弃 #311 后从最新 main 重做 0.26.1 的门禁结果
+
+用户关闭 #311 后从 `origin/main@78c58c2a`（含 #309/#312）重新准备。初次预合并 `26572ad2` 的静态 preflight 通过，完整 release:verify 与独立 clean-checkout VSIX smoke 失败；继续阻塞本版，不继承 0.26.0 例外。
+
+本轮采用新的 umask 0077 隔离目录，globalStorage 为 0700。Runtime checkpoint 已越过旧权限拒绝：Terminal 获得 session 并打开当前态分页读取，Agent 则 `rejected-before-acquire`，在 `runRuntimeCheckpointRefreshSmoke:252` 等待 live 超时。具体资源准入原因未确认，尚未验证大输出或 reload；finally 的 closed 不是原 Terminal 启动失败证据。独立 VSIX 在 `verifyAutoStartOnCreate:4943` 超时，仍有 creation admission closed、旧最终快照责任占用与原 metadata 绑定变化；本轮越过先前 shell/QuickPick 不代表旧竞态已修复。
+
+后续分别定位创建时原生资源准入结果，以及停止/reload 时旧 owner、reader、最终保存与新绑定的退役顺序；保留身份和责任保护，不靠重试、丢弃绑定或放宽超时获取绿色。#312 的具名旧协议重连宿主、notifier 联动/双语、Webview 424/424（12.1 分钟）及 root/Host/Supervisor/reader 等定向检查已通过，但不能关闭完整门禁。命令、结果与工件见 `docs/exec-plans/active/release-0-26-1-prep.md`。修复时机为新发布准备 PR 转为可合并之前；下文旧阶段的取消/不恢复发布措辞保留历史含义。
+
 ## 记录字段
 
 - 日期
