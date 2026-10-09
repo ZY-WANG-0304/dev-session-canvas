@@ -38,6 +38,12 @@ const scenarioFilter = parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_
 
 const scenarios = [
   {
+    name: 'runtime-legacy-reconnect',
+    description: 'Legacy Runtime reconnect preserves bindings without automatic CLI resume',
+    focusedOnly: true,
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'linux-runtime-report-unavailable',
     description: 'Linux activation with the shared runtime report unavailable',
     focusedOnly: true,

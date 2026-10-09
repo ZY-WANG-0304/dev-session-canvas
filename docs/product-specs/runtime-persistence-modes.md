@@ -32,7 +32,7 @@ Root 归属增量（2026-10-08，有限交付完成）：新建 `live-runtime` T
    - 若节点处于 `live-runtime` 模式且带有可附着的持久化会话身份，系统先显示 `重连中`。
    - 若之前的真实进程仍活着，节点会重新附着到原会话，并切回真实生命周期状态。
    - 若 Supervisor 确认进程已结束，节点保持已结束状态，不恢复正文，也不自动 start/resume。
-   - 若监督器不可达或重新附着失败，沿用可解释的降级策略；不能伪装成同一进程仍在运行，也不能仅凭断连认定进程已结束。Supervisor 崩溃或机器重启后不保证历史恢复。
+   - 若监督器不可达或重新附着失败，Terminal / Agent 均保留原绑定与错误，落入历史/未附着状态；不得自动启动替身 Supervisor 或降级到 provider resume，也不能仅凭断连认定进程已结束。旧协议同样遵循此规则。Supervisor 崩溃或机器重启后不保证历史恢复。
 6. 当扩展升级且旧版 Supervisor 仍持有 live 会话时：
    - 旧会话继续由旧 Supervisor 承载，允许降级 output、input、resize、stop 与 delete；界面明确提示旧协议不能证明完整终端历史。
    - 升级后新建的 Agent / Terminal 立即由当前协议代 Supervisor 承载，不等待旧会话结束。
@@ -111,7 +111,7 @@ Root 归属增量（2026-10-08，有限交付完成）：新建 `live-runtime` T
 - 当系统选中 `systemd-user` backend 时，关闭 VSCode 或断开 Remote SSH 后，真实 `Agent` / `Terminal` 进程仍可继续存在；重新打开 VSCode 后，系统会优先重新附着到原会话，而不是只恢复一个静态快照。
 - 在 Linux 本地或 Remote SSH workspace 中，如果 `systemd-user` backend 不可用，系统会自动降级到 `legacy-detached`，并把 guarantee 标成 `best-effort`，而不是继续把它伪装成强保证。
 - 当运行时持久化开关开启且节点带有持久化 live 会话身份时，VSCode 重开后节点先显示 `重连中`；只有在重新附着成功后，才恢复为 `运行中`、`等待输入`、`live` 等真实生命周期状态。
-- 当系统无法重新附着到 live runtime 时，已有降级行为仍须与原进程重连区分；若已确认 Runtime 进程结束，则保留节点、布局、配置与退出结果，不恢复正文、不自动 start/resume。用户显式 provider resume 是独立动作，不受此禁用，也不等于原进程延续。
+- 当系统无法重新附着到 live runtime 时，不自动创建新执行或清除原绑定；旧版本 history-restored 记录中的自动 fallback resume 意图也应取消，provider identity 保留供显式操作。若已确认 Runtime 进程结束，则保留节点、布局、配置与退出结果，不恢复正文、不自动 start/resume。用户显式 provider resume 是独立动作，仍须先结算已有执行绑定，不等于原进程延续。实施范围见 `docs/design-docs/runtime-legacy-reconnect-retirement.md`；snapshot-only 的恢复语义不变。
 - 当运行时持久化开关关闭时，关闭 VSCode 后系统会在刷盘最后状态后结束现有 `Agent` / `Terminal` 进程；重新打开时，系统至少恢复节点、标题、位置、尺寸、最后状态、最近输出摘要和恢复入口。
 - 当系统恢复的是历史状态而不是 live 进程时，用户能明确识别这一点，系统不会把它伪装成“仍在运行的同一会话”。
 - 对旧 Supervisor 已将目标恢复为纯历史对象、且实际运行环境重新确认原 Supervisor 不在的记录，用户可以删除该本地历史节点或以新会话重新启动，不要求故障进程补写退出码。此路径只解除历史绑定，不证明原主体/后代已退出，不伪造 EOF、正常退出或删除 RPC 成功；仅凭 History restored 标签、断连或旧错误文字不能放行。仍有 live 执行、reader、最终保存或已提交未知操作时继续保护，不能改写共享 Runtime 数据来取得资格。Linux 旧 detached 的已知识别范围包含最初无 generation 的 workspace storage（普通及 indexed slot）；仍须满足同一逐目标历史核验。有限识别条件见 `docs/design-docs/runtime-persistence-closeout.md` 第 12 节。

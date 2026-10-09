@@ -522,7 +522,7 @@ for (const mode of ['hello', 'ready', 'writeInput']) {
     if (mode === 'writeInput') await client.ensureConnected();
     const start = performance.now();
     await assert.rejects(mode === 'writeInput'
-      ? client.writeInput({ sessionId: 's', data: 'side effect' }) : client.ensureConnected(),
+      ? client.writeInput({ sessionId: 's', data: 'side effect' }) : client.ensureConnected({ allowRestart: mode === 'ready' }),
     error => assertUnknown(error, mode === 'writeInput' ? mode : 'hello'));
     const elapsed = performance.now() - start;
     const expected = mode === 'writeInput' ? 15_000 : 5000;

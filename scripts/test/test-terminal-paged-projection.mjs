@@ -464,7 +464,7 @@ async function verifyClientReconnectPolicy(RuntimeSupervisorClient) {
   await client.closeTerminalRead(identity);
   assert.equal(attempts.length, 7, 'reader cleanup must not reconnect a closed socket');
   await assert.rejects(client.attachSession({ sessionId: 'legacy' }), /original endpoint unavailable/u);
-  assert.equal(attempts.at(-1), true, 'legacy attach retains its existing connection policy');
+  assert.equal(attempts.at(-1), false, 'legacy attach only reconnects the original endpoint');
   client.dispose();
 }
 
@@ -593,6 +593,10 @@ async function verifyHostReconnect() {
   host.state = {};
   host.getExecutionSessions = () => host.terminalSessions;
   host.resolveRuntimeStoragePath = (storage) => storage;
+  host.getRuntimeHostBackend = (kind, runtimeStoragePath) => ({ kind, runtimeStoragePath });
+  host.retireLegacyRuntimeSupervisorClientIfUnused = () => {
+    assert.equal(host.terminalSessions.get('node'), original, 'paged reconnect retains its attached-session pin');
+  };
   host.requireNode = () => ({ status: 'live', summary: '' });
   host.terminalReadRelay = { closeMatching() {} };
   host.postState = () => {};
@@ -600,7 +604,6 @@ async function verifyHostReconnect() {
   let pending;
   host.trackRuntimeSupervisorOperation = (operation) => { pending = operation; };
   host.markExecutionNodeAsHistoryRestored = () => assert.fail('A transport failure is not session loss');
-  host.maybeFallbackAgentLiveRuntimeToResume = () => assert.fail('Transport reconnect cannot launch a new Agent');
   host.getRuntimeSupervisorClientForKind = async (backend, options, storage) => {
     assert.equal(options.allowRestart, false);
     assert.equal(storage, '/same-runtime');

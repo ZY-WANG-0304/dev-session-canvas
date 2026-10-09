@@ -787,7 +787,6 @@ try {
             applyRuntimeSupervisorSnapshot: async (_nodeId, _kind, snapshot) => { applied.push(snapshot.sessionId); },
             subscribeRuntimeSupervisorTerminalStream: async () => {},
             markExecutionNodeAsHistoryRestored: nodeId => restored.push(nodeId),
-            maybeFallbackAgentLiveRuntimeToResume: () => false,
             retireLegacyRuntimeSupervisorClientIfUnused: (_backend, client) => retired.push(client)
           });
           const restoring = host.restoreLiveRuntimeSessions();

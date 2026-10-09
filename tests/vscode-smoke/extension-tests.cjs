@@ -200,6 +200,40 @@ async function runSmoke() {
     await runRuntimeCheckpointRefreshSmoke();
     return;
   }
+  if (smokeScenario === 'runtime-legacy-reconnect') {
+    await setRuntimePersistenceEnabled(true);
+    await simulateRuntimeReload();
+    const base = await ensureEditorCanvasReady();
+    const seeded = await setPersistedState({ ...base.state, nodes: [
+      {
+        id: 'legacy-reconnect-agent', kind: 'agent', title: 'Reconnect Agent', status: 'idle', summary: '',
+        position: { x: 0, y: 0 }, size: { width: 600, height: 400 },
+        metadata: { agent: { provider: 'codex', lifecycle: 'idle', runtimeKind: 'pty-cli',
+          persistenceMode: 'snapshot-only', attachmentState: 'attached-live', liveSession: false,
+          resumeSupported: false, resumeStrategy: 'none', pendingLaunch: undefined } }
+      },
+      {
+        id: 'legacy-reconnect-terminal', kind: 'terminal', title: 'Reconnect Terminal', status: 'idle', summary: '',
+        position: { x: 640, y: 0 }, size: { width: 600, height: 400 },
+        metadata: { terminal: { lifecycle: 'idle', persistenceMode: 'snapshot-only',
+          attachmentState: 'attached-live', liveSession: false, pendingLaunch: undefined } }
+      },
+      {
+        id: 'legacy-reconnect-note', kind: 'note', title: 'Reconnect Note', status: 'ready', summary: '',
+        position: { x: 0, y: 440 }, size: { width: 400, height: 240 }
+      }
+    ] });
+    const agentNode = findNodeByKind(seeded, 'agent');
+    const terminalNode = findNodeByKind(seeded, 'terminal');
+    for (const node of [agentNode, terminalNode]) {
+      assert.strictEqual(node.metadata[node.kind].liveSession, false);
+      assert.strictEqual(node.metadata[node.kind].pendingLaunch, undefined);
+    }
+    await verifyLiveRuntimeReconnectFailurePreservesBinding(agentNode.id, terminalNode.id);
+    await verifyHistoryRestoredIgnoresStaleAutomaticResume(agentNode.id, terminalNode.id);
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+    return;
+  }
   await verifyWebviewLifecycleRaceDiagnostics();
 
   if (smokeScenario === 'restricted') {
@@ -1357,11 +1391,11 @@ async function runTrustedSmoke() {
   await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
   await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);
   await verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(runtimePersistenceNodes.terminalNode.id);
-  await verifyLiveRuntimeReconnectFallbackToResume(
+  await verifyLiveRuntimeReconnectFailurePreservesBinding(
     runtimePersistenceNodes.agentNode.id,
     runtimePersistenceNodes.terminalNode.id
   );
-  await verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(
+  await verifyHistoryRestoredIgnoresStaleAutomaticResume(
     runtimePersistenceNodes.agentNode.id,
     runtimePersistenceNodes.terminalNode.id
   );
@@ -10708,7 +10742,7 @@ async function verifyLiveRuntimeResumeExitClassification(agentNodeId) {
   }
 }
 
-async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalNodeId) {
+async function verifyLiveRuntimeReconnectFailurePreservesBinding(agentNodeId, terminalNodeId) {
   await setRuntimePersistenceEnabled(true);
   const baselineSnapshot = await getDebugSnapshot();
   const baselineAgent = findNodeById(baselineSnapshot, agentNodeId);
@@ -10720,6 +10754,13 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
 
   try {
     await fs.writeFile(path.join(fakeStorageDir, 'last-session'), `${fallbackSessionId}\n`, 'utf8');
+
+    // Missing-session probes need an existing endpoint; reconnect must not start one for the fixture.
+    await startExecutionSessionForTest({ nodeId: terminalNodeId, kind: 'terminal', cols: 80, rows: 24 });
+    const connected = await waitForSnapshot(state =>
+      state.state.nodes.find(node => node.id === terminalNodeId)?.metadata?.terminal?.liveSession === true, 20000);
+    const originalRuntime = findNodeById(connected, terminalNodeId).metadata.terminal;
+    await ensureTerminalStopped(terminalNodeId);
 
     const currentSnapshot = await getDebugSnapshot();
     const noteNode = findNodeByKind(currentSnapshot, 'note');
@@ -10743,9 +10784,12 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
               persistenceMode: 'live-runtime',
               attachmentState: 'reattaching',
               liveSession: false,
-              runtimeBackend: 'legacy-detached',
-              runtimeGuarantee: 'best-effort',
+              runtimeBackend: originalRuntime.runtimeBackend,
+              runtimeGuarantee: originalRuntime.runtimeGuarantee,
+              runtimeStoragePath: originalRuntime.runtimeStoragePath,
+              runtimeOwner: originalRuntime.runtimeOwner,
               runtimeSessionId: 'missing-agent-runtime-session',
+              terminalHistoryDiscarded: undefined,
               resumeSupported: false,
               resumeStrategy: 'fake-provider',
               resumeSessionId: fallbackSessionId,
@@ -10768,9 +10812,12 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
               persistenceMode: 'live-runtime',
               attachmentState: 'reattaching',
               liveSession: false,
-              runtimeBackend: 'legacy-detached',
-              runtimeGuarantee: 'best-effort',
+              runtimeBackend: originalRuntime.runtimeBackend,
+              runtimeGuarantee: originalRuntime.runtimeGuarantee,
+              runtimeStoragePath: originalRuntime.runtimeStoragePath,
+              runtimeOwner: originalRuntime.runtimeOwner,
               runtimeSessionId: 'missing-terminal-runtime-session',
+              terminalHistoryDiscarded: undefined,
               pendingLaunch: undefined,
               lastRuntimeError: undefined
             }
@@ -10784,10 +10831,10 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
       const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
       const currentTerminal = currentState.state.nodes.find((node) => node.id === terminalNodeId);
       return Boolean(
-        currentAgent?.metadata?.agent?.liveSession &&
-          currentAgent.status === 'waiting-input' &&
-          currentAgent.metadata?.agent?.attachmentState === 'attached-live' &&
-          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session') &&
+        currentAgent?.metadata?.agent?.liveSession === false &&
+          currentAgent.status === 'history-restored' &&
+          currentAgent.metadata?.agent?.attachmentState === 'history-restored' &&
+          currentAgent.metadata?.agent?.pendingLaunch === undefined &&
           currentTerminal?.status === 'history-restored' &&
           currentTerminal.metadata?.terminal?.attachmentState === 'history-restored' &&
           currentTerminal.metadata?.terminal?.liveSession === false
@@ -10801,19 +10848,21 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
       'live-runtime',
       'Expected runtime projection to retain the live-runtime persistence mode from the seeded persisted agent state.'
     );
-    assert.ok(
-      restoredAgent.metadata.agent.runtimeSessionId,
-      'Expected runtime reconciliation to replace the missing live runtime with a resumed runtime session id.'
-    );
+    assert.strictEqual(restoredAgent.metadata.agent.runtimeSessionId, 'missing-agent-runtime-session',
+      'A missing runtime retains its original identity instead of creating a resumed CLI.');
+    assert.strictEqual(restoredTerminal.metadata.terminal.runtimeSessionId, 'missing-terminal-runtime-session');
+    for (const metadata of [restoredAgent.metadata.agent, restoredTerminal.metadata.terminal]) {
+      assert.strictEqual(metadata.runtimeBackend, originalRuntime.runtimeBackend);
+      assert.strictEqual(metadata.runtimeStoragePath, originalRuntime.runtimeStoragePath);
+      assert.deepStrictEqual(metadata.runtimeOwner, originalRuntime.runtimeOwner);
+      assert.strictEqual(metadata.pendingLaunch, undefined);
+    }
     assert.strictEqual(
       restoredAgent.metadata.agent.resumeSupported,
       true,
-      'Expected runtime reconciliation to upgrade the seeded fallback agent into a resume-supported state.'
+      'Explicit provider resume remains available despite stale persisted resumeSupported=false.'
     );
-    assert.ok(
-      restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'),
-      'Expected runtime projection to append resumed-session output after reconciling the seeded fallback agent state.'
-    );
+    assert.strictEqual(restoredAgent.metadata.agent.resumeSessionId, fallbackSessionId);
     assert.strictEqual(
       restoredTerminal.metadata.terminal.liveSession,
       false,
@@ -10832,15 +10881,17 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
 
     const reconnectDiagnostics = await getDiagnosticEvents();
     assert.ok(
-      reconnectDiagnostics.some(
+      !reconnectDiagnostics.some(
         (event) =>
           event.kind === 'agent/liveRuntimeReconnectFallbackToResume' &&
           event.detail?.nodeId === agentNodeId &&
           event.detail?.resumeSessionId === fallbackSessionId
       )
     );
-
-    await ensureAgentStopped(agentNodeId);
+    snapshot = await getDebugSnapshot();
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.runtimeSessionId,
+      'missing-agent-runtime-session', 'The Webview does not consume reconnect failure as an automatic launch.');
+    assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.liveSession, false);
     shouldRestoreBaseline = true;
   } finally {
     await setRuntimePersistenceEnabled(false);
@@ -10875,7 +10926,7 @@ async function verifyLiveRuntimeReconnectFallbackToResume(agentNodeId, terminalN
   }
 }
 
-async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agentNodeId, terminalNodeId) {
+async function verifyHistoryRestoredIgnoresStaleAutomaticResume(agentNodeId, terminalNodeId) {
   await setRuntimePersistenceEnabled(true);
 
   const baselineSnapshot = await getDebugSnapshot();
@@ -10918,6 +10969,7 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
               resumeStrategy: 'fake-provider',
               resumeSessionId: fallbackSessionId,
               resumeStoragePath: fakeStorageDir,
+              terminalHistoryDiscarded: undefined,
               pendingLaunch: 'resume',
               lastRuntimeError: 'Runtime session old-runtime-session was not found.',
               lastResumeError: undefined
@@ -10930,10 +10982,9 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
     });
 
     let restoredAgent = findNodeById(snapshot, agentNodeId);
-    assert.ok(
-      restoredAgent.status === 'resume-ready' || restoredAgent.status === 'history-restored',
-      `Expected runtime reconciliation to keep the seeded history-restored agent resumable, got ${restoredAgent.status}.`
-    );
+    assert.strictEqual(restoredAgent.status, 'history-restored');
+    assert.strictEqual(restoredAgent.metadata.agent.pendingLaunch, undefined,
+      'A persisted automatic fallback intent is not a fresh user resume request.');
     assert.strictEqual(
       restoredAgent.metadata.agent.resumeSupported,
       true,
@@ -10943,9 +10994,9 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
     snapshot = await waitForSnapshot((currentState) => {
       const currentAgent = currentState.state.nodes.find((node) => node.id === agentNodeId);
       return Boolean(
-        currentAgent?.metadata?.agent?.liveSession &&
-          currentAgent.status === 'waiting-input' &&
-          currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session')
+        currentAgent?.metadata?.agent?.liveSession === false &&
+          currentAgent.status === 'history-restored' &&
+          currentAgent.metadata?.agent?.pendingLaunch === undefined
       );
     }, 20000);
 
@@ -10953,14 +11004,10 @@ async function verifyHistoryRestoredResumeReadyIgnoresStaleResumeSupported(agent
     assert.strictEqual(
       restoredAgent.metadata.agent.resumeSupported,
       true,
-      'Expected resumed runtime projection to keep resume support enabled after consuming the seeded resume context.'
+      'Explicit resume capability remains available without launching a replacement process.'
     );
-    assert.ok(
-      restoredAgent.metadata.agent.recentOutput.includes('[fake-agent] resumed session'),
-      'Expected runtime projection to resume the seeded history-restored agent through the available fallback resume context.'
-    );
-
-    await ensureAgentStopped(agentNodeId);
+    assert.strictEqual(restoredAgent.metadata.agent.runtimeSessionId, undefined);
+    assert.strictEqual(restoredAgent.metadata.agent.resumeSessionId, fallbackSessionId);
     shouldRestoreBaseline = true;
   } finally {
     await setRuntimePersistenceEnabled(false);
