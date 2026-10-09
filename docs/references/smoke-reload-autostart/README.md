@@ -48,3 +48,14 @@ Linux x64、Node 22.23.3、VS Code 1.141.0、当前代码匹配的 execution ass
     DEV_SESSION_CANVAS_HOST_TEST_FILTER='simulated reload|large final snapshot survives actual Host reload|final persistence follows the original' node scripts/test/test-host-execution-owner-wiring.mjs
 
 本轮为 7/7。`evidence.json` 从实际快照挑选执行状态、身份、保存结果和相关事件，省略画布正文与大量 UI 信息；完整本地快照仍在调查树 `.debug/rca`。调查完成后反向应用 patch 或移除整个专用实验树；不要把该临时测试分支应用到发布分支。
+
+## PR #314 修复验收
+
+`repair-evidence.json` 记录修复后的具名回归、源码摘要与完整 VSIX smoke 的后续失败。它与上面的基线调查分开：不要将 `diagnostic.patch` 套用到修复后的源码。最终 VSIX 的 `owned-canvas-reconciliation` 从活动 Agent/Terminal 直接模拟 reload，一次完成原保存、重新开放准入并成功启动。
+
+在修复分支上，沿用上面的匹配环境，可运行：
+
+    node scripts/test/test-host-execution-owner-wiring.mjs
+    DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=owned-canvas-reconciliation npm run test:vsix-smoke
+
+不设置过滤时，默认 VSIX 先运行新增场景，再运行完整 trusted。完整命令在后续 `verifyAgentExecutionFlow` 的 burst metadata 正文断言失败；同身份终端快照已含 marker 的精简观测保存在 `repair-evidence.json`，后续修复入口见正式设计及技术债。过滤场景通过不能代替发布门禁。

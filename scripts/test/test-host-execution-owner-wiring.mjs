@@ -10,6 +10,7 @@ import ts from 'typescript';
 const bundled = await esbuild.build({
   stdin: {
     contents: `
+      export { composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCanvasObjectId } from './extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition';
       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
       export { ExecutionOwnerLifecycle } from './extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle';
       export { encodeOutputFrame } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
@@ -84,7 +85,7 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   createRequire(import.meta.url), loaded, loaded.exports,
   path.resolve('scripts/test/host-owner-wiring.cjs'), path.resolve('scripts/test')
 );
-const { CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
+const { composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCanvasObjectId, CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
   RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION, EXECUTION_INTERACTION_LIMITS,
   testEnvironment, testWindow, testL10n, serializeRuntimeSupervisorError, createRuntimeSupervisorError,
   testLegacyHistoryInspector, testNativeHistoryInspector, testRootRuntimePreparation,
@@ -1661,7 +1662,7 @@ async function persistenceFixture(options = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-host-final-persistence-'));
   const root = path.join(directory, 'root');
   await mkdir(root);
-  const f = fixture({ ...options, capabilities: persistenceCapabilities,
+  const f = (options.candidate ? candidateFixture : fixture)({ ...options, capabilities: persistenceCapabilities,
     budgets: { naturalDrainMs: 15, boundaryMs: 50, ...options.budgets }, roots: [{ path: root, name: 'root' }] });
   const updates = new Map();
   const writes = [];
@@ -1701,13 +1702,16 @@ async function persistenceFixture(options = {}) {
       }
       provider.message({ type: 'processResult', result: { kind: 'exited', exitCode } });
       provider.message({ type: 'sourceEnd', finalFrameId: frames, disposition });
+      if (options.candidate) provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
       provider.release();
       await until(f.clock, () => record.persistence?.result !== undefined, `${kind} final persistence result`);
       return record.persistence.result;
     },
     async cleanup() {
       f.host.clearDeferredCanvasStatePersistTimer();
-      for (const record of f.host.nonNativeHostExecutions.values()) record.tracker.dispose();
+      for (const record of f.host.nonNativeHostExecutions.values()) {
+        record.business?.cancelActivityPoll?.(); record.business?.lineContextTracker.dispose(); record.tracker.dispose();
+      }
       await f.host.pendingWorkspaceStateUpdate;
       await rm(directory, { recursive: true, force: true });
     }
@@ -5146,6 +5150,340 @@ test('S10 Host uncertain resize retains its observation and accepted tail withou
     f.record.tracker.dispose();
   }
 });
+
+
+function configureCanvasRecomposition(f) {
+  delete f.host.dropPendingTerminalInitialInput;
+  Object.assign(f.host, {
+    lastComposedWorkspaceRootPaths: f.host.getMultiRootWorkspaceFoldersForComposition().map(folder => folder.path),
+    getLiveRuntimeReconnectBlockReason: () => undefined,
+    reconcileCanvasFileArtifacts: state => state,
+    invalidateResolvedShellEnvironmentPatch() {}, clearAgentCliResolutionCache() {},
+    resolvePreferredCanvasCenter: () => undefined,
+    resolveWorkspaceRootGroupForAddedFolder: () => undefined,
+    reconcileDefaultExecutionMetadataCwd() {}, refreshConfiguredTerminalShellMetadata() {},
+    refreshStorageRecoverySelection() {}, loadStoredCanvasFileFilterState: () => f.host.fileFilterState,
+    readCanvasTemplateInitializedFlag: () => true, loadStoredSurface: () => 'editor',
+    applyWorkbenchContextKeys() {}, isInteractiveSurface: () => false,
+    scheduleRestoreLiveRuntimeSessions() {}, getDebugSnapshot: () => ({ state: f.host.state })
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`canvas reconciliation keeps ${kind} identity through reload, root round trip and final disk save`, async () => {
+    const f = await persistenceFixture({ candidate: true });
+    configureCanvasRecomposition(f);
+    let record;
+    try {
+      await completed(f.clock, f.start(kind), 'original local start');
+      record = f.record(kind);
+      const identity = record.execution.identity;
+      const originalKey = record.execution.key;
+      const provider = f.providers[0];
+      const originalMetadata = record.persistence.metadata;
+      f.host.loadState = () => structuredClone(f.host.state);
+      await f.host.reloadPersistedStateForTest();
+      assert.strictEqual(f.host.state.nodes.find(node => node.kind === kind).metadata[kind], originalMetadata);
+      assert.equal(f.host.state.nodes.find(node => node.kind === kind).metadata[kind].liveSession, true);
+      const localState = structuredClone(f.host.state);
+      let folders = [{ path: f.root, name: 'original' }, { path: path.join(f.directory, 'other'), name: 'other' }];
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => folders;
+      f.host.loadState = () => composeMultiRootCanvasState({ workspaceFolders: folders,
+        rootStates: [{ rootPath: f.root, state: localState }] });
+      await completed(f.clock, f.host.reconcileWorkspaceFolders(), 'add workspace root');
+      const newId = namespaceCanvasObjectId(f.root, `${kind}-1`);
+      assert.equal(record.nodeId, newId);
+      assert.strictEqual(record.execution.identity, identity);
+      assert.strictEqual(f.owner.get(`${kind}:${newId}`), record.execution);
+      assert.equal(f.owner.get(originalKey), undefined);
+      assert.strictEqual(f.host.state.nodes.find(node => node.id === newId).metadata[kind], originalMetadata);
+      provider.output(1, 'tail-after-remap\r\n');
+      await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'remapped output');
+      assert.equal(record.mutationError, undefined);
+      const resizing = f.host.resizeNonNativeHostExecution(record, 91, 31);
+      await until(f.clock, () => provider.messages.some(message => message.type === 'resize'), 'resize after remap');
+      const request = provider.messages.find(message => message.type === 'resize');
+      // Move the route again while the native resize reply is in flight.
+      const decomposed = decomposeMultiRootCanvasState({ composedState: f.host.state, workspaceFolders: folders, previousRootStates: [] });
+      folders = [folders[0]];
+      f.host.loadState = () => decomposed.rootStates.find(root => root.rootPath === f.root).state;
+      await completed(f.clock, f.host.reconcileWorkspaceFolders(), 'remove unrelated root');
+      provider.message({ type: 'interactionObservation', interactionId: request.interactionId, result: { kind: 'resized' } });
+      await completed(f.clock, resizing, 'same resize commits on returned route');
+      assert.equal(record.nodeId, `${kind}-1`);
+      assert.equal(record.mutationError, undefined);
+      assert.strictEqual(f.owner.get(originalKey), record.execution);
+      assert.equal(f.providers.length, 1, 'no replacement provider during root changes');
+      // No page reader is required for this persistence-only fixture.
+      for (const reader of record.localReaders.values()) f.host.settleLocalExecutionReader(record, reader, { kind: 'cancelled', reason: 'test-end' });
+      provider.process(); provider.seal(1);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      provider.release();
+      assert.equal((await completed(f.clock, record.persistence.promise, 'final save after remap')).kind, 'saved');
+      await until(f.clock, () => f.host.nonNativeHostExecutions.size === 0, 'retired remapped record');
+      assert.match((await f.read(f.rootFile)).state.nodes.find(node => node.kind === kind).metadata[kind].serializedTerminalState.data, /tail-after-remap/);
+    } finally { record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); await f.cleanup(); }
+  });
+
+  test(`canvas reconciliation rejects replacement of the original ${kind} without changing its route`, async () => {
+    const f = candidateFixture();
+    let record;
+    try {
+      await completed(f.clock, f.start(kind), 'original protected local start');
+      record = f.record(kind);
+      const oldState = f.host.state;
+      assert.throws(() => f.host.reconcileOwnedCanvasState({ ...oldState, nodes: oldState.nodes.filter(node => node.kind !== kind) }), /Stop the original execution/);
+      assert.strictEqual(f.host.state, oldState);
+      assert.strictEqual(f.owner.get(record.execution.key), record.execution);
+      f.host.state = { ...oldState, nodes: oldState.nodes.map(node => node.kind === kind
+        ? { ...node, metadata: { ...node.metadata, [kind]: { ...node.metadata[kind] } } } : node) };
+      assert.throws(() => f.host.reconcileOwnedCanvasState(structuredClone(f.host.state)), /original execution binding changed/);
+      assert.strictEqual(f.owner.get(record.execution.key), record.execution);
+    } finally { record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); }
+  });
+
+  test(`workspace removal waits for ${kind} final save before replacing canvas and saves the removed root`, async () => {
+    const f = await persistenceFixture({ candidate: true });
+    configureCanvasRecomposition(f);
+    let record;
+    const save = deferred();
+    try {
+      f.host.lastComposedWorkspaceRootPaths = [f.root];
+      await completed(f.clock, f.start(kind), 'removed root original start');
+      record = f.record(kind);
+      const provider = f.providers[0];
+      const oldState = f.host.state;
+      const persist = f.host.persistState.bind(f.host);
+      f.host.persistState = async options => {
+        if (options.reason === 'local-final-snapshot') await save.promise;
+        return persist(options);
+      };
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => [];
+      f.host.loadState = () => ({ ...oldState, nodes: [] });
+      let finished = false;
+      const replacing = f.host.reconcileWorkspaceFolders().then(() => { finished = true; });
+      provider.output(1, 'removed-root-final-tail\r\n');
+      await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'removed root tail');
+      provider.process(); provider.seal(1);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      provider.release();
+      await until(f.clock, () => record.persistence.submitted, 'removed root save submission');
+      assert.equal(finished, false);
+      assert.equal(f.host.workspaceRecompositionPending, true);
+      assert.equal(f.host.state.nodes.some(node => node.id === record.nodeId), true);
+      await assert.rejects(f.start(kind), /admission is closed/);
+      save.resolve();
+      await completed(f.clock, replacing, 'removed root saved then recomposed');
+      assert.equal(f.host.state.nodes.length, 0);
+      assert.equal(f.host.nonNativeHostExecutions.size, 0);
+      assert.match((await f.read(f.rootFile)).state.nodes.find(node => node.kind === kind).metadata[kind].serializedTerminalState.data, /removed-root-final-tail/);
+    } finally { save.resolve(); record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); await f.cleanup(); }
+  });
+}
+
+
+test('execution route migration validates all original reservations before changing any key', async () => {
+  const f = fixture();
+  const one = f.owner.reserve('one');
+  const two = f.owner.reserve('two');
+  const identity = one.identity;
+  assert.throws(() => f.owner.rekey([{ execution: one, key: 'two' }]), /original reservations/);
+  assert.strictEqual(f.owner.get('one'), one);
+  assert.strictEqual(f.owner.get('two'), two);
+  const foreign = fixture().owner.reserve('foreign');
+  assert.throws(() => f.owner.rekey([{ execution: one, key: 'new' }, { execution: foreign, key: 'other' }]), /original reservations/);
+  assert.strictEqual(f.owner.get('one'), one);
+  f.owner.rekey([{ execution: one, key: 'two' }, { execution: two, key: 'one' }]);
+  assert.strictEqual(one.identity, identity);
+  assert.strictEqual(f.owner.get('two'), one);
+  assert.strictEqual(f.owner.get('one'), two);
+  one.abandon('test-end'); two.abandon('test-end'); foreign.abandon('test-end');
+});
+
+for (const outcome of ['failed', 'deadline']) {
+  test(`workspace removal retains original canvas and save responsibility after ${outcome}`, async () => {
+    const f = await persistenceFixture({ candidate: true });
+    configureCanvasRecomposition(f);
+    const save = deferred();
+    let record;
+    try {
+      await completed(f.clock, f.start('terminal'), 'original terminal before failed removal');
+      record = f.record('terminal');
+      const beforeDisk = await f.read(f.rootFile);
+      const provider = f.providers[0];
+      const persist = f.host.persistState.bind(f.host);
+      f.host.persistState = async options => {
+        if (options.reason === 'local-final-snapshot') {
+          await save.promise;
+          if (outcome === 'failed') throw new Error('controlled removed-root save failure');
+        }
+        return persist(options);
+      };
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => [];
+      f.host.loadState = () => assert.fail('Failed original save must not replace the canvas');
+      const rejection = assert.rejects(f.host.reconcileWorkspaceFolders(), outcome === 'failed'
+        ? /Local final snapshot persistence is failed/ : /did not complete within the boundary/);
+      provider.process(); provider.seal(0);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      provider.release();
+      await until(f.clock, () => record.persistence.submitted, 'removed-root original final submission');
+      if (outcome === 'failed') save.resolve();
+      else f.clock.advance(EXECUTION_CANDIDATE_BUDGETS.boundaryMs + 1);
+      await completed(f.clock, rejection, 'removed root failure reported');
+      assert.strictEqual(f.host.nonNativeHostExecutions.get(record.execution.key), record);
+      assert.equal(f.host.workspaceRecompositionPending, true);
+      assert.ok(f.host.state.nodes.some(node => node.id === record.nodeId));
+      assert.deepEqual(await f.read(f.rootFile), beforeDisk);
+      if (outcome === 'deadline') {
+        save.resolve();
+        assert.equal((await completed(f.clock, record.persistence.promise, 'late original save')).kind, 'saved');
+        assert.ok(f.host.state.nodes.some(node => node.id === record.nodeId), 'Late save cannot resume a rejected recomposition');
+      }
+    } finally { save.resolve(); record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); await f.cleanup(); }
+  });
+}
+
+test('simulated reload checks creation boundary before stopping an existing execution', async () => {
+  const f = simulatedReloadFixture();
+  let record;
+  try {
+    await completed(f.clock, f.start('terminal'), 'original before rejected reload');
+    record = f.record('terminal');
+    f.host.candidateRuntimeStarts = new Map([['pending', {}]]);
+    await assert.rejects(f.host.simulateRuntimeReloadForTest(), /Runtime creation is still pending/);
+    assert.equal(record.execution.snapshot().stopRequested, false);
+    assert.equal(f.owner.snapshot().closing, false);
+    assert.equal(f.providers[0].messages.some(message => message.type === 'requestStop'), false);
+  } finally { record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); }
+});
+
+for (const deadline of [false, true]) {
+  test(`single simulated reload waits for original final save within the existing boundary (deadline=${deadline})`, async () => {
+    const f = simulatedReloadFixture();
+    const save = deferred();
+    let writes = 0;
+    let record;
+    try {
+      await completed(f.clock, f.start('terminal'), 'original before saving reload');
+      record = f.record('terminal');
+      f.host.persistState = async options => {
+        if (options?.reason === 'local-final-snapshot') { writes++; await save.promise; }
+      };
+      let finished = false;
+      const reload = f.host.simulateRuntimeReloadForTest().then(() => { finished = true; });
+      const result = deadline ? assert.rejects(reload, /boundary is unconfirmed|boundary expired/) : reload;
+      await until(f.clock, () => record.execution.snapshot().stopRequested, 'reload requests original stop');
+      const provider = f.providers[0];
+      provider.process(); provider.seal(0);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      provider.release();
+      await until(f.clock, () => record.persistence.submitted, 'reload original save submitted');
+      assert.equal(finished, false);
+      assert.equal(f.owner.snapshot().closing, true);
+      if (deadline) f.clock.advance(EXECUTION_CANDIDATE_BUDGETS.boundaryMs + 1);
+      else save.resolve();
+      await completed(f.clock, result, 'bounded reload result');
+      save.resolve();
+      assert.equal((await completed(f.clock, record.persistence.promise, 'original save result')).kind, 'saved');
+      await pump(f.clock);
+      assert.equal(writes, 1);
+      assert.equal(finished, !deadline);
+      assert.equal(f.owner.snapshot().closing, deadline, 'late save must not reopen a rejected reload');
+    } finally { save.resolve(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); }
+  });
+}
+
+for (const retained of [true, false]) {
+  test(`workspace recomposition preserves only already reserved preparations in retained roots (${retained})`, async () => {
+    const f = candidateFixture({ roots: [{ path: '/controlled/root', name: 'root' }] });
+    const gate = deferred();
+    const started = f.host.startNonNativeHostExecution('terminal', 'terminal-1', 80, 24, () => gate.promise);
+    const result = retained ? started : assert.rejects(started, /admission is closed/);
+    const record = f.record('terminal');
+    try {
+      assert.equal(record.canvasRootPath, '/controlled/root');
+      f.host.workspaceRecompositionPending = true;
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => retained ? [{ path: '/controlled/root', name: 'root' }] : [];
+      await assert.rejects(f.start('agent'), /admission is closed/);
+      gate.resolve({ file: '/controlled/shell', args: [], cwd: '/controlled/root', env: {} });
+      await completed(f.clock, result, 'original reservation finishes preparation');
+      assert.equal(f.providers.length, retained ? 1 : 0);
+      if (retained) assert.strictEqual(f.record('terminal'), record);
+    } finally { gate.resolve({ file: '/controlled/shell' }); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); }
+  });
+}
+
+for (const closeDuringSave of [false, true]) {
+  test(`workspace recomposition cannot replace state after permanent Host closure (during-save=${closeDuringSave})`, async () => {
+    const f = await persistenceFixture({ candidate: true });
+    configureCanvasRecomposition(f);
+    const save = deferred();
+    let record;
+    try {
+      await completed(f.clock, f.start('terminal'), 'original before permanent boundary');
+      record = f.record('terminal');
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => [];
+      f.host.loadState = () => assert.fail('Permanently closed Host must not recompose its state');
+      f.host.persistState = async options => { if (options?.reason === 'local-final-snapshot') await save.promise; };
+      if (!closeDuringSave) f.host.closeRuntimeSupervisorEventAdmission();
+      const rejection = assert.rejects(f.host.reconcileWorkspaceFolders(), /permanent boundary/);
+      if (closeDuringSave) {
+        const provider = f.providers[0];
+        provider.process(); provider.seal(0);
+        provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+        provider.release();
+        await until(f.clock, () => record.persistence.submitted, 'save before permanent closure');
+        f.host.closeRuntimeSupervisorEventAdmission();
+        save.resolve();
+      } else assert.equal(record.execution.snapshot().stopRequested, false);
+      await completed(f.clock, rejection, 'permanent closure rejects recomposition');
+      assert.ok(f.host.state.nodes.some(node => node.id === record.nodeId));
+    } finally { save.resolve(); await f.cleanup(); }
+  });
+}
+
+for (const failPreparation of [false, true]) {
+  test(`workspace remap keeps pending preparation on its original identity and clears rejected input (${failPreparation})`, async () => {
+    const f = await persistenceFixture({ candidate: true });
+    configureCanvasRecomposition(f);
+    const gate = deferred();
+    const started = f.host.startNonNativeHostExecution('terminal', 'terminal-1', 80, 24, async () => {
+      const spec = await gate.promise;
+      if (failPreparation) throw new Error('controlled preparation failure');
+      return spec;
+    });
+    const result = failPreparation ? assert.rejects(started, /controlled preparation failure/) : started;
+    const record = f.record('terminal');
+    try {
+      const identity = record.execution.identity;
+      f.host.pendingTerminalInitialInputs.set('terminal-1', 'original-initial-input');
+      const localState = structuredClone(f.host.state);
+      const folders = [{ path: f.root, name: 'original' }, { path: path.join(f.directory, 'other'), name: 'other' }];
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => folders;
+      f.host.loadState = () => composeMultiRootCanvasState({ workspaceFolders: folders,
+        rootStates: [{ rootPath: f.root, state: localState }] });
+      await completed(f.clock, f.host.reconcileWorkspaceFolders(), 'root added during preparation');
+      const mapped = namespaceCanvasObjectId(f.root, 'terminal-1');
+      assert.equal(record.nodeId, mapped);
+      assert.strictEqual(record.execution.identity, identity);
+      assert.equal(f.host.pendingTerminalInitialInputs.has('terminal-1'), false);
+      assert.equal(f.host.pendingTerminalInitialInputs.get(mapped), 'original-initial-input');
+      gate.resolve({ file: '/controlled/shell', args: [], cwd: f.root, env: {} });
+      await completed(f.clock, result, 'remapped preparation result');
+      if (failPreparation) {
+        assert.equal(f.host.pendingTerminalInitialInputs.has(mapped), false);
+        assert.equal(f.host.nonNativeHostExecutions.size, 0);
+        assert.equal(record.persistence.result.kind, 'not-required');
+        assert.equal(f.providers.length, 0);
+      } else {
+        assert.strictEqual(f.host.nonNativeHostExecutions.get(`terminal:${mapped}`), record);
+        assert.equal(record.mutationError, undefined);
+        assert.ok(f.diagnostics.some(event => event.name === 'execution/started' && event.detail.nodeId === mapped
+          && event.detail.sessionId === identity.executionId));
+      }
+    } finally { gate.resolve({ file: '/controlled/shell' }); await f.cleanup(); }
+  });
+}
 
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
 const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;

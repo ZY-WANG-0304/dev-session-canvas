@@ -16,9 +16,11 @@
 
 PR #313 自启动超时已定位：`setPersistedStateForTest` / `reloadPersistedStateForTest` 重建 metadata，`reconcileRuntimeNodes` 只认识旧 session map，遗漏当前 `nonNativeHostExecutions`。原生复现中旧执行仍 running，但节点被恢复成 resume-ready/interrupted；同 ID 恢复因原 key 占用拒绝。真实 VS Code 已保存 workspace 从一个 root 添加到两个 root 时，同 Host 内节点 ID 加 root 前缀，旧执行未迁移或退休，另启动了一条同 resume session 的 Agent。属于正式产品生命周期缺陷，不能仅调整 smoke 顺序后放行发布。
 
-本轮只定位，不改变产品和正式 smoke。下一次修复须明确活动执行与节点 ID/metadata 的迁移或先结算后替换规则，保留尾部保存、失败责任及同 key 保护，覆盖 Agent/Terminal、同 ID 重读和 root 重映射；同时隔离侧栏/布局 seed 与创建自启动测试。workspace trust 和 editor deserialize 调用点需要审计，尚未复现；跨版本与真实窗口 Reload 矩阵不由当前实验代证。应在继续 0.26.1 发布前修复并重跑完整门禁。关联：`docs/design-docs/smoke-reload-autostart-investigation.md`、`docs/exec-plans/completed/smoke-reload-autostart-investigation.md`、`CanvasPanelManager.loadReconciledState` / `reconcileSeededStateForTest` / `onDidChangeWorkspaceFolders`。
+PR #314 已实施具名修复：同 ID 重读保留原 metadata/status；root + local node ID 驱动 owner/Host 原子路由迁移；移除 root 先停止并按旧 root 组合保存尾部；失败、超时与 Host 永久关闭保留责任；模拟 reload 在原有总边界内等待最终保存后恢复准入。smoke 的创建与整图夹具已隔离，新增原生 `owned-canvas-reconciliation` 并纳入默认源码/VSIX 入口。受控测试涵盖准备中迁移、resize 等待、最终读盘及失败保护。关联：`docs/design-docs/smoke-reload-autostart-investigation.md`、`docs/exec-plans/completed/canvas-owned-execution-reconciliation.md`。
 
-另有模拟 reload 的完成条件缺口：原执行 retired 后 `closeNonNativeHostExecutions` 立即检查最终保存，原生实验首次返回 pending，保存随后成功；显式等待原保存完成并再次模拟 reload 后，两节点均能新启动。修复模拟生命周期测试时应明确等待真实保存结果，保留首个失败与最终身份；不要将它归入仍有 running 执行时的原超时，也不要据此声称真正的永久 deactivation 未等待保存。
+剩余发布门禁：完整 VSIX smoke 越过原失败段后，在 `verifyAgentExecutionFlow` 的 burst 输出断言失败。同一 executionId 的 `host/executionSnapshot` 已含 `[fake-agent] burst 001`，Agent 保持 live/waiting-input，无 `ownedProjectionRejected`，但测试轮询的 `metadata.agent.recentOutput` 是上一条执行最终保存的历史正文。`projectNonNativeHostBusiness` 不实时投影该字段，下一次应按当前正文通道和原身份修正这一组 smoke 断言，不能修改运行时复制正文来迎合旧断言，也不能延长超时或跳过执行流验收。证据见 `docs/references/smoke-reload-autostart/repair-evidence.json`、`.debug/rca/repair-vsix-final.log` 与其失败工件。该完整门禁仍阻塞 0.26.1 发布；本次具名修复不等于全部 smoke 已适配。
+
+workspace trust / editor deserialize 已审计共用入口，但独立 UI 路径、真实窗口 Reload、跨版本及 Remote SSH 不在本轮原生验收范围，继续依赖各自验证矩阵。
 
 ## 2026-10-08：旧 Supervisor 的创建拒绝仍缺资源结果
 

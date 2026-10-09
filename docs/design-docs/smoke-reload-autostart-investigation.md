@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md]
+related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md]
 updated_at: 2026-10-09
 ---
 
@@ -17,13 +17,13 @@ PR #313 在 `verifyAutoStartOnCreate` 等待 Agent live 超时。此前将它简
 
 调查基线为 `origin/main@78c58c2a2cecd053199c9bada6084868f9255877`；PR #313 `aaeb73a015ac382d6074a760e91aee038bb3dd9a` 的产品和 smoke 代码与该基线相同，仅发布静态材料不同。原失败为 0.26.1 VSIX，受控复现使用 main 的 0.26.0 版本字段和相同产品代码。本次没有混入旧扩展或旧 Supervisor，不依赖实际 Codex/Claude 服务。
 
-本轮交付故障归因、原生复现与后续修复验收；没有修复产品、改变正式 smoke、重跑完整 release gate 或授权发布。下文“已验证”限定为这些调查结论。
+初次交付为故障归因与原生复现。用户随后授权在 PR #314 修复；修复计划见 `docs/exec-plans/completed/canvas-owned-execution-reconciliation.md`，下文分别记录基线故障和修复验收；“已验证”只覆盖具名场景，不代表完整发布门禁通过。
 
-## 正式方案：故障归因与修复边界
+## 基线故障归因
 
 **此次超时由活动执行与重读后的画布状态失配导致。smoke 存在用例污染，插件也存在用户可达的同类生命周期缺陷；跨版本兼容不是本次失败的必要条件。**
 
-`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 的 `loadReconciledState` / `reconcileSeededStateForTest` 仅向 `reconcileRuntimeNodes` 传入旧的 `agentSessions`、`terminalSessions`。当前原生本地执行保存在 `nonNativeHostExecutions`，未参与重读后的 live 状态恢复。因此重读或 seed 时，仍在运行的 Agent 被改成 `resume-ready`、`pendingLaunch=resume`、`liveSession=false`，Terminal 被改成 `interrupted`。同时 normalize/reconcile 建立新的 metadata 对象，而原执行记录仍保存旧 metadata 引用。
+`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 在基线中的 `loadReconciledState` / `reconcileSeededStateForTest` 仅向 `reconcileRuntimeNodes` 传入旧的 `agentSessions`、`terminalSessions`。当前原生本地执行保存在 `nonNativeHostExecutions`，未参与重读后的 live 状态恢复。因此重读或 seed 时，仍在运行的 Agent 被改成 `resume-ready`、`pendingLaunch=resume`、`liveSession=false`，Terminal 被改成 `interrupted`。同时 normalize/reconcile 建立新的 metadata 对象，而原执行记录仍保存旧 metadata 引用。
 
 这同时破坏两项约束：画布不再反映真实活动执行；原执行的输出、resize 和最终保存不再拥有当前节点的身份绑定。`projectNonNativeHostBusiness` 会拒绝投影并记录 `The original execution metadata binding changed.`。相同 node ID 的恢复请求进入 `startNonNativeHostExecution` 时，原记录仍占据同一个执行 key，触发 `Local final snapshot responsibility still occupies the execution key or Host capacity.`。这次受控复现中触发的是同 key 占用：只有两条正在运行的记录，没有待准入请求或已退休但保存失败的记录；owner 的 `closing=false`。
 
@@ -48,7 +48,7 @@ PR #313 在 `verifyAutoStartOnCreate` 等待 Agent live 超时。此前将它简
 
 `workspace trust` 授予和 `deserializeWebviewPanel` 也调用重读逻辑，属于修复时必须审计的调用点；本轮没有把它们写成已复现的用户故障。真正的整个窗口 Reload、Remote SSH 和跨版本升级矩阵也未由本次局部实验覆盖。
 
-## 受控验证
+## 基线受控验证
 
 环境为 Linux x64、VS Code 1.141.0、当前原生 PTY provider、fake Agent CLI、真实 bash；每次启动新测试 profile，先 reset 空画布。工具 Node 22.23.3，VS Code 内置 Node 24.21。用例串行创建 Agent 与 Terminal，并分别确认 live，避免同时创建的准入竞争干扰本次状态替换实验。探针只读 owner/执行/metadata 身份，不改变启动、投影或保存规则。
 
@@ -67,11 +67,27 @@ PR #313 在 `verifyAutoStartOnCreate` 等待 Agent live 超时。此前将它简
 
 一次初步实验在普通 folder 窗口调用添加 root 后，没有收到文件夹变更事件，状态也未重读，实验断言失败；它不构成产品通过或失败证据。随后改用已保存 `.code-workspace` 并等待真实事件，才得到上面的有效复现。
 
-## 后续修复验收
+## 正式方案
 
-产品修复应统一“活动执行仍在时重新组合画布”的处理，涵盖同 ID 重读、workspace root ID 重映射、节点消失和原最终保存责任。需要明确哪些操作迁移同一执行身份，哪些必须先停止并完成原保存再替换状态；不能机械地把所有 record 绑定到任意新 metadata，也不能直接清空旧 map、忽略保存结果或移除同 key 保护。具体实现需单独设计与修复，不在本次调查中预设。
+`CanvasPanelManager.reconcileOwnedCanvasState` 统一处理 `loadReconciledState` 和 `reconcileSeededStateForTest`。活动本地执行以原节点的 metadata 引用、当前 status/summary 为权威，重读只接收其他画布内容；不将磁盘的 live、pendingLaunch 或新 metadata 对象写回原执行。原节点缺失或绑定已经被替换时明确拒绝，不能用新对象修补一个已经失真的原绑定。已提交的最终保存仍持有自己的 promise，重读不能替换这份责任。
 
-smoke 应把“创建后自启动”的断言放在创建完成时；侧栏/Note/布局测试不能在运行中的执行上任意 seed 并把它当作同一创建场景。持久化重读、模拟宿主退出和真实窗口 Reload 应分别验证，显式等待各自的完成条件。修复后必须保留活动本地执行 + 状态重组的回归测试，覆盖 Agent/Terminal、不改变和改变节点 ID、最终尾部保存、无额外 Agent 启动，并重新运行发布要求的完整门禁。
+本地 profile 执行预留时捕获画布 root 与 root 内本地 node ID。root 来源使用现有 `resolveExecutionNodeRuntimeRoot` 的 namespace/group/single-root 校验，不从进程 cwd 或标题推断。重组时先验证所有目标节点与路由唯一性，再由 `ExecutionOwnerLifecycle.rekey` 原子迁移 owner 的 key 和 Host 索引；provider 的 executionId/generation、tracker、metadata 和保存 promise 保持原身份。输出、启动诊断、最终源结果和异步准备完成后的校验读取记录当前 nodeId。迁移包括尚在准备中的预留以及已退休但仍等待保存的记录；后者只更新路由，不重新加入 owner 的活动 map。
+
+节点 ID 改变时取消原页面 reader，新节点通过现有附着协议取得快照；旧 reader 的结果不能结算新 reader。尚未开始派发的 Terminal 初始输入随节点路由移动，已开始的派发按原请求报告取消；准备失败也清除新路由上的初始输入，避免后续启动误执行旧命令。原生场景验证新路由输入与输出，受控测试验证迁移期间仍在等待的 resize 和启动准备。
+
+工作区事件通过 `workspaceRecomposition` 串行处理。移除 root 时关闭该 root 的 reader，停止原执行并有界等待真实最终保存；在全部成功前保留旧画布和 `lastComposedWorkspaceRootPaths`。`persistState` 和 root-local 保存按这份旧组合分解，避免尾部写到仍保留的其他 root。成功后才重组并更新组合路径。等待期间拒绝新的执行预留，仍在保留 root 中的原预留可完成准备。停止未确认、保存失败或超时都保留原责任并报告错误，不清空 map、不恢复已拒绝的重组；后续显式 workspace 事件可重新核对已结算责任。Host 永久关闭前后均校验画布变更准入，迟到保存不能在关闭后继续重组。
+
+`simulateRuntimeReloadForTest` 在现有 Host boundary 内启用最终保存等待。边界开始前仍检查进行中的创建，仍使用原总时限和关闭保护；只有保存成功和重读完成才恢复复用 owner 的准入。超时后保存迟到不自动重试重读或开放准入。该可复用测试入口与真实窗口 Reload 的行为范围保持区分。
+
+smoke 的创建自启动断言移到创建阶段；sidebar/Note/布局的整图夹具先停止并等待原 executionId/generation 的保存和退休，再显式启动后续执行场景。`CanvasDebugSnapshot.localExecutions` 提供这些测试完成条件，不作为产品 UI 或新的运行协议。新增 `owned-canvas-reconciliation` 场景默认进入源码 smoke 和 VSIX smoke，可用 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=owned-canvas-reconciliation` 单独执行；有过滤的成功只代表该场景。
+
+## 修复验收与剩余门禁
+
+Host 回归覆盖 Agent/Terminal 同 ID 重读、root ID 往返、运行中输出与 resize、原最终磁盘保存、缺失/替换绑定拒绝、原子路由冲突、移除 root 保存失败/超时、准备中迁移、永久关闭以及模拟 reload 的单次等待。真实 VS Code 场景使用已保存 workspace、当前原生 provider、fake Agent 和 bash：添加/移除 root 保留原两条执行，额外 root 的 Terminal 保存完成后才移除，整个迁移阶段只有三条预期启动，没有额外 Agent 或绑定拒绝。
+
+完整 `npm run test:vsix-smoke` 已通过上述场景并越过 trusted 的原 sidebar/尺寸重读/自启动失败段，但仍在 `verifyAgentExecutionFlow` 的 `burst 1` 等待失败。失败断言读取 `metadata.agent.recentOutput`；当前 `projectNonNativeHostBusiness` 不把活动终端正文实时写入该历史字段，实际输出由 `host/executionOutput` / `host/executionSnapshot` 交付。失败现场同一原生 Agent 仍 live、status 为 waiting-input，终端快照含 `[fake-agent] burst 001`，metadata 仍保留上一条执行的最终正文，且没有 `execution/ownedProjectionRejected`。这是该后续断言与现有正文通道的错位，不是本次画布绑定再次丢失。下一步需按原执行身份和当前输出协议审计这一组执行流断言；不能把一次过滤场景通过写成完整发布门禁成功。本 PR 保留这次原失败，0.26.1 发布仍需补齐完整门禁。
+
+workspace trust 与 editor deserialize 都复用已修复的 `loadReconciledState`，本轮做了调用点审计，但未执行这两个独立 UI 场景。真正的窗口 Reload、Remote SSH、旧 Supervisor 与跨版本升级仍由各自矩阵验证，不由本次结果代证。
 
 ## 证据与复现
 

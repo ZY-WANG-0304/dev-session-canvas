@@ -38,6 +38,11 @@ const scenarioFilter = parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_
 
 const scenarios = [
   {
+    name: 'owned-canvas-reconciliation',
+    description: 'Owned executions survive canvas reload and workspace recomposition',
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'runtime-legacy-reconnect',
     description: 'Legacy Runtime reconnect preserves bindings without automatic CLI resume',
     focusedOnly: true,
@@ -106,10 +111,15 @@ async function main() {
       targetRoot: path.join(runtime.debugRoot, 'smoke-host')
     });
 
+    let workspacePath = projectRoot;
+    if (scenario.name === 'owned-canvas-reconciliation') {
+      workspacePath = path.join(runtime.debugRoot, 'owned-canvas.code-workspace');
+      await fs.writeFile(workspacePath, JSON.stringify({ folders: [{ path: projectRoot }] }));
+    }
     await launchPreparedVSCodeScenario({
       projectRoot,
       runtime,
-      workspacePath: projectRoot,
+      workspacePath,
       extensionDevelopmentPath: smokeHostRoot,
       extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, scenario.testFile ?? 'extension-tests.cjs'),
       disableExtensions: false,

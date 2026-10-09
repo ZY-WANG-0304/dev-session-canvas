@@ -190,6 +190,10 @@ async function runSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await clearHostMessages();
   await clearDiagnosticEvents();
+  if (smokeScenario === 'owned-canvas-reconciliation') {
+    await verifyOwnedCanvasReconciliation();
+    return;
+  }
   if (smokeScenario === 'runtime-completed-no-history') {
     const { terminalNode } = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
     await verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(terminalNode.id);
@@ -406,7 +410,7 @@ function assertCompletedRuntimeWithoutHistory(metadata) {
   }
 }
 
-async function createBaseNodes() {
+async function createBaseNodes({ waitForAutoStart = false } = {}) {
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
@@ -414,6 +418,7 @@ async function createBaseNodes() {
       preferredPosition: { x: 40, y: 40 }
     }
   });
+  if (waitForAutoStart) await waitForAgentLive(findNodeByKind(await getDebugSnapshot(), 'agent').id);
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
@@ -421,6 +426,7 @@ async function createBaseNodes() {
       preferredPosition: { x: 420, y: 40 }
     }
   });
+  if (waitForAutoStart) await waitForTerminalLive(findNodeByKind(await getDebugSnapshot(), 'terminal').id);
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
@@ -1308,7 +1314,7 @@ async function runTrustedSmoke() {
   await verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope();
   await verifyCanvasLayoutArrangementPersists();
   await clearHostMessages();
-  await createBaseNodes();
+  await createBaseNodes({ waitForAutoStart: true });
   snapshot = await getDebugSnapshot();
   assert.deepStrictEqual(
     snapshot.state.nodes.map((node) => node.kind).sort(),
@@ -1350,9 +1356,11 @@ async function runTrustedSmoke() {
     'Exercise the real webview-to-host update path.'
   );
   assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 });
+  await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
+  await stopOwnedFixtureExecutions(agentNode.id, terminalNode.id);
   await verifySidebarNodeList(agentNode.id, terminalNode.id, noteNode.id);
   await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
-    expectAgentSessionId: false
+    expectAgentSessionId: true
   });
   await verifySidebarNodeListWebviewUi(agentNode.id);
 
@@ -1362,7 +1370,7 @@ async function runTrustedSmoke() {
   await verifyNoteWorkspaceFileLinks(noteNode.id);
   await verifyNoteMarkdownFileAssociation();
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
-  await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
+  await startFixtureExecutions(agentNode.id, terminalNode.id);
   await verifyAgentExecutionFlow(agentNode.id);
   await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
     expectAgentSessionId: true
@@ -1432,10 +1440,9 @@ async function runTrustedSmoke() {
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }
 async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
-  const baselineSnapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(currentAgent?.metadata?.agent?.liveSession && currentAgent.status === 'waiting-input');
-  }, 20000);
+  const baselineSnapshot = await getDebugSnapshot();
+  assert.strictEqual(baselineSnapshot.localExecutions.length, 0,
+    'Sidebar seed fixtures require completed local executions.');
   const baselineAgentNode = baselineSnapshot.state.nodes.find((node) => node.id === agentNodeId);
   assert.ok(baselineAgentNode?.kind === 'agent', 'Expected the trusted smoke agent node to be present.');
   const nodeItems = await getSidebarNodeListItems();
@@ -4888,11 +4895,23 @@ async function waitForTerminalLive(terminalNodeId) {
   });
 }
 
+async function waitForOriginalLocalExecutionRetirement(snapshot, kind, nodeId) {
+  const original = snapshot.localExecutions?.find(record => record.kind === kind && record.nodeId === nodeId);
+  if (!original) return getDebugSnapshot();
+  return waitForSnapshot(current => {
+    const retained = current.localExecutions?.find(record => record.identity.executionId === original.identity.executionId
+      && record.identity.generation === original.identity.generation);
+    assert.ok(!['failed', 'unconfirmed'].includes(retained?.persistence?.result?.kind),
+      `Original local execution did not save: ${JSON.stringify(retained?.persistence?.result)}`);
+    return !retained;
+  }, 15000);
+}
+
 async function ensureAgentStopped(agentNodeId) {
   const snapshot = await getDebugSnapshot();
   const agentNode = findNodeById(snapshot, agentNodeId);
   if (!agentNode.metadata?.agent?.liveSession) {
-    return snapshot;
+    return waitForOriginalLocalExecutionRetirement(snapshot, 'agent', agentNodeId);
   }
 
   await dispatchWebviewMessage({
@@ -4903,10 +4922,11 @@ async function ensureAgentStopped(agentNodeId) {
     }
   });
 
-  return waitForSnapshot((currentSnapshot) => {
+  await waitForSnapshot((currentSnapshot) => {
     const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
     return Boolean(currentNode && !currentNode.metadata?.agent?.liveSession);
   });
+  return waitForOriginalLocalExecutionRetirement(snapshot, 'agent', agentNodeId);
 }
 
 async function maybeEnsureAgentStopped(agentNodeId) {
@@ -4922,7 +4942,7 @@ async function ensureTerminalStopped(terminalNodeId) {
   const snapshot = await getDebugSnapshot();
   const terminalNode = findNodeById(snapshot, terminalNodeId);
   if (!terminalNode.metadata?.terminal?.liveSession) {
-    return snapshot;
+    return waitForOriginalLocalExecutionRetirement(snapshot, 'terminal', terminalNodeId);
   }
 
   await dispatchWebviewMessage({
@@ -4933,10 +4953,94 @@ async function ensureTerminalStopped(terminalNodeId) {
     }
   });
 
-  return waitForSnapshot((currentSnapshot) => {
+  await waitForSnapshot((currentSnapshot) => {
     const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
     return Boolean(currentNode && !currentNode.metadata?.terminal?.liveSession);
   });
+  return waitForOriginalLocalExecutionRetirement(snapshot, 'terminal', terminalNodeId);
+}
+
+async function stopOwnedFixtureExecutions(agentNodeId, terminalNodeId) {
+  const starts = await getDiagnosticEvents();
+  const executions = [agentNodeId, terminalNodeId].map(nodeId =>
+    [...starts].reverse().find(event => event.kind === 'execution/started' && event.detail?.nodeId === nodeId)?.detail.sessionId);
+  assert.ok(executions.every(Boolean), 'Fixture cleanup needs the exact started execution identities.');
+  await ensureAgentStopped(agentNodeId);
+  await ensureTerminalStopped(terminalNodeId);
+  await waitForDiagnosticEvents(events => executions.every(executionId =>
+    events.some(event => event.kind === 'execution/localFinalPersistence' && event.detail?.executionId === executionId
+      && event.detail.result?.kind === 'saved')), 15000);
+}
+
+async function startFixtureExecutions(agentNodeId, terminalNodeId) {
+  for (const [kind, nodeId] of [['agent', agentNodeId], ['terminal', terminalNodeId]]) {
+    await dispatchWebviewMessage({ type: 'webview/startExecutionSession', payload: { kind, nodeId, cols: 80, rows: 24 } });
+    if (kind === 'agent') await waitForAgentLive(nodeId);
+    else await waitForTerminalLive(nodeId);
+  }
+}
+
+async function verifyOwnedCanvasReconciliation() {
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+  await createBaseNodes({ waitForAutoStart: true });
+  const before = await getDebugSnapshot();
+  const agentId = findNodeByKind(before, 'agent').id;
+  const terminalId = findNodeByKind(before, 'terminal').id;
+  const started = (await getDiagnosticEvents()).filter(event => event.kind === 'execution/started');
+  assert.strictEqual(started.length, 2);
+  await reloadPersistedState();
+  await verifyAutoStartOnCreate(agentId, terminalId);
+  await setPersistedState((await getDebugSnapshot()).state);
+  await verifyAutoStartOnCreate(agentId, terminalId);
+  assert.strictEqual((await getDiagnosticEvents()).filter(event => event.kind === 'execution/started').length, 2);
+
+  const extraRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-owned-root-'));
+  async function changeFolders(remove, added) {
+    const changed = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { listener.dispose(); reject(new Error('Workspace folder event timed out')); }, 15000);
+      const listener = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        clearTimeout(timer); listener.dispose(); resolve();
+      });
+    });
+    assert.ok(vscode.workspace.updateWorkspaceFolders(1, remove, ...added));
+    await changed;
+  }
+  try {
+    await changeFolders(0, [{ uri: vscode.Uri.file(extraRoot), name: 'Reconciliation fixture' }]);
+    let snapshot = await waitForSnapshot(current => current.state.nodes.some(node => node.id.endsWith(`:${agentId}`)));
+    const mappedAgentId = snapshot.state.nodes.find(node => node.id.endsWith(`:${agentId}`)).id;
+    const mappedTerminalId = snapshot.state.nodes.find(node => node.id.endsWith(`:${terminalId}`)).id;
+    await verifyAutoStartOnCreate(mappedAgentId, mappedTerminalId);
+    await dispatchWebviewMessage({ type: 'webview/executionInput', payload: {
+      kind: 'terminal', nodeId: mappedTerminalId, data: "printf 'DSC_%s_INPUT\\n' RECONCILED\r"
+    } });
+    await waitForHostMessages(messages => messages.filter(message => ['host/executionOutput', 'host/executionSnapshot'].includes(message.type)
+      && message.payload.nodeId === mappedTerminalId).map(message => message.payload.chunk ?? message.payload.serializedTerminalState?.data ?? message.payload.output ?? '').join('').includes('DSC_RECONCILED_INPUT'));
+    const rootGroup = snapshot.state.groups.find(group => group.workspaceRootPath === extraRoot);
+    assert.ok(rootGroup);
+    await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'terminal', targetGroupId: rootGroup.id, cwd: extraRoot } });
+    snapshot = await waitForSnapshot(current => current.state.nodes.filter(node => node.kind === 'terminal').length === 2);
+    const removedTerminalId = snapshot.state.nodes.find(node => node.kind === 'terminal' && node.id !== mappedTerminalId).id;
+    await waitForTerminalLive(removedTerminalId);
+    await changeFolders(1, []);
+    await waitForSnapshot(current => current.state.nodes.some(node => node.id === agentId)
+      && !current.state.nodes.some(node => node.id === removedTerminalId));
+    await verifyAutoStartOnCreate(agentId, terminalId);
+    const events = await waitForDiagnosticEvents(current => current.some(event => event.kind === 'execution/localFinalPersistence'
+      && event.detail?.nodeId === removedTerminalId && event.detail.result?.kind === 'saved'));
+    const finalStarted = events.filter(event => event.kind === 'execution/started');
+    assert.strictEqual(finalStarted.length, 3, 'Root changes must not create a replacement Agent or Terminal');
+    assert.deepStrictEqual(finalStarted.slice(0, 2).map(event => event.detail.sessionId), started.map(event => event.detail.sessionId));
+    assert.ok(!events.some(event => event.kind === 'execution/ownedProjectionRejected'));
+    const reloaded = await simulateRuntimeReload();
+    assert.strictEqual(reloaded.localExecutions.length, 0, 'One simulated reload must wait for original local saves.');
+    await waitForDiagnosticEvents(current => started.every(start => current.some(event =>
+      event.kind === 'execution/localFinalPersistence' && event.detail?.executionId === start.detail.sessionId
+      && event.detail.result?.kind === 'saved')));
+    await startFixtureExecutions(agentId, terminalId);
+    await stopOwnedFixtureExecutions(agentId, terminalId);
+    console.log('Owned canvas reconciliation: reload, seed, root remap, input, removed-root save and simulated reload passed.');
+  } finally { await fs.rm(extraRoot, { recursive: true, force: true }); }
 }
 
 async function verifyAutoStartOnCreate(agentNodeId, terminalNodeId) {
