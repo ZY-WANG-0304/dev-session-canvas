@@ -11,6 +11,8 @@ updated_at: 2026-10-09
 
 # 四项发布验证阻塞定位与修复
 
+> 2026-10-09 后续状态：PR #310 已合并，用户重新授权 0.26.1 发布准备。本文的取消发布、未恢复发布和旧验证结论均保留各阶段历史含义；本轮发布输入与重新验证见 `docs/exec-plans/active/release-0-26-1-prep.md`。
+
 ## 背景与范围
 
 用户于 2026-10-09 取消 0.26.1 发布，准备 PR [#308](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/308) 已关闭，release 分支的计划已归档。没有合并、tag 或发布。调查阶段基于 `origin/main@f57b11f970ce27f28c731d81a2ed3228ba27f67d`，只定位四项失败，交付根因、引入过程、复现证据与修复边界；当时没有修改产品、测试断言、版本或门禁。用户随后要求在 [PR #310](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/310) 继续修复，新增实现提交为 `8d432d41`，不恢复版本发布。

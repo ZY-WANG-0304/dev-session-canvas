@@ -12,6 +12,14 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-09：恢复 0.26.1 准备后的门禁复验
+
+用户在 PR #310 合并后重新授权发布准备。以下记录覆盖当前发布准入状态；下文“取消/不恢复 0.26.1”仅指此前阶段。本轮没有继承 0.26.0 豁免，也没有修改产品或测试来绕过门禁。
+
+初次预合并输入 `04209158`（main `f6b65580` + 准备 `eb29e61a`）的 preflight 通过，release:verify 在 Runtime checkpoint 的 Agent 启动等待失败；Agent/Terminal 均记录 root preparation/submission 未完成，globalStorage 为 0775。独立干净检出 VSIX 已打包并越过 shell 重启和两个 QuickPick，但 reload 后 `verifyAutoStartOnCreate:4909` 超时，现场出现旧最终快照责任占用 key/容量及原 metadata 绑定变化。它们继续阻塞本版，不能把定向测试通过或旧失败单次未再出现解释为完整门禁通过。
+
+后续应分别处理：隔离宿主目录权限与 root 启动/Terminal 准入；停止或 reload 后旧 owner、reader、最终保存和新绑定的退役顺序。保留原权限保护与责任证明，不吞拒绝、放宽超时或无条件重试。本轮 Webview 424/424（12.3 分钟）、notifier 联动及 en/zh-cn smoke、root/Host/Supervisor/reader/旧历史定向回归通过；它们不能关闭上述缺口。实际命令、日志、工件及最终准备 head 的验证入口见 `docs/exec-plans/active/release-0-26-1-prep.md`。建议在发布准备 PR 转为可合并之前独立修复并重跑完整 release:verify。
+
 ## 2026-10-08：旧 Supervisor 的创建拒绝仍缺资源结果
 
 0.26.0 现场旧会话 journal 写入 ENOSPC 后 owner 隔离，新建/恢复在获取资源前收到普通准入错误。Host 已设置 `submitted=true`，但只对精确的 `rejected-before-acquire` 文案释放预留，因此新节点残留 Starting/Resuming，删除被原创建待确认保护拒绝。实际两个新 session 均未创建；旧失败会话仍有未消费尾部，二者责任不能混同。

@@ -11,8 +11,9 @@
 - [x] (2026-10-09) 确认 PR #310 已合并为 `f6b65580520ee24bbac69a987496931e1d464d67`，从最新 origin/main 创建隔离分支 `release-0-26-1-prep-resumed`。
 - [x] (2026-10-09) 阅读发布流程并建立本轮计划；原工作树的用户改动保持原状。
 - [x] (2026-10-09) 复用旧准备的静态输入并补齐 PR #310 用户变化，复核版本与文档一致性。
-- [ ] 对固定预合并提交执行 preflight、完整 verify 及契约补充验证，记录实际结果。
-- [ ] 更新技术债与本计划，追赶最新 main，推送并创建准备 PR；失败时保持草稿且明确不可合并。
+- [x] (2026-10-09) 固定预合并提交的 preflight、完整 verify 及契约补充验证已执行；完整门禁与 VSIX smoke 的失败如实记录，Webview 424/424 通过。
+- [x] (2026-10-09) 更新技术债与计划，完成草稿 PR 材料；交付前再次 fetch/rebase 并验证最终准备 head，实际链接及最新检查记录在 PR。
+- [ ] 后续独立修复启动阻塞，完整门禁通过后才可进入合并/发布；本轮仅交付草稿准备材料。
 
 ## 意外与发现
 
@@ -28,7 +29,7 @@
 
 ## 结果与复盘
 
-准备进行中，尚无本轮通过结论或发布产物。最终结果将在完成验证后更新，明确静态准备与发布准入的区别。
+静态发布输入已完成，preflight 通过；完整 verify 和独立 VSIX smoke 失败，尚不满足合并或发布条件。notifier 联动、双 locale 及具名运行时定向检查通过；Webview 全套 424/424 通过（12.3 分钟），包含 #310 新增的 26 项边界用例。准备 PR 保持草稿。
 
 ## 上下文与定向
 
@@ -75,3 +76,25 @@ PR #310 merge：`f6b65580520ee24bbac69a987496931e1d464d67`。旧静态输入：`
 本轮不新增产品接口或依赖。沿用 `scripts/release/release-preflight.mjs`、`scripts/release/run-clean-checkout-vsix-validation.mjs` 以及仓库 npm 脚本；不修改测试或产品来绕过发布门禁。
 
 修订记录：2026-10-09 创建本轮恢复计划，区分历史准备、已合入修复与待执行的完整发布验证。
+
+
+## 本轮验证记录
+
+第一轮准备提交为 `eb29e61a`，与 `origin/main@f6b65580` 生成的预合并提交为 `0420915806fee8179eb19de6164985b0a593213c`，验证树 `/tmp/dsc261v`。该树真实执行 npm ci、preflight 和 release:verify。后续发布文案仅补充四物理行限制及澄清预合并步骤；不修改代码、测试、依赖或原生资产。
+
+完整 verify 的门禁自测通过，npm test 已通过 Marketplace 浏览器与 VS Code E2E、运行时协议、模板及 reset helper 等前置检查，随后在 `runRuntimeCheckpointRefreshSmoke:218` 等待 Agent 启动超时。Agent/Terminal 均记录 `Root runtime preparation or submission did not complete`，现场扩展 globalStorage 为 0775。与此前已确认的权限拒绝一致；本轮不修改目录权限，不把旧 0077 对照中的后续 Terminal 准入问题追认为解决。日志 `/tmp/dsc261-verify.log`，现场 `/tmp/d261s/runtime-checkpoint-refresh/artifacts`。
+
+独立 `npm run validate:clean-checkout:vsix -- --ref HEAD --keep-temp` 针对同一预合并提交完成全新 npm ci、打包及真实 VS Code 启动，最后在 `verifyAutoStartOnCreate:4909` 超时。此轮已越过 shell 停止后重启和两个 QuickPick；之前 shell 重启的旧责任竞态仍缺专门修复，单次越过不能关闭其债务。现场包含 `Local final snapshot responsibility still occupies the execution key or Host capacity`、`The original execution metadata binding changed`。不能称为保存 pending 或已排除产品缺陷。日志 `/tmp/dsc261-vsix.log`，工件 `/tmp/dev-session-canvas-clean-checkout-xpLXon/repo/.debug/vscode-vsix-smoke/smoke-runtime/artifacts`。
+
+补充回归在相同源代码的准备树 `/tmp/dsc261r` 执行：root ownership/preparation、请求超时 37/37、提醒 helper、Host 336/336、Supervisor 116/116、reader client 32/32、reader settlement 27/27、legacy history 136 例均通过。notifier typecheck/source/build、companion 和 en/zh-cn locale smoke 通过。命令逐项 exit code 保存在 `/tmp/dsc261-directed-results.json`、`/tmp/dsc261-notifier-results.json`，日志分别为 `/tmp/dsc261-directed.log` 与 `/tmp/dsc261-notifier-smoke.log`。
+
+六目标资产读取器在当前源码上验证 binary/hash/source 输入通过，见 `/tmp/dsc261-assets.log`。同一干净检出额外执行 notifier package:vsix，双包均为 0.26.1/Preview，包含 en/zh-cn 本地化资源，主扩展 extensionPack 指向 notifier、notifier extensionDependencies 指向主扩展；见 `/tmp/dsc261-notifier-package.log` 与 `/tmp/dsc261-vsix-inventory.log`。这仅证明包内容关系，市场自动补齐安装及真实桌面通知送达/点击仍不在本机 smoke 的证据范围内。
+
+Webview 全套 `npm run test:webview` 424/424 通过（12.3 分钟），没有更新快照或重试失败用例；日志 `/tmp/dsc261-webview.log`。该树产品源码、测试与依赖与第一轮预合并输入相同，后续只有发布文案及验证记录变化。此结果不替代失败的完整门禁。
+
+修订记录：2026-10-09，补充固定预合并输入的完整门禁首败、VSIX 首败及具名补充检查，将发布准入与静态材料完成分别记录。
+
+
+交付前复核：将本记录提交后，在 `/tmp/dsc261v` 从最新 origin/main 重新生成预合并提交，执行 `npm run release:preflight -- --version 0.26.1` 与 `npm run release:verify -- --version 0.26.1`。使用新的 `/tmp/d261fm`（Marketplace）、`/tmp/d261ft`（宿主临时目录）与 `/tmp/d261fs`（Runtime smoke）保留独立现场；输出 `/tmp/dsc261-final-preflight.log`、`/tmp/dsc261-final-verify.log`。最新准备/预合并 SHA 和复核结果写入 PR，避免为回填同一验证事实反复改动发布输入；任何失败都继续阻止合并。
+
+修订记录：2026-10-09，补充 Webview 424/424 的完整结果，收口静态交付材料并保留独立启动修复及最终 head 门禁入口。

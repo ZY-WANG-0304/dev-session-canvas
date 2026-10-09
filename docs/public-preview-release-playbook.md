@@ -17,7 +17,7 @@
 
 本版恢复标准完整门禁；0.26.0 的一次性授权范围只保留在历史契约，不适用于本版。Marketplace locale、Webview 基准、companion 桥接与 smoke 生命周期修复已合入 main；这不代替在本次输入上实际执行完整验证。
 
-在已提交的准备分支运行 preflight 与完整 verify；完整 verify 使用 HEAD，不能验证未提交的版本修改。按 `CONTRIBUTING.md` 提供匹配六目标原生资产，并将绝对路径通过 `DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET` 传入 clean-checkout。PR workflow 自动构建预合并 ref 的同源资产。另执行 root 归属/启动准备回归、notifier build / typecheck / source、companion / locale smoke 和双 VSIX 安装关系检查。
+在由已提交准备 head 与最新 origin/main 生成的预合并工作树运行 preflight 与完整 verify；完整 verify 使用该工作树的 HEAD，不能验证未提交的版本修改。按 `CONTRIBUTING.md` 提供匹配六目标原生资产，并将绝对路径通过 `DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET` 传入 clean-checkout。PR workflow 自动构建预合并 ref 的同源资产。另执行 root 归属/启动准备回归、notifier build / typecheck / source、companion / locale smoke 和双 VSIX 安装关系检查。
 
     npm run release:preflight -- --version 0.26.1
     npm run release:verify -- --version 0.26.1
@@ -51,7 +51,7 @@
 
 当前 `npm run package:vsix` 会 staging 主扩展子包，并在打包阶段显式传入 `--readme-path README.marketplace.md`，因此最终用于发布的 VSIX 已内嵌 Marketplace 专用 README；后续 `publish --packagePath` 只上传现成 VSIX，不会再替换 README。打包脚本默认会把 README 相对资源改写到当前 `HEAD` 对应的 git ref；如果在没有 `.git` 元数据的 clean checkout、导出目录或 tarball 中打包，必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，否则不允许继续打包。
 
-本轮 listing 突出同 root 新建持久会话的跨窗口归属、明确的启动拒绝与请求超时、旧历史删除和 snapshot-only 提醒桥接修复。必须说明旧 live 按原绑定连接、不自动迁移，结果未知的请求不会自动重发，多 root 分别托管会增加进程开销。0.26 的当前状态直接导入和已结束 Runtime 无正文规则继续保留，不作为本版新增功能重复宣传；不承诺灾后恢复、固定总资源或旧系统兼容。
+本轮 listing 突出同 root 新建持久会话的跨窗口归属、明确的启动拒绝与请求超时、旧历史删除、snapshot-only 提醒桥接及终端文件链接的混合折行/悬停修复。必须说明旧 live 按原绑定连接、不自动迁移，结果未知的请求不会自动重发，多 root 分别托管会增加进程开销。0.26 的当前状态直接导入和已结束 Runtime 无正文规则继续保留，不作为本版新增功能重复宣传；不承诺灾后恢复、固定总资源或旧系统兼容。
 
 ## release notes 定稿口径
 
@@ -61,7 +61,7 @@
 
 - 顶部版本标题为 `0.26.1 - 运行时归属、失败处理与终端链接修复`
 - 当前已包含实际版本差异、安装/升级说明与回退建议
-- 明确新 root 归属与旧绑定边界、启动拒绝后的重试/删除、请求超时结果未知、旧历史清理、提醒桥接和 notifier 版本对齐
+- 明确新 root 归属与旧绑定边界、启动拒绝后的重试/删除、请求超时结果未知、旧历史清理、提醒桥接、终端文件链接折行/悬停和 notifier 版本对齐
 - 保留监督器/机器故障不保证恢复、旧 live 协议不升级、资源随会话和 scrollback 增长、Windows Codex 翻页及旧系统兼容限制；不把具名通过扩展成任意规模保证
 - 安装/升级与回退口径需要继续与 `README.marketplace.md` 保持一致
 - 不把 runtime persistence、local PTY、安全 compact、固定磁盘上限、跨版本回退、生成节点永久无重叠、模板市场、生产服务或 Visual Studio Marketplace 可见性误写成稳定正式版承诺
