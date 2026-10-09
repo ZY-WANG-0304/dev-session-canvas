@@ -13,7 +13,7 @@ import {
   type AttentionNotificationRequest
 } from '../../../../packages/attention-protocol/src/index';
 import { COMMAND_IDS } from '../../dev-session-canvas/src/common/extensionIdentity';
-import { isTestHarnessMode } from '../../dev-session-canvas/src/common/testHarness';
+import { isTestHarnessMode } from './testHarness';
 import { buildManualNotificationMessage } from './manualNotificationCopy.ts';
 import { notifierHtmlLang, resolveNotifierLocale } from './notifierLocalization.ts';
 import { postDesktopNotification } from './platformNotification.ts';

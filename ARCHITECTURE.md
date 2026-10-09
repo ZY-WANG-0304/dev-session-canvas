@@ -161,6 +161,8 @@ docs/                           根目录正式文档知识库
 - 放置宿主与前端都会用到的纯逻辑和纯数据工具。
 - 统一当前系统对“节点”“执行会话”“恢复快照”“终端链接”的命名。
 
+依赖边界补充：需要 `vscode.Webview`、`vscode.Uri` 或 `vscode.ExtensionMode` 的 Host helper 不属于这里；主扩展的对应实现位于 `src/panel/`，独立 notifier extension 在自身 `src/` 下维护 Host helper。
+
 架构不变量：
 
 - `extensions/vscode/dev-session-canvas/src/common/` 不应依赖 `vscode`、React、DOM、`node-pty` 或具体 CLI provider。

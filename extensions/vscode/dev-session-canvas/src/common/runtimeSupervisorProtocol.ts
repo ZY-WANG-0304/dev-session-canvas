@@ -11,7 +11,7 @@ import type {
 import type { SerializedTerminalState } from './serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamCheckpoint, TerminalStreamEvent } from './terminalSessionStream';
 import type { TerminalStreamPage, TerminalStreamReadDescriptor } from './terminalStreamPaging';
-import type { ExecutionSessionLaunchSpec } from '../panel/executionSessionBridge';
+import type { ExecutionSessionLaunchSpec } from './executionSessionLaunchSpec';
 import type { ExecutionCandidateProfile, SourceDisposition } from './executionLifecycle';
 import type { RuntimeOwnerDescriptorV1 } from './runtimeRootOwnership';
 

@@ -8,7 +8,7 @@ import {
   STORAGE_KEYS,
   type SidebarSessionHistoryGroupingOptions
 } from '../common/extensionIdentity';
-import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
+import { getVersionedWebviewResourceUri } from '../panel/webviewResourceUri';
 import type { AgentProviderKind } from '../common/protocol';
 import { isAgentProviderKind } from '../common/protocol';
 import { CanvasPanelManager } from '../panel/CanvasPanelManager';

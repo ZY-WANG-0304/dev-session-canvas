@@ -6,7 +6,7 @@ import type {
   CanvasSurfaceMode,
   WebviewLifecycleIdentity
 } from '../common/protocol';
-import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
+import { getVersionedWebviewResourceUri } from './webviewResourceUri';
 import {
   formatWebviewMessage,
   resolveWebviewI18n,

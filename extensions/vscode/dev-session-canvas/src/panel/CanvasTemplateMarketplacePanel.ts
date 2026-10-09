@@ -9,8 +9,8 @@ import {
   type TemplateMarketplacePublishDraft,
   type TemplateMarketplacePublishDraftRequest
 } from './TemplateMarketplaceClient';
-import { isTestHarnessMode } from '../common/testHarness';
-import { getVersionedWebviewResourceUri } from '../common/webviewResourceUri';
+import { isTestHarnessMode } from './testHarness';
+import { getVersionedWebviewResourceUri } from './webviewResourceUri';
 import { localizeCanvasTemplateError } from './canvasTemplateLocalization';
 
 const MARKETPLACE_OFFICIAL_ORIGIN = 'https://dscanvas.dev';

@@ -1,4 +1,5 @@
 import * as path from 'path';
+import type { ExecutionSessionLaunchSpec } from '../common/executionSessionLaunchSpec';
 
 export type ExecutionSessionBackendKind = 'node-pty';
 export const MISSING_NODE_PTY_ERROR_CODE = 'DEV_SESSION_CANVAS_NODE_PTY_MISSING';
@@ -11,16 +12,6 @@ export interface ExecutionSessionExitEvent {
 
 export interface DisposableLike {
   dispose(): void;
-}
-
-export interface ExecutionSessionLaunchSpec {
-  file: string;
-  args?: readonly string[];
-  cwd: string;
-  cols: number;
-  rows: number;
-  env: NodeJS.ProcessEnv;
-  terminalName?: string;
 }
 
 export interface ExecutionSessionProcess {
