@@ -16123,7 +16123,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const activeSessions = this.getExecutionSessions('agent');
-    if (activeSessions.has(nodeId)) {
+    if (activeSessions.has(nodeId) || this.hasRunningLocalOwnedExecution('agent', nodeId)) {
       this.recordDiagnosticEvent('execution/startRejected', {
         kind: 'agent',
         nodeId,
@@ -17717,6 +17717,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
+  private hasRunningLocalOwnedExecution(kind: ExecutionNodeKind, nodeId: string): boolean {
+    const record = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+    if (!record || record.finalRevision !== undefined) return false;
+    const snapshot = record.execution.snapshot();
+    return !snapshot.stopRequested && !snapshot.settled && !snapshot.adapter?.process;
+  }
+
   private isNonNativeHostRecordCurrent(record: NonNativeHostExecution): boolean {
     return this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(record.kind, record.nodeId)) === record;
   }
@@ -18088,7 +18095,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    if (this.terminalSessions.has(nodeId)) {
+    if (this.terminalSessions.has(nodeId) || this.hasRunningLocalOwnedExecution('terminal', nodeId)) {
       this.recordDiagnosticEvent('execution/startRejected', {
         kind: 'terminal',
         nodeId,

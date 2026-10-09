@@ -18,7 +18,9 @@ PR #313 自启动超时已定位：`setPersistedStateForTest` / `reloadPersisted
 
 PR #314 已实施具名修复：同 ID 重读保留原 metadata/status；root + local node ID 驱动 owner/Host 原子路由迁移；移除 root 先停止并按旧 root 组合保存尾部；失败、超时与 Host 永久关闭保留责任；模拟 reload 在原有总边界内等待最终保存后恢复准入。smoke 的创建与整图夹具已隔离，新增原生 `owned-canvas-reconciliation` 并纳入默认源码/VSIX 入口。受控测试涵盖准备中迁移、resize 等待、最终读盘及失败保护。关联：`docs/design-docs/smoke-reload-autostart-investigation.md`、`docs/exec-plans/completed/canvas-owned-execution-reconciliation.md`。
 
-剩余发布门禁：完整 VSIX smoke 越过原失败段后，在 `verifyAgentExecutionFlow` 的 burst 输出断言失败。同一 executionId 的 `host/executionSnapshot` 已含 `[fake-agent] burst 001`，Agent 保持 live/waiting-input，无 `ownedProjectionRejected`，但测试轮询的 `metadata.agent.recentOutput` 是上一条执行最终保存的历史正文。`projectNonNativeHostBusiness` 不实时投影该字段，下一次应按当前正文通道和原身份修正这一组 smoke 断言，不能修改运行时复制正文来迎合旧断言，也不能延长超时或跳过执行流验收。证据见 `docs/references/smoke-reload-autostart/repair-evidence.json`、`.debug/rca/repair-vsix-final.log` 与其失败工件。该完整门禁仍阻塞 0.26.1 发布；本次具名修复不等于全部 smoke 已适配。
+2026-10-10 继续修正测试：burst/hello/sleep/slowspin 和 Terminal shell 输出已按原 executionId/generation 的实际快照/连续输出验证，正文正反例 14/14；停止摘要按实际退出结果验证，停止后 resize 保留最终快照原尺寸与正文。额外修复了正常原生 Agent/Terminal 重复启动没有进入 already-running 分支的问题，Host 356/356（新增 2 项）、快照尺寸 16/16 通过。默认 VSIX 的 owned reconciliation 与新增 local-execution-flow 均通过，旧 burst 阻塞已收口。通知用例两处同类正文条件已迁移，但独立 UI 路径尚未原生复验；其他未触达的 Runtime/恢复/压力场景不能由本次结果代证。
+
+剩余发布门禁：完整 trusted 两次在 `verifyRealWebviewProbe` 的空 toast 断言捕获原生 resize 的 `Execution terminal interaction admission is closed or unsupported`；栈指向 `queueNonNativeHostResize → OwnedExecution.resize → ExecutionSessionAdapter.interact`。最终节点已停止、原保存成功，但这不能确定 resize 错误发生在启动、停止还是源通道关闭阶段。下一次需按原执行身份记录 resize 请求/出队、owner/adapter 状态和关闭事件，确认时序后补受控回归；不能清除 toast 或吞错以放行测试。证据：`docs/references/smoke-reload-autostart/output-assertion-evidence.json`、`.debug/pr314-output/run2-artifacts`、`run5-artifacts`。完整门禁仍阻塞 0.26.1 发布。关联 `docs/exec-plans/completed/smoke-current-execution-output.md`。
 
 workspace trust / editor deserialize 已审计共用入口，但独立 UI 路径、真实窗口 Reload、跨版本及 Remote SSH 不在本轮原生验收范围，继续依赖各自验证矩阵。
 

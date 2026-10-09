@@ -38,6 +38,11 @@ const scenarioFilter = parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_
 
 const scenarios = [
   {
+    name: 'local-execution-flow',
+    description: 'Current native Agent and Terminal output and lifecycle assertions',
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'owned-canvas-reconciliation',
     description: 'Owned executions survive canvas reload and workspace recomposition',
     disableWorkspaceTrust: true

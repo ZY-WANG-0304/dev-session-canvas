@@ -5485,6 +5485,29 @@ for (const failPreparation of [false, true]) {
   });
 }
 
+for (const kind of ['agent', 'terminal']) {
+  test(`candidate duplicate running ${kind} reports its original execution instead of rejecting unhandled`, async () => {
+    const f = candidateFixture();
+    let original;
+    try {
+      await completed(f.clock, f.start(kind), 'original before duplicate');
+      original = f.record(kind);
+      const metadata = original.persistence.metadata;
+      const starts = f.diagnostics.filter(event => event.name === 'execution/started');
+      await completed(f.clock, f.start(kind), 'duplicate handled without throwing');
+      assert.strictEqual(f.record(kind), original);
+      assert.strictEqual(original.persistence.metadata, metadata);
+      assert.equal(f.providers.length, 1);
+      assert.deepEqual(f.diagnostics.filter(event => event.name === 'execution/started'), starts);
+      assert.ok(f.diagnostics.some(event => event.name === 'execution/startRejected' &&
+        event.detail.kind === kind && event.detail.reason === 'already-running'));
+      assert.ok(f.posted.some(message => message.type === 'host/error' &&
+        message.payload.message === `This ${kind === 'agent' ? 'Agent' : 'Terminal'} is already running.`));
+      assert.equal(original.execution.snapshot().stopRequested, false);
+    } finally { original?.business?.cancelActivityPoll?.(); original?.business?.lineContextTracker.dispose(); original?.tracker.dispose(); }
+  });
+}
+
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
 const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
 const selectedTests = testNamePattern ? tests.filter(({ name }) => testNamePattern.test(name)) : tests;

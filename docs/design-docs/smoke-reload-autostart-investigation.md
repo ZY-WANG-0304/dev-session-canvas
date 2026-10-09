@@ -5,8 +5,8 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md]
-updated_at: 2026-10-09
+related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md]
+updated_at: 2026-10-10
 ---
 
 # smoke 重读画布后自启动超时的根因与修复边界
@@ -85,7 +85,7 @@ smoke 的创建自启动断言移到创建阶段；sidebar/Note/布局的整图�
 
 Host 回归覆盖 Agent/Terminal 同 ID 重读、root ID 往返、运行中输出与 resize、原最终磁盘保存、缺失/替换绑定拒绝、原子路由冲突、移除 root 保存失败/超时、准备中迁移、永久关闭以及模拟 reload 的单次等待。真实 VS Code 场景使用已保存 workspace、当前原生 provider、fake Agent 和 bash：添加/移除 root 保留原两条执行，额外 root 的 Terminal 保存完成后才移除，整个迁移阶段只有三条预期启动，没有额外 Agent 或绑定拒绝。
 
-完整 `npm run test:vsix-smoke` 已通过上述场景并越过 trusted 的原 sidebar/尺寸重读/自启动失败段，但仍在 `verifyAgentExecutionFlow` 的 `burst 1` 等待失败。失败断言读取 `metadata.agent.recentOutput`；当前 `projectNonNativeHostBusiness` 不把活动终端正文实时写入该历史字段，实际输出由 `host/executionOutput` / `host/executionSnapshot` 交付。失败现场同一原生 Agent 仍 live、status 为 waiting-input，终端快照含 `[fake-agent] burst 001`，metadata 仍保留上一条执行的最终正文，且没有 `execution/ownedProjectionRejected`。这是该后续断言与现有正文通道的错位，不是本次画布绑定再次丢失。下一步需按原执行身份和当前输出协议审计这一组执行流断言；不能把一次过滤场景通过写成完整发布门禁成功。本 PR 保留这次原失败，0.26.1 发布仍需补齐完整门禁。
+2026-10-09 的完整 `npm run test:vsix-smoke` 已通过上述场景并越过 trusted 的原 sidebar/尺寸重读/自启动失败段，但仍在 `verifyAgentExecutionFlow` 的 `burst 1` 等待失败。失败断言读取 `metadata.agent.recentOutput`；当前 `projectNonNativeHostBusiness` 不把活动终端正文实时写入该历史字段，实际输出由 `host/executionOutput` / `host/executionSnapshot` 交付。失败现场同一原生 Agent 仍 live、status 为 waiting-input，终端快照含 `[fake-agent] burst 001`，metadata 仍保留上一条执行的最终正文，且没有 `execution/ownedProjectionRejected`。这是该后续断言与现有正文通道的错位，不是本次画布绑定再次丢失。该后续断言在下一节继续修正；不能把一次过滤场景通过写成完整发布门禁成功。本 PR 保留这次原失败，0.26.1 发布仍需补齐完整门禁。
 
 workspace trust 与 editor deserialize 都复用已修复的 `loadReconciledState`，本轮做了调用点审计，但未执行这两个独立 UI 场景。真正的窗口 Reload、Remote SSH、旧 Supervisor 与跨版本升级仍由各自矩阵验证，不由本次结果代证。
 
@@ -94,3 +94,17 @@ workspace trust 与 editor deserialize 都复用已修复的 `loadReconciledStat
 精简结构化观测在 `docs/references/smoke-reload-autostart/evidence.json`。实际使用的临时探针和实验入口在同目录 `diagnostic.patch`，复现步骤见 `README.md`。它们是调查输入，本文件才是人工复核后的归因；patch 不应用到正式产品或 CI，也不构成产品修复。
 
 原日志 `/tmp/dsc261b-vsix.log`，原 artifact 目录 `/tmp/dev-session-canvas-clean-checkout-akdQNG/repo/.debug/vscode-vsix-smoke/smoke-runtime/artifacts`。本轮完整日志与快照在 `/tmp/dscr/.debug/rca`。远程 0.26.0 CPU profile 的配置读取热点没有与本次状态失配建立因果关系，本轮未扩展到性能修复。
+
+## 实时正文断言修正（2026-10-10）
+
+`tests/vscode-smoke/execution-output.cjs` 只从同 kind/nodeId/executionSessionId 的 `host/executionOutput` 或 `host/executionSnapshot` 匹配正文。输出仅按连续序号拼接，每个快照独立检查，不能跨序号缺口、重复序号或快照边界拼成 marker。`extension-tests.cjs` 捕获当前本地 executionId/generation 并在等待中持续核对同身份，同时检查 live、预期生命周期及通知状态。历史 metadata 不作为实时正文，不改写产品投影或 debug snapshot 来迎合旧测试。最终保存/恢复检查继续读取真实历史字段。
+
+Agent 执行流的 burst、分段 hello、sleep、slowspin，以及 Terminal shell marker 均使用该方法。Terminal 的 marker 用 `printf` 格式化产生，完整 marker 不出现在输入命令中，避免只匹配 shell 输入回显。通知用例的两处同类正文条件也已迁移，并在原 20 秒预算内同时校验 attentionPending；它们未被本轮完整 trusted 跑到，不声称通知 UI 已原生复验。
+
+退出检查依据最终状态、退出码及 summary/lastExitMessage 一致性，并等待原记录完成保存、退休后再重启。停止后 resize 改为验证保存的原尺寸和序列化正文保持不变：`resizeExecutionSession` 与既有 completed-snapshot 契约要求按原尺寸还原保存内容，然后由页面 reflow，旧 smoke 要求把历史尺寸改成 100×30 已不适用。
+
+独立执行流还确认了一处产品遗漏：`startAgentSession` / `startTerminalSession` 的重复启动检查只认识旧 session map，当前运行的原生记录未进入正常 already-running 分支。新增 `hasRunningLocalOwnedExecution` 后，未停止、未结算、没有进程结果的原生执行沿用原 host/error 提示和附着行为。原 executionId/generation、metadata 和 provider 数量保持不变；停止中、最终保存或未知责任继续由原保护处理，不借本次调整释放。对应 Agent/Terminal 回归修前抛出同 key 占用错误，修后正常报告拒绝。smoke 保留明确拒绝提示，并增加原身份和 started 数量不变断言。
+
+默认源码及 VSIX smoke 增加 `local-execution-flow`，独立验证这组 Agent/Terminal 操作；默认入口仍执行 trusted。2026-10-10 最终结果：正文正反例 14/14、Host 356/356、completed-snapshot resize 16/16、runner 检查和 VSIX 内 typecheck/build/package 通过。默认 VSIX 中 owned reconciliation 与 local execution flow 两个阶段通过，完整命令仍失败。
+
+最新完整失败在 `verifyRealWebviewProbe` 的 `toastMessage === null`：页面残留 `Execution terminal interaction admission is closed or unsupported`，调用栈为 `queueNonNativeHostResize → OwnedExecution.resize → ExecutionSessionAdapter.interact`。两次完整运行分别捕获相同错误。本轮只能确认原生 resize 的准入错误传到了页面，不能仅从最终已停止并保存的节点快照推断它一定发生在 stop 而非启动或源通道关闭阶段；精确触发时序尚待定位。保留该页面错误断言和全部首次失败，不能清 toast、忽略 resize 错误或用具名阶段成功替代完整发布门禁。过程与证据见 `docs/exec-plans/completed/smoke-current-execution-output.md`、`docs/references/smoke-reload-autostart/output-assertion-evidence.json`。

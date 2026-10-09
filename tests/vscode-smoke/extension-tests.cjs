@@ -7,6 +7,7 @@ const path = require('path');
 const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { resetCanvasAfterFinalPersistence } = require('./reset-canvas.cjs');
+const { findExecutionOutput } = require('./execution-output.cjs');
 
 const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
 const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
@@ -190,6 +191,15 @@ async function runSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await clearHostMessages();
   await clearDiagnosticEvents();
+  if (smokeScenario === 'local-execution-flow') {
+    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+    await createBaseNodes({ waitForAutoStart: true });
+    const snapshot = await getDebugSnapshot();
+    await verifyAgentExecutionFlow(findNodeByKind(snapshot, 'agent').id);
+    await verifyTerminalExecutionFlow(findNodeByKind(snapshot, 'terminal').id);
+    console.log('Local execution flow: Agent burst, partial input, sleep, slowspin, restart, duplicate rejection, Terminal output and final save passed.');
+    return;
+  }
   if (smokeScenario === 'owned-canvas-reconciliation') {
     await verifyOwnedCanvasReconciliation();
     return;
@@ -4895,6 +4905,40 @@ async function waitForTerminalLive(terminalNodeId) {
   });
 }
 
+function captureLocalExecutionIdentity(snapshot, kind, nodeId) {
+  const original = snapshot.localExecutions.find(record => record.kind === kind && record.nodeId === nodeId);
+  assert.ok(original && !original.retired, `Expected an active local execution for ${kind}:${nodeId}`);
+  return { kind, nodeId, executionSessionId: original.identity.executionId, generation: original.identity.generation };
+}
+
+async function waitForLocalExecutionOutput(execution, expectedText, expectedStatus, timeoutMs = 15000, predicate = () => true) {
+  const deadline = Date.now() + timeoutMs;
+  let snapshot;
+  while (Date.now() < deadline) {
+    snapshot = await getDebugSnapshot();
+    const current = captureLocalExecutionIdentity(snapshot, execution.kind, execution.nodeId);
+    assert.deepStrictEqual(current, execution, 'The output assertion must keep its original execution identity.');
+    const node = findNodeById(snapshot, execution.nodeId);
+    if (node.metadata?.[execution.kind]?.liveSession && (!expectedStatus || node.status === expectedStatus) && predicate(node) &&
+        findExecutionOutput(await getHostMessages(), execution, expectedText) !== undefined) return snapshot;
+    await sleep(100);
+  }
+  assert.fail(`Timed out waiting for ${JSON.stringify(expectedText)} from ${JSON.stringify(execution)} with status ${expectedStatus}. Last snapshot: ${JSON.stringify(snapshot)}`);
+}
+
+async function verifyDuplicateLocalStartRejected(kind, nodeId) {
+  const original = captureLocalExecutionIdentity(await getDebugSnapshot(), kind, nodeId);
+  const starts = events => events.filter(event => event.kind === 'execution/started' &&
+    event.detail?.kind === kind && event.detail.nodeId === nodeId).map(event => event.detail.sessionId);
+  const before = starts(await getDiagnosticEvents());
+  await clearHostMessages();
+  await dispatchWebviewMessage({ type: 'webview/startExecutionSession', payload: { kind, nodeId, cols: 90, rows: 28 } });
+  await waitForHostMessages(messages => messages.some(message => message.type === 'host/error' &&
+    message.payload.message === `This ${kind === 'agent' ? 'Agent' : 'Terminal'} is already running.`));
+  assert.deepStrictEqual(captureLocalExecutionIdentity(await getDebugSnapshot(), kind, nodeId), original);
+  assert.deepStrictEqual(starts(await getDiagnosticEvents()), before, 'A rejected duplicate cannot start another execution.');
+}
+
 async function waitForOriginalLocalExecutionRetirement(snapshot, kind, nodeId) {
   const original = snapshot.localExecutions?.find(record => record.kind === kind && record.nodeId === nodeId);
   if (!original) return getDebugSnapshot();
@@ -5072,6 +5116,7 @@ async function verifyAgentExecutionFlow(agentNodeId) {
     );
   });
   let agentNode = findNodeById(snapshot, agentNodeId);
+  const execution = captureLocalExecutionIdentity(snapshot, 'agent', agentNodeId);
   assert.strictEqual(agentNode.metadata.agent.liveSession, true);
   assert.ok(agentNode.metadata.agent.lastCols > 0);
   assert.ok(agentNode.metadata.agent.lastRows > 0);
@@ -5097,15 +5142,8 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'running');
 
-  snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(
-      currentNode?.metadata?.agent?.recentOutput?.includes('[fake-agent] burst 001') &&
-        currentNode.status === 'waiting-input'
-    );
-  });
+  snapshot = await waitForLocalExecutionOutput(execution, '[fake-agent] burst 001', 'waiting-input');
   agentNode = findNodeById(snapshot, agentNodeId);
-  assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] burst 001'));
   assert.strictEqual(agentNode.status, 'waiting-input');
 
   await requestExecutionSnapshot('agent', agentNodeId);
@@ -5149,15 +5187,8 @@ async function verifyAgentExecutionFlow(agentNodeId) {
     }
   });
 
-  snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(
-      currentNode?.metadata?.agent?.recentOutput?.includes('[fake-agent] hello smoke') &&
-        currentNode.status === 'waiting-input'
-    );
-  });
+  snapshot = await waitForLocalExecutionOutput(execution, '[fake-agent] hello smoke', 'waiting-input');
   agentNode = findNodeById(snapshot, agentNodeId);
-  assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] hello smoke'));
   assert.strictEqual(agentNode.status, 'waiting-input');
 
   await dispatchWebviewMessage({
@@ -5181,15 +5212,8 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'running');
 
-  snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(
-      currentNode?.metadata?.agent?.recentOutput?.includes('[fake-agent] woke after 1s') &&
-        currentNode.status === 'waiting-input'
-    );
-  });
+  snapshot = await waitForLocalExecutionOutput(execution, '[fake-agent] woke after 1s', 'waiting-input');
   agentNode = findNodeById(snapshot, agentNodeId);
-  assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] woke after 1s'));
   assert.strictEqual(agentNode.status, 'waiting-input');
 
   await dispatchWebviewMessage({
@@ -5213,15 +5237,8 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'running');
 
-  snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(
-      currentNode?.metadata?.agent?.recentOutput?.includes('[fake-agent] slowspin done 003') &&
-        currentNode.status === 'waiting-input'
-    );
-  });
+  snapshot = await waitForLocalExecutionOutput(execution, '[fake-agent] slowspin done 003', 'waiting-input');
   agentNode = findNodeById(snapshot, agentNodeId);
-  assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] slowspin done 003'));
   assert.strictEqual(agentNode.status, 'waiting-input');
 
   await dispatchWebviewMessage({
@@ -5241,7 +5258,9 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   assert.strictEqual(agentNode.status, 'stopped');
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
   assert.strictEqual(agentNode.metadata.agent.lastExitCode, 0);
-  assert.match(agentNode.summary, /Codex session ended/);
+  assert.strictEqual(agentNode.summary, agentNode.metadata.agent.lastExitMessage);
+  assert.strictEqual(agentNode.metadata.agent.lastRuntimeError, undefined);
+  await ensureAgentStopped(agentNodeId);
 
   await clearHostMessages();
   await dispatchWebviewMessage({
@@ -5257,24 +5276,7 @@ async function verifyAgentExecutionFlow(agentNodeId) {
 
   await waitForAgentLive(agentNodeId);
 
-  await dispatchWebviewMessage({
-    type: 'webview/startExecutionSession',
-    payload: {
-      nodeId: agentNodeId,
-      kind: 'agent',
-      cols: 90,
-      rows: 28,
-      provider: 'codex'
-    }
-  });
-  hostMessages = await getHostMessages();
-  assert.ok(
-    hostMessages.some(
-      (message) =>
-        message.type === 'host/error' &&
-        message.payload.message === 'This Agent is already running.'
-    )
-  );
+  await verifyDuplicateLocalStartRejected('agent', agentNodeId);
 
   await dispatchWebviewMessage({
     type: 'webview/stopExecutionSession',
@@ -5291,7 +5293,10 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
   assert.strictEqual(agentNode.status, 'stopped');
-  assert.match(agentNode.summary, /Stopped Codex session/);
+  snapshot = await ensureAgentStopped(agentNodeId);
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.ok(agentNode.metadata.agent.lastExitMessage);
+  assert.strictEqual(agentNode.summary, agentNode.metadata.agent.lastExitMessage);
 }
 
 async function verifyPersistedStateFiltersLegacyTaskNodes() {
@@ -6567,28 +6572,12 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
 
   let snapshot = await waitForTerminalLive(terminalNodeId);
   let terminalNode = findNodeById(snapshot, terminalNodeId);
+  const execution = captureLocalExecutionIdentity(snapshot, 'terminal', terminalNodeId);
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
   assert.ok(terminalNode.metadata.terminal.lastCols > 0);
   assert.ok(terminalNode.metadata.terminal.lastRows > 0);
 
-  await dispatchWebviewMessage({
-    type: 'webview/startExecutionSession',
-    payload: {
-      nodeId: terminalNodeId,
-      kind: 'terminal',
-      cols: 84,
-      rows: 26
-    }
-  });
-
-  let hostMessages = await getHostMessages();
-  assert.ok(
-    hostMessages.some(
-      (message) =>
-        message.type === 'host/error' &&
-        message.payload.message === 'This Terminal is already running.'
-    )
-  );
+  await verifyDuplicateLocalStartRejected('terminal', terminalNodeId);
 
   const outputMarker = 'DEV_SESSION_CANVAS_TERMINAL_SMOKE';
   await dispatchWebviewMessage({
@@ -6596,16 +6585,12 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
     payload: {
       nodeId: terminalNodeId,
       kind: 'terminal',
-      data: `echo ${outputMarker}\r`
+      data: "printf 'DEV_SESSION_CANVAS_%s_SMOKE\\n' TERMINAL\r"
     }
   });
 
-  snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-    return Boolean(currentNode?.metadata?.terminal?.recentOutput?.includes(outputMarker));
-  });
+  snapshot = await waitForLocalExecutionOutput(execution, outputMarker, 'live');
   terminalNode = findNodeById(snapshot, terminalNodeId);
-  assert.ok(terminalNode.metadata.terminal.recentOutput.includes(outputMarker));
   assert.strictEqual(terminalNode.status, 'live');
 
   await dispatchWebviewMessage({
@@ -6623,8 +6608,13 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   terminalNode = findNodeById(snapshot, terminalNodeId);
   assert.strictEqual(terminalNode.status, 'closed');
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
-  assert.match(terminalNode.summary, /Terminal/);
+  snapshot = await ensureTerminalStopped(terminalNodeId);
+  terminalNode = findNodeById(snapshot, terminalNodeId);
+  assert.ok(terminalNode.metadata.terminal.lastExitMessage);
+  assert.strictEqual(terminalNode.summary, terminalNode.metadata.terminal.lastExitMessage);
 
+  const savedViewport = { cols: terminalNode.metadata.terminal.lastCols, rows: terminalNode.metadata.terminal.lastRows };
+  const savedTerminal = cloneJsonValue(terminalNode.metadata.terminal.serializedTerminalState);
   snapshot = await dispatchWebviewMessage({
     type: 'webview/resizeExecutionSession',
     payload: {
@@ -6635,8 +6625,9 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
     }
   });
   terminalNode = findNodeById(snapshot, terminalNodeId);
-  assert.strictEqual(terminalNode.metadata.terminal.lastCols, 100);
-  assert.strictEqual(terminalNode.metadata.terminal.lastRows, 30);
+  assert.deepStrictEqual({ cols: terminalNode.metadata.terminal.lastCols, rows: terminalNode.metadata.terminal.lastRows },
+    savedViewport, 'Page reflow must keep the dimensions needed to hydrate the saved terminal.');
+  assert.deepStrictEqual(terminalNode.metadata.terminal.serializedTerminalState, savedTerminal);
 }
 
 async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeId) {
@@ -6681,6 +6672,7 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
     });
     let snapshot = await waitForAgentLive(agentNodeId);
     const agentNode = findNodeById(snapshot, agentNodeId);
+    const execution = captureLocalExecutionIdentity(snapshot, 'agent', agentNodeId);
     const agentLabel =
       typeof agentNode.title === 'string' && agentNode.title.trim().length > 0
         ? agentNode.title.trim()
@@ -6743,14 +6735,8 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
             }
           });
 
-          await waitForSnapshot((currentSnapshot) => {
-            const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-            return Boolean(
-              currentNode?.metadata?.agent?.recentOutput?.includes(`[fake-agent] notified ${message}`) &&
-                currentNode.status === 'waiting-input' &&
-                currentNode?.metadata?.agent?.attentionPending === true
-            );
-          }, 20000);
+          await waitForLocalExecutionOutput(execution, `[fake-agent] notified ${message}`, 'waiting-input', 20000,
+            node => node.metadata.agent.attentionPending === true);
 
           const probe = await waitForWebviewProbeOnSurface(
             'editor',
@@ -6832,14 +6818,8 @@ async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeI
             data: `bell ${disabledSignalMessage}\r`
           }
         });
-        await waitForSnapshot((currentSnapshot) => {
-          const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-          return Boolean(
-            currentNode?.metadata?.agent?.recentOutput?.includes(`[fake-agent] belled ${disabledSignalMessage}`) &&
-              currentNode.status === 'waiting-input' &&
-              currentNode?.metadata?.agent?.attentionPending !== true
-          );
-        }, 20000);
+        await waitForLocalExecutionOutput(execution, `[fake-agent] belled ${disabledSignalMessage}`, 'waiting-input', 20000,
+          node => node.metadata.agent.attentionPending !== true);
         const disabledProbe = await waitForWebviewProbeOnSurface(
           'editor',
           (currentProbe) => {

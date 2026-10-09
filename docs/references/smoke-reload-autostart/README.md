@@ -59,3 +59,12 @@ Linux x64、Node 22.23.3、VS Code 1.141.0、当前代码匹配的 execution ass
     DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=owned-canvas-reconciliation npm run test:vsix-smoke
 
 不设置过滤时，默认 VSIX 先运行新增场景，再运行完整 trusted。完整命令在后续 `verifyAgentExecutionFlow` 的 burst metadata 正文断言失败；同身份终端快照已含 marker 的精简观测保存在 `repair-evidence.json`，后续修复入口见正式设计及技术债。过滤场景通过不能代替发布门禁。
+
+## 2026-10-10 当前执行正文断言
+
+`output-assertion-evidence.json` 记录后续正文断言、重复启动窄修、最终快照尺寸检查和完整 VSIX 的新失败。`repair-evidence.json` 继续保留前一轮历史结果，不改判原 burst 失败。
+
+    node scripts/test/test-smoke-execution-output.mjs
+    DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=local-execution-flow npm run test:vsix-smoke
+
+不设过滤的默认 VSIX 会运行 owned reconciliation、local execution flow、trusted 三个阶段。最终完整运行前两阶段通过，trusted 因页面残留原生 resize 准入错误失败；详情和后续定位入口见正式设计与技术债。
