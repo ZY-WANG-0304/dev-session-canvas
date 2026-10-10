@@ -353,3 +353,5 @@ Runtime 使用共享扩展目录前可以对已确认同 UID、非链接且无�
 相同准入错误可能来自准备容量或启动槽，必须在具体拒绝点核对原身份和责任。Runtime 与 snapshot-only 的多节点 fixture 都应等待原执行 started；节点创建返回或 liveSession 不等于启动槽释放。无探针对照中被拒节点交换、槽释放后原节点重试成功可佐证启动竞争，但不能把重试变成掩盖测试前提的正式修复。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 创建准入专项定位。
 
 多会话测试的创建与停止后重启均须遵循 started 屏障：Runtime 用原 runtimeSessionId，本地用原 executionId/generation，并在等待后复核绑定仍活动。共用 fixture 的修正应覆盖持久化开/关，restricted 不运行执行，不能机械加入启动等待。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime smoke 启动屏障修复方案。
+
+分页快照描述符不等于正文；重复快照可复用已有 reader，清空测试消息不会重置其消费位置。恢复测试需按原 session/authority/readId 与页面生命周期关联 bootstrap 和后续修订，按实际 codec 还原当前终端模型，不把内联旧字段缺失当作数据丢失，也不只改字段名等待已消费的数据重新发送。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 滚动历史快照专项定位。

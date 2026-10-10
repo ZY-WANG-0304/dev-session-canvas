@@ -552,3 +552,9 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 剩余门禁为紧邻下一项 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory:10380`：页面恢复最新行和滚动至最早行已通过，但测试仍等待原 session 的 `host/executionSnapshot.terminalStream` 同时包含首末 marker。超时记录显示实际是 `terminalRead`/`currentState`、无 terminalStream；需要按分页快照契约修正观察并验证首末历史/原身份/修订号，不能删除覆盖或改用任意节点输出。本轮未改该断言，完整 gate 与其后的 Runtime 场景、checkpoint 独立大输出和跨平台矩阵继续未通过/未执行。
 
 证据：`docs/references/smoke-reload-autostart/runtime-admission-fix-evidence.json`；专项复验：相邻 `runtime-admission-fix-verification.mjs`；计划：`docs/exec-plans/completed/runtime-start-admission-repair.md`；正式方案：`docs/design-docs/smoke-reload-autostart-investigation.md`。已清理本轮隔离会话和 Supervisor。
+
+## Runtime 滚动历史旧快照断言已定位（2026-10-10，PR #314）
+
+上一项分页快照超时原因已确认：旧断言只读 terminalStream，但当前分页路径发送 terminalRead/currentState，旧 helper 对 undefined 返回空字符串。重复快照复用同 readId，clearHostMessages 不会使已消费 bootstrap 重发。原生专项保留原用例并复现 10 秒超时；按原 session/authority/readId/页面生命周期重组四块 24874 字符，用正式 codec 还原后 220 行逐行完整有序且唯一。未发现此具名场景的历史丢失；不是前次单启动槽问题。
+
+尚待按分页契约修正正式断言，保留原身份、scrollback、首末行及 checkpoint/后续 revision 覆盖，避免清空唯一 bootstrap 观察后再等待重发。本轮不修改正式测试或产品；完整 gate、后续 Runtime/压力/旧版本与跨平台验证仍未完成。证据：`docs/references/smoke-reload-autostart/runtime-scrollback-snapshot-evidence.json`；脚本：相邻 `runtime-scrollback-snapshot-investigation.mjs`；计划：`docs/exec-plans/completed/runtime-scrollback-snapshot-investigation.md`。

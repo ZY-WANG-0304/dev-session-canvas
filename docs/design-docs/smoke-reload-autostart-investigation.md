@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/runtime-start-admission-repair.md, docs/exec-plans/completed/runtime-start-admission-investigation.md, docs/exec-plans/completed/runtime-root-storage-repair.md, docs/exec-plans/completed/runtime-root-preparation-investigation.md, docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/runtime-scrollback-snapshot-investigation.md, docs/exec-plans/completed/runtime-start-admission-repair.md, docs/exec-plans/completed/runtime-start-admission-investigation.md, docs/exec-plans/completed/runtime-root-storage-repair.md, docs/exec-plans/completed/runtime-root-preparation-investigation.md, docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -559,3 +559,29 @@ root helper 的原私有目录/归属检查保持；其目录准备异常使用�
 完整 gate 仍未通过：下一项 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory:10380` 请求原 session 快照后，等待 `host/executionSnapshot.terminalStream` 包含首末 marker 超时。失败现场快照实际携带 `terminalRead` / `currentState`，没有 `terminalStream`；同函数此前 reload 后页面最新行和滚到最早行的断言已通过。本轮保留此失败及原断言，后续需校准/验证分页快照观察契约，不将新等待问题归为本次启动拒绝。checkpoint 独立大输出场景、其余 Runtime 场景和跨平台/跨版本矩阵尚未执行。
 
 本轮仅修改 smoke 的启动等待；原配额、产品和后续恢复/正文断言均保持。失败后已通过原 session 的真实 client stop 清理隔离 Terminal，专项节点通过原 smoke stop 清理，实验 Supervisor 全部退出。专项脚本 `runtime-admission-fix-verification.mjs on|off` 可复验。
+
+## Runtime 滚动历史快照专项定位（2026-10-10）
+
+### 已确认原因与归属
+
+基于 `fa645cfc`，当前失败属于 smoke 对新协议的观察未迁移。`verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory:10380` 请求原 session 快照后，固定读取 `payload.terminalStream`。`readTerminalStreamProjectionText(undefined)` 返回空字符串，因此即使原 session 的快照已经到达，首末 marker 条件也恒为 false，10 秒后超时。
+
+`CanvasPanelManager.postExecutionSnapshot` 对 `terminalStreamPaged` 会话进入 `postPagedExecutionSnapshot` 后直接返回；后者明确发送空 output 和 `terminalRead` 描述符，不内联完整 terminalStream。`runtimeTerminalReadRelay.open` 对相同 client/session/authority/surface/能力复用原 descriptor；Webview `TerminalPagedProjection.start` 看到相同 readId 只更新可用 head，不重复导入当前态。这是既定分页契约，数据由原 reader 的 `host/executionTerminalPage` 分块传递，不能把内联字段缺失认定为历史丢失。
+
+本用例先验证页面最新行和滚动至最早行，再 clearHostMessages 并重复请求快照。清空的是测试消息记录，原 reader 仍活动且已消费 bootstrap。因此将等待简单改成“clear 后重新出现全部分页正文”同样可能超时；新断言需要保留并关联原 reader 的已有 bootstrap，不能混用不同 session/readId/页面代际或把 descriptor 当成正文。
+
+### 原生复验与数据完整性
+
+定位仅包装原失败断言，保留原用例从 scrollback 80→240、输出 220 行、reload、首末行页面检查到快照请求的全部动作，三个产品 bundle 的 SHA256 与上一轮正式 VSIX 相同。原等待再次在约 10.17 秒失败；同一请求收到 session=`47db1573-8b78-47fd-be15-e982c5843b46` 的 terminalRead，readId=`8c73cebc-22f8-41f8-918e-ca8188daa0cb`、checkpoint/head revision=9。
+
+以原 node/kind/session/authority/readId 和 surface generation/frame 关联清空前的 bootstrap：四个 current-state 分块 offset 连续、合计 24874 字符，与描述符长度一致；用正式 `terminalCurrentState.ts` 解码器导入真实 `@xterm/headless` 6.0.0，得到 64×20、scrollback=240。`DSC_LRSP-001` 到 `220` 各自独占一行，逐行严格等于 1–220，顺序、数量及唯一性全部通过。该 reader 在请求前已有五个页面消息（四个状态分块和一个空后缀页），重复请求后零页面消息；新旧描述符完全相同。本次无后续增量页，不扩大为对未来输出/压力的验证。
+
+最终专项 exit 0，表示“原超时已复现且同 reader 的 220 行完整性检查通过”，不表示正式 smoke 已通过。最初定位脚本的数字正则转义笔误导致额外解码检查失败，保留该诊断工件；纠正为 `[0-9]{3}` 后原样重跑确认，上述数据不存在缺失。原生节点已按原 stop 入口停止，Supervisor 随 idle shutdown 退出。脚本及精简证据为 `docs/references/smoke-reload-autostart/runtime-scrollback-snapshot-investigation.mjs` 和 `runtime-scrollback-snapshot-evidence.json`。
+
+### 引入过程与后续修复边界
+
+`git blame` 显示旧内联断言来自 `74af9d0c6`；`c502a0fe9` 接入 live 分页恢复，`2bdfc311a` 再接入当前态恢复后，该用例仍保留旧 terminalStream 读取。PR314 上一轮启动屏障修复只让测试继续走到这里，没有修改该断言或产品分页分支。本轮没有回测历史发布包，不据提交日期指定首次受影响的发布版本。
+
+后续修复应按当前新能力契约关联原 reader 的 descriptor、连续 state chunks 及其后的连续 revision，用正式 codec/真实终端模型验证保留历史，继续保留原 session、首末行、scrollback 和修订号覆盖。快照的 outputSequence 是该 descriptor 的 checkpoint revision；追上实时 head 需看后续页及应用位置，不能照搬旧完整 terminalStream.revision 的含义。旧协议若需验证，应明确走旧能力分支，不能为此把默认新路径回退为内联完整正文。
+
+本轮仅定位；正式测试/产品均未改，完整门禁及后续 Runtime 矩阵继续待完成。计划见 `docs/exec-plans/completed/runtime-scrollback-snapshot-investigation.md`。
