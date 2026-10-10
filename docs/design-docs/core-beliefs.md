@@ -354,4 +354,4 @@ Runtime 使用共享扩展目录前可以对已确认同 UID、非链接且无�
 
 多会话测试的创建与停止后重启均须遵循 started 屏障：Runtime 用原 runtimeSessionId，本地用原 executionId/generation，并在等待后复核绑定仍活动。共用 fixture 的修正应覆盖持久化开/关，restricted 不运行执行，不能机械加入启动等待。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime smoke 启动屏障修复方案。
 
-分页快照描述符不等于正文；重复快照可复用已有 reader，清空测试消息不会重置其消费位置。恢复测试需按原 session/authority/readId 与页面生命周期关联 bootstrap 和后续修订，按实际 codec 还原当前终端模型，不把内联旧字段缺失当作数据丢失，也不只改字段名等待已消费的数据重新发送。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 滚动历史快照专项定位。
+分页快照描述符不等于正文；重复快照可复用已有 reader，清空测试消息不会重置其消费位置。恢复测试需按原 session/authority/readId 与页面生命周期关联 bootstrap 和后续修订，按实际 codec 还原当前终端模型，不把内联旧字段缺失当作数据丢失，也不只改字段名等待已消费的数据重新发送。测试依赖应随 staged suite 打包，避免绝对路径或另写解码器；缺数据与错误数据需要区分，完整当前态后还需收到普通页面确认，并按连续事件推进修订号。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 滚动历史快照专项定位与分页断言正式方案。

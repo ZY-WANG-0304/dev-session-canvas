@@ -279,6 +279,14 @@ export async function stageSmokeTestSuite(options) {
   await fs.mkdir(path.dirname(targetRoot), { recursive: true });
   await fs.rm(targetRoot, { recursive: true, force: true });
   await copyPathRecursive(sourceRoot, targetRoot);
+  await esbuild.build({
+    entryPoints: [path.join(sourceRoot, 'terminal-history.cjs')],
+    bundle: true,
+    platform: 'node',
+    target: 'node22',
+    format: 'cjs',
+    outfile: path.join(targetRoot, 'terminal-history.cjs')
+  });
   return targetRoot;
 }
 

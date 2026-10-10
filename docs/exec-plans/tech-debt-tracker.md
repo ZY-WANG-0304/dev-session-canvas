@@ -558,3 +558,11 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 上一项分页快照超时原因已确认：旧断言只读 terminalStream，但当前分页路径发送 terminalRead/currentState，旧 helper 对 undefined 返回空字符串。重复快照复用同 readId，clearHostMessages 不会使已消费 bootstrap 重发。原生专项保留原用例并复现 10 秒超时；按原 session/authority/readId/页面生命周期重组四块 24874 字符，用正式 codec 还原后 220 行逐行完整有序且唯一。未发现此具名场景的历史丢失；不是前次单启动槽问题。
 
 尚待按分页契约修正正式断言，保留原身份、scrollback、首末行及 checkpoint/后续 revision 覆盖，避免清空唯一 bootstrap 观察后再等待重发。本轮不修改正式测试或产品；完整 gate、后续 Runtime/压力/旧版本与跨平台验证仍未完成。证据：`docs/references/smoke-reload-autostart/runtime-scrollback-snapshot-evidence.json`；脚本：相邻 `runtime-scrollback-snapshot-investigation.mjs`；计划：`docs/exec-plans/completed/runtime-scrollback-snapshot-investigation.md`。
+
+## Runtime 滚动历史分页断言已修复，后续恢复退出摘要阻塞（2026-10-10，PR #314）
+
+上一项旧快照断言已收口。正式 helper 关联原 reader/lifecycle，校验完整 current-state 分块和连续后缀，再用正式 codec 与真实 xterm 验证 220 行。六组回归、runner 环境回归和原生完整专项通过；默认 VSIX 七个独立阶段通过，trusted 本条滚动历史和后续完成态历史排空、重连失败绑定保护、忽略陈旧自动 resume 场景也通过。
+
+完整 gate 在 `verifyLiveRuntimeResumeExitClassification:10666` 失败：Runtime 开启，恢复已进入运行/等待输入，发送 `exit 23` 后 status=error、lastExitCode=23 正确，但 summary 为 `Session ended.`，测试期待摘要含退出码 23。摘要差异根因尚未定位，不预判测试还是产品问题。失败后的 finally 关闭 Runtime，不能用最终 snapshot-only 字段反推场景模式。保留该断言及原配额，后续 Runtime/reload、独立 checkpoint、真实 Agent 和跨版本/跨平台矩阵仍未完成。
+
+证据：`docs/references/smoke-reload-autostart/runtime-scrollback-snapshot-fix-evidence.json`；原生复验脚本：相邻 `runtime-scrollback-snapshot-verification.mjs`；计划：`docs/exec-plans/completed/runtime-scrollback-snapshot-repair.md`；设计：`docs/design-docs/smoke-reload-autostart-investigation.md`。本轮隔离节点与 Supervisor 已清理。

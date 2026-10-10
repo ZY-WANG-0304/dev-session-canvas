@@ -8,6 +8,7 @@ const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { resetCanvasAfterFinalPersistence } = require('./reset-canvas.cjs');
 const { findExecutionOutput } = require('./execution-output.cjs');
+const { collectTerminalHistory, restoreTerminalHistory } = require('./terminal-history.cjs');
 
 const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
 const INVALID_PROVIDER_LAUNCH_COMMAND = 'node -e "process.stdout.write(\'provider-bypass\')"';
@@ -10375,39 +10376,37 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
       'Reloaded live-runtime terminal should render the earliest line allowed by the updated scrollback.'
     );
 
+    // Clearing the capture does not reopen the Webview's existing paged reader.
+    const bootstrapMessages = await getHostMessages();
+    const { generation, frameId, mode } = (await getDebugSnapshot()).surfaceLifecycle.editor;
+    const expected = { kind: 'terminal', nodeId: terminalNodeId, executionSessionId: runtimeSessionId,
+      lifecycle: { surface: 'editor', generation, frameId, mode } };
     await clearHostMessages();
     await requestExecutionSnapshot('terminal', terminalNodeId, 'editor');
-    const hostMessages = await waitForHostMessages(
-      (messages) =>
-        messages.some((message) => {
-          if (
-            message.type !== 'host/executionSnapshot' ||
-            message.payload.kind !== 'terminal' ||
-            message.payload.nodeId !== terminalNodeId ||
-            message.payload.executionSessionId !== runtimeSessionId
-          ) {
-            return false;
-          }
-          const streamText = readTerminalStreamProjectionText(message.payload.terminalStream);
-          return streamText.includes(earliestMarker) && streamText.includes(latestMarker);
-        }),
-      10000
-    );
-    const executionSnapshot = hostMessages.find(
-      (message) =>
-        message.type === 'host/executionSnapshot' &&
-        message.payload.kind === 'terminal' &&
-        message.payload.nodeId === terminalNodeId &&
-        message.payload.executionSessionId === runtimeSessionId &&
-        readTerminalStreamProjectionText(message.payload.terminalStream).includes(earliestMarker) &&
-        readTerminalStreamProjectionText(message.payload.terminalStream).includes(latestMarker)
-    );
-    assert.ok(executionSnapshot, 'Expected reload-time checkpoint and journal events to retain all marker lines.');
-    assert.strictEqual(
-      executionSnapshot.payload.terminalStream.revision,
-      executionSnapshot.payload.outputSequence,
-      'Expected the Host projection revision to match the Supervisor terminal stream revision.'
-    );
+    let history;
+    await waitForHostMessages((messages) => {
+      const executionSnapshot = messages.find(message =>
+        message.type === 'host/executionSnapshot' && message.payload.kind === expected.kind &&
+        message.payload.nodeId === terminalNodeId && message.payload.executionSessionId === runtimeSessionId &&
+        message.lifecycle?.surface === 'editor' && message.lifecycle.generation === generation &&
+        message.lifecycle.frameId === frameId && message.lifecycle.mode === mode);
+      if (!executionSnapshot) return false;
+      history = collectTerminalHistory(executionSnapshot, [...bootstrapMessages, ...messages], expected);
+      return Boolean(history);
+    }, 10000);
+    const restored = await restoreTerminalHistory(history);
+    assert.strictEqual(restored.scrollback, configuredScrollback);
+    const markerLines = restored.lines.filter(line => /^DSC_LRSP-[0-9]{3}$/.test(line));
+    assert.deepStrictEqual(markerLines, Array.from({ length: markerLineCount }, (_, index) =>
+      `${scrollbackReconfigurationMarker}-${String(index + 1).padStart(3, '0')}`),
+    'Reloaded original reader must retain every marker exactly once and in order.');
+    await fs.writeFile(path.join(artifactDir, 'runtime-scrollback-history.json'), JSON.stringify({
+      runtimeSessionId, lifecycle: expected.lifecycle, readId: history.readId,
+      checkpointRevision: history.checkpointRevision, appliedRevision: history.revision,
+      headRevision: history.headRevision, chunkCount: history.chunkCount, stateLength: history.stateLength,
+      scrollback: restored.scrollback, markerCount: markerLines.length,
+      firstMarker: markerLines[0], lastMarker: markerLines.at(-1)
+    }, null, 2));
 
     await ensureTerminalStopped(terminalNodeId);
   } finally {
@@ -13369,21 +13368,6 @@ function hasRenderedNodeSize(probe, nodeId, targetSize, tolerance = 8) {
 function readProbeTerminalVisibleLines(probe, nodeId) {
   const node = probe.nodes.find((currentNode) => currentNode.nodeId === nodeId);
   return Array.isArray(node?.terminalVisibleLines) ? node.terminalVisibleLines : [];
-}
-
-function readTerminalStreamProjectionText(terminalStream) {
-  if (!terminalStream || typeof terminalStream !== 'object') {
-    return '';
-  }
-
-  const checkpointData = terminalStream.checkpoint?.serializedState?.data;
-  const eventData = Array.isArray(terminalStream.events)
-    ? terminalStream.events
-        .filter((event) => event?.type === 'output' && typeof event.data === 'string')
-        .map((event) => event.data)
-        .join('')
-    : '';
-  return `${typeof checkpointData === 'string' ? checkpointData : ''}${eventData}`;
 }
 
 function readTerminalViewportMarkerLines(visibleLines, marker) {
