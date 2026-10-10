@@ -333,3 +333,5 @@ unknown是当时缺少证明的观察，不应擦除已确认事实，也不阻�
 文件链接属于正文的只读解释，应按原输出行的工作目录解析，不能直接使用节点启动 cwd。执行迁移须把已确认输入/OSC 7 的逐行 tracker 接到解析入口；异步查询捕获原 tracker，相对路径缓存包含原执行身份，避免同节点重启后同名文件串用。停止输入不等于立即失去正文链接上下文。依据见 `smoke-reload-autostart-investigation.md` 的逐行文件链接方案。
 
 启动消息派发返回不代表 provider 已启动。同一 owner 的 `starting: 1` 限制与多个活动会话并存不矛盾；准备多个运行节点的测试须逐个等待原 executionId 的 started，早期输出投影的 live 不能单独证明启动槽已释放。合法的并发拒绝仍须被 Host 消费并向页面给出明确反馈，不能成为无人处理的 promise 或永久等待。页面观察应区分本请求的取消与旧执行阻塞新请求；已取消、替换或删除请求的迟到错误只记录诊断，仍有效的新请求失败须提示，且不能靠清理未知资源换取反馈。调查应记录拒绝瞬间的身份、关闭/隔离与占槽执行，并用重叠和确认后重试区分准入契约与生命周期故障。依据见 `smoke-reload-autostart-investigation.md` 的首次启动准入专项定位。
+
+- **Host 中断与用户停止应保留不同的恢复语义**：snapshot-only 中，Host 关闭中断活动 Agent 后，有可信 provider 身份应保存为 resume-ready 并等待手动恢复；无身份与 Terminal 为 interrupted。重读不能凭恢复能力生成自动 resume 意图。用户主动停止和已观测的自然退出保留原终态；恢复提示不能代替原 process、最终正文和保存责任的确认。依据见 `smoke-reload-autostart-investigation.md` 的 snapshot-only 手动恢复方案。

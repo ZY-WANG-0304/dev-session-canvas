@@ -2459,6 +2459,148 @@ function simulatedReloadFixture() {
   return f;
 }
 
+for (const boundary of ['reload', 'deactivation', 'ordinary-deactivation']) {
+  for (const strategy of ['codex-session-id', 'claude-session-id', 'none', 'terminal']) {
+    test(`manual reload recovery preserves original final snapshot (${boundary}, ${strategy})`, async () => {
+      const f = simulatedReloadFixture();
+      const kind = strategy === 'terminal' ? 'terminal' : 'agent';
+      f.host.resolveAgentResumeContext = () => ({ supported: strategy !== 'none', strategy,
+        sessionId: strategy === 'none' ? undefined : 'original-provider-session' });
+      const agentProvider = strategy === 'claude-session-id' ? 'claude' : 'codex';
+      f.host.getRequestedAgentCliSpec = () => ({ command: '/controlled/agent', provider: agentProvider });
+      f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: agentProvider });
+      const saved = [];
+      f.host.persistState = async options => {
+        if (options?.reason === 'local-final-snapshot') saved.push(structuredClone(f.host.state));
+      };
+      let record;
+      try {
+        await completed(f.clock, kind === 'agent' ? f.host.startAgentSession('agent-1', 80, 24, agentProvider, false)
+          : f.start(kind), 'start before Host boundary');
+        record = f.record(kind);
+        const closing = boundary === 'reload' ? f.host.simulateRuntimeReloadForTest()
+          : boundary === 'deactivation' ? f.host.prepareForDeactivation() : f.host.prepareOrdinaryDeactivation();
+        await until(f.clock, () => record.execution.snapshot().stopRequested, 'Host boundary requests stop');
+        const provider = f.providers[0];
+        provider.output(1, 'original final tail');
+        await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 1, 'tail accepted');
+        provider.process(); provider.seal(1);
+        provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+        provider.release();
+        assert.equal((await completed(f.clock, record.persistence.promise, 'original final save')).kind, 'saved');
+        const report = await completed(f.clock, closing, 'Host boundary');
+        if (boundary === 'deactivation') assert.equal(report.kind, 'settled');
+        assert.equal(saved.length, 1, 'recovery is part of the original save');
+        const node = saved[0].nodes.find(node => node.kind === kind);
+        const metadata = node.metadata[kind];
+        const expected = kind === 'agent' && strategy !== 'none' ? 'resume-ready' : 'interrupted';
+        assert.equal(node.status, expected);
+        assert.equal(metadata.lifecycle, expected);
+        assert.equal(metadata.liveSession, false);
+        assert.equal(metadata.pendingLaunch, undefined);
+        assert.equal(metadata.lastExitCode, 7, 'preserve actual process evidence');
+        assert.match(metadata.serializedTerminalState.data, /original final tail/);
+        if (expected === 'resume-ready') assert.equal(metadata.resumeSessionId, 'original-provider-session');
+        assert.equal(f.providers.length, 1, 'Host reload does not submit a provider resume');
+      } finally {
+        record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose();
+      }
+    });
+  }
+}
+
+for (const scenario of ['user-stop', 'user-stop-during-reload', 'natural-exit', 'natural-success', 'reset', 'save-failure', 'unknown-process', 'rebound-node', 'missing-session', 'fake-missing-storage', 'final-tail-session']) {
+  test(`manual reload recovery respects original responsibility (${scenario})`, async () => {
+    const f = simulatedReloadFixture();
+    const strategy = scenario === 'fake-missing-storage' ? 'fake-provider' : 'codex-session-id';
+    f.host.resolveAgentResumeContext = () => ({ supported: true, strategy,
+      sessionId: ['missing-session', 'final-tail-session'].includes(scenario) ? undefined : 'original-session',
+      storagePath: scenario === 'final-tail-session' ? '/controlled/provider-storage' : undefined });
+    let record;
+    let writes = 0;
+    f.host.persistState = async options => {
+      if (options?.reason === 'local-final-snapshot') {
+        writes++;
+        if (scenario === 'save-failure') throw new Error('controlled final save failure');
+      }
+    };
+    try {
+      await completed(f.clock, f.start('agent'), 'start before recovery guard');
+      record = f.record('agent');
+      const provider = f.providers[0];
+      let stopping;
+      if (scenario === 'user-stop') stopping = f.host.stopExecutionSession('agent', 'agent-1');
+      if (scenario === 'natural-exit') provider.process();
+      if (scenario === 'natural-success') provider.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+      const operation = scenario === 'reset' ? f.host.resetState() : f.host.simulateRuntimeReloadForTest();
+      const failure = ['save-failure', 'unknown-process', 'rebound-node'].includes(scenario);
+      const closing = failure ? assert.rejects(operation, /Local final snapshot persistence is (failed|unconfirmed)|boundary is unconfirmed|cleanup is unconfirmed/) : operation;
+      await until(f.clock, () => record.execution.snapshot().stopRequested, 'Host boundary stop');
+      if (scenario === 'user-stop-during-reload') stopping = f.host.stopExecutionSession('agent', 'agent-1');
+      if (scenario === 'rebound-node') {
+        const node = f.host.state.nodes.find(node => node.kind === 'agent');
+        node.metadata.agent = { ...node.metadata.agent, resumeSessionId: 'replacement-session' };
+      }
+      let lastFrame = 0;
+      if (scenario === 'final-tail-session') {
+        provider.output(1, 'To continue, run codex resume 01234567-89ab-cdef-0123-456789abcdef\r\n');
+        lastFrame = 1;
+        await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 1, 'final recovery identity');
+      }
+      if (scenario === 'unknown-process') provider.message({ type: 'processResult', result: { kind: 'unconfirmed', reason: 'missing process evidence' } });
+      else if (!['natural-exit', 'natural-success'].includes(scenario)) provider.process();
+      provider.seal(lastFrame);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      provider.release();
+      const saved = await completed(f.clock, record.persistence.promise, 'recovery guard final save');
+      if (scenario === 'unknown-process') f.clock.advance(EXECUTION_CANDIDATE_BUDGETS.boundaryMs + 1);
+      await completed(f.clock, closing, 'recovery guard boundary');
+      if (stopping) await completed(f.clock, stopping, 'explicit user stop');
+      if (failure) {
+        assert.equal(saved.kind, scenario === 'save-failure' ? 'failed' : 'unconfirmed');
+        assert.equal(f.owner.snapshot().closing, true, 'failed final evidence cannot reopen admission');
+        assert.equal(writes, scenario === 'save-failure' ? 1 : 0);
+        if (scenario === 'rebound-node') assert.equal(f.host.state.nodes.find(node => node.kind === 'agent').metadata.agent.resumeSessionId, 'replacement-session');
+      } else {
+        assert.equal(saved.kind, 'saved');
+        assert.equal(writes, 1);
+        if (scenario === 'reset') {
+          assert.equal(f.host.state.nodes.length, 0);
+          assert.equal(record.hostBoundaryStop, undefined);
+        } else {
+          const node = f.host.state.nodes.find(node => node.kind === 'agent');
+          assert.equal(node.status, scenario === 'natural-exit' ? 'error'
+            : scenario === 'final-tail-session' ? 'resume-ready'
+            : ['missing-session', 'fake-missing-storage'].includes(scenario) ? 'interrupted' : 'stopped');
+          assert.equal(node.metadata.agent.pendingLaunch, undefined);
+          if (scenario === 'final-tail-session') assert.equal(node.metadata.agent.resumeSessionId, '01234567-89ab-cdef-0123-456789abcdef');
+        }
+      }
+    } finally {
+      record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose();
+    }
+  });
+}
+
+test('manual reload recovery does not promote an unfinished preparation', async () => {
+  const f = simulatedReloadFixture();
+  const gate = deferred();
+  const starting = f.host.startNonNativeHostExecution('agent', 'agent-1', 80, 24, () => gate.promise);
+  const rejected = assert.rejects(starting, /admission is closed/);
+  const record = f.record('agent');
+  try {
+    const closing = f.host.simulateRuntimeReloadForTest();
+    await until(f.clock, () => record.execution.snapshot().stopRequested, 'preparation cancellation');
+    gate.resolve({ file: '/controlled/agent', args: [], env: {} });
+    await completed(f.clock, rejected, 'original preparation rejected');
+    await completed(f.clock, closing, 'reload without a running execution');
+    assert.equal(record.hostBoundaryStop, undefined);
+    assert.equal(record.persistence.result.kind, 'not-required');
+    assert.equal(f.providers.length, 0);
+    assert.notEqual(f.host.state.nodes.find(node => node.kind === 'agent').status, 'resume-ready');
+  } finally { gate.resolve({ file: '/controlled/agent' }); record.tracker.dispose(); }
+});
+
 for (const kind of ['agent', 'terminal']) {
   test(`simulated reload reopens admission for a new ${kind} execution`, async () => {
     const f = simulatedReloadFixture();

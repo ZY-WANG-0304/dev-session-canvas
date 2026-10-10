@@ -48,6 +48,11 @@ const scenarios = [
     disableWorkspaceTrust: true
   },
   {
+    name: 'snapshot-only-manual-recovery',
+    description: 'Snapshot-only Host reload preserves manual Agent recovery without automatic resume',
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'runtime-legacy-reconnect',
     description: 'Legacy Runtime reconnect preserves bindings without automatic CLI resume',
     focusedOnly: true,

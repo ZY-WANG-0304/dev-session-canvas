@@ -1,6 +1,6 @@
 # 运行时持久化模式规格
 
-当前状态：草案。本文档用于收口 `Agent` / `Terminal` 在关闭画布、关闭 VSCode 与重新打开后的运行时持久化语义，重点区分“恢复上下文”与“真实进程继续存在”两种不同承诺。第 9 节的已结束无历史边界与第 10 节的退出完整性交付范围已获用户确认；不因此将其余开放问题或具体实现标为已确认。
+当前状态：草案。本文档用于收口 `Agent` / `Terminal` 在关闭画布、关闭 VSCode 与重新打开后的运行时持久化语义，重点区分“恢复上下文”与“真实进程继续存在”两种不同承诺。第 7 节的 snapshot-only 手动恢复规则（2026-10-10）、第 9 节的已结束无历史边界与第 10 节的退出完整性交付范围已获用户确认；不因此将其余开放问题或具体实现标为已确认。
 
 验收基线（2026-10-02）：本次重构以现代 GitHub-hosted runner 作为环境基线。固定六格资产矩阵使用 `ubuntu-24.04`、`ubuntu-24.04-arm`、`macos-15-intel`、`macos-15`、`windows-2025` 和 `windows-11-arm`，实际记录的宿主分别为 Ubuntu 24.04、macOS 15.7.9、Windows Server 2025（10.0.26100）和 Windows 11 ARM64，用于资产构建、加载和归档；Terminal/Agent 产品验收仍以各 workflow 当次记录的现代 runner 为准（`latest` 标签必须记录实际镜像版本）。任何现代 runner 结果都不外推到 macOS 10.13/10.14、Windows 10 1809 或其他旧系统。
 
@@ -29,6 +29,7 @@ Root 归属增量（2026-10-08，有限交付完成）：新建 `live-runtime` T
    - 若运行时持久化已开启且当前 backend 提供 live runtime，真实 `Agent` / `Terminal` 进程继续存在。
    - 若运行时持久化已关闭，系统不承诺真实进程继续存在；退出前会先刷盘最后状态与恢复信息，并在合理超时内结束现有 `Agent` / `Terminal` 进程。
 5. 用户重新打开 VSCode 后：
+   - 若 `snapshot-only` 原活动执行被 Host 关闭中断，具有可信恢复身份的 Agent 显示 `resume-ready`，等待用户手动恢复；不自动 provider resume。无可信身份的 Agent 和 Terminal 显示 `interrupted`。
    - 若节点处于 `live-runtime` 模式且带有可附着的持久化会话身份，系统先显示 `重连中`。
    - 若之前的真实进程仍活着，节点会重新附着到原会话，并切回真实生命周期状态。
    - 若 Supervisor 确认进程已结束，节点保持已结束状态，不恢复正文，也不自动 start/resume。
@@ -113,6 +114,7 @@ Root 归属增量（2026-10-08，有限交付完成）：新建 `live-runtime` T
 - 当运行时持久化开关开启且节点带有持久化 live 会话身份时，VSCode 重开后节点先显示 `重连中`；只有在重新附着成功后，才恢复为 `运行中`、`等待输入`、`live` 等真实生命周期状态。
 - 当系统无法重新附着到 live runtime 时，不自动创建新执行或清除原绑定；旧版本 history-restored 记录中的自动 fallback resume 意图也应取消，provider identity 保留供显式操作。若已确认 Runtime 进程结束，则保留节点、布局、配置与退出结果，不恢复正文、不自动 start/resume。用户显式 provider resume 是独立动作，仍须先结算已有执行绑定，不等于原进程延续。实施范围见 `docs/design-docs/runtime-legacy-reconnect-retirement.md`；snapshot-only 的恢复语义不变。
 - 当运行时持久化开关关闭时，关闭 VSCode 后系统会在刷盘最后状态后结束现有 `Agent` / `Terminal` 进程；重新打开时，系统至少恢复节点、标题、位置、尺寸、最后状态、最近输出摘要和恢复入口。
+- `snapshot-only` 在 Host 关闭或 Reload Window 中断原活动执行后，具有可信 provider 恢复身份的 Agent 应为 `resume-ready`，由用户手动恢复；不自动执行 provider resume，不设置 `pendingLaunch=resume`。没有可信身份的 Agent 与 Terminal 为 `interrupted`。用户主动停止或关闭前已结束的执行保留其退出状态，不能因仍有恢复 ID 而改成待恢复；正常关闭画布或 Webview 重建仍不终止原活动执行。
 - 当系统恢复的是历史状态而不是 live 进程时，用户能明确识别这一点，系统不会把它伪装成“仍在运行的同一会话”。
 - 对旧 Supervisor 已将目标恢复为纯历史对象、且实际运行环境重新确认原 Supervisor 不在的记录，用户可以删除该本地历史节点或以新会话重新启动，不要求故障进程补写退出码。此路径只解除历史绑定，不证明原主体/后代已退出，不伪造 EOF、正常退出或删除 RPC 成功；仅凭 History restored 标签、断连或旧错误文字不能放行。仍有 live 执行、reader、最终保存或已提交未知操作时继续保护，不能改写共享 Runtime 数据来取得资格。Linux 旧 detached 的已知识别范围包含最初无 generation 的 workspace storage（普通及 indexed slot）；仍须满足同一逐目标历史核验。有限识别条件见 `docs/design-docs/runtime-persistence-closeout.md` 第 12 节。
 - 当节点处于 `live-runtime` 时，系统会把当前 runtime backend 与 guarantee 写入日志与诊断信息；节点默认 UI 只保留与当前操作直接相关的状态，不直接暴露 `systemd-user / best-effort` 这类调试字段。

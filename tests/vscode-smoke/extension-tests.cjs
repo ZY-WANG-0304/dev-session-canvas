@@ -201,6 +201,14 @@ async function runSmoke() {
     console.log('Local execution flow: Agent burst, partial input, sleep, slowspin, restart, duplicate rejection, Terminal output and final save passed.');
     return;
   }
+  if (smokeScenario === 'snapshot-only-manual-recovery') {
+    await ensureEditorCanvasReady();
+    await createBaseNodes({ waitForAutoStart: true });
+    const snapshot = await getDebugSnapshot();
+    await verifyRuntimeReloadRecovery(findNodeByKind(snapshot, 'agent').id, findNodeByKind(snapshot, 'terminal').id);
+    await ensureTerminalStopped(findNodeByKind(snapshot, 'terminal').id);
+    return;
+  }
   if (smokeScenario === 'owned-canvas-reconciliation') {
     await verifyOwnedCanvasReconciliation();
     return;
@@ -8824,16 +8832,48 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
   let terminalNode = findNodeById(snapshot, terminalNodeId);
 
   assert.strictEqual(agentNode.status, 'resume-ready');
-  assert.strictEqual(agentNode.metadata.agent.pendingLaunch, 'resume');
+  assert.strictEqual(agentNode.metadata.agent.pendingLaunch, undefined);
+  assert.strictEqual(agentNode.metadata.agent.liveSession, false);
   assert.strictEqual(terminalNode.status, 'interrupted');
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
 
+  const providerSessionId = agentNode.metadata.agent.resumeSessionId;
+  assert.ok(providerSessionId, 'Reload must retain the original provider recovery identity.');
+  const startRequests = events => events.filter(event => event.kind === 'execution/startRequested' &&
+    event.detail?.nodeId === agentNodeId).map(event => event.detail.sessionId);
+  const beforeManualResume = startRequests(await getDiagnosticEvents());
+  // Recreate the actual page: its mount effect must not submit an automatic resume.
+  await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  await ensureEditorCanvasReady();
+  await waitForWebviewProbeOnSurface('editor', probe => probe.nodes.some(node =>
+    node.nodeId === agentNodeId && node.overlayMessage === 'The Agent session can be resumed manually.'), 20000);
+  await captureWebviewProbe('editor', 5000);
+  snapshot = await getDebugSnapshot();
+  agentNode = findNodeById(snapshot, agentNodeId);
+  assert.strictEqual(agentNode.status, 'resume-ready');
+  assert.strictEqual(agentNode.metadata.agent.pendingLaunch, undefined);
+  assert.strictEqual(agentNode.metadata.agent.liveSession, false);
+  assert.strictEqual(agentNode.metadata.agent.resumeSessionId, providerSessionId);
+  assert.deepStrictEqual(startRequests(await getDiagnosticEvents()), beforeManualResume);
+  assert.ok(!snapshot.localExecutions.some(record => record.nodeId === agentNodeId && !record.retired));
+
+  await dispatchWebviewMessage({
+    type: 'webview/startExecutionSession',
+    payload: { nodeId: agentNodeId, kind: 'agent', provider: 'codex', resume: true, cols: 90, rows: 28 }
+  });
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
     return Boolean(
       currentAgent?.metadata?.agent?.liveSession && currentAgent.status === 'resuming'
     );
   }, 20000);
+  const resumedExecution = captureLocalExecutionIdentity(snapshot, 'agent', agentNodeId);
+  assert.notStrictEqual(resumedExecution.executionSessionId, initialAgent.executionSessionId);
+  await waitForDiagnosticEvents(events => events.some(event => event.kind === 'execution/started' &&
+    event.detail?.nodeId === agentNodeId && event.detail.sessionId === resumedExecution.executionSessionId));
+  await waitForLocalExecutionOutput(resumedExecution, '[fake-agent] resumed session', 'resuming', 20000);
+  assert.strictEqual(findNodeById(await getDebugSnapshot(), agentNodeId).metadata.agent.resumeSessionId, providerSessionId);
+
 
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
@@ -8852,20 +8892,9 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'running');
 
-  snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(
-      currentAgent?.metadata?.agent?.liveSession &&
-        currentAgent.status === 'waiting-input' &&
-        currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] resumed session') &&
-        currentAgent.metadata?.agent?.recentOutput?.includes('[fake-agent] burst 001')
-    );
-  }, 20000);
-
+  snapshot = await waitForLocalExecutionOutput(resumedExecution, '[fake-agent] burst 001', 'waiting-input', 20000);
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'waiting-input');
-  assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] resumed session'));
-  assert.ok(agentNode.metadata.agent.recentOutput.includes('[fake-agent] burst 001'));
 
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
@@ -8900,6 +8929,7 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
     }
   });
   await waitForTerminalLive(terminalNodeId);
+  console.log('Snapshot-only manual recovery: resume-ready/interrupted, page remount without autostart, explicit resume, original provider identity, live output and exit 19 passed.');
 }
 
 async function verifyLiveSessionCutoverAndReload(terminalNodeId) {
@@ -12098,7 +12128,7 @@ async function clearDiagnosticEvents() {
 }
 
 async function assertNoOwnedResizeFailures() {
-  if (!['trusted', 'local-execution-flow', 'owned-canvas-reconciliation'].includes(smokeScenario)) return;
+  if (!['trusted', 'local-execution-flow', 'owned-canvas-reconciliation', 'snapshot-only-manual-recovery'].includes(smokeScenario)) return;
   const failures = (await getDiagnosticEvents()).filter(event =>
     event.kind === 'execution/resizeRejected' && event.detail?.reason === 'owned-resize-failed');
   assert.deepStrictEqual(failures, [], 'Local resize failures must be checked before diagnostics are cleared.');

@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md]
+related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -262,6 +262,27 @@ PR #314 后续授权修复采用页面请求边界消费失败：`CanvasPanelMan
 
 最终默认真实 VSIX 构建打包、owned reconciliation、local execution flow 均通过。trusted 越过 `verifyRealWebviewProbe`，本轮曾出现的迟到 toast 回归路径已修复；通知/恢复失败、整个 native interactions、滚动历史、标签视口和主题检查也通过。`verifyRuntimeReloadRecovery` 的 Agent 于 03:49:28.284Z started，Terminal 请求在 28.384Z 才派发，并于 28.539Z started；原启动拒绝已收口。
 
-**最新独立阻塞发生在该函数自身 reload 之后**：两条执行最终保存均为 saved，28.688Z 返回 runtimeReloaded 后 Agent 为 stopped、Terminal 为 closed，测试期待 resume-ready/interrupted；Agent 的 resumeSupported、fake-provider 策略和 resumeSessionId 均保留。本轮未放宽状态断言或修改该恢复语义。源码线索是 Host boundary 先关闭 owned 执行并等待最终保存，`persistNonNativeHostFinal` 将 stopRequested 保存为 stopped/closed、liveSession=false，随后 `reconcileRuntimeNodes` 只为仍带 liveSession 的快照建立恢复意图；是否应区分 Host boundary 与用户主动停止，需下一轮按正式生命周期约束完成定位，不能直接以更改断言收口。后续 resuming/正文/退出和 Runtime/压力矩阵未完成。
+**上一轮独立阻塞发生在该函数自身 reload 之后（后续修复见下节）**：两条执行最终保存均为 saved，28.688Z 返回 runtimeReloaded 后 Agent 为 stopped、Terminal 为 closed，测试期待 resume-ready/interrupted；Agent 的 resumeSupported、fake-provider 策略和 resumeSessionId 均保留。本轮未放宽状态断言或修改该恢复语义。源码线索是 Host boundary 先关闭 owned 执行并等待最终保存，`persistNonNativeHostFinal` 将 stopRequested 保存为 stopped/closed、liveSession=false，随后 `reconcileRuntimeNodes` 只为仍带 liveSession 的快照建立恢复意图；是否应区分 Host boundary 与用户主动停止，需下一轮按正式生命周期约束完成定位，不能直接以更改断言收口。后续 resuming/正文/退出和 Runtime/压力矩阵未完成。
 
 本轮中间另有一次早期 Host boundary 报 `Local final snapshot persistence is pending`，工件保留；最终代码默认重跑跨过该点，但无法追认当次保存完成或断言它与本次 reload 状态冲突同源。根因待进一步证据，本轮未改保存期限。精简证据与各轮原工件摘要见 `docs/references/smoke-reload-autostart/start-admission-repair-evidence.json`。完整门禁仍失败，不把具名启动修复写成完整发布可用。
+
+
+## snapshot-only 的 Host 中断与手动恢复正式方案
+
+2026-10-10 用户明确产品约束：Host reload 后 `resume-ready` 是正确状态，但不自动执行 provider resume。前述旧 smoke 的 pendingLaunch=resume/自动恢复预期不能作为产品依据。
+
+`CanvasPanelManager` 在模拟 reload、普通 deactivation 和原生 owned deactivation 的明确恢复边界中，标记原来已确认 running、尚未观测退出且未请求停止的本地执行。该标记只属于原执行记录，不新增持久化字段；reset、清空和模板替换默认不带恢复意图。`persistNonNativeHostFinal` 在既有原身份、最终正文与进程证据校验后，将被 Host 中断的 Agent 按最后确认的 provider 恢复身份保存为 resume-ready 或 interrupted，Terminal 保存为 interrupted；保持真实退出信息、最后输出和严格保存责任。用户主动 stop 优先并撤销恢复意图，已观测自然退出或从未完成启动的执行不被升级为待恢复。
+
+`reconcileAgentNodesInArray` 对遗留 snapshot-only live 快照保留 resume-ready 判定，但不再设置自动 resume 意图；对已保存的 pendingLaunch=resume 清除旧自动意图，显式新建的 pendingLaunch=start 保持。不能把所有 stopped 记录改成 resume-ready，因为旧状态本身不足以区分主动停止与旧版本误分类。页面无需通过启用自动 resume 来修复状态。
+
+smoke 保留原执行 started 顺序和 reload 后 resume-ready/interrupted 断言，增加没有 pending resume、页面重建后仍不启动的检查，再显式发送 resume 请求，按新的原执行身份检查 resuming、实际恢复正文、输入及退出。计划见 `docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md`。本轮不改变 RuntimePersistence 开启后的原 runtime 重连规则。
+
+执行边界补充：`hostBoundaryStop` 在原执行记录内区分 `interrupted` 与 `after-process-exit`。后者用于 process 结果先到、最终保存尚未提交的退出竞态：Host 为清理发出的 stop 不覆盖此前自然退出结果，也不抑制该结果应有的异常提醒。用户显式 stop 清除边界分类；标记不持久化。若 final process/seal/terminal 不可信，仍按原 failed/unconfirmed 责任拒绝恢复完成。
+
+受控验证：24 项新增回归覆盖模拟 reload、两条 deactivation 路径、Codex/Claude 身份、Terminal、无身份、主动 stop（关闭前/期间）、已观测非零和零退出、reset、保存失败、未知 process、metadata 换绑、fake-provider 缺少 storage、最终输出才提供恢复 ID、未完成准备。完整 Host 478/478、重读与 execution-context、类型、本地化、正文 helper 14/14 通过。execution-context 夹具补齐原 owned map，已有 workspace listener 断言跟随实际串行重组方法；没有给产品加入夹具专用兼容分支。真实 VSIX 结果如下。
+
+原生验证推进：首轮默认 VSIX 的 owned reconciliation / local execution flow 通过，trusted 在较早的 `missing-target.ts:9:3` DOM 链接检测失败，未到达本轮 reload 场景。保留 `.debug/manual-reload-recovery/first-artifacts` 与 `first-vsix.log`，不推断当次失败原因。新增默认具名阶段 `snapshot-only-manual-recovery`，复用同一个 `verifyRuntimeReloadRecovery`，先独立验收本轮状态、页面重建和显式恢复，再继续原 trusted 全流程；不删改链接断言。
+
+最终默认 VSIX 在 `snapshot-only-manual-recovery` 与 trusted 原顺序的 `verifyRuntimeReloadRecovery` **两处均通过**：reload 后 resume-ready/interrupted、无 pending resume；真实 editor 重建后 probe 仍显示手动恢复提示且没有新启动；显式 resume 产生新 executionId，provider sessionId 保持；恢复正文、burst 输入和 exit 19/error 完整通过。owned reconciliation / local execution flow 继续通过。原 Host 中断状态与自动恢复意图缺口已收口。
+
+完整门禁仍失败：下一项 `verifyLiveSessionCutoverAndReload:8965` 从 `metadata.terminal.recentOutput` 等待 `LIVE_CUTOVER_EDITOR` 超时。原 Terminal 为 live；相同 executionId 的 `host/executionOutput` sequence 2 和 snapshot sequence 3 已含命令结果，历史 recentOutput 仍是旧 prompt，因此是后续实时正文断言尚未迁移。此轮未更改该项和后续 surface/Runtime/压力验收。首次缺失文件链接检测失败仍保留，最终一轮经过该位置不等于定位其根因。证据：`docs/references/smoke-reload-autostart/manual-reload-recovery-evidence.json`。

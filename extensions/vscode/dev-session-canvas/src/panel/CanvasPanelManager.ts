@@ -605,6 +605,7 @@ interface NonNativeHostExecution {
   lastDataSequence: number;
   terminalRevision: number;
   finalRevision?: number;
+  hostBoundaryStop?: 'interrupted' | 'after-process-exit';
   readerAdmissionClosed: boolean;
   cols: number;
   rows: number;
@@ -3813,6 +3814,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
       preserveRootRuntimeBindings: !this.isRuntimePersistenceEnabled(),
       waitForLocalPersistence: true,
+      preserveLocalRecovery: true,
       allowRuntimeSupervisorRestart: false
     });
 
@@ -3903,7 +3905,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
       preserveRootRuntimeBindings: !this.isRuntimePersistenceEnabled(),
       allowRuntimeSupervisorRestart: false,
-      permanentExecutionClose: true
+      permanentExecutionClose: true,
+      preserveLocalRecovery: true
     });
   }
 
@@ -3979,7 +3982,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : { kind: 'settled' };
     });
     run('local', async () => {
-      const closed = await this.beginNonNativeHostExecutionClose('host-deactivation', true, 'lost');
+      const closed = await this.beginNonNativeHostExecutionClose('host-deactivation', true, 'lost', true);
       return closed.kind === 'settled' && owner.snapshot().pending === 0
         ? { kind: 'settled' }
         : { kind: 'unconfirmed', reason: `Host execution responsibility remains: ${closed.pending.join(', ')}` };
@@ -4013,6 +4016,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     invalidatePendingExecutionOperations?: boolean;
     permanentExecutionClose?: boolean;
     waitForLocalPersistence?: boolean;
+    preserveLocalRecovery?: boolean;
   }): Promise<void> {
     if (!this.getExecutionCandidateProfile() || options.preserveLiveRuntime) {
       return this.prepareForHostBoundaryCore(options);
@@ -4046,6 +4050,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     invalidatePendingExecutionOperations?: boolean;
     permanentExecutionClose?: boolean;
     waitForLocalPersistence?: boolean;
+    preserveLocalRecovery?: boolean;
   }): Promise<void> {
     const candidate = Boolean(this.getExecutionCandidateProfile()) && !options.preserveLiveRuntime;
     if (options.permanentExecutionClose) {
@@ -4063,7 +4068,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     checkBoundary();
     const ownedClose = this.nonNativeExecutionOwner
       ? this.closeNonNativeHostExecutions('host-boundary', options.permanentExecutionClose === true,
-        options.invalidatePendingExecutionOperations ? 'cancelled' : 'lost', options.waitForLocalPersistence)
+        options.invalidatePendingExecutionOperations ? 'cancelled' : 'lost', options.waitForLocalPersistence,
+        options.preserveLocalRecovery)
       : undefined;
     if (options.invalidatePendingExecutionOperations) {
       this.invalidateAllExecutionSessionOperations();
@@ -17513,10 +17519,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       fail('failed', 'The original final terminal revision does not match the consumed tail.');
       return;
     }
-    const stopped = snapshot.stopRequested || process.kind === 'terminated'
+    const stopRequested = snapshot.stopRequested && record.hostBoundaryStop !== 'after-process-exit';
+    const stopped = stopRequested || process.kind === 'terminated'
       || (process.kind === 'exited' && process.exitCode === 0);
-    const resumeFailed = !stopped && record.kind === 'agent' && record.business?.resumePhaseActive === true;
-    const status = stopped ? (record.kind === 'agent' ? 'stopped' : 'closed') : resumeFailed ? 'resume-failed' : 'error';
+    const interrupted = record.hostBoundaryStop === 'interrupted';
+    const canResume = interrupted && record.kind === 'agent' && canResumeAgentFromMetadata(ensureAgentMetadata(node));
+    const resumeFailed = !interrupted && !stopped && record.kind === 'agent' && record.business?.resumePhaseActive === true;
+    const status = interrupted ? canResume ? 'resume-ready' : 'interrupted'
+      : stopped ? (record.kind === 'agent' ? 'stopped' : 'closed') : resumeFailed ? 'resume-failed' : 'error';
     const incompleteReason = seal.source.kind === 'eof' ? undefined : seal.source.reason;
     const cleanedOutput = stripTerminalControlSequences(terminal.data);
     const exitMessage = resumeFailed
@@ -17544,7 +17554,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ...(record.kind === 'agent' ? { lastResumeError: resumeFailed ? message : undefined } : {}),
       lastCols: record.cols, lastRows: record.rows, serializedTerminalState: terminal
     });
-    const nextState = updateExecutionNode(this.state, record.nodeId, record.kind, { status, summary: message, metadata });
+    const summary = interrupted
+      ? canResume ? vscode.l10n.t('The Agent session can be resumed manually.')
+        : record.kind === 'agent'
+          ? vscode.l10n.t('The previous Agent session was not restored after extension reload. It can be restarted.')
+          : vscode.l10n.t('The previous embedded Terminal was not restored after extension reload. It can be restarted.')
+      : message;
+    const nextState = updateExecutionNode(this.state, record.nodeId, record.kind, { status, summary, metadata });
     if (this.nonNativeFinalPersistenceDeadline !== undefined
       && this.nonNativeExecutionOwner!.options.scheduler.now() >= this.nonNativeFinalPersistenceDeadline) {
       fail('unconfirmed', 'Host permanent boundary ended before the final snapshot was submitted.');
@@ -17555,7 +17571,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (record.kind === 'agent' && record.business && status === 'error') {
       // Mark attention synchronously in this final snapshot; delivery must not hold settlement.
       const session: AgentAbnormalInterruptionSession = {
-        sessionId: identity.executionId, stopRequested: snapshot.stopRequested,
+        sessionId: identity.executionId, stopRequested,
         agentProvider: record.business.agentProvider, lifecycleStatus: record.business.lifecycleStatus,
         displayLabel: record.business.displayLabel, attentionSignalState: record.business.attentionSignalState
       };
@@ -18072,10 +18088,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     reason: string,
     permanent: boolean,
     readerOutcome: 'cancelled' | 'lost',
-    waitForPersistence = false
+    waitForPersistence = false,
+    preserveLocalRecovery = false
   ): Promise<void> {
     const persistenceRecords = this.hasNonNativeHostPersistence() ? Array.from(this.nonNativeHostExecutions.values()) : [];
-    const result = await this.beginNonNativeHostExecutionClose(reason, permanent, readerOutcome);
+    const result = await this.beginNonNativeHostExecutionClose(reason, permanent, readerOutcome, preserveLocalRecovery);
     if (result.kind !== 'settled') {
       throw new Error(`Non-native Host execution cleanup is unconfirmed: ${result.pending.join(', ')}`);
     }
@@ -18086,13 +18103,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async beginNonNativeHostExecutionClose(
     reason: string,
     permanent: boolean,
-    readerOutcome: 'cancelled' | 'lost'
+    readerOutcome: 'cancelled' | 'lost',
+    preserveLocalRecovery = false
   ): Promise<OwnerCloseResult> {
     const owner = this.nonNativeExecutionOwner;
     if (!owner) return Object.freeze({ kind: 'settled', pending: Object.freeze([]) });
     owner.closeAdmission(permanent);
     for (const execution of owner.list()) {
       const record = this.nonNativeHostExecutions.get(execution.key);
+      const snapshot = execution.snapshot();
+      // Only a Host reload/deactivation may preserve an active local execution for manual recovery.
+      // Explicit stops and already observed process outcomes keep their original final classification.
+      if (preserveLocalRecovery && record?.persistence && !record.persistence.submitted && !record.persistence.result
+        && !snapshot.stopRequested) {
+        if (snapshot.adapter?.process) record.hostBoundaryStop = 'after-process-exit';
+        else if (snapshot.adapter?.state === 'running') record.hostBoundaryStop = 'interrupted';
+      }
       if (record) this.queueNonNativeHostResize(record);
       if (record?.localReaders) {
         record.readerAdmissionClosed = true;
@@ -20036,6 +20062,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const owned = this.nonNativeExecutionOwner?.get(this.getExecutionSessionOperationKey(kind, nodeId));
     if (owned) {
       const record = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+      if (record) record.hostBoundaryStop = undefined;
       if (record?.business) {
         record.business.lifecycleStatus = 'stopping';
         record.business.cancelActivityPoll?.(); record.business.cancelActivityPoll = undefined;
@@ -29115,7 +29142,7 @@ function reconcileAgentNodesInArray(
         ...node,
         status: canResume ? 'resume-ready' : 'interrupted',
         summary: canResume
-          ? vscode.l10n.t('Detected a resumable Agent session and waiting to resume.')
+          ? vscode.l10n.t('The Agent session can be resumed manually.')
           : vscode.l10n.t('The previous Agent session was not restored after extension reload. It can be restarted.'),
         metadata: {
           ...node.metadata,
@@ -29124,7 +29151,7 @@ function reconcileAgentNodesInArray(
             lifecycle: canResume ? 'resume-ready' : 'interrupted',
             liveSession: false,
             terminalTitle: undefined,
-            pendingLaunch: canResume ? 'resume' : undefined
+            pendingLaunch: undefined
           }
         }
       };
@@ -29153,7 +29180,8 @@ function reconcileAgentNodesInArray(
         ...node.metadata,
         agent: {
           ...metadata,
-          liveSession: false
+          liveSession: false,
+          pendingLaunch: metadata.pendingLaunch === 'resume' ? undefined : metadata.pendingLaunch
         }
       }
     };
