@@ -1,0 +1,498 @@
+{
+  "baseline": "051b5adfbd192c5eb7b6b9fe593416ce8c4bb29b",
+  "scope": "Investigation only; formal product and smoke unchanged",
+  "environment": {
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "platform": "linux-x64",
+    "runtimePersistence": false,
+    "provider": "fake"
+  },
+  "formalSmokeSha256": "9f9b7f00c424e79160b54ef8022da1b93231fc67491a068d718a18c91caf7a0d",
+  "originalGate": {
+    "artifact": ".debug/trusted-diagnostics-fix/trusted-artifacts",
+    "timeline": [
+      {
+        "timestamp": "2026-10-10T16:37:11.497Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-3-a3eefc6b-4d0c-4be7-8edb-b841fff8e941",
+          "provider": "codex",
+          "resumeRequested": false,
+          "launchPreset": "default",
+          "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "launchArgs": [],
+          "cols": 66,
+          "rows": 21,
+          "cwd": "/tmp/dscr",
+          "workspaceTrusted": true
+        }
+      },
+      {
+        "timestamp": "2026-10-10T16:37:11.594Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-4-135fdb26-bc55-4421-a644-5a5c3d67cf25",
+          "provider": "codex",
+          "resumeRequested": false,
+          "launchPreset": "default",
+          "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "launchArgs": [],
+          "cols": 66,
+          "rows": 21,
+          "cwd": "/tmp/dscr",
+          "workspaceTrusted": true
+        }
+      },
+      {
+        "timestamp": "2026-10-10T16:37:11.600Z",
+        "kind": "execution/localFinalPersistence",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-4-135fdb26-bc55-4421-a644-5a5c3d67cf25",
+          "executionId": "a7480702-1569-42ae-947b-54f305273111",
+          "generation": "9b4601eb-8965-473e-b3f7-1ea3d4a2faaa",
+          "submitted": false,
+          "result": {
+            "kind": "not-required"
+          }
+        }
+      },
+      {
+        "timestamp": "2026-10-10T16:37:11.601Z",
+        "kind": "execution/startRejected",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-4-135fdb26-bc55-4421-a644-5a5c3d67cf25",
+          "outcome": "rejected-before-acquire",
+          "reason": "Authority start admission rejected",
+          "message": "Cannot start Agent right now. Wait for pending operations to finish and try again.",
+          "executionId": "a7480702-1569-42ae-947b-54f305273111",
+          "generation": "9b4601eb-8965-473e-b3f7-1ea3d4a2faaa"
+        }
+      },
+      {
+        "timestamp": "2026-10-10T16:37:11.681Z",
+        "kind": "execution/started",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-3-a3eefc6b-4d0c-4be7-8edb-b841fff8e941",
+          "sessionId": "03741f68-4e8d-4dfd-9da1-ec544de7ff4d",
+          "cols": 66,
+          "rows": 21,
+          "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "cwd": "/tmp/dscr",
+          "launchArgs": [],
+          "provider": "codex",
+          "launchMode": "start",
+          "resumeStrategy": "fake-provider",
+          "resumeSessionId": "2d4cdc6a-349a-4799-9464-db7eec1e8aac",
+          "resumeStoragePath": "/tmp/dscr/.debug/vscode-vsix-smoke/smoke-runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-3-a3eefc6b-4d0c-4be7-8edb-b841fff8e941"
+        }
+      }
+    ]
+  },
+  "runs": {
+    "baseline": {
+      "artifact": ".debug/file-activity-start/baseline-1791651083784/runtime/artifacts/result.json",
+      "scriptExit": 0,
+      "startupPrefixPassed": false,
+      "productBundleSha256BeforeProbe": {
+        "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "productProbe": false,
+      "timeline": [
+        {
+          "timestamp": "2026-10-10T16:51:31.460Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-4-c9e0603d-7751-427d-9d28-86aaaccfa203",
+            "provider": "codex",
+            "resumeRequested": false,
+            "launchPreset": "default",
+            "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "launchArgs": [],
+            "cols": 66,
+            "rows": 21,
+            "cwd": "/tmp/dscr",
+            "workspaceTrusted": true
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:51:31.501Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-5-089f42ae-f72c-40ba-815d-5805e18652b1",
+            "provider": "codex",
+            "resumeRequested": false,
+            "launchPreset": "default",
+            "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "launchArgs": [],
+            "cols": 66,
+            "rows": 21,
+            "cwd": "/tmp/dscr",
+            "workspaceTrusted": true
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:51:31.505Z",
+          "kind": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-5-089f42ae-f72c-40ba-815d-5805e18652b1",
+            "executionId": "10ebdb1c-f5a7-4080-b526-cc1becc3f87d",
+            "generation": "aafcefb2-5d17-4db7-9f26-36c173a117cb",
+            "submitted": false,
+            "result": {
+              "kind": "not-required"
+            }
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:51:31.506Z",
+          "kind": "execution/startRejected",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-5-089f42ae-f72c-40ba-815d-5805e18652b1",
+            "outcome": "rejected-before-acquire",
+            "reason": "Authority start admission rejected",
+            "message": "Cannot start Agent right now. Wait for pending operations to finish and try again.",
+            "executionId": "10ebdb1c-f5a7-4080-b526-cc1becc3f87d",
+            "generation": "aafcefb2-5d17-4db7-9f26-36c173a117cb"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:51:31.636Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-4-c9e0603d-7751-427d-9d28-86aaaccfa203",
+            "sessionId": "607543ed-c4fc-4c5a-8b7c-5533eb7ecac9",
+            "cols": 66,
+            "rows": 21,
+            "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "cwd": "/tmp/dscr",
+            "launchArgs": [],
+            "provider": "codex",
+            "launchMode": "start",
+            "resumeStrategy": "fake-provider",
+            "resumeSessionId": "f013ccd6-f1b1-4b4b-ab62-70b73dab200b",
+            "resumeStoragePath": "/tmp/dscr/.debug/file-activity-start/baseline-1791651083784/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-4-c9e0603d-7751-427d-9d28-86aaaccfa203"
+          }
+        }
+      ],
+      "states": [
+        {
+          "id": "agent-4-c9e0603d-7751-427d-9d28-86aaaccfa203",
+          "status": "waiting-input",
+          "summary": ">",
+          "liveSession": true,
+          "pendingLaunch": null,
+          "cols": 66,
+          "rows": 21
+        },
+        {
+          "id": "agent-5-089f42ae-f72c-40ba-815d-5805e18652b1",
+          "status": "starting",
+          "summary": "Waiting for node size before starting the Agent session.",
+          "liveSession": false,
+          "pendingLaunch": "start",
+          "cols": 67,
+          "rows": 21
+        }
+      ],
+      "cleanupLocalExecutions": 0,
+      "rejectedAdmission": [],
+      "explicitRetry": {
+        "kind": "agent",
+        "nodeId": "agent-5-089f42ae-f72c-40ba-815d-5805e18652b1",
+        "executionSessionId": "e180256c-0ea2-40b6-b21f-25232ed2470a",
+        "generation": "c78f007e-d714-489e-acb6-882300c56f97"
+      }
+    },
+    "probe": {
+      "artifact": ".debug/file-activity-start/probe-1791651127723/runtime/artifacts/result.json",
+      "scriptExit": 0,
+      "startupPrefixPassed": false,
+      "productBundleSha256BeforeProbe": {
+        "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "productProbe": true,
+      "timeline": [
+        {
+          "timestamp": "2026-10-10T16:52:14.823Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-4-2581052d-d805-438e-a8a6-271bc964f5e5",
+            "provider": "codex",
+            "resumeRequested": false,
+            "launchPreset": "default",
+            "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "launchArgs": [],
+            "cols": 66,
+            "rows": 21,
+            "cwd": "/tmp/dscr",
+            "workspaceTrusted": true
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:52:14.980Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-5-7c2aaa4d-415b-442f-a326-ecc25cc4749a",
+            "provider": "codex",
+            "resumeRequested": false,
+            "launchPreset": "default",
+            "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "launchArgs": [],
+            "cols": 66,
+            "rows": 21,
+            "cwd": "/tmp/dscr",
+            "workspaceTrusted": true
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:52:14.986Z",
+          "kind": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-5-7c2aaa4d-415b-442f-a326-ecc25cc4749a",
+            "executionId": "0da45aad-1081-4320-a944-ff226bb70e72",
+            "generation": "dda67650-c8a6-487b-8adf-505d7d34534c",
+            "submitted": false,
+            "result": {
+              "kind": "not-required"
+            }
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:52:14.987Z",
+          "kind": "execution/startRejected",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-5-7c2aaa4d-415b-442f-a326-ecc25cc4749a",
+            "outcome": "rejected-before-acquire",
+            "reason": "Authority start admission rejected",
+            "message": "Cannot start Agent right now. Wait for pending operations to finish and try again.",
+            "executionId": "0da45aad-1081-4320-a944-ff226bb70e72",
+            "generation": "dda67650-c8a6-487b-8adf-505d7d34534c"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:52:15.048Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-4-2581052d-d805-438e-a8a6-271bc964f5e5",
+            "sessionId": "aaffa023-a417-496c-93a5-fcb291e8f356",
+            "cols": 66,
+            "rows": 21,
+            "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "cwd": "/tmp/dscr",
+            "launchArgs": [],
+            "provider": "codex",
+            "launchMode": "start",
+            "resumeStrategy": "fake-provider",
+            "resumeSessionId": "266f165e-4810-4bfe-899c-a8ebbf0aa168",
+            "resumeStoragePath": "/tmp/dscr/.debug/file-activity-start/probe-1791651127723/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-4-2581052d-d805-438e-a8a6-271bc964f5e5"
+          }
+        }
+      ],
+      "states": [
+        {
+          "id": "agent-4-2581052d-d805-438e-a8a6-271bc964f5e5",
+          "status": "waiting-input",
+          "summary": ">",
+          "liveSession": true,
+          "pendingLaunch": null,
+          "cols": 67,
+          "rows": 21
+        },
+        {
+          "id": "agent-5-7c2aaa4d-415b-442f-a326-ecc25cc4749a",
+          "status": "starting",
+          "summary": "Waiting for node size before starting the Agent session.",
+          "liveSession": false,
+          "pendingLaunch": "start",
+          "cols": 67,
+          "rows": 21
+        }
+      ],
+      "cleanupLocalExecutions": 0,
+      "rejectedAdmission": [
+        {
+          "timestamp": "2026-10-10T16:52:14.986Z",
+          "identity": {
+            "executionId": "0da45aad-1081-4320-a944-ff226bb70e72",
+            "generation": "dda67650-c8a6-487b-8adf-505d7d34534c"
+          },
+          "identityMatch": true,
+          "authority": {
+            "active": 2,
+            "starting": 1,
+            "admissionPending": 2,
+            "closing": false,
+            "permanent": false
+          },
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "startingIds": [
+            "aaffa023-a417-496c-93a5-fcb291e8f356"
+          ]
+        }
+      ],
+      "explicitRetry": {
+        "kind": "agent",
+        "nodeId": "agent-5-7c2aaa4d-415b-442f-a326-ecc25cc4749a",
+        "executionSessionId": "eb8cd6bb-ecc1-4f21-9cfb-53b37168b039",
+        "generation": "aabee9db-1705-48b6-b137-baaa57890b48"
+      }
+    },
+    "serial": {
+      "artifact": ".debug/file-activity-start/serial-1791651170272/runtime/artifacts/result.json",
+      "scriptExit": 0,
+      "startupPrefixPassed": true,
+      "productBundleSha256BeforeProbe": {
+        "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "productProbe": false,
+      "timeline": [
+        {
+          "timestamp": "2026-10-10T16:52:57.570Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-4-baaef767-f31c-4609-903a-077d2565f5ac",
+            "provider": "codex",
+            "resumeRequested": false,
+            "launchPreset": "default",
+            "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "launchArgs": [],
+            "cols": 66,
+            "rows": 21,
+            "cwd": "/tmp/dscr",
+            "workspaceTrusted": true
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:52:57.705Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-4-baaef767-f31c-4609-903a-077d2565f5ac",
+            "sessionId": "979d3aca-529f-4412-a203-ce2e27966b5d",
+            "cols": 66,
+            "rows": 21,
+            "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "cwd": "/tmp/dscr",
+            "launchArgs": [],
+            "provider": "codex",
+            "launchMode": "start",
+            "resumeStrategy": "fake-provider",
+            "resumeSessionId": "d592177f-da11-4ca5-86ec-fca90d91cd15",
+            "resumeStoragePath": "/tmp/dscr/.debug/file-activity-start/serial-1791651170272/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-4-baaef767-f31c-4609-903a-077d2565f5ac"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:52:57.781Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-5-20dd4c6c-e77a-47b2-9b2e-d2eba2a5b1d2",
+            "provider": "codex",
+            "resumeRequested": false,
+            "launchPreset": "default",
+            "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "launchArgs": [],
+            "cols": 66,
+            "rows": 21,
+            "cwd": "/tmp/dscr",
+            "workspaceTrusted": true
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:52:57.872Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-5-20dd4c6c-e77a-47b2-9b2e-d2eba2a5b1d2",
+            "sessionId": "32f4f984-17de-45a2-8681-9db5850a457c",
+            "cols": 66,
+            "rows": 21,
+            "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "cwd": "/tmp/dscr",
+            "launchArgs": [],
+            "provider": "codex",
+            "launchMode": "start",
+            "resumeStrategy": "fake-provider",
+            "resumeSessionId": "0f5108be-2ab8-4f13-979e-fd3adf3c068f",
+            "resumeStoragePath": "/tmp/dscr/.debug/file-activity-start/serial-1791651170272/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-5-20dd4c6c-e77a-47b2-9b2e-d2eba2a5b1d2"
+          }
+        }
+      ],
+      "states": [
+        {
+          "id": "agent-4-baaef767-f31c-4609-903a-077d2565f5ac",
+          "status": "starting",
+          "summary": "[fake-agent] ready pid=373450 session=d592177f-da11-4ca5-86ec-fca90d91cd15",
+          "liveSession": true,
+          "pendingLaunch": null,
+          "cols": 66,
+          "rows": 21
+        },
+        {
+          "id": "agent-5-20dd4c6c-e77a-47b2-9b2e-d2eba2a5b1d2",
+          "status": "starting",
+          "summary": "[fake-agent] ready pid=373781 session=0f5108be-2ab8-4f13-979e-fd3adf3c068f",
+          "liveSession": true,
+          "pendingLaunch": null,
+          "cols": 66,
+          "rows": 21
+        }
+      ],
+      "cleanupLocalExecutions": 0
+    }
+  },
+  "existingHostTests": {
+    "filter": "webview start .* overlap",
+    "passed": 2,
+    "totalSelected": 2,
+    "log": ".debug/file-activity-start/host-admission.log"
+  },
+  "conclusions": [
+    "Two create-node commands return before automatic starts complete; second request overlaps starting=1 and is rejected before acquiring process resources.",
+    "Rejected new node retains initial starting/pendingLaunch and size-waiting summary. Webview automatic-launch deduplication does not retry the same intent.",
+    "Serial first started barrier passes both original live checks with unchanged product; explicit request after rejected attempt also succeeds.",
+    "New-node stale pending presentation is a product state-expression gap; preserve old history for existing-node rejection, do not infer automatic queue/retry requirement."
+  ],
+  "limits": [
+    "Only file-activity startup prefix verified; no file read/write, file-list or editor interactions claim",
+    "Investigation script exit0 means collection completed, not original smoke pass",
+    "Full gate not rerun; historical URL stall and Runtime batch disconnected observation remain uninvestigated",
+    "No real new Host, cross-platform or real provider service claim"
+  ],
+  "cleanup": "All three VS Code runs exited; each cleanup has zero local execution records; dependency link parked; no turn-specific processes remain."
+}

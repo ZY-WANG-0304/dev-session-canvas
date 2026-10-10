@@ -618,3 +618,7 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 `verifyFileActivityViewsAndOpenFiles:3795` 在创建两项专属 Agent 后等待第二项 live 超时。失败现场第一项 waiting-input/live=true，第二项 starting/live=false/pendingLaunch=start，尚未执行文件读写。当前只记录下一处阻塞，未定位为何启动未完成，不直接归为准入、尺寸或产品文件活动故障。
 
 默认命令已通过本次诊断汇总，故此失败不回退为旧诊断阻塞。另保留日志中立即模拟 reload 期间 Runtime client disconnected 的批次消费报告；该用例原断言继续通过，因果尚未研究。后续需分别确认第二项启动链和该报告的范围；历史 URL 清理停滞、真实新 Host/checkpoint/跨平台验收不由本轮代证。工件见 `.debug/trusted-diagnostics-fix/trusted-artifacts/`，精简证据为 `docs/references/smoke-reload-autostart/trusted-diagnostics-fix-evidence.json`。本轮进程已退出，无本轮 fake provider/Supervisor 残留。
+
+2026-10-11 定位完成：第二项已携 66×21 发出启动，但第一项仍占 starting=1，因此 rejected-before-acquire，保存 not-required；无探针原生复现和只读 authority 探针确认，非尺寸缺失或 owner 永久阻塞。只等待第一项原 started 再创建第二项的同包对照通过原两项 live 检查，显式重试被拒节点也成功。现有 Host overlap 接线 2/2 通过。后续修正本独立 fixture 的创建/started 屏障；文件读写等后续内容本轮未覆盖。
+
+另有产品呈现缺口待修复：新建节点被合法准入拒绝后仍保留 starting/pendingLaunch=start/等待尺寸，页面同意图自动启动去重又不重试。应针对未取得资源的新建意图收口状态，保留旧历史/较新请求及不确定资源保护；不放宽额度或增加隐式自动排队。原生恢复对照仅通过 Host 显式启动，未验收真实 Start 点击。证据 `docs/references/smoke-reload-autostart/file-activity-start-evidence.json`，计划 `docs/exec-plans/completed/file-activity-start-investigation.md`。正式产品/smoke 未改，完整 gate 未重跑；Runtime batch 报告等历史限制仍未收口。
