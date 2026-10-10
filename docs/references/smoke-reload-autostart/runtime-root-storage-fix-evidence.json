@@ -1,0 +1,156 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "parent_head": "900da95ab059b0d80a2d551ad23bbbcc08fb01e2",
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "change": "普通内部存储 mkdir 0700；Runtime 限定同用户非链接 0775/0770 目录的描述符权限收紧与身份复核；安全阶段反馈；原未提交新会话失败状态收口，保留旧 Runtime 历史/未知创建保护。",
+  "verification": {
+    "global_storage": "21 passed",
+    "preparation_worker": "26 passed",
+    "preparation_client": "21 passed",
+    "systemd_environment": "40 passed",
+    "owner_storage": "passed",
+    "host_focused": "25/25 passed",
+    "host_full": "529/529 passed",
+    "templates": "passed; new private global parent assertion",
+    "typecheck": "passed",
+    "localization": "passed",
+    "before_control": "original CanvasPanelManager fails new ordinary-save regression: actual 0775 vs expected 0700",
+    "before_log": ".debug/runtime-root-fix/host-before.log"
+  },
+  "default_vsix": {
+    "command": "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=/tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/code npm run test:vsix-smoke",
+    "log": ".debug/runtime-root-fix/vsix-final.log",
+    "exit_code": 1,
+    "globalMode": "0o700",
+    "runtimePersistenceEnabled": true,
+    "passed_scenarios": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure",
+      "local-links-and-stop"
+    ],
+    "failure": "verifyLiveRuntimePersistence:10024 waits for Agent live; root permissions and submission succeeded, Agent then rejected-before-acquire",
+    "reloadReached": false,
+    "nodes": [
+      {
+        "id": "agent-1-6ba37606-ce6d-44c0-aa2f-55c910562472",
+        "kind": "agent",
+        "status": "error",
+        "liveSession": false,
+        "persistenceMode": "live-runtime",
+        "runtimeSessionId": null
+      },
+      {
+        "id": "terminal-2-a438a2b3-e6c9-435f-a0d8-4971ec6684a1",
+        "kind": "terminal",
+        "status": "live",
+        "liveSession": true,
+        "persistenceMode": "live-runtime",
+        "runtimeSessionId": "86fe6eee-bb07-4dff-ac78-d7f3589bcfdb"
+      }
+    ],
+    "failures": [
+      {
+        "timestamp": "2026-10-10T10:27:09.613Z",
+        "kind": "execution/candidateStartFailed",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-6ba37606-ce6d-44c0-aa2f-55c910562472",
+          "message": "Failed to start Codex: Execution start was rejected-before-acquire."
+        }
+      }
+    ]
+  },
+  "native_focused": {
+    "legacy": {
+      "exit_code": 0,
+      "artifacts": ".debug/runtime-root-fix/native-legacy/artifacts",
+      "report": {
+        "scenario": "legacy",
+        "umask": "2",
+        "beforeMode": "0775",
+        "afterMode": "755",
+        "nodes": [
+          {
+            "kind": "agent",
+            "status": "starting",
+            "liveSession": true
+          },
+          {
+            "kind": "terminal",
+            "status": "live",
+            "liveSession": true
+          }
+        ],
+        "failures": []
+      }
+    },
+    "unsafe": {
+      "exit_code": 0,
+      "artifacts": ".debug/runtime-root-fix/native-unsafe/artifacts",
+      "report": {
+        "scenario": "unsafe",
+        "umask": "2",
+        "beforeMode": "0777",
+        "afterMode": "777",
+        "nodes": [
+          {
+            "kind": "agent",
+            "status": "error",
+            "liveSession": false,
+            "lastRuntimeError": "Runtime storage is unsafe. Its directory must belong to your OS user, must not be a symbolic link, and must not be writable by everyone."
+          },
+          {
+            "kind": "terminal",
+            "status": "error",
+            "liveSession": false,
+            "lastRuntimeError": "Runtime storage is unsafe. Its directory must belong to your OS user, must not be a symbolic link, and must not be writable by everyone."
+          }
+        ],
+        "failures": [
+          {
+            "timestamp": "2026-10-10T10:27:32.252Z",
+            "kind": "execution/candidateStartFailed",
+            "detail": {
+              "kind": "agent",
+              "nodeId": "agent-1-8a9cbfbe-0f69-4572-a209-265926bb5360",
+              "message": "Failed to start Codex: Runtime storage is unsafe. Its directory must belong to your OS user, must not be a symbolic link, and must not be writable by everyone."
+            }
+          },
+          {
+            "timestamp": "2026-10-10T10:27:32.436Z",
+            "kind": "execution/candidateStartFailed",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "terminal-2-9bcadcc4-574a-4a8e-9b3f-edddd7ac646a",
+              "message": "Failed to start embedded Terminal: Runtime storage is unsafe. Its directory must belong to your OS user, must not be a symbolic link, and must not be writable by everyone."
+            }
+          }
+        ]
+      }
+    },
+    "scope": "隔离 VSIX 载荷无产品探针；复用原测试 helper，逐个确认 started 后创建下一节点。用于验证目录兼容/拒绝反馈，不证明并发创建、reload 或完整 Runtime gate 通过。"
+  },
+  "source_sha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "797c2ddbf7d587e96f754e1276b8e7272c339d9294e134c99f27ea02db5045f1",
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore.ts": "14b65901903a49289057ad35f205f6f8e8c67044bcf58c16aec987f879e9df2d",
+    "extensions/vscode/dev-session-canvas/src/panel/runtimeGlobalStorage.ts": "ab69afe4982dafb50e7938eb109cd4bb2c824bf809a3fb4b9152c7e45920a403",
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts": "a2f93ffd24e8e4239f0ea2420393f22076d345ac3758a11c31ee14144cf5dc84",
+    "tests/vscode-smoke/extension-tests.cjs": "b9dbd9f6b683014703c23646b75b5737c9343c5ac23fd0e9c21925612af7fafe"
+  },
+  "cleanup": "Original isolated Terminal stop acknowledged.",
+  "packaged_payload_sha256": {
+    "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+    "runtime-supervisor-launcher.js": "23ba1c0006bde9235e5154a4a4b3a19fb2221fc69d2e517214fff7026d93b0cd",
+    "runtime-supervisor.js": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a"
+  },
+  "limits": [
+    "没有捕获后续 Agent 资源准入拒绝瞬间，本轮不将它确认为具体配额或生命周期缺陷。",
+    "未验证真实 provider 服务、跨版本、Windows/macOS 或 Remote SSH。",
+    "首次完整 Host 回归发现历史清理资格被状态投影改变，已通过保留原 runtimeSessionId 绑定修正；最终 529 项包括原保护回归。"
+  ]
+}

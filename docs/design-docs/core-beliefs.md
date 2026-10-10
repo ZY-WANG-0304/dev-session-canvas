@@ -347,3 +347,5 @@ unknown是当时缺少证明的观察，不应擦除已确认事实，也不阻�
 候选 provider 会话 ID 不等于已确认恢复能力。迁移执行所有权时，除正文/终态处理，还必须接回文件等外部确认入口，并将异步结果绑定原执行、候选 ID 与 metadata；旧 session map 的身份守卫不能直接用于 owned 记录。文件扫描应脱离启动/正文消费链，重叠触发合并并保留补查；合法原路由迁移与 metadata 投影更新仍属于原执行。无证据继续不可恢复，已确认结果不应因停止缺少输出提示而丢弃。依据见 `smoke-reload-autostart-investigation.md` 的 Claude 显式 session ID 专项定位。
 
 多个功能共用扩展存储时，目录创建与安全验证必须采用一致的权限约定。递归 mkdir 的 mode 不会收紧已有父目录；正常保存先创建的目录也必须纳入 Runtime 初始化与兼容设计。准备失败应保留安全的阶段/原因和正确启动表现，不以通用错误或测试 umask 掩盖初始化冲突。现存不安全目录不能未经验证直接接管，提交未知仍保留保护。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 首次 root 准备专项定位。
+
+Runtime 使用共享扩展目录前可以对已确认同 UID、非链接且无特殊位的历史 0770/0775 目录，通过原目录描述符移除组写位；必须复核 dev/ino 与 canonical 路径，不递归改权限、不变更 owner key，也不处理任意世界可写目录。新内部目录统一私有创建。未提交新会话的准备失败应结束 pendingLaunch；带原 Runtime 历史绑定的节点继续保留其清理资格，未知已提交会话仍保留责任。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 存储准备修复方案。

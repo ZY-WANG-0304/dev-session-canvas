@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -2724,6 +2724,75 @@ function candidateRuntimeFixture(options = {}) {
 }
 
 for (const action of ['agent', 'resume', 'terminal']) {
+  for (const stage of ['storage', 'root-helper']) {
+    test(`runtime preparation ${action} at ${stage} settles only the unsubmitted start and preserves history`, async () => {
+      const f = candidateRuntimeFixture();
+      const kind = action === 'terminal' ? 'terminal' : 'agent';
+      const nodeId = `${kind}-1`;
+      const node = f.host.state.nodes.find(node => node.id === nodeId);
+      node.status = kind === 'agent' ? 'starting' : 'launching';
+      const history = { version: 1, data: 'original-history', cols: 80, rows: 24 };
+      node.metadata[kind] = { ...node.metadata[kind], pendingLaunch: action === 'resume' ? 'resume' : 'start',
+        liveSession: false, recentOutput: 'original-history', serializedTerminalState: history,
+        resumeSupported: true, resumeStrategy: 'fake-provider', resumeSessionId: 'original-resume', lastExitCode: 23 };
+      f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: 'codex', label: 'Codex' });
+      f.host.resolveAgentResumeContext = () => ({ supported: true, strategy: 'fake-provider', sessionId: 'original-resume' });
+      const method = stage === 'storage' ? 'resolveRuntimeCreationTarget' : 'getPreferredRuntimeSupervisorClient';
+      const original = f.host[method];
+      f.host[method] = async () => { throw new Error('controlled root preparation failure'); };
+      const start = () => action === 'resume' ? f.host.startAgentSession(nodeId, 80, 24, undefined, true) : f.start(kind);
+      await completed(f.clock, start(), 'unsubmitted Runtime preparation failure');
+      const failed = f.host.state.nodes.find(node => node.id === nodeId);
+      assert.equal(failed.status, action === 'resume' ? 'resume-failed' : 'error');
+      assert.equal(failed.metadata[kind].lifecycle, failed.status);
+      assert.equal(failed.metadata[kind].pendingLaunch, undefined);
+      assert.equal(failed.metadata[kind].liveSession, false);
+      assert.equal(failed.metadata[kind].recentOutput, 'original-history');
+      assert.deepEqual(failed.metadata[kind].serializedTerminalState, history);
+      assert.equal(failed.metadata[kind].resumeSessionId, 'original-resume');
+      assert.equal(failed.metadata[kind].lastExitCode, 23);
+      assert.equal(failed.metadata[kind].lastRuntimeError, 'controlled root preparation failure');
+      assert.equal(f.host.candidateRuntimeStarts.size, 0);
+      assert.equal(f.creates.length, 0);
+      assert.equal(f.persisted.filter(entry => entry?.reason === 'runtime-start-preparation-failed').length, 1);
+      assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+      f.host[method] = original;
+      await completed(f.clock, start(), 'explicit Runtime retry');
+      assert.equal(f.creates.length, 1);
+    });
+  }
+  for (const change of ['metadata', 'node', 'closed', 'record', 'live']) {
+    test(`runtime preparation ${action} ignores late failure after ${change}`, async () => {
+      const f = candidateRuntimeFixture();
+      const kind = action === 'terminal' ? 'terminal' : 'agent';
+      const nodeId = `${kind}-1`;
+      const gate = deferred();
+      let entered = false;
+      f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: 'codex', label: 'Codex' });
+      f.host.resolveAgentResumeContext = () => ({ supported: true, strategy: 'fake-provider' });
+      f.host.resolveRuntimeCreationTarget = async () => { entered = true; await gate.promise; throw new Error('late failure'); };
+      f.host.state.nodes.find(node => node.id === nodeId).metadata[kind] = {
+        lifecycle: 'starting', liveSession: false, pendingLaunch: action === 'resume' ? 'resume' : 'start'
+      };
+      const operation = action === 'resume' ? f.host.startAgentSession(nodeId, 80, 24, undefined, true) : f.start(kind);
+      await until(f.clock, () => entered, 'waiting original Runtime preparation');
+      const node = f.host.state.nodes.find(node => node.id === nodeId);
+      if (change === 'metadata') node.metadata[kind] = { ...node.metadata[kind], lastRuntimeError: 'replacement' };
+      if (change === 'node') f.host.state.nodes = f.host.state.nodes.filter(node => node.id !== nodeId);
+      if (change === 'closed') f.host.nonNativeDeactivationReport = Promise.resolve({ kind: 'settled' });
+      if (change === 'record') f.host.candidateRuntimeStarts.set(f.host.getExecutionSessionOperationKey(kind, nodeId), { submitted: true });
+      if (change === 'live') node.metadata[kind].liveSession = true;
+      const before = structuredClone(f.host.state);
+      gate.resolve();
+      await completed(f.clock, operation, 'late Runtime preparation result');
+      assert.deepEqual(f.host.state, before);
+      assert.equal(f.persisted.filter(entry => entry?.reason === 'runtime-start-preparation-failed').length, 0);
+      assert.equal(f.creates.length, 0);
+    });
+  }
+}
+
+for (const action of ['agent', 'resume', 'terminal']) {
   for (const rejection of ['plain-admission', 'legacy-string', 'acquired', 'unconfirmed', 'wrong-session', 'wrong-kind', 'malformed']) {
     test(`${action} retains original creation protection for ${rejection}`, async () => {
       const f = candidateRuntimeFixture();
@@ -3649,6 +3718,29 @@ async function withRootCandidateRuntimeFixture(run) {
   finally { await rm(directory, { recursive: true, force: true }); }
 }
 
+test('runtime preparation ordinary canvas save creates the shared parent privately under umask 0002', async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), 'host-private-save-'));
+  const globalStorage = path.join(temporary, 'global');
+  const previous = process.umask(0o002);
+  try {
+    CanvasPanelManager.prototype.writePersistedCanvasSnapshotToDisk.call({},
+      path.join(globalStorage, 'root-local-canvas', 'root', 'canvas-state.json'), { version: 1 });
+    if (process.platform !== 'win32') assert.equal((await lstat(globalStorage)).mode & 0o777, 0o700);
+  } finally { process.umask(previous); await rm(temporary, { recursive: true, force: true }); }
+});
+
+for (const mode of [0o775, 0o770, 0o755]) {
+  test(`runtime preparation Host preserves owner identity while preparing existing ${mode.toString(8)} storage`, async () => {
+    if (process.platform === 'win32') return;
+    await withRootCandidateRuntimeFixture(async f => {
+      await chmod(f.globalStoragePath, mode);
+      const target = await f.host.resolveRuntimeCreationTarget(f.roots[0].path);
+      assert.deepEqual(target, f.target);
+      assert.equal((await lstat(f.globalStoragePath)).mode & 0o777, mode & ~0o020);
+    });
+  });
+}
+
 for (const kind of ['terminal', 'agent']) {
   test(`root ${kind} new creation routes its confirmed owner through preparation client metadata and subscription`, async () => {
     if (process.platform !== 'linux') return;
@@ -4188,8 +4280,15 @@ for (const kind of ['terminal', 'agent']) {
       assert.equal(f.providers.length, 0);
       assert.equal(f.applies.length, 0);
       assert.equal(f.subscriptions.length, 0);
-      assert.equal(f.persisted.length, 0);
-      assert.deepEqual(f.host.state, before);
+      assert.equal(f.persisted.length, previousBinding ? 0 : 1);
+      if (previousBinding) assert.deepEqual(f.host.state, before);
+      else {
+        const failed = f.host.state.nodes.find(node => node.kind === kind);
+        assert.equal(failed.status, 'error');
+        assert.equal(failed.metadata[kind].pendingLaunch, undefined);
+        assert.match(failed.metadata[kind].lastRuntimeError, /Host output consumption credit/);
+        assert.equal(f.persisted[0].reason, 'runtime-start-preparation-failed');
+      }
       assert.equal(f.host.runtimeSessionBindings.size, 0);
       assert.equal(f.host.candidateRuntimeStarts.size, 0);
     }

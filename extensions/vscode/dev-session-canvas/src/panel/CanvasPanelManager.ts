@@ -326,6 +326,7 @@ import { createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, parseRu
   type RuntimeOwnerDescriptorV1 } from '../common/runtimeRootOwnership';
 import { readRuntimeExecutionEnvironment, type RuntimeExecutionEnvironment } from './runtimeExecutionEnvironment';
 import { prepareRootRuntimeSupervisor } from './runtimeRootSupervisorPreparation';
+import { prepareRuntimeGlobalStorage, RuntimeGlobalStorageError } from './runtimeGlobalStorage';
 import {
   localizeRuntimeSupervisorError,
   localizeRuntimeSupervisorSnapshotExitMessage
@@ -7030,7 +7031,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private writePersistedCanvasSnapshotToDisk(snapshotPath: string, snapshot: PersistedCanvasSnapshot): number {
     fs.mkdirSync(path.dirname(snapshotPath), {
-      recursive: true
+      recursive: true, mode: 0o700
     });
     const tempSnapshotPath = `${snapshotPath}.tmp`;
     const serializedSnapshot = `${JSON.stringify(snapshot, null, 2)}\n`;
@@ -10360,8 +10361,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     // Explicit stock comparisons and rootless canvases retain their isolated workspace slot.
     if (!profile || rootPath === undefined) return { rootPath, runtimeStoragePath: this.getRuntimeHostBaseStoragePath() };
     const globalStorage = this.context.globalStorageUri.fsPath;
-    await fs.promises.mkdir(globalStorage, { recursive: true, mode: 0o700 });
-    const canonicalGlobalStorage = await fs.promises.realpath(globalStorage);
+    let canonicalGlobalStorage: string;
+    try { canonicalGlobalStorage = await prepareRuntimeGlobalStorage(globalStorage); }
+    catch (error) {
+      const reason = error instanceof RuntimeGlobalStorageError ? error.reason : 'unavailable';
+      throw new Error(reason === 'unsafe'
+        ? vscode.l10n.t('Runtime storage is unsafe. Its directory must belong to your OS user, must not be a symbolic link, and must not be writable by everyone.')
+        : reason === 'changed'
+          ? vscode.l10n.t('Runtime storage changed while it was being prepared. Check its directory before trying again.')
+          : vscode.l10n.t('Runtime storage could not be prepared. Check access to the extension storage directory and its permissions.'));
+    }
     const pending = this.runtimeExecutionEnvironmentPromise ??= readRuntimeExecutionEnvironment();
     let environment: RuntimeExecutionEnvironment;
     try { environment = await pending; }
@@ -10880,7 +10889,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       && this.isExecutionSessionOperationCurrent(kind, node.id, token) };
   }
 
-  private async withExecutionCandidateStart(kind: ExecutionNodeKind, nodeId: string, run: () => Promise<void>): Promise<void> {
+  private async withExecutionCandidateStart(kind: ExecutionNodeKind, nodeId: string, run: () => Promise<void>,
+    launchMode: PendingExecutionLaunch = 'start'): Promise<void> {
     if (!this.getExecutionCandidateProfile()) return run();
     this.assertExecutionCandidateAdmission('live-runtime');
     const starts = this.candidateRuntimeStarts ??= new Map();
@@ -10891,6 +10901,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     starts.set(key, record);
     try { await run(); }
     catch (error) {
+      const currentNode = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
+      if (!record.submitted && starts.get(key) === record && currentNode &&
+          currentNode.metadata?.[kind] === record.currentMetadata && !currentNode.metadata?.[kind]?.liveSession &&
+          !currentNode.metadata?.[kind]?.runtimeSessionId &&
+          !this.nonNativeDeactivationReport && !this.ordinaryDeactivationPromise && !this.strictRuntimeMutationBoundary) {
+        const message = error instanceof Error ? error.message : String(error);
+        const status = kind === 'agent' && launchMode === 'resume' ? 'resume-failed' : 'error';
+        // No createSession was submitted. Keep earlier history/owner evidence and
+        // provider recovery context; this is an ordinary state save, not a final snapshot.
+        this.state = updateExecutionNode(this.state, nodeId, kind, {
+          status, summary: message,
+          metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+            lifecycle: status, liveSession: false, pendingLaunch: undefined,
+            lastRuntimeError: message, lastExitMessage: message,
+            ...(kind === 'agent' ? { lastResumeError: status === 'resume-failed' ? message : undefined } : {})
+          })
+        });
+        this.persistState({ reason: 'runtime-start-preparation-failed' });
+        this.postState('host/stateUpdated');
+      }
       // Only the original create's explicit resource result can settle a submitted request.
       const outcome = getRuntimeSupervisorCreateSessionOutcome(error);
       const submittedSessionId = (record as { sessionId?: string }).sessionId;
@@ -15722,7 +15752,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     launchMode: PendingExecutionLaunch
   ): Promise<void> {
     return this.withExecutionCandidateStart('agent', nodeId, () => this.startAgentSessionWithSupervisorCore(
-      nodeId, normalizedCols, normalizedRows, provider, cliSpec, displayLaunchCommandLine, launchArgs, resumeContext, launchMode));
+      nodeId, normalizedCols, normalizedRows, provider, cliSpec, displayLaunchCommandLine, launchArgs, resumeContext, launchMode), launchMode);
   }
 
   private async startAgentSessionWithSupervisorCore(

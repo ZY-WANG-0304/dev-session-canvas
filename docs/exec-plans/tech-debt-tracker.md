@@ -530,3 +530,11 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 后续正式修复需统一可能先创建目录的保存/模板/Runtime 入口，明确已有目录的验证/处理策略，并让安全的具体准备失败反馈与本请求节点状态一致；不得自动接管不安全目录、放宽 owner/canonical path/权限检查或未知提交保护。之后恢复原 Runtime 自启动和后续矩阵；不以只改测试 umask 或延长等待收口。入口为 CanvasPanelManager 的 writePersistedCanvasSnapshotToDisk/resolveRuntimeCreationTarget、supervisor/runtimeRootOwner.ts 和 runtimeRootPreparation.ts。
 
 证据：`docs/references/smoke-reload-autostart/runtime-root-preparation-evidence.json` 及相邻两个复现程序；计划：`docs/exec-plans/completed/runtime-root-preparation-investigation.md`；设计：`docs/design-docs/smoke-reload-autostart-investigation.md`。
+
+## Runtime 存储准备已修复，后续 Agent 准入仍阻塞（2026-10-10，PR #314）
+
+上项目录缺口已收口：普通画布与内部模板目录明确 0700 创建；Runtime 对 ExtensionContext 指定的同 UID、非链接、无特殊位旧 0775/0770 目录经描述符及前后 dev/ino/realpath 检查后仅去组写位。安全目录不改，世界可写/异主/替换拒绝；不递归改权限、不更改 root owner key。helper 给出固定安全阶段信息；原未提交新会话失败投影 error/resume-failed、清 pendingLaunch，保留历史和恢复信息；原 Runtime 绑定及未知已提交保护不变。
+
+目录 21 项、准备 worker 26、client 21、systemd 环境 40、owner storage、完整 Host 529/529、模板、本地化和类型检查通过。最终默认 VSIX 七阶段通过，trusted globalStorage=0700，root/Terminal 启动成功，Agent 在后续 createSession 阶段 rejected-before-acquire。独立旧 0775 升级并串行启动两节点、0777 拒绝并结束两节点待启动状态均原生通过。原始 smoke 未改；checkpoint 原完整场景仍未在本轮重跑，不能由专项代证。
+
+剩余门禁：默认 verifyLiveRuntimePersistence:10024 仍因 Agent 资源拒绝等待 live 超时，尚未到该场景 reload。必须采集原 owner 在拒绝时的占槽/身份/关闭状态，区分 fixture 启动重叠和产品责任，再修对应入口；不能仅凭 rejected-before-acquire 字符串认定配额、扩大上限或放宽断言。工件 `.debug/runtime-root-fix/final-trusted-artifacts`；精简证据 `docs/references/smoke-reload-autostart/runtime-root-storage-fix-evidence.json`；计划 `docs/exec-plans/completed/runtime-root-storage-repair.md`。完整 gate、真实 provider、跨平台/跨版本矩阵仍未完成。

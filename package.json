@@ -70,7 +70,7 @@
     "test:terminal-shell-configuration": "node scripts/test/test-terminal-shell-configuration.mjs",
     "test:runtime-supervisor-paths": "node scripts/test/test-runtime-supervisor-paths.mjs",
     "test:runtime-root-ownership": "node scripts/test/test-runtime-root-ownership.mjs && node scripts/test/test-runtime-execution-environment.mjs && node scripts/test/test-runtime-root-startup.mjs && node scripts/test/test-runtime-root-owner-handshake.mjs",
-    "test:runtime-root-preparation": "node scripts/test/test-runtime-root-owner-storage.mjs && node scripts/test/test-runtime-root-preparation-client.mjs && node scripts/test/test-runtime-systemd-environment.mjs && node scripts/test/test-runtime-root-preparation.mjs",
+    "test:runtime-root-preparation": "node scripts/test/test-runtime-global-storage.mjs && node scripts/test/test-runtime-root-owner-storage.mjs && node scripts/test/test-runtime-root-preparation-client.mjs && node scripts/test/test-runtime-systemd-environment.mjs && node scripts/test/test-runtime-root-preparation.mjs",
     "test:runtime-supervisor-startup-profile": "node scripts/test/test-runtime-supervisor-startup-profile.mjs && node scripts/test/test-runtime-supervisor-reader-client.mjs",
     "test:runtime-supervisor-namespace": "node scripts/test/test-runtime-supervisor-namespace.mjs",
     "test:execution-runtime-selection": "node scripts/test/test-execution-runtime-selection.mjs",

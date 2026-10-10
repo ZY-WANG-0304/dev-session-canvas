@@ -1053,5 +1053,8 @@
   "Session terminated: {reason}": "会话已终止：{reason}",
   "{message} Output is incomplete: {reason}": "{message} 输出不完整：{reason}",
   "This non-native test execution does not support terminal input.": "此非原生测试执行不支持终端输入。",
-  "The original Runtime execution is still bound. Settle it before starting a local execution.": "节点仍绑定原运行时执行。请先完成原执行的清理，再启动本地执行。"
+  "The original Runtime execution is still bound. Settle it before starting a local execution.": "节点仍绑定原运行时执行。请先完成原执行的清理，再启动本地执行。",
+  "Runtime storage is unsafe. Its directory must belong to your OS user, must not be a symbolic link, and must not be writable by everyone.": "Runtime 存储目录不安全。目录必须属于当前系统用户，不能是符号链接，也不能允许所有用户写入。",
+  "Runtime storage changed while it was being prepared. Check its directory before trying again.": "Runtime 存储目录在准备期间发生变化。请检查目录后重试。",
+  "Runtime storage could not be prepared. Check access to the extension storage directory and its permissions.": "无法准备 Runtime 存储。请检查扩展存储目录的访问权限。"
 }
