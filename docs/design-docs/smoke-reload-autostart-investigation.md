@@ -860,3 +860,19 @@ smoke 的独立立即 reload 用例只增加 Agent 原 started 屏障，随后�
 正式修复方向尚未实施：侧栏用例按自身原执行完成启动/停止/退休后交接，provider分叉基线不得重放过期自动启动意图；产品补齐reserve前新请求拒绝的身份安全状态投影，保持无自动重试、历史保护和原准入配额。历史源码显示侧栏仅验节点的实现来自 `94ded8b32`，Codex基线回写来自 `b5eb50284`，生产pending计数来自 `7f1e1887c`；这是旧fixture契约在新执行模型中的暴露，不能归为最新删除修复引入，也不据此声明首个受影响发布版本。
 
 三个原始bundle hash均与上一轮正式VSIX一致，隔离extension仅增加manager引用；正式产品与正式smoke未改，本轮未重跑完整gate。证据 `docs/references/smoke-reload-autostart/claude-fork-admission-root-cause-evidence.json`，相邻baseline与investigation脚本可复验；计划 `docs/exec-plans/completed/claude-fork-admission-investigation.md`。原gate仍失败，历史URL/Runtime batch、新Host/checkpoint/真实provider/跨平台边界不变。
+
+## Claude Fork 准入阻塞修复（2026-10-11，PR #314）
+
+### 正式方案
+
+`tests/vscode-smoke/extension-tests.cjs` 在侧栏历史恢复、侧栏 Fork UI 和不支持分叉来源的临时 Agent 交接前，按基线节点差集等待 `pendingLaunch` 清除，再调用既有 `ensureAgentStopped` 等待停止与原 execution 退休。它保留创建的节点用于原 UI 断言，不固定等待时间、不删除节点、不绕过原 `execution/started` 断言。这样后续 Codex/Claude 分叉保存的 baseline 不再包含可回放的旧自动启动意图。
+
+`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts::reportWebviewExecutionStartFailure` 增加 reserve 前容量拒绝分支：当没有 `original` 或 `current` owned record，且节点 metadata 仍是本次请求的 waiting/pending 状态时，fresh start 投影为 `error`，resume 投影为 `resume-failed`，清除 `pendingLaunch`，保存并通知页面。错误原因仍使用统一 pending 操作提示并记录 `execution/startRejected`。如果存在旧 record、metadata 已替换、节点已 live 或请求已取消，则不投影，保留原责任和既有 superseded 保护。
+
+### 验证
+
+新增 Host wiring 用例占满两个生产 pending 名额后从 Webview 发起第三个 Agent start，验证无第三条 execution record、节点失败投影、pending 清除、统一提示和拒绝诊断。Host wiring 全量通过；类型检查通过。最新 VSIX 的 trusted packaged-payload smoke 通过完整 trusted 顺序，原 Codex/Claude Fork、unsupported source 以及后续侧栏搜索/双击断言均通过。
+
+### 边界
+
+修复保持生产 `pending=2`、`starting=1` 限制，不自动排队或重试；它不改变真实 provider 恢复协议，也不覆盖 RuntimePersistence 的 Supervisor 准入。调查回放中释放重叠准备后出现的 `owned-resize-failed` 仍是独立待定位项。计划 `docs/exec-plans/completed/claude-fork-admission-repair.md`，调查计划 `docs/exec-plans/completed/claude-fork-admission-investigation.md`。

@@ -16201,8 +16201,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         (original.persistence !== undefined && node.metadata?.[kind] !== original.persistence.metadata)
       : node.metadata?.[kind] !== metadata);
     const local = error instanceof LocalExecutionStartError ? error : undefined;
-    const rejected = local?.result.kind === 'rejected-before-acquire';
     const reason = local?.result.reason ?? (error instanceof Error ? error.message : String(error));
+    const rejected = local?.result.kind === 'rejected-before-acquire' ||
+      (!original && !current &&
+        reason === 'Local final snapshot responsibility still occupies the execution key or Host capacity.');
     const message = rejected
       ? this.executionStartRejectionMessage(kind)
       : vscode.l10n.t('Failed to start execution node: {message}', { message: reason });
@@ -16214,6 +16216,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         ...(local ? { executionId: local.identity.executionId, generation: local.identity.generation } : {})
       });
     } catch { /* Diagnostics must not turn a handled start failure into an unhandled rejection. */ }
+    // Capacity can be rejected before an owned execution record is created. In
+    // that case the normal record-bound projection is unavailable, but the
+    // original pending intent still needs to become a retryable failure.
+    if (!superseded && !original && !current && node && node.metadata?.[kind] === metadata) {
+      const pendingLaunch = node.metadata?.[kind]?.pendingLaunch;
+      const waitingStatus = kind === 'agent' ? 'starting' : 'launching';
+      if ((pendingLaunch === 'start' || pendingLaunch === 'resume') &&
+          !node.metadata?.[kind]?.liveSession && node.status === waitingStatus &&
+          node.metadata?.[kind]?.lifecycle === waitingStatus) {
+        const status = kind === 'agent' && pendingLaunch === 'resume' ? 'resume-failed' : 'error';
+        this.state = updateExecutionNode(this.state, nodeId, kind, {
+          status,
+          summary: message,
+          metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+            lifecycle: status,
+            pendingLaunch: undefined,
+            liveSession: false,
+            lastExitMessage: message,
+            lastRuntimeError: message,
+            ...(kind === 'agent' ? { lastResumeError: status === 'resume-failed' ? message : undefined } : {})
+          })
+        });
+        try { void this.persistState({ reason: 'execution-start-rejected-before-record' }).catch(() => {}); }
+        catch { /* State projection must not replace the original start failure. */ }
+        try { this.postState('host/stateUpdated'); } catch { /* The page may already be disposed. */ }
+      }
+    }
     if (superseded) return;
     try { this.postMessage({ type: 'host/error', payload: { message } }); }
     catch { /* A disposed page cannot change the original start outcome. */ }

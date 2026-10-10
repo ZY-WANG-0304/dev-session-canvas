@@ -660,6 +660,55 @@ function localFixture(options = {}) {
   return { ...f, posted, webviews, send, ready, attach, settle, completions, finish };
 }
 
+test('webview start projects a pre-record Host capacity rejection onto the pending node', async () => {
+  const f = localFixture({ admissionLimits: EXECUTION_PRODUCTION_ADMISSION, capabilities: persistenceCapabilities,
+    budgets: { naturalDrainMs: 15, boundaryMs: 50 } });
+  const firstGate = deferred();
+  const secondGate = deferred();
+  const rejectedNode = {
+    id: 'agent-2', kind: 'agent', status: 'starting', summary: 'Waiting for node size before starting the Agent session.',
+    metadata: { agent: {
+      provider: 'codex', lifecycle: 'starting', launchPreset: 'default',
+      customLaunchCommand: 'controlled-agent', pendingLaunch: 'start', liveSession: false
+    } }
+  };
+  f.host.state.nodes.push(rejectedNode);
+  const first = f.host.startNonNativeHostExecution('terminal', 'terminal-1', 80, 24,
+    () => firstGate.promise);
+  const second = f.host.startNonNativeHostExecution('agent', 'agent-1', 80, 24,
+    () => secondGate.promise);
+  let records = [];
+  try {
+    await until(f.clock, () => f.owner.snapshot().admissionPending === 2, 'two pending owned starts');
+    f.send('editor', 'webview/startExecutionSession', {
+      kind: 'agent', nodeId: 'agent-2', cols: 80, rows: 24, provider: 'codex', resume: false
+    });
+    await until(f.clock, () => f.posted.some(entry => entry.message.type === 'host/error'),
+      'pre-record rejection projection');
+    const failed = f.host.state.nodes.find(node => node.id === 'agent-2');
+    assert.equal(failed.status, 'error');
+    assert.equal(failed.metadata.agent.lifecycle, 'error');
+    assert.equal(failed.metadata.agent.pendingLaunch, undefined);
+    assert.equal(failed.metadata.agent.liveSession, false);
+    assert.match(failed.summary, /Wait for pending operations/);
+    assert.equal(f.host.nonNativeHostExecutions.has('agent:agent-2'), false);
+    assert.equal(f.diagnostics.filter(event => event.name === 'execution/startRejected').length, 1);
+  } finally {
+    firstGate.resolve({ file: '/controlled/shell', args: [], env: {} });
+    secondGate.resolve({ file: '/controlled/agent', args: [], env: {} });
+    records = await Promise.all([first, second].map(promise => completed(f.clock, promise, 'pending start cleanup')));
+    for (const provider of f.providers) {
+      provider.process(); provider.seal(0); provider.release();
+    }
+    await until(f.clock, () => records.every(record => record.execution.snapshot().settled), 'pending start records settled');
+    for (const record of records) {
+      record.business?.cancelActivityPoll?.();
+      record.business?.lineContextTracker.dispose();
+      record.tracker.dispose();
+    }
+  }
+});
+
 for (const kind of ['terminal', 'agent']) {
   test(`${kind} local consumption credit waits for exact page application, including initial and final snapshots`, async () => {
     const f = localFixture({ outputCredit: true });

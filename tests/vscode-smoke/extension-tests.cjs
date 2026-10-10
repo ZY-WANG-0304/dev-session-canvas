@@ -1922,6 +1922,7 @@ async function verifySidebarSessionHistoryRestore() {
         node.metadata.agent.customLaunchCommand.includes(`resume ${codexSessionId}`)
     );
     assert.ok(restoredAgentNode, 'Expected the restored sidebar history entry to materialize as a new Codex agent node.');
+    await settleSidebarHistoryAgents(baselineSnapshot);
   } finally {
     await fs.rm(fakeHomeDir, { recursive: true, force: true });
   }
@@ -2368,6 +2369,7 @@ async function verifyAgentBranchRejectsUnsupportedSources() {
       'Expected Fork request without a trusted session id to be rejected without creating a node.'
     );
   } finally {
+    await settleSidebarHistoryAgents(baselineSnapshot);
     await setPersistedState(baselineSnapshot.state);
   }
 }
@@ -2576,11 +2578,26 @@ async function verifySidebarSessionHistoryForkActionUi() {
       baselineSnapshot.state.nodes.length + 1,
       'Expected clicking a sidebar session Fork action to create one additional Agent node.'
     );
+    await settleSidebarHistoryAgents(baselineSnapshot);
   } finally {
     if (sessionFilePath) {
       await fs.rm(sessionFilePath, { force: true });
     }
     await vscode.commands.executeCommand(COMMAND_IDS.refreshSessionHistory);
+  }
+}
+
+async function settleSidebarHistoryAgents(baselineSnapshot) {
+  const baselineIds = new Set(baselineSnapshot.state.nodes.map(node => node.id));
+  const createdAgents = (await getDebugSnapshot()).state.nodes.filter(
+    node => node.kind === 'agent' && !baselineIds.has(node.id)
+  );
+  for (const node of createdAgents) {
+    await waitForSnapshot((currentSnapshot) => {
+      const currentNode = currentSnapshot.state.nodes.find(candidate => candidate.id === node.id);
+      return Boolean(currentNode && currentNode.metadata?.agent?.pendingLaunch === undefined);
+    }, 20000);
+    await ensureAgentStopped(node.id);
   }
 }
 

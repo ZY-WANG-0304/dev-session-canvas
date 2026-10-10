@@ -673,3 +673,9 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 收口对照保留原Codex/Claude全部断言并exit0，空画布Claude另行exit0，均零localExecutions。受控原基线回放捕获sameKey=false、两项历史pending及目标20秒后仍starting；回放释放prepare后历史节点另报owned-resize-failed，外层断言exit1，需后续确认这一重叠resize分支，不将其认作原gate根因或通过证据。首轮自然suffix可通过；另一轮在前置Runtime配置启动先超时，未用于Claude归因。
 
 正式产品和smoke未修改，完整gate未重跑且仍失败；后续用例、历史URL/Runtime batch及新Host/真实provider/跨平台边界保持未关闭。证据 `docs/references/smoke-reload-autostart/claude-fork-admission-root-cause-evidence.json`，计划 `docs/exec-plans/completed/claude-fork-admission-investigation.md`。
+
+## Claude Fork 准入阻塞已修复；resize 分支独立待定位（2026-10-11，PR #314）
+
+`tests/vscode-smoke/extension-tests.cjs` 现在在侧栏历史恢复、Fork UI 和 unsupported source 基线交接前等待 pending 意图清除、停止和原执行退休，避免旧 `starting/pendingLaunch=start` 被后续 baseline 回写重放。`CanvasPanelManager.reportWebviewExecutionStartFailure` 对 reserve 前、无 owned record 的容量拒绝做身份保护的 error/resume-failed 投影，清除 pending、持久化并通知页面；同 key 旧 record、替换 metadata、live 或取消请求继续保持原责任。
+
+新增 Host wiring 回归和正式 trusted VSIX packaged-payload smoke 均通过，原 Codex/Claude Fork、unsupported source 及后续侧栏搜索/双击断言通过；生产 pending/starting 配额和无自动重试语义不变。此前 root-cause 调查中的受控 prepare 重叠释放后 `owned-resize-failed` 仍未确认边界，另行跟踪；完整 gate 尚未因本次定向验证而追认通过。修复计划 `docs/exec-plans/completed/claude-fork-admission-repair.md`。
