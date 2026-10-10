@@ -679,3 +679,9 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 `tests/vscode-smoke/extension-tests.cjs` 现在在侧栏历史恢复、Fork UI 和 unsupported source 基线交接前等待 pending 意图清除、停止和原执行退休，避免旧 `starting/pendingLaunch=start` 被后续 baseline 回写重放。`CanvasPanelManager.reportWebviewExecutionStartFailure` 对 reserve 前、无 owned record 的容量拒绝做身份保护的 error/resume-failed 投影，清除 pending、持久化并通知页面；同 key 旧 record、替换 metadata、live 或取消请求继续保持原责任。
 
 新增 Host wiring 回归和正式 trusted VSIX packaged-payload smoke 均通过，原 Codex/Claude Fork、unsupported source 及后续侧栏搜索/双击断言通过；生产 pending/starting 配额和无自动重试语义不变。此前 root-cause 调查中的受控 prepare 重叠释放后 `owned-resize-failed` 仍未确认边界，另行跟踪；完整 gate 尚未因本次定向验证而追认通过。修复计划 `docs/exec-plans/completed/claude-fork-admission-repair.md`。
+
+## PR314 最新 head 完整 packaged VSIX gate 已闭环（2026-10-11）
+
+针对上一节“只完成定向验证、完整 gate 未重跑”的记录，已在精确 head `1286b83e778b69bf2214bed15f9a770c8a916f27` 上不设置 scenario filter 重跑 `npm run test:vsix-smoke`。Linux x64、Node 22.23.3、VS Code 1.141.0、已验证 execution asset set、原生 PTY 和 fake provider 环境下，八个阶段（含 trusted 全顺序）全部通过，命令 exit 0。此次运行关闭审计中“最新 head 未闭环”的 P1；Claude Fork 修复后的生命周期、准入拒绝、最终保存和 reload 主路径在该 packaged payload 中均完成原有断言。
+
+证据见 `docs/references/smoke-reload-autostart/full-vsix-gate-1286b83e-evidence.json`。此前章节保留历史失败时点，不再作为当前 head 的门禁结论。GitHub 没有完整 smoke required check，`native-assets` 仍为 skipped，因此真实 provider、真实窗口 Reload、新 Host/checkpoint、Remote SSH、其他平台/跨版本矩阵，以及历史 URL 清理、Runtime disconnected 批次报告和独立 `owned-resize-failed` 调查继续作为明确验证边界；它们不是本次八场景 run 的失败项。
