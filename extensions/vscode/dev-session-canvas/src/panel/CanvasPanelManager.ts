@@ -16197,9 +16197,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const rejected = local?.result.kind === 'rejected-before-acquire';
     const reason = local?.result.reason ?? (error instanceof Error ? error.message : String(error));
     const message = rejected
-      ? vscode.l10n.t('Cannot start {label} right now. Wait for pending operations to finish and try again.', {
-        label: kind === 'agent' ? 'Agent' : 'Terminal'
-      })
+      ? this.executionStartRejectionMessage(kind)
       : vscode.l10n.t('Failed to start execution node: {message}', { message: reason });
     // Reporting is observational: the original start retains all resource and persistence responsibility.
     try {
@@ -17892,6 +17890,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       void this.maybeConfirmNonNativeClaudeResumeSessionId(active, 'startup');
       return active;
     } catch (error) {
+      if (record && error instanceof LocalExecutionStartError && error.result.kind === 'rejected-before-acquire') {
+        this.projectNonNativeHostStartRejection(record);
+      }
       record?.pendingResize?.reject(error);
       if (record) record.pendingResize = undefined;
       if (kind === 'terminal' && record) this.dropPendingTerminalInitialInput(record.nodeId, formatUnknownError(error));
@@ -17911,6 +17912,43 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       throw error;
     }
+  }
+
+  private executionStartRejectionMessage(kind: ExecutionNodeKind): string {
+    return vscode.l10n.t('Cannot start {label} right now. Wait for pending operations to finish and try again.', {
+      label: kind === 'agent' ? 'Agent' : 'Terminal'
+    });
+  }
+
+  private projectNonNativeHostStartRejection(record: NonNativeHostExecution): void {
+    const { kind, nodeId, persistence } = record;
+    const node = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
+    const current = this.nonNativeHostExecutions.get(record.execution.key);
+    const metadata = node?.metadata?.[kind];
+    const waitingStatus = kind === 'agent' ? 'starting' : 'launching';
+    // A rejected adapter may already have retired. Only its still-bound pending
+    // presentation can change; the typed rejection, not adapter presence, proves no acquisition.
+    if (!persistence || !node || (current !== undefined && current !== record) ||
+      record.execution.snapshot().stopRequested || metadata !== persistence.metadata ||
+      metadata?.pendingLaunch !== 'start' || metadata.liveSession ||
+      node.status !== waitingStatus || metadata.lifecycle !== waitingStatus) return;
+    this.state = updateExecutionNode(this.state, nodeId, kind, {
+      status: 'error', summary: this.executionStartRejectionMessage(kind),
+      metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+        lifecycle: 'error', pendingLaunch: undefined, liveSession: false
+      })
+    });
+    const updated = this.requireNode(nodeId, kind);
+    persistence.metadata = kind === 'agent' ? ensureAgentMetadata(updated) : ensureTerminalMetadata(updated);
+    const report = (error: unknown): void => {
+      try {
+        this.recordDiagnosticEvent('execution/startRejectionProjectionFailed', {
+          kind, nodeId, executionId: record.execution.identity.executionId, reason: formatUnknownError(error)
+        });
+      } catch { /* Observers cannot replace the original rejection or prevent its cleanup. */ }
+    };
+    try { void this.persistState().catch(report); } catch (error) { report(error); }
+    try { this.postState('host/stateUpdated'); } catch (error) { report(error); }
   }
 
   private projectNonNativeHostPreparationFailure(

@@ -6620,58 +6620,151 @@ for (const kind of ['agent', 'terminal']) {
 }
 
 for (const firstKind of ['terminal', 'agent']) {
-  test(`webview start ${firstKind} overlap rejects before connect and retry succeeds`, async () => {
-    const secondKind = firstKind === 'terminal' ? 'agent' : 'terminal';
-    const f = startupResizeFixture(firstKind, 'operationObservation', { admissionLimits: EXECUTION_PRODUCTION_ADMISSION, outputCredit: true });
-    let secondRecord;
-    try {
-      await until(f.clock, f.waiting, 'first start held before started');
-      const secondNode = f.host.state.nodes.find(node => node.kind === secondKind);
-      secondNode.status = 'stopped'; secondNode.metadata[secondKind] = { ...secondNode.metadata[secondKind], liveSession: false };
-      const authorityBefore = f.owner.authority.snapshot();
-      assert.equal(authorityBefore.starting, 1);
-      assert.equal(authorityBefore.active, 1);
-      assert.equal(authorityBefore.closing, false);
-      assert.equal(authorityBefore.blockedReason, undefined);
-      sendCandidateStart(f, secondKind);
-      await until(f.clock, () => f.posted.some(message => message.type === 'host/error'), 'visible overlap rejection');
-      assert.equal(f.providers.length, 2, 'transport construction is not acquisition');
-      assert.equal(f.providers[1].connectCount ?? 0, 0, 'rejected transport never connects');
-      assert.equal(f.providers[1].messages.length, 0, 'rejected transport never connects or sends start');
-      assert.equal(f.owner.get(`${secondKind}:${secondKind}-1`), undefined);
-      assert.equal(f.record(secondKind), undefined);
-      assert.equal(secondNode.status, 'stopped');
-      assert.equal(secondNode.metadata[secondKind].liveSession, false);
-      assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
-      assert.match(f.posted.find(message => message.type === 'host/error').payload.message, /Wait for pending operations/);
-      const rejection = f.diagnostics.filter(event => event.name === 'execution/startRejected');
-      assert.equal(rejection.length, 1);
-      assert.equal(rejection[0].detail.kind, secondKind);
-      assert.equal(rejection[0].detail.outcome, 'rejected-before-acquire');
-      assert.deepEqual({ executionId: rejection[0].detail.executionId, generation: rejection[0].detail.generation }, f.providers[1].identity);
-      assert.equal(f.owner.authority.snapshot().starting, 1, 'rejection leaves original start intact');
-      f.release();
-      await completed(f.clock, f.starting, 'first confirmed started');
-      assert.equal(f.owner.authority.snapshot().starting, 0);
-      await completed(f.clock, f.start(secondKind), 'same second node after first started');
-      secondRecord = f.record(secondKind);
-      assert.equal(f.providers[2].connectCount, 1, 'retry connects exactly once');
-      assert.equal(secondRecord.execution.snapshot().adapter.state, 'running');
-      assert.equal(f.record(firstKind).execution.snapshot().adapter.state, 'running');
-      assert.equal(f.owner.authority.snapshot().active, 2, 'starting limit is not the running session limit');
-      assert.equal(f.owner.authority.snapshot().starting, 0);
+  for (const presentation of ['stopped', 'new', 'resume', 'history']) {
+    test(`webview start ${firstKind} overlap ${presentation} rejects before connect and retry succeeds`, async () => {
+      const secondKind = firstKind === 'terminal' ? 'agent' : 'terminal';
+      const f = startupResizeFixture(firstKind, 'operationObservation', { admissionLimits: EXECUTION_PRODUCTION_ADMISSION, outputCredit: true });
+      let secondRecord;
+      try {
+        await until(f.clock, f.waiting, 'first start held before started');
+        const secondNode = f.host.state.nodes.find(node => node.kind === secondKind);
+        secondNode.status = 'stopped'; secondNode.metadata[secondKind] = { ...secondNode.metadata[secondKind], liveSession: false };
+        if (presentation !== 'stopped') {
+          const status = presentation === 'resume' ? 'resume-ready' : secondKind === 'agent' ? 'starting' : 'launching';
+          secondNode.status = status;
+          secondNode.metadata[secondKind] = { ...secondNode.metadata[secondKind], lifecycle: status,
+            pendingLaunch: presentation === 'resume' ? 'resume' : 'start', liveSession: false,
+            ...(presentation === 'history' ? { recentOutput: 'prior history', lastExitCode: 27,
+              lastExitSignal: 'SIGINT', lastExitMessage: 'prior exit', resumeSessionId: 'prior-session' } : {}) };
+        }
+        const before = structuredClone(secondNode);
+        const authorityBefore = f.owner.authority.snapshot();
+        assert.equal(authorityBefore.starting, 1);
+        assert.equal(authorityBefore.active, 1);
+        assert.equal(authorityBefore.closing, false);
+        assert.equal(authorityBefore.blockedReason, undefined);
+        sendCandidateStart(f, secondKind);
+        await until(f.clock, () => f.posted.some(message => message.type === 'host/error'), 'visible overlap rejection');
+        assert.equal(f.providers.length, 2, 'transport construction is not acquisition');
+        assert.equal(f.providers[1].connectCount ?? 0, 0, 'rejected transport never connects');
+        assert.equal(f.providers[1].messages.length, 0, 'rejected transport never connects or sends start');
+        assert.equal(f.owner.get(`${secondKind}:${secondKind}-1`), undefined);
+        assert.equal(f.record(secondKind), undefined);
+        const after = f.host.state.nodes.find(node => node.id === secondNode.id);
+        if (presentation === 'new' || presentation === 'history') {
+          assert.equal(after.status, 'error');
+          assert.equal(after.metadata[secondKind].lifecycle, 'error');
+          assert.equal(after.metadata[secondKind].pendingLaunch, undefined);
+          assert.equal(after.metadata[secondKind].liveSession, false);
+          assert.match(after.summary, /Wait for pending operations/);
+          for (const field of ['recentOutput', 'lastExitCode', 'lastExitSignal', 'lastExitMessage', 'resumeSessionId']) {
+            assert.equal(after.metadata[secondKind][field], before.metadata[secondKind][field], field);
+          }
+        } else assert.deepEqual(after, before, 'historical or resume presentation is not a new pending start');
+        assert.equal(f.diagnostics.find(event => event.name === 'execution/localFinalPersistence' &&
+          event.detail.executionId === f.providers[1].identity.executionId)?.detail.result.kind, 'not-required');
+        assert.equal(f.posted.some(message => message.type === 'host/executionExit'), false);
+        assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+        assert.match(f.posted.find(message => message.type === 'host/error').payload.message, /Wait for pending operations/);
+        const rejection = f.diagnostics.filter(event => event.name === 'execution/startRejected');
+        assert.equal(rejection.length, 1);
+        assert.equal(rejection[0].detail.kind, secondKind);
+        assert.equal(rejection[0].detail.outcome, 'rejected-before-acquire');
+        assert.deepEqual({ executionId: rejection[0].detail.executionId, generation: rejection[0].detail.generation }, f.providers[1].identity);
+        assert.equal(f.owner.authority.snapshot().starting, 1, 'rejection leaves original start intact');
+        f.release();
+        await completed(f.clock, f.starting, 'first confirmed started');
+        assert.equal(f.owner.authority.snapshot().starting, 0);
+        await completed(f.clock, f.start(secondKind), 'same second node after first started');
+        secondRecord = f.record(secondKind);
+        assert.equal(f.providers[2].connectCount, 1, 'retry connects exactly once');
+        assert.equal(secondRecord.execution.snapshot().adapter.state, 'running');
+        assert.equal(f.record(firstKind).execution.snapshot().adapter.state, 'running');
+        assert.equal(f.owner.authority.snapshot().active, 2, 'starting limit is not the running session limit');
+        assert.equal(f.owner.authority.snapshot().starting, 0);
 
-    } finally {
-      if (secondRecord) {
-        const provider = f.providers.at(-1);
-        provider.process(); provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
-        provider.seal(secondRecord.lastDataSequence); provider.release();
-        await pump(f.clock, () => secondRecord.execution.snapshot().settled);
-        secondRecord.business?.cancelActivityPoll?.(); secondRecord.business?.lineContextTracker.dispose(); secondRecord.tracker.dispose();
+      } finally {
+        if (secondRecord) {
+          const provider = f.providers.at(-1);
+          provider.process(); provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+          provider.seal(secondRecord.lastDataSequence); provider.release();
+          await pump(f.clock, () => secondRecord.execution.snapshot().settled);
+          secondRecord.business?.cancelActivityPoll?.(); secondRecord.business?.lineContextTracker.dispose(); secondRecord.tracker.dispose();
+        }
+        if (f.waiting()) f.release(); await f.cleanup();
       }
-      if (f.waiting()) f.release(); await f.cleanup();
-    }
-  });
+    });
+  }
+}
+
+for (const kind of ['agent', 'terminal']) {
+  for (const boundary of ['metadata', 'new-record', 'deleted', 'cancelled', 'live', 'save-throws', 'save-rejects', 'page-throws']) {
+    test(`webview start ${kind} pending rejection handles ${boundary}`, async () => {
+      const firstKind = kind === 'agent' ? 'terminal' : 'agent';
+      const f = startupResizeFixture(firstKind, 'operationObservation', { outputCredit: true, admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+      const gate = deferred();
+      const persist = f.host.persistState;
+      const postState = f.host.postState;
+      let original;
+      let rejected = false;
+      try {
+        await until(f.clock, f.waiting, 'first start held');
+        const node = f.host.state.nodes.find(node => node.kind === kind);
+        node.status = kind === 'agent' ? 'starting' : 'launching';
+        node.metadata[kind] = { ...node.metadata[kind], lifecycle: node.status, pendingLaunch: 'start', liveSession: false };
+        const reserve = f.owner.reserve.bind(f.owner);
+        f.owner.reserve = key => {
+          const execution = reserve(key);
+          const start = execution.start.bind(execution);
+          execution.start = (...args) => {
+            original = f.record(kind);
+            const operation = start(...args);
+            return { ...operation, first: operation.first.then(async result => {
+              assert.equal(result.kind, 'rejected-before-acquire');
+              rejected = true;
+              await gate.promise;
+              return result;
+            }) };
+          };
+          return execution;
+        };
+        sendCandidateStart(f, kind);
+        await until(f.clock, () => rejected, 'original rejection held before Host projection');
+        if (boundary === 'metadata') node.metadata[kind] = { ...node.metadata[kind], marker: 'newer-intent' };
+        if (boundary === 'new-record') f.host.nonNativeHostExecutions.set(original.execution.key, { ...original });
+        if (boundary === 'deleted') f.host.state.nodes = f.host.state.nodes.filter(value => value !== node);
+        if (boundary === 'cancelled') void original.execution.requestStop('cancelled while rejection observation pending');
+        if (boundary === 'live') node.metadata[kind].liveSession = true;
+        if (boundary === 'save-throws') f.host.persistState = () => { throw new Error('controlled save throw'); };
+        if (boundary === 'save-rejects') f.host.persistState = async () => { throw new Error('controlled save rejection'); };
+        if (boundary === 'page-throws') f.host.postState = () => { throw new Error('controlled page throw'); };
+        const before = structuredClone(f.host.state);
+        const currentRecord = f.record(kind);
+        gate.resolve();
+        await until(f.clock, () => f.diagnostics.some(event => event.name === 'execution/startRejected'), 'rejection observer');
+        const projectionAllowed = ['save-throws', 'save-rejects', 'page-throws'].includes(boundary);
+        if (projectionAllowed) {
+          const after = f.host.state.nodes.find(value => value.id === node.id);
+          assert.equal(after.status, 'error');
+          assert.equal(after.metadata[kind].pendingLaunch, undefined);
+          await until(f.clock, () => f.diagnostics.some(event => event.name === 'execution/startRejectionProjectionFailed'), 'observer fault recorded');
+        } else assert.deepEqual(f.host.state, before);
+        assert.equal(original.persistence.result.kind, 'not-required');
+        assert.equal(f.providers[1].connectCount ?? 0, 0);
+        assert.equal(f.owner.get(original.execution.key), undefined);
+        assert.equal(f.record(kind), boundary === 'new-record' ? currentRecord : undefined);
+        const suppressed = ['metadata', 'new-record', 'deleted', 'cancelled'].includes(boundary);
+        assert.equal(f.posted.filter(message => message.type === 'host/error').length, suppressed ? 0 : 1);
+        assert.equal(f.diagnostics.filter(event => event.name === 'execution/startRejected').length, 1);
+      } finally {
+        gate.resolve();
+        f.host.persistState = persist; f.host.postState = postState;
+        if (original) f.host.nonNativeHostExecutions.delete(original.execution.key);
+        if (f.waiting()) f.release();
+        await f.cleanup();
+      }
+    });
+  }
 }
 
 for (const kind of ['agent', 'terminal']) {

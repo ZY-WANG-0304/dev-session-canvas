@@ -3776,23 +3776,27 @@ async function verifyFileActivityViewsAndOpenFiles() {
   await setFilesPathDisplayMode('basename');
 
   try {
-    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
-    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
-
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      const currentAgents = currentSnapshot.state.nodes.filter((node) => node.kind === 'agent');
-      return currentAgents.length === baselineAgentIds.size + 2;
-    }, 20000);
-
-    const fileActivityAgentIds = snapshot.state.nodes
-      .filter((node) => node.kind === 'agent' && !baselineAgentIds.has(node.id))
-      .map((node) => node.id)
-      .sort();
+    const fileActivityAgentIds = [];
+    const fileActivityExecutions = [];
+    for (let index = 0; index < 2; index += 1) {
+      await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
+      snapshot = await waitForSnapshot(currentSnapshot => currentSnapshot.state.nodes
+        .filter(node => node.kind === 'agent').length === baselineAgentIds.size + index + 1, 20000);
+      const created = snapshot.state.nodes.find(node => node.kind === 'agent' &&
+        !baselineAgentIds.has(node.id) && !fileActivityAgentIds.includes(node.id));
+      assert.ok(created, 'Expected a newly created file-activity Agent.');
+      fileActivityAgentIds.push(created.id);
+      const { execution } = await waitForLocalExecutionStarted('agent', created.id);
+      fileActivityExecutions.push(execution);
+    }
     assert.strictEqual(fileActivityAgentIds.length, 2, 'Expected two dedicated file-activity agents.');
 
     const [agentAId, agentBId] = fileActivityAgentIds;
     await waitForAgentLive(agentAId);
-    await waitForAgentLive(agentBId);
+    snapshot = await waitForAgentLive(agentBId);
+    for (const execution of fileActivityExecutions) {
+      assert.deepStrictEqual(captureLocalExecutionIdentity(snapshot, 'agent', execution.nodeId), execution);
+    }
 
     await dispatchWebviewMessage(
       {

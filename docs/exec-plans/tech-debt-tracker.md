@@ -622,3 +622,14 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 2026-10-11 定位完成：第二项已携 66×21 发出启动，但第一项仍占 starting=1，因此 rejected-before-acquire，保存 not-required；无探针原生复现和只读 authority 探针确认，非尺寸缺失或 owner 永久阻塞。只等待第一项原 started 再创建第二项的同包对照通过原两项 live 检查，显式重试被拒节点也成功。现有 Host overlap 接线 2/2 通过。后续修正本独立 fixture 的创建/started 屏障；文件读写等后续内容本轮未覆盖。
 
 另有产品呈现缺口待修复：新建节点被合法准入拒绝后仍保留 starting/pendingLaunch=start/等待尺寸，页面同意图自动启动去重又不重试。应针对未取得资源的新建意图收口状态，保留旧历史/较新请求及不确定资源保护；不放宽额度或增加隐式自动排队。原生恢复对照仅通过 Host 显式启动，未验收真实 Start 点击。证据 `docs/references/smoke-reload-autostart/file-activity-start-evidence.json`，计划 `docs/exec-plans/completed/file-activity-start-investigation.md`。正式产品/smoke 未改，完整 gate 未重跑；Runtime batch 报告等历史限制仍未收口。
+
+
+2026-10-11 正式修复：文件活动每创建一个 Agent 后等待原身份 started，新节点被 rejected-before-acquire 拒绝后改 error、清除 pendingLaunch；历史字段、较新请求、取消和未知资源保护保留。Host 551/551、类型/本地化通过，同一 VSIX 原生真实 Start 点击重试通过，两个创建的原 started 屏障也通过。前述“呈现缺口待修复”和“创建屏障待修正”由本段收口，文件活动整体与完整 gate 仍未通过。证据 `docs/references/smoke-reload-autostart/file-activity-start-fix-evidence.json`，计划 `docs/exec-plans/completed/file-activity-start-repair.md`。
+
+## 文件活动首条 read 引用与手动 resume 新停点（2026-10-11，PR #314）
+
+修正创建屏障后的无产品探针原生专项通过两项专用 Agent 的原 started、live 和身份检查，派发第一条 read 后，`verifyFileActivityViewsAndOpenFiles:3812` 等待 fileReferences 中对应 Agent 的 read owner 超时。超时时 filesFeatureEnabled=true，两项专用 Agent waiting-input/live=true，fileReferences=[]；尚未验证后续 write、列表或打开文件。不在本轮直接归因为输入、采集器、路径或产品功能；需要独立定位，保留原断言。
+
+本轮完整默认 VSIX 的七个独立阶段通过，但 trusted 在更早的 `verifyRuntimeReloadRecovery:8938` 等待手动 resume 后 live/resuming 超时，节点 resume-failed，提示 Missing resumable Codex session ID。该用例 reload 后 resume-ready、可信 providerSessionId、重新挂载页面不自动 resume 的断言已通过；最新错误为 execution/startFailed 的 preparation exception，尚未确认为何恢复请求未取得会话 ID，不归为本次准入拒绝，也不宣布恢复设计回归已修复。默认流程因此未到文件活动，不能用专项越过启动来声称 trusted 全序通过。
+
+工件分别位于 `.debug/file-activity-start-fix/file-activity-1791652134021/runtime/artifacts/` 与 `.debug/file-activity-start-fix/trusted-artifacts/`；精简证据见 `docs/references/smoke-reload-autostart/file-activity-start-fix-evidence.json`。专项场景 exit1；xvfb-run 清理临时目录又报告 exit5，但最后 snapshot localExecutions=0，无本轮相关进程残留。历史 URL 清理停滞与 Runtime batch disconnected 仍保留，未触达项、真实新 Host、真实 provider 和跨平台验证不由本轮代证。
