@@ -1,0 +1,123 @@
+diff --git a/scripts/test/test-host-execution-owner-wiring.mjs b/scripts/test/test-host-execution-owner-wiring.mjs
+index 507bb498..3a710e8a 100644
+--- a/scripts/test/test-host-execution-owner-wiring.mjs
++++ b/scripts/test/test-host-execution-owner-wiring.mjs
+@@ -1,5 +1,5 @@
+ import assert from 'node:assert/strict';
+-import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
++import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+ import { createRequire } from 'node:module';
+ import os from 'node:os';
+ import path from 'node:path';
+@@ -11,6 +11,7 @@ const bundled = await esbuild.build({
+   stdin: {
+     contents: `
+       export { composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCanvasObjectId } from './extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition';
++      export { testClaudeLocator, locateClaudeSessionId } from './extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator';
+       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
+       export { ExecutionOwnerLifecycle } from './extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle';
+       export { encodeOutputFrame } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
+@@ -33,6 +34,19 @@ const bundled = await esbuild.build({
+   plugins: [{
+     name: 'host-boundaries-only',
+     setup(build) {
++      // Investigation only: preserve the actual filesystem locator, supply an isolated home and count calls.
++      build.onResolve({ filter: /\/codexSessionIdLocator$/ }, () => ({ path: 'claude-locator', namespace: 'rca-locator' }));
++      build.onLoad({ filter: /.*/, namespace: 'rca-locator' }, () => ({ loader: 'js', resolveDir: process.cwd(), contents: `
++        import * as actual from './extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator.ts';
++        export * from './extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator.ts';
++        export const testClaudeLocator = { calls: [], env: undefined };
++        export async function locateClaudeSessionId(options) {
++          const result = await actual.locateClaudeSessionId({ ...options, env: testClaudeLocator.env, timeoutMs: 1 });
++          testClaudeLocator.calls.push({ options, result });
++          return result;
++        }
++      ` }));
++
+       build.onResolve({ filter: /\/runtimeRootSupervisorPreparation$/ }, () => ({ path: 'runtimeRootSupervisorPreparation', namespace: 'root-runtime-preparation-boundary' }));
+       build.onLoad({ filter: /.*/, namespace: 'root-runtime-preparation-boundary' }, () => ({ loader: 'js', contents: `
+         const testRootRuntimePreparation = { run: async () => { throw new Error('Unexpected root runtime preparation'); } };
+@@ -95,7 +109,7 @@ const { composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCan
+   testEnvironment, testWindow, testL10n, testWorkspace, testUri, serializeRuntimeSupervisorError, createRuntimeSupervisorError,
+   testLegacyHistoryInspector, testNativeHistoryInspector, testRootRuntimePreparation,
+   createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, resolveRootRuntimeSupervisorGeneration,
+-  resolveRuntimeRootOwnerBaseStoragePath } = loaded.exports;
++  resolveRuntimeRootOwnerBaseStoragePath, testClaudeLocator, locateClaudeSessionId } = loaded.exports;
+
+ function deferred() {
+   let resolve;
+@@ -6680,6 +6694,74 @@ for (const observer of ['diagnostics', 'page']) {
+   });
+ }
+
++for (const filePresent of [true, false]) {
++  test(`RCA Claude file confirmation with filePresent=${filePresent}`, async () => {
++    const taskHome = await mkdtemp(path.join(os.tmpdir(), 'dsc-claude-confirm-'));
++    const id = 'session-explicit-123456789';
++    const cwd = '/controlled';
++    testClaudeLocator.env = { HOME: taskHome };
++    testClaudeLocator.calls = [];
++    const f = candidateFixture();
++    delete f.host.resolveAgentResumeContext;
++    f.host.state.nodes.find(node => node.id === 'agent-1').metadata.agent = { provider: 'claude' };
++    f.host.resolveAgentFreshLaunch = () => ({ commandLine: `claude --session-id=${id}`,
++      requestedCommand: 'claude', launchArgs: [`--session-id=${id}`], launchPreset: 'custom' });
++    f.host.getRequestedAgentCliSpec = CanvasPanelManager.prototype.getRequestedAgentCliSpec;
++    f.host.resolveAgentCli = async () => ({ command: '/controlled/claude', provider: 'claude' });
++    let record;
++    try {
++      if (filePresent) {
++        const dir = path.join(taskHome, '.claude', 'projects', '-controlled');
++        await mkdir(dir, { recursive: true });
++        await writeFile(path.join(dir, `${id}.jsonl`), '{}\n');
++      }
++      assert.equal(await locateClaudeSessionId({ cwd, sessionId: id }), filePresent ? id : null);
++      testClaudeLocator.calls = [];
++      await completed(f.clock, f.host.startAgentSession('agent-1', 80, 24, 'claude', false), 'RCA Claude started');
++      record = f.record('agent');
++      const identity = record.execution.identity;
++      f.providers[0].output(1, '> ');
++      await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'RCA Claude prompt consumed');
++      f.clock.advance(300);
++      assert.equal(record.business.lifecycleStatus, 'waiting-input');
++      assert.deepEqual(record.business.agentResume, { supported: false, strategy: 'none', sessionId: id });
++      assert.equal(testClaudeLocator.calls.length, 0, 'actual owned startup and waiting-input never invoke the file locator');
++      assert.equal(f.host.agentSessions.size, 0);
++      const legacyShape = { ...record.business, cwd, startedAtMs: 0 };
++      await f.host.maybeConfirmClaudeResumeSessionId('agent-1', legacyShape, 'startup');
++      assert.equal(testClaudeLocator.calls.length, 1);
++      assert.equal(testClaudeLocator.calls[0].result, filePresent ? id : null);
++      assert.equal(legacyShape.agentResume.strategy, 'none', 'old helper rejects a session absent from the legacy map even when file lookup succeeds');
++      let flushes = 0;
++      f.host.flushLiveExecutionState = () => { flushes++; };
++      f.host.agentSessions.set('agent-1', legacyShape);
++      await f.host.maybeConfirmClaudeResumeSessionId('agent-1', legacyShape, 'startup');
++      assert.equal(legacyShape.agentResume.strategy, filePresent ? 'claude-session-id' : 'none');
++      assert.equal(flushes, filePresent ? 1 : 0);
++      f.host.agentSessions.delete('agent-1');
++      // Control only: transfer the same locator-confirmed result through the actual owned projection.
++      if (filePresent) {
++        record.business.agentResume = { ...legacyShape.agentResume };
++        f.host.projectNonNativeHostBusiness(record);
++      }
++      const metadata = f.host.state.nodes.find(node => node.id === 'agent-1').metadata.agent;
++      assert.equal(metadata.resumeStrategy, filePresent ? 'claude-session-id' : 'none');
++      assert.equal(metadata.resumeSupported, filePresent);
++      assert.equal(metadata.resumeSessionId, id);
++      assert.strictEqual(record.execution.identity, identity);
++      assert.equal(record.execution.snapshot().stopRequested, false);
++      console.log('RCA Claude host:', JSON.stringify({ filePresent, identity,
++        normalOwnedLocatorCalls: 0, oldHelperWithOwnedRecord: 'no promotion',
++        legacyControl: legacyShape.agentResume, ownedProjectionControl: {
++          resumeStrategy: metadata.resumeStrategy, resumeSupported: metadata.resumeSupported, resumeSessionId: metadata.resumeSessionId } }));
++    } finally {
++      f.host.agentSessions.clear();
++      if (record) await disposeStartedCandidate(f, 'agent');
++      await rm(taskHome, { recursive: true, force: true });
++    }
++  });
++}
++
+ const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
+ const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
+ const selectedTests = testNamePattern ? tests.filter(({ name }) => testNamePattern.test(name)) : tests;

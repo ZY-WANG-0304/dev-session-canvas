@@ -502,3 +502,12 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 新的独立阻塞为 `verifyClaudeExplicitSessionIdPreservesResumeContext:9972`：snapshot-only 的 Claude 已 waiting-input/live，显式 ID 已保存，但 resumeSupported=false、resumeStrategy=none，未达到 claude-session-id，尚未进入该用例 Stop。原执行 `b9f70f16-d41f-4d55-829e-27fb1321bc53` 未退休、未提交最终保存，不能把正常活动期的 submitted=false 当作保存失败。此处是恢复能力状态等待，非旧正文断言；根因尚待定位，临时处理为保留失败现场及原断言。继续完整门禁前应核对显式 ID 的发现、支持判定与 owned 状态投影，不能只检查 ID 而放宽策略。后续 RuntimePersistence 开启场景未执行，完整 gate 仍未通过。
 
 证据与计划：`docs/references/smoke-reload-autostart/link-stop-fix-evidence.json`、`docs/exec-plans/completed/smoke-link-stop-fix.md`。原始失败现场保留于 `.debug/link-stop-fix/trusted-final-artifacts`，仓库精简记录包含关键状态和工件摘要。
+
+
+## Claude 显式 session ID 的 owned 文件确认遗漏已定位（2026-10-10，PR #314）
+
+前节恢复策略阻塞已确认是产品迁移遗漏，正式修复尚未实施。snapshot-only fresh Claude 的候选 ID 本应经 transcript 文件确认；旧路径在 startup/waiting-input 调用 locator，owned 两处均遗漏，business.agentResume 持续 none。旧确认方法仅认 legacy map，因此只补调用也无法升级 owned 记录。
+
+同 Extension Host 实际 locator 立即识别原 smoke 文件，原用例仍超时；Host 有文件/无文件 2/2 对照证实正常 owned 调用数为 0、旧 helper 的 map 限制及原 projection 可用。临时只补原 owned 文件确认后，原生原用例的运行态、停止后策略/ID和删除检查全部通过；无文件对照继续 none。问题不是旧正文断言或测试超时设置，停止后的恢复入口可能因此不可用；本轮原生范围为显式 ID，自动候选走同一遗漏调用路径但未单独原生验证。
+
+继续 PR314/完整门禁前，应接回原 owned startup/waiting-input 文件确认，保护查询期间换绑、候选变化、停止/结束与迟到结果，保留已确认 ID 的停止语义和无文件拒绝；不能阻塞正文消费或伪造最终保存完成。本轮临时产品/测试源码已恢复，完整 gate 仍未通过，Runtime 开启及真实 provider resume 不由对照代证。证据与复跑 patch：`docs/references/smoke-reload-autostart/claude-resume-context-evidence.json`；计划：`docs/exec-plans/completed/claude-resume-context-investigation.md`。

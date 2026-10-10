@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -423,3 +423,32 @@ PR #314 缺 CLI 的错误来自 `startNonNativeHostExecution` 的 prepare 阶段
 最终无延迟默认 VSIX 类型检查/打包及七个独立阶段全部通过。trusted 原顺序通过完整链接、滚动历史、snapshot-only 恢复、surface/PTY/flood、failure paths、持久化恢复、standby/fault injection、Codex Stop 与 Claude Stop。未跳过原行列、tooltip 或停止结果断言，本次两项已定位修正及相邻 Claude 正文等待已完成。
 
 完整 gate 仍失败：紧随其后的 `verifyClaudeExplicitSessionIdPreservesResumeContext:9972` 等待恢复策略超时。原 Claude 活跃且为 waiting-input，`resumeSessionId=session-explicit-123456789` 已存在，但 `resumeSupported=false`、`resumeStrategy=none`，测试期待 claude-session-id；此时尚未发送该用例的 Stop。它检查恢复能力状态，不是等待旧 recentOutput，根因尚未确认，不能放宽为只检查 ID。后续 RuntimePersistence 开启场景未执行，需在继续完整门禁前单独定位。精简结果与现场摘要见 `docs/references/smoke-reload-autostart/link-stop-fix-evidence.json`。
+
+
+## Claude 显式 session ID 恢复策略专项定位（2026-10-10）
+
+调查基线为 PR #314 `523ee9a5`，RuntimePersistence 关闭。结论是当前 snapshot-only owned 执行遗漏了 provider 会话文件确认，是产品能力迁移缺口；原 smoke 的恢复策略断言符合现有设计，不是等待旧正文，也不需要旧插件或跨版本混用才能复现。
+
+### 候选 ID 与已确认恢复能力
+
+`docs/design-docs/agent-launch-modes-and-restart.md` 已约定：fresh Claude 的显式或自动生成 ID 起初只是候选，须通过 `~/.claude/projects/.../<id>.jsonl` 文件存在性或 provider resume 提示确认，才升级为 claude-session-id；已由文件确认的 ID 在停止后仍须保留。`CanvasPanelManager.ts::resolveAgentResumeContext` 返回 supported=false/none 和候选 ID 是正确的起点，不能把所有带 `--session-id` 的启动直接标为可恢复。
+
+旧路径在启动完成和转入 waiting-input 时调用 `maybeDiscoverAgentResumeContextFromFiles`，Claude 分支经 `maybeConfirmClaudeResumeSessionId` 调用实际 `locateClaudeSessionId`。当前 `startAgentSession` 进入 `startNonNativeHostExecution` 后早返回；owned 启动以及 `scheduleNonNativeAgentActivity` 没有上述文件确认步骤。`business.agentResume` 因此保留未确认候选，`projectNonNativeHostBusiness` 如实投影 none，而非在投影时丢失了一个已确认结果。
+
+此外，旧 `maybeConfirmClaudeResumeSessionId` 查询完成后只检查 `getExecutionSessions('agent')` 中的原 ManagedExecutionSession。owned 记录在 `nonNativeHostExecutions`，所以仅添加对旧方法的调用也不能生效；正式修复必须使用原 owned record/identity 校验与状态投影。
+
+### 受控验证与引入记录
+
+保持产品源码不变，临时独立入口调用原 `verifyClaudeExplicitSessionIdPreservesResumeContext`。用同 Extension Host、同 cwd、默认环境的实际 locator 读取原 smoke 预置文件，立即得到 `session-explicit-123456789`，随后原用例仍在 20 秒恢复策略等待超时：原执行 `f06ac6f5-2d3c-4401-818e-24a6dda2de33` 已 waiting-input/live，ID 正确但 supported=false/none。这排除了该复现中的文件缺失、HOME/cwd 不一致及启动未完成。
+
+Host 两项特征对照使用实际类、实际 filesystem locator 与既有受控 transport，有文件/无文件均通过：正常 owned started 和提示触发 waiting-input 对 locator 的调用为 0；手动调用旧 helper 时，文件可查到但记录不在 legacy map，不会升级。相同会话对象放入旧 map 后，有文件可确认、无文件保持 none；把真实确认结果交给原 owned projection，则 metadata 正确升级且 executionId/generation 不变。
+
+第二次原生运行仅临时补回原 owned started 后的文件确认，在原身份/候选/metadata 仍匹配且未停止/结束时投影结果。原测试全部通过，包括运行期策略与 ID、停止后策略与 ID 以及节点删除。原执行 `2342f1c1-be15-4210-9d0a-5bd6e2021701` 以 SIGHUP 正常停止后仍 supported=true、strategy=claude-session-id、ID 不变。未修改停止信号，未替换原测试断言。无文件 Host 负例继续不可恢复。
+
+历史上，`a1e3bc89`（2026-04-25）加入文件确认，`247aef2f`（同日）加入显式 ID 的确认及本 smoke；`ae3c42cf`（2026-09-26）增加 owned business/output/waiting-input 接线时，只迁移输出提示与最终收尾，未迁移文件确认。该提交当时仍为候选能力，缺口延续到当前已启用的 owned 路径；不能据此宣称当日所有发布已受影响，也不是 PR314 本轮链接/Stop 测试修正引入。
+
+### 修复边界与证据
+
+应在 owned Agent 的启动及等待输入时接回文件确认；异步结果必须仍属于同一原执行、同一候选 ID 与 metadata 绑定，不能覆盖新启动、已停止或已最终保存状态。保留无文件不可恢复，以及已确认 ID 停止后保留的规则。不能用直接标记 supported=true、只保留 ID 的断言或增加等待期限替代确认。临时原生对照中的同步 await 只用于隔离因果，不代表正式调度方案；正式实现需要保证正文消费和原资源结算不被扫描阻塞。相同遗漏也涉及自动候选 ID 的调用路径，本轮原生实测限定为显式 ID。
+
+本轮仅提交定位结论。产品及正式测试源码已精确恢复，Host 特征测试 2/2、原生原用例负例/最小接线正例均已记录，完整默认 gate 与后续 RuntimePersistence 开启场景没有重跑；也未执行真实 provider resume。精简证据为 `docs/references/smoke-reload-autostart/claude-resume-context-evidence.json`，三个相邻 `claude-resume-*.patch` 和完成计划给出复跑方式。
