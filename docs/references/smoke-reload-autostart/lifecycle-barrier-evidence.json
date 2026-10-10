@@ -1,0 +1,590 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "baseline": "c1d7b97729c88b04d1f84147831120fa048b5555",
+  "scope": "定位两个 smoke 生命周期等待缺口；探针和顺序变体仅用于调查，不把变体通过写成正式门禁通过",
+  "environment": "Linux x64 / Node 22.23.3 / VS Code 1.141.0 / snapshot-only / native PTY / fake providers",
+  "baselineSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "0c3ed37bc9c2bdc76e2fa10e4bf281cd2957d0b6921750179cce4d298324e2b4",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "002f1d8e02b5a3c67090545a4b04252204f063fb9a554025cc899e76ed67f3cc",
+    "tests/vscode-smoke/extension-tests.cjs": "1e4b538722357eafeb8df911860e8bf64fdb95365cef176801ed8474af10cb0c"
+  },
+  "reset": {
+    "originalSmokeUnchanged": true,
+    "timeline": [
+      {
+        "timestamp": "2026-10-10T08:02:59.699Z",
+        "tag": "reset-begin",
+        "detail": {},
+        "owner": {
+          "closing": false,
+          "permanent": false,
+          "pending": 0,
+          "admissionPending": 0
+        },
+        "authority": {
+          "active": 0,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": false,
+          "permanent": false
+        },
+        "nodes": []
+      },
+      {
+        "timestamp": "2026-10-10T08:02:59.724Z",
+        "tag": "boundary-failed",
+        "detail": {
+          "message": "Runtime mutation boundary expired or its nodes changed."
+        },
+        "owner": {
+          "closing": true,
+          "permanent": false,
+          "pending": 0,
+          "admissionPending": 0
+        },
+        "authority": {
+          "active": 0,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": true,
+          "permanent": false
+        },
+        "nodes": [
+          {
+            "id": "agent-1-7b855f58-e9cf-44d1-9d22-e0c8fa1bad19",
+            "kind": "agent",
+            "status": "starting"
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:02:59.724Z",
+        "tag": "boundary-finished",
+        "owner": {
+          "closing": true,
+          "permanent": false,
+          "pending": 0,
+          "admissionPending": 0
+        },
+        "authority": {
+          "active": 0,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": true,
+          "permanent": false
+        },
+        "nodes": [
+          {
+            "id": "agent-1-7b855f58-e9cf-44d1-9d22-e0c8fa1bad19",
+            "kind": "agent",
+            "status": "starting"
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:02:59.731Z",
+        "tag": "owner-admission-rejected",
+        "owner": {
+          "closing": true,
+          "permanent": false,
+          "pending": 0,
+          "admissionPending": 0
+        },
+        "authority": {
+          "active": 0,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": true,
+          "permanent": false
+        },
+        "nodes": [
+          {
+            "id": "agent-1-7b855f58-e9cf-44d1-9d22-e0c8fa1bad19",
+            "kind": "agent",
+            "status": "starting"
+          }
+        ]
+      }
+    ],
+    "conclusion": "空画布即刻满足旧 nodes.length=0；reset 未完成时创建新节点，边界检测节点改变而中止，owner 保持关闭。等待命令完成后再创建可通过。"
+  },
+  "occupiedKey": {
+    "nativeReproduction": {
+      "timestamp": "2026-10-10T08:07:30.812Z",
+      "detail": {
+        "kind": "agent",
+        "nodeId": "agent-4-2601e0a6-6ef6-4ce8-ac71-cc09a1d58a5b",
+        "key": "agent:agent-4-2601e0a6-6ef6-4ce8-ac71-cc09a1d58a5b",
+        "pending": 1,
+        "sameKey": true
+      },
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 1,
+        "admissionPending": 1
+      },
+      "authority": {
+        "active": 0,
+        "starting": 0,
+        "admissionPending": 0,
+        "closing": false,
+        "permanent": false
+      },
+      "record": {
+        "identity": {
+          "executionId": "dfe1b067-e065-4da3-80f6-88b536239197",
+          "generation": "6f990826-6e7c-406e-ba70-0264dbe36cdf"
+        },
+        "status": "error",
+        "process": {
+          "kind": "exited",
+          "exitCode": 27
+        },
+        "source": {
+          "kind": "eof",
+          "lastDataSequence": 3
+        },
+        "resourceOutcomes": {
+          "provider-control": "released",
+          "pty-master": "released",
+          "pty-child": "released",
+          "pty-source": "released"
+        },
+        "terminal": {
+          "kind": "applied",
+          "finalRevision": 3,
+          "throughDataSequence": 3
+        },
+        "settled": true,
+        "retired": false,
+        "readerOutcome": "pending",
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "readers": [
+          {
+            "initialPublished": true,
+            "finalPublication": true
+          }
+        ]
+      }
+    },
+    "conclusion": "同一通知用例在 Codex exit27 后再次启动时复现；保存和原生资源均已完成，只剩页面读者确认，sameKey 触发拒绝而非全局容量不足。",
+    "retirementAfterRejectedRun": "08:07:30.922Z 的清理为 host-deactivation/lost，不作为自然完成证据",
+    "originalClaudeFailureLimit": "前轮 Claude 原始失败被 finally 清空，不能追认该次具体 pending 域；本轮补同路径受控 Claude 对照。"
+  },
+  "controlledHost": {
+    "passed": "5/5",
+    "cases": [
+      "空画布 reset 未等待，创建导致 reset abort/owner closed；显式 reset 可恢复",
+      "等待 reset 完成后创建并启动成功",
+      "保存 pending 阻止重启，保存完成后成功",
+      "保存已成功但读者 pending 阻止重启，读者结算后成功",
+      "保存已成功但资源 pending 阻止重启，资源释放后成功"
+    ],
+    "fixtureCorrection": "最初带 output-credit 页面夹具未回传快照交付，阻塞 final-flush；改用无页面夹具分别控制三个域，初始夹具错误不当产品证据",
+    "baselineOnlyRerun": "5/5 passed on unmodified product source; characterization patch applied alone then restored"
+  },
+  "positiveNative": {
+    "variant": "await reset + 等待 Codex 原执行退休后重启；通知用例循环五次，Claude 原顺序保持",
+    "iterationsCompleted": 5,
+    "keyRejections": 0,
+    "naturalRetirements": [
+      {
+        "timestamp": "2026-10-10T08:10:32.721Z",
+        "identity": {
+          "executionId": "c5b25eda-4d66-4fc6-a13a-5a857daeecb6",
+          "generation": "e0a7bfc7-f9e0-4d6b-97bc-7ecd482b2793"
+        },
+        "exitCode": 27,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 3
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:36.488Z",
+        "identity": {
+          "executionId": "5a2dcc05-05ac-48ca-b25f-3af4d24f4f98",
+          "generation": "e8f06e12-7b84-46df-b89e-e8b6540122bc"
+        },
+        "exitCode": 33,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 3
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:36.799Z",
+        "identity": {
+          "executionId": "103664fa-96cd-4f3c-b74b-4aef05d275eb",
+          "generation": "a54f3367-5a98-4489-bd2f-a4634737230f"
+        },
+        "exitCode": 33,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 1
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:37.916Z",
+        "identity": {
+          "executionId": "4e6a140a-53c2-4e3e-9dc2-38df5706ce27",
+          "generation": "34d41431-467e-4fd3-bdd7-a3d5558c54bc"
+        },
+        "exitCode": 27,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 3
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:41.676Z",
+        "identity": {
+          "executionId": "419e9791-6e54-41ad-9e4d-7fbbc946e7ed",
+          "generation": "9c9bd695-7e01-4150-b7c6-d48a3cf93ed8"
+        },
+        "exitCode": 33,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 4
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:41.978Z",
+        "identity": {
+          "executionId": "1cb32674-feaa-45e3-86e5-46124cb0f31a",
+          "generation": "39e868b2-f257-4aae-903f-2e55b6f5804c"
+        },
+        "exitCode": 33,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 1
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:43.129Z",
+        "identity": {
+          "executionId": "21d4d170-8047-47e5-ad7e-dc96350e21b2",
+          "generation": "742c8051-8aae-4c90-8f01-ed5cf3990370"
+        },
+        "exitCode": 27,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 2
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:46.809Z",
+        "identity": {
+          "executionId": "1aa9406b-50ec-4229-8ba1-184f44460d80",
+          "generation": "8505f468-b805-4cc7-9c16-31b8e8f1dab2"
+        },
+        "exitCode": 33,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 3
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:47.334Z",
+        "identity": {
+          "executionId": "f2d1d085-b4ec-4cb6-bb29-38ab2648c1fe",
+          "generation": "561ecc6a-d4a3-415d-adf7-e25ce3af61b0"
+        },
+        "exitCode": 33,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 1
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:48.514Z",
+        "identity": {
+          "executionId": "b7dbf408-1322-4313-9052-b29e70ef34c6",
+          "generation": "1260e856-9ded-43d9-8eba-534d6586a093"
+        },
+        "exitCode": 27,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 3
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:52.187Z",
+        "identity": {
+          "executionId": "ee7c21a1-d2ef-4c39-894e-74f067b4bfa2",
+          "generation": "86908ff1-e8d7-4678-a65f-daed25ffee92"
+        },
+        "exitCode": 33,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 3
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:52.528Z",
+        "identity": {
+          "executionId": "ca29c76a-a74a-46ee-9c51-5d4fea0b1050",
+          "generation": "ee90689a-ed6a-43bc-95cc-861dfeb256b9"
+        },
+        "exitCode": 33,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 1
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:53.677Z",
+        "identity": {
+          "executionId": "87a518ef-d97e-4736-b256-036576fb5437",
+          "generation": "557588c5-ee60-4c85-99a5-072ef270b8c4"
+        },
+        "exitCode": 27,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 3
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:57.259Z",
+        "identity": {
+          "executionId": "a8226e04-803a-4fb0-9272-5a8127c3b9ba",
+          "generation": "ddfe1b31-3885-4361-b116-1fbeb5b3cbdc"
+        },
+        "exitCode": 33,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 3
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-10-10T08:10:57.562Z",
+        "identity": {
+          "executionId": "1f55cb04-c993-408d-b146-41e69bb16833",
+          "generation": "6ec030e2-9a10-402b-a9b1-8a47db6bc4ac"
+        },
+        "exitCode": 33,
+        "persistence": {
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        },
+        "outcomes": [
+          {
+            "kind": "applied",
+            "finalOutputSequence": 1
+          }
+        ]
+      }
+    ]
+  },
+  "claudeControlled": {
+    "variant": "仅 Claude 原执行的页面最终确认延迟 500ms；保留原 resume 请求，捕获拒绝后等待原退休、重放同一恢复 seed 再启动",
+    "rejectedAt": "2026-10-10T08:13:14.452Z",
+    "identity": {
+      "executionId": "fec690e6-f1de-427a-b423-fb149be4efdd",
+      "generation": "6f23f456-e428-4aea-b58b-7ba9692e92b8"
+    },
+    "process": {
+      "kind": "exited",
+      "exitCode": 33
+    },
+    "persistence": {
+      "submitted": true,
+      "result": {
+        "kind": "saved"
+      }
+    },
+    "settled": true,
+    "retired": false,
+    "readerOutcome": "pending",
+    "sameKey": true,
+    "owner": {
+      "closing": false,
+      "permanent": false,
+      "pending": 1,
+      "admissionPending": 1
+    },
+    "authority": {
+      "active": 0,
+      "starting": 0,
+      "admissionPending": 0,
+      "closing": false,
+      "permanent": false
+    },
+    "retiredAt": "2026-10-10T08:13:14.813Z",
+    "retiredReaderOutcomes": [
+      {
+        "kind": "applied",
+        "finalOutputSequence": 3
+      }
+    ],
+    "positive": "保持同一 Host 存活，原读者 applied 后，相同恢复 seed 和启动成功；后续 resume-failed/33、恢复身份与无重复通知等原断言通过"
+  },
+  "additionalSmokeRegression": {
+    "introducedBy": "c1d7b977",
+    "error": "diagnosticStartIndex is not defined",
+    "function": "verifyFailurePaths",
+    "line": 9534,
+    "cause": "拆出 verifyMissingAgentCliFailure 后原函数仍引用被移走的局部诊断起点",
+    "action": "补回原函数自己的诊断起点；不改变断言",
+    "validation": "补回变量后，完整 verifyFailurePaths 在受控 native 运行中通过，包括缺 CLI、无效启动/恢复配置等原断言；该运行按 RCA 明确在此函数后结束。"
+  },
+  "limits": [
+    "完整发布门禁未通过；本轮只定位两个边界并修正上轮遗漏的 smoke 局部变量",
+    "未测试跨版本、真实 Agent 服务、远程断连或其他平台"
+  ],
+  "nativeRuns": [
+    {
+      "name": "native-observe",
+      "log": ".debug/lifecycle-rca/native-observe.log",
+      "sha256": "0a018384f3549498182cc3e78d6df1c84287563c407baf75fba50d363790a86c"
+    },
+    {
+      "name": "native-awaited-reset",
+      "log": ".debug/lifecycle-rca/native-awaited-reset.log",
+      "sha256": "ab2ec415d86c29c5a2b41c2c4644bb7f515aa8d96d096185c9e791a24a9531f8"
+    },
+    {
+      "name": "native-repeat-notification",
+      "log": ".debug/lifecycle-rca/native-repeat-notification.log",
+      "sha256": "a21dd8f27358bcce7417b5d0de137a1bf80e6e8988fde2b9da812ebd77c27f8f"
+    },
+    {
+      "name": "native-claude-repro",
+      "log": ".debug/lifecycle-rca/native-claude-repro.log",
+      "sha256": "8926881ef2fca3ef9166f54cdf5b699f96089f16792a26433ba679cc191dc105"
+    },
+    {
+      "name": "native-claude-controlled",
+      "log": ".debug/lifecycle-rca/native-claude-controlled.log",
+      "sha256": "28aa348bb89020660e6f8b1177a78b8adf23c4e75c9b0f2c0cb23d08109382c8"
+    }
+  ],
+  "reproduction": "在 c1d7b977 上分别应用 characterization patch 运行筛选 lifecycle barrier RCA；原生观测只需 probe patch，最终受控原生同时应用 probe、claude-delay 和 smoke-controls。后者只跑到 verifyFailurePaths，exit 0 不代表完整 trusted gate。",
+  "patchesApplyCleanlyToBaseline": true,
+  "finalSourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "0c3ed37bc9c2bdc76e2fa10e4bf281cd2957d0b6921750179cce4d298324e2b4",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "002f1d8e02b5a3c67090545a4b04252204f063fb9a554025cc899e76ed67f3cc",
+    "tests/vscode-smoke/extension-tests.cjs": "7d494e264e75cb45e1c5516fe853600e2e60a041a03a5cd30df96a04c085f38d"
+  }
+}

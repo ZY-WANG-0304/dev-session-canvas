@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,6 +10,8 @@ import ts from 'typescript';
 const bundled = await esbuild.build({
   stdin: {
     contents: `
+      export { composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCanvasObjectId } from './extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition';
+      export { testClaudeSessionFiles, locateClaudeSessionIdFromFiles } from './extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator';
       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
       export { ExecutionOwnerLifecycle } from './extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle';
       export { encodeOutputFrame } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
@@ -18,7 +20,7 @@ const bundled = await esbuild.build({
       export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
       export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
       export { parseWebviewMessage } from './extensions/vscode/dev-session-canvas/src/common/protocol';
-      export { env as testEnvironment, window as testWindow, l10n as testL10n } from 'vscode';
+      export { env as testEnvironment, window as testWindow, l10n as testL10n, workspace as testWorkspace, Uri as testUri } from 'vscode';
       export { serializeRuntimeSupervisorError, createRuntimeSupervisorError } from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol';
       export { testLegacyHistoryInspector } from './extensions/vscode/dev-session-canvas/src/panel/legacyRuntimeHistory';
       export { testNativeHistoryInspector } from './extensions/vscode/dev-session-canvas/src/panel/nativeRuntimeHistory';
@@ -32,6 +34,16 @@ const bundled = await esbuild.build({
   plugins: [{
     name: 'host-boundaries-only',
     setup(build) {
+      build.onResolve({ filter: /\/codexSessionIdLocator$/ }, () => ({ path: 'claude-session-files', namespace: 'claude-session-files-boundary' }));
+      build.onLoad({ filter: /.*/, namespace: 'claude-session-files-boundary' }, () => ({ loader: 'js', resolveDir: process.cwd(), contents: `
+        export * from './extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator.ts';
+        export { locateClaudeSessionId as locateClaudeSessionIdFromFiles } from './extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator.ts';
+        export const testClaudeSessionFiles = { calls: [], run: async () => null };
+        export function locateClaudeSessionId(options) {
+          testClaudeSessionFiles.calls.push(options);
+          return testClaudeSessionFiles.run(options);
+        }
+      ` }));
       build.onResolve({ filter: /\/runtimeRootSupervisorPreparation$/ }, () => ({ path: 'runtimeRootSupervisorPreparation', namespace: 'root-runtime-preparation-boundary' }));
       build.onLoad({ filter: /.*/, namespace: 'root-runtime-preparation-boundary' }, () => ({ loader: 'js', contents: `
         const testRootRuntimePreparation = { run: async () => { throw new Error('Unexpected root runtime preparation'); } };
@@ -59,8 +71,13 @@ const bundled = await esbuild.build({
           class EventEmitter { event = () => new Disposable(); fire() {} dispose() {} }
           class ThemeIcon { constructor(id) { this.id = id; } }
           class TreeItem {}
+          class Range {
+            constructor(line, character, endLine, endCharacter) {
+              this.start = { line, character }; this.end = { line: endLine, character: endCharacter };
+            }
+          }
           module.exports = {
-            Disposable, EventEmitter, ThemeIcon, TreeItem,
+            Disposable, EventEmitter, ThemeIcon, TreeItem, Range, FileType: { File: 1, Directory: 2 },
             ExtensionMode: { Production: 1, Development: 2, Test: 3 },
             TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
             l10n: { t: message => message },
@@ -84,12 +101,12 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   createRequire(import.meta.url), loaded, loaded.exports,
   path.resolve('scripts/test/host-owner-wiring.cjs'), path.resolve('scripts/test')
 );
-const { CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
+const { composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCanvasObjectId, CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
   RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION, EXECUTION_INTERACTION_LIMITS,
-  testEnvironment, testWindow, testL10n, serializeRuntimeSupervisorError, createRuntimeSupervisorError,
+  testEnvironment, testWindow, testL10n, testWorkspace, testUri, serializeRuntimeSupervisorError, createRuntimeSupervisorError,
   testLegacyHistoryInspector, testNativeHistoryInspector, testRootRuntimePreparation,
   createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, resolveRootRuntimeSupervisorGeneration,
-  resolveRuntimeRootOwnerBaseStoragePath } = loaded.exports;
+  resolveRuntimeRootOwnerBaseStoragePath, testClaudeSessionFiles, locateClaudeSessionIdFromFiles } = loaded.exports;
 
 function deferred() {
   let resolve;
@@ -169,6 +186,7 @@ function fixture(options = {}) {
         },
         transport: {
           connect(value) {
+            provider.connectCount = (provider.connectCount ?? 0) + 1;
             sink = value;
             provider.message({ type: 'ready', capabilities: ['execution-lifecycle-v1'] });
           },
@@ -205,6 +223,7 @@ function fixture(options = {}) {
   ];
   Object.assign(host, {
     context: { extensionMode: 3 },
+    appliedStartupConfiguration: { filesFeatureEnabled: false },
     nonNativeExecutionOwner: owner, nonNativeHostExecutions: new Map(),
     enabledAttentionSignals: ['bel', 'osc9', 'osc777'], attentionNotificationBridgeMode: 'none',
     agentSessions: new Map(), terminalSessions: new Map(), runtimeSessionBindings: new Map(),
@@ -379,6 +398,7 @@ for (const kind of ['terminal', 'agent']) {
     try {
       await until(f.clock, () => provider.messages.some(message => message.type === 'requestStop'), `${kind} stop request`);
       assert.equal(stopped, false, 'accepted stop is not a process or resource result');
+      assert.equal(record.execution.snapshot().stopRequested, true, 'the original owner records the requested stop');
       assert.equal(record.execution.snapshot().readerOutcome, 'pending');
       provider.output(1, `${kind}-stop-tail`);
       await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, `${kind} consumption during stop`);
@@ -639,6 +659,55 @@ function localFixture(options = {}) {
   ready();
   return { ...f, posted, webviews, send, ready, attach, settle, completions, finish };
 }
+
+test('webview start projects a pre-record Host capacity rejection onto the pending node', async () => {
+  const f = localFixture({ admissionLimits: EXECUTION_PRODUCTION_ADMISSION, capabilities: persistenceCapabilities,
+    budgets: { naturalDrainMs: 15, boundaryMs: 50 } });
+  const firstGate = deferred();
+  const secondGate = deferred();
+  const rejectedNode = {
+    id: 'agent-2', kind: 'agent', status: 'starting', summary: 'Waiting for node size before starting the Agent session.',
+    metadata: { agent: {
+      provider: 'codex', lifecycle: 'starting', launchPreset: 'default',
+      customLaunchCommand: 'controlled-agent', pendingLaunch: 'start', liveSession: false
+    } }
+  };
+  f.host.state.nodes.push(rejectedNode);
+  const first = f.host.startNonNativeHostExecution('terminal', 'terminal-1', 80, 24,
+    () => firstGate.promise);
+  const second = f.host.startNonNativeHostExecution('agent', 'agent-1', 80, 24,
+    () => secondGate.promise);
+  let records = [];
+  try {
+    await until(f.clock, () => f.owner.snapshot().admissionPending === 2, 'two pending owned starts');
+    f.send('editor', 'webview/startExecutionSession', {
+      kind: 'agent', nodeId: 'agent-2', cols: 80, rows: 24, provider: 'codex', resume: false
+    });
+    await until(f.clock, () => f.posted.some(entry => entry.message.type === 'host/error'),
+      'pre-record rejection projection');
+    const failed = f.host.state.nodes.find(node => node.id === 'agent-2');
+    assert.equal(failed.status, 'error');
+    assert.equal(failed.metadata.agent.lifecycle, 'error');
+    assert.equal(failed.metadata.agent.pendingLaunch, undefined);
+    assert.equal(failed.metadata.agent.liveSession, false);
+    assert.match(failed.summary, /Wait for pending operations/);
+    assert.equal(f.host.nonNativeHostExecutions.has('agent:agent-2'), false);
+    assert.equal(f.diagnostics.filter(event => event.name === 'execution/startRejected').length, 1);
+  } finally {
+    firstGate.resolve({ file: '/controlled/shell', args: [], env: {} });
+    secondGate.resolve({ file: '/controlled/agent', args: [], env: {} });
+    records = await Promise.all([first, second].map(promise => completed(f.clock, promise, 'pending start cleanup')));
+    for (const provider of f.providers) {
+      provider.process(); provider.seal(0); provider.release();
+    }
+    await until(f.clock, () => records.every(record => record.execution.snapshot().settled), 'pending start records settled');
+    for (const record of records) {
+      record.business?.cancelActivityPoll?.();
+      record.business?.lineContextTracker.dispose();
+      record.tracker.dispose();
+    }
+  }
+});
 
 for (const kind of ['terminal', 'agent']) {
   test(`${kind} local consumption credit waits for exact page application, including initial and final snapshots`, async () => {
@@ -1661,7 +1730,7 @@ async function persistenceFixture(options = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-host-final-persistence-'));
   const root = path.join(directory, 'root');
   await mkdir(root);
-  const f = fixture({ ...options, capabilities: persistenceCapabilities,
+  const f = (options.candidate ? candidateFixture : fixture)({ ...options, capabilities: persistenceCapabilities,
     budgets: { naturalDrainMs: 15, boundaryMs: 50, ...options.budgets }, roots: [{ path: root, name: 'root' }] });
   const updates = new Map();
   const writes = [];
@@ -1701,13 +1770,16 @@ async function persistenceFixture(options = {}) {
       }
       provider.message({ type: 'processResult', result: { kind: 'exited', exitCode } });
       provider.message({ type: 'sourceEnd', finalFrameId: frames, disposition });
+      if (options.candidate) provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
       provider.release();
       await until(f.clock, () => record.persistence?.result !== undefined, `${kind} final persistence result`);
       return record.persistence.result;
     },
     async cleanup() {
       f.host.clearDeferredCanvasStatePersistTimer();
-      for (const record of f.host.nonNativeHostExecutions.values()) record.tracker.dispose();
+      for (const record of f.host.nonNativeHostExecutions.values()) {
+        record.business?.cancelActivityPoll?.(); record.business?.lineContextTracker.dispose(); record.tracker.dispose();
+      }
       await f.host.pendingWorkspaceStateUpdate;
       await rm(directory, { recursive: true, force: true });
     }
@@ -1855,6 +1927,115 @@ for (const kind of ['terminal', 'agent']) {
   }, 15000);
 }
 
+
+async function singleNodeDeleteFixture(kind) {
+  const f = await persistenceFixture({ candidate: true });
+  const gate = deferred();
+  const messages = [];
+  let fail = false;
+  const update = f.host.context.workspaceState.update;
+  f.host.context.workspaceState.update = async (...args) => {
+    await gate.promise;
+    if (fail) throw new Error('controlled delete save failure');
+    return update(...args);
+  };
+  f.host.postMessage = message => messages.push(message);
+  f.host.reconcileCanvasFileArtifacts = state => state;
+  const { record, provider } = await f.started(kind);
+  const id = record.nodeId;
+  if (kind === 'agent') f.host.state.fileReferences = [{ id: 'delete-file', filePath: '/controlled/read.md',
+    updatedAt: '2026-10-11T00:00:00Z', owners: [{ nodeId: id, accessMode: 'read', updatedAt: '2026-10-11T00:00:00Z' }] }];
+  async function exit() {
+    provider.process();
+    provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+    provider.seal(0); provider.release();
+    await until(f.clock, () => record.persistence.submitted, 'original final save submitted');
+  }
+  return { ...f, record, provider, id, messages, gate, exit,
+    failSave() { fail = true; },
+    async cleanup() { gate.resolve(); await completed(f.clock, record.persistence.promise, 'original save cleanup'); record.tracker.dispose(); await f.cleanup(); }
+  };
+}
+
+for (const kind of ['agent', 'terminal']) {
+  for (const phase of ['running', 'retained']) {
+    for (const outcome of ['saved', 'failed', 'timeout']) {
+      test(`single node delete ${kind} ${phase} waits for ${outcome}`, async () => {
+        const f = await singleNodeDeleteFixture(kind);
+        let returned = false;
+        try {
+          if (phase === 'retained') {
+            await f.exit();
+            f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'controlled retained delete');
+            await until(f.clock, () => f.record.execution.snapshot().retired, 'owner retired before delete');
+          }
+          const deleting = f.host.deleteNode(f.id).then(() => { returned = true; });
+          if (phase === 'running') {
+            await until(f.clock, () => f.provider.messages.some(message => message.type === 'requestStop'), 'delete stop');
+            await f.exit();
+          }
+          await pump(f.clock, () => true);
+          assert.equal(returned, false, 'delete must await the original pending save');
+          assert.equal(f.messages.some(message => message.type === 'host/error'), false);
+          assert.ok(f.host.state.nodes.some(node => node.id === f.id));
+          if (outcome === 'timeout') {
+            f.clock.advance(f.clock.now() + EXECUTION_CANDIDATE_BUDGETS.boundaryMs);
+            await completed(f.clock, deleting, 'bounded delete timeout');
+            assert.match(f.messages.at(-1).payload.message, /did not complete within the boundary/);
+            assert.equal(f.record.persistence.result, undefined);
+          }
+          if (outcome === 'failed') f.failSave();
+          f.gate.resolve();
+          await completed(f.clock, f.record.persistence.promise, 'original delete save');
+          await completed(f.clock, deleting, 'single node delete result');
+          assert.equal(f.host.state.nodes.some(node => node.id === f.id), outcome !== 'saved');
+          if (kind === 'agent') assert.equal(f.host.state.fileReferences.length, outcome === 'saved' ? 0 : 1);
+          if (outcome === 'failed') assert.match(f.messages.at(-1).payload.message, /persistence is failed/);
+          if (outcome !== 'failed') assert.equal(f.record.persistence.result.kind, 'saved');
+          assert.equal(f.providers.length, 1);
+        } finally { await f.cleanup(); }
+      });
+    }
+  }
+}
+
+for (const change of ['metadata', 'record', 'owner', 'operation', 'deleted', 'routed', 'layout']) {
+  test(`single node delete validates waiting target after ${change}`, async () => {
+    const f = await singleNodeDeleteFixture('agent');
+    try {
+      const deleting = f.host.deleteNode(f.id);
+      await until(f.clock, () => f.provider.messages.some(message => message.type === 'requestStop'), 'identity delete stop');
+      await f.exit();
+      const node = f.host.state.nodes.find(node => node.id === f.id);
+      if (change === 'metadata') node.metadata.agent = { ...node.metadata.agent };
+      if (change === 'record') f.host.nonNativeHostExecutions.set(f.record.execution.key, { ...f.record });
+      if (change === 'owner') f.host.nonNativeExecutionOwner = new ExecutionOwnerLifecycle(f.injection);
+      if (change === 'operation') f.host.beginExecutionSessionOperation('agent', f.id);
+      if (change === 'deleted') f.host.state = { ...f.host.state, nodes: f.host.state.nodes.filter(node => node.id !== f.id) };
+      if (change === 'routed') {
+        f.host.getMultiRootWorkspaceFoldersForComposition = () => [{ path: f.root, name: 'one' }, { path: '/other', name: 'two' }];
+        const next = structuredClone(f.host.state);
+        next.nodes.find(node => node.id === f.id).id = namespaceCanvasObjectId(f.root, f.id);
+        f.host.state = f.host.reconcileOwnedCanvasState(next);
+      }
+      if (change === 'layout') f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(value => value.id === f.id
+        ? { ...value, title: 'Renamed while saving', position: { x: 123, y: 456 } } : value) };
+      f.gate.resolve();
+      await completed(f.clock, deleting, 'identity-aware delete completion');
+      assert.equal(f.record.persistence.result.kind, 'saved');
+      if (change === 'layout') {
+        assert.ok(!f.host.state.nodes.some(node => node.id === f.id));
+        assert.equal(f.messages.some(message => message.type === 'host/error'), false);
+        assert.equal(f.host.state.fileReferences.length, 0);
+      } else {
+        assert.match(f.messages.at(-1).payload.message, /original local deletion target changed/);
+        assert.equal(f.host.state.fileReferences.length, 1, 'stale deletion must not remove references');
+        if (change !== 'deleted') assert.ok(f.host.state.nodes.some(node => node.id === f.record.nodeId));
+      }
+    } finally { await f.cleanup(); }
+  });
+}
+
 async function assertFinalSaveRetainsHost(f, record, kind, expected) {
   assert.equal(record.execution.snapshot().terminal.kind, 'applied');
   assert.equal(record.execution.snapshot().retired, true);
@@ -1866,7 +2047,9 @@ async function assertFinalSaveRetainsHost(f, record, kind, expected) {
   const node = f.host.state.nodes.find(node => node.id === `${kind}-1`);
   const errors = [];
   f.host.postMessage = message => errors.push(message);
-  await completed(f.clock, f.host.deleteNode(node.id), 'retained final save delete');
+  const deleting = f.host.deleteNode(node.id);
+  if (expected === undefined) f.clock.advance(f.clock.now() + EXECUTION_CANDIDATE_BUDGETS.boundaryMs);
+  await completed(f.clock, deleting, 'retained final save delete');
   assert.strictEqual(f.host.state.nodes.find(candidate => candidate.id === node.id), node);
   assert.equal(errors.at(-1)?.type, 'host/error');
   await assert.rejects(completed(f.clock, f.host.resetState(), 'retained final save reset'), /snapshot persistence/i);
@@ -2148,7 +2331,7 @@ test('pending final persistence blocks restart delete and reset while the origin
     const closing = f.host.prepareForDeactivation();
     const attempts = [...f.writes];
     await pump(f.clock, () => true);
-    f.clock.advance(50);
+    f.clock.advance(f.clock.now() + 50);
     const report = await completed(f.clock, closing, 'pending save permanent cutoff');
     assert.equal(report.canvasSnapshot.kind, 'unconfirmed');
     assert.equal(report.local.kind, 'settled');
@@ -2396,8 +2579,7 @@ for (const queuedResize of [false, true]) {
       let resized;
       if (queuedResize) {
         record.terminalChain = mutation.promise;
-        resized = assert.rejects(f.host.resizeNonNativeHostExecution(record, 100, 30),
-          /Owned terminal mutation admission is closed/);
+        resized = f.host.resizeNonNativeHostExecution(record, 100, 30).then(result => assert.equal(result, 'cancelled'));
       }
       const resetting = assert.rejects(f.host.resetState(), /Local final snapshot persistence is pending/);
       assert.equal(record.execution.snapshot().stopRequested, true);
@@ -2449,6 +2631,148 @@ function simulatedReloadFixture() {
   });
   return f;
 }
+
+for (const boundary of ['reload', 'deactivation', 'ordinary-deactivation']) {
+  for (const strategy of ['codex-session-id', 'claude-session-id', 'none', 'terminal']) {
+    test(`manual reload recovery preserves original final snapshot (${boundary}, ${strategy})`, async () => {
+      const f = simulatedReloadFixture();
+      const kind = strategy === 'terminal' ? 'terminal' : 'agent';
+      f.host.resolveAgentResumeContext = () => ({ supported: strategy !== 'none', strategy,
+        sessionId: strategy === 'none' ? undefined : 'original-provider-session' });
+      const agentProvider = strategy === 'claude-session-id' ? 'claude' : 'codex';
+      f.host.getRequestedAgentCliSpec = () => ({ command: '/controlled/agent', provider: agentProvider });
+      f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: agentProvider });
+      const saved = [];
+      f.host.persistState = async options => {
+        if (options?.reason === 'local-final-snapshot') saved.push(structuredClone(f.host.state));
+      };
+      let record;
+      try {
+        await completed(f.clock, kind === 'agent' ? f.host.startAgentSession('agent-1', 80, 24, agentProvider, false)
+          : f.start(kind), 'start before Host boundary');
+        record = f.record(kind);
+        const closing = boundary === 'reload' ? f.host.simulateRuntimeReloadForTest()
+          : boundary === 'deactivation' ? f.host.prepareForDeactivation() : f.host.prepareOrdinaryDeactivation();
+        await until(f.clock, () => record.execution.snapshot().stopRequested, 'Host boundary requests stop');
+        const provider = f.providers[0];
+        provider.output(1, 'original final tail');
+        await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 1, 'tail accepted');
+        provider.process(); provider.seal(1);
+        provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+        provider.release();
+        assert.equal((await completed(f.clock, record.persistence.promise, 'original final save')).kind, 'saved');
+        const report = await completed(f.clock, closing, 'Host boundary');
+        if (boundary === 'deactivation') assert.equal(report.kind, 'settled');
+        assert.equal(saved.length, 1, 'recovery is part of the original save');
+        const node = saved[0].nodes.find(node => node.kind === kind);
+        const metadata = node.metadata[kind];
+        const expected = kind === 'agent' && strategy !== 'none' ? 'resume-ready' : 'interrupted';
+        assert.equal(node.status, expected);
+        assert.equal(metadata.lifecycle, expected);
+        assert.equal(metadata.liveSession, false);
+        assert.equal(metadata.pendingLaunch, undefined);
+        assert.equal(metadata.lastExitCode, 7, 'preserve actual process evidence');
+        assert.match(metadata.serializedTerminalState.data, /original final tail/);
+        if (expected === 'resume-ready') assert.equal(metadata.resumeSessionId, 'original-provider-session');
+        assert.equal(f.providers.length, 1, 'Host reload does not submit a provider resume');
+      } finally {
+        record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose();
+      }
+    });
+  }
+}
+
+for (const scenario of ['user-stop', 'user-stop-during-reload', 'natural-exit', 'natural-success', 'reset', 'save-failure', 'unknown-process', 'rebound-node', 'missing-session', 'fake-missing-storage', 'final-tail-session']) {
+  test(`manual reload recovery respects original responsibility (${scenario})`, async () => {
+    const f = simulatedReloadFixture();
+    const strategy = scenario === 'fake-missing-storage' ? 'fake-provider' : 'codex-session-id';
+    f.host.resolveAgentResumeContext = () => ({ supported: true, strategy,
+      sessionId: ['missing-session', 'final-tail-session'].includes(scenario) ? undefined : 'original-session',
+      storagePath: scenario === 'final-tail-session' ? '/controlled/provider-storage' : undefined });
+    let record;
+    let writes = 0;
+    f.host.persistState = async options => {
+      if (options?.reason === 'local-final-snapshot') {
+        writes++;
+        if (scenario === 'save-failure') throw new Error('controlled final save failure');
+      }
+    };
+    try {
+      await completed(f.clock, f.start('agent'), 'start before recovery guard');
+      record = f.record('agent');
+      const provider = f.providers[0];
+      let stopping;
+      if (scenario === 'user-stop') stopping = f.host.stopExecutionSession('agent', 'agent-1');
+      if (scenario === 'natural-exit') provider.process();
+      if (scenario === 'natural-success') provider.message({ type: 'processResult', result: { kind: 'exited', exitCode: 0 } });
+      const operation = scenario === 'reset' ? f.host.resetState() : f.host.simulateRuntimeReloadForTest();
+      const failure = ['save-failure', 'unknown-process', 'rebound-node'].includes(scenario);
+      const closing = failure ? assert.rejects(operation, /Local final snapshot persistence is (failed|unconfirmed)|boundary is unconfirmed|cleanup is unconfirmed/) : operation;
+      await until(f.clock, () => record.execution.snapshot().stopRequested, 'Host boundary stop');
+      if (scenario === 'user-stop-during-reload') stopping = f.host.stopExecutionSession('agent', 'agent-1');
+      if (scenario === 'rebound-node') {
+        const node = f.host.state.nodes.find(node => node.kind === 'agent');
+        node.metadata.agent = { ...node.metadata.agent, resumeSessionId: 'replacement-session' };
+      }
+      let lastFrame = 0;
+      if (scenario === 'final-tail-session') {
+        provider.output(1, 'To continue, run codex resume 01234567-89ab-cdef-0123-456789abcdef\r\n');
+        lastFrame = 1;
+        await until(f.clock, () => record.execution.snapshot().adapter.acceptedThrough === 1, 'final recovery identity');
+      }
+      if (scenario === 'unknown-process') provider.message({ type: 'processResult', result: { kind: 'unconfirmed', reason: 'missing process evidence' } });
+      else if (!['natural-exit', 'natural-success'].includes(scenario)) provider.process();
+      provider.seal(lastFrame);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      provider.release();
+      const saved = await completed(f.clock, record.persistence.promise, 'recovery guard final save');
+      if (scenario === 'unknown-process') f.clock.advance(EXECUTION_CANDIDATE_BUDGETS.boundaryMs + 1);
+      await completed(f.clock, closing, 'recovery guard boundary');
+      if (stopping) await completed(f.clock, stopping, 'explicit user stop');
+      if (failure) {
+        assert.equal(saved.kind, scenario === 'save-failure' ? 'failed' : 'unconfirmed');
+        assert.equal(f.owner.snapshot().closing, true, 'failed final evidence cannot reopen admission');
+        assert.equal(writes, scenario === 'save-failure' ? 1 : 0);
+        if (scenario === 'rebound-node') assert.equal(f.host.state.nodes.find(node => node.kind === 'agent').metadata.agent.resumeSessionId, 'replacement-session');
+      } else {
+        assert.equal(saved.kind, 'saved');
+        assert.equal(writes, 1);
+        if (scenario === 'reset') {
+          assert.equal(f.host.state.nodes.length, 0);
+          assert.equal(record.hostBoundaryStop, undefined);
+        } else {
+          const node = f.host.state.nodes.find(node => node.kind === 'agent');
+          assert.equal(node.status, scenario === 'natural-exit' ? 'error'
+            : scenario === 'final-tail-session' ? 'resume-ready'
+            : ['missing-session', 'fake-missing-storage'].includes(scenario) ? 'interrupted' : 'stopped');
+          assert.equal(node.metadata.agent.pendingLaunch, undefined);
+          if (scenario === 'final-tail-session') assert.equal(node.metadata.agent.resumeSessionId, '01234567-89ab-cdef-0123-456789abcdef');
+        }
+      }
+    } finally {
+      record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose();
+    }
+  });
+}
+
+test('manual reload recovery does not promote an unfinished preparation', async () => {
+  const f = simulatedReloadFixture();
+  const gate = deferred();
+  const starting = f.host.startNonNativeHostExecution('agent', 'agent-1', 80, 24, () => gate.promise);
+  const rejected = assert.rejects(starting, /admission is closed/);
+  const record = f.record('agent');
+  try {
+    const closing = f.host.simulateRuntimeReloadForTest();
+    await until(f.clock, () => record.execution.snapshot().stopRequested, 'preparation cancellation');
+    gate.resolve({ file: '/controlled/agent', args: [], env: {} });
+    await completed(f.clock, rejected, 'original preparation rejected');
+    await completed(f.clock, closing, 'reload without a running execution');
+    assert.equal(record.hostBoundaryStop, undefined);
+    assert.equal(record.persistence.result.kind, 'not-required');
+    assert.equal(f.providers.length, 0);
+    assert.notEqual(f.host.state.nodes.find(node => node.kind === 'agent').status, 'resume-ready');
+  } finally { gate.resolve({ file: '/controlled/agent' }); record.tracker.dispose(); }
+});
 
 for (const kind of ['agent', 'terminal']) {
   test(`simulated reload reopens admission for a new ${kind} execution`, async () => {
@@ -2558,6 +2882,75 @@ function candidateRuntimeFixture(options = {}) {
   });
   return { ...f, client, backend, creates, applies, subscriptions, errors,
     setRejectBeforeAcquire: value => { rejectBeforeAcquire = value; } };
+}
+
+for (const action of ['agent', 'resume', 'terminal']) {
+  for (const stage of ['storage', 'root-helper']) {
+    test(`runtime preparation ${action} at ${stage} settles only the unsubmitted start and preserves history`, async () => {
+      const f = candidateRuntimeFixture();
+      const kind = action === 'terminal' ? 'terminal' : 'agent';
+      const nodeId = `${kind}-1`;
+      const node = f.host.state.nodes.find(node => node.id === nodeId);
+      node.status = kind === 'agent' ? 'starting' : 'launching';
+      const history = { version: 1, data: 'original-history', cols: 80, rows: 24 };
+      node.metadata[kind] = { ...node.metadata[kind], pendingLaunch: action === 'resume' ? 'resume' : 'start',
+        liveSession: false, recentOutput: 'original-history', serializedTerminalState: history,
+        resumeSupported: true, resumeStrategy: 'fake-provider', resumeSessionId: 'original-resume', lastExitCode: 23 };
+      f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: 'codex', label: 'Codex' });
+      f.host.resolveAgentResumeContext = () => ({ supported: true, strategy: 'fake-provider', sessionId: 'original-resume' });
+      const method = stage === 'storage' ? 'resolveRuntimeCreationTarget' : 'getPreferredRuntimeSupervisorClient';
+      const original = f.host[method];
+      f.host[method] = async () => { throw new Error('controlled root preparation failure'); };
+      const start = () => action === 'resume' ? f.host.startAgentSession(nodeId, 80, 24, undefined, true) : f.start(kind);
+      await completed(f.clock, start(), 'unsubmitted Runtime preparation failure');
+      const failed = f.host.state.nodes.find(node => node.id === nodeId);
+      assert.equal(failed.status, action === 'resume' ? 'resume-failed' : 'error');
+      assert.equal(failed.metadata[kind].lifecycle, failed.status);
+      assert.equal(failed.metadata[kind].pendingLaunch, undefined);
+      assert.equal(failed.metadata[kind].liveSession, false);
+      assert.equal(failed.metadata[kind].recentOutput, 'original-history');
+      assert.deepEqual(failed.metadata[kind].serializedTerminalState, history);
+      assert.equal(failed.metadata[kind].resumeSessionId, 'original-resume');
+      assert.equal(failed.metadata[kind].lastExitCode, 23);
+      assert.equal(failed.metadata[kind].lastRuntimeError, 'controlled root preparation failure');
+      assert.equal(f.host.candidateRuntimeStarts.size, 0);
+      assert.equal(f.creates.length, 0);
+      assert.equal(f.persisted.filter(entry => entry?.reason === 'runtime-start-preparation-failed').length, 1);
+      assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+      f.host[method] = original;
+      await completed(f.clock, start(), 'explicit Runtime retry');
+      assert.equal(f.creates.length, 1);
+    });
+  }
+  for (const change of ['metadata', 'node', 'closed', 'record', 'live']) {
+    test(`runtime preparation ${action} ignores late failure after ${change}`, async () => {
+      const f = candidateRuntimeFixture();
+      const kind = action === 'terminal' ? 'terminal' : 'agent';
+      const nodeId = `${kind}-1`;
+      const gate = deferred();
+      let entered = false;
+      f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: 'codex', label: 'Codex' });
+      f.host.resolveAgentResumeContext = () => ({ supported: true, strategy: 'fake-provider' });
+      f.host.resolveRuntimeCreationTarget = async () => { entered = true; await gate.promise; throw new Error('late failure'); };
+      f.host.state.nodes.find(node => node.id === nodeId).metadata[kind] = {
+        lifecycle: 'starting', liveSession: false, pendingLaunch: action === 'resume' ? 'resume' : 'start'
+      };
+      const operation = action === 'resume' ? f.host.startAgentSession(nodeId, 80, 24, undefined, true) : f.start(kind);
+      await until(f.clock, () => entered, 'waiting original Runtime preparation');
+      const node = f.host.state.nodes.find(node => node.id === nodeId);
+      if (change === 'metadata') node.metadata[kind] = { ...node.metadata[kind], lastRuntimeError: 'replacement' };
+      if (change === 'node') f.host.state.nodes = f.host.state.nodes.filter(node => node.id !== nodeId);
+      if (change === 'closed') f.host.nonNativeDeactivationReport = Promise.resolve({ kind: 'settled' });
+      if (change === 'record') f.host.candidateRuntimeStarts.set(f.host.getExecutionSessionOperationKey(kind, nodeId), { submitted: true });
+      if (change === 'live') node.metadata[kind].liveSession = true;
+      const before = structuredClone(f.host.state);
+      gate.resolve();
+      await completed(f.clock, operation, 'late Runtime preparation result');
+      assert.deepEqual(f.host.state, before);
+      assert.equal(f.persisted.filter(entry => entry?.reason === 'runtime-start-preparation-failed').length, 0);
+      assert.equal(f.creates.length, 0);
+    });
+  }
 }
 
 for (const action of ['agent', 'resume', 'terminal']) {
@@ -3486,6 +3879,29 @@ async function withRootCandidateRuntimeFixture(run) {
   finally { await rm(directory, { recursive: true, force: true }); }
 }
 
+test('runtime preparation ordinary canvas save creates the shared parent privately under umask 0002', async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), 'host-private-save-'));
+  const globalStorage = path.join(temporary, 'global');
+  const previous = process.umask(0o002);
+  try {
+    CanvasPanelManager.prototype.writePersistedCanvasSnapshotToDisk.call({},
+      path.join(globalStorage, 'root-local-canvas', 'root', 'canvas-state.json'), { version: 1 });
+    if (process.platform !== 'win32') assert.equal((await lstat(globalStorage)).mode & 0o777, 0o700);
+  } finally { process.umask(previous); await rm(temporary, { recursive: true, force: true }); }
+});
+
+for (const mode of [0o775, 0o770, 0o755]) {
+  test(`runtime preparation Host preserves owner identity while preparing existing ${mode.toString(8)} storage`, async () => {
+    if (process.platform === 'win32') return;
+    await withRootCandidateRuntimeFixture(async f => {
+      await chmod(f.globalStoragePath, mode);
+      const target = await f.host.resolveRuntimeCreationTarget(f.roots[0].path);
+      assert.deepEqual(target, f.target);
+      assert.equal((await lstat(f.globalStoragePath)).mode & 0o777, mode & ~0o020);
+    });
+  });
+}
+
 for (const kind of ['terminal', 'agent']) {
   test(`root ${kind} new creation routes its confirmed owner through preparation client metadata and subscription`, async () => {
     if (process.platform !== 'linux') return;
@@ -4025,8 +4441,15 @@ for (const kind of ['terminal', 'agent']) {
       assert.equal(f.providers.length, 0);
       assert.equal(f.applies.length, 0);
       assert.equal(f.subscriptions.length, 0);
-      assert.equal(f.persisted.length, 0);
-      assert.deepEqual(f.host.state, before);
+      assert.equal(f.persisted.length, previousBinding ? 0 : 1);
+      if (previousBinding) assert.deepEqual(f.host.state, before);
+      else {
+        const failed = f.host.state.nodes.find(node => node.kind === kind);
+        assert.equal(failed.status, 'error');
+        assert.equal(failed.metadata[kind].pendingLaunch, undefined);
+        assert.match(failed.metadata[kind].lastRuntimeError, /Host output consumption credit/);
+        assert.equal(f.persisted[0].reason, 'runtime-start-preparation-failed');
+      }
       assert.equal(f.host.runtimeSessionBindings.size, 0);
       assert.equal(f.host.candidateRuntimeStarts.size, 0);
     }
@@ -4445,11 +4868,12 @@ async function interactiveHostFixture(kind = 'terminal', providerKind = 'codex',
   const persist = f.host.persistState.bind(f.host);
   f.host.persistState = async (...args) => { await persist(...args); };
   if (kind === 'agent') {
-    f.host.state.nodes.find(node => node.kind === kind).metadata.agent = { provider: providerKind };
+    f.host.state.nodes.find(node => node.kind === kind).metadata.agent = { provider: providerKind, ...options.agentMetadata };
+    if (options.resumeContext) f.host.resolveAgentResumeContext = () => options.resumeContext;
     f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: providerKind });
   }
   await completed(f.clock, kind === 'agent'
-    ? f.host.startAgentSession('agent-1', 113, 39, providerKind, false)
+    ? f.host.startAgentSession('agent-1', 113, 39, providerKind, options.resumeRequested ?? false)
     : f.host.startTerminalSession('terminal-1', 113, 39), `${kind} interactive owner start`);
   const record = f.record(kind);
   f.host.state.nodes.find(node => node.kind === kind).metadata[kind].cwd = '/controlled';
@@ -4761,6 +5185,232 @@ test('owned Terminal initial install input cannot cross a replacement before sta
     f.host.clearPendingTerminalInitialInputs('controlled cleanup');
     await disposeStartedCandidate(f);
   }
+});
+
+async function withFileLinkBoundary(run) {
+  const previousFs = testWorkspace.fs;
+  const previousFile = testUri.file;
+  const paths = [];
+  testWorkspace.fs = { stat: async uri => {
+    paths.push(uri.fsPath);
+    if (!uri.fsPath.endsWith('/link-target.ts')) throw new Error('Missing controlled file');
+    return { type: 1 };
+  } };
+  testUri.file = fsPath => ({ ...previousFile(fsPath), toString: () => `file://${fsPath}` });
+  try { await run(paths); }
+  finally { testWorkspace.fs = previousFs; testUri.file = previousFile; }
+}
+
+function initializeFileLinkCache(host) {
+  host.executionFileLinkResolveCache = { entries: new Map(), inFlight: new Map(), lastBackgroundStartedAt: 0 };
+  host.executionFileLinkResolveQueueByNode = new Map();
+}
+
+function multilineFileCandidate(bufferStartLine = 1) {
+  return { candidateId: 'multiline:2:8', text: '2:8', path: 'link-target.ts',
+    line: 2, column: 8, bufferStartLine, startIndex: 0, endIndexExclusive: 25, source: 'detected' };
+}
+
+async function deliverFileLinkOutput(f, sequence, text) {
+  f.provider.output(sequence, text);
+  await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === sequence, 'file link context output');
+  await f.record.business.lineContextTracker.flush();
+}
+
+for (const kind of ['terminal', 'agent']) {
+  test(`owned ${kind} file link context resolves original and changed directories through the real helper`, async () => {
+    const f = await interactiveHostFixture(kind);
+    initializeFileLinkCache(f.host);
+    try {
+      await deliverFileLinkOutput(f, 1, 'link-target.ts\r\n  2:8  original\r\n');
+      if (kind === 'terminal') {
+        const writing = f.host.writeExecutionInput(kind, `${kind}-1`, 'cd /controlled/subdir\r');
+        await until(f.clock, () => f.requests.length === 1, 'file link context cd');
+        f.reply(f.requests[0], { kind: 'written', writtenBytes: Buffer.byteLength(f.requests[0].data) });
+        await completed(f.clock, writing, 'file link context cd acknowledgement');
+      }
+      await deliverFileLinkOutput(f, 2,
+        (kind === 'agent' ? '\x1b]7;file:///controlled/subdir\x07' : '') + 'link-target.ts\r\n  2:8  changed\r\n');
+      const context = f.host.getExecutionTerminalPathContext(kind, `${kind}-1`);
+      await withFileLinkBoundary(async () => {
+        for (const [bufferLine, expectedCwd] of [[1, '/controlled'], [3, '/controlled/subdir']]) {
+          const result = await f.host.runExecutionFileLinkResolveForNode(kind, `${kind}-1`,
+            [multilineFileCandidate(bufferLine)], context, 'interactive');
+          assert.equal(result.resolvedCandidates[0]?.resolved.uri.fsPath, `${expectedCwd}/link-target.ts`);
+          assert.deepEqual(result.resolvedCandidates[0].resolved.selection.start, { line: 1, character: 7 });
+        }
+      });
+      const node = f.host.state.nodes.find(node => node.id === `${kind}-1`);
+      node.metadata[kind].shellPath = 'C:\\stale-shell.exe'; node.metadata[kind].cwd = 'C:\\stale-cwd';
+      const refreshed = f.host.getExecutionTerminalPathContext(kind, `${kind}-1`);
+      assert.equal(refreshed.cwd, f.record.launchSpec.cwd);
+      assert.equal(refreshed.shellPath, f.record.launchSpec.file);
+    } finally { await f.cleanup(); }
+  });
+
+  test(`owned ${kind} file link context remains readable after stop`, async () => {
+    const f = await interactiveHostFixture(kind);
+    try {
+      await deliverFileLinkOutput(f, 1, '\x1b]7;file:///controlled/subdir\x07link-target.ts\r\n  2:8  result\r\n');
+      void f.host.stopExecutionSession(kind, `${kind}-1`).catch(() => {});
+      assert.equal(f.record.execution.snapshot().stopRequested, true);
+      const context = f.host.getExecutionTerminalPathContext(kind, `${kind}-1`);
+      assert.equal(await context.resolveCwdForBufferLine?.(1), '/controlled/subdir');
+    } finally { await f.cleanup(); }
+  });
+
+  test(`owned ${kind} file link context captures its tracker across an asynchronous replacement`, async () => {
+    const f = await interactiveHostFixture(kind);
+    const gate = deferred();
+    try {
+      await deliverFileLinkOutput(f, 1, '\x1b]7;file:///controlled/original\x07link-target.ts\r\n  2:8  result\r\n');
+      const tracker = f.record.business.lineContextTracker;
+      const originalLookup = tracker.getCwdForBufferLine.bind(tracker);
+      let entered = false;
+      tracker.getCwdForBufferLine = async line => { entered = true; await gate.promise; return originalLookup(line); };
+      const context = f.host.getExecutionTerminalPathContext(kind, `${kind}-1`);
+      const lookup = context.resolveCwdForBufferLine?.(1);
+      assert.equal(entered, true);
+      let replacementLookups = 0;
+      f.host.nonNativeHostExecutions.set(`${kind}:${kind}-1`, { ...f.record,
+        business: { ...f.record.business, lineContextTracker: {
+          getCwdForBufferLine: async () => { replacementLookups++; return '/controlled/replacement'; }
+        } }
+      });
+      gate.resolve();
+      assert.equal(await lookup, '/controlled/original');
+      assert.equal(replacementLookups, 0);
+    } finally {
+      gate.resolve(); f.host.nonNativeHostExecutions.set(`${kind}:${kind}-1`, f.record); await f.cleanup();
+    }
+  });
+}
+
+test('owned file link context does not reuse relative results across executions of the same node', async () => {
+  const first = await interactiveHostFixture();
+  const second = await interactiveHostFixture();
+  initializeFileLinkCache(first.host);
+  second.host.executionFileLinkResolveCache = first.host.executionFileLinkResolveCache;
+  second.host.executionFileLinkResolveQueueByNode = first.host.executionFileLinkResolveQueueByNode;
+  try {
+    await withFileLinkBoundary(async () => {
+      for (const [f, cwd] of [[first, '/controlled/first'], [second, '/controlled/second']]) {
+        await deliverFileLinkOutput(f, 1, `\x1b]7;file://${cwd}\x07link-target.ts\r\n  2:8  result\r\n`);
+        const context = f.host.getExecutionTerminalPathContext('terminal', 'terminal-1');
+        const candidate = multilineFileCandidate();
+        const resolved = await f.host.runExecutionFileLinkResolveForNode('terminal', 'terminal-1', [candidate], context, 'interactive');
+        assert.equal(resolved.resolvedCandidates[0]?.resolved.uri.fsPath, `${cwd}/link-target.ts`);
+        const cached = await f.host.runExecutionFileLinkResolveForNode('terminal', 'terminal-1', [candidate], context, 'interactive');
+        assert.equal(cached.cacheHitCount, 1, 'same original execution still uses the cache');
+        assert.equal(cached.resolvedCandidates[0]?.resolved.uri.fsPath, `${cwd}/link-target.ts`);
+      }
+    });
+  } finally { await first.cleanup(); await second.cleanup(); }
+});
+
+test('legacy and history file link context retain their directory sources', async () => {
+  const f = fixture();
+  const tracker = f.host.createExecutionTerminalLineContextTracker(80, 24, '/bin/bash', '/legacy', 100);
+  f.host.terminalSessions.set('terminal-1', {
+    sessionId: 'legacy-session', shellPath: '/bin/bash', cwd: '/legacy', lineContextTracker: tracker, stopRequested: true
+  });
+  try {
+    tracker.write('\x1b]7;file:///legacy/subdir\x07link-target.ts\r\n  2:8  result\r\n');
+    const context = f.host.getExecutionTerminalPathContext('terminal', 'terminal-1');
+    assert.equal(context.cwd, '/legacy');
+    assert.equal(await context.resolveCwdForBufferLine(1), '/legacy/subdir');
+    f.host.terminalSessions.clear();
+    f.host.state.nodes[0].metadata.terminal = { shellPath: '/bin/zsh', cwd: '/history' };
+    const history = f.host.getExecutionTerminalPathContext('terminal', 'terminal-1');
+    assert.equal(history.shellPath, '/bin/zsh'); assert.equal(history.cwd, '/history');
+    assert.equal(history.resolveCwdForBufferLine, undefined);
+  } finally { tracker.dispose(); }
+});
+
+for (const kind of ['terminal', 'agent']) {
+  test(`owned ${kind} resource drop uses original launch context and waits for written`, async () => {
+    const f = await interactiveHostFixture(kind);
+    const sessions = f.host.getExecutionSessions(kind);
+    try {
+      // Current configuration and stale legacy sessions must not choose the quoting rules.
+      const node = f.host.state.nodes.find(node => node.id === `${kind}-1`);
+      node.metadata[kind].shellPath = 'C:\\Windows\\pwsh.exe';
+      node.metadata[kind].cwd = 'C:\\replacement';
+      sessions.set(`${kind}-1`, { shellPath: 'C:\\Windows\\pwsh.exe', cwd: 'C:\\stale' });
+      let resolved = false;
+      const dropping = f.host.handleDroppedExecutionResource(kind, `${kind}-1`, {
+        source: 'files', valueKind: 'path', value: "/controlled/it's a file.txt"
+      }).then(() => { resolved = true; });
+      await until(f.clock, () => f.requests.length === 1, `${kind} resource drop input`);
+      assert.equal(resolved, false, 'preparation is not a write acknowledgement');
+      assert.equal(f.requests[0].data, "'/controlled/it'\\''s a file.txt'");
+      assert.deepEqual(f.requests[0].identity, f.record.execution.identity);
+      f.reply(f.requests[0], { kind: 'written', writtenBytes: Buffer.byteLength(f.requests[0].data) });
+      await completed(f.clock, dropping, `${kind} resource drop acknowledgement`);
+      assert.equal(resolved, true);
+      assert.equal(f.diagnostics.some(event => event.name === 'execution/dropResourceRejected'), false);
+    } finally { sessions.delete(`${kind}-1`); await f.cleanup(); }
+  });
+
+  for (const change of ['stop', 'metadata', 'removed-node', 'suspended', 'quarantined', 'missing-launch']) {
+    test(`owned ${kind} resource drop rejects ${change} before dispatch`, async () => {
+      const f = await interactiveHostFixture(kind);
+      try {
+        if (change === 'stop') void f.host.stopExecutionSession(kind, `${kind}-1`).catch(() => {});
+        if (change === 'metadata') {
+          const node = f.host.state.nodes.find(node => node.id === `${kind}-1`);
+          node.metadata = { ...node.metadata, [kind]: { ...node.metadata[kind] } };
+        }
+        if (change === 'removed-node') f.host.state.nodes = f.host.state.nodes.filter(node => node.id !== `${kind}-1`);
+        if (change === 'suspended') f.record.business.lifecycleStatus = 'suspended';
+        if (change === 'quarantined') f.record.mutationError = 'Controlled quarantine';
+        if (change === 'missing-launch') f.record.launchSpec = undefined;
+        await f.host.handleDroppedExecutionResource(kind, `${kind}-1`, {
+          source: 'files', valueKind: 'path', value: '/controlled/drop target.txt'
+        });
+        assert.equal(f.requests.length, 0);
+        assert.equal(f.diagnostics.some(event => event.name === 'execution/dropResourcePrepared'), false);
+        assert.equal(f.diagnostics.some(event => event.name === 'execution/dropResourceRejected'), true);
+      } finally { await f.cleanup(); }
+    });
+  }
+
+  test(`owned ${kind} resource drop does not retarget or project after replacement during write`, async () => {
+    const f = await interactiveHostFixture(kind);
+    try {
+      const dropping = f.host.handleDroppedExecutionResource(kind, `${kind}-1`, {
+        source: 'files', valueKind: 'path', value: '/controlled/drop target.txt'
+      });
+      await until(f.clock, () => f.requests.length === 1, `${kind} resource drop input`);
+      let replacementWrites = 0;
+      f.host.nonNativeHostExecutions.set(`${kind}:${kind}-1`, {
+        ...f.record, execution: { write: () => { replacementWrites++; throw new Error('Unexpected replacement input'); } }
+      });
+      let projections = 0;
+      f.host.projectNonNativeHostBusiness = () => { projections++; };
+      f.reply(f.requests[0], { kind: 'written', writtenBytes: Buffer.byteLength(f.requests[0].data) });
+      await completed(f.clock, dropping, `${kind} old resource drop acknowledgement`);
+      assert.equal(replacementWrites, 0);
+      assert.equal(projections, 0);
+      assert.equal(f.requests.length, 1);
+    } finally {
+      f.host.nonNativeHostExecutions.set(`${kind}:${kind}-1`, f.record);
+      await f.cleanup();
+    }
+  });
+}
+
+test('legacy resource drop keeps session shell rules and missing-session diagnostics', async () => {
+  const f = fixture();
+  const writes = [];
+  f.host.writeExecutionInput = async (...args) => { writes.push(args); return true; };
+  const resource = { source: 'files', valueKind: 'path', value: "C:\\drop target's file.txt" };
+  await f.host.handleDroppedExecutionResource('terminal', 'terminal-1', resource);
+  assert.equal(writes.length, 0);
+  assert.equal(f.diagnostics.at(-1).detail.reason, 'missing-session');
+  f.host.terminalSessions.set('terminal-1', { shellPath: 'C:\\Windows\\pwsh.exe', cwd: 'C:\\repo' });
+  await f.host.handleDroppedExecutionResource('terminal', 'terminal-1', resource);
+  assert.deepEqual(writes, [['terminal', 'terminal-1', "'C:\\drop target''s file.txt'"]]);
 });
 
 for (const kind of ['terminal', 'agent']) {
@@ -5145,6 +5795,1699 @@ test('S10 Host uncertain resize retains its observation and accepted tail withou
     f.record.business.lineContextTracker.dispose();
     f.record.tracker.dispose();
   }
+});
+
+
+function configureCanvasRecomposition(f) {
+  delete f.host.dropPendingTerminalInitialInput;
+  Object.assign(f.host, {
+    lastComposedWorkspaceRootPaths: f.host.getMultiRootWorkspaceFoldersForComposition().map(folder => folder.path),
+    getLiveRuntimeReconnectBlockReason: () => undefined,
+    reconcileCanvasFileArtifacts: state => state,
+    invalidateResolvedShellEnvironmentPatch() {}, clearAgentCliResolutionCache() {},
+    resolvePreferredCanvasCenter: () => undefined,
+    resolveWorkspaceRootGroupForAddedFolder: () => undefined,
+    reconcileDefaultExecutionMetadataCwd() {}, refreshConfiguredTerminalShellMetadata() {},
+    refreshStorageRecoverySelection() {}, loadStoredCanvasFileFilterState: () => f.host.fileFilterState,
+    readCanvasTemplateInitializedFlag: () => true, loadStoredSurface: () => 'editor',
+    applyWorkbenchContextKeys() {}, isInteractiveSurface: () => false,
+    scheduleRestoreLiveRuntimeSessions() {}, getDebugSnapshot: () => ({ state: f.host.state })
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`canvas reconciliation keeps ${kind} identity through reload, root round trip and final disk save`, async () => {
+    const f = await persistenceFixture({ candidate: true });
+    configureCanvasRecomposition(f);
+    let record;
+    try {
+      await completed(f.clock, f.start(kind), 'original local start');
+      record = f.record(kind);
+      const identity = record.execution.identity;
+      const originalKey = record.execution.key;
+      const provider = f.providers[0];
+      const originalMetadata = record.persistence.metadata;
+      f.host.loadState = () => structuredClone(f.host.state);
+      await f.host.reloadPersistedStateForTest();
+      assert.strictEqual(f.host.state.nodes.find(node => node.kind === kind).metadata[kind], originalMetadata);
+      assert.equal(f.host.state.nodes.find(node => node.kind === kind).metadata[kind].liveSession, true);
+      const localState = structuredClone(f.host.state);
+      let folders = [{ path: f.root, name: 'original' }, { path: path.join(f.directory, 'other'), name: 'other' }];
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => folders;
+      f.host.loadState = () => composeMultiRootCanvasState({ workspaceFolders: folders,
+        rootStates: [{ rootPath: f.root, state: localState }] });
+      await completed(f.clock, f.host.reconcileWorkspaceFolders(), 'add workspace root');
+      const newId = namespaceCanvasObjectId(f.root, `${kind}-1`);
+      assert.equal(record.nodeId, newId);
+      assert.strictEqual(record.execution.identity, identity);
+      assert.strictEqual(f.owner.get(`${kind}:${newId}`), record.execution);
+      assert.equal(f.owner.get(originalKey), undefined);
+      assert.strictEqual(f.host.state.nodes.find(node => node.id === newId).metadata[kind], originalMetadata);
+      provider.output(1, 'tail-after-remap\r\n');
+      await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'remapped output');
+      assert.equal(record.mutationError, undefined);
+      const resizing = f.host.resizeNonNativeHostExecution(record, 91, 31);
+      await until(f.clock, () => provider.messages.some(message => message.type === 'resize'), 'resize after remap');
+      const request = provider.messages.find(message => message.type === 'resize');
+      // Move the route again while the native resize reply is in flight.
+      const decomposed = decomposeMultiRootCanvasState({ composedState: f.host.state, workspaceFolders: folders, previousRootStates: [] });
+      folders = [folders[0]];
+      f.host.loadState = () => decomposed.rootStates.find(root => root.rootPath === f.root).state;
+      await completed(f.clock, f.host.reconcileWorkspaceFolders(), 'remove unrelated root');
+      provider.message({ type: 'interactionObservation', interactionId: request.interactionId, result: { kind: 'resized' } });
+      await completed(f.clock, resizing, 'same resize commits on returned route');
+      assert.equal(record.nodeId, `${kind}-1`);
+      assert.equal(record.mutationError, undefined);
+      assert.strictEqual(f.owner.get(originalKey), record.execution);
+      assert.equal(f.providers.length, 1, 'no replacement provider during root changes');
+      // No page reader is required for this persistence-only fixture.
+      for (const reader of record.localReaders.values()) f.host.settleLocalExecutionReader(record, reader, { kind: 'cancelled', reason: 'test-end' });
+      provider.process(); provider.seal(1);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      provider.release();
+      assert.equal((await completed(f.clock, record.persistence.promise, 'final save after remap')).kind, 'saved');
+      await until(f.clock, () => f.host.nonNativeHostExecutions.size === 0, 'retired remapped record');
+      assert.match((await f.read(f.rootFile)).state.nodes.find(node => node.kind === kind).metadata[kind].serializedTerminalState.data, /tail-after-remap/);
+    } finally { record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); await f.cleanup(); }
+  });
+
+  test(`canvas reconciliation rejects replacement of the original ${kind} without changing its route`, async () => {
+    const f = candidateFixture();
+    let record;
+    try {
+      await completed(f.clock, f.start(kind), 'original protected local start');
+      record = f.record(kind);
+      const oldState = f.host.state;
+      assert.throws(() => f.host.reconcileOwnedCanvasState({ ...oldState, nodes: oldState.nodes.filter(node => node.kind !== kind) }), /Stop the original execution/);
+      assert.strictEqual(f.host.state, oldState);
+      assert.strictEqual(f.owner.get(record.execution.key), record.execution);
+      f.host.state = { ...oldState, nodes: oldState.nodes.map(node => node.kind === kind
+        ? { ...node, metadata: { ...node.metadata, [kind]: { ...node.metadata[kind] } } } : node) };
+      assert.throws(() => f.host.reconcileOwnedCanvasState(structuredClone(f.host.state)), /original execution binding changed/);
+      assert.strictEqual(f.owner.get(record.execution.key), record.execution);
+    } finally { record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); }
+  });
+
+  test(`workspace removal waits for ${kind} final save before replacing canvas and saves the removed root`, async () => {
+    const f = await persistenceFixture({ candidate: true });
+    configureCanvasRecomposition(f);
+    let record;
+    const save = deferred();
+    try {
+      f.host.lastComposedWorkspaceRootPaths = [f.root];
+      await completed(f.clock, f.start(kind), 'removed root original start');
+      record = f.record(kind);
+      const provider = f.providers[0];
+      const oldState = f.host.state;
+      const persist = f.host.persistState.bind(f.host);
+      f.host.persistState = async options => {
+        if (options.reason === 'local-final-snapshot') await save.promise;
+        return persist(options);
+      };
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => [];
+      f.host.loadState = () => ({ ...oldState, nodes: [] });
+      let finished = false;
+      const replacing = f.host.reconcileWorkspaceFolders().then(() => { finished = true; });
+      provider.output(1, 'removed-root-final-tail\r\n');
+      await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'removed root tail');
+      provider.process(); provider.seal(1);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      provider.release();
+      await until(f.clock, () => record.persistence.submitted, 'removed root save submission');
+      assert.equal(finished, false);
+      assert.equal(f.host.workspaceRecompositionPending, true);
+      assert.equal(f.host.state.nodes.some(node => node.id === record.nodeId), true);
+      await assert.rejects(f.start(kind), /admission is closed/);
+      save.resolve();
+      await completed(f.clock, replacing, 'removed root saved then recomposed');
+      assert.equal(f.host.state.nodes.length, 0);
+      assert.equal(f.host.nonNativeHostExecutions.size, 0);
+      assert.match((await f.read(f.rootFile)).state.nodes.find(node => node.kind === kind).metadata[kind].serializedTerminalState.data, /removed-root-final-tail/);
+    } finally { save.resolve(); record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); await f.cleanup(); }
+  });
+}
+
+
+test('execution route migration validates all original reservations before changing any key', async () => {
+  const f = fixture();
+  const one = f.owner.reserve('one');
+  const two = f.owner.reserve('two');
+  const identity = one.identity;
+  assert.throws(() => f.owner.rekey([{ execution: one, key: 'two' }]), /original reservations/);
+  assert.strictEqual(f.owner.get('one'), one);
+  assert.strictEqual(f.owner.get('two'), two);
+  const foreign = fixture().owner.reserve('foreign');
+  assert.throws(() => f.owner.rekey([{ execution: one, key: 'new' }, { execution: foreign, key: 'other' }]), /original reservations/);
+  assert.strictEqual(f.owner.get('one'), one);
+  f.owner.rekey([{ execution: one, key: 'two' }, { execution: two, key: 'one' }]);
+  assert.strictEqual(one.identity, identity);
+  assert.strictEqual(f.owner.get('two'), one);
+  assert.strictEqual(f.owner.get('one'), two);
+  one.abandon('test-end'); two.abandon('test-end'); foreign.abandon('test-end');
+});
+
+for (const outcome of ['failed', 'deadline']) {
+  test(`workspace removal retains original canvas and save responsibility after ${outcome}`, async () => {
+    const f = await persistenceFixture({ candidate: true });
+    configureCanvasRecomposition(f);
+    const save = deferred();
+    let record;
+    try {
+      await completed(f.clock, f.start('terminal'), 'original terminal before failed removal');
+      record = f.record('terminal');
+      const beforeDisk = await f.read(f.rootFile);
+      const provider = f.providers[0];
+      const persist = f.host.persistState.bind(f.host);
+      f.host.persistState = async options => {
+        if (options.reason === 'local-final-snapshot') {
+          await save.promise;
+          if (outcome === 'failed') throw new Error('controlled removed-root save failure');
+        }
+        return persist(options);
+      };
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => [];
+      f.host.loadState = () => assert.fail('Failed original save must not replace the canvas');
+      const rejection = assert.rejects(f.host.reconcileWorkspaceFolders(), outcome === 'failed'
+        ? /Local final snapshot persistence is failed/ : /did not complete within the boundary/);
+      provider.process(); provider.seal(0);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      provider.release();
+      await until(f.clock, () => record.persistence.submitted, 'removed-root original final submission');
+      if (outcome === 'failed') save.resolve();
+      else f.clock.advance(EXECUTION_CANDIDATE_BUDGETS.boundaryMs + 1);
+      await completed(f.clock, rejection, 'removed root failure reported');
+      assert.strictEqual(f.host.nonNativeHostExecutions.get(record.execution.key), record);
+      assert.equal(f.host.workspaceRecompositionPending, true);
+      assert.ok(f.host.state.nodes.some(node => node.id === record.nodeId));
+      assert.deepEqual(await f.read(f.rootFile), beforeDisk);
+      if (outcome === 'deadline') {
+        save.resolve();
+        assert.equal((await completed(f.clock, record.persistence.promise, 'late original save')).kind, 'saved');
+        assert.ok(f.host.state.nodes.some(node => node.id === record.nodeId), 'Late save cannot resume a rejected recomposition');
+      }
+    } finally { save.resolve(); record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); await f.cleanup(); }
+  });
+}
+
+test('simulated reload checks creation boundary before stopping an existing execution', async () => {
+  const f = simulatedReloadFixture();
+  let record;
+  try {
+    await completed(f.clock, f.start('terminal'), 'original before rejected reload');
+    record = f.record('terminal');
+    f.host.candidateRuntimeStarts = new Map([['pending', {}]]);
+    await assert.rejects(f.host.simulateRuntimeReloadForTest(), /Runtime creation is still pending/);
+    assert.equal(record.execution.snapshot().stopRequested, false);
+    assert.equal(f.owner.snapshot().closing, false);
+    assert.equal(f.providers[0].messages.some(message => message.type === 'requestStop'), false);
+  } finally { record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); }
+});
+
+for (const deadline of [false, true]) {
+  test(`single simulated reload waits for original final save within the existing boundary (deadline=${deadline})`, async () => {
+    const f = simulatedReloadFixture();
+    const save = deferred();
+    let writes = 0;
+    let record;
+    try {
+      await completed(f.clock, f.start('terminal'), 'original before saving reload');
+      record = f.record('terminal');
+      f.host.persistState = async options => {
+        if (options?.reason === 'local-final-snapshot') { writes++; await save.promise; }
+      };
+      let finished = false;
+      const reload = f.host.simulateRuntimeReloadForTest().then(() => { finished = true; });
+      const result = deadline ? assert.rejects(reload, /boundary is unconfirmed|boundary expired/) : reload;
+      await until(f.clock, () => record.execution.snapshot().stopRequested, 'reload requests original stop');
+      const provider = f.providers[0];
+      provider.process(); provider.seal(0);
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+      provider.release();
+      await until(f.clock, () => record.persistence.submitted, 'reload original save submitted');
+      assert.equal(finished, false);
+      assert.equal(f.owner.snapshot().closing, true);
+      if (deadline) f.clock.advance(EXECUTION_CANDIDATE_BUDGETS.boundaryMs + 1);
+      else save.resolve();
+      await completed(f.clock, result, 'bounded reload result');
+      save.resolve();
+      assert.equal((await completed(f.clock, record.persistence.promise, 'original save result')).kind, 'saved');
+      await pump(f.clock);
+      assert.equal(writes, 1);
+      assert.equal(finished, !deadline);
+      assert.equal(f.owner.snapshot().closing, deadline, 'late save must not reopen a rejected reload');
+    } finally { save.resolve(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); }
+  });
+}
+
+for (const retained of [true, false]) {
+  test(`workspace recomposition preserves only already reserved preparations in retained roots (${retained})`, async () => {
+    const f = candidateFixture({ roots: [{ path: '/controlled/root', name: 'root' }] });
+    const gate = deferred();
+    const started = f.host.startNonNativeHostExecution('terminal', 'terminal-1', 80, 24, () => gate.promise);
+    const result = retained ? started : assert.rejects(started, /admission is closed/);
+    const record = f.record('terminal');
+    try {
+      assert.equal(record.canvasRootPath, '/controlled/root');
+      f.host.workspaceRecompositionPending = true;
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => retained ? [{ path: '/controlled/root', name: 'root' }] : [];
+      await assert.rejects(f.start('agent'), /admission is closed/);
+      gate.resolve({ file: '/controlled/shell', args: [], cwd: '/controlled/root', env: {} });
+      await completed(f.clock, result, 'original reservation finishes preparation');
+      assert.equal(f.providers.length, retained ? 1 : 0);
+      if (retained) assert.strictEqual(f.record('terminal'), record);
+    } finally { gate.resolve({ file: '/controlled/shell' }); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose(); }
+  });
+}
+
+for (const closeDuringSave of [false, true]) {
+  test(`workspace recomposition cannot replace state after permanent Host closure (during-save=${closeDuringSave})`, async () => {
+    const f = await persistenceFixture({ candidate: true });
+    configureCanvasRecomposition(f);
+    const save = deferred();
+    let record;
+    try {
+      await completed(f.clock, f.start('terminal'), 'original before permanent boundary');
+      record = f.record('terminal');
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => [];
+      f.host.loadState = () => assert.fail('Permanently closed Host must not recompose its state');
+      f.host.persistState = async options => { if (options?.reason === 'local-final-snapshot') await save.promise; };
+      if (!closeDuringSave) f.host.closeRuntimeSupervisorEventAdmission();
+      const rejection = assert.rejects(f.host.reconcileWorkspaceFolders(), /permanent boundary/);
+      if (closeDuringSave) {
+        const provider = f.providers[0];
+        provider.process(); provider.seal(0);
+        provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+        provider.release();
+        await until(f.clock, () => record.persistence.submitted, 'save before permanent closure');
+        f.host.closeRuntimeSupervisorEventAdmission();
+        save.resolve();
+      } else assert.equal(record.execution.snapshot().stopRequested, false);
+      await completed(f.clock, rejection, 'permanent closure rejects recomposition');
+      assert.ok(f.host.state.nodes.some(node => node.id === record.nodeId));
+    } finally { save.resolve(); await f.cleanup(); }
+  });
+}
+
+for (const failPreparation of [false, true]) {
+  test(`workspace remap keeps pending preparation on its original identity and clears rejected input (${failPreparation})`, async () => {
+    const f = await persistenceFixture({ candidate: true });
+    configureCanvasRecomposition(f);
+    const gate = deferred();
+    const started = f.host.startNonNativeHostExecution('terminal', 'terminal-1', 80, 24, async () => {
+      const spec = await gate.promise;
+      if (failPreparation) throw new Error('controlled preparation failure');
+      return spec;
+    });
+    const result = failPreparation ? assert.rejects(started, /controlled preparation failure/) : started;
+    const record = f.record('terminal');
+    try {
+      const identity = record.execution.identity;
+      f.host.pendingTerminalInitialInputs.set('terminal-1', 'original-initial-input');
+      const localState = structuredClone(f.host.state);
+      const folders = [{ path: f.root, name: 'original' }, { path: path.join(f.directory, 'other'), name: 'other' }];
+      f.host.getMultiRootWorkspaceFoldersForComposition = () => folders;
+      f.host.loadState = () => composeMultiRootCanvasState({ workspaceFolders: folders,
+        rootStates: [{ rootPath: f.root, state: localState }] });
+      await completed(f.clock, f.host.reconcileWorkspaceFolders(), 'root added during preparation');
+      const mapped = namespaceCanvasObjectId(f.root, 'terminal-1');
+      assert.equal(record.nodeId, mapped);
+      assert.strictEqual(record.execution.identity, identity);
+      assert.equal(f.host.pendingTerminalInitialInputs.has('terminal-1'), false);
+      assert.equal(f.host.pendingTerminalInitialInputs.get(mapped), 'original-initial-input');
+      gate.resolve({ file: '/controlled/shell', args: [], cwd: f.root, env: {} });
+      await completed(f.clock, result, 'remapped preparation result');
+      if (failPreparation) {
+        const failed = f.host.state.nodes.find(node => node.id === mapped);
+        assert.equal(failed.status, 'error', 'preparation failure follows the original remapped node');
+        assert.equal(failed.metadata.terminal.pendingLaunch, undefined);
+        assert.equal(failed.summary, 'controlled preparation failure');
+        assert.equal(f.host.pendingTerminalInitialInputs.has(mapped), false);
+        assert.equal(f.host.nonNativeHostExecutions.size, 0);
+        assert.equal(record.persistence.result.kind, 'not-required');
+        assert.equal(f.providers.length, 0);
+      } else {
+        assert.strictEqual(f.host.nonNativeHostExecutions.get(`terminal:${mapped}`), record);
+        assert.equal(record.mutationError, undefined);
+        assert.ok(f.diagnostics.some(event => event.name === 'execution/started' && event.detail.nodeId === mapped
+          && event.detail.sessionId === identity.executionId));
+      }
+    } finally { gate.resolve({ file: '/controlled/shell' }); await f.cleanup(); }
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`candidate duplicate running ${kind} reports its original execution instead of rejecting unhandled`, async () => {
+    const f = candidateFixture();
+    let original;
+    try {
+      await completed(f.clock, f.start(kind), 'original before duplicate');
+      original = f.record(kind);
+      const metadata = original.persistence.metadata;
+      const starts = f.diagnostics.filter(event => event.name === 'execution/started');
+      await completed(f.clock, f.start(kind), 'duplicate handled without throwing');
+      assert.strictEqual(f.record(kind), original);
+      assert.strictEqual(original.persistence.metadata, metadata);
+      assert.equal(f.providers.length, 1);
+      assert.deepEqual(f.diagnostics.filter(event => event.name === 'execution/started'), starts);
+      assert.ok(f.diagnostics.some(event => event.name === 'execution/startRejected' &&
+        event.detail.kind === kind && event.detail.reason === 'already-running'));
+      assert.ok(f.posted.some(message => message.type === 'host/error' &&
+        message.payload.message === `This ${kind === 'agent' ? 'Agent' : 'Terminal'} is already running.`));
+      assert.equal(original.execution.snapshot().stopRequested, false);
+    } finally { original?.business?.cancelActivityPoll?.(); original?.business?.lineContextTracker.dispose(); original?.tracker.dispose(); }
+  });
+}
+
+
+function startupResizeFixture(kind, waitingAt, options = {}) {
+  const preparing = deferred();
+  const f = candidateFixture({ ...options, ...(waitingAt === 'prepare' ? { environment: async () => {
+    const result = await preparing.promise; if (result instanceof Error) throw result; return result;
+  } } : {}) });
+  const originalFactory = f.injection.createTransport;
+  let held;
+  let released = false;
+  f.injection.createTransport = identity => {
+    const transport = originalFactory(identity);
+    const connect = transport.connect.bind(transport);
+    transport.connect = sink => connect({ ...sink, message(message) {
+      if (!released && message.type === waitingAt && (waitingAt !== 'operationObservation' || message.operationId === 'owner-start')) held = result => sink.message(result ? { ...message, result } : message);
+      else sink.message(message);
+    } });
+    return transport;
+  };
+  const owner = new ExecutionOwnerLifecycle(f.injection);
+  f.host.nonNativeExecutionOwner = owner;
+  const starting = f.start(kind);
+  void starting.catch(() => {});
+  return { ...f, owner, starting,
+    waiting: () => waitingAt === 'prepare' ? Boolean(f.record(kind)) : Boolean(held),
+    release: result => { if (released) return; released = true; if (waitingAt === 'prepare') preparing.resolve(result ?? {}); else held(result); },
+    async cleanup() {
+      const record = f.record(kind);
+      const provider = f.providers[0];
+      if (provider && record && !record.execution.snapshot().settled) {
+        provider.process();
+        provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+        provider.seal(record.lastDataSequence); provider.release();
+        await pump(f.clock, () => record.execution.snapshot().settled);
+      }
+      record?.business?.cancelActivityPoll?.(); record?.business?.lineContextTracker.dispose(); record?.tracker.dispose();
+    }
+  };
+}
+
+for (const kind of ['agent', 'terminal']) {
+  for (const waitingAt of ['prepare', 'ready', 'operationObservation']) {
+    test(`startup resize ${kind} retains latest viewport while waiting for ${waitingAt}`, async () => {
+      const f = startupResizeFixture(kind, waitingAt);
+      try {
+        await until(f.clock, f.waiting, 'startup barrier');
+        const record = f.record(kind);
+        const identity = record.execution.identity;
+        const chain = record.terminalChain;
+        f.host.resizeExecutionSession(kind, `${kind}-1`, 101, 31);
+        f.host.resizeExecutionSession(kind, `${kind}-1`, 107, 37);
+        await pump(f.clock, () => true);
+        assert.equal(record.pendingResize?.cols, 107, 'latest viewport must be retained');
+        assert.equal(record.terminalChain, chain, 'waiting for start cannot block output consumption');
+        assert.equal(f.posted.some(message => message.type === 'host/error'), false);
+        assert.equal(f.providers[0]?.messages.some(message => message.type === 'resize') ?? false, false);
+        if (waitingAt === 'operationObservation') {
+          f.providers[0].output(1, 'accepted-before-start-confirmation\r\n');
+          await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'startup output consumed');
+        }
+        f.release();
+        await completed(f.clock, f.starting, 'original started');
+        await until(f.clock, () => f.providers[0].messages.some(message => message.type === 'resize'), 'latest viewport dispatch');
+        const requests = f.providers[0].messages.filter(message => message.type === 'resize');
+        assert.equal(requests.length, 1);
+        assert.deepEqual(requests[0].identity, identity);
+        assert.equal(requests[0].cols, 107); assert.equal(requests[0].rows, 37);
+        assert.equal(record.cols, 80, 'only native confirmation may change authority dimensions');
+        f.providers[0].message({ type: 'interactionObservation', interactionId: requests[0].interactionId, result: { kind: 'resized' } });
+        await until(f.clock, () => record.cols === 107 && record.rows === 37, 'confirmed viewport commit');
+        assert.equal(record.pendingResize, undefined);
+        assert.equal(f.providers.length, 1);
+        assert.equal(f.posted.some(message => message.type === 'host/error'), false);
+        if (waitingAt === 'operationObservation') assert.match(record.tracker.getSerializedState().data, /accepted-before-start-confirmation/);
+      } finally { await f.cleanup(); }
+    });
+  }
+}
+
+
+for (const waitingAt of ['prepare', 'operationObservation']) {
+  test(`startup resize ${waitingAt === 'prepare' ? 'cancels unsubmitted' : 'rejects original'} pending intent when ${waitingAt} fails`, async () => {
+    const f = startupResizeFixture('terminal', waitingAt);
+    try {
+      await until(f.clock, f.waiting, 'failing startup barrier');
+      const record = f.record('terminal');
+      const pendingResize = f.host.resizeNonNativeHostExecution(record, 99, 29);
+      const resizing = waitingAt === 'prepare'
+        ? pendingResize.then(result => assert.equal(result, 'cancelled'))
+        : assert.rejects(pendingResize, /start was failed|controlled start failed/);
+      const starting = assert.rejects(f.starting, /preparation failed|start was failed|controlled start failed/);
+      f.release(waitingAt === 'prepare' ? new Error('controlled preparation failed')
+        : { kind: 'failed', stage: 'spawn', reason: 'controlled start failed' });
+      await completed(f.clock, starting, 'startup failure');
+      await completed(f.clock, resizing, 'pending viewport failure');
+      assert.equal(record.pendingResize, undefined);
+      assert.equal(f.providers[0]?.messages.some(message => message.type === 'resize') ?? false, false);
+      assert.equal(record.cols, 80);
+    } finally { await f.cleanup(); }
+  });
+}
+
+test('startup resize waits for startup budget and receives a fresh interaction budget when ready', async () => {
+  const f = startupResizeFixture('terminal', 'ready');
+  try {
+    await until(f.clock, f.waiting, 'unready provider');
+    const record = f.record('terminal');
+    const resizing = f.host.resizeNonNativeHostExecution(record, 101, 31);
+    f.clock.advance(EXECUTION_INTERACTION_LIMITS.observationMs + 1);
+    assert.equal(record.pendingResize.deadline, undefined, 'starting is not a submitted terminal interaction');
+    f.release();
+    await completed(f.clock, f.starting, 'later original startup');
+    await until(f.clock, () => f.providers[0].messages.some(message => message.type === 'resize'), 'late startup viewport');
+    const request = f.providers[0].messages.find(message => message.type === 'resize');
+    f.providers[0].message({ type: 'interactionObservation', interactionId: request.interactionId, result: { kind: 'resized' } });
+    assert.equal(await completed(f.clock, resizing, 'viewport after long startup'), 'applied');
+    assert.equal(record.cols, 101);
+  } finally { await f.cleanup(); }
+});
+
+test('startup resize settles when the original provider startup times out', async () => {
+  const f = startupResizeFixture('terminal', 'ready');
+  try {
+    await until(f.clock, f.waiting, 'provider never ready');
+    const record = f.record('terminal');
+    const resizing = assert.rejects(f.host.resizeNonNativeHostExecution(record, 101, 31));
+    const starting = assert.rejects(f.starting, /unconfirmed|failed/);
+    f.clock.advance(EXECUTION_CANDIDATE_BUDGETS.startMs);
+    await completed(f.clock, starting, 'startup observation deadline');
+    await completed(f.clock, resizing, 'startup timeout settles viewport');
+    assert.equal(record.pendingResize, undefined);
+    assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false);
+    assert.equal(record.cols, 80);
+  } finally { await f.cleanup(); }
+});
+
+test('startup resize is cancelled immediately when Host stops an execution still preparing', async () => {
+  const f = startupResizeFixture('terminal', 'prepare');
+  try {
+    await until(f.clock, f.waiting, 'preparing original');
+    const record = f.record('terminal');
+    const resizing = f.host.resizeNonNativeHostExecution(record, 101, 31);
+    const stopping = f.host.stopExecutionSession('terminal', 'terminal-1');
+    assert.equal(await completed(f.clock, resizing, 'preparation viewport cancellation'), 'cancelled');
+    assert.equal(record.pendingResize, undefined);
+    const starting = assert.rejects(f.starting);
+    f.release();
+    await completed(f.clock, starting, 'cancelled preparation');
+    await completed(f.clock, stopping, 'preparation stop');
+    assert.equal(f.providers.length, 0);
+  } finally { await f.cleanup(); }
+});
+
+for (const boundary of ['stop', 'source', 'authority-close']) {
+  test(`startup resize cancels before dispatch at ${boundary} without changing final state`, async () => {
+    const f = startupResizeFixture('terminal', 'operationObservation');
+    try {
+      await until(f.clock, f.waiting, 'started observation held');
+      const record = f.record('terminal');
+      const resizing = f.host.resizeNonNativeHostExecution(record, 101, 31);
+      if (boundary === 'stop') void record.execution.requestStop('test-before-started');
+      if (boundary === 'source') f.providers[0].seal(0);
+      if (boundary === 'authority-close') f.owner.closeAdmission(false);
+      f.release();
+      await completed(f.clock, f.starting, 'startup result with closing boundary');
+      assert.equal(await completed(f.clock, resizing, 'cancelled viewport intent'), 'cancelled');
+      assert.equal(record.pendingResize, undefined);
+      assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false);
+      assert.equal(f.posted.some(message => message.type === 'host/error'), false);
+      assert.equal(record.cols, 80); assert.equal(record.rows, 24);
+      assert.equal(record.terminalRevision, 0);
+      assert.equal(record.mutationError, undefined);
+    } finally { await f.cleanup(); }
+  });
+}
+
+for (const boundary of ['stop', 'source']) {
+  test(`queued resize cancels at ${boundary} after running admission and preserves the tail`, async () => {
+    const f = await interactiveHostFixture();
+    const held = deferred();
+    try {
+      f.record.terminalChain = held.promise;
+      const resizing = f.host.resizeNonNativeHostExecution(f.record, 101, 31);
+      if (boundary === 'stop') void f.record.execution.requestStop('test-pending-viewport');
+      else f.provider.seal(0);
+      held.resolve();
+      assert.equal(await completed(f.clock, resizing, 'no longer live viewport'), 'cancelled');
+      assert.equal(f.requests.length, 0);
+      assert.equal(f.record.cols, 113); assert.equal(f.record.terminalRevision, 0);
+      assert.equal(f.record.mutationError, undefined);
+      assert.equal(f.posted.some(message => message.type === 'host/error'), false);
+    } finally { held.resolve(); await f.cleanup(); }
+  });
+}
+
+test('startup resize keeps quarantine errors instead of classifying them as viewport cancellation', async () => {
+  const f = startupResizeFixture('terminal', 'ready');
+  try {
+    await until(f.clock, f.waiting, 'startup before quarantine');
+    const record = f.record('terminal');
+    const resizing = assert.rejects(f.host.resizeNonNativeHostExecution(record, 101, 31), /controlled quarantine/);
+    f.owner.authority.quarantine('controlled quarantine');
+    f.host.queueNonNativeHostResize(record);
+    await completed(f.clock, resizing, 'quarantined pending viewport');
+    assert.equal(record.pendingResize, undefined);
+    assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false);
+  } finally { await f.cleanup(); }
+});
+
+
+test('startup resize lets real page output credit complete before started and serializes only the confirmed viewport', async () => {
+  const messages = [];
+  const f = startupResizeFixture('terminal', 'operationObservation', {
+    outputCredit: true, onHostMessage: message => messages.push(message)
+  });
+  const acknowledge = message => f.send('editor', 'webview/executionLocalOutputApplied', {
+    nodeId: message.payload.nodeId, kind: 'terminal', executionSessionId: message.payload.executionSessionId,
+    ...message.payload.localOutputReceipt, outcome: 'applied'
+  }, message.lifecycle);
+  try {
+    await until(f.clock, f.waiting, 'held started with page credit');
+    const record = f.record('terminal');
+    const attach = f.host.postLocalExecutionSnapshot(record, { surface: 'editor' });
+    await until(f.clock, () => messages.some(message => message.payload?.localOutputReceipt), 'pre-start attach');
+    const firstResize = f.host.resizeNonNativeHostExecution(record, 101, 31);
+    const resizing = f.host.resizeNonNativeHostExecution(record, 107, 37);
+    assert.equal(await firstResize, 'superseded');
+    acknowledge(messages.find(message => message.payload?.localOutputReceipt));
+    await completed(f.clock, attach, 'pre-start snapshot applied');
+    f.providers[0].output(1, 'startup-page-credit-tail\r\n');
+    await until(f.clock, () => messages.some(message => message.type === 'host/executionOutput'), 'pre-start output delivered');
+    assert.equal(record.execution.snapshot().adapter.consumedThrough, 0);
+    acknowledge(messages.find(message => message.type === 'host/executionOutput'));
+    await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'page consumption while awaiting started');
+    assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false);
+    f.release();
+    await completed(f.clock, f.starting, 'started after page consumption');
+    await until(f.clock, () => f.providers[0].messages.some(message => message.type === 'resize'), 'ready viewport request');
+    const request = f.providers[0].messages.find(message => message.type === 'resize');
+    f.providers[0].message({ type: 'interactionObservation', interactionId: request.interactionId, result: { kind: 'resized' } });
+    await until(f.clock, () => messages.some(message => message.type === 'host/executionSnapshot' && message.payload.cols === 107), 'confirmed resized snapshot');
+    const snapshot = messages.find(message => message.type === 'host/executionSnapshot' && message.payload.cols === 107);
+    assert.equal(snapshot.payload.rows, 37);
+    assert.match(snapshot.payload.serializedTerminalState.data, /startup-page-credit-tail/);
+    acknowledge(snapshot);
+    assert.equal(await completed(f.clock, resizing, 'page applied confirmed geometry'), 'applied');
+    assert.equal(f.posted.some(message => message.type === 'host/error'), false);
+  } finally { f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-complete'); await f.cleanup(); }
+});
+
+for (const queued of [false, true]) {
+  test(`startup resize refuses a replaced metadata binding before native dispatch (${queued})`, async () => {
+    const f = startupResizeFixture('terminal', 'ready');
+    const held = deferred();
+    try {
+      await until(f.clock, f.waiting, 'original metadata');
+      const record = f.record('terminal');
+      if (queued) { f.release(); await completed(f.clock, f.starting, 'running before held queue'); record.terminalChain = held.promise; }
+      const resizing = assert.rejects(f.host.resizeNonNativeHostExecution(record, 101, 31), /original resize authority binding changed/);
+      const node = f.host.state.nodes.find(node => node.id === 'terminal-1');
+      node.metadata = { terminal: { ...node.metadata.terminal } };
+      if (queued) held.resolve();
+      else { f.release(); await completed(f.clock, f.starting, 'started with replaced metadata'); }
+      await completed(f.clock, resizing, 'original binding rejected');
+      assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false);
+      assert.equal(record.cols, 80);
+    } finally { held.resolve(); await f.cleanup(); }
+  });
+}
+
+
+async function ownedAbnormalExitFixture(providerKind = 'codex') {
+  const f = await interactiveHostFixture('agent', providerKind);
+  const shown = [];
+  const finalStates = [];
+  const saves = [];
+  f.host.enabledAttentionSignals = ['agentAbnormalExit'];
+  f.host.attentionNotificationBridgeMode = 'workbench';
+  f.host.showExecutionAttentionNotification = async (...args) => { shown.push(args); };
+  const persist = f.host.persistState.bind(f.host);
+  f.host.persistState = async options => {
+    saves.push(options);
+    if (options?.reason === 'local-final-snapshot') finalStates.push(structuredClone(f.host.state));
+    await persist(options);
+  };
+  const writing = f.host.writeExecutionInput('agent', 'agent-1', 'go\r');
+  await until(f.clock, () => f.requests.some(m => m.type === 'input'), 'Agent input reached provider');
+  f.reply(f.requests.find(m => m.type === 'input'), { kind: 'written', writtenBytes: 3 });
+  assert.equal(await completed(f.clock, writing, 'Agent input written'), true);
+  assert.equal(f.record.business.lifecycleStatus, 'running');
+  f.provider.output(1, 'original final output\r\n');
+  await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === 1, 'original output consumed');
+  async function finish(result = { kind: 'exited', exitCode: 27 }) {
+    f.provider.message({ type: 'processResult', result });
+    f.provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+    f.provider.seal(1); f.provider.release();
+    await until(f.clock, () => f.record.persistence.result !== undefined, 'original final persistence completed');
+  }
+  return { ...f, shown, finalStates, saves, finish,
+    node: () => f.host.state.nodes.find(node => node.id === 'agent-1'),
+    posted: () => f.diagnostics.filter(event => event.name === 'execution/attentionNotificationPosted') };
+}
+
+for (const providerKind of ['codex', 'claude']) {
+  for (const lifecycle of ['running', 'waiting-input']) {
+    test(`owned abnormal exit ${providerKind} ${lifecycle} notifies once and saves attention with final output`, async () => {
+      const f = await ownedAbnormalExitFixture(providerKind);
+      try {
+        f.record.business.lifecycleStatus = lifecycle;
+        await f.finish();
+        assert.equal(f.record.persistence.result.kind, 'saved');
+        assert.equal(f.node().status, 'error');
+        assert.equal(f.node().metadata.agent.lastExitCode, 27);
+        assert.equal(f.node().metadata.agent.attentionPending, true);
+        assert.equal(f.shown.length, 1);
+        assert.equal(f.posted().length, 1);
+        assert.equal(f.posted()[0].detail.trigger, 'agent-abnormal-interruption');
+        assert.equal(f.posted()[0].detail.provider, providerKind);
+        assert.equal(f.posted()[0].detail.lifecycleStatus, 'error');
+        assert.equal(f.posted()[0].detail.exitCode, 27);
+        assert.equal(f.posted()[0].detail.sessionId, f.record.execution.identity.executionId);
+        const saved = f.finalStates[0].nodes.find(node => node.id === 'agent-1');
+        assert.equal(saved.status, 'error');
+        assert.equal(saved.metadata.agent.attentionPending, true, 'attention must be in the original final save');
+        assert.match(saved.metadata.agent.serializedTerminalState.data, /original final output/);
+        assert.equal(f.saves.filter(options => options?.reason === 'execution-attention').length, 0,
+          'final save owns the attention write');
+        f.host.persistNonNativeHostFinal(f.record, { kind: 'applied', finalRevision: 1, throughDataSequence: 1 });
+        assert.equal(f.shown.length, 1, 'duplicate finalization cannot notify twice');
+        assert.equal(f.finalStates.length, 1);
+      } finally { await f.cleanup(); }
+    });
+  }
+}
+
+for (const scenario of ['exit-zero', 'user-stop', 'starting', 'resuming', 'signal', 'disabled']) {
+  test(`owned abnormal exit preserves suppression for ${scenario}`, async () => {
+    const f = await ownedAbnormalExitFixture();
+    try {
+      let stopping;
+      if (scenario === 'user-stop') {
+        stopping = f.host.stopExecutionSession('agent', 'agent-1');
+        await until(f.clock, () => f.record.execution.snapshot().stopRequested, 'explicit Host stop');
+      }
+      if (scenario === 'starting' || scenario === 'resuming') f.record.business.lifecycleStatus = scenario;
+      if (scenario === 'disabled') f.host.enabledAttentionSignals = [];
+      await f.finish(scenario === 'signal' ? { kind: 'signaled', signal: 'SIGTERM' }
+        : { kind: 'exited', exitCode: scenario === 'exit-zero' ? 0 : 27 });
+      if (stopping) await completed(f.clock, stopping, 'Host stop completed');
+      assert.equal(f.record.persistence.result.kind, 'saved');
+      assert.equal(f.node().status, ['exit-zero', 'user-stop'].includes(scenario) ? 'stopped' : 'error');
+      assert.notEqual(f.node().metadata.agent.attentionPending, true);
+      assert.equal(f.shown.length, 0);
+      assert.equal(f.posted().length, 0);
+    } finally { await f.cleanup(); }
+  });
+}
+
+for (const scenario of ['bridge-none', 'covered-by-stream']) {
+  test(`owned abnormal exit saves attention without new delivery for ${scenario}`, async () => {
+    const f = await ownedAbnormalExitFixture();
+    try {
+      if (scenario === 'bridge-none') f.host.attentionNotificationBridgeMode = 'none';
+      else f.record.business.attentionSignalState = { lastAbnormalStreamNotificationAtMs: Date.now() };
+      await f.finish();
+      assert.equal(f.record.persistence.result.kind, 'saved');
+      assert.equal(f.finalStates[0].nodes.find(node => node.id === 'agent-1').metadata.agent.attentionPending, true);
+      assert.equal(f.shown.length, 0);
+      assert.equal(f.posted().length, 0);
+      if (scenario === 'covered-by-stream') assert.equal(f.diagnostics.some(event =>
+        event.name === 'execution/attentionNotificationSuppressed' && event.detail.reason === 'covered-by-abnormal-stream'), true);
+    } finally { await f.cleanup(); }
+  });
+}
+
+for (const scenario of ['pending-delivery', 'failed-delivery', 'failed-workbench', 'failed-save']) {
+  test(`owned abnormal exit isolates ${scenario} from the other completion responsibility`, async () => {
+    const f = await ownedAbnormalExitFixture();
+    const delivery = deferred();
+    const requests = [];
+    f.host.attentionNotificationBridgeMode = 'system';
+    f.host.postExecutionAttentionNotificationToCompanion = request => {
+      requests.push(request);
+      return scenario === 'failed-delivery' ? Promise.reject(new Error('controlled notification rejection')) : delivery.promise;
+    };
+    if (scenario === 'failed-workbench') {
+      f.host.attentionNotificationBridgeMode = 'workbench';
+      f.host.showExecutionAttentionNotification = async () => { throw new Error('controlled workbench rejection'); };
+    }
+    if (scenario === 'failed-save') f.host.persistState = async () => { throw new Error('controlled final save failure'); };
+    try {
+      await f.finish();
+      assert.equal(f.record.persistence.result.kind, scenario === 'failed-save' ? 'failed' : 'saved');
+      assert.equal(requests.length, scenario === 'failed-workbench' ? 0 : 1);
+      assert.equal(f.node().metadata.agent.attentionPending, true);
+      if (scenario === 'failed-save') assert.match(f.record.persistence.result.reason, /controlled final save failure/);
+      for (const reader of f.record.localReaders.values()) {
+        await reader.finalPublication;
+        await f.host.handleLocalExecutionTerminalSettled('editor', { kind: 'agent', nodeId: 'agent-1',
+          executionSessionId: f.record.execution.identity.executionId,
+          outcome: { kind: 'applied', finalOutputSequence: 1 } }, reader.lifecycle, reader.webview);
+      }
+      if (scenario !== 'failed-save') await until(f.clock, () => !f.host.nonNativeHostExecutions.has('agent:agent-1'),
+        'execution retires while delivery is still pending');
+      if (scenario === 'failed-delivery' || scenario === 'failed-workbench') await until(f.clock, () => f.diagnostics.some(event =>
+        event.name === 'execution/attentionNotificationFailed' && event.detail.sessionId === f.record.execution.identity.executionId),
+      'notification failure recorded separately');
+      // Late completion may report delivery, but cannot reset attention on a replacement node.
+      const replacement = structuredClone(f.node());
+      replacement.metadata.agent.attentionPending = false;
+      f.host.state.nodes = f.host.state.nodes.map(node => node.id === replacement.id ? replacement : node);
+      delivery.resolve({ status: 'posted', backend: 'test', activationMode: 'test' });
+      await pump(f.clock, () => f.diagnostics.some(event => event.name === 'execution/attentionNotificationCompanionPosted'));
+      assert.equal(f.node().metadata.agent.attentionPending, false);
+    } finally {
+      delivery.resolve({ status: 'posted', backend: 'test', activationMode: 'test' });
+      await f.cleanup();
+    }
+  });
+}
+
+for (const replacement of ['metadata', 'record', 'node']) {
+  test(`owned abnormal exit rejects stale ${replacement} before notification`, async () => {
+    const f = await ownedAbnormalExitFixture();
+    try {
+      if (replacement === 'metadata') f.node().metadata.agent = { ...f.node().metadata.agent };
+      else if (replacement === 'record') f.host.nonNativeHostExecutions.delete('agent:agent-1');
+      else f.host.state.nodes = f.host.state.nodes.filter(node => node.id !== 'agent-1');
+      await f.finish();
+      assert.notEqual(f.record.persistence.result.kind, 'saved');
+      assert.equal(f.shown.length, 0);
+      assert.equal(f.posted().length, 0);
+      assert.notEqual(f.node()?.metadata.agent.attentionPending, true);
+    } finally { await f.cleanup(); }
+  });
+}
+
+
+for (const providerKind of ['codex', 'claude']) {
+  for (const scenario of ['failure', 'signal', 'exit-zero', 'stop', 'input', 'prompt', 'unknown']) {
+    test(`owned resume final ${providerKind} ${scenario} preserves phase and recovery metadata`, async () => {
+      const f = await interactiveHostFixture('agent', providerKind, {
+        resumeRequested: true,
+        agentMetadata: { lastResumeError: 'previous attempt failed' },
+        resumeContext: { supported: true, strategy: 'fake-provider', sessionId: 'original-resume-id' }
+      });
+      const initialResumeError = f.host.state.nodes.find(node => node.id === 'agent-1').metadata.agent.lastResumeError;
+      const shown = [];
+      const finalStates = [];
+      f.host.enabledAttentionSignals = ['agentAbnormalExit'];
+      f.host.attentionNotificationBridgeMode = 'workbench';
+      f.host.showExecutionAttentionNotification = async (...args) => { shown.push(args); };
+      const persist = f.host.persistState.bind(f.host);
+      f.host.persistState = async options => {
+        if (options?.reason === 'local-final-snapshot') finalStates.push(structuredClone(f.host.state));
+        await persist(options);
+      };
+      try {
+        assert.equal(f.record.business.launchMode, 'resume');
+        assert.equal(f.record.business.lifecycleStatus, 'resuming');
+        assert.equal(f.record.business.resumePhaseActive, true);
+        assert.deepEqual(f.provider.messages.find(message => message.type === 'start').spec.args,
+          ['resume', 'original-resume-id']);
+        if (scenario === 'input') {
+          const writing = f.host.writeExecutionInput('agent', 'agent-1', 'continue\r');
+          await until(f.clock, () => f.requests.some(m => m.type === 'input'), 'resume input submitted');
+          f.reply(f.requests.find(m => m.type === 'input'), { kind: 'written', writtenBytes: 9 });
+          assert.equal(await completed(f.clock, writing, 'resume input confirmed'), true);
+          assert.equal(f.record.business.lifecycleStatus, 'running');
+          assert.equal(f.record.business.resumePhaseActive, false);
+        }
+        f.provider.output(1, scenario === 'prompt' ? 'restored\r\n> ' : 'resume transport ended\r\n');
+        await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === 1, 'original resume output consumed');
+        if (scenario === 'prompt') {
+          f.clock.advance(300);
+          assert.equal(f.record.business.lifecycleStatus, 'waiting-input');
+          assert.equal(f.record.business.resumePhaseActive, false);
+        }
+        let stopping;
+        if (scenario === 'stop') {
+          stopping = f.host.stopExecutionSession('agent', 'agent-1');
+          await until(f.clock, () => f.record.execution.snapshot().stopRequested, 'explicit resume stop');
+        }
+        const result = scenario === 'signal' ? { kind: 'signaled', signal: 'SIGTERM' }
+          : scenario === 'unknown' ? { kind: 'unconfirmed', reason: 'resume process outcome unknown' }
+          : { kind: 'exited', exitCode: scenario === 'exit-zero' ? 0 : 33 };
+        f.provider.message({ type: 'processResult', result });
+        f.provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+        f.provider.seal(1); f.provider.release();
+        await until(f.clock, () => f.record.persistence.result !== undefined, 'original resume final persistence');
+        if (stopping) await completed(f.clock, stopping, 'resume stop completed');
+        const node = f.host.state.nodes.find(node => node.id === 'agent-1');
+        if (scenario === 'unknown') {
+          assert.equal(f.record.persistence.result.kind, 'unconfirmed');
+          assert.equal(finalStates.length, 0);
+          assert.notEqual(node.status, 'resume-failed');
+          assert.equal(shown.length, 0);
+        } else {
+          const resumeFailed = scenario === 'failure' || scenario === 'signal';
+          const status = resumeFailed ? 'resume-failed' : ['stop', 'exit-zero'].includes(scenario) ? 'stopped' : 'error';
+          assert.equal(f.record.persistence.result.kind, 'saved');
+          assert.equal(node.status, status);
+          const saved = finalStates[0].nodes.find(node => node.id === 'agent-1');
+          assert.equal(saved.status, status);
+          assert.equal(saved.metadata.agent.lifecycle, status);
+          assert.equal(saved.metadata.agent.lastExitCode, result.exitCode);
+          assert.equal(saved.metadata.agent.lastExitSignal, result.signal);
+          assert.equal(saved.metadata.agent.resumeSessionId, 'original-resume-id');
+          assert.equal(saved.metadata.agent.liveSession, false);
+          assert.equal(saved.metadata.agent.lastExitMessage, saved.summary);
+          assert.match(saved.metadata.agent.serializedTerminalState.data, /restored|resume transport ended/);
+          assert.equal(saved.metadata.agent.lastResumeError, resumeFailed ? saved.summary : undefined);
+          if (resumeFailed) assert.match(saved.summary, /while resuming/);
+          assert.equal(shown.length, status === 'error' ? 1 : 0);
+          assert.equal(saved.metadata.agent.attentionPending === true, status === 'error');
+          f.host.persistNonNativeHostFinal(f.record, { kind: 'applied', finalRevision: 1, throughDataSequence: 1 });
+          assert.equal(finalStates.length, 1, 'same original final is persisted only once');
+        }
+        assert.equal(initialResumeError, undefined, 'a new attempt clears the previous resume error');
+      } finally { await f.cleanup(); }
+    });
+  }
+}
+
+
+function sendCandidateStart(f, kind, resume = false, provider = 'codex') {
+  for (const surface of ['editor', 'panel']) {
+    f.host.renderedWebviewLifecycle.set(f.host.surfaceMessageWebview[surface], f.host.getSurfaceLifecycleIdentity(surface));
+  }
+  f.send('editor', 'webview/startExecutionSession', { kind, nodeId: `${kind}-1`, cols: 80, rows: 24,
+    ...(kind === 'agent' ? { provider, resume } : {}) });
+}
+
+for (const scenario of [
+  { kind: 'terminal', boundary: 'environment' },
+  ...['codex', 'claude'].flatMap(provider => [false, true].flatMap(resume =>
+    ['environment', 'cli'].map(boundary => ({ kind: 'agent', provider, resume, boundary }))))
+]) {
+  const { kind, provider, resume = false, boundary } = scenario;
+  test(`preparation failure ${kind} ${provider ?? ''} ${resume ? 'resume' : 'fresh'} at ${boundary} settles state and permits retry`, async () => {
+    const gate = deferred();
+    const failure = new Error('controlled launch preparation failed');
+    const f = candidateFixture({ outputCredit: true, admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+    const method = boundary === 'cli' ? 'resolveAgentCli' : 'resolveExecutionEnvironment';
+    const prepare = f.host[method];
+    f.host[method] = async () => { await gate.promise; throw failure; };
+    f.host.resolveAgentResumeContext = () => ({ supported: true, strategy: 'fake-provider', sessionId: 'original-resume' });
+    const node = f.host.state.nodes.find(value => value.kind === kind);
+    const history = { version: 1, cols: 80, rows: 24, ansi: 'original-screen' };
+    node.status = resume ? 'resuming' : kind === 'agent' ? 'starting' : 'launching';
+    node.summary = 'Waiting for node size';
+    node.metadata[kind] = { provider, lifecycle: node.status, liveSession: false,
+      pendingLaunch: resume ? 'resume' : 'start', recentOutput: 'original-history', serializedTerminalState: history,
+      resumeSupported: true, resumeStrategy: 'fake-provider', resumeSessionId: 'original-resume',
+      resumeStoragePath: '/controlled/history', lastExitCode: 23 };
+    let published;
+    f.host.postState = () => { published = structuredClone(f.host.state); };
+    sendCandidateStart(f, kind, resume, provider);
+    await until(f.clock, () => Boolean(f.record(kind)), 'original preparation');
+    const original = f.record(kind);
+    f.host.resizeExecutionSession(kind, original.nodeId, 103, 33);
+    assert.ok(original.pendingResize);
+    gate.resolve();
+    await until(f.clock, () => f.diagnostics.some(event => event.name === 'execution/startFailed'), 'original failure reported');
+    const failed = f.host.state.nodes.find(value => value.kind === kind);
+    assert.equal(failed.status, resume ? 'resume-failed' : 'error');
+    assert.equal(failed.metadata[kind].lifecycle, failed.status);
+    assert.equal(failed.metadata[kind].liveSession, false);
+    assert.equal(failed.metadata[kind].pendingLaunch, undefined);
+    assert.equal(failed.summary, failure.message);
+    assert.equal(failed.metadata[kind].lastExitMessage, failure.message);
+    assert.equal(failed.metadata[kind].lastRuntimeError, failure.message);
+    if (kind === 'agent') assert.equal(failed.metadata.agent.lastResumeError, resume ? failure.message : undefined);
+    assert.equal(failed.metadata[kind].recentOutput, 'original-history');
+    assert.deepEqual(failed.metadata[kind].serializedTerminalState, history);
+    assert.equal(failed.metadata[kind].resumeSessionId, 'original-resume');
+    assert.equal(failed.metadata[kind].resumeStoragePath, '/controlled/history');
+    assert.equal(failed.metadata[kind].lastExitCode, 23, 'no fabricated process outcome');
+    assert.equal(published.nodes.find(value => value.kind === kind).status, failed.status);
+    assert.equal(f.persisted.length, 1, 'ordinary canvas failure state is persisted');
+    assert.equal(f.persisted.some(detail => detail?.reason === 'local-final-snapshot'), false);
+    assert.equal(original.persistence.result.kind, 'not-required');
+    assert.equal(original.persistence.submitted, false);
+    assert.equal(f.providers.length, 0);
+    assert.equal(f.record(kind), undefined);
+    assert.equal(original.pendingResize, undefined);
+    assert.equal(original.cols, 80, 'cancelled resize does not change terminal authority');
+    assert.equal(f.diagnostics.some(event => event.name === 'execution/resizeRejected'), false);
+    assert.equal(f.owner.authority.snapshot().active, 0);
+    assert.equal(f.diagnostics.some(event => event.name === 'execution/exited'), false);
+    assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+    f.host[method] = prepare;
+    let retry;
+    try {
+      await completed(f.clock, f.start(kind), 'explicit retry');
+      retry = f.record(kind);
+      assert.equal(f.providers.length, 1);
+      assert.notEqual(retry.execution.identity.executionId, original.execution.identity.executionId);
+    } finally {
+      if (retry) {
+        const transport = f.providers[0];
+        transport.process(); transport.seal(retry.lastDataSequence);
+        transport.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+        transport.release();
+        await pump(f.clock, () => retry.execution.snapshot().settled);
+        retry.business?.cancelActivityPoll?.(); retry.business?.lineContextTracker.dispose(); retry.tracker.dispose();
+      }
+    }
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`preparation failure ${kind} preserves the original internal rejection without page reporting`, async () => {
+    const failure = new Error('controlled internal preparation failure');
+    const f = candidateFixture({ environment: async () => { throw failure; } });
+    await assert.rejects(f.start(kind), error => error === failure);
+    assert.equal(f.host.state.nodes.find(node => node.kind === kind).status, 'error');
+    assert.equal(f.posted.filter(message => message.type === 'host/error').length, 0);
+    assert.equal(f.record(kind), undefined);
+    assert.equal(f.owner.authority.snapshot().active, 0);
+  });
+}
+
+for (const firstKind of ['terminal', 'agent']) {
+  for (const presentation of ['stopped', 'new', 'resume', 'history']) {
+    test(`webview start ${firstKind} overlap ${presentation} rejects before connect and retry succeeds`, async () => {
+      const secondKind = firstKind === 'terminal' ? 'agent' : 'terminal';
+      const f = startupResizeFixture(firstKind, 'operationObservation', { admissionLimits: EXECUTION_PRODUCTION_ADMISSION, outputCredit: true });
+      let secondRecord;
+      try {
+        await until(f.clock, f.waiting, 'first start held before started');
+        const secondNode = f.host.state.nodes.find(node => node.kind === secondKind);
+        secondNode.status = 'stopped'; secondNode.metadata[secondKind] = { ...secondNode.metadata[secondKind], liveSession: false };
+        if (presentation !== 'stopped') {
+          const status = presentation === 'resume' ? 'resume-ready' : secondKind === 'agent' ? 'starting' : 'launching';
+          secondNode.status = status;
+          secondNode.metadata[secondKind] = { ...secondNode.metadata[secondKind], lifecycle: status,
+            pendingLaunch: presentation === 'resume' ? 'resume' : 'start', liveSession: false,
+            ...(presentation === 'history' ? { recentOutput: 'prior history', lastExitCode: 27,
+              lastExitSignal: 'SIGINT', lastExitMessage: 'prior exit', resumeSessionId: 'prior-session' } : {}) };
+        }
+        const before = structuredClone(secondNode);
+        const authorityBefore = f.owner.authority.snapshot();
+        assert.equal(authorityBefore.starting, 1);
+        assert.equal(authorityBefore.active, 1);
+        assert.equal(authorityBefore.closing, false);
+        assert.equal(authorityBefore.blockedReason, undefined);
+        sendCandidateStart(f, secondKind);
+        await until(f.clock, () => f.posted.some(message => message.type === 'host/error'), 'visible overlap rejection');
+        assert.equal(f.providers.length, 2, 'transport construction is not acquisition');
+        assert.equal(f.providers[1].connectCount ?? 0, 0, 'rejected transport never connects');
+        assert.equal(f.providers[1].messages.length, 0, 'rejected transport never connects or sends start');
+        assert.equal(f.owner.get(`${secondKind}:${secondKind}-1`), undefined);
+        assert.equal(f.record(secondKind), undefined);
+        const after = f.host.state.nodes.find(node => node.id === secondNode.id);
+        if (presentation === 'new' || presentation === 'history') {
+          assert.equal(after.status, 'error');
+          assert.equal(after.metadata[secondKind].lifecycle, 'error');
+          assert.equal(after.metadata[secondKind].pendingLaunch, undefined);
+          assert.equal(after.metadata[secondKind].liveSession, false);
+          assert.match(after.summary, /Wait for pending operations/);
+          for (const field of ['recentOutput', 'lastExitCode', 'lastExitSignal', 'lastExitMessage', 'resumeSessionId']) {
+            assert.equal(after.metadata[secondKind][field], before.metadata[secondKind][field], field);
+          }
+        } else assert.deepEqual(after, before, 'historical or resume presentation is not a new pending start');
+        assert.equal(f.diagnostics.find(event => event.name === 'execution/localFinalPersistence' &&
+          event.detail.executionId === f.providers[1].identity.executionId)?.detail.result.kind, 'not-required');
+        assert.equal(f.posted.some(message => message.type === 'host/executionExit'), false);
+        assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+        assert.match(f.posted.find(message => message.type === 'host/error').payload.message, /Wait for pending operations/);
+        const rejection = f.diagnostics.filter(event => event.name === 'execution/startRejected');
+        assert.equal(rejection.length, 1);
+        assert.equal(rejection[0].detail.kind, secondKind);
+        assert.equal(rejection[0].detail.outcome, 'rejected-before-acquire');
+        assert.deepEqual({ executionId: rejection[0].detail.executionId, generation: rejection[0].detail.generation }, f.providers[1].identity);
+        assert.equal(f.owner.authority.snapshot().starting, 1, 'rejection leaves original start intact');
+        f.release();
+        await completed(f.clock, f.starting, 'first confirmed started');
+        assert.equal(f.owner.authority.snapshot().starting, 0);
+        await completed(f.clock, f.start(secondKind), 'same second node after first started');
+        secondRecord = f.record(secondKind);
+        assert.equal(f.providers[2].connectCount, 1, 'retry connects exactly once');
+        assert.equal(secondRecord.execution.snapshot().adapter.state, 'running');
+        assert.equal(f.record(firstKind).execution.snapshot().adapter.state, 'running');
+        assert.equal(f.owner.authority.snapshot().active, 2, 'starting limit is not the running session limit');
+        assert.equal(f.owner.authority.snapshot().starting, 0);
+
+      } finally {
+        if (secondRecord) {
+          const provider = f.providers.at(-1);
+          provider.process(); provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+          provider.seal(secondRecord.lastDataSequence); provider.release();
+          await pump(f.clock, () => secondRecord.execution.snapshot().settled);
+          secondRecord.business?.cancelActivityPoll?.(); secondRecord.business?.lineContextTracker.dispose(); secondRecord.tracker.dispose();
+        }
+        if (f.waiting()) f.release(); await f.cleanup();
+      }
+    });
+  }
+}
+
+for (const kind of ['agent', 'terminal']) {
+  for (const boundary of ['metadata', 'new-record', 'deleted', 'cancelled', 'live', 'save-throws', 'save-rejects', 'page-throws']) {
+    test(`webview start ${kind} pending rejection handles ${boundary}`, async () => {
+      const firstKind = kind === 'agent' ? 'terminal' : 'agent';
+      const f = startupResizeFixture(firstKind, 'operationObservation', { outputCredit: true, admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+      const gate = deferred();
+      const persist = f.host.persistState;
+      const postState = f.host.postState;
+      let original;
+      let rejected = false;
+      try {
+        await until(f.clock, f.waiting, 'first start held');
+        const node = f.host.state.nodes.find(node => node.kind === kind);
+        node.status = kind === 'agent' ? 'starting' : 'launching';
+        node.metadata[kind] = { ...node.metadata[kind], lifecycle: node.status, pendingLaunch: 'start', liveSession: false };
+        const reserve = f.owner.reserve.bind(f.owner);
+        f.owner.reserve = key => {
+          const execution = reserve(key);
+          const start = execution.start.bind(execution);
+          execution.start = (...args) => {
+            original = f.record(kind);
+            const operation = start(...args);
+            return { ...operation, first: operation.first.then(async result => {
+              assert.equal(result.kind, 'rejected-before-acquire');
+              rejected = true;
+              await gate.promise;
+              return result;
+            }) };
+          };
+          return execution;
+        };
+        sendCandidateStart(f, kind);
+        await until(f.clock, () => rejected, 'original rejection held before Host projection');
+        if (boundary === 'metadata') node.metadata[kind] = { ...node.metadata[kind], marker: 'newer-intent' };
+        if (boundary === 'new-record') f.host.nonNativeHostExecutions.set(original.execution.key, { ...original });
+        if (boundary === 'deleted') f.host.state.nodes = f.host.state.nodes.filter(value => value !== node);
+        if (boundary === 'cancelled') void original.execution.requestStop('cancelled while rejection observation pending');
+        if (boundary === 'live') node.metadata[kind].liveSession = true;
+        if (boundary === 'save-throws') f.host.persistState = () => { throw new Error('controlled save throw'); };
+        if (boundary === 'save-rejects') f.host.persistState = async () => { throw new Error('controlled save rejection'); };
+        if (boundary === 'page-throws') f.host.postState = () => { throw new Error('controlled page throw'); };
+        const before = structuredClone(f.host.state);
+        const currentRecord = f.record(kind);
+        gate.resolve();
+        await until(f.clock, () => f.diagnostics.some(event => event.name === 'execution/startRejected'), 'rejection observer');
+        const projectionAllowed = ['save-throws', 'save-rejects', 'page-throws'].includes(boundary);
+        if (projectionAllowed) {
+          const after = f.host.state.nodes.find(value => value.id === node.id);
+          assert.equal(after.status, 'error');
+          assert.equal(after.metadata[kind].pendingLaunch, undefined);
+          await until(f.clock, () => f.diagnostics.some(event => event.name === 'execution/startRejectionProjectionFailed'), 'observer fault recorded');
+        } else assert.deepEqual(f.host.state, before);
+        assert.equal(original.persistence.result.kind, 'not-required');
+        assert.equal(f.providers[1].connectCount ?? 0, 0);
+        assert.equal(f.owner.get(original.execution.key), undefined);
+        assert.equal(f.record(kind), boundary === 'new-record' ? currentRecord : undefined);
+        const suppressed = ['metadata', 'new-record', 'deleted', 'cancelled'].includes(boundary);
+        assert.equal(f.posted.filter(message => message.type === 'host/error').length, suppressed ? 0 : 1);
+        assert.equal(f.diagnostics.filter(event => event.name === 'execution/startRejected').length, 1);
+      } finally {
+        gate.resolve();
+        f.host.persistState = persist; f.host.postState = postState;
+        if (original) f.host.nonNativeHostExecutions.delete(original.execution.key);
+        if (f.waiting()) f.release();
+        await f.cleanup();
+      }
+    });
+  }
+}
+
+for (const kind of ['agent', 'terminal']) {
+  for (const boundary of ['closed', 'replaced-node', 'deleted-node', 'cancelled']) {
+    test(`webview start ${kind} reports ${boundary} failure without changing the node`, async () => {
+      const gate = deferred();
+      const f = candidateFixture({ outputCredit: true, admissionLimits: EXECUTION_PRODUCTION_ADMISSION,
+        environment: async () => { await gate.promise; throw new Error('controlled launch preparation failed'); } });
+      const nodeId = `${kind}-1`;
+      if (boundary === 'closed') f.owner.closeAdmission();
+      sendCandidateStart(f, kind);
+      if (boundary !== 'closed') await until(f.clock, () => Boolean(f.record(kind)), 'preparing original start');
+      if (boundary === 'cancelled') f.record(kind).execution.requestStop('controlled pending launch cancelled');
+      if (boundary === 'replaced-node') {
+        f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(node => node.id !== nodeId ? node : {
+          ...node, status: 'replacement-status', summary: 'replacement-summary',
+          metadata: { ...node.metadata, [kind]: { liveSession: true, cwd: '/replacement', marker: 'replacement' } }
+        }) };
+      }
+      if (boundary === 'deleted-node') f.host.state = { ...f.host.state, nodes: f.host.state.nodes.filter(node => node.id !== nodeId) };
+      const stateBefore = structuredClone(f.host.state);
+      const metadataBefore = f.host.state.nodes.find(node => node.id === nodeId)?.metadata[kind];
+      gate.resolve();
+      await until(f.clock, () => f.diagnostics.some(event => event.name === 'execution/startFailed'), 'reported original rejection');
+      assert.deepEqual(f.host.state, stateBefore);
+      assert.strictEqual(f.host.state.nodes.find(node => node.id === nodeId)?.metadata[kind], metadataBefore);
+      const suppressed = ['replaced-node', 'deleted-node', 'cancelled'].includes(boundary);
+      assert.equal(f.posted.filter(message => message.type === 'host/error').length, suppressed ? 0 : 1);
+      assert.equal(f.diagnostics.find(event => event.name === 'execution/startFailed').detail.suppressed,
+        suppressed ? 'cancelled-or-superseded' : undefined);
+      assert.equal(f.diagnostics.filter(event => event.name === 'execution/startFailed').length, 1);
+      if (!suppressed) assert.equal(f.posted.find(message => message.type === 'host/error').payload.message.includes('\n'), false);
+      assert.match(f.diagnostics.find(event => event.name === 'execution/startFailed').detail.reason,
+        boundary === 'closed' ? /admission is closed/ : /controlled launch preparation failed/);
+      assert.equal(f.providers.length, 0);
+      assert.equal(f.record(kind), undefined);
+      assert.equal(f.owner.authority.snapshot().active, 0);
+    });
+  }
+
+  test(`webview start ${kind} still reports a new request blocked by an older stopping execution`, async () => {
+    const f = startupResizeFixture(kind, 'operationObservation', { outputCredit: true, admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+    try {
+      await until(f.clock, f.waiting, 'original held started');
+      const original = f.record(kind);
+      void original.execution.requestStop('controlled earlier stop');
+      sendCandidateStart(f, kind);
+      await until(f.clock, () => f.posted.some(message => message.type === 'host/error'), 'new refused request is visible');
+      const event = f.diagnostics.find(event => event.name === 'execution/startFailed');
+      assert.equal(event.detail.suppressed, undefined);
+      assert.match(event.detail.reason, /responsibility|capacity/);
+      assert.strictEqual(f.record(kind), original);
+      assert.equal(f.providers.length, 1);
+      assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+    } finally { if (f.waiting()) f.release(); await f.cleanup(); }
+  });
+
+  test(`webview start ${kind} reports unknown acquisition without releasing the original responsibility`, async () => {
+    const f = startupResizeFixture(kind, 'operationObservation', { outputCredit: true, admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+    try {
+      await until(f.clock, f.waiting, 'original held started');
+      const record = f.record(kind);
+      const method = kind === 'agent' ? 'startAgentSession' : 'startTerminalSession';
+      // Route the actual in-flight operation through the real page observer before its uncertain result.
+      f.host.nonNativeHostExecutions.delete(record.execution.key);
+      f.host[method] = () => { f.host.nonNativeHostExecutions.set(record.execution.key, record); return f.starting; };
+      sendCandidateStart(f, kind);
+      f.release({ kind: 'unconfirmed', stage: 'start', reason: 'controlled uncertain acquisition' });
+      await until(f.clock, () => f.posted.some(message => message.type === 'host/error'), 'unknown start reported');
+      const event = f.diagnostics.find(event => event.name === 'execution/startFailed');
+      assert.equal(event.detail.outcome, 'unconfirmed');
+      assert.equal(event.detail.reason, 'controlled uncertain acquisition');
+      assert.equal(event.detail.executionId, record.execution.identity.executionId);
+      assert.equal(f.diagnostics.some(event => event.name === 'execution/startRejected'), false);
+      assert.strictEqual(f.record(kind), record);
+      assert.notEqual(record.persistence.result?.kind, 'not-required');
+      assert.equal(f.providers.length, 1);
+      assert.equal(f.providers[0].connectCount, 1);
+      assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+    } finally { if (f.waiting()) f.release(); await f.cleanup(); }
+  });
+
+  test(`webview start ${kind} keeps Runtime tracking and does not report a handled failure twice`, async () => {
+    const f = candidateRuntimeFixture({ rejectBeforeAcquire: true });
+    sendCandidateStart(f, kind);
+    assert.equal(f.host.pendingRuntimeSupervisorOperations.size, 1);
+    await until(f.clock, () => f.host.pendingRuntimeSupervisorOperations.size === 0, 'Runtime failure tracked to completion');
+    assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+    assert.equal(f.diagnostics.some(event => event.name === 'execution/startFailed'), false);
+    assert.equal(f.diagnostics.filter(event => event.name === 'execution/candidateStartFailed').length, 1);
+  });
+}
+
+for (const observer of ['diagnostics', 'page']) {
+  test(`webview start consumes rejection even when ${observer} observer throws`, async () => {
+    const f = candidateFixture();
+    f.owner.closeAdmission();
+    let observed = false;
+    if (observer === 'diagnostics') {
+      const record = f.host.recordDiagnosticEvent;
+      f.host.recordDiagnosticEvent = (name, detail) => {
+        if (name === 'execution/startFailed') { observed = true; throw new Error('controlled diagnostics failure'); }
+        return record(name, detail);
+      };
+    } else {
+      f.host.postMessage = message => {
+        if (message.type === 'host/error') { observed = true; throw new Error('controlled page disposed'); }
+      };
+    }
+    sendCandidateStart(f, 'terminal');
+    await until(f.clock, () => observed, 'report observer invoked');
+    await pump(f.clock, () => true);
+    assert.equal(f.providers.length, 0);
+    if (observer === 'diagnostics') assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+    else assert.equal(f.diagnostics.filter(event => event.name === 'execution/startFailed').length, 1);
+  });
+}
+
+
+function ownedFileActivityFixture(options = {}) {
+  const f = options.fixture ?? candidateFixture(options);
+  const persist = f.host.persistState.bind(f.host);
+  f.host.persistState = async (...args) => { await persist(...args); };
+  f.host.appliedStartupConfiguration.filesFeatureEnabled = true;
+  f.host.resolveWorkspaceRelativePath = () => undefined;
+  f.host.reconcileCanvasFileArtifacts = state => state;
+  const collectors = [];
+  f.host.createConfiguredAgentFileActivitySession = () => {
+    const collector = { extraArgs: ['--settings', '/controlled/file-settings.json'],
+      extraEnv: { DSC_FILE_EVENTS: '/controlled/events.ndjson' }, disposeCount: 0,
+      start(callback) { this.emit = callback; },
+      async dispose() { this.disposeCount++; if (options.drain) await options.drain(this); }
+    };
+    collectors.push(collector);
+    return collector;
+  };
+  function event(collector = collectors[0], file = '/controlled/read.md') {
+    collector.emit({ path: file, accessMode: 'read', timestamp: '2026-10-11T00:00:00Z' });
+  }
+  async function finish(record = f.record('agent')) {
+    const provider = f.providers.at(-1);
+    provider.process();
+    provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+    provider.seal(record.lastDataSequence); provider.release();
+    await until(f.clock, () => record.persistence.result !== undefined, 'file activity final persistence');
+    f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'file-activity-cleanup');
+    record.business?.cancelActivityPoll?.(); record.business?.lineContextTracker.dispose(); record.tracker.dispose();
+  }
+  return { ...f, collectors, event, finish };
+}
+
+test('owned file activity injects provider settings and drains before final persistence', async () => {
+  const drain = deferred();
+  const f = ownedFileActivityFixture({ drain: async collector => {
+    collector.emit({ path: '/controlled/tail.md', accessMode: 'write', timestamp: '2026-10-11T00:00:01Z' });
+    await drain.promise;
+  } });
+  await completed(f.clock, f.start('agent'), 'file activity start');
+  const record = f.record('agent');
+  try {
+    assert.equal(f.collectors.length, 1);
+    const spec = f.providers[0].messages.find(message => message.type === 'start').spec;
+    assert.ok(spec.args.includes('/controlled/file-settings.json'));
+    assert.equal(spec.env.DSC_FILE_EVENTS, '/controlled/events.ndjson');
+    f.event();
+    assert.equal(f.host.state.fileReferences[0].owners[0].nodeId, 'agent-1');
+    const finishing = f.finish(record);
+    await until(f.clock, () => f.collectors[0].disposeCount === 1, 'collector draining');
+    assert.equal(record.persistence.submitted, false);
+    assert.equal(f.host.state.fileReferences.length, 2);
+    drain.resolve(); await finishing;
+    assert.equal(record.persistence.result.kind, 'saved', JSON.stringify(record.persistence.result));
+    assert.equal(f.collectors[0].disposeCount, 1);
+    f.event(f.collectors[0], '/controlled/late.md');
+    assert.equal(f.host.state.fileReferences.length, 2);
+  } finally { drain.resolve(); record.business?.cancelActivityPoll?.(); record.tracker.dispose(); }
+});
+
+test('owned file activity rejection waits for cleanup and does not apply unstarted events', async () => {
+  const base = startupResizeFixture('terminal', 'operationObservation', { admissionLimits: EXECUTION_PRODUCTION_ADMISSION, outputCredit: true });
+  const drain = deferred();
+  const f = ownedFileActivityFixture({ fixture: base, drain: async collector => {
+    collector.emit({ path: '/controlled/rejected.md', accessMode: 'read', timestamp: '2026-10-11T00:00:00Z' });
+    await drain.promise;
+  } });
+  let rejected;
+  try {
+    await until(f.clock, f.waiting, 'first starting slot held');
+    const starting = assert.rejects(f.start('agent'), /rejected-before-acquire/);
+    await until(f.clock, () => f.collectors[0]?.disposeCount === 1, 'rejected collector cleanup started');
+    rejected = f.record('agent');
+    assert.ok(rejected, 'Host key remains occupied until observer cleanup completes');
+    assert.equal(rejected.persistence.result, undefined);
+    assert.equal(f.providers[1].connectCount ?? 0, 0);
+    assert.equal(f.host.state.fileReferences.length, 0);
+    drain.resolve(); await starting;
+    assert.equal(rejected.persistence.result.kind, 'not-required');
+    assert.equal(f.record('agent'), undefined);
+    assert.equal(f.collectors[0].disposeCount, 1);
+  } finally { drain.resolve(); if (f.waiting()) f.release(); await f.cleanup(); }
+});
+
+for (const boundary of ['metadata', 'record', 'deleted', 'routed']) {
+  test(`owned file activity validates original binding through ${boundary}`, async () => {
+    const f = ownedFileActivityFixture();
+    await completed(f.clock, f.start('agent'), 'collector identity start');
+    const record = f.record('agent');
+    const original = record.execution.identity;
+    const state = f.host.state;
+    let node = state.nodes.find(node => node.id === 'agent-1');
+    try {
+      f.providers[0].output(1, 'ordinary output updates the metadata binding');
+      await until(f.clock, () => record.lastDataSequence === 1, 'ordinary output');
+      node = f.host.state.nodes.find(value => value.id === 'agent-1');
+      if (boundary === 'metadata') node.metadata.agent = { ...node.metadata.agent, marker: 'replacement' };
+      if (boundary === 'record') f.host.nonNativeHostExecutions.set(record.execution.key, { ...record });
+      if (boundary === 'deleted') f.host.state = { ...f.host.state, nodes: f.host.state.nodes.filter(node => node.id !== 'agent-1') };
+      if (boundary === 'routed') {
+        record.canvasRootPath = '/controlled'; record.canvasLocalNodeId = 'agent-1';
+        f.host.getMultiRootWorkspaceFoldersForComposition = () => [{ path: '/controlled', name: 'one' }, { path: '/other', name: 'two' }];
+        const next = structuredClone(f.host.state);
+        next.nodes.find(node => node.id === 'agent-1').id = namespaceCanvasObjectId('/controlled', 'agent-1');
+        f.host.state = f.host.reconcileOwnedCanvasState(next);
+      }
+      f.event();
+      assert.equal(f.host.state.fileReferences.length, boundary === 'routed' ? 1 : 0);
+      if (boundary === 'routed') {
+        assert.equal(f.host.state.fileReferences[0].owners[0].nodeId, record.nodeId);
+        assert.notEqual(record.nodeId, 'agent-1');
+      }
+      assert.strictEqual(record.execution.identity, original);
+    } finally {
+      if (boundary !== 'routed') {
+        f.host.state = state;
+        node.metadata.agent = record.persistence.metadata;
+        f.host.nonNativeHostExecutions.set(record.execution.key, record);
+      }
+      await f.finish(record);
+    }
+  });
+}
+
+for (const failure of ['prepare', 'subscribe', 'drain', 'event']) {
+  test(`owned file activity ${failure} failure preserves the original outcome`, async () => {
+    const f = ownedFileActivityFixture({
+      ...(failure === 'prepare' ? { environment: async () => { throw new Error('controlled prepare failure'); } } : {}),
+      ...(failure === 'drain' ? { drain: async () => { throw new Error('controlled drain failure'); } } : {})
+    });
+    if (failure === 'subscribe') {
+      const create = f.host.createConfiguredAgentFileActivitySession;
+      f.host.createConfiguredAgentFileActivitySession = (...args) => {
+        const collector = create(...args); collector.start = () => { throw new Error('controlled subscribe failure'); }; return collector;
+      };
+    }
+    if (failure === 'prepare' || failure === 'subscribe') {
+      await completed(f.clock, assert.rejects(f.start('agent'), new RegExp(`controlled ${failure} failure`)), 'collector preparation rejected');
+      assert.equal(f.collectors.length, failure === 'prepare' ? 0 : 1);
+      if (f.collectors[0]) assert.equal(f.collectors[0].disposeCount, 1);
+      assert.equal(f.providers.length, 0);
+      assert.equal(f.record('agent'), undefined);
+      return;
+    }
+    await completed(f.clock, f.start('agent'), 'collector error start');
+    const record = f.record('agent');
+    if (failure === 'event') {
+      f.host.handleAgentFileActivityEvent = () => { throw new Error('controlled event failure'); };
+      assert.doesNotThrow(() => f.event());
+    }
+    await f.finish(record);
+    assert.equal(record.persistence.result.kind, 'failed');
+    assert.match(record.persistence.result.reason, new RegExp(`controlled ${failure} failure`));
+    assert.equal(f.collectors[0].disposeCount, 1);
+    assert.strictEqual(f.record('agent'), record, 'failed final save retains original responsibility');
+  });
+}
+
+test('owned file activity releases watcher when failed consumption bypasses final flush', async () => {
+  const f = ownedFileActivityFixture();
+  await completed(f.clock, f.start('agent'), 'failed consumer start');
+  const record = f.record('agent');
+  f.host.consumeNonNativeHostBusinessOutput = () => { throw new Error('controlled consumption failure'); };
+  f.providers[0].output(1, 'unapplied');
+  await until(f.clock, () => Boolean(record.execution.snapshot().adapter.firstFault), 'failed output consumption');
+  // The failed frame is sealed even though Host application did not advance.
+  record.lastDataSequence = 1;
+  await f.finish(record);
+  await until(f.clock, () => record.fileActivity.disposed, 'collector released after failed consumption');
+  assert.equal(record.persistence.result.kind, 'failed');
+  assert.equal(f.collectors[0].disposeCount, 1);
+});
+
+test('owned file activity remains bound during unknown acquisition until original finalization', async () => {
+  const f = ownedFileActivityFixture();
+  const factory = f.injection.createTransport;
+  f.injection.createTransport = identity => {
+    const transport = factory(identity);
+    const provider = f.providers.at(-1);
+    const message = provider.message.bind(provider);
+    provider.message = value => message(value.type === 'operationObservation' && value.operationId === 'owner-start'
+      ? { ...value, result: { kind: 'unconfirmed', stage: 'start', reason: 'controlled unknown acquisition' } } : value);
+    return transport;
+  };
+  f.host.nonNativeExecutionOwner = new ExecutionOwnerLifecycle(f.injection);
+  await completed(f.clock, assert.rejects(f.start('agent'), /unknown acquisition/), 'uncertain original start');
+  const record = f.record('agent');
+  assert.ok(record);
+  assert.equal(f.providers[0].connectCount, 1);
+  assert.equal(f.collectors[0].disposeCount, 0);
+  assert.equal(record.persistence.result, undefined);
+  f.event();
+  assert.equal(f.host.state.fileReferences.length, 1);
+  await f.finish(record);
+  assert.equal(f.collectors[0].disposeCount, 1);
+});
+
+test('owned file activity rejected cleanup failure retains Host responsibility', async () => {
+  const base = startupResizeFixture('terminal', 'operationObservation', { admissionLimits: EXECUTION_PRODUCTION_ADMISSION, outputCredit: true });
+  const f = ownedFileActivityFixture({ fixture: base, drain: async () => { throw new Error('controlled rejected cleanup failure'); } });
+  try {
+    await until(f.clock, f.waiting, 'rejection slot held');
+    await completed(f.clock, assert.rejects(f.start('agent'), /rejected-before-acquire/), 'original rejection retained');
+    assert.equal(f.record('agent').persistence.result.kind, 'failed');
+    assert.match(f.record('agent').persistence.result.reason, /rejected cleanup failure/);
+    assert.equal(f.collectors[0].disposeCount, 1);
+    assert.equal(f.providers[1].connectCount ?? 0, 0);
+    f.event();
+    assert.equal(f.host.state.fileReferences.length, 0);
+  } finally { if (f.waiting()) f.release(); await f.cleanup(); }
+});
+
+test('owned file activity disabled creates no collector or provider injection', async () => {
+  const f = ownedFileActivityFixture();
+  f.host.appliedStartupConfiguration.filesFeatureEnabled = false;
+  await completed(f.clock, f.start('agent'), 'files disabled start');
+  assert.equal(f.collectors.length, 0);
+  const spec = f.providers[0].messages.find(message => message.type === 'start').spec;
+  assert.equal(spec.env.DSC_FILE_EVENTS, undefined);
+  assert.equal(spec.args.includes('--settings'), false);
+  await f.finish();
+});
+
+for (const stopRequested of [true, false]) {
+  test(`fake resume retains storage through owned output and finalization (stop=${stopRequested})`, async () => {
+    const f = ownedFileActivityFixture();
+    const resume = { supported: true, strategy: 'fake-provider', sessionId: '36e967db-7c4d-4fa7-9c32-92fe54677ef7', storagePath: '/controlled/fake-store' };
+    f.host.resolveAgentResumeContext = () => resume;
+    await completed(f.clock, f.start('agent'), 'fake original start');
+    const record = f.record('agent');
+    if (stopRequested) void record.execution.requestStop('controlled stop with Codex hint');
+    f.providers[0].output(1, `To continue this session, run codex resume ${resume.sessionId}\r\n`);
+    await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'fake stop hint consumed');
+    assert.deepEqual(record.business.agentResume, resume);
+    await f.finish(record);
+    const metadata = f.host.state.nodes.find(node => node.id === record.nodeId).metadata.agent;
+    assert.equal(metadata.resumeStrategy, 'fake-provider');
+    assert.equal(metadata.resumeStoragePath, resume.storagePath);
+    assert.equal(metadata.resumeSessionId, resume.sessionId);
+    delete f.host.resolveAgentResumeContext;
+    const context = f.host.resolveAgentResumeContext(record.nodeId, 'codex', 'resume', '/controlled/fake-agent-provider', metadata);
+    assert.deepEqual(context, resume);
+    const spec = f.host.buildAgentLaunchSpec({ provider: 'codex', command: '/controlled/fake-agent-provider' }, [],
+      '/controlled', 80, 24, {}, 'resume', context);
+    assert.deepEqual(spec.args, ['resume', resume.sessionId]);
+    assert.equal(spec.env.DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH, resume.storagePath);
+  });
+}
+
+for (const strategy of ['fake-provider', 'codex-session-id']) {
+  test(`fake resume output guard preserves only fake context (${strategy})`, () => {
+    const f = candidateFixture();
+    const context = { supported: true, strategy, sessionId: 'original-session', storagePath: '/controlled/fake-session' };
+    const session = { agentProvider: 'codex', launchMode: 'start', agentResume: context,
+      buffer: 'To continue this session, run codex resume 3a5fa421-c9d5-4b3c-8d5f-f05fc3c1be35' };
+    const parsed = f.host.readAgentResumeContextFromOutput(session);
+    if (strategy === 'fake-provider') assert.equal(parsed, null);
+    else assert.deepEqual(parsed, { supported: true, strategy: 'codex-session-id', sessionId: '3a5fa421-c9d5-4b3c-8d5f-f05fc3c1be35' });
+    assert.strictEqual(session.agentResume, context);
+  });
+}
+
+async function ownedClaudeFileFixture({ explicit = true, locate = async () => null } = {}) {
+  testClaudeSessionFiles.calls = [];
+  testClaudeSessionFiles.run = locate;
+  const f = candidateFixture();
+  const persist = f.host.persistState.bind(f.host);
+  f.host.persistState = async options => { await persist(options); };
+  delete f.host.resolveAgentResumeContext;
+  f.host.state.nodes.find(node => node.id === 'agent-1').metadata.agent = { provider: 'claude' };
+  const args = explicit ? ['--session-id=session-explicit-123456789'] : [];
+  f.host.resolveAgentFreshLaunch = () => ({ commandLine: ['claude', ...args].join(' '),
+    requestedCommand: 'claude', launchArgs: args, launchPreset: 'custom' });
+  f.host.getRequestedAgentCliSpec = CanvasPanelManager.prototype.getRequestedAgentCliSpec;
+  f.host.resolveAgentCli = async () => ({ command: '/controlled/claude', provider: 'claude' });
+  await completed(f.clock, f.host.startAgentSession('agent-1', 80, 24, 'claude', false), 'owned Claude file start');
+  const record = f.record('agent');
+  const provider = f.providers[0];
+  const node = () => f.host.state.nodes.find(value => value.id === record.nodeId && value.kind === 'agent');
+  async function output(text = '> ') {
+    const sequence = record.lastDataSequence + 1;
+    provider.output(sequence, text);
+    await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === sequence, 'owned Claude file concurrent output');
+  }
+  async function finish() {
+    provider.process();
+    provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+    provider.seal(record.lastDataSequence); provider.release();
+    await until(f.clock, () => record.persistence.result !== undefined, 'owned Claude file final persistence');
+    f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-cleanup');
+  }
+  function cleanup() {
+    testClaudeSessionFiles.run = async () => null;
+    f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-cleanup');
+    record.business?.cancelActivityPoll?.(); record.business?.lineContextTracker.dispose(); record.tracker.dispose();
+  }
+  return { ...f, record, provider, node, output, finish, cleanup };
+}
+
+for (const explicit of [true, false]) {
+  test(`owned Claude file confirms ${explicit ? 'explicit' : 'generated'} candidate and preserves it through stop`, async () => {
+    const taskHome = await mkdtemp(path.join(os.tmpdir(), 'dsc-claude-file-'));
+    const fileReady = deferred();
+    const f = await ownedClaudeFileFixture({ explicit, locate: async options => {
+      await fileReady.promise;
+      return locateClaudeSessionIdFromFiles({ ...options, env: { HOME: taskHome }, timeoutMs: 1 });
+    } });
+    try {
+      const original = f.record.execution.identity;
+      const id = f.record.business.agentResume.sessionId;
+      assert.ok(id);
+      assert.equal(f.node().metadata.agent.resumeStrategy, 'none');
+      assert.equal(testClaudeSessionFiles.calls.length, 1, 'started returns while the real file query is pending');
+      await f.output();
+      const directory = path.join(taskHome, '.claude', 'projects', '-controlled');
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, `${id}.jsonl`), '{}\n');
+      fileReady.resolve();
+      await until(f.clock, () => !f.record.business.claudeFileConfirmation, 'owned Claude file confirmation persisted');
+      assert.equal(f.node().metadata.agent.resumeSupported, true);
+      assert.equal(f.node().metadata.agent.resumeStrategy, 'claude-session-id');
+      assert.equal(f.node().metadata.agent.resumeSessionId, id);
+      assert.strictEqual(f.record.execution.identity, original);
+      assert.equal(f.record.persistence.submitted, false, 'ordinary resume metadata persistence is not final persistence');
+      assert.equal(f.persisted.filter(item => item?.reason === 'agent-resume-context').length, 1);
+      const events = f.diagnostics.filter(event => event.name === 'agent/claudeSessionIdConfirmedFromFiles');
+      assert.equal(events.length, 1);
+      assert.equal(events[0].detail.executionSessionId, original.executionId);
+      assert.equal(events[0].detail.generation, original.generation);
+      const stopping = f.host.stopExecutionSession('agent', f.record.nodeId);
+      await until(f.clock, () => f.record.execution.snapshot().stopRequested, 'owned Claude file stop requested');
+      await f.finish();
+      await completed(f.clock, stopping, 'owned Claude file stop completed');
+      assert.equal(f.node().status, 'stopped');
+      assert.equal(f.node().metadata.agent.resumeStrategy, 'claude-session-id');
+      assert.equal(f.node().metadata.agent.resumeSessionId, id);
+      assert.equal(f.record.persistence.result.kind, 'saved');
+    } finally { fileReady.resolve(); f.cleanup(); await rm(taskHome, { recursive: true, force: true }); }
+  });
+}
+
+for (const outcome of ['missing', 'error']) {
+  test(`owned Claude file ${outcome} remains unconfirmed and waiting input retries`, async () => {
+    const f = await ownedClaudeFileFixture({ locate: async () => {
+      if (outcome === 'error') throw new Error('controlled file scan failure');
+      return null;
+    } });
+    try {
+      await until(f.clock, () => !f.record.business.claudeFileConfirmation, 'initial failed file scan');
+      assert.equal(f.node().metadata.agent.resumeStrategy, 'none');
+      assert.equal(f.persisted.filter(item => item?.reason === 'agent-resume-context').length, 0);
+      assert.ok(f.diagnostics.some(event => event.name === (outcome === 'missing'
+        ? 'agent/claudeSessionIdFileConfirmationMissed' : 'agent/claudeSessionIdFileConfirmationFailed')));
+      testClaudeSessionFiles.run = async options => options.sessionId;
+      await f.output(); f.clock.advance(300);
+      await until(f.clock, () => f.node().metadata.agent.resumeSupported === true, 'waiting-input file retry');
+      assert.equal(f.node().status, 'waiting-input');
+      assert.equal(testClaudeSessionFiles.calls.length, 2);
+      assert.equal(f.diagnostics.find(event => event.name === 'agent/claudeSessionIdConfirmedFromFiles').detail.trigger, 'waiting-input');
+    } finally { f.cleanup(); }
+  });
+}
+
+for (const firstOutcome of ['miss', 'error']) {
+  test(`owned Claude file coalesces waiting input scans without losing a followup after ${firstOutcome}`, async () => {
+    const first = deferred(); const second = deferred(); let queries = 0;
+    const f = await ownedClaudeFileFixture({ locate: () => ++queries === 1 ? first.promise.then(result => {
+      if (firstOutcome === 'error') throw new Error('queued lookup failed');
+      return result;
+    }) : second.promise });
+    try {
+      await f.output(); f.clock.advance(300);
+      await f.host.maybeConfirmNonNativeClaudeResumeSessionId(f.record, 'waiting-input');
+      await f.host.maybeConfirmNonNativeClaudeResumeSessionId(f.record, 'waiting-input');
+      assert.equal(queries, 1);
+      first.resolve(null);
+      await until(f.clock, () => queries === 2, 'one coalesced followup');
+      second.resolve(f.record.business.agentResume.sessionId);
+      await until(f.clock, () => !f.record.business.claudeFileConfirmation, 'followup confirmed');
+      assert.equal(f.node().metadata.agent.resumeStrategy, 'claude-session-id');
+      assert.equal(queries, 2);
+    } finally { first.resolve(null); second.resolve(null); f.cleanup(); }
+  });
+}
+
+for (const invalidation of ['stop', 'process', 'final-save', 'metadata', 'record', 'node', 'candidate', 'confirmed-context', 'launch-spec', 'quarantine']) {
+  test(`owned Claude file rejects late confirmation after ${invalidation}`, async () => {
+    const lookup = deferred();
+    const f = await ownedClaudeFileFixture({ locate: () => lookup.promise });
+    let stopping;
+    try {
+      const id = f.record.business.agentResume.sessionId;
+      if (invalidation === 'stop' || invalidation === 'final-save') {
+        stopping = f.host.stopExecutionSession('agent', f.record.nodeId);
+        await until(f.clock, () => f.record.execution.snapshot().stopRequested, 'stop while lookup pending');
+        if (invalidation === 'final-save') {
+          await f.finish();
+          await completed(f.clock, stopping, 'stop completes without awaiting file query');
+          assert.equal(f.record.persistence.result.kind, 'saved');
+        }
+      } else if (invalidation === 'process') {
+        f.provider.process();
+        await until(f.clock, () => Boolean(f.record.execution.snapshot().adapter.process), 'process exit while lookup pending');
+      } else if (invalidation === 'metadata') f.node().metadata.agent = { ...f.node().metadata.agent };
+      else if (invalidation === 'record') f.host.nonNativeHostExecutions.set('agent:agent-1', { ...f.record });
+      else if (invalidation === 'node') f.host.state.nodes = f.host.state.nodes.filter(node => node.id !== f.record.nodeId);
+      else if (invalidation === 'candidate') f.record.business.agentResume.sessionId = 'changed-candidate';
+      else if (invalidation === 'confirmed-context') {
+        f.record.business.agentResume = { supported: true, strategy: 'claude-session-id', sessionId: 'confirmed-from-output' };
+        f.host.projectNonNativeHostBusiness(f.record);
+      } else if (invalidation === 'launch-spec') f.record.launchSpec = { ...f.record.launchSpec, cwd: '/replacement' };
+      else f.record.mutationError = 'controlled quarantine';
+      const before = structuredClone(f.node());
+      const contextBefore = { ...f.record.business.agentResume };
+      const savesBefore = f.persisted.length;
+      lookup.resolve(id);
+      await until(f.clock, () => !f.record.business.claudeFileConfirmation, 'late confirmation ignored');
+      assert.deepEqual(f.node(), before);
+      assert.deepEqual(f.record.business.agentResume, contextBefore);
+      assert.equal(f.persisted.length, savesBefore);
+      assert.equal(f.diagnostics.some(event => event.name === 'agent/claudeSessionIdConfirmedFromFiles'), false);
+      if (invalidation === 'stop') { await f.finish(); await completed(f.clock, stopping, 'stop complete'); }
+    } finally { lookup.resolve(null); f.cleanup(); }
+  });
+}
+
+test('owned Claude file follows the same record across root routing and ordinary output projection', async () => {
+  const lookup = deferred();
+  const f = await ownedClaudeFileFixture({ locate: () => lookup.promise });
+  try {
+    const id = f.record.business.agentResume.sessionId;
+    const original = f.record.execution.identity;
+    const node = f.node();
+    f.host.nonNativeHostExecutions.delete('agent:agent-1');
+    node.id = 'root-qualified-agent-1'; f.record.nodeId = node.id;
+    f.host.nonNativeHostExecutions.set('agent:root-qualified-agent-1', f.record);
+    await f.output('still the original execution\r\n');
+    lookup.resolve(id);
+    await until(f.clock, () => !f.record.business.claudeFileConfirmation, 'original routed record confirmation');
+    assert.equal(f.node().metadata.agent.resumeStrategy, 'claude-session-id');
+    assert.strictEqual(f.record.execution.identity, original);
+    assert.equal(testClaudeSessionFiles.calls[0].cwd, '/controlled');
+    assert.equal(f.diagnostics.find(event => event.name === 'agent/claudeSessionIdConfirmedFromFiles').detail.nodeId, node.id);
+  } finally { lookup.resolve(null); f.cleanup(); }
 });
 
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;

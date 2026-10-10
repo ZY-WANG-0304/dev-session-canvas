@@ -1,0 +1,36 @@
+--- a/extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts
++++ b/extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts
+@@ -3905,6 +3905,14 @@
+   >,
+   _tooltipController: TooltipController
+ ): Promise<ILink | undefined> {
++  const readLines = () => Array.from({ length: options.terminal.buffer.active.length }, (_, index) =>
++    ({ index: index + 1, wrapped: options.terminal.buffer.active.getLine(index)?.isWrapped,
++      text: options.terminal.buffer.active.getLine(index)?.translateToString(true) }));
++  const trace = { tag: 'link-scan-probe', linkText, startedAt: Date.now(),
++    startViewportY: options.terminal.buffer.active.viewportY, startLines: readLines(),
++    attempts: [] as Array<{line: number; provider: number; text: string | undefined; links: string[]}> };
++  const finish = (found: boolean) => options.onClipboardDiagnostic?.({ nodeId: options.nodeId, kind: options.kind,
++    source: 'contextMenu', detail: { ...trace, found, finishedAt: Date.now(), endLines: readLines() } });
+   for (
+     let bufferLineNumber = options.terminal.buffer.active.length;
+     bufferLineNumber >= options.terminal.buffer.active.viewportY + 1;
+@@ -3915,13 +3923,18 @@
+       const links = await new Promise<ILink[] | undefined>((resolve) => {
+         linkProvider.provideLinks(bufferLineNumber, resolve);
+       });
++      trace.attempts.push({ line: bufferLineNumber, provider: linkProviders.indexOf(linkProvider),
++        text: options.terminal.buffer.active.getLine(bufferLineNumber - 1)?.translateToString(true),
++        links: links?.map(link => link.text) ?? [] });
+       const matchingLink = links?.find((link) => link.text === linkText);
+       if (matchingLink) {
++        finish(true);
+         return matchingLink;
+       }
+     }
+   }
+ 
++  finish(false);
+   return undefined;
+ }
+ 

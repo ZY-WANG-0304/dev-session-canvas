@@ -417,6 +417,17 @@ Object.assign(snapshotOnly.node.metadata.agent, { persistenceMode: 'snapshot-onl
   runtimeSessionId: undefined, runtimeBackend: undefined, runtimeStoragePath: undefined });
 const [resumable] = reconcileAgentNodesInArray([snapshotOnly.node]);
 assert.equal(resumable.status, 'resume-ready', 'Existing snapshot-only resume behavior remains separate.');
-assert.equal(resumable.metadata.agent.pendingLaunch, 'resume');
+assert.equal(resumable.metadata.agent.pendingLaunch, undefined);
+for (const lifecycle of ['resume-ready', 'stopped']) {
+  for (const pendingLaunch of ['resume', 'start', undefined]) {
+    const history = structuredClone(snapshotOnly.node);
+    Object.assign(history.metadata.agent, { liveSession: false, lifecycle, pendingLaunch });
+    const [restored] = reconcileAgentNodesInArray([history]);
+    assert.equal(restored.status, lifecycle, 'Historical explicit stops must not be upgraded.');
+    assert.equal(restored.metadata.agent.pendingLaunch, pendingLaunch === 'start' ? 'start' : undefined);
+    assert.deepEqual(reconcileAgentNodesInArray([restored]), [restored], 'Repeated reads do not recreate a resume intent.');
+  }
+}
+assert.deepEqual(reconcileAgentNodesInArray([resumable]), [resumable]);
 
 console.log('Legacy reconnect tests passed: original bindings, healthy attach, no automatic resume, explicit startup, strict replacement, shared deletion retirement.');

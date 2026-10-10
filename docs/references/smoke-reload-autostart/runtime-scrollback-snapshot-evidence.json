@@ -1,0 +1,96 @@
+{
+  "baseline": "fa645cfce8413e80c2acefce00d19e652ef97fc0",
+  "environment": {
+    "platform": "linux-x64",
+    "vscode": "1.141.0",
+    "node": "22.23.3",
+    "backend": "legacy-detached",
+    "profile": "linux-owner-v1-candidate"
+  },
+  "productPayloadUnchanged": true,
+  "sha256": {
+    "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+    "runtime-supervisor.js": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a",
+    "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+  },
+  "nativeExitCode": 0,
+  "result": {
+    "originalWaitTimedOut": true,
+    "waitMs": 10169,
+    "runtimeSessionId": "47db1573-8b78-47fd-be15-e982c5843b46",
+    "lifecycle": {
+      "surface": "editor",
+      "mode": "active",
+      "generation": 2,
+      "frameId": "frame-5303c502-f8f9-4db2-82ce-37a4a9d7ce29"
+    },
+    "descriptor": {
+      "readId": "8c73cebc-22f8-41f8-918e-ca8188daa0cb",
+      "sessionId": "47db1573-8b78-47fd-be15-e982c5843b46",
+      "authorityId": "5bcd5cc5-717f-4818-acf5-30c2e744540f",
+      "checkpoint": {
+        "version": 1,
+        "sessionId": "47db1573-8b78-47fd-be15-e982c5843b46",
+        "authorityId": "5bcd5cc5-717f-4818-acf5-30c2e744540f",
+        "revision": 9,
+        "cols": 64,
+        "rows": 20,
+        "scrollback": 240,
+        "createdAtMs": 1791632734799,
+        "serializedState": {
+          "format": "xterm-serialize-v1",
+          "data": "",
+          "outputSequence": 9
+        }
+      },
+      "headRevision": 9,
+      "currentState": {
+        "format": "xterm-current-state-v1",
+        "length": 24874
+      },
+      "settlementMode": "final-application-v1"
+    },
+    "requestedKeys": [
+      "nodeId",
+      "kind",
+      "executionSessionId",
+      "output",
+      "cols",
+      "rows",
+      "liveSession",
+      "terminalTitle",
+      "outputSequence",
+      "terminalRead"
+    ],
+    "originalPredicateText": "",
+    "bootstrapReaderReused": true,
+    "stateChunks": 4,
+    "stateLength": 24874,
+    "cols": 64,
+    "rows": 20,
+    "scrollback": 240,
+    "restoredMarkerCount": 220,
+    "firstMarker": 1,
+    "lastMarker": 220,
+    "markersContiguousUnique": true,
+    "followingRevisions": [],
+    "pagesBeforeRequest": 5,
+    "pagesAfterRequest": 0
+  },
+  "originalFailure": {
+    "artifacts": ".debug/runtime-admission-fix/trusted-artifacts",
+    "function": "verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory:10380",
+    "snapshotShape": "terminalRead/currentState，缺少 terminalStream",
+    "scope": "RuntimePersistence enabled=true，已通过页面首末行检查"
+  },
+  "sourceHistory": {
+    "oldAssertion": "74af9d0c6",
+    "pagedProtocol": "c502a0fe9",
+    "currentStateProtocol": "2bdfc311a"
+  },
+  "conclusion": "旧 terminalStream 断言未随分页/当前态协议迁移；同 reader 的 current-state 完整保留 220 个独立行标记。重复快照复用 descriptor，不重发已消费分页。",
+  "limitations": "只确认当前具名场景，不代证完整 VSIX gate、未来增量/压力、旧 Supervisor 或跨平台矩阵。正式产品和 smoke 未修改。",
+  "investigationCorrections": "首次定位脚本的数字正则因转义成为 d{3}，导致额外解码校验失败；保留两次诊断工件，改为 [0-9]{3} 后重跑。解码实际数据一直存在全部 220 行，该失败不是产品缺失。",
+  "artifacts": ".debug/runtime-scrollback-snapshot-rca/",
+  "cleanup": "原节点通过 smoke stop 清理；本轮隔离 Supervisor/provider 已退出。"
+}

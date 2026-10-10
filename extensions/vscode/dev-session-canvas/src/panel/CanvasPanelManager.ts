@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import { ExecutionOwnerLifecycle, type ExecutionOwnerOptions, type OwnedExecution, type OwnerCloseResult } from './executionOwnerLifecycle';
 import { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_CANDIDATE_PROFILE, EXECUTION_INTERACTION_LIMITS,
   assertExecutionCandidateProfile, assertExecutionCandidateCapabilities, hasExecutionAdmissionCapacity, type ExecutionCandidateProfile,
-  type AuthorityResult, type ExecutionIdentity, type LaunchSpec } from '../common/executionLifecycle';
+  type AuthorityResult, type ExecutionIdentity, type LaunchSpec, type OperationResult } from '../common/executionLifecycle';
 import type { ExecutionScheduler, InteractionObservation } from './executionSessionAdapter';
 import {
   ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
@@ -326,6 +326,7 @@ import { createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, parseRu
   type RuntimeOwnerDescriptorV1 } from '../common/runtimeRootOwnership';
 import { readRuntimeExecutionEnvironment, type RuntimeExecutionEnvironment } from './runtimeExecutionEnvironment';
 import { prepareRootRuntimeSupervisor } from './runtimeRootSupervisorPreparation';
+import { prepareRuntimeGlobalStorage, RuntimeGlobalStorageError } from './runtimeGlobalStorage';
 import {
   localizeRuntimeSupervisorError,
   localizeRuntimeSupervisorSnapshotExitMessage
@@ -571,6 +572,9 @@ interface ExecutionAttentionSession {
   displayLabel?: string;
 }
 
+type AgentAbnormalInterruptionSession = ExecutionAttentionSession & Pick<ManagedExecutionSession,
+  'sessionId' | 'agentProvider' | 'stopRequested' | 'lifecycleStatus'>;
+
 interface ExecutionAttentionNotificationWorkspaceFolderContext {
   name: string;
   path: string;
@@ -589,7 +593,11 @@ interface LocalExecutionSession extends ManagedExecutionSessionBase {
   exitSubscription: DisposableLike | undefined;
 }
 
+type NonNativeHostResizeResult = 'applied' | 'superseded' | 'cancelled';
+
 interface NonNativeHostExecution {
+  canvasRootPath?: string;
+  canvasLocalNodeId?: string;
   kind: ExecutionNodeKind;
   nodeId: string;
   execution: OwnedExecution;
@@ -598,16 +606,25 @@ interface NonNativeHostExecution {
   lastDataSequence: number;
   terminalRevision: number;
   finalRevision?: number;
+  hostBoundaryStop?: 'interrupted' | 'after-process-exit';
   readerAdmissionClosed: boolean;
   cols: number;
   rows: number;
   business?: NonNativeHostBusiness;
+  fileActivity?: {
+    session: AgentFileActivitySession;
+    closed: boolean;
+    disposed: boolean;
+    disposal?: Promise<void>;
+    error?: string;
+  };
   mutationError?: string;
   resizeObservation?: InteractionObservation;
   resizeTaskPending?: boolean;
   pendingResize?: {
-    cols: number; rows: number; deadline: number;
-    resolve: () => void; reject: (error: unknown) => void;
+    cols: number; rows: number; deadline?: number;
+    resolve: (result: NonNativeHostResizeResult) => void; reject: (error: unknown) => void;
+    cancelDeadline: () => void;
   };
   finalTerminal?: SerializedTerminalState;
   localReaders?: Map<CanvasSurfaceLocation, LocalExecutionReader>;
@@ -635,6 +652,7 @@ interface NonNativeHostBusiness extends ExecutionAttentionSession {
   agentActivity?: AgentActivityHeuristicState;
   lineContextTracker: ExecutionTerminalLineContextTracker;
   cancelActivityPoll?: () => void;
+  claudeFileConfirmation?: { retry: boolean };
 }
 
 type NonNativeHostPersistenceResult = Readonly<{
@@ -1074,6 +1092,13 @@ export interface CanvasSidebarNodeListSnapshot {
 }
 
 export interface CanvasDebugSnapshot {
+  localExecutions: Array<{
+    kind: ExecutionNodeKind;
+    nodeId: string;
+    identity: ExecutionIdentity;
+    retired: boolean;
+    persistence?: { submitted: boolean; result?: NonNativeHostPersistenceResult };
+  }>;
   activeSurface: CanvasSurfaceLocation | undefined;
   configuration: CanvasDebugConfigurationSnapshot;
   sidebar: CanvasSidebarState;
@@ -1135,6 +1160,15 @@ interface PersistedCanvasStateFlushResult {
   lastError?: string;
   writtenAt?: string;
   snapshot?: PersistedCanvasSnapshot;
+}
+
+class LocalExecutionStartError extends Error {
+  constructor(
+    readonly identity: ExecutionIdentity,
+    readonly result: Exclude<OperationResult, { kind: 'started' }>
+  ) {
+    super(`Non-native Host start was ${result.kind}.${result.reason ? ` ${result.reason}` : ''}`);
+  }
 }
 
 interface StartExecutionSessionForTestParams {
@@ -1415,6 +1449,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   /** Runtime events accepted after a host boundary can otherwise revive stale state. */
   private runtimeSupervisorEventAdmissionOpen = true;
   private pendingRuntimeSupervisorStateCallbacks: Set<Promise<void>> | undefined;
+  private runtimeSupervisorStateCallbackRevision = 0;
   private runtimeSupervisorClientEpochs: Map<string, number> | undefined;
   private readonly pendingTerminalProjectionRefreshes = new Map<string, Promise<void>>();
   private readonly terminalReadRelay = new RuntimeTerminalReadRelay();
@@ -1441,6 +1476,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private multiRootOverlay: CanvasMultiRootOverlay | undefined;
   private lastLoadedRootLocalStates: CanvasRootLocalStateSnapshot[] = [];
   private lastComposedWorkspaceRootPaths: string[] = [];
+  private workspaceRecomposition: Promise<void> = Promise.resolve();
+  private workspaceRecompositionPending = false;
   private pendingWorkspaceRootPlacement:
     | {
         rootPaths: string[];
@@ -1574,40 +1611,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     context.subscriptions.push(
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
-        this.invalidateResolvedShellEnvironmentPatch();
-        this.clearAgentCliResolutionCache();
-        const previousWorkspaceRootPaths = this.lastComposedWorkspaceRootPaths;
-        const nextWorkspaceRootPaths = this.getMultiRootWorkspaceFoldersForComposition().map((folder) => folder.path);
-        const addedWorkspaceRootPaths = nextWorkspaceRootPaths.filter(
-          (rootPath) => !previousWorkspaceRootPaths.includes(rootPath)
-        );
-        const preferredCenter = this.resolvePreferredCanvasCenter();
-        this.pendingWorkspaceRootPlacement = addedWorkspaceRootPaths.length > 0
-          ? {
-              rootPaths: addedWorkspaceRootPaths,
-              preferredCenter
-            }
-          : undefined;
-        try {
-          this.state = this.loadReconciledState();
-        } finally {
-          this.pendingWorkspaceRootPlacement = undefined;
-        }
-        this.lastComposedWorkspaceRootPaths = nextWorkspaceRootPaths;
-        const focusedRootGroup = this.resolveWorkspaceRootGroupForAddedFolder(addedWorkspaceRootPaths);
-        this.reconcileDefaultExecutionMetadataCwd();
-        this.refreshConfiguredTerminalShellMetadata();
-        this.persistState({ reason: 'workspace-folders-changed' });
-        this.postState('host/stateUpdated');
-        if (focusedRootGroup) {
-          this.recordDiagnosticEvent('workspaceRoot/focusAddedRoot', {
-            rootPath: focusedRootGroup.workspaceRootPath,
-            groupId: focusedRootGroup.groupId
+        this.workspaceRecomposition = this.workspaceRecomposition.then(() => this.reconcileWorkspaceFolders())
+          .catch(error => {
+            this.recordDiagnosticEvent('workspaceRoot/recompositionFailed', { message: formatUnknownError(error) });
+            void vscode.window.showErrorMessage(formatUnknownError(error));
           });
-          this.focusWorkspaceRootInCanvas(focusedRootGroup.groupId);
-        }
-        this.notifySidebarStateChanged();
-        this.scheduleRestoreLiveRuntimeSessions();
       })
     );
 
@@ -2346,6 +2354,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public getDebugSnapshot(): CanvasDebugSnapshot {
     return {
+      localExecutions: [...this.nonNativeHostExecutions.values()].map(record => ({
+        kind: record.kind, nodeId: record.nodeId, identity: record.execution.identity,
+        retired: record.execution.snapshot().retired,
+        persistence: record.persistence && { submitted: record.persistence.submitted, result: record.persistence.result }
+      })),
       activeSurface: this.activeSurface,
       configuration: cloneJsonValue(this.buildDebugConfigurationSnapshot()),
       sidebar: cloneJsonValue(this.getSidebarState()),
@@ -3807,9 +3820,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public async simulateRuntimeReloadForTest(): Promise<CanvasDebugSnapshot> {
     await this.flushDeferredCanvasStatePersist('test-runtime-reload');
     const nextStartupConfiguration = this.readStartupConfiguration();
+    const preserveLiveRuntime = this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration);
     await this.prepareForHostBoundary({
-      preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
+      preserveLiveRuntime,
+      runtimeStateCallbackDeadline: preserveLiveRuntime
+        ? this.getExecutionCandidateScheduler().now() + EXECUTION_CANDIDATE_BUDGETS.boundaryMs
+        : undefined,
       preserveRootRuntimeBindings: !this.isRuntimePersistenceEnabled(),
+      waitForLocalPersistence: true,
+      preserveLocalRecovery: true,
       allowRuntimeSupervisorRestart: false
     });
 
@@ -3900,7 +3919,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
       preserveRootRuntimeBindings: !this.isRuntimePersistenceEnabled(),
       allowRuntimeSupervisorRestart: false,
-      permanentExecutionClose: true
+      permanentExecutionClose: true,
+      preserveLocalRecovery: true
     });
   }
 
@@ -3976,7 +3996,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : { kind: 'settled' };
     });
     run('local', async () => {
-      const closed = await this.beginNonNativeHostExecutionClose('host-deactivation', true, 'lost');
+      const closed = await this.beginNonNativeHostExecutionClose('host-deactivation', true, 'lost', true);
       return closed.kind === 'settled' && owner.snapshot().pending === 0
         ? { kind: 'settled' }
         : { kind: 'unconfirmed', reason: `Host execution responsibility remains: ${closed.pending.join(', ')}` };
@@ -4005,10 +4025,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async prepareForHostBoundary(options: {
     preserveLiveRuntime: boolean;
+    runtimeStateCallbackDeadline?: number;
     preserveRootRuntimeBindings?: boolean;
     allowRuntimeSupervisorRestart: boolean;
     invalidatePendingExecutionOperations?: boolean;
     permanentExecutionClose?: boolean;
+    waitForLocalPersistence?: boolean;
+    preserveLocalRecovery?: boolean;
   }): Promise<void> {
     if (!this.getExecutionCandidateProfile() || options.preserveLiveRuntime) {
       return this.prepareForHostBoundaryCore(options);
@@ -4037,10 +4060,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async prepareForHostBoundaryCore(options: {
     preserveLiveRuntime: boolean;
+    runtimeStateCallbackDeadline?: number;
     preserveRootRuntimeBindings?: boolean;
     allowRuntimeSupervisorRestart: boolean;
     invalidatePendingExecutionOperations?: boolean;
     permanentExecutionClose?: boolean;
+    waitForLocalPersistence?: boolean;
+    preserveLocalRecovery?: boolean;
   }): Promise<void> {
     const candidate = Boolean(this.getExecutionCandidateProfile()) && !options.preserveLiveRuntime;
     if (options.permanentExecutionClose) {
@@ -4055,9 +4081,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         throw new Error('Runtime mutation boundary expired or its nodes changed.');
       }
     };
+    checkBoundary();
     const ownedClose = this.nonNativeExecutionOwner
       ? this.closeNonNativeHostExecutions('host-boundary', options.permanentExecutionClose === true,
-        options.invalidatePendingExecutionOperations ? 'cancelled' : 'lost')
+        options.invalidatePendingExecutionOperations ? 'cancelled' : 'lost', options.waitForLocalPersistence,
+        options.preserveLocalRecovery)
       : undefined;
     if (options.invalidatePendingExecutionOperations) {
       this.invalidateAllExecutionSessionOperations();
@@ -4065,28 +4093,48 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (ownedClose) await ownedClose;
     checkBoundary();
-    await this.waitForPendingRuntimeSupervisorStateCallbacks();
+    await this.waitForPendingRuntimeSupervisorStateCallbacks(options.runtimeStateCallbackDeadline);
     checkBoundary();
     await this.waitForPendingRuntimeSupervisorOperations();
     checkBoundary();
-    await this.flushAllExecutionSessionStatesForHostBoundary();
-    checkBoundary();
-    for (const [kind, sessions] of [
-      ['agent', this.agentSessions],
-      ['terminal', this.terminalSessions]
-    ] as const) {
-      for (const [nodeId, session] of sessions) {
-        if (session.owner !== 'supervisor') {
-          continue;
-        }
-        this.clearSupervisorHostBoundaryTimers(kind, nodeId, session);
+    const callbackDeadline = options.runtimeStateCallbackDeadline;
+    const checkSnapshotBoundary = (): void => {
+      checkBoundary();
+      if (callbackDeadline !== undefined && this.getExecutionCandidateScheduler().now() >= callbackDeadline) {
+        throw new Error(vscode.l10n.t('Runtime session updates are still pending. Please try again after they finish.'));
       }
-    }
-    checkBoundary();
-    await this.flushDeferredCanvasStatePersist('host-boundary');
-    checkBoundary();
-    await this.waitForPendingWorkspaceStateUpdates();
-    checkBoundary();
+    };
+    let flushedCallbackRevision: number;
+    // Simulated reload keeps event admission open; a startup or save can admit another output batch.
+    do {
+      checkSnapshotBoundary();
+      if (callbackDeadline !== undefined) {
+        do {
+          await this.waitForPendingRuntimeSupervisorStateCallbacks(callbackDeadline);
+          checkSnapshotBoundary();
+        } while (this.pendingRuntimeSupervisorStateCallbacks?.size);
+      }
+      flushedCallbackRevision = this.runtimeSupervisorStateCallbackRevision ?? 0;
+      await this.flushAllExecutionSessionStatesForHostBoundary();
+      checkSnapshotBoundary();
+      for (const [kind, sessions] of [
+        ['agent', this.agentSessions],
+        ['terminal', this.terminalSessions]
+      ] as const) {
+        for (const [nodeId, session] of sessions) {
+          if (session.owner !== 'supervisor') {
+            continue;
+          }
+          this.clearSupervisorHostBoundaryTimers(kind, nodeId, session);
+        }
+      }
+      checkSnapshotBoundary();
+      await this.flushDeferredCanvasStatePersist('host-boundary');
+      checkSnapshotBoundary();
+      await this.waitForPendingWorkspaceStateUpdates();
+      checkSnapshotBoundary();
+    } while (callbackDeadline !== undefined && (this.pendingRuntimeSupervisorStateCallbacks?.size ||
+      (this.runtimeSupervisorStateCallbackRevision ?? 0) !== flushedCallbackRevision));
 
     const persistedRuntimeSessions = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessions()
       .filter(session => !options.preserveRootRuntimeBindings || session.runtimeOwner === undefined);
@@ -6649,8 +6697,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }));
   }
 
+  private getCanvasPersistenceWorkspaceFolders(): CanvasMultiRootWorkspaceFolder[] {
+    const current = this.getMultiRootWorkspaceFoldersForComposition();
+    return this.lastComposedWorkspaceRootPaths === undefined ? current
+      : this.lastComposedWorkspaceRootPaths.map(rootPath => current.find(folder => folder.path === rootPath)
+        ?? { path: rootPath, name: path.basename(rootPath) });
+  }
+
   private writeRootLocalCanvasSnapshotsForState(state: CanvasPrototypeState): CanvasMultiRootOverlay | undefined {
-    const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
+    const workspaceFolders = this.getCanvasPersistenceWorkspaceFolders();
     if (workspaceFolders.length > 1) {
       const decomposed = decomposeMultiRootCanvasState({
         composedState: state,
@@ -7010,7 +7065,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private writePersistedCanvasSnapshotToDisk(snapshotPath: string, snapshot: PersistedCanvasSnapshot): number {
     fs.mkdirSync(path.dirname(snapshotPath), {
-      recursive: true
+      recursive: true, mode: 0o700
     });
     const tempSnapshotPath = `${snapshotPath}.tmp`;
     const serializedSnapshot = `${JSON.stringify(snapshot, null, 2)}\n`;
@@ -7226,14 +7281,121 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return result.state;
   }
 
+  private reconcileOwnedCanvasState(next: CanvasPrototypeState): CanvasPrototypeState {
+    const folders = this.getMultiRootWorkspaceFoldersForComposition();
+    const updates = [...this.nonNativeHostExecutions.values()].map(record => {
+      const original = this.state.nodes.find(node => node.id === record.nodeId && node.kind === record.kind);
+      if (!original || (record.persistence && !record.persistence.submitted &&
+          original.metadata?.[record.kind] !== record.persistence.metadata)) {
+        throw new Error('Cannot reload a canvas whose original execution binding changed.');
+      }
+      const root = record.canvasRootPath;
+      if (root && !folders.some(folder => folder.path === root)) {
+        throw new Error('The removed workspace execution must settle before canvas reconciliation.');
+      }
+      const nodeId = root && record.canvasLocalNodeId
+        ? folders.length > 1 ? namespaceCanvasObjectId(root, record.canvasLocalNodeId) : record.canvasLocalNodeId
+        : record.nodeId;
+      const target = next.nodes.find(node => node.id === nodeId && node.kind === record.kind);
+      if (!target) throw new Error('Stop the original execution before replacing or removing its canvas node.');
+      return { record, original, nodeId, key: this.getExecutionSessionOperationKey(record.kind, nodeId) };
+    });
+    const moves = updates.filter(update => update.nodeId !== update.record.nodeId);
+    if (new Set(updates.map(update => update.key)).size !== updates.length) {
+      throw new Error('Canvas reconciliation has ambiguous execution routes.');
+    }
+    this.nonNativeExecutionOwner?.rekey(moves.map(({ record, key }) => ({ execution: record.execution, key })));
+    for (const { record } of moves) this.nonNativeHostExecutions.delete(this.getExecutionSessionOperationKey(record.kind, record.nodeId));
+    for (const { record, nodeId, key } of moves) {
+      for (const reader of record.localReaders?.values() ?? []) {
+        this.settleLocalExecutionReader(record, reader, { kind: 'cancelled', reason: 'canvas-node-remapped' });
+      }
+      const pendingInput = this.pendingTerminalInitialInputs.get(record.nodeId);
+      const dispatch = this.pendingTerminalInitialInputDispatches.get(record.nodeId);
+      if (dispatch) {
+        // Its deadline is tied to the original node route; report cancellation rather than misroute it.
+        this.dropPendingTerminalInitialInput(record.nodeId, 'The canvas node route changed before initial input completed.');
+      } else if (pendingInput !== undefined) {
+        this.pendingTerminalInitialInputs.delete(record.nodeId);
+        this.pendingTerminalInitialInputs.set(nodeId, pendingInput);
+      }
+      record.nodeId = nodeId;
+      this.nonNativeHostExecutions.set(key, record);
+      this.retireNonNativeHostExecution(record);
+    }
+    const byNode = new Map(updates.map(update => [update.nodeId, update]));
+    return { ...next, nodes: next.nodes.map(node => {
+      const owned = byNode.get(node.id);
+      return owned ? { ...node, status: owned.original.status, summary: owned.original.summary,
+        metadata: { ...node.metadata, [owned.record.kind]: owned.original.metadata?.[owned.record.kind] } } : node;
+    }) };
+  }
+
+  private async reconcileWorkspaceFolders(): Promise<void> {
+    this.assertCanvasMutationAdmissionOpen();
+    this.workspaceRecompositionPending = true;
+    const folders = this.getMultiRootWorkspaceFoldersForComposition();
+    const removed = [...this.nonNativeHostExecutions.values()].filter(record => record.canvasRootPath &&
+      !folders.some(folder => folder.path === record.canvasRootPath));
+    for (const record of removed) {
+      record.readerAdmissionClosed = true;
+      for (const reader of record.localReaders?.values() ?? []) {
+        this.settleLocalExecutionReader(record, reader, { kind: 'cancelled', reason: 'workspace-root-removed' });
+      }
+      this.settleLocalExecutionReaderAggregate(record);
+    }
+    if (removed.length > 0) await Promise.all(removed.map(async record => {
+      if ((await record.execution.requestStop('workspace-root-removed')).kind !== 'settled') {
+        throw new Error('Removed workspace execution cleanup is unconfirmed.');
+      }
+      await this.waitForNonNativeHostPersistence([record]);
+    }));
+    this.assertCanvasMutationAdmissionOpen();
+    this.invalidateResolvedShellEnvironmentPatch();
+    this.clearAgentCliResolutionCache();
+    const previousWorkspaceRootPaths = this.lastComposedWorkspaceRootPaths;
+    const nextWorkspaceRootPaths = this.getMultiRootWorkspaceFoldersForComposition().map((folder) => folder.path);
+    const addedWorkspaceRootPaths = nextWorkspaceRootPaths.filter(
+      (rootPath) => !previousWorkspaceRootPaths.includes(rootPath)
+    );
+    const preferredCenter = this.resolvePreferredCanvasCenter();
+    this.pendingWorkspaceRootPlacement = addedWorkspaceRootPaths.length > 0
+      ? {
+          rootPaths: addedWorkspaceRootPaths,
+          preferredCenter
+        }
+      : undefined;
+    try {
+      this.state = this.loadReconciledState();
+    } finally {
+      this.pendingWorkspaceRootPlacement = undefined;
+    }
+    this.lastComposedWorkspaceRootPaths = nextWorkspaceRootPaths;
+    const focusedRootGroup = this.resolveWorkspaceRootGroupForAddedFolder(addedWorkspaceRootPaths);
+    this.reconcileDefaultExecutionMetadataCwd();
+    this.refreshConfiguredTerminalShellMetadata();
+    this.persistState({ reason: 'workspace-folders-changed' });
+    this.postState('host/stateUpdated');
+    if (focusedRootGroup) {
+      this.recordDiagnosticEvent('workspaceRoot/focusAddedRoot', {
+        rootPath: focusedRootGroup.workspaceRootPath,
+        groupId: focusedRootGroup.groupId
+      });
+      this.focusWorkspaceRootInCanvas(focusedRootGroup.groupId);
+    }
+    this.notifySidebarStateChanged();
+    this.scheduleRestoreLiveRuntimeSessions();
+    this.workspaceRecompositionPending = false;
+  }
+
   private loadReconciledState(): CanvasPrototypeState {
     const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
-    return this.reconcileCanvasFileArtifacts(
+    return this.reconcileOwnedCanvasState(this.reconcileCanvasFileArtifacts(
       reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions, {
         allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
         liveRuntimeReconnectBlockReason
       })
-    );
+    ));
   }
 
   private reconcileSeededStateForTest(rawState: unknown): CanvasPrototypeState {
@@ -7248,12 +7410,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
     const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
 
-    return this.reconcileCanvasFileArtifacts(
+    return this.reconcileOwnedCanvasState(this.reconcileCanvasFileArtifacts(
       reconcileRuntimeNodes(hydratedState, this.agentSessions, this.terminalSessions, {
         allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
         liveRuntimeReconnectBlockReason
       })
-    );
+    ));
   }
 
   private persistState(
@@ -7271,7 +7433,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const reason = options.reason ?? 'persist-state';
     this.syncNoteMarkdownFileWatchers();
     this.cleanupUnreferencedNoteMarkdownRecoverableDraftFiles();
-    const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
+    const workspaceFolders = this.getCanvasPersistenceWorkspaceFolders();
     let overlayToPersist: CanvasMultiRootOverlay | undefined;
     let rootLocalStatesToPersist: CanvasRootLocalStateSnapshot[] | undefined;
     if (workspaceFolders.length > 1) {
@@ -8029,21 +8191,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     resource: ExecutionTerminalDroppedResource
   ): Promise<void> {
-    const session = this.getExecutionSessions(kind).get(nodeId);
-    if (!session) {
+    const record = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+    const session = record ? undefined : this.getExecutionSessions(kind).get(nodeId);
+    const context = record ? { shellPath: record.launchSpec?.file, cwd: record.launchSpec?.cwd } : session;
+    if (!this.captureExecutionInputTarget(kind, nodeId) || context?.cwd === undefined) {
       this.recordDiagnosticEvent('execution/dropResourceRejected', {
         kind,
         nodeId,
-        reason: 'missing-session',
+        reason: record || session ? 'unavailable-input-target' : 'missing-session',
         source: resource.source
       });
       return;
     }
 
     const preparedPath = prepareExecutionTerminalDroppedPath(resource, {
-      shellPath: session.shellPath,
-      cwd: session.cwd,
-      pathStyle: inferExecutionTerminalPathStyle(session.shellPath, session.cwd),
+      shellPath: context.shellPath,
+      cwd: context.cwd,
+      pathStyle: inferExecutionTerminalPathStyle(context.shellPath, context.cwd),
       userHome: process.env.HOME ?? process.env.USERPROFILE
     });
     this.recordDiagnosticEvent('execution/dropResourcePrepared', {
@@ -8052,7 +8216,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       source: resource.source,
       valueKind: resource.valueKind
     });
-    await this.writeExecutionInput(kind, nodeId, preparedPath);
+    // Keep the captured execution through the actual write acknowledgement.
+    if (record) await this.writeNonNativeHostInput(record, preparedPath);
+    else await this.writeExecutionInput(kind, nodeId, preparedPath);
   }
 
   private async handleDroppedNoteMarkdownFiles(
@@ -8526,6 +8692,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return JSON.stringify({
       kind,
       nodeId: hasLineScopedCandidate ? nodeId : undefined,
+      executionSessionId: hasLineScopedCandidate ? context.executionSessionId : undefined,
       cwd: context.cwd,
       shellPath: hasLineScopedCandidate ? context.shellPath ?? '' : '',
       pathStyle: context.pathStyle,
@@ -10032,15 +10199,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  private getExecutionTerminalPathContext(kind: ExecutionNodeKind, nodeId: string): {
-    shellPath?: string;
-    cwd: string;
-    pathStyle: 'windows' | 'posix';
-    userHome?: string;
-    linkOpenMode?: CanvasLinkOpenMode;
-    resolveCwdForBufferLine?: (bufferStartLine: number) => Promise<string | undefined>;
-  } {
-    const session = this.getExecutionSessions(kind).get(nodeId);
+  private getExecutionTerminalPathContext(kind: ExecutionNodeKind, nodeId: string): ExecutionTerminalPathContext {
+    const record = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+    const session = record ? undefined : this.getExecutionSessions(kind).get(nodeId);
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
     const metadata =
       kind === 'agent'
@@ -10048,17 +10209,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : node
           ? ensureTerminalMetadata(node)
           : undefined;
-    const shellPath = session?.shellPath ?? metadata?.shellPath;
-    const cwd = session?.cwd ?? metadata?.cwd ?? this.getTerminalWorkingDirectory();
+    const shellPath = record?.launchSpec?.file ?? session?.shellPath ?? metadata?.shellPath;
+    const cwd = record?.launchSpec?.cwd ?? session?.cwd ?? metadata?.cwd ?? this.getTerminalWorkingDirectory();
+    const lineContextTracker = record?.business?.lineContextTracker ?? session?.lineContextTracker;
 
     return {
+      executionSessionId: record?.execution.identity.executionId ?? session?.sessionId,
       shellPath,
       cwd,
       pathStyle: inferExecutionTerminalPathStyle(shellPath, cwd),
       userHome: process.env.HOME ?? process.env.USERPROFILE,
       linkOpenMode: this.getCanvasLinkOpenMode(),
       resolveCwdForBufferLine:
-        session ? (bufferStartLine) => session.lineContextTracker.getCwdForBufferLine(bufferStartLine) : undefined
+        lineContextTracker ? (bufferStartLine) => lineContextTracker.getCwdForBufferLine(bufferStartLine) : undefined
     };
   }
 
@@ -10232,8 +10395,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     // Explicit stock comparisons and rootless canvases retain their isolated workspace slot.
     if (!profile || rootPath === undefined) return { rootPath, runtimeStoragePath: this.getRuntimeHostBaseStoragePath() };
     const globalStorage = this.context.globalStorageUri.fsPath;
-    await fs.promises.mkdir(globalStorage, { recursive: true, mode: 0o700 });
-    const canonicalGlobalStorage = await fs.promises.realpath(globalStorage);
+    let canonicalGlobalStorage: string;
+    try { canonicalGlobalStorage = await prepareRuntimeGlobalStorage(globalStorage); }
+    catch (error) {
+      const reason = error instanceof RuntimeGlobalStorageError ? error.reason : 'unavailable';
+      throw new Error(reason === 'unsafe'
+        ? vscode.l10n.t('Runtime storage is unsafe. Its directory must belong to your OS user, must not be a symbolic link, and must not be writable by everyone.')
+        : reason === 'changed'
+          ? vscode.l10n.t('Runtime storage changed while it was being prepared. Check its directory before trying again.')
+          : vscode.l10n.t('Runtime storage could not be prepared. Check access to the extension storage directory and its permissions.'));
+    }
     const pending = this.runtimeExecutionEnvironmentPromise ??= readRuntimeExecutionEnvironment();
     let environment: RuntimeExecutionEnvironment;
     try { environment = await pending; }
@@ -10659,11 +10830,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private assertExecutionCandidateAdmission(mode: 'live-runtime' | 'snapshot-only', client?: RuntimeSupervisorClient): void {
+  private assertExecutionCandidateAdmission(
+    mode: 'live-runtime' | 'snapshot-only',
+    client?: RuntimeSupervisorClient,
+    preparedLocalExecution?: NonNativeHostExecution
+  ): void {
     const profile = this.getExecutionCandidateProfile();
     if (!profile) return;
     assertExecutionCandidateProfile(profile);
-    if (this.strictRuntimeMutationBoundary || this.nonNativeDeactivationReport) {
+    // A reservation in a retained root may finish preparation while another root saves its tail.
+    // New reservations and removed-root preparations remain blocked until composition completes.
+    const retainedPreparation = preparedLocalExecution && this.isNonNativeHostRecordCurrent(preparedLocalExecution)
+      && !preparedLocalExecution.execution.snapshot().stopRequested && preparedLocalExecution.canvasRootPath
+      && this.getMultiRootWorkspaceFoldersForComposition().some(folder => folder.path === preparedLocalExecution.canvasRootPath);
+    if (this.strictRuntimeMutationBoundary || this.nonNativeDeactivationReport ||
+        (this.workspaceRecompositionPending && !retainedPreparation)) {
       throw new Error('Execution candidate creation admission is closed.');
     }
     const surface = this.activeSurface;
@@ -10742,7 +10923,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       && this.isExecutionSessionOperationCurrent(kind, node.id, token) };
   }
 
-  private async withExecutionCandidateStart(kind: ExecutionNodeKind, nodeId: string, run: () => Promise<void>): Promise<void> {
+  private async withExecutionCandidateStart(kind: ExecutionNodeKind, nodeId: string, run: () => Promise<void>,
+    launchMode: PendingExecutionLaunch = 'start'): Promise<void> {
     if (!this.getExecutionCandidateProfile()) return run();
     this.assertExecutionCandidateAdmission('live-runtime');
     const starts = this.candidateRuntimeStarts ??= new Map();
@@ -10753,6 +10935,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     starts.set(key, record);
     try { await run(); }
     catch (error) {
+      const currentNode = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
+      if (!record.submitted && starts.get(key) === record && currentNode &&
+          currentNode.metadata?.[kind] === record.currentMetadata && !currentNode.metadata?.[kind]?.liveSession &&
+          !currentNode.metadata?.[kind]?.runtimeSessionId &&
+          !this.nonNativeDeactivationReport && !this.ordinaryDeactivationPromise && !this.strictRuntimeMutationBoundary) {
+        const message = error instanceof Error ? error.message : String(error);
+        const status = kind === 'agent' && launchMode === 'resume' ? 'resume-failed' : 'error';
+        // No createSession was submitted. Keep earlier history/owner evidence and
+        // provider recovery context; this is an ordinary state save, not a final snapshot.
+        this.state = updateExecutionNode(this.state, nodeId, kind, {
+          status, summary: message,
+          metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+            lifecycle: status, liveSession: false, pendingLaunch: undefined,
+            lastRuntimeError: message, lastExitMessage: message,
+            ...(kind === 'agent' ? { lastResumeError: status === 'resume-failed' ? message : undefined } : {})
+          })
+        });
+        this.persistState({ reason: 'runtime-start-preparation-failed' });
+        this.postState('host/stateUpdated');
+      }
       // Only the original create's explicit resource result can settle a submitted request.
       const outcome = getRuntimeSupervisorCreateSessionOutcome(error);
       const submittedSessionId = (record as { sessionId?: string }).sessionId;
@@ -11691,6 +11893,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private trackRuntimeSupervisorStateCallback(operation: Promise<void>): void {
+    this.runtimeSupervisorStateCallbackRevision = (this.runtimeSupervisorStateCallbackRevision ?? 0) + 1;
     const pending = this.pendingRuntimeSupervisorStateCallbacks ??= new Set<Promise<void>>();
     pending.add(operation);
     const settled = (): void => {
@@ -11699,13 +11902,38 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     void operation.then(settled, settled);
   }
 
-  private async waitForPendingRuntimeSupervisorStateCallbacks(): Promise<void> {
+  private async waitForPendingRuntimeSupervisorStateCallbacks(deadline?: number): Promise<void> {
     const pending = this.pendingRuntimeSupervisorStateCallbacks;
     if (!pending || pending.size === 0) {
       return;
     }
 
-    await Promise.allSettled(Array.from(pending));
+    const settled = Promise.allSettled(Array.from(pending));
+    if (deadline === undefined) {
+      await settled;
+      return;
+    }
+    const scheduler = this.getExecutionCandidateScheduler();
+    await new Promise<void>((resolve, reject) => {
+      let finished = false;
+      let cancel = (): void => {};
+      const finish = (): void => {
+        if (finished) return;
+        finished = true;
+        cancel();
+        if (scheduler.now() >= deadline) {
+          reject(new Error(vscode.l10n.t('Runtime session updates are still pending. Please try again after they finish.')));
+        } else {
+          resolve();
+        }
+      };
+      if (scheduler.now() >= deadline) {
+        finish();
+        return;
+      }
+      cancel = scheduler.scheduleDeadline(deadline, finish);
+      void settled.then(finish);
+    });
   }
 
   private assertRuntimeSupervisorStateCallbacksSettled(): void {
@@ -14009,30 +14237,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/deleteNode':
         void this.deleteNode(parsedMessage.payload.nodeId);
         return;
-      case 'webview/startExecutionSession':
-        if (parsedMessage.payload.kind === 'agent') {
-          const operation = this.startAgentSession(
-            parsedMessage.payload.nodeId,
-            parsedMessage.payload.cols,
-            parsedMessage.payload.rows,
-            parsedMessage.payload.provider,
-            parsedMessage.payload.resume === true
-          );
-          if (this.isRuntimePersistenceEnabled()) {
-            this.trackRuntimeSupervisorOperation(operation);
-          }
-          return;
-        }
-
-        const operation = this.startTerminalSession(
-          parsedMessage.payload.nodeId,
-          parsedMessage.payload.cols,
-          parsedMessage.payload.rows
-        );
-        if (this.isRuntimePersistenceEnabled()) {
-          this.trackRuntimeSupervisorOperation(operation);
+      case 'webview/startExecutionSession': {
+        const { kind, nodeId, cols, rows } = parsedMessage.payload;
+        const runtimePersistence = this.isRuntimePersistenceEnabled();
+        const key = this.getExecutionSessionOperationKey(kind, nodeId);
+        const existing = runtimePersistence ? undefined : this.nonNativeHostExecutions.get(key);
+        const operation = kind === 'agent'
+          ? this.startAgentSession(nodeId, cols, rows, parsedMessage.payload.provider, parsedMessage.payload.resume === true)
+          : this.startTerminalSession(nodeId, cols, rows);
+        const current = runtimePersistence ? undefined : this.nonNativeHostExecutions.get(key);
+        // A refused new request does not own an older execution that still occupies this key.
+        const original = current !== existing ? current : undefined;
+        const metadata = this.state.nodes.find(node => node.id === nodeId && node.kind === kind)?.metadata?.[kind];
+        const reported = operation.catch(error => this.reportWebviewExecutionStartFailure(kind, nodeId, error, original, metadata));
+        if (runtimePersistence) {
+          this.trackRuntimeSupervisorOperation(reported);
         }
         return;
+      }
       case 'webview/branchAgentSession':
         void this.branchAgentSession(parsedMessage.payload.nodeId);
         return;
@@ -14493,9 +14715,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private readAgentResumeContextFromOutput(
-    session: Pick<ManagedExecutionSession, 'agentProvider' | 'launchMode' | 'buffer'>
+    session: Pick<ManagedExecutionSession, 'agentProvider' | 'launchMode' | 'buffer' | 'agentResume'>
   ): AgentResumeContext | null {
-    if (session.launchMode !== 'start') {
+    if (session.launchMode !== 'start' || session.agentResume?.strategy === 'fake-provider') {
       return null;
     }
 
@@ -14771,7 +14993,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     kind: ExecutionNodeKind,
     nodeId: string,
     pending: boolean,
-    options: { postState?: boolean } = {}
+    options: { postState?: boolean; persistState?: boolean } = {}
   ): boolean {
     const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === kind);
     if (!node) {
@@ -14796,7 +15018,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const updated = this.requireNode(nodeId, kind);
       owned.persistence.metadata = kind === 'agent' ? ensureAgentMetadata(updated) : ensureTerminalMetadata(updated);
     }
-    this.persistState({ reason: 'execution-attention' });
+    if (options.persistState !== false) {
+      this.persistState({ reason: 'execution-attention' });
+    }
     if (options.postState !== false) {
       this.postState('host/stateUpdated');
     }
@@ -14893,10 +15117,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async markAndNotifyAgentAbnormalInterruption(
     nodeId: string,
-    session: ManagedExecutionSession,
+    session: AgentAbnormalInterruptionSession,
     status: AgentNodeStatus,
     message: string,
-    detail: Record<string, unknown> = {}
+    detail: Record<string, unknown> = {},
+    options: { deferStateSync?: boolean } = {}
   ): Promise<void> {
     if (!this.shouldNotifyAgentAbnormalInterruption(session, status, detail)) {
       return;
@@ -14917,20 +15142,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       typeof state?.lastAbnormalStreamNotificationAtMs === 'number' &&
       now - state.lastAbnormalStreamNotificationAtMs < EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS
     ) {
-      this.setExecutionAttentionPending('agent', nodeId, true);
+      this.setExecutionAttentionPending('agent', nodeId, true, {
+        postState: !options.deferStateSync, persistState: !options.deferStateSync
+      });
       this.recordDiagnosticEvent('execution/attentionNotificationSuppressed', {
+        ...detail,
         kind: 'agent',
         nodeId,
         reason: 'covered-by-abnormal-stream',
         trigger: 'agent-abnormal-interruption',
         provider: session.agentProvider,
-        lifecycleStatus: status,
-        ...detail
+        lifecycleStatus: status
       });
       return;
     }
 
-    this.setExecutionAttentionPending('agent', nodeId, true);
+    this.setExecutionAttentionPending('agent', nodeId, true, {
+      postState: !options.deferStateSync, persistState: !options.deferStateSync
+    });
     const notificationMessage = this.buildAgentAbnormalInterruptionNotificationMessage(
       nodeId,
       session,
@@ -15113,7 +15342,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       message,
       bridgeMode: this.attentionNotificationBridgeMode
     });
-    void this.showExecutionAttentionNotification(kind, nodeId, message);
+    void this.showExecutionAttentionNotification(kind, nodeId, message).catch(error => {
+      this.recordDiagnosticEvent('execution/attentionNotificationFailed', {
+        ...detail, kind, nodeId, bridgeMode: this.attentionNotificationBridgeMode,
+        reason: formatUnknownError(error)
+      });
+    });
   }
 
   private buildExecutionAttentionNotificationRequest(
@@ -15409,7 +15643,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private buildAgentAbnormalInterruptionNotificationMessage(
     nodeId: string,
-    session: ManagedExecutionSession,
+    session: AgentAbnormalInterruptionSession,
     _status: 'error',
     message: string
   ): string {
@@ -15578,7 +15812,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     launchMode: PendingExecutionLaunch
   ): Promise<void> {
     return this.withExecutionCandidateStart('agent', nodeId, () => this.startAgentSessionWithSupervisorCore(
-      nodeId, normalizedCols, normalizedRows, provider, cliSpec, displayLaunchCommandLine, launchArgs, resumeContext, launchMode));
+      nodeId, normalizedCols, normalizedRows, provider, cliSpec, displayLaunchCommandLine, launchArgs, resumeContext, launchMode), launchMode);
   }
 
   private async startAgentSessionWithSupervisorCore(
@@ -15955,6 +16189,65 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.subscribeRuntimeSupervisorTerminalStream(snapshot, runtimeStoragePath, runtimeOwner);
   }
 
+  private reportWebviewExecutionStartFailure(
+    kind: ExecutionNodeKind, requestedNodeId: string, error: unknown,
+    original: NonNativeHostExecution | undefined, metadata: unknown
+  ): void {
+    const nodeId = original?.nodeId ?? requestedNodeId;
+    const node = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
+    const current = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+    const superseded = !node || (original
+      ? original.execution.snapshot().stopRequested || (current !== undefined && current !== original) ||
+        (original.persistence !== undefined && node.metadata?.[kind] !== original.persistence.metadata)
+      : node.metadata?.[kind] !== metadata);
+    const local = error instanceof LocalExecutionStartError ? error : undefined;
+    const reason = local?.result.reason ?? (error instanceof Error ? error.message : String(error));
+    const rejected = local?.result.kind === 'rejected-before-acquire' ||
+      (!original && !current &&
+        reason === 'Local final snapshot responsibility still occupies the execution key or Host capacity.');
+    const message = rejected
+      ? this.executionStartRejectionMessage(kind)
+      : vscode.l10n.t('Failed to start execution node: {message}', { message: reason });
+    // Reporting is observational: the original start retains all resource and persistence responsibility.
+    try {
+      this.recordDiagnosticEvent(rejected ? 'execution/startRejected' : 'execution/startFailed', {
+        kind, nodeId, outcome: local?.result.kind ?? 'exception', reason, message,
+        ...(superseded ? { suppressed: 'cancelled-or-superseded' } : {}),
+        ...(local ? { executionId: local.identity.executionId, generation: local.identity.generation } : {})
+      });
+    } catch { /* Diagnostics must not turn a handled start failure into an unhandled rejection. */ }
+    // Capacity can be rejected before an owned execution record is created. In
+    // that case the normal record-bound projection is unavailable, but the
+    // original pending intent still needs to become a retryable failure.
+    if (!superseded && !original && !current && node && node.metadata?.[kind] === metadata) {
+      const pendingLaunch = node.metadata?.[kind]?.pendingLaunch;
+      const waitingStatus = kind === 'agent' ? 'starting' : 'launching';
+      if ((pendingLaunch === 'start' || pendingLaunch === 'resume') &&
+          !node.metadata?.[kind]?.liveSession && node.status === waitingStatus &&
+          node.metadata?.[kind]?.lifecycle === waitingStatus) {
+        const status = kind === 'agent' && pendingLaunch === 'resume' ? 'resume-failed' : 'error';
+        this.state = updateExecutionNode(this.state, nodeId, kind, {
+          status,
+          summary: message,
+          metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+            lifecycle: status,
+            pendingLaunch: undefined,
+            liveSession: false,
+            lastExitMessage: message,
+            lastRuntimeError: message,
+            ...(kind === 'agent' ? { lastResumeError: status === 'resume-failed' ? message : undefined } : {})
+          })
+        });
+        try { void this.persistState({ reason: 'execution-start-rejected-before-record' }).catch(() => {}); }
+        catch { /* State projection must not replace the original start failure. */ }
+        try { this.postState('host/stateUpdated'); } catch { /* The page may already be disposed. */ }
+      }
+    }
+    if (superseded) return;
+    try { this.postMessage({ type: 'host/error', payload: { message } }); }
+    catch { /* A disposed page cannot change the original start outcome. */ }
+  }
+
   private async startAgentSession(
     nodeId: string,
     cols: number,
@@ -16008,7 +16301,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const activeSessions = this.getExecutionSessions('agent');
-    if (activeSessions.has(nodeId)) {
+    if (activeSessions.has(nodeId) || this.hasRunningLocalOwnedExecution('agent', nodeId)) {
       this.recordDiagnosticEvent('execution/startRejected', {
         kind: 'agent',
         nodeId,
@@ -17273,6 +17566,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private retireNonNativeHostExecution(record: NonNativeHostExecution): void {
+    if (record.fileActivity && !record.fileActivity.disposed) return;
     const snapshot = record.execution.snapshot();
     const persistence = record.persistence;
     if (persistence && !persistence.result && snapshot.settled && snapshot.adapter?.parentCleanup === 'unstarted'
@@ -17286,6 +17580,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     record.business?.cancelActivityPoll?.();
     record.business?.lineContextTracker.dispose();
     record.tracker.dispose();
+  }
+
+  private async waitForNonNativeHostPersistence(records: readonly NonNativeHostExecution[]): Promise<void> {
+    const scheduler = this.getExecutionCandidateScheduler();
+    await new Promise<void>((resolve, reject) => {
+      const cancel = scheduler.scheduleDeadline(scheduler.now() + EXECUTION_CANDIDATE_BUDGETS.boundaryMs,
+        () => reject(new Error('Local final snapshot persistence did not complete within the boundary.')));
+      void Promise.all(records.flatMap(record => record.persistence ? [record.persistence.promise] : []))
+        .then(() => { this.assertNonNativeHostPersistenceComplete(records); resolve(); })
+        .catch(reject).finally(cancel);
+    });
   }
 
   private assertNonNativeHostPersistenceComplete(records: readonly NonNativeHostExecution[]): void {
@@ -17333,18 +17638,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       fail('failed', 'The original final terminal revision does not match the consumed tail.');
       return;
     }
-    const stopped = snapshot.stopRequested || process.kind === 'terminated'
+    const stopRequested = snapshot.stopRequested && record.hostBoundaryStop !== 'after-process-exit';
+    const stopped = stopRequested || process.kind === 'terminated'
       || (process.kind === 'exited' && process.exitCode === 0);
-    const status = stopped ? (record.kind === 'agent' ? 'stopped' : 'closed') : 'error';
+    const interrupted = record.hostBoundaryStop === 'interrupted';
+    const canResume = interrupted && record.kind === 'agent' && canResumeAgentFromMetadata(ensureAgentMetadata(node));
+    const resumeFailed = !interrupted && !stopped && record.kind === 'agent' && record.business?.resumePhaseActive === true;
+    const status = interrupted ? canResume ? 'resume-ready' : 'interrupted'
+      : stopped ? (record.kind === 'agent' ? 'stopped' : 'closed') : resumeFailed ? 'resume-failed' : 'error';
     const incompleteReason = seal.source.kind === 'eof' ? undefined : seal.source.reason;
-    const exitMessage = process.kind === 'exited'
+    const cleanedOutput = stripTerminalControlSequences(terminal.data);
+    const exitMessage = resumeFailed
+      ? describeAgentResumeFailure({ label: agentProviderDisplayLabel(record.business!.agentProvider ?? 'codex') },
+        process.kind === 'exited' ? process.exitCode : null,
+        process.kind === 'exited' || process.kind === 'signaled' ? process.signal : undefined, cleanedOutput)
+      : process.kind === 'exited'
       ? vscode.l10n.t('Session ended with exit code {code}.', { code: process.exitCode })
       : process.kind === 'signaled'
         ? vscode.l10n.t('Session exited due to signal {signal}.', { signal: process.signal })
         : vscode.l10n.t('Session terminated: {reason}', { reason: process.reason });
     const message = incompleteReason
       ? vscode.l10n.t('{message} Output is incomplete: {reason}', { message: exitMessage, reason: incompleteReason }) : exitMessage;
-    const recentOutput = extractRecentTerminalOutput(stripTerminalControlSequences(terminal.data));
+    const recentOutput = extractRecentTerminalOutput(cleanedOutput);
     const metadata = buildExecutionMetadataPatch(this.state, record.nodeId, record.kind, {
       lifecycle: status, persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
       terminalProjectionMode: undefined, runtimeBackend: undefined, runtimeGuarantee: undefined,
@@ -17355,9 +17670,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       outputSequence: record.finalRevision, lastExitCode: process.kind === 'exited' ? process.exitCode : undefined,
       lastExitSignal: process.kind === 'exited' || process.kind === 'signaled' ? process.signal : undefined,
       lastExitMessage: message, lastRuntimeError: incompleteReason,
+      ...(record.kind === 'agent' ? { lastResumeError: resumeFailed ? message : undefined } : {}),
       lastCols: record.cols, lastRows: record.rows, serializedTerminalState: terminal
     });
-    const nextState = updateExecutionNode(this.state, record.nodeId, record.kind, { status, summary: message, metadata });
+    const summary = interrupted
+      ? canResume ? vscode.l10n.t('The Agent session can be resumed manually.')
+        : record.kind === 'agent'
+          ? vscode.l10n.t('The previous Agent session was not restored after extension reload. It can be restarted.')
+          : vscode.l10n.t('The previous embedded Terminal was not restored after extension reload. It can be restarted.')
+      : message;
+    const nextState = updateExecutionNode(this.state, record.nodeId, record.kind, { status, summary, metadata });
     if (this.nonNativeFinalPersistenceDeadline !== undefined
       && this.nonNativeExecutionOwner!.options.scheduler.now() >= this.nonNativeFinalPersistenceDeadline) {
       fail('unconfirmed', 'Host permanent boundary ended before the final snapshot was submitted.');
@@ -17365,6 +17687,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     persistence.submitted = true;
     this.state = nextState;
+    const finalNode = this.requireNode(record.nodeId, record.kind);
+    persistence.metadata = record.kind === 'agent' ? ensureAgentMetadata(finalNode) : ensureTerminalMetadata(finalNode);
+    if (record.kind === 'agent' && record.business && status === 'error') {
+      // Mark attention synchronously in this final snapshot; delivery must not hold settlement.
+      const session: AgentAbnormalInterruptionSession = {
+        sessionId: identity.executionId, stopRequested,
+        agentProvider: record.business.agentProvider, lifecycleStatus: record.business.lifecycleStatus,
+        displayLabel: record.business.displayLabel, attentionSignalState: record.business.attentionSignalState
+      };
+      void this.markAndNotifyAgentAbnormalInterruption(record.nodeId, session, status, message, {
+        sessionId: identity.executionId, generation: identity.generation,
+        exitCode: process.kind === 'exited' ? process.exitCode : null,
+        signal: process.kind === 'exited' || process.kind === 'signaled' ? process.signal ?? null : null,
+        launchMode: record.business.launchMode, reason: 'process-exit'
+      }, { deferStateSync: true }).catch(error => {
+        this.recordDiagnosticEvent('execution/attentionNotificationFailed', {
+          kind: record.kind, nodeId: record.nodeId, sessionId: identity.executionId, generation: identity.generation,
+          trigger: 'agent-abnormal-interruption', reason: formatUnknownError(error)
+        });
+      });
+    }
     try {
       const saved = this.persistState({ mode: 'immediate', workspaceStateMode: 'full',
         requireRootLocalDurability: true, reason: 'local-final-snapshot' });
@@ -17399,25 +17742,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw new Error('Local final snapshot responsibility still occupies the execution key or Host capacity.');
     }
     const assertRuntimeUnbound = (): void => {
-      const node = this.requireNode(nodeId, kind);
+      const node = this.requireNode(record?.nodeId ?? nodeId, kind);
       const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
       if (metadata.runtimeOwner !== undefined || this.getPersistedLiveRuntimeSessionForNode(node)) {
         throw new Error(vscode.l10n.t('The original Runtime execution is still bound. Settle it before starting a local execution.'));
       }
     };
+    let record: NonNativeHostExecution | undefined;
     assertRuntimeUnbound();
     const execution = owner.reserve(key);
-    let record: NonNativeHostExecution | undefined;
     let rejectedBeforeAcquire = false;
     try {
       record = {
         kind, nodeId, execution,
+        canvasRootPath: owner.options.profile ? this.resolveExecutionNodeRuntimeRoot(this.requireNode(nodeId, kind)) : undefined,
         tracker: new SerializedTerminalStateTracker(cols, rows, { scrollback: this.getTerminalScrollback() }),
         terminalChain: Promise.resolve(), lastDataSequence: 0, terminalRevision: 0,
         readerAdmissionClosed: false, cols, rows,
         ...(owner.options.capabilities.includes('terminal-local-settlement-v1')
           ? { localReaders: new Map<CanvasSurfaceLocation, LocalExecutionReader>() } : {})
       };
+      if (record.canvasRootPath) record.canvasLocalNodeId = denamespaceCanvasObjectId(record.canvasRootPath, nodeId) ?? nodeId;
       if (persistsFinal) {
         const node = this.state.nodes.find(candidate => candidate.id === nodeId && candidate.kind === kind);
         if (!node) throw new Error('Local final snapshot requires the original execution node.');
@@ -17432,9 +17777,40 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         record.persistence = { identity: execution.identity, metadata, submitted: false, promise, resolve };
       }
       this.nonNativeHostExecutions.set(key, record);
-      const prepared = await prepare();
-      this.assertExecutionCandidateAdmission('snapshot-only');
+      let prepared: ExecutionSessionLaunchSpec;
+      try {
+        prepared = await prepare();
+      } catch (error) {
+        // No transport exists yet. The waiting viewport was never dispatched;
+        // the start request alone reports the preparation error to the page.
+        record.pendingResize?.resolve('cancelled');
+        record.pendingResize = undefined;
+        this.projectNonNativeHostPreparationFailure(record, error, agent?.launchMode);
+        throw error;
+      }
+      this.assertExecutionCandidateAdmission('snapshot-only', undefined, record);
       assertRuntimeUnbound();
+      if (kind === 'agent' && agent && this.isFilesFeatureEnabled()) {
+        try {
+          const session = this.createConfiguredAgentFileActivitySession(agent.provider, prepared.file);
+          const activity: NonNullable<NonNativeHostExecution['fileActivity']> = { session, closed: false, disposed: false };
+          record.fileActivity = activity;
+          prepared = { ...prepared, args: [...(prepared.args ?? []), ...session.extraArgs],
+            env: { ...prepared.env, ...session.extraEnv } };
+          const original = record;
+          session.start(event => {
+            const node = this.state.nodes.find(value => value.id === original.nodeId && value.kind === 'agent');
+            if (activity.closed || !this.isNonNativeHostRecordCurrent(original) || !node ||
+              original.persistence?.submitted || original.persistence?.result ||
+              (original.persistence && node.metadata?.agent !== original.persistence.metadata)) return;
+            try { this.handleAgentFileActivityEvent(original.nodeId, event); }
+            catch (error) { activity.error ??= formatUnknownError(error); }
+          });
+        } catch (error) {
+          this.projectNonNativeHostPreparationFailure(record, error, agent.launchMode);
+          throw error;
+        }
+      }
       const spec: LaunchSpec = {
         file: prepared.file, args: prepared.args ?? [], cwd: prepared.cwd,
         ...(owner.options.profile ? { cols, rows, stopStrategy: kind === 'agent' && agent?.provider !== 'claude'
@@ -17474,7 +17850,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               if (reader.initialPublished && !reader.outcome && batches.length > 0) {
                 await this.postLocalExecutionReaderMessage(active, reader, {
                   type: 'host/executionOutput', payload: {
-                    kind, nodeId, executionSessionId: execution.identity.executionId,
+                    kind, nodeId: active.nodeId, executionSessionId: execution.identity.executionId,
                     chunk: chunks.join(''),
                     outputStartSequence, outputSequence: active.terminalRevision,
                     ...(active.business ? { terminalTitle: active.business.terminalTitle ?? null } : {})
@@ -17486,6 +17862,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return active.terminalChain;
         },
         flushFinal: async seal => {
+          if (active.fileActivity) await this.disposeNonNativeHostFileActivity(active);
           let finalRevision: number | undefined;
           active.terminalChain = active.terminalChain.then(async () => {
             const terminal = await active.tracker.flush();
@@ -17504,12 +17881,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return finalRevision!;
         },
         finalized: result => {
+          if (active.fileActivity && !active.fileActivity.disposed) {
+            // Failed output consumption can bypass flushFinal. Stop the observer
+            // without presenting drained events as a successfully saved result.
+            active.fileActivity.closed = true;
+            void this.disposeNonNativeHostFileActivity(active).catch(error => {
+              try {
+                this.recordDiagnosticEvent('execution/fileActivityCleanupFailed', {
+                  kind, nodeId: active.nodeId, reason: formatUnknownError(error)
+                });
+              } catch { /* Diagnostics cannot change the original failed finalization. */ }
+            }).finally(() => this.retireNonNativeHostExecution(active));
+          }
           active.business?.cancelActivityPoll?.();
           if (active.business) active.business.cancelActivityPoll = undefined;
           const finalizedSource = execution.snapshot().adapter?.seal?.source;
           if (finalizedSource) {
             this.recordDiagnosticEvent('runtime/terminalSourceDisposition', {
-              nodeId,
+              nodeId: active.nodeId,
               kind,
               executionSessionId: execution.identity.executionId,
               sourceDisposition: finalizedSource,
@@ -17548,14 +17937,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           }
           this.settleLocalExecutionReaderAggregate(active);
         },
-        fault: reason => this.recordDiagnosticEvent('execution/nonNativeFault', { kind, nodeId, reason }),
-        changed: () => { this.retireNonNativeHostExecution(active); }
+        fault: reason => this.recordDiagnosticEvent('execution/nonNativeFault', { kind, nodeId: active.nodeId, reason }),
+        changed: () => {
+          this.queueNonNativeHostResize(active);
+          this.retireNonNativeHostExecution(active);
+        }
       });
       const result = await operation.first;
       rejectedBeforeAcquire = result.kind === 'rejected-before-acquire';
-      if (result.kind !== 'started') throw new Error(`Non-native Host start was ${result.kind}.`);
+      if (result.kind !== 'started') throw new LocalExecutionStartError(execution.identity, result);
       this.recordDiagnosticEvent('execution/started', {
-        kind, nodeId, sessionId: execution.identity.executionId,
+        kind, nodeId: active.nodeId, sessionId: execution.identity.executionId,
         cols, rows, shellPath: spec.file, cwd: spec.cwd, launchArgs: spec.args,
         ...(agent ? {
           provider: agent.provider, launchMode: agent.launchMode,
@@ -17568,10 +17960,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (active.localReaders && this.activeSurface) {
         void this.postLocalExecutionSnapshot(active, { surface: this.activeSurface });
       }
+      void this.maybeConfirmNonNativeClaudeResumeSessionId(active, 'startup');
       return active;
     } catch (error) {
+      if (record && error instanceof LocalExecutionStartError && error.result.kind === 'rejected-before-acquire') {
+        this.projectNonNativeHostStartRejection(record);
+      }
+      record?.pendingResize?.reject(error);
+      if (record) record.pendingResize = undefined;
+      if (kind === 'terminal' && record) this.dropPendingTerminalInitialInput(record.nodeId, formatUnknownError(error));
       if (!execution.snapshot().adapter || rejectedBeforeAcquire) {
-        if (record?.persistence) this.settleNonNativeHostPersistence(record, { kind: 'not-required' });
+        let cleanupError: string | undefined;
+        if (record?.fileActivity) {
+          record.fileActivity.closed = true;
+          try { await this.disposeNonNativeHostFileActivity(record); }
+          catch (failure) { cleanupError = formatUnknownError(failure); }
+        }
+        if (record?.persistence) this.settleNonNativeHostPersistence(record,
+          cleanupError ? { kind: 'failed', reason: cleanupError } : { kind: 'not-required' });
         if (record?.localReaders) {
           record.readerAdmissionClosed = true;
           for (const reader of record.localReaders.values()) {
@@ -17582,10 +17988,92 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         record?.business?.cancelActivityPoll?.();
         record?.business?.lineContextTracker.dispose();
         execution.abandon('host-preparation-failed-or-cancelled');
-        if (this.nonNativeHostExecutions.get(key) === record) this.nonNativeHostExecutions.delete(key);
+        if (!cleanupError && this.nonNativeHostExecutions.get(execution.key) === record) this.nonNativeHostExecutions.delete(execution.key);
       }
       throw error;
     }
+  }
+
+  private disposeNonNativeHostFileActivity(record: NonNativeHostExecution): Promise<void> {
+    const activity = record.fileActivity;
+    if (!activity) return Promise.resolve();
+    activity.disposal ??= Promise.resolve().then(() => activity.session.dispose()).then(() => {
+      if (activity.error) throw new Error(activity.error);
+    }).finally(() => { activity.closed = true; activity.disposed = true; });
+    return activity.disposal;
+  }
+
+  private executionStartRejectionMessage(kind: ExecutionNodeKind): string {
+    return vscode.l10n.t('Cannot start {label} right now. Wait for pending operations to finish and try again.', {
+      label: kind === 'agent' ? 'Agent' : 'Terminal'
+    });
+  }
+
+  private projectNonNativeHostStartRejection(record: NonNativeHostExecution): void {
+    const { kind, nodeId, persistence } = record;
+    const node = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
+    const current = this.nonNativeHostExecutions.get(record.execution.key);
+    const metadata = node?.metadata?.[kind];
+    const waitingStatus = kind === 'agent' ? 'starting' : 'launching';
+    // A rejected adapter may already have retired. Only its still-bound pending
+    // presentation can change; the typed rejection, not adapter presence, proves no acquisition.
+    if (!persistence || !node || (current !== undefined && current !== record) ||
+      record.execution.snapshot().stopRequested || metadata !== persistence.metadata ||
+      metadata?.pendingLaunch !== 'start' || metadata.liveSession ||
+      node.status !== waitingStatus || metadata.lifecycle !== waitingStatus) return;
+    this.state = updateExecutionNode(this.state, nodeId, kind, {
+      status: 'error', summary: this.executionStartRejectionMessage(kind),
+      metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+        lifecycle: 'error', pendingLaunch: undefined, liveSession: false
+      })
+    });
+    const updated = this.requireNode(nodeId, kind);
+    persistence.metadata = kind === 'agent' ? ensureAgentMetadata(updated) : ensureTerminalMetadata(updated);
+    const report = (error: unknown): void => {
+      try {
+        this.recordDiagnosticEvent('execution/startRejectionProjectionFailed', {
+          kind, nodeId, executionId: record.execution.identity.executionId, reason: formatUnknownError(error)
+        });
+      } catch { /* Observers cannot replace the original rejection or prevent its cleanup. */ }
+    };
+    try { void this.persistState().catch(report); } catch (error) { report(error); }
+    try { this.postState('host/stateUpdated'); } catch (error) { report(error); }
+  }
+
+  private projectNonNativeHostPreparationFailure(
+    record: NonNativeHostExecution, error: unknown, launchMode?: PendingExecutionLaunch
+  ): void {
+    const { kind, nodeId, persistence } = record;
+    const snapshot = record.execution.snapshot();
+    const node = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
+    // Only the original, unstarted request may replace its pending presentation.
+    // Admission rejection and uncertain/acquired resources retain their own settlement paths.
+    if (!persistence || !node || !this.isNonNativeHostRecordCurrent(record) || snapshot.stopRequested ||
+      snapshot.adapter || node.metadata?.[kind] !== persistence.metadata) return;
+    const message = error instanceof Error ? error.message : String(error);
+    const status = kind === 'agent' && launchMode === 'resume' ? 'resume-failed' : 'error';
+    this.state = updateExecutionNode(this.state, nodeId, kind, {
+      status, summary: message,
+      metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+        lifecycle: status, persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
+        liveSession: false, pendingLaunch: undefined, terminalTitle: undefined,
+        lastExitMessage: message, lastRuntimeError: message,
+        ...(kind === 'agent' ? { lastResumeError: status === 'resume-failed' ? message : undefined } : {})
+      })
+    });
+    // Keep the page failure observer bound to this projection. No process ran, so
+    // preserve prior history/recovery data and leave final persistence not-required.
+    const updated = this.requireNode(nodeId, kind);
+    persistence.metadata = kind === 'agent' ? ensureAgentMetadata(updated) : ensureTerminalMetadata(updated);
+    this.persistState();
+    this.postState('host/stateUpdated');
+  }
+
+  private hasRunningLocalOwnedExecution(kind: ExecutionNodeKind, nodeId: string): boolean {
+    const record = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+    if (!record || record.finalRevision !== undefined) return false;
+    const snapshot = record.execution.snapshot();
+    return !snapshot.stopRequested && !snapshot.settled && !snapshot.adapter?.process;
   }
 
   private isNonNativeHostRecordCurrent(record: NonNativeHostExecution): boolean {
@@ -17620,7 +18108,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       pendingLaunch: undefined, terminalTitle: business.terminalTitle, lastCols: record.cols, lastRows: record.rows,
       ...(record.kind === 'agent' ? { provider: business.agentProvider, resumeSupported: business.agentResume?.supported,
         resumeStrategy: business.agentResume?.strategy, resumeSessionId: business.agentResume?.sessionId,
-        resumeStoragePath: business.agentResume?.storagePath } : {})
+        resumeStoragePath: business.agentResume?.storagePath, lastResumeError: undefined } : {})
     });
     this.state = updateExecutionNode(this.state, record.nodeId, record.kind, {
       status: business.lifecycleStatus,
@@ -17676,8 +18164,69 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         business.lifecycleStatus = 'waiting-input';
         business.resumePhaseActive = false;
         this.projectNonNativeHostBusiness(record);
+        void this.maybeConfirmNonNativeClaudeResumeSessionId(record, 'waiting-input');
       } else if (result.shouldKeepPolling) this.scheduleNonNativeAgentActivity(record);
     });
+  }
+
+  private async maybeConfirmNonNativeClaudeResumeSessionId(
+    record: NonNativeHostExecution, trigger: 'startup' | 'waiting-input'
+  ): Promise<void> {
+    const { business, execution, persistence, launchSpec } = record;
+    const candidate = business?.agentResume;
+    const sessionId = candidate?.sessionId?.trim();
+    if (record.kind !== 'agent' || !business || business.agentProvider !== 'claude' ||
+      business.launchMode !== 'start' || candidate?.strategy !== 'none' || !sessionId ||
+      !persistence || !launchSpec?.cwd) return;
+    const isCurrentCandidate = (): boolean => {
+      const current = execution.snapshot();
+      const authority = this.nonNativeExecutionOwner?.authority.snapshot();
+      const node = this.state.nodes.find(value => value.id === record.nodeId && value.kind === 'agent');
+      return this.isNonNativeHostRecordCurrent(record) && record.execution === execution &&
+        record.business === business && record.persistence === persistence && record.launchSpec === launchSpec &&
+        business.agentProvider === 'claude' && business.launchMode === 'start' &&
+        business.agentResume === candidate && candidate.strategy === 'none' && candidate.sessionId?.trim() === sessionId &&
+        node?.metadata?.agent === persistence.metadata && !record.mutationError &&
+        !persistence.submitted && record.finalRevision === undefined &&
+        !current.stopRequested && !current.settled && !current.retired && !current.closeObservation &&
+        !authority?.closing && !authority?.blockedReason && current.adapter?.state === 'running' &&
+        !current.adapter.process && !current.adapter.source && !current.adapter.seal;
+    };
+    if (!isCurrentCandidate()) return;
+    if (business.claudeFileConfirmation) {
+      business.claudeFileConfirmation.retry = true;
+      return;
+    }
+    const request = { retry: false };
+    business.claudeFileConfirmation = request;
+    try {
+      do {
+        request.retry = false;
+        try {
+          const confirmed = await locateClaudeSessionId({ cwd: launchSpec.cwd, sessionId });
+          if (!isCurrentCandidate()) return;
+          const detail = { nodeId: record.nodeId, cwd: launchSpec.cwd, resumeSessionId: sessionId, trigger,
+            executionSessionId: execution.identity.executionId, generation: execution.identity.generation };
+          if (confirmed === sessionId) {
+            business.agentResume = { supported: true, strategy: 'claude-session-id', sessionId };
+            this.projectNonNativeHostBusiness(record);
+            this.recordDiagnosticEvent('agent/claudeSessionIdConfirmedFromFiles', detail);
+            await this.persistState({ mode: 'immediate', reason: 'agent-resume-context' });
+            return;
+          }
+          this.recordDiagnosticEvent('agent/claudeSessionIdFileConfirmationMissed', detail);
+        } catch (error) {
+          this.recordDiagnosticEvent('agent/claudeSessionIdFileConfirmationFailed', {
+            nodeId: record.nodeId, executionSessionId: execution.identity.executionId,
+            generation: execution.identity.generation, trigger, message: formatUnknownError(error)
+          });
+        }
+        // Preserve a waiting-input request made while startup's bounded scan was pending.
+        trigger = 'waiting-input';
+      } while (request.retry && isCurrentCandidate());
+    } finally {
+      if (business.claudeFileConfirmation === request) business.claudeFileConfirmation = undefined;
+    }
   }
 
   private async writeNonNativeHostInput(record: NonNativeHostExecution, data: string, queryReply = false): Promise<boolean> {
@@ -17715,26 +18264,84 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private resizeNonNativeHostExecution(record: NonNativeHostExecution, cols: number, rows: number): Promise<void> {
-    const deadline = this.nonNativeExecutionOwner!.options.scheduler.now() + EXECUTION_INTERACTION_LIMITS.observationMs;
-    return new Promise<void>((resolve, reject) => {
+  private resizeNonNativeHostExecution(record: NonNativeHostExecution, cols: number, rows: number): Promise<NonNativeHostResizeResult> {
+    return new Promise<NonNativeHostResizeResult>((resolve, reject) => {
       // A merged control request is not an acknowledgement of a native geometry change.
-      record.pendingResize?.resolve();
-      record.pendingResize = { cols, rows, deadline, resolve, reject };
-      if (!record.resizeTaskPending) this.queueNonNativeHostResize(record);
+      record.pendingResize?.resolve('superseded');
+      const request: NonNullable<NonNativeHostExecution['pendingResize']> = {
+        cols, rows, cancelDeadline: () => {},
+        resolve: result => { request.cancelDeadline(); resolve(result); },
+        reject: error => { request.cancelDeadline(); reject(error); }
+      };
+      record.pendingResize = request;
+      this.queueNonNativeHostResize(record);
     });
   }
 
+  private getNonNativeHostResizeAdmission(record: NonNativeHostExecution): 'pending' | 'ready' | 'cancelled' {
+    if (record.mutationError) throw new Error(record.mutationError);
+    const snapshot = record.execution.snapshot();
+    const adapter = snapshot.adapter;
+    const authority = this.nonNativeExecutionOwner!.authority.snapshot();
+    const failure = authority.blockedReason ?? adapter?.firstFault ?? adapter?.authorityFailure?.reason ??
+      (snapshot.closeObservation?.trigger === 'failure' ? snapshot.closeObservation.reason : undefined);
+    if (failure) throw new Error(failure);
+    // A retired record may already have left the Host map; it cannot acquire a new geometry.
+    if (snapshot.retired) return 'cancelled';
+    const node = this.state.nodes.find(value => value.id === record.nodeId && value.kind === record.kind);
+    if (!this.isNonNativeHostRecordCurrent(record) || !node ||
+        (record.persistence && node.metadata?.[record.kind] !== record.persistence.metadata)) {
+      throw new Error('The original resize authority binding changed.');
+    }
+    if (snapshot.stopRequested || snapshot.settled || snapshot.closeObservation || authority.closing ||
+        record.finalRevision !== undefined || adapter?.process || adapter?.source || adapter?.seal ||
+        adapter?.interactions.closedReason) return 'cancelled';
+    return record.business && adapter?.state === 'running' ? 'ready' : 'pending';
+  }
+
   private queueNonNativeHostResize(record: NonNativeHostExecution): void {
+    const pending = record.pendingResize;
+    if (!pending) return;
+    try {
+      const admission = this.getNonNativeHostResizeAdmission(record);
+      // Startup output must remain consumable while the provider has not confirmed started.
+      if (admission === 'pending') return;
+      if (admission === 'cancelled') {
+        pending.resolve('cancelled');
+        record.pendingResize = undefined;
+        return;
+      }
+    } catch (error) {
+      pending.reject(error);
+      record.pendingResize = undefined;
+      return;
+    }
+    // A viewport intent waits on startup's lifecycle budget. Its interaction budget starts
+    // once the execution is ready, and is not renewed by output or later lifecycle events.
+    if (pending.deadline === undefined) {
+      const scheduler = this.nonNativeExecutionOwner!.options.scheduler;
+      pending.deadline = scheduler.now() + EXECUTION_INTERACTION_LIMITS.observationMs;
+      pending.cancelDeadline = scheduler.scheduleDeadline(pending.deadline, () => {
+        if (record.pendingResize !== pending) return;
+        record.pendingResize = undefined;
+        pending.reject(new Error('Host terminal resize expired before execution.'));
+      });
+    }
+    if (record.resizeTaskPending) return;
     record.resizeTaskPending = true;
     const operation = record.terminalChain.then(async () => {
       const request = record.pendingResize;
       record.pendingResize = undefined;
       if (!request) return;
+      request.cancelDeadline();
       const { cols, rows, deadline } = request;
       try {
+        if (this.getNonNativeHostResizeAdmission(record) === 'cancelled') {
+          request.resolve('cancelled');
+          return;
+        }
         this.assertNonNativeHostMutation(record);
-        if (deadline <= this.nonNativeExecutionOwner!.options.scheduler.now()) {
+        if (deadline === undefined || deadline <= this.nonNativeExecutionOwner!.options.scheduler.now()) {
           throw new Error('Host terminal resize expired before execution.');
         }
         if (record.cols !== cols || record.rows !== rows) {
@@ -17743,6 +18350,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           const result = await observation.first;
           if (result.kind === 'unconfirmed') {
             record.mutationError = `Terminal resize effect is unconfirmed: ${result.reason}`;
+          }
+          if (result.kind === 'cancelled') {
+            request.resolve('cancelled');
+            return;
           }
           if (result.kind !== 'resized') throw new Error(`Owned terminal resize was ${result.kind}.`);
           try {
@@ -17762,7 +18373,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             throw error;
           }
         }
-        request.resolve();
+        request.resolve('applied');
       } catch (error) { request.reject(error); }
     }, error => {
       record.pendingResize?.reject(error);
@@ -17788,26 +18399,39 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async closeNonNativeHostExecutions(
     reason: string,
     permanent: boolean,
-    readerOutcome: 'cancelled' | 'lost'
+    readerOutcome: 'cancelled' | 'lost',
+    waitForPersistence = false,
+    preserveLocalRecovery = false
   ): Promise<void> {
     const persistenceRecords = this.hasNonNativeHostPersistence() ? Array.from(this.nonNativeHostExecutions.values()) : [];
-    const result = await this.beginNonNativeHostExecutionClose(reason, permanent, readerOutcome);
+    const result = await this.beginNonNativeHostExecutionClose(reason, permanent, readerOutcome, preserveLocalRecovery);
     if (result.kind !== 'settled') {
       throw new Error(`Non-native Host execution cleanup is unconfirmed: ${result.pending.join(', ')}`);
     }
-    this.assertNonNativeHostPersistenceComplete(persistenceRecords);
+    if (waitForPersistence) await this.waitForNonNativeHostPersistence(persistenceRecords);
+    else this.assertNonNativeHostPersistenceComplete(persistenceRecords);
   }
 
   private async beginNonNativeHostExecutionClose(
     reason: string,
     permanent: boolean,
-    readerOutcome: 'cancelled' | 'lost'
+    readerOutcome: 'cancelled' | 'lost',
+    preserveLocalRecovery = false
   ): Promise<OwnerCloseResult> {
     const owner = this.nonNativeExecutionOwner;
     if (!owner) return Object.freeze({ kind: 'settled', pending: Object.freeze([]) });
     owner.closeAdmission(permanent);
     for (const execution of owner.list()) {
       const record = this.nonNativeHostExecutions.get(execution.key);
+      const snapshot = execution.snapshot();
+      // Only a Host reload/deactivation may preserve an active local execution for manual recovery.
+      // Explicit stops and already observed process outcomes keep their original final classification.
+      if (preserveLocalRecovery && record?.persistence && !record.persistence.submitted && !record.persistence.result
+        && !snapshot.stopRequested) {
+        if (snapshot.adapter?.process) record.hostBoundaryStop = 'after-process-exit';
+        else if (snapshot.adapter?.state === 'running') record.hostBoundaryStop = 'interrupted';
+      }
+      if (record) this.queueNonNativeHostResize(record);
       if (record?.localReaders) {
         record.readerAdmissionClosed = true;
         for (const reader of record.localReaders.values()) {
@@ -17957,7 +18581,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    if (this.terminalSessions.has(nodeId)) {
+    if (this.terminalSessions.has(nodeId) || this.hasRunningLocalOwnedExecution('terminal', nodeId)) {
       this.recordDiagnosticEvent('execution/startRejected', {
         kind: 'terminal',
         nodeId,
@@ -18082,7 +18706,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           const executionEnv = await this.resolveExecutionEnvironment('terminal', cwd);
           return this.buildTerminalLaunchSpec(shellPath, cwd, normalizedCols, normalizedRows, executionEnv);
         });
-        if (record.business) await this.flushPendingTerminalInitialInput(nodeId, record);
+        if (record.business) await this.flushPendingTerminalInitialInput(record.nodeId, record);
         else this.dropPendingTerminalInitialInput(nodeId, vscode.l10n.t('This non-native test execution does not support terminal input.'));
       } catch (error) {
         this.dropPendingTerminalInitialInput(nodeId, formatUnknownError(error));
@@ -19632,9 +20256,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private resizeExecutionSession(kind: ExecutionNodeKind, nodeId: string, cols: number, rows: number): void {
     const ownedRecord = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
-    if (ownedRecord?.business) {
+    if (ownedRecord && this.nonNativeExecutionOwner?.options.profile) {
       void this.resizeNonNativeHostExecution(ownedRecord, normalizeTerminalCols(cols), normalizeTerminalRows(rows))
-        .catch(error => this.postMessage({ type: 'host/error', payload: { message: formatUnknownError(error) } }));
+        .catch(error => {
+          const message = formatUnknownError(error);
+          this.recordDiagnosticEvent('execution/resizeRejected', { kind, nodeId: ownedRecord.nodeId,
+            executionSessionId: ownedRecord.execution.identity.executionId, reason: 'owned-resize-failed', message });
+          this.postMessage({ type: 'host/error', payload: { message } });
+        });
       return;
     }
     if (this.nonNativeExecutionOwner?.get(this.getExecutionSessionOperationKey(kind, nodeId))) {
@@ -19745,12 +20374,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const owned = this.nonNativeExecutionOwner?.get(this.getExecutionSessionOperationKey(kind, nodeId));
     if (owned) {
       const record = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+      if (record) record.hostBoundaryStop = undefined;
       if (record?.business) {
         record.business.lifecycleStatus = 'stopping';
         record.business.cancelActivityPoll?.(); record.business.cancelActivityPoll = undefined;
         this.projectNonNativeHostBusiness(record);
       }
-      const result = await owned.requestStop('host-stop');
+      const stopping = owned.requestStop('host-stop');
+      if (record) this.queueNonNativeHostResize(record);
+      const result = await stopping;
       if (result.kind !== 'settled') throw new Error('Non-native Host stop is unconfirmed.');
       return;
     }
@@ -19825,7 +20457,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private async terminateExecutionNodeForDeletion(node: CanvasNodeSummary): Promise<void> {
+  private async terminateExecutionNodeForDeletion(
+    node: CanvasNodeSummary,
+    options: { waitForPersistence?: boolean } = {}
+  ): Promise<void> {
     if (!isExecutionNodeKind(node.kind)) {
       return;
     }
@@ -19848,13 +20483,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       } else {
         owned.settleReaders('cancelled');
       }
-      const result = await owned.requestStop('host-delete');
+      const stopping = owned.requestStop('host-delete');
+      if (record) this.queueNonNativeHostResize(record);
+      const result = await stopping;
       if (result.kind !== 'settled') throw new Error('Non-native Host deletion is unconfirmed.');
-      if (record) this.assertNonNativeHostPersistenceComplete([record]);
+      if (record) {
+        if (options.waitForPersistence) await this.waitForNonNativeHostPersistence([record]);
+        else this.assertNonNativeHostPersistenceComplete([record]);
+      }
       return;
     }
     if (retained?.persistence) {
-      this.assertNonNativeHostPersistenceComplete([retained]);
+      if (options.waitForPersistence) await this.waitForNonNativeHostPersistence([retained]);
+      else this.assertNonNativeHostPersistenceComplete([retained]);
       return;
     }
 
@@ -20172,8 +20813,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (isExecutionNodeKind(node.kind)) {
       this.invalidateExecutionSessionOperation(node.kind, nodeId);
+      const key = this.getExecutionSessionOperationKey(node.kind, nodeId);
+      const owner = this.nonNativeExecutionOwner;
+      const record = this.nonNativeHostExecutions.get(key);
+      const token = this.executionSessionOperationTokens.get(key);
       try {
-        await this.terminateExecutionNodeForDeletion(node);
+        await this.terminateExecutionNodeForDeletion(node, { waitForPersistence: true });
+        if (record?.persistence) {
+          const current = this.state.nodes.find(value => value.id === nodeId && value.kind === node.kind);
+          const replacement = this.nonNativeHostExecutions.get(key);
+          const execution = this.nonNativeExecutionOwner?.get(key);
+          // Successful retirement may remove the record; a replacement must never be deleted.
+          if (this.nonNativeExecutionOwner !== owner || record.nodeId !== nodeId ||
+            (replacement && replacement !== record) || (execution && execution !== record.execution) ||
+            current?.metadata?.[node.kind] !== record.persistence.metadata ||
+            this.executionSessionOperationTokens.get(key) !== token) {
+            throw new Error('The original local deletion target changed while waiting for final persistence.');
+          }
+        }
       } catch (error) {
         this.postMessage({
           type: 'host/error',
@@ -28820,7 +29477,7 @@ function reconcileAgentNodesInArray(
         ...node,
         status: canResume ? 'resume-ready' : 'interrupted',
         summary: canResume
-          ? vscode.l10n.t('Detected a resumable Agent session and waiting to resume.')
+          ? vscode.l10n.t('The Agent session can be resumed manually.')
           : vscode.l10n.t('The previous Agent session was not restored after extension reload. It can be restarted.'),
         metadata: {
           ...node.metadata,
@@ -28829,7 +29486,7 @@ function reconcileAgentNodesInArray(
             lifecycle: canResume ? 'resume-ready' : 'interrupted',
             liveSession: false,
             terminalTitle: undefined,
-            pendingLaunch: canResume ? 'resume' : undefined
+            pendingLaunch: undefined
           }
         }
       };
@@ -28858,7 +29515,8 @@ function reconcileAgentNodesInArray(
         ...node.metadata,
         agent: {
           ...metadata,
-          liveSession: false
+          liveSession: false,
+          pendingLaunch: metadata.pendingLaunch === 'resume' ? undefined : metadata.pendingLaunch
         }
       }
     };
@@ -30496,7 +31154,7 @@ function describeAgentSessionExit(
 }
 
 function describeAgentResumeFailure(
-  spec: AgentCliSpec,
+  spec: Pick<AgentCliSpec, 'label'>,
   code: number | null,
   signal: string | undefined,
   output: string

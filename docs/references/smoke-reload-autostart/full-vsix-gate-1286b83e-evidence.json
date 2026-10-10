@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-11",
+  "commit": "1286b83e778b69bf2214bed15f9a770c8a916f27",
+  "scope": "PR #314 latest-head full packaged VSIX smoke",
+  "command": "npm run test:vsix-smoke",
+  "scenarioFilter": null,
+  "environment": {
+    "platform": "Linux x64",
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "executionAssets": "/tmp/dsc-release-026-assets",
+    "vscodeExecutable": "/tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/code",
+    "provider": "fake provider",
+    "terminal": "native PTY"
+  },
+  "scenarios": [
+    "owned-canvas-reconciliation",
+    "local-execution-flow",
+    "snapshot-only-manual-recovery",
+    "local-surface-cutover",
+    "local-pty-robustness",
+    "local-preparation-failure",
+    "local-links-and-stop",
+    "trusted"
+  ],
+  "result": {
+    "exitCode": 0,
+    "allScenariosPassed": true,
+    "output": "VSIX packaged-payload smoke passed (owned-canvas-reconciliation, local-execution-flow, snapshot-only-manual-recovery, local-surface-cutover, local-pty-robustness, local-preparation-failure, local-links-and-stop, trusted)."
+  },
+  "remainingBoundaries": [
+    "GitHub native-assets check was skipped; this run uses the previously validated six-platform asset set but executes Linux x64.",
+    "Real provider services, real window reload, a new Extension Host, checkpoint stress, Remote SSH, other platforms and cross-version matrices were not covered.",
+    "Historical URL cleanup stall, Runtime client disconnected batch reporting and the independent owned-resize-failed investigation remain separately tracked."
+  ],
+  "conclusion": "The P1 claim that the full packaged VSIX gate had not been rerun on 1286b83e is closed by this run. The PR description and technical-debt tracker must reference this evidence; remaining boundaries are explicit coverage limits rather than failures in this run."
+}

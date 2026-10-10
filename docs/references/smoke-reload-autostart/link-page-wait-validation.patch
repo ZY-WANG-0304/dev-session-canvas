@@ -1,0 +1,13 @@
+--- a/extensions/vscode/dev-session-canvas/src/webview/main.tsx
++++ b/extensions/vscode/dev-session-canvas/src/webview/main.tsx
+@@ -8569,7 +8569,9 @@
+       // Keep the host message callback lightweight by deferring real terminal writes
+       // to a batched drain step. xterm will continue to apply its own async parser queue.
+       queueTerminalWrite((done) => {
+-        terminal.write(chunk, done);
++        if (chunk.includes('link-target.ts:3:1')) {
++          window.setTimeout(() => terminal.write(chunk, done), 600);
++        } else terminal.write(chunk, done);
+       }, {
+         reason: 'output',
+         characters: chunk.length

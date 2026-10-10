@@ -1,0 +1,344 @@
+{
+  "baselineHead": "438ac68b58c51d309af8e94739925a1973c9fdb8",
+  "scope": "Diagnosis only; formal product and smoke unchanged",
+  "rootCause": "Owned Supervisor finalization publishes code and lifecycle but omits the ordinary exit message and descriptor. Host falls back to Session ended.",
+  "runs": {
+    "baseline": {
+      "scenarioExitCode": 0,
+      "runtimeEnabledAtAssertion": true,
+      "originalAssertionPassed": false,
+      "sessionId": "e8b46530-26a6-4a6c-80f5-aef588109ce5",
+      "nodeId": "agent-1-9eda5ce2-5dfd-457c-8c3d-51c082c6abe8",
+      "finalStatus": "error",
+      "lastExitCode": 23,
+      "summary": "Session ended.",
+      "lastExitMessage": null,
+      "hostExit": {
+        "nodeId": "agent-1-9eda5ce2-5dfd-457c-8c3d-51c082c6abe8",
+        "kind": "agent",
+        "executionSessionId": "e8b46530-26a6-4a6c-80f5-aef588109ce5",
+        "message": "Session ended."
+      },
+      "supervisorBeforeBroadcastAndControl": null,
+      "stateTransitions": [
+        {
+          "status": "stopping",
+          "summary": ">",
+          "sessionId": "46937385-17eb-4f58-8a11-430f9e833bbc",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "stopping",
+          "summary": "[fake-agent] received signal INT",
+          "sessionId": "46937385-17eb-4f58-8a11-430f9e833bbc",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "stopped",
+          "summary": "Session ended.",
+          "sessionId": null,
+          "exitCode": 0,
+          "exitMessage": null
+        },
+        {
+          "status": "resuming",
+          "summary": "Resuming Codex session.",
+          "sessionId": "e8b46530-26a6-4a6c-80f5-aef588109ce5",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "running",
+          "summary": "[fake-agent] resumed session 82877c4f-820c-40ed-871d-09d0ece8cad5 pid=774051",
+          "sessionId": "e8b46530-26a6-4a6c-80f5-aef588109ce5",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "running",
+          "summary": "burst 1",
+          "sessionId": "e8b46530-26a6-4a6c-80f5-aef588109ce5",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "waiting-input",
+          "summary": ">",
+          "sessionId": "e8b46530-26a6-4a6c-80f5-aef588109ce5",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "running",
+          "summary": ">",
+          "sessionId": "e8b46530-26a6-4a6c-80f5-aef588109ce5",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "error",
+          "summary": "Session ended.",
+          "sessionId": null,
+          "exitCode": 23,
+          "exitMessage": null
+        }
+      ],
+      "hashes": {
+        "mode": "baseline",
+        "original": {
+          "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+          "runtime-supervisor.js": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "actualSupervisor": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a"
+      }
+    },
+    "probe": {
+      "scenarioExitCode": 0,
+      "runtimeEnabledAtAssertion": true,
+      "originalAssertionPassed": false,
+      "sessionId": "b8323f4f-69dd-4579-84af-8e92e95bf8d6",
+      "nodeId": "agent-1-2fe5860e-a1de-4954-bae5-3a8ae9568393",
+      "finalStatus": "error",
+      "lastExitCode": 23,
+      "summary": "Session ended.",
+      "lastExitMessage": null,
+      "hostExit": {
+        "nodeId": "agent-1-2fe5860e-a1de-4954-bae5-3a8ae9568393",
+        "kind": "agent",
+        "executionSessionId": "b8323f4f-69dd-4579-84af-8e92e95bf8d6",
+        "message": "Session ended."
+      },
+      "supervisorBeforeBroadcastAndControl": {
+        "sessionId": "b8323f4f-69dd-4579-84af-8e92e95bf8d6",
+        "kind": "agent",
+        "authority": {
+          "kind": "applied",
+          "finalRevision": 4,
+          "throughDataSequence": 4
+        },
+        "process": {
+          "kind": "exited",
+          "exitCode": 23
+        },
+        "source": {
+          "kind": "eof",
+          "lastDataSequence": 4
+        },
+        "launchMode": "resume",
+        "resumePhaseActive": false,
+        "stopRequested": false,
+        "live": false,
+        "lifecycle": "error",
+        "lastExitCode": 23,
+        "lastExitMessage": null,
+        "lastExitMessageDescriptor": null
+      },
+      "stateTransitions": [
+        {
+          "status": "stopping",
+          "summary": ">",
+          "sessionId": "6a77d528-3cd5-4dc0-ae9b-023444bf3324",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "stopping",
+          "summary": "[fake-agent] received signal INT",
+          "sessionId": "6a77d528-3cd5-4dc0-ae9b-023444bf3324",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "stopped",
+          "summary": "Session ended.",
+          "sessionId": null,
+          "exitCode": 0,
+          "exitMessage": null
+        },
+        {
+          "status": "resuming",
+          "summary": "Resuming Codex session.",
+          "sessionId": "b8323f4f-69dd-4579-84af-8e92e95bf8d6",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "running",
+          "summary": "[fake-agent] resumed session a36a5e60-4261-4ec0-bc8d-166ac89105a1 pid=786136",
+          "sessionId": "b8323f4f-69dd-4579-84af-8e92e95bf8d6",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "running",
+          "summary": "burst 1",
+          "sessionId": "b8323f4f-69dd-4579-84af-8e92e95bf8d6",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "waiting-input",
+          "summary": ">",
+          "sessionId": "b8323f4f-69dd-4579-84af-8e92e95bf8d6",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "running",
+          "summary": ">",
+          "sessionId": "b8323f4f-69dd-4579-84af-8e92e95bf8d6",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "error",
+          "summary": "Session ended.",
+          "sessionId": null,
+          "exitCode": 23,
+          "exitMessage": null
+        }
+      ],
+      "hashes": {
+        "mode": "probe",
+        "original": {
+          "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+          "runtime-supervisor.js": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "actualSupervisor": "b8ddfd0788420504bf57cb062b5bf7d6fb19c7f4f67552f5b038672f57c28406"
+      }
+    },
+    "control": {
+      "scenarioExitCode": 0,
+      "runtimeEnabledAtAssertion": true,
+      "originalAssertionPassed": true,
+      "sessionId": "81b76690-32ff-45d0-b94b-f1176137dd1f",
+      "nodeId": "agent-1-ba4b1cc6-4444-471f-91d0-fcb080e4ae35",
+      "finalStatus": "error",
+      "lastExitCode": 23,
+      "summary": "Codex exited with code 23.",
+      "lastExitMessage": "Codex exited with code 23.",
+      "hostExit": {
+        "nodeId": "agent-1-ba4b1cc6-4444-471f-91d0-fcb080e4ae35",
+        "kind": "agent",
+        "executionSessionId": "81b76690-32ff-45d0-b94b-f1176137dd1f",
+        "message": "Codex exited with code 23."
+      },
+      "supervisorBeforeBroadcastAndControl": {
+        "sessionId": "81b76690-32ff-45d0-b94b-f1176137dd1f",
+        "kind": "agent",
+        "authority": {
+          "kind": "applied",
+          "finalRevision": 4,
+          "throughDataSequence": 4
+        },
+        "process": {
+          "kind": "exited",
+          "exitCode": 23
+        },
+        "source": {
+          "kind": "eof",
+          "lastDataSequence": 4
+        },
+        "launchMode": "resume",
+        "resumePhaseActive": false,
+        "stopRequested": false,
+        "live": false,
+        "lifecycle": "error",
+        "lastExitCode": 23,
+        "lastExitMessage": null,
+        "lastExitMessageDescriptor": null
+      },
+      "stateTransitions": [
+        {
+          "status": "stopping",
+          "summary": ">",
+          "sessionId": "31c040ac-82bc-4e8e-83e7-1ca7802bf360",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "stopping",
+          "summary": "[fake-agent] received signal INT",
+          "sessionId": "31c040ac-82bc-4e8e-83e7-1ca7802bf360",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "stopped",
+          "summary": "Session ended.",
+          "sessionId": null,
+          "exitCode": 0,
+          "exitMessage": null
+        },
+        {
+          "status": "resuming",
+          "summary": "Resuming Codex session.",
+          "sessionId": "81b76690-32ff-45d0-b94b-f1176137dd1f",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "resuming",
+          "summary": "[fake-agent] resumed session 007bbfee-5dcf-4019-874f-1da40cf349fb pid=794301",
+          "sessionId": "81b76690-32ff-45d0-b94b-f1176137dd1f",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "running",
+          "summary": "[fake-agent] resumed session 007bbfee-5dcf-4019-874f-1da40cf349fb pid=794301",
+          "sessionId": "81b76690-32ff-45d0-b94b-f1176137dd1f",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "running",
+          "summary": "burst 1",
+          "sessionId": "81b76690-32ff-45d0-b94b-f1176137dd1f",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "waiting-input",
+          "summary": ">",
+          "sessionId": "81b76690-32ff-45d0-b94b-f1176137dd1f",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "running",
+          "summary": ">",
+          "sessionId": "81b76690-32ff-45d0-b94b-f1176137dd1f",
+          "exitCode": null,
+          "exitMessage": null
+        },
+        {
+          "status": "error",
+          "summary": "Codex exited with code 23.",
+          "sessionId": null,
+          "exitCode": 23,
+          "exitMessage": "Codex exited with code 23."
+        }
+      ],
+      "hashes": {
+        "mode": "control",
+        "original": {
+          "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+          "runtime-supervisor.js": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "actualSupervisor": "8f1d516a5caff281455e72511b680ccc400366cd01644612df2a19a3249cb0b3"
+      }
+    }
+  },
+  "introducedBy": "c1b6bc8b8e6ec24d7b71f16d350060a05d6cbbc9",
+  "defaultBuildSelectionCommit": "08fa33725",
+  "cleanup": {
+    "remainingIsolatedSupervisors": []
+  },
+  "fullVsixGate": "Not rerun; the existing summary assertion remains a blocker until the product fix."
+}

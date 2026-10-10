@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-10",
+  "baseline": "8bff62fbf7b95e6244b349555114bff4c78c5586",
+  "scope": "PR #314，本地 snapshot-only 执行启动期 resize；未改 RuntimePersistence 开启路径、未发布",
+  "changes": [
+    "原执行保留一个最新 pending 尺寸；准备/starting 不占用正文消费链",
+    "首次 ready-to-interact 后开始 5 秒交互期限，保留启动本身的预算",
+    "明确 applied/superseded/cancelled；未派发的正常关闭意图取消，确认的原生效果仍提交 tracker",
+    "准备/启动失败、超时、stop/delete/Host close 结算原 pending；failed/unconfirmed、绑定替换和提交失败继续报告",
+    "默认 smoke 在诊断清理前及完成时检查 owned-resize-failed，保留原空 toast 断言"
+  ],
+  "automated": {
+    "before": {
+      "command": "DEV_SESSION_CANVAS_HOST_TEST_FILTER='startup resize' node scripts/test/test-host-execution-owner-wiring.mjs",
+      "result": "失败：latest viewport must be retained；undefined !== 107",
+      "log": ".debug/resize-fix/red.log"
+    },
+    "after": {
+      "command": "node scripts/test/test-host-execution-owner-wiring.mjs",
+      "result": "376/376 passed",
+      "newCases": 20,
+      "log": ".debug/resize-fix/host-final.log"
+    },
+    "typecheck": "通过（独立 typecheck 与最终 VSIX 打包内 typecheck）",
+    "coverage": [
+      "Agent/Terminal × prepare/ready/started 屏障",
+      "多次请求只派发最新值、同身份确认后改尺寸",
+      "started 前输出及页面消费确认仍推进",
+      "慢启动不提前消耗交互期限、启动超时结算",
+      "准备/启动失败、准备中停止",
+      "stop/source/authority close 前未派发意图取消",
+      "queued resize 关闭取消，隔离保留错误",
+      "启动和出队前替换 metadata 均在 native 派发前拒绝",
+      "既有原生确认紧邻 stop/exit、未知结果、tracker 失败、root 路由迁移和最终保存"
+    ]
+  },
+  "native": {
+    "command": "npm run test:vsix-smoke",
+    "environment": {
+      "platform": "Linux x64",
+      "node": "22.23.3",
+      "vscode": "1.141.0",
+      "runtimePersistence": false,
+      "agent": "fake Agent",
+      "terminal": "bash",
+      "provider": "当前原生 PTY"
+    },
+    "package": "typecheck/build/package passed",
+    "stages": {
+      "owned-canvas-reconciliation": "passed",
+      "local-execution-flow": "passed",
+      "trusted": "failed at verifyAgentAbnormalInterruptionNotifications"
+    },
+    "resizeResult": "通过原页面 probe、执行重启与普通 attention bridge；诊断清理前的 owned-resize-failed 检查未失败，最终诊断中同类失败数为 0",
+    "fullGatePassed": false,
+    "remainingFailure": {
+      "error": "Timed out while waiting for diagnostic events",
+      "event": "execution/attentionNotificationPosted",
+      "trigger": "agent-abnormal-interruption",
+      "nodeStatus": "error",
+      "exitCode": 27,
+      "attentionPending": false,
+      "classification": "独立问题，根因待定位；修复前已复现，本次未改断言"
+    },
+    "log": ".debug/resize-fix/vsix1.log",
+    "artifacts": ".debug/resize-fix/trusted-artifacts"
+  },
+  "limits": [
+    "真实验收仅 Linux x64 snapshot-only；不代证其他平台、RuntimePersistence 开启、跨版本升级或 Remote SSH",
+    "完整 trusted 仍失败；通知问题需单独收口后才能完成发布门禁"
+  ],
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "a648a2ec489a8c8df1e535b55b4119e3fdc1db8bbf95d3d5d30e636c15493f0a",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "dff4d3933162497a2570d57de37fd153f00dd753e86543e3cdd6713b7a06215f",
+    "tests/vscode-smoke/extension-tests.cjs": "458456c98c0bdc5466d655ef99d2af9210f4affff84737f224ee21049ac26532"
+  }
+}

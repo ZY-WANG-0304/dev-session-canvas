@@ -1,0 +1,146 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "parent_head": "2b70043889bdd5d41692f9f9eedc31f420732bc8",
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "change": "snapshot-only owned Claude 在 started 和 waiting-input 异步确认原候选会话文件；合并扫描与补查；保护原身份、metadata 和停止/最终保存，确认后普通状态保存。",
+  "source_sha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "754b9a40d47492d0d93f95961ca11568d4a1e594061c390d4ad1fb0e3f24e331",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "933cb77d1efb0508cd562944ff1ba2052447859a592a471e5eb52d3dd5d2c89d",
+    "tests/vscode-smoke/extension-tests.cjs": "b9dbd9f6b683014703c23646b75b5737c9343c5ac23fd0e9c21925612af7fafe"
+  },
+  "verification": {
+    "host_focused": "17/17 passed (selected 17/504)",
+    "host_full": "504/504 passed",
+    "typecheck": "passed",
+    "smoke_syntax": "passed",
+    "new_host_cases": [
+      "owned Claude file confirms explicit candidate and preserves it through stop",
+      "owned Claude file confirms generated candidate and preserves it through stop",
+      "owned Claude file missing remains unconfirmed and waiting input retries",
+      "owned Claude file error remains unconfirmed and waiting input retries",
+      "owned Claude file coalesces waiting input scans without losing a followup after miss",
+      "owned Claude file coalesces waiting input scans without losing a followup after error",
+      "owned Claude file rejects late confirmation after stop",
+      "owned Claude file rejects late confirmation after process",
+      "owned Claude file rejects late confirmation after final-save",
+      "owned Claude file rejects late confirmation after metadata",
+      "owned Claude file rejects late confirmation after record",
+      "owned Claude file rejects late confirmation after node",
+      "owned Claude file rejects late confirmation after candidate",
+      "owned Claude file rejects late confirmation after confirmed-context",
+      "owned Claude file rejects late confirmation after launch-spec",
+      "owned Claude file rejects late confirmation after quarantine",
+      "owned Claude file follows the same record across root routing and ordinary output projection"
+    ],
+    "pre_fix_control": {
+      "result": "exit 1",
+      "log": ".debug/claude-resume-fix/host-before.log",
+      "assertion": "started returns while the real file query is pending: locator calls 0 !== 1",
+      "method": "仅将产品文件临时恢复为 parent head，保留新正式正例，随后精确恢复本轮产品实现。"
+    },
+    "host_source_note": "完整回归后仅调整两项 coalescing 测试的缩进，没有行为修改。"
+  },
+  "native_environment": {
+    "platform": "Linux x64",
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "provider": "native PTY + fake Codex/Claude",
+    "shell": "bash"
+  },
+  "default_vsix": {
+    "command": "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=/tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/code npm run test:vsix-smoke",
+    "log": ".debug/claude-resume-fix/vsix.log",
+    "typecheck_build_package": "passed",
+    "exit_code": 1,
+    "passed_scenarios": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure",
+      "local-links-and-stop"
+    ],
+    "claude_original_test": "verifyClaudeExplicitSessionIdPreservesResumeContext 在独立阶段和 trusted 原顺序均通过运行期策略/ID、停止后策略/ID及删除；原断言不变。",
+    "trusted_confirmation": [
+      {
+        "timestamp": "2026-10-10T09:38:54.915Z",
+        "kind": "agent/claudeSessionIdConfirmedFromFiles",
+        "detail": {
+          "nodeId": "agent-4-58a69ac5-254c-4498-943e-e4ef262526f2",
+          "cwd": "/tmp/dscr",
+          "resumeSessionId": "session-explicit-123456789",
+          "trigger": "startup",
+          "executionSessionId": "fff61393-5d15-4859-8987-0bec232cdad6",
+          "generation": "b4c3345d-825b-4190-a8f5-0392b68ef197"
+        }
+      }
+    ],
+    "failure": {
+      "function": "verifyLiveRuntimePersistence",
+      "line": 10024,
+      "phase": "调用 setRuntimePersistenceEnabled(true) 后的首次 waitForAgentLive；尚未执行该用例 reload/reattach。",
+      "nodes": [
+        {
+          "id": "agent-1-8bd782f1-3cda-43ce-86dd-9fa01980abd7",
+          "kind": "agent",
+          "status": "starting",
+          "summary": "Waiting for node size before starting the Agent session.",
+          "metadata": {
+            "persistenceMode": "snapshot-only",
+            "liveSession": false,
+            "pendingLaunch": "start"
+          }
+        },
+        {
+          "id": "terminal-2-323d2821-5e83-4437-a12b-98c487ea197e",
+          "kind": "terminal",
+          "status": "launching",
+          "summary": "Waiting for node size before starting the embedded Terminal.",
+          "metadata": {
+            "persistenceMode": "snapshot-only",
+            "liveSession": false,
+            "pendingLaunch": "start"
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "timestamp": "2026-10-10T09:38:57.986Z",
+          "kind": "execution/candidateStartFailed",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-8bd782f1-3cda-43ce-86dd-9fa01980abd7",
+            "message": "Failed to start Codex: Root runtime preparation or submission did not complete."
+          }
+        },
+        {
+          "timestamp": "2026-10-10T09:38:58.014Z",
+          "kind": "execution/candidateStartFailed",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-323d2821-5e83-4437-a12b-98c487ea197e",
+            "message": "Failed to start embedded Terminal: Root runtime preparation or submission did not complete."
+          }
+        }
+      ],
+      "local_executions": [],
+      "classification": "新的 Runtime root 准备/提交启动失败，具体底层原因尚未定位；不据此修改准入或节点状态断言。"
+    },
+    "artifacts": ".debug/claude-resume-fix/trusted-artifacts"
+  },
+  "log_sha256": {
+    "host-focused.log": "c968409d073bff04edcee5d7c533b8989824b3ee5f9ad83c8406f77c16aa59d5",
+    "host-full.log": "46be51964ff08027e02be9677be8bc36a56af59d43ed904fe5821bc2e142ef1f",
+    "typecheck.log": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73",
+    "host-before.log": "d954c8677d3c88332d8b9f7c2a84edb3741fb2077c23263d710bfe0774b38638",
+    "vsix.log": "494cedc7c25b19aa3362ea77fe47bb1209ab4038bf5885bca52ac6ed1d5ebed9"
+  },
+  "limits": [
+    "完整默认 gate 仍失败，RuntimePersistence 开启后的实际运行/重连/压力场景未完成。",
+    "本轮未执行真实 provider resume、真实窗口 Reload、Remote SSH、其他平台或跨版本矩阵。",
+    "旧 URL 已检测后 tooltip 不可见的单次失败根因未确认，本轮完整链接断言通过不追认旧现场。",
+    "文件确认成功的实际原生场景为预置 transcript 的显式 ID；自动候选及并发时序由 Host 回归覆盖。"
+  ]
+}

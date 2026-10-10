@@ -1,0 +1,242 @@
+{
+  "baselineCommit": "95c1d64c4f6914a09de336aebb3c01f421d9ec34",
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "environment": {
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "platform": "Linux x64",
+    "provider": "fake provider",
+    "execution": "native PTY, snapshot-only"
+  },
+  "scope": "新建节点准入拒绝呈现及文件活动创建/started 屏障；不改变配额、自动重试或恢复策略。",
+  "automated": {
+    "negativeControl": "新增 overlap new 测试在原产品源码上失败：starting != error",
+    "host": "551/551",
+    "webviewStart": "40/40",
+    "newCases": 22,
+    "typecheck": "passed",
+    "localization": "passed",
+    "syntax": "passed",
+    "diffCheck": "passed"
+  },
+  "payloadSha256": {
+    "extension.js": "0d5c75cd268992a97e6fe93b3b8fdc3a84e97387e97ed1255427cada3e53ef29",
+    "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+    "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+  },
+  "nativeRejection": {
+    "artifact": ".debug/file-activity-start-fix/rejection-1791652104022/runtime/artifacts/result.json",
+    "exitCode": 0,
+    "passed": true,
+    "rejected": {
+      "timestamp": "2026-10-10T17:08:31.078Z",
+      "kind": "execution/startRejected",
+      "detail": {
+        "kind": "agent",
+        "nodeId": "agent-5-5a0f7b33-df9f-4a61-93e7-0e777ad53e10",
+        "outcome": "rejected-before-acquire",
+        "reason": "Authority start admission rejected",
+        "message": "Cannot start Agent right now. Wait for pending operations to finish and try again.",
+        "executionId": "c5d43da8-d320-423a-bbcc-cbbc011ccd5e",
+        "generation": "1b892f7a-523e-43bb-b158-7b72c9e5cf23"
+      }
+    },
+    "node": {
+      "id": "agent-5-5a0f7b33-df9f-4a61-93e7-0e777ad53e10",
+      "kind": "agent",
+      "title": "Agent 5",
+      "status": "error",
+      "summary": "Cannot start Agent right now. Wait for pending operations to finish and try again.",
+      "position": {
+        "x": 1280,
+        "y": 600
+      },
+      "size": {
+        "width": 560,
+        "height": 430
+      },
+      "metadata": {
+        "agent": {
+          "backend": "node-pty",
+          "lifecycle": "error",
+          "provider": "codex",
+          "launchPreset": "default",
+          "runtimeKind": "pty-cli",
+          "resumeSupported": false,
+          "resumeStrategy": "none",
+          "shellPath": "codex",
+          "cwd": "/tmp/dscr",
+          "persistenceMode": "snapshot-only",
+          "attachmentState": "history-restored",
+          "liveSession": false,
+          "lastCols": 96,
+          "lastRows": 28,
+          "attentionPending": false,
+          "lastBackendLabel": "Codex"
+        }
+      }
+    },
+    "firstExecution": {
+      "kind": "agent",
+      "nodeId": "agent-4-dfd72fc0-a0bd-4fdf-90c4-aef9c651190a",
+      "executionSessionId": "089c778e-c287-4db4-915a-2f28c4656e48",
+      "generation": "da5ae662-4aad-4651-aebb-e9eed8f12820"
+    },
+    "retry": {
+      "kind": "agent",
+      "nodeId": "agent-5-5a0f7b33-df9f-4a61-93e7-0e777ad53e10",
+      "executionSessionId": "bf91fdb7-d85b-404a-8c07-bd1ea8e0fb30",
+      "generation": "817a8779-a05e-4d92-ae89-c6b0a063715f"
+    },
+    "interaction": "真实 clickNodeActionButton/start，选择当前 interactive surface",
+    "requests": 2,
+    "remainingExecutions": 0,
+    "caveat": "首次验证入口硬编码 panel，与实际 editor 不符；产品拒绝状态已通过，点击步骤未执行。入口修正为 activeSurface 后完整专项通过。"
+  },
+  "nativeFileActivity": {
+    "artifact": ".debug/file-activity-start-fix/file-activity-1791652134021/runtime/artifacts/result.json",
+    "scenarioExitCode": 1,
+    "wrapperExitCode": 5,
+    "wrapperNote": "VS Code 场景 exit1；xvfb-run 随后报告临时目录清理错误并返回5。",
+    "originalFunctionPassed": false,
+    "passedScope": "两个专用 Agent 各自原 started、live 和 executionId/generation 检查通过；已派发第一条 read。",
+    "blockingSource": "tests/vscode-smoke/extension-tests.cjs:3812",
+    "blockingAssertion": "第一条 read 之后等待匹配文件引用且原 Agent owner accessMode=read 超时。",
+    "sourceStack": [
+      "\tat waitForSnapshot (/tmp/dscr/.debug/file-activity-start-fix/file-activity-1791652134021/host/tests/vscode-smoke/extension-tests.cjs:12871:10)",
+      "\tat async verifyFileActivityViewsAndOpenFiles (/tmp/dscr/.debug/file-activity-start-fix/file-activity-1791652134021/host/tests/vscode-smoke/extension-tests.cjs:3875:16)",
+      "\tat async runSmoke (/tmp/dscr/.debug/file-activity-start-fix/file-activity-1791652134021/host/tests/vscode-smoke/extension-tests.cjs:205:9)",
+      "\tat async Object.run (/tmp/dscr/.debug/file-activity-start-fix/file-activity-1791652134021/host/tests/vscode-smoke/extension-tests.cjs:173:5)"
+    ],
+    "filesFeatureEnabled": true,
+    "fileReferencesAtTimeout": [],
+    "nodesAtTimeout": [
+      {
+        "id": "agent-1-79ac52a0-74f1-4d7b-b799-769fbaf8caa7",
+        "status": "resume-ready",
+        "liveSession": false
+      },
+      {
+        "id": "agent-4-11555727-e864-4b5f-b3a6-1dc0e54b67c1",
+        "status": "waiting-input",
+        "liveSession": true
+      },
+      {
+        "id": "agent-5-0862dc79-86b3-4262-9e90-61624819a239",
+        "status": "waiting-input",
+        "liveSession": true
+      }
+    ],
+    "startEvents": [
+      {
+        "timestamp": "2026-10-10T17:09:01.225Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-4-11555727-e864-4b5f-b3a6-1dc0e54b67c1",
+          "provider": "codex",
+          "resumeRequested": false,
+          "launchPreset": "default",
+          "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "launchArgs": [],
+          "cols": 66,
+          "rows": 21,
+          "cwd": "/tmp/dscr",
+          "workspaceTrusted": true
+        }
+      },
+      {
+        "timestamp": "2026-10-10T17:09:01.334Z",
+        "kind": "execution/started",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-4-11555727-e864-4b5f-b3a6-1dc0e54b67c1",
+          "sessionId": "429e6297-a1a0-4a28-9510-d16dc80f623b",
+          "cols": 66,
+          "rows": 21,
+          "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "cwd": "/tmp/dscr",
+          "launchArgs": [],
+          "provider": "codex",
+          "launchMode": "start",
+          "resumeStrategy": "fake-provider",
+          "resumeSessionId": "dd01828b-517c-48f1-9cbd-477821569817",
+          "resumeStoragePath": "/tmp/dscr/.debug/file-activity-start-fix/file-activity-1791652134021/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-4-11555727-e864-4b5f-b3a6-1dc0e54b67c1"
+        }
+      },
+      {
+        "timestamp": "2026-10-10T17:09:01.455Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-5-0862dc79-86b3-4262-9e90-61624819a239",
+          "provider": "codex",
+          "resumeRequested": false,
+          "launchPreset": "default",
+          "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "launchArgs": [],
+          "cols": 66,
+          "rows": 21,
+          "cwd": "/tmp/dscr",
+          "workspaceTrusted": true
+        }
+      },
+      {
+        "timestamp": "2026-10-10T17:09:01.797Z",
+        "kind": "execution/started",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-5-0862dc79-86b3-4262-9e90-61624819a239",
+          "sessionId": "379185f8-225f-4bc9-aba2-280c650635e0",
+          "cols": 66,
+          "rows": 21,
+          "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "cwd": "/tmp/dscr",
+          "launchArgs": [],
+          "provider": "codex",
+          "launchMode": "start",
+          "resumeStrategy": "fake-provider",
+          "resumeSessionId": "b5fe8d6d-ecd1-420a-8545-56554911c9d8",
+          "resumeStoragePath": "/tmp/dscr/.debug/file-activity-start-fix/file-activity-1791652134021/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-5-0862dc79-86b3-4262-9e90-61624819a239"
+        }
+      }
+    ],
+    "remainingExecutions": 0
+  },
+  "fullGate": {
+    "command": "npm run test:vsix-smoke",
+    "log": ".debug/file-activity-start-fix/vsix.log",
+    "exitCode": 1,
+    "stageExitCodes": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1
+    ],
+    "build": "typecheck、生产构建打包通过",
+    "trustedBlocker": "verifyRuntimeReloadRecovery:8938 手动 resume 等待 live/resuming 超时，Agent resume-failed，Missing resumable Codex session ID。",
+    "reachedFileActivity": false,
+    "artifact": ".debug/file-activity-start-fix/trusted-artifacts",
+    "relevantEvents": [
+      {
+        "timestamp": "2026-10-10T17:07:01.103Z",
+        "kind": "execution/startFailed",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-be1e5f44-d355-4a68-b5b5-ac9bac8347e9",
+          "outcome": "exception",
+          "reason": "Missing resumable Codex session ID.",
+          "message": "Failed to start execution node: Missing resumable Codex session ID."
+        }
+      }
+    ],
+    "assessedCause": "未定位；该次失败为 preparation exception，不能认定为本次 rejected-before-acquire 或 starting 配额问题。"
+  },
+  "remaining": "文件活动 read 引用缺失和本轮手动 resume 失败待定位。历史 URL 清理停滞、Runtime batch disconnected、真实新 Host/checkpoint/跨平台未由本次收口。"
+}

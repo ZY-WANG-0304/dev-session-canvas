@@ -1,0 +1,164 @@
+{
+  "baseline": "6f04e745e261bccea0163c2e81891b954398918c",
+  "scope": "Investigation only; product and formal smoke unchanged",
+  "environment": {
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "platform": "linux-x64",
+    "runtimePersistence": false,
+    "provider": "fake"
+  },
+  "originalGate": {
+    "artifact": ".debug/local-host-boundary-start-fix/trusted-artifacts/failure-diagnostic-events.json",
+    "count": 2000,
+    "firstTimestamp": "2026-10-10T16:15:13.306Z",
+    "lastTimestamp": "2026-10-10T16:15:22.220Z",
+    "agentExited": 0,
+    "liveTerminalSnapshot": 0,
+    "spawnError": 0,
+    "originalPredicateResults": [
+      true,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true
+    ],
+    "predicateOrder": [
+      "storage selection",
+      "load hash",
+      "agent started",
+      "agent exited",
+      "terminal started",
+      "live terminal snapshot",
+      "agent spawn error or error exit",
+      "persist hash"
+    ],
+    "predicateReplay": "Original function run read-only on saved events, collecting each assert.ok result; not a passing test"
+  },
+  "native": {
+    "artifact": ".debug/trusted-diagnostics-investigation/native-1791649575837/runtime/artifacts/diagnostics-result.json",
+    "log": ".debug/trusted-diagnostics-investigation/native.log",
+    "scriptExit": 0,
+    "meaning": "Expected unchanged diagnostic assertion failure captured; not a smoke gate pass",
+    "productBundleSha256": {
+      "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+      "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+      "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+    },
+    "formalSmokeSha256": "6d3ed4b4554a1fd95c803f5011a92ea30606ba44273f6c6d3f00558417ea6d66",
+    "naturalExit": {
+      "identity": {
+        "kind": "agent",
+        "nodeId": "agent-1-03ed7538-0832-4e1a-b36b-f6895ba09224",
+        "executionSessionId": "34640352-c7f0-4da3-b8e0-d15470392b35",
+        "generation": "523b866a-0234-4916-86dd-1657fe79c1ac"
+      },
+      "eventCount": 59,
+      "agent": [
+        {
+          "id": "agent-1-03ed7538-0832-4e1a-b36b-f6895ba09224",
+          "status": "error",
+          "lastExitCode": 27,
+          "liveSession": false
+        }
+      ],
+      "exitMessages": [
+        {
+          "type": "host/executionExit",
+          "payload": {
+            "nodeId": "agent-1-03ed7538-0832-4e1a-b36b-f6895ba09224",
+            "kind": "agent",
+            "executionSessionId": "34640352-c7f0-4da3-b8e0-d15470392b35",
+            "localCompletion": {
+              "executionSessionId": "34640352-c7f0-4da3-b8e0-d15470392b35",
+              "finalOutputSequence": 4
+            },
+            "message": "Session ended with exit code 27."
+          },
+          "lifecycle": {
+            "surface": "editor",
+            "mode": "active",
+            "generation": 2,
+            "frameId": "frame-dd5a6ee0-2ebc-4181-a36f-fc613519b9af"
+          }
+        }
+      ],
+      "settlements": [
+        {
+          "timestamp": "2026-10-10T16:26:22.083Z",
+          "kind": "execution/localTerminalResult",
+          "detail": {
+            "nodeId": "agent-1-03ed7538-0832-4e1a-b36b-f6895ba09224",
+            "kind": "agent",
+            "executionSessionId": "34640352-c7f0-4da3-b8e0-d15470392b35",
+            "surface": "editor",
+            "lifecycle": {
+              "surface": "editor",
+              "mode": "active",
+              "generation": 2,
+              "frameId": "frame-dd5a6ee0-2ebc-4181-a36f-fc613519b9af"
+            },
+            "outcome": {
+              "kind": "applied",
+              "finalOutputSequence": 4
+            },
+            "status": "recorded",
+            "reason": "reader-settled"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T16:26:22.087Z",
+          "kind": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-03ed7538-0832-4e1a-b36b-f6895ba09224",
+            "executionId": "34640352-c7f0-4da3-b8e0-d15470392b35",
+            "generation": "523b866a-0234-4916-86dd-1657fe79c1ac",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        }
+      ],
+      "exitedDiagnostics": 0
+    },
+    "afterOriginalBoundary": {
+      "eventCount": 95,
+      "exitedDiagnostics": 0,
+      "failure": {
+        "message": "The expression evaluated to a falsy value:\n\n  assert.ok(\n",
+        "stack": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert.ok(\n\n\tat verifyTrustedDiagnostics (/tmp/dscr/.debug/trusted-diagnostics-investigation/native-1791649575837/host/tests/vscode-smoke/extension-tests.cjs:13547:10)\n\tat async runSmoke (/tmp/dscr/.debug/trusted-diagnostics-investigation/native-1791649575837/host/tests/vscode-smoke/extension-tests.cjs:219:13)\n\tat async Object.run (/tmp/dscr/.debug/trusted-diagnostics-investigation/native-1791649575837/host/tests/vscode-smoke/extension-tests.cjs:173:5)"
+      },
+      "states": [
+        {
+          "kind": "agent",
+          "status": "resume-ready",
+          "liveSession": false
+        },
+        {
+          "kind": "terminal",
+          "status": "interrupted",
+          "liveSession": false
+        },
+        {
+          "kind": "note",
+          "status": "ready"
+        }
+      ]
+    }
+  },
+  "conclusion": {
+    "primary": "Legacy execution/exited assertion does not match default owned local or Supervisor completion paths",
+    "secondary": "End-of-flow diagnostic ring is bounded to 2000 and explicitly clearable; it is not whole-run history",
+    "repairBoundary": "Assert original execution completion and diagnostics in the scenario that generates them; preserve exit code, output, final save and reader checks. Do not alias reader settlement to process exit."
+  },
+  "limits": [
+    "Full smoke gate not rerun",
+    "No real new Host, cross-platform or real provider service claim",
+    "Historical URL cleanup stall unchanged"
+  ]
+}

@@ -12,6 +12,46 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-09：活动本地执行在画布重读和 workspace root 重组时失去绑定
+
+PR #313 自启动超时已定位：`setPersistedStateForTest` / `reloadPersistedStateForTest` 重建 metadata，`reconcileRuntimeNodes` 只认识旧 session map，遗漏当前 `nonNativeHostExecutions`。原生复现中旧执行仍 running，但节点被恢复成 resume-ready/interrupted；同 ID 恢复因原 key 占用拒绝。真实 VS Code 已保存 workspace 从一个 root 添加到两个 root 时，同 Host 内节点 ID 加 root 前缀，旧执行未迁移或退休，另启动了一条同 resume session 的 Agent。属于正式产品生命周期缺陷，不能仅调整 smoke 顺序后放行发布。
+
+PR #314 已实施具名修复：同 ID 重读保留原 metadata/status；root + local node ID 驱动 owner/Host 原子路由迁移；移除 root 先停止并按旧 root 组合保存尾部；失败、超时与 Host 永久关闭保留责任；模拟 reload 在原有总边界内等待最终保存后恢复准入。smoke 的创建与整图夹具已隔离，新增原生 `owned-canvas-reconciliation` 并纳入默认源码/VSIX 入口。受控测试涵盖准备中迁移、resize 等待、最终读盘及失败保护。关联：`docs/design-docs/smoke-reload-autostart-investigation.md`、`docs/exec-plans/completed/canvas-owned-execution-reconciliation.md`。
+
+2026-10-10 继续修正测试：burst/hello/sleep/slowspin 和 Terminal shell 输出已按原 executionId/generation 的实际快照/连续输出验证，正文正反例 14/14；停止摘要按实际退出结果验证，停止后 resize 保留最终快照原尺寸与正文。额外修复了正常原生 Agent/Terminal 重复启动没有进入 already-running 分支的问题，Host 356/356（新增 2 项）、快照尺寸 16/16 通过。默认 VSIX 的 owned reconciliation 与新增 local-execution-flow 均通过，旧 burst 阻塞已收口。通知用例两处同类正文条件已迁移，但独立 UI 路径尚未原生复验；其他未触达的 Runtime/恢复/压力场景不能由本次结果代证。
+
+剩余发布门禁（2026-10-10 专项定位）：原生 resize 的 `Execution terminal interaction admission is closed or unsupported` 已在两次真实 VSIX 运行中捕获四次 starting 阶段实例。请求来自真实页面自动 fit；Host 在 business 建立后就派发 resize，尚未等 provider ready/started，底层因此拒绝。拒绝时无停止请求、process/source/seal 或 authority 隔离。移除临时产品探针后的 Agent/Terminal × ready 前/started 前四项特征对照均复现，running 后同请求成功；这是插件启动协调缺口，不能靠调整 smoke 等待或清 toast 解决。后续用户授权后已在 PR #314 修复：准备及 starting 保留最新尺寸，原执行就绪后派发，启动期间不阻塞正文消费；5 秒交互期限从就绪起算。准备/启动失败和停止/删除/关闭均结算 pending 意图，已确认 resize 紧邻关闭仍提交原 tracker，未知结果与绑定替换保留错误。Host 376/376（新增 20 项）、类型检查及 VSIX 打包通过，两个默认具名场景通过，trusted 走过原 resize 失败路径且清理诊断前未发现本地 resize 失败。该 resize 缺陷已收口；完整发布门禁仍有下述独立通知阻塞。
+
+旧两次页面 probe 失败没有瞬时状态，不能逐次追认都是启动窗口；新诊断在更晚的重启场景捕获同类错误，并额外发现一次 stopRequested=true 的 Host 层 `Owned terminal mutation admission is closed.`。后者已按正常关闭后取消未派发尺寸意图处理，覆盖出队前停止/源结束；failed/unconfirmed 与绑定错误继续报错。过程与可复跑证据：`docs/exec-plans/completed/resize-admission-investigation.md`、`docs/references/smoke-reload-autostart/resize-admission-evidence.json` 及相邻两个 resize patch；历史失败工件继续保留。
+
+新触达的独立门禁：两次只读诊断运行通过普通 `verifyExecutionAttentionNotificationBridge`，但 `verifyAgentAbnormalInterruptionNotifications` 在退出 27 后等待 `execution/attentionNotificationPosted` 超时；节点为 error、lastExitCode=27、attentionPending=false。resize 修复后的默认真实 VSIX 再次停在相同检查，未放宽断言。2026-10-10 专项定位已确认产品缺口：snapshot-only 的 `persistNonNativeHostFinal` 完成 error/27 最终保存，却未调用现有异常退出通知入口；Codex/Claude 两项非主动退出受控复现均为通知调用 0 次，同配置直接调用原入口则 posted/展示/attention 正常，正常退出和主动停止对照仍不通知，特征验证共 4/4。workbench 事件名与 smoke 一致。定位轮未修改产品；后续用户授权后，PR #314 已接回共享异常退出策略，提醒并入原最终保存，投递异步且失败不改变结算，保留正常退出/主动停止/重复及旧绑定保护。新增 19 项、完整 Host 395/395、类型检查、notifier source 通过。默认真实 VSIX 的 Codex exit 27 和 Claude exit 33 通知事件、提醒、workbench 提示及确认均已通过，原通知缺口已收口。定位证据：`docs/exec-plans/completed/owned-agent-exit-notification-investigation.md`、`docs/references/smoke-reload-autostart/exit-notification-evidence.json` 及相邻 characterization patch。修复结果：`docs/exec-plans/completed/owned-startup-resize.md`、`docs/references/smoke-reload-autostart/resize-repair-evidence.json`。
+
+2026-10-10 新触达的独立发布阻塞：同一默认 VSIX trusted 随后在 Claude 恢复启动失败状态检查（`verifyAgentAbnormalInterruptionNotifications` 的 resume 子场景）超时。原执行以 33 退出并保存/退休，attentionPending=false，但 status=error、lastResumeError 缺失，测试期待 resume-failed。`persistNonNativeHostFinal` 没有旧路径的 resumePhaseActive 分类分支；通知抑制正确，不应把此状态问题归因于通知渠道或放宽断言。当时通知修复未改这一语义。后续用户授权后，PR #314 已按原 resumePhaseActive 补回恢复失败分类，保存恢复原因并清理旧错误；14 项新增回归、完整 Host 409/409 与类型检查通过，默认真实 VSIX 已通过原恢复失败及新增错误字段一致性检查，该分类缺口已收口。证据与计划：`docs/references/smoke-reload-autostart/exit-notification-repair-evidence.json`、`docs/exec-plans/completed/owned-agent-exit-notification-repair.md`。完整门禁仍未通过。
+
+2026-10-10 此前独立阻塞：恢复失败修复后的默认 VSIX trusted 进入 `verifyExecutionTerminalNativeInteractions` 后，拖放文件路径输入失败。原 Terminal live；诊断 `execution/dropResourceRejected` 明确为 missing-session，同 executionId 的真实正文只有 `DEV_SESSION_CANVAS_NATIVE_DROP:` 而没有路径。`handleDroppedExecutionResource` 仅查旧 session map，未认识当前 owned 本地执行，是产品接线遗漏；该 smoke 同时仍从 metadata.recentOutput 等待实时正文，存在旧断言。当时拖放入口和该测试尚未修复，不能仅改测试放行。证据与本轮计划：`docs/references/smoke-reload-autostart/resume-failure-repair-evidence.json`、`docs/exec-plans/completed/owned-agent-resume-failure.md`。
+
+2026-10-10 拖放修复已在 PR #314 收口：复用原输入目标校验，使用 owned 原 launchSpec 的 shell/cwd 准备路径并等待原执行写入确认；停止/旧 metadata/节点删除/隔离/缺少上下文拒绝，等待期间不转投替换执行。保留旧 session 路径，本交互 smoke 的实时正文改从原执行通道读取。新增 17 项回归，完整 Host 426/426、正文 helper 14/14、路径 helper 与类型检查通过；两轮默认 VSIX 均通过构建、两个具名阶段及真实拖放首资源/路径、文件、图片和 cd 相对文件定位。计划与证据：`docs/exec-plans/completed/owned-execution-resource-drop.md`、`docs/references/smoke-reload-autostart/resource-drop-repair-evidence.json`。
+
+此前独立阻塞：两轮 trusted 随后均将多行文件结果 `2:8` 解析为 search/quickOpen，期待 file。第二轮明确等待原执行的两行结果及页面可见相邻两行后仍复现，排除仅由命令回显或未渲染导致提前点击。`getExecutionTerminalPathContext` 尚未接入 owned business 的逐行 cwd tracker；该源码缺口与本次失败的完整因果对照待专项定位，不在拖放修复中顺带改写。完整门禁仍失败；后续缺失文件搜索、URL hover/显式 URL 和 Runtime 场景尚未触达。
+
+2026-10-10 多行文件链接已在 PR #314 收口：owned 原 launchSpec 和原 business.lineContextTracker 接入路径上下文，相对解析缓存加入执行身份；只读解析保留停止后的原正文目录和旧 session/历史回退。新增 8 项、完整 Host 434/434、路径 helper、逐行 tracker、类型检查通过。真实 helper 修前将 subdir 文件解析到初始目录，修后正确；默认真实 VSIX 整个 native interactions 完成，含多行 2:8/file/编辑器位置和后续缺失文件搜索、普通/显式 URL。原多行解析缺口已闭环，本轮未改 smoke。计划与证据：`docs/exec-plans/completed/owned-execution-file-links.md`、`docs/references/smoke-reload-autostart/file-link-repair-evidence.json`。
+
+此前独立阻塞：后续 `verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory:8523` 仍等待历史 metadata.recentOutput 出现 SCROLLBACK_PERSIST-220。原节点 live，同执行最终 Host 快照已有 001/220，metadata 却仍是此前 native interactions 历史；超时发生在该函数的 simulateRuntimeReload 之前，不是 reload 后丢失历史的证据。后续需把运行期正文等待改为原执行实际通道，并继续保留停止保存/reload 后首尾行保留检查。本轮未修改该独立用例，完整 trusted 和后续 Runtime/压力矩阵仍未完成。
+
+2026-10-10 滚动历史旧断言已在 PR #314 收口：新 Terminal live 后捕获原 executionId/generation，复用原实际输出等待替代运行期 metadata.recentOutput 条件，20 秒期限与所有保存/reload 首尾行断言保持。语法检查、正文 helper 14/14、旧现场回放通过；默认真实 VSIX 已完成滚动历史的原执行 -220、模拟 reload 后持久化首尾行、重新请求历史快照首尾行检查，以及后续 editor/panel 标签切换和主题跟随。本轮未改产品；证据见 `docs/references/smoke-reload-autostart/scrollback-smoke-repair-evidence.json`。
+
+最新独立阻塞：`verifyRuntimeReloadRecovery` 在首次等待 Codex Agent live 时超时，尚未执行此场景的 simulateRuntimeReload。Agent stopped/liveSession=false，Terminal 已启动；日志出现 `Non-native Host start was rejected-before-acquire` 及未处理 promise 拒绝。2026-10-10 专项调查已确认：smoke 连续派发不等 started，Terminal 在 Agent CLI 解析期间先占唯一 starting 名额；Agent identity 正常、owner 未关闭/隔离，实际命中 starting=1。底层拒绝符合产品契约；snapshot-only owned 启动抛错却未由页面入口消费，没有 host/error，是独立产品反馈缺口。双顺序重叠拒绝、started 后同节点重试均已受控证实（2/2），两者可同时 running。后续在继续 PR #314 修复、恢复完整门禁前，应同步修正该 fixture 启动顺序并补齐用户快速连续启动时的错误反馈/诊断，保留正式准入和身份保护；不得提高上限或只延长等待。本轮只定位，临时探针/测试已恢复，完整 trusted 仍失败。关联：`docs/design-docs/smoke-reload-autostart-investigation.md`、`docs/exec-plans/completed/owned-start-admission-investigation.md`、`docs/references/smoke-reload-autostart/start-admission-evidence.json`。
+
+2026-10-10 启动顺序和拒绝反馈已在 PR #314 收口：页面立即消费启动拒绝，保留原身份/outcome 诊断与本地化提示；只跟踪本请求新建记录，取消/替换/删除的迟到错误只记诊断，旧 stopping 记录阻塞新请求仍提示，不修改原资源责任。smoke 逐个等待原 executionId 的 started。新增 20 项、完整 Host 454/454、类型/本地化和正文 helper 14/14 通过；最终默认真实 VSIX 两个具名阶段、页面 probe、通知/交互/滚动历史等前缀通过，原 Agent/Terminal 起始启动均确认完成。关联 `docs/exec-plans/completed/owned-start-admission-repair.md` 和 `docs/references/smoke-reload-autostart/start-admission-repair-evidence.json`。
+
+新的独立阻塞：`verifyRuntimeReloadRecovery:8826` 在自身模拟 reload 返回后期待 Agent resume-ready，实际 stopped；Terminal 实际 closed 而非后续期待的 interrupted。两条原执行已 saved，Agent 恢复策略和 session ID 保留。需在继续恢复场景/发布准备前定位 Host boundary 的最终停止状态与重读恢复意图的关系，不应直接放宽断言。本轮未修改该终态逻辑，后续恢复/Runtime/压力矩阵未通过。中间另一次默认运行早期 Host boundary 保存仍 pending；最终复跑跨过，但原失败原因未确定，保留 pending-save-artifacts，若再次出现需跟踪原执行保存责任，不能延长期限或把重跑成功追认为当次保存完成。
+
+
+
+
+
+workspace trust / editor deserialize 已审计共用入口，但独立 UI 路径、真实窗口 Reload、跨版本及 Remote SSH 不在本轮原生验收范围，继续依赖各自验证矩阵。
+
 ## 2026-10-08：旧 Supervisor 的创建拒绝仍缺资源结果
 
 0.26.0 现场旧会话 journal 写入 ENOSPC 后 owner 隔离，新建/恢复在获取资源前收到普通准入错误。Host 已设置 `submitted=true`，但只对精确的 `rejected-before-acquire` 文案释放预留，因此新节点残留 Starting/Resuming，删除被原创建待确认保护拒绝。实际两个新 session 均未创建；旧失败会话仍有未消费尾部，二者责任不能混同。
@@ -399,3 +439,249 @@ B2 已完成 typed profile/generation、安全首次启动和构建期固定候�
 | 2026-04-06 | Webview UI 回归仍主要运行在浏览器 harness，真实容器覆盖面偏窄 | 为了把第三层先往真实 VS Code Webview 容器下压一格，本轮已经在 `@vscode/test-electron` smoke 中加入 test-only DOM probe；后续又补了真实容器里的 Note 编辑、provider 切换后重启、删除按钮，以及 pending request / stop 竞态 fault injection，但大多数 UI 回归仍由浏览器 harness 承担，而不是真实容器里的端到端交互。 | Webview UI 对真实容器特性的依赖，例如 CSP、容器级样式差异、真实宿主注入环境、指针命中细节与少量可访问性行为 | 当前用真实宿主 smoke 中的 probe 与 DOM action 覆盖节点渲染、Task/Note 写路径、provider 切换、删除按钮和两条生命周期 fault injection，并让 Playwright harness 继续承担截图基线、更多细粒度 UI 交互和页面级失败诊断；不把这套组合写成“已完全等价于真实容器 UI 自动化”。 | 下一轮如果要覆盖更深的 Webview 容器差异、复杂指针交互或发布前做 UI 风险收口时 | `extensions/vscode/dev-session-canvas/src/common/protocol.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`、`extensions/vscode/dev-session-canvas/src/webview/main.tsx`、`tests/playwright/harness/webview-harness.html`、`tests/playwright/webview-harness.spec.mjs`、`tests/vscode-smoke/extension-tests.cjs`、`docs/design-docs/development-debug-automation.md`、`docs/exec-plans/completed/test-automation-hardening.md` |
 | 2026-03-30（2026-07-13 扩充） | 新建节点避碰当前依赖默认窗口尺寸估算 | 为先修复“新增节点初始重叠”的真实反馈，宿主使用各 kind 的默认 footprint 做候选碰撞判断。PR #261 抽取了共享碰撞几何，但 review 进一步确认自动文件节点仍由 `resolveAutomaticArtifactPosition()` 按 `estimatedCanvasNodeFootprint('file')` 的 220 x 84 选位，随后 `resolveAutomaticFileNodeSize()` 才根据 minimal 显示模式和路径文本确定真实初始尺寸；默认 `icon-path` 宽度最高可到 480。 | 新建节点默认摆放的精确性，尤其影响长路径的自动 minimal File 节点：候选按 220 宽度通过后，真实物化外框仍可能覆盖邻近已有节点；后续节点样式、字段密度或默认尺寸变化也有同类风险。 | 当前 Webview 提供视口锚点，宿主统一使用共享 rectangle / padding predicate；已有节点使用持久化 size，普通创建和 Fork 的默认 footprint 与物化尺寸一致。自动文件节点只承诺基于 220 x 84 估算的 best-effort 避碰，不把共享 predicate 写成真实初始外框的完整无重叠保证。 | 下一轮收口自动文件节点尺寸模型、再次修改 minimal File 显示宽度，或准备把生成节点不重叠从 best-effort 升级为完整验收承诺时；优先让选位 API 接受 `estimateAutomaticFileNodeFootprint()` 的显式结果，再物化同一 size 并补长路径 fixture。 | `extensions/vscode/dev-session-canvas/src/common/protocol.ts`、`extensions/vscode/dev-session-canvas/src/common/canvasNodePlacement.ts`、`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`、`extensions/vscode/dev-session-canvas/src/webview/fileNoteNodes.tsx`、`docs/design-docs/canvas-feedback-polish.md`、`docs/design-docs/canvas-fork-placement-and-generated-node-collision.md`、`docs/exec-plans/active/canvas-fork-placement-and-generated-node-collision.md`、`docs/exec-plans/completed/canvas-feedback-polish.md` |
 | 2026-03-30 | 节点删除当前不支持确认或撤销 | 为先闭合四类节点的最小删除主路径，本轮直接提供节点头部删除按钮和键盘删除，但没有确认弹窗、撤销栈或回收站。 | 误删节点后的恢复体验，尤其影响包含正文的 `Task` / `Note` 和运行中的执行型节点 | 当前通过显式选中态、输入焦点保护、危险态按钮样式和单节点删除范围降低误触风险，不把确认/撤销写成已支持。 | 下一轮画布交互增强或对象历史能力设计时 | `extensions/vscode/dev-session-canvas/src/webview/main.tsx`、`extensions/vscode/dev-session-canvas/src/webview/styles.css`、`docs/design-docs/canvas-node-deletion.md` |
+
+## snapshot-only 手动恢复收口与后续 surface 验收（2026-10-10，PR #314）
+
+Host reload 把活动 Agent 保存成 stopped 的缺陷已修复：原最终保存区分 Host 中断、用户停止和已观测自然退出，有可信身份为 resume-ready，无身份/Terminal 为 interrupted；重读清理自动 resume 意图，等待用户手动恢复。新增 24 项、完整 Host 478/478 与相关检查通过。最终默认真实 VSIX 的独立手动恢复阶段和 trusted 原恢复阶段两处通过，原状态阻塞已闭环；规格、设计及证据见 `docs/product-specs/runtime-persistence-modes.md`、`docs/design-docs/smoke-reload-autostart-investigation.md`、`docs/references/smoke-reload-autostart/manual-reload-recovery-evidence.json`。
+
+下一项发布阻塞为 `verifyLiveSessionCutoverAndReload:8965`：相同 Terminal executionId 的真实输出 sequence 2 与 snapshot sequence 3 已含 `LIVE_CUTOVER_EDITOR`，但断言仍等待历史 metadata.recentOutput；需按原执行输出和页面切换生命周期校准该测试。尚未执行后续 surface/Runtime/压力断言，不能视为这些功能已通过。首轮缺失文件链接 DOM 检测失败工件保留在 `.debug/manual-reload-recovery/first-artifacts`，最终一轮通过该点不追认其原因；此前 early final-save pending 工件和待定位状态也保留。
+
+
+2026-10-10 继续处理 surface 断言：`verifyLiveSessionCutoverAndReload` 的 editor/panel/同 Host 重读/editor 四处等待已迁移到原 executionId/generation 的实时通道，并校验切换后目标页面当前生命周期快照、既有正文与新输出可见性。前置 Terminal 先停止并结清，最终停止状态/历史输出仍严格检查；新增默认 `local-surface-cutover` 具名阶段。正文 helper 14/14、reset fixture 19/19、runner 环境清理/语法与 VSIX 打包通过；默认独立 surface 阶段和 trusted 原顺序两处通过，surface 旧字段阻塞已收口。证据见 `docs/references/smoke-reload-autostart/surface-cutover-output-evidence.json`。
+
+
+下一项发布阻塞：`verifyPtyRobustness:9061` 仍从历史 metadata.recentOutput 等待 `[fake-agent] burst 080`。当前 Agent 为 waiting-input/live，原 executionId 的实时输出已包含该行，历史字段仍是此前手动恢复执行的摘要。需继续校准该 PTY 用例；其后续退出/停止及压力、Runtime 检查尚未通过。此前独立文件链接 DOM 与 early final-save pending 工件仍保留，未追认根因。
+
+
+2026-10-10 PTY 旧字段断言继续修复：稳健性的 burst/并行输出和紧接着双终端 flood 的 Agent/Ctrl-C 输出已按原执行通道校验；补齐 started 和原最终保存/退休等待，保留退出码、主动停止、并行快照、高输出下 Note 选择/新节点/输入/清理要求。独立默认 `local-pty-robustness` 与 trusted 原顺序的稳健性/flood 两部分各通过两处，原 PTY 断言阻塞收口；正文 helper 14/14、reset fixture 19/19、runner 环境/语法与 VSIX 类型/打包通过。证据见 `docs/references/smoke-reload-autostart/pty-output-evidence.json`。
+
+
+新的发布阻塞为 `verifyFailurePaths:9336`：缺失 Claude CLI 已产生 commandResolutionFailed/startFailed 和页面错误，未启动执行以 not-required 结算，但节点仍 starting、pendingLaunch=start、liveSession=false；测试期待 error。这是尚待定位的失败状态投影问题，不能改为期待 starting 放行。本轮未更改该产品路径或失败状态断言，后续失败路径/恢复/Runtime 检查未完成。原工件在 `.debug/pty-output/trusted-artifacts`，此前独立历史失败继续保留。
+
+
+## owned 启动准备失败状态收口（2026-10-10，PR #314）
+
+CLI/执行环境准备失败后停留 starting/launching 的产品缺口已修复：原 record 和 metadata 仍有效且未取消时，fresh 为 error、resume 为 resume-failed，清除 pending/live，保留历史正文与恢复身份；未开始记录仍为 not-required。准备失败同时取消未派发的尺寸意图，避免自动同步尺寸额外报 owned-resize-failed。关闭准入、取消/换绑、取得资源后的未知结果保持原保护。完整 Host 487/487、类型、本地化和 smoke helper/runner 检查通过，最终代码默认真实 VSIX 六个独立阶段（含 local-preparation-failure）通过。
+
+同轮 trusted 在更早的 `verifyAgentAbnormalInterruptionNotifications:7788` Claude resume 再启动处被 `Local final snapshot responsibility still occupies the execution key or Host capacity.` 阻断。工件捕获时记录已清理，不据此追认具体时序原因；保留 `.debug/preparation-failure/early-trusted-artifacts`。同代码不修改场景复跑 trusted，在更早的 `verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent:3257` 等待启动诊断超时，实际 `execution/startFailed` 为 `Execution owner admission is closed`，工件在 `.debug/preparation-failure/repeat-trusted-artifacts`。两轮均未在 trusted 原顺序触达缺 CLI；两处早期生命周期失败仍待定位，完整发布 gate 尚未通过。此次不改版本或发布资料，未复验真实 Agent/跨版本与跨平台矩阵。精简证据见 `docs/references/smoke-reload-autostart/preparation-failure-evidence.json`。
+
+
+## 两处 smoke 完成等待缺口已定位（2026-10-10，PR #314）
+
+前节“最终保存占槽”和“owner admission is closed”的修复方向已收敛。通知用例在原执行 error/通知后没有等待退休，原生自然复现时保存和资源已经完成，只剩页面 reader pending；需在同 node 再启动及 Claude 恢复 seed 之前按原 executionId/generation 等待 saved/not-required 且原记录退休。预设创建用例在原本为空的画布派发异步 reset 后立即新建，reset 因节点改变中止而保留关闭准入；需等待 reset 命令实际完成，不能只等 nodes.length=0。两处正式 smoke 同步修复仍待落实，保持产品现有同 key/失败边界保护。用户并发创建与 reset 的准入提示/交互协调可单独评估，本轮不将放宽失败边界当成修复方案。
+
+5/5 受控对照、原顺序 reset 复现、原生通知同 key 拒绝、等待退休后的五次正常通知运行及受控 Claude 恢复正反对照均已完成；最终确认可自然 applied，资源不存在已证明的永久泄漏。旧 Claude 原始工件清空后缺少的瞬间状态不追认。证据与复跑补丁见 `docs/references/smoke-reload-autostart/lifecycle-barrier-evidence.json`，计划为 `docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md`。
+
+同时补回上轮拆分用例遗漏的 `verifyFailurePaths` 局部 diagnosticStartIndex，原生受控运行已完整通过该函数。调查变体在该函数后停止，完整发布门禁仍未通过，其他历史待定位项继续保留。
+
+
+## smoke 生命周期等待正式修正与剩余门禁（2026-10-10，PR #314）
+
+前节两项正式修正已落实：四处创建流程 await reset 命令，通知用例固定退出前的 executionId/generation，等原退休后再重启、转模拟夹具或写入 Claude 恢复 seed。默认 VSIX 前六阶段通过，trusted 原顺序完整通过上述场景和 `verifyFailurePaths`，同步等待缺口关闭。
+
+原顺序后续 `verifyStopVsQueuedExitRace` 用 recentOutput 等 sleeping，直到自然 exit 9 保存后才发 Stop；本轮追加改为原执行实时输出，并在停止后等待退休。单独运行确认 stopped/0、Token usage、codex resume、received signal INT 已保存；仍被旧摘要 `/Stopped Codex session/` 与实际 `Session ended with exit code 0.` 的差异阻断。后续 legacy stopRequested/exited 诊断断言尚未执行，需核对 owned 契约，不能直接放宽断言或将其推定为停止功能故障。
+
+最终源码 trusted 复跑再次通过创建与通知，随后在 `verifyExecutionTerminalNativeInteractions` 报 `Execution link "link-target.ts:3:1" was not detected.`；第一轮同用例已通过，当前不追认其与历史链接失败的具体共同根因。完整 gate 及后续 Runtime 场景仍未完成。本轮没有产品或版本改动，证据为 `docs/references/smoke-reload-autostart/lifecycle-barrier-fix-evidence.json`，完成计划为 `docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md`。
+
+
+## 链接扫描与停止用例契约已定位（2026-10-10，PR #314）
+
+前节两项根因在定位轮已收敛，正式修复结果见下一节。链接用例在 Host 发出正文后立即扫描 xterm，未等页面批量 drain/parser 应用。原生只读探针捕获 URL 扫描起止均无正文、随后新 probe 正文可见；同 `link-target.ts:3:1` 页面写入延迟 600ms 的受控对照在应用前复现拒绝，正文可见后保持原 executionId/generation，正确打开第 3 行第 1 列。历史失败 probe 是缓存，不追认其瞬间页面状态。应按原执行真实正文和目标页面实际就绪同步，保持真实链接打开断言。
+
+Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断；owned 路径没有经过这些旧发射点。原生已确认 stopped/0、SIGINT 收尾提示、单次 host/executionExit、saved、页面 applied 和退休；定向 Host 2/2 确认单次停止、尾部消费及完整结算。应迁移到原执行事实断言，当前没有停止动作失败证据。
+
+有界三次原生链接交互另外记录两次完整通过、一次 URL 已检测后 tooltip 可见超时；此显示问题未分类，正式修复时应保留并独立复核，不能用扫描等待结论掩盖。完整 gate 与后续 Runtime 仍未完成。证据为 `docs/references/smoke-reload-autostart/link-stop-investigation-evidence.json`，计划为 `docs/exec-plans/completed/smoke-link-stop-investigation.md`；临时产品/测试探针均已恢复。
+
+
+## 链接与停止 smoke 已修正，Claude 显式 session ID 的恢复策略待定位（2026-10-10，PR #314）
+
+链接扫描现等原执行的新正文与独有标记出现在目标页面，重开画布后复用链接也确认页面就绪；Stop 改查原执行 stopped/实际退出信息、SIGINT 收尾、单次 host/executionExit、saved、原页面 applied。Host 原 owner 测试直接检查 stopRequested。相邻 Claude Stop 的实时正文等待及退休同步一并迁移。正文 helper 14/14、reset fixture 19/19、runner/语法、Host 定向 2/2 通过；600ms 页面应用延迟对照及最终无延迟 local-links-and-stop 均完整通过，临时产品延迟已移除。
+
+最终默认 VSIX 七个独立阶段通过，trusted 原顺序通过完整链接、Codex Stop 和 Claude Stop，本次具名阻塞已收口。旧 URL 已检测后 tooltip 不可见的单次失败未在本轮复现，其精确根因仍未确认，不能因本轮通过而改写旧证据；若复现，应使用清理前的新 probe 独立核对呈现状态。
+
+新的独立阻塞为 `verifyClaudeExplicitSessionIdPreservesResumeContext:9972`：snapshot-only 的 Claude 已 waiting-input/live，显式 ID 已保存，但 resumeSupported=false、resumeStrategy=none，未达到 claude-session-id，尚未进入该用例 Stop。原执行 `b9f70f16-d41f-4d55-829e-27fb1321bc53` 未退休、未提交最终保存，不能把正常活动期的 submitted=false 当作保存失败。此处是恢复能力状态等待，非旧正文断言；根因尚待定位，临时处理为保留失败现场及原断言。继续完整门禁前应核对显式 ID 的发现、支持判定与 owned 状态投影，不能只检查 ID 而放宽策略。后续 RuntimePersistence 开启场景未执行，完整 gate 仍未通过。
+
+证据与计划：`docs/references/smoke-reload-autostart/link-stop-fix-evidence.json`、`docs/exec-plans/completed/smoke-link-stop-fix.md`。原始失败现场保留于 `.debug/link-stop-fix/trusted-final-artifacts`，仓库精简记录包含关键状态和工件摘要。
+
+
+## Claude 显式 session ID 的 owned 文件确认遗漏已定位（2026-10-10，PR #314）
+
+前节恢复策略阻塞已确认是产品迁移遗漏，正式修复尚未实施。snapshot-only fresh Claude 的候选 ID 本应经 transcript 文件确认；旧路径在 startup/waiting-input 调用 locator，owned 两处均遗漏，business.agentResume 持续 none。旧确认方法仅认 legacy map，因此只补调用也无法升级 owned 记录。
+
+同 Extension Host 实际 locator 立即识别原 smoke 文件，原用例仍超时；Host 有文件/无文件 2/2 对照证实正常 owned 调用数为 0、旧 helper 的 map 限制及原 projection 可用。临时只补原 owned 文件确认后，原生原用例的运行态、停止后策略/ID和删除检查全部通过；无文件对照继续 none。问题不是旧正文断言或测试超时设置，停止后的恢复入口可能因此不可用；本轮原生范围为显式 ID，自动候选走同一遗漏调用路径但未单独原生验证。
+
+继续 PR314/完整门禁前，应接回原 owned startup/waiting-input 文件确认，保护查询期间换绑、候选变化、停止/结束与迟到结果，保留已确认 ID 的停止语义和无文件拒绝；不能阻塞正文消费或伪造最终保存完成。本轮临时产品/测试源码已恢复，完整 gate 仍未通过，Runtime 开启及真实 provider resume 不由对照代证。证据与复跑 patch：`docs/references/smoke-reload-autostart/claude-resume-context-evidence.json`；计划：`docs/exec-plans/completed/claude-resume-context-investigation.md`。
+
+
+## owned Claude 文件确认已修复，Runtime root 启动准备仍阻塞（2026-10-10，PR #314）
+
+上一节缺口已修复：原 owned Claude 在 started/waiting-input 独立异步扫描原 cwd 的候选文件，合并重复请求并保留一次补查，不阻塞启动、正文或停止。返回时核对原记录、恢复上下文、launchSpec、当前 metadata 绑定与停止/结束/最终保存状态；成功投影并普通保存，已确认 ID 在停止后保留，无文件不升级。新增 17 项、完整 Host 504/504、类型/语法通过；基线产品的新正例失败。最终默认 VSIX 七个独立阶段通过，原 Claude 显式 ID 用例在独立阶段和 trusted 均完整通过，正式修复已收口。
+
+新的独立门禁位于 `verifyLiveRuntimePersistence:10024`：用例开启 RuntimePersistence 后首次等待 Agent live 超时，尚未触达 reload/reattach。Agent starting、Terminal launching，均 pendingLaunch=start/live=false；`execution/candidateStartFailed` 报 `Root runtime preparation or submission did not complete.`，没有本地 owned 执行。节点 metadata 仍 snapshot-only，不代表配置仍关闭。该轮底层原因待查，原工件保留在 `.debug/claude-resume-fix/trusted-artifacts`；现已完成下述独立定位。
+
+本轮没有关闭完整 gate 的技术债，也没有验证真实 provider resume、跨平台或真实窗口 Reload。计划与证据：`docs/exec-plans/completed/owned-claude-file-confirmation.md`、`docs/references/smoke-reload-autostart/claude-file-confirmation-fix-evidence.json`。
+
+## Runtime root 存储创建权限与准备约定不一致（2026-10-10，PR #314）
+
+已确认：扩展构造时普通 root-local 画布保存以默认 mode 递归创建 globalStorage；umask 0002 下为 0775。Runtime 的 mkdir 0700 不会修改已有目录，helper 第一项 globalStorage 不可组写检查立即拒绝，外层 catch 隐去原异常，节点保留待启动表现。新隔离 user-data 即可复现，属于环境触发的插件初始化/兼容缺口，不是 smoke 等待时间或旧 Supervisor 的必要问题。与此前 checkpoint 的 0775 拒绝同因。
+
+本轮仅定位，不改生产检查或目录权限。原目录未修改重放失败；同实验目录 0755/0700 均越过准备；真实 0002/0022 对照捕获首次创建调用栈，0022 下 root intent/started 与 Terminal live 成立。0022 的 Agent 随后 rejected-before-acquire，未捕获资源拒绝瞬间，仍待独立定位，不能仅凭同类文案归为 starting 配额。完整 Runtime/gate 未通过。
+
+后续正式修复需统一可能先创建目录的保存/模板/Runtime 入口，明确已有目录的验证/处理策略，并让安全的具体准备失败反馈与本请求节点状态一致；不得自动接管不安全目录、放宽 owner/canonical path/权限检查或未知提交保护。之后恢复原 Runtime 自启动和后续矩阵；不以只改测试 umask 或延长等待收口。入口为 CanvasPanelManager 的 writePersistedCanvasSnapshotToDisk/resolveRuntimeCreationTarget、supervisor/runtimeRootOwner.ts 和 runtimeRootPreparation.ts。
+
+证据：`docs/references/smoke-reload-autostart/runtime-root-preparation-evidence.json` 及相邻两个复现程序；计划：`docs/exec-plans/completed/runtime-root-preparation-investigation.md`；设计：`docs/design-docs/smoke-reload-autostart-investigation.md`。
+
+## Runtime 存储准备已修复，后续 Agent 准入仍阻塞（2026-10-10，PR #314）
+
+上项目录缺口已收口：普通画布与内部模板目录明确 0700 创建；Runtime 对 ExtensionContext 指定的同 UID、非链接、无特殊位旧 0775/0770 目录经描述符及前后 dev/ino/realpath 检查后仅去组写位。安全目录不改，世界可写/异主/替换拒绝；不递归改权限、不更改 root owner key。helper 给出固定安全阶段信息；原未提交新会话失败投影 error/resume-failed、清 pendingLaunch，保留历史和恢复信息；原 Runtime 绑定及未知已提交保护不变。
+
+目录 21 项、准备 worker 26、client 21、systemd 环境 40、owner storage、完整 Host 529/529、模板、本地化和类型检查通过。最终默认 VSIX 七阶段通过，trusted globalStorage=0700，root/Terminal 启动成功，Agent 在后续 createSession 阶段 rejected-before-acquire。独立旧 0775 升级并串行启动两节点、0777 拒绝并结束两节点待启动状态均原生通过。原始 smoke 未改；checkpoint 原完整场景仍未在本轮重跑，不能由专项代证。
+
+剩余门禁：默认 verifyLiveRuntimePersistence:10024 仍因 Agent 资源拒绝等待 live 超时，尚未到该场景 reload。该轮尚缺拒绝瞬间的占槽/身份/关闭状态；原因现已在下一项通过专项独立确认，后续按其 fixture 修复边界推进，不扩大上限或放宽断言。工件 `.debug/runtime-root-fix/final-trusted-artifacts`；精简证据 `docs/references/smoke-reload-autostart/runtime-root-storage-fix-evidence.json`；计划 `docs/exec-plans/completed/runtime-root-storage-repair.md`。完整 gate、真实 provider、跨平台/跨版本矩阵仍未完成。
+
+## Runtime 共用 fixture 启动屏障遗漏（2026-10-10，PR #314）
+
+上一项 Agent 准入原因已确认：`prepareTrustedBaseNodesForAppliedRuntimePersistenceMode` 连续创建 Agent/Terminal，只等节点存在。原生拒绝点显示准备容量通过、身份匹配、未关闭/隔离，Terminal 持有唯一 starting 槽时 Agent 进入 beginStart 被拒，无 provider 资源。Terminal started 后槽正常释放，原 Agent 节点重试成功；串行 started 对照两者成功；无探针原包连续创建则拒绝 Terminal，随后同节点重试成功。三场景均 exit 0，隔离 Supervisor 已自然退出。属于 fixture 未遵循正式准入前提，未发现此处生命周期泄漏或版本兼容故障。
+
+尚待修复共用 helper 的逐个原身份 started 屏障，覆盖 Runtime 开/关及其独立调用点；保留后续断言，不扩大额度、不固定 sleep、不自动重试。本轮未改正式 smoke/产品，完整 gate 和后续 Runtime reload/checkpoint 仍未验证，不能把专项结束当成发布准入。证据：`docs/references/smoke-reload-autostart/runtime-admission-evidence.json`；复现：相邻 `runtime-admission-investigation.mjs`；计划：`docs/exec-plans/completed/runtime-start-admission-investigation.md`；设计：`docs/design-docs/smoke-reload-autostart-investigation.md`。
+
+## Runtime 启动屏障已修复，后续分页快照断言仍阻塞（2026-10-10，PR #314）
+
+上一项共用 fixture 缺口已收口：Runtime 开/关均逐个确认原 session/execution 的 started；同一持久化用例的显式重新启动也串行确认，等待后复核原绑定。两个原生开/关专项通过，启动次数准确、无拒绝或重试；默认 VSIX 七个独立阶段通过，trusted 完整 `verifyLiveRuntimePersistence` 已通过初始启动、指定尺寸重启、运行、reload/reattach、停止后重读。
+
+剩余门禁为紧邻下一项 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory:10380`：页面恢复最新行和滚动至最早行已通过，但测试仍等待原 session 的 `host/executionSnapshot.terminalStream` 同时包含首末 marker。超时记录显示实际是 `terminalRead`/`currentState`、无 terminalStream；需要按分页快照契约修正观察并验证首末历史/原身份/修订号，不能删除覆盖或改用任意节点输出。本轮未改该断言，完整 gate 与其后的 Runtime 场景、checkpoint 独立大输出和跨平台矩阵继续未通过/未执行。
+
+证据：`docs/references/smoke-reload-autostart/runtime-admission-fix-evidence.json`；专项复验：相邻 `runtime-admission-fix-verification.mjs`；计划：`docs/exec-plans/completed/runtime-start-admission-repair.md`；正式方案：`docs/design-docs/smoke-reload-autostart-investigation.md`。已清理本轮隔离会话和 Supervisor。
+
+## Runtime 滚动历史旧快照断言已定位（2026-10-10，PR #314）
+
+上一项分页快照超时原因已确认：旧断言只读 terminalStream，但当前分页路径发送 terminalRead/currentState，旧 helper 对 undefined 返回空字符串。重复快照复用同 readId，clearHostMessages 不会使已消费 bootstrap 重发。原生专项保留原用例并复现 10 秒超时；按原 session/authority/readId/页面生命周期重组四块 24874 字符，用正式 codec 还原后 220 行逐行完整有序且唯一。未发现此具名场景的历史丢失；不是前次单启动槽问题。
+
+尚待按分页契约修正正式断言，保留原身份、scrollback、首末行及 checkpoint/后续 revision 覆盖，避免清空唯一 bootstrap 观察后再等待重发。本轮不修改正式测试或产品；完整 gate、后续 Runtime/压力/旧版本与跨平台验证仍未完成。证据：`docs/references/smoke-reload-autostart/runtime-scrollback-snapshot-evidence.json`；脚本：相邻 `runtime-scrollback-snapshot-investigation.mjs`；计划：`docs/exec-plans/completed/runtime-scrollback-snapshot-investigation.md`。
+
+## Runtime 滚动历史分页断言已修复，后续恢复退出摘要阻塞（2026-10-10，PR #314）
+
+上一项旧快照断言已收口。正式 helper 关联原 reader/lifecycle，校验完整 current-state 分块和连续后缀，再用正式 codec 与真实 xterm 验证 220 行。六组回归、runner 环境回归和原生完整专项通过；默认 VSIX 七个独立阶段通过，trusted 本条滚动历史和后续完成态历史排空、重连失败绑定保护、忽略陈旧自动 resume 场景也通过。
+
+完整 gate 在 `verifyLiveRuntimeResumeExitClassification:10666` 失败：Runtime 开启，恢复已进入运行/等待输入，发送 `exit 23` 后 status=error、lastExitCode=23 正确，但 summary 为 `Session ended.`，测试期待摘要含退出码 23。摘要差异根因尚未定位，不预判测试还是产品问题。失败后的 finally 关闭 Runtime，不能用最终 snapshot-only 字段反推场景模式。保留该断言及原配额，后续 Runtime/reload、独立 checkpoint、真实 Agent 和跨版本/跨平台矩阵仍未完成。
+
+证据：`docs/references/smoke-reload-autostart/runtime-scrollback-snapshot-fix-evidence.json`；原生复验脚本：相邻 `runtime-scrollback-snapshot-verification.mjs`；计划：`docs/exec-plans/completed/runtime-scrollback-snapshot-repair.md`；设计：`docs/design-docs/smoke-reload-autostart-investigation.md`。本轮隔离节点与 Supervisor 已清理。
+
+## Runtime 恢复退出摘要缺失已定位为 owned 产品接线遗漏（2026-10-10，PR #314）
+
+上一项摘要阻塞的根因已确认：`runtimeSupervisorMain.finalizeOwnedExecution` 普通 EOF 分支保存 code/signal/lifecycle，却未生成 lastExitMessage/descriptor。Host 因上游消息为空回退 Session ended.。Runtime 开启、恢复已成功的原 session 实际 exit23、source=eof、AuthorityResult=applied，error 分类正确；不是测试正则或清理动作导致。
+
+无探针原包复现、只读发布探针和仅补退出消息的隔离对照均完成；前两者复现原断言失败，后者保持原动作/断言并通过。本轮仅定位，正式产品及 smoke 未改。待在 owned 终态生成处补齐描述符/fallback，保留停止、恢复失败、非 EOF/未知结果的区分并覆盖相关矩阵；完整 gate 及后续 Runtime/reload 验收仍未完成。
+
+引入为 `c1b6bc8b8`，默认构建接入为 `08fa33725`；不指定首个受影响发布版本。证据：`docs/references/smoke-reload-autostart/runtime-resume-exit-summary-evidence.json`；复验脚本：相邻 `runtime-resume-exit-summary-investigation.mjs`；计划：`docs/exec-plans/completed/runtime-resume-exit-summary-investigation.md`；正式结论：`docs/design-docs/smoke-reload-autostart-investigation.md`。实验节点已停止，本轮 Supervisor 已退出。
+
+## owned Runtime 退出描述已修复，后续立即 reload 阻塞（2026-10-10，PR #314）
+
+上一项产品遗漏已收口：新旧 Supervisor 共用已确认退出业务描述，恢复完成后异常退出 error、恢复阶段失败 resume-failed，stop/零码及非 EOF、未知/失败 authority 的保护保留。Supervisor 接线134/134（新增18项）、协议链、typecheck、本地化与原生原恢复23函数通过；trusted 同载荷独立重跑也通过原摘要断言。
+
+完整默认 VSIX 前六个独立阶段通过，local-links-and-stop 的 URL 尾部发生无进展停滞，HTTP listener 已关闭但浏览器TCP连接未断；超过五分钟取证后结束隔离VS Code。该阶段同载荷原测试独立重跑通过，首次停滞未完成根因定位，不追认其成功。trusted 原顺序在下一项 `verifyImmediateReloadAfterLiveRuntimeLaunch:11000` 报 Runtime session updates are still pending.，现场 Agent 启动 rejected-before-acquire、Terminal live；二者与边界回调的因果待定位。保留原断言、准入及未知责任保护，完整 gate、后续 Host/reload/checkpoint 与跨平台验收仍未通过/未执行。
+
+证据：`docs/references/smoke-reload-autostart/runtime-resume-exit-summary-fix-evidence.json`；原生复验：相邻 `runtime-resume-exit-summary-verification.mjs`；计划：`docs/exec-plans/completed/runtime-resume-exit-summary-repair.md`。本轮隔离会话及 Supervisor 已清理。
+
+## 立即模拟 reload 的启动准入及回调时序（2026-10-10，PR #314，已修复；下文记录验收）
+
+已定位上一节阻塞：独立立即 reload 用例仍并发启动，与 starting=1 冲突；即使串行到第一项 started，第二项启动后的首批正文也可能在边界首次回调等待之后进入，触发 pending 安全拒绝。原生对照中回调在拒绝后 17ms 正常 consumed/结束，两个启动均成功，排除两者必然同源及该次回调泄漏。无探针分别等待两项 started 的对照通过，但不保证所有持续输出交错。
+
+正式 smoke 与产品未改。后续须同时处理启动前提和模拟边界语义，保留原 session 身份、pending 保护与有界失败；实际“启动后立即 Reload Window”需新 Host 验收，不能用等待输出安静悄悄代替。真实退出先关闭事件准入，本轮未证明其存在相同故障。完整 gate、历史 URL 清理停滞和后续矩阵仍未收口。证据及复跑脚本：`docs/references/smoke-reload-autostart/runtime-immediate-reload-evidence.json`、相邻 `runtime-immediate-reload-investigation.mjs`；计划：`docs/exec-plans/completed/runtime-immediate-reload-investigation.md`。
+
+## 立即模拟 reload 已修复，后续本地 Host boundary 启动阻塞（2026-10-10，PR #314）
+
+模拟 live-runtime reload 使用 20 秒期限，在清空绑定前结算新回调并按登记修订重新保存；到期保留原责任，普通 reset/template/deactivation 不启用新选项。smoke 只等待 Agent started，Terminal 派发后立即 reload，检查单次启动及原 session 重连。新增 14 个受控场景、完整 Host boundary、Host owner 529/529、类型/本地化/语法通过，基线新回归失败；最终无探针原生专项连续三次通过。
+
+最终默认 VSIX 七个独立阶段通过，trusted 通过立即 reload；随后 `verifyHostBoundaryFlushesRecentLocalState:11210` 在 RuntimePersistence 关闭的 snapshot-only 场景等待 Agent live 超时，Agent stopped/SIGINT、Terminal live。尚未输入本用例正文或执行其 reload/flush；根因待定位，不修改新阻塞断言。完整 gate 仍失败；原 URL 清理停滞、后续 checkpoint/真实新 Host/跨平台等缺口继续保留。证据：`docs/references/smoke-reload-autostart/runtime-immediate-reload-fix-evidence.json`；复验：相邻 `runtime-immediate-reload-verification.mjs`；计划：`docs/exec-plans/completed/runtime-immediate-reload-repair.md`。
+
+## 本地 Host boundary 显式重启遗漏 started 屏障（2026-10-11，PR #314，已修复；下文记录验收）
+
+上一节 Agent live 超时已定位：snapshot-only 具名测试停止并确认旧执行退休后，又连续派发两个启动；Terminal 占唯一 starting 槽，Agent rejected-before-acquire。旧 saved/applied 已完成，关闭/隔离/身份不匹配均被排除。SIGINT 属于旧 Agent 的主动停止，新请求 not-required，原 stopped/历史保留及错误提示符合既定准入规则。
+
+无探针原序、只读 authority 探针均复现；产品 bundle 不变、仅串行等待 Agent 原 started 的对照完整通过原函数正文和 reload 后历史断言；既有 Host 准入/状态保留两项测试通过。正式修复应复用原执行 started 屏障，不改配额、历史状态、停止退休或最终保存断言。本轮正式产品/smoke 未改，完整 gate 未重跑。证据：`docs/references/smoke-reload-autostart/local-host-boundary-start-evidence.json`；复跑：相邻 `local-host-boundary-start-investigation.mjs`；计划：`docs/exec-plans/completed/local-host-boundary-start-investigation.md`。
+
+## 本地 Host boundary 启动已修复，后续退出诊断断言阻塞（2026-10-11，PR #314）
+
+具名测试逐个等待原执行 started，正文按 executionSessionId 匹配，reload 前复核 executionId/generation；原停止退休与历史正文断言保留，产品源码/准入不变。原生原函数完整通过，三个产品 bundle hash 与定位基线一致；已有正文 helper14/14、语法及默认 VSIX 类型/构建打包通过。七个独立阶段与 trusted 原顺序的本用例通过。
+
+完整 gate exit1，后续 `verifyTrustedDiagnostics:13507` 期待 Agent `execution/exited` 诊断的断言失败，根因尚未定位，不将其等同于进程未退出。最后 Agent resume-ready、Terminal interrupted，无 live 节点。本轮不改变此断言；历史 URL 停滞和后续真实新 Host/checkpoint/跨平台等仍未收口。证据：`docs/references/smoke-reload-autostart/local-host-boundary-start-fix-evidence.json`；复跑：相邻 `local-host-boundary-start-verification.mjs`。
+
+2026-10-11 后续定位：已确认汇总断言沿用旧 PTY 专属 `execution/exited` / live `execution/snapshotPosted`，owned 本地与 Runtime 路径绕过这些记录点；长流程末尾的 2000 条可清空数组也不能保证早期失败事件仍存在。原生 owned Agent exit27、页面退出消息、最终保存 saved 和 reader applied 均成立，只有 59 条事件仍无旧 exited；原 Host boundary 后 95 条事件时原汇总断言再次失败。原失败工件八项谓词中第 4、6、7 项不满足，不能只放宽第一项收口。
+
+待修复：在具名退出/失败/live 快照场景内按原执行身份验证并保存结果，末尾不再追溯易失缓存；保留进程结果、最终输出、保存和读者结算覆盖，不补旧事件求绿。正式 smoke 与产品本轮未改，完整 gate 未重跑。证据为 `docs/references/smoke-reload-autostart/trusted-diagnostics-evidence.json`，计划为 `docs/exec-plans/completed/trusted-diagnostics-investigation.md`；其余历史限制保持原状态。
+
+2026-10-11 正式修复已完成：Agent flow、Terminal flow、缺失 CLI 用例按原身份生成已验证证据，末尾汇总不再等待旧 PTY 事件。原生清空诊断后的正对照和缺少任一证据的三项负对照通过；七个独立 VSIX 阶段及 trusted 原序本次汇总通过。完整门禁仍失败，下一处如下；前述“待修复”由本段收口。证据：`docs/references/smoke-reload-autostart/trusted-diagnostics-fix-evidence.json`。
+
+## trusted 文件活动用例等待第二个 Agent live（2026-10-11，PR #314）
+
+`verifyFileActivityViewsAndOpenFiles:3795` 在创建两项专属 Agent 后等待第二项 live 超时。失败现场第一项 waiting-input/live=true，第二项 starting/live=false/pendingLaunch=start，尚未执行文件读写。当前只记录下一处阻塞，未定位为何启动未完成，不直接归为准入、尺寸或产品文件活动故障。
+
+默认命令已通过本次诊断汇总，故此失败不回退为旧诊断阻塞。另保留日志中立即模拟 reload 期间 Runtime client disconnected 的批次消费报告；该用例原断言继续通过，因果尚未研究。后续需分别确认第二项启动链和该报告的范围；历史 URL 清理停滞、真实新 Host/checkpoint/跨平台验收不由本轮代证。工件见 `.debug/trusted-diagnostics-fix/trusted-artifacts/`，精简证据为 `docs/references/smoke-reload-autostart/trusted-diagnostics-fix-evidence.json`。本轮进程已退出，无本轮 fake provider/Supervisor 残留。
+
+2026-10-11 定位完成：第二项已携 66×21 发出启动，但第一项仍占 starting=1，因此 rejected-before-acquire，保存 not-required；无探针原生复现和只读 authority 探针确认，非尺寸缺失或 owner 永久阻塞。只等待第一项原 started 再创建第二项的同包对照通过原两项 live 检查，显式重试被拒节点也成功。现有 Host overlap 接线 2/2 通过。后续修正本独立 fixture 的创建/started 屏障；文件读写等后续内容本轮未覆盖。
+
+另有产品呈现缺口待修复：新建节点被合法准入拒绝后仍保留 starting/pendingLaunch=start/等待尺寸，页面同意图自动启动去重又不重试。应针对未取得资源的新建意图收口状态，保留旧历史/较新请求及不确定资源保护；不放宽额度或增加隐式自动排队。原生恢复对照仅通过 Host 显式启动，未验收真实 Start 点击。证据 `docs/references/smoke-reload-autostart/file-activity-start-evidence.json`，计划 `docs/exec-plans/completed/file-activity-start-investigation.md`。正式产品/smoke 未改，完整 gate 未重跑；Runtime batch 报告等历史限制仍未收口。
+
+
+2026-10-11 正式修复：文件活动每创建一个 Agent 后等待原身份 started，新节点被 rejected-before-acquire 拒绝后改 error、清除 pendingLaunch；历史字段、较新请求、取消和未知资源保护保留。Host 551/551、类型/本地化通过，同一 VSIX 原生真实 Start 点击重试通过，两个创建的原 started 屏障也通过。前述“呈现缺口待修复”和“创建屏障待修正”由本段收口，文件活动整体与完整 gate 仍未通过。证据 `docs/references/smoke-reload-autostart/file-activity-start-fix-evidence.json`，计划 `docs/exec-plans/completed/file-activity-start-repair.md`。
+
+## 文件活动首条 read 引用与手动 resume 新停点（2026-10-11，PR #314）
+
+修正创建屏障后的无产品探针原生专项通过两项专用 Agent 的原 started、live 和身份检查，派发第一条 read 后，`verifyFileActivityViewsAndOpenFiles:3812` 等待 fileReferences 中对应 Agent 的 read owner 超时。超时时 filesFeatureEnabled=true，两项专用 Agent waiting-input/live=true，fileReferences=[]；尚未验证后续 write、列表或打开文件。不在本轮直接归因为输入、采集器、路径或产品功能；需要独立定位，保留原断言。
+
+本轮完整默认 VSIX 的七个独立阶段通过，但 trusted 在更早的 `verifyRuntimeReloadRecovery:8938` 等待手动 resume 后 live/resuming 超时，节点 resume-failed，提示 Missing resumable Codex session ID。该用例 reload 后 resume-ready、可信 providerSessionId、重新挂载页面不自动 resume 的断言已通过；最新错误为 execution/startFailed 的 preparation exception，尚未确认为何恢复请求未取得会话 ID，不归为本次准入拒绝，也不宣布恢复设计回归已修复。默认流程因此未到文件活动，不能用专项越过启动来声称 trusted 全序通过。
+
+工件分别位于 `.debug/file-activity-start-fix/file-activity-1791652134021/runtime/artifacts/` 与 `.debug/file-activity-start-fix/trusted-artifacts/`；精简证据见 `docs/references/smoke-reload-autostart/file-activity-start-fix-evidence.json`。专项场景 exit1；xvfb-run 清理临时目录又报告 exit5，但最后 snapshot localExecutions=0，无本轮相关进程残留。历史 URL 清理停滞与 Runtime batch disconnected 仍保留，未触达项、真实新 Host、真实 provider 和跨平台验证不由本轮代证。
+
+
+2026-10-11 两项根因均已确认，正式修复仍待处理。文件活动首 read 已到 provider 并有原 executionSessionId 回执，但 owned 本地启动提前 return，绕过 fileActivitySession 的创建、launch 参数/环境注入与绑定。只读 probe 确认 create/bind=0、无事件文件路径，控制接回正式 collector 后原首 read 引用断言通过。共用分支也遗漏真实 Claude hooks，属于产品功能缺口；正式修复需将 collector 的创建、拒绝清理、末尾 drain、删除、路由迁移和迟到事件纳入原执行责任。不能靠解析 PTY 文本或复制实验预先 bind 收口。
+
+手动 resume 是 fake-provider 测试适配缺陷：停止提示将 fake-provider+storagePath 替换为 codex-session-id，清除了 resumeStoragePath；ID 本身仍在，fake resolver 因缺 storagePath 返回 none，builder 才报缺 ID。probe/control 均等待初始原 burst 回执使 shell trap 就绪；只保护 fake 恢复上下文后，原恢复函数全部断言（含重挂载不自动恢复、手动 resume 和 exit19）通过。同 metadata 使用真实 Codex 命令仍可构造 resume 参数，不据此认定真实 provider 恢复损坏。应修复 fake 恢复契约一致性，保留真实提示校正与产品状态断言。
+
+证据 `docs/references/smoke-reload-autostart/file-activity-resume-root-cause-evidence.json`；调查四轮均完成且清理为零执行，两个 probe 的原场景仍失败，两个 control 仅为隔离实验。正式源码和 smoke 未改，本轮不重跑或宣称完整 gate 通过；历史 URL/Runtime batch 报告等限制不变。
+
+
+## owned 文件活动与 fake 恢复契约修复；下一停点为删除 Agent（2026-10-11，PR #314）
+
+已在正式产品中将 collector 创建、参数/环境注入、事件回调和释放绑定到原 NonNativeHostExecution。正常最终保存先排空末尾事件；拒绝不接收迟到事件且等待释放；未知资源仍归原执行，失败不能呈现为保存成功。fake-provider 的 sessionId/storagePath 不再被真实停止提示整体覆盖。新增18项 Host 回归，完整569/569、类型、本地化及 smoke 正文 helper14/14通过。
+
+最新默认 VSIX 七个独立阶段通过，trusted 的原手动恢复函数也通过，已越过上轮 Missing resumable Codex session ID。文件活动原函数已通过 read/write、共享引用、节点/列表展示及打开文件，当前停在 `verifyFileActivityViewsAndOpenFiles:4426`：发出删除 Agent B 后，原执行停止并最终 saved/退休，但 Agent B 及其引用仍保留。原生独立 files 复验同样停在此处，清理后零 localExecutions。根因尚未确认，不将其归为 collector drain 失败或断言问题，也不宣称完整 gate 已通过。
+
+删除后文件引用收敛、后续启停 files 配置及 trusted 剩余阶段未通过此次全序验收。历史 URL 清理停滞、Runtime client disconnected 批次报告、真实新 Host/checkpoint 和跨平台边界继续保留。正式证据与专项脚本为 `docs/references/smoke-reload-autostart/owned-file-activity-resume-fix-evidence.json` 及相邻 `owned-file-activity-resume-verification.mjs`；独立 readexit 原函数 exit0，末尾 read owner、文件节点/连线、持久化重读及清理全部通过；两个专项与正式 staging 三个 bundle hash 一致，产品无探针或行为替换。
+
+
+2026-10-11 删除停点根因已确认：`terminateExecutionNodeForDeletion` 等待 owner 停止后同步检查最终保存，正常异步保存仍 pending 时立即中止；21ms 后 saved 不会恢复原删除请求。原生检查时 collector 已 dispose，故不是文件事件排空失败。该同步拒绝来自已在 main 的 `b235a7bc5`，符合 S8 §26.3 当时“不新增保存等待预算”的保守契约；当前一次删除 smoke 与其行为不一致。延长用例等待无法解决。
+
+受控 Agent/Terminal（files 关闭）probe/control × saved/failed 共8/8捕获预期结果；仅为原 host-delete 增加原保存有界等待的 native control 完整通过原文件活动函数，probe 原场景仍失败，两个调查脚本均清理至零执行。证据 `docs/references/smoke-reload-autostart/owned-delete-persistence-root-cause-evidence.json`。正式修复仍待实施：若采用一次删除完成语义，应显式更新旧入口契约、等待原保存并重验目标身份，失败/未确认/超时继续保留，不放宽状态断言或自动重试。完整 gate 和此前其余边界保持原状态。
+
+
+## 单节点删除保存等待已修复；下一停点为 Claude Fork（2026-10-11，PR #314）
+
+`deleteNode` 对owned/retained最终保存显式等待既有20秒预算，成功后复核原owner、record路由、metadata和删除token，再移除节点及引用。失败/未确认/超时保留，迟到saved不续删；reset/清组/模板默认契约不变。19项新增回归先红后绿，Host588/588、类型和本地化通过。默认VSIX七个独立阶段通过，trusted原文件活动和readexit全函数通过，包括两项Agent删除、引用收敛、files开关与基线恢复；上一删除阻塞关闭。
+
+完整trusted继续通过RuntimePersistence配置清理、侧栏历史恢复/Fork UI和Codex分支，停在 `verifyClaudeAgentBranchFromCurrentNode:2268` 等待唯一execution/started事件。现场记录Host容量占用startFailed和另一节点的rejected-before-acquire，根因尚未确认；不能把它当作本次保存等待失败或仅因出现准入词就归为fixture并发错误。失败快照localExecutions=0，后续用例仍未触达。证据 `docs/references/smoke-reload-autostart/owned-delete-persistence-fix-evidence.json`，原始工件 `.debug/owned-delete-persistence-fix/trusted-artifacts/`。
+
+本轮正式smoke未修改，实际默认trusted原序列已提供文件及readexit的原生验收，不重复已通过场景。历史URL清理、Runtime disconnected批次报告、新Host/checkpoint/真实provider/跨平台等边界继续保留。
+
+## Claude Fork 根因已确认，正式修复待实施（2026-10-11，PR #314）
+
+基线be574e48。原gate消息证明历史节点已error后被Codex finally恢复旧starting/pendingLaunch=start基线，以新executionId重新启动并挤占Claude子节点的pending容量。侧栏用例仅验节点而未收口原生命周期；应等待自身意图结算及停止/保存/退休，provider用例不得重放过期启动意图。
+
+另有产品缺口：reserve前容量guard抛普通Error，Host仅报告startFailed/host-error，目标无record但保留starting/pendingLaunch。需按原新请求身份安全投影失败/清pending，保留同key旧责任、历史和无自动重试。先前typed rejected-before-acquire修复不覆盖此入口。
+
+收口对照保留原Codex/Claude全部断言并exit0，空画布Claude另行exit0，均零localExecutions。受控原基线回放捕获sameKey=false、两项历史pending及目标20秒后仍starting；回放释放prepare后历史节点另报owned-resize-failed，外层断言exit1，需后续确认这一重叠resize分支，不将其认作原gate根因或通过证据。首轮自然suffix可通过；另一轮在前置Runtime配置启动先超时，未用于Claude归因。
+
+正式产品和smoke未修改，完整gate未重跑且仍失败；后续用例、历史URL/Runtime batch及新Host/真实provider/跨平台边界保持未关闭。证据 `docs/references/smoke-reload-autostart/claude-fork-admission-root-cause-evidence.json`，计划 `docs/exec-plans/completed/claude-fork-admission-investigation.md`。
+
+## Claude Fork 准入阻塞已修复；resize 分支独立待定位（2026-10-11，PR #314）
+
+`tests/vscode-smoke/extension-tests.cjs` 现在在侧栏历史恢复、Fork UI 和 unsupported source 基线交接前等待 pending 意图清除、停止和原执行退休，避免旧 `starting/pendingLaunch=start` 被后续 baseline 回写重放。`CanvasPanelManager.reportWebviewExecutionStartFailure` 对 reserve 前、无 owned record 的容量拒绝做身份保护的 error/resume-failed 投影，清除 pending、持久化并通知页面；同 key 旧 record、替换 metadata、live 或取消请求继续保持原责任。
+
+新增 Host wiring 回归和正式 trusted VSIX packaged-payload smoke 均通过，原 Codex/Claude Fork、unsupported source 及后续侧栏搜索/双击断言通过；生产 pending/starting 配额和无自动重试语义不变。此前 root-cause 调查中的受控 prepare 重叠释放后 `owned-resize-failed` 仍未确认边界，另行跟踪；完整 gate 尚未因本次定向验证而追认通过。修复计划 `docs/exec-plans/completed/claude-fork-admission-repair.md`。
+
+## PR314 最新 head 完整 packaged VSIX gate 已闭环（2026-10-11）
+
+针对上一节“只完成定向验证、完整 gate 未重跑”的记录，已在精确 head `1286b83e778b69bf2214bed15f9a770c8a916f27` 上不设置 scenario filter 重跑 `npm run test:vsix-smoke`。Linux x64、Node 22.23.3、VS Code 1.141.0、已验证 execution asset set、原生 PTY 和 fake provider 环境下，八个阶段（含 trusted 全顺序）全部通过，命令 exit 0。此次运行关闭审计中“最新 head 未闭环”的 P1；Claude Fork 修复后的生命周期、准入拒绝、最终保存和 reload 主路径在该 packaged payload 中均完成原有断言。
+
+证据见 `docs/references/smoke-reload-autostart/full-vsix-gate-1286b83e-evidence.json`。此前章节保留历史失败时点，不再作为当前 head 的门禁结论。GitHub 没有完整 smoke required check，`native-assets` 仍为 skipped，因此真实 provider、真实窗口 Reload、新 Host/checkpoint、Remote SSH、其他平台/跨版本矩阵，以及历史 URL 清理、Runtime disconnected 批次报告和独立 `owned-resize-failed` 调查继续作为明确验证边界；它们不是本次八场景 run 的失败项。

@@ -1,0 +1,337 @@
+diff --git a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+index dbfc87ee..826bb9ff 100644
+--- a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
++++ b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+@@ -14293,6 +14293,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+         );
+         return;
+       case 'webview/resizeExecutionSession':
++        if (process.env.DSC_RESIZE_RCA) fs.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'resize-message',
++          payload: parsedMessage.payload, sourceSurface, stack: new Error().stack }) + '\n');
+         this.resizeExecutionSession(
+           parsedMessage.payload.kind,
+           parsedMessage.payload.nodeId,
+@@ -17852,6 +17854,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+   }
+
+   private resizeNonNativeHostExecution(record: NonNativeHostExecution, cols: number, rows: number): Promise<void> {
++    if (process.env.DSC_RESIZE_RCA) fs.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'resize-enqueued',
++      kind: record.kind, nodeId: record.nodeId, cols, rows, snapshot: record.execution.snapshot() }) + '\n');
+     const deadline = this.nonNativeExecutionOwner!.options.scheduler.now() + EXECUTION_INTERACTION_LIMITS.observationMs;
+     return new Promise<void>((resolve, reject) => {
+       // A merged control request is not an acknowledgement of a native geometry change.
+@@ -17868,6 +17872,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+       record.pendingResize = undefined;
+       if (!request) return;
+       const { cols, rows, deadline } = request;
++      if (process.env.DSC_RESIZE_RCA) fs.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'resize-dispatch',
++        kind: record.kind, nodeId: record.nodeId, cols, rows, snapshot: record.execution.snapshot() }) + '\n');
+       try {
+         this.assertNonNativeHostMutation(record);
+         if (deadline <= this.nonNativeExecutionOwner!.options.scheduler.now()) {
+@@ -17899,7 +17905,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+           }
+         }
+         request.resolve();
+-      } catch (error) { request.reject(error); }
++      } catch (error) {
++        if (process.env.DSC_RESIZE_RCA) fs.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'resize-error',
++          kind: record.kind, nodeId: record.nodeId, cols, rows, snapshot: record.execution.snapshot(), error: formatUnknownError(error) }) + '\n');
++        request.reject(error);
++      }
+     }, error => {
+       record.pendingResize?.reject(error);
+       record.pendingResize = undefined;
+diff --git a/extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts b/extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts
+index cb66507c..cabb5ebb 100644
+--- a/extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts
++++ b/extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts
+@@ -1,3 +1,4 @@
++import { appendFileSync } from 'fs';
+ import {
+   assertExecutionCandidateProfile,
+   assertCandidateLaunchSpec,
+@@ -450,6 +451,8 @@ export class PreparedExecution {
+     const admission = this.dependencies.authority.snapshot();
+     if (!this.interactionCapable || this.state !== 'running' || this.process || this.source || this.parentCleanupClaim
+       || this.interactionClosedReason || admission.blockedReason || admission.closing) {
++      if (process.env.DSC_RESIZE_RCA) appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'adapter-rejected', input,
++        snapshot: this.snapshot(), interactionCapable: this.interactionCapable, admission }) + '\n');
+       throw new Error('Execution terminal interaction admission is closed or unsupported');
+     }
+     if (!Number.isFinite(deadline) || deadline <= this.dependencies.scheduler.now()) {
+diff --git a/tests/vscode-smoke/extension-tests.cjs b/tests/vscode-smoke/extension-tests.cjs
+index 194ee3bb..ee636c12 100644
+--- a/tests/vscode-smoke/extension-tests.cjs
++++ b/tests/vscode-smoke/extension-tests.cjs
+@@ -1211,8 +1211,11 @@ async function verifyCanvasTemplatesRestricted() {
+ }
+
+ async function runTrustedSmoke() {
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await vscode.commands.executeCommand(COMMAND_IDS.openCanvas);' }) + '\n');
+   await vscode.commands.executeCommand(COMMAND_IDS.openCanvas);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, \'panel\', 20000);' }) + '\n');
+   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await clearHostMessages();' }) + '\n');
+   await clearHostMessages();
+
+   let snapshot = await getDebugSnapshot();
+@@ -1222,8 +1225,11 @@ async function runTrustedSmoke() {
+   assert.strictEqual(snapshot.surfaceReady.panel, true);
+   assert.strictEqual(snapshot.state.nodes.length, 0);
+
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);' }) + '\n');
+   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, \'editor\', 20000);' }) + '\n');
+   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await clearHostMessages();' }) + '\n');
+   await clearHostMessages();
+
+   snapshot = await getDebugSnapshot();
+@@ -1270,17 +1276,27 @@ async function runTrustedSmoke() {
+     /Enabled attention signals: BEL, OSC 9, OSC 777, Agent abnormal exit, Codex abnormal text\./
+   );
+
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyCanvasTemplatesTrusted();' }) + '\n');
+   await verifyCanvasTemplatesTrusted();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await ensureEditorCanvasReady();' }) + '\n');
+   await ensureEditorCanvasReady();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await clearHostMessages();' }) + '\n');
+   await clearHostMessages();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await clearDiagnosticEvents();' }) + '\n');
+   await clearDiagnosticEvents();
+
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyCodexSessionIdLocator();' }) + '\n');
+   await verifyCodexSessionIdLocator();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyClaudeSessionIdLocator();' }) + '\n');
+   await verifyClaudeSessionIdLocator();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyCodexResumeCommandHintParser();' }) + '\n');
+   await verifyCodexResumeCommandHintParser();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyClaudeResumeCommandHintParser();' }) + '\n');
+   await verifyClaudeResumeCommandHintParser();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyAgentCliCacheIsolation();' }) + '\n');
+   await verifyAgentCliCacheIsolation();
+
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await dispatchWebviewMessage({ type: \'webview/not-a-real-message\' });' }) + '\n');
+   await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
+   let hostMessages = await getHostMessages();
+   assert.ok(
+@@ -1301,29 +1317,50 @@ async function runTrustedSmoke() {
+   snapshot = await getDebugSnapshot();
+   assert.strictEqual(snapshot.state.nodes.length, 0);
+
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyRuntimeContextRefreshesDefaultAgentProvider();' }) + '\n');
+   await verifyRuntimeContextRefreshesDefaultAgentProvider();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyRuntimeContextRefreshesTerminalScrollback();' }) + '\n');
+   await verifyRuntimeContextRefreshesTerminalScrollback();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyTerminalShellPathRefreshesStoppedTerminalNode();' }) + '\n');
+   await verifyTerminalShellPathRefreshesStoppedTerminalNode();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifySelectTerminalShellCommandPersistsExactDetectedPath();' }) + '\n');
+   await verifySelectTerminalShellCommandPersistsExactDetectedPath();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifySelectTerminalShellCommandUpdatesWorkspaceOverride();' }) + '\n');
+   await verifySelectTerminalShellCommandUpdatesWorkspaceOverride();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyDefaultSurfaceRequiresReload();' }) + '\n');
+   await verifyDefaultSurfaceRequiresReload();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyCreateNodeCommandQuickPick();' }) + '\n');
+   await verifyCreateNodeCommandQuickPick();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot();' }) + '\n');
+   await verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot();' }) + '\n');
+   await verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyExplorerResourceExecutionNodeCreation();' }) + '\n');
+   await verifyExplorerResourceExecutionNodeCreation();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyCreateNodeCommandUsesOpenCanvasSurface();' }) + '\n');
+   await verifyCreateNodeCommandUsesOpenCanvasSurface();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits();' }) + '\n');
+   await verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();' }) + '\n');
+   await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyPersistedStateFiltersLegacyTaskNodes();' }) + '\n');
+   await verifyPersistedStateFiltersLegacyTaskNodes();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await clearHostMessages();' }) + '\n');
+   await clearHostMessages();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await clearDiagnosticEvents();' }) + '\n');
+   await clearDiagnosticEvents();
+   snapshot = await getDebugSnapshot();
+   assert.strictEqual(snapshot.state.nodes.length, 0);
+
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyEmptyGroupDeletionSkipsConfirmation();' }) + '\n');
+   await verifyEmptyGroupDeletionSkipsConfirmation();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope();' }) + '\n');
+   await verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyCanvasLayoutArrangementPersists();' }) + '\n');
+   await verifyCanvasLayoutArrangementPersists();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await clearHostMessages();' }) + '\n');
+   await clearHostMessages();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await createBaseNodes({ waitForAutoStart: true });' }) + '\n');
+   await createBaseNodes({ waitForAutoStart: true });
+   snapshot = await getDebugSnapshot();
+   assert.deepStrictEqual(
+@@ -1334,6 +1371,7 @@ async function runTrustedSmoke() {
+   const noteNode = findNodeByKind(snapshot, 'note');
+   const terminalNode = findNodeByKind(snapshot, 'terminal');
+   const agentNode = findNodeByKind(snapshot, 'agent');
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await dispatchWebviewMessage({' }) + '\n');
+   await dispatchWebviewMessage({
+     type: 'webview/updateNodeTitle',
+     payload: {
+@@ -1341,6 +1379,7 @@ async function runTrustedSmoke() {
+       title: 'Host Smoke Note'
+     }
+   });
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await dispatchWebviewMessage({' }) + '\n');
+   await dispatchWebviewMessage({
+     type: 'webview/updateNoteNode',
+     payload: {
+@@ -1348,6 +1387,7 @@ async function runTrustedSmoke() {
+       content: 'Exercise the real webview-to-host update path.'
+     }
+   });
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await dispatchWebviewMessage({' }) + '\n');
+   await dispatchWebviewMessage({
+     type: 'webview/moveNode',
+     payload: {
+@@ -1366,87 +1406,143 @@ async function runTrustedSmoke() {
+     'Exercise the real webview-to-host update path.'
+   );
+   assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 });
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);' }) + '\n');
+   await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await stopOwnedFixtureExecutions(agentNode.id, terminalNode.id);' }) + '\n');
+   await stopOwnedFixtureExecutions(agentNode.id, terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifySidebarNodeList(agentNode.id, terminalNode.id, noteNode.id);' }) + '\n');
+   await verifySidebarNodeList(agentNode.id, terminalNode.id, noteNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {' }) + '\n');
+   await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
+     expectAgentSessionId: true
+   });
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifySidebarNodeListWebviewUi(agentNode.id);' }) + '\n');
+   await verifySidebarNodeListWebviewUi(agentNode.id);
+
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyRealWebviewProbe(agentNode.id, terminalNode.id, noteNode.id);' }) + '\n');
+   await verifyRealWebviewProbe(agentNode.id, terminalNode.id, noteNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);' }) + '\n');
+   await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyInteractiveNoteChecklist(noteNode.id);' }) + '\n');
+   await verifyInteractiveNoteChecklist(noteNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyNoteWorkspaceFileLinks(noteNode.id);' }) + '\n');
+   await verifyNoteWorkspaceFileLinks(noteNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyNoteMarkdownFileAssociation();' }) + '\n');
+   await verifyNoteMarkdownFileAssociation();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);' }) + '\n');
+   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await startFixtureExecutions(agentNode.id, terminalNode.id);' }) + '\n');
+   await startFixtureExecutions(agentNode.id, terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyAgentExecutionFlow(agentNode.id);' }) + '\n');
+   await verifyAgentExecutionFlow(agentNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {' }) + '\n');
+   await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
+     expectAgentSessionId: true
+   });
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyTerminalExecutionFlow(terminalNode.id);' }) + '\n');
+   await verifyTerminalExecutionFlow(terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyLegacyAttentionNotificationBridgeMigration();' }) + '\n');
+   await verifyLegacyAttentionNotificationBridgeMigration();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyExecutionAttentionNotificationBridge(agentNode.id, noteNode.id);' }) + '\n');
+   await verifyExecutionAttentionNotificationBridge(agentNode.id, noteNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyAgentAbnormalInterruptionNotifications();' }) + '\n');
+   await verifyAgentAbnormalInterruptionNotifications();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyExecutionTerminalNativeInteractions(terminalNode.id);' }) + '\n');
+   await verifyExecutionTerminalNativeInteractions(terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNode.id);' }) + '\n');
+   await verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyEditorTerminalTabSwitchPreservesViewport(terminalNode.id);' }) + '\n');
+   await verifyEditorTerminalTabSwitchPreservesViewport(terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyPanelTerminalTabSwitchPreservesViewport(terminalNode.id);' }) + '\n');
+   await verifyPanelTerminalTabSwitchPreservesViewport(terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyEmbeddedTerminalThemeFollowWorkbench(agentNode.id, terminalNode.id);' }) + '\n');
+   await verifyEmbeddedTerminalThemeFollowWorkbench(agentNode.id, terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyRuntimeReloadRecovery(agentNode.id, terminalNode.id);' }) + '\n');
+   await verifyRuntimeReloadRecovery(agentNode.id, terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyLiveSessionCutoverAndReload(terminalNode.id);' }) + '\n');
+   await verifyLiveSessionCutoverAndReload(terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyPtyRobustness(agentNode.id, terminalNode.id);' }) + '\n');
+   await verifyPtyRobustness(agentNode.id, terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyTerminalFloodKeepsCanvasResponsive(agentNode.id, terminalNode.id, noteNode.id);' }) + '\n');
+   await verifyTerminalFloodKeepsCanvasResponsive(agentNode.id, terminalNode.id, noteNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyFailurePaths(agentNode.id, terminalNode.id, noteNode.id);' }) + '\n');
+   await verifyFailurePaths(agentNode.id, terminalNode.id, noteNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyPersistenceAndRecovery(noteNode.id, agentNode.id, terminalNode.id);' }) + '\n');
+   await verifyPersistenceAndRecovery(noteNode.id, agentNode.id, terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyStandbySurfaceIgnoresMessages(noteNode.id);' }) + '\n');
+   await verifyStandbySurfaceIgnoresMessages(noteNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyPendingWebviewRequestFaultInjection(noteNode.id);' }) + '\n');
+   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyStopVsQueuedExitRace(agentNode.id);' }) + '\n');
+   await verifyStopVsQueuedExitRace(agentNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyClaudeStopRestoresPreviousSignal();' }) + '\n');
+   await verifyClaudeStopRestoresPreviousSignal();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyClaudeExplicitSessionIdPreservesResumeContext();' }) + '\n');
+   await verifyClaudeExplicitSessionIdPreservesResumeContext();
+   let runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);' }) + '\n');
+   await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);' }) + '\n');
+   await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(runtimePersistenceNodes.terminalNode.id);' }) + '\n');
+   await verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(runtimePersistenceNodes.terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyLiveRuntimeReconnectFailurePreservesBinding(' }) + '\n');
+   await verifyLiveRuntimeReconnectFailurePreservesBinding(
+     runtimePersistenceNodes.agentNode.id,
+     runtimePersistenceNodes.terminalNode.id
+   );
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyHistoryRestoredIgnoresStaleAutomaticResume(' }) + '\n');
+   await verifyHistoryRestoredIgnoresStaleAutomaticResume(
+     runtimePersistenceNodes.agentNode.id,
+     runtimePersistenceNodes.terminalNode.id
+   );
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyLiveRuntimeResumeExitClassification(runtimePersistenceNodes.agentNode.id);' }) + '\n');
+   await verifyLiveRuntimeResumeExitClassification(runtimePersistenceNodes.agentNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyImmediateReloadAfterLiveRuntimeLaunch(' }) + '\n');
+   await verifyImmediateReloadAfterLiveRuntimeLaunch(
+     runtimePersistenceNodes.agentNode.id,
+     runtimePersistenceNodes.terminalNode.id
+   );
+
+   runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(false);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyHostBoundaryFlushesRecentLocalState(' }) + '\n');
+   await verifyHostBoundaryFlushesRecentLocalState(
+     runtimePersistenceNodes.agentNode.id,
+     runtimePersistenceNodes.terminalNode.id
+   );
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyTrustedDiagnostics(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);' }) + '\n');
+   await verifyTrustedDiagnostics(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyRealDeleteButton(runtimePersistenceNodes.noteNode.id);' }) + '\n');
+   await verifyRealDeleteButton(runtimePersistenceNodes.noteNode.id);
+
+   snapshot = await getDebugSnapshot();
+   assert.strictEqual(snapshot.state.nodes.some((node) => node.id === runtimePersistenceNodes.noteNode.id), false);
+   assert.strictEqual(snapshot.state.nodes.length, 2);
+
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyManualEdgeLifecycle(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);' }) + '\n');
+   await verifyManualEdgeLifecycle(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyFileActivityViewsAndOpenFiles();' }) + '\n');
+   await verifyFileActivityViewsAndOpenFiles();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyReadExitFileActivityDrain();' }) + '\n');
+   await verifyReadExitFileActivityDrain();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyRuntimePersistenceRequiresReloadAndClearsState();' }) + '\n');
+   await verifyRuntimePersistenceRequiresReloadAndClearsState();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifySidebarSessionHistoryRestore();' }) + '\n');
+   await verifySidebarSessionHistoryRestore();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifySidebarSessionHistoryForkActionUi();' }) + '\n');
+   await verifySidebarSessionHistoryForkActionUi();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyCodexAgentBranchFromCurrentNode();' }) + '\n');
+   await verifyCodexAgentBranchFromCurrentNode();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyClaudeAgentBranchFromCurrentNode();' }) + '\n');
+   await verifyClaudeAgentBranchFromCurrentNode();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifyAgentBranchRejectsUnsupportedSources();' }) + '\n');
+   await verifyAgentBranchRejectsUnsupportedSources();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifySidebarSessionHistorySearchByTitleUi();' }) + '\n');
+   await verifySidebarSessionHistorySearchByTitleUi();
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await verifySidebarSessionHistoryDoubleClickUi();' }) + '\n');
+   await verifySidebarSessionHistoryDoubleClickUi();
+
++  if (process.env.DSC_RESIZE_RCA) fsSync.appendFileSync(process.env.DSC_RESIZE_RCA, JSON.stringify({ at: Date.now(), event: 'smoke-step', step: 'await vscode.commands.executeCommand(\'workbench.action.closeAllEditors\');' }) + '\n');
+   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+ }
+ async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {

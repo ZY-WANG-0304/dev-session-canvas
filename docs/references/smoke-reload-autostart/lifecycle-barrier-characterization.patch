@@ -1,0 +1,109 @@
+--- a/scripts/test/test-host-execution-owner-wiring.mjs
++++ b/scripts/test/test-host-execution-owner-wiring.mjs
+@@ -6679,6 +6679,106 @@
+   });
+ }
+ 
++for (const waitForReset of [false, true]) {
++  test(`lifecycle barrier RCA empty reset before create (await=${waitForReset})`, async () => {
++    const f = candidateFixture({ outputCredit: true });
++    f.host.rcaLifecycleProbe = () => {};
++    const agent = structuredClone(f.host.state.nodes.find(node => node.kind === 'agent'));
++    f.host.state = { ...f.host.state, nodes: [] };
++    const gate = deferred();
++    let waiting = false;
++    f.host.waitForPendingWorkspaceStateUpdates = async () => { waiting = true; await gate.promise; };
++    const reset = f.host.resetState();
++    const outcome = reset.then(() => ({ ok: true }), error => ({ message: error.message }));
++    await until(f.clock, () => waiting, 'reset held on workspace persistence');
++    assert.equal(f.host.state.nodes.length, 0, 'old empty state already satisfies the smoke predicate');
++    assert.equal(f.owner.snapshot().closing, true);
++    let active;
++    try {
++      if (waitForReset) {
++        gate.resolve();
++        assert.deepEqual(await completed(f.clock, outcome, 'awaited reset'), { ok: true });
++        assert.equal(f.owner.snapshot().closing, false);
++      }
++      f.host.state = { ...f.host.state, nodes: [agent] };
++      if (!waitForReset) {
++        gate.resolve();
++        assert.match((await completed(f.clock, outcome, 'raced reset')).message, /nodes changed/);
++        assert.equal(f.owner.snapshot().closing, true);
++        assert.equal(f.owner.snapshot().pending, 0);
++        await assert.rejects(f.start('agent'), /Execution owner admission is closed/);
++        assert.equal(f.providers.length, 0);
++        await completed(f.clock, f.host.resetState(), 'explicit completed reset recovers admission');
++        assert.equal(f.owner.snapshot().closing, false);
++        f.host.state = { ...f.host.state, nodes: [agent] };
++      }
++      await completed(f.clock, f.start('agent'), 'start after completed reset');
++      active = f.record('agent');
++      assert.equal(f.providers.length, 1);
++    } finally {
++      gate.resolve();
++      if (active) {
++        const p = f.providers[0]; p.process(); p.seal(0);
++        p.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
++        p.release();
++        await pump(f.clock, () => active.execution.snapshot().settled);
++        active.business?.cancelActivityPoll?.(); active.business?.lineContextTracker.dispose(); active.tracker.dispose();
++      }
++    }
++  });
++}
++
++for (const hold of ['save', 'readers', 'resource']) {
++  test(`lifecycle barrier RCA error status before retirement (${hold})`, async () => {
++    const f = candidateFixture({ outputCredit: true });
++    f.host.rcaLifecycleProbe = () => {};
++    f.host.activeSurface = undefined;
++    const save = deferred();
++    f.host.persistState = async options => { if (options?.reason === 'local-final-snapshot' && hold === 'save') await save.promise; };
++    await completed(f.clock, f.start('agent'), 'original started');
++    const record = f.record('agent');
++    const p = f.providers[0];
++    const settle = f.host.settleLocalExecutionReaderAggregate.bind(f.host);
++    if (hold === 'readers') f.host.settleLocalExecutionReaderAggregate = () => {};
++    p.process(); p.seal(0);
++    if (hold !== 'resource') {
++      p.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
++      p.release();
++    }
++    let retry;
++    try {
++      await until(f.clock, () => record.persistence.submitted, 'visible error state');
++      assert.equal(f.host.state.nodes.find(node => node.kind === 'agent').status, 'error');
++      assert.equal(f.host.state.nodes.find(node => node.kind === 'agent').metadata.agent.liveSession, false);
++      await assert.rejects(f.start('agent'), /Local final snapshot responsibility/);
++      assert.equal(f.providers.length, 1, 'rejected before new transport');
++      console.log('RCA occupancy', JSON.stringify({ hold, owner: f.owner.snapshot(), status: 'error',
++        saved: record.persistence.result?.kind, submitted: record.persistence.submitted,
++        settled: record.execution.snapshot().settled, retired: record.execution.snapshot().retired,
++        readerOutcome: record.execution.snapshot().readerOutcome }));
++      save.resolve();
++      if (hold === 'readers') { f.host.settleLocalExecutionReaderAggregate = settle; settle(record); }
++      if (hold === 'resource') {
++        p.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
++        p.release();
++      }
++      await until(f.clock, () => !f.record('agent'), 'original fully retired');
++      await completed(f.clock, f.start('agent'), 'retry after actual retirement');
++      retry = f.record('agent');
++      assert.equal(f.providers.length, 2);
++    } finally {
++      save.resolve();
++      if (retry) {
++        const q = f.providers[1]; q.process(); q.seal(0);
++        q.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } }); q.release();
++        await pump(f.clock, () => retry.execution.snapshot().settled);
++        retry.business?.cancelActivityPoll?.(); retry.business?.lineContextTracker.dispose(); retry.tracker.dispose();
++      }
++      record.business?.cancelActivityPoll?.(); record.business?.lineContextTracker.dispose(); record.tracker.dispose();
++    }
++  });
++}
++
+ const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
+ const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
+ const selectedTests = testNamePattern ? tests.filter(({ name }) => testNamePattern.test(name)) : tests;
