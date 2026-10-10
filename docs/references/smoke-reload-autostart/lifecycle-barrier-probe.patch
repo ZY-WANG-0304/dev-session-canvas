@@ -1,0 +1,96 @@
+--- a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
++++ b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+@@ -3777,7 +3777,9 @@
+     }
+ 
+     // 先切换内存态，再异步同步到 workspaceState，避免旧 webview 在 await 间隙继续把已删除节点写回持久化快照。
++    this.rcaLifecycleProbe('seed-before');
+     this.state = this.reconcileSeededStateForTest(rawState);
++    this.rcaLifecycleProbe('seed-after');
+     this.canvasTemplateInitialized = this.canvasTemplateInitialized || this.state.nodes.length > 0;
+     this.recordDiagnosticEvent('state/seededForTest', {
+       nodeCount: this.state.nodes.length
+@@ -4033,12 +4035,13 @@
+         reported = true;
+         cancel();
+         if (scheduler.now() >= boundary.deadline) reject(new Error('Runtime mutation boundary is unconfirmed.'));
+-        else if (error) reject(error);
++        else if (error) { this.rcaLifecycleProbe('boundary-failed', { message: error instanceof Error ? error.message : String(error) }); reject(error); }
+         else resolve();
+       };
+       const cancel = scheduler.scheduleDeadline(boundary.deadline, () => finish());
+       void this.prepareForHostBoundaryCore(options).then(() => finish(), error => finish(error)).finally(() => {
+         if (this.strictRuntimeMutationBoundary === boundary) this.strictRuntimeMutationBoundary = undefined;
++        this.rcaLifecycleProbe('boundary-finished');
+       });
+     });
+   }
+@@ -4198,8 +4201,25 @@
+       });
+   }
+ 
++  private rcaLifecycleProbe(tag: string, detail?: unknown): void {
++    const records = [...this.nonNativeHostExecutions.values()].map(record => {
++      const s = record.execution.snapshot();
++      const node = this.state.nodes.find(node => node.id === record.nodeId && node.kind === record.kind);
++      return { kind: record.kind, nodeId: record.nodeId, identity: s.identity,
++        status: node?.status, metadataMatches: node?.metadata?.[record.kind] === record.persistence?.metadata,
++        snapshot: s, persistence: record.persistence && { submitted: record.persistence.submitted, result: record.persistence.result },
++        finalRevision: record.finalRevision, readerAdmissionClosed: record.readerAdmissionClosed,
++        readers: [...record.localReaders?.values() ?? []].map(reader => ({ outcome: reader.outcome,
++          initialPublished: reader.initialPublished, finalPublication: Boolean(reader.finalPublication) })) };
++    });
++    fs.appendFileSync('/tmp/dscr/.debug/lifecycle-rca/probe.jsonl', JSON.stringify({ timestamp: new Date().toISOString(),
++      tag, detail, owner: this.nonNativeExecutionOwner?.snapshot(), authority: this.nonNativeExecutionOwner?.authority.snapshot(),
++      strictBoundary: this.strictRuntimeMutationBoundary, nodes: this.state.nodes.map(node => ({ id: node.id, kind: node.kind, status: node.status })), records }) + '\n');
++  }
++
+   public async resetState(options: { clearAgentCliResolutionCache?: boolean; reason?: string } = {}): Promise<void> {
+     this.assertCanvasMutationAdmissionOpen();
++    this.rcaLifecycleProbe('reset-begin', options);
+     const previousNodeCount = this.state.nodes.length;
+     const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
+     if (workspaceFolders.length > 1) {
+@@ -4244,7 +4264,8 @@
+     });
+     this.postState('host/stateUpdated');
+     this.notifySidebarStateChanged();
+-    this.nonNativeExecutionOwner?.tryResume();
++    const resumed = this.nonNativeExecutionOwner?.tryResume();
++    this.rcaLifecycleProbe('reset-end', { resumed });
+   }
+ 
+   private async clearAllWorkspaceRootCanvases(options: { reason?: string } = {}): Promise<boolean> {
+@@ -10827,7 +10848,7 @@
+       throw new Error('The current terminal page does not support local output consumption credit.');
+     }
+     assertExecutionCandidateCapabilities(owner.options.capabilities, mode);
+-    owner.assertAdmission();
++    try { owner.assertAdmission(); } catch (error) { this.rcaLifecycleProbe('owner-admission-rejected'); throw error; }
+   }
+ 
+   private async prepareExecutionCandidateReplacement(
+@@ -17436,6 +17457,7 @@
+   private settleNonNativeHostPersistence(record: NonNativeHostExecution, result: NonNativeHostPersistenceResult): void {
+     const persistence = record.persistence;
+     if (!persistence || persistence.result) return;
++    this.rcaLifecycleProbe('persistence-settle', { nodeId: record.nodeId, identity: record.execution.identity, result });
+     persistence.result = Object.freeze({ ...result });
+     persistence.resolve(persistence.result);
+     try {
+@@ -17457,6 +17479,7 @@
+     }
+     if (!snapshot.retired || this.nonNativeHostExecutions.get(record.execution.key) !== record) return;
+     if (persistence && persistence.result?.kind !== 'saved' && persistence.result?.kind !== 'not-required') return;
++    this.rcaLifecycleProbe('record-retire', { nodeId: record.nodeId, identity: record.execution.identity });
+     this.nonNativeHostExecutions.delete(record.execution.key);
+     record.business?.cancelActivityPoll?.();
+     record.business?.lineContextTracker.dispose();
+@@ -17618,6 +17641,7 @@
+     }).length;
+     if (persistsFinal && (this.nonNativeHostExecutions.has(key) || !hasExecutionAdmissionCapacity(owner.admissionLimits,
+       { executions: retainedRecords.length, pending }))) {
++      this.rcaLifecycleProbe('key-or-capacity-rejected', { kind, nodeId, key, pending, sameKey: this.nonNativeHostExecutions.has(key) });
+       throw new Error('Local final snapshot responsibility still occupies the execution key or Host capacity.');
+     }
+     const assertRuntimeUnbound = (): void => {

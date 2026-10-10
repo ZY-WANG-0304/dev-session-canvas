@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -323,3 +323,32 @@ PR #314 缺 CLI 的错误来自 `startNonNativeHostExecution` 的 prepare 阶段
 2026-10-10 验证收口：新增 11 条用例替代原两条“不改 prepare 失败状态”的期待，完整 Host **487/487**、类型/UI 本地化、正文 helper **14/14**、reset fixture **19/19**、runner 环境和脚本语法通过。最终代码默认真实 VSIX 的六个独立阶段通过，缺 CLI 场景验证 error/pending 清理、单次提示、not-required 和删除，且无 owned-resize-failed。
 
 完整门禁仍失败：默认 trusted 在较早的异常通知 Claude resume 再启动处（verifyAgentAbnormalInterruptionNotifications:7788）被原最终保存责任占槽拒绝；工件捕获时记录已清理，未据此确认原因。同代码不改场景复跑 trusted，又在更早的 verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent:3257 等待启动诊断超时，实际 startFailed=Execution owner admission is closed。两轮均未在 trusted 原顺序触达缺 CLI 修复，不宣称该上下文或后续 Runtime 通过。精简证据与原工件路径见 `docs/references/smoke-reload-autostart/preparation-failure-evidence.json`；历史文件链接 DOM、early final-save pending 和本轮两处早期失败继续跟踪。
+
+
+## 最终保存占槽与 owner 准入关闭的专项定位（2026-10-10）
+
+调查基线为 PR #314 `c1d7b977`。两类直接触发点均是 smoke 把中间状态当成操作完成；Host 拒绝尚未完成的原执行替换、保留失败 reset 的关闭边界，符合现有结算约束。执行模式为 snapshot-only，原生环境为 Linux x64 / VS Code 1.141.0 / 当前原生 PTY / fake provider。临时探针、顺序对照和延迟注入均未进入产品源码，证据见 `docs/references/smoke-reload-autostart/lifecycle-barrier-evidence.json`。
+
+### 空画布不是 reset 完成信号
+
+`verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent` 先派发 `webview/resetDemoState`，再等 nodes.length=0；进入这段代码时画布已由前一用例清空。页面派发只启动异步 reset，不等待 `resetState` 完成，所以这个状态条件立即满足，新建 Agent 与原 reset 重叠。
+
+只增加只读探针、保持原 smoke 不变的原生复现中，08:02:59.699 reset 从空画布开始；08:02:59.724 原 reset 检测到新节点，报 `Runtime mutation boundary expired or its nodes changed.` 并中止；08:02:59.731 自启动被 `Execution owner admission is closed` 拒绝。此刻 owner closing=true、permanent=false、pending=0，底层 active=0，排除了残留进程占槽。`resetState` 只有成功完成后才调用 tryResume；边界失败不会自动放开准入，这是防止未知结算被误当作完成的既有规则。
+
+受控 Host 复现同一顺序后，再显式完成一次 reset 即可重新启动；先 await reset 再创建的正对照直接通过。原生顺序对照仅将该准备动作改为 awaited `testResetState`，随后通过该创建用例并继续到通知及后续场景。修复应等待原 reset 的完成结果（有原保存 pending 时使用既有按身份等待/重试夹具），不应以固定 sleep、旧空状态或直接修改 owner closing 放行。用户在 reset 进行中并发创建也可进入这条保护边界；本轮确认的是 smoke 抢跑，不将“自动重新开放失败 reset”作为已确定的产品方案。
+
+### error/通知完成不代表原执行已退休
+
+`verifyAgentAbnormalInterruptionNotifications` 的 Codex 再启动与 Claude 恢复设置只等 error、退出码、通知及 attentionPending=false。`persistNonNativeHostFinal` 先同步投影这些业务状态并提交保存；原记录必须等保存、进程/输出/资源与页面最终确认全部完成才释放 node key。因此通知及选择节点完成不是再次启动的前置完成信号。
+
+本轮在同一通知用例的 Codex exit 27 后自然复现：08:07:30.702 最终保存已成功；08:07:30.812 再次启动时 sameKey=true，原 execution `dfe1b067-e065-4da3-80f6-88b536239197` 的进程已退出、输出 eof、全部资源 released、terminal applied、settled=true，persistence=saved，但 readerOutcome=pending、retired=false。底层 active=0、starting=0、closing=false，没有全局容量不足或进程泄漏；被保留的是原页面交付责任。错误文案把这类情况统称为“最终保存责任占槽”，不能据此判断磁盘保存仍在进行。该失败运行 110ms 后的清理是 host-deactivation/lost，不将它误写为自然页面确认。
+
+保持 Host 存活、先等待原执行退休再启动的原生对照中，通知用例连续五次通过，页面以 applied 确认，后续启动和 Claude resume 均正常。为覆盖最初 Claude 报错的同一路径，另仅将原 Claude 页面最终确认延迟 500ms：08:13:14.452 原 resume 在 saved/资源已释放、reader pending 时收到相同同 key 拒绝；08:13:14.812 放行原确认，读者 applied 后原记录退休；等待后重新写入同一恢复 seed 并启动成功，原 resume-failed/33、恢复身份及不重复通知断言通过。该受控对照没有退出或重建 Host。
+
+前轮 Claude 历史工件已被 finally 清空，不能追认那一刻的具体 pending 域；本轮自然复现和同路径受控对照证明缺少原退休等待能产生相同错误，也证明原确认后正常释放。正式修复范围应为等待原 executionId/generation 的 saved/not-required 和退休，再 seed 恢复状态及启动；仅等待保存事件仍会遗漏页面确认。不能绕过同 key 保护或把旧执行移出 map 来满足测试。
+
+### 验证和交付边界
+
+临时 Host characterization **5/5** 通过：空画布 reset 竞态与正确等待，分别暂停保存/读者/资源并验证阻塞与释放后重试。探针补丁可在 `c1d7b977` 应用，独立夹具不启动原生进程；复跑方法见完成计划。最初受控夹具未模拟页面快照交付而卡住 final-flush，已修正为无页面基线后独立控制三个域，该夹具错误不作为产品证据。
+
+继续向后验证时发现 `c1d7b977` 拆分缺 CLI 用例遗漏了 `verifyFailurePaths` 的局部 diagnosticStartIndex，导致无效自定义命令断言处 ReferenceError。本轮仅补回该局部变量；在受控原生运行中完整 verifyFailurePaths 已通过，原断言保留。该运行按调查需要明确在此函数后停止，exit 0 不代表完整 trusted 或发布 gate 通过。产品源码与 Host 主测试已恢复基线，两个同步问题的正式 smoke 修复仍待单独落实，其他历史门禁/平台边界保留。

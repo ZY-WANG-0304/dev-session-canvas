@@ -464,3 +464,12 @@ Host reload 把活动 Agent 保存成 stopped 的缺陷已修复：原最终保�
 CLI/执行环境准备失败后停留 starting/launching 的产品缺口已修复：原 record 和 metadata 仍有效且未取消时，fresh 为 error、resume 为 resume-failed，清除 pending/live，保留历史正文与恢复身份；未开始记录仍为 not-required。准备失败同时取消未派发的尺寸意图，避免自动同步尺寸额外报 owned-resize-failed。关闭准入、取消/换绑、取得资源后的未知结果保持原保护。完整 Host 487/487、类型、本地化和 smoke helper/runner 检查通过，最终代码默认真实 VSIX 六个独立阶段（含 local-preparation-failure）通过。
 
 同轮 trusted 在更早的 `verifyAgentAbnormalInterruptionNotifications:7788` Claude resume 再启动处被 `Local final snapshot responsibility still occupies the execution key or Host capacity.` 阻断。工件捕获时记录已清理，不据此追认具体时序原因；保留 `.debug/preparation-failure/early-trusted-artifacts`。同代码不修改场景复跑 trusted，在更早的 `verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent:3257` 等待启动诊断超时，实际 `execution/startFailed` 为 `Execution owner admission is closed`，工件在 `.debug/preparation-failure/repeat-trusted-artifacts`。两轮均未在 trusted 原顺序触达缺 CLI；两处早期生命周期失败仍待定位，完整发布 gate 尚未通过。此次不改版本或发布资料，未复验真实 Agent/跨版本与跨平台矩阵。精简证据见 `docs/references/smoke-reload-autostart/preparation-failure-evidence.json`。
+
+
+## 两处 smoke 完成等待缺口已定位（2026-10-10，PR #314）
+
+前节“最终保存占槽”和“owner admission is closed”的修复方向已收敛。通知用例在原执行 error/通知后没有等待退休，原生自然复现时保存和资源已经完成，只剩页面 reader pending；需在同 node 再启动及 Claude 恢复 seed 之前按原 executionId/generation 等待 saved/not-required 且原记录退休。预设创建用例在原本为空的画布派发异步 reset 后立即新建，reset 因节点改变中止而保留关闭准入；需等待 reset 命令实际完成，不能只等 nodes.length=0。两处正式 smoke 同步修复仍待落实，保持产品现有同 key/失败边界保护。用户并发创建与 reset 的准入提示/交互协调可单独评估，本轮不将放宽失败边界当成修复方案。
+
+5/5 受控对照、原顺序 reset 复现、原生通知同 key 拒绝、等待退休后的五次正常通知运行及受控 Claude 恢复正反对照均已完成；最终确认可自然 applied，资源不存在已证明的永久泄漏。旧 Claude 原始工件清空后缺少的瞬间状态不追认。证据与复跑补丁见 `docs/references/smoke-reload-autostart/lifecycle-barrier-evidence.json`，计划为 `docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md`。
+
+同时补回上轮拆分用例遗漏的 `verifyFailurePaths` 局部 diagnosticStartIndex，原生受控运行已完整通过该函数。调查变体在该函数后停止，完整发布门禁仍未通过，其他历史待定位项继续保留。

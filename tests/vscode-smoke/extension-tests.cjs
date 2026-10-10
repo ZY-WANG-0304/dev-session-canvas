@@ -9414,6 +9414,7 @@ async function verifyMissingAgentCliFailure() {
 }
 
 async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
+  const diagnosticStartIndex = (await getDiagnosticEvents()).length;
   await verifyMissingAgentCliFailure();
   let snapshot = await getDebugSnapshot();
   let hostMessages;

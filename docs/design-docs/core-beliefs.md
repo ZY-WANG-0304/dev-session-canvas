@@ -337,3 +337,5 @@ unknown是当时缺少证明的观察，不应擦除已确认事实，也不阻�
 - **Host 中断与用户停止应保留不同的恢复语义**：snapshot-only 中，Host 关闭中断活动 Agent 后，有可信 provider 身份应保存为 resume-ready 并等待手动恢复；无身份与 Terminal 为 interrupted。重读不能凭恢复能力生成自动 resume 意图。用户主动停止和已观测的自然退出保留原终态；恢复提示不能代替原 process、最终正文和保存责任的确认。依据见 `smoke-reload-autostart-investigation.md` 的 snapshot-only 手动恢复方案。
 
 启动准备失败必须结束本请求的待启动表现，同时保留尚未使用的历史正文和恢复身份。已清理启动记录或已提示错误都不能代替节点状态更新；准备失败、准入拒绝、取消和取得资源后的未知结果各自保持责任；准备失败时取消未派发的尺寸意图，避免同一原因被重复包装成 resize 错误。只有原执行记录及 metadata 绑定仍有效时才能投影失败，不以普通画布状态保存冒充进程最终快照结算。依据见 `smoke-reload-autostart-investigation.md` 的启动准备失败方案。
+
+测试准备动作必须等待该次操作的完成事实。空画布可早于 reset 请求，error/退出通知也可早于原终端页面确认；这些状态不能代替 reset 完成或原执行退休。定位占槽须分别核对保存、原生资源与读者结果，错误文案不能代替责任域证据；测试退出导致的 lost 清理不能冒充页面 applied。依据见 `smoke-reload-autostart-investigation.md` 的最终保存占槽与准入关闭定位。
