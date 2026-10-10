@@ -537,4 +537,10 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 目录 21 项、准备 worker 26、client 21、systemd 环境 40、owner storage、完整 Host 529/529、模板、本地化和类型检查通过。最终默认 VSIX 七阶段通过，trusted globalStorage=0700，root/Terminal 启动成功，Agent 在后续 createSession 阶段 rejected-before-acquire。独立旧 0775 升级并串行启动两节点、0777 拒绝并结束两节点待启动状态均原生通过。原始 smoke 未改；checkpoint 原完整场景仍未在本轮重跑，不能由专项代证。
 
-剩余门禁：默认 verifyLiveRuntimePersistence:10024 仍因 Agent 资源拒绝等待 live 超时，尚未到该场景 reload。必须采集原 owner 在拒绝时的占槽/身份/关闭状态，区分 fixture 启动重叠和产品责任，再修对应入口；不能仅凭 rejected-before-acquire 字符串认定配额、扩大上限或放宽断言。工件 `.debug/runtime-root-fix/final-trusted-artifacts`；精简证据 `docs/references/smoke-reload-autostart/runtime-root-storage-fix-evidence.json`；计划 `docs/exec-plans/completed/runtime-root-storage-repair.md`。完整 gate、真实 provider、跨平台/跨版本矩阵仍未完成。
+剩余门禁：默认 verifyLiveRuntimePersistence:10024 仍因 Agent 资源拒绝等待 live 超时，尚未到该场景 reload。该轮尚缺拒绝瞬间的占槽/身份/关闭状态；原因现已在下一项通过专项独立确认，后续按其 fixture 修复边界推进，不扩大上限或放宽断言。工件 `.debug/runtime-root-fix/final-trusted-artifacts`；精简证据 `docs/references/smoke-reload-autostart/runtime-root-storage-fix-evidence.json`；计划 `docs/exec-plans/completed/runtime-root-storage-repair.md`。完整 gate、真实 provider、跨平台/跨版本矩阵仍未完成。
+
+## Runtime 共用 fixture 启动屏障遗漏（2026-10-10，PR #314）
+
+上一项 Agent 准入原因已确认：`prepareTrustedBaseNodesForAppliedRuntimePersistenceMode` 连续创建 Agent/Terminal，只等节点存在。原生拒绝点显示准备容量通过、身份匹配、未关闭/隔离，Terminal 持有唯一 starting 槽时 Agent 进入 beginStart 被拒，无 provider 资源。Terminal started 后槽正常释放，原 Agent 节点重试成功；串行 started 对照两者成功；无探针原包连续创建则拒绝 Terminal，随后同节点重试成功。三场景均 exit 0，隔离 Supervisor 已自然退出。属于 fixture 未遵循正式准入前提，未发现此处生命周期泄漏或版本兼容故障。
+
+尚待修复共用 helper 的逐个原身份 started 屏障，覆盖 Runtime 开/关及其独立调用点；保留后续断言，不扩大额度、不固定 sleep、不自动重试。本轮未改正式 smoke/产品，完整 gate 和后续 Runtime reload/checkpoint 仍未验证，不能把专项结束当成发布准入。证据：`docs/references/smoke-reload-autostart/runtime-admission-evidence.json`；复现：相邻 `runtime-admission-investigation.mjs`；计划：`docs/exec-plans/completed/runtime-start-admission-investigation.md`；设计：`docs/design-docs/smoke-reload-autostart-investigation.md`。
