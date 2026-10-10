@@ -606,3 +606,7 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 具名测试逐个等待原执行 started，正文按 executionSessionId 匹配，reload 前复核 executionId/generation；原停止退休与历史正文断言保留，产品源码/准入不变。原生原函数完整通过，三个产品 bundle hash 与定位基线一致；已有正文 helper14/14、语法及默认 VSIX 类型/构建打包通过。七个独立阶段与 trusted 原顺序的本用例通过。
 
 完整 gate exit1，后续 `verifyTrustedDiagnostics:13507` 期待 Agent `execution/exited` 诊断的断言失败，根因尚未定位，不将其等同于进程未退出。最后 Agent resume-ready、Terminal interrupted，无 live 节点。本轮不改变此断言；历史 URL 停滞和后续真实新 Host/checkpoint/跨平台等仍未收口。证据：`docs/references/smoke-reload-autostart/local-host-boundary-start-fix-evidence.json`；复跑：相邻 `local-host-boundary-start-verification.mjs`。
+
+2026-10-11 后续定位：已确认汇总断言沿用旧 PTY 专属 `execution/exited` / live `execution/snapshotPosted`，owned 本地与 Runtime 路径绕过这些记录点；长流程末尾的 2000 条可清空数组也不能保证早期失败事件仍存在。原生 owned Agent exit27、页面退出消息、最终保存 saved 和 reader applied 均成立，只有 59 条事件仍无旧 exited；原 Host boundary 后 95 条事件时原汇总断言再次失败。原失败工件八项谓词中第 4、6、7 项不满足，不能只放宽第一项收口。
+
+待修复：在具名退出/失败/live 快照场景内按原执行身份验证并保存结果，末尾不再追溯易失缓存；保留进程结果、最终输出、保存和读者结算覆盖，不补旧事件求绿。正式 smoke 与产品本轮未改，完整 gate 未重跑。证据为 `docs/references/smoke-reload-autostart/trusted-diagnostics-evidence.json`，计划为 `docs/exec-plans/completed/trusted-diagnostics-investigation.md`；其余历史限制保持原状态。
