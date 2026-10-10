@@ -36,7 +36,12 @@ PR #314 已实施具名修复：同 ID 重读保留原 metadata/status；root + 
 
 2026-10-10 多行文件链接已在 PR #314 收口：owned 原 launchSpec 和原 business.lineContextTracker 接入路径上下文，相对解析缓存加入执行身份；只读解析保留停止后的原正文目录和旧 session/历史回退。新增 8 项、完整 Host 434/434、路径 helper、逐行 tracker、类型检查通过。真实 helper 修前将 subdir 文件解析到初始目录，修后正确；默认真实 VSIX 整个 native interactions 完成，含多行 2:8/file/编辑器位置和后续缺失文件搜索、普通/显式 URL。原多行解析缺口已闭环，本轮未改 smoke。计划与证据：`docs/exec-plans/completed/owned-execution-file-links.md`、`docs/references/smoke-reload-autostart/file-link-repair-evidence.json`。
 
-最新独立阻塞：后续 `verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory:8523` 仍等待历史 metadata.recentOutput 出现 SCROLLBACK_PERSIST-220。原节点 live，同执行最终 Host 快照已有 001/220，metadata 却仍是此前 native interactions 历史；超时发生在该函数的 simulateRuntimeReload 之前，不是 reload 后丢失历史的证据。后续需把运行期正文等待改为原执行实际通道，并继续保留停止保存/reload 后首尾行保留检查。本轮未修改该独立用例，完整 trusted 和后续 Runtime/压力矩阵仍未完成。
+此前独立阻塞：后续 `verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory:8523` 仍等待历史 metadata.recentOutput 出现 SCROLLBACK_PERSIST-220。原节点 live，同执行最终 Host 快照已有 001/220，metadata 却仍是此前 native interactions 历史；超时发生在该函数的 simulateRuntimeReload 之前，不是 reload 后丢失历史的证据。后续需把运行期正文等待改为原执行实际通道，并继续保留停止保存/reload 后首尾行保留检查。本轮未修改该独立用例，完整 trusted 和后续 Runtime/压力矩阵仍未完成。
+
+2026-10-10 滚动历史旧断言已在 PR #314 收口：新 Terminal live 后捕获原 executionId/generation，复用原实际输出等待替代运行期 metadata.recentOutput 条件，20 秒期限与所有保存/reload 首尾行断言保持。语法检查、正文 helper 14/14、旧现场回放通过；默认真实 VSIX 已完成滚动历史的原执行 -220、模拟 reload 后持久化首尾行、重新请求历史快照首尾行检查，以及后续 editor/panel 标签切换和主题跟随。本轮未改产品；证据见 `docs/references/smoke-reload-autostart/scrollback-smoke-repair-evidence.json`。
+
+最新独立阻塞：`verifyRuntimeReloadRecovery` 在首次等待 Codex Agent live 时超时，尚未执行此场景的 simulateRuntimeReload。Agent stopped/liveSession=false，Terminal 已启动；日志出现 `Non-native Host start was rejected-before-acquire` 及未处理 promise 拒绝。该启动拒绝根因尚未完整定位，不能直接归因于 reload 或本次滚动历史修正。本轮未改启动路径及该独立用例，完整 trusted 仍失败。
+
 
 
 

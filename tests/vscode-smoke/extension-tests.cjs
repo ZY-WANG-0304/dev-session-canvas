@@ -8489,7 +8489,8 @@ async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(t
       },
       'editor'
     );
-    await waitForTerminalLive(terminalNodeId);
+    const started = await waitForTerminalLive(terminalNodeId);
+    const execution = captureLocalExecutionIdentity(started, 'terminal', terminalNodeId);
 
     await clearHostMessages();
     await setTerminalIntegratedScrollback(configuredScrollback);
@@ -8520,12 +8521,7 @@ async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(t
       'editor'
     );
 
-    await waitForSnapshot((currentSnapshot) => {
-      const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-      return Boolean(
-        currentNode?.metadata?.terminal?.recentOutput?.includes(`${TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`)
-      );
-    }, 20000);
+    await waitForLocalExecutionOutput(execution, `${TERMINAL_SCROLLBACK_PERSIST_MARKER}-220`, 'live', 20000);
 
     const reloadedSnapshot = await simulateRuntimeReload();
     const reloadedTerminal = findNodeById(reloadedSnapshot, terminalNodeId);

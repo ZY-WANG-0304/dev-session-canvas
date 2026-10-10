@@ -202,3 +202,13 @@ PR #314 继续补回 snapshot-only 的恢复阶段终态语义。`CanvasPanelMan
 默认真实 VSIX 构建打包、owned reconciliation、local execution flow 均通过。原 `verifyExecutionTerminalNativeInteractions` 整体完成，多行 `2:8` 现在产生 file 事件并定位到编辑器第二行第八列；后续缺失文件搜索、URL hover/清除 hover、浏览器目标及 OSC 8 显式链接也通过。本轮未修改 smoke，这使逐行 cwd 缺口与原失败完成因果闭环。
 
 完整 trusted 随后在 `verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory` 等待 metadata.recentOutput 中的 `SCROLLBACK_PERSIST-220` 超时，此时尚未进入该函数的 simulateRuntimeReload。节点 live，metadata 仍是上一条 native interactions 的历史；finally 恢复配置后的同执行 Host 快照包含 001/220。此处为新触达的旧正文断言，不能据此判定 reload 丢失历史。本轮未修改该场景，完整门禁仍未通过，后续恢复/Runtime/压力矩阵未触达。精简证据见 `docs/references/smoke-reload-autostart/file-link-repair-evidence.json`。
+
+
+## 滚动历史 smoke 运行期正文等待的正式方案
+
+`tests/vscode-smoke/extension-tests.cjs` 的 `verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory` 在新 Terminal live 后捕获原 executionId/generation，并复用 `waitForLocalExecutionOutput` 等待原执行实际交付的 SCROLLBACK_PERSIST-220，替换对历史 metadata.recentOutput 的运行期等待。继续保留活动执行期间配置 scrollback、模拟 reload、重读 metadata 的最终序列化快照首尾行检查，以及请求页面历史快照后首尾行检查。运行期正文和停止后的保存结果分别验证，不改产品保存或 reload 逻辑、不延长超时。
+
+此前原执行最终 Host 快照已包含 001/220，而 metadata 仍为上一条执行历史；这证明旧等待字段不适用，不能追认为 reload 丢失历史。2026-10-10 修后语法检查、正文 helper **14/14** 和失败现场回放通过。默认真实 VSIX 构建打包及两个具名阶段通过，滚动历史函数完整完成：原执行 -220、模拟 reload 后持久化快照 001/220、重新请求历史快照 001/220 均通过；后续 editor/panel 标签切换视口及主题跟随也完成。该旧正文断言阻塞已收口，本轮没有产品变更。
+
+
+完整 trusted 随后在 `verifyRuntimeReloadRecovery` 的首次 Agent live 等待超时，尚未执行该场景的 simulateRuntimeReload。Codex Agent 仍 stopped/liveSession=false，只有新 Terminal 为活动本地执行；日志显示 `Non-native Host start was rejected-before-acquire` 和未处理的 promise 拒绝。此为新触达的独立启动阻塞，完整根因待定位，本轮未改启动路径或该用例。精简证据见 `docs/references/smoke-reload-autostart/scrollback-smoke-repair-evidence.json`；不把具名成功写成完整门禁通过。
