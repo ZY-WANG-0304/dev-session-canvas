@@ -699,3 +699,11 @@ smoke 的独立立即 reload 用例只增加 Agent 原 started 屏障，随后�
 正式修复范围应为本具名用例的显式启动流程，复用原 executionId/generation 的 started 等待，并在输入前确认目标执行；保留现有停止退休等待、配额、拒绝提示、最终保存及 reload 历史断言，不把准入拒绝投影成新进程的 SIGINT 或放宽 waitForAgentLive。原函数来自 `b5248b9ea`（2026-04-11），沿用了旧启动预期；不据此指定首个受影响版本。本轮只定位，正式产品与 smoke 未修改。
 
 证据：`docs/references/smoke-reload-autostart/local-host-boundary-start-evidence.json`；复跑：相邻 `local-host-boundary-start-investigation.mjs`（baseline/probe/serial）。原生三轮均正常退出；原序/探针脚本 exit0 仅代表捕获完成，不代表场景通过。串行对照只验证隔离原函数，未重跑改动后的 trusted 全序或完整 gate；后续未触达项和历史 URL 清理停滞保持原状态。
+
+## 本地 Host boundary 启动顺序的正式修复（2026-10-11，PR #314）
+
+`verifyHostBoundaryFlushesRecentLocalState` 在 Agent 请求后等待其原 executionId/generation 的 started，再派发 Terminal；Terminal 同样等待原 started 后才输入。正文观察绑定两项原执行的 executionSessionId，进入模拟 reload 前复核原身份，避免旧执行消息或替换会话满足断言。保留原停止退休等待、两份正文标记、reload 后 recentOutput 历史断言和所有产品准入行为。本次为局部测试修正，不修改产品实现。
+
+最终原生专项调用正式修正后的原函数和断言，完整通过两项原 started、原 executionSessionId 正文、边界前原身份，以及 reload 后两份历史标记；Agent resume-ready、Terminal interrupted。三个产品 bundle hash 与定位基线一致。已有正文 helper 14/14、脚本语法通过；默认 VSIX 的 typecheck、生产构建打包与七个独立阶段通过，trusted 原顺序也越过本用例。
+
+完整门禁仍 exit1，下一处为 `verifyTrustedDiagnostics:13507`：期待诊断集合存在 Agent 的 `execution/exited` 事件，实际断言未满足。本轮只记录缺失事件断言，未定位是否为旧诊断契约、记录范围或产品事件遗漏；不据此认定 Agent 未退出，也不放宽后续断言。原工件与具名通过范围见 `docs/references/smoke-reload-autostart/local-host-boundary-start-fix-evidence.json`；复跑为相邻 `local-host-boundary-start-verification.mjs`。独立原生与默认 VSIX 均已退出，最终无 live 节点；历史 URL 清理停滞、后续未触达项与真实新 Host/跨平台边界保持原状态。

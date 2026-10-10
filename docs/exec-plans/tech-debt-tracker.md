@@ -595,8 +595,14 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 最终默认 VSIX 七个独立阶段通过，trusted 通过立即 reload；随后 `verifyHostBoundaryFlushesRecentLocalState:11210` 在 RuntimePersistence 关闭的 snapshot-only 场景等待 Agent live 超时，Agent stopped/SIGINT、Terminal live。尚未输入本用例正文或执行其 reload/flush；根因待定位，不修改新阻塞断言。完整 gate 仍失败；原 URL 清理停滞、后续 checkpoint/真实新 Host/跨平台等缺口继续保留。证据：`docs/references/smoke-reload-autostart/runtime-immediate-reload-fix-evidence.json`；复验：相邻 `runtime-immediate-reload-verification.mjs`；计划：`docs/exec-plans/completed/runtime-immediate-reload-repair.md`。
 
-## 本地 Host boundary 显式重启遗漏 started 屏障（2026-10-11，PR #314，待修复）
+## 本地 Host boundary 显式重启遗漏 started 屏障（2026-10-11，PR #314，已修复；下文记录验收）
 
 上一节 Agent live 超时已定位：snapshot-only 具名测试停止并确认旧执行退休后，又连续派发两个启动；Terminal 占唯一 starting 槽，Agent rejected-before-acquire。旧 saved/applied 已完成，关闭/隔离/身份不匹配均被排除。SIGINT 属于旧 Agent 的主动停止，新请求 not-required，原 stopped/历史保留及错误提示符合既定准入规则。
 
 无探针原序、只读 authority 探针均复现；产品 bundle 不变、仅串行等待 Agent 原 started 的对照完整通过原函数正文和 reload 后历史断言；既有 Host 准入/状态保留两项测试通过。正式修复应复用原执行 started 屏障，不改配额、历史状态、停止退休或最终保存断言。本轮正式产品/smoke 未改，完整 gate 未重跑。证据：`docs/references/smoke-reload-autostart/local-host-boundary-start-evidence.json`；复跑：相邻 `local-host-boundary-start-investigation.mjs`；计划：`docs/exec-plans/completed/local-host-boundary-start-investigation.md`。
+
+## 本地 Host boundary 启动已修复，后续退出诊断断言阻塞（2026-10-11，PR #314）
+
+具名测试逐个等待原执行 started，正文按 executionSessionId 匹配，reload 前复核 executionId/generation；原停止退休与历史正文断言保留，产品源码/准入不变。原生原函数完整通过，三个产品 bundle hash 与定位基线一致；已有正文 helper14/14、语法及默认 VSIX 类型/构建打包通过。七个独立阶段与 trusted 原顺序的本用例通过。
+
+完整 gate exit1，后续 `verifyTrustedDiagnostics:13507` 期待 Agent `execution/exited` 诊断的断言失败，根因尚未定位，不将其等同于进程未退出。最后 Agent resume-ready、Terminal interrupted，无 live 节点。本轮不改变此断言；历史 URL 停滞和后续真实新 Host/checkpoint/跨平台等仍未收口。证据：`docs/references/smoke-reload-autostart/local-host-boundary-start-fix-evidence.json`；复跑：相邻 `local-host-boundary-start-verification.mjs`。

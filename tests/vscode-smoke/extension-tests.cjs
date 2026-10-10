@@ -11197,6 +11197,7 @@ async function verifyHostBoundaryFlushesRecentLocalState(agentNodeId, terminalNo
       provider: 'codex'
     }
   });
+  const { execution: agentExecution } = await waitForLocalExecutionStarted('agent', agentNodeId);
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
     payload: {
@@ -11207,8 +11208,7 @@ async function verifyHostBoundaryFlushesRecentLocalState(agentNodeId, terminalNo
     }
   });
 
-  await waitForAgentLive(agentNodeId);
-  await waitForTerminalLive(terminalNodeId);
+  const { execution: terminalExecution } = await waitForLocalExecutionStarted('terminal', terminalNodeId);
   await clearHostMessages();
 
   await dispatchWebviewMessage({
@@ -11234,6 +11234,7 @@ async function verifyHostBoundaryFlushesRecentLocalState(agentNodeId, terminalNo
         message.type === 'host/executionOutput' &&
         message.payload.kind === 'agent' &&
         message.payload.nodeId === agentNodeId &&
+        message.payload.executionSessionId === agentExecution.executionSessionId &&
         message.payload.chunk.includes(HOST_BOUNDARY_FLUSH_AGENT_MARKER)
     );
     const sawTerminalMarker = messages.some(
@@ -11241,11 +11242,15 @@ async function verifyHostBoundaryFlushesRecentLocalState(agentNodeId, terminalNo
         message.type === 'host/executionOutput' &&
         message.payload.kind === 'terminal' &&
         message.payload.nodeId === terminalNodeId &&
+        message.payload.executionSessionId === terminalExecution.executionSessionId &&
         message.payload.chunk.includes(HOST_BOUNDARY_FLUSH_TERMINAL_MARKER)
     );
     return sawAgentMarker && sawTerminalMarker;
   }, 8000);
 
+  const beforeReload = await getDebugSnapshot();
+  assert.deepStrictEqual(captureLocalExecutionIdentity(beforeReload, 'agent', agentNodeId), agentExecution);
+  assert.deepStrictEqual(captureLocalExecutionIdentity(beforeReload, 'terminal', terminalNodeId), terminalExecution);
   const snapshot = await simulateRuntimeReload();
   const agentNode = findNodeById(snapshot, agentNodeId);
   const terminalNode = findNodeById(snapshot, terminalNodeId);
