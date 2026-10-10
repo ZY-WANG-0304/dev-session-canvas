@@ -298,3 +298,15 @@ smoke 保留原执行 started 顺序和 reload 后 resume-ready/interrupted 断�
 本轮验证：正文 helper 14/14、reset fixture 19/19、runner 环境清理与改动脚本语法通过，VSIX 构建打包及类型检查通过。默认真实 VSIX 的 owned reconciliation、local execution flow、manual recovery 和新增 local-surface-cutover 四阶段通过；trusted 中原顺序的 manual recovery 与 surface 切换也完整通过。surface 原 executionId/generation、两次目标页面快照、四段实际输出/页面可见、closed 与四段最终历史、原 saved/退休均按原断言通过，surface 旧字段阻塞已收口。
 
 完整门禁随后停在 `verifyPtyRobustness:9061`：Agent 已 waiting-input 且 live，原 executionId 的实时正文包含 `[fake-agent] burst 080`，但测试仍读 metadata.recentOutput 中上一轮恢复执行的历史。该后续 PTY 用例尚未校准；其剩余退出、停止和压力检查不能代证已通过。精简证据与原工件位置见 `docs/references/smoke-reload-autostart/surface-cutover-output-evidence.json`。本轮没有新增产品结论，不外推到 RuntimePersistence 开启或跨平台/跨版本矩阵。
+
+
+## PTY 稳健性与高输出测试的数据来源修正
+
+2026-10-10 用户授权处理 PTY 旧字段断言。`verifyPtyRobustness` 的 burst 80 和 Agent/Terminal 并行正文，以及相邻 `verifyTerminalFloodKeepsCanvasResponsive` 的 Agent 回复、Ctrl-C 后输出，统一按原 executionId/generation 的实际通道验证。逐个确认原执行 started 后再继续输入或启动另一执行；每次自然退出/主动停止后等待原最终保存和退休，再重启或进入后续检查。并行运行与高输出下新建节点、选中 Note、输入、停止/删除的验证保持。终端 marker 分段打印，避免命令回显充当结果；并行快照须匹配原执行身份、序列化格式和实际正文。
+
+默认 smoke/VSIX 新增 `local-pty-robustness` 具名阶段，复用稳健性与双 Terminal flood 两个测试并保留 trusted 原顺序。仅校准测试输入前提与输出契约，不以改动产品、延长超时或降低压力放行。
+
+
+本轮正文 helper 14/14、reset fixture 19/19、runner 环境清理与脚本语法通过；默认真实 VSIX 重新完成类型检查及打包。`local-pty-robustness` 的稳健性/flood 和 trusted 原顺序的同两项 **各通过两处**；burst 80、error/17、stopped、重启身份、并行正文和原序列化快照、双终端持续输出下 Note/Agent/新节点操作、Ctrl-C 恢复与四执行清理均通过。此前四个默认具名阶段以及 trusted 的恢复、surface 等前序检查也通过。原 PTY 旧字段断言阻塞已收口，证据见 `docs/references/smoke-reload-autostart/pty-output-evidence.json`。
+
+新的独立阻塞为 `verifyFailurePaths:9336`：测试创建使用 missing-agent-provider 的 Claude Agent，诊断已记录 commandResolutionFailed / startFailed，原未启动执行以 not-required 结算，页面收到缺失命令错误；节点却仍为 starting、liveSession=false、pendingLaunch=start，未进入期待的 error。此处没有等待实时正文，不能按旧字段问题放宽断言；需要继续定位准备阶段失败后的节点状态投影。原工件保留在 `.debug/pty-output/trusted-artifacts`，完整门禁及后续失败路径/恢复/Runtime 验收仍未通过。

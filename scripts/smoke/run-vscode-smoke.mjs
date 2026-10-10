@@ -58,6 +58,11 @@ const scenarios = [
     disableWorkspaceTrust: true
   },
   {
+    name: 'local-pty-robustness',
+    description: 'Local PTY exits, restarts and canvas responsiveness during concurrent terminal output',
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'runtime-legacy-reconnect',
     description: 'Legacy Runtime reconnect preserves bindings without automatic CLI resume',
     focusedOnly: true,

@@ -451,3 +451,9 @@ Host reload 把活动 Agent 保存成 stopped 的缺陷已修复：原最终保�
 
 
 下一项发布阻塞：`verifyPtyRobustness:9061` 仍从历史 metadata.recentOutput 等待 `[fake-agent] burst 080`。当前 Agent 为 waiting-input/live，原 executionId 的实时输出已包含该行，历史字段仍是此前手动恢复执行的摘要。需继续校准该 PTY 用例；其后续退出/停止及压力、Runtime 检查尚未通过。此前独立文件链接 DOM 与 early final-save pending 工件仍保留，未追认根因。
+
+
+2026-10-10 PTY 旧字段断言继续修复：稳健性的 burst/并行输出和紧接着双终端 flood 的 Agent/Ctrl-C 输出已按原执行通道校验；补齐 started 和原最终保存/退休等待，保留退出码、主动停止、并行快照、高输出下 Note 选择/新节点/输入/清理要求。独立默认 `local-pty-robustness` 与 trusted 原顺序的稳健性/flood 两部分各通过两处，原 PTY 断言阻塞收口；正文 helper 14/14、reset fixture 19/19、runner 环境/语法与 VSIX 类型/打包通过。证据见 `docs/references/smoke-reload-autostart/pty-output-evidence.json`。
+
+
+新的发布阻塞为 `verifyFailurePaths:9336`：缺失 Claude CLI 已产生 commandResolutionFailed/startFailed 和页面错误，未启动执行以 not-required 结算，但节点仍 starting、pendingLaunch=start、liveSession=false；测试期待 error。这是尚待定位的失败状态投影问题，不能改为期待 starting 放行。本轮未更改该产品路径或失败状态断言，后续失败路径/恢复/Runtime 检查未完成。原工件在 `.debug/pty-output/trusted-artifacts`，此前独立历史失败继续保留。
