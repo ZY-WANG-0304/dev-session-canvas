@@ -21,7 +21,7 @@ const unpackRoot = path.join(debugRoot, 'packaged-extension');
 const notifierExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier');
 const marketplaceReadmeMarker = '<!-- dev-session-canvas-marketplace-readme -->';
 const SMOKE_TEST_MODE_ENV_KEY = 'DEV_SESSION_CANVAS_SMOKE_TEST_MODE';
-const scenarios = ['owned-canvas-reconciliation', 'local-execution-flow', 'snapshot-only-manual-recovery', 'local-surface-cutover', 'local-pty-robustness', 'local-preparation-failure', 'trusted'];
+const scenarios = ['owned-canvas-reconciliation', 'local-execution-flow', 'snapshot-only-manual-recovery', 'local-surface-cutover', 'local-pty-robustness', 'local-preparation-failure', 'local-links-and-stop', 'trusted'];
 const scenarioFilter = process.env.DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER;
 if (scenarioFilter && !scenarios.includes(scenarioFilter)) {
   throw new Error(`Unsupported VSIX smoke scenario: ${scenarioFilter}`);

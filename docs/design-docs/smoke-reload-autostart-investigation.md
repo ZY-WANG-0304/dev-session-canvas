@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -402,3 +402,24 @@ PR #314 缺 CLI 的错误来自 `startNonNativeHostExecution` 的 prepare 阶段
 ### 证据与复跑
 
 精简证据：`docs/references/smoke-reload-autostart/link-stop-investigation-evidence.json`。`link-scan-observation.patch` 为只读页面扫描探针；在临时 checkout 应用它，再任选 `link-scan-original-scenario.patch`（三轮原用例观察）或 `link-scan-controlled-application.patch`（同链接应用前后对照），以 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=local-preparation-failure` 运行现有 `test:vsix-smoke`。两个入口 patch 互斥；三轮观察入口的进程 exit 0 只表示收集结束，须逐轮读结果，不表示原用例全部通过。所有 probe/控制源码已恢复，复跑 patch 不属于正式修复。
+
+
+## 正式方案：链接页面就绪与 owned 停止 smoke
+
+`verifyExecutionTerminalNativeInteractions` 每次打印链接正文后追加独有标记，按原 executionId/generation 等待正文和标记输出，再用目标 editor probe 确认“正文+标记”已进入 xterm 可见行；拼接可见行只用于兼容软换行，文件行列/图片/URL/tooltip 的真实交互断言继续保留。标记分段打印以排除命令回显，重新打开画布后复用链接也重新确认页面正文；整个等待前后验证原执行身份不变。
+
+`verifyStopVsQueuedExitRace` 等原执行退休后检查 stopped/0、保存的 SIGINT 收尾与恢复提示、原身份单次 host/executionExit、finalOutputSequence 一致、原保存 saved 和原 editor reader applied。摘要应与保存的实际退出信息及终端退出消息一致；不再检查未执行的 legacy 分支文案/私有诊断。既有 Host 两项停止回归直接检查原 owner.stopRequested 与单次 requestStop，保留资源和读者结算约束。新增默认 local-links-and-stop 阶段复用完整链接、Codex Stop 和 Claude Stop 原用例，trusted 中仍按原顺序执行。
+
+本轮实现不改变正式产品源码；既有 tooltip 可见超时仍保留为待复核边界，本次通过不追认旧失败瞬间。
+
+
+首次默认 VSIX 的七个独立阶段以及 trusted 中链接/Codex Stop 均通过后，原顺序在相邻 `verifyClaudeStopRestoresPreviousSignal` 等待运行期 recentOutput 超时。本轮将该用例同样迁移到原 executionId 的 started/实际输出，并在停止后等原退休再验证最终正文；Claude 不发送二次 Ctrl-C、不 force kill、无误生成 resume 信息的原断言保持不变。独立阶段同步复用该完整用例。
+
+
+### 修复验证与后续门禁
+
+语法检查、正文 helper 14/14、reset fixture 19/19、runner 环境检查与 Host 停止定向 2/2（共 487 项）通过。对 `link-target.ts:3:1` 临时注入 600ms 页面写入延迟，最终三个原用例组成的 local-links-and-stop 完整通过，包括真实文件行列、图片、搜索、URL/tooltip、Codex 与 Claude 停止；随后移除延迟，产品源码与本轮基线一致。复跑时在临时 checkout 应用 `docs/references/smoke-reload-autostart/link-page-wait-validation.patch`，以 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=local-links-and-stop` 运行 VSIX smoke，验证后丢弃该 patch。
+
+最终无延迟默认 VSIX 类型检查/打包及七个独立阶段全部通过。trusted 原顺序通过完整链接、滚动历史、snapshot-only 恢复、surface/PTY/flood、failure paths、持久化恢复、standby/fault injection、Codex Stop 与 Claude Stop。未跳过原行列、tooltip 或停止结果断言，本次两项已定位修正及相邻 Claude 正文等待已完成。
+
+完整 gate 仍失败：紧随其后的 `verifyClaudeExplicitSessionIdPreservesResumeContext:9972` 等待恢复策略超时。原 Claude 活跃且为 waiting-input，`resumeSessionId=session-explicit-123456789` 已存在，但 `resumeSupported=false`、`resumeStrategy=none`，测试期待 claude-session-id；此时尚未发送该用例的 Stop。它检查恢复能力状态，不是等待旧 recentOutput，根因尚未确认，不能放宽为只检查 ID。后续 RuntimePersistence 开启场景未执行，需在继续完整门禁前单独定位。精简结果与现场摘要见 `docs/references/smoke-reload-autostart/link-stop-fix-evidence.json`。

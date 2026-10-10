@@ -201,6 +201,20 @@ async function runSmoke() {
     console.log('Local execution flow: Agent burst, partial input, sleep, slowspin, restart, duplicate rejection, Terminal output and final save passed.');
     return;
   }
+  if (smokeScenario === 'local-links-and-stop') {
+    await ensureEditorCanvasReady();
+    await createBaseNodes({ waitForAutoStart: true });
+    const snapshot = await getDebugSnapshot();
+    const agentId = findNodeByKind(snapshot, 'agent').id;
+    const terminalId = findNodeByKind(snapshot, 'terminal').id;
+    await ensureAgentStopped(agentId);
+    await verifyExecutionTerminalNativeInteractions(terminalId);
+    await ensureTerminalStopped(terminalId);
+    await verifyStopVsQueuedExitRace(agentId);
+    await verifyClaudeStopRestoresPreviousSignal();
+    console.log('Local links and stop: rendered file/URL links, tooltip and original stop completion passed.');
+    return;
+  }
   if (smokeScenario === 'local-preparation-failure') {
     await ensureEditorCanvasReady();
     await verifyMissingAgentCliFailure();
@@ -8009,10 +8023,31 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       },
       'editor'
     );
-    const started = await waitForTerminalLive(terminalNodeId);
-    const execution = captureLocalExecutionIdentity(started, 'terminal', terminalNodeId);
+    const { execution } = await waitForLocalExecutionStarted('terminal', terminalNodeId);
     await clearHostMessages();
     await clearDiagnosticEvents();
+
+    let linkOutputSequence = 0;
+    const linkOutputRun = Date.now();
+    async function waitForLinkPage({ visibleText, marker }) {
+      assert.deepStrictEqual(captureLocalExecutionIdentity(await getDebugSnapshot(), 'terminal', terminalNodeId), execution);
+      // Concatenation permits soft wrapping; the unique marker excludes old history and command echo.
+      const renderedOutput = visibleText.replace(/\r?\n/g, '') + marker;
+      await waitForWebviewProbeOnSurface('editor', probe =>
+        readProbeTerminalVisibleLines(probe, terminalNodeId).join('').includes(renderedOutput), 10000);
+      assert.deepStrictEqual(captureLocalExecutionIdentity(await getDebugSnapshot(), 'terminal', terminalNodeId), execution);
+    }
+    async function printLinkOutput(command, visibleText) {
+      const suffix = `${linkOutputRun}_${++linkOutputSequence}`;
+      const output = { visibleText, marker: `DSC_LINK_${suffix}` };
+      await performWebviewDomAction({ kind: 'sendExecutionInput', nodeId: terminalNodeId,
+        data: `${command}; printf '%s%s\\n' 'DSC_LINK_' '${suffix}'\r`
+      }, 'editor', 10000);
+      await waitForLocalExecutionOutput(execution, visibleText, 'live', 20000);
+      await waitForLocalExecutionOutput(execution, `${output.marker}\r\n`, 'live', 20000);
+      await waitForLinkPage(output);
+      return output;
+    }
 
     await performWebviewDomAction(
       {
@@ -8065,16 +8100,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     const relativeLinkPath = path.relative(workspaceFolder.uri.fsPath, linkTargetPath).split(path.sep).join('/');
     const fileLinkText = `${relativeLinkPath}:2:8`;
 
-    await performWebviewDomAction(
-      {
-        kind: 'sendExecutionInput',
-        nodeId: terminalNodeId,
-        data: `printf '%s\\n' '${fileLinkText}'\r`
-      },
-      'editor',
-      10000
-    );
-    await waitForLocalExecutionOutput(execution, fileLinkText, 'live', 20000);
+    await printLinkOutput(`printf '%s\\n' '${fileLinkText}'`, fileLinkText);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction(
@@ -8121,16 +8147,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       .relative(workspaceFolder.uri.fsPath, mediaLinkTargetPath)
       .split(path.sep)
       .join('/');
-    await performWebviewDomAction(
-      {
-        kind: 'sendExecutionInput',
-        nodeId: terminalNodeId,
-        data: `printf '%s\\n' '${mediaFileLinkText}'\r`
-      },
-      'editor',
-      10000
-    );
-    await waitForLocalExecutionOutput(execution, mediaFileLinkText, 'live', 20000);
+    const mediaOutput = await printLinkOutput(`printf '%s\\n' '${mediaFileLinkText}'`, mediaFileLinkText);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction(
@@ -8169,6 +8186,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
+    await waitForLinkPage(mediaOutput);
     const expectedOpenRejection = 'Synthetic execution link opener rejection';
     const originalExecuteCommand = vscode.commands.executeCommand;
     vscode.commands.executeCommand = async (command, ...args) => {
@@ -8220,16 +8238,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       'editor',
       10000
     );
-    await performWebviewDomAction(
-      {
-        kind: 'sendExecutionInput',
-        nodeId: terminalNodeId,
-        data: `printf '%s\\n' '${cwdScopedFileLinkText}'\r`
-      },
-      'editor',
-      10000
-    );
-    await waitForLocalExecutionOutput(execution, cwdScopedFileLinkText, 'live', 20000);
+    await printLinkOutput(`printf '%s\\n' '${cwdScopedFileLinkText}'`, cwdScopedFileLinkText);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction(
@@ -8273,18 +8282,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     const multilinePathLineText = 'link-target.ts';
     const multilineLinkText = '2:8';
     const multilineResultLine = `  ${multilineLinkText}  export const two = 2;`;
-    await performWebviewDomAction(
-      {
-        kind: 'sendExecutionInput',
-        nodeId: terminalNodeId,
-        data: `printf '%s\\n%s\\n' '${multilinePathLineText}' '${multilineResultLine}'\r`
-      },
-      'editor',
-      10000
-    );
-    await waitForLocalExecutionOutput(
-      execution, `${multilinePathLineText}\r\n${multilineResultLine}\r\n`, 'live', 20000
-    );
+    await printLinkOutput(`printf '%s\\n%s\\n' '${multilinePathLineText}' '${multilineResultLine}'`, `${multilinePathLineText}\r\n${multilineResultLine}`);
     await waitForWebviewProbeOnSurface('editor', (probe) => {
       const lines = probe.nodes.find((node) => node.nodeId === terminalNodeId)?.terminalVisibleLines ?? [];
       return lines.some((line, index) => line === multilinePathLineText && lines[index + 1] === multilineResultLine);
@@ -8331,16 +8329,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
     const missingSearchLinkText = 'missing-target.ts:9:3';
-    await performWebviewDomAction(
-      {
-        kind: 'sendExecutionInput',
-        nodeId: terminalNodeId,
-        data: `printf '%s\\n' '${missingSearchLinkText}'\r`
-      },
-      'editor',
-      10000
-    );
-    await waitForLocalExecutionOutput(execution, missingSearchLinkText, 'live', 20000);
+    await printLinkOutput(`printf '%s\\n' '${missingSearchLinkText}'`, missingSearchLinkText);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction(
@@ -8375,16 +8364,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     const urlLinkText = browserSmokeServer.url;
     const expectedUrlTooltip = `Follow link (${describeExpectedExecutionLinkModifier()})`;
 
-    await performWebviewDomAction(
-      {
-        kind: 'sendExecutionInput',
-        nodeId: terminalNodeId,
-        data: `printf '%s\\n' '${urlLinkText}'\r`
-      },
-      'editor',
-      10000
-    );
-    await waitForLocalExecutionOutput(execution, urlLinkText, 'live', 20000);
+    const urlOutput = await printLinkOutput(`printf '%s\\n' '${urlLinkText}'`, urlLinkText);
 
     await performWebviewDomAction(
       {
@@ -8412,6 +8392,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     const clearedHoverProbe = await waitForWebviewProbe((probe) => probe.executionLinkTooltipText === null, 10000);
     assert.strictEqual(clearedHoverProbe.executionLinkTooltipText, null);
 
+    await waitForLinkPage(urlOutput);
     await clearDiagnosticEvents();
     await performWebviewDomAction(
       {
@@ -8442,16 +8423,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
     const explicitUrlLinkText = browserSmokeServer.url.replace('/hit', '/explicit');
-    await performWebviewDomAction(
-      {
-        kind: 'sendExecutionInput',
-        nodeId: terminalNodeId,
-        data: `printf '\\033]8;;%s\\a%s\\033]8;;\\a\\n' '${explicitUrlLinkText}' 'explicit-url'\r`
-      },
-      'editor',
-      10000
-    );
-    await waitForLocalExecutionOutput(execution, 'explicit-url', 'live', 20000);
+    await printLinkOutput(`printf '\\033]8;;%s\\a%s\\033]8;;\\a\\n' '${explicitUrlLinkText}' 'explicit-url'`, 'explicit-url');
 
     await clearDiagnosticEvents();
     await performWebviewDomAction(
@@ -8477,6 +8449,10 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
         ),
       10000
     );
+  } catch (error) {
+    await captureWebviewProbe('editor', 5000).catch(() => undefined);
+    await writeFailureArtifacts(error, path.join(artifactDir, 'native-interactions-before-cleanup'));
+    throw error;
   } finally {
     await Promise.resolve()
       .then(() =>
@@ -9831,33 +9807,40 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
   const agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'stopped');
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
-  assert.match(agentNode.summary, /Stopped Codex session/);
-  assert.match(agentNode.metadata.agent.recentOutput ?? '', /Token usage:/);
-  assert.match(agentNode.metadata.agent.recentOutput ?? '', /codex resume/);
+  const metadata = agentNode.metadata.agent;
+  assert.strictEqual(metadata.lastExitCode, 0);
+  assert.ok(metadata.lastExitSignal == null);
+  assert.strictEqual(agentNode.summary, 'Session ended with exit code 0.');
+  assert.strictEqual(metadata.lastExitMessage, agentNode.summary);
+  assert.match(metadata.recentOutput ?? '', /Token usage:/);
+  assert.match(metadata.recentOutput ?? '', /codex resume/);
+  assert.strictEqual((metadata.recentOutput?.match(/received signal INT/g) ?? []).length, 1);
+  assert.doesNotMatch(metadata.recentOutput ?? '', /exiting with code 9/);
 
-  const raceDiagnostics = (await getDiagnosticEvents()).slice(diagnosticStartIndex);
-  const scopedDiagnostics = raceDiagnostics.filter(
-    (event) => event.detail?.kind === 'agent' && event.detail?.nodeId === agentNodeId
+  const scopedDiagnostics = (await getDiagnosticEvents()).slice(diagnosticStartIndex).filter(
+    event => event.detail?.kind === 'agent' && event.detail?.nodeId === agentNodeId
   );
-  assert.strictEqual(
-    scopedDiagnostics.filter((event) => event.kind === 'execution/stopRequested').length,
-    1
-  );
-  const exitEvents = scopedDiagnostics.filter((event) => event.kind === 'execution/exited');
-  assert.strictEqual(exitEvents.length, 1);
-  assert.strictEqual(exitEvents[0].detail?.stopRequested, true);
-  assert.strictEqual(exitEvents[0].detail?.status, 'stopped');
+  const saves = scopedDiagnostics.filter(event => event.kind === 'execution/localFinalPersistence' &&
+    event.detail.executionId === execution.executionSessionId && event.detail.generation === execution.generation);
+  assert.strictEqual(saves.length, 1);
+  assert.strictEqual(saves[0].detail.submitted, true);
+  assert.strictEqual(saves[0].detail.result.kind, 'saved');
 
-  const hostMessages = await getHostMessages();
-  assert.strictEqual(
-    hostMessages.filter(
-      (message) =>
-        message.type === 'host/executionExit' &&
-        message.payload.kind === 'agent' &&
-        message.payload.nodeId === agentNodeId
-    ).length,
-    1
-  );
+  const readers = scopedDiagnostics.filter(event => event.kind === 'execution/localTerminalReaderSettled' &&
+    event.detail.executionSessionId === execution.executionSessionId && event.detail.lifecycle?.surface === 'editor');
+  assert.strictEqual(readers.length, 1);
+  assert.strictEqual(readers[0].detail.lifecycle.generation, original.surfaceLifecycle.editor.generation);
+  assert.strictEqual(readers[0].detail.lifecycle.frameId, original.surfaceLifecycle.editor.frameId);
+  assert.deepStrictEqual(readers[0].detail.outcome, { kind: 'applied', finalOutputSequence: metadata.outputSequence });
+
+  const exits = (await getHostMessages()).filter(message => message.type === 'host/executionExit' &&
+    message.payload.kind === 'agent' && message.payload.nodeId === agentNodeId);
+  assert.strictEqual(exits.length, 1);
+  assert.strictEqual(exits[0].payload.executionSessionId, execution.executionSessionId);
+  assert.deepStrictEqual(exits[0].payload.localCompletion, {
+    executionSessionId: execution.executionSessionId, finalOutputSequence: metadata.outputSequence
+  });
+  assert.strictEqual(exits[0].payload.message, metadata.lastExitMessage);
 }
 
 async function verifyClaudeStopRestoresPreviousSignal() {
@@ -9891,10 +9874,7 @@ async function verifyClaudeStopRestoresPreviousSignal() {
   );
   assert.ok(claudeAgentNode, 'Expected a Claude agent node configured with the fake provider.');
 
-  await waitForSnapshot((currentSnapshot) => {
-    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
-    return Boolean(currentAgent?.metadata?.agent?.liveSession);
-  });
+  const { snapshot: original, execution } = await waitForLocalExecutionStarted('agent', claudeAgentNode.id);
 
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
@@ -9905,10 +9885,7 @@ async function verifyClaudeStopRestoresPreviousSignal() {
     }
   });
 
-  await waitForSnapshot((currentSnapshot) => {
-    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === claudeAgentNode.id);
-    return Boolean(currentAgent?.metadata?.agent?.recentOutput?.includes('[fake-claude] hello claude'));
-  });
+  await waitForLocalExecutionOutput(execution, '[fake-claude] hello claude');
 
   await dispatchWebviewMessage({
     type: 'webview/stopExecutionSession',
@@ -9923,6 +9900,7 @@ async function verifyClaudeStopRestoresPreviousSignal() {
     return Boolean(currentAgent && currentAgent.status === 'stopped' && !currentAgent.metadata?.agent?.liveSession);
   });
 
+  snapshot = await waitForOriginalLocalExecutionRetirement(original, 'agent', claudeAgentNode.id);
   const stoppedAgentNode = findNodeById(snapshot, claudeAgentNode.id);
   assert.strictEqual(stoppedAgentNode.status, 'stopped');
   assert.strictEqual(stoppedAgentNode.metadata.agent.liveSession, false);
@@ -11975,7 +11953,7 @@ async function clearDiagnosticEvents() {
 }
 
 async function assertNoOwnedResizeFailures() {
-  if (!['trusted', 'local-execution-flow', 'owned-canvas-reconciliation', 'snapshot-only-manual-recovery', 'local-surface-cutover', 'local-pty-robustness', 'local-preparation-failure'].includes(smokeScenario)) return;
+  if (!['trusted', 'local-execution-flow', 'owned-canvas-reconciliation', 'snapshot-only-manual-recovery', 'local-surface-cutover', 'local-pty-robustness', 'local-preparation-failure', 'local-links-and-stop'].includes(smokeScenario)) return;
   const failures = (await getDiagnosticEvents()).filter(event =>
     event.kind === 'execution/resizeRejected' && event.detail?.reason === 'owned-resize-failed');
   assert.deepStrictEqual(failures, [], 'Local resize failures must be checked before diagnostics are cleared.');

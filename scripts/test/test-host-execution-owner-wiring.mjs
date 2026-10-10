@@ -386,6 +386,7 @@ for (const kind of ['terminal', 'agent']) {
     try {
       await until(f.clock, () => provider.messages.some(message => message.type === 'requestStop'), `${kind} stop request`);
       assert.equal(stopped, false, 'accepted stop is not a process or resource result');
+      assert.equal(record.execution.snapshot().stopRequested, true, 'the original owner records the requested stop');
       assert.equal(record.execution.snapshot().readerOutcome, 'pending');
       provider.output(1, `${kind}-stop-tail`);
       await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, `${kind} consumption during stop`);

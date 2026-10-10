@@ -63,6 +63,11 @@ const scenarios = [
     disableWorkspaceTrust: true
   },
   {
+    name: 'local-links-and-stop',
+    description: 'Rendered terminal links and original owned execution stop completion',
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'local-pty-robustness',
     description: 'Local PTY exits, restarts and canvas responsiveness during concurrent terminal output',
     disableWorkspaceTrust: true
