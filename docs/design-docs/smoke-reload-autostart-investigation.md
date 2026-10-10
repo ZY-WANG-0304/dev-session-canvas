@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md]
+related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md]
 updated_at: 2026-10-10
 ---
 
@@ -131,4 +131,25 @@ Host 内部结果区分 applied、superseded 和 cancelled：只有原生确认�
 
 默认真实 VSIX 的 owned reconciliation 与 local execution flow 均通过；trusted 通过原页面 probe、执行重启与普通 attention bridge，清理诊断前检查未发现本地 resize 失败。完整命令仍在独立异常退出通知等待处失败，未把这次结果写成发布门禁通过。源码改动限定 Host 尺寸编排与 smoke 失败检查，无临时诊断探针。证据见 `docs/references/smoke-reload-autostart/resize-repair-evidence.json`，执行过程见 `docs/exec-plans/completed/owned-startup-resize.md`。
 
-旧两次失败缺少瞬时状态，不能追认每一次历史 toast 都发生于 starting。本次两次诊断运行均通过原 `verifyRealWebviewProbe`，随后在执行重启及通知场景捕获同类 starting 错误；还捕获一次 `stopRequested=true` 的 Host 层 `Owned terminal mutation admission is closed.`，这是另一种拒绝，需要单独明确过期尺寸请求的结算语义。两次诊断完整流程最终均在 `verifyAgentAbnormalInterruptionNotifications` 等待 `execution/attentionNotificationPosted` 超时，节点已 error、退出码 27、attentionPending=false；通知根因尚未定位。普通 attention bridge 场景在这两次运行中完成，但完整门禁仍未通过。
+旧两次失败缺少瞬时状态，不能追认每一次历史 toast 都发生于 starting。本次两次诊断运行均通过原 `verifyRealWebviewProbe`，随后在执行重启及通知场景捕获同类 starting 错误；还捕获一次 `stopRequested=true` 的 Host 层 `Owned terminal mutation admission is closed.`，这是另一种拒绝，需要单独明确过期尺寸请求的结算语义。两次诊断完整流程最终均在 `verifyAgentAbnormalInterruptionNotifications` 等待 `execution/attentionNotificationPosted` 超时，节点已 error、退出码 27、attentionPending=false；当时通知根因尚未定位，后续专项结论见下节。普通 attention bridge 场景在这两次运行中完成，但完整门禁仍未通过。
+
+## Agent 退出码 27 后通知缺失的专项定位
+
+2026-10-10 基于 PR #314 `e872865b` 确认：**这是 snapshot-only 本地 owned 执行的业务通知接线遗漏，smoke 等待条件有效。** `CanvasPanelManager.persistNonNativeHostFinal` 已正确核对原执行、消费尾部并将节点保存为 error/lastExitCode=27，但它和调用它的 `finalized` 回调都没有调用 `markAndNotifyAgentAbnormalInterruption`。旧本地 session 的退出回调与 Supervisor 的最终快照路径有该调用。新路径因此完成了进程退出、终态保存和页面快照交付，却没有设置 attentionPending，也没有进入通知发布逻辑。
+
+真实 Linux VSIX 的 `Codex Crash Smoke` 节点使用 `RuntimePersistence=false`。用例设置 workbench 模式、启用 `agentAbnormalExit`，并关闭单独的异常正文文本通知。超时瞬间事件确认 18:49:23.946Z 原执行 started，18:49:25.783Z 最终保存 saved，18:49:26.662Z 原 reader applied 到序列 3；最终正文包含 `exit 27` 和 fake provider 的退出确认。节点 error、lastExitCode=27、attentionPending=false。超时窗口中没有该节点的 posted、suppressed 或 acknowledgement 事件。证据取自 `failure-error.txt` 的 `Last events`，不能用 finally 清理后的空诊断文件推断未通知。
+
+受控验证加载原 Host/owner/adapter，仅替换 provider transport 并拦截通知展示。通过真实 Host 输入写入并确认 written，使业务状态先进入 running，再提交同执行的退出结果、输出终结和资源释放：
+
+| 对照 | 自动退出路径 | 显式调用既有通知入口 |
+| --- | --- | --- |
+| Codex 非主动退出 27 | error、保存成功，通知入口调用 0 次，attention=false | 同配置及退出前上下文，posted=1、展示调用=1、attention=true |
+| Claude 非主动退出 27 | 与 Codex 相同 | 与 Codex 相同 |
+| Codex 正常退出 0 | stopped、保存成功，无通知 | 策略拒绝通知，attention=false |
+| Codex 主动停止后返回 27 | stopped、保存成功，无通知 | 携带 stopRequested=true，仍不通知 |
+
+四项特征对照 **4/4** 成立，表示复现缺口及验证正向路径，不是产品修复通过。相同环境中直接调用原入口能够发布，结合 workbench 分支仍记录 `execution/attentionNotificationPosted`，排除了本次 smoke 使用旧事件名或通知渠道失效的解释。正文文本开关与 `agentAbnormalExit` 是两个信号；关闭前者不应关闭异常退出提醒。此前 owned OSC/BEL 接线修复见 `notifier-companion-architecture.md`，覆盖的是正文信号，本次是另一条退出结果入口。resize 问题也有独立触发链，不能用它解释这次已成功保存后的通知缺失。
+
+历史审计发现 `b235a7bc` 首次引入 `persistNonNativeHostFinal` 时即无该通知调用，当时仍是默认关闭的接入；因此缺口先于 PR #314 的 resize 改动，但这一条历史证据不能单独确定默认用户首次受影响的版本。当前正式路径的修复应接回原异常退出策略，保留退出前 running/waiting-input 上下文与 stopRequested、provider、原执行身份，并协调提醒状态与最终保存的顺序。正常退出、用户停止、旧记录或重复终态不得产生误报，通知投递也不能阻塞原终态结算；不应只补一条诊断事件或延长 smoke 超时。
+
+本轮仅完成定位，没有修改产品通知逻辑或 smoke 断言。RuntimePersistence 开启的 Supervisor 路径只检查了源码调用点，未原生复验；系统通知弹窗、真实 Agent 服务、其他平台和跨版本兼容不在本轮证明范围。完整 trusted 仍被此缺陷阻塞。可复跑临时特征 patch 与精简证据见 `docs/references/smoke-reload-autostart/exit-notification-characterization.patch`、`exit-notification-evidence.json`；临时测试改动已恢复，计划见 `docs/exec-plans/completed/owned-agent-exit-notification-investigation.md`。
