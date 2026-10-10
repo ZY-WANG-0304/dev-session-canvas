@@ -1434,11 +1434,11 @@ async function runTrustedSmoke() {
   await verifyNoteMarkdownFileAssociation();
   await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
   await startFixtureExecutions(agentNode.id, terminalNode.id);
-  await verifyAgentExecutionFlow(agentNode.id);
+  const agentDiagnostics = await verifyAgentExecutionFlow(agentNode.id);
   await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
     expectAgentSessionId: true
   });
-  await verifyTerminalExecutionFlow(terminalNode.id);
+  const terminalDiagnostics = await verifyTerminalExecutionFlow(terminalNode.id);
   await verifyLegacyAttentionNotificationBridgeMigration();
   await verifyExecutionAttentionNotificationBridge(agentNode.id, noteNode.id);
   await verifyAgentAbnormalInterruptionNotifications();
@@ -1451,7 +1451,7 @@ async function runTrustedSmoke() {
   await verifyLiveSessionCutoverAndReload(terminalNode.id);
   await verifyPtyRobustness(agentNode.id, terminalNode.id);
   await verifyTerminalFloodKeepsCanvasResponsive(agentNode.id, terminalNode.id, noteNode.id);
-  await verifyFailurePaths(agentNode.id, terminalNode.id, noteNode.id);
+  const preparationDiagnostics = await verifyFailurePaths(agentNode.id, terminalNode.id, noteNode.id);
   await verifyPersistenceAndRecovery(noteNode.id, agentNode.id, terminalNode.id);
   await verifyStandbySurfaceIgnoresMessages(noteNode.id);
   await verifyPendingWebviewRequestFaultInjection(noteNode.id);
@@ -1481,7 +1481,7 @@ async function runTrustedSmoke() {
     runtimePersistenceNodes.agentNode.id,
     runtimePersistenceNodes.terminalNode.id
   );
-  await verifyTrustedDiagnostics(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
+  await verifyTrustedDiagnostics({ agent: agentDiagnostics, terminal: terminalDiagnostics, preparation: preparationDiagnostics });
   await verifyRealDeleteButton(runtimePersistenceNodes.noteNode.id);
 
   snapshot = await getDebugSnapshot();
@@ -4967,10 +4967,11 @@ function captureLocalExecutionIdentity(snapshot, kind, nodeId) {
 async function waitForLocalExecutionStarted(kind, nodeId) {
   const snapshot = kind === 'agent' ? await waitForAgentLive(nodeId) : await waitForTerminalLive(nodeId);
   const execution = captureLocalExecutionIdentity(snapshot, kind, nodeId);
-  await waitForDiagnosticEvents(events => events.some(event => event.kind === 'execution/started' &&
-    event.detail?.kind === kind && event.detail.nodeId === nodeId && event.detail.sessionId === execution.executionSessionId));
+  const isOriginalStart = event => event.kind === 'execution/started' &&
+    event.detail?.kind === kind && event.detail.nodeId === nodeId && event.detail.sessionId === execution.executionSessionId;
+  const events = await waitForDiagnosticEvents(events => events.some(isOriginalStart));
   assert.deepStrictEqual(captureLocalExecutionIdentity(await getDebugSnapshot(), kind, nodeId), execution);
-  return { snapshot, execution };
+  return { snapshot, execution, started: events.find(isOriginalStart) };
 }
 
 async function waitForRuntimeExecutionStarted(kind, nodeId) {
@@ -5182,17 +5183,9 @@ async function verifyAutoStartOnCreate(agentNodeId, terminalNodeId) {
 async function verifyAgentExecutionFlow(agentNodeId) {
   await clearHostMessages();
 
-  let snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(
-      currentNode?.metadata?.agent?.liveSession &&
-        (currentNode.status === 'starting' ||
-          currentNode.status === 'running' ||
-          currentNode.status === 'waiting-input')
-    );
-  });
+  const { snapshot: original, execution, started } = await waitForLocalExecutionStarted('agent', agentNodeId);
+  let snapshot = original;
   let agentNode = findNodeById(snapshot, agentNodeId);
-  const execution = captureLocalExecutionIdentity(snapshot, 'agent', agentNodeId);
   assert.strictEqual(agentNode.metadata.agent.liveSession, true);
   assert.ok(agentNode.metadata.agent.lastCols > 0);
   assert.ok(agentNode.metadata.agent.lastRows > 0);
@@ -5338,6 +5331,35 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   assert.strictEqual(agentNode.metadata.agent.lastRuntimeError, undefined);
   await ensureAgentStopped(agentNodeId);
 
+  const completionEvents = await waitForDiagnosticEvents(events => events.some(event =>
+    event.kind === 'execution/localFinalPersistence' && event.detail?.executionId === execution.executionSessionId &&
+    event.detail.generation === execution.generation && event.detail.result?.kind === 'saved') && events.some(event =>
+    event.kind === 'execution/localTerminalReaderSettled' && event.detail?.executionSessionId === execution.executionSessionId &&
+    event.detail.lifecycle?.surface === original.activeSurface && event.detail.outcome?.kind === 'applied'));
+  const saved = completionEvents.find(event => event.kind === 'execution/localFinalPersistence' &&
+    event.detail?.executionId === execution.executionSessionId && event.detail.generation === execution.generation);
+  assert.strictEqual(saved.detail.kind, 'agent');
+  assert.strictEqual(saved.detail.nodeId, agentNodeId);
+  assert.strictEqual(saved.detail.submitted, true);
+  assert.strictEqual(saved.detail.result.kind, 'saved');
+  const reader = completionEvents.find(event => event.kind === 'execution/localTerminalReaderSettled' &&
+    event.detail?.executionSessionId === execution.executionSessionId && event.detail.lifecycle?.surface === original.activeSurface);
+  assert.strictEqual(reader.detail.kind, 'agent');
+  assert.strictEqual(reader.detail.nodeId, agentNodeId);
+  const originalSurface = original.surfaceLifecycle[original.activeSurface];
+  assert.deepStrictEqual(reader.detail.lifecycle, { surface: original.activeSurface, mode: originalSurface.mode,
+    generation: originalSurface.generation, frameId: originalSurface.frameId });
+  assert.deepStrictEqual(reader.detail.outcome, { kind: 'applied', finalOutputSequence: agentNode.metadata.agent.outputSequence });
+  const exits = (await getHostMessages()).filter(message => message.type === 'host/executionExit' &&
+    message.payload.kind === 'agent' && message.payload.nodeId === agentNodeId &&
+    message.payload.executionSessionId === execution.executionSessionId);
+  assert.strictEqual(exits.length, 1);
+  assert.deepStrictEqual(exits[0].payload.localCompletion, {
+    executionSessionId: execution.executionSessionId, finalOutputSequence: agentNode.metadata.agent.outputSequence
+  });
+  assert.strictEqual(exits[0].payload.message, agentNode.metadata.agent.lastExitMessage);
+  const diagnostics = { execution, started, saved, reader, exit: exits[0], exitCode: agentNode.metadata.agent.lastExitCode };
+
   await clearHostMessages();
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
@@ -5373,6 +5395,7 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.ok(agentNode.metadata.agent.lastExitMessage);
   assert.strictEqual(agentNode.summary, agentNode.metadata.agent.lastExitMessage);
+  return diagnostics;
 }
 
 async function verifyPersistedStateFiltersLegacyTaskNodes() {
@@ -6646,9 +6669,9 @@ async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, noteNode
 async function verifyTerminalExecutionFlow(terminalNodeId) {
   await clearHostMessages();
 
-  let snapshot = await waitForTerminalLive(terminalNodeId);
+  const { snapshot: original, execution, started } = await waitForLocalExecutionStarted('terminal', terminalNodeId);
+  let snapshot = original;
   let terminalNode = findNodeById(snapshot, terminalNodeId);
-  const execution = captureLocalExecutionIdentity(snapshot, 'terminal', terminalNodeId);
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
   assert.ok(terminalNode.metadata.terminal.lastCols > 0);
   assert.ok(terminalNode.metadata.terminal.lastRows > 0);
@@ -6668,6 +6691,17 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   snapshot = await waitForLocalExecutionOutput(execution, outputMarker, 'live');
   terminalNode = findNodeById(snapshot, terminalNodeId);
   assert.strictEqual(terminalNode.status, 'live');
+
+  await clearHostMessages();
+  await requestExecutionSnapshot('terminal', terminalNodeId);
+  const isLiveSnapshot = message => message.type === 'host/executionSnapshot' &&
+    message.payload.kind === 'terminal' && message.payload.nodeId === terminalNodeId &&
+    message.payload.executionSessionId === execution.executionSessionId && message.payload.liveSession === true &&
+    findExecutionOutput([message], execution, outputMarker) !== undefined;
+  const liveMessages = await waitForHostMessages(messages => messages.some(isLiveSnapshot));
+  const liveSnapshot = liveMessages.find(isLiveSnapshot);
+  assert.ok(liveSnapshot.payload.cols > 0 && liveSnapshot.payload.rows > 0);
+  assert.deepStrictEqual(captureLocalExecutionIdentity(await getDebugSnapshot(), 'terminal', terminalNodeId), execution);
 
   await dispatchWebviewMessage({
     type: 'webview/stopExecutionSession',
@@ -6704,6 +6738,7 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   assert.deepStrictEqual({ cols: terminalNode.metadata.terminal.lastCols, rows: terminalNode.metadata.terminal.lastRows },
     savedViewport, 'Page reflow must keep the dimensions needed to hydrate the saved terminal.');
   assert.deepStrictEqual(terminalNode.metadata.terminal.serializedTerminalState, savedTerminal);
+  return { execution, started, liveSnapshot };
 }
 
 async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeId) {
@@ -9328,7 +9363,6 @@ async function verifyTerminalFloodKeepsCanvasResponsive(agentNodeId, terminalNod
 
 async function verifyMissingAgentCliFailure() {
   await clearHostMessages();
-  const diagnosticStartIndex = (await getDiagnosticEvents()).length;
 
   let snapshot = await getDebugSnapshot();
   const baselineAgentIds = new Set(snapshot.state.nodes.filter((node) => node.kind === 'agent').map((node) => node.id));
@@ -9370,13 +9404,19 @@ async function verifyMissingAgentCliFailure() {
   assert.strictEqual(agentNode.metadata.agent.pendingLaunch, undefined);
   snapshot = await waitForSnapshot(current => !current.localExecutions.some(record => record.nodeId === claudeAgentNode.id));
 
-  const failureDiagnostics = (await waitForDiagnosticEvents(events => events.slice(diagnosticStartIndex).some(event =>
-    event.kind === 'execution/startFailed' && event.detail?.nodeId === claudeAgentNode.id))).slice(diagnosticStartIndex);
+  // This new node is unique to the attempt; ring-buffer offsets are not stable cursors.
+  const failureDiagnostics = (await waitForDiagnosticEvents(events => events.some(event =>
+    event.kind === 'execution/startFailed' && event.detail?.nodeId === claudeAgentNode.id)))
+    .filter(event => event.detail?.nodeId === claudeAgentNode.id);
   const finalPersistence = failureDiagnostics.filter(event => event.kind === 'execution/localFinalPersistence'
     && event.detail?.nodeId === claudeAgentNode.id);
   assert.strictEqual(finalPersistence.length, 1);
   assert.strictEqual(finalPersistence[0].detail.submitted, false);
   assert.strictEqual(finalPersistence[0].detail.result.kind, 'not-required');
+  assert.ok(finalPersistence[0].detail.executionId && finalPersistence[0].detail.generation);
+  const failure = failureDiagnostics.find(event => event.kind === 'execution/startFailed');
+  assert.strictEqual(failure.detail.kind, 'agent');
+  assert.strictEqual(failure.detail.suppressed, undefined);
   assert.strictEqual(failureDiagnostics.some(event => event.kind === 'execution/started'
     && event.detail?.nodeId === claudeAgentNode.id), false);
   assert.ok(
@@ -9414,11 +9454,12 @@ async function verifyMissingAgentCliFailure() {
   assert.strictEqual(snapshot.state.nodes.some((node) => node.id === claudeAgentNode.id), false);
 
   console.log('Local preparation failure: missing Claude CLI reaches error, clears pending launch, reports once and releases the unstarted record.');
+  return { nodeId: claudeAgentNode.id, failure, persistence: finalPersistence[0] };
 }
 
 async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   const diagnosticStartIndex = (await getDiagnosticEvents()).length;
-  await verifyMissingAgentCliFailure();
+  const preparationDiagnostics = await verifyMissingAgentCliFailure();
   let snapshot = await getDebugSnapshot();
   let hostMessages;
   let agentNode;
@@ -9609,6 +9650,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   assert.strictEqual(findNodeById(snapshot, noteNodeId).title, REAL_DOM_NOTE_TITLE);
   assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_BODY);
   assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'closed');
+  return preparationDiagnostics;
 }
 
 async function verifyEmbeddedTerminalThemeFollowWorkbench(agentNodeId, terminalNodeId) {
@@ -13472,7 +13514,15 @@ async function persistLastWebviewProbe() {
   );
 }
 
-async function verifyTrustedDiagnostics(agentNodeId, terminalNodeId) {
+async function verifyTrustedDiagnostics(evidence) {
+  // Evidence is returned only after each generating scenario has verified its own execution.
+  assert.ok(evidence?.agent?.started && evidence.agent.saved && evidence.agent.reader && evidence.agent.exit,
+    'Expected verified Agent start, exit, final save and reader evidence from verifyAgentExecutionFlow.');
+  assert.strictEqual(evidence.agent.exitCode, 0);
+  assert.ok(evidence?.terminal?.started && evidence.terminal.liveSnapshot,
+    'Expected verified Terminal start and live snapshot evidence from verifyTerminalExecutionFlow.');
+  assert.ok(evidence?.preparation?.failure && evidence.preparation.persistence,
+    'Expected verified missing-CLI failure evidence from verifyMissingAgentCliFailure.');
   const diagnosticEvents = await getDiagnosticEvents();
 
   assert.ok(
@@ -13495,49 +13545,6 @@ async function verifyTrustedDiagnostics(agentNodeId, terminalNodeId) {
       );
     }),
     'Expected state/loadSelected diagnostics to report the selected snapshot/root-local snapshot hash.'
-  );
-  assert.ok(
-    diagnosticEvents.some(
-      (event) =>
-        event.kind === 'execution/started' &&
-        event.detail?.kind === 'agent' &&
-        typeof event.detail?.nodeId === 'string'
-    )
-  );
-  assert.ok(
-    diagnosticEvents.some(
-      (event) =>
-        event.kind === 'execution/exited' &&
-        event.detail?.kind === 'agent' &&
-        typeof event.detail?.nodeId === 'string'
-    )
-  );
-  assert.ok(
-    diagnosticEvents.some(
-      (event) =>
-        event.kind === 'execution/started' &&
-        event.detail?.kind === 'terminal' &&
-        typeof event.detail?.nodeId === 'string'
-    )
-  );
-  assert.ok(
-    diagnosticEvents.some(
-      (event) =>
-        event.kind === 'execution/snapshotPosted' &&
-        event.detail?.kind === 'terminal' &&
-        typeof event.detail?.nodeId === 'string' &&
-        event.detail?.liveSession === true
-    )
-  );
-  assert.ok(
-    diagnosticEvents.some(
-      (event) =>
-        ((event.kind === 'execution/spawnError' &&
-          event.detail?.kind === 'agent') ||
-          (event.kind === 'execution/exited' &&
-            event.detail?.kind === 'agent' &&
-            event.detail?.status === 'error'))
-    )
   );
   assert.ok(
     diagnosticEvents.some(

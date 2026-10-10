@@ -610,3 +610,11 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 2026-10-11 后续定位：已确认汇总断言沿用旧 PTY 专属 `execution/exited` / live `execution/snapshotPosted`，owned 本地与 Runtime 路径绕过这些记录点；长流程末尾的 2000 条可清空数组也不能保证早期失败事件仍存在。原生 owned Agent exit27、页面退出消息、最终保存 saved 和 reader applied 均成立，只有 59 条事件仍无旧 exited；原 Host boundary 后 95 条事件时原汇总断言再次失败。原失败工件八项谓词中第 4、6、7 项不满足，不能只放宽第一项收口。
 
 待修复：在具名退出/失败/live 快照场景内按原执行身份验证并保存结果，末尾不再追溯易失缓存；保留进程结果、最终输出、保存和读者结算覆盖，不补旧事件求绿。正式 smoke 与产品本轮未改，完整 gate 未重跑。证据为 `docs/references/smoke-reload-autostart/trusted-diagnostics-evidence.json`，计划为 `docs/exec-plans/completed/trusted-diagnostics-investigation.md`；其余历史限制保持原状态。
+
+2026-10-11 正式修复已完成：Agent flow、Terminal flow、缺失 CLI 用例按原身份生成已验证证据，末尾汇总不再等待旧 PTY 事件。原生清空诊断后的正对照和缺少任一证据的三项负对照通过；七个独立 VSIX 阶段及 trusted 原序本次汇总通过。完整门禁仍失败，下一处如下；前述“待修复”由本段收口。证据：`docs/references/smoke-reload-autostart/trusted-diagnostics-fix-evidence.json`。
+
+## trusted 文件活动用例等待第二个 Agent live（2026-10-11，PR #314）
+
+`verifyFileActivityViewsAndOpenFiles:3795` 在创建两项专属 Agent 后等待第二项 live 超时。失败现场第一项 waiting-input/live=true，第二项 starting/live=false/pendingLaunch=start，尚未执行文件读写。当前只记录下一处阻塞，未定位为何启动未完成，不直接归为准入、尺寸或产品文件活动故障。
+
+默认命令已通过本次诊断汇总，故此失败不回退为旧诊断阻塞。另保留日志中立即模拟 reload 期间 Runtime client disconnected 的批次消费报告；该用例原断言继续通过，因果尚未研究。后续需分别确认第二项启动链和该报告的范围；历史 URL 清理停滞、真实新 Host/checkpoint/跨平台验收不由本轮代证。工件见 `.debug/trusted-diagnostics-fix/trusted-artifacts/`，精简证据为 `docs/references/smoke-reload-autostart/trusted-diagnostics-fix-evidence.json`。本轮进程已退出，无本轮 fake provider/Supervisor 残留。
