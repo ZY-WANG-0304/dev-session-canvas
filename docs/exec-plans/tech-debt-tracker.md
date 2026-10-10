@@ -633,3 +633,10 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 本轮完整默认 VSIX 的七个独立阶段通过，但 trusted 在更早的 `verifyRuntimeReloadRecovery:8938` 等待手动 resume 后 live/resuming 超时，节点 resume-failed，提示 Missing resumable Codex session ID。该用例 reload 后 resume-ready、可信 providerSessionId、重新挂载页面不自动 resume 的断言已通过；最新错误为 execution/startFailed 的 preparation exception，尚未确认为何恢复请求未取得会话 ID，不归为本次准入拒绝，也不宣布恢复设计回归已修复。默认流程因此未到文件活动，不能用专项越过启动来声称 trusted 全序通过。
 
 工件分别位于 `.debug/file-activity-start-fix/file-activity-1791652134021/runtime/artifacts/` 与 `.debug/file-activity-start-fix/trusted-artifacts/`；精简证据见 `docs/references/smoke-reload-autostart/file-activity-start-fix-evidence.json`。专项场景 exit1；xvfb-run 清理临时目录又报告 exit5，但最后 snapshot localExecutions=0，无本轮相关进程残留。历史 URL 清理停滞与 Runtime batch disconnected 仍保留，未触达项、真实新 Host、真实 provider 和跨平台验证不由本轮代证。
+
+
+2026-10-11 两项根因均已确认，正式修复仍待处理。文件活动首 read 已到 provider 并有原 executionSessionId 回执，但 owned 本地启动提前 return，绕过 fileActivitySession 的创建、launch 参数/环境注入与绑定。只读 probe 确认 create/bind=0、无事件文件路径，控制接回正式 collector 后原首 read 引用断言通过。共用分支也遗漏真实 Claude hooks，属于产品功能缺口；正式修复需将 collector 的创建、拒绝清理、末尾 drain、删除、路由迁移和迟到事件纳入原执行责任。不能靠解析 PTY 文本或复制实验预先 bind 收口。
+
+手动 resume 是 fake-provider 测试适配缺陷：停止提示将 fake-provider+storagePath 替换为 codex-session-id，清除了 resumeStoragePath；ID 本身仍在，fake resolver 因缺 storagePath 返回 none，builder 才报缺 ID。probe/control 均等待初始原 burst 回执使 shell trap 就绪；只保护 fake 恢复上下文后，原恢复函数全部断言（含重挂载不自动恢复、手动 resume 和 exit19）通过。同 metadata 使用真实 Codex 命令仍可构造 resume 参数，不据此认定真实 provider 恢复损坏。应修复 fake 恢复契约一致性，保留真实提示校正与产品状态断言。
+
+证据 `docs/references/smoke-reload-autostart/file-activity-resume-root-cause-evidence.json`；调查四轮均完成且清理为零执行，两个 probe 的原场景仍失败，两个 control 仅为隔离实验。正式源码和 smoke 未改，本轮不重跑或宣称完整 gate 通过；历史 URL/Runtime batch 报告等限制不变。

@@ -1,0 +1,429 @@
+{
+  "baseline": "5f0d360e78c0645fd8039e1d9aeeb8b9e2747768",
+  "environment": "Linux x64 / Node22.23.3 / VS Code1.141.0 / native PTY / fake provider / RuntimePersistence=false",
+  "conclusions": {
+    "fileActivity": "产品接线遗漏：owned 本地启动提前返回，未创建或传入 fileActivitySession，也未绑定采集器；原执行已经输出 read 回执。真实 Claude 的 hook/settings 注入也经过被绕开的同一公共分支，代码影响成立，未运行真实 Claude。",
+    "resume": "测试专用 fake-provider 恢复上下文不一致：停止提示解析将 fake-provider+storagePath 整体替换为 codex-session-id，无 storagePath；fake resolver 因缺 storagePath 返回 none，builder 因 none 无 sessionId 报错。原 metadata 的 sessionId 未丢失。真实 Codex 命令同 metadata 控制返回 codex-session-id 并构造正确 resume 参数。"
+  },
+  "controls": {
+    "file": "仅在隔离运行包装正式 buildAgentLaunchSpec，创建、传入并绑定真实 AgentFileActivitySession，原首 read 引用断言通过；不覆盖正式 owned collector 生命周期、末尾 drain 或后续 UI。",
+    "resume": "probe/control 均在原初始 Agent started 后发送 burst1 并等待原输出，确保 fake shell 已安装 INT trap。控制仅阻止 fake-provider 上下文被文本解析器替换；原 verifyRuntimeReloadRecovery 完整通过，包括页面重新挂载无自动恢复、手动恢复、原 provider ID、输出及 exit19。",
+    "instrumentation": "所有隔离包只增加 getDebugSnapshot 暴露 manager 引用；probe 使用只读包装。control 有明确标记的实验行为修改。正式产品源码与 smoke 未改。",
+    "interpretation": "四个脚本 exit0 表示预期调查结果成功捕获；两个 probe 的原用例仍失败，不能当作门禁通过。"
+  },
+  "runs": {
+    "file-probe": {
+      "artifact": ".debug/file-activity-resume-investigation/file-probe-1791653529330/runtime/artifacts/result.json",
+      "investigationExitCode": 0,
+      "originalScenarioPassed": false,
+      "remainingExecutions": 0,
+      "hashes": {
+        "original": {
+          "extension.js": "0d5c75cd268992a97e6fe93b3b8fdc3a84e97387e97ed1255427cada3e53ef29",
+          "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "instrumentedExtension": "08d68e7793d42ae18ae2ee720090707d33f0618041ef7f1908fa686060f4bee6"
+      },
+      "traces": [
+        {
+          "method": "buildLaunch",
+          "nodeId": "agent-4-d6bd9521-7967-408b-9ba3-1584c0062f08",
+          "file": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "args": [],
+          "resume": {
+            "supported": true,
+            "strategy": "fake-provider",
+            "sessionId": "7c73edd6-09fa-4888-baf1-a2e8f16e807b",
+            "storagePath": "/tmp/dscr/.debug/file-activity-resume-investigation/file-probe-1791653529330/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-4-d6bd9521-7967-408b-9ba3-1584c0062f08"
+          },
+          "fileActivityArgument": false,
+          "fakeEventPath": null,
+          "claudeEventPath": null,
+          "boundFileSessions": []
+        },
+        {
+          "method": "buildLaunch",
+          "nodeId": "agent-5-808e2545-87a6-4a1b-b067-ce3d749362c1",
+          "file": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "args": [],
+          "resume": {
+            "supported": true,
+            "strategy": "fake-provider",
+            "sessionId": "83802ffa-00d5-4cbc-bbc0-38dd8c93fb0f",
+            "storagePath": "/tmp/dscr/.debug/file-activity-resume-investigation/file-probe-1791653529330/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-5-808e2545-87a6-4a1b-b067-ce3d749362c1"
+          },
+          "fileActivityArgument": false,
+          "fakeEventPath": null,
+          "claudeEventPath": null,
+          "boundFileSessions": []
+        }
+      ],
+      "readOutput": [
+        {
+          "type": "host/executionOutput",
+          "payload": {
+            "kind": "agent",
+            "nodeId": "agent-4-d6bd9521-7967-408b-9ba3-1584c0062f08",
+            "executionSessionId": "2662c5fe-8d4c-4bea-ace3-ce6eca54d426",
+            "chunk": "> [fake-agent] read /tmp/dscr/.debug/vscode-smoke/file-activity/agent-a-only.md\r\n> ",
+            "outputStartSequence": 3,
+            "outputSequence": 3,
+            "terminalTitle": null,
+            "localOutputReceipt": {
+              "receiptId": "820a87e2-134a-4d1b-b8a8-3908fa58289a",
+              "outputSequence": 3
+            }
+          },
+          "lifecycle": {
+            "surface": "panel",
+            "mode": "active",
+            "generation": 2,
+            "frameId": "frame-34070b45-d7f1-4030-aba9-710382bcdb87"
+          }
+        }
+      ],
+      "filesEnabled": true,
+      "references": []
+    },
+    "file-control": {
+      "artifact": ".debug/file-activity-resume-investigation/file-control-1791653568596/runtime/artifacts/result.json",
+      "investigationExitCode": 0,
+      "originalScenarioPassed": true,
+      "remainingExecutions": 0,
+      "hashes": {
+        "original": {
+          "extension.js": "0d5c75cd268992a97e6fe93b3b8fdc3a84e97387e97ed1255427cada3e53ef29",
+          "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "instrumentedExtension": "08d68e7793d42ae18ae2ee720090707d33f0618041ef7f1908fa686060f4bee6"
+      },
+      "traces": [
+        {
+          "method": "createFileActivity",
+          "nodeId": "agent-4-85634a39-ee0b-4907-8991-b4fa45b74e9e",
+          "provider": "codex",
+          "command": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "extraArgs": [],
+          "extraEnv": {
+            "DEV_SESSION_CANVAS_FAKE_AGENT_FILE_EVENT_STREAM_PATH": "/tmp/dscr/.debug/file-activity-resume-investigation/file-control-1791653568596/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-file-activity/d9bec146-098a-4e57-adb3-a686d6d981c8/events.ndjson"
+          }
+        },
+        {
+          "method": "bindFileActivity",
+          "nodeId": "agent-4-85634a39-ee0b-4907-8991-b4fa45b74e9e"
+        },
+        {
+          "method": "buildLaunch",
+          "nodeId": "agent-4-85634a39-ee0b-4907-8991-b4fa45b74e9e",
+          "file": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "args": [],
+          "resume": {
+            "supported": true,
+            "strategy": "fake-provider",
+            "sessionId": "0b906478-1366-46bf-b5aa-481ce896a327",
+            "storagePath": "/tmp/dscr/.debug/file-activity-resume-investigation/file-control-1791653568596/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-4-85634a39-ee0b-4907-8991-b4fa45b74e9e"
+          },
+          "fileActivityArgument": true,
+          "fakeEventPath": "/tmp/dscr/.debug/file-activity-resume-investigation/file-control-1791653568596/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-file-activity/d9bec146-098a-4e57-adb3-a686d6d981c8/events.ndjson",
+          "claudeEventPath": null,
+          "boundFileSessions": [
+            "agent-4-85634a39-ee0b-4907-8991-b4fa45b74e9e"
+          ]
+        },
+        {
+          "method": "createFileActivity",
+          "nodeId": "agent-5-6db9616f-f41d-49a9-8361-5fea2edf9788",
+          "provider": "codex",
+          "command": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "extraArgs": [],
+          "extraEnv": {
+            "DEV_SESSION_CANVAS_FAKE_AGENT_FILE_EVENT_STREAM_PATH": "/tmp/dscr/.debug/file-activity-resume-investigation/file-control-1791653568596/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-file-activity/b474a898-7fb2-41ba-81e0-3a873df64c60/events.ndjson"
+          }
+        },
+        {
+          "method": "bindFileActivity",
+          "nodeId": "agent-5-6db9616f-f41d-49a9-8361-5fea2edf9788"
+        },
+        {
+          "method": "buildLaunch",
+          "nodeId": "agent-5-6db9616f-f41d-49a9-8361-5fea2edf9788",
+          "file": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "args": [],
+          "resume": {
+            "supported": true,
+            "strategy": "fake-provider",
+            "sessionId": "9d4003bc-13b2-420b-9af7-e2d4710afe69",
+            "storagePath": "/tmp/dscr/.debug/file-activity-resume-investigation/file-control-1791653568596/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-5-6db9616f-f41d-49a9-8361-5fea2edf9788"
+          },
+          "fileActivityArgument": true,
+          "fakeEventPath": "/tmp/dscr/.debug/file-activity-resume-investigation/file-control-1791653568596/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-file-activity/b474a898-7fb2-41ba-81e0-3a873df64c60/events.ndjson",
+          "claudeEventPath": null,
+          "boundFileSessions": [
+            "agent-4-85634a39-ee0b-4907-8991-b4fa45b74e9e",
+            "agent-5-6db9616f-f41d-49a9-8361-5fea2edf9788"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "id": "f13a43d3aa7505f2",
+          "filePath": "/tmp/dscr/.debug/vscode-smoke/file-activity/agent-a-only.md",
+          "relativePath": ".debug/vscode-smoke/file-activity/agent-a-only.md",
+          "updatedAt": "2026-10-10T17:32:56.073Z",
+          "owners": [
+            {
+              "nodeId": "agent-4-85634a39-ee0b-4907-8991-b4fa45b74e9e",
+              "accessMode": "read",
+              "updatedAt": "2026-10-10T17:32:56.073Z"
+            }
+          ]
+        }
+      ]
+    },
+    "resume-probe": {
+      "artifact": ".debug/file-activity-resume-investigation/resume-probe-1791653604642/runtime/artifacts/result.json",
+      "investigationExitCode": 0,
+      "originalScenarioPassed": false,
+      "remainingExecutions": 0,
+      "hashes": {
+        "original": {
+          "extension.js": "0d5c75cd268992a97e6fe93b3b8fdc3a84e97387e97ed1255427cada3e53ef29",
+          "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "instrumentedExtension": "08d68e7793d42ae18ae2ee720090707d33f0618041ef7f1908fa686060f4bee6"
+      },
+      "traces": [
+        {
+          "method": "resolveResume",
+          "nodeId": "agent-1-1193386a-a20d-4f7b-ba01-f256f7fb9e53",
+          "provider": "codex",
+          "launchMode": "start",
+          "command": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "metadata": {
+            "provider": "codex",
+            "lifecycle": "stopped",
+            "liveSession": false,
+            "resumeStrategy": "fake-provider",
+            "resumeSupported": true,
+            "resumeSessionId": "bf63383f-0340-43f1-95df-8a30b08024f6",
+            "resumeStoragePath": "/tmp/dscr/.debug/file-activity-resume-investigation/resume-probe-1791653604642/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-1193386a-a20d-4f7b-ba01-f256f7fb9e53"
+          },
+          "result": {
+            "supported": true,
+            "strategy": "fake-provider",
+            "sessionId": "9f5bad80-b921-41f1-9d5a-5c9e7a5cdd49",
+            "storagePath": "/tmp/dscr/.debug/file-activity-resume-investigation/resume-probe-1791653604642/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-1193386a-a20d-4f7b-ba01-f256f7fb9e53"
+          }
+        },
+        {
+          "method": "parseResumeHint",
+          "previous": {
+            "supported": true,
+            "strategy": "fake-provider",
+            "sessionId": "9f5bad80-b921-41f1-9d5a-5c9e7a5cdd49",
+            "storagePath": "/tmp/dscr/.debug/file-activity-resume-investigation/resume-probe-1791653604642/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-1193386a-a20d-4f7b-ba01-f256f7fb9e53"
+          },
+          "parsed": {
+            "supported": true,
+            "strategy": "codex-session-id",
+            "sessionId": "9f5bad80-b921-41f1-9d5a-5c9e7a5cdd49"
+          },
+          "hasCodexStopHint": true
+        },
+        {
+          "method": "parseResumeHint",
+          "previous": {
+            "supported": true,
+            "strategy": "codex-session-id",
+            "sessionId": "9f5bad80-b921-41f1-9d5a-5c9e7a5cdd49"
+          },
+          "parsed": {
+            "supported": true,
+            "strategy": "codex-session-id",
+            "sessionId": "9f5bad80-b921-41f1-9d5a-5c9e7a5cdd49"
+          },
+          "hasCodexStopHint": true
+        },
+        {
+          "method": "resolveResume",
+          "nodeId": "agent-1-1193386a-a20d-4f7b-ba01-f256f7fb9e53",
+          "provider": "codex",
+          "launchMode": "resume",
+          "command": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "metadata": {
+            "provider": "codex",
+            "lifecycle": "resume-ready",
+            "liveSession": false,
+            "resumeStrategy": "codex-session-id",
+            "resumeSupported": true,
+            "resumeSessionId": "9f5bad80-b921-41f1-9d5a-5c9e7a5cdd49"
+          },
+          "result": {
+            "supported": false,
+            "strategy": "none"
+          }
+        },
+        {
+          "method": "buildLaunchFailed",
+          "nodeId": "agent-1-1193386a-a20d-4f7b-ba01-f256f7fb9e53",
+          "resume": {
+            "supported": false,
+            "strategy": "none"
+          },
+          "reason": "Missing resumable Codex session ID."
+        }
+      ],
+      "realCommandContextControl": {
+        "metadata": {
+          "provider": "codex",
+          "lifecycle": "resume-failed",
+          "liveSession": false,
+          "resumeStrategy": "codex-session-id",
+          "resumeSupported": true,
+          "resumeSessionId": "9f5bad80-b921-41f1-9d5a-5c9e7a5cdd49",
+          "lastResumeError": "Missing resumable Codex session ID."
+        },
+        "context": {
+          "supported": true,
+          "strategy": "codex-session-id",
+          "sessionId": "9f5bad80-b921-41f1-9d5a-5c9e7a5cdd49"
+        },
+        "args": [
+          "resume",
+          "9f5bad80-b921-41f1-9d5a-5c9e7a5cdd49"
+        ]
+      }
+    },
+    "resume-control": {
+      "artifact": ".debug/file-activity-resume-investigation/resume-control-1791653657954/runtime/artifacts/result.json",
+      "investigationExitCode": 0,
+      "originalScenarioPassed": true,
+      "remainingExecutions": 0,
+      "hashes": {
+        "original": {
+          "extension.js": "0d5c75cd268992a97e6fe93b3b8fdc3a84e97387e97ed1255427cada3e53ef29",
+          "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "instrumentedExtension": "08d68e7793d42ae18ae2ee720090707d33f0618041ef7f1908fa686060f4bee6"
+      },
+      "traces": [
+        {
+          "method": "resolveResume",
+          "nodeId": "agent-1-fba5c364-81f9-4745-8d6f-9bc4b1ff53d8",
+          "provider": "codex",
+          "launchMode": "start",
+          "command": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "metadata": {
+            "provider": "codex",
+            "lifecycle": "stopped",
+            "liveSession": false,
+            "resumeStrategy": "fake-provider",
+            "resumeSupported": true,
+            "resumeSessionId": "cf29af76-9d78-4236-98cf-3d70605445ac",
+            "resumeStoragePath": "/tmp/dscr/.debug/file-activity-resume-investigation/resume-control-1791653657954/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-fba5c364-81f9-4745-8d6f-9bc4b1ff53d8"
+          },
+          "result": {
+            "supported": true,
+            "strategy": "fake-provider",
+            "sessionId": "d3d2b4ea-043e-4de0-a11f-30894c8d7f90",
+            "storagePath": "/tmp/dscr/.debug/file-activity-resume-investigation/resume-control-1791653657954/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-fba5c364-81f9-4745-8d6f-9bc4b1ff53d8"
+          }
+        },
+        {
+          "method": "parseResumeHint",
+          "previous": {
+            "supported": true,
+            "strategy": "fake-provider",
+            "sessionId": "d3d2b4ea-043e-4de0-a11f-30894c8d7f90",
+            "storagePath": "/tmp/dscr/.debug/file-activity-resume-investigation/resume-control-1791653657954/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-fba5c364-81f9-4745-8d6f-9bc4b1ff53d8"
+          },
+          "parsed": {
+            "supported": true,
+            "strategy": "codex-session-id",
+            "sessionId": "d3d2b4ea-043e-4de0-a11f-30894c8d7f90"
+          },
+          "hasCodexStopHint": true
+        },
+        {
+          "method": "parseResumeHint",
+          "previous": {
+            "supported": true,
+            "strategy": "fake-provider",
+            "sessionId": "d3d2b4ea-043e-4de0-a11f-30894c8d7f90",
+            "storagePath": "/tmp/dscr/.debug/file-activity-resume-investigation/resume-control-1791653657954/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-fba5c364-81f9-4745-8d6f-9bc4b1ff53d8"
+          },
+          "parsed": {
+            "supported": true,
+            "strategy": "codex-session-id",
+            "sessionId": "d3d2b4ea-043e-4de0-a11f-30894c8d7f90"
+          },
+          "hasCodexStopHint": true
+        },
+        {
+          "method": "resolveResume",
+          "nodeId": "agent-1-fba5c364-81f9-4745-8d6f-9bc4b1ff53d8",
+          "provider": "codex",
+          "launchMode": "resume",
+          "command": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "metadata": {
+            "provider": "codex",
+            "lifecycle": "resume-ready",
+            "liveSession": false,
+            "resumeStrategy": "fake-provider",
+            "resumeSupported": true,
+            "resumeSessionId": "d3d2b4ea-043e-4de0-a11f-30894c8d7f90",
+            "resumeStoragePath": "/tmp/dscr/.debug/file-activity-resume-investigation/resume-control-1791653657954/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-fba5c364-81f9-4745-8d6f-9bc4b1ff53d8"
+          },
+          "result": {
+            "supported": true,
+            "strategy": "fake-provider",
+            "sessionId": "d3d2b4ea-043e-4de0-a11f-30894c8d7f90",
+            "storagePath": "/tmp/dscr/.debug/file-activity-resume-investigation/resume-control-1791653657954/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-fba5c364-81f9-4745-8d6f-9bc4b1ff53d8"
+          }
+        }
+      ],
+      "agentFinal": [
+        {
+          "nodeId": "agent-1-fba5c364-81f9-4745-8d6f-9bc4b1ff53d8",
+          "status": "error",
+          "metadata": {
+            "backend": "node-pty",
+            "lifecycle": "error",
+            "provider": "codex",
+            "launchPreset": "default",
+            "runtimeKind": "pty-cli",
+            "resumeSupported": true,
+            "resumeStrategy": "fake-provider",
+            "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "cwd": "/tmp/dscr",
+            "persistenceMode": "snapshot-only",
+            "attachmentState": "history-restored",
+            "liveSession": false,
+            "recentOutput": "[fake-agent] resumed session d3d2b4ea-043e-4de0-a11f-30894c8d7f90 pid=1306506\nburst 1\n> [fake-agent] burst 001\n> exit 19\n[fake-agent] exiting with code 19",
+            "outputSequence": 6,
+            "lastExitCode": 19,
+            "lastExitMessage": "Session ended with exit code 19.",
+            "resumeSessionId": "d3d2b4ea-043e-4de0-a11f-30894c8d7f90",
+            "resumeStoragePath": "/tmp/dscr/.debug/file-activity-resume-investigation/resume-control-1791653657954/runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-fba5c364-81f9-4745-8d6f-9bc4b1ff53d8",
+            "lastCols": 90,
+            "lastRows": 28,
+            "attentionPending": true,
+            "serializedTerminalState": {
+              "format": "xterm-serialize-v1",
+              "data": "[fake-agent] resumed session d3d2b4ea-043e-4de0-a11f-30894c8d7f90 pid=1306506\r\nburst 1\r\n> [fake-agent] burst 001\r\n> exit 19\r\n[fake-agent] exiting with code 19\u001b[1B\u001b[33D",
+              "viewportY": 0,
+              "outputSequence": 6
+            },
+            "lastBackendLabel": "Codex"
+          }
+        }
+      ]
+    }
+  },
+  "automated": "既有真实/测试命令上下文与实际启动选择测试 2/2 通过；调查脚本语法、diff 检查通过。",
+  "scope": "未重跑完整 VSIX gate；两项正式修复待处理。历史 URL 清理、Runtime batch disconnected、新 Host/跨平台/真实 provider 等未由本次收口。"
+}

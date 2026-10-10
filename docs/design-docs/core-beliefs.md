@@ -371,3 +371,5 @@ Runtime 的结构化退出信息属于终态事实，不能因 completed 正文�
 创建节点完成不等于其自动启动完成，独立 fixture 连续创建执行节点也必须尊重实际 owner 的启动准入。诊断时应以请求尺寸、准入结果和执行身份解释停点，不能从残留的“等待尺寸”摘要反推未上报尺寸；合法拒绝后的新节点待启动态与保留旧会话历史是不同的状态责任，应分别验证。依据见 `smoke-reload-autostart-investigation.md` 的文件活动启动定位。
 
 准入拒绝后的呈现收口必须绑定原待启动意图：只清除 pending start 并显示错误，不制造进程退出事实，不覆盖旧历史或较新请求。adapter 已创建甚至原记录已退休都不能单独解释资源取得情况；以 typed rejected-before-acquire 为依据。依据见 `smoke-reload-autostart-investigation.md` 的文件活动正式修复方案。
+
+终端 read 回执不是文件活动事件：执行后端迁移必须显式接入 provider 的结构化事件通道和采集器生命周期。恢复信息中的 sessionId 也不是所有适配器的完整契约，文本提示不得无差别替换依赖 storagePath 的测试恢复策略；测试适配失败与真实 provider 恢复应以同 metadata 的命令选择对照区分。依据见 `smoke-reload-autostart-investigation.md` 的文件活动与 fake resume 根因确认。
