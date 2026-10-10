@@ -482,3 +482,12 @@ CLI/执行环境准备失败后停留 starting/launching 的产品缺口已修�
 原顺序后续 `verifyStopVsQueuedExitRace` 用 recentOutput 等 sleeping，直到自然 exit 9 保存后才发 Stop；本轮追加改为原执行实时输出，并在停止后等待退休。单独运行确认 stopped/0、Token usage、codex resume、received signal INT 已保存；仍被旧摘要 `/Stopped Codex session/` 与实际 `Session ended with exit code 0.` 的差异阻断。后续 legacy stopRequested/exited 诊断断言尚未执行，需核对 owned 契约，不能直接放宽断言或将其推定为停止功能故障。
 
 最终源码 trusted 复跑再次通过创建与通知，随后在 `verifyExecutionTerminalNativeInteractions` 报 `Execution link "link-target.ts:3:1" was not detected.`；第一轮同用例已通过，当前不追认其与历史链接失败的具体共同根因。完整 gate 及后续 Runtime 场景仍未完成。本轮没有产品或版本改动，证据为 `docs/references/smoke-reload-autostart/lifecycle-barrier-fix-evidence.json`，完成计划为 `docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md`。
+
+
+## 链接扫描与停止用例契约已定位（2026-10-10，PR #314）
+
+前节两项根因已收敛，正式修复待落实。链接用例在 Host 发出正文后立即扫描 xterm，未等页面批量 drain/parser 应用。原生只读探针捕获 URL 扫描起止均无正文、随后新 probe 正文可见；同 `link-target.ts:3:1` 页面写入延迟 600ms 的受控对照在应用前复现拒绝，正文可见后保持原 executionId/generation，正确打开第 3 行第 1 列。历史失败 probe 是缓存，不追认其瞬间页面状态。应按原执行真实正文和目标页面实际就绪同步，保持真实链接打开断言。
+
+Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断；owned 路径没有经过这些旧发射点。原生已确认 stopped/0、SIGINT 收尾提示、单次 host/executionExit、saved、页面 applied 和退休；定向 Host 2/2 确认单次停止、尾部消费及完整结算。应迁移到原执行事实断言，当前没有停止动作失败证据。
+
+有界三次原生链接交互另外记录两次完整通过、一次 URL 已检测后 tooltip 可见超时；此显示问题未分类，正式修复时应保留并独立复核，不能用扫描等待结论掩盖。完整 gate 与后续 Runtime 仍未完成。证据为 `docs/references/smoke-reload-autostart/link-stop-investigation-evidence.json`，计划为 `docs/exec-plans/completed/smoke-link-stop-investigation.md`；临时产品/测试探针均已恢复。

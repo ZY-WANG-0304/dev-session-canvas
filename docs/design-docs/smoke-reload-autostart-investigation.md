@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -373,3 +373,32 @@ PR #314 缺 CLI 的错误来自 `startNonNativeHostExecution` 的 prepare 阶段
 为验证追加等待，复用最终打包 Host 单独调用原 Stop 用例，所有结果断言保留。Stop 已在睡眠期间发出：原执行最终 status=stopped、exitCode=0，保存了 Token usage、codex resume 与 received signal INT；原实时等待不再拖到自然 exit 9。该运行仍在摘要断言失败：期待 `Stopped Codex session`，实际为 `Session ended with exit code 0.`。这不是已证明的停止动作失败；旧 stopRequested/exited 诊断断言尚未执行，其与 owned 契约的一致性待核对，不能顺带宣称已通过。
 
 完整 gate 仍未通过，终端链接检测失败与 Stop 用例文案/诊断契约核对留为后续阻塞。当前不放宽断言或改停止产品行为；后续 Runtime 场景未执行。证据见 `docs/references/smoke-reload-autostart/lifecycle-barrier-fix-evidence.json`。相邻 `lifecycle-barrier-stop-race-control.patch` 只用于在最终代码上复跑 standalone 入口，不是默认 gate 或正式实现；在临时 checkout 应用后以 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=local-preparation-failure` 运行 VSIX smoke，即可调用原 Stop 用例，随后应丢弃该控制补丁。
+
+
+## 链接扫描与停止契约专项定位（2026-10-10）
+
+基线为 PR #314 `9610f44e`，RuntimePersistence 关闭，Linux 原生 PTY、fake Agent。两处都存在已确认的 smoke 迁移缺口；本轮定位不修改正式产品/测试实现，也不代表完整 gate 已通过。
+
+### 链接：Host 已发正文不代表 xterm 已应用
+
+`verifyExecutionTerminalNativeInteractions` 在 `waitForLocalExecutionOutput` 命中 Host 输出消息后，立即调用 `activateExecutionLink` / `hoverExecutionLink`。该 helper 只验证原 executionId/generation 的输出；`main.tsx` 的 `enqueueOutput` / drain 则把正文排入批量写入，之后还有 xterm 自己的异步 parser。测试入口 `executionTerminalNativeInteractions.ts::findInteractionLinkByText` 在当前 buffer 上做一次扫描，找不到即返回错误，扫描并不等待这些写入完成。
+
+只增加读取 buffer/provider 候选的探针、不注入延迟的原生运行，在同一用例的 URL hover 处复现：08:41:34.162–.185 扫描开始到结束，buffer 都没有目标 URL，候选中自然也没有该 URL；Host 已发出包含完整正文的 outputSequence=13，紧接着的新 probe 请求中 URL 已显示。实际链接不存在于扫描输入时，尚未进入该目标的 Host 路径解析；这与“解析了路径但定位错误”是不同阶段。
+
+为覆盖历史失败的同一文本 `link-target.ts:3:1`，仅将包含该正文的页面 `terminal.write` 延迟 600ms：08:44:48.549–.576 首轮扫描无正文并拒绝；08:44:49.184 等待正文真正显示后，同一 executionId/generation 再扫描得到文件候选，实际打开同一文件第 3 行第 1 列。过程中没有重启 Host、替换会话或改变路径解析。这证明页面未应用时抢先扫描足以产生原报错，正文就绪后原文件定位可用。
+
+历史 `3:1` 工件的 `failure-webview-probe.json` 来自 `lastWebviewProbe` 缓存，finally 还会重开 editor，不能反推该历史瞬间 buffer；本轮不伪造那一瞬间的页面状态。另一次有界三轮原用例观察中，两轮完整通过，第三轮已检测 URL 后等待 tooltip 可见超时；此显示失败尚未归类，不把它自动并入无正文扫描问题。
+
+正式修复边界为：先按原执行验证真实输出，再等目标页面对应正文应用/可见，随后进行单次链接操作；打印夹具要避免命令回显提前满足，文件行列、图片/URL 打开及 tooltip 断言继续保留。固定 sleep、吞错重试或放宽路径结果都不能替代该顺序。已检测链接但 tooltip 不可见的情况应保留独立证据。
+
+### 停止：owned 路径与旧 session 文案/诊断不一致
+
+`stopExecutionSession` 的 owned 分支直接调用原 owner 后返回，因此不会执行下面旧 session 分支的 `execution/stopRequested`；旧 `execution/exited` 同样在旧 session finalize 中生成。`persistNonNativeHostFinal` 使用 stopRequested 确定 stopped，再依据实际 process 结果生成摘要，所以得到 `Session ended with exit code 0.`。旧 smoke 仍要求 `Stopped Codex session`、一次旧 stopRequested 和一次旧 exited；这些要求来自 2026-04-06 的 `744fcfa6`。owned 早返回在 `c1b6bc8b`（2026-09-25）已引入，实际 process 摘要来自 `b235a7bc`（2026-09-26），不是本轮 reset/通知同步修正改变了 Stop。
+
+原生原执行 `0912293d-90e9-44b0-82c5-7d25f3acfce8` 证据确认：status=stopped，exitCode=0，保存 Token usage、codex resume、received signal INT；`host/executionExit` 只有一次，finalOutputSequence=4，原保存为 saved，原页面 applied，同一执行随后退休。旧内部诊断为 0，不等于终端退出消息丢失。产品文档约定的 Codex 单次 Ctrl-C 收尾正常，当前没有 Stop 动作失败证据。
+
+本轮另运行既有 Host 两项定向回归，Agent/Terminal 均通过：原 stop 只请求一次，进程/资源结果未齐时 promise 不完成，停止期间持续消费尾部，页面责任未结束时仍保留原记录。正式 smoke 应检查原执行的 stopped、实际退出信息、收尾正文、单次 `host/executionExit`、saved 与页面确认；若需直接证明 stopRequested，则在可持有原 owner 的测试层断言。不要靠重新发射旧诊断或掩盖真实退出结果来满足过时的内部断言。
+
+### 证据与复跑
+
+精简证据：`docs/references/smoke-reload-autostart/link-stop-investigation-evidence.json`。`link-scan-observation.patch` 为只读页面扫描探针；在临时 checkout 应用它，再任选 `link-scan-original-scenario.patch`（三轮原用例观察）或 `link-scan-controlled-application.patch`（同链接应用前后对照），以 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=local-preparation-failure` 运行现有 `test:vsix-smoke`。两个入口 patch 互斥；三轮观察入口的进程 exit 0 只表示收集结束，须逐轮读结果，不表示原用例全部通过。所有 probe/控制源码已恢复，复跑 patch 不属于正式修复。

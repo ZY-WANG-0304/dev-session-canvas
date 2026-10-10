@@ -1,0 +1,192 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "baseline": "9610f44e036e38d23abcd6fabd52e611452dc534",
+  "scope": "定位链接扫描与旧停止断言；所有临时源码/测试控制已恢复",
+  "environment": "Linux x64 / Node 22.23.3 / VS Code 1.141.0 / native PTY / RuntimePersistence=false / fake Agent",
+  "baselineSha256": {
+    "extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts": "4aec400d71e43953f4ad8bbcd0d40a342914eed233140fb2dd67f15a076366f9",
+    "extensions/vscode/dev-session-canvas/src/webview/main.tsx": "1f04694dd6d647095b2fc3e561747b1f136e1b6d2049ae686b429a34c244004b",
+    "tests/vscode-smoke/extension-tests.cjs": "b3fbe1410bccb0ce22feab36524ec2c4fd0212458655a10fa040e38419360d58"
+  },
+  "link": {
+    "cause": "smoke 只确认 Host 已发输出，立即扫描；页面批量 drain 与 xterm parser 异步执行，buffer 尚无正文时测试扫描直接返回未检测到",
+    "historicalBoundary": "历史 link-target.ts:3:1 工件的 failure-webview-probe 是缓存，不能反推当时 buffer；同路径受控复现与本轮自然 URL 扫描失败支持相同同步缺口，不伪造历史瞬间",
+    "naturalObservation": {
+      "log": ".debug/link-stop-rca/link-native-probe.log",
+      "artifacts": ".debug/link-stop-rca/native-probe-artifacts/before-cleanup",
+      "probe": {
+        "linkText": "http://127.0.0.1:46643/dev-session-canvas-url-smoke",
+        "found": false,
+        "startedAt": 1791621694162,
+        "finishedAt": 1791621694185,
+        "startHasTarget": false,
+        "endHasTarget": false,
+        "matchingCandidates": []
+      },
+      "hostOutput": {
+        "type": "host/executionOutput",
+        "payload": {
+          "kind": "terminal",
+          "nodeId": "terminal-2-f1c3e0ad-6ba4-49df-8e34-39ae3373db6e",
+          "executionSessionId": "b079a3f1-ef66-4776-a788-4c31e5e398e1",
+          "chunk": "\r\r<0.0.1:46643/dev-session-canvas-url-smoke'\r\nhttp://127.0.0.1:46643/dev-session-canvas-url-smoke\r\n<ode-smoke/execution-native-interactions$ ",
+          "outputStartSequence": 13,
+          "outputSequence": 13,
+          "terminalTitle": null,
+          "localOutputReceipt": {
+            "receiptId": "5f994c59-07c9-4e36-924c-9ce4301dfc5e",
+            "outputSequence": 13
+          }
+        },
+        "lifecycle": {
+          "surface": "editor",
+          "mode": "active",
+          "generation": 2,
+          "frameId": "frame-9c612758-91ff-4086-a020-e52e546035be"
+        }
+      },
+      "freshProbeHasTarget": true,
+      "nativeInjectedDelay": false,
+      "result": "原顺序中的 URL hover 检测失败；扫描前后无正文，随后的新 probe 正文可见"
+    },
+    "boundedRepeat": {
+      "log": ".debug/link-stop-rca/link-repeat.log",
+      "outcomes": [
+        "complete original interaction passed",
+        "complete original interaction passed",
+        "URL tooltip visibility timeout after link detection; not classified by this investigation"
+      ],
+      "runnerExitZeroIsNotGatePass": true
+    },
+    "controlledFile": {
+      "log": ".debug/link-stop-rca/link-controlled-recheck.log",
+      "artifacts": ".debug/link-stop-rca/link-controlled-runtime/artifacts",
+      "delayMs": 600,
+      "delayScope": "仅包含 link-target.ts:3:1 的页面 output terminal.write；Host/PTY/路径解析和终端记录不变",
+      "execution": {
+        "kind": "terminal",
+        "nodeId": "terminal-2-e5e59119-843f-4075-b5af-bb8ba09a5a66",
+        "executionSessionId": "8f6a21e3-2a0d-4f5a-a82c-08fefcb10c23",
+        "generation": "c0dc989e-9252-4eb0-8e38-baf44d107557"
+      },
+      "scans": [
+        {
+          "linkText": "link-target.ts:3:1",
+          "found": false,
+          "startedAt": 1791621888549,
+          "finishedAt": 1791621888576,
+          "startHasTarget": false,
+          "endHasTarget": false,
+          "matchingCandidates": []
+        },
+        {
+          "linkText": "link-target.ts:3:1",
+          "found": true,
+          "startedAt": 1791621889184,
+          "finishedAt": 1791621889186,
+          "startHasTarget": true,
+          "endHasTarget": true,
+          "matchingCandidates": [
+            {
+              "line": 3,
+              "provider": 3,
+              "text": "link-target.ts:3:1",
+              "links": [
+                "link-target.ts:3:1"
+              ]
+            }
+          ]
+        }
+      ],
+      "rejectedBeforeApplication": "Execution link \"link-target.ts:3:1\" was not detected.",
+      "openedFile": "/tmp/dscr/.debug/vscode-smoke/execution-native-interactions/link-target.ts",
+      "openedOneBasedPosition": {
+        "line": 3,
+        "column": 1
+      },
+      "result": "同 Host/原 executionId,generation，首轮扫描拒绝，正文可见后同链接实际打开3:1；未重启或重建执行"
+    },
+    "fixBoundary": "等待目标页面的原执行正文真正应用/可见后再进行链接 activate/hover；避免命令回显先满足，保留实际文件/行列/URL/tooltip断言，不以固定 sleep 或吞错重试放行"
+  },
+  "stop": {
+    "cause": "测试仍断言 legacy session 的停止摘要与 stopRequested/exited 诊断；owned 路径直接调用原 owner，并按实际 process 生成最终摘要，不经过这些 legacy 发射点",
+    "origins": {
+      "ownedStopEarlyReturn": "c1b6bc8b (2026-09-25)",
+      "strictFinalProcessMessage": "b235a7bc (2026-09-26)",
+      "legacySmokeAssertions": "744fcfa6 (2026-04-06)"
+    },
+    "observed": {
+      "status": "stopped",
+      "summary": "Session ended with exit code 0.",
+      "lastExitCode": 0,
+      "recentOutput": "[fake-agent] ready pid=4094941 session=e1cc254e-f615-4de1-ad3a-dd8bc9f854ad\nsleep 5\nexit 9\n> [fake-agent] sleeping 5s\n^CToken usage: total=128 input=64 output=64\nTo continue this session, run codex resume e1cc254e-f615-4de1-ad3a-dd8bc9f854ad\n[fake-agent] received signal INT",
+      "exitMessages": [
+        {
+          "type": "host/executionExit",
+          "payload": {
+            "nodeId": "agent-1-6f2d1d4b-563d-4efb-b38f-e58337ba7f52",
+            "kind": "agent",
+            "executionSessionId": "0912293d-90e9-44b0-82c5-7d25f3acfce8",
+            "localCompletion": {
+              "executionSessionId": "0912293d-90e9-44b0-82c5-7d25f3acfce8",
+              "finalOutputSequence": 4
+            },
+            "message": "Session ended with exit code 0."
+          },
+          "lifecycle": {
+            "surface": "editor",
+            "mode": "active",
+            "generation": 2,
+            "frameId": "frame-9f2b8d3c-06c5-4e52-b235-980fd297b7f9"
+          }
+        }
+      ],
+      "finalEvents": [
+        {
+          "timestamp": "2026-10-10T08:32:44.023Z",
+          "kind": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-6f2d1d4b-563d-4efb-b38f-e58337ba7f52",
+            "executionId": "0912293d-90e9-44b0-82c5-7d25f3acfce8",
+            "generation": "a3852e3e-49c7-4359-a7d9-df392fe1f071",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        },
+        {
+          "timestamp": "2026-10-10T08:32:44.051Z",
+          "kind": "execution/localTerminalReaderSettled",
+          "detail": {
+            "nodeId": "agent-1-6f2d1d4b-563d-4efb-b38f-e58337ba7f52",
+            "kind": "agent",
+            "executionSessionId": "0912293d-90e9-44b0-82c5-7d25f3acfce8",
+            "lifecycle": {
+              "surface": "editor",
+              "mode": "active",
+              "generation": 2,
+              "frameId": "frame-9f2b8d3c-06c5-4e52-b235-980fd297b7f9"
+            },
+            "outcome": {
+              "kind": "applied",
+              "finalOutputSequence": 4
+            }
+          }
+        }
+      ],
+      "legacyStopRequestedCount": 0,
+      "legacyExitedCount": 0
+    },
+    "hostRegression": {
+      "command": "DEV_SESSION_CANVAS_HOST_TEST_FILTER='stop waits for facts while tail consumption continues' node scripts/test/test-host-execution-owner-wiring.mjs",
+      "result": "2/2 selected, 487 total",
+      "log": ".debug/link-stop-rca/stop-host.log",
+      "assertions": "Agent/Terminal 原 stop 只发一次；进程/资源结算前 promise 不完成，尾部持续消费，读者未结算时保留原记录"
+    },
+    "fixBoundary": "用原 executionId 的 stopped、实际退出结果、最终正文、单次 host/executionExit、saved与页面确认核验；需要直接证明 stopRequested 时在拥有原 owner 的测试层断言，不能继续期待未执行的 legacy 分支诊断。当前无停止动作失败证据"
+  },
+  "validationBoundary": "只完成根因定位，不含正式修复，不代表完整 gate通过。原生有限重复的第三轮 tooltip显示失败单列，不追认为与文本未应用完全相同的原因。"
+}
