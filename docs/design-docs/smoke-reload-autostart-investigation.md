@@ -286,3 +286,15 @@ smoke 保留原执行 started 顺序和 reload 后 resume-ready/interrupted 断�
 最终默认 VSIX 在 `snapshot-only-manual-recovery` 与 trusted 原顺序的 `verifyRuntimeReloadRecovery` **两处均通过**：reload 后 resume-ready/interrupted、无 pending resume；真实 editor 重建后 probe 仍显示手动恢复提示且没有新启动；显式 resume 产生新 executionId，provider sessionId 保持；恢复正文、burst 输入和 exit 19/error 完整通过。owned reconciliation / local execution flow 继续通过。原 Host 中断状态与自动恢复意图缺口已收口。
 
 完整门禁仍失败：下一项 `verifyLiveSessionCutoverAndReload:8965` 从 `metadata.terminal.recentOutput` 等待 `LIVE_CUTOVER_EDITOR` 超时。原 Terminal 为 live；相同 executionId 的 `host/executionOutput` sequence 2 和 snapshot sequence 3 已含命令结果，历史 recentOutput 仍是旧 prompt，因此是后续实时正文断言尚未迁移。此轮未更改该项和后续 surface/Runtime/压力验收。首次缺失文件链接检测失败仍保留，最终一轮经过该位置不等于定位其根因。证据：`docs/references/smoke-reload-autostart/manual-reload-recovery-evidence.json`。
+
+
+## surface 切换实时正文断言修正
+
+2026-10-10 用户授权修复上述断言。`verifyLiveSessionCutoverAndReload` 的四段 live marker 校验改为复用原 executionId/generation 的实际输出 helper；停止后的最终历史输出仍使用持久化字段。测试先结清前序 Terminal，再启动本场景的原执行并等待 started，避免重复启动制造无关拒绝。editor → panel → 同 Host 重读画布 → editor 全程必须保持原执行身份与 live 状态；切换后的快照须来自目标 surface 当前生命周期并含切换前正文，各新 marker 还须在对应真实页面可见。命令把 marker 分段打印，避免输入回显提前满足输出断言。
+
+默认 smoke / VSIX runner 新增 `local-surface-cutover` 具名阶段，复用同一用例并保留 trusted 原顺序检查。此次只校准测试的数据来源和前置条件，不修改产品生命周期、延长超时或跳过后续验证。
+
+
+本轮验证：正文 helper 14/14、reset fixture 19/19、runner 环境清理与改动脚本语法通过，VSIX 构建打包及类型检查通过。默认真实 VSIX 的 owned reconciliation、local execution flow、manual recovery 和新增 local-surface-cutover 四阶段通过；trusted 中原顺序的 manual recovery 与 surface 切换也完整通过。surface 原 executionId/generation、两次目标页面快照、四段实际输出/页面可见、closed 与四段最终历史、原 saved/退休均按原断言通过，surface 旧字段阻塞已收口。
+
+完整门禁随后停在 `verifyPtyRobustness:9061`：Agent 已 waiting-input 且 live，原 executionId 的实时正文包含 `[fake-agent] burst 080`，但测试仍读 metadata.recentOutput 中上一轮恢复执行的历史。该后续 PTY 用例尚未校准；其剩余退出、停止和压力检查不能代证已通过。精简证据与原工件位置见 `docs/references/smoke-reload-autostart/surface-cutover-output-evidence.json`。本轮没有新增产品结论，不外推到 RuntimePersistence 开启或跨平台/跨版本矩阵。

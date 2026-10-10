@@ -53,6 +53,11 @@ const scenarios = [
     disableWorkspaceTrust: true
   },
   {
+    name: 'local-surface-cutover',
+    description: 'Local execution output survives surface cutover and canvas reread',
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'runtime-legacy-reconnect',
     description: 'Legacy Runtime reconnect preserves bindings without automatic CLI resume',
     focusedOnly: true,

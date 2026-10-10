@@ -201,6 +201,14 @@ async function runSmoke() {
     console.log('Local execution flow: Agent burst, partial input, sleep, slowspin, restart, duplicate rejection, Terminal output and final save passed.');
     return;
   }
+  if (smokeScenario === 'local-surface-cutover') {
+    await ensureEditorCanvasReady();
+    await createBaseNodes({ waitForAutoStart: true });
+    const snapshot = await getDebugSnapshot();
+    await ensureAgentStopped(findNodeByKind(snapshot, 'agent').id);
+    await verifyLiveSessionCutoverAndReload(findNodeByKind(snapshot, 'terminal').id);
+    return;
+  }
   if (smokeScenario === 'snapshot-only-manual-recovery') {
     await ensureEditorCanvasReady();
     await createBaseNodes({ waitForAutoStart: true });
@@ -8938,133 +8946,87 @@ async function verifyLiveSessionCutoverAndReload(terminalNodeId) {
   const reloadMarker = 'LIVE_CUTOVER_RELOAD';
   const returnMarker = 'LIVE_CUTOVER_RETURN';
 
+  await ensureTerminalStopped(terminalNodeId);
   await clearHostMessages();
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
-    payload: {
-      nodeId: terminalNodeId,
-      kind: 'terminal',
-      cols: 96,
-      rows: 28
-    }
+    payload: { nodeId: terminalNodeId, kind: 'terminal', cols: 96, rows: 28 }
   });
+  const initial = await waitForSnapshot(snapshot => {
+    const node = findNodeById(snapshot, terminalNodeId);
+    return node.metadata.terminal.liveSession && node.status === 'live';
+  });
+  const execution = captureLocalExecutionIdentity(initial, 'terminal', terminalNodeId);
+  await waitForDiagnosticEvents(events => events.some(event => event.kind === 'execution/started' &&
+    event.detail?.nodeId === terminalNodeId && event.detail.sessionId === execution.executionSessionId));
 
-  await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-    return Boolean(currentNode?.metadata?.terminal?.liveSession && currentNode.status === 'live');
-  });
+  function assertOriginalExecution(snapshot, surface) {
+    assert.deepStrictEqual(captureLocalExecutionIdentity(snapshot, 'terminal', terminalNodeId), execution,
+      'Surface cutover and canvas reread must retain the original execution.');
+    assert.strictEqual(snapshot.activeSurface, surface);
+    assert.strictEqual(snapshot.surfaceReady[surface], true);
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'live');
+    assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, true);
+  }
 
-  await dispatchWebviewMessage({
-    type: 'webview/executionInput',
-    payload: {
-      nodeId: terminalNodeId,
-      kind: 'terminal',
-      data: `echo ${editorMarker}\r`
-    }
-  });
-  await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-    return Boolean(currentNode?.metadata?.terminal?.recentOutput?.includes(editorMarker));
-  });
+  async function verifySurfaceSnapshot(surface, previousMarker) {
+    const snapshot = await getDebugSnapshot();
+    assertOriginalExecution(snapshot, surface);
+    const lifecycle = snapshot.surfaceLifecycle[surface];
+    await waitForHostMessages(messages => messages.some(message =>
+      message.type === 'host/executionSnapshot' && message.payload.liveSession === true &&
+      message.lifecycle?.surface === surface && message.lifecycle.generation === lifecycle.generation &&
+      message.lifecycle.frameId === lifecycle.frameId &&
+      findExecutionOutput([message], execution, previousMarker) !== undefined
+    ));
+  }
 
+  async function verifyOutput(marker, surface) {
+    // Splitting the marker prevents command echo from satisfying the output assertion.
+    const split = marker.lastIndexOf('_') + 1;
+    await dispatchWebviewMessage({
+      type: 'webview/executionInput',
+      payload: { nodeId: terminalNodeId, kind: 'terminal',
+        data: `printf '%s%s\\n' '${marker.slice(0, split)}' '${marker.slice(split)}'\r` }
+    }, surface);
+    const snapshot = await waitForLocalExecutionOutput(execution, marker, 'live');
+    assertOriginalExecution(snapshot, surface);
+    await waitForWebviewProbeOnSurface(surface, probe =>
+      readProbeTerminalVisibleLines(probe, terminalNodeId).some(line => line.includes(marker)));
+  }
+
+  await verifyOutput(editorMarker, 'editor');
   await clearHostMessages();
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  await verifySurfaceSnapshot('panel', editorMarker);
+  await verifyOutput(panelMarker, 'panel');
 
-  let snapshot = await getDebugSnapshot();
-  assert.strictEqual(snapshot.activeSurface, 'panel');
-  assert.strictEqual(snapshot.surfaceReady.panel, true);
-
-  await waitForHostMessages((messages) =>
-    messages.some(
-      (message) =>
-        message.type === 'host/executionSnapshot' &&
-        message.payload.kind === 'terminal' &&
-        message.payload.nodeId === terminalNodeId &&
-        message.payload.liveSession === true
-    )
-  );
-
-  await dispatchWebviewMessage(
-    {
-      type: 'webview/executionInput',
-      payload: {
-        nodeId: terminalNodeId,
-        kind: 'terminal',
-        data: `echo ${panelMarker}\r`
-      }
-    },
-    'panel'
-  );
-  await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-    return Boolean(currentNode?.metadata?.terminal?.recentOutput?.includes(panelMarker));
-  });
-
-  snapshot = await reloadPersistedState();
-  assert.strictEqual(snapshot.activeSurface, 'panel');
-  assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, true);
-  assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'live');
-
-  await dispatchWebviewMessage(
-    {
-      type: 'webview/executionInput',
-      payload: {
-        nodeId: terminalNodeId,
-        kind: 'terminal',
-        data: `echo ${reloadMarker}\r`
-      }
-    },
-    'panel'
-  );
-  await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-    return Boolean(currentNode?.metadata?.terminal?.recentOutput?.includes(reloadMarker));
-  });
+  const reloaded = await reloadPersistedState();
+  assertOriginalExecution(reloaded, 'panel');
+  await verifyOutput(reloadMarker, 'panel');
 
   await clearHostMessages();
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
-
-  await waitForHostMessages((messages) =>
-    messages.some(
-      (message) =>
-        message.type === 'host/executionSnapshot' &&
-        message.payload.kind === 'terminal' &&
-        message.payload.nodeId === terminalNodeId &&
-        message.payload.liveSession === true
-    )
-  );
-
-  await dispatchWebviewMessage(
-    {
-      type: 'webview/executionInput',
-      payload: {
-        nodeId: terminalNodeId,
-        kind: 'terminal',
-        data: `echo ${returnMarker}\r`
-      }
-    },
-    'editor'
-  );
-  snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-    return Boolean(currentNode?.metadata?.terminal?.recentOutput?.includes(returnMarker));
-  });
-  assert.strictEqual(findNodeById(snapshot, terminalNodeId).metadata.terminal.liveSession, true);
+  await verifySurfaceSnapshot('editor', reloadMarker);
+  await verifyOutput(returnMarker, 'editor');
 
   await dispatchWebviewMessage({
     type: 'webview/stopExecutionSession',
-    payload: {
-      nodeId: terminalNodeId,
-      kind: 'terminal'
-    }
+    payload: { nodeId: terminalNodeId, kind: 'terminal' }
   });
-  snapshot = await waitForSnapshot((currentSnapshot) => {
-    const currentNode = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-    return Boolean(currentNode && currentNode.status === 'closed' && !currentNode.metadata?.terminal?.liveSession);
+  const stopped = await waitForSnapshot(snapshot => {
+    const node = findNodeById(snapshot, terminalNodeId);
+    return node.status === 'closed' && !node.metadata.terminal.liveSession;
   });
-  assert.ok(findNodeById(snapshot, terminalNodeId).metadata.terminal.recentOutput.includes(returnMarker));
+  const finalMetadata = findNodeById(stopped, terminalNodeId).metadata.terminal;
+  assert.ok(finalMetadata.recentOutput.includes(returnMarker));
+  for (const marker of [editorMarker, panelMarker, reloadMarker, returnMarker]) {
+    assert.ok(finalMetadata.serializedTerminalState.data.includes(marker), 'The original final save retains each surface output.');
+  }
+  await waitForOriginalLocalExecutionRetirement(initial, 'terminal', terminalNodeId);
+  console.log('Local surface cutover: original execution across editor/panel/reread/editor, current surface snapshots, rendered output and final save passed.');
 }
 
 async function verifyPtyRobustness(agentNodeId, terminalNodeId) {
@@ -12128,7 +12090,7 @@ async function clearDiagnosticEvents() {
 }
 
 async function assertNoOwnedResizeFailures() {
-  if (!['trusted', 'local-execution-flow', 'owned-canvas-reconciliation', 'snapshot-only-manual-recovery'].includes(smokeScenario)) return;
+  if (!['trusted', 'local-execution-flow', 'owned-canvas-reconciliation', 'snapshot-only-manual-recovery', 'local-surface-cutover'].includes(smokeScenario)) return;
   const failures = (await getDiagnosticEvents()).filter(event =>
     event.kind === 'execution/resizeRejected' && event.detail?.reason === 'owned-resize-failed');
   assert.deepStrictEqual(failures, [], 'Local resize failures must be checked before diagnostics are cleared.');

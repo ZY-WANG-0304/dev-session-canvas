@@ -445,3 +445,9 @@ B2 已完成 typed profile/generation、安全首次启动和构建期固定候�
 Host reload 把活动 Agent 保存成 stopped 的缺陷已修复：原最终保存区分 Host 中断、用户停止和已观测自然退出，有可信身份为 resume-ready，无身份/Terminal 为 interrupted；重读清理自动 resume 意图，等待用户手动恢复。新增 24 项、完整 Host 478/478 与相关检查通过。最终默认真实 VSIX 的独立手动恢复阶段和 trusted 原恢复阶段两处通过，原状态阻塞已闭环；规格、设计及证据见 `docs/product-specs/runtime-persistence-modes.md`、`docs/design-docs/smoke-reload-autostart-investigation.md`、`docs/references/smoke-reload-autostart/manual-reload-recovery-evidence.json`。
 
 下一项发布阻塞为 `verifyLiveSessionCutoverAndReload:8965`：相同 Terminal executionId 的真实输出 sequence 2 与 snapshot sequence 3 已含 `LIVE_CUTOVER_EDITOR`，但断言仍等待历史 metadata.recentOutput；需按原执行输出和页面切换生命周期校准该测试。尚未执行后续 surface/Runtime/压力断言，不能视为这些功能已通过。首轮缺失文件链接 DOM 检测失败工件保留在 `.debug/manual-reload-recovery/first-artifacts`，最终一轮通过该点不追认其原因；此前 early final-save pending 工件和待定位状态也保留。
+
+
+2026-10-10 继续处理 surface 断言：`verifyLiveSessionCutoverAndReload` 的 editor/panel/同 Host 重读/editor 四处等待已迁移到原 executionId/generation 的实时通道，并校验切换后目标页面当前生命周期快照、既有正文与新输出可见性。前置 Terminal 先停止并结清，最终停止状态/历史输出仍严格检查；新增默认 `local-surface-cutover` 具名阶段。正文 helper 14/14、reset fixture 19/19、runner 环境清理/语法与 VSIX 打包通过；默认独立 surface 阶段和 trusted 原顺序两处通过，surface 旧字段阻塞已收口。证据见 `docs/references/smoke-reload-autostart/surface-cutover-output-evidence.json`。
+
+
+下一项发布阻塞：`verifyPtyRobustness:9061` 仍从历史 metadata.recentOutput 等待 `[fake-agent] burst 080`。当前 Agent 为 waiting-input/live，原 executionId 的实时输出已包含该行，历史字段仍是此前手动恢复执行的摘要。需继续校准该 PTY 用例；其后续退出/停止及压力、Runtime 检查尚未通过。此前独立文件链接 DOM 与 early final-save pending 工件仍保留，未追认根因。
