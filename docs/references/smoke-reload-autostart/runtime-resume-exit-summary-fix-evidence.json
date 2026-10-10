@@ -1,0 +1,105 @@
+{
+  "baselineHead": "b46e8fff0a5c814e5d07af4cebb983790344fe25",
+  "change": "Generate confirmed exit descriptors and fallback in shared owned/legacy Supervisor business projection before publishing final snapshot.",
+  "tests": {
+    "supervisorOwner": {
+      "passed": 134,
+      "newCases": 18
+    },
+    "baselineNegative": {
+      "exitCode": 1,
+      "scenario": "resumed Agent exit 23",
+      "expected": "agentExitedCode",
+      "actual": "undefined"
+    },
+    "runtimeSupervisorProtocol": "passed including request timeout, legacy reconnect, checkpoint, paging, completion and output credit",
+    "typecheck": "passed",
+    "localization": "passed"
+  },
+  "native": {
+    "exitCode": 0,
+    "originalFunctionAndAssertions": "passed",
+    "runtimeEnabledAtAssertion": true,
+    "sessionId": "1d8c2ece-3b68-4f2d-8b98-208a7fcd7d73",
+    "status": "error",
+    "lastExitCode": 23,
+    "summary": "Codex exited with code 23. [fake-agent] exiting with code 23",
+    "lastExitMessage": "Codex exited with code 23. [fake-agent] exiting with code 23",
+    "hostExit": {
+      "type": "host/executionExit",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2,
+        "frameId": "frame-32b0b904-675f-4bc4-b9cb-163b57a7aee3"
+      },
+      "payload": {
+        "nodeId": "agent-1-9ca484af-2bf7-4405-8d19-ee2a9d4fc5b2",
+        "kind": "agent",
+        "executionSessionId": "1d8c2ece-3b68-4f2d-8b98-208a7fcd7d73",
+        "message": "Codex exited with code 23. [fake-agent] exiting with code 23"
+      }
+    },
+    "productSha256": {
+      "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+      "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+      "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+    }
+  },
+  "vsix": {
+    "defaultCommand": {
+      "exitCode": 1,
+      "passedStages": [
+        "owned-canvas-reconciliation",
+        "local-execution-flow",
+        "snapshot-only-manual-recovery",
+        "local-surface-cutover",
+        "local-pty-robustness",
+        "local-preparation-failure"
+      ],
+      "interruptedStage": "local-links-and-stop",
+      "interruption": {
+        "vscodePid": 1644859,
+        "lastProbe": "2026-10-10T14:29:15Z",
+        "endedAt": "2026-10-10T14:36:09.154712+00:00",
+        "reason": "No scenario progress for over five minutes after explicit URL link; HTTP listener closed but browser TCP connection persists. Isolated VS Code terminated; not counted as assertion failure or successful gate.",
+        "sockets": "State Recv-Q Send-Q Local Address:Port  Peer Address:Port Process                            \nESTAB 0      0          127.0.0.1:45687    127.0.0.1:44246 users:((\"code\",pid=1645670,fd=60))\nESTAB 0      0          127.0.0.1:44246    127.0.0.1:45687 users:((\"code\",pid=1644900,fd=41))\n"
+      },
+      "trustedNotReached": true
+    },
+    "samePayloadLinksRecheck": {
+      "exitCode": 0,
+      "productOrTestChanges": false
+    },
+    "samePayloadTrustedRecheck": {
+      "exitCode": 1,
+      "resumeExitClassificationPassed": true,
+      "nextFailureFunction": "verifyImmediateReloadAfterLiveRuntimeLaunch",
+      "line": 11000,
+      "error": "Runtime session updates are still pending. Please try again after they finish.",
+      "failureNodes": [
+        {
+          "nodeId": "agent-1-e62d676d-2277-4065-a072-61f3773329d8",
+          "kind": "agent",
+          "status": "error",
+          "summary": "Execution start was rejected-before-acquire.",
+          "runtimeSessionId": null,
+          "liveSession": false
+        },
+        {
+          "nodeId": "terminal-2-50d10c1c-6519-42ab-bbe8-d406628b2818",
+          "kind": "terminal",
+          "status": "live",
+          "summary": "ziyang01.wang-al@hobot:/tmp/dscr$",
+          "runtimeSessionId": "d619ba46-b6c6-48e6-8ceb-b0fb819e7f0d",
+          "liveSession": true
+        }
+      ],
+      "rootCause": "not investigated"
+    }
+  },
+  "cleanup": {
+    "terminalStopAcknowledged": "Original isolated Terminal stop acknowledged.",
+    "remainingIsolatedSupervisors": []
+  }
+}

@@ -574,3 +574,11 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 无探针原包复现、只读发布探针和仅补退出消息的隔离对照均完成；前两者复现原断言失败，后者保持原动作/断言并通过。本轮仅定位，正式产品及 smoke 未改。待在 owned 终态生成处补齐描述符/fallback，保留停止、恢复失败、非 EOF/未知结果的区分并覆盖相关矩阵；完整 gate 及后续 Runtime/reload 验收仍未完成。
 
 引入为 `c1b6bc8b8`，默认构建接入为 `08fa33725`；不指定首个受影响发布版本。证据：`docs/references/smoke-reload-autostart/runtime-resume-exit-summary-evidence.json`；复验脚本：相邻 `runtime-resume-exit-summary-investigation.mjs`；计划：`docs/exec-plans/completed/runtime-resume-exit-summary-investigation.md`；正式结论：`docs/design-docs/smoke-reload-autostart-investigation.md`。实验节点已停止，本轮 Supervisor 已退出。
+
+## owned Runtime 退出描述已修复，后续立即 reload 阻塞（2026-10-10，PR #314）
+
+上一项产品遗漏已收口：新旧 Supervisor 共用已确认退出业务描述，恢复完成后异常退出 error、恢复阶段失败 resume-failed，stop/零码及非 EOF、未知/失败 authority 的保护保留。Supervisor 接线134/134（新增18项）、协议链、typecheck、本地化与原生原恢复23函数通过；trusted 同载荷独立重跑也通过原摘要断言。
+
+完整默认 VSIX 前六个独立阶段通过，local-links-and-stop 的 URL 尾部发生无进展停滞，HTTP listener 已关闭但浏览器TCP连接未断；超过五分钟取证后结束隔离VS Code。该阶段同载荷原测试独立重跑通过，首次停滞未完成根因定位，不追认其成功。trusted 原顺序在下一项 `verifyImmediateReloadAfterLiveRuntimeLaunch:11000` 报 Runtime session updates are still pending.，现场 Agent 启动 rejected-before-acquire、Terminal live；二者与边界回调的因果待定位。保留原断言、准入及未知责任保护，完整 gate、后续 Host/reload/checkpoint 与跨平台验收仍未通过/未执行。
+
+证据：`docs/references/smoke-reload-autostart/runtime-resume-exit-summary-fix-evidence.json`；原生复验：相邻 `runtime-resume-exit-summary-verification.mjs`；计划：`docs/exec-plans/completed/runtime-resume-exit-summary-repair.md`。本轮隔离会话及 Supervisor 已清理。

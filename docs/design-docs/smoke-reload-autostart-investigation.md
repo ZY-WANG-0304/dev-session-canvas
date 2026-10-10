@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/runtime-resume-exit-summary-investigation.md, docs/exec-plans/completed/runtime-scrollback-snapshot-repair.md, docs/exec-plans/completed/runtime-scrollback-snapshot-investigation.md, docs/exec-plans/completed/runtime-start-admission-repair.md, docs/exec-plans/completed/runtime-start-admission-investigation.md, docs/exec-plans/completed/runtime-root-storage-repair.md, docs/exec-plans/completed/runtime-root-preparation-investigation.md, docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/runtime-resume-exit-summary-repair.md, docs/exec-plans/completed/runtime-resume-exit-summary-investigation.md, docs/exec-plans/completed/runtime-scrollback-snapshot-repair.md, docs/exec-plans/completed/runtime-scrollback-snapshot-investigation.md, docs/exec-plans/completed/runtime-start-admission-repair.md, docs/exec-plans/completed/runtime-start-admission-investigation.md, docs/exec-plans/completed/runtime-root-storage-repair.md, docs/exec-plans/completed/runtime-root-preparation-investigation.md, docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -625,3 +625,25 @@ control 先记录相同缺口，再只在复制的 Supervisor 对这一已恢复
 修复应在 owned Supervisor 发布终态之前恢复结构化退出描述及 fallback，保持已确认退出、主动停止、恢复阶段、输出不完整和未知结果各自的语义与优先级；不能通过 Host 任意补字符串或放宽 smoke 隐藏上游缺口。当前实验只验证成功恢复后 exit23 的摘要缺失；同函数对其他退出/恢复分支的静态差异需在正式修复时纳入回归，不能把本轮对照扩写为全部退出矩阵已验。本轮正式产品/测试不变，完整 gate 与后续场景继续待修复验收。
 
 证据：`docs/references/smoke-reload-autostart/runtime-resume-exit-summary-evidence.json`；复验：相邻 `runtime-resume-exit-summary-investigation.mjs baseline|probe|control`；计划：`docs/exec-plans/completed/runtime-resume-exit-summary-investigation.md`。
+
+## owned Runtime 退出描述修复：正式方案（2026-10-10）
+
+在 `runtimeSupervisorMain.ts` 提取共享的已确认退出业务分类及描述生成，由旧 `finalizeSession` 和新 `finalizeOwnedExecution` 在发布前调用。Agent 主动停止/零码为 stopped；异常退出在仍处恢复阶段时为 resume-failed，已恢复或新启动为 error；Terminal 停止/零码为 closed，其他为 error。使用原有 describe helpers 与 setSessionLastExitMessage 同时设置稳定 descriptor 和 fallback，保留英文/本地化契约。
+
+owned 以 AuthorityResult.applied 与已确认 process 为前提。无退出码的 signal 不伪造数值；terminated 仅在确有停止请求时生成停止描述，未知结果及 authority 失败保持 error 和已有失败原因。source 非 EOF 的 terminalOutputIncomplete 继续优先，不把 process 成功当输出完整。journal 故障已有描述不得被普通退出消息覆盖。原 session 防迟到保护、reader/最终应用/退休顺序不变。修复不在 Host 拼接临时字符串，也不放宽原 smoke。
+
+验证覆盖正式 Supervisor 发布快照、旧协议退出消息、Host 本地化与原生恢复后 exit23；完整 gate 的后续结果另记。
+
+### 退出描述修复的局部与原生验收
+
+Supervisor owner 接线 134/134 通过，其中新增18项覆盖恢复已完成/未完成、零/非零/信号、主动停止、authority 失败、unconfirmed、terminated 与 journal 故障；既有非 EOF 和迟到换绑保护保持。早期恢复失败夹具不输出 prompt，避免墙钟等待输入推断先结束恢复阶段。新增恢复完成后23用例在原产品源码上因缺少 agentExitedCode 明确失败。完整 Runtime 协议链（含旧连接、checkpoint、分页/完成、Host 输出信用）、本地化、typecheck 通过。
+
+正式 VSIX 载荷的原生专项保留原函数与原断言，完整通过：Runtime 开启，原 session 的 status=error、lastExitCode=23、节点 summary/lastExitMessage 与唯一 host/executionExit 均为 Codex exited with code 23. [fake-agent] exiting with code 23。无产品探针或消息补丁；默认 VSIX 的中断及同载荷重跑结果见本节后续记录。证据入口为 `docs/references/smoke-reload-autostart/runtime-resume-exit-summary-fix-evidence.json`；相邻 `runtime-resume-exit-summary-verification.mjs` 可重放。
+
+### 本轮完整流程结果与后续边界
+
+默认 `test:vsix-smoke` 完成打包与前六个独立阶段后，在 local-links-and-stop 的 URL 链接尾部停止推进：最后 probe 为 14:29:15Z，超过五分钟没有用例进展；HTTP listener 已关闭，VS Code 浏览器与测试服务的 TCP 连接仍 ESTAB。保留日志/probe/socket 现场后，仅对该隔离 VS Code 发 SIGTERM 结束运行，默认命令 exit1；这不是断言失败，也不算完整 gate 通过。服务 close 回调等待是现场线索，尚未对该间歇停滞完成独立根因定位。
+
+使用同一份 packaged 产品和原始测试，local-links-and-stop 独立重跑 exit0。trusted 独立原顺序也越过原恢复后退出23摘要断言，在紧邻 `verifyImmediateReloadAfterLiveRuntimeLaunch:11000` 的模拟 reload 报 Runtime session updates are still pending. Please try again after they finish.。失败快照中 Agent=error/Execution start was rejected-before-acquire.，Terminal 仍 live；本轮未定位启动拒绝与 pending 回调之间的因果，不修改该用例、原准入额度或边界保护。后续 Host boundary、Runtime/reload、独立 checkpoint 与跨平台矩阵不由本轮代证。
+
+原生专项节点由原 stop 入口清理；trusted 剩余 Terminal 按失败快照原 storage/session 用真实 client stop 清理并获确认，本轮隔离 Supervisor 已全部退出。当前修复完成，但完整门禁仍有上述独立阻塞/不稳定性。精简证据包含默认命令、两个同载荷独立重跑与清理事实，不将重跑成功追认首次运行通过。
