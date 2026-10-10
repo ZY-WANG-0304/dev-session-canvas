@@ -594,3 +594,9 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 模拟 live-runtime reload 使用 20 秒期限，在清空绑定前结算新回调并按登记修订重新保存；到期保留原责任，普通 reset/template/deactivation 不启用新选项。smoke 只等待 Agent started，Terminal 派发后立即 reload，检查单次启动及原 session 重连。新增 14 个受控场景、完整 Host boundary、Host owner 529/529、类型/本地化/语法通过，基线新回归失败；最终无探针原生专项连续三次通过。
 
 最终默认 VSIX 七个独立阶段通过，trusted 通过立即 reload；随后 `verifyHostBoundaryFlushesRecentLocalState:11210` 在 RuntimePersistence 关闭的 snapshot-only 场景等待 Agent live 超时，Agent stopped/SIGINT、Terminal live。尚未输入本用例正文或执行其 reload/flush；根因待定位，不修改新阻塞断言。完整 gate 仍失败；原 URL 清理停滞、后续 checkpoint/真实新 Host/跨平台等缺口继续保留。证据：`docs/references/smoke-reload-autostart/runtime-immediate-reload-fix-evidence.json`；复验：相邻 `runtime-immediate-reload-verification.mjs`；计划：`docs/exec-plans/completed/runtime-immediate-reload-repair.md`。
+
+## 本地 Host boundary 显式重启遗漏 started 屏障（2026-10-11，PR #314，待修复）
+
+上一节 Agent live 超时已定位：snapshot-only 具名测试停止并确认旧执行退休后，又连续派发两个启动；Terminal 占唯一 starting 槽，Agent rejected-before-acquire。旧 saved/applied 已完成，关闭/隔离/身份不匹配均被排除。SIGINT 属于旧 Agent 的主动停止，新请求 not-required，原 stopped/历史保留及错误提示符合既定准入规则。
+
+无探针原序、只读 authority 探针均复现；产品 bundle 不变、仅串行等待 Agent 原 started 的对照完整通过原函数正文和 reload 后历史断言；既有 Host 准入/状态保留两项测试通过。正式修复应复用原执行 started 屏障，不改配额、历史状态、停止退休或最终保存断言。本轮正式产品/smoke 未改，完整 gate 未重跑。证据：`docs/references/smoke-reload-autostart/local-host-boundary-start-evidence.json`；复跑：相邻 `local-host-boundary-start-investigation.mjs`；计划：`docs/exec-plans/completed/local-host-boundary-start-investigation.md`。
