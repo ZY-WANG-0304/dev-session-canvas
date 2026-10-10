@@ -40,7 +40,7 @@ PR #314 已实施具名修复：同 ID 重读保留原 metadata/status；root + 
 
 2026-10-10 滚动历史旧断言已在 PR #314 收口：新 Terminal live 后捕获原 executionId/generation，复用原实际输出等待替代运行期 metadata.recentOutput 条件，20 秒期限与所有保存/reload 首尾行断言保持。语法检查、正文 helper 14/14、旧现场回放通过；默认真实 VSIX 已完成滚动历史的原执行 -220、模拟 reload 后持久化首尾行、重新请求历史快照首尾行检查，以及后续 editor/panel 标签切换和主题跟随。本轮未改产品；证据见 `docs/references/smoke-reload-autostart/scrollback-smoke-repair-evidence.json`。
 
-最新独立阻塞：`verifyRuntimeReloadRecovery` 在首次等待 Codex Agent live 时超时，尚未执行此场景的 simulateRuntimeReload。Agent stopped/liveSession=false，Terminal 已启动；日志出现 `Non-native Host start was rejected-before-acquire` 及未处理 promise 拒绝。该启动拒绝根因尚未完整定位，不能直接归因于 reload 或本次滚动历史修正。本轮未改启动路径及该独立用例，完整 trusted 仍失败。
+最新独立阻塞：`verifyRuntimeReloadRecovery` 在首次等待 Codex Agent live 时超时，尚未执行此场景的 simulateRuntimeReload。Agent stopped/liveSession=false，Terminal 已启动；日志出现 `Non-native Host start was rejected-before-acquire` 及未处理 promise 拒绝。2026-10-10 专项调查已确认：smoke 连续派发不等 started，Terminal 在 Agent CLI 解析期间先占唯一 starting 名额；Agent identity 正常、owner 未关闭/隔离，实际命中 starting=1。底层拒绝符合产品契约；snapshot-only owned 启动抛错却未由页面入口消费，没有 host/error，是独立产品反馈缺口。双顺序重叠拒绝、started 后同节点重试均已受控证实（2/2），两者可同时 running。后续在继续 PR #314 修复、恢复完整门禁前，应同步修正该 fixture 启动顺序并补齐用户快速连续启动时的错误反馈/诊断，保留正式准入和身份保护；不得提高上限或只延长等待。本轮只定位，临时探针/测试已恢复，完整 trusted 仍失败。关联：`docs/design-docs/smoke-reload-autostart-investigation.md`、`docs/exec-plans/completed/owned-start-admission-investigation.md`、`docs/references/smoke-reload-autostart/start-admission-evidence.json`。
 
 
 

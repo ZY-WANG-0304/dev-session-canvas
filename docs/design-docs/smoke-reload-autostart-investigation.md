@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md]
+related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md]
 updated_at: 2026-10-10
 ---
 
@@ -211,4 +211,41 @@ PR #314 继续补回 snapshot-only 的恢复阶段终态语义。`CanvasPanelMan
 此前原执行最终 Host 快照已包含 001/220，而 metadata 仍为上一条执行历史；这证明旧等待字段不适用，不能追认为 reload 丢失历史。2026-10-10 修后语法检查、正文 helper **14/14** 和失败现场回放通过。默认真实 VSIX 构建打包及两个具名阶段通过，滚动历史函数完整完成：原执行 -220、模拟 reload 后持久化快照 001/220、重新请求历史快照 001/220 均通过；后续 editor/panel 标签切换视口及主题跟随也完成。该旧正文断言阻塞已收口，本轮没有产品变更。
 
 
-完整 trusted 随后在 `verifyRuntimeReloadRecovery` 的首次 Agent live 等待超时，尚未执行该场景的 simulateRuntimeReload。Codex Agent 仍 stopped/liveSession=false，只有新 Terminal 为活动本地执行；日志显示 `Non-native Host start was rejected-before-acquire` 和未处理的 promise 拒绝。此为新触达的独立启动阻塞，完整根因待定位，本轮未改启动路径或该用例。精简证据见 `docs/references/smoke-reload-autostart/scrollback-smoke-repair-evidence.json`；不把具名成功写成完整门禁通过。
+完整 trusted 随后在 `verifyRuntimeReloadRecovery` 的首次 Agent live 等待超时，尚未执行该场景的 simulateRuntimeReload。Codex Agent 仍 stopped/liveSession=false，只有新 Terminal 为活动本地执行；日志显示 `Non-native Host start was rejected-before-acquire` 和未处理的 promise 拒绝。这是滚动历史修复轮新触达的独立启动阻塞；当时尚未归因，后续专项定位见下一节。该修复轮未改启动路径或该用例。精简证据见 `docs/references/smoke-reload-autostart/scrollback-smoke-repair-evidence.json`；不把具名成功写成完整门禁通过。
+
+
+## 后续首次启动准入拒绝：根因与修复边界
+
+2026-10-10 在 PR #314 基线 `2b828114` 完成专项调查。**smoke 的两个启动重叠触发正式 `starting: 1` 限制；底层拒绝符合契约，但 snapshot-only owned 启动拒绝没有被页面入口消费，属于另一个产品反馈缺口。** 本轮只定位，没有修改正式启动行为或该 smoke。
+
+### 原生拒绝时序
+
+原用例 `verifyRuntimeReloadRecovery` 停止两个节点后，连续 `await dispatchWebviewMessage` 派发 Agent 和 Terminal 启动，再等待两者 live。`dispatchWebviewMessageForTest` 调用 `handleWebviewMessage`，后者发起异步 `startAgentSession` / `startTerminalSession` 后即返回；命令返回不表示 provider 已 started。Agent 准备还需要异步解析 CLI，因此请求先到也不保证先进入实际启动。
+
+在当前 Linux x64 / VS Code 1.141.0 / 原生 PTY / fake Agent 的真实 VSIX 中，仅临时增加拒绝点观测，再次得到：
+
+| UTC 时间 | 直接事实 |
+| --- | --- |
+| 03:18:57.662 | Agent startRequested |
+| 03:18:57.672 | Terminal startRequested |
+| 03:18:57.701 | Agent CLI configured-absolute 解析成功 |
+| 03:18:57.707 | Agent `eb50c81c…` 的持久化责任结算为 not-required |
+| 03:18:57.771 | Terminal `cb92d2be…` 确认 started |
+
+`ExecutionAuthority.beginStart` 的临时探针直接观测到被拒的是上述 Agent，`identityMatch=true`、`closing=false`、`blockedReason` 未设置。此时 `starting=1`，唯一占槽者恰为上述 Terminal，其 state=starting；Agent 仍为 bound。`active=2` 含两条预留，并非两个进程均已运行；`admissionPending=2` 也不是该函数的拒绝条件。唯一命中的判断是 `starting.size >= admissionLimits.starting`。
+
+`PreparedExecution.start` 在 transport.connect 之前返回 rejected-before-acquire。Host 清理未获取资源的记录并结算 not-required，Agent 最后仍 stopped/liveSession=false；Terminal 成功 live。没有发现此次 Agent 遗留资源、CLI 缺失或旧执行仍占同 key。该函数首次 `waitForAgentLive` 超时，尚未执行自身的 `simulateRuntimeReload`；此前 reload 的关闭状态也不是原因，因为拒绝瞬间 owner 已正常开放。
+
+### 合法拒绝与错误反馈分别判断
+
+`docs/product-specs/runtime-persistence-modes.md` §9 与容量设计 §10.17 明确 `{ executions: null, starting: 1, pending: 2 }`：允许多个活动会话，新建并发启动限 1，不排隐藏队列。故该场景若要准备两个运行中节点，应等待第一个真实 started/live 后再派发第二个；提高上限、增加固定 sleep 或延长超时都不能替代这个前提。已有 `startFixtureExecutions` 使用逐个派发、逐个等待 live 的顺序。
+
+产品反馈缺口位于 `CanvasPanelManager`：`startNonNativeHostExecution` 对非 started 抛错，并在 rejected-before-acquire 时正确释放未获取资源的责任；snapshot-only 的 `startAgentSession` owned 分支没有 catch，Terminal owned 分支只清理初始输入后重新 throw。页面 `webview/startExecutionSession` 分支仅在 RuntimePersistence 开启时跟踪启动 promise，snapshot-only 返回后不消费此拒绝。真实日志出现 `rejected promise not handled within 1 second`，同阶段 Host 消息无 host/error，节点也没有可见启动拒绝结果。用户快速启动不同节点同样可以到达这条路径；它不只是 smoke 的等待方式问题。后续应保留合法拒绝并补齐可理解的错误反馈与诊断，且不能把旧请求错误写入替换后的新执行；本轮未实施。
+
+### 受控因果对照与历史来源
+
+使用真实 Host/owner/adapter 与受控 transport，在生产准入及页面 output-credit 能力齐全的夹具中挂住第一个 started 确认：Terminal→Agent、Agent→Terminal 两个顺序均使第二个请求在 connect 前拒绝（connect=0），owner/Host 不留第二条记录，没有 host/error 或 startRejected/spawnError/candidateStartFailed 诊断。释放第一 started 后再启动同一第二节点，connect=1，两个 adapter 均 running，authority active=2/starting=0。移除产品探针后两项特征验证 **2/2** 仍通过；证明限制针对重叠启动，不针对同时运行的会话数，也不依赖真实服务或 reload。
+
+源码历史显示：`6dec5545`（2026-04-08）加入该 smoke 的连续派发顺序；`e9a3b3f7`（2026-09-24）共享核心已有 starting=1；`c1b6bc8b`（2026-09-25）接入 owned Host 启动分支时留下向外抛错路径，页面入口的仅 RuntimePersistence 跟踪来自 `005e94c7`（2026-04-09）；`7f1e1887`（2026-10-02）把正式容量收口为 executions=null/pending=2，继续保留 starting=1。它们说明旧 smoke 和 owned 生命周期契约未一起校准，不能把最后的容量提交或本轮滚动历史修正单独当成首次受影响版本；本轮未复验历史发布包。
+
+精简证据见 `docs/references/smoke-reload-autostart/start-admission-evidence.json`。相邻 `start-admission-probe.patch` 与 `start-admission-characterization.patch` 可在 `2b828114` 应用复跑；前者仅供原生拒绝观测，后者可单独运行 `DEV_SESSION_CANVAS_HOST_TEST_FILTER='start admission characterization' node scripts/test/test-host-execution-owner-wiring.mjs`（Node 22，先安装依赖）。临时探针/测试已恢复，三个源文件 hash 与基线一致，正式代码未改。夹具调试曾缺少生产必需的 output-credit 能力、connect 计数也曾安装在 owner 复制选项之后；已校正，失败不作为产品证据。完整 VSIX 仍为失败，本轮没有用串行变体代证后续 Runtime/恢复/压力场景，也没有验证跨版本矩阵。计划见 `docs/exec-plans/completed/owned-start-admission-investigation.md`。

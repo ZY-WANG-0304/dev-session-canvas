@@ -1,0 +1,246 @@
+{
+  "scope": "PR #314 verifyRuntimeReloadRecovery 首次启动准入调查；未修复启动产品或 smoke 顺序",
+  "date": "2026-10-10",
+  "baseline": "2b828114c717aeda2e659029ce9454d49a98d998",
+  "native": {
+    "command": "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=/tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/code npm run test:vsix-smoke",
+    "environment": "Node 22.23.3 / Linux x64 / VS Code 1.141.0 / snapshot-only / 当前原生 PTY / fake Codex / bash",
+    "modification": "仅 adapter 拒绝点增加只读日志；smoke 与产品判断保持基线",
+    "exitCode": 1,
+    "failure": "verifyRuntimeReloadRecovery:8814 waitForAgentLive 超时，尚未执行本函数 simulateRuntimeReload",
+    "gate": {
+      "identity": {
+        "executionId": "eb50c81c-0d0d-48ba-8634-5947142a61bb",
+        "generation": "77dd7372-1873-476f-871d-0990c04a4ea1"
+      },
+      "identityMatch": true,
+      "limits": {
+        "executions": null,
+        "starting": 1,
+        "pending": 2
+      },
+      "authority": {
+        "active": 2,
+        "starting": 1,
+        "admissionPending": 2,
+        "closing": false,
+        "permanent": false
+      },
+      "startingIdentities": [
+        {
+          "executionId": "cb92d2be-245b-495a-8b2d-b4b8f183b2ab",
+          "generation": "eb0c3fdf-4442-4732-92b1-5236754385bd"
+        }
+      ],
+      "reservations": [
+        {
+          "identity": {
+            "executionId": "cb92d2be-245b-495a-8b2d-b4b8f183b2ab",
+            "generation": "eb0c3fdf-4442-4732-92b1-5236754385bd"
+          },
+          "state": "starting"
+        },
+        {
+          "identity": {
+            "executionId": "eb50c81c-0d0d-48ba-8634-5947142a61bb",
+            "generation": "77dd7372-1873-476f-871d-0990c04a4ea1"
+          },
+          "state": "bound"
+        }
+      ]
+    },
+    "timeline": [
+      {
+        "timestamp": "2026-10-10T03:18:57.662Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-9065d7f2-8836-4d94-bbf0-459cddaa232a",
+          "provider": "codex",
+          "resumeRequested": false,
+          "launchPreset": "default",
+          "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "launchArgs": [],
+          "cols": 90,
+          "rows": 28,
+          "cwd": "/tmp/dscr",
+          "workspaceTrusted": true
+        }
+      },
+      {
+        "timestamp": "2026-10-10T03:18:57.672Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "terminal",
+          "nodeId": "terminal-2-2fc96333-71f3-4382-beac-7cb2d5f4701f",
+          "cols": 90,
+          "rows": 28,
+          "cwd": "/tmp/dscr",
+          "workspaceTrusted": true
+        }
+      },
+      {
+        "timestamp": "2026-10-10T03:18:57.701Z",
+        "kind": "agentCli/commandResolved",
+        "detail": {
+          "provider": "codex",
+          "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "resolvedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "cwd": "/tmp/dscr",
+          "source": "configured-absolute"
+        }
+      },
+      {
+        "timestamp": "2026-10-10T03:18:57.707Z",
+        "kind": "execution/localFinalPersistence",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-9065d7f2-8836-4d94-bbf0-459cddaa232a",
+          "executionId": "eb50c81c-0d0d-48ba-8634-5947142a61bb",
+          "generation": "77dd7372-1873-476f-871d-0990c04a4ea1",
+          "submitted": false,
+          "result": {
+            "kind": "not-required"
+          }
+        }
+      },
+      {
+        "timestamp": "2026-10-10T03:18:57.771Z",
+        "kind": "execution/started",
+        "detail": {
+          "kind": "terminal",
+          "nodeId": "terminal-2-2fc96333-71f3-4382-beac-7cb2d5f4701f",
+          "sessionId": "cb92d2be-245b-495a-8b2d-b4b8f183b2ab",
+          "cols": 90,
+          "rows": 28,
+          "shellPath": "/usr/bin/bash",
+          "cwd": "/tmp/dscr",
+          "launchArgs": []
+        }
+      }
+    ],
+    "promiseError": "rejected promise not handled within 1 second: Error: Non-native Host start was rejected-before-acquire.",
+    "hostErrorCount": 0,
+    "finalNodes": [
+      {
+        "kind": "agent",
+        "status": "stopped",
+        "liveSession": false
+      },
+      {
+        "kind": "terminal",
+        "status": "live",
+        "liveSession": true
+      }
+    ],
+    "finalLocalExecutions": [
+      {
+        "kind": "terminal",
+        "nodeId": "terminal-2-2fc96333-71f3-4382-beac-7cb2d5f4701f",
+        "identity": {
+          "executionId": "cb92d2be-245b-495a-8b2d-b4b8f183b2ab",
+          "generation": "eb0c3fdf-4442-4732-92b1-5236754385bd"
+        },
+        "retired": false,
+        "persistence": {
+          "submitted": false
+        }
+      }
+    ],
+    "interpretation": "Agent 准备 CLI 时 Terminal 先占 starting 名额；Agent 在 provider connect 前因 starting=1 被拒绝。active=2 是含已预留执行的数目，不是两个已启动进程；pending=2 不是此次 beginStart 拒绝条件。"
+  },
+  "controlled": {
+    "command": "DEV_SESSION_CANVAS_HOST_TEST_FILTER='start admission characterization' node scripts/test/test-host-execution-owner-wiring.mjs",
+    "result": "2/2 passed；移除产品探针后重跑",
+    "cases": [
+      {
+        "firstKind": "terminal",
+        "secondKind": "agent",
+        "authorityBefore": {
+          "active": 1,
+          "starting": 1,
+          "admissionPending": 1,
+          "closing": false,
+          "permanent": false
+        },
+        "overlap": "rejected-before-acquire",
+        "rejectedTransportConnected": false,
+        "pageError": false,
+        "preservedStatus": "stopped",
+        "serialRetry": "both-running",
+        "retryConnects": 1,
+        "authorityAfter": {
+          "active": 2,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": false,
+          "permanent": false
+        }
+      },
+      {
+        "firstKind": "agent",
+        "secondKind": "terminal",
+        "authorityBefore": {
+          "active": 1,
+          "starting": 1,
+          "admissionPending": 1,
+          "closing": false,
+          "permanent": false
+        },
+        "overlap": "rejected-before-acquire",
+        "rejectedTransportConnected": false,
+        "pageError": false,
+        "preservedStatus": "stopped",
+        "serialRetry": "both-running",
+        "retryConnects": 1,
+        "authorityAfter": {
+          "active": 2,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": false,
+          "permanent": false
+        }
+      }
+    ],
+    "assertions": [
+      "第二 transport connect=0，未派发 start",
+      "第二 owner/Host 记录清理，节点保持 stopped/liveSession=false",
+      "没有 host/error 或 startRejected/spawnError/candidateStartFailed 诊断",
+      "释放第一 started 后第二相同节点重试 connect=1，两个 adapter running，active=2/starting=0"
+    ]
+  },
+  "conclusions": [
+    "smoke 把消息派发返回当成可连续启动的时点，未满足正式 starting:1 契约",
+    "底层拒绝符合产品设计；本次 owner 未关闭、未隔离、identity 正确",
+    "snapshot-only owned start 抛错未被页面入口消费，是独立产品错误反馈缺口",
+    "无需 reload 或旧版本服务即可复现；本次不支持归因为 reload/升级兼容故障"
+  ],
+  "validationBoundary": "未串行改写完整 smoke，未宣称后续恢复/Runtime/压力矩阵通过；未运行跨版本、其他平台或真实 Agent 服务。未改变 starting/pending 限额。",
+  "patches": [
+    "start-admission-probe.patch",
+    "start-admission-characterization.patch"
+  ],
+  "rawArtifacts": [
+    {
+      "path": ".debug/start-admission-rca/vsix.log",
+      "sha256": "89557f2b445b0862418c4104cf24fa164b15a87dc5bc1b6d64aac2e58e6eafea"
+    },
+    {
+      "path": ".debug/start-admission-rca/characterization-without-probe.log",
+      "sha256": "8d48d7a2cab6eed59d46b316888b501cbfa2acaa3d36569f9c626f16668f1bba"
+    },
+    {
+      "path": ".debug/start-admission-rca/trusted-artifacts/failure-diagnostic-events.json",
+      "sha256": "c37ddd3eb316395c82c269b6611668034d653e454690bf1f2b6df83f7bcc1a69"
+    },
+    {
+      "path": ".debug/start-admission-rca/trusted-artifacts/failure-host-messages.json",
+      "sha256": "cef75f77ae7dbb3fbe1d9e7811a373c50848302f31b19dc7b6d1f816353da7d2"
+    },
+    {
+      "path": ".debug/start-admission-rca/trusted-artifacts/failure-snapshot.json",
+      "sha256": "7d6238ce5bd24226b382f3127edfdb7ee40222eb3cdb0f114282194fd289ab7b"
+    }
+  ]
+}

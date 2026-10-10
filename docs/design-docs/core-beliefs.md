@@ -331,3 +331,5 @@ unknown是当时缺少证明的观察，不应擦除已确认事实，也不阻�
 执行交互入口迁移须覆盖拖放等间接输入。路径转义必须使用原执行的启动 shell/cwd，并经过同一身份、metadata 和关闭准入校验；异步写入确认不能把输入转投节点上的新执行。正文验证从原执行交付通道读取，不能用历史 metadata 掩盖入口遗漏。依据见 `smoke-reload-autostart-investigation.md` 的资源拖放方案。
 
 文件链接属于正文的只读解释，应按原输出行的工作目录解析，不能直接使用节点启动 cwd。执行迁移须把已确认输入/OSC 7 的逐行 tracker 接到解析入口；异步查询捕获原 tracker，相对路径缓存包含原执行身份，避免同节点重启后同名文件串用。停止输入不等于立即失去正文链接上下文。依据见 `smoke-reload-autostart-investigation.md` 的逐行文件链接方案。
+
+启动消息派发返回不代表 provider 已启动。同一 owner 的 `starting: 1` 限制与多个活动会话并存不矛盾；准备多个运行节点的测试须逐个等待真实 started/live。合法的并发拒绝仍须被 Host 消费并向页面给出明确反馈，不能成为无人处理的 promise 或永久等待。调查应记录拒绝瞬间的身份、关闭/隔离与占槽执行，并用重叠和确认后重试区分准入契约与生命周期故障。依据见 `smoke-reload-autostart-investigation.md` 的首次启动准入专项定位。
