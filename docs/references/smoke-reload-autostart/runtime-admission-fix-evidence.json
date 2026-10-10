@@ -1,0 +1,296 @@
+{
+  "baseline": "1357217b18d17c2c83febc27ca465ff9f2e2aeb3",
+  "environment": {
+    "platform": "linux-x64",
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "provider": "fake-agent-provider",
+    "runtimeBackend": "legacy-detached",
+    "profile": "linux-owner-v1-candidate"
+  },
+  "change": "可信共用 helper 的 Runtime 开/关准备逐个确认原身份 started；同一 Runtime 用例显式重启也逐个等待。产品代码/配额/后续断言不变。",
+  "payloadSha256": {
+    "dist/extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+    "dist/runtime-supervisor.js": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a",
+    "dist/webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb",
+    "tests/vscode-smoke/extension-tests.cjs": "4b4b7278823cf372992bed7a5ee3c85a27fc4dc31785fd1b0cfe4ef42c47bd19"
+  },
+  "syntaxCheck": "passed",
+  "vsix": {
+    "exitCode": 1,
+    "passedIndependentStages": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure",
+      "local-links-and-stop"
+    ],
+    "trusted": {
+      "createAndExplicitRestartPassed": true,
+      "verifyLiveRuntimePersistencePassed": true,
+      "evidenceBasis": "runTrustedSmoke 已进入其紧邻下一项 verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory，前一 await 已完成；下列事件保留两轮新 session 的顺序。",
+      "events": [
+        {
+          "timestamp": "2026-10-10T11:28:06.437Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-0b7a6d6f-cf7b-4b0a-98a4-b80ec5e001d2"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:07.112Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-0b7a6d6f-cf7b-4b0a-98a4-b80ec5e001d2",
+            "sessionId": "6f474364-0818-44d0-8913-bae2d13b9001"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:07.160Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-2cc2e353-3ba7-4e3e-a0b4-6d4f420be1fc"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:07.254Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-2cc2e353-3ba7-4e3e-a0b4-6d4f420be1fc",
+            "sessionId": "5b700850-be5a-4123-9c6f-8dd2427ddd62"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:07.586Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-0b7a6d6f-cf7b-4b0a-98a4-b80ec5e001d2"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:07.692Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-0b7a6d6f-cf7b-4b0a-98a4-b80ec5e001d2",
+            "sessionId": "4fcb738e-c1d8-456a-9985-ff21ca47155b"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:07.796Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-2cc2e353-3ba7-4e3e-a0b4-6d4f420be1fc"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:07.951Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-2cc2e353-3ba7-4e3e-a0b4-6d4f420be1fc",
+            "sessionId": "c59a0462-77c0-48a3-badb-6d45095a6bb1"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:09.923Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-2cc2e353-3ba7-4e3e-a0b4-6d4f420be1fc"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:10.172Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-2cc2e353-3ba7-4e3e-a0b4-6d4f420be1fc",
+            "sessionId": "d7d879f2-0f9e-4600-b830-3116b655e214"
+          }
+        }
+      ],
+      "failure": {
+        "at": "verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory:10380",
+        "waitingFor": "原 session 的 host/executionSnapshot.terminalStream 包含首末 marker",
+        "priorChecksPassed": "同一函数中 Runtime reload 后页面最新行和滚动至最早行断言已完成，随后才到此消息等待",
+        "observedAtTimeout": [
+          {
+            "type": "host/executionSnapshot",
+            "kind": "terminal",
+            "nodeId": "terminal-2-2cc2e353-3ba7-4e3e-a0b4-6d4f420be1fc",
+            "executionSessionId": "d7d879f2-0f9e-4600-b830-3116b655e214",
+            "keys": [
+              "nodeId",
+              "kind",
+              "executionSessionId",
+              "output",
+              "cols",
+              "rows",
+              "liveSession",
+              "terminalTitle",
+              "outputSequence",
+              "terminalRead"
+            ],
+            "outputSequence": 20,
+            "terminalRead": {
+              "sessionId": "d7d879f2-0f9e-4600-b830-3116b655e214",
+              "headRevision": 20,
+              "currentState": {
+                "format": "xterm-current-state-v1",
+                "length": 24826
+              },
+              "settlementMode": "final-application-v1"
+            }
+          }
+        ],
+        "stack": [
+          "\tat waitForHostMessages (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:12853:10)",
+          "\tat async verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:10380:26)",
+          "\tat async runTrustedSmoke (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:1462:3)",
+          "\tat async runSmoke (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:305:3)",
+          "\tat async Object.run (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:172:5)"
+        ],
+        "nodes": [
+          {
+            "kind": "agent",
+            "status": "stopped",
+            "runtimeSessionId": null,
+            "liveSession": false
+          },
+          {
+            "kind": "terminal",
+            "status": "live",
+            "runtimeSessionId": "d7d879f2-0f9e-4600-b830-3116b655e214",
+            "liveSession": true
+          }
+        ]
+      }
+    }
+  },
+  "nativeVerification": {
+    "on": {
+      "exitCode": 0,
+      "enabled": true,
+      "sessions": [
+        {
+          "nodeId": "agent-1-e7c0003e-6e5c-4528-9c1e-80f454d832ba",
+          "kind": "agent",
+          "sessionId": "e503aea6-017a-456a-871b-ab9909b35f54",
+          "persistenceMode": "live-runtime"
+        },
+        {
+          "nodeId": "terminal-2-78117d19-e515-444b-8cd2-dd2a89540e0f",
+          "kind": "terminal",
+          "sessionId": "57256185-c32d-4c7d-9483-f4798cdea669",
+          "persistenceMode": "live-runtime"
+        }
+      ],
+      "events": [
+        {
+          "timestamp": "2026-10-10T11:28:29.956Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-e7c0003e-6e5c-4528-9c1e-80f454d832ba"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:30.744Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-e7c0003e-6e5c-4528-9c1e-80f454d832ba",
+            "sessionId": "e503aea6-017a-456a-871b-ab9909b35f54"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:30.855Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-78117d19-e515-444b-8cd2-dd2a89540e0f"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:31.040Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-78117d19-e515-444b-8cd2-dd2a89540e0f",
+            "sessionId": "57256185-c32d-4c7d-9483-f4798cdea669"
+          }
+        }
+      ]
+    },
+    "off": {
+      "exitCode": 0,
+      "enabled": false,
+      "sessions": [
+        {
+          "nodeId": "agent-1-1aa70348-42a3-46c6-a32b-6e7d966324a5",
+          "kind": "agent",
+          "sessionId": "8a34bf98-f3c2-405a-960b-bed77e316dba",
+          "persistenceMode": "snapshot-only"
+        },
+        {
+          "nodeId": "terminal-2-fbd0bd11-3a8e-463f-9434-11886630b58f",
+          "kind": "terminal",
+          "sessionId": "56a48329-7e87-4e35-963a-4626872e1615",
+          "persistenceMode": "snapshot-only"
+        }
+      ],
+      "events": [
+        {
+          "timestamp": "2026-10-10T11:28:55.286Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-1aa70348-42a3-46c6-a32b-6e7d966324a5"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:55.456Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-1aa70348-42a3-46c6-a32b-6e7d966324a5",
+            "sessionId": "8a34bf98-f3c2-405a-960b-bed77e316dba"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:55.566Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-fbd0bd11-3a8e-463f-9434-11886630b58f"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T11:28:55.726Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-fbd0bd11-3a8e-463f-9434-11886630b58f",
+            "sessionId": "56a48329-7e87-4e35-963a-4626872e1615"
+          }
+        }
+      ]
+    }
+  },
+  "cleanup": {
+    "trustedTerminalStopAcknowledged": true,
+    "log": ".debug/runtime-admission-fix/cleanup.log",
+    "isolatedSupervisorsExited": true
+  },
+  "limitations": "完整 gate 仍未通过；后续 Runtime scrollback 快照断言单独跟踪，checkpoint 独立大输出场景及剩余矩阵未在本轮执行。",
+  "artifacts": ".debug/runtime-admission-fix/"
+}

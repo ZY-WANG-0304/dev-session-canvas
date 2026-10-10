@@ -952,8 +952,13 @@ async function prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(enabled) 
   snapshot = await ensureEditorCanvasReady();
   assert.strictEqual(snapshot.activeSurface, 'editor');
 
-  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'agent');
-  await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'terminal');
+  for (const kind of ['agent', 'terminal']) {
+    await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, kind);
+    const nodeId = findNodeByKind(await getDebugSnapshot(), kind).id;
+    // Node creation and early live output do not release the owner's start slot.
+    if (enabled) await waitForRuntimeExecutionStarted(kind, nodeId);
+    else await waitForLocalExecutionStarted(kind, nodeId);
+  }
   await vscode.commands.executeCommand(COMMAND_IDS.testCreateNode, 'note');
 
   snapshot = await waitForSnapshot(
@@ -4965,6 +4970,20 @@ async function waitForLocalExecutionStarted(kind, nodeId) {
     event.detail?.kind === kind && event.detail.nodeId === nodeId && event.detail.sessionId === execution.executionSessionId));
   assert.deepStrictEqual(captureLocalExecutionIdentity(await getDebugSnapshot(), kind, nodeId), execution);
   return { snapshot, execution };
+}
+
+async function waitForRuntimeExecutionStarted(kind, nodeId) {
+  const snapshot = kind === 'agent' ? await waitForAgentLive(nodeId) : await waitForTerminalLive(nodeId);
+  const metadata = findNodeById(snapshot, nodeId).metadata[kind];
+  const sessionId = metadata.runtimeSessionId;
+  assert.strictEqual(metadata.persistenceMode, 'live-runtime');
+  assert.ok(sessionId, `Expected an active Runtime session for ${kind}:${nodeId}`);
+  await waitForDiagnosticEvents(events => events.some(event => event.kind === 'execution/started' &&
+    event.detail?.kind === kind && event.detail.nodeId === nodeId && event.detail.sessionId === sessionId));
+  const current = findNodeById(await getDebugSnapshot(), nodeId).metadata[kind];
+  assert.strictEqual(current.persistenceMode, 'live-runtime');
+  assert.strictEqual(current.runtimeSessionId, sessionId, 'The started barrier must keep its original Runtime session.');
+  assert.strictEqual(current.liveSession, true);
 }
 
 async function waitForLocalExecutionOutput(execution, expectedText, expectedStatus, timeoutMs = 15000, predicate = () => true) {
@@ -10036,6 +10055,7 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
         provider: 'codex'
       }
     });
+    await waitForRuntimeExecutionStarted('agent', agentNodeId);
     await dispatchWebviewMessage({
       type: 'webview/startExecutionSession',
       payload: {
@@ -10045,6 +10065,8 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
         rows: 28
       }
     });
+
+    await waitForRuntimeExecutionStarted('terminal', terminalNodeId);
 
     await waitForSnapshot((currentSnapshot) => {
       const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);

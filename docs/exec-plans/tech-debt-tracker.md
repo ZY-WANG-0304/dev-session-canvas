@@ -544,3 +544,11 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 上一项 Agent 准入原因已确认：`prepareTrustedBaseNodesForAppliedRuntimePersistenceMode` 连续创建 Agent/Terminal，只等节点存在。原生拒绝点显示准备容量通过、身份匹配、未关闭/隔离，Terminal 持有唯一 starting 槽时 Agent 进入 beginStart 被拒，无 provider 资源。Terminal started 后槽正常释放，原 Agent 节点重试成功；串行 started 对照两者成功；无探针原包连续创建则拒绝 Terminal，随后同节点重试成功。三场景均 exit 0，隔离 Supervisor 已自然退出。属于 fixture 未遵循正式准入前提，未发现此处生命周期泄漏或版本兼容故障。
 
 尚待修复共用 helper 的逐个原身份 started 屏障，覆盖 Runtime 开/关及其独立调用点；保留后续断言，不扩大额度、不固定 sleep、不自动重试。本轮未改正式 smoke/产品，完整 gate 和后续 Runtime reload/checkpoint 仍未验证，不能把专项结束当成发布准入。证据：`docs/references/smoke-reload-autostart/runtime-admission-evidence.json`；复现：相邻 `runtime-admission-investigation.mjs`；计划：`docs/exec-plans/completed/runtime-start-admission-investigation.md`；设计：`docs/design-docs/smoke-reload-autostart-investigation.md`。
+
+## Runtime 启动屏障已修复，后续分页快照断言仍阻塞（2026-10-10，PR #314）
+
+上一项共用 fixture 缺口已收口：Runtime 开/关均逐个确认原 session/execution 的 started；同一持久化用例的显式重新启动也串行确认，等待后复核原绑定。两个原生开/关专项通过，启动次数准确、无拒绝或重试；默认 VSIX 七个独立阶段通过，trusted 完整 `verifyLiveRuntimePersistence` 已通过初始启动、指定尺寸重启、运行、reload/reattach、停止后重读。
+
+剩余门禁为紧邻下一项 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory:10380`：页面恢复最新行和滚动至最早行已通过，但测试仍等待原 session 的 `host/executionSnapshot.terminalStream` 同时包含首末 marker。超时记录显示实际是 `terminalRead`/`currentState`、无 terminalStream；需要按分页快照契约修正观察并验证首末历史/原身份/修订号，不能删除覆盖或改用任意节点输出。本轮未改该断言，完整 gate 与其后的 Runtime 场景、checkpoint 独立大输出和跨平台矩阵继续未通过/未执行。
+
+证据：`docs/references/smoke-reload-autostart/runtime-admission-fix-evidence.json`；专项复验：相邻 `runtime-admission-fix-verification.mjs`；计划：`docs/exec-plans/completed/runtime-start-admission-repair.md`；正式方案：`docs/design-docs/smoke-reload-autostart-investigation.md`。已清理本轮隔离会话和 Supervisor。

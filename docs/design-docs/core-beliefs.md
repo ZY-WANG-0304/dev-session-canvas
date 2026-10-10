@@ -351,3 +351,5 @@ unknown是当时缺少证明的观察，不应擦除已确认事实，也不阻�
 Runtime 使用共享扩展目录前可以对已确认同 UID、非链接且无特殊位的历史 0770/0775 目录，通过原目录描述符移除组写位；必须复核 dev/ino 与 canonical 路径，不递归改权限、不变更 owner key，也不处理任意世界可写目录。新内部目录统一私有创建。未提交新会话的准备失败应结束 pendingLaunch；带原 Runtime 历史绑定的节点继续保留其清理资格，未知已提交会话仍保留责任。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 存储准备修复方案。
 
 相同准入错误可能来自准备容量或启动槽，必须在具体拒绝点核对原身份和责任。Runtime 与 snapshot-only 的多节点 fixture 都应等待原执行 started；节点创建返回或 liveSession 不等于启动槽释放。无探针对照中被拒节点交换、槽释放后原节点重试成功可佐证启动竞争，但不能把重试变成掩盖测试前提的正式修复。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 创建准入专项定位。
+
+多会话测试的创建与停止后重启均须遵循 started 屏障：Runtime 用原 runtimeSessionId，本地用原 executionId/generation，并在等待后复核绑定仍活动。共用 fixture 的修正应覆盖持久化开/关，restricted 不运行执行，不能机械加入启动等待。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime smoke 启动屏障修复方案。

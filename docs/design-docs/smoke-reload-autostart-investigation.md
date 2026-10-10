@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/runtime-start-admission-investigation.md, docs/exec-plans/completed/runtime-root-storage-repair.md, docs/exec-plans/completed/runtime-root-preparation-investigation.md, docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/runtime-start-admission-repair.md, docs/exec-plans/completed/runtime-start-admission-investigation.md, docs/exec-plans/completed/runtime-root-storage-repair.md, docs/exec-plans/completed/runtime-root-preparation-investigation.md, docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -541,3 +541,21 @@ root helper 的原私有目录/归属检查保持；其目录准备异常使用�
 这与先前 `verifyRuntimeReloadRecovery` 的 snapshot-only 启动重叠同属一个机制，但位于此前未修的另一 helper。`git blame` 显示该连续创建顺序来自 `cf7d5225`（2026-04-18），正式 owned 准入接入后未一起校准；本轮未回测历史发布包，不能据此指定首次受影响版本。权限修复只使执行到达后续准入，并未引入这个创建顺序。
 
 本轮仅定位并同步证据，没有修改正式 smoke 或产品代码；完整 gate、后续 Runtime reload/checkpoint、真实 provider 和跨平台/跨版本矩阵仍未完成。计划见 `docs/exec-plans/completed/runtime-start-admission-investigation.md`。
+
+## Runtime smoke 启动屏障修复方案（2026-10-10）
+
+### 正式方案
+
+用户授权在 PR #314 修正测试。`tests/vscode-smoke/extension-tests.cjs` 的可信节点准备 helper 逐个创建 Agent/Terminal：Runtime 开启时捕获本次 runtimeSessionId 并等 kind/nodeId/sessionId 一致的 execution/started，随后复核原绑定仍 live；关闭时复用 `waitForLocalExecutionStarted` 的 executionId/generation 等待。两者确认后再创建 Note，保留三节点返回契约。restricted 的节点准备不启动执行，保持原逻辑。
+
+同一 `verifyLiveRuntimePersistence` 的停止后显式重启也逐个等待 Runtime started，再进行后续运行/reload 检查。只修正启动准备顺序，不改配额、产品生命周期、状态/正文断言，不增加固定延迟或自动重试。实施与结果见 `docs/exec-plans/completed/runtime-start-admission-repair.md`。
+
+### 修复验证与后续边界
+
+正式共用 helper 的 Runtime 开/关两个原生专项均通过：分别只有 Agent/Terminal 两次启动，首个原 session 的 started 先于第二个请求，最终绑定正确，无 candidateStartFailed 或自动重试。Runtime 开启使用 runtimeSessionId，关闭使用 executionId/generation；生成载荷与正式测试来自本轮默认 VSIX。
+
+默认 VSIX 构建打包、类型检查和七个独立阶段全部通过。trusted 原顺序已越过共用 helper 的自启动，并在指定尺寸重启中依次确认新 Agent/Terminal started；完整 `verifyLiveRuntimePersistence` 的运行、reload/reattach、停止及停止后重读断言均通过。运行到紧邻下一项函数是前一 await 已完成的直接证据，两轮启动身份与时间线见 `docs/references/smoke-reload-autostart/runtime-admission-fix-evidence.json`。
+
+完整 gate 仍未通过：下一项 `verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory:10380` 请求原 session 快照后，等待 `host/executionSnapshot.terminalStream` 包含首末 marker 超时。失败现场快照实际携带 `terminalRead` / `currentState`，没有 `terminalStream`；同函数此前 reload 后页面最新行和滚到最早行的断言已通过。本轮保留此失败及原断言，后续需校准/验证分页快照观察契约，不将新等待问题归为本次启动拒绝。checkpoint 独立大输出场景、其余 Runtime 场景和跨平台/跨版本矩阵尚未执行。
+
+本轮仅修改 smoke 的启动等待；原配额、产品和后续恢复/正文断言均保持。失败后已通过原 session 的真实 client stop 清理隔离 Terminal，专项节点通过原 smoke stop 清理，实验 Supervisor 全部退出。专项脚本 `runtime-admission-fix-verification.mjs on|off` 可复验。
