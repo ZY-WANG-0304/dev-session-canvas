@@ -10976,6 +10976,8 @@ async function verifyImmediateReloadAfterLiveRuntimeLaunch(agentNodeId, terminal
     await clearHostMessages();
     await ensureAgentStopped(agentNodeId);
     await ensureTerminalStopped(terminalNodeId);
+    const previousStarts = new Set((await getDiagnosticEvents())
+      .filter(event => event.kind === 'execution/started').map(event => event.detail?.sessionId));
 
     await dispatchWebviewMessage({
       type: 'webview/startExecutionSession',
@@ -10987,6 +10989,7 @@ async function verifyImmediateReloadAfterLiveRuntimeLaunch(agentNodeId, terminal
         provider: 'codex'
       }
     });
+    await waitForRuntimeExecutionStarted('agent', agentNodeId);
     await dispatchWebviewMessage({
       type: 'webview/startExecutionSession',
       payload: {
@@ -10997,6 +11000,7 @@ async function verifyImmediateReloadAfterLiveRuntimeLaunch(agentNodeId, terminal
       }
     });
 
+    // Keep the Terminal launch in flight: reload itself must settle new Runtime callbacks.
     let snapshot = await simulateRuntimeReload();
     let agentNode = findNodeById(snapshot, agentNodeId);
     let terminalNode = findNodeById(snapshot, terminalNodeId);
@@ -11028,6 +11032,13 @@ async function verifyImmediateReloadAfterLiveRuntimeLaunch(agentNodeId, terminal
     assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
     assert.strictEqual(terminalNode.metadata.terminal.attachmentState, 'attached-live');
     assert.ok(terminalNode.metadata.terminal.runtimeSessionId);
+    const starts = (await getDiagnosticEvents()).filter(event => event.kind === 'execution/started' &&
+      !previousStarts.has(event.detail?.sessionId));
+    for (const node of [agentNode, terminalNode]) {
+      const originalStarts = starts.filter(event => event.detail?.nodeId === node.id && event.detail.kind === node.kind);
+      assert.strictEqual(originalStarts.length, 1, 'Reload must preserve the one original launch, without restarting it.');
+      assert.strictEqual(node.metadata[node.kind].runtimeSessionId, originalStarts[0].detail.sessionId);
+    }
 
     await ensureAgentStopped(agentNodeId);
     await ensureTerminalStopped(terminalNodeId);

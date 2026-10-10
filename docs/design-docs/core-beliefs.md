@@ -359,3 +359,5 @@ Runtime 使用共享扩展目录前可以对已确认同 UID、非链接且无�
 Runtime 的结构化退出信息属于终态事实，不能因 completed 正文清理而省略。迁移底层执行 owner 时，code/signal、状态分类、退出 descriptor/fallback 必须一起接回发布路径；Host 的通用兜底不等于上游已生成退出原因。应在原 session 的发布点取证，并用原断言及只改消息投影的隔离对照区分协议遗漏与测试过时。已确认退出的业务分类和 descriptor/fallback 在新旧路径共享；未知进程或失败 authority 不得冒充正常退出，非 EOF 信息与既有失败原因继续受保护。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 恢复退出摘要专项定位。
 
 模拟 Host 重载与真实 Host 退出必须分开验收。非永久边界继续接收事件，一次回调集合等待和原执行 started 都不保证最终检查时没有新回调；pending 拒绝不等于回调泄漏或实际窗口重载失败。真实退出须按关闭事件准入后的原责任结算验证，不以放宽保护或延迟测试替代。依据见 `smoke-reload-autostart-investigation.md` 的立即模拟 reload 定位。
+
+保留事件准入的模拟重载，在清空绑定前必须同时检查待处理回调与保存期间的回调登记变化；新回调即使已经结束，也可能使先前保存过时。等待须有统一期限，超时不清空原责任、不在迟到完成后继续重载。测试启动屏障只串行准入，不以等待最后一项启动/正文安静代替在途重载覆盖。依据见 `smoke-reload-autostart-investigation.md` 的立即模拟 reload 正式修复方案。

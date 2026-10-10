@@ -583,8 +583,14 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 证据：`docs/references/smoke-reload-autostart/runtime-resume-exit-summary-fix-evidence.json`；原生复验：相邻 `runtime-resume-exit-summary-verification.mjs`；计划：`docs/exec-plans/completed/runtime-resume-exit-summary-repair.md`。本轮隔离会话及 Supervisor 已清理。
 
-## 立即模拟 reload 的启动准入及回调时序（2026-10-10，PR #314，待修复）
+## 立即模拟 reload 的启动准入及回调时序（2026-10-10，PR #314，已修复；下文记录验收）
 
 已定位上一节阻塞：独立立即 reload 用例仍并发启动，与 starting=1 冲突；即使串行到第一项 started，第二项启动后的首批正文也可能在边界首次回调等待之后进入，触发 pending 安全拒绝。原生对照中回调在拒绝后 17ms 正常 consumed/结束，两个启动均成功，排除两者必然同源及该次回调泄漏。无探针分别等待两项 started 的对照通过，但不保证所有持续输出交错。
 
 正式 smoke 与产品未改。后续须同时处理启动前提和模拟边界语义，保留原 session 身份、pending 保护与有界失败；实际“启动后立即 Reload Window”需新 Host 验收，不能用等待输出安静悄悄代替。真实退出先关闭事件准入，本轮未证明其存在相同故障。完整 gate、历史 URL 清理停滞和后续矩阵仍未收口。证据及复跑脚本：`docs/references/smoke-reload-autostart/runtime-immediate-reload-evidence.json`、相邻 `runtime-immediate-reload-investigation.mjs`；计划：`docs/exec-plans/completed/runtime-immediate-reload-investigation.md`。
+
+## 立即模拟 reload 已修复，后续本地 Host boundary 启动阻塞（2026-10-10，PR #314）
+
+模拟 live-runtime reload 使用 20 秒期限，在清空绑定前结算新回调并按登记修订重新保存；到期保留原责任，普通 reset/template/deactivation 不启用新选项。smoke 只等待 Agent started，Terminal 派发后立即 reload，检查单次启动及原 session 重连。新增 14 个受控场景、完整 Host boundary、Host owner 529/529、类型/本地化/语法通过，基线新回归失败；最终无探针原生专项连续三次通过。
+
+最终默认 VSIX 七个独立阶段通过，trusted 通过立即 reload；随后 `verifyHostBoundaryFlushesRecentLocalState:11210` 在 RuntimePersistence 关闭的 snapshot-only 场景等待 Agent live 超时，Agent stopped/SIGINT、Terminal live。尚未输入本用例正文或执行其 reload/flush；根因待定位，不修改新阻塞断言。完整 gate 仍失败；原 URL 清理停滞、后续 checkpoint/真实新 Host/跨平台等缺口继续保留。证据：`docs/references/smoke-reload-autostart/runtime-immediate-reload-fix-evidence.json`；复验：相邻 `runtime-immediate-reload-verification.mjs`；计划：`docs/exec-plans/completed/runtime-immediate-reload-repair.md`。

@@ -1442,6 +1442,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   /** Runtime events accepted after a host boundary can otherwise revive stale state. */
   private runtimeSupervisorEventAdmissionOpen = true;
   private pendingRuntimeSupervisorStateCallbacks: Set<Promise<void>> | undefined;
+  private runtimeSupervisorStateCallbackRevision = 0;
   private runtimeSupervisorClientEpochs: Map<string, number> | undefined;
   private readonly pendingTerminalProjectionRefreshes = new Map<string, Promise<void>>();
   private readonly terminalReadRelay = new RuntimeTerminalReadRelay();
@@ -3812,8 +3813,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public async simulateRuntimeReloadForTest(): Promise<CanvasDebugSnapshot> {
     await this.flushDeferredCanvasStatePersist('test-runtime-reload');
     const nextStartupConfiguration = this.readStartupConfiguration();
+    const preserveLiveRuntime = this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration);
     await this.prepareForHostBoundary({
-      preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
+      preserveLiveRuntime,
+      runtimeStateCallbackDeadline: preserveLiveRuntime
+        ? this.getExecutionCandidateScheduler().now() + EXECUTION_CANDIDATE_BUDGETS.boundaryMs
+        : undefined,
       preserveRootRuntimeBindings: !this.isRuntimePersistenceEnabled(),
       waitForLocalPersistence: true,
       preserveLocalRecovery: true,
@@ -4013,6 +4018,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async prepareForHostBoundary(options: {
     preserveLiveRuntime: boolean;
+    runtimeStateCallbackDeadline?: number;
     preserveRootRuntimeBindings?: boolean;
     allowRuntimeSupervisorRestart: boolean;
     invalidatePendingExecutionOperations?: boolean;
@@ -4047,6 +4053,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async prepareForHostBoundaryCore(options: {
     preserveLiveRuntime: boolean;
+    runtimeStateCallbackDeadline?: number;
     preserveRootRuntimeBindings?: boolean;
     allowRuntimeSupervisorRestart: boolean;
     invalidatePendingExecutionOperations?: boolean;
@@ -4079,28 +4086,48 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (ownedClose) await ownedClose;
     checkBoundary();
-    await this.waitForPendingRuntimeSupervisorStateCallbacks();
+    await this.waitForPendingRuntimeSupervisorStateCallbacks(options.runtimeStateCallbackDeadline);
     checkBoundary();
     await this.waitForPendingRuntimeSupervisorOperations();
     checkBoundary();
-    await this.flushAllExecutionSessionStatesForHostBoundary();
-    checkBoundary();
-    for (const [kind, sessions] of [
-      ['agent', this.agentSessions],
-      ['terminal', this.terminalSessions]
-    ] as const) {
-      for (const [nodeId, session] of sessions) {
-        if (session.owner !== 'supervisor') {
-          continue;
-        }
-        this.clearSupervisorHostBoundaryTimers(kind, nodeId, session);
+    const callbackDeadline = options.runtimeStateCallbackDeadline;
+    const checkSnapshotBoundary = (): void => {
+      checkBoundary();
+      if (callbackDeadline !== undefined && this.getExecutionCandidateScheduler().now() >= callbackDeadline) {
+        throw new Error(vscode.l10n.t('Runtime session updates are still pending. Please try again after they finish.'));
       }
-    }
-    checkBoundary();
-    await this.flushDeferredCanvasStatePersist('host-boundary');
-    checkBoundary();
-    await this.waitForPendingWorkspaceStateUpdates();
-    checkBoundary();
+    };
+    let flushedCallbackRevision: number;
+    // Simulated reload keeps event admission open; a startup or save can admit another output batch.
+    do {
+      checkSnapshotBoundary();
+      if (callbackDeadline !== undefined) {
+        do {
+          await this.waitForPendingRuntimeSupervisorStateCallbacks(callbackDeadline);
+          checkSnapshotBoundary();
+        } while (this.pendingRuntimeSupervisorStateCallbacks?.size);
+      }
+      flushedCallbackRevision = this.runtimeSupervisorStateCallbackRevision ?? 0;
+      await this.flushAllExecutionSessionStatesForHostBoundary();
+      checkSnapshotBoundary();
+      for (const [kind, sessions] of [
+        ['agent', this.agentSessions],
+        ['terminal', this.terminalSessions]
+      ] as const) {
+        for (const [nodeId, session] of sessions) {
+          if (session.owner !== 'supervisor') {
+            continue;
+          }
+          this.clearSupervisorHostBoundaryTimers(kind, nodeId, session);
+        }
+      }
+      checkSnapshotBoundary();
+      await this.flushDeferredCanvasStatePersist('host-boundary');
+      checkSnapshotBoundary();
+      await this.waitForPendingWorkspaceStateUpdates();
+      checkSnapshotBoundary();
+    } while (callbackDeadline !== undefined && (this.pendingRuntimeSupervisorStateCallbacks?.size ||
+      (this.runtimeSupervisorStateCallbackRevision ?? 0) !== flushedCallbackRevision));
 
     const persistedRuntimeSessions = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessions()
       .filter(session => !options.preserveRootRuntimeBindings || session.runtimeOwner === undefined);
@@ -11859,6 +11886,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private trackRuntimeSupervisorStateCallback(operation: Promise<void>): void {
+    this.runtimeSupervisorStateCallbackRevision = (this.runtimeSupervisorStateCallbackRevision ?? 0) + 1;
     const pending = this.pendingRuntimeSupervisorStateCallbacks ??= new Set<Promise<void>>();
     pending.add(operation);
     const settled = (): void => {
@@ -11867,13 +11895,38 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     void operation.then(settled, settled);
   }
 
-  private async waitForPendingRuntimeSupervisorStateCallbacks(): Promise<void> {
+  private async waitForPendingRuntimeSupervisorStateCallbacks(deadline?: number): Promise<void> {
     const pending = this.pendingRuntimeSupervisorStateCallbacks;
     if (!pending || pending.size === 0) {
       return;
     }
 
-    await Promise.allSettled(Array.from(pending));
+    const settled = Promise.allSettled(Array.from(pending));
+    if (deadline === undefined) {
+      await settled;
+      return;
+    }
+    const scheduler = this.getExecutionCandidateScheduler();
+    await new Promise<void>((resolve, reject) => {
+      let finished = false;
+      let cancel = (): void => {};
+      const finish = (): void => {
+        if (finished) return;
+        finished = true;
+        cancel();
+        if (scheduler.now() >= deadline) {
+          reject(new Error(vscode.l10n.t('Runtime session updates are still pending. Please try again after they finish.')));
+        } else {
+          resolve();
+        }
+      };
+      if (scheduler.now() >= deadline) {
+        finish();
+        return;
+      }
+      cancel = scheduler.scheduleDeadline(deadline, finish);
+      void settled.then(finish);
+    });
   }
 
   private assertRuntimeSupervisorStateCallbacksSettled(): void {

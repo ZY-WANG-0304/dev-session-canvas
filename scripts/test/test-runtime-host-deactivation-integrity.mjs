@@ -496,6 +496,210 @@ async function testNonPermanentBoundaryKeepsAdmissionOpen() {
     'non-permanent reset/reload boundaries keep Runtime admission available');
 }
 
+async function testSimulatedReloadDrainsNewCallbacksBeforeDetach(phase) {
+  const f = makeHost();
+  const first = deferred(), second = deferred();
+  const firstAdmitted = deferred(), secondAdmitted = deferred();
+  let admitted = false, secondQueued = false;
+  const originalFlush = f.host.flushAllExecutionSessionStatesForHostBoundary.bind(f.host);
+  const admitFirst = () => {
+    if (admitted) return;
+    admitted = true;
+    f.host.trackRuntimeSupervisorStateCallback(first.promise.then(() => { f.session.cols = 131; }));
+    firstAdmitted.resolve();
+  };
+  f.host.waitForPendingRuntimeSupervisorOperations = async () => {
+    if (phase === 'startup') admitFirst();
+  };
+  f.host.flushAllExecutionSessionStatesForHostBoundary = async () => {
+    await originalFlush();
+    if (phase === 'state-flush') admitFirst();
+  };
+  f.host.waitForPendingWorkspaceStateUpdates = async () => {
+    if (phase === 'workspace-save') admitFirst();
+    if (f.session.cols === 131 && !secondQueued) {
+      secondQueued = true;
+      f.host.trackRuntimeSupervisorStateCallback(second.promise.then(() => { f.session.cols = 132; }));
+      secondAdmitted.resolve();
+    }
+  };
+  let outcome;
+  const boundary = f.host.prepareForHostBoundary({ preserveLiveRuntime: true, allowRuntimeSupervisorRestart: false,
+    runtimeStateCallbackDeadline: f.host.getExecutionCandidateScheduler().now() + 20000
+  }).then(() => { outcome = 'settled'; }, error => { outcome = error; });
+  try {
+    await firstAdmitted.promise;
+    await sleep();
+    assert.equal(outcome, undefined, 'a newly accepted callback must finish before reload detaches');
+    assert.equal(f.host.terminalSessions.get('terminal-1'), f.session);
+    first.resolve();
+    await Promise.race([secondAdmitted.promise, boundary.then(() => assert.fail('reload skipped the second save/callback wave'))]);
+    await sleep();
+    assert.equal(outcome, undefined, 'callbacks arriving during the replacement save must also finish');
+    assert.equal(f.host.runtimeSessionBindings.size, 1);
+    second.resolve();
+    await boundary;
+    assert.equal(outcome, 'settled');
+    assert.equal(f.persisted.at(-1).state.nodes[0].metadata.terminal.lastCols, 132,
+      'the final save must include the last callback, not the earlier flush');
+    assert.equal(f.host.terminalSessions.size, 0);
+    assert.equal(f.host.runtimeSessionBindings.size, 0);
+    assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, true);
+    assert.deepEqual(f.remoteCalls, []);
+  } finally {
+    first.resolve(); second.resolve(); await boundary;
+  }
+}
+
+async function testSimulatedReloadDrainsCallbackAdmittedDuringDrain() {
+  const f = makeHost(), first = deferred(), second = deferred(), admitted = deferred();
+  let flushes = 0;
+  f.host.waitForPendingRuntimeSupervisorOperations = async () => {
+    f.host.trackRuntimeSupervisorStateCallback(first.promise.then(() => {
+      f.host.trackRuntimeSupervisorStateCallback(second.promise.then(() => { f.session.cols = 145; }));
+      admitted.resolve();
+    }));
+  };
+  const flush = f.host.flushAllExecutionSessionStatesForHostBoundary.bind(f.host);
+  f.host.flushAllExecutionSessionStatesForHostBoundary = async () => { flushes++; await flush(); };
+  const boundary = f.host.prepareForHostBoundary({ preserveLiveRuntime: true, allowRuntimeSupervisorRestart: false,
+    runtimeStateCallbackDeadline: f.host.getExecutionCandidateScheduler().now() + 20000 });
+  try {
+    await sleep();
+    first.resolve();
+    await admitted.promise;
+    await sleep();
+    assert.equal(flushes, 0, 'snapshot capture must start with every admitted callback settled');
+    second.resolve();
+    await boundary;
+    assert.equal(f.persisted.at(-1).state.nodes[0].metadata.terminal.lastCols, 145);
+  } finally { first.resolve(); second.resolve(); await boundary; }
+}
+
+async function testSimulatedReloadResavesCallbackCompletedDuringSave() {
+  const f = makeHost();
+  let delivered = false;
+  f.host.waitForPendingWorkspaceStateUpdates = async () => {
+    if (delivered) return;
+    delivered = true;
+    f.host.trackRuntimeSupervisorStateCallback(Promise.resolve().then(() => { f.session.cols = 140; }));
+    await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+    assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks.size, 0);
+  };
+  await f.host.prepareForHostBoundary({ preserveLiveRuntime: true, allowRuntimeSupervisorRestart: false,
+    runtimeStateCallbackDeadline: f.host.getExecutionCandidateScheduler().now() + 20000 });
+  assert.equal(f.persisted.at(-1).state.nodes[0].metadata.terminal.lastCols, 140,
+    'a callback completed during save still invalidates the earlier snapshot');
+}
+
+async function testSimulatedReloadCallbackDeadline(phase, expiry) {
+  const f = makeHost();
+  let now = 0, fireDeadline, cancellations = 0;
+  f.host.getExecutionCandidateScheduler = () => ({ now: () => now,
+    scheduleDeadline: (deadline, callback) => {
+      assert.equal(deadline, 100);
+      fireDeadline = callback;
+      return () => { cancellations++; };
+    }
+  });
+  const callback = deferred(), admitted = deferred();
+  const admit = () => { f.host.trackRuntimeSupervisorStateCallback(callback.promise); admitted.resolve(); };
+  if (phase === 'initial') admit();
+  else f.host.waitForPendingRuntimeSupervisorOperations = async () => admit();
+  const boundary = f.host.prepareForHostBoundary({ preserveLiveRuntime: true, allowRuntimeSupervisorRestart: false,
+    runtimeStateCallbackDeadline: 100
+  }).then(() => ({ success: true }), error => ({ error }));
+  try {
+    await admitted.promise;
+    await sleep();
+    assert.equal(typeof fireDeadline, 'function', 'the pending callback has a bounded wait');
+    now = 100;
+    if (expiry === 'timer') fireDeadline();
+    else callback.resolve();
+    const result = await boundary;
+    assert.match(result.error?.message ?? '', /Runtime session updates are still pending/);
+    assert.equal(f.host.terminalSessions.get('terminal-1'), f.session);
+    assert.equal(f.host.runtimeSessionBindings.size, 1);
+    assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, true);
+    assert.equal(cancellations, 1);
+    const savesAtFailure = f.persisted.length;
+    callback.resolve();
+    await sleep();
+    assert.equal(f.persisted.length, savesAtFailure, 'late settlement must not resume the failed boundary');
+    assert.equal(f.host.terminalSessions.get('terminal-1'), f.session);
+  } finally {
+    callback.resolve(); await boundary;
+  }
+}
+
+async function testSimulatedReloadCannotWaitForeverForContinuousCallbacks() {
+  const f = makeHost();
+  let now = 0;
+  f.host.getExecutionCandidateScheduler = () => ({ now: () => now });
+  f.host.waitForPendingWorkspaceStateUpdates = async () => {
+    now += 10;
+    f.host.trackRuntimeSupervisorStateCallback(Promise.resolve());
+    await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
+  };
+  await assert.rejects(f.host.prepareForHostBoundary({ preserveLiveRuntime: true, allowRuntimeSupervisorRestart: false,
+    runtimeStateCallbackDeadline: 30 }), /Runtime session updates are still pending/);
+  assert.equal(now, 30);
+  assert.equal(f.host.terminalSessions.get('terminal-1'), f.session);
+  assert.equal(f.host.runtimeSessionBindings.size, 1);
+}
+
+async function testPermanentCloseDuringSimulatedReloadWait() {
+  const f = makeHost(), callback = deferred(), admitted = deferred();
+  f.host.waitForPendingRuntimeSupervisorOperations = async () => {
+    f.host.trackRuntimeSupervisorStateCallback(callback.promise);
+    admitted.resolve();
+  };
+  const boundary = f.host.prepareForHostBoundary({ preserveLiveRuntime: true, allowRuntimeSupervisorRestart: false,
+    runtimeStateCallbackDeadline: f.host.getExecutionCandidateScheduler().now() + 20000
+  });
+  const rejected = assert.rejects(boundary, /permanent boundary/);
+  await admitted.promise;
+  await sleep();
+  f.host.closeRuntimeSupervisorEventAdmission();
+  callback.resolve();
+  await rejected;
+  assert.equal(f.host.runtimeSupervisorEventAdmissionOpen, false);
+  assert.equal(f.host.terminalSessions.get('terminal-1'), f.session);
+  assert.equal(f.host.runtimeSessionBindings.size, 1);
+}
+
+async function testOrdinaryBoundaryStillRejectsNewCallback() {
+  const f = makeHost(), callback = deferred();
+  f.host.waitForPendingRuntimeSupervisorOperations = async () => f.host.trackRuntimeSupervisorStateCallback(callback.promise);
+  try {
+    await assert.rejects(f.host.prepareForHostBoundary({ preserveLiveRuntime: true, allowRuntimeSupervisorRestart: false }),
+      /Runtime session updates are still pending/);
+    assert.equal(f.host.terminalSessions.get('terminal-1'), f.session);
+    assert.equal(f.host.runtimeSessionBindings.size, 1);
+  } finally { callback.resolve(); }
+}
+
+async function testSimulatedReloadSelectsCallbackDrainOnlyForLiveRuntime() {
+  for (const preserveLiveRuntime of [false, true]) {
+    const f = makeHost();
+    let boundaryOptions;
+    Object.assign(f.host, {
+      getExecutionCandidateScheduler: () => ({ now: () => 30 }),
+      readStartupConfiguration: () => ({}),
+      shouldPreserveLiveRuntimeAcrossHostBoundary: () => preserveLiveRuntime,
+      isRuntimePersistenceEnabled: () => preserveLiveRuntime,
+      prepareForHostBoundary: async options => { boundaryOptions = options; },
+      applyStartupConfiguration() {}, refreshStorageRecoverySelection() {}, loadStoredCanvasFileFilterState() {},
+      loadReconciledState: () => f.host.state, readCanvasTemplateInitializedFlag: () => true,
+      loadStoredSurface: () => undefined, applyWorkbenchContextKeys() {}, notifySidebarStateChanged() {},
+      scheduleRestoreLiveRuntimeSessions() {}, getDebugSnapshot: () => ({ complete: true })
+    });
+    assert.deepEqual(await f.host.simulateRuntimeReloadForTest(), { complete: true });
+    assert.equal(boundaryOptions.runtimeStateCallbackDeadline, preserveLiveRuntime ? 20030 : undefined);
+    assert.equal(boundaryOptions.permanentExecutionClose, undefined);
+  }
+}
+
 async function testDeactivationIsIdempotentAndDoesNotStopRemoteSession() {
   const f = makeHost();
   let now = 0;
@@ -1870,6 +2074,17 @@ await testOrdinaryDeactivationRetainsSuccess(false);
 await testOrdinaryDeactivationRetainsFailure();
 await testOrdinaryDeactivationRetainsConfigurationFailure();
 await testNonPermanentBoundaryKeepsAdmissionOpen();
+for (const phase of ['startup', 'state-flush', 'workspace-save']) await testSimulatedReloadDrainsNewCallbacksBeforeDetach(phase);
+for (const phase of ['initial', 'startup']) {
+  for (const expiry of ['timer', 'completion-at-deadline']) await testSimulatedReloadCallbackDeadline(phase, expiry);
+}
+await testSimulatedReloadDrainsCallbackAdmittedDuringDrain();
+await testSimulatedReloadResavesCallbackCompletedDuringSave();
+await testSimulatedReloadCannotWaitForeverForContinuousCallbacks();
+await testPermanentCloseDuringSimulatedReloadWait();
+await testOrdinaryBoundaryStillRejectsNewCallback();
+await testSimulatedReloadSelectsCallbackDrainOnlyForLiveRuntime();
+
 await testRootBoundaryPreservesOtherRootAndStrictFailure('clear', false);
 await testRootBoundaryPreservesOtherRootAndStrictFailure('clear', true);
 await testRootBoundaryPreservesOtherRootAndStrictFailure('template', false);

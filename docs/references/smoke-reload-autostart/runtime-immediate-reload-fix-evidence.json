@@ -1,0 +1,193 @@
+{
+  "baseline": "3548103575ae6ece9d341f17d3bbb2d5a6be6652",
+  "environment": {
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "platform": "linux-x64",
+    "provider": "fake"
+  },
+  "scope": "live-runtime simulated reload only; no production reset/template/deactivation policy change",
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "3189878bb683bda85aa0d64be42757b67c8dea983a03aa4ed90e8e6d3274bf36",
+    "tests/vscode-smoke/extension-tests.cjs": "f2616e4b046a8ee9121699f97a2ab6234bf8b1f7145a67e3e29c8bc04a047ee2",
+    "scripts/test/test-runtime-host-deactivation-integrity.mjs": "f3b906bda476322eb6965f39f2a7f9fecf99c75af9f6dbf5bec93676be904266"
+  },
+  "tests": {
+    "baselineNewRegression": {
+      "exit": 1,
+      "assertion": "a newly accepted callback must finish before reload detaches",
+      "actual": "Runtime session updates are still pending. Please try again after they finish.",
+      "log": ".debug/runtime-immediate-reload-fix/baseline-negative.log"
+    },
+    "hostBoundary": {
+      "exit": 0,
+      "newCases": 14,
+      "log": ".debug/runtime-immediate-reload-fix/boundary.log"
+    },
+    "hostOwner": {
+      "exit": 0,
+      "passed": 529,
+      "total": 529,
+      "log": ".debug/runtime-immediate-reload-fix/host-final.log"
+    },
+    "typecheck": {
+      "exit": 0,
+      "log": ".debug/runtime-immediate-reload-fix/typecheck-final.log"
+    },
+    "localization": {
+      "exit": 0,
+      "log": ".debug/runtime-immediate-reload-fix/localization.log"
+    },
+    "syntax": "smoke suite and native verification script passed"
+  },
+  "native": {
+    "exit": 0,
+    "log": ".debug/runtime-immediate-reload-fix/native-final.log",
+    "productBundleSha256": {
+      "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+      "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+      "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+    },
+    "unchangedProductBundles": true,
+    "assertions": "original function with only evidence capture; Agent started then Terminal dispatch followed immediately by simulated reload; one original started and matching reattached session for each node",
+    "runs": [
+      {
+        "artifact": ".debug/runtime-immediate-reload-fix/native-1791647197097/runtime/artifacts/immediate-reload-264907aa-8244-4d47-a26e-a6638dcf88a3.json",
+        "runtimeEnabled": true,
+        "nodes": [
+          {
+            "kind": "agent",
+            "nodeId": "agent-1-17514dbd-cc4f-440a-b1c1-f26621dc4fe3",
+            "status": "starting",
+            "sessionId": "264907aa-8244-4d47-a26e-a6638dcf88a3",
+            "live": true,
+            "attachment": "attached-live"
+          },
+          {
+            "kind": "terminal",
+            "nodeId": "terminal-2-801d66f1-30fd-471d-a216-7cad2d2b6ab2",
+            "status": "live",
+            "sessionId": "1439c9a7-f30c-46d1-8edd-b5dfbee94af7",
+            "live": true,
+            "attachment": "attached-live"
+          }
+        ],
+        "starts": [
+          {
+            "kind": "agent",
+            "sessionId": "264907aa-8244-4d47-a26e-a6638dcf88a3"
+          },
+          {
+            "kind": "terminal",
+            "sessionId": "1439c9a7-f30c-46d1-8edd-b5dfbee94af7"
+          }
+        ]
+      },
+      {
+        "artifact": ".debug/runtime-immediate-reload-fix/native-1791647197097/runtime/artifacts/immediate-reload-9a42c357-fa23-4e45-a307-a3493655fd13.json",
+        "runtimeEnabled": true,
+        "nodes": [
+          {
+            "kind": "agent",
+            "nodeId": "agent-1-17514dbd-cc4f-440a-b1c1-f26621dc4fe3",
+            "status": "starting",
+            "sessionId": "9a42c357-fa23-4e45-a307-a3493655fd13",
+            "live": true,
+            "attachment": "attached-live"
+          },
+          {
+            "kind": "terminal",
+            "nodeId": "terminal-2-801d66f1-30fd-471d-a216-7cad2d2b6ab2",
+            "status": "live",
+            "sessionId": "66565871-9dd0-4022-8d10-3c50cfb25452",
+            "live": true,
+            "attachment": "attached-live"
+          }
+        ],
+        "starts": [
+          {
+            "kind": "agent",
+            "sessionId": "9a42c357-fa23-4e45-a307-a3493655fd13"
+          },
+          {
+            "kind": "terminal",
+            "sessionId": "66565871-9dd0-4022-8d10-3c50cfb25452"
+          }
+        ]
+      },
+      {
+        "artifact": ".debug/runtime-immediate-reload-fix/native-1791647197097/runtime/artifacts/immediate-reload-bcec1698-a4bd-4acd-87b4-64c2475a47d0.json",
+        "runtimeEnabled": true,
+        "nodes": [
+          {
+            "kind": "agent",
+            "nodeId": "agent-1-17514dbd-cc4f-440a-b1c1-f26621dc4fe3",
+            "status": "starting",
+            "sessionId": "bcec1698-a4bd-4acd-87b4-64c2475a47d0",
+            "live": true,
+            "attachment": "attached-live"
+          },
+          {
+            "kind": "terminal",
+            "nodeId": "terminal-2-801d66f1-30fd-471d-a216-7cad2d2b6ab2",
+            "status": "live",
+            "sessionId": "64f3b499-84a3-4755-9122-931d935ffe3c",
+            "live": true,
+            "attachment": "attached-live"
+          }
+        ],
+        "starts": [
+          {
+            "kind": "agent",
+            "sessionId": "bcec1698-a4bd-4acd-87b4-64c2475a47d0"
+          },
+          {
+            "kind": "terminal",
+            "sessionId": "64f3b499-84a3-4755-9122-931d935ffe3c"
+          }
+        ]
+      }
+    ]
+  },
+  "fullGate": {
+    "command": "npm run test:vsix-smoke",
+    "exit": 1,
+    "log": ".debug/runtime-immediate-reload-fix/vsix-final.log",
+    "passedIndependentStages": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure",
+      "local-links-and-stop"
+    ],
+    "trusted": "Passed verifyImmediateReloadAfterLiveRuntimeLaunch in original sequence; failed in next verifyHostBoundaryFlushesRecentLocalState waiting for Agent live",
+    "failureStack": "\n\tat waitForSnapshot (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:12757:10)\n\tat async verifyHostBoundaryFlushesRecentLocalState (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:11210:3)\n\tat async runTrustedSmoke (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:1480:3)\n\tat async runSmoke (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:306:3)\n\tat async Object.run (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:173:5)",
+    "failureNodes": [
+      {
+        "kind": "agent",
+        "status": "stopped",
+        "summary": "Session exited due to signal SIGINT.",
+        "mode": "snapshot-only",
+        "live": false
+      },
+      {
+        "kind": "terminal",
+        "status": "live",
+        "summary": "ziyang01.wang-al@hobot:/tmp/dscr$                                                                ziyang01.wang-al@hobot:/tmp/dscr$",
+        "mode": "snapshot-only",
+        "live": true
+      }
+    ],
+    "artifacts": ".debug/runtime-immediate-reload-fix/final-trusted-artifacts",
+    "nextRootCause": "not investigated in this repair",
+    "initialBuild": "Also passed seven independent stages and immediate reload; failed at same subsequent wait. Evidence kept in initial-trusted-artifacts; final build is the acceptance subject."
+  },
+  "limits": [
+    "No actual new Extension Host/Reload Window validation in this repair",
+    "No cross-platform, cross-version or real provider service claim",
+    "Historical URL cleanup stall remains uninvestigated; this run passing links does not explain it"
+  ],
+  "cleanup": "Isolated native and full-gate VS Code processes exited; no matching isolated Runtime Supervisor remained."
+}
