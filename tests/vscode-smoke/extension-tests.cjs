@@ -201,6 +201,11 @@ async function runSmoke() {
     console.log('Local execution flow: Agent burst, partial input, sleep, slowspin, restart, duplicate rejection, Terminal output and final save passed.');
     return;
   }
+  if (smokeScenario === 'local-preparation-failure') {
+    await ensureEditorCanvasReady();
+    await verifyMissingAgentCliFailure();
+    return;
+  }
   if (smokeScenario === 'local-pty-robustness') {
     await ensureEditorCanvasReady();
     await createBaseNodes({ waitForAutoStart: true });
@@ -9318,7 +9323,7 @@ async function verifyTerminalFloodKeepsCanvasResponsive(agentNodeId, terminalNod
   console.log('Local PTY flood: two output streams, Note selection, parallel Agent input, new nodes, Ctrl-C recovery and cleanup passed.');
 }
 
-async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
+async function verifyMissingAgentCliFailure() {
   await clearHostMessages();
   const diagnosticStartIndex = (await getDiagnosticEvents()).length;
 
@@ -9358,7 +9363,19 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   );
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);
 
-  const failureDiagnostics = (await getDiagnosticEvents()).slice(diagnosticStartIndex);
+  assert.strictEqual(agentNode.metadata.agent.lifecycle, 'error');
+  assert.strictEqual(agentNode.metadata.agent.pendingLaunch, undefined);
+  snapshot = await waitForSnapshot(current => !current.localExecutions.some(record => record.nodeId === claudeAgentNode.id));
+
+  const failureDiagnostics = (await waitForDiagnosticEvents(events => events.slice(diagnosticStartIndex).some(event =>
+    event.kind === 'execution/startFailed' && event.detail?.nodeId === claudeAgentNode.id))).slice(diagnosticStartIndex);
+  const finalPersistence = failureDiagnostics.filter(event => event.kind === 'execution/localFinalPersistence'
+    && event.detail?.nodeId === claudeAgentNode.id);
+  assert.strictEqual(finalPersistence.length, 1);
+  assert.strictEqual(finalPersistence[0].detail.submitted, false);
+  assert.strictEqual(finalPersistence[0].detail.result.kind, 'not-required');
+  assert.strictEqual(failureDiagnostics.some(event => event.kind === 'execution/started'
+    && event.detail?.nodeId === claudeAgentNode.id), false);
   assert.ok(
     failureDiagnostics.some(
       (event) =>
@@ -9370,6 +9387,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   );
 
   let hostMessages = await getHostMessages();
+  assert.strictEqual(hostMessages.filter(message => message.type === 'host/error').length, 1);
   assert.ok(
     hostMessages.some(
       (message) =>
@@ -9392,6 +9410,14 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
   );
   assert.strictEqual(snapshot.state.nodes.some((node) => node.id === claudeAgentNode.id), false);
 
+  console.log('Local preparation failure: missing Claude CLI reaches error, clears pending launch, reports once and releases the unstarted record.');
+}
+
+async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
+  await verifyMissingAgentCliFailure();
+  let snapshot = await getDebugSnapshot();
+  let hostMessages;
+  let agentNode;
   await clearHostMessages();
   const nodeCountBeforeInvalidCreate = snapshot.state.nodes.length;
   await dispatchWebviewMessage({
@@ -11947,7 +11973,7 @@ async function clearDiagnosticEvents() {
 }
 
 async function assertNoOwnedResizeFailures() {
-  if (!['trusted', 'local-execution-flow', 'owned-canvas-reconciliation', 'snapshot-only-manual-recovery', 'local-surface-cutover', 'local-pty-robustness'].includes(smokeScenario)) return;
+  if (!['trusted', 'local-execution-flow', 'owned-canvas-reconciliation', 'snapshot-only-manual-recovery', 'local-surface-cutover', 'local-pty-robustness', 'local-preparation-failure'].includes(smokeScenario)) return;
   const failures = (await getDiagnosticEvents()).filter(event =>
     event.kind === 'execution/resizeRejected' && event.detail?.reason === 'owned-resize-failed');
   assert.deepStrictEqual(failures, [], 'Local resize failures must be checked before diagnostics are cleared.');

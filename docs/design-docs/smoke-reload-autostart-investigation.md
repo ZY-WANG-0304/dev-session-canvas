@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -310,3 +310,16 @@ smoke 保留原执行 started 顺序和 reload 后 resume-ready/interrupted 断�
 本轮正文 helper 14/14、reset fixture 19/19、runner 环境清理与脚本语法通过；默认真实 VSIX 重新完成类型检查及打包。`local-pty-robustness` 的稳健性/flood 和 trusted 原顺序的同两项 **各通过两处**；burst 80、error/17、stopped、重启身份、并行正文和原序列化快照、双终端持续输出下 Note/Agent/新节点操作、Ctrl-C 恢复与四执行清理均通过。此前四个默认具名阶段以及 trusted 的恢复、surface 等前序检查也通过。原 PTY 旧字段断言阻塞已收口，证据见 `docs/references/smoke-reload-autostart/pty-output-evidence.json`。
 
 新的独立阻塞为 `verifyFailurePaths:9336`：测试创建使用 missing-agent-provider 的 Claude Agent，诊断已记录 commandResolutionFailed / startFailed，原未启动执行以 not-required 结算，页面收到缺失命令错误；节点却仍为 starting、liveSession=false、pendingLaunch=start，未进入期待的 error。此处没有等待实时正文，不能按旧字段问题放宽断言；需要继续定位准备阶段失败后的节点状态投影。原工件保留在 `.debug/pty-output/trusted-artifacts`，完整门禁及后续失败路径/恢复/Runtime 验收仍未通过。
+
+
+## 启动准备失败状态的正式方案
+
+PR #314 缺 CLI 的错误来自 `startNonNativeHostExecution` 的 prepare 阶段，该阶段尚未创建 business 或取得进程；原 catch 只清理记录，未投影失败状态。此次在准备失败处回写 fresh Agent/Terminal 的 error 或恢复 Agent 的 resume-failed，清除 pendingLaunch/liveSession，并保存画布状态。仅当原 record、原 metadata 绑定仍有效且未 stop 时更新；页面报告器继续只观察并提示。关闭准入、并发占槽拒绝、取消、替换与资源结果未知沿用原责任，不能统一变成准备失败。
+
+历史正文、终端快照和可信恢复身份保留，错误信息记录到 summary/lastExitMessage/lastRuntimeError，恢复失败同时记录 lastResumeError；不伪造进程退出或最终快照保存，未开始执行仍以 not-required 结算。实现与验证见 `docs/exec-plans/completed/owned-launch-preparation-failure.md`。
+
+真实独立场景补充证据：状态修正后 error/pending 清理/not-required 已满足，但出现两条 host/error；第二来源为排队尺寸意图被原 prepare 错误 reject，生成 owned-resize-failed。正式方案补充：prepare 拒绝时取消尚未派发的尺寸意图，只由启动请求报告原错误；取得资源后的 spawn/unknown 与实际 resize 错误仍保留原拒绝语义。
+
+2026-10-10 验证收口：新增 11 条用例替代原两条“不改 prepare 失败状态”的期待，完整 Host **487/487**、类型/UI 本地化、正文 helper **14/14**、reset fixture **19/19**、runner 环境和脚本语法通过。最终代码默认真实 VSIX 的六个独立阶段通过，缺 CLI 场景验证 error/pending 清理、单次提示、not-required 和删除，且无 owned-resize-failed。
+
+完整门禁仍失败：默认 trusted 在较早的异常通知 Claude resume 再启动处（verifyAgentAbnormalInterruptionNotifications:7788）被原最终保存责任占槽拒绝；工件捕获时记录已清理，未据此确认原因。同代码不改场景复跑 trusted，又在更早的 verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent:3257 等待启动诊断超时，实际 startFailed=Execution owner admission is closed。两轮均未在 trusted 原顺序触达缺 CLI 修复，不宣称该上下文或后续 Runtime 通过。精简证据与原工件路径见 `docs/references/smoke-reload-autostart/preparation-failure-evidence.json`；历史文件链接 DOM、early final-save pending 和本轮两处早期失败继续跟踪。

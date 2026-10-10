@@ -457,3 +457,10 @@ Host reload 把活动 Agent 保存成 stopped 的缺陷已修复：原最终保�
 
 
 新的发布阻塞为 `verifyFailurePaths:9336`：缺失 Claude CLI 已产生 commandResolutionFailed/startFailed 和页面错误，未启动执行以 not-required 结算，但节点仍 starting、pendingLaunch=start、liveSession=false；测试期待 error。这是尚待定位的失败状态投影问题，不能改为期待 starting 放行。本轮未更改该产品路径或失败状态断言，后续失败路径/恢复/Runtime 检查未完成。原工件在 `.debug/pty-output/trusted-artifacts`，此前独立历史失败继续保留。
+
+
+## owned 启动准备失败状态收口（2026-10-10，PR #314）
+
+CLI/执行环境准备失败后停留 starting/launching 的产品缺口已修复：原 record 和 metadata 仍有效且未取消时，fresh 为 error、resume 为 resume-failed，清除 pending/live，保留历史正文与恢复身份；未开始记录仍为 not-required。准备失败同时取消未派发的尺寸意图，避免自动同步尺寸额外报 owned-resize-failed。关闭准入、取消/换绑、取得资源后的未知结果保持原保护。完整 Host 487/487、类型、本地化和 smoke helper/runner 检查通过，最终代码默认真实 VSIX 六个独立阶段（含 local-preparation-failure）通过。
+
+同轮 trusted 在更早的 `verifyAgentAbnormalInterruptionNotifications:7788` Claude resume 再启动处被 `Local final snapshot responsibility still occupies the execution key or Host capacity.` 阻断。工件捕获时记录已清理，不据此追认具体时序原因；保留 `.debug/preparation-failure/early-trusted-artifacts`。同代码不修改场景复跑 trusted，在更早的 `verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent:3257` 等待启动诊断超时，实际 `execution/startFailed` 为 `Execution owner admission is closed`，工件在 `.debug/preparation-failure/repeat-trusted-artifacts`。两轮均未在 trusted 原顺序触达缺 CLI；两处早期生命周期失败仍待定位，完整发布 gate 尚未通过。此次不改版本或发布资料，未复验真实 Agent/跨版本与跨平台矩阵。精简证据见 `docs/references/smoke-reload-autostart/preparation-failure-evidence.json`。

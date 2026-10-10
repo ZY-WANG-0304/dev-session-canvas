@@ -17656,7 +17656,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         record.persistence = { identity: execution.identity, metadata, submitted: false, promise, resolve };
       }
       this.nonNativeHostExecutions.set(key, record);
-      const prepared = await prepare();
+      let prepared: ExecutionSessionLaunchSpec;
+      try {
+        prepared = await prepare();
+      } catch (error) {
+        // No transport exists yet. The waiting viewport was never dispatched;
+        // the start request alone reports the preparation error to the page.
+        record.pendingResize?.resolve('cancelled');
+        record.pendingResize = undefined;
+        this.projectNonNativeHostPreparationFailure(record, error, agent?.launchMode);
+        throw error;
+      }
       this.assertExecutionCandidateAdmission('snapshot-only', undefined, record);
       assertRuntimeUnbound();
       const spec: LaunchSpec = {
@@ -17816,6 +17826,35 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       throw error;
     }
+  }
+
+  private projectNonNativeHostPreparationFailure(
+    record: NonNativeHostExecution, error: unknown, launchMode?: PendingExecutionLaunch
+  ): void {
+    const { kind, nodeId, persistence } = record;
+    const snapshot = record.execution.snapshot();
+    const node = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
+    // Only the original, unstarted request may replace its pending presentation.
+    // Admission rejection and uncertain/acquired resources retain their own settlement paths.
+    if (!persistence || !node || !this.isNonNativeHostRecordCurrent(record) || snapshot.stopRequested ||
+      snapshot.adapter || node.metadata?.[kind] !== persistence.metadata) return;
+    const message = error instanceof Error ? error.message : String(error);
+    const status = kind === 'agent' && launchMode === 'resume' ? 'resume-failed' : 'error';
+    this.state = updateExecutionNode(this.state, nodeId, kind, {
+      status, summary: message,
+      metadata: buildExecutionMetadataPatch(this.state, nodeId, kind, {
+        lifecycle: status, persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
+        liveSession: false, pendingLaunch: undefined, terminalTitle: undefined,
+        lastExitMessage: message, lastRuntimeError: message,
+        ...(kind === 'agent' ? { lastResumeError: status === 'resume-failed' ? message : undefined } : {})
+      })
+    });
+    // Keep the page failure observer bound to this projection. No process ran, so
+    // preserve prior history/recovery data and leave final persistence not-required.
+    const updated = this.requireNode(nodeId, kind);
+    persistence.metadata = kind === 'agent' ? ensureAgentMetadata(updated) : ensureTerminalMetadata(updated);
+    this.persistState();
+    this.postState('host/stateUpdated');
   }
 
   private hasRunningLocalOwnedExecution(kind: ExecutionNodeKind, nodeId: string): boolean {

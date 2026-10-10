@@ -335,3 +335,5 @@ unknown是当时缺少证明的观察，不应擦除已确认事实，也不阻�
 启动消息派发返回不代表 provider 已启动。同一 owner 的 `starting: 1` 限制与多个活动会话并存不矛盾；准备多个运行节点的测试须逐个等待原 executionId 的 started，早期输出投影的 live 不能单独证明启动槽已释放。合法的并发拒绝仍须被 Host 消费并向页面给出明确反馈，不能成为无人处理的 promise 或永久等待。页面观察应区分本请求的取消与旧执行阻塞新请求；已取消、替换或删除请求的迟到错误只记录诊断，仍有效的新请求失败须提示，且不能靠清理未知资源换取反馈。调查应记录拒绝瞬间的身份、关闭/隔离与占槽执行，并用重叠和确认后重试区分准入契约与生命周期故障。依据见 `smoke-reload-autostart-investigation.md` 的首次启动准入专项定位。
 
 - **Host 中断与用户停止应保留不同的恢复语义**：snapshot-only 中，Host 关闭中断活动 Agent 后，有可信 provider 身份应保存为 resume-ready 并等待手动恢复；无身份与 Terminal 为 interrupted。重读不能凭恢复能力生成自动 resume 意图。用户主动停止和已观测的自然退出保留原终态；恢复提示不能代替原 process、最终正文和保存责任的确认。依据见 `smoke-reload-autostart-investigation.md` 的 snapshot-only 手动恢复方案。
+
+启动准备失败必须结束本请求的待启动表现，同时保留尚未使用的历史正文和恢复身份。已清理启动记录或已提示错误都不能代替节点状态更新；准备失败、准入拒绝、取消和取得资源后的未知结果各自保持责任；准备失败时取消未派发的尺寸意图，避免同一原因被重复包装成 resize 错误。只有原执行记录及 metadata 绑定仍有效时才能投影失败，不以普通画布状态保存冒充进程最终快照结算。依据见 `smoke-reload-autostart-investigation.md` 的启动准备失败方案。

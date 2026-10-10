@@ -58,6 +58,11 @@ const scenarios = [
     disableWorkspaceTrust: true
   },
   {
+    name: 'local-preparation-failure',
+    description: 'Missing Agent CLI settles the unstarted node and reports the failure once',
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'local-pty-robustness',
     description: 'Local PTY exits, restarts and canvas responsiveness during concurrent terminal output',
     disableWorkspaceTrust: true

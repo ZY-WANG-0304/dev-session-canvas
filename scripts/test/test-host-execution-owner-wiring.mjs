@@ -5845,6 +5845,10 @@ for (const failPreparation of [false, true]) {
       gate.resolve({ file: '/controlled/shell', args: [], cwd: f.root, env: {} });
       await completed(f.clock, result, 'remapped preparation result');
       if (failPreparation) {
+        const failed = f.host.state.nodes.find(node => node.id === mapped);
+        assert.equal(failed.status, 'error', 'preparation failure follows the original remapped node');
+        assert.equal(failed.metadata.terminal.pendingLaunch, undefined);
+        assert.equal(failed.summary, 'controlled preparation failure');
         assert.equal(f.host.pendingTerminalInitialInputs.has(mapped), false);
         assert.equal(f.host.nonNativeHostExecutions.size, 0);
         assert.equal(record.persistence.result.kind, 'not-required');
@@ -5962,12 +5966,15 @@ for (const kind of ['agent', 'terminal']) {
 
 
 for (const waitingAt of ['prepare', 'operationObservation']) {
-  test(`startup resize rejects original pending intent when ${waitingAt} fails`, async () => {
+  test(`startup resize ${waitingAt === 'prepare' ? 'cancels unsubmitted' : 'rejects original'} pending intent when ${waitingAt} fails`, async () => {
     const f = startupResizeFixture('terminal', waitingAt);
     try {
       await until(f.clock, f.waiting, 'failing startup barrier');
       const record = f.record('terminal');
-      const resizing = assert.rejects(f.host.resizeNonNativeHostExecution(record, 99, 29), /preparation failed|start was failed|controlled start failed/);
+      const pendingResize = f.host.resizeNonNativeHostExecution(record, 99, 29);
+      const resizing = waitingAt === 'prepare'
+        ? pendingResize.then(result => assert.equal(result, 'cancelled'))
+        : assert.rejects(pendingResize, /start was failed|controlled start failed/);
       const starting = assert.rejects(f.starting, /preparation failed|start was failed|controlled start failed/);
       f.release(waitingAt === 'prepare' ? new Error('controlled preparation failed')
         : { kind: 'failed', stage: 'spawn', reason: 'controlled start failed' });
@@ -6403,12 +6410,102 @@ for (const providerKind of ['codex', 'claude']) {
 }
 
 
-function sendCandidateStart(f, kind, resume = false) {
+function sendCandidateStart(f, kind, resume = false, provider = 'codex') {
   for (const surface of ['editor', 'panel']) {
     f.host.renderedWebviewLifecycle.set(f.host.surfaceMessageWebview[surface], f.host.getSurfaceLifecycleIdentity(surface));
   }
   f.send('editor', 'webview/startExecutionSession', { kind, nodeId: `${kind}-1`, cols: 80, rows: 24,
-    ...(kind === 'agent' ? { provider: 'codex', resume } : {}) });
+    ...(kind === 'agent' ? { provider, resume } : {}) });
+}
+
+for (const scenario of [
+  { kind: 'terminal', boundary: 'environment' },
+  ...['codex', 'claude'].flatMap(provider => [false, true].flatMap(resume =>
+    ['environment', 'cli'].map(boundary => ({ kind: 'agent', provider, resume, boundary }))))
+]) {
+  const { kind, provider, resume = false, boundary } = scenario;
+  test(`preparation failure ${kind} ${provider ?? ''} ${resume ? 'resume' : 'fresh'} at ${boundary} settles state and permits retry`, async () => {
+    const gate = deferred();
+    const failure = new Error('controlled launch preparation failed');
+    const f = candidateFixture({ outputCredit: true, admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+    const method = boundary === 'cli' ? 'resolveAgentCli' : 'resolveExecutionEnvironment';
+    const prepare = f.host[method];
+    f.host[method] = async () => { await gate.promise; throw failure; };
+    f.host.resolveAgentResumeContext = () => ({ supported: true, strategy: 'fake-provider', sessionId: 'original-resume' });
+    const node = f.host.state.nodes.find(value => value.kind === kind);
+    const history = { version: 1, cols: 80, rows: 24, ansi: 'original-screen' };
+    node.status = resume ? 'resuming' : kind === 'agent' ? 'starting' : 'launching';
+    node.summary = 'Waiting for node size';
+    node.metadata[kind] = { provider, lifecycle: node.status, liveSession: false,
+      pendingLaunch: resume ? 'resume' : 'start', recentOutput: 'original-history', serializedTerminalState: history,
+      resumeSupported: true, resumeStrategy: 'fake-provider', resumeSessionId: 'original-resume',
+      resumeStoragePath: '/controlled/history', lastExitCode: 23 };
+    let published;
+    f.host.postState = () => { published = structuredClone(f.host.state); };
+    sendCandidateStart(f, kind, resume, provider);
+    await until(f.clock, () => Boolean(f.record(kind)), 'original preparation');
+    const original = f.record(kind);
+    f.host.resizeExecutionSession(kind, original.nodeId, 103, 33);
+    assert.ok(original.pendingResize);
+    gate.resolve();
+    await until(f.clock, () => f.diagnostics.some(event => event.name === 'execution/startFailed'), 'original failure reported');
+    const failed = f.host.state.nodes.find(value => value.kind === kind);
+    assert.equal(failed.status, resume ? 'resume-failed' : 'error');
+    assert.equal(failed.metadata[kind].lifecycle, failed.status);
+    assert.equal(failed.metadata[kind].liveSession, false);
+    assert.equal(failed.metadata[kind].pendingLaunch, undefined);
+    assert.equal(failed.summary, failure.message);
+    assert.equal(failed.metadata[kind].lastExitMessage, failure.message);
+    assert.equal(failed.metadata[kind].lastRuntimeError, failure.message);
+    if (kind === 'agent') assert.equal(failed.metadata.agent.lastResumeError, resume ? failure.message : undefined);
+    assert.equal(failed.metadata[kind].recentOutput, 'original-history');
+    assert.deepEqual(failed.metadata[kind].serializedTerminalState, history);
+    assert.equal(failed.metadata[kind].resumeSessionId, 'original-resume');
+    assert.equal(failed.metadata[kind].resumeStoragePath, '/controlled/history');
+    assert.equal(failed.metadata[kind].lastExitCode, 23, 'no fabricated process outcome');
+    assert.equal(published.nodes.find(value => value.kind === kind).status, failed.status);
+    assert.equal(f.persisted.length, 1, 'ordinary canvas failure state is persisted');
+    assert.equal(f.persisted.some(detail => detail?.reason === 'local-final-snapshot'), false);
+    assert.equal(original.persistence.result.kind, 'not-required');
+    assert.equal(original.persistence.submitted, false);
+    assert.equal(f.providers.length, 0);
+    assert.equal(f.record(kind), undefined);
+    assert.equal(original.pendingResize, undefined);
+    assert.equal(original.cols, 80, 'cancelled resize does not change terminal authority');
+    assert.equal(f.diagnostics.some(event => event.name === 'execution/resizeRejected'), false);
+    assert.equal(f.owner.authority.snapshot().active, 0);
+    assert.equal(f.diagnostics.some(event => event.name === 'execution/exited'), false);
+    assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+    f.host[method] = prepare;
+    let retry;
+    try {
+      await completed(f.clock, f.start(kind), 'explicit retry');
+      retry = f.record(kind);
+      assert.equal(f.providers.length, 1);
+      assert.notEqual(retry.execution.identity.executionId, original.execution.identity.executionId);
+    } finally {
+      if (retry) {
+        const transport = f.providers[0];
+        transport.process(); transport.seal(retry.lastDataSequence);
+        transport.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+        transport.release();
+        await pump(f.clock, () => retry.execution.snapshot().settled);
+        retry.business?.cancelActivityPoll?.(); retry.business?.lineContextTracker.dispose(); retry.tracker.dispose();
+      }
+    }
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`preparation failure ${kind} preserves the original internal rejection without page reporting`, async () => {
+    const failure = new Error('controlled internal preparation failure');
+    const f = candidateFixture({ environment: async () => { throw failure; } });
+    await assert.rejects(f.start(kind), error => error === failure);
+    assert.equal(f.host.state.nodes.find(node => node.kind === kind).status, 'error');
+    assert.equal(f.posted.filter(message => message.type === 'host/error').length, 0);
+    assert.equal(f.record(kind), undefined);
+    assert.equal(f.owner.authority.snapshot().active, 0);
+  });
 }
 
 for (const firstKind of ['terminal', 'agent']) {
@@ -6467,7 +6564,7 @@ for (const firstKind of ['terminal', 'agent']) {
 }
 
 for (const kind of ['agent', 'terminal']) {
-  for (const boundary of ['closed', 'prepare', 'replaced-node', 'deleted-node', 'cancelled']) {
+  for (const boundary of ['closed', 'replaced-node', 'deleted-node', 'cancelled']) {
     test(`webview start ${kind} reports ${boundary} failure without changing the node`, async () => {
       const gate = deferred();
       const f = candidateFixture({ outputCredit: true, admissionLimits: EXECUTION_PRODUCTION_ADMISSION,
