@@ -663,3 +663,13 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 完整trusted继续通过RuntimePersistence配置清理、侧栏历史恢复/Fork UI和Codex分支，停在 `verifyClaudeAgentBranchFromCurrentNode:2268` 等待唯一execution/started事件。现场记录Host容量占用startFailed和另一节点的rejected-before-acquire，根因尚未确认；不能把它当作本次保存等待失败或仅因出现准入词就归为fixture并发错误。失败快照localExecutions=0，后续用例仍未触达。证据 `docs/references/smoke-reload-autostart/owned-delete-persistence-fix-evidence.json`，原始工件 `.debug/owned-delete-persistence-fix/trusted-artifacts/`。
 
 本轮正式smoke未修改，实际默认trusted原序列已提供文件及readexit的原生验收，不重复已通过场景。历史URL清理、Runtime disconnected批次报告、新Host/checkpoint/真实provider/跨平台等边界继续保留。
+
+## Claude Fork 根因已确认，正式修复待实施（2026-10-11，PR #314）
+
+基线be574e48。原gate消息证明历史节点已error后被Codex finally恢复旧starting/pendingLaunch=start基线，以新executionId重新启动并挤占Claude子节点的pending容量。侧栏用例仅验节点而未收口原生命周期；应等待自身意图结算及停止/保存/退休，provider用例不得重放过期启动意图。
+
+另有产品缺口：reserve前容量guard抛普通Error，Host仅报告startFailed/host-error，目标无record但保留starting/pendingLaunch。需按原新请求身份安全投影失败/清pending，保留同key旧责任、历史和无自动重试。先前typed rejected-before-acquire修复不覆盖此入口。
+
+收口对照保留原Codex/Claude全部断言并exit0，空画布Claude另行exit0，均零localExecutions。受控原基线回放捕获sameKey=false、两项历史pending及目标20秒后仍starting；回放释放prepare后历史节点另报owned-resize-failed，外层断言exit1，需后续确认这一重叠resize分支，不将其认作原gate根因或通过证据。首轮自然suffix可通过；另一轮在前置Runtime配置启动先超时，未用于Claude归因。
+
+正式产品和smoke未修改，完整gate未重跑且仍失败；后续用例、历史URL/Runtime batch及新Host/真实provider/跨平台边界保持未关闭。证据 `docs/references/smoke-reload-autostart/claude-fork-admission-root-cause-evidence.json`，计划 `docs/exec-plans/completed/claude-fork-admission-investigation.md`。

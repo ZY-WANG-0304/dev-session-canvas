@@ -379,3 +379,5 @@ Runtime 的结构化退出信息属于终态事实，不能因 completed 正文�
 owner settled 与 Host 最终保存是不同承诺；删除的 pending 拒绝必须按检查当时的事实解释，不能用稍后 saved 反推当时应当通过。把旧保守拒绝改为一次操作跨过正常保存窗口时，必须显式设计有界等待和目标身份保护，保留保存失败/超时责任，不能删除安全检查或在测试中无条件重试。依据见 `smoke-reload-autostart-investigation.md` 的 owned 删除时序调查。
 
 单节点删除可以有界等待原保存而不改变owner停止承诺；等待成功也不意味着仍可删除同名节点，必须在实际删除前重验原metadata、操作意图、owner及路由。正常最终投影和退休应被识别为同一目标，替换与超时迟到不得继续旧删除。其他破坏性入口不因共用helper而隐式获得新的等待策略。依据见 `smoke-reload-autostart-investigation.md` 的单节点删除正式方案。
+
+测试基线不是可无条件回放的静态数据：pendingLaunch是动作意图，原执行退休后重写旧快照会产生新请求。应按原执行生命周期收口测试，再保存可恢复基线。准入发生在reserve前或后决定可用身份信息，拒绝呈现都需收口，但不能将无record的新请求与同key旧执行责任混为一谈。依据见 `smoke-reload-autostart-investigation.md` 的Claude Fork调查。

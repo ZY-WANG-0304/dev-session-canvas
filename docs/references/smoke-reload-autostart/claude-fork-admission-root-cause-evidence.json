@@ -1,0 +1,766 @@
+{
+  "baseline": "be574e48d0d96e6514dbd91010c7c29320b1e053",
+  "environment": "Linux x64 / Node22.23.3 / VS Code1.141.0 / native PTY / fake provider / RuntimePersistence=false",
+  "conclusion": {
+    "trigger": "历史用例只验节点创建；分叉用例恢复旧 pendingLaunch=start 基线，重放已结束的历史节点启动，挤占 pending=2。",
+    "productGap": "Host reserve 前容量拒绝抛普通 Error，reportWebviewExecutionStartFailure 仅诊断和提示，未结算新节点的 starting/pendingLaunch。",
+    "notEstablished": "不将其推广为真实 Claude fork 协议错误、跨版本兼容或最终保存失败。"
+  },
+  "originalGate": {
+    "artifactRoot": ".debug/owned-delete-persistence-fix/trusted-artifacts",
+    "transitions": [
+      {
+        "messageIndex": 130,
+        "updatedAt": "2026-10-10T18:31:34.423Z",
+        "nodes": [
+          {
+            "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+            "title": "请只用这个标题恢复侧栏历史会话",
+            "status": "starting",
+            "pendingLaunch": "start",
+            "liveSession": false
+          },
+          {
+            "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "title": "请通过按钮分叉这个历史会话 Fork",
+            "status": "starting",
+            "pendingLaunch": "start",
+            "liveSession": false
+          }
+        ]
+      },
+      {
+        "messageIndex": 134,
+        "updatedAt": "2026-10-10T18:31:34.448Z",
+        "nodes": [
+          {
+            "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+            "title": "请只用这个标题恢复侧栏历史会话",
+            "status": "starting",
+            "pendingLaunch": "start",
+            "liveSession": false
+          },
+          {
+            "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "title": "请通过按钮分叉这个历史会话 Fork",
+            "status": "error",
+            "pendingLaunch": null,
+            "liveSession": false
+          }
+        ]
+      },
+      {
+        "messageIndex": 135,
+        "updatedAt": "2026-10-10T18:31:34.477Z",
+        "nodes": [
+          {
+            "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+            "title": "请只用这个标题恢复侧栏历史会话",
+            "status": "starting",
+            "pendingLaunch": null,
+            "liveSession": true
+          },
+          {
+            "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "title": "请通过按钮分叉这个历史会话 Fork",
+            "status": "error",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "codex-branch-source-node",
+            "title": "Codex 分叉 Source",
+            "status": "stopped",
+            "pendingLaunch": null,
+            "liveSession": false
+          }
+        ]
+      },
+      {
+        "messageIndex": 142,
+        "updatedAt": "2026-10-10T18:31:34.725Z",
+        "nodes": [
+          {
+            "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+            "title": "请只用这个标题恢复侧栏历史会话",
+            "status": "error",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "title": "请通过按钮分叉这个历史会话 Fork",
+            "status": "error",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "codex-branch-source-node",
+            "title": "Codex 分叉 Source",
+            "status": "stopped",
+            "pendingLaunch": null,
+            "liveSession": false
+          }
+        ]
+      },
+      {
+        "messageIndex": 175,
+        "updatedAt": "2026-10-10T18:31:34.423Z",
+        "nodes": [
+          {
+            "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+            "title": "请只用这个标题恢复侧栏历史会话",
+            "status": "starting",
+            "pendingLaunch": "start",
+            "liveSession": false
+          },
+          {
+            "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "title": "请通过按钮分叉这个历史会话 Fork",
+            "status": "starting",
+            "pendingLaunch": "start",
+            "liveSession": false
+          }
+        ]
+      },
+      {
+        "messageIndex": 176,
+        "updatedAt": "2026-10-10T18:31:35.615Z",
+        "nodes": [
+          {
+            "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+            "title": "请只用这个标题恢复侧栏历史会话",
+            "status": "starting",
+            "pendingLaunch": "start",
+            "liveSession": false
+          },
+          {
+            "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "title": "请通过按钮分叉这个历史会话 Fork",
+            "status": "error",
+            "pendingLaunch": null,
+            "liveSession": false
+          }
+        ]
+      },
+      {
+        "messageIndex": 178,
+        "updatedAt": "2026-10-10T18:31:35.681Z",
+        "nodes": [
+          {
+            "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+            "title": "请只用这个标题恢复侧栏历史会话",
+            "status": "starting",
+            "pendingLaunch": null,
+            "liveSession": true
+          },
+          {
+            "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "title": "请通过按钮分叉这个历史会话 Fork",
+            "status": "error",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "claude-branch-source-node",
+            "title": "Claude 分叉 Source",
+            "status": "stopped",
+            "pendingLaunch": null,
+            "liveSession": false
+          }
+        ]
+      },
+      {
+        "messageIndex": 189,
+        "updatedAt": "2026-10-10T18:31:35.782Z",
+        "nodes": [
+          {
+            "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+            "title": "请只用这个标题恢复侧栏历史会话",
+            "status": "starting",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "title": "请通过按钮分叉这个历史会话 Fork",
+            "status": "error",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "claude-branch-source-node",
+            "title": "Claude 分叉 Source",
+            "status": "stopped",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "agent-3-4c44dd33-570a-4cc9-92dd-ea0bfcfb60b8",
+            "title": "Claude 分叉 Source Fork",
+            "status": "starting",
+            "pendingLaunch": "start",
+            "liveSession": false
+          }
+        ]
+      },
+      {
+        "messageIndex": 195,
+        "updatedAt": "2026-10-10T18:31:36.005Z",
+        "nodes": [
+          {
+            "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+            "title": "请只用这个标题恢复侧栏历史会话",
+            "status": "error",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "title": "请通过按钮分叉这个历史会话 Fork",
+            "status": "error",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "claude-branch-source-node",
+            "title": "Claude 分叉 Source",
+            "status": "stopped",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "agent-3-4c44dd33-570a-4cc9-92dd-ea0bfcfb60b8",
+            "title": "Claude 分叉 Source Fork",
+            "status": "starting",
+            "pendingLaunch": "start",
+            "liveSession": false
+          }
+        ]
+      },
+      {
+        "messageIndex": 199,
+        "updatedAt": "2026-10-10T18:31:34.423Z",
+        "nodes": [
+          {
+            "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+            "title": "请只用这个标题恢复侧栏历史会话",
+            "status": "starting",
+            "pendingLaunch": "start",
+            "liveSession": false
+          },
+          {
+            "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "title": "请通过按钮分叉这个历史会话 Fork",
+            "status": "starting",
+            "pendingLaunch": "start",
+            "liveSession": false
+          }
+        ]
+      },
+      {
+        "messageIndex": 136,
+        "type": "host/executionSnapshot",
+        "nodeId": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+        "executionSessionId": "9d6ebb31-b31d-42d2-bdd6-6cd0f254e2f8"
+      },
+      {
+        "messageIndex": 179,
+        "type": "host/executionSnapshot",
+        "nodeId": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+        "executionSessionId": "bb34dd26-04d1-4779-b4b0-a8f0fb81e994"
+      }
+    ],
+    "events": [
+      {
+        "timestamp": "2026-10-10T18:31:35.766Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-3-4c44dd33-570a-4cc9-92dd-ea0bfcfb60b8",
+          "provider": "claude",
+          "resumeRequested": false,
+          "launchPreset": "custom",
+          "launchCommandLine": "/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/fixtures/fake-claude-provider --resume claude-branch-source-session-123 --fork-session",
+          "requestedCommand": "/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/fixtures/fake-claude-provider",
+          "launchArgs": [
+            "--resume",
+            "claude-branch-source-session-123",
+            "--fork-session"
+          ],
+          "cols": 66,
+          "rows": 21,
+          "cwd": "/tmp/dscr",
+          "workspaceTrusted": true
+        }
+      },
+      {
+        "timestamp": "2026-10-10T18:31:35.766Z",
+        "kind": "execution/startFailed",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-3-4c44dd33-570a-4cc9-92dd-ea0bfcfb60b8",
+          "outcome": "exception",
+          "reason": "Local final snapshot responsibility still occupies the execution key or Host capacity.",
+          "message": "Failed to start execution node: Local final snapshot responsibility still occupies the execution key or Host capacity."
+        }
+      },
+      {
+        "timestamp": "2026-10-10T18:31:35.824Z",
+        "kind": "execution/localFinalPersistence",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+          "executionId": "bdc867aa-8dbc-485a-a3dd-b583ef63e48f",
+          "generation": "a8b9c4e7-a4f1-4418-80fa-15a7cefbb4c9",
+          "submitted": false,
+          "result": {
+            "kind": "not-required"
+          }
+        }
+      },
+      {
+        "timestamp": "2026-10-10T18:31:35.824Z",
+        "kind": "execution/startRejected",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+          "outcome": "rejected-before-acquire",
+          "reason": "Authority start admission rejected",
+          "message": "Cannot start Agent right now. Wait for pending operations to finish and try again.",
+          "executionId": "bdc867aa-8dbc-485a-a3dd-b583ef63e48f",
+          "generation": "a8b9c4e7-a4f1-4418-80fa-15a7cefbb4c9"
+        }
+      },
+      {
+        "timestamp": "2026-10-10T18:31:36.033Z",
+        "kind": "execution/localFinalPersistence",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+          "executionId": "bb34dd26-04d1-4779-b4b0-a8f0fb81e994",
+          "generation": "8e15cf16-d6db-4ef9-bda6-65bab07213d8",
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        }
+      },
+      {
+        "timestamp": "2026-10-10T18:31:56.106Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+          "provider": "codex",
+          "resumeRequested": false,
+          "launchPreset": "custom",
+          "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider resume sidebar-codex-session-123",
+          "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "launchArgs": [
+            "resume",
+            "sidebar-codex-session-123"
+          ],
+          "cols": 67,
+          "rows": 21,
+          "cwd": "/tmp/dscr",
+          "workspaceTrusted": true
+        }
+      },
+      {
+        "timestamp": "2026-10-10T18:31:56.120Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+          "provider": "codex",
+          "resumeRequested": false,
+          "launchPreset": "custom",
+          "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider fork sidebar-codex-ui-fork-123",
+          "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "launchArgs": [
+            "fork",
+            "sidebar-codex-ui-fork-123"
+          ],
+          "cols": 96,
+          "rows": 28,
+          "cwd": "/tmp/dscr",
+          "workspaceTrusted": true
+        }
+      }
+    ]
+  },
+  "runs": [
+    {
+      "mode": "clean",
+      "artifactRoot": ".debug/claude-fork-admission-investigation/clean-1791658934857",
+      "exitCode": 0,
+      "note": "空画布运行原Claude函数，原全部断言通过。",
+      "originalFunctionPassed": true,
+      "failurePhase": null,
+      "failureTop": "",
+      "cleanupLocalExecutions": 0,
+      "bundleHashes": {
+        "original": {
+          "extension.js": "93ff60d4cea36eb7792a8f58629b24a08af657000564e945980120f4602ed3dc",
+          "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "instrumentedExtension": "f462ce4cc029117fec665f1164a71ae7ddf28daf6d6b9f99a6457cba16cdce5e"
+      }
+    },
+    {
+      "mode": "control",
+      "artifactRoot": ".debug/claude-fork-admission-investigation/control-1791658812924",
+      "exitCode": 0,
+      "note": "每个原侧栏函数后等待其意图结算，停止并等原记录退休。原Codex/Claude全部断言通过。",
+      "originalFunctionPassed": true,
+      "failurePhase": null,
+      "failureTop": "",
+      "cleanupLocalExecutions": 0,
+      "bundleHashes": {
+        "original": {
+          "extension.js": "93ff60d4cea36eb7792a8f58629b24a08af657000564e945980120f4602ed3dc",
+          "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "instrumentedExtension": "f462ce4cc029117fec665f1164a71ae7ddf28daf6d6b9f99a6457cba16cdce5e"
+      },
+      "checkpoints": [
+        {
+          "name": "runtime-reset",
+          "records": 0,
+          "nodes": []
+        },
+        {
+          "name": "history-settled",
+          "records": 0,
+          "nodes": [
+            {
+              "id": "agent-1-79cdd0ee-4f08-4e35-8ab8-23a0528cad0a",
+              "title": "请只用这个标题恢复侧栏历史会话",
+              "status": "error",
+              "pendingLaunch": null,
+              "liveSession": false
+            }
+          ]
+        },
+        {
+          "name": "history-settled",
+          "records": 0,
+          "nodes": [
+            {
+              "id": "agent-1-79cdd0ee-4f08-4e35-8ab8-23a0528cad0a",
+              "title": "请只用这个标题恢复侧栏历史会话",
+              "status": "error",
+              "pendingLaunch": null,
+              "liveSession": false
+            },
+            {
+              "id": "agent-2-593f7d76-d705-447a-8cad-111ea1a0cf16",
+              "title": "请通过按钮分叉这个历史会话 Fork",
+              "status": "stopped",
+              "pendingLaunch": null,
+              "liveSession": false
+            }
+          ]
+        },
+        {
+          "name": "codex-branch",
+          "records": 0,
+          "nodes": [
+            {
+              "id": "agent-1-79cdd0ee-4f08-4e35-8ab8-23a0528cad0a",
+              "title": "请只用这个标题恢复侧栏历史会话",
+              "status": "error",
+              "pendingLaunch": null,
+              "liveSession": false
+            },
+            {
+              "id": "agent-2-593f7d76-d705-447a-8cad-111ea1a0cf16",
+              "title": "请通过按钮分叉这个历史会话 Fork",
+              "status": "stopped",
+              "pendingLaunch": null,
+              "liveSession": false
+            }
+          ]
+        },
+        {
+          "name": "claude-branch",
+          "records": 0,
+          "nodes": [
+            {
+              "id": "agent-1-79cdd0ee-4f08-4e35-8ab8-23a0528cad0a",
+              "title": "请只用这个标题恢复侧栏历史会话",
+              "status": "error",
+              "pendingLaunch": null,
+              "liveSession": false
+            },
+            {
+              "id": "agent-2-593f7d76-d705-447a-8cad-111ea1a0cf16",
+              "title": "请通过按钮分叉这个历史会话 Fork",
+              "status": "stopped",
+              "pendingLaunch": null,
+              "liveSession": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "probe",
+      "artifactRoot": ".debug/claude-fork-admission-investigation/probe-1791658681746",
+      "exitCode": 1,
+      "note": "原函数全部通过，初版调查脚本要求失败所以exit1；时序敏感，不能当稳定复现。",
+      "originalFunctionPassed": true,
+      "failurePhase": null,
+      "failureTop": "",
+      "cleanupLocalExecutions": 0,
+      "bundleHashes": {
+        "original": {
+          "extension.js": "93ff60d4cea36eb7792a8f58629b24a08af657000564e945980120f4602ed3dc",
+          "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "instrumentedExtension": "f462ce4cc029117fec665f1164a71ae7ddf28daf6d6b9f99a6457cba16cdce5e"
+      }
+    },
+    {
+      "mode": "probe",
+      "artifactRoot": ".debug/claude-fork-admission-investigation/probe-1791658730106",
+      "exitCode": 1,
+      "note": "缩减额外快照读取后，前置Runtime配置切换用例先发生启动准入相关超时，未进入目标suffix，不作Claude根因证据。",
+      "originalFunctionPassed": false,
+      "failurePhase": "runtime-reset",
+      "failureTop": "Timed out while waiting for smoke test state.",
+      "cleanupLocalExecutions": 0,
+      "bundleHashes": {
+        "original": {
+          "extension.js": "93ff60d4cea36eb7792a8f58629b24a08af657000564e945980120f4602ed3dc",
+          "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "instrumentedExtension": "f462ce4cc029117fec665f1164a71ae7ddf28daf6d6b9f99a6457cba16cdce5e"
+      }
+    },
+    {
+      "mode": "replay",
+      "artifactRoot": ".debug/claude-fork-admission-investigation/replay-1791658869357",
+      "exitCode": 1,
+      "note": "使用原gate第175条消息的旧基线；暂扣两个历史节点prepare直到Claude请求进入准入。目标拒绝与20秒超时被捕获；释放后并发拒绝的历史节点另报owned-resize-failed，外层原断言exit1；非自然原顺序复跑，不视为专项通过。",
+      "originalFunctionPassed": false,
+      "failurePhase": "claude-branch",
+      "failureTop": "Timed out while waiting for diagnostic events.",
+      "cleanupLocalExecutions": 0,
+      "bundleHashes": {
+        "original": {
+          "extension.js": "93ff60d4cea36eb7792a8f58629b24a08af657000564e945980120f4602ed3dc",
+          "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "instrumentedExtension": "f462ce4cc029117fec665f1164a71ae7ddf28daf6d6b9f99a6457cba16cdce5e"
+      },
+      "admissionTrace": [
+        {
+          "event": "start-enter",
+          "phase": "claude-branch",
+          "at": "2026-10-10T19:01:15.478Z",
+          "nodes": [
+            {
+              "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+              "title": "请只用这个标题恢复侧栏历史会话",
+              "status": "starting",
+              "agent": {
+                "backend": "node-pty",
+                "lifecycle": "starting",
+                "provider": "codex",
+                "launchPreset": "custom",
+                "customLaunchCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider resume sidebar-codex-session-123",
+                "runtimeKind": "pty-cli",
+                "resumeSupported": false,
+                "resumeStrategy": "none",
+                "shellPath": "codex",
+                "cwd": "/tmp/dscr",
+                "persistenceMode": "snapshot-only",
+                "attachmentState": "history-restored",
+                "liveSession": false,
+                "pendingLaunch": "start",
+                "lastCols": 96,
+                "lastRows": 28,
+                "attentionPending": false,
+                "lastBackendLabel": "Codex"
+              }
+            },
+            {
+              "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+              "title": "请通过按钮分叉这个历史会话 Fork",
+              "status": "starting",
+              "agent": {
+                "backend": "node-pty",
+                "lifecycle": "starting",
+                "provider": "codex",
+                "launchPreset": "custom",
+                "customLaunchCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider fork sidebar-codex-ui-fork-123",
+                "runtimeKind": "pty-cli",
+                "resumeSupported": false,
+                "resumeStrategy": "none",
+                "shellPath": "codex",
+                "cwd": "/tmp/dscr",
+                "persistenceMode": "snapshot-only",
+                "attachmentState": "history-restored",
+                "liveSession": false,
+                "pendingLaunch": "start",
+                "lastCols": 96,
+                "lastRows": 28,
+                "attentionPending": false,
+                "lastBackendLabel": "Codex"
+              }
+            },
+            {
+              "id": "claude-branch-source-node",
+              "title": "Claude 分叉 Source",
+              "status": "stopped",
+              "agent": {
+                "backend": "node-pty",
+                "lifecycle": "stopped",
+                "provider": "claude",
+                "launchPreset": "custom",
+                "customLaunchCommand": "claude --resume claude-branch-source-session-123",
+                "lastLaunchCommandLine": "claude --resume claude-branch-source-session-123",
+                "runtimeKind": "pty-cli",
+                "resumeSupported": true,
+                "resumeStrategy": "claude-session-id",
+                "shellPath": "claude",
+                "cwd": "/tmp/dscr",
+                "persistenceMode": "snapshot-only",
+                "attachmentState": "history-restored",
+                "liveSession": false,
+                "resumeSessionId": "claude-branch-source-session-123",
+                "lastCols": 96,
+                "lastRows": 28,
+                "attentionPending": false,
+                "lastBackendLabel": "Claude Code"
+              }
+            },
+            {
+              "id": "agent-3-51ba60ac-8e2c-4799-8411-7868571189c0",
+              "title": "Claude 分叉 Source Fork",
+              "status": "starting",
+              "agent": {
+                "backend": "node-pty",
+                "lifecycle": "starting",
+                "provider": "claude",
+                "launchPreset": "custom",
+                "customLaunchCommand": "/tmp/dscr/.debug/claude-fork-admission-investigation/replay-1791658869357/host/tests/vscode-smoke/fixtures/fake-claude-provider --resume claude-branch-source-session-123 --fork-session",
+                "runtimeKind": "pty-cli",
+                "resumeSupported": false,
+                "resumeStrategy": "none",
+                "shellPath": "claude",
+                "cwd": "/tmp/dscr",
+                "persistenceMode": "snapshot-only",
+                "attachmentState": "history-restored",
+                "liveSession": false,
+                "pendingLaunch": "start",
+                "lastCols": 96,
+                "lastRows": 28,
+                "attentionPending": false,
+                "lastBackendLabel": "Claude Code",
+                "customLaunchCommandDefaultArgsPolicy": "command-only"
+              }
+            }
+          ],
+          "records": [
+            {
+              "nodeId": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+              "identity": {
+                "executionId": "15d75b43-f76e-4684-8924-2a19abd21c65",
+                "generation": "1decf2eb-97f6-431d-b4f3-fc8183c9131e"
+              },
+              "execution": {
+                "identity": {
+                  "executionId": "15d75b43-f76e-4684-8924-2a19abd21c65",
+                  "generation": "1decf2eb-97f6-431d-b4f3-fc8183c9131e"
+                },
+                "key": "agent:agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+                "readerOutcome": "pending",
+                "settled": false,
+                "retired": false,
+                "admissionPending": true,
+                "stopRequested": false
+              },
+              "persistence": {
+                "submitted": false,
+                "result": null
+              }
+            },
+            {
+              "nodeId": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+              "identity": {
+                "executionId": "ac132fd0-a190-4300-9528-68777da4c590",
+                "generation": "b77dd575-ce06-4dcf-8613-19c23fafe142"
+              },
+              "execution": {
+                "identity": {
+                  "executionId": "ac132fd0-a190-4300-9528-68777da4c590",
+                  "generation": "b77dd575-ce06-4dcf-8613-19c23fafe142"
+                },
+                "key": "agent:agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+                "readerOutcome": "pending",
+                "settled": false,
+                "retired": false,
+                "admissionPending": true,
+                "stopRequested": false
+              },
+              "persistence": {
+                "submitted": false,
+                "result": null
+              }
+            }
+          ],
+          "kind": "agent",
+          "nodeId": "agent-3-51ba60ac-8e2c-4799-8411-7868571189c0",
+          "sameKey": false,
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          }
+        }
+      ],
+      "beforeOriginalFinally": {
+        "at": "2026-10-10T19:01:35.679Z",
+        "nodes": [
+          {
+            "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+            "title": "请只用这个标题恢复侧栏历史会话",
+            "status": "error",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "title": "请通过按钮分叉这个历史会话 Fork",
+            "status": "error",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "claude-branch-source-node",
+            "title": "Claude 分叉 Source",
+            "status": "stopped",
+            "pendingLaunch": null,
+            "liveSession": false
+          },
+          {
+            "id": "agent-3-51ba60ac-8e2c-4799-8411-7868571189c0",
+            "title": "Claude 分叉 Source Fork",
+            "status": "starting",
+            "pendingLaunch": "start",
+            "liveSession": false
+          }
+        ],
+        "records": []
+      }
+    }
+  ]
+}
