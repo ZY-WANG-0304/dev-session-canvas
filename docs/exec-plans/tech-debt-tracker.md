@@ -517,6 +517,16 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 上一节缺口已修复：原 owned Claude 在 started/waiting-input 独立异步扫描原 cwd 的候选文件，合并重复请求并保留一次补查，不阻塞启动、正文或停止。返回时核对原记录、恢复上下文、launchSpec、当前 metadata 绑定与停止/结束/最终保存状态；成功投影并普通保存，已确认 ID 在停止后保留，无文件不升级。新增 17 项、完整 Host 504/504、类型/语法通过；基线产品的新正例失败。最终默认 VSIX 七个独立阶段通过，原 Claude 显式 ID 用例在独立阶段和 trusted 均完整通过，正式修复已收口。
 
-新的独立门禁位于 `verifyLiveRuntimePersistence:10024`：用例开启 RuntimePersistence 后首次等待 Agent live 超时，尚未触达 reload/reattach。Agent starting、Terminal launching，均 pendingLaunch=start/live=false；`execution/candidateStartFailed` 报 `Root runtime preparation or submission did not complete.`，没有本地 owned 执行。节点 metadata 仍 snapshot-only，不代表配置仍关闭。准备/提交失败的底层根因尚未确认，保留 `.debug/claude-resume-fix/trusted-artifacts`；继续完整门禁前需独立定位 Runtime root 准备和提交结果，不能扩大准入、只延长等待或跳过原状态断言。
+新的独立门禁位于 `verifyLiveRuntimePersistence:10024`：用例开启 RuntimePersistence 后首次等待 Agent live 超时，尚未触达 reload/reattach。Agent starting、Terminal launching，均 pendingLaunch=start/live=false；`execution/candidateStartFailed` 报 `Root runtime preparation or submission did not complete.`，没有本地 owned 执行。节点 metadata 仍 snapshot-only，不代表配置仍关闭。该轮底层原因待查，原工件保留在 `.debug/claude-resume-fix/trusted-artifacts`；现已完成下述独立定位。
 
 本轮没有关闭完整 gate 的技术债，也没有验证真实 provider resume、跨平台或真实窗口 Reload。计划与证据：`docs/exec-plans/completed/owned-claude-file-confirmation.md`、`docs/references/smoke-reload-autostart/claude-file-confirmation-fix-evidence.json`。
+
+## Runtime root 存储创建权限与准备约定不一致（2026-10-10，PR #314）
+
+已确认：扩展构造时普通 root-local 画布保存以默认 mode 递归创建 globalStorage；umask 0002 下为 0775。Runtime 的 mkdir 0700 不会修改已有目录，helper 第一项 globalStorage 不可组写检查立即拒绝，外层 catch 隐去原异常，节点保留待启动表现。新隔离 user-data 即可复现，属于环境触发的插件初始化/兼容缺口，不是 smoke 等待时间或旧 Supervisor 的必要问题。与此前 checkpoint 的 0775 拒绝同因。
+
+本轮仅定位，不改生产检查或目录权限。原目录未修改重放失败；同实验目录 0755/0700 均越过准备；真实 0002/0022 对照捕获首次创建调用栈，0022 下 root intent/started 与 Terminal live 成立。0022 的 Agent 随后 rejected-before-acquire，未捕获资源拒绝瞬间，仍待独立定位，不能仅凭同类文案归为 starting 配额。完整 Runtime/gate 未通过。
+
+后续正式修复需统一可能先创建目录的保存/模板/Runtime 入口，明确已有目录的验证/处理策略，并让安全的具体准备失败反馈与本请求节点状态一致；不得自动接管不安全目录、放宽 owner/canonical path/权限检查或未知提交保护。之后恢复原 Runtime 自启动和后续矩阵；不以只改测试 umask 或延长等待收口。入口为 CanvasPanelManager 的 writePersistedCanvasSnapshotToDisk/resolveRuntimeCreationTarget、supervisor/runtimeRootOwner.ts 和 runtimeRootPreparation.ts。
+
+证据：`docs/references/smoke-reload-autostart/runtime-root-preparation-evidence.json` 及相邻两个复现程序；计划：`docs/exec-plans/completed/runtime-root-preparation-investigation.md`；设计：`docs/design-docs/smoke-reload-autostart-investigation.md`。

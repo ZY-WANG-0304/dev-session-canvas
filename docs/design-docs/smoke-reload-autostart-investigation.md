@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/runtime-root-preparation-investigation.md, docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -466,4 +466,36 @@ Host 两项特征对照使用实际类、实际 filesystem locator 与既有受�
 
 最终默认 VSIX 类型检查/打包和七个独立阶段通过。完整 `verifyClaudeExplicitSessionIdPreservesResumeContext` 在 local-links-and-stop 和 trusted 原顺序均通过运行期、停止后的恢复策略/ID及删除检查；原生可信确认事件绑定 executionId=`fff61393-5d15-4859-8987-0bec232cdad6`，没有改动原测试断言。本轮 Claude 文件确认缺口已收口。
 
-完整 gate 仍未通过：随后 `verifyLiveRuntimePersistence:10024` 在开启 RuntimePersistence 后首次等待 Agent live 超时，尚未执行该用例的 reload/reattach。Agent/Terminal 分别仍 starting/launching、pendingLaunch=start、live=false，localExecutions 为空；两者均出现 `execution/candidateStartFailed`，消息为 `Root runtime preparation or submission did not complete.`。节点 metadata 此时仍 snapshot-only 是失败现场，不能当作该用例未开启 Runtime 的证明。底层准备/提交失败原因尚未定位，需独立处理，不放宽准入或启动状态断言。证据与现场摘要见 `docs/references/smoke-reload-autostart/claude-file-confirmation-fix-evidence.json`。
+完整 gate 仍未通过：随后 `verifyLiveRuntimePersistence:10024` 在开启 RuntimePersistence 后首次等待 Agent live 超时，尚未执行该用例的 reload/reattach。Agent/Terminal 分别仍 starting/launching、pendingLaunch=start、live=false，localExecutions 为空；两者均出现 `execution/candidateStartFailed`，消息为 `Root runtime preparation or submission did not complete.`。节点 metadata 此时仍 snapshot-only 是失败现场，不能当作该用例未开启 Runtime 的证明。该轮尚未定位底层原因，后续定位见下一节；原证据见 `docs/references/smoke-reload-autostart/claude-file-confirmation-fix-evidence.json`。
+
+## Runtime 首次 root 准备失败专项定位（2026-10-10）
+
+### 已确认根因与归属
+
+在 `1579d2da`，普通画布保存与 Runtime 对同一扩展 globalStorage 的权限约定不一致。`CanvasPanelManager` 构造期间调用 `persistState` → `writeRootLocalCanvasSnapshot` → `writePersistedCanvasSnapshotToDisk`；最后通过不带 mode 的 `fs.mkdirSync(parent, { recursive: true })` 创建 `globalStorage/root-local-canvas/<root-key>`。扩展 globalStorage 尚不存在时，递归创建也会创建这个父目录。当前环境 umask 为 0002，因此扩展 globalStorage 为 0775（同组用户可写）。
+
+开启 Runtime 后，`resolveRuntimeCreationTarget` 调用 `mkdir({ recursive: true, mode: 0700 })`，但 mode 只作用于新目录，不会修改已存在的 0775。launcher 的 `prepareRuntimeRootSupervisor` 第一项操作 `prepareRuntimeRootOwnerDirectories` 在 `globalStat.mode & 0022` 检查立即抛出：
+
+    Root runtime global storage must be owned by the current OS user and not writable by others.
+
+外层 catch 丢弃原异常，返回通用的 preparation/submission 错误。失败发生在创建 root 子目录、领取 preparation 所有权、后端选择和提交 Supervisor 之前，不是进程启动慢、reload 重连或 provider resume 超时。两个节点保留 starting/launching 与待启动摘要，令上层 live 等待最终超时；这些状态不能证明仍在等待尺寸。
+
+这是环境权限触发的插件存储初始化/兼容缺口。目录由插件正常激活保存创建，smoke 无须直接制造坏目录，也无需旧版本数据；全新隔离 user-data 即可重现。权限拒绝本身遵守安全约束，不能通过删除检查修复。通用错误隐藏原因、失败节点继续显示待启动，是同次失败暴露的反馈问题。只修改 smoke umask 可以绕过触发条件，不能解决已有普通目录与新 Runtime 路径的兼容。
+
+### 原始证据与因果对照
+
+原默认 VSIX 工件 `.debug/claude-resume-fix/trusted-artifacts` 对应目录仍为当前 UID 所有、0775。用未修改的实际目录准备函数和 helper 重放原路径，分别得到具体权限拒绝与原通用错误，原目录没有变更。
+
+同一隔离实验目录先经普通递归 mkdir 成为 0775，再调用 Host 同款 mkdir 0700，权限仍为 0775、准备仍拒绝；仅将实验目录改为 0755 或 0700，两者均越过目录准备。helper 在目录准备后立即主动取消，未创建 Supervisor。因此 globalStorage 要求是不可被其他用户写入，并非必须为 0700；其下 root 私有目录仍须精确 0700。
+
+真实 VS Code 1.141.0 对照使用原 head 已打包载荷的隔离副本，只增加 mkdir 前后观测和 helper 异常 message。两次都复用原 `prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true)` 与两个 live 等待，未执行 trusted 全部前序。0002 下，激活前目录不存在；捕获到构造时普通保存首次创建 0775，Runtime mkdir 后仍 0775，两条启动失败均为上述权限异常，无 startup intent。0022 下同一路径创建 0755，root 生成 intent/started，Terminal 以 live-runtime/attached-live 启动。两次配置均 enabled=true，两次仍有 watcher ENOSPC；当前 root 拒绝无需以 watcher 错误解释。
+
+0022 对照随后 Agent 报 `Execution start was rejected-before-acquire.`；本轮未捕获资源拒绝瞬间，不能仅凭文案认定具体配额或生命周期原因，也不能称整个 Runtime 用例通过。Terminal 成功与 root intent/started 证明越过当前权限阻塞。证据保存后已通过原连接正常 stop 该隔离 Terminal，随后 Supervisor 退出。后续 reload/reattach、压力和跨平台矩阵均未验证。
+
+### 引入记录与后续修复边界
+
+`7dd0054f6`（2026-06-04）已有 globalStorage 下 root-local 画布存储；普通 snapshot mkdir 未指定私有 mode。`e72d7859`（2026-10-08）增加 root 准备及 globalStorage 不可组写检查，`34c54561`（同日）将正常 Host 创建接到 root helper，并用 mkdir 0700 准备已有父目录。记录来自 git blame/show，未逐提交运行完整 smoke。冲突出现在新 root 路径接入现存普通存储后，不是本次 Claude 修复引入。这与先前 `runtime-checkpoint-refresh` 在 umask 0002 下的目录拒绝是同一机制；两个场景消除权限阻塞后的资源拒绝不得自动合并归因。
+
+本轮仅定位，生产代码、原 smoke、权限检查和资源保护不变。后续应统一所有可能先创建扩展存储的入口，并明确已有目录的验证/处理策略；失败反馈应安全表达具体阶段并结束本请求待启动表现。保留 owner、canonical path 和未知归属保护，不自动接管任意不安全目录，不把提交未知当作未提交，也不只调整测试等待。具体迁移方案尚未选定。
+
+精简证据为 `docs/references/smoke-reload-autostart/runtime-root-preparation-evidence.json`，同目录重放程序和真实副本探针分别为相邻的 `runtime-root-directory-replay.mjs`、`runtime-root-native-probe.mjs`。探针收尾新增自动 stop 在证据采集之后执行；本轮两次采集使用独立 cleanup 客户端完成同一清理，收尾补充未重新原生运行。计划为 `docs/exec-plans/completed/runtime-root-preparation-investigation.md`。
