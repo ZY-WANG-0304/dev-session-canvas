@@ -377,3 +377,5 @@ Runtime 的结构化退出信息属于终态事实，不能因 completed 正文�
 执行级 observer 的资源责任应跟随原 execution，而非仅按 nodeId 存取；正常退出先 drain 末尾事件再冻结最终快照，拒绝启动先禁止迟到事件再释放，未知资源保持绑定直到原执行收口。observer 处理或释放失败不能被记录为保存成功。依据见 `smoke-reload-autostart-investigation.md` 的 owned 文件事件正式修复方案。
 
 owner settled 与 Host 最终保存是不同承诺；删除的 pending 拒绝必须按检查当时的事实解释，不能用稍后 saved 反推当时应当通过。把旧保守拒绝改为一次操作跨过正常保存窗口时，必须显式设计有界等待和目标身份保护，保留保存失败/超时责任，不能删除安全检查或在测试中无条件重试。依据见 `smoke-reload-autostart-investigation.md` 的 owned 删除时序调查。
+
+单节点删除可以有界等待原保存而不改变owner停止承诺；等待成功也不意味着仍可删除同名节点，必须在实际删除前重验原metadata、操作意图、owner及路由。正常最终投影和退休应被识别为同一目标，替换与超时迟到不得继续旧删除。其他破坏性入口不因共用helper而隐式获得新的等待策略。依据见 `smoke-reload-autostart-investigation.md` 的单节点删除正式方案。

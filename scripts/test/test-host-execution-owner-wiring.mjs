@@ -1878,6 +1878,115 @@ for (const kind of ['terminal', 'agent']) {
   }, 15000);
 }
 
+
+async function singleNodeDeleteFixture(kind) {
+  const f = await persistenceFixture({ candidate: true });
+  const gate = deferred();
+  const messages = [];
+  let fail = false;
+  const update = f.host.context.workspaceState.update;
+  f.host.context.workspaceState.update = async (...args) => {
+    await gate.promise;
+    if (fail) throw new Error('controlled delete save failure');
+    return update(...args);
+  };
+  f.host.postMessage = message => messages.push(message);
+  f.host.reconcileCanvasFileArtifacts = state => state;
+  const { record, provider } = await f.started(kind);
+  const id = record.nodeId;
+  if (kind === 'agent') f.host.state.fileReferences = [{ id: 'delete-file', filePath: '/controlled/read.md',
+    updatedAt: '2026-10-11T00:00:00Z', owners: [{ nodeId: id, accessMode: 'read', updatedAt: '2026-10-11T00:00:00Z' }] }];
+  async function exit() {
+    provider.process();
+    provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+    provider.seal(0); provider.release();
+    await until(f.clock, () => record.persistence.submitted, 'original final save submitted');
+  }
+  return { ...f, record, provider, id, messages, gate, exit,
+    failSave() { fail = true; },
+    async cleanup() { gate.resolve(); await completed(f.clock, record.persistence.promise, 'original save cleanup'); record.tracker.dispose(); await f.cleanup(); }
+  };
+}
+
+for (const kind of ['agent', 'terminal']) {
+  for (const phase of ['running', 'retained']) {
+    for (const outcome of ['saved', 'failed', 'timeout']) {
+      test(`single node delete ${kind} ${phase} waits for ${outcome}`, async () => {
+        const f = await singleNodeDeleteFixture(kind);
+        let returned = false;
+        try {
+          if (phase === 'retained') {
+            await f.exit();
+            f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'controlled retained delete');
+            await until(f.clock, () => f.record.execution.snapshot().retired, 'owner retired before delete');
+          }
+          const deleting = f.host.deleteNode(f.id).then(() => { returned = true; });
+          if (phase === 'running') {
+            await until(f.clock, () => f.provider.messages.some(message => message.type === 'requestStop'), 'delete stop');
+            await f.exit();
+          }
+          await pump(f.clock, () => true);
+          assert.equal(returned, false, 'delete must await the original pending save');
+          assert.equal(f.messages.some(message => message.type === 'host/error'), false);
+          assert.ok(f.host.state.nodes.some(node => node.id === f.id));
+          if (outcome === 'timeout') {
+            f.clock.advance(f.clock.now() + EXECUTION_CANDIDATE_BUDGETS.boundaryMs);
+            await completed(f.clock, deleting, 'bounded delete timeout');
+            assert.match(f.messages.at(-1).payload.message, /did not complete within the boundary/);
+            assert.equal(f.record.persistence.result, undefined);
+          }
+          if (outcome === 'failed') f.failSave();
+          f.gate.resolve();
+          await completed(f.clock, f.record.persistence.promise, 'original delete save');
+          await completed(f.clock, deleting, 'single node delete result');
+          assert.equal(f.host.state.nodes.some(node => node.id === f.id), outcome !== 'saved');
+          if (kind === 'agent') assert.equal(f.host.state.fileReferences.length, outcome === 'saved' ? 0 : 1);
+          if (outcome === 'failed') assert.match(f.messages.at(-1).payload.message, /persistence is failed/);
+          if (outcome !== 'failed') assert.equal(f.record.persistence.result.kind, 'saved');
+          assert.equal(f.providers.length, 1);
+        } finally { await f.cleanup(); }
+      });
+    }
+  }
+}
+
+for (const change of ['metadata', 'record', 'owner', 'operation', 'deleted', 'routed', 'layout']) {
+  test(`single node delete validates waiting target after ${change}`, async () => {
+    const f = await singleNodeDeleteFixture('agent');
+    try {
+      const deleting = f.host.deleteNode(f.id);
+      await until(f.clock, () => f.provider.messages.some(message => message.type === 'requestStop'), 'identity delete stop');
+      await f.exit();
+      const node = f.host.state.nodes.find(node => node.id === f.id);
+      if (change === 'metadata') node.metadata.agent = { ...node.metadata.agent };
+      if (change === 'record') f.host.nonNativeHostExecutions.set(f.record.execution.key, { ...f.record });
+      if (change === 'owner') f.host.nonNativeExecutionOwner = new ExecutionOwnerLifecycle(f.injection);
+      if (change === 'operation') f.host.beginExecutionSessionOperation('agent', f.id);
+      if (change === 'deleted') f.host.state = { ...f.host.state, nodes: f.host.state.nodes.filter(node => node.id !== f.id) };
+      if (change === 'routed') {
+        f.host.getMultiRootWorkspaceFoldersForComposition = () => [{ path: f.root, name: 'one' }, { path: '/other', name: 'two' }];
+        const next = structuredClone(f.host.state);
+        next.nodes.find(node => node.id === f.id).id = namespaceCanvasObjectId(f.root, f.id);
+        f.host.state = f.host.reconcileOwnedCanvasState(next);
+      }
+      if (change === 'layout') f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(value => value.id === f.id
+        ? { ...value, title: 'Renamed while saving', position: { x: 123, y: 456 } } : value) };
+      f.gate.resolve();
+      await completed(f.clock, deleting, 'identity-aware delete completion');
+      assert.equal(f.record.persistence.result.kind, 'saved');
+      if (change === 'layout') {
+        assert.ok(!f.host.state.nodes.some(node => node.id === f.id));
+        assert.equal(f.messages.some(message => message.type === 'host/error'), false);
+        assert.equal(f.host.state.fileReferences.length, 0);
+      } else {
+        assert.match(f.messages.at(-1).payload.message, /original local deletion target changed/);
+        assert.equal(f.host.state.fileReferences.length, 1, 'stale deletion must not remove references');
+        if (change !== 'deleted') assert.ok(f.host.state.nodes.some(node => node.id === f.record.nodeId));
+      }
+    } finally { await f.cleanup(); }
+  });
+}
+
 async function assertFinalSaveRetainsHost(f, record, kind, expected) {
   assert.equal(record.execution.snapshot().terminal.kind, 'applied');
   assert.equal(record.execution.snapshot().retired, true);
@@ -1889,7 +1998,9 @@ async function assertFinalSaveRetainsHost(f, record, kind, expected) {
   const node = f.host.state.nodes.find(node => node.id === `${kind}-1`);
   const errors = [];
   f.host.postMessage = message => errors.push(message);
-  await completed(f.clock, f.host.deleteNode(node.id), 'retained final save delete');
+  const deleting = f.host.deleteNode(node.id);
+  if (expected === undefined) f.clock.advance(f.clock.now() + EXECUTION_CANDIDATE_BUDGETS.boundaryMs);
+  await completed(f.clock, deleting, 'retained final save delete');
   assert.strictEqual(f.host.state.nodes.find(candidate => candidate.id === node.id), node);
   assert.equal(errors.at(-1)?.type, 'host/error');
   await assert.rejects(completed(f.clock, f.host.resetState(), 'retained final save reset'), /snapshot persistence/i);
@@ -2171,7 +2282,7 @@ test('pending final persistence blocks restart delete and reset while the origin
     const closing = f.host.prepareForDeactivation();
     const attempts = [...f.writes];
     await pump(f.clock, () => true);
-    f.clock.advance(50);
+    f.clock.advance(f.clock.now() + 50);
     const report = await completed(f.clock, closing, 'pending save permanent cutoff');
     assert.equal(report.canvasSnapshot.kind, 'unconfirmed');
     assert.equal(report.local.kind, 'settled');

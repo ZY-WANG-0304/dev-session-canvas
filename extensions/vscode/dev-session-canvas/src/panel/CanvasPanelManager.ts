@@ -17658,6 +17658,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     persistence.submitted = true;
     this.state = nextState;
+    const finalNode = this.requireNode(record.nodeId, record.kind);
+    persistence.metadata = record.kind === 'agent' ? ensureAgentMetadata(finalNode) : ensureTerminalMetadata(finalNode);
     if (record.kind === 'agent' && record.business && status === 'error') {
       // Mark attention synchronously in this final snapshot; delivery must not hold settlement.
       const session: AgentAbnormalInterruptionSession = {
@@ -20426,7 +20428,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private async terminateExecutionNodeForDeletion(node: CanvasNodeSummary): Promise<void> {
+  private async terminateExecutionNodeForDeletion(
+    node: CanvasNodeSummary,
+    options: { waitForPersistence?: boolean } = {}
+  ): Promise<void> {
     if (!isExecutionNodeKind(node.kind)) {
       return;
     }
@@ -20453,11 +20458,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (record) this.queueNonNativeHostResize(record);
       const result = await stopping;
       if (result.kind !== 'settled') throw new Error('Non-native Host deletion is unconfirmed.');
-      if (record) this.assertNonNativeHostPersistenceComplete([record]);
+      if (record) {
+        if (options.waitForPersistence) await this.waitForNonNativeHostPersistence([record]);
+        else this.assertNonNativeHostPersistenceComplete([record]);
+      }
       return;
     }
     if (retained?.persistence) {
-      this.assertNonNativeHostPersistenceComplete([retained]);
+      if (options.waitForPersistence) await this.waitForNonNativeHostPersistence([retained]);
+      else this.assertNonNativeHostPersistenceComplete([retained]);
       return;
     }
 
@@ -20775,8 +20784,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     if (isExecutionNodeKind(node.kind)) {
       this.invalidateExecutionSessionOperation(node.kind, nodeId);
+      const key = this.getExecutionSessionOperationKey(node.kind, nodeId);
+      const owner = this.nonNativeExecutionOwner;
+      const record = this.nonNativeHostExecutions.get(key);
+      const token = this.executionSessionOperationTokens.get(key);
       try {
-        await this.terminateExecutionNodeForDeletion(node);
+        await this.terminateExecutionNodeForDeletion(node, { waitForPersistence: true });
+        if (record?.persistence) {
+          const current = this.state.nodes.find(value => value.id === nodeId && value.kind === node.kind);
+          const replacement = this.nonNativeHostExecutions.get(key);
+          const execution = this.nonNativeExecutionOwner?.get(key);
+          // Successful retirement may remove the record; a replacement must never be deleted.
+          if (this.nonNativeExecutionOwner !== owner || record.nodeId !== nodeId ||
+            (replacement && replacement !== record) || (execution && execution !== record.execution) ||
+            current?.metadata?.[node.kind] !== record.persistence.metadata ||
+            this.executionSessionOperationTokens.get(key) !== token) {
+            throw new Error('The original local deletion target changed while waiting for final persistence.');
+          }
+        }
       } catch (error) {
         this.postMessage({
           type: 'host/error',

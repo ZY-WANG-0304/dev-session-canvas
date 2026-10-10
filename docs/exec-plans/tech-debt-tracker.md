@@ -654,3 +654,12 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 2026-10-11 删除停点根因已确认：`terminateExecutionNodeForDeletion` 等待 owner 停止后同步检查最终保存，正常异步保存仍 pending 时立即中止；21ms 后 saved 不会恢复原删除请求。原生检查时 collector 已 dispose，故不是文件事件排空失败。该同步拒绝来自已在 main 的 `b235a7bc5`，符合 S8 §26.3 当时“不新增保存等待预算”的保守契约；当前一次删除 smoke 与其行为不一致。延长用例等待无法解决。
 
 受控 Agent/Terminal（files 关闭）probe/control × saved/failed 共8/8捕获预期结果；仅为原 host-delete 增加原保存有界等待的 native control 完整通过原文件活动函数，probe 原场景仍失败，两个调查脚本均清理至零执行。证据 `docs/references/smoke-reload-autostart/owned-delete-persistence-root-cause-evidence.json`。正式修复仍待实施：若采用一次删除完成语义，应显式更新旧入口契约、等待原保存并重验目标身份，失败/未确认/超时继续保留，不放宽状态断言或自动重试。完整 gate 和此前其余边界保持原状态。
+
+
+## 单节点删除保存等待已修复；下一停点为 Claude Fork（2026-10-11，PR #314）
+
+`deleteNode` 对owned/retained最终保存显式等待既有20秒预算，成功后复核原owner、record路由、metadata和删除token，再移除节点及引用。失败/未确认/超时保留，迟到saved不续删；reset/清组/模板默认契约不变。19项新增回归先红后绿，Host588/588、类型和本地化通过。默认VSIX七个独立阶段通过，trusted原文件活动和readexit全函数通过，包括两项Agent删除、引用收敛、files开关与基线恢复；上一删除阻塞关闭。
+
+完整trusted继续通过RuntimePersistence配置清理、侧栏历史恢复/Fork UI和Codex分支，停在 `verifyClaudeAgentBranchFromCurrentNode:2268` 等待唯一execution/started事件。现场记录Host容量占用startFailed和另一节点的rejected-before-acquire，根因尚未确认；不能把它当作本次保存等待失败或仅因出现准入词就归为fixture并发错误。失败快照localExecutions=0，后续用例仍未触达。证据 `docs/references/smoke-reload-autostart/owned-delete-persistence-fix-evidence.json`，原始工件 `.debug/owned-delete-persistence-fix/trusted-artifacts/`。
+
+本轮正式smoke未修改，实际默认trusted原序列已提供文件及readexit的原生验收，不重复已通过场景。历史URL清理、Runtime disconnected批次报告、新Host/checkpoint/真实provider/跨平台等边界继续保留。
