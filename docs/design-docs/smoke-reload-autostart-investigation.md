@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/runtime-scrollback-snapshot-repair.md, docs/exec-plans/completed/runtime-scrollback-snapshot-investigation.md, docs/exec-plans/completed/runtime-start-admission-repair.md, docs/exec-plans/completed/runtime-start-admission-investigation.md, docs/exec-plans/completed/runtime-root-storage-repair.md, docs/exec-plans/completed/runtime-root-preparation-investigation.md, docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/runtime-resume-exit-summary-investigation.md, docs/exec-plans/completed/runtime-scrollback-snapshot-repair.md, docs/exec-plans/completed/runtime-scrollback-snapshot-investigation.md, docs/exec-plans/completed/runtime-start-admission-repair.md, docs/exec-plans/completed/runtime-start-admission-investigation.md, docs/exec-plans/completed/runtime-root-storage-repair.md, docs/exec-plans/completed/runtime-root-preparation-investigation.md, docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -599,3 +599,29 @@ root helper 的原私有目录/归属检查保持；其目录准备异常使用�
 完整 gate 仍 exit 1，后续阻塞在 `verifyLiveRuntimeResumeExitClassification:10666`：恢复运行并发送 `exit 23` 后，status=error、lastExitCode=23 已通过，但 summary 实际 `Session ended.`，未满足 `/exit(?:ed with code| code) 23/`。该场景在 RuntimePersistence 开启时执行；失败后的 finally 关闭模式，因此最终快照的 persistenceMode 不能代替失败动作时模式。本轮未定位摘要差异来源，不据此判定测试文案过时或产品退出分类有错，也没有放宽断言。后续立即 reload 场景、独立 checkpoint 矩阵及跨平台/跨版本仍不由当前结果代证。
 
 本轮隔离节点均已非 live，专项 finally 使用原 stop 入口；检查无本轮隔离 Supervisor 残留。修复证据：`docs/references/smoke-reload-autostart/runtime-scrollback-snapshot-fix-evidence.json`；可复验脚本：相邻 `runtime-scrollback-snapshot-verification.mjs`；完成计划：`docs/exec-plans/completed/runtime-scrollback-snapshot-repair.md`。
+
+## Runtime 恢复退出摘要专项定位（2026-10-10）
+
+### 已确认根因与归属
+
+这是当前 owned Runtime 路径的产品退出信息投影遗漏，原 smoke 的退出码摘要断言有效。`supervisor/runtimeSupervisorMain.ts:2244` 的 `finalizeOwnedExecution` 根据 AuthorityResult 与 processResult 设置 lifecycle、lastExitCode、lastExitSignal，但普通 EOF 分支没有调用 `setSessionLastExitMessage`；只有 source 非 EOF 时设置 terminalOutputIncomplete。`toSnapshot:2948` 因而携带退出码，却不携带 lastExitMessage 或 lastExitMessageDescriptor。
+
+Host 的 `runtimeSupervisorLocalization.ts:14` 对两个退出消息字段皆空返回 undefined；`CanvasPanelManager.applyCompletedRuntimeSupervisorSnapshot:12895` 使用 Session ended. 作为节点摘要，`handleRuntimeSupervisorState:12525` 同样把通用文字发给页面，异常提示回退为 Session exited unexpectedly.。缺失已发生在 Supervisor 发布前，不是 Webview 翻译、测试正则过时、finally 关闭 Runtime 或 UI 迟到覆盖。原执行已经成功恢复并经历 running/waiting-input，resumePhaseActive=false，所以本例 error 分类正确，问题是具体退出原因未生成。
+
+旧 `finalizeSession:2390` 对正常结束、主动停止、恢复失败、非零退出分别设置结构化 descriptor 和英文 fallback；其中 `describeAgentExit:3754` 为本场景生成 agentExitedCode。本轮没有改产品规格，最近退出信息仍属于 `runtime-persistence-modes.md` 第 6 节的保存内容，清理完成态正文不等于丢弃退出原因。
+
+### 原生复现与受控对照
+
+基于 `438ac68b` 的相同正式 VSIX，Linux x64 / Node 22.23.3 / VS Code 1.141.0 / fake provider，三份隔离宿主均使用正式 fixture 与完整 `verifyLiveRuntimeResumeExitClassification` 原动作和原断言。复制后的测试仅在断言前取证并在入口消费预期失败；baseline 三个产品 bundle hash 与上轮正式包完全一致。
+
+无探针 baseline 原样复现：断言前 Runtime 开启，原 resume session 经过 resuming→running→waiting-input→error，lastExitCode=23，summary 与该 session 唯一 host/executionExit 均为 Session ended.。probe 只在复制的 Supervisor 发布处加只读记录，同样失败；原 session `b8323f4f-69dd-4579-84af-8e92e95bf8d6` 的 AuthorityResult=applied、finalRevision=4、processResult=exited/23、source=eof、stopRequested=false、resumePhaseActive=false，发布前两个退出消息字段均为空。
+
+control 先记录相同缺口，再只在复制的 Supervisor 对这一已恢复、EOF、exit23 的执行补上 agentExitedCode descriptor 与英文 fallback。未改生命周期、退出码、分页/结算、Host 或测试断言，原函数完整通过：summary、lastExitMessage 与原 session 的 host/executionExit 都变为 Codex exited with code 23.。这是因果对照，不是正式修复；baseline/probe 的 exit 0 仅表示成功复现预期失败。所有隔离节点通过原 stop 入口清理，本轮 Supervisor 已退出。
+
+### 引入历史与修复边界
+
+`c1b6bc8b8`（feat(runtime): wire non-native execution owner lifecycle）新增 owned 收尾时即遗漏旧路径的退出描述生成。`08fa33725` 将正常构建默认接入平台 owned 实现，使该路径成为当前默认；`69bf93b6c` 仅补充非 EOF 的输出不完整消息，没有补齐普通 EOF 退出原因。本条摘要断言来自 `aa2a50cc2` 的恢复退出验收，`71c84eff6` 只调整英文正则；PR314 的滚动历史修复没有改产品载荷，只让完整门禁走到这里。本轮未回测发布包，不据提交日期断言首个受影响版本。
+
+修复应在 owned Supervisor 发布终态之前恢复结构化退出描述及 fallback，保持已确认退出、主动停止、恢复阶段、输出不完整和未知结果各自的语义与优先级；不能通过 Host 任意补字符串或放宽 smoke 隐藏上游缺口。当前实验只验证成功恢复后 exit23 的摘要缺失；同函数对其他退出/恢复分支的静态差异需在正式修复时纳入回归，不能把本轮对照扩写为全部退出矩阵已验。本轮正式产品/测试不变，完整 gate 与后续场景继续待修复验收。
+
+证据：`docs/references/smoke-reload-autostart/runtime-resume-exit-summary-evidence.json`；复验：相邻 `runtime-resume-exit-summary-investigation.mjs baseline|probe|control`；计划：`docs/exec-plans/completed/runtime-resume-exit-summary-investigation.md`。
