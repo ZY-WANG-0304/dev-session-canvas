@@ -571,6 +571,9 @@ interface ExecutionAttentionSession {
   displayLabel?: string;
 }
 
+type AgentAbnormalInterruptionSession = ExecutionAttentionSession & Pick<ManagedExecutionSession,
+  'sessionId' | 'agentProvider' | 'stopRequested' | 'lifecycleStatus'>;
+
 interface ExecutionAttentionNotificationWorkspaceFolderContext {
   name: string;
   path: string;
@@ -14889,7 +14892,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     kind: ExecutionNodeKind,
     nodeId: string,
     pending: boolean,
-    options: { postState?: boolean } = {}
+    options: { postState?: boolean; persistState?: boolean } = {}
   ): boolean {
     const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === kind);
     if (!node) {
@@ -14914,7 +14917,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const updated = this.requireNode(nodeId, kind);
       owned.persistence.metadata = kind === 'agent' ? ensureAgentMetadata(updated) : ensureTerminalMetadata(updated);
     }
-    this.persistState({ reason: 'execution-attention' });
+    if (options.persistState !== false) {
+      this.persistState({ reason: 'execution-attention' });
+    }
     if (options.postState !== false) {
       this.postState('host/stateUpdated');
     }
@@ -15011,10 +15016,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async markAndNotifyAgentAbnormalInterruption(
     nodeId: string,
-    session: ManagedExecutionSession,
+    session: AgentAbnormalInterruptionSession,
     status: AgentNodeStatus,
     message: string,
-    detail: Record<string, unknown> = {}
+    detail: Record<string, unknown> = {},
+    options: { deferStateSync?: boolean } = {}
   ): Promise<void> {
     if (!this.shouldNotifyAgentAbnormalInterruption(session, status, detail)) {
       return;
@@ -15035,20 +15041,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       typeof state?.lastAbnormalStreamNotificationAtMs === 'number' &&
       now - state.lastAbnormalStreamNotificationAtMs < EXECUTION_ATTENTION_NOTIFICATION_COOLDOWN_MS
     ) {
-      this.setExecutionAttentionPending('agent', nodeId, true);
+      this.setExecutionAttentionPending('agent', nodeId, true, {
+        postState: !options.deferStateSync, persistState: !options.deferStateSync
+      });
       this.recordDiagnosticEvent('execution/attentionNotificationSuppressed', {
+        ...detail,
         kind: 'agent',
         nodeId,
         reason: 'covered-by-abnormal-stream',
         trigger: 'agent-abnormal-interruption',
         provider: session.agentProvider,
-        lifecycleStatus: status,
-        ...detail
+        lifecycleStatus: status
       });
       return;
     }
 
-    this.setExecutionAttentionPending('agent', nodeId, true);
+    this.setExecutionAttentionPending('agent', nodeId, true, {
+      postState: !options.deferStateSync, persistState: !options.deferStateSync
+    });
     const notificationMessage = this.buildAgentAbnormalInterruptionNotificationMessage(
       nodeId,
       session,
@@ -15231,7 +15241,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       message,
       bridgeMode: this.attentionNotificationBridgeMode
     });
-    void this.showExecutionAttentionNotification(kind, nodeId, message);
+    void this.showExecutionAttentionNotification(kind, nodeId, message).catch(error => {
+      this.recordDiagnosticEvent('execution/attentionNotificationFailed', {
+        ...detail, kind, nodeId, bridgeMode: this.attentionNotificationBridgeMode,
+        reason: formatUnknownError(error)
+      });
+    });
   }
 
   private buildExecutionAttentionNotificationRequest(
@@ -15527,7 +15542,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private buildAgentAbnormalInterruptionNotificationMessage(
     nodeId: string,
-    session: ManagedExecutionSession,
+    session: AgentAbnormalInterruptionSession,
     _status: 'error',
     message: string
   ): string {
@@ -17494,6 +17509,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     persistence.submitted = true;
     this.state = nextState;
+    if (record.kind === 'agent' && record.business && status === 'error') {
+      // Mark attention synchronously in this final snapshot; delivery must not hold settlement.
+      const session: AgentAbnormalInterruptionSession = {
+        sessionId: identity.executionId, stopRequested: snapshot.stopRequested,
+        agentProvider: record.business.agentProvider, lifecycleStatus: record.business.lifecycleStatus,
+        displayLabel: record.business.displayLabel, attentionSignalState: record.business.attentionSignalState
+      };
+      void this.markAndNotifyAgentAbnormalInterruption(record.nodeId, session, status, message, {
+        sessionId: identity.executionId, generation: identity.generation,
+        exitCode: process.kind === 'exited' ? process.exitCode : null,
+        signal: process.kind === 'exited' || process.kind === 'signaled' ? process.signal ?? null : null,
+        launchMode: record.business.launchMode, reason: 'process-exit'
+      }, { deferStateSync: true }).catch(error => {
+        this.recordDiagnosticEvent('execution/attentionNotificationFailed', {
+          kind: record.kind, nodeId: record.nodeId, sessionId: identity.executionId, generation: identity.generation,
+          trigger: 'agent-abnormal-interruption', reason: formatUnknownError(error)
+        });
+      });
+    }
     try {
       const saved = this.persistState({ mode: 'immediate', workspaceStateMode: 'full',
         requireRootLocalDurability: true, reason: 'local-final-snapshot' });

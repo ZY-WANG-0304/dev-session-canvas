@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md]
+related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md]
 updated_at: 2026-10-10
 ---
 
@@ -153,3 +153,14 @@ Host 内部结果区分 applied、superseded 和 cancelled：只有原生确认�
 历史审计发现 `b235a7bc` 首次引入 `persistNonNativeHostFinal` 时即无该通知调用，当时仍是默认关闭的接入；因此缺口先于 PR #314 的 resize 改动，但这一条历史证据不能单独确定默认用户首次受影响的版本。当前正式路径的修复应接回原异常退出策略，保留退出前 running/waiting-input 上下文与 stopRequested、provider、原执行身份，并协调提醒状态与最终保存的顺序。正常退出、用户停止、旧记录或重复终态不得产生误报，通知投递也不能阻塞原终态结算；不应只补一条诊断事件或延长 smoke 超时。
 
 本轮仅完成定位，没有修改产品通知逻辑或 smoke 断言。RuntimePersistence 开启的 Supervisor 路径只检查了源码调用点，未原生复验；系统通知弹窗、真实 Agent 服务、其他平台和跨版本兼容不在本轮证明范围。完整 trusted 仍被此缺陷阻塞。可复跑临时特征 patch 与精简证据见 `docs/references/smoke-reload-autostart/exit-notification-characterization.patch`、`exit-notification-evidence.json`；临时测试改动已恢复，计划见 `docs/exec-plans/completed/owned-agent-exit-notification-investigation.md`。
+
+## 本地 Agent 异常退出通知的正式方案
+
+PR #314 获授权继续修复后，`CanvasPanelManager.persistNonNativeHostFinal` 在原身份、metadata、已确认进程和最终输出验证通过后，利用已有 submitted 防护调用共享 `markAndNotifyAgentAbnormalInterruption`。通知上下文仅包含原 executionId、owner stopRequested 和 business 中的退出前生命周期、provider、显示标签及通知状态，不构造旧 process/session 对象。复用原信号开关、非主动非零退出、运行/等待输入状态及正文覆盖策略。
+
+调用方延后提醒 setter 的独立保存与页面同步，由同一最终快照保存 error、退出码和 attention 标记，再统一发布状态。通知入口首次异步等待前已更新提醒；外部渠道投递不阻塞原保存或执行结算，拒绝记录独立通知失败诊断。重复终态及旧绑定仍由原提交/身份校验拒绝，投递完成后不再次修改节点。旧本地 session、Supervisor 和普通正文提醒默认同步方式保持不变。正文覆盖抑制诊断保留 `covered-by-abnormal-stream`，避免退出 detail 覆盖原因；workbench 展示 promise 的拒绝也记录独立失败，继续异步展示。19/19 定向回归已通过，完整验证结果见下段，计划见 `docs/exec-plans/completed/owned-agent-exit-notification-repair.md`。
+
+
+2026-10-10 实施验证：修前正式回归因 attention 未置位失败；修后新增 19 项、完整 Host **395/395**、类型检查与 notifier source 验证通过。覆盖 Codex/Claude 的 running/waiting-input、正常退出/主动停止/未运行状态/信号关闭、正文覆盖、重复及旧绑定、投递挂起/失败、workbench 拒绝和保存失败。投递挂起时通过原 Host reader 完成入口确认，原执行仍可退休；提醒在原最终保存中，不依赖额外普通保存。
+
+默认真实 VSIX 完成构建打包，owned reconciliation 与 local execution flow 两阶段通过。trusted 已通过 Codex **exit 27** 的事件/attention/提示、关闭信号后的 exit 29 抑制、后续正文通知用例，以及 Claude **exit 33** 的事件/attention/提示和用户确认。原通知缺口已收口。完整命令随后在同一测试函数后段的 Claude 恢复启动失败检查超时：期待 `resume-failed`，实际 `error`、lastExitCode=33、attentionPending=false、lastResumeError 缺失，原执行已保存并退休。此处没有误发通知；当前本地终态分类缺少旧路径的 `resumePhaseActive → resume-failed` 分支，是单独的恢复状态缺口，本次未修改该分类或 smoke 断言，仍阻塞完整 trusted。相关通知事件被后续子用例清理，本次以原脚本顺序和失败栈位置证明已通过的断言，不把最终空诊断当作通知未发生。证据见 `docs/references/smoke-reload-autostart/exit-notification-repair-evidence.json`。

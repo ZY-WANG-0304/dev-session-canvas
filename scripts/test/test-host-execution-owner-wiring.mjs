@@ -5773,6 +5773,173 @@ for (const queued of [false, true]) {
   });
 }
 
+
+async function ownedAbnormalExitFixture(providerKind = 'codex') {
+  const f = await interactiveHostFixture('agent', providerKind);
+  const shown = [];
+  const finalStates = [];
+  const saves = [];
+  f.host.enabledAttentionSignals = ['agentAbnormalExit'];
+  f.host.attentionNotificationBridgeMode = 'workbench';
+  f.host.showExecutionAttentionNotification = async (...args) => { shown.push(args); };
+  const persist = f.host.persistState.bind(f.host);
+  f.host.persistState = async options => {
+    saves.push(options);
+    if (options?.reason === 'local-final-snapshot') finalStates.push(structuredClone(f.host.state));
+    await persist(options);
+  };
+  const writing = f.host.writeExecutionInput('agent', 'agent-1', 'go\r');
+  await until(f.clock, () => f.requests.some(m => m.type === 'input'), 'Agent input reached provider');
+  f.reply(f.requests.find(m => m.type === 'input'), { kind: 'written', writtenBytes: 3 });
+  assert.equal(await completed(f.clock, writing, 'Agent input written'), true);
+  assert.equal(f.record.business.lifecycleStatus, 'running');
+  f.provider.output(1, 'original final output\r\n');
+  await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === 1, 'original output consumed');
+  async function finish(result = { kind: 'exited', exitCode: 27 }) {
+    f.provider.message({ type: 'processResult', result });
+    f.provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+    f.provider.seal(1); f.provider.release();
+    await until(f.clock, () => f.record.persistence.result !== undefined, 'original final persistence completed');
+  }
+  return { ...f, shown, finalStates, saves, finish,
+    node: () => f.host.state.nodes.find(node => node.id === 'agent-1'),
+    posted: () => f.diagnostics.filter(event => event.name === 'execution/attentionNotificationPosted') };
+}
+
+for (const providerKind of ['codex', 'claude']) {
+  for (const lifecycle of ['running', 'waiting-input']) {
+    test(`owned abnormal exit ${providerKind} ${lifecycle} notifies once and saves attention with final output`, async () => {
+      const f = await ownedAbnormalExitFixture(providerKind);
+      try {
+        f.record.business.lifecycleStatus = lifecycle;
+        await f.finish();
+        assert.equal(f.record.persistence.result.kind, 'saved');
+        assert.equal(f.node().status, 'error');
+        assert.equal(f.node().metadata.agent.lastExitCode, 27);
+        assert.equal(f.node().metadata.agent.attentionPending, true);
+        assert.equal(f.shown.length, 1);
+        assert.equal(f.posted().length, 1);
+        assert.equal(f.posted()[0].detail.trigger, 'agent-abnormal-interruption');
+        assert.equal(f.posted()[0].detail.provider, providerKind);
+        assert.equal(f.posted()[0].detail.lifecycleStatus, 'error');
+        assert.equal(f.posted()[0].detail.exitCode, 27);
+        assert.equal(f.posted()[0].detail.sessionId, f.record.execution.identity.executionId);
+        const saved = f.finalStates[0].nodes.find(node => node.id === 'agent-1');
+        assert.equal(saved.status, 'error');
+        assert.equal(saved.metadata.agent.attentionPending, true, 'attention must be in the original final save');
+        assert.match(saved.metadata.agent.serializedTerminalState.data, /original final output/);
+        assert.equal(f.saves.filter(options => options?.reason === 'execution-attention').length, 0,
+          'final save owns the attention write');
+        f.host.persistNonNativeHostFinal(f.record, { kind: 'applied', finalRevision: 1, throughDataSequence: 1 });
+        assert.equal(f.shown.length, 1, 'duplicate finalization cannot notify twice');
+        assert.equal(f.finalStates.length, 1);
+      } finally { await f.cleanup(); }
+    });
+  }
+}
+
+for (const scenario of ['exit-zero', 'user-stop', 'starting', 'resuming', 'signal', 'disabled']) {
+  test(`owned abnormal exit preserves suppression for ${scenario}`, async () => {
+    const f = await ownedAbnormalExitFixture();
+    try {
+      let stopping;
+      if (scenario === 'user-stop') {
+        stopping = f.host.stopExecutionSession('agent', 'agent-1');
+        await until(f.clock, () => f.record.execution.snapshot().stopRequested, 'explicit Host stop');
+      }
+      if (scenario === 'starting' || scenario === 'resuming') f.record.business.lifecycleStatus = scenario;
+      if (scenario === 'disabled') f.host.enabledAttentionSignals = [];
+      await f.finish(scenario === 'signal' ? { kind: 'signaled', signal: 'SIGTERM' }
+        : { kind: 'exited', exitCode: scenario === 'exit-zero' ? 0 : 27 });
+      if (stopping) await completed(f.clock, stopping, 'Host stop completed');
+      assert.equal(f.record.persistence.result.kind, 'saved');
+      assert.equal(f.node().status, ['exit-zero', 'user-stop'].includes(scenario) ? 'stopped' : 'error');
+      assert.notEqual(f.node().metadata.agent.attentionPending, true);
+      assert.equal(f.shown.length, 0);
+      assert.equal(f.posted().length, 0);
+    } finally { await f.cleanup(); }
+  });
+}
+
+for (const scenario of ['bridge-none', 'covered-by-stream']) {
+  test(`owned abnormal exit saves attention without new delivery for ${scenario}`, async () => {
+    const f = await ownedAbnormalExitFixture();
+    try {
+      if (scenario === 'bridge-none') f.host.attentionNotificationBridgeMode = 'none';
+      else f.record.business.attentionSignalState = { lastAbnormalStreamNotificationAtMs: Date.now() };
+      await f.finish();
+      assert.equal(f.record.persistence.result.kind, 'saved');
+      assert.equal(f.finalStates[0].nodes.find(node => node.id === 'agent-1').metadata.agent.attentionPending, true);
+      assert.equal(f.shown.length, 0);
+      assert.equal(f.posted().length, 0);
+      if (scenario === 'covered-by-stream') assert.equal(f.diagnostics.some(event =>
+        event.name === 'execution/attentionNotificationSuppressed' && event.detail.reason === 'covered-by-abnormal-stream'), true);
+    } finally { await f.cleanup(); }
+  });
+}
+
+for (const scenario of ['pending-delivery', 'failed-delivery', 'failed-workbench', 'failed-save']) {
+  test(`owned abnormal exit isolates ${scenario} from the other completion responsibility`, async () => {
+    const f = await ownedAbnormalExitFixture();
+    const delivery = deferred();
+    const requests = [];
+    f.host.attentionNotificationBridgeMode = 'system';
+    f.host.postExecutionAttentionNotificationToCompanion = request => {
+      requests.push(request);
+      return scenario === 'failed-delivery' ? Promise.reject(new Error('controlled notification rejection')) : delivery.promise;
+    };
+    if (scenario === 'failed-workbench') {
+      f.host.attentionNotificationBridgeMode = 'workbench';
+      f.host.showExecutionAttentionNotification = async () => { throw new Error('controlled workbench rejection'); };
+    }
+    if (scenario === 'failed-save') f.host.persistState = async () => { throw new Error('controlled final save failure'); };
+    try {
+      await f.finish();
+      assert.equal(f.record.persistence.result.kind, scenario === 'failed-save' ? 'failed' : 'saved');
+      assert.equal(requests.length, scenario === 'failed-workbench' ? 0 : 1);
+      assert.equal(f.node().metadata.agent.attentionPending, true);
+      if (scenario === 'failed-save') assert.match(f.record.persistence.result.reason, /controlled final save failure/);
+      for (const reader of f.record.localReaders.values()) {
+        await reader.finalPublication;
+        await f.host.handleLocalExecutionTerminalSettled('editor', { kind: 'agent', nodeId: 'agent-1',
+          executionSessionId: f.record.execution.identity.executionId,
+          outcome: { kind: 'applied', finalOutputSequence: 1 } }, reader.lifecycle, reader.webview);
+      }
+      if (scenario !== 'failed-save') await until(f.clock, () => !f.host.nonNativeHostExecutions.has('agent:agent-1'),
+        'execution retires while delivery is still pending');
+      if (scenario === 'failed-delivery' || scenario === 'failed-workbench') await until(f.clock, () => f.diagnostics.some(event =>
+        event.name === 'execution/attentionNotificationFailed' && event.detail.sessionId === f.record.execution.identity.executionId),
+      'notification failure recorded separately');
+      // Late completion may report delivery, but cannot reset attention on a replacement node.
+      const replacement = structuredClone(f.node());
+      replacement.metadata.agent.attentionPending = false;
+      f.host.state.nodes = f.host.state.nodes.map(node => node.id === replacement.id ? replacement : node);
+      delivery.resolve({ status: 'posted', backend: 'test', activationMode: 'test' });
+      await pump(f.clock, () => f.diagnostics.some(event => event.name === 'execution/attentionNotificationCompanionPosted'));
+      assert.equal(f.node().metadata.agent.attentionPending, false);
+    } finally {
+      delivery.resolve({ status: 'posted', backend: 'test', activationMode: 'test' });
+      await f.cleanup();
+    }
+  });
+}
+
+for (const replacement of ['metadata', 'record', 'node']) {
+  test(`owned abnormal exit rejects stale ${replacement} before notification`, async () => {
+    const f = await ownedAbnormalExitFixture();
+    try {
+      if (replacement === 'metadata') f.node().metadata.agent = { ...f.node().metadata.agent };
+      else if (replacement === 'record') f.host.nonNativeHostExecutions.delete('agent:agent-1');
+      else f.host.state.nodes = f.host.state.nodes.filter(node => node.id !== 'agent-1');
+      await f.finish();
+      assert.notEqual(f.record.persistence.result.kind, 'saved');
+      assert.equal(f.shown.length, 0);
+      assert.equal(f.posted().length, 0);
+      assert.notEqual(f.node()?.metadata.agent.attentionPending, true);
+    } finally { await f.cleanup(); }
+  });
+}
+
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
 const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
 const selectedTests = testNamePattern ? tests.filter(({ name }) => testNamePattern.test(name)) : tests;

@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-10",
+  "baseline": "b8a203da2bdc9f42a3c6873ec88cc0c34e09f044",
+  "target": "origin/main@78c58c2a2cecd053199c9bada6084868f9255877",
+  "scope": "PR #314；本地 snapshot-only Agent 异常退出通知修复；未改版本或发布。",
+  "changes": [
+    "用原 executionId、owner stopRequested、退出前 business 状态调用共享异常退出策略。",
+    "attention 与 error/退出码/正文写入同一次严格最终保存，延后 setter 独立保存及页面同步。",
+    "外部投递异步进行；workbench/投递异常单独诊断，不改变原保存和 reader 结算。",
+    "沿用原身份和 submitted/result 防护；修正正文覆盖抑制原因被退出 detail 覆盖。"
+  ],
+  "automated": {
+    "before": {
+      "command": "DEV_SESSION_CANVAS_HOST_TEST_FILTER='owned abnormal exit codex running' node scripts/test/test-host-execution-owner-wiring.mjs",
+      "result": "failed: attentionPending undefined !== true",
+      "log": ".debug/exit-notification-fix/before.log"
+    },
+    "targeted": {
+      "result": "19/19 passed",
+      "log": ".debug/exit-notification-fix/targeted4.log"
+    },
+    "host": {
+      "command": "node scripts/test/test-host-execution-owner-wiring.mjs",
+      "result": "395/395 passed",
+      "newTests": 19,
+      "log": ".debug/exit-notification-fix/host.log"
+    },
+    "typecheck": {
+      "command": "npm run typecheck",
+      "result": "passed",
+      "log": ".debug/exit-notification-fix/typecheck-final.log"
+    },
+    "notifierSource": {
+      "command": "npm run test:notifier-source",
+      "result": "passed",
+      "log": ".debug/exit-notification-fix/notifier-source.log"
+    },
+    "coverage": [
+      "Codex/Claude × running/waiting-input，通知一次且 final save 包含 attention 与原正文。",
+      "正常退出、主动停止、未进入运行的 starting/resuming、仅 signal 退出、信号关闭不通知。",
+      "none 渠道及已被正文通知覆盖时仍保存 attention；不重复展示。",
+      "系统投递未完成/拒绝、workbench 展示拒绝、保存失败分别结算；原 reader 确认后不因投递挂起占据执行。",
+      "旧 metadata/record/节点拒绝，重复 final 不二次通知或保存；投递迟到不修改替换后的节点。"
+    ]
+  },
+  "native": {
+    "command": "npm run test:vsix-smoke",
+    "filter": null,
+    "environment": {
+      "platform": "Linux x64",
+      "node": "22.23.3",
+      "vscode": "1.141.0",
+      "agent": "fake provider",
+      "runtimePersistence": false
+    },
+    "build": "notifier build、主扩展 typecheck/build/package 通过",
+    "stages": {
+      "owned-canvas-reconciliation": "passed",
+      "local-execution-flow": "passed",
+      "trusted": "failed at Claude resume-failed classification (line 7757)"
+    },
+    "notificationResult": "原 Codex exit 27、关闭 agentAbnormalExit 后 exit 29 suppression、后续文本信号测试、Claude exit 33 的 notification event/attention/workbench 展示及用户确认均已走过；失败在后续恢复启动状态检查。",
+    "notificationEvidenceBasis": "按原 extension-tests.cjs 顺序执行，失败栈位于 verifyAgentAbnormalInterruptionNotifications:7757；之前所有等待与断言已返回。相关诊断在后续子用例 clearDiagnosticEvents，因此不伪造完整通知事件归档。",
+    "remainingFailure": {
+      "expected": "status=resume-failed, attentionPending!=true, lastExitCode=33",
+      "actual": {
+        "nodeId": "agent-4-ee55b4b5-288c-45e4-af80-7ce46e58d531",
+        "status": "error",
+        "summary": "Session ended with exit code 33.",
+        "lastExitCode": 33,
+        "attentionPending": false,
+        "liveSession": false,
+        "persistenceMode": "snapshot-only",
+        "resumeStrategy": "claude-session-id",
+        "lastResumeError": null
+      },
+      "classification": "独立的恢复启动失败终态分类缺口；persistNonNativeHostFinal 没有旧路径的 resumePhaseActive -> resume-failed 分支。通知不应触发且本次未触发。",
+      "scope": "本次没有修改此状态分类或相关 smoke 断言；继续阻塞完整 trusted。"
+    },
+    "fullGatePassed": false,
+    "log": ".debug/exit-notification-fix/vsix.log",
+    "artifacts": ".debug/exit-notification-fix/trusted-artifacts",
+    "sourceHashes": {
+      "failure-error.txt": "98f0c59e6321e2e3269e9e76842c84db33105458dd78ea4b534fcca5e4110094",
+      "failure-snapshot.json": "6997d1b4e424cdce53b850224958efc20613b8e1a91bf40b0380a872c0f50b47"
+    }
+  },
+  "limits": [
+    "不是完整发布门禁通过，恢复失败状态需要后续修复。",
+    "RuntimePersistence 开启路径未原生复验；系统弹窗、真实服务、其他平台、跨版本和 Remote SSH 不由本次结果代证。"
+  ],
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "d205608217b3f79decc0eac41a282de0ad1ab3b9cde10e3ae5b519bef1d0ae2d",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "a41be57ebbc8c62b3c84aa4ed0e5e1c6ab98ec4353997c8003583ffd259abb14",
+    "tests/vscode-smoke/extension-tests.cjs": "458456c98c0bdc5466d655ef99d2af9210f4affff84737f224ee21049ac26532"
+  }
+}
