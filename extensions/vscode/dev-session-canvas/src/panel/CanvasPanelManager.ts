@@ -611,6 +611,13 @@ interface NonNativeHostExecution {
   cols: number;
   rows: number;
   business?: NonNativeHostBusiness;
+  fileActivity?: {
+    session: AgentFileActivitySession;
+    closed: boolean;
+    disposed: boolean;
+    disposal?: Promise<void>;
+    error?: string;
+  };
   mutationError?: string;
   resizeObservation?: InteractionObservation;
   resizeTaskPending?: boolean;
@@ -14708,9 +14715,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private readAgentResumeContextFromOutput(
-    session: Pick<ManagedExecutionSession, 'agentProvider' | 'launchMode' | 'buffer'>
+    session: Pick<ManagedExecutionSession, 'agentProvider' | 'launchMode' | 'buffer' | 'agentResume'>
   ): AgentResumeContext | null {
-    if (session.launchMode !== 'start') {
+    if (session.launchMode !== 'start' || session.agentResume?.strategy === 'fake-provider') {
       return null;
     }
 
@@ -17530,6 +17537,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private retireNonNativeHostExecution(record: NonNativeHostExecution): void {
+    if (record.fileActivity && !record.fileActivity.disposed) return;
     const snapshot = record.execution.snapshot();
     const persistence = record.persistence;
     if (persistence && !persistence.result && snapshot.settled && snapshot.adapter?.parentCleanup === 'unstarted'
@@ -17751,6 +17759,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       this.assertExecutionCandidateAdmission('snapshot-only', undefined, record);
       assertRuntimeUnbound();
+      if (kind === 'agent' && agent && this.isFilesFeatureEnabled()) {
+        try {
+          const session = this.createConfiguredAgentFileActivitySession(agent.provider, prepared.file);
+          const activity: NonNullable<NonNativeHostExecution['fileActivity']> = { session, closed: false, disposed: false };
+          record.fileActivity = activity;
+          prepared = { ...prepared, args: [...(prepared.args ?? []), ...session.extraArgs],
+            env: { ...prepared.env, ...session.extraEnv } };
+          const original = record;
+          session.start(event => {
+            const node = this.state.nodes.find(value => value.id === original.nodeId && value.kind === 'agent');
+            if (activity.closed || !this.isNonNativeHostRecordCurrent(original) || !node ||
+              original.persistence?.submitted || original.persistence?.result ||
+              (original.persistence && node.metadata?.agent !== original.persistence.metadata)) return;
+            try { this.handleAgentFileActivityEvent(original.nodeId, event); }
+            catch (error) { activity.error ??= formatUnknownError(error); }
+          });
+        } catch (error) {
+          this.projectNonNativeHostPreparationFailure(record, error, agent.launchMode);
+          throw error;
+        }
+      }
       const spec: LaunchSpec = {
         file: prepared.file, args: prepared.args ?? [], cwd: prepared.cwd,
         ...(owner.options.profile ? { cols, rows, stopStrategy: kind === 'agent' && agent?.provider !== 'claude'
@@ -17802,6 +17831,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return active.terminalChain;
         },
         flushFinal: async seal => {
+          if (active.fileActivity) await this.disposeNonNativeHostFileActivity(active);
           let finalRevision: number | undefined;
           active.terminalChain = active.terminalChain.then(async () => {
             const terminal = await active.tracker.flush();
@@ -17820,6 +17850,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return finalRevision!;
         },
         finalized: result => {
+          if (active.fileActivity && !active.fileActivity.disposed) {
+            // Failed output consumption can bypass flushFinal. Stop the observer
+            // without presenting drained events as a successfully saved result.
+            active.fileActivity.closed = true;
+            void this.disposeNonNativeHostFileActivity(active).catch(error => {
+              try {
+                this.recordDiagnosticEvent('execution/fileActivityCleanupFailed', {
+                  kind, nodeId: active.nodeId, reason: formatUnknownError(error)
+                });
+              } catch { /* Diagnostics cannot change the original failed finalization. */ }
+            }).finally(() => this.retireNonNativeHostExecution(active));
+          }
           active.business?.cancelActivityPoll?.();
           if (active.business) active.business.cancelActivityPoll = undefined;
           const finalizedSource = execution.snapshot().adapter?.seal?.source;
@@ -17897,7 +17939,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (record) record.pendingResize = undefined;
       if (kind === 'terminal' && record) this.dropPendingTerminalInitialInput(record.nodeId, formatUnknownError(error));
       if (!execution.snapshot().adapter || rejectedBeforeAcquire) {
-        if (record?.persistence) this.settleNonNativeHostPersistence(record, { kind: 'not-required' });
+        let cleanupError: string | undefined;
+        if (record?.fileActivity) {
+          record.fileActivity.closed = true;
+          try { await this.disposeNonNativeHostFileActivity(record); }
+          catch (failure) { cleanupError = formatUnknownError(failure); }
+        }
+        if (record?.persistence) this.settleNonNativeHostPersistence(record,
+          cleanupError ? { kind: 'failed', reason: cleanupError } : { kind: 'not-required' });
         if (record?.localReaders) {
           record.readerAdmissionClosed = true;
           for (const reader of record.localReaders.values()) {
@@ -17908,10 +17957,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         record?.business?.cancelActivityPoll?.();
         record?.business?.lineContextTracker.dispose();
         execution.abandon('host-preparation-failed-or-cancelled');
-        if (this.nonNativeHostExecutions.get(execution.key) === record) this.nonNativeHostExecutions.delete(execution.key);
+        if (!cleanupError && this.nonNativeHostExecutions.get(execution.key) === record) this.nonNativeHostExecutions.delete(execution.key);
       }
       throw error;
     }
+  }
+
+  private disposeNonNativeHostFileActivity(record: NonNativeHostExecution): Promise<void> {
+    const activity = record.fileActivity;
+    if (!activity) return Promise.resolve();
+    activity.disposal ??= Promise.resolve().then(() => activity.session.dispose()).then(() => {
+      if (activity.error) throw new Error(activity.error);
+    }).finally(() => { activity.closed = true; activity.disposed = true; });
+    return activity.disposal;
   }
 
   private executionStartRejectionMessage(kind: ExecutionNodeKind): string {

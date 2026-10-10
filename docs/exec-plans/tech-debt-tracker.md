@@ -640,3 +640,12 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 手动 resume 是 fake-provider 测试适配缺陷：停止提示将 fake-provider+storagePath 替换为 codex-session-id，清除了 resumeStoragePath；ID 本身仍在，fake resolver 因缺 storagePath 返回 none，builder 才报缺 ID。probe/control 均等待初始原 burst 回执使 shell trap 就绪；只保护 fake 恢复上下文后，原恢复函数全部断言（含重挂载不自动恢复、手动 resume 和 exit19）通过。同 metadata 使用真实 Codex 命令仍可构造 resume 参数，不据此认定真实 provider 恢复损坏。应修复 fake 恢复契约一致性，保留真实提示校正与产品状态断言。
 
 证据 `docs/references/smoke-reload-autostart/file-activity-resume-root-cause-evidence.json`；调查四轮均完成且清理为零执行，两个 probe 的原场景仍失败，两个 control 仅为隔离实验。正式源码和 smoke 未改，本轮不重跑或宣称完整 gate 通过；历史 URL/Runtime batch 报告等限制不变。
+
+
+## owned 文件活动与 fake 恢复契约修复；下一停点为删除 Agent（2026-10-11，PR #314）
+
+已在正式产品中将 collector 创建、参数/环境注入、事件回调和释放绑定到原 NonNativeHostExecution。正常最终保存先排空末尾事件；拒绝不接收迟到事件且等待释放；未知资源仍归原执行，失败不能呈现为保存成功。fake-provider 的 sessionId/storagePath 不再被真实停止提示整体覆盖。新增18项 Host 回归，完整569/569、类型、本地化及 smoke 正文 helper14/14通过。
+
+最新默认 VSIX 七个独立阶段通过，trusted 的原手动恢复函数也通过，已越过上轮 Missing resumable Codex session ID。文件活动原函数已通过 read/write、共享引用、节点/列表展示及打开文件，当前停在 `verifyFileActivityViewsAndOpenFiles:4426`：发出删除 Agent B 后，原执行停止并最终 saved/退休，但 Agent B 及其引用仍保留。原生独立 files 复验同样停在此处，清理后零 localExecutions。根因尚未确认，不将其归为 collector drain 失败或断言问题，也不宣称完整 gate 已通过。
+
+删除后文件引用收敛、后续启停 files 配置及 trusted 剩余阶段未通过此次全序验收。历史 URL 清理停滞、Runtime client disconnected 批次报告、真实新 Host/checkpoint 和跨平台边界继续保留。正式证据与专项脚本为 `docs/references/smoke-reload-autostart/owned-file-activity-resume-fix-evidence.json` 及相邻 `owned-file-activity-resume-verification.mjs`；独立 readexit 原函数 exit0，末尾 read owner、文件节点/连线、持久化重读及清理全部通过；两个专项与正式 staging 三个 bundle hash 一致，产品无探针或行为替换。

@@ -8887,6 +8887,13 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
   const initialAgent = captureLocalExecutionIdentity(await waitForAgentLive(agentNodeId), 'agent', agentNodeId);
   await waitForDiagnosticEvents(events => events.some(event => event.kind === 'execution/started' &&
     event.detail?.nodeId === agentNodeId && event.detail.sessionId === initialAgent.executionSessionId));
+  // The fake provider installs its stop-hint trap after startup output. A reply
+  // proves reload will exercise that hint instead of racing trap installation.
+  await dispatchWebviewMessage({
+    type: 'webview/executionInput',
+    payload: { kind: 'agent', nodeId: agentNodeId, data: 'burst 1\r' }
+  });
+  await waitForLocalExecutionOutput(initialAgent, '[fake-agent] burst 001');
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
     payload: {
