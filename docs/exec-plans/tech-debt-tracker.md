@@ -473,3 +473,12 @@ CLI/执行环境准备失败后停留 starting/launching 的产品缺口已修�
 5/5 受控对照、原顺序 reset 复现、原生通知同 key 拒绝、等待退休后的五次正常通知运行及受控 Claude 恢复正反对照均已完成；最终确认可自然 applied，资源不存在已证明的永久泄漏。旧 Claude 原始工件清空后缺少的瞬间状态不追认。证据与复跑补丁见 `docs/references/smoke-reload-autostart/lifecycle-barrier-evidence.json`，计划为 `docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md`。
 
 同时补回上轮拆分用例遗漏的 `verifyFailurePaths` 局部 diagnosticStartIndex，原生受控运行已完整通过该函数。调查变体在该函数后停止，完整发布门禁仍未通过，其他历史待定位项继续保留。
+
+
+## smoke 生命周期等待正式修正与剩余门禁（2026-10-10，PR #314）
+
+前节两项正式修正已落实：四处创建流程 await reset 命令，通知用例固定退出前的 executionId/generation，等原退休后再重启、转模拟夹具或写入 Claude 恢复 seed。默认 VSIX 前六阶段通过，trusted 原顺序完整通过上述场景和 `verifyFailurePaths`，同步等待缺口关闭。
+
+原顺序后续 `verifyStopVsQueuedExitRace` 用 recentOutput 等 sleeping，直到自然 exit 9 保存后才发 Stop；本轮追加改为原执行实时输出，并在停止后等待退休。单独运行确认 stopped/0、Token usage、codex resume、received signal INT 已保存；仍被旧摘要 `/Stopped Codex session/` 与实际 `Session ended with exit code 0.` 的差异阻断。后续 legacy stopRequested/exited 诊断断言尚未执行，需核对 owned 契约，不能直接放宽断言或将其推定为停止功能故障。
+
+最终源码 trusted 复跑再次通过创建与通知，随后在 `verifyExecutionTerminalNativeInteractions` 报 `Execution link "link-target.ts:3:1" was not detected.`；第一轮同用例已通过，当前不追认其与历史链接失败的具体共同根因。完整 gate 及后续 Runtime 场景仍未完成。本轮没有产品或版本改动，证据为 `docs/references/smoke-reload-autostart/lifecycle-barrier-fix-evidence.json`，完成计划为 `docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md`。

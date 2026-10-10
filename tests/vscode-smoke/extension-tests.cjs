@@ -3068,7 +3068,7 @@ async function verifyExplorerResourceExecutionNodeCreation() {
   );
   await ensureTerminalStopped(terminalNode.id);
 
-  await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
   assert.strictEqual(snapshot.state.nodes.length, 0);
   await ensureEditorCanvasReady();
@@ -3098,7 +3098,7 @@ async function verifyCreateNodeCommandUsesOpenCanvasSurface() {
     'Expected generic node creation to reuse the already-open Canvas surface.'
   );
 
-  await dispatchWebviewMessage({ type: 'webview/resetDemoState' }, 'panel');
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
   assert.strictEqual(snapshot.state.nodes.length, 0);
   await ensureEditorCanvasReady();
@@ -3107,7 +3107,7 @@ async function verifyCreateNodeCommandUsesOpenCanvasSurface() {
 async function verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits() {
   await clearHostMessages();
   await clearDiagnosticEvents();
-  await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
 
   const customMarker = `--quick-input-enter-regression-${Date.now()}`;
@@ -3228,7 +3228,7 @@ async function verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent() {
       20000
     );
 
-    await dispatchWebviewMessage({ type: 'webview/resetDemoState' });
+    await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
     let snapshot = await waitForSnapshot((currentSnapshot) => currentSnapshot.state.nodes.length === 0, 20000);
     assert.strictEqual(snapshot.state.nodes.length, 0);
 
@@ -7252,7 +7252,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       const codexAgent = snapshot.state.nodes.find((node) => node.kind === 'agent' && !baselineAgentIds.has(node.id));
       assert.ok(codexAgent, 'Expected a dedicated Codex abnormal-exit smoke agent.');
 
-      await waitForAgentLive(codexAgent.id);
+      const { snapshot: codexCrashExecution } = await waitForLocalExecutionStarted('agent', codexAgent.id);
       await dispatchWebviewMessage({
         type: 'webview/executionInput',
         payload: {
@@ -7310,6 +7310,8 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         return currentAgent?.metadata?.agent?.attentionPending === false;
       }, 20000);
 
+      // The notification precedes final persistence and the terminal reader acknowledgement.
+      await waitForOriginalLocalExecutionRetirement(codexCrashExecution, 'agent', codexAgent.id);
       await clearDiagnosticEvents();
       calls.length = 0;
       await ensureEnabledAttentionSignals(['bel', 'osc9', 'osc777', 'codexAbnormalOutputText']);
@@ -7320,7 +7322,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         rows: 28,
         provider: 'codex'
       });
-      await waitForAgentLive(codexAgent.id);
+      const { snapshot: codexSuppressedExecution } = await waitForLocalExecutionStarted('agent', codexAgent.id);
       await dispatchWebviewMessage({
         type: 'webview/executionInput',
         payload: {
@@ -7362,6 +7364,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         'Expected disabled agentAbnormalExit not to surface a workbench notification.'
       );
 
+      await waitForOriginalLocalExecutionRetirement(codexSuppressedExecution, 'agent', codexAgent.id);
       await ensureEnabledAttentionSignals(DEFAULT_ATTENTION_SIGNALS);
 
       await clearDiagnosticEvents();
@@ -7663,7 +7666,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
       );
       assert.ok(claudeAgent, 'Expected a dedicated Claude abnormal-exit smoke agent.');
 
-      await waitForAgentLive(claudeAgent.id);
+      const { snapshot: claudeCrashExecution } = await waitForLocalExecutionStarted('agent', claudeAgent.id);
       await dispatchWebviewMessage({
         type: 'webview/executionInput',
         payload: {
@@ -7721,6 +7724,8 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         return currentAgent?.metadata?.agent?.attentionPending === false;
       }, 20000);
 
+      // Finish the original execution before replacing its metadata with the resume fixture.
+      await waitForOriginalLocalExecutionRetirement(claudeCrashExecution, 'agent', claudeAgent.id);
       await clearDiagnosticEvents();
       calls.length = 0;
       const failingClaudeCommandDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-claude-resume-fail-'));
@@ -7824,6 +7829,7 @@ async function verifyAgentAbnormalInterruptionNotifications() {
           'Expected a Claude resume startup failure not to surface a supplemental workbench notification.'
         );
 
+        await waitForOriginalLocalExecutionRetirement(snapshot, 'agent', claudeAgent.id);
         await dispatchWebviewMessage({
           type: 'webview/deleteNode',
           payload: {
@@ -9796,10 +9802,7 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
       provider: 'codex'
     }
   });
-  await waitForSnapshot((currentSnapshot) => {
-    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(currentAgent?.metadata?.agent?.liveSession);
-  });
+  const { snapshot: original, execution } = await waitForLocalExecutionStarted('agent', agentNodeId);
 
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
@@ -9809,10 +9812,7 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
       data: `sleep ${AGENT_STOP_RACE_SLEEP_SECONDS}\rexit 9\r`
     }
   });
-  await waitForSnapshot((currentSnapshot) => {
-    const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
-    return Boolean(currentAgent?.metadata?.agent?.recentOutput?.includes(`[fake-agent] sleeping ${AGENT_STOP_RACE_SLEEP_SECONDS}s`));
-  });
+  await waitForLocalExecutionOutput(execution, `[fake-agent] sleeping ${AGENT_STOP_RACE_SLEEP_SECONDS}s`);
 
   await sleep(150);
   await dispatchWebviewMessage({
@@ -9823,10 +9823,11 @@ async function verifyStopVsQueuedExitRace(agentNodeId) {
     }
   });
 
-  const snapshot = await waitForSnapshot((currentSnapshot) => {
+  await waitForSnapshot((currentSnapshot) => {
     const currentAgent = currentSnapshot.state.nodes.find((node) => node.id === agentNodeId);
     return Boolean(currentAgent && currentAgent.status === 'stopped' && !currentAgent.metadata?.agent?.liveSession);
   });
+  const snapshot = await waitForOriginalLocalExecutionRetirement(original, 'agent', agentNodeId);
   const agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'stopped');
   assert.strictEqual(agentNode.metadata.agent.liveSession, false);

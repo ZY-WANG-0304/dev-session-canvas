@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -352,3 +352,24 @@ PR #314 缺 CLI 的错误来自 `startNonNativeHostExecution` 的 prepare 阶段
 临时 Host characterization **5/5** 通过：空画布 reset 竞态与正确等待，分别暂停保存/读者/资源并验证阻塞与释放后重试。探针补丁可在 `c1d7b977` 应用，独立夹具不启动原生进程；复跑方法见完成计划。最初受控夹具未模拟页面快照交付而卡住 final-flush，已修正为无页面基线后独立控制三个域，该夹具错误不作为产品证据。
 
 继续向后验证时发现 `c1d7b977` 拆分缺 CLI 用例遗漏了 `verifyFailurePaths` 的局部 diagnosticStartIndex，导致无效自定义命令断言处 ReferenceError。本轮仅补回该局部变量；在受控原生运行中完整 verifyFailurePaths 已通过，原断言保留。该运行按调查需要明确在此函数后停止，exit 0 不代表完整 trusted 或发布 gate 通过。产品源码与 Host 主测试已恢复基线，两个同步问题的正式 smoke 修复仍待单独落实，其他历史门禁/平台边界保留。
+
+
+## 正式方案：smoke 生命周期完成等待
+
+`tests/vscode-smoke/extension-tests.cjs` 的创建命令用例统一 await `COMMAND_IDS.testResetState` 后再检查空画布并继续，涵盖两处 QuickPick 准备及相邻创建流程清理。节点数量只验证结果，不再作为 reset 完成信号。
+
+`verifyAgentAbnormalInterruptionNotifications` 在 Codex 两次退出及 Claude 首次退出前，使用 `waitForLocalExecutionStarted` 固定原执行快照；保持原退出码、通知和 attentionPending 断言，在同节点重启、进入文本模拟夹具或写入 Claude 恢复 seed 前调用 `waitForOriginalLocalExecutionRetirement`。该 helper 按原 executionId/generation 等原记录从 Host 移除，并拒绝 failed/unconfirmed 保存；不能只等 saved，也不能从新快照中任取替换执行。Claude resume-failed 验证完成后，删除前也等该次执行退休。
+
+本轮只修正测试顺序，不改 Host 同 key、owner closing 或失败 reset 的保护规则。正式回归结果见下文，前述调查变体不代证完整默认 gate。
+
+
+默认 VSIX 验证已通过上述两处修正及完整 `verifyFailurePaths`，随后在 `verifyStopVsQueuedExitRace` 暴露同类旧字段等待：运行期等待 recentOutput 中的 sleeping，实际直到自然 exit 9 最终保存后才满足，随后的 stop 被 missing-session 拒绝。该处按原 executionId/generation 的实时输出等待 sleeping，再发送 Stop；停止后的最终正文及退出事件断言继续保留，退出后先等待原退休再读取保存正文。此追加修正不据此改变停止信号或通知契约。
+
+
+### 本轮验证与剩余边界
+
+语法检查、reset fixture 19/19、正文 helper 14/14、runner 环境检查通过，两次 VSIX 类型检查与打包成功。默认运行前六个独立阶段全部通过；trusted 原顺序通过两处 QuickPick、完整异常通知（含 Claude 恢复失败）、终端原生交互、手动恢复、PTY/flood、完整 failure paths、持久化恢复与 standby/fault injection，随后停在旧 Stop 竞态等待。追加实时输出等待后，原顺序 trusted 复跑再次通过两处修正，但在终端 `link-target.ts:3:1` DOM 检测处失败，尚未触达 Stop 竞态。
+
+为验证追加等待，复用最终打包 Host 单独调用原 Stop 用例，所有结果断言保留。Stop 已在睡眠期间发出：原执行最终 status=stopped、exitCode=0，保存了 Token usage、codex resume 与 received signal INT；原实时等待不再拖到自然 exit 9。该运行仍在摘要断言失败：期待 `Stopped Codex session`，实际为 `Session ended with exit code 0.`。这不是已证明的停止动作失败；旧 stopRequested/exited 诊断断言尚未执行，其与 owned 契约的一致性待核对，不能顺带宣称已通过。
+
+完整 gate 仍未通过，终端链接检测失败与 Stop 用例文案/诊断契约核对留为后续阻塞。当前不放宽断言或改停止产品行为；后续 Runtime 场景未执行。证据见 `docs/references/smoke-reload-autostart/lifecycle-barrier-fix-evidence.json`。相邻 `lifecycle-barrier-stop-race-control.patch` 只用于在最终代码上复跑 standalone 入口，不是默认 gate 或正式实现；在临时 checkout 应用后以 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=local-preparation-failure` 运行 VSIX smoke，即可调用原 Stop 用例，随后应丢弃该控制补丁。
