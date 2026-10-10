@@ -4768,6 +4768,92 @@ test('owned Terminal initial install input cannot cross a replacement before sta
 });
 
 for (const kind of ['terminal', 'agent']) {
+  test(`owned ${kind} resource drop uses original launch context and waits for written`, async () => {
+    const f = await interactiveHostFixture(kind);
+    const sessions = f.host.getExecutionSessions(kind);
+    try {
+      // Current configuration and stale legacy sessions must not choose the quoting rules.
+      const node = f.host.state.nodes.find(node => node.id === `${kind}-1`);
+      node.metadata[kind].shellPath = 'C:\\Windows\\pwsh.exe';
+      node.metadata[kind].cwd = 'C:\\replacement';
+      sessions.set(`${kind}-1`, { shellPath: 'C:\\Windows\\pwsh.exe', cwd: 'C:\\stale' });
+      let resolved = false;
+      const dropping = f.host.handleDroppedExecutionResource(kind, `${kind}-1`, {
+        source: 'files', valueKind: 'path', value: "/controlled/it's a file.txt"
+      }).then(() => { resolved = true; });
+      await until(f.clock, () => f.requests.length === 1, `${kind} resource drop input`);
+      assert.equal(resolved, false, 'preparation is not a write acknowledgement');
+      assert.equal(f.requests[0].data, "'/controlled/it'\\''s a file.txt'");
+      assert.deepEqual(f.requests[0].identity, f.record.execution.identity);
+      f.reply(f.requests[0], { kind: 'written', writtenBytes: Buffer.byteLength(f.requests[0].data) });
+      await completed(f.clock, dropping, `${kind} resource drop acknowledgement`);
+      assert.equal(resolved, true);
+      assert.equal(f.diagnostics.some(event => event.name === 'execution/dropResourceRejected'), false);
+    } finally { sessions.delete(`${kind}-1`); await f.cleanup(); }
+  });
+
+  for (const change of ['stop', 'metadata', 'removed-node', 'suspended', 'quarantined', 'missing-launch']) {
+    test(`owned ${kind} resource drop rejects ${change} before dispatch`, async () => {
+      const f = await interactiveHostFixture(kind);
+      try {
+        if (change === 'stop') void f.host.stopExecutionSession(kind, `${kind}-1`).catch(() => {});
+        if (change === 'metadata') {
+          const node = f.host.state.nodes.find(node => node.id === `${kind}-1`);
+          node.metadata = { ...node.metadata, [kind]: { ...node.metadata[kind] } };
+        }
+        if (change === 'removed-node') f.host.state.nodes = f.host.state.nodes.filter(node => node.id !== `${kind}-1`);
+        if (change === 'suspended') f.record.business.lifecycleStatus = 'suspended';
+        if (change === 'quarantined') f.record.mutationError = 'Controlled quarantine';
+        if (change === 'missing-launch') f.record.launchSpec = undefined;
+        await f.host.handleDroppedExecutionResource(kind, `${kind}-1`, {
+          source: 'files', valueKind: 'path', value: '/controlled/drop target.txt'
+        });
+        assert.equal(f.requests.length, 0);
+        assert.equal(f.diagnostics.some(event => event.name === 'execution/dropResourcePrepared'), false);
+        assert.equal(f.diagnostics.some(event => event.name === 'execution/dropResourceRejected'), true);
+      } finally { await f.cleanup(); }
+    });
+  }
+
+  test(`owned ${kind} resource drop does not retarget or project after replacement during write`, async () => {
+    const f = await interactiveHostFixture(kind);
+    try {
+      const dropping = f.host.handleDroppedExecutionResource(kind, `${kind}-1`, {
+        source: 'files', valueKind: 'path', value: '/controlled/drop target.txt'
+      });
+      await until(f.clock, () => f.requests.length === 1, `${kind} resource drop input`);
+      let replacementWrites = 0;
+      f.host.nonNativeHostExecutions.set(`${kind}:${kind}-1`, {
+        ...f.record, execution: { write: () => { replacementWrites++; throw new Error('Unexpected replacement input'); } }
+      });
+      let projections = 0;
+      f.host.projectNonNativeHostBusiness = () => { projections++; };
+      f.reply(f.requests[0], { kind: 'written', writtenBytes: Buffer.byteLength(f.requests[0].data) });
+      await completed(f.clock, dropping, `${kind} old resource drop acknowledgement`);
+      assert.equal(replacementWrites, 0);
+      assert.equal(projections, 0);
+      assert.equal(f.requests.length, 1);
+    } finally {
+      f.host.nonNativeHostExecutions.set(`${kind}:${kind}-1`, f.record);
+      await f.cleanup();
+    }
+  });
+}
+
+test('legacy resource drop keeps session shell rules and missing-session diagnostics', async () => {
+  const f = fixture();
+  const writes = [];
+  f.host.writeExecutionInput = async (...args) => { writes.push(args); return true; };
+  const resource = { source: 'files', valueKind: 'path', value: "C:\\drop target's file.txt" };
+  await f.host.handleDroppedExecutionResource('terminal', 'terminal-1', resource);
+  assert.equal(writes.length, 0);
+  assert.equal(f.diagnostics.at(-1).detail.reason, 'missing-session');
+  f.host.terminalSessions.set('terminal-1', { shellPath: 'C:\\Windows\\pwsh.exe', cwd: 'C:\\repo' });
+  await f.host.handleDroppedExecutionResource('terminal', 'terminal-1', resource);
+  assert.deepEqual(writes, [['terminal', 'terminal-1', "'C:\\drop target''s file.txt'"]]);
+});
+
+for (const kind of ['terminal', 'agent']) {
   test(`owned ${kind} text paste reaches the existing actual input acknowledgement`, async () => {
     const f = await interactiveHostFixture(kind);
     const previous = testEnvironment.clipboard;

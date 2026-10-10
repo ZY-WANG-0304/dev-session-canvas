@@ -1,0 +1,134 @@
+{
+  "date": "2026-10-10",
+  "baseline": "66ef3e66421072664b60b26ead7207128088b2bf",
+  "target": "origin/main@78c58c2a2cecd053199c9bada6084868f9255877",
+  "scope": "PR #314 本地 Terminal/Agent 资源拖放及本交互 smoke 实时正文断言；不改版本、不发布。",
+  "before": {
+    "nativeEvidence": "resume-failure-repair-evidence.json",
+    "nativeResult": "原 Terminal live，拖放报 missing-session；同执行输出标记缺少路径。",
+    "regressionCommand": "DEV_SESSION_CANVAS_HOST_TEST_FILTER='resource drop uses original' node scripts/test/test-host-execution-owner-wiring.mjs",
+    "regressionResult": "failed：陈旧 session 的 PowerShell 转义污染原 POSIX 执行输入。",
+    "log": ".debug/resource-drop-fix/host-before.log"
+  },
+  "changes": [
+    "入口复用 captureExecutionInputTarget 校验当前原记录、metadata、节点与关闭状态。",
+    "使用原 launchSpec.file/cwd 准备路径，并等待 writeNonNativeHostInput(record, data) 实际 written。",
+    "缺少启动上下文拒绝；等待后不转投替换执行、不投影新节点；保留旧 session 路径。",
+    "本 native interactions 的八处实时正文等待改为原执行交付通道；多行结果增加实际相邻两行和页面可见断言。"
+  ],
+  "automated": {
+    "targeted": "17/17 passed",
+    "host": "426/426 passed",
+    "outputHelper": "14/14 passed",
+    "nativeHelper": "passed",
+    "typecheck": "passed",
+    "syntax": "node --check passed",
+    "logs": ".debug/resource-drop-fix/"
+  },
+  "native": {
+    "command": "npm run test:vsix-smoke",
+    "environment": {
+      "platform": "Linux x64",
+      "vscode": "1.141.0",
+      "node": "22.23.3",
+      "provider": "当前原生 PTY + fake Agent",
+      "runtimePersistence": false
+    },
+    "firstRun": {
+      "log": ".debug/resource-drop-fix/vsix.log",
+      "artifacts": ".debug/resource-drop-fix/trusted-artifacts",
+      "stages": {
+        "owned-canvas-reconciliation": "passed",
+        "local-execution-flow": "passed",
+        "trusted": "failed at multiline link file assertion"
+      },
+      "dropOutput": {
+        "kind": "terminal",
+        "nodeId": "terminal-2-49e7d265-8081-45b8-9353-41b58689d145",
+        "executionSessionId": "3a83b148-260c-45a4-b914-d9fd0e9bf18f",
+        "chunk": "\r\nDEV_SESSION_CANVAS_NATIVE_DROP:/tmp/dscr/.debug/vscode-smoke/execution-native-interactions/drop target file.txt\r\nziyang01.wang-al@hobot:/tmp/dscr$ ",
+        "outputStartSequence": 4,
+        "outputSequence": 4,
+        "terminalTitle": null,
+        "localOutputReceipt": {
+          "receiptId": "833a512f-549e-4b5f-8d3b-861079772dad",
+          "outputSequence": 4
+        }
+      },
+      "ignoredSecondPathPresent": false,
+      "passedAssertions": [
+        "完整拖入路径",
+        "只消费首资源",
+        "文件 2:8 编辑器定位",
+        "图片预览及 opener rejection",
+        "cd 后相对文件 3:1 定位"
+      ],
+      "failure": "AssertionError [ERR_ASSERTION]: Timed out while waiting for diagnostic events. Last events: [{\"timestamp\":\"2026-10-10T01:27:51.760Z\",\"kind\":\"execution/linkOpened\",\"detail\":{\"kind\":\"terminal\",\"nodeId\":\"terminal-2-49e7d265-8081-45b8-9353-41b58689d145\",\"linkKind\":\"search\",\"text\":\"2:8\",\"openerKind\":\"workbench.action.quickOpen\",\"targetUri\":\"2:8\",\"error\":null,\"shellPath\":\"/usr/bin/bash\",\"cwd\":\"/tmp/dscr\"}}]",
+      "sourceHashes": {
+        "failure-error.txt": "2d323ebd3938ff0666fcf6aeea5165339521b8eefbea2ae7579d52d0ba9149bf",
+        "failure-host-messages.json": "4603722d9068cdae3007ea1dbf52537a6b74f752da27309ff5ec0260e4e42d0a",
+        "failure-diagnostic-events.json": "2ea79fa8dfe50cf6bfe4856c932afdf1e7edb8931e7f833ccc982d60efaa3df9"
+      }
+    },
+    "renderVerifiedRun": {
+      "log": ".debug/resource-drop-fix/vsix-render-verified.log",
+      "artifacts": ".debug/resource-drop-fix/render-verified-artifacts",
+      "stages": {
+        "owned-canvas-reconciliation": "passed",
+        "local-execution-flow": "passed",
+        "trusted": "failed at multiline file-link assertion after visible two-line check passed"
+      },
+      "package": "notifier build、主扩展 typecheck/build/package passed",
+      "dropOutput": {
+        "kind": "terminal",
+        "nodeId": "terminal-2-0b98b2fb-67f0-4ba1-9498-2a88e738f2e2",
+        "executionSessionId": "ba26ed75-73ac-423c-89f4-a941017aa070",
+        "chunk": "\r\nDEV_SESSION_CANVAS_NATIVE_DROP:/tmp/dscr/.debug/vscode-smoke/execution-native-interactions/drop target file.txt\r\nziyang01.wang-al@hobot:/tmp/dscr$ ",
+        "outputStartSequence": 4,
+        "outputSequence": 4,
+        "terminalTitle": null,
+        "localOutputReceipt": {
+          "receiptId": "1fa17bd1-ac80-4fa5-9041-d7ed78dd4220",
+          "outputSequence": 4
+        }
+      },
+      "ignoredSecondPathPresent": false,
+      "multilineOutput": {
+        "kind": "terminal",
+        "nodeId": "terminal-2-0b98b2fb-67f0-4ba1-9498-2a88e738f2e2",
+        "executionSessionId": "ba26ed75-73ac-423c-89f4-a941017aa070",
+        "chunk": "\r\r<'link-target.ts' '  2:8  export const two = 2;'\r\nlink-target.ts\r\n  2:8  export const two = 2;\r\n<ug/vscode-smoke/execution-native-interactions$ ",
+        "outputStartSequence": 11,
+        "outputSequence": 11,
+        "terminalTitle": null,
+        "localOutputReceipt": {
+          "receiptId": "67ee32b0-2c75-48cf-b391-6c80c310ce45",
+          "outputSequence": 11
+        }
+      },
+      "renderEvidence": "原用例 waitForWebviewProbeOnSurface 要求 path 行与结果行相邻且完全匹配；该等待返回后才发起 activateExecutionLink，随后在文件链接诊断等待处失败。",
+      "failure": "AssertionError [ERR_ASSERTION]: Timed out while waiting for diagnostic events. Last events: [{\"timestamp\":\"2026-10-10T01:31:16.983Z\",\"kind\":\"execution/linkOpened\",\"detail\":{\"kind\":\"terminal\",\"nodeId\":\"terminal-2-0b98b2fb-67f0-4ba1-9498-2a88e738f2e2\",\"linkKind\":\"search\",\"text\":\"2:8\",\"openerKind\":\"workbench.action.quickOpen\",\"targetUri\":\"2:8\",\"error\":null,\"shellPath\":\"/usr/bin/bash\",\"cwd\":\"/tmp/dscr\"}}]",
+      "sourceHashes": {
+        "failure-error.txt": "8686f30e81dc17c1bc5dea00580c0df5408784e3fa2101ad1c2a04d0d8305c04",
+        "failure-host-messages.json": "ad30713e5ce80a77bf61ac398d71c7b233bd5c1e889cd204233cab92445584a6",
+        "failure-diagnostic-events.json": "b90711825f1289144613bfd6b88dc85ccc42c2ae8855dfa1f0819272dff4c560"
+      }
+    },
+    "fullGatePassed": false,
+    "remainingFailure": {
+      "description": "多行文件结果中的 2:8 被解析为 search/quickOpen，期望 file。",
+      "ruledOut": "加强原执行两行输出及页面相邻行等待后仍复现，不是仅匹配命令回显或点击早于正文渲染。",
+      "sourceFinding": "getExecutionTerminalPathContext 的 resolveCwdForBufferLine 仍只使用旧 session.lineContextTracker，遗漏 owned business tracker；本轮未修复或完成其与多行链接失败的因果对照。",
+      "status": "后续独立阻塞，保留原文件目标断言。"
+    }
+  },
+  "limits": [
+    "完整 trusted 两次均未通过；多行链接解析阻塞已登记，未把源码接线缺口直接作为完整根因。",
+    "缺失文件搜索、URL hover/显式 URL 以及后续 Runtime/压力场景未触达；其他平台、真实 Agent 服务、跨版本和 Remote SSH 未原生复验。"
+  ],
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "e55b0803d97ce1f429ce4ba9f03c6fb51bf196e14a780388c0f395e4fdfac5f1",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "32628b8bff5786bc8f6f5ae6326066d06d664278badc89867e6fdc5dc38ed6fd",
+    "tests/vscode-smoke/extension-tests.cjs": "cb763322c7bad2b6026b0699b478c5c9a2ca7b670be6888ecd74d61b2e6a04f6"
+  }
+}

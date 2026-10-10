@@ -28,7 +28,12 @@ PR #314 已实施具名修复：同 ID 重读保留原 metadata/status；root + 
 
 2026-10-10 新触达的独立发布阻塞：同一默认 VSIX trusted 随后在 Claude 恢复启动失败状态检查（`verifyAgentAbnormalInterruptionNotifications` 的 resume 子场景）超时。原执行以 33 退出并保存/退休，attentionPending=false，但 status=error、lastResumeError 缺失，测试期待 resume-failed。`persistNonNativeHostFinal` 没有旧路径的 resumePhaseActive 分类分支；通知抑制正确，不应把此状态问题归因于通知渠道或放宽断言。当时通知修复未改这一语义。后续用户授权后，PR #314 已按原 resumePhaseActive 补回恢复失败分类，保存恢复原因并清理旧错误；14 项新增回归、完整 Host 409/409 与类型检查通过，默认真实 VSIX 已通过原恢复失败及新增错误字段一致性检查，该分类缺口已收口。证据与计划：`docs/references/smoke-reload-autostart/exit-notification-repair-evidence.json`、`docs/exec-plans/completed/owned-agent-exit-notification-repair.md`。完整门禁仍未通过。
 
-2026-10-10 最新独立阻塞：恢复失败修复后的默认 VSIX trusted 进入 `verifyExecutionTerminalNativeInteractions` 后，拖放文件路径输入失败。原 Terminal live；诊断 `execution/dropResourceRejected` 明确为 missing-session，同 executionId 的真实正文只有 `DEV_SESSION_CANVAS_NATIVE_DROP:` 而没有路径。`handleDroppedExecutionResource` 仅查旧 session map，未认识当前 owned 本地执行，是产品接线遗漏；该 smoke 同时仍从 metadata.recentOutput 等待实时正文，存在旧断言。后续须将拖放路径准备接入原执行上下文并保留身份、关闭和路径引用规则，再迁移实时正文断言，不能仅改测试放行。本轮未修改这些路径；完整门禁仍失败。证据与本轮计划：`docs/references/smoke-reload-autostart/resume-failure-repair-evidence.json`、`docs/exec-plans/completed/owned-agent-resume-failure.md`。
+2026-10-10 此前独立阻塞：恢复失败修复后的默认 VSIX trusted 进入 `verifyExecutionTerminalNativeInteractions` 后，拖放文件路径输入失败。原 Terminal live；诊断 `execution/dropResourceRejected` 明确为 missing-session，同 executionId 的真实正文只有 `DEV_SESSION_CANVAS_NATIVE_DROP:` 而没有路径。`handleDroppedExecutionResource` 仅查旧 session map，未认识当前 owned 本地执行，是产品接线遗漏；该 smoke 同时仍从 metadata.recentOutput 等待实时正文，存在旧断言。当时拖放入口和该测试尚未修复，不能仅改测试放行。证据与本轮计划：`docs/references/smoke-reload-autostart/resume-failure-repair-evidence.json`、`docs/exec-plans/completed/owned-agent-resume-failure.md`。
+
+2026-10-10 拖放修复已在 PR #314 收口：复用原输入目标校验，使用 owned 原 launchSpec 的 shell/cwd 准备路径并等待原执行写入确认；停止/旧 metadata/节点删除/隔离/缺少上下文拒绝，等待期间不转投替换执行。保留旧 session 路径，本交互 smoke 的实时正文改从原执行通道读取。新增 17 项回归，完整 Host 426/426、正文 helper 14/14、路径 helper 与类型检查通过；两轮默认 VSIX 均通过构建、两个具名阶段及真实拖放首资源/路径、文件、图片和 cd 相对文件定位。计划与证据：`docs/exec-plans/completed/owned-execution-resource-drop.md`、`docs/references/smoke-reload-autostart/resource-drop-repair-evidence.json`。
+
+最新独立阻塞：两轮 trusted 随后均将多行文件结果 `2:8` 解析为 search/quickOpen，期待 file。第二轮明确等待原执行的两行结果及页面可见相邻两行后仍复现，排除仅由命令回显或未渲染导致提前点击。`getExecutionTerminalPathContext` 尚未接入 owned business 的逐行 cwd tracker；该源码缺口与本次失败的完整因果对照待专项定位，不在拖放修复中顺带改写。完整门禁仍失败；后续缺失文件搜索、URL hover/显式 URL 和 Runtime 场景尚未触达。
+
 
 workspace trust / editor deserialize 已审计共用入口，但独立 UI 路径、真实窗口 Reload、跨版本及 Remote SSH 不在本轮原生验收范围，继续依赖各自验证矩阵。
 

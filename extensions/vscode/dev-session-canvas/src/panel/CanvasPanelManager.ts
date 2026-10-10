@@ -8140,21 +8140,23 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     nodeId: string,
     resource: ExecutionTerminalDroppedResource
   ): Promise<void> {
-    const session = this.getExecutionSessions(kind).get(nodeId);
-    if (!session) {
+    const record = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+    const session = record ? undefined : this.getExecutionSessions(kind).get(nodeId);
+    const context = record ? { shellPath: record.launchSpec?.file, cwd: record.launchSpec?.cwd } : session;
+    if (!this.captureExecutionInputTarget(kind, nodeId) || context?.cwd === undefined) {
       this.recordDiagnosticEvent('execution/dropResourceRejected', {
         kind,
         nodeId,
-        reason: 'missing-session',
+        reason: record || session ? 'unavailable-input-target' : 'missing-session',
         source: resource.source
       });
       return;
     }
 
     const preparedPath = prepareExecutionTerminalDroppedPath(resource, {
-      shellPath: session.shellPath,
-      cwd: session.cwd,
-      pathStyle: inferExecutionTerminalPathStyle(session.shellPath, session.cwd),
+      shellPath: context.shellPath,
+      cwd: context.cwd,
+      pathStyle: inferExecutionTerminalPathStyle(context.shellPath, context.cwd),
       userHome: process.env.HOME ?? process.env.USERPROFILE
     });
     this.recordDiagnosticEvent('execution/dropResourcePrepared', {
@@ -8163,7 +8165,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       source: resource.source,
       valueKind: resource.valueKind
     });
-    await this.writeExecutionInput(kind, nodeId, preparedPath);
+    // Keep the captured execution through the actual write acknowledgement.
+    if (record) await this.writeNonNativeHostInput(record, preparedPath);
+    else await this.writeExecutionInput(kind, nodeId, preparedPath);
   }
 
   private async handleDroppedNoteMarkdownFiles(

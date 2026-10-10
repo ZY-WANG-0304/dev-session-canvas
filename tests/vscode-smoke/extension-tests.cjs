@@ -7963,7 +7963,8 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       },
       'editor'
     );
-    await waitForTerminalLive(terminalNodeId);
+    const started = await waitForTerminalLive(terminalNodeId);
+    const execution = captureLocalExecutionIdentity(started, 'terminal', terminalNodeId);
     await clearHostMessages();
     await clearDiagnosticEvents();
 
@@ -7996,22 +7997,10 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       10000
     );
 
-    let snapshot = await waitForSnapshot((currentSnapshot) => {
-      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-      return Boolean(
-        currentTerminal?.metadata?.terminal?.recentOutput?.includes(
-          `${TERMINAL_NATIVE_DROP_MARKER}:${droppedFilePath}`
-        )
-      );
-    }, 20000);
-    let terminalNode = findNodeById(snapshot, terminalNodeId);
-    assert.ok(
-      terminalNode.metadata.terminal.recentOutput.includes(`${TERMINAL_NATIVE_DROP_MARKER}:${droppedFilePath}`),
-      'Dropped resource should be inserted into the live terminal session as shell input.'
-    );
+    await waitForLocalExecutionOutput(execution, `${TERMINAL_NATIVE_DROP_MARKER}:${droppedFilePath}`, 'live', 20000);
     assert.strictEqual(
-      terminalNode.metadata.terminal.recentOutput.includes(ignoredFilePath),
-      false,
+      findExecutionOutput(await getHostMessages(), execution, ignoredFilePath),
+      undefined,
       'Only the first dropped resource should be consumed.'
     );
 
@@ -8039,12 +8028,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       'editor',
       10000
     );
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(fileLinkText));
-    }, 20000);
-    terminalNode = findNodeById(snapshot, terminalNodeId);
-    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(fileLinkText));
+    await waitForLocalExecutionOutput(execution, fileLinkText, 'live', 20000);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction(
@@ -8100,12 +8084,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       'editor',
       10000
     );
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(mediaFileLinkText));
-    }, 20000);
-    terminalNode = findNodeById(snapshot, terminalNodeId);
-    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(mediaFileLinkText));
+    await waitForLocalExecutionOutput(execution, mediaFileLinkText, 'live', 20000);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction(
@@ -8204,12 +8183,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       'editor',
       10000
     );
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(cwdScopedFileLinkText));
-    }, 20000);
-    terminalNode = findNodeById(snapshot, terminalNodeId);
-    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(cwdScopedFileLinkText));
+    await waitForLocalExecutionOutput(execution, cwdScopedFileLinkText, 'live', 20000);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction(
@@ -8262,12 +8236,13 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       'editor',
       10000
     );
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(multilineResultLine));
-    }, 20000);
-    terminalNode = findNodeById(snapshot, terminalNodeId);
-    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(multilineResultLine));
+    await waitForLocalExecutionOutput(
+      execution, `${multilinePathLineText}\r\n${multilineResultLine}\r\n`, 'live', 20000
+    );
+    await waitForWebviewProbeOnSurface('editor', (probe) => {
+      const lines = probe.nodes.find((node) => node.nodeId === terminalNodeId)?.terminalVisibleLines ?? [];
+      return lines.some((line, index) => line === multilinePathLineText && lines[index + 1] === multilineResultLine);
+    }, 10000);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction(
@@ -8319,12 +8294,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       'editor',
       10000
     );
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(missingSearchLinkText));
-    }, 20000);
-    terminalNode = findNodeById(snapshot, terminalNodeId);
-    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(missingSearchLinkText));
+    await waitForLocalExecutionOutput(execution, missingSearchLinkText, 'live', 20000);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction(
@@ -8368,12 +8338,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       'editor',
       10000
     );
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes(urlLinkText));
-    }, 20000);
-    terminalNode = findNodeById(snapshot, terminalNodeId);
-    assert.ok(terminalNode.metadata.terminal.recentOutput.includes(urlLinkText));
+    await waitForLocalExecutionOutput(execution, urlLinkText, 'live', 20000);
 
     await performWebviewDomAction(
       {
@@ -8440,12 +8405,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       'editor',
       10000
     );
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      const currentTerminal = currentSnapshot.state.nodes.find((node) => node.id === terminalNodeId);
-      return Boolean(currentTerminal?.metadata?.terminal?.recentOutput?.includes('explicit-url'));
-    }, 20000);
-    terminalNode = findNodeById(snapshot, terminalNodeId);
-    assert.ok(terminalNode.metadata.terminal.recentOutput.includes('explicit-url'));
+    await waitForLocalExecutionOutput(execution, 'explicit-url', 'live', 20000);
 
     await clearDiagnosticEvents();
     await performWebviewDomAction(
