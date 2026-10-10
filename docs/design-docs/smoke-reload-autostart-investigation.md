@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/runtime-resume-exit-summary-repair.md, docs/exec-plans/completed/runtime-resume-exit-summary-investigation.md, docs/exec-plans/completed/runtime-scrollback-snapshot-repair.md, docs/exec-plans/completed/runtime-scrollback-snapshot-investigation.md, docs/exec-plans/completed/runtime-start-admission-repair.md, docs/exec-plans/completed/runtime-start-admission-investigation.md, docs/exec-plans/completed/runtime-root-storage-repair.md, docs/exec-plans/completed/runtime-root-preparation-investigation.md, docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
+related_plans: [docs/exec-plans/completed/runtime-immediate-reload-investigation.md, docs/exec-plans/completed/runtime-resume-exit-summary-repair.md, docs/exec-plans/completed/runtime-resume-exit-summary-investigation.md, docs/exec-plans/completed/runtime-scrollback-snapshot-repair.md, docs/exec-plans/completed/runtime-scrollback-snapshot-investigation.md, docs/exec-plans/completed/runtime-start-admission-repair.md, docs/exec-plans/completed/runtime-start-admission-investigation.md, docs/exec-plans/completed/runtime-root-storage-repair.md, docs/exec-plans/completed/runtime-root-preparation-investigation.md, docs/exec-plans/completed/owned-claude-file-confirmation.md, docs/exec-plans/completed/claude-resume-context-investigation.md, docs/exec-plans/completed/smoke-link-stop-fix.md, docs/exec-plans/completed/smoke-link-stop-investigation.md, docs/exec-plans/completed/smoke-lifecycle-barrier-fix.md, docs/exec-plans/completed/smoke-lifecycle-barrier-investigation.md, docs/exec-plans/completed/owned-launch-preparation-failure.md, docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md, docs/exec-plans/completed/snapshot-only-manual-reload-recovery.md]
 updated_at: 2026-10-10
 ---
 
@@ -647,3 +647,26 @@ Supervisor owner 接线 134/134 通过，其中新增18项覆盖恢复已完成/
 使用同一份 packaged 产品和原始测试，local-links-and-stop 独立重跑 exit0。trusted 独立原顺序也越过原恢复后退出23摘要断言，在紧邻 `verifyImmediateReloadAfterLiveRuntimeLaunch:11000` 的模拟 reload 报 Runtime session updates are still pending. Please try again after they finish.。失败快照中 Agent=error/Execution start was rejected-before-acquire.，Terminal 仍 live；本轮未定位启动拒绝与 pending 回调之间的因果，不修改该用例、原准入额度或边界保护。后续 Host boundary、Runtime/reload、独立 checkpoint 与跨平台矩阵不由本轮代证。
 
 原生专项节点由原 stop 入口清理；trusted 剩余 Terminal 按失败快照原 storage/session 用真实 client stop 清理并获确认，本轮隔离 Supervisor 已全部退出。当前修复完成，但完整门禁仍有上述独立阻塞/不稳定性。精简证据包含默认命令、两个同载荷独立重跑与清理事实，不将重跑成功追认首次运行通过。
+
+
+## Runtime 启动后立即模拟 reload 的阻塞定位（2026-10-10，PR #314）
+
+基线 `d0fc7e0b` 的下一处失败是 `verifyImmediateReloadAfterLiveRuntimeLaunch`，RuntimePersistence 已开启。此处有两个独立条件，不能把 pending 错误解释成 Agent 启动失败留下了永不结算的回调。
+
+第一，测试依次 await 两次 `dispatchWebviewMessage`，但 `CanvasPanelManager.handleWebviewMessage` 只派发启动 promise 并登记操作，不等待实际启动完成。两次启动因此重叠，与 starting=1 的正式准入契约冲突。无探针副本重现 Agent rejected-before-acquire、Terminal 启动；只读探针副本则反向出现 Terminal 被拒、Agent 启动。胜负取决于调度，不是某个 provider 的专属失败。该函数独立于此前已修正的通用 fixture，仍遗漏原会话 started 屏障。
+
+第二，`simulateRuntimeReloadForTest` 使用非永久 `prepareForHostBoundaryCore`，继续允许 Supervisor 事件进入。它先等待当前状态回调集合，再等待启动等操作、flush 和保存，最后检查回调是否为空。启动尚未完成时第一次检查可以是 0；启动过程中首批输出到达，`onSessionTerminalBatch` 新登记的 promise 就不在此前等待的集合里。最终保护发现仍有责任，主动拒绝清空 session/binding。报错发生在 reload 返回之前，是即时安全拒绝，不是等待 resume-ready/live 超时。
+
+原生 `serial2` 对照只等待 Agent 的原 started，再派发 Terminal 并立即 reload：15:05:47.286Z 初次回调等待为 0、待处理操作为 1；.420 Terminal started；.440 首批正文 revision1 到达并等待 `lineContextTracker.flush()`；.463 边界检查 pending=1 抛错；.473 flush 完成，.480 原 batch consumed、原回调结束。两项启动均成功，证明 pending 不依赖启动拒绝，也不是回调泄漏。另一次相同串行顺序自然通过，说明该交错依赖时序。
+
+保持三个产品 bundle 原样、分别等待 Agent/Terminal started 的 `serial-clean` 对照通过原 reload 与 attached-live 断言。这只是具名正对照，started 本身并不保证后续不会再有输出回调，不能将它升级成通用“回调已排空”的保证。6 次隔离运行中：原顺序 3 次均被 pending 保护拒绝；仅等待 Agent 的两次对照一过一拒；分别等待两者的一次通过。调查脚本捕获预期失败后 exit0，不能当作 smoke gate 成功。
+
+真实 `prepareForDeactivation` 会先关闭 Runtime 事件准入，并按永久边界处理；当前模拟重载复用原 Host，与真实 Reload Window 的生命周期不等价。本轮确认的是 smoke 并发启动期待过时及模拟重载边界的时序冲突，没有证据将其归因为真实窗口 reload 故障或新旧版本兼容。既有 Host deactivation 完整测试通过，包括关闭准入、回调等待和非永久边界保留责任；该受控测试不替代原生真实新 Host 验收。
+
+### 后续修复边界
+
+按原 session 身份串行确认启动，保留合法准入限制。另为模拟 reload 明确可重试边界和有界等待，或把“启动后立即实际 reload”的验收迁入真实新 Host 场景；不能简单删掉 pending 检查、永久关闭后强行重开原 owner、吞异常，或用固定 sleep 掩盖交错。若暂只修测试前置条件，应明确不再覆盖启动/输出在途的立即 reload，不能悄悄缩小原用例意图。本轮仅定位，产品和正式 smoke 均未修改。
+
+引入线索：原立即 reload 测试来自 `005e94c73`（2026-04-09）；回调集合的一次性等待来自 `35ed2a111`（2026-09-27）；非永久边界 pending 保护来自 `0f969ceba`（2026-09-30），用于保留 completed/reset/template 在途责任。它们说明契约演进及旧用例遗漏，不据此指定首个受影响发布版本。
+
+证据见 `docs/references/smoke-reload-autostart/runtime-immediate-reload-evidence.json`；可复跑隔离脚本为相邻 `runtime-immediate-reload-investigation.mjs`。本轮六个隔离运行均退出，节点已停止，未见本轮 Supervisor 残留。完整 gate 未重跑，历史 URL 清理停滞、后续 Runtime/checkpoint 与跨平台验证仍保留原状态。

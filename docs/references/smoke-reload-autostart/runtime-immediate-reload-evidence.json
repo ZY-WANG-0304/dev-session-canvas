@@ -1,0 +1,1759 @@
+{
+  "baseline": "d0fc7e0b88b388a2135b79673d6659cf70e320b2",
+  "environment": {
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "platform": "linux-x64",
+    "providers": "fake",
+    "runtimePersistence": true
+  },
+  "experiments": [
+    {
+      "mode": "original",
+      "productProbe": false,
+      "ordering": "original",
+      "outcome": "Runtime session updates are still pending. Please try again after they finish.",
+      "harnessExit": 0,
+      "productHashesBeforeProbes": {
+        "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "artifactDirectory": ".debug/runtime-immediate-reload/original/native/artifacts",
+      "events": [
+        {
+          "timestamp": "2026-10-10T15:04:38.756Z",
+          "kind": "execution/candidateStartFailed",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-9270ed23-729b-4bfd-857e-9f9d45ad88b1",
+            "message": "Failed to start Codex: Execution start was rejected-before-acquire."
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:38.813Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-90070d97-10e2-42ec-bb0f-741a741345d0",
+            "sessionId": "55e914a2-e3a7-4886-9003-7f0309055cd0",
+            "cols": 92,
+            "rows": 28,
+            "shellPath": "/usr/bin/bash",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:38.823Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "55e914a2-e3a7-4886-9003-7f0309055cd0",
+            "nodeId": "terminal-2-90070d97-10e2-42ec-bb0f-741a741345d0",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644678823
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:38.834Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "55e914a2-e3a7-4886-9003-7f0309055cd0",
+            "nodeId": "terminal-2-90070d97-10e2-42ec-bb0f-741a741345d0",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644678823,
+            "hostFlushCompletedAtMs": 1791644678834
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:38.838Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "55e914a2-e3a7-4886-9003-7f0309055cd0",
+            "nodeId": "terminal-2-90070d97-10e2-42ec-bb0f-741a741345d0",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644678823,
+            "hostReceivedAtMs": 1791644678823,
+            "hostConsumedAtMs": 1791644678838
+          }
+        }
+      ]
+    },
+    {
+      "mode": "probed",
+      "productProbe": true,
+      "ordering": "original",
+      "outcome": "Runtime session updates are still pending. Please try again after they finish.",
+      "harnessExit": 0,
+      "productHashesBeforeProbes": {
+        "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "artifactDirectory": ".debug/runtime-immediate-reload/probed/native/artifacts",
+      "events": [
+        {
+          "timestamp": "2026-10-10T15:04:55.908Z",
+          "kind": "rca/boundaryBegin",
+          "detail": {
+            "options": {
+              "preserveLiveRuntime": true,
+              "preserveRootRuntimeBindings": false,
+              "waitForLocalPersistence": true,
+              "preserveLocalRecovery": true,
+              "allowRuntimeSupervisorRestart": false
+            },
+            "pending": 0,
+            "operations": 2
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:55.908Z",
+          "kind": "rca/waitCallbacks",
+          "detail": {
+            "pending": 0
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:55.957Z",
+          "kind": "execution/candidateStartFailed",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-30a92f15-e004-4a9e-b869-a2ad9fbf68dc",
+            "message": "Failed to start embedded Terminal: Execution start was rejected-before-acquire."
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:56.012Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-21874a7e-11fa-49ad-9c0d-d38858f17477",
+            "sessionId": "ee0aab42-e632-40da-b945-0ea1016bb2e0",
+            "provider": "codex",
+            "launchMode": "start",
+            "cols": 92,
+            "rows": 28,
+            "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "resumeStrategy": "fake-provider",
+            "resumeSessionId": "f7a858a4-5d60-4a26-bbf8-5376cc34f23b",
+            "resumeStoragePath": "/tmp/dscr/.debug/runtime-immediate-reload/probed/native/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-21874a7e-11fa-49ad-9c0d-d38858f17477",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:56.026Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "ee0aab42-e632-40da-b945-0ea1016bb2e0",
+            "batchId": 1,
+            "revision": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:56.027Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "ee0aab42-e632-40da-b945-0ea1016bb2e0",
+            "nodeId": "agent-1-21874a7e-11fa-49ad-9c0d-d38858f17477",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644696027
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:56.027Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 9
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:56.033Z",
+          "kind": "rca/assertCallbacks",
+          "detail": {
+            "pending": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:56.038Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "ee0aab42-e632-40da-b945-0ea1016bb2e0",
+            "nodeId": "agent-1-21874a7e-11fa-49ad-9c0d-d38858f17477",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644696027,
+            "hostFlushCompletedAtMs": 1791644696038
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:56.038Z",
+          "kind": "rca/state",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "ee0aab42-e632-40da-b945-0ea1016bb2e0",
+            "live": true,
+            "lifecycle": "starting"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:56.043Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "ee0aab42-e632-40da-b945-0ea1016bb2e0",
+            "nodeId": "agent-1-21874a7e-11fa-49ad-9c0d-d38858f17477",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644696025,
+            "hostReceivedAtMs": 1791644696026,
+            "hostConsumedAtMs": 1791644696043
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:04:56.043Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 9
+          }
+        }
+      ]
+    },
+    {
+      "mode": "probed2",
+      "productProbe": true,
+      "ordering": "original",
+      "outcome": "Runtime session updates are still pending. Please try again after they finish.",
+      "harnessExit": 0,
+      "productHashesBeforeProbes": {
+        "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "artifactDirectory": ".debug/runtime-immediate-reload/probed2/native/artifacts",
+      "events": [
+        {
+          "timestamp": "2026-10-10T15:05:44.564Z",
+          "kind": "rca/boundaryBegin",
+          "detail": {
+            "options": {
+              "preserveLiveRuntime": true,
+              "preserveRootRuntimeBindings": false,
+              "waitForLocalPersistence": true,
+              "preserveLocalRecovery": true,
+              "allowRuntimeSupervisorRestart": false
+            },
+            "pending": 0,
+            "operations": 2
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:44.564Z",
+          "kind": "rca/waitCallbacks",
+          "detail": {
+            "pending": 0
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:44.610Z",
+          "kind": "execution/candidateStartFailed",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-759079c7-9f9d-4911-9739-4f5551ec19fe",
+            "message": "Failed to start embedded Terminal: Execution start was rejected-before-acquire."
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:44.675Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-2062f170-e5fc-40ce-90c4-a51be220ba55",
+            "sessionId": "2729641e-e286-4278-ba3d-914583eef691",
+            "provider": "codex",
+            "launchMode": "start",
+            "cols": 92,
+            "rows": 28,
+            "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "resumeStrategy": "fake-provider",
+            "resumeSessionId": "d41004c9-1a9c-4595-85ed-914755068e22",
+            "resumeStoragePath": "/tmp/dscr/.debug/runtime-immediate-reload/probed2/native/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-2062f170-e5fc-40ce-90c4-a51be220ba55",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:44.694Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "2729641e-e286-4278-ba3d-914583eef691",
+            "batchId": 1,
+            "revision": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:44.695Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "2729641e-e286-4278-ba3d-914583eef691",
+            "nodeId": "agent-1-2062f170-e5fc-40ce-90c4-a51be220ba55",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644744695
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:44.695Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 8
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:44.705Z",
+          "kind": "rca/assertCallbacks",
+          "detail": {
+            "pending": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:44.712Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "2729641e-e286-4278-ba3d-914583eef691",
+            "nodeId": "agent-1-2062f170-e5fc-40ce-90c4-a51be220ba55",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644744695,
+            "hostFlushCompletedAtMs": 1791644744712
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:44.712Z",
+          "kind": "rca/state",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "2729641e-e286-4278-ba3d-914583eef691",
+            "live": true,
+            "lifecycle": "starting"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:44.720Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "2729641e-e286-4278-ba3d-914583eef691",
+            "nodeId": "agent-1-2062f170-e5fc-40ce-90c4-a51be220ba55",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644744691,
+            "hostReceivedAtMs": 1791644744694,
+            "hostConsumedAtMs": 1791644744720
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:44.720Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 8
+          }
+        }
+      ]
+    },
+    {
+      "mode": "serial",
+      "productProbe": true,
+      "ordering": "await Agent started, dispatch Terminal",
+      "outcome": "original reload and attached-live assertions passed",
+      "harnessExit": 0,
+      "productHashesBeforeProbes": {
+        "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "artifactDirectory": ".debug/runtime-immediate-reload/serial/native/artifacts",
+      "events": [
+        {
+          "timestamp": "2026-10-10T15:05:11.114Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "provider": "codex",
+            "launchMode": "start",
+            "cols": 92,
+            "rows": 28,
+            "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "resumeStrategy": "fake-provider",
+            "resumeSessionId": "a8213216-b52b-4a1a-9baf-961dc0748a6e",
+            "resumeStoragePath": "/tmp/dscr/.debug/runtime-immediate-reload/serial/native/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.134Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "batchId": 1,
+            "revision": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.135Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711135
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.135Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 10
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.139Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711135,
+            "hostFlushCompletedAtMs": 1791644711139
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.139Z",
+          "kind": "rca/state",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "live": true,
+            "lifecycle": "starting"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.147Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644711133,
+            "hostReceivedAtMs": 1791644711135,
+            "hostConsumedAtMs": 1791644711147
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.147Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 10
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.205Z",
+          "kind": "rca/boundaryBegin",
+          "detail": {
+            "options": {
+              "preserveLiveRuntime": true,
+              "preserveRootRuntimeBindings": false,
+              "waitForLocalPersistence": true,
+              "preserveLocalRecovery": true,
+              "allowRuntimeSupervisorRestart": false
+            },
+            "pending": 0,
+            "operations": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.205Z",
+          "kind": "rca/waitCallbacks",
+          "detail": {
+            "pending": 0
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.403Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-55019674-60ca-4278-97c6-f42583aaae0e",
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "cols": 92,
+            "rows": 28,
+            "shellPath": "/usr/bin/bash",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.438Z",
+          "kind": "rca/assertCallbacks",
+          "detail": {
+            "pending": 0
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.441Z",
+          "kind": "rca/assertCallbacks",
+          "detail": {
+            "pending": 0
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.450Z",
+          "kind": "state/runtimeReloaded",
+          "detail": {
+            "activeSurface": "editor",
+            "nodeCount": 3
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.509Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "batchId": 1,
+            "revision": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.509Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711509
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.510Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 11
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.510Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "terminal",
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "batchId": 1,
+            "revision": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.510Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "nodeId": "terminal-2-55019674-60ca-4278-97c6-f42583aaae0e",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711510
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.510Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 12
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.512Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711509,
+            "hostFlushCompletedAtMs": 1791644711512
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.512Z",
+          "kind": "rca/state",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "live": true,
+            "lifecycle": "starting"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.517Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644711499,
+            "hostReceivedAtMs": 1791644711509,
+            "hostConsumedAtMs": 1791644711517
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.517Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 11
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.518Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "nodeId": "terminal-2-55019674-60ca-4278-97c6-f42583aaae0e",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711510,
+            "hostFlushCompletedAtMs": 1791644711518
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.518Z",
+          "kind": "rca/state",
+          "detail": {
+            "kind": "terminal",
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "live": true,
+            "lifecycle": "live"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.522Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "nodeId": "terminal-2-55019674-60ca-4278-97c6-f42583aaae0e",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644711509,
+            "hostReceivedAtMs": 1791644711510,
+            "hostConsumedAtMs": 1791644711522
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.522Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 12
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.577Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "batchId": 2,
+            "revision": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.577Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711577
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.578Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 13
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.578Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711577,
+            "hostFlushCompletedAtMs": 1791644711578
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.578Z",
+          "kind": "rca/state",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "live": true,
+            "lifecycle": "stopping"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.582Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 2,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644711577,
+            "hostReceivedAtMs": 1791644711577,
+            "hostConsumedAtMs": 1791644711582
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.582Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 13
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.586Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "batchId": 3,
+            "revision": 2
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.586Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 3,
+            "revision": 2,
+            "hostFlushStartedAtMs": 1791644711586
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.586Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 14
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.587Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 3,
+            "revision": 2,
+            "hostFlushStartedAtMs": 1791644711586,
+            "hostFlushCompletedAtMs": 1791644711587
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.587Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 3,
+            "revision": 2,
+            "supervisorEmittedAtMs": 1791644711584,
+            "hostReceivedAtMs": 1791644711586,
+            "hostConsumedAtMs": 1791644711587
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.587Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 14
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.600Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "batchId": 4,
+            "revision": 2
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.600Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 4,
+            "revision": 2,
+            "hostFlushStartedAtMs": 1791644711600
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.600Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 15
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.600Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 4,
+            "revision": 2,
+            "hostFlushStartedAtMs": 1791644711600,
+            "hostFlushCompletedAtMs": 1791644711600
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.600Z",
+          "kind": "rca/state",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "live": false,
+            "lifecycle": "stopped"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.614Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "ef40ff8d-84c3-4010-a0e3-839befc40e6c",
+            "nodeId": "agent-1-dc1ceee2-f660-4361-8df5-51b148d89996",
+            "kind": "agent",
+            "batchId": 4,
+            "revision": 2,
+            "supervisorEmittedAtMs": 1791644711600,
+            "hostReceivedAtMs": 1791644711600,
+            "hostConsumedAtMs": 1791644711614
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.614Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 15
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.688Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "terminal",
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "batchId": 2,
+            "revision": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.688Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "nodeId": "terminal-2-55019674-60ca-4278-97c6-f42583aaae0e",
+            "kind": "terminal",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711688
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.688Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 16
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.688Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "nodeId": "terminal-2-55019674-60ca-4278-97c6-f42583aaae0e",
+            "kind": "terminal",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711688,
+            "hostFlushCompletedAtMs": 1791644711688
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.688Z",
+          "kind": "rca/state",
+          "detail": {
+            "kind": "terminal",
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "live": true,
+            "lifecycle": "stopping"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.691Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "nodeId": "terminal-2-55019674-60ca-4278-97c6-f42583aaae0e",
+            "kind": "terminal",
+            "batchId": 2,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644711687,
+            "hostReceivedAtMs": 1791644711688,
+            "hostConsumedAtMs": 1791644711691
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.692Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 16
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.692Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "terminal",
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "batchId": 3,
+            "revision": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.692Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "nodeId": "terminal-2-55019674-60ca-4278-97c6-f42583aaae0e",
+            "kind": "terminal",
+            "batchId": 3,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711692
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.693Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 17
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.693Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "nodeId": "terminal-2-55019674-60ca-4278-97c6-f42583aaae0e",
+            "kind": "terminal",
+            "batchId": 3,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644711692,
+            "hostFlushCompletedAtMs": 1791644711693
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.693Z",
+          "kind": "rca/state",
+          "detail": {
+            "kind": "terminal",
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "live": false,
+            "lifecycle": "closed"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.707Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "ba49405e-cd18-4f55-91f9-bb46bac0b491",
+            "nodeId": "terminal-2-55019674-60ca-4278-97c6-f42583aaae0e",
+            "kind": "terminal",
+            "batchId": 3,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644711692,
+            "hostReceivedAtMs": 1791644711692,
+            "hostConsumedAtMs": 1791644711707
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:11.707Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 17
+          }
+        }
+      ]
+    },
+    {
+      "mode": "serial2",
+      "productProbe": true,
+      "ordering": "await Agent started, dispatch Terminal",
+      "outcome": "Runtime session updates are still pending. Please try again after they finish.",
+      "harnessExit": 0,
+      "productHashesBeforeProbes": {
+        "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "artifactDirectory": ".debug/runtime-immediate-reload/serial2/native/artifacts",
+      "events": [
+        {
+          "timestamp": "2026-10-10T15:05:47.190Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-5c81175d-bd1a-41f8-8b78-efb1dc16c8f6",
+            "sessionId": "754fc691-6ca7-47c9-97c6-878066f3d3b0",
+            "provider": "codex",
+            "launchMode": "start",
+            "cols": 92,
+            "rows": 28,
+            "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "resumeStrategy": "fake-provider",
+            "resumeSessionId": "52c8c730-c4f0-446b-8bf3-b79cec20d60a",
+            "resumeStoragePath": "/tmp/dscr/.debug/runtime-immediate-reload/serial2/native/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-5c81175d-bd1a-41f8-8b78-efb1dc16c8f6",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.210Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "754fc691-6ca7-47c9-97c6-878066f3d3b0",
+            "batchId": 1,
+            "revision": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.211Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "754fc691-6ca7-47c9-97c6-878066f3d3b0",
+            "nodeId": "agent-1-5c81175d-bd1a-41f8-8b78-efb1dc16c8f6",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644747211
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.211Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 9
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.214Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "754fc691-6ca7-47c9-97c6-878066f3d3b0",
+            "nodeId": "agent-1-5c81175d-bd1a-41f8-8b78-efb1dc16c8f6",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644747211,
+            "hostFlushCompletedAtMs": 1791644747214
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.214Z",
+          "kind": "rca/state",
+          "detail": {
+            "kind": "agent",
+            "sessionId": "754fc691-6ca7-47c9-97c6-878066f3d3b0",
+            "live": true,
+            "lifecycle": "starting"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.222Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "754fc691-6ca7-47c9-97c6-878066f3d3b0",
+            "nodeId": "agent-1-5c81175d-bd1a-41f8-8b78-efb1dc16c8f6",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644747208,
+            "hostReceivedAtMs": 1791644747210,
+            "hostConsumedAtMs": 1791644747222
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.222Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 9
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.286Z",
+          "kind": "rca/boundaryBegin",
+          "detail": {
+            "options": {
+              "preserveLiveRuntime": true,
+              "preserveRootRuntimeBindings": false,
+              "waitForLocalPersistence": true,
+              "preserveLocalRecovery": true,
+              "allowRuntimeSupervisorRestart": false
+            },
+            "pending": 0,
+            "operations": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.286Z",
+          "kind": "rca/waitCallbacks",
+          "detail": {
+            "pending": 0
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.420Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-3ea9c69c-c67c-4d50-a65a-12607efaca2d",
+            "sessionId": "b9fe32c3-0b51-49a8-9ad3-da5c7a5f165a",
+            "cols": 92,
+            "rows": 28,
+            "shellPath": "/usr/bin/bash",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.440Z",
+          "kind": "rca/batch",
+          "detail": {
+            "kind": "terminal",
+            "sessionId": "b9fe32c3-0b51-49a8-9ad3-da5c7a5f165a",
+            "batchId": 1,
+            "revision": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.440Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "b9fe32c3-0b51-49a8-9ad3-da5c7a5f165a",
+            "nodeId": "terminal-2-3ea9c69c-c67c-4d50-a65a-12607efaca2d",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644747440
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.441Z",
+          "kind": "rca/callbackBegin",
+          "detail": {
+            "id": 10
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.463Z",
+          "kind": "rca/assertCallbacks",
+          "detail": {
+            "pending": 1
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.473Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "b9fe32c3-0b51-49a8-9ad3-da5c7a5f165a",
+            "nodeId": "terminal-2-3ea9c69c-c67c-4d50-a65a-12607efaca2d",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644747440,
+            "hostFlushCompletedAtMs": 1791644747473
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.473Z",
+          "kind": "rca/state",
+          "detail": {
+            "kind": "terminal",
+            "sessionId": "b9fe32c3-0b51-49a8-9ad3-da5c7a5f165a",
+            "live": true,
+            "lifecycle": "live"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.480Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "b9fe32c3-0b51-49a8-9ad3-da5c7a5f165a",
+            "nodeId": "terminal-2-3ea9c69c-c67c-4d50-a65a-12607efaca2d",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644747439,
+            "hostReceivedAtMs": 1791644747440,
+            "hostConsumedAtMs": 1791644747480
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:47.480Z",
+          "kind": "rca/callbackEnd",
+          "detail": {
+            "id": 10
+          }
+        }
+      ]
+    },
+    {
+      "mode": "serial-clean",
+      "productProbe": false,
+      "ordering": "await Agent started, dispatch Terminal, await Terminal started",
+      "outcome": "original reload and attached-live assertions passed",
+      "harnessExit": 0,
+      "productHashesBeforeProbes": {
+        "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "artifactDirectory": ".debug/runtime-immediate-reload/serial-clean/native/artifacts",
+      "events": [
+        {
+          "timestamp": "2026-10-10T15:05:25.350Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "provider": "codex",
+            "launchMode": "start",
+            "cols": 92,
+            "rows": 28,
+            "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "resumeStrategy": "fake-provider",
+            "resumeSessionId": "1704d189-b01d-4a03-b96e-aa3160584c58",
+            "resumeStoragePath": "/tmp/dscr/.debug/runtime-immediate-reload/serial-clean/native/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.356Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 0,
+            "hostFlushStartedAtMs": 1791644725356
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.356Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 0,
+            "hostFlushStartedAtMs": 1791644725356,
+            "hostFlushCompletedAtMs": 1791644725356
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.359Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 0,
+            "supervisorEmittedAtMs": 1791644725356,
+            "hostReceivedAtMs": 1791644725356,
+            "hostConsumedAtMs": 1791644725359
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.362Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725362
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.369Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725362,
+            "hostFlushCompletedAtMs": 1791644725369
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.369Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 2,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644725362,
+            "hostReceivedAtMs": 1791644725362,
+            "hostConsumedAtMs": 1791644725369
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.450Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "cols": 92,
+            "rows": 28,
+            "shellPath": "/usr/bin/bash",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort"
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.457Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 0,
+            "hostFlushStartedAtMs": 1791644725457
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.457Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 0,
+            "hostFlushStartedAtMs": 1791644725457,
+            "hostFlushCompletedAtMs": 1791644725457
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.459Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 0,
+            "supervisorEmittedAtMs": 1791644725457,
+            "hostReceivedAtMs": 1791644725457,
+            "hostConsumedAtMs": 1791644725459
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.462Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725462
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.464Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725462,
+            "hostFlushCompletedAtMs": 1791644725464
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.466Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 2,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644725462,
+            "hostReceivedAtMs": 1791644725462,
+            "hostConsumedAtMs": 1791644725466
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.480Z",
+          "kind": "state/runtimeReloaded",
+          "detail": {
+            "activeSurface": "editor",
+            "nodeCount": 3
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.504Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725504
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.504Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725504
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.505Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725504,
+            "hostFlushCompletedAtMs": 1791644725505
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.507Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 1,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644725497,
+            "hostReceivedAtMs": 1791644725504,
+            "hostConsumedAtMs": 1791644725507
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.507Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725504,
+            "hostFlushCompletedAtMs": 1791644725507
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.510Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 1,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644725503,
+            "hostReceivedAtMs": 1791644725504,
+            "hostConsumedAtMs": 1791644725510
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.593Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725593
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.593Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725593,
+            "hostFlushCompletedAtMs": 1791644725593
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.595Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 2,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644725592,
+            "hostReceivedAtMs": 1791644725593,
+            "hostConsumedAtMs": 1791644725595
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.597Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 3,
+            "revision": 2,
+            "hostFlushStartedAtMs": 1791644725597
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.599Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 3,
+            "revision": 2,
+            "hostFlushStartedAtMs": 1791644725597,
+            "hostFlushCompletedAtMs": 1791644725599
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.599Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 3,
+            "revision": 2,
+            "supervisorEmittedAtMs": 1791644725597,
+            "hostReceivedAtMs": 1791644725597,
+            "hostConsumedAtMs": 1791644725599
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.599Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 4,
+            "revision": 2,
+            "hostFlushStartedAtMs": 1791644725599
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.599Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 4,
+            "revision": 2,
+            "hostFlushStartedAtMs": 1791644725599,
+            "hostFlushCompletedAtMs": 1791644725599
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.616Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "586873c5-bbf8-45b3-a4d6-eac036e57155",
+            "nodeId": "agent-1-6b71a036-ab6f-4abd-9e48-a6ca290e7fdc",
+            "kind": "agent",
+            "batchId": 4,
+            "revision": 2,
+            "supervisorEmittedAtMs": 1791644725599,
+            "hostReceivedAtMs": 1791644725599,
+            "hostConsumedAtMs": 1791644725616
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.700Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725700
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.700Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 2,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725700,
+            "hostFlushCompletedAtMs": 1791644725700
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.703Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 2,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644725700,
+            "hostReceivedAtMs": 1791644725700,
+            "hostConsumedAtMs": 1791644725703
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.726Z",
+          "kind": "runtime/terminalBatchFlushStarted",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 3,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725726
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.726Z",
+          "kind": "runtime/terminalBatchFlushCompleted",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 3,
+            "revision": 1,
+            "hostFlushStartedAtMs": 1791644725726,
+            "hostFlushCompletedAtMs": 1791644725726
+          }
+        },
+        {
+          "timestamp": "2026-10-10T15:05:25.735Z",
+          "kind": "runtime/terminalBatchConsumed",
+          "detail": {
+            "sessionId": "63023ee4-0469-43ba-b75e-8a0ee0c114e1",
+            "nodeId": "terminal-2-c15231a3-f111-444b-893b-b1edaa61ca99",
+            "kind": "terminal",
+            "batchId": 3,
+            "revision": 1,
+            "supervisorEmittedAtMs": 1791644725726,
+            "hostReceivedAtMs": 1791644725726,
+            "hostConsumedAtMs": 1791644725735
+          }
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "hostBoundarySuite": "node scripts/test/test-runtime-host-deactivation-integrity.mjs: exit 0",
+    "fullGate": "not rerun; still blocked",
+    "realNewHostReload": "not validated in this investigation",
+    "cleanup": "all six isolated VS Code runs exited; no matching isolated Supervisor process remained"
+  }
+}

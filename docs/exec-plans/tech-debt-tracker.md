@@ -582,3 +582,9 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 完整默认 VSIX 前六个独立阶段通过，local-links-and-stop 的 URL 尾部发生无进展停滞，HTTP listener 已关闭但浏览器TCP连接未断；超过五分钟取证后结束隔离VS Code。该阶段同载荷原测试独立重跑通过，首次停滞未完成根因定位，不追认其成功。trusted 原顺序在下一项 `verifyImmediateReloadAfterLiveRuntimeLaunch:11000` 报 Runtime session updates are still pending.，现场 Agent 启动 rejected-before-acquire、Terminal live；二者与边界回调的因果待定位。保留原断言、准入及未知责任保护，完整 gate、后续 Host/reload/checkpoint 与跨平台验收仍未通过/未执行。
 
 证据：`docs/references/smoke-reload-autostart/runtime-resume-exit-summary-fix-evidence.json`；原生复验：相邻 `runtime-resume-exit-summary-verification.mjs`；计划：`docs/exec-plans/completed/runtime-resume-exit-summary-repair.md`。本轮隔离会话及 Supervisor 已清理。
+
+## 立即模拟 reload 的启动准入及回调时序（2026-10-10，PR #314，待修复）
+
+已定位上一节阻塞：独立立即 reload 用例仍并发启动，与 starting=1 冲突；即使串行到第一项 started，第二项启动后的首批正文也可能在边界首次回调等待之后进入，触发 pending 安全拒绝。原生对照中回调在拒绝后 17ms 正常 consumed/结束，两个启动均成功，排除两者必然同源及该次回调泄漏。无探针分别等待两项 started 的对照通过，但不保证所有持续输出交错。
+
+正式 smoke 与产品未改。后续须同时处理启动前提和模拟边界语义，保留原 session 身份、pending 保护与有界失败；实际“启动后立即 Reload Window”需新 Host 验收，不能用等待输出安静悄悄代替。真实退出先关闭事件准入，本轮未证明其存在相同故障。完整 gate、历史 URL 清理停滞和后续矩阵仍未收口。证据及复跑脚本：`docs/references/smoke-reload-autostart/runtime-immediate-reload-evidence.json`、相邻 `runtime-immediate-reload-investigation.mjs`；计划：`docs/exec-plans/completed/runtime-immediate-reload-investigation.md`。
