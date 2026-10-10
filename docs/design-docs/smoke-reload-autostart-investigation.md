@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md]
+related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md]
 updated_at: 2026-10-10
 ---
 
@@ -164,3 +164,15 @@ PR #314 获授权继续修复后，`CanvasPanelManager.persistNonNativeHostFinal
 2026-10-10 实施验证：修前正式回归因 attention 未置位失败；修后新增 19 项、完整 Host **395/395**、类型检查与 notifier source 验证通过。覆盖 Codex/Claude 的 running/waiting-input、正常退出/主动停止/未运行状态/信号关闭、正文覆盖、重复及旧绑定、投递挂起/失败、workbench 拒绝和保存失败。投递挂起时通过原 Host reader 完成入口确认，原执行仍可退休；提醒在原最终保存中，不依赖额外普通保存。
 
 默认真实 VSIX 完成构建打包，owned reconciliation 与 local execution flow 两阶段通过。trusted 已通过 Codex **exit 27** 的事件/attention/提示、关闭信号后的 exit 29 抑制、后续正文通知用例，以及 Claude **exit 33** 的事件/attention/提示和用户确认。原通知缺口已收口。完整命令随后在同一测试函数后段的 Claude 恢复启动失败检查超时：期待 `resume-failed`，实际 `error`、lastExitCode=33、attentionPending=false、lastResumeError 缺失，原执行已保存并退休。此处没有误发通知；当前本地终态分类缺少旧路径的 `resumePhaseActive → resume-failed` 分支，是单独的恢复状态缺口，本次未修改该分类或 smoke 断言，仍阻塞完整 trusted。相关通知事件被后续子用例清理，本次以原脚本顺序和失败栈位置证明已通过的断言，不把最终空诊断当作通知未发生。证据见 `docs/references/smoke-reload-autostart/exit-notification-repair-evidence.json`。
+
+
+## 本地 Agent 恢复启动失败的正式方案
+
+PR #314 继续补回 snapshot-only 的恢复阶段终态语义。`CanvasPanelManager.persistNonNativeHostFinal` 先沿用正常停止/退出判断，再对原 Agent 的 `business.resumePhaseActive` 选择 `resume-failed`；该标志已在实际恢复启动时设置，并在输入确认或正文观察进入 waiting-input 后清除，不以 launchMode=resume 终身判作恢复失败。消息复用 `describeAgentResumeFailure`，同时保存 summary、lastExitMessage 与 lastResumeError；原正文不完整信息继续追加。普通 Agent 终态以及新尝试的 business 投影清除陈旧恢复错误。
+
+原身份、metadata 和 process/source/finalRevision 检查先于新分类；失败未知不能伪造恢复失败完成。恢复期失败不触发运行期异常通知，恢复完成后异常退出沿用 error 通知。终端状态、严格最终保存及 reader 结算不改变。实施与验证见 `docs/exec-plans/completed/owned-agent-resume-failure.md`。
+
+
+2026-10-10 验证结果：恢复期非零退出回归修前得到 error 而非 resume-failed；修后定向 **14/14**、完整 Host **409/409** 与类型检查通过。两 provider 均从真实 resumeRequested 和恢复 identity 启动，覆盖非零/信号失败、正常退出、主动停止、实际输入或提示完成恢复后再失败、未知 process，以及恢复原因与原正文同次保存和旧错误清除。
+
+默认真实 VSIX 构建打包及 owned reconciliation、local execution flow 均通过；trusted 的整个 `verifyAgentAbnormalInterruptionNotifications` 已完成，包括原 Claude 恢复失败状态/无提醒检查和新增 lastResumeError、summary、lastExitMessage、resumeSessionId 一致性检查。恢复失败缺口已收口。随后 `verifyExecutionTerminalNativeInteractions` 在拖放文件路径验证超时：原 Terminal live，同 executionId 已交付 `DEV_SESSION_CANVAS_NATIVE_DROP:`，但没有路径；诊断为 `execution/dropResourceRejected`、reason=missing-session。源码 `handleDroppedExecutionResource` 只查旧 session map，未接当前 owned 执行；测试又仍从历史 metadata.recentOutput 等待实时正文。两项都需要后续处理，不能只改断言或声称完整门禁通过。本轮未修改拖放入口及该测试；原现场及精简证据见 `docs/references/smoke-reload-autostart/resume-failure-repair-evidence.json`。

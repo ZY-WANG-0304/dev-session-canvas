@@ -7765,6 +7765,10 @@ async function verifyAgentAbnormalInterruptionNotifications() {
         await sleep(300);
         const claudeResumeFailedNode = findNodeById(await getDebugSnapshot(), claudeAgent.id);
         assert.strictEqual(claudeResumeFailedNode.metadata.agent.attentionPending, false);
+        assert.ok(claudeResumeFailedNode.metadata.agent.lastResumeError, 'Expected the resume failure reason to be saved.');
+        assert.strictEqual(claudeResumeFailedNode.metadata.agent.lastResumeError, claudeResumeFailedNode.summary);
+        assert.strictEqual(claudeResumeFailedNode.metadata.agent.lastExitMessage, claudeResumeFailedNode.summary);
+        assert.strictEqual(claudeResumeFailedNode.metadata.agent.resumeSessionId, resumeSessionId);
         const claudeResumeDiagnostics = await getDiagnosticEvents();
         assert.ok(
           !claudeResumeDiagnostics.some(

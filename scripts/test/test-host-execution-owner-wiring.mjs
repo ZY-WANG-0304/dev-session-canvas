@@ -4448,11 +4448,12 @@ async function interactiveHostFixture(kind = 'terminal', providerKind = 'codex',
   const persist = f.host.persistState.bind(f.host);
   f.host.persistState = async (...args) => { await persist(...args); };
   if (kind === 'agent') {
-    f.host.state.nodes.find(node => node.kind === kind).metadata.agent = { provider: providerKind };
+    f.host.state.nodes.find(node => node.kind === kind).metadata.agent = { provider: providerKind, ...options.agentMetadata };
+    if (options.resumeContext) f.host.resolveAgentResumeContext = () => options.resumeContext;
     f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: providerKind });
   }
   await completed(f.clock, kind === 'agent'
-    ? f.host.startAgentSession('agent-1', 113, 39, providerKind, false)
+    ? f.host.startAgentSession('agent-1', 113, 39, providerKind, options.resumeRequested ?? false)
     : f.host.startTerminalSession('terminal-1', 113, 39), `${kind} interactive owner start`);
   const record = f.record(kind);
   f.host.state.nodes.find(node => node.kind === kind).metadata[kind].cwd = '/controlled';
@@ -5938,6 +5939,93 @@ for (const replacement of ['metadata', 'record', 'node']) {
       assert.notEqual(f.node()?.metadata.agent.attentionPending, true);
     } finally { await f.cleanup(); }
   });
+}
+
+
+for (const providerKind of ['codex', 'claude']) {
+  for (const scenario of ['failure', 'signal', 'exit-zero', 'stop', 'input', 'prompt', 'unknown']) {
+    test(`owned resume final ${providerKind} ${scenario} preserves phase and recovery metadata`, async () => {
+      const f = await interactiveHostFixture('agent', providerKind, {
+        resumeRequested: true,
+        agentMetadata: { lastResumeError: 'previous attempt failed' },
+        resumeContext: { supported: true, strategy: 'fake-provider', sessionId: 'original-resume-id' }
+      });
+      const initialResumeError = f.host.state.nodes.find(node => node.id === 'agent-1').metadata.agent.lastResumeError;
+      const shown = [];
+      const finalStates = [];
+      f.host.enabledAttentionSignals = ['agentAbnormalExit'];
+      f.host.attentionNotificationBridgeMode = 'workbench';
+      f.host.showExecutionAttentionNotification = async (...args) => { shown.push(args); };
+      const persist = f.host.persistState.bind(f.host);
+      f.host.persistState = async options => {
+        if (options?.reason === 'local-final-snapshot') finalStates.push(structuredClone(f.host.state));
+        await persist(options);
+      };
+      try {
+        assert.equal(f.record.business.launchMode, 'resume');
+        assert.equal(f.record.business.lifecycleStatus, 'resuming');
+        assert.equal(f.record.business.resumePhaseActive, true);
+        assert.deepEqual(f.provider.messages.find(message => message.type === 'start').spec.args,
+          ['resume', 'original-resume-id']);
+        if (scenario === 'input') {
+          const writing = f.host.writeExecutionInput('agent', 'agent-1', 'continue\r');
+          await until(f.clock, () => f.requests.some(m => m.type === 'input'), 'resume input submitted');
+          f.reply(f.requests.find(m => m.type === 'input'), { kind: 'written', writtenBytes: 9 });
+          assert.equal(await completed(f.clock, writing, 'resume input confirmed'), true);
+          assert.equal(f.record.business.lifecycleStatus, 'running');
+          assert.equal(f.record.business.resumePhaseActive, false);
+        }
+        f.provider.output(1, scenario === 'prompt' ? 'restored\r\n> ' : 'resume transport ended\r\n');
+        await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === 1, 'original resume output consumed');
+        if (scenario === 'prompt') {
+          f.clock.advance(300);
+          assert.equal(f.record.business.lifecycleStatus, 'waiting-input');
+          assert.equal(f.record.business.resumePhaseActive, false);
+        }
+        let stopping;
+        if (scenario === 'stop') {
+          stopping = f.host.stopExecutionSession('agent', 'agent-1');
+          await until(f.clock, () => f.record.execution.snapshot().stopRequested, 'explicit resume stop');
+        }
+        const result = scenario === 'signal' ? { kind: 'signaled', signal: 'SIGTERM' }
+          : scenario === 'unknown' ? { kind: 'unconfirmed', reason: 'resume process outcome unknown' }
+          : { kind: 'exited', exitCode: scenario === 'exit-zero' ? 0 : 33 };
+        f.provider.message({ type: 'processResult', result });
+        f.provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+        f.provider.seal(1); f.provider.release();
+        await until(f.clock, () => f.record.persistence.result !== undefined, 'original resume final persistence');
+        if (stopping) await completed(f.clock, stopping, 'resume stop completed');
+        const node = f.host.state.nodes.find(node => node.id === 'agent-1');
+        if (scenario === 'unknown') {
+          assert.equal(f.record.persistence.result.kind, 'unconfirmed');
+          assert.equal(finalStates.length, 0);
+          assert.notEqual(node.status, 'resume-failed');
+          assert.equal(shown.length, 0);
+        } else {
+          const resumeFailed = scenario === 'failure' || scenario === 'signal';
+          const status = resumeFailed ? 'resume-failed' : ['stop', 'exit-zero'].includes(scenario) ? 'stopped' : 'error';
+          assert.equal(f.record.persistence.result.kind, 'saved');
+          assert.equal(node.status, status);
+          const saved = finalStates[0].nodes.find(node => node.id === 'agent-1');
+          assert.equal(saved.status, status);
+          assert.equal(saved.metadata.agent.lifecycle, status);
+          assert.equal(saved.metadata.agent.lastExitCode, result.exitCode);
+          assert.equal(saved.metadata.agent.lastExitSignal, result.signal);
+          assert.equal(saved.metadata.agent.resumeSessionId, 'original-resume-id');
+          assert.equal(saved.metadata.agent.liveSession, false);
+          assert.equal(saved.metadata.agent.lastExitMessage, saved.summary);
+          assert.match(saved.metadata.agent.serializedTerminalState.data, /restored|resume transport ended/);
+          assert.equal(saved.metadata.agent.lastResumeError, resumeFailed ? saved.summary : undefined);
+          if (resumeFailed) assert.match(saved.summary, /while resuming/);
+          assert.equal(shown.length, status === 'error' ? 1 : 0);
+          assert.equal(saved.metadata.agent.attentionPending === true, status === 'error');
+          f.host.persistNonNativeHostFinal(f.record, { kind: 'applied', finalRevision: 1, throughDataSequence: 1 });
+          assert.equal(finalStates.length, 1, 'same original final is persisted only once');
+        }
+        assert.equal(initialResumeError, undefined, 'a new attempt clears the previous resume error');
+      } finally { await f.cleanup(); }
+    });
+  }
 }
 
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;

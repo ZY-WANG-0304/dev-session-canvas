@@ -1,0 +1,135 @@
+{
+  "date": "2026-10-10",
+  "baseline": "462d8b6ab9d73045c419c12007c770394e81cae9",
+  "target": "origin/main@78c58c2a2cecd053199c9bada6084868f9255877",
+  "scope": "PR #314；修复 snapshot-only Agent 恢复阶段失败分类及保存原因；无版本或发布变更。",
+  "changes": [
+    "停止/正常退出优先；仍处于 resumePhaseActive 的 Agent 异常结束选择 resume-failed。",
+    "复用 describeAgentResumeFailure（仅需 label），summary/lastExitMessage/lastResumeError 同次最终保存，保留退出事实与正文。",
+    "新尝试的 business 投影及非恢复失败终态清除旧 lastResumeError；恢复完成后失败仍为 error 并沿用通知。",
+    "原身份、metadata、未知结果、最终保存与 reader 结算保护保持；smoke 保留原断言并新增错误字段一致性。"
+  ],
+  "automated": {
+    "before": {
+      "command": "DEV_SESSION_CANVAS_HOST_TEST_FILTER='owned resume final codex failure' node scripts/test/test-host-execution-owner-wiring.mjs",
+      "result": "failed: error !== resume-failed",
+      "log": ".debug/resume-failure-fix/before.log"
+    },
+    "targeted": {
+      "result": "14/14 passed",
+      "log": ".debug/resume-failure-fix/targeted.log"
+    },
+    "host": {
+      "command": "node scripts/test/test-host-execution-owner-wiring.mjs",
+      "result": "409/409 passed",
+      "newTests": 14,
+      "log": ".debug/resume-failure-fix/host.log"
+    },
+    "typecheck": {
+      "command": "npm run typecheck",
+      "result": "passed",
+      "log": ".debug/resume-failure-fix/typecheck.log"
+    },
+    "coverage": [
+      "Codex/Claude 以真正 resumeRequested 和恢复 identity 启动。",
+      "恢复期非零退出和信号退出：resume-failed、同次最终保存原因、无运行期异常通知。",
+      "正常退出/主动停止仍 stopped；实际输入确认或 prompt 观察完成恢复后再异常退出为 error 并通知。",
+      "新尝试清除旧恢复错误；保留恢复 identity、退出码/信号、原正文、保存去重；未知 process 不伪造成功结算。"
+    ]
+  },
+  "native": {
+    "command": "npm run test:vsix-smoke",
+    "filter": null,
+    "environment": {
+      "platform": "Linux x64",
+      "node": "22.23.3",
+      "vscode": "1.141.0",
+      "provider": "当前原生 PTY + fake Agent",
+      "runtimePersistence": false
+    },
+    "package": "主扩展 typecheck/build/package 与 notifier build 通过",
+    "stages": {
+      "owned-canvas-reconciliation": "passed",
+      "local-execution-flow": "passed",
+      "trusted": "failed in verifyExecutionTerminalNativeInteractions:7999"
+    },
+    "resumeResult": "原 verifyAgentAbnormalInterruptionNotifications 完成，含 Codex/Claude 异常退出、信号开关、正文通知和 Claude resume-failed/no-attention；新增 lastResumeError 非空、summary/lastExitMessage 一致和原 resumeSessionId 保留检查通过。",
+    "resumeEvidenceBasis": "原脚本顺序执行，异常通知函数返回后进入下一 verifyExecutionTerminalNativeInteractions；恢复失败节点已按原用例删除。未伪造已被清理的早期通知/恢复事件。",
+    "fullGatePassed": false,
+    "log": ".debug/resume-failure-fix/vsix.log",
+    "artifacts": ".debug/resume-failure-fix/trusted-artifacts",
+    "remainingFailure": {
+      "description": "终端拖放路径未写入，并且测试仍从历史 recentOutput 等待实时结果。",
+      "execution": {
+        "kind": "terminal",
+        "nodeId": "terminal-2-6a9d2b88-f7ad-47a9-890c-8f4984124628",
+        "identity": {
+          "executionId": "a344b3f8-00bc-4a9e-b719-2a5ec79ff279",
+          "generation": "a6fb5399-a9ae-454a-a37a-75d4c52fc5a5"
+        },
+        "retired": false,
+        "persistence": {
+          "submitted": false
+        }
+      },
+      "nodeStatus": "live",
+      "liveSession": true,
+      "diagnostic": [
+        {
+          "timestamp": "2026-10-10T00:54:40.695Z",
+          "kind": "execution/dropResourceRejected",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-6a9d2b88-f7ad-47a9-890c-8f4984124628",
+            "reason": "missing-session",
+            "source": "resourceUrls"
+          }
+        }
+      ],
+      "deliveredOutput": [
+        {
+          "executionSessionId": "a344b3f8-00bc-4a9e-b719-2a5ec79ff279",
+          "outputStartSequence": 1,
+          "outputSequence": 1,
+          "chunk": "ziyang01.wang-al@hobot:/tmp/dscr$ "
+        },
+        {
+          "executionSessionId": "a344b3f8-00bc-4a9e-b719-2a5ec79ff279",
+          "outputStartSequence": 2,
+          "outputSequence": 2,
+          "chunk": "printf 'DEV_SESSION_CANVAS_NATIVE_DROP:%s\\n' "
+        },
+        {
+          "executionSessionId": "a344b3f8-00bc-4a9e-b719-2a5ec79ff279",
+          "outputStartSequence": 3,
+          "outputSequence": 3,
+          "chunk": "\r\nDEV_SESSION_CANVAS_NATIVE_DROP:\r\nziyang01.wang-al@hobot:/tmp/dscr$ "
+        },
+        {
+          "executionSessionId": "a344b3f8-00bc-4a9e-b719-2a5ec79ff279",
+          "outputStartSequence": 5,
+          "outputSequence": 5,
+          "chunk": "\r                                                                         \rziyang01.wang-al@hobot:/tmp/dscr$ "
+        }
+      ],
+      "legacyRecentOutput": "<printf 'DEV_SESSION_CANVAS_%s_SMOKE\\n' TERMINAL                         \nDEV_SESSION_CANVAS_TERMINAL_SMOKE\nziyang01.wang-al@hobot:/tmp/dscr$",
+      "sourceFinding": "handleDroppedExecutionResource 仅查 getExecutionSessions(kind)，不识别当前 nonNativeHostExecutions，真实现场因此报 missing-session。",
+      "testFinding": "extension-tests.cjs:7999 仍等待 metadata.terminal.recentOutput；实际同执行输出为 DEV_SESSION_CANVAS_NATIVE_DROP:，缺少路径，不能只改断言当作修复。",
+      "status": "独立阻塞，本轮未改拖放产品入口和该测试。"
+    },
+    "sourceHashes": {
+      "failure-error.txt": "02c290b70b45b848e6b24a5dde922eea47ed6c685419c9734264987ca511f493",
+      "failure-host-messages.json": "27c28c83fec4e064deb0767160f9b86fc9f7b7201fab7a3a65b2f5861bad9506",
+      "failure-diagnostic-events.json": "b9b0ac279e80fce4957e6e4d7e47aef7a84b05568957df2720758a90ce30ef2a"
+    }
+  },
+  "limits": [
+    "完整 trusted 仍未通过，终端拖放接线和旧输出断言需继续修复。",
+    "未原生复验 RuntimePersistence 开启、真实 Agent 服务、其他平台或跨版本/Remote SSH。"
+  ],
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "4354810c6fd7bd698586ed1ff696076b5440c8c93719f2411be597c5ce4544c8",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "2db1f5d4858c6133f0aa8595ab0f59da6acdcf5a7b4f41d77732be78b657e78f",
+    "tests/vscode-smoke/extension-tests.cjs": "32c82b9d4b49488717ba344082651b2dc88c9383ce2ea08e1709a632c784f89b"
+  }
+}

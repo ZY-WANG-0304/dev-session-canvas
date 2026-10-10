@@ -17479,16 +17479,22 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const stopped = snapshot.stopRequested || process.kind === 'terminated'
       || (process.kind === 'exited' && process.exitCode === 0);
-    const status = stopped ? (record.kind === 'agent' ? 'stopped' : 'closed') : 'error';
+    const resumeFailed = !stopped && record.kind === 'agent' && record.business?.resumePhaseActive === true;
+    const status = stopped ? (record.kind === 'agent' ? 'stopped' : 'closed') : resumeFailed ? 'resume-failed' : 'error';
     const incompleteReason = seal.source.kind === 'eof' ? undefined : seal.source.reason;
-    const exitMessage = process.kind === 'exited'
+    const cleanedOutput = stripTerminalControlSequences(terminal.data);
+    const exitMessage = resumeFailed
+      ? describeAgentResumeFailure({ label: agentProviderDisplayLabel(record.business!.agentProvider ?? 'codex') },
+        process.kind === 'exited' ? process.exitCode : null,
+        process.kind === 'exited' || process.kind === 'signaled' ? process.signal : undefined, cleanedOutput)
+      : process.kind === 'exited'
       ? vscode.l10n.t('Session ended with exit code {code}.', { code: process.exitCode })
       : process.kind === 'signaled'
         ? vscode.l10n.t('Session exited due to signal {signal}.', { signal: process.signal })
         : vscode.l10n.t('Session terminated: {reason}', { reason: process.reason });
     const message = incompleteReason
       ? vscode.l10n.t('{message} Output is incomplete: {reason}', { message: exitMessage, reason: incompleteReason }) : exitMessage;
-    const recentOutput = extractRecentTerminalOutput(stripTerminalControlSequences(terminal.data));
+    const recentOutput = extractRecentTerminalOutput(cleanedOutput);
     const metadata = buildExecutionMetadataPatch(this.state, record.nodeId, record.kind, {
       lifecycle: status, persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
       terminalProjectionMode: undefined, runtimeBackend: undefined, runtimeGuarantee: undefined,
@@ -17499,6 +17505,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       outputSequence: record.finalRevision, lastExitCode: process.kind === 'exited' ? process.exitCode : undefined,
       lastExitSignal: process.kind === 'exited' || process.kind === 'signaled' ? process.signal : undefined,
       lastExitMessage: message, lastRuntimeError: incompleteReason,
+      ...(record.kind === 'agent' ? { lastResumeError: resumeFailed ? message : undefined } : {}),
       lastCols: record.cols, lastRows: record.rows, serializedTerminalState: terminal
     });
     const nextState = updateExecutionNode(this.state, record.nodeId, record.kind, { status, summary: message, metadata });
@@ -17798,7 +17805,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       pendingLaunch: undefined, terminalTitle: business.terminalTitle, lastCols: record.cols, lastRows: record.rows,
       ...(record.kind === 'agent' ? { provider: business.agentProvider, resumeSupported: business.agentResume?.supported,
         resumeStrategy: business.agentResume?.strategy, resumeSessionId: business.agentResume?.sessionId,
-        resumeStoragePath: business.agentResume?.storagePath } : {})
+        resumeStoragePath: business.agentResume?.storagePath, lastResumeError: undefined } : {})
     });
     this.state = updateExecutionNode(this.state, record.nodeId, record.kind, {
       status: business.lifecycleStatus,
@@ -30748,7 +30755,7 @@ function describeAgentSessionExit(
 }
 
 function describeAgentResumeFailure(
-  spec: AgentCliSpec,
+  spec: Pick<AgentCliSpec, 'label'>,
   code: number | null,
   signal: string | undefined,
   output: string
