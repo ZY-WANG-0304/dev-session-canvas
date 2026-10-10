@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md]
+related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md, docs/exec-plans/completed/owned-start-admission-investigation.md, docs/exec-plans/completed/owned-start-admission-repair.md]
 updated_at: 2026-10-10
 ---
 
@@ -249,3 +249,19 @@ PR #314 继续补回 snapshot-only 的恢复阶段终态语义。`CanvasPanelMan
 源码历史显示：`6dec5545`（2026-04-08）加入该 smoke 的连续派发顺序；`e9a3b3f7`（2026-09-24）共享核心已有 starting=1；`c1b6bc8b`（2026-09-25）接入 owned Host 启动分支时留下向外抛错路径，页面入口的仅 RuntimePersistence 跟踪来自 `005e94c7`（2026-04-09）；`7f1e1887`（2026-10-02）把正式容量收口为 executions=null/pending=2，继续保留 starting=1。它们说明旧 smoke 和 owned 生命周期契约未一起校准，不能把最后的容量提交或本轮滚动历史修正单独当成首次受影响版本；本轮未复验历史发布包。
 
 精简证据见 `docs/references/smoke-reload-autostart/start-admission-evidence.json`。相邻 `start-admission-probe.patch` 与 `start-admission-characterization.patch` 可在 `2b828114` 应用复跑；前者仅供原生拒绝观测，后者可单独运行 `DEV_SESSION_CANVAS_HOST_TEST_FILTER='start admission characterization' node scripts/test/test-host-execution-owner-wiring.mjs`（Node 22，先安装依赖）。临时探针/测试已恢复，三个源文件 hash 与基线一致，正式代码未改。夹具调试曾缺少生产必需的 output-credit 能力、connect 计数也曾安装在 owner 复制选项之后；已校正，失败不作为产品证据。完整 VSIX 仍为失败，本轮没有用串行变体代证后续 Runtime/恢复/压力场景，也没有验证跨版本矩阵。计划见 `docs/exec-plans/completed/owned-start-admission-investigation.md`。
+
+
+## 页面启动拒绝反馈的正式方案
+
+PR #314 后续授权修复采用页面请求边界消费失败：`CanvasPanelManager.handleWebviewMessage` 为 Agent/Terminal 的启动 promise 立即注册 catch，并保留 RuntimePersistence 的操作跟踪。`startNonNativeHostExecution` 对非 started 结果抛出带原 execution identity 与原结果的内部类型化错误；明确的 rejected-before-acquire 显示“当前无法启动，请等待进行中的操作结束后重试”，其它错误显示启动失败原因，并通过同一次诊断区分结果。页面请求对比派发前后的 owned record，只捕获本请求新建的记录及 metadata，不把占据同 key 的旧执行当作新请求；失败时按原 record 的当前路由、stopRequested、当前 Host 记录及 metadata 绑定判断请求是否已取消/替换/删除，这些迟到结果只记录 suppressed 诊断，不向后续页面弹错。页面观察不解析错误文本推断资源，也不进行停止、清理或节点/metadata 写入；观察者失败不再次成为未处理拒绝。普通 Error 提示只展示 message，不把内部 stack 传给用户。内部 awaited 启动继续拒绝，已由内部处理的 Runtime 错误不重复通知。
+
+恢复 smoke 在首个 Agent live 后捕获 executionId，等待该原执行的 started 诊断才发 Terminal；Terminal 同样等其原身份的 started 后才进入 reload 检查。早期正文可能先投影 live，不能单凭 live 保证启动槽已释放。后续恢复状态和正文断言保留，尚未触达的旧正文等待单独跟踪。该修正不放宽 starting/pending，不增加自动重试、隐藏排队或固定 sleep。实施和验证进度见 `docs/exec-plans/completed/owned-start-admission-repair.md`。
+
+
+2026-10-10 实施验证：修前通过真实页面 handler 触发的并发拒绝使 Node 以未处理拒绝退出；修后新增 **20 项**、完整 Host **454/454**、类型检查、UI 本地化和正文 helper **14/14** 通过。覆盖双向重叠拒绝/释放后重试、准备失败/关闭准入、取消/替换/删除请求的迟到反馈、旧 stopping 记录阻塞新请求、unknown 原责任保留、Runtime 跟踪与避免重复提示、诊断或页面观察者失败。内部直接调用仍按原测试 reject，原资源结算未改变。
+
+最终默认真实 VSIX 构建打包、owned reconciliation、local execution flow 均通过。trusted 越过 `verifyRealWebviewProbe`，本轮曾出现的迟到 toast 回归路径已修复；通知/恢复失败、整个 native interactions、滚动历史、标签视口和主题检查也通过。`verifyRuntimeReloadRecovery` 的 Agent 于 03:49:28.284Z started，Terminal 请求在 28.384Z 才派发，并于 28.539Z started；原启动拒绝已收口。
+
+**最新独立阻塞发生在该函数自身 reload 之后**：两条执行最终保存均为 saved，28.688Z 返回 runtimeReloaded 后 Agent 为 stopped、Terminal 为 closed，测试期待 resume-ready/interrupted；Agent 的 resumeSupported、fake-provider 策略和 resumeSessionId 均保留。本轮未放宽状态断言或修改该恢复语义。源码线索是 Host boundary 先关闭 owned 执行并等待最终保存，`persistNonNativeHostFinal` 将 stopRequested 保存为 stopped/closed、liveSession=false，随后 `reconcileRuntimeNodes` 只为仍带 liveSession 的快照建立恢复意图；是否应区分 Host boundary 与用户主动停止，需下一轮按正式生命周期约束完成定位，不能直接以更改断言收口。后续 resuming/正文/退出和 Runtime/压力矩阵未完成。
+
+本轮中间另有一次早期 Host boundary 报 `Local final snapshot persistence is pending`，工件保留；最终代码默认重跑跨过该点，但无法追认当次保存完成或断言它与本次 reload 状态冲突同源。根因待进一步证据，本轮未改保存期限。精简证据与各轮原工件摘要见 `docs/references/smoke-reload-autostart/start-admission-repair-evidence.json`。完整门禁仍失败，不把具名启动修复写成完整发布可用。

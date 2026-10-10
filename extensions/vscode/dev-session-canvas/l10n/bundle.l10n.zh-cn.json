@@ -1,4 +1,5 @@
 {
+  "Cannot start {label} right now. Wait for pending operations to finish and try again.": "当前无法启动 {label}。请等待进行中的操作结束后重试。",
   "Timed out waiting for runtime supervisor request {method}. The operation may already have occurred; its result is unknown. It was not automatically retried.": "等待运行时 Supervisor 请求 {method} 的响应超时。操作可能已经发生，结果未知，未自动重试。",
   "Dev Session Canvas": "Dev Session Canvas",
   "Select the shell for embedded Terminal": "选择嵌入式 Terminal 要使用的 shell",

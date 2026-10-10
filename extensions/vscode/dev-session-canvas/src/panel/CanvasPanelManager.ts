@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import { ExecutionOwnerLifecycle, type ExecutionOwnerOptions, type OwnedExecution, type OwnerCloseResult } from './executionOwnerLifecycle';
 import { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_CANDIDATE_PROFILE, EXECUTION_INTERACTION_LIMITS,
   assertExecutionCandidateProfile, assertExecutionCandidateCapabilities, hasExecutionAdmissionCapacity, type ExecutionCandidateProfile,
-  type AuthorityResult, type ExecutionIdentity, type LaunchSpec } from '../common/executionLifecycle';
+  type AuthorityResult, type ExecutionIdentity, type LaunchSpec, type OperationResult } from '../common/executionLifecycle';
 import type { ExecutionScheduler, InteractionObservation } from './executionSessionAdapter';
 import {
   ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
@@ -1150,6 +1150,15 @@ interface PersistedCanvasStateFlushResult {
   lastError?: string;
   writtenAt?: string;
   snapshot?: PersistedCanvasSnapshot;
+}
+
+class LocalExecutionStartError extends Error {
+  constructor(
+    readonly identity: ExecutionIdentity,
+    readonly result: Exclude<OperationResult, { kind: 'started' }>
+  ) {
+    super(`Non-native Host start was ${result.kind}.${result.reason ? ` ${result.reason}` : ''}`);
+  }
 }
 
 interface StartExecutionSessionForTestParams {
@@ -14131,30 +14140,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/deleteNode':
         void this.deleteNode(parsedMessage.payload.nodeId);
         return;
-      case 'webview/startExecutionSession':
-        if (parsedMessage.payload.kind === 'agent') {
-          const operation = this.startAgentSession(
-            parsedMessage.payload.nodeId,
-            parsedMessage.payload.cols,
-            parsedMessage.payload.rows,
-            parsedMessage.payload.provider,
-            parsedMessage.payload.resume === true
-          );
-          if (this.isRuntimePersistenceEnabled()) {
-            this.trackRuntimeSupervisorOperation(operation);
-          }
-          return;
-        }
-
-        const operation = this.startTerminalSession(
-          parsedMessage.payload.nodeId,
-          parsedMessage.payload.cols,
-          parsedMessage.payload.rows
-        );
-        if (this.isRuntimePersistenceEnabled()) {
-          this.trackRuntimeSupervisorOperation(operation);
+      case 'webview/startExecutionSession': {
+        const { kind, nodeId, cols, rows } = parsedMessage.payload;
+        const runtimePersistence = this.isRuntimePersistenceEnabled();
+        const key = this.getExecutionSessionOperationKey(kind, nodeId);
+        const existing = runtimePersistence ? undefined : this.nonNativeHostExecutions.get(key);
+        const operation = kind === 'agent'
+          ? this.startAgentSession(nodeId, cols, rows, parsedMessage.payload.provider, parsedMessage.payload.resume === true)
+          : this.startTerminalSession(nodeId, cols, rows);
+        const current = runtimePersistence ? undefined : this.nonNativeHostExecutions.get(key);
+        // A refused new request does not own an older execution that still occupies this key.
+        const original = current !== existing ? current : undefined;
+        const metadata = this.state.nodes.find(node => node.id === nodeId && node.kind === kind)?.metadata?.[kind];
+        const reported = operation.catch(error => this.reportWebviewExecutionStartFailure(kind, nodeId, error, original, metadata));
+        if (runtimePersistence) {
+          this.trackRuntimeSupervisorOperation(reported);
         }
         return;
+      }
       case 'webview/branchAgentSession':
         void this.branchAgentSession(parsedMessage.payload.nodeId);
         return;
@@ -16089,6 +16092,38 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.subscribeRuntimeSupervisorTerminalStream(snapshot, runtimeStoragePath, runtimeOwner);
   }
 
+  private reportWebviewExecutionStartFailure(
+    kind: ExecutionNodeKind, requestedNodeId: string, error: unknown,
+    original: NonNativeHostExecution | undefined, metadata: unknown
+  ): void {
+    const nodeId = original?.nodeId ?? requestedNodeId;
+    const node = this.state.nodes.find(value => value.id === nodeId && value.kind === kind);
+    const current = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+    const superseded = !node || (original
+      ? original.execution.snapshot().stopRequested || (current !== undefined && current !== original) ||
+        (original.persistence !== undefined && node.metadata?.[kind] !== original.persistence.metadata)
+      : node.metadata?.[kind] !== metadata);
+    const local = error instanceof LocalExecutionStartError ? error : undefined;
+    const rejected = local?.result.kind === 'rejected-before-acquire';
+    const reason = local?.result.reason ?? (error instanceof Error ? error.message : String(error));
+    const message = rejected
+      ? vscode.l10n.t('Cannot start {label} right now. Wait for pending operations to finish and try again.', {
+        label: kind === 'agent' ? 'Agent' : 'Terminal'
+      })
+      : vscode.l10n.t('Failed to start execution node: {message}', { message: reason });
+    // Reporting is observational: the original start retains all resource and persistence responsibility.
+    try {
+      this.recordDiagnosticEvent(rejected ? 'execution/startRejected' : 'execution/startFailed', {
+        kind, nodeId, outcome: local?.result.kind ?? 'exception', reason, message,
+        ...(superseded ? { suppressed: 'cancelled-or-superseded' } : {}),
+        ...(local ? { executionId: local.identity.executionId, generation: local.identity.generation } : {})
+      });
+    } catch { /* Diagnostics must not turn a handled start failure into an unhandled rejection. */ }
+    if (superseded) return;
+    try { this.postMessage({ type: 'host/error', payload: { message } }); }
+    catch { /* A disposed page cannot change the original start outcome. */ }
+  }
+
   private async startAgentSession(
     nodeId: string,
     cols: number,
@@ -17729,7 +17764,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       const result = await operation.first;
       rejectedBeforeAcquire = result.kind === 'rejected-before-acquire';
-      if (result.kind !== 'started') throw new Error(`Non-native Host start was ${result.kind}.`);
+      if (result.kind !== 'started') throw new LocalExecutionStartError(execution.identity, result);
       this.recordDiagnosticEvent('execution/started', {
         kind, nodeId: active.nodeId, sessionId: execution.identity.executionId,
         cols, rows, shellPath: spec.file, cwd: spec.cwd, launchArgs: spec.args,

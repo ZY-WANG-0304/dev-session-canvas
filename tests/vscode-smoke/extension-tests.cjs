@@ -8801,6 +8801,10 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
       provider: 'codex'
     }
   });
+  // Dispatch and early output do not prove the shared owner's start slot has been released.
+  const initialAgent = captureLocalExecutionIdentity(await waitForAgentLive(agentNodeId), 'agent', agentNodeId);
+  await waitForDiagnosticEvents(events => events.some(event => event.kind === 'execution/started' &&
+    event.detail?.nodeId === agentNodeId && event.detail.sessionId === initialAgent.executionSessionId));
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
     payload: {
@@ -8811,8 +8815,9 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
     }
   });
 
-  await waitForAgentLive(agentNodeId);
-  await waitForTerminalLive(terminalNodeId);
+  const initialTerminal = captureLocalExecutionIdentity(await waitForTerminalLive(terminalNodeId), 'terminal', terminalNodeId);
+  await waitForDiagnosticEvents(events => events.some(event => event.kind === 'execution/started' &&
+    event.detail?.nodeId === terminalNodeId && event.detail.sessionId === initialTerminal.executionSessionId));
 
   let snapshot = await simulateRuntimeReload();
   let agentNode = findNodeById(snapshot, agentNodeId);

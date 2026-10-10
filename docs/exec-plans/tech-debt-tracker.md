@@ -42,6 +42,11 @@ PR #314 已实施具名修复：同 ID 重读保留原 metadata/status；root + 
 
 最新独立阻塞：`verifyRuntimeReloadRecovery` 在首次等待 Codex Agent live 时超时，尚未执行此场景的 simulateRuntimeReload。Agent stopped/liveSession=false，Terminal 已启动；日志出现 `Non-native Host start was rejected-before-acquire` 及未处理 promise 拒绝。2026-10-10 专项调查已确认：smoke 连续派发不等 started，Terminal 在 Agent CLI 解析期间先占唯一 starting 名额；Agent identity 正常、owner 未关闭/隔离，实际命中 starting=1。底层拒绝符合产品契约；snapshot-only owned 启动抛错却未由页面入口消费，没有 host/error，是独立产品反馈缺口。双顺序重叠拒绝、started 后同节点重试均已受控证实（2/2），两者可同时 running。后续在继续 PR #314 修复、恢复完整门禁前，应同步修正该 fixture 启动顺序并补齐用户快速连续启动时的错误反馈/诊断，保留正式准入和身份保护；不得提高上限或只延长等待。本轮只定位，临时探针/测试已恢复，完整 trusted 仍失败。关联：`docs/design-docs/smoke-reload-autostart-investigation.md`、`docs/exec-plans/completed/owned-start-admission-investigation.md`、`docs/references/smoke-reload-autostart/start-admission-evidence.json`。
 
+2026-10-10 启动顺序和拒绝反馈已在 PR #314 收口：页面立即消费启动拒绝，保留原身份/outcome 诊断与本地化提示；只跟踪本请求新建记录，取消/替换/删除的迟到错误只记诊断，旧 stopping 记录阻塞新请求仍提示，不修改原资源责任。smoke 逐个等待原 executionId 的 started。新增 20 项、完整 Host 454/454、类型/本地化和正文 helper 14/14 通过；最终默认真实 VSIX 两个具名阶段、页面 probe、通知/交互/滚动历史等前缀通过，原 Agent/Terminal 起始启动均确认完成。关联 `docs/exec-plans/completed/owned-start-admission-repair.md` 和 `docs/references/smoke-reload-autostart/start-admission-repair-evidence.json`。
+
+新的独立阻塞：`verifyRuntimeReloadRecovery:8826` 在自身模拟 reload 返回后期待 Agent resume-ready，实际 stopped；Terminal 实际 closed 而非后续期待的 interrupted。两条原执行已 saved，Agent 恢复策略和 session ID 保留。需在继续恢复场景/发布准备前定位 Host boundary 的最终停止状态与重读恢复意图的关系，不应直接放宽断言。本轮未修改该终态逻辑，后续恢复/Runtime/压力矩阵未通过。中间另一次默认运行早期 Host boundary 保存仍 pending；最终复跑跨过，但原失败原因未确定，保留 pending-save-artifacts，若再次出现需跟踪原执行保存责任，不能延长期限或把重跑成功追认为当次保存完成。
+
+
 
 
 

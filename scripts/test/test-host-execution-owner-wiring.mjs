@@ -175,6 +175,7 @@ function fixture(options = {}) {
         },
         transport: {
           connect(value) {
+            provider.connectCount = (provider.connectCount ?? 0) + 1;
             sink = value;
             provider.message({ type: 'ready', capabilities: ['execution-lifecycle-v1'] });
           },
@@ -5763,7 +5764,7 @@ function startupResizeFixture(kind, waitingAt, options = {}) {
   void starting.catch(() => {});
   return { ...f, owner, starting,
     waiting: () => waitingAt === 'prepare' ? Boolean(f.record(kind)) : Boolean(held),
-    release: result => { released = true; if (waitingAt === 'prepare') preparing.resolve(result ?? {}); else held(result); },
+    release: result => { if (released) return; released = true; if (waitingAt === 'prepare') preparing.resolve(result ?? {}); else held(result); },
     async cleanup() {
       const record = f.record(kind);
       const provider = f.providers[0];
@@ -6257,6 +6258,186 @@ for (const providerKind of ['codex', 'claude']) {
       } finally { await f.cleanup(); }
     });
   }
+}
+
+
+function sendCandidateStart(f, kind, resume = false) {
+  for (const surface of ['editor', 'panel']) {
+    f.host.renderedWebviewLifecycle.set(f.host.surfaceMessageWebview[surface], f.host.getSurfaceLifecycleIdentity(surface));
+  }
+  f.send('editor', 'webview/startExecutionSession', { kind, nodeId: `${kind}-1`, cols: 80, rows: 24,
+    ...(kind === 'agent' ? { provider: 'codex', resume } : {}) });
+}
+
+for (const firstKind of ['terminal', 'agent']) {
+  test(`webview start ${firstKind} overlap rejects before connect and retry succeeds`, async () => {
+    const secondKind = firstKind === 'terminal' ? 'agent' : 'terminal';
+    const f = startupResizeFixture(firstKind, 'operationObservation', { admissionLimits: EXECUTION_PRODUCTION_ADMISSION, outputCredit: true });
+    let secondRecord;
+    try {
+      await until(f.clock, f.waiting, 'first start held before started');
+      const secondNode = f.host.state.nodes.find(node => node.kind === secondKind);
+      secondNode.status = 'stopped'; secondNode.metadata[secondKind] = { ...secondNode.metadata[secondKind], liveSession: false };
+      const authorityBefore = f.owner.authority.snapshot();
+      assert.equal(authorityBefore.starting, 1);
+      assert.equal(authorityBefore.active, 1);
+      assert.equal(authorityBefore.closing, false);
+      assert.equal(authorityBefore.blockedReason, undefined);
+      sendCandidateStart(f, secondKind);
+      await until(f.clock, () => f.posted.some(message => message.type === 'host/error'), 'visible overlap rejection');
+      assert.equal(f.providers.length, 2, 'transport construction is not acquisition');
+      assert.equal(f.providers[1].connectCount ?? 0, 0, 'rejected transport never connects');
+      assert.equal(f.providers[1].messages.length, 0, 'rejected transport never connects or sends start');
+      assert.equal(f.owner.get(`${secondKind}:${secondKind}-1`), undefined);
+      assert.equal(f.record(secondKind), undefined);
+      assert.equal(secondNode.status, 'stopped');
+      assert.equal(secondNode.metadata[secondKind].liveSession, false);
+      assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+      assert.match(f.posted.find(message => message.type === 'host/error').payload.message, /Wait for pending operations/);
+      const rejection = f.diagnostics.filter(event => event.name === 'execution/startRejected');
+      assert.equal(rejection.length, 1);
+      assert.equal(rejection[0].detail.kind, secondKind);
+      assert.equal(rejection[0].detail.outcome, 'rejected-before-acquire');
+      assert.deepEqual({ executionId: rejection[0].detail.executionId, generation: rejection[0].detail.generation }, f.providers[1].identity);
+      assert.equal(f.owner.authority.snapshot().starting, 1, 'rejection leaves original start intact');
+      f.release();
+      await completed(f.clock, f.starting, 'first confirmed started');
+      assert.equal(f.owner.authority.snapshot().starting, 0);
+      await completed(f.clock, f.start(secondKind), 'same second node after first started');
+      secondRecord = f.record(secondKind);
+      assert.equal(f.providers[2].connectCount, 1, 'retry connects exactly once');
+      assert.equal(secondRecord.execution.snapshot().adapter.state, 'running');
+      assert.equal(f.record(firstKind).execution.snapshot().adapter.state, 'running');
+      assert.equal(f.owner.authority.snapshot().active, 2, 'starting limit is not the running session limit');
+      assert.equal(f.owner.authority.snapshot().starting, 0);
+
+    } finally {
+      if (secondRecord) {
+        const provider = f.providers.at(-1);
+        provider.process(); provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+        provider.seal(secondRecord.lastDataSequence); provider.release();
+        await pump(f.clock, () => secondRecord.execution.snapshot().settled);
+        secondRecord.business?.cancelActivityPoll?.(); secondRecord.business?.lineContextTracker.dispose(); secondRecord.tracker.dispose();
+      }
+      if (f.waiting()) f.release(); await f.cleanup();
+    }
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  for (const boundary of ['closed', 'prepare', 'replaced-node', 'deleted-node', 'cancelled']) {
+    test(`webview start ${kind} reports ${boundary} failure without changing the node`, async () => {
+      const gate = deferred();
+      const f = candidateFixture({ outputCredit: true, admissionLimits: EXECUTION_PRODUCTION_ADMISSION,
+        environment: async () => { await gate.promise; throw new Error('controlled launch preparation failed'); } });
+      const nodeId = `${kind}-1`;
+      if (boundary === 'closed') f.owner.closeAdmission();
+      sendCandidateStart(f, kind);
+      if (boundary !== 'closed') await until(f.clock, () => Boolean(f.record(kind)), 'preparing original start');
+      if (boundary === 'cancelled') f.record(kind).execution.requestStop('controlled pending launch cancelled');
+      if (boundary === 'replaced-node') {
+        f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(node => node.id !== nodeId ? node : {
+          ...node, status: 'replacement-status', summary: 'replacement-summary',
+          metadata: { ...node.metadata, [kind]: { liveSession: true, cwd: '/replacement', marker: 'replacement' } }
+        }) };
+      }
+      if (boundary === 'deleted-node') f.host.state = { ...f.host.state, nodes: f.host.state.nodes.filter(node => node.id !== nodeId) };
+      const stateBefore = structuredClone(f.host.state);
+      const metadataBefore = f.host.state.nodes.find(node => node.id === nodeId)?.metadata[kind];
+      gate.resolve();
+      await until(f.clock, () => f.diagnostics.some(event => event.name === 'execution/startFailed'), 'reported original rejection');
+      assert.deepEqual(f.host.state, stateBefore);
+      assert.strictEqual(f.host.state.nodes.find(node => node.id === nodeId)?.metadata[kind], metadataBefore);
+      const suppressed = ['replaced-node', 'deleted-node', 'cancelled'].includes(boundary);
+      assert.equal(f.posted.filter(message => message.type === 'host/error').length, suppressed ? 0 : 1);
+      assert.equal(f.diagnostics.find(event => event.name === 'execution/startFailed').detail.suppressed,
+        suppressed ? 'cancelled-or-superseded' : undefined);
+      assert.equal(f.diagnostics.filter(event => event.name === 'execution/startFailed').length, 1);
+      if (!suppressed) assert.equal(f.posted.find(message => message.type === 'host/error').payload.message.includes('\n'), false);
+      assert.match(f.diagnostics.find(event => event.name === 'execution/startFailed').detail.reason,
+        boundary === 'closed' ? /admission is closed/ : /controlled launch preparation failed/);
+      assert.equal(f.providers.length, 0);
+      assert.equal(f.record(kind), undefined);
+      assert.equal(f.owner.authority.snapshot().active, 0);
+    });
+  }
+
+  test(`webview start ${kind} still reports a new request blocked by an older stopping execution`, async () => {
+    const f = startupResizeFixture(kind, 'operationObservation', { outputCredit: true, admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+    try {
+      await until(f.clock, f.waiting, 'original held started');
+      const original = f.record(kind);
+      void original.execution.requestStop('controlled earlier stop');
+      sendCandidateStart(f, kind);
+      await until(f.clock, () => f.posted.some(message => message.type === 'host/error'), 'new refused request is visible');
+      const event = f.diagnostics.find(event => event.name === 'execution/startFailed');
+      assert.equal(event.detail.suppressed, undefined);
+      assert.match(event.detail.reason, /responsibility|capacity/);
+      assert.strictEqual(f.record(kind), original);
+      assert.equal(f.providers.length, 1);
+      assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+    } finally { if (f.waiting()) f.release(); await f.cleanup(); }
+  });
+
+  test(`webview start ${kind} reports unknown acquisition without releasing the original responsibility`, async () => {
+    const f = startupResizeFixture(kind, 'operationObservation', { outputCredit: true, admissionLimits: EXECUTION_PRODUCTION_ADMISSION });
+    try {
+      await until(f.clock, f.waiting, 'original held started');
+      const record = f.record(kind);
+      const method = kind === 'agent' ? 'startAgentSession' : 'startTerminalSession';
+      // Route the actual in-flight operation through the real page observer before its uncertain result.
+      f.host.nonNativeHostExecutions.delete(record.execution.key);
+      f.host[method] = () => { f.host.nonNativeHostExecutions.set(record.execution.key, record); return f.starting; };
+      sendCandidateStart(f, kind);
+      f.release({ kind: 'unconfirmed', stage: 'start', reason: 'controlled uncertain acquisition' });
+      await until(f.clock, () => f.posted.some(message => message.type === 'host/error'), 'unknown start reported');
+      const event = f.diagnostics.find(event => event.name === 'execution/startFailed');
+      assert.equal(event.detail.outcome, 'unconfirmed');
+      assert.equal(event.detail.reason, 'controlled uncertain acquisition');
+      assert.equal(event.detail.executionId, record.execution.identity.executionId);
+      assert.equal(f.diagnostics.some(event => event.name === 'execution/startRejected'), false);
+      assert.strictEqual(f.record(kind), record);
+      assert.notEqual(record.persistence.result?.kind, 'not-required');
+      assert.equal(f.providers.length, 1);
+      assert.equal(f.providers[0].connectCount, 1);
+      assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+    } finally { if (f.waiting()) f.release(); await f.cleanup(); }
+  });
+
+  test(`webview start ${kind} keeps Runtime tracking and does not report a handled failure twice`, async () => {
+    const f = candidateRuntimeFixture({ rejectBeforeAcquire: true });
+    sendCandidateStart(f, kind);
+    assert.equal(f.host.pendingRuntimeSupervisorOperations.size, 1);
+    await until(f.clock, () => f.host.pendingRuntimeSupervisorOperations.size === 0, 'Runtime failure tracked to completion');
+    assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+    assert.equal(f.diagnostics.some(event => event.name === 'execution/startFailed'), false);
+    assert.equal(f.diagnostics.filter(event => event.name === 'execution/candidateStartFailed').length, 1);
+  });
+}
+
+for (const observer of ['diagnostics', 'page']) {
+  test(`webview start consumes rejection even when ${observer} observer throws`, async () => {
+    const f = candidateFixture();
+    f.owner.closeAdmission();
+    let observed = false;
+    if (observer === 'diagnostics') {
+      const record = f.host.recordDiagnosticEvent;
+      f.host.recordDiagnosticEvent = (name, detail) => {
+        if (name === 'execution/startFailed') { observed = true; throw new Error('controlled diagnostics failure'); }
+        return record(name, detail);
+      };
+    } else {
+      f.host.postMessage = message => {
+        if (message.type === 'host/error') { observed = true; throw new Error('controlled page disposed'); }
+      };
+    }
+    sendCandidateStart(f, 'terminal');
+    await until(f.clock, () => observed, 'report observer invoked');
+    await pump(f.clock, () => true);
+    assert.equal(f.providers.length, 0);
+    if (observer === 'diagnostics') assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
+    else assert.equal(f.diagnostics.filter(event => event.name === 'execution/startFailed').length, 1);
+  });
 }
 
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
