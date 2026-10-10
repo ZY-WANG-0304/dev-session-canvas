@@ -649,3 +649,8 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 最新默认 VSIX 七个独立阶段通过，trusted 的原手动恢复函数也通过，已越过上轮 Missing resumable Codex session ID。文件活动原函数已通过 read/write、共享引用、节点/列表展示及打开文件，当前停在 `verifyFileActivityViewsAndOpenFiles:4426`：发出删除 Agent B 后，原执行停止并最终 saved/退休，但 Agent B 及其引用仍保留。原生独立 files 复验同样停在此处，清理后零 localExecutions。根因尚未确认，不将其归为 collector drain 失败或断言问题，也不宣称完整 gate 已通过。
 
 删除后文件引用收敛、后续启停 files 配置及 trusted 剩余阶段未通过此次全序验收。历史 URL 清理停滞、Runtime client disconnected 批次报告、真实新 Host/checkpoint 和跨平台边界继续保留。正式证据与专项脚本为 `docs/references/smoke-reload-autostart/owned-file-activity-resume-fix-evidence.json` 及相邻 `owned-file-activity-resume-verification.mjs`；独立 readexit 原函数 exit0，末尾 read owner、文件节点/连线、持久化重读及清理全部通过；两个专项与正式 staging 三个 bundle hash 一致，产品无探针或行为替换。
+
+
+2026-10-11 删除停点根因已确认：`terminateExecutionNodeForDeletion` 等待 owner 停止后同步检查最终保存，正常异步保存仍 pending 时立即中止；21ms 后 saved 不会恢复原删除请求。原生检查时 collector 已 dispose，故不是文件事件排空失败。该同步拒绝来自已在 main 的 `b235a7bc5`，符合 S8 §26.3 当时“不新增保存等待预算”的保守契约；当前一次删除 smoke 与其行为不一致。延长用例等待无法解决。
+
+受控 Agent/Terminal（files 关闭）probe/control × saved/failed 共8/8捕获预期结果；仅为原 host-delete 增加原保存有界等待的 native control 完整通过原文件活动函数，probe 原场景仍失败，两个调查脚本均清理至零执行。证据 `docs/references/smoke-reload-autostart/owned-delete-persistence-root-cause-evidence.json`。正式修复仍待实施：若采用一次删除完成语义，应显式更新旧入口契约、等待原保存并重验目标身份，失败/未确认/超时继续保留，不放宽状态断言或自动重试。完整 gate 和此前其余边界保持原状态。

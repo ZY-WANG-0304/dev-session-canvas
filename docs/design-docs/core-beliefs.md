@@ -375,3 +375,5 @@ Runtime 的结构化退出信息属于终态事实，不能因 completed 正文�
 终端 read 回执不是文件活动事件：执行后端迁移必须显式接入 provider 的结构化事件通道和采集器生命周期。恢复信息中的 sessionId 也不是所有适配器的完整契约，文本提示不得无差别替换依赖 storagePath 的测试恢复策略；测试适配失败与真实 provider 恢复应以同 metadata 的命令选择对照区分。依据见 `smoke-reload-autostart-investigation.md` 的文件活动与 fake resume 根因确认。
 
 执行级 observer 的资源责任应跟随原 execution，而非仅按 nodeId 存取；正常退出先 drain 末尾事件再冻结最终快照，拒绝启动先禁止迟到事件再释放，未知资源保持绑定直到原执行收口。observer 处理或释放失败不能被记录为保存成功。依据见 `smoke-reload-autostart-investigation.md` 的 owned 文件事件正式修复方案。
+
+owner settled 与 Host 最终保存是不同承诺；删除的 pending 拒绝必须按检查当时的事实解释，不能用稍后 saved 反推当时应当通过。把旧保守拒绝改为一次操作跨过正常保存窗口时，必须显式设计有界等待和目标身份保护，保留保存失败/超时责任，不能删除安全检查或在测试中无条件重试。依据见 `smoke-reload-autostart-investigation.md` 的 owned 删除时序调查。
