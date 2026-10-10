@@ -212,7 +212,8 @@ async function runSmoke() {
     await ensureTerminalStopped(terminalId);
     await verifyStopVsQueuedExitRace(agentId);
     await verifyClaudeStopRestoresPreviousSignal();
-    console.log('Local links and stop: rendered file/URL links, tooltip and original stop completion passed.');
+    await verifyClaudeExplicitSessionIdPreservesResumeContext();
+    console.log('Local links and stop: rendered links, stop completion and Claude file-confirmed resume context passed.');
     return;
   }
   if (smokeScenario === 'local-preparation-failure') {

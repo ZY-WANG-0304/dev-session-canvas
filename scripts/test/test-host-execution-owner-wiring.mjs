@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,6 +11,7 @@ const bundled = await esbuild.build({
   stdin: {
     contents: `
       export { composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCanvasObjectId } from './extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition';
+      export { testClaudeSessionFiles, locateClaudeSessionIdFromFiles } from './extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator';
       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
       export { ExecutionOwnerLifecycle } from './extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle';
       export { encodeOutputFrame } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
@@ -33,6 +34,16 @@ const bundled = await esbuild.build({
   plugins: [{
     name: 'host-boundaries-only',
     setup(build) {
+      build.onResolve({ filter: /\/codexSessionIdLocator$/ }, () => ({ path: 'claude-session-files', namespace: 'claude-session-files-boundary' }));
+      build.onLoad({ filter: /.*/, namespace: 'claude-session-files-boundary' }, () => ({ loader: 'js', resolveDir: process.cwd(), contents: `
+        export * from './extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator.ts';
+        export { locateClaudeSessionId as locateClaudeSessionIdFromFiles } from './extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator.ts';
+        export const testClaudeSessionFiles = { calls: [], run: async () => null };
+        export function locateClaudeSessionId(options) {
+          testClaudeSessionFiles.calls.push(options);
+          return testClaudeSessionFiles.run(options);
+        }
+      ` }));
       build.onResolve({ filter: /\/runtimeRootSupervisorPreparation$/ }, () => ({ path: 'runtimeRootSupervisorPreparation', namespace: 'root-runtime-preparation-boundary' }));
       build.onLoad({ filter: /.*/, namespace: 'root-runtime-preparation-boundary' }, () => ({ loader: 'js', contents: `
         const testRootRuntimePreparation = { run: async () => { throw new Error('Unexpected root runtime preparation'); } };
@@ -95,7 +106,7 @@ const { composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCan
   testEnvironment, testWindow, testL10n, testWorkspace, testUri, serializeRuntimeSupervisorError, createRuntimeSupervisorError,
   testLegacyHistoryInspector, testNativeHistoryInspector, testRootRuntimePreparation,
   createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, resolveRootRuntimeSupervisorGeneration,
-  resolveRuntimeRootOwnerBaseStoragePath } = loaded.exports;
+  resolveRuntimeRootOwnerBaseStoragePath, testClaudeSessionFiles, locateClaudeSessionIdFromFiles } = loaded.exports;
 
 function deferred() {
   let resolve;
@@ -6679,6 +6690,191 @@ for (const observer of ['diagnostics', 'page']) {
     else assert.equal(f.diagnostics.filter(event => event.name === 'execution/startFailed').length, 1);
   });
 }
+
+
+async function ownedClaudeFileFixture({ explicit = true, locate = async () => null } = {}) {
+  testClaudeSessionFiles.calls = [];
+  testClaudeSessionFiles.run = locate;
+  const f = candidateFixture();
+  const persist = f.host.persistState.bind(f.host);
+  f.host.persistState = async options => { await persist(options); };
+  delete f.host.resolveAgentResumeContext;
+  f.host.state.nodes.find(node => node.id === 'agent-1').metadata.agent = { provider: 'claude' };
+  const args = explicit ? ['--session-id=session-explicit-123456789'] : [];
+  f.host.resolveAgentFreshLaunch = () => ({ commandLine: ['claude', ...args].join(' '),
+    requestedCommand: 'claude', launchArgs: args, launchPreset: 'custom' });
+  f.host.getRequestedAgentCliSpec = CanvasPanelManager.prototype.getRequestedAgentCliSpec;
+  f.host.resolveAgentCli = async () => ({ command: '/controlled/claude', provider: 'claude' });
+  await completed(f.clock, f.host.startAgentSession('agent-1', 80, 24, 'claude', false), 'owned Claude file start');
+  const record = f.record('agent');
+  const provider = f.providers[0];
+  const node = () => f.host.state.nodes.find(value => value.id === record.nodeId && value.kind === 'agent');
+  async function output(text = '> ') {
+    const sequence = record.lastDataSequence + 1;
+    provider.output(sequence, text);
+    await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === sequence, 'owned Claude file concurrent output');
+  }
+  async function finish() {
+    provider.process();
+    provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
+    provider.seal(record.lastDataSequence); provider.release();
+    await until(f.clock, () => record.persistence.result !== undefined, 'owned Claude file final persistence');
+    f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-cleanup');
+  }
+  function cleanup() {
+    testClaudeSessionFiles.run = async () => null;
+    f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-cleanup');
+    record.business?.cancelActivityPoll?.(); record.business?.lineContextTracker.dispose(); record.tracker.dispose();
+  }
+  return { ...f, record, provider, node, output, finish, cleanup };
+}
+
+for (const explicit of [true, false]) {
+  test(`owned Claude file confirms ${explicit ? 'explicit' : 'generated'} candidate and preserves it through stop`, async () => {
+    const taskHome = await mkdtemp(path.join(os.tmpdir(), 'dsc-claude-file-'));
+    const fileReady = deferred();
+    const f = await ownedClaudeFileFixture({ explicit, locate: async options => {
+      await fileReady.promise;
+      return locateClaudeSessionIdFromFiles({ ...options, env: { HOME: taskHome }, timeoutMs: 1 });
+    } });
+    try {
+      const original = f.record.execution.identity;
+      const id = f.record.business.agentResume.sessionId;
+      assert.ok(id);
+      assert.equal(f.node().metadata.agent.resumeStrategy, 'none');
+      assert.equal(testClaudeSessionFiles.calls.length, 1, 'started returns while the real file query is pending');
+      await f.output();
+      const directory = path.join(taskHome, '.claude', 'projects', '-controlled');
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, `${id}.jsonl`), '{}\n');
+      fileReady.resolve();
+      await until(f.clock, () => !f.record.business.claudeFileConfirmation, 'owned Claude file confirmation persisted');
+      assert.equal(f.node().metadata.agent.resumeSupported, true);
+      assert.equal(f.node().metadata.agent.resumeStrategy, 'claude-session-id');
+      assert.equal(f.node().metadata.agent.resumeSessionId, id);
+      assert.strictEqual(f.record.execution.identity, original);
+      assert.equal(f.record.persistence.submitted, false, 'ordinary resume metadata persistence is not final persistence');
+      assert.equal(f.persisted.filter(item => item?.reason === 'agent-resume-context').length, 1);
+      const events = f.diagnostics.filter(event => event.name === 'agent/claudeSessionIdConfirmedFromFiles');
+      assert.equal(events.length, 1);
+      assert.equal(events[0].detail.executionSessionId, original.executionId);
+      assert.equal(events[0].detail.generation, original.generation);
+      const stopping = f.host.stopExecutionSession('agent', f.record.nodeId);
+      await until(f.clock, () => f.record.execution.snapshot().stopRequested, 'owned Claude file stop requested');
+      await f.finish();
+      await completed(f.clock, stopping, 'owned Claude file stop completed');
+      assert.equal(f.node().status, 'stopped');
+      assert.equal(f.node().metadata.agent.resumeStrategy, 'claude-session-id');
+      assert.equal(f.node().metadata.agent.resumeSessionId, id);
+      assert.equal(f.record.persistence.result.kind, 'saved');
+    } finally { fileReady.resolve(); f.cleanup(); await rm(taskHome, { recursive: true, force: true }); }
+  });
+}
+
+for (const outcome of ['missing', 'error']) {
+  test(`owned Claude file ${outcome} remains unconfirmed and waiting input retries`, async () => {
+    const f = await ownedClaudeFileFixture({ locate: async () => {
+      if (outcome === 'error') throw new Error('controlled file scan failure');
+      return null;
+    } });
+    try {
+      await until(f.clock, () => !f.record.business.claudeFileConfirmation, 'initial failed file scan');
+      assert.equal(f.node().metadata.agent.resumeStrategy, 'none');
+      assert.equal(f.persisted.filter(item => item?.reason === 'agent-resume-context').length, 0);
+      assert.ok(f.diagnostics.some(event => event.name === (outcome === 'missing'
+        ? 'agent/claudeSessionIdFileConfirmationMissed' : 'agent/claudeSessionIdFileConfirmationFailed')));
+      testClaudeSessionFiles.run = async options => options.sessionId;
+      await f.output(); f.clock.advance(300);
+      await until(f.clock, () => f.node().metadata.agent.resumeSupported === true, 'waiting-input file retry');
+      assert.equal(f.node().status, 'waiting-input');
+      assert.equal(testClaudeSessionFiles.calls.length, 2);
+      assert.equal(f.diagnostics.find(event => event.name === 'agent/claudeSessionIdConfirmedFromFiles').detail.trigger, 'waiting-input');
+    } finally { f.cleanup(); }
+  });
+}
+
+for (const firstOutcome of ['miss', 'error']) {
+  test(`owned Claude file coalesces waiting input scans without losing a followup after ${firstOutcome}`, async () => {
+    const first = deferred(); const second = deferred(); let queries = 0;
+    const f = await ownedClaudeFileFixture({ locate: () => ++queries === 1 ? first.promise.then(result => {
+      if (firstOutcome === 'error') throw new Error('queued lookup failed');
+      return result;
+    }) : second.promise });
+    try {
+      await f.output(); f.clock.advance(300);
+      await f.host.maybeConfirmNonNativeClaudeResumeSessionId(f.record, 'waiting-input');
+      await f.host.maybeConfirmNonNativeClaudeResumeSessionId(f.record, 'waiting-input');
+      assert.equal(queries, 1);
+      first.resolve(null);
+      await until(f.clock, () => queries === 2, 'one coalesced followup');
+      second.resolve(f.record.business.agentResume.sessionId);
+      await until(f.clock, () => !f.record.business.claudeFileConfirmation, 'followup confirmed');
+      assert.equal(f.node().metadata.agent.resumeStrategy, 'claude-session-id');
+      assert.equal(queries, 2);
+    } finally { first.resolve(null); second.resolve(null); f.cleanup(); }
+  });
+}
+
+for (const invalidation of ['stop', 'process', 'final-save', 'metadata', 'record', 'node', 'candidate', 'confirmed-context', 'launch-spec', 'quarantine']) {
+  test(`owned Claude file rejects late confirmation after ${invalidation}`, async () => {
+    const lookup = deferred();
+    const f = await ownedClaudeFileFixture({ locate: () => lookup.promise });
+    let stopping;
+    try {
+      const id = f.record.business.agentResume.sessionId;
+      if (invalidation === 'stop' || invalidation === 'final-save') {
+        stopping = f.host.stopExecutionSession('agent', f.record.nodeId);
+        await until(f.clock, () => f.record.execution.snapshot().stopRequested, 'stop while lookup pending');
+        if (invalidation === 'final-save') {
+          await f.finish();
+          await completed(f.clock, stopping, 'stop completes without awaiting file query');
+          assert.equal(f.record.persistence.result.kind, 'saved');
+        }
+      } else if (invalidation === 'process') {
+        f.provider.process();
+        await until(f.clock, () => Boolean(f.record.execution.snapshot().adapter.process), 'process exit while lookup pending');
+      } else if (invalidation === 'metadata') f.node().metadata.agent = { ...f.node().metadata.agent };
+      else if (invalidation === 'record') f.host.nonNativeHostExecutions.set('agent:agent-1', { ...f.record });
+      else if (invalidation === 'node') f.host.state.nodes = f.host.state.nodes.filter(node => node.id !== f.record.nodeId);
+      else if (invalidation === 'candidate') f.record.business.agentResume.sessionId = 'changed-candidate';
+      else if (invalidation === 'confirmed-context') {
+        f.record.business.agentResume = { supported: true, strategy: 'claude-session-id', sessionId: 'confirmed-from-output' };
+        f.host.projectNonNativeHostBusiness(f.record);
+      } else if (invalidation === 'launch-spec') f.record.launchSpec = { ...f.record.launchSpec, cwd: '/replacement' };
+      else f.record.mutationError = 'controlled quarantine';
+      const before = structuredClone(f.node());
+      const contextBefore = { ...f.record.business.agentResume };
+      const savesBefore = f.persisted.length;
+      lookup.resolve(id);
+      await until(f.clock, () => !f.record.business.claudeFileConfirmation, 'late confirmation ignored');
+      assert.deepEqual(f.node(), before);
+      assert.deepEqual(f.record.business.agentResume, contextBefore);
+      assert.equal(f.persisted.length, savesBefore);
+      assert.equal(f.diagnostics.some(event => event.name === 'agent/claudeSessionIdConfirmedFromFiles'), false);
+      if (invalidation === 'stop') { await f.finish(); await completed(f.clock, stopping, 'stop complete'); }
+    } finally { lookup.resolve(null); f.cleanup(); }
+  });
+}
+
+test('owned Claude file follows the same record across root routing and ordinary output projection', async () => {
+  const lookup = deferred();
+  const f = await ownedClaudeFileFixture({ locate: () => lookup.promise });
+  try {
+    const id = f.record.business.agentResume.sessionId;
+    const original = f.record.execution.identity;
+    const node = f.node();
+    f.host.nonNativeHostExecutions.delete('agent:agent-1');
+    node.id = 'root-qualified-agent-1'; f.record.nodeId = node.id;
+    f.host.nonNativeHostExecutions.set('agent:root-qualified-agent-1', f.record);
+    await f.output('still the original execution\r\n');
+    lookup.resolve(id);
+    await until(f.clock, () => !f.record.business.claudeFileConfirmation, 'original routed record confirmation');
+    assert.equal(f.node().metadata.agent.resumeStrategy, 'claude-session-id');
+    assert.strictEqual(f.record.execution.identity, original);
+    assert.equal(testClaudeSessionFiles.calls[0].cwd, '/controlled');
+    assert.equal(f.diagnostics.find(event => event.name === 'agent/claudeSessionIdConfirmedFromFiles').detail.nodeId, node.id);
+  } finally { lookup.resolve(null); f.cleanup(); }
+});
 
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
 const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;

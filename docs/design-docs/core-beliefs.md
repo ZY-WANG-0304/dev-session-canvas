@@ -344,4 +344,4 @@ unknown是当时缺少证明的观察，不应擦除已确认事实，也不阻�
 终端交互测试需区分 Host 已发正文、页面 buffer 已应用与可交互呈现三个时刻；原执行输出不能替代页面就绪；可用分段打印的独有标记关联新正文和目标页面，兼容软换行且排除命令回显。失败工件中的缓存 probe 也不能代证失败瞬间。生命周期测试应绑定当前所有权模型的实际结果，旧实现分支的固定文案和私有诊断不能替代原进程退出、最终保存和页面确认。依据见 `smoke-reload-autostart-investigation.md` 的链接扫描与停止契约专项定位。
 
 
-候选 provider 会话 ID 不等于已确认恢复能力。迁移执行所有权时，除正文/终态处理，还必须接回文件等外部确认入口，并将异步结果绑定原执行、候选 ID 与 metadata；旧 session map 的身份守卫不能直接用于 owned 记录。无证据继续不可恢复，已确认结果不应因停止缺少输出提示而丢弃。依据见 `smoke-reload-autostart-investigation.md` 的 Claude 显式 session ID 专项定位。
+候选 provider 会话 ID 不等于已确认恢复能力。迁移执行所有权时，除正文/终态处理，还必须接回文件等外部确认入口，并将异步结果绑定原执行、候选 ID 与 metadata；旧 session map 的身份守卫不能直接用于 owned 记录。文件扫描应脱离启动/正文消费链，重叠触发合并并保留补查；合法原路由迁移与 metadata 投影更新仍属于原执行。无证据继续不可恢复，已确认结果不应因停止缺少输出提示而丢弃。依据见 `smoke-reload-autostart-investigation.md` 的 Claude 显式 session ID 专项定位。

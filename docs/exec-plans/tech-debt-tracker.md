@@ -511,3 +511,12 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 同 Extension Host 实际 locator 立即识别原 smoke 文件，原用例仍超时；Host 有文件/无文件 2/2 对照证实正常 owned 调用数为 0、旧 helper 的 map 限制及原 projection 可用。临时只补原 owned 文件确认后，原生原用例的运行态、停止后策略/ID和删除检查全部通过；无文件对照继续 none。问题不是旧正文断言或测试超时设置，停止后的恢复入口可能因此不可用；本轮原生范围为显式 ID，自动候选走同一遗漏调用路径但未单独原生验证。
 
 继续 PR314/完整门禁前，应接回原 owned startup/waiting-input 文件确认，保护查询期间换绑、候选变化、停止/结束与迟到结果，保留已确认 ID 的停止语义和无文件拒绝；不能阻塞正文消费或伪造最终保存完成。本轮临时产品/测试源码已恢复，完整 gate 仍未通过，Runtime 开启及真实 provider resume 不由对照代证。证据与复跑 patch：`docs/references/smoke-reload-autostart/claude-resume-context-evidence.json`；计划：`docs/exec-plans/completed/claude-resume-context-investigation.md`。
+
+
+## owned Claude 文件确认已修复，Runtime root 启动准备仍阻塞（2026-10-10，PR #314）
+
+上一节缺口已修复：原 owned Claude 在 started/waiting-input 独立异步扫描原 cwd 的候选文件，合并重复请求并保留一次补查，不阻塞启动、正文或停止。返回时核对原记录、恢复上下文、launchSpec、当前 metadata 绑定与停止/结束/最终保存状态；成功投影并普通保存，已确认 ID 在停止后保留，无文件不升级。新增 17 项、完整 Host 504/504、类型/语法通过；基线产品的新正例失败。最终默认 VSIX 七个独立阶段通过，原 Claude 显式 ID 用例在独立阶段和 trusted 均完整通过，正式修复已收口。
+
+新的独立门禁位于 `verifyLiveRuntimePersistence:10024`：用例开启 RuntimePersistence 后首次等待 Agent live 超时，尚未触达 reload/reattach。Agent starting、Terminal launching，均 pendingLaunch=start/live=false；`execution/candidateStartFailed` 报 `Root runtime preparation or submission did not complete.`，没有本地 owned 执行。节点 metadata 仍 snapshot-only，不代表配置仍关闭。准备/提交失败的底层根因尚未确认，保留 `.debug/claude-resume-fix/trusted-artifacts`；继续完整门禁前需独立定位 Runtime root 准备和提交结果，不能扩大准入、只延长等待或跳过原状态断言。
+
+本轮没有关闭完整 gate 的技术债，也没有验证真实 provider resume、跨平台或真实窗口 Reload。计划与证据：`docs/exec-plans/completed/owned-claude-file-confirmation.md`、`docs/references/smoke-reload-autostart/claude-file-confirmation-fix-evidence.json`。

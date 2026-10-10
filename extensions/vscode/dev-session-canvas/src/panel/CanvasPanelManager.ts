@@ -644,6 +644,7 @@ interface NonNativeHostBusiness extends ExecutionAttentionSession {
   agentActivity?: AgentActivityHeuristicState;
   lineContextTracker: ExecutionTerminalLineContextTracker;
   cancelActivityPoll?: () => void;
+  claudeFileConfirmation?: { retry: boolean };
 }
 
 type NonNativeHostPersistenceResult = Readonly<{
@@ -17805,6 +17806,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (active.localReaders && this.activeSurface) {
         void this.postLocalExecutionSnapshot(active, { surface: this.activeSurface });
       }
+      void this.maybeConfirmNonNativeClaudeResumeSessionId(active, 'startup');
       return active;
     } catch (error) {
       record?.pendingResize?.reject(error);
@@ -17952,8 +17954,69 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         business.lifecycleStatus = 'waiting-input';
         business.resumePhaseActive = false;
         this.projectNonNativeHostBusiness(record);
+        void this.maybeConfirmNonNativeClaudeResumeSessionId(record, 'waiting-input');
       } else if (result.shouldKeepPolling) this.scheduleNonNativeAgentActivity(record);
     });
+  }
+
+  private async maybeConfirmNonNativeClaudeResumeSessionId(
+    record: NonNativeHostExecution, trigger: 'startup' | 'waiting-input'
+  ): Promise<void> {
+    const { business, execution, persistence, launchSpec } = record;
+    const candidate = business?.agentResume;
+    const sessionId = candidate?.sessionId?.trim();
+    if (record.kind !== 'agent' || !business || business.agentProvider !== 'claude' ||
+      business.launchMode !== 'start' || candidate?.strategy !== 'none' || !sessionId ||
+      !persistence || !launchSpec?.cwd) return;
+    const isCurrentCandidate = (): boolean => {
+      const current = execution.snapshot();
+      const authority = this.nonNativeExecutionOwner?.authority.snapshot();
+      const node = this.state.nodes.find(value => value.id === record.nodeId && value.kind === 'agent');
+      return this.isNonNativeHostRecordCurrent(record) && record.execution === execution &&
+        record.business === business && record.persistence === persistence && record.launchSpec === launchSpec &&
+        business.agentProvider === 'claude' && business.launchMode === 'start' &&
+        business.agentResume === candidate && candidate.strategy === 'none' && candidate.sessionId?.trim() === sessionId &&
+        node?.metadata?.agent === persistence.metadata && !record.mutationError &&
+        !persistence.submitted && record.finalRevision === undefined &&
+        !current.stopRequested && !current.settled && !current.retired && !current.closeObservation &&
+        !authority?.closing && !authority?.blockedReason && current.adapter?.state === 'running' &&
+        !current.adapter.process && !current.adapter.source && !current.adapter.seal;
+    };
+    if (!isCurrentCandidate()) return;
+    if (business.claudeFileConfirmation) {
+      business.claudeFileConfirmation.retry = true;
+      return;
+    }
+    const request = { retry: false };
+    business.claudeFileConfirmation = request;
+    try {
+      do {
+        request.retry = false;
+        try {
+          const confirmed = await locateClaudeSessionId({ cwd: launchSpec.cwd, sessionId });
+          if (!isCurrentCandidate()) return;
+          const detail = { nodeId: record.nodeId, cwd: launchSpec.cwd, resumeSessionId: sessionId, trigger,
+            executionSessionId: execution.identity.executionId, generation: execution.identity.generation };
+          if (confirmed === sessionId) {
+            business.agentResume = { supported: true, strategy: 'claude-session-id', sessionId };
+            this.projectNonNativeHostBusiness(record);
+            this.recordDiagnosticEvent('agent/claudeSessionIdConfirmedFromFiles', detail);
+            await this.persistState({ mode: 'immediate', reason: 'agent-resume-context' });
+            return;
+          }
+          this.recordDiagnosticEvent('agent/claudeSessionIdFileConfirmationMissed', detail);
+        } catch (error) {
+          this.recordDiagnosticEvent('agent/claudeSessionIdFileConfirmationFailed', {
+            nodeId: record.nodeId, executionSessionId: execution.identity.executionId,
+            generation: execution.identity.generation, trigger, message: formatUnknownError(error)
+          });
+        }
+        // Preserve a waiting-input request made while startup's bounded scan was pending.
+        trigger = 'waiting-input';
+      } while (request.retry && isCurrentCandidate());
+    } finally {
+      if (business.claudeFileConfirmation === request) business.claudeFileConfirmation = undefined;
+    }
   }
 
   private async writeNonNativeHostInput(record: NonNativeHostExecution, data: string, queryReply = false): Promise<boolean> {
