@@ -32,7 +32,12 @@ PR #314 已实施具名修复：同 ID 重读保留原 metadata/status；root + 
 
 2026-10-10 拖放修复已在 PR #314 收口：复用原输入目标校验，使用 owned 原 launchSpec 的 shell/cwd 准备路径并等待原执行写入确认；停止/旧 metadata/节点删除/隔离/缺少上下文拒绝，等待期间不转投替换执行。保留旧 session 路径，本交互 smoke 的实时正文改从原执行通道读取。新增 17 项回归，完整 Host 426/426、正文 helper 14/14、路径 helper 与类型检查通过；两轮默认 VSIX 均通过构建、两个具名阶段及真实拖放首资源/路径、文件、图片和 cd 相对文件定位。计划与证据：`docs/exec-plans/completed/owned-execution-resource-drop.md`、`docs/references/smoke-reload-autostart/resource-drop-repair-evidence.json`。
 
-最新独立阻塞：两轮 trusted 随后均将多行文件结果 `2:8` 解析为 search/quickOpen，期待 file。第二轮明确等待原执行的两行结果及页面可见相邻两行后仍复现，排除仅由命令回显或未渲染导致提前点击。`getExecutionTerminalPathContext` 尚未接入 owned business 的逐行 cwd tracker；该源码缺口与本次失败的完整因果对照待专项定位，不在拖放修复中顺带改写。完整门禁仍失败；后续缺失文件搜索、URL hover/显式 URL 和 Runtime 场景尚未触达。
+此前独立阻塞：两轮 trusted 随后均将多行文件结果 `2:8` 解析为 search/quickOpen，期待 file。第二轮明确等待原执行的两行结果及页面可见相邻两行后仍复现，排除仅由命令回显或未渲染导致提前点击。`getExecutionTerminalPathContext` 尚未接入 owned business 的逐行 cwd tracker；该源码缺口与本次失败的完整因果对照待专项定位，不在拖放修复中顺带改写。完整门禁仍失败；后续缺失文件搜索、URL hover/显式 URL 和 Runtime 场景尚未触达。
+
+2026-10-10 多行文件链接已在 PR #314 收口：owned 原 launchSpec 和原 business.lineContextTracker 接入路径上下文，相对解析缓存加入执行身份；只读解析保留停止后的原正文目录和旧 session/历史回退。新增 8 项、完整 Host 434/434、路径 helper、逐行 tracker、类型检查通过。真实 helper 修前将 subdir 文件解析到初始目录，修后正确；默认真实 VSIX 整个 native interactions 完成，含多行 2:8/file/编辑器位置和后续缺失文件搜索、普通/显式 URL。原多行解析缺口已闭环，本轮未改 smoke。计划与证据：`docs/exec-plans/completed/owned-execution-file-links.md`、`docs/references/smoke-reload-autostart/file-link-repair-evidence.json`。
+
+最新独立阻塞：后续 `verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory:8523` 仍等待历史 metadata.recentOutput 出现 SCROLLBACK_PERSIST-220。原节点 live，同执行最终 Host 快照已有 001/220，metadata 却仍是此前 native interactions 历史；超时发生在该函数的 simulateRuntimeReload 之前，不是 reload 后丢失历史的证据。后续需把运行期正文等待改为原执行实际通道，并继续保留停止保存/reload 后首尾行保留检查。本轮未修改该独立用例，完整 trusted 和后续 Runtime/压力矩阵仍未完成。
+
 
 
 workspace trust / editor deserialize 已审计共用入口，但独立 UI 路径、真实窗口 Reload、跨版本及 Remote SSH 不在本轮原生验收范围，继续依赖各自验证矩阵。

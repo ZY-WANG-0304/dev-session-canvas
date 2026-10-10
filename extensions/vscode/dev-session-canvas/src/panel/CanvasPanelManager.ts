@@ -8641,6 +8641,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return JSON.stringify({
       kind,
       nodeId: hasLineScopedCandidate ? nodeId : undefined,
+      executionSessionId: hasLineScopedCandidate ? context.executionSessionId : undefined,
       cwd: context.cwd,
       shellPath: hasLineScopedCandidate ? context.shellPath ?? '' : '',
       pathStyle: context.pathStyle,
@@ -10147,15 +10148,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  private getExecutionTerminalPathContext(kind: ExecutionNodeKind, nodeId: string): {
-    shellPath?: string;
-    cwd: string;
-    pathStyle: 'windows' | 'posix';
-    userHome?: string;
-    linkOpenMode?: CanvasLinkOpenMode;
-    resolveCwdForBufferLine?: (bufferStartLine: number) => Promise<string | undefined>;
-  } {
-    const session = this.getExecutionSessions(kind).get(nodeId);
+  private getExecutionTerminalPathContext(kind: ExecutionNodeKind, nodeId: string): ExecutionTerminalPathContext {
+    const record = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
+    const session = record ? undefined : this.getExecutionSessions(kind).get(nodeId);
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId && currentNode.kind === kind);
     const metadata =
       kind === 'agent'
@@ -10163,17 +10158,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : node
           ? ensureTerminalMetadata(node)
           : undefined;
-    const shellPath = session?.shellPath ?? metadata?.shellPath;
-    const cwd = session?.cwd ?? metadata?.cwd ?? this.getTerminalWorkingDirectory();
+    const shellPath = record?.launchSpec?.file ?? session?.shellPath ?? metadata?.shellPath;
+    const cwd = record?.launchSpec?.cwd ?? session?.cwd ?? metadata?.cwd ?? this.getTerminalWorkingDirectory();
+    const lineContextTracker = record?.business?.lineContextTracker ?? session?.lineContextTracker;
 
     return {
+      executionSessionId: record?.execution.identity.executionId ?? session?.sessionId,
       shellPath,
       cwd,
       pathStyle: inferExecutionTerminalPathStyle(shellPath, cwd),
       userHome: process.env.HOME ?? process.env.USERPROFILE,
       linkOpenMode: this.getCanvasLinkOpenMode(),
       resolveCwdForBufferLine:
-        session ? (bufferStartLine) => session.lineContextTracker.getCwdForBufferLine(bufferStartLine) : undefined
+        lineContextTracker ? (bufferStartLine) => lineContextTracker.getCwdForBufferLine(bufferStartLine) : undefined
     };
   }
 

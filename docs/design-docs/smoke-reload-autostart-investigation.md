@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md]
+related_plans: [docs/exec-plans/completed/smoke-reload-autostart-investigation.md, docs/exec-plans/completed/canvas-owned-execution-reconciliation.md, docs/exec-plans/completed/smoke-current-execution-output.md, docs/exec-plans/completed/resize-admission-investigation.md, docs/exec-plans/completed/owned-startup-resize.md, docs/exec-plans/completed/owned-agent-exit-notification-investigation.md, docs/exec-plans/completed/owned-agent-exit-notification-repair.md, docs/exec-plans/completed/owned-agent-resume-failure.md, docs/exec-plans/completed/owned-execution-resource-drop.md, docs/exec-plans/completed/owned-execution-file-links.md]
 updated_at: 2026-10-10
 ---
 
@@ -188,3 +188,17 @@ PR #314 继续补回 snapshot-only 的恢复阶段终态语义。`CanvasPanelMan
 2026-10-10 实施验证：新增 17 项回归，修前陈旧 session 的 PowerShell 引用规则污染原 POSIX 执行，修后通过。完整 Host **426/426**、正文 helper **14/14**、路径 helper 与类型检查通过。两轮默认真实 VSIX 构建打包、owned reconciliation、local execution flow 均通过；trusted 均已通过拖放完整路径与只消费首资源、文件 2:8 定位、图片预览/opener rejection，以及 cd 后相对文件 3:1 定位。拖放缺口已收口。
 
 完整 trusted 随后在多行文件结果 `2:8` 的文件目标断言失败：实际 `execution/linkOpened` 为 search/quickOpen。第二轮增加原执行实际两行正文和页面可见相邻两行等待，两者通过后仍复现，排除仅由命令回显或页面未渲染导致提前点击。源码发现 `getExecutionTerminalPathContext` 的逐行 cwd resolver 只接旧 session tracker，未接 owned business tracker；这一缺口与本次失败的完整因果对照尚未完成，本轮未改链接解析器或弱化文件目标断言。后续缺失文件搜索、URL hover/显式链接及 Runtime 场景未触达，完整门禁仍未通过。精简证据见 `docs/references/smoke-reload-autostart/resource-drop-repair-evidence.json`。
+
+
+## owned 执行逐行文件链接上下文的正式方案
+
+`CanvasPanelManager.getExecutionTerminalPathContext` 优先从捕获的 owned record 的 `launchSpec.file/cwd` 提供启动上下文，并将原 `business.lineContextTracker.getCwdForBufferLine` 接入文件解析。此为正文的只读上下文，停止但未退休的执行仍可读取；没有 owned record 时沿用旧 session 与历史 metadata 的回退。异步目录查找捕获原 tracker，不再按 nodeId 找新执行。`ExecutionTerminalPathContext` 增加可选执行身份，相对路径 Host 缓存将它纳入键，避免重启后相同行号与文件名复用上次执行的解析结果；绝对路径不受执行身份影响。
+
+正式验收保留实际两行正文、页面相邻行、file 事件和编辑器 2:8 位置检查。实施过程见 `docs/exec-plans/completed/owned-execution-file-links.md`，验证结果如下。
+
+
+2026-10-10 根因与修复验证：真实 helper 受控回归在修前将 `/controlled/subdir/link-target.ts` 错误解析为初始 `/controlled/link-target.ts`。owned tracker 已正确记录 Terminal 确认的 cd 和 Agent OSC 7 目录，但路径上下文未接 resolver，因此解析使用初始目录。修后新增 **8 项**、完整 Host **434/434**、路径 helper、逐行 tracker 与类型检查通过。回归覆盖正文原目录与新目录同名文件的 URI/行列、陈旧 metadata、停止后只读查询、异步替换保持原 tracker、新旧执行缓存隔离，以及旧 session/历史回退。
+
+默认真实 VSIX 构建打包、owned reconciliation、local execution flow 均通过。原 `verifyExecutionTerminalNativeInteractions` 整体完成，多行 `2:8` 现在产生 file 事件并定位到编辑器第二行第八列；后续缺失文件搜索、URL hover/清除 hover、浏览器目标及 OSC 8 显式链接也通过。本轮未修改 smoke，这使逐行 cwd 缺口与原失败完成因果闭环。
+
+完整 trusted 随后在 `verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory` 等待 metadata.recentOutput 中的 `SCROLLBACK_PERSIST-220` 超时，此时尚未进入该函数的 simulateRuntimeReload。节点 live，metadata 仍是上一条 native interactions 的历史；finally 恢复配置后的同执行 Host 快照包含 001/220。此处为新触达的旧正文断言，不能据此判定 reload 丢失历史。本轮未修改该场景，完整门禁仍未通过，后续恢复/Runtime/压力矩阵未触达。精简证据见 `docs/references/smoke-reload-autostart/file-link-repair-evidence.json`。

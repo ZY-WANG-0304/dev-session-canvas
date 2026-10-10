@@ -1,0 +1,104 @@
+{
+  "date": "2026-10-10",
+  "baseline": "cec8cb56243fb5bc0f8e18373cd402855c1b3a57",
+  "target": "origin/main@78c58c2a2cecd053199c9bada6084868f9255877",
+  "scope": "PR #314：owned 执行文件链接的逐行 cwd 接线与相对解析缓存身份；不修改 smoke、版本或发布材料。",
+  "rootCause": "owned business 已通过确认输入或 OSC 7 跟踪逐行目录，但 getExecutionTerminalPathContext 只为旧 session 提供逐行 resolver；文件解析因此使用初始 metadata.cwd，在切换目录后的多行位置候选上解析失败并退回 search。",
+  "before": {
+    "nativeEvidence": "resource-drop-repair-evidence.json",
+    "nativeResult": "两轮真实页面均将 2:8 解析为 search/quickOpen；第二轮已等待实际两行正文和页面相邻行，排除只由提前点击导致。",
+    "hostCommand": "DEV_SESSION_CANVAS_HOST_TEST_FILTER='file link context resolves' node scripts/test/test-host-execution-owner-wiring.mjs",
+    "hostResult": "failed: actual /controlled/link-target.ts, expected /controlled/subdir/link-target.ts",
+    "log": ".debug/file-link-fix/host-before.log"
+  },
+  "changes": [
+    "owned 原 launchSpec 提供 shell/cwd，捕获原 business.lineContextTracker 提供逐行目录。",
+    "只读链接上下文允许停止但未退休的执行，不复用输入准入；异步等待不改投新 tracker。",
+    "相对路径缓存加入执行身份，防止相同节点/行号的新执行使用旧文件解析；绝对路径与旧 session/历史路径保留。"
+  ],
+  "automated": {
+    "targeted": "8/8 passed",
+    "host": "434/434 passed",
+    "nativeHelpers": "passed",
+    "lineContextTracker": "passed",
+    "typecheck": "passed",
+    "logs": ".debug/file-link-fix/",
+    "coverage": [
+      "Terminal 确认 cd 与 Agent OSC 7；原目录/新目录同名文件通过真实 helper 返回各自 URI 和 1:7 选择位置。",
+      "原 launchSpec 不受陈旧 metadata shell/cwd 影响。",
+      "停止后的只读查找；异步 lookup 期间替换执行不转投新 tracker。",
+      "相同节点的两个原执行目录结果不共用，单执行缓存仍命中；旧 session 与历史 metadata 回退。"
+    ]
+  },
+  "native": {
+    "command": "npm run test:vsix-smoke",
+    "environment": {
+      "platform": "Linux x64",
+      "node": "22.23.3",
+      "vscode": "1.141.0",
+      "provider": "当前原生 PTY + fake Agent",
+      "runtimePersistence": false
+    },
+    "package": "notifier build 与主扩展 typecheck/build/package passed",
+    "stages": {
+      "owned-canvas-reconciliation": "passed",
+      "local-execution-flow": "passed",
+      "trusted": "failed at verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory:8523"
+    },
+    "passedAssertions": [
+      "拖放完整路径/首资源",
+      "文件 2:8 定位",
+      "图片预览/opener rejection",
+      "cd 后相对文件 3:1 定位",
+      "多行结果 2:8 的实际输出/页面相邻行/file 事件/编辑器位置",
+      "缺失文件搜索",
+      "URL hover/清除 hover/浏览器目标",
+      "OSC 8 显式 URL 打开"
+    ],
+    "evidenceBasis": "verifyExecutionTerminalNativeInteractions 全部完成后按原脚本顺序进入下一 scrollback 函数；本轮未修改任何 smoke。前序事件由原用例清理，不伪造已清理事件。",
+    "fullGatePassed": false,
+    "log": ".debug/file-link-fix/vsix.log",
+    "artifacts": ".debug/file-link-fix/trusted-artifacts",
+    "remainingFailure": {
+      "description": "后续 scrollback 用例仍等待历史 metadata.recentOutput 中的 -220，超时点发生在 simulateRuntimeReload 之前。",
+      "execution": {
+        "kind": "terminal",
+        "nodeId": "terminal-2-31e01320-6833-49b8-ab8c-4ebed4870859",
+        "identity": {
+          "executionId": "ca56c00e-aa7c-4393-a731-10790f055cfd",
+          "generation": "442c9ebf-ea26-4280-b897-7a5c984c1844"
+        },
+        "retired": false,
+        "persistence": {
+          "submitted": false
+        }
+      },
+      "nodeStatus": "live",
+      "liveSession": true,
+      "legacyMetadataContainsExpectedMarker": false,
+      "deliveredSnapshot": {
+        "executionSessionId": "ca56c00e-aa7c-4393-a731-10790f055cfd",
+        "outputSequence": 8,
+        "containsFirst": true,
+        "containsLast": true
+      },
+      "snapshotTiming": "finally 恢复 scrollback 配置后的最终 Host 快照仍包含原执行的 001/220；超时 metadata 是上一条执行历史。不能用 finally 清理后的消息缺失否定此前交付。",
+      "status": "新触达独立 smoke 断言阻塞；本轮未修改，reload 与后续步骤尚未验证。"
+    },
+    "sourceHashes": {
+      "failure-error.txt": "61693de1d86d2cad4626d436b2442972936293c86b25892ef2b15c3c00d76b43",
+      "failure-host-messages.json": "f5c83c0dcff873019a8ed45ef57874b77151dbed6cf11f5d3267d52c4ad4e42e",
+      "failure-diagnostic-events.json": "c8eaf42bb35563f78e6401f1c04dda20be71002b79d0460b949456dd19f8b372"
+    }
+  },
+  "limits": [
+    "完整 trusted 未通过，scrollback 历史输出断言需要后续迁移。",
+    "本轮未原生复验 RuntimePersistence 开启、真实 Agent 服务、跨版本、Remote SSH、其他平台或后续压力/恢复场景。"
+  ],
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "77e0f48178d07078fd696ec4d2aba7521dbd0aa06fae6c89a98066456b0adfd1",
+    "extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts": "3cce904391e683db272f45eb5d9b82009cf912bfe780047c9e30caf78b7169fa",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "2f485de07c7953ffca5fa2cf12cd9063452081fe59b68a6e598bf86b0870b078",
+    "tests/vscode-smoke/extension-tests.cjs": "cb763322c7bad2b6026b0699b478c5c9a2ca7b670be6888ecd74d61b2e6a04f6"
+  }
+}

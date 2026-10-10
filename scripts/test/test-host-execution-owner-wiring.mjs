@@ -19,7 +19,7 @@ const bundled = await esbuild.build({
       export { RuntimeSupervisorClient } from './extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient';
       export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
       export { parseWebviewMessage } from './extensions/vscode/dev-session-canvas/src/common/protocol';
-      export { env as testEnvironment, window as testWindow, l10n as testL10n } from 'vscode';
+      export { env as testEnvironment, window as testWindow, l10n as testL10n, workspace as testWorkspace, Uri as testUri } from 'vscode';
       export { serializeRuntimeSupervisorError, createRuntimeSupervisorError } from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol';
       export { testLegacyHistoryInspector } from './extensions/vscode/dev-session-canvas/src/panel/legacyRuntimeHistory';
       export { testNativeHistoryInspector } from './extensions/vscode/dev-session-canvas/src/panel/nativeRuntimeHistory';
@@ -60,8 +60,13 @@ const bundled = await esbuild.build({
           class EventEmitter { event = () => new Disposable(); fire() {} dispose() {} }
           class ThemeIcon { constructor(id) { this.id = id; } }
           class TreeItem {}
+          class Range {
+            constructor(line, character, endLine, endCharacter) {
+              this.start = { line, character }; this.end = { line: endLine, character: endCharacter };
+            }
+          }
           module.exports = {
-            Disposable, EventEmitter, ThemeIcon, TreeItem,
+            Disposable, EventEmitter, ThemeIcon, TreeItem, Range, FileType: { File: 1, Directory: 2 },
             ExtensionMode: { Production: 1, Development: 2, Test: 3 },
             TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
             l10n: { t: message => message },
@@ -87,7 +92,7 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
 );
 const { composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCanvasObjectId, CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
   RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION, EXECUTION_INTERACTION_LIMITS,
-  testEnvironment, testWindow, testL10n, serializeRuntimeSupervisorError, createRuntimeSupervisorError,
+  testEnvironment, testWindow, testL10n, testWorkspace, testUri, serializeRuntimeSupervisorError, createRuntimeSupervisorError,
   testLegacyHistoryInspector, testNativeHistoryInspector, testRootRuntimePreparation,
   createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, resolveRootRuntimeSupervisorGeneration,
   resolveRuntimeRootOwnerBaseStoragePath } = loaded.exports;
@@ -4765,6 +4770,146 @@ test('owned Terminal initial install input cannot cross a replacement before sta
     f.host.clearPendingTerminalInitialInputs('controlled cleanup');
     await disposeStartedCandidate(f);
   }
+});
+
+async function withFileLinkBoundary(run) {
+  const previousFs = testWorkspace.fs;
+  const previousFile = testUri.file;
+  const paths = [];
+  testWorkspace.fs = { stat: async uri => {
+    paths.push(uri.fsPath);
+    if (!uri.fsPath.endsWith('/link-target.ts')) throw new Error('Missing controlled file');
+    return { type: 1 };
+  } };
+  testUri.file = fsPath => ({ ...previousFile(fsPath), toString: () => `file://${fsPath}` });
+  try { await run(paths); }
+  finally { testWorkspace.fs = previousFs; testUri.file = previousFile; }
+}
+
+function initializeFileLinkCache(host) {
+  host.executionFileLinkResolveCache = { entries: new Map(), inFlight: new Map(), lastBackgroundStartedAt: 0 };
+  host.executionFileLinkResolveQueueByNode = new Map();
+}
+
+function multilineFileCandidate(bufferStartLine = 1) {
+  return { candidateId: 'multiline:2:8', text: '2:8', path: 'link-target.ts',
+    line: 2, column: 8, bufferStartLine, startIndex: 0, endIndexExclusive: 25, source: 'detected' };
+}
+
+async function deliverFileLinkOutput(f, sequence, text) {
+  f.provider.output(sequence, text);
+  await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === sequence, 'file link context output');
+  await f.record.business.lineContextTracker.flush();
+}
+
+for (const kind of ['terminal', 'agent']) {
+  test(`owned ${kind} file link context resolves original and changed directories through the real helper`, async () => {
+    const f = await interactiveHostFixture(kind);
+    initializeFileLinkCache(f.host);
+    try {
+      await deliverFileLinkOutput(f, 1, 'link-target.ts\r\n  2:8  original\r\n');
+      if (kind === 'terminal') {
+        const writing = f.host.writeExecutionInput(kind, `${kind}-1`, 'cd /controlled/subdir\r');
+        await until(f.clock, () => f.requests.length === 1, 'file link context cd');
+        f.reply(f.requests[0], { kind: 'written', writtenBytes: Buffer.byteLength(f.requests[0].data) });
+        await completed(f.clock, writing, 'file link context cd acknowledgement');
+      }
+      await deliverFileLinkOutput(f, 2,
+        (kind === 'agent' ? '\x1b]7;file:///controlled/subdir\x07' : '') + 'link-target.ts\r\n  2:8  changed\r\n');
+      const context = f.host.getExecutionTerminalPathContext(kind, `${kind}-1`);
+      await withFileLinkBoundary(async () => {
+        for (const [bufferLine, expectedCwd] of [[1, '/controlled'], [3, '/controlled/subdir']]) {
+          const result = await f.host.runExecutionFileLinkResolveForNode(kind, `${kind}-1`,
+            [multilineFileCandidate(bufferLine)], context, 'interactive');
+          assert.equal(result.resolvedCandidates[0]?.resolved.uri.fsPath, `${expectedCwd}/link-target.ts`);
+          assert.deepEqual(result.resolvedCandidates[0].resolved.selection.start, { line: 1, character: 7 });
+        }
+      });
+      const node = f.host.state.nodes.find(node => node.id === `${kind}-1`);
+      node.metadata[kind].shellPath = 'C:\\stale-shell.exe'; node.metadata[kind].cwd = 'C:\\stale-cwd';
+      const refreshed = f.host.getExecutionTerminalPathContext(kind, `${kind}-1`);
+      assert.equal(refreshed.cwd, f.record.launchSpec.cwd);
+      assert.equal(refreshed.shellPath, f.record.launchSpec.file);
+    } finally { await f.cleanup(); }
+  });
+
+  test(`owned ${kind} file link context remains readable after stop`, async () => {
+    const f = await interactiveHostFixture(kind);
+    try {
+      await deliverFileLinkOutput(f, 1, '\x1b]7;file:///controlled/subdir\x07link-target.ts\r\n  2:8  result\r\n');
+      void f.host.stopExecutionSession(kind, `${kind}-1`).catch(() => {});
+      assert.equal(f.record.execution.snapshot().stopRequested, true);
+      const context = f.host.getExecutionTerminalPathContext(kind, `${kind}-1`);
+      assert.equal(await context.resolveCwdForBufferLine?.(1), '/controlled/subdir');
+    } finally { await f.cleanup(); }
+  });
+
+  test(`owned ${kind} file link context captures its tracker across an asynchronous replacement`, async () => {
+    const f = await interactiveHostFixture(kind);
+    const gate = deferred();
+    try {
+      await deliverFileLinkOutput(f, 1, '\x1b]7;file:///controlled/original\x07link-target.ts\r\n  2:8  result\r\n');
+      const tracker = f.record.business.lineContextTracker;
+      const originalLookup = tracker.getCwdForBufferLine.bind(tracker);
+      let entered = false;
+      tracker.getCwdForBufferLine = async line => { entered = true; await gate.promise; return originalLookup(line); };
+      const context = f.host.getExecutionTerminalPathContext(kind, `${kind}-1`);
+      const lookup = context.resolveCwdForBufferLine?.(1);
+      assert.equal(entered, true);
+      let replacementLookups = 0;
+      f.host.nonNativeHostExecutions.set(`${kind}:${kind}-1`, { ...f.record,
+        business: { ...f.record.business, lineContextTracker: {
+          getCwdForBufferLine: async () => { replacementLookups++; return '/controlled/replacement'; }
+        } }
+      });
+      gate.resolve();
+      assert.equal(await lookup, '/controlled/original');
+      assert.equal(replacementLookups, 0);
+    } finally {
+      gate.resolve(); f.host.nonNativeHostExecutions.set(`${kind}:${kind}-1`, f.record); await f.cleanup();
+    }
+  });
+}
+
+test('owned file link context does not reuse relative results across executions of the same node', async () => {
+  const first = await interactiveHostFixture();
+  const second = await interactiveHostFixture();
+  initializeFileLinkCache(first.host);
+  second.host.executionFileLinkResolveCache = first.host.executionFileLinkResolveCache;
+  second.host.executionFileLinkResolveQueueByNode = first.host.executionFileLinkResolveQueueByNode;
+  try {
+    await withFileLinkBoundary(async () => {
+      for (const [f, cwd] of [[first, '/controlled/first'], [second, '/controlled/second']]) {
+        await deliverFileLinkOutput(f, 1, `\x1b]7;file://${cwd}\x07link-target.ts\r\n  2:8  result\r\n`);
+        const context = f.host.getExecutionTerminalPathContext('terminal', 'terminal-1');
+        const candidate = multilineFileCandidate();
+        const resolved = await f.host.runExecutionFileLinkResolveForNode('terminal', 'terminal-1', [candidate], context, 'interactive');
+        assert.equal(resolved.resolvedCandidates[0]?.resolved.uri.fsPath, `${cwd}/link-target.ts`);
+        const cached = await f.host.runExecutionFileLinkResolveForNode('terminal', 'terminal-1', [candidate], context, 'interactive');
+        assert.equal(cached.cacheHitCount, 1, 'same original execution still uses the cache');
+        assert.equal(cached.resolvedCandidates[0]?.resolved.uri.fsPath, `${cwd}/link-target.ts`);
+      }
+    });
+  } finally { await first.cleanup(); await second.cleanup(); }
+});
+
+test('legacy and history file link context retain their directory sources', async () => {
+  const f = fixture();
+  const tracker = f.host.createExecutionTerminalLineContextTracker(80, 24, '/bin/bash', '/legacy', 100);
+  f.host.terminalSessions.set('terminal-1', {
+    sessionId: 'legacy-session', shellPath: '/bin/bash', cwd: '/legacy', lineContextTracker: tracker, stopRequested: true
+  });
+  try {
+    tracker.write('\x1b]7;file:///legacy/subdir\x07link-target.ts\r\n  2:8  result\r\n');
+    const context = f.host.getExecutionTerminalPathContext('terminal', 'terminal-1');
+    assert.equal(context.cwd, '/legacy');
+    assert.equal(await context.resolveCwdForBufferLine(1), '/legacy/subdir');
+    f.host.terminalSessions.clear();
+    f.host.state.nodes[0].metadata.terminal = { shellPath: '/bin/zsh', cwd: '/history' };
+    const history = f.host.getExecutionTerminalPathContext('terminal', 'terminal-1');
+    assert.equal(history.shellPath, '/bin/zsh'); assert.equal(history.cwd, '/history');
+    assert.equal(history.resolveCwdForBufferLine, undefined);
+  } finally { tracker.dispose(); }
 });
 
 for (const kind of ['terminal', 'agent']) {
