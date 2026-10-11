@@ -1,0 +1,1943 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "c32437ac008b1d933e9e13975e60c869e7bb33d4",
+  "verifiedAt": "2026-10-11T17:29:18.370877+00:00",
+  "task": "复验PR319合入后的主线门禁遗留问题",
+  "releaseInputPrepared": false,
+  "fullGatePassed": false,
+  "productAndTestSourcesUnchanged": true,
+  "input": {
+    "sourceCommit": "c32437ac008b1d933e9e13975e60c869e7bb33d4",
+    "nodeVersion": "v22.23.3",
+    "vscodeVersion": "1.141.0",
+    "platform": "Linux x64",
+    "assetSet": "/tmp/dsc-release-026-assets",
+    "assets": [
+      {
+        "path": "darwin-arm64/execution-owner.node",
+        "bytes": 234280,
+        "sha256": "f6cc4db5a99d2cddca08fca5ea1f7b94e1e456f8dc68c1b87bdfd211b7ffd0dc"
+      },
+      {
+        "path": "darwin-arm64/manifest.json",
+        "bytes": 3332,
+        "sha256": "7150550a3a3b9278510a3fe9416346a2dda83dd4f5a4acbf5290f3f5341b6701"
+      },
+      {
+        "path": "darwin-arm64/spawn-helper",
+        "bytes": 50288,
+        "sha256": "4f57ab027c936e2ea727ab8eacc76cbf12672eadbd19ce43175cbcb4724adf3b"
+      },
+      {
+        "path": "darwin-x64/execution-owner.node",
+        "bytes": 205016,
+        "sha256": "44ea26c01b66102b66f53f5baca11f5cdc76624eac8269729371ae0113d08fb6"
+      },
+      {
+        "path": "darwin-x64/manifest.json",
+        "bytes": 3323,
+        "sha256": "548372e5922f925ae08d820b89713941dd63b8bafe2dd81f53e9312ea4439d1b"
+      },
+      {
+        "path": "darwin-x64/spawn-helper",
+        "bytes": 8776,
+        "sha256": "86b6a1c98f8fddb417e249258b9de9bd6c16dbe71c9cf93c3db8294f1f932ae9"
+      },
+      {
+        "path": "linux-arm64-glibc/execution-owner.node",
+        "bytes": 229272,
+        "sha256": "cf7c17647803d78f6f7a92aa95362c1317945cb3cd0bbd5b9e0918808b3c4dac"
+      },
+      {
+        "path": "linux-arm64-glibc/manifest.json",
+        "bytes": 1635,
+        "sha256": "8c1d370af1edcfb9bc98d952c76064f8516d18c7c4405326b3cec2cd228d1e2b"
+      },
+      {
+        "path": "linux-x64-glibc/execution-owner.node",
+        "bytes": 222880,
+        "sha256": "b99f8083d3351828deb6d12e8edae313805c1ad4550d07429a0c8d5a15aad46c"
+      },
+      {
+        "path": "linux-x64-glibc/manifest.json",
+        "bytes": 1633,
+        "sha256": "792d662d708753dc4bbf8570cec37f8db1d8bc71bead2008c2ae9ba8091fd5fa"
+      },
+      {
+        "path": "win32-arm64/conpty/OpenConsole.exe",
+        "bytes": 1110560,
+        "sha256": "7fa560be0c9b6c81db5d1b855a4a6e0f3ee5a2ea75d36eebb3ae44443b8d4866"
+      },
+      {
+        "path": "win32-arm64/conpty/conpty.dll",
+        "bytes": 106528,
+        "sha256": "b3a9f975c51d5b9b96d290bf784e990e3f85203b063c21614457353f566266ff"
+      },
+      {
+        "path": "win32-arm64/conpty.node",
+        "bytes": 429056,
+        "sha256": "6ed97e9ca14a868646a33cd16c1448c0b71032ddc7894d1afec004ee567297d9"
+      },
+      {
+        "path": "win32-arm64/manifest.json",
+        "bytes": 3323,
+        "sha256": "0340fc84121b9d7155b51c24883bd3b7878ab785de6b8b8e9fc17ccc4955ebea"
+      },
+      {
+        "path": "win32-x64/conpty/OpenConsole.exe",
+        "bytes": 1062472,
+        "sha256": "7f68c840226505004215c0b82d4e502c24b5bc3f4b93c4baaaa19bd679c0def8"
+      },
+      {
+        "path": "win32-x64/conpty/conpty.dll",
+        "bytes": 110152,
+        "sha256": "3319b484b80bb53d1f4d0a9eb0ea60fd0f61da69db7280ca43b84215f19245ff"
+      },
+      {
+        "path": "win32-x64/conpty.node",
+        "bytes": 438784,
+        "sha256": "4c28a7572aef97cea62858c00faa7bfa697ce76343dbb44501bbc36a19258e3d"
+      },
+      {
+        "path": "win32-x64/manifest.json",
+        "bytes": 3305,
+        "sha256": "9d6c2e290218f29ea26af5064e8205111bc3d075d13e2c52de655743f8f73623"
+      }
+    ],
+    "npmCiLogSha256": "2959a220e3fc54071e01a5953b611a50fbb3380eee9bbef86fd6b2ff343ebb66"
+  },
+  "sourceFiles": [
+    {
+      "path": "package.json",
+      "sha256": "7d12965c70e1a1f8bc98fea4d26988321d608a1b9ac8e5e12e44a19d7ec93830"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "8abaf58c22555f568470919ab26d5ba866af1099ecfb7cca29900af903c13a1b"
+    },
+    {
+      "path": "scripts/release/release-preflight.mjs",
+      "sha256": "d2cd9646843cc58de0309b42bdebeb46824002f34f23f5d27d88a79c30f59802"
+    },
+    {
+      "path": ".github/workflows/release-preflight.yml",
+      "sha256": "e0bf8580ef26a2e568c4321c4b99789c3a41f614371489f4b06c374aaa31d0c5"
+    },
+    {
+      "path": ".github/workflows/publish-marketplace-release.yml",
+      "sha256": "b6ca1fd3acda05387f947cda3f2d3cc137b47354ca2c0cd8771b46ee6de0ca86"
+    },
+    {
+      "path": "scripts/test/test-canvas-execution-context.mjs",
+      "sha256": "30c077ca0b64488096998b0fe84bb93e3a6bd8b6dfc6bf3d5aac65a1a4ae6828"
+    },
+    {
+      "path": "tests/vscode-smoke/extension-tests.cjs",
+      "sha256": "d65f4b1acd16a78bc07750ac2c6a4f91eeeb519af263b5684cb4f0599f92f72b"
+    },
+    {
+      "path": "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs",
+      "sha256": "9918e5874d4e3de7a1a3facfaa550ac78d88e908a0e06a8300a2367f0ba2d085"
+    },
+    {
+      "path": "tests/vscode-smoke/real-reopen-tests.cjs",
+      "sha256": "7ce3f33da807ee7cac625387e3c7742a3c4af5d9e8111e3bf7d238bed2a5ccf1"
+    },
+    {
+      "path": "tests/vscode-smoke/two-window-shared-runtime-tests.cjs",
+      "sha256": "24ccbcefc4ff50b3a2b2a13ef7fc28a8962156d7e71edf4c01a959e6bf3559b0"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts",
+      "sha256": "72ea704a0ba40115239167a99f9d6771e2924851b881689bea23acf40b9e4135"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/sharedRootCanvasStore.ts",
+      "sha256": "f83ec9418103e291d9ecce728d1145a8bccaa8eaae0535bf62bc9a6307d700ed"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts",
+      "sha256": "a2f93ffd24e8e4239f0ea2420393f22076d345ac3758a11c31ee14144cf5dc84"
+    }
+  ],
+  "runs": [
+    {
+      "name": "build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/build"
+      },
+      "startedAt": "2026-10-11T16:41:25.690431+00:00",
+      "log": "/tmp/dmv12/build.log",
+      "finishedAt": "2026-10-11T16:41:26.752018+00:00",
+      "exitCode": 0,
+      "logSha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "classification": "passed"
+    },
+    {
+      "name": "build-notifier",
+      "command": [
+        "npm",
+        "run",
+        "build:notifier"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/build-notifier"
+      },
+      "startedAt": "2026-10-11T16:41:26.752553+00:00",
+      "log": "/tmp/dmv12/build-notifier.log",
+      "finishedAt": "2026-10-11T16:41:27.350549+00:00",
+      "exitCode": 0,
+      "logSha256": "511f5eb2819dbe33e3786f008c40dad0f1d04e9db4c3c276b2a5d2f87d73b604",
+      "classification": "passed"
+    },
+    {
+      "name": "systemd-user",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "systemd-user-real-reopen",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/systemd-user"
+      },
+      "startedAt": "2026-10-11T16:41:27.351117+00:00",
+      "log": "/tmp/dmv12/systemd-user.log",
+      "finishedAt": "2026-10-11T16:42:15.341284+00:00",
+      "exitCode": 0,
+      "logSha256": "b40c1f6f1721daf534a2b08d25ee3d2f21cff376a6bbc41ca9ef6d31501ea4e2",
+      "classification": "passed"
+    },
+    {
+      "name": "systemd-fallback",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "systemd-fallback-real-reopen",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/systemd-fallback"
+      },
+      "startedAt": "2026-10-11T16:42:15.343091+00:00",
+      "log": "/tmp/dmv12/systemd-fallback.log",
+      "finishedAt": "2026-10-11T16:43:01.891696+00:00",
+      "exitCode": 1,
+      "logSha256": "b37fcf2e01ed8a481011a4d95b572c9fb282d5baaeed9d9eec27dab069be0c41",
+      "classification": "failed-fixture-submitted-error-fallback-expectation"
+    },
+    {
+      "name": "release-gate-regression",
+      "command": [
+        "npm",
+        "run",
+        "test:release-preflight"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/release-gate-regression"
+      },
+      "startedAt": "2026-10-11T16:43:01.894759+00:00",
+      "log": "/tmp/dmv12/release-gate-regression.log",
+      "finishedAt": "2026-10-11T16:43:02.837315+00:00",
+      "exitCode": 0,
+      "logSha256": "d04d2df46fb0aab0e45880457f39c43ada3f191d408c34da998713ae1c19924b",
+      "classification": "passed"
+    },
+    {
+      "name": "release-workflow-regression",
+      "command": [
+        "npm",
+        "run",
+        "test:release-preflight-workflow"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/release-workflow-regression"
+      },
+      "startedAt": "2026-10-11T16:43:02.837812+00:00",
+      "log": "/tmp/dmv12/release-workflow-regression.log",
+      "finishedAt": "2026-10-11T16:43:03.150283+00:00",
+      "exitCode": 0,
+      "logSha256": "fddc9a3f409c67fed862bfa456c2e34193500d6fbb50d3459bd348594c48c7b7",
+      "classification": "passed"
+    },
+    {
+      "name": "npm-test",
+      "command": [
+        "npm",
+        "test"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/npm-test"
+      },
+      "startedAt": "2026-10-11T16:43:03.150758+00:00",
+      "log": "/tmp/dmv12/npm-test.log",
+      "finishedAt": "2026-10-11T16:44:14.181687+00:00",
+      "exitCode": 1,
+      "logSha256": "fee366a25435c7c42602f32a1581ff0483ffd6ccc996aeb39751488a05e21b46",
+      "classification": "failed-stale-disabled-mode-assertion"
+    },
+    {
+      "name": "webview-full",
+      "command": [
+        "npm",
+        "run",
+        "test:webview"
+      ],
+      "startedAt": "2026-10-11T16:44:14.182835+00:00",
+      "finishedAt": "2026-10-11T16:46:37.988484+00:00",
+      "exitCode": 1,
+      "log": "/tmp/dmv12/webview-full.log",
+      "logSha256": "21e490293c8f519b2b41d509417e0742adf35aa1354b2470a6ceadf5f38c04c4",
+      "classification": "environment-setup-interrupted-before-tests"
+    },
+    {
+      "name": "host-wiring",
+      "command": [
+        "node",
+        "scripts/test/test-host-execution-owner-wiring.mjs"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/host-wiring"
+      },
+      "startedAt": "2026-10-11T16:46:37.989760+00:00",
+      "log": "/tmp/dmv12/host-wiring.log",
+      "finishedAt": "2026-10-11T16:47:08.829521+00:00",
+      "exitCode": 0,
+      "logSha256": "72e2f5623353d4e32bafad741cc2afca2d48401531eff0bf8fec77df0d9297e5",
+      "classification": "passed"
+    },
+    {
+      "name": "runtime-root-ownership",
+      "command": [
+        "npm",
+        "run",
+        "test:runtime-root-ownership"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/runtime-root-ownership"
+      },
+      "startedAt": "2026-10-11T16:47:08.830126+00:00",
+      "log": "/tmp/dmv12/runtime-root-ownership.log",
+      "finishedAt": "2026-10-11T16:47:09.875067+00:00",
+      "exitCode": 0,
+      "logSha256": "b55a9496090800030472d9e2246ba599946cb8e9d8bb1a105b2b10852711177a",
+      "classification": "passed"
+    },
+    {
+      "name": "runtime-root-preparation",
+      "command": [
+        "npm",
+        "run",
+        "test:runtime-root-preparation"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/runtime-root-preparation"
+      },
+      "startedAt": "2026-10-11T16:47:09.875696+00:00",
+      "log": "/tmp/dmv12/runtime-root-preparation.log",
+      "finishedAt": "2026-10-11T16:47:10.879135+00:00",
+      "exitCode": 0,
+      "logSha256": "ca8b6930441ae32b117f7c8335d6ff3609ae9d0fcddd9a16e5e8b5a501590a21",
+      "classification": "passed"
+    },
+    {
+      "name": "runtime-startup-reader",
+      "command": [
+        "npm",
+        "run",
+        "test:runtime-supervisor-startup-profile"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/runtime-startup-reader"
+      },
+      "startedAt": "2026-10-11T16:47:10.880221+00:00",
+      "log": "/tmp/dmv12/runtime-startup-reader.log",
+      "finishedAt": "2026-10-11T16:47:11.645909+00:00",
+      "exitCode": 0,
+      "logSha256": "98d4d396d68af987c139bf1d1e6444fd2039a2e554c0e0e9b849f443e9d55978",
+      "classification": "passed"
+    },
+    {
+      "name": "notifier-typecheck",
+      "command": [
+        "npm",
+        "run",
+        "typecheck:notifier"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/notifier-typecheck"
+      },
+      "startedAt": "2026-10-11T16:47:11.646506+00:00",
+      "log": "/tmp/dmv12/notifier-typecheck.log",
+      "finishedAt": "2026-10-11T16:47:13.533624+00:00",
+      "exitCode": 0,
+      "logSha256": "1a612b6d95382d40de2731c5b88523e543bf8da2d5a2a6b4422c9cac0413f9b9",
+      "classification": "passed"
+    },
+    {
+      "name": "notifier-smoke",
+      "command": [
+        "npm",
+        "run",
+        "test:notifier-smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/notifier-smoke"
+      },
+      "startedAt": "2026-10-11T16:47:13.534484+00:00",
+      "log": "/tmp/dmv12/notifier-smoke.log",
+      "finishedAt": "2026-10-11T16:47:36.659943+00:00",
+      "exitCode": 0,
+      "logSha256": "de090f0bfb40c10254a5f9be29fd3495d9b113b05fd15e14fa18a68177d6520b",
+      "classification": "passed"
+    },
+    {
+      "name": "notifier-locale",
+      "command": [
+        "npm",
+        "run",
+        "test:notifier-locale-smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/notifier-locale"
+      },
+      "startedAt": "2026-10-11T16:47:36.661323+00:00",
+      "log": "/tmp/dmv12/notifier-locale.log",
+      "finishedAt": "2026-10-11T16:48:26.735115+00:00",
+      "exitCode": 0,
+      "logSha256": "22f91bd9ff270fd266f3424ac418759d48d870bf91b22de954b3999442d2ee1b",
+      "classification": "passed"
+    },
+    {
+      "name": "clean-checkout-vsix",
+      "command": [
+        "npm",
+        "run",
+        "validate:clean-checkout:vsix",
+        "--",
+        "--ref",
+        "c32437ac008b1d933e9e13975e60c869e7bb33d4",
+        "--keep-temp"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/clean-checkout-vsix"
+      },
+      "startedAt": "2026-10-11T16:48:26.737175+00:00",
+      "log": "/tmp/dmv12/clean-checkout-vsix.log",
+      "finishedAt": "2026-10-11T16:54:03.862119+00:00",
+      "exitCode": 0,
+      "logSha256": "fc2d57c900ad9e12305621e050eb632b8f781cb2e7352a34efb8e58eac730807",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-extension-storage-paths",
+      "command": [
+        "npm",
+        "run",
+        "test:extension-storage-paths"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s00"
+      },
+      "startedAt": "2026-10-11T16:54:04.737452+00:00",
+      "log": "/tmp/dmv12/remaining-test-extension-storage-paths.log",
+      "finishedAt": "2026-10-11T16:54:05.053631+00:00",
+      "exitCode": 0,
+      "logSha256": "472ed1d39f693b8f4913ebec0d3365a13a8b03a5fac8d578c096599ed578131b",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-runtime-supervisor-paths",
+      "command": [
+        "npm",
+        "run",
+        "test:runtime-supervisor-paths"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s01"
+      },
+      "startedAt": "2026-10-11T16:54:05.054001+00:00",
+      "log": "/tmp/dmv12/remaining-test-runtime-supervisor-paths.log",
+      "finishedAt": "2026-10-11T16:54:05.304210+00:00",
+      "exitCode": 0,
+      "logSha256": "f5bc2c92cc048db72c2b1588fdaa5fcfe59be5e0b01b5627bec3502268f9e4bf",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-terminal-session-journal",
+      "command": [
+        "npm",
+        "run",
+        "test:terminal-session-journal"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s02"
+      },
+      "startedAt": "2026-10-11T16:54:05.304624+00:00",
+      "log": "/tmp/dmv12/remaining-test-terminal-session-journal.log",
+      "finishedAt": "2026-10-11T16:54:07.896239+00:00",
+      "exitCode": 0,
+      "logSha256": "42c44172b48a4dc8dc9633c95b6a3341ce39157a32e1dbc449089265e5ff589f",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-execution-terminal-title",
+      "command": [
+        "npm",
+        "run",
+        "test:execution-terminal-title"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s03"
+      },
+      "startedAt": "2026-10-11T16:54:07.896773+00:00",
+      "log": "/tmp/dmv12/remaining-test-execution-terminal-title.log",
+      "finishedAt": "2026-10-11T16:54:08.143088+00:00",
+      "exitCode": 0,
+      "logSha256": "5a1e418337e9a3997578f58a6bda4ff48039f59f3a012cf9503ce24d8616ff43",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-runtime-supervisor-protocol",
+      "command": [
+        "npm",
+        "run",
+        "test:runtime-supervisor-protocol"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s04"
+      },
+      "startedAt": "2026-10-11T16:54:08.143534+00:00",
+      "log": "/tmp/dmv12/remaining-test-runtime-supervisor-protocol.log",
+      "finishedAt": "2026-10-11T16:54:59.818006+00:00",
+      "exitCode": 0,
+      "logSha256": "f3a02f26bb4e08de547e8507fc67f55e8421d640e6ced0a9bfdf12a83df834f5",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-protocol-webview-messages",
+      "command": [
+        "npm",
+        "run",
+        "test:protocol-webview-messages"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s05"
+      },
+      "startedAt": "2026-10-11T16:54:59.818916+00:00",
+      "log": "/tmp/dmv12/remaining-test-protocol-webview-messages.log",
+      "finishedAt": "2026-10-11T16:55:37.366959+00:00",
+      "exitCode": 0,
+      "logSha256": "660a757126a53068fe5e2cacc76d0bdec4802dac56960226d79d7ec8e102b6ea",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-webview-lifecycle-diagnostics",
+      "command": [
+        "npm",
+        "run",
+        "test:webview-lifecycle-diagnostics"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s06"
+      },
+      "startedAt": "2026-10-11T16:55:37.367458+00:00",
+      "log": "/tmp/dmv12/remaining-test-webview-lifecycle-diagnostics.log",
+      "finishedAt": "2026-10-11T16:55:37.630066+00:00",
+      "exitCode": 0,
+      "logSha256": "c400663c01441ceda7ce4256121807803ee040e82189d3aea533f08b18418e83",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-agent-cli-resolver",
+      "command": [
+        "npm",
+        "run",
+        "test:agent-cli-resolver"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s07"
+      },
+      "startedAt": "2026-10-11T16:55:37.631225+00:00",
+      "log": "/tmp/dmv12/remaining-test-agent-cli-resolver.log",
+      "finishedAt": "2026-10-11T16:55:37.874932+00:00",
+      "exitCode": 0,
+      "logSha256": "033cadbc7a4be793dc20571bcec7f89813f6f08b36dee318c07bbd2c8393321b",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-agent-cli-selection",
+      "command": [
+        "npm",
+        "run",
+        "test:agent-cli-selection"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s08"
+      },
+      "startedAt": "2026-10-11T16:55:37.875766+00:00",
+      "log": "/tmp/dmv12/remaining-test-agent-cli-selection.log",
+      "finishedAt": "2026-10-11T16:55:38.198355+00:00",
+      "exitCode": 0,
+      "logSha256": "a8deb29136dbd5ae4c2eaf2aaa1998b42ba11e96005b3128a545d2f83cc15f1a",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-agent-settings-files",
+      "command": [
+        "npm",
+        "run",
+        "test:agent-settings-files"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s09"
+      },
+      "startedAt": "2026-10-11T16:55:38.198910+00:00",
+      "log": "/tmp/dmv12/remaining-test-agent-settings-files.log",
+      "finishedAt": "2026-10-11T16:55:38.450842+00:00",
+      "exitCode": 0,
+      "logSha256": "92c0119d72e481bd944e659f278f33b5f8aa49c796edba77e814ffb7db26ce7f",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-shell-environment-resolver",
+      "command": [
+        "npm",
+        "run",
+        "test:shell-environment-resolver"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s10"
+      },
+      "startedAt": "2026-10-11T16:55:38.452158+00:00",
+      "log": "/tmp/dmv12/remaining-test-shell-environment-resolver.log",
+      "finishedAt": "2026-10-11T16:55:38.833054+00:00",
+      "exitCode": 0,
+      "logSha256": "3085ef6bb5ebd2118032eb366274a7ccc71c8c4ab21aefda239701f2ef3b0462",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-execution-session-bridge",
+      "command": [
+        "npm",
+        "run",
+        "test:execution-session-bridge"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s11"
+      },
+      "startedAt": "2026-10-11T16:55:38.833658+00:00",
+      "log": "/tmp/dmv12/remaining-test-execution-session-bridge.log",
+      "finishedAt": "2026-10-11T16:55:39.074249+00:00",
+      "exitCode": 0,
+      "logSha256": "2d94a0e4da73a3a3288f00001ae912cd8464844e24940f061fc0ca855b7e2eab",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-execution-output-scheduler",
+      "command": [
+        "npm",
+        "run",
+        "test:execution-output-scheduler"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s12"
+      },
+      "startedAt": "2026-10-11T16:55:39.074880+00:00",
+      "log": "/tmp/dmv12/remaining-test-execution-output-scheduler.log",
+      "finishedAt": "2026-10-11T16:55:39.408443+00:00",
+      "exitCode": 0,
+      "logSha256": "39f0d81d1471af7b1b8571dbe4e5f84c90fc4c3131a3b6d6ecbdaede800448a4",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-execution-output-sequence",
+      "command": [
+        "npm",
+        "run",
+        "test:execution-output-sequence"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s13"
+      },
+      "startedAt": "2026-10-11T16:55:39.409026+00:00",
+      "log": "/tmp/dmv12/remaining-test-execution-output-sequence.log",
+      "finishedAt": "2026-10-11T16:55:39.634659+00:00",
+      "exitCode": 0,
+      "logSha256": "5476779b9563ab71c5ae19997bc348b695401b30fc4e47ddaed0b292869053ff",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-extension-manifest",
+      "command": [
+        "npm",
+        "run",
+        "test:extension-manifest"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s14"
+      },
+      "startedAt": "2026-10-11T16:55:39.635465+00:00",
+      "log": "/tmp/dmv12/remaining-test-extension-manifest.log",
+      "finishedAt": "2026-10-11T16:55:39.820435+00:00",
+      "exitCode": 0,
+      "logSha256": "2aa5fe73f6ba83196e99bbecaa9cbaa560af887318504492050f7d41c5bb496a",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-ui-copy-localization",
+      "command": [
+        "npm",
+        "run",
+        "test:ui-copy-localization"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s15"
+      },
+      "startedAt": "2026-10-11T16:55:39.821388+00:00",
+      "log": "/tmp/dmv12/remaining-test-ui-copy-localization.log",
+      "finishedAt": "2026-10-11T16:55:40.134671+00:00",
+      "exitCode": 0,
+      "logSha256": "4af3675d269dc6d3faf48197a340d135d1308be7fbc5005abdfead66840847b4",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-package-vsix-command",
+      "command": [
+        "npm",
+        "run",
+        "test:package-vsix-command"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s16"
+      },
+      "startedAt": "2026-10-11T16:55:40.136283+00:00",
+      "log": "/tmp/dmv12/remaining-test-package-vsix-command.log",
+      "finishedAt": "2026-10-11T16:55:40.587701+00:00",
+      "exitCode": 0,
+      "logSha256": "751fa8c8b18bdc3a18ffdf9952179b64c4fa95dcdd2b6e723db55a19ec800f13",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-package-vsix-file-list",
+      "command": [
+        "npm",
+        "run",
+        "test:package-vsix-file-list"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s17"
+      },
+      "startedAt": "2026-10-11T16:55:40.588405+00:00",
+      "log": "/tmp/dmv12/remaining-test-package-vsix-file-list.log",
+      "finishedAt": "2026-10-11T16:55:44.441836+00:00",
+      "exitCode": 0,
+      "logSha256": "60c4c6c82962b3334901321ae19c9fafa29455b29b1505dc0666af53f21962af",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-publish-marketplaces",
+      "command": [
+        "npm",
+        "run",
+        "test:publish-marketplaces"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s18"
+      },
+      "startedAt": "2026-10-11T16:55:44.442793+00:00",
+      "log": "/tmp/dmv12/remaining-test-publish-marketplaces.log",
+      "finishedAt": "2026-10-11T16:55:44.769964+00:00",
+      "exitCode": 0,
+      "logSha256": "043e37543e74e73e6869c79eb9594f71534c68aafddd28e2a7bb8abeea6c2786",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-publish-marketplace-workflow",
+      "command": [
+        "npm",
+        "run",
+        "test:publish-marketplace-workflow"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s19"
+      },
+      "startedAt": "2026-10-11T16:55:44.771715+00:00",
+      "log": "/tmp/dmv12/remaining-test-publish-marketplace-workflow.log",
+      "finishedAt": "2026-10-11T16:55:45.414446+00:00",
+      "exitCode": 0,
+      "logSha256": "caf1683e3ae9a345bd32017dda2c3651b3ac5199d3537faf2c58306a8b83664b",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-marketplace-production-deploy-workflow",
+      "command": [
+        "npm",
+        "run",
+        "test:marketplace-production-deploy-workflow"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s20"
+      },
+      "startedAt": "2026-10-11T16:55:45.415254+00:00",
+      "log": "/tmp/dmv12/remaining-test-marketplace-production-deploy-workflow.log",
+      "finishedAt": "2026-10-11T16:55:45.601710+00:00",
+      "exitCode": 0,
+      "logSha256": "b999077fdbd8fa292c973cc0248b3b7992b6a1e806f40a8434fe274dbd83d524",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-sidebar-codicon-bundle",
+      "command": [
+        "npm",
+        "run",
+        "test:sidebar-codicon-bundle"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s21"
+      },
+      "startedAt": "2026-10-11T16:55:45.603584+00:00",
+      "log": "/tmp/dmv12/remaining-test-sidebar-codicon-bundle.log",
+      "finishedAt": "2026-10-11T16:55:45.848571+00:00",
+      "exitCode": 0,
+      "logSha256": "7dfa8c4accd541916ed80343e5c589225d351ef1806a08cfc926f49b1ec32b11",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-webview-build-xterm-entry",
+      "command": [
+        "npm",
+        "run",
+        "test:webview-build-xterm-entry"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s22"
+      },
+      "startedAt": "2026-10-11T16:55:45.849433+00:00",
+      "log": "/tmp/dmv12/remaining-test-webview-build-xterm-entry.log",
+      "finishedAt": "2026-10-11T16:55:46.479423+00:00",
+      "exitCode": 0,
+      "logSha256": "f7b53da8f9e5645d49cf75b77adf30a80d776712c991193bfe93f4c9a8aa30e0",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-sidebar-list-colors",
+      "command": [
+        "npm",
+        "run",
+        "test:sidebar-list-colors"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s23"
+      },
+      "startedAt": "2026-10-11T16:55:46.480566+00:00",
+      "log": "/tmp/dmv12/remaining-test-sidebar-list-colors.log",
+      "finishedAt": "2026-10-11T16:55:46.657744+00:00",
+      "exitCode": 0,
+      "logSha256": "d5296af2999120e9116333cc4ac4e796aba9797bc8738d50579d74a43f847e65",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-theme-color-tokens",
+      "command": [
+        "npm",
+        "run",
+        "test:theme-color-tokens"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s24"
+      },
+      "startedAt": "2026-10-11T16:55:46.658500+00:00",
+      "log": "/tmp/dmv12/remaining-test-theme-color-tokens.log",
+      "finishedAt": "2026-10-11T16:55:46.989536+00:00",
+      "exitCode": 0,
+      "logSha256": "f8eadab0bd50b68bb5bc62282a90c4b902bec2fdd589b037e62813f4d4ced34a",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-activitybar-badges",
+      "command": [
+        "npm",
+        "run",
+        "test:activitybar-badges"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s25"
+      },
+      "startedAt": "2026-10-11T16:55:46.990615+00:00",
+      "log": "/tmp/dmv12/remaining-test-activitybar-badges.log",
+      "finishedAt": "2026-10-11T16:55:49.276705+00:00",
+      "exitCode": 0,
+      "logSha256": "7be68294d856fdcefd741fdbc761dd0b901b1c7402a0633bd42c49f5e1466203",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-avatar",
+      "command": [
+        "npm",
+        "run",
+        "test:avatar"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s26"
+      },
+      "startedAt": "2026-10-11T16:55:49.277630+00:00",
+      "log": "/tmp/dmv12/remaining-test-avatar.log",
+      "finishedAt": "2026-10-11T16:55:50.791896+00:00",
+      "exitCode": 0,
+      "logSha256": "82ab22cd9488d45bc85c05515a238940607feb13e02163c0f5912d45a6f08601",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-note-markdown-links",
+      "command": [
+        "npm",
+        "run",
+        "test:note-markdown-links"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s27"
+      },
+      "startedAt": "2026-10-11T16:55:50.793566+00:00",
+      "log": "/tmp/dmv12/remaining-test-note-markdown-links.log",
+      "finishedAt": "2026-10-11T16:55:51.105615+00:00",
+      "exitCode": 0,
+      "logSha256": "d693dbfc3b71300aab688a719dc9fd334eee7527a7996303d48c39e8409a95af",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-note-markdown-source-map",
+      "command": [
+        "npm",
+        "run",
+        "test:note-markdown-source-map"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s28"
+      },
+      "startedAt": "2026-10-11T16:55:51.106452+00:00",
+      "log": "/tmp/dmv12/remaining-test-note-markdown-source-map.log",
+      "finishedAt": "2026-10-11T16:55:51.477034+00:00",
+      "exitCode": 0,
+      "logSha256": "0cbebf18e2e1a1bf135f229a5db99ed5f2a9d68d7d9a1e2ab04b20078500782b",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-note-markdown-file-association",
+      "command": [
+        "npm",
+        "run",
+        "test:note-markdown-file-association"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s29"
+      },
+      "startedAt": "2026-10-11T16:55:51.479308+00:00",
+      "log": "/tmp/dmv12/remaining-test-note-markdown-file-association.log",
+      "finishedAt": "2026-10-11T16:55:51.781160+00:00",
+      "exitCode": 0,
+      "logSha256": "0d59c7bc000d545b16c19f500da70d5cbca19113ad41837b9415228ef932fe42",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-note-body-indent",
+      "command": [
+        "npm",
+        "run",
+        "test:note-body-indent"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s30"
+      },
+      "startedAt": "2026-10-11T16:55:51.783510+00:00",
+      "log": "/tmp/dmv12/remaining-test-note-body-indent.log",
+      "finishedAt": "2026-10-11T16:55:52.096354+00:00",
+      "exitCode": 0,
+      "logSha256": "43269cb126e9eb1826ccf630f0b50861775334cbfdd6bca7c4d992f69f4c2f9d",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-note-markdown-checklists",
+      "command": [
+        "npm",
+        "run",
+        "test:note-markdown-checklists"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s31"
+      },
+      "startedAt": "2026-10-11T16:55:52.097242+00:00",
+      "log": "/tmp/dmv12/remaining-test-note-markdown-checklists.log",
+      "finishedAt": "2026-10-11T16:55:52.332520+00:00",
+      "exitCode": 0,
+      "logSha256": "515b62825f4b4b155081efcd881a616b1846916aa9477c70740fbbbce11e8a4c",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-note-markdown-front-matter",
+      "command": [
+        "npm",
+        "run",
+        "test:note-markdown-front-matter"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s32"
+      },
+      "startedAt": "2026-10-11T16:55:52.333411+00:00",
+      "log": "/tmp/dmv12/remaining-test-note-markdown-front-matter.log",
+      "finishedAt": "2026-10-11T16:55:52.634666+00:00",
+      "exitCode": 0,
+      "logSha256": "15e6eea8c80e9fbb79859b43613eb7106c05be8369ec0f5a742276949f3afd5e",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-execution-terminal-links",
+      "command": [
+        "npm",
+        "run",
+        "test:execution-terminal-links"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s33"
+      },
+      "startedAt": "2026-10-11T16:55:52.636335+00:00",
+      "log": "/tmp/dmv12/remaining-test-execution-terminal-links.log",
+      "finishedAt": "2026-10-11T16:55:52.950610+00:00",
+      "exitCode": 0,
+      "logSha256": "2482827be693ed0afe6585d2f151d2df6408dcfc3f2e8d8ebdb24b14edd4c1fa",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-execution-terminal-native-helpers",
+      "command": [
+        "npm",
+        "run",
+        "test:execution-terminal-native-helpers"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s34"
+      },
+      "startedAt": "2026-10-11T16:55:52.951788+00:00",
+      "log": "/tmp/dmv12/remaining-test-execution-terminal-native-helpers.log",
+      "finishedAt": "2026-10-11T16:55:53.287432+00:00",
+      "exitCode": 0,
+      "logSha256": "01599c92de42a8d336fca95fd35cb57006c822e7181cacb08125c8f258b987d3",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-terminal-shell-configuration",
+      "command": [
+        "npm",
+        "run",
+        "test:terminal-shell-configuration"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s35"
+      },
+      "startedAt": "2026-10-11T16:55:53.394919+00:00",
+      "log": "/tmp/dmv12/remaining-test-terminal-shell-configuration.log",
+      "finishedAt": "2026-10-11T16:55:53.981596+00:00",
+      "exitCode": 0,
+      "logSha256": "f62dc91c38b251d76aeed5fffc5e725de1fbc8786213f703bfeafc3a2ad4859c",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-serialized-terminal-state-tracker",
+      "command": [
+        "npm",
+        "run",
+        "test:serialized-terminal-state-tracker"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s36"
+      },
+      "startedAt": "2026-10-11T16:55:53.994574+00:00",
+      "log": "/tmp/dmv12/remaining-test-serialized-terminal-state-tracker.log",
+      "finishedAt": "2026-10-11T16:56:06.116804+00:00",
+      "exitCode": 0,
+      "logSha256": "5832f06208560813fc710ec1aa5bd13b7df230cd3d325ad904ade8153598a49c",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-execution-terminal-line-context-tracker",
+      "command": [
+        "npm",
+        "run",
+        "test:execution-terminal-line-context-tracker"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s37"
+      },
+      "startedAt": "2026-10-11T16:56:06.117818+00:00",
+      "log": "/tmp/dmv12/remaining-test-execution-terminal-line-context-tracker.log",
+      "finishedAt": "2026-10-11T16:56:06.659931+00:00",
+      "exitCode": 0,
+      "logSha256": "f2b2f3853478932eee97517a30b804274da9a74b701eb87f22d0c03b8e567a0f",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-execution-attention-signals",
+      "command": [
+        "npm",
+        "run",
+        "test:execution-attention-signals"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s38"
+      },
+      "startedAt": "2026-10-11T16:56:06.662044+00:00",
+      "log": "/tmp/dmv12/remaining-test-execution-attention-signals.log",
+      "finishedAt": "2026-10-11T16:56:06.930176+00:00",
+      "exitCode": 0,
+      "logSha256": "924cd8dae5a7b75ffd7bcac1b84b2bafd737760b17e2446f0e3562765716b66b",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-execution-terminal-clipboard",
+      "command": [
+        "npm",
+        "run",
+        "test:execution-terminal-clipboard"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s39"
+      },
+      "startedAt": "2026-10-11T16:56:06.931516+00:00",
+      "log": "/tmp/dmv12/remaining-test-execution-terminal-clipboard.log",
+      "finishedAt": "2026-10-11T16:56:07.290008+00:00",
+      "exitCode": 0,
+      "logSha256": "983d84059f324421d5b8905ad090c39f1358071f494b2d6ae827ef2c3963f7bf",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-agent-launch-presets",
+      "command": [
+        "npm",
+        "run",
+        "test:agent-launch-presets"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s40"
+      },
+      "startedAt": "2026-10-11T16:56:07.291036+00:00",
+      "log": "/tmp/dmv12/remaining-test-agent-launch-presets.log",
+      "finishedAt": "2026-10-11T16:56:07.529099+00:00",
+      "exitCode": 0,
+      "logSha256": "1cb9a188857639f34d1af5c66aa92f38dcbdee240cc3fef914a7bfe801cb0194",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-git-worktrees",
+      "command": [
+        "npm",
+        "run",
+        "test:git-worktrees"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s41"
+      },
+      "startedAt": "2026-10-11T16:56:07.531119+00:00",
+      "log": "/tmp/dmv12/remaining-test-git-worktrees.log",
+      "finishedAt": "2026-10-11T16:56:07.838597+00:00",
+      "exitCode": 0,
+      "logSha256": "7f10e99fffb2d1c978bd6c83a7b63a84a437be65a33d305bc38cf825bf092511",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-canvas-node-placement",
+      "command": [
+        "npm",
+        "run",
+        "test:canvas-node-placement"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s42"
+      },
+      "startedAt": "2026-10-11T16:56:07.841505+00:00",
+      "log": "/tmp/dmv12/remaining-test-canvas-node-placement.log",
+      "finishedAt": "2026-10-11T16:56:08.128684+00:00",
+      "exitCode": 0,
+      "logSha256": "a0900ab7530a63203b7f108c84453d5562c64579612ef9a3fcb60276c4104c86",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-canvas-templates",
+      "command": [
+        "npm",
+        "run",
+        "test:canvas-templates"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s43"
+      },
+      "startedAt": "2026-10-11T16:56:08.129823+00:00",
+      "log": "/tmp/dmv12/remaining-test-canvas-templates.log",
+      "finishedAt": "2026-10-11T16:56:08.585207+00:00",
+      "exitCode": 0,
+      "logSha256": "3105092dd9ad57bdb66b74879b8eaabb64fba0d015e2ca4d3661968d5d1ff255",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-canvas-node-groups",
+      "command": [
+        "npm",
+        "run",
+        "test:canvas-node-groups"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s44"
+      },
+      "startedAt": "2026-10-11T16:56:08.586272+00:00",
+      "log": "/tmp/dmv12/remaining-test-canvas-node-groups.log",
+      "finishedAt": "2026-10-11T16:56:09.190777+00:00",
+      "exitCode": 0,
+      "logSha256": "10b45b1ec24cfb8e93d8519ddea293f6abcb0f95740c05c81aeab30b5b7e6d29",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-canvas-layout-arrangement",
+      "command": [
+        "npm",
+        "run",
+        "test:canvas-layout-arrangement"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s45"
+      },
+      "startedAt": "2026-10-11T16:56:09.191989+00:00",
+      "log": "/tmp/dmv12/remaining-test-canvas-layout-arrangement.log",
+      "finishedAt": "2026-10-11T16:56:09.460787+00:00",
+      "exitCode": 0,
+      "logSha256": "a7aa12a0a2d40bc18bbd693a66332d0b0e6367dc74880c54727d320e6927388b",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-shared-root-canvas",
+      "command": [
+        "npm",
+        "run",
+        "test:shared-root-canvas"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s46"
+      },
+      "startedAt": "2026-10-11T16:56:09.463802+00:00",
+      "log": "/tmp/dmv12/remaining-test-shared-root-canvas.log",
+      "finishedAt": "2026-10-11T16:56:11.342870+00:00",
+      "exitCode": 0,
+      "logSha256": "2ef7ac0088afa6c71bd6d674060d6c808dc4d60e59039e9c348d6d01e3a9bc98",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-canvas-multi-root-composition",
+      "command": [
+        "npm",
+        "run",
+        "test:canvas-multi-root-composition"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s47"
+      },
+      "startedAt": "2026-10-11T16:56:11.345468+00:00",
+      "log": "/tmp/dmv12/remaining-test-canvas-multi-root-composition.log",
+      "finishedAt": "2026-10-11T16:56:11.613754+00:00",
+      "exitCode": 0,
+      "logSha256": "eecaf03a4941f73f13a8f14180cb881ba9dc30a87742991b71524fbca6923988",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-sidebar-node-list",
+      "command": [
+        "npm",
+        "run",
+        "test:sidebar-node-list"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s48"
+      },
+      "startedAt": "2026-10-11T16:56:11.615762+00:00",
+      "log": "/tmp/dmv12/remaining-test-sidebar-node-list.log",
+      "finishedAt": "2026-10-11T16:56:13.247098+00:00",
+      "exitCode": 0,
+      "logSha256": "eabf93773be0838eec9522bd5bf8ac180e2911b31477e5461b48055fe3decd60",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-sidebar-session-history",
+      "command": [
+        "npm",
+        "run",
+        "test:sidebar-session-history"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s49"
+      },
+      "startedAt": "2026-10-11T16:56:13.248226+00:00",
+      "log": "/tmp/dmv12/remaining-test-sidebar-session-history.log",
+      "finishedAt": "2026-10-11T16:56:14.810352+00:00",
+      "exitCode": 0,
+      "logSha256": "795acaf8cf0ba451ca6cec7b7c119a685dd02c2a58e7afc7b2e0eff9c4d466ed",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-attention-protocol",
+      "command": [
+        "npm",
+        "run",
+        "test:attention-protocol"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s50"
+      },
+      "startedAt": "2026-10-11T16:56:14.812166+00:00",
+      "log": "/tmp/dmv12/remaining-test-attention-protocol.log",
+      "finishedAt": "2026-10-11T16:56:15.114617+00:00",
+      "exitCode": 0,
+      "logSha256": "24661d8e5e9b4b287649a4dcb28f6e0de9de0a9ddedef50500b660d1f52283c1",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-notifier-source",
+      "command": [
+        "npm",
+        "run",
+        "test:notifier-source"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s51"
+      },
+      "startedAt": "2026-10-11T16:56:15.116799+00:00",
+      "log": "/tmp/dmv12/remaining-test-notifier-source.log",
+      "finishedAt": "2026-10-11T16:56:16.137817+00:00",
+      "exitCode": 0,
+      "logSha256": "c17c749a5728b3e70f927b1cdc32a68e22bd76d62dff861064bd997a44927bed",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-debug-launch-config",
+      "command": [
+        "npm",
+        "run",
+        "test:debug-launch-config"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s52"
+      },
+      "startedAt": "2026-10-11T16:56:16.141316+00:00",
+      "log": "/tmp/dmv12/remaining-test-debug-launch-config.log",
+      "finishedAt": "2026-10-11T16:56:16.681522+00:00",
+      "exitCode": 0,
+      "logSha256": "b29228e167d092bed0cafe65e6c2d6c3f9394cb33e1d13b704c13b9a7cc3d2fc",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-smoke-reset-fixture",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke-reset-fixture"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s53"
+      },
+      "startedAt": "2026-10-11T16:56:16.682770+00:00",
+      "log": "/tmp/dmv12/remaining-test-smoke-reset-fixture.log",
+      "finishedAt": "2026-10-11T16:56:16.870412+00:00",
+      "exitCode": 0,
+      "logSha256": "e2431046654fa57227bd13152093a977be998c9b936d1e47ab9395c96827b828",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-smoke-execution-output",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke-execution-output"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s54"
+      },
+      "startedAt": "2026-10-11T16:56:16.871944+00:00",
+      "log": "/tmp/dmv12/remaining-test-smoke-execution-output.log",
+      "finishedAt": "2026-10-11T16:56:17.050223+00:00",
+      "exitCode": 0,
+      "logSha256": "de71306dd8cf4c7868e3e72a97890c9fabc0d89db839faef62eea81f215c9ab9",
+      "classification": "passed"
+    },
+    {
+      "name": "remaining-test-smoke-terminal-history",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke-terminal-history"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s55"
+      },
+      "startedAt": "2026-10-11T16:56:17.051510+00:00",
+      "log": "/tmp/dmv12/remaining-test-smoke-terminal-history.log",
+      "finishedAt": "2026-10-11T16:56:17.509455+00:00",
+      "exitCode": 0,
+      "logSha256": "559219e2bce2c0dd17b96d712526ccf8b5088a6af62f8d3b888c3b0db58db95e",
+      "classification": "passed"
+    },
+    {
+      "name": "webview-actual-full",
+      "command": [
+        "npm",
+        "run",
+        "test:webview"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s56"
+      },
+      "startedAt": "2026-10-11T16:56:17.511646+00:00",
+      "log": "/tmp/dmv12/webview-actual-full.log",
+      "finishedAt": "2026-10-11T17:08:22.968653+00:00",
+      "exitCode": 0,
+      "logSha256": "bfc988456a930b82363da88c1316fd4de3e5194badf4885b7b59c77196bb536f",
+      "classification": "passed"
+    },
+    {
+      "name": "source-smoke-full",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s57"
+      },
+      "startedAt": "2026-10-11T17:08:22.972812+00:00",
+      "log": "/tmp/dmv12/source-smoke-full.log",
+      "finishedAt": "2026-10-11T17:11:32.634467+00:00",
+      "exitCode": 1,
+      "logSha256": "20fbd9ed273fba18bcd2c0a1ba1173b76fd3e8b54a78ca2285eb2f2b39c0b124",
+      "classification": "failed-checkpoint-first-page-length-assertion"
+    },
+    {
+      "name": "source-trusted",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "trusted",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s58"
+      },
+      "startedAt": "2026-10-11T17:11:32.647944+00:00",
+      "log": "/tmp/dmv12/source-trusted.log",
+      "finishedAt": "2026-10-11T17:14:33.145583+00:00",
+      "exitCode": 0,
+      "logSha256": "730279508b31de7c37726ccbc9a5e2b701631ea5c84f6a9006660fb50fae9e12",
+      "classification": "passed"
+    },
+    {
+      "name": "source-restricted",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "restricted",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s59"
+      },
+      "startedAt": "2026-10-11T17:14:33.151757+00:00",
+      "log": "/tmp/dmv12/source-restricted.log",
+      "finishedAt": "2026-10-11T17:15:28.297591+00:00",
+      "exitCode": 0,
+      "logSha256": "f2e5c9579614046023f9b77926afaf4f84483f6b46e0e727db2c617395e5e9b0",
+      "classification": "passed"
+    },
+    {
+      "name": "source-legacy-supervisor-upgrade",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s60"
+      },
+      "startedAt": "2026-10-11T17:15:28.301697+00:00",
+      "log": "/tmp/dmv12/source-legacy-supervisor-upgrade.log",
+      "finishedAt": "2026-10-11T17:15:56.324388+00:00",
+      "exitCode": 1,
+      "logSha256": "5b1ef7c8b1aa21bff36ed53cf26a6dd665f50024e1cbe1c18ce00cb02afc7d0c",
+      "classification": "failed-commit-port-occupied"
+    },
+    {
+      "name": "source-real-reopen",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "real-reopen",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s61"
+      },
+      "startedAt": "2026-10-11T17:15:56.329034+00:00",
+      "log": "/tmp/dmv12/source-real-reopen.log",
+      "finishedAt": "2026-10-11T17:16:38.113667+00:00",
+      "exitCode": 0,
+      "logSha256": "8e185880ab58bf2c569347016f97bbb6698faaf6f326eb05d5032c0feac179d5",
+      "classification": "passed"
+    },
+    {
+      "name": "source-multi-root-real-reopen",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "multi-root-real-reopen",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s62"
+      },
+      "startedAt": "2026-10-11T17:16:38.117036+00:00",
+      "log": "/tmp/dmv12/source-multi-root-real-reopen.log",
+      "finishedAt": "2026-10-11T17:17:20.048305+00:00",
+      "exitCode": 0,
+      "logSha256": "883c76284a357b51d8ce4726cd933126f16f19bcfa026382fde3b22995c8f505",
+      "classification": "passed"
+    },
+    {
+      "name": "source-single-to-multi-root-real-reopen",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "single-to-multi-root-real-reopen",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s63"
+      },
+      "startedAt": "2026-10-11T17:17:20.051218+00:00",
+      "log": "/tmp/dmv12/source-single-to-multi-root-real-reopen.log",
+      "finishedAt": "2026-10-11T17:18:01.207751+00:00",
+      "exitCode": 0,
+      "logSha256": "47a1d0b846cd7f95cea90e0e9b5b11726ee2d42d2bc5c8ffda3a10398807a352",
+      "classification": "passed"
+    },
+    {
+      "name": "source-two-window-shared-runtime",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "two-window-shared-runtime",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s64"
+      },
+      "startedAt": "2026-10-11T17:18:01.212224+00:00",
+      "log": "/tmp/dmv12/source-two-window-shared-runtime.log",
+      "finishedAt": "2026-10-11T17:19:05.886992+00:00",
+      "exitCode": 0,
+      "logSha256": "2227198526e0d075983067670ad7270ebb95b5a296633b0bdac840dfd6261c7b",
+      "classification": "passed"
+    },
+    {
+      "name": "source-remote-ssh-real-reopen",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/dm12m",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "remote-ssh-real-reopen",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/s65"
+      },
+      "startedAt": "2026-10-11T17:19:05.895402+00:00",
+      "log": "/tmp/dmv12/source-remote-ssh-real-reopen.log",
+      "finishedAt": "2026-10-11T17:20:55.878698+00:00",
+      "exitCode": 0,
+      "logSha256": "8b6eab304baaffeb6f2e53e12aaee457c2cf6a801d9792f07c4c09615d4b8b57",
+      "classification": "passed"
+    },
+    {
+      "sourceCommit": "c32437ac008b1d933e9e13975e60c869e7bb33d4",
+      "name": "marketplace-browser-cold-cache",
+      "command": [
+        "npm",
+        "run",
+        "test:marketplace-browser-e2e"
+      ],
+      "environment": {
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dmv12/cold-browser"
+      },
+      "startedAt": "2026-10-11T17:13:02.032311+00:00",
+      "finishedAt": "2026-10-11T17:13:02.955682+00:00",
+      "exitCode": 1,
+      "log": "/tmp/dmv12/cold-browser.log",
+      "logSha256": "ffdb3a83e039325df59bb92f29f43827a2fd51a5d3436fc514d2ae272ccc6e33",
+      "scope": "Existing browser E2E using empty browser cache; verifies missing workflow browser prerequisite, not a new product defect or full CI run.",
+      "classification": "expected-negative-cold-cache-prerequisite"
+    },
+    {
+      "sourceCommit": "c32437ac008b1d933e9e13975e60c869e7bb33d4",
+      "name": "legacy-supervisor-upgrade-new-storage-recheck",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/lr2"
+      },
+      "startedAt": "2026-10-11T17:21:43.065739+00:00",
+      "log": "/tmp/dmv12/source-legacy-recheck.log",
+      "reason": "First run stopped at a commit lease port occupied by an existing listener; recheck original scenario using independent storage without changing product, fixture, budgets or the occupied listener.",
+      "finishedAt": "2026-10-11T17:22:27.671493+00:00",
+      "exitCode": 1,
+      "logSha256": "c82a652c505eacdbb970385c35c9c5fb1b3687eac1f7d8925dd4e9cefb567d4a",
+      "classification": "failed-legacy-resize-equality-root-cause-unknown"
+    },
+    {
+      "sourceCommit": "c32437ac008b1d933e9e13975e60c869e7bb33d4",
+      "name": "legacy-supervisor-upgrade-business-stability-check",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dmv12/lr3"
+      },
+      "startedAt": "2026-10-11T17:25:16.350585+00:00",
+      "log": "/tmp/dmv12/source-legacy-stability.log",
+      "reason": "One additional unchanged business run to distinguish repeated legacy resize failure from a timing-specific first failure; preserve all prior results and do not retry until green.",
+      "finishedAt": "2026-10-11T17:26:00.973818+00:00",
+      "exitCode": 1,
+      "logSha256": "1a36472f0ab4852570a62d9f96c6c7476e53f4307c9b309e1d45f2cb054c05a9",
+      "classification": "failed-current-root-session-legacy-socket-fixture"
+    }
+  ],
+  "additionalArtifactHashes": [
+    {
+      "path": "/tmp/dmv12/browser-cache-setup.json",
+      "bytes": 378,
+      "sha256": "d7c1bd8c68ecb6edf5ec95d631bd58b435ac4e31996a8ce8155062c8934deaed"
+    },
+    {
+      "path": "/tmp/dmv12/legacy-port-observation.log",
+      "bytes": 132,
+      "sha256": "10dea93b0445781d2976f01b0efa10d936af467d99e1137fafdfec6761054fe6"
+    },
+    {
+      "path": "/tmp/dmv12/s57/runtime-checkpoint-refresh/artifacts/failure-error.txt",
+      "bytes": 714,
+      "sha256": "792abd1f3cec065be7236df62d19208f89e64d1fef55b9a6399b490fbe944e03"
+    },
+    {
+      "path": "/tmp/dmv12/s57/runtime-checkpoint-refresh/artifacts/failure-host-messages.json",
+      "bytes": 326567,
+      "sha256": "e27ff68ca46948331be8883dc15cd0793f61db42cfda9c4de45adf5d6adeb568"
+    },
+    {
+      "path": "/tmp/dmv12/systemd-fallback/systemd-fallback-real-reopen/artifacts/real-reopen-setup-failure-snapshot.json",
+      "bytes": 5820,
+      "sha256": "751b66687c48bbf067fb6b3807f0519ba416e003ea540454c7ff1244dc0413c4"
+    },
+    {
+      "path": "/tmp/dmv12/systemd-fallback/systemd-fallback-real-reopen/artifacts/fake-systemd-state/systemctl.log",
+      "bytes": 390,
+      "sha256": "2cebbb04a9243fd0e00d7aa23ffa5395d14a78a35f3cf2879d498150ae91f2a3"
+    }
+  ],
+  "vsix": {
+    "path": "/tmp/dev-session-canvas-clean-checkout-W5GzG1/repo/dev-session-canvas-0.26.0.vsix",
+    "bytes": 5998878,
+    "sha256": "5eb89fee1ee9ae1a3564aaad9db8c509571e872aa53d8d2480d652ec604eeb60",
+    "bundles": [
+      {
+        "path": "extension/dist/extension.js",
+        "sha256": "261505f33cb6017c16b0399bf63e82f9365e3a7ede7c1cd8ecd2aad9fb4210a1"
+      },
+      {
+        "path": "extension/dist/runtime-supervisor.js",
+        "sha256": "b4c18b751414a16f3bb4fda986db820aeb22a875df945126e7d9b22f46171183"
+      }
+    ]
+  },
+  "currentRootStartupReceiptsFromLegacyStabilityRun": [
+    {
+      "path": "/tmp/dmv12/lr3/legacy-supervisor-upgrade/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8ad6ed95733584a2c16117682fcfdaddcee6fd7f69753470f4408399c7a6d071/runtime-supervisor-generations/terminal-root-owner-linux-v1/startup-started.json",
+      "sha256": "a8be055abc0f786b5161a45240a3596a6ba9d6a9876f9020bc99282699af0cc1",
+      "backend": "legacy-detached",
+      "state": "started",
+      "generation": "terminal-root-owner-linux-v1",
+      "root": {
+        "kind": "folder",
+        "pathPolicy": "canvas-path-v1",
+        "normalizedPath": "/tmp/dscmainv1012"
+      },
+      "expectedRootSocket": "/tmp/dsc-root-1115017707/d-1927a20608bfb7f73e2e508e.sock"
+    }
+  ],
+  "boundaries": [
+    "Linux x64, Node22.23.3, VSCode1.141.0；systemd场景fake systemctl，Remote SSH为loopback fixture，Agent使用fake provider。",
+    "原完整npm test和source smoke均失败；独立后续通过不改变其结果。",
+    "Webview下载准备中断发生在用例开始前，首次实际全套424/424通过。",
+    "旧升级依次遇端口占用、resize一致性等待失败和新root会话使用旧socket错误；没有完整旧升级通过结果。",
+    "未运行完整GitHub CI、0.26.1发布契约/预合并verify或publish tag verify，未发布渠道。"
+  ]
+}

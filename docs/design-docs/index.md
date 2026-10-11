@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/main-validation-2026-10-12.md` | PR319合入后固定主线复验完成；五组遗留门禁及旧升级resize待定位，完整门禁未通过；Webview424/424、Host634/634、八场景VSIX通过，旧systemd/主题超时未重现 | 执行编排域、VSCode 集成域 / 宿主集成层、画布呈现层、适配与基础设施层 | 待探索 | 验证失败 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/main-validation-2026-10-12.md` | 2026-10-12 |
 | `docs/design-docs/runtime-shared-root-canvas-sync.md` | 共享结构差异提交、关闭模式 slot 隔离；最后窗口清理期间允许新开启窗口按阶段接管，无接管才确认原 PID 退出。Linux 单 root 双窗口复验通过；分阶段接管由实际 Host/store 与独立真实 Supervisor 定向验证，跨平台/真实多 root 保持有限范围 | 协作对象域、项目状态域、执行编排域、VSCode 集成域 / 共享模型与编排层、宿主集成层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-shared-root-canvas-sync.md`、`docs/exec-plans/completed/pr319-review-repairs.md`、`docs/exec-plans/completed/pr319-takeover-coordination.md` | 2026-10-11 |
 | [terminal-mouse-input-diagnostics.md](terminal-mouse-input-diagnostics.md) | 标题栏删除期间的鼠标输入取证与删除输入准入修复 | execution / webview、extension-host | 已选定 | 验证中 | terminal-mouse-input-diagnostics ExecPlan | 2026-10-11 |
 | `docs/design-docs/runtime-two-window-agent-delete-investigation.md` | 双窗口删除的终态递送丢失；8 项因果实验；新增共享画布及切换产品口径，删除投影收口已由共享结构实现 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 比较中 | 已验证 | `docs/exec-plans/completed/runtime-two-window-agent-delete-investigation.md` | 2026-10-11 |
