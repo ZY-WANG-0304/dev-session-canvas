@@ -90,3 +90,7 @@ PR #317 首轮预合并 CI run 38122050123 六目标资产成功，但完整验�
 修订记录：2026-10-11，记录 legacy upgrade 新 root socket 假设差异，修正新会话 fixture 地址，不修改产品或旧会话兼容行为。
 
 2026-10-11：旧升级 smoke 修复后定向完整通过，见 /tmp/dsc261latest-legacy-upgrade.log；CI run 38122582127 已越过浏览器缺失，随后因 checkout 下市场 Host TMP 路径过长导致 VS Code listen EINVAL，在业务断言前失败。双阶段 workflow 使用既有 HOST_TMP_ROOT 配置指向 /tmp/tm-runId 短路径，调试工件仍在 checkout；与本机已通过市场 E2E 的短路径环境一致。workflow 回归检查该配置，实际后续 CI 仍待结果。
+
+第四轮完整 verify 在 runtime-checkpoint-refresh 捕获首个 16,384 字符 chunk 时立即要求等于 descriptor 声明的 104,842 字符，尚未等到后续分页；前轮同场景通过。waitForHostMessages 的 predicate 在页面逐步到达时直接 assert 总长度，属于检查等待前提缺口。仅在累计长度小于声明长度时继续原 30 秒轮询；不改变连续 offset、超长拒绝、事件分离、revision、可见 marker 或停止/恢复断言。失败证据 /tmp/dsc261latest-verify-all.log 与 /tmp/d26l4s/runtime-checkpoint-refresh/artifacts 保留；修复后需定向与完整重验。
+
+修订记录：2026-10-11，记录 checkpoint smoke 对部分分页过早断言的确切输入，并保持原完整性断言等待全部 chunk。

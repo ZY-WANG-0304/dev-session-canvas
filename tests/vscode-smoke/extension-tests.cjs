@@ -387,6 +387,7 @@ async function runRuntimeCheckpointRefreshSmoke() {
         assert.strictEqual(chunk.offset, offset, 'Current-state chunks must be contiguous.');
         offset += chunk.data.length;
       }
+      if (offset < snapshot.payload.terminalRead.currentState.length) return false;
       assert.strictEqual(offset, snapshot.payload.terminalRead.currentState.length,
         'Current-state chunks must cover the declared state.');
       assert.ok(pages.filter((page) => page.stateChunk).every((page) => page.events.length === 0));
