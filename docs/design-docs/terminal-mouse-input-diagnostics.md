@@ -31,3 +31,9 @@ updated_at: 2026-10-11
 修订记录：2026-10-11取消手动localStorage开关，Main Only开发Host自动启用，保持512条限制。此前dump缺失原始事件的记录保留为历史事实，下一次无需用户执行控制台命令。
 
 05-29-39-628Z仍无原始鼠标记录，原因是自动启用字段被webview的`normalizeRuntimeContext`丢弃，属于诊断实现缺陷。现已补齐归一化和初始runtime字段，并增加实际归一化函数到采集器的回归验证。Host消息摘要记录下发开关，webview bootstrap记录实际启用值，以便区分配置传递失败与没有采集事件。此次复现仍支持删除期间转发输入的时序缺口，不能据此确认DOM来源；更新后的开发Host无需用户执行控制台命令。
+
+## 原始事件验证结果
+
+05-34-59-965Z采集到207条鼠标诊断。两组共19次sessionNotFound写入失败，通过Host sequence和webview traceId/eventId关联，全部来自真实mousemove（isTrusted=true、buttons=0），目标均为xterm-screen且位于terminal内部。18次坐标在screen矩形内；另一次在上边缘外约0.58px，row被限制到0。没有证据表明标题栏事件被转发，或坐标限制使终端持续监听区域外移动；标题栏本身的事件未采集，不能完全还原此前用户描述的停留场景。
+
+两组失败输入均在runtime删除RPC派发之后产生，Host以current=true、stopRequested=false发送writeInput。sequence45在05:34:20.411产生ESC[<35;61;4M，Host于20.635派发并于20.639失败，而删除到25.462才完成。此次报错链路已确认：runtime删除期间，Host仍开放输入准入并转发新鼠标输入，runtime以sessionNotFound拒绝；该错误可表示session不存在或已retiring。约224ms发送延迟意味着错误显示时鼠标位置不能用于判断原始事件位置。详细证据见关联ExecPlan；修复须处理删除入口的准入关闭、待派发写入及失败状态，不能通过静默错误替代状态协调。
