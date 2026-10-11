@@ -527,6 +527,7 @@ interface ManagedExecutionSessionBase {
   terminalStateTracker: SerializedTerminalStateTracker;
   lineContextTracker: ExecutionTerminalLineContextTracker;
   stopRequested: boolean;
+  inputAdmissionClosed?: boolean;
   syncTimer: NodeJS.Timeout | undefined;
   syncDueAtMs: number | undefined;
   lifecycleTimer: NodeJS.Timeout | undefined;
@@ -674,7 +675,14 @@ interface LocalExecutionReader {
   publication?: Promise<void>;
 }
 
+interface SupervisorExecutionInputControl {
+  admissionClosed: boolean;
+  pendingWrites: Set<Promise<boolean>>;
+  deletionPromise?: Promise<void>;
+}
+
 interface SupervisorExecutionSession extends ManagedExecutionSessionBase {
+  inputControl?: SupervisorExecutionInputControl;
   owner: 'supervisor';
   runtimeSessionId: string;
   terminalProjectionMode: RuntimeTerminalProjectionMode;
@@ -7649,6 +7657,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private getRuntimeContext(webview: vscode.Webview | undefined = this.getActiveWebview()): CanvasRuntimeContext {
     const fileConfiguration = this.getCanvasFileViewConfiguration();
     return {
+      executionMouseDiagnosticsEnabled: this.context.extensionMode === vscode.ExtensionMode.Development,
       workspaceTrusted: vscode.workspace.isTrusted,
       surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
       workspaceFolders: this.getWorkspaceFoldersForDisplay(),
@@ -11708,6 +11717,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         finish({ kind: 'unconfirmed', reason: 'Runtime deletion expired or changed before dispatch.' });
         return;
       }
+      this.recordDiagnosticEvent('execution/deleteBoundary', {
+        phase: 'runtime-delete-rpc-dispatch', nodeId: session.nodeId, kind: session.kind,
+        sessionId: session.sessionId, backendKind: session.backendKind
+      });
       record.observation = client.deleteSessionStrict({ sessionId: session.sessionId,
         ...(preserveTerminalReads ? { preserveTerminalReads: true } : {}) }, {
         deadline, scheduler, isCurrent: current, onSettled: retireAfterFinalization
@@ -11775,6 +11788,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       requireExistingClient?: boolean;
     }
   ): Promise<void> {
+    this.recordDiagnosticEvent('execution/deleteBoundary', {
+      phase: 'runtime-delete-requested', nodeId: session.nodeId, kind: session.kind,
+      sessionId: session.sessionId, backendKind: session.backendKind
+    });
     this.assertRuntimeBindingOwner(session.runtimeStoragePath, session.runtimeOwner);
     if (this.getExecutionCandidateProfile()) {
       await this.deleteRuntimeSupervisorSessionsWithCandidate([session], options.preserveTerminalReads);
@@ -11788,6 +11805,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         expectedRuntimeOwner: session.runtimeOwner,
         allowClosedAdmission: options.allowClosedAdmission,
         requireExistingClient: options.requireExistingClient
+      });
+      this.recordDiagnosticEvent('execution/deleteBoundary', {
+        phase: 'runtime-delete-rpc-dispatch', nodeId: session.nodeId, kind: session.kind,
+        sessionId: session.sessionId, backendKind: session.backendKind
       });
       await client.deleteSession({
         sessionId: session.sessionId,
@@ -12109,12 +12130,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  private isSameSupervisorRuntime(
+    left: SupervisorExecutionSession,
+    right: ManagedExecutionSession | undefined
+  ): right is SupervisorExecutionSession {
+    return right?.owner === 'supervisor' &&
+      left.runtimeSessionId === right.runtimeSessionId &&
+      left.runtimeBackend === right.runtimeBackend &&
+      this.resolveRuntimeStoragePath(left.runtimeStoragePath) === this.resolveRuntimeStoragePath(right.runtimeStoragePath) &&
+      runtimeBindingOwnersEqual(left.runtimeOwner, right.runtimeOwner) &&
+      left.terminalAuthorityId === right.terminalAuthorityId;
+  }
+
   private canPreserveTrustedSupervisorSessionForSnapshot(
     session: ManagedExecutionSession | undefined,
     snapshot: RuntimeSupervisorSessionSnapshot,
     runtimeStoragePath: string,
     freshSnapshotState: SerializedTerminalState | undefined,
-    terminalProjectionMode: RuntimeTerminalProjectionMode
+    terminalProjectionMode: RuntimeTerminalProjectionMode,
+    runtimeOwner?: RuntimeOwnerDescriptorV1 | null
   ): session is SupervisorExecutionSession {
     const terminalStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
     const canPreserveTerminalStream =
@@ -12134,7 +12168,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ) &&
       session.runtimeSessionId === snapshot.sessionId &&
       session.runtimeBackend === snapshot.runtimeBackend &&
-      this.resolveRuntimeStoragePath(session.runtimeStoragePath) === runtimeStoragePath
+      this.resolveRuntimeStoragePath(session.runtimeStoragePath) === runtimeStoragePath &&
+      runtimeBindingOwnersEqual(session.runtimeOwner, runtimeOwner) &&
+      session.terminalAuthorityId === (terminalStream?.authorityId ??
+        (snapshot.terminalStreamPaged === true ? snapshot.terminalAuthorityId : undefined))
     );
   }
 
@@ -12796,7 +12833,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         snapshot,
         runtimeStoragePath,
         freshSupervisorSerializedTerminalState,
-        terminalProjectionMode
+        terminalProjectionMode,
+        existingRuntimeMetadata.runtimeOwner
       )
         ? existingSession
         : undefined;
@@ -12810,6 +12848,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (preservedTrustedSupervisorSession) {
         this.updateSupervisorExecutionSessionFromSnapshot(session, snapshot, runtimeStoragePath, existingRuntimeMetadata.runtimeOwner);
       } else {
+        if (existingSession?.owner === 'supervisor' && this.isSameSupervisorRuntime(existingSession, session)) {
+          // A new terminal projection does not reopen admission to the same retiring runtime.
+          session.inputControl = existingSession.inputControl;
+        }
         this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId);
         this.disposeManagedExecutionSession(existingSession);
         this.getExecutionSessions(kind).set(nodeId, session);
@@ -13826,6 +13868,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.recordExecutionPerformanceDiagnostics({
         timestamp: new Date().toISOString(),
         ...diagnosticDetail
+      });
+      return;
+    }
+
+    if (parsedMessage.type === 'webview/executionMouseDiagnostic') {
+      const current = this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type,
+        { recordIgnored: false });
+      this.recordDiagnosticEvent('webview/executionMouseDiagnostic', {
+        surface: sourceSurface, current, lifecycle: summarizeWebviewLifecycleIdentity(lifecycle),
+        ...parsedMessage.payload
       });
       return;
     }
@@ -19659,6 +19711,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return false;
     }
 
+    const rejectClosedInput = (): boolean => {
+      const current = this.getExecutionSessions(kind).get(nodeId) === session;
+      if (current && !session.inputAdmissionClosed &&
+          !(session.owner === 'supervisor' && session.inputControl?.admissionClosed)) return false;
+      this.recordDiagnosticEvent('execution/inputRejected', {
+        ...inputDetail, sessionId: session.sessionId, sequence: diagnosticMetadata.sequence,
+        reason: current ? 'input-admission-closed' : 'session-replaced'
+      });
+      return true;
+    };
+    if (rejectClosedInput()) return false;
+
     if (kind === 'agent' && session.agentProvider === 'claude' && containsTerminalSuspendInput(data)) {
       this.recordDiagnosticEvent('execution/inputRejected', {
         ...inputDetail,
@@ -19718,6 +19782,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const deferInputActivity = session.owner === 'supervisor' && Boolean(this.getExecutionCandidateProfile());
     if (!deferInputActivity) recordInputActivity();
     const writeStartedAt = Date.now();
+    if (/^\x1b\[<\d+;\d+;\d+[Mm]$/.test(data)) {
+      this.recordDiagnosticEvent('execution/mouseInputDispatch', {
+        ...inputDetail, sessionId: session.sessionId, sequence: diagnosticMetadata.sequence,
+        webviewEpochMs: diagnosticMetadata.webviewEpochMs, stopRequested: session.stopRequested,
+        owner: session.owner
+      });
+    }
     let inputWriteSucceeded = false;
     try {
       if (session.owner === 'local') {
@@ -19729,17 +19800,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           {},
           session.runtimeStoragePath,
           session.runtimeOwner
-        ).then((client) =>
-          client.writeInput({
-            sessionId: session.runtimeSessionId,
-            data
-          })
-        );
+        ).then(async (client) => {
+          if (rejectClosedInput()) return false;
+          if (/^\x1b\[<\d+;\d+;\d+[Mm]$/.test(data)) {
+            this.recordDiagnosticEvent('execution/mouseInputRpcDispatch', {
+              ...inputDetail, sequence: diagnosticMetadata.sequence, sessionId: session.runtimeSessionId,
+              stopRequested: session.stopRequested, current: this.getExecutionSessions(kind).get(nodeId) === session
+            });
+          }
+          const writing = client.writeInput({ sessionId: session.runtimeSessionId, data }).then(() => true);
+          const pendingWrites = (session.inputControl ??= { admissionClosed: false, pendingWrites: new Set() }).pendingWrites;
+          pendingWrites.add(writing);
+          try {
+            return await writing;
+          } finally {
+            pendingWrites.delete(writing);
+          }
+        });
         this.trackRuntimeSupervisorOperation(operation.catch(() => undefined));
-        await operation;
+        if (!await operation) return false;
       }
       inputWriteSucceeded = true;
-      if (deferInputActivity && this.getExecutionSessions(kind).get(nodeId) === session && !session.stopRequested) {
+      if (deferInputActivity && this.getExecutionSessions(kind).get(nodeId) === session &&
+          !session.stopRequested && !session.inputAdmissionClosed &&
+          !(session.owner === 'supervisor' && session.inputControl?.admissionClosed)) {
         recordInputActivity();
       }
     } catch (error) {
@@ -20500,31 +20584,63 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const attachedSession = this.getExecutionSessions(node.kind).get(node.id);
+    this.recordDiagnosticEvent('execution/deleteBoundary', {
+      phase: 'start', nodeId: node.id, kind: node.kind, sessionId: attachedSession?.sessionId,
+      owner: attachedSession?.owner, stopRequested: attachedSession?.stopRequested
+    });
     if (attachedSession?.owner === 'local') {
+      attachedSession.inputAdmissionClosed = true;
       await this.flushExecutionStateImmediately(node.kind, node.id);
-      this.disposeExecutionSession(node.kind, node.id, {
-        terminateProcess: true
-      });
+      if (this.getExecutionSessions(node.kind).get(node.id) === attachedSession) {
+        this.disposeExecutionSession(node.kind, node.id, {
+          terminateProcess: true
+        });
+      }
       return;
     }
 
     if (attachedSession?.owner === 'supervisor') {
-      const backendKind = normalizeRuntimeHostBackendKind(attachedSession.runtimeBackend) ?? 'legacy-detached';
-      await this.deleteRuntimeSupervisorSessionStrict(
-        {
-          backendKind,
-          sessionId: attachedSession.runtimeSessionId,
-          runtimeStoragePath: attachedSession.runtimeStoragePath,
-          runtimeOwner: attachedSession.runtimeOwner,
-          nodeId: node.id, kind: node.kind
-        },
-        {
-          allowRestart: false
-        }
-      );
-      this.disposeExecutionSession(node.kind, node.id, {
-        terminateProcess: false
+      const inputControl = attachedSession.inputControl ??= { admissionClosed: false, pendingWrites: new Set() };
+      if (inputControl.deletionPromise) return inputControl.deletionPromise;
+      inputControl.admissionClosed = true;
+      this.recordDiagnosticEvent('execution/deleteBoundary', {
+        phase: 'input-admission-closed', nodeId: node.id, kind: node.kind,
+        sessionId: attachedSession.runtimeSessionId, pendingInputWrites: inputControl.pendingWrites.size
       });
+      const backendKind = normalizeRuntimeHostBackendKind(attachedSession.runtimeBackend) ?? 'legacy-detached';
+      const kind = node.kind;
+      const deletion = (async () => {
+        // Finish dispatched writes; client acquisitions still pending will observe closed admission.
+        await Promise.allSettled(Array.from(inputControl.pendingWrites));
+        await this.deleteRuntimeSupervisorSessionStrict(
+          {
+            backendKind,
+            sessionId: attachedSession.runtimeSessionId,
+            runtimeStoragePath: attachedSession.runtimeStoragePath,
+            runtimeOwner: attachedSession.runtimeOwner,
+            nodeId: node.id, kind
+          },
+          {
+            allowRestart: false
+          }
+        );
+        this.recordDiagnosticEvent('execution/deleteBoundary', {
+          phase: 'runtime-delete-completed', nodeId: node.id, kind,
+          sessionId: attachedSession.runtimeSessionId
+        });
+        if (this.isSameSupervisorRuntime(attachedSession, this.getExecutionSessions(kind).get(node.id))) {
+          this.disposeExecutionSession(kind, node.id, {
+            terminateProcess: false
+          });
+        }
+      })();
+      inputControl.deletionPromise = deletion;
+      try {
+        await deletion;
+      } finally {
+        // A failed/unknown deletion retains closed admission, but can be retried.
+        inputControl.deletionPromise = undefined;
+      }
       return;
     }
 
@@ -20902,6 +21018,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.outputSubscription?.dispose();
     session.exitSubscription?.dispose();
     sessionMap.delete(nodeId);
+    this.recordDiagnosticEvent('execution/sessionDisposed', { kind, nodeId, sessionId: session.sessionId, owner: session.owner });
     if (kind === 'agent') {
       void this.disposeAgentFileActivitySession(nodeId);
     }
@@ -27888,6 +28005,7 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
         updatedAt: message.payload.state.updatedAt,
         surfaceLocation: message.payload.runtime.surfaceLocation,
         workspaceTrusted: message.payload.runtime.workspaceTrusted,
+        executionMouseDiagnosticsEnabled: message.payload.runtime.executionMouseDiagnosticsEnabled === true,
         multiRootPresentationMode: message.payload.runtime.multiRootPresentationMode,
         workspaceRootGroups: summarizeWorkspaceRootGroupsForDiagnostics(message.payload.state)
       };

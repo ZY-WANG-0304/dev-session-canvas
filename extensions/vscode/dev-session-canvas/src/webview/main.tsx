@@ -1166,6 +1166,7 @@ function normalizeRuntimeContext(
     : undefined;
 
   return {
+    executionMouseDiagnosticsEnabled: runtimeContext?.executionMouseDiagnosticsEnabled === true,
     workspaceTrusted: runtimeContext?.workspaceTrusted ?? false,
     surfaceLocation: runtimeContext?.surfaceLocation === 'editor' ? 'editor' : 'panel',
     defaultAgentProvider: runtimeContext?.defaultAgentProvider === 'claude' ? 'claude' : 'codex',
@@ -1478,6 +1479,7 @@ function App(): JSX.Element {
   >({});
   const [templateMenuEntries, setTemplateMenuEntries] = useState<CanvasTemplateMenuEntry[]>([]);
   const [runtimeContext, setRuntimeContext] = useState<CanvasRuntimeContext>({
+    executionMouseDiagnosticsEnabled: latestRuntimeContext.executionMouseDiagnosticsEnabled,
     workspaceTrusted: false,
     surfaceLocation: latestRuntimeContext.surfaceLocation,
     defaultAgentProvider: latestRuntimeContext.defaultAgentProvider,
@@ -1611,6 +1613,11 @@ function App(): JSX.Element {
           hostStateRef.current = normalizedState;
           latestHostNodeIdsRef.current = new Set(normalizedState.nodes.map((node) => node.id));
           latestRuntimeContext = normalizedRuntime;
+          if (message.type === 'host/bootstrap') {
+            emitWebviewLifecycleDiagnostic(
+              `execution mouse diagnostics enabled: ${normalizedRuntime.executionMouseDiagnosticsEnabled === true}`
+            );
+          }
           setHostState(normalizedState);
           setExecutionTerminalTitles((current) =>
             message.type === 'host/bootstrap'
@@ -5581,6 +5588,9 @@ const executionNodeTypes = createExecutionSessionNodeTypes({
   getRuntimeContext: () => latestRuntimeContext,
   resolveExecutionTerminalFileLinks,
   reportExecutionInputDispatch,
+  reportExecutionMouseDiagnostic: (nodeId, kind, detail) => {
+    postMessage({ type: 'webview/executionMouseDiagnostic', payload: { nodeId, kind, detail } });
+  },
   createZoomAdjustedMouseEvent,
   positionTextareaUnderScaledMouse,
   readXtermScreenElement,
