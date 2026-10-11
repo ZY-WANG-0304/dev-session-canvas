@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { SharedRootCanvasStore } from './sharedRootCanvasStore';
 import { ExecutionOwnerLifecycle, type ExecutionOwnerOptions, type OwnedExecution, type OwnerCloseResult } from './executionOwnerLifecycle';
 import { EXECUTION_CANDIDATE_BUDGETS, EXECUTION_CANDIDATE_PROFILE, EXECUTION_INTERACTION_LIMITS,
   assertExecutionCandidateProfile, assertExecutionCandidateCapabilities, hasExecutionAdmissionCapacity, type ExecutionCandidateProfile,
@@ -1366,6 +1367,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly rawExtensionStoragePath: string;
   private readonly canvasTemplateStore: CanvasTemplateStore;
   private storageRecoverySelection!: ExtensionStorageRecoverySourceSelection;
+  private sharedRootCanvasStores = new Map<string, SharedRootCanvasStore>();
+  private sharedCompletedRuntimeProjections = new Map<string, { sessionId: string; node: CanvasNodeSummary }>();
+  private modeSwitchCleanup?: Promise<void>;
   private editorPanel: vscode.WebviewPanel | undefined;
   private panelView: vscode.WebviewView | undefined;
   private appliedStartupConfiguration: CanvasStartupConfiguration;
@@ -1547,6 +1551,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.activeSurface = this.loadStoredSurface();
     this.persistState({ reason: 'state-initialized' });
+    context.subscriptions.push({ dispose: () => this.disposeSharedRootCanvasStores() });
     this.applyWorkbenchContextKeys();
     this.recordDiagnosticEvent('state/initialized', {
       activeSurface: this.activeSurface,
@@ -3826,6 +3831,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async simulateRuntimeReloadForTest(): Promise<CanvasDebugSnapshot> {
+    await this.cleanupRuntimePersistenceModeSwitch();
     await this.flushDeferredCanvasStatePersist('test-runtime-reload');
     const nextStartupConfiguration = this.readStartupConfiguration();
     const preserveLiveRuntime = this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration);
@@ -3841,6 +3847,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
 
     this.applyStartupConfiguration(nextStartupConfiguration);
+    this.modeSwitchCleanup = undefined;
     this.refreshStorageRecoverySelection();
     this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
@@ -3908,13 +3915,68 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public async prepareForDeactivation(): Promise<HostDeactivationReport | void> {
-    this.closeRuntimeSupervisorEventAdmission();
-    if (this.nonNativeExecutionOwner?.options.capabilities.includes('execution-owner-boundary-v1')) {
-      return this.prepareNonNativeDeactivation();
+    if ((this.readStartupConfiguration().runtimePersistenceEnabled === true) !== this.isRuntimePersistenceEnabled()) {
+      await this.cleanupRuntimePersistenceModeSwitch();
     }
-    // Permanent shutdown keeps its first outcome, including failure; it is not a retryable reset.
-    this.ordinaryDeactivationPromise ??= this.prepareOrdinaryDeactivation();
-    return this.ordinaryDeactivationPromise;
+    if (this.sharedRootCanvasStores?.size) {
+      await this.flushSharedRootCanvasStores();
+    }
+    this.closeRuntimeSupervisorEventAdmission();
+    try {
+      if (this.nonNativeExecutionOwner?.options.capabilities.includes('execution-owner-boundary-v1')) {
+        return await this.prepareNonNativeDeactivation();
+      }
+      // Permanent shutdown keeps its first outcome, including failure; it is not a retryable reset.
+      this.ordinaryDeactivationPromise ??= this.prepareOrdinaryDeactivation();
+      return await this.ordinaryDeactivationPromise;
+    } finally {
+      try { await this.flushSharedRootCanvasStores(); }
+      finally { this.disposeSharedRootCanvasStores(); }
+    }
+  }
+
+  private async cleanupRuntimePersistenceModeSwitch(): Promise<void> {
+    if (this.modeSwitchCleanup) return this.modeSwitchCleanup;
+    const next = this.readStartupConfiguration();
+    if ((next.runtimePersistenceEnabled === true) === this.isRuntimePersistenceEnabled()) return;
+    this.modeSwitchCleanup = (async () => {
+      await this.flushSharedRootCanvasStores();
+      await this.prepareForHostBoundary({ preserveLiveRuntime: false, preserveRootRuntimeBindings: false,
+        allowRuntimeSupervisorRestart: false, invalidatePendingExecutionOperations: true,
+        waitForLocalPersistence: true, preserveLocalRecovery: false });
+      const folders = this.getCanvasPersistenceWorkspaceFolders();
+      const now = new Date().toISOString();
+      const retainedState = this.state;
+      const retainedRoots = this.lastLoadedRootLocalStates;
+      const retainedOverlay = this.multiRootOverlay;
+      this.state = folders.length > 1 ? composeMultiRootCanvasState({ workspaceFolders: folders,
+        rootStates: folders.map(folder => ({ rootPath: folder.path, state: createEmptyCanvasState(now) })),
+        overlay: this.multiRootOverlay }) : createEmptyCanvasState(now);
+      this.canvasTemplateInitialized = true;
+      try {
+        await this.persistState({ reason: 'runtime-persistence-mode-switch-cleanup',
+          workspaceStateMode: 'full', requireRootLocalDurability: true });
+        await this.flushSharedRootCanvasStores();
+      } catch (error) {
+        this.state = retainedState;
+        this.lastLoadedRootLocalStates = retainedRoots;
+        this.multiRootOverlay = retainedOverlay;
+        throw error;
+      }
+      this.recordDiagnosticEvent('state/runtimeModeSwitchCleared', {
+        fromEnabled: this.isRuntimePersistenceEnabled(), toEnabled: next.runtimePersistenceEnabled
+      });
+    })();
+    return this.modeSwitchCleanup;
+  }
+
+  private cleanupModeSwitchAfterPageClose(): void {
+    if ((this.readStartupConfiguration().runtimePersistenceEnabled === true) === this.isRuntimePersistenceEnabled()) return;
+    void this.cleanupRuntimePersistenceModeSwitch().catch(error => {
+      void vscode.window.showErrorMessage(vscode.l10n.t('Could not clear the Canvas while changing runtime persistence: {message}', {
+        message: formatUnknownError(error)
+      }));
+    });
   }
 
   private async prepareOrdinaryDeactivation(): Promise<void> {
@@ -5307,6 +5369,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     surface: CanvasSurfaceLocation,
     options?: { restoreWebviewFocus?: boolean }
   ): Promise<void> {
+    if (this.modeSwitchCleanup) {
+      await this.modeSwitchCleanup;
+      this.applyStartupConfiguration(this.readStartupConfiguration());
+      this.modeSwitchCleanup = undefined;
+      if (this.nonNativeExecutionOwner && !this.nonNativeExecutionOwner.tryResume()) {
+        throw new Error('Execution owner admission could not resume after Canvas mode switch.');
+      }
+      this.state = this.loadReconciledState();
+      await this.persistState({ reason: 'runtime-mode-switch-page-reopened' });
+      this.scheduleRestoreLiveRuntimeSessions();
+    }
     await this.ensureDefaultTemplateAppliedIfNeeded();
     this.recordDiagnosticEvent('surface/revealRequested', {
       from: this.activeSurface,
@@ -5393,6 +5466,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           }
           this.invalidateSurfaceLifecycle('editor');
           this.pendingVisibilityRestore.editor = false;
+          if (!this.activeSurface) this.cleanupModeSwitchAfterPageClose();
           this.recordDiagnosticEvent('surface/disposed', {
             surface: 'editor'
           });
@@ -5465,6 +5539,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           }
           this.invalidateSurfaceLifecycle('panel');
           this.pendingVisibilityRestore.panel = false;
+          if (!this.activeSurface) this.cleanupModeSwitchAfterPageClose();
           this.recordDiagnosticEvent('surface/disposed', {
             surface: 'panel'
           });
@@ -6374,7 +6449,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getRootLocalCanvasStorageDirectory(): string {
-    return path.join(this.context.globalStorageUri.fsPath, ROOT_LOCAL_CANVAS_STORAGE_DIRECTORY);
+    return this.isRuntimePersistenceEnabled()
+      ? path.join(this.context.globalStorageUri.fsPath, ROOT_LOCAL_CANVAS_STORAGE_DIRECTORY)
+      : path.join(this.getExtensionStoragePath(), 'private-root-canvases-v1');
   }
 
   private getRootLocalCanvasStoragePath(rootPath: string): string {
@@ -6697,12 +6774,116 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private writeRootLocalCanvasSnapshot(rootPath: string, state: CanvasPrototypeState): void {
     const snapshotPath = this.getRootLocalCanvasSnapshotPath(rootPath);
-    const rootLocalState = sanitizeRootLocalCanvasState(rootPath, state);
+    let rootLocalState = sanitizeRootLocalCanvasState(rootPath, state);
+    if (this.isRuntimePersistenceEnabled()) {
+      for (const [nodeId, projection] of this.sharedCompletedRuntimeProjections ?? []) {
+        const current = this.state.nodes.find(node => node.id === nodeId);
+        const runtimeId = current && isExecutionNodeKind(current.kind) ? current.metadata?.[current.kind]?.runtimeSessionId : undefined;
+        if (!current || (runtimeId !== undefined && runtimeId !== projection.sessionId)) {
+          this.sharedCompletedRuntimeProjections.delete(nodeId);
+        }
+      }
+      rootLocalState = { ...rootLocalState, nodes: rootLocalState.nodes.map(node => {
+        const globalId = this.getCanvasPersistenceWorkspaceFolders().length > 1 ? namespaceCanvasObjectId(rootPath, node.id) : node.id;
+        const completed = this.sharedCompletedRuntimeProjections?.get(globalId);
+        if (!completed || !isExecutionNodeKind(node.kind) || node.metadata?.[node.kind]?.runtimeSessionId !== completed.sessionId) return node;
+        const metadata = { ...node.metadata?.[node.kind] };
+        // Suppress only the delayed execution identity; newer configuration edits still belong to the user.
+        for (const field of ['lifecycle', 'persistenceMode', 'attachmentState', 'liveSession', 'runtimeSessionId',
+          'runtimeStoragePath', 'runtimeOwner', 'runtimeBackend', 'runtimeGuarantee', 'terminalHistoryDiscarded',
+          'terminalProjectionMode', 'lastExitCode', 'lastExitSignal', 'lastExitMessage']) {
+          Object.assign(metadata, { [field]: (completed.node.metadata?.[node.kind] as unknown as Record<string, unknown> | undefined)?.[field] });
+        }
+        return { ...node, status: completed.node.status, summary: completed.node.summary,
+          metadata: { ...node.metadata, [node.kind]: metadata } };
+      }) };
+      const stores = this.sharedRootCanvasStores ??= new Map();
+      let store = stores.get(rootPath);
+      if (!store) {
+        store = new SharedRootCanvasStore(snapshotPath, rootLocalState,
+          next => this.applySharedRootCanvasState(rootPath, next),
+          error => {
+            this.recordDiagnosticEvent('state/rootLocalPersistFailed', { rootPath, message: error.message });
+            this.postMessage({ type: 'host/error', payload: { message: error.message } });
+          });
+        stores.set(rootPath, store);
+      }
+      void store.publish(rootLocalState).catch(() => undefined);
+      return;
+    }
     this.writePersistedCanvasSnapshotToDisk(snapshotPath, this.buildPersistedCanvasSnapshot({
       version: 1,
       state: rootLocalState,
       activeSurface: this.activeSurface
     }));
+  }
+
+  private disposeSharedRootCanvasStores(): void {
+    for (const store of this.sharedRootCanvasStores?.values() ?? []) store.dispose();
+    this.sharedRootCanvasStores?.clear();
+    this.sharedCompletedRuntimeProjections?.clear();
+  }
+
+  private async flushSharedRootCanvasStores(): Promise<void> {
+    await Promise.all(Array.from(this.sharedRootCanvasStores?.values() ?? [], store => store.flush()));
+  }
+
+  private applySharedRootCanvasState(rootPath: string, rootState: CanvasPrototypeState): void {
+    if (!this.isRuntimePersistenceEnabled() || !this.isRuntimeSupervisorEventAdmitted() || this.modeSwitchCleanup) return;
+    const folders = this.getCanvasPersistenceWorkspaceFolders();
+    if (!folders.some(folder => folder.path === rootPath)) return;
+    const rootStates = folders.length > 1
+      ? decomposeMultiRootCanvasState({ composedState: this.state, workspaceFolders: folders,
+          previousRootStates: this.lastLoadedRootLocalStates }).rootStates
+      : [{ rootPath, state: this.state }];
+    const nextRoots = rootStates.map(root => root.rootPath === rootPath ? { rootPath, state: rootState } : root);
+    let next = folders.length > 1 ? composeMultiRootCanvasState({ workspaceFolders: folders,
+      rootStates: nextRoots, overlay: this.multiRootOverlay }) : rootState;
+    const previous = new Map(this.state.nodes.map(node => [node.id, node]));
+    next = { ...next, nodes: next.nodes.map(node => {
+      const old = previous.get(node.id);
+      if (!old || old.kind !== node.kind || !isExecutionNodeKind(node.kind)) return node;
+      const oldRuntime = old.metadata?.[node.kind];
+      const newRuntime = node.metadata?.[node.kind];
+      if (oldRuntime?.runtimeSessionId && !newRuntime?.runtimeSessionId && this.getExecutionSessions(node.kind).has(node.id)) {
+        // Each existing reader finishes its own final application before retiring the local binding.
+        (this.sharedCompletedRuntimeProjections ??= new Map()).set(node.id, { sessionId: oldRuntime.runtimeSessionId, node });
+        return { ...node, status: old.status, summary: old.summary, metadata: { ...node.metadata, [node.kind]: oldRuntime } };
+      }
+      if (!oldRuntime || !newRuntime || oldRuntime.runtimeSessionId !== newRuntime.runtimeSessionId ||
+          oldRuntime.runtimeStoragePath !== newRuntime.runtimeStoragePath || oldRuntime.runtimeBackend !== newRuntime.runtimeBackend) return node;
+      if (this.candidateRuntimeStarts?.has(this.getExecutionSessionOperationKey(node.kind, node.id))) {
+        return { ...node, status: old.status, summary: old.summary, metadata: { ...node.metadata, [node.kind]: oldRuntime } };
+      }
+      const localFields = ['pendingLaunch', 'recentOutput', 'serializedTerminalState', 'terminalStream',
+        'outputSequence', 'terminalTitle', 'lastRuntimeError'] as const;
+      const runtime = { ...newRuntime };
+      for (const field of localFields) Object.assign(runtime, { [field]: oldRuntime[field] });
+      const active = this.getExecutionSessions(node.kind).has(node.id);
+      if (active) Object.assign(runtime, { liveSession: oldRuntime.liveSession,
+        attachmentState: oldRuntime.attachmentState, lifecycle: oldRuntime.lifecycle });
+      return { ...node, status: active ? old.status : node.status, summary: old.summary,
+        metadata: { ...node.metadata, [node.kind]: runtime } };
+    }) };
+    for (const kind of ['agent', 'terminal'] as const) {
+      for (const [nodeId, session] of this.getExecutionSessions(kind)) {
+        const target = next.nodes.find(node => node.id === nodeId && node.kind === kind);
+        const metadata = target?.metadata?.[kind];
+        if (!target || metadata?.runtimeSessionId !== session.runtimeSessionId ||
+            metadata?.runtimeStoragePath !== session.runtimeStoragePath) {
+          this.disposeExecutionSession(kind, nodeId, { terminateProcess: false });
+          this.terminalReadRelay.closeMatching(key => key.endsWith(`:${kind}:${nodeId}`));
+        }
+      }
+    }
+    this.state = this.reconcileCanvasFileArtifacts(reconcileRuntimeNodes(next, this.agentSessions, this.terminalSessions, {
+      allowLiveRuntimeReconnect: vscode.workspace.isTrusted,
+      liveRuntimeReconnectBlockReason: vscode.workspace.isTrusted ? undefined : 'workspace-untrusted'
+    }));
+    this.lastLoadedRootLocalStates = cloneJsonValue(nextRoots);
+    this.postState('host/stateUpdated');
+    this.syncNoteMarkdownFileWatchers();
+    this.scheduleRestoreLiveRuntimeSessions();
   }
 
   private getCanvasPersistenceWorkspaceFolders(): CanvasMultiRootWorkspaceFolder[] {
@@ -7122,7 +7303,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const resetDueToRuntimePersistenceModeChange =
       this.shouldResetStateDueToRuntimePersistenceModeChange(snapshot);
     const resetDueToFilesFeatureModeChange = this.shouldResetFileDomainDueToFilesFeatureModeChange(snapshot);
-    if (workspaceFolders.length === 1 && !resetDueToRuntimePersistenceModeChange) {
+    if (workspaceFolders.length === 1 && (!resetDueToRuntimePersistenceModeChange || this.isRuntimePersistenceEnabled())) {
       const rootLocalSnapshot = this.loadPersistedRootLocalCanvasSnapshot(workspaceFolders[0].path);
       if (rootLocalSnapshot?.state !== undefined) {
         const rootPath = workspaceFolders[0].path;
@@ -7154,7 +7335,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return this.materializeNoteMarkdownRecoverableDraftFiles(runtimeSafeRootState);
       }
     }
-    if (isMultiRootWorkspace && !resetDueToRuntimePersistenceModeChange) {
+    if (isMultiRootWorkspace && (!resetDueToRuntimePersistenceModeChange || this.isRuntimePersistenceEnabled())) {
       const rootStates = workspaceFolders.map((folder) => ({
         rootPath: folder.path,
         state: this.downgradeRootLocalLiveRuntimeNodesMissingRuntimeStoragePath(
@@ -7189,7 +7370,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       );
     }
 
-    const rawState = resetDueToRuntimePersistenceModeChange ? undefined : snapshot?.state ?? workspaceState;
+    const rawState = resetDueToRuntimePersistenceModeChange ? createEmptyCanvasState(new Date().toISOString()) : snapshot?.state ?? workspaceState;
     const source = resetDueToRuntimePersistenceModeChange
       ? 'runtimePersistenceReset'
       : snapshot?.state !== undefined
@@ -7359,6 +7540,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       await this.waitForNonNativeHostPersistence([record]);
     }));
     this.assertCanvasMutationAdmissionOpen();
+    await this.flushSharedRootCanvasStores();
     this.invalidateResolvedShellEnvironmentPatch();
     this.clearAgentCliResolutionCache();
     const previousWorkspaceRootPaths = this.lastComposedWorkspaceRootPaths;
@@ -7379,6 +7561,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.pendingWorkspaceRootPlacement = undefined;
     }
     this.lastComposedWorkspaceRootPaths = nextWorkspaceRootPaths;
+    for (const [rootPath, store] of this.sharedRootCanvasStores ?? []) {
+      if (nextWorkspaceRootPaths.includes(rootPath)) continue;
+      store.dispose();
+      this.sharedRootCanvasStores.delete(rootPath);
+    }
     const focusedRootGroup = this.resolveWorkspaceRootGroupForAddedFolder(addedWorkspaceRootPaths);
     this.reconcileDefaultExecutionMetadataCwd();
     this.refreshConfiguredTerminalShellMetadata();
@@ -7399,11 +7586,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private loadReconciledState(): CanvasPrototypeState {
     const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
     return this.reconcileOwnedCanvasState(this.reconcileCanvasFileArtifacts(
-      reconcileRuntimeNodes(this.loadState(), this.agentSessions, this.terminalSessions, {
+      reconcileRuntimeNodes(this.detachSharedBindingsInSnapshotMode(this.loadState()), this.agentSessions, this.terminalSessions, {
         allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
         liveRuntimeReconnectBlockReason
       })
     ));
+  }
+
+  private detachSharedBindingsInSnapshotMode(state: CanvasPrototypeState): CanvasPrototypeState {
+    if (this.isRuntimePersistenceEnabled()) return state;
+    return { ...state, nodes: state.nodes.map(node => {
+      if (!isExecutionNodeKind(node.kind)) return node;
+      const metadata = node.metadata?.[node.kind];
+      if (metadata?.runtimeOwner === undefined) return node;
+      return { ...node, status: 'interrupted', metadata: { ...node.metadata, [node.kind]: {
+        ...metadata, lifecycle: 'interrupted', persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
+        liveSession: false, runtimeSessionId: undefined, runtimeStoragePath: undefined, runtimeOwner: undefined,
+        runtimeBackend: undefined, runtimeGuarantee: undefined, pendingLaunch: undefined,
+        lastRuntimeError: vscode.l10n.t('This shared runtime belongs to Runtime Persistence mode. This private Canvas does not control it.')
+      } } };
+    }) };
   }
 
   private reconcileSeededStateForTest(rawState: unknown): CanvasPrototypeState {
@@ -7477,7 +7679,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               rootPath: rootState.rootPath,
               message: formatUnknownError(error)
             });
-            if (options.requireRootLocalDurability) {
+            if (options.requireRootLocalDurability || this.isRuntimePersistenceEnabled()) {
               throw error;
             }
           }
@@ -7495,30 +7697,32 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             rootPath,
             message: formatUnknownError(error)
           });
-          if (options.requireRootLocalDurability) {
+          if (options.requireRootLocalDurability || this.isRuntimePersistenceEnabled()) {
             throw error;
           }
         }
       }
     }
-    const operation = this.queuePersistedCanvasSnapshotWrite({
+    const snapshot: PersistedCanvasSnapshot = {
       version: 1,
       state: this.state,
       multiRootOverlay: overlayToPersist,
       activeSurface: this.activeSurface
-    }, {
-      mode,
-      workspaceStateMode,
-      reason,
-      rootLocalStates: rootLocalStatesToPersist
+    };
+    const saveWorkspace = (): Promise<void> => this.queuePersistedCanvasSnapshotWrite(snapshot, {
+      mode, workspaceStateMode, reason, rootLocalStates: rootLocalStatesToPersist
     });
+    const operation = this.sharedRootCanvasStores?.size && mode === 'immediate'
+      ? this.flushSharedRootCanvasStores().then(saveWorkspace) : saveWorkspace();
     void operation.catch(() => undefined);
     this.recordStatePersistPerformance('persist-state', startedAt, this.state, undefined, {
       mode,
       workspaceStateMode,
       coalescedCount: 0
     });
-    return operation;
+    const durable = operation.then(() => this.flushSharedRootCanvasStores());
+    void durable.catch(() => undefined);
+    return durable;
   }
 
   private reconcileCanvasFileArtifacts(
@@ -7872,6 +8076,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private applyStartupConfiguration(configuration: CanvasStartupConfiguration): void {
+    if (this.appliedStartupConfiguration.runtimePersistenceEnabled !== configuration.runtimePersistenceEnabled) {
+      this.disposeSharedRootCanvasStores();
+    }
     this.appliedStartupConfiguration = configuration;
     this.applyWorkbenchContextKeys();
   }
@@ -7911,9 +8118,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const changeSummary = formatLocalizedList(changedSettings);
       const followUps = [
         options.runtimePersistenceChanged
-          ? vscode.l10n.t(
-              'Changing runtime persistence will clear the Canvas host state for the current workspace on the next load.'
-            )
+          ? this.readStartupConfiguration().runtimePersistenceEnabled
+            ? vscode.l10n.t('Enabling runtime persistence takes effect after restarting the Canvas. Current Canvas sessions and content will not be retained.')
+            : vscode.l10n.t('Disabling runtime persistence takes effect after restarting the Canvas. Current Canvas sessions and content will be stopped or deleted when the Canvas closes and will not be retained.')
           : undefined,
         options.filesFeatureEnabledChanged
           ? vscode.l10n.t(
@@ -7928,6 +8135,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const reloadWindowAction = vscode.l10n.t('Reload Window');
       const selection = await vscode.window.showWarningMessage(message, reloadWindowAction);
       if (selection === reloadWindowAction) {
+        await this.cleanupRuntimePersistenceModeSwitch();
         await vscode.commands.executeCommand('workbench.action.reloadWindow');
       }
       return;
@@ -10312,7 +10520,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private isRuntimePersistenceEnabled(): boolean {
-    return this.appliedStartupConfiguration.runtimePersistenceEnabled;
+    return this.appliedStartupConfiguration.runtimePersistenceEnabled === true;
   }
 
   private hasActiveExecutionSessions(): boolean {
@@ -10326,7 +10534,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return 'workspace-untrusted';
     }
 
-    if (!this.isRuntimePersistenceEnabled() && originalBinding?.runtimeOwner === undefined) {
+    if (!this.isRuntimePersistenceEnabled()) {
       return 'runtime-persistence-disabled';
     }
 
@@ -11972,6 +12180,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async waitForPendingWorkspaceStateUpdates(): Promise<void> {
+    await this.flushSharedRootCanvasStores();
     await this.pendingWorkspaceStateUpdate;
   }
 
@@ -16301,6 +16510,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async startAgentSession(
+    nodeId: string, cols: number, rows: number, requestedProvider: AgentProviderKind | undefined,
+    resumeRequested: boolean, options: StartExecutionSessionOptions = {}
+  ): Promise<void> {
+    return this.withSharedExecutionMutation(nodeId, () => this.startAgentSessionCore(nodeId, cols, rows, requestedProvider, resumeRequested, options));
+  }
+
+  private async withSharedExecutionMutation<T>(nodeId: string, work: () => Promise<T>): Promise<T> {
+    const node = this.state.nodes.find(value => value.id === nodeId);
+    if (!this.isRuntimePersistenceEnabled() || !node || !isExecutionNodeKind(node.kind) || !this.sharedRootCanvasStores?.size) return work();
+    const root = this.resolveExecutionNodeRuntimeRoot(node);
+    const store = root === undefined ? undefined : this.sharedRootCanvasStores.get(root);
+    if (!store) return work();
+    const localId = denamespaceCanvasObjectId(root!, nodeId) ?? nodeId;
+    const identity = (value: CanvasNodeSummary): string => {
+      const metadata = isExecutionNodeKind(value.kind) ? value.metadata?.[value.kind] : undefined;
+      return JSON.stringify([value.kind, metadata?.runtimeSessionId, metadata?.runtimeBackend, metadata?.runtimeStoragePath]);
+    };
+    const original = identity(node);
+    return store.mutate(localId, async current => {
+      const target = current.nodes.find(value => value.id === localId);
+      if (!target || identity(target) !== original) {
+        throw new Error(vscode.l10n.t('The execution node changed in another window. Review its current state before trying again.'));
+      }
+      return work();
+    });
+  }
+
+  private async startAgentSessionCore(
     nodeId: string,
     cols: number,
     rows: number,
@@ -18577,6 +18814,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async startTerminalSession(
+    nodeId: string, cols: number, rows: number, options: StartExecutionSessionOptions = {}
+  ): Promise<void> {
+    return this.withSharedExecutionMutation(nodeId, () => this.startTerminalSessionCore(nodeId, cols, rows, options));
+  }
+
+  private async startTerminalSessionCore(
     nodeId: string,
     cols: number,
     rows: number,
@@ -20910,6 +21153,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async deleteNode(nodeId: string): Promise<void> {
+    return this.withSharedExecutionMutation(nodeId, () => this.deleteNodeCore(nodeId));
+  }
+
+  private async deleteNodeCore(nodeId: string): Promise<void> {
     const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId);
     if (!node) {
       this.postMessage({
@@ -20918,6 +21165,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           message: vscode.l10n.t('No deletable node was found.')
         }
       });
+      return;
+    }
+    if (this.isRuntimePersistenceEnabled() && isExecutionNodeKind(node.kind) &&
+        (node.status === 'starting' || node.status === 'launching') && !node.metadata?.[node.kind]?.runtimeSessionId &&
+        !node.metadata?.[node.kind]?.pendingLaunch && !this.candidateRuntimeStarts?.has(this.getExecutionSessionOperationKey(node.kind, node.id))) {
+      this.postMessage({ type: 'host/error', payload: { message: vscode.l10n.t('This node is still starting in another window. Wait for startup to finish before deleting it.') } });
       return;
     }
 

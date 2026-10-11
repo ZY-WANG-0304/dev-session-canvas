@@ -686,12 +686,16 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 证据见 `docs/references/smoke-reload-autostart/full-vsix-gate-1286b83e-evidence.json`。此前章节保留历史失败时点，不再作为当前 head 的门禁结论。GitHub 没有完整 smoke required check，`native-assets` 仍为 skipped，因此真实 provider、真实窗口 Reload、新 Host/checkpoint、Remote SSH、其他平台/跨版本矩阵，以及历史 URL 清理、Runtime disconnected 批次报告和独立 `owned-resize-failed` 调查继续作为明确验证边界；它们不是本次八场景 run 的失败项。
 
-## 2026-10-11 双窗口删除后的 Host 终态递送丢失（待修复）
+## 2026-10-11 双窗口删除与共享画布（产品路径已收口，底层直接调用诊断保留）
 
-当前 main a39cd8c1，另一窗口直接删除 live Agent/Terminal 时，Supervisor deleteSession 非保留路径会取消所有 socket 的 Host 消费信用订阅，后续终态 broadcast 无法送达原窗口。真实 Agent 失败为 registry 空但 owner 仍 waiting-input/live；当前受控 8 项确认 direct-credit 终态事件为 0，保留另一 socket 通道的诊断干预恢复为 1。Terminal 同路径受影响，原 smoke 的 Terminal stop 不能覆盖直接删除。
+原 main a39cd8c1 的直接 Supervisor deleteSession 非保留路径取消所有 socket 的 Host 信用订阅，受控 8 项 direct-credit 终态为 0；诊断干预保留另一 socket 通道后为 1。原因果记录及脚本继续保留，不能把共享结构修复说成 Supervisor 独立 delete 通知契约已修改。
 
-责任落点为 supervisor/runtimeSupervisorMain.ts 的删除/订阅/reader 退役协调与 panel/CanvasPanelManager.ts 的最终状态消费。建议在下一修复任务保留其他窗口的最终 batch、reader、journal 和保存责任并明确有界退役，增加多 socket Supervisor、Host 保存及真实双窗口严格终态回归。诊断脚本只锁定当前错误，不作为健康回归。未改产品实现、未重新运行 VS Code smoke 或跨平台矩阵；结论与修复边界见 docs/design-docs/runtime-two-window-agent-delete-investigation.md，过程见 docs/exec-plans/completed/runtime-two-window-agent-delete-investigation.md。
+用户确认共享 delete 在所有窗口移除节点，2026-10-11 已通过共享 root 结构提交/监听实现，并在 Linux 独立双窗口验证；stop 保留节点及原 reader 最终消费。旧 owner 保留 stopped 历史节点断言已按正式产品语义调整。共享结构、关闭模式 slot 隔离与双向切换清理已完成；方案见 `docs/design-docs/runtime-shared-root-canvas-sync.md`，过程见 `docs/exec-plans/completed/runtime-shared-root-canvas-sync.md`，不再登记为待设计/实现。
 
-### 2026-10-11 共享画布及模式切换的目标差距（待设计/实现）
+### 后续验证与存储成本（未验证）
 
-用户确认开启 Runtime Persistence 后同 root 画布结构需跨窗口实时同步；共享 delete 应移除各窗口节点，旧 smoke 的 owner 保留历史节点断言需随正式实现调整。当前仅共享 runtime，各 Host 独立持有画布状态并按 root 写同一快照，存在同步与模式隔离缺口。双向切换需方向化提示、重启后生效并舍弃当前会话/内容，开启到关闭在页面关闭时退出或删除；当前统一 Reload Window 清空提示不能代表完成新规则。责任范围涉及 CanvasPanelManager 的配置生效、画布存储/同步与共享会话清理，需独立设计 ExecPlan；跨窗口范围、失败结算及撤回设置处理尚未选定。验收与边界见 docs/product-specs/runtime-persistence-modes.md 第 11 节和 docs/design-docs/runtime-two-window-agent-delete-investigation.md。
+责任落点 `panel/sharedRootCanvasStore.ts` 与双窗口 smoke。新增真实结构同步/切换场景本轮仅验证 Linux 单 root；macOS/Windows/Remote SSH 和真实多 root 两窗口需后续具名验证，不能借 Node API 或已有 helper 通过宣称这些组合已验。每 root 100ms 轮询和完整 JSON 比较/写入在高频大画布下的成本尚未量化；出现实际规模瓶颈时再以固定负载评估，不先承诺恒定延迟。TCP 锁哈希碰撞保守串行、外部端口占用有界失败，需在对应平台受控验证。直接绕过共享画布调用 Supervisor delete 的其他有效消费者仍按历史诊断范围，不外推产品共享删除已补齐所有通道。
+
+### completed-history 旧诊断断言（待独立修正）
+
+`npm run test:runtime-completed-history` 的 `verifyCompletedBindingOwner` 将所有诊断数组断言为空；main a39cd8c1 新增正常 `execution/deleteBoundary` 后，本地与独立原 main 工作树均在同一 legacy Terminal 项失败。本次不修改未知 owner 保证断言求绿。后续应在保留完整原绑定与调度身份核验的前提下，区分正常边界诊断和丢失 owner 诊断。基线日志 `/tmp/dsc-shared-completed-history-baseline.log`；不得记录本次全量 npm test 通过。

@@ -334,7 +334,7 @@ async function runSingleToMultiRootRealWindowReopenScenario() {
 
 async function runTwoWindowSharedRuntimeScenario() {
   const scenarioName = 'two-window-shared-runtime';
-  const scenarioDebugRoot = path.join(projectRoot, '.debug', 'vscode-smoke', scenarioName);
+  const scenarioDebugRoot = path.join(smokeDebugRoot, scenarioName);
   const sharedDir = path.join(scenarioDebugRoot, 'shared');
   const runtimeDirName = 'dsc-vscode-smoke-runtime-two-window-shared-runtime';
   await fs.rm(scenarioDebugRoot, { recursive: true, force: true });
@@ -406,6 +406,11 @@ async function runTwoWindowSharedRuntimeScenario() {
         throw new Error('Owner VS Code window exited before publishing owner-ready.json.');
       })
     ]);
+
+    // Separate Electron profiles share the same user storage scope, as two ordinary windows do.
+    const ownerGlobalStorage = path.join(ownerRuntime.userDataDir, 'User', 'globalStorage');
+    const attacherGlobalStorage = path.join(attacherRuntime.userDataDir, 'User', 'globalStorage');
+    await fs.symlink(ownerGlobalStorage, attacherGlobalStorage, process.platform === 'win32' ? 'junction' : 'dir');
 
     attacherHandle = await spawnPreparedVSCodeScenario({
       ...sharedOptions,

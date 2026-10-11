@@ -1056,5 +1056,11 @@
   "The original Runtime execution is still bound. Settle it before starting a local execution.": "节点仍绑定原运行时执行。请先完成原执行的清理，再启动本地执行。",
   "Runtime storage is unsafe. Its directory must belong to your OS user, must not be a symbolic link, and must not be writable by everyone.": "Runtime 存储目录不安全。目录必须属于当前系统用户，不能是符号链接，也不能允许所有用户写入。",
   "Runtime storage changed while it was being prepared. Check its directory before trying again.": "Runtime 存储目录在准备期间发生变化。请检查目录后重试。",
-  "Runtime storage could not be prepared. Check access to the extension storage directory and its permissions.": "无法准备 Runtime 存储。请检查扩展存储目录的访问权限。"
+  "Runtime storage could not be prepared. Check access to the extension storage directory and its permissions.": "无法准备 Runtime 存储。请检查扩展存储目录的访问权限。",
+  "Enabling runtime persistence takes effect after restarting the Canvas. Current Canvas sessions and content will not be retained.": "开启运行时持久化将在画布页面重启后生效。当前画布上的会话和内容不会保留。",
+  "Disabling runtime persistence takes effect after restarting the Canvas. Current Canvas sessions and content will be stopped or deleted when the Canvas closes and will not be retained.": "关闭运行时持久化将在画布页面重启后生效。当前画布上的会话和内容将在页面关闭时退出或删除，不会保留。",
+  "Could not clear the Canvas while changing runtime persistence: {message}": "切换运行时持久化时无法清理画布：{message}",
+  "This node is still starting in another window. Wait for startup to finish before deleting it.": "该节点仍在另一个窗口中启动，请等待启动完成后再删除。",
+  "The execution node changed in another window. Review its current state before trying again.": "执行节点已在另一个窗口发生变化，请查看当前状态后再试。",
+  "This shared runtime belongs to Runtime Persistence mode. This private Canvas does not control it.": "该共享运行时属于运行时持久化模式，当前独立画布不会控制它。"
 }

@@ -16,7 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/runtime-root-ownership.md
   - docs/exec-plans/completed/runtime-root-ownership-design.md
-updated_at: 2026-10-09
+updated_at: 2026-10-11
 ---
 
 # Root 稳定的 Runtime 归属
@@ -144,9 +144,9 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 已有 session 的有效 scrollback 和终端状态以 Supervisor 为权威；附着、窗口打开和 root 重排不重新套用该窗口默认值。用户显式改设置时，沿用当前作用于本 Host 已附着 session 的热更新语义，按 Supervisor 实际接受顺序 last-writer-wins，并向所有消费者传播实际值；不自动反向重发本窗口偏好。输入和 stop/delete 仍是共享 session 控制，resize 保持既有 last-writer-wins。新建其他 session 可以使用另一组配置，不扩成全仓库设置同步。
 
-持久化模式按 session 的实际归属处理。新窗口的默认开关不能把已附着 live session 悄悄转为 Host-owned；原 root binding 可在窗口默认 false 时重连，但不能绕过 workspace trust。默认 false 的普通关闭/模拟 reload 保留 root 原绑定并只释放本 Host 责任；用户明确 true→false 仍严格清理本画板精确绑定，失败保留原绑定，不提前 dispose，绝不按 root 直接 kill Supervisor。旧 slot 保持原有设置契约；不为本项增加设置 receipt 或改写 loadState 重置规则。移除保留画板的 root 同样只释放本 Host 的订阅、reader 和 client。
+持久化模式与画布范围在 2026-10-11 按用户确认的新规则更新，见 `runtime-shared-root-canvas-sync.md`：开启窗口共享同 root 结构与原 runtime，关闭窗口使用 workspace slot 私有画布，不再重连 root shared binding。旧快照中的 root owner 只在私有投影中解除，不能把共享原执行改成 Host-owned 或停止它。用户明确 true→false 在页面关闭/重启边界严格结算当前画布的精确绑定并共享清空，失败保留可诊断责任，不按 root 直接 kill Supervisor。移除保留画板的 root 仍只释放本 Host 的订阅、reader 和 client。旧“默认 false 重连 root”是本设计原交付口径，已由新产品规则替代，历史验证不追认为新模式验收。
 
-默认 false 的窗口若重连失败，原 binding 或无效 owner 仍阻止 snapshot-only 新建本地替身；必须先显式结算原执行。Host-owned 入口在预留和异步准备后均核对，不因 managed session map 为空便覆盖原绑定。这是失败关闭，不新增自动迁移或隐式切模式流程。正常 completed 收尾的严格删除仍携带完成前捕获的完整 owner，不能只清 Host metadata 而遗漏 Supervisor session 记录。
+开启窗口若重连失败，原 binding 或无效 owner 仍阻止在同一共享节点上覆盖为本地替身；必须先显式结算原执行。正常 completed 收尾的严格删除仍携带完成前捕获的完整 owner，不能只清 Host metadata 而遗漏 Supervisor session 记录。关闭模式解除 copied root owner 是私有画布隔离，不证明原共享执行退出，不为其伪造删除结果。
 
 一 root 一进程会增加多 root 的固定开销。只在首次新建需要时启动，不为显示空 root 或历史节点预热 Supervisor；保留已交付的每 owner 资源准入、当前态恢复和空闲退出机制。不能把原单 Supervisor 十会话证据当成十 root 十进程预算；P3 增补具名三 root/双窗口样本，记录实际进程数、内存、reader 与交互，不恢复旧 64/128 MiB 硬门槛，不承诺任意 root 数固定总 RSS。
 

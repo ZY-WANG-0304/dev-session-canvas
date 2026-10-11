@@ -1757,10 +1757,10 @@ async function persistenceFixture(options = {}) {
     return write(filename, snapshot);
   };
   const workspaceFile = f.host.getPersistedCanvasSnapshotPath();
-  const rootFile = f.host.getRootLocalCanvasSnapshotPath(root);
   await f.host.persistState({ workspaceStateMode: 'full', requireRootLocalDurability: true });
   writes.length = 0;
-  return { ...f, directory, root, updates, writes, workspaceFile, rootFile,
+  return { ...f, directory, root, updates, writes, workspaceFile,
+    get rootFile() { return f.host.getRootLocalCanvasSnapshotPath(root); },
     async read(filename = workspaceFile) { return JSON.parse(await readFile(filename, 'utf8')); },
     async finish(kind, record, provider, { text, exitCode = 0, disposition = { kind: 'eof' } } = {}) {
       const frames = text === undefined ? 0 : 1;
@@ -1781,6 +1781,7 @@ async function persistenceFixture(options = {}) {
         record.business?.cancelActivityPoll?.(); record.business?.lineContextTracker.dispose(); record.tracker.dispose();
       }
       await f.host.pendingWorkspaceStateUpdate;
+      f.host.disposeSharedRootCanvasStores();
       await rm(directory, { recursive: true, force: true });
     }
   };
@@ -2257,14 +2258,25 @@ for (const kind of ['terminal', 'agent']) {
       const beforeWorkspace = await readFile(f.workspaceFile, 'utf8');
       const bindings = [...f.host.runtimeSessionBindings.entries()];
       f.writes.length = 0;
-      await mkdir(`${f.rootFile}.tmp`);
+      const fileSystem = createRequire(import.meta.url)('node:fs');
+      const rename = fileSystem.renameSync;
+      let failedRootRenames = 0;
       const snapshot = candidateCompletedSnapshot(session, {
         lifecycle: kind === 'agent' ? 'stopped' : 'closed',
         terminalStreamPaged: true, terminalAuthorityId: authorityId, terminalRevision: 1,
         terminalFinalRevision: 1, capabilities: { terminalReadSettlementV1: true }
       });
-      await assert.rejects(f.host.applyCompletedRuntimeSupervisorSnapshot(session.nodeId, kind, snapshot),
-        /EISDIR|illegal operation on a directory/i);
+      fileSystem.renameSync = (source, target) => {
+        if (target === f.rootFile) {
+          failedRootRenames++;
+          throw Object.assign(new Error('EISDIR controlled shared root rename failure'), { code: 'EISDIR' });
+        }
+        return rename(source, target);
+      };
+      try {
+        await assert.rejects(f.host.applyCompletedRuntimeSupervisorSnapshot(session.nodeId, kind, snapshot),
+          /EISDIR|illegal operation on a directory/i);
+      } finally { fileSystem.renameSync = rename; }
       const final = posted.find(entry => entry.message.type === 'host/executionTerminalAvailable' &&
         entry.message.payload.completed === true);
       assert(final, 'A failed root save must not hide the confirmed final watermark from the original reader.');
@@ -2277,7 +2289,8 @@ for (const kind of ['terminal', 'agent']) {
         executionSessionId: session.sessionId, authorityId, readId,
         outcome: { kind: 'applied', finalRevision: 1 } })).settlement, 'recorded');
       assert.equal(settled.length, 1);
-      assert.deepEqual(f.writes, [f.rootFile], 'the original root writer fails before a workspace save');
+      assert.equal(failedRootRenames, 1, 'the actual shared root commit must fail');
+      assert.deepEqual(f.writes, [], 'the shared root writer fails before a workspace save');
       assert.equal(await readFile(f.rootFile, 'utf8'), beforeRoot);
       assert.equal(await readFile(f.workspaceFile, 'utf8'), beforeWorkspace);
       const rootMetadata = (await f.read(f.rootFile)).state.nodes.find(node => node.kind === kind).metadata[kind];
@@ -7762,6 +7775,185 @@ for (const kind of ['agent', 'terminal']) {
       'owner identity compares descriptor values rather than object references');
   });
 }
+
+function sharedCanvasFixture(enabled = true) {
+  const root = '/controlled/shared-root';
+  const f = fixture({ roots: [{ path: root, name: 'root' }] });
+  delete f.host.isRuntimePersistenceEnabled;
+  f.host.appliedStartupConfiguration.runtimePersistenceEnabled = enabled;
+  Object.assign(f.host, { rawExtensionStoragePath: '/controlled/slot-a',
+    context: { extensionMode: 3, globalStorageUri: { fsPath: '/controlled/global' } },
+    reconcileCanvasFileArtifacts: state => state, syncNoteMarkdownFileWatchers() {},
+    scheduleRestoreLiveRuntimeSessions() {}, terminalReadRelay: { closeMatching() {} } });
+  f.host.state = { version: 1, updatedAt: '', nodes: [], groups: [], edges: [], nextGroupSequence: 1,
+    fileReferences: [], suppressedFileActivityEdgeIds: [], suppressedAutomaticFileArtifactNodeIds: [] };
+  return { ...f, root };
+}
+
+test('shared Canvas applies remote creation geometry and deletion without stopping another execution', () => {
+  const f = sharedCanvasFixture();
+  let deletes = 0;
+  f.host.deleteRuntimeSupervisorSessionStrict = () => { deletes++; };
+  const node = { id: 'shared-note', kind: 'note', title: 'Shared', status: 'idle', summary: '',
+    position: { x: 12, y: 34 }, size: { width: 400, height: 300 }, metadata: {} };
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [node] });
+  assert.equal(f.host.state.nodes[0].title, 'Shared');
+  const moved = { ...node, position: { x: 99, y: 55 }, size: { width: 500, height: 350 } };
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [moved] });
+  assert.deepEqual(f.host.state.nodes[0].position, moved.position);
+  assert.deepEqual(f.host.state.nodes[0].size, moved.size);
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [] });
+  assert.equal(f.host.state.nodes.length, 0);
+  assert.equal(deletes, 0);
+});
+
+test('shared Canvas deletion detaches local projection, while stop waits for the original final reader', () => {
+  const f = sharedCanvasFixture();
+  const metadata = { lifecycle: 'waiting-input', persistenceMode: 'live-runtime', attachmentState: 'attached-live',
+    runtimeSessionId: 'original-shared', runtimeStoragePath: '/controlled/runtime', liveSession: true, recentOutput: 'local tail' };
+  const node = { id: 'shared-agent', kind: 'agent', title: 'Agent', status: 'waiting-input', summary: 'local tail',
+    position: { x: 0, y: 0 }, size: { width: 400, height: 300 }, metadata: { agent: metadata } };
+  f.host.state.nodes = [node];
+  f.host.agentSessions.set(node.id, { owner: 'supervisor', runtimeSessionId: metadata.runtimeSessionId,
+    runtimeStoragePath: metadata.runtimeStoragePath, lifecycleStatus: 'waiting-input', buffer: 'local tail', cols: 80, rows: 24 });
+  const disposals = [];
+  f.host.disposeExecutionSession = (kind, id, options) => { disposals.push({ kind, id, options }); f.host.getExecutionSessions(kind).delete(id); };
+  const remoteStopped = { ...node, status: 'stopped', metadata: { agent: { ...metadata, lifecycle: 'stopped',
+    runtimeSessionId: undefined, liveSession: false, persistenceMode: 'snapshot-only', attachmentState: 'history-restored' } } };
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [remoteStopped] });
+  assert.equal(disposals.length, 0, 'structure propagation must not interrupt the final terminal reader');
+  assert.equal(f.host.state.nodes[0].metadata.agent.runtimeSessionId, 'original-shared');
+  assert.equal(f.host.state.nodes[0].metadata.agent.recentOutput, 'local tail');
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [] });
+  assert.deepEqual(disposals, [{ kind: 'agent', id: node.id, options: { terminateProcess: false } }]);
+  assert.equal(f.host.state.nodes.length, 0);
+});
+
+test('delayed stopped projection cannot restore the runtime binding or overwrite newer configuration', () => {
+  const f = sharedCanvasFixture();
+  delete f.host.writeRootLocalCanvasSnapshot;
+  const node = { id: 'shared-agent', kind: 'agent', title: 'Agent', status: 'waiting-input', summary: '',
+    position: { x: 0, y: 0 }, size: { width: 400, height: 300 }, metadata: { agent: {
+      lifecycle: 'waiting-input', runtimeSessionId: 'completed-runtime', customLaunchCommand: 'new user command'
+    } } };
+  f.host.state.nodes = [node];
+  f.host.sharedCompletedRuntimeProjections = new Map([[node.id, { sessionId: 'completed-runtime', node: {
+    ...node, status: 'stopped', metadata: { agent: { lifecycle: 'stopped', liveSession: false,
+      customLaunchCommand: 'old command', terminalHistoryDiscarded: true } }
+  } }]]);
+  let published;
+  f.host.sharedRootCanvasStores = new Map([[f.root, { publish: state => { published = state; return Promise.resolve(); } }]]);
+  f.host.writeRootLocalCanvasSnapshot(f.root, f.host.state);
+  assert.equal(published.nodes[0].metadata.agent.runtimeSessionId, undefined);
+  assert.equal(published.nodes[0].metadata.agent.customLaunchCommand, 'new user command');
+  assert.equal(published.nodes[0].status, 'stopped');
+  f.host.state.nodes = [];
+  f.host.writeRootLocalCanvasSnapshot(f.root, f.host.state);
+  assert.equal(f.host.sharedCompletedRuntimeProjections.size, 0);
+});
+
+test('snapshot-only Canvas uses its current slot and ignores shared root updates', () => {
+  const a = sharedCanvasFixture(false), b = sharedCanvasFixture(false);
+  b.host.rawExtensionStoragePath = '/controlled/slot-b';
+  assert.notEqual(a.host.getRootLocalCanvasSnapshotPath(a.root), b.host.getRootLocalCanvasSnapshotPath(b.root));
+  assert.match(a.host.getRootLocalCanvasSnapshotPath(a.root), /slot-a.*private-root-canvases-v1/);
+  const before = a.host.state;
+  a.host.applySharedRootCanvasState(a.root, { ...before, nodes: [{ id: 'remote', kind: 'note' }] });
+  assert.strictEqual(a.host.state, before);
+  a.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+  b.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+  assert.equal(a.host.getRootLocalCanvasSnapshotPath(a.root), b.host.getRootLocalCanvasSnapshotPath(b.root));
+});
+
+test('snapshot-only upgrade detaches copied shared bindings without stopping their original owner', () => {
+  const f = sharedCanvasFixture(false);
+  const node = { id: 'old-shared', kind: 'agent', status: 'waiting-input', metadata: { agent: {
+    runtimeSessionId: 'other-window', runtimeStoragePath: '/shared/original', runtimeOwner: { version: 1 },
+    persistenceMode: 'live-runtime', liveSession: true, pendingLaunch: 'resume'
+  } } };
+  const state = { ...f.host.state, nodes: [node] };
+  const migrated = f.host.detachSharedBindingsInSnapshotMode(state);
+  assert.equal(migrated.nodes[0].metadata.agent.runtimeSessionId, undefined);
+  assert.equal(migrated.nodes[0].metadata.agent.pendingLaunch, undefined);
+  assert.equal(migrated.nodes[0].metadata.agent.liveSession, false);
+  assert.equal(migrated.nodes[0].metadata.agent.persistenceMode, 'snapshot-only');
+  assert.equal(node.metadata.agent.runtimeSessionId, 'other-window');
+  assert.equal(f.providers.length, 0);
+});
+
+for (const enabled of [true, false]) {
+  test(`mode switch ${enabled} waits for original execution cleanup before discarding current Canvas`, async () => {
+    const f = sharedCanvasFixture(enabled);
+    f.host.state.nodes = [{ id: 'original-note', kind: 'note', metadata: {} }];
+    const original = f.host.state;
+    const gate = deferred();
+    let boundary;
+    f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: !enabled });
+    f.host.prepareForHostBoundary = options => { boundary = options; return gate.promise; };
+    const clearing = f.host.cleanupRuntimePersistenceModeSwitch();
+    await pump(f.clock, () => true);
+    assert.strictEqual(f.host.state, original);
+    assert.equal(boundary.preserveLiveRuntime, false);
+    assert.equal(boundary.preserveRootRuntimeBindings, false);
+    gate.resolve();
+    await clearing;
+    assert.equal(f.host.state.nodes.length, 0);
+    assert.equal(f.host.isRuntimePersistenceEnabled(), enabled, 'new mode is applied only at next page startup');
+    assert.equal(f.persisted.at(-1).reason, 'runtime-persistence-mode-switch-cleanup');
+  });
+}
+
+test('mode switch failure retains current Canvas and reverting configuration does not clear it', async () => {
+  const f = sharedCanvasFixture(true);
+  const before = f.host.state;
+  f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: true });
+  f.host.prepareForHostBoundary = () => assert.fail('Reverted configuration must not stop executions');
+  await f.host.cleanupRuntimePersistenceModeSwitch();
+  assert.strictEqual(f.host.state, before);
+  f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+  f.host.prepareForHostBoundary = async () => { throw new Error('controlled original stop unconfirmed'); };
+  await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /unconfirmed/);
+  assert.strictEqual(f.host.state, before);
+  assert.equal(f.persisted.length, 0);
+});
+
+test('mode switch final save failure retains the settled Canvas and prevents reopening as success', async () => {
+  const f = sharedCanvasFixture(true);
+  f.host.state.nodes = [{ id: 'retained-note', kind: 'note', metadata: {} }];
+  const before = f.host.state;
+  const roots = [{ rootPath: f.root, state: before }];
+  f.host.lastLoadedRootLocalStates = roots;
+  f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+  f.host.prepareForHostBoundary = async () => {};
+  f.host.persistState = async () => {
+    assert.equal(f.host.state.nodes.length, 0);
+    f.host.lastLoadedRootLocalStates = [];
+    throw new Error('controlled final save failure');
+  };
+  await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /final save failure/);
+  assert.strictEqual(f.host.state, before);
+  assert.strictEqual(f.host.lastLoadedRootLocalStates, roots);
+  await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /final save failure/);
+});
+
+test('mode switch warnings describe each direction without immediately clearing the Canvas', async () => {
+  const f = sharedCanvasFixture(false);
+  f.host.context.extensionMode = 1;
+  const warning = testWindow.showWarningMessage, translate = testL10n.t;
+  const messages = [];
+  testWindow.showWarningMessage = async message => { messages.push(message); };
+  testL10n.t = (message, values = {}) => message.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? key);
+  f.host.cleanupRuntimePersistenceModeSwitch = () => assert.fail('Dismissed warning must not clear Canvas');
+  try {
+    for (const enabled of [true, false]) {
+      f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: enabled });
+      await f.host.notifyReloadRequiredConfigurationChanged({ runtimePersistenceChanged: true,
+        defaultSurfaceChanged: false, filesFeatureEnabledChanged: false });
+    }
+    assert.match(messages[0], /Enabling.*sessions and content will not be retained/);
+    assert.match(messages[1], /Disabling.*when the Canvas closes/);
+  } finally { testWindow.showWarningMessage = warning; testL10n.t = translate; }
+});
 
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
 const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;

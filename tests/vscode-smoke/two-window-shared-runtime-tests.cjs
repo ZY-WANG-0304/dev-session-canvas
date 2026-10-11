@@ -117,6 +117,23 @@ async function runOwnerWindow() {
 
   await waitForJsonFile(sharedPath('attacher-attached.json'), 60000);
 
+  const previousIds = new Set((await getDebugSnapshot()).state.nodes.map(node => node.id));
+  await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'note', preferredPosition: { x: 700, y: 40 } } });
+  snapshot = await getDebugSnapshot();
+  const sharedNote = snapshot.state.nodes.find(node => node.kind === 'note' && !previousIds.has(node.id));
+  assert(sharedNote);
+  await writeJsonFile(sharedPath('owner-created-note.json'), { nodeId: sharedNote.id });
+  await waitForJsonFile(sharedPath('attacher-edited-note.json'), 60000);
+  await waitForSnapshot(current => {
+    const node = findOptionalNodeById(current, sharedNote.id);
+    return node?.position.x === 777 && node.position.y === 333 && node.size.width === 460 && node.size.height === 330;
+  }, 30000);
+  const peerNote = await waitForJsonFile(sharedPath('attacher-created-note.json'), 60000);
+  await waitForSnapshot(current => Boolean(findOptionalNodeById(current, peerNote.nodeId)), 30000);
+  await deleteNode(sharedNote.id);
+  await writeJsonFile(sharedPath('owner-deleted-note.json'), { nodeId: sharedNote.id });
+  await waitForJsonFile(sharedPath('attacher-saw-note-delete.json'), 60000);
+
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentAgent = findOptionalNodeById(currentSnapshot, agentNode.id);
     const currentTerminal = findOptionalNodeById(currentSnapshot, terminalNode.id);
@@ -173,19 +190,40 @@ async function runOwnerWindow() {
   await waitForJsonFile(sharedPath('attacher-deleted-agent.json'), 60000);
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentAgent = findOptionalNodeById(currentSnapshot, agentNode.id);
-    return Boolean(
-      currentAgent &&
-        currentAgent.status === 'stopped' &&
-        currentAgent.metadata?.agent?.lifecycle === 'stopped' &&
-        currentAgent.metadata.agent.persistenceMode === 'snapshot-only' &&
-        currentAgent.metadata.agent.attachmentState === 'history-restored' &&
-        currentAgent.metadata?.agent?.liveSession === false &&
-        currentAgent.metadata.agent.runtimeSessionId === undefined
-    );
+    return !currentAgent;
   }, 30000);
   await writeJsonFile(sharedPath('owner-saw-agent-delete.json'), {
     ok: true
   });
+
+  const beforeSwitchIds = new Set((await getDebugSnapshot()).state.nodes.map(node => node.id));
+  await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'terminal', preferredPosition: { x: 800, y: 500 } } });
+  const switchTerminal = (await getDebugSnapshot()).state.nodes.find(node => node.kind === 'terminal' && !beforeSwitchIds.has(node.id));
+  assert(switchTerminal);
+  await startExecution(switchTerminal.id, 'terminal', { cols: 92, rows: 28 });
+  await waitForSnapshot(current => findOptionalNodeById(current, switchTerminal.id)?.metadata?.terminal?.liveSession === true, 30000);
+  await writeJsonFile(sharedPath('owner-switch-live-terminal.json'), { nodeId: switchTerminal.id });
+  await waitForJsonFile(sharedPath('attacher-saw-switch-terminal.json'), 60000);
+  await setRuntimePersistenceEnabled(false);
+  assert(findOptionalNodeById(await getDebugSnapshot(), switchTerminal.id), 'Setting change alone must retain the current Canvas');
+  await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  await waitForSnapshot(current => current.state.nodes.length === 0, 30000);
+  await waitForRuntimeSupervisorSettled(0, 20000);
+  await simulateRuntimeReload();
+  await openCanvasEditor();
+  await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'note', preferredPosition: { x: 100, y: 100 } } });
+  const privateNote = (await getDebugSnapshot()).state.nodes.find(node => node.kind === 'note');
+  assert(privateNote);
+  await writeJsonFile(sharedPath('owner-private-note.json'), { nodeId: privateNote.id });
+  const otherPrivate = await waitForJsonFile(sharedPath('attacher-private-note.json'), 60000);
+  assert(!findOptionalNodeById(await getDebugSnapshot(), otherPrivate.nodeId));
+  await setRuntimePersistenceEnabled(true);
+  assert(findOptionalNodeById(await getDebugSnapshot(), privateNote.id));
+  snapshot = await simulateRuntimeReload();
+  assert(!findOptionalNodeById(snapshot, privateNote.id));
+  assert(!findOptionalNodeById(snapshot, otherPrivate.nodeId));
+  await writeJsonFile(sharedPath('owner-switched-back-on.json'), { ok: true });
+  await waitForJsonFile(sharedPath('attacher-switched-back-on.json'), 60000);
 
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await waitForRuntimeSupervisorSettled(0, 20000);
@@ -202,7 +240,7 @@ async function runAttacherWindow() {
   await simulateRuntimeReload();
   await openCanvasEditor();
 
-  await vscode.commands.executeCommand(COMMAND_IDS.testSetPersistedState, ownerReady.state);
+  // Load the actual shared root; do not seed the second window with the owner's state.
   let snapshot = await waitForBothLive(ownerReady.agentNodeId, ownerReady.terminalNodeId);
   let agentNode = findNodeById(snapshot, ownerReady.agentNodeId);
   let terminalNode = findNodeById(snapshot, ownerReady.terminalNodeId);
@@ -230,6 +268,21 @@ async function runAttacherWindow() {
   await writeJsonFile(sharedPath('attacher-attached.json'), {
     ok: true
   });
+
+  const sharedNote = await waitForJsonFile(sharedPath('owner-created-note.json'), 60000);
+  await waitForSnapshot(current => Boolean(findOptionalNodeById(current, sharedNote.nodeId)), 30000);
+  await dispatchWebviewMessage({ type: 'webview/moveNode', payload: { id: sharedNote.nodeId, position: { x: 777, y: 333 } } });
+  await dispatchWebviewMessage({ type: 'webview/resizeNode', payload: { nodeId: sharedNote.nodeId,
+    position: { x: 777, y: 333 }, size: { width: 460, height: 330 } } });
+  await writeJsonFile(sharedPath('attacher-edited-note.json'), { ok: true });
+  const previousIds = new Set((await getDebugSnapshot()).state.nodes.map(node => node.id));
+  await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'note', preferredPosition: { x: 1100, y: 40 } } });
+  const peerNote = (await getDebugSnapshot()).state.nodes.find(node => node.kind === 'note' && !previousIds.has(node.id));
+  assert(peerNote);
+  await writeJsonFile(sharedPath('attacher-created-note.json'), { nodeId: peerNote.id });
+  await waitForJsonFile(sharedPath('owner-deleted-note.json'), 60000);
+  await waitForSnapshot(current => !findOptionalNodeById(current, sharedNote.nodeId), 30000);
+  await writeJsonFile(sharedPath('attacher-saw-note-delete.json'), { ok: true });
 
   await sendExecutionInput(ownerReady.agentNodeId, 'agent', `${MARKERS.attacherAgent}\r`);
   await sendExecutionInput(ownerReady.terminalNodeId, 'terminal', `echo ${MARKERS.attacherTerminal}\r`);
@@ -297,6 +350,28 @@ async function runAttacherWindow() {
   });
 
   await waitForJsonFile(sharedPath('owner-saw-agent-delete.json'), 60000);
+  const switchTerminal = await waitForJsonFile(sharedPath('owner-switch-live-terminal.json'), 60000);
+  await waitForSnapshot(current => findOptionalNodeById(current, switchTerminal.nodeId)?.metadata?.terminal?.liveSession === true, 30000);
+  await writeJsonFile(sharedPath('attacher-saw-switch-terminal.json'), { ok: true });
+  const ownerPrivate = await waitForJsonFile(sharedPath('owner-private-note.json'), 60000);
+  snapshot = await waitForSnapshot(current => current.state.nodes.length === 0, 30000);
+  assert(!findOptionalNodeById(snapshot, ownerPrivate.nodeId));
+  await waitForRuntimeSupervisorSettled(0, 20000);
+  await setRuntimePersistenceEnabled(false);
+  await simulateRuntimeReload();
+  await openCanvasEditor();
+  await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'note', preferredPosition: { x: 200, y: 200 } } });
+  const privateNote = (await getDebugSnapshot()).state.nodes.find(node => node.kind === 'note');
+  assert(privateNote);
+  assert(!findOptionalNodeById(await getDebugSnapshot(), ownerPrivate.nodeId));
+  await writeJsonFile(sharedPath('attacher-private-note.json'), { nodeId: privateNote.id });
+  await waitForJsonFile(sharedPath('owner-switched-back-on.json'), 60000);
+  assert(findOptionalNodeById(await getDebugSnapshot(), privateNote.id), 'Another window changing mode must not clear this private Canvas');
+  await setRuntimePersistenceEnabled(true);
+  snapshot = await simulateRuntimeReload();
+  assert(!findOptionalNodeById(snapshot, privateNote.id));
+  assert(!findOptionalNodeById(snapshot, ownerPrivate.nodeId));
+  await writeJsonFile(sharedPath('attacher-switched-back-on.json'), { ok: true });
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await setRuntimePersistenceEnabled(false);
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
@@ -323,6 +398,8 @@ async function createExecutionNodes() {
       preferredPosition: { x: 40, y: 40 }
     }
   });
+  await waitForSnapshot(current => current.state.nodes.some(node => node.kind === 'agent' &&
+    node.metadata?.agent?.liveSession === true && node.metadata.agent.runtimeSessionId), 30000);
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
