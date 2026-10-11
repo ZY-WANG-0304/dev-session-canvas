@@ -68,6 +68,8 @@ jobs:
     if: ${{ always() && github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
     steps:
       - name: Require successful release prerequisites
         shell: bash
@@ -94,6 +96,10 @@ jobs:
       - name: Install dependencies
         if: needs.resolve-release-input.outputs.is_release == 'true'
         run: npm ci
+
+      - name: Install release verification browser
+        if: needs.resolve-release-input.outputs.is_release == 'true'
+        run: npx --no-install playwright install --with-deps chromium
 
       - name: Download same-run native runtime assets
         if: needs.resolve-release-input.outputs.is_release == 'true'

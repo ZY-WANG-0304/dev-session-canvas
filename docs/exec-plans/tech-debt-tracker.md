@@ -685,3 +685,9 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 针对上一节“只完成定向验证、完整 gate 未重跑”的记录，已在精确 head `1286b83e778b69bf2214bed15f9a770c8a916f27` 上不设置 scenario filter 重跑 `npm run test:vsix-smoke`。Linux x64、Node 22.23.3、VS Code 1.141.0、已验证 execution asset set、原生 PTY 和 fake provider 环境下，八个阶段（含 trusted 全顺序）全部通过，命令 exit 0。此次运行关闭审计中“最新 head 未闭环”的 P1；Claude Fork 修复后的生命周期、准入拒绝、最终保存和 reload 主路径在该 packaged payload 中均完成原有断言。
 
 证据见 `docs/references/smoke-reload-autostart/full-vsix-gate-1286b83e-evidence.json`。此前章节保留历史失败时点，不再作为当前 head 的门禁结论。GitHub 没有完整 smoke required check，`native-assets` 仍为 skipped，因此真实 provider、真实窗口 Reload、新 Host/checkpoint、Remote SSH、其他平台/跨版本矩阵，以及历史 URL 清理、Runtime disconnected 批次报告和独立 `owned-resize-failed` 调查继续作为明确验证边界；它们不是本次八场景 run 的失败项。
+
+## 0.26.1 最新主线发布准备验证边界（2026-10-11，PR #317）
+
+精确 5c2cc2f7 的独立 clean-checkout VSIX 八场景和 notifier companion/locale/source 已通过；不代证完整 release:verify、真实通知点击、市场自动安装、真实 provider/跨平台全矩阵或用户标题栏人工复现。既有 owned-resize-failed、历史 URL 清理与 Runtime disconnected 批次报告边界继续按已有条目跟踪。
+
+completed-history 空诊断断言已改为精确删除边界预期并通过，原绑定/无正文断言未放宽。首轮预合并 CI 缺少 Chromium，双阶段 workflow 已补齐安装和缓存路径，修复后完整 CI 尚待结果；不将其记为产品测试通过。过程见 docs/exec-plans/active/release-0-26-1-latest-main.md。

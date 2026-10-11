@@ -11,8 +11,11 @@
 - [x] (2026-10-11) fetch origin，从 a39cd8c1 创建 release-0-26-1-latest-main，保留未跟踪 image.png。
 - [x] (2026-10-11) 复核历史准备分支和主线新增 #314 至 #316；旧分支只作为静态文案参考。
 - [x] (2026-10-11) 同步 manifest、lockfile、双 CHANGELOG、英中文 README/listing、手册、支持文档及契约。
-- [ ] 提交静态输入，在短路径隔离检出运行 preflight、完整 verify 和 notifier 检查。
-- [ ] 同步验证记录、技术债，基于最新 main 推送并创建 PR。
+- [x] (2026-10-11) 提交静态输入，preflight、root/旧协议/完整 Host wiring、鼠标诊断、notifier typecheck/source/companion/locale 和独立双包检查通过。
+- [x] (2026-10-11) 精确 5c2cc2f7 的独立 clean-checkout VSIX 八场景全部通过。
+- [ ] 完整 verify 正在 /tmp/dsc261latest 运行；CI 首轮缺少 Chromium，补齐流程后重验。
+- [x] (2026-10-11) 基于最新 main 推送，创建 PR #317 并启用预合并检查。
+- [ ] 回收最终完整验证和 CI 结果并更新 PR。
 
 ## 意外与发现
 
@@ -24,7 +27,7 @@ release-0-26-1-prep、release-0-26-1-prep-resumed 和 release-0-26-1-from-main �
 
 ## 结果与复盘
 
-静态输入已完成，preflight 与 diff 检查通过；完整验证待执行，不宣称可发布。
+静态输入和定向验证已完成，精确 5c2cc2f7 的双 VSIX、八场景 clean-checkout 安装 smoke 已通过；完整 verify 与修复后 CI 尚未结束，不宣称可合并或发布。
 
 ## 上下文与定向
 
@@ -69,3 +72,15 @@ preflight 必须通过版本、双 CHANGELOG 和契约校验；verify 必须通�
 修订记录：2026-10-11，依据用户要求从最新 origin/main 独立准备 0.26.1，记录旧分支边界与完整验证要求。
 
 修订记录：2026-10-11，记录首轮完整验证失败与旧诊断断言差异；修正契约中的 Host 接线命令为实际 node 脚本，补充精确诊断预期，不修改产品实现或放宽门禁。
+
+## 2026-10-11 验证记录
+
+Node 22.23.3、VS Code 1.141.0、umask 0077，隔离检出 /tmp/dsc261latest。六目标资产 /tmp/dsc-release-026-assets 已在默认构建/打包中通过当前输入校验。首轮 verify 在 completed-history 旧 diagnostics 空断言失败；root 的预期拒绝也会产生边界事件，修正后分别精确检查拒绝与正常清理，原绑定与无正文断言均保持。第二轮网络下载卡在 0%，主动结束此次安装后连接同版仓库浏览器缓存，第三轮完整命令重新运行，不追认为第二轮成功。日志 /tmp/dsc261latest-verify.log、/tmp/dsc261latest-verify-final.log、/tmp/dsc261latest-verify-cached.log。
+
+root ownership/preparation、legacy reconnect、mouse diagnostics、notifier typecheck/source 均 exit 0；第一次误用不存在的 test:runtime-reader-host-wiring 名称，未执行测试，已改为 node scripts/test/test-host-execution-owner-wiring.mjs 并完整 exit 0。日志 /tmp/dsc261latest-directed.log、/tmp/dsc261latest-host-wiring.log。notifier companion 与 en/zh-cn locale smoke 均 exit 0，见 /tmp/dsc261latest-notifier.json。
+
+在精确 5c2cc2f7 上独立运行 validate:clean-checkout:vsix -- --ref HEAD --keep-temp，完整 npm ci、正式主扩展打包与八场景 packaged smoke 均 exit 0，见 /tmp/dsc261latest-clean-vsix.log，保留检出 /tmp/dev-session-canvas-clean-checkout-M6PgMo/repo。独立 notifier package:vsix exit 0。包内版本均为 0.26.1/Preview，publisher、api:none、英中文资源、listing 及主扩展 extensionPack / notifier 单向依赖均正确，见 /tmp/dsc261latest-vsix-inventory.json；不代证真实市场自动安装和桌面点击。
+
+PR #317 首轮预合并 CI run 38122050123 六目标资产成功，但完整验证在市场浏览器 E2E 启动前因缺少 chromium_headless_shell-1217 失败。PR 与 publish prepare 流程都新增 npm ci 后安装 Chromium 和系统依赖，统一 PLAYWRIGHT_BROWSERS_PATH 至仓库 .playwright-browsers；历史无 release:verify 的 tag 不增加浏览器准备要求。两个 workflow 回归通过；实际修复后的 CI 仍待结果。
+
+修订记录：2026-10-11，回收精确输入的独立 VSIX 与 notifier 验证，记录缓存下载重试、首轮 CI 失败及双阶段浏览器准备修复。

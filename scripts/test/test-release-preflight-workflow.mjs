@@ -33,6 +33,13 @@ const verifyStep = job.steps.find((entry) => entry.name === 'Verify release cont
 assert.ok(verifyStep, 'workflow must run the full release verification');
 assert.equal(verifyStep.if, "needs.resolve-release-input.outputs.is_release == 'true'");
 assert.equal(verifyStep.run, 'npm run release:verify -- --version "${{ needs.resolve-release-input.outputs.version }}"');
+const browserStep = job.steps.find(entry => entry.name === 'Install release verification browser');
+assert(browserStep, 'fresh release runners need Chromium before Marketplace browser E2E');
+assert.equal(browserStep.if, verifyStep.if);
+assert.equal(browserStep.run, 'npx --no-install playwright install --with-deps chromium');
+assert.equal(job.env.PLAYWRIGHT_BROWSERS_PATH, '${{ github.workspace }}/.playwright-browsers');
+assert(job.steps.indexOf(job.steps.find(entry => entry.name === 'Install dependencies')) < job.steps.indexOf(browserStep));
+assert(job.steps.indexOf(browserStep) < job.steps.indexOf(verifyStep));
 assert.equal(assetsJob.uses, './.github/workflows/runtime-execution-assets.yml');
 assert.equal(assetsJob.if, "needs.resolve-release-input.outputs.is_release == 'true'");
 assert.equal(assetsJob.with.input_ref, '${{ needs.resolve-release-input.outputs.input_ref }}');

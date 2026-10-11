@@ -39,6 +39,12 @@ assert.match(
 
 assert.equal(prepareJob['timeout-minutes'], 90, 'release verification needs enough time for the full test and clean-checkout gates');
 const releaseVerificationStep = step('prepare', 'Verify release input');
+const browserStep = step('prepare', 'Install release verification browser');
+assert.equal(browserStep.if, "hashFiles('scripts/release/release-preflight.mjs') != ''");
+assert.equal(browserStep.run, 'npx --no-install playwright install --with-deps chromium');
+assert.equal(prepareJob.env.PLAYWRIGHT_BROWSERS_PATH, '${{ github.workspace }}/.playwright-browsers');
+assert(prepareJob.steps.indexOf(step('prepare', 'Install dependencies')) < prepareJob.steps.indexOf(browserStep));
+assert(prepareJob.steps.indexOf(browserStep) < prepareJob.steps.indexOf(releaseVerificationStep));
 const assembleStep = step('prepare', 'Assemble same-ref native runtime assets');
 assert(prepareJob.steps.indexOf(assembleStep) < prepareJob.steps.indexOf(releaseVerificationStep));
 assert.match(assembleStep.run, /DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/);

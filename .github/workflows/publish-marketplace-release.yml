@@ -68,6 +68,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       TRIGGER_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
     steps:
       - name: Derive release metadata
         id: release
@@ -106,6 +107,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install release verification browser
+        if: hashFiles('scripts/release/release-preflight.mjs') != ''
+        run: npx --no-install playwright install --with-deps chromium
 
       - name: Download same-run native runtime assets
         if: needs.resolve-runtime-input.outputs.needs_assets == 'true'
