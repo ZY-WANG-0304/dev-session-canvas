@@ -362,6 +362,7 @@ async function createExecutionNodes() {
       targetGroupId
     }
   });
+  await waitForAgentLive(findNodeByKind(await getDebugSnapshot(), 'agent').id);
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
@@ -370,6 +371,8 @@ async function createExecutionNodes() {
       targetGroupId
     }
   });
+  const firstTerminalId = findNodeByKind(await getDebugSnapshot(), 'terminal').id;
+  await waitForTerminalLive(firstTerminalId);
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
@@ -378,6 +381,10 @@ async function createExecutionNodes() {
       targetGroupId
     }
   });
+  const secondTerminal = findNodesByKind(await getDebugSnapshot(), 'terminal')
+    .find(node => node.id !== firstTerminalId);
+  assert.ok(secondTerminal);
+  await waitForTerminalLive(secondTerminal.id);
 }
 
 async function resolveCreateExecutionNodeTargetGroupId() {

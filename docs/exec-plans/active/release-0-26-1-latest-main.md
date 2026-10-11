@@ -94,3 +94,7 @@ PR #317 首轮预合并 CI run 38122050123 六目标资产成功，但完整验�
 第四轮完整 verify 在 runtime-checkpoint-refresh 捕获首个 16,384 字符 chunk 时立即要求等于 descriptor 声明的 104,842 字符，尚未等到后续分页；前轮同场景通过。waitForHostMessages 的 predicate 在页面逐步到达时直接 assert 总长度，属于检查等待前提缺口。仅在累计长度小于声明长度时继续原 30 秒轮询；不改变连续 offset、超长拒绝、事件分离、revision、可见 marker 或停止/恢复断言。失败证据 /tmp/dsc261latest-verify-all.log 与 /tmp/d26l4s/runtime-checkpoint-refresh/artifacts 保留；修复后需定向与完整重验。
 
 修订记录：2026-10-11，记录 checkpoint smoke 对部分分页过早断言的确切输入，并保持原完整性断言等待全部 chunk。
+
+第五轮 89c49a53 完整 verify 已通过 checkpoint、trusted、restricted 和旧升级，停在 real-reopen setup：Agent 原会话 live，而两个 Terminal 都为 rejected-before-acquire，未进入实际关窗重开。fixture 连续创建三节点（页面自动启动）且连续显式 start，未满足既有单启动槽前提。创建每个节点后先等待其原 runtime live，再创建下一个；保留原三会话、显式启动、输出、PID/session、completed 无正文及两阶段真实重开断言。前述创建等待模式已用于主 smoke，不增加重试或放宽生产配额。实际修复后 real-reopen 验证待执行，首次失败 /tmp/dsc261latest-verify-latest.log 与 /tmp/d26l5s/real-reopen/artifacts 保留。
+
+修订记录：2026-10-11，按真实重开 setup 的已拒绝快照补齐逐次原执行启动前提，保持原恢复场景断言。
