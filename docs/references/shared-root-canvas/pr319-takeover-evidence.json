@@ -1,0 +1,492 @@
+{
+  "date": "2026-10-11",
+  "base": "a39cd8c19a93b87a14823fceee186499a212eb26",
+  "reviewedHead": "6fd61651744fd21dd274526b77e2e388fe3865c5",
+  "reviewComment": "https://github.com/ZY-WANG-0304/dev-session-canvas/pull/319#issuecomment-6109671593",
+  "source": "接管协调修复工作树；提交前采集，输入按文件 SHA256 固定；保留上轮 evidence 和历史复现",
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "72ea704a0ba40115239167a99f9d6771e2924851b881689bea23acf40b9e4135",
+    "extensions/vscode/dev-session-canvas/src/panel/sharedRootCanvasStore.ts": "f83ec9418103e291d9ecce728d1145a8bccaa8eaae0535bf62bc9a6307d700ed",
+    "extensions/vscode/dev-session-canvas/src/panel/sharedRootCanvasParticipants.ts": "d05e58e0d2ac81d534f6a633a80e8019ca8e2aa3521a99dd2fcc73efc3394202",
+    "extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts": "c0ed4ea5eeb6c370f8b359837365c58cd700d5cd7c4fc3a335a19679acb8e2e4",
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts": "792ce8a7b4e4252ff73e03521ae9598e5be7a0e088f990d7c66630619b61c083",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "1c78ddb6f82f051767f555303f05661466003619f5ebce7d477d510adfdc90f5",
+    "scripts/test/test-shared-root-canvas-store.mjs": "579f7b88beb93d3ec1d7d9f5fc253159b5add5d04d9b56141d27be2799715806",
+    "scripts/test/test-runtime-root-owner-handshake.mjs": "d85906c2bce63f30d56f1923cd2c7785142c3256e0dadcd9d046eb8ca69fcb60",
+    "tests/vscode-smoke/two-window-shared-runtime-tests.cjs": "24ccbcefc4ff50b3a2b2a13ef7fc28a8962156d7e71edf4c01a959e6bf3559b0"
+  },
+  "environment": {
+    "platform": "Linux x64",
+    "node": "v22.23.3",
+    "vscode": "1.141.0",
+    "executionAssetsSet": "/tmp/dsc-release-026-assets"
+  },
+  "validation": {
+    "typecheck": "passed",
+    "host": "634/634; 6 takeover regressions added",
+    "targetedHost": "17/17; review PR319 and takeover",
+    "sharedStore": "20/20; three consecutive runs after reset race repair",
+    "nativeSupervisor": "3/3; actual owner/profile/PID handshake, new native Terminal, irreversible shutdown and no-takeover original PID control",
+    "runtimeRootOwnership": "passed; owner handshake 47 cases",
+    "runtimeStartupProfileAndReader": "passed",
+    "runtimeCompletedHistory": "passed",
+    "localization": "passed",
+    "multiRootComposition": "passed",
+    "twoWindowSmoke": "passed, exit 0"
+  },
+  "nativeSupervisorReceipts": [
+    {
+      "phase": "idle",
+      "originalPid": 1283479,
+      "confirmedPid": 1283479,
+      "successorClientsAfterDispose": 0,
+      "completed": true
+    },
+    {
+      "phase": "closing",
+      "originalPid": 1283538,
+      "successorClientsAfterDispose": 0,
+      "completed": true
+    },
+    {
+      "phase": "no-takeover",
+      "originalPid": 1283815,
+      "successorClientsAfterDispose": 0,
+      "completed": true
+    }
+  ],
+  "logsSha256": {
+    "/tmp/pr319-takeover-typecheck.log": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73",
+    "/tmp/pr319-takeover-host-full.log": "72e2f5623353d4e32bafad741cc2afca2d48401531eff0bf8fec77df0d9297e5",
+    "/tmp/pr319-takeover-host-target.log": "21d3032e60fb3b4f46b7918bec95b2d4e33f95fb3b34a022272b1e41e31f0e6b",
+    "/tmp/pr319-takeover-native.log": "1beeaf4e4261b7bbe090100dc85fd57e0821f184609549af7ec213c7fd43ad02",
+    "/tmp/pr319-takeover-store-repeat-0.log": "2ef7ac0088afa6c71bd6d674060d6c808dc4d60e59039e9c348d6d01e3a9bc98",
+    "/tmp/pr319-takeover-store-repeat-1.log": "2ef7ac0088afa6c71bd6d674060d6c808dc4d60e59039e9c348d6d01e3a9bc98",
+    "/tmp/pr319-takeover-store-repeat-2.log": "2ef7ac0088afa6c71bd6d674060d6c808dc4d60e59039e9c348d6d01e3a9bc98",
+    "/tmp/pr319-takeover-smoke-final3.log": "fa29993001e84e6fc010df90922d36a6e4eec3ef8e2bc07da7d06722ec1be7f1",
+    "/tmp/pr319-takeover-check-0.log": "b55a9496090800030472d9e2246ba599946cb8e9d8bb1a105b2b10852711177a",
+    "/tmp/pr319-takeover-check-1.log": "98d4d396d68af987c139bf1d1e6444fd2039a2e554c0e0e9b849f443e9d55978",
+    "/tmp/pr319-takeover-check-2.log": "7b40b33f0a2bfdbdf6215574cecf4f6205f95d79508ba4abe23a557f744bd045",
+    "/tmp/pr319-takeover-check-3.log": "4af3675d269dc6d3faf48197a340d135d1308be7fbc5005abdfead66840847b4",
+    "/tmp/pr319-takeover-check-4.log": "eecaf03a4941f73f13a8f14180cb881ba9dc30a87742991b71524fbca6923988"
+  },
+  "finalSmoke": {
+    "artifacts": "/tmp/dsc319takeover3",
+    "log": "/tmp/pr319-takeover-smoke-final3.log",
+    "handshakes": {
+      "attacher-control.json": {
+        "role": "attacher",
+        "artifactDir": "/tmp/dsc319takeover3/two-window-shared-runtime/attacher/artifacts",
+        "sharedDir": "/tmp/dsc319takeover3/two-window-shared-runtime/shared"
+      },
+      "owner-saw-attacher-input.json": {
+        "ok": true
+      },
+      "attacher-last-departure.json": {
+        "supervisorProcessesExited": [
+          {
+            "rootPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+            "pid": 1279122
+          }
+        ]
+      },
+      "owner-reenabled-state.json": {
+        "localExecutions": [],
+        "activeSurface": "panel",
+        "configuration": {
+          "linkOpenMode": "editorPreview",
+          "terminalShellPath": "/usr/bin/bash",
+          "terminalShellResolutionSource": "default-shell",
+          "terminalInheritEnv": true,
+          "terminalShellArgs": [],
+          "executionShellEnvPatchSource": "posix-login-shell",
+          "executionShellEnvPatchShellFamily": "posix",
+          "executionShellEnvPatchProbeMode": "interactive-login",
+          "executionShellEnvPatchShellPath": "/usr/bin/bash",
+          "executionShellEnvPatchAppliedKeys": [
+            "PATH"
+          ]
+        },
+        "sidebar": {
+          "canvasSurface": "closed",
+          "surfaceLocation": "panel",
+          "configuredSurface": "panel",
+          "runtimePersistenceEnabled": true,
+          "notificationBridgeMode": "system",
+          "enabledAttentionSignals": [
+            "bel",
+            "osc9",
+            "osc777",
+            "agentAbnormalExit",
+            "codexAbnormalOutputText"
+          ],
+          "notificationStrongReminderMode": "both",
+          "agentAbnormalOutputTextNotificationMode": "off",
+          "filesFeatureEnabled": false,
+          "filePresentationMode": "lists",
+          "fileNodeDisplayStyle": "minimal",
+          "fileNodeDisplayMode": "icon-path",
+          "filePathDisplayMode": "basename",
+          "terminalShellConfiguredValue": "default",
+          "terminalShellPath": "/usr/bin/bash",
+          "agentCodexCommand": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "agentClaudeCommand": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/missing-agent-provider",
+          "nodeCount": 0,
+          "runningExecutionCount": 0,
+          "workspaceTrusted": true,
+          "creatableKinds": [
+            "agent",
+            "terminal",
+            "note"
+          ],
+          "fileFilters": {
+            "includeGlobs": [],
+            "excludeGlobs": []
+          }
+        },
+        "state": {
+          "version": 1,
+          "updatedAt": "2026-10-11T15:16:25.413Z",
+          "nodes": [],
+          "edges": [],
+          "groups": [],
+          "nextGroupSequence": 1,
+          "fileReferences": [],
+          "suppressedFileActivityEdgeIds": [],
+          "suppressedAutomaticFileArtifactNodeIds": []
+        },
+        "surfaceMode": {
+          "editor": "active"
+        },
+        "surfaceReady": {
+          "editor": true,
+          "panel": false
+        },
+        "surfaceLifecycle": {
+          "editor": {
+            "generation": 8,
+            "mode": "active",
+            "ready": true,
+            "bootstrapAck": true,
+            "frameId": "frame-2688d19a-2cbf-4855-ac48-899f4bf4d2af",
+            "terminalReadSettlementV1": true,
+            "terminalLocalSettlementV1": true,
+            "terminalLocalOutputCreditV1": true,
+            "terminalAvailableReceiptV1": true,
+            "terminalCurrentStateV1": true
+          },
+          "panel": {
+            "generation": 0,
+            "ready": false,
+            "bootstrapAck": false
+          }
+        }
+      },
+      "attacher-saw-note-delete.json": {
+        "ok": true
+      },
+      "attacher-resized-terminal.json": {
+        "ok": true
+      },
+      "attacher-attached.json": {
+        "ok": true
+      },
+      "owner-switch-live-terminal.json": {
+        "nodeId": "terminal-5-88f05f10-f5d4-4a68-aba3-e01b0c4d2fa7",
+        "sessionId": "6e78c8af-9dd6-4734-b913-0eda73c5530c",
+        "processes": [
+          {
+            "rootPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+            "pid": 1279122
+          }
+        ]
+      },
+      "attacher-reenabled-state.json": {
+        "localExecutions": [],
+        "activeSurface": "panel",
+        "configuration": {
+          "linkOpenMode": "editorPreview",
+          "terminalShellPath": "/usr/bin/bash",
+          "terminalShellResolutionSource": "default-shell",
+          "terminalInheritEnv": true,
+          "terminalShellArgs": []
+        },
+        "sidebar": {
+          "canvasSurface": "closed",
+          "surfaceLocation": "panel",
+          "configuredSurface": "panel",
+          "runtimePersistenceEnabled": true,
+          "notificationBridgeMode": "system",
+          "enabledAttentionSignals": [
+            "bel",
+            "osc9",
+            "osc777",
+            "agentAbnormalExit",
+            "codexAbnormalOutputText"
+          ],
+          "notificationStrongReminderMode": "both",
+          "agentAbnormalOutputTextNotificationMode": "off",
+          "filesFeatureEnabled": false,
+          "filePresentationMode": "lists",
+          "fileNodeDisplayStyle": "minimal",
+          "fileNodeDisplayMode": "icon-path",
+          "filePathDisplayMode": "basename",
+          "terminalShellConfiguredValue": "default",
+          "terminalShellPath": "/usr/bin/bash",
+          "agentCodexCommand": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "agentClaudeCommand": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/missing-agent-provider",
+          "nodeCount": 0,
+          "runningExecutionCount": 0,
+          "workspaceTrusted": true,
+          "creatableKinds": [
+            "agent",
+            "terminal",
+            "note"
+          ],
+          "fileFilters": {
+            "includeGlobs": [],
+            "excludeGlobs": []
+          }
+        },
+        "state": {
+          "version": 1,
+          "updatedAt": "2026-10-11T15:16:25.413Z",
+          "nodes": [],
+          "edges": [],
+          "groups": [],
+          "nextGroupSequence": 1,
+          "fileReferences": [],
+          "suppressedFileActivityEdgeIds": [],
+          "suppressedAutomaticFileArtifactNodeIds": []
+        },
+        "surfaceMode": {
+          "editor": "active"
+        },
+        "surfaceReady": {
+          "editor": true,
+          "panel": false
+        },
+        "surfaceLifecycle": {
+          "editor": {
+            "generation": 5,
+            "mode": "active",
+            "ready": true,
+            "bootstrapAck": true,
+            "frameId": "frame-c327dd12-bd99-4fde-8a7e-75587371d6dc",
+            "terminalReadSettlementV1": true,
+            "terminalLocalSettlementV1": true,
+            "terminalLocalOutputCreditV1": true,
+            "terminalAvailableReceiptV1": true,
+            "terminalCurrentStateV1": true
+          },
+          "panel": {
+            "generation": 0,
+            "ready": false,
+            "bootstrapAck": false
+          }
+        }
+      },
+      "attacher-deleted-agent.json": {
+        "ok": true
+      },
+      "attacher-created-note.json": {
+        "nodeId": "note-4-47a3635f-ac4d-4086-935e-1c6767199cc9"
+      },
+      "owner-switched-back-on.json": {
+        "ok": true
+      },
+      "attacher-stopped-terminal.json": {
+        "ok": true
+      },
+      "owner-control.json": {
+        "role": "owner",
+        "artifactDir": "/tmp/dsc319takeover3/two-window-shared-runtime/owner/artifacts",
+        "sharedDir": "/tmp/dsc319takeover3/two-window-shared-runtime/shared"
+      },
+      "owner-deleted-note.json": {
+        "nodeId": "note-3-8abb1477-8b60-4bd8-95b8-75f3a32fbde9"
+      },
+      "attacher-private-note.json": {
+        "nodeId": "note-1-ebc06e9c-d9bb-4902-b230-089b67f66a88"
+      },
+      "attacher-switched-back-on.json": {
+        "ok": true
+      },
+      "owner-private-note.json": {
+        "nodeId": "note-1-19e56c04-29ee-4b55-a141-3c3fe38e9f55"
+      },
+      "attacher-after-owner-detach.json": {
+        "originalSessionId": "6e78c8af-9dd6-4734-b913-0eda73c5530c",
+        "originalProcesses": [
+          {
+            "rootPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+            "pid": 1279122
+          }
+        ],
+        "peerNodeId": "terminal-6-63213c89-ff0b-45cc-b432-892c6f5dd538",
+        "outputAndResizeConfirmed": true
+      },
+      "owner-saw-agent-delete.json": {
+        "ok": true
+      },
+      "attacher-saw-switch-terminal.json": {
+        "ok": true
+      },
+      "owner-sent-input.json": {
+        "ok": true
+      },
+      "attacher-saw-owner-input.json": {
+        "ok": true
+      },
+      "owner-ready.json": {
+        "agentNodeId": "agent-1-e1a23953-3ffb-4869-83a3-3ab81abb8ad7",
+        "terminalNodeId": "terminal-2-d973b64f-3191-40a1-838a-a53bde41a92b",
+        "agentSessionId": "4ee37a86-ab6c-42c2-8678-006690111187",
+        "terminalSessionId": "36656533-114b-4933-aa3e-ed1469f39351",
+        "agentRuntimeStoragePath": "/tmp/dsc319takeover3/two-window-shared-runtime/owner/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+        "terminalRuntimeStoragePath": "/tmp/dsc319takeover3/two-window-shared-runtime/owner/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+        "state": {
+          "version": 1,
+          "updatedAt": "2026-10-11T15:16:14.043Z",
+          "nodes": [
+            {
+              "id": "agent-1-e1a23953-3ffb-4869-83a3-3ab81abb8ad7",
+              "kind": "agent",
+              "title": "Agent 1",
+              "status": "starting",
+              "summary": "[fake-agent] ready pid=1279222 session=c29697da-6ed1-4116-80fa-884bd7b43e8f",
+              "position": {
+                "x": 160,
+                "y": 140
+              },
+              "size": {
+                "width": 560,
+                "height": 430
+              },
+              "metadata": {
+                "agent": {
+                  "backend": "node-pty",
+                  "lifecycle": "starting",
+                  "provider": "codex",
+                  "launchPreset": "default",
+                  "lastLaunchCommandLine": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+                  "runtimeKind": "pty-cli",
+                  "resumeSupported": true,
+                  "resumeStrategy": "fake-provider",
+                  "shellPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+                  "cwd": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+                  "persistenceMode": "live-runtime",
+                  "attachmentState": "attached-live",
+                  "runtimeBackend": "legacy-detached",
+                  "runtimeGuarantee": "best-effort",
+                  "runtimeStoragePath": "/tmp/dsc319takeover3/two-window-shared-runtime/owner/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+                  "runtimeOwner": {
+                    "schema": 1,
+                    "environmentKey": "29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649",
+                    "userStorageScopeKey": "55854c9e13d7307d3c836d84f314df0b5d9630fe083c8eadca7b7623eab62905",
+                    "root": {
+                      "kind": "folder",
+                      "pathPolicy": "canvas-path-v1",
+                      "normalizedPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas"
+                    },
+                    "generation": "terminal-root-owner-linux-v1"
+                  },
+                  "liveSession": true,
+                  "lastCols": 66,
+                  "lastRows": 21,
+                  "attentionPending": false,
+                  "lastBackendLabel": "Codex",
+                  "outputSequence": 1,
+                  "recentOutput": "[fake-agent] ready pid=1279222 session=c29697da-6ed1-4116-80fa-884bd7b43e8f",
+                  "resumeSessionId": "c29697da-6ed1-4116-80fa-884bd7b43e8f",
+                  "resumeStoragePath": "/tmp/dsc319takeover3/two-window-shared-runtime/owner/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-e1a23953-3ffb-4869-83a3-3ab81abb8ad7",
+                  "terminalProjectionMode": "terminal-stream-v1",
+                  "runtimeSessionId": "4ee37a86-ab6c-42c2-8678-006690111187"
+                }
+              }
+            },
+            {
+              "id": "terminal-2-d973b64f-3191-40a1-838a-a53bde41a92b",
+              "kind": "terminal",
+              "title": "Terminal 2",
+              "status": "live",
+              "summary": "\u001b[?2004hziyang01.wang-al@hobot:/home/users/ziyang01.wang-al/projects/dev-session-canvas$",
+              "position": {
+                "x": 780,
+                "y": 140
+              },
+              "size": {
+                "width": 540,
+                "height": 420
+              },
+              "metadata": {
+                "terminal": {
+                  "backend": "node-pty",
+                  "lifecycle": "live",
+                  "shellPath": "/usr/bin/bash",
+                  "cwd": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+                  "persistenceMode": "live-runtime",
+                  "attachmentState": "attached-live",
+                  "runtimeBackend": "legacy-detached",
+                  "runtimeGuarantee": "best-effort",
+                  "runtimeStoragePath": "/tmp/dsc319takeover3/two-window-shared-runtime/owner/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+                  "runtimeOwner": {
+                    "schema": 1,
+                    "environmentKey": "29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649",
+                    "userStorageScopeKey": "55854c9e13d7307d3c836d84f314df0b5d9630fe083c8eadca7b7623eab62905",
+                    "root": {
+                      "kind": "folder",
+                      "pathPolicy": "canvas-path-v1",
+                      "normalizedPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas"
+                    },
+                    "generation": "terminal-root-owner-linux-v1"
+                  },
+                  "liveSession": true,
+                  "lastCols": 92,
+                  "lastRows": 28,
+                  "attentionPending": false,
+                  "outputSequence": 1,
+                  "recentOutput": "ziyang01.wang-al@hobot:/home/users/ziyang01.wang-al/projects/dev-session-canvas$",
+                  "terminalProjectionMode": "terminal-stream-v1",
+                  "runtimeSessionId": "36656533-114b-4933-aa3e-ed1469f39351"
+                }
+              }
+            }
+          ],
+          "edges": [],
+          "groups": [],
+          "nextGroupSequence": 1,
+          "fileReferences": [],
+          "suppressedFileActivityEdgeIds": [],
+          "suppressedAutomaticFileArtifactNodeIds": []
+        }
+      },
+      "owner-created-note.json": {
+        "nodeId": "note-3-8abb1477-8b60-4bd8-95b8-75f3a32fbde9"
+      },
+      "owner-saw-resize.json": {
+        "ok": true
+      },
+      "attacher-saw-own-input.json": {
+        "ok": true
+      },
+      "owner-saw-terminal-stop.json": {
+        "ok": true
+      },
+      "attacher-edited-note.json": {
+        "ok": true
+      }
+    }
+  },
+  "historicalFailure": {
+    "reviewReproductionScript": "/tmp/pr319-rereview-host.mjs",
+    "reviewReproductionLog": "/tmp/pr319-rereview-join.log",
+    "blockingSymptom": "未登记的新 Host 自动恢复连接，清空后保留 control client，旧 Host 45 秒原 PID 等待超时",
+    "repairValidationDiscovery": "两次普通 peer dispose 交错出现 ECONNRESET；协商和 busy discovery 只重试、不删登记、不确认交接；两项确定性 reset 回归与三次 store 20/20 通过"
+  },
+  "limits": [
+    "四阶段交错由实际 Host/store 和独立 Supervisor 定向回归验证，没有新增 VS Code UI 四阶段暂停验收",
+    "真实双窗口 smoke 为 Linux 单 root；未新增 macOS/Windows/Remote SSH 或真实 multi-root 双窗口",
+    "未运行全量 npm test；未量化高频大画布成本"
+  ]
+}

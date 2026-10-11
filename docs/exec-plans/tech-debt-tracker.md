@@ -685,3 +685,21 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 针对上一节“只完成定向验证、完整 gate 未重跑”的记录，已在精确 head `1286b83e778b69bf2214bed15f9a770c8a916f27` 上不设置 scenario filter 重跑 `npm run test:vsix-smoke`。Linux x64、Node 22.23.3、VS Code 1.141.0、已验证 execution asset set、原生 PTY 和 fake provider 环境下，八个阶段（含 trusted 全顺序）全部通过，命令 exit 0。此次运行关闭审计中“最新 head 未闭环”的 P1；Claude Fork 修复后的生命周期、准入拒绝、最终保存和 reload 主路径在该 packaged payload 中均完成原有断言。
 
 证据见 `docs/references/smoke-reload-autostart/full-vsix-gate-1286b83e-evidence.json`。此前章节保留历史失败时点，不再作为当前 head 的门禁结论。GitHub 没有完整 smoke required check，`native-assets` 仍为 skipped，因此真实 provider、真实窗口 Reload、新 Host/checkpoint、Remote SSH、其他平台/跨版本矩阵，以及历史 URL 清理、Runtime disconnected 批次报告和独立 `owned-resize-failed` 调查继续作为明确验证边界；它们不是本次八场景 run 的失败项。
+
+## 2026-10-11 双窗口删除与共享画布（共享结构已有有限证据，底层直接调用诊断保留）
+
+原 main a39cd8c1 的直接 Supervisor deleteSession 非保留路径取消所有 socket 的 Host 信用订阅，受控 8 项 direct-credit 终态为 0；诊断干预保留另一 socket 通道后为 1。原因果记录及脚本继续保留，不能把共享结构修复说成 Supervisor 独立 delete 通知契约已修改。
+
+用户确认共享 delete 在所有窗口移除节点，2026-10-11 已通过共享 root 结构提交/监听实现，并在 Linux 独立双窗口验证；stop 保留节点及原 reader 最终消费。旧 owner 保留 stopped 历史节点断言已按正式产品语义调整。共享结构、关闭模式 slot 隔离及旧定义下的切换测试已有有限证据；方案见 `docs/design-docs/runtime-shared-root-canvas-sync.md`，过程见 `docs/exec-plans/completed/runtime-shared-root-canvas-sync.md`。PR #319 review 后用户补充最后开启窗口切换关闭才清理共享会话并退出 Supervisor，新规则现已通过独立开启 Host/root 登记、准入锁和原 hello PID 的退出检查实现，并有 Linux 单 root 最终双窗口、Host 628/628、store 15/15 和 owner handshake 47 项的有限验证。deferred delete/edit 交错和 reader 收尾配置保护亦有实际 Host/store 磁盘回归；首轮并发 reset 失败、后续保护及最终通过分别保留。接续计划 `docs/exec-plans/completed/pr319-review-repairs.md` 和 `docs/references/shared-root-canvas/pr319-review-repair-evidence.json` 固定输入及证据，不将新规则缺口降级为技术债。
+
+证据边界补充：上述验证对应 `e79aa66d` 在进一步确认接管规则之前的实现。用户现已确认清理期间新开启窗口可以按阶段接管，旧窗口在交接完成后不再等待被新窗口使用的原 PID 消失；已有串行登记测试不代证该规则通过。该时点的接管缺口由 `docs/exec-plans/completed/pr319-takeover-coordination.md` 接续修复：参与 listener 分阶段确认、ready 后最新状态恢复、有效原 PID 交接及失败连接释放已经落地。store 20/20、完整 Host 634/634、真实独立 Supervisor 控制/native 新执行 3/3，以及 Linux 单 root 真实双窗口复验通过，输入证据为 `docs/references/shared-root-canvas/pr319-takeover-evidence.json`。四阶段来自受控 Host/store/独立进程回归，没有把既有双窗口 smoke 描述为新增四阶段 UI 验收。旧 head 的缺口和失败记录保留，不作为当前非阻塞债务代替修复。
+
+### 后续验证与存储成本（未验证）
+
+责任落点 `panel/sharedRootCanvasStore.ts` 与双窗口 smoke。新增真实结构同步/切换场景本轮仅验证 Linux 单 root；macOS/Windows/Remote SSH 和真实多 root 两窗口需后续具名验证，不能借 Node API 或已有 helper 通过宣称这些组合已验。每 root 100ms 轮询和完整 JSON 比较/写入在高频大画布下的成本尚未量化；出现实际规模瓶颈时再以固定负载评估，不先承诺恒定延迟。TCP 锁哈希碰撞保守串行，新增实际碰撞的多 root held-lease 回归通过；参与 probe 超时或身份变化、外部端口长期占用有界失败。root 准入最多等待 90 秒，原 Supervisor 采用 30 秒 idle shutdown，45 秒未确认原 PID 消失拒绝成功；PID 复用同样保守失败。这些机制仍需在对应原生平台验证。直接绕过共享画布调用 Supervisor delete 的其他有效消费者仍按历史诊断范围，不外推产品共享删除已补齐所有通道。
+
+### completed-history 旧诊断断言（2026-10-11 已修正）
+
+`npm run test:runtime-completed-history` 的 `verifyCompletedBindingOwner` 原先将所有诊断数组断言为空；main a39cd8c1 新增正常 `execution/deleteBoundary` 后，本地与独立原 main 工作树均在同一 legacy Terminal 项失败。历史基线日志 `/tmp/dsc-shared-completed-history-baseline.log` 保留。
+
+用户授权修正后，测试精确断言 `execution/deleteBoundary` 的 `runtime-delete-requested` 阶段、kind、sessionId 和 backendKind，不泛化过滤诊断。root 缺失 owner 的拒绝用例单独校验请求诊断及零派发，然后清空收集器再验证正常完成。原完整绑定相等、owner 传递、保存先于删除与无终态历史断言全部保留；额外 completedCleanupFailed 等诊断仍使测试失败。Node 22 下完整 `test:runtime-completed-history` 通过，覆盖 Agent/Terminal、legacy/root 及后续 reader 退役场景；只修改测试与文档，没有修改生产删除行为，也不宣称全量 npm test 通过。

@@ -15,7 +15,7 @@
 
 系统当前的主要协同运行时与执行边界如下：
 
-- `Extension Host`：workspace 绑定画布状态与节点到会话映射的权威位置，负责命令、Webview 生命周期、workspace trust、持久化以及 Agent / Terminal 编排。
+- `Extension Host`：持有 workspace 画布投影与节点到会话映射，负责命令、Webview 生命周期、workspace trust、持久化以及 Agent / Terminal 编排；开启模式的 root 结构由共享存储合并提交，Host 不以自身整图覆盖其他窗口。
 - `Webview`：负责画布渲染、节点交互、内嵌终端前端和局部 UI 状态。
 - `Runtime Supervisor`：仅在 `live-runtime` 持久化模式下参与；负责在 VSCode 生命周期之外托管执行会话，并作为该会话 terminal event、revision、checkpoint 与 journal 的唯一运行时权威。正常运行时新会话使用当前协议代 Supervisor；扩展升级的退役窗口允许旧、新 Supervisor 按独立 storage / control endpoint 并行存在，每个会话始终只绑定其中一个进程。
 - `Execution Provider`：正常构建默认按 Linux / macOS / Windows 选择 owned 原生 provider，由所在 Host 或 Supervisor 的 `ExecutionOwnerLifecycle` 持有执行、输出、消费者与资源结算责任；provider 在独立进程中操作 PTY / ConPTY。它不是用户的 Runtime Persistence 开关，也不使 `snapshot-only` 进程获得跨 Host 存活保证。
@@ -179,6 +179,9 @@ docs/                           根目录正式文档知识库
   - 当前宿主权威状态中心
   - 管理 editor / panel 两种 surface
   - 处理节点创建、删除、移动、尺寸变更、持久化与恢复
+- `sharedRootCanvasStore.ts`
+  - 开启模式 root 结构按对象/字段差异合并、跨进程互斥提交和订阅变化
+  - 不承担执行或终端正文权威；节点 start/delete 按原身份串行
 - `getWebviewHtml.ts`
   - 生成 Webview HTML、资源 URI 与 CSP
 - `configuration.ts`
@@ -503,6 +506,8 @@ docs/                           根目录正式文档知识库
 ## 7. 横切关注点（Cross-Cutting Concerns）
 
 ### 恢复与持久化
+
+开启 Runtime Persistence 时，同执行环境/用户 global storage/root 的画布通过 `panel/sharedRootCanvasStore.ts` 共享结构；`CanvasPanelManager.applySharedRootCanvasState` 保留本地终端消费投影，删除只释放本窗口 reader，新绑定按原身份重连。global `root-local-canvas` 保存共享结构，关闭模式使用当前 workspace slot 的 `private-root-canvases-v1`，不接管旧共享绑定。当前模式切换在最后活动页面关闭、Reload Window 或 Host 退出边界执行，设置变化不立即销毁页面，普通未切换关闭沿用原恢复规则。`panel/sharedRootCanvasParticipants.ts` 用独立 token listener 登记每 root 的开启 Host，root 准入锁协调加入、执行 mutation 和主动离开；非最后窗口只 detach，无接管的最后窗口结算对应 root 后使用原 hello PID 核验 Supervisor 自然退出。多 root 按锁端口排序并复用碰撞 lease；普通 dispose 不清理共享执行。用户已确认清理期间允许新开启 Host 按阶段接管：已派发 stop/delete 不回滚，接管仍可用的 Supervisor 后旧 Host 验证责任交接而非等待原 PID 消失；不可取消关闭完成后再正常建立运行时。协调由独立参与 listener 的 token/离开轮次请求完成：自动恢复等待 store ready 及最新投影，删除 API 派发前冻结逐 root 集合，结算及最终保存后才提供 idle 候选；新 Host 以原 owner/profile/PID hello 确认进程后登记交接，旧 Host 仅排除仍有效接管者的 PID。失败连接释放，现代 reader 移除后释放未被交接保留的控制 client，Host/root 边界释放保留。受控 Host/store 和真实独立 Supervisor 验证这些路径；旧串行证据仍不代证接管。细节、冲突规则及 Linux 单 root 有限证据见 `docs/design-docs/runtime-shared-root-canvas-sync.md`。
 
 当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、可校验 terminal journal 和 checkpoint。仍运行的会话在 Reload Window 后必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。支持 `terminalPagedReadV1` 时，live Host 只保留身份、head 和有限摘要，不复制完整 `terminalStream`；Webview 从 checkpoint 开始逐页读取，应用完上一页才请求下一页，读者的安全恢复基点参与 journal 保留。只支持旧 stream 能力时，Host 继续维护完整后缀，并在投影 attach 前和 10–12 秒错峰周期内优先用 `terminalCheckpointRefreshV1` 查询新的 checkpoint；更旧 Supervisor 继续原 snapshot RPC。
 

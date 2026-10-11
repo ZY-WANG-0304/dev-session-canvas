@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { fork, spawn } from 'node:child_process';
 import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -1745,7 +1746,7 @@ async function persistenceFixture(options = {}) {
     pendingWorkspaceStateUpdate: Promise.resolve(), lastLoadedRootLocalStates: [],
     syncNoteMarkdownFileWatchers() {}, cleanupUnreferencedNoteMarkdownRecoverableDraftFiles() {},
     recordStatePersistPerformance() {}, shouldPreserveLiveRuntimeAcrossHostBoundary: () => false,
-    terminalReadRelay: { closeMatching() {} }, runtimeSupervisorClients: new Map()
+    terminalReadRelay: { closeMatching() {}, usesClient: () => false }, runtimeSupervisorClients: new Map()
   });
   Object.assign(f.host.state, { version: 1, updatedAt: '2026-09-26T00:00:00.000Z', nextGroupSequence: 1,
     fileReferences: [], suppressedFileActivityEdgeIds: [], suppressedAutomaticFileArtifactNodeIds: [] });
@@ -1757,10 +1758,10 @@ async function persistenceFixture(options = {}) {
     return write(filename, snapshot);
   };
   const workspaceFile = f.host.getPersistedCanvasSnapshotPath();
-  const rootFile = f.host.getRootLocalCanvasSnapshotPath(root);
   await f.host.persistState({ workspaceStateMode: 'full', requireRootLocalDurability: true });
   writes.length = 0;
-  return { ...f, directory, root, updates, writes, workspaceFile, rootFile,
+  return { ...f, directory, root, updates, writes, workspaceFile,
+    get rootFile() { return f.host.getRootLocalCanvasSnapshotPath(root); },
     async read(filename = workspaceFile) { return JSON.parse(await readFile(filename, 'utf8')); },
     async finish(kind, record, provider, { text, exitCode = 0, disposition = { kind: 'eof' } } = {}) {
       const frames = text === undefined ? 0 : 1;
@@ -1781,6 +1782,7 @@ async function persistenceFixture(options = {}) {
         record.business?.cancelActivityPoll?.(); record.business?.lineContextTracker.dispose(); record.tracker.dispose();
       }
       await f.host.pendingWorkspaceStateUpdate;
+      f.host.disposeSharedRootCanvasStores();
       await rm(directory, { recursive: true, force: true });
     }
   };
@@ -2257,14 +2259,25 @@ for (const kind of ['terminal', 'agent']) {
       const beforeWorkspace = await readFile(f.workspaceFile, 'utf8');
       const bindings = [...f.host.runtimeSessionBindings.entries()];
       f.writes.length = 0;
-      await mkdir(`${f.rootFile}.tmp`);
+      const fileSystem = createRequire(import.meta.url)('node:fs');
+      const rename = fileSystem.renameSync;
+      let failedRootRenames = 0;
       const snapshot = candidateCompletedSnapshot(session, {
         lifecycle: kind === 'agent' ? 'stopped' : 'closed',
         terminalStreamPaged: true, terminalAuthorityId: authorityId, terminalRevision: 1,
         terminalFinalRevision: 1, capabilities: { terminalReadSettlementV1: true }
       });
-      await assert.rejects(f.host.applyCompletedRuntimeSupervisorSnapshot(session.nodeId, kind, snapshot),
-        /EISDIR|illegal operation on a directory/i);
+      fileSystem.renameSync = (source, target) => {
+        if (target === f.rootFile) {
+          failedRootRenames++;
+          throw Object.assign(new Error('EISDIR controlled shared root rename failure'), { code: 'EISDIR' });
+        }
+        return rename(source, target);
+      };
+      try {
+        await assert.rejects(f.host.applyCompletedRuntimeSupervisorSnapshot(session.nodeId, kind, snapshot),
+          /EISDIR|illegal operation on a directory/i);
+      } finally { fileSystem.renameSync = rename; }
       const final = posted.find(entry => entry.message.type === 'host/executionTerminalAvailable' &&
         entry.message.payload.completed === true);
       assert(final, 'A failed root save must not hide the confirmed final watermark from the original reader.');
@@ -2277,7 +2290,8 @@ for (const kind of ['terminal', 'agent']) {
         executionSessionId: session.sessionId, authorityId, readId,
         outcome: { kind: 'applied', finalRevision: 1 } })).settlement, 'recorded');
       assert.equal(settled.length, 1);
-      assert.deepEqual(f.writes, [f.rootFile], 'the original root writer fails before a workspace save');
+      assert.equal(failedRootRenames, 1, 'the actual shared root commit must fail');
+      assert.deepEqual(f.writes, [], 'the shared root writer fails before a workspace save');
       assert.equal(await readFile(f.rootFile, 'utf8'), beforeRoot);
       assert.equal(await readFile(f.workspaceFile, 'utf8'), beforeWorkspace);
       const rootMetadata = (await f.read(f.rootFile)).state.nodes.find(node => node.kind === kind).metadata[kind];
@@ -7658,7 +7672,8 @@ for (const kind of ['agent', 'terminal']) {
         trackRuntimeSupervisorOperation: operation => operations.push(operation),
         disposeExecutionSession: CanvasPanelManager.prototype.disposeExecutionSession,
         invalidateExecutionSessionOperation() {}, clearScheduledExecutionOutputPost() {},
-        disposeAgentFileActivitySession: async () => {}, unbindRuntimeSession() {}, getRuntimeHostBackend: () => ({})
+        disposeAgentFileActivitySession: async () => {}, unbindRuntimeSession() {}, getRuntimeHostBackend: () => ({}),
+        retireLegacyRuntimeSupervisorClientIfUnused() {}
       });
       Object.assign(f.client, {
         supportsTerminalSessionStream: () => true, supportsTerminalPagedRead: () => true,
@@ -7763,6 +7778,847 @@ for (const kind of ['agent', 'terminal']) {
   });
 }
 
+function sharedCanvasFixture(enabled = true) {
+  const root = '/controlled/shared-root';
+  const f = fixture({ roots: [{ path: root, name: 'root' }] });
+  delete f.host.isRuntimePersistenceEnabled;
+  f.host.appliedStartupConfiguration.runtimePersistenceEnabled = enabled;
+  Object.assign(f.host, { rawExtensionStoragePath: '/controlled/slot-a',
+    context: { extensionMode: 3, globalStorageUri: { fsPath: '/controlled/global' } },
+    reconcileCanvasFileArtifacts: state => state, syncNoteMarkdownFileWatchers() {},
+    scheduleRestoreLiveRuntimeSessions() {}, terminalReadRelay: { closeMatching() {} } });
+  f.host.state = { version: 1, updatedAt: '', nodes: [], groups: [], edges: [], nextGroupSequence: 1,
+    fileReferences: [], suppressedFileActivityEdgeIds: [], suppressedAutomaticFileArtifactNodeIds: [] };
+  return { ...f, root };
+}
+
+test('shared Canvas applies remote creation geometry and deletion without stopping another execution', () => {
+  const f = sharedCanvasFixture();
+  let deletes = 0;
+  f.host.deleteRuntimeSupervisorSessionStrict = () => { deletes++; };
+  const node = { id: 'shared-note', kind: 'note', title: 'Shared', status: 'idle', summary: '',
+    position: { x: 12, y: 34 }, size: { width: 400, height: 300 }, metadata: {} };
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [node] });
+  assert.equal(f.host.state.nodes[0].title, 'Shared');
+  const moved = { ...node, position: { x: 99, y: 55 }, size: { width: 500, height: 350 } };
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [moved] });
+  assert.deepEqual(f.host.state.nodes[0].position, moved.position);
+  assert.deepEqual(f.host.state.nodes[0].size, moved.size);
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [] });
+  assert.equal(f.host.state.nodes.length, 0);
+  assert.equal(deletes, 0);
+});
+
+test('shared Canvas deletion detaches local projection, while stop waits for the original final reader', () => {
+  const f = sharedCanvasFixture();
+  const metadata = { lifecycle: 'waiting-input', persistenceMode: 'live-runtime', attachmentState: 'attached-live',
+    runtimeSessionId: 'original-shared', runtimeStoragePath: '/controlled/runtime', liveSession: true, recentOutput: 'local tail' };
+  const node = { id: 'shared-agent', kind: 'agent', title: 'Agent', status: 'waiting-input', summary: 'local tail',
+    position: { x: 0, y: 0 }, size: { width: 400, height: 300 }, metadata: { agent: metadata } };
+  f.host.state.nodes = [node];
+  f.host.agentSessions.set(node.id, { owner: 'supervisor', runtimeSessionId: metadata.runtimeSessionId,
+    runtimeStoragePath: metadata.runtimeStoragePath, lifecycleStatus: 'waiting-input', buffer: 'local tail', cols: 80, rows: 24 });
+  const disposals = [];
+  f.host.retireLegacyRuntimeSupervisorClientIfUnused = () => {};
+  f.host.disposeExecutionSession = (kind, id, options) => { disposals.push({ kind, id, options }); f.host.getExecutionSessions(kind).delete(id); };
+  const remoteStopped = { ...node, status: 'stopped', metadata: { agent: { ...metadata, lifecycle: 'stopped',
+    runtimeSessionId: undefined, liveSession: false, persistenceMode: 'snapshot-only', attachmentState: 'history-restored' } } };
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [remoteStopped] });
+  assert.equal(disposals.length, 0, 'structure propagation must not interrupt the final terminal reader');
+  assert.equal(f.host.state.nodes[0].metadata.agent.runtimeSessionId, 'original-shared');
+  assert.equal(f.host.state.nodes[0].metadata.agent.recentOutput, 'local tail');
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [] });
+  assert.deepEqual(disposals, [{ kind: 'agent', id: node.id, options: { terminateProcess: false } }]);
+  assert.equal(f.host.state.nodes.length, 0);
+});
+
+test('delayed stopped projection cannot restore the runtime binding or overwrite newer configuration', () => {
+  const f = sharedCanvasFixture();
+  delete f.host.writeRootLocalCanvasSnapshot;
+  const node = { id: 'shared-agent', kind: 'agent', title: 'Agent', status: 'waiting-input', summary: '',
+    position: { x: 0, y: 0 }, size: { width: 400, height: 300 }, metadata: { agent: {
+      lifecycle: 'waiting-input', runtimeSessionId: 'completed-runtime', customLaunchCommand: 'new user command'
+    } } };
+  f.host.state.nodes = [node];
+  f.host.sharedCompletedRuntimeProjections = new Map([[node.id, { sessionId: 'completed-runtime', node: {
+    ...node, status: 'stopped', metadata: { agent: { lifecycle: 'stopped', liveSession: false,
+      customLaunchCommand: 'old command', terminalHistoryDiscarded: true } }
+  } }]]);
+  let published;
+  f.host.sharedRootCanvasStores = new Map([[f.root, { publish: state => { published = state; return Promise.resolve(); } }]]);
+  f.host.writeRootLocalCanvasSnapshot(f.root, f.host.state);
+  assert.equal(published.nodes[0].metadata.agent.runtimeSessionId, undefined);
+  assert.equal(published.nodes[0].metadata.agent.customLaunchCommand, 'new user command');
+  assert.equal(published.nodes[0].status, 'stopped');
+  f.host.state.nodes = [];
+  f.host.writeRootLocalCanvasSnapshot(f.root, f.host.state);
+  assert.equal(f.host.sharedCompletedRuntimeProjections.size, 0);
+});
+
+test('snapshot-only Canvas uses its current slot and ignores shared root updates', () => {
+  const a = sharedCanvasFixture(false), b = sharedCanvasFixture(false);
+  b.host.rawExtensionStoragePath = '/controlled/slot-b';
+  assert.notEqual(a.host.getRootLocalCanvasSnapshotPath(a.root), b.host.getRootLocalCanvasSnapshotPath(b.root));
+  assert.match(a.host.getRootLocalCanvasSnapshotPath(a.root), /slot-a.*private-root-canvases-v1/);
+  const before = a.host.state;
+  a.host.applySharedRootCanvasState(a.root, { ...before, nodes: [{ id: 'remote', kind: 'note' }] });
+  assert.strictEqual(a.host.state, before);
+  a.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+  b.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+  assert.equal(a.host.getRootLocalCanvasSnapshotPath(a.root), b.host.getRootLocalCanvasSnapshotPath(b.root));
+});
+
+test('snapshot-only upgrade detaches copied shared bindings without stopping their original owner', () => {
+  const f = sharedCanvasFixture(false);
+  const node = { id: 'old-shared', kind: 'agent', status: 'waiting-input', metadata: { agent: {
+    runtimeSessionId: 'other-window', runtimeStoragePath: '/shared/original', runtimeOwner: { version: 1 },
+    persistenceMode: 'live-runtime', liveSession: true, pendingLaunch: 'resume'
+  } } };
+  const state = { ...f.host.state, nodes: [node] };
+  const migrated = f.host.detachSharedBindingsInSnapshotMode(state);
+  assert.equal(migrated.nodes[0].metadata.agent.runtimeSessionId, undefined);
+  assert.equal(migrated.nodes[0].metadata.agent.pendingLaunch, undefined);
+  assert.equal(migrated.nodes[0].metadata.agent.liveSession, false);
+  assert.equal(migrated.nodes[0].metadata.agent.persistenceMode, 'snapshot-only');
+  assert.equal(node.metadata.agent.runtimeSessionId, 'other-window');
+  assert.equal(f.providers.length, 0);
+});
+
+for (const enabled of [true, false]) {
+  test(`mode switch ${enabled} waits for original execution cleanup before discarding current Canvas`, async () => {
+    const f = sharedCanvasFixture(enabled);
+    f.host.state.nodes = [{ id: 'original-note', kind: 'note', metadata: {} }];
+    const original = f.host.state;
+    const gate = deferred();
+    let boundary;
+    f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: !enabled });
+    f.host.prepareForHostBoundary = options => { boundary = options; return gate.promise; };
+    const clearing = f.host.cleanupRuntimePersistenceModeSwitch();
+    await pump(f.clock, () => true);
+    assert.strictEqual(f.host.state, original);
+    assert.equal(boundary.preserveLiveRuntime, false);
+    assert.equal(boundary.preserveRootRuntimeBindings, false);
+    gate.resolve();
+    await clearing;
+    assert.equal(f.host.state.nodes.length, 0);
+    assert.equal(f.host.isRuntimePersistenceEnabled(), enabled, 'new mode is applied only at next page startup');
+    assert.equal(f.persisted.at(-1).reason, 'runtime-persistence-mode-switch-cleanup');
+  });
+}
+
+test('mode switch failure retains current Canvas and reverting configuration does not clear it', async () => {
+  const f = sharedCanvasFixture(true);
+  const before = f.host.state;
+  f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: true });
+  f.host.prepareForHostBoundary = () => assert.fail('Reverted configuration must not stop executions');
+  await f.host.cleanupRuntimePersistenceModeSwitch();
+  assert.strictEqual(f.host.state, before);
+  f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+  f.host.prepareForHostBoundary = async () => { throw new Error('controlled original stop unconfirmed'); };
+  await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /unconfirmed/);
+  assert.strictEqual(f.host.state, before);
+  assert.equal(f.persisted.length, 0);
+});
+
+test('mode switch final save failure retains the settled Canvas and prevents reopening as success', async () => {
+  const f = sharedCanvasFixture(true);
+  f.host.state.nodes = [{ id: 'retained-note', kind: 'note', metadata: {} }];
+  const before = f.host.state;
+  const roots = [{ rootPath: f.root, state: before }];
+  f.host.lastLoadedRootLocalStates = roots;
+  f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+  f.host.prepareForHostBoundary = async () => {};
+  f.host.persistState = async () => {
+    assert.equal(f.host.state.nodes.length, 0);
+    f.host.lastLoadedRootLocalStates = [];
+    throw new Error('controlled final save failure');
+  };
+  await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /final save failure/);
+  assert.strictEqual(f.host.state, before);
+  assert.strictEqual(f.host.lastLoadedRootLocalStates, roots);
+  await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /final save failure/);
+});
+
+test('mode switch warnings describe each direction without immediately clearing the Canvas', async () => {
+  const f = sharedCanvasFixture(false);
+  f.host.context.extensionMode = 1;
+  const warning = testWindow.showWarningMessage, translate = testL10n.t;
+  const messages = [];
+  testWindow.showWarningMessage = async message => { messages.push(message); };
+  testL10n.t = (message, values = {}) => message.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? key);
+  f.host.cleanupRuntimePersistenceModeSwitch = () => assert.fail('Dismissed warning must not clear Canvas');
+  try {
+    for (const enabled of [true, false]) {
+      f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: enabled });
+      await f.host.notifyReloadRequiredConfigurationChanged({ runtimePersistenceChanged: true,
+        defaultSurfaceChanged: false, filesFeatureEnabledChanged: false });
+    }
+    assert.match(messages[0], /Enabling.*sessions and content will not be retained/);
+    assert.match(messages[1], /Disabling.*only when the last enabled window explicitly disables persistence/);
+  } finally { testWindow.showWarningMessage = warning; testL10n.t = translate; }
+});
+
+test('review PR319 deferred execution snapshot must not resurrect a remotely deleted Note', async () => {
+  const f = await persistenceFixture();
+  let peer;
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    delete f.host.flushDeferredCanvasStatePersist;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state,
+      scheduleRestoreLiveRuntimeSessions() {} });
+    const note = { id: 'deleted-note', kind: 'note', title: 'Note', status: 'idle', summary: '',
+      position: { x: 0, y: 0 }, size: { width: 300, height: 200 }, metadata: { note: { content: 'body' } } };
+    f.host.state = { ...f.host.state, nodes: [...f.host.state.nodes, note] };
+    await f.host.persistState();
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    peer = new store.constructor(f.rootFile, structuredClone(f.host.state), () => {}, error => { throw error; });
+    // This is the real deferred persistence route used by flushLiveExecutionState.
+    await f.host.persistState({ mode: 'deferred', reason: 'live-execution-state' });
+    f.host.clearDeferredCanvasStatePersistTimer();
+    const next = structuredClone(f.host.state);
+    next.nodes = next.nodes.filter(node => node.id !== note.id);
+    await peer.publish(next);
+    store.changed();
+    assert.equal(f.host.state.nodes.some(node => node.id === note.id), false);
+    await f.host.flushDeferredCanvasStatePersist('controlled-interleaving');
+    await f.host.flushSharedRootCanvasStores();
+    const saved = (await f.read(f.rootFile)).state;
+    assert.equal(saved.nodes.some(node => node.id === note.id), false, 'remote deletion must survive deferred output persistence');
+  } finally { peer?.dispose(); await f.cleanup(); }
+});
+
+test('review PR319 stop projection must retain remote launch configuration', async () => {
+  const f = sharedCanvasFixture();
+  const metadata = { lifecycle: 'waiting-input', persistenceMode: 'live-runtime', attachmentState: 'attached-live',
+    runtimeSessionId: 'original-shared', runtimeStoragePath: '/controlled/runtime', liveSession: true,
+    recentOutput: 'local tail', customLaunchCommand: 'old command' };
+  const node = { id: 'shared-agent', kind: 'agent', title: 'Agent', status: 'waiting-input', summary: 'local tail',
+    position: { x: 0, y: 0 }, size: { width: 400, height: 300 }, metadata: { agent: metadata } };
+  f.host.state.nodes = [node];
+  f.host.agentSessions.set(node.id, { owner: 'supervisor', runtimeSessionId: metadata.runtimeSessionId,
+    runtimeStoragePath: metadata.runtimeStoragePath, lifecycleStatus: 'waiting-input', buffer: 'local tail', cols: 80, rows: 24 });
+  const stopped = { ...node, status: 'stopped', metadata: { agent: { ...metadata, lifecycle: 'stopped',
+    runtimeSessionId: undefined, liveSession: false, persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
+    customLaunchCommand: 'peer new command' } } };
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [stopped] });
+  assert.equal(f.host.state.nodes[0].metadata.agent.customLaunchCommand, 'peer new command');
+});
+
+
+test('review PR319 stop then local save must not revert remote launch configuration on disk', async () => {
+  const f = await persistenceFixture();
+  let peer;
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state,
+      scheduleRestoreLiveRuntimeSessions() {} });
+    const agent = f.host.state.nodes.find(node => node.kind === 'agent');
+    agent.status = 'waiting-input';
+    agent.metadata.agent = { lifecycle: 'waiting-input', persistenceMode: 'live-runtime',
+      attachmentState: 'attached-live', runtimeSessionId: 'original-shared',
+      runtimeStoragePath: '/controlled/runtime', liveSession: true, customLaunchCommand: 'old command' };
+    await f.host.persistState();
+    f.host.agentSessions.set(agent.id, { owner: 'supervisor', runtimeSessionId: 'original-shared',
+      runtimeStoragePath: '/controlled/runtime', lifecycleStatus: 'waiting-input', buffer: '', cols: 80, rows: 24 });
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    peer = new store.constructor(f.rootFile, structuredClone(f.host.state), () => {}, error => { throw error; });
+    const remote = structuredClone(f.host.state);
+    const stopped = remote.nodes.find(node => node.id === agent.id);
+    stopped.status = 'stopped';
+    stopped.metadata.agent = { ...stopped.metadata.agent, lifecycle: 'stopped', runtimeSessionId: undefined,
+      liveSession: false, persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
+      customLaunchCommand: 'peer new command' };
+    await peer.publish(remote);
+    store.changed();
+    // An unrelated canvas save runs while this Host's original reader is finishing.
+    f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(node => node.id === agent.id
+      ? { ...node, position: { x: 40, y: 30 } } : node) };
+    await f.host.persistState();
+    const saved = (await f.read(f.rootFile)).state.nodes.find(node => node.id === agent.id);
+    assert.equal(saved.metadata.agent.customLaunchCommand, 'peer new command');
+  } finally { peer?.dispose(); await f.cleanup(); }
+});
+
+
+test('review PR319 deferred output save preserves peer title and Note body edits', async () => {
+  const f = await persistenceFixture();
+  let peer;
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    delete f.host.flushDeferredCanvasStatePersist;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {} });
+    const note = { id: 'edited-note', kind: 'note', title: 'old title', status: 'idle', summary: '',
+      position: { x: 0, y: 0 }, size: { width: 300, height: 200 }, metadata: { note: { content: 'old body' } } };
+    f.host.state.nodes.push(note);
+    await f.host.persistState();
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    peer = new store.constructor(f.rootFile, structuredClone(f.host.state), () => {}, error => { throw error; });
+    await f.host.persistState({ mode: 'deferred', reason: 'live-execution-state' });
+    f.host.clearDeferredCanvasStatePersistTimer();
+    const next = structuredClone(f.host.state);
+    const edited = next.nodes.find(node => node.id === note.id);
+    edited.title = 'peer title'; edited.metadata.note.content = 'peer body';
+    await peer.publish(next); store.changed();
+    await f.host.flushDeferredCanvasStatePersist('controlled-interleaving');
+    await f.host.flushSharedRootCanvasStores();
+    for (const state of [f.host.state, (await f.read(f.rootFile)).state, (await f.read()).state]) {
+      const saved = state.nodes.find(node => node.id === note.id);
+      assert.equal(saved.title, 'peer title'); assert.equal(saved.metadata.note.content, 'peer body');
+    }
+  } finally { peer?.dispose(); await f.cleanup(); }
+});
+
+test('review PR319 non-last cleanup preserves a peer runtime created during detach', async () => {
+  const f = await persistenceFixture({ candidate: true });
+  let peer;
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    f.host.state = { ...f.host.state, nodes: [] };
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {} });
+    await f.host.persistState();
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    peer = new store.constructor(f.rootFile, structuredClone(f.host.state), () => {}, error => { throw error; });
+    await peer.flush();
+    const reached = deferred(), gate = deferred();
+    f.host.flushAllExecutionSessionStatesForHostBoundary = async () => { reached.resolve(); await gate.promise; };
+    delete f.host.collectPersistedLiveRuntimeSessions;
+    const deleted = [];
+    f.host.deleteRuntimeSupervisorSessions = async bindings => { deleted.push(...bindings.map(binding => binding.sessionId)); };
+    f.host.readStartupConfiguration = () => ({ ...f.host.appliedStartupConfiguration, runtimePersistenceEnabled: false });
+    const cleanup = f.host.cleanupRuntimePersistenceModeSwitch();
+    await reached.promise;
+    const terminal = { id: 'new-peer-terminal', kind: 'terminal', title: 'Peer terminal', status: 'running', summary: '',
+      position: { x: 0, y: 0 }, size: { width: 400, height: 300 }, metadata: { terminal: {
+        lifecycle: 'running', persistenceMode: 'live-runtime', attachmentState: 'attached-live', liveSession: true,
+        runtimeSessionId: 'new-peer-runtime', runtimeStoragePath: '/controlled/peer-runtime', runtimeBackend: 'legacy-detached'
+      } } };
+    await peer.publish({ ...f.host.state, nodes: [terminal] }); store.changed();
+    gate.resolve(); await cleanup;
+    const saved = (await f.read(f.rootFile)).state;
+    assert.equal(saved.nodes[0].metadata.terminal.runtimeSessionId, 'new-peer-runtime');
+    assert.deepEqual(deleted, []);
+    assert.equal(f.host.state.nodes.length, 0);
+    // A setting reverted during the awaited departure must register a fresh enabled Host.
+    f.host.applyWorkbenchContextKeys = () => {};
+    f.host.applyStartupConfiguration({ ...f.host.appliedStartupConfiguration, runtimePersistenceEnabled: true });
+    assert.equal(f.host.sharedRootCanvasStores.size, 0);
+    await f.host.persistState();
+    assert.notStrictEqual(f.host.sharedRootCanvasStores.get(f.root), store);
+    await assert.rejects(store.mutate(terminal.id, async () => {}), /closed/);
+  } finally { peer?.dispose(); await f.cleanup(); }
+});
+
+test('review PR319 multi-root mode switch deletes only the last-participant root bindings', async () => {
+  const f = await persistenceFixture();
+  let peer;
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    const secondRoot = path.join(f.directory, 'other-root'); await mkdir(secondRoot);
+    const folders = [{ path: f.root, name: 'root' }, { path: secondRoot, name: 'other' }];
+    const rootState = structuredClone(f.host.state);
+    const owner = root => createRuntimeOwnerDescriptor({ environmentKey: 'a'.repeat(64), userStorageScopeKey: 'b'.repeat(64),
+      rootPath: root, generation: resolveRootRuntimeSupervisorGeneration(EXECUTION_CANDIDATE_PROFILE) });
+    const rootStates = folders.map(({ path: rootPath }, index) => {
+      const state = structuredClone(rootState);
+      state.nodes = [state.nodes.find(node => node.kind === 'terminal')];
+      state.nodes[0].metadata.terminal = { lifecycle: 'running', persistenceMode: 'live-runtime', liveSession: true,
+        runtimeSessionId: 'root-runtime-' + index, runtimeStoragePath: '/controlled/runtime-' + index,
+        runtimeOwner: owner(rootPath), runtimeBackend: 'legacy-detached' };
+      return { rootPath, state };
+    });
+    f.host.getCanvasPersistenceWorkspaceFolders = () => folders;
+    f.host.getMultiRootWorkspaceFoldersForComposition = () => folders;
+    f.host.lastLoadedRootLocalStates = rootStates;
+    f.host.state = composeMultiRootCanvasState({ workspaceFolders: folders, rootStates });
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {} });
+    await f.host.persistState();
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    peer = new store.constructor(f.host.getRootLocalCanvasSnapshotPath(f.root), rootStates[0].state, () => {}, error => { throw error; });
+    await peer.flush();
+    delete f.host.collectPersistedLiveRuntimeSessions;
+    f.host.captureSharedSupervisorProcesses = async roots => {
+      assert.deepEqual([...roots], [secondRoot]); return new Set();
+    };
+    const deleted = [];
+    f.host.deleteRuntimeSupervisorSessions = async bindings => { deleted.push(...bindings.map(binding => binding.sessionId)); };
+    f.host.readStartupConfiguration = () => ({ ...f.host.appliedStartupConfiguration, runtimePersistenceEnabled: false });
+    await f.host.cleanupRuntimePersistenceModeSwitch();
+    assert.deepEqual(deleted, ['root-runtime-1']);
+    assert.equal((await f.read(f.host.getRootLocalCanvasSnapshotPath(f.root))).state.nodes[0].metadata.terminal.runtimeSessionId, 'root-runtime-0');
+    assert.equal((await f.read(f.host.getRootLocalCanvasSnapshotPath(secondRoot))).state.nodes.length, 0);
+    assert.equal(f.host.state.nodes.length, 0);
+  } finally { peer?.dispose(); await f.cleanup(); }
+});
+
+test('review PR319 last-participant save failure retains membership and failure result', async () => {
+  const f = await persistenceFixture();
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {},
+      captureSharedSupervisorProcesses: async () => new Set(), prepareForHostBoundary: async () => {} });
+    await f.host.persistState();
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+    f.host.persistState = async () => { throw new Error('controlled final save failure'); };
+    await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /final save failure/);
+    await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /final save failure/);
+    await store.depart(async last => { assert.equal(last, true); });
+  } finally { await f.cleanup(); }
+});
+
+test('review PR319 cleanup drains this Host admitted starts before acquiring root admission', async () => {
+  const f = await persistenceFixture();
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {},
+      captureSharedSupervisorProcesses: async () => new Set(), prepareForHostBoundary: async () => {} });
+    await f.host.persistState();
+    const gate = deferred(), admitted = deferred();
+    const node = f.host.state.nodes.find(value => value.kind === 'terminal');
+    const starting = f.host.withSharedExecutionMutation(node.id, async () => { admitted.resolve(); await gate.promise; });
+    await admitted.promise;
+    f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+    const cleanup = f.host.cleanupRuntimePersistenceModeSwitch();
+    await assert.rejects(f.host.withSharedExecutionMutation(node.id, async () => {}), /leaving/);
+    gate.resolve(); await starting; await cleanup;
+    assert.equal(f.host.state.nodes.length, 0);
+  } finally { await f.cleanup(); }
+});
+
+test('review PR319 process exit verification waits for original PID even with empty registry', async () => {
+  const child = spawn(process.execPath, ['-e',
+    "process.stdout.write('ready'); process.stdin.resume(); process.stdin.on('end', () => process.exit(0));"],
+    { stdio: ['pipe', 'pipe', 'inherit'] });
+  const exit = new Promise((resolve, reject) => {
+    child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('child exit ' + code)));
+  });
+  await new Promise(resolve => child.stdout.once('data', resolve));
+  try {
+    const f = sharedCanvasFixture();
+    f.host.state.nodes = [];
+    let settled = false;
+    const verification = f.host.waitForSharedSupervisorProcessesToExit(new Set([child.pid])).then(() => { settled = true; });
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(settled, false, 'empty registry cannot prove the process exited');
+    child.stdin.end(); await exit; await verification;
+    assert.equal(settled, true);
+  } finally { if (child.exitCode === null) { child.stdin.end(); await exit; } }
+});
+
+test('review PR319 late page save during original process exit cannot recreate the cleared root', async () => {
+  const f = await persistenceFixture();
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {},
+      captureSharedSupervisorProcesses: async () => new Set(), prepareForHostBoundary: async () => {} });
+    await f.host.persistState();
+    f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+    const stalePage = structuredClone(f.host.state);
+    f.host.waitForSharedSupervisorProcessesToExit = async () => {
+      assert.equal((await f.read(f.rootFile)).state.nodes.length, 0);
+      f.host.state = stalePage;
+      await f.host.persistState({ reason: 'late-page-state' });
+      assert.equal((await f.read(f.rootFile)).state.nodes.length, 0);
+    };
+    await f.host.cleanupRuntimePersistenceModeSwitch();
+    assert.equal((await f.read(f.rootFile)).state.nodes.length, 0);
+  } finally { await f.cleanup(); }
+});
+
+test('review PR319 deactivation waits for departure even if settings were reverted while cleanup ran', async () => {
+  const f = sharedCanvasFixture(true);
+  const gate = deferred();
+  f.host.modeSwitchCleanup = gate.promise;
+  f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: true });
+  const effects = [];
+  Object.assign(f.host, { closeRuntimeSupervisorEventAdmission() { effects.push('admission-closed'); },
+    prepareOrdinaryDeactivation: async () => { effects.push('deactivated'); },
+    flushSharedRootCanvasStores: async () => {}, disposeSharedRootCanvasStores() { effects.push('stores-disposed'); } });
+  const closing = f.host.prepareForDeactivation();
+  await Promise.resolve(); await Promise.resolve();
+  assert.deepEqual(effects, []);
+  gate.resolve(); await closing;
+  assert.deepEqual(effects, ['admission-closed', 'deactivated', 'stores-disposed']);
+});
+
+
+async function realUntil(predicate) {
+  for (let i = 0; i < 300; i++) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.fail('Shared takeover condition was not reached');
+}
+
+function enableSharedHost(f, shared = f) {
+  delete f.host.isRuntimePersistenceEnabled;
+  f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+  f.host.context.globalStorageUri = shared.host.context.globalStorageUri;
+  f.host.getCanvasPersistenceWorkspaceFolders = () => [{ path: shared.root, name: 'root' }];
+  f.host.getMultiRootWorkspaceFoldersForComposition = f.host.getCanvasPersistenceWorkspaceFolders;
+  Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state,
+    scheduleRestoreLiveRuntimeSessions() {}, postExecutionSnapshot: async () => {},
+    scheduleExecutionTerminalProjectionRefresh() {}, clearExecutionTerminalProjectionRefreshTimers() {},
+    preferredRootRuntimeBackends: new Map(), clearScheduledExecutionOutputPost() {},
+    disposeAgentFileActivitySession: async () => {} });
+}
+
+function takeoverBinding(f) {
+  const runtimeOwner = createRuntimeOwnerDescriptor({ environmentKey: 'a'.repeat(64), userStorageScopeKey: 'b'.repeat(64),
+    rootPath: f.root, generation: resolveRootRuntimeSupervisorGeneration(EXECUTION_CANDIDATE_PROFILE) });
+  const runtimeStoragePath = resolveRuntimeRootOwnerBaseStoragePath(f.host.context.globalStorageUri.fsPath, runtimeOwner);
+  f.host.state.nodes = [f.host.state.nodes.find(n => n.kind === 'terminal')];
+  f.host.state.nodes[0].metadata.terminal = { lifecycle: 'running', persistenceMode: 'live-runtime', liveSession: true,
+    runtimeSessionId: 'original', runtimeBackend: 'legacy-detached', runtimeStoragePath, runtimeOwner,
+    attachmentState: 'reattaching' };
+  return { pid: process.pid, runtimeStoragePath, runtimeOwner, runtimeBackend: 'legacy-detached' };
+}
+
+function takeoverReader(host, candidate, calls) {
+  const snapshot = { sessionId: 'original', kind: 'terminal', runtimeBackend: 'legacy-detached',
+    runtimeGuarantee: 'best-effort', live: true, lifecycle: 'live', terminalAuthorityId: 'authority', terminalRevision: 0,
+    terminalStreamPaged: true, cols: 80, rows: 24, scrollback: 100, shellPath: '/bin/sh',
+    cwd: candidate.runtimeOwner.root.normalizedPath, output: '', outputSequence: 0 };
+  const client = { disposed: false, hasPendingRequests: () => false,
+    dispose() { this.disposed = true; }, supportsTerminalSessionStream: () => true,
+    supportsTerminalPagedRead: () => true, supportsTerminalPagedCompletion: () => true,
+    supportsTerminalHostOutputCredit: () => false,
+    attachSession: async () => { calls.push('attach'); return snapshot; }, subscribeSession: async () => {} };
+  host.getRuntimeSupervisorClientForKind = async () => {
+    assert([...host.sharedRootCanvasStores?.values() ?? []].every(store => store.admitted), 'restore requires admitted roots');
+    calls.push('connect');
+    const backend = host.getRuntimeHostBackend(candidate.runtimeBackend, candidate.runtimeStoragePath);
+    host.runtimeSupervisorClients.set(host.buildRuntimeSupervisorClientKey(backend), client);
+    return client;
+  };
+  return client;
+}
+
+async function automaticallyRestore(host) {
+  const operations = [];
+  host.trackRuntimeSupervisorOperation = operation => operations.push(operation);
+  host.scheduleRestoreLiveRuntimeSessions = CanvasPanelManager.prototype.scheduleRestoreLiveRuntimeSessions;
+  host.scheduleRestoreLiveRuntimeSessions();
+  for (;;) {
+    const count = operations.length;
+    await Promise.all(operations);
+    if (operations.length === count) return;
+  }
+}
+
+test('takeover actual Host before dispatch cancels root deletion and automatic restore preserves original identity', async () => {
+  const a = await persistenceFixture(), b = await persistenceFixture();
+  const gate = deferred(), reached = deferred();
+  let cleanup, restore;
+  try {
+    enableSharedHost(a); const candidate = takeoverBinding(a); await a.host.persistState();
+    const original = structuredClone(a.host.state);
+    a.host.observedRootSupervisorProcesses = new Map([[a.root, new Set([process.pid])]]);
+    a.host.captureSharedSupervisorProcesses = async () => new Set([process.pid]);
+    a.host.flushAllExecutionSessionStatesForHostBoundary = async () => { reached.resolve(); await gate.promise; };
+    const deleted = []; delete a.host.collectPersistedLiveRuntimeSessions;
+    a.host.deleteRuntimeSupervisorSessions = async bindings => { deleted.push(...bindings); };
+    a.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+    cleanup = a.host.cleanupRuntimePersistenceModeSwitch(); await reached.promise;
+    enableSharedHost(b, a); b.host.state = structuredClone(original);
+    const calls = [], client = takeoverReader(b.host, candidate, calls);
+    const saving = b.host.persistState({ reason: 'state-initialized' });
+    restore = automaticallyRestore(b.host); await restore; await saving;
+    assert.equal(b.host.terminalSessions.size, 1);
+    assert.equal(calls.filter(value => value === 'attach').length, 1);
+    gate.resolve(); await cleanup;
+    assert.deepEqual(deleted, []);
+    assert.equal((await a.read(a.rootFile)).state.nodes[0].metadata.terminal.runtimeSessionId, 'original');
+    assert.equal(b.host.terminalSessions.values().next().value.runtimeSessionId, 'original');
+    assert.equal(client.disposed, false);
+    // A late save cannot overwrite the successor's new content.
+    b.host.state.nodes[0].title = 'successor edit'; await b.host.persistState();
+    a.host.state = original; await a.host.persistState();
+    assert.equal((await a.read(a.rootFile)).state.nodes[0].title, 'successor edit');
+  } finally {
+    gate.resolve(); await cleanup; await restore;
+    for (const session of b.host.terminalSessions.values()) b.host.disposeManagedExecutionSession(session);
+    await b.cleanup(); await a.cleanup();
+  }
+}, 7000);
+
+test('takeover actual Host after dispatch waits for settlement and cannot restore stale deleted sessions', async () => {
+  const a = await persistenceFixture(), b = await persistenceFixture();
+  const gate = deferred(), reached = deferred();
+  let cleanup, saving, restore;
+  try {
+    enableSharedHost(a); const candidate = takeoverBinding(a); await a.host.persistState();
+    const stale = structuredClone(a.host.state);
+    a.host.captureSharedSupervisorProcesses = async () => new Set();
+    delete a.host.collectPersistedLiveRuntimeSessions;
+    a.host.deleteRuntimeSupervisorSessions = async bindings => {
+      assert.equal(bindings[0].sessionId, 'original'); reached.resolve(); await gate.promise;
+    };
+    a.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+    cleanup = a.host.cleanupRuntimePersistenceModeSwitch(); await reached.promise;
+    enableSharedHost(b, a); b.host.state = stale;
+    const calls = []; takeoverReader(b.host, candidate, calls);
+    saving = b.host.persistState({ reason: 'state-initialized' });
+    restore = automaticallyRestore(b.host);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.deepEqual(calls, []); assert.equal(b.host.terminalSessions.size, 0);
+    gate.resolve(); await cleanup; await saving; await restore;
+    assert.deepEqual(calls, []); assert.equal(b.host.state.nodes.length, 0);
+    assert.equal((await a.read(a.rootFile)).state.nodes.length, 0);
+    b.host.state.nodes.push({ id: 'new-after-settlement', kind: 'note', title: 'New', status: 'idle', summary: '',
+      position: { x: 0, y: 0 }, size: { width: 300, height: 200 }, metadata: {} });
+    await b.host.persistState(); a.host.state = stale; await a.host.persistState();
+    assert.equal((await a.read(a.rootFile)).state.nodes[0].id, 'new-after-settlement');
+  } finally { gate.resolve(); await cleanup; await saving; await restore; await b.cleanup(); await a.cleanup(); }
+}, 7000);
+
+for (const failure of ['identity', 'closed']) {
+  test(`takeover actual Host ${failure} does not release exit responsibility or retain failed control clients`, async () => {
+    const f = await persistenceFixture();
+    try {
+      enableSharedHost(f); const candidate = takeoverBinding(f);
+      const backend = f.host.getRuntimeHostBackend(candidate.runtimeBackend, candidate.runtimeStoragePath);
+      const key = f.host.buildRuntimeSupervisorClientKey(backend);
+      const client = { disposed: false, dispose() { this.disposed = true; }, hello: async () => ({
+        pid: process.pid + 1, runtimeOwner: candidate.runtimeOwner
+      }) };
+      f.host.getRuntimeSupervisorClientForBackend = async (value, options) => {
+        assert.equal(options.allowRestart, false); assert.deepEqual(options.expectedRuntimeOwner, candidate.runtimeOwner);
+        f.host.runtimeSupervisorClients.set(key, client);
+        if (failure === 'closed') throw Object.assign(new Error('closing'), { code: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_CONNECTION_CLOSED' });
+        return client;
+      };
+      if (failure === 'identity') await assert.rejects(f.host.acceptSharedRuntimeTakeover(f.root, [candidate]), /identity changed/);
+      else {
+        const result = await f.host.acceptSharedRuntimeTakeover(f.root, [candidate]);
+        assert.deepEqual(result.pids, []); result.finish(false);
+      }
+      assert.equal(client.disposed, true); assert.equal(f.host.runtimeSupervisorClients.size, 0);
+      assert.equal(f.host.sharedRuntimeTakeoverClients?.size ?? 0, 0);
+    } finally { await f.cleanup(); }
+  });
+}
+
+test('takeover modern reader disposal releases unpinned control client and preserves confirmed idle successor', async () => {
+  const f = await persistenceFixture();
+  try {
+    enableSharedHost(f); const candidate = takeoverBinding(f); const calls = [];
+    const client = takeoverReader(f.host, candidate, calls);
+    await f.host.persistState();
+    await f.host.restoreLiveRuntimeSessions();
+    const key = [...f.host.runtimeSupervisorClients.keys()][0];
+    f.host.sharedRuntimeTakeoverClients = new Set([key]);
+    const live = structuredClone(f.host.state);
+    f.host.applySharedRootCanvasState(f.root, { ...live, nodes: [] });
+    assert.equal(client.disposed, false); assert.equal(f.host.runtimeSupervisorClients.size, 1);
+    f.host.sharedRuntimeTakeoverClients.clear();
+    live.nodes[0].metadata.terminal.attachmentState = 'reattaching';
+    f.host.state = live; await f.host.restoreLiveRuntimeSessions();
+    f.host.applySharedRootCanvasState(f.root, { ...live, nodes: [] });
+    assert.equal(f.host.terminalSessions.size, 0); assert.equal(client.disposed, true);
+    assert.equal(f.host.runtimeSupervisorClients.size, 0);
+  } finally { await f.cleanup(); }
+});
+
+
+
+test('takeover multi-root handoff releases only the taken PID while the other original must exit', async () => {
+  const a = await persistenceFixture(), b = await persistenceFixture();
+  const child = spawn(process.execPath, ['-e', "process.stdout.write('ready'); process.stdin.resume(); process.stdin.on('end', () => process.exit(0));"],
+    { stdio: ['pipe', 'pipe', 'inherit'] });
+  const exited = new Promise(resolve => child.once('exit', resolve));
+  const reached = deferred();
+  let cleanup;
+  try {
+    await new Promise(resolve => child.stdout.once('data', resolve));
+    enableSharedHost(a); const candidate = takeoverBinding(a);
+    const other = path.join(a.directory, 'other-root'); await mkdir(other);
+    const folders = [{ path: a.root, name: 'root' }, { path: other, name: 'other' }];
+    const rootStates = [{ rootPath: a.root, state: structuredClone(a.host.state) },
+      { rootPath: other, state: { ...structuredClone(a.host.state), nodes: [] } }];
+    a.host.state = composeMultiRootCanvasState({ workspaceFolders: folders, rootStates });
+    a.host.lastLoadedRootLocalStates = rootStates;
+    a.host.getCanvasPersistenceWorkspaceFolders = a.host.getMultiRootWorkspaceFoldersForComposition = () => folders;
+    a.host.sharedRuntimeTakeoverCandidates = new Map([[process.pid, candidate]]);
+    a.host.captureSharedSupervisorProcesses = async () => new Set([process.pid, child.pid]);
+    const originalWait = a.host.waitForSharedSupervisorProcessesToExit.bind(a.host);
+    a.host.waitForSharedSupervisorProcessesToExit = async (pids, transferred) => {
+      reached.resolve(); await originalWait(pids, transferred);
+    };
+    await a.host.persistState(); a.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+    cleanup = a.host.cleanupRuntimePersistenceModeSwitch(); let finished = false; cleanup.then(() => { finished = true; });
+    await reached.promise;
+    enableSharedHost(b, a); b.host.state = structuredClone((await a.read(a.rootFile)).state);
+    const client = { dispose() {}, hello: async () => ({ pid: process.pid, runtimeOwner: candidate.runtimeOwner }) };
+    b.host.getRuntimeSupervisorClientForBackend = async backend => {
+      b.host.runtimeSupervisorClients.set(b.host.buildRuntimeSupervisorClientKey(backend), client); return client;
+    };
+    await b.host.persistState(); await b.host.restoreLiveRuntimeSessions();
+    assert.equal(b.host.sharedRuntimeTakeoverClients.size, 1);
+    await new Promise(resolve => setTimeout(resolve, 150)); assert.equal(finished, false);
+    assert.equal((await a.read(a.host.getRootLocalCanvasSnapshotPath(other))).state.nodes.length, 0);
+    child.stdin.end(); await exited; await cleanup; assert.equal(finished, true);
+  } finally {
+    if (child.exitCode === null) { child.stdin.end(); await exited; }
+    await cleanup; await b.cleanup(); await a.cleanup();
+  }
+}, 7000);
+
+// Requires built native assets. Run separately with DEV_SESSION_CANVAS_TAKEOVER_NATIVE=1 on Linux.
+if (process.env.DEV_SESSION_CANVAS_TAKEOVER_NATIVE === '1') {
+  for (const phase of ['idle', 'closing', 'no-takeover']) {
+    test(`takeover native actual Host and original Supervisor ${phase}`, async () => {
+      const a = await persistenceFixture(), b = await persistenceFixture();
+      let child, cleanup, saving, restore;
+      let confirmedPid;
+      const release = deferred(), waiting = deferred();
+      try {
+        const support = path.join(a.directory, 'supervisor-support.cjs');
+        await esbuild.build({ stdin: { contents: `
+          export { RuntimeSupervisorServer } from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain';
+          export { createNativeExecutionOwnerOptions } from './extensions/vscode/dev-session-canvas/src/panel/executionOwnerFactory';
+          export { readRuntimeExecutionEnvironment } from './extensions/vscode/dev-session-canvas/src/panel/runtimeExecutionEnvironment';
+          export { publishRuntimeRootOwner } from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootOwner';
+          export { resolveLegacyRuntimeSupervisorPaths } from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths';
+          export { createRuntimeOwnerCompatibilityFingerprint } from './extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership';
+          export { EXECUTION_PRODUCTION_ADMISSION } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
+          export { createRuntimeRootStartupIntent, writeRuntimeRootStartupIntent } from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootStartup';
+        `, resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'cjs', outfile: support, external: ['node-pty'] });
+        const api = createRequire(import.meta.url)(support);
+        enableSharedHost(a); enableSharedHost(b, a);
+        await mkdir(a.host.context.globalStorageUri.fsPath, { mode: 0o700 });
+        const environment = await api.readRuntimeExecutionEnvironment();
+        const owner = createRuntimeOwnerDescriptor({ environmentKey: environment.environmentKey,
+          userStorageScopeKey: createRuntimeUserStorageScopeKey(environment.userIdentity, a.host.context.globalStorageUri.fsPath),
+          rootPath: a.root, generation: resolveRootRuntimeSupervisorGeneration(EXECUTION_CANDIDATE_PROFILE) });
+        const base = resolveRuntimeRootOwnerBaseStoragePath(a.host.context.globalStorageUri.fsPath, owner);
+        const paths = api.resolveLegacyRuntimeSupervisorPaths(base);
+        await api.publishRuntimeRootOwner(paths.storageDir, owner);
+        const intent = api.createRuntimeRootStartupIntent(owner, 'legacy-detached', api.createRuntimeOwnerCompatibilityFingerprint(
+          owner.generation, EXECUTION_CANDIDATE_PROFILE, api.EXECUTION_PRODUCTION_ADMISSION));
+        await api.writeRuntimeRootStartupIntent(paths.storageDir, intent);
+        const worker = path.join(a.directory, 'original-supervisor.cjs');
+        await writeFile(worker, `
+          const api = require(${JSON.stringify(support)});
+          const paths = ${JSON.stringify(paths)};
+          const options = api.createNativeExecutionOwnerOptions({
+            extensionRoot: ${JSON.stringify(path.resolve('extensions/vscode/dev-session-canvas'))},
+            mode: 'live-runtime', profile: ${JSON.stringify(EXECUTION_CANDIDATE_PROFILE)},
+            admissionLimits: api.EXECUTION_PRODUCTION_ADMISSION });
+          const server = new api.RuntimeSupervisorServer(paths, 'legacy-detached', 'best-effort', options,
+            ${JSON.stringify(EXECUTION_CANDIDATE_PROFILE)}, ${JSON.stringify(intent.token)});
+          process.on('message', async command => {
+            if (command === 'exit') { process.disconnect(); process.exit(0); }
+            if (command === 'shutdown') {
+              const result = await server.prepareForShutdown('controlled-irreversible-boundary');
+              if (result.kind !== 'settled') throw new Error(JSON.stringify(result));
+              process.send('closed');
+            }
+          });
+          server.start().then(() => process.send('ready'), error => { console.error(error); process.exit(1); });
+        `);
+        child = fork(worker, { stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
+        const inbox = [];
+        child.on('message', message => inbox.push(message));
+        const exited = new Promise(resolve => child.once('exit', resolve));
+        await realUntil(() => inbox.includes('ready'));
+        const extensionUri = { fsPath: path.resolve('extensions/vscode/dev-session-canvas') };
+        a.host.context.extensionUri = b.host.context.extensionUri = extensionUri;
+        a.host.state.nodes = [];
+        await a.host.persistState();
+        const backend = a.host.getRuntimeHostBackend('legacy-detached', base);
+        a.host.sharedRuntimeTakeoverCandidates = new Map([[a.host.buildRuntimeSupervisorClientKey(backend), {
+          pid: process.pid, runtimeBackend: 'legacy-detached', runtimeStoragePath: base, runtimeOwner: owner
+        }]]);
+        a.host.captureSharedSupervisorProcesses = async roots => {
+          assert(roots.has(a.root));
+          const client = await a.host.getRuntimeSupervisorClientForBackend(a.host.getRuntimeHostBackend('legacy-detached', base),
+            { allowRestart: false, expectedRuntimeOwner: owner });
+          const hello = await client.hello(); assert.equal(hello.pid, child.pid);
+          assert.equal(a.host.sharedRuntimeTakeoverCandidates.size, 1, 'a newer verified receipt replaces the old PID in this slot');
+          return new Set([hello.pid]);
+        };
+        delete a.host.disposeRuntimeSupervisorClients;
+        const originalWait = a.host.waitForSharedSupervisorProcessesToExit.bind(a.host);
+        a.host.waitForSharedSupervisorProcessesToExit = async (pids, transferred) => {
+          waiting.resolve(); await release.promise; return originalWait(pids, transferred);
+        };
+        a.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+        cleanup = a.host.cleanupRuntimePersistenceModeSwitch(); cleanup.catch(() => {});
+        await Promise.race([waiting.promise, cleanup]);
+        if (phase === 'closing' || phase === 'no-takeover') {
+          child.send('shutdown'); await realUntil(() => inbox.includes('closed'));
+        }
+        let finished = false; cleanup.then(() => { finished = true; });
+        release.resolve();
+        if (phase !== 'no-takeover') {
+          b.host.state = structuredClone((await a.read(a.rootFile)).state);
+          saving = b.host.persistState({ reason: 'state-initialized' });
+          restore = automaticallyRestore(b.host);
+        }
+        if (phase === 'idle') {
+          await saving; await restore; await cleanup;
+          assert.equal(child.exitCode, null, 'confirmed original Supervisor is still alive');
+          assert.equal(b.host.runtimeSupervisorClients.size, 1);
+          assert.equal(b.host.sharedRuntimeTakeoverClients.size, 1);
+          const client = [...b.host.runtimeSupervisorClients.values()][0];
+          confirmedPid = (await client.hello()).pid;
+          assert.equal(confirmedPid, child.pid);
+          const started = await client.createSession({ sessionId: 'successor-native-terminal', kind: 'terminal',
+            displayLabel: 'Successor', launchMode: 'start', scrollback: 100, deferSubscription: true,
+            launchSpec: { file: '/bin/sh', args: [], cwd: a.root, env: process.env, cols: 80, rows: 24 },
+            executionProfile: EXECUTION_CANDIDATE_PROFILE });
+          assert.equal(started.live, true);
+          b.host.state.nodes.push({ id: 'successor-terminal', kind: 'terminal', title: 'Successor', status: 'running', summary: '',
+            position: { x: 0, y: 0 }, size: { width: 300, height: 200 }, metadata: { terminal: {
+              lifecycle: 'running', persistenceMode: 'live-runtime', attachmentState: 'attached-live', liveSession: true,
+              runtimeSessionId: started.sessionId, runtimeOwner: owner, runtimeStoragePath: base, runtimeBackend: 'legacy-detached'
+            } } });
+          await b.host.persistState(); await a.host.persistState();
+          assert.equal((await a.read(a.rootFile)).state.nodes[0].metadata.terminal.runtimeSessionId, started.sessionId);
+          assert.equal((await client.attachSession({ sessionId: started.sessionId })).live, true,
+            'old departure cannot delete a new execution on the taken Supervisor');
+          await client.deleteSession({ sessionId: started.sessionId });
+          b.host.disposeSharedRootCanvasStores();
+          assert.equal(b.host.sharedRuntimeTakeoverClients.size, 0);
+          assert.equal(b.host.runtimeSupervisorClients.size, 0, 'root disposal releases taken empty Supervisor');
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          assert.equal(finished, false, 'listener closure alone cannot discharge original PID responsibility');
+          if (phase === 'closing') {
+            assert.equal(b.host.runtimeSupervisorClients.size, 0);
+            assert.equal(b.host.sharedRootCanvasStores.get(a.root).admitted, false);
+          }
+          child.send('exit'); await exited; await cleanup; await saving; await restore;
+          assert.equal(finished, true);
+          assert.equal(b.host.runtimeSupervisorClients.size, 0, 'closed original cannot become continued session');
+        }
+        console.log('NATIVE takeover evidence', JSON.stringify({ phase, originalPid: child.pid,
+          confirmedPid, successorClientsAfterDispose: b.host.runtimeSupervisorClients.size, completed: finished }));
+      } finally {
+        release.resolve();
+        for (const host of [a.host, b.host]) {
+          for (const client of host.runtimeSupervisorClients.values()) client.dispose();
+          host.runtimeSupervisorClients.clear();
+        }
+        if (child && child.exitCode === null) {
+          const exited = new Promise(resolve => child.once('exit', resolve));
+          child.send('exit'); await exited;
+        }
+        await cleanup; await saving; await restore; await b.cleanup(); await a.cleanup();
+      }
+    }, 15000);
+  }
+}
+
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
 const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
 const selectedTests = testNamePattern ? tests.filter(({ name }) => testNamePattern.test(name)) : tests;
@@ -7779,4 +8635,4 @@ for (const { name, run, timeoutMs } of selectedTests) {
   } finally { clearTimeout(timeout); }
   console.log(`ok - ${name}`);
 }
-console.log(`Host execution owner wiring: ${selectedTests.length}/${selectedTests.length} passed (selected ${selectedTests.length}/${tests.length}; non-native only).`);
+console.log(`Host execution owner wiring: ${selectedTests.length}/${selectedTests.length} passed (selected ${selectedTests.length}/${tests.length}; ${process.env.DEV_SESSION_CANVAS_TAKEOVER_NATIVE === '1' ? 'includes native Supervisor control lifecycle' : 'non-native only'}).`);

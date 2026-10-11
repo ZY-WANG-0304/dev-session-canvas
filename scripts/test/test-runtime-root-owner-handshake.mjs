@@ -158,6 +158,14 @@ try {
     assert.equal(effects.filter(effect => effect === 'start').length, 0);
   });
 
+  await test('validated original process receipt survives detaching the client', async () => {
+    const client = track(new RuntimeSupervisorClient(clientOptions(root)));
+    await connect(client, hello);
+    client.dispose();
+    assert.equal(client.helloResult, undefined);
+    assert.deepEqual(client.getLastHelloResult(), hello);
+  });
+
   await test('owner or capability conflicts destroy the connection without business RPC or restart', async () => {
     const invalid = [
       { ...hello, runtimeOwner: undefined },
@@ -171,6 +179,7 @@ try {
       { ...hello, ownerCompatibilityFingerprint: createRuntimeOwnerCompatibilityFingerprint(
         root.descriptor.generation, profile, { executions: 2, starting: 1 }) },
       { ...hello, serverVersion: 2 },
+      ...[undefined, 0, -1, 1.5, 0x80000000].map(pid => ({ ...hello, pid })),
       ...['terminalCurrentStateV1', 'terminalHostOutputCreditV1', 'terminalReadSettlementV1']
         .map(missing => ({ ...hello, capabilities: { ...hello.capabilities, [missing]: false } }))
     ];
@@ -180,6 +189,7 @@ try {
       await assert.rejects(client.ensureConnected(), /owner descriptor|candidate profile/);
       assert.equal(socket.destroyed, true);
       assert.equal(client.helloResult, undefined);
+      assert.equal(client.getLastHelloResult(), undefined);
       assert.deepEqual(socket.messages.map(message => message.method), ['hello']);
       client.dispose();
     }
