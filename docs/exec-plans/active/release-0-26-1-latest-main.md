@@ -98,3 +98,7 @@ PR #317 首轮预合并 CI run 38122050123 六目标资产成功，但完整验�
 第五轮 89c49a53 完整 verify 已通过 checkpoint、trusted、restricted 和旧升级，停在 real-reopen setup：Agent 原会话 live，而两个 Terminal 都为 rejected-before-acquire，未进入实际关窗重开。fixture 连续创建三节点（页面自动启动）且连续显式 start，未满足既有单启动槽前提。创建每个节点后先等待其原 runtime live，再创建下一个；保留原三会话、显式启动、输出、PID/session、completed 无正文及两阶段真实重开断言。前述创建等待模式已用于主 smoke，不增加重试或放宽生产配额。实际修复后 real-reopen 验证待执行，首次失败 /tmp/dsc261latest-verify-latest.log 与 /tmp/d26l5s/real-reopen/artifacts 保留。
 
 修订记录：2026-10-11，按真实重开 setup 的已拒绝快照补齐逐次原执行启动前提，保持原恢复场景断言。
+
+真实重开修复后 real-reopen 的 setup/verify 完整通过，见 /tmp/dsc261latest-real-reopen.log。剩余场景独立运行中 multi-root 和 single-to-multi-root 也通过；two-window-shared-runtime 的 owner setup 出现同样的连续创建前提：Terminal live，Agent rejected-before-acquire，尚未进入双窗口观测。仅在创建 Agent 后等待其原 runtime live 再创建 Terminal，保持原共享会话身份、输出和删除断言；日志 /tmp/dsc261latest-reopen-rest.log 保留。Webview 全套正在运行，不能提前宣称完整通过。
+
+修订记录：2026-10-11，回收真实重开与多根通过证据，并补齐双窗口 owner setup 的同一启动前提。

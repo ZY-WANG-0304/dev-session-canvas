@@ -323,6 +323,10 @@ async function createExecutionNodes() {
       preferredPosition: { x: 40, y: 40 }
     }
   });
+  await waitForSnapshot(snapshot => {
+    const agent = findNodeByKind(snapshot, 'agent').metadata.agent;
+    return agent.liveSession && agent.attachmentState === 'attached-live' && agent.runtimeSessionId;
+  }, 20000);
   await dispatchWebviewMessage({
     type: 'webview/createDemoNode',
     payload: {
