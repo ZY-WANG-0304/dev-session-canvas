@@ -10,18 +10,19 @@ architecture_layers:
   - 适配与基础设施层
 related_specs: []
 related_plans:
+  - docs/exec-plans/active/release-0-26-1-latest-main.md
   - docs/exec-plans/active/release-0-26-0-prep.md
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
   - docs/exec-plans/active/publish-tag-release-flow.md
   - docs/exec-plans/completed/github-release-assets-flow.md
   - docs/exec-plans/completed/release-0-25-0-prep.md
   - docs/exec-plans/completed/release-gate-contract.md
-updated_at: 2026-10-08
+updated_at: 2026-10-11
 ---
 
 # 公开平台发布准备
 
-当前准备版本为 `0.26.0`，上一已发布版本为 `0.25.0`；本版正式范围见第 9.0 节与发布契约。以下日期记录保留历史含义，不覆盖当前范围。
+当前准备版本为 `0.26.1`，上一已发布版本为 `0.26.0`；本版正式范围见第 9.0 节与发布契约。以下日期记录保留历史含义，不覆盖当前范围。
 
 > 2026-09-15 初始范围审计（目标版本随后于 2026-09-16 按用户更正为 `0.25.0`）：已从最新 `origin/main` 创建 `release-0-25-0-prep`，当前基线为 `44c025056f3e63019b53f528951ea1d15ce1539d`。审计开始时根 workspace、主扩展和 notifier manifest 仍为 `0.24.3`，正式发布手册与 README 也仍停留在 `0.24.3`；后续版本同步已将当前发布准备分支统一更新为 `0.25.0`。远端存在 `v0.24.5` tag（`a9e27873aa01c1d1f1e43b4303ff697ce618c8cf`），但它不是当前 `origin/main` 的祖先；两条线从 `7eb3864b855d85b7c18d0162b99d5896d13af4d6` 分叉。
 >
@@ -358,7 +359,15 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 
 ## 9. 正式方案
 
-### 9.0 当前 0.26.0 发布输入
+### 9.0 当前 0.26.1 发布输入
+
+从最新 main 独立准备 0.26.1 Preview，范围以 `docs/release-contracts/v0.26.1.md` 为准：root 稳定归属、拒绝结算、请求超时、旧历史/旧协议重连、通知桥接、终端链接，以及 #314 本地执行生命周期和 #316 删除输入准入修复。主扩展与 notifier 同版，不新增设置或服务部署。
+
+修复本地执行的启动拒绝、恢复失败与异常退出状态，恢复资源拖放、文件活动采集和按终端所在目录解析文件链接；画布重读保留原执行身份，Host 中断后的 Agent 保留手动恢复入口。删除节点先关闭新输入，等待已派发写入结算后删除运行时；同一运行时重连继续共享删除状态，失败保留错误并允许重试删除。
+
+版本输入与双 CHANGELOG、英中文 README/listing、手册和支持文档一起评审。完整 release:verify 包含 npm test 与 HEAD clean-checkout VSIX 安装 smoke；0.26.0 例外不适用。历史准备分支只复用静态文案，不继承验证结论。当前过程见 `docs/exec-plans/active/release-0-26-1-latest-main.md`；外部市场安装、桌面点击和用户标题栏复现仍保留人工验证边界。
+
+### 9.0.1 历史 0.26.0 发布输入
 
 2026-10-08 用户授权本版先发布、后修四项已记录的测试问题。截图差异由用户确认为基准问题；Marketplace locale、notifier 联动与 packaged smoke 的记录不追认为产品通过，后两项根因仍未确认。`scripts/release/release-preflight.mjs` 仅对精确版本 0.26.0 使用授权验证范围：preflight 与门禁回归、主扩展/notifier 类型检查、Markdown 与终端状态/已结束历史定向测试、notifier source、默认 build 和 HEAD clean-checkout 打包，延后完整 npm test、宿主联动及 Webview 全套。任何保留检查失败仍阻断；输出必须标明授权例外，不能声称完整验证通过。0.26.1 及其他版本沿用完整门禁，不提供任意跳过开关。PR 和发布 tag 使用相同入口，仍要求 main 合并提交、六目标同源资产、双包与渠道核验。
 
