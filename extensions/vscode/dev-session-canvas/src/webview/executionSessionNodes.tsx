@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, type ComponentType } from 'react';
+import { createExecutionMouseDiagnostics } from './executionMouseDiagnostics';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import { useViewport, type NodeProps } from 'reactflow';
@@ -185,6 +186,7 @@ export interface ExecutionSessionNodeDependencies {
     input: string,
     dispatch: (metadata: ExecutionInputDispatchMetadata) => void
   ) => void;
+  reportExecutionMouseDiagnostic: (nodeId: string, kind: ExecutionNodeKind, detail: Record<string, unknown>) => void;
   createZoomAdjustedMouseEvent: (
     event: Pick<MouseEvent, 'clientX' | 'clientY'>,
     element: HTMLElement,
@@ -442,6 +444,9 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       const originalGetMouseEventScrollAmount = selectionService?._getMouseEventScrollAmount?.bind(selectionService);
       const terminalElement = terminal.element;
 
+      const mouseDiagnostics = createExecutionMouseDiagnostics(terminal, detail =>
+        deps.reportExecutionMouseDiagnostic(id, 'agent', detail));
+
       if (mouseService && originalGetCoords) {
         mouseService.getCoords = (event, element, colCount, rowCount, isSelection) =>
           originalGetCoords(
@@ -454,11 +459,12 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       }
 
       if (mouseService && originalGetMouseReportCoords) {
-        mouseService.getMouseReportCoords = (event, element) =>
-          originalGetMouseReportCoords(
-            deps.createZoomAdjustedMouseEvent(event, element, zoomRef.current) as MouseEvent,
-            element
-          );
+        mouseService.getMouseReportCoords = (event, element) => {
+          const adjusted = deps.createZoomAdjustedMouseEvent(event, element, zoomRef.current) as MouseEvent;
+          const coords = originalGetMouseReportCoords(adjusted, element);
+          mouseDiagnostics.observe(event, element, adjusted, coords, zoomRef.current);
+          return coords;
+        };
       }
 
       if (selectionService && originalGetMouseEventScrollAmount) {
@@ -617,9 +623,10 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           data.onShowTransientError?.(deps.t('execution.error.claudeCtrlZUnsupported'));
           return;
         }
-        deps.reportExecutionInputDispatch(id, 'agent', input, (metadata) =>
-          data.onExecutionInput?.(id, 'agent', input, metadata)
-        );
+        deps.reportExecutionInputDispatch(id, 'agent', input, (metadata) => {
+          mouseDiagnostics.input(input, metadata.sequence);
+          data.onExecutionInput?.(id, 'agent', input, metadata);
+        });
       });
       const selectionDisposable = terminal.onSelectionChange(() => {
         if (deps.shouldSelectExecutionNodeForTerminalSelection(terminal)) {
@@ -645,6 +652,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         resizeObserver.disconnect();
         terminalElement?.removeEventListener('contextmenu', handleContextMenu);
         terminalElement?.removeEventListener('auxclick', handleAuxClick);
+        mouseDiagnostics.dispose();
         if (mouseService && originalGetCoords) {
           mouseService.getCoords = originalGetCoords;
         }
@@ -1171,6 +1179,9 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       const originalGetMouseEventScrollAmount = selectionService?._getMouseEventScrollAmount?.bind(selectionService);
       const terminalElement = terminal.element;
 
+      const mouseDiagnostics = createExecutionMouseDiagnostics(terminal, detail =>
+        deps.reportExecutionMouseDiagnostic(id, 'terminal', detail));
+
       if (mouseService && originalGetCoords) {
         mouseService.getCoords = (event, element, colCount, rowCount, isSelection) =>
           originalGetCoords(
@@ -1183,11 +1194,12 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       }
 
       if (mouseService && originalGetMouseReportCoords) {
-        mouseService.getMouseReportCoords = (event, element) =>
-          originalGetMouseReportCoords(
-            deps.createZoomAdjustedMouseEvent(event, element, zoomRef.current) as MouseEvent,
-            element
-          );
+        mouseService.getMouseReportCoords = (event, element) => {
+          const adjusted = deps.createZoomAdjustedMouseEvent(event, element, zoomRef.current) as MouseEvent;
+          const coords = originalGetMouseReportCoords(adjusted, element);
+          mouseDiagnostics.observe(event, element, adjusted, coords, zoomRef.current);
+          return coords;
+        };
       }
 
       if (selectionService && originalGetMouseEventScrollAmount) {
@@ -1342,9 +1354,10 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
 
       const dataDisposable = terminal.onData((input) => {
         nativeInteractions?.flushSnapshotRestoreDiagnosticsSuppression();
-        deps.reportExecutionInputDispatch(id, 'terminal', input, (metadata) =>
-          data.onExecutionInput?.(id, 'terminal', input, metadata)
-        );
+        deps.reportExecutionInputDispatch(id, 'terminal', input, (metadata) => {
+          mouseDiagnostics.input(input, metadata.sequence);
+          data.onExecutionInput?.(id, 'terminal', input, metadata);
+        });
       });
       const selectionDisposable = terminal.onSelectionChange(() => {
         if (deps.shouldSelectExecutionNodeForTerminalSelection(terminal)) {
@@ -1370,6 +1383,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         resizeObserver.disconnect();
         terminalElement?.removeEventListener('contextmenu', handleContextMenu);
         terminalElement?.removeEventListener('auxclick', handleAuxClick);
+        mouseDiagnostics.dispose();
         if (mouseService && originalGetCoords) {
           mouseService.getCoords = originalGetCoords;
         }

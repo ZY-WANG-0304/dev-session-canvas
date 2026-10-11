@@ -26,6 +26,13 @@ assert.equal(
   'Unknown multi-root presentation modes should fall back to the existing root groups view.'
 );
 
+const mouseDiagnostic = { nodeId: 'agent', kind: 'agent', detail: { phase: 'terminal-onData', sequence: 12, eventId: null } };
+assert.deepEqual(parseWebviewMessage({ type: 'webview/executionMouseDiagnostic', payload: mouseDiagnostic }),
+  { type: 'webview/executionMouseDiagnostic', payload: mouseDiagnostic });
+for (const patch of [{ nodeId: 12 }, { kind: 'note' }, { detail: [] }, { detail: null }]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/executionMouseDiagnostic', payload: { ...mouseDiagnostic, ...patch } }), null);
+}
+
 const hardwrapLinkText = 'src/webview/executionTerminalNativeInteractions.ts:1600:12';
 const terminalReadPayload = {
   nodeId: 'terminal', kind: 'terminal', executionSessionId: 'session', authorityId: 'authority',

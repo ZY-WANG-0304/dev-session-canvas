@@ -5581,6 +5581,9 @@ const executionNodeTypes = createExecutionSessionNodeTypes({
   getRuntimeContext: () => latestRuntimeContext,
   resolveExecutionTerminalFileLinks,
   reportExecutionInputDispatch,
+  reportExecutionMouseDiagnostic: (nodeId, kind, detail) => {
+    postMessage({ type: 'webview/executionMouseDiagnostic', payload: { nodeId, kind, detail } });
+  },
   createZoomAdjustedMouseEvent,
   positionTextareaUnderScaledMouse,
   readXtermScreenElement,

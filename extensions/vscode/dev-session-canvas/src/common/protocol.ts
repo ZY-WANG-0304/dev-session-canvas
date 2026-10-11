@@ -1243,6 +1243,10 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       payload: ExecutionPerformanceDiagnosticPayload;
     }
   | {
+      type: 'webview/executionMouseDiagnostic';
+      payload: { nodeId: string; kind: ExecutionNodeKind; detail: Record<string, unknown> };
+    }
+  | {
       type: 'webview/executionClipboardDiagnostic';
       payload: ExecutionTerminalClipboardDiagnosticPayload;
     }
@@ -2657,6 +2661,14 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       type: 'webview/executionPerformanceDiagnostic',
       payload: normalizedPayload
     };
+  }
+
+  if (value.type === 'webview/executionMouseDiagnostic') {
+    const payload = value.payload;
+    if (!isRecord(payload) || typeof payload.nodeId !== 'string' ||
+      !isExecutionNodeKind(payload.kind) || !isRecord(payload.detail) || Array.isArray(payload.detail)) return null;
+    return { type: 'webview/executionMouseDiagnostic',
+      payload: { nodeId: payload.nodeId, kind: payload.kind, detail: payload.detail } };
   }
 
   if (value.type === 'webview/executionClipboardDiagnostic') {

@@ -1,0 +1,63 @@
+# 定位标题栏删除期间的终端鼠标输入
+
+本计划按 `docs/PLANS.md` 持续维护。目标是从原始 DOM 鼠标事件追踪到 xterm 的 `terminal.onData`，再到 Host 的输入请求和 runtime 删除边界，定位用户在标题栏删除 Agent 时出现的 sessionNotFound。此次只增加诊断，不修改输入准入或错误呈现。
+
+## 进度
+
+- [x] 2026-10-11：从最新 origin/main 创建 terminal-mouse-input-diagnostics 分支。
+- [x] 检查原 dump，确认七次可见错误对应 SGR 无按键鼠标移动输入。
+- [x] 添加坐标、onData 与 Host 派发/删除边界诊断，验证诊断开关、关联过期、隐私和容量限制。
+- [x] 类型检查、消息校验回归、真实xterm标题栏边界对照及构建通过；Main Only调试目录已刷新。
+- [ ] 完成实际标题栏删除复现，基于新 dump 确认原始事件来源。
+
+## 意外与发现
+
+原 dump 的输入接收延迟约 167ms，只能说明 webview 发送到 Host 接收之间的时间差，不能证明鼠标移动发生在删除前，也不能证明这些请求早已进入 supervisor 队列。旧日志缺少事件目标、原始事件时间和删除请求边界。第一次七条错误中的四条对应列66、行1/2/4/5；第二次三条对应列66、行1/2/3。
+
+xterm 的无按键移动监听绑定到 terminal.element；document 全局拖动监听要求 buttons 非零。坐标限制本身不扩大监听范围。当前根因仍未确认。
+
+## 决策记录
+
+使用独立 executionMouseDiagnostic 消息，而不把鼠标诊断混入 clipboard 诊断。webview localStorage 的 devSessionCanvas.mouseDiagnostics=1 显式启用，每终端生命周期最多512条，重载重置额度；不采集键盘内容、DOM文本、HTML、元素ID。现有 Host 诊断缓存仍有界。
+
+坐标转换和 onData 的关联标记为 same-task-coordinate-conversion，仅保留到下一个微任务；没有关联时记录 unmatched。不把最近历史事件冒充确切来源。序列号使用原 execution input sequence，使 onData 可与 Host 写入配对。
+
+## 结果与复盘
+
+新增诊断已实现且定向测试通过，实际用户场景的根因仍待验证。此前静默错误的补丁已撤回，不在本分支中。
+
+## 上下文与定向
+
+`extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx` 已有 xterm getMouseReportCoords 包装用于缩放坐标。在该处接入 `executionMouseDiagnostics.ts`，观察原始事件和换算结果；Agent/Terminal 的 onData 回调记录相同 input sequence。`common/protocol.ts` 定义并校验新增消息。`panel/CanvasPanelManager.ts` 保存新消息与原 surface 生命周期，记录鼠标输入请求的派发及单节点删除边界。
+
+## 工作计划与里程碑
+
+第一里程碑增加有界可关闭诊断并验证不改变鼠标转换返回值、输入数据和错误处理。第二里程碑用浏览器的真实 xterm 验证正常标题栏移动不会上报，随后在 Main Only 调试 Host 重现用户场景并导出新诊断，比较 DOM target、insideScreen、isTrusted、输入sequence与删除边界。
+
+## 具体步骤
+
+在仓库根运行 `node scripts/test/test-execution-mouse-diagnostics.mjs`、`npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run build` 和 `npm run prepare:debug-main-only-extension`。
+
+重新启动 Main Only F5。运行 VS Code 的 Developer: Open Webview Developer Tools，在 Canvas frame 的控制台执行 localStorage.setItem('devSessionCanvas.mouseDiagnostics', '1')。鼠标进入终端，再移向标题栏并删除节点；立即导出 current host diagnostics。结束后执行 localStorage.removeItem('devSessionCanvas.mouseDiagnostics')。若达到512条额度，重载Canvas重新采集。
+
+## 验证与验收
+
+脚本必须证明关闭时零消息、终端外坐标可识别、普通键盘输入不采集、关联过微任务失效、最多512条和释放后不再采集。Host dump 中应出现 webview/executionMouseDiagnostic，detail.phase 为 mouse-coordinates 或 terminal-onData；配对使用 node、surface生命周期和sequence/eventId，使用traceId区分终端实例，不跨实例比较eventId。Host 的 execution/mouseInputRpcDispatch 表示请求实际交给client；execution/deleteBoundary 的 runtime-delete-requested 只表示开始清理入口，runtime-delete-rpc-dispatch 表示交给client，runtime-delete-completed 表示原runtime删除承诺完成。
+
+## 幂等性与恢复
+
+诊断开关不影响Canvas持久化数据。测试只创建自己的浏览器和临时页面，不修改用户运行的session。分支中的image.png是原有未跟踪文件，不提交。
+
+## 证据与备注
+
+当前安装版本的真实 xterm 浏览器对照：开启1003/1006鼠标协议，终端内部移动产生 ESC[<35;4;2M；移动到独立标题栏并继续移动，两次输入均为空。这只验证库的正常事件边界，不代表已复现Canvas场景。持久测试为 `node scripts/test/test-xterm-title-mouse-boundary.cjs`（需要已安装Playwright Chromium）。
+
+
+    node scripts/test/test-execution-mouse-diagnostics.mjs
+    Mouse diagnostics: opt-in, outside-screen coordinates, correlation expiry, privacy and 512-record limit passed.
+
+## 接口与依赖
+
+复用当前 xterm、输入sequence、webview消息校验和Host诊断缓存，不新增运行依赖。不改第三方库。诊断异常不得改变输入行为。
+
+修订记录：2026-10-11 创建计划，记录尚待真实场景验证的根因与已实现诊断范围。
