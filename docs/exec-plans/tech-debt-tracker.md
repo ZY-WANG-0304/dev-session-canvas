@@ -691,3 +691,7 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 当前 main a39cd8c1，另一窗口直接删除 live Agent/Terminal 时，Supervisor deleteSession 非保留路径会取消所有 socket 的 Host 消费信用订阅，后续终态 broadcast 无法送达原窗口。真实 Agent 失败为 registry 空但 owner 仍 waiting-input/live；当前受控 8 项确认 direct-credit 终态事件为 0，保留另一 socket 通道的诊断干预恢复为 1。Terminal 同路径受影响，原 smoke 的 Terminal stop 不能覆盖直接删除。
 
 责任落点为 supervisor/runtimeSupervisorMain.ts 的删除/订阅/reader 退役协调与 panel/CanvasPanelManager.ts 的最终状态消费。建议在下一修复任务保留其他窗口的最终 batch、reader、journal 和保存责任并明确有界退役，增加多 socket Supervisor、Host 保存及真实双窗口严格终态回归。诊断脚本只锁定当前错误，不作为健康回归。未改产品实现、未重新运行 VS Code smoke 或跨平台矩阵；结论与修复边界见 docs/design-docs/runtime-two-window-agent-delete-investigation.md，过程见 docs/exec-plans/completed/runtime-two-window-agent-delete-investigation.md。
+
+### 2026-10-11 共享画布及模式切换的目标差距（待设计/实现）
+
+用户确认开启 Runtime Persistence 后同 root 画布结构需跨窗口实时同步；共享 delete 应移除各窗口节点，旧 smoke 的 owner 保留历史节点断言需随正式实现调整。当前仅共享 runtime，各 Host 独立持有画布状态并按 root 写同一快照，存在同步与模式隔离缺口。双向切换需方向化提示、重启后生效并舍弃当前会话/内容，开启到关闭在页面关闭时退出或删除；当前统一 Reload Window 清空提示不能代表完成新规则。责任范围涉及 CanvasPanelManager 的配置生效、画布存储/同步与共享会话清理，需独立设计 ExecPlan；跨窗口范围、失败结算及撤回设置处理尚未选定。验收与边界见 docs/product-specs/runtime-persistence-modes.md 第 11 节和 docs/design-docs/runtime-two-window-agent-delete-investigation.md。
