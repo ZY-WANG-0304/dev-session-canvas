@@ -1,7 +1,7 @@
 ---
 title: 共享 root 画布同步与模式切换
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains: [协作对象域, 项目状态域, 执行编排域, VSCode 集成域]
 architecture_layers: [共享模型与编排层, 宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
@@ -13,7 +13,7 @@ updated_at: 2026-10-11
 
 ## 目标与边界
 
-开启 Runtime Persistence 后，同执行环境、用户 global storage 范围和 root 的画布结构实时共享；关闭时各 Host 持有执行，画布保存归属当前 workspace storage slot。双向切换只在页面关闭/重启边界清理当前模式会话及内容，设置变化当下保留页面。普通未切换关闭遵循原恢复保证，不删除项目文件、用户原始文档或 provider 自身会话文件。多设备、多用户与云同步不在范围内。
+开启 Runtime Persistence 后，同执行环境、用户 global storage 范围和 root 的画布结构实时共享；关闭时各 Host 持有执行，画布保存归属当前 workspace storage slot。双向切换只在页面关闭/重启边界生效，设置变化当下保留页面。2026-10-11 用户补充：非最后一个开启窗口切换关闭只退出本窗口的共享模式，保留其他开启窗口使用的共享画布和会话；最后一个开启窗口主动切换关闭才清理共享会话并退出 Supervisor。此增量已确认，尚待实现与验证；原先单窗口切换即清空共享 root 的规则被替代。普通未切换关闭遵循原恢复保证，不删除项目文件、用户原始文档或 provider 自身会话文件。多设备、多用户与云同步不在范围内。
 
 调查发现 Supervisor 的直接 delete 会先取消全部 Host 消费信用订阅，导致原窗口收不到后续终态。用户确认共享 delete 应移除各窗口节点，因此本次以结构删除通知收口投影，不要求被删除页面重新显示尾部；stop 仍须保留节点、等待原读者完成自己的终态消费。原受控 8 项诊断脚本保留历史因果，不作为健康产品回归，也不宣称已修改 Supervisor 单独调用 delete 的通知契约。
 
@@ -45,16 +45,24 @@ root 提交锁端口为 SHA256(canonical filename) 映射到 20000–39999；节
 
 ### 模式切换边界
 
-`notifyReloadRequiredConfigurationChanged` 按方向提示用户，继续提供 Reload Window。`cleanupRuntimePersistenceModeSwitch` 比较期望配置与已应用配置，仅在确有差异时建立单一清理 Promise；重启前撤回配置则不清理。清理覆盖当前画布所有 root，包括共享开启模式中的这些 root，并等待原执行严格结算、保存空画布及共享传播。
+`CanvasPanelManager.notifyReloadRequiredConfigurationChanged` 应按方向提示，区分本窗口不继承共享内容与共享会话实际结束，继续提供 Reload Window。`cleanupRuntimePersistenceModeSwitch` 比较期望配置与已应用配置；重启前撤回则不切换。关闭到开启仍须停止原私有执行、清空原私有画布，再读取目标共享范围。
 
-边界为最后一个活动 editor/panel 页面关闭、模拟 Runtime reload 或 Extension Host deactivation。切换 surface、隐藏页面和普通 Webview 重建不应用设置。关闭后重新打开页面先等待清理、应用新模式并恢复 owner 准入，再读取新模式存储。开启到关闭创建空私有画布；关闭到开启不迁移旧私有内容，但可读取其他窗口仍持有的目标共享 root 数据。某窗口切换关闭时清空的共享 root 会影响其他开启窗口；其他关闭窗口的私有画布不受影响。失败/超时保留失败结果及可诊断责任；最终保存失败恢复本地结算后的画布状态，阻止该次重开继续，不伪报成功。清理不是多 root 全局事务，可能已有部分执行退出或部分 root 提交清空，不能承诺撤销已完成的共享删除。
+开启到关闭在本窗口最后一个活动 editor/panel 页面关闭、模拟 Runtime reload 或 Extension Host deactivation 边界生效。切换 surface、隐藏页面和普通 Webview 重建不应用设置。若同一共享 root 还有其他已应用开启模式的窗口，本窗口只 detach 自身投影、读者和订阅，不调用共享 session 的 stop/delete、不发布共享空画布、不退出 Supervisor；切换后的私有画布不继承共享内容。多 root 应分别判断，不把其中一个 root 的最后窗口结论推广到其他 root。非最后窗口退出期间 peer 新建的会话仍由共享 owner 持有。
+
+最后一个开启窗口主动切换关闭时，才结算对应共享范围的会话、读者和存储，清空原模式画布并退出 Supervisor。实际退出与 registry 为空是不同事实，须分别验证。不能将正常关闭窗口、Reload、断连、Webview 重建或没有 reader 解释为显式关闭持久化；未切换的普通离开保持原进程延续。两个窗口并发切换及清理期间新窗口开启必须协调，不能凭过时的窗口数量继续删除仍被使用的共享执行。无法确认清理资格或完成事实时保留可诊断责任，不伪报成功。
+
+跨 Host 的开启模式参与登记、最后窗口判定和 Supervisor 显式退出机制尚未选定，不能把本次产品确认写成协议或代码已经完成。当前 PR #319 head `709c6040` 的 `cleanupRuntimePersistenceModeSwitch` 仍无条件调用 `prepareForHostBoundary({ preserveLiveRuntime: false })` 并发布空画布；`applySharedRootCanvasState` 在清理期间忽略 peer 更新，也没有实现上述参与判定。实现需同时调整 Host 生命周期、共享 owner 的协调与退出入口以及双窗口 fixture；已有 `SharedRootCanvasStore` 的文件提交锁和单节点操作锁不能代证最后窗口资格。
+
+关闭后重新打开先等待本次退出共享或清理，再应用新模式及恢复 owner 准入。失败/超时保留失败结果及可诊断责任，不伪报完成。清理不是多 root 全局事务，可能已有符合资格的部分 root 完成结算；不能承诺撤销已完成的停止或共享删除，也不能因此清理仍有其他开启窗口的 root。
 
 ## 验证与有限结论
 
-Node 22、Linux 与 VS Code 1.141.0 的独立真实双窗口场景通过：第二窗口未注入 owner 画布，创建、移动、卡片 resize、删除传播；双向输入输出、PTY resize、stop、Agent delete 正常；带 live Terminal 切换关闭后 registry 为零，两窗口私有 Note 隔离，再开启不继承私有内容。调试证据分别在 `/tmp/dscshare3`、`/tmp/dscshare4`、`/tmp/dscshare5`，日志 `/tmp/dsc-shared-window-final.log` 和 `/tmp/dsc-shared-window-source-final.log`。订阅竞态补丁和最终配置保护补丁的复验日志 `/tmp/dsc-shared-window-subscription-final.log`、`/tmp/dsc-shared-window-config-final.log` 同样通过，最终窗口工件 `/tmp/dscshare6`。
+以下为用户补充最后窗口规则之前的历史证据，不证明新切换规则成立。Node 22、Linux 与 VS Code 1.141.0 的独立真实双窗口场景通过当时的断言：第二窗口未注入 owner 画布，创建、移动、卡片 resize、删除传播；双向输入输出、PTY resize、stop、Agent delete 正常；带 live Terminal 切换关闭后 registry 为零，两窗口私有 Note 隔离，再开启不继承私有内容。其中“第一个窗口切换后 registry 为零”的断言与新规则冲突，必须改为保留另一个开启窗口的原会话及 Supervisor，最后一个关闭后再验证清理和进程退出。调试证据分别在 `/tmp/dscshare3`、`/tmp/dscshare4`、`/tmp/dscshare5`，日志 `/tmp/dsc-shared-window-final.log` 和 `/tmp/dsc-shared-window-source-final.log`。订阅竞态补丁和最终配置保护补丁的历史复验日志 `/tmp/dsc-shared-window-subscription-final.log`、`/tmp/dsc-shared-window-config-final.log` 同样通过当时的断言，最终窗口工件 `/tmp/dscshare6`。
 
 自动化共享 store 8/8，包括独立子进程并发创建和节点操作串行、删除不复活、几何原子更新、损坏文件保护、工作失败仍提交和初始化竞态。Host 最终 617/617（含最终保存失败及迟到配置保护回归）；类型检查、multi-root helper、存储路径、本地化、smoke runner 环境检查、分页终态、Host 输出信用与 legacy reconnect 通过。初轮 `test:runtime-completed-history` 在未改动 origin/main a39cd8c1 上同样失败：旧测试将新增正常 `execution/deleteBoundary` 诊断当作失去 owner。用户授权修正后，改为精确校验正常请求诊断，并分别验证缺失 owner 的拒绝与正常清理，原完整绑定等断言保持；整套测试通过。历史失败保留，不宣称全量 npm test 通过。
 
 本轮真实共享场景为 Linux 单 root，未新跑 macOS/Windows/Remote SSH 或真实多 root 两窗口；Node 内置 fs/net 路径与既有 multi-root helper 不替代这些产品证据。大画布高频编辑的完整快照读写/比较与每 root 100ms 轮询成本尚未量化。残余范围登记于 `docs/exec-plans/tech-debt-tracker.md`。
 
 修订说明（2026-10-11）：迟到 stop 投影只屏蔽已结束 runtime 身份和生命周期，不覆盖用户新编辑的启动配置；删除/替换节点清除旧投影记录，新增 Host 回归覆盖。
+
+修订说明（2026-10-11，PR #319 review 后用户确认）：共享清理资格改为最后一个开启窗口主动切换关闭，并要求 Supervisor 退出。产品规格第 11 节新增非最后窗口保留、最后窗口清理、普通离开对照及并发/multi-root 验收。当前仅同步产品和设计定义，不修改运行时代码，不把旧测试通过追认为新规则已验证。

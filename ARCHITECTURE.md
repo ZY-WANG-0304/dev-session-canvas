@@ -507,7 +507,7 @@ docs/                           根目录正式文档知识库
 
 ### 恢复与持久化
 
-开启 Runtime Persistence 时，同执行环境/用户 global storage/root 的画布通过 `panel/sharedRootCanvasStore.ts` 共享结构；`CanvasPanelManager.applySharedRootCanvasState` 保留本地终端消费投影，删除只释放本窗口 reader，新绑定按原身份重连。global `root-local-canvas` 保存共享结构，关闭模式使用当前 workspace slot 的 `private-root-canvases-v1`，不接管旧共享绑定。模式切换仅在最后活动页面关闭、Reload Window 或 Host 退出边界严格停止当前执行、清空原模式当前画布，设置变化不立即销毁页面；普通未切换关闭沿用原恢复规则。细节、冲突规则及 Linux 单 root 有限证据见 `docs/design-docs/runtime-shared-root-canvas-sync.md`。
+开启 Runtime Persistence 时，同执行环境/用户 global storage/root 的画布通过 `panel/sharedRootCanvasStore.ts` 共享结构；`CanvasPanelManager.applySharedRootCanvasState` 保留本地终端消费投影，删除只释放本窗口 reader，新绑定按原身份重连。global `root-local-canvas` 保存共享结构，关闭模式使用当前 workspace slot 的 `private-root-canvases-v1`，不接管旧共享绑定。当前模式切换在最后活动页面关闭、Reload Window 或 Host 退出边界执行，设置变化不立即销毁页面，普通未切换关闭沿用原恢复规则。PR #319 的切换实现仍无条件停止共享执行并清空共享 root；2026-10-11 用户补充要求非最后开启窗口只 detach、最后开启窗口主动切换关闭才清理共享会话并退出 Supervisor，这一参与判定和退出流程尚待实现，旧切换证据不代表已满足新规则。细节、冲突规则及 Linux 单 root 有限证据见 `docs/design-docs/runtime-shared-root-canvas-sync.md`。
 
 当前系统明确区分 `snapshot-only` 与 `live-runtime`。前者由 Host 维护状态快照与 UI 恢复；后者由 supervisor 额外维护跨 VSCode 生命周期的执行会话、可校验 terminal journal 和 checkpoint。仍运行的会话在 Reload Window 后必须重新 attach supervisor authority，不能用重建前 Host snapshot 推断离线期间的输出。支持 `terminalPagedReadV1` 时，live Host 只保留身份、head 和有限摘要，不复制完整 `terminalStream`；Webview 从 checkpoint 开始逐页读取，应用完上一页才请求下一页，读者的安全恢复基点参与 journal 保留。只支持旧 stream 能力时，Host 继续维护完整后缀，并在投影 attach 前和 10–12 秒错峰周期内优先用 `terminalCheckpointRefreshV1` 查询新的 checkpoint；更旧 Supervisor 继续原 snapshot RPC。
 

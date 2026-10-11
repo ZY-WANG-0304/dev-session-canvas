@@ -690,7 +690,7 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 原 main a39cd8c1 的直接 Supervisor deleteSession 非保留路径取消所有 socket 的 Host 信用订阅，受控 8 项 direct-credit 终态为 0；诊断干预保留另一 socket 通道后为 1。原因果记录及脚本继续保留，不能把共享结构修复说成 Supervisor 独立 delete 通知契约已修改。
 
-用户确认共享 delete 在所有窗口移除节点，2026-10-11 已通过共享 root 结构提交/监听实现，并在 Linux 独立双窗口验证；stop 保留节点及原 reader 最终消费。旧 owner 保留 stopped 历史节点断言已按正式产品语义调整。共享结构、关闭模式 slot 隔离与双向切换清理已完成；方案见 `docs/design-docs/runtime-shared-root-canvas-sync.md`，过程见 `docs/exec-plans/completed/runtime-shared-root-canvas-sync.md`，不再登记为待设计/实现。
+用户确认共享 delete 在所有窗口移除节点，2026-10-11 已通过共享 root 结构提交/监听实现，并在 Linux 独立双窗口验证；stop 保留节点及原 reader 最终消费。旧 owner 保留 stopped 历史节点断言已按正式产品语义调整。共享结构、关闭模式 slot 隔离及旧定义下的切换测试已有有限证据；方案见 `docs/design-docs/runtime-shared-root-canvas-sync.md`，过程见 `docs/exec-plans/completed/runtime-shared-root-canvas-sync.md`。PR #319 review 后用户补充最后开启窗口切换关闭才清理共享会话并退出 Supervisor，新规则尚待实现及验证，不能从旧完成记录推导已收口；该产品缺口不作为本表中的非阻塞技术债降级。
 
 ### 后续验证与存储成本（未验证）
 
