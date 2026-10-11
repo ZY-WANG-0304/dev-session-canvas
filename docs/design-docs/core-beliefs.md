@@ -385,3 +385,5 @@ owner settled 与 Host 最终保存是不同承诺；删除的 pending 拒绝必
 终端控制序列不能证明原始鼠标事件命中位置；坐标限制不扩大事件监听范围，消息接收延迟也不能替代删除边界时序。诊断应关联原始事件、onData与Host派发，未知保持显式未知。依据见 `terminal-mouse-input-diagnostics.md`。
 
 删除runtime前须先关闭Host输入准入并收口已派发写入；异步取得client后应复查准入与session身份。同runtime的Host投影重建必须共享准入、在途写入和删除状态，不能把投影对象变化当成新执行。删除失败或未知不能自动重开可能已退出的session输入，真实写入错误仍需呈现。依据见 `terminal-mouse-input-diagnostics.md`。
+
+共享 runtime 的停止和其他窗口投影收口是不同责任。删除发起方的本地取消不能撤销其他窗口接收最后状态、读取尾部和保存的通道；注册表已移除不等于所有读者已应用终态，诊断通知恢复也不等于完整退出契约得到验证。
