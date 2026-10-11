@@ -209,20 +209,24 @@ async function verifyCompletedBindingOwner() {
         assert.equal(calls.saved, true, 'The original binding cleanup follows the completed node save.');
         dispatched.push(...sessions);
       };
-      if (ownership === 'root') {
-        await assert.rejects(host.deleteRuntimeSupervisorSessionStrict({ ...binding, runtimeOwner: undefined },
-          { allowRestart: false }), /storage and owner descriptor do not match/,
-        'The production strict-delete entry must reject root storage when its owner is omitted.');
-        assert.equal(dispatched.length, 0);
-      }
-      await host.applyCompletedRuntimeSupervisorSnapshot('node', kind, snapshot);
-      assert.deepEqual(diagnostics, [{
+      const deletionDiagnostic = {
         name: 'execution/deleteBoundary',
         detail: {
           phase: 'runtime-delete-requested', nodeId: undefined, kind,
           sessionId: binding.sessionId, backendKind: binding.backendKind
         }
-      }], `${kind} ${ownership} completion cleanup records only its original deletion boundary.`);
+      };
+      if (ownership === 'root') {
+        await assert.rejects(host.deleteRuntimeSupervisorSessionStrict({ ...binding, runtimeOwner: undefined },
+          { allowRestart: false }), /storage and owner descriptor do not match/,
+        'The production strict-delete entry must reject root storage when its owner is omitted.');
+        assert.equal(dispatched.length, 0);
+        assert.deepEqual(diagnostics, [deletionDiagnostic]);
+        diagnostics.length = 0;
+      }
+      await host.applyCompletedRuntimeSupervisorSnapshot('node', kind, snapshot);
+      assert.deepEqual(diagnostics, [deletionDiagnostic],
+        `${kind} ${ownership} completion cleanup records only its original deletion boundary.`);
       assert.equal(dispatched.length, 1);
       assert.deepEqual({ ...dispatched[0], runtimeOwner: dispatched[0].runtimeOwner }, binding,
         `${kind} ${ownership} completion dispatches the exact original binding.`);
