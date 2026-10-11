@@ -15,6 +15,7 @@
 - [ ] 此前标题栏停留场景的完整事件时序未确认；更新修复产物后的用户实际F5复现待验证。
 - [x] 实施已授权的删除输入准入修复：入口及派发复查、已派发写入收口、重复删除合并、失败后保留关闭状态并可重试。
 - [x] 自动化回归、类型检查和构建通过，刷新Main Only调试产物并记录验证限制。
+- [x] 处理PR #316 review：同runtime投影重建共享准入和删除控制，按完整runtime身份清理，新增真实重连交错测试。
 
 ## 意外与发现
 
@@ -108,3 +109,9 @@ xterm 的无按键移动监听绑定到 terminal.element；document 全局拖动
 用户授权修复后，采用正式设计中的session级输入准入：删除同步关闭准入，writeExecutionInput入口及client取得后复查，已派发写入记录到pendingInputWrites，删除先等待收口再发送RPC。Supervisor重复删除共享deletionPromise；失败保留关闭标志、释放promise供重试；完成仅dispose原session，避免误释放替换实例。Local路径在异步flush之前关闭准入并复查身份。没有增加sessionNotFound错误过滤。
 
 真实Host类的12项定向测试通过，覆盖Agent/Terminal入口关闭、Local flush边界、待取得client取消、替换session保护、已派发写入收口、重复删除、删除失败重试、新实例可输入及真实写入错误呈现。最终Host全套601/601通过；类型检查、鼠标诊断回归、webview消息回归及构建通过，Main Only产物已刷新。新增诊断边界phase=input-admission-closed与拒绝reason=input-admission-closed，可在下次dump验证删除期间输入没有进入RPC。尚未替用户执行真实F5操作；不将自动测试当作用户场景验收。
+
+## 2026-10-11 PR #316 review处理
+
+Review指出同runtime的paged重连可能重建managed session，丢失原对象上的关闭标志、在途写入及删除promise，且成功删除时对象相等检查会漏清新投影。现将Supervisor的三项状态集中到共享`inputControl`；快照保留/重建与删除完成清理使用runtimeSessionId、backend、归一化storagePath、runtimeOwner及terminalAuthorityId判定执行身份，同runtime的重建投影继承同一控制对象，身份不同的投影独立。失败后清除共享删除promise供重试，关闭准入继续保留。
+
+新增6项测试：Agent/Terminal分别经真实reconnectPagedRuntimeSession、attach、applyRuntimeSupervisorSnapshot及disposeExecutionSession，覆盖重连响应晚于删除入口、在途写入共享、重复删除、成功清理、失败后再次重连仍关闭且可重试；另分别验证完整身份各字段变化时保护替换实例，owner比较使用值而不是对象引用。Host全套607/607通过，强化真实dispose后的重连定向6/6通过，类型检查、鼠标诊断回归、消息回归、真实xterm边界对照、构建及Main Only产物准备通过。用户修复后F5场景仍待验收。

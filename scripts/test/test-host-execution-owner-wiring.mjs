@@ -7507,6 +7507,7 @@ function deletionInputFixture(kind) {
     agentSessions: kind === 'agent' ? sessions : new Map(),
     terminalSessions: kind === 'terminal' ? sessions : new Map(),
     assertExecutionAllowed: () => true, getExecutionCandidateProfile: () => true,
+    resolveRuntimeStoragePath: value => value ?? '/controlled/runtime',
     recordDiagnosticEvent: (name, detail) => diagnostics.push({ name, detail }),
     recordExecutionPerformanceDiagnostics() {}, trackRuntimeSupervisorOperation() {},
     postMessage: message => messages.push(message),
@@ -7538,7 +7539,7 @@ for (const kind of ['agent', 'terminal']) {
     const f = deletionInputFixture(kind);
     const first = f.host.terminateExecutionNodeForDeletion(f.node);
     const duplicate = f.host.terminateExecutionNodeForDeletion(f.node);
-    assert.equal(f.session.inputAdmissionClosed, true, 'admission closes synchronously');
+    assert.equal(f.session.inputControl.admissionClosed, true, 'admission closes synchronously');
     assert.equal(await f.host.writeExecutionInput(kind, f.node.id, '\x1b[<35;61;4M'), false);
     assert.equal(await f.host.writeExecutionInput(kind, f.node.id, 'typed instruction\r'), false);
     assert.equal(f.writes.length, 0);
@@ -7590,7 +7591,7 @@ for (const kind of ['agent', 'terminal']) {
     assert.equal(f.deletions.length, 1);
     f.deleted.resolve();
     await deleting;
-    assert.equal(f.session.pendingInputWrites.size, 0);
+    assert.equal(f.session.inputControl.pendingWrites.size, 0);
     assert.equal(f.messages.length, 0);
   });
 
@@ -7599,7 +7600,7 @@ for (const kind of ['agent', 'terminal']) {
     f.host.deleteRuntimeSupervisorSessionStrict = async () => { throw new Error('Deletion unconfirmed'); };
     await assert.rejects(f.host.terminateExecutionNodeForDeletion(f.node), /Deletion unconfirmed/);
     assert.strictEqual(f.sessions.get(f.node.id), f.session);
-    assert.equal(f.session.deletionPromise, undefined);
+    assert.equal(f.session.inputControl.deletionPromise, undefined);
     assert.equal(await f.host.writeExecutionInput(kind, f.node.id, 'retry input'), false);
     f.host.deleteRuntimeSupervisorSessionStrict = async () => {};
     await f.host.terminateExecutionNodeForDeletion(f.node);
@@ -7629,6 +7630,136 @@ for (const kind of ['agent', 'terminal']) {
     await Promise.resolve();
     f.deleted.resolve();
     await deleting;
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  for (const outcome of ['success', 'failed']) {
+    test(`deletion reconnect: ${kind} same runtime retains admission and ${outcome} cleanup`, async () => {
+      const f = deletionInputFixture(kind);
+      const operations = [];
+      let attachStarted = deferred();
+      let attached = deferred();
+      const written = deferred();
+      const snapshot = { sessionId: 'original', kind, live: true, lifecycle: kind === 'agent' ? 'waiting-input' : 'live',
+        runtimeBackend: 'systemd-user', terminalAuthorityId: 'original-authority', terminalRevision: 0,
+        terminalStreamPaged: true, cols: 80, rows: 24, scrollback: 100,
+        shellPath: '/bin/sh', cwd: '/controlled', output: '', outputSequence: 0 };
+      f.node.metadata[kind] = { runtimeStoragePath: '/controlled/runtime', runtimeSessionId: 'original',
+        runtimeBackend: 'systemd-user', persistenceMode: 'live-runtime', liveSession: true };
+      Object.assign(f.host, {
+        state: { nodes: [f.node], edges: [], groups: [] },
+        terminalAvailableNotifications: new TerminalAvailableNotifications(),
+        terminalReadRelay: new RuntimeTerminalReadRelay(),
+        isRuntimeSupervisorEventAdmitted: () => true, isRuntimePersistenceEnabled: () => true,
+        postState() {}, persistState() {}, postExecutionSnapshot: async () => {},
+        clearExecutionTerminalProjectionRefreshTimers() {}, scheduleExecutionTerminalProjectionRefresh() {},
+        subscribeRuntimeSupervisorTerminalStream: async () => {},
+        trackRuntimeSupervisorOperation: operation => operations.push(operation),
+        disposeExecutionSession: CanvasPanelManager.prototype.disposeExecutionSession,
+        invalidateExecutionSessionOperation() {}, clearScheduledExecutionOutputPost() {},
+        disposeAgentFileActivitySession: async () => {}, unbindRuntimeSession() {}, getRuntimeHostBackend: () => ({})
+      });
+      Object.assign(f.client, {
+        supportsTerminalSessionStream: () => true, supportsTerminalPagedRead: () => true,
+        supportsTerminalPagedCompletion: () => true,
+        attachSession: request => {
+          assert.equal(request.sessionId, 'original');
+          attachStarted.resolve();
+          return attached.promise;
+        },
+        writeInput: request => { f.writes.push(request); return written.promise; }
+      });
+      const original = f.host.createSupervisorExecutionSession(snapshot, '/controlled/runtime');
+      f.sessions.set(f.node.id, original);
+      let current = original;
+      try {
+        const writing = f.host.writeExecutionInput(kind, f.node.id, '\x1b[<35;61;4M');
+        await Promise.resolve();
+        assert.equal(f.writes.length, 1);
+        f.host.reconnectPagedRuntimeSession(kind, f.node.id, original);
+        await attachStarted.promise;
+        const reconnecting = operations.at(-1);
+        assert.equal(original.terminalStreamHealthy, false);
+        const deleting = f.host.terminateExecutionNodeForDeletion(f.node);
+        if (outcome === 'failed') {
+          f.host.deleteRuntimeSupervisorSessionStrict = async request => {
+            f.deletions.push(request);
+            await f.deleted.promise;
+            throw new Error('Deletion unconfirmed');
+          };
+        }
+        attached.resolve(snapshot);
+        await reconnecting;
+        current = f.sessions.get(f.node.id);
+        assert.notStrictEqual(current, original, 'real unhealthy paged snapshot rebuilds projection');
+        assert.strictEqual(current.inputControl, original.inputControl);
+        assert.equal(current.inputControl.admissionClosed, true);
+        assert.equal(current.inputControl.pendingWrites.size, 1, 'dispatched input survives projection rebuild');
+        const duplicate = f.host.terminateExecutionNodeForDeletion(f.node);
+        assert.equal(await f.host.writeExecutionInput(kind, f.node.id, '\x1b[<35;64;1M'), false);
+        assert.equal(f.writes.length, 1);
+        assert.equal(f.deletions.length, 0);
+        written.resolve();
+        assert.equal(await writing, true);
+        await Promise.resolve();
+        assert.equal(f.deletions.length, 1, 'duplicate deletion shares original operation');
+        const settled = Promise.allSettled([deleting, duplicate]);
+        f.deleted.resolve();
+        const results = await settled;
+        assert.deepEqual(results.map(result => result.status), [outcome === 'success' ? 'fulfilled' : 'rejected',
+          outcome === 'success' ? 'fulfilled' : 'rejected']);
+        if (outcome === 'success') {
+          assert.equal(f.sessions.size, 0, 'successful deletion disposes same runtime current projection');
+        } else {
+          assert.strictEqual(f.sessions.get(f.node.id), current);
+          assert.equal(current.inputControl.deletionPromise, undefined);
+          attachStarted = deferred();
+          attached = deferred();
+          f.host.reconnectPagedRuntimeSession(kind, f.node.id, current);
+          await attachStarted.promise;
+          const retryReconnect = operations.at(-1);
+          attached.resolve(snapshot);
+          await retryReconnect;
+          const rebuilt = f.sessions.get(f.node.id);
+          assert.notStrictEqual(rebuilt, current);
+          current = rebuilt;
+          assert.strictEqual(current.inputControl, original.inputControl);
+          assert.equal(await f.host.writeExecutionInput(kind, f.node.id, 'must remain blocked'), false);
+          f.host.deleteRuntimeSupervisorSessionStrict = async request => f.deletions.push(request);
+          await f.host.terminateExecutionNodeForDeletion(f.node);
+          assert.equal(f.deletions.length, 2, 'failed operation is retryable from rebuilt projection');
+          assert.equal(f.sessions.size, 0);
+        }
+        assert.equal(f.messages.length, 0);
+      } finally {
+        written.resolve();
+        f.deleted.resolve();
+        attached.resolve(snapshot);
+        if (!current.stopRequested) f.host.disposeManagedExecutionSession(current);
+      }
+    });
+  }
+  test(`deletion reconnect: ${kind} protects a different full runtime identity`, async () => {
+    const runtimeOwner = createRuntimeOwnerDescriptor({ environmentKey: 'a'.repeat(64), userStorageScopeKey: 'b'.repeat(64),
+      rootPath: path.resolve('/controlled/root'), generation: resolveRootRuntimeSupervisorGeneration(EXECUTION_CANDIDATE_PROFILE) });
+    for (const changed of [
+      { runtimeSessionId: 'replacement' }, { runtimeBackend: 'systemd-user' },
+      { runtimeStoragePath: '/controlled/other-runtime' }, { terminalAuthorityId: 'other-authority' }, { runtimeOwner }
+    ]) {
+      const f = deletionInputFixture(kind);
+      const deleting = f.host.terminateExecutionNodeForDeletion(f.node);
+      const replacement = { ...f.session, ...changed, inputControl: undefined };
+      f.sessions.set(f.node.id, replacement);
+      assert.equal(f.host.isSameSupervisorRuntime(f.session, replacement), false);
+      f.deleted.resolve();
+      await deleting;
+      assert.strictEqual(f.sessions.get(f.node.id), replacement);
+    }
+    const f = deletionInputFixture(kind);
+    f.session.runtimeOwner = runtimeOwner;
+    assert.equal(f.host.isSameSupervisorRuntime(f.session, { ...f.session, runtimeOwner: { ...runtimeOwner } }), true,
+      'owner identity compares descriptor values rather than object references');
   });
 }
 
