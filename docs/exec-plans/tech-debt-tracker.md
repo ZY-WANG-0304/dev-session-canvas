@@ -686,11 +686,13 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 证据见 `docs/references/smoke-reload-autostart/full-vsix-gate-1286b83e-evidence.json`。此前章节保留历史失败时点，不再作为当前 head 的门禁结论。GitHub 没有完整 smoke required check，`native-assets` 仍为 skipped，因此真实 provider、真实窗口 Reload、新 Host/checkpoint、Remote SSH、其他平台/跨版本矩阵，以及历史 URL 清理、Runtime disconnected 批次报告和独立 `owned-resize-failed` 调查继续作为明确验证边界；它们不是本次八场景 run 的失败项。
 
-## 2026-10-11 双窗口删除与共享画布（产品路径已收口，底层直接调用诊断保留）
+## 2026-10-11 双窗口删除与共享画布（共享结构已有有限证据，底层直接调用诊断保留）
 
 原 main a39cd8c1 的直接 Supervisor deleteSession 非保留路径取消所有 socket 的 Host 信用订阅，受控 8 项 direct-credit 终态为 0；诊断干预保留另一 socket 通道后为 1。原因果记录及脚本继续保留，不能把共享结构修复说成 Supervisor 独立 delete 通知契约已修改。
 
 用户确认共享 delete 在所有窗口移除节点，2026-10-11 已通过共享 root 结构提交/监听实现，并在 Linux 独立双窗口验证；stop 保留节点及原 reader 最终消费。旧 owner 保留 stopped 历史节点断言已按正式产品语义调整。共享结构、关闭模式 slot 隔离及旧定义下的切换测试已有有限证据；方案见 `docs/design-docs/runtime-shared-root-canvas-sync.md`，过程见 `docs/exec-plans/completed/runtime-shared-root-canvas-sync.md`。PR #319 review 后用户补充最后开启窗口切换关闭才清理共享会话并退出 Supervisor，新规则现已通过独立开启 Host/root 登记、准入锁和原 hello PID 的退出检查实现，并有 Linux 单 root 最终双窗口、Host 628/628、store 15/15 和 owner handshake 47 项的有限验证。deferred delete/edit 交错和 reader 收尾配置保护亦有实际 Host/store 磁盘回归；首轮并发 reset 失败、后续保护及最终通过分别保留。接续计划 `docs/exec-plans/completed/pr319-review-repairs.md` 和 `docs/references/shared-root-canvas/pr319-review-repair-evidence.json` 固定输入及证据，不将新规则缺口降级为技术债。
+
+证据边界补充：上述验证对应 `e79aa66d` 在进一步确认接管规则之前的实现。用户现已确认清理期间新开启窗口可以按阶段接管，旧窗口在交接完成后不再等待被新窗口使用的原 PID 消失；已有串行登记测试不代证该规则通过。当前接管协调缺口属于 PR #319 待修复项，规格第 11 节、共享画布设计及接续计划已同步，此处仅修正已有完成声明的范围，不将该缺口作为非阻塞技术债归档。
 
 ### 后续验证与存储成本（未验证）
 
