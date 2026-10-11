@@ -40,6 +40,7 @@ assert.deepEqual(
   launchJson.configurations.map((configuration) => configuration.name),
   [
     'Run Dev Session Canvas (Main Only)',
+    'Run Dev Session Canvas (Main Only, Stock Comparison)',
     'Run Dev Session Canvas + Notifier (Local Window)',
     'Run Dev Session Canvas + Notifier (Remote Window)'
   ],
@@ -62,6 +63,13 @@ assert.deepEqual(runMainOnly.sourceMapPathOverrides, {
   '../../../../../node_modules/*': `${workspaceFolder}/node_modules/*`,
   '../../../node_modules/*': `${workspaceFolder}/node_modules/*`
 });
+
+const runMainOnlyStock = getConfiguration('Run Dev Session Canvas (Main Only, Stock Comparison)');
+assert.equal(runMainOnlyStock.preLaunchTask, 'build debug main-only extension (stock comparison)');
+assertArgsContain(runMainOnlyStock, [
+  '--profile=Dev Session Canvas Extension Debug',
+  `--extensionDevelopmentPath=${mainOnlyExtensionPath}`
+]);
 
 const runLocalNotifier = getConfiguration('Run Dev Session Canvas + Notifier (Local Window)');
 assert.equal(runLocalNotifier.preLaunchTask, 'build extension + notifier');
@@ -93,6 +101,13 @@ assert.deepEqual(installDependenciesTask.args, ['scripts/shared/ensure-node-depe
 const buildExtensionTask = getTask('build extension');
 assert.equal(buildExtensionTask.dependsOrder, 'sequence');
 assert.deepEqual(buildExtensionTask.dependsOn, ['install dependencies']);
+assert.match(buildExtensionTask.detail, /owned-provider/);
+
+const buildStockExtensionTask = getTask('build extension (stock comparison)');
+assert.equal(buildStockExtensionTask.dependsOrder, 'sequence');
+assert.deepEqual(buildStockExtensionTask.args, ['run', 'build', '--', '--execution-profile=stock']);
+assert.deepEqual(buildStockExtensionTask.dependsOn, ['install dependencies']);
+assert.match(buildStockExtensionTask.detail, /stock comparison/);
 
 const buildNotifierTask = getTask('build notifier');
 assert.equal(buildNotifierTask.dependsOrder, 'sequence');

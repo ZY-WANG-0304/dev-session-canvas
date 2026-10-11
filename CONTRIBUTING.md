@@ -72,9 +72,10 @@ npm run package:vsix
 
 1. 打开 VS Code 的 `Run and Debug` 视图
 2. 在顶部调试配置下拉框中按场景选择：
-   - 本地 / 远端窗口只调主扩展：`Run Dev Session Canvas (Main Only)`
+   - 本地 / 远端窗口只调主扩展（默认 owned-provider）：`Run Dev Session Canvas (Main Only)`
    - 本地窗口联调主扩展 + notifier：`Run Dev Session Canvas + Notifier (Local Window)`
    - `Remote SSH` / WSL / Dev Container 窗口里联调“远端主扩展 + 本机 notifier”：`Run Dev Session Canvas + Notifier (Remote Window)`
+   - 只做页面开发或历史对照：`Run Dev Session Canvas (Main Only, Stock Comparison)`
 3. 点击启动按钮或直接按 `F5`
 
 也可通过命令面板执行：
@@ -86,7 +87,8 @@ npm run package:vsix
 
 调试配置默认行为：
 
-- `Run Dev Session Canvas (Main Only)` 固定使用命名 profile `Dev Session Canvas Extension Debug`
+- `Run Dev Session Canvas (Main Only)` 固定使用命名 profile `Dev Session Canvas Extension Debug`，并走默认 owned-provider 构建；启动前必须准备匹配源码的 execution assets
+- `Run Dev Session Canvas (Main Only, Stock Comparison)` 只在显式需要 stock 对照时使用，不代表正式运行时路径
 - 两条真实 notifier 联调配置固定使用命名 profile `Dev Session Canvas Notifier Extension Debug`
 - 通过 `skipFiles` 跳过 Node 内部和 VS Code 内置扩展源码，避免调试器停在内置 `git` 等非本仓库代码里
 - 通过 `--extensionDevelopmentPath` 加载仓库中的开发态扩展，而非已安装副本
