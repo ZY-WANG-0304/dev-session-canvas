@@ -3,7 +3,7 @@ import * as net from 'net';
 import * as path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import type { CanvasPrototypeState } from '../common/protocol';
-import { SharedRootCanvasParticipants } from './sharedRootCanvasParticipants';
+import { SharedRootCanvasParticipants, type AcceptSharedRuntimeTakeover, type SharedRootCanvasDeparture } from './sharedRootCanvasParticipants';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 const collections = new Set(['nodes', 'groups', 'edges', 'fileReferences', 'owners']);
@@ -80,6 +80,8 @@ interface Pending { base: CanvasPrototypeState; next: CanvasPrototypeState }
 
 /** A root's disk state is committed under a short, OS-owned cross-process lease. */
 export class SharedRootCanvasStore {
+  readonly ready: Promise<void>;
+  private admitted = false;
   private local: CanvasPrototypeState;
   private confirmed: CanvasPrototypeState;
   private readonly pending: Pending[] = [];
@@ -93,27 +95,25 @@ export class SharedRootCanvasStore {
 
   constructor(filename: string, initial: CanvasPrototypeState,
     private readonly onState: (state: CanvasPrototypeState) => void,
-    private readonly onError: (error: Error) => void) {
+    private readonly onError: (error: Error) => void, acceptTakeover?: AcceptSharedRuntimeTakeover) {
     fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
     this.filename = path.join(fs.realpathSync(path.dirname(filename)), path.basename(filename));
     const snapshot = this.read();
     this.confirmed = sharedCanvasState(snapshot?.state ?? initial);
     this.local = sharedCanvasState(initial);
     this.revision = snapshot?.sharedRevision;
-    this.participants = new SharedRootCanvasParticipants(this.filename);
-    this.tail = this.participants.ready.catch(error => { this.failure = error; this.onError(error); });
+    this.participants = new SharedRootCanvasParticipants(this.filename, acceptTakeover);
+    this.ready = this.participants.ready.then(() => {
+      this.admitted = true;
+      if (!this.closed) this.observe(this.read(), true);
+    });
+    this.tail = this.ready.catch(error => { this.failure = error; this.onError(error); });
     this.changed = () => {
-      if (this.closed) return;
+      if (this.closed || !this.admitted) return;
       try { this.observe(this.read()); }
       catch (error) { this.onError(error as Error); }
     };
     fs.watchFile(this.filename, { interval: 100, persistent: false }, this.changed);
-    // Loading the page and opening its subscription are separate reads; a peer may commit between them.
-    queueMicrotask(() => {
-      if (this.closed) return;
-      try { this.observe(snapshot, true); }
-      catch (error) { this.onError(error as Error); }
-    });
   }
 
   publish(state: CanvasPrototypeState): Promise<void> {
@@ -172,12 +172,16 @@ export class SharedRootCanvasStore {
 
   get admissionPort(): number { return this.participants.admissionPort; }
 
-  async depart<T>(work: (last: boolean, current: CanvasPrototypeState) => Promise<T>, held?: Set<number>): Promise<T> {
+  transferredPids(departure: SharedRootCanvasDeparture): Promise<Set<number>> {
+    return this.participants.transferredPids(departure);
+  }
+
+  async depart<T>(work: (last: boolean, current: CanvasPrototypeState, departure: SharedRootCanvasDeparture) => Promise<T>, held?: Set<number>): Promise<T> {
     await this.flush();
-    return this.participants.depart(async last => {
+    return this.participants.depart(async (last, departure) => {
       const snapshot = this.read();
       this.observe(snapshot);
-      return work(last, snapshot?.state ?? this.confirmed);
+      return work(last, snapshot?.state ?? this.confirmed, departure);
     }, held);
   }
 

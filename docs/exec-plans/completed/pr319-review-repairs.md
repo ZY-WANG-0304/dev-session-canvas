@@ -64,3 +64,6 @@ reviewer 原受控脚本 `/tmp/pr319-review-host.mjs` 可作输入，原第二�
 
 
 最终证据：`docs/references/shared-root-canvas/pr319-review-repair-evidence.json` 固定四个生产源码、四个验证入口 SHA256 及原运行身份/PID。completed-history、runtime root ownership、startup profile/reader client、localization、multi-root composition 和 diff check 通过。普通 reload 为同 Host 的模拟边界，真实两窗口进程独立；不宣称新增真实新 Host reload 或未执行的其他组合。发布、版本修改、合并不在本计划范围。
+
+
+2026-10-11 后续实现说明：接管协调已由 `docs/exec-plans/completed/pr319-takeover-coordination.md` 接续实现与有限验证，最新结果见正式共享画布设计及 `docs/references/shared-root-canvas/pr319-takeover-evidence.json`。本计划的旧 head、旧串行判据与当时失败仍作为历史输入保留，不替换其原 SHA256。

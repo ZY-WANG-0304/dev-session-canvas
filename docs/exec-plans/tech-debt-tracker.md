@@ -692,7 +692,7 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 用户确认共享 delete 在所有窗口移除节点，2026-10-11 已通过共享 root 结构提交/监听实现，并在 Linux 独立双窗口验证；stop 保留节点及原 reader 最终消费。旧 owner 保留 stopped 历史节点断言已按正式产品语义调整。共享结构、关闭模式 slot 隔离及旧定义下的切换测试已有有限证据；方案见 `docs/design-docs/runtime-shared-root-canvas-sync.md`，过程见 `docs/exec-plans/completed/runtime-shared-root-canvas-sync.md`。PR #319 review 后用户补充最后开启窗口切换关闭才清理共享会话并退出 Supervisor，新规则现已通过独立开启 Host/root 登记、准入锁和原 hello PID 的退出检查实现，并有 Linux 单 root 最终双窗口、Host 628/628、store 15/15 和 owner handshake 47 项的有限验证。deferred delete/edit 交错和 reader 收尾配置保护亦有实际 Host/store 磁盘回归；首轮并发 reset 失败、后续保护及最终通过分别保留。接续计划 `docs/exec-plans/completed/pr319-review-repairs.md` 和 `docs/references/shared-root-canvas/pr319-review-repair-evidence.json` 固定输入及证据，不将新规则缺口降级为技术债。
 
-证据边界补充：上述验证对应 `e79aa66d` 在进一步确认接管规则之前的实现。用户现已确认清理期间新开启窗口可以按阶段接管，旧窗口在交接完成后不再等待被新窗口使用的原 PID 消失；已有串行登记测试不代证该规则通过。当前接管协调缺口属于 PR #319 待修复项，规格第 11 节、共享画布设计及接续计划已同步，此处仅修正已有完成声明的范围，不将该缺口作为非阻塞技术债归档。
+证据边界补充：上述验证对应 `e79aa66d` 在进一步确认接管规则之前的实现。用户现已确认清理期间新开启窗口可以按阶段接管，旧窗口在交接完成后不再等待被新窗口使用的原 PID 消失；已有串行登记测试不代证该规则通过。该时点的接管缺口由 `docs/exec-plans/completed/pr319-takeover-coordination.md` 接续修复：参与 listener 分阶段确认、ready 后最新状态恢复、有效原 PID 交接及失败连接释放已经落地。store 20/20、完整 Host 634/634、真实独立 Supervisor 控制/native 新执行 3/3，以及 Linux 单 root 真实双窗口复验通过，输入证据为 `docs/references/shared-root-canvas/pr319-takeover-evidence.json`。四阶段来自受控 Host/store/独立进程回归，没有把既有双窗口 smoke 描述为新增四阶段 UI 验收。旧 head 的缺口和失败记录保留，不作为当前非阻塞债务代替修复。
 
 ### 后续验证与存储成本（未验证）
 

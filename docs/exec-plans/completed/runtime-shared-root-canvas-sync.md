@@ -98,3 +98,6 @@
 2026-10-11 后续说明：PR319 的新增最后窗口规则、deferred 保存交错和 stop 配置保护由 `docs/exec-plans/completed/pr319-review-repairs.md` 接续实现与验证。本计划的旧切换证据仍只代表当时定义；有效新增结论以接续计划和共享画布设计为准。
 
 2026-10-11 接管规则补充：用户在 `e79aa66d` 复核后确认清理期间新开启窗口可以接管；未派发 stop/delete 可取消清理，已派发动作需结算，仍接受连接的原 Supervisor 可沿用，不可取消关闭后再正常建立运行时。新规则已写入规格第 11 节和正式设计，接续计划的旧串行等待证据不代表接管实现与验收完成。本次仅同步文档与评审修复方向。
+
+
+2026-10-11 后续实现说明：接管协调已由 `docs/exec-plans/completed/pr319-takeover-coordination.md` 接续实现与有限验证，最新结果见正式共享画布设计及 `docs/references/shared-root-canvas/pr319-takeover-evidence.json`。本计划的旧 head、旧串行判据与当时失败仍作为历史输入保留，不替换其原 SHA256。

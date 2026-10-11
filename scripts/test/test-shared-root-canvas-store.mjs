@@ -185,10 +185,11 @@ try {
       if (command === 'release') { release?.(); return; }
       try {
         if (command === 'dispose') { store.dispose(); process.send({ type: 'disposed' }); process.disconnect(); return; }
-        await store.depart(async last => {
+        await store.depart(async (last, current, departure) => {
+          if (command === 'leave-gated') departure.beginSettlement();
           process.send({ type: 'decision', last });
-          if (command === 'leave-gated') await new Promise(resolve => { release = resolve; });
-          if (last) await store.publish({ ...JSON.parse(initial), nodes: [] });
+          if (command === 'leave-gated' || command === 'leave-preparing') await new Promise(resolve => { release = resolve; });
+          if (last && departure.beginSettlement()) await store.publish({ ...JSON.parse(initial), nodes: [] });
           await store.flush();
         });
         process.send({ type: 'done' }); store.dispose(); process.disconnect();
@@ -224,7 +225,16 @@ try {
     await Promise.all(workers.map(worker => worker.exited));
     assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes.length, 0);
   });
-  await check('new independent participant waits for last cleanup and sees the cleared root', async () => {
+  await check('independent takeover before dispatch preserves the original graph', async () => {
+    const { filename, initial } = await seedParticipantRoot('join-before-dispatch');
+    const leaving = participantWorker(filename, initial); await leaving.take('ready');
+    leaving.child.send('leave-preparing'); assert.equal((await leaving.take('decision')).last, true);
+    const joining = participantWorker(filename, initial); await joining.take('ready');
+    leaving.child.send('release'); await leaving.exited;
+    assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes[0].id, 'shared');
+    joining.child.send('leave'); assert.equal((await joining.take('decision')).last, true); await joining.exited;
+  });
+  await check('new independent participant waits for dispatched cleanup and sees the cleared root', async () => {
     const { filename, initial } = await seedParticipantRoot('join-during-departure');
     const leaving = participantWorker(filename, initial); await leaving.take('ready');
     leaving.child.send('leave-gated'); assert.equal((await leaving.take('decision')).last, true);
@@ -234,6 +244,101 @@ try {
     leaving.child.send('release'); await leaving.exited; await joining.take('ready');
     assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes.length, 0);
     joining.child.send('leave'); assert.equal((await joining.take('decision')).last, true); await joining.exited;
+  });
+  await check('idle handoff requires validated participation and a confirmed offered PID', async () => {
+    const { filename, initial } = await seedParticipantRoot('idle-handoff');
+    const leaving = new SharedRootCanvasStore(filename, initial, () => {}, error => { throw error; }); stores.push(leaving);
+    const gate = {}, offer = { pid: process.pid, runtimeBackend: 'legacy-detached', runtimeStoragePath: '/test',
+      runtimeOwner: { root: { normalizedPath: '/test' } } };
+    let departure;
+    const cleanup = leaving.depart(async (last, current, context) => {
+      assert(last); departure = context; context.beginSettlement();
+      await new Promise(resolve => { gate.settled = resolve; });
+      await leaving.publish(empty()); context.settle([offer]);
+      await new Promise(resolve => { gate.finish = resolve; });
+    });
+    await until(() => gate.settled);
+    let projected, finished, accepted;
+    const joining = new SharedRootCanvasStore(filename, initial, state => { projected = state; }, error => { throw error; },
+      async candidates => { accepted = candidates; return { pids: [process.pid], finish: value => { finished = value; } }; });
+    stores.push(joining);
+    let ready = false; joining.ready.then(() => { ready = true; });
+    await new Promise(resolve => setTimeout(resolve, 100)); assert(!ready); assert.equal(projected, undefined);
+    gate.settled(); await joining.ready;
+    assert.deepEqual(accepted, [offer]); assert.equal(finished, true); assert.equal(projected.nodes.length, 0);
+    assert((await leaving.transferredPids(departure)).has(process.pid));
+    await joining.publish({ ...empty(), nodes: [note('new')] });
+    gate.finish(); await cleanup;
+    assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes[0].id, 'new');
+    joining.dispose(); assert.equal((await leaving.transferredPids(departure)).size, 0);
+  });
+  await check('failed idle confirmation rolls back without handing off the original PID', async () => {
+    const { filename, initial } = await seedParticipantRoot('failed-idle-handoff');
+    const leaving = new SharedRootCanvasStore(filename, initial, () => {}, () => {}); stores.push(leaving);
+    const gate = {};
+    let departure, rolledBack;
+    const cleanup = leaving.depart(async (last, current, context) => {
+      departure = context; context.beginSettlement(); await leaving.publish(empty());
+      context.settle([{ pid: process.pid, runtimeOwner: {}, runtimeStoragePath: '/test', runtimeBackend: 'legacy-detached' }]);
+      await new Promise(resolve => { gate.finish = resolve; });
+    });
+    await until(() => gate.finish);
+    const joining = new SharedRootCanvasStore(filename, initial, () => {}, () => {}, async () => ({
+      pids: [process.pid + 1], finish: value => { rolledBack = !value; }
+    })); stores.push(joining);
+    // An invalid confirmation closes the coordinator socket and returns no admission.
+    await until(() => rolledBack);
+    assert.equal((await leaving.transferredPids(departure)).size, 0);
+    gate.finish(); await cleanup; await joining.flush();
+    assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes.length, 0);
+  });
+  await check('reset during negotiation retries without pruning participation or claiming handoff', async () => {
+    const { filename, initial } = await seedParticipantRoot('reset-negotiation');
+    const leaving = new SharedRootCanvasStore(filename, initial, () => {}, () => {}); stores.push(leaving);
+    const gate = {}; let reset = false;
+    const cleanup = leaving.depart(async (last, current, departure) => {
+      assert(last); departure.beginSettlement();
+      await new Promise(resolve => { gate.finish = resolve; });
+      assert.equal(departure.preserved, false); assert.equal(departure.handoffs.size, 0);
+      await leaving.publish(empty());
+    });
+    await until(() => gate.finish);
+    leaving.participants.serve = socket => {
+      socket.on('error', () => {});
+      socket.write(leaving.participants.token + '\n');
+      socket.once('data', () => { reset = true; socket.resetAndDestroy(); });
+    };
+    const failures = [];
+    const joining = new SharedRootCanvasStore(filename, initial, () => {}, error => failures.push(error)); stores.push(joining);
+    await until(() => reset);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.deepEqual(failures, []); assert.equal(joining.admitted, false);
+    const record = path.join(filename + '.participants', leaving.participants.token + '.json');
+    assert.equal(JSON.parse(await readFile(record, 'utf8')).token, leaving.participants.token);
+    gate.finish(); await cleanup; await joining.flush();
+    assert.equal(joining.admitted, true); assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes.length, 0);
+  });
+  await check('reset during busy discovery remains unknown and retries without admitting or pruning', async () => {
+    const { filename, initial } = await seedParticipantRoot('reset-discovery');
+    const leaving = new SharedRootCanvasStore(filename, initial, () => {}, () => {}); stores.push(leaving);
+    const gate = {}; let reset = false;
+    const cleanup = leaving.depart(async (last, current, departure) => {
+      assert(last); departure.beginSettlement();
+      await new Promise(resolve => { gate.finish = resolve; });
+      assert.equal(departure.preserved, false); await leaving.publish(empty());
+    });
+    await until(() => gate.finish);
+    const originalServe = leaving.participants.serve;
+    leaving.participants.serve = socket => { reset = true; socket.resetAndDestroy(); };
+    const failures = [];
+    const joining = new SharedRootCanvasStore(filename, initial, () => {}, error => failures.push(error)); stores.push(joining);
+    await until(() => reset); await new Promise(resolve => setTimeout(resolve, 100));
+    assert.deepEqual(failures, []); assert.equal(joining.admitted, false);
+    const record = path.join(filename + '.participants', leaving.participants.token + '.json');
+    assert.equal(JSON.parse(await readFile(record, 'utf8')).token, leaving.participants.token);
+    leaving.participants.serve = originalServe;
+    gate.finish(); await cleanup; await joining.flush();
+    assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes.length, 0);
   });
   await check('ordinary independent disposal preserves the root and leaves the peer last', async () => {
     const { filename, initial } = await seedParticipantRoot('ordinary-departure');

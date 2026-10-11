@@ -5,7 +5,7 @@ validation_status: 验证中
 domains: [协作对象域, 项目状态域, 执行编排域, VSCode 集成域]
 architecture_layers: [共享模型与编排层, 宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/runtime-shared-root-canvas-sync.md, docs/exec-plans/completed/pr319-review-repairs.md]
+related_plans: [docs/exec-plans/completed/runtime-shared-root-canvas-sync.md, docs/exec-plans/completed/pr319-review-repairs.md, docs/exec-plans/completed/pr319-takeover-coordination.md]
 updated_at: 2026-10-11
 ---
 
@@ -55,13 +55,21 @@ root 提交锁端口为 SHA256(canonical filename) 映射到 20000–39999；节
 
 跨 Host 的参与由 `panel/sharedRootCanvasParticipants.ts` 负责：每个已应用开启模式的 Host/root 持有随机 token 的独立 loopback listener（60000–64999），并在 canonical root 文件旁的 `.participants/<token>.json` 原子登记 token/端口；登记不依赖任何 Supervisor socket 或 reader。登记目录/文件权限分别为 0700/0600。探测应答必须与原 token 完全一致，只有 ECONNREFUSED 可以证明失效并移除 stale 登记；超时、响应不符、损坏记录明确失败。普通 dispose 仅释放自身登记，不执行共享清理。
 
-当前 `e79aa66d` 的 root 准入锁 SHA256(canonical filename) 映射到 10000–19999，覆盖登记、执行 mutation 与主动离开。锁占用每 10ms 重试，90 秒上限覆盖既有 Supervisor 30 秒 idle shutdown。多 root 按端口再 canonical path 排序持锁，碰撞端口复用已持 lease，避免相反顺序或重复取得造成死锁。本 Host 已准入的执行 mutation 在离开持锁前排空，新的本地启动拒绝。非最后 root 在边界前屏蔽自身后续共享保存，只 detach，peer 的已提交新节点及后来启动均保留。最后 root 目前在锁内重新读取共享 binding、结算、发布空画布，并持锁等待进程退出；新窗口登记必须等这次离开完成，但实际 Host 自动恢复仍能提前连接。这是已有实现及待修复边界，不再是禁止接管的正式规则。最后资格和接管判定均须来自已应用开启 Host 的有效参与事实，而非连接数量。
+root 准入锁 SHA256(canonical filename) 映射到 10000–19999，覆盖登记、执行 mutation 与主动离开。普通锁竞争每 10ms 重试，登记竞争每 50ms 通过独立参与 listener 请求交接，90 秒上限覆盖既有 Supervisor 30 秒 idle shutdown。多 root 按端口再 canonical path 排序持锁，碰撞端口复用已持 lease。本 Host 已准入的执行 mutation 在离开持锁前排空，新的本地启动拒绝；非最后 root 只 detach。最后 root 的锁保护清理阶段、共享写入及责任交接，允许持锁的旧 Host 通过参与 listener 验证并登记新 Host，不需要提前释放锁或让自动恢复绕过参与资格。最后资格和接管判定均来自已应用开启 Host 的有效参与事实。
 
 无接管时 Supervisor 退出采用原进程的既有 idle shutdown：清理所有对应 binding、读者及本 Host 连接后，进程在无连接、live、pending 责任时等待 30 秒并完成 shutdown 后自然退出。Host 记录经过 owner/profile 校验的 hello PID，离开时还以 allowRestart=false 探测目标 root 当前后端，覆盖本 Host 没有 live reader 的情形，不启动替身。仅明确不存在的 socket/连接拒绝可作为没有当前可连后端的事实；其他探测错误失败。Host 对观察到的原 PID 每 100ms 使用 signal 0 核对，只有 ESRCH 确认消失，45 秒内未消失明确失败；不会发送终止信号，registry 为空不能代替退出。PID 复用会保守拒绝成功。接管确认后改为验证本窗口结算、detach、保存及交接，不再以被新窗口使用的 PID 消失作为本窗口退出条件。
 
-### 清理期间接管的阶段与不变量（规则已确认，实现待完成）
+### 清理期间接管的阶段与不变量
 
-新开启 Host 的接管请求必须被 root 参与与清理协调机制识别，不能因旧窗口等待 PID 消失而无法完成登记，也不能只绕过登记先连接就宣称已接管。`panel/sharedRootCanvasParticipants.ts`、`sharedRootCanvasStore.ts` 与 `CanvasPanelManager.leaveSharedCanvasesForModeSwitch`、`restoreLiveRuntimeSessions` 是后续协调落点；沿用既有 root/owner/backend/session 身份校验，具体状态记录和交接接口尚待实现阶段选定。
+新开启 Host 的接管请求必须被 root 参与与清理协调机制识别，不能因旧窗口等待 PID 消失而无法完成登记，也不能只绕过登记先连接就宣称已接管。`SharedRootCanvasDeparture` 记录 preparing/settling/idle/finished 和本次随机离开 ID。沿用原 token listener：先返回身份行，再接收带 target token、独立 peer token/端口的有界 JSON 请求；身份 probe 在收到完整 token 行时结束。协商消息最多 64KiB、单次 5 秒，身份 probe 1 秒；退出会销毁本 listener 的未完成 socket。旧 Host 重新 probe 新 Host 后，在已持 root admission 下原子登记，stage 检查在 probe 之后执行，防止探测期间越过派发边界。
+
+`SharedRootCanvasStore.ready` 只在正常登记或协商登记完成后成功，此时重新读取最新磁盘并投影；watch 与构造阶段不提前发布旧快照。Host 的 `scheduleRestoreLiveRuntimeSessions` 经实际 `restoreLiveRuntimeSessions` 等全部相关 store ready 后才收集重连 binding。初始保存仍按排队时的 base/next delta 合并，不把过时整图当新 base。
+
+`leaveSharedCanvasesForModeSwitch` 保存逐 root departure。`prepareForHostBoundaryCore` 完成输出和保存前置后，在派发 Host 删除 API 前同步冻结清理集合；已确认 preparing 接管的 root 移出集合并屏蔽旧写入，其余进入 settling。没有删除工作时也在空画布提交前冻结。所有 root 的 破坏性写入及旧 Host 最终 workspace 保存完成后才进入 idle；接管后不会再有旧清空提交。
+
+idle offer 来自 owner/profile 校验后的 `{pid, runtimeBackend, runtimeStoragePath, runtimeOwner}`，按后端/存储 slot 保留最新收据，避免旧 PID 与同 slot 新进程混在候选中。新 Host 的 `acceptSharedRuntimeTakeover` 以 allowRestart=false 获取实际 client，检查原 PID、owner 和已有握手规则；确认消息携带 departure ID 及成功连接的候选 PID。旧 Host 再 probe 并登记后确认交接；退出等待只排除仍有效参与者已经确认的 PID，其他 root 和其他原 PID 继续要求 ESRCH。hello/身份失败不伪造交接，本次新获得的 client 在失败时释放；已有无关 client 保留。
+
+原 Supervisor 在 idle 前接受连接会取消 idle timer，进入 shutdownBoundary 后拒绝新 socket。因此无需新增 Supervisor 业务协议。参与协商和 busy discovery 的 ECONNRESET/EPIPE 只重试，不据此移除记录或赋予清理资格；持锁 probe 若原记录仍存在则保守失败。连接关闭/ENOENT/ECONNREFUSED 不等于接管，新 Host 等旧 departure 释放准入后正常登记；其他错误明确失败。已确认接管的控制 client 单独保留，现代 reader 移除后释放没有会话、重连、请求或 relay 责任且未被接管保留的 client。Host 边界或移除 root 释放接管保留。
 
 - 未派发 stop/delete：确认新 Host 的有效接管后取消共享清理，旧 Host 仅 detach，原画布、会话身份和 Supervisor 保留。
 - 已派发 stop/delete：这些动作不可回滚，先结算已派发操作及读者、存储责任，再向新 Host 提供一致共享状态；不承诺原执行恢复，旧快照不得复活已删 binding，迟到清理不得覆盖接管后的新状态。
@@ -100,4 +108,15 @@ root 提交锁端口为 SHA256(canonical filename) 映射到 20000–39999；节
 
 首轮新增场景 /tmp/dsc319r1 的最后离开退出事实已观察，但重新开启后的并发 reset 在两条旧绑定删除未确认处失败；不将该轮称为通过。受控 Host 回归确认等待进程退出期间的旧页面保存可重建清空 root，保存屏蔽已前移到边界结算后、直接清空前；第二轮 /tmp/dsc319r2、第三轮 /tmp/dsc319r3 和最终 /tmp/dsc319r4 均完整通过。初轮 /tmp/pr319-smoke-r1.log 和原失败工件保留。该受控验证确定保存保护必要性，不把日志中未逐事件记录的页面调用顺序写成已经证明的首轮唯一原因。
 
-接管验收新增四个阶段对照：stop/delete 派发前保留原执行，派发后结算不可撤销动作，idle 等待中接管原进程并让旧窗口切换成功，不可取消关闭后正常建立运行时。还须验证实际 Host 自动恢复、接管失败、接管后的新执行与迟到清理竞争、multi-root 部分接管，以及无接管仍确认原 PID 消失的对照。本次为文档与 review 口径更新，未修改运行时代码或运行新增接管验收；具体接管协议未验证，不沿用旧测试通过宣称完成。
+历史文档澄清时提出的接管验收新增四个阶段对照：stop/delete 派发前保留原执行，派发后结算不可撤销动作，idle 等待中接管原进程并让旧窗口切换成功，不可取消关闭后正常建立运行时。还须验证实际 Host 自动恢复、接管失败、接管后的新执行与迟到清理竞争、multi-root 部分接管，以及无接管仍确认原 PID 消失的对照。当时仅同步文档与 review 口径，未实现或验证接管；后续结果见下一节。
+
+
+### PR319 接管协调的新增证据（2026-10-11）
+
+本轮处理评论 `6109671593`，输入 head `6fd61651`。Node 22/Linux 下共享 store 20/20 与完整 Host 634/634 通过；Host 6 项新增回归经实际自动恢复调度和 store 验证派发前保留、派发后等待结算及旧 binding 不复活、失败 hello 释放连接、现代 reader/control 保留与释放、multi-root 接管只解除对应 PID。独立子进程 store 对照验证有效 preparing 接管、settling 等待、idle 确认及无效 PID 确认不交接。新增两项 reset 回归分别核对协商与 busy discovery 的连接重置只重试、保留参与记录，不把未知身份判成失效；连续三次 store 全套各 20/20。
+
+额外用 `DEV_SESSION_CANVAS_TAKEOVER_NATIVE=1` 运行实际 Host 与最新源码的独立 Supervisor 3/3：实际 owner/profile hello 确认原 PID 的 idle 接管，旧 Host 无需等该 PID 消失即完成模式切换；同一 Supervisor 新建真实 Linux native Terminal，旧保存不删除其 binding，实际 attach 仍 live，测试最后结算该新会话；移除 root 释放接管保留的空进程控制连接。不可取消关闭对照实际执行 Supervisor prepareForShutdown，已关闭 listener 不能作为 PID 退出，joining Host 不保留失败 client、不宣称接管，直到原进程退出后才能正常登记；无接管同样须等待原 PID 消失。后两项测试刻意在真实 shutdown report settled 后保持测试子进程，分别检查监听关闭和 PID 消失，最后只退出测试自身子进程。
+
+真实独立 VS Code 双窗口场景 `/tmp/dsc319takeover3`、`/tmp/pr319-takeover-smoke-final3.log` exit 0，复验共享结构、双向 I/O、PTY resize、stop/delete、非最后切换保留和最后无接管自然退出。该 smoke 未新增四个阶段的 UI 受控暂停；四阶段交错来自实际 Host/store 与独立 Supervisor 的定向回归，不能称为新增真实双窗口四阶段 UX 验收。typecheck、root ownership/owner handshake、startup profile/reader client、completed-history、localization、multi-root composition 通过，未运行全量 npm test。新输入和日志 SHA256 见 `docs/references/shared-root-canvas/pr319-takeover-evidence.json`，保留旧失败复现与上轮证据，不追认旧 head 已实现接管。
+
+修订说明：接管协调从已确认规则落到独立参与 listener、store ready、Host 分阶段退出与原 PID 交接。跨平台/Remote SSH/真实多 root 及高频成本继续保留原验证边界。
