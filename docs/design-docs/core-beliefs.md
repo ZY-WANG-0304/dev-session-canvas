@@ -387,3 +387,5 @@ owner settled 与 Host 最终保存是不同承诺；删除的 pending 拒绝必
 删除runtime前须先关闭Host输入准入并收口已派发写入；异步取得client后应复查准入与session身份。同runtime的Host投影重建必须共享准入、在途写入和删除状态，不能把投影对象变化当成新执行。删除失败或未知不能自动重开可能已退出的session输入，真实写入错误仍需呈现。依据见 `terminal-mouse-input-diagnostics.md`。
 
 0.26.1 从最新 main 独立准备并恢复完整发布门禁；旧准备分支的通过结果不能代替新输入验证。删除修复的受控测试不代证用户标题栏场景已人工复现。依据见 `public-marketplace-release-readiness.md` 第 9.0 节。
+
+发布门禁中的具名宿主失败，在完成证据定位前不得只因旁路或隔离用例通过就降低断言；草稿 CI 的 skipped 不代表验证通过。0.26.1 新主线证据见 `release-0-26-1-validation-blockers.md`。

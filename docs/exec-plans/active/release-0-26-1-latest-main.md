@@ -13,9 +13,10 @@
 - [x] (2026-10-11) 同步 manifest、lockfile、双 CHANGELOG、英中文 README/listing、手册、支持文档及契约。
 - [x] (2026-10-11) 提交静态输入，preflight、root/旧协议/完整 Host wiring、鼠标诊断、notifier typecheck/source/companion/locale 和独立双包检查通过。
 - [x] (2026-10-11) 精确 5c2cc2f7 的独立 clean-checkout VSIX 八场景全部通过。
-- [ ] 完整 verify 正在 /tmp/dsc261latest 运行；CI 首轮缺少 Chromium，补齐流程后重验。
+- [x] (2026-10-11) 已实际运行完整 verify 并逐次修正确定的 fixture/CI 前提缺口；完整命令仍未通过，最新双窗口删除与 systemd Canvas 阻塞未确认根因。
 - [x] (2026-10-11) 基于最新 main 推送，创建 PR #317 并启用预合并检查。
-- [ ] 回收最终完整验证和 CI 结果并更新 PR。
+- [x] (2026-10-11) 回收最终结果，登记具名阻塞并恢复 PR #317 草稿；Webview 423/424，失败项原样隔离复跑通过。
+- [ ] 后续定位宿主阻塞，完整重验最新预合并结果后再解除草稿。
 
 ## 意外与发现
 
@@ -27,7 +28,7 @@ release-0-26-1-prep、release-0-26-1-prep-resumed 和 release-0-26-1-from-main �
 
 ## 结果与复盘
 
-静态输入和定向验证已完成，精确 5c2cc2f7 的双 VSIX、八场景 clean-checkout 安装 smoke 已通过；完整 verify 与修复后 CI 尚未结束，不宣称可合并或发布。
+发布静态输入、确定的测试/CI 准备修正和草稿 PR 已交付。精确 5c2cc2f7 的双 VSIX/八场景 clean-checkout 通过，真实重开/多根定向通过；完整门禁仍未取得通过。双窗口删除后 owner 终态与 systemd Canvas 就绪问题已登记正式阻塞文档，Webview 全套首败仍保留。不得合并或发布，不继承旧版本豁免。
 
 ## 上下文与定向
 
@@ -106,3 +107,11 @@ PR #317 首轮预合并 CI run 38122050123 六目标资产成功，但完整验�
 双窗口第二次运行已越过启动拒绝，在 owner registry 断言失败：registry 含第一次失败 Terminal session b9b540d2，而当前节点绑定 bb9b6bc0。该场景固定使用 checkout/.debug 路径并删除 profile，忽略全局 DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT，因此第二轮实际复用了第一轮持久运行时地址。先修正 runTwoWindowSharedRuntimeScenario 使用统一 smokeDebugRoot，在全新 /tmp/d26lrest3 重验，保留 registry/session 身份断言，不直接追认为产品故障或已确认纯环境问题。
 
 修订记录：2026-10-11，记录两轮双窗口精确 session 证据，统一其场景目录配置以支持真正隔离重验。
+
+## 收口结果与当前阻塞
+
+最新隔离双窗口已通过附着、双向输入、resize 和 Terminal 停止，但 attacher 删除 Agent 后 owner 30 秒内仍保留 live/waiting-input，原 stopped/history-restored/清绑定断言失败；根因待定位。systemd-user-real-reopen setup exit 0，verify 的 editor Canvas ready 20 秒超时，后续 fallback 与 Remote SSH 尚未执行。Webview 全套 423 passed / 1 failed（12.4 分钟），主题用例在 openHarness ready 5 秒超时；首次 trace/截图保存到 /tmp/dsc261latest-theme-first-failure，原参数隔离复跑 1 passed，不追认为全套通过。
+
+正式事实和后续要求见 docs/design-docs/release-0-26-1-validation-blockers.md，技术债已登记。PR #317 恢复草稿，过期 CI 运行已结束；草稿跳过不作为通过。无产品修复、无发布 tag、无渠道写入，原未跟踪 image.png 保留。未来解除草稿时必须基于最新 main rebase，并对最新预合并结果运行 preflight 和完整 verify。现有通过证据只按各自输入与声明范围保留，不外推到当前完整门禁。
+
+修订记录：2026-10-11，完成发布材料和草稿交付，记录独立宿主阻塞与 Webview 首败/原样复跑结果；后续产品调查不混入本次静态发布收口。
