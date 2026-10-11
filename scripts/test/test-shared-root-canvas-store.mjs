@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { fork } from 'node:child_process';
@@ -174,6 +175,130 @@ try {
     const persisted = JSON.parse(await readFile(filename, 'utf8'));
     assert.match(persisted.state.nodes[0].metadata.runtimeSessionId, /^runtime-[ab]$/);
   });
+  const participantWorkerPath = path.join(temporary, 'participant-worker.cjs');
+  await writeFile(participantWorkerPath, `
+    const { SharedRootCanvasStore } = require(${JSON.stringify(modulePath)});
+    const [filename, initial] = process.argv.slice(2);
+    const store = new SharedRootCanvasStore(filename, JSON.parse(initial), () => {}, () => {});
+    let release;
+    process.on('message', async command => {
+      if (command === 'release') { release?.(); return; }
+      try {
+        if (command === 'dispose') { store.dispose(); process.send({ type: 'disposed' }); process.disconnect(); return; }
+        await store.depart(async last => {
+          process.send({ type: 'decision', last });
+          if (command === 'leave-gated') await new Promise(resolve => { release = resolve; });
+          if (last) await store.publish({ ...JSON.parse(initial), nodes: [] });
+          await store.flush();
+        });
+        process.send({ type: 'done' }); store.dispose(); process.disconnect();
+      } catch (error) { console.error(error); store.dispose(); process.exit(1); }
+    });
+    store.flush().then(() => process.send({ type: 'ready' }), error => { console.error(error); process.exit(1); });
+  `);
+  function participantWorker(filename, initial) {
+    const child = fork(participantWorkerPath, [filename, JSON.stringify(initial)],
+      { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+    children.push(child);
+    const inbox = [];
+    child.on('message', message => inbox.push(message));
+    return { child, inbox, async take(type) {
+      await until(() => inbox.some(message => message.type === type));
+      return inbox.splice(inbox.findIndex(message => message.type === type), 1)[0];
+    }, exited: new Promise((resolve, reject) => child.once('exit', code => code === 0 ? resolve() : reject(new Error('worker exit ' + code)))) };
+  }
+  async function seedParticipantRoot(name) {
+    const filename = path.join(temporary, name, 'canvas-state.json');
+    const initial = { ...empty(), nodes: [note('shared')] };
+    const seed = new SharedRootCanvasStore(filename, initial, () => {}, () => {}); stores.push(seed);
+    await seed.publish(initial); seed.dispose();
+    return { filename, initial };
+  }
+  await check('independent concurrent departures preserve the non-last root and clear exactly once', async () => {
+    const { filename, initial } = await seedParticipantRoot('concurrent-departures');
+    const workers = [participantWorker(filename, initial), participantWorker(filename, initial)];
+    await Promise.all(workers.map(worker => worker.take('ready')));
+    for (const worker of workers) worker.child.send('leave');
+    const decisions = await Promise.all(workers.map(worker => worker.take('decision')));
+    assert.deepEqual(decisions.map(value => value.last).sort(), [false, true]);
+    await Promise.all(workers.map(worker => worker.exited));
+    assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes.length, 0);
+  });
+  await check('new independent participant waits for last cleanup and sees the cleared root', async () => {
+    const { filename, initial } = await seedParticipantRoot('join-during-departure');
+    const leaving = participantWorker(filename, initial); await leaving.take('ready');
+    leaving.child.send('leave-gated'); assert.equal((await leaving.take('decision')).last, true);
+    const joining = participantWorker(filename, initial);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert(!joining.inbox.some(message => message.type === 'ready'), 'admission is blocked until final cleanup');
+    leaving.child.send('release'); await leaving.exited; await joining.take('ready');
+    assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes.length, 0);
+    joining.child.send('leave'); assert.equal((await joining.take('decision')).last, true); await joining.exited;
+  });
+  await check('ordinary independent disposal preserves the root and leaves the peer last', async () => {
+    const { filename, initial } = await seedParticipantRoot('ordinary-departure');
+    const first = participantWorker(filename, initial), peer = participantWorker(filename, initial);
+    await Promise.all([first.take('ready'), peer.take('ready')]);
+    first.child.send('dispose'); await first.exited;
+    assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes[0].id, 'shared');
+    peer.child.send('leave'); assert.equal((await peer.take('decision')).last, true); await peer.exited;
+  });
+  await check('failed last cleanup keeps membership and can be retried under admission', async () => {
+    const { filename, initial } = await seedParticipantRoot('failed-departure');
+    const store = new SharedRootCanvasStore(filename, initial, () => {}, () => {}); stores.push(store);
+    await assert.rejects(store.depart(async last => { assert.equal(last, true); throw new Error('controlled failure'); }), /controlled failure/);
+    const peer = new SharedRootCanvasStore(filename, initial, () => {}, () => {}); stores.push(peer); await peer.flush();
+    await peer.depart(async last => { assert.equal(last, false); });
+    await store.depart(async last => { assert.equal(last, true); await store.publish(empty()); });
+    assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes.length, 0);
+    await assert.rejects(store.mutate('shared', async () => {}), /left/);
+  });
+  await check('crashed independent participant is pruned only after connection refusal', async () => {
+    const { filename, initial } = await seedParticipantRoot('crashed-participant');
+    const crashed = participantWorker(filename, initial); await crashed.take('ready');
+    // Deliberately terminate only this test's child to exercise the OS-released proof listener.
+    const dead = new Promise(resolve => crashed.child.once('exit', resolve));
+    crashed.exited.catch(() => {});
+    crashed.child.kill('SIGKILL'); await dead;
+    const store = new SharedRootCanvasStore(filename, initial, () => {}, () => {}); stores.push(store);
+    await store.depart(async last => { assert.equal(last, true); });
+  });
+  await check('unconfirmed participant identity refuses cleanup without altering the root', async () => {
+    const { filename, initial } = await seedParticipantRoot('invalid-participant');
+    const store = new SharedRootCanvasStore(filename, initial, () => {}, () => {}); stores.push(store); await store.flush();
+    const directory = filename + '.participants';
+    const token = '00000000-0000-0000-0000-000000000000';
+    await writeFile(path.join(directory, token + '.json'), JSON.stringify({ token, port: 123 }));
+    await assert.rejects(store.depart(async () => assert.fail('unconfirmed participation cannot clear')), /Invalid/);
+    assert.equal(JSON.parse(await readFile(filename, 'utf8')).state.nodes.length, 1);
+    await rm(path.join(directory, token + '.json'));
+    await store.depart(async last => { assert.equal(last, true); });
+  });
+
+  await check('colliding multi-root admission ports reuse the held lease without deadlocking', async () => {
+    const hashes = new Map();
+    let filenames;
+    for (let index = 0; index <= 10000; index++) {
+      const filename = path.join(temporary, 'collision-' + index, 'canvas-state.json');
+      const identity = process.platform === 'win32' ? filename.toLowerCase() : filename;
+      const port = 10000 + createHash('sha256').update(identity).digest().readUInt32BE(0) % 10000;
+      if (hashes.has(port)) { filenames = [hashes.get(port), filename]; break; }
+      hashes.set(port, filename);
+    }
+    assert(filenames);
+    const pair = filenames.map(filename => {
+      const store = new SharedRootCanvasStore(filename, empty(), () => {}, () => {}); stores.push(store); return store;
+    });
+    await Promise.all(pair.map(store => store.publish(empty())));
+    assert.equal(pair[0].admissionPort, pair[1].admissionPort);
+    const held = new Set();
+    await pair[0].depart(async last => {
+      assert.equal(last, true);
+      await pair[1].depart(async alsoLast => { assert.equal(alsoLast, true); assert.equal(held.size, 1); }, held);
+    }, held);
+    assert.equal(held.size, 0);
+  });
+
   console.log(`Shared root Canvas store: ${passed}/${passed} passed`);
 } finally {
   for (const store of stores) store.dispose();

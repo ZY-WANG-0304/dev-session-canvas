@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -7951,8 +7952,298 @@ test('mode switch warnings describe each direction without immediately clearing 
         defaultSurfaceChanged: false, filesFeatureEnabledChanged: false });
     }
     assert.match(messages[0], /Enabling.*sessions and content will not be retained/);
-    assert.match(messages[1], /Disabling.*when the Canvas closes/);
+    assert.match(messages[1], /Disabling.*only when the last enabled window explicitly disables persistence/);
   } finally { testWindow.showWarningMessage = warning; testL10n.t = translate; }
+});
+
+test('review PR319 deferred execution snapshot must not resurrect a remotely deleted Note', async () => {
+  const f = await persistenceFixture();
+  let peer;
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    delete f.host.flushDeferredCanvasStatePersist;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state,
+      scheduleRestoreLiveRuntimeSessions() {} });
+    const note = { id: 'deleted-note', kind: 'note', title: 'Note', status: 'idle', summary: '',
+      position: { x: 0, y: 0 }, size: { width: 300, height: 200 }, metadata: { note: { content: 'body' } } };
+    f.host.state = { ...f.host.state, nodes: [...f.host.state.nodes, note] };
+    await f.host.persistState();
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    peer = new store.constructor(f.rootFile, structuredClone(f.host.state), () => {}, error => { throw error; });
+    // This is the real deferred persistence route used by flushLiveExecutionState.
+    await f.host.persistState({ mode: 'deferred', reason: 'live-execution-state' });
+    f.host.clearDeferredCanvasStatePersistTimer();
+    const next = structuredClone(f.host.state);
+    next.nodes = next.nodes.filter(node => node.id !== note.id);
+    await peer.publish(next);
+    store.changed();
+    assert.equal(f.host.state.nodes.some(node => node.id === note.id), false);
+    await f.host.flushDeferredCanvasStatePersist('controlled-interleaving');
+    await f.host.flushSharedRootCanvasStores();
+    const saved = (await f.read(f.rootFile)).state;
+    assert.equal(saved.nodes.some(node => node.id === note.id), false, 'remote deletion must survive deferred output persistence');
+  } finally { peer?.dispose(); await f.cleanup(); }
+});
+
+test('review PR319 stop projection must retain remote launch configuration', async () => {
+  const f = sharedCanvasFixture();
+  const metadata = { lifecycle: 'waiting-input', persistenceMode: 'live-runtime', attachmentState: 'attached-live',
+    runtimeSessionId: 'original-shared', runtimeStoragePath: '/controlled/runtime', liveSession: true,
+    recentOutput: 'local tail', customLaunchCommand: 'old command' };
+  const node = { id: 'shared-agent', kind: 'agent', title: 'Agent', status: 'waiting-input', summary: 'local tail',
+    position: { x: 0, y: 0 }, size: { width: 400, height: 300 }, metadata: { agent: metadata } };
+  f.host.state.nodes = [node];
+  f.host.agentSessions.set(node.id, { owner: 'supervisor', runtimeSessionId: metadata.runtimeSessionId,
+    runtimeStoragePath: metadata.runtimeStoragePath, lifecycleStatus: 'waiting-input', buffer: 'local tail', cols: 80, rows: 24 });
+  const stopped = { ...node, status: 'stopped', metadata: { agent: { ...metadata, lifecycle: 'stopped',
+    runtimeSessionId: undefined, liveSession: false, persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
+    customLaunchCommand: 'peer new command' } } };
+  f.host.applySharedRootCanvasState(f.root, { ...f.host.state, nodes: [stopped] });
+  assert.equal(f.host.state.nodes[0].metadata.agent.customLaunchCommand, 'peer new command');
+});
+
+
+test('review PR319 stop then local save must not revert remote launch configuration on disk', async () => {
+  const f = await persistenceFixture();
+  let peer;
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state,
+      scheduleRestoreLiveRuntimeSessions() {} });
+    const agent = f.host.state.nodes.find(node => node.kind === 'agent');
+    agent.status = 'waiting-input';
+    agent.metadata.agent = { lifecycle: 'waiting-input', persistenceMode: 'live-runtime',
+      attachmentState: 'attached-live', runtimeSessionId: 'original-shared',
+      runtimeStoragePath: '/controlled/runtime', liveSession: true, customLaunchCommand: 'old command' };
+    await f.host.persistState();
+    f.host.agentSessions.set(agent.id, { owner: 'supervisor', runtimeSessionId: 'original-shared',
+      runtimeStoragePath: '/controlled/runtime', lifecycleStatus: 'waiting-input', buffer: '', cols: 80, rows: 24 });
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    peer = new store.constructor(f.rootFile, structuredClone(f.host.state), () => {}, error => { throw error; });
+    const remote = structuredClone(f.host.state);
+    const stopped = remote.nodes.find(node => node.id === agent.id);
+    stopped.status = 'stopped';
+    stopped.metadata.agent = { ...stopped.metadata.agent, lifecycle: 'stopped', runtimeSessionId: undefined,
+      liveSession: false, persistenceMode: 'snapshot-only', attachmentState: 'history-restored',
+      customLaunchCommand: 'peer new command' };
+    await peer.publish(remote);
+    store.changed();
+    // An unrelated canvas save runs while this Host's original reader is finishing.
+    f.host.state = { ...f.host.state, nodes: f.host.state.nodes.map(node => node.id === agent.id
+      ? { ...node, position: { x: 40, y: 30 } } : node) };
+    await f.host.persistState();
+    const saved = (await f.read(f.rootFile)).state.nodes.find(node => node.id === agent.id);
+    assert.equal(saved.metadata.agent.customLaunchCommand, 'peer new command');
+  } finally { peer?.dispose(); await f.cleanup(); }
+});
+
+
+test('review PR319 deferred output save preserves peer title and Note body edits', async () => {
+  const f = await persistenceFixture();
+  let peer;
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    delete f.host.flushDeferredCanvasStatePersist;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {} });
+    const note = { id: 'edited-note', kind: 'note', title: 'old title', status: 'idle', summary: '',
+      position: { x: 0, y: 0 }, size: { width: 300, height: 200 }, metadata: { note: { content: 'old body' } } };
+    f.host.state.nodes.push(note);
+    await f.host.persistState();
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    peer = new store.constructor(f.rootFile, structuredClone(f.host.state), () => {}, error => { throw error; });
+    await f.host.persistState({ mode: 'deferred', reason: 'live-execution-state' });
+    f.host.clearDeferredCanvasStatePersistTimer();
+    const next = structuredClone(f.host.state);
+    const edited = next.nodes.find(node => node.id === note.id);
+    edited.title = 'peer title'; edited.metadata.note.content = 'peer body';
+    await peer.publish(next); store.changed();
+    await f.host.flushDeferredCanvasStatePersist('controlled-interleaving');
+    await f.host.flushSharedRootCanvasStores();
+    for (const state of [f.host.state, (await f.read(f.rootFile)).state, (await f.read()).state]) {
+      const saved = state.nodes.find(node => node.id === note.id);
+      assert.equal(saved.title, 'peer title'); assert.equal(saved.metadata.note.content, 'peer body');
+    }
+  } finally { peer?.dispose(); await f.cleanup(); }
+});
+
+test('review PR319 non-last cleanup preserves a peer runtime created during detach', async () => {
+  const f = await persistenceFixture({ candidate: true });
+  let peer;
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    f.host.state = { ...f.host.state, nodes: [] };
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {} });
+    await f.host.persistState();
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    peer = new store.constructor(f.rootFile, structuredClone(f.host.state), () => {}, error => { throw error; });
+    await peer.flush();
+    const reached = deferred(), gate = deferred();
+    f.host.flushAllExecutionSessionStatesForHostBoundary = async () => { reached.resolve(); await gate.promise; };
+    delete f.host.collectPersistedLiveRuntimeSessions;
+    const deleted = [];
+    f.host.deleteRuntimeSupervisorSessions = async bindings => { deleted.push(...bindings.map(binding => binding.sessionId)); };
+    f.host.readStartupConfiguration = () => ({ ...f.host.appliedStartupConfiguration, runtimePersistenceEnabled: false });
+    const cleanup = f.host.cleanupRuntimePersistenceModeSwitch();
+    await reached.promise;
+    const terminal = { id: 'new-peer-terminal', kind: 'terminal', title: 'Peer terminal', status: 'running', summary: '',
+      position: { x: 0, y: 0 }, size: { width: 400, height: 300 }, metadata: { terminal: {
+        lifecycle: 'running', persistenceMode: 'live-runtime', attachmentState: 'attached-live', liveSession: true,
+        runtimeSessionId: 'new-peer-runtime', runtimeStoragePath: '/controlled/peer-runtime', runtimeBackend: 'legacy-detached'
+      } } };
+    await peer.publish({ ...f.host.state, nodes: [terminal] }); store.changed();
+    gate.resolve(); await cleanup;
+    const saved = (await f.read(f.rootFile)).state;
+    assert.equal(saved.nodes[0].metadata.terminal.runtimeSessionId, 'new-peer-runtime');
+    assert.deepEqual(deleted, []);
+    assert.equal(f.host.state.nodes.length, 0);
+    // A setting reverted during the awaited departure must register a fresh enabled Host.
+    f.host.applyWorkbenchContextKeys = () => {};
+    f.host.applyStartupConfiguration({ ...f.host.appliedStartupConfiguration, runtimePersistenceEnabled: true });
+    assert.equal(f.host.sharedRootCanvasStores.size, 0);
+    await f.host.persistState();
+    assert.notStrictEqual(f.host.sharedRootCanvasStores.get(f.root), store);
+    await assert.rejects(store.mutate(terminal.id, async () => {}), /closed/);
+  } finally { peer?.dispose(); await f.cleanup(); }
+});
+
+test('review PR319 multi-root mode switch deletes only the last-participant root bindings', async () => {
+  const f = await persistenceFixture();
+  let peer;
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    const secondRoot = path.join(f.directory, 'other-root'); await mkdir(secondRoot);
+    const folders = [{ path: f.root, name: 'root' }, { path: secondRoot, name: 'other' }];
+    const rootState = structuredClone(f.host.state);
+    const owner = root => createRuntimeOwnerDescriptor({ environmentKey: 'a'.repeat(64), userStorageScopeKey: 'b'.repeat(64),
+      rootPath: root, generation: resolveRootRuntimeSupervisorGeneration(EXECUTION_CANDIDATE_PROFILE) });
+    const rootStates = folders.map(({ path: rootPath }, index) => {
+      const state = structuredClone(rootState);
+      state.nodes = [state.nodes.find(node => node.kind === 'terminal')];
+      state.nodes[0].metadata.terminal = { lifecycle: 'running', persistenceMode: 'live-runtime', liveSession: true,
+        runtimeSessionId: 'root-runtime-' + index, runtimeStoragePath: '/controlled/runtime-' + index,
+        runtimeOwner: owner(rootPath), runtimeBackend: 'legacy-detached' };
+      return { rootPath, state };
+    });
+    f.host.getCanvasPersistenceWorkspaceFolders = () => folders;
+    f.host.getMultiRootWorkspaceFoldersForComposition = () => folders;
+    f.host.lastLoadedRootLocalStates = rootStates;
+    f.host.state = composeMultiRootCanvasState({ workspaceFolders: folders, rootStates });
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {} });
+    await f.host.persistState();
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    peer = new store.constructor(f.host.getRootLocalCanvasSnapshotPath(f.root), rootStates[0].state, () => {}, error => { throw error; });
+    await peer.flush();
+    delete f.host.collectPersistedLiveRuntimeSessions;
+    f.host.captureSharedSupervisorProcesses = async roots => {
+      assert.deepEqual([...roots], [secondRoot]); return new Set();
+    };
+    const deleted = [];
+    f.host.deleteRuntimeSupervisorSessions = async bindings => { deleted.push(...bindings.map(binding => binding.sessionId)); };
+    f.host.readStartupConfiguration = () => ({ ...f.host.appliedStartupConfiguration, runtimePersistenceEnabled: false });
+    await f.host.cleanupRuntimePersistenceModeSwitch();
+    assert.deepEqual(deleted, ['root-runtime-1']);
+    assert.equal((await f.read(f.host.getRootLocalCanvasSnapshotPath(f.root))).state.nodes[0].metadata.terminal.runtimeSessionId, 'root-runtime-0');
+    assert.equal((await f.read(f.host.getRootLocalCanvasSnapshotPath(secondRoot))).state.nodes.length, 0);
+    assert.equal(f.host.state.nodes.length, 0);
+  } finally { peer?.dispose(); await f.cleanup(); }
+});
+
+test('review PR319 last-participant save failure retains membership and failure result', async () => {
+  const f = await persistenceFixture();
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {},
+      captureSharedSupervisorProcesses: async () => new Set(), prepareForHostBoundary: async () => {} });
+    await f.host.persistState();
+    const store = f.host.sharedRootCanvasStores.get(f.root);
+    f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+    f.host.persistState = async () => { throw new Error('controlled final save failure'); };
+    await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /final save failure/);
+    await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /final save failure/);
+    await store.depart(async last => { assert.equal(last, true); });
+  } finally { await f.cleanup(); }
+});
+
+test('review PR319 cleanup drains this Host admitted starts before acquiring root admission', async () => {
+  const f = await persistenceFixture();
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {},
+      captureSharedSupervisorProcesses: async () => new Set(), prepareForHostBoundary: async () => {} });
+    await f.host.persistState();
+    const gate = deferred(), admitted = deferred();
+    const node = f.host.state.nodes.find(value => value.kind === 'terminal');
+    const starting = f.host.withSharedExecutionMutation(node.id, async () => { admitted.resolve(); await gate.promise; });
+    await admitted.promise;
+    f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+    const cleanup = f.host.cleanupRuntimePersistenceModeSwitch();
+    await assert.rejects(f.host.withSharedExecutionMutation(node.id, async () => {}), /leaving/);
+    gate.resolve(); await starting; await cleanup;
+    assert.equal(f.host.state.nodes.length, 0);
+  } finally { await f.cleanup(); }
+});
+
+test('review PR319 process exit verification waits for original PID even with empty registry', async () => {
+  const child = spawn(process.execPath, ['-e',
+    "process.stdout.write('ready'); process.stdin.resume(); process.stdin.on('end', () => process.exit(0));"],
+    { stdio: ['pipe', 'pipe', 'inherit'] });
+  const exit = new Promise((resolve, reject) => {
+    child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('child exit ' + code)));
+  });
+  await new Promise(resolve => child.stdout.once('data', resolve));
+  try {
+    const f = sharedCanvasFixture();
+    f.host.state.nodes = [];
+    let settled = false;
+    const verification = f.host.waitForSharedSupervisorProcessesToExit(new Set([child.pid])).then(() => { settled = true; });
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(settled, false, 'empty registry cannot prove the process exited');
+    child.stdin.end(); await exit; await verification;
+    assert.equal(settled, true);
+  } finally { if (child.exitCode === null) { child.stdin.end(); await exit; } }
+});
+
+test('review PR319 late page save during original process exit cannot recreate the cleared root', async () => {
+  const f = await persistenceFixture();
+  try {
+    delete f.host.isRuntimePersistenceEnabled;
+    f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
+    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {},
+      captureSharedSupervisorProcesses: async () => new Set(), prepareForHostBoundary: async () => {} });
+    await f.host.persistState();
+    f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
+    f.host.waitForSharedSupervisorProcessesToExit = async () => {
+      assert.equal((await f.read(f.rootFile)).state.nodes.length, 0);
+      assert(f.host.state.nodes.length > 0, 'old page state can still arrive during shutdown');
+      await f.host.persistState({ reason: 'late-page-state' });
+      assert.equal((await f.read(f.rootFile)).state.nodes.length, 0);
+    };
+    await f.host.cleanupRuntimePersistenceModeSwitch();
+    assert.equal((await f.read(f.rootFile)).state.nodes.length, 0);
+  } finally { await f.cleanup(); }
+});
+
+test('review PR319 deactivation waits for departure even if settings were reverted while cleanup ran', async () => {
+  const f = sharedCanvasFixture(true);
+  const gate = deferred();
+  f.host.modeSwitchCleanup = gate.promise;
+  f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: true });
+  const effects = [];
+  Object.assign(f.host, { closeRuntimeSupervisorEventAdmission() { effects.push('admission-closed'); },
+    prepareOrdinaryDeactivation: async () => { effects.push('deactivated'); },
+    flushSharedRootCanvasStores: async () => {}, disposeSharedRootCanvasStores() { effects.push('stores-disposed'); } });
+  const closing = f.host.prepareForDeactivation();
+  await Promise.resolve(); await Promise.resolve();
+  assert.deepEqual(effects, []);
+  gate.resolve(); await closing;
+  assert.deepEqual(effects, ['admission-closed', 'deactivated', 'stores-disposed']);
 });
 
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;

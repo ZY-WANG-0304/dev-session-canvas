@@ -202,26 +202,36 @@ async function runOwnerWindow() {
   assert(switchTerminal);
   await startExecution(switchTerminal.id, 'terminal', { cols: 92, rows: 28 });
   await waitForSnapshot(current => findOptionalNodeById(current, switchTerminal.id)?.metadata?.terminal?.liveSession === true, 30000);
-  await writeJsonFile(sharedPath('owner-switch-live-terminal.json'), { nodeId: switchTerminal.id });
+  const originalSwitch = findNodeById(await getDebugSnapshot(), switchTerminal.id).metadata.terminal;
+  const originalProcesses = (await getRuntimeSupervisorState()).observedRootSupervisorProcesses.filter(({ pid }) => processExists(pid));
+  assert(originalProcesses.length > 0, 'Capture original validated Supervisor PIDs');
+  await simulateRuntimeReload(); // Ordinary reload must preserve the original shared execution.
+  await openCanvasEditor();
+  await waitForSnapshot(current => findOptionalNodeById(current, switchTerminal.id)?.metadata?.terminal?.runtimeSessionId === originalSwitch.runtimeSessionId, 30000);
+  assert(originalProcesses.every(({ pid }) => processExists(pid)));
+  await writeJsonFile(sharedPath('owner-switch-live-terminal.json'), { nodeId: switchTerminal.id,
+    sessionId: originalSwitch.runtimeSessionId, processes: originalProcesses });
   await waitForJsonFile(sharedPath('attacher-saw-switch-terminal.json'), 60000);
   await setRuntimePersistenceEnabled(false);
   assert(findOptionalNodeById(await getDebugSnapshot(), switchTerminal.id), 'Setting change alone must retain the current Canvas');
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   await waitForSnapshot(current => current.state.nodes.length === 0, 30000);
-  await waitForRuntimeSupervisorSettled(0, 20000);
+  assert(originalProcesses.every(({ pid }) => processExists(pid)), 'Non-last departure retains Supervisor');
   await simulateRuntimeReload();
   await openCanvasEditor();
   await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'note', preferredPosition: { x: 100, y: 100 } } });
   const privateNote = (await getDebugSnapshot()).state.nodes.find(node => node.kind === 'note');
   assert(privateNote);
   await writeJsonFile(sharedPath('owner-private-note.json'), { nodeId: privateNote.id });
-  const otherPrivate = await waitForJsonFile(sharedPath('attacher-private-note.json'), 60000);
+  const otherPrivate = await waitForJsonFile(sharedPath('attacher-private-note.json'), 90000);
   assert(!findOptionalNodeById(await getDebugSnapshot(), otherPrivate.nodeId));
   await setRuntimePersistenceEnabled(true);
   assert(findOptionalNodeById(await getDebugSnapshot(), privateNote.id));
   snapshot = await simulateRuntimeReload();
   assert(!findOptionalNodeById(snapshot, privateNote.id));
   assert(!findOptionalNodeById(snapshot, otherPrivate.nodeId));
+  await writeJsonFile(sharedPath('owner-reenabled-state.json'), snapshot);
+  assert.equal(snapshot.state.nodes.length, 0, 'Re-enable loads the shared root cleared by the last participant');
   await writeJsonFile(sharedPath('owner-switched-back-on.json'), { ok: true });
   await waitForJsonFile(sharedPath('attacher-switched-back-on.json'), 60000);
 
@@ -354,12 +364,35 @@ async function runAttacherWindow() {
   await waitForSnapshot(current => findOptionalNodeById(current, switchTerminal.nodeId)?.metadata?.terminal?.liveSession === true, 30000);
   await writeJsonFile(sharedPath('attacher-saw-switch-terminal.json'), { ok: true });
   const ownerPrivate = await waitForJsonFile(sharedPath('owner-private-note.json'), 60000);
-  snapshot = await waitForSnapshot(current => current.state.nodes.length === 0, 30000);
+  snapshot = await waitForSnapshot(current => findOptionalNodeById(current, switchTerminal.nodeId)?.metadata?.terminal?.liveSession === true, 30000);
+  assert.strictEqual(findNodeById(snapshot, switchTerminal.nodeId).metadata.terminal.runtimeSessionId, switchTerminal.sessionId);
   assert(!findOptionalNodeById(snapshot, ownerPrivate.nodeId));
-  await waitForRuntimeSupervisorSettled(0, 20000);
+  assert(switchTerminal.processes.every(({ pid }) => processExists(pid)));
+  await sendExecutionInput(switchTerminal.nodeId, 'terminal', 'echo TWO_WINDOW_AFTER_OWNER_DETACH\r');
+  await resizeExecution(switchTerminal.nodeId, 'terminal', RESIZE_COLS, RESIZE_ROWS);
+  snapshot = await waitForSnapshot(current => {
+    const terminal = findOptionalNodeById(current, switchTerminal.nodeId)?.metadata?.terminal;
+    return terminal?.recentOutput?.includes('TWO_WINDOW_AFTER_OWNER_DETACH') &&
+      terminal.lastCols === RESIZE_COLS && terminal.lastRows === RESIZE_ROWS;
+  }, 30000);
+  const beforePeerStart = new Set(snapshot.state.nodes.map(node => node.id));
+  await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'terminal', preferredPosition: { x: 1000, y: 500 } } });
+  const peerTerminal = (await getDebugSnapshot()).state.nodes.find(node => node.kind === 'terminal' && !beforePeerStart.has(node.id));
+  assert(peerTerminal);
+  await startExecution(peerTerminal.id, 'terminal', { cols: 92, rows: 28 });
+  await waitForSnapshot(current => findOptionalNodeById(current, peerTerminal.id)?.metadata?.terminal?.liveSession === true, 30000);
+  await waitForRuntimeSupervisorSettled(2, 20000);
+  await writeJsonFile(sharedPath('attacher-after-owner-detach.json'), {
+    originalSessionId: switchTerminal.sessionId, originalProcesses: switchTerminal.processes,
+    peerNodeId: peerTerminal.id, outputAndResizeConfirmed: true
+  });
   await setRuntimePersistenceEnabled(false);
   await simulateRuntimeReload();
   await openCanvasEditor();
+  await waitForRuntimeSupervisorSettled(0, 20000);
+  for (const { pid } of switchTerminal.processes) assert(!processExists(pid), 'Last departure must confirm original Supervisor exit');
+  assert.equal((await getDebugSnapshot()).state.nodes.length, 0);
+  await writeJsonFile(sharedPath('attacher-last-departure.json'), { supervisorProcessesExited: switchTerminal.processes });
   await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'note', preferredPosition: { x: 200, y: 200 } } });
   const privateNote = (await getDebugSnapshot()).state.nodes.find(node => node.kind === 'note');
   assert(privateNote);
@@ -371,6 +404,8 @@ async function runAttacherWindow() {
   snapshot = await simulateRuntimeReload();
   assert(!findOptionalNodeById(snapshot, privateNote.id));
   assert(!findOptionalNodeById(snapshot, ownerPrivate.nodeId));
+  await writeJsonFile(sharedPath('attacher-reenabled-state.json'), snapshot);
+  assert.equal(snapshot.state.nodes.length, 0, 'Re-enable loads the cleared shared root');
   await writeJsonFile(sharedPath('attacher-switched-back-on.json'), { ok: true });
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await setRuntimePersistenceEnabled(false);
@@ -753,4 +788,9 @@ async function resolveRuntimeInputs() {
     process.env.DEV_SESSION_CANVAS_TWO_WINDOW_SHARED_DIR ||
     path.join(defaultArtifactDir, 'two-window-shared-runtime');
   await fs.mkdir(sharedDir, { recursive: true });
+}
+
+function processExists(pid) {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { if (error.code === 'ESRCH') return false; throw error; }
 }

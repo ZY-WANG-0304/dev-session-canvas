@@ -132,6 +132,7 @@ export class RuntimeSupervisorClient {
   private disposed = false;
   private buffer = '';
   private helloResult: RuntimeSupervisorHelloResult | undefined;
+  private lastHelloResult: RuntimeSupervisorHelloResult | undefined;
   private readonly expectedRuntimeOwner?: RuntimeOwnerDescriptorV1;
   private readonly pendingRequests = new Map<string, PendingSupervisorRequest<unknown>>();
   private readonly terminalReadConnections = new Map<string, TerminalReadConnection>();
@@ -219,6 +220,10 @@ export class RuntimeSupervisorClient {
       }, RUNTIME_SUPERVISOR_ERROR_CODES.clientNotConnected);
     }
     return this.helloResult;
+  }
+
+  public getLastHelloResult(): RuntimeSupervisorHelloResult | undefined {
+    return this.lastHelloResult;
   }
 
   public matchesRuntimeOwner(expected: RuntimeOwnerDescriptorV1 | undefined): boolean {
@@ -1094,11 +1099,13 @@ export class RuntimeSupervisorClient {
       throw new ExecutionCandidateHandshakeError('Runtime supervisor execution candidate profile or reader capability is unavailable.');
     }
     this.helloResult = result;
+    this.lastHelloResult = result;
   }
 
   private helloMatchesRuntimeOwner(result: RuntimeSupervisorHelloResult): boolean {
     try {
       return result.serverVersion === 1
+        && Number.isSafeInteger(result.pid) && result.pid > 0 && result.pid <= 0x7fffffff
         && runtimeOwnerDescriptorsEqual(this.expectedRuntimeOwner, result.runtimeOwner)
         && result.runtimeBackend === this.options.backend.kind
         && result.runtimeGuarantee === this.options.backend.guarantee

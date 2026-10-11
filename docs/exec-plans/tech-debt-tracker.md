@@ -690,11 +690,11 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 原 main a39cd8c1 的直接 Supervisor deleteSession 非保留路径取消所有 socket 的 Host 信用订阅，受控 8 项 direct-credit 终态为 0；诊断干预保留另一 socket 通道后为 1。原因果记录及脚本继续保留，不能把共享结构修复说成 Supervisor 独立 delete 通知契约已修改。
 
-用户确认共享 delete 在所有窗口移除节点，2026-10-11 已通过共享 root 结构提交/监听实现，并在 Linux 独立双窗口验证；stop 保留节点及原 reader 最终消费。旧 owner 保留 stopped 历史节点断言已按正式产品语义调整。共享结构、关闭模式 slot 隔离及旧定义下的切换测试已有有限证据；方案见 `docs/design-docs/runtime-shared-root-canvas-sync.md`，过程见 `docs/exec-plans/completed/runtime-shared-root-canvas-sync.md`。PR #319 review 后用户补充最后开启窗口切换关闭才清理共享会话并退出 Supervisor，新规则尚待实现及验证，不能从旧完成记录推导已收口；该产品缺口不作为本表中的非阻塞技术债降级。
+用户确认共享 delete 在所有窗口移除节点，2026-10-11 已通过共享 root 结构提交/监听实现，并在 Linux 独立双窗口验证；stop 保留节点及原 reader 最终消费。旧 owner 保留 stopped 历史节点断言已按正式产品语义调整。共享结构、关闭模式 slot 隔离及旧定义下的切换测试已有有限证据；方案见 `docs/design-docs/runtime-shared-root-canvas-sync.md`，过程见 `docs/exec-plans/completed/runtime-shared-root-canvas-sync.md`。PR #319 review 后用户补充最后开启窗口切换关闭才清理共享会话并退出 Supervisor，新规则现已通过独立开启 Host/root 登记、准入锁和原 hello PID 的退出检查实现，并有 Linux 单 root 最终双窗口、Host 628/628、store 15/15 和 owner handshake 47 项的有限验证。deferred delete/edit 交错和 reader 收尾配置保护亦有实际 Host/store 磁盘回归；首轮并发 reset 失败、后续保护及最终通过分别保留。接续计划 `docs/exec-plans/completed/pr319-review-repairs.md` 和 `docs/references/shared-root-canvas/pr319-review-repair-evidence.json` 固定输入及证据，不将新规则缺口降级为技术债。
 
 ### 后续验证与存储成本（未验证）
 
-责任落点 `panel/sharedRootCanvasStore.ts` 与双窗口 smoke。新增真实结构同步/切换场景本轮仅验证 Linux 单 root；macOS/Windows/Remote SSH 和真实多 root 两窗口需后续具名验证，不能借 Node API 或已有 helper 通过宣称这些组合已验。每 root 100ms 轮询和完整 JSON 比较/写入在高频大画布下的成本尚未量化；出现实际规模瓶颈时再以固定负载评估，不先承诺恒定延迟。TCP 锁哈希碰撞保守串行、外部端口占用有界失败，需在对应平台受控验证。直接绕过共享画布调用 Supervisor delete 的其他有效消费者仍按历史诊断范围，不外推产品共享删除已补齐所有通道。
+责任落点 `panel/sharedRootCanvasStore.ts` 与双窗口 smoke。新增真实结构同步/切换场景本轮仅验证 Linux 单 root；macOS/Windows/Remote SSH 和真实多 root 两窗口需后续具名验证，不能借 Node API 或已有 helper 通过宣称这些组合已验。每 root 100ms 轮询和完整 JSON 比较/写入在高频大画布下的成本尚未量化；出现实际规模瓶颈时再以固定负载评估，不先承诺恒定延迟。TCP 锁哈希碰撞保守串行，新增实际碰撞的多 root held-lease 回归通过；参与 probe 超时或身份变化、外部端口长期占用有界失败。root 准入最多等待 90 秒，原 Supervisor 采用 30 秒 idle shutdown，45 秒未确认原 PID 消失拒绝成功；PID 复用同样保守失败。这些机制仍需在对应原生平台验证。直接绕过共享画布调用 Supervisor delete 的其他有效消费者仍按历史诊断范围，不外推产品共享删除已补齐所有通道。
 
 ### completed-history 旧诊断断言（2026-10-11 已修正）
 

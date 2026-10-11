@@ -3,6 +3,7 @@ import * as net from 'net';
 import * as path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import type { CanvasPrototypeState } from '../common/protocol';
+import { SharedRootCanvasParticipants } from './sharedRootCanvasParticipants';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 const collections = new Set(['nodes', 'groups', 'edges', 'fileReferences', 'owners']);
@@ -88,6 +89,7 @@ export class SharedRootCanvasStore {
   private closed = false;
   private readonly filename: string;
   private readonly changed: () => void;
+  private readonly participants: SharedRootCanvasParticipants;
 
   constructor(filename: string, initial: CanvasPrototypeState,
     private readonly onState: (state: CanvasPrototypeState) => void,
@@ -98,6 +100,8 @@ export class SharedRootCanvasStore {
     this.confirmed = sharedCanvasState(snapshot?.state ?? initial);
     this.local = sharedCanvasState(initial);
     this.revision = snapshot?.sharedRevision;
+    this.participants = new SharedRootCanvasParticipants(this.filename);
+    this.tail = this.participants.ready.catch(error => { this.failure = error; this.onError(error); });
     this.changed = () => {
       if (this.closed) return;
       try { this.observe(this.read()); }
@@ -122,6 +126,7 @@ export class SharedRootCanvasStore {
     const item = { base, next };
     this.pending.push(item);
     const operation = this.tail.then(async () => {
+      if (this.failure) throw this.failure;
       const lease = await this.acquireLease();
       try {
         const snapshot = this.read();
@@ -153,19 +158,33 @@ export class SharedRootCanvasStore {
   async mutate<T>(nodeId: string, work: (current: CanvasPrototypeState) => Promise<T>): Promise<T> {
     await this.flush();
     if (this.closed) throw new Error('Shared Canvas subscription is closed.');
-    const lease = await this.acquireLease(nodeId);
-    try {
+    return this.participants.withAdmission(async () => {
+      const lease = await this.acquireLease(nodeId);
+      try {
+        const snapshot = this.read();
+        if (!snapshot) throw new Error('The shared Canvas disappeared before the execution mutation.');
+        this.observe(snapshot);
+        try { return await work(snapshot.state); }
+        finally { await this.flush(); }
+      } finally { await new Promise<void>((resolve, reject) => lease.close(error => error ? reject(error) : resolve())); }
+    });
+  }
+
+  get admissionPort(): number { return this.participants.admissionPort; }
+
+  async depart<T>(work: (last: boolean, current: CanvasPrototypeState) => Promise<T>, held?: Set<number>): Promise<T> {
+    await this.flush();
+    return this.participants.depart(async last => {
       const snapshot = this.read();
-      if (!snapshot) throw new Error('The shared Canvas disappeared before the execution mutation.');
       this.observe(snapshot);
-      try { return await work(snapshot.state); }
-      finally { await this.flush(); }
-    } finally { await new Promise<void>((resolve, reject) => lease.close(error => error ? reject(error) : resolve())); }
+      return work(last, snapshot?.state ?? this.confirmed);
+    }, held);
   }
 
   dispose(): void {
     this.closed = true;
     fs.unwatchFile(this.filename, this.changed);
+    this.participants.dispose();
   }
 
   private read(): Snapshot | undefined {

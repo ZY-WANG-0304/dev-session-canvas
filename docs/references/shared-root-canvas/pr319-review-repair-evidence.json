@@ -1,0 +1,94 @@
+{
+  "date": "2026-10-11",
+  "base": "a39cd8c19a93b87a14823fceee186499a212eb26",
+  "reviewedHead": "88a56d510e13069ab89bd0370c11f9d8974db6f5",
+  "source": "review 修复工作树；提交前采集，输入按文件 SHA256 固定",
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "9328ce0892f36a988f58d7d4d7d14c4ea3d613f8afe5cf6a68c4a53f9d677beb",
+    "extensions/vscode/dev-session-canvas/src/panel/sharedRootCanvasStore.ts": "e22186c351e5a491b165160f49449945e5c3b7cf4d3f1fc4fdae30e1fd9e9d92",
+    "extensions/vscode/dev-session-canvas/src/panel/sharedRootCanvasParticipants.ts": "a2a9e1e96b5e938aa6eeb11734f57e62dc3bba234352ef21c678d988b02bf4db",
+    "extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts": "c0ed4ea5eeb6c370f8b359837365c58cd700d5cd7c4fc3a335a19679acb8e2e4",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "1a4437e90b60e77cb446e7d1bc5581dd819a35903331fb2d359bd3611be94a2e",
+    "scripts/test/test-shared-root-canvas-store.mjs": "0b43ea54fb65decd0545b80de401e06f45485f625e9808004184165a305a1333",
+    "scripts/test/test-runtime-root-owner-handshake.mjs": "d85906c2bce63f30d56f1923cd2c7785142c3256e0dadcd9d046eb8ca69fcb60",
+    "tests/vscode-smoke/two-window-shared-runtime-tests.cjs": "24ccbcefc4ff50b3a2b2a13ef7fc28a8962156d7e71edf4c01a959e6bf3559b0"
+  },
+  "environment": {
+    "platform": "Linux x64",
+    "node": "v22.23.3",
+    "vscode": "1.141.0",
+    "executionAssetsSet": "/tmp/dsc-release-026-assets"
+  },
+  "validation": {
+    "typecheck": "passed",
+    "host": "628/628（含新增 review 回归 11 项）",
+    "sharedStore": "15/15（含独立进程离开、加入、crash 和实际哈希碰撞）",
+    "rootOwnerHandshake": "47 cases",
+    "runtimeRootOwnership": "passed",
+    "runtimeStartupProfile": "passed",
+    "runtimeCompletedHistory": "passed",
+    "localization": "passed",
+    "multiRootComposition": "passed",
+    "twoWindowSmoke": "passed, exit 0"
+  },
+  "finalSmoke": {
+    "artifacts": "/tmp/dsc319r4",
+    "log": "/tmp/pr319-smoke-final.log",
+    "logSha256": "a9b6009f3313643ac0dd6abb4b133e25562b40e2aaf1ba61b51538c8ceadda6c",
+    "originalRuntime": {
+      "nodeId": "terminal-5-2c3a7bc7-e365-4ff1-a8e4-2e0932a6b162",
+      "sessionId": "dd08b962-ff18-4b9a-b8b9-765b9ce2e144",
+      "processes": [
+        {
+          "rootPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+          "pid": 3497455
+        }
+      ]
+    },
+    "afterNonLastDetach": {
+      "originalSessionId": "dd08b962-ff18-4b9a-b8b9-765b9ce2e144",
+      "originalProcesses": [
+        {
+          "rootPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+          "pid": 3497455
+        }
+      ],
+      "peerNodeId": "terminal-6-b1ab267c-a630-49bf-a071-67f4c3e5b4d6",
+      "outputAndResizeConfirmed": true
+    },
+    "lastDeparture": {
+      "supervisorProcessesExited": [
+        {
+          "rootPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+          "pid": 3497455
+        }
+      ]
+    },
+    "reenabledNodeCounts": {
+      "owner": 0,
+      "attacher": 0
+    }
+  },
+  "priorRuns": [
+    {
+      "artifacts": "/tmp/dsc319r1",
+      "log": "/tmp/pr319-smoke-r1.log",
+      "result": "failed; last departure PID exit observed, later concurrent reset rejected old bindings; preserved failure evidence"
+    },
+    {
+      "artifacts": "/tmp/dsc319r2",
+      "log": "/tmp/pr319-smoke-r2.log",
+      "result": "passed after earlier shared-save suppression"
+    },
+    {
+      "artifacts": "/tmp/dsc319r3",
+      "log": "/tmp/pr319-smoke-r3.log",
+      "result": "passed; final in-flight setting-revert/deactivation guard added afterward and rechecked in final run"
+    }
+  ],
+  "limits": [
+    "真实产品场景为 Linux 单 root、fake provider 与原生 PTY；不替代真实 provider/其他平台/Remote SSH/真实 multi-root 两窗口。",
+    "并发离开、新加入、peer during-detach 和 multi-root 判定另有实际 Host/store 受控测试。",
+    "全量 npm test 和高频大画布成本未验证。"
+  ]
+}
