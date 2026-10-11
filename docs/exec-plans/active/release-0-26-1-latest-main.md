@@ -84,3 +84,7 @@ root ownership/preparation、legacy reconnect、mouse diagnostics、notifier typ
 PR #317 首轮预合并 CI run 38122050123 六目标资产成功，但完整验证在市场浏览器 E2E 启动前因缺少 chromium_headless_shell-1217 失败。PR 与 publish prepare 流程都新增 npm ci 后安装 Chromium 和系统依赖，统一 PLAYWRIGHT_BROWSERS_PATH 至仓库 .playwright-browsers；历史无 release:verify 的 tag 不增加浏览器准备要求。两个 workflow 回归通过；实际修复后的 CI 仍待结果。
 
 修订记录：2026-10-11，回收精确输入的独立 VSIX 与 notifier 验证，记录缓存下载重试、首轮 CI 失败及双阶段浏览器准备修复。
+
+第三轮完整 verify 已通过单元测试及 local-execution-flow、owned-canvas-reconciliation、snapshot-only-manual-recovery、local-surface-cutover、local-preparation-failure、local-pty-robustness、local-links-and-stop、runtime-checkpoint-refresh、trusted 和 restricted，随后 legacy-supervisor-upgrade 在第 321 行查询新 root 会话 socket 时超时。原旧会话已通过前段输入/输出/兼容操作；新会话 metadata 和 registry 证明 root runtime 已启动，但 fixture 继续按旧 XDG socket 规则计算新地址。只将新会话路径改为当前 root 固定 /tmp/dsc-root-uid/d-digest.sock，并要求 runtimeOwner；旧路径 helper、原输入输出/隔离/清理断言保持。实际修复后定向与完整门禁待复核，不能将首败追认为通过。
+
+修订记录：2026-10-11，记录 legacy upgrade 新 root socket 假设差异，修正新会话 fixture 地址，不修改产品或旧会话兼容行为。
