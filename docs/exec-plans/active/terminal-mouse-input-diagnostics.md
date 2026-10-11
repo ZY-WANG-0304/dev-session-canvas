@@ -1,6 +1,6 @@
 # 定位标题栏删除期间的终端鼠标输入
 
-本计划按 `docs/PLANS.md` 持续维护。目标是从原始 DOM 鼠标事件追踪到 xterm 的 `terminal.onData`，再到 Host 的输入请求和 runtime 删除边界，定位用户在标题栏删除 Agent 时出现的 sessionNotFound。此次只增加诊断，不修改输入准入或错误呈现。
+本计划按 `docs/PLANS.md` 持续维护。目标是从原始 DOM 鼠标事件追踪到 xterm 的 `terminal.onData`，再到 Host 的输入请求和 runtime 删除边界，定位用户在标题栏删除 Agent 时出现的 sessionNotFound。初期只增加诊断；用户于定位后授权修复删除期间的输入准入，保留真实错误呈现。
 
 ## 进度
 
@@ -12,7 +12,9 @@
 - [x] 修复自动开关在webview归一化时丢失的问题，增加实际归一化函数到采集器的回归测试及启动开关状态记录。
 - [x] 补齐原始事件证据：05-29-39-628Z无原始记录的问题已修复，05-34-59-965Z成功关联坐标与onData。
 - [x] 分析05-34-59-965Z：207条鼠标诊断成功采集，19次write-failed均关联真实xterm-screen无按键移动；确认本次报错的删除输入准入竞态。
-- [ ] 此前标题栏停留场景的完整事件时序及删除状态协调修复仍未完成；此次不修改输入行为。
+- [ ] 此前标题栏停留场景的完整事件时序未确认；更新修复产物后的用户实际F5复现待验证。
+- [x] 实施已授权的删除输入准入修复：入口及派发复查、已派发写入收口、重复删除合并、失败后保留关闭状态并可重试。
+- [x] 自动化回归、类型检查和构建通过，刷新Main Only调试产物并记录验证限制。
 
 ## 意外与发现
 
@@ -28,7 +30,7 @@ xterm 的无按键移动监听绑定到 terminal.element；document 全局拖动
 
 ## 结果与复盘
 
-新增诊断已实现且定向测试通过，实际用户场景的根因仍待验证。此前静默错误的补丁已撤回，不在本分支中。
+新增诊断已实现，本次复现的删除输入竞态已定位并修复，定向测试通过。此前标题栏停留场景的完整时序以及更新产物后的真实复现仍待验证。此前静默错误的补丁已撤回，不在本分支中。
 
 ## 上下文与定向
 
@@ -100,3 +102,9 @@ xterm 的无按键移动监听绑定到 terminal.element；document 全局拖动
 代码复核确认Host在await runtime删除之后才dispose session；输入路径在此期间继续调用client.writeInput。Supervisor requireSession对不存在或retiring的session返回同一sessionNotFound，不能仅用错误文字区分两种状态。本次可见错误的原因已定位为Host删除期间的输入准入与runtime退出状态不同步，不需要假设标题事件错误转发。此前用户所述标题栏停留场景没有标题栏事件诊断，仍不能据本dump完全还原；不将其写为已证伪。
 
 验证方式：离线解析diagnostic-events.json，按上述关联字段核对19条失败写入和两组删除边界，并复核Host及Supervisor代码；此次仅记录证据，没有修改输入行为或隐藏错误。后续修复应在删除入口关闭新输入准入，并处理已取得session但尚未派发的写入、重复删除及删除失败/未确认时的状态责任。
+
+## 2026-10-11 授权修复与验证
+
+用户授权修复后，采用正式设计中的session级输入准入：删除同步关闭准入，writeExecutionInput入口及client取得后复查，已派发写入记录到pendingInputWrites，删除先等待收口再发送RPC。Supervisor重复删除共享deletionPromise；失败保留关闭标志、释放promise供重试；完成仅dispose原session，避免误释放替换实例。Local路径在异步flush之前关闭准入并复查身份。没有增加sessionNotFound错误过滤。
+
+真实Host类的12项定向测试通过，覆盖Agent/Terminal入口关闭、Local flush边界、待取得client取消、替换session保护、已派发写入收口、重复删除、删除失败重试、新实例可输入及真实写入错误呈现。最终Host全套601/601通过；类型检查、鼠标诊断回归、webview消息回归及构建通过，Main Only产物已刷新。新增诊断边界phase=input-admission-closed与拒绝reason=input-admission-closed，可在下次dump验证删除期间输入没有进入RPC。尚未替用户执行真实F5操作；不将自动测试当作用户场景验收。

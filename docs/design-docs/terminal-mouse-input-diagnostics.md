@@ -16,6 +16,16 @@ updated_at: 2026-10-11
 
 ## 正式方案
 
+### 删除期间的输入准入修复
+
+`CanvasPanelManager.ts`的managed session增加独立输入准入关闭标志，不复用stopRequested：删除入口同步关闭准入，输入入口及异步取得supervisor client后的派发点均检查标志和session身份。关闭后拒绝所有新输入，包括键盘和鼠标，记录拒绝原因；不发送runtime写入请求。已实际派发的写入以session级集合追踪，删除等待它们完成后再发送删除RPC，避免删除越过已派发输入。写入的真实失败仍正常呈现，不按sessionNotFound过滤。
+
+Supervisor session上的删除promise合并重复删除；成功后正常dispose。删除失败或结果未知时保留session和关闭的准入，呈现原删除错误，允许用户重试删除；不自动恢复输入，因为runtime可能已retiring。新session实例有独立准入状态，不继承旧实例关闭标志。Local session也在flush前关闭新输入。Non-native owner路径沿用既有owner准入机制，本次不改。
+
+验证使用真实CanvasPanelManager类和受控异步client，覆盖Agent/Terminal删除期间输入、取得client期间发生删除或session替换、已派发写入收口、重复删除、删除失败及重试和真实写入错误。用户实际F5复现作为最终场景验证；不把自动化测试等同于标题栏场景已复现。
+
+### 诊断采集
+
 `webview/executionMouseDiagnostics.ts` 观察 xterm 实际调用的 getMouseReportCoords，记录事件时间、可信性、按钮、目标标签/class摘要、真实屏幕坐标、终端screen矩形、缩放后坐标、转换结果与模式。`executionSessionNodes.tsx` 在Agent和Terminal接入观察，不改返回值；onData仅记录完整匹配SGR鼠标序列的输入，沿用input sequence关联Host。事件关联只在当前任务内有效，微任务清除；标注同任务关联而非声称完整因果证明。
 
 新增专用 `webview/executionMouseDiagnostic` 消息由 `common/protocol.ts` 校验，再由 `CanvasPanelManager.ts` 记录surface/current/lifecycle。Host记录鼠标输入派发、client writeInput派发与runtime删除入口/完成边界。开关由Host runtime字段executionMouseDiagnosticsEnabled下发；ExtensionMode.Development自动开启，Production默认关闭；每实例最多512条，错误处理不变；普通键盘、DOM文本和HTML不采集。具体复现和分析步骤见关联计划。

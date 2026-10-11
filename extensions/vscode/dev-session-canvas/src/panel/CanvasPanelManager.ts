@@ -527,6 +527,7 @@ interface ManagedExecutionSessionBase {
   terminalStateTracker: SerializedTerminalStateTracker;
   lineContextTracker: ExecutionTerminalLineContextTracker;
   stopRequested: boolean;
+  inputAdmissionClosed?: boolean;
   syncTimer: NodeJS.Timeout | undefined;
   syncDueAtMs: number | undefined;
   lifecycleTimer: NodeJS.Timeout | undefined;
@@ -675,6 +676,8 @@ interface LocalExecutionReader {
 }
 
 interface SupervisorExecutionSession extends ManagedExecutionSessionBase {
+  pendingInputWrites?: Set<Promise<boolean>>;
+  deletionPromise?: Promise<void>;
   owner: 'supervisor';
   runtimeSessionId: string;
   terminalProjectionMode: RuntimeTerminalProjectionMode;
@@ -19682,6 +19685,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return false;
     }
 
+    const rejectClosedInput = (): boolean => {
+      const current = this.getExecutionSessions(kind).get(nodeId) === session;
+      if (current && !session.inputAdmissionClosed) return false;
+      this.recordDiagnosticEvent('execution/inputRejected', {
+        ...inputDetail, sessionId: session.sessionId, sequence: diagnosticMetadata.sequence,
+        reason: current ? 'input-admission-closed' : 'session-replaced'
+      });
+      return true;
+    };
+    if (rejectClosedInput()) return false;
+
     if (kind === 'agent' && session.agentProvider === 'claude' && containsTerminalSuspendInput(data)) {
       this.recordDiagnosticEvent('execution/inputRejected', {
         ...inputDetail,
@@ -19759,20 +19773,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           {},
           session.runtimeStoragePath,
           session.runtimeOwner
-        ).then((client) => {
+        ).then(async (client) => {
+          if (rejectClosedInput()) return false;
           if (/^\x1b\[<\d+;\d+;\d+[Mm]$/.test(data)) {
             this.recordDiagnosticEvent('execution/mouseInputRpcDispatch', {
               ...inputDetail, sequence: diagnosticMetadata.sequence, sessionId: session.runtimeSessionId,
               stopRequested: session.stopRequested, current: this.getExecutionSessions(kind).get(nodeId) === session
             });
           }
-          return client.writeInput({ sessionId: session.runtimeSessionId, data });
+          const writing = client.writeInput({ sessionId: session.runtimeSessionId, data }).then(() => true);
+          const pendingWrites = session.pendingInputWrites ??= new Set();
+          pendingWrites.add(writing);
+          try {
+            return await writing;
+          } finally {
+            pendingWrites.delete(writing);
+          }
         });
         this.trackRuntimeSupervisorOperation(operation.catch(() => undefined));
-        await operation;
+        if (!await operation) return false;
       }
       inputWriteSucceeded = true;
-      if (deferInputActivity && this.getExecutionSessions(kind).get(nodeId) === session && !session.stopRequested) {
+      if (deferInputActivity && this.getExecutionSessions(kind).get(nodeId) === session &&
+          !session.stopRequested && !session.inputAdmissionClosed) {
         recordInputActivity();
       }
     } catch (error) {
@@ -20538,34 +20561,57 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       owner: attachedSession?.owner, stopRequested: attachedSession?.stopRequested
     });
     if (attachedSession?.owner === 'local') {
+      attachedSession.inputAdmissionClosed = true;
       await this.flushExecutionStateImmediately(node.kind, node.id);
-      this.disposeExecutionSession(node.kind, node.id, {
-        terminateProcess: true
-      });
+      if (this.getExecutionSessions(node.kind).get(node.id) === attachedSession) {
+        this.disposeExecutionSession(node.kind, node.id, {
+          terminateProcess: true
+        });
+      }
       return;
     }
 
     if (attachedSession?.owner === 'supervisor') {
-      const backendKind = normalizeRuntimeHostBackendKind(attachedSession.runtimeBackend) ?? 'legacy-detached';
-      await this.deleteRuntimeSupervisorSessionStrict(
-        {
-          backendKind,
-          sessionId: attachedSession.runtimeSessionId,
-          runtimeStoragePath: attachedSession.runtimeStoragePath,
-          runtimeOwner: attachedSession.runtimeOwner,
-          nodeId: node.id, kind: node.kind
-        },
-        {
-          allowRestart: false
-        }
-      );
+      if (attachedSession.deletionPromise) return attachedSession.deletionPromise;
+      attachedSession.inputAdmissionClosed = true;
       this.recordDiagnosticEvent('execution/deleteBoundary', {
-        phase: 'runtime-delete-completed', nodeId: node.id, kind: node.kind,
-        sessionId: attachedSession.runtimeSessionId
+        phase: 'input-admission-closed', nodeId: node.id, kind: node.kind,
+        sessionId: attachedSession.runtimeSessionId, pendingInputWrites: attachedSession.pendingInputWrites?.size ?? 0
       });
-      this.disposeExecutionSession(node.kind, node.id, {
-        terminateProcess: false
-      });
+      const backendKind = normalizeRuntimeHostBackendKind(attachedSession.runtimeBackend) ?? 'legacy-detached';
+      const kind = node.kind;
+      const deletion = (async () => {
+        // Finish dispatched writes; client acquisitions still pending will observe closed admission.
+        await Promise.allSettled(Array.from(attachedSession.pendingInputWrites ?? []));
+        await this.deleteRuntimeSupervisorSessionStrict(
+          {
+            backendKind,
+            sessionId: attachedSession.runtimeSessionId,
+            runtimeStoragePath: attachedSession.runtimeStoragePath,
+            runtimeOwner: attachedSession.runtimeOwner,
+            nodeId: node.id, kind
+          },
+          {
+            allowRestart: false
+          }
+        );
+        this.recordDiagnosticEvent('execution/deleteBoundary', {
+          phase: 'runtime-delete-completed', nodeId: node.id, kind,
+          sessionId: attachedSession.runtimeSessionId
+        });
+        if (this.getExecutionSessions(kind).get(node.id) === attachedSession) {
+          this.disposeExecutionSession(kind, node.id, {
+            terminateProcess: false
+          });
+        }
+      })();
+      attachedSession.deletionPromise = deletion;
+      try {
+        await deletion;
+      } finally {
+        // A failed/unknown deletion retains closed admission, but can be retried.
+        attachedSession.deletionPromise = undefined;
+      }
       return;
     }
 
