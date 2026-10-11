@@ -696,6 +696,8 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 责任落点 `panel/sharedRootCanvasStore.ts` 与双窗口 smoke。新增真实结构同步/切换场景本轮仅验证 Linux 单 root；macOS/Windows/Remote SSH 和真实多 root 两窗口需后续具名验证，不能借 Node API 或已有 helper 通过宣称这些组合已验。每 root 100ms 轮询和完整 JSON 比较/写入在高频大画布下的成本尚未量化；出现实际规模瓶颈时再以固定负载评估，不先承诺恒定延迟。TCP 锁哈希碰撞保守串行、外部端口占用有界失败，需在对应平台受控验证。直接绕过共享画布调用 Supervisor delete 的其他有效消费者仍按历史诊断范围，不外推产品共享删除已补齐所有通道。
 
-### completed-history 旧诊断断言（待独立修正）
+### completed-history 旧诊断断言（2026-10-11 已修正）
 
-`npm run test:runtime-completed-history` 的 `verifyCompletedBindingOwner` 将所有诊断数组断言为空；main a39cd8c1 新增正常 `execution/deleteBoundary` 后，本地与独立原 main 工作树均在同一 legacy Terminal 项失败。本次不修改未知 owner 保证断言求绿。后续应在保留完整原绑定与调度身份核验的前提下，区分正常边界诊断和丢失 owner 诊断。基线日志 `/tmp/dsc-shared-completed-history-baseline.log`；不得记录本次全量 npm test 通过。
+`npm run test:runtime-completed-history` 的 `verifyCompletedBindingOwner` 原先将所有诊断数组断言为空；main a39cd8c1 新增正常 `execution/deleteBoundary` 后，本地与独立原 main 工作树均在同一 legacy Terminal 项失败。历史基线日志 `/tmp/dsc-shared-completed-history-baseline.log` 保留。
+
+用户授权修正后，测试精确断言 `execution/deleteBoundary` 的 `runtime-delete-requested` 阶段、kind、sessionId 和 backendKind，不泛化过滤诊断。root 缺失 owner 的拒绝用例单独校验请求诊断及零派发，然后清空收集器再验证正常完成。原完整绑定相等、owner 传递、保存先于删除与无终态历史断言全部保留；额外 completedCleanupFailed 等诊断仍使测试失败。Node 22 下完整 `test:runtime-completed-history` 通过，覆盖 Agent/Terminal、legacy/root 及后续 reader 退役场景；只修改测试与文档，没有修改生产删除行为，也不宣称全量 npm test 通过。

@@ -53,7 +53,7 @@ root 提交锁端口为 SHA256(canonical filename) 映射到 20000–39999；节
 
 Node 22、Linux 与 VS Code 1.141.0 的独立真实双窗口场景通过：第二窗口未注入 owner 画布，创建、移动、卡片 resize、删除传播；双向输入输出、PTY resize、stop、Agent delete 正常；带 live Terminal 切换关闭后 registry 为零，两窗口私有 Note 隔离，再开启不继承私有内容。调试证据分别在 `/tmp/dscshare3`、`/tmp/dscshare4`、`/tmp/dscshare5`，日志 `/tmp/dsc-shared-window-final.log` 和 `/tmp/dsc-shared-window-source-final.log`。订阅竞态补丁和最终配置保护补丁的复验日志 `/tmp/dsc-shared-window-subscription-final.log`、`/tmp/dsc-shared-window-config-final.log` 同样通过，最终窗口工件 `/tmp/dscshare6`。
 
-自动化共享 store 8/8，包括独立子进程并发创建和节点操作串行、删除不复活、几何原子更新、损坏文件保护、工作失败仍提交和初始化竞态。Host 最终 617/617（含最终保存失败及迟到配置保护回归）；类型检查、multi-root helper、存储路径、本地化、smoke runner 环境检查、分页终态、Host 输出信用与 legacy reconnect 通过。`test:runtime-completed-history` 在未改动 origin/main a39cd8c1 上同样失败：旧测试将新增正常 `execution/deleteBoundary` 诊断当作失去 owner；本次保留断言及失败，没有据此宣称全量 npm test 通过。
+自动化共享 store 8/8，包括独立子进程并发创建和节点操作串行、删除不复活、几何原子更新、损坏文件保护、工作失败仍提交和初始化竞态。Host 最终 617/617（含最终保存失败及迟到配置保护回归）；类型检查、multi-root helper、存储路径、本地化、smoke runner 环境检查、分页终态、Host 输出信用与 legacy reconnect 通过。初轮 `test:runtime-completed-history` 在未改动 origin/main a39cd8c1 上同样失败：旧测试将新增正常 `execution/deleteBoundary` 诊断当作失去 owner。用户授权修正后，改为精确校验正常请求诊断，并分别验证缺失 owner 的拒绝与正常清理，原完整绑定等断言保持；整套测试通过。历史失败保留，不宣称全量 npm test 通过。
 
 本轮真实共享场景为 Linux 单 root，未新跑 macOS/Windows/Remote SSH 或真实多 root 两窗口；Node 内置 fs/net 路径与既有 multi-root helper 不替代这些产品证据。大画布高频编辑的完整快照读写/比较与每 root 100ms 轮询成本尚未量化。残余范围登记于 `docs/exec-plans/tech-debt-tracker.md`。
 
