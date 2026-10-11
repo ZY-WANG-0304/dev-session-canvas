@@ -102,3 +102,7 @@ PR #317 首轮预合并 CI run 38122050123 六目标资产成功，但完整验�
 真实重开修复后 real-reopen 的 setup/verify 完整通过，见 /tmp/dsc261latest-real-reopen.log。剩余场景独立运行中 multi-root 和 single-to-multi-root 也通过；two-window-shared-runtime 的 owner setup 出现同样的连续创建前提：Terminal live，Agent rejected-before-acquire，尚未进入双窗口观测。仅在创建 Agent 后等待其原 runtime live 再创建 Terminal，保持原共享会话身份、输出和删除断言；日志 /tmp/dsc261latest-reopen-rest.log 保留。Webview 全套正在运行，不能提前宣称完整通过。
 
 修订记录：2026-10-11，回收真实重开与多根通过证据，并补齐双窗口 owner setup 的同一启动前提。
+
+双窗口第二次运行已越过启动拒绝，在 owner registry 断言失败：registry 含第一次失败 Terminal session b9b540d2，而当前节点绑定 bb9b6bc0。该场景固定使用 checkout/.debug 路径并删除 profile，忽略全局 DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT，因此第二轮实际复用了第一轮持久运行时地址。先修正 runTwoWindowSharedRuntimeScenario 使用统一 smokeDebugRoot，在全新 /tmp/d26lrest3 重验，保留 registry/session 身份断言，不直接追认为产品故障或已确认纯环境问题。
+
+修订记录：2026-10-11，记录两轮双窗口精确 session 证据，统一其场景目录配置以支持真正隔离重验。

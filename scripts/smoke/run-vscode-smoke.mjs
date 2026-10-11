@@ -334,7 +334,7 @@ async function runSingleToMultiRootRealWindowReopenScenario() {
 
 async function runTwoWindowSharedRuntimeScenario() {
   const scenarioName = 'two-window-shared-runtime';
-  const scenarioDebugRoot = path.join(projectRoot, '.debug', 'vscode-smoke', scenarioName);
+  const scenarioDebugRoot = path.join(smokeDebugRoot, scenarioName);
   const sharedDir = path.join(scenarioDebugRoot, 'shared');
   const runtimeDirName = 'dsc-vscode-smoke-runtime-two-window-shared-runtime';
   await fs.rm(scenarioDebugRoot, { recursive: true, force: true });
