@@ -1,0 +1,161 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "baseline": "523ee9a5b36d69970a728c9828132124358cd91c",
+  "origin_main": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "conclusion": "snapshot-only owned 启动/waiting-input 未接回 Claude 会话文件确认；候选 ID 保留但恢复策略没有升级。旧确认方法只校验 legacy map，不能直接用于 owned 记录。",
+  "contract": "docs/design-docs/agent-launch-modes-and-restart.md:294-296：候选显式 ID 须经会话文件或 resume hint 确认；文件已确认时停止后保留。",
+  "history": {
+    "file_confirmation_added": "a1e3bc89 (2026-04-25)",
+    "explicit_id_smoke_added": "247aef2f (2026-04-25)",
+    "owned_business_added_without_file_confirmation": "ae3c42cf (2026-09-26)",
+    "scope_note": "S10 当时为候选路径；缺口保留至当前 PR 基线实际启用的 snapshot-only owned 路径，不表示该提交当日所有发布已启用。"
+  },
+  "native_environment": {
+    "platform": "Linux x64",
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "runtime_persistence": false,
+    "provider": "native PTY + fake Claude",
+    "original_test": "verifyClaudeExplicitSessionIdPreservesResumeContext",
+    "scenario_filter": "local-links-and-stop (temporary isolated entry; not the normal stage)"
+  },
+  "native_baseline": {
+    "product_source_unchanged": true,
+    "command": "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=/tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/code DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=local-links-and-stop npm run test:vsix-smoke",
+    "log": ".debug/claude-resume-investigation/native-baseline.log",
+    "locator_probe": {
+      "located": "session-explicit-123456789",
+      "expected": "session-explicit-123456789",
+      "transcript": "/tmp/dscr/.debug/vscode-vsix-smoke/local-links-and-stop/home/.claude/projects/-tmp-dscr/session-explicit-123456789.jsonl",
+      "contents": "{}\n"
+    },
+    "exit_code": 1,
+    "failure": "原用例等待 resumeStrategy=claude-session-id 超时；不是启动、文件缺失或 recentOutput 等待。",
+    "node": {
+      "id": "agent-1-2c80a5e5-67c6-4fbd-9a83-7ce15aa6e1cc",
+      "status": "waiting-input",
+      "metadata": {
+        "liveSession": true,
+        "resumeSupported": false,
+        "resumeStrategy": "none",
+        "resumeSessionId": "session-explicit-123456789",
+        "persistenceMode": "snapshot-only"
+      }
+    },
+    "local_execution": {
+      "kind": "agent",
+      "nodeId": "agent-1-2c80a5e5-67c6-4fbd-9a83-7ce15aa6e1cc",
+      "identity": {
+        "executionId": "f06ac6f5-2d3c-4401-818e-24a6dda2de33",
+        "generation": "62035243-2609-4906-9321-f700e6ef02bf"
+      },
+      "retired": false,
+      "persistence": {
+        "submitted": false
+      }
+    },
+    "artifacts": ".debug/claude-resume-investigation/native-baseline-extracted",
+    "snapshot_source": "从 native-baseline.log 的原 AssertionError Last snapshot JSON 提取；不是后续页面 probe 或旧 trusted 工件。"
+  },
+  "host_characterization": {
+    "result": "2/2 passed (selected 2/489; two temporary cases)",
+    "log": ".debug/claude-resume-investigation/host-control.log",
+    "boundary": "实际 Host 类与实际文件 locator；仅隔离 locator 的 env/统计调用次数，进程为既有受控 transport。timeoutMs=1 只缩短不存在文件的负例检查。",
+    "cases": [
+      {
+        "filePresent": true,
+        "identity": {
+          "executionId": "2537fdea-67ce-4df9-bccb-4d2b34210b60",
+          "generation": "60ae2af3-d1ae-417a-9d78-8afc9badc242"
+        },
+        "normalOwnedLocatorCalls": 0,
+        "oldHelperWithOwnedRecord": "no promotion",
+        "legacyControl": {
+          "supported": true,
+          "strategy": "claude-session-id",
+          "sessionId": "session-explicit-123456789"
+        },
+        "ownedProjectionControl": {
+          "resumeStrategy": "claude-session-id",
+          "resumeSupported": true,
+          "resumeSessionId": "session-explicit-123456789"
+        }
+      },
+      {
+        "filePresent": false,
+        "identity": {
+          "executionId": "fbab21a7-c70b-4924-b842-0eb778ff34fd",
+          "generation": "56652e12-3417-4e41-8113-9beca6a978d0"
+        },
+        "normalOwnedLocatorCalls": 0,
+        "oldHelperWithOwnedRecord": "no promotion",
+        "legacyControl": {
+          "supported": false,
+          "strategy": "none",
+          "sessionId": "session-explicit-123456789"
+        },
+        "ownedProjectionControl": {
+          "resumeStrategy": "none",
+          "resumeSupported": false,
+          "resumeSessionId": "session-explicit-123456789"
+        }
+      }
+    ],
+    "observations": [
+      "owned started 与真实提示驱动 waiting-input 均 locator 调用 0 次。",
+      "显式调用旧 helper：locator 查到 ID 但因 session 不在旧 map 而不升级。",
+      "同文件/同 ID 在旧 map 下调用同一 helper 得到确认；移交确认结果后原 owned projection 正确更新 metadata，身份不变。",
+      "无文件：locator null，旧方法与对照均保持 none。"
+    ]
+  },
+  "native_control": {
+    "log": ".debug/claude-resume-investigation/native-control.log",
+    "exit_code": 0,
+    "mutation": "仅在原 owned started 之后调用实际文件 locator，将身份/候选/metadata 仍匹配的结果投影；临时 await 不代表正式调度方案。",
+    "original_assertions": "原运行期策略/ID、停止后策略/ID及删除检查均保留并通过；未实现或调用真实 provider resume。",
+    "after_stop": {
+      "status": "stopped",
+      "liveSession": false,
+      "resumeSupported": true,
+      "resumeStrategy": "claude-session-id",
+      "resumeSessionId": "session-explicit-123456789",
+      "lastExitSignal": "SIGHUP"
+    },
+    "confirmation": [
+      {
+        "timestamp": "2026-10-10T09:16:19.715Z",
+        "kind": "rca/claudeFileConfirmationControl",
+        "detail": {
+          "nodeId": "agent-1-2f71c6f3-6dbb-4fda-9da7-247c67d05166",
+          "executionId": "2342f1c1-be15-4210-9d0a-5bd6e2021701",
+          "generation": "53298f50-1e66-463c-ace3-8d9595e2c6cd",
+          "confirmed": "session-explicit-123456789"
+        }
+      }
+    ]
+  },
+  "restoration": {
+    "temporary_product_and_test_changes_removed": true,
+    "unchanged_source_sha256": {
+      "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "0c3ed37bc9c2bdc76e2fa10e4bf281cd2957d0b6921750179cce4d298324e2b4",
+      "tests/vscode-smoke/extension-tests.cjs": "a2ab2de1af3901d0a39c609b654421d343c91d7e4a617cd6f8c0a6eef0b95d37",
+      "scripts/test/test-host-execution-owner-wiring.mjs": "b14959e341c7ed0934ab83ed11e519c0bb780b8dd7f21246629c3f58852af635"
+    }
+  },
+  "patches": [
+    "claude-resume-original-scenario.patch",
+    "claude-resume-confirmation-control.patch",
+    "claude-resume-characterization.patch"
+  ],
+  "remaining": [
+    "正式修复尚未实施；应接回 owned 启动/等待输入确认并保留原身份、候选、metadata、停止/最终保存保护，不能只补调用旧 helper。",
+    "完整 gate 和后续 RuntimePersistence 开启场景未运行；本轮原生为显式 ID、预置 transcript、fake Claude，不代证真实 provider 服务或跨平台。",
+    "本轮启动期同步 await 仅用于最小因果对照；正式实现不得阻塞输出消费或用迟到文件结果覆盖最终态。"
+  ],
+  "log_sha256": {
+    "native-baseline.log": "f519751263fec55f98094f75bfefa33cfd32d95606ee813d5f5c4936a6393a67",
+    "native-control.log": "78e39d9c5df60c3d1b3329cf17df303b44e60d50f8ae8c5554b9d6152692d7f0",
+    "host-control.log": "deb3be48bc804b222fb067a0db1ff594de312255fbc04e4d8146811f5101e11c"
+  }
+}

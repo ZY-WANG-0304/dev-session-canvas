@@ -21,6 +21,11 @@ const unpackRoot = path.join(debugRoot, 'packaged-extension');
 const notifierExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier');
 const marketplaceReadmeMarker = '<!-- dev-session-canvas-marketplace-readme -->';
 const SMOKE_TEST_MODE_ENV_KEY = 'DEV_SESSION_CANVAS_SMOKE_TEST_MODE';
+const scenarios = ['owned-canvas-reconciliation', 'local-execution-flow', 'snapshot-only-manual-recovery', 'local-surface-cutover', 'local-pty-robustness', 'local-preparation-failure', 'local-links-and-stop', 'trusted'];
+const scenarioFilter = process.env.DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER;
+if (scenarioFilter && !scenarios.includes(scenarioFilter)) {
+  throw new Error(`Unsupported VSIX smoke scenario: ${scenarioFilter}`);
+}
 
 async function main() {
   if (process.platform !== 'linux') {
@@ -48,23 +53,30 @@ async function main() {
   });
   const packagedExtensionTestsPath = resolveStagedSmokeTestPath(smokeHostRoot, 'extension-tests.cjs');
 
-  await runVSCodeScenario({
-    projectRoot,
-    debugRoot: path.join(debugRoot, 'smoke-runtime'),
-    runtimeDirName: 'dsc-vscode-vsix-smoke-runtime',
-    workspacePath: projectRoot,
-    extensionDevelopmentPath: [smokeHostRoot, notifierRuntimeRoot],
-    extensionTestsPath: packagedExtensionTestsPath,
-    disableWorkspaceTrust: true,
-    extensionTestsEnv: {
-      [SMOKE_TEST_MODE_ENV_KEY]: '1',
-      DEV_SESSION_CANVAS_SMOKE_SCENARIO: 'trusted',
-      DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
-      DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath
+  for (const scenario of scenarios.filter(name => !scenarioFilter || name === scenarioFilter)) {
+    let workspacePath = projectRoot;
+    if (scenario === 'owned-canvas-reconciliation') {
+      workspacePath = path.join(debugRoot, 'owned-canvas.code-workspace');
+      await fs.writeFile(workspacePath, JSON.stringify({ folders: [{ path: projectRoot }] }), 'utf8');
     }
-  });
+    await runVSCodeScenario({
+      projectRoot,
+      debugRoot: path.join(debugRoot, scenario === 'trusted' ? 'smoke-runtime' : scenario),
+      runtimeDirName: `dsc-vscode-vsix-${scenario}`,
+      workspacePath,
+      extensionDevelopmentPath: [smokeHostRoot, notifierRuntimeRoot],
+      extensionTestsPath: packagedExtensionTestsPath,
+      disableWorkspaceTrust: true,
+      extensionTestsEnv: {
+        [SMOKE_TEST_MODE_ENV_KEY]: '1',
+        DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenario,
+        DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
+        DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath
+      }
+    });
+  }
 
-  console.log('VSIX packaged-payload smoke passed.');
+  console.log(`VSIX packaged-payload smoke passed (${scenarioFilter ?? scenarios.join(', ')}).`);
 }
 
 async function preparePackagedSmokeHostExtension({ packagedExtensionPath, root }) {

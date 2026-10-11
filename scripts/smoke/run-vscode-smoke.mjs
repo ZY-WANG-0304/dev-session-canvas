@@ -38,6 +38,41 @@ const scenarioFilter = parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_
 
 const scenarios = [
   {
+    name: 'local-execution-flow',
+    description: 'Current native Agent and Terminal output and lifecycle assertions',
+    disableWorkspaceTrust: true
+  },
+  {
+    name: 'owned-canvas-reconciliation',
+    description: 'Owned executions survive canvas reload and workspace recomposition',
+    disableWorkspaceTrust: true
+  },
+  {
+    name: 'snapshot-only-manual-recovery',
+    description: 'Snapshot-only Host reload preserves manual Agent recovery without automatic resume',
+    disableWorkspaceTrust: true
+  },
+  {
+    name: 'local-surface-cutover',
+    description: 'Local execution output survives surface cutover and canvas reread',
+    disableWorkspaceTrust: true
+  },
+  {
+    name: 'local-preparation-failure',
+    description: 'Missing Agent CLI settles the unstarted node and reports the failure once',
+    disableWorkspaceTrust: true
+  },
+  {
+    name: 'local-links-and-stop',
+    description: 'Rendered terminal links and original owned execution stop completion',
+    disableWorkspaceTrust: true
+  },
+  {
+    name: 'local-pty-robustness',
+    description: 'Local PTY exits, restarts and canvas responsiveness during concurrent terminal output',
+    disableWorkspaceTrust: true
+  },
+  {
     name: 'runtime-legacy-reconnect',
     description: 'Legacy Runtime reconnect preserves bindings without automatic CLI resume',
     focusedOnly: true,
@@ -106,10 +141,15 @@ async function main() {
       targetRoot: path.join(runtime.debugRoot, 'smoke-host')
     });
 
+    let workspacePath = projectRoot;
+    if (scenario.name === 'owned-canvas-reconciliation') {
+      workspacePath = path.join(runtime.debugRoot, 'owned-canvas.code-workspace');
+      await fs.writeFile(workspacePath, JSON.stringify({ folders: [{ path: projectRoot }] }));
+    }
     await launchPreparedVSCodeScenario({
       projectRoot,
       runtime,
-      workspacePath: projectRoot,
+      workspacePath,
       extensionDevelopmentPath: smokeHostRoot,
       extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, scenario.testFile ?? 'extension-tests.cjs'),
       disableExtensions: false,

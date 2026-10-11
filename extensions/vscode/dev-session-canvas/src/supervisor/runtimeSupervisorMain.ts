@@ -2260,6 +2260,10 @@ export class RuntimeSupervisorServer {
         ? session.kind === 'agent' ? 'stopped' : 'closed' : 'error';
     session.lastExitCode = processResult?.kind === 'exited' ? processResult.exitCode : undefined;
     session.lastExitSignal = processResult?.kind === 'signaled' ? processResult.signal : undefined;
+    if (successful && !session.terminalJournalError && !session.ownedMutationError &&
+        (stopped || processResult.kind === 'exited' || processResult.kind === 'signaled')) {
+      applyConfirmedSessionExit(session, session.lastExitCode, session.lastExitSignal, Boolean(stopped));
+    }
     const source = execution?.adapter?.seal?.source;
     if (source && source.kind !== 'eof') {
       setSessionLastExitMessage(session, { id: 'terminalOutputIncomplete', params: { reason: source.reason } });
@@ -2385,54 +2389,8 @@ export class RuntimeSupervisorServer {
       session.terminalTitleCarryover = undefined;
       session.terminalTitleRedactionState = undefined;
 
-      if (session.kind === 'agent') {
-        this.finalizeAgentResumeSessionIdFromOutput(session);
-        if (session.stopRequested) {
-          session.lifecycle = 'stopped';
-          setSessionLastExitMessage(session, {
-            id: 'agentSessionStopped',
-            params: {
-              label: session.displayLabel
-            }
-          });
-        } else if (exitCode === 0) {
-          session.lifecycle = 'stopped';
-          setSessionLastExitMessage(session, {
-            id: 'agentSessionEnded',
-            params: {
-              label: session.displayLabel
-            }
-          });
-        } else if (session.resumePhaseActive) {
-          session.lifecycle = 'resume-failed';
-          setSessionLastExitMessage(
-            session,
-            describeAgentResumeFailure(session.displayLabel, exitCode, signal, session.output)
-          );
-        } else {
-          session.lifecycle = 'error';
-          setSessionLastExitMessage(
-            session,
-            describeAgentExit(session.displayLabel, exitCode, signal, session.output)
-          );
-        }
-      } else if (session.stopRequested) {
-        session.lifecycle = 'closed';
-        setSessionLastExitMessage(session, {
-          id: 'terminalStopped'
-        });
-      } else if (exitCode === 0) {
-        session.lifecycle = 'closed';
-        setSessionLastExitMessage(session, {
-          id: 'terminalSessionEnded'
-        });
-      } else {
-        session.lifecycle = 'error';
-        setSessionLastExitMessage(
-          session,
-          describeTerminalExit(session.shellPath, exitCode, signal, session.output)
-        );
-      }
+      if (session.kind === 'agent') this.finalizeAgentResumeSessionIdFromOutput(session);
+      applyConfirmedSessionExit(session, exitCode, signal, session.stopRequested);
 
       session.lastExitCode = exitCode;
       session.lastExitSignal = normalizeSignal(signal);
@@ -3751,9 +3709,37 @@ function setSessionLastExitMessage(session: SupervisorSession, descriptor: Runti
   session.lastExitMessage = formatRuntimeSupervisorMessageDescriptor(descriptor);
 }
 
+function applyConfirmedSessionExit(
+  session: SupervisorSession,
+  code: number | undefined,
+  signal: string | undefined,
+  stopped: boolean
+): void {
+  if (session.kind === 'agent') {
+    if (stopped || code === 0) {
+      session.lifecycle = 'stopped';
+      setSessionLastExitMessage(session, {
+        id: stopped ? 'agentSessionStopped' : 'agentSessionEnded',
+        params: { label: session.displayLabel }
+      });
+    } else {
+      session.lifecycle = session.resumePhaseActive ? 'resume-failed' : 'error';
+      setSessionLastExitMessage(session, session.resumePhaseActive
+        ? describeAgentResumeFailure(session.displayLabel, code, signal, session.output)
+        : describeAgentExit(session.displayLabel, code, signal, session.output));
+    }
+  } else if (stopped || code === 0) {
+    session.lifecycle = 'closed';
+    setSessionLastExitMessage(session, { id: stopped ? 'terminalStopped' : 'terminalSessionEnded' });
+  } else {
+    session.lifecycle = 'error';
+    setSessionLastExitMessage(session, describeTerminalExit(session.shellPath, code, signal, session.output));
+  }
+}
+
 function describeAgentExit(
   label: string,
-  code: number,
+  code: number | undefined,
   signal: string | undefined,
   output: string
 ): RuntimeSupervisorMessageDescriptor {
@@ -3773,7 +3759,7 @@ function describeAgentExit(
     id: 'agentExitedCode',
     params: {
       label,
-      code: String(code),
+      code: String(code ?? '<unknown>'),
       suffix
     }
   };
@@ -3781,7 +3767,7 @@ function describeAgentExit(
 
 function describeAgentResumeFailure(
   label: string,
-  code: number,
+  code: number | undefined,
   signal: string | undefined,
   output: string
 ): RuntimeSupervisorMessageDescriptor {
@@ -3801,7 +3787,7 @@ function describeAgentResumeFailure(
     id: 'agentResumeFailedCode',
     params: {
       label,
-      code: String(code),
+      code: String(code ?? '<unknown>'),
       suffix
     }
   };
@@ -3809,7 +3795,7 @@ function describeAgentResumeFailure(
 
 function describeTerminalExit(
   shellPath: string,
-  code: number,
+  code: number | undefined,
   signal: string | undefined,
   output: string
 ): RuntimeSupervisorMessageDescriptor {
@@ -3829,7 +3815,7 @@ function describeTerminalExit(
     id: 'terminalExitedCode',
     params: {
       shellPath,
-      code: String(code),
+      code: String(code ?? '<unknown>'),
       suffix
     }
   };

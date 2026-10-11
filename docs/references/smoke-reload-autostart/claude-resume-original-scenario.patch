@@ -1,0 +1,46 @@
+diff --git a/tests/vscode-smoke/extension-tests.cjs b/tests/vscode-smoke/extension-tests.cjs
+index 3ec80a94..0c95b4c4 100644
+--- a/tests/vscode-smoke/extension-tests.cjs
++++ b/tests/vscode-smoke/extension-tests.cjs
+@@ -203,16 +203,8 @@ async function runSmoke() {
+   }
+   if (smokeScenario === 'local-links-and-stop') {
+     await ensureEditorCanvasReady();
+-    await createBaseNodes({ waitForAutoStart: true });
+-    const snapshot = await getDebugSnapshot();
+-    const agentId = findNodeByKind(snapshot, 'agent').id;
+-    const terminalId = findNodeByKind(snapshot, 'terminal').id;
+-    await ensureAgentStopped(agentId);
+-    await verifyExecutionTerminalNativeInteractions(terminalId);
+-    await ensureTerminalStopped(terminalId);
+-    await verifyStopVsQueuedExitRace(agentId);
+-    await verifyClaudeStopRestoresPreviousSignal();
+-    console.log('Local links and stop: rendered file/URL links, tooltip and original stop completion passed.');
++    await verifyClaudeExplicitSessionIdPreservesResumeContext();
++    console.log('RCA Claude: original explicit session ID scenario passed.');
+     return;
+   }
+   if (smokeScenario === 'local-preparation-failure') {
+@@ -9938,6 +9930,14 @@ async function verifyClaudeStopRestoresPreviousSignal() {
+ async function verifyClaudeExplicitSessionIdPreservesResumeContext() {
+   await clearHostMessages();
+   const transcriptFilePath = await seedClaudeSessionTranscriptFile(EXPLICIT_CLAUDE_SESSION_ID);
++  const located = await locateClaudeSessionIdForTest({
++    cwd: vscode.workspace.workspaceFolders[0].uri.fsPath,
++    sessionId: EXPLICIT_CLAUDE_SESSION_ID, timeoutMs: 400
++  });
++  console.log('RCA Claude locator:', JSON.stringify({ located, expected: EXPLICIT_CLAUDE_SESSION_ID,
++    transcript: transcriptFilePath, contents: await fs.readFile(transcriptFilePath, 'utf8') }));
++  assert.strictEqual(located, EXPLICIT_CLAUDE_SESSION_ID);
++
+
+   try {
+     await dispatchWebviewMessage({
+@@ -9996,6 +9996,7 @@ async function verifyClaudeExplicitSessionIdPreservesResumeContext() {
+     assert.strictEqual(explicitSessionNode.metadata.agent.resumeStrategy, 'claude-session-id');
+     assert.strictEqual(explicitSessionNode.metadata.agent.resumeSessionId, EXPLICIT_CLAUDE_SESSION_ID);
+
++    console.log('RCA Claude after original Stop:', JSON.stringify({ status: explicitSessionNode.status, metadata: explicitSessionNode.metadata.agent, confirmation: (await getDiagnosticEvents()).filter(event => event.kind === 'rca/claudeFileConfirmationControl') }));
+     await ensureAgentStopped(claudeAgentNode.id);
+     await dispatchWebviewMessage({
+       type: 'webview/deleteNode',

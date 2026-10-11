@@ -1,0 +1,87 @@
+{
+  "baselineCommit": "d4f360cad91a7ff03f26cbf7a2501c5fc0f8c493",
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "scope": "单节点delete等待原owned/retained最终保存，并在等待后复核原目标；其他终止helper入口默认契约保持。",
+  "budgetMs": 20000,
+  "environment": "Linux x64 / Node22.23.3 / VS Code1.141.0 / native PTY / fake provider",
+  "automated": {
+    "red": "首项回归在旧产品上失败：delete must await the original pending save (true !== false)。",
+    "newCases": 19,
+    "targeted": "19/19",
+    "host": "588/588",
+    "typecheck": "passed",
+    "localization": "passed",
+    "diffCheck": "passed",
+    "coverage": [
+      "Agent/Terminal × running/retained × saved/failed/timeout。",
+      "超时后原保存迟到成功不续删；Agent引用只在成功删除时移除。",
+      "等待期间metadata、record、owner、操作token、删除、实际root rekey变更拒绝；保留metadata的布局/标题变化允许。",
+      "既有pending/failed/unconfirmed保护回归继续通过；pending删除测试推进新等待期限后验证拒绝。"
+    ]
+  },
+  "payloadSha256": {
+    "extension.js": "93ff60d4cea36eb7792a8f58629b24a08af657000564e945980120f4602ed3dc",
+    "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+    "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+  },
+  "defaultVsix": {
+    "exitCode": 1,
+    "log": ".debug/owned-delete-persistence-fix/vsix.log",
+    "independentStages": {
+      "owned-canvas-reconciliation": 0,
+      "local-execution-flow": 0,
+      "snapshot-only-manual-recovery": 0,
+      "local-surface-cutover": 0,
+      "local-pty-robustness": 0,
+      "local-preparation-failure": 0,
+      "local-links-and-stop": 0
+    },
+    "trusted": {
+      "exitCode": 1,
+      "artifactDir": ".debug/owned-delete-persistence-fix/trusted-artifacts",
+      "passedOriginalFunctions": [
+        "verifyFileActivityViewsAndOpenFiles",
+        "verifyReadExitFileActivityDrain",
+        "verifyRuntimePersistenceRequiresReloadAndClearsState",
+        "verifySidebarSessionHistoryRestore",
+        "verifySidebarSessionHistoryForkActionUi",
+        "verifyCodexAgentBranchFromCurrentNode"
+      ],
+      "proof": "runTrustedSmoke按原顺序await具名函数，失败栈已推进到后续verifyClaudeAgentBranchFromCurrentNode:2268；未修改正式smoke或产品bundle，不重复已通过的files/readexit独立运行。",
+      "failure": "等待Claude Fork原节点唯一execution/started诊断事件超时。",
+      "observations": [
+        {
+          "timestamp": "2026-10-10T18:31:35.766Z",
+          "kind": "execution/startFailed",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-3-4c44dd33-570a-4cc9-92dd-ea0bfcfb60b8",
+            "outcome": "exception",
+            "reason": "Local final snapshot responsibility still occupies the execution key or Host capacity.",
+            "message": "Failed to start execution node: Local final snapshot responsibility still occupies the execution key or Host capacity."
+          }
+        },
+        {
+          "timestamp": "2026-10-10T18:31:35.824Z",
+          "kind": "execution/startRejected",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+            "outcome": "rejected-before-acquire",
+            "reason": "Authority start admission rejected",
+            "message": "Cannot start Agent right now. Wait for pending operations to finish and try again.",
+            "executionId": "bdc867aa-8dbc-485a-a3dd-b583ef63e48f",
+            "generation": "a8b9c4e7-a4f1-4418-80fa-15a7cefbb4c9"
+          }
+        }
+      ],
+      "remainingLocalExecutions": 0
+    }
+  },
+  "boundaries": [
+    "完整gate仍失败，新Claude Fork停点根因待确认；本轮不将容量/准入相关现场错误直接当作已确认因果。",
+    "保存等待仅显式单节点delete，reset/清组/模板不隐式改变。",
+    "本轮未修改正式smoke断言、版本或发布材料。",
+    "历史URL清理、Runtime disconnected批次报告、真实新Host/checkpoint/真实provider/跨平台矩阵不由此代证。"
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "baseline": "bb4cfd1c98a7caf2408fa10ba0204e707573214a",
+  "scope": "smoke only; no product source changes",
+  "environment": {
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "platform": "linux-x64",
+    "runtimePersistence": false,
+    "provider": "fake"
+  },
+  "smokeSourceSha256": "6d3ed4b4554a1fd95c803f5011a92ea30606ba44273f6c6d3f00558417ea6d66",
+  "checks": {
+    "syntax": "passed",
+    "existingOutputHelper": "14/14 passed",
+    "typecheck": "passed inside default VSIX packaging"
+  },
+  "native": {
+    "exit": 0,
+    "log": ".debug/local-host-boundary-start-fix/native.log",
+    "artifact": ".debug/local-host-boundary-start-fix/native-1791648774068/runtime/artifacts/host-boundary-result.json",
+    "productBundleSha256": {
+      "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+      "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+      "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+    },
+    "productHashesMatchBaseline": true,
+    "originalFunctionAndAssertions": true,
+    "matchedOriginalExecutionOutputs": [
+      {
+        "kind": "agent",
+        "executionId": "25d0cbc8-e6e1-406b-8377-3163644c9ec6",
+        "matchedMessages": 1,
+        "marker": "HOST_BOUNDARY_AGENT_FLUSH"
+      },
+      {
+        "kind": "terminal",
+        "executionId": "b0fbb581-2401-45d2-adf2-052477438a03",
+        "matchedMessages": 1,
+        "marker": "HOST_BOUNDARY_TERMINAL_FLUSH"
+      }
+    ],
+    "afterReload": [
+      {
+        "kind": "agent",
+        "status": "resume-ready",
+        "mode": "snapshot-only",
+        "live": false,
+        "recentOutput": "[fake-agent] ready pid=3600065 session=9140a139-db08-4f8b-90ba-efd829b350ab\necho HOST_BOUNDARY_AGENT_FLUSH\n^C"
+      },
+      {
+        "kind": "terminal",
+        "status": "interrupted",
+        "mode": "snapshot-only",
+        "live": false,
+        "recentOutput": "ziyang01.wang-al@hobot:/tmp/dscr$ echo HOST_BOUNDARY_TERMINAL_FLUSH\nHOST_BOUNDARY_TERMINAL_FLUSH\nziyang01.wang-al@hobot:/tmp/dscr$"
+      }
+    ]
+  },
+  "fullGate": {
+    "command": "npm run test:vsix-smoke",
+    "exit": 1,
+    "log": ".debug/local-host-boundary-start-fix/vsix.log",
+    "passedIndependentStages": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure",
+      "local-links-and-stop"
+    ],
+    "trustedPassed": "verifyHostBoundaryFlushesRecentLocalState including original-execution outputs and reload history",
+    "nextFailure": "verifyTrustedDiagnostics:13507 expects execution/exited for an Agent",
+    "failureStack": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert.ok(\n\n\tat verifyTrustedDiagnostics (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:13507:10)\n\tat async runTrustedSmoke (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:1484:3)\n\tat async runSmoke (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:306:3)\n\tat async Object.run (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:173:5)",
+    "artifacts": ".debug/local-host-boundary-start-fix/trusted-artifacts",
+    "nextRootCause": "not investigated in this repair"
+  },
+  "limits": [
+    "No full gate pass",
+    "Historical URL cleanup stall is not explained by this run",
+    "No actual new Host, checkpoint matrix, cross-platform or real provider service claim"
+  ],
+  "cleanup": "Isolated native and default VSIX processes exited; final snapshot has Agent resume-ready and Terminal interrupted, neither live."
+}

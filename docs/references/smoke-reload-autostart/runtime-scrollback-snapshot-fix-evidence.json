@@ -1,0 +1,87 @@
+{
+  "baselineHead": "295361701a4ea8a245ef0e6120f7ec60e11cd824",
+  "scope": "Runtime scrollback paged snapshot assertion repair; no product bundle changes",
+  "helperRegression": {
+    "passedGroups": 6,
+    "stagedDependencyClosure": true
+  },
+  "runnerEnvironmentRegression": "passed",
+  "native": {
+    "exitCode": 0,
+    "originalFunctionUnchangedExceptFinalAssertion": true,
+    "result": {
+      "runtimeSessionId": "1d43febd-ce20-416d-b8ac-d07d08fd8040",
+      "lifecycle": {
+        "surface": "editor",
+        "generation": 2,
+        "frameId": "frame-1672794e-6003-4a18-826b-1346cdb5fba8",
+        "mode": "active"
+      },
+      "readId": "5cf97cdc-37ee-48d8-8c08-8308c5b8d0b9",
+      "checkpointRevision": 15,
+      "appliedRevision": 15,
+      "headRevision": 15,
+      "chunkCount": 4,
+      "stateLength": 24874,
+      "scrollback": 240,
+      "markerCount": 220,
+      "firstMarker": "DSC_LRSP-001",
+      "lastMarker": "DSC_LRSP-220"
+    },
+    "payloadSha256": {
+      "extension.js": "2d10d783e2f9582a529a0c7dcabad27089f803a41a72d3cd85034f5b00091934",
+      "runtime-supervisor.js": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a",
+      "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+    }
+  },
+  "vsix": {
+    "exitCode": 1,
+    "independentStagesPassed": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure",
+      "local-links-and-stop"
+    ],
+    "trustedScrollback": {
+      "runtimeSessionId": "04124dc5-9791-40d2-917d-a8554f24d868",
+      "lifecycle": {
+        "surface": "editor",
+        "generation": 38,
+        "frameId": "frame-dd4492a2-eb20-4584-817f-bdb1bb99f64f",
+        "mode": "active"
+      },
+      "readId": "7a7f414c-a97a-482e-931b-0a5e13d0e725",
+      "checkpointRevision": 5,
+      "appliedRevision": 5,
+      "headRevision": 5,
+      "chunkCount": 4,
+      "stateLength": 24874,
+      "scrollback": 240,
+      "markerCount": 220,
+      "firstMarker": "DSC_LRSP-001",
+      "lastMarker": "DSC_LRSP-220"
+    },
+    "subsequentPassed": [
+      "verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain",
+      "verifyLiveRuntimeReconnectFailurePreservesBinding",
+      "verifyHistoryRestoredIgnoresStaleAutomaticResume"
+    ],
+    "failure": {
+      "function": "verifyLiveRuntimeResumeExitClassification",
+      "line": 10666,
+      "expectedSummaryRegex": "exit(?:ed with code| code) 23",
+      "actualSummary": "Session ended.",
+      "status": "error",
+      "lastExitCode": 23,
+      "rootCause": "not investigated"
+    },
+    "productHashesMatchNative": true
+  },
+  "cleanup": {
+    "isolatedLiveNodes": 0,
+    "remainingIsolatedSupervisors": []
+  }
+}

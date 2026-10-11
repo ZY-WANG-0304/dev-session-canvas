@@ -27,6 +27,7 @@ import {
 import { openCanvasExternalLink } from './linkOpenMode';
 
 export interface ExecutionTerminalPathContext {
+  executionSessionId?: string;
   shellPath?: string;
   cwd: string;
   pathStyle: ExecutionTerminalPathStyle;

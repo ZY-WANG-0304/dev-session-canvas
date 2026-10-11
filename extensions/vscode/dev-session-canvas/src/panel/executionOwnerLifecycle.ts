@@ -191,6 +191,24 @@ export class ExecutionOwnerLifecycle {
   get(key: string): OwnedExecution | undefined { return this.records.get(key); }
   list(): readonly OwnedExecution[] { return Object.freeze([...this.records.values()]); }
 
+  rekey(moves: readonly { execution: OwnedExecution; key: string }[]): void {
+    const moving = new Set(moves.map(move => move.execution));
+    const keys = new Set(moves.map(move => move.key));
+    if (moving.size !== moves.length || keys.size !== moves.length || moves.some(({ execution, key }) =>
+      !key || !execution.belongsTo(this) ||
+      (this.records.get(execution.key) !== execution && !execution.snapshot().retired) ||
+      (this.records.has(key) && !moving.has(this.records.get(key)!)))) {
+      throw new Error('Execution route migration does not preserve the original reservations.');
+    }
+    for (const { execution } of moves) {
+      if (this.records.get(execution.key) === execution) this.records.delete(execution.key);
+    }
+    for (const { execution, key } of moves) {
+      execution.moveRoute(this, key);
+      if (!execution.snapshot().retired) this.records.set(key, execution);
+    }
+  }
+
   closeAdmission(permanent = false): void { this.authority.closeAdmission(permanent); }
 
   close(options: { reason: string; permanent?: boolean }): Promise<OwnerCloseResult> {
@@ -254,7 +272,14 @@ export class OwnedExecution {
   private closeObservation?: CloseObservation;
   private finalObserverPending = false;
 
-  constructor(private readonly owner: ExecutionOwnerLifecycle, readonly key: string, readonly identity: ExecutionIdentity) {}
+  constructor(private readonly owner: ExecutionOwnerLifecycle, private route: string, readonly identity: ExecutionIdentity) {}
+
+  get key(): string { return this.route; }
+  belongsTo(owner: ExecutionOwnerLifecycle): boolean { return this.owner === owner; }
+  moveRoute(owner: ExecutionOwnerLifecycle, key: string): void {
+    if (owner !== this.owner) throw new Error('Execution route belongs to another owner.');
+    this.route = key;
+  }
 
   start(spec: LaunchSpec, hooks: ExecutionOwnerHooks): OperationObservation {
     this.owner.assertAdmission(this);

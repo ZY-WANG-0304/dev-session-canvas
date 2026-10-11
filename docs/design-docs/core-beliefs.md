@@ -319,3 +319,65 @@ unknown是当时缺少证明的观察，不应擦除已确认事实，也不阻�
 交互就绪超时须沿实际输入、源输出和采样条件定位，不能直接等同于 RPC 超时或操作失败。一次导航后看到的选择可能在无新输入时回退；直接 PTY 及系统调用对照只证明该受控边界，不能追认原运行底层事实。setup 早退时缺少原资源基线属于清理证据缺口，不能以节点清空补成资源退出。依据见 `linux-claude-trust-startup-diagnosis.md`。
 
 固定 CLI 验收可用经实测的幂等导航处理选择回退，但必须保留精确页面核验、导航上限、唯一确认与输入错误不重试。启动资源身份应在交互前以不可变快照持久化，完成交互后再次核对；早期身份基线不是完整 setup 成功，清理通过也不能覆盖原失败。依据见 `linux-claude-trust-startup-diagnosis.md`。
+
+画布重读、同宿主重新组合工作区与真正的 Host 重启必须区分。活动执行身份不能由重读后的节点状态反推；整图 seed 或 root ID 重映射必须保留同一执行的绑定，或先完成原执行结算。节点路由迁移保留 provider 身份和保存责任；移除 root 的尾部须按旧画布组合保存，失败或超时不能自动恢复重组。滚动历史等场景应分别验证运行期正文和停止/reload 后的保存结果。实时正文验收必须绑定原执行并读取实际交付通道，历史 metadata 不能冒充当前输出；最终快照的原始尺寸也不能被页面 reflow 改写。测试等待自启动超时时，应寻找首次状态失配，而不是把最后一个 reload 或未提交的最终保存视为根因。依据见 `smoke-reload-autostart-investigation.md`。
+
+已创建执行记录不等于执行已可交互。页面正常尺寸同步可能早于 provider ready 或 started，Host 应协调尺寸意图与运行阶段，不能把底层正确的未就绪拒绝直接当作用户操作错误。等待启动的尺寸意图不得占住正文消费链；只有运行就绪后才开始交互期限。正常关闭时取消尚未派发的意图，原生已确认的效果仍须提交，未知结果不能降级为取消成功。后续页面检测到的 toast 也不能反推错误发生在当前步骤；应记录首次请求和拒绝瞬间的同执行状态，区分启动、停止与输出源关闭。依据见 `smoke-reload-autostart-investigation.md` 的 resize 专项定位。
+
+执行后端迁移必须逐项核对退出后的业务副作用。进程结果、快照保存和页面最终交付完成，不代表异常退出提醒已触发；正文 OSC/BEL 桥接通过也不能代证退出通知。诊断须保留超时瞬间事件，并以相同配置、原执行和退出前状态做通知入口正向对照，不能靠补诊断事件放行测试。提醒标记应纳入原执行的最终保存，外部投递不得持有执行结算责任；共享通知策略接线须保留正常退出、主动停止及旧绑定保护。依据见 `smoke-reload-autostart-investigation.md` 的 Agent 退出码 27 专项定位。
+
+恢复启动与恢复完成后的运行错误必须保留不同语义。恢复标志应由原执行的输入确认或提示观察结束；不能仅凭启动时使用了 resume 命令就将后续所有错误都归为恢复失败。恢复失败原因随原终态保存，新尝试清除旧原因；状态分类、通知与进程/输出结算各自保持责任。依据见 `smoke-reload-autostart-investigation.md` 的恢复启动失败方案。
+
+执行交互入口迁移须覆盖拖放等间接输入。路径转义必须使用原执行的启动 shell/cwd，并经过同一身份、metadata 和关闭准入校验；异步写入确认不能把输入转投节点上的新执行。正文验证从原执行交付通道读取，不能用历史 metadata 掩盖入口遗漏。依据见 `smoke-reload-autostart-investigation.md` 的资源拖放方案。
+
+文件链接属于正文的只读解释，应按原输出行的工作目录解析，不能直接使用节点启动 cwd。执行迁移须把已确认输入/OSC 7 的逐行 tracker 接到解析入口；异步查询捕获原 tracker，相对路径缓存包含原执行身份，避免同节点重启后同名文件串用。停止输入不等于立即失去正文链接上下文。依据见 `smoke-reload-autostart-investigation.md` 的逐行文件链接方案。
+
+启动消息派发返回不代表 provider 已启动。同一 owner 的 `starting: 1` 限制与多个活动会话并存不矛盾；准备多个运行节点的测试须逐个等待原 executionId 的 started，早期输出投影的 live 不能单独证明启动槽已释放。合法的并发拒绝仍须被 Host 消费并向页面给出明确反馈，不能成为无人处理的 promise 或永久等待。页面观察应区分本请求的取消与旧执行阻塞新请求；已取消、替换或删除请求的迟到错误只记录诊断，仍有效的新请求失败须提示，且不能靠清理未知资源换取反馈。调查应记录拒绝瞬间的身份、关闭/隔离与占槽执行，并用重叠和确认后重试区分准入契约与生命周期故障。依据见 `smoke-reload-autostart-investigation.md` 的首次启动准入专项定位。
+
+- **Host 中断与用户停止应保留不同的恢复语义**：snapshot-only 中，Host 关闭中断活动 Agent 后，有可信 provider 身份应保存为 resume-ready 并等待手动恢复；无身份与 Terminal 为 interrupted。重读不能凭恢复能力生成自动 resume 意图。用户主动停止和已观测的自然退出保留原终态；恢复提示不能代替原 process、最终正文和保存责任的确认。依据见 `smoke-reload-autostart-investigation.md` 的 snapshot-only 手动恢复方案。
+
+启动准备失败必须结束本请求的待启动表现，同时保留尚未使用的历史正文和恢复身份。已清理启动记录或已提示错误都不能代替节点状态更新；准备失败、准入拒绝、取消和取得资源后的未知结果各自保持责任；准备失败时取消未派发的尺寸意图，避免同一原因被重复包装成 resize 错误。只有原执行记录及 metadata 绑定仍有效时才能投影失败，不以普通画布状态保存冒充进程最终快照结算。依据见 `smoke-reload-autostart-investigation.md` 的启动准备失败方案。
+
+测试准备动作必须等待该次操作的完成事实。空画布可早于 reset 请求，error/退出通知也可早于原终端页面确认；这些状态不能代替 reset 完成或原执行退休。定位占槽须分别核对保存、原生资源与读者结果，错误文案不能代替责任域证据；测试退出导致的 lost 清理不能冒充页面 applied。创建测试应 await 实际 reset，重启/恢复 seed 前应固定原 executionId/generation 等待退休；不得以任意新快照、重试或清除记录代替。依据见 `smoke-reload-autostart-investigation.md` 的最终保存占槽定位与正式等待方案。
+
+
+终端交互测试需区分 Host 已发正文、页面 buffer 已应用与可交互呈现三个时刻；原执行输出不能替代页面就绪；可用分段打印的独有标记关联新正文和目标页面，兼容软换行且排除命令回显。失败工件中的缓存 probe 也不能代证失败瞬间。生命周期测试应绑定当前所有权模型的实际结果，旧实现分支的固定文案和私有诊断不能替代原进程退出、最终保存和页面确认。依据见 `smoke-reload-autostart-investigation.md` 的链接扫描与停止契约专项定位。
+
+
+候选 provider 会话 ID 不等于已确认恢复能力。迁移执行所有权时，除正文/终态处理，还必须接回文件等外部确认入口，并将异步结果绑定原执行、候选 ID 与 metadata；旧 session map 的身份守卫不能直接用于 owned 记录。文件扫描应脱离启动/正文消费链，重叠触发合并并保留补查；合法原路由迁移与 metadata 投影更新仍属于原执行。无证据继续不可恢复，已确认结果不应因停止缺少输出提示而丢弃。依据见 `smoke-reload-autostart-investigation.md` 的 Claude 显式 session ID 专项定位。
+
+多个功能共用扩展存储时，目录创建与安全验证必须采用一致的权限约定。递归 mkdir 的 mode 不会收紧已有父目录；正常保存先创建的目录也必须纳入 Runtime 初始化与兼容设计。准备失败应保留安全的阶段/原因和正确启动表现，不以通用错误或测试 umask 掩盖初始化冲突。现存不安全目录不能未经验证直接接管，提交未知仍保留保护。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 首次 root 准备专项定位。
+
+Runtime 使用共享扩展目录前可以对已确认同 UID、非链接且无特殊位的历史 0770/0775 目录，通过原目录描述符移除组写位；必须复核 dev/ino 与 canonical 路径，不递归改权限、不变更 owner key，也不处理任意世界可写目录。新内部目录统一私有创建。未提交新会话的准备失败应结束 pendingLaunch；带原 Runtime 历史绑定的节点继续保留其清理资格，未知已提交会话仍保留责任。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 存储准备修复方案。
+
+相同准入错误可能来自准备容量或启动槽，必须在具体拒绝点核对原身份和责任。Runtime 与 snapshot-only 的多节点 fixture 都应等待原执行 started；节点创建返回或 liveSession 不等于启动槽释放。无探针对照中被拒节点交换、槽释放后原节点重试成功可佐证启动竞争，但不能把重试变成掩盖测试前提的正式修复。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 创建准入专项定位。
+
+多会话测试的创建与停止后重启均须遵循 started 屏障：Runtime 用原 runtimeSessionId，本地用原 executionId/generation，并在等待后复核绑定仍活动。共用 fixture 的修正应覆盖持久化开/关，restricted 不运行执行，不能机械加入启动等待。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime smoke 启动屏障修复方案。
+
+分页快照描述符不等于正文；重复快照可复用已有 reader，清空测试消息不会重置其消费位置。恢复测试需按原 session/authority/readId 与页面生命周期关联 bootstrap 和后续修订，按实际 codec 还原当前终端模型，不把内联旧字段缺失当作数据丢失，也不只改字段名等待已消费的数据重新发送。测试依赖应随 staged suite 打包，避免绝对路径或另写解码器；缺数据与错误数据需要区分，完整当前态后还需收到普通页面确认，并按连续事件推进修订号。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 滚动历史快照专项定位与分页断言正式方案。
+
+Runtime 的结构化退出信息属于终态事实，不能因 completed 正文清理而省略。迁移底层执行 owner 时，code/signal、状态分类、退出 descriptor/fallback 必须一起接回发布路径；Host 的通用兜底不等于上游已生成退出原因。应在原 session 的发布点取证，并用原断言及只改消息投影的隔离对照区分协议遗漏与测试过时。已确认退出的业务分类和 descriptor/fallback 在新旧路径共享；未知进程或失败 authority 不得冒充正常退出，非 EOF 信息与既有失败原因继续受保护。依据见 `smoke-reload-autostart-investigation.md` 的 Runtime 恢复退出摘要专项定位。
+
+模拟 Host 重载与真实 Host 退出必须分开验收。非永久边界继续接收事件，一次回调集合等待和原执行 started 都不保证最终检查时没有新回调；pending 拒绝不等于回调泄漏或实际窗口重载失败。真实退出须按关闭事件准入后的原责任结算验证，不以放宽保护或延迟测试替代。依据见 `smoke-reload-autostart-investigation.md` 的立即模拟 reload 定位。
+
+保留事件准入的模拟重载，在清空绑定前必须同时检查待处理回调与保存期间的回调登记变化；新回调即使已经结束，也可能使先前保存过时。等待须有统一期限，超时不清空原责任、不在迟到完成后继续重载。测试启动屏障只串行准入，不以等待最后一项启动/正文安静代替在途重载覆盖。依据见 `smoke-reload-autostart-investigation.md` 的立即模拟 reload 正式修复方案。
+
+新请求的准入拒绝与旧会话的退出状态必须按执行身份分开解释。未取得进程资源的请求可保留旧 stopped/退出摘要，并通过独立错误消息提示；不能据此认定新进程被旧信号杀死。独立测试中的重新启动同样需要原 started 屏障，共用 fixture 的屏障不会自动覆盖后续显式请求。正文观察与边界前检查仍须绑定该原执行身份，不能让旧消息或替换执行满足断言。依据见 `smoke-reload-autostart-investigation.md` 的本地 Host boundary 定位。
+
+有界且可清空的诊断缓存不是全流程历史。执行后端迁移后，应在产生行为的具名用例中，按原执行身份验证当前路径的退出、最终保存和读者结算，再保存验证结果；不能在长流程末尾要求旧后端专属事件，也不能把页面读者结算等同进程退出。依据见 `smoke-reload-autostart-investigation.md` 的 trusted 汇总诊断定位。
+
+跨用例汇总应显式接收产生行为的用例返回的证据，缺失任一证据必须失败；当前节点或后续新执行不能补足此前遗漏的验证。缓存清空后仍能汇总的正对照和缺项拒绝的负对照应同时成立，避免全局布尔标记或只删除旧断言造成空跑通过。依据见 `smoke-reload-autostart-investigation.md` 的 trusted 诊断正式修复。
+
+创建节点完成不等于其自动启动完成，独立 fixture 连续创建执行节点也必须尊重实际 owner 的启动准入。诊断时应以请求尺寸、准入结果和执行身份解释停点，不能从残留的“等待尺寸”摘要反推未上报尺寸；合法拒绝后的新节点待启动态与保留旧会话历史是不同的状态责任，应分别验证。依据见 `smoke-reload-autostart-investigation.md` 的文件活动启动定位。
+
+准入拒绝后的呈现收口必须绑定原待启动意图：只清除 pending start 并显示错误，不制造进程退出事实，不覆盖旧历史或较新请求。adapter 已创建甚至原记录已退休都不能单独解释资源取得情况；以 typed rejected-before-acquire 为依据。依据见 `smoke-reload-autostart-investigation.md` 的文件活动正式修复方案。
+
+终端 read 回执不是文件活动事件：执行后端迁移必须显式接入 provider 的结构化事件通道和采集器生命周期。恢复信息中的 sessionId 也不是所有适配器的完整契约，文本提示不得无差别替换依赖 storagePath 的测试恢复策略；测试适配失败与真实 provider 恢复应以同 metadata 的命令选择对照区分。依据见 `smoke-reload-autostart-investigation.md` 的文件活动与 fake resume 根因确认。
+
+执行级 observer 的资源责任应跟随原 execution，而非仅按 nodeId 存取；正常退出先 drain 末尾事件再冻结最终快照，拒绝启动先禁止迟到事件再释放，未知资源保持绑定直到原执行收口。observer 处理或释放失败不能被记录为保存成功。依据见 `smoke-reload-autostart-investigation.md` 的 owned 文件事件正式修复方案。
+
+owner settled 与 Host 最终保存是不同承诺；删除的 pending 拒绝必须按检查当时的事实解释，不能用稍后 saved 反推当时应当通过。把旧保守拒绝改为一次操作跨过正常保存窗口时，必须显式设计有界等待和目标身份保护，保留保存失败/超时责任，不能删除安全检查或在测试中无条件重试。依据见 `smoke-reload-autostart-investigation.md` 的 owned 删除时序调查。
+
+单节点删除可以有界等待原保存而不改变owner停止承诺；等待成功也不意味着仍可删除同名节点，必须在实际删除前重验原metadata、操作意图、owner及路由。正常最终投影和退休应被识别为同一目标，替换与超时迟到不得继续旧删除。其他破坏性入口不因共用helper而隐式获得新的等待策略。依据见 `smoke-reload-autostart-investigation.md` 的单节点删除正式方案。
+
+测试基线不是可无条件回放的静态数据：pendingLaunch是动作意图，原执行退休后重写旧快照会产生新请求。应按原执行生命周期收口测试，再保存可恢复基线。准入发生在reserve前或后决定可用身份信息，拒绝呈现都需收口，但不能将无record的新请求与同key旧执行责任混为一谈。依据见 `smoke-reload-autostart-investigation.md` 的Claude Fork调查。

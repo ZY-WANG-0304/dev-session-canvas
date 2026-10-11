@@ -1,0 +1,18 @@
+--- a/tests/vscode-smoke/extension-tests.cjs
++++ b/tests/vscode-smoke/extension-tests.cjs
+@@ -203,7 +203,14 @@
+   }
+   if (smokeScenario === 'local-preparation-failure') {
+     await ensureEditorCanvasReady();
+-    await verifyMissingAgentCliFailure();
++    await createBaseNodes({ waitForAutoStart: true });
++    const snapshot = await getDebugSnapshot();
++    const agent = findNodeByKind(snapshot, 'agent');
++    const terminal = findNodeByKind(snapshot, 'terminal');
++    await ensureAgentStopped(agent.id);
++    await ensureTerminalStopped(terminal.id);
++    await verifyStopVsQueuedExitRace(agent.id);
++    console.log('Targeted stop race passed with all original result assertions.');
+     return;
+   }
+   if (smokeScenario === 'local-pty-robustness') {

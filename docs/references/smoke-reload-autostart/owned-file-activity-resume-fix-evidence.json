@@ -1,0 +1,176 @@
+{
+  "baselineCommit": "71788d9ef243c18f4b8d4a06417417cd4f2e5194",
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "environment": {
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "platform": "Linux x64",
+    "provider": "fake provider",
+    "execution": "native PTY / RuntimePersistence=false for repaired scenarios"
+  },
+  "scope": "Owned execution collector lifecycle and fake-provider recovery-context preservation; no version or release change.",
+  "automated": {
+    "negativeControl": "First added collector test failed with 0 !== 1 before product changes.",
+    "host": "569/569",
+    "newCases": 18,
+    "typecheck": "passed",
+    "localization": "passed",
+    "smokeExecutionOutput": "14/14",
+    "syntax": "passed",
+    "diffCheck": "passed"
+  },
+  "payloadSha256": {
+    "extension.js": "e62c8a771f64d137b15e69c25d64b41643290b7437cb3733589a1e1a95836a3e",
+    "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+    "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+  },
+  "nativeRuns": {
+    "files": {
+      "artifact": ".debug/owned-file-activity-resume-fix/files-1791654822757/runtime/artifacts/result.json",
+      "exitCode": 1,
+      "originalFunctionPassed": false,
+      "remainingExecutions": 0,
+      "payloadSha256": {
+        "extension.js": "e62c8a771f64d137b15e69c25d64b41643290b7437cb3733589a1e1a95836a3e",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "failure": "Timed out at original verifyFileActivityViewsAndOpenFiles:4426 after deleting Agent B.",
+      "passedRange": "Original read/write, shared references, file node/list presentation and opening entries; manually deleting file/list projections also passed.",
+      "fileReferences": [
+        {
+          "id": "f13a43d3aa7505f2",
+          "filePath": "/tmp/dscr/.debug/vscode-smoke/file-activity/agent-a-only.md",
+          "relativePath": ".debug/vscode-smoke/file-activity/agent-a-only.md",
+          "updatedAt": "2026-10-10T17:53:51.433Z",
+          "owners": [
+            {
+              "nodeId": "agent-4-8831a333-c8b7-47d7-ad1c-5ce08349a9ed",
+              "accessMode": "read",
+              "updatedAt": "2026-10-10T17:53:51.433Z"
+            }
+          ]
+        },
+        {
+          "id": "21b07da6de9e7c84",
+          "filePath": "/tmp/dscr/.debug/vscode-smoke/file-activity/path-only-width-regression/alpha-beta-gamma-delta/epsilon-zeta-eta-theta/iota-kappa-lambda-mu/agent-a-second-width-regression-check.txt",
+          "relativePath": ".debug/vscode-smoke/file-activity/path-only-width-regression/alpha-beta-gamma-delta/epsilon-zeta-eta-theta/iota-kappa-lambda-mu/agent-a-second-width-regression-check.txt",
+          "updatedAt": "2026-10-10T17:53:51.545Z",
+          "owners": [
+            {
+              "nodeId": "agent-4-8831a333-c8b7-47d7-ad1c-5ce08349a9ed",
+              "accessMode": "write",
+              "updatedAt": "2026-10-10T17:53:51.545Z"
+            }
+          ]
+        },
+        {
+          "id": "b14ff6c96219f7e7",
+          "filePath": "/tmp/dscr/.debug/vscode-smoke/file-activity/agent-b-only.json",
+          "relativePath": ".debug/vscode-smoke/file-activity/agent-b-only.json",
+          "updatedAt": "2026-10-10T17:53:51.859Z",
+          "owners": [
+            {
+              "nodeId": "agent-5-c825ce5c-de3a-485f-84f5-c340eba7e540",
+              "accessMode": "write",
+              "updatedAt": "2026-10-10T17:53:51.859Z"
+            }
+          ]
+        },
+        {
+          "id": "3b9edd5e89b77cb8",
+          "filePath": "/tmp/dscr/.debug/vscode-smoke/file-activity/shared.ts",
+          "relativePath": ".debug/vscode-smoke/file-activity/shared.ts",
+          "updatedAt": "2026-10-10T17:53:51.964Z",
+          "owners": [
+            {
+              "nodeId": "agent-4-8831a333-c8b7-47d7-ad1c-5ce08349a9ed",
+              "accessMode": "read-write",
+              "updatedAt": "2026-10-10T17:53:51.788Z"
+            },
+            {
+              "nodeId": "agent-5-c825ce5c-de3a-485f-84f5-c340eba7e540",
+              "accessMode": "write",
+              "updatedAt": "2026-10-10T17:53:51.964Z"
+            }
+          ]
+        }
+      ],
+      "agents": [
+        {
+          "id": "agent-1-6582b1e7-ac20-42d0-a813-50aec3a604cb",
+          "status": "resume-ready",
+          "liveSession": false,
+          "exitCode": null
+        },
+        {
+          "id": "agent-4-8831a333-c8b7-47d7-ad1c-5ce08349a9ed",
+          "status": "waiting-input",
+          "liveSession": true,
+          "exitCode": null
+        },
+        {
+          "id": "agent-5-c825ce5c-de3a-485f-84f5-c340eba7e540",
+          "status": "stopped",
+          "liveSession": false,
+          "exitCode": 0
+        }
+      ],
+      "finalPersistence": [
+        {
+          "timestamp": "2026-10-10T17:53:55.573Z",
+          "kind": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-5-c825ce5c-de3a-485f-84f5-c340eba7e540",
+            "executionId": "3c5a8312-9e76-4b38-a5a3-a425d9c9073f",
+            "generation": "15ae87b7-19ea-4063-a1a6-dd30de8883d6",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        }
+      ]
+    },
+    "readexit": {
+      "artifact": ".debug/owned-file-activity-resume-fix/readexit-1791654867462/runtime/artifacts/result.json",
+      "exitCode": 0,
+      "originalFunctionPassed": true,
+      "remainingExecutions": 0,
+      "payloadSha256": {
+        "extension.js": "e62c8a771f64d137b15e69c25d64b41643290b7437cb3733589a1e1a95836a3e",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "coverage": "Original readexit: stopped Agent, read reference, file node/edge, persisted reload, deletion cleanup, baseline restoration."
+    }
+  },
+  "defaultVsix": {
+    "exitCode": 1,
+    "log": ".debug/owned-file-activity-resume-fix/vsix.log",
+    "independentStages": {
+      "owned-canvas-reconciliation": 0,
+      "local-execution-flow": 0,
+      "snapshot-only-manual-recovery": 0,
+      "local-surface-cutover": 0,
+      "local-pty-robustness": 0,
+      "local-preparation-failure": 0,
+      "local-links-and-stop": 0
+    },
+    "trusted": {
+      "exitCode": 1,
+      "artifactDir": ".debug/owned-file-activity-resume-fix/trusted-artifacts",
+      "resume": "Original verifyRuntimeReloadRecovery passed, including no automatic resume, explicit resume, same provider identity and exit19. Formal initial burst response ensures stop-hint trap readiness.",
+      "failure": "verifyFileActivityViewsAndOpenFiles:4426: Agent B stopped and final persistence saved, but node/references remain after delete. Root cause unconfirmed.",
+      "fileReferences": 4
+    }
+  },
+  "boundaries": [
+    "Isolated native entries only select original test functions; product bundles unchanged and hashes equal final VSIX staging.",
+    "Real Claude hook injection is restored by shared launch wiring, but real provider service was not run.",
+    "Deletion failure and subsequent trusted stages remain unresolved; readexit independent success does not replace the full gate.",
+    "Historical URL cleanup stall and Runtime client disconnected batch report remain unclosed.",
+    "Real new Extension Host/checkpoint, Remote SSH, other platforms and cross-version matrices not covered."
+  ]
+}

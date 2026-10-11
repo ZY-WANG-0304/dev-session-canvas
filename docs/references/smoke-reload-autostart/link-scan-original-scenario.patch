@@ -1,0 +1,36 @@
+--- a/tests/vscode-smoke/extension-tests.cjs
++++ b/tests/vscode-smoke/extension-tests.cjs
+@@ -203,7 +203,21 @@
+   }
+   if (smokeScenario === 'local-preparation-failure') {
+     await ensureEditorCanvasReady();
+-    await verifyMissingAgentCliFailure();
++    await createBaseNodes({ waitForAutoStart: true });
++    const snapshot = await getDebugSnapshot();
++    await ensureAgentStopped(findNodeByKind(snapshot, 'agent').id);
++    const terminalId = findNodeByKind(snapshot, 'terminal').id;
++    for (let attempt = 1; attempt <= 3; attempt += 1) {
++      console.log(`[link-probe] original native interaction attempt ${attempt}`);
++      try {
++        await verifyExecutionTerminalNativeInteractions(terminalId);
++        console.log(`[link-probe] attempt ${attempt} passed`);
++      } catch (error) {
++        console.log(`[link-probe] attempt ${attempt} failed: ${error.message}`);
++        await fs.cp(path.join(artifactDir, 'before-cleanup'), path.join(artifactDir, `attempt-${attempt}`), { recursive: true });
++      }
++    }
++    console.log('[link-probe] bounded observation ended; inspect each outcome, not a gate pass');
+     return;
+   }
+   if (smokeScenario === 'local-pty-robustness') {
+@@ -8477,6 +8491,10 @@
+         ),
+       10000
+     );
++  } catch (error) {
++    await captureWebviewProbe('editor', 5000).catch(() => undefined);
++    await writeFailureArtifacts(error, path.join(artifactDir, 'before-cleanup'));
++    throw error;
+   } finally {
+     await Promise.resolve()
+       .then(() =>

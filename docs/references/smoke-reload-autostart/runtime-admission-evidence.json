@@ -1,0 +1,1033 @@
+{
+  "baseline": "563e45c9e7a5be52927d578eb16b109a0ae5f50d",
+  "environment": {
+    "date": "2026-10-10",
+    "vscode": "1.141.0",
+    "node": "22.23.3",
+    "platform": "linux-x64",
+    "runtimePersistence": true,
+    "backend": "legacy-detached",
+    "profile": "linux-owner-v1-candidate"
+  },
+  "scope": "原 prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true) 的创建阶段；未执行后续 reload/reattach；正式源码和 smoke 未修改。",
+  "originalFailure": {
+    "artifacts": ".debug/runtime-root-fix/final-trusted-artifacts",
+    "instantaneousAdmissionStateAvailable": false,
+    "events": [
+      {
+        "timestamp": "2026-10-10T10:27:08.914Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-6ba37606-ce6d-44c0-aa2f-55c910562472"
+        }
+      },
+      {
+        "timestamp": "2026-10-10T10:27:08.944Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "terminal",
+          "nodeId": "terminal-2-a438a2b3-e6c9-435f-a0d8-4971ec6684a1"
+        }
+      },
+      {
+        "timestamp": "2026-10-10T10:27:09.613Z",
+        "kind": "execution/candidateStartFailed",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-6ba37606-ce6d-44c0-aa2f-55c910562472",
+          "message": "Failed to start Codex: Execution start was rejected-before-acquire."
+        }
+      },
+      {
+        "timestamp": "2026-10-10T10:27:09.670Z",
+        "kind": "execution/started",
+        "detail": {
+          "kind": "terminal",
+          "nodeId": "terminal-2-a438a2b3-e6c9-435f-a0d8-4971ec6684a1",
+          "sessionId": "86fe6eee-bb07-4dff-ac78-d7f3589bcfdb"
+        }
+      }
+    ]
+  },
+  "scenarios": {
+    "burst": {
+      "exitCode": 0,
+      "baselineSupervisorSha256": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a",
+      "executedSupervisorSha256": "cd3146204ce4616cc1e0112344d61ba6a7b923b9f766e625a5a9bf3fb9a358d5",
+      "report": {
+        "scenario": "burst",
+        "initial": [
+          {
+            "id": "agent-1-c4c7420f-f137-48d3-ae1e-98ae005b8ff9",
+            "kind": "agent",
+            "status": "error",
+            "liveSession": false,
+            "persistenceMode": "live-runtime",
+            "lastRuntimeError": "Execution start was rejected-before-acquire."
+          },
+          {
+            "id": "terminal-2-c29a2bdd-51e1-413b-bf45-e052b583b815",
+            "kind": "terminal",
+            "status": "live",
+            "liveSession": true,
+            "persistenceMode": "live-runtime",
+            "runtimeSessionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0"
+          }
+        ],
+        "retry": [
+          {
+            "id": "agent-1-c4c7420f-f137-48d3-ae1e-98ae005b8ff9",
+            "kind": "agent",
+            "at": 1791631083987
+          }
+        ],
+        "final": [
+          {
+            "id": "agent-1-c4c7420f-f137-48d3-ae1e-98ae005b8ff9",
+            "kind": "agent",
+            "status": "starting",
+            "liveSession": true,
+            "persistenceMode": "live-runtime",
+            "runtimeSessionId": "4c17832a-857e-411d-926f-9fc8e9153882"
+          },
+          {
+            "id": "terminal-2-c29a2bdd-51e1-413b-bf45-e052b583b815",
+            "kind": "terminal",
+            "status": "live",
+            "liveSession": true,
+            "persistenceMode": "live-runtime",
+            "runtimeSessionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0"
+          }
+        ],
+        "events": [
+          {
+            "timestamp": "2026-10-10T11:18:02.994Z",
+            "kind": "execution/startRequested",
+            "detail": {
+              "kind": "agent",
+              "nodeId": "agent-1-c4c7420f-f137-48d3-ae1e-98ae005b8ff9"
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:18:03.026Z",
+            "kind": "execution/startRequested",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "terminal-2-c29a2bdd-51e1-413b-bf45-e052b583b815"
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:18:03.844Z",
+            "kind": "execution/candidateStartFailed",
+            "detail": {
+              "kind": "agent",
+              "nodeId": "agent-1-c4c7420f-f137-48d3-ae1e-98ae005b8ff9",
+              "message": "Failed to start Codex: Execution start was rejected-before-acquire."
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:18:03.902Z",
+            "kind": "execution/started",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "terminal-2-c29a2bdd-51e1-413b-bf45-e052b583b815",
+              "sessionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0"
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:18:03.989Z",
+            "kind": "execution/startRequested",
+            "detail": {
+              "kind": "agent",
+              "nodeId": "agent-1-c4c7420f-f137-48d3-ae1e-98ae005b8ff9"
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:18:04.117Z",
+            "kind": "execution/started",
+            "detail": {
+              "kind": "agent",
+              "nodeId": "agent-1-c4c7420f-f137-48d3-ae1e-98ae005b8ff9",
+              "sessionId": "4c17832a-857e-411d-926f-9fc8e9153882"
+            }
+          }
+        ]
+      },
+      "supervisorEvents": [
+        {
+          "at": 1791631083800,
+          "pid": 2729775,
+          "event": "createEntry",
+          "sessionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0",
+          "kind": "terminal",
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 0,
+            "admissionPending": 0
+          },
+          "authority": {
+            "active": 0,
+            "starting": 0,
+            "admissionPending": 0,
+            "closing": false,
+            "permanent": false
+          },
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "sessions": []
+        },
+        {
+          "at": 1791631083801,
+          "pid": 2729775,
+          "event": "preparationCapacity",
+          "sessionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0",
+          "kind": "terminal",
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 0,
+            "admissionPending": 0
+          },
+          "retainedRetirements": 0,
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          }
+        },
+        {
+          "at": 1791631083818,
+          "pid": 2729775,
+          "event": "beginStart",
+          "identity": {
+            "executionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0",
+            "generation": "ab55bcbe-894a-417a-8676-9c88455c9939"
+          },
+          "identityMatch": true,
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "authority": {
+            "active": 1,
+            "starting": 0,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "holders": [],
+          "executions": [
+            {
+              "identity": {
+                "executionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0",
+                "generation": "ab55bcbe-894a-417a-8676-9c88455c9939"
+              },
+              "state": "bound",
+              "resources": []
+            }
+          ]
+        },
+        {
+          "at": 1791631083824,
+          "pid": 2729775,
+          "event": "createEntry",
+          "sessionId": "c22d25b5-f030-4368-9a15-bed92b8b805d",
+          "kind": "agent",
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 1,
+            "admissionPending": 1
+          },
+          "authority": {
+            "active": 1,
+            "starting": 1,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "sessions": [
+            {
+              "sessionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0",
+              "kind": "terminal",
+              "live": true,
+              "lifecycle": "launching"
+            }
+          ]
+        },
+        {
+          "at": 1791631083824,
+          "pid": 2729775,
+          "event": "preparationCapacity",
+          "sessionId": "c22d25b5-f030-4368-9a15-bed92b8b805d",
+          "kind": "agent",
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 1,
+            "admissionPending": 1
+          },
+          "retainedRetirements": 0,
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          }
+        },
+        {
+          "at": 1791631083832,
+          "pid": 2729775,
+          "event": "beginStart",
+          "identity": {
+            "executionId": "c22d25b5-f030-4368-9a15-bed92b8b805d",
+            "generation": "d1159fa0-7645-46e9-96e0-4b5ab376752c"
+          },
+          "identityMatch": true,
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "authority": {
+            "active": 2,
+            "starting": 1,
+            "admissionPending": 2,
+            "closing": false,
+            "permanent": false
+          },
+          "holders": [
+            {
+              "identity": {
+                "executionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0",
+                "generation": "ab55bcbe-894a-417a-8676-9c88455c9939"
+              },
+              "state": "starting"
+            }
+          ],
+          "executions": [
+            {
+              "identity": {
+                "executionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0",
+                "generation": "ab55bcbe-894a-417a-8676-9c88455c9939"
+              },
+              "state": "starting",
+              "resources": [
+                "provider-control"
+              ]
+            },
+            {
+              "identity": {
+                "executionId": "c22d25b5-f030-4368-9a15-bed92b8b805d",
+                "generation": "d1159fa0-7645-46e9-96e0-4b5ab376752c"
+              },
+              "state": "bound",
+              "resources": []
+            }
+          ]
+        },
+        {
+          "at": 1791631083832,
+          "pid": 2729775,
+          "event": "finishStart",
+          "identity": {
+            "executionId": "c22d25b5-f030-4368-9a15-bed92b8b805d",
+            "generation": "d1159fa0-7645-46e9-96e0-4b5ab376752c"
+          },
+          "authority": {
+            "active": 2,
+            "starting": 1,
+            "admissionPending": 2,
+            "closing": false,
+            "permanent": false
+          }
+        },
+        {
+          "at": 1791631083832,
+          "pid": 2729775,
+          "event": "startResult",
+          "sessionId": "c22d25b5-f030-4368-9a15-bed92b8b805d",
+          "kind": "agent",
+          "result": "rejected-before-acquire",
+          "resources": [],
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 2,
+            "admissionPending": 2
+          },
+          "authority": {
+            "active": 1,
+            "starting": 1,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          }
+        },
+        {
+          "at": 1791631083898,
+          "pid": 2729775,
+          "event": "finishStart",
+          "identity": {
+            "executionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0",
+            "generation": "ab55bcbe-894a-417a-8676-9c88455c9939"
+          },
+          "authority": {
+            "active": 1,
+            "starting": 1,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          }
+        },
+        {
+          "at": 1791631083898,
+          "pid": 2729775,
+          "event": "startResult",
+          "sessionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0",
+          "kind": "terminal",
+          "result": "started",
+          "resources": [
+            "provider-control",
+            "pty-master",
+            "pty-child",
+            "pty-source"
+          ],
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 1,
+            "admissionPending": 0
+          },
+          "authority": {
+            "active": 1,
+            "starting": 0,
+            "admissionPending": 0,
+            "closing": false,
+            "permanent": false
+          }
+        },
+        {
+          "at": 1791631084021,
+          "pid": 2729775,
+          "event": "createEntry",
+          "sessionId": "4c17832a-857e-411d-926f-9fc8e9153882",
+          "kind": "agent",
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 1,
+            "admissionPending": 0
+          },
+          "authority": {
+            "active": 1,
+            "starting": 0,
+            "admissionPending": 0,
+            "closing": false,
+            "permanent": false
+          },
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "sessions": [
+            {
+              "sessionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0",
+              "kind": "terminal",
+              "live": true,
+              "lifecycle": "live"
+            }
+          ]
+        },
+        {
+          "at": 1791631084021,
+          "pid": 2729775,
+          "event": "preparationCapacity",
+          "sessionId": "4c17832a-857e-411d-926f-9fc8e9153882",
+          "kind": "agent",
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 1,
+            "admissionPending": 0
+          },
+          "retainedRetirements": 0,
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          }
+        },
+        {
+          "at": 1791631084034,
+          "pid": 2729775,
+          "event": "beginStart",
+          "identity": {
+            "executionId": "4c17832a-857e-411d-926f-9fc8e9153882",
+            "generation": "8a822a0d-e82d-4d1c-bd69-4a2ba1570e08"
+          },
+          "identityMatch": true,
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "authority": {
+            "active": 2,
+            "starting": 0,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "holders": [],
+          "executions": [
+            {
+              "identity": {
+                "executionId": "d54bf829-fd0b-46cb-9041-4d45f4e23fd0",
+                "generation": "ab55bcbe-894a-417a-8676-9c88455c9939"
+              },
+              "state": "running",
+              "resources": [
+                "provider-control",
+                "pty-master",
+                "pty-child",
+                "pty-source"
+              ]
+            },
+            {
+              "identity": {
+                "executionId": "4c17832a-857e-411d-926f-9fc8e9153882",
+                "generation": "8a822a0d-e82d-4d1c-bd69-4a2ba1570e08"
+              },
+              "state": "bound",
+              "resources": []
+            }
+          ]
+        },
+        {
+          "at": 1791631084111,
+          "pid": 2729775,
+          "event": "finishStart",
+          "identity": {
+            "executionId": "4c17832a-857e-411d-926f-9fc8e9153882",
+            "generation": "8a822a0d-e82d-4d1c-bd69-4a2ba1570e08"
+          },
+          "authority": {
+            "active": 2,
+            "starting": 1,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          }
+        },
+        {
+          "at": 1791631084111,
+          "pid": 2729775,
+          "event": "startResult",
+          "sessionId": "4c17832a-857e-411d-926f-9fc8e9153882",
+          "kind": "agent",
+          "result": "started",
+          "resources": [
+            "provider-control",
+            "pty-master",
+            "pty-child",
+            "pty-source"
+          ],
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 2,
+            "admissionPending": 0
+          },
+          "authority": {
+            "active": 2,
+            "starting": 0,
+            "admissionPending": 0,
+            "closing": false,
+            "permanent": false
+          }
+        }
+      ]
+    },
+    "serial": {
+      "exitCode": 0,
+      "baselineSupervisorSha256": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a",
+      "executedSupervisorSha256": "f754cbfd36da0082fceed2f2a3fc340a2123ee54868194444885278f86077645",
+      "report": {
+        "scenario": "serial",
+        "initial": [
+          {
+            "id": "agent-1-9451b396-f056-4f98-8fa2-d7c71898975f",
+            "kind": "agent",
+            "status": "starting",
+            "liveSession": true,
+            "persistenceMode": "live-runtime",
+            "runtimeSessionId": "3533061d-eafa-4c7b-bf68-da936c549044"
+          },
+          {
+            "id": "terminal-2-fd6a9feb-7afe-4a78-9160-aac9ba0220ef",
+            "kind": "terminal",
+            "status": "live",
+            "liveSession": true,
+            "persistenceMode": "live-runtime",
+            "runtimeSessionId": "c0a3cfee-1a20-45be-9234-24a1a8e502c4"
+          }
+        ],
+        "retry": [],
+        "final": [
+          {
+            "id": "agent-1-9451b396-f056-4f98-8fa2-d7c71898975f",
+            "kind": "agent",
+            "status": "starting",
+            "liveSession": true,
+            "persistenceMode": "live-runtime",
+            "runtimeSessionId": "3533061d-eafa-4c7b-bf68-da936c549044"
+          },
+          {
+            "id": "terminal-2-fd6a9feb-7afe-4a78-9160-aac9ba0220ef",
+            "kind": "terminal",
+            "status": "live",
+            "liveSession": true,
+            "persistenceMode": "live-runtime",
+            "runtimeSessionId": "c0a3cfee-1a20-45be-9234-24a1a8e502c4"
+          }
+        ],
+        "events": [
+          {
+            "timestamp": "2026-10-10T11:18:30.237Z",
+            "kind": "execution/startRequested",
+            "detail": {
+              "kind": "agent",
+              "nodeId": "agent-1-9451b396-f056-4f98-8fa2-d7c71898975f"
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:18:30.884Z",
+            "kind": "execution/started",
+            "detail": {
+              "kind": "agent",
+              "nodeId": "agent-1-9451b396-f056-4f98-8fa2-d7c71898975f",
+              "sessionId": "3533061d-eafa-4c7b-bf68-da936c549044"
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:18:30.981Z",
+            "kind": "execution/startRequested",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "terminal-2-fd6a9feb-7afe-4a78-9160-aac9ba0220ef"
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:18:31.133Z",
+            "kind": "execution/started",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "terminal-2-fd6a9feb-7afe-4a78-9160-aac9ba0220ef",
+              "sessionId": "c0a3cfee-1a20-45be-9234-24a1a8e502c4"
+            }
+          }
+        ]
+      },
+      "supervisorEvents": [
+        {
+          "at": 1791631110787,
+          "pid": 2738289,
+          "event": "createEntry",
+          "sessionId": "3533061d-eafa-4c7b-bf68-da936c549044",
+          "kind": "agent",
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 0,
+            "admissionPending": 0
+          },
+          "authority": {
+            "active": 0,
+            "starting": 0,
+            "admissionPending": 0,
+            "closing": false,
+            "permanent": false
+          },
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "sessions": []
+        },
+        {
+          "at": 1791631110787,
+          "pid": 2738289,
+          "event": "preparationCapacity",
+          "sessionId": "3533061d-eafa-4c7b-bf68-da936c549044",
+          "kind": "agent",
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 0,
+            "admissionPending": 0
+          },
+          "retainedRetirements": 0,
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          }
+        },
+        {
+          "at": 1791631110803,
+          "pid": 2738289,
+          "event": "beginStart",
+          "identity": {
+            "executionId": "3533061d-eafa-4c7b-bf68-da936c549044",
+            "generation": "e720b7c5-6ef5-4c57-896f-1e3504246ee4"
+          },
+          "identityMatch": true,
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "authority": {
+            "active": 1,
+            "starting": 0,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "holders": [],
+          "executions": [
+            {
+              "identity": {
+                "executionId": "3533061d-eafa-4c7b-bf68-da936c549044",
+                "generation": "e720b7c5-6ef5-4c57-896f-1e3504246ee4"
+              },
+              "state": "bound",
+              "resources": []
+            }
+          ]
+        },
+        {
+          "at": 1791631110878,
+          "pid": 2738289,
+          "event": "finishStart",
+          "identity": {
+            "executionId": "3533061d-eafa-4c7b-bf68-da936c549044",
+            "generation": "e720b7c5-6ef5-4c57-896f-1e3504246ee4"
+          },
+          "authority": {
+            "active": 1,
+            "starting": 1,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          }
+        },
+        {
+          "at": 1791631110879,
+          "pid": 2738289,
+          "event": "startResult",
+          "sessionId": "3533061d-eafa-4c7b-bf68-da936c549044",
+          "kind": "agent",
+          "result": "started",
+          "resources": [
+            "provider-control",
+            "pty-master",
+            "pty-child",
+            "pty-source"
+          ],
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 1,
+            "admissionPending": 0
+          },
+          "authority": {
+            "active": 1,
+            "starting": 0,
+            "admissionPending": 0,
+            "closing": false,
+            "permanent": false
+          }
+        },
+        {
+          "at": 1791631111056,
+          "pid": 2738289,
+          "event": "createEntry",
+          "sessionId": "c0a3cfee-1a20-45be-9234-24a1a8e502c4",
+          "kind": "terminal",
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 1,
+            "admissionPending": 0
+          },
+          "authority": {
+            "active": 1,
+            "starting": 0,
+            "admissionPending": 0,
+            "closing": false,
+            "permanent": false
+          },
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "sessions": [
+            {
+              "sessionId": "3533061d-eafa-4c7b-bf68-da936c549044",
+              "kind": "agent",
+              "live": true,
+              "lifecycle": "starting"
+            }
+          ]
+        },
+        {
+          "at": 1791631111056,
+          "pid": 2738289,
+          "event": "preparationCapacity",
+          "sessionId": "c0a3cfee-1a20-45be-9234-24a1a8e502c4",
+          "kind": "terminal",
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 1,
+            "admissionPending": 0
+          },
+          "retainedRetirements": 0,
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          }
+        },
+        {
+          "at": 1791631111061,
+          "pid": 2738289,
+          "event": "beginStart",
+          "identity": {
+            "executionId": "c0a3cfee-1a20-45be-9234-24a1a8e502c4",
+            "generation": "cc3229b8-c318-4e3b-95bd-b0f84d529051"
+          },
+          "identityMatch": true,
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "authority": {
+            "active": 2,
+            "starting": 0,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "holders": [],
+          "executions": [
+            {
+              "identity": {
+                "executionId": "3533061d-eafa-4c7b-bf68-da936c549044",
+                "generation": "e720b7c5-6ef5-4c57-896f-1e3504246ee4"
+              },
+              "state": "running",
+              "resources": [
+                "provider-control",
+                "pty-master",
+                "pty-child",
+                "pty-source"
+              ]
+            },
+            {
+              "identity": {
+                "executionId": "c0a3cfee-1a20-45be-9234-24a1a8e502c4",
+                "generation": "cc3229b8-c318-4e3b-95bd-b0f84d529051"
+              },
+              "state": "bound",
+              "resources": []
+            }
+          ]
+        },
+        {
+          "at": 1791631111131,
+          "pid": 2738289,
+          "event": "finishStart",
+          "identity": {
+            "executionId": "c0a3cfee-1a20-45be-9234-24a1a8e502c4",
+            "generation": "cc3229b8-c318-4e3b-95bd-b0f84d529051"
+          },
+          "authority": {
+            "active": 2,
+            "starting": 1,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          }
+        },
+        {
+          "at": 1791631111131,
+          "pid": 2738289,
+          "event": "startResult",
+          "sessionId": "c0a3cfee-1a20-45be-9234-24a1a8e502c4",
+          "kind": "terminal",
+          "result": "started",
+          "resources": [
+            "provider-control",
+            "pty-master",
+            "pty-child",
+            "pty-source"
+          ],
+          "owner": {
+            "closing": false,
+            "permanent": false,
+            "pending": 2,
+            "admissionPending": 0
+          },
+          "authority": {
+            "active": 2,
+            "starting": 0,
+            "admissionPending": 0,
+            "closing": false,
+            "permanent": false
+          }
+        }
+      ]
+    },
+    "raw": {
+      "exitCode": 0,
+      "baselineSupervisorSha256": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a",
+      "executedSupervisorSha256": "20b77c2bec25956e40525c6553b098cb4a1ad1c4c56c15c29ce7b8dee5d6be0a",
+      "report": {
+        "scenario": "raw",
+        "initial": [
+          {
+            "id": "agent-1-ea71e56b-a734-42c0-8adc-b6ef4b84c5d1",
+            "kind": "agent",
+            "status": "starting",
+            "liveSession": true,
+            "persistenceMode": "live-runtime",
+            "runtimeSessionId": "b3e5b303-cac9-40bb-91c2-1684b676f41c"
+          },
+          {
+            "id": "terminal-2-7be4f2db-efb5-4e91-92e8-f02fbe1b589d",
+            "kind": "terminal",
+            "status": "error",
+            "liveSession": false,
+            "persistenceMode": "live-runtime",
+            "lastRuntimeError": "Execution start was rejected-before-acquire."
+          }
+        ],
+        "retry": [
+          {
+            "id": "terminal-2-7be4f2db-efb5-4e91-92e8-f02fbe1b589d",
+            "kind": "terminal",
+            "at": 1791630893421
+          }
+        ],
+        "final": [
+          {
+            "id": "agent-1-ea71e56b-a734-42c0-8adc-b6ef4b84c5d1",
+            "kind": "agent",
+            "status": "starting",
+            "liveSession": true,
+            "persistenceMode": "live-runtime",
+            "runtimeSessionId": "b3e5b303-cac9-40bb-91c2-1684b676f41c"
+          },
+          {
+            "id": "terminal-2-7be4f2db-efb5-4e91-92e8-f02fbe1b589d",
+            "kind": "terminal",
+            "status": "launching",
+            "liveSession": true,
+            "persistenceMode": "live-runtime",
+            "runtimeSessionId": "9cbd464b-62cb-402f-8ca4-66cfb94c8af3"
+          }
+        ],
+        "events": [
+          {
+            "timestamp": "2026-10-10T11:14:52.657Z",
+            "kind": "execution/startRequested",
+            "detail": {
+              "kind": "agent",
+              "nodeId": "agent-1-ea71e56b-a734-42c0-8adc-b6ef4b84c5d1"
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:14:52.682Z",
+            "kind": "execution/startRequested",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "terminal-2-7be4f2db-efb5-4e91-92e8-f02fbe1b589d"
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:14:53.311Z",
+            "kind": "execution/candidateStartFailed",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "terminal-2-7be4f2db-efb5-4e91-92e8-f02fbe1b589d",
+              "message": "Failed to start embedded Terminal: Execution start was rejected-before-acquire."
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:14:53.370Z",
+            "kind": "execution/started",
+            "detail": {
+              "kind": "agent",
+              "nodeId": "agent-1-ea71e56b-a734-42c0-8adc-b6ef4b84c5d1",
+              "sessionId": "b3e5b303-cac9-40bb-91c2-1684b676f41c"
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:14:53.421Z",
+            "kind": "execution/startRequested",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "terminal-2-7be4f2db-efb5-4e91-92e8-f02fbe1b589d"
+            }
+          },
+          {
+            "timestamp": "2026-10-10T11:14:53.512Z",
+            "kind": "execution/started",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "terminal-2-7be4f2db-efb5-4e91-92e8-f02fbe1b589d",
+              "sessionId": "9cbd464b-62cb-402f-8ca4-66cfb94c8af3"
+            }
+          }
+        ]
+      },
+      "supervisorEvents": []
+    }
+  },
+  "conclusion": {
+    "rejectionBranch": "ExecutionAuthority.beginStart: starting.size >= admissionLimits.starting",
+    "identityMatch": true,
+    "closing": false,
+    "quarantined": false,
+    "preparationCapacityPassed": true,
+    "rejectedAgentResources": [],
+    "limits": {
+      "executions": null,
+      "starting": 1,
+      "pending": 2
+    },
+    "retrySameNodeSucceeded": true,
+    "serialBothStarted": true,
+    "rawBurstRejectedTerminal": true,
+    "cause": "测试连续创建两个会话，未等待前一个真实 started，触发正式单启动槽限制。",
+    "limitation": "历史完整失败没有拒绝瞬时探针；同 helper 新原生重现获得精确归因。专项不能代证完整 gate、真实 provider 或跨平台/跨版本矩阵。",
+    "setupAttempt": "首次探针拼接换行有语法错误，未到准入；保留在 .debug/runtime-admission-probe-setup-failed。修正并增加 node --check 后才运行计入结果的三个场景。"
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "previousHead": "1c2b25056922414c79a0b5a2420b37561bfd1655",
+  "scope": "surface 切换与同 Host 画布重读的实时正文断言；未修改产品源码",
+  "sourceSha256": {
+    "tests/vscode-smoke/extension-tests.cjs": "ef5c5ba8cfbacedf306bca2dfb5edfdd33f1065cf74fda657cb1e0a78cca222b",
+    "scripts/smoke/run-vscode-smoke.mjs": "3b0270e22360be3df93f002c016625d95d9df4924b790a35f01e1df9c96fc1ee",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "260032cf6c91e47613d205a4f8952dd95e221207b65363962ae2ae923a27bbae"
+  },
+  "beforeEvidence": "docs/references/smoke-reload-autostart/manual-reload-recovery-evidence.json",
+  "checks": {
+    "smokeExecutionOutput": "14/14 passed",
+    "smokeResetFixture": "19/19 passed",
+    "smokeRunnerEnvironment": "passed",
+    "changedScriptSyntax": "passed",
+    "vsixPackagingAndTypecheck": "passed"
+  },
+  "native": {
+    "environment": "Linux x64 / Node 22.23.3 / VS Code 1.141.0 / current native PTY / fake Agent / bash",
+    "runtimePersistenceEnabled": false,
+    "passedStages": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover"
+    ],
+    "surfaceAcceptanceOccurrences": 2,
+    "surfaceAcceptanceContexts": [
+      "独立默认具名阶段",
+      "trusted 原顺序阶段"
+    ],
+    "assertedFlow": [
+      "先停止并结清前序 Terminal，再启动并确认本场景原 executionId/generation",
+      "editor 实际输出与页面可见",
+      "panel 当前 frame/generation 快照包含 editor 正文；panel 实际输出可见",
+      "同 Host 画布重读保持原执行 live；重读后实际输出可见",
+      "返回 editor 的当前 frame/generation 快照包含重读后正文；继续输入输出可见",
+      "停止后 closed、四段最终历史正文保留；等待原执行保存/退休"
+    ],
+    "terminalFinal": {
+      "nodeId": "terminal-2-3ec71451-0341-4db5-88a0-08f3ca48f018",
+      "executionId": "4423387a-35f5-482a-af8c-24c737703fa2",
+      "status": "closed",
+      "markers": {
+        "LIVE_CUTOVER_EDITOR": true,
+        "LIVE_CUTOVER_PANEL": true,
+        "LIVE_CUTOVER_RELOAD": true,
+        "LIVE_CUTOVER_RETURN": true
+      },
+      "persistence": {
+        "timestamp": "2026-10-10T04:28:41.825Z",
+        "kind": "execution/localFinalPersistence",
+        "detail": {
+          "kind": "terminal",
+          "nodeId": "terminal-2-3ec71451-0341-4db5-88a0-08f3ca48f018",
+          "executionId": "4423387a-35f5-482a-af8c-24c737703fa2",
+          "generation": "269bc05e-6ae3-4b56-b63e-1aa757b2f4a3",
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        }
+      }
+    },
+    "fullVsix": "failed",
+    "nextBlocker": {
+      "function": "verifyPtyRobustness",
+      "line": 9061,
+      "assertion": "metadata.agent.recentOutput.includes([fake-agent] burst 080)",
+      "executionIdentity": {
+        "executionId": "2bb5e4d1-399c-4102-aec2-ac1ad72094f4",
+        "generation": "112516d9-e43c-47d8-b6ce-038e07b103ad"
+      },
+      "agentStatus": "waiting-input",
+      "liveSession": true,
+      "historicalFieldContainsMarker": false,
+      "actualOutput": {
+        "type": "host/executionOutput",
+        "executionSessionId": "2bb5e4d1-399c-4102-aec2-ac1ad72094f4",
+        "outputStartSequence": 3,
+        "outputSequence": 3,
+        "matchingLines": [
+          "[fake-agent] burst 080"
+        ]
+      },
+      "conclusion": "后续 PTY 稳健性实时正文断言仍等待旧历史字段；本轮未更改此用例"
+    },
+    "log": ".debug/surface-cutover-output/vsix.log",
+    "logSha256": "431a375c45f8bc01a54b11f2bdc950d04425650e4b6082b8260afaadfcd6c97c",
+    "artifacts": ".debug/surface-cutover-output/trusted-artifacts",
+    "focusedArtifacts": ".debug/surface-cutover-output/cutover-artifacts"
+  },
+  "limits": [
+    "没有宣称完整 VSIX 发布门禁通过",
+    "后续 PTY / Runtime / 压力矩阵未完成",
+    "此前文件链接 DOM 检测与 early final-save pending 的历史失败不由本次通过追认根因"
+  ]
+}

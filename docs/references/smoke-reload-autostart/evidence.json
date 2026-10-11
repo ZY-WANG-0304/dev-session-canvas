@@ -1,0 +1,997 @@
+{
+  "baseline": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "release_pr": "313@aaeb73a015ac382d6074a760e91aee038bb3dd9a",
+  "environment": "Linux x64 / VS Code 1.141.0 / current native provider / fake Agent CLI / real bash / fresh profile per run",
+  "interpretation": "These are diagnostic experiment observations, not passing release gates. See the design document for reviewed conclusions.",
+  "cases": [
+    {
+      "case": "control-before",
+      "hostPid": null,
+      "workspaceFolders": null,
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 2,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-7035f5ac-eed6-4f61-9b2d-ce078d00ac12",
+          "kind": "agent",
+          "status": "starting",
+          "live": true
+        },
+        {
+          "id": "terminal-2-82a45406-91c9-4a2d-b0b6-c0d478fab637",
+          "kind": "terminal",
+          "status": "launching",
+          "live": true
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-7035f5ac-eed6-4f61-9b2d-ce078d00ac12",
+          "executionId": "5c814288-6d3e-41e9-bb9c-e6914f36d2b9",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "terminal-2-82a45406-91c9-4a2d-b0b6-c0d478fab637",
+          "executionId": "6961725d-3294-462d-b8ab-1827eb4b5af7",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ]
+    },
+    {
+      "case": "control-after",
+      "hostPid": null,
+      "workspaceFolders": null,
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 2,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-7035f5ac-eed6-4f61-9b2d-ce078d00ac12",
+          "kind": "agent",
+          "status": "waiting-input",
+          "live": true
+        },
+        {
+          "id": "terminal-2-82a45406-91c9-4a2d-b0b6-c0d478fab637",
+          "kind": "terminal",
+          "status": "live",
+          "live": true
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-7035f5ac-eed6-4f61-9b2d-ce078d00ac12",
+          "executionId": "5c814288-6d3e-41e9-bb9c-e6914f36d2b9",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "terminal-2-82a45406-91c9-4a2d-b0b6-c0d478fab637",
+          "executionId": "6961725d-3294-462d-b8ab-1827eb4b5af7",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ]
+    },
+    {
+      "case": "seed-before",
+      "hostPid": null,
+      "workspaceFolders": null,
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 2,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-9a0a0c6e-ea15-4d63-9ee4-4f06f5a7b203",
+          "kind": "agent",
+          "status": "starting",
+          "live": true
+        },
+        {
+          "id": "terminal-2-c4eb26e9-29b5-4ac2-9054-3af29cfca777",
+          "kind": "terminal",
+          "status": "live",
+          "live": true
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-9a0a0c6e-ea15-4d63-9ee4-4f06f5a7b203",
+          "executionId": "4176c96d-cca7-4a8a-9591-83c2626956fb",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "terminal-2-c4eb26e9-29b5-4ac2-9054-3af29cfca777",
+          "executionId": "8deea28d-a741-4875-b215-2095a70299a8",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ]
+    },
+    {
+      "case": "seed-after",
+      "hostPid": null,
+      "workspaceFolders": null,
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 2,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-9a0a0c6e-ea15-4d63-9ee4-4f06f5a7b203",
+          "kind": "agent",
+          "status": "resume-ready",
+          "live": false
+        },
+        {
+          "id": "terminal-2-c4eb26e9-29b5-4ac2-9054-3af29cfca777",
+          "kind": "terminal",
+          "status": "interrupted",
+          "live": false
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-9a0a0c6e-ea15-4d63-9ee4-4f06f5a7b203",
+          "executionId": "4176c96d-cca7-4a8a-9591-83c2626956fb",
+          "metadataMatches": false,
+          "mutationError": "The original execution metadata binding changed.",
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "terminal-2-c4eb26e9-29b5-4ac2-9054-3af29cfca777",
+          "executionId": "8deea28d-a741-4875-b215-2095a70299a8",
+          "metadataMatches": false,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ],
+      "events": [
+        {
+          "timestamp": "2026-10-09T13:57:43.457Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-9a0a0c6e-ea15-4d63-9ee4-4f06f5a7b203",
+            "sessionId": "4176c96d-cca7-4a8a-9591-83c2626956fb",
+            "launchMode": "start",
+            "resumeSessionId": "838860e7-cdf8-4100-9a33-7a187977fe88"
+          }
+        },
+        {
+          "timestamp": "2026-10-09T13:57:43.764Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-c4eb26e9-29b5-4ac2-9054-3af29cfca777",
+            "sessionId": "8deea28d-a741-4875-b215-2095a70299a8"
+          }
+        },
+        {
+          "timestamp": "2026-10-09T13:57:43.896Z",
+          "kind": "investigation/beforeSeed",
+          "records": [
+            {
+              "nodeId": "agent-1-9a0a0c6e-ea15-4d63-9ee4-4f06f5a7b203",
+              "metadataMatches": true,
+              "state": "running"
+            },
+            {
+              "nodeId": "terminal-2-c4eb26e9-29b5-4ac2-9054-3af29cfca777",
+              "metadataMatches": true,
+              "state": "running"
+            }
+          ]
+        },
+        {
+          "timestamp": "2026-10-09T13:57:43.900Z",
+          "kind": "investigation/afterSeed",
+          "records": [
+            {
+              "nodeId": "agent-1-9a0a0c6e-ea15-4d63-9ee4-4f06f5a7b203",
+              "metadataMatches": false,
+              "state": "running"
+            },
+            {
+              "nodeId": "terminal-2-c4eb26e9-29b5-4ac2-9054-3af29cfca777",
+              "metadataMatches": false,
+              "state": "running"
+            }
+          ]
+        },
+        {
+          "timestamp": "2026-10-09T13:57:43.920Z",
+          "kind": "execution/ownedProjectionRejected",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-9a0a0c6e-ea15-4d63-9ee4-4f06f5a7b203",
+            "reason": "The original execution metadata binding changed."
+          }
+        },
+        {
+          "timestamp": "2026-10-09T13:57:43.959Z",
+          "kind": "investigation/startRejected",
+          "records": [
+            {
+              "nodeId": "agent-1-9a0a0c6e-ea15-4d63-9ee4-4f06f5a7b203",
+              "metadataMatches": false,
+              "state": "running"
+            },
+            {
+              "nodeId": "terminal-2-c4eb26e9-29b5-4ac2-9054-3af29cfca777",
+              "metadataMatches": false,
+              "state": "running"
+            }
+          ]
+        },
+        {
+          "timestamp": "2026-10-09T13:57:44.161Z",
+          "kind": "execution/ownedProjectionRejected",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-9a0a0c6e-ea15-4d63-9ee4-4f06f5a7b203",
+            "reason": "The original execution metadata binding changed."
+          }
+        }
+      ]
+    },
+    {
+      "case": "reload-before",
+      "hostPid": null,
+      "workspaceFolders": null,
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 2,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-97663422-f5ae-433b-9634-4c97727909f6",
+          "kind": "agent",
+          "status": "starting",
+          "live": true
+        },
+        {
+          "id": "terminal-2-51a39974-247f-4b88-ae8e-f7fae8ce0798",
+          "kind": "terminal",
+          "status": "launching",
+          "live": true
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-97663422-f5ae-433b-9634-4c97727909f6",
+          "executionId": "82a711b3-fc40-4263-97e5-9d945ed69deb",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "terminal-2-51a39974-247f-4b88-ae8e-f7fae8ce0798",
+          "executionId": "66a922ea-fb46-4f26-bad5-483494ba89cf",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ]
+    },
+    {
+      "case": "reload-immediate",
+      "hostPid": null,
+      "workspaceFolders": null,
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 2,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-97663422-f5ae-433b-9634-4c97727909f6",
+          "kind": "agent",
+          "status": "resume-ready",
+          "live": false
+        },
+        {
+          "id": "terminal-2-51a39974-247f-4b88-ae8e-f7fae8ce0798",
+          "kind": "terminal",
+          "status": "interrupted",
+          "live": false
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-97663422-f5ae-433b-9634-4c97727909f6",
+          "executionId": "82a711b3-fc40-4263-97e5-9d945ed69deb",
+          "metadataMatches": false,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "terminal-2-51a39974-247f-4b88-ae8e-f7fae8ce0798",
+          "executionId": "66a922ea-fb46-4f26-bad5-483494ba89cf",
+          "metadataMatches": false,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ]
+    },
+    {
+      "case": "reload-after",
+      "hostPid": null,
+      "workspaceFolders": null,
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 2,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-97663422-f5ae-433b-9634-4c97727909f6",
+          "kind": "agent",
+          "status": "resume-ready",
+          "live": false
+        },
+        {
+          "id": "terminal-2-51a39974-247f-4b88-ae8e-f7fae8ce0798",
+          "kind": "terminal",
+          "status": "interrupted",
+          "live": false
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-97663422-f5ae-433b-9634-4c97727909f6",
+          "executionId": "82a711b3-fc40-4263-97e5-9d945ed69deb",
+          "metadataMatches": false,
+          "mutationError": "The original execution metadata binding changed.",
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "terminal-2-51a39974-247f-4b88-ae8e-f7fae8ce0798",
+          "executionId": "66a922ea-fb46-4f26-bad5-483494ba89cf",
+          "metadataMatches": false,
+          "mutationError": "The original execution metadata binding changed.",
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ]
+    },
+    {
+      "case": "original-after-sidebar",
+      "hostPid": null,
+      "workspaceFolders": null,
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 1,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-4fdcb4df-f322-461b-a5f1-3c2505651f04",
+          "kind": "agent",
+          "status": "resume-ready",
+          "live": false
+        },
+        {
+          "id": "terminal-2-12aeed07-5d32-4d26-a4cb-56bce9bd8caa",
+          "kind": "terminal",
+          "status": "launching",
+          "live": false
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-4fdcb4df-f322-461b-a5f1-3c2505651f04",
+          "executionId": "74224ce1-ea93-4b53-b7d2-b7260acb9a06",
+          "metadataMatches": false,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ],
+      "events": [
+        {
+          "timestamp": "2026-10-09T13:59:57.913Z",
+          "kind": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-12aeed07-5d32-4d26-a4cb-56bce9bd8caa",
+            "executionId": "a95f92fe-a0c3-48ed-aa3d-2cd4f56be400",
+            "submitted": false,
+            "result": {
+              "kind": "not-required"
+            }
+          }
+        },
+        {
+          "timestamp": "2026-10-09T13:59:57.914Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-4fdcb4df-f322-461b-a5f1-3c2505651f04",
+            "sessionId": "74224ce1-ea93-4b53-b7d2-b7260acb9a06",
+            "launchMode": "start",
+            "resumeSessionId": "6baefc28-361f-4649-a7fd-6d262d0ad6e7"
+          }
+        },
+        {
+          "timestamp": "2026-10-09T13:59:58.792Z",
+          "kind": "investigation/beforeSeed",
+          "records": [
+            {
+              "nodeId": "agent-1-4fdcb4df-f322-461b-a5f1-3c2505651f04",
+              "metadataMatches": true,
+              "state": "running"
+            }
+          ]
+        },
+        {
+          "timestamp": "2026-10-09T13:59:58.796Z",
+          "kind": "investigation/afterSeed",
+          "records": [
+            {
+              "nodeId": "agent-1-4fdcb4df-f322-461b-a5f1-3c2505651f04",
+              "metadataMatches": false,
+              "state": "running"
+            }
+          ]
+        },
+        {
+          "timestamp": "2026-10-09T13:59:58.846Z",
+          "kind": "investigation/beforeSeed",
+          "records": [
+            {
+              "nodeId": "agent-1-4fdcb4df-f322-461b-a5f1-3c2505651f04",
+              "metadataMatches": false,
+              "state": "running"
+            }
+          ]
+        },
+        {
+          "timestamp": "2026-10-09T13:59:58.850Z",
+          "kind": "investigation/afterSeed",
+          "records": [
+            {
+              "nodeId": "agent-1-4fdcb4df-f322-461b-a5f1-3c2505651f04",
+              "metadataMatches": false,
+              "state": "running"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case": "workspace-add-before",
+      "hostPid": 2646744,
+      "workspaceFolders": [
+        "/tmp/dscr"
+      ],
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 2,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-64a87968-50df-4176-b25f-0a64b7a75a99",
+          "kind": "agent",
+          "status": "starting",
+          "live": true
+        },
+        {
+          "id": "terminal-2-4e68a7b0-7561-4b91-9395-acf471e4fb23",
+          "kind": "terminal",
+          "status": "live",
+          "live": true
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-64a87968-50df-4176-b25f-0a64b7a75a99",
+          "executionId": "2d8a6f5e-b263-47b2-b216-0603225e6e6d",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "terminal-2-4e68a7b0-7561-4b91-9395-acf471e4fb23",
+          "executionId": "735689c0-6d47-4987-8f6e-1241ca358545",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ]
+    },
+    {
+      "case": "workspace-add-immediate",
+      "hostPid": 2646744,
+      "workspaceFolders": [
+        "/tmp/dscr",
+        "/tmp/dscr-added-root"
+      ],
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 2,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "workspace-root-31741148ddcc58e3:agent-1-64a87968-50df-4176-b25f-0a64b7a75a99",
+          "kind": "agent",
+          "status": "resume-ready",
+          "live": false
+        },
+        {
+          "id": "workspace-root-31741148ddcc58e3:terminal-2-4e68a7b0-7561-4b91-9395-acf471e4fb23",
+          "kind": "terminal",
+          "status": "interrupted",
+          "live": false
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-64a87968-50df-4176-b25f-0a64b7a75a99",
+          "executionId": "2d8a6f5e-b263-47b2-b216-0603225e6e6d",
+          "metadataMatches": false,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "terminal-2-4e68a7b0-7561-4b91-9395-acf471e4fb23",
+          "executionId": "735689c0-6d47-4987-8f6e-1241ca358545",
+          "metadataMatches": false,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ]
+    },
+    {
+      "case": "workspace-add-after",
+      "hostPid": 2646744,
+      "workspaceFolders": [
+        "/tmp/dscr",
+        "/tmp/dscr-added-root"
+      ],
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 3,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "workspace-root-31741148ddcc58e3:agent-1-64a87968-50df-4176-b25f-0a64b7a75a99",
+          "kind": "agent",
+          "status": "waiting-input",
+          "live": true
+        },
+        {
+          "id": "workspace-root-31741148ddcc58e3:terminal-2-4e68a7b0-7561-4b91-9395-acf471e4fb23",
+          "kind": "terminal",
+          "status": "interrupted",
+          "live": false
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-64a87968-50df-4176-b25f-0a64b7a75a99",
+          "executionId": "2d8a6f5e-b263-47b2-b216-0603225e6e6d",
+          "metadataMatches": false,
+          "mutationError": "The original execution metadata binding changed.",
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "terminal-2-4e68a7b0-7561-4b91-9395-acf471e4fb23",
+          "executionId": "735689c0-6d47-4987-8f6e-1241ca358545",
+          "metadataMatches": false,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "workspace-root-31741148ddcc58e3:agent-1-64a87968-50df-4176-b25f-0a64b7a75a99",
+          "executionId": "d4680f69-dc52-434a-bf0a-1c74f95ca910",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ],
+      "events": [
+        {
+          "timestamp": "2026-10-09T14:00:57.992Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-64a87968-50df-4176-b25f-0a64b7a75a99",
+            "sessionId": "2d8a6f5e-b263-47b2-b216-0603225e6e6d",
+            "launchMode": "start",
+            "resumeSessionId": "3efd08cd-67d0-4749-8fa8-b077250eb2e3"
+          }
+        },
+        {
+          "timestamp": "2026-10-09T14:00:58.299Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-4e68a7b0-7561-4b91-9395-acf471e4fb23",
+            "sessionId": "735689c0-6d47-4987-8f6e-1241ca358545"
+          }
+        },
+        {
+          "timestamp": "2026-10-09T14:00:58.643Z",
+          "kind": "investigation/afterLoad",
+          "records": [
+            {
+              "nodeId": "agent-1-64a87968-50df-4176-b25f-0a64b7a75a99",
+              "metadataMatches": false,
+              "state": "running"
+            },
+            {
+              "nodeId": "terminal-2-4e68a7b0-7561-4b91-9395-acf471e4fb23",
+              "metadataMatches": false,
+              "state": "running"
+            }
+          ]
+        },
+        {
+          "timestamp": "2026-10-09T14:00:58.768Z",
+          "kind": "execution/ownedProjectionRejected",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-64a87968-50df-4176-b25f-0a64b7a75a99",
+            "reason": "The original execution metadata binding changed."
+          }
+        },
+        {
+          "timestamp": "2026-10-09T14:00:59.097Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "workspace-root-31741148ddcc58e3:agent-1-64a87968-50df-4176-b25f-0a64b7a75a99",
+            "sessionId": "d4680f69-dc52-434a-bf0a-1c74f95ca910",
+            "launchMode": "resume",
+            "resumeSessionId": "3efd08cd-67d0-4749-8fa8-b077250eb2e3"
+          }
+        }
+      ]
+    },
+    {
+      "case": "boundary-first-rejection",
+      "hostPid": 2656968,
+      "workspaceFolders": [
+        "/tmp/dscr"
+      ],
+      "owner": {
+        "closing": true,
+        "permanent": false,
+        "pending": 0,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-38433b95-adf2-4d3c-b9f2-bb214d82bdc1",
+          "kind": "agent",
+          "status": "stopped",
+          "live": false
+        },
+        {
+          "id": "terminal-2-10023912-7def-4425-8d83-3bfdca531b9b",
+          "kind": "terminal",
+          "status": "closed",
+          "live": false
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-38433b95-adf2-4d3c-b9f2-bb214d82bdc1",
+          "executionId": "c346fd20-8964-4b89-bcba-baafbfa626ea",
+          "metadataMatches": false,
+          "mutationError": null,
+          "persistence": {
+            "submitted": true
+          },
+          "state": "settled",
+          "retired": true
+        },
+        {
+          "nodeId": "terminal-2-10023912-7def-4425-8d83-3bfdca531b9b",
+          "executionId": "79292745-7394-4364-a1fa-0a43f74046da",
+          "metadataMatches": false,
+          "mutationError": null,
+          "persistence": {
+            "submitted": true
+          },
+          "state": "settled",
+          "retired": true
+        }
+      ]
+    },
+    {
+      "case": "boundary-final-saved",
+      "hostPid": 2656968,
+      "workspaceFolders": [
+        "/tmp/dscr"
+      ],
+      "owner": {
+        "closing": true,
+        "permanent": false,
+        "pending": 0,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-38433b95-adf2-4d3c-b9f2-bb214d82bdc1",
+          "kind": "agent",
+          "status": "stopped",
+          "live": false
+        },
+        {
+          "id": "terminal-2-10023912-7def-4425-8d83-3bfdca531b9b",
+          "kind": "terminal",
+          "status": "closed",
+          "live": false
+        }
+      ],
+      "records": []
+    },
+    {
+      "case": "boundary-immediate",
+      "hostPid": 2656968,
+      "workspaceFolders": [
+        "/tmp/dscr"
+      ],
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 0,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-38433b95-adf2-4d3c-b9f2-bb214d82bdc1",
+          "kind": "agent",
+          "status": "stopped",
+          "live": false
+        },
+        {
+          "id": "terminal-2-10023912-7def-4425-8d83-3bfdca531b9b",
+          "kind": "terminal",
+          "status": "closed",
+          "live": false
+        }
+      ],
+      "records": []
+    },
+    {
+      "case": "boundary-after",
+      "hostPid": 2656968,
+      "workspaceFolders": [
+        "/tmp/dscr"
+      ],
+      "owner": {
+        "closing": false,
+        "permanent": false,
+        "pending": 2,
+        "admissionPending": 0
+      },
+      "nodes": [
+        {
+          "id": "agent-1-38433b95-adf2-4d3c-b9f2-bb214d82bdc1",
+          "kind": "agent",
+          "status": "waiting-input",
+          "live": true
+        },
+        {
+          "id": "terminal-2-10023912-7def-4425-8d83-3bfdca531b9b",
+          "kind": "terminal",
+          "status": "live",
+          "live": true
+        }
+      ],
+      "records": [
+        {
+          "nodeId": "agent-1-38433b95-adf2-4d3c-b9f2-bb214d82bdc1",
+          "executionId": "2e949d1a-f1fa-4fbb-9599-c541932bb49c",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        },
+        {
+          "nodeId": "terminal-2-10023912-7def-4425-8d83-3bfdca531b9b",
+          "executionId": "9feb4ad8-414b-443c-8e0c-7ffad72ceba7",
+          "metadataMatches": true,
+          "mutationError": null,
+          "persistence": {
+            "submitted": false
+          },
+          "state": "running",
+          "retired": false
+        }
+      ],
+      "events": [
+        {
+          "timestamp": "2026-10-09T14:01:25.364Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-38433b95-adf2-4d3c-b9f2-bb214d82bdc1",
+            "sessionId": "c346fd20-8964-4b89-bcba-baafbfa626ea",
+            "launchMode": "start",
+            "resumeSessionId": "6ae96a72-ab55-4ed2-86a1-0144eef1256f"
+          }
+        },
+        {
+          "timestamp": "2026-10-09T14:01:25.620Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-10023912-7def-4425-8d83-3bfdca531b9b",
+            "sessionId": "79292745-7394-4364-a1fa-0a43f74046da"
+          }
+        },
+        {
+          "timestamp": "2026-10-09T14:01:25.808Z",
+          "kind": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-10023912-7def-4425-8d83-3bfdca531b9b",
+            "executionId": "79292745-7394-4364-a1fa-0a43f74046da",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        },
+        {
+          "timestamp": "2026-10-09T14:01:25.825Z",
+          "kind": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-38433b95-adf2-4d3c-b9f2-bb214d82bdc1",
+            "executionId": "c346fd20-8964-4b89-bcba-baafbfa626ea",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        },
+        {
+          "timestamp": "2026-10-09T14:01:26.013Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-38433b95-adf2-4d3c-b9f2-bb214d82bdc1",
+            "sessionId": "2e949d1a-f1fa-4fbb-9599-c541932bb49c",
+            "launchMode": "start",
+            "resumeSessionId": "2cef1e4a-693a-4c48-a9f0-1fb87b26e055"
+          }
+        },
+        {
+          "timestamp": "2026-10-09T14:01:26.265Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-10023912-7def-4425-8d83-3bfdca531b9b",
+            "sessionId": "9feb4ad8-414b-443c-8e0c-7ffad72ceba7"
+          }
+        }
+      ]
+    }
+  ]
+}

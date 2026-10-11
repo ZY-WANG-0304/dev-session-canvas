@@ -1,0 +1,186 @@
+{
+  "baseline": "60c1d9c483bca40c6c990cf967a59d5843d2b58e",
+  "scope": "smoke only; no product changes",
+  "environment": {
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "platform": "linux-x64",
+    "runtimePersistence": false,
+    "provider": "fake"
+  },
+  "smokeSourceSha256": "9f9b7f00c424e79160b54ef8022da1b93231fc67491a068d718a18c91caf7a0d",
+  "native": {
+    "exit": 0,
+    "artifact": ".debug/trusted-diagnostics-fix/native-1791650099474/runtime/artifacts/diagnostics-result.json",
+    "log": ".debug/trusted-diagnostics-fix/native.log",
+    "productBundleSha256": {
+      "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+      "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+      "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+    },
+    "productHashesMatchBaseline": true,
+    "originalGeneratingFunctions": true,
+    "agent": {
+      "execution": {
+        "kind": "agent",
+        "nodeId": "agent-1-cddb499d-5551-46a0-be88-8ebce192aa27",
+        "executionSessionId": "03411be9-7357-4609-9771-b4f6e8956857",
+        "generation": "3aa9baff-a861-42b7-a7a3-8cb2e5c80029"
+      },
+      "startedSessionId": "03411be9-7357-4609-9771-b4f6e8956857",
+      "exitCode": 0,
+      "saved": {
+        "kind": "agent",
+        "nodeId": "agent-1-cddb499d-5551-46a0-be88-8ebce192aa27",
+        "executionId": "03411be9-7357-4609-9771-b4f6e8956857",
+        "generation": "3aa9baff-a861-42b7-a7a3-8cb2e5c80029",
+        "submitted": true,
+        "result": {
+          "kind": "saved"
+        }
+      },
+      "reader": {
+        "nodeId": "agent-1-cddb499d-5551-46a0-be88-8ebce192aa27",
+        "kind": "agent",
+        "executionSessionId": "03411be9-7357-4609-9771-b4f6e8956857",
+        "lifecycle": {
+          "surface": "editor",
+          "mode": "active",
+          "generation": 2,
+          "frameId": "frame-cc544cb0-4349-4d79-9c88-6fac2ce06602"
+        },
+        "outcome": {
+          "kind": "applied",
+          "finalOutputSequence": 13
+        }
+      },
+      "exit": {
+        "nodeId": "agent-1-cddb499d-5551-46a0-be88-8ebce192aa27",
+        "kind": "agent",
+        "executionSessionId": "03411be9-7357-4609-9771-b4f6e8956857",
+        "localCompletion": {
+          "executionSessionId": "03411be9-7357-4609-9771-b4f6e8956857",
+          "finalOutputSequence": 13
+        },
+        "message": "Session ended with exit code 0."
+      }
+    },
+    "terminal": {
+      "execution": {
+        "kind": "terminal",
+        "nodeId": "terminal-2-fe3b3f1b-bb37-4965-8be5-cd09233a8241",
+        "executionSessionId": "bafe5e9d-9f1e-45c9-aa7c-5c1ead0ca8f9",
+        "generation": "59979f4f-60d2-4856-a43c-1f19ffe63974"
+      },
+      "startedSessionId": "bafe5e9d-9f1e-45c9-aa7c-5c1ead0ca8f9",
+      "liveSnapshot": {
+        "kind": "terminal",
+        "nodeId": "terminal-2-fe3b3f1b-bb37-4965-8be5-cd09233a8241",
+        "executionSessionId": "bafe5e9d-9f1e-45c9-aa7c-5c1ead0ca8f9",
+        "liveSession": true,
+        "cols": 64,
+        "rows": 20,
+        "outputSequence": 2
+      }
+    },
+    "preparation": {
+      "nodeId": "agent-4-b0e019f2-e2aa-4403-b075-6c28ee1aa22a",
+      "failureKind": "execution/startFailed",
+      "persistence": {
+        "kind": "agent",
+        "nodeId": "agent-4-b0e019f2-e2aa-4403-b075-6c28ee1aa22a",
+        "executionId": "258bfcab-91d4-490b-b2d7-a5933735cb6b",
+        "generation": "c0bb1578-6ee4-4a17-ba5f-069bc7a21ece",
+        "submitted": false,
+        "result": {
+          "kind": "not-required"
+        }
+      }
+    },
+    "oldEventsCleared": true,
+    "missingEvidenceRejected": [
+      "agent",
+      "terminal",
+      "preparation"
+    ],
+    "eventsAtSummary": 27,
+    "afterReload": [
+      {
+        "kind": "agent",
+        "status": "resume-ready",
+        "liveSession": false
+      },
+      {
+        "kind": "terminal",
+        "status": "interrupted",
+        "liveSession": false
+      },
+      {
+        "kind": "note",
+        "status": "ready",
+        "liveSession": null
+      }
+    ]
+  },
+  "fullGate": {
+    "command": "npm run test:vsix-smoke",
+    "exit": 1,
+    "log": ".debug/trusted-diagnostics-fix/vsix.log",
+    "passedIndependentStages": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure",
+      "local-links-and-stop"
+    ],
+    "trustedPassed": "Repaired generating scenarios and verifyTrustedDiagnostics; continued past real delete and manual edges",
+    "nextFailure": "verifyFileActivityViewsAndOpenFiles:3795 waiting for second dedicated Agent live",
+    "failureStack": "\tat waitForSnapshot (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:12804:10)\n\tat async verifyFileActivityViewsAndOpenFiles (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:3795:5)\n\tat async runTrustedSmoke (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:1492:3)\n\tat async runSmoke (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:306:3)\n\tat async Object.run (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:173:5)",
+    "failureArtifacts": ".debug/trusted-diagnostics-fix/trusted-artifacts",
+    "states": [
+      {
+        "id": "agent-1-6bc72c1c-8521-487b-9f68-9e1ac34ff423",
+        "kind": "agent",
+        "status": "resume-ready",
+        "liveSession": false,
+        "pendingLaunch": null
+      },
+      {
+        "id": "terminal-2-451df4b4-510d-4552-8d8b-4fbda216fad9",
+        "kind": "terminal",
+        "status": "interrupted",
+        "liveSession": false,
+        "pendingLaunch": null
+      },
+      {
+        "id": "agent-3-a3eefc6b-4d0c-4be7-8edb-b841fff8e941",
+        "kind": "agent",
+        "status": "waiting-input",
+        "liveSession": true,
+        "pendingLaunch": null
+      },
+      {
+        "id": "agent-4-135fdb26-bc55-4421-a644-5a5c3d67cf25",
+        "kind": "agent",
+        "status": "starting",
+        "liveSession": false,
+        "pendingLaunch": "start"
+      }
+    ],
+    "nextRootCause": "not investigated in this repair",
+    "otherObservation": "Runtime Host output batch consumption failed: RuntimeSupervisorClient disconnected during immediate simulated reload; original reload assertions continued. Not diagnosed here."
+  },
+  "limits": [
+    "No full gate pass",
+    "Historical URL cleanup stall not explained",
+    "No actual new Host, cross-platform or real provider service claim"
+  ],
+  "checks": {
+    "syntax": "passed",
+    "diffCheck": "passed",
+    "typecheckBuildPackage": "passed inside default VSIX command"
+  },
+  "cleanup": "Native and full VSIX processes exited. No processes for this turn native root, /tmp/dscr fake provider or smoke-host Supervisor remained; unrelated processes untouched."
+}

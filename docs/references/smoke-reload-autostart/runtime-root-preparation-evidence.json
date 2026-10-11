@@ -1,0 +1,341 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "head": "1579d2da4c5db939290f0f0834ed69d0c6f449f0",
+  "scope": "定位 RuntimePersistence 首次 root 准备失败；不含生产修复或完整 gate 验证",
+  "conclusion": "普通画布保存按 umask 创建共享扩展 globalStorage；0002 下成为 0775，后续 mkdir(mode:0700) 不改变已有权限，root 准备第一步明确拒绝，外层 catch 丢弃具体原因。",
+  "original": {
+    "artifacts": ".debug/claude-resume-fix/trusted-artifacts",
+    "globalStorage": ".debug/vscode-vsix-smoke/smoke-runtime/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas",
+    "globalMode": "0775",
+    "failureLocation": "verifyLiveRuntimePersistence:10024",
+    "reloadReached": false
+  },
+  "directoryReplay": {
+    "node": "v22.23.3",
+    "cases": [
+      {
+        "label": "original-failure-directory",
+        "mode": "0775",
+        "directoryError": "Root runtime global storage must be owned by the current OS user and not writable by others.",
+        "preparationResult": {
+          "kind": "unconfirmed",
+          "reason": "Root runtime preparation or submission did not complete."
+        },
+        "reachedAfterDirectoryPreparation": false,
+        "submitted": false
+      },
+      {
+        "label": "existing-0775-after-host-mkdir-0700",
+        "mode": "0775",
+        "directoryError": "Root runtime global storage must be owned by the current OS user and not writable by others.",
+        "preparationResult": {
+          "kind": "unconfirmed",
+          "reason": "Root runtime preparation or submission did not complete."
+        },
+        "reachedAfterDirectoryPreparation": false,
+        "submitted": false
+      },
+      {
+        "label": "same-directory-0755",
+        "mode": "0755",
+        "directoryError": null,
+        "preparationResult": {
+          "kind": "unconfirmed",
+          "reason": "Root runtime preparation was cancelled."
+        },
+        "reachedAfterDirectoryPreparation": true,
+        "submitted": false
+      },
+      {
+        "label": "same-directory-0700",
+        "mode": "0700",
+        "directoryError": null,
+        "preparationResult": {
+          "kind": "unconfirmed",
+          "reason": "Root runtime preparation was cancelled."
+        },
+        "reachedAfterDirectoryPreparation": true,
+        "submitted": false
+      }
+    ]
+  },
+  "native": {
+    "0002": {
+      "exit_code": 1,
+      "artifacts": ".debug/runtime-root-investigation/native-0002/artifacts",
+      "runtimePersistenceEnabled": true,
+      "globalMode": "775",
+      "activation": {
+        "name": "activate",
+        "before": {
+          "code": "ENOENT"
+        },
+        "umask": "2"
+      },
+      "firstCreation": {
+        "name": "mkdirSync",
+        "target": "root-local-canvas/31741148ddcc58e3eeb00041",
+        "options": {
+          "recursive": true
+        },
+        "before": {
+          "code": "ENOENT"
+        },
+        "stack": [
+          "\tat rcaFs.mkdirSync (/tmp/dscr/.debug/runtime-root-investigation/probe-host/extension.js:18:17)",
+          "\tat t.writePersistedCanvasSnapshotToDisk (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:218:57609)",
+          "\tat t.writeRootLocalCanvasSnapshot (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:218:50186)",
+          "\tat t.persistState (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:219:11149)",
+          "\tat new t (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:215:6885)",
+          "\tat Object.MZ (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:7329:954)",
+          "\tat activate (/tmp/dscr/.debug/runtime-root-investigation/probe-host/extension.js:34:49)"
+        ],
+        "after": {
+          "mode": "775",
+          "uid": 1115017707
+        },
+        "umask": "2"
+      },
+      "runtimeMkdir": [
+        {
+          "name": "promises.mkdir",
+          "target": "",
+          "options": {
+            "recursive": true,
+            "mode": 448
+          },
+          "before": {
+            "mode": "775",
+            "uid": 1115017707
+          },
+          "stack": [
+            "\tat rcaFs.promises.mkdir (/tmp/dscr/.debug/runtime-root-investigation/probe-host/extension.js:25:17)",
+            "\tat t.resolveRuntimeCreationTarget (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:219:62087)",
+            "\tat t.startTerminalSessionWithSupervisorCore (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:110599)",
+            "\tat async t.withExecutionCandidateStart (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:10278)",
+            "\tat async t.startTerminalSession (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:166624)"
+          ],
+          "after": {
+            "mode": "775",
+            "uid": 1115017707
+          },
+          "umask": "2"
+        },
+        {
+          "name": "promises.mkdir",
+          "target": "",
+          "options": {
+            "recursive": true,
+            "mode": 448
+          },
+          "before": {
+            "mode": "775",
+            "uid": 1115017707
+          },
+          "stack": [
+            "\tat rcaFs.promises.mkdir (/tmp/dscr/.debug/runtime-root-investigation/probe-host/extension.js:25:17)",
+            "\tat t.resolveRuntimeCreationTarget (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:219:62087)",
+            "\tat t.startAgentSessionWithSupervisorCore (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:106050)",
+            "\tat async t.withExecutionCandidateStart (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:10278)",
+            "\tat async t.startAgentSession (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:118810)"
+          ],
+          "after": {
+            "mode": "775",
+            "uid": 1115017707
+          },
+          "umask": "2"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "agent-1-ca4df65f-45b0-4aca-83f3-65f247511ae6",
+          "kind": "agent",
+          "status": "starting",
+          "liveSession": false,
+          "persistenceMode": "snapshot-only",
+          "attachmentState": "history-restored",
+          "runtimeSessionId": null
+        },
+        {
+          "id": "terminal-2-06dfd94c-e414-43be-a6a5-31d7fc7eb6be",
+          "kind": "terminal",
+          "status": "launching",
+          "liveSession": false,
+          "persistenceMode": "snapshot-only",
+          "attachmentState": "history-restored",
+          "runtimeSessionId": null
+        }
+      ],
+      "failures": [
+        {
+          "timestamp": "2026-10-10T09:49:54.501Z",
+          "kind": "execution/candidateStartFailed",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-06dfd94c-e414-43be-a6a5-31d7fc7eb6be",
+            "message": "Failed to start embedded Terminal: Root runtime preparation or submission did not complete. RCA: Root runtime global storage must be owned by the current OS user and not writable by others."
+          }
+        },
+        {
+          "timestamp": "2026-10-10T09:49:54.540Z",
+          "kind": "execution/candidateStartFailed",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-ca4df65f-45b0-4aca-83f3-65f247511ae6",
+            "message": "Failed to start Codex: Root runtime preparation or submission did not complete. RCA: Root runtime global storage must be owned by the current OS user and not writable by others."
+          }
+        }
+      ],
+      "startupIntentCount": 0,
+      "startupStartedCount": 0,
+      "watcherENOSPC": true
+    },
+    "0022": {
+      "exit_code": 1,
+      "artifacts": ".debug/runtime-root-investigation/native-0022/artifacts",
+      "runtimePersistenceEnabled": true,
+      "globalMode": "755",
+      "activation": {
+        "name": "activate",
+        "before": {
+          "code": "ENOENT"
+        },
+        "umask": "22"
+      },
+      "firstCreation": {
+        "name": "mkdirSync",
+        "target": "root-local-canvas/31741148ddcc58e3eeb00041",
+        "options": {
+          "recursive": true
+        },
+        "before": {
+          "code": "ENOENT"
+        },
+        "stack": [
+          "\tat rcaFs.mkdirSync (/tmp/dscr/.debug/runtime-root-investigation/probe-host/extension.js:18:17)",
+          "\tat t.writePersistedCanvasSnapshotToDisk (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:218:57609)",
+          "\tat t.writeRootLocalCanvasSnapshot (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:218:50186)",
+          "\tat t.persistState (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:219:11149)",
+          "\tat new t (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:215:6885)",
+          "\tat Object.MZ (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:7329:954)",
+          "\tat activate (/tmp/dscr/.debug/runtime-root-investigation/probe-host/extension.js:34:49)"
+        ],
+        "after": {
+          "mode": "755",
+          "uid": 1115017707
+        },
+        "umask": "22"
+      },
+      "runtimeMkdir": [
+        {
+          "name": "promises.mkdir",
+          "target": "",
+          "options": {
+            "recursive": true,
+            "mode": 448
+          },
+          "before": {
+            "mode": "755",
+            "uid": 1115017707
+          },
+          "stack": [
+            "\tat rcaFs.promises.mkdir (/tmp/dscr/.debug/runtime-root-investigation/probe-host/extension.js:25:17)",
+            "\tat t.resolveRuntimeCreationTarget (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:219:62087)",
+            "\tat t.startAgentSessionWithSupervisorCore (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:106050)",
+            "\tat async t.withExecutionCandidateStart (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:10278)",
+            "\tat async t.startAgentSession (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:118810)"
+          ],
+          "after": {
+            "mode": "755",
+            "uid": 1115017707
+          },
+          "umask": "22"
+        },
+        {
+          "name": "promises.mkdir",
+          "target": "",
+          "options": {
+            "recursive": true,
+            "mode": 448
+          },
+          "before": {
+            "mode": "755",
+            "uid": 1115017707
+          },
+          "stack": [
+            "\tat rcaFs.promises.mkdir (/tmp/dscr/.debug/runtime-root-investigation/probe-host/extension.js:25:17)",
+            "\tat t.resolveRuntimeCreationTarget (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:219:62087)",
+            "\tat t.startTerminalSessionWithSupervisorCore (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:110599)",
+            "\tat process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+            "\tat async t.withExecutionCandidateStart (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:10278)",
+            "\tat async t.startTerminalSession (/tmp/dscr/.debug/runtime-root-investigation/probe-host/dist/extension.js:220:166624)"
+          ],
+          "after": {
+            "mode": "755",
+            "uid": 1115017707
+          },
+          "umask": "22"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "agent-1-58d597f0-f944-46ca-a7e7-ae55fadda0a2",
+          "kind": "agent",
+          "status": "error",
+          "liveSession": false,
+          "persistenceMode": "live-runtime",
+          "attachmentState": "history-restored",
+          "runtimeSessionId": null
+        },
+        {
+          "id": "terminal-2-86cf07bd-8b07-4d1a-999f-5a12ff5140c5",
+          "kind": "terminal",
+          "status": "live",
+          "liveSession": true,
+          "persistenceMode": "live-runtime",
+          "attachmentState": "attached-live",
+          "runtimeSessionId": "87865347-cd58-4831-bad1-e6245315a087"
+        }
+      ],
+      "failures": [
+        {
+          "timestamp": "2026-10-10T09:50:34.929Z",
+          "kind": "execution/candidateStartFailed",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-58d597f0-f944-46ca-a7e7-ae55fadda0a2",
+            "message": "Failed to start Codex: Execution start was rejected-before-acquire."
+          }
+        }
+      ],
+      "startupIntentCount": 1,
+      "startupStartedCount": 1,
+      "watcherENOSPC": true,
+      "boundary": "Root 准备已越过，Terminal live；Agent 后续 rejected-before-acquire 仍待独立调查，不能据此宣称 Runtime 场景通过。"
+    }
+  },
+  "source_sha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "754b9a40d47492d0d93f95961ca11568d4a1e594061c390d4ad1fb0e3f24e331",
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootOwner.ts": "ec0269f11f07975d088bfbe3455642cd299e9c5aff7f7117e6e54d27ece594d9",
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts": "7554626d5f048b6594d1286f20650f4c14dae7b610c45f709445685980694fb4",
+    "tests/vscode-smoke/extension-tests.cjs": "b9dbd9f6b683014703c23646b75b5737c9343c5ac23fd0e9c21925612af7fafe"
+  },
+  "instrumentation": [
+    "复制既有 head VSIX smoke-host，只在副本给 launcher catch 增加原异常 message。",
+    "在副本 extension.js 记录相关 mkdir 调用前后权限与调用栈，不改返回值、参数或权限。",
+    "独立 smoke 复用原 prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true) 及两个 live 等待；0002/0022 使用同一副本，隔离 user-data。",
+    "目录重放使用真实未修改的生产函数，准备后立即取消，未提交 Supervisor；原失败目录不改权限。"
+  ],
+  "cleanup": {
+    "log": ".debug/runtime-root-investigation/cleanup.log",
+    "result": "Original isolated Terminal stop acknowledged.",
+    "note": "对照工件在停止前保存；后续正常 stop 仅清理隔离 Terminal。"
+  },
+  "introduced": {
+    "existingRootLocalStorage": "7dd0054f6 (2026-06-04)",
+    "rootPreparationGuard": "e72d7859 (2026-10-08)",
+    "hostRootCreationRouting": "34c54561 (2026-10-08)",
+    "note": "git blame/show 记录；未逐提交运行完整 smoke。新 profile 干净目录可复现，无旧 Supervisor 或跨版本数据是必要条件。"
+  }
+}

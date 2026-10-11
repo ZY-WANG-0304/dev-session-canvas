@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -183,6 +183,17 @@ try {
     assert.equal((await f.run()).kind, 'unconfirmed');
     assert.deepEqual(f.effects, ['prepare', 'socket-directory']);
     assertNoSubmission(f);
+  });
+  await test('unsafe storage reports the preparation phase without forwarding raw exception details', async () => {
+    if (process.platform === 'win32') return;
+    const f = await fixture();
+    await chmod(path.resolve(f.base, '..', '..', '..', '..', '..'), 0o775);
+    const result = await f.run();
+    assert.deepEqual(result, { kind: 'rejected',
+      reason: 'Root runtime storage preparation failed. Check directory ownership, permissions, and runtime owner identity.' });
+    assert.deepEqual(f.effects, ['prepare']);
+    assertNoSubmission(f);
+    assert.equal(result.reason.includes(directory), false);
   });
   await test('preparation loser discovers but never publishes or starts', async () => {
     const f = await fixture({ lockBlocked: true });

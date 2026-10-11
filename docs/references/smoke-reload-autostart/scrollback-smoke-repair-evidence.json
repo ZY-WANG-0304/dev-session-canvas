@@ -1,0 +1,76 @@
+{
+  "date": "2026-10-10",
+  "baseline": "aa1f8cad318a033ff2729aaffe983e72f0c0bdeb",
+  "target": "origin/main@78c58c2a2cecd053199c9bada6084868f9255877",
+  "scope": "PR #314：仅修正 verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory 运行期正文等待；未改产品、版本或发布材料。",
+  "changes": [
+    "Terminal live 后捕获原 executionId/generation。",
+    "复用 waitForLocalExecutionOutput 等待原执行实际交付 SCROLLBACK_PERSIST-220，替换历史 metadata.recentOutput 等待；超时仍为 20 秒。",
+    "保留活动期间配置 scrollback、simulateRuntimeReload 后持久化首尾行和重新请求历史快照的首尾行检查。"
+  ],
+  "before": {
+    "nativeEvidence": "file-link-repair-evidence.json",
+    "replay": "原失败现场历史字段条件 false；同原 live execution 的实际快照可匹配 -220，替换 executionId 则拒绝。",
+    "log": ".debug/scrollback-smoke-fix/replay.log"
+  },
+  "automated": {
+    "syntax": "node --check tests/vscode-smoke/extension-tests.cjs passed",
+    "outputHelper": "14/14 passed",
+    "logs": ".debug/scrollback-smoke-fix/",
+    "host": "本轮未改产品或 Host 回归；上一轮 434/434 结果保留，不声称本轮重跑。"
+  },
+  "native": {
+    "command": "npm run test:vsix-smoke",
+    "environment": {
+      "platform": "Linux x64",
+      "node": "22.23.3",
+      "vscode": "1.141.0",
+      "runtimePersistence": false,
+      "provider": "当前原生 PTY + fake Agent"
+    },
+    "package": "notifier build、主扩展 typecheck/build/package passed",
+    "stages": {
+      "owned-canvas-reconciliation": "passed",
+      "local-execution-flow": "passed",
+      "trusted": "failed at verifyRuntimeReloadRecovery:8814 (waitForAgentLive before simulateRuntimeReload)"
+    },
+    "passed": [
+      "原通知/恢复失败检查与完整 native interactions",
+      "滚动历史运行期原执行 -220",
+      "模拟 reload 后持久化 serializedTerminalState 包含 001/220",
+      "重新请求历史快照包含 001/220",
+      "editor 标签切换保留视口",
+      "panel 标签切换保留视口",
+      "终端主题跟随 workbench"
+    ],
+    "evidenceBasis": "原脚本顺序执行，滚动历史函数及后续两标签切换/主题检查全部返回后，进入 verifyRuntimeReloadRecovery 的首次 Agent live 等待。本轮只修改滚动历史的一处正文条件，不伪造已由后续用例清理的早期消息。",
+    "fullGatePassed": false,
+    "log": ".debug/scrollback-smoke-fix/vsix.log",
+    "artifacts": ".debug/scrollback-smoke-fix/trusted-artifacts",
+    "remainingFailure": {
+      "description": "后续 RuntimeReloadRecovery 的 Codex Agent 启动等待超时，终端已启动，尚未执行该场景 simulateRuntimeReload。",
+      "agent": {
+        "nodeId": "agent-1-071d149b-038f-44b8-9dfb-a11f29f1b0a0",
+        "status": "stopped",
+        "liveSession": false
+      },
+      "activeLocalExecutionKinds": [
+        "terminal"
+      ],
+      "logObservation": "Non-native Host start was rejected-before-acquire；同时出现未处理 promise 拒绝。",
+      "status": "新触达独立启动阻塞，根因未完整定位，本轮未改此路径。"
+    },
+    "sourceHashes": {
+      "failure-error.txt": "4cf569c26ae6597df513f546c0dfc0963887a6a510422da2d9c7a70e2cd8e3a9",
+      "failure-host-messages.json": "96f3d589da814b365de7246d34e74b9720407636fd7d7930f779bd483858df98",
+      "failure-diagnostic-events.json": "f696c11adf81bf4cf20df6c109ff2e8ef4fb290186254ea69fd1bf659df65965"
+    }
+  },
+  "limits": [
+    "完整 trusted 仍未通过；后续 Agent 启动拒绝需专项定位。",
+    "不将本次模拟 reload 等同真实窗口重启；未原生复验 RuntimePersistence 开启、真实 Agent 服务、其他平台、Remote SSH、跨版本或未触达恢复/压力矩阵。"
+  ],
+  "sourceSha256": {
+    "tests/vscode-smoke/extension-tests.cjs": "2387f0dba1ee7aec8ab157e5aa3eee7c3cea5012c4c8660a84d4c3d9c5d1a24b"
+  }
+}

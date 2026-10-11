@@ -1,4 +1,5 @@
 {
+  "Cannot start {label} right now. Wait for pending operations to finish and try again.": "当前无法启动 {label}。请等待进行中的操作结束后重试。",
   "Timed out waiting for runtime supervisor request {method}. The operation may already have occurred; its result is unknown. It was not automatically retried.": "等待运行时 Supervisor 请求 {method} 的响应超时。操作可能已经发生，结果未知，未自动重试。",
   "Dev Session Canvas": "Dev Session Canvas",
   "Select the shell for embedded Terminal": "选择嵌入式 Terminal 要使用的 shell",
@@ -285,7 +286,7 @@
   "Delete group \"{title}\"?": "删除分组「{title}」？",
   "Deleting all contents recursively deletes {nodeCount} nodes and {groupCount} subgroups inside.": "删除所有内容会递归删除内部 {nodeCount} 个节点和 {groupCount} 个子分组。",
   "Deleting only the group frame keeps the contents and promotes them to the current parent.": "只删除分组框会保留内容，并把它们提升到当前父级。",
-  "Detected a resumable Agent session and waiting to resume.": "检测到可恢复的 Agent 会话，等待恢复。",
+  "The Agent session can be resumed manually.": "可以手动恢复此 Agent 会话。",
   "Detected a resumable {label} session.": "检测到可恢复的 {label} 会话。",
   "Editor": "编辑区",
   "Editor Webview was closed.": "编辑区 Webview 已被关闭。",
@@ -1052,5 +1053,8 @@
   "Session terminated: {reason}": "会话已终止：{reason}",
   "{message} Output is incomplete: {reason}": "{message} 输出不完整：{reason}",
   "This non-native test execution does not support terminal input.": "此非原生测试执行不支持终端输入。",
-  "The original Runtime execution is still bound. Settle it before starting a local execution.": "节点仍绑定原运行时执行。请先完成原执行的清理，再启动本地执行。"
+  "The original Runtime execution is still bound. Settle it before starting a local execution.": "节点仍绑定原运行时执行。请先完成原执行的清理，再启动本地执行。",
+  "Runtime storage is unsafe. Its directory must belong to your OS user, must not be a symbolic link, and must not be writable by everyone.": "Runtime 存储目录不安全。目录必须属于当前系统用户，不能是符号链接，也不能允许所有用户写入。",
+  "Runtime storage changed while it was being prepared. Check its directory before trying again.": "Runtime 存储目录在准备期间发生变化。请检查目录后重试。",
+  "Runtime storage could not be prepared. Check access to the extension storage directory and its permissions.": "无法准备 Runtime 存储。请检查扩展存储目录的访问权限。"
 }

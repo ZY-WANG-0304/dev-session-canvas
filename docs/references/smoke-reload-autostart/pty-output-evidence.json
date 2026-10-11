@@ -1,0 +1,124 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "previousHead": "f74527e0626798cc92cd38552329f475f14ea117",
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "scope": "PTY 稳健性和双终端 flood 的原执行输出断言、启动确认及最终保存等待；未修改产品源码",
+  "sourceSha256": {
+    "tests/vscode-smoke/extension-tests.cjs": "d3c899aa211f46dc29cad9a003de5ffdd7ea4ffd57852d47829090b8fa1b17c9",
+    "scripts/smoke/run-vscode-smoke.mjs": "15eead57d2e893b81710b73d320ef18297c9412472b2ab95420dd2f57e2c6a55",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "31ff118c609b0c55f18a29ff95731e6dcb0464de28b7cd7ef998dda4174508da"
+  },
+  "beforeEvidence": "docs/references/smoke-reload-autostart/surface-cutover-output-evidence.json",
+  "checks": {
+    "smokeExecutionOutput": "14/14 passed",
+    "smokeResetFixture": "19/19 passed",
+    "smokeRunnerEnvironment": "passed",
+    "changedScriptSyntax": "passed",
+    "vsixBuildAndTypecheck": "passed"
+  },
+  "native": {
+    "environment": "Linux x64 / Node 22.23.3 / VS Code 1.141.0 / current native PTY / fake Agent / bash",
+    "runtimePersistenceEnabled": false,
+    "passedStages": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness"
+    ],
+    "ptyRobustnessAcceptanceOccurrences": 2,
+    "floodAcceptanceOccurrences": 2,
+    "acceptanceContexts": [
+      "独立默认具名阶段",
+      "trusted 原顺序阶段"
+    ],
+    "assertedPty": [
+      "原执行 burst 080 / waiting-input",
+      "exit 17 / error 与原保存退休",
+      "第二次启动具有新身份；主动停止 / stopped 与原保存退休",
+      "第三次 Agent 与 Terminal 逐个 started 后并行输入输出",
+      "两个原执行的 xterm-serialize-v1 快照包含各自真实正文",
+      "Agent stopped、Terminal closed、原最终保存退休"
+    ],
+    "assertedFlood": [
+      "保持双终端无界输出循环",
+      "原 Agent 的并行输入输出与真实 Note 选择",
+      "高输出下新建 Terminal 和 Agent，确认原 started",
+      "新 Terminal 输出与新 Agent 输入输出",
+      "两个原 Terminal Ctrl-C 后继续接收命令并输出结果",
+      "四条原执行停止/保存/退休，删除新增节点"
+    ],
+    "fullVsix": "failed",
+    "nextBlocker": {
+      "function": "verifyFailurePaths",
+      "line": 9336,
+      "expected": "Missing Claude CLI results in node status error",
+      "actual": {
+        "id": "agent-4-91772400-bb4f-4da7-bdfc-09cda3658d4c",
+        "status": "starting",
+        "summary": "Waiting for node size before starting the Agent session.",
+        "lifecycle": "starting",
+        "liveSession": false,
+        "pendingLaunch": "start"
+      },
+      "localExecutions": [],
+      "relatedEvents": [
+        {
+          "timestamp": "2026-10-10T06:42:34.554Z",
+          "kind": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-4-91772400-bb4f-4da7-bdfc-09cda3658d4c",
+            "provider": "claude",
+            "resumeRequested": false,
+            "launchPreset": "default",
+            "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/missing-agent-provider",
+            "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/missing-agent-provider",
+            "launchArgs": [],
+            "cols": 66,
+            "rows": 21,
+            "cwd": "/tmp/dscr",
+            "workspaceTrusted": true
+          }
+        },
+        {
+          "timestamp": "2026-10-10T06:42:34.597Z",
+          "kind": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-4-91772400-bb4f-4da7-bdfc-09cda3658d4c",
+            "executionId": "42157fe5-33e4-43b3-9893-2023eafd1ebb",
+            "generation": "9c10fdad-bad0-42d4-929b-0b3e9cb3315b",
+            "submitted": false,
+            "result": {
+              "kind": "not-required"
+            }
+          }
+        },
+        {
+          "timestamp": "2026-10-10T06:42:34.597Z",
+          "kind": "execution/startFailed",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-4-91772400-bb4f-4da7-bdfc-09cda3658d4c",
+            "outcome": "exception",
+            "reason": "Could not find Claude Code command /tmp/dscr/tests/vscode-smoke/fixtures/missing-agent-provider. Tried: Configured absolute path: /tmp/dscr/tests/vscode-smoke/fixtures/missing-agent-provider; Configured relative path: /t",
+            "message": "Failed to start execution node: Could not find Claude Code command /tmp/dscr/tests/vscode-smoke/fixtures/missing-agent-provider. Tried: Configured absolute path: /tmp/dscr/tests/vscode-smoke/fixtures/missing-agent-provider; Configured relative path: /tmp/dscr/tests/vscode-smoke/fixtures/missing-agent-provider; PATH lookup: /tmp/dscr/tests/vscode-smoke/fixtures/missing-agent-provider; Login shell probe: /tmp/dscr/tests/vscode-smoke/fixtures/missing-agent-provider. Make sure it is installed in the current execution host, configure the command path explicitly in settings, or make it available to the login shell / PATH."
+          }
+        }
+      ],
+      "hostErrorPresent": true,
+      "conclusion": "命令解析已失败并提示，但节点仍 starting/pending start；不同于实时正文断言，未修改其 error 验收或产品状态逻辑"
+    },
+    "log": ".debug/pty-output/vsix.log",
+    "logSha256": "ccb5a490a617d77525d722943288b7b5e824e66c246c1914ad804f122201e93f",
+    "artifacts": ".debug/pty-output/trusted-artifacts",
+    "focusedArtifacts": ".debug/pty-output/pty-artifacts"
+  },
+  "limits": [
+    "完整 VSIX 发布门禁未通过",
+    "后续失败路径、恢复、Runtime 及跨平台/跨版本矩阵未完成",
+    "之前文件链接 DOM 与 early final-save pending 历史失败没有追认根因"
+  ]
+}

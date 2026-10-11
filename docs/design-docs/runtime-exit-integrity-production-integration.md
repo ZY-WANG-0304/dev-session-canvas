@@ -13,8 +13,9 @@ architecture_layers:
 related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
+  - docs/exec-plans/completed/owned-delete-persistence-repair.md
   - docs/exec-plans/completed/runtime-exit-integrity.md
-updated_at: 2026-10-02
+updated_at: 2026-10-11
 ---
 
 # 退出完整性生产接入与故障域收敛
@@ -1033,6 +1034,8 @@ L-03生产profile仍未选定，L-02总体消费/页面/落盘验收、L-04生�
 S8仍立即独立尝试S7初始画布保存及live detach；canvasSnapshot域同时等待边界捕获记录的最终保存结果，初始旧快照写成功不能提前报告终态已保存。固定Host deadline之前未提交的最终metadata/保存，期限后不得再发起；原已提交写入可迟到完成，只更新保存事实，不改S7不可变首报。该期限不伪造进程退出、EOF或reader applied；实际Host消失后不承诺继续保存。
 
 正常运行中的自然结束直接沿单次原保存完成；磁盘或workspaceState失败记录明确错误并保留，默认不自动重试。reset/delete除原owner结果外，还须检查Host保存责任，不能因owner已退役而绕过pending/failed记录；原执行关闭返回后，保存仍pending时明确报未确认并中止，不无限等待一个已不受执行预算覆盖的保存Promise，不新增保存预算。写完成后允许再次操作；保存失败仍保留节点，不自动重试。同步报告与诊断不应派生unhandled rejection或反过来改变已冻结保存结果。
+
+2026-10-11 单节点删除入口更新（PR #314）：`deleteNode` 对原 owned/retained snapshot-only 最终保存改用既有 boundaryMs=20000 的有界等待，成功后重验原 owner、record 路由、metadata 与删除操作 token 再移除节点。pending期间保留目标；failed/unconfirmed/超时仍拒绝，迟到saved不重启原删除。此例外仅由deleteNode显式请求，reset、清组和模板等共用终止helper的默认调用继续上述立即检查契约。最终合法metadata投影同步更新原保存绑定，正常退休离开map不算替换。方案与验收见 `smoke-reload-autostart-investigation.md` 的单节点删除正式保存等待方案。
 
 ### 26.4 有限验证
 

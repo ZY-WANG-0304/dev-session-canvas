@@ -1556,8 +1556,10 @@ try {
         assert.deepEqual(session.ownedExecution.snapshot().terminal,
           { kind: 'applied', finalRevision: 1, throughDataSequence: 1 });
         if (disposition.kind === 'eof') {
-          assert.equal(snapshot.lastExitMessageDescriptor, undefined);
-          assert.equal(snapshot.lastExitMessage, undefined);
+          assert.equal(snapshot.lastExitMessageDescriptor?.id,
+            kind === 'agent' ? 'agentSessionEnded' : 'terminalSessionEnded');
+          assert.equal(snapshot.lastExitMessage,
+            kind === 'agent' ? 'Owner wiring fixture session ended.' : 'Terminal session ended.');
         } else {
           assert.deepEqual(snapshot.lastExitMessageDescriptor,
             { id: 'terminalOutputIncomplete', params: { reason: disposition.reason } });
@@ -2251,12 +2253,12 @@ try {
     assert.equal((await closing).kind, 'settled');
   });
 
-  async function interactiveSupervisorFixture(kind = 'terminal', provider = 'codex') {
+  async function interactiveSupervisorFixture(kind = 'terminal', provider = 'codex', launchMode = 'start') {
     const f = fixture(candidateCapabilities, candidateBehavior);
     const sessionId = `s10-${kind}-${++fixtureId}`;
     const create = params(sessionId, kind);
     create.launchSpec.cols = 113; create.launchSpec.rows = 39;
-    await f.server.createSession(f.socket, { ...create, provider: kind === 'agent' ? provider : undefined,
+    await f.server.createSession(f.socket, { ...create, launchMode, provider: kind === 'agent' ? provider : undefined,
       executionProfile: EXECUTION_CANDIDATE_PROFILE });
     const session = f.server.sessions.get(sessionId);
     const transport = f.transports[0];
@@ -2268,6 +2270,92 @@ try {
     };
     const reply = (message, result) => transport.fact({ type: 'interactionObservation', interactionId: message.interactionId, result });
     return { ...f, session, transport, interactions, reply };
+  }
+
+  for (const scenario of [
+    { name: 'resumed Agent exit 23', kind: 'agent', resume: true, input: true, code: 23, status: 'error', id: 'agentExitedCode' },
+    { name: 'fresh Agent exit 23', kind: 'agent', code: 23, status: 'error', id: 'agentExitedCode' },
+    { name: 'Agent signal', kind: 'agent', signal: 'SIGTERM', status: 'error', id: 'agentExitedSignal' },
+    { name: 'Agent normal end', kind: 'agent', code: 0, status: 'stopped', id: 'agentSessionEnded' },
+    { name: 'resume phase exit 23', kind: 'agent', resume: true, code: 23, status: 'resume-failed', id: 'agentResumeFailedCode' },
+    { name: 'resume phase signal', kind: 'agent', resume: true, signal: 'SIGTERM', status: 'resume-failed', id: 'agentResumeFailedSignal' },
+    { name: 'resume phase zero', kind: 'agent', resume: true, code: 0, status: 'stopped', id: 'agentSessionEnded' },
+    { name: 'resume phase stop', kind: 'agent', resume: true, stop: true, signal: 'SIGTERM', status: 'stopped', id: 'agentSessionStopped' },
+    { name: 'Agent stop nonzero', kind: 'agent', stop: true, code: 23, status: 'stopped', id: 'agentSessionStopped' },
+    { name: 'Terminal exit 23', kind: 'terminal', code: 23, status: 'error', id: 'terminalExitedCode' },
+    { name: 'Terminal signal', kind: 'terminal', signal: 'SIGHUP', status: 'error', id: 'terminalExitedSignal' },
+    { name: 'Terminal normal end', kind: 'terminal', code: 0, status: 'closed', id: 'terminalSessionEnded' },
+    { name: 'Terminal stop', kind: 'terminal', stop: true, signal: 'SIGHUP', status: 'closed', id: 'terminalStopped' }
+  ]) {
+    await check(`owned exit description: ${scenario.name}`, async () => {
+      const f = await interactiveSupervisorFixture(scenario.kind, 'codex', scenario.resume ? 'resume' : 'start');
+      const { session, transport } = f;
+      assert.equal(session.resumePhaseActive, Boolean(scenario.resume));
+      if (scenario.input) {
+        const writing = request(f, f.socket, 'writeInput', { sessionId: session.sessionId, data: 'go\r' });
+        await f.until(() => f.interactions.length === 1, 'resume input requested');
+        f.reply(f.interactions[0], { kind: 'written', writtenBytes: 3 });
+        assert.equal((await writing).ok, true);
+        assert.equal(session.resumePhaseActive, false);
+      }
+      // Early resume failures emit no prompt, so wall-clock heuristics cannot finish resuming first.
+      const tail = scenario.resume && !scenario.input ? '' : 'final-tail';
+      if (tail) {
+        transport.output(`${tail}\r\n`);
+        await f.until(() => session.ownedExecution.snapshot().adapter.consumedThrough === 1, 'final output consumed');
+      }
+      if (scenario.stop) f.server.stopSession({ sessionId: session.sessionId });
+      transport.process(scenario.signal ? { kind: 'signaled', signal: scenario.signal }
+        : { kind: 'exited', exitCode: scenario.code });
+      transport.seal();
+      transport.release();
+      await f.until(() => session.ownedExecution.snapshot().settled, 'original execution settled');
+      const completed = f.socket.messages.filter(message => message.type === 'event' &&
+        message.event === 'sessionState' && message.payload.sessionId === session.sessionId && !message.payload.live);
+      assert.equal(completed.length, 1);
+      const snapshot = completed[0].payload;
+      assert.equal(snapshot.lifecycle, scenario.status);
+      assert.equal(snapshot.lastExitCode, scenario.code);
+      assert.equal(snapshot.lastExitSignal, scenario.signal);
+      assert.equal(snapshot.lastExitMessageDescriptor.id, scenario.id);
+      assert.ok(snapshot.lastExitMessage.length > 0);
+      if (!scenario.stop && (scenario.code === 23 || scenario.signal)) {
+        assert.match(snapshot.lastExitMessage, new RegExp(scenario.signal ?? 'code 23'));
+        assert.equal(snapshot.lastExitMessageDescriptor.params.suffix, tail);
+      }
+      assert.deepEqual(f.server.toSnapshot(session).lastExitMessageDescriptor, snapshot.lastExitMessageDescriptor);
+    });
+  }
+
+  for (const scenario of ['authority-failed', 'unconfirmed', 'terminated', 'stopped-terminated', 'journal-failed']) {
+    await check(`owned exit description preserves ${scenario}`, async () => {
+      const f = await interactiveSupervisorFixture('agent', 'codex', 'resume');
+      const { session, transport } = f;
+      if (scenario === 'authority-failed') {
+        session.terminalStateTracker.flush = async () => { throw new Error('controlled final flush failure'); };
+      }
+      if (scenario === 'journal-failed') {
+        f.server.failSessionForTerminalJournal(session, new Error('controlled journal failure'));
+      }
+      if (scenario === 'stopped-terminated') f.server.stopSession({ sessionId: session.sessionId });
+      transport.process(['unconfirmed', 'terminated', 'stopped-terminated'].includes(scenario)
+        ? { kind: scenario === 'unconfirmed' ? 'unconfirmed' : 'terminated', reason: 'controlled process result' }
+        : { kind: 'exited', exitCode: 0 });
+      transport.seal();
+      transport.release();
+      await f.until(() => !session.live, 'failure or termination published');
+      const snapshot = f.server.toSnapshot(session);
+      assert.equal(snapshot.lifecycle, scenario === 'stopped-terminated' ? 'stopped' : 'error');
+      if (scenario === 'journal-failed') {
+        assert.equal(snapshot.lastExitMessageDescriptor.id, 'terminalJournalPersistenceFailed');
+      } else if (scenario === 'stopped-terminated') {
+        assert.equal(snapshot.lastExitMessageDescriptor.id, 'agentSessionStopped');
+      } else {
+        assert.equal(snapshot.lastExitMessageDescriptor, undefined);
+        assert.equal(snapshot.lastExitMessage, undefined);
+      }
+      if (['unconfirmed', 'terminated', 'stopped-terminated'].includes(scenario)) assert.equal(snapshot.lastExitCode, undefined);
+    });
   }
 
   await check('S10 Supervisor initial dimensions and stop policy represent Terminal, Codex and Claude without legacy process', async () => {

@@ -1,0 +1,421 @@
+{
+  "baseline": "e640f6f14c96ff79ba73380cfc478a5cd5ab6678",
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "environment": "Linux x64 / Node22.23.3 / VS Code1.141.0 / native PTY / fake provider / RuntimePersistence=false",
+  "conclusion": "删除等待原 owner 停止后同步检查最终保存；保存仍 pending 时按旧 S8 策略拒绝删除并返回，稍后 saved 不重启原删除请求。当前 smoke 一次删除成功的预期与该保守契约不一致。",
+  "provenance": {
+    "commit": "b235a7bc5b5cbf7249b819f57f8a3bfcdcd9b793",
+    "title": "feat(runtime): 接入默认关闭的本地最终态严格保存",
+    "alreadyInOriginMain": true,
+    "design": "docs/design-docs/runtime-exit-integrity-production-integration.md §26.3 明确规定原关闭后保存 pending 时中止、不新增等待预算，写完后允许再次操作。",
+    "interpretation": "不是 e640f6f1 新增错误；采集接线恢复使原文件用例推进到已有删除边界。"
+  },
+  "mechanism": {
+    "stop": "executionOwnerLifecycle.ts finalize 同步调用 finalized hook；Host 启动 persistState 的异步保存后返回。owner settled 不包含 Host persistence 完成。",
+    "delete": "CanvasPanelManager.ts:20454 等待停止，20456 同步 assertNonNativeHostPersistenceComplete；deleteNode:20780 捕获错误并返回，未执行移除节点/引用。",
+    "observedDelayMs": 21,
+    "collector": "probe 停止返回与检查时 collectorDisposed=true，排空已完成。",
+    "save": "result 从 pending 变 saved，原节点仍存在；受控再次显式删除可成功。"
+  },
+  "controlledHost": {
+    "log": ".debug/owned-delete-persistence-investigation/host.log",
+    "cases": "8/8 expected outcomes captured",
+    "matrix": "Agent/Terminal × probe/control × saved/failed；filesFeatureEnabled=false；使用实际 Host 持久化和受控 workspaceState.update Promise。",
+    "probe": "原删除在保存 pending 时返回错误；保存随后成功也不续删，显式第二次删除成功。",
+    "control": "仅在 host-delete 停止 settled 后等待原记录的有界最终保存；saved 才删除，failed 保留节点并报告保存失败。",
+    "formalTestChanges": false
+  },
+  "native": {
+    "probe": {
+      "artifact": ".debug/owned-delete-persistence-investigation/probe-1791656297942/runtime/artifacts/result.json",
+      "investigationExitCode": 0,
+      "originalFunctionPassed": false,
+      "agentBDeletionCheckpointPassed": false,
+      "failure": {
+        "message": "Timed out while waiting for smoke test state.",
+        "stack": [
+          "\tat waitForSnapshot (/tmp/dscr/.debug/owned-delete-persistence-investigation/probe-1791656297942/host/tests/vscode-smoke/extension-tests.cjs:12899:10)",
+          "\tat async verifyFileActivityViewsAndOpenFiles (/tmp/dscr/.debug/owned-delete-persistence-investigation/probe-1791656297942/host/tests/vscode-smoke/extension-tests.cjs:4509:16)",
+          "\tat async runSmoke (/tmp/dscr/.debug/owned-delete-persistence-investigation/probe-1791656297942/host/tests/vscode-smoke/extension-tests.cjs:251:13)",
+          "\tat async Object.run (/tmp/dscr/.debug/owned-delete-persistence-investigation/probe-1791656297942/host/tests/vscode-smoke/extension-tests.cjs:173:5)"
+        ]
+      },
+      "remainingExecutions": 0,
+      "hashes": {
+        "original": {
+          "extension.js": "e62c8a771f64d137b15e69c25d64b41643290b7437cb3733589a1e1a95836a3e",
+          "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "instrumentedExtension": "a02061ff06bf920d4be8a5adcfeec5987580eed52f51f741597ba3fce8d92a58"
+      },
+      "records": {
+        "agent-5-c6dc38eb-35bb-4798-a463-6efb6bc4cfe3": {
+          "identity": {
+            "executionId": "f90c8807-177d-4e3e-9029-be38b20d4497",
+            "generation": "80a83583-ab26-410f-bff1-218386f9b3dc"
+          },
+          "timeline": [
+            {
+              "phase": "delete-entered",
+              "at": "2026-10-10T18:18:38.461Z",
+              "persistence": {
+                "submitted": false,
+                "result": null
+              },
+              "collectorDisposed": false,
+              "owner": {
+                "settled": false,
+                "retired": false
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "stop-returned",
+              "at": "2026-10-10T18:18:38.701Z",
+              "persistence": {
+                "submitted": true,
+                "result": null
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true,
+              "stopResult": {
+                "kind": "settled",
+                "pending": []
+              }
+            },
+            {
+              "phase": "assert-save",
+              "at": "2026-10-10T18:18:38.701Z",
+              "persistence": {
+                "submitted": true,
+                "result": null
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "assert-save-threw",
+              "at": "2026-10-10T18:18:38.701Z",
+              "persistence": {
+                "submitted": true,
+                "result": null
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true,
+              "error": "Local final snapshot persistence is pending: agent:agent-5-c6dc38eb-35bb-4798-a463-6efb6bc4cfe3"
+            },
+            {
+              "phase": "delete-cleanup-threw",
+              "at": "2026-10-10T18:18:38.701Z",
+              "persistence": {
+                "submitted": true,
+                "result": null
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true,
+              "error": "Local final snapshot persistence is pending: agent:agent-5-c6dc38eb-35bb-4798-a463-6efb6bc4cfe3"
+            },
+            {
+              "phase": "save-finished",
+              "at": "2026-10-10T18:18:38.722Z",
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            }
+          ]
+        }
+      }
+    },
+    "control": {
+      "artifact": ".debug/owned-delete-persistence-investigation/control-1791656355436/runtime/artifacts/result.json",
+      "investigationExitCode": 0,
+      "originalFunctionPassed": true,
+      "agentBDeletionCheckpointPassed": true,
+      "failure": null,
+      "remainingExecutions": 0,
+      "hashes": {
+        "original": {
+          "extension.js": "e62c8a771f64d137b15e69c25d64b41643290b7437cb3733589a1e1a95836a3e",
+          "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+          "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+        },
+        "instrumentedExtension": "a02061ff06bf920d4be8a5adcfeec5987580eed52f51f741597ba3fce8d92a58"
+      },
+      "records": {
+        "agent-5-2bdde3e4-0c28-4474-92e1-de944524750c": {
+          "identity": {
+            "executionId": "752f2af1-1ea9-488c-94e1-659e01b29581",
+            "generation": "51ccadb1-d24b-4086-9989-941c6b6d6ecf"
+          },
+          "timeline": [
+            {
+              "phase": "delete-entered",
+              "at": "2026-10-10T18:19:27.550Z",
+              "persistence": {
+                "submitted": false,
+                "result": null
+              },
+              "collectorDisposed": false,
+              "owner": {
+                "settled": false,
+                "retired": false
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "stop-returned",
+              "at": "2026-10-10T18:19:27.787Z",
+              "persistence": {
+                "submitted": true,
+                "result": null
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true,
+              "stopResult": {
+                "kind": "settled",
+                "pending": []
+              }
+            },
+            {
+              "phase": "save-finished",
+              "at": "2026-10-10T18:19:27.800Z",
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "assert-save",
+              "at": "2026-10-10T18:19:27.800Z",
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "control-save-waited",
+              "at": "2026-10-10T18:19:27.800Z",
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "assert-save",
+              "at": "2026-10-10T18:19:27.800Z",
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "delete-cleanup-returned",
+              "at": "2026-10-10T18:19:27.800Z",
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            }
+          ]
+        },
+        "agent-4-7d2beb8d-4d10-4b9f-be58-72f8ef2a08a2": {
+          "identity": {
+            "executionId": "576a0cad-2645-4a07-b57e-eef7d0cecce3",
+            "generation": "4afd47c8-71a1-4865-8cc4-36b4fe59aeb8"
+          },
+          "timeline": [
+            {
+              "phase": "delete-entered",
+              "at": "2026-10-10T18:19:27.863Z",
+              "persistence": {
+                "submitted": false,
+                "result": null
+              },
+              "collectorDisposed": false,
+              "owner": {
+                "settled": false,
+                "retired": false
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "stop-returned",
+              "at": "2026-10-10T18:19:28.082Z",
+              "persistence": {
+                "submitted": true,
+                "result": null
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true,
+              "stopResult": {
+                "kind": "settled",
+                "pending": []
+              }
+            },
+            {
+              "phase": "save-finished",
+              "at": "2026-10-10T18:19:28.089Z",
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "assert-save",
+              "at": "2026-10-10T18:19:28.089Z",
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "control-save-waited",
+              "at": "2026-10-10T18:19:28.089Z",
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "assert-save",
+              "at": "2026-10-10T18:19:28.089Z",
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            },
+            {
+              "phase": "delete-cleanup-returned",
+              "at": "2026-10-10T18:19:28.089Z",
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              },
+              "collectorDisposed": true,
+              "owner": {
+                "settled": true,
+                "retired": true
+              },
+              "nodePresent": true
+            }
+          ]
+        }
+      }
+    }
+  },
+  "limits": [
+    "probe/control 脚本 exit0 表示调查捕获成功；probe 原文件用例失败，control 原函数全部通过但属于实验包装。",
+    "隔离 extension bundle 仅暴露 manager 引用，probe 只观察；control 仅在原 host-delete 停止结果后等待原保存，不放宽原断言或手动移除节点。",
+    "正式产品和正式 smoke 未修改；未重跑完整 gate，上一轮 trusted 失败状态保持。",
+    "正式修复如选择一次删除完成，需明确有界等待预算及等待后的原节点/执行身份保护，并保留 failed/unconfirmed/timeout 拒绝。",
+    "原生只验证 Agent；Terminal 因果通过受控 Host 验证，RuntimePersistence=true、真实 provider、跨平台和新 Host 未由本轮代证。"
+  ]
+}

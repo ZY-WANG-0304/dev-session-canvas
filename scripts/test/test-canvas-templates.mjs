@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { zipSync } from 'fflate';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -142,6 +142,13 @@ try {
     }
   ]);
   const savedUserTemplate = await store.writeUserTemplate(userTemplate);
+  const privateGlobal = path.join(tempDir, 'private-global');
+  const privateStore = new CanvasTemplateStore(builtinDir, path.join(privateGlobal, 'templates'));
+  const previousUmask = process.umask(0o002);
+  try {
+    await privateStore.writeUserTemplate(userTemplate);
+    if (process.platform !== 'win32') assert.equal((await lstat(privateGlobal)).mode & 0o777, 0o700);
+  } finally { process.umask(previousUmask); }
   assert.ok(savedUserTemplate.filePath.startsWith(globalUserDir));
   assert.match(path.basename(savedUserTemplate.filePath), /User-Template-user-a\.json$/);
 

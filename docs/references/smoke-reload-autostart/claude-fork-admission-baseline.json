@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "updatedAt": "2026-10-10T18:31:34.423Z",
+  "nodes": [
+    {
+      "id": "agent-1-6b04f742-7238-4b67-bb0f-a9afc99f5ea7",
+      "kind": "agent",
+      "title": "请只用这个标题恢复侧栏历史会话",
+      "status": "starting",
+      "summary": "Waiting for node size before starting the Agent session.",
+      "position": {
+        "x": 120,
+        "y": 100
+      },
+      "size": {
+        "width": 560,
+        "height": 430
+      },
+      "metadata": {
+        "agent": {
+          "backend": "node-pty",
+          "lifecycle": "starting",
+          "provider": "codex",
+          "launchPreset": "custom",
+          "customLaunchCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider resume sidebar-codex-session-123",
+          "runtimeKind": "pty-cli",
+          "resumeSupported": false,
+          "resumeStrategy": "none",
+          "shellPath": "codex",
+          "cwd": "/tmp/dscr",
+          "persistenceMode": "snapshot-only",
+          "attachmentState": "history-restored",
+          "liveSession": false,
+          "pendingLaunch": "start",
+          "lastCols": 96,
+          "lastRows": 28,
+          "attentionPending": false,
+          "lastBackendLabel": "Codex"
+        }
+      }
+    },
+    {
+      "id": "agent-2-393bc850-e577-4fba-a3eb-3377bc616403",
+      "kind": "agent",
+      "title": "请通过按钮分叉这个历史会话 Fork",
+      "status": "starting",
+      "summary": "Waiting for node size before starting the Agent session.",
+      "position": {
+        "x": 800,
+        "y": 100
+      },
+      "size": {
+        "width": 560,
+        "height": 430
+      },
+      "metadata": {
+        "agent": {
+          "backend": "node-pty",
+          "lifecycle": "starting",
+          "provider": "codex",
+          "launchPreset": "custom",
+          "customLaunchCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider fork sidebar-codex-ui-fork-123",
+          "runtimeKind": "pty-cli",
+          "resumeSupported": false,
+          "resumeStrategy": "none",
+          "shellPath": "codex",
+          "cwd": "/tmp/dscr",
+          "persistenceMode": "snapshot-only",
+          "attachmentState": "history-restored",
+          "liveSession": false,
+          "pendingLaunch": "start",
+          "lastCols": 96,
+          "lastRows": 28,
+          "attentionPending": false,
+          "lastBackendLabel": "Codex"
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "groups": [],
+  "nextGroupSequence": 1,
+  "fileReferences": [],
+  "suppressedFileActivityEdgeIds": [],
+  "suppressedAutomaticFileArtifactNodeIds": []
+}

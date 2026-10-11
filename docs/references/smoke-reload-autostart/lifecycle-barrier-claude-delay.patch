@@ -1,0 +1,15 @@
+--- a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
++++ b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+@@ -21672,6 +21672,12 @@
+         return;
+       }
+     }
++    if (record.kind === 'agent' && record.business?.agentProvider === 'claude' && record.business.launchMode === 'start'
++      && record.execution.snapshot().adapter?.process?.kind === 'exited') {
++      this.rcaLifecycleProbe('claude-reader-ack-held', { nodeId: record.nodeId });
++      await new Promise(resolve => setTimeout(resolve, 500));
++      this.rcaLifecycleProbe('claude-reader-ack-released', { nodeId: record.nodeId });
++    }
+     this.settleLocalExecutionReader(record, reader, payload.outcome);
+     recordResult('recorded', 'reader-settled');
+   }

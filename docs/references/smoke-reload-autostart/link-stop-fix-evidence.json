@@ -1,0 +1,124 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "parent_head": "13ca68c8b3b8449fd0446ef849fb1a3058cfdd4e",
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "scope": "链接目标页面就绪与 owned 停止 smoke 修正；未修改正式产品源码或版本。",
+  "environment": {
+    "platform": "Linux x64",
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "pty": "native node-pty",
+    "agent": "fake Codex / Claude",
+    "shell": "bash",
+    "runtime_persistence": false
+  },
+  "source_sha256": {
+    "tests/vscode-smoke/extension-tests.cjs": "a2ab2de1af3901d0a39c609b654421d343c91d7e4a617cd6f8c0a6eef0b95d37",
+    "scripts/smoke/run-vscode-smoke.mjs": "89f6c433411d3a1d1be70aa064dcb7cf4c8de97cf8f8bf62767bee40ec8a5194",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "07015a10d0046c2a9018d9171c8ee09aa672cbeda8a095c00015f73505685d1d",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "b14959e341c7ed0934ab83ed11e519c0bb780b8dd7f21246629c3f58852af635",
+    "extensions/vscode/dev-session-canvas/src/webview/main.tsx": "1f04694dd6d647095b2fc3e561747b1f136e1b6d2049ae686b429a34c244004b",
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "0c3ed37bc9c2bdc76e2fa10e4bf281cd2957d0b6921750179cce4d298324e2b4"
+  },
+  "checks": {
+    "syntax": "passed",
+    "smoke_execution_output": "14/14 passed",
+    "smoke_reset_fixture": "19/19 passed",
+    "vscode_smoke_runner_env": "passed",
+    "host_stop": "2/2 passed (selected 2/487); original owner.stopRequested and single requestStop, tail consumption, reader settlement"
+  },
+  "first_default_vsix": {
+    "log": ".debug/link-stop-fix/vsix.log",
+    "typecheck_build_package": "passed",
+    "passed_scenarios": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure",
+      "local-links-and-stop"
+    ],
+    "trusted": "完整链接与 Codex Stop 通过，随后 Claude Stop 运行期 recentOutput 等待超时；已追加迁移原执行正文/退休等待。"
+  },
+  "delayed_page_control": {
+    "log": ".debug/link-stop-fix/delayed-links.log",
+    "validation_patch": "docs/references/smoke-reload-autostart/link-page-wait-validation.patch",
+    "scenario": "local-links-and-stop",
+    "delay_ms": 600,
+    "target": "link-target.ts:3:1 terminal.write",
+    "result": "exit 0; 全部原链接/tooltip、Codex Stop、Claude Stop 通过",
+    "temporary_product_delay_removed": true
+  },
+  "final_default_vsix": {
+    "log": ".debug/link-stop-fix/vsix-final.log",
+    "typecheck_build_package": "passed",
+    "passed_scenarios": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure",
+      "local-links-and-stop"
+    ],
+    "trusted_passed_through": [
+      "verifyExecutionTerminalNativeInteractions",
+      "verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory",
+      "verifyRuntimeReloadRecovery",
+      "verifyLiveSessionCutoverAndReload",
+      "verifyPtyRobustness",
+      "verifyTerminalFloodKeepsCanvasResponsive",
+      "verifyFailurePaths",
+      "verifyPersistenceAndRecovery",
+      "verifyStandbySurfaceIgnoresMessages",
+      "verifyPendingWebviewRequestFaultInjection",
+      "verifyStopVsQueuedExitRace",
+      "verifyClaudeStopRestoresPreviousSignal"
+    ],
+    "exit_code": 1,
+    "failure": {
+      "function": "verifyClaudeExplicitSessionIdPreservesResumeContext",
+      "line": 9972,
+      "assertion": "运行期 resumeStrategy === claude-session-id 且 resumeSessionId === 显式 ID",
+      "observed": {
+        "nodeId": "agent-4-98ae7518-9d19-4dc0-b213-7580b29fe354",
+        "status": "waiting-input",
+        "customLaunchCommand": "claude --session-id=session-explicit-123456789",
+        "liveSession": true,
+        "persistenceMode": "snapshot-only",
+        "resumeSupported": false,
+        "resumeStrategy": "none",
+        "resumeSessionId": "session-explicit-123456789"
+      },
+      "original_execution": {
+        "kind": "agent",
+        "nodeId": "agent-4-98ae7518-9d19-4dc0-b213-7580b29fe354",
+        "identity": {
+          "executionId": "b9f70f16-d41f-4d55-829e-27fb1321bc53",
+          "generation": "050cd75e-0f34-41b2-8d9a-fc65762715d1"
+        },
+        "retired": false,
+        "persistence": {
+          "submitted": false
+        }
+      },
+      "classification": "新的恢复能力状态检查阻塞，不是 recentOutput 等待；根因尚未确认，保留原断言。"
+    },
+    "artifacts_local": ".debug/link-stop-fix/trusted-final-artifacts",
+    "artifact_sha256": {
+      "failure-host-diagnostics-dump.json": "26189a5d8c32c7c61abfd07558e3255f81d4d6c28cf6ce2f17dc67922c7759c9",
+      "failure-host-messages.json": "4ac46a2e5199cad1268102ade20dd4af155f546338b9bcfdfe0591c75476434e",
+      "failure-diagnostic-events.json": "bbf5e482cfa21293550077b155a31a6464c817547e673b2ac8fa302eab3d995c",
+      "failure-snapshot.json": "5e13192759f09b431dfed99470c362cca0d66d6e8850880d44c4753cb871ac3a",
+      "failure-webview-probe.json": "91a862c739022c52a72325c6a841b173e72af23b4d01697e4aca0d9b1a0b7b04"
+    },
+    "runtime_persistence_true_scenarios": "未执行"
+  },
+  "limits": [
+    "旧 URL 已检测后 tooltip 不可见的单次失败根因未确认；本轮原生及延迟对照完整 tooltip 断言通过，不追认旧现场。",
+    "未覆盖真实窗口 Reload、Remote SSH、其他平台、真实 Agent 服务或跨版本矩阵。",
+    "本轮只定向重跑 Host 2/2；此前同产品源码完整 Host 487/487 的证据保留。"
+  ]
+}

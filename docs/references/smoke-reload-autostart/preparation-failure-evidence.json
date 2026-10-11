@@ -1,0 +1,100 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "previousHead": "4053138315303aa8b49c4d6a280b84e0f212ac19",
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "scope": "owned 启动准备失败状态投影与未派发尺寸意图取消；不改变准入拒绝或取得资源后的未知结果",
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "0c3ed37bc9c2bdc76e2fa10e4bf281cd2957d0b6921750179cce4d298324e2b4",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "002f1d8e02b5a3c67090545a4b04252204f063fb9a554025cc899e76ed67f3cc",
+    "tests/vscode-smoke/extension-tests.cjs": "1e4b538722357eafeb8df911860e8bf64fdb95365cef176801ed8474af10cb0c",
+    "scripts/smoke/run-vscode-smoke.mjs": "b54cb2614a57d156bca666382a0f785ed39d475a7d63b9d1d74a59a36a123ccf",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "44206da853c52aa99d6612992ee5725aef3d00e65bf292db6d3f17c95b736999"
+  },
+  "beforeEvidence": "docs/references/smoke-reload-autostart/pty-output-evidence.json",
+  "beforeRegression": {
+    "state": "新增 preparation failure Terminal 用例：launching != error",
+    "resize": "仅修正节点状态后加入页面尺寸同步：resizeRejected=true，且有两次 host/error"
+  },
+  "checks": {
+    "host": "487/487 passed",
+    "typecheck": "passed in final VSIX packaging",
+    "uiLocalization": "passed",
+    "smokeExecutionOutput": "14/14 passed",
+    "smokeResetFixture": "19/19 passed",
+    "smokeRunnerEnvironment": "passed",
+    "changedScriptSyntax": "passed"
+  },
+  "firstNativeRun": {
+    "result": "failed at single host/error assertion (2 != 1)",
+    "node": {
+      "id": "agent-1-f8e3715a-9f6d-41d8-a199-c947d416b14a",
+      "status": "error",
+      "lifecycle": "error",
+      "liveSession": false,
+      "pendingLaunch": null
+    },
+    "finding": "原 prepare 错误同时 reject 排队的自动 resize，额外产生 owned-resize-failed；最终修正为取消未派发意图，启动错误仍报告",
+    "artifacts": ".debug/preparation-failure/first-artifacts",
+    "log": ".debug/preparation-failure/first-vsix.log"
+  },
+  "native": {
+    "environment": "Linux x64 / Node 22.23.3 / VS Code 1.141.0 / current native PTY / fake Agent / bash",
+    "runtimePersistenceEnabled": false,
+    "fullVsix": "failed before trusted failure-path phase",
+    "passedStages": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure"
+    ],
+    "preparationFailureAcceptanceOccurrences": 1,
+    "fullRunBlocker": {
+      "function": "verifyAgentAbnormalInterruptionNotifications",
+      "line": 7788,
+      "message": "Local final snapshot responsibility still occupies the execution key or Host capacity.",
+      "artifacts": ".debug/preparation-failure/early-trusted-artifacts",
+      "conclusion": "异常退出通知中的 Claude resume 再次启动被旧最终保存责任阻塞；失败工件捕获时记录已清理，尚未归因"
+    },
+    "log": ".debug/preparation-failure/second-vsix.log",
+    "logSha256": "01e67a22ce362f882437f4e4669394886a2c69ceb546ebfee2c607dad781e336",
+    "trustedRepeat": {
+      "result": "failed before failure-path phase",
+      "function": "verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent",
+      "line": 3257,
+      "message": "等待启动诊断超时；execution/startFailed 为 Execution owner admission is closed",
+      "relatedEvents": [
+        {
+          "timestamp": "2026-10-10T07:22:24.661Z",
+          "kind": "execution/startFailed",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-0ea4518f-77b9-41a8-a405-a8028260bce9",
+            "outcome": "exception",
+            "reason": "Execution owner admission is closed",
+            "message": "Failed to start execution node: Execution owner admission is closed"
+          }
+        }
+      ],
+      "artifacts": ".debug/preparation-failure/repeat-trusted-artifacts",
+      "log": ".debug/preparation-failure/trusted.log",
+      "logSha256": "b6df2df9be9d055c5149154d055eafbd47b5c12dd1ee5ad57756d444315154b3",
+      "conclusion": "未再次到达异常通知与缺 CLI 场景，不以本次重复失败归因之前的占槽问题；未更改原用例"
+    },
+    "assertedPreparationFailure": [
+      "新建缺 CLI Claude Agent 为 error/lifecycle=error",
+      "liveSession=false 且 pendingLaunch 缺失",
+      "恰好一条 host/error，含缺命令原因",
+      "原未启动记录 submitted=false/result=not-required，已清理且没有 execution/started",
+      "删除失败节点完成",
+      "本场景无 owned-resize-failed"
+    ]
+  },
+  "limits": [
+    "完整 VSIX gate 未通过；trusted 两次均在更早用例失败，当前缺 CLI 修复只由默认独立原生场景及 Host 回归证明",
+    "真实 Agent 服务、跨平台和跨版本矩阵未由本次代证",
+    "之前文件链接 DOM 与 early final-save pending 历史失败没有追认根因"
+  ]
+}

@@ -1,0 +1,845 @@
+{
+  "baseline": "675f2a55e9a5e6ff5a8dca89ec98cedbccb54f5f",
+  "date": "2026-10-11",
+  "environment": {
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "platform": "linux-x64",
+    "mode": "snapshot-only",
+    "provider": "fake"
+  },
+  "experiments": [
+    {
+      "mode": "baseline",
+      "outcome": false,
+      "failureLocation": " (/tmp/dscr/.debug/local-host-boundary-start/baseline-1791647940489/host/tests/vscode-smoke/extension-tests.cjs:12777:10)\n\tat async verifyHostBoundaryFlushesRecentLocalState (/tmp/dscr/.debug/local-host-boundary-start/baseline-1791647940489/host/tests/vscode-smoke/extension-tests.cjs:11230:3)\n\tat async runSmoke (/tmp/dscr/.debug/local-host-boundary-start/baseline-1791647940489/host/tests/vscode-smoke/extension-tests.cjs:202:7)\n\tat async Object.run (/tmp/dscr/.debug/local-host-boundary-start/baseline-1791647940489/host/tests/vscode-smoke/extension-tests.cjs:173:5)",
+      "artifact": ".debug/local-host-boundary-start/baseline-1791647940489/runtime/artifacts/result.json",
+      "productHashesBeforeProbe": {
+        "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "productHashesActual": {
+        "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "productUnchanged": true,
+      "beforeExecutions": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-af0cc8dc-f37a-4336-a8f7-0c37f8263696",
+          "identity": {
+            "executionId": "e9662e97-d92d-4d10-8526-3756104de410",
+            "generation": "a282288a-8dde-4cd7-b669-355fcb634147"
+          },
+          "retired": false,
+          "persistence": {
+            "submitted": false
+          }
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-5938f38a-ca7f-4dc2-b0a5-dd65b20d6111",
+          "identity": {
+            "executionId": "8cbb3fee-f6e4-4737-ba43-a98758121038",
+            "generation": "f347dd74-e936-4884-a863-db31b5436cf2"
+          },
+          "retired": false,
+          "persistence": {
+            "submitted": false
+          }
+        }
+      ],
+      "afterNodes": [
+        {
+          "kind": "agent",
+          "status": "stopped",
+          "summary": "Session exited due to signal SIGINT.",
+          "metadata": {
+            "persistenceMode": "snapshot-only",
+            "liveSession": false,
+            "lastExitSignal": "SIGINT",
+            "recentOutput": "[fake-agent] ready pid=3286608 session=297497fc-7764-432f-8c5d-a856a7c09d2f\n^C"
+          }
+        },
+        {
+          "kind": "terminal",
+          "status": "live",
+          "summary": "ziyang01.wang-al@hobot:/tmp/dscr$                                                                ziyang01.wang-al@hobot:/tmp/dscr$",
+          "metadata": {
+            "persistenceMode": "snapshot-only",
+            "liveSession": true,
+            "lastExitSignal": "SIGHUP",
+            "recentOutput": "ziyang01.wang-al@hobot:/tmp/dscr$"
+          }
+        }
+      ],
+      "admissions": [],
+      "events": [
+        {
+          "time": "2026-10-10T15:59:05.980Z",
+          "event": "state/runtimeReloaded",
+          "detail": {}
+        },
+        {
+          "time": "2026-10-10T15:59:06.178Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-af0cc8dc-f37a-4336-a8f7-0c37f8263696"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:06.375Z",
+          "event": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-af0cc8dc-f37a-4336-a8f7-0c37f8263696",
+            "sessionId": "e9662e97-d92d-4d10-8526-3756104de410"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:06.525Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-5938f38a-ca7f-4dc2-b0a5-dd65b20d6111"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:06.679Z",
+          "event": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-5938f38a-ca7f-4dc2-b0a5-dd65b20d6111",
+            "sessionId": "8cbb3fee-f6e4-4737-ba43-a98758121038"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:06.850Z",
+          "event": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-af0cc8dc-f37a-4336-a8f7-0c37f8263696",
+            "executionId": "e9662e97-d92d-4d10-8526-3756104de410",
+            "generation": "a282288a-8dde-4cd7-b669-355fcb634147",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:06.862Z",
+          "event": "execution/localTerminalReaderSettled",
+          "detail": {
+            "nodeId": "agent-1-af0cc8dc-f37a-4336-a8f7-0c37f8263696",
+            "kind": "agent",
+            "executionSessionId": "e9662e97-d92d-4d10-8526-3756104de410",
+            "outcome": {
+              "kind": "applied",
+              "finalOutputSequence": 3
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:07.050Z",
+          "event": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-5938f38a-ca7f-4dc2-b0a5-dd65b20d6111",
+            "executionId": "8cbb3fee-f6e4-4737-ba43-a98758121038",
+            "generation": "f347dd74-e936-4884-a863-db31b5436cf2",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:07.088Z",
+          "event": "execution/localTerminalReaderSettled",
+          "detail": {
+            "nodeId": "terminal-2-5938f38a-ca7f-4dc2-b0a5-dd65b20d6111",
+            "kind": "terminal",
+            "executionSessionId": "8cbb3fee-f6e4-4737-ba43-a98758121038",
+            "outcome": {
+              "kind": "applied",
+              "finalOutputSequence": 1
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:07.093Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-af0cc8dc-f37a-4336-a8f7-0c37f8263696"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:07.098Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-5938f38a-ca7f-4dc2-b0a5-dd65b20d6111"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:07.115Z",
+          "event": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-af0cc8dc-f37a-4336-a8f7-0c37f8263696",
+            "executionId": "9203f549-b875-4b75-8108-e916a531788c",
+            "generation": "c5e6876b-9389-42f1-8784-b320abe535c3",
+            "submitted": false,
+            "result": {
+              "kind": "not-required"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:07.115Z",
+          "event": "execution/startRejected",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-af0cc8dc-f37a-4336-a8f7-0c37f8263696",
+            "outcome": "rejected-before-acquire",
+            "reason": "Authority start admission rejected",
+            "message": "Cannot start Agent right now. Wait for pending operations to finish and try again.",
+            "executionId": "9203f549-b875-4b75-8108-e916a531788c",
+            "generation": "c5e6876b-9389-42f1-8784-b320abe535c3"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:07.180Z",
+          "event": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-5938f38a-ca7f-4dc2-b0a5-dd65b20d6111",
+            "sessionId": "e0cecb7d-fa0c-4310-98e1-f1c3a11fd5c3"
+          }
+        }
+      ],
+      "exitAndErrorMessages": [
+        {
+          "type": "host/executionExit",
+          "payload": {
+            "nodeId": "agent-1-af0cc8dc-f37a-4336-a8f7-0c37f8263696",
+            "kind": "agent",
+            "executionSessionId": "e9662e97-d92d-4d10-8526-3756104de410",
+            "localCompletion": {
+              "executionSessionId": "e9662e97-d92d-4d10-8526-3756104de410",
+              "finalOutputSequence": 3
+            },
+            "message": "Session exited due to signal SIGINT."
+          },
+          "lifecycle": {
+            "surface": "editor",
+            "mode": "active",
+            "generation": 2,
+            "frameId": "frame-42520566-d1c5-4ac4-b012-3f959bf926d1"
+          }
+        },
+        {
+          "type": "host/executionExit",
+          "payload": {
+            "nodeId": "terminal-2-5938f38a-ca7f-4dc2-b0a5-dd65b20d6111",
+            "kind": "terminal",
+            "executionSessionId": "8cbb3fee-f6e4-4737-ba43-a98758121038",
+            "localCompletion": {
+              "executionSessionId": "8cbb3fee-f6e4-4737-ba43-a98758121038",
+              "finalOutputSequence": 1
+            },
+            "message": "Session exited due to signal SIGHUP."
+          },
+          "lifecycle": {
+            "surface": "editor",
+            "mode": "active",
+            "generation": 2,
+            "frameId": "frame-42520566-d1c5-4ac4-b012-3f959bf926d1"
+          }
+        },
+        {
+          "type": "host/error",
+          "payload": {
+            "message": "Cannot start Agent right now. Wait for pending operations to finish and try again."
+          },
+          "lifecycle": {
+            "surface": "editor",
+            "mode": "active",
+            "generation": 2,
+            "frameId": "frame-42520566-d1c5-4ac4-b012-3f959bf926d1"
+          }
+        }
+      ]
+    },
+    {
+      "mode": "probe",
+      "outcome": false,
+      "failureLocation": " (/tmp/dscr/.debug/local-host-boundary-start/probe-1791647979394/host/tests/vscode-smoke/extension-tests.cjs:12777:10)\n\tat async verifyHostBoundaryFlushesRecentLocalState (/tmp/dscr/.debug/local-host-boundary-start/probe-1791647979394/host/tests/vscode-smoke/extension-tests.cjs:11230:3)\n\tat async runSmoke (/tmp/dscr/.debug/local-host-boundary-start/probe-1791647979394/host/tests/vscode-smoke/extension-tests.cjs:202:7)\n\tat async Object.run (/tmp/dscr/.debug/local-host-boundary-start/probe-1791647979394/host/tests/vscode-smoke/extension-tests.cjs:173:5)",
+      "artifact": ".debug/local-host-boundary-start/probe-1791647979394/runtime/artifacts/result.json",
+      "productHashesBeforeProbe": {
+        "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "productHashesActual": {
+        "extension.js": "d460c8aadcb06f05bf8afccf872b0e9f4f8a46272161ece65def986466cc02f2",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "productUnchanged": false,
+      "beforeExecutions": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-179b51e2-1c13-4e6d-ad3d-41c73d03216a",
+          "identity": {
+            "executionId": "b353850f-9a04-49a5-9aa7-bf86592cda92",
+            "generation": "a6a763c2-455a-4554-a974-12b3c89852e0"
+          },
+          "retired": false,
+          "persistence": {
+            "submitted": false
+          }
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-86f49a15-92ce-4bbf-9f8e-c00db737d1d0",
+          "identity": {
+            "executionId": "539aed00-2b57-4a80-8605-f8a48d8d1ab6",
+            "generation": "6cd8f498-4557-49c0-b2e0-07c8c42a400f"
+          },
+          "retired": false,
+          "persistence": {
+            "submitted": false
+          }
+        }
+      ],
+      "afterNodes": [
+        {
+          "kind": "agent",
+          "status": "stopped",
+          "summary": "Session ended with exit code 0.",
+          "metadata": {
+            "persistenceMode": "snapshot-only",
+            "liveSession": false,
+            "recentOutput": "[fake-agent] ready pid=3302204 session=d887b865-7fcb-481e-b393-699f64cfc343\n> ^CToken usage: total=128 input=64 output=64\nTo continue this session, run codex resume d887b865-7fcb-481e-b393-699f64cfc343\n[fake-agent] received signal INT"
+          }
+        },
+        {
+          "kind": "terminal",
+          "status": "live",
+          "summary": "ziyang01.wang-al@hobot:/tmp/dscr$                                                                ziyang01.wang-al@hobot:/tmp/dscr$",
+          "metadata": {
+            "persistenceMode": "snapshot-only",
+            "liveSession": true,
+            "lastExitSignal": "SIGHUP",
+            "recentOutput": "ziyang01.wang-al@hobot:/tmp/dscr$"
+          }
+        }
+      ],
+      "admissions": [
+        {
+          "timestamp": "2026-10-10T15:59:45.146Z",
+          "identity": {
+            "executionId": "b353850f-9a04-49a5-9aa7-bf86592cda92",
+            "generation": "a6a763c2-455a-4554-a974-12b3c89852e0"
+          },
+          "identityMatch": true,
+          "authority": {
+            "active": 1,
+            "starting": 0,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "startingIds": []
+        },
+        {
+          "timestamp": "2026-10-10T15:59:45.440Z",
+          "identity": {
+            "executionId": "539aed00-2b57-4a80-8605-f8a48d8d1ab6",
+            "generation": "6cd8f498-4557-49c0-b2e0-07c8c42a400f"
+          },
+          "identityMatch": true,
+          "authority": {
+            "active": 2,
+            "starting": 0,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "startingIds": []
+        },
+        {
+          "timestamp": "2026-10-10T15:59:45.917Z",
+          "identity": {
+            "executionId": "76c37ef3-ef80-4436-ac5d-44484c4f9e99",
+            "generation": "b578024c-9b41-49ed-b125-a65393b7116f"
+          },
+          "identityMatch": true,
+          "authority": {
+            "active": 1,
+            "starting": 0,
+            "admissionPending": 1,
+            "closing": false,
+            "permanent": false
+          },
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "startingIds": []
+        },
+        {
+          "timestamp": "2026-10-10T15:59:45.925Z",
+          "identity": {
+            "executionId": "94d8a84c-2c5e-4880-8ec5-b9b5ea8b3900",
+            "generation": "d11e271e-e906-49ad-8848-fdbee32d95f8"
+          },
+          "identityMatch": true,
+          "authority": {
+            "active": 2,
+            "starting": 1,
+            "admissionPending": 2,
+            "closing": false,
+            "permanent": false
+          },
+          "limits": {
+            "executions": null,
+            "starting": 1,
+            "pending": 2
+          },
+          "startingIds": [
+            "76c37ef3-ef80-4436-ac5d-44484c4f9e99"
+          ]
+        }
+      ],
+      "events": [
+        {
+          "time": "2026-10-10T15:59:44.638Z",
+          "event": "state/runtimeReloaded",
+          "detail": {}
+        },
+        {
+          "time": "2026-10-10T15:59:45.051Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-179b51e2-1c13-4e6d-ad3d-41c73d03216a"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.221Z",
+          "event": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-179b51e2-1c13-4e6d-ad3d-41c73d03216a",
+            "sessionId": "b353850f-9a04-49a5-9aa7-bf86592cda92"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.363Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-86f49a15-92ce-4bbf-9f8e-c00db737d1d0"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.573Z",
+          "event": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-86f49a15-92ce-4bbf-9f8e-c00db737d1d0",
+            "sessionId": "539aed00-2b57-4a80-8605-f8a48d8d1ab6"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.735Z",
+          "event": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-179b51e2-1c13-4e6d-ad3d-41c73d03216a",
+            "executionId": "b353850f-9a04-49a5-9aa7-bf86592cda92",
+            "generation": "a6a763c2-455a-4554-a974-12b3c89852e0",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.764Z",
+          "event": "execution/localTerminalReaderSettled",
+          "detail": {
+            "nodeId": "agent-1-179b51e2-1c13-4e6d-ad3d-41c73d03216a",
+            "kind": "agent",
+            "executionSessionId": "b353850f-9a04-49a5-9aa7-bf86592cda92",
+            "outcome": {
+              "kind": "applied",
+              "finalOutputSequence": 3
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.820Z",
+          "event": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-86f49a15-92ce-4bbf-9f8e-c00db737d1d0",
+            "executionId": "539aed00-2b57-4a80-8605-f8a48d8d1ab6",
+            "generation": "6cd8f498-4557-49c0-b2e0-07c8c42a400f",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.852Z",
+          "event": "execution/localTerminalReaderSettled",
+          "detail": {
+            "nodeId": "terminal-2-86f49a15-92ce-4bbf-9f8e-c00db737d1d0",
+            "kind": "terminal",
+            "executionSessionId": "539aed00-2b57-4a80-8605-f8a48d8d1ab6",
+            "outcome": {
+              "kind": "applied",
+              "finalOutputSequence": 1
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.908Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-179b51e2-1c13-4e6d-ad3d-41c73d03216a"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.911Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-86f49a15-92ce-4bbf-9f8e-c00db737d1d0"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.925Z",
+          "event": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-179b51e2-1c13-4e6d-ad3d-41c73d03216a",
+            "executionId": "94d8a84c-2c5e-4880-8ec5-b9b5ea8b3900",
+            "generation": "d11e271e-e906-49ad-8848-fdbee32d95f8",
+            "submitted": false,
+            "result": {
+              "kind": "not-required"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.925Z",
+          "event": "execution/startRejected",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-179b51e2-1c13-4e6d-ad3d-41c73d03216a",
+            "outcome": "rejected-before-acquire",
+            "reason": "Authority start admission rejected",
+            "message": "Cannot start Agent right now. Wait for pending operations to finish and try again.",
+            "executionId": "94d8a84c-2c5e-4880-8ec5-b9b5ea8b3900",
+            "generation": "d11e271e-e906-49ad-8848-fdbee32d95f8"
+          }
+        },
+        {
+          "time": "2026-10-10T15:59:45.991Z",
+          "event": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-86f49a15-92ce-4bbf-9f8e-c00db737d1d0",
+            "sessionId": "76c37ef3-ef80-4436-ac5d-44484c4f9e99"
+          }
+        }
+      ]
+    },
+    {
+      "mode": "serial",
+      "outcome": true,
+      "failureLocation": null,
+      "artifact": ".debug/local-host-boundary-start/serial-1791648010786/runtime/artifacts/result.json",
+      "productHashesBeforeProbe": {
+        "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "productHashesActual": {
+        "extension.js": "53c5b4619bb1191401a42cf99cf72fcfd79f0889a77217360d47defad6c99c3d",
+        "runtime-supervisor.js": "63e0119588d4daae1220b44b99c936a0a76e8bc2dea8c9b7c00a0b3a3f561cfb",
+        "webview.js": "b9a71bc5063c8c8ef4391c62c994622ff6ad1d835e85fce0add2485b405e89eb"
+      },
+      "productUnchanged": true,
+      "beforeExecutions": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-8c622759-c2c3-434e-9ba1-e76197b521c7",
+          "identity": {
+            "executionId": "ce08df9b-e72c-4855-84fd-fb4bda4f91a1",
+            "generation": "51aff61b-c981-487e-ba79-897441d6f826"
+          },
+          "retired": false,
+          "persistence": {
+            "submitted": false
+          }
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-6f89df75-e146-4277-80fe-5ad5cb23c02d",
+          "identity": {
+            "executionId": "cd959ac3-91eb-4ed6-a8e0-1c89f7e2801a",
+            "generation": "9c76131a-6933-4ada-9404-4577a24537ac"
+          },
+          "retired": false,
+          "persistence": {
+            "submitted": false
+          }
+        }
+      ],
+      "afterNodes": [
+        {
+          "kind": "agent",
+          "status": "resume-ready",
+          "summary": "The Agent session can be resumed manually.",
+          "metadata": {
+            "persistenceMode": "snapshot-only",
+            "liveSession": false,
+            "recentOutput": "[fake-agent] ready pid=3314713 session=3cd5f733-8d88-446e-a285-7050f5d2c72b\necho HOST_BOUNDARY_AGENT_FLUSH\n^C",
+            "lastExitSignal": "SIGINT"
+          }
+        },
+        {
+          "kind": "terminal",
+          "status": "interrupted",
+          "summary": "The previous embedded Terminal was not restored after extension reload. It can be restarted.",
+          "metadata": {
+            "persistenceMode": "snapshot-only",
+            "liveSession": false,
+            "recentOutput": "ziyang01.wang-al@hobot:/tmp/dscr$ echo HOST_BOUNDARY_TERMINAL_FLUSH\nHOST_BOUNDARY_TERMINAL_FLUSH\nziyang01.wang-al@hobot:/tmp/dscr$",
+            "lastExitSignal": "SIGHUP"
+          }
+        }
+      ],
+      "admissions": [],
+      "events": [
+        {
+          "time": "2026-10-10T16:00:15.717Z",
+          "event": "state/runtimeReloaded",
+          "detail": {}
+        },
+        {
+          "time": "2026-10-10T16:00:15.987Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-8c622759-c2c3-434e-9ba1-e76197b521c7"
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:16.187Z",
+          "event": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-8c622759-c2c3-434e-9ba1-e76197b521c7",
+            "sessionId": "ce08df9b-e72c-4855-84fd-fb4bda4f91a1"
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:16.287Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-6f89df75-e146-4277-80fe-5ad5cb23c02d"
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:16.552Z",
+          "event": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-6f89df75-e146-4277-80fe-5ad5cb23c02d",
+            "sessionId": "cd959ac3-91eb-4ed6-a8e0-1c89f7e2801a"
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:16.742Z",
+          "event": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-8c622759-c2c3-434e-9ba1-e76197b521c7",
+            "executionId": "ce08df9b-e72c-4855-84fd-fb4bda4f91a1",
+            "generation": "51aff61b-c981-487e-ba79-897441d6f826",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:16.774Z",
+          "event": "execution/localTerminalReaderSettled",
+          "detail": {
+            "nodeId": "agent-1-8c622759-c2c3-434e-9ba1-e76197b521c7",
+            "kind": "agent",
+            "executionSessionId": "ce08df9b-e72c-4855-84fd-fb4bda4f91a1",
+            "outcome": {
+              "kind": "applied",
+              "finalOutputSequence": 4
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:16.823Z",
+          "event": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-6f89df75-e146-4277-80fe-5ad5cb23c02d",
+            "executionId": "cd959ac3-91eb-4ed6-a8e0-1c89f7e2801a",
+            "generation": "9c76131a-6933-4ada-9404-4577a24537ac",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:16.858Z",
+          "event": "execution/localTerminalReaderSettled",
+          "detail": {
+            "nodeId": "terminal-2-6f89df75-e146-4277-80fe-5ad5cb23c02d",
+            "kind": "terminal",
+            "executionSessionId": "cd959ac3-91eb-4ed6-a8e0-1c89f7e2801a",
+            "outcome": {
+              "kind": "applied",
+              "finalOutputSequence": 1
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:16.910Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-8c622759-c2c3-434e-9ba1-e76197b521c7"
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:16.998Z",
+          "event": "execution/started",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-8c622759-c2c3-434e-9ba1-e76197b521c7",
+            "sessionId": "7fbf99bd-014d-4ff8-a78a-a2df61c52eb5"
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:17.030Z",
+          "event": "execution/startRequested",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-6f89df75-e146-4277-80fe-5ad5cb23c02d"
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:17.119Z",
+          "event": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-6f89df75-e146-4277-80fe-5ad5cb23c02d",
+            "sessionId": "f9dd9c9f-3f4c-40cf-a69a-1e364485ab56"
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:17.269Z",
+          "event": "execution/localTerminalReaderSettled",
+          "detail": {
+            "nodeId": "agent-1-8c622759-c2c3-434e-9ba1-e76197b521c7",
+            "kind": "agent",
+            "executionSessionId": "7fbf99bd-014d-4ff8-a78a-a2df61c52eb5",
+            "outcome": {
+              "kind": "lost",
+              "reason": "host-boundary"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:17.269Z",
+          "event": "execution/localTerminalReaderSettled",
+          "detail": {
+            "nodeId": "terminal-2-6f89df75-e146-4277-80fe-5ad5cb23c02d",
+            "kind": "terminal",
+            "executionSessionId": "f9dd9c9f-3f4c-40cf-a69a-1e364485ab56",
+            "outcome": {
+              "kind": "lost",
+              "reason": "host-boundary"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:17.318Z",
+          "event": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-6f89df75-e146-4277-80fe-5ad5cb23c02d",
+            "executionId": "f9dd9c9f-3f4c-40cf-a69a-1e364485ab56",
+            "generation": "7ab24148-4ff3-48cb-9116-dec531411c05",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:17.330Z",
+          "event": "execution/localFinalPersistence",
+          "detail": {
+            "kind": "agent",
+            "nodeId": "agent-1-8c622759-c2c3-434e-9ba1-e76197b521c7",
+            "executionId": "7fbf99bd-014d-4ff8-a78a-a2df61c52eb5",
+            "generation": "1045c7d6-38c7-41cb-bb75-079cf12cfd23",
+            "submitted": true,
+            "result": {
+              "kind": "saved"
+            }
+          }
+        },
+        {
+          "time": "2026-10-10T16:00:17.337Z",
+          "event": "state/runtimeReloaded",
+          "detail": {}
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "authorityTests": "2/2 selected tests passed: webview start terminal/agent overlap rejects before connect and retry succeeds",
+    "log": ".debug/local-host-boundary-start/authority-tests.log",
+    "syntax": "investigation script passed",
+    "fullGate": "not rerun; original blocker remains until formal repair",
+    "nativeExit": "all three isolated VS Code runs exited 0; baseline/probe expected failures captured, serial original assertions passed",
+    "limitations": "serial control used isolated original function; no modified trusted full-sequence or actual new Host evidence"
+  }
+}

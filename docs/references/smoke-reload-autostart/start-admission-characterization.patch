@@ -1,0 +1,75 @@
+diff --git a/scripts/test/test-host-execution-owner-wiring.mjs b/scripts/test/test-host-execution-owner-wiring.mjs
+index f303db4e..e0fcfd2e 100644
+--- a/scripts/test/test-host-execution-owner-wiring.mjs
++++ b/scripts/test/test-host-execution-owner-wiring.mjs
+@@ -175,6 +175,7 @@ function fixture(options = {}) {
+         },
+         transport: {
+           connect(value) {
++            provider.connectCount = (provider.connectCount ?? 0) + 1;
+             sink = value;
+             provider.message({ type: 'ready', capabilities: ['execution-lifecycle-v1'] });
+           },
+@@ -6259,6 +6260,62 @@ for (const providerKind of ['codex', 'claude']) {
+   }
+ }
+
++
++for (const firstKind of ['terminal', 'agent']) {
++  test(`start admission characterization ${firstKind} overlap rejects before connect and retry succeeds`, async () => {
++    const secondKind = firstKind === 'terminal' ? 'agent' : 'terminal';
++    const f = startupResizeFixture(firstKind, 'operationObservation', { admissionLimits: EXECUTION_PRODUCTION_ADMISSION, outputCredit: true });
++    let secondRecord;
++    try {
++      await until(f.clock, f.waiting, 'first start held before started');
++      const secondNode = f.host.state.nodes.find(node => node.kind === secondKind);
++      secondNode.status = 'stopped'; secondNode.metadata[secondKind] = { ...secondNode.metadata[secondKind], liveSession: false };
++      const authorityBefore = f.owner.authority.snapshot();
++      assert.equal(authorityBefore.starting, 1);
++      assert.equal(authorityBefore.active, 1);
++      assert.equal(authorityBefore.closing, false);
++      assert.equal(authorityBefore.blockedReason, undefined);
++      const attempted = f.start(secondKind);
++      await completed(f.clock, assert.rejects(attempted, /start was rejected-before-acquire/), 'overlap rejection');
++      assert.equal(f.providers.length, 2, 'transport construction is not acquisition');
++      assert.equal(f.providers[1].connectCount ?? 0, 0, 'rejected transport never connects');
++      assert.equal(f.providers[1].messages.length, 0, 'rejected transport never connects or sends start');
++      assert.equal(f.owner.get(`${secondKind}:${secondKind}-1`), undefined);
++      assert.equal(f.record(secondKind), undefined);
++      assert.equal(secondNode.status, 'stopped');
++      assert.equal(secondNode.metadata[secondKind].liveSession, false);
++      assert.equal(f.posted.some(message => message.type === 'host/error'), false);
++      assert.equal(f.diagnostics.some(event => ['execution/startRejected', 'execution/spawnError', 'execution/candidateStartFailed'].includes(event.name)
++        && event.detail.kind === secondKind), false);
++      assert.equal(f.owner.authority.snapshot().starting, 1, 'rejection leaves original start intact');
++      const rejectedStatus = secondNode.status;
++      f.release();
++      await completed(f.clock, f.starting, 'first confirmed started');
++      assert.equal(f.owner.authority.snapshot().starting, 0);
++      await completed(f.clock, f.start(secondKind), 'same second node after first started');
++      secondRecord = f.record(secondKind);
++      assert.equal(f.providers[2].connectCount, 1, 'retry connects exactly once');
++      assert.equal(secondRecord.execution.snapshot().adapter.state, 'running');
++      assert.equal(f.record(firstKind).execution.snapshot().adapter.state, 'running');
++      assert.equal(f.owner.authority.snapshot().active, 2, 'starting limit is not the running session limit');
++      assert.equal(f.owner.authority.snapshot().starting, 0);
++      console.log('START_ADMISSION_CHARACTERIZATION', JSON.stringify({ firstKind, secondKind, authorityBefore,
++        overlap: 'rejected-before-acquire', rejectedTransportConnected: false, pageError: false,
++        preservedStatus: rejectedStatus, serialRetry: 'both-running', retryConnects: f.providers[2].connectCount,
++        authorityAfter: f.owner.authority.snapshot() }));
++    } finally {
++      if (secondRecord) {
++        const provider = f.providers.at(-1);
++        provider.process(); provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
++        provider.seal(secondRecord.lastDataSequence); provider.release();
++        await pump(f.clock, () => secondRecord.execution.snapshot().settled);
++        secondRecord.business?.cancelActivityPoll?.(); secondRecord.business?.lineContextTracker.dispose(); secondRecord.tracker.dispose();
++      }
++      if (f.waiting()) f.release(); await f.cleanup();
++    }
++  });
++}
++
+ const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
+ const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
+ const selectedTests = testNamePattern ? tests.filter(({ name }) => testNamePattern.test(name)) : tests;

@@ -1,0 +1,30 @@
+diff --git a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+index ac7d9454..d98f6cf6 100644
+--- a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
++++ b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+@@ -17805,6 +17805,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+       if (active.localReaders && this.activeSurface) {
+         void this.postLocalExecutionSnapshot(active, { surface: this.activeSurface });
+       }
++      // RCA control only: prove the missing file-confirmation path on the original owned execution.
++      const candidate = active.business?.agentResume?.sessionId;
++      if (kind === 'agent' && active.business?.agentProvider === 'claude' &&
++        active.business.launchMode === 'start' && active.business.agentResume?.strategy === 'none' && candidate) {
++        const confirmed = await locateClaudeSessionId({ cwd: spec.cwd ?? '', sessionId: candidate });
++        const current = execution.snapshot();
++        const node = this.state.nodes.find(value => value.id === active.nodeId && value.kind === kind);
++        if (confirmed === candidate && this.isNonNativeHostRecordCurrent(active) &&
++          active.business.agentResume?.sessionId === candidate && active.finalRevision === undefined &&
++          !current.stopRequested && !current.adapter?.process && !current.adapter?.seal &&
++          node?.metadata?.agent === active.persistence?.metadata) {
++          active.business.agentResume = { supported: true, strategy: 'claude-session-id', sessionId: confirmed };
++          this.projectNonNativeHostBusiness(active);
++          this.recordDiagnosticEvent('rca/claudeFileConfirmationControl', {
++            nodeId: active.nodeId, executionId: execution.identity.executionId,
++            generation: execution.identity.generation, confirmed
++          });
++        }
++      }
+       return active;
+     } catch (error) {
+       record?.pendingResize?.reject(error);

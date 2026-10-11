@@ -35,8 +35,10 @@ export async function prepareRuntimeRootSupervisor(
   try { request = validateRequest(input); }
   catch { return { kind: 'rejected', reason: 'Invalid root runtime preparation request.' }; }
   const unconfirmed = (reason: string): RootPreparationResult => ({ kind: 'unconfirmed', reason });
+  let preparingStorage = true;
   try {
     const { preparationDir } = await prepareRuntimeRootOwnerDirectories(request.storageDir, request.owner);
+    preparingStorage = false;
     if (isCancelled()) return unconfirmed('Root runtime preparation was cancelled.');
     await ensureRuntimeRootSocketDirectory(backend(request, 'legacy-detached').paths, 'legacy-detached', true);
     if (isCancelled()) return unconfirmed('Root runtime preparation was cancelled.');
@@ -100,6 +102,8 @@ export async function prepareRuntimeRootSupervisor(
     } while (Date.now() < readyDeadline);
     return unconfirmed('Root runtime was submitted but readiness is unconfirmed.');
   } catch {
+    if (preparingStorage) return { kind: 'rejected',
+      reason: 'Root runtime storage preparation failed. Check directory ownership, permissions, and runtime owner identity.' };
     return unconfirmed('Root runtime preparation or submission did not complete.');
   }
 }

@@ -640,7 +640,7 @@ try {
       state: { ...emptyState, nodes },
       appliedStartupConfiguration: { runtimePersistenceEnabled: enabled, filesFeatureEnabled: true, defaultSurface: 'panel' },
       agentSessions: new Map(), terminalSessions: new Map(), runtimeSessionBindings: new Map(),
-      preferredRootRuntimeBackends: new Map(), runtimeSupervisorClients: new Map(),
+      preferredRootRuntimeBackends: new Map(), runtimeSupervisorClients: new Map(), nonNativeHostExecutions: new Map(),
       context: { workspaceState: { get: () => undefined } },
       getExtensionStoragePath: () => currentWorkspaceSlot,
       recordDiagnosticEvent() {}, getAgentCliConfig: () => ({ defaultProvider: 'codex' }),
@@ -879,23 +879,28 @@ try {
   const workspaceFoldersListener = managerSource.match(
     /vscode\.workspace\.onDidChangeWorkspaceFolders\(\(\) => \{[\s\S]*?\n      \}\)\n    \);/u
   )?.[0] ?? '';
+  assert.match(workspaceFoldersListener, /this\.reconcileWorkspaceFolders\(\)/u,
+    'workspace folder 监听必须调用串行重组入口。');
+  const workspaceFoldersReconciliation = managerSource.match(
+    /private async reconcileWorkspaceFolders\([\s\S]*?\n  \}/u
+  )?.[0] ?? '';
   assert.match(
-    workspaceFoldersListener,
+    workspaceFoldersReconciliation,
     /this\.postState\('host\/stateUpdated'\);/u,
     'workspace folder 变化必须无条件发布 host/stateUpdated，刷新 Webview runtime.workspaceFolders。'
   );
   assert.match(
-    workspaceFoldersListener,
+    workspaceFoldersReconciliation,
     /this\.notifySidebarStateChanged\(\);/u,
     'workspace folder 变化必须刷新侧栏上下文。'
   );
   assert.match(
-    workspaceFoldersListener,
+    workspaceFoldersReconciliation,
     /this\.state = this\.loadReconciledState\(\);/u,
     'workspace folder 变化必须重新加载 root-local / multi-root 组合状态。'
   );
   assert.match(
-    workspaceFoldersListener,
+    workspaceFoldersReconciliation,
     /this\.scheduleRestoreLiveRuntimeSessions\(\);/u,
     'workspace folder 变化后必须重新执行 live runtime restore 调度；multi-root 也会按 root-local runtime metadata 恢复。'
   );

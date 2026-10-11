@@ -1,0 +1,80 @@
+diff --git a/scripts/test/test-host-execution-owner-wiring.mjs b/scripts/test/test-host-execution-owner-wiring.mjs
+index 45555613..9fbb67bd 100644
+--- a/scripts/test/test-host-execution-owner-wiring.mjs
++++ b/scripts/test/test-host-execution-owner-wiring.mjs
+@@ -5508,6 +5508,75 @@ for (const kind of ['agent', 'terminal']) {
+   });
+ }
+
++
++// Diagnostic characterization of the unfixed PR314 startup resize window.
++for (const kind of ['agent', 'terminal']) {
++  for (const waitingAt of ['ready', 'operationObservation']) {
++    test(`resize RCA ${kind} before ${waitingAt} rejects and after started succeeds`, async () => {
++      const f = candidateFixture();
++      const originalFactory = f.injection.createTransport;
++      let held;
++      let released = false;
++      f.injection.createTransport = identity => {
++        const transport = originalFactory(identity);
++        const connect = transport.connect.bind(transport);
++        transport.connect = sink => connect({ ...sink, message(message) {
++          if (!released && message.type === waitingAt) held = () => sink.message(message);
++          else sink.message(message);
++        } });
++        return transport;
++      };
++      const owner = new ExecutionOwnerLifecycle(f.injection);
++      f.host.nonNativeExecutionOwner = owner;
++      let record;
++      try {
++        const starting = f.start(kind);
++        await until(f.clock, () => Boolean(held), 'controlled provider startup barrier');
++        record = f.record(kind);
++        const before = record.execution.snapshot();
++        assert.equal(before.adapter.state, 'starting');
++        assert.equal(before.stopRequested, false);
++        assert.equal(before.adapter.source, undefined);
++        assert.equal(before.adapter.process, undefined);
++        assert.equal(before.adapter.seal, undefined);
++        assert.equal(before.adapter.interactions.closedReason, undefined);
++        assert.equal(owner.authority.snapshot().closing, false);
++        assert.equal(owner.authority.snapshot().blockedReason, undefined);
++        f.host.resizeExecutionSession(kind, `${kind}-1`, 101, 31);
++        await until(f.clock, () => f.posted.some(message => message.type === 'host/error'), 'startup resize error');
++        const errors = f.posted.filter(message => message.type === 'host/error');
++        assert.equal(errors.length, 1);
++        assert.match(errors[0].payload.message, /Execution terminal interaction admission is closed or unsupported/);
++        assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false);
++        assert.equal(record.cols, 80);
++        assert.equal(record.rows, 24);
++        released = true;
++        held();
++        await completed(f.clock, starting, 'same execution reaches running');
++        assert.deepEqual(record.execution.identity, before.identity);
++        assert.equal(record.execution.snapshot().adapter.state, 'running');
++        assert.equal(f.providers[0].messages.some(message => message.type === 'resize'), false,
++          'the rejected startup viewport is not retained for later application');
++        f.host.resizeExecutionSession(kind, `${kind}-1`, 101, 31);
++        await until(f.clock, () => f.providers[0].messages.some(message => message.type === 'resize'), 'running resize dispatch');
++        const request = f.providers[0].messages.find(message => message.type === 'resize');
++        f.providers[0].message({ type: 'interactionObservation', interactionId: request.interactionId, result: { kind: 'resized' } });
++        await until(f.clock, () => record.cols === 101 && record.rows === 31, 'confirmed running dimensions');
++        assert.equal(f.posted.filter(message => message.type === 'host/error').length, 1);
++        f.providers[0].process();
++        f.providers[0].message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
++        f.providers[0].seal(0);
++        f.providers[0].release();
++        await until(f.clock, () => record.execution.snapshot().settled, 'diagnostic original authority settled');
++      } finally {
++        record?.business?.cancelActivityPoll?.();
++        record?.business?.lineContextTracker.dispose();
++        record?.tracker.dispose();
++      }
++    });
++  }
++}
++
+ const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
+ const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
+ const selectedTests = testNamePattern ? tests.filter(({ name }) => testNamePattern.test(name)) : tests;

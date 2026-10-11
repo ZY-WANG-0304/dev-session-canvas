@@ -1,0 +1,19 @@
+diff --git a/extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts b/extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts
+index cb66507c..336db0d1 100644
+--- a/extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts
++++ b/extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts
+@@ -158,6 +158,14 @@ export class ExecutionAuthority {
+   }
+
+   beginStart(identity: ExecutionIdentity): boolean {
++    if (this.executions.get(identity.executionId)?.identity !== identity || this.blockedReason || this.closing
++      || this.starting.size >= this.admissionLimits.starting) {
++      console.warn('DSC_START_ADMISSION_RCA', JSON.stringify({ identity,
++        identityMatch: this.executions.get(identity.executionId)?.identity === identity,
++        limits: this.admissionLimits, authority: this.snapshot(),
++        startingIdentities: [...this.starting],
++        reservations: [...this.executions.values()].map(entry => ({ identity: entry.identity, state: entry.execution.snapshot().state })) }));
++    }
+     if (this.executions.get(identity.executionId)?.identity !== identity || this.blockedReason || this.closing
+       || this.starting.size >= this.admissionLimits.starting) return false;
+     this.starting.add(identity);

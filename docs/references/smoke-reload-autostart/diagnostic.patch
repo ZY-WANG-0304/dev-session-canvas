@@ -1,0 +1,215 @@
+diff --git a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+index e041fdf0..5eef2c80 100644
+--- a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
++++ b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+@@ -1498,6 +1498,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+     this.refreshStorageRecoverySelection();
+     this.fileFilterState = this.loadStoredCanvasFileFilterState();
+     this.state = this.loadReconciledState();
++    this.recordDiagnosticEvent('investigation/afterLoad', this.reloadInvestigationSnapshot());
+     this.lastComposedWorkspaceRootPaths = this.getMultiRootWorkspaceFoldersForComposition().map((folder) => folder.path);
+     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
+     this.activeSurface = this.loadStoredSurface();
+@@ -1539,6 +1540,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+       vscode.workspace.onDidGrantWorkspaceTrust(() => {
+         this.recordDiagnosticEvent('workspace/trustGranted');
+         this.state = this.loadReconciledState();
++    this.recordDiagnosticEvent('investigation/afterLoad', this.reloadInvestigationSnapshot());
+         this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
+         this.persistState({ reason: 'workspace-trust-granted' });
+         this.postState('host/stateUpdated');
+@@ -1590,6 +1592,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+           : undefined;
+         try {
+           this.state = this.loadReconciledState();
++    this.recordDiagnosticEvent('investigation/afterLoad', this.reloadInvestigationSnapshot());
+         } finally {
+           this.pendingWorkspaceRootPlacement = undefined;
+         }
+@@ -2344,8 +2347,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+     this.requestTemplateNodeGroupFocus(nodeIds);
+   }
+ 
++  private reloadInvestigationSnapshot() {
++    return {
++      owner: this.nonNativeExecutionOwner?.snapshot(),
++      strictBoundary: this.strictRuntimeMutationBoundary,
++      deactivating: !!this.nonNativeDeactivationReport,
++      records: [...this.nonNativeHostExecutions.values()].map(record => ({
++        kind: record.kind, nodeId: record.nodeId, identity: record.execution.identity,
++        metadataMatches: this.state.nodes.find(node => node.id === record.nodeId)?.metadata?.[record.kind] === record.persistence?.metadata,
++        mutationError: record.mutationError, persistence: record.persistence && {
++          submitted: record.persistence.submitted, result: record.persistence.result
++        }, execution: record.execution.snapshot()
++      }))
++    };
++  }
++
+   public getDebugSnapshot(): CanvasDebugSnapshot {
+     return {
++      ...{ investigation: this.reloadInvestigationSnapshot() },
+       activeSurface: this.activeSurface,
+       configuration: cloneJsonValue(this.buildDebugConfigurationSnapshot()),
+       sidebar: cloneJsonValue(this.getSidebarState()),
+@@ -3748,6 +3767,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+     this.refreshStorageRecoverySelection();
+     this.fileFilterState = this.loadStoredCanvasFileFilterState();
+     this.state = this.loadReconciledState();
++    this.recordDiagnosticEvent('investigation/afterLoad', this.reloadInvestigationSnapshot());
+     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
+     this.activeSurface = this.loadStoredSurface();
+     this.persistState({ reason: 'test-reload' });
+@@ -3774,7 +3794,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+     }
+ 
+     // 先切换内存态，再异步同步到 workspaceState，避免旧 webview 在 await 间隙继续把已删除节点写回持久化快照。
++    this.recordDiagnosticEvent('investigation/beforeSeed', this.reloadInvestigationSnapshot());
+     this.state = this.reconcileSeededStateForTest(rawState);
++    this.recordDiagnosticEvent('investigation/afterSeed', this.reloadInvestigationSnapshot());
+     this.canvasTemplateInitialized = this.canvasTemplateInitialized || this.state.nodes.length > 0;
+     this.recordDiagnosticEvent('state/seededForTest', {
+       nodeCount: this.state.nodes.length
+@@ -3817,6 +3839,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+     this.refreshStorageRecoverySelection();
+     this.fileFilterState = this.loadStoredCanvasFileFilterState();
+     this.state = this.loadReconciledState();
++    this.recordDiagnosticEvent('investigation/afterLoad', this.reloadInvestigationSnapshot());
+     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
+     this.activeSurface = this.loadStoredSurface();
+     this.persistState({ reason: 'test-runtime-reload' });
+@@ -5230,6 +5253,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+     _state: unknown
+   ): Promise<void> {
+     this.state = this.loadReconciledState();
++    this.recordDiagnosticEvent('investigation/afterLoad', this.reloadInvestigationSnapshot());
+     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
+     this.persistState({ reason: 'editor-restore' });
+     if ((this.activeSurface ?? this.getConfiguredSurface()) !== 'editor') {
+@@ -17396,6 +17420,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+     }).length;
+     if (persistsFinal && (this.nonNativeHostExecutions.has(key) || !hasExecutionAdmissionCapacity(owner.admissionLimits,
+       { executions: retainedRecords.length, pending }))) {
++      this.recordDiagnosticEvent('investigation/startRejected', this.reloadInvestigationSnapshot());
+       throw new Error('Local final snapshot responsibility still occupies the execution key or Host capacity.');
+     }
+     const assertRuntimeUnbound = (): void => {
+diff --git a/scripts/smoke/run-vscode-smoke.mjs b/scripts/smoke/run-vscode-smoke.mjs
+index 6046ad38..8ffd999d 100644
+--- a/scripts/smoke/run-vscode-smoke.mjs
++++ b/scripts/smoke/run-vscode-smoke.mjs
+@@ -109,7 +109,7 @@ async function main() {
+     await launchPreparedVSCodeScenario({
+       projectRoot,
+       runtime,
+-      workspacePath: projectRoot,
++      workspacePath: process.env.DSC_RCA_WORKSPACE ?? projectRoot,
+       extensionDevelopmentPath: smokeHostRoot,
+       extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, scenario.testFile ?? 'extension-tests.cjs'),
+       disableExtensions: false,
+diff --git a/tests/vscode-smoke/extension-tests.cjs b/tests/vscode-smoke/extension-tests.cjs
+index b36fac77..298afe96 100644
+--- a/tests/vscode-smoke/extension-tests.cjs
++++ b/tests/vscode-smoke/extension-tests.cjs
+@@ -1195,6 +1195,7 @@ async function verifyCanvasTemplatesRestricted() {
+ }
+ 
+ async function runTrustedSmoke() {
++  if (process.env.DSC_RELOAD_RCA && process.env.DSC_RELOAD_RCA !== 'original') return runReloadInvestigation();
+   await vscode.commands.executeCommand(COMMAND_IDS.openCanvas);
+   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+   await clearHostMessages();
+@@ -1350,7 +1351,12 @@ async function runTrustedSmoke() {
+     'Exercise the real webview-to-host update path.'
+   );
+   assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 });
++  if (process.env.DSC_RELOAD_RCA === 'original') await rcaCapture('original-before-sidebar');
+   await verifySidebarNodeList(agentNode.id, terminalNode.id, noteNode.id);
++  if (process.env.DSC_RELOAD_RCA === 'original') {
++    await rcaCapture('original-after-sidebar');
++    return;
++  }
+   await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
+     expectAgentSessionId: false
+   });
+@@ -13784,3 +13790,81 @@ function formatError(error) {
+ 
+   return String(error);
+ }
++
++async function rcaCapture(label) {
++  const value = { label, pid: process.pid, workspaceFolders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath), snapshot: await getDebugSnapshot(), events: await getDiagnosticEvents(),
++    errors: (await getHostMessages()).filter(message => message.type === 'host/error') };
++  await fs.mkdir('/tmp/dscr/.debug/rca', { recursive: true });
++  await fs.writeFile(`/tmp/dscr/.debug/rca/${label}.json`, JSON.stringify(value, null, 2));
++  console.log('RCA_CAPTURE', label, JSON.stringify(value.snapshot.investigation));
++  return value.snapshot;
++}
++
++async function runReloadInvestigation() {
++  const mode = process.env.DSC_RELOAD_RCA;
++  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
++  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
++  const ids = {};
++  // Serialize creation to isolate state replacement from initial concurrent admission.
++  for (const kind of ['agent', 'terminal', 'note']) {
++    await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind } });
++    ids[kind] = findNodeByKind(await getDebugSnapshot(), kind).id;
++    if (kind === 'agent') await waitForAgentLive(ids.agent);
++    if (kind === 'terminal') await waitForTerminalLive(ids.terminal);
++  }
++  const before = await rcaCapture(`${mode}-before`);
++  assert(before.investigation.records.every(record => record.metadataMatches));
++  if (mode === 'seed') await setPersistedState(before.state);
++  else if (mode === 'reload') await reloadPersistedState();
++  else if (mode === 'sidebar') await verifySidebarNodeList(ids.agent, ids.terminal, ids.note);
++  else if (mode === 'workspace-add') {
++    await fs.mkdir('/tmp/dscr-added-root', { recursive: true });
++    const changed = new Promise((resolve, reject) => {
++      const timer = setTimeout(() => { listener.dispose(); reject(new Error('No workspace folders event')); }, 15000);
++      const listener = vscode.workspace.onDidChangeWorkspaceFolders(event => {
++        if (event.added.some(folder => folder.uri.fsPath === '/tmp/dscr-added-root')) {
++          clearTimeout(timer); listener.dispose(); resolve();
++        }
++      });
++    });
++    assert(vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders.length, 0,
++      { uri: vscode.Uri.file('/tmp/dscr-added-root'), name: 'RCA additional root' }));
++    await changed;
++  }
++  else if (mode === 'boundary') {
++    try { await vscode.commands.executeCommand(COMMAND_IDS.testSimulateRuntimeReload); }
++    catch (error) {
++      await rcaCapture('boundary-first-rejection');
++      console.log('RCA_BOUNDARY_FIRST_ERROR', String(error));
++      if (!/Local final snapshot persistence is pending/.test(String(error))) throw error;
++      await waitForSnapshot(snapshot => snapshot.investigation.records.length === 0);
++      await rcaCapture('boundary-final-saved');
++      await vscode.commands.executeCommand(COMMAND_IDS.testSimulateRuntimeReload);
++    }
++  }
++  else if (mode === 'control') {
++    await dispatchWebviewMessage({ type: 'webview/updateNodeTitle', payload: { nodeId: ids.agent, title: 'RCA control' } });
++    await dispatchWebviewMessage({ type: 'webview/moveNode', payload: { id: ids.agent, position: { x: 160, y: 140 } } });
++    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
++    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
++    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
++    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
++  }
++  await rcaCapture(`${mode}-immediate`);
++  if (mode === 'boundary') {
++    for (const kind of ['agent', 'terminal']) {
++      await dispatchWebviewMessage({ type: 'webview/startExecutionSession', payload: { kind, nodeId: ids[kind], cols: 80, rows: 24 } });
++      if (kind === 'agent') await waitForAgentLive(ids.agent);
++      else await waitForTerminalLive(ids.terminal);
++    }
++  }
++  await new Promise(resolve => setTimeout(resolve, 2000));
++  const after = await rcaCapture(`${mode}-after`);
++  if (mode === 'control') {
++    await verifyAutoStartOnCreate(ids.agent, ids.terminal);
++    assert(after.investigation.records.every(record => record.metadataMatches && !record.mutationError));
++  } else if (['seed','reload','sidebar','workspace-add'].includes(mode)) {
++    assert(after.investigation.records.some(record => !record.metadataMatches));
++    assert(after.investigation.records.some(record => !record.execution.retired));
++  }
++}

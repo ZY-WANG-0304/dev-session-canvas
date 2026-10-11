@@ -184,7 +184,7 @@ export class CanvasTemplateStore {
           `${sanitizeCanvasTemplateFileStem(template.name, template.id)}.json`
         );
     const storageLocation = this.assertUserTemplatePath(filePath);
-    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
     await fs.promises.writeFile(filePath, encodeCanvasTemplateDocument(template), 'utf8');
     const marketplace = options.marketMetadata ? cloneMarketMetadata(options.marketMetadata) : undefined;
     await writeOrRemoveMarketMetadata(filePath, marketplace);
@@ -258,7 +258,7 @@ export class CanvasTemplateStore {
       await fs.promises.rm(buildCanvasTemplateMarketMetadataPath(legacyTemplateFilePath), { force: true });
     }
     await fs.promises.rm(packageDirectoryPath, { recursive: true, force: true });
-    await fs.promises.mkdir(packageDirectoryPath, { recursive: true });
+    await fs.promises.mkdir(packageDirectoryPath, { recursive: true, mode: 0o700 });
     await fs.promises.writeFile(path.join(packageDirectoryPath, 'package.zip'), options.packageBytes);
     for (const [entryPath, bytes] of options.extractedFiles) {
       const normalizedEntryPath = normalizeMarketplacePackageEntryPath(entryPath);
@@ -269,7 +269,7 @@ export class CanvasTemplateStore {
         });
       }
       const outputPath = path.join(packageDirectoryPath, normalizedEntryPath);
-      await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+      await fs.promises.mkdir(path.dirname(outputPath), { recursive: true, mode: 0o700 });
       await fs.promises.writeFile(outputPath, bytes);
     }
 

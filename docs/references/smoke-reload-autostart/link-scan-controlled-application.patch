@@ -1,0 +1,56 @@
+--- a/extensions/vscode/dev-session-canvas/src/webview/main.tsx
++++ b/extensions/vscode/dev-session-canvas/src/webview/main.tsx
+@@ -8569,7 +8569,9 @@
+       // Keep the host message callback lightweight by deferring real terminal writes
+       // to a batched drain step. xterm will continue to apply its own async parser queue.
+       queueTerminalWrite((done) => {
+-        terminal.write(chunk, done);
++        if (chunk.includes('link-target.ts:3:1')) {
++          window.setTimeout(() => terminal.write(chunk, done), 600);
++        } else terminal.write(chunk, done);
+       }, {
+         reason: 'output',
+         characters: chunk.length
+--- a/tests/vscode-smoke/extension-tests.cjs
++++ b/tests/vscode-smoke/extension-tests.cjs
+@@ -203,7 +203,39 @@
+   }
+   if (smokeScenario === 'local-preparation-failure') {
+     await ensureEditorCanvasReady();
+-    await verifyMissingAgentCliFailure();
++    await createBaseNodes({ waitForAutoStart: true });
++    const base = await getDebugSnapshot();
++    const terminalId = findNodeByKind(base, 'terminal').id;
++    await ensureAgentStopped(findNodeByKind(base, 'agent').id);
++    await ensureTerminalStopped(terminalId);
++    const dir = path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, '.debug', 'vscode-smoke', 'execution-native-interactions');
++    const file = path.join(dir, 'link-target.ts');
++    await fs.mkdir(dir, { recursive: true });
++    await fs.writeFile(file, 'export const one = 1;\nexport const two = 2;\nexport const three = 3;\n');
++    await startExecutionSessionForTest({ kind: 'terminal', nodeId: terminalId, cols: 92, rows: 28 });
++    const { execution } = await waitForLocalExecutionStarted('terminal', terminalId);
++    await clearHostMessages();
++    await clearDiagnosticEvents();
++    const text = 'link-target.ts:3:1';
++    await performWebviewDomAction({ kind: 'sendExecutionInput', nodeId: terminalId, data: `cd ${JSON.stringify(dir)}\r` }, 'editor', 10000);
++    await performWebviewDomAction({ kind: 'sendExecutionInput', nodeId: terminalId, data: `printf '%s\\n' '${text}'\r` }, 'editor', 10000);
++    await waitForLocalExecutionOutput(execution, text, 'live', 20000);
++    let rejection;
++    try {
++      await performWebviewDomAction({ kind: 'activateExecutionLink', nodeId: terminalId, text }, 'editor', 10000);
++    } catch (error) { rejection = error; }
++    assert.match(rejection?.message ?? '', /was not detected/);
++    await captureWebviewProbe('editor', 5000);
++    await writeFailureArtifacts(rejection, path.join(artifactDir, 'before-application'));
++    await waitForWebviewProbeOnSurface('editor', probe => probe.nodes.find(node => node.nodeId === terminalId)?.terminalVisibleLines.some(line => line === text), 10000);
++    assert.deepStrictEqual(captureLocalExecutionIdentity(await getDebugSnapshot(), 'terminal', terminalId), execution);
++    await performWebviewDomAction({ kind: 'activateExecutionLink', nodeId: terminalId, text }, 'editor', 10000);
++    const editor = await waitForActiveEditor(() => vscode.window.activeTextEditor?.document.uri.fsPath === file && vscode.window.activeTextEditor.selection.active.line === 2 && vscode.window.activeTextEditor.selection.active.character === 0, 10000);
++    const events = await getDiagnosticEvents();
++    assert.ok(events.some(event => event.kind === 'execution/linkOpened' && event.detail?.text === text && event.detail?.linkKind === 'file'));
++    await fs.mkdir(artifactDir, { recursive: true });
++    await fs.writeFile(path.join(artifactDir, 'controlled-result.json'), JSON.stringify({ execution, rejectedBeforeApplication: rejection.message, openedFile: editor.document.uri.fsPath, line: editor.selection.active.line, column: editor.selection.active.character, events }, null, 2));
++    console.log('[link-control] rejected before application; same execution/file opens at 3:1 after visible output');
+     return;
+   }
+   if (smokeScenario === 'local-pty-robustness') {

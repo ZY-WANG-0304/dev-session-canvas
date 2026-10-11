@@ -1,0 +1,100 @@
+{
+  "date": "2026-10-09",
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "scope": "PR #314：画布重读、root 重组及模拟 reload 的原执行身份与保存责任修复。不是发布验证通过记录。",
+  "environment": {
+    "platform": "linux-x64",
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "agent": "fake-agent-provider",
+    "terminal": "bash",
+    "provider": "current native execution assets"
+  },
+  "validation": {
+    "host": "354/354；较 main 新增 18 项",
+    "owner": "54/54",
+    "supervisor": "116/116",
+    "smoke_runner": "passed",
+    "reset_fixture": "19/19",
+    "multi_root_composition": "passed",
+    "typecheck_build_package": "passed；包含在最终 VSIX 打包命令中",
+    "native_source_scenario": "passed；早于最后的单次模拟 reload 加强断言",
+    "vsix_owned_final": "exit 0；包含活动执行直接单次模拟 reload 和重新启动",
+    "full_vsix": "exit 1；新增场景及原失败段通过，后续 burst 正文断言失败"
+  },
+  "remaining_full_smoke_failure": {
+    "function": "verifyAgentExecutionFlow",
+    "predicate": "metadata.agent.recentOutput contains marker and status === waiting-input",
+    "nodeId": "agent-1-34d71dfb-18b5-4056-9d45-4972c1e7c0be",
+    "identity": {
+      "executionId": "881772a5-3e1c-4a1a-9eb0-f501c3f60bf6",
+      "generation": "2bb2a2a6-1b6b-45ed-8e96-682dffacb5b6"
+    },
+    "liveSession": true,
+    "status": "waiting-input",
+    "recordRetired": false,
+    "metadataContainsMarker": false,
+    "message": {
+      "type": "host/executionSnapshot",
+      "executionSessionId": "881772a5-3e1c-4a1a-9eb0-f501c3f60bf6",
+      "outputSequence": 4,
+      "marker": "[fake-agent] burst 001",
+      "serializedTerminalContainsMarker": true
+    },
+    "ownedProjectionRejectedCount": 0,
+    "conclusion": "原身份仍 live，终端当前快照已交付正文，旧 metadata 正文断言无法满足；没有复现原身份失配。完整发布门禁仍未通过。"
+  },
+  "source_sha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "69b2145f515c1e2a05b82d06b3a91692d12334be2d1cbbbee1ad9ae2722b432c",
+    "extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle.ts": "4d08d76a215b25f2cd87bdb614833d81344f938d83526dd16e0d7ee1b42c7f62",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "018aa41b2f244b5effba26ff67937d78e28374fee266318024a907cfc939aea5",
+    "tests/vscode-smoke/extension-tests.cjs": "dd18f0b6c46eaa480c24d59331811520f69035f1c50390799b456ddccac023fe",
+    "scripts/smoke/run-vscode-smoke.mjs": "a9f9726e0c04ff799a0c9f6758106c709fa32e8675ce36a3fff4732e6cfc8b71",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "6f0d276b70d01d26bf2fbfd0c3ff304c5e4e62f7c9632e843c3945732412aa2e"
+  },
+  "local_log_sha256": {
+    "host": {
+      "path": ".debug/rca/repair-host-final.log",
+      "sha256": "a7f1cfb5f638c3badca05dca8d136e872adba8af77a53e300eda8f54266978cd"
+    },
+    "owner": {
+      "path": ".debug/rca/repair-owner-final.log",
+      "sha256": "0ddca4bb0d553b4ece2040467825094a0be8524dabd839f6603c9cf689c191f8"
+    },
+    "supervisor": {
+      "path": ".debug/rca/repair-supervisor.log",
+      "sha256": "73219324dcb1de5901808f8eba52cd7ceec6db58c3de51421dd438e0876c7a8e"
+    },
+    "runner": {
+      "path": ".debug/rca/repair-runner-final.log",
+      "sha256": "4149a381528b181a4c91a1fccbd5449c38075a78c1602beba71137fd79edb4e7"
+    },
+    "reset_fixture": {
+      "path": ".debug/rca/repair-reset-final.log",
+      "sha256": "efdb5ffdff650d086355d5660c4d5300fe272a39fd2597820b924f5ef90bbba7"
+    },
+    "composition": {
+      "path": ".debug/rca/repair-composition-final.log",
+      "sha256": "139df8353de13a349a6bf0e44166c92a4d73023f6626d86069de91b3c21b4d1b"
+    },
+    "native_source": {
+      "path": ".debug/rca/repair-native.log",
+      "sha256": "a1766609e33973c1d1bcf45439b3adc721d17414b4276a3b8124d92c2a4d5d90"
+    },
+    "vsix_complete": {
+      "path": ".debug/rca/repair-vsix-final.log",
+      "sha256": "0b9df570416bce193f9dfac14c3278a342b4cc566ba0c40ef4b1e2ebf3b26e5a"
+    },
+    "vsix_owned_final": {
+      "path": ".debug/rca/repair-vsix-owned-final.log",
+      "sha256": "35f6bf8078f405788f76919103a8a7db1c04718499a265f1e6cc4cd9809e0cec"
+    }
+  },
+  "not_covered": [
+    "workspace trust 和 editor deserialize 的独立 UI 场景",
+    "真实窗口 Reload 矩阵",
+    "Remote SSH",
+    "旧 Supervisor 与跨版本升级",
+    "完整 trusted 后续所有执行流断言"
+  ]
+}

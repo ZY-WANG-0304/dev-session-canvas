@@ -1,0 +1,238 @@
+{
+  "date": "2026-10-10",
+  "baseline": "e872865b288cfb91e356aaedb708fb6245281813",
+  "scope": "根因定位；产品和 smoke 断言未修改；特征对照通过表示缺口已复现。",
+  "conclusion": "snapshot-only owned 执行最终保存路径未调用 Agent 异常退出通知入口。",
+  "native": {
+    "environment": "Linux x64 / VS Code 1.141.0 / 当前原生 provider / fake Codex",
+    "source": ".debug/resize-fix/trusted-artifacts",
+    "sourceHashes": {
+      "failure-error.txt": "5a89a5a6458af8b55a3380839e779989afcbf008d60abb55e0aab7743015cfdc",
+      "failure-snapshot.json": "1801d0c9a10207c6f0c98349eb502a752cfc99702d7bcdff13946dd4989f5230"
+    },
+    "eventsSource": "failure-error.txt 的 Last events JSON，超时瞬间共 46 条；不用 finally 清理后的 failure-diagnostic-events.json 推断事件缺失。",
+    "window": {
+      "start": "2026-10-09T18:49:23.816Z",
+      "end": "2026-10-09T18:49:43.636Z"
+    },
+    "testConfiguration": {
+      "runtimePersistence": false,
+      "attentionSignalBridge": "workbench",
+      "agentAbnormalOutputTextNotifications": "off",
+      "agentAbnormalExit": true,
+      "basis": "verifyAgentAbnormalInterruptionNotifications 设置并等待配置生效；workbench 模式另有现场 configChanged 事件。"
+    },
+    "timeline": [
+      {
+        "timestamp": "2026-10-09T18:49:23.836Z",
+        "kind": "execution/attentionNotificationBridgeConfigChanged",
+        "detail": {
+          "enabled": true,
+          "mode": "workbench",
+          "workbenchEnabled": true,
+          "systemPreferred": false
+        }
+      },
+      {
+        "timestamp": "2026-10-09T18:49:23.946Z",
+        "kind": "execution/started",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-4-3bdc5b69-0cf2-422b-b3c9-ca7c413a0d3b",
+          "sessionId": "304b80e3-776f-4a6b-a81b-f9d20611dbf7",
+          "cols": 66,
+          "rows": 21,
+          "provider": "codex",
+          "launchMode": "start",
+          "resumeStrategy": "fake-provider"
+        }
+      },
+      {
+        "timestamp": "2026-10-09T18:49:25.783Z",
+        "kind": "execution/localFinalPersistence",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-4-3bdc5b69-0cf2-422b-b3c9-ca7c413a0d3b",
+          "executionId": "304b80e3-776f-4a6b-a81b-f9d20611dbf7",
+          "generation": "60aad6e9-4271-4b73-b3bf-041924920f91",
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        }
+      },
+      {
+        "timestamp": "2026-10-09T18:49:26.662Z",
+        "kind": "execution/localTerminalReaderSettled",
+        "detail": {
+          "nodeId": "agent-4-3bdc5b69-0cf2-422b-b3c9-ca7c413a0d3b",
+          "kind": "agent",
+          "executionSessionId": "304b80e3-776f-4a6b-a81b-f9d20611dbf7",
+          "outcome": {
+            "kind": "applied",
+            "finalOutputSequence": 3
+          }
+        }
+      }
+    ],
+    "nodeNotificationEventCounts": {
+      "attentionNotificationPosted": 0,
+      "attentionNotificationSuppressed": 0,
+      "attentionNotificationCompanionPosted": 0,
+      "attentionAcknowledged": 0,
+      "attentionSignalSuppressed": 0
+    },
+    "finalNode": {
+      "id": "agent-4-3bdc5b69-0cf2-422b-b3c9-ca7c413a0d3b",
+      "status": "error",
+      "summary": "Session ended with exit code 27.",
+      "provider": "codex",
+      "persistenceMode": "snapshot-only",
+      "liveSession": false,
+      "attentionPending": false,
+      "lastExitCode": 27,
+      "lastExitMessage": "Session ended with exit code 27.",
+      "outputSequence": 3,
+      "recentOutput": "[fake-agent] ready pid=3220934 session=9a379519-193b-4482-a11a-b1df5e75ae88\nexit 27\n> [fake-agent] exiting with code 27"
+    },
+    "result": "真实 VSIX trusted 等待异常退出通知事件超时；原执行最终保存和 reader applied 均已完成。"
+  },
+  "controlled": {
+    "command": "DEV_SESSION_CANVAS_HOST_TEST_FILTER='exit notification RCA' node scripts/test/test-host-execution-owner-wiring.mjs",
+    "node": "22.23.3",
+    "fixture": "原 CanvasPanelManager + ExecutionOwnerLifecycle + adapter，受控 provider transport；拦截通知展示。",
+    "input": "实际 writeExecutionInput 并确认 written，原业务状态成为 running；随后提交 processResult、resourceResult、sourceEnd 和 transport release。",
+    "control": "终态保存后以捕获的退出前 running 上下文直接调用原通知入口。用户停止对照携带 stopRequested=true；不把该调用加入产品。",
+    "result": "4/4 诊断特征成立（selected 4/380；原 376 项本轮未重跑）",
+    "cases": [
+      {
+        "providerKind": "codex",
+        "exitCode": 27,
+        "userStop": false,
+        "preExitLifecycle": "running",
+        "identity": {
+          "executionId": "bdbc0da8-407f-4b8a-b6fe-ade9a5fbad69",
+          "generation": "4acd6d3d-2362-47ae-ba34-3a4e16f757a7"
+        },
+        "status": "error",
+        "finalPersistence": {
+          "kind": "saved"
+        },
+        "automatic": {
+          "hookCalls": 0,
+          "posted": 0,
+          "suppressed": 0,
+          "shown": 0,
+          "attentionPending": false
+        },
+        "directControl": {
+          "hookCalls": 1,
+          "posted": 1,
+          "suppressed": 0,
+          "shown": 1,
+          "attentionPending": true
+        }
+      },
+      {
+        "providerKind": "claude",
+        "exitCode": 27,
+        "userStop": false,
+        "preExitLifecycle": "running",
+        "identity": {
+          "executionId": "5c24617e-7269-4325-a0f0-3a094afc68ec",
+          "generation": "04beda26-d536-4ada-bf3b-3435ee5b7eca"
+        },
+        "status": "error",
+        "finalPersistence": {
+          "kind": "saved"
+        },
+        "automatic": {
+          "hookCalls": 0,
+          "posted": 0,
+          "suppressed": 0,
+          "shown": 0,
+          "attentionPending": false
+        },
+        "directControl": {
+          "hookCalls": 1,
+          "posted": 1,
+          "suppressed": 0,
+          "shown": 1,
+          "attentionPending": true
+        }
+      },
+      {
+        "providerKind": "codex",
+        "exitCode": 0,
+        "userStop": false,
+        "preExitLifecycle": "running",
+        "identity": {
+          "executionId": "cc9f34dc-63cb-4075-ba26-0e506255db62",
+          "generation": "cd995cd5-eef6-47cd-aa6d-7321adee7527"
+        },
+        "status": "stopped",
+        "finalPersistence": {
+          "kind": "saved"
+        },
+        "automatic": {
+          "hookCalls": 0,
+          "posted": 0,
+          "suppressed": 0,
+          "shown": 0,
+          "attentionPending": false
+        },
+        "directControl": {
+          "hookCalls": 1,
+          "posted": 0,
+          "suppressed": 0,
+          "shown": 0,
+          "attentionPending": false
+        }
+      },
+      {
+        "providerKind": "codex",
+        "exitCode": 27,
+        "userStop": true,
+        "preExitLifecycle": "running",
+        "identity": {
+          "executionId": "64a39059-77f6-465d-a057-9525a1a10568",
+          "generation": "22c59f69-7b5b-409c-9807-3dab1b80e232"
+        },
+        "status": "stopped",
+        "finalPersistence": {
+          "kind": "saved"
+        },
+        "automatic": {
+          "hookCalls": 0,
+          "posted": 0,
+          "suppressed": 0,
+          "shown": 0,
+          "attentionPending": false
+        },
+        "directControl": {
+          "hookCalls": 1,
+          "posted": 0,
+          "suppressed": 0,
+          "shown": 0,
+          "attentionPending": false
+        }
+      }
+    ],
+    "patch": "docs/references/smoke-reload-autostart/exit-notification-characterization.patch"
+  },
+  "code": {
+    "file": "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts",
+    "missingHook": "persistNonNativeHostFinal 更新终态并保存，无 markAndNotifyAgentAbnormalInterruption 调用；finalized 回调也未补接。",
+    "existingCallers": [
+      "旧本地 session exit 回调",
+      "Supervisor final snapshot 接收路径"
+    ],
+    "notificationEvent": "workbench 模式的 publishExecutionAttentionNotification 仍记录 execution/attentionNotificationPosted。",
+    "history": "b235a7bc 首次引入 persistNonNativeHostFinal 时即无该通知调用，当时默认关闭；这证明缺口先于 PR314，不单凭该提交断言默认用户何时开始受影响。"
+  },
+  "limits": [
+    "没有实施通知修复，没有完整 smoke 新通过结果。",
+    "RuntimePersistence 开启的 Supervisor 路径只检查了调用点，未原生复验。",
+    "未验证真实 Codex/Claude 服务、系统通知弹窗、其他平台或升级矩阵。"
+  ]
+}

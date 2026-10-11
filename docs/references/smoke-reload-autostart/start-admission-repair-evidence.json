@@ -1,0 +1,222 @@
+{
+  "scope": "PR #314 页面启动拒绝反馈和恢复 smoke 启动顺序修复",
+  "date": "2026-10-10",
+  "base": "f91b51867110394fcc8871bd875ee765c3bff125",
+  "changes": [
+    "页面立即消费 Agent/Terminal 启动 promise，保留 Runtime 操作跟踪",
+    "本地非 started 结果保留原 identity 与结构化 outcome，合法拒绝显示中文/英文提示",
+    "仅捕获本请求新建的 owned record；取消、替换、删除请求的迟到错误只记录 suppressed 诊断；旧 stopping 执行阻塞新请求仍提示",
+    "页面错误观察不写节点、不释放资源；unknown 保留原责任，普通 Error 只显示 message",
+    "恢复 smoke 按原 executionId 等待 Agent started 后才派发 Terminal，再等其 started 后 reload；保留后续全部恢复状态/正文断言"
+  ],
+  "unit": {
+    "before": "真实页面入口触发 rejected-before-acquire，未处理拒绝使 Node 退出 1",
+    "focused": "20/20 passed",
+    "fullHost": "454/454 passed",
+    "typecheck": "passed",
+    "localization": "passed",
+    "outputHelper": "14/14 passed",
+    "smokeSyntax": "passed"
+  },
+  "native": {
+    "command": "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets DEV_SESSION_CANVAS_VSCODE_EXECUTABLE=/tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/code npm run test:vsix-smoke",
+    "environment": "Linux x64 / Node 22.23.3 / VS Code 1.141.0 / snapshot-only / fake Agent / bash / native PTY",
+    "exitCode": 1,
+    "completed": [
+      "build/typecheck/package/notifier build",
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "trusted verifyRealWebviewProbe（迟到 toast 回归路径）",
+      "trusted 通知/恢复失败、native interactions、scrollback、标签视口、主题",
+      "verifyRuntimeReloadRecovery 首次 Agent/Terminal 的同身份 started 等待"
+    ],
+    "timeline": [
+      {
+        "timestamp": "2026-10-10T03:49:28.161Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-9b7d7a98-5787-4cf0-b158-ebd1ce9839f2",
+          "provider": "codex",
+          "resumeRequested": false,
+          "launchPreset": "default",
+          "launchCommandLine": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "requestedCommand": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "launchArgs": [],
+          "cols": 90,
+          "rows": 28,
+          "cwd": "/tmp/dscr",
+          "workspaceTrusted": true
+        }
+      },
+      {
+        "timestamp": "2026-10-10T03:49:28.284Z",
+        "kind": "execution/started",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-9b7d7a98-5787-4cf0-b158-ebd1ce9839f2",
+          "sessionId": "cb9e273f-bd82-4e84-8eea-b08fd50f1347",
+          "cols": 90,
+          "rows": 28,
+          "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "cwd": "/tmp/dscr",
+          "launchArgs": [],
+          "provider": "codex",
+          "launchMode": "start",
+          "resumeStrategy": "fake-provider",
+          "resumeSessionId": "2f02da1f-f96b-4d71-90be-cbd1497eef42",
+          "resumeStoragePath": "/tmp/dscr/.debug/vscode-vsix-smoke/smoke-runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-9b7d7a98-5787-4cf0-b158-ebd1ce9839f2"
+        }
+      },
+      {
+        "timestamp": "2026-10-10T03:49:28.384Z",
+        "kind": "execution/startRequested",
+        "detail": {
+          "kind": "terminal",
+          "nodeId": "terminal-2-e08957e5-eaec-4063-9a90-003c8b9489c4",
+          "cols": 90,
+          "rows": 28,
+          "cwd": "/tmp/dscr",
+          "workspaceTrusted": true
+        }
+      },
+      {
+        "timestamp": "2026-10-10T03:49:28.539Z",
+        "kind": "execution/started",
+        "detail": {
+          "kind": "terminal",
+          "nodeId": "terminal-2-e08957e5-eaec-4063-9a90-003c8b9489c4",
+          "sessionId": "01fdc2d0-34db-42ad-a85e-91bad64bdebd",
+          "cols": 90,
+          "rows": 28,
+          "shellPath": "/usr/bin/bash",
+          "cwd": "/tmp/dscr",
+          "launchArgs": []
+        }
+      },
+      {
+        "timestamp": "2026-10-10T03:49:28.667Z",
+        "kind": "execution/localFinalPersistence",
+        "detail": {
+          "kind": "terminal",
+          "nodeId": "terminal-2-e08957e5-eaec-4063-9a90-003c8b9489c4",
+          "executionId": "01fdc2d0-34db-42ad-a85e-91bad64bdebd",
+          "generation": "4fde2624-e352-44f8-993e-a7449ac575d7",
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        }
+      },
+      {
+        "timestamp": "2026-10-10T03:49:28.686Z",
+        "kind": "execution/localFinalPersistence",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-9b7d7a98-5787-4cf0-b158-ebd1ce9839f2",
+          "executionId": "cb9e273f-bd82-4e84-8eea-b08fd50f1347",
+          "generation": "4d1349de-066e-487a-80e1-123d754416aa",
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        }
+      },
+      {
+        "timestamp": "2026-10-10T03:49:28.688Z",
+        "kind": "state/runtimeReloaded",
+        "detail": {
+          "activeSurface": "editor",
+          "nodeCount": 3
+        }
+      }
+    ],
+    "newFailure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ 'stopped'\n- 'resume-ready'\n\n\tat verifyRuntimeReloadRecovery (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:8826:10)\n\tat async runTrustedSmoke (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:1398:3)\n\tat async runSmoke (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:259:3)\n\tat async Object.run (/tmp/dscr/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:172:5)",
+    "finalNodes": [
+      {
+        "kind": "agent",
+        "status": "stopped",
+        "metadata": {
+          "resumeSupported": true,
+          "resumeStrategy": "fake-provider",
+          "liveSession": false,
+          "lastExitSignal": "SIGINT",
+          "resumeSessionId": "2f02da1f-f96b-4d71-90be-cbd1497eef42"
+        }
+      },
+      {
+        "kind": "terminal",
+        "status": "closed",
+        "metadata": {
+          "liveSession": false,
+          "lastExitSignal": "SIGHUP"
+        }
+      }
+    ],
+    "finalLocalExecutions": [],
+    "interpretation": "原 starting=1 拒绝已消除；本函数自身 reload 后出现独立终态/恢复意图冲突。恢复 ID 存在；本轮未修改状态断言，不将其当成完整门禁通过。"
+  },
+  "intermediateRuns": [
+    {
+      "log": ".debug/start-admission-fix/vsix.log",
+      "result": "两次启动通过，随后 stopped != resume-ready；当时额外的未触达正文改写已撤回"
+    },
+    {
+      "log": ".debug/start-admission-fix/final-vsix.log",
+      "result": "新错误反馈把已被 Host boundary 取消的旧启动抛到后续页面，verifyRealWebviewProbe toast 失败；已补原请求身份与取消保护"
+    },
+    {
+      "log": ".debug/start-admission-fix/verified-vsix.log",
+      "result": "早期 Host boundary 发生 Local final snapshot persistence is pending，工件保留在 pending-save-artifacts；未归因，最终代码的默认重跑跨过该点，但不追认为当次通过"
+    }
+  ],
+  "limits": "未完成后续恢复/Runtime/压力场景；未验证真实窗口 Reload、跨版本、其他平台或真实 Agent 服务。无版本/发布修改。",
+  "sourceHashes": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "7695fbcded41a8a4f34c53e297bfd64c50b004351b1d042063ee58a8de4ee805",
+    "extensions/vscode/dev-session-canvas/l10n/bundle.l10n.zh-cn.json": "8043c6a3db6e3593341d34594baaafb18826e5dc1605a7ec37407a2ac27b9b5d",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "2fbc5cd072fad0a13d5967406231108da66221c697dda52a44e2a42f934cbcce",
+    "tests/vscode-smoke/extension-tests.cjs": "d2d30193cea95e9e695118aa20d8a9f7e98b9f0b59dd854b0f02e7de3a0a45df"
+  },
+  "rawArtifacts": [
+    {
+      "path": ".debug/start-admission-fix/red.log",
+      "sha256": "966ebb44cba8107758658cb3ba3945aaf5a1c6e708763de0e0049581f65affe2"
+    },
+    {
+      "path": ".debug/start-admission-fix/focused.log",
+      "sha256": "64f8cdf799f533263d5e7777d11984fbfef1f0c183a20e0babca598fd014c36c"
+    },
+    {
+      "path": ".debug/start-admission-fix/host.log",
+      "sha256": "7a49cffd98fc1fa0798ad45892abd3faeaa37341f6c7b89ef8b475cafc64f503"
+    },
+    {
+      "path": ".debug/start-admission-fix/typecheck.log",
+      "sha256": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73"
+    },
+    {
+      "path": ".debug/start-admission-fix/localization.log",
+      "sha256": "4af3675d269dc6d3faf48197a340d135d1308be7fbc5005abdfead66840847b4"
+    },
+    {
+      "path": ".debug/start-admission-fix/output-helper.log",
+      "sha256": "de71306dd8cf4c7868e3e72a97890c9fabc0d89db839faef62eea81f215c9ab9"
+    },
+    {
+      "path": ".debug/start-admission-fix/release-gate.log",
+      "sha256": "6db242fe0be7ac71d32b25a68f32bda9b3d13943cf63e9a42d708d114fd42599"
+    },
+    {
+      "path": ".debug/start-admission-fix/trusted-artifacts/failure-error.txt",
+      "sha256": "f2b0bb129a00495c97a19e021cc28170814777add96e0bc35e887ea6a6247746"
+    },
+    {
+      "path": ".debug/start-admission-fix/trusted-artifacts/failure-diagnostic-events.json",
+      "sha256": "efa15b17ba6c772b290bacbec86e90a336f0ccb269924580f5eea34dacacb8a9"
+    },
+    {
+      "path": ".debug/start-admission-fix/trusted-artifacts/failure-snapshot.json",
+      "sha256": "5a1767e31a663337b1144ea2a909e7fb3845b08ccdc785b1ec8297986b1b5084"
+    }
+  ]
+}

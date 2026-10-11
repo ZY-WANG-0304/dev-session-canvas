@@ -1,0 +1,84 @@
+{
+  "date": "2026-10-10",
+  "previous_pr_head": "8b6e7a671a21ff74e8e232cca902fd9268995bb4",
+  "environment": {
+    "platform": "Linux x64",
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "execution": "current native provider, fake Agent, bash"
+  },
+  "results": {
+    "output_evidence_unit": "14/14 passed",
+    "host": "356/356 passed",
+    "duplicate_start_regressions": "2/2 passed; failed before the product guard fix",
+    "completed_snapshot_resize": "16/16 passed",
+    "smoke_runner": "passed",
+    "typecheck_build_package": "passed within final VSIX command",
+    "default_vsix_owned_reconciliation": "passed",
+    "default_vsix_local_execution_flow": "passed: burst, partial input, sleep, slowspin, restart, duplicate rejection, Terminal output, final save and immutable saved geometry",
+    "default_vsix_trusted": "failed: verifyRealWebviewProbe toastMessage was not null"
+  },
+  "failure_sequence": [
+    {
+      "run": 1,
+      "result": "Agent command output/status checks passed; obsolete Codex exit-summary text assertion failed."
+    },
+    {
+      "run": 2,
+      "result": "Earlier trusted webview probe caught native resize admission error; original artifacts preserved."
+    },
+    {
+      "run": 3,
+      "result": "Independent local execution flow exposed normal duplicate-start rejection escaping as a rejected Promise instead of host/error."
+    },
+    {
+      "run": 4,
+      "result": "Duplicate guard fixed; local flow reached obsolete stopped-resize assertion (64 != 100). Actual saved terminal geometry must stay unchanged."
+    },
+    {
+      "run": 5,
+      "result": "Owned reconciliation and local flow passed; full trusted again caught native resize admission error."
+    }
+  ],
+  "remaining_failure": {
+    "message": "Execution terminal interaction admission is closed or unsupported",
+    "assertion": "verifyRealWebviewProbe: toastMessage === null",
+    "path": [
+      "CanvasPanelManager.queueNonNativeHostResize",
+      "OwnedExecution.resize",
+      "ExecutionSessionAdapter.interact"
+    ],
+    "confirmed": "Native resize rejection reaches a retained page toast; reproduced in full runs 2 and 5.",
+    "not_confirmed": "Exact start/stop/source-closure timing; final stopped/saved node state does not establish the error occurred during stop.",
+    "assertion_kept": true
+  },
+  "unverified": [
+    "Notification UI paths after migrating two same-source predicates",
+    "Other Runtime/recovery/flood assertions not reached by the latest complete run",
+    "Full release validation"
+  ],
+  "source_sha256": {
+    "tests/vscode-smoke/execution-output.cjs": "9e6002d49e7774b335aa76b38b0153ddbcfcc8f0726dc95edf34f4286dc745c7",
+    "tests/vscode-smoke/extension-tests.cjs": "0d0ca18db39db245423f8ced3ac37ceac8458c353151498eb3a59709c6f3f36c",
+    "scripts/test/test-smoke-execution-output.mjs": "88d1a076dc11551e324431181b03f2557a3a66d53e752df7e3811c65c8afb00b",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "2b1f7842232f3ec57a9d3e007f4156c595effd2188da534d40da36a0db34d1b9",
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "e6c0c278403ed26c06eefc76d106b6446fc9df329bb92cb40052b2000b55c4b5",
+    "scripts/smoke/run-vscode-smoke.mjs": "291e69b956445a727d5ab1161a012b1b81508db93bf9d85c11b77b0e5b878963",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "4145fac55b0a8f6ad7866c2776d254a042aead653e934b496e36b42391df2bae",
+    "package.json": "9dc0eb2da578e56b0d5d1559cdaf12614dc0409a6c76916a489031759630162f"
+  },
+  "local_log_sha256": {
+    "output-tests.log": "286069e041fa19f666763c2266a575eb0600476f359c6be11d3016c231957612",
+    "host-final.log": "39b87d6f11b3d2ca04238c845508f1dca72d4adc7987342c65b9423f22662644",
+    "completed-resize.log": "854445f98978457762f51cb1ebe088cfd814076f96617407183b0310eb17e1ee",
+    "runner-tests.log": "4149a381528b181a4c91a1fccbd5449c38075a78c1602beba71137fd79edb4e7",
+    "duplicate-red.log": "6b731933e5ed5b4f685433ba026142e555577267db416b60850e5ce54a2669cf",
+    "duplicate-green.log": "84fc6a0c1c0da5966b7a55b9f7c3dc4b8aa4050cdeeaec75b5e2532145e3e13b",
+    "vsix-1.log": "8fed4492a6f9d64b4dfc1df18dc6c9b1f7d2b4307d852663b960847215985d4e",
+    "vsix-2.log": "4144b4aa0272e92ad61a16a9557c32268ee3f4315d4f6554c97692ad43988876",
+    "vsix-3.log": "7b9eff9edc3538dd167378e8f1dab3a3cca30f009c5a0dae8f24f36d6e4403cf",
+    "vsix-4.log": "de7b50c15afced4e3e9f60b1221647422d37a8a7ea03c9072da79dfbffc1daaf",
+    "vsix-5.log": "00429c4f928872df975763a0588c9a051359cf7cd0c0f1296dce830474b36a0b"
+  },
+  "failure_error_sha256": "ce89807eadf9348f51d75ba532f5c8fa2172668cc40d46fe3bc26cd52da24311"
+}

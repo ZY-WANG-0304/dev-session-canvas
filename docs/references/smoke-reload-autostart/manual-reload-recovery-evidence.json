@@ -1,0 +1,127 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "previousHead": "ff789a4f294b63073fc855034caa5739ce46ee22",
+  "scope": "snapshot-only Host 中断后手动 resume-ready；不自动 provider resume；不修改 RuntimePersistence 开启语义",
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "82df3aa965bd75bef69ae50987bbabcb9d2b7abde64886e2f2c93bffc5344782",
+    "extensions/vscode/dev-session-canvas/l10n/bundle.l10n.zh-cn.json": "c2a0f6f5e92f8b1d3b80ed46243d8f200d8ef142b4b9a50da5a184fa863dd975",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "026044852edeacb6a6789fabe9a9aeda80698824c6b50ef1547921f30bb61d86",
+    "scripts/test/test-runtime-legacy-reconnect.mjs": "f7afb52043fe5be13774ca3c39c59fc2f61cb326031b59cd072d682bcb41c810",
+    "scripts/test/test-canvas-execution-context.mjs": "30c077ca0b64488096998b0fe84bb93e3a6bd8b6dfc6bf3d5aac65a1a4ae6828",
+    "tests/vscode-smoke/extension-tests.cjs": "72808358744f40d37e7366f4e4e8865759c6f1865ec99f5b05773610d4454489",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "fbec09bff08ba559380d87711343a7258f74b16e592d8b995bfd6273601b8229",
+    "scripts/smoke/run-vscode-smoke.mjs": "e2cf5693db09ea625266bb4de8dc28b6e949a659da17ef07a42a41d0b23aaea4"
+  },
+  "before": {
+    "controlledRegression": "stopped != resume-ready",
+    "log": ".debug/manual-reload-recovery/before.log",
+    "nativeEvidence": "docs/references/smoke-reload-autostart/start-admission-repair-evidence.json"
+  },
+  "controlled": {
+    "host": {
+      "passed": 478,
+      "added": 24
+    },
+    "legacyReconnect": "passed",
+    "canvasExecutionContext": "passed",
+    "typecheck": "passed",
+    "uiCopyLocalization": "passed",
+    "smokeOutput": {
+      "passed": 14
+    },
+    "smokeResetFixture": {
+      "passed": 19
+    },
+    "smokeRunnerEnvironment": "passed",
+    "smokeSyntax": "passed"
+  },
+  "native": {
+    "platform": "Linux x64",
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "provider": "当前原生 PTY / fake Agent / bash",
+    "runtimePersistenceEnabled": false,
+    "passedScenarios": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery"
+    ],
+    "recoveryAcceptanceOccurrences": 2,
+    "recoveryAcceptanceContexts": [
+      "独立默认具名阶段",
+      "trusted 原顺序阶段"
+    ],
+    "assertedRecovery": [
+      "reload 后 resume-ready/interrupted、liveSession=false、pendingLaunch 未设置",
+      "真实 editor 重建且 probe 确认手动恢复提示，无额外启动",
+      "显式 resume 后新 executionId，保留 provider sessionId",
+      "原执行输出含 resumed session 和 burst 001",
+      "exit 19 保存为 error"
+    ],
+    "agentStarted": [
+      {
+        "timestamp": "2026-10-10T04:17:04.248Z",
+        "sessionId": "8e1ed47a-fb9d-48cf-bea0-fbaa77be4e38",
+        "launchMode": "start",
+        "resumeStrategy": "fake-provider",
+        "resumeSessionId": "667f4abc-c70e-48cf-b2bb-388fb619741f"
+      },
+      {
+        "timestamp": "2026-10-10T04:17:05.266Z",
+        "sessionId": "97a6cc0b-509e-4e35-ae44-75750a93e48c",
+        "launchMode": "resume",
+        "resumeStrategy": "fake-provider",
+        "resumeSessionId": "667f4abc-c70e-48cf-b2bb-388fb619741f"
+      }
+    ],
+    "agentFinal": {
+      "status": "error",
+      "lastExitCode": 19,
+      "resumeSessionId": "667f4abc-c70e-48cf-b2bb-388fb619741f"
+    },
+    "fullVsix": "failed",
+    "nextBlocker": {
+      "function": "verifyLiveSessionCutoverAndReload",
+      "line": 8965,
+      "assertion": "metadata.terminal.recentOutput.includes(LIVE_CUTOVER_EDITOR)",
+      "actualStatus": "live",
+      "originalExecution": {
+        "executionId": "e7b27838-975f-4f8a-b685-4accc849a9c6",
+        "generation": "3c0e51f4-1ace-42cb-b21d-98b46ab2456f"
+      },
+      "historicalRecentOutputContainsMarker": false,
+      "actualOutput": {
+        "kind": "terminal",
+        "nodeId": "terminal-2-f3610228-446b-4520-a05d-1302b0a9a3be",
+        "executionSessionId": "e7b27838-975f-4f8a-b685-4accc849a9c6",
+        "chunk": "echo LIVE_CUTOVER_EDITOR\r\nLIVE_CUTOVER_EDITOR\r\nziyang01.wang-al@hobot:/tmp/dscr$ ",
+        "outputStartSequence": 2,
+        "outputSequence": 2,
+        "terminalTitle": null,
+        "localOutputReceipt": {
+          "receiptId": "9df0180f-3108-440a-89fe-f00ff41570e8",
+          "outputSequence": 2
+        }
+      },
+      "conclusion": "后续实时正文断言仍使用旧历史字段；本次未调整其断言"
+    },
+    "firstRun": {
+      "result": "failed before recovery",
+      "error": "Error: Execution link \"missing-target.ts:9:3\" was not detected.",
+      "conclusion": "最终一轮通过该链接检查，不追认首次失败已修复",
+      "artifacts": ".debug/manual-reload-recovery/first-artifacts",
+      "logSha256": "f8f9d02994441be212ac3126cacb12814d4200e2658e1ca9667df668e03fde3f"
+    },
+    "artifacts": ".debug/manual-reload-recovery/trusted-artifacts",
+    "manualRecoveryArtifacts": ".debug/manual-reload-recovery/manual-recovery-artifacts",
+    "log": ".debug/manual-reload-recovery/vsix.log",
+    "logSha256": "6b0e9de440aa974d759377b3ee0de35482ad69400b8955a1e717e8f06582d975"
+  },
+  "limits": [
+    "真实 Window Reload / Remote SSH / 其他平台 / 真实 Agent 服务 / 跨版本矩阵未原生复验",
+    "后续 surface / Runtime / 压力场景未完成",
+    "此前早期 Local final snapshot persistence is pending 失败工件仍保留，未追认根因"
+  ]
+}

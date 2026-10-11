@@ -1,0 +1,79 @@
+diff --git a/scripts/test/test-host-execution-owner-wiring.mjs b/scripts/test/test-host-execution-owner-wiring.mjs
+index 24658151..714e9142 100644
+--- a/scripts/test/test-host-execution-owner-wiring.mjs
++++ b/scripts/test/test-host-execution-owner-wiring.mjs
+@@ -5773,6 +5773,74 @@ for (const queued of [false, true]) {
+   });
+ }
+
++
++// Temporary characterization: passing confirms the missing hook, not a repaired product.
++for (const [providerKind, exitCode, userStop] of [
++  ['codex', 27, false], ['claude', 27, false], ['codex', 0, false], ['codex', 27, true]
++]) {
++  test(`exit notification RCA ${providerKind} exit=${exitCode} stop=${userStop}`, async () => {
++    const f = await interactiveHostFixture('agent', providerKind);
++    const shown = [];
++    const hookCalls = [];
++    f.host.enabledAttentionSignals = ['agentAbnormalExit'];
++    f.host.attentionNotificationBridgeMode = 'workbench';
++    f.host.showExecutionAttentionNotification = async (...args) => { shown.push(args); };
++    const originalHook = f.host.markAndNotifyAgentAbnormalInterruption.bind(f.host);
++    f.host.markAndNotifyAgentAbnormalInterruption = async (...args) => {
++      hookCalls.push(args);
++      return originalHook(...args);
++    };
++    const readNode = () => f.host.state.nodes.find(node => node.id === 'agent-1');
++    const readNotifications = () => ({
++      hookCalls: hookCalls.length,
++      posted: f.diagnostics.filter(e => e.name === 'execution/attentionNotificationPosted').length,
++      suppressed: f.diagnostics.filter(e => e.name === 'execution/attentionNotificationSuppressed').length,
++      shown: shown.length,
++      attentionPending: readNode().metadata.agent.attentionPending === true
++    });
++    try {
++      const input = `exit ${exitCode}\r`;
++      const writing = f.host.writeExecutionInput('agent', 'agent-1', input);
++      await until(f.clock, () => f.requests.some(m => m.type === 'input'), 'exit input reached original provider');
++      f.reply(f.requests.find(m => m.type === 'input'), { kind: 'written', writtenBytes: Buffer.byteLength(input) });
++      assert.equal(await completed(f.clock, writing, 'exit input accepted'), true);
++      assert.equal(f.record.business.lifecycleStatus, 'running');
++      const session = { ...f.record.business, sessionId: f.record.execution.identity.executionId, stopRequested: userStop };
++      let stopping;
++      if (userStop) {
++        stopping = f.host.stopExecutionSession('agent', 'agent-1');
++        await until(f.clock, () => f.record.execution.snapshot().stopRequested, 'explicit Host stop recorded');
++      }
++      f.provider.output(1, `[fake-agent] exiting with code ${exitCode}\r\n`);
++      await until(f.clock, () => f.record.lastDataSequence === 1, 'original final output consumed');
++      f.provider.message({ type: 'processResult', result: { kind: 'exited', exitCode } });
++      f.provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
++      f.provider.seal(1);
++      f.provider.release();
++      await until(f.clock, () => f.record.persistence.result?.kind === 'saved', 'original final snapshot saved');
++      if (stopping) await completed(f.clock, stopping, 'Host stop settled');
++      await pump(f.clock);
++      const node = readNode();
++      const status = exitCode === 0 || userStop ? 'stopped' : 'error';
++      assert.equal(node.status, status);
++      assert.equal(node.metadata.agent.lastExitCode, exitCode);
++      const automatic = readNotifications();
++      assert.deepEqual(automatic, { hookCalls: 0, posted: 0, suppressed: 0, shown: 0, attentionPending: false });
++      const detail = { exitCode, reason: 'process-exit', launchMode: 'start' };
++      const shouldNotify = exitCode !== 0 && !userStop;
++      assert.equal(f.host.shouldNotifyAgentAbnormalInterruption(session, status, detail), shouldNotify);
++      // Same saved node, config and captured running context; only restore the absent call.
++      await f.host.markAndNotifyAgentAbnormalInterruption('agent-1', session, status, node.summary, detail);
++      const directControl = readNotifications();
++      assert.deepEqual(directControl, { hookCalls: 1, posted: shouldNotify ? 1 : 0, suppressed: 0,
++        shown: shouldNotify ? 1 : 0, attentionPending: shouldNotify });
++      console.log('exit-notification-evidence ' + JSON.stringify({ providerKind, exitCode, userStop,
++        preExitLifecycle: session.lifecycleStatus, identity: f.record.execution.identity,
++        status, finalPersistence: f.record.persistence.result, automatic, directControl }));
++    } finally { await f.cleanup(); }
++  });
++}
++
+ const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
+ const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
+ const selectedTests = testNamePattern ? tests.filter(({ name }) => testNamePattern.test(name)) : tests;

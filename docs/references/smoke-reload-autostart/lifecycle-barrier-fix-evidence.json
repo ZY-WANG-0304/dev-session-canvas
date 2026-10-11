@@ -1,0 +1,125 @@
+{
+  "date": "2026-10-10",
+  "pr": 314,
+  "base": "78c58c2a2cecd053199c9bada6084868f9255877",
+  "parent": "5859ee31aaba255373f7aeed897c448d21739399",
+  "scope": "四处创建流程 await reset；通知用例按原身份退休后重启/seed；追加 Stop 竞态实时输出等待，保持原结果断言",
+  "environment": "Linux x64 / Node 22.23.3 / VS Code 1.141.0 / native PTY / fake Agent / bash",
+  "sourceSha256": {
+    "tests/vscode-smoke/extension-tests.cjs": "b3fbe1410bccb0ce22feab36524ec2c4fd0212458655a10fa040e38419360d58",
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "0c3ed37bc9c2bdc76e2fa10e4bf281cd2957d0b6921750179cce4d298324e2b4",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "44206da853c52aa99d6612992ee5725aef3d00e65bf292db6d3f17c95b736999"
+  },
+  "checks": {
+    "syntax": "passed",
+    "resetFixture": "19/19",
+    "executionOutput": "14/14",
+    "runnerEnvironment": "passed",
+    "typecheckAndVsixPackaging": "passed in both runs"
+  },
+  "defaultVsix": {
+    "exitCode": 1,
+    "log": ".debug/lifecycle-barrier-fix/vsix.log",
+    "passedStages": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure"
+    ],
+    "trustedPassedThrough": "verifyPendingWebviewRequestFaultInjection；包含两处创建预设、完整异常通知、终端原生交互、恢复、PTY、flood、完整 verifyFailurePaths、持久化恢复与 standby",
+    "failure": "verifyStopVsQueuedExitRace:9832，等 recentOutput sleeping 到自然 exit 9 后才发 stop，stopRejected/missing-session",
+    "stopRaceTimeline": [
+      {
+        "timestamp": "2026-10-10T08:28:38.917Z",
+        "kind": "execution/started",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-67e0e09d-d76f-4ed9-8fd3-4e72c9cabd80",
+          "sessionId": "c55a9c09-2bee-49bb-965c-126caa3d61b4",
+          "cols": 88,
+          "rows": 28,
+          "shellPath": "/tmp/dscr/tests/vscode-smoke/fixtures/fake-agent-provider",
+          "cwd": "/tmp/dscr",
+          "launchArgs": [],
+          "provider": "codex",
+          "launchMode": "start",
+          "resumeStrategy": "fake-provider",
+          "resumeSessionId": "542184a2-26d0-4776-a8d2-ed9311ae3d38",
+          "resumeStoragePath": "/tmp/dscr/.debug/vscode-vsix-smoke/smoke-runtime/user-data/User/workspaceStorage/8e985f4e9b9b063e3bfa623a2d31a6b9/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-67e0e09d-d76f-4ed9-8fd3-4e72c9cabd80"
+        }
+      },
+      {
+        "timestamp": "2026-10-10T08:28:44.518Z",
+        "kind": "execution/localFinalPersistence",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-67e0e09d-d76f-4ed9-8fd3-4e72c9cabd80",
+          "executionId": "c55a9c09-2bee-49bb-965c-126caa3d61b4",
+          "generation": "fb06dbf4-917a-48a3-9dee-5bd9cdb77546",
+          "submitted": true,
+          "result": {
+            "kind": "saved"
+          }
+        }
+      },
+      {
+        "timestamp": "2026-10-10T08:28:44.561Z",
+        "kind": "execution/localTerminalReaderSettled",
+        "detail": {
+          "nodeId": "agent-1-67e0e09d-d76f-4ed9-8fd3-4e72c9cabd80",
+          "kind": "agent",
+          "executionSessionId": "c55a9c09-2bee-49bb-965c-126caa3d61b4",
+          "lifecycle": {
+            "surface": "editor",
+            "mode": "active",
+            "generation": 38,
+            "frameId": "frame-36856760-039d-4f5f-a867-cce418f1e2e7"
+          },
+          "outcome": {
+            "kind": "applied",
+            "finalOutputSequence": 6
+          }
+        }
+      },
+      {
+        "timestamp": "2026-10-10T08:28:44.658Z",
+        "kind": "execution/stopRejected",
+        "detail": {
+          "kind": "agent",
+          "nodeId": "agent-1-67e0e09d-d76f-4ed9-8fd3-4e72c9cabd80",
+          "reason": "missing-session"
+        }
+      }
+    ],
+    "artifacts": ".debug/lifecycle-barrier-fix/trusted-artifacts",
+    "note": "此次默认运行早于追加 Stop 输出等待修正；reset/通知修正与最终源码一致"
+  },
+  "trustedRecheck": {
+    "exitCode": 1,
+    "log": ".debug/lifecycle-barrier-fix/trusted-recheck.log",
+    "source": "最终源码；仅使用已有 trusted scenario filter，未改变原用例顺序",
+    "passed": "创建预设及完整异常通知再次通过",
+    "failure": "verifyExecutionTerminalNativeInteractions: Execution link \"link-target.ts:3:1\" was not detected.",
+    "artifacts": ".debug/lifecycle-barrier-fix/trusted-recheck-artifacts"
+  },
+  "targetedStopRace": {
+    "exitCode": 1,
+    "log": ".debug/lifecycle-barrier-fix/stop-race.log",
+    "control": "复用最终打包 Host，仅将 staged local-preparation-failure 入口改为基础节点准备、停止后调用原 verifyStopVsQueuedExitRace；原函数断言未改",
+    "controlPatch": "lifecycle-barrier-stop-race-control.patch",
+    "artifacts": ".debug/lifecycle-barrier-fix/stop-race-runtime/artifacts",
+    "observed": {
+      "status": "stopped",
+      "summary": "Session ended with exit code 0.",
+      "lastExitCode": 0,
+      "lastExitSignal": null,
+      "recentOutput": "[fake-agent] ready pid=4094941 session=e1cc254e-f615-4de1-ad3a-dd8bc9f854ad\nsleep 5\nexit 9\n> [fake-agent] sleeping 5s\n^CToken usage: total=128 input=64 output=64\nTo continue this session, run codex resume e1cc254e-f615-4de1-ad3a-dd8bc9f854ad\n[fake-agent] received signal INT"
+    },
+    "failure": "Expected /Stopped Codex session/, actual Session ended with exit code 0.",
+    "boundary": "实时等待与及时 Stop 已验证，旧文案断言仍失败；后续旧 stopRequested/exited 诊断断言未执行，不视为通过"
+  },
+  "gate": "未通过；不得把原顺序局部通过或 standalone stopped 行为代证完整 gate",
+  "productChanges": false
+}
