@@ -5,7 +5,7 @@ validation_status: 验证失败
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/active/release-0-26-1-latest-main.md]
+related_plans: [docs/exec-plans/completed/release-0-26-1-latest-main.md]
 updated_at: 2026-10-11
 ---
 

@@ -28,7 +28,7 @@
     npm run test:notifier-smoke
     npm run test:notifier-locale-smoke
 
-验证过程见 `docs/exec-plans/active/release-0-26-1-latest-main.md` 与 PR checks。只有 review 和 required checks 通过后才能合并；发布 tag 必须另在合并后的 main release commit 创建。
+验证过程见 `docs/exec-plans/completed/release-0-26-1-latest-main.md` 与 PR checks。只有 review 和 required checks 通过后才能合并；发布 tag 必须另在合并后的 main release commit 创建。
 
 本轮还纳入 #314 本地执行生命周期/终端交互与 #316 删除输入准入修复；用户口径及边界以 0.26.1 契约为准，实际标题栏鼠标场景仍需宿主人工复核。
 

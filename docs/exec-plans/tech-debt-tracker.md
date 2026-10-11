@@ -690,10 +690,10 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 精确 5c2cc2f7 的独立 clean-checkout VSIX 八场景和 notifier companion/locale/source 已通过；不代证完整 release:verify、真实通知点击、市场自动安装、真实 provider/跨平台全矩阵或用户标题栏人工复现。既有 owned-resize-failed、历史 URL 清理与 Runtime disconnected 批次报告边界继续按已有条目跟踪。
 
-completed-history 空诊断断言已改为精确删除边界预期并通过，原绑定/无正文断言未放宽。首轮预合并 CI 缺少 Chromium，双阶段 workflow 已补齐安装和缓存路径，修复后完整 CI 尚待结果；不将其记为产品测试通过。过程见 docs/exec-plans/active/release-0-26-1-latest-main.md。
+completed-history 空诊断断言已改为精确删除边界预期并通过，原绑定/无正文断言未放宽。首轮预合并 CI 缺少 Chromium，双阶段 workflow 已补齐安装和缓存路径，修复后完整 CI 尚待结果；不将其记为产品测试通过。过程见 docs/exec-plans/completed/release-0-26-1-latest-main.md。
 
 ## 0.26.1 最新准备的明确发布阻塞（2026-10-11，PR #317）
 
 独立 debugRoot 的双窗口检查已通过双向输入、resize 和 Terminal 停止，但 attacher 删除 Agent 后 owner 在 30 秒内仍为 live/waiting-input，原 stopped/history-restored/清绑定断言失败，根因待定位；不移除断言或自动恢复掩盖。systemd-user-real-reopen setup 通过，verify 的 editor Canvas ready 20 秒超时；fallback/Remote SSH 尚未执行。后续须分别建立调查并重验完整门禁。
 
-Webview 全套 423 passed / 1 failed，主题用例在 harness ready 5 秒超时，原参数隔离复跑 1 passed；保留完整套件首败，不追认为全通过。此前确定的 completed-history 诊断、旧升级 root socket、分页等待及恢复夹具启动前提已修正并具名验证；不替代上述未知问题。正式证据与追踪入口：docs/design-docs/release-0-26-1-validation-blockers.md、docs/exec-plans/active/release-0-26-1-latest-main.md。PR 保持草稿，不继承 0.26.0 豁免。
+Webview 全套 423 passed / 1 failed，主题用例在 harness ready 5 秒超时，原参数隔离复跑 1 passed；保留完整套件首败，不追认为全通过。此前确定的 completed-history 诊断、旧升级 root socket、分页等待及恢复夹具启动前提已修正并具名验证；不替代上述未知问题。正式证据与追踪入口：docs/design-docs/release-0-26-1-validation-blockers.md、docs/exec-plans/completed/release-0-26-1-latest-main.md。PR 保持草稿，不继承 0.26.0 豁免。

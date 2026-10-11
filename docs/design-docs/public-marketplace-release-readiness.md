@@ -10,7 +10,7 @@ architecture_layers:
   - 适配与基础设施层
 related_specs: []
 related_plans:
-  - docs/exec-plans/active/release-0-26-1-latest-main.md
+  - docs/exec-plans/completed/release-0-26-1-latest-main.md
   - docs/exec-plans/active/release-0-26-0-prep.md
   - docs/exec-plans/completed/public-marketplace-release-readiness-research.md
   - docs/exec-plans/active/publish-tag-release-flow.md
@@ -367,7 +367,7 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 
 双阶段验证 runner 在 npm ci 后安装 Playwright Chromium 与系统依赖，并统一浏览器缓存到仓库 .playwright-browsers。市场浏览器 E2E 早于后续浏览器安装入口执行，故不能依赖本机默认缓存；历史无 release:verify 的发布 ref 保持旧路径。顺序由 release-preflight 与 publish workflow 回归检查。
 
-版本输入与双 CHANGELOG、英中文 README/listing、手册和支持文档一起评审。完整 release:verify 包含 npm test 与 HEAD clean-checkout VSIX 安装 smoke；0.26.0 例外不适用。历史准备分支只复用静态文案，不继承验证结论。当前过程见 `docs/exec-plans/active/release-0-26-1-latest-main.md`；外部市场安装、桌面点击和用户标题栏复现仍保留人工验证边界。
+版本输入与双 CHANGELOG、英中文 README/listing、手册和支持文档一起评审。完整 release:verify 包含 npm test 与 HEAD clean-checkout VSIX 安装 smoke；0.26.0 例外不适用。历史准备分支只复用静态文案，不继承验证结论。当前过程见 `docs/exec-plans/completed/release-0-26-1-latest-main.md`；外部市场安装、桌面点击和用户标题栏复现仍保留人工验证边界。
 
 ### 9.0.1 历史 0.26.0 发布输入
 
