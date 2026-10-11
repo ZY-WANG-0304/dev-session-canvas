@@ -14,6 +14,18 @@
       "type": "process",
       "command": "npm",
       "args": ["run", "build"],
+      "detail": "Default owned-provider build; requires matching execution assets.",
+      "dependsOrder": "sequence",
+      "dependsOn": ["install dependencies"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "build extension (stock comparison)",
+      "type": "process",
+      "command": "npm",
+      "args": ["run", "build", "--", "--execution-profile=stock"],
+      "detail": "Explicit stock comparison build; not for formal runtime validation.",
       "dependsOrder": "sequence",
       "dependsOn": ["install dependencies"],
       "group": "build",
@@ -46,8 +58,17 @@
     },
     {
       "label": "build debug main-only extension",
+      "detail": "Default owned-provider main-only debug build.",
       "dependsOrder": "sequence",
       "dependsOn": ["build extension", "prepare debug main-only extension"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "build debug main-only extension (stock comparison)",
+      "detail": "Explicit stock comparison main-only debug build.",
+      "dependsOrder": "sequence",
+      "dependsOn": ["build extension (stock comparison)", "prepare debug main-only extension"],
       "group": "build",
       "problemMatcher": []
     }

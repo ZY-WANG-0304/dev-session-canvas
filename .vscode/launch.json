@@ -29,6 +29,33 @@
       "preLaunchTask": "build debug main-only extension"
     },
     {
+      "name": "Run Dev Session Canvas (Main Only, Stock Comparison)",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--profile=Dev Session Canvas Extension Debug",
+        "--extensionDevelopmentPath=${workspaceFolder}/.debug/vscode-extension-main-only"
+      ],
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/.vscode-server/**/extensions/**",
+        "**/.vscode-server/**/server/extensions/**",
+        "**/resources/app/extensions/**"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/vscode/dev-session-canvas/dist/**/*.js",
+        "${workspaceFolder}/.debug/vscode-extension-main-only/dist/**/*.js"
+      ],
+      "sourceMapPathOverrides": {
+        "../src/*": "${workspaceFolder}/extensions/vscode/dev-session-canvas/src/*",
+        "../../../../../packages/*": "${workspaceFolder}/packages/*",
+        "../../../../../node_modules/*": "${workspaceFolder}/node_modules/*",
+        "../../../node_modules/*": "${workspaceFolder}/node_modules/*"
+      },
+      "preLaunchTask": "build debug main-only extension (stock comparison)"
+    },
+    {
       "name": "Run Dev Session Canvas + Notifier (Local Window)",
       "type": "extensionHost",
       "request": "launch",

@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/completed/debug-automation-next-six.md
   - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
   - docs/exec-plans/completed/packaged-smoke-reload-lifecycle.md
-updated_at: 2026-10-08
+updated_at: 2026-10-11
 ---
 
 # 开发调试与自动化验证
@@ -133,7 +133,7 @@ updated_at: 2026-10-08
 
 当前正式调试与验证方案分成三层，并分别落在固定入口上：
 
-- `.vscode/launch.json` 与 `.vscode/tasks.json`：只保留三条默认调试路径，即 `Run Dev Session Canvas (Main Only)`、`Run Dev Session Canvas + Notifier (Local Window)`、`Run Dev Session Canvas + Notifier (Remote Window)`；其中主扩展单调与 notifier 联调不再共用模糊入口。
+- `.vscode/launch.json` 与 `.vscode/tasks.json`：保留三条默认调试路径，即 `Run Dev Session Canvas (Main Only)`、`Run Dev Session Canvas + Notifier (Local Window)`、`Run Dev Session Canvas + Notifier (Remote Window)`；另提供显式的 `Run Dev Session Canvas (Main Only, Stock Comparison)` 对照入口。默认入口走 owned-provider，stock 入口不属于正式运行时验证。
 - `scripts/shared/ensure-node-dependencies.mjs`：作为 VS Code build task 的第一步，检测当前 worktree 是否具备构建所需的根 `node_modules`；若缺失则在仓库根执行 `npm ci`，让新建 worktree 的 F5 / build task 能自举依赖。
 - `scripts/shared/prepare-debug-main-only-extension.mjs`：在 `Run Dev Session Canvas (Main Only)` 启动前生成 `.debug/vscode-extension-main-only/`，把仓库根主扩展复制成一份 debug-only 临时目录，保留运行时需要的 `scripts/runtime/claude-file-event-hook.cjs`，并仅在这份临时 manifest 里移除 `extensionDependencies` / `extensionPack`，从而在保留正式安装真相不变的前提下维持主扩展单调能力。
 - `scripts/smoke/run-vscode-smoke.mjs` 与 `tests/vscode-smoke/extension-tests.cjs`：承担真实 VS Code 宿主级自动化，覆盖扩展激活、Webview ready、`webview/*` 消息桥接、执行会话、runtime persistence、Restricted Mode、真实 Webview probe 与 test-only DOM action。
@@ -150,7 +150,7 @@ updated_at: 2026-10-08
 ### 7.3 核心规则与不变量
 
 - 正式 `package.json` 继续作为发布态单一真相；任何去掉 `extensionDependencies` / `extensionPack` 的动作都只能发生在 `.debug/vscode-extension-main-only/` 或 staged 测试副本，不能反向污染仓库根 manifest。
-- 默认调试入口固定收口为三条 launch 配置；其中 `Run Dev Session Canvas (Main Only)` 必须保持零 notifier 输入，`Run Dev Session Canvas + Notifier (Remote Window)` 必须只额外要求 `localRepoRoot` 这一项输入。
+- 默认调试入口固定收口为三条主要 launch 配置；其中 `Run Dev Session Canvas (Main Only)` 必须保持零 notifier 输入并使用 owned-provider，`Run Dev Session Canvas + Notifier (Remote Window)` 必须只额外要求 `localRepoRoot` 这一项输入。stock comparison 只作为显式对照入口，不改变默认调试路径。
 - VS Code build task 可以在缺少根 `node_modules` 时自举执行 `npm ci`，但不改变发布态 package manifest；CI、发布与命令行验证仍应把 `npm ci` 当作显式环境准备步骤。
 - 真实宿主 smoke 与 Playwright harness 分工固定：前者负责集成闭环与运行时语义，后者负责 Webview UI / 截图回归；两者互补，不能互相宣称覆盖对方的验证范围。
 - 宿主侧 test-only 能力只在 `ExtensionMode.Test` 或约定测试 harness 下暴露，用于读取状态、等待 ready、派发消息和采集 probe；发布态与日常 F5 不应把这些命令当成产品接口。
