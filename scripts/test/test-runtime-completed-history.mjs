@@ -216,7 +216,13 @@ async function verifyCompletedBindingOwner() {
         assert.equal(dispatched.length, 0);
       }
       await host.applyCompletedRuntimeSupervisorSnapshot('node', kind, snapshot);
-      assert.deepEqual(diagnostics, [], `${kind} ${ownership} completion cleanup must not lose its original owner.`);
+      assert.deepEqual(diagnostics, [{
+        name: 'execution/deleteBoundary',
+        detail: {
+          phase: 'runtime-delete-requested', nodeId: undefined, kind,
+          sessionId: binding.sessionId, backendKind: binding.backendKind
+        }
+      }], `${kind} ${ownership} completion cleanup records only its original deletion boundary.`);
       assert.equal(dispatched.length, 1);
       assert.deepEqual({ ...dispatched[0], runtimeOwner: dispatched[0].runtimeOwner }, binding,
         `${kind} ${ownership} completion dispatches the exact original binding.`);

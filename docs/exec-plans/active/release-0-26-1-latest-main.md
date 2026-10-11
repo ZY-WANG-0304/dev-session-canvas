@@ -16,7 +16,7 @@
 
 ## 意外与发现
 
-release-0-26-1-prep、release-0-26-1-prep-resumed 和 release-0-26-1-from-main 已被其他 worktree 使用，故新建独立分支。旧准备曾因完整门禁失败停留草稿，不能复用通过结论。最新主线已有后续修复，但仍需实际验证。
+release-0-26-1-prep、release-0-26-1-prep-resumed 和 release-0-26-1-from-main 已被其他 worktree 使用，故新建独立分支。旧准备曾因完整门禁失败停留草稿，不能复用通过结论。首轮完整 verify 在 test-runtime-completed-history.mjs:219 失败：旧断言要求 diagnostics 为空，#316 新诊断合法产生 execution/deleteBoundary。实际派发仍保留原 binding；将预期改为精确删除事件，并保留原归属和无正文断言。最新主线已有后续修复，但仍需实际验证。
 
 ## 决策记录
 
@@ -67,3 +67,5 @@ preflight 必须通过版本、双 CHANGELOG 和契约校验；verify 必须通�
 使用现有 release-preflight.mjs、run-clean-checkout-vsix-validation.mjs 与发布工作流，不新增依赖、接口或门禁豁免。
 
 修订记录：2026-10-11，依据用户要求从最新 origin/main 独立准备 0.26.1，记录旧分支边界与完整验证要求。
+
+修订记录：2026-10-11，记录首轮完整验证失败与旧诊断断言差异；修正契约中的 Host 接线命令为实际 node 脚本，补充精确诊断预期，不修改产品实现或放宽门禁。
