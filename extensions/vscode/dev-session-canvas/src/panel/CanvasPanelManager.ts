@@ -7649,6 +7649,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private getRuntimeContext(webview: vscode.Webview | undefined = this.getActiveWebview()): CanvasRuntimeContext {
     const fileConfiguration = this.getCanvasFileViewConfiguration();
     return {
+      executionMouseDiagnosticsEnabled: this.context.extensionMode === vscode.ExtensionMode.Development,
       workspaceTrusted: vscode.workspace.isTrusted,
       surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
       workspaceFolders: this.getWorkspaceFoldersForDisplay(),

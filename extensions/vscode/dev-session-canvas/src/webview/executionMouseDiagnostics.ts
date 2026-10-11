@@ -3,10 +3,11 @@ import type { MouseReportCoords } from './executionTerminalTypes';
 
 let nextTraceId = 1;
 
-// Opt-in from the webview DevTools; never collect keyboard input or element text.
+// Development hosts enable this automatically; never collect keyboard input or element text.
 export function createExecutionMouseDiagnostics(
   terminal: Terminal,
-  report: (detail: Record<string, unknown>) => void
+  report: (detail: Record<string, unknown>) => void,
+  isEnabled: () => boolean = () => false
 ) {
   const traceId = `${Date.now()}-${nextTraceId++}`;
   let sequence = 0;
@@ -14,7 +15,7 @@ export function createExecutionMouseDiagnostics(
   let remaining = 512;
   let disposed = false;
   const enabled = (): boolean => {
-    try { return !disposed && localStorage.getItem('devSessionCanvas.mouseDiagnostics') === '1'; }
+    try { return !disposed && isEnabled(); }
     catch { return false; }
   };
   const emit = (detail: Record<string, unknown>): void => {

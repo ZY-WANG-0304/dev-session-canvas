@@ -18,7 +18,7 @@ updated_at: 2026-10-11
 
 `webview/executionMouseDiagnostics.ts` 观察 xterm 实际调用的 getMouseReportCoords，记录事件时间、可信性、按钮、目标标签/class摘要、真实屏幕坐标、终端screen矩形、缩放后坐标、转换结果与模式。`executionSessionNodes.tsx` 在Agent和Terminal接入观察，不改返回值；onData仅记录完整匹配SGR鼠标序列的输入，沿用input sequence关联Host。事件关联只在当前任务内有效，微任务清除；标注同任务关联而非声称完整因果证明。
 
-新增专用 `webview/executionMouseDiagnostic` 消息由 `common/protocol.ts` 校验，再由 `CanvasPanelManager.ts` 记录surface/current/lifecycle。Host记录鼠标输入派发、client writeInput派发与runtime删除入口/完成边界。开关为webview localStorage的devSessionCanvas.mouseDiagnostics=1；每实例最多512条，错误处理不变；普通键盘、DOM文本和HTML不采集。具体复现、关闭开关和分析步骤见关联计划。
+新增专用 `webview/executionMouseDiagnostic` 消息由 `common/protocol.ts` 校验，再由 `CanvasPanelManager.ts` 记录surface/current/lifecycle。Host记录鼠标输入派发、client writeInput派发与runtime删除入口/完成边界。开关由Host runtime字段executionMouseDiagnosticsEnabled下发；ExtensionMode.Development自动开启，Production默认关闭；每实例最多512条，错误处理不变；普通键盘、DOM文本和HTML不采集。具体复现和分析步骤见关联计划。
 
 ## 验证与限制
 
@@ -27,3 +27,5 @@ updated_at: 2026-10-11
 ## 已确认的删除窗口与待确认来源
 
 05-11-34-288Z复现中删除RPC派发后仍有新webview输入：删除派发05:11:20.756；sequence34/46/58发送于05:11:20.992、05:11:22.982、05:11:23.181；Host均以current=true、stopRequested=false转发。删除承诺和Host移除直到05:11:25.986完成，期间25次写入失败。因此Host删除期间的输入准入尚未关闭是确定的时序缺口，并非仅删除前排队请求。原始DOM事件来源仍待定；用户确认未执行开关，本次webview鼠标诊断为0。最终修复方案须明确删除开始时的输入准入、已派发输入收口、失败/未知删除后的状态责任，并保留真实故障呈现，不以隐藏sessionNotFound替代修复。
+
+修订记录：2026-10-11取消手动localStorage开关，Main Only开发Host自动启用，保持512条限制。此前dump缺失原始事件的记录保留为历史事实，下一次无需用户执行控制台命令。

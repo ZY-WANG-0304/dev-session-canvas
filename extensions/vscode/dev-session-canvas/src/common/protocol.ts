@@ -439,6 +439,7 @@ export interface CanvasRuntimeWorkspaceFolder {
 }
 
 export interface CanvasRuntimeContext {
+  executionMouseDiagnosticsEnabled?: boolean;
   workspaceTrusted: boolean;
   surfaceLocation: CanvasSurfaceLocation;
   workspaceFolders: CanvasRuntimeWorkspaceFolder[];

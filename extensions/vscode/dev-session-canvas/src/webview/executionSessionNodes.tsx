@@ -445,7 +445,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       const terminalElement = terminal.element;
 
       const mouseDiagnostics = createExecutionMouseDiagnostics(terminal, detail =>
-        deps.reportExecutionMouseDiagnostic(id, 'agent', detail));
+        deps.reportExecutionMouseDiagnostic(id, 'agent', detail),
+        () => deps.getRuntimeContext().executionMouseDiagnosticsEnabled === true);
 
       if (mouseService && originalGetCoords) {
         mouseService.getCoords = (event, element, colCount, rowCount, isSelection) =>
@@ -1180,7 +1181,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       const terminalElement = terminal.element;
 
       const mouseDiagnostics = createExecutionMouseDiagnostics(terminal, detail =>
-        deps.reportExecutionMouseDiagnostic(id, 'terminal', detail));
+        deps.reportExecutionMouseDiagnostic(id, 'terminal', detail),
+        () => deps.getRuntimeContext().executionMouseDiagnosticsEnabled === true);
 
       if (mouseService && originalGetCoords) {
         mouseService.getCoords = (event, element, colCount, rowCount, isSelection) =>

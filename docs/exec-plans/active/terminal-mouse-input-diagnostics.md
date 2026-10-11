@@ -19,7 +19,7 @@ xterm 的无按键移动监听绑定到 terminal.element；document 全局拖动
 
 ## 决策记录
 
-使用独立 executionMouseDiagnostic 消息，而不把鼠标诊断混入 clipboard 诊断。webview localStorage 的 devSessionCanvas.mouseDiagnostics=1 显式启用，每终端生命周期最多512条，重载重置额度；不采集键盘内容、DOM文本、HTML、元素ID。现有 Host 诊断缓存仍有界。
+使用独立 executionMouseDiagnostic 消息，而不把鼠标诊断混入 clipboard 诊断。由Host的ExtensionMode.Development自动启用（Main Only F5调试），每终端生命周期最多512条，重载重置额度；不采集键盘内容、DOM文本、HTML、元素ID。现有 Host 诊断缓存仍有界。
 
 坐标转换和 onData 的关联标记为 same-task-coordinate-conversion，仅保留到下一个微任务；没有关联时记录 unmatched。不把最近历史事件冒充确切来源。序列号使用原 execution input sequence，使 onData 可与 Host 写入配对。
 
@@ -39,7 +39,7 @@ xterm 的无按键移动监听绑定到 terminal.element；document 全局拖动
 
 在仓库根运行 `node scripts/test/test-execution-mouse-diagnostics.mjs`、`npm run typecheck`、`npm run test:protocol-webview-messages`、`npm run build` 和 `npm run prepare:debug-main-only-extension`。
 
-重新启动 Main Only F5。运行 VS Code 的 Developer: Open Webview Developer Tools，在 Canvas frame 的控制台执行 localStorage.setItem('devSessionCanvas.mouseDiagnostics', '1')。鼠标进入终端，再移向标题栏并删除节点；立即导出 current host diagnostics。结束后执行 localStorage.removeItem('devSessionCanvas.mouseDiagnostics')。若达到512条额度，重载Canvas重新采集。
+重新启动 Main Only F5。无需控制台操作，Host自动下发诊断开关。鼠标进入终端，再移向标题栏并删除节点；立即导出 current host diagnostics。生产Host默认不启用此采集。若达到512条额度，重载Canvas重新采集。
 
 ## 验证与验收
 
@@ -69,6 +69,8 @@ xterm 的无按键移动监听绑定到 terminal.element；document 全局拖动
 
 代码路径 `terminateExecutionNodeForDeletion` 等待 `deleteRuntimeSupervisorSessionStrict` 后才调用 `disposeExecutionSession`，后者才设置stopRequested并移除session；`writeExecutionInput` 仍能查到该session并发送writeInput。Supervisor的requireSession在目标已移除或retiring时返回sessionNotFound；本dump不能区分返回时这两种状态，也不能精确解释5秒等待发生在哪个最终收口环节。
 
-本dump中webview/executionMouseDiagnostic为0。用户确认未执行开关，所以不存在原始DOM事件和onData关联证据；不能判断标题栏事件是否进入xterm。下一次必须开启开关并采集，再按traceId、eventId、sequence和surface生命周期分析。此前将错误称为已确认的删除前排队竞态是过度推断，已撤回相关结论且未实施错误屏蔽。
+本dump中webview/executionMouseDiagnostic为0。用户确认未执行开关，所以不存在原始DOM事件和onData关联证据；不能判断标题栏事件是否进入xterm。下一次加载更新后的开发Host，由Host自动启用并采集，再按traceId、eventId、sequence和surface生命周期分析。此前将错误称为已确认的删除前排队竞态是过度推断，已撤回相关结论且未实施错误屏蔽。
 
 修订记录：2026-10-11登记新dump时序，分开记录已确认Host删除窗口与尚未确认鼠标事件来源。
+
+修订记录：2026-10-11取消手动localStorage开关，Main Only开发Host自动启用，保持512条限制。此前dump缺失原始事件的记录保留为历史事实，下一次无需用户执行控制台命令。
