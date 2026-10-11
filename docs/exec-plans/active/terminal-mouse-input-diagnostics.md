@@ -8,7 +8,8 @@
 - [x] 检查原 dump，确认七次可见错误对应 SGR 无按键鼠标移动输入。
 - [x] 添加坐标、onData 与 Host 派发/删除边界诊断，验证诊断开关、关联过期、隐私和容量限制。
 - [x] 类型检查、消息校验回归、真实xterm标题栏边界对照及构建通过；Main Only调试目录已刷新。
-- [ ] 完成实际标题栏删除复现，基于新 dump 确认原始事件来源。
+- [x] 分析05-11-34-288Z用户复现：确认删除等待期间继续产生并转发新输入，推翻仅删除前排队的解释。
+- [ ] 原始事件来源待验证：用户确认此次未执行webview诊断开关，原始鼠标/onData记录为0。
 
 ## 意外与发现
 
@@ -61,3 +62,13 @@ xterm 的无按键移动监听绑定到 terminal.element；document 全局拖动
 复用当前 xterm、输入sequence、webview消息校验和Host诊断缓存，不新增运行依赖。不改第三方库。诊断异常不得改变输入行为。
 
 修订记录：2026-10-11 创建计划，记录尚待真实场景验证的根因与已实现诊断范围。
+
+## 2026-10-11 第二次用户复现证据
+
+输入文件为 `/home/users/ziyang01.wang-al/projects/dsc-test-01/.debug/current-host-diagnostics/2026-10-11T05-11-34-288Z`。目标session为d594f190-b5df-4f37-8fa0-ed36a77401d3。Host开始删除05:11:20.752，派发删除RPC05:11:20.756，完成删除并移除Host session均为05:11:25.986，总窗口约5.23秒。25次SGR鼠标写入失败；sequence34的webview发送时间为05:11:20.992，sequence46为05:11:22.982，sequence58为05:11:23.181。均晚于删除派发，且Host写入派发时current=true、stopRequested=false。因此并非仅删除前排队的残留请求，而是删除等待期间继续产生、接收、转发新输入。
+
+代码路径 `terminateExecutionNodeForDeletion` 等待 `deleteRuntimeSupervisorSessionStrict` 后才调用 `disposeExecutionSession`，后者才设置stopRequested并移除session；`writeExecutionInput` 仍能查到该session并发送writeInput。Supervisor的requireSession在目标已移除或retiring时返回sessionNotFound；本dump不能区分返回时这两种状态，也不能精确解释5秒等待发生在哪个最终收口环节。
+
+本dump中webview/executionMouseDiagnostic为0。用户确认未执行开关，所以不存在原始DOM事件和onData关联证据；不能判断标题栏事件是否进入xterm。下一次必须开启开关并采集，再按traceId、eventId、sequence和surface生命周期分析。此前将错误称为已确认的删除前排队竞态是过度推断，已撤回相关结论且未实施错误屏蔽。
+
+修订记录：2026-10-11登记新dump时序，分开记录已确认Host删除窗口与尚未确认鼠标事件来源。
