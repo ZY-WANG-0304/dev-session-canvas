@@ -454,16 +454,28 @@ async function runSystemdUserRealWindowReopenScenario() {
 async function runSystemdFallbackRealWindowReopenScenario() {
   await runLocalRealWindowReopenScenario({
     scenarioName: 'systemd-fallback-real-reopen',
-    description: 'Fake systemd fallback real window reopen smoke',
+    description: 'Systemd unavailable before submission real window reopen smoke',
     runtimeDirName: 'dsc-vscode-smoke-runtime-systemd-fallback-real-reopen',
     expectedRuntimeBackend: 'legacy-detached',
     expectedRuntimeGuarantee: 'best-effort',
     extraEnv: {
       DEV_SESSION_CANVAS_RUNTIME_HOST_BACKEND_OVERRIDE: 'systemd-user',
       DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM: fakeSystemdShimPath,
-      DEV_SESSION_CANVAS_FAKE_SYSTEMD_MODE: 'fail-start'
+      DEV_SESSION_CANVAS_FAKE_SYSTEMD_MODE: 'success',
+      // A missing user bus is unavailable before submission, unlike a failed systemctl start.
+      DBUS_SESSION_BUS_ADDRESS: '',
+      XDG_RUNTIME_DIR: ''
     }
   });
+  const systemctlLog = path.join(smokeDebugRoot, 'systemd-fallback-real-reopen', 'artifacts', 'fake-systemd-state', 'systemctl.log');
+  try {
+    await fs.access(systemctlLog);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    console.log('Systemd unavailable fallback did not submit any systemctl command.');
+    return;
+  }
+  throw new Error('Unavailable systemd must fall back before any systemctl command is submitted.');
 }
 
 async function runLocalRealWindowReopenScenario(options) {

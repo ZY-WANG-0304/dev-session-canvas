@@ -18,6 +18,8 @@ assert.equal(job.if, '${{ always() && github.event.pull_request.draft == false }
 assert.deepEqual(job.needs, ['resolve-release-input', 'native-assets']);
 assert.equal(resolveJob.if, '${{ github.event.pull_request.draft == false }}');
 assert.equal(job['timeout-minutes'], 90);
+assert.equal(job.env.PLAYWRIGHT_BROWSERS_PATH, '${{ github.workspace }}/.playwright-browsers');
+assert.equal(job.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT, '/tmp/tm-${{ github.run_id }}');
 
 const checkoutStep = resolveJob.steps.find((entry) => entry.name === 'Checkout PR merge result');
 assert.ok(checkoutStep, 'workflow must validate the pull request merge result');
@@ -33,6 +35,15 @@ const verifyStep = job.steps.find((entry) => entry.name === 'Verify release cont
 assert.ok(verifyStep, 'workflow must run the full release verification');
 assert.equal(verifyStep.if, "needs.resolve-release-input.outputs.is_release == 'true'");
 assert.equal(verifyStep.run, 'npm run release:verify -- --version "${{ needs.resolve-release-input.outputs.version }}"');
+const browserInstall = job.steps.find(entry => entry.name === 'Install release verification browser');
+assert(browserInstall, 'release verification needs Chromium before the early marketplace browser tests');
+assert.equal(browserInstall.if, verifyStep.if, 'non-release PRs must not install browsers');
+assert.equal(browserInstall.run, 'npx --no-install playwright install --with-deps chromium');
+const dependencies = job.steps.find(entry => entry.name === 'Install dependencies');
+assert(dependencies);
+assert.equal(dependencies.run, 'npm ci', 'browser installation must use the lockfile-installed Playwright CLI');
+assert(job.steps.indexOf(dependencies) < job.steps.indexOf(browserInstall));
+assert(job.steps.indexOf(browserInstall) < job.steps.indexOf(verifyStep));
 assert.equal(assetsJob.uses, './.github/workflows/runtime-execution-assets.yml');
 assert.equal(assetsJob.if, "needs.resolve-release-input.outputs.is_release == 'true'");
 assert.equal(assetsJob.with.input_ref, '${{ needs.resolve-release-input.outputs.input_ref }}');

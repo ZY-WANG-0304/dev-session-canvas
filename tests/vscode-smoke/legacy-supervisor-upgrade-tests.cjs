@@ -315,7 +315,8 @@ async function run() {
     assert.ok(currentTerminalSessionId);
     assert.notStrictEqual(path.normalize(currentTerminalMetadata.runtimeStoragePath), path.normalize(runtimeStoragePath));
     assert.ok(currentTerminalMetadata.runtimeStoragePath.includes('runtime-supervisor-generations'));
-    currentSupervisorPaths = resolveLegacyRuntimeSupervisorPathsFromStorageDir(
+    assert.ok(currentTerminalMetadata.runtimeOwner, 'New sessions must retain their root runtime owner.');
+    currentSupervisorPaths = resolveRootRuntimeSupervisorPathsFromStorageDir(
       path.join(currentTerminalMetadata.runtimeStoragePath, 'runtime-supervisor')
     );
     const currentHello = await waitForRuntimeSupervisorReady(currentSupervisorPaths, 20000);
@@ -771,6 +772,17 @@ async function sendRuntimeSupervisorRequest(supervisorPaths, method, params) {
       }
     });
   });
+}
+
+function resolveRootRuntimeSupervisorPathsFromStorageDir(storageDir) {
+  const normalizedStorageDir = path.resolve(storageDir);
+  const digest = createHash('sha1').update(normalizedStorageDir).digest('hex').slice(0, 24);
+  assert.strictEqual(typeof process.getuid, 'function', 'This Unix upgrade fixture requires an OS user identity.');
+  return {
+    storageDir: normalizedStorageDir,
+    socketPath: path.posix.join('/tmp', `dsc-root-${process.getuid()}`, `d-${digest}.sock`),
+    registryPath: path.join(normalizedStorageDir, 'registry.json')
+  };
 }
 
 function resolveLegacyRuntimeSupervisorPathsFromStorageDir(storageDir) {
