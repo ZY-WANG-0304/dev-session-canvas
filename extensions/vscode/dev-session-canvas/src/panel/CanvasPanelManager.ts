@@ -27930,6 +27930,7 @@ function summarizeHostMessageDetail(message: HostToWebviewMessage): Record<strin
         updatedAt: message.payload.state.updatedAt,
         surfaceLocation: message.payload.runtime.surfaceLocation,
         workspaceTrusted: message.payload.runtime.workspaceTrusted,
+        executionMouseDiagnosticsEnabled: message.payload.runtime.executionMouseDiagnosticsEnabled === true,
         multiRootPresentationMode: message.payload.runtime.multiRootPresentationMode,
         workspaceRootGroups: summarizeWorkspaceRootGroupsForDiagnostics(message.payload.state)
       };
