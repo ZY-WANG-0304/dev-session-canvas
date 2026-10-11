@@ -43,6 +43,7 @@ const browserStep = step('prepare', 'Install release verification browser');
 assert.equal(browserStep.if, "hashFiles('scripts/release/release-preflight.mjs') != ''");
 assert.equal(browserStep.run, 'npx --no-install playwright install --with-deps chromium');
 assert.equal(prepareJob.env.PLAYWRIGHT_BROWSERS_PATH, '${{ github.workspace }}/.playwright-browsers');
+assert.equal(prepareJob.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT, '/tmp/tm-${{ github.run_id }}');
 assert(prepareJob.steps.indexOf(step('prepare', 'Install dependencies')) < prepareJob.steps.indexOf(browserStep));
 assert(prepareJob.steps.indexOf(browserStep) < prepareJob.steps.indexOf(releaseVerificationStep));
 const assembleStep = step('prepare', 'Assemble same-ref native runtime assets');

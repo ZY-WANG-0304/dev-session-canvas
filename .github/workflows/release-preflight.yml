@@ -70,6 +70,7 @@ jobs:
     timeout-minutes: 90
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+      DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/tm-${{ github.run_id }}
     steps:
       - name: Require successful release prerequisites
         shell: bash

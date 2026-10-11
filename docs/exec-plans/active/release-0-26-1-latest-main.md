@@ -88,3 +88,5 @@ PR #317 首轮预合并 CI run 38122050123 六目标资产成功，但完整验�
 第三轮完整 verify 已通过单元测试及 local-execution-flow、owned-canvas-reconciliation、snapshot-only-manual-recovery、local-surface-cutover、local-preparation-failure、local-pty-robustness、local-links-and-stop、runtime-checkpoint-refresh、trusted 和 restricted，随后 legacy-supervisor-upgrade 在第 321 行查询新 root 会话 socket 时超时。原旧会话已通过前段输入/输出/兼容操作；新会话 metadata 和 registry 证明 root runtime 已启动，但 fixture 继续按旧 XDG socket 规则计算新地址。只将新会话路径改为当前 root 固定 /tmp/dsc-root-uid/d-digest.sock，并要求 runtimeOwner；旧路径 helper、原输入输出/隔离/清理断言保持。实际修复后定向与完整门禁待复核，不能将首败追认为通过。
 
 修订记录：2026-10-11，记录 legacy upgrade 新 root socket 假设差异，修正新会话 fixture 地址，不修改产品或旧会话兼容行为。
+
+2026-10-11：旧升级 smoke 修复后定向完整通过，见 /tmp/dsc261latest-legacy-upgrade.log；CI run 38122582127 已越过浏览器缺失，随后因 checkout 下市场 Host TMP 路径过长导致 VS Code listen EINVAL，在业务断言前失败。双阶段 workflow 使用既有 HOST_TMP_ROOT 配置指向 /tmp/tm-runId 短路径，调试工件仍在 checkout；与本机已通过市场 E2E 的短路径环境一致。workflow 回归检查该配置，实际后续 CI 仍待结果。

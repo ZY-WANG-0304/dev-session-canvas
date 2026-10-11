@@ -38,6 +38,8 @@ assert(browserStep, 'fresh release runners need Chromium before Marketplace brow
 assert.equal(browserStep.if, verifyStep.if);
 assert.equal(browserStep.run, 'npx --no-install playwright install --with-deps chromium');
 assert.equal(job.env.PLAYWRIGHT_BROWSERS_PATH, '${{ github.workspace }}/.playwright-browsers');
+assert.equal(job.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT, '/tmp/tm-${{ github.run_id }}',
+  'Marketplace Host sockets must use a short per-run directory outside the deep checkout');
 assert(job.steps.indexOf(job.steps.find(entry => entry.name === 'Install dependencies')) < job.steps.indexOf(browserStep));
 assert(job.steps.indexOf(browserStep) < job.steps.indexOf(verifyStep));
 assert.equal(assetsJob.uses, './.github/workflows/runtime-execution-assets.yml');

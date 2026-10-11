@@ -432,3 +432,5 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 - `Open VSX` 发布文档：<https://github.com/eclipse/openvsx/wiki/Publishing-Extensions>
 
 后续若真的进入公开发布实施阶段，应以“在干净 checkout 中成功产出最小 VSIX，并完成首发平台安装验收”作为新的验证门槛。
+
+2026-10-11：旧升级 smoke 修复后定向完整通过，见 /tmp/dsc261latest-legacy-upgrade.log；CI run 38122582127 已越过浏览器缺失，随后因 checkout 下市场 Host TMP 路径过长导致 VS Code listen EINVAL，在业务断言前失败。双阶段 workflow 使用既有 HOST_TMP_ROOT 配置指向 /tmp/tm-runId 短路径，调试工件仍在 checkout；与本机已通过市场 E2E 的短路径环境一致。workflow 回归检查该配置，实际后续 CI 仍待结果。
