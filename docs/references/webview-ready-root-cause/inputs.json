@@ -1,0 +1,7 @@
+{
+  "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "72ea704a0ba40115239167a99f9d6771e2924851b881689bea23acf40b9e4135",
+  "extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts": "08feb7695918296afb00d3c0ef50c739b45f8eacb299974fdf24dea9bdca2555",
+  "extensions/vscode/dev-session-canvas/src/webview/main.tsx": "d5db4bacc98077a2052c4b650cd76c996dec5ab2aeb5131a8f5424b5b9f5d468",
+  "tests/vscode-smoke/real-reopen-tests.cjs": "83a3daf71e6857f68b79ab6f2194509d4ff7ebc85cf854c7f3a1431b793096c9",
+  "scripts/smoke/vscode-smoke-runner.mjs": "012e2cba8d9f2219391801a875960e5edd4388073a3b6d52b321cf9174257a3b"
+}

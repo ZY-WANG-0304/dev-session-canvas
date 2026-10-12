@@ -1,0 +1,6 @@
+Error: Timed out waiting for the editor Canvas to become ready (20000ms).
+	at _CanvasPanelManager.waitForCanvasReady (/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/extension.js:29486:11)
+	at async Rf._executeContributedCommand (file:///tmp/dsc-ready-vscode/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:165:49173)
+	at async openCanvasEditor (/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs:371:3)
+	at async runVerifyPhase (/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs:218:5)
+	at async Object.run (/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs:56:7)

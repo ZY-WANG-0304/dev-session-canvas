@@ -1,0 +1,1761 @@
+[
+  {
+    "timestamp": "2026-10-12T18:18:25.253Z",
+    "kind": "storage/slotSelected",
+    "detail": {
+      "currentPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "sourcePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "selectionBasis": "current-slot",
+      "migrationRequired": false,
+      "currentSlotName": "1e26493c757362a386dc0bf0a0e7db86",
+      "sourceSlotName": "1e26493c757362a386dc0bf0a0e7db86",
+      "sourceStateHash": "0c388c6b3fb9",
+      "sourceWrittenAt": "2026-10-12T18:18:10.183Z",
+      "sourceStateUpdatedAt": "2026-10-12T18:18:10.180Z",
+      "sourceTimestamp": "2026-10-12T18:18:10.183Z",
+      "currentStateHash": "0c388c6b3fb9",
+      "currentWrittenAt": "2026-10-12T18:18:10.183Z",
+      "currentStateUpdatedAt": "2026-10-12T18:18:10.180Z",
+      "currentTimestamp": "2026-10-12T18:18:10.183Z"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.259Z",
+    "kind": "state/loadSelected",
+    "detail": {
+      "source": "rootLocalSnapshot",
+      "rootPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/root-local-canvas/cc6ccbc9c9d2fa821a6483bd/canvas-state.json",
+      "storagePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotAvailable": true,
+      "workspaceStateAvailable": false,
+      "resetDueToFilesFeatureModeChange": false,
+      "fileDomainDisabled": true,
+      "snapshotWrittenAt": "2026-10-12T18:18:10.062Z",
+      "snapshotStateHash": "60f6c8247c6a",
+      "loadedStateHash": "a049787f1f42",
+      "stateHash": "60f6c8247c6a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:10.062Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.263Z",
+    "kind": "state/initialized",
+    "detail": {
+      "activeSurface": "editor",
+      "nodeCount": 3,
+      "storagePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "storageSelectionBasis": "current-slot"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.284Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:25.284Z",
+      "mode": "immediate",
+      "workspaceStateMode": "full",
+      "reason": "state-initialized",
+      "coalescedCount": 0,
+      "stateHash": "a049787f1f42",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:10.062Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.284Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:25.284Z",
+      "mode": "immediate",
+      "workspaceStateMode": "full",
+      "reason": "state-initialized",
+      "coalescedCount": 0,
+      "stateHash": "a049787f1f42",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:10.062Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.307Z",
+    "kind": "execution/operationIgnored",
+    "detail": {
+      "kind": "terminal",
+      "nodeId": "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+      "stage": "attach",
+      "runtimeSessionId": "b1060895-23f9-4505-b1b2-0aa7a51cc229"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.307Z",
+    "kind": "execution/operationIgnored",
+    "detail": {
+      "kind": "terminal",
+      "nodeId": "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94",
+      "stage": "attach",
+      "runtimeSessionId": "e2305401-50a6-4b81-b1bd-fbeb0fff7c94"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.320Z",
+    "kind": "runtime/terminalSourceDisposition",
+    "detail": {
+      "nodeId": "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94",
+      "kind": "terminal",
+      "sessionId": "e2305401-50a6-4b81-b1bd-fbeb0fff7c94",
+      "sourceDisposition": {
+        "kind": "eof"
+      },
+      "finalRevision": 3
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.323Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:25.323Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "e90b10a8e9e5",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.317Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.323Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:25.323Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "e90b10a8e9e5",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.317Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.323Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "e90b10a8e9e5",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.317Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.324Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:25.323Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-completed-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "047bc008b948",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.320Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.324Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:25.323Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-completed-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "047bc008b948",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.320Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.324Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "runtime-supervisor-completed-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "047bc008b948",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.320Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.326Z",
+    "kind": "execution/deleteBoundary",
+    "detail": {
+      "phase": "runtime-delete-requested",
+      "kind": "terminal",
+      "sessionId": "e2305401-50a6-4b81-b1bd-fbeb0fff7c94",
+      "backendKind": "legacy-detached"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.327Z",
+    "kind": "execution/deleteBoundary",
+    "detail": {
+      "phase": "runtime-delete-rpc-dispatch",
+      "kind": "terminal",
+      "sessionId": "e2305401-50a6-4b81-b1bd-fbeb0fff7c94",
+      "backendKind": "legacy-detached"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.328Z",
+    "kind": "runtime/terminalBatchReceived",
+    "detail": {
+      "sessionId": "b1060895-23f9-4505-b1b2-0aa7a51cc229",
+      "nodeId": "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+      "kind": "terminal",
+      "batchId": 1,
+      "afterRevision": 3,
+      "revision": 3,
+      "events": 0,
+      "supervisorEmittedAtMs": 1791829105322,
+      "hostReceivedAtMs": 1791829105328
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.328Z",
+    "kind": "runtime/terminalBatchFlushStarted",
+    "detail": {
+      "sessionId": "b1060895-23f9-4505-b1b2-0aa7a51cc229",
+      "nodeId": "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+      "kind": "terminal",
+      "batchId": 1,
+      "revision": 3,
+      "hostFlushStartedAtMs": 1791829105328
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.328Z",
+    "kind": "execution/operationIgnored",
+    "detail": {
+      "kind": "agent",
+      "nodeId": "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+      "stage": "attach",
+      "runtimeSessionId": "243bf387-768b-42e8-b1db-19d361c6c37d"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.335Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:25.334Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "82add8ee8f96",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.331Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.335Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:25.334Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "82add8ee8f96",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.331Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.335Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "82add8ee8f96",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.331Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.337Z",
+    "kind": "runtime/terminalBatchFlushCompleted",
+    "detail": {
+      "sessionId": "b1060895-23f9-4505-b1b2-0aa7a51cc229",
+      "nodeId": "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+      "kind": "terminal",
+      "batchId": 1,
+      "revision": 3,
+      "hostFlushStartedAtMs": 1791829105328,
+      "hostFlushCompletedAtMs": 1791829105337
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.340Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:25.340Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "f4ce7519531e",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.337Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.341Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:25.340Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "f4ce7519531e",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.337Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.341Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "f4ce7519531e",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.337Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.341Z",
+    "kind": "runtime/terminalBatchConsumed",
+    "detail": {
+      "sessionId": "b1060895-23f9-4505-b1b2-0aa7a51cc229",
+      "nodeId": "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+      "kind": "terminal",
+      "batchId": 1,
+      "revision": 3,
+      "supervisorEmittedAtMs": 1791829105322,
+      "hostReceivedAtMs": 1791829105328,
+      "hostConsumedAtMs": 1791829105341
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.344Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "from": "editor",
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.345Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:25.345Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "f4ce7519531e",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.337Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.345Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:25.345Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "f4ce7519531e",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.337Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.345Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "f4ce7519531e",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.337Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.346Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.346Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.354Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.358Z",
+    "kind": "runtime/terminalBatchReceived",
+    "detail": {
+      "sessionId": "243bf387-768b-42e8-b1db-19d361c6c37d",
+      "nodeId": "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+      "kind": "agent",
+      "batchId": 1,
+      "afterRevision": 4,
+      "revision": 4,
+      "events": 0,
+      "supervisorEmittedAtMs": 1791829105334,
+      "hostReceivedAtMs": 1791829105358
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.358Z",
+    "kind": "runtime/terminalBatchFlushStarted",
+    "detail": {
+      "sessionId": "243bf387-768b-42e8-b1db-19d361c6c37d",
+      "nodeId": "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+      "kind": "agent",
+      "batchId": 1,
+      "revision": 4,
+      "hostFlushStartedAtMs": 1791829105358
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.384Z",
+    "kind": "runtime/terminalBatchFlushCompleted",
+    "detail": {
+      "sessionId": "243bf387-768b-42e8-b1db-19d361c6c37d",
+      "nodeId": "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+      "kind": "agent",
+      "batchId": 1,
+      "revision": 4,
+      "hostFlushStartedAtMs": 1791829105358,
+      "hostFlushCompletedAtMs": 1791829105384
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.388Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:25.387Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.388Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:25.387Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.388Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.388Z",
+    "kind": "runtime/terminalBatchConsumed",
+    "detail": {
+      "sessionId": "243bf387-768b-42e8-b1db-19d361c6c37d",
+      "nodeId": "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+      "kind": "agent",
+      "batchId": 1,
+      "revision": 4,
+      "supervisorEmittedAtMs": 1791829105334,
+      "hostReceivedAtMs": 1791829105358,
+      "hostConsumedAtMs": 1791829105388
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.660Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "dispose",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.661Z",
+    "kind": "surface/disposed",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.667Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.667Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:25.667Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.667Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:25.667Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.667Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.668Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.668Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.668Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.792Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "dispose",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.792Z",
+    "kind": "surface/disposed",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.797Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.797Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:25.797Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.797Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:25.797Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.797Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.798Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.798Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 8
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:25.798Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 8
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.305Z",
+    "kind": "webview/readyReceived",
+    "detail": {
+      "surface": "editor",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 8,
+        "frameId": "frame-ab19aa97-ac53-4b16-9697-aa44936f755e"
+      },
+      "currentLifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 8
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.306Z",
+    "kind": "surface/ready",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "activeSurface": "editor",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 8,
+        "frameId": "frame-ab19aa97-ac53-4b16-9697-aa44936f755e"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.310Z",
+    "kind": "surface/hostMessageQueuedUntilBootstrapAck",
+    "detail": {
+      "surface": "editor",
+      "type": "host/visibilityRestored",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 8,
+        "frameId": "frame-ab19aa97-ac53-4b16-9697-aa44936f755e"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.314Z",
+    "kind": "webview/runtimeDiagnostic",
+    "detail": {
+      "surface": "editor",
+      "current": true,
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 8,
+        "frameId": "frame-ab19aa97-ac53-4b16-9697-aa44936f755e"
+      },
+      "source": "webview.lifecycle",
+      "message": "execution mouse diagnostics enabled: false",
+      "readyState": "complete"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.314Z",
+    "kind": "surface/bootstrapAck",
+    "detail": {
+      "surface": "editor",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 8,
+        "frameId": "frame-ab19aa97-ac53-4b16-9697-aa44936f755e"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.353Z",
+    "kind": "webview/executionClipboardDiagnostic",
+    "detail": {
+      "surface": "editor",
+      "current": true,
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 8,
+        "frameId": "frame-ab19aa97-ac53-4b16-9697-aa44936f755e"
+      },
+      "nodeId": "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+      "kind": "agent",
+      "source": "environment",
+      "detail": {
+        "platform": "linux",
+        "navigatorPlatform": "Linux x86_64",
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Code/1.141.0 Chrome/150.0.7871.250 Electron/43.7.7 Safari/537.36",
+        "initialMouseTrackingMode": "none",
+        "initialBufferType": "normal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.356Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "dispose",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 8
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.356Z",
+    "kind": "surface/disposed",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.361Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.361Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:26.361Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.362Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:26.361Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.362Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.362Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.362Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 11
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.362Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 11
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.393Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "dispose",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 11
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.393Z",
+    "kind": "surface/disposed",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.397Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.398Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:26.398Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.398Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:26.398Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.398Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.398Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.398Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 14
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.399Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 14
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.783Z",
+    "kind": "webview/readyReceived",
+    "detail": {
+      "surface": "editor",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 14,
+        "frameId": "frame-348f1f6d-909f-4a93-a930-432612494658"
+      },
+      "currentLifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 14
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.783Z",
+    "kind": "surface/ready",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "activeSurface": "editor",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 14,
+        "frameId": "frame-348f1f6d-909f-4a93-a930-432612494658"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.786Z",
+    "kind": "surface/hostMessageQueuedUntilBootstrapAck",
+    "detail": {
+      "surface": "editor",
+      "type": "host/visibilityRestored",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 14,
+        "frameId": "frame-348f1f6d-909f-4a93-a930-432612494658"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.795Z",
+    "kind": "webview/runtimeDiagnostic",
+    "detail": {
+      "surface": "editor",
+      "current": true,
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 14,
+        "frameId": "frame-348f1f6d-909f-4a93-a930-432612494658"
+      },
+      "source": "webview.lifecycle",
+      "message": "execution mouse diagnostics enabled: false",
+      "readyState": "complete"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.795Z",
+    "kind": "surface/bootstrapAck",
+    "detail": {
+      "surface": "editor",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 14,
+        "frameId": "frame-348f1f6d-909f-4a93-a930-432612494658"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.829Z",
+    "kind": "webview/executionClipboardDiagnostic",
+    "detail": {
+      "surface": "editor",
+      "current": true,
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 14,
+        "frameId": "frame-348f1f6d-909f-4a93-a930-432612494658"
+      },
+      "nodeId": "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+      "kind": "agent",
+      "source": "environment",
+      "detail": {
+        "platform": "linux",
+        "navigatorPlatform": "Linux x86_64",
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Code/1.141.0 Chrome/150.0.7871.250 Electron/43.7.7 Safari/537.36",
+        "initialMouseTrackingMode": "none",
+        "initialBufferType": "normal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.831Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "dispose",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 14
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.832Z",
+    "kind": "surface/disposed",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.839Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.839Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:26.839Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.839Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:26.839Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.839Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.840Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.840Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 17
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.841Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 17
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.875Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "dispose",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 17
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.876Z",
+    "kind": "surface/disposed",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.880Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.880Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T18:18:26.880Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.880Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T18:18:26.880Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.880Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-c2/systemd-fallback-real-reopen/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "b1de7a0f712a",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T18:18:25.384Z",
+      "nodeIds": [
+        "agent-1-a773ed3d-24a1-415a-b588-ef68fcb6313b",
+        "terminal-2-2e4862fe-9ef7-4544-be93-3c529ea9b4e0",
+        "terminal-3-5e755f2a-3e19-453b-8e9b-e6aad4bbcf94"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.880Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.880Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 20
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T18:18:26.881Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 20
+      }
+    }
+  }
+]

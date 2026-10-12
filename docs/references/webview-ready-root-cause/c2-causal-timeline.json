@@ -1,0 +1,1819 @@
+[
+  {
+    "observedAt": 1791829099730,
+    "type": "browser-connect",
+    "run": 6,
+    "browser": "Chrome/150.0.7871.250"
+  },
+  {
+    "observedAt": 1791829105447,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.requestWillBeSent",
+    "frameId": "422E9B6FB255BCB120F610FEF993FF9E",
+    "requestId": "F70277618325105E59AFA5F553755B4B",
+    "timestamp": 2452986.810953,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=5a4fa138-1f6f-4061-87de-0b6c97db371a&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829105454,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.responseReceived",
+    "requestId": "F70277618325105E59AFA5F553755B4B",
+    "timestamp": 2452986.818412,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=5a4fa138-1f6f-4061-87de-0b6c97db371a&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "status": 200,
+    "resourceType": "Document",
+    "fromDiskCache": false,
+    "fromServiceWorker": false
+  },
+  {
+    "observedAt": 1791829105519,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "422E9B6FB255BCB120F610FEF993FF9E",
+      "reason": "swap"
+    }
+  },
+  {
+    "observedAt": 1791829105584,
+    "run": 6,
+    "sessionId": "72E759494AE669747B9DE00716E9E3FA",
+    "method": "Network.requestWillBeSent",
+    "frameId": "C323218D2D01A28FF73450B09532AF7A",
+    "requestId": "84D86C76B9C887AA9AF1AE819D5EE421",
+    "timestamp": 2452986.948943,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/fake.html?id=5a4fa138-1f6f-4061-87de-0b6c97db371a",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829105593,
+    "run": 6,
+    "sessionId": "72E759494AE669747B9DE00716E9E3FA",
+    "method": "Network.responseReceived",
+    "requestId": "84D86C76B9C887AA9AF1AE819D5EE421",
+    "timestamp": 2452986.956898,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/fake.html?id=5a4fa138-1f6f-4061-87de-0b6c97db371a",
+    "status": 200,
+    "resourceType": "Document",
+    "fromDiskCache": false,
+    "fromServiceWorker": false
+  },
+  {
+    "observedAt": 1791829105598,
+    "run": 6,
+    "sessionId": "72E759494AE669747B9DE00716E9E3FA",
+    "method": "Network.requestWillBeSent",
+    "frameId": "C323218D2D01A28FF73450B09532AF7A",
+    "requestId": "2034623.4",
+    "timestamp": 2452986.961267,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+    "resourceType": "Stylesheet",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829105598,
+    "run": 6,
+    "sessionId": "72E759494AE669747B9DE00716E9E3FA",
+    "method": "Network.requestWillBeSent",
+    "frameId": "C323218D2D01A28FF73450B09532AF7A",
+    "requestId": "2034623.5",
+    "timestamp": 2452986.961871,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040",
+    "resourceType": "Script",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829105598,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105598.183,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105597,\"stage\":\"request-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":0,\"waiters\":0,\"requests\":0}"
+    ]
+  },
+  {
+    "observedAt": 1791829105599,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105598.531,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105598,\"stage\":\"request-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":0,\"waiters\":0,\"requests\":0}"
+    ]
+  },
+  {
+    "observedAt": 1791829105599,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105599.065,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105599,\"stage\":\"cache-open-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":0,\"waiters\":0,\"requests\":0}"
+    ]
+  },
+  {
+    "observedAt": 1791829105599,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105599.238,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105599,\"stage\":\"cache-open-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":0,\"waiters\":0,\"requests\":0}"
+    ]
+  },
+  {
+    "observedAt": 1791829105599,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105599.731,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105599,\"stage\":\"cache-match-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":0,\"waiters\":0,\"requests\":0}"
+    ]
+  },
+  {
+    "observedAt": 1791829105600,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105599.878,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105599,\"stage\":\"cache-match-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":0,\"waiters\":0,\"requests\":0}"
+    ]
+  },
+  {
+    "observedAt": 1791829105600,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105600.002,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105599,\"stage\":\"cache-match-done\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":0,\"waiters\":0,\"requests\":0,\"hit\":false}"
+    ]
+  },
+  {
+    "observedAt": 1791829105600,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105600.163,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105600,\"stage\":\"cache-match-done\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":0,\"waiters\":0,\"requests\":0,\"hit\":false}"
+    ]
+  },
+  {
+    "observedAt": 1791829105600,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105600.332,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105600,\"stage\":\"acquire-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":0,\"waiters\":0,\"requests\":0}"
+    ]
+  },
+  {
+    "observedAt": 1791829105600,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105600.543,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105600,\"stage\":\"host-request\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":1,\"waiters\":0,\"requests\":1,\"requestId\":1}"
+    ]
+  },
+  {
+    "observedAt": 1791829105601,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105600.7,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105600,\"stage\":\"acquire-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":1,\"waiters\":0,\"requests\":1}"
+    ]
+  },
+  {
+    "observedAt": 1791829105601,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105600.809,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105600,\"stage\":\"host-request\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"aaedd003-b67b-486b-9242-ca3154a359a1\",\"active\":2,\"waiters\":0,\"requests\":2,\"requestId\":2}"
+    ]
+  },
+  {
+    "observedAt": 1791829105660,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "422E9B6FB255BCB120F610FEF993FF9E",
+      "reason": "remove"
+    }
+  },
+  {
+    "observedAt": 1791829105713,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.requestWillBeSent",
+    "frameId": "9375EEC841EE26CB9DDCB9DB298127E8",
+    "requestId": "8B50875A2035DED3516F5EF0D817208F",
+    "timestamp": 2452987.077681,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=a3f18aff-00d7-4bc3-b09d-49cd2220f725&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829105720,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.responseReceived",
+    "requestId": "8B50875A2035DED3516F5EF0D817208F",
+    "timestamp": 2452987.084509,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=a3f18aff-00d7-4bc3-b09d-49cd2220f725&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "status": 200,
+    "resourceType": "Document",
+    "fromDiskCache": false,
+    "fromServiceWorker": false
+  },
+  {
+    "observedAt": 1791829105776,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "9375EEC841EE26CB9DDCB9DB298127E8",
+      "reason": "swap"
+    }
+  },
+  {
+    "observedAt": 1791829105790,
+    "run": 6,
+    "sessionId": "81BFDF51E2168729A8CF29622E0383F1",
+    "method": "Network.requestWillBeSent",
+    "frameId": "37029B9783F74C5B75B38E9D33225A81",
+    "requestId": "A62690A8790A3667A3D30146F3634734",
+    "timestamp": 2452987.154287,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/fake.html?id=a3f18aff-00d7-4bc3-b09d-49cd2220f725",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829105793,
+    "run": 6,
+    "sessionId": "81BFDF51E2168729A8CF29622E0383F1",
+    "method": "Network.loadingFailed",
+    "params": {
+      "requestId": "A62690A8790A3667A3D30146F3634734",
+      "timestamp": 2452987.157619,
+      "type": "Document",
+      "errorText": "net::ERR_ABORTED",
+      "canceled": true
+    }
+  },
+  {
+    "observedAt": 1791829105794,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "9375EEC841EE26CB9DDCB9DB298127E8",
+      "reason": "remove"
+    }
+  },
+  {
+    "observedAt": 1791829105844,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.requestWillBeSent",
+    "frameId": "9F673C3EEB46A87DDAB9069895812660",
+    "requestId": "341114064B0AA2035203300689C69E1F",
+    "timestamp": 2452987.208787,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=2eefa0c8-4dfe-4b0a-b3f2-c35e57f6e72c&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829105850,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.responseReceived",
+    "requestId": "341114064B0AA2035203300689C69E1F",
+    "timestamp": 2452987.214304,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=2eefa0c8-4dfe-4b0a-b3f2-c35e57f6e72c&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "status": 200,
+    "resourceType": "Document",
+    "fromDiskCache": false,
+    "fromServiceWorker": false
+  },
+  {
+    "observedAt": 1791829105898,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "9F673C3EEB46A87DDAB9069895812660",
+      "reason": "swap"
+    }
+  },
+  {
+    "observedAt": 1791829105907,
+    "run": 6,
+    "sessionId": "358F6C3842306E98FA37084FD8758A0E",
+    "method": "Network.requestWillBeSent",
+    "frameId": "DD9B9BB2566CFE3E7AFC828B1149065F",
+    "requestId": "4BBF0A3C32F165DBB78F629D8A8D3928",
+    "timestamp": 2452987.271094,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/fake.html?id=2eefa0c8-4dfe-4b0a-b3f2-c35e57f6e72c",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829105910,
+    "run": 6,
+    "sessionId": "358F6C3842306E98FA37084FD8758A0E",
+    "method": "Network.responseReceived",
+    "requestId": "4BBF0A3C32F165DBB78F629D8A8D3928",
+    "timestamp": 2452987.274629,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/fake.html?id=2eefa0c8-4dfe-4b0a-b3f2-c35e57f6e72c",
+    "status": 200,
+    "resourceType": "Document",
+    "fromDiskCache": false,
+    "fromServiceWorker": false
+  },
+  {
+    "observedAt": 1791829105915,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105914.847,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105914,\"stage\":\"request-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2}"
+    ]
+  },
+  {
+    "observedAt": 1791829105915,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105915.142,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105915,\"stage\":\"cache-open-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2}"
+    ]
+  },
+  {
+    "observedAt": 1791829105915,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105915.316,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105915,\"stage\":\"request-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2}"
+    ]
+  },
+  {
+    "observedAt": 1791829105915,
+    "run": 6,
+    "sessionId": "358F6C3842306E98FA37084FD8758A0E",
+    "method": "Network.requestWillBeSent",
+    "frameId": "DD9B9BB2566CFE3E7AFC828B1149065F",
+    "requestId": "2034623.9",
+    "timestamp": 2452987.278555,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+    "resourceType": "Stylesheet",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829105915,
+    "run": 6,
+    "sessionId": "358F6C3842306E98FA37084FD8758A0E",
+    "method": "Network.requestWillBeSent",
+    "frameId": "DD9B9BB2566CFE3E7AFC828B1149065F",
+    "requestId": "2034623.10",
+    "timestamp": 2452987.27908,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040",
+    "resourceType": "Script",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829105915,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105915.462,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105915,\"stage\":\"cache-match-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2}"
+    ]
+  },
+  {
+    "observedAt": 1791829105916,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105915.637,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105915,\"stage\":\"cache-match-done\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2,\"hit\":false}"
+    ]
+  },
+  {
+    "observedAt": 1791829105916,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105915.756,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105915,\"stage\":\"cache-open-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2}"
+    ]
+  },
+  {
+    "observedAt": 1791829105916,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105915.894,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105915,\"stage\":\"acquire-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2}"
+    ]
+  },
+  {
+    "observedAt": 1791829105916,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105915.997,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105915,\"stage\":\"host-request\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":3,\"waiters\":0,\"requests\":3,\"requestId\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829105916,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105916.109,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105916,\"stage\":\"cache-match-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829105916,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105916.261,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105916,\"stage\":\"cache-match-done\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":3,\"waiters\":0,\"requests\":3,\"hit\":false}"
+    ]
+  },
+  {
+    "observedAt": 1791829105917,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105916.494,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105916,\"stage\":\"acquire-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829105917,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105916.591,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105916,\"stage\":\"host-request\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":4,\"waiters\":0,\"requests\":4,\"requestId\":4}"
+    ]
+  },
+  {
+    "observedAt": 1791829105941,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105940.639,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105940,\"stage\":\"host-response\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":4,\"waiters\":0,\"requests\":3,\"requestId\":3,\"status\":\"ok\",\"valueStatus\":200}"
+    ]
+  },
+  {
+    "observedAt": 1791829105944,
+    "run": 6,
+    "sessionId": "358F6C3842306E98FA37084FD8758A0E",
+    "method": "Network.responseReceived",
+    "requestId": "2034623.9",
+    "timestamp": 2452987.306655,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+    "status": 200,
+    "resourceType": "Stylesheet",
+    "fromDiskCache": false,
+    "fromServiceWorker": true
+  },
+  {
+    "observedAt": 1791829105945,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105942.565,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105942,\"stage\":\"host-response\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":4,\"waiters\":0,\"requests\":2,\"requestId\":4,\"status\":\"ok\",\"valueStatus\":200}"
+    ]
+  },
+  {
+    "observedAt": 1791829105947,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829105946.658,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829105946,\"stage\":\"released\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":3,\"waiters\":0,\"requests\":2,\"requestId\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106027,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106026.892,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106026,\"stage\":\"released\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2,\"requestId\":4}"
+    ]
+  },
+  {
+    "observedAt": 1791829106047,
+    "run": 6,
+    "sessionId": "358F6C3842306E98FA37084FD8758A0E",
+    "method": "Network.responseReceived",
+    "requestId": "2034623.10",
+    "timestamp": 2452987.41,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040",
+    "status": 200,
+    "resourceType": "Script",
+    "fromDiskCache": false,
+    "fromServiceWorker": true
+  },
+  {
+    "observedAt": 1791829106331,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106331.163,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106331,\"stage\":\"request-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2}"
+    ]
+  },
+  {
+    "observedAt": 1791829106332,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106331.821,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106331,\"stage\":\"cache-open-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2}"
+    ]
+  },
+  {
+    "observedAt": 1791829106332,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106332.103,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106332,\"stage\":\"cache-match-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2}"
+    ]
+  },
+  {
+    "observedAt": 1791829106332,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106332.319,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106332,\"stage\":\"cache-match-done\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2,\"hit\":false}"
+    ]
+  },
+  {
+    "observedAt": 1791829106332,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106332.649,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106332,\"stage\":\"acquire-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":2,\"waiters\":0,\"requests\":2}"
+    ]
+  },
+  {
+    "observedAt": 1791829106333,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106332.82,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106332,\"stage\":\"host-request\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"6795ac4c-11a2-4c1f-9bbd-612f6d0aaaaa\",\"active\":3,\"waiters\":0,\"requests\":3,\"requestId\":5}"
+    ]
+  },
+  {
+    "observedAt": 1791829106377,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.requestWillBeSent",
+    "frameId": "4121D5AD78BA976FDF51EE22FDD3943F",
+    "requestId": "A82213AB74EE0CC8D5868AA0B1E8E724",
+    "timestamp": 2452987.741091,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=7f442618-c87f-4ccf-a61e-f0c3f332697b&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829106382,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.responseReceived",
+    "requestId": "A82213AB74EE0CC8D5868AA0B1E8E724",
+    "timestamp": 2452987.746354,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=7f442618-c87f-4ccf-a61e-f0c3f332697b&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "status": 200,
+    "resourceType": "Document",
+    "fromDiskCache": false,
+    "fromServiceWorker": false
+  },
+  {
+    "observedAt": 1791829106392,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.loadingFailed",
+    "params": {
+      "requestId": "A82213AB74EE0CC8D5868AA0B1E8E724",
+      "timestamp": 2452987.756989,
+      "type": "Document",
+      "errorText": "net::ERR_ABORTED",
+      "canceled": true
+    }
+  },
+  {
+    "observedAt": 1791829106398,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "4121D5AD78BA976FDF51EE22FDD3943F",
+      "reason": "remove"
+    }
+  },
+  {
+    "observedAt": 1791829106413,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "9F673C3EEB46A87DDAB9069895812660",
+      "reason": "remove"
+    }
+  },
+  {
+    "observedAt": 1791829106415,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.requestWillBeSent",
+    "frameId": "3CD970837C720E811619317ABC2A62BF",
+    "requestId": "55EF042E01019273EB67E6506983B42A",
+    "timestamp": 2452987.779372,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=007c0beb-0b84-4d4b-abb9-8393ee838945&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829106423,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.responseReceived",
+    "requestId": "55EF042E01019273EB67E6506983B42A",
+    "timestamp": 2452987.787287,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=007c0beb-0b84-4d4b-abb9-8393ee838945&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "status": 200,
+    "resourceType": "Document",
+    "fromDiskCache": false,
+    "fromServiceWorker": false
+  },
+  {
+    "observedAt": 1791829106432,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "3CD970837C720E811619317ABC2A62BF",
+      "reason": "swap"
+    }
+  },
+  {
+    "observedAt": 1791829106449,
+    "run": 6,
+    "sessionId": "5881ADF937FF93336F869ABC365748AC",
+    "method": "Network.requestWillBeSent",
+    "frameId": "C78CA153693B86A9A1D636603E6F805C",
+    "requestId": "EFA584449C1CD7BE68E0CEE2C58E9F0E",
+    "timestamp": 2452987.813102,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/fake.html?id=007c0beb-0b84-4d4b-abb9-8393ee838945",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829106455,
+    "run": 6,
+    "sessionId": "5881ADF937FF93336F869ABC365748AC",
+    "method": "Network.responseReceived",
+    "requestId": "EFA584449C1CD7BE68E0CEE2C58E9F0E",
+    "timestamp": 2452987.819661,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/fake.html?id=007c0beb-0b84-4d4b-abb9-8393ee838945",
+    "status": 200,
+    "resourceType": "Document",
+    "fromDiskCache": false,
+    "fromServiceWorker": false
+  },
+  {
+    "observedAt": 1791829106462,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106461.897,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106461,\"stage\":\"request-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106462,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106462.196,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106462,\"stage\":\"cache-open-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106462,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106462.39,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106462,\"stage\":\"request-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106462,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106462.533,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106462,\"stage\":\"cache-match-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106463,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106462.675,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106462,\"stage\":\"cache-open-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106463,
+    "run": 6,
+    "sessionId": "5881ADF937FF93336F869ABC365748AC",
+    "method": "Network.requestWillBeSent",
+    "frameId": "C78CA153693B86A9A1D636603E6F805C",
+    "requestId": "2034623.76",
+    "timestamp": 2452987.825446,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+    "resourceType": "Stylesheet",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829106463,
+    "run": 6,
+    "sessionId": "5881ADF937FF93336F869ABC365748AC",
+    "method": "Network.requestWillBeSent",
+    "frameId": "C78CA153693B86A9A1D636603E6F805C",
+    "requestId": "2034623.77",
+    "timestamp": 2452987.826224,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040",
+    "resourceType": "Script",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829106463,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106463.134,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106463,\"stage\":\"cache-match-done\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3,\"hit\":true}"
+    ]
+  },
+  {
+    "observedAt": 1791829106464,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106463.334,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106463,\"stage\":\"cache-match-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106464,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106463.52,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106463,\"stage\":\"acquire-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106464,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106463.651,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106463,\"stage\":\"host-request\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":4,\"waiters\":0,\"requests\":4,\"requestId\":6}"
+    ]
+  },
+  {
+    "observedAt": 1791829106464,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106463.984,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106463,\"stage\":\"cache-match-done\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":4,\"waiters\":0,\"requests\":4,\"hit\":true}"
+    ]
+  },
+  {
+    "observedAt": 1791829106465,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106464.236,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106464,\"stage\":\"acquire-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":4,\"waiters\":0,\"requests\":4}"
+    ]
+  },
+  {
+    "observedAt": 1791829106467,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106467.193,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106467,\"stage\":\"host-response\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":4,\"waiters\":1,\"requests\":3,\"requestId\":6,\"status\":\"ok\",\"valueStatus\":304}"
+    ]
+  },
+  {
+    "observedAt": 1791829106467,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106467.318,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106467,\"stage\":\"released\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":4,\"waiters\":0,\"requests\":3,\"requestId\":6}"
+    ]
+  },
+  {
+    "observedAt": 1791829106468,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106467.696,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106467,\"stage\":\"host-request\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":4,\"waiters\":0,\"requests\":4,\"requestId\":7}"
+    ]
+  },
+  {
+    "observedAt": 1791829106468,
+    "run": 6,
+    "sessionId": "5881ADF937FF93336F869ABC365748AC",
+    "method": "Network.responseReceived",
+    "requestId": "2034623.76",
+    "timestamp": 2452987.832299,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+    "status": 200,
+    "resourceType": "Stylesheet",
+    "fromDiskCache": true,
+    "fromServiceWorker": true
+  },
+  {
+    "observedAt": 1791829106472,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106472.247,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106472,\"stage\":\"host-response\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":4,\"waiters\":0,\"requests\":3,\"requestId\":7,\"status\":\"ok\",\"valueStatus\":304}"
+    ]
+  },
+  {
+    "observedAt": 1791829106472,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106472.38,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106472,\"stage\":\"released\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3,\"requestId\":7}"
+    ]
+  },
+  {
+    "observedAt": 1791829106557,
+    "run": 6,
+    "sessionId": "5881ADF937FF93336F869ABC365748AC",
+    "method": "Network.responseReceived",
+    "requestId": "2034623.77",
+    "timestamp": 2452987.92016,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040",
+    "status": 200,
+    "resourceType": "Script",
+    "fromDiskCache": true,
+    "fromServiceWorker": true
+  },
+  {
+    "observedAt": 1791829106820,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106820.167,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106820,\"stage\":\"request-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106821,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106820.865,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106820,\"stage\":\"cache-open-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106821,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106821.208,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106821,\"stage\":\"cache-match-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106822,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106821.47,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106821,\"stage\":\"cache-match-done\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3,\"hit\":false}"
+    ]
+  },
+  {
+    "observedAt": 1791829106822,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106821.721,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106821,\"stage\":\"acquire-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":3,\"waiters\":0,\"requests\":3}"
+    ]
+  },
+  {
+    "observedAt": 1791829106822,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106821.878,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106821,\"stage\":\"host-request\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348\",\"clientId\":\"0f1f6c0b-ceab-4d23-bb00-b5eae2c9cb51\",\"active\":4,\"waiters\":0,\"requests\":4,\"requestId\":8}"
+    ]
+  },
+  {
+    "observedAt": 1791829106861,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.requestWillBeSent",
+    "frameId": "A7925400D04AF80B6F3A6303BD0FE824",
+    "requestId": "35EED113A8FDFE48E9D07B69E5D4F3D8",
+    "timestamp": 2452988.225175,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=21489afa-7c57-47cb-bf80-0a7684f3d4ef&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829106867,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.responseReceived",
+    "requestId": "35EED113A8FDFE48E9D07B69E5D4F3D8",
+    "timestamp": 2452988.231024,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=21489afa-7c57-47cb-bf80-0a7684f3d4ef&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "status": 200,
+    "resourceType": "Document",
+    "fromDiskCache": false,
+    "fromServiceWorker": false
+  },
+  {
+    "observedAt": 1791829106875,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.loadingFailed",
+    "params": {
+      "requestId": "35EED113A8FDFE48E9D07B69E5D4F3D8",
+      "timestamp": 2452988.239597,
+      "type": "Document",
+      "errorText": "net::ERR_ABORTED",
+      "canceled": true
+    }
+  },
+  {
+    "observedAt": 1791829106880,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "A7925400D04AF80B6F3A6303BD0FE824",
+      "reason": "remove"
+    }
+  },
+  {
+    "observedAt": 1791829106882,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "3CD970837C720E811619317ABC2A62BF",
+      "reason": "remove"
+    }
+  },
+  {
+    "observedAt": 1791829106900,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.requestWillBeSent",
+    "frameId": "7A430D9EFD3B0C7043A8111DE2B57394",
+    "requestId": "F0806594168177C40C4B34AEBC601DD1",
+    "timestamp": 2452988.264143,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=47b9da5e-a7a0-4e37-ad83-6890d3824ed1&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829106907,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Network.responseReceived",
+    "requestId": "F0806594168177C40C4B34AEBC601DD1",
+    "timestamp": 2452988.271406,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/index.html?id=47b9da5e-a7a0-4e37-ad83-6890d3824ed1&parentId=1&origin=3890a43c-c3b2-412b-8758-2d93d775f482&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+    "status": 200,
+    "resourceType": "Document",
+    "fromDiskCache": false,
+    "fromServiceWorker": false
+  },
+  {
+    "observedAt": 1791829106913,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "7A430D9EFD3B0C7043A8111DE2B57394",
+      "reason": "swap"
+    }
+  },
+  {
+    "observedAt": 1791829106926,
+    "run": 6,
+    "sessionId": "B9AF24674466FBD6C8144594E7363F75",
+    "method": "Network.requestWillBeSent",
+    "frameId": "9506230CE33A05C5555FE535297BEFDC",
+    "requestId": "C42E95762DD0E78F08E3831AA63BDDB2",
+    "timestamp": 2452988.290721,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/fake.html?id=47b9da5e-a7a0-4e37-ad83-6890d3824ed1",
+    "resourceType": "Document",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829106931,
+    "run": 6,
+    "sessionId": "B9AF24674466FBD6C8144594E7363F75",
+    "method": "Network.responseReceived",
+    "requestId": "C42E95762DD0E78F08E3831AA63BDDB2",
+    "timestamp": 2452988.295296,
+    "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/fake.html?id=47b9da5e-a7a0-4e37-ad83-6890d3824ed1",
+    "status": 200,
+    "resourceType": "Document",
+    "fromDiskCache": false,
+    "fromServiceWorker": false
+  },
+  {
+    "observedAt": 1791829106942,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106938.417,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106938,\"stage\":\"request-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"2c381566-9314-4679-8859-b6ffd4f5b663\",\"active\":4,\"waiters\":0,\"requests\":4}"
+    ]
+  },
+  {
+    "observedAt": 1791829106943,
+    "run": 6,
+    "sessionId": "B9AF24674466FBD6C8144594E7363F75",
+    "method": "Network.requestWillBeSent",
+    "frameId": "9506230CE33A05C5555FE535297BEFDC",
+    "requestId": "2034623.143",
+    "timestamp": 2452988.299895,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+    "resourceType": "Stylesheet",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829106943,
+    "run": 6,
+    "sessionId": "B9AF24674466FBD6C8144594E7363F75",
+    "method": "Network.requestWillBeSent",
+    "frameId": "9506230CE33A05C5555FE535297BEFDC",
+    "requestId": "2034623.144",
+    "timestamp": 2452988.300557,
+    "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040",
+    "resourceType": "Script",
+    "initiator": "script"
+  },
+  {
+    "observedAt": 1791829106943,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106938.879,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106938,\"stage\":\"request-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"2c381566-9314-4679-8859-b6ffd4f5b663\",\"active\":4,\"waiters\":0,\"requests\":4}"
+    ]
+  },
+  {
+    "observedAt": 1791829106943,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106940.461,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106940,\"stage\":\"cache-open-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"2c381566-9314-4679-8859-b6ffd4f5b663\",\"active\":4,\"waiters\":0,\"requests\":4}"
+    ]
+  },
+  {
+    "observedAt": 1791829106944,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106941.059,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106941,\"stage\":\"cache-open-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"2c381566-9314-4679-8859-b6ffd4f5b663\",\"active\":4,\"waiters\":0,\"requests\":4}"
+    ]
+  },
+  {
+    "observedAt": 1791829106944,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106941.261,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106941,\"stage\":\"cache-match-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"2c381566-9314-4679-8859-b6ffd4f5b663\",\"active\":4,\"waiters\":0,\"requests\":4}"
+    ]
+  },
+  {
+    "observedAt": 1791829106944,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106942.034,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106941,\"stage\":\"cache-match-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"2c381566-9314-4679-8859-b6ffd4f5b663\",\"active\":4,\"waiters\":0,\"requests\":4}"
+    ]
+  },
+  {
+    "observedAt": 1791829106944,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106942.687,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106942,\"stage\":\"cache-match-done\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"2c381566-9314-4679-8859-b6ffd4f5b663\",\"active\":4,\"waiters\":0,\"requests\":4,\"hit\":true}"
+    ]
+  },
+  {
+    "observedAt": 1791829106945,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106942.977,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106942,\"stage\":\"cache-match-done\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"2c381566-9314-4679-8859-b6ffd4f5b663\",\"active\":4,\"waiters\":0,\"requests\":4,\"hit\":true}"
+    ]
+  },
+  {
+    "observedAt": 1791829106945,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106943.206,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106943,\"stage\":\"acquire-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db\",\"clientId\":\"2c381566-9314-4679-8859-b6ffd4f5b663\",\"active\":4,\"waiters\":0,\"requests\":4}"
+    ]
+  },
+  {
+    "observedAt": 1791829106945,
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "method": "Runtime.consoleAPICalled",
+    "executionContextId": 1,
+    "timestamp": 1791829106943.376,
+    "values": [
+      "[ready-worker]",
+      "{\"time\":1791829106943,\"stage\":\"acquire-start\",\"url\":\"https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-c2/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040\",\"clientId\":\"2c381566-9314-4679-8859-b6ffd4f5b663\",\"active\":4,\"waiters\":1,\"requests\":4}"
+    ]
+  },
+  {
+    "observedAt": 1791829107247,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829107246,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829107247,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "29547ADD22D317F54F7855E0DE323784",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829107246,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829107247,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "3060893F50FEC49CA3D6F7C52092EFFF",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829107246,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829112253,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829112252,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829112253,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "29547ADD22D317F54F7855E0DE323784",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829112252,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829112253,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "3060893F50FEC49CA3D6F7C52092EFFF",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829112252,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829117259,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829117258,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829117259,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "29547ADD22D317F54F7855E0DE323784",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829117258,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829117259,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "3060893F50FEC49CA3D6F7C52092EFFF",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829117258,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829122272,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829122271,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829122272,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "29547ADD22D317F54F7855E0DE323784",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829122271,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829122272,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "3060893F50FEC49CA3D6F7C52092EFFF",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829122271,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829127280,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "137C630D2F42250677C07C66AD97C97B",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829127279,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829127280,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "29547ADD22D317F54F7855E0DE323784",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829127280,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829127280,
+    "type": "snapshot",
+    "run": 6,
+    "sessionId": "3060893F50FEC49CA3D6F7C52092EFFF",
+    "contextId": 1,
+    "origin": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791829127280,
+      "url": "vscode-webview://0gpifq32ovih31ujekv5f5kt834qk4ro2sgimmujdbu15a3ih4o9/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 3.3000001907348633,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  {
+    "observedAt": 1791829128978,
+    "run": 6,
+    "sessionId": "20B430BE03DF4F0F9F82B4610C7330B5",
+    "method": "Page.frameDetached",
+    "params": {
+      "frameId": "7A430D9EFD3B0C7043A8111DE2B57394",
+      "reason": "remove"
+    }
+  },
+  {
+    "observedAt": 1791829129282,
+    "type": "browser-disconnect",
+    "run": 6
+  }
+]

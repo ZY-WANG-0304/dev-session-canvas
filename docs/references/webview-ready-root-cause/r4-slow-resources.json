@@ -1,0 +1,114 @@
+[
+  {
+    "ms": 16192.077999934554,
+    "request": {
+      "observedAt": 1791828451390,
+      "run": 2,
+      "sessionId": "A57A73B3BA0D09720871598BD71E9672",
+      "method": "Network.requestWillBeSent",
+      "frameId": "630EDE866D9DB534E781FE1CCCDCCB27",
+      "requestId": "1630491.2148",
+      "timestamp": 2452332.753085,
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-r4/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "resourceType": "Stylesheet",
+      "initiator": "script"
+    },
+    "response": {
+      "observedAt": 1791828467581,
+      "run": 2,
+      "sessionId": "A57A73B3BA0D09720871598BD71E9672",
+      "method": "Network.responseReceived",
+      "requestId": "1630491.2148",
+      "timestamp": 2452348.945163,
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-r4/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "status": 200,
+      "resourceType": "Stylesheet",
+      "fromDiskCache": true,
+      "fromServiceWorker": true
+    }
+  },
+  {
+    "ms": 16291.412000078708,
+    "request": {
+      "observedAt": 1791828451391,
+      "run": 2,
+      "sessionId": "A57A73B3BA0D09720871598BD71E9672",
+      "method": "Network.requestWillBeSent",
+      "frameId": "630EDE866D9DB534E781FE1CCCDCCB27",
+      "requestId": "1630491.2149",
+      "timestamp": 2452332.753974,
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-r4/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040",
+      "resourceType": "Script",
+      "initiator": "script"
+    },
+    "response": {
+      "observedAt": 1791828467682,
+      "run": 2,
+      "sessionId": "A57A73B3BA0D09720871598BD71E9672",
+      "method": "Network.responseReceived",
+      "requestId": "1630491.2149",
+      "timestamp": 2452349.045386,
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-r4/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040",
+      "status": 200,
+      "resourceType": "Script",
+      "fromDiskCache": true,
+      "fromServiceWorker": true
+    }
+  },
+  {
+    "ms": 16080.134000163525,
+    "request": {
+      "observedAt": 1791828481860,
+      "run": 2,
+      "sessionId": "9AADF3B141F188C7091BCB3EEF1F1ED7",
+      "method": "Network.requestWillBeSent",
+      "frameId": "953B0ECB211D7B1498BBD34ED3E8D604",
+      "requestId": "1630491.4292",
+      "timestamp": 2452363.223309,
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-r4/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "resourceType": "Stylesheet",
+      "initiator": "script"
+    },
+    "response": {
+      "observedAt": 1791828497941,
+      "run": 2,
+      "sessionId": "9AADF3B141F188C7091BCB3EEF1F1ED7",
+      "method": "Network.responseReceived",
+      "requestId": "1630491.4292",
+      "timestamp": 2452379.303443,
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-r4/systemd-fallback-real-reopen/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "status": 200,
+      "resourceType": "Stylesheet",
+      "fromDiskCache": true,
+      "fromServiceWorker": true
+    }
+  },
+  {
+    "ms": 16170.559999998659,
+    "request": {
+      "observedAt": 1791828481860,
+      "run": 2,
+      "sessionId": "9AADF3B141F188C7091BCB3EEF1F1ED7",
+      "method": "Network.requestWillBeSent",
+      "frameId": "953B0ECB211D7B1498BBD34ED3E8D604",
+      "requestId": "1630491.4293",
+      "timestamp": 2452363.223941,
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-r4/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040",
+      "resourceType": "Script",
+      "initiator": "script"
+    },
+    "response": {
+      "observedAt": 1791828498031,
+      "run": 2,
+      "sessionId": "9AADF3B141F188C7091BCB3EEF1F1ED7",
+      "method": "Network.responseReceived",
+      "requestId": "1630491.4293",
+      "timestamp": 2452379.394501,
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-r4/systemd-fallback-real-reopen/smoke-host/dist/webview.js?v%3D0532645c7040",
+      "status": 200,
+      "resourceType": "Script",
+      "fromDiskCache": true,
+      "fromServiceWorker": true
+    }
+  }
+]
