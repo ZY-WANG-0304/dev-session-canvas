@@ -1,0 +1,83 @@
+{
+  "firstFailure": "Error: Timed out waiting for the editor Canvas to become ready (20000ms).\n\tat _CanvasPanelManager.waitForCanvasReady (/tmp/dga12/fallback/systemd-fallback-real-reopen/smoke-host/dist/extension.js:29473:11)\n\tat async Rf._executeContributedCommand (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:165:49173)\n\tat async openCanvasEditor (/tmp/dga12/fallback/systemd-fallback-real-reopen/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs:352:3)\n\tat async runVerifyPhase (/tmp/dga12/fallback/systemd-fallback-real-reopen/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs:205:3)\n\tat async Object.run (/tmp/dga12/fallback/systemd-fallback-real-reopen/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs:54:7)",
+  "activeSurface": "editor",
+  "surfaceLifecycle": {
+    "editor": {
+      "generation": 5,
+      "mode": "active",
+      "ready": false,
+      "bootstrapAck": false
+    },
+    "panel": {
+      "generation": 0,
+      "ready": false,
+      "bootstrapAck": false
+    }
+  },
+  "nodes": [
+    {
+      "id": "agent-1-c0804c40-d795-4f23-bcb6-47a728134393",
+      "kind": "agent",
+      "status": "waiting-input",
+      "runtimeBackend": "legacy-detached",
+      "liveSession": true
+    },
+    {
+      "id": "terminal-2-229e8781-38c1-400b-9ff3-eb07ca4a3464",
+      "kind": "terminal",
+      "status": "live",
+      "runtimeBackend": "legacy-detached",
+      "liveSession": true
+    },
+    {
+      "id": "terminal-3-8a4a0f98-7767-4ae3-84e2-4bdd367ef160",
+      "kind": "terminal",
+      "status": "closed",
+      "runtimeBackend": null,
+      "liveSession": false
+    }
+  ],
+  "pendingRuntimeSupervisorOperationCount": 0,
+  "observedRootSupervisorProcesses": [
+    {
+      "rootPath": "/tmp/dscgate1012",
+      "pid": 29847
+    }
+  ],
+  "startedReceipt": {
+    "backend": "legacy-detached",
+    "state": "started",
+    "owner": {
+      "schema": 1,
+      "environmentKey": "29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649",
+      "userStorageScopeKey": "1d0b0fd63f5d3e46bf986104f05dba791684f9e92df40c25ecc3c81a8c50f922",
+      "root": {
+        "kind": "folder",
+        "pathPolicy": "canvas-path-v1",
+        "normalizedPath": "/tmp/dscgate1012"
+      },
+      "generation": "terminal-root-owner-linux-v1"
+    },
+    "tokenOmitted": true
+  },
+  "systemctlLogExists": false,
+  "artifactSources": [
+    {
+      "path": "/tmp/dga12/fallback/systemd-fallback-real-reopen/artifacts/real-reopen-verify-failure-error.txt",
+      "sha256": "906f30118af9c637a1b37c46b791a84aabce19505c62b7c0704abadfa25a8701"
+    },
+    {
+      "path": "/tmp/dga12/fallback/systemd-fallback-real-reopen/artifacts/real-reopen-verify-failure-runtime-supervisor.json",
+      "sha256": "8c4279392dcfb9cac635078872091929143e5c0dab1f1af7877ee395284bbf41"
+    },
+    {
+      "path": "/tmp/dga12/fallback/systemd-fallback-real-reopen/artifacts/real-reopen-verify-failure-snapshot.json",
+      "sha256": "03c8d04ba002df18aec54f8b54a7c62b076ec715cf78754a14506ee18cb9576f"
+    },
+    {
+      "path": "/tmp/dga12/fallback/systemd-fallback-real-reopen/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8deb9c7061e184d5b83c293341cca7d26ef29e2cbd08478a8d8df4401d957a5c/runtime-supervisor-generations/terminal-root-owner-linux-v1/startup-started.json",
+      "sha256": "485e2188d76114f326d490725686523f19d3ed605acbeb81a8f23e88a5824b87"
+    }
+  ],
+  "rootCause": "未确认；setup 成功不代表两阶段完整通过"
+}

@@ -641,7 +641,9 @@ try {
       appliedStartupConfiguration: { runtimePersistenceEnabled: enabled, filesFeatureEnabled: true, defaultSurface: 'panel' },
       agentSessions: new Map(), terminalSessions: new Map(), runtimeSessionBindings: new Map(),
       preferredRootRuntimeBackends: new Map(), runtimeSupervisorClients: new Map(), nonNativeHostExecutions: new Map(),
-      context: { workspaceState: { get: () => undefined } },
+      storageRecoverySelection: { sourcePath: currentWorkspaceSlot, writePath: currentWorkspaceSlot },
+      context: { workspaceState: { get: () => undefined },
+        globalStorageUri: { fsPath: path.join(tempDir, 'preference-global-storage') } },
       getExtensionStoragePath: () => currentWorkspaceSlot,
       recordDiagnosticEvent() {}, getAgentCliConfig: () => ({ defaultProvider: 'codex' }),
       reconcileCanvasFileArtifacts: state => state,
@@ -701,13 +703,14 @@ try {
       assert.deepEqual(host.collectPersistedLiveRuntimeSessions(), [originalBinding]);
     }
 
-    for (const kind of ['agent', 'terminal']) {
+    for (const kind of ['agent', 'terminal']) for (const enabled of [false, true]) {
       const rootNode = runtimeNode(kind, { runtimeOwner, runtimeStoragePath });
       const legacyNode = { ...runtimeNode(kind, { runtimeStoragePath: legacyRuntimeStoragePath }), id: `${kind}-legacy` };
-      const host = makePreferenceHost([rootNode, legacyNode]);
-      assert.equal(host.getLiveRuntimeReconnectBlockReason(rootNode.metadata[kind]), undefined);
-      assert.equal(host.getLiveRuntimeReconnectBlockReason({ runtimeOwner: null }), undefined);
-      assert.equal(host.getLiveRuntimeReconnectBlockReason(legacyNode.metadata[kind]), 'runtime-persistence-disabled');
+      const host = makePreferenceHost([rootNode, legacyNode], enabled);
+      const blockReason = enabled ? undefined : 'runtime-persistence-disabled';
+      assert.equal(host.getLiveRuntimeReconnectBlockReason(rootNode.metadata[kind]), blockReason);
+      assert.equal(host.getLiveRuntimeReconnectBlockReason({ runtimeOwner: null }), blockReason);
+      assert.equal(host.getLiveRuntimeReconnectBlockReason(legacyNode.metadata[kind]), blockReason);
       vscodeWorkspace.isTrusted = false;
       assert.equal(host.getLiveRuntimeReconnectBlockReason(rootNode.metadata[kind]), 'workspace-untrusted');
       assert.equal(host.getLiveRuntimeReconnectBlockReason(), 'workspace-untrusted');
@@ -718,8 +721,8 @@ try {
       host.deleteRuntimeSupervisorSessions = async sessions => deleted.push(...sessions);
       host.getRuntimeSupervisorClientForKind = async (backend, _options, storage, owner) => {
         assert.equal(backend, 'legacy-detached');
-        assert.equal(storage, runtimeStoragePath);
-        assert.deepEqual(owner, runtimeOwner);
+        assert.ok([runtimeStoragePath, legacyRuntimeStoragePath].includes(storage));
+        assert.deepEqual(owner, storage === runtimeStoragePath ? runtimeOwner : undefined);
         return {};
       };
       host.requestRuntimeSupervisorSessionAttach = async (_client, sessionId) => ({ sessionId });
@@ -727,31 +730,50 @@ try {
         attached.push({ nodeKind, nodeId, sessionId, result: await request() });
       };
       await host.restoreLiveRuntimeSessions();
-      assert.deepEqual(deleted.map(session => session.nodeId), [legacyNode.id]);
-      assert.deepEqual(attached.map(session => session.nodeId), [rootNode.id]);
-      assert.deepEqual(host.state.nodes, [rootNode, legacyNode], 'Default persistence settings do not rewrite original bindings.');
+      assert.deepEqual(deleted.map(session => session.nodeId), enabled ? [] : [legacyNode.id],
+        'Disabled persistence only deletes old slot bindings, never a shared root binding.');
+      assert.deepEqual(attached.map(session => session.nodeId), enabled ? [rootNode.id, legacyNode.id] : [],
+        'Only enabled persistence may attach either original binding.');
+      assert.deepEqual(host.state.nodes, [rootNode, legacyNode], 'Restoration does not rewrite original bindings.');
       vscodeWorkspace.isTrusted = false;
       await host.restoreLiveRuntimeSessions();
-      assert.equal(deleted.length, 1);
-      assert.equal(attached.length, 1, 'Untrusted workspaces neither attach nor delete root sessions.');
+      assert.equal(deleted.length, enabled ? 0 : 1);
+      assert.equal(attached.length, enabled ? 2 : 0, 'Untrusted workspaces neither attach nor delete sessions.');
       vscodeWorkspace.isTrusted = true;
 
+      const sharedCanvasDirectory = path.join(host.context.globalStorageUri.fsPath, 'root-local-canvas');
+      assert.equal(host.getRootLocalCanvasStorageDirectory(), enabled ? sharedCanvasDirectory
+        : path.join(currentWorkspaceSlot, 'private-root-canvases-v1'));
       Object.assign(host, {
         getCanvasFileViewConfiguration: () => ({}),
         loadPersistedCanvasSnapshot: () => undefined,
-        loadPersistedRootLocalCanvasSnapshot: rootPath => ({
+        loadPersistedRootLocalCanvasSnapshot: rootPath => host.getRootLocalCanvasStorageDirectory() === sharedCanvasDirectory ? ({
           state: { ...emptyState, nodes: rootPath === rootA ? [rootNode] : [] }, runtimePersistenceEnabled: true
-        }),
-        getRootLocalCanvasSnapshotPath: () => path.join(tempDir, 'root-local-snapshot.json')
+        }) : undefined
       });
       for (const roots of [[rootA], [rootA, rootB]]) {
         setRootFolders(roots);
         const loaded = host.loadReconciledState();
-        const restored = loaded.nodes.find(node => node.kind === kind);
-        assert.ok(restored, `${kind} shared root-local snapshot is loaded by a new default-false workspace slot.`);
-        assert.equal(restored.status, 'reattaching');
-        assert.deepEqual(restored.metadata[kind].runtimeOwner, runtimeOwner);
-        assert.equal(restored.metadata[kind].runtimeStoragePath, runtimeStoragePath);
+        if (enabled) {
+          const restored = loaded.nodes.find(node => node.kind === kind);
+          assert.ok(restored, `${kind} enabled persistence loads the shared root-local snapshot.`);
+          assert.equal(restored.status, 'reattaching');
+          assert.deepEqual(restored.metadata[kind].runtimeOwner, runtimeOwner);
+          assert.equal(restored.metadata[kind].runtimeStoragePath, runtimeStoragePath);
+        } else {
+          assert.equal(loaded.nodes.some(node => node.metadata?.[kind]?.runtimeSessionId === rootNode.metadata[kind].runtimeSessionId), false,
+            `${kind} a private workspace slot must not inherit a shared root session.`);
+        }
+      }
+      if (!enabled) {
+        const detached = host.detachSharedBindingsInSnapshotMode({ ...emptyState, nodes: [rootNode] }).nodes[0];
+        assert.equal(detached.status, 'interrupted');
+        assert.equal(detached.metadata[kind].persistenceMode, 'snapshot-only');
+        assert.equal(detached.metadata[kind].liveSession, false);
+        for (const field of ['runtimeOwner', 'runtimeStoragePath', 'runtimeSessionId', 'runtimeBackend']) {
+          assert.equal(detached.metadata[kind][field], undefined, `${kind} copied shared ${field} grants no private control.`);
+        }
+        assert.deepEqual(host.state.nodes, [rootNode, legacyNode], 'Detaching a private copy does not mutate the shared source.');
       }
     }
 
@@ -766,6 +788,8 @@ try {
           const retired = [];
           let resolveConnection;
           let rejectConnection;
+          let signalConnectionRequested;
+          const connectionRequested = new Promise(resolve => { signalConnectionRequested = resolve; });
           const connection = new Promise((resolve, reject) => {
             resolveConnection = resolve;
             rejectConnection = reject;
@@ -776,6 +800,7 @@ try {
             getRuntimeSupervisorClientForKind: (_backend, _options, storage, owner) => {
               assert.equal(storage, runtimeStoragePath);
               assert.deepEqual(owner, runtimeOwner);
+              signalConnectionRequested();
               return connection;
             },
             requestRuntimeSupervisorSessionAttach: async (client, sessionId) => {
@@ -790,6 +815,7 @@ try {
             retireLegacyRuntimeSupervisorClientIfUnused: (_backend, client) => retired.push(client)
           });
           const restoring = host.restoreLiveRuntimeSessions();
+          await connectionRequested;
           const patch = changed === 'backend' ? { runtimeBackend: 'systemd-user' }
             : changed === 'storage' ? { runtimeStoragePath: `${runtimeStoragePath}-replacement` }
               : changed === 'owner' ? { runtimeOwner: { ...runtimeOwner, environmentKey: 'b'.repeat(64) } }
@@ -1006,8 +1032,8 @@ try {
   );
   assert.match(
     managerSource,
-    /if \(workspaceFolders\.length === 1 && !resetDueToRuntimePersistenceModeChange\) \{[\s\S]*?if \(rootLocalSnapshot\?\.state !== undefined\) \{/u,
-    '单根 workspace 必须优先读取当前 root-local state，避免从 multi-root 移除 root 后继续显示 workspace 级组合快照里的旧 root section。'
+    /if \(workspaceFolders\.length === 1 && \(!resetDueToRuntimePersistenceModeChange \|\| this\.isRuntimePersistenceEnabled\(\)\)\) \{[\s\S]*?if \(rootLocalSnapshot\?\.state !== undefined\) \{/u,
+    '单根 workspace 必须优先读取当前模式的 root-local state；开启模式切换仍读取共享 root，关闭模式切换不继承旧内容。'
   );
   assert.doesNotMatch(
     managerSource,

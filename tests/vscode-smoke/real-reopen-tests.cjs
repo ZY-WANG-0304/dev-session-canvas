@@ -9,6 +9,7 @@ const COMMAND_IDS = {
   openCanvasInEditor: 'devSessionCanvas.openCanvasInEditor',
   testGetDebugState: 'devSessionCanvas.__test.getDebugState',
   testGetRuntimeSupervisorState: 'devSessionCanvas.__test.getRuntimeSupervisorState',
+  testGetDiagnosticEvents: 'devSessionCanvas.__test.getDiagnosticEvents',
   testWaitForCanvasReady: 'devSessionCanvas.__test.waitForCanvasReady',
   testDispatchWebviewMessage: 'devSessionCanvas.__test.dispatchWebviewMessage',
   testFlushPersistedState: 'devSessionCanvas.__test.flushPersistedState',
@@ -780,6 +781,14 @@ async function writeFailureArtifacts(error) {
     );
   } catch {
     // Ignore runtime supervisor capture errors during teardown.
+  }
+
+  try {
+    const events = await vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents);
+    await fs.writeFile(path.join(artifactDir, `real-reopen-${phase}-failure-diagnostics.json`),
+      `${JSON.stringify(events, null, 2)}\n`, 'utf8');
+  } catch {
+    // Preserve the original failure if diagnostics are unavailable during teardown.
   }
 }
 

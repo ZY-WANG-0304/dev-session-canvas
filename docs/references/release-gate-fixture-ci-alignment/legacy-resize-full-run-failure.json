@@ -1,0 +1,58 @@
+{
+  "failure": "AssertionError [ERR_ASSERTION]: Timed out waiting for runtime session state. Last snapshot: {\"sessionId\":\"684b6c2e-fd0a-47ad-92e3-86016f467bf3\",\"kind\":\"agent\",\"live\":true,\"lifecycle\":\"waiting-input\",\"runtimeBackend\":\"legacy-detached\",\"runtimeGuarantee\":\"best-effort\",\"resumePhaseActive\":false,\"shellPath\":\"/tmp/dscgate1012/tests/vscode-smoke/fixtures/fake-agent-provider\",\"cwd\":\"/tmp/dscgate1012\",\"cols\":82,\"rows\":27,\"scrollback\":1200,\"output\":\"[fake-agent] ready pid=779312 session=session-779312\\r\\nLEGACY_UPGRADE_AGENT_READY\\r\\n> [fake-agent] LEGACY_UPGRADE_AGENT_READY\\r\\n> LEGACY_HOST_AGENT_INPUT_REACHED_PTY\\r\\n[fake-agent] LEGACY_HOST_AGENT_INPUT_REACHED_PTY\\r\\n> \",\"outputSequence\":6,\"serializedTerminalState\":{\"format\":\"xterm-serialize-v1\",\"data\":\"[fake-agent] ready pid=779312 session=session-779312\\r\\nLEGACY_UPGRADE_AGENT_READY\\r\\n> [fake-agent] LEGACY_UPGRADE_AGENT_READY\\r\\n> LEGACY_HOST_AGENT_INPUT_REACHED_PTY\\r\\n[fake-agent] LEGACY_HOST_AGENT_INPUT_REACHED_PTY\\r\\n> \",\"viewportY\":0,\"outputSequence\":6},\"displayLabel\":\"Codex\",\"launchMode\":\"start\",\"provider\":\"codex\",\"resumeStrategy\":\"none\"}",
+  "testLocation": "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs:250",
+  "predicate": "原 Agent 输入 marker 已到达且 session cols/rows 与捕获的 resizedLegacyAgentProbe 一致",
+  "waitBudgetMs": 20000,
+  "lastSession": {
+    "sessionId": "684b6c2e-fd0a-47ad-92e3-86016f467bf3",
+    "kind": "agent",
+    "live": true,
+    "lifecycle": "waiting-input",
+    "runtimeBackend": "legacy-detached",
+    "runtimeGuarantee": "best-effort",
+    "resumePhaseActive": false,
+    "shellPath": "/tmp/dscgate1012/tests/vscode-smoke/fixtures/fake-agent-provider",
+    "cwd": "/tmp/dscgate1012",
+    "cols": 82,
+    "rows": 27,
+    "scrollback": 1200,
+    "output": "[fake-agent] ready pid=779312 session=session-779312\r\nLEGACY_UPGRADE_AGENT_READY\r\n> [fake-agent] LEGACY_UPGRADE_AGENT_READY\r\n> LEGACY_HOST_AGENT_INPUT_REACHED_PTY\r\n[fake-agent] LEGACY_HOST_AGENT_INPUT_REACHED_PTY\r\n> ",
+    "outputSequence": 6,
+    "serializedTerminalState": {
+      "format": "xterm-serialize-v1",
+      "data": "[fake-agent] ready pid=779312 session=session-779312\r\nLEGACY_UPGRADE_AGENT_READY\r\n> [fake-agent] LEGACY_UPGRADE_AGENT_READY\r\n> LEGACY_HOST_AGENT_INPUT_REACHED_PTY\r\n[fake-agent] LEGACY_HOST_AGENT_INPUT_REACHED_PTY\r\n> ",
+      "viewportY": 0,
+      "outputSequence": 6
+    },
+    "displayLabel": "Codex",
+    "launchMode": "start",
+    "provider": "codex",
+    "resumeStrategy": "none"
+  },
+  "capturedProbeDimensions": "未存入失败工件，不能从最后 session 尺寸推断期望尺寸",
+  "rootCause": "未确认；定向首次通过，完整命令再次 resize 超时，本次为 Agent",
+  "passedSmokePrefix": [
+    "local-execution-flow",
+    "owned-canvas-reconciliation",
+    "snapshot-only-manual-recovery",
+    "local-surface-cutover",
+    "local-preparation-failure",
+    "local-links-and-stop",
+    "local-pty-robustness",
+    "runtime-checkpoint-refresh",
+    "trusted",
+    "restricted"
+  ],
+  "unreachedSmoke": [
+    "real-reopen",
+    "multi-root-real-reopen",
+    "single-to-multi-root-real-reopen",
+    "two-window-shared-runtime",
+    "systemd-user-real-reopen",
+    "systemd-fallback-real-reopen",
+    "remote-ssh-real-reopen"
+  ],
+  "webviewReachedByFullCommand": false,
+  "log": "/tmp/dga12/npm-test-prepared.log",
+  "logSha256": "31bb8d72a565b1e59e7d8fb3caaa010b9e72fe0ca1f1c542e5e5560f6e5f44e9"
+}

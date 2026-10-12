@@ -12,6 +12,20 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-12：发布门禁夹具与 CI 对齐后的剩余验证边界
+
+背景与触发：PR #319 后固定主线 `c32437ac` 的完整门禁仍失败，用户授权对齐五组确定的测试/CI 问题。修复方案见 `docs/design-docs/release-gate-fixture-ci-alignment.md`。本轮已修正关闭模式、原连接请求屏障、当前模式加载断言、checkpoint 收齐等待、新 root socket 地址和提交前 unavailable fallback；两个 workflow 新增同 cache 的 Chromium/系统依赖预装和短宿主 TMP。完整 execution-context、root preparation/systemd、门禁/workflow 回归通过，checkpoint 与旧升级定向原生场景首次完整通过。
+
+当前未收口：fallback 首次 setup 已选择 legacy-detached/best-effort，started receipt 保留且无 systemctl 提交日志；verify 在 editor Canvas ready 20 秒超时，generation 5、ready/ack 均 false，原会话仍存活。原因尚未知，重开失败工件补存现有 Host 诊断事件，等待预算和条件不变。冷缓存浏览器安装及新 cache 市场浏览器 E2E 已通过；完整 npm test 首次在 wrapper 安装入口因本机并行冷安装缓存锁退出。安装完成后按串行准备原样执行的一次完整命令通过全部纯测试/浏览器前缀及 trusted/restricted 等源码 smoke，仍在旧升级 `legacy-supervisor-upgrade-tests.cjs:250` 等待 Agent resize 与捕获 probe 一致时超时、退出 1；原输入 marker 已到达，最后 session waiting-input、82×27，期望 probe 尺寸没有存入失败工件。根因未知，不延长期限或放宽一致性。后续七组窗口重开/共享/systemd/远端场景与最终 Webview 均未由该完整命令触达。
+
+有限补验：使用已有当前构建及新隔离目录直接运行 fallback 两阶段，完整通过并确认无 systemctl 提交。首个 Canvas ready 失败仍保留，不能以后续通过覆盖或追认根因已修复。独立 `npm run test:webview` 使用本轮新 cache，424/424 通过；结果另记，不拼接为完整 npm test 通过。
+
+历史边界：前一轮旧升级 Terminal resize 一致性等待超时、更早 commit lease 24084 被占用均保留。本轮定向旧升级首次完整通过，完整命令又在 Agent resize 一致性等待失败；不证明旧 resize 原因已修复，没有停止此前未知 listener。提交后 unknown 的产品保护保持，本轮不将 fail-start 场景重新解释为允许 fallback。
+
+建议时机：下一轮发布准备前收口 Canvas ready 首败及旧升级 resize 一致性原因，再验证完整门禁。resize 现场缺少期望 probe 和时间线，后续先补保存实际 Host/Page/原 Supervisor 的尺寸与请求顺序，不能直接归为页面 fit、测试竞态或产品丢 resize。CI 冷 runner/系统依赖及实际路径按发布输入验证；本机系统依赖已齐备，不代证全新 OS 的缺库安装。用户态 fixture 不代证真实 systemd、真实 provider、macOS/Windows、真实远端长断开、多 root 双窗口或完整 UI 接管矩阵；不构成 0.26.1 发布豁免。
+
+关联：`docs/design-docs/release-gate-fixture-ci-alignment.md`、`docs/exec-plans/completed/release-gate-fixture-ci-alignment.md`、前轮报告 PR #320。
+
 ## 2026-10-09：活动本地执行在画布重读和 workspace root 重组时失去绑定
 
 PR #313 自启动超时已定位：`setPersistedStateForTest` / `reloadPersistedStateForTest` 重建 metadata，`reconcileRuntimeNodes` 只认识旧 session map，遗漏当前 `nonNativeHostExecutions`。原生复现中旧执行仍 running，但节点被恢复成 resume-ready/interrupted；同 ID 恢复因原 key 占用拒绝。真实 VS Code 已保存 workspace 从一个 root 添加到两个 root 时，同 Host 内节点 ID 加 root 前缀，旧执行未迁移或退休，另启动了一条同 resume session 的 Agent。属于正式产品生命周期缺陷，不能仅调整 smoke 顺序后放行发布。

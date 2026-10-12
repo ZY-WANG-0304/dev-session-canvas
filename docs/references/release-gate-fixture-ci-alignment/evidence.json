@@ -1,0 +1,432 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-11T19:00:00.388989+00:00",
+  "baseCommit": "c32437ac008b1d933e9e13975e60c869e7bb33d4",
+  "branch": "release-gate-fixture-ci-alignment",
+  "environment": {
+    "platform": "Linux x64",
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "agentProvider": "fake-agent-provider",
+    "nativeAssets": "/tmp/dsc-release-026-assets",
+    "vscodeCache": "/tmp/dsc0261v/.vscode-test",
+    "hostTmpRoot": "/tmp/gm12",
+    "logsRoot": "/tmp/dga12"
+  },
+  "testedFiles": [
+    {
+      "path": "scripts/test/test-canvas-execution-context.mjs",
+      "sha256": "6951d14801004fd371e62036a71cff0029749a0effb36cfcb12c6e3409592738"
+    },
+    {
+      "path": "tests/vscode-smoke/extension-tests.cjs",
+      "sha256": "c373717402945c4dd9d1f3069302ef13a112ff3a0519fddcd9dbd9e81a94c3c4"
+    },
+    {
+      "path": "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs",
+      "sha256": "935a58d1f3a33ef8ccdbf1bed0b9ba1f70906436317c77464985d1826f25ed86"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-smoke.mjs",
+      "sha256": "0c82ed980de03c27b504eef735890ee586d4195b3169f22f984c6d75aa06a9c5"
+    },
+    {
+      "path": ".github/workflows/release-preflight.yml",
+      "sha256": "4facabfc0bc57c05025a044cb8ac73d39c83a661eda968a87629dd6547ac2723"
+    },
+    {
+      "path": ".github/workflows/publish-marketplace-release.yml",
+      "sha256": "16e19c6c3748451b9e14c92280ad19fc35b19a055d6dc703ce5059533e7a1b56"
+    },
+    {
+      "path": "scripts/test/test-release-preflight-workflow.mjs",
+      "sha256": "6361ff798d2d5074ac8cf40939b7dd40aa669c11be168289486f7e5b9908871c"
+    },
+    {
+      "path": "scripts/test/test-publish-marketplace-workflow.mjs",
+      "sha256": "32cc266ecf4a70a662aaebf1685aa74d2d6bbbab0b01e54a258d31a3f60f47d7"
+    },
+    {
+      "path": "tests/vscode-smoke/real-reopen-tests.cjs",
+      "sha256": "83a3daf71e6857f68b79ab6f2194509d4ff7ebc85cf854c7f3a1431b793096c9",
+      "changesBusinessAssertions": false
+    }
+  ],
+  "unchangedProductAndReleasePaths": [
+    "extensions",
+    "packages",
+    "apps",
+    "package.json",
+    "package-lock.json",
+    "docs/release-contracts"
+  ],
+  "runs": [
+    {
+      "name": "checkpoint",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/gm12",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dscgate1012/.playwright-browsers",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dga12/checkpoint",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "runtime-checkpoint-refresh"
+      },
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "startedAt": "2026-10-11T17:59:02.597347+00:00",
+      "log": "/tmp/dga12/checkpoint.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-11T17:59:28.517531+00:00",
+      "logSha256": "4bf414133f77f25c628ae8e52f6ca4ed38633fb71fba79179ae88ebef9aa1bd3",
+      "timeSource": "runner captured UTC wall time"
+    },
+    {
+      "name": "fallback",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/gm12",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dscgate1012/.playwright-browsers",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dga12/fallback",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "systemd-fallback-real-reopen"
+      },
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "startedAt": "2026-10-11T17:59:28.518638+00:00",
+      "log": "/tmp/dga12/fallback.log",
+      "exitCode": 1,
+      "finishedAt": "2026-10-11T18:00:23.004569+00:00",
+      "logSha256": "6720c3df07257b01cbd907a6419dad90b9bb7e4688f01951a1c2c6166548367f",
+      "timeSource": "runner captured UTC wall time"
+    },
+    {
+      "name": "legacy-upgrade",
+      "command": [
+        "npm",
+        "run",
+        "test:smoke"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/gm12",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dscgate1012/.playwright-browsers",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dga12/legacy-upgrade",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "startedAt": "2026-10-11T18:00:23.006064+00:00",
+      "log": "/tmp/dga12/legacy-upgrade.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-11T18:01:19.088897+00:00",
+      "logSha256": "58c90a68f1b5707718ae0c7b16cfebba98530f600daa4e75a9f9a24f667a2165",
+      "timeSource": "runner captured UTC wall time"
+    },
+    {
+      "name": "npm-test",
+      "command": [
+        "npm",
+        "test"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/gm12",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dscmainv1012/.playwright-browsers",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dga12/npm-test"
+      },
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "startedAt": "2026-10-11T18:08:49.636403+00:00",
+      "log": "/tmp/dga12/npm-test.log",
+      "exitCode": 1,
+      "finishedAt": "2026-10-11T18:19:28.007601+00:00",
+      "logSha256": "727532215e4ff17a56fb41e002c22e67096e8ff114938efbec8b8912c3bef32e",
+      "timeSource": "runner captured UTC wall time"
+    },
+    {
+      "name": "marketplace-browser",
+      "command": [
+        "npm",
+        "run",
+        "test:marketplace-browser-e2e"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/gm12",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dscgate1012/.playwright-browsers",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dga12/marketplace-browser"
+      },
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "startedAt": "2026-10-11T18:33:57.175405+00:00",
+      "log": "/tmp/dga12/marketplace-browser.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-11T18:34:12.474331+00:00",
+      "logSha256": "f33042e071a4792b08b98a2df8b8241f9e7ffd440e6e4ea0543b8515ba84baf6",
+      "timeSource": "runner captured UTC wall time"
+    },
+    {
+      "name": "npm-test-prepared",
+      "command": [
+        "npm",
+        "test"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/gm12",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dscgate1012/.playwright-browsers",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dga12/npm-test-prepared"
+      },
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "startedAt": "2026-10-11T18:35:19.293331+00:00",
+      "log": "/tmp/dga12/npm-test-prepared.log",
+      "exitCode": 1,
+      "finishedAt": "2026-10-11T18:46:21.642939+00:00",
+      "logSha256": "31bb8d72a565b1e59e7d8fb3caaa010b9e72fe0ca1f1c542e5e5560f6e5f44e9",
+      "timeSource": "runner captured UTC wall time"
+    },
+    {
+      "name": "webview-independent",
+      "command": [
+        "npm",
+        "run",
+        "test:webview"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/gm12",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dscgate1012/.playwright-browsers",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dga12/webview-independent"
+      },
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "startedAt": "2026-10-11T18:47:05.234301+00:00",
+      "log": "/tmp/dga12/webview-independent.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-11T18:59:31.898400+00:00",
+      "logSha256": "dfeccfb606956012e00b01ae3063659ca92ac38320388cb3956ae47b853e1ace",
+      "timeSource": "runner captured UTC wall time"
+    },
+    {
+      "name": "fallback-diagnostic",
+      "command": [
+        "node",
+        "scripts/smoke/run-vscode-smoke.mjs"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "environment": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/gm12",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dscgate1012/.playwright-browsers",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dga12/fallback-diagnostic",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "systemd-fallback-real-reopen"
+      },
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "startedAt": "2026-10-11T18:47:54.642585+00:00",
+      "log": "/tmp/dga12/fallback-diagnostic.log",
+      "exitCode": 0,
+      "finishedAt": "2026-10-11T18:48:34.986579+00:00",
+      "logSha256": "019bef40d082d5a4f2b9425f2e6b523fcdc3a9df44ef9107ac0858278b28cd80",
+      "timeSource": "runner captured UTC wall time"
+    },
+    {
+      "name": "npm-ci",
+      "command": [
+        "npm",
+        "ci"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "exitCode": 0,
+      "log": "/tmp/dga12/npm-ci.log",
+      "logSha256": "d26b2b6ced99b3fb5af408631f7dc4763db9c148ae946f97dfa2e552a239b71b",
+      "timeSource": "exact start/end not recorded; exit status captured in the tool result",
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node"
+    },
+    {
+      "name": "build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "exitCode": 0,
+      "log": "/tmp/dga12/build.log",
+      "logSha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "timeSource": "exact start/end not recorded; exit status captured in the tool result",
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node"
+    },
+    {
+      "name": "execution-context-v5",
+      "command": [
+        "npm",
+        "run",
+        "test:canvas-execution-context"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "exitCode": 0,
+      "log": "/tmp/dga12/execution-context-v5.log",
+      "logSha256": "748474edccbd1d1e0619a21f9fbc4fa7879dfd2028261013f0297cfaef6c63fd",
+      "timeSource": "exact start/end not recorded; exit status captured in the tool result",
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node"
+    },
+    {
+      "name": "root-preparation",
+      "command": [
+        "npm",
+        "run",
+        "test:runtime-root-preparation"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "exitCode": 0,
+      "log": "/tmp/dga12/root-preparation.log",
+      "logSha256": "ca8b6930441ae32b117f7c8335d6ff3609ae9d0fcddd9a16e5e8b5a501590a21",
+      "timeSource": "exact start/end not recorded; exit status captured in the tool result",
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node"
+    },
+    {
+      "name": "preflight",
+      "command": [
+        "npm",
+        "run",
+        "test:release-preflight"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "exitCode": 0,
+      "log": "/tmp/dga12/preflight.log",
+      "logSha256": "d04d2df46fb0aab0e45880457f39c43ada3f191d408c34da998713ae1c19924b",
+      "timeSource": "exact start/end not recorded; exit status captured in the tool result",
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node"
+    },
+    {
+      "name": "preflight-workflow-final",
+      "command": [
+        "npm",
+        "run",
+        "test:release-preflight-workflow"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "exitCode": 0,
+      "log": "/tmp/dga12/preflight-workflow-final.log",
+      "logSha256": "fddc9a3f409c67fed862bfa456c2e34193500d6fbb50d3459bd348594c48c7b7",
+      "timeSource": "exact start/end not recorded; exit status captured in the tool result",
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node"
+    },
+    {
+      "name": "publish-workflow-final",
+      "command": [
+        "npm",
+        "run",
+        "test:publish-marketplace-workflow"
+      ],
+      "workingDirectory": "/tmp/dscgate1012",
+      "exitCode": 0,
+      "log": "/tmp/dga12/publish-workflow-final.log",
+      "logSha256": "caf1683e3ae9a345bd32017dda2c3651b3ac5199d3537faf2c58306a8b83664b",
+      "timeSource": "exact start/end not recorded; exit status captured in the tool result",
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node"
+    }
+  ],
+  "browserPreparation": {
+    "command": [
+      "npx",
+      "--no-install",
+      "playwright",
+      "install",
+      "--with-deps",
+      "chromium"
+    ],
+    "workingDirectory": "/tmp/dscgate1012",
+    "environment": {
+      "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dscgate1012/.playwright-browsers"
+    },
+    "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+    "log": "/tmp/dga12/browser-install-cold.log",
+    "logSha256": "4ea52caa896d6cf0d39d297aea2deff17c0b58cf058e11fd8e0070e48124880f",
+    "initialCacheState": "新工作树空缓存；未复制旧浏览器",
+    "timeSource": "exact start/end not captured",
+    "exitCode": 0,
+    "completionObservedAt": "2026-10-11T18:34:20.063152+00:00",
+    "versions": {
+      "chrome": "Google Chrome for Testing 147.0.7727.15",
+      "headlessShell": "Google Chrome for Testing 147.0.7727.15"
+    },
+    "cacheEntries": [
+      "chromium-1217",
+      "chromium_headless_shell-1217",
+      "ffmpeg-1011"
+    ],
+    "systemDependencyResult": "0 upgraded, 0 newly installed; existing system libraries verified",
+    "cacheLockExistsAfterCompletion": false
+  },
+  "preparedFullRunResult": {
+    "exitCode": 1,
+    "failureSummary": "docs/references/release-gate-fixture-ci-alignment/legacy-resize-full-run-failure.json",
+    "allPrefixTestsPassed": true,
+    "fullGatePassed": false
+  },
+  "fallbackFirstFailureSummary": "docs/references/release-gate-fixture-ci-alignment/fallback-first-failure-summary.json",
+  "firstFullRunBoundary": {
+    "exitCode": 1,
+    "failedAt": "test:activitybar-badges Playwright install chromium",
+    "reason": "本机并行冷安装持有缓存锁；尚未执行浏览器用例",
+    "earlyMarketplaceCache": "/tmp/dscmainv1012/.playwright-browsers",
+    "wrapperCache": "/tmp/dscgate1012/.playwright-browsers",
+    "subsequentValidation": "冷安装完成后原样一次完整 npm test，记录新日志，保留首次结果"
+  },
+  "developmentIterations": {
+    "logs": [
+      {
+        "path": "/tmp/dga12/execution-context.log",
+        "sha256": "87ebaab4b84e3a2cb8f5b9a4582821e3688b27291f238dd40803592bc781d9cd"
+      },
+      {
+        "path": "/tmp/dga12/execution-context-v2.log",
+        "sha256": "c4dfcfed21e9c8a23d0d83c43018579e4ad53a759756a11230595a3cd2ddb217"
+      },
+      {
+        "path": "/tmp/dga12/execution-context-v3.log",
+        "sha256": "144e3a0b14b3339fb12a978d8f6547d560616dbd3e47e1964b6ae1bb2bf8692a"
+      },
+      {
+        "path": "/tmp/dga12/execution-context-v4.log",
+        "sha256": "5dd31a9286d5df2f2531f8ff1cf5cc992f0a808c38f8ea0a02979ae5bd258dac"
+      }
+    ],
+    "classification": "实现期间发现 mock 缺字段、异步捕获前替换和旧源码 guard 断言；最终 v5 完整通过，原失败日志保留"
+  },
+  "scopeLimits": [
+    "未重打包或运行本轮 VSIX 安装矩阵",
+    "不追认前轮 legacy resize 首败根因已修复",
+    "未执行 0.26.1 预合并或 tag release:verify",
+    "不代证真实 provider、真实 systemd、macOS/Windows、多 root 双窗口和远端长断开"
+  ],
+  "testResourceCleanup": {
+    "command": [
+      "node",
+      "/tmp/dga12/cleanup-fallback.mjs"
+    ],
+    "exitCode": 0,
+    "processIdentityCheck": "/proc/29847/cmdline 精确核对本轮 staged Supervisor 和 storage 前缀",
+    "action": "仅通过原 socket deleteSession 退休首败的两个已核对 session，未盲杀 PID 或触碰未知 listener",
+    "log": "/tmp/dga12/fallback-cleanup.log",
+    "logSha256": "468ac75295de286b7063ddaba2c9d19cd72004ff5ff1155580a27bfc87da591c"
+  }
+}
