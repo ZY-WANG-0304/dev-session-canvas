@@ -5,7 +5,7 @@ index 84d6fc9f..04ca8877 100644
 @@ -510,6 +510,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
          });
        }
- 
+
 +      let initialFitDeadline: number | undefined;
 +      let cardFitDeadline: number | undefined;
        function fitTerminal(options: {
@@ -13,7 +13,7 @@ index 84d6fc9f..04ca8877 100644
          allowShrinkDuringRestore?: boolean;
 @@ -532,6 +534,16 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
          }
- 
+
          const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
 +        if (id === 'legacy-upgrade-agent' && hasAppliedSnapshot) {
 +          const initial = proposedDimensions.cols < 80;
@@ -31,7 +31,7 @@ index 84d6fc9f..04ca8877 100644
 @@ -1246,6 +1258,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
          });
        }
- 
+
 +      let initialFitDeadline: number | undefined;
 +      let cardFitDeadline: number | undefined;
        function fitTerminal(options: {
@@ -39,7 +39,7 @@ index 84d6fc9f..04ca8877 100644
          allowShrinkDuringRestore?: boolean;
 @@ -1268,6 +1282,16 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
          }
- 
+
          const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
 +        if (id === 'legacy-upgrade-agent' && hasAppliedSnapshot) {
 +          const initial = proposedDimensions.cols < 80;
@@ -70,7 +70,7 @@ index 25812835..565208c4 100644
 @@ -173,6 +175,7 @@ async function run() {
      assert.ok(legacyAgentProbeBeforeResize.terminalCols && legacyAgentProbeBeforeResize.terminalRows);
      assert.ok(legacyTerminalProbeBeforeResize.terminalCols && legacyTerminalProbeBeforeResize.terminalRows);
- 
+
 +    resizeTimeline.push({ phase: 'before-resize', time: Date.now(), probe });
      await clearDiagnosticEvents();
      await performWebviewDomAction({

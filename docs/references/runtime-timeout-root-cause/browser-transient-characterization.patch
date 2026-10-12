@@ -5,7 +5,7 @@ index e1b1249a..6ebdeab8 100644
 @@ -17136,6 +17136,34 @@ async function holdXtermParser(page) {
    });
  }
- 
+
 +for (const executionKind of ['agent', 'terminal']) {
 +  test(`${executionKind} diagnosis captures transient restore dimensions before final fit`, async ({ page }) => {
 +    const nodeId = `${executionKind}-zoom`;

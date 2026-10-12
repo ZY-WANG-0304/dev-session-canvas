@@ -506,11 +506,11 @@
     },
     {
       "path": "docs/references/runtime-timeout-root-cause/browser-transient-characterization.patch",
-      "sha256": "979e86ac91e00f3b4768c9e53e9cefa81050d3d4ff405daf33352e3f571c7d08"
+      "sha256": "b5c647e1ef9d8f1a6f98bd3018543785b09313c357456ab663968d9cb258a93a"
     },
     {
       "path": "docs/references/runtime-timeout-root-cause/fallback-clean-diagnostic.patch",
-      "sha256": "919ac81ea9ac59250b89eb05cbec01b689fc76a4b2707db300cfb4bff65c52d0"
+      "sha256": "9f11fee9dc0a638e1dc7b5eacab1cc98241b01d6ee34fda0878cd4c0740a120b"
     },
     {
       "path": "docs/references/runtime-timeout-root-cause/fallback-f1-setup.json",
@@ -530,7 +530,7 @@
     },
     {
       "path": "docs/references/runtime-timeout-root-cause/fallback-lifecycle-diagnostic.patch",
-      "sha256": "427d4772c9ef3be8e8dce67a42c11a4e2014cf08dbbbb9f355d4f95186bddb7c"
+      "sha256": "aaae65b46582f939525f99cba9b6cafdc15b39bce407b7ba4d8f7ff9ebce99f3"
     },
     {
       "path": "docs/references/runtime-timeout-root-cause/fallback-original-boundary.json",
@@ -550,7 +550,7 @@
     },
     {
       "path": "docs/references/runtime-timeout-root-cause/native-transient-control.patch",
-      "sha256": "3760b1f30a9dfa539eb3e29038bb113b3819bba8ce85651677125076ab82d615"
+      "sha256": "0c05d9dff05f905c9351a898f848aa2f180e1a784ec2d357bf26bd2c89fd11d4"
     }
   ],
   "conclusions": {
