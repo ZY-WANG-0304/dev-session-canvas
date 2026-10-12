@@ -1,0 +1,26 @@
+[
+  {
+    "log": "[real-reopen] phase=setup start"
+  },
+  {
+    "log": "[real-reopen] phase=setup ready-for-exit"
+  },
+  {
+    "log": "Exit code:   0"
+  },
+  {
+    "log": "[real-reopen] phase=verify start"
+  },
+  {
+    "log": "[real-reopen] phase=verify completed"
+  },
+  {
+    "log": "Exit code:   0"
+  },
+  {
+    "log": "Systemd unavailable before submission real window reopen smoke passed."
+  },
+  {
+    "log": "VS Code smoke test passed."
+  }
+]

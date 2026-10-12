@@ -1,0 +1,14 @@
+{
+  "agentNodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+  "terminalNodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+  "completedTerminalNodeId": "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b",
+  "agentSessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+  "terminalSessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+  "completedTerminalSessionId": "60764404-55fb-4dca-8146-8ef4596ccdf7",
+  "agentRuntimeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+  "terminalRuntimeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+  "agentRuntimeStorageSlotName": "runtime-supervisor-generations",
+  "terminalRuntimeStorageSlotName": "runtime-supervisor-generations",
+  "workspaceRootPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+  "workspaceFolderCount": 1
+}

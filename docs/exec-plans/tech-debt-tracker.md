@@ -12,6 +12,16 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-13：真实窗口重开 ready 预算缓解与上游资源责任
+
+背景与范围：PR #324确认VS Code1.141.0连续重开中未响应资源请求等待30秒、占满32名额后阻塞新CSS/JS；原单次fallback首败仍缺分层证据，不能归因。用户授权延长等待，共用`real-reopen-tests.cjs`的Canvas ready预算调整为45秒，其他等待及产品行为保持。
+
+当前处理：仅容忍上游30秒有限结算加启动余量；不增加固定sleep或重试，不放宽active/visible/ready、原session身份、正文、输入或resize断言。正常ready立即返回，异常最多多等25秒，超过45秒保留失败工件。原版fallback两阶段与容量4对照完整通过，对照第3次ready耗时28.49秒；永久不发送ready在45.02秒按期失败并留存工件。PR #323/#324合入后rebase到main `1fb49b4e`，重新构建及原生fallback两阶段通过；控制实验保留原基线证据，未重复运行。具体验证见`docs/design-docs/smoke-reopen-ready-timeout.md`。
+
+剩余风险与建议时机：预算缓解没有修复上游销毁client后的请求责任，也不能证明原首败消失。再次失败采集workerReady、inner frame、CSS/JS、worker队列和React/Host消息；上游修复后重新评估预算。完整发布门禁、其他平台/Remote/VSIX单独验收，下方历史首败继续保留。
+
+关联：`docs/design-docs/smoke-reopen-ready-timeout.md`、PR #324与`tests/vscode-smoke/real-reopen-tests.cjs`。
+
 ## 2026-10-13：Canvas ready 原首败与连续重开的上游资源积压
 
 背景与触发：PR #321 后原 fallback verify 在 generation5、active、ready/ack=false 时20秒超时，原会话存活。原renderer没有CSS/JS资源读取日志，缺iframe/worker/Host事件，仍不能定因。调查时main a213b89b上的R2以及恢复源码后的原短workspace N1两阶段均通过，不能覆盖首败。PR #323合入main a6bb190a后本调查分支已rebase；历史实验输入和工件保持，不代证新主线复验。

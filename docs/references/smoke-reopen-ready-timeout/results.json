@@ -1,0 +1,75 @@
+{
+  "date": "2026-10-13",
+  "baseCommit": "a213b89b8c1dcaaec291e896042acc8627a05668",
+  "nodeVersion": "22.23.3",
+  "vscodeVersion": "1.141.0",
+  "platform": "Linux x64 / Xvfb",
+  "change": {
+    "fixture": "tests/vscode-smoke/real-reopen-tests.cjs",
+    "oldReadyTimeoutMs": 20000,
+    "newReadyTimeoutMs": 45000
+  },
+  "build": {
+    "exitCode": 0
+  },
+  "nativeFallbackTwoPhase": {
+    "exitCode": 0,
+    "phases": [
+      "setup ready-for-exit",
+      "verify completed"
+    ],
+    "systemctlSubmitted": false
+  },
+  "capacity4Control": {
+    "exitCode": 0,
+    "verifyReadyElapsedMs": [
+      792,
+      564,
+      28493,
+      615
+    ],
+    "blockedRequests": 4,
+    "waiters": 2,
+    "fullOriginalVerifyAssertionsPassed": true,
+    "systemctlSubmitted": false
+  },
+  "permanentlySuppressedReadyControl": {
+    "exitCode": 1,
+    "expectedFailure": true,
+    "waitElapsedMs": 45021,
+    "error": "Timed out waiting for the editor Canvas to become ready (45000ms).",
+    "activeSurface": "editor",
+    "editorLifecycle": {
+      "generation": 5,
+      "mode": "active",
+      "ready": false,
+      "bootstrapAck": false
+    },
+    "originalAgentAndTerminalSessionsLive": true,
+    "pendingRuntimeSupervisorOperationCount": 0,
+    "resourceResponseStatuses": [
+      200,
+      200
+    ],
+    "innerAppChildrenObserved": 0,
+    "postReadyVerifyAssertionsRan": false,
+    "systemctlSubmitted": false
+  },
+  "controls": {
+    "stagedBundleMutation": {
+      "needle": "type: \"webview/ready\"",
+      "replacement": "type: \"webview/diagReadySuppressed\"",
+      "matchCount": 1,
+      "cleanSha256": "18df79829d80ad8f9a0f10317bba996c5f00dabfaccc218f31103b4e8abcdbe2",
+      "mutatedSha256": "a9b7d8677a757d8c783494e11db101437a796bd111ce79d0ab1aface0ef3ad1f"
+    },
+    "originalAndRestoredCloneWorkerSha256": "338e0c80993456b866ec1a544933117522600bf25c313c7c7efc94d2ca3fa0dd",
+    "observerUsesPause": false
+  },
+  "limits": [
+    "原单次 fallback ready 首败原因仍未确认。",
+    "容量4是受控对照；本轮没有复跑原容量32连续重开。",
+    "产品默认 ready 等待、resize 与其他期限未改。",
+    "完整 release gate、VSIX、Remote 与其他平台矩阵未在本轮执行。"
+  ]
+}

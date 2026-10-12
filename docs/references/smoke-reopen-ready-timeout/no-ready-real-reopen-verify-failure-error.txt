@@ -1,0 +1,6 @@
+Error: Timed out waiting for the editor Canvas to become ready (45000ms).
+	at _CanvasPanelManager.waitForCanvasReady (/tmp/dwr-budget-no-ready/smoke-host/dist/extension.js:29473:11)
+	at async Rf._executeContributedCommand (file:///tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:165:49173)
+	at async openCanvasEditor (/tmp/dwr-budget-no-ready/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs:357:5)
+	at async runVerifyPhase (/tmp/dwr-budget-no-ready/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs:208:3)
+	at async Object.run (/tmp/dwr-budget-no-ready/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs:57:7)

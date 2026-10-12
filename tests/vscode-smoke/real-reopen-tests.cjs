@@ -17,6 +17,8 @@ const COMMAND_IDS = {
   testResetState: 'devSessionCanvas.__test.resetState'
 };
 
+// VS Code resource requests from a disposed frame can take 30s to settle.
+const CANVAS_READY_TIMEOUT_MS = 45000;
 const OFFLINE_SLEEP_SECONDS = 12;
 const AGENT_REOPEN_OUTPUT = '[fake-agent] REAL_REOPEN_AGENT';
 const AGENT_POST_REOPEN_OUTPUT = '[fake-agent] AFTER_REOPEN_AGENT';
@@ -350,7 +352,7 @@ async function activateExtension() {
 
 async function openCanvasEditor() {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
-  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', CANVAS_READY_TIMEOUT_MS);
 }
 
 async function createExecutionNodes() {

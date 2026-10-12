@@ -1,0 +1,79 @@
+[
+  {
+    "log": "[real-reopen] phase=setup start"
+  },
+  {
+    "budgetTest": {
+      "phase": "setup",
+      "result": "ready",
+      "elapsedMs": 717
+    }
+  },
+  {
+    "log": "[real-reopen] phase=setup ready-for-exit"
+  },
+  {
+    "log": "Exit code:   0"
+  },
+  {
+    "log": "[real-reopen] phase=verify start"
+  },
+  {
+    "budgetTest": {
+      "phase": "verify",
+      "iteration": 1,
+      "step": "repeat"
+    }
+  },
+  {
+    "budgetTest": {
+      "phase": "verify",
+      "result": "ready",
+      "elapsedMs": 792
+    }
+  },
+  {
+    "budgetTest": {
+      "phase": "verify",
+      "iteration": 2,
+      "step": "repeat"
+    }
+  },
+  {
+    "budgetTest": {
+      "phase": "verify",
+      "result": "ready",
+      "elapsedMs": 564
+    }
+  },
+  {
+    "budgetTest": {
+      "phase": "verify",
+      "iteration": 3,
+      "step": "repeat"
+    }
+  },
+  {
+    "budgetTest": {
+      "phase": "verify",
+      "result": "ready",
+      "elapsedMs": 28493
+    }
+  },
+  {
+    "budgetTest": {
+      "phase": "verify",
+      "result": "ready",
+      "elapsedMs": 615
+    }
+  },
+  {
+    "log": "[real-reopen] phase=verify completed"
+  },
+  {
+    "log": "Exit code:   0"
+  },
+  {
+    "log": "Ready budget cap4 full fallback two-phase passed."
+  }
+]
