@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/runtime-legacy-resize-convergence.md` | 修复旧升级 resize 恢复瞬态取样；标准/受控延迟通过，漏 resize 原生反例按期失败 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-legacy-resize-convergence.md` | 2026-10-12 |
 | `docs/design-docs/release-gate-fixture-ci-alignment.md` | 对齐关闭模式、checkpoint、提交前 fallback 与旧升级新 root 夹具；冷浏览器准备通过，完整门禁仍在旧升级 Agent resize 超时，fallback ready 首败保留 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 验证失败 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/release-gate-fixture-ci-alignment.md` | 2026-10-12 |
 | `docs/design-docs/runtime-shared-root-canvas-sync.md` | 共享结构差异提交、关闭模式 slot 隔离；最后窗口清理期间允许新开启窗口按阶段接管，无接管才确认原 PID 退出。Linux 单 root 双窗口复验通过；分阶段接管由实际 Host/store 与独立真实 Supervisor 定向验证，跨平台/真实多 root 保持有限范围 | 协作对象域、项目状态域、执行编排域、VSCode 集成域 / 共享模型与编排层、宿主集成层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-shared-root-canvas-sync.md`、`docs/exec-plans/completed/pr319-review-repairs.md`、`docs/exec-plans/completed/pr319-takeover-coordination.md` | 2026-10-11 |
 | [terminal-mouse-input-diagnostics.md](terminal-mouse-input-diagnostics.md) | 标题栏删除期间的鼠标输入取证与删除输入准入修复 | execution / webview、extension-host | 已选定 | 验证中 | terminal-mouse-input-diagnostics ExecPlan | 2026-10-11 |

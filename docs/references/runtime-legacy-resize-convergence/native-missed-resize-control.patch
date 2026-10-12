@@ -1,0 +1,11 @@
+diff --git a/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx b/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx
+--- a/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx
++++ b/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx
+@@ -342,6 +342,7 @@
+       const terminal = new Terminal(deps.createEmbeddedTerminalOptions());
+       const fitAddon = new FitAddon();
+       const resizeReporter = createExecutionTerminalResizeReporter(({ cols, rows }) => {
++        if (id === 'legacy-upgrade-agent' && cols > 80) return; // Controlled missed resize only.
+         data.onResizeExecution?.(id, 'agent', cols, rows);
+       });
+       let nativeInteractions: ExecutionTerminalNativeInteractionsHandle | undefined;

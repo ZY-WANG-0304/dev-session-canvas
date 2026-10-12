@@ -6,6 +6,7 @@ const net = require('net');
 const os = require('os');
 const path = require('path');
 const vscode = require('vscode');
+const { waitForTerminalResize } = require('./terminal-resize.cjs');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 
 const EXTENSION_ID = 'devsessioncanvas.dev-session-canvas';
@@ -63,6 +64,7 @@ async function run() {
   let previousGenerationStreamRuntimeStoragePath;
   let currentTerminalSessionId;
   let scenarioPassed = false;
+  const resizeEvidence = { targets: [], requests: [], samples: [] };
 
   try {
     await setRuntimePersistenceEnabled(true);
@@ -168,11 +170,6 @@ async function run() {
     });
     assertLegacyInteractiveProjection(findProbeNodeById(probe, LEGACY_AGENT_NODE_ID), LEGACY_AGENT_MARKER);
     assertLegacyInteractiveProjection(findProbeNodeById(probe, LEGACY_TERMINAL_NODE_ID), LEGACY_TERMINAL_MARKER);
-    const legacyAgentProbeBeforeResize = findProbeNodeById(probe, LEGACY_AGENT_NODE_ID);
-    const legacyTerminalProbeBeforeResize = findProbeNodeById(probe, LEGACY_TERMINAL_NODE_ID);
-    assert.ok(legacyAgentProbeBeforeResize.terminalCols && legacyAgentProbeBeforeResize.terminalRows);
-    assert.ok(legacyTerminalProbeBeforeResize.terminalCols && legacyTerminalProbeBeforeResize.terminalRows);
-
     await clearDiagnosticEvents();
     await performWebviewDomAction({
       kind: 'sendExecutionInput',
@@ -203,8 +200,28 @@ async function run() {
     });
     const legacyAgentNodeBeforeResize = findNodeById(snapshot, LEGACY_AGENT_NODE_ID);
     const legacyTerminalNodeBeforeResize = findNodeById(snapshot, LEGACY_TERMINAL_NODE_ID);
+    const expectedNodes = [
+      { nodeId: LEGACY_AGENT_NODE_ID, kind: 'agent', sessionId: legacyAgentSessionId, runtimeStoragePath,
+        size: legacyAgentNodeBeforeResize.size, visibleMarker: LEGACY_AGENT_MARKER,
+        markers: [LEGACY_AGENT_MARKER, LEGACY_HOST_AGENT_INPUT_MARKER] },
+      { nodeId: LEGACY_TERMINAL_NODE_ID, kind: 'terminal', sessionId: legacyTerminalSessionId, runtimeStoragePath,
+        size: legacyTerminalNodeBeforeResize.size, visibleMarker: LEGACY_TERMINAL_MARKER,
+        markers: [LEGACY_TERMINAL_MARKER, LEGACY_WEBVIEW_INPUT_MARKER, LEGACY_HOST_TERMINAL_INPUT_MARKER] }
+    ];
+    const waitForGeometry = (phase, nodes, before) => {
+      resizeEvidence.targets.push({ phase, time: Date.now(), expectedNodes: nodes });
+      return waitForTerminalResize({ expectedNodes: nodes, before, timeoutMs: 20000,
+        getSnapshot: getDebugSnapshot,
+        getProbe: remaining => vscode.commands.executeCommand(COMMAND_IDS.testCaptureWebviewProbe,
+          'panel', Math.min(5000, remaining), 0),
+        getSession: (sessionId, remaining) => sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', { sessionId }, remaining),
+        onSample: sample => resizeEvidence.samples.push({ phase, time: Date.now(), ...sample }) });
+    };
+    const baseline = await waitForGeometry('before-resize', expectedNodes);
+    resizeEvidence.baseline = baseline.probe;
     const resizedLegacyAgentNodeSize = { width: 680, height: 520 };
     const resizedLegacyTerminalNodeSize = { width: 700, height: 540 };
+    resizeEvidence.requests.push({ time: Date.now(), nodeId: LEGACY_AGENT_NODE_ID, size: resizedLegacyAgentNodeSize });
     await dispatchWebviewMessage({
       type: 'webview/resizeNode',
       payload: {
@@ -213,6 +230,7 @@ async function run() {
         size: resizedLegacyAgentNodeSize
       }
     });
+    resizeEvidence.requests.push({ time: Date.now(), nodeId: LEGACY_TERMINAL_NODE_ID, size: resizedLegacyTerminalNodeSize });
     await dispatchWebviewMessage({
       type: 'webview/resizeNode',
       payload: {
@@ -221,50 +239,15 @@ async function run() {
         size: resizedLegacyTerminalNodeSize
       }
     });
-    snapshot = await waitForSnapshot((currentSnapshot) => {
-      const agentNode = findOptionalNodeById(currentSnapshot, LEGACY_AGENT_NODE_ID);
-      const terminalNode = findOptionalNodeById(currentSnapshot, LEGACY_TERMINAL_NODE_ID);
-      return Boolean(
-        agentNode?.size?.width === resizedLegacyAgentNodeSize.width &&
-          agentNode.size.height === resizedLegacyAgentNodeSize.height &&
-          terminalNode?.size?.width === resizedLegacyTerminalNodeSize.width &&
-          terminalNode.size.height === resizedLegacyTerminalNodeSize.height
-      );
-    }, 20000);
-    const resizedLegacyProbe = await waitForWebviewProbe((currentProbe) => {
-      const agentNode = findOptionalProbeNodeById(currentProbe, LEGACY_AGENT_NODE_ID);
-      const terminalNode = findOptionalProbeNodeById(currentProbe, LEGACY_TERMINAL_NODE_ID);
-      return Boolean(
-        agentNode?.terminalCols &&
-          agentNode.terminalRows &&
-          terminalNode?.terminalCols &&
-          terminalNode.terminalRows &&
-          (agentNode.terminalCols !== legacyAgentProbeBeforeResize.terminalCols ||
-            agentNode.terminalRows !== legacyAgentProbeBeforeResize.terminalRows) &&
-          (terminalNode.terminalCols !== legacyTerminalProbeBeforeResize.terminalCols ||
-            terminalNode.terminalRows !== legacyTerminalProbeBeforeResize.terminalRows)
-      );
-    });
-    const resizedLegacyAgentProbe = findProbeNodeById(resizedLegacyProbe, LEGACY_AGENT_NODE_ID);
-    const resizedLegacyTerminalProbe = findProbeNodeById(resizedLegacyProbe, LEGACY_TERMINAL_NODE_ID);
-    const agentAfterCompatibilityOperations = await waitForRuntimeSupervisorSession(
-      supervisorPaths,
-      legacyAgentSessionId,
-      (session) =>
-        session.output?.includes(LEGACY_HOST_AGENT_INPUT_MARKER) &&
-        session.cols === resizedLegacyAgentProbe.terminalCols &&
-        session.rows === resizedLegacyAgentProbe.terminalRows,
-      20000
-    );
-    const terminalAfterCompatibilityOperations = await waitForRuntimeSupervisorSession(
-      supervisorPaths,
-      legacyTerminalSessionId,
-      (session) =>
-        session.output?.includes(LEGACY_HOST_TERMINAL_INPUT_MARKER) &&
-        session.cols === resizedLegacyTerminalProbe.terminalCols &&
-        session.rows === resizedLegacyTerminalProbe.terminalRows,
-      20000
-    );
+    const resized = await waitForGeometry('after-resize', [
+      { ...expectedNodes[0], size: resizedLegacyAgentNodeSize },
+      { ...expectedNodes[1], size: resizedLegacyTerminalNodeSize }
+    ], baseline);
+    snapshot = resized.snapshot;
+    resizeEvidence.result = resized.probe;
+    const resizedLegacyAgentProbe = findProbeNodeById(resized.probe, LEGACY_AGENT_NODE_ID);
+    const resizedLegacyTerminalProbe = findProbeNodeById(resized.probe, LEGACY_TERMINAL_NODE_ID);
+    const [agentAfterCompatibilityOperations, terminalAfterCompatibilityOperations] = resized.sessions;
     assert.ok(agentAfterCompatibilityOperations.output.includes(LEGACY_HOST_AGENT_INPUT_MARKER));
     assert.ok(terminalAfterCompatibilityOperations.output.includes(LEGACY_WEBVIEW_INPUT_MARKER));
     assert.ok(terminalAfterCompatibilityOperations.output.includes(LEGACY_HOST_TERMINAL_INPUT_MARKER));
@@ -420,6 +403,9 @@ async function run() {
       30000
     );
     scenarioPassed = true;
+  } catch (error) {
+    await writeFailureArtifacts(error, resizeEvidence);
+    throw error;
   } finally {
     let resetError;
     try {
@@ -701,20 +687,7 @@ async function waitForRuntimeSupervisorOutput(supervisorPaths, sessionId, marker
   assert.fail(`Timed out waiting for ${marker}. Last snapshot: ${JSON.stringify(lastSnapshot)}`);
 }
 
-async function waitForRuntimeSupervisorSession(supervisorPaths, sessionId, predicate, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  let lastSnapshot;
-  while (Date.now() < deadline) {
-    lastSnapshot = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', { sessionId });
-    if (predicate(lastSnapshot)) {
-      return lastSnapshot;
-    }
-    await sleep(100);
-  }
-  assert.fail(`Timed out waiting for runtime session state. Last snapshot: ${JSON.stringify(lastSnapshot)}`);
-}
-
-async function sendRuntimeSupervisorRequest(supervisorPaths, method, params) {
+async function sendRuntimeSupervisorRequest(supervisorPaths, method, params, timeoutMs) {
   const socket = net.createConnection(supervisorPaths.socketPath);
   const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let settled = false;
@@ -730,6 +703,9 @@ async function sendRuntimeSupervisorRequest(supervisorPaths, method, params) {
       callback(value);
     };
 
+    if (timeoutMs !== undefined) {
+      socket.setTimeout(timeoutMs, () => finalize(reject, new Error(`Supervisor request ${method} timed out.`)));
+    }
     socket.setEncoding('utf8');
     socket.once('error', (error) => finalize(reject, error));
     socket.once('connect', () => {
@@ -1003,4 +979,29 @@ async function setRuntimePersistenceEnabled(enabled) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function writeFailureArtifacts(error, resizeEvidence) {
+  const artifactDir = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
+  if (!artifactDir) return;
+  try { await fs.mkdir(artifactDir, { recursive: true }); } catch { return; }
+  const captures = [
+    ['legacy-upgrade-failure-error.txt', async () => error.stack || String(error), false],
+    ['legacy-upgrade-resize.json', async () => resizeEvidence, true],
+    ['legacy-upgrade-failure-snapshot.json', getDebugSnapshot, true],
+    ['legacy-upgrade-failure-diagnostics.json', getDiagnosticEvents, true]
+  ];
+  for (const [name, capture, json] of captures) {
+    let timer;
+    try {
+      await Promise.race([
+        (async () => {
+          const value = await capture();
+          await fs.writeFile(path.join(artifactDir, name), (json ? JSON.stringify(value, null, 2) : value) + '\n');
+        })(),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Failure artifact capture timed out.')), 2000); })
+      ]);
+    } catch { /* Preserve the original failure and fixture cleanup. */ }
+    finally { clearTimeout(timer); }
+  }
 }

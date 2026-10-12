@@ -12,6 +12,14 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-12：旧升级 resize 夹具已修复，Canvas ready 与完整门禁仍待收口
+
+背景：PR #321 后旧升级仍在首次变化 probe 与原 Agent 的尺寸相等断言超时。受控 C8 证明该夹具会固定恢复瞬态67×21，即使原会话与当前页面已为82×27仍失败；精确历史首败缺期望probe，不能追认为每次历史根因。调查 PR #322 尚未合并，本修复从 main 独立交付。
+
+本轮已收口：probe 只读容器FitAddon目标、投影未完成事实及原会话identity；修改前等待原会话基线，修改后在共同20秒内核对精确卡片、容器、页面、原Supervisor和输入。标准原生N1/N2与受控fit延迟C3全场景通过；丢弃Agent目标resize的M1按期失败，191次样本仍是页面82×27/原session67×21，工件保存成功。9项helper、协议、50项真实controller/10项Host batch和8项浏览器回归、类型/build通过。见 `docs/design-docs/runtime-legacy-resize-convergence.md`、`docs/exec-plans/completed/runtime-legacy-resize-convergence.md` 和 `docs/references/runtime-legacy-resize-convergence/evidence.json`。
+
+保留边界：fallback editor generation5 的 Canvas ready 首败根因未确认；现有Host diagnostics不能替代iframe资源与脚本执行证据，后续重现时继续单独定位，不改ready条件或20秒预算。本轮未运行完整npm test/发布门禁；定向通过不收口后续窗口、共享、systemd和Remote SSH矩阵。此缺口不阻止已证实的夹具修复交付，但仍阻止宣称整体门禁通过及发布准备完成。
+
 ## 2026-10-12：发布门禁夹具与 CI 对齐后的剩余验证边界
 
 背景与触发：PR #319 后固定主线 `c32437ac` 的完整门禁仍失败，用户授权对齐五组确定的测试/CI 问题。修复方案见 `docs/design-docs/release-gate-fixture-ci-alignment.md`。本轮已修正关闭模式、原连接请求屏障、当前模式加载断言、checkpoint 收齐等待、新 root socket 地址和提交前 unavailable fallback；两个 workflow 新增同 cache 的 Chromium/系统依赖预装和短宿主 TMP。完整 execution-context、root preparation/systemd、门禁/workflow 回归通过，checkpoint 与旧升级定向原生场景首次完整通过。

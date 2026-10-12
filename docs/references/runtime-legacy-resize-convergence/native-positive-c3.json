@@ -1,0 +1,1482 @@
+{
+  "rawPath": "/tmp/dsc-resize-repair/native-c3-resize.json",
+  "rawSha256": "b01a3bd5c37c02419dbf4f4d024d804b5fdfff4d0707afd824a32612f5312fde",
+  "targets": [
+    {
+      "phase": "before-resize",
+      "time": 1791820038751,
+      "expectedNodes": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "kind": "agent",
+          "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad",
+          "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+          "size": {
+            "width": 560,
+            "height": 430
+          },
+          "visibleMarker": "LEGACY_UPGRADE_AGENT_READY",
+          "markers": [
+            "LEGACY_UPGRADE_AGENT_READY",
+            "LEGACY_HOST_AGENT_INPUT_REACHED_PTY"
+          ]
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "kind": "terminal",
+          "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b",
+          "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+          "size": {
+            "width": 560,
+            "height": 430
+          },
+          "visibleMarker": "LEGACY_UPGRADE_TERMINAL_READY",
+          "markers": [
+            "LEGACY_UPGRADE_TERMINAL_READY",
+            "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+            "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": "after-resize",
+      "time": 1791820043719,
+      "expectedNodes": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "kind": "agent",
+          "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad",
+          "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+          "size": {
+            "width": 680,
+            "height": 520
+          },
+          "visibleMarker": "LEGACY_UPGRADE_AGENT_READY",
+          "markers": [
+            "LEGACY_UPGRADE_AGENT_READY",
+            "LEGACY_HOST_AGENT_INPUT_REACHED_PTY"
+          ]
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "kind": "terminal",
+          "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b",
+          "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+          "size": {
+            "width": 700,
+            "height": 540
+          },
+          "visibleMarker": "LEGACY_UPGRADE_TERMINAL_READY",
+          "markers": [
+            "LEGACY_UPGRADE_TERMINAL_READY",
+            "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+            "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY"
+          ]
+        }
+      ]
+    }
+  ],
+  "phases": {
+    "before-resize": {
+      "sampleCount": 33,
+      "first": {
+        "phase": "before-resize",
+        "time": 1791820038765,
+        "elapsedMs": 14,
+        "observations": [
+          {
+            "nodeId": "legacy-upgrade-agent",
+            "hostSize": {
+              "width": 560,
+              "height": 430
+            },
+            "binding": {
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad",
+              "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas"
+            },
+            "page": {
+              "width": 560,
+              "height": 430,
+              "cols": 67,
+              "rows": 21,
+              "fitCols": 67,
+              "fitRows": 21,
+              "pending": true,
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad"
+            },
+            "session": {
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad",
+              "kind": "agent",
+              "live": true,
+              "cols": 92,
+              "rows": 28,
+              "markers": [
+                [
+                  "LEGACY_UPGRADE_AGENT_READY",
+                  true
+                ],
+                [
+                  "LEGACY_HOST_AGENT_INPUT_REACHED_PTY",
+                  true
+                ]
+              ]
+            },
+            "changed": true,
+            "matches": false
+          },
+          {
+            "nodeId": "legacy-upgrade-terminal",
+            "hostSize": {
+              "width": 560,
+              "height": 430
+            },
+            "binding": {
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b",
+              "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas"
+            },
+            "page": {
+              "width": 560,
+              "height": 430,
+              "cols": 67,
+              "rows": 21,
+              "fitCols": 67,
+              "fitRows": 21,
+              "pending": true,
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b"
+            },
+            "session": {
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b",
+              "kind": "terminal",
+              "live": true,
+              "cols": 92,
+              "rows": 28,
+              "markers": [
+                [
+                  "LEGACY_UPGRADE_TERMINAL_READY",
+                  true
+                ],
+                [
+                  "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+                  true
+                ],
+                [
+                  "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY",
+                  true
+                ]
+              ]
+            },
+            "changed": true,
+            "matches": false
+          }
+        ]
+      },
+      "last": {
+        "phase": "before-resize",
+        "time": 1791820043712,
+        "elapsedMs": 4961,
+        "observations": [
+          {
+            "nodeId": "legacy-upgrade-agent",
+            "hostSize": {
+              "width": 560,
+              "height": 430
+            },
+            "binding": {
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad",
+              "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas"
+            },
+            "page": {
+              "width": 560,
+              "height": 430,
+              "cols": 67,
+              "rows": 21,
+              "fitCols": 67,
+              "fitRows": 21,
+              "pending": false,
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad"
+            },
+            "session": {
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad",
+              "kind": "agent",
+              "live": true,
+              "cols": 67,
+              "rows": 21,
+              "markers": [
+                [
+                  "LEGACY_UPGRADE_AGENT_READY",
+                  true
+                ],
+                [
+                  "LEGACY_HOST_AGENT_INPUT_REACHED_PTY",
+                  true
+                ]
+              ]
+            },
+            "changed": true,
+            "matches": true
+          },
+          {
+            "nodeId": "legacy-upgrade-terminal",
+            "hostSize": {
+              "width": 560,
+              "height": 430
+            },
+            "binding": {
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b",
+              "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas"
+            },
+            "page": {
+              "width": 560,
+              "height": 430,
+              "cols": 67,
+              "rows": 21,
+              "fitCols": 67,
+              "fitRows": 21,
+              "pending": false,
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b"
+            },
+            "session": {
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b",
+              "kind": "terminal",
+              "live": true,
+              "cols": 67,
+              "rows": 21,
+              "markers": [
+                [
+                  "LEGACY_UPGRADE_TERMINAL_READY",
+                  true
+                ],
+                [
+                  "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+                  true
+                ],
+                [
+                  "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY",
+                  true
+                ]
+              ]
+            },
+            "changed": true,
+            "matches": true
+          }
+        ]
+      },
+      "columns": [
+        "elapsedMs",
+        "agentPageCols",
+        "agentPageRows",
+        "agentFitCols",
+        "agentFitRows",
+        "agentSessionCols",
+        "agentSessionRows",
+        "agentPending",
+        "agentMatches",
+        "terminalPageCols",
+        "terminalPageRows",
+        "terminalFitCols",
+        "terminalFitRows",
+        "terminalSessionCols",
+        "terminalSessionRows",
+        "terminalPending",
+        "terminalMatches"
+      ],
+      "samples": [
+        [
+          14,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          118,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          221,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          325,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          431,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          539,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          643,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          749,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          856,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          960,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          1066,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          1170,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          1274,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          1378,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          1482,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          3179,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          92,
+          28,
+          67,
+          21,
+          92,
+          28,
+          true,
+          false
+        ],
+        [
+          3283,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          92,
+          28,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          3390,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          92,
+          28,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          3494,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          92,
+          28,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          3598,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          92,
+          28,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          3706,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          92,
+          28,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          3809,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          92,
+          28,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          3912,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          4016,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          4120,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          4225,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          4329,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          4433,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          4537,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          4640,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          4745,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          4857,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          true,
+          false,
+          67,
+          21,
+          67,
+          21,
+          92,
+          28,
+          false,
+          false
+        ],
+        [
+          4961,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          false,
+          true,
+          67,
+          21,
+          67,
+          21,
+          67,
+          21,
+          false,
+          true
+        ]
+      ]
+    },
+    "after-resize": {
+      "sampleCount": 19,
+      "first": {
+        "phase": "after-resize",
+        "time": 1791820043730,
+        "elapsedMs": 11,
+        "observations": [
+          {
+            "nodeId": "legacy-upgrade-agent",
+            "hostSize": {
+              "width": 680,
+              "height": 520
+            },
+            "binding": {
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad",
+              "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas"
+            },
+            "page": {
+              "width": 680,
+              "height": 520,
+              "cols": 67,
+              "rows": 21,
+              "fitCols": 82,
+              "fitRows": 27,
+              "pending": false,
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad"
+            },
+            "session": {
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad",
+              "kind": "agent",
+              "live": true,
+              "cols": 67,
+              "rows": 21,
+              "markers": [
+                [
+                  "LEGACY_UPGRADE_AGENT_READY",
+                  true
+                ],
+                [
+                  "LEGACY_HOST_AGENT_INPUT_REACHED_PTY",
+                  true
+                ]
+              ]
+            },
+            "changed": false,
+            "matches": false
+          },
+          {
+            "nodeId": "legacy-upgrade-terminal",
+            "hostSize": {
+              "width": 700,
+              "height": 540
+            },
+            "binding": {
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b",
+              "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas"
+            },
+            "page": {
+              "width": 700,
+              "height": 540,
+              "cols": 67,
+              "rows": 21,
+              "fitCols": 85,
+              "fitRows": 28,
+              "pending": false,
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b"
+            },
+            "session": {
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b",
+              "kind": "terminal",
+              "live": true,
+              "cols": 67,
+              "rows": 21,
+              "markers": [
+                [
+                  "LEGACY_UPGRADE_TERMINAL_READY",
+                  true
+                ],
+                [
+                  "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+                  true
+                ],
+                [
+                  "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY",
+                  true
+                ]
+              ]
+            },
+            "changed": false,
+            "matches": false
+          }
+        ]
+      },
+      "last": {
+        "phase": "after-resize",
+        "time": 1791820045644,
+        "elapsedMs": 1925,
+        "observations": [
+          {
+            "nodeId": "legacy-upgrade-agent",
+            "hostSize": {
+              "width": 680,
+              "height": 520
+            },
+            "binding": {
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad",
+              "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas"
+            },
+            "page": {
+              "width": 680,
+              "height": 520,
+              "cols": 82,
+              "rows": 27,
+              "fitCols": 82,
+              "fitRows": 27,
+              "pending": false,
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad"
+            },
+            "session": {
+              "sessionId": "8363ab4a-4125-4e0f-8920-52fe5f40d7ad",
+              "kind": "agent",
+              "live": true,
+              "cols": 82,
+              "rows": 27,
+              "markers": [
+                [
+                  "LEGACY_UPGRADE_AGENT_READY",
+                  true
+                ],
+                [
+                  "LEGACY_HOST_AGENT_INPUT_REACHED_PTY",
+                  true
+                ]
+              ]
+            },
+            "changed": true,
+            "matches": true
+          },
+          {
+            "nodeId": "legacy-upgrade-terminal",
+            "hostSize": {
+              "width": 700,
+              "height": 540
+            },
+            "binding": {
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b",
+              "runtimeStoragePath": "/tmp/drr-c3/legacy-supervisor-upgrade/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas"
+            },
+            "page": {
+              "width": 700,
+              "height": 540,
+              "cols": 85,
+              "rows": 28,
+              "fitCols": 85,
+              "fitRows": 28,
+              "pending": false,
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b"
+            },
+            "session": {
+              "sessionId": "6c2f13fb-35ee-431c-bdf4-23eba002f77b",
+              "kind": "terminal",
+              "live": true,
+              "cols": 85,
+              "rows": 28,
+              "markers": [
+                [
+                  "LEGACY_UPGRADE_TERMINAL_READY",
+                  true
+                ],
+                [
+                  "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+                  true
+                ],
+                [
+                  "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY",
+                  true
+                ]
+              ]
+            },
+            "changed": true,
+            "matches": true
+          }
+        ]
+      },
+      "columns": [
+        "elapsedMs",
+        "agentPageCols",
+        "agentPageRows",
+        "agentFitCols",
+        "agentFitRows",
+        "agentSessionCols",
+        "agentSessionRows",
+        "agentPending",
+        "agentMatches",
+        "terminalPageCols",
+        "terminalPageRows",
+        "terminalFitCols",
+        "terminalFitRows",
+        "terminalSessionCols",
+        "terminalSessionRows",
+        "terminalPending",
+        "terminalMatches"
+      ],
+      "samples": [
+        [
+          11,
+          67,
+          21,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          67,
+          21,
+          85,
+          28,
+          67,
+          21,
+          false,
+          false
+        ],
+        [
+          114,
+          67,
+          21,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          67,
+          21,
+          false,
+          false
+        ],
+        [
+          219,
+          67,
+          21,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          67,
+          21,
+          false,
+          false
+        ],
+        [
+          323,
+          67,
+          21,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          67,
+          21,
+          false,
+          false
+        ],
+        [
+          428,
+          67,
+          21,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          67,
+          21,
+          false,
+          false
+        ],
+        [
+          534,
+          67,
+          21,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          67,
+          21,
+          false,
+          false
+        ],
+        [
+          654,
+          67,
+          21,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          67,
+          21,
+          false,
+          false
+        ],
+        [
+          758,
+          67,
+          21,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          67,
+          21,
+          false,
+          false
+        ],
+        [
+          861,
+          67,
+          21,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          67,
+          21,
+          false,
+          false
+        ],
+        [
+          964,
+          82,
+          27,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          85,
+          28,
+          false,
+          true
+        ],
+        [
+          1067,
+          82,
+          27,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          85,
+          28,
+          false,
+          true
+        ],
+        [
+          1170,
+          82,
+          27,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          85,
+          28,
+          false,
+          true
+        ],
+        [
+          1274,
+          82,
+          27,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          85,
+          28,
+          false,
+          true
+        ],
+        [
+          1383,
+          82,
+          27,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          85,
+          28,
+          false,
+          true
+        ],
+        [
+          1488,
+          82,
+          27,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          85,
+          28,
+          false,
+          true
+        ],
+        [
+          1592,
+          82,
+          27,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          85,
+          28,
+          false,
+          true
+        ],
+        [
+          1706,
+          82,
+          27,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          85,
+          28,
+          false,
+          true
+        ],
+        [
+          1814,
+          82,
+          27,
+          82,
+          27,
+          67,
+          21,
+          false,
+          false,
+          85,
+          28,
+          85,
+          28,
+          85,
+          28,
+          false,
+          true
+        ],
+        [
+          1925,
+          82,
+          27,
+          82,
+          27,
+          82,
+          27,
+          false,
+          true,
+          85,
+          28,
+          85,
+          28,
+          85,
+          28,
+          false,
+          true
+        ]
+      ]
+    }
+  }
+}
