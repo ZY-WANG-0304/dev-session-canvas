@@ -8599,6 +8599,14 @@ function createExecutionTerminalController(
     getQueuedWriteCount() {
       return queuedWriteCount;
     },
+    getProjectionState() {
+      return {
+        executionSessionId: projectedExecutionSessionId,
+        pending: disposed || !hasAppliedSnapshot || failedWriteGeneration === writeGeneration ||
+          currentExecutionSessionId !== projectedExecutionSessionId || pendingOutput.length > 0 ||
+          queuedWriteCount > 0 || snapshotRestoreReleases.size > 0 || pendingPersistBarrier || pendingProjectionBarrier
+      };
+    },
     isOutputDrainBlocked() {
       return pendingPersistBarrier || pendingProjectionBarrier;
     },
@@ -9235,6 +9243,10 @@ function readProbeExecutionTerminalState(
   | 'terminalSelectionText'
   | 'terminalCols'
   | 'terminalRows'
+  | 'terminalFitCols'
+  | 'terminalFitRows'
+  | 'terminalProjectionPending'
+  | 'terminalExecutionSessionId'
   | 'terminalCursorX'
   | 'terminalCursorY'
   | 'terminalViewportY'
@@ -9251,10 +9263,17 @@ function readProbeExecutionTerminalState(
     return {};
   }
 
+  const fit = terminal.fitAddon.proposeDimensions();
+  const projection = terminal.controller.getProjectionState();
+
   return {
     terminalSelectionText: terminal.terminal.getSelection(),
     terminalCols: terminal.terminal.cols > 0 ? terminal.terminal.cols : undefined,
     terminalRows: terminal.terminal.rows > 0 ? terminal.terminal.rows : undefined,
+    terminalFitCols: fit && Number.isInteger(fit.cols) && fit.cols > 0 ? fit.cols : undefined,
+    terminalFitRows: fit && Number.isInteger(fit.rows) && fit.rows > 0 ? fit.rows : undefined,
+    terminalProjectionPending: projection.pending,
+    terminalExecutionSessionId: projection.executionSessionId,
     terminalCursorX: terminal.terminal.buffer.active.cursorX,
     terminalCursorY: terminal.terminal.buffer.active.cursorY,
     terminalViewportY:

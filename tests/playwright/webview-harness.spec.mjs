@@ -5,6 +5,7 @@ import { SerializeAddon } from '@xterm/addon-serialize';
 import xtermHeadless from '@xterm/headless';
 import { expect, test } from '@playwright/test';
 import { transform } from 'esbuild';
+import terminalResize from '../vscode-smoke/terminal-resize.cjs';
 
 const { Terminal: HeadlessTerminal } = xtermHeadless;
 const PRIMARY_ACCELERATOR_KEY = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -17133,6 +17134,52 @@ async function holdXtermParser(page) {
         }
       }
     };
+  });
+}
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`${executionKind} resize probe rejects snapshot dimensions until the resized container fits`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    const executionSessionId = `${executionKind}-resize-original`;
+    await openHarness(page);
+    const state = createLiveExecutionNodeState(executionKind);
+    await bootstrap(page, state);
+    const ready = await waitForExecutionTerminalReady(page, nodeId);
+    const expected = { nodeId, kind: executionKind, sessionId: executionSessionId, size: state.nodes[0].size };
+    const before = { terminalCols: ready.terminalFitCols, terminalRows: ready.terminalFitRows };
+    await clearPostedMessages(page);
+    await holdXtermParser(page);
+    const transient = { cols: before.terminalCols + 12, rows: before.terminalRows + 6 };
+    const nextState = structuredClone(state);
+    nextState.nodes[0].size = { width: state.nodes[0].size.width + 180, height: state.nodes[0].size.height + 120 };
+    expected.size = nextState.nodes[0].size;
+    try {
+      await dispatchExecutionSnapshot(page, { nodeId, kind: executionKind, executionSessionId,
+        output: 'RESIZE-RESTORED\r\n', ...transient });
+      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
+      const restoring = await readProbeNode(page, nodeId);
+      expect({ cols: restoring.terminalCols, rows: restoring.terminalRows }).toEqual(transient);
+      expect(restoring.terminalProjectionPending).toBe(true);
+      expect({ cols: restoring.terminalFitCols, rows: restoring.terminalFitRows })
+        .toEqual({ cols: before.terminalCols, rows: before.terminalRows });
+      expect(terminalResize.terminalMatchesContainer(restoring, expected)).toBe(false);
+      await updateHostState(page, nextState);
+      await expect.poll(async () => {
+        const node = await readProbeNode(page, nodeId);
+        return [node.renderedWidth, node.renderedHeight];
+      }).toEqual([expected.size.width, expected.size.height]);
+      const resizedDuringRestore = await readProbeNode(page, nodeId);
+      expect(resizedDuringRestore.terminalProjectionPending).toBe(true);
+      expect(terminalResize.terminalMatchesContainer(resizedDuringRestore, expected)).toBe(false);
+    } finally { await page.evaluate(() => window.__slowSnapshotWrite.release()); }
+    await expect.poll(async () => terminalResize.terminalMatchesContainer(await readProbeNode(page, nodeId), expected)).toBe(true);
+    const final = await readProbeNode(page, nodeId);
+    expect([final.terminalCols, final.terminalRows]).not.toEqual([before.terminalCols, before.terminalRows]);
+    expect(final.terminalExecutionSessionId).toBe(executionSessionId);
+    expect(final.terminalVisibleLines.join('\n')).toContain('RESIZE-RESTORED');
+    const requests = await waitForPostedMessagesByTypeMatch(page, 'webview/resizeExecutionSession',
+      messages => messages.some(entry => entry.payload.cols === final.terminalCols && entry.payload.rows === final.terminalRows));
+    expect(requests.some(entry => entry.payload.cols === transient.cols && entry.payload.rows === transient.rows)).toBe(false);
   });
 }
 

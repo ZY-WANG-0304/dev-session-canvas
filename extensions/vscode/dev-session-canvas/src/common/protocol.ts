@@ -492,6 +492,10 @@ export interface WebviewProbeNodeSnapshot {
   terminalSelectionText?: string;
   terminalCols?: number;
   terminalRows?: number;
+  terminalFitCols?: number;
+  terminalFitRows?: number;
+  terminalProjectionPending?: boolean;
+  terminalExecutionSessionId?: string;
   terminalCursorX?: number;
   terminalCursorY?: number;
   terminalViewportY?: number;
@@ -3301,6 +3305,13 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
       (typeof value.terminalRows === 'number' &&
         Number.isInteger(value.terminalRows) &&
         value.terminalRows > 0)) &&
+    (value.terminalFitCols === undefined ||
+      (typeof value.terminalFitCols === 'number' && Number.isInteger(value.terminalFitCols) && value.terminalFitCols > 0)) &&
+    (value.terminalFitRows === undefined ||
+      (typeof value.terminalFitRows === 'number' && Number.isInteger(value.terminalFitRows) && value.terminalFitRows > 0)) &&
+    (value.terminalProjectionPending === undefined || typeof value.terminalProjectionPending === 'boolean') &&
+    (value.terminalExecutionSessionId === undefined ||
+      (typeof value.terminalExecutionSessionId === 'string' && value.terminalExecutionSessionId.length > 0)) &&
     (value.terminalCursorX === undefined ||
       (typeof value.terminalCursorX === 'number' && Number.isInteger(value.terminalCursorX) && value.terminalCursorX >= 0)) &&
     (value.terminalCursorY === undefined ||

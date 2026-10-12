@@ -83,6 +83,7 @@ export interface ExecutionTerminalController {
   flushPendingOutput(maxCharacters?: number): number;
   getPendingOutputLength(): number;
   getQueuedWriteCount(): number;
+  getProjectionState(): { executionSessionId?: string; pending: boolean };
   isOutputDrainBlocked(): boolean;
   dispose(): void;
 }

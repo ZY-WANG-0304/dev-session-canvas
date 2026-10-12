@@ -1838,4 +1838,29 @@ for (const count of [2, 10, 11]) {
     'The fixed ten-session probe must survive Host validation without accepting unbounded reader lists.');
 }
 
+const resizeProbe = { type: 'webview/testProbeResult', payload: { requestId: 'resize', snapshot: {
+  documentTitle: 'resize', hasDocumentFocus: true, hasCanvasShell: true, hasReactFlow: true,
+  toastMessage: null, executionLinkTooltipText: null, nodeCount: 1, nodes: [{
+    nodeId: 'original-node', kind: 'agent', chromeTitle: null, chromeContext: null, chromeSubtitle: null,
+    statusText: null, attentionIndicatorVisible: false, attentionIndicatorFlashing: false,
+    minimapVisible: false, minimapAttentionFlashing: false, minimapAttentionSizePulsing: false,
+    selected: false, renderedWidth: 680, renderedHeight: 520,
+    terminalFitCols: 82, terminalFitRows: 27, terminalProjectionPending: false,
+    terminalExecutionSessionId: 'original-session'
+  }], edgeCount: 0, edges: []
+} } };
+assert.ok(parseWebviewMessage(resizeProbe), 'Container geometry and original projection identity survive Host parsing.');
+for (const field of ['terminalFitCols', 'terminalFitRows', 'terminalProjectionPending', 'terminalExecutionSessionId']) {
+  const without = structuredClone(resizeProbe);
+  delete without.payload.snapshot.nodes[0][field];
+  assert.ok(parseWebviewMessage(without), `Probe field ${field} remains optional for older pages.`);
+  const invalid = field === 'terminalProjectionPending' ? [null, 0, 'false'] :
+    field === 'terminalExecutionSessionId' ? ['', null, 42] : [0, -1, 1.5, NaN, Infinity, '82', null];
+  for (const value of invalid) {
+    const malformed = structuredClone(resizeProbe);
+    malformed.payload.snapshot.nodes[0][field] = value;
+    assert.equal(parseWebviewMessage(malformed), null, `Reject invalid resize probe ${field}: ${value}`);
+  }
+}
+
 console.log('protocol webview message tests passed');

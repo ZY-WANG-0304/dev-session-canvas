@@ -1,0 +1,56 @@
+diff --git a/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx b/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx
+index 84d6fc9f..04ca8877 100644
+--- a/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx
++++ b/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx
+@@ -510,6 +510,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
+         });
+       }
+
++      let initialFitDeadline: number | undefined;
++      let cardFitDeadline: number | undefined;
+       function fitTerminal(options: {
+         reportMode?: 'settled' | 'immediate';
+         allowShrinkDuringRestore?: boolean;
+@@ -532,6 +534,16 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
+         }
+
+         const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
++        if (id === 'legacy-upgrade-agent' && hasAppliedSnapshot) {
++          const initial = proposedDimensions.cols < 80;
++          if (initial) initialFitDeadline ??= Date.now() + 400;
++          else cardFitDeadline ??= Date.now() + 400;
++          const deadline = initial ? initialFitDeadline! : cardFitDeadline!;
++          if (Date.now() < deadline) {
++            scheduleDeferredShrinkFit(deadline - Date.now());
++            return;
++          }
++        }
+         const shouldDeferShrinkFit =
+           options.allowShrinkDuringRestore !== true &&
+           hasAppliedSnapshot &&
+@@ -1246,6 +1258,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
+         });
+       }
+
++      let initialFitDeadline: number | undefined;
++      let cardFitDeadline: number | undefined;
+       function fitTerminal(options: {
+         reportMode?: 'settled' | 'immediate';
+         allowShrinkDuringRestore?: boolean;
+@@ -1268,6 +1282,16 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
+         }
+
+         const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
++        if (id === 'legacy-upgrade-agent' && hasAppliedSnapshot) {
++          const initial = proposedDimensions.cols < 80;
++          if (initial) initialFitDeadline ??= Date.now() + 400;
++          else cardFitDeadline ??= Date.now() + 400;
++          const deadline = initial ? initialFitDeadline! : cardFitDeadline!;
++          if (Date.now() < deadline) {
++            scheduleDeferredShrinkFit(deadline - Date.now());
++            return;
++          }
++        }
+         const shouldDeferShrinkFit =
+           options.allowShrinkDuringRestore !== true &&
+           hasAppliedSnapshot &&

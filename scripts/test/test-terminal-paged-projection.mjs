@@ -1149,6 +1149,7 @@ async function verifyControllerSettlement(directory) {
       await until(() => f.controller.getQueuedWriteCount() === 0, 'future terminal event after current-state bootstrap');
       assert.equal(attachRequests().length, attachCount, 'current-state identity must not trigger duplicate recovery attach');
       assert.equal(f.terminal.cols, 90, 'future terminal events must continue from the imported revision');
+      assert.deepEqual(f.controller.getProjectionState(), { executionSessionId: 'session', pending: false });
     } finally { source.dispose(); f.dispose(); }
   });
 
@@ -1403,12 +1404,15 @@ async function verifyControllerSettlement(directory) {
       assert.equal(f.closes().length, 0);
       assert.equal(f.requests().length, 0);
       assert.equal(f.controller.getQueuedWriteCount(), 1);
+      assert.equal(f.controller.getProjectionState().pending, true, 'held checkpoint is not a restored projection');
       release();
       await until(() => f.closes().length === 1, 'empty checkpoint callback settlement');
       assert.deepEqual(f.closes()[0].payload.outcome, { kind: 'applied', finalRevision: 0 });
       assert.equal(f.controller.getQueuedWriteCount(), 0);
       assert.equal(f.snapshotNotifications(), 1);
       assert.equal(f.restores.active, 0);
+      assert.equal(f.controller.getProjectionState().pending, true,
+        'legacy checkpoint completion alone does not declare an identified current projection');
     } finally { f.dispose(); }
   });
 
@@ -1469,6 +1473,7 @@ async function verifyControllerSettlement(directory) {
         assert.equal(f.closes()[0].payload.outcome.kind, 'cancelled');
         assert.match(f.closes()[0].payload.outcome.reason, /write-failed/);
         assert.equal(f.controller.getQueuedWriteCount(), 0);
+        assert.equal(f.controller.getProjectionState().pending, true, 'a failed write cannot report a healthy projection');
       } finally { f.dispose(); }
     });
   }
@@ -1590,6 +1595,7 @@ async function verifyControllerSettlement(directory) {
       try {
         f.localStart('BASE', 0);
         await until(() => f.controller.getQueuedWriteCount() === 0, 'initial local snapshot');
+        assert.deepEqual(f.controller.getProjectionState(), { executionSessionId: 'session', pending: false });
         const write = f.terminal.write.bind(f.terminal);
         let release;
         f.terminal.write = (text, done) => write(text, () => {
@@ -1605,6 +1611,7 @@ async function verifyControllerSettlement(directory) {
         await until(() => f.controller.getQueuedWriteCount() === 0, 'partial output callback');
         assert.equal(f.localResults().length, 0);
         assert.ok(f.controller.getPendingOutputLength() > 0);
+        assert.equal(f.controller.getProjectionState().pending, true, 'partial drain still has pending projection output');
         f.controller.flushPendingOutput();
         await until(() => release !== undefined, 'local real sentinel callback');
         assert.equal(f.localResults().length, 0);
@@ -1612,6 +1619,7 @@ async function verifyControllerSettlement(directory) {
         assert.equal(f.terminal._core.coreService.isCursorHidden, true);
         release();
         await until(() => f.localResults().length === 1, 'local final application');
+        assert.equal(f.controller.getProjectionState().pending, false, 'actual final callback releases the projection');
         assert.deepEqual(f.localResults()[0].payload, { nodeId: 'node', kind, executionSessionId: 'session',
           outcome: { kind: 'applied', finalOutputSequence: 1 } });
         f.localFinish(1);

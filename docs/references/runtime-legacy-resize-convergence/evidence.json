@@ -1,0 +1,214 @@
+{
+  "base": "a213b89b8c1dcaaec291e896042acc8627a05668",
+  "investigation": {
+    "pr": "https://github.com/ZY-WANG-0304/dev-session-canvas/pull/322",
+    "head": "d42656f7",
+    "stateAtRepair": "OPEN"
+  },
+  "environment": {
+    "platform": "Linux x64",
+    "node": "22.23.3",
+    "vscode": "1.141.0",
+    "legacySupervisorRef": "5355e6a",
+    "agent": "fake provider",
+    "nodeBin": "/tmp/dsc-release-node22/node_modules/node/bin",
+    "executionAssets": "/tmp/dsc-release-026-assets",
+    "vscodeCache": "/tmp/dsc0261v/.vscode-test",
+    "browserCache": "/tmp/dscgate1012/.playwright-browsers"
+  },
+  "inputs": {
+    "extensions/vscode/dev-session-canvas/src/common/protocol.ts": "54df0ac27217b8dd20466492eac176b88cbd9e6d6577333ab74136141fb947e4",
+    "extensions/vscode/dev-session-canvas/src/webview/executionTerminalTypes.ts": "7d43f2d15c22ed2e0f0e35352a4218d61a1701915b751d44fa84545c43c591e9",
+    "extensions/vscode/dev-session-canvas/src/webview/main.tsx": "4c4adf18d66436a0e681a0c064510053e12ea6b288804ed7080c9063ad5d977d",
+    "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "1919dc546808caaf951ba6d7ac0534b7684ca40c883ffb40cf2fa908af58e250",
+    "tests/vscode-smoke/terminal-resize.cjs": "4db03e6fa60abef90570c80b2540507a01b0738cb7e51d0f36eaaef373054908",
+    "scripts/test/test-smoke-terminal-resize.mjs": "25dbcf9395f45ace7ba7be04ac1a7b89b59e3a539b62db9bf13af82b78e06548",
+    "scripts/test/test-protocol-webview-messages.mts": "467a3aa55b9b1533306a741d77a810ae6fd56629495397a3e7025a287f1dce36",
+    "scripts/test/test-terminal-paged-projection.mjs": "86dc117a90d176b585141c83090681ca28cef91d4f25664011ee2497de3e67c4",
+    "tests/playwright/webview-harness.spec.mjs": "61655af9b15231afeb328a7efbd11da1485b010e8d78ef8ef0d93602f0a3833d",
+    "package.json": "4719d446da021047df6d76b8124396af42061ee11139ba2589e391c6282f3eb3"
+  },
+  "runs": [
+    {
+      "log": "/tmp/dsc-resize-repair/build.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "command": "npm run build",
+      "exitCode": 0,
+      "outcome": "initial repair build"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/native-n1.log",
+      "sha256": "4728f2c59225aa690400db17c4bff442ddaba9d0105bae58cf222a01635c330b",
+      "command": "native /tmp/drr-n1",
+      "exitCode": 0,
+      "outcome": "initial clean full legacy scenario passed"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/protocol.log",
+      "sha256": "660a757126a53068fe5e2cacc76d0bdec4802dac56960226d79d7ec8e102b6ea",
+      "command": "npm run test:protocol-webview-messages",
+      "exitCode": 0,
+      "outcome": "initial protocol passed"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/projection.log",
+      "sha256": "4b5d4dce6c8b0791d03c499008df68d55a4160bd83aff2f87e3e9a56076a6559",
+      "command": "npm run test:terminal-paged-projection",
+      "exitCode": 0,
+      "outcome": "existing controller tests passed"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/browser.log",
+      "sha256": "9799ad2c6cc115670dfbd3a063b848005b5021c5ff10bda53e37a2cf9aed5622",
+      "command": "browser /tmp/drr-browser",
+      "exitCode": 1,
+      "outcome": "new fixture incorrectly repeated healthy same-session snapshot; corrected to first restoration"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/browser2.log",
+      "sha256": "ce96167a640606c4dcdd9cecea26eb55e185c3a75ace6413414c2b51cb3a0b03",
+      "command": "browser /tmp/drr-browser2",
+      "exitCode": 1,
+      "outcome": "transient checks passed; resize report assertion preceded actual 150ms report; changed to wait for real request"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/browser3.log",
+      "sha256": "a79f5c4abb9b47d1a6a44db6faf666a740a668fe33d837a5dd087d2d9c67e5d2",
+      "command": "browser /tmp/drr-browser3",
+      "exitCode": 1,
+      "outcome": "page crash and terminal readiness timeout during parallel native execution; root cause unconfirmed, disk was 25MB"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/browser4.log",
+      "sha256": "0a911ba9daecac18d1184348c2b6b4a4543f33ed3cc104a3cd4e3d79fd19ff92",
+      "command": "browser /tmp/drr-browser4",
+      "exitCode": 0,
+      "outcome": "2 new cases passed after sequential clean build"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/native-c1.log",
+      "sha256": "a5cb1cc75d57e92b26d5869ef9cf7293a4411204115e6ccc438025f8814f42b5",
+      "command": "native /tmp/drr-c1",
+      "exitCode": 1,
+      "outcome": "first Webview probe timed out before baseline; failure artifacts targets/samples empty; no attribution to resize"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/native-c2.log",
+      "sha256": "f5baa9fd24782e4f56d3ee5ad41006745daa5251178d9aa8f18324f7ab45f57c",
+      "command": "native /tmp/drr-c2",
+      "exitCode": 1,
+      "outcome": "ENOSPC during staging; scenario did not run"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/native-c3.log",
+      "sha256": "d6b45202e67dbfa417cc948c9dcf4a1677c8fbe543bbeb7bffe0571baace41c5",
+      "command": "native /tmp/drr-c3",
+      "exitCode": 0,
+      "outcome": "controlled fit delay, final stronger projection probe; full legacy scenario passed; 33 baseline samples/4961ms, 19 resize samples/1925ms"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/projection-final.log",
+      "sha256": "9923e4c55eb4ac9bb33c30802c4ef5f3ac312f8c92dd3eff5d557e907f9d7e6a",
+      "command": "npm run test:terminal-paged-projection",
+      "exitCode": 1,
+      "outcome": "new test incorrectly assumed legacy paged checkpoint declares projected session identity; kept product behavior and moved healthy identity assertion to current-state and local modes"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/projection-final2.log",
+      "sha256": "4b5d4dce6c8b0791d03c499008df68d55a4160bd83aff2f87e3e9a56076a6559",
+      "command": "npm run test:terminal-paged-projection",
+      "exitCode": 0,
+      "outcome": "50 controller + 10 Host batch checks, new pending/identity observations passed"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/browser-final.log",
+      "sha256": "a4ce07447e0dd0cd2be40aa7d330947a3d04d4f9fa74ed8bd609d8aadea474ba",
+      "command": "browser /tmp/drr-browser-final",
+      "exitCode": 0,
+      "outcome": "8 cases passed on final product sources: 2 new, 6 existing snapshot/paged/movement fit cases"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/helper-final.log",
+      "sha256": "b4b342e1450753ad31a2fbc5f023f60e710354f933f7850fda1dcc2c9ef5cbc8",
+      "command": "npm run test:smoke-terminal-resize",
+      "exitCode": 0,
+      "outcome": "9 bounded positive/negative checks passed"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/protocol-final.log",
+      "sha256": "660a757126a53068fe5e2cacc76d0bdec4802dac56960226d79d7ec8e102b6ea",
+      "command": "npm run test:protocol-webview-messages",
+      "exitCode": 0,
+      "outcome": "new fields optional/invalid values checked"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/typecheck-final.log",
+      "sha256": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73",
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "outcome": "final probe interface passed"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/native-m1.log",
+      "sha256": "31dfae8f134b2bf9aedac92d3d8dfcb3688bc1172cae87666c7c24b9ddb6ae15",
+      "command": "native /tmp/drr-m1",
+      "exitCode": 1,
+      "outcome": "expected controlled missed Agent resize failure at original20s; 191 samples, last19968ms; page82x27 session67x21, Terminal85x28 matched; four failure artifacts generated"
+    },
+    {
+      "log": "/tmp/dsc-resize-repair/native-n2.log",
+      "sha256": "3b82571e10e12a9e932b2c246c3ac76011a273ba08cbcfa9f8a929cb7cf8cc6f",
+      "command": "native /tmp/drr-n2",
+      "exitCode": 0,
+      "outcome": "final product and acceptance code, no fit/resize control; full legacy scenario passed"
+    }
+  ],
+  "commands": {
+    "prefix": "PATH=/tmp/dsc-release-node22/node_modules/node/bin:$PATH",
+    "build": "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets npm run build",
+    "native": "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH=/tmp/dsc0261v/.vscode-test DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT=<run-root> DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=legacy-supervisor-upgrade node scripts/smoke/run-vscode-smoke.mjs",
+    "browser": "PLAYWRIGHT_BROWSERS_PATH=/tmp/dscgate1012/.playwright-browsers node node_modules/@playwright/test/cli.js test --config=playwright.config.mjs --grep <case-regex> --workers=1 --output=<browser-root>",
+    "newBrowserRegex": "resize probe rejects snapshot dimensions",
+    "finalBrowserRegex": "resize probe rejects snapshot dimensions|slow snapshot write prevents premature fit|slow paged event write prevents premature fit|snapshot restore still refits after node movement"
+  },
+  "stagedInputs": {
+    "c3": {
+      "dist/webview.js": "dc6e7bbaa45537ea659df2d2afb2b05b8f479e4a481692e44b85110e642712d0",
+      "dist/extension.js": "b490dcba47d0ba49d54010a79a383a219955169df198e56121d4fd7074c14fbf",
+      "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "7441fed8adcffe4045400e50045bc268387ae1f0ed9f1d4febfd2b26492c47a4",
+      "tests/vscode-smoke/terminal-resize.cjs": "4db03e6fa60abef90570c80b2540507a01b0738cb7e51d0f36eaaef373054908"
+    },
+    "m1": {
+      "dist/webview.js": "1264754ade9bfef87ba1858fb7e0b22fd8e728ba234027432320ffccd6d327b1",
+      "dist/extension.js": "b490dcba47d0ba49d54010a79a383a219955169df198e56121d4fd7074c14fbf",
+      "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "77e8d892fd0120187034fa5921a01aa2c41af5ef8febccc837cc62fbb3dff5ae",
+      "tests/vscode-smoke/terminal-resize.cjs": "4db03e6fa60abef90570c80b2540507a01b0738cb7e51d0f36eaaef373054908"
+    },
+    "n2": {
+      "dist/webview.js": "3d19b88ce18fc2e7973052cee465db9fef7c8a97e3859e34daead9a843734ac3",
+      "dist/extension.js": "b490dcba47d0ba49d54010a79a383a219955169df198e56121d4fd7074c14fbf",
+      "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "77e8d892fd0120187034fa5921a01aa2c41af5ef8febccc837cc62fbb3dff5ae",
+      "tests/vscode-smoke/terminal-resize.cjs": "4db03e6fa60abef90570c80b2540507a01b0738cb7e51d0f36eaaef373054908"
+    }
+  },
+  "nativeControls": "c3 adds native-fit-control.patch plus one console dump after resize (not committed); m1 adds native-missed-resize-control.patch only; n2 has neither. Last diagnostic-only addition records resizeNode request times after n2; syntax checked, acceptance/product hashes unchanged.",
+  "failureArtifacts": {
+    "/tmp/drr-m1/legacy-supervisor-upgrade/artifacts/legacy-upgrade-resize.json": "6b6646e32f011e2992133ca8325c43ee937bd7bd5ce814c142bcd474d694cb2c",
+    "/tmp/drr-m1/legacy-supervisor-upgrade/artifacts/legacy-upgrade-failure-snapshot.json": "ab2ae1203f9a6b4aeea14ec650a16d37e4f7b82109b8581a9737fbdcc1275aa6",
+    "/tmp/drr-m1/legacy-supervisor-upgrade/artifacts/legacy-upgrade-failure-error.txt": "f757cf1334d74cfbf04385f6d96c99e65515df0df2de9dc08f0ecd81c50f2c28",
+    "/tmp/drr-m1/legacy-supervisor-upgrade/artifacts/legacy-upgrade-failure-diagnostics.json": "58c67d80a9c2c9fdc50eefb3d7ca1912e63958eef59bbf15de74887a45ffa63c"
+  },
+  "limits": [
+    "No complete npm test or release gate rerun",
+    "No fallback lifecycle behavior changed; original Canvas ready root cause remains unknown",
+    "No macOS/Windows/real-provider/remote validation",
+    "No retrospective claim that all historical resize failures share controlled C8 cause",
+    "Native M1 existing Host diagnostics had no resize message detail; request timestamps added to fixture evidence after that run"
+  ],
+  "referenceFiles": {
+    "docs/references/runtime-legacy-resize-convergence/native-positive-c3.json": "fa8575abd2d8f95c26bc039d8eeee4257605044b791e6a1f209e5cb200adf49a",
+    "docs/references/runtime-legacy-resize-convergence/native-negative-m1.json": "04e9f180b0a2f9b26bea02c917ab539b61e9f73bea84100578a8a8a2a01b0b74",
+    "docs/references/runtime-legacy-resize-convergence/native-fit-control.patch": "ef645c6cae648628ac21ed1396329dc4d0a38da1a4707d29e31b7cf2892fd892",
+    "docs/references/runtime-legacy-resize-convergence/native-missed-resize-control.patch": "d810e1b1c5c5046ff121fac31bd3556c221995fb3a19b39ae7217acf7cb104ce"
+  }
+}
