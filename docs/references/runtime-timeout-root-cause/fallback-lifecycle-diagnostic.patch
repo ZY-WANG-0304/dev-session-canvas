@@ -1,0 +1,36 @@
+diff --git a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+index d2a9936a..df7e0204 100644
+--- a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
++++ b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+@@ -23346,6 +23346,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+   }
+ 
+   private recordDiagnosticEvent(kind: string, detail?: Record<string, unknown>): void {
++    if (kind.startsWith('surface/') || kind.startsWith('webview/')) console.info('[fallback-lifecycle]', JSON.stringify({ time: Date.now(), kind, detail }));
+     this.testDiagnosticEvents.push({
+       timestamp: new Date().toISOString(),
+       kind,
+diff --git a/tests/vscode-smoke/real-reopen-tests.cjs b/tests/vscode-smoke/real-reopen-tests.cjs
+index 83219435..37b19609 100644
+--- a/tests/vscode-smoke/real-reopen-tests.cjs
++++ b/tests/vscode-smoke/real-reopen-tests.cjs
+@@ -343,14 +343,19 @@ async function runVerifyPhase() {
+ async function activateExtension() {
+   await activateVisibleExtension(vscode, EXTENSION_ID);
+   await waitForCommand(vscode, COMMAND_IDS.openCanvasInEditor);
++  console.log('[fallback-investigation] open-activation', JSON.stringify(await getDebugSnapshot()));
+   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
++  console.log('[fallback-investigation] activation-opened', JSON.stringify(await getDebugSnapshot()));
+   await waitForCommand(vscode, COMMAND_IDS.testResetState);
+   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
++  console.log('[fallback-investigation] activation-closed', JSON.stringify(await getDebugSnapshot()));
+ }
+ 
+ async function openCanvasEditor() {
+   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
++  console.log('[fallback-investigation] reopened', JSON.stringify(await getDebugSnapshot()));
+   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
++  await fs.writeFile(path.join(artifactDir, 'fallback-' + phase + '-lifecycle.json'), JSON.stringify(await vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents), null, 2));
+ }
+ 
+ async function createExecutionNodes() {

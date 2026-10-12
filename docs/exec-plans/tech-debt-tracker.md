@@ -12,6 +12,16 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-12：旧升级 resize 超时定位与 fallback ready 证据边界
+
+PR #321 合入后，用户授权优先定位resize。本轮原生基线与页面时间线确认测试“首次不同probe即固定目标”的前提缺口：初始恢复92×28、首次容器fit67×21、卡片fit82×27可以交错；probe未承诺最终目标。受控原生C8保留原20秒与内容/尺寸/身份断言，固定67×21后189次原session及最新页面均为82×27，原等待仍超时；无需产品漏发即可同类失败。浏览器暂停真实parser的Agent/Terminal两项，在移除产品探针后亦通过；最终无探针原生旧升级完整通过。没有产品或正式测试修复。PR #321历史首败未保存期望probe，仍不能逐次追认同因；未知listener/commit lease占用不归为resize问题。
+
+后续独立修复应建立修改前restore/fit已完成的有效前提，并在原总截止核对当前卡片对应的页面目标和同一原session，保持内容与身份保证；不能简单固定sleep、延长等待或忽略resize。本轮当前测试仍可因固定过渡值误报，下一发布准备前须修复并复验完整门禁。
+
+fallback原日志确认新容器内容更新及VS Code webview ready，但Host editor generation5仍ready/ack=false、无frameId；waitForCanvasReady实际等待visible/active/ready，不等待ack。原首败缺Host lifecycle、iframe资源/JS状态，具体根因未确认。F1/F2两轮完整两阶段通过且无systemctl提交，后者移除产品探针；正常close/open与同frame握手不证明首败修复。后续具名失败需在关闭前同时取Host事件与iframe资源/脚本/ready发送证据，原首败保持待定位，不提供0.26.1豁免。
+
+调查过程的ENOSPC、更早probe等待失败及最终首次复验lease36758占用分别保留；只清理本轮复制依赖和原scenario资源，未停止未知listener。正式结论、全部运行hash与可复跑patch见 `docs/design-docs/runtime-timeout-root-cause.md`、`docs/exec-plans/completed/runtime-timeout-root-cause.md` 和 `docs/references/runtime-timeout-root-cause/evidence.json`。本轮未运行全量npm test或VSIX矩阵。
+
 ## 2026-10-12：发布门禁夹具与 CI 对齐后的剩余验证边界
 
 背景与触发：PR #319 后固定主线 `c32437ac` 的完整门禁仍失败，用户授权对齐五组确定的测试/CI 问题。修复方案见 `docs/design-docs/release-gate-fixture-ci-alignment.md`。本轮已修正关闭模式、原连接请求屏障、当前模式加载断言、checkpoint 收齐等待、新 root socket 地址和提交前 unavailable fallback；两个 workflow 新增同 cache 的 Chromium/系统依赖预装和短宿主 TMP。完整 execution-context、root preparation/systemd、门禁/workflow 回归通过，checkpoint 与旧升级定向原生场景首次完整通过。

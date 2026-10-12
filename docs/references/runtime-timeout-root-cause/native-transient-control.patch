@@ -1,0 +1,120 @@
+diff --git a/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx b/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx
+index 84d6fc9f..04ca8877 100644
+--- a/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx
++++ b/extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx
+@@ -510,6 +510,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
+         });
+       }
+ 
++      let initialFitDeadline: number | undefined;
++      let cardFitDeadline: number | undefined;
+       function fitTerminal(options: {
+         reportMode?: 'settled' | 'immediate';
+         allowShrinkDuringRestore?: boolean;
+@@ -532,6 +534,16 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
+         }
+ 
+         const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
++        if (id === 'legacy-upgrade-agent' && hasAppliedSnapshot) {
++          const initial = proposedDimensions.cols < 80;
++          if (initial) initialFitDeadline ??= Date.now() + 400;
++          else cardFitDeadline ??= Date.now() + 400;
++          const deadline = initial ? initialFitDeadline! : cardFitDeadline!;
++          if (Date.now() < deadline) {
++            scheduleDeferredShrinkFit(deadline - Date.now());
++            return;
++          }
++        }
+         const shouldDeferShrinkFit =
+           options.allowShrinkDuringRestore !== true &&
+           hasAppliedSnapshot &&
+@@ -1246,6 +1258,8 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
+         });
+       }
+ 
++      let initialFitDeadline: number | undefined;
++      let cardFitDeadline: number | undefined;
+       function fitTerminal(options: {
+         reportMode?: 'settled' | 'immediate';
+         allowShrinkDuringRestore?: boolean;
+@@ -1268,6 +1282,16 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
+         }
+ 
+         const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
++        if (id === 'legacy-upgrade-agent' && hasAppliedSnapshot) {
++          const initial = proposedDimensions.cols < 80;
++          if (initial) initialFitDeadline ??= Date.now() + 400;
++          else cardFitDeadline ??= Date.now() + 400;
++          const deadline = initial ? initialFitDeadline! : cardFitDeadline!;
++          if (Date.now() < deadline) {
++            scheduleDeferredShrinkFit(deadline - Date.now());
++            return;
++          }
++        }
+         const shouldDeferShrinkFit =
+           options.allowShrinkDuringRestore !== true &&
+           hasAppliedSnapshot &&
+diff --git a/tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs b/tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs
+index 25812835..565208c4 100644
+--- a/tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs
++++ b/tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs
+@@ -28,6 +28,8 @@ const LEGACY_TERMINAL_NODE_ID = 'legacy-upgrade-terminal';
+ const PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID = 'previous-generation-stream-terminal';
+ const LEGACY_AGENT_MARKER = 'LEGACY_UPGRADE_AGENT_READY';
+ const LEGACY_TERMINAL_MARKER = 'LEGACY_UPGRADE_TERMINAL_READY';
++const resizeTimeline = [];
++let observeResizeWait = false;
+ const PREVIOUS_GENERATION_STREAM_MARKER = 'PREVIOUS_GENERATION_STREAM_READY';
+ const LEGACY_WEBVIEW_INPUT_MARKER = 'LEGACY_WEBVIEW_INPUT_REACHED_PTY';
+ const LEGACY_HOST_AGENT_INPUT_MARKER = 'LEGACY_HOST_AGENT_INPUT_REACHED_PTY';
+@@ -173,6 +175,7 @@ async function run() {
+     assert.ok(legacyAgentProbeBeforeResize.terminalCols && legacyAgentProbeBeforeResize.terminalRows);
+     assert.ok(legacyTerminalProbeBeforeResize.terminalCols && legacyTerminalProbeBeforeResize.terminalRows);
+ 
++    resizeTimeline.push({ phase: 'before-resize', time: Date.now(), probe });
+     await clearDiagnosticEvents();
+     await performWebviewDomAction({
+       kind: 'sendExecutionInput',
+@@ -203,6 +206,7 @@ async function run() {
+     });
+     const legacyAgentNodeBeforeResize = findNodeById(snapshot, LEGACY_AGENT_NODE_ID);
+     const legacyTerminalNodeBeforeResize = findNodeById(snapshot, LEGACY_TERMINAL_NODE_ID);
++    await sleep(500); // Controlled delayed Host geometry while first page fit remains independent.
+     const resizedLegacyAgentNodeSize = { width: 680, height: 520 };
+     const resizedLegacyTerminalNodeSize = { width: 700, height: 540 };
+     await dispatchWebviewMessage({
+@@ -245,6 +249,8 @@ async function run() {
+             terminalNode.terminalRows !== legacyTerminalProbeBeforeResize.terminalRows)
+       );
+     });
++    resizeTimeline.push({ phase: 'fixed-target', time: Date.now(), probe: resizedLegacyProbe });
++    observeResizeWait = true;
+     const resizedLegacyAgentProbe = findProbeNodeById(resizedLegacyProbe, LEGACY_AGENT_NODE_ID);
+     const resizedLegacyTerminalProbe = findProbeNodeById(resizedLegacyProbe, LEGACY_TERMINAL_NODE_ID);
+     const agentAfterCompatibilityOperations = await waitForRuntimeSupervisorSession(
+@@ -421,6 +427,11 @@ async function run() {
+     );
+     scenarioPassed = true;
+   } finally {
++    const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
++    if (artifacts) {
++      await fs.mkdir(artifacts, { recursive: true });
++      await fs.writeFile(path.join(artifacts, 'resize-investigation.json'), JSON.stringify({ resizeTimeline, events: await getDiagnosticEvents() }, null, 2));
++    }
+     let resetError;
+     try {
+       await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+@@ -704,8 +715,13 @@ async function waitForRuntimeSupervisorOutput(supervisorPaths, sessionId, marker
+ async function waitForRuntimeSupervisorSession(supervisorPaths, sessionId, predicate, timeoutMs) {
+   const deadline = Date.now() + timeoutMs;
+   let lastSnapshot;
++  if (observeResizeWait) await sleep(700); // Controlled observation latency, within original deadline.
+   while (Date.now() < deadline) {
+     lastSnapshot = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', { sessionId });
++    if (observeResizeWait) {
++      const probe = await vscode.commands.executeCommand(COMMAND_IDS.testCaptureWebviewProbe);
++      resizeTimeline.push({ phase: 'session-wait', time: Date.now(), session: { sessionId, cols: lastSnapshot.cols, rows: lastSnapshot.rows }, probe, events: await getDiagnosticEvents() });
++    }
+     if (predicate(lastSnapshot)) {
+       return lastSnapshot;
+     }

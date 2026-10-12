@@ -1,0 +1,47 @@
+diff --git a/tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs b/tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs
+index 25812835..fdd70f3b 100644
+--- a/tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs
++++ b/tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs
+@@ -28,6 +28,8 @@ const LEGACY_TERMINAL_NODE_ID = 'legacy-upgrade-terminal';
+ const PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID = 'previous-generation-stream-terminal';
+ const LEGACY_AGENT_MARKER = 'LEGACY_UPGRADE_AGENT_READY';
+ const LEGACY_TERMINAL_MARKER = 'LEGACY_UPGRADE_TERMINAL_READY';
++const resizeTimeline = [];
++let observeResizeWait = false;
+ const PREVIOUS_GENERATION_STREAM_MARKER = 'PREVIOUS_GENERATION_STREAM_READY';
+ const LEGACY_WEBVIEW_INPUT_MARKER = 'LEGACY_WEBVIEW_INPUT_REACHED_PTY';
+ const LEGACY_HOST_AGENT_INPUT_MARKER = 'LEGACY_HOST_AGENT_INPUT_REACHED_PTY';
+@@ -203,6 +205,7 @@ async function run() {
+     });
+     const legacyAgentNodeBeforeResize = findNodeById(snapshot, LEGACY_AGENT_NODE_ID);
+     const legacyTerminalNodeBeforeResize = findNodeById(snapshot, LEGACY_TERMINAL_NODE_ID);
++    resizeTimeline.push({ phase: 'before-resize', time: Date.now(), probe });
+     const resizedLegacyAgentNodeSize = { width: 680, height: 520 };
+     const resizedLegacyTerminalNodeSize = { width: 700, height: 540 };
+     await dispatchWebviewMessage({
+@@ -245,6 +248,8 @@ async function run() {
+             terminalNode.terminalRows !== legacyTerminalProbeBeforeResize.terminalRows)
+       );
+     });
++    resizeTimeline.push({ phase: 'fixed-target', time: Date.now(), probe: resizedLegacyProbe });
++    observeResizeWait = true;
+     const resizedLegacyAgentProbe = findProbeNodeById(resizedLegacyProbe, LEGACY_AGENT_NODE_ID);
+     const resizedLegacyTerminalProbe = findProbeNodeById(resizedLegacyProbe, LEGACY_TERMINAL_NODE_ID);
+     const agentAfterCompatibilityOperations = await waitForRuntimeSupervisorSession(
+@@ -421,6 +426,8 @@ async function run() {
+     );
+     scenarioPassed = true;
+   } finally {
++    const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
++    if (artifacts) await fs.writeFile(path.join(artifacts, 'resize-investigation.json'), JSON.stringify({ resizeTimeline, events: await getDiagnosticEvents() }, null, 2));
+     let resetError;
+     try {
+       await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+@@ -706,6 +713,7 @@ async function waitForRuntimeSupervisorSession(supervisorPaths, sessionId, predi
+   let lastSnapshot;
+   while (Date.now() < deadline) {
+     lastSnapshot = await sendRuntimeSupervisorRequest(supervisorPaths, 'attachSession', { sessionId });
++    if (observeResizeWait) resizeTimeline.push({ phase: 'session-wait', time: Date.now(), session: { sessionId, cols: lastSnapshot.cols, rows: lastSnapshot.rows }, probe: await vscode.commands.executeCommand(COMMAND_IDS.testCaptureWebviewProbe) });
+     if (predicate(lastSnapshot)) {
+       return lastSnapshot;
+     }
