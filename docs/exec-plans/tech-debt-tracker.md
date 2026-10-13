@@ -12,6 +12,16 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-13：最新主线完整测试通过与 clean-checkout 安装首败
+
+背景与固定输入：用户舍弃旧发布准备 PR #313，按 main `ea0c9b19`（PR325 合并提交）重新判断。完整 npm test 原样 exit0，全部默认源码 smoke 包括 checkpoint、旧升级 resize/新旧身份/退役、窗口/共享/systemd/fallback/localhost SSH 通过，最终 Webview426/426。Host634/634、root/startup、notifier typecheck/source/companion/en/zh-cn通过。历史首败与根因边界不由当前通过覆盖；0.26.0 的版本豁免未用于本轮。
+
+新具名风险：首次固定 ref 的 clean-checkout 在独立 npm ci 执行 Wrangler/esbuild `install.js` 二进制版本校验时返回 spawnSync ETXTBSY，尚未打包或安装 smoke，exit1。原stderr/npm日志保留，npm回滚移除了依赖目录；具体写者未确认，不定性为产品缺陷。新独立目录只增加 npm_config_foreground_scripts=true，使 npm 生命周期脚本并发1，不跳过脚本、不改依赖或断言；独立npm ci、140-file主VSIX及八组安装smoke完整exit0。该受控通过不将默认首轮追认为通过，也不证明精确根因修复。
+
+当前处理与后续时机：本轮交付固定主线报告，未修改PR/tag workflow。发布前仍需从最终main准备0.26.1版本、文案及契约，并实际通过预合并/tag标准verify。正式CI若再次出现ETXTBSY，先采集生命周期并发及文件写者，确认是否应让两条发布链路统一串行安装；不得跳过安装校验或自动豁免。上游请求责任、原单次ready首败、普通打开持续空白缺少启动反馈、其他平台/真实provider/远端长断开和市场自动依赖等仍沿各具名范围表达。本轮不把所有历史债务追加为新发布blocker。
+
+文档收口：共享接管的设计开头和产品规格按PR319已合并证据更新，保留四阶段真实UI及跨平台未覆盖范围；主线引用的PR322 C8样本补为逐字节本地副本及来源hash，无需合并整个旧调查PR。关联：`docs/design-docs/main-release-readiness-2026-10-13.md`、`docs/exec-plans/completed/main-release-readiness-2026-10-13.md`、`docs/references/main-release-readiness-2026-10-13/evidence.json`。
+
 ## 2026-10-13：真实窗口重开 ready 预算缓解与上游资源责任
 
 背景与范围：PR #324确认VS Code1.141.0连续重开中未响应资源请求等待30秒、占满32名额后阻塞新CSS/JS；原单次fallback首败仍缺分层证据，不能归因。调查轮20秒是`real-reopen-tests.cjs`显式传入的历史smoke ready预算；PR #325将同fixture改为最大45秒，ready满足后立即返回。`CanvasPanelManager.waitForCanvasReady`未传timeout时默认15秒，测试命令未传有效正数时也默认15秒，仅对实际调用生效；这些时间值均不是所有用户打开Canvas的启动期限。

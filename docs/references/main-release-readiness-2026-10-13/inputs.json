@@ -1,0 +1,2394 @@
+{
+  "baseCommit": "ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b",
+  "branch": "docs-main-release-readiness-2026-10-13",
+  "node": "v22.23.3",
+  "vscode": "1.141.0",
+  "nativeAssets": "/tmp/dsc-release-026-assets",
+  "browserCache": "/tmp/dscmainv1013/.playwright-browsers -> /tmp/dscgate1012/.playwright-browsers (warm revision 1217)",
+  "files": [
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug-report.yml",
+      "sha256": "093c8a70055db14baa4d5356975d4b80779e208c956773799173da4b993fab8f"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "sha256": "4234bdfdfc9cf6044dfd08eea52d7a97c9794750eaa88ff06fe83f0425234909"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature-request.yml",
+      "sha256": "dfc79f03b0cde8d3e622a61234f1bee9580864b797464c45b683ddd5b67a7fdc"
+    },
+    {
+      "path": ".github/workflows/publish-marketplace-release.yml",
+      "sha256": "16e19c6c3748451b9e14c92280ad19fc35b19a055d6dc703ce5059533e7a1b56"
+    },
+    {
+      "path": ".github/workflows/release-preflight.yml",
+      "sha256": "4facabfc0bc57c05025a044cb8ac73d39c83a661eda968a87629dd6547ac2723"
+    },
+    {
+      "path": ".github/workflows/runtime-execution-assets.yml",
+      "sha256": "db38e9e3abc0fca3b373f2b509925e037cdf2ef0a133a9f8ae6865f3198e7f16"
+    },
+    {
+      "path": ".github/workflows/runtime-execution-macos.yml",
+      "sha256": "68a578e9293af4e750939e2c605a926ba4b808cbfee7b47a0b9a612585b78829"
+    },
+    {
+      "path": ".github/workflows/runtime-execution-windows.yml",
+      "sha256": "3ce1fb5fc4c1b30b8dbd3035484b7af4ebebbec6355f2fe5abd45e9f26612d83"
+    },
+    {
+      "path": ".github/workflows/runtime-exit-integrity-native.yml",
+      "sha256": "bfb3edfc390e9d7bf811c7e74e486896bb0f0f00e0e7f2d9650674ce50ffeaa6"
+    },
+    {
+      "path": ".github/workflows/runtime-production-acceptance.yml",
+      "sha256": "3558d01f989bb8821e4bfb7a4dad2e7b941e2099bf215093c84bf6fa664cb39d"
+    },
+    {
+      "path": ".github/workflows/runtime-real-agent-macos.yml",
+      "sha256": "1ac10a3ec5763dddc6498d89bf4337fbe2c081b17199d458aea799adc3895603"
+    },
+    {
+      "path": ".github/workflows/runtime-real-agent-windows.yml",
+      "sha256": "44629a13568be2cd1773ff57aaee7dc641db97d8365d9706a7b6deb682ab7214"
+    },
+    {
+      "path": ".github/workflows/runtime-root-ownership.yml",
+      "sha256": "20c831fca412a80ee8d35c7c0b15e930740a2c9c200fb59a8339fed11fbd167e"
+    },
+    {
+      "path": ".github/workflows/template-marketplace-production-deploy.yml",
+      "sha256": "fc00919d0342ed0bfb2eebb4c2d5eadc4d41cf152d081fd42eab5eb63c279c13"
+    },
+    {
+      "path": "apps/template-marketplace/.dev.vars.example",
+      "sha256": "2582cf6553366e2887e8e7199e03b84791c47b192ac8ee1c31b15549284e7461"
+    },
+    {
+      "path": "apps/template-marketplace/fixtures/r2/templates/tmpl-getting-started/versions/1/template.json",
+      "sha256": "031e1f491c5e7b4b39c3c2a84dcf2d81e9833bad6228e32fa8f710dfccc00a7e"
+    },
+    {
+      "path": "apps/template-marketplace/fixtures/r2/templates/tmpl-getting-started/versions/1/thumbnail.png",
+      "sha256": "454d6e9225cb01987cbcc0211f54519c359c44adcd42bf1ecb6ae7e6903bccf3"
+    },
+    {
+      "path": "apps/template-marketplace/fixtures/r2/templates/tmpl-release-readiness/versions/1/template.json",
+      "sha256": "e63a9f3666284df207184414a75afb1a86f6536a53668279fe825577a400bef0"
+    },
+    {
+      "path": "apps/template-marketplace/fixtures/r2/templates/tmpl-release-readiness/versions/1/thumbnail.png",
+      "sha256": "76b80d6197d7847d1cb81db1701e31d9ad7ef3c5cbb9be5f8f5b07f54c920138"
+    },
+    {
+      "path": "apps/template-marketplace/fixtures/r2/templates/tmpl-review-loop/versions/1/template.json",
+      "sha256": "005e90644dae8084a612d6a9d2e198508618eaa792648eb19bc56113cbcc4e92"
+    },
+    {
+      "path": "apps/template-marketplace/fixtures/r2/templates/tmpl-review-loop/versions/1/thumbnail.png",
+      "sha256": "60a83bd7100cbbb8bab14867ce38b837cffddbf57edc42bc5aef34567d8b709c"
+    },
+    {
+      "path": "apps/template-marketplace/fixtures/r2/templates/tmpl-review-loop/versions/2/template.json",
+      "sha256": "d74f3887ad39c05912629b771635bf8c3e110a498a559ec6b56d8aee390e8ead"
+    },
+    {
+      "path": "apps/template-marketplace/fixtures/r2/templates/tmpl-review-loop/versions/2/thumbnail.png",
+      "sha256": "3157578492cccc717eb9275fd92ced163acc5ed1c467039d223f0d182329b6fd"
+    },
+    {
+      "path": "apps/template-marketplace/index.html",
+      "sha256": "707efc7458af0aad50f0db51bcbc40156b03bb3e6f145f3191d8c499a91e770a"
+    },
+    {
+      "path": "apps/template-marketplace/migrations/0001_marketplace_core.sql",
+      "sha256": "db03c9368189eb2824668a57888974a3d4731018aeb26ccb1c1d1cfa0d5ee078"
+    },
+    {
+      "path": "apps/template-marketplace/package.json",
+      "sha256": "5b91300f79ae7dacd02ba94863917f31131cb8d0da2a7bf351e8d3c35936ff20"
+    },
+    {
+      "path": "apps/template-marketplace/postcss.config.cjs",
+      "sha256": "c3275e0c1ab2639ab056915eac2a806b997a7879c31edce8898ec443a4823a06"
+    },
+    {
+      "path": "apps/template-marketplace/scripts/deploy-with-metadata.mjs",
+      "sha256": "f4133472493cceb8f187ebbd9381e638d6f1f44dec2828bd39e0b2bf390c00c8"
+    },
+    {
+      "path": "apps/template-marketplace/scripts/generate-preview-thumbnails.mjs",
+      "sha256": "df5e412b2b8f041fdc2f908b179940b3b8a1f78a9313f5f7a312594aabe8b55a"
+    },
+    {
+      "path": "apps/template-marketplace/scripts/preview-r2-objects.mjs",
+      "sha256": "e7dd66e891c5f62f958a3134f57d4f3e29c6aa7c1987b526c138f392da5e9647"
+    },
+    {
+      "path": "apps/template-marketplace/scripts/seed-preview-r2.mjs",
+      "sha256": "3633657bb39302a1c787301b9b2050bcfe870da7e921b00d7fbc705ca1bbcb28"
+    },
+    {
+      "path": "apps/template-marketplace/scripts/verify-preview-r2.mjs",
+      "sha256": "13743b591b74a2417e707689330fb833c4a8b040de4b1275e6ab1ba32b1fc82a"
+    },
+    {
+      "path": "apps/template-marketplace/seeds/0001_preview_templates.sql",
+      "sha256": "2ba3034b2286f771cbad0ff2edab6411d0543eba09b79bc55340ff2c8559751d"
+    },
+    {
+      "path": "apps/template-marketplace/seeds/0002_preview_review_loop_v2.sql",
+      "sha256": "de57bfc7abeea3dc95272434be910b6f248011f8c7cf28b7b286080a296d0307"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/App.tsx",
+      "sha256": "2a00f75ae20dc748224357d9610b0390bc7f7f04e8f9940e7e64ba511ac7b7b8"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/components/InstallInVSCodeLink.tsx",
+      "sha256": "3c2a31b68478a0a020124212dd291baefcaa99b8473dfd439b349e7d3b6618e0"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/components/TemplateAdminView.tsx",
+      "sha256": "79f2a932b84afd40a9dd99d0837c6b89dd640908a5cb8c29c4cb2990f14592b5"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/components/TemplateCard.tsx",
+      "sha256": "5e69ab4fc498ed7bf0b3eaa52a15379d6de1a5a41d839f609530a5816b8efe0a"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/components/TemplateDetailView.tsx",
+      "sha256": "4cc7dcc2ad47666b229b2f61d1abbf323d69f5c1ebfb8a32393b5b923b27fa8c"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/components/TemplateMyTemplatesView.tsx",
+      "sha256": "952b82d4319688695f35444a0e71e00b1f412c8f52b9741e6ca05be4aad9a24a"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/components/TemplatePublishVersionView.tsx",
+      "sha256": "edc798a58150e6b31e946b40af821318a12f2d7d0ee00506c055ac5e9ca70ec4"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/components/TemplatePublishView.test.ts",
+      "sha256": "d58d42c31c7f2d436ed5b73818cbaa0d69c71f75948052c8d021b221c6117b72"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/components/TemplatePublishView.tsx",
+      "sha256": "70642e8ce1cf58a1581a0617d20a5f126199a2d4965910a2e0e16f23f5f1fff6"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/lib/api.test.ts",
+      "sha256": "53f88bd3527ea3c6bf07b6e10546c0a6107547866de63d4a3ce7a7557bb62ca2"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/lib/api.ts",
+      "sha256": "9f280ccbdbc1869ac117c2214f5b4937da5d72eae91e1e5db67ad07d541b83e6"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/lib/download.test.ts",
+      "sha256": "a824a2b7e6bb89a318f12b282af94cc8fbbfbbd7257d13052dac05d7369e6102"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/lib/download.ts",
+      "sha256": "f095c7fe5b3c2675bb4d8cf7f6a63fab26530fe212ad5e136e3614daf79984eb"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/lib/routing.test.ts",
+      "sha256": "e230cd9a0b37cf9f86df4be514f4ca8da52ad349ab1012c078ab319b346316f0"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/lib/routing.ts",
+      "sha256": "1779ce652a2960fd73a66603133e89e9279860d0047d16f987ae03abb3859ec7"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/lib/thumbnail.test.ts",
+      "sha256": "567c4b556bf0b186eb83e814db28bc3d00fa41911abaf1dc021c720e7eb74ff1"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/lib/thumbnail.ts",
+      "sha256": "38aeb8aa74ad1580e4cdb57d8ad8d55aff9feabf3b6aa469dbae4ec75dccf838"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/lib/vscodeInstall.test.ts",
+      "sha256": "2ed59d547bfb63686ce24da0bcd5473ec6cd1243c8e8e9ca50034224fabce62c"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/lib/vscodeInstall.ts",
+      "sha256": "d577e6ca0505bb3f7ed51e10b7f3cf9dcab6ff758a51859d03105dfb5e1f7c34"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/main.tsx",
+      "sha256": "90d4713fcbea88b2ce0f326606f61197dda6f2b3d7ad53188d7a82a531725947"
+    },
+    {
+      "path": "apps/template-marketplace/src/web/styles.css",
+      "sha256": "0609060560f8e6aa056ed1c243fe20a7796abc57a685feee28477b08b5db44f4"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/app.test.ts",
+      "sha256": "51682271196d295faee9c2c72c586eef9f1ac3610012c76d586aa54f82f1d596"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/app.ts",
+      "sha256": "b3dbdd367928f2ae3c743a2db997b5fd1ddaff8d818260de56ad20c8b093ad3f"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/auth.ts",
+      "sha256": "86716d5dbca7de8fcd8475c9910654bf3f13305322ddf86a7f21c3b735ff7e01"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/download.ts",
+      "sha256": "3ebee8bf13fbaad27ee58029314052e7d61a5a055a923771440b877cbf98e2f8"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/index.test.ts",
+      "sha256": "fe80d5f4842f2cd21e9c0353721292a3b80dca5720333d9ebc3af0eb643ceff9"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/index.ts",
+      "sha256": "9de1842e74fe96a85bf1f55ecdcd301ce65be198cc0fc756b27a03a306dbe242"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/migration.test.ts",
+      "sha256": "48ff88f801b9604534d8d3adab70053bf472f33f21a838500d6003f32b2c49ca"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/publish.ts",
+      "sha256": "618b8ce31f6fd754bfc1fdeea3e5dac2dcd389a353a8b0db4f7c9e3df665a627"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/repository.test.ts",
+      "sha256": "f35a723682078dd4c31dca0c8b353b8fb2920fd9ffd6904fb3ab9ac5bd815c51"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/repository.ts",
+      "sha256": "b8fad43d396708686f45c3bf7ae1f7a219b2f861f03fc8c272f37f8ad1e21d2c"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/seed.test.ts",
+      "sha256": "ce0974257a638b68f651a1bb38fba726bf6d78fe63f6f429dfe154b9cd93431c"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/testD1Database.ts",
+      "sha256": "e6cf0aea5db79aaac938d2f65fb460fea87f5c7725e2e8cfd2e73a16aae9236b"
+    },
+    {
+      "path": "apps/template-marketplace/src/worker/testR2Bucket.ts",
+      "sha256": "a205c9f7d94f2b17e2d1d1855dfc182b4d758f327f6c401ffe75672386655399"
+    },
+    {
+      "path": "apps/template-marketplace/tailwind.config.cjs",
+      "sha256": "12cdd157578a5410bb3ee82808e7ba2cdeca670ac21d14ce45c7fec1c1748465"
+    },
+    {
+      "path": "apps/template-marketplace/tsconfig.web.json",
+      "sha256": "c78cd6f0e5154aaa6fae663f3383541aa16f35ef00a5398a5d6730de3f742f24"
+    },
+    {
+      "path": "apps/template-marketplace/tsconfig.worker.json",
+      "sha256": "a36fbf86bf1cea6c2296c5d7000f8f195d09a31dc399ebc1d6f882a08e335327"
+    },
+    {
+      "path": "apps/template-marketplace/vite.config.ts",
+      "sha256": "c9f35825cbc30455995e1de9fd6e1c5d63aec01e3b8d2ab3f92cea2629c8d5d9"
+    },
+    {
+      "path": "apps/template-marketplace/vitest.api.config.ts",
+      "sha256": "a1694999eb03b6e5538dc4f74c4c046c8c6cbe3d6da5c98af5ae9eb201d43d89"
+    },
+    {
+      "path": "apps/template-marketplace/vitest.web.config.ts",
+      "sha256": "79a417e9a436383764df890384cdf7d7783ed0b74fc60a5b8df970864aea6475"
+    },
+    {
+      "path": "apps/template-marketplace/wrangler.toml",
+      "sha256": "a9b362c9ea49d0e9caf5416c2902d90ac8246bdfada516c1eb17b8b9c1b427de"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/CHANGELOG.md",
+      "sha256": "f3ab7dcc7c915bd9a64d45e599b107d0f05e48064936bedbd18242b0693cbda5"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/LICENSE",
+      "sha256": "2191d05c6ee7c145480916b745bd020484adb61653be943c43cff10bc22927a1"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/README.marketplace.md",
+      "sha256": "f0d4290491964fe7a23cf3c465f266f1c3088027edb05017c9fa7ac96e917d52"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/README.marketplace.zh-CN.md",
+      "sha256": "d166cba4c2d3777a360180fd72b41490c25ad49b101c218bb120c892d16f4175"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/README.md",
+      "sha256": "0dc4ab0cc0858eb7837e691a31e0eb3a23288cbed04c489eaf0b4355cf3b4837"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/images/activitybar.svg",
+      "sha256": "46c65080f309de5e8f7a63fdd0496d5bf37b22613e56b8fb01d24a933a4ce667"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/images/icon.png",
+      "sha256": "4184c6a00fa2b093d801b9a4a2f84b913e6e9f70fe140522fbdfb69a801576eb"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/images/icon.svg",
+      "sha256": "f86bf8b368e103e334c0242505cf6567e9218b9afc58a7a27f81a496a2d9f119"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/l10n/bundle.l10n.zh-cn.json",
+      "sha256": "1e813cfa5cc3ad9169122635ea8023c1da2312bfb2ecaaeddc7d516f15acb242"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/package.json",
+      "sha256": "45b38cc694d888df763aa5c30a032c8931904af4ad9836182d70260321a1003a"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/package.nls.json",
+      "sha256": "d00dfef950b6904e9306b6e734dc6d09d754a654081340c83c1cfd8e601d73c3"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/package.nls.zh-cn.json",
+      "sha256": "9d73a337a2015571eb41f4c52c6fc89074a7d6dbc9df18db955784bddcd23a79"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/scripts/build.mjs",
+      "sha256": "c43562f21f2066593b496b99447ee9c681da2d142d6113a4e1ed097daec9db02"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/scripts/package-vsix.mjs",
+      "sha256": "b86d45059d24f8286df11618df9dcdfefc76e1f337011a183706e67152ddd057"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/src/extension.ts",
+      "sha256": "2a3e229f9354087ee45eee49c63a9370123a468efae4cdc75b0152fb1bab0fb4"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/src/manualNotificationCopy.ts",
+      "sha256": "2960a7a52d6068e689084c722dc92f13801b40648e8a2e1d0d5ee846a66b4ab0"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/src/notifierLocalization.ts",
+      "sha256": "b00086333644282173f23351655bc56716389c65e53fe6100aabb2c8a191cafd"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/src/platformNotification.ts",
+      "sha256": "0f5975115991fcadeb63fc0c71077a0aa91ce4063db6913cb12caf6b1e661eda"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/src/sidebarEnvironment.ts",
+      "sha256": "2d963448551c7908aebd84efab6ce89a6f62429db718dadae908d53f305e5126"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/src/sidebarRichText.ts",
+      "sha256": "bced942141ea1cd056eadf75fdee7c5527cd8f239184e8743d57a935d5166db2"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/src/sidebarStatus.ts",
+      "sha256": "4b212c226ed8c643dbc4e063c08c357a9e55757d5a1e40a7e1a19e455b0cfa0f"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/src/sidebarView.ts",
+      "sha256": "84ef64d9cc877730b83d15a6af421c89576e1de76411ee9b8f1b6022a5451e7f"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/src/testHarness.ts",
+      "sha256": "b4e101c09a6fa33a759a4b4a1abe4df7b7d98463f34fa5d7ff6aa9e7cd675a22"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/tests/platformNotification.test.mts",
+      "sha256": "1a2b03c52b65bf1320fc04c7f1b1feb7c16eceb5d56ada0f71cbd85df62d76a7"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/tests/sidebarLocalization.test.mts",
+      "sha256": "a2ceacd3ed488ddcebaf78d12c2440c6cd8c7b92313a71c45ab84d0ce5a4643e"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/tests/sidebarRichText.test.mts",
+      "sha256": "766cb2edc36d1fa06e8d5a5a0e6697b67319bf1687bdb224f9f949d171409013"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/tests/sidebarStatus.test.mts",
+      "sha256": "ff73c3f8cf664930d2591121d6196c5c7fbf6cda344871926e48fadbd362dc5e"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/tests/sidebarViewSource.test.mts",
+      "sha256": "e462cb49c540deef6946e7c12fe60e6898f807389546ab1a3d90fe4573013ee9"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas-notifier/tsconfig.json",
+      "sha256": "617a378561708a01fb978a8618fcc49b95096733e8b5b47552881cabb09dfe32"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/.vscodeignore",
+      "sha256": "fd483a60dd46d5628f7a137a926d35b9137de594e93e120f19612c5f6cf64d95"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/CHANGELOG.md",
+      "sha256": "f296bb1584d1a458a486fbb7c3de19b417e2aefe96d5a55ee602eece67000b45"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/LICENSE",
+      "sha256": "2191d05c6ee7c145480916b745bd020484adb61653be943c43cff10bc22927a1"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/README.marketplace.md",
+      "sha256": "35a84db17b8cbda41b7889f1afb248d83b300003ee7a03e1e75497125ff2455f"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/README.marketplace.zh-CN.md",
+      "sha256": "33325d795a1210ab00d2990c11770ca74f4a4928a208e3d5e884bbd33eb4ebb9"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/avatar.png",
+      "sha256": "2dc5877b56c0c6638cccd40e8a3be73ccd7e4a8f6ee3ec9f5cdc5713b6c65632"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/dev-session-canvas-activitybar.svg",
+      "sha256": "b57ae5f49dbdad7bf40665315e468553c98fe5ee9548b9db2fb833e8094af5a7"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/dev-session-canvas-icon.svg",
+      "sha256": "803906396d522ed01d00ffc159579e52d7f473be518ee9bc998b68ba4842dc6e"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/dev-session-canvas-nodes-activitybar.svg",
+      "sha256": "c77cd7e478f08f30451b7ea0f954792fbd801e07b7de937443792acecfb1a6b1"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/dev-session-canvas-notifier-activitybar.svg",
+      "sha256": "46c65080f309de5e8f7a63fdd0496d5bf37b22613e56b8fb01d24a933a4ce667"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/dev-session-canvas-sessions-activitybar.svg",
+      "sha256": "07039e6df7b171ff8ac9f64b689bc6da1eccf268a737774a4f273f9c38fe9f81"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/dev-session-canvas-templates-activitybar.svg",
+      "sha256": "d5c82702fab97b8e824a4fe03c746b4aa699fbbf63acfa69ecc65d81ae93b0da"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/icon.png",
+      "sha256": "5b97e179558942e7362b8d4ce43ea7192681f88e7d2dbd5dbc713dbfac8a661a"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/lark-group-qr.png",
+      "sha256": "e4d1b65da77e794cab31742d84465d54435ec4fcb4e7276e408a495b06acf8d6"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.gif",
+      "sha256": "65f45aadf31d40a72971cc989f260579a74f419a088cb9d61cb14b5056778209"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.mp4",
+      "sha256": "ce9516176c0701fab2223b48f79f90cb9edf26b690e19fb24cd7b85753a7e62e"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.png",
+      "sha256": "bc3efab232e6bc4887f90db28e4f98eee1690ea7b17a4a62f425cb782ab1ae5d"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.zh-CN.gif",
+      "sha256": "69b51b7280d7e59dfd10fbd67d1098bd52ff1291b8c2a70dc44f27e4aa85fd7a"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.zh-CN.mp4",
+      "sha256": "fbb00906b2fd7e074c7ac61a072f3237adeb94fe569ba37075bd41331c1d1d87"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/marketplace/canvas-overview.zh-CN.png",
+      "sha256": "63a20744484f046e3dae1727498222874350658fe723b618feda7a75eba4ddbf"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/provider-claude-code-anthropic.svg",
+      "sha256": "a20f4d4b5bf1bc41903a666f8d1c6c159ec676545dd8e5a9eb4a413c5e38a446"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/provider-codex-openai.svg",
+      "sha256": "9246a3d4b802ee6dbe17c294b5759deec3d1e67a998f9b80c89b6c96e71d3b22"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/images/wechat-group-qr.png",
+      "sha256": "0f928fe34fe685055c4353793af9093e8fad09f320f4c63a9d039af546f5208b"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/l10n/bundle.l10n.zh-cn.json",
+      "sha256": "7a488ea84f0c2777fec08071a66d6225e644d3195dd69493c7e15f766eef55d0"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/native/linux-execution-owner.h",
+      "sha256": "0fc33c98dd01744ce6435f6ffebfc328c7ff639347866f62f6afe22ebfb0b68b"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/native/macos-execution-owner.h",
+      "sha256": "7f9b38ea82a4cb69acdd815dbd26ec84b9b8757e5046f9a4ede1953d119753a4"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/native/unix-execution-owner.h",
+      "sha256": "93279c60f37d6c810228a305d077cfdc939b4a7942feb38a2720340bfcfaafb1"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/native/windows-execution-owner.h",
+      "sha256": "8609bbae2215d9adc841694f9463e39703df2e534b124157b1aad1eba007c4c3"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/package.json",
+      "sha256": "76b91bb098caddeb59d1a2acdf2bd158362d3829cb8fc38279dafb6c4c2db316"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/package.nls.json",
+      "sha256": "d4444bce2c312c544f9cb979a0368938b9546279c94b0a21afa6967d58cca979"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/package.nls.zh-cn.json",
+      "sha256": "ae9dc03a6fb89312db29113362a95da459ef4097d0fc6f706704240dfbe48e14"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/resources/templates/01-getting-started.json",
+      "sha256": "4faac6ef67e87d7edd16f08e93519f92316d3320282ef05e77de9d4e6f51b4b1"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/resources/templates/02-basic-workflow.json",
+      "sha256": "76b5a6efa26116a9cb9b5dda0f0caa0f622071af95d22393860c3949c8ad44c6"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/scripts/runtime/claude-file-event-hook.cjs",
+      "sha256": "52fc026e0b90a22864c4ce323b9dfbacd25e9b8d062d29e37a62b276eccd82a5"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts",
+      "sha256": "c10136a1e96cff9aab511fcba552ea4fe4bd5f448efdd2fbfd3d949edea3a8fe"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/agentLaunchPresets.ts",
+      "sha256": "0eacd354c1c644862efa8122aa9bf25df4287177f5505af462708de933952331"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/agentSessionHistory.ts",
+      "sha256": "9df3152c226d66aa37adacb2513d85fb5b1cd07f0dba1528c954102971b18bd2"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/canvasAttentionVisuals.ts",
+      "sha256": "ff8b04aff60104198a72303920f476591dfc67aaba8a911c0db0680858bb61ee"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/canvasLayoutArrangement.ts",
+      "sha256": "5f599af45ce3013ad56394bd94a57f9bf672e0f7a9db328e4954341ce79fc9d7"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition.ts",
+      "sha256": "a7918d7312c57651fa9e7ed8d7ce86b0f78e8665fbb10858c16fc9f651e83254"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/canvasNodePlacement.ts",
+      "sha256": "1e07b26bfad59653140e711f9bb7c4a0ee737fdeb56a77eb01a01d926b83e696"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/canvasNodeStatusPresentation.ts",
+      "sha256": "f160a8c8aa31e8edd53ecff90398582e2080e15ce7ee9f466923de433807046d"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/canvasNodeVisuals.ts",
+      "sha256": "958f984452f8fac57c85ddc34e46eb9610461bf6ab1596101fb9b8e157edfbe0"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts",
+      "sha256": "d70dadd9d5b8534e822fbd084601cc6f70169a7796fa2c89f8e03fce18ce2e31"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator.ts",
+      "sha256": "fbbead765be84a93ca102bbef0454158f8b5cabdaa4e88853113dfa1d3173ca8"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/completedRuntimeHistory.ts",
+      "sha256": "00567806653f8c466c4c5d492af8dc0d36eafe3f1fd6abdbbf3f97810188f959"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/executionAttentionSignals.ts",
+      "sha256": "1e30c697bfc2a9485529d6a1c1f74f6bd3d4777d424d252ef3787a498154fb33"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/executionCwdLabel.ts",
+      "sha256": "ebabb8dbe069a2579801c9978158d4cecfc7bc9c3ab16f3b50dfde3accc5b7e5"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/executionLifecycle.ts",
+      "sha256": "e34dd75947afae641918ee3bffe27a040acd6d86bd3b3246e9c0f2f29efba4e0"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/executionOutputScheduler.ts",
+      "sha256": "fa1cc82b321e471909e63c6c2293a55ae27f5b3abed9459fd48757473cc03997"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/executionSessionLaunchSpec.ts",
+      "sha256": "b27ec45c26e5c7363a8f1c5aee8797d67b2f234735ab8579950cae11a9032107"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/executionTerminalClipboard.ts",
+      "sha256": "a95f8c22782fd7ffcaffcd512f218d007b3c7ac6ef3aa5bf82ec06e647a59e13"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/executionTerminalLinks.ts",
+      "sha256": "677dd7441c1d49da9e72843f740b02fccb68b22bdd0feeb108cca380809ab760"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/executionTerminalTitle.ts",
+      "sha256": "2b3582d7e58c055a1664ae2ef3c859d7c585385e22a403eaf5d8fb5e455959b6"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/extensionIdentity.ts",
+      "sha256": "d34e61574168002e83f4eb2b7cb2860389874dcf77b1d763224a3be41acb9e00"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/extensionStoragePaths.ts",
+      "sha256": "9588649c996b0ab8c01c8325d580cec06981159ab160991db6ad70820dd4a99f"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/gitWorktrees.ts",
+      "sha256": "29081559039de9104b5fa6154efa5fdcc20e86672155c5a7fa582de296a7b81d"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/noteMarkdownChecklist.ts",
+      "sha256": "6a3915d4fb08f50b53c794db145b40290c3a8a640f12d122076c62be729b0e44"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/noteMarkdownFileAssociation.ts",
+      "sha256": "7b02a024489b2aec56a38caff976cbb079ac6c0819d77a469688aa0bdcb03969"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/noteMarkdownLinks.ts",
+      "sha256": "343f4e317e95f085921b0190258327a04189dee424336257c34eab5f5f11fdf7"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/noteMarkdownSourceMap.ts",
+      "sha256": "fbc03434527206af07451e7659588a22be1319a3c5edac498afe51df79bcca73"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/protocol.ts",
+      "sha256": "54df0ac27217b8dd20466492eac176b88cbd9e6d6577333ab74136141fb947e4"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership.ts",
+      "sha256": "8dc2b14a8f160ade376c346259fc342552de586bc39f7f5f97a316e90147b863"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths.ts",
+      "sha256": "bada4d3a6b0f03dfa5781e53734ff8c9b6bdcc3cd08b5962bb552e8709b63a36"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts",
+      "sha256": "30bd7dd2d55921420818aba0576544a7aa0a31fe275ff187fb385d2d5a5c09e2"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/serializedTerminalState.ts",
+      "sha256": "a81c19cb77cba4071247aaf3241e469e12d6f7a1dd8c7f6e53fa433337d7e7a8"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/terminalCurrentState.ts",
+      "sha256": "f5b3b6e2c60725cef614fc3ec15593eb8899b0f015f6a5d70ca428b867661c2e"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/terminalProjectionRefreshScheduler.ts",
+      "sha256": "77aadbcc48d76b352139e29f7e1f2b4049c5eb5bf390eba79eb84807ea9456eb"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/terminalScrollback.ts",
+      "sha256": "4248996a46053ee0cef869802cbe2b71b8995cbbb9863002c4580c49873bf14f"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/terminalSessionStream.ts",
+      "sha256": "358371d387f9314d9c75d15805d38523e11d78e78ca1e8e4d1c712ae6629ce0f"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/terminalStreamPaging.ts",
+      "sha256": "df13ec392356b0dc438bea7ce93ec4c2b82a48d0bba3d29a1af6bf565dcc9c4d"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/common/workspaceRelativePath.ts",
+      "sha256": "8c62248145832b456997d8ab8fde8293b64dea0bd60df8ab199f2d5f72bd01a4"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/extension.ts",
+      "sha256": "efd278ad4a8e53e712b6abd3856e03220c999288e676a071eb2828a0dcba2fbb"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts",
+      "sha256": "72ea704a0ba40115239167a99f9d6771e2924851b881689bea23acf40b9e4135"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts",
+      "sha256": "f661012de478b44e938a3b5530c795f3837b30224ec01bc1ae8edfc6c4119bb9"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateSaveFormPanel.ts",
+      "sha256": "7231c4a2f3b7ca89108af98275b3f77953bbdbdb44539ce64173b78301970b82"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateStore.ts",
+      "sha256": "14b65901903a49289057ad35f205f6f8e8c67044bcf58c16aec987f879e9df2d"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts",
+      "sha256": "090f6a6f8d44150c64ae8e29c1a2cba8144dbba95966803bd26498a85fbe81eb"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts",
+      "sha256": "42decaf35e5592b45208dc22c774b98cd139426494140c4471d62c4ba067fe6c"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/agentCliSelection.ts",
+      "sha256": "a02fd033af725516071c6e893c64e2977592cacb350811a7ae51686745f493b1"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/agentFileActivity.ts",
+      "sha256": "4db17dfaf228d42f4d0a80e0fc8110c4a5e5fc7f9a26d944fd7b7f6884a1de09"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/agentLaunchLocalization.ts",
+      "sha256": "9001af2d754b0285be7acc04fe75f46d5b6f7aa18559ac5bcc00e3b5fa4c8732"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/agentSettingsFiles.ts",
+      "sha256": "8093ec92464df561f2acc5c96024ba0c558543479b3a321fa0834ab712f80bf6"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/canvasTemplateLocalization.ts",
+      "sha256": "a527599e6cd10cbf1b726408fb7790474781d4495326a3ac3545a25e49854efb"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/configuration.ts",
+      "sha256": "b086e4478cf2d60e0ee3decb58fc29208dd96202cf16644200fad32b5fe0b7a2"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/executionAssetCompatibility.ts",
+      "sha256": "5b4a07883946d5bc224782c7be2f3967292dc552f191abe1ceab0cf93e7b43d9"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/executionImagePasteCacheMaintenance.ts",
+      "sha256": "df63894f489e0a4ba8edebeca7ed4d99a867374b57bc4e362f12a7996b2003ad"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/executionOwnerFactory.ts",
+      "sha256": "880cd7c1ec607bc559e852b4ee8cd3e494541301608d01846267a29f31cad7d9"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle.ts",
+      "sha256": "4d08d76a215b25f2cd87bdb614833d81344f938d83526dd16e0d7ee1b42c7f62"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/executionProviderChannel.ts",
+      "sha256": "bfc99d78e2187524df79e41295f4d01d146875698c525617de9f81e7dcc60ae4"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/executionProviderTransport.ts",
+      "sha256": "6e5fa11ee6a0919934b69e3a3e419cd80a9b9042a419802f767df8636c49f507"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/executionRuntimeSelection.ts",
+      "sha256": "223f0df25e2704734ce2f491114132d8c7adfbceb05f616dab0e071fe5286e87"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/executionSessionAdapter.ts",
+      "sha256": "790519ad84b814f0f37f2a0c5871dd52e486b2e7ad169332f6e0799e4bd9a3cb"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts",
+      "sha256": "ea1d01f10811229004eaf7ced910b6743dac8dfa3c6e45082e02791c6b395588"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/executionTerminalLineContextTracker.ts",
+      "sha256": "942ae910d0f5abe9d5129fc2c0f7b9f84e96c80e066a1a5b566b691ddaf1d11e"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/executionTerminalNativeHelpers.ts",
+      "sha256": "3cce904391e683db272f45eb5d9b82009cf912bfe780047c9e30caf78b7169fa"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts",
+      "sha256": "08feb7695918296afb00d3c0ef50c739b45f8eacb299974fdf24dea9bdca2555"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/legacyRuntimeHistory.ts",
+      "sha256": "1dd2b5fe8956797856b01763085ebcaef6e63675271db03f0b735cb8da5da398"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/linkOpenMode.ts",
+      "sha256": "78545c1ba08ef0ce3285688ca82f2c0153c9125292459e727ce152842d40fcce"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/linuxExecutionOwnerFactory.ts",
+      "sha256": "7be5398fee5177e473e274c9d2454f9651e26c23d803dde87014e8f3f7a45c7e"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/linuxExecutionProvider.ts",
+      "sha256": "ba1211a99a2a8042c8a38cf545b148308ae43b52923edf23cfa4361b1a566e71"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/linuxExecutionProviderMain.ts",
+      "sha256": "f5b543f92ea37cddd071d8662d2b062e6973df5d9d8330daf86b4d255f2afa8e"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/linuxExecutionRuntimeCompatibility.ts",
+      "sha256": "8c34096d31614acf132fc3732ee057830d0b9085a709c9467d72f37618c0712d"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/linuxRuntimeHistoryObservation.ts",
+      "sha256": "a588dd9c9ff4da55504e874aeec548fc38ee929062e5154205d15d3bb1af9ebe"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/macosExecutionOwnerFactory.ts",
+      "sha256": "335dfdaf48ab4119db0fcdd09519ea976a08ed6da7d6147cc3506a74d82c524b"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/macosExecutionProviderMain.ts",
+      "sha256": "6d21a2fd9dc8f39888dd9166e022338b30ace31c0a5aa63872c66fab74af497c"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/nativeRuntimeHistory.ts",
+      "sha256": "6f31eaddd12de12d07915c0b43ba007d06f182a7585f18fdd7d8b23d5d1ae7d0"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/runtimeExecutionEnvironment.ts",
+      "sha256": "40d766d3dcf283aeb633472175d0874f798f3e025e8280721d4c9bee75530278"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/runtimeGlobalStorage.ts",
+      "sha256": "ab69afe4982dafb50e7938eb109cd4bb2c824bf809a3fb4b9152c7e45920a403"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/runtimeHostBackend.ts",
+      "sha256": "ccf723d0fd244436488a51de2e0953c8d10ed9d2a06508c1ab195396d0a9cce2"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/runtimeRootSupervisorPreparation.ts",
+      "sha256": "fe64d1ae8a15bab2aa4fa410c8227756bc3603f7af6b1c72fbfe56a3d6cb3761"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts",
+      "sha256": "c0ed4ea5eeb6c370f8b359837365c58cd700d5cd7c4fc3a335a19679acb8e2e4"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorLocalization.ts",
+      "sha256": "b11ef970af5160f8300552956c452ce492b4e766ef5a17b432bf30f64952cf79"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts",
+      "sha256": "14926dbba9ffc5baa7d8afe1bda6036ab373aa3d2f2250bc6ce36a043272c0d9"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/runtimeTerminalReadRelay.ts",
+      "sha256": "5fa5d6439046f6a74966e7f13f7330a815b2cb86ce99aa7691573508b529d3a4"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/sharedRootCanvasParticipants.ts",
+      "sha256": "d05e58e0d2ac81d534f6a633a80e8019ca8e2aa3521a99dd2fcc73efc3394202"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/sharedRootCanvasStore.ts",
+      "sha256": "f83ec9418103e291d9ecce728d1145a8bccaa8eaae0535bf62bc9a6307d700ed"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/shellEnvironmentResolver.ts",
+      "sha256": "631e392124a7b4be0da22d289695f133977d6cfa7ddeaf7fdb4ba252e4017083"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications.ts",
+      "sha256": "b92756e5ebe5a55152e6873d369eaa400fca425edbf9bd6b265f2323efdda2dd"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/terminalShellConfiguration.ts",
+      "sha256": "5124f7240255db582effa7c96d3a0822826263a1d306944f78d9bd3c7a686c75"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/testHarness.ts",
+      "sha256": "c1947a4c92b2858c3cd0585450f7d5db16856c157eb64d7e5973d1d1ac694df2"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/webviewResourceUri.ts",
+      "sha256": "81cc635744669e878e18ea65ae1a157aa8d84232383ca98eda51a11e7f1a56e0"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/windowsExecutionOutput.ts",
+      "sha256": "4ce3884a32bfa1228902888fce74c2f0c092250f4b39eedd065459af903988a6"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/windowsExecutionOutputWorker.ts",
+      "sha256": "803d96959751012e9e2da7c89d7482ac13b4c7c979ade83e1e41ecbf8279a12c"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/windowsExecutionOwnerFactory.ts",
+      "sha256": "0c8cde604ccf73cd566f4388006185e317acbf949cb06cd7c6966af03d68dac2"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/windowsExecutionPipes.ts",
+      "sha256": "95adf4ccf740f452afab77f5ae7fe7667b0ff605a74c04531786633f831173af"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/windowsExecutionProvider.ts",
+      "sha256": "04cc8644af0ae72b87eb26cf4f0c12cdb3da13a8d8798f63ee23c97482c68c01"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/windowsExecutionProviderMain.ts",
+      "sha256": "72b523f030532c4c9e815800eb190bd7f5f89bea2dd684a2d5b446c90af6ed65"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarActionsView.ts",
+      "sha256": "9019d7d53f626d0f1237b53e4cdce606dbea7ef5f8519949b82ca93306f2bd5f"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts",
+      "sha256": "8117b2677345bad2534aa94436f769ee3029ba76aad589193957fc834cf0a040"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarSessionHistoryView.ts",
+      "sha256": "b18e0b45703ff11a21aafdb7b19a1701ded1a1043bf296631080e0249bc8e083"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarTemplateView.ts",
+      "sha256": "042c734363f687352e8e30a11f5c50db70179fb127b7ae4cef3c0728a1139734"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts",
+      "sha256": "01fbeb90c2dc8102624254c6060b704542de7045a9b408fca48779aff2e8b3cf"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootOwner.ts",
+      "sha256": "ec0269f11f07975d088bfbe3455642cd299e9c5aff7f7117e6e54d27ece594d9"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts",
+      "sha256": "a2f93ffd24e8e4239f0ea2420393f22076d345ac3758a11c31ee14144cf5dc84"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootStartup.ts",
+      "sha256": "22a3d66f2684a742a0e9a86dad163593ec16c36cf0c97c5cd2f65c0b97811bff"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorLauncher.ts",
+      "sha256": "d7f4906ba503aae0dfbfd0aceab94b60f651c5be0c02a58e1ebbb5f59c86561e"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts",
+      "sha256": "792ce8a7b4e4252ff73e03521ae9598e5be7a0e088f990d7c66630619b61c083"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorNamespace.ts",
+      "sha256": "60445749bf835acbc6db0478e7bd7b9c3b451b09ee97bacbbfab87ad0d06a03c"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorStart.ts",
+      "sha256": "71287b12fe6f49316976841b7eee4308ef895452f48e482980028ca40c170e75"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/supervisor/terminalSessionJournal.ts",
+      "sha256": "1a3dde208c7f48c75d54720462e16a20939d106fa8df7afc06bece45ab0f5eea"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/types/js-yaml.d.ts",
+      "sha256": "13a6d4694c65634d195e631640a23800be52aa0233438e8640012abfcc596df6"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/types/linkify-it.d.ts",
+      "sha256": "08dc5a1f3c455d39386cd5f5836859b9e39059c163046d52047c41dd7da2ff86"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/types/markdown-it-plugins.d.ts",
+      "sha256": "3cafc96909333660a345288c01e642e3c11b23a4f6167bd9182606fa4ce111e9"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/canvasDomEvents.ts",
+      "sha256": "cfcc4c8700a094e83696437f8803f69f003fd988dfa5b992f2f14dc71c9af111"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/canvasEdges.tsx",
+      "sha256": "2101f53bfe53c58c7ea620a9616cb6294b5756c9495ae9ba56b736ef69b76682"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/canvasGraphRules.ts",
+      "sha256": "5c7168f5af741b5e073184a1abd896a32dab09ec67baf16a9b9b3c0bfc6e775b"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/canvasGroupFrameStyles.ts",
+      "sha256": "aafcdeb2f124596060d59a4f2534002b7b6a064c7220da274a191eb0cf5d334f"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/canvasGroupLayers.tsx",
+      "sha256": "a140e18ba08f49972b14ea0eb4f100f96a400fc7bf70449065775735eeaba361"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/canvasMiniMap.tsx",
+      "sha256": "303e18f99d18bef0a6a32158e466746d99efee1b3a7c62427fdbdeb1f2b1d9ea"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/canvasNodeChrome.tsx",
+      "sha256": "7120ab450b55ba0e681853ffc6643cfff6c4674649863c922fcd136dd8d783f9"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/canvasTypes.ts",
+      "sha256": "af5a4d9140c385c39444c6a1ea8562f258d96f30f18591b74bed33270eb58da5"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/canvasUiSurface.tsx",
+      "sha256": "6fb7de5e24ded4e2feb706fca19f059cf1f19a0214cfb335cf68832d0a03fbb0"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/droppedResources.ts",
+      "sha256": "eac5164ac53414442e1c3c9e5f642c653c5e3d8f4bf68efab74bb60eddec7498"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/executionMouseDiagnostics.ts",
+      "sha256": "427a228c15b116d74ca515fb16a5699a502b473a4bccc106bb79548920c24342"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx",
+      "sha256": "0acd71052578d0a1642adf501fdb9cc6b8547a36dbb323986a6a2103d5df02fb"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts",
+      "sha256": "4aec400d71e43953f4ad8bbcd0d40a342914eed233140fb2dd67f15a076366f9"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/executionTerminalSelectionLinkRendering.ts",
+      "sha256": "a45bd8f428c334253f79e5c629562b20eafa51e7b8f3a133875faa6accb12442"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/executionTerminalTypes.ts",
+      "sha256": "7d43f2d15c22ed2e0f0e35352a4218d61a1701915b751d44fa84545c43c591e9"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/fileNoteNodes.tsx",
+      "sha256": "190042fcb69ccad4ae3aa16350af5258eae447d53ceb98c9fc12a49a08c966ac"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/i18n/webviewI18n.ts",
+      "sha256": "b833aa93dd15991a9d73a22b9c7e50ccc79190ffb0757cd3ba86b5e9830d1588"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/main.tsx",
+      "sha256": "4c4adf18d66436a0e681a0c064510053e12ea6b288804ed7080c9063ad5d977d"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/noteBodyIndent.ts",
+      "sha256": "03bc0505467574055aedd399d3cec1336de49391cabc2b500516f0fc15fe88c3"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/noteEditingSurface.ts",
+      "sha256": "f7601a2cc8fca812d184394f3acaa6445d05419302f7150b459f056d68ce1733"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/noteMarkdownFrontMatter.ts",
+      "sha256": "462b63180252aaba2c60af07952c665a646d66485bbb74e72f04f51e19d04af4"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/noteMarkdownPreview.ts",
+      "sha256": "2565ed7b1b647042d11fa1f83e40e8e3ea61dd7fb28b71846f70ff5779825524"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/paneGalleryLocalState.ts",
+      "sha256": "6686d40d1be581f96c2c0c2eec80969f8e8adb46b70cef03ddb02124575dfa8e"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/paneGallerySurface.tsx",
+      "sha256": "e8aa37378b7966ad9daedcb4e0167b5dea18ed76b9a89581bf2d5b168d6fa207"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/sidebar-codicon.css",
+      "sha256": "d79e426fe4fcbe9327a00d462b151129b6b2d89e84c66179c02644679875eec4"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/styles.css",
+      "sha256": "280439f42997cca7334e50b023351192b2596b8395069bd11bfd9e56f57b66ff"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/webview/terminalPagedProjection.ts",
+      "sha256": "5ac8a412e3d0522ac44da7ec36ee5ba5b8cb0be4e19f37e628913a3d4ddfa0f7"
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/tsconfig.json",
+      "sha256": "211c62b411461bfbc007cd540e0262bdf293115380af2244f9606b55f15332a0"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "8abaf58c22555f568470919ab26d5ba866af1099ecfb7cca29900af903c13a1b"
+    },
+    {
+      "path": "package.json",
+      "sha256": "4719d446da021047df6d76b8124396af42061ee11139ba2589e391c6282f3eb3"
+    },
+    {
+      "path": "packages/attention-protocol/package.json",
+      "sha256": "fe1197669190aea8f8be585b39b4e118b99eccef23cbc6c6a3b4d16094c9c868"
+    },
+    {
+      "path": "packages/attention-protocol/src/index.ts",
+      "sha256": "9acae17d0a256ed556ca9e41a86d46d064c06422d730d46f8bdff54355da330c"
+    },
+    {
+      "path": "packages/attention-protocol/tests/attention-protocol.test.mts",
+      "sha256": "d93087a34a7c7746eb0c3e3afd702f6b087618548e3a1b7a2e1b992a69063edd"
+    },
+    {
+      "path": "packages/marketplace-shared/package.json",
+      "sha256": "f09b10b777a0c77a264e9976ed011e38d7eef2917cee1ee18711ff11f4caca40"
+    },
+    {
+      "path": "packages/marketplace-shared/src/index.test.ts",
+      "sha256": "6c1be15dfc9ed11e84bfb999920b696b8812a7a112f553b815cee3345b3e3948"
+    },
+    {
+      "path": "packages/marketplace-shared/src/index.ts",
+      "sha256": "b5273b2d2c2ff5b355d9f2832483381f0fb98f3249ca0d2ba1e9f19e42f15296"
+    },
+    {
+      "path": "packages/marketplace-shared/src/schema.ts",
+      "sha256": "f19435c114e075084022eb3d8b0e3b887ade6166d774a35fadc803c017e848e2"
+    },
+    {
+      "path": "packages/marketplace-shared/src/thumbnail.test.ts",
+      "sha256": "8c7d507dd1f45d5353cb9c11851ab3251507f6b5fed4c1372a389834d63a18e0"
+    },
+    {
+      "path": "packages/marketplace-shared/src/thumbnail.ts",
+      "sha256": "41bc9573074a2753c5f4380ccdc0c647ff3dc0fb0bf2d2c744bfb2a37404de88"
+    },
+    {
+      "path": "packages/marketplace-shared/tsconfig.json",
+      "sha256": "510a6ac107e0445fc36980b025da0db64ef410b60690e533374a0a101ffe8464"
+    },
+    {
+      "path": "packages/marketplace-shared/vitest.config.ts",
+      "sha256": "649e4273437371e435cea50f021ebd1bbe804a98f29cf6f52d928ffc72ac5356"
+    },
+    {
+      "path": "scripts/README.md",
+      "sha256": "d9a996cadab5e01eb3f5b584013d1434cd4b560da48dc0b18aa77957046d9f7b"
+    },
+    {
+      "path": "scripts/build/assemble-execution-distribution-assets.mjs",
+      "sha256": "0b17fdaef0a1bf9f50edb596024f0593a874448cbb902deda9ed7b99cd64da7b"
+    },
+    {
+      "path": "scripts/build/build-execution-distribution-assets.mjs",
+      "sha256": "e7efbc59a1202b1757d909ea1e3ede1730e345fd87572862640dcbf31a120809"
+    },
+    {
+      "path": "scripts/build/build-linux-execution-provider.mjs",
+      "sha256": "a4bb0c1438365236047b5d34f9edb6d0bb9effe1c6c0fc702b58f2459d301ed9"
+    },
+    {
+      "path": "scripts/build/build.mjs",
+      "sha256": "4be8dd941f2cc25f5c3f01b8961f3cb3ceac69feb3108dd41902cae79fd67aac"
+    },
+    {
+      "path": "scripts/build/check-execution-native-load.cjs",
+      "sha256": "636da141c9ddff44aa073000fc5dbc54a2e01ccde1d9c45af16c078f17b18ade"
+    },
+    {
+      "path": "scripts/build/execution-candidate-assets-set.mjs",
+      "sha256": "07ad49613323e683b48f5194449078a7a60ed4957be855f63923ade647de1056"
+    },
+    {
+      "path": "scripts/build/linux-execution-candidate-assets.mjs",
+      "sha256": "0e651081574b18c18e0df195c0f142b960d67954cec3bee7e402fde8a8fe5516"
+    },
+    {
+      "path": "scripts/build/linux-execution-elf.mjs",
+      "sha256": "19d5532e1ba85e4010ad3d211e2ff75b6ac7eb22e1e4caa1b41d95f8c0d490d3"
+    },
+    {
+      "path": "scripts/build/linux-execution-provider-patch.mjs",
+      "sha256": "1fd8e45ab617f2b5807dac443e88aa4fdd03986ec30e6235a59424071aa1ee8f"
+    },
+    {
+      "path": "scripts/build/macos-execution-candidate-assets.mjs",
+      "sha256": "58b0f802bf8efae0e9bfbbb431948538ccda696a7a98a4a9758533dfab1e71ff"
+    },
+    {
+      "path": "scripts/build/macos-execution-provider-patch.mjs",
+      "sha256": "ddea3f3400332a197910dd7fd0441ccf6bf6d340f43ac8cc6159c9404e0e2fa0"
+    },
+    {
+      "path": "scripts/build/windows-execution-candidate-assets.mjs",
+      "sha256": "1c0a3773f981c3c63fa3b632b08d5e2966175bbb8dfa8a3b9600bf00ef8e74bc"
+    },
+    {
+      "path": "scripts/build/windows-execution-provider-patch.mjs",
+      "sha256": "40d3e33dd6c88660402da1fafd8c47dd46d68147ee89fd3d16f1f06fc562d1a8"
+    },
+    {
+      "path": "scripts/diagnostics/analyze-webview-lifecycle-dump.mjs",
+      "sha256": "4c82d034060508d598f6ac2adead2fe71c5722166085b86d05a419172ce45530"
+    },
+    {
+      "path": "scripts/diagnostics/audit-owned-runtime-capacity.mjs",
+      "sha256": "23148602825f3cde5a398fff629ab08a1b4309142d8cf47ff97731377bfc5bbb"
+    },
+    {
+      "path": "scripts/diagnostics/audit-runtime-persistence-capacity.mjs",
+      "sha256": "2744d50325658f1deb18f6bf4c22f9ca016b1aa8ef971dbb903d15098eb909ee"
+    },
+    {
+      "path": "scripts/diagnostics/compare-runtime-exit-readers.mjs",
+      "sha256": "8759c0f0034161b1e951f55c04956d2e0ce46d097b2e3c72b21246acfd9b3301"
+    },
+    {
+      "path": "scripts/diagnostics/diagnose-agent-launch-lifecycle.mjs",
+      "sha256": "81a541ffb7770df8b9ad3733a7dc838a3d2b2ae8059e158870e35692034483ce"
+    },
+    {
+      "path": "scripts/diagnostics/diagnose-claude-trust-startup.mjs",
+      "sha256": "b5e65ba9983b439906a9ccce743105d6549c68f7ad3980f1b7256199a89e6222"
+    },
+    {
+      "path": "scripts/diagnostics/diagnose-native-pty-exit-integrity.mjs",
+      "sha256": "89a0e71777f52fc0c02a7e049fe0a0b8bd62c7b5c3bd5ca2926375d56791474f"
+    },
+    {
+      "path": "scripts/diagnostics/diagnose-runtime-exit-admission.mjs",
+      "sha256": "218ead7f51aad430b192b73d0fe54ec57647001c5c41ea840fe78962d21dc799"
+    },
+    {
+      "path": "scripts/diagnostics/diagnose-runtime-exit-barriers.mjs",
+      "sha256": "be93f8b26159dc9c2c91267540d4988d209466315f83bbb967a4cc6617537416"
+    },
+    {
+      "path": "scripts/diagnostics/diagnose-runtime-exit-contract.mjs",
+      "sha256": "2eaf510bf0dc9fa3b9875abc3068759e4d4b6fc2b83c84a26d92b94802e57d1f"
+    },
+    {
+      "path": "scripts/diagnostics/diagnose-runtime-protocol-races.mjs",
+      "sha256": "97e565595723efc1fcb6c7d81961b15dceb525cacd485821a009d8966673be9c"
+    },
+    {
+      "path": "scripts/diagnostics/diagnose-runtime-terminal-tail.mjs",
+      "sha256": "ec7d727fffcf9ac3c157b4eb738211a091f5c81e1e72ba105726071c66492ba3"
+    },
+    {
+      "path": "scripts/diagnostics/diagnose-terminal-final-apply.mjs",
+      "sha256": "53b667689c6b4b70f27759252e0688764e96f745ad22a24f8fc011fc08e3b17b"
+    },
+    {
+      "path": "scripts/diagnostics/diagnose-windows-pty-exit-contract.mjs",
+      "sha256": "9e2fa8926e36bede70191860007ca45518e54adf00b52aacedeccb99371741f2"
+    },
+    {
+      "path": "scripts/diagnostics/investigate-two-window-agent-delete.mjs",
+      "sha256": "ea5e2721b1dfc7ff4f298e3021c8b793ba894163a253a3c15a3a71e48f6c2658"
+    },
+    {
+      "path": "scripts/diagnostics/runtime-exit-barrier-model.mjs",
+      "sha256": "e3d6d393d89c29ec9766c20418b63691bb7a409e07899155c64953397a034cc4"
+    },
+    {
+      "path": "scripts/diagnostics/runtime-exit-contract-model.mjs",
+      "sha256": "e23befc9272d10354501d62bb09ac9ee46eb6b48b9756c1a5518d56a94afba70"
+    },
+    {
+      "path": "scripts/media/compose-marketplace-media.mjs",
+      "sha256": "8cc0f4200387715e0beda6408c61381060678811f55bdb3358976d5d71edfbf6"
+    },
+    {
+      "path": "scripts/media/generate-marketplace-media.mjs",
+      "sha256": "745392080fce182584d7b7ea7b6cdca35da7306417048162010aee88799869d0"
+    },
+    {
+      "path": "scripts/media/recording-session.mjs",
+      "sha256": "30534b590906eff73b047fcbc2ef28578e06537cfb419a3eaf0720eb2fb7caa3"
+    },
+    {
+      "path": "scripts/media/x11-native-input.py",
+      "sha256": "51866a4c211c3f4d987891f2d03c39ec8475420d1253af1357bc8040e6117ec8"
+    },
+    {
+      "path": "scripts/release/openvsx-api.py",
+      "sha256": "15d6081bed78d120d75a5633df6198d0b8ededd9121be6f820ea1a739ff4c18d"
+    },
+    {
+      "path": "scripts/release/package-vsix.mjs",
+      "sha256": "c0908d4ec3652d2e54411ae5e179ae21e17d632b7305a6a890e6f28e84e93488"
+    },
+    {
+      "path": "scripts/release/publish-marketplaces.mjs",
+      "sha256": "cddb22d4db47a1a65e5a886e65590c863cbab511aafdd782aa2e127b4c592207"
+    },
+    {
+      "path": "scripts/release/publish-tag-release.mjs",
+      "sha256": "da122f3cfba99d2e8f9b2a67c53baf3aea43f85ad48336d067bfe117f703d591"
+    },
+    {
+      "path": "scripts/release/release-preflight.mjs",
+      "sha256": "d2cd9646843cc58de0309b42bdebeb46824002f34f23f5d27d88a79c30f59802"
+    },
+    {
+      "path": "scripts/release/run-clean-checkout-vsix-validation.mjs",
+      "sha256": "ea36a568a51f75d13627f4d17ff5c501dac43f9becdc9ac0d2eb31838430e789"
+    },
+    {
+      "path": "scripts/release/write-github-release-notes.mjs",
+      "sha256": "9e6dc259bf9e3f07a12ed80f280e4c0bc4c685352a2fb757558fda282f784c10"
+    },
+    {
+      "path": "scripts/shared/ensure-node-dependencies.mjs",
+      "sha256": "a093b4fd284d1b1d8a50a33b95e610400c22b6eab5f36201129a19d2376da291"
+    },
+    {
+      "path": "scripts/shared/ensure-node-pty-helper-permissions.mjs",
+      "sha256": "5876d760f9f06d041978689c82ab970e9912b3afa92c1adb83e87fa7890f8a7c"
+    },
+    {
+      "path": "scripts/shared/ensure-xterm-serialize-patch.mjs",
+      "sha256": "a346dc05bbbfc71d32a4fe93c34e51d630b28b0eb882d0c63ef9dca5dadee15f"
+    },
+    {
+      "path": "scripts/shared/playwright-environment.mjs",
+      "sha256": "61de423ad509f0101f7a406793eaadd5a8b044400f8f143d508770357bc8a76b"
+    },
+    {
+      "path": "scripts/shared/prepare-debug-main-only-extension.mjs",
+      "sha256": "62ec80f315af967ea786d3fc3cf935c0b3b5620c72d5fe8bd0a11638e6c4cfc2"
+    },
+    {
+      "path": "scripts/smoke/agent-candidate-ci-report.mjs",
+      "sha256": "dee7f6219d0d36c0b970898847fed223363f15f06e1c07f844a8fcfe4a0f3cf9"
+    },
+    {
+      "path": "scripts/smoke/agent-candidate-deepseek.mjs",
+      "sha256": "9e2d5bd66777e8ece2eb70895195ab2e25a1f041b8ebf631f877cbdc2aba4e20"
+    },
+    {
+      "path": "scripts/smoke/execution-reader-isolation.mjs",
+      "sha256": "3d684a81194128e66d3c29fce54eb2b41c9332e8457c4f06abe58f3327dbe420"
+    },
+    {
+      "path": "scripts/smoke/installed-execution-candidate.mjs",
+      "sha256": "e0560d7d3710b80a7346874e628685979eb77bc0ec38d1150ea86b0a8cb65757"
+    },
+    {
+      "path": "scripts/smoke/notifier-smoke-utils.mjs",
+      "sha256": "b18426906ddd46b59a876e6ea918f65ded1e6a357e5fc9a34c60897378a8927e"
+    },
+    {
+      "path": "scripts/smoke/run-template-marketplace-vscode-e2e.mjs",
+      "sha256": "cacbe136406f88adce4742aa3dc8938ec5826371e1089b3e9d3c8f7b7a8bd894"
+    },
+    {
+      "path": "scripts/smoke/run-template-marketplace-vscode-local-preview-e2e.mjs",
+      "sha256": "76d87043084c808843c096c20b1bed32d78b2da1963df172711ca869c866e705"
+    },
+    {
+      "path": "scripts/smoke/run-template-marketplace-vscode-preview-e2e.mjs",
+      "sha256": "f1e3e8f2fcf1257d59b254498747398d07532b809c1403983f255f59f325e35a"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-agent-candidate.mjs",
+      "sha256": "36011b6123ebe22ea22b7d65870838fe329c3d5b4dc10dedae8da452c8ea43f6"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs",
+      "sha256": "1029a8454f3db1b81d73dc7f03538b26a79661b5113463c8b8ba8df8828ff039"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-execution-candidate.mjs",
+      "sha256": "a7867d664f7f62ea2a8ea4707d4ae768192b843d8e92eeb9c48c381beae5fc62"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-notifier-locale-smoke.mjs",
+      "sha256": "3b15733fd940c1d0115814f8a53d2187f4ee439be24cdca050a33169a350fe06"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-notifier-smoke.mjs",
+      "sha256": "b50127b950b26579d29f820946f63b2b9b1fd1bf313205d406cd371106d4f51a"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-remote-execution-candidate.mjs",
+      "sha256": "0e664613a2d4577da49e07235375defecae8230c0d764ce14dd4ee46de73128e"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-root-failure-candidate.mjs",
+      "sha256": "0a363884ca985f5abffdd09c3f5650f789b5f8e9a5b94c27e23932eed5345f72"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-root-owner-candidate.mjs",
+      "sha256": "6e8229230ab4b7e0a2af1e64b2b0c16eb0c84f970bd5ed6249a82dd0eebb2a51"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-runtime-reload-candidate.mjs",
+      "sha256": "6ba9d5184d6668af7ec4f91452c338bdc4873f205d45ee5be185433ec886904a"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-smoke.mjs",
+      "sha256": "0c82ed980de03c27b504eef735890ee586d4195b3169f22f984c6d75aa06a9c5"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-storage-slot-smoke.mjs",
+      "sha256": "df7b5e0d6e116b681096d9e214ef4ffd16e94ceb1949a1b73d884942ed1783b4"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-ui-copy-locale-smoke.mjs",
+      "sha256": "1c036229433c3182f7faef1005187d6bf132599d623656e517ed187c163f0bf8"
+    },
+    {
+      "path": "scripts/smoke/run-vscode-vsix-smoke.mjs",
+      "sha256": "07015a10d0046c2a9018d9171c8ee09aa672cbeda8a095c00015f73505685d1d"
+    },
+    {
+      "path": "scripts/smoke/run-windows-real-codex-smoke.mjs",
+      "sha256": "6d8ceb01d15f573390c77c5703809c59670d7ce26802fe7c3795e89337567c7f"
+    },
+    {
+      "path": "scripts/smoke/vscode-remote-ssh-fixture.mjs",
+      "sha256": "071473c44adfadba723b0b14a4cd94fe8ffe770858e88f4a8f092f760ddd106d"
+    },
+    {
+      "path": "scripts/smoke/vscode-smoke-runner.mjs",
+      "sha256": "012e2cba8d9f2219391801a875960e5edd4388073a3b6d52b321cf9174257a3b"
+    },
+    {
+      "path": "scripts/test/fixtures/darwin-agent-observer-requirements.txt",
+      "sha256": "ca3dc2bea7937500275a756073e18bd48315b9d1bfd8cf268b736660fb5747d7"
+    },
+    {
+      "path": "scripts/test/fixtures/execution-candidate-assets-set.mjs",
+      "sha256": "fbcd3317bda74b261de6d1043477032d3c6fd545ac0706ac55194b4fefb57445"
+    },
+    {
+      "path": "scripts/test/fixtures/execution-provider-fixture.ts",
+      "sha256": "1bb7ea0161798730c81b043a9732e1128d7c8d45893f2878744170cc4f2ff31a"
+    },
+    {
+      "path": "scripts/test/fixtures/linux-business-host.mjs",
+      "sha256": "d168c5567ed7c61219f8f15380afa8ca57dbe8c4d34b1ad3575f38353b22f6bc"
+    },
+    {
+      "path": "scripts/test/fixtures/linux-business-subject.mjs",
+      "sha256": "a1d8c697d6196af174ac3fc2b6e030eec865c78cd3e966e8313f7bac5d7594c0"
+    },
+    {
+      "path": "scripts/test/fixtures/linux-business-supervisor.mjs",
+      "sha256": "018a1ec3bc084b0e92df59eba0443d687bb673f91693cd8505294ce752c3748b"
+    },
+    {
+      "path": "scripts/test/fixtures/linux-execution-elf.mjs",
+      "sha256": "8dc8435a68716cb17638845a392ff0c72031ae3f6b83c0b7bc6a64373d40ee8f"
+    },
+    {
+      "path": "scripts/test/fixtures/linux-execution-namespace.cjs",
+      "sha256": "a4dd1b0abe6f199c89757a63b4e47b005929769b2fea4d2a5ff486ef495bebca"
+    },
+    {
+      "path": "scripts/test/fixtures/linux-execution-provider-fixture.ts",
+      "sha256": "0ef8088a7978fb39d93956f4c9f968f17b49ef652eb47cb60dbda48398ae1778"
+    },
+    {
+      "path": "scripts/test/fixtures/linux-execution-subject.mjs",
+      "sha256": "5fd9c0e1eb2abc9627770cf68ed682fb5bf93c1fab68f1dd36180a43063f5aec"
+    },
+    {
+      "path": "scripts/test/fixtures/linux-lifecycle-host.mjs",
+      "sha256": "8b480dcdda0758e5c87e0e5391e1a0693e71683a6861d0ef34beeed3725f9b69"
+    },
+    {
+      "path": "scripts/test/fixtures/linux-lifecycle-runtime.mjs",
+      "sha256": "4a1509e34ef2d7242ca6964c51eaa753c1ca93d738a73d8750434bf06b551b7a"
+    },
+    {
+      "path": "scripts/test/fixtures/linux-lifecycle-subject.mjs",
+      "sha256": "010d8139f481bbfbc2c153e76e59eea806168c7a96f4dba15088937275aeeb9f"
+    },
+    {
+      "path": "scripts/test/fixtures/macos-execution-namespace.ts",
+      "sha256": "cbb320a725bc36540c80bb67c955d1b8b813cc4842aa6151bf3e2b6a677b2bbd"
+    },
+    {
+      "path": "scripts/test/fixtures/macos-execution-subject.mjs",
+      "sha256": "2e0a2e50df9d877f872ad170e17e2f593953e91a9163cba1581ff78c00d2e4a9"
+    },
+    {
+      "path": "scripts/test/fixtures/owned-runtime-capacity-subject.mjs",
+      "sha256": "b657dbe6017138f7cb09aa8f0ef75f8921a149d9101cf2d5744fe00b814a90f6"
+    },
+    {
+      "path": "scripts/test/fixtures/windows-execution-launcher.cmd",
+      "sha256": "f4ba3050f7ffdbcd45f647a5d892c89ec7a7d423cd3aaa87ef0e8b651442f03f"
+    },
+    {
+      "path": "scripts/test/fixtures/windows-execution-namespace.ts",
+      "sha256": "e6b3afce59048d4902f142a34010af0e4bd288ae9dab8c7467e7bd93362e6535"
+    },
+    {
+      "path": "scripts/test/fixtures/windows-execution-observer.ps1",
+      "sha256": "e6f13cf190e72bd3ce222cd12190b5761ff583a06d4b2c5f07598dba00e6574a"
+    },
+    {
+      "path": "scripts/test/fixtures/windows-execution-subject.mjs",
+      "sha256": "3cd29259e98248a299e39a44859a604c24722b313bf7d63f1ad7f0e18fd254d2"
+    },
+    {
+      "path": "scripts/test/run-playwright-node.mjs",
+      "sha256": "b0d06e3308e63d53b1559c16b1d602282f9083c53704ab668c03d5242d7eedce"
+    },
+    {
+      "path": "scripts/test/run-playwright-webview.mjs",
+      "sha256": "90533210eae9bbc0efd7b8949506aba55d7c7b24beacfd6bdea251097906608f"
+    },
+    {
+      "path": "scripts/test/test-activitybar-badge-geometry.mjs",
+      "sha256": "cf7be482de620a97f838cc00abcadbb4ce690ea00691c4e46beb519065336cd7"
+    },
+    {
+      "path": "scripts/test/test-agent-candidate-ci-report.mjs",
+      "sha256": "1cce87ce43ef3e9e19f0c3b8200013c08094e0917b4907bdbe72a958bd42930d"
+    },
+    {
+      "path": "scripts/test/test-agent-candidate-cli.mjs",
+      "sha256": "49070194816f756a4dad74cec48524f56c02453c1cc4999a903af234b1b71c86"
+    },
+    {
+      "path": "scripts/test/test-agent-candidate-deepseek.mjs",
+      "sha256": "9decd08ce909c299df161168ce3eded82604fdc25302eef43b8d7dab3a698156"
+    },
+    {
+      "path": "scripts/test/test-agent-candidate-process-observer.mjs",
+      "sha256": "d3e4994a06d115f03debde554d8634733c9ba9f0aae22e5bf84062a889ea656a"
+    },
+    {
+      "path": "scripts/test/test-agent-candidate-process-observer.py",
+      "sha256": "c87b5f3026b8a4bf58fc068c0e6182b69384ad288f00f3aefe3b2c1dfe3b7c14"
+    },
+    {
+      "path": "scripts/test/test-agent-candidate-reopen.mjs",
+      "sha256": "383fc04c7b99ab6dde48598d6b0dc58c819d56393ee01a4d88008efee26d8f74"
+    },
+    {
+      "path": "scripts/test/test-agent-candidate-snapshot-evidence.mjs",
+      "sha256": "5b7eeeb3968d97a702c9cb83fd4b3fc13d28f98d63007f3b4f31fa46f0da229b"
+    },
+    {
+      "path": "scripts/test/test-agent-candidate-windows-observer.mjs",
+      "sha256": "afe6b692cc8e4e0c759f27376045d9021b090c220dcabc8c6c65ebee39b9ff0e"
+    },
+    {
+      "path": "scripts/test/test-agent-cli-resolver.mjs",
+      "sha256": "3447aff7c45bbc0dc3cc785ccff1fa1274b26efb9cc7e4ee6076ee5c62fd3b29"
+    },
+    {
+      "path": "scripts/test/test-agent-cli-selection.mjs",
+      "sha256": "8f968b9ebc2fb8bcf6f2a8b0a35b0864f9d714767bb450f33c3961552b2de3ce"
+    },
+    {
+      "path": "scripts/test/test-agent-launch-presets.mjs",
+      "sha256": "27d2f549172950f3be733ceb21152db9773491aecb1c7b6bf9bfca132f77b399"
+    },
+    {
+      "path": "scripts/test/test-agent-runtime-reload-driver.mjs",
+      "sha256": "65ffdca84d82b57d1083bb6d9a5707d01282f2bab2f45aef49648c22e13c5155"
+    },
+    {
+      "path": "scripts/test/test-agent-settings-files.mjs",
+      "sha256": "9111afd55a5bcc83b9f4e4b8830b156d4f27bed8784a969be4457009fed85407"
+    },
+    {
+      "path": "scripts/test/test-automatic-edge-anchors.mts",
+      "sha256": "531e2d00c1ac582d765d8586de068800c030d646268eb6a443fca3c5f2738654"
+    },
+    {
+      "path": "scripts/test/test-avatar-safe-area.mjs",
+      "sha256": "54b1d708e198467d2fd198a8eb30fe85963d4e3c1044710501aaea2f732ffd6d"
+    },
+    {
+      "path": "scripts/test/test-canvas-execution-context.mjs",
+      "sha256": "6951d14801004fd371e62036a71cff0029749a0effb36cfcb12c6e3409592738"
+    },
+    {
+      "path": "scripts/test/test-canvas-layout-arrangement.mjs",
+      "sha256": "c884df1b5a75adcbdebcf9f0b120c1c3b4d08e17723435d2f4228deceb4fcbb1"
+    },
+    {
+      "path": "scripts/test/test-canvas-multi-root-composition.mjs",
+      "sha256": "19ad80aad94f5cd20c3d3d5ce38a2248c0ee5711b4dc9a52d3222b04577a1c89"
+    },
+    {
+      "path": "scripts/test/test-canvas-node-groups.mjs",
+      "sha256": "2cc63d42c97817beee1906f54f9fe43a3fa79f162881a35d1fb5bc7882f27ca0"
+    },
+    {
+      "path": "scripts/test/test-canvas-node-placement.mts",
+      "sha256": "3f23d9e4e6ec5fc3937c9f2619125ce2d09a7de2f245e22eca7b719354bf0418"
+    },
+    {
+      "path": "scripts/test/test-canvas-node-status-presentation.mts",
+      "sha256": "935012455226b93acb03cdcaffe0ebcfdc46952a53660c6aaa831939ae830f39"
+    },
+    {
+      "path": "scripts/test/test-canvas-templates.mjs",
+      "sha256": "5478e02c8ec437604a0c688129e777a6d9a3549f9bb3cdd94fab85b8e278e12d"
+    },
+    {
+      "path": "scripts/test/test-common-dependencies.mjs",
+      "sha256": "e36e50bfa07d7ecb00966fcb08cda3e206ee450a615f81c2cc7c2a5a3cc10b1f"
+    },
+    {
+      "path": "scripts/test/test-completed-snapshot-resize-integrity.mjs",
+      "sha256": "bd023ac03ac99a94f77d4b898634f88f64e6ff58157f60f85f7d32b845afb660"
+    },
+    {
+      "path": "scripts/test/test-debug-launch-config.mjs",
+      "sha256": "1473ee405b6ee8f1cf781db567ca001fc5e7f18614e3558804a8dc8f83490206"
+    },
+    {
+      "path": "scripts/test/test-execution-attention-signals.mjs",
+      "sha256": "a655390e16374c98d98deb0b88ad88f9fccbec2039d39ab6de140793a7902a0c"
+    },
+    {
+      "path": "scripts/test/test-execution-candidate-applied-wait.mjs",
+      "sha256": "75a1abb76130dd38bd0685882a48532e833bd20a6f97ec583b9ce113dae00067"
+    },
+    {
+      "path": "scripts/test/test-execution-candidate-assets-set.mjs",
+      "sha256": "8a983e7bf5f3a980daabddfd27a4e00a6ecd663a5bed27299d62039c17ef4539"
+    },
+    {
+      "path": "scripts/test/test-execution-capacity-current-state.mjs",
+      "sha256": "cacc9d911f28fd51430aa71b609c8775bc26969810c645d63814c2025afec4be"
+    },
+    {
+      "path": "scripts/test/test-execution-distribution-assets.mjs",
+      "sha256": "9ebe8b18f6fc7626f36ee623ba593a92a252bb6fa067c845962c6a2ba32861fb"
+    },
+    {
+      "path": "scripts/test/test-execution-mouse-diagnostics.mjs",
+      "sha256": "e8a18ccacb5b761f784dfce402377befabb9afbb21cb498a7131a57c9afb71b6"
+    },
+    {
+      "path": "scripts/test/test-execution-output-scheduler.mjs",
+      "sha256": "75732a02fcf7e584b80b61532a0308b5059fb4a90566599780707f820a4d5b93"
+    },
+    {
+      "path": "scripts/test/test-execution-output-sequence.mjs",
+      "sha256": "9aa9900a17804981eaa85c1453c7d100c69f49d5f1c255024e94d95019bbecf3"
+    },
+    {
+      "path": "scripts/test/test-execution-owner-lifecycle.mjs",
+      "sha256": "3e89518f054adfa16d7ddde0a065a5cdb828216d6bf946bbfd9042934fff230f"
+    },
+    {
+      "path": "scripts/test/test-execution-provider-channel.mjs",
+      "sha256": "24c03c554d4cc8345e3a322d243751e9b4fce7ac0b0cd8d157549f789d0b36c0"
+    },
+    {
+      "path": "scripts/test/test-execution-provider-parent-control.mjs",
+      "sha256": "f3a2121b2f4397b76d669ccb59f9e2534a9aaa4a165d9e1ce8bfd71f0e6b6508"
+    },
+    {
+      "path": "scripts/test/test-execution-provider-transport.mjs",
+      "sha256": "d7d5af13eeda7c3d87f773a28f4f398711466055cbfe83df5de9e46a52b5f533"
+    },
+    {
+      "path": "scripts/test/test-execution-reader-isolation.mjs",
+      "sha256": "cd14495cbdcf549b3215ac1a1e51db2ab20acef7889227577f67d3473fd196bb"
+    },
+    {
+      "path": "scripts/test/test-execution-runtime-selection.mjs",
+      "sha256": "d74b89ae49db60fc1fee1562b8d10280e339957ec115532167b6cea1c4cdc376"
+    },
+    {
+      "path": "scripts/test/test-execution-session-adapter.mjs",
+      "sha256": "542a8f933164f3dd3eef1480ab83698a9bf2524d1b7f0a043c073aa62e07e773"
+    },
+    {
+      "path": "scripts/test/test-execution-session-bridge.mjs",
+      "sha256": "0df05b82aa43e86f8f118e8f90332da2bd3e026dcf5c42e7df25ec2680f5d9e4"
+    },
+    {
+      "path": "scripts/test/test-execution-terminal-clipboard.mts",
+      "sha256": "8f1f82f313947333c8645faaada76eccdc566c7c49e3138132d5b30dabaaa76a"
+    },
+    {
+      "path": "scripts/test/test-execution-terminal-line-context-tracker.mjs",
+      "sha256": "11702ee8a691f917a1b57928a6e8a24905e0f70eeaa0b0eb5209dc3d81d8ab2b"
+    },
+    {
+      "path": "scripts/test/test-execution-terminal-links.mts",
+      "sha256": "207dc863e0f92bc66089ed3740f8235839bc8174a5abbf10938bf538be934093"
+    },
+    {
+      "path": "scripts/test/test-execution-terminal-native-helpers.mjs",
+      "sha256": "17ca6f07d97c458ad71d6e275123d3be27a44b31ead594ffdff028c735c0e25b"
+    },
+    {
+      "path": "scripts/test/test-execution-terminal-title.mjs",
+      "sha256": "5fc876f5ecc0032f876a9eba114fbed487c8454b31d142867d85664a414426c5"
+    },
+    {
+      "path": "scripts/test/test-extension-manifest.mjs",
+      "sha256": "4ac2bb5d654b9e40ebd27c99aa8ec6980caac29bdac196737cc3a6b373930a43"
+    },
+    {
+      "path": "scripts/test/test-extension-storage-paths.mjs",
+      "sha256": "2f335768432f981c4670ca4b641805f7fdb0d1655a391bb213adabe253232e34"
+    },
+    {
+      "path": "scripts/test/test-git-worktrees.mts",
+      "sha256": "823bfad6adaaab7e63fcb6745b77a71c7267d66f3adc2d58a90292072c5459a4"
+    },
+    {
+      "path": "scripts/test/test-host-execution-owner-wiring.mjs",
+      "sha256": "1c78ddb6f82f051767f555303f05661466003619f5ebce7d477d510adfdc90f5"
+    },
+    {
+      "path": "scripts/test/test-installed-execution-candidate.mjs",
+      "sha256": "ace87d570c4b9cbf158a4336d8f8e05ea1b43685a8ec01d408ca01ab0b79c2de"
+    },
+    {
+      "path": "scripts/test/test-legacy-runtime-history.mjs",
+      "sha256": "60da8a5208a7ff1d959d3030c25487d6f106e923eece05baf0294dcadfbf6869"
+    },
+    {
+      "path": "scripts/test/test-linux-execution-business.mjs",
+      "sha256": "593929bc36ba54bbc15e43b4e8ed3b4c8379d6dd06605e8df526448ad46df285"
+    },
+    {
+      "path": "scripts/test/test-linux-execution-candidate-assets.mjs",
+      "sha256": "6714bb1bdd31758420303f69708f28f909e3eb347eef3d9ae33c668792c776a0"
+    },
+    {
+      "path": "scripts/test/test-linux-execution-interaction-chain.mjs",
+      "sha256": "78a4b47d5d08ebb519bad5f78be997ead4bfd2b408cefb4fcb4ea64d3193c131"
+    },
+    {
+      "path": "scripts/test/test-linux-execution-native-namespace.mjs",
+      "sha256": "0518a497e9bb875aedc8b24f2847d97807a74a9c620154d261a7672b3b24f78a"
+    },
+    {
+      "path": "scripts/test/test-linux-execution-owner-factory.mjs",
+      "sha256": "ee55095ca3eb4eb66372c27577595696e7618234575949ac528533dacb29ae91"
+    },
+    {
+      "path": "scripts/test/test-linux-execution-provider-core.mjs",
+      "sha256": "af6185d6bb873846d8e91e73a37683a110d852d745d1707662dfb4d5f0996373"
+    },
+    {
+      "path": "scripts/test/test-linux-execution-provider-source.mjs",
+      "sha256": "181cd4b6580cfe4621f9154e1d88dcdb237acf8b1103b4170c0987f9193728c0"
+    },
+    {
+      "path": "scripts/test/test-linux-execution-provider.mjs",
+      "sha256": "4cde37e49737d6205aa12bcae182a260f52b9fb56bbb1c08b9acb8a36c611b92"
+    },
+    {
+      "path": "scripts/test/test-linux-execution-runtime-compatibility.mjs",
+      "sha256": "204970fa68c6a3016217e2925d79b22830b27578a205226729b88a015e5aecae"
+    },
+    {
+      "path": "scripts/test/test-macos-execution-candidate-assets.mjs",
+      "sha256": "962890d0514bd97d5c5557509daa6f184beb95a0c69ac75274c3036ea3590bc5"
+    },
+    {
+      "path": "scripts/test/test-macos-execution-owner-factory.mjs",
+      "sha256": "552d6d452558ea7eea74145028e35e50bfbe892d51ec38460ecfd2e56c61054a"
+    },
+    {
+      "path": "scripts/test/test-macos-execution-product.mjs",
+      "sha256": "a37a69ca86eb24952c184b20d9dc5d99cb8242dd6d8dc443b5f94ab7ecd98da9"
+    },
+    {
+      "path": "scripts/test/test-macos-execution-provider-source.mjs",
+      "sha256": "566289228592a9fc364e51313651945ec1cc7f622249331808aa4f1ec522fdeb"
+    },
+    {
+      "path": "scripts/test/test-macos-execution-spawn-helper.mjs",
+      "sha256": "4914b88367e724424313d6504b6595140a5bcc9b10db79f5fdced0722be70f06"
+    },
+    {
+      "path": "scripts/test/test-native-runtime-history.mjs",
+      "sha256": "1f460687e7b8a984a7161ca6e3fabeff228470ff882f2baff3af0a7bdade274d"
+    },
+    {
+      "path": "scripts/test/test-note-body-indent.mts",
+      "sha256": "83974f27a2208995c549af776da0c390da7de2cc602d030f90a98855d71d3a7c"
+    },
+    {
+      "path": "scripts/test/test-note-markdown-checklists.mts",
+      "sha256": "1d6be3dd8801fe74698a30ec73847ce1785da649e8de4f8371e4fd2f46b63a39"
+    },
+    {
+      "path": "scripts/test/test-note-markdown-file-association.mts",
+      "sha256": "c7198a1c6ad8fc83b4206d2b2613739e9cfd1f5a1f944a78be35c59e30cb9b0f"
+    },
+    {
+      "path": "scripts/test/test-note-markdown-front-matter.mts",
+      "sha256": "8dda97bb8e0bf840e06a5e8dcba956375de5d8457739e98a152cad7a6c540b24"
+    },
+    {
+      "path": "scripts/test/test-note-markdown-links.mts",
+      "sha256": "58ec6b8700f68346d2056240982198fd6c73b95669a52bf1b6f92f2a8d9fa351"
+    },
+    {
+      "path": "scripts/test/test-note-markdown-source-map.mts",
+      "sha256": "94f8e63aa6b290215c17a2c8569cfe2572751cdbdbb9857d864ec9f96f0c58e5"
+    },
+    {
+      "path": "scripts/test/test-package-vsix-command.mjs",
+      "sha256": "d4b1d29e1f336c6bf90048d0bca46c18a4247e4b1548adb54ad5def22006dd0c"
+    },
+    {
+      "path": "scripts/test/test-package-vsix-file-list.mjs",
+      "sha256": "33eef74fe5b18ffd972cd04585a346994b02465a6d3788318ac2a4caad2b0dd8"
+    },
+    {
+      "path": "scripts/test/test-protocol-webview-messages.mts",
+      "sha256": "467a3aa55b9b1533306a741d77a810ae6fd56629495397a3e7025a287f1dce36"
+    },
+    {
+      "path": "scripts/test/test-publish-marketplace-workflow.mjs",
+      "sha256": "32cc266ecf4a70a662aaebf1685aa74d2d6bbbab0b01e54a258d31a3f60f47d7"
+    },
+    {
+      "path": "scripts/test/test-publish-marketplaces.mjs",
+      "sha256": "b227925f9f2217d8e50459887319e7de486953f1a6098210562095b6ba1fa513"
+    },
+    {
+      "path": "scripts/test/test-publish-tag-release.mjs",
+      "sha256": "5cdfdbcaa704cadd0b7b17550a74f3f7a2715e8c0926051e453170b2d9ae924a"
+    },
+    {
+      "path": "scripts/test/test-release-preflight-workflow.mjs",
+      "sha256": "6361ff798d2d5074ac8cf40939b7dd40aa669c11be168289486f7e5b9908871c"
+    },
+    {
+      "path": "scripts/test/test-release-preflight.mjs",
+      "sha256": "1d0bbb6f2e8c02fa279505d5f730ea693d4b5aad0a913fb49a60168e1007d429"
+    },
+    {
+      "path": "scripts/test/test-remote-execution-candidate.mjs",
+      "sha256": "7bcae7a716ae47d7dfd8bc0dae0681bf9d58188bc0b5c00261086744c84279ef"
+    },
+    {
+      "path": "scripts/test/test-root-failure-candidate.mjs",
+      "sha256": "6bf768531b6c82b714e90f6ef06877e6b5af0f8c0a4c47c03b18546bb871fec7"
+    },
+    {
+      "path": "scripts/test/test-runtime-agent-ci-workflow.mjs",
+      "sha256": "27260e1180984e90fd2cc7143eaeb5642239c0bfdb7f68bd3fbfd337e09bb59e"
+    },
+    {
+      "path": "scripts/test/test-runtime-checkpoint-refresh.mjs",
+      "sha256": "808f97eeb75cd0a9d8d5928a95fcbb7baed1a6302a1e7acfe73a4dcb6f611698"
+    },
+    {
+      "path": "scripts/test/test-runtime-completed-history.mjs",
+      "sha256": "26baa5ebe702d70d42c40b87c95d5c4dc82ba3e3e952b0a323d281d3a4952216"
+    },
+    {
+      "path": "scripts/test/test-runtime-execution-environment.mjs",
+      "sha256": "f2fc0ef74eb52ca1710a59bc5af3bec23f4fb7a81588425b3051e22cfff625cd"
+    },
+    {
+      "path": "scripts/test/test-runtime-global-storage.mjs",
+      "sha256": "accf39f22bceea27b0f7dee61bf1a509838a160772bd76ea6cf83c2850f3656d"
+    },
+    {
+      "path": "scripts/test/test-runtime-host-deactivation-integrity.mjs",
+      "sha256": "f3b906bda476322eb6965f39f2a7f9fecf99c75af9f6dbf5bec93676be904266"
+    },
+    {
+      "path": "scripts/test/test-runtime-host-output-credit.mjs",
+      "sha256": "09930c61d33d214233fac34c6a412bbcb423faf0d369b7de711321f01b984396"
+    },
+    {
+      "path": "scripts/test/test-runtime-legacy-reconnect.mjs",
+      "sha256": "f7afb52043fe5be13774ca3c39c59fc2f61cb326031b59cd072d682bcb41c810"
+    },
+    {
+      "path": "scripts/test/test-runtime-paged-completion.mjs",
+      "sha256": "f306153ceb1cd116888e64d141658dd741c9b9a2b5748cee7eb9e59b9d5499c1"
+    },
+    {
+      "path": "scripts/test/test-runtime-reader-settlement-wiring.mjs",
+      "sha256": "f7eaadf26e69c32323750e7161f6286dc37826cdad2bfc2559cd682d7795c109"
+    },
+    {
+      "path": "scripts/test/test-runtime-reload-candidate.mjs",
+      "sha256": "886d0ec617cb3aa48c875597fc736689306edc38ffa6a36980ceae040f9d1873"
+    },
+    {
+      "path": "scripts/test/test-runtime-root-owner-handshake.mjs",
+      "sha256": "d85906c2bce63f30d56f1923cd2c7785142c3256e0dadcd9d046eb8ca69fcb60"
+    },
+    {
+      "path": "scripts/test/test-runtime-root-owner-storage.mjs",
+      "sha256": "fb3d3792d25433e81603a69155ee607f201ca4c236e30be7d4dedf9b01ff4923"
+    },
+    {
+      "path": "scripts/test/test-runtime-root-ownership.mjs",
+      "sha256": "514a14f742feb34200cabccddd13a2cdc9d04612b686749353f8a23051d2e7a1"
+    },
+    {
+      "path": "scripts/test/test-runtime-root-preparation-client.mjs",
+      "sha256": "2b18c462f3d3c562bc5df6752380a233d937222be23a778ce19f1b02bc24b22d"
+    },
+    {
+      "path": "scripts/test/test-runtime-root-preparation-native.mjs",
+      "sha256": "9ea43611948d9768d459f7ff1df454fe053377d19281f9e7e3d48f135d378b26"
+    },
+    {
+      "path": "scripts/test/test-runtime-root-preparation.mjs",
+      "sha256": "45bf6ce79c688c58f6120769e6814af2b3ca8cfd26ec9d1f181b47f7d3229fda"
+    },
+    {
+      "path": "scripts/test/test-runtime-root-startup.mjs",
+      "sha256": "6fee11c109230e6f821c11a045e9c544a04feb7e66370f05180afec40fcbb060"
+    },
+    {
+      "path": "scripts/test/test-runtime-storage-containment.mjs",
+      "sha256": "e13138c9e46ef0d52c4f32c525e4eee8ac6f85daea93ab33a6d5ba71fdbf3b38"
+    },
+    {
+      "path": "scripts/test/test-runtime-supervisor-linux-native-namespace.mjs",
+      "sha256": "70e86cf656e12f3247f6920ded28b8ef5f5caa94434431b1dfca5457bfb8bfdf"
+    },
+    {
+      "path": "scripts/test/test-runtime-supervisor-namespace.mjs",
+      "sha256": "0d7fae8ffa03dec6bccf712c6d706b274c2828d37d7e88f32c61779bbdda99eb"
+    },
+    {
+      "path": "scripts/test/test-runtime-supervisor-paths.mjs",
+      "sha256": "743591d2972264d7c2e1b2a7b35e0fec67d817ad7b0c5771e3bdc2b15df28abc"
+    },
+    {
+      "path": "scripts/test/test-runtime-supervisor-protocol.mjs",
+      "sha256": "eb3f7fb7c2655c10e414013eec5e14fdd1036bd996b5db21fcdcbb0a32468334"
+    },
+    {
+      "path": "scripts/test/test-runtime-supervisor-reader-client.mjs",
+      "sha256": "677cdb38253784938bf2b6951b48ea4741a6725216272a96f81bcfe52eb3453e"
+    },
+    {
+      "path": "scripts/test/test-runtime-supervisor-request-timeout.mjs",
+      "sha256": "4eeed8cca307778719cce2352684bcf75ea2dfb616a237f6f5026990c81a2558"
+    },
+    {
+      "path": "scripts/test/test-runtime-supervisor-startup-profile.mjs",
+      "sha256": "9a9e1c3acc1c07f6003e9d48173a8c80bb17716ff01f454e4afb39443d33426f"
+    },
+    {
+      "path": "scripts/test/test-runtime-supervisor-windows-namespace.mjs",
+      "sha256": "65d56d3445c88f893a565ffb2a61dd6edd6cdd02c2cee96f3d1f876d79e50259"
+    },
+    {
+      "path": "scripts/test/test-runtime-systemd-environment.mjs",
+      "sha256": "5f9ed92d8576d2f8a4e5ee064d106e8d2261a9ebea43a77caa512b6f138a9072"
+    },
+    {
+      "path": "scripts/test/test-serialized-terminal-state-tracker.mjs",
+      "sha256": "50e2d2f2fa4b26bfa45ea94bab6985cb6903c666c4cb8ede17262007b3d3cb03"
+    },
+    {
+      "path": "scripts/test/test-shared-root-canvas-store.mjs",
+      "sha256": "579f7b88beb93d3ec1d7d9f5fc253159b5add5d04d9b56141d27be2799715806"
+    },
+    {
+      "path": "scripts/test/test-shell-environment-resolver.mjs",
+      "sha256": "bc8689faed52bd41a07d7fc6a2c27cd40d0d2a3aaaeda1d444011c8ae2c060d1"
+    },
+    {
+      "path": "scripts/test/test-sidebar-codicon-bundle.mjs",
+      "sha256": "936eb3ef126ec3e5b949087302e0b8476ce91540c7094a832bdaece553002802"
+    },
+    {
+      "path": "scripts/test/test-sidebar-list-color-tokens.mjs",
+      "sha256": "cf61a601c8dc77dca703c6b6ad198580191e11e23df7a396baffc7bc0ed13b88"
+    },
+    {
+      "path": "scripts/test/test-sidebar-node-list.mjs",
+      "sha256": "f6244698a558c41d0a285b581dfce17691882ed76a5ad60ec5332066e3755667"
+    },
+    {
+      "path": "scripts/test/test-sidebar-session-history.mjs",
+      "sha256": "184146f611a7802755c223e037a988d4b54c689394913e4b7359ba75744e9432"
+    },
+    {
+      "path": "scripts/test/test-smoke-execution-output.mjs",
+      "sha256": "88d1a076dc11551e324431181b03f2557a3a66d53e752df7e3811c65c8afb00b"
+    },
+    {
+      "path": "scripts/test/test-smoke-reset-fixture.mjs",
+      "sha256": "e93eb49f5a3478bf657bc25a81d2549b07bdddfce9d87199840ce05e38d3daf7"
+    },
+    {
+      "path": "scripts/test/test-smoke-terminal-history.mjs",
+      "sha256": "46bf6806697dc8866c6930907c39b199fc573e1b488fb522d54c052204b11825"
+    },
+    {
+      "path": "scripts/test/test-smoke-terminal-resize.mjs",
+      "sha256": "25dbcf9395f45ace7ba7be04ac1a7b89b59e3a539b62db9bf13af82b78e06548"
+    },
+    {
+      "path": "scripts/test/test-supervisor-execution-owner-wiring.mjs",
+      "sha256": "99d7261127fb0b2a9c1a408688df74a06c2e6f42f187d0e779b5a43d3c287b64"
+    },
+    {
+      "path": "scripts/test/test-template-marketplace-preview-preflight.mjs",
+      "sha256": "2811768f23ee75540d73d870b58da0237fb406b39ac795dd2958ef62ac5a23fc"
+    },
+    {
+      "path": "scripts/test/test-template-marketplace-production-config.mjs",
+      "sha256": "332a4ee7c212c17f392467481e1d380b23e5720d2a0da906839fe742c59fe0f9"
+    },
+    {
+      "path": "scripts/test/test-template-marketplace-production-deploy-workflow.mjs",
+      "sha256": "8ffcdd9c8c75dda7f424ae1cca807daed73812c9f2df0a1864d29f2f81be7281"
+    },
+    {
+      "path": "scripts/test/test-template-marketplace-publish-page.mjs",
+      "sha256": "1fdaeaa12b1bbe19d94d450ba2a5cbe9eff8ea3c0e2d0a128230356f917c2efc"
+    },
+    {
+      "path": "scripts/test/test-terminal-available-credit.mjs",
+      "sha256": "037f05eed3162da5d1a205c84f09934b81d1dc6b0f5dc2cffc16d6a973382df4"
+    },
+    {
+      "path": "scripts/test/test-terminal-current-state.mjs",
+      "sha256": "fad2d59fd60977ad4603c2d744899bbbab23d625504314718001836e082e79fe"
+    },
+    {
+      "path": "scripts/test/test-terminal-paged-projection.mjs",
+      "sha256": "86dc117a90d176b585141c83090681ca28cef91d4f25664011ee2497de3e67c4"
+    },
+    {
+      "path": "scripts/test/test-terminal-session-journal.mjs",
+      "sha256": "2cfb20e63bee793627f978cc4f9eb50b1b1e453e69fcb254b2548f1d39ec17d4"
+    },
+    {
+      "path": "scripts/test/test-terminal-shell-configuration.mjs",
+      "sha256": "03347f84be6f316e39687807a45b3041dd09c64116a0caf13c92bfc7d614a182"
+    },
+    {
+      "path": "scripts/test/test-theme-color-tokens.mjs",
+      "sha256": "020384e69666446ad6d806c4f97834140fe5cf94732b8dddab3344f66960d111"
+    },
+    {
+      "path": "scripts/test/test-ui-copy-localization.mts",
+      "sha256": "2952ede56f9c36552527d9303ef4dd3dbdedbe4ddf7e3d3bc016fa565877729b"
+    },
+    {
+      "path": "scripts/test/test-vscode-smoke-runner-env.mjs",
+      "sha256": "932f265a2f298b4fab290c83dcab01561a97c6eef4b2ebfe2a003b429b592b2e"
+    },
+    {
+      "path": "scripts/test/test-webview-build-xterm-entry.mjs",
+      "sha256": "75860a8fd91a1d8a392bb0cea51e203d9eda2a7148ff56c4b4ab348bd98b04b5"
+    },
+    {
+      "path": "scripts/test/test-webview-lifecycle-diagnostics.mjs",
+      "sha256": "cb5282b1831fea2b0542f5796c40a849d75f370d1676131f36bb5340839b4f91"
+    },
+    {
+      "path": "scripts/test/test-windows-execution-candidate-assets.mjs",
+      "sha256": "6eda0cf6e530ec1a4e89d06183639df6239cc4996bbec1e4bd24807261504cd1"
+    },
+    {
+      "path": "scripts/test/test-windows-execution-electron-input.mjs",
+      "sha256": "a7b0e5539d6a2c8d806634c7a051d39febd8044db33453959730d19878e6b6f3"
+    },
+    {
+      "path": "scripts/test/test-windows-execution-output.mjs",
+      "sha256": "889906b83ad97f9416fe74b4ce071407c190d0a32aea37f62e7227157414792c"
+    },
+    {
+      "path": "scripts/test/test-windows-execution-owner-factory.mjs",
+      "sha256": "f9e1592ea6d89be5fb575fa6e0919c7734b64ac5b1af80173e288634eeb943d2"
+    },
+    {
+      "path": "scripts/test/test-windows-execution-pipes.mjs",
+      "sha256": "f74459c9ed87982192bd410cd911a6bcd86db943a1bcef93d0d6d5ea1a5ee1b5"
+    },
+    {
+      "path": "scripts/test/test-windows-execution-product.mjs",
+      "sha256": "164d27f6ba736433a22b32ad5205c6a4658baf598ccf8ca4f00d28540fef5a63"
+    },
+    {
+      "path": "scripts/test/test-windows-execution-provider-core.mjs",
+      "sha256": "ce4d9cae044c48955f03bbb3a99c768d33e417462f1dd56dc772de3b72c620de"
+    },
+    {
+      "path": "scripts/test/test-windows-execution-provider-main.mjs",
+      "sha256": "87c2a8d48e368d34856d0e78492e300e10d4656d09dbc70b1a83681e3b15932b"
+    },
+    {
+      "path": "scripts/test/test-windows-execution-provider-source.mjs",
+      "sha256": "3c7a4dfd0ddc5ff007cec6ca1b8dc9886553e0ada481a8aba9f1315983688ea6"
+    },
+    {
+      "path": "scripts/test/test-workspace-relative-paths.mts",
+      "sha256": "fe7e4c67ee2aacae55eee2633ca043c8215fb6dc696ba5344b64839aff106927"
+    },
+    {
+      "path": "scripts/test/test-xterm-title-mouse-boundary.cjs",
+      "sha256": "81179c6097613722c0202770dd407ab9c77ef7cf73af3bc4e74494eae62f8913"
+    },
+    {
+      "path": "tests/playwright/execution-terminal-selection-links.spec.mjs",
+      "sha256": "e81ceda8d2703b3a6575b6617781fc67ca970b95e4d2932a497b484e89f37654"
+    },
+    {
+      "path": "tests/playwright/harness/webview-harness.html",
+      "sha256": "1080133c29dfc6f980ea6ec662213c717c4c32238d3535bff86cfbe4f279263f"
+    },
+    {
+      "path": "tests/playwright/webview-harness.spec.mjs",
+      "sha256": "61655af9b15231afeb328a7efbd11da1485b010e8d78ef8ef0d93602f0a3833d"
+    },
+    {
+      "path": "tests/playwright/webview-harness.spec.mjs-snapshots/canvas-minimap-dark-linux.png",
+      "sha256": "e3c42c4232208b32d669300ca356e02dd606c16d35b72655b34359eb1dc021cb"
+    },
+    {
+      "path": "tests/playwright/webview-harness.spec.mjs-snapshots/canvas-minimap-dark-win32.png",
+      "sha256": "a5b9dc15de4e9ea5308c1b9532fc836c84a4acb6a9dd361670cac18e436082f0"
+    },
+    {
+      "path": "tests/playwright/webview-harness.spec.mjs-snapshots/canvas-minimap-light-linux.png",
+      "sha256": "77665a7c4ae2507c0bab0d978aacdfe530062aebe9df1127692519c212a9cf15"
+    },
+    {
+      "path": "tests/playwright/webview-harness.spec.mjs-snapshots/canvas-minimap-light-win32.png",
+      "sha256": "77665a7c4ae2507c0bab0d978aacdfe530062aebe9df1127692519c212a9cf15"
+    },
+    {
+      "path": "tests/playwright/webview-harness.spec.mjs-snapshots/canvas-shell-baseline-linux.png",
+      "sha256": "f3797df14a70890625c12f5c21d6bce3e50dda6cd5181de869eddbfb351e8e9e"
+    },
+    {
+      "path": "tests/playwright/webview-harness.spec.mjs-snapshots/canvas-shell-baseline-win32.png",
+      "sha256": "35de6e93599c71cc3e42ca7c292ebac00e755aaa08e508a0c1869b857367a11d"
+    },
+    {
+      "path": "tests/vscode-smoke/agent-candidate-cli.cjs",
+      "sha256": "d9726e49517d849087c60bc04d17ec501696c4509c33556507ff9fcff1959ec7"
+    },
+    {
+      "path": "tests/vscode-smoke/agent-candidate-process-observer.cjs",
+      "sha256": "a1e50b2f35a6da77bb9411f4d707c436c17e140228cfdda601890c29786c3dda"
+    },
+    {
+      "path": "tests/vscode-smoke/agent-candidate-process-observer.ps1",
+      "sha256": "62ea8f78eb35164a0f55b0a98d372723dacc637ff9f2c09cbc121559964233f1"
+    },
+    {
+      "path": "tests/vscode-smoke/agent-candidate-process-observer.py",
+      "sha256": "c43c768f3caedcdf4326b9ee5e3603b7b04b46c70bc65fddf89fa404a830f0bb"
+    },
+    {
+      "path": "tests/vscode-smoke/agent-candidate-reopen.cjs",
+      "sha256": "f5908b9a2de2d4369c4ae8979217727d3e5820a17863401799198d378c880c45"
+    },
+    {
+      "path": "tests/vscode-smoke/agent-candidate-snapshot-evidence.cjs",
+      "sha256": "057a74f61b19611a27863a7b7877a0e2d6fee6c0e9235a89c6f97a88cc87aa55"
+    },
+    {
+      "path": "tests/vscode-smoke/agent-candidate-tests.cjs",
+      "sha256": "ddf87be38227988d0e156bb25b309a0635e4a3fe80bcbed2882c865df9dc9ae8"
+    },
+    {
+      "path": "tests/vscode-smoke/agent-candidate-windows-observer.cjs",
+      "sha256": "8bc12a7a653ebfd8734a0b5e95c71bfd49dac907c46cffcf3ba0fe9263f53371"
+    },
+    {
+      "path": "tests/vscode-smoke/agent-runtime-reload-driver.cjs",
+      "sha256": "36e316ce2a0eba23c02d011341867d080bfccf9b8e1ada623a83b6b973e42315"
+    },
+    {
+      "path": "tests/vscode-smoke/execution-candidate-tests.cjs",
+      "sha256": "c246d7670010c7c3bf6b2c9f1b6ac7fa898943ab481af35f595c07204b299a8b"
+    },
+    {
+      "path": "tests/vscode-smoke/execution-capacity-tests.cjs",
+      "sha256": "1be76dce7afc5248fdafe2bf6cae53d8e133f0d09038dc68ab42b430618ccb61"
+    },
+    {
+      "path": "tests/vscode-smoke/execution-output.cjs",
+      "sha256": "9e6002d49e7774b335aa76b38b0153ddbcfcc8f0726dc95edf34f4286dc745c7"
+    },
+    {
+      "path": "tests/vscode-smoke/execution-reader-isolation-tests.cjs",
+      "sha256": "032b4ccb9456f6ec5616bec5619ea088fbcac9d109543bfd328819bc319a9a10"
+    },
+    {
+      "path": "tests/vscode-smoke/extension-tests.cjs",
+      "sha256": "c373717402945c4dd9d1f3069302ef13a112ff3a0519fddcd9dbd9e81a94c3c4"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/claude",
+      "sha256": "4449852196f01557f9ee3211a29843c367c68b6acab0ecf33a382eaf51ff743b"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/execution-candidate-subject.cjs",
+      "sha256": "8c75f7589c504a69ef6723b136f2a1281285bde5a9454195ee43cd64a564649b"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/execution-candidate-windows-observer.ps1",
+      "sha256": "1cb7011f46d302832d8961f244bbc8d98edd8318743edf1d7e97c86dcc0d1da6"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/execution-candidate-windows.cjs",
+      "sha256": "24bb0a9d971f4248595172fd3d8d87a3cab49001ad147ed2eb65d758d0cdd559"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/execution-candidate-windows.cmd",
+      "sha256": "f9c36c5fab3c1259dcf3669d1cd025ac36a79eabb13bb27779862a7adf82d901"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/execution-capacity-subject.cjs",
+      "sha256": "3443b453d5b66d5de5439525760bd5e99730581930e60b0f0b68ebdb05153013"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/fake-agent-provider",
+      "sha256": "dccdb322f194b9aed1c6743de08b55217a0312dc21a39d4a432a99dfd46681d6"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/fake-claude-provider",
+      "sha256": "37f7ddd75ebe1d39e9e7b63c6bed5851bd956b786b59648a8b3038df6a53e243"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/fake-codex-provider",
+      "sha256": "3dfc95b762350cc3ed0f352b0ae121df174d355bc19dde242758e9c51dcfd9dd"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/fake-systemd/systemctl.cjs",
+      "sha256": "604d7b660e33538ed29a58285515abe125fad7be7605379c0e45d23b1f10c6ca"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/fake-terminal-provider",
+      "sha256": "a6b2d8f26f2582a3007db0d3cfeb53dcd4108a90a2baa16b018897bbbd36df61"
+    },
+    {
+      "path": "tests/vscode-smoke/fixtures/runtime-reload-completed-subject.cjs",
+      "sha256": "5db2ed13baabacd30ac08898f39b42491dd9c683e8d0419944d666eee1bd55c5"
+    },
+    {
+      "path": "tests/vscode-smoke/installed-execution-candidate.cjs",
+      "sha256": "b6972583986b45f409aedb7c011bbf32c0242cfdcf0b4b5453a564363b99be87"
+    },
+    {
+      "path": "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs",
+      "sha256": "1919dc546808caaf951ba6d7ac0534b7684ca40c883ffb40cf2fa908af58e250"
+    },
+    {
+      "path": "tests/vscode-smoke/marketplace-media-tests.cjs",
+      "sha256": "f0010dd447c21d0e6db52ccd1ce0fe06047a4bb7a3d3be999ebb78b0167acc17"
+    },
+    {
+      "path": "tests/vscode-smoke/notifier-companion-tests.cjs",
+      "sha256": "d20c054c2649a2b4c5fcb85422ac0fc47e3618304043b8d8e04e4a5984f8536e"
+    },
+    {
+      "path": "tests/vscode-smoke/notifier-locale-tests.cjs",
+      "sha256": "47babc910cf8069d7c4c8e3dcc97edbff615618b2d3a2ce27f1b327676ffbe87"
+    },
+    {
+      "path": "tests/vscode-smoke/real-reopen-tests.cjs",
+      "sha256": "8c94e3a56cab3acc1b216d13268a1fb4125c4e260ed57f8ec51d9edae57bda0c"
+    },
+    {
+      "path": "tests/vscode-smoke/remote-execution-candidate-tests.cjs",
+      "sha256": "0d7a8ae7c45e717827fee6813842205d72056e07023afc78b0725f4d744b4ac5"
+    },
+    {
+      "path": "tests/vscode-smoke/remote-execution-candidate.cjs",
+      "sha256": "fe62787f5ca9fb56bc2a028c30ff6ed11cced687fb390bf4182075d845d3547f"
+    },
+    {
+      "path": "tests/vscode-smoke/reset-canvas.cjs",
+      "sha256": "0dcd14d4dcbeb7f4beea09ab6cc34fc56c8fb05f8c4093ee0de054f2f0233b00"
+    },
+    {
+      "path": "tests/vscode-smoke/root-failure-candidate-tests.cjs",
+      "sha256": "387c9bef3e7a36ba626fa24a01d132458cfece82204be5c11d8fb10ba9123b1f"
+    },
+    {
+      "path": "tests/vscode-smoke/root-failure-contract.cjs",
+      "sha256": "d49ce57363b125df240d4482b9c14e2788c6a55fcbcf4cfe132144c9880f55b3"
+    },
+    {
+      "path": "tests/vscode-smoke/root-owner-contract-tests.cjs",
+      "sha256": "29cb8960c75e62dfa0b214da6510a351013b9429ae801f2fa68c01ffd73abb92"
+    },
+    {
+      "path": "tests/vscode-smoke/root-owner-contract.cjs",
+      "sha256": "1550a6974f4ead16453a6c6507573a33c69b35efe9ab1bf5b9a39d3c3e6b907b"
+    },
+    {
+      "path": "tests/vscode-smoke/root-owner-driver.cjs",
+      "sha256": "7a5d942e55733acfb645c18da40531ab12858dc83a080a3590a5a36ba89a926c"
+    },
+    {
+      "path": "tests/vscode-smoke/root-owner-subject.cjs",
+      "sha256": "17abd105b7ce020e23216c2e347a9ec8ed5907fb38f3b3a0d4a4eb02ff2cdb47"
+    },
+    {
+      "path": "tests/vscode-smoke/runtime-compatibility-tests.cjs",
+      "sha256": "2654335090bc7aeeab7dd69d8241cc8dfc474feffbd262fe33ed843ec060c558"
+    },
+    {
+      "path": "tests/vscode-smoke/runtime-reload-contract.cjs",
+      "sha256": "230c7c81506b679695bd13082b4e7b69cc1505815f6b4bc896aa37657f08ac59"
+    },
+    {
+      "path": "tests/vscode-smoke/runtime-reload-driver.cjs",
+      "sha256": "cdfbd6ab6f74b6f7eea07287ad732f3f3b38a4139b301caf8d861bddab7cccbd"
+    },
+    {
+      "path": "tests/vscode-smoke/runtime-storage-containment.cjs",
+      "sha256": "0c5031ad1e9b7c63883c71589e6df094fc9e48ed90e982fbac29c94f06a4d2ff"
+    },
+    {
+      "path": "tests/vscode-smoke/storage-slot-recovery-tests.cjs",
+      "sha256": "c24e4517cdada067dc98f1a85bb565ee11eb0cd97f77e936b5b82109e4655625"
+    },
+    {
+      "path": "tests/vscode-smoke/template-marketplace-fixture.cjs",
+      "sha256": "155a012eb52d7b44a88b14222111777c889c8c67e5661ea1f67e533b9c74c7dd"
+    },
+    {
+      "path": "tests/vscode-smoke/template-marketplace-preview-tests.cjs",
+      "sha256": "e94eea6c93dfbd3a583dad0701234f193c47eb612ef6c5b0ff065ada175c7919"
+    },
+    {
+      "path": "tests/vscode-smoke/template-marketplace-tests.cjs",
+      "sha256": "27da9650dd00047565d34f2c9cd6e4591355aa09f2ac3293193ffff7a1672bed"
+    },
+    {
+      "path": "tests/vscode-smoke/terminal-history.cjs",
+      "sha256": "2eef875a7a107e30a1037cca5f45ca0d9e751f5bece3ca97a2c503fb22a3b1db"
+    },
+    {
+      "path": "tests/vscode-smoke/terminal-resize.cjs",
+      "sha256": "4db03e6fa60abef90570c80b2540507a01b0738cb7e51d0f36eaaef373054908"
+    },
+    {
+      "path": "tests/vscode-smoke/test-helpers.cjs",
+      "sha256": "9748043331b8480a8a003d9c3796d2b57a9a316f589147882fa6166e645a66b0"
+    },
+    {
+      "path": "tests/vscode-smoke/two-window-shared-runtime-tests.cjs",
+      "sha256": "24ccbcefc4ff50b3a2b2a13ef7fc28a8962156d7e71edf4c01a959e6bf3559b0"
+    },
+    {
+      "path": "tests/vscode-smoke/ui-copy-locale-tests.cjs",
+      "sha256": "2f2dd43c153d94195fcfcc9ec8d7d3b7741a6519c4c45fa9d6a77241ab06351d"
+    },
+    {
+      "path": "tests/vscode-smoke/windows-execution-candidate.cjs",
+      "sha256": "31003bdb504325d662e2c2addd39361211594f621481716e45b39c053d0af556"
+    },
+    {
+      "path": "tests/vscode-smoke/windows-real-codex-smoke.cjs",
+      "sha256": "b74f9ac3043440e7f1e2a55554e6bf8c6f59a309f637d2d234e35d6ea3370168"
+    }
+  ]
+}
