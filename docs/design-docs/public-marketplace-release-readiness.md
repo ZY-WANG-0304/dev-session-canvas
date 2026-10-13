@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/completed/github-release-assets-flow.md
   - docs/exec-plans/completed/release-0-25-0-prep.md
   - docs/exec-plans/completed/release-gate-contract.md
-updated_at: 2026-10-13
+updated_at: 2026-10-14
 ---
 
 # 公开平台发布准备
@@ -361,7 +361,7 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 
 ### 9.0 当前 0.26.1 发布输入
 
-从main ea0c9b19重新创建0.26.1准备分支，PR328合入后rebase到main 22803dd8，不沿用已关闭PR #313的静态输入或验证结论。根/双扩展manifest与lock统一版本，双CHANGELOG、中英文README/listing、手册、support及docs/release-contracts/v0.26.1.md构成发布前输入。
+从main ea0c9b19重新创建0.26.1准备分支，PR328与PR329合入后rebase到main 72338331，不沿用已关闭PR #313的静态输入或验证结论。根/双扩展manifest与lock统一版本，双CHANGELOG、中英文README/listing、手册、support及docs/release-contracts/v0.26.1.md构成发布前输入。
 
 本版纳入已合入主线的root稳定归属、启动失败反馈与准入收口、历史清理/旧协议重连、本地执行生命周期/终端交互/提醒修复、删除输入边界和共享root画布。共享模式适用于同执行环境、用户存储范围与root，关闭模式私有；开关在关闭/reload边界应用，不迁移内容。非最后窗口退出只detach，最后窗口清理可按阶段被新开启窗口接管；未切换模式的普通关闭保持共享运行。工程依据为runtime-shared-root-canvas-sync.md、smoke-reload-autostart-investigation.md、terminal-mouse-input-diagnostics.md与runtime-persistence-modes.md。
 
