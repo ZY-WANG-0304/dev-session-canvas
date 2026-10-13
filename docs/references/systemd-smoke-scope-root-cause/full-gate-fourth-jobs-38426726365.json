@@ -1,0 +1,55 @@
+{
+  "run": 38426726365,
+  "immutable_input": "32ec277bd7eb1d177fb9f188a8425e62b36e8f79",
+  "jobs": [
+    {
+      "id": 115397963674,
+      "name": "native-assets / native-assets (darwin-arm64, macos-15, arm64)",
+      "conclusion": "success",
+      "started_at": "2026-10-13T15:59:21Z",
+      "completed_at": "2026-10-13T16:00:05Z"
+    },
+    {
+      "id": 115397963786,
+      "name": "native-assets / native-assets (darwin-x64, macos-15-intel, x64)",
+      "conclusion": "success",
+      "started_at": "2026-10-13T15:59:19Z",
+      "completed_at": "2026-10-13T16:01:21Z"
+    },
+    {
+      "id": 115397963820,
+      "name": "native-assets / native-assets (win32-arm64, windows-11-arm, arm64, amd64_arm64)",
+      "conclusion": "success",
+      "started_at": "2026-10-13T15:59:16Z",
+      "completed_at": "2026-10-13T16:06:05Z"
+    },
+    {
+      "id": 115397963875,
+      "name": "native-assets / native-assets (linux-x64-glibc, ubuntu-24.04, x64)",
+      "conclusion": "success",
+      "started_at": "2026-10-13T15:59:17Z",
+      "completed_at": "2026-10-13T16:00:06Z"
+    },
+    {
+      "id": 115397963941,
+      "name": "native-assets / native-assets (win32-x64, windows-2025, x64, x64)",
+      "conclusion": "success",
+      "started_at": "2026-10-13T15:59:17Z",
+      "completed_at": "2026-10-13T16:00:48Z"
+    },
+    {
+      "id": 115397963973,
+      "name": "native-assets / native-assets (linux-arm64-glibc, ubuntu-24.04-arm, arm64)",
+      "conclusion": "success",
+      "started_at": "2026-10-13T15:59:19Z",
+      "completed_at": "2026-10-13T16:00:08Z"
+    },
+    {
+      "id": 115401326337,
+      "name": "Full combined release gate",
+      "conclusion": "success",
+      "started_at": "2026-10-13T16:06:07Z",
+      "completed_at": "2026-10-13T16:37:38Z"
+    }
+  ]
+}

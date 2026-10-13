@@ -9,8 +9,8 @@
   "combined_input": "32ec277bd7eb1d177fb9f188a8425e62b36e8f79",
   "tree": "8a68e17121c3ddb8c7d3c00f98255059529d17aa",
   "workflow_head": "fbbc62c100b2e77f75b761df70fd64e7af377e0f",
-  "status": "in_progress",
-  "conclusion": null,
+  "status": "completed",
+  "conclusion": "success",
   "scope": "same immutable input for all six native assets and unfiltered release:preflight/release:verify; does not replace latest PR327 premerge gate after fix merge",
   "previous_runs": [
     {
@@ -87,5 +87,8 @@
     "tests/playwright/fixtures/screenshot-fonts/cjk-regular.woff": "63150de01cec9d99d076b89637aab33ef3098ffa81c1cddd44aa4b283c0bc4f2",
     ".github/workflows/release-preflight.yml": "2987f87b36cb713ac1359e58f84782484e0090d2dd0c5b858cea2b1cc4cbbad3",
     ".github/workflows/publish-marketplace-release.yml": "4e65d70ee17de100a237d09098e72bca3f85f7e66544f32a67afa90fe940713c"
-  }
+  },
+  "result_file": "full-gate-fourth-result-38426726365.json",
+  "source_fix_pr_head_at_verification": "7834f105487b7fcd4112921d0fc5fd418767b9d8",
+  "source_match": "scripts/tests/workflows match combined input; subsequent fix changes are evidence/docs only; release material is exclusively PR327"
 }

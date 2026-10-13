@@ -18,7 +18,7 @@
     "result": "original PNG strict assertion passed; regular only",
     "regular_and_bold_candidate": "186 differing pixels; rejected"
   },
-  "ci_validation": "fixed font plus Ubuntu22.04 focused control passed; final complete gate pending",
+  "ci_validation": "fourth full combined gate38426726365 Webview426/426 and entire release verify passed",
   "evidence_sha256": {
     "38424638753-error-context.md.gz": "57d3c0d0db9637b0950b212d0ae5f7d64a2f61a6318b2a35816742bb5e009711",
     "38425793707-fonts.txt": "2ccd82ff4c4fd7ebe98131258b5b6debce1036860a15f295bc6bda4d168a680a",

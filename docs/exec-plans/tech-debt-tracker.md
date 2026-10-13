@@ -806,9 +806,9 @@ CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smo
 后续建议正式修复fake成功场景的probe测试依赖边界，并保留原摘要校验、原backend断言和预算；真实bus不可用fallback及unknown/no-submit负例独立验收，不把fake通过视作真实manager已验。新证据见docs/references/systemd-smoke-scope-root-cause/，计划docs/exec-plans/completed/systemd-smoke-scope-root-cause.md。两个临时workflow已归档移除；原完整失败不被诊断control通过覆盖。
 
 
-## 发布门禁关联修复集中收口（2026-10-13，PR329，验证中）
+## 发布门禁关联修复集中收口（2026-10-14，PR329，组合完整已验证）
 
-上述“正式修复未实施”为诊断结束时的历史状态。用户授权继续修复后，PR329纳入PR331最终根因/控制证据、原两个修复及WORKFLOW约定；新增TEST_SYSTEMD_RUN_SHIM明确覆盖fake成功场景前置probe，转发原只读launcher并保留原回执/摘要校验、预算和后端断言。默认真实systemd-run和fallback/unknown规则不变；fallback显式清空依赖并保留零systemctl提交验收。相关回归及临时组合0.26.1完整验证进行中，未追认发布通过。接续计划docs/exec-plans/active/release-gate-consolidated-repair.md。
+上述“正式修复未实施”为诊断结束时的历史状态。用户授权继续修复后，PR329纳入PR331最终根因/控制证据、原两个修复及WORKFLOW约定；新增TEST_SYSTEMD_RUN_SHIM明确覆盖fake成功场景前置probe，转发原只读launcher并保留原回执/摘要校验、预算和后端断言。默认真实systemd-run和fallback/unknown规则不变；fallback显式清空依赖并保留零systemctl提交验收。相关回归及临时组合0.26.1完整验证已通过第四轮38426726365，修复尚未合入，不追认已发布。接续计划docs/exec-plans/completed/release-gate-consolidated-repair.md。
 
 
 集中修复接续：首轮38412908952已通过原fake systemd两阶段；fallback启动前VSCode因空XDG_RUNTIME_DIR选择129字节user-data IPC路径，超Linux107字节并listen EINVAL。PR329继续补齐fallback短user-data，不改空bus、真实probe、legacy或零提交断言；完整门禁仍失败，SSH/Webview/VSIX未触达。证据与正式方案见systemd-smoke-scope-root-cause.md。
@@ -816,3 +816,5 @@ CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smo
 第三轮44282298/run38417836576已过systemd/fallback零提交/SSH退出保留，Webview425/426首败4319像素字体差异；clean-checkout未触达。CI系统Noto对照38424638753仍24像素失败；PR329固定原基线Regular中文字体子集，仅Linux基线用例使用，原PNG/预算/像素断言保持。本地原断言通过，干净CI和最终组合完整结果仍待验，详见systemd-smoke-scope-root-cause.md。
 
 截图单变量结论：固定字体Ubuntu24.04仍24像素；同输入、同Chromium切22.04/run38426201759严格断言通过，正式preflight和tag prepare固定22.04。原失败证据保留，最终同输入六平台+完整release门禁重跑中；不将截图单项通过当完整发布通过。
+
+最终集中修复验证（2026-10-14）：第四轮38426726365固定32ec277b同输入六平台资产与原完整release:verify exit0，SSH退出/保留、systemd/fallback零提交、Webview426/426、clean-checkout生产VSIX及八场景packaged smoke通过。PR329正式夹具修复已验证，原失败限定历史输入；PR327仍独立draft，修复合入后rebase及正式最新预合并门禁仍是发布前要求，不追认已发布。最终证据full-gate-fourth-result-38426726365.json。

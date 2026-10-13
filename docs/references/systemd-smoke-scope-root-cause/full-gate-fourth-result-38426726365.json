@@ -1,0 +1,55 @@
+{
+  "temporary_combination_only": true,
+  "run": "38426726365",
+  "workflow_head": "fbbc62c100b2e77f75b761df70fd64e7af377e0f",
+  "input": "32ec277bd7eb1d177fb9f188a8425e62b36e8f79",
+  "fix_head": "605ec4acba16acf258dad274c4211aa1fe652d6c",
+  "release_head": "42d87b3d59d3147199a3fef9f2ee0b40de4534cf",
+  "native_assets": "success",
+  "steps": {
+    "combined-preflight": {
+      "exit": 0,
+      "log_bytes": 160,
+      "log_sha256": "fa01f229bf38f90968a26d26441a2391a42d34ac2f40702bb36b292749b4e77e"
+    },
+    "combined-release-verify": {
+      "exit": 0,
+      "log_bytes": 16536231,
+      "log_sha256": "d8b79154e68bb6f5d0d3c048c416ce3a16fb4a015b1c6f1032158f94fbbb4592"
+    }
+  },
+  "tree": "8a68e17121c3ddb8c7d3c00f98255059529d17aa",
+  "actions_job": 115401326337,
+  "actions_job_conclusion": "success",
+  "not_reached": [],
+  "passed": [
+    "all six same-input native assets",
+    "static preflight",
+    "unfiltered npm test including all source smoke",
+    "fake systemd setup/verify",
+    "real unavailable fallback setup/verify and zero systemctl submission",
+    "SSH exit and retain",
+    "Webview 426/426 including unchanged baseline screenshot",
+    "clean checkout npm ci",
+    "clean checkout production VSIX packaging",
+    "VSIX packaged-payload smoke (eight original scenarios)"
+  ],
+  "evidence_excerpt": [
+    "16:21:33.9853699Z Fake systemd-user real window reopen smoke passed.",
+    "16:22:26.4306079Z Systemd unavailable before submission real window reopen smoke passed.",
+    "16:22:26.4307707Z Systemd unavailable fallback did not submit any systemctl command.",
+    "16:23:26.2566664Z Remote SSH real window reopen exit smoke passed.",
+    "16:24:24.8489018Z Remote SSH real window reopen retain smoke passed.",
+    "16:33:01.9085767Z 426 passed (8.5m)",
+    "16:33:29.6743145Z clean checkout VSIX: dev-session-canvas-0.26.1.vsix (5.72 MB)",
+    "16:37:31.9016308Z VSIX packaged-payload smoke passed (owned-canvas-reconciliation, local-execution-flow, snapshot-only-manual-recovery, local-surface-cutover, local-pty-robustness, local-preparation-failure, local-links-and-stop, trusted).",
+    "16:37:31.9202458Z clean checkout 验证完成。",
+    "16:37:33.9885392Z 发布完整验证通过：v0.26.1"
+  ],
+  "complete_actions_log": {
+    "bytes": 19949293,
+    "sha256": "c995ce7837bfb0ee32f7d92619d66d97d823b9b7b0113f39fdfca29fd94656da",
+    "retrieved_after_completion": true
+  },
+  "temporary_entry_removed_commit": "8ccf915e"
+}

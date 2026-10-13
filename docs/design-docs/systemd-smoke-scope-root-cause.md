@@ -1,12 +1,12 @@
 ---
 title: fake systemd 重开门禁后端不匹配根因调查
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains: [VSCode 集成域, 执行编排域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/systemd-smoke-scope-root-cause.md, docs/exec-plans/active/release-gate-consolidated-repair.md]
-updated_at: 2026-10-13
+related_plans: [docs/exec-plans/completed/systemd-smoke-scope-root-cause.md, docs/exec-plans/completed/release-gate-consolidated-repair.md]
+updated_at: 2026-10-14
 ---
 
 # fake systemd 重开门禁后端不匹配根因调查
@@ -21,7 +21,7 @@ updated_at: 2026-10-13
 
 override已进入preferredBackends（systemd-user/legacy-detached），选择前发现absent，排除override失效及存量owner复用。实际probe是code1/Connection refused，无超时或信号，无摘要回执；不是摘要不匹配或正式systemctl提交失败。产品明确不可用后的fallback符合当前契约，这一根因不归为VSCode缺陷。
 
-原run38387068827没有probe结果trace，后续重现不冒充补回历史观测。根因与因果对照已验证；用户随后授权继续修复并集中到PR329，正式修复及完整组合门禁仍在验证中。
+原run38387068827没有probe结果trace，后续重现不冒充补回历史观测。根因与因果对照已验证；用户随后授权继续修复并集中到PR329，正式修复及完整组合门禁已在第四轮通过，详见最终结果。
 
 ## 验证方法
 
@@ -56,7 +56,7 @@ docs/exec-plans/completed/systemd-smoke-scope-root-cause.md覆盖源码跟踪、
 
 ## 正式修复本地结果
 
-84项原scope函数受控用例（默认及shim各40项，另4项依赖选择/非法路径）、12项实际launcher/摘要不匹配/非法回执/退出或信号失败/超时及子进程收口/场景作用域、26项原准备流程、runner env、typecheck及指定既有六平台资产build通过。原nonce和摘要校验真实执行，超时归unknown且自有子进程消失。记录见repair-local-checks.json；完整临时组合验证尚未完成，不将本地通过写为完整发布通过。
+84项原scope函数受控用例（默认及shim各40项，另4项依赖选择/非法路径）、12项实际launcher/摘要不匹配/非法回执/退出或信号失败/超时及子进程收口/场景作用域、26项原准备流程、runner env、typecheck及指定既有六平台资产build通过。原nonce和摘要校验真实执行，超时归unknown且自有子进程消失。记录见repair-local-checks.json；本地结果不替代完整门禁；第四轮完整结果见下文。
 
 
 新增scope回归在原main22803dd8源码私有副本exit1：默认真实命令用例通过后，新增shim命令断言明确拒绝仍执行/usr/bin/systemd-run的旧实现。记录见repair-baseline-regression.json。临时组合输入dc5178ee41bc1dda3d370a24923559d683eac727（修复40364a85加发布42d87b3d）/tree79bd256b，run38412908952失败于后续fallback短路径夹具，原fake已通过；永久修复PR不包含临时自动入口。
@@ -84,4 +84,11 @@ docs/exec-plans/completed/systemd-smoke-scope-root-cause.md覆盖源码跟踪、
 
 固定字体CI38425793707仍24像素失败；同源码输入71b6bbcd、同Chromium147.0.7727.15/1217、只将runner换为Ubuntu22.04的38426201759，原严格截图通过。确认既有PNG的基线环境依赖Ubuntu22.04及Noto Regular回退，ubuntu-latest24.04并非等价渲染环境；未断言FreeType或某个系统库是24像素差异的具体实现原因。正式将release-preflight的verify-release-contract和publish-marketplace-release的prepare固定ubuntu-22.04，与固定字符字体共同保障前置验证及tag验证同环境。六平台native构建及其他jobs不改。升级视觉基线OS应作为显式迁移复核，不能隐式跟随latest。
 
-第四轮完整组合32ec277b（修复605ec4ac及发布42d87b3d）/run38426726365重建同输入六平台native资产，原unfiltered release:preflight/release:verify进行中。最新源文件hash及先前三轮结果见repair-combined-input.json；最终结果仍待验。
+第四轮完整组合32ec277b（修复605ec4ac及发布42d87b3d）/run38426726365重建同输入六平台native资产，原unfiltered release:preflight/release:verify已通过。源文件hash、先前三轮及最终结果见repair-combined-input.json与下文。
+
+
+## 最终完整组合结果（2026-10-14，北京时间）
+
+第四轮run38426726365/job115401326337已成功，输入32ec277b/tree8a68e171，修复605ec4ac加发布42d87b3d。六平台资产均由同输入重建；静态preflight与原unfiltered release:verify exit0。源码smoke、fake systemd两阶段、真实不可用fallback及零提交、SSH退出和保留全部通过；Webview426/426保留原PNG严格断言；隔离clean-checkout npm ci、5.72MB生产VSIX及原八个packaged-payload smoke场景通过，日志明确“发布完整验证通过：v0.26.1”。最终回执/log hash见full-gate-fourth-result-38426726365.json，原三轮失败和所有单变量对照仍分别保留。临时自动workflow已在验证结束移除，未创建新PR。
+
+此次已验证状态只覆盖正式夹具和该固定组合输入，不扩展为真实user manager或三平台桌面集成测试；native六平台构建与Linux完整集成分别陈述。当前修复PR与组合输入的scripts/tests/workflows逐字节一致，后续仅证据/文档变化。修复尚未合入，PR327保留draft和原head；其最新预合并正式门禁须在修复合入、rebase之后运行，本次不合并、打tag或发布。

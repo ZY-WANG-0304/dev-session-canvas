@@ -12,13 +12,13 @@
 - [x] (2026-10-13) 导入PR331最终文档/证据，选择受限probe执行依赖并同步正式方案。
 - [x] (2026-10-13) 实现fake probe转发、场景作用域；84项scope及12项实际launcher/超时/子进程收口/场景回归通过。
 - [x] (2026-10-13) 本地回归/typecheck/build通过，PR329已推40364a85，PR331最终内容保留后关闭。
-- [ ] (2026-10-13) 临时分支已组合PR327，前两轮分别失败于fallback VSCode IPC路径；第三轮44282298/run38417836576失败于最后Webview截图，继续修复并完整重跑。
+- [x] 临时分支组合PR327，前两轮fallback/第三轮截图失败分别保留，修复后第四轮完整通过。
 - [x] (2026-10-13) 补齐fallback短user-data路径，实际Unix socket/空bus/settings回归通过；原main基线新用例exit1；前两轮失败分别保留。
 - [x] 第三轮44282298/run38417836576通过源码smoke、systemd/fallback/no-submit和SSH退出/保留；Webview425/426，截图首败，clean-checkout未触达。
 - [x] 同临时分支截图字体/OS对照：4319降24仍失败，固定Regular+Ubuntu22.04/run38426201759原PNG严格断言通过。
 - [x] 固定正式preflight/tag验证OS，workflow回归和actionlint通过。
-- [ ] 第四轮32ec277b/run38426726365重建同输入六平台资产并运行原完整门禁，结果待验。
-- [ ] 保留原失败和最新结果，同步文档/证据及PR状态，归档本计划。
+- [x] 第四轮32ec277b/run38426726365同输入六平台资产、原完整门禁、Webview426/426和clean-checkout VSIX smoke全部通过。
+- [x] 保留原失败和最终结果，同步正式设计/索引/债务/PR；移除临时自动入口，归档计划。
 
 ## 意外与发现
 
@@ -34,7 +34,7 @@
 
 ## 结果与复盘
 
-正式probe依赖及回归已实施；84项scope、12项实际子进程/launcher/场景、26项准备、runner env、typecheck、指定既有资产build通过。完整门禁尚未完成。第三轮六平台同输入资产、源码smoke、systemd/fallback和SSH双场景通过；最后Webview截图失败，clean-checkout未触达。自审修正相邻超时/终止测试的旧PID文件误读后，12项实际用例再次通过；该测试修正后的最新完整输入仍需重跑。历史完整失败、诊断失败和控制通过分别保留；不能用单项通过追认发布成功。
+正式probe依赖、短IPC及固定视觉依赖均已实施；84项scope、12项实际子进程/launcher/场景、26项准备、runner env、typecheck、指定既有资产build通过。第四轮完整门禁已通过。第三轮六平台同输入资产、源码smoke、systemd/fallback和SSH双场景通过；第三轮最后Webview截图失败、clean-checkout未触达；第四轮Webview426/426、clean-checkout生产VSIX及原八场景packaged smoke全部通过。自审修正相邻超时/终止测试的旧PID文件误读后，12项实际用例再次通过；该修正已进入第三轮和当前第四轮完整输入。历史完整失败、诊断失败和控制通过分别保留；不能用单项通过追认发布成功。
 
 ## 上下文与定向
 
@@ -44,7 +44,7 @@
 
 首先在runtimeSystemdEnvironment.ts增加显式Node脚本依赖，默认真实命令保持相同。已新增fake-systemd/systemd-run.cjs仅接受原受限probe参数并执行原launcher，转发stdout/stderr/退出及信号。成功场景启用，fallback显式清空。扩展40项真实源函数受控测试，新增实际子进程转发与环境匹配/不匹配/非法回执用例，接入npm test。
 
-第二阶段在PR329收口文档、回归和用户WORKFLOW改动，相关检查通过后fetch/rebase/push并改写PR描述，确认PR331最终内容被保留后关闭。最后从修复头切临时分支，按顺序cherry-pick PR327的五个发布提交。暂存追加冲突时保留双方记录；无需改PR327。临时push workflow以组合内容提交为不可变input_ref调用runtime-execution-assets.yml六平台构建，然后干净Node22/npm ci/Playwright准备、同输入资产组装、原release:preflight和release:verify。若产生关联新失败，在同一PR修复，保存第一失败并重跑新输入。
+第二阶段在PR329收口文档、回归和用户WORKFLOW改动，相关检查通过后fetch/rebase/push并改写PR描述，确认PR331最终内容被保留后关闭。最后从修复头切临时分支，按顺序cherry-pick PR327的五个发布提交。暂存追加冲突时保留双方记录；无需改PR327。临时push workflow以组合内容提交为不可变input_ref调用runtime-execution-assets.yml六平台构建，然后干净Ubuntu22.04/Node22/npm ci/Playwright准备、同输入资产组装、原release:preflight和release:verify。若产生关联新失败，在同一PR修复，保存第一失败并重跑新输入。
 
 ## 具体步骤
 
@@ -58,7 +58,7 @@
 
 ## 幂等性与恢复
 
-仅编辑自己的修复和临时worktree，不chmod真实共享socket、不删除未知目录/进程。原工作区编辑保留。fetch最新目标后rebase；如确需强推，force-with-lease固定先验证的远端SHA。临时分支不创建PR，不改正式workflow。CI失败保留输入/日志及有界证据；修复后新run独立记录。
+仅编辑自己的修复和临时worktree，不chmod真实共享socket、不删除未知目录/进程。原工作区编辑保留。fetch最新目标后rebase；如确需强推，force-with-lease固定先验证的远端SHA。临时分支不创建PR，临时入口只用于组合验证；正式发布workflow仅按已验证视觉基线固定OS。CI失败保留输入/日志及有界证据；修复后新run独立记录。
 
 ## 接口与依赖
 
@@ -75,3 +75,5 @@
 2026-10-13正式截图方案补齐：固定Regular字形后Ubuntu24.04仍24像素；单变量Ubuntu22.04对照38426201759通过。两个发布完整验证job统一固定22.04，native矩阵保持，最终完整重跑使用相同方案。
 
 修订记录：2026-10-14（北京时间）第四轮完整run38426726365固定32ec277b，源修复605ec4ac、发布42d87b3d；系统22.04、字体固定、六平台资产同输入重建，原unfiltered verify与clean-checkout均保留。
+
+修订记录：2026-10-14完整run38426726365成功，preflight/release:verify均exit0；原三轮失败保留，源修复与当前PR一致，后续仅证据/文档；自动入口移除，本计划归档。修复PR及独立发布PR的合入、PR327 rebase/正式预合并门禁不在本次授权内。

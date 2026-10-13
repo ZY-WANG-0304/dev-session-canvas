@@ -41,5 +41,10 @@
     "15:22:21.0327954Z Remote SSH real window reopen retain smoke passed.",
     "15:32:11.8409217Z 4319 pixels differ; canvas-shell-baseline.png",
     "15:32:11.8476677Z 425 passed (9.7m)"
-  ]
+  ],
+  "complete_actions_log": {
+    "bytes": 15009340,
+    "sha256": "e5cf919162ef64c52fd5bbf93c648950f22c3a76d5c4b6a778a7e7fb45fba5cf",
+    "retrieved_after_completion": true
+  }
 }
