@@ -1,0 +1,93 @@
+{
+  "run": "r2",
+  "events": [
+    {
+      "type": "run-start",
+      "command": [
+        "node",
+        ".debug/remote-host-lab/scripts/smoke/run-vscode-smoke.mjs"
+      ],
+      "runnerPid": 1206203,
+      "utc": "2026-10-13T04:11:37.427791+00:00"
+    },
+    {
+      "type": "run-exit",
+      "code": 1,
+      "utc": "2026-10-13T04:15:05.833476+00:00"
+    },
+    {
+      "type": "run-end",
+      "utc": "2026-10-13T04:15:08.027371+00:00"
+    }
+  ],
+  "processes": [
+    {
+      "pid": 1305563,
+      "first": {
+        "type": "process",
+        "pid": 1305563,
+        "state": "S",
+        "ppid": 1303213,
+        "startTicks": 248872585,
+        "log": "/tmp/dscsshdiag-r2/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T121403/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T04:14:06.599705+00:00"
+      },
+      "lastAlive": {
+        "type": "process",
+        "pid": 1305563,
+        "state": "S",
+        "ppid": 1303213,
+        "startTicks": 248872585,
+        "log": "/tmp/dscsshdiag-r2/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T121403/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T04:14:58.654278+00:00"
+      },
+      "firstAbsent": {
+        "type": "process",
+        "pid": 1305563,
+        "state": "absent",
+        "log": "/tmp/dscsshdiag-r2/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T121403/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T04:14:59.738593+00:00"
+      },
+      "states": [
+        "D",
+        "R",
+        "S",
+        "absent"
+      ]
+    },
+    {
+      "pid": 1375408,
+      "first": {
+        "type": "process",
+        "pid": 1375408,
+        "state": "R",
+        "ppid": 1303213,
+        "startTicks": 248874327,
+        "log": "/tmp/dscsshdiag-r2/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T121403/exthost2/remoteexthost.log",
+        "utc": "2026-10-13T04:14:22.922698+00:00"
+      },
+      "lastAlive": {
+        "type": "process",
+        "pid": 1375408,
+        "state": "S",
+        "ppid": 1303213,
+        "startTicks": 248874327,
+        "log": "/tmp/dscsshdiag-r2/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T121403/exthost2/remoteexthost.log",
+        "utc": "2026-10-13T04:14:58.654410+00:00"
+      },
+      "firstAbsent": {
+        "type": "process",
+        "pid": 1375408,
+        "state": "absent",
+        "log": "/tmp/dscsshdiag-r2/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T121403/exthost2/remoteexthost.log",
+        "utc": "2026-10-13T04:14:59.738671+00:00"
+      },
+      "states": [
+        "D",
+        "R",
+        "S",
+        "absent"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,197 @@
+{
+  "run": "c3",
+  "root": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen",
+  "events": [
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122435/main.log",
+      "line": "2026-10-13 12:24:45.286 [trace] Lifecycle#kill()",
+      "logSha256": "0360b3e05bf503fed4fbb0438645fd8a6bb18019f085f3e913d7815775664a4e"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122435/main.log",
+      "line": "2026-10-13 12:24:45.294 [info] Extension host with pid 2021672 exited with code: 0, signal: unknown.",
+      "logSha256": "0360b3e05bf503fed4fbb0438645fd8a6bb18019f085f3e913d7815775664a4e"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122435/main.log",
+      "line": "2026-10-13 12:24:45.304 [trace] Lifecycle#app.on(will-quit) - calling app.quit()",
+      "logSha256": "0360b3e05bf503fed4fbb0438645fd8a6bb18019f085f3e913d7815775664a4e"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122345/main.log",
+      "line": "2026-10-13 12:24:31.915 [trace] Lifecycle#kill()",
+      "logSha256": "6baee3b876970037f98ce864f7d219ad5e683b18c82d4d4d0d68edeebb3b700f"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122345/main.log",
+      "line": "2026-10-13 12:24:31.930 [info] Extension host with pid 1970572 exited with code: 0, signal: unknown.",
+      "logSha256": "6baee3b876970037f98ce864f7d219ad5e683b18c82d4d4d0d68edeebb3b700f"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122345/main.log",
+      "line": "2026-10-13 12:24:31.946 [trace] Lifecycle#app.on(will-quit) - calling app.quit()",
+      "logSha256": "6baee3b876970037f98ce864f7d219ad5e683b18c82d4d4d0d68edeebb3b700f"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122435/window1/exthost/exthost.log",
+      "line": "2026-10-13 12:24:37.617 [info] Extension host with pid 2021672 started",
+      "logSha256": "b58b4879ec202d41be843ce8aa3a4d7403b813f011ed7675878c2202253391ce"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122435/window1/exthost/exthost.log",
+      "line": "2026-10-13 12:24:45.278 [info] Extension host terminating: received terminate message from renderer",
+      "logSha256": "b58b4879ec202d41be843ce8aa3a4d7403b813f011ed7675878c2202253391ce"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122435/window1/exthost/exthost.log",
+      "line": "2026-10-13 12:24:45.287 [info] Extension host with pid 2021672 exiting with code 0",
+      "logSha256": "b58b4879ec202d41be843ce8aa3a4d7403b813f011ed7675878c2202253391ce"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122345/window1/exthost/exthost.log",
+      "line": "2026-10-13 12:23:48.292 [info] Extension host with pid 1970572 started",
+      "logSha256": "7e283daf1dce221a4c75997597cf2bceac4b2c64298a0848cb0061d3d1930ccb"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122345/window1/exthost/exthost.log",
+      "line": "2026-10-13 12:24:31.907 [info] Extension host terminating: received terminate message from renderer",
+      "logSha256": "7e283daf1dce221a4c75997597cf2bceac4b2c64298a0848cb0061d3d1930ccb"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/user-data/logs/20261013T122345/window1/exthost/exthost.log",
+      "line": "2026-10-13 12:24:31.916 [info] Extension host with pid 1970572 exiting with code 0",
+      "logSha256": "7e283daf1dce221a4c75997597cf2bceac4b2c64298a0848cb0061d3d1930ccb"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/remoteagent.log",
+      "line": "2026-10-13 12:24:22.422 [info] [<unknown>][106a2d24][ExtensionHostConnection] <2006731> Launched Extension Host Process.",
+      "logSha256": "aa79a2091a2288f1826f66f3d2bf9f700aa50ad7df94f2537bc2ebb94edf2f33"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/remoteagent.log",
+      "line": "2026-10-13 12:24:39.134 [info] [<unknown>][0f51f47e][ExtensionHostConnection] <2023323> Launched Extension Host Process.",
+      "logSha256": "aa79a2091a2288f1826f66f3d2bf9f700aa50ad7df94f2537bc2ebb94edf2f33"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost1/remoteexthost.log",
+      "line": "2026-10-13 12:24:23.787 [info] Extension host with pid 2006731 started",
+      "logSha256": "fc26f5c40c9f5d2e67fe2b44cda24e99dbaebc5a592aac5caa5db960b7d2dbcb"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost2/remoteexthost.log",
+      "line": "2026-10-13 12:24:40.225 [info] Extension host with pid 2023323 started",
+      "logSha256": "487b9d53a9aff784f75f0eac31e4e53e8030121b3f35cd796384df09f3af6872"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost2/remoteexthost.log",
+      "line": "2026-10-13 12:24:45.269 [info] Extension host terminating: received terminate message from renderer",
+      "logSha256": "487b9d53a9aff784f75f0eac31e4e53e8030121b3f35cd796384df09f3af6872"
+    },
+    {
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost2/remoteexthost.log",
+      "line": "2026-10-13 12:24:45.296 [info] Extension host with pid 2023323 exiting with code 0",
+      "logSha256": "487b9d53a9aff784f75f0eac31e4e53e8030121b3f35cd796384df09f3af6872"
+    }
+  ],
+  "runEvents": [
+    {
+      "type": "run-start",
+      "command": [
+        "node",
+        ".debug/remote-host-lab/scripts/smoke/run-vscode-smoke.mjs"
+      ],
+      "runnerPid": 1904626,
+      "utc": "2026-10-13T04:22:58.779962+00:00"
+    },
+    {
+      "type": "remote-log",
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost2/remoteexthost.log",
+      "line": "2026-10-13 12:24:45.269 [info] Extension host terminating: received terminate message from renderer",
+      "utc": "2026-10-13T04:24:45.372922+00:00"
+    },
+    {
+      "type": "remote-log",
+      "path": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost2/remoteexthost.log",
+      "line": "2026-10-13 12:24:45.296 [info] Extension host with pid 2023323 exiting with code 0",
+      "utc": "2026-10-13T04:24:45.373018+00:00"
+    },
+    {
+      "type": "run-exit",
+      "code": 0,
+      "utc": "2026-10-13T04:24:52.205787+00:00"
+    },
+    {
+      "type": "run-end",
+      "utc": "2026-10-13T04:24:54.215641+00:00"
+    }
+  ],
+  "processes": [
+    {
+      "pid": 2006731,
+      "first": {
+        "type": "process",
+        "pid": 2006731,
+        "state": "R",
+        "ppid": 2006698,
+        "startTicks": 248934378,
+        "log": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T04:24:23.989255+00:00"
+      },
+      "lastAlive": {
+        "type": "process",
+        "pid": 2006731,
+        "state": "S",
+        "ppid": 2006698,
+        "startTicks": 248934378,
+        "log": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T04:24:31.299813+00:00"
+      },
+      "firstAbsent": {
+        "type": "process",
+        "pid": 2006731,
+        "state": "absent",
+        "log": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T04:24:32.304121+00:00"
+      },
+      "states": [
+        "R",
+        "S",
+        "absent"
+      ]
+    },
+    {
+      "pid": 2023323,
+      "first": {
+        "type": "process",
+        "pid": 2023323,
+        "state": "R",
+        "ppid": 2006698,
+        "startTicks": 248936049,
+        "log": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost2/remoteexthost.log",
+        "utc": "2026-10-13T04:24:40.349444+00:00"
+      },
+      "lastAlive": {
+        "type": "process",
+        "pid": 2023323,
+        "state": "R",
+        "ppid": 2006698,
+        "startTicks": 248936049,
+        "log": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost2/remoteexthost.log",
+        "utc": "2026-10-13T04:24:44.970911+00:00"
+      },
+      "firstAbsent": {
+        "type": "process",
+        "pid": 2023323,
+        "state": "absent",
+        "log": "/tmp/dscsshdiag-c3/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T122422/exthost2/remoteexthost.log",
+        "utc": "2026-10-13T04:24:45.373109+00:00"
+      },
+      "states": [
+        "D",
+        "R",
+        "S",
+        "absent"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,164 @@
+nativeExtensionService.ts:471
+471: 	protected async _onExtensionHostExit(code: number): Promise<void> {
+472: 		// Dispose everything associated with the extension host
+473: 		await this._doStopExtensionHosts();
+474:
+475: 		// Dispose the management connection to avoid reconnecting after the extension host exits
+476: 		const connection = this._remoteAgentService.getConnection();
+477: 		connection?.dispose();
+478:
+479: 		if (parseExtensionDevOptions(this._environmentService).isExtensionDevTestFromCli) {
+480: 			// When CLI testing make sure to exit with proper exit code
+481: 			if (isCI) {
+482: 				this._logService.info(`Asking native host service to exit with code ${code}.`);
+483: 			}
+484: 			this._nativeHostService.exit(code);
+485: 		} else {
+486: 			// Expected development extension termination: When the extension host goes down we also shutdown the window
+487: 			this._nativeHostService.closeWindow();
+488: 		}
+489: 	}
+490:
+
+abstractExtensionService.ts:744
+744: 	protected async _doStopExtensionHosts(): Promise<void> {
+745: 		const previouslyActivatedExtensionIds: ExtensionIdentifier[] = [];
+746: 		for (const extensionStatus of this._extensionStatus.values()) {
+747: 			if (extensionStatus.activationStarted) {
+748: 				previouslyActivatedExtensionIds.push(extensionStatus.id);
+749: 			}
+750: 		}
+751:
+752: 		await this._extensionHostManagers.stopAllInReverse();
+753: 		for (const extensionStatus of this._extensionStatus.values()) {
+754: 			extensionStatus.clearRuntimeStatus();
+755: 		}
+756:
+757: 		if (previouslyActivatedExtensionIds.length > 0) {
+758: 			this._onDidChangeExtensionsStatus.fire(previouslyActivatedExtensionIds);
+759: 		}
+760: 	}
+761:
+
+abstractExtensionService.ts:1331
+1331: 	}
+1332:
+1333: 	public async stopAllInReverse(): Promise<void> {
+1334: 		// See https://github.com/microsoft/vscode/issues/152204
+1335: 		// Dispose extension hosts in reverse creation order because the local extension host
+1336: 		// might be critical in sustaining a connection to the remote extension host
+1337: 		for (let i = this._extensionHostManagers.length - 1; i >= 0; i--) {
+1338: 			const manager = this._extensionHostManagers[i];
+1339: 			await manager.extensionHost.disconnect();
+1340: 			manager.dispose();
+1341: 		}
+1342: 		this._extensionHostManagers = [];
+1343: 	}
+
+remoteExtensionHost.ts:273
+273: 	async disconnect() {
+274: 		if (this._protocol && !this._hasDisconnected) {
+275: 			this._protocol.send(createMessageOfType(MessageType.Terminate));
+276: 			this._protocol.sendDisconnect();
+277: 			this._hasDisconnected = true;
+278: 			await this._protocol.drain();
+279: 		}
+280: 	}
+281:
+282: 	override dispose(): void {
+283: 		super.dispose();
+284:
+285: 		this._terminating = true;
+286: 		this.disconnect();
+287:
+288: 		if (this._protocol) {
+289: 			// Send the extension host a request to terminate itself
+290: 			// (graceful termination)
+291: 			// setTimeout(() => {
+292: 			// console.log(`SENDING TERMINATE TO REMOTE EXT HOST!`);
+293: 			this._protocol.getSocket().end();
+294: 			// this._protocol.drain();
+295: 			this._protocol = null;
+296: 			// }, 1000);
+297: 		}
+298: 	}
+299: }
+
+ipc.net.ts:447
+447: 	public drain(): Promise<void> {
+448: 		this.flush();
+449: 		return this._socket.drain();
+450: 	}
+451:
+452: 	public flush(): void {
+453: 		// flush
+454: 		this._writeNow();
+455: 	}
+
+ipc.net.ts:518
+518: 		if (this._totalLength === 0) {
+519: 			return;
+520: 		}
+521: 		if (this._isPaused) {
+522: 			return;
+523: 		}
+524: 		const data = this._bufferTake();
+525: 		this._socket.traceSocketEvent(SocketDiagnosticsEventType.ProtocolWrite, { byteLength: data.byteLength });
+526: 		this._socket.write(data);
+527: 	}
+528: }
+
+extHostManagedSockets.ts:86
+86: 	}
+87:
+88: 	$remoteSocketWrite(socketId: number, buffer: VSBuffer): void {
+89: 		this._managedRemoteSockets.get(socketId)?.actual.send(buffer.buffer);
+90: 	}
+91:
+92: 	$remoteSocketEnd(socketId: number): void {
+93: 		const socket = this._managedRemoteSockets.get(socketId);
+94: 		if (socket) {
+95: 			socket.actual.end();
+96: 			socket.dispose();
+97: 		}
+98: 	}
+99:
+100: 	async $remoteSocketDrain(socketId: number): Promise<void> {
+101: 		await this._managedRemoteSockets.get(socketId)?.actual.drain?.();
+102: 	}
+103: }
+
+mainThreadManagedSockets.ts:116
+116: 	public override write(buffer: VSBuffer): void {
+117: 		this.proxy.$remoteSocketWrite(this.socketId, buffer);
+118: 	}
+119:
+120: 	protected override closeRemote(): void {
+121: 		this.proxy.$remoteSocketEnd(this.socketId);
+122: 	}
+123:
+124: 	public override drain(): Promise<void> {
+125: 		return this.proxy.$remoteSocketDrain(this.socketId);
+126: 	}
+127: }
+
+extensionHostProcess.ts:212
+212: 				onTerminate('VSCODE_EXTHOST_IPC_SOCKET timeout');
+213: 			}, 60000);
+214:
+215: 			const reconnectionGraceTime = readReconnectionValue('VSCODE_RECONNECTION_GRACE_TIME', ProtocolConstants.ReconnectionGraceTime);
+216: 			const reconnectionShortGraceTime = reconnectionGraceTime > 0 ? Math.min(ProtocolConstants.ReconnectionShortGraceTime, reconnectionGraceTime) : 0;
+217: 			const disconnectRunner1 = new ProcessTimeRunOnceScheduler(() => onTerminate('renderer disconnected for too long (1)'), reconnectionGraceTime);
+218: 			const disconnectRunner2 = new ProcessTimeRunOnceScheduler(() => onTerminate('renderer disconnected for too long (2)'), reconnectionShortGraceTime);
+
+extensionHostProcess.ts:244
+244: 						protocol.sendResume();
+245: 						Event.once(protocol.onDidDispose)(() => onTerminate('renderer disconnected'));
+246: 						resolve(protocol);
+247:
+248: 						// Wait for rich client to reconnect
+249: 						protocol.onSocketClose(() => {
+250: 							// The socket has closed, let's give the renderer a certain amount of time to reconnect
+251: 							disconnectRunner1.schedule();
+252: 						});
+253: 					}

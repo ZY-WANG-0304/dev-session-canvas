@@ -1,0 +1,11 @@
+{
+  "commit": "2a59476c9bfcb90b3ddc372c36762471b7dfad1c",
+  "stock": "631c1d79c4f3af9177ca23a70cfe0cf2586a692678bd897af6c869324160d905",
+  "r1": "631c1d79c4f3af9177ca23a70cfe0cf2586a692678bd897af6c869324160d905",
+  "r2": "9ee62ca8b7d18825d897533980dc7e0f177edde6ef6786ab4abfc549916dcb5d",
+  "r3": "714ec413438c42f30ed14b5ab268ad098f8fe75a883ef41860bca04bb4b3fc18",
+  "c1": "cd15aa5149f465f9a1eadcaa6b23ff999b690bffed51af9a9d03680e8f8f00f6",
+  "c2": "cd15aa5149f465f9a1eadcaa6b23ff999b690bffed51af9a9d03680e8f8f00f6",
+  "r2_r3_changes": "只增加退出阶段日志；R3 console 改为 logService 以落盘",
+  "c1_c2_changes": "仅 setup 的副本 test URI 触发抑制 terminate/disconnect；C2 另用已核对身份的 Host-only SIGKILL 控制"
+}

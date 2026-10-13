@@ -1,0 +1,17 @@
+{
+  "ipc.net.ts": "87a89efc8e75849c5908f7c3ec76bf7df4dde100e746ec17b8aed04697da6f88",
+  "extHostExtensionService.ts": "c369a154a909de184aa6cfabce0e8e79118cb1301f8a3daa4d69a19150808679",
+  "mainThreadManagedSockets.ts": "d5dc2e11d9fff7fe5f5af009a6802d3911708e6b5f983ca373d832764ea6d9a1",
+  "extensionHostConnection.ts": "04f84d0cce10e6e5d6b720f297e6d0fd39f4d0e91357a15dbc14a4f018fabae2",
+  "remoteExtensionHost.ts": "60bab515f8f9db98f7222431926fcc803a8b2a25d6aace300e8473a23acd9372",
+  "extHostManagedSockets.ts": "31b42416dc2f986ce99c7b6129ce6b50f57699ec0eea6780ca27687e185d1c0a",
+  "nativeExtensionService.ts": "61106bf910e59077b57bee80c8f84b7c9d88e1776c25b500987585a801f67f4a",
+  "extensionHostManager.ts": "98b7936a8c536250e909c35a71cdfec1df3458d550b62dfdebf38bb1d6cc0dcd",
+  "managedSocket.ts": "41cc6023c2f929445d9789b988a4ed81e3c1e8159906ac24bd27133113c70c4d",
+  "browserSocketFactory.ts": "a198f8c217e24e0dda805affede80aa8ccc91fa78c6758144260c4e4ccfc33fe",
+  "mainThreadExtensionService.ts": "310760ceb8751d5509fb4b9a210b17321a5e7cdc8eced7b4674bf00e0c2a022c",
+  "extensionHostProcess.ts": "554b7bd4ec0dec85f501b6e30631926e764c199b189c77443e575055b0f58e3b",
+  "extensionsScannerService.ts": "aa339bafed8740339d1d4c3bef5997037f5a3c117c911031eb19b61a2194b3e4",
+  "node-ipc.net.ts": "87e59dba1b379659fb7e1a1520a4f51afc91bde0f36eef46bc5b3b196679a743",
+  "abstractExtensionService.ts": "32ef155ea42727e3f94809cf96f321bc86fbeaaa30ecc80b11a5dcb19a74be83"
+}
