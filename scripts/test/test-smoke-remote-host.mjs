@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import path from 'node:path';
+const serverRoot = path.resolve('private-fixture-server');
+const serverNode = path.join(serverRoot, 'node');
 const control = createRequire(import.meta.url)('../../tests/vscode-smoke/remote-host-control.cjs');
 
 const expected = { pid: 12345, startTicks: '100', state: 'S' };
@@ -10,14 +13,14 @@ const test = (name, run) => tests.push({ name, run });
 const live = async () => ({ ...expected });
 
 for (const [field, scope] of [
-  ['UID', { uid: 2000, args: ['/private/server/node', '--type=extensionHost'] }],
-  ['root', { uid: 1000, args: ['/another/server/node', '--type=extensionHost'] }],
-  ['role', { uid: 1000, args: ['/private/server/node', '--type=ptyHost'] }],
-  ['root prefix', { uid: 1000, args: ['/private/server-other/node', '--type=extensionHost'] }]
+  ['UID', { uid: 2000, args: [serverNode, '--type=extensionHost'] }],
+  ['root', { uid: 1000, args: [path.join(path.resolve('another-server'), 'node'), '--type=extensionHost'] }],
+  ['role', { uid: 1000, args: [serverNode, '--type=ptyHost'] }],
+  ['root prefix', { uid: 1000, args: [path.join(`${serverRoot}-other`, 'node'), '--type=extensionHost'] }]
 ]) {
   test(`wrong ${field} never authorizes a Host signal`, async () => {
     let signals = 0;
-    await assert.rejects(control.terminatePrivateHost(expected, '/private/server', {
+    await assert.rejects(control.terminatePrivateHost(expected, serverRoot, {
       uid: 1000, read: live, readScope: async () => scope, signal: () => signals++
     }));
     assert.equal(signals, 0);
@@ -25,9 +28,9 @@ for (const [field, scope] of [
 }
 test('PID reused during scope reads cannot authorize a signal', async () => {
   let reads = 0, signals = 0;
-  await assert.rejects(control.terminatePrivateHost(expected, '/private/server', {
+  await assert.rejects(control.terminatePrivateHost(expected, serverRoot, {
     uid: 1000, read: async () => ({ ...expected, startTicks: ++reads === 1 ? '100' : '101' }),
-    readScope: async () => ({ uid: 1000, args: ['/private/server/node', '--type=extensionHost'] }),
+    readScope: async () => ({ uid: 1000, args: [serverNode, '--type=extensionHost'] }),
     signal: () => signals++
   }), /no longer live/);
   assert.equal(signals, 0);
@@ -55,9 +58,9 @@ test('unconfirmed exit fails within its original budget', async () => {
 });
 test('Host control confirms disappearance after exactly one scoped signal', async () => {
   let actual = { ...expected }, signals = 0;
-  await control.terminatePrivateHost(expected, '/private/server', {
+  await control.terminatePrivateHost(expected, serverRoot, {
     uid: 1000, read: async () => actual,
-    readScope: async () => ({ uid: 1000, args: ['/private/server/node', '--type=extensionHost'] }),
+    readScope: async () => ({ uid: 1000, args: [serverNode, '--type=extensionHost'] }),
     signal: (pid, name) => { assert.equal(pid, expected.pid); assert.equal(name, 'SIGKILL'); actual = undefined; signals++; }
   });
   assert.equal(signals, 1);
