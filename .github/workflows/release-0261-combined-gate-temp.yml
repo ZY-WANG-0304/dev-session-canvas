@@ -1,0 +1,97 @@
+name: Temporary 0.26.1 Combined Release Gate
+
+on:
+  push:
+    branches: [release-0261-combined-gate-temp]
+    paths: [.github/workflows/release-0261-combined-gate-temp.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  native-assets:
+    uses: ./.github/workflows/runtime-execution-assets.yml
+    with:
+      input_ref: 32260b9fc58df3ed6a5b75d8f3b2b8bdfd78fb6a
+
+  verify-release:
+    name: Full combined release gate
+    needs: native-assets
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+      DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/tm-${{ github.run_id }}
+      DSC_COMBINED_INPUT: 32260b9fc58df3ed6a5b75d8f3b2b8bdfd78fb6a
+      DSC_FIX_INPUT: 6f201f52d71e91bd081a71aff88fb3145b654a2d
+      DSC_RELEASE_INPUT: 42d87b3d59d3147199a3fef9f2ee0b40de4534cf
+    steps:
+      - name: Require successful six-platform assets
+        run: test '${{ needs.native-assets.result }}' = success
+      - name: Checkout immutable combined input without temporary workflow
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: 32260b9fc58df3ed6a5b75d8f3b2b8bdfd78fb6a
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Install release verification browser
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Download same-run native assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: execution-native-*-${{ github.run_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/execution-native-archives
+      - name: Assemble same-input native assets
+        run: |
+          node scripts/build/assemble-execution-distribution-assets.mjs --source "$RUNNER_TEMP/execution-native-archives" --output "$RUNNER_TEMP/execution-native-platform" --input-sha "$DSC_COMBINED_INPUT"
+          echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$RUNNER_TEMP/execution-native-platform" >> "$GITHUB_ENV"
+      - name: Static release preflight
+        shell: bash
+        run: |
+          set -uo pipefail
+          npm run release:preflight -- --version 0.26.1 2>&1 | tee "$RUNNER_TEMP/combined-preflight.log"
+          status=${PIPESTATUS[0]}
+          echo "$status" > "$RUNNER_TEMP/combined-preflight.exit"
+          exit "$status"
+      - name: Unfiltered full release verification
+        shell: bash
+        run: |
+          set -uo pipefail
+          test -z "${DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER:-}"
+          npm run release:verify -- --version 0.26.1 2>&1 | tee "$RUNNER_TEMP/combined-release-verify.log"
+          status=${PIPESTATUS[0]}
+          echo "$status" > "$RUNNER_TEMP/combined-release-verify.exit"
+          exit "$status"
+      - name: Preserve finite input and result evidence
+        if: always()
+        env:
+          DSC_NATIVE_RESULT: ${{ needs.native-assets.result }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          report = {'temporary_combination_only': True, 'run': os.environ['GITHUB_RUN_ID'], 'workflow_head': os.environ['GITHUB_SHA'], 'input': os.environ['DSC_COMBINED_INPUT'], 'fix_head': os.environ['DSC_FIX_INPUT'], 'release_head': os.environ['DSC_RELEASE_INPUT'], 'native_assets': os.environ['DSC_NATIVE_RESULT'], 'steps': {}}
+          report['tree'] = subprocess.check_output(['git', 'rev-parse', os.environ['DSC_COMBINED_INPUT'] + '^{tree}'], text=True).strip()
+          for name in ['combined-preflight', 'combined-release-verify']:
+              log = root / (name + '.log')
+              code = root / (name + '.exit')
+              report['steps'][name] = {'exit': int(code.read_text()) if code.exists() else None, 'log_bytes': log.stat().st_size if log.exists() else None, 'log_sha256': hashlib.sha256(log.read_bytes()).hexdigest() if log.exists() else None}
+          (root / 'combined-release-result.json').write_text(json.dumps(report, indent=2))
+          print(json.dumps(report, indent=2))
+          PY
+      - name: Upload finite result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-release-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/combined-release-result.json
+          if-no-files-found: error
+          retention-days: 14
