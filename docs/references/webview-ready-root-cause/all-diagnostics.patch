@@ -1,0 +1,159 @@
+diff --git a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+index d2a9936a..a5f04690 100644
+--- a/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
++++ b/extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts
+@@ -14347,6 +14347,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+     }
+
+     if (parsedMessage.type === 'webview/ready') {
++      this.recordDiagnosticEvent('webview/readyReceived', { surface: sourceSurface, lifecycle, currentLifecycle: this.getSurfaceLifecycleIdentity(sourceSurface) });
+       this.promoteReadyWebviewMessageIfNeeded(sourceSurface, sourceWebview, lifecycle);
+       if (!this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type)) {
+         return;
+@@ -23346,6 +23347,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
+   }
+
+   private recordDiagnosticEvent(kind: string, detail?: Record<string, unknown>): void {
++    if (kind.startsWith("surface/") || kind.startsWith("webview/")) console.info("[ready-host]", JSON.stringify({ time: Date.now(), kind, detail }));
+     this.testDiagnosticEvents.push({
+       timestamp: new Date().toISOString(),
+       kind,
+diff --git a/extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts b/extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts
+index c84e3fe3..e8df77d5 100644
+--- a/extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts
++++ b/extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts
+@@ -207,6 +207,19 @@ function buildActiveHtml(
+     <script nonce="${nonce}">
+       window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__ = ${escapeHtmlScriptJson(lifecycle)};
+       window.__DEV_SESSION_CANVAS_I18N__ = ${escapeHtmlScriptJson(i18n)};
++      window.__DSC_READY_STAGES__ = [];
++      window.__DSC_READY_STAGE__ = (stage, extra) => {
++        const entry = { time: Date.now(), stage, identity: window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__, readyState: document.readyState, ...extra };
++        window.__DSC_READY_STAGES__.push(entry);
++        console.info('[ready-frame]', JSON.stringify(entry));
++      };
++      window.__DSC_READY_STAGE__('inline-identity');
++      window.addEventListener('error', event => window.__DSC_READY_STAGE__('error', { message: event.message, resource: event.target?.src }), true);
++      window.addEventListener('unhandledrejection', event => window.__DSC_READY_STAGE__('rejection', { message: String(event.reason) }));
++      window.addEventListener('securitypolicyviolation', event => window.__DSC_READY_STAGE__('csp', { directive: event.violatedDirective, blocked: event.blockedURI }));
++      document.addEventListener('load', event => { if (event.target?.src) window.__DSC_READY_STAGE__('resource-loaded', { resource: event.target.src }); }, true);
++      document.addEventListener('DOMContentLoaded', () => window.__DSC_READY_STAGE__('dom-content-loaded'));
++
+     </script>
+     <script nonce="${nonce}" src="${scriptUri}"></script>
+   </body>
+diff --git a/extensions/vscode/dev-session-canvas/src/webview/main.tsx b/extensions/vscode/dev-session-canvas/src/webview/main.tsx
+index a25ffe0f..215030db 100644
+--- a/extensions/vscode/dev-session-canvas/src/webview/main.tsx
++++ b/extensions/vscode/dev-session-canvas/src/webview/main.tsx
+@@ -249,6 +249,7 @@ declare global {
+   interface Window {
+     __DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__?: WebviewLifecycleIdentity;
+     __DEV_SESSION_CANVAS_I18N__?: WebviewI18nBootstrap;
++    __DSC_READY_STAGE__?: (stage: string, extra?: Record<string, unknown>) => void;
+   }
+ }
+
+@@ -321,7 +322,9 @@ interface PendingManualNodeCreateRequest {
+ type ExecutionHelpTriggerVariant = 'canvas' | 'inline';
+
+ let nextExecutionNodeHelpTooltipId = 0;
++window.__DSC_READY_STAGE__?.('bundle-main');
+ const vscode = acquireVsCodeApi<LocalUiState>();
++window.__DSC_READY_STAGE__?.('api-acquired');
+ const reportedRuntimeDiagnostics = new Set<string>();
+ const initialPersistedState = vscode.getState() ?? {};
+ const webviewI18n = window.__DEV_SESSION_CANVAS_I18N__ ?? resolveWebviewI18n(navigator.language);
+@@ -1855,6 +1858,7 @@ function App(): JSX.Element {
+       hostMessageHandlerRef.current(event.data);
+     };
+     window.addEventListener('message', listener);
++    window.__DSC_READY_STAGE__?.('react-ready-effect', { lifecycle: webviewLifecycleIdentity });
+     postMessage({ type: 'webview/ready', payload: { capabilities: {
+       terminalReadSettlementV1: true, terminalCurrentStateV1: true,
+       terminalLocalSettlementV1: true, terminalAvailableReceiptV1: true,
+@@ -10438,10 +10442,12 @@ function clearPendingExecutionPasteRequests(): void {
+ }
+
+ function postMessage(message: WebviewToHostMessage): void {
++  if (message.type === 'webview/ready') window.__DSC_READY_STAGE__?.('ready-post-call', { lifecycle: webviewLifecycleIdentity });
+   vscode.postMessage({
+     ...message,
+     lifecycle: webviewLifecycleIdentity
+   });
++  if (message.type === 'webview/ready') window.__DSC_READY_STAGE__?.('ready-post-return', { lifecycle: webviewLifecycleIdentity });
+ }
+
+ function isCurrentWebviewLifecycleIdentity(lifecycle: WebviewLifecycleIdentity): boolean {
+@@ -10489,4 +10495,6 @@ function createWebviewFrameId(): string {
+   return `frame-${Date.now().toString(36)}-${randomParts.join('-')}`;
+ }
+
++window.__DSC_READY_STAGE__?.('root-render-call');
+ root.render(<App />);
++window.__DSC_READY_STAGE__?.('root-render-return');
+diff --git a/scripts/smoke/vscode-smoke-runner.mjs b/scripts/smoke/vscode-smoke-runner.mjs
+index 34b9d791..bc93ff1e 100644
+--- a/scripts/smoke/vscode-smoke-runner.mjs
++++ b/scripts/smoke/vscode-smoke-runner.mjs
+@@ -422,6 +422,7 @@ export function buildVSCodeArgs(options, platform = process.platform) {
+     '--no-sandbox',
+     '--disable-gpu-sandbox',
+     ...resolveVSCodeSmokeStabilityArgs(platform),
++    ...(process.env.DEV_SESSION_CANVAS_READY_DIAG_PORT ? [`--remote-debugging-port=${process.env.DEV_SESSION_CANVAS_READY_DIAG_PORT}`, '--remote-debugging-address=127.0.0.1'] : []),
+     '--password-store=basic',
+     ...(platform === 'darwin' ? ['--use-inmemory-secretstorage'] : []),
+     '--disable-updates',
+diff --git a/tests/vscode-smoke/real-reopen-tests.cjs b/tests/vscode-smoke/real-reopen-tests.cjs
+index 83219435..dffe234f 100644
+--- a/tests/vscode-smoke/real-reopen-tests.cjs
++++ b/tests/vscode-smoke/real-reopen-tests.cjs
+@@ -36,6 +36,7 @@ let stateFile;
+ let expectedWorkspaceMode;
+ let expectedWorkspaceRoot;
+ let expectedWorkspaceFolderCount;
++let readyIteration = 0;
+
+ module.exports = {
+   run
+@@ -203,6 +204,21 @@ async function runSetupPhase() {
+ async function runVerifyPhase() {
+   assertExpectedWorkspaceShape();
+   await activateExtension();
++  const burst = Number(process.env.DEV_SESSION_CANVAS_READY_DIAG_BURST || 0);
++  for (let i = 1; i <= burst; i += 1) {
++    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
++    await new Promise(resolve => setTimeout(resolve, 80));
++    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
++    console.log('[ready-test]', JSON.stringify({ phase, step: 'burst-closed', burst: i, time: Date.now() }));
++  }
++  const repeats = Number(process.env.DEV_SESSION_CANVAS_READY_DIAG_REPEATS || 0);
++  for (readyIteration = 1; readyIteration <= repeats; readyIteration += 1) {
++    await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
++    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
++    await openCanvasEditor();
++    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
++  }
++  readyIteration = 0;
+   await openCanvasEditor();
+
+   const expected = JSON.parse(await fs.readFile(stateFile, 'utf8'));
+@@ -338,6 +354,7 @@ async function runVerifyPhase() {
+   await waitForRuntimeSupervisorSettled(0, 20000);
+   await setRuntimePersistenceEnabled(false);
+   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
++  console.log('[ready-test]', JSON.stringify({ phase, step: 'activation-closed', time: Date.now(), snapshot: await getDebugSnapshot() }));
+ }
+
+ async function activateExtension() {
+@@ -350,7 +367,10 @@ async function activateExtension() {
+
+ async function openCanvasEditor() {
+   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
++  console.log('[ready-test]', JSON.stringify({ phase, iteration: readyIteration, step: 'before-ready-wait', time: Date.now() }));
+   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
++  console.log('[ready-test]', JSON.stringify({ phase, iteration: readyIteration, step: 'ready-success', time: Date.now(), snapshot: await getDebugSnapshot() }));
++  await fs.writeFile(path.join(artifactDir, `ready-${phase}-${readyIteration}-events.json`), JSON.stringify(await vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents), null, 2));
+ }
+
+ async function createExecutionNodes() {

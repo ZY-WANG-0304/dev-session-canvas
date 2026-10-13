@@ -1,0 +1,10 @@
+2026-10-12 02:00:00.604 [debug] Webview(925fb546-05fc-460f-9e5e-c26c2b826cc2): will update content options
+2026-10-12 02:00:00.605 [debug] Webview(925fb546-05fc-460f-9e5e-c26c2b826cc2): skipping content options update
+2026-10-12 02:00:00.606 [debug] Webview(925fb546-05fc-460f-9e5e-c26c2b826cc2): will update content
+2026-10-12 02:00:00.639 [trace] Webview(925fb546-05fc-460f-9e5e-c26c2b826cc2): webview ready
+2026-10-12 02:00:00.644 [trace] CommandService#executeCommand workbench.action.closeAllEditors
+2026-10-12 02:00:00.683 [debug] Webview(800b1d40-98c3-45a4-a21b-3eb52b448064): will update content options
+2026-10-12 02:00:00.683 [debug] Webview(800b1d40-98c3-45a4-a21b-3eb52b448064): skipping content options update
+2026-10-12 02:00:00.685 [debug] Webview(800b1d40-98c3-45a4-a21b-3eb52b448064): will update content
+2026-10-12 02:00:00.706 [trace] Webview(800b1d40-98c3-45a4-a21b-3eb52b448064): webview ready
+2026-10-12 02:00:20.708 [error] Error: Timed out waiting for the editor Canvas to become ready (20000ms).

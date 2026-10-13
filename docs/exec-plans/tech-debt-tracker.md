@@ -12,6 +12,20 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-13：Canvas ready 原首败与连续重开的上游资源积压
+
+背景与触发：PR #321 后原 fallback verify 在 generation5、active、ready/ack=false 时20秒超时，原会话存活。原renderer没有CSS/JS资源读取日志，缺iframe/worker/Host事件，仍不能定因。调查时main a213b89b上的R2以及恢复源码后的原短workspace N1两阶段均通过，不能覆盖首败。PR #323合入main a6bb190a后本调查分支已rebase；历史实验输入和工件保持，不代证新主线复验。
+
+已确认的独立机制：原版VS Code1.141.0连续40/80次重开，在第33、第33/65次出现约16秒ready停顿。独立副本只加阶段记录后捕获已关闭页面的字体请求无人应答，service worker等待30秒并占用32个名额；新CSS/JS在缓存查询后排队，旧超时释放名额才继续。容量4的对照第3次触发20秒相同症状，容量128的40次通过但仍积压40个请求。只确认请求未响应与名额延迟释放，具体丢失环节未逐个证明。
+
+影响范围：Linux Native固定VS Code版本的连续快速关闭重开可能阻塞Canvas资源启动；与PTY存活/resize不构成同一因果结论。原首败只有一次关闭重开，没有名额积累证据，故不能把本机制当作其已确认根因。PR #323的resize夹具修复仍独立。
+
+当前处理：保留所有首次失败；五份临时源码与上游副本已恢复，正式等待20秒和身份/正文断言保持；参考诊断patch、阶段记录、负对照快照和hash均repo-local。未调整sleep、容量或重试作为正式修复，未运行完整发布门禁。此记录不解除0.26.1原ready首败的收口要求。
+
+建议修复时机：下一轮具名ready失败立即采集outer workerReady标记、inner DOM、CSS/JS请求、worker请求与名额、React/Host消息。连续重开积压需在上游取消销毁client的请求或保障结算，再验证stream/cache/body责任；另行立项扩展可控措施，不能提高限额伪装修复。其他平台/版本和Remote单独验收。
+
+关联：`docs/design-docs/webview-ready-root-cause.md`、`docs/exec-plans/completed/webview-ready-root-cause.md`、`docs/references/webview-ready-root-cause/README.md`、PR #322/#323；下方2026-10-12条目保留历史首次事实。
+
 ## 2026-10-12：旧升级 resize 夹具已修复，Canvas ready 与完整门禁仍待收口
 
 背景：PR #321 后旧升级仍在首次变化 probe 与原 Agent 的尺寸相等断言超时。受控 C8 证明该夹具会固定恢复瞬态67×21，即使原会话与当前页面已为82×27仍失败；精确历史首败缺期望probe，不能追认为每次历史根因。调查 PR #322 尚未合并，本修复从 main 独立交付。

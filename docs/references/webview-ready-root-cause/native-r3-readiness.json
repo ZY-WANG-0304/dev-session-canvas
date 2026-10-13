@@ -1,0 +1,716 @@
+[
+  {
+    "phase": "setup",
+    "iteration": 0,
+    "elapsedMs": 996,
+    "lifecycle": {
+      "generation": 5,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": false,
+      "frameId": "frame-7e5c975e-2fc5-4c3b-b071-5139c6d51e8e",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 1,
+    "elapsedMs": 513,
+    "lifecycle": {
+      "generation": 8,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-e6a1e24c-cad8-4cbb-bc00-76c71f9b1de1",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 2,
+    "elapsedMs": 402,
+    "lifecycle": {
+      "generation": 14,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": false,
+      "frameId": "frame-212597e6-c8ed-4ead-afa1-3182dbeef428",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 3,
+    "elapsedMs": 401,
+    "lifecycle": {
+      "generation": 20,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-e556d5ab-bd55-4a9f-97c6-fe2bfb7da468",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 4,
+    "elapsedMs": 402,
+    "lifecycle": {
+      "generation": 26,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-c6db6924-bde9-4e1d-a2c3-a1a6e262ff93",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 5,
+    "elapsedMs": 404,
+    "lifecycle": {
+      "generation": 32,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-32957033-aabb-41b7-80d7-09be47013e45",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 6,
+    "elapsedMs": 354,
+    "lifecycle": {
+      "generation": 38,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-92b16c8d-e680-44d6-afe2-bed29e9c5861",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 7,
+    "elapsedMs": 459,
+    "lifecycle": {
+      "generation": 44,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-52230406-bb87-48ea-a133-919f42cb4e3a",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 8,
+    "elapsedMs": 401,
+    "lifecycle": {
+      "generation": 50,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-3b962ff3-4135-4fe1-9179-b179d953982e",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 9,
+    "elapsedMs": 351,
+    "lifecycle": {
+      "generation": 56,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-fb77e30c-e737-41e0-bca1-b80612be1526",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 10,
+    "elapsedMs": 429,
+    "lifecycle": {
+      "generation": 62,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-9fdce2fa-3ece-41d5-a7e3-39b75074936d",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 11,
+    "elapsedMs": 401,
+    "lifecycle": {
+      "generation": 68,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-9d4f487d-8fa5-4a24-abc9-5e680b74e390",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 12,
+    "elapsedMs": 600,
+    "lifecycle": {
+      "generation": 74,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-91c8d978-1744-4cc3-a25d-fff598326a26",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 13,
+    "elapsedMs": 355,
+    "lifecycle": {
+      "generation": 80,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": false,
+      "frameId": "frame-e59e72a4-fb4f-42e6-a29e-6f305f86b7cb",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 14,
+    "elapsedMs": 401,
+    "lifecycle": {
+      "generation": 86,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-387cd70d-fa7c-403d-b10a-3078ca566a74",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 15,
+    "elapsedMs": 404,
+    "lifecycle": {
+      "generation": 92,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-79d8d54f-16ae-431b-b859-54aabeae3d88",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 16,
+    "elapsedMs": 411,
+    "lifecycle": {
+      "generation": 98,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-94e0e3d5-c5b5-4193-b217-bab68095133c",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 17,
+    "elapsedMs": 355,
+    "lifecycle": {
+      "generation": 104,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": false,
+      "frameId": "frame-0679b7c5-5421-4c44-bf22-87fa729adae1",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 18,
+    "elapsedMs": 355,
+    "lifecycle": {
+      "generation": 110,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-97a14968-249e-4c68-96fb-92fbca07d98f",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 19,
+    "elapsedMs": 402,
+    "lifecycle": {
+      "generation": 116,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-4c67e2c8-f1da-4b2d-a8c9-6089d4b89190",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 20,
+    "elapsedMs": 352,
+    "lifecycle": {
+      "generation": 122,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-9d67f711-7e55-43b2-905c-c4eb6f53e4ec",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 21,
+    "elapsedMs": 401,
+    "lifecycle": {
+      "generation": 128,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-e81d5cb9-d423-48d2-8b1c-f7dac839a368",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 22,
+    "elapsedMs": 403,
+    "lifecycle": {
+      "generation": 134,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": false,
+      "frameId": "frame-246494ea-d6bb-4a19-9963-bf006869e2bd",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 23,
+    "elapsedMs": 354,
+    "lifecycle": {
+      "generation": 140,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-252024bc-0e2b-41d8-8a49-b4e5cda59e76",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 24,
+    "elapsedMs": 353,
+    "lifecycle": {
+      "generation": 146,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-1b6d8ee8-fc14-4487-aef9-ab1ea380bb52",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 25,
+    "elapsedMs": 351,
+    "lifecycle": {
+      "generation": 152,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-367a76b8-6dd3-4168-9b2c-d54b06bd2c7a",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 26,
+    "elapsedMs": 403,
+    "lifecycle": {
+      "generation": 158,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-86b81ced-9146-4248-8b53-c1bd1ff53451",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 27,
+    "elapsedMs": 403,
+    "lifecycle": {
+      "generation": 164,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-b5a51f75-38e6-4357-85ec-4d3a310b8c4b",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 28,
+    "elapsedMs": 402,
+    "lifecycle": {
+      "generation": 170,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-4e3404c3-afea-44c7-9a79-88d531f5af2c",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 29,
+    "elapsedMs": 352,
+    "lifecycle": {
+      "generation": 176,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": false,
+      "frameId": "frame-0f483f2c-4d16-477f-a25a-810e740b59f3",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 30,
+    "elapsedMs": 401,
+    "lifecycle": {
+      "generation": 182,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-a1d3e677-ef14-4652-a7f1-268cbe5afab1",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 31,
+    "elapsedMs": 357,
+    "lifecycle": {
+      "generation": 188,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-5e4574b3-2c56-40be-83bc-ad52fb4685ff",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 32,
+    "elapsedMs": 453,
+    "lifecycle": {
+      "generation": 194,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-511af743-eba5-4ab6-847e-3354f88fa324",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 33,
+    "elapsedMs": 15862,
+    "lifecycle": {
+      "generation": 200,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-9867c2da-5466-4f29-9a1f-099a5b2d3525",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 34,
+    "elapsedMs": 404,
+    "lifecycle": {
+      "generation": 206,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-45a24b42-0bde-4791-bd4c-59b24a2c1393",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 35,
+    "elapsedMs": 354,
+    "lifecycle": {
+      "generation": 212,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-aee1506c-ba22-4d29-bd8d-cb7c874f3d85",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 36,
+    "elapsedMs": 452,
+    "lifecycle": {
+      "generation": 218,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": false,
+      "frameId": "frame-d1481ca3-6721-4ca3-b64e-ba2e6a3f0e46",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 37,
+    "elapsedMs": 602,
+    "lifecycle": {
+      "generation": 224,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-8fdae0d9-4ae7-4753-957d-fed71e516939",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 38,
+    "elapsedMs": 453,
+    "lifecycle": {
+      "generation": 230,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-491f48ca-89f9-40fc-9bcc-736b41a273f3",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 39,
+    "elapsedMs": 403,
+    "lifecycle": {
+      "generation": 236,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-10958241-f9cd-4c37-8292-61dfe1341c4a",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 40,
+    "elapsedMs": 403,
+    "lifecycle": {
+      "generation": 242,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-6e9bdf8e-9571-4d8f-8b88-076721829300",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  {
+    "phase": "verify",
+    "iteration": 0,
+    "elapsedMs": 453,
+    "lifecycle": {
+      "generation": 245,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-d3b43d0b-04e9-4f03-95df-37e306311295",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  }
+]

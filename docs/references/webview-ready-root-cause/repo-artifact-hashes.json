@@ -1,0 +1,102 @@
+[
+  {
+    "path": "README.md",
+    "bytes": 6411,
+    "sha256": "85ee0fbe120047e3b96187e5e2e897aa81945a4cde3671083f548aba9ff99762"
+  },
+  {
+    "path": "all-diagnostics.patch",
+    "bytes": 9038,
+    "sha256": "b3f85129bb55daaf91c9eb86e9c0a965f3bf4e6b0a63dcdc046b77ec2088a137"
+  },
+  {
+    "path": "c2-causal-timeline.json",
+    "bytes": 76005,
+    "sha256": "105ca67ead1bb1200bdbd0b8017d57955e6673a410090a6ff600c763fb93ad68"
+  },
+  {
+    "path": "c2-failure-diagnostics.json",
+    "bytes": 60851,
+    "sha256": "7031111088fce1fe82ffb9906a8e2515dcf3cd80daf3e4a714ed3c1654a4493e"
+  },
+  {
+    "path": "c2-failure-error.txt",
+    "bytes": 755,
+    "sha256": "67eed8daddf1038a616368605b46884417d4eae1f088485af5c3a9b7e0cfbf90"
+  },
+  {
+    "path": "c2-failure-runtime-supervisor.json",
+    "bytes": 10526,
+    "sha256": "f98a4c3790dc9e40ff9768961cd31b97bb2d2d6499560db210d62ecc4f259093"
+  },
+  {
+    "path": "c2-failure-snapshot.json",
+    "bytes": 8515,
+    "sha256": "124f9842c4e15511871fd66f7e7e2276a1a2d4643c9990b2781831c99a87e0cc"
+  },
+  {
+    "path": "c3-worker-stages.json",
+    "bytes": 271303,
+    "sha256": "537074b670c342a055d39ff77f6d812dd18cab862169f1d70c96caf730494a8a"
+  },
+  {
+    "path": "cdp-observe.mjs",
+    "bytes": 8125,
+    "sha256": "56bc4b99e5f29047d0352220514bd0f764872a91f81c49f178f84551270cbc5a"
+  },
+  {
+    "path": "control-c3-readiness.json",
+    "bytes": 19467,
+    "sha256": "dd64213b2dffcaf8ef1b2178e944a2ddb53f18bc38b9e5c63b9bea4cbbb7a058"
+  },
+  {
+    "path": "external-artifact-hashes.json",
+    "bytes": 5277,
+    "sha256": "531d39d4ce1ec2f7a89c55990bea099f8f2f2c46bf007ec004717ec2058e5825"
+  },
+  {
+    "path": "inputs.json",
+    "bytes": 639,
+    "sha256": "aa6b1785f706cd46115c5dcce8fbcd77a115847a97b780922d55431e75862969"
+  },
+  {
+    "path": "native-r3-readiness.json",
+    "bytes": 19468,
+    "sha256": "a1e7fcbe77853d5fc22ea9f15078a1d73e2c0cbe9fc61bead83fb35cfefd5208"
+  },
+  {
+    "path": "native-r4-readiness.json",
+    "bytes": 38041,
+    "sha256": "f736c51f2dfba0a482ed5a8479da8b54d896ad4df29af2eed6e695ea610f3be0"
+  },
+  {
+    "path": "native-r5-readiness.json",
+    "bytes": 19468,
+    "sha256": "0c0c6146c76882a0a9b659c47fca445c64eaa830f0a324b60ca701ddf29e12bb"
+  },
+  {
+    "path": "original-renderer-boundary.log",
+    "bytes": 1021,
+    "sha256": "f5dff150712fdda64a917df98471c77059d2a9524805e141adbc66e1cc639fe5"
+  },
+  {
+    "path": "r4-slow-resources.json",
+    "bytes": 4202,
+    "sha256": "2b8779d94eb149881ab40c002f83af39c2daa0453f7ae2f69ff240b6745f3ae2"
+  },
+  {
+    "path": "r5-worker-stages.json",
+    "bytes": 287408,
+    "sha256": "5dd43c05a0ebbad1c0e83bfdd3402b922a62ff0b449365c0e05592f2252f802c"
+  },
+  {
+    "path": "run-original-workspace.mjs",
+    "bytes": 2560,
+    "sha256": "dd5cbdb21227966900fd7faa88d712e0826355ba70436d48e98f6d40d8a57036"
+  },
+  {
+    "path": "vscode-service-worker-diagnostics.patch",
+    "bytes": 19070,
+    "sha256": "1e0d526b594e829cf866af95a3e7832520e847217f68cffce4380e98c8565696"
+  }
+]
