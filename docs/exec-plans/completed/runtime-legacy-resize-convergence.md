@@ -17,7 +17,7 @@
 
 ## 意外与发现
 
-前轮受控 C8 原生实验：初始 probe 为 92×28，首次变化为 67×21，最终页面和原 Agent 会话均为 82×27；189 次样本均与当前页面相同，均不等于固定的 67×21，原 20 秒断言超时。快照恢复会先 resize xterm，再完成异步 parser，随后 fit 容器并在 150ms 后报告尺寸。文字可见不足以证明恢复和 fit 完成。证据在 PR #322 的 d42656f7、`docs/references/runtime-timeout-root-cause/native-control-c8.json`；本轮不把受控根因追认为每次历史失败的完整原因。
+前轮受控 C8 原生实验：初始 probe 为 92×28，首次变化为 67×21，最终页面和原 Agent 会话均为 82×27；189 次样本均与当前页面相同，均不等于固定的 67×21，原 20 秒断言超时。快照恢复会先 resize xterm，再完成异步 parser，随后 fit 容器并在 150ms 后报告尺寸。文字可见不足以证明恢复和 fit 完成。原证据来自 PR #322 的 d42656f7；逐字节副本现保存在 `docs/references/runtime-legacy-resize-convergence/investigation-native-control-c8.json`，来源和 hash 见相邻 `investigation-native-control-c8-provenance.json`。本轮不把受控根因追认为每次历史失败的完整原因。
 
 Fallback 原 Canvas ready 首败仍缺 iframe 脚本执行证据；两轮真实重开通过不能确认其根因。当前 real-reopen-tests 已保存 Host 生命周期诊断，本轮不重复加入或推测产品修复。
 
@@ -66,3 +66,5 @@ Fallback 原 Canvas ready 首败仍缺 iframe 脚本执行证据；两轮真实�
 修订：2026-10-12 创建，先记录确认根因、验收及未定位边界再实现。
 
 修订：2026-10-12 完成实现与正反例验证，记录首次失败、残余边界并归档；PR交付信息由GitHub记录。
+
+修订：2026-10-13 将 PR #322 的 C8 历史样本逐字节补入本地证据并记录来源 hash，修复主线引用缺口；没有重跑该实验。

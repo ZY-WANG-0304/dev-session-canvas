@@ -1,0 +1,23 @@
+{
+  "baseCommit": "ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b",
+  "path": "/tmp/dev-session-canvas-clean-checkout-cHFl3O/repo/dev-session-canvas-0.26.0.vsix",
+  "bytes": 5999061,
+  "sha256": "9c2d0e8391c354a9e9d64eb2fa7970390ab7c5eac71034fe94dba588018fa5af",
+  "version": "0.26.0",
+  "preview": true,
+  "extensionPack": [
+    "devsessioncanvas.dev-session-canvas-notifier"
+  ],
+  "files": 140,
+  "nlsZh": true,
+  "l10nZh": true,
+  "executionSelection": {
+    "schemaVersion": 1,
+    "profile": "platform",
+    "admissionLimits": {
+      "executions": null,
+      "starting": 1,
+      "pending": 2
+    }
+  }
+}

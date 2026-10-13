@@ -6,14 +6,14 @@ domains: [协作对象域, 项目状态域, 执行编排域, VSCode 集成域]
 architecture_layers: [共享模型与编排层, 宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/runtime-shared-root-canvas-sync.md, docs/exec-plans/completed/pr319-review-repairs.md, docs/exec-plans/completed/pr319-takeover-coordination.md]
-updated_at: 2026-10-11
+updated_at: 2026-10-13
 ---
 
 # 共享 root 画布同步与模式切换
 
 ## 目标与边界
 
-开启 Runtime Persistence 后，同执行环境、用户 global storage 范围和 root 的画布结构实时共享；关闭时各 Host 持有执行，画布保存归属当前 workspace storage slot。双向切换只在页面关闭/重启边界生效，设置变化当下保留页面。2026-10-11 用户补充：非最后一个开启窗口切换关闭只退出本窗口的共享模式，保留其他开启窗口使用的共享画布和会话；最后一个开启窗口主动切换关闭才启动共享清理，没有新窗口接管时确认 Supervisor 退出。同日用户进一步确认清理期间允许新开启窗口接管，按清理阶段结算与交接。当前 `e79aa66d` 已有无接管主路径的 Linux 单 root 真实双窗口及 Host/store 证据；接管协调尚未实现和验收，不能把旧增量通过推广为新规则完成。普通未切换关闭遵循原恢复保证，不删除项目文件、用户原始文档或 provider 自身会话文件。多设备、多用户与云同步不在范围内。
+开启 Runtime Persistence 后，同执行环境、用户 global storage 范围和 root 的画布结构实时共享；关闭时各 Host 持有执行，画布保存归属当前 workspace storage slot。双向切换只在页面关闭/重启边界生效，设置变化当下保留页面。2026-10-11 用户补充：非最后一个开启窗口切换关闭只退出本窗口的共享模式，保留其他开启窗口使用的共享画布和会话；最后一个开启窗口主动切换关闭才启动共享清理，没有新窗口接管时确认 Supervisor 退出。同日用户进一步确认清理期间允许新开启窗口接管，按清理阶段结算与交接。PR #319 已实现接管协调并合入 main；四阶段交错由实际 Host/store 与独立真实 Supervisor 定向验证，Linux 单 root 真实双窗口复验通过共享结构、I/O 和无接管清理，没有新增四阶段 UI 暂停验收。具名输入及范围见本文“PR319 接管协调的新增证据”；不将有限证据外推到其他平台、真实多 root 或 Remote。普通未切换关闭遵循原恢复保证，不删除项目文件、用户原始文档或 provider 自身会话文件。多设备、多用户与云同步不在范围内。
 
 调查发现 Supervisor 的直接 delete 会先取消全部 Host 消费信用订阅，导致原窗口收不到后续终态。用户确认共享 delete 应移除各窗口节点，因此本次以结构删除通知收口投影，不要求被删除页面重新显示尾部；stop 仍须保留节点、等待原读者完成自己的终态消费。原受控 8 项诊断脚本保留历史因果，不作为健康产品回归，也不宣称已修改 Supervisor 单独调用 delete 的通知契约。
 
@@ -23,7 +23,7 @@ updated_at: 2026-10-11
 
 文件锁的过期偷取可能允许两个写者同时提交，故选用操作系统持有的 loopback TCP 独占监听。进程退出时 OS 释放，无 stale 文件锁恢复协议。这个选择增加一个短暂监听和有界端口占用失败，具体边界见后文。
 
-清理期间的新加入原先采用等待全部清理及原 Supervisor 退出后登记的方案。用户现已选择允许接管：尚未派发破坏性操作时保留原会话，已派发操作必须结算，仅等待 idle shutdown 时允许沿用仍接受连接的 Supervisor。该选择避免新窗口合法使用进程与旧窗口坚持等待进程退出互相阻塞；其代价是需要显式协调清理阶段与责任交接。具体跨 Host 协议仍待实现阶段记录和验证，不将现有 socket 连接或长时间持锁视为已经实现接管。
+清理期间的新加入原先采用等待全部清理及原 Supervisor 退出后登记的方案。用户已选择允许接管：尚未派发破坏性操作时保留原会话，已派发操作必须结算，仅等待 idle shutdown 时允许沿用仍接受连接的 Supervisor。该选择避免新窗口合法使用进程与旧窗口坚持等待进程退出互相阻塞；其代价是需要显式协调清理阶段与责任交接。PR #319 的独立参与 listener、store ready 和分阶段 Host 交接已落实下文正式方案；一次 socket 连接或长时间持锁仍不能单独证明接管成功。
 
 ## 正式方案
 
@@ -120,3 +120,5 @@ idle offer 来自 owner/profile 校验后的 `{pid, runtimeBackend, runtimeStora
 真实独立 VS Code 双窗口场景 `/tmp/dsc319takeover3`、`/tmp/pr319-takeover-smoke-final3.log` exit 0，复验共享结构、双向 I/O、PTY resize、stop/delete、非最后切换保留和最后无接管自然退出。该 smoke 未新增四个阶段的 UI 受控暂停；四阶段交错来自实际 Host/store 与独立 Supervisor 的定向回归，不能称为新增真实双窗口四阶段 UX 验收。typecheck、root ownership/owner handshake、startup profile/reader client、completed-history、localization、multi-root composition 通过，未运行全量 npm test。新输入和日志 SHA256 见 `docs/references/shared-root-canvas/pr319-takeover-evidence.json`，保留旧失败复现与上轮证据，不追认旧 head 已实现接管。
 
 修订说明：接管协调从已确认规则落到独立参与 listener、store ready、Host 分阶段退出与原 PID 交接。跨平台/Remote SSH/真实多 root 及高频成本继续保留原验证边界。
+
+修订说明：2026-10-13 以已合并 PR #319 的具名证据更新开头及候选方案中的过时状态，保留四阶段 UI 与跨平台未覆盖范围。

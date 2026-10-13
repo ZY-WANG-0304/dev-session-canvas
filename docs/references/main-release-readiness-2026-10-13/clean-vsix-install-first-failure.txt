@@ -1,0 +1,45 @@
+
+> dev-session-canvas-workspace@0.26.0 validate:clean-checkout:vsix
+> node scripts/release/run-clean-checkout-vsix-validation.mjs --ref ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b --keep-temp
+
+准备隔离 clean checkout 验证目录: /tmp/dev-session-canvas-clean-checkout-nHjBJJ/repo
+源内容: git ref ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b
+README 改写使用的 git ref: ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b
+npm warn deprecated glob@11.1.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm error code 1
+npm error path /tmp/dev-session-canvas-clean-checkout-nHjBJJ/repo/node_modules/wrangler/node_modules/esbuild
+npm error command failed
+npm error command sh -c node install.js
+npm error node:internal/child_process:1120
+npm error     result.error = new ErrnoException(result.error, 'spawnSync ' + options.file);
+npm error                    ^
+npm error
+npm error <ref *1> Error: spawnSync /tmp/dev-session-canvas-clean-checkout-nHjBJJ/repo/node_modules/wrangler/node_modules/esbuild/bin/esbuild ETXTBSY
+npm error     at Object.spawnSync (node:internal/child_process:1120:20)
+npm error     at spawnSync (node:child_process:902:24)
+npm error     at Object.execFileSync (node:child_process:945:15)
+npm error     at validateBinaryVersion (/tmp/dev-session-canvas-clean-checkout-nHjBJJ/repo/node_modules/wrangler/node_modules/esbuild/install.js:103:28)
+npm error     at /tmp/dev-session-canvas-clean-checkout-nHjBJJ/repo/node_modules/wrangler/node_modules/esbuild/install.js:298:5 {
+npm error   errno: -26,
+npm error   code: 'ETXTBSY',
+npm error   syscall: 'spawnSync /tmp/dev-session-canvas-clean-checkout-nHjBJJ/repo/node_modules/wrangler/node_modules/esbuild/bin/esbuild',
+npm error   path: '/tmp/dev-session-canvas-clean-checkout-nHjBJJ/repo/node_modules/wrangler/node_modules/esbuild/bin/esbuild',
+npm error   spawnargs: [ '--version' ],
+npm error   error: [Circular *1],
+npm error   status: null,
+npm error   signal: null,
+npm error   output: null,
+npm error   pid: 0,
+npm error   stdout: undefined,
+npm error   stderr: undefined
+npm error }
+npm error
+npm error Node.js v22.23.3
+npm notice
+npm notice New major version of npm available! 11.8.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+npm error A complete log of this run can be found in: /tmp/dev-session-canvas-clean-checkout-nHjBJJ/npm-cache/_logs/2026-10-13T02_38_12_207Z-debug-0.log
+clean checkout `npm ci` 失败。
+失败时的临时目录保留在: /tmp/dev-session-canvas-clean-checkout-nHjBJJ

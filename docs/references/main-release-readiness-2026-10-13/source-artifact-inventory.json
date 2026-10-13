@@ -1,0 +1,67 @@
+[
+  {
+    "path": "/tmp/dmr13/source/multi-root-real-reopen/artifacts/multi-root-real-reopen-state.json",
+    "bytes": 1413,
+    "sha256": "a8ac62191b5f8443d3cf835b31c064b9dbb37ac85b12d21ac950d5d1f637ad83"
+  },
+  {
+    "path": "/tmp/dmr13/source/multi-root-real-reopen/artifacts/real-reopen-flush-result.json",
+    "bytes": 9265,
+    "sha256": "765e9d85893072fb5fc0f803141b3134f2dd57117dee91209a1f5c75fe28f136"
+  },
+  {
+    "path": "/tmp/dmr13/source/real-reopen/artifacts/real-reopen-flush-result.json",
+    "bytes": 8128,
+    "sha256": "033714c44517edf089a9a7e3ce689654efcd8f33da802d8e0c139215fcbd2009"
+  },
+  {
+    "path": "/tmp/dmr13/source/real-reopen/artifacts/real-reopen-state.json",
+    "bytes": 1295,
+    "sha256": "8395b37cedb8238cd4731cdd0fb252a235de31a2e8ecd8b8c50a896d05a9a0ab"
+  },
+  {
+    "path": "/tmp/dmr13/source/remote-ssh-real-reopen/artifacts/real-reopen-flush-result.json",
+    "bytes": 8575,
+    "sha256": "570d966572b8d6852d58268188387ecb395bad2002f074a26390666351d3efed"
+  },
+  {
+    "path": "/tmp/dmr13/source/remote-ssh-real-reopen/artifacts/remote-ssh-real-reopen-state.json",
+    "bytes": 1401,
+    "sha256": "30cb849039b1f4cbab7d7a58d75ec983b6d232a0d9b8913149eea45ba216c6c9"
+  },
+  {
+    "path": "/tmp/dmr13/source/single-to-multi-root-real-reopen/artifacts/real-reopen-flush-result.json",
+    "bytes": 8233,
+    "sha256": "fa4a974ddac1dfc7a7ecf096699f849d4ab03bc09d195da2076e01bb820d3593"
+  },
+  {
+    "path": "/tmp/dmr13/source/single-to-multi-root-real-reopen/artifacts/single-to-multi-root-real-reopen-state.json",
+    "bytes": 1337,
+    "sha256": "747ec8e4d8050a977d714430aa369362e99e4ac313b600c3909630a6499f98e3"
+  },
+  {
+    "path": "/tmp/dmr13/source/systemd-fallback-real-reopen/artifacts/real-reopen-flush-result.json",
+    "bytes": 8213,
+    "sha256": "c2633f243d41b5df215c6a9ed8d2bb13a5424e4560a9923531c11e7e9ecd278a"
+  },
+  {
+    "path": "/tmp/dmr13/source/systemd-fallback-real-reopen/artifacts/systemd-fallback-real-reopen-state.json",
+    "bytes": 1329,
+    "sha256": "fd6299b10adfe75fa4f7e265a94b3914a3a7df39a875bec325d7d97695baecc3"
+  },
+  {
+    "path": "/tmp/dmr13/source/systemd-user-real-reopen/artifacts/real-reopen-flush-result.json",
+    "bytes": 8169,
+    "sha256": "73d5c0908d1ae43d9861b7a0c08bdde8fe0feffa145b3d2c43a95aedf45d1f21"
+  },
+  {
+    "path": "/tmp/dmr13/source/systemd-user-real-reopen/artifacts/systemd-user-real-reopen-state.json",
+    "bytes": 1321,
+    "sha256": "e8ecf2bea445006635c58d95b33d69a572dcbc2844a779429cbdc61db8c1f4fa"
+  },
+  {
+    "path": "/tmp/dmr13/source/trusted/artifacts/runtime-scrollback-history.json",
+    "bytes": 490,
+    "sha256": "1a80cb8ec9bd9db79eb355975a36903a59ba90fd763c0f21e5b29f41e6fe4c79"
+  }
+]

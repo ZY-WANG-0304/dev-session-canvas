@@ -126,3 +126,8 @@ PR #317 的浏览器预装、统一 cache 和短 TMP 改动尚未合入。后续
 本轮只交付验证报告、证据、索引、原则补充和技术债，未修复产品或测试。后续应先对齐确定的断言、分页等待、fallback fixture、socket resolver 与 CI 前置准备，另行定位旧 resize 首败；完成后重新运行完整门禁。技术债登记不构成发布豁免，不能以本报告代替 0.26.1 正式发布输入及其预合并/tag verify。
 
 macOS/Windows、真实 provider、完整 UI 分阶段接管矩阵、真实多 root 双窗口、真实远端长断开和公开市场安装不从本轮 Linux fake-provider 验证外推。
+
+
+## 集中收口后的历史边界（2026-10-13）
+
+本报告按原固定输入和完成时点保留，不作为最新main或0.26.1当前门禁结果。后续已有独立resize/ready/SSH修复合入，剩余probe及fallback路径夹具、回归、WORKFLOW和全部关联根因证据集中PR329；PR327发布输入独立。当前完整组合结果见systemd-smoke-scope-root-cause.md和repair-combined-input.json，不能由本报告的局部或历史通过代证。

@@ -25,7 +25,7 @@
 
 ## 决策记录
 
-2026-10-13：按用户要求延续PR329并保留PR327，不新建文档/诊断/验证PR。PR331最终文件导入后关闭；临时workflow只存在临时组合分支，不进入修复PR。
+2026-10-13：按用户要求延续PR329并保留PR327，不新建文档/诊断/验证PR。PR331最终文件导入后关闭；继续将开放PR320/322/326的新增文档/证据（基于各merge-base的三点diff）导入并保留输入时点，现有主线结论不被旧整树覆盖；临时workflow只存在临时组合分支，不进入修复PR。
 
 2026-10-13：沿用现有Node/systemctl shim约定，新增绝对路径的TEST_SYSTEMD_RUN_SHIM，只转发原launcher probe。保留真实默认命令、所有参数、预算及回执校验；fallback显式不启用该替代。相比伪造available，可测试真实子进程环境身份与错误分类。
 
@@ -62,3 +62,5 @@
 不新增用户设置或库。测试执行依赖名DEV_SESSION_CANVAS_TEST_SYSTEMD_RUN_SHIM，Node选择沿用DEV_SESSION_CANVAS_TEST_NODE_PATH；仅绝对脚本路径可启用，生产默认仍/usr/bin/systemd-run。fixture直接继承受控环境并执行原--probe-root-environment；无数据库、Supervisor或socket副作用。
 
 修订记录：2026-10-13按用户集中PR要求创建计划，明确probe依赖和临时完整验证输入边界。
+
+修订记录：2026-10-13核对仍开放的关联文档PR320/322/326，集中新增证据、修复有效文档引用与接管描述；历史失败状态保留，旧状态明确限定原输入。

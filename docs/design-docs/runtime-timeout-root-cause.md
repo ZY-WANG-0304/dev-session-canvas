@@ -50,3 +50,8 @@ PR #321 的完整命令首败没有保存期望 probe，只记录原 Agent 最�
 固定输入、受控 patch、精简页面/Host/session 时间线及原日志 hash 位于 `docs/references/runtime-timeout-root-cause/`。原 PR #321 工件保持不变，新日志位于 `/tmp/dsc-timeout-investigation`。受控失败属于调查成功证据，不是产品修复或门禁通过；中间未复现/更早失败与环境失败均保留。
 
 Linux x64、Node22.23.3、VS Code1.141.0、fake Agent；build 使用既有六目标原生资产。移除产品探针后的最终旧升级R-final2完整通过；其前一轮R-final在reset时因共享commit lease端口36758占用失败，该次失败和后来查询无listener的事实分别保留，不判定原占用者或终止未知主体。未执行完整 npm test、VSIX安装矩阵、真实 provider/systemd、其他平台或远端长断开。产品源码和正式测试等待预算不变。调查结束后临时探针和调查测试均从源码移除，仅保留可复跑 reference patches。`validation_status: 已验证`仅表示本轮有限因果调查成立，不表示fallback根因已确认、测试已修复或发布门禁已通过。
+
+
+## 集中收口后的历史边界（2026-10-13）
+
+本报告按原固定输入和完成时点保留，不作为最新main或0.26.1当前门禁结果。后续已有独立resize/ready/SSH修复合入，剩余probe及fallback路径夹具、回归、WORKFLOW和全部关联根因证据集中PR329；PR327发布输入独立。当前完整组合结果见systemd-smoke-scope-root-cause.md和repair-combined-input.json，不能由本报告的局部或历史通过代证。

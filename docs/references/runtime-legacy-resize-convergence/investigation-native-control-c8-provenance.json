@@ -1,0 +1,9 @@
+{
+  "sourcePR": "https://github.com/ZY-WANG-0304/dev-session-canvas/pull/322",
+  "sourceCommit": "d42656f795eda46107adbeaaf91201d3dfe68de6",
+  "sourcePath": "docs/references/runtime-timeout-root-cause/native-control-c8.json",
+  "localPath": "docs/references/runtime-legacy-resize-convergence/investigation-native-control-c8.json",
+  "bytes": 6038,
+  "sha256": "f7b7788543beba600921d378a25e522307b3eca8043f7e573f91e1089df92b2b",
+  "purpose": "补齐主线完成计划引用的 C8 受控历史证据；逐字节保留原调查记录，不代表重新运行或合并整个 PR322。"
+}
