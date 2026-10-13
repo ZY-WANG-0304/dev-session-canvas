@@ -26,6 +26,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx --no-install playwright install --with-deps chromium
+      - name: Single variable CJK font dependency control
+        run: sudo apt-get install --no-install-recommends -y fonts-noto-cjk
       - uses: actions/download-artifact@v4
         with:
           pattern: execution-native-*-38417836576
