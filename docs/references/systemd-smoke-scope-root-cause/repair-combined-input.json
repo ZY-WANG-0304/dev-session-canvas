@@ -1,0 +1,15 @@
+{
+  "temporary_branch": "release-0261-combined-gate-temp",
+  "no_pr": true,
+  "run": 38412908952,
+  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38412908952",
+  "base": "22803dd890855ffbe7620538b04940def097171b",
+  "fix_input": "40364a8511c16453b73d3fe61cf456c983846bbc",
+  "release_input": "42d87b3d59d3147199a3fef9f2ee0b40de4534cf",
+  "combined_input": "dc5178ee41bc1dda3d370a24923559d683eac727",
+  "tree": "79bd256bcd7767bf29d91afd23910365a6276982",
+  "workflow_head": "788f0d7f1964cb251d30e3513b29d7104603e042",
+  "status": "in_progress",
+  "conclusion": null,
+  "scope": "same immutable input for all six native assets and unfiltered release:preflight/release:verify; does not replace latest PR327 premerge gate after fix merge"
+}

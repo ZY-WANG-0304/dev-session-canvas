@@ -24,12 +24,13 @@
     "extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts": "8a9355a332698bbbb728a09a0d47b71a516708c1583e093357b7b123b34765da",
     "scripts/smoke/run-vscode-smoke.mjs": "6cd5053809a101b9a92879bf15d1b73cc041897187d42a0b3a3ec233fe61f90a",
     "tests/vscode-smoke/fixtures/fake-systemd/systemd-run.cjs": "27caaaf4f9f51b76ad0d09c0fc0615118a76362c6fe71c1aa4725cafad3787d8",
-    "scripts/test/test-runtime-systemd-environment.mjs": "4aded7f9dc71c9eeda809f5ca17a3e2f28e396388ff8c6ecfea2c03a9e75c639",
-    "scripts/test/test-smoke-systemd-probe.mjs": "b4576e2f6349aee51843ce5dd2f3fd0dcba6b3b94ebd5ff5b3189e227d81ac4b",
+    "scripts/test/test-runtime-systemd-environment.mjs": "8bd2c02aa3ebc02a0322faf373e1a9dba562d70a844f646d8c4e532edf40ee5e",
+    "scripts/test/test-smoke-systemd-probe.mjs": "37f8104bb8e96a23f9dbcd29e5570fd8482c9a1fd6de303b6b166832240ee9bb",
     "package.json": "cb7b0a1e23e7ddd92692b6c5f62887ca664ebe3ef43690df43dfc39430515c0a",
     "docs/WORKFLOW.md": "b6c4e619278cf918060f953656446eb9ad2399eb4293ad685625f0f87c3c19dd"
   },
   "command_corrections": [
     "Attempted non-existent test-runtime-legacy-resize-convergence.mjs (MODULE_NOT_FOUND); correct test-smoke-terminal-resize.mjs then passed 9 checks."
-  ]
+  ],
+  "test_correction": "Caller termination barrier deletes preceding timeout PID file; 12 actual cases rerun and passed after correction."
 }

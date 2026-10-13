@@ -57,3 +57,6 @@ docs/exec-plans/completed/systemd-smoke-scope-root-cause.md覆盖源码跟踪、
 ## 正式修复本地结果
 
 84项原scope函数受控用例（默认及shim各40项，另4项依赖选择/非法路径）、12项实际launcher/摘要不匹配/非法回执/退出或信号失败/超时及子进程收口/场景作用域、26项原准备流程、runner env、typecheck及指定既有六平台资产build通过。原nonce和摘要校验真实执行，超时归unknown且自有子进程消失。记录见repair-local-checks.json；完整临时组合验证尚未完成，不将本地通过写为完整发布通过。
+
+
+新增scope回归在原main22803dd8源码私有副本exit1：默认真实命令用例通过后，新增shim命令断言明确拒绝仍执行/usr/bin/systemd-run的旧实现。记录见repair-baseline-regression.json。临时组合输入dc5178ee41bc1dda3d370a24923559d683eac727（修复40364a85加发布42d87b3d）/tree79bd256b，run38412908952进行中；永久修复PR不包含临时自动入口。
