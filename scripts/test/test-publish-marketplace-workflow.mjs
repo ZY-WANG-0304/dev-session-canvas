@@ -37,6 +37,7 @@ assert.match(
   'workflow must keep release concurrency at workflow level'
 );
 
+assert.equal(prepareJob['runs-on'], 'ubuntu-22.04', 'tag verification must use the same screenshot OS as release preflight');
 assert.equal(prepareJob['timeout-minutes'], 90, 'release verification needs enough time for the full test and clean-checkout gates');
 const releaseVerificationStep = step('prepare', 'Verify release input');
 assert.equal(prepareJob.env.PLAYWRIGHT_BROWSERS_PATH, '${{ github.workspace }}/.playwright-browsers');

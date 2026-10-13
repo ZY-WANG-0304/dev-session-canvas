@@ -18,6 +18,7 @@ assert.equal(job.if, '${{ always() && github.event.pull_request.draft == false }
 assert.deepEqual(job.needs, ['resolve-release-input', 'native-assets']);
 assert.equal(resolveJob.if, '${{ github.event.pull_request.draft == false }}');
 assert.equal(job['timeout-minutes'], 90);
+assert.equal(job['runs-on'], 'ubuntu-22.04', 'release visual verification must retain the baseline OS');
 assert.equal(job.env.PLAYWRIGHT_BROWSERS_PATH, '${{ github.workspace }}/.playwright-browsers');
 assert.equal(job.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT, '/tmp/tm-${{ github.run_id }}');
 
