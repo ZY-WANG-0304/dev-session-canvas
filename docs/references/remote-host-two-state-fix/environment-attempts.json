@@ -1,0 +1,56 @@
+[
+  {
+    "run": "full-verify",
+    "sourceLog": "/tmp/dscsshfix-full-verify.log",
+    "selectedErrors": [
+      {
+        "line": 45,
+        "text": "src/schema.ts(1,64): error TS2307: Cannot find module 'drizzle-orm/sqlite-core' or its corresponding type declarations."
+      }
+    ]
+  },
+  {
+    "run": "full-verify-clean",
+    "sourceLog": "/tmp/dscsshfix-full-verify-clean.log",
+    "selectedErrors": [
+      {
+        "line": 228,
+        "text": "[main 2026-10-13T06:33:22.670Z] Error: listen EINVAL: invalid argument /tmp/dscsshfix-release/.debug/template-marketplace-vscode-e2e-host-tmp/dsc-template-marketplace-vscode-e2e-runtime/vscode-563c73ed-1.14-main.sock"
+      }
+    ]
+  },
+  {
+    "run": "full-verify-short",
+    "sourceLog": "/tmp/dscsshfix-full-verify-short.log",
+    "selectedErrors": [
+      {
+        "line": 133,
+        "text": "  name: 'TimeoutError'"
+      }
+    ]
+  },
+  {
+    "run": "full-verify-final",
+    "sourceLog": "/tmp/dscsshfix-full-verify-final.log",
+    "selectedErrors": [
+      {
+        "line": 228,
+        "text": "[main 2026-10-13T06:37:28.784Z] Error: listen EINVAL: invalid argument /tmp/sf26/.debug/template-marketplace-vscode-e2e-host-tmp/dsc-template-marketplace-vscode-e2e-runtime/vscode-f91acda9-1.14-main.sock"
+      }
+    ]
+  },
+  {
+    "run": "full-verify-configured",
+    "sourceLog": "/tmp/dscsshfix-full-verify-configured.log",
+    "selectedErrors": [
+      {
+        "line": 2876,
+        "text": "Playwright failure artifacts are available under /tmp/sf26/.debug/playwright/results"
+      },
+      {
+        "line": 2877,
+        "text": "\u5b8c\u6574\u53d1\u5e03\u9a8c\u8bc1\u5931\u8d25\uff1anpm run test"
+      }
+    ]
+  }
+]

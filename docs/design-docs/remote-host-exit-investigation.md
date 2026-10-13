@@ -1,7 +1,7 @@
 ---
 title: localhost SSH 真实重开的旧远端 Host 退出调查
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains: [VSCode 集成域, 执行编排域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
@@ -13,7 +13,7 @@ updated_at: 2026-10-13
 
 ## 问题与授权范围
 
-0.26.1 发布验证首败中，Canvas 已 ready，Agent 与普通 Terminal 恢复；等待旧远端扩展 Host PID 消失的第三终端仍 live，导致“离线期间完成且丢弃历史”的联合断言失败。用户要求先建独立分支定位根因，确认后修复。本轮只交付调查和提案。
+0.26.1 发布验证首败中，Canvas 已 ready，Agent 与普通 Terminal 恢复；等待旧远端扩展 Host PID 消失的第三终端仍 live，导致“离线期间完成且丢弃历史”的联合断言失败。用户先要求建独立分支定位根因，随后批准按双状态方案修复。本文保留调查证据，并记录正式门禁设计和验证范围。
 
 ## 已确认的直接根因
 
@@ -39,21 +39,17 @@ R1 原版通过，R2 日志自然复现原35秒断言失败，R3 可落盘日志
 
 两分支第三终端等待私有完成文件；runner 确认前提后释放并观察离开期间输出/完成，然后启动 verify。verify 共同核验原 Supervisor/session/storage、原恢复/输入/完成历史断言及正式 resize helper 的 Host、Webview、原 Supervisor attachSession 尺寸。既有非 SSH 两阶段路径保持原语义，ready45秒/恢复35秒/resize20秒不放宽。身份错误、失败或未知均有界失败，信号发出前严格核验；最终清理只回收本次私有资源，不能代替业务通过。执行过程见 `docs/exec-plans/active/remote-host-two-state-fix.md`。
 
-2026-10-13 用户进一步询问旧 Host 是否可能不退出，以及门禁是否应覆盖两种情况。建议将候选方案补齐为两条确定性场景，而不是把“远端 Host 必须退出”设为所有重开的前提。用户于2026-10-13批准实施，正式接线与验证正在进行。短暂断连时远端 Host 保留等待重连是上游允许的行为；本固定版本配置三小时，不能把它表述为永久不退出的保证。正常关闭的消息递送失败则是另一个尚未定位到具体层的边界。
+本地客户端作用域使用本次真实 spawnargs 的私有 user-data-dir、/proc/exe、UID 和启动时记录的 PID/startTicks。Electron 会在启动后重写 argv，不能从运行中的 cmdline 缺少原启动参数推断进程越界。终止客户端后既等待根进程回收，也核验记录的同身份后代不再运行。远端信号单独核验 UID、私有 server 路径、extensionHost 角色和前后两次 startTicks；身份不符拒绝发送。retain 在重开前、verify ready 和业务完成均检查原身份仍非 Z/X；exit 必须证明原身份消失，僵尸也不算已消失。重开实际使用的新 Host 身份另行记录。
 
-第一条明确验证旧 Host 退出：修复限定在 Linux localhost SSH 的 smoke fixture 与 orchestration，不改变产品恢复、resize、ready45秒或 completed35秒预算。setup 成功时把真实远端 Host PID及 Linux startTicks 写入本次私有工件；本地 Electron 退出后先检查它是否已消失。在这条指定离线的场景中，若仍存活，核对 UID、私有 server 根、extensionHost 角色和启动身份，仅对这个旧 Host 制造真实离线，等待原进程消失，再启动 verify。未知身份或无法确认退出须提前失败并保存证据；PID重用不得向新进程发信号。
+第三终端的完成文件只由 runner 在本地退出、Host 前提和原 Supervisor 确认后创建。原 Agent/普通 Terminal 的离开期间输出仍按既有独立命令产生，setup 另断言输出尚未到达；runner 等待原两会话存活、独立输出到达和第三终端结束，再启动 verify。第三终端 snapshot-only/historyDiscarded 与原 session 恢复、后续输入断言保留。Supervisor 请求使用总预算计时，连接保持却无响应也须按期失败。
 
-两条场景都必须保留原Supervisor和Agent/Terminal sessionId，第三终端完成由独立的测试信号决定，不能从旧Host是否消失推断。runner在本地窗口退出和指定Host前提确认后释放信号，直接观察离开期间输出及第三终端结束，再运行原恢复、snapshot-only、historyDiscarded和无第三session断言。退出场景另用PID/startTicks屏障证明原Host已消失；普通正常退出记录为正常来源，若测试指定制造异常离线，仅结束已核实的原Host。不得批量杀server/Supervisor或重建会话。未知身份、未确认退出或PID重用须拒绝成功，信号发出前严格核验，退出后的zombie不误当新身份；正式身份不符拒绝信号回归仍需补齐。
-
-第二条明确验证旧Host保留：使用隔离的连接中断或退出消息未送达条件，在重开前、verify ready及业务断言完成后核对同一PID/startTicks仍运行，不结束它。重连可能复用原Host，也可能新窗口建立新Host；记录实际身份，本轮每次均为新Host与旧Host并存。验证原Supervisor、session绑定、离开期间输出、后续输入、共同resize及业务操作后会话数不变，完成终态按独立条件验收。本轮没有单独派发重复start命令，不把会话数不变扩大为重复启动拒绝已验证。R2只有部分恢复，C1先在ready失败；新的retain-2/retain-3补齐完整验证，旧失败事实保留。
-
-两条场景都应独立执行并有可确认的前提；一次运行按自然结果任选一条断言不能替代双分支覆盖。第一条拒绝结束旧 Host 时仍应失败，第二条旧 Host保留本身不应被判为产品失败。验收还包括原版两阶段、受控正常退出消息未送达但旧 Host 被确实结束、PID身份不符拒绝信号、原 Supervisor与会话保留及 fixture 最终零残留。结束保留Host的最终清理发生在其业务断言之后，明确属于测试资源回收。完成定向修复后再对最新发布准备预合并输入跑完整 release:verify；本轮结果不豁免 PR327 的失败门禁。
+具名分支分别可定向执行，但聚合入口和默认全量必须串行运行两个全新 fixture，不能按自然退出结果任选断言。业务完成后核对原 Supervisor/session 数量及真实 resize，最后才回收私有资源。会话数与绑定保持不变不等于已验证显式重复 start 拒绝；本轮没有单独派发该命令。短暂断连时保留等待重连是上游允许的行为，本固定版本三小时配置不代表永久保留保证。
 
 ## 证据与限制
 
 证据见[取证说明](../references/remote-host-exit-investigation/README.md)。原失败 `/tmp/d261r/source/remote-ssh-real-reopen` 与 main 正对照 `/tmp/dmr13/source/remote-ssh-real-reopen` 均保留；独立运行在 `/tmp/dscsshdiag-{r1,r2,r3,c1,c2,c3}`，仅导出筛选后的日志、进程身份、关键快照与哈希，避免保存完整环境或密钥。
 
-本轮交付只包含调查文档和参考脚本，正式源码、测试及上游缓存原件不变。用户确认前不实现提案。结论范围为 Linux localhost、固定 VS Code/Remote SSH版本；不能外推真实远端或其他平台。此前 resize瞬态、Webview资源积压、clean-checkout ETXTBSY 属于各自证据范围，不能拼接为本故障根因。
+调查与双状态研究阶段只改隔离副本，正式输入 hash 保持不变；用户批准后的正式实现修改测试及 runner，上游缓存原件仍不改。结论范围为 Linux localhost、固定 VS Code/Remote SSH版本；不能外推真实远端或其他平台。此前 resize瞬态、Webview资源积压、clean-checkout ETXTBSY 属于各自证据范围，不能拼接为本故障根因。
 
 ## 双状态可重复验证（2026-10-13，已完成研究）
 
@@ -61,4 +57,10 @@ R1 原版通过，R2 日志自然复现原35秒断言失败，R3 可落盘日志
 
 另用retain-4补查resize后稳定性：旧Host保持原身份，13次实时页面/原Supervisor采样共3213ms均保持新尺寸。首帧14ms磁盘注册表仍是旧尺寸，323ms追上，之后未回退。debug registry读取磁盘，Supervisor在状态更新后120ms安排持久化，因此不能将瞬时旧注册表值当作PTY未resize；本轮补验支持观察延迟，不追溯补造retain-2的后续连续状态。
 
-双状态可以在当前Linux localhost固定版本环境中受控并重复验收；受控上游消息缺失不代表所有真实网络故障。正式门禁注入接口仍待选择，本轮研究注入不直接进入产品。全部正式脚本、测试和bundle的400项hash不变，实验缓存恢复原版，临时runner入口移除。过程见 `docs/exec-plans/completed/remote-host-two-state-validation.md`，实测表、输入hash、参考脚本与限制见[双状态证据](../references/remote-host-two-state-validation/README.md)。正式产品/测试/超时未修复，完整release:verify未重跑，提案仍待用户确认。
+双状态可以在当前Linux localhost固定版本环境中受控并重复验收；受控上游消息缺失不代表所有真实网络故障。研究使用的上游注入只用于取证；正式门禁已选择真实客户端异常断连，不将该注入接入产品。全部正式脚本、测试和bundle的400项hash不变，实验缓存恢复原版，临时runner入口移除。过程见 `docs/exec-plans/completed/remote-host-two-state-validation.md`，实测表、输入hash、参考脚本与限制见[双状态证据](../references/remote-host-two-state-validation/README.md)。以上为研究阶段结果；后续正式实现及完整发布验证独立记录，研究结果不代证正式门禁。
+
+## 正式实现验证（2026-10-13）
+
+已接入双分支 runner、独立完成信号、原身份观察和真实 resize。17 项控制回归、9 项已有 resize helper 回归与主扩展/notifier 构建通过。原版缓存 native-2 两分支完整通过：exit 旧 Host2078814/startTicks249666082消失，Supervisor2084887保留；retain 旧 Host2189996/startTicks249677312持续到业务结束，Supervisor2194887保留。原会话恢复、输出/后续输入、第三终态/历史丢弃以及 Agent82×27/Terminal85×28真实尺寸均成立，两个私有 fixture 清理通过。native-1在 Electron argv作用域检查误拒绝，未发受控信号，错误与修复回归单独保留。
+
+native-2通过后增加本地后代退出确认、setup未提前到达输出断言和ready轮询取消。这些保护已在完整0.26.1临时预合并输入的source smoke全部通过：exit旧Host238831消失、Supervisor244567保留；retain与原会话/resize/cleanup共同通过。共享单root/多root/切换、双窗口和systemd/fallback回归通过。完整npm test（含426项Webview）与clean-checkout生产VSIX打包/安装后八场景smoke全部通过，release:verify退出码0。输入为本地临时预合并7d33f664（修复9daf7054 + 发布准备7b2440d4），后续两提交仅改控制回归，17项在当前修复head独立通过。该结果证明本次修复与发布准备输入在本环境兼容；修复合入后PR327仍须基于最新main和发布head重新验证。正式证据见[修复验证](../references/remote-host-two-state-fix/README.md)。

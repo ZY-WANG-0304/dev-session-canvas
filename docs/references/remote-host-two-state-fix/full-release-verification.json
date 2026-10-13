@@ -1,0 +1,77 @@
+{
+  "inputRef": "7d33f6648a86990ad240a42488211d04f60e135e",
+  "releasePreparationRef": "7b2440d4e56bb94e3792d4977248e5594301a357",
+  "repairImplementationRef": "9daf7054",
+  "currentRepairRef": "b4210dc3723e44c05c24ed63aecaf6466bf84d47",
+  "implementationMatchesCurrentRepair": true,
+  "laterChanges": "dfa7398c/b4210dc3 only modify control test file; final 17 tests separately passed",
+  "log": "/tmp/dscsshfix-full-verify-cached.log",
+  "logSha256": "852760f1ecbc691d8c9613b9e42bd72ec74408d443b649ec8aabb8e93c80cdbd",
+  "exitCode": 0,
+  "selectedResults": [
+    {
+      "line": 2290,
+      "text": "Template marketplace VS Code UI E2E passed."
+    },
+    {
+      "line": 44553,
+      "text": "Real window reopen smoke passed."
+    },
+    {
+      "line": 48938,
+      "text": "Multi-root real window reopen smoke passed."
+    },
+    {
+      "line": 54012,
+      "text": "Single-root to multi-root real window reopen smoke passed."
+    },
+    {
+      "line": 60926,
+      "text": "Two-window shared runtime smoke passed."
+    },
+    {
+      "line": 65976,
+      "text": "Fake systemd-user real window reopen smoke passed."
+    },
+    {
+      "line": 70989,
+      "text": "Systemd unavailable before submission real window reopen smoke passed."
+    },
+    {
+      "line": 76441,
+      "text": "Remote SSH real window reopen exit smoke passed."
+    },
+    {
+      "line": 82268,
+      "text": "Remote SSH real window reopen retain smoke passed."
+    },
+    {
+      "line": 82269,
+      "text": "VS Code smoke test passed."
+    },
+    {
+      "line": 82719,
+      "text": "426 passed (11.9m)"
+    },
+    {
+      "line": 82720,
+      "text": "Playwright webview tests passed."
+    },
+    {
+      "line": 113671,
+      "text": "VSIX packaged-payload smoke passed (owned-canvas-reconciliation, local-execution-flow, snapshot-only-manual-recovery, local-surface-cutover, local-pty-robustness, local-preparation-failure, local-links-and-stop, trusted)."
+    },
+    {
+      "line": 113672,
+      "text": "clean checkout \u9a8c\u8bc1\u5b8c\u6210\u3002\u4e34\u65f6\u76ee\u5f55: /tmp/dev-session-canvas-clean-checkout-0cjBv7"
+    },
+    {
+      "line": 113673,
+      "text": "\u4e34\u65f6\u76ee\u5f55\u5df2\u6e05\u7406\u3002"
+    },
+    {
+      "line": 113674,
+      "text": "\u53d1\u5e03\u5b8c\u6574\u9a8c\u8bc1\u901a\u8fc7\uff1av0.26.1"
+    }
+  ]
+}

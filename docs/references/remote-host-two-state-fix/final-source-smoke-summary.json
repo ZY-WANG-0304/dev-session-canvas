@@ -1,0 +1,182 @@
+{
+  "sourceLog": "/tmp/dscsshfix-full-verify-cached.log",
+  "inputRef": "7d33f6648a86990ad240a42488211d04f60e135e",
+  "runnerMatchesRepairRef": "b4210dc3723e44c05c24ed63aecaf6466bf84d47",
+  "proofs": [
+    "Runtime paged terminal projection smoke passed.",
+    "Trusted workspace smoke passed.",
+    "Restricted workspace smoke passed.",
+    "Real window reopen smoke passed.",
+    "Multi-root real window reopen smoke passed.",
+    "Single-root to multi-root real window reopen smoke passed.",
+    "Two-window shared runtime smoke passed.",
+    "Fake systemd-user real window reopen smoke passed.",
+    "Systemd unavailable before submission real window reopen smoke passed.",
+    "Remote SSH real window reopen exit smoke passed.",
+    "Remote SSH real window reopen retain smoke passed."
+  ],
+  "remoteHostScenarios": [
+    {
+      "scenario": "exit",
+      "setupHost": {
+        "pid": 238831,
+        "startTicks": "249892848",
+        "state": "S",
+        "ppid": 238796
+      },
+      "verifyHost": {
+        "pid": 261768,
+        "startTicks": "249894962",
+        "state": "R",
+        "ppid": 238796
+      },
+      "supervisor": {
+        "pid": 244567,
+        "startTicks": "249893355",
+        "state": "S",
+        "ppid": 1
+      },
+      "phases": [
+        {
+          "stage": "verify-ready",
+          "host": {
+            "pid": 238831,
+            "startTicks": "249892848",
+            "state": "original-absent"
+          },
+          "supervisor": {
+            "pid": 244567,
+            "startTicks": "249893355",
+            "state": "S",
+            "ppid": 1
+          }
+        },
+        {
+          "stage": "business-complete",
+          "host": {
+            "pid": 238831,
+            "startTicks": "249892848",
+            "state": "original-absent"
+          },
+          "supervisor": {
+            "pid": 244567,
+            "startTicks": "249893355",
+            "state": "S",
+            "ppid": 1
+          }
+        }
+      ],
+      "resize": {
+        "baseline": [
+          {
+            "sessionId": "0ff59bc5-c946-4bca-a4fe-a6980074264c",
+            "cols": 67,
+            "rows": 21
+          },
+          {
+            "sessionId": "d7185aeb-37ea-4b4b-b531-54382d81c25e",
+            "cols": 64,
+            "rows": 20
+          }
+        ],
+        "resized": [
+          {
+            "sessionId": "0ff59bc5-c946-4bca-a4fe-a6980074264c",
+            "cols": 82,
+            "rows": 27
+          },
+          {
+            "sessionId": "d7185aeb-37ea-4b4b-b531-54382d81c25e",
+            "cols": 85,
+            "rows": 28
+          }
+        ]
+      },
+      "businessPass": true,
+      "cleanupPass": true,
+      "remaining": []
+    },
+    {
+      "scenario": "retain",
+      "setupHost": {
+        "pid": 351737,
+        "startTicks": "249904154",
+        "state": "R",
+        "ppid": 351712
+      },
+      "verifyHost": {
+        "pid": 374281,
+        "startTicks": "249906301",
+        "state": "R",
+        "ppid": 351712
+      },
+      "supervisor": {
+        "pid": 357698,
+        "startTicks": "249904671",
+        "state": "S",
+        "ppid": 1
+      },
+      "phases": [
+        {
+          "stage": "verify-ready",
+          "host": {
+            "pid": 351737,
+            "startTicks": "249904154",
+            "state": "S",
+            "ppid": 351712
+          },
+          "supervisor": {
+            "pid": 357698,
+            "startTicks": "249904671",
+            "state": "S",
+            "ppid": 1
+          }
+        },
+        {
+          "stage": "business-complete",
+          "host": {
+            "pid": 351737,
+            "startTicks": "249904154",
+            "state": "R",
+            "ppid": 351712
+          },
+          "supervisor": {
+            "pid": 357698,
+            "startTicks": "249904671",
+            "state": "S",
+            "ppid": 1
+          }
+        }
+      ],
+      "resize": {
+        "baseline": [
+          {
+            "sessionId": "ff945776-513a-42bb-b852-a9d0022b5875",
+            "cols": 67,
+            "rows": 21
+          },
+          {
+            "sessionId": "2d11be00-df30-47ea-870f-d5676511d07b",
+            "cols": 64,
+            "rows": 20
+          }
+        ],
+        "resized": [
+          {
+            "sessionId": "ff945776-513a-42bb-b852-a9d0022b5875",
+            "cols": 82,
+            "rows": 27
+          },
+          {
+            "sessionId": "2d11be00-df30-47ea-870f-d5676511d07b",
+            "cols": 85,
+            "rows": 28
+          }
+        ]
+      },
+      "businessPass": true,
+      "cleanupPass": true,
+      "remaining": []
+    }
+  ]
+}

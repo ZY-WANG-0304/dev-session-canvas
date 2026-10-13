@@ -1,0 +1,20 @@
+{
+  "scenario": "exit",
+  "localSignals": [],
+  "observations": [],
+  "setupHost": {
+    "pid": 1847670,
+    "startTicks": "249643365",
+    "state": "S",
+    "ppid": 1846576
+  },
+  "supervisor": {
+    "pid": 1854233,
+    "startTicks": "249644030",
+    "state": "S",
+    "ppid": 1
+  },
+  "error": "AssertionError [ERR_ASSERTION]: Local client is outside private user-data root\n    at Object.abortLocalClient (/tmp/dscsshdiag/tests/vscode-smoke/remote-host-control.cjs:83:10)\n    at async runRemoteSSHRealReopenScenario (file:///tmp/dscsshdiag/scripts/smoke/run-vscode-smoke.mjs:681:28)\n    at async main (file:///tmp/dscsshdiag/scripts/smoke/run-vscode-smoke.mjs:194:7)",
+  "sourceArtifact": "/tmp/dscsshfix-native-1/remote-ssh-real-reopen-exit/artifacts/remote-host-control-failure.json",
+  "sourceSha256": "69f0307a5129e966e6477f96e2c7a30d88ff69eaf1f6a5c4afdc41146c64ff1a"
+}

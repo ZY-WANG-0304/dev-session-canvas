@@ -1,0 +1,198 @@
+{
+  "scenario": "exit",
+  "localSignals": [
+    {
+      "pid": 196426,
+      "startTicks": "249888403",
+      "state": "R",
+      "ppid": 3611115,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 242266,
+      "startTicks": "249893122",
+      "state": "S",
+      "ppid": 196430,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 200236,
+      "startTicks": "249888797",
+      "state": "S",
+      "ppid": 200233,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 200233,
+      "startTicks": "249888797",
+      "state": "S",
+      "ppid": 200205,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 200205,
+      "startTicks": "249888780",
+      "state": "S",
+      "ppid": 196426,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 198904,
+      "startTicks": "249888718",
+      "state": "S",
+      "ppid": 196426,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 198713,
+      "startTicks": "249888669",
+      "state": "S",
+      "ppid": 196426,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 198674,
+      "startTicks": "249888664",
+      "state": "S",
+      "ppid": 196426,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 198673,
+      "startTicks": "249888664",
+      "state": "S",
+      "ppid": 196426,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 196494,
+      "startTicks": "249888461",
+      "state": "S",
+      "ppid": 196430,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 196463,
+      "startTicks": "249888436",
+      "state": "S",
+      "ppid": 196426,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 196460,
+      "startTicks": "249888435",
+      "state": "S",
+      "ppid": 196426,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 196430,
+      "startTicks": "249888407",
+      "state": "S",
+      "ppid": 196426,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 196429,
+      "startTicks": "249888407",
+      "state": "S",
+      "ppid": 196426,
+      "signal": "SIGKILL"
+    }
+  ],
+  "observations": [
+    {
+      "stage": "client-disconnected",
+      "host": {
+        "pid": 238831,
+        "startTicks": "249892848",
+        "state": "S",
+        "ppid": 238796
+      },
+      "supervisor": {
+        "pid": 244567,
+        "startTicks": "249893355",
+        "state": "S",
+        "ppid": 1
+      }
+    },
+    {
+      "stage": "before-terminal-completion",
+      "host": {
+        "pid": 238831,
+        "startTicks": "249892848",
+        "state": "original-absent"
+      },
+      "supervisor": {
+        "pid": 244567,
+        "startTicks": "249893355",
+        "state": "S",
+        "ppid": 1
+      }
+    },
+    {
+      "stage": "before-verify",
+      "host": {
+        "pid": 238831,
+        "startTicks": "249892848",
+        "state": "original-absent"
+      },
+      "supervisor": {
+        "pid": 244567,
+        "startTicks": "249893355",
+        "state": "S",
+        "ppid": 1
+      }
+    }
+  ],
+  "setupHost": {
+    "pid": 238831,
+    "startTicks": "249892848",
+    "state": "S",
+    "ppid": 238796
+  },
+  "supervisor": {
+    "pid": 244567,
+    "startTicks": "249893355",
+    "state": "S",
+    "ppid": 1
+  },
+  "localClient": {
+    "pid": 196426,
+    "startTicks": "249888403",
+    "state": "R",
+    "ppid": 3611115
+  },
+  "hostSignal": {
+    "pid": 238831,
+    "startTicks": "249892848",
+    "state": "S",
+    "ppid": 238796,
+    "signal": "SIGKILL"
+  },
+  "offlineSessions": [
+    {
+      "sessionId": "0ff59bc5-c946-4bca-a4fe-a6980074264c",
+      "kind": "agent",
+      "live": true,
+      "cols": 67,
+      "rows": 21
+    },
+    {
+      "sessionId": "d7185aeb-37ea-4b4b-b531-54382d81c25e",
+      "kind": "terminal",
+      "live": true,
+      "cols": 64,
+      "rows": 20
+    },
+    {
+      "sessionId": "03df5173-e92d-4803-a204-6c37b47a4be7",
+      "kind": "terminal",
+      "live": false,
+      "cols": 64,
+      "rows": 20
+    }
+  ],
+  "sourceArtifact": "/tmp/fs27/remote-ssh-real-reopen-exit/artifacts/remote-host-control.json",
+  "sourceSha256": "a7e295c19e382197ff0b4e10e248d9dc8f593d91b586ee39a03534a1fccdbd9e"
+}

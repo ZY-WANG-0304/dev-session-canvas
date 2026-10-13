@@ -12,17 +12,17 @@
 - 建议修复时机
 - 关联文档或代码路径
 
-## 2026-10-13：localhost SSH 重开缺少旧远端 Host 离线屏障
+## 2026-10-13：localhost SSH 重开双状态门禁与上游消息边界
 
-0.26.1发布准备PR327的完整verify在SSH重开第三终端completed断言失败，Canvas已ready，原Agent/普通Terminal恢复。调查基于main ea0c9b19。R2自然复现同35秒失败，原setupHost1305563/startTicks248872585清理前持续S/R；runner仅等待本地Electron退出加三秒，不证明远端Host退出，第三终端kill -0循环因此不结束。R1原版、R3诊断正常退出通过，不能用重跑覆盖首败。
+0.26.1发布准备PR327的完整verify在SSH重开第三终端completed断言失败，Canvas已ready，原Agent/普通Terminal恢复。调查基于main ea0c9b19。R2自然复现同35秒失败，原setupHost1305563/startTicks248872585清理前持续S/R；runner仅等待本地Electron退出加三秒，不证明远端Host退出，第三终端kill -0循环因此不结束。R1原版、R3诊断正常退出通过，首败单独保留。
 
-待用户确认的修复：Linux localhost fixture记录setupHost真实身份，本地退出后有界观察；仍活时只结束已核对UID、私有server根、extensionHost角色和startTicks的旧Host并确认原进程消失，保留Supervisor与原会话后verify。C3故意不发送正常退出消息，仅结束旧Host2006731后原两阶段全部通过。正式产品/测试/超时未改；此条仍阻塞发布验证收口，修复与最新发布预合并完整verify待做。
+用户已批准退出/保留两条确定性场景。正式 runner 用真实客户端异常断连建立原 Host 保留，exit 再仅结束核验身份的旧 Host，retain 观察原身份到业务完成；第三终端按私有独立信号完成，不与 Host 寿命耦合。原 Supervisor/session、恢复/输出/输入、snapshot-only/historyDiscarded 与真实 resize 分别验收。17项控制正反例、9项resize回归及构建通过；原版 native-2 两分支全部通过、cleanup零残留。其后补充的前提保护已在完整0.26.1临时预合并source smoke中通过exit/retain，全部source场景及共享重开回归通过；完整npm test（426项Webview）和clean-checkout生产VSIX/安装后smoke全部通过，临时预合并7d33f664的release:verify退出码0。门禁前提误判已修复；修复合入后PR327仍须按最新main和发布head重新完整验证，当前未合并或发布。
 
-同日用户追问后候选方案补齐为退出/保留两条确定性场景，前述结束旧Host动作只属于指定离线的第一条。第二条须确认旧Host原身份保留，验证原会话重连、输出、后续输入/resize及无重复执行，不要求等待旧PID的第三终端已经结束；完成终态另由明确结束条件验收。R2未走完保留分支后续断言，C1先在ready失败，均不能代证第二条通过。双场景提案仍待用户确认。
+研究retain-2/retain-3和exit-1/exit-2各两次通过；retain-4的13次/3213ms连续观察支持磁盘注册表短暂旧尺寸为持久化延迟，实时尺寸不回退。调查C1先在ready45秒失败、C2在旧Host信号后诊断误判zombie、研究retain-1helper路径错误、正式native-1客户端argv误拒绝，均保留边界，不能代证产品失败或业务成功。
 
-2026-10-13双状态研究已补齐：相同输入retain-2/retain-3和exit-1/exit-2分别各两次完整通过，原Host前提、原Supervisor/session、恢复/输出/输入、独立第三终端完成/历史丢弃及真实resize均通过。retain-1诊断路径错误未进入verify，首败保留；retain-4严格13次/3213ms观察支持磁盘注册表短暂旧尺寸是持久化延迟，实时尺寸不回退。只修改实验副本，400项正式输入hash未变，缓存恢复、六次fixture零残留。当前修复提案采用两分支和与Host寿命独立的完成信号；正式注入接口、身份不符拒绝信号/业务负对照、正式门禁接线及最新发布预合并完整verify仍待用户确认后实施，发布卡点不因研究绿灯关闭。没有单独派发重复start命令，不宣称重复启动拒绝已验证。证据 `docs/references/remote-host-two-state-validation/README.md`，计划 `docs/exec-plans/completed/remote-host-two-state-validation.md`。
+遗留范围：上游具体丢失层未知。VS Code1.141.0 disconnect确有await；Remote SSH0.128.0 Managed(1) drain只等本地写回调，不等远端确认/Host退出。R3 drain返回unacked=3仍正常通过，不能把计数本身定因。无需等三小时或扩大completed35秒换取绿色。正式覆盖Linux localhost固定版本；其他平台、真实网络故障、原Host复用与显式重复start拒绝需各自验证，原会话数/绑定保持不变不代证拒绝命令。遇到新的退出消息丢失时继续采集具体传输层证据。
 
-上游具体丢失层未知：VS Code1.141.0的disconnect确有await；Remote SSH0.128.0 Managed(1) drain只等本地写回调，不等远端确认/Host退出。R3 drain返回unacked=3仍正常通过，不能把计数本身定为丢消息原因。C1受控丢消息先在ready45秒失败、C2只杀Host后诊断误判zombie，均保留单独边界。无需等待三小时或扩大completed35秒换取绿色。关联：`docs/design-docs/remote-host-exit-investigation.md`、`docs/exec-plans/completed/remote-host-exit-investigation.md`、`docs/references/remote-host-exit-investigation/README.md`。
+关联：`docs/design-docs/remote-host-exit-investigation.md`、`docs/exec-plans/active/remote-host-two-state-fix.md`、`docs/references/remote-host-two-state-fix/README.md`；历史调查与双状态研究证据分别保留在`remote-host-exit-investigation/`和`remote-host-two-state-validation/`。
 
 ## 2026-10-13：真实窗口重开 ready 预算缓解与上游资源责任
 

@@ -1,0 +1,76 @@
+{
+  "source": "/tmp/dscsshfix-full-auto-payload-cleanup.json",
+  "sha256": "a0f0f2f10dc4bb5a30d2612071e629ffa95278a7a4bd7439b9b0ef904fb2913e",
+  "record": [
+    {
+      "path": "/tmp/fs27/local-surface-cutover/smoke-host/node_modules",
+      "proof": "Local execution output survives surface cutover and canvas reread passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/local-preparation-failure/smoke-host/node_modules",
+      "proof": "Missing Agent CLI settles the unstarted node and reports the failure once passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/local-links-and-stop/smoke-host/node_modules",
+      "proof": "Rendered terminal links and original owned execution stop completion passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/local-pty-robustness/smoke-host/node_modules",
+      "proof": "Local PTY exits, restarts and canvas responsiveness during concurrent terminal output passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/runtime-checkpoint-refresh/smoke-host/node_modules",
+      "proof": "Runtime paged terminal projection smoke passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/trusted/smoke-host/node_modules",
+      "proof": "Trusted workspace smoke passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/restricted/smoke-host/node_modules",
+      "proof": "Restricted workspace smoke passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/legacy-supervisor-upgrade/smoke-host/node_modules",
+      "proof": "Legacy Supervisor upgrade smoke (5355e6a) passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/real-reopen/smoke-host/node_modules",
+      "proof": "Real window reopen smoke passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/multi-root-real-reopen/smoke-host/node_modules",
+      "proof": "Multi-root real window reopen smoke passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/single-to-multi-root-real-reopen/smoke-host/node_modules",
+      "proof": "Single-root to multi-root real window reopen smoke passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/two-window-shared-runtime/smoke-host/node_modules",
+      "proof": "Two-window shared runtime smoke passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/systemd-user-real-reopen/smoke-host/node_modules",
+      "proof": "Fake systemd-user real window reopen smoke passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    },
+    {
+      "path": "/tmp/fs27/systemd-fallback-real-reopen/smoke-host/node_modules",
+      "proof": "Systemd unavailable before submission real window reopen smoke passed.",
+      "sourceLog": "/tmp/dscsshfix-full-verify-cached.log"
+    }
+  ]
+}

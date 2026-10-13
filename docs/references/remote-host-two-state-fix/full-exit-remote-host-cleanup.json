@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "scope": "This loopback fixture server, private client roots and original sshd only; not product settlement.",
+  "signals": [
+    {
+      "pid": 207102,
+      "starttime": "249889450",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 207266,
+      "starttime": "249889466",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 238792,
+      "starttime": "249892798",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 238796,
+      "starttime": "249892798",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 238851,
+      "starttime": "249892868",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 238855,
+      "starttime": "249892869",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 238856,
+      "starttime": "249892869",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 238880,
+      "starttime": "249892886",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 239963,
+      "starttime": "249892910",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 244567,
+      "starttime": "249893355",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 260373,
+      "starttime": "249894913",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 261779,
+      "starttime": "249894970",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 267380,
+      "starttime": "249895573",
+      "root": "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 170176,
+      "signal": "SIGTERM",
+      "role": "fixture-sshd"
+    }
+  ],
+  "remaining": [],
+  "failures": [],
+  "pass": true,
+  "sourceArtifact": "/tmp/fs27/remote-ssh-real-reopen-exit/artifacts/remote-host-cleanup.json",
+  "sourceSha256": "36e453d747e5a9ac42f273fae916b69729ed53f2a71eb74a92c7cde93f30bc9d"
+}

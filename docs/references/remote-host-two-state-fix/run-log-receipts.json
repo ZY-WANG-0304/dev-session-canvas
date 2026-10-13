@@ -1,0 +1,58 @@
+[
+  {
+    "name": "preflight",
+    "source": "/tmp/dscsshfix-preflight.log",
+    "bytes": 160,
+    "sha256": "fa01f229bf38f90968a26d26441a2391a42d34ac2f40702bb36b292749b4e77e"
+  },
+  {
+    "name": "native-1",
+    "source": "/tmp/dscsshfix-native-1.log",
+    "bytes": 355242,
+    "sha256": "c46624354c6af615c1b0a7dcb2804ebbd5b42445462f5c70cdcbf6706a94fcc4"
+  },
+  {
+    "name": "native-2",
+    "source": "/tmp/dscsshfix-native-2.log",
+    "bytes": 1285755,
+    "sha256": "cfe51d6ace35c9bb73415507b6ccf3d6dd58335a5f52e285b2b5d2eef1b2ffee"
+  },
+  {
+    "name": "full-verify",
+    "source": "/tmp/dscsshfix-full-verify.log",
+    "bytes": 5254,
+    "sha256": "e769221834207f4c5d5a2955c7d59f973bdd9ad247af8a51fbed1d5e34e60a38"
+  },
+  {
+    "name": "full-verify-clean",
+    "source": "/tmp/dscsshfix-full-verify-clean.log",
+    "bytes": 13696,
+    "sha256": "2a4389140babedb8e345ed5802197639f6f507473a1abc8c71693b42ae0c00ff"
+  },
+  {
+    "name": "full-verify-short",
+    "source": "/tmp/dscsshfix-full-verify-short.log",
+    "bytes": 6949,
+    "sha256": "5de82c4329313eb3140260659fddfc27e6a263e36b9c672f03eeda17c030c411"
+  },
+  {
+    "name": "full-verify-final",
+    "source": "/tmp/dscsshfix-full-verify-final.log",
+    "bytes": 13553,
+    "sha256": "3cf89801627eec7189119e97205367ccc94492d1f3a5926bdb7ef22a915a9d97"
+  },
+  {
+    "name": "full-verify-configured",
+    "source": "/tmp/dscsshfix-full-verify-configured.log",
+    "bytes": 296310,
+    "sha256": "b071594fb194ff972d2dfc89e96b27a9b780ee312abbb6f0dc43c9ba59d79e5b"
+  },
+  {
+    "name": "full-verify-cached",
+    "source": "/tmp/dscsshfix-full-verify-cached.log",
+    "bytes": 14346149,
+    "sha256": "852760f1ecbc691d8c9613b9e42bd72ec74408d443b649ec8aabb8e93c80cdbd",
+    "exitCode": 0,
+    "inputRef": "7d33f6648a86990ad240a42488211d04f60e135e"
+  }
+]
