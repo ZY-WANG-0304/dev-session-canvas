@@ -19,7 +19,6 @@ jobs:
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
       DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/rca-tm-${{ github.run_id }}
-      DSC_RCA_TRACE_FILE: ${{ runner.temp }}/root-preparation-trace.jsonl
     steps:
       - name: Checkout diagnostic scripts
         uses: actions/checkout@v4
@@ -27,7 +26,9 @@ jobs:
           path: diagnostic-input
           persist-credentials: false
       - name: Preserve diagnostic script outside tested workspace
-        run: cp diagnostic-input/docs/references/release-gate-root-cause/instrument-preparation.mjs "$RUNNER_TEMP/instrument-preparation.mjs"
+        run: |
+          cp diagnostic-input/docs/references/release-gate-root-cause/instrument-preparation.mjs "$RUNNER_TEMP/instrument-preparation.mjs"
+          echo "DSC_RCA_TRACE_FILE=$RUNNER_TEMP/root-preparation-trace.jsonl" >> "$GITHUB_ENV"
       - name: Checkout original failing PR327 input
         uses: actions/checkout@v4
         with:

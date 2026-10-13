@@ -17,6 +17,8 @@
 
 CI Canvas 已 ready/bootstrapAck，Agent error 且没有 execution；通用错误来自 runtimeRootPreparation.ts 存储准备完成后的外层catch。该catch未保留异常，CI workflow也未上传失败工件。本地原错误包含精确匹配事件，waitForDiagnosticEvents在每轮开头检查结果，异步取回跨过deadline后直接失败。
 
+首个诊断run38381854008未创建job：job级env不允许引用runner.temp。将路径登记移到step的GITHUB_ENV后，actionlint1.7.12检查通过；该配置错误未产生runtime证据，不属于原发布首败。
+
 ## 决策记录
 
 2026-10-13 / Codex：调查与发布分支分开，受控实验只在私有临时目录运行。原因是用户要求定位根因，PR327完整失败必须保留，不能改head或放宽正式断言取得表面通过。
