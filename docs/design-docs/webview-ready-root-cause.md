@@ -23,7 +23,7 @@ R3连续40次、R4连续80次重放，分别在第33次、第33/65次出现约16
 
 代码责任在本轮固定VS Code包的`resources/app/out/vs/workbench/contrib/webview/browser/pre/service-worker.js`：`processResourceRequest`先查缓存，再取得信号量，最后建`RequestStore`并请求outer iframe；超时结算释放，frame销毁没有取消这份等待。上游`workbench.desktop.main.js`的Webview `loadResource`还会在disposed后直接返回。已确认的是请求无人应答及名额延迟释放；每个旧请求究竟是在renderer收到前丢失、disposed后跳过，还是转发阶段失效，本轮没有逐个证明。
 
-在更快填满容量时，名额剩余等待可能超过产品20秒期限。C2只把独立副本限额32改为4，同一重放第3次触发20秒Canvas ready超时：generation20 active、ready/ack=false、原Agent/Terminal存活、Supervisor pending=0，CSS/JS两个请求排队。C3将限额提高到128，40次通过、最大等待507ms；结束仍有40个旧请求，队列为空。因此该实验确认排队能造成ready超时，也证明提高限额没有修复积压。不能将4或128改动交付为产品修复。
+在更快填满容量时，名额剩余等待可能超过当时真实窗口重开smoke显式传入的20秒ready等待预算。C2只把独立副本限额32改为4，同一重放第3次触发该历史20秒超时：generation20 active、ready/ack=false、原Agent/Terminal存活、Supervisor pending=0，CSS/JS两个请求排队。C3将限额提高到128，40次通过、最大等待507ms；结束仍有40个旧请求，队列为空。因此该实验确认排队能造成ready超时，也证明提高限额没有修复积压。不能将4或128改动交付为产品修复。后续PR #325采用[真实重开smoke最大45秒等待策略](smoke-reopen-ready-timeout.md)，ready提前满足即返回；不改写本轮20秒实验或证明原首败已修复。
 
 ## 原首败仍未定因
 
@@ -33,16 +33,18 @@ R3连续40次、R4连续80次重放，分别在第33次、第33/65次出现约16
 
 `CanvasPanelManager.waitForCanvasReady`检查active、interactive、visible和应用ready，不等待bootstrapAck。原`bootstrapAck=false`不能解释等待失败。VS Code `pre/index.html`在`signalingReady`之后，收到content还需等待`workerReady`、创建fake.html内层frame、写HTML和加载资源；外层ready不表示React执行完成。R3/R4慢例中，React发ready后的Host接收/接受没有异常；C2根本未进入React ready，不能从该负对照评价消息过滤。这些结论不能外推到未记录的原首败。
 
+20秒是调查轮smoke的显式预算。`CanvasPanelManager.waitForCanvasReady`未传timeout时默认15秒，测试命令未传有效正数时也默认15秒；普通打开命令经`revealOrCreate/revealInEditor/revealInPanel → revealSurface`创建/显示Webview，没有调用限时ready等待。资源恢复后可继续异步加载；持续未启动时可能一直空白，当前没有专门的Canvas启动超时提示、重试按钮或基于ready超时的自动重建。方法默认15秒与后续smoke最大45秒均不为普通打开提供这种反馈。调用锚点、时间范围和用户体验限制见[后续预算设计](smoke-reopen-ready-timeout.md)。
+
 恢复五份临时源码后重新构建，N1使用原版VS Code、原短workspace `/tmp/dscgate1012`、独立新profile执行原fallback两阶段，完整通过且无systemctl提交。它排除了“短workspace路径本身必然失败”的说法，但新profile不能代证原profile健康。没有证据把原首败归为PTY、systemd fallback或宿主拒收，也没有证据证明它已修复。
 
 ## 验证与收口
 
 证据、运行表、输入SHA256、关键worker事件、负对照快照和可复用probe见[取证说明](../references/webview-ready-root-cause/README.md)。R1首次误将构建与启动并行导致缺dist，已保留退出1工件，未计入产品故障；后续构建和启动串行。R4直接通过CDP访问上游模块私有绑定的ReferenceError属于诊断自身，随后改为在独立副本暴露只读引用，不能计为应用异常。重复worker attach的console事件已按run与内容去重。
 
-本轮最终仅提交调查文档、证据和参考诊断patch，不修改产品、resize、等待预算或正式fixture。五份源码按调查前SHA256恢复；原VSCode缓存哈希一致，副本也恢复。N1、build与文档/参考脚本检查完成；未运行完整发布门禁，不构成0.26.1发布豁免。
+调查轮最终仅提交调查文档、证据和参考诊断patch，当时不修改产品、resize、smoke等待预算或正式fixture。五份源码按调查前SHA256恢复；原VSCode缓存哈希一致，副本也恢复。N1、build与文档/参考脚本检查完成；未运行完整发布门禁，不构成0.26.1发布豁免。后续PR #325在本文中仅同步修正时间与调用范围描述，原始实验、失败工件及其hash保留。
 
 ## 后续决策边界
 
 原首败保持未确认；下次具名复现须同时保存outer性能标记、inner DOM、CSS/JS请求、worker计数、React发送与Host接收，按同一surface/generation/frame关联。优先区分workerReady尚未完成与资源名额排队，再考虑应用执行或Host身份过滤。
 
-连续重开积压是已确认的上游生命周期问题，修复应取消已销毁client的未完成请求或保证其及时结算，再验证缓存/stream/body责任；需在VS Code上游变更中验收，或另行设计扩展可控的资源责任措施。固定sleep、延长20秒、提高限额和无限重试都不作为本轮修复。Linux/指定版本结论不外推其他VS Code版本、macOS、Windows或Remote。
+连续重开积压是已确认的上游生命周期问题，修复应取消已销毁client的未完成请求或保证其及时结算，再验证缓存/stream/body责任；需在VS Code上游变更中验收，或另行设计扩展可控的资源责任措施。调查轮保持当时smoke的20秒预算，不以扩大预算、固定sleep、提高限额或无限重试证明根因已修复。后续PR #325采用[smoke最大45秒的测试容忍策略](smoke-reopen-ready-timeout.md)，该策略仍不修复上游请求责任，也不为普通打开增加启动超时反馈。Linux/指定版本结论不外推其他VS Code版本、macOS、Windows或Remote。
