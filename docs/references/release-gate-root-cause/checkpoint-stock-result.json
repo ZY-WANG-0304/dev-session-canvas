@@ -1,0 +1,8 @@
+{
+  "log": "/tmp/pr327-rca-checkpoint-stock.log",
+  "sha256": "3d955344fe49bd0ac4ef873e209451f3a04996a64818d2f61967c9ebaa8d3d32",
+  "exitCode": 0,
+  "removedSuccessfulDuplicate": "/tmp/g327rca1/runtime-checkpoint-refresh/smoke-host/node_modules",
+  "input": "ec4afba3adf888b12fd86650e3f376a4d4b24167",
+  "interpretation": "stock isolated checkpoint scene passed; not full gate pass"
+}

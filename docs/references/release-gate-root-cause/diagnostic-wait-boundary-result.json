@@ -1,0 +1,69 @@
+{
+  "helperSha256": "317810a9533ee874269b899be5d0a144477d410c74d5ff940051ad06aac0504a",
+  "results": [
+    {
+      "name": "matching fetch within budget",
+      "firstFetchMs": 0,
+      "finalFetchMs": 99,
+      "matches": true,
+      "expected": "passed",
+      "outcome": "passed",
+      "reads": 2,
+      "predicateCalls": 2,
+      "finalMatching": true,
+      "now": 99
+    },
+    {
+      "name": "matching fetch on deadline",
+      "firstFetchMs": 0,
+      "finalFetchMs": 100,
+      "matches": true,
+      "expected": "failed",
+      "outcome": "failed",
+      "reads": 2,
+      "predicateCalls": 1,
+      "finalMatching": true,
+      "now": 100,
+      "error": "Timed out while waiting for diagnostic events. Last events: [{\"kind\":\"execution/linkOpened\",\"detail\":{\"kind\":\"terminal\",\"nodeId\":\"terminal-original\",\"text\":\"missing-target.ts:9:3\",\"linkKind\":\"search\",\"openerKind\":\"workbench.action.quickOpen\"}}]"
+    },
+    {
+      "name": "matching fetch crosses deadline",
+      "firstFetchMs": 0,
+      "finalFetchMs": 101,
+      "matches": true,
+      "expected": "failed",
+      "outcome": "failed",
+      "reads": 2,
+      "predicateCalls": 1,
+      "finalMatching": true,
+      "now": 101,
+      "error": "Timed out while waiting for diagnostic events. Last events: [{\"kind\":\"execution/linkOpened\",\"detail\":{\"kind\":\"terminal\",\"nodeId\":\"terminal-original\",\"text\":\"missing-target.ts:9:3\",\"linkKind\":\"search\",\"openerKind\":\"workbench.action.quickOpen\"}}]"
+    },
+    {
+      "name": "first matching fetch crosses deadline",
+      "firstFetchMs": 101,
+      "finalFetchMs": 0,
+      "matches": true,
+      "expected": "failed",
+      "outcome": "failed",
+      "reads": 1,
+      "predicateCalls": 0,
+      "finalMatching": true,
+      "now": 101,
+      "error": "Timed out while waiting for diagnostic events. Last events: [{\"kind\":\"execution/linkOpened\",\"detail\":{\"kind\":\"terminal\",\"nodeId\":\"terminal-original\",\"text\":\"missing-target.ts:9:3\",\"linkKind\":\"search\",\"openerKind\":\"workbench.action.quickOpen\"}}]"
+    },
+    {
+      "name": "nonmatching fetch crosses deadline",
+      "firstFetchMs": 0,
+      "finalFetchMs": 101,
+      "matches": false,
+      "expected": "failed",
+      "outcome": "failed",
+      "reads": 2,
+      "predicateCalls": 1,
+      "finalMatching": false,
+      "now": 101,
+      "error": "Timed out while waiting for diagnostic events. Last events: []"
+    }
+  ]
+}

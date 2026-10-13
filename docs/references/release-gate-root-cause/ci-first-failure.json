@@ -1,0 +1,108 @@
+{
+  "input": {
+    "version": "0.26.1",
+    "previousRemoteHead": "7b2440d4e56bb94e3792d4977248e5594301a357",
+    "head": "42d87b3d59d3147199a3fef9f2ee0b40de4534cf",
+    "base": "22803dd890855ffbe7620538b04940def097171b",
+    "tree": "c47ab0413009feb4f24dfb5824ffaa436ee5a385",
+    "premerge": "ec4afba3adf888b12fd86650e3f376a4d4b24167",
+    "validationWorktree": "/tmp/sf26"
+  },
+  "githubPremerge": "7e659ce6af2f713a64031eeb4daacf705977e851",
+  "premergeTree": "c47ab0413009feb4f24dfb5824ffaa436ee5a385",
+  "sameTreeAsLocal": true,
+  "workflowRun": 38369705401,
+  "job": 115205696956,
+  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38369705401",
+  "conclusion": "failure",
+  "completedAt": "2026-10-13T08:42:18Z",
+  "nativeAssets": {
+    "linux-x64-glibc": "success",
+    "linux-arm64-glibc": "success",
+    "darwin-x64": "success",
+    "darwin-arm64": "success",
+    "win32-x64": "success",
+    "win32-arm64": "success"
+  },
+  "firstFailure": {
+    "scenario": "runtime-checkpoint-refresh",
+    "observedAt": "2026-10-13T08:42:13.9891321Z",
+    "message": "Timed out while waiting for smoke test state.",
+    "stack": [
+      "at waitForSnapshot (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/tests/vscode-smoke/extension-tests.cjs:12833:10)",
+      "at async waitForRuntimeExecutionStarted (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/tests/vscode-smoke/extension-tests.cjs:5000:39)",
+      "at async prepareTrustedBaseNodesForAppliedRuntimePersistenceMode (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/tests/vscode-smoke/extension-tests.cjs:961:18)",
+      "at async runRuntimeCheckpointRefreshSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/tests/vscode-smoke/extension-tests.cjs:310:39)",
+      "at async runSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/tests/vscode-smoke/extension-tests.cjs:262:5)",
+      "at async Object.run (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/tests/vscode-smoke/extension-tests.cjs:173:5)"
+    ],
+    "localExecutions": [],
+    "runtimePersistenceEnabled": true,
+    "surfaceLifecycle": {
+      "editor": {
+        "generation": 2,
+        "mode": "active",
+        "ready": true,
+        "bootstrapAck": true,
+        "frameId": "frame-6bbc607e-cf6d-4a8b-9314-c68df456b08e",
+        "terminalReadSettlementV1": true,
+        "terminalLocalSettlementV1": true,
+        "terminalLocalOutputCreditV1": true,
+        "terminalAvailableReceiptV1": true,
+        "terminalCurrentStateV1": true
+      },
+      "panel": {
+        "generation": 0,
+        "ready": false,
+        "bootstrapAck": false
+      }
+    },
+    "node": {
+      "id": "agent-1-87e4a54d-a328-469c-aacd-2777bfeba977",
+      "kind": "agent",
+      "title": "Agent 1",
+      "status": "error",
+      "summary": "Root runtime preparation or submission did not complete.",
+      "position": {
+        "x": 120,
+        "y": 100
+      },
+      "size": {
+        "width": 560,
+        "height": 430
+      },
+      "metadata": {
+        "agent": {
+          "backend": "node-pty",
+          "lifecycle": "error",
+          "provider": "codex",
+          "launchPreset": "default",
+          "runtimeKind": "pty-cli",
+          "resumeSupported": false,
+          "resumeStrategy": "none",
+          "shellPath": "codex",
+          "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas",
+          "persistenceMode": "snapshot-only",
+          "attachmentState": "history-restored",
+          "liveSession": false,
+          "lastCols": 67,
+          "lastRows": 21,
+          "attentionPending": false,
+          "lastBackendLabel": "Codex",
+          "lastExitMessage": "Root runtime preparation or submission did not complete.",
+          "lastRuntimeError": "Root runtime preparation or submission did not complete."
+        }
+      }
+    }
+  },
+  "sourceLog": "/tmp/pr327-post328-ci-verify-completed.log",
+  "logBytes": 4419189,
+  "logSha256": "0c1187d55f62a4eee963781c9144ffac7549bd1cf2ad733a233735ead4785fc6",
+  "interpretation": "Root preparation outer catch after storage preparation returned generic unconfirmed reason. Underlying exception is not preserved in available logs; do not classify as a resize, ready or socket-length root cause.",
+  "notReached": [
+    "remaining native scenarios",
+    "SSH exit/retain",
+    "Webview",
+    "clean-checkout VSIX/install smoke"
+  ]
+}

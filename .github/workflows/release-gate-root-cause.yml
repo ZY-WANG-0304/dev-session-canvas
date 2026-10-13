@@ -1,0 +1,85 @@
+name: Release Gate Root Cause
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [docs-release-gate-root-cause]
+    paths:
+      - .github/workflows/release-gate-root-cause.yml
+      - docs/references/release-gate-root-cause/instrument-preparation.mjs
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+      DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/rca-tm-${{ github.run_id }}
+      DSC_RCA_TRACE_FILE: ${{ runner.temp }}/root-preparation-trace.jsonl
+    steps:
+      - name: Checkout diagnostic scripts
+        uses: actions/checkout@v4
+        with:
+          path: diagnostic-input
+          persist-credentials: false
+      - name: Preserve diagnostic script outside tested workspace
+        run: cp diagnostic-input/docs/references/release-gate-root-cause/instrument-preparation.mjs "$RUNNER_TEMP/instrument-preparation.mjs"
+      - name: Checkout original failing PR327 input
+        uses: actions/checkout@v4
+        with:
+          ref: 7e659ce6af2f713a64031eeb4daacf705977e851
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install original locked dependencies and browser
+        run: |
+          npm ci
+          npx --no-install playwright install --with-deps chromium
+      - name: Download original same-run native assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: execution-native-*-38369705401
+          merge-multiple: true
+          path: ${{ runner.temp }}/native-archives
+          run-id: 38369705401
+          github-token: ${{ github.token }}
+      - name: Assemble original native assets
+        run: |
+          node scripts/build/assemble-execution-distribution-assets.mjs --source "$RUNNER_TEMP/native-archives" --output "$RUNNER_TEMP/native-platform" --input-sha 7e659ce6af2f713a64031eeb4daacf705977e851
+          echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$RUNNER_TEMP/native-platform" >> "$GITHUB_ENV"
+      - name: Trace original complete gate without changing its assertions
+        run: |
+          node "$RUNNER_TEMP/instrument-preparation.mjs"
+          npm run release:verify -- --version 0.26.1
+      - name: Record finite runtime evidence and restore source
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, shutil, subprocess
+          trace = pathlib.Path(os.environ['DSC_RCA_TRACE_FILE'])
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'root-preparation-summary.json'
+          rows = [json.loads(s) for s in trace.read_text().splitlines()] if trace.exists() else []
+          errors = [row for row in rows if row.get('kind') == 'caught-error']
+          target.write_text(json.dumps({'input':'7e659ce6af2f713a64031eeb4daacf705977e851','diagnostic_only':True,
+            'phases':rows,'errors':errors,'disk':list(shutil.disk_usage('.'))}, indent=2))
+          print(json.dumps({'errors':errors, 'trace_rows':len(rows), 'disk':list(shutil.disk_usage('.'))}, indent=2))
+          source = pathlib.Path('extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts')
+          backup = source.with_name(source.name + '.rca-original')
+          if backup.exists(): source.write_bytes(backup.read_bytes()); backup.unlink()
+          PY
+      - name: Upload finite preparation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-root-cause-${{ github.run_id }}
+          path: ${{ runner.temp }}/root-preparation-summary.json
+          if-no-files-found: warn
+          retention-days: 14
