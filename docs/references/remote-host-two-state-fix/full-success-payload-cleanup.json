@@ -1,0 +1,9 @@
+{
+  "source": "/tmp/dscsshfix-full-success-payload-cleanup.json",
+  "sha256": "853f9145244943b6ed6230c996d51de534bb14b0ad94c1528eac53afaba52834",
+  "record": [
+    "/tmp/fs27/local-execution-flow/smoke-host/node_modules",
+    "/tmp/fs27/owned-canvas-reconciliation/smoke-host/node_modules",
+    "/tmp/fs27/snapshot-only-manual-recovery/smoke-host/node_modules"
+  ]
+}

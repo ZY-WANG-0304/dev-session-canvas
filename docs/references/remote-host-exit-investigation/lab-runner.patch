@@ -1,0 +1,73 @@
+--- stock/run-vscode-smoke.mjs
++++ lab/run-vscode-smoke.mjs
+@@ -612,0 +613,11 @@
++    const diagExtension = remoteExtensionDevelopmentPaths.find(p => /remote-ssh-0/.test(p));
++    const diagPath = path.join(diagExtension, 'out', 'extension.js');
++    let diagSource = await fs.readFile(diagPath, 'utf8');
++    const diagOriginal = diagSource;
++    const diagNeedle = 'end(){this.disposables.forEach(e=>e.dispose())}drain(){return this.drains.wait()}';
++    const diagReplacement = 'end(){console.log("[SSH-WIRE]",JSON.stringify({stage:"end",id:this.socketId,queue:this.drains.queue,utc:new Date().toISOString()}));this.disposables.forEach(e=>e.dispose())}drain(){console.log("[SSH-WIRE]",JSON.stringify({stage:"drain",id:this.socketId,queue:this.drains.queue,utc:new Date().toISOString()}));return this.drains.wait().then(()=>console.log("[SSH-WIRE]",JSON.stringify({stage:"drained",id:this.socketId,queue:this.drains.queue,utc:new Date().toISOString()})))}';
++    if (diagSource.split(diagNeedle).length !== 2) throw new Error('Diagnostic stream anchor mismatch');
++    diagSource = diagSource.replace(diagNeedle, diagReplacement);
++    await fs.writeFile(diagPath, diagSource);
++    await fs.writeFile(path.join(runtime.artifactsDir, 'remote-ssh-diagnostic-before.js'), diagOriginal);
++
+@@ -657 +668,46 @@
+-    await launchPreparedVSCodeScenario(sharedOptions);
++    const labTestSource = resolveStagedSmokeTestPath(smokeHostRoot, 'real-reopen-tests.cjs');
++    const labLossTest = path.join(path.dirname(labTestSource), 'real-reopen-loss-tests.cjs');
++    await fs.copyFile(labTestSource, labLossTest);
++    await launchPreparedVSCodeScenario({ ...sharedOptions, extensionTestsPath: toRemoteURI(fixture.remoteAuthority, labLossTest) });
++    if (process.env.SSH_DIAG_END_OLD_HOST === '1') {
++      const remoteLogsRoot = path.join(fixture.remoteAgentDir, '.vscode-server', 'data', 'logs');
++      let setupPid;
++      for (const stamp of await fs.readdir(remoteLogsRoot)) {
++        const logPath = path.join(remoteLogsRoot, stamp, 'exthost1', 'remoteexthost.log');
++        const logText = await fs.readFile(logPath, 'utf8').catch(() => '');
++        const match = /Extension host with pid (\d+) started/.exec(logText);
++        if (match) setupPid = Number(match[1]);
++      }
++      if (!setupPid) throw new Error('No observed setup Host PID');
++      const readIdentity = async () => {
++        try {
++          const procStat = await fs.readFile(`/proc/${setupPid}/stat`, 'utf8');
++          const args = (await fs.readFile(`/proc/${setupPid}/cmdline`, 'utf8')).split('\0');
++          const fields = procStat.slice(procStat.lastIndexOf(')') + 2).split(' ');
++          if ((await fs.stat(`/proc/${setupPid}`)).uid !== process.getuid()) throw new Error('PID owner mismatch');
++          if (!args.some(arg => arg.startsWith(fixture.remoteAgentDir)) || !args.some(arg => arg.includes('extensionHost'))) throw new Error('PID scope mismatch');
++          return { pid: setupPid, state: fields[0], startTicks: fields[19] };
++        } catch (e) { if (e.code === 'ENOENT' || e.code === 'ESRCH') return; throw e; }
++      };
++      const original = await readIdentity();
++      const signals = [];
++      if (original) {
++        const current = await readIdentity();
++        if (current?.startTicks !== original.startTicks) throw new Error('PID changed');
++        process.kill(setupPid, 'SIGKILL');
++        signals.push({ ...original, signal: 'SIGKILL' });
++      }
++      const deadline = Date.now() + 10000;
++      while (true) {
++        let observed;
++        try {
++          const text = await fs.readFile(`/proc/${setupPid}/stat`, 'utf8');
++          const fields = text.slice(text.lastIndexOf(')') + 2).split(' ');
++          observed = {state:fields[0], startTicks:fields[19]};
++        } catch (e) { if (!['ENOENT','ESRCH'].includes(e.code)) throw e; }
++        if (!observed || observed.startTicks !== original?.startTicks) break;
++        if (Date.now() >= deadline) throw new Error('Original Host did not disappear');
++        await new Promise(resolve => setTimeout(resolve, 100));
++      }
++      await fs.writeFile(path.join(runtime.artifactsDir, 'host-only-control.json'), JSON.stringify({original, signals, disappeared:true}));
++    }
+@@ -666,0 +723,10 @@
++    for (const name of await fs.readdir('/proc')) {
++      if (!/^\d+$/.test(name)) continue;
++      try {
++        const args = await fs.readFile(`/proc/${name}/cmdline`, 'utf8');
++        if (args.includes(fixture.remoteAgentDir) && (args.includes('runtime-supervisor') || args.includes('extensionHost'))) {
++          const stat = await fs.readFile(`/proc/${name}/stat`, 'utf8');
++          await fs.appendFile(path.join(runtime.artifactsDir, 'before-dispose-processes.ndjson'), JSON.stringify({pid:Number(name),role:args.includes('runtime-supervisor')?'supervisor':'extensionHost',stat})+'\n');
++        }
++      } catch (e) { if (!['ENOENT','ESRCH'].includes(e.code)) throw e; }
++    }

@@ -1,0 +1,6 @@
+{
+  "stockSha256": "631c1d79c4f3af9177ca23a70cfe0cf2586a692678bd897af6c869324160d905",
+  "labSha256": "7a31af8a3c2b5f68e35552320c2b9cb992dff510802ac2800875a505f53c430a",
+  "before": "async disconnect(){this._protocol&&!this._hasDisconnected&&(this._protocol.send(fat(2)),this._protocol.sendDisconnect(),this._hasDisconnected=!0,await this._protocol.drain())}",
+  "after": "async disconnect(){if(this._protocol&&!this._hasDisconnected){if(this._environmentService.extensionTestsLocationURI?.path?.includes(\"real-reopen-loss-tests\")){this._logService.info(\"[SSH-TWO-STATE] suppress setup terminate/disconnect\");}else{this._protocol.send(fat(2));this._protocol.sendDisconnect();}this._hasDisconnected=!0;await this._protocol.drain();}}"
+}

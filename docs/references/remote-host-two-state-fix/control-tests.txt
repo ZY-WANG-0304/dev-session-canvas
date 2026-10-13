@@ -1,0 +1,22 @@
+
+> dev-session-canvas-workspace@0.26.0 test:smoke-remote-host
+> node scripts/test/test-smoke-remote-host.mjs
+
+PASS wrong UID never authorizes a Host signal
+PASS wrong root never authorizes a Host signal
+PASS wrong role never authorizes a Host signal
+PASS wrong root prefix never authorizes a Host signal
+PASS PID reused during scope reads cannot authorize a signal
+PASS Z process is not a retained live Host
+PASS X process is not a retained live Host
+PASS original live Host rejects exited condition
+PASS replacement PID accepts original exit but rejects retention
+PASS unconfirmed exit fails within its original budget
+PASS Host control confirms disappearance after exactly one scoped signal
+PASS setup marker substring is not independent offline output
+PASS still live completed terminal cannot satisfy offline completion
+PASS original live sessions and independent completion satisfy offline conditions
+PASS owned real child identity is retained then absent after actual exit
+PASS local client with rewritten argv is killed only through its verified spawn identity
+PASS Supervisor request has a total deadline even when socket stays silent
+Remote Host control tests passed (17).

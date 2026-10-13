@@ -1,0 +1,42 @@
+[
+  {
+    "path": "/tmp/dscsshdiag-c2/remote-ssh-real-reopen/user-data/logs/20261013T122121/window1/renderer.log",
+    "line": "2026-10-13 12:22:08.804 [info] [SSH-DIAG] test-exit-start 2026-10-13T04:22:08.803Z",
+    "logSha256": "11ab7bcfef631027413b8742ddab48619a8c0d231ba87e4f03abe5a7180884be"
+  },
+  {
+    "path": "/tmp/dscsshdiag-c2/remote-ssh-real-reopen/user-data/logs/20261013T122121/window1/renderer.log",
+    "line": "2026-10-13 12:22:08.804 [info] [SSH-DIAG] {\"stage\":\"disconnect-begin\",\"utc\":\"2026-10-13T04:22:08.804Z\",\"unacked\":4,\"reconnecting\":false,\"paused\":false,\"pending\":36,\"socket\":\"s\",\"label\":\"renderer-ExtensionHost-56c46cd9-fd18-415d-8b16-5807d4be9fa2\"}",
+    "logSha256": "11ab7bcfef631027413b8742ddab48619a8c0d231ba87e4f03abe5a7180884be"
+  },
+  {
+    "path": "/tmp/dscsshdiag-c2/remote-ssh-real-reopen/user-data/logs/20261013T122121/window1/renderer.log",
+    "line": "2026-10-13 12:22:08.804 [info] [SSH-DIAG] controlled-loss: suppress terminate and disconnect",
+    "logSha256": "11ab7bcfef631027413b8742ddab48619a8c0d231ba87e4f03abe5a7180884be"
+  },
+  {
+    "path": "/tmp/dscsshdiag-c2/remote-ssh-real-reopen/user-data/logs/20261013T122121/window1/renderer.log",
+    "line": "2026-10-13 12:22:08.805 [info] [SSH-DIAG] {\"stage\":\"terminate-queued\",\"utc\":\"2026-10-13T04:22:08.804Z\",\"unacked\":4,\"reconnecting\":false,\"paused\":false,\"pending\":36,\"socket\":\"s\",\"label\":\"renderer-ExtensionHost-56c46cd9-fd18-415d-8b16-5807d4be9fa2\"}",
+    "logSha256": "11ab7bcfef631027413b8742ddab48619a8c0d231ba87e4f03abe5a7180884be"
+  },
+  {
+    "path": "/tmp/dscsshdiag-c2/remote-ssh-real-reopen/user-data/logs/20261013T122121/window1/renderer.log",
+    "line": "2026-10-13 12:22:08.806 [info] [SSH-WIRE] {\"stage\":\"drain\",\"id\":1,\"queue\":1,\"utc\":\"2026-10-13T04:22:08.805Z\"}",
+    "logSha256": "11ab7bcfef631027413b8742ddab48619a8c0d231ba87e4f03abe5a7180884be"
+  },
+  {
+    "path": "/tmp/dscsshdiag-c2/remote-ssh-real-reopen/user-data/logs/20261013T122121/window1/renderer.log",
+    "line": "2026-10-13 12:22:08.807 [info] [SSH-WIRE] {\"stage\":\"drained\",\"id\":1,\"queue\":0,\"utc\":\"2026-10-13T04:22:08.805Z\"}",
+    "logSha256": "11ab7bcfef631027413b8742ddab48619a8c0d231ba87e4f03abe5a7180884be"
+  },
+  {
+    "path": "/tmp/dscsshdiag-c2/remote-ssh-real-reopen/user-data/logs/20261013T122121/window1/renderer.log",
+    "line": "2026-10-13 12:22:08.807 [info] [SSH-DIAG] {\"stage\":\"drain-done\",\"utc\":\"2026-10-13T04:22:08.806Z\",\"unacked\":4,\"reconnecting\":false,\"paused\":false,\"pending\":0,\"socket\":\"s\",\"label\":\"renderer-ExtensionHost-56c46cd9-fd18-415d-8b16-5807d4be9fa2\"}",
+    "logSha256": "11ab7bcfef631027413b8742ddab48619a8c0d231ba87e4f03abe5a7180884be"
+  },
+  {
+    "path": "/tmp/dscsshdiag-c2/remote-ssh-real-reopen/user-data/logs/20261013T122121/window1/renderer.log",
+    "line": "2026-10-13 12:22:08.834 [info] [SSH-DIAG] hosts-stopped 2026-10-13T04:22:08.833Z",
+    "logSha256": "11ab7bcfef631027413b8742ddab48619a8c0d231ba87e4f03abe5a7180884be"
+  }
+]

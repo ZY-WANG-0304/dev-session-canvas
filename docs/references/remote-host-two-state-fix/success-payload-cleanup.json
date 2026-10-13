@@ -1,0 +1,15 @@
+{
+  "source": "/tmp/dscsshfix-success-payload-cleanup.json",
+  "sha256": "43345793f80f2c22bc8789a5641a855b64fbf24533f6e84c2ec27764988dc1cf",
+  "record": {
+    "removedSuccessfulPrivateInstallationPayloads": [
+      "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/smoke-host/node_modules",
+      "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent/.vscode-server/cli",
+      "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent/.vscode-server/code-2a59476c9bfcb90b3ddc372c36762471b7dfad1c",
+      "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-retain/smoke-host/node_modules",
+      "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-retain/remote-ssh-fixture/remote-agent/.vscode-server/cli",
+      "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-retain/remote-ssh-fixture/remote-agent/.vscode-server/code-2a59476c9bfcb90b3ddc372c36762471b7dfad1c"
+    ],
+    "businessArtifactsAndLogsRetained": true
+  }
+}

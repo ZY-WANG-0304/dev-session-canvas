@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "scope": "This loopback fixture server, private client roots and original sshd only; not product settlement.",
+  "signals": [
+    {
+      "pid": 2043148,
+      "starttime": "249662693",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2043312,
+      "starttime": "249662709",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2077679,
+      "starttime": "249666032",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2077689,
+      "starttime": "249666032",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2078831,
+      "starttime": "249666095",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2078835,
+      "starttime": "249666095",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2078836,
+      "starttime": "249666095",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2078902,
+      "starttime": "249666110",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2078929,
+      "starttime": "249666130",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2084887,
+      "starttime": "249666754",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2102735,
+      "starttime": "249668454",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2103982,
+      "starttime": "249668521",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2110959,
+      "starttime": "249669247",
+      "root": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2017893,
+      "signal": "SIGTERM",
+      "role": "fixture-sshd"
+    }
+  ],
+  "remaining": [],
+  "failures": [],
+  "pass": true,
+  "sourceArtifact": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/artifacts/remote-host-cleanup.json",
+  "sourceSha256": "d93ed0f590f49e4675ba6becdc5be51007783329b50c27f8fa0ad40e0328b934"
+}

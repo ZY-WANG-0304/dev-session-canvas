@@ -1,0 +1,15 @@
+{
+  "source": "/tmp/dscsshfix-browser-cache-reuse.json",
+  "sha256": "ee2cd534693e6c057f02f99e6af29b8eec02a2672a575e379f60073d5d23154b",
+  "record": {
+    "reason": "Existing matching Chromium v1217 cache available; stop slow duplicate download",
+    "pid": 3068555,
+    "args": [
+      "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "/tmp/sf26/node_modules/playwright/cli.js",
+      "install",
+      "chromium"
+    ],
+    "stat": "3068555 (node) S 3068543 2877844 2877844 0 -1 4194304 13945 0 0 0 168 35 0 0 20 0 11 0 249757720 1229135872 20287 18446744073709551615 14905344 54527057 140720842313264 0 0 0 0 4096 1937894967 0 0 0 17 44 0 0 0 0 0 112269536 112450384 143994880 140720842318348 140720842318457 140720842318457 140720842325957 0\n"
+  }
+}

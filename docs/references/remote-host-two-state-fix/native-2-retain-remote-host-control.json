@@ -1,0 +1,186 @@
+{
+  "scenario": "retain",
+  "localSignals": [
+    {
+      "pid": 2144361,
+      "startTicks": "249672781",
+      "state": "R",
+      "ppid": 2004748,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2192603,
+      "startTicks": "249677573",
+      "state": "S",
+      "ppid": 2145360,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2150409,
+      "startTicks": "249673288",
+      "state": "S",
+      "ppid": 2150406,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2150406,
+      "startTicks": "249673287",
+      "state": "S",
+      "ppid": 2149448,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2149448,
+      "startTicks": "249673257",
+      "state": "S",
+      "ppid": 2144361,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2149052,
+      "startTicks": "249673142",
+      "state": "S",
+      "ppid": 2144361,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2149035,
+      "startTicks": "249673140",
+      "state": "S",
+      "ppid": 2144361,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2147766,
+      "startTicks": "249673118",
+      "state": "S",
+      "ppid": 2144361,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2147765,
+      "startTicks": "249673117",
+      "state": "S",
+      "ppid": 2144361,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2145470,
+      "startTicks": "249672870",
+      "state": "S",
+      "ppid": 2145360,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2145440,
+      "startTicks": "249672838",
+      "state": "S",
+      "ppid": 2144361,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2145437,
+      "startTicks": "249672837",
+      "state": "S",
+      "ppid": 2144361,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2145360,
+      "startTicks": "249672786",
+      "state": "S",
+      "ppid": 2144361,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2145358,
+      "startTicks": "249672786",
+      "state": "S",
+      "ppid": 2144361,
+      "signal": "SIGKILL"
+    }
+  ],
+  "observations": [
+    {
+      "stage": "client-disconnected",
+      "host": {
+        "pid": 2189996,
+        "startTicks": "249677312",
+        "state": "S",
+        "ppid": 2188899
+      },
+      "supervisor": {
+        "pid": 2194887,
+        "startTicks": "249677811",
+        "state": "S",
+        "ppid": 1
+      }
+    },
+    {
+      "stage": "before-terminal-completion",
+      "host": {
+        "pid": 2189996,
+        "startTicks": "249677312",
+        "state": "S",
+        "ppid": 2188899
+      },
+      "supervisor": {
+        "pid": 2194887,
+        "startTicks": "249677811",
+        "state": "S",
+        "ppid": 1
+      }
+    },
+    {
+      "stage": "before-verify",
+      "host": {
+        "pid": 2189996,
+        "startTicks": "249677312",
+        "state": "S",
+        "ppid": 2188899
+      },
+      "supervisor": {
+        "pid": 2194887,
+        "startTicks": "249677811",
+        "state": "S",
+        "ppid": 1
+      }
+    }
+  ],
+  "setupHost": {
+    "pid": 2189996,
+    "startTicks": "249677312",
+    "state": "S",
+    "ppid": 2188899
+  },
+  "supervisor": {
+    "pid": 2194887,
+    "startTicks": "249677811",
+    "state": "S",
+    "ppid": 1
+  },
+  "localClient": {
+    "pid": 2144361,
+    "startTicks": "249672781",
+    "state": "R",
+    "ppid": 2004748
+  },
+  "offlineSessions": [
+    {
+      "sessionId": "baf22f93-1e36-47b2-add8-9ad94c814cad",
+      "kind": "agent",
+      "live": true,
+      "cols": 67,
+      "rows": 21
+    },
+    {
+      "sessionId": "37ffca51-8f48-444f-ac03-31f70562d171",
+      "kind": "terminal",
+      "live": true,
+      "cols": 64,
+      "rows": 20
+    }
+  ],
+  "sourceArtifact": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-retain/artifacts/remote-host-control.json",
+  "sourceSha256": "1995dc6d6787ddf9605e88f962711d484977dcbe7ec7193890cf93143a7245cc"
+}

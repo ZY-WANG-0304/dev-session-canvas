@@ -1,0 +1,32 @@
+{
+  "r1": {
+    "logPath": "/tmp/dscsshdiag-evidence/r1.log",
+    "logSha256": "817dbd1a3e05e0612eaa894761c47cb54071a81ff0e94954738d0064913552d8",
+    "bytes": 672840
+  },
+  "r2": {
+    "logPath": "/tmp/dscsshdiag-evidence/r2.log",
+    "logSha256": "83e2259477d505d5480785fb2ae62df5d10e2c6460daef54e5ab9497db8c274f",
+    "bytes": 649949
+  },
+  "r3": {
+    "logPath": "/tmp/dscsshdiag-evidence/r3.log",
+    "logSha256": "d2a945e02c18bbea62399a8214e592b61a82b65f89dc70cd2c601dd3b1e3e7c3",
+    "bytes": 649295
+  },
+  "c1": {
+    "logPath": "/tmp/dscsshdiag-evidence/c1.log",
+    "logSha256": "75d36a5de69c99a7f5819921f3b2f195941ebadd899fdb3c3c481a4c366ae654",
+    "bytes": 657865
+  },
+  "c2": {
+    "logPath": "/tmp/dscsshdiag-evidence/c2.log",
+    "logSha256": "764f47440a259ee986f54ce07e22e980ec9f3c37c86c15cddf73b3125dc80575",
+    "bytes": 353686
+  },
+  "c3": {
+    "logPath": "/tmp/dscsshdiag-evidence/c3.log",
+    "logSha256": "44a47f6647117470837f57b64ffd17e5a7f6c85884c76dc08894b06894579b0f",
+    "bytes": 658182
+  }
+}

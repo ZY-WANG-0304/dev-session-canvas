@@ -1,0 +1,18 @@
+[
+  {
+    "path": "/tmp/dscsshdiag-r2/remote-ssh-real-reopen/user-data/logs/20261013T121418/window1/renderer.log",
+    "line": "2026-10-13 12:14:59.290 [info] [SSH-WIRE] {\"stage\":\"drain\",\"id\":1,\"queue\":1,\"utc\":\"2026-10-13T04:14:59.288Z\"}"
+  },
+  {
+    "path": "/tmp/dscsshdiag-r2/remote-ssh-real-reopen/user-data/logs/20261013T121418/window1/renderer.log",
+    "line": "2026-10-13 12:14:59.292 [info] [SSH-WIRE] {\"stage\":\"drained\",\"id\":1,\"queue\":0,\"utc\":\"2026-10-13T04:14:59.290Z\"}"
+  },
+  {
+    "path": "/tmp/dscsshdiag-r2/remote-ssh-real-reopen/user-data/logs/20261013T121216/window1/renderer.log",
+    "line": "2026-10-13 12:14:14.591 [info] [SSH-WIRE] {\"stage\":\"drain\",\"id\":1,\"queue\":1,\"utc\":\"2026-10-13T04:14:14.591Z\"}"
+  },
+  {
+    "path": "/tmp/dscsshdiag-r2/remote-ssh-real-reopen/user-data/logs/20261013T121216/window1/renderer.log",
+    "line": "2026-10-13 12:14:14.591 [info] [SSH-WIRE] {\"stage\":\"drained\",\"id\":1,\"queue\":0,\"utc\":\"2026-10-13T04:14:14.591Z\"}"
+  }
+]

@@ -1,4 +1,6 @@
 import path from 'path';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 
@@ -17,6 +19,7 @@ import {
   writeUserSettings
 } from './vscode-smoke-runner.mjs';
 import { createRemoteSSHFixture } from './vscode-remote-ssh-fixture.mjs';
+const remoteHost = createRequire(import.meta.url)('../../tests/vscode-smoke/remote-host-control.cjs');
 
 const projectRoot = process.cwd();
 const currentScriptPath = fileURLToPath(import.meta.url);
@@ -186,8 +189,10 @@ async function main() {
   if (shouldRunScenario('systemd-fallback-real-reopen')) {
     await runSystemdFallbackRealWindowReopenScenario();
   }
-  if (shouldRunScenario('remote-ssh-real-reopen')) {
-    await runRemoteSSHRealReopenScenario();
+  for (const hostScenario of ['exit', 'retain']) {
+    if (shouldRunScenario('remote-ssh-real-reopen') || shouldRunScenario(`remote-ssh-real-reopen-${hostScenario}`)) {
+      await runRemoteSSHRealReopenScenario(hostScenario);
+    }
   }
   console.log('VS Code smoke test passed.');
 }
@@ -572,16 +577,17 @@ async function runPreparedLocalRealWindowReopenScenario(options) {
   console.log(`${options.description} passed.`);
 }
 
-async function runRemoteSSHRealReopenScenario() {
+async function runRemoteSSHRealReopenScenario(hostScenario) {
   if (process.platform !== 'linux') {
     console.log('Remote SSH real window reopen smoke skipped: current platform is not Linux.');
     return;
   }
 
-  const debugRoot = path.join(smokeDebugRoot, 'remote-ssh-real-reopen');
+  const scenarioName = `remote-ssh-real-reopen-${hostScenario}`;
+  const debugRoot = path.join(smokeDebugRoot, scenarioName);
   const runtime = await prepareRuntime({
     debugRoot,
-    runtimeDirName: 'dsc-vscode-smoke-runtime-remote-ssh-real-reopen'
+    runtimeDirName: `dsc-vscode-smoke-runtime-${scenarioName}`
   });
   const smokeHostRoot = await prepareMainSmokeHostExtension({
     projectRoot,
@@ -593,7 +599,10 @@ async function runRemoteSSHRealReopenScenario() {
   const fixture = await createRemoteSSHFixture({
     debugRoot,
     realReopenControlFile: controlFilePath,
-    remoteRuntimeDirName: 'dsc-vscode-remote-ssh-runtime-real-reopen'
+    remoteRuntimeDirName: `dsc-vscode-remote-ssh-runtime-${hostScenario}`,
+    observeCleanup: true,
+    clientRoots: [runtime.userDataDir, runtime.extensionsDir],
+    cleanupReportPath: path.join(runtime.artifactsDir, 'remote-host-cleanup.json')
   });
 
   try {
@@ -649,25 +658,62 @@ async function runRemoteSSHRealReopenScenario() {
       }
     };
 
-    await writeRealReopenControlFiles([controlFilePath, workspaceFallbackControlFilePath], {
-      phase: 'setup',
-      artifactDir: runtime.artifactsDir,
-      stateFile: stateFilePath
-    });
-    await launchPreparedVSCodeScenario(sharedOptions);
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    await writeRealReopenControlFiles([controlFilePath, workspaceFallbackControlFilePath], {
-      phase: 'verify',
-      artifactDir: runtime.artifactsDir,
-      stateFile: stateFilePath
-    });
-    await launchPreparedVSCodeScenario(sharedOptions);
+    const readyPath = path.join(runtime.artifactsDir, 'remote-host-setup-ready.json');
+    const completionSignalPath = path.join(runtime.artifactsDir, 'complete-terminal.flag');
+    const report = { scenario: hostScenario, localSignals: [], observations: [] };
+    let setupHandle;
+    const readyWait = new AbortController();
+    try {
+      await writeRealReopenControlFiles([controlFilePath, workspaceFallbackControlFilePath], {
+        phase: 'setup', artifactDir: runtime.artifactsDir, stateFile: stateFilePath,
+        remoteHostScenario: hostScenario, completionSignalPath
+      });
+      setupHandle = await spawnPreparedVSCodeScenario(sharedOptions);
+      const localIdentity = await remoteHost.readProcessIdentity(setupHandle.child.pid);
+      // Observe unexpected completion immediately, including setup errors before ready is written.
+      const unexpectedExit = setupHandle.completed.then(
+        () => { throw new Error('Setup client exited before controlled disconnect'); },
+        error => { throw error; }
+      );
+      const expected = await Promise.race([waitForJsonFile(readyPath, 120000, readyWait.signal), unexpectedExit]);
+      report.setupHost = expected.setupHost;
+      report.supervisor = expected.supervisor;
+      await remoteHost.assertProcessLive(expected.setupHost);
+      await remoteHost.assertProcessLive(expected.supervisor);
+      report.localClient = await remoteHost.abortLocalClient(setupHandle, runtime.userDataDir, report, localIdentity);
+      report.observations.push({ stage: 'client-disconnected',
+        host: await remoteHost.assertHostCondition(expected.setupHost, 'retain'),
+        supervisor: await remoteHost.assertProcessLive(expected.supervisor) });
+      if (hostScenario === 'exit') {
+        report.hostSignal = await remoteHost.terminatePrivateHost(expected.setupHost, fixture.remoteAgentDir);
+      }
+      report.observations.push({ stage: 'before-terminal-completion',
+        host: await remoteHost.assertHostCondition(expected.setupHost, hostScenario),
+        supervisor: await remoteHost.assertProcessLive(expected.supervisor) });
+      report.offlineSessions = await remoteHost.releaseAndWaitForCompletion(expected, completionSignalPath);
+      report.observations.push({ stage: 'before-verify',
+        host: await remoteHost.assertHostCondition(expected.setupHost, hostScenario),
+        supervisor: await remoteHost.assertProcessLive(expected.supervisor) });
+      await fs.writeFile(path.join(runtime.artifactsDir, 'remote-host-control.json'), `${JSON.stringify(report, null, 2)}\n`);
+      await writeRealReopenControlFiles([controlFilePath, workspaceFallbackControlFilePath], {
+        phase: 'verify', artifactDir: runtime.artifactsDir, stateFile: stateFilePath,
+        remoteHostScenario: hostScenario, completionSignalPath
+      });
+      await launchPreparedVSCodeScenario(sharedOptions);
+    } catch (error) {
+      report.error = error instanceof Error ? error.stack : String(error);
+      await fs.writeFile(path.join(runtime.artifactsDir, 'remote-host-control-failure.json'), `${JSON.stringify(report, null, 2)}\n`);
+      setupHandle?.kill();
+      throw error;
+    } finally {
+      readyWait.abort();
+    }
   } finally {
-    await fixture.dispose();
+    const cleanup = await fixture.dispose();
+    assert.ok(cleanup.pass, `Remote SSH fixture cleanup failed: ${JSON.stringify(cleanup)}`);
   }
 
-  console.log('Remote SSH real window reopen smoke passed.');
+  console.log(`Remote SSH real window reopen ${hostScenario} smoke passed.`);
 }
 
 async function writeRealReopenControlFile(controlFilePath, payload) {
@@ -695,10 +741,11 @@ async function writeRealReopenControlFiles(controlFilePaths, payload) {
   }
 }
 
-async function waitForJsonFile(filePath, timeoutMs) {
+async function waitForJsonFile(filePath, timeoutMs, signal) {
   const deadline = Date.now() + timeoutMs;
   let lastError;
   while (Date.now() < deadline) {
+    signal?.throwIfAborted();
     try {
       return JSON.parse(await fs.readFile(filePath, 'utf8'));
     } catch (error) {

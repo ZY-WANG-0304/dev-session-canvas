@@ -1,0 +1,12 @@
+{
+  "source": "/tmp/dscsshfix-full-ssh-payload-cleanup.json",
+  "sha256": "03429686d19c9f9681b18dc6716e504716e203e28f17dc5c70e33641574335db",
+  "record": [
+    "/tmp/fs27/remote-ssh-real-reopen-exit/smoke-host/node_modules",
+    "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent/.vscode-server/cli",
+    "/tmp/fs27/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent/.vscode-server/code-2a59476c9bfcb90b3ddc372c36762471b7dfad1c",
+    "/tmp/fs27/remote-ssh-real-reopen-retain/smoke-host/node_modules",
+    "/tmp/fs27/remote-ssh-real-reopen-retain/remote-ssh-fixture/remote-agent/.vscode-server/cli",
+    "/tmp/fs27/remote-ssh-real-reopen-retain/remote-ssh-fixture/remote-agent/.vscode-server/code-2a59476c9bfcb90b3ddc372c36762471b7dfad1c"
+  ]
+}

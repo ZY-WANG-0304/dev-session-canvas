@@ -1,0 +1,198 @@
+{
+  "scenario": "exit",
+  "localSignals": [
+    {
+      "pid": 2031556,
+      "startTicks": "249661646",
+      "state": "R",
+      "ppid": 2004748,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2082533,
+      "startTicks": "249666480",
+      "state": "S",
+      "ppid": 2031559,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2035949,
+      "startTicks": "249662034",
+      "state": "S",
+      "ppid": 2035851,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2035851,
+      "startTicks": "249662034",
+      "state": "S",
+      "ppid": 2035610,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2035610,
+      "startTicks": "249662016",
+      "state": "S",
+      "ppid": 2031556,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2035568,
+      "startTicks": "249661980",
+      "state": "S",
+      "ppid": 2031556,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2035270,
+      "startTicks": "249661926",
+      "state": "S",
+      "ppid": 2031556,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2034647,
+      "startTicks": "249661923",
+      "state": "S",
+      "ppid": 2031556,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2034260,
+      "startTicks": "249661922",
+      "state": "S",
+      "ppid": 2031556,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2032818,
+      "startTicks": "249661716",
+      "state": "S",
+      "ppid": 2031559,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2032343,
+      "startTicks": "249661688",
+      "state": "S",
+      "ppid": 2031556,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2032003,
+      "startTicks": "249661687",
+      "state": "S",
+      "ppid": 2031556,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2031559,
+      "startTicks": "249661649",
+      "state": "S",
+      "ppid": 2031556,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2031558,
+      "startTicks": "249661649",
+      "state": "S",
+      "ppid": 2031556,
+      "signal": "SIGKILL"
+    }
+  ],
+  "observations": [
+    {
+      "stage": "client-disconnected",
+      "host": {
+        "pid": 2078814,
+        "startTicks": "249666082",
+        "state": "S",
+        "ppid": 2077689
+      },
+      "supervisor": {
+        "pid": 2084887,
+        "startTicks": "249666754",
+        "state": "S",
+        "ppid": 1
+      }
+    },
+    {
+      "stage": "before-terminal-completion",
+      "host": {
+        "pid": 2078814,
+        "startTicks": "249666082",
+        "state": "original-absent"
+      },
+      "supervisor": {
+        "pid": 2084887,
+        "startTicks": "249666754",
+        "state": "S",
+        "ppid": 1
+      }
+    },
+    {
+      "stage": "before-verify",
+      "host": {
+        "pid": 2078814,
+        "startTicks": "249666082",
+        "state": "original-absent"
+      },
+      "supervisor": {
+        "pid": 2084887,
+        "startTicks": "249666754",
+        "state": "S",
+        "ppid": 1
+      }
+    }
+  ],
+  "setupHost": {
+    "pid": 2078814,
+    "startTicks": "249666082",
+    "state": "S",
+    "ppid": 2077689
+  },
+  "supervisor": {
+    "pid": 2084887,
+    "startTicks": "249666754",
+    "state": "S",
+    "ppid": 1
+  },
+  "localClient": {
+    "pid": 2031556,
+    "startTicks": "249661646",
+    "state": "R",
+    "ppid": 2004748
+  },
+  "hostSignal": {
+    "pid": 2078814,
+    "startTicks": "249666082",
+    "state": "S",
+    "ppid": 2077689,
+    "signal": "SIGKILL"
+  },
+  "offlineSessions": [
+    {
+      "sessionId": "18570462-2b22-4f78-9c83-3018ee5476eb",
+      "kind": "agent",
+      "live": true,
+      "cols": 67,
+      "rows": 21
+    },
+    {
+      "sessionId": "4b5024f6-f86b-4008-8f12-109fbfeaa38d",
+      "kind": "terminal",
+      "live": false,
+      "cols": 64,
+      "rows": 20
+    },
+    {
+      "sessionId": "710da7e9-18c4-42ba-ae50-4c07c85c339b",
+      "kind": "terminal",
+      "live": true,
+      "cols": 64,
+      "rows": 20
+    }
+  ],
+  "sourceArtifact": "/tmp/dscsshfix-native-2/remote-ssh-real-reopen-exit/artifacts/remote-host-control.json",
+  "sourceSha256": "6475fb9dfb20f31bc9bdbf144f2d555518e5e47c98b906cf7726e25f2ef7ef25"
+}

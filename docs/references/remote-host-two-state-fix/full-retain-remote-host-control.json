@@ -1,0 +1,186 @@
+{
+  "scenario": "retain",
+  "localSignals": [
+    {
+      "pid": 310583,
+      "startTicks": "249900115",
+      "state": "R",
+      "ppid": 3611115,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 355342,
+      "startTicks": "249904440",
+      "state": "S",
+      "ppid": 310586,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 315698,
+      "startTicks": "249900507",
+      "state": "S",
+      "ppid": 315695,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 315695,
+      "startTicks": "249900507",
+      "state": "S",
+      "ppid": 314492,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 314492,
+      "startTicks": "249900476",
+      "state": "S",
+      "ppid": 310583,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 314473,
+      "startTicks": "249900440",
+      "state": "S",
+      "ppid": 310583,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 314235,
+      "startTicks": "249900386",
+      "state": "S",
+      "ppid": 310583,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 314141,
+      "startTicks": "249900381",
+      "state": "S",
+      "ppid": 310583,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 314140,
+      "startTicks": "249900380",
+      "state": "S",
+      "ppid": 310583,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 311788,
+      "startTicks": "249900183",
+      "state": "S",
+      "ppid": 310586,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 311757,
+      "startTicks": "249900154",
+      "state": "S",
+      "ppid": 310583,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 311754,
+      "startTicks": "249900153",
+      "state": "S",
+      "ppid": 310583,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 310586,
+      "startTicks": "249900118",
+      "state": "S",
+      "ppid": 310583,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 310585,
+      "startTicks": "249900118",
+      "state": "S",
+      "ppid": 310583,
+      "signal": "SIGKILL"
+    }
+  ],
+  "observations": [
+    {
+      "stage": "client-disconnected",
+      "host": {
+        "pid": 351737,
+        "startTicks": "249904154",
+        "state": "S",
+        "ppid": 351712
+      },
+      "supervisor": {
+        "pid": 357698,
+        "startTicks": "249904671",
+        "state": "S",
+        "ppid": 1
+      }
+    },
+    {
+      "stage": "before-terminal-completion",
+      "host": {
+        "pid": 351737,
+        "startTicks": "249904154",
+        "state": "S",
+        "ppid": 351712
+      },
+      "supervisor": {
+        "pid": 357698,
+        "startTicks": "249904671",
+        "state": "S",
+        "ppid": 1
+      }
+    },
+    {
+      "stage": "before-verify",
+      "host": {
+        "pid": 351737,
+        "startTicks": "249904154",
+        "state": "S",
+        "ppid": 351712
+      },
+      "supervisor": {
+        "pid": 357698,
+        "startTicks": "249904671",
+        "state": "S",
+        "ppid": 1
+      }
+    }
+  ],
+  "setupHost": {
+    "pid": 351737,
+    "startTicks": "249904154",
+    "state": "R",
+    "ppid": 351712
+  },
+  "supervisor": {
+    "pid": 357698,
+    "startTicks": "249904671",
+    "state": "S",
+    "ppid": 1
+  },
+  "localClient": {
+    "pid": 310583,
+    "startTicks": "249900115",
+    "state": "R",
+    "ppid": 3611115
+  },
+  "offlineSessions": [
+    {
+      "sessionId": "ff945776-513a-42bb-b852-a9d0022b5875",
+      "kind": "agent",
+      "live": true,
+      "cols": 67,
+      "rows": 21
+    },
+    {
+      "sessionId": "2d11be00-df30-47ea-870f-d5676511d07b",
+      "kind": "terminal",
+      "live": true,
+      "cols": 64,
+      "rows": 20
+    }
+  ],
+  "sourceArtifact": "/tmp/fs27/remote-ssh-real-reopen-retain/artifacts/remote-host-control.json",
+  "sourceSha256": "0acbdf014e0951aed7813da79c5454a7874a1bfc048953f9a2f69e4bca9c90e0"
+}

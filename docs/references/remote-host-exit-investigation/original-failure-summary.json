@@ -1,0 +1,149 @@
+{
+  "run": "original-failure",
+  "root": "/tmp/d261r/source/remote-ssh-real-reopen",
+  "events": [
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112043/main.log",
+      "line": "2026-10-13 11:21:40.544 [trace] Lifecycle#kill()",
+      "logSha256": "d132f05d320b0ea933704b6935b6bffa00f8aebf242dbd35aa0336ccff8c7df1"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112043/main.log",
+      "line": "2026-10-13 11:21:40.559 [info] Extension host with pid 2559451 exited with code: 0, signal: unknown.",
+      "logSha256": "d132f05d320b0ea933704b6935b6bffa00f8aebf242dbd35aa0336ccff8c7df1"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112043/main.log",
+      "line": "2026-10-13 11:21:40.575 [trace] Lifecycle#app.on(will-quit) - calling app.quit()",
+      "logSha256": "d132f05d320b0ea933704b6935b6bffa00f8aebf242dbd35aa0336ccff8c7df1"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112144/main.log",
+      "line": "2026-10-13 11:22:26.262 [trace] Lifecycle#kill()",
+      "logSha256": "ad208eb25a4f504e978c5f53ad6f1cd59c8c1f9cefc8420e8b2dd33a74ec1a7a"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112144/main.log",
+      "line": "2026-10-13 11:22:26.266 [info] Extension host with pid 2629697 exited with code: 0, signal: unknown.",
+      "logSha256": "ad208eb25a4f504e978c5f53ad6f1cd59c8c1f9cefc8420e8b2dd33a74ec1a7a"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112144/main.log",
+      "line": "2026-10-13 11:22:26.273 [trace] Lifecycle#app.on(will-quit) - calling app.quit()",
+      "logSha256": "ad208eb25a4f504e978c5f53ad6f1cd59c8c1f9cefc8420e8b2dd33a74ec1a7a"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112043/window1/exthost/exthost.log",
+      "line": "2026-10-13 11:20:45.882 [info] Extension host with pid 2559451 started",
+      "logSha256": "4a230f7b15e138f603bdaa02d0ceb69fee5b433f09432ef2763805569c5bdabe"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112043/window1/exthost/exthost.log",
+      "line": "2026-10-13 11:21:40.536 [info] Extension host terminating: received terminate message from renderer",
+      "logSha256": "4a230f7b15e138f603bdaa02d0ceb69fee5b433f09432ef2763805569c5bdabe"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112043/window1/exthost/exthost.log",
+      "line": "2026-10-13 11:21:40.544 [info] Extension host with pid 2559451 exiting with code 0",
+      "logSha256": "4a230f7b15e138f603bdaa02d0ceb69fee5b433f09432ef2763805569c5bdabe"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112144/window1/exthost/exthost.log",
+      "line": "2026-10-13 11:21:46.570 [info] Extension host with pid 2629697 started",
+      "logSha256": "5a8aa42651f313d207dedef14171c4705cd6403e0ec74aea40f7aab3aaeef19c"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112144/window1/exthost/exthost.log",
+      "line": "2026-10-13 11:22:26.259 [info] Extension host terminating: received terminate message from renderer",
+      "logSha256": "5a8aa42651f313d207dedef14171c4705cd6403e0ec74aea40f7aab3aaeef19c"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/user-data/logs/20261013T112144/window1/exthost/exthost.log",
+      "line": "2026-10-13 11:22:26.265 [info] Extension host with pid 2629697 exiting with code 0",
+      "logSha256": "5a8aa42651f313d207dedef14171c4705cd6403e0ec74aea40f7aab3aaeef19c"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T112131/remoteagent.log",
+      "line": "2026-10-13 11:21:31.959 [info] [<unknown>][aae01685][ExtensionHostConnection] <2613433> Launched Extension Host Process.",
+      "logSha256": "e6a6b801d3321958c7973efc16d46b6a3f0dface5b6eb237a00bef6e7552ee6e"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T112131/remoteagent.log",
+      "line": "2026-10-13 11:21:48.077 [info] [<unknown>][dc0d8ba0][ExtensionHostConnection] <2632892> Launched Extension Host Process.",
+      "logSha256": "e6a6b801d3321958c7973efc16d46b6a3f0dface5b6eb237a00bef6e7552ee6e"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T112131/remoteagent.log",
+      "line": "2026-10-13 11:22:10.673 [info] [<unknown>][18e2022b][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...",
+      "logSha256": "e6a6b801d3321958c7973efc16d46b6a3f0dface5b6eb237a00bef6e7552ee6e"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T112131/exthost1/remoteexthost.log",
+      "line": "2026-10-13 11:21:33.462 [info] Extension host with pid 2613433 started",
+      "logSha256": "6ce5feb52ea3394569a399837304a44b1fb84b1a3aa7adc650c805e1537406a2"
+    },
+    {
+      "path": "/tmp/d261r/source/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T112131/exthost2/remoteexthost.log",
+      "line": "2026-10-13 11:21:49.118 [info] Extension host with pid 2632892 started",
+      "logSha256": "7441034024669e8a6034b3763de5de5c5a5d165d780278adea8b4de62b85a77a"
+    }
+  ],
+  "failureSnapshotSha256": "778d1d644107bcb781111f11d50f0f362b9294a213c759d5ca592e35b4add14b",
+  "surfaceLifecycle": {
+    "editor": {
+      "generation": 5,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-c888bbe9-1f77-4d42-8e49-c7129b2819d9",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    },
+    "panel": {
+      "generation": 0,
+      "ready": false,
+      "bootstrapAck": false
+    }
+  },
+  "nodes": [
+    {
+      "id": "agent-1-7bfcb8b1-d73f-429c-bcf3-299235c1df29",
+      "kind": "agent",
+      "status": "waiting-input",
+      "execution": {
+        "attachmentState": "attached-live",
+        "liveSession": true,
+        "runtimeSessionId": "31dbefa3-5b45-47c9-b1a7-dc4a37076511",
+        "recentOutput": "[fake-agent] ready pid=2620269 session=cf793bc5-1bf5-4bb8-93de-c6696716396a\nsleep 12\nREAL_REOPEN_AGENT\n> [fake-agent] sleeping 12s\n[fake-agent] woke after 12s\n> [fake-agent] REAL_REOPEN_AGENT\n>",
+        "outputSequence": 4
+      }
+    },
+    {
+      "id": "terminal-2-1491acf1-d0ac-470f-a5ee-9d1922c13eb1",
+      "kind": "terminal",
+      "status": "live",
+      "execution": {
+        "attachmentState": "attached-live",
+        "liveSession": true,
+        "runtimeSessionId": "d85b496d-6e82-4297-b73c-ae397bc3d6f4",
+        "recentOutput": "ziyang01.wang-al@hobot:/tmp/dsc261verify$ echo REAL_REOPEN_TERMINNAL_SLEEPING; sleep 12; echo REAL_REOPEN_TERMINAL\nREAL_REOPEN_TERMINAL_SLEEPING\nREAL_REOPEN_TERMINAL\nziyang01.wang-al@hobot:/tmp/dsc261verify$",
+        "outputSequence": 3
+      }
+    },
+    {
+      "id": "terminal-3-9eb60926-f40d-432b-be78-517323f804b6",
+      "kind": "terminal",
+      "status": "live",
+      "execution": {
+        "attachmentState": "attached-live",
+        "liveSession": true,
+        "runtimeSessionId": "10f7b111-665b-4d76-9325-cf7c17efd041",
+        "recentOutput": "ziyang01.wang-al@hobot:/tmp/dsc261verify$ echo REAL_REOPEN_COMPLEETED_TERMINAL_SLEEPING; while kill -0 2613433 2>/dev/null; do sleeep 0.1; done; echo REAL_REOPEN_COMPLETED_TERMINAL; exit\nREAL_REOPEN_COMPLETED_TERMINAL_SLEEPING",
+        "outputSequence": 2
+      }
+    }
+  ]
+}

@@ -12,6 +12,18 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-13：localhost SSH 重开双状态门禁与上游消息边界
+
+0.26.1发布准备PR327的完整verify在SSH重开第三终端completed断言失败，Canvas已ready，原Agent/普通Terminal恢复。调查基于main ea0c9b19。R2自然复现同35秒失败，原setupHost1305563/startTicks248872585清理前持续S/R；runner仅等待本地Electron退出加三秒，不证明远端Host退出，第三终端kill -0循环因此不结束。R1原版、R3诊断正常退出通过，首败单独保留。
+
+用户已批准退出/保留两条确定性场景。正式 runner 用真实客户端异常断连建立原 Host 保留，exit 再仅结束核验身份的旧 Host，retain 观察原身份到业务完成；第三终端按私有独立信号完成，不与 Host 寿命耦合。原 Supervisor/session、恢复/输出/输入、snapshot-only/historyDiscarded 与真实 resize 分别验收。17项控制正反例、9项resize回归及构建通过；原版 native-2 两分支全部通过、cleanup零残留。其后补充的前提保护已在完整0.26.1临时预合并source smoke中通过exit/retain，全部source场景及共享重开回归通过；完整npm test（426项Webview）和clean-checkout生产VSIX/安装后smoke全部通过，临时预合并7d33f664的release:verify退出码0。门禁前提误判已修复；修复合入后PR327仍须按最新main和发布head重新完整验证，当前未合并或发布。
+
+研究retain-2/retain-3和exit-1/exit-2各两次通过；retain-4的13次/3213ms连续观察支持磁盘注册表短暂旧尺寸为持久化延迟，实时尺寸不回退。调查C1先在ready45秒失败、C2在旧Host信号后诊断误判zombie、研究retain-1helper路径错误、正式native-1客户端argv误拒绝，均保留边界，不能代证产品失败或业务成功。
+
+遗留范围：上游具体丢失层未知。VS Code1.141.0 disconnect确有await；Remote SSH0.128.0 Managed(1) drain只等本地写回调，不等远端确认/Host退出。R3 drain返回unacked=3仍正常通过，不能把计数本身定因。无需等三小时或扩大completed35秒换取绿色。正式覆盖Linux localhost固定版本；其他平台、真实网络故障、原Host复用与显式重复start拒绝需各自验证，原会话数/绑定保持不变不代证拒绝命令。遇到新的退出消息丢失时继续采集具体传输层证据。
+
+关联：`docs/design-docs/remote-host-exit-investigation.md`、`docs/exec-plans/completed/remote-host-two-state-fix.md`、`docs/references/remote-host-two-state-fix/README.md`；历史调查与双状态研究证据分别保留在`remote-host-exit-investigation/`和`remote-host-two-state-validation/`。
+
 ## 2026-10-13：真实窗口重开 ready 预算缓解与上游资源责任
 
 背景与范围：PR #324确认VS Code1.141.0连续重开中未响应资源请求等待30秒、占满32名额后阻塞新CSS/JS；原单次fallback首败仍缺分层证据，不能归因。调查轮20秒是`real-reopen-tests.cjs`显式传入的历史smoke ready预算；PR #325将同fixture改为最大45秒，ready满足后立即返回。`CanvasPanelManager.waitForCanvasReady`未传timeout时默认15秒，测试命令未传有效正数时也默认15秒，仅对实际调用生效；这些时间值均不是所有用户打开Canvas的启动期限。
