@@ -842,3 +842,9 @@ run38579057915原输入9f602fed的npm test/SSH两态/Webview426/七packaged通�
 接续收口（2026-10-15）：同输入CI38596179995复现模板verifyCanvasTemplatesTrusted:1138，Agent关闭与保存submitted后即时pending，8ms后同执行saved。38605013416同Agent started/保存结果交接gate确定性probe pending、control原saved后二次reset及完整trusted通过；38603542973诊断Terminal started前提失败保留，不当作新产品首败。根因为本例cleanup未接入既有reset最终保存夹具；原S8安全拒绝符合契约，不延长超时。调查已完成，正式修复待授权和实施，PR327完整发布门禁仍阻断。证据docs/references/local-final-snapshot-boundary/，completed计划local-final-snapshot-boundary-investigation.md；后续代码/回归/根因集中一个修复PR，不单建文档或验证PR。
 
 正式修复接续：保存导出后清理接入原reset helper，原Agent/Terminal期望；新增正式调用点回归旧代码pending先红、修后9/9及原19/19通过。产品保护和20秒预算不变；同包原生及完整PR327临时组合验证进行中，尚未合入或放行发布。active计划smoke-template-final-persistence-repair.md。
+
+## 0.26.1 重新准备的验证与用户边界（2026-10-13）
+
+本次从 ea0c9b19 主线重建发布输入，旧 PR #313 已舍弃；过程和结果见 docs/design-docs/release-0-26-1-refresh.md。标准完整 release:verify 尚待本版本执行，0.26.0 历史授权不得代用。此前主线独立 npm ci 的 Wrangler/esbuild ETXTBSY 具体写者未确认，前台生命周期脚本对照通过仅是环境证据；下一正式验证若复现，采集写者与生命周期并发，再决定 PR/tag 两条安装链路是否需要同一调整，不跳过脚本或自动豁免。
+
+普通 Canvas 打开没有专门的 ready 截止和启动失败重试/重建，持续启动失败可保持空白；上游快速重开资源积压、单次 fallback 首败未定因继续按 webview-ready-root-cause.md 与 smoke-reopen-ready-timeout.md 跟踪。45 秒是 smoke 容忍预算，不是产品恢复能力。共享画布真实 UI 限 Linux 单 root，接管四阶段由受控 Host/store 和独立 Supervisor 验证；跨平台/Remote SSH/真实多 root、真实 provider、公开市场自动安装依赖与桌面点击需要具名补证。以上不因本地测试通过自动升级为支持承诺。
