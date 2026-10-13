@@ -51,7 +51,7 @@
 
 ## 具体步骤
 
-在仓库根执行 git fetch origin，git worktree add -b release-0-26-1-refresh /tmp/dsc261fresh origin/main。修改完成后在该工作树 git diff --check 并提交。用 git merge-tree --write-tree origin/main HEAD 生成预合并树，以 git commit-tree 指定两个父提交，git worktree add --detach /tmp/dsc261verify <预合并 commit>；验证过程不得改变产品文件。
+在仓库根执行 git fetch origin，git worktree add -b release-0-26-1-refresh /tmp/dsc261fresh origin/main。修改完成后在该工作树 git diff --check 并提交。先确认 git merge-base --is-ancestor origin/main HEAD 成功，再以 HEAD 的 tree 和 git commit-tree 指定两个父提交生成预合并 commit；本机旧 Git 不支持 merge-tree --write-tree，目标已是祖先时合并树与 HEAD 相同，git worktree add --detach /tmp/dsc261verify <预合并 commit>；验证过程不得改变产品文件。
 
 在验证工作树使用 Node22.23.3，设置 DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets 和 DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH=/tmp/dsc0261v/.vscode-test。按 CONTRIBUTING.md 复用经过同源 hash 校验的六目标资产；缓存路径不可作为来源证明。设置 umask0077、短私有 debug/host 临时路径，记录暖 Chromium revision1217 缓存；先 npm ci，再 npx --no-install playwright install --with-deps chromium。运行 npm run release:preflight -- --version 0.26.1 和 npm run release:verify -- --version 0.26.1，预期两个命令真实 exit0 且完整 npm test、八个打包场景全部通过。移除自己创建的缓存链接再提交，推送前再次 fetch/rebase。按 docs/workflows/MR_CREATE.md 创建 PR，验证未通过则草稿。
 
@@ -74,3 +74,5 @@
 不新增 API、依赖或设置。沿用 scripts/release/release-preflight.mjs、scripts/release/run-clean-checkout-vsix-validation.mjs、现有 npm 脚本和 VSIX 打包入口。主扩展 extensionPack 与 notifier 单向 extensionDependencies 保持同一安装关系；模板市场生产部署独立于插件 SemVer。
 
 2026-10-13 修订：从最新主线新建计划，明确发布范围、默认安装风险与双阶段完整验证，避免复用已舍弃候选。
+
+2026-10-13 修订：本机 Git 不支持 merge-tree --write-tree，采用已验证目标祖先关系与相同 HEAD tree 构造预合并结果，不跳过合并输入验证。
