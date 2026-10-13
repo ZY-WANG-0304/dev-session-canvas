@@ -1,4 +1,4 @@
-name: Systemd Smoke Scope Root Cause
+name: Systemd Smoke Scope Causal Control
 
 on:
   workflow_dispatch:
@@ -53,6 +53,7 @@ jobs:
       - name: Trace original systemd-user scene without changing assertions
         env:
           DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: systemd-user-real-reopen
+          DSC_SYSTEMD_RCA_PROBE_CONTROL: local-launcher
         run: |
           node "$RUNNER_TEMP/instrument-systemd-scope.mjs"
           npm run build
@@ -65,7 +66,7 @@ jobs:
           trace = pathlib.Path(os.environ['DSC_SYSTEMD_RCA_TRACE_FILE'])
           rows = [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
           assert len(rows) <= 100, 'Diagnostic unexpectedly exceeded finite trace limit'
-          summary = {'diagnostic_only': True, 'input': '08f7b0a52f5af27ced04b00a839f525a92659d63', 'rows': rows}
+          summary = {'diagnostic_only': True, 'control': 'local-launcher replaces systemd-run; response validation unchanged', 'input': '08f7b0a52f5af27ced04b00a839f525a92659d63', 'rows': rows}
           (pathlib.Path(os.environ['RUNNER_TEMP']) / 'systemd-scope-summary.json').write_text(json.dumps(summary, indent=2))
           print(json.dumps(summary))
           for file in ['extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts', 'extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts']:

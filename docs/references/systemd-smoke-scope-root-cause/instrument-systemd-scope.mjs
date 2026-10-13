@@ -29,9 +29,22 @@ function systemdRcaTrace(record: Record<string, unknown>): void {
     replaceOnce("    const intent = createRuntimeRootStartupIntent(request.owner, selected,",
       "    systemdRcaTrace({kind: 'selected', backend: selected});\n    const intent = createRuntimeRootStartupIntent(request.owner, selected,");
   } else {
+    if (process.env.DSC_SYSTEMD_RCA_PROBE_CONTROL === 'local-launcher') {
+      // Diagnostic causal control: execute the original read-only launcher, retaining response validation.
+      replaceOnce("execFile('/usr/bin/systemd-run', [", "execFile(process.execPath, [");
+      const probeStart = source.indexOf('    execFile(process.execPath, [');
+      const argumentEnd = source.indexOf('    ], {', probeStart);
+      assert(probeStart >= 0 && argumentEnd > probeStart);
+      source = source.slice(0, probeStart) + `    execFile(process.execPath, [
+      options.supervisorLauncherScriptPath, '--probe-root-environment', nonce
+` + source.slice(argumentEnd);
+      replaceOnce("env: { ...process.env, LC_ALL: 'C', LANG: 'C' }",
+        "env: { ...process.env, LC_ALL: 'C', LANG: 'C', ELECTRON_RUN_AS_NODE: '1', ELECTRON_NO_ATTACH_CONSOLE: '1' }");
+    }
     replaceOnce("  const nonce = randomUUID();", `  const nonce = randomUUID();
   systemdRcaTrace({kind: 'probe-environment', dbus: !process.env.DBUS_SESSION_BUS_ADDRESS ? 'unset-or-empty'
     : process.env.DBUS_SESSION_BUS_ADDRESS === 'disabled:' ? 'disabled' : 'set',
+    probeExecutor: process.env.DSC_SYSTEMD_RCA_PROBE_CONTROL === 'local-launcher' ? 'diagnostic-local-launcher' : 'real-systemd-run',
     runtimeDirSet: Boolean(process.env.XDG_RUNTIME_DIR),
     runtimeBusSocketExists: Boolean(process.env.XDG_RUNTIME_DIR && systemdRcaExists(path.join(process.env.XDG_RUNTIME_DIR, 'bus'))),
     systemctlShimSet: Boolean(process.env.DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM)});`);
@@ -50,4 +63,6 @@ function systemdRcaTrace(record: Record<string, unknown>): void {
   await fs.writeFile(file, source);
 }
 console.log(JSON.stringify({ diagnostic_only: true, input: '08f7b0a52f5af27ced04b00a839f525a92659d63', originalHashes,
-  mutations: 'Finite observations only; original probe, results, selection, budgets and assertions unchanged.' }));
+  mutations: process.env.DSC_SYSTEMD_RCA_PROBE_CONTROL === 'local-launcher'
+    ? 'Diagnostic local child executes the original read-only launcher instead of systemd-run; original response validation, selection, budgets and assertions unchanged.'
+    : 'Finite observations only; original probe, results, selection, budgets and assertions unchanged.' }));
