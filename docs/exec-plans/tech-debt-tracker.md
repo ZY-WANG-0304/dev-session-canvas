@@ -763,3 +763,8 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 `npm run test:runtime-completed-history` 的 `verifyCompletedBindingOwner` 原先将所有诊断数组断言为空；main a39cd8c1 新增正常 `execution/deleteBoundary` 后，本地与独立原 main 工作树均在同一 legacy Terminal 项失败。历史基线日志 `/tmp/dsc-shared-completed-history-baseline.log` 保留。
 
 用户授权修正后，测试精确断言 `execution/deleteBoundary` 的 `runtime-delete-requested` 阶段、kind、sessionId 和 backendKind，不泛化过滤诊断。root 缺失 owner 的拒绝用例单独校验请求诊断及零派发，然后清空收集器再验证正常完成。原完整绑定相等、owner 传递、保存先于删除与无终态历史断言全部保留；额外 completedCleanupFailed 等诊断仍使测试失败。Node 22 下完整 `test:runtime-completed-history` 通过，覆盖 Agent/Terminal、legacy/root 及后续 reader 退役场景；只修改测试与文档，没有修改生产删除行为，也不宣称全量 npm test 通过。
+
+
+## fake systemd 重开门禁后端不匹配：根因调查中（2026-10-13）
+
+组合run38387068827固定08f7b0a5在原links/checkpoint通过后，systemd-user-real-reopen setup失败actual legacy-detached / expected systemd-user。该失败未修复，阻塞完整0.26.1门禁；后续fallback/SSH/Webview/VSIX未触达。fake-systemctl只替代提交，新增root scope probe仍执行真实systemd-run；原环境DBUS disabled:与私有runtime目录已有日志，具体probe原因待干净runner记录。调查设计docs/design-docs/systemd-smoke-scope-root-cause.md和active计划记录边界，不放宽backend断言或据此宣布VSCode/产品缺陷。
