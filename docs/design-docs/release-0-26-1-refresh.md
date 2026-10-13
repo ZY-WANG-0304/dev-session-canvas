@@ -6,7 +6,7 @@ domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-0-26-1-refresh.md]
-updated_at: 2026-10-13
+updated_at: 2026-10-14
 ---
 
 # 从最新主线重新准备 0.26.1
@@ -27,9 +27,13 @@ Linux x64 验证使用 Node22.23.3、VS Code1.141.0、fake Agent 与原生 PTY�
 
 ## 当前验证输入
 
-PR #328 已于2026-10-13合入main `22803dd890855ffbe7620538b04940def097171b`。PR #327已rebase到该主线，SSH门禁由已合入的正式runner串行验收旧Host退出与原身份保留，第三终端按独立私有信号完成，原Supervisor/session与真实resize断言保留。该修复没有修改产品退出行为、原超时或本版用户release notes。设计与修复证据见 `remote-host-exit-investigation.md`。
+PR #328 与集中修复 PR #329 均已合入。2026-10-14 fetch 后 main 为 `72338331d0d90a40efea1a2ed3ef311512d57b5d`（PR329 merge commit）；发布分支从原远端 head `42d87b3d59d3147199a3fef9f2ee0b40de4534cf` rebase 到该主线。文档索引和技术债冲突保留主线修复与发布材料，发布 PR 相对 main 不增加产品实现、测试或 workflow 修改。
 
-本轮以最新PR head及上述main生成新的临时预合并输入，重新执行标准 `release:preflight`/`release:verify`，验证结果在PR #327描述、checks及保留的独立日志中关联实际输入。当前状态“验证中”包含最新head的线上门禁与review，下面的历史SSH首败不作为新输入结论；上一轮修复临时预合并通过也不代证本轮发布门禁。版本与契约仅保持静态产品范围，不回写测试结果。
+主线已包含 SSH 退出/保留双状态门禁、自有 socket 夹具、诊断等待末次观察、fake systemd 前置 probe、fallback 短 IPC 路径，以及 Linux 截图字体/发布验证 OS 依赖修复。原因与集中验证见 `remote-host-exit-investigation.md` 和 `systemd-smoke-scope-root-cause.md`；组合 run38426726365 的完整通过仅证明其记录的旧输入，不能代替本次正式 PR 门禁。
+
+本次使用正式 `Release Preflight` workflow：PR #327 转为非草稿后，由最新 head 与 main 生成预合并 commit；先固定该 SHA，再为六个平台构建同输入资产，最后在 ubuntu-22.04 执行默认 npm ci、浏览器准备与完整 `release:verify`。verify 内部先执行静态 preflight，随后运行发布回归、未过滤的完整 npm test 和 clean-checkout VSIX 八场景 smoke。最新 head/base/预合并 SHA、run 与最终结果统一关联 PR #327 描述和 checks，不另建验证或文档 PR。成功前仍禁止合并；合并、tag 和发布需后续授权。
+
+下文历史失败保留原输入含义，不能作为当前卡点；版本、CHANGELOG 和发布契约保持静态产品范围，不回写门禁或发布后事实。
 
 ## 历史验证状态（PR328合入前）
 
@@ -55,7 +59,7 @@ PR #328 已于2026-10-13合入main `22803dd890855ffbe7620538b04940def097171b`。
 
 完成准备需要静态检查和完整本地 verify 的实际结果、notifier 补充验证、最新主线祖先关系与可 review PR。完整 verify 失败时标为草稿阻塞；required CI/review 仍须成功，发布只能在合并后的 main 另行执行。
 
-## 证据与交付状态
+## 历史证据与交付状态（PR328合入前）
 
 证据入口 `docs/references/release-0-26-1-refresh/evidence.json` 固定 12 条命令的 UTC 起止、环境、exit 与日志 hash。`inputs.json` 记录 613 个产品/测试/静态发布输入；后续只修改过程与证据文档，逐文件核对产品/版本/CHANGELOG/契约/listing/测试输入相同；public 手册只有计划路径从 active 改为 completed。该单一过程链接差异和其余 612 个输入一致由 post-validation-input-comparison.json 记录，不声称最终新 head 通过完整 verify。`remote-first-failure.json` 保留失配、原身份、日志片段和此前同主线关闭成功的对照。六目标资产、原生输入、打包文件、语言/依赖和手动文案核对另有具名记录。
 
@@ -66,3 +70,5 @@ PR #328 已于2026-10-13合入main `22803dd890855ffbe7620538b04940def097171b`。
 本次交付：[草稿PR #327](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/327)，分支release-0-26-1-refresh，目标main。PR保持draft，非草稿release workflow不会启动；完整verify失败的阻塞没有撤销。
 
 2026-10-13修订：PR328已合入，发布分支追赶最新main；正式双状态门禁进入本版新预合并验证，历史首败保留，最新结果与实际输入在PR327关联。
+
+2026-10-14修订：PR329已合入，PR327按最新main rebase，正式非草稿PR预合并门禁的结果以PR327最新checks为准；历史失败不覆盖新输入结果。
