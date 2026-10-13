@@ -3,6 +3,9 @@ import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import path from 'node:path';
+import net from 'node:net';
+import fs from 'node:fs/promises';
+import os from 'node:os';
 const serverRoot = path.resolve('private-fixture-server');
 const serverNode = path.join(serverRoot, 'node');
 const control = createRequire(import.meta.url)('../../tests/vscode-smoke/remote-host-control.cjs');
@@ -109,6 +112,23 @@ if (process.platform === 'linux') test('local client with rewritten argv is kill
     assert.equal(report.localSignals[0].pid, child.pid);
     assert.equal(child.signalCode, 'SIGKILL');
   } finally { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); await completed.catch(() => {}); }
+});
+
+if (process.platform === 'linux') test('Supervisor request has a total deadline even when socket stays silent', async () => {
+  const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-host-request-'));
+  const socketPath = control.runtimePaths(storage).socketPath;
+  await fs.mkdir(path.dirname(socketPath), { recursive: true });
+  const sockets = new Set();
+  const server = net.createServer(socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
+  try {
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, resolve); });
+    const started = Date.now();
+    await assert.rejects(control.requestSession(storage, 'original', 80), /timeout/);
+    assert.ok(Date.now() - started < 2000, 'Request did not respect total deadline');
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise(resolve => server.close(resolve)); await fs.rm(storage, { recursive: true, force: true });
+  }
 });
 
 for (const { name, run } of tests) { await run(); console.log(`PASS ${name}`); }
