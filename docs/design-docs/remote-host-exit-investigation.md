@@ -5,7 +5,7 @@ validation_status: 验证中
 domains: [VSCode 集成域, 执行编排域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/remote-host-exit-investigation.md]
+related_plans: [docs/exec-plans/completed/remote-host-exit-investigation.md, docs/exec-plans/completed/remote-host-two-state-validation.md]
 updated_at: 2026-10-13
 ---
 
@@ -39,9 +39,9 @@ R1 原版通过，R2 日志自然复现原35秒断言失败，R3 可落盘日志
 
 第一条明确验证旧 Host 退出：修复限定在 Linux localhost SSH 的 smoke fixture 与 orchestration，不改变产品恢复、resize、ready45秒或 completed35秒预算。setup 成功时把真实远端 Host PID及 Linux startTicks 写入本次私有工件；本地 Electron 退出后先检查它是否已消失。在这条指定离线的场景中，若仍存活，核对 UID、私有 server 根、extensionHost 角色和启动身份，仅对这个旧 Host 制造真实离线，等待原进程消失，再启动 verify。未知身份或无法确认退出须提前失败并保存证据；PID重用不得向新进程发信号。
 
-必须保留原 Supervisor、Agent/Terminal sessionId、完成第三终端与丢弃历史断言。不能批量杀 server/Supervisor、结束第三终端或重新创建会话。建议在正常退出的有界观察后，仍存活则对已核实的旧Host发SIGKILL，明确模拟旧Host异常离线，并记录退出来源；C3已验证此动作保留原Supervisor与会话。正常收到 terminate 时不额外发信号。`kill -0` 对 zombie/PID重用也可能误判，因此正式实现还应让第三终端等待**原进程身份已退出**，而不是任意同号 PID 不存在；需要与 Linux identity 屏障一起设计，避免独立放宽判据。
+两条场景都必须保留原Supervisor和Agent/Terminal sessionId，第三终端完成由独立的测试信号决定，不能从旧Host是否消失推断。runner在本地窗口退出和指定Host前提确认后释放信号，直接观察离开期间输出及第三终端结束，再运行原恢复、snapshot-only、historyDiscarded和无第三session断言。退出场景另用PID/startTicks屏障证明原Host已消失；普通正常退出记录为正常来源，若测试指定制造异常离线，仅结束已核实的原Host。不得批量杀server/Supervisor或重建会话。未知身份、未确认退出或PID重用须拒绝成功，信号发出前严格核验，退出后的zombie不误当新身份；正式身份不符拒绝信号回归仍需补齐。
 
-第二条明确验证旧 Host 保留：使用隔离的连接中断或退出消息未送达条件，在重连/重开前后确认同一 PID/startTicks 仍在运行，不为了沿用第一条断言而结束它。重连可能复用原 Host，也可能新窗口建立新 Host；记录实际身份，不凭窗口变化要求一定换 PID。验证原 Supervisor和会话身份、重开期间输出、后续输入与resize、共享状态及无重复执行。旧 Host 仍存活时，当前第三终端的kill -0循环应继续运行，不能要求它已completed，也不能把真实live误写为closed。完成终端的终态/历史丢弃应由另一明确的结束条件或独立步骤验证，不能依赖Host消失。R2只证明部分恢复和原Host保留，未走完后续输入/resize等验收，第二条尚未完整验证；C1又先在ready失败，不能宣称此分支已通过。
+第二条明确验证旧Host保留：使用隔离的连接中断或退出消息未送达条件，在重开前、verify ready及业务断言完成后核对同一PID/startTicks仍运行，不结束它。重连可能复用原Host，也可能新窗口建立新Host；记录实际身份，本轮每次均为新Host与旧Host并存。验证原Supervisor、session绑定、离开期间输出、后续输入、共同resize及业务操作后会话数不变，完成终态按独立条件验收。本轮没有单独派发重复start命令，不把会话数不变扩大为重复启动拒绝已验证。R2只有部分恢复，C1先在ready失败；新的retain-2/retain-3补齐完整验证，旧失败事实保留。
 
 两条场景都应独立执行并有可确认的前提；一次运行按自然结果任选一条断言不能替代双分支覆盖。第一条拒绝结束旧 Host 时仍应失败，第二条旧 Host保留本身不应被判为产品失败。验收还包括原版两阶段、受控正常退出消息未送达但旧 Host 被确实结束、PID身份不符拒绝信号、原 Supervisor与会话保留及 fixture 最终零残留。结束保留Host的最终清理发生在其业务断言之后，明确属于测试资源回收。完成定向修复后再对最新发布准备预合并输入跑完整 release:verify；本轮结果不豁免 PR327 的失败门禁。
 
@@ -50,3 +50,11 @@ R1 原版通过，R2 日志自然复现原35秒断言失败，R3 可落盘日志
 证据见[取证说明](../references/remote-host-exit-investigation/README.md)。原失败 `/tmp/d261r/source/remote-ssh-real-reopen` 与 main 正对照 `/tmp/dmr13/source/remote-ssh-real-reopen` 均保留；独立运行在 `/tmp/dscsshdiag-{r1,r2,r3,c1,c2,c3}`，仅导出筛选后的日志、进程身份、关键快照与哈希，避免保存完整环境或密钥。
 
 本轮交付只包含调查文档和参考脚本，正式源码、测试及上游缓存原件不变。用户确认前不实现提案。结论范围为 Linux localhost、固定 VS Code/Remote SSH版本；不能外推真实远端或其他平台。此前 resize瞬态、Webview资源积压、clean-checkout ETXTBSY 属于各自证据范围，不能拼接为本故障根因。
+
+## 双状态可重复验证（2026-10-13，已完成研究）
+
+在独立runner、staged test和固定VS Code副本中完成retained/exited两分支各两次相同输入的独立执行：retain-2/retain-3确认原Host持续存活，exit-1/exit-2仅结束已核实旧Host后确认原身份消失。第三终端等待私有独立完成信号，原恢复、输出、输入、终态/历史丢弃断言全部通过；原Supervisor和原session持续保留，Host/Webview/直接Supervisor resize共同收敛，Agent67×21→82×27、Terminal64×20→85×28。每次cleanup通过，无本轮私有进程残留。retain-1是实验helper路径错误、未运行verify，失败原件保留。
+
+另用retain-4补查resize后稳定性：旧Host保持原身份，13次实时页面/原Supervisor采样共3213ms均保持新尺寸。首帧14ms磁盘注册表仍是旧尺寸，323ms追上，之后未回退。debug registry读取磁盘，Supervisor在状态更新后120ms安排持久化，因此不能将瞬时旧注册表值当作PTY未resize；本轮补验支持观察延迟，不追溯补造retain-2的后续连续状态。
+
+双状态可以在当前Linux localhost固定版本环境中受控并重复验收；受控上游消息缺失不代表所有真实网络故障。正式门禁注入接口仍待选择，本轮研究注入不直接进入产品。全部正式脚本、测试和bundle的400项hash不变，实验缓存恢复原版，临时runner入口移除。过程见 `docs/exec-plans/completed/remote-host-two-state-validation.md`，实测表、输入hash、参考脚本与限制见[双状态证据](../references/remote-host-two-state-validation/README.md)。正式产品/测试/超时未修复，完整release:verify未重跑，提案仍待用户确认。

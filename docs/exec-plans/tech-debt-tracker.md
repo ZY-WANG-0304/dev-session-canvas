@@ -20,6 +20,8 @@
 
 同日用户追问后候选方案补齐为退出/保留两条确定性场景，前述结束旧Host动作只属于指定离线的第一条。第二条须确认旧Host原身份保留，验证原会话重连、输出、后续输入/resize及无重复执行，不要求等待旧PID的第三终端已经结束；完成终态另由明确结束条件验收。R2未走完保留分支后续断言，C1先在ready失败，均不能代证第二条通过。双场景提案仍待用户确认。
 
+2026-10-13双状态研究已补齐：相同输入retain-2/retain-3和exit-1/exit-2分别各两次完整通过，原Host前提、原Supervisor/session、恢复/输出/输入、独立第三终端完成/历史丢弃及真实resize均通过。retain-1诊断路径错误未进入verify，首败保留；retain-4严格13次/3213ms观察支持磁盘注册表短暂旧尺寸是持久化延迟，实时尺寸不回退。只修改实验副本，400项正式输入hash未变，缓存恢复、六次fixture零残留。当前修复提案采用两分支和与Host寿命独立的完成信号；正式注入接口、身份不符拒绝信号/业务负对照、正式门禁接线及最新发布预合并完整verify仍待用户确认后实施，发布卡点不因研究绿灯关闭。没有单独派发重复start命令，不宣称重复启动拒绝已验证。证据 `docs/references/remote-host-two-state-validation/README.md`，计划 `docs/exec-plans/completed/remote-host-two-state-validation.md`。
+
 上游具体丢失层未知：VS Code1.141.0的disconnect确有await；Remote SSH0.128.0 Managed(1) drain只等本地写回调，不等远端确认/Host退出。R3 drain返回unacked=3仍正常通过，不能把计数本身定为丢消息原因。C1受控丢消息先在ready45秒失败、C2只杀Host后诊断误判zombie，均保留单独边界。无需等待三小时或扩大completed35秒换取绿色。关联：`docs/design-docs/remote-host-exit-investigation.md`、`docs/exec-plans/completed/remote-host-exit-investigation.md`、`docs/references/remote-host-exit-investigation/README.md`。
 
 ## 2026-10-13：真实窗口重开 ready 预算缓解与上游资源责任

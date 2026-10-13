@@ -1,0 +1,829 @@
+{
+  "run": "retain-4",
+  "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen",
+  "control": {
+    "scenario": "retain",
+    "setupHost": {
+      "pid": 637760,
+      "state": "S",
+      "ppid": 636682,
+      "startTicks": "249521259"
+    },
+    "supervisor": {
+      "pid": 642517,
+      "state": "S",
+      "ppid": 1,
+      "startTicks": "249521777"
+    },
+    "observations": [
+      {
+        "stage": "before-terminal-completion",
+        "host": {
+          "pid": 637760,
+          "state": "S",
+          "ppid": 636682,
+          "startTicks": "249521259"
+        },
+        "supervisor": {
+          "pid": 642517,
+          "state": "S",
+          "ppid": 1,
+          "startTicks": "249521777"
+        }
+      },
+      {
+        "stage": "before-verify",
+        "host": {
+          "pid": 637760,
+          "state": "S",
+          "ppid": 636682,
+          "startTicks": "249521259"
+        },
+        "supervisor": {
+          "pid": 642517,
+          "state": "S",
+          "ppid": 1,
+          "startTicks": "249521777"
+        }
+      }
+    ],
+    "offlineRegistry": {
+      "sessions": [
+        {
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "kind": "agent",
+          "live": true,
+          "cols": 67,
+          "rows": 21,
+          "output": "[fake-agent] ready pid=643622 session=671455e6-2bf3-4057-a6a9-26e0e631004f\r\nsleep 12\r\nREAL_REOPEN_AGENT\r\n> [fake-agent] sleeping 12s\r\n[fake-agent] woke after 12s\r\n> [fake-agent] REAL_REOPEN_AGENT\r\n> "
+        },
+        {
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "kind": "terminal",
+          "live": true,
+          "cols": 64,
+          "rows": 20,
+          "output": "\u001b[?2004hziyang01.wang-al@hobot:/tmp/dscsshdiag$ echo REAL_REOPEN_TERMINAL\rL_SLEEPING; sleep 12; echo REAL_REOPEN_TERMINAL\r\n\u001b[?2004l\rREAL_REOPEN_TERMINAL_SLEEPING\r\nREAL_REOPEN_TERMINAL\r\n\u001b[?2004hziyang01.wang-al@hobot:/tmp/dscsshdiag$ "
+        }
+      ]
+    }
+  },
+  "controlArtifactSha256": "16950491a5cc248a3e233dfc2987c3c29f58b1ad7148b360484bbb4909d46c16",
+  "business": {
+    "scenario": "retain",
+    "setupHost": {
+      "pid": 637760,
+      "state": "S",
+      "ppid": 636682,
+      "startTicks": "249521259"
+    },
+    "verifyHost": {
+      "pid": 660332,
+      "state": "R",
+      "ppid": 636682,
+      "startTicks": "249523416"
+    },
+    "supervisor": {
+      "pid": 642517,
+      "state": "S",
+      "ppid": 1,
+      "startTicks": "249521777"
+    },
+    "phases": [
+      {
+        "stage": "verify-ready",
+        "host": {
+          "pid": 637760,
+          "state": "S",
+          "ppid": 636682,
+          "startTicks": "249521259"
+        },
+        "supervisor": {
+          "pid": 642517,
+          "state": "S",
+          "ppid": 1,
+          "startTicks": "249521777"
+        }
+      },
+      {
+        "stage": "business-assertions-complete",
+        "host": {
+          "pid": 637760,
+          "state": "S",
+          "ppid": 636682,
+          "startTicks": "249521259"
+        },
+        "supervisor": {
+          "pid": 642517,
+          "state": "S",
+          "ppid": 1,
+          "startTicks": "249521777"
+        }
+      }
+    ],
+    "resize": {
+      "baseline": [
+        {
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "kind": "agent",
+          "terminalExecutionSessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "renderedWidth": 560,
+          "renderedHeight": 430,
+          "terminalCols": 67,
+          "terminalRows": 21,
+          "terminalFitCols": 67,
+          "terminalFitRows": 21,
+          "terminalProjectionPending": false
+        },
+        {
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "kind": "terminal",
+          "terminalExecutionSessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "renderedWidth": 540,
+          "renderedHeight": 420,
+          "terminalCols": 64,
+          "terminalRows": 20,
+          "terminalFitCols": 64,
+          "terminalFitRows": 20,
+          "terminalProjectionPending": false
+        }
+      ],
+      "resized": [
+        {
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "kind": "agent",
+          "terminalExecutionSessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "renderedWidth": 680,
+          "renderedHeight": 520,
+          "terminalCols": 82,
+          "terminalRows": 27,
+          "terminalFitCols": 82,
+          "terminalFitRows": 27,
+          "terminalProjectionPending": false
+        },
+        {
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "kind": "terminal",
+          "terminalExecutionSessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "renderedWidth": 700,
+          "renderedHeight": 540,
+          "terminalCols": 85,
+          "terminalRows": 28,
+          "terminalFitCols": 85,
+          "terminalFitRows": 28,
+          "terminalProjectionPending": false
+        }
+      ],
+      "samples": [
+        {
+          "elapsedMs": 15,
+          "observations": [
+            {
+              "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+              "hostSize": {
+                "width": 560,
+                "height": 430
+              },
+              "binding": {
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+                "runtimeStoragePath": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/87f034afe18171201ad88665f010d82c410d9f93bfca878a09f4a55f74c78f7e/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+              },
+              "page": {
+                "width": 560,
+                "height": 430,
+                "cols": 67,
+                "rows": 21,
+                "fitCols": 67,
+                "fitRows": 21,
+                "pending": false,
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63"
+              },
+              "session": {
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+                "kind": "agent",
+                "live": true,
+                "cols": 67,
+                "rows": 21,
+                "markers": [
+                  [
+                    "[fake-agent] REAL_REOPEN_AGENT",
+                    true
+                  ],
+                  [
+                    "[fake-agent] AFTER_REOPEN_AGENT",
+                    true
+                  ]
+                ]
+              },
+              "changed": true,
+              "matches": true
+            },
+            {
+              "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+              "hostSize": {
+                "width": 540,
+                "height": 420
+              },
+              "binding": {
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+                "runtimeStoragePath": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/87f034afe18171201ad88665f010d82c410d9f93bfca878a09f4a55f74c78f7e/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+              },
+              "page": {
+                "width": 540,
+                "height": 420,
+                "cols": 64,
+                "rows": 20,
+                "fitCols": 64,
+                "fitRows": 20,
+                "pending": false,
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5"
+              },
+              "session": {
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+                "kind": "terminal",
+                "live": true,
+                "cols": 64,
+                "rows": 20,
+                "markers": [
+                  [
+                    "REAL_REOPEN_TERMINAL",
+                    true
+                  ],
+                  [
+                    "AFTER_REOPEN_TERMINAL",
+                    true
+                  ]
+                ]
+              },
+              "changed": true,
+              "matches": true
+            }
+          ]
+        },
+        {
+          "elapsedMs": 51,
+          "observations": [
+            {
+              "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+              "hostSize": {
+                "width": 680,
+                "height": 520
+              },
+              "binding": {
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+                "runtimeStoragePath": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/87f034afe18171201ad88665f010d82c410d9f93bfca878a09f4a55f74c78f7e/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+              },
+              "page": {
+                "width": 680,
+                "height": 520,
+                "cols": 82,
+                "rows": 27,
+                "fitCols": 82,
+                "fitRows": 27,
+                "pending": false,
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63"
+              },
+              "session": {
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+                "kind": "agent",
+                "live": true,
+                "cols": 67,
+                "rows": 21,
+                "markers": [
+                  [
+                    "[fake-agent] REAL_REOPEN_AGENT",
+                    true
+                  ],
+                  [
+                    "[fake-agent] AFTER_REOPEN_AGENT",
+                    true
+                  ]
+                ]
+              },
+              "changed": true,
+              "matches": false
+            },
+            {
+              "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+              "hostSize": {
+                "width": 700,
+                "height": 540
+              },
+              "binding": {
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+                "runtimeStoragePath": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/87f034afe18171201ad88665f010d82c410d9f93bfca878a09f4a55f74c78f7e/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+              },
+              "page": {
+                "width": 700,
+                "height": 540,
+                "cols": 64,
+                "rows": 20,
+                "fitCols": 85,
+                "fitRows": 28,
+                "pending": false,
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5"
+              },
+              "session": {
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+                "kind": "terminal",
+                "live": true,
+                "cols": 64,
+                "rows": 20,
+                "markers": [
+                  [
+                    "REAL_REOPEN_TERMINAL",
+                    true
+                  ],
+                  [
+                    "AFTER_REOPEN_TERMINAL",
+                    true
+                  ]
+                ]
+              },
+              "changed": false,
+              "matches": false
+            }
+          ]
+        },
+        {
+          "elapsedMs": 160,
+          "observations": [
+            {
+              "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+              "hostSize": {
+                "width": 680,
+                "height": 520
+              },
+              "binding": {
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+                "runtimeStoragePath": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/87f034afe18171201ad88665f010d82c410d9f93bfca878a09f4a55f74c78f7e/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+              },
+              "page": {
+                "width": 680,
+                "height": 520,
+                "cols": 82,
+                "rows": 27,
+                "fitCols": 82,
+                "fitRows": 27,
+                "pending": false,
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63"
+              },
+              "session": {
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+                "kind": "agent",
+                "live": true,
+                "cols": 67,
+                "rows": 21,
+                "markers": [
+                  [
+                    "[fake-agent] REAL_REOPEN_AGENT",
+                    true
+                  ],
+                  [
+                    "[fake-agent] AFTER_REOPEN_AGENT",
+                    true
+                  ]
+                ]
+              },
+              "changed": true,
+              "matches": false
+            },
+            {
+              "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+              "hostSize": {
+                "width": 700,
+                "height": 540
+              },
+              "binding": {
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+                "runtimeStoragePath": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/87f034afe18171201ad88665f010d82c410d9f93bfca878a09f4a55f74c78f7e/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+              },
+              "page": {
+                "width": 700,
+                "height": 540,
+                "cols": 85,
+                "rows": 28,
+                "fitCols": 85,
+                "fitRows": 28,
+                "pending": false,
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5"
+              },
+              "session": {
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+                "kind": "terminal",
+                "live": true,
+                "cols": 64,
+                "rows": 20,
+                "markers": [
+                  [
+                    "REAL_REOPEN_TERMINAL",
+                    true
+                  ],
+                  [
+                    "AFTER_REOPEN_TERMINAL",
+                    true
+                  ]
+                ]
+              },
+              "changed": true,
+              "matches": false
+            }
+          ]
+        },
+        {
+          "elapsedMs": 276,
+          "observations": [
+            {
+              "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+              "hostSize": {
+                "width": 680,
+                "height": 520
+              },
+              "binding": {
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+                "runtimeStoragePath": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/87f034afe18171201ad88665f010d82c410d9f93bfca878a09f4a55f74c78f7e/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+              },
+              "page": {
+                "width": 680,
+                "height": 520,
+                "cols": 82,
+                "rows": 27,
+                "fitCols": 82,
+                "fitRows": 27,
+                "pending": false,
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63"
+              },
+              "session": {
+                "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+                "kind": "agent",
+                "live": true,
+                "cols": 82,
+                "rows": 27,
+                "markers": [
+                  [
+                    "[fake-agent] REAL_REOPEN_AGENT",
+                    true
+                  ],
+                  [
+                    "[fake-agent] AFTER_REOPEN_AGENT",
+                    true
+                  ]
+                ]
+              },
+              "changed": true,
+              "matches": true
+            },
+            {
+              "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+              "hostSize": {
+                "width": 700,
+                "height": 540
+              },
+              "binding": {
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+                "runtimeStoragePath": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/87f034afe18171201ad88665f010d82c410d9f93bfca878a09f4a55f74c78f7e/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+              },
+              "page": {
+                "width": 700,
+                "height": 540,
+                "cols": 85,
+                "rows": 28,
+                "fitCols": 85,
+                "fitRows": 28,
+                "pending": false,
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5"
+              },
+              "session": {
+                "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+                "kind": "terminal",
+                "live": true,
+                "cols": 85,
+                "rows": 28,
+                "markers": [
+                  [
+                    "REAL_REOPEN_TERMINAL",
+                    true
+                  ],
+                  [
+                    "AFTER_REOPEN_TERMINAL",
+                    true
+                  ]
+                ]
+              },
+              "changed": true,
+              "matches": true
+            }
+          ]
+        }
+      ]
+    },
+    "runtimeBeforeReset": {
+      "observedRootSupervisorProcesses": [
+        {
+          "rootPath": "/tmp/dscsshdiag",
+          "pid": 642517
+        }
+      ],
+      "bindings": [
+        {
+          "runtimeBackend": "legacy-detached",
+          "runtimeSessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "runtimeStoragePath": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/87f034afe18171201ad88665f010d82c410d9f93bfca878a09f4a55f74c78f7e/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "kind": "terminal"
+        },
+        {
+          "runtimeBackend": "legacy-detached",
+          "runtimeSessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "runtimeStoragePath": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/87f034afe18171201ad88665f010d82c410d9f93bfca878a09f4a55f74c78f7e/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "kind": "agent"
+        }
+      ],
+      "pendingRuntimeSupervisorOperationCount": 0,
+      "sessions": [
+        {
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "kind": "agent",
+          "live": true,
+          "cols": 82,
+          "rows": 27
+        },
+        {
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "kind": "terminal",
+          "live": true,
+          "cols": 85,
+          "rows": 28
+        }
+      ]
+    },
+    "pass": true
+  },
+  "businessArtifactSha256": "3e430e23103828d6e1a134da249d009308403a71e1dcd6191776e53213ac600b",
+  "cleanup": {
+    "schemaVersion": 1,
+    "scope": "This loopback fixture server, private client roots and original sshd only; not product settlement.",
+    "signals": [
+      {
+        "pid": 607049,
+        "starttime": "249518155",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 607198,
+        "starttime": "249518169",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 636678,
+        "starttime": "249521210",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 636682,
+        "starttime": "249521211",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 637760,
+        "starttime": "249521259",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 637773,
+        "starttime": "249521277",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 637774,
+        "starttime": "249521277",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 637780,
+        "starttime": "249521277",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 637847,
+        "starttime": "249521288",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 637877,
+        "starttime": "249521313",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 641360,
+        "starttime": "249521617",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 642517,
+        "starttime": "249521777",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 658981,
+        "starttime": "249523373",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 660332,
+        "starttime": "249523416",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 660370,
+        "starttime": "249523425",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 667119,
+        "starttime": "249524123",
+        "root": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 561604,
+        "signal": "SIGTERM",
+        "role": "fixture-sshd"
+      }
+    ],
+    "remaining": [],
+    "failures": [],
+    "pass": true
+  },
+  "cleanupArtifactSha256": "54d5aa1d81b1dda93218489c6ddf7ab0f8346c7638133960554f399e5e59145b",
+  "setup": {
+    "host": {
+      "pid": 637760,
+      "state": "S",
+      "ppid": 636682,
+      "startTicks": "249521259"
+    },
+    "supervisor": {
+      "pid": 642517,
+      "state": "S",
+      "ppid": 1,
+      "startTicks": "249521777"
+    }
+  },
+  "setupArtifactSha256": "fcd23a5fcc79d8169f277f2c21897b98c53416d2550851227f2f72d0a535657b",
+  "lifecycleEvents": [
+    {
+      "path": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/user-data/logs/20261013T140127/window1/renderer.log",
+      "line": "2026-10-13 14:02:19.682 [info] [SSH-TWO-STATE] suppress setup terminate/disconnect",
+      "logSha256": "d963b21e01782877a4f74198df06dbaafb29ede1afbbee85a1b6d86f548bcfeb"
+    },
+    {
+      "path": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T140211/exthost1/remoteexthost.log",
+      "line": "2026-10-13 14:02:12.586 [info] Extension host with pid 637760 started",
+      "logSha256": "bbb9c6ddf73318d8791878d5e68a635c43775d67fcd9ad8c82f6e5eabd908037"
+    },
+    {
+      "path": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T140211/exthost2/remoteexthost.log",
+      "line": "2026-10-13 14:02:33.775 [info] Extension host with pid 660332 started",
+      "logSha256": "6c4c704926ea63d6da7ab7c0f23ce3303b156965abdf95427ca93e8493e7a4bc"
+    },
+    {
+      "path": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T140211/exthost2/remoteexthost.log",
+      "line": "2026-10-13 14:02:42.343 [info] Extension host terminating: received terminate message from renderer",
+      "logSha256": "6c4c704926ea63d6da7ab7c0f23ce3303b156965abdf95427ca93e8493e7a4bc"
+    }
+  ],
+  "runEvents": [
+    {
+      "type": "run-start",
+      "command": [
+        "node",
+        ".debug/remote-host-two-state/scripts/smoke/run-vscode-smoke.mjs"
+      ],
+      "runnerPid": 547231,
+      "utc": "2026-10-13T06:00:43.223888+00:00"
+    },
+    {
+      "type": "remote-log",
+      "path": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T140211/exthost2/remoteexthost.log",
+      "line": "2026-10-13 14:02:42.343 [info] Extension host terminating: received terminate message from renderer",
+      "utc": "2026-10-13T06:02:42.441962+00:00"
+    },
+    {
+      "type": "run-exit",
+      "code": 0,
+      "utc": "2026-10-13T06:02:48.071582+00:00"
+    },
+    {
+      "type": "run-end",
+      "utc": "2026-10-13T06:02:50.082618+00:00"
+    }
+  ],
+  "processes": [
+    {
+      "pid": 637760,
+      "first": {
+        "type": "process",
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": 249521259,
+        "log": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T140211/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T06:02:12.661463+00:00"
+      },
+      "lastAlive": {
+        "type": "process",
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": 249521259,
+        "log": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T140211/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T06:02:42.643576+00:00"
+      },
+      "firstAbsent": {
+        "type": "process",
+        "pid": 637760,
+        "state": "absent",
+        "log": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T140211/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T06:02:42.844681+00:00"
+      },
+      "states": [
+        "D",
+        "R",
+        "S",
+        "absent"
+      ]
+    },
+    {
+      "pid": 660332,
+      "first": {
+        "type": "process",
+        "pid": 660332,
+        "state": "R",
+        "ppid": 636682,
+        "startTicks": 249523416,
+        "log": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T140211/exthost2/remoteexthost.log",
+        "utc": "2026-10-13T06:02:33.778181+00:00"
+      },
+      "lastAlive": {
+        "type": "process",
+        "pid": 660332,
+        "state": "R",
+        "ppid": 636682,
+        "startTicks": 249523416,
+        "log": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T140211/exthost2/remoteexthost.log",
+        "utc": "2026-10-13T06:02:42.643846+00:00"
+      },
+      "firstAbsent": {
+        "type": "process",
+        "pid": 660332,
+        "state": "absent",
+        "log": "/tmp/dscssh2-retain-4/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T140211/exthost2/remoteexthost.log",
+        "utc": "2026-10-13T06:02:42.844778+00:00"
+      },
+      "states": [
+        "D",
+        "R",
+        "S",
+        "absent"
+      ]
+    }
+  ],
+  "commandLog": {
+    "path": "/tmp/dscssh2-evidence/retain-4.log",
+    "sha256": "6e40f1ac3feef65aa4630a9c5ec6eeb6cd7a0af451730b0457aab406fb87ba8c",
+    "bytes": 624804
+  }
+}

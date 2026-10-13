@@ -1,0 +1,55 @@
+--- scripts/smoke/run-vscode-smoke.mjs
++++ scripts/smoke/run-vscode-smoke.mjs
+@@ -1,0 +2,3 @@
++import { createRequire } from 'node:module';
++import { execFileSync } from 'node:child_process';
++const lab = createRequire(import.meta.url)('/tmp/dscssh2-evidence/lab-helpers.cjs');
+@@ -596 +599,2 @@
+-    remoteRuntimeDirName: 'dsc-vscode-remote-ssh-runtime-real-reopen'
++    remoteRuntimeDirName: 'dsc-vscode-remote-ssh-runtime-real-reopen',
++    observeCleanup:true, cleanupReportPath:path.join(runtime.artifactsDir,'lab-cleanup.json')
+@@ -635,0 +640,6 @@
++    const labScenario=process.env.SSH_HOST_SCENARIO;
++    if(!['exit','retain'].includes(labScenario)) throw new Error('Explicit SSH_HOST_SCENARIO required');
++    const labTestPath=resolveStagedSmokeTestPath(smokeHostRoot,'real-reopen-tests.cjs');
++    execFileSync('python3',['/tmp/dscssh2-evidence/stage-test.py',labTestPath]);
++    const labLossTestPath=path.join(path.dirname(labTestPath),'real-reopen-loss-tests.cjs');
++    await fs.copyFile(labTestPath,labLossTestPath);
+@@ -657,2 +667,35 @@
+-    await launchPreparedVSCodeScenario(sharedOptions);
+-    await new Promise((resolve) => setTimeout(resolve, 3000));
++    await launchPreparedVSCodeScenario({...sharedOptions,extensionTestsPath:toRemoteURI(fixture.remoteAuthority,labLossTestPath)});
++    const expected=JSON.parse(await fs.readFile(stateFilePath,'utf8'));
++    const control={scenario:labScenario,setupHost:expected.setupHost,supervisor:expected.supervisor,observations:[]};
++    await lab.sameLiveProcess(expected.setupHost);
++    await lab.sameLiveProcess(expected.supervisor);
++    const args=(await fs.readFile(`/proc/${expected.setupHost.pid}/cmdline`,'utf8')).split('\0');
++    if((await fs.stat(`/proc/${expected.setupHost.pid}`)).uid!==process.getuid()||!args.some(arg=>arg.startsWith(fixture.remoteAgentDir+'/'))||!args.some(arg=>arg.includes('extensionHost')))throw new Error('Old Host is outside private scope');
++    if(labScenario==='exit'){
++      await lab.sameLiveProcess(expected.setupHost);
++      process.kill(expected.setupHost.pid,'SIGKILL');
++      control.signal='SIGKILL';
++      const deadline=Date.now()+10000;
++      while(true){
++        const identity=await lab.processIdentity(expected.setupHost.pid);
++        if(!identity||identity.startTicks!==expected.setupHost.startTicks)break;
++        if(Date.now()>=deadline)throw new Error('Original Host still exists after forced offline');
++        await new Promise(resolve=>setTimeout(resolve,100));
++      }
++    }
++    control.observations.push({stage:'before-terminal-completion',host:await lab.hostCondition(expected.setupHost,labScenario),supervisor:await lab.sameLiveProcess(expected.supervisor)});
++    await fs.writeFile(path.join(runtime.artifactsDir,'complete-terminal.flag'),'complete\n',{flag:'wx'});
++    const outputDeadline=Date.now()+30000;
++    while(true){
++      const registry=JSON.parse(await fs.readFile(lab.runtimePaths(expected.agentRuntimeStoragePath).registryPath,'utf8'));
++      const agent=registry.sessions.find(x=>x.sessionId===expected.agentSessionId);
++      const terminal=registry.sessions.find(x=>x.sessionId===expected.terminalSessionId);
++      const completed=registry.sessions.find(x=>x.sessionId===expected.completedTerminalSessionId);
++      if(agent?.output?.includes('[fake-agent] REAL_REOPEN_AGENT')&&/[\r\n]REAL_REOPEN_TERMINAL(?:\r?\n|$)/.test(terminal?.output ?? '')&&(!completed||completed.live===false)){
++        control.offlineRegistry={sessions:registry.sessions.map(x=>({sessionId:x.sessionId,kind:x.kind,live:x.live,cols:x.cols,rows:x.rows,output:x.output}))};break;
++      }
++      if(Date.now()>=outputDeadline)throw new Error('Offline output/independent terminal completion was not confirmed');
++      await new Promise(resolve=>setTimeout(resolve,100));
++    }
++    control.observations.push({stage:'before-verify',host:await lab.hostCondition(expected.setupHost,labScenario),supervisor:await lab.sameLiveProcess(expected.supervisor)});
++    await fs.writeFile(path.join(runtime.artifactsDir,'lab-host-control.json'),JSON.stringify(control,null,2));

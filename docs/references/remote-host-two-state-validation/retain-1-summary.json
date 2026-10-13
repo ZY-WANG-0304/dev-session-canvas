@@ -1,0 +1,204 @@
+{
+  "run": "retain-1",
+  "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen",
+  "cleanup": {
+    "schemaVersion": 1,
+    "scope": "This loopback fixture server, private client roots and original sshd only; not product settlement.",
+    "signals": [
+      {
+        "pid": 3466138,
+        "starttime": "249410404",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3467666,
+        "starttime": "249410435",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3503443,
+        "starttime": "249413422",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3503448,
+        "starttime": "249413422",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3504836,
+        "starttime": "249413490",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3504840,
+        "starttime": "249413491",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3504841,
+        "starttime": "249413491",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3504853,
+        "starttime": "249413492",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3504879,
+        "starttime": "249413512",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3504902,
+        "starttime": "249413526",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3508203,
+        "starttime": "249413822",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3511421,
+        "starttime": "249413973",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3511620,
+        "starttime": "249413993",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3511668,
+        "starttime": "249414011",
+        "root": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent",
+        "signal": "SIGTERM",
+        "role": "fixture-server"
+      },
+      {
+        "pid": 3426436,
+        "signal": "SIGTERM",
+        "role": "fixture-sshd"
+      }
+    ],
+    "remaining": [],
+    "failures": [],
+    "pass": true
+  },
+  "cleanupArtifactSha256": "cc8799006284ed5a2a212952416e245597e0cc4d97bf5ada0e62567063a17a6a",
+  "setup": {
+    "host": {
+      "pid": 3504853,
+      "state": "S",
+      "ppid": 3503448,
+      "startTicks": "249413492"
+    },
+    "supervisor": {
+      "pid": 3511421,
+      "state": "S",
+      "ppid": 1,
+      "startTicks": "249413973"
+    }
+  },
+  "setupArtifactSha256": "5dbef86b9290edb285b11fe7e9d9ddecbce1b497bde377aa93a8c73319171a5c",
+  "lifecycleEvents": [
+    {
+      "path": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/user-data/logs/20261013T134331/window1/renderer.log",
+      "line": "2026-10-13 13:44:21.486 [info] [SSH-TWO-STATE] suppress setup terminate/disconnect",
+      "logSha256": "28fc23187aa5365a91bd9fa4456ae19240471251aa350fd0bf5881575eeead0f"
+    },
+    {
+      "path": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T134413/exthost1/remoteexthost.log",
+      "line": "2026-10-13 13:44:14.755 [info] Extension host with pid 3504853 started",
+      "logSha256": "cb2b58c4697816e3e28e2bf19a9ed2bc05a4918e3be07a0b59f43ebf80805c7d"
+    }
+  ],
+  "runEvents": [
+    {
+      "type": "run-start",
+      "command": [
+        "node",
+        ".debug/remote-host-two-state/scripts/smoke/run-vscode-smoke.mjs"
+      ],
+      "runnerPid": 3408834,
+      "utc": "2026-10-13T05:42:55.879421+00:00"
+    },
+    {
+      "type": "run-exit",
+      "code": 1,
+      "utc": "2026-10-13T05:44:27.537492+00:00"
+    },
+    {
+      "type": "run-end",
+      "utc": "2026-10-13T05:44:29.546053+00:00"
+    }
+  ],
+  "processes": [
+    {
+      "pid": 3504853,
+      "first": {
+        "type": "process",
+        "pid": 3504853,
+        "state": "S",
+        "ppid": 3503448,
+        "startTicks": 249413492,
+        "log": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T134413/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T05:44:14.875444+00:00"
+      },
+      "lastAlive": {
+        "type": "process",
+        "pid": 3504853,
+        "state": "R",
+        "ppid": 3503448,
+        "startTicks": 249413492,
+        "log": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T134413/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T05:44:22.315098+00:00"
+      },
+      "firstAbsent": {
+        "type": "process",
+        "pid": 3504853,
+        "state": "absent",
+        "log": "/tmp/dscssh2-retain-1/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T134413/exthost1/remoteexthost.log",
+        "utc": "2026-10-13T05:44:22.518123+00:00"
+      },
+      "states": [
+        "R",
+        "S",
+        "absent"
+      ]
+    }
+  ],
+  "commandLog": {
+    "path": "/tmp/dscssh2-evidence/retain-1.log",
+    "sha256": "fa062ffc1087fa800fc7ad749f02e26d1f701bd612bad8831aa59da416452abd",
+    "bytes": 356700
+  }
+}

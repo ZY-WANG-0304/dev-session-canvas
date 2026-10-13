@@ -1,0 +1,773 @@
+{
+  "durationMs": 3000,
+  "samples": [
+    {
+      "elapsedMs": 14,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 67,
+            "rows": 21
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 64,
+            "rows": 20
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 323,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 593,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 854,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 1111,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 1376,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 1647,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 1906,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 2162,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 2423,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 2683,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 2954,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    },
+    {
+      "elapsedMs": 3213,
+      "observations": [
+        {
+          "kind": "agent",
+          "nodeId": "agent-1-4d6999af-8fbf-4709-a89a-c3b17a60f143",
+          "sessionId": "7a21d311-1342-40b2-9d4d-26b1effc7d63",
+          "page": {
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27
+          },
+          "session": {
+            "cols": 82,
+            "rows": 27,
+            "live": true
+          },
+          "registry": {
+            "cols": 82,
+            "rows": 27
+          },
+          "matches": true
+        },
+        {
+          "kind": "terminal",
+          "nodeId": "terminal-2-beeda65e-c316-4140-90c0-1749c9543ac2",
+          "sessionId": "36aefea3-9715-4138-9e07-92442a39c0a5",
+          "page": {
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28
+          },
+          "session": {
+            "cols": 85,
+            "rows": 28,
+            "live": true
+          },
+          "registry": {
+            "cols": 85,
+            "rows": 28
+          },
+          "matches": true
+        }
+      ],
+      "host": {
+        "pid": 637760,
+        "state": "S",
+        "ppid": 636682,
+        "startTicks": "249521259"
+      },
+      "supervisor": {
+        "pid": 642517,
+        "state": "S",
+        "ppid": 1,
+        "startTicks": "249521777"
+      }
+    }
+  ],
+  "pass": true
+}

@@ -1,0 +1,16 @@
+{
+  "runs": [
+    "remote-ssh-real-reopen:/tmp/dscssh2-retain-1/remote-ssh-real-reopen",
+    "remote-ssh-real-reopen:/tmp/dscssh2-retain-2/remote-ssh-real-reopen",
+    "remote-ssh-real-reopen:/tmp/dscssh2-retain-3/remote-ssh-real-reopen",
+    "remote-ssh-real-reopen:/tmp/dscssh2-exit-1/remote-ssh-real-reopen",
+    "remote-ssh-real-reopen:/tmp/dscssh2-exit-2/remote-ssh-real-reopen",
+    "remote-ssh-real-reopen:/tmp/dscssh2-retain-4/remote-ssh-real-reopen"
+  ],
+  "allFixtureCleanupPass": true,
+  "remainingPrivateProcesses": [],
+  "originalCacheSha256": "631c1d79c4f3af9177ca23a70cfe0cf2586a692678bd897af6c869324160d905",
+  "restoredExperimentCacheSha256": "631c1d79c4f3af9177ca23a70cfe0cf2586a692678bd897af6c869324160d905",
+  "experimentalRunnerRemoved": true,
+  "largeServerInstallationsRemoved": false
+}

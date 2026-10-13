@@ -1,0 +1,6 @@
+{
+  "/tmp/dscssh2-evidence/stage-test.py": "19645d2dcf524ab24f02d11b5ccd295400c5cbebf786a09c2a4d022c8f63a182",
+  "/tmp/dscssh2-evidence/lab-helpers.cjs": "9535f6fdc765027ebdb7051970800b515174ebe547b537e3407a39d9e2728413",
+  ".debug/remote-host-two-state/scripts/smoke/run-vscode-smoke.mjs": "64beaeca76f7da5a30a8c7b009c9486c8604d73c0cb30e181695271c9058d8ab",
+  "/tmp/dscsshdiag-two-cache/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/workbench.desktop.main.js": "7a31af8a3c2b5f68e35552320c2b9cb992dff510802ac2800875a505f53c430a"
+}
