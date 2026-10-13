@@ -1,0 +1,562 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "a213b89b8c1dcaaec291e896042acc8627a05668",
+  "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+  "environment": {
+    "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+    "nodeVersion": "22.23.3",
+    "vscodeVersion": "1.141.0",
+    "platform": "Linux x64",
+    "agent": "fake-agent-provider",
+    "nativeAssets": "/tmp/dsc-release-026-assets",
+    "buildCommand": "PATH=/tmp/dsc-release-node22/node_modules/node/bin:$PATH DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets npm run build",
+    "hostTmp": "runner uses each unique debug directory/tmp; TMP override not used"
+  },
+  "originalInputHashes": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "72ea704a0ba40115239167a99f9d6771e2924851b881689bea23acf40b9e4135",
+    "extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx": "0acd71052578d0a1642adf501fdb9cc6b8547a36dbb323986a6a2103d5df02fb",
+    "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "935a58d1f3a33ef8ccdbf1bed0b9ba1f70906436317c77464985d1826f25ed86",
+    "tests/vscode-smoke/real-reopen-tests.cjs": "83a3daf71e6857f68b79ab6f2194509d4ff7ebc85cf854c7f3a1431b793096c9",
+    "extensions/vscode/dev-session-canvas/src/webview/main.tsx": "d5db4bacc98077a2052c4b650cd76c996dec5ab2aeb5131a8f5424b5b9f5d468"
+  },
+  "runs": [
+    {
+      "name": "resize-r1",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/resize-r1.log",
+      "logSha256": "11720abfbbaf83345e70dbcf7d9a12f0d5914a83790d9383d960f4a32ab22ff1",
+      "summaryLines": [
+        "Exit code:   0"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-r1",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        0
+      ],
+      "processExitCode": 0
+    },
+    {
+      "name": "resize-r2",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/resize-r2.log",
+      "logSha256": "bc7d0493a3e676a709b39f24ce6bdeda846114d1ea26411fa26b436521dd0fbf",
+      "summaryLines": [
+        "Exit code:   0"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-r2",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        0
+      ],
+      "processExitCode": 0
+    },
+    {
+      "name": "resize-r3",
+      "result": "setup-failed-ENOSPC",
+      "log": "/tmp/dsc-timeout-investigation/resize-r3.log",
+      "logSha256": "633bc08e729829cf3e9e2f281b38663e20a2f7c0859ff2237df878fb07d11842",
+      "summaryLines": [
+        "Error: ENOSPC: no space left on device, copyfile '/home/users/ziyang01.wang-al/projects/dev-session-canvas/node_modules/esbuild/bin/esbuild' -> '/tmp/dti-r3/legacy-supervisor-upgrade/smoke-host/node_modules/esbuild/bin/esbuild'"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-r3",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [],
+      "processExitCode": 1
+    },
+    {
+      "name": "resize-r4",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/resize-r4.log",
+      "logSha256": "f0b26f8e7ca38d66a7b8d6853d61a1d7b774ab9e1fe030cbc048d43815f9fc25",
+      "summaryLines": [
+        "Exit code:   0"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-r4",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        0
+      ],
+      "processExitCode": 0
+    },
+    {
+      "name": "resize-controlled-c1",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/resize-controlled-c1.log",
+      "logSha256": "f1d6a3ac98918cf34b51f634c071dd2b2e98bd5692424b77ef464ad7e618054f",
+      "summaryLines": [
+        "Exit code:   0"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-c1",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "controlledTiming": true,
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        0
+      ],
+      "processExitCode": 0
+    },
+    {
+      "name": "resize-controlled-c2",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/resize-controlled-c2.log",
+      "logSha256": "a6cb198bbcb70234fd2a274353e439f1ad32ecaac68fd43653189dae42de849a",
+      "summaryLines": [
+        "Exit code:   0"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-c2",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "controlledTiming": true,
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        0
+      ],
+      "processExitCode": 0
+    },
+    {
+      "name": "resize-controlled-c3",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/resize-controlled-c3.log",
+      "logSha256": "09dc7ff5e1df0033c6ca8d289420fc6440fe176df61737bab24c2f6be94296ad",
+      "summaryLines": [
+        "Exit code:   0"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-c3",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "controlledTiming": true,
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        0
+      ],
+      "processExitCode": 0
+    },
+    {
+      "name": "resize-controlled-c4",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/resize-controlled-c4.log",
+      "logSha256": "e10777cedbca095bd5fad68d7f156b5f9455e545be437ebc954037910c3e1b27",
+      "summaryLines": [
+        "Exit code:   0"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-c4",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "controlledTiming": true,
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        0
+      ],
+      "processExitCode": 0
+    },
+    {
+      "name": "resize-controlled-c5",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/resize-controlled-c5.log",
+      "logSha256": "11aebc900b0fac2c3a6d9f99a5c8d66358afc36e280a695590d2714820dbb9d7",
+      "summaryLines": [
+        "Exit code:   0"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-c5",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "controlledTiming": true,
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        0
+      ],
+      "processExitCode": 0
+    },
+    {
+      "name": "resize-controlled-c6",
+      "result": "failed",
+      "log": "/tmp/dsc-timeout-investigation/resize-controlled-c6.log",
+      "logSha256": "ba7efb042ac745a213aec582977205e7ad85f2af3a4626601888238332b1bf66",
+      "summaryLines": [
+        "AssertionError [ERR_ASSERTION]: Timed out waiting for legacy Webview transcript. Last probe: {\"investigationResize\":[{\"phase\":\"page-snapshot\",\"id\":\"legacy-upgrade-agent\",\"cols\":92,\"rows\":28,\"time\":1791813751162},{\"phase\":\"held-fit\",\"id\":\"legacy-upgrade-agent\",\"initial\":true,\"proposedDimensions\":{\"cols\":67,\"rows\":21},\"time\":1791813751180},{\"phase\":\"page-snapshot\",\"id\":\"legacy-upgrade-terminal\",\"cols\":92,\"rows\":28,\"time\":1791813751194},{\"phase\":\"pa",
+        "Exit code:   1",
+        "xvfb-run: error: problem while cleaning up temporary directory"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-c6",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "controlledTiming": true,
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        1
+      ],
+      "processExitCode": 5
+    },
+    {
+      "name": "resize-controlled-c7",
+      "result": "failed",
+      "log": "/tmp/dsc-timeout-investigation/resize-controlled-c7.log",
+      "logSha256": "73d4ed1729361266ef9c99ea0ed183af495cff8b8c59f97337cae31c58e87298",
+      "summaryLines": [
+        "AssertionError [ERR_ASSERTION]: Timed out waiting for legacy Webview transcript. Last probe: {\"investigationResize\":[{\"phase\":\"page-snapshot\",\"id\":\"legacy-upgrade-agent\",\"cols\":92,\"rows\":28,\"time\":1791813854054},{\"phase\":\"held-fit\",\"id\":\"legacy-upgrade-agent\",\"initial\":true,\"proposedDimensions\":{\"cols\":67,\"rows\":21},\"time\":1791813854069},{\"phase\":\"page-snapshot\",\"id\":\"legacy-upgrade-terminal\",\"cols\":92,\"rows\":28,\"time\":1791813854089},{\"phase\":\"pa",
+        "Exit code:   1"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-c7",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "controlledTiming": true,
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        1
+      ],
+      "processExitCode": 1
+    },
+    {
+      "name": "resize-controlled-c8",
+      "result": "failed",
+      "log": "/tmp/dsc-timeout-investigation/resize-controlled-c8.log",
+      "logSha256": "1f2408236e87bd39d11c01c9581d0349cc8b7b592f9bd186da9df9a80d7e46c9",
+      "summaryLines": [
+        "AssertionError [ERR_ASSERTION]: Timed out waiting for runtime session state. Last snapshot: {\"sessionId\":\"cee730de-3d65-4c3a-af33-f266b8b302c8\",\"kind\":\"agent\",\"live\":true,\"lifecycle\":\"waiting-input\",\"runtimeBackend\":\"legacy-detached\",\"runtimeGuarantee\":\"best-effort\",\"resumePhaseActive\":false,\"shellPath\":\"/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider\",\"cwd\":\"/home/users/ziyang01.wang-al/pr",
+        "Exit code:   1",
+        "xvfb-run: error: problem while cleaning up temporary directory"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-c8",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "controlledTiming": true,
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        1
+      ],
+      "processExitCode": 5
+    },
+    {
+      "name": "harness-transient",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/harness-transient.log",
+      "logSha256": "fc06342263097dac7f493e242f4bc5e13c24b916ae77ece90ed61d0dcd2be50a",
+      "summaryLines": [],
+      "command": "node node_modules/@playwright/test/cli.js test --config=playwright.config.mjs --grep \"diagnosis captures transient\" --workers=1 --output=<unique investigation result directory>",
+      "environment": {
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dscgate1012/.playwright-browsers"
+      },
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "exitCode": 0
+    },
+    {
+      "name": "harness-transient-clean",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/harness-transient-clean.log",
+      "logSha256": "97bccc443c4d7d31f622ba59262af31cf11e152a054ab262287718a93486b9a9",
+      "summaryLines": [],
+      "command": "node node_modules/@playwright/test/cli.js test --config=playwright.config.mjs --grep \"diagnosis captures transient\" --workers=1 --output=<unique investigation result directory>",
+      "environment": {
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dscgate1012/.playwright-browsers"
+      },
+      "productSourceChanges": false,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "exitCode": 0
+    },
+    {
+      "name": "fallback-f1",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/fallback-f1.log",
+      "logSha256": "9b5ff5f74cce45993b2028461c9b0130b05e1d332dc175997a45fab621e51cad",
+      "summaryLines": [
+        "Exit code:   0",
+        "Exit code:   0"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-f1",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "systemd-fallback-real-reopen"
+      },
+      "productSourceChanges": true,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        0,
+        0
+      ],
+      "processExitCode": 0
+    },
+    {
+      "name": "fallback-f2",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/fallback-f2.log",
+      "logSha256": "cffd20b4c23fdd29167c0db3a1237e3cee08a5992fdd4c62e240ecbc1983f374",
+      "summaryLines": [
+        "Exit code:   0",
+        "Exit code:   0"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-f2",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "systemd-fallback-real-reopen"
+      },
+      "productSourceChanges": false,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        0,
+        0
+      ],
+      "processExitCode": 0
+    },
+    {
+      "name": "resize-final",
+      "result": "failed",
+      "log": "/tmp/dsc-timeout-investigation/resize-final.log",
+      "logSha256": "a08e2a3643c757b65cdd9550f36b2efc3c7db64c78ccf98251b5de5c9752b79a",
+      "summaryLines": [
+        "Error: Could not acquire shared Canvas commit lease: listen EADDRINUSE: address already in use 127.0.0.1:36758",
+        "Exit code:   1"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-final",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "productSourceChanges": false,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        1
+      ],
+      "processExitCode": 1
+    },
+    {
+      "name": "resize-final2",
+      "result": "passed",
+      "log": "/tmp/dsc-timeout-investigation/resize-final2.log",
+      "logSha256": "dea5bcb0ad92f863376f78bf684ede26f0779a3213c6deb2bf3b7b53471e2bda",
+      "summaryLines": [
+        "Exit code:   0"
+      ],
+      "command": "node scripts/smoke/run-vscode-smoke.mjs",
+      "environment": {
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/dti-final2",
+        "DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER": "legacy-supervisor-upgrade"
+      },
+      "productSourceChanges": false,
+      "nodePath": "/tmp/dsc-release-node22/node_modules/node/bin/node",
+      "workingDirectory": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "vscodeExitCodes": [
+        0
+      ],
+      "processExitCode": 0
+    }
+  ],
+  "builds": [
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-clean.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-controlled-c2.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-controlled-c3.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-controlled-c4.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-controlled-c5.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-controlled-c6.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-controlled-c7.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-controlled-c8.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-controlled.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-diagnostic-r2.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-diagnostic-r3.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-diagnostic.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-fallback-clean.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    },
+    {
+      "log": "/tmp/dsc-timeout-investigation/build-fallback.log",
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "exitCode": 0
+    }
+  ],
+  "referenceFiles": [
+    {
+      "path": "docs/references/runtime-timeout-root-cause/baseline-r1.json",
+      "sha256": "5bbfe2ced6f3cbd3857998a09ab554cd62ceb0f1041df961190307fa170b9e08"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/baseline-r2.json",
+      "sha256": "30dd4da8f6acffc6dda40ae02fe70834d37f7ab2b4da1e33cfb645bcaab69918"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/baseline-r4.json",
+      "sha256": "398b139df190916936206825b07b717414407e708aab688cc403e820d4101ed4"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/browser-transient-characterization.patch",
+      "sha256": "b5c647e1ef9d8f1a6f98bd3018543785b09313c357456ab663968d9cb258a93a"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/fallback-clean-diagnostic.patch",
+      "sha256": "9f11fee9dc0a638e1dc7b5eacab1cc98241b01d6ee34fda0878cd4c0740a120b"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/fallback-f1-setup.json",
+      "sha256": "81812f14093c23863b3ac721385e489265cdcdf3dc5352789103eb07c6c546d2"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/fallback-f1-verify.json",
+      "sha256": "d5d6c49f3ea15e972961068058cb011aaa6571b77019eee38ce7eb817adfea04"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/fallback-f2-setup.json",
+      "sha256": "26d82d1f7aefa6bf7b97f38e901815ec06c0394d97774635485bd1bc33bd2d34"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/fallback-f2-verify.json",
+      "sha256": "6c6f158efaf113eb5abc922baae1c3fa0819cc8125999c5fe53536e4c4fa6e29"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/fallback-lifecycle-diagnostic.patch",
+      "sha256": "aaae65b46582f939525f99cba9b6cafdc15b39bce407b7ba4d8f7ff9ebce99f3"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/fallback-original-boundary.json",
+      "sha256": "92ea78e8478f377d166e7a7c5e8fc7f39f6788f22a2e116c7244e1aa32ecd9bc"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/native-clean-diagnostic.patch",
+      "sha256": "7da20edf9a9a2a1abbc15774187db6ec0a0bb5a771307abdf452b0207fece78b"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/native-control-c8.json",
+      "sha256": "f7b7788543beba600921d378a25e522307b3eca8043f7e573f91e1089df92b2b"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/native-final2.json",
+      "sha256": "df4bd55d202513beb8b9b63609b75d0870b00600ecda8be48cad5785836474dc"
+    },
+    {
+      "path": "docs/references/runtime-timeout-root-cause/native-transient-control.patch",
+      "sha256": "0c05d9dff05f905c9351a898f848aa2f180e1a784ec2d357bf26bd2c89fd11d4"
+    }
+  ],
+  "conclusions": {
+    "resize": "Fixed first changed probe can be a transient layout/restore size; native C8 kept original equality and 20-second deadline and timed out despite actual original session matching latest page. Historical exact target absent, not retrospectively proven.",
+    "fallback": "Pre-application-ready boundary only; two instrumented limited reopen runs pass, exact first-failure cause remains unknown.",
+    "fullGate": "Not run; no release exemption or product/test repair."
+  },
+  "cleanup": "Only this task staged node_modules copies removed to free space; raw artifacts/logs preserved. No unknown listener stopped. Final product and business tests restored byte-for-byte."
+}

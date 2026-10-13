@@ -23,6 +23,11 @@
 遗留范围：上游具体丢失层未知。VS Code1.141.0 disconnect确有await；Remote SSH0.128.0 Managed(1) drain只等本地写回调，不等远端确认/Host退出。R3 drain返回unacked=3仍正常通过，不能把计数本身定因。无需等三小时或扩大completed35秒换取绿色。正式覆盖Linux localhost固定版本；其他平台、真实网络故障、原Host复用与显式重复start拒绝需各自验证，原会话数/绑定保持不变不代证拒绝命令。遇到新的退出消息丢失时继续采集具体传输层证据。
 
 关联：`docs/design-docs/remote-host-exit-investigation.md`、`docs/exec-plans/completed/remote-host-two-state-fix.md`、`docs/references/remote-host-two-state-fix/README.md`；历史调查与双状态研究证据分别保留在`remote-host-exit-investigation/`和`remote-host-two-state-validation/`。
+## 2026-10-13：最新主线完整测试通过与 clean-checkout 安装首败
+背景与固定输入：用户舍弃旧发布准备 PR #313，按 main `ea0c9b19`（PR325 合并提交）重新判断。完整 npm test 原样 exit0，全部默认源码 smoke 包括 checkpoint、旧升级 resize/新旧身份/退役、窗口/共享/systemd/fallback/localhost SSH 通过，最终 Webview426/426。Host634/634、root/startup、notifier typecheck/source/companion/en/zh-cn通过。历史首败与根因边界不由当前通过覆盖；0.26.0 的版本豁免未用于本轮。
+新具名风险：首次固定 ref 的 clean-checkout 在独立 npm ci 执行 Wrangler/esbuild `install.js` 二进制版本校验时返回 spawnSync ETXTBSY，尚未打包或安装 smoke，exit1。原stderr/npm日志保留，npm回滚移除了依赖目录；具体写者未确认，不定性为产品缺陷。新独立目录只增加 npm_config_foreground_scripts=true，使 npm 生命周期脚本并发1，不跳过脚本、不改依赖或断言；独立npm ci、140-file主VSIX及八组安装smoke完整exit0。该受控通过不将默认首轮追认为通过，也不证明精确根因修复。
+当前处理与后续时机：本轮交付固定主线报告，未修改PR/tag workflow。发布前仍需从最终main准备0.26.1版本、文案及契约，并实际通过预合并/tag标准verify。正式CI若再次出现ETXTBSY，先采集生命周期并发及文件写者，确认是否应让两条发布链路统一串行安装；不得跳过安装校验或自动豁免。上游请求责任、原单次ready首败、普通打开持续空白缺少启动反馈、其他平台/真实provider/远端长断开和市场自动依赖等仍沿各具名范围表达。本轮不把所有历史债务追加为新发布blocker。
+文档收口：共享接管的设计开头和产品规格按PR319已合并证据更新，保留四阶段真实UI及跨平台未覆盖范围；主线引用的PR322 C8样本补为逐字节本地副本及来源hash，无需合并整个旧调查PR。关联：`docs/design-docs/main-release-readiness-2026-10-13.md`、`docs/exec-plans/completed/main-release-readiness-2026-10-13.md`、`docs/references/main-release-readiness-2026-10-13/evidence.json`。
 
 ## 2026-10-13：真实窗口重开 ready 预算缓解与上游资源责任
 
@@ -57,6 +62,11 @@
 本轮已收口：probe 只读容器FitAddon目标、投影未完成事实及原会话identity；修改前等待原会话基线，修改后在共同20秒内核对精确卡片、容器、页面、原Supervisor和输入。标准原生N1/N2与受控fit延迟C3全场景通过；丢弃Agent目标resize的M1按期失败，191次样本仍是页面82×27/原session67×21，工件保存成功。9项helper、协议、50项真实controller/10项Host batch和8项浏览器回归、类型/build通过。见 `docs/design-docs/runtime-legacy-resize-convergence.md`、`docs/exec-plans/completed/runtime-legacy-resize-convergence.md` 和 `docs/references/runtime-legacy-resize-convergence/evidence.json`。
 
 保留边界：fallback editor generation5 的 Canvas ready 首败根因未确认；现有Host diagnostics不能替代iframe资源与脚本执行证据，后续重现时继续单独定位。PR #323的resize修复轮当时不改ready条件或真实重开smoke显式20秒预算；后续PR #325的[最大45秒策略](../design-docs/smoke-reopen-ready-timeout.md)只调整测试容忍度，不追认首败原因。本轮未运行完整npm test/发布门禁；定向通过不收口后续窗口、共享、systemd和Remote SSH矩阵。此缺口不阻止已证实的夹具修复交付，但仍阻止宣称整体门禁通过及发布准备完成。
+## 2026-10-12：旧升级 resize 超时定位与 fallback ready 证据边界
+PR #321 合入后，用户授权优先定位resize。本轮原生基线与页面时间线确认测试“首次不同probe即固定目标”的前提缺口：初始恢复92×28、首次容器fit67×21、卡片fit82×27可以交错；probe未承诺最终目标。受控原生C8保留原20秒与内容/尺寸/身份断言，固定67×21后189次原session及最新页面均为82×27，原等待仍超时；无需产品漏发即可同类失败。浏览器暂停真实parser的Agent/Terminal两项，在移除产品探针后亦通过；最终无探针原生旧升级完整通过。没有产品或正式测试修复。PR #321历史首败未保存期望probe，仍不能逐次追认同因；未知listener/commit lease占用不归为resize问题。
+后续独立修复应建立修改前restore/fit已完成的有效前提，并在原总截止核对当前卡片对应的页面目标和同一原session，保持内容与身份保证；不能简单固定sleep、延长等待或忽略resize。本轮当前测试仍可因固定过渡值误报，下一发布准备前须修复并复验完整门禁。
+fallback原日志确认新容器内容更新及VS Code webview ready，但Host editor generation5仍ready/ack=false、无frameId；waitForCanvasReady实际等待visible/active/ready，不等待ack。原首败缺Host lifecycle、iframe资源/JS状态，具体根因未确认。F1/F2两轮完整两阶段通过且无systemctl提交，后者移除产品探针；正常close/open与同frame握手不证明首败修复。后续具名失败需在关闭前同时取Host事件与iframe资源/脚本/ready发送证据，原首败保持待定位，不提供0.26.1豁免。
+调查过程的ENOSPC、更早probe等待失败及最终首次复验lease36758占用分别保留；只清理本轮复制依赖和原scenario资源，未停止未知listener。正式结论、全部运行hash与可复跑patch见 `docs/design-docs/runtime-timeout-root-cause.md`、`docs/exec-plans/completed/runtime-timeout-root-cause.md` 和 `docs/references/runtime-timeout-root-cause/evidence.json`。本轮未运行全量npm test或VSIX矩阵。
 
 ## 2026-10-12：发布门禁夹具与 CI 对齐后的剩余验证边界
 
@@ -71,6 +81,18 @@
 建议时机：下一轮发布准备前收口 Canvas ready 首败及旧升级 resize 一致性原因，再验证完整门禁。resize 现场缺少期望 probe 和时间线，后续先补保存实际 Host/Page/原 Supervisor 的尺寸与请求顺序，不能直接归为页面 fit、测试竞态或产品丢 resize。CI 冷 runner/系统依赖及实际路径按发布输入验证；本机系统依赖已齐备，不代证全新 OS 的缺库安装。用户态 fixture 不代证真实 systemd、真实 provider、macOS/Windows、真实远端长断开、多 root 双窗口或完整 UI 接管矩阵；不构成 0.26.1 发布豁免。
 
 关联：`docs/design-docs/release-gate-fixture-ci-alignment.md`、`docs/exec-plans/completed/release-gate-fixture-ci-alignment.md`、前轮报告 PR #320。
+## 2026-10-12：PR319 后主线完整门禁仍有遗留失败
+背景与触发条件：用户要求在 PR #319 合入后复验最新 `origin/main`。本轮固定 `c32437ac008b1d933e9e13975e60c869e7bb33d4`，Linux x64、Node 22.23.3、VS Code 1.141.0，正式产品、测试、workflow、版本和发布契约保持原输入。原 `npm test` 与完整源码 `test:smoke` 均 exit 1，不能以独立补验通过代替完整门禁。
+影响范围与待收口项：
+- `scripts/test/test-canvas-execution-context.mjs:708`：关闭模式仍期待 root 绑定允许重连，实际按 PR #319 规则返回 `runtime-persistence-disabled`；相邻后续断言也需按正式契约校准，失败脚本未触达的段落仍待验。
+- `tests/vscode-smoke/extension-tests.cjs:390`：checkpoint 首个 8192 字符分页到达时就要求声明的 104842 字符总长度；PR #317 的收齐等待修正未进 main，后续内容断言未通过，不能认定产品丢失内容。
+- `systemd-fallback-real-reopen`：fixture 的 fake systemctl `fail-start` 已提交，保留 intent 且无 started receipt，却仍要求切换 backend；与提交后 unknown 禁止二次提交的正式契约冲突。提交前明确 unavailable 的纯回归通过，真实该语义的重开 fixture 尚待对齐验证，不能放宽产品保护。
+- `.github/workflows/release-preflight.yml`、`.github/workflows/publish-marketplace-release.yml`：没有为早期市场浏览器 E2E 预装 Chromium，空 `PLAYWRIGHT_BROWSERS_PATH` 的原入口实际报缺 revision 1217 executable。PR #317 的浏览器/cache/短 TMP 准备未合入；完整冷 runner、系统依赖及默认长路径仍待正式 CI 验证。
+- `tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs:318`：新 root 会话使用旧 socket resolver，下一步 ready 连接报 `ENOENT`。新 root owner/started receipt 已保留，正确地址为 root `d-*` socket；PR #317 的 resolver 修正未进 main，旧升级与退役后续断言尚未取得完整通过。
+独立待定位项：旧升级换目录业务复验在第 259 行等 Terminal resize 与捕获 probe 一致，20 秒超时。原 Terminal live、85x28，Webview/Host input marker 均到达 PTY，但 expected probe 没有持久快照，不能确定产品 resize 故障或瞬时几何夹具问题。仅追加一次原参数稳定性复验越过该段，随后停在新 root socket 错误；越过不覆盖首败。更早一次运行停在 `127.0.0.1:24084` commit lease 占用，退出后只读观察仍有 listener，未停止该 listener。没有一次完整旧升级通过，不能将全部失败归为纯 fixture。
+当前处理与边界：保留三次旧升级停点、全部首次失败日志及 85 条执行记录，未修改测试期待、产品准入或等待预算。完整 Webview 424/424、Host 634/634、56 项后续非完整 UI 组成检查、八场景 clean-checkout VSIX、双窗口共享、systemd user 重开及 localhost Remote SSH 重开均通过。此前 systemd Canvas ready 和主题超时本轮未重现，旧根因仍未知。浏览器下载准备中断发生在用例开始前，单独记账。
+建议修复时机：下一轮发布准备前，对齐确定的测试契约、分页等待、新 root resolver 及 CI 浏览器准备，补齐旧 resize 的请求/probe/应用时序证据并定位；之后重新执行完整门禁。登记不构成发布豁免，本轮未准备 0.26.1 发布输入、未执行其预合并/tag verify，macOS/Windows、真实 provider、真实远端长断开、完整 UI 接管矩阵及真实多 root 双窗口不由本轮代证。
+关联：`docs/design-docs/main-validation-2026-10-12.md`、`docs/exec-plans/completed/main-validation-2026-10-12.md`、`docs/references/main-validation-2026-10-12/evidence.json`、`docs/design-docs/runtime-root-ownership.md`、`docs/design-docs/runtime-shared-root-canvas-sync.md`。
 
 ## 2026-10-09：活动本地执行在画布重读和 workspace root 重组时失去绑定
 
@@ -763,3 +785,36 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 `npm run test:runtime-completed-history` 的 `verifyCompletedBindingOwner` 原先将所有诊断数组断言为空；main a39cd8c1 新增正常 `execution/deleteBoundary` 后，本地与独立原 main 工作树均在同一 legacy Terminal 项失败。历史基线日志 `/tmp/dsc-shared-completed-history-baseline.log` 保留。
 
 用户授权修正后，测试精确断言 `execution/deleteBoundary` 的 `runtime-delete-requested` 阶段、kind、sessionId 和 backendKind，不泛化过滤诊断。root 缺失 owner 的拒绝用例单独校验请求诊断及零派发，然后清空收集器再验证正常完成。原完整绑定相等、owner 传递、保存先于删除与无终态历史断言全部保留；额外 completedCleanupFailed 等诊断仍使测试失败。Node 22 下完整 `test:runtime-completed-history` 通过，覆盖 Agent/Terminal、legacy/root 及后续 reader 退役场景；只修改测试与文档，没有修改生产删除行为，也不宣称全量 npm test 通过。
+
+## PR327 发布门禁两个首败：两处修复已验，后续 systemd 场景阻塞（2026-10-13）
+
+原head42d87b3d/main22803dd8，GitHub预合并7e659ce6与本地ec4afba3树相同。本地local-links-and-stop缺失文件搜索9592ms接近10000ms等待；原诊断helper在取回跨deadline时漏检末批精确匹配事件，原Host时序及受控五例确认。建议明确末次观察与deadline契约、覆盖首读/末读/负例，不扩预算。搜索--no-ignore范围已证，但历史文件数/冷缓存/负载贡献未量化。
+
+CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smoke-remote-host.mjs静默socket测试污染真实/tmp/dsc-root-<uid>目录：未指定mode创建、未清理父目录。固定输入完整诊断38382436173捕获原生产socket-directory私有权限拒绝且尚未native-assets；原17测试私有目录两组对照与干净CI38384582823直接stat确认absent→当前uid/0755被拒绝、同inode0700接受。本机已有0700掩盖污染。应让测试使用自有socket目录并自行清理，保留正式地址默认值、原deadline/17用例与生产0700要求；不能通过chmod共享目录或放宽生产检查修复门禁。
+
+用户已授权自有socket夹具和末次观察修复，执行计划docs/exec-plans/completed/release-gate-repair.md。修复PR329待review/合入，最新预合并全量门禁仍为发布阻塞，PR327草稿/head不变；临时组合输入验证不能代替修复合入后PR327正式门禁。通用catch与失败工件缺少有界错误阶段是可观测性后续项，错误类别不得泄露敏感路径/环境。调查设计docs/design-docs/release-gate-root-cause.md与完成计划docs/exec-plans/completed/release-gate-root-cause.md记录run、input、摘要/hash和残余限制；两个临时workflow已归档并移除自动入口。受控因果对照通过不等于完整release:verify通过，历史未记录的stat不补造。
+
+
+组合PR330/run38387068827的原checkpoint和local-links-and-stop场景已退出0，18项Host/三种目录隔离/36项等待/9项resize及trusted/restricted/本地real-reopen通过，两处修复验收关闭。完整npm test继续在systemd-user-real-reopen setup断言失败：agent runtime backend实际legacy-detached，预期systemd-user（real-reopen-tests.cjs:747）。该新发布阻塞未修复，原因尚未由实际探测结果确认；fake-systemctl只覆盖提交，真实systemd-run仍影响前置环境，建议下轮固定输入记录有界probe类别，复核fixture是否建立其宣称的systemd前提，不放宽backend断言或直接跳过。SSH退出/保留、后续Webview及clean-checkout VSIX本轮未触达，不代证通过。结果及首败见docs/references/release-gate-root-cause/repair-combined-input.json；临时组合PR关闭而不合并，正式PR327需PR329合入后rebase重跑。
+
+## fake systemd 重开门禁后端不匹配：根因已确认，正式修复未实施（2026-10-13）
+
+组合run38387068827固定08f7b0a5在原links/checkpoint通过后，systemd-user-real-reopen setup失败actual legacy-detached / expected systemd-user。该失败未修复，阻塞完整0.26.1门禁；后续fallback/SSH/Webview/VSIX未触达。fake-systemctl只替代提交，新增root scope probe仍执行真实systemd-run；原环境DBUS disabled:与私有runtime目录已有日志，该初始待验证问题由后续固定输入诊断收口。调查设计docs/design-docs/systemd-smoke-scope-root-cause.md和completed计划记录边界，不放宽backend断言或据此宣布VSCode/产品缺陷。
+
+固定输入诊断38401537709已收敛：preferredBackends含systemd、选择前absent，真实systemd-run code1/Connection refused、原scope返回unavailable/user-bus-unavailable，继而选legacy。旧fake-systemctl没有替代新增scope前置条件，属于夹具假设失配；生产明确不可用后的fallback符合现有契约。单变量control38402006541已通过：同原输入只将probe执行者换成当前Node/原launcher子进程，原nonce/environment/user摘要校验合法，scope available选systemd-user，原setup/verify两阶段退出0。证明旧fake-systemctl未覆盖新增scope前置；生产fallback规则保持正确，不能归为VSCode缺陷。正式修复未实施，发布阻塞仍未修复。
+
+后续建议正式修复fake成功场景的probe测试依赖边界，并保留原摘要校验、原backend断言和预算；真实bus不可用fallback及unknown/no-submit负例独立验收，不把fake通过视作真实manager已验。新证据见docs/references/systemd-smoke-scope-root-cause/，计划docs/exec-plans/completed/systemd-smoke-scope-root-cause.md。两个临时workflow已归档移除；原完整失败不被诊断control通过覆盖。
+
+
+## 发布门禁关联修复集中收口（2026-10-14，PR329，组合完整已验证）
+
+上述“正式修复未实施”为诊断结束时的历史状态。用户授权继续修复后，PR329纳入PR331最终根因/控制证据、原两个修复及WORKFLOW约定；新增TEST_SYSTEMD_RUN_SHIM明确覆盖fake成功场景前置probe，转发原只读launcher并保留原回执/摘要校验、预算和后端断言。默认真实systemd-run和fallback/unknown规则不变；fallback显式清空依赖并保留零systemctl提交验收。相关回归及临时组合0.26.1完整验证已通过第四轮38426726365，修复尚未合入，不追认已发布。接续计划docs/exec-plans/completed/release-gate-consolidated-repair.md。
+
+
+集中修复接续：首轮38412908952已通过原fake systemd两阶段；fallback启动前VSCode因空XDG_RUNTIME_DIR选择129字节user-data IPC路径，超Linux107字节并listen EINVAL。PR329继续补齐fallback短user-data，不改空bus、真实probe、legacy或零提交断言；完整门禁仍失败，SSH/Webview/VSIX未触达。证据与正式方案见systemd-smoke-scope-root-cause.md。
+
+第三轮44282298/run38417836576已过systemd/fallback零提交/SSH退出保留，Webview425/426首败4319像素字体差异；clean-checkout未触达。CI系统Noto对照38424638753仍24像素失败；PR329固定原基线Regular中文字体子集，仅Linux基线用例使用，原PNG/预算/像素断言保持。本地原断言通过，干净CI和最终组合完整结果仍待验，详见systemd-smoke-scope-root-cause.md。
+
+截图单变量结论：固定字体Ubuntu24.04仍24像素；同输入、同Chromium切22.04/run38426201759严格断言通过，正式preflight和tag prepare固定22.04。原失败证据保留，最终同输入六平台+完整release门禁重跑中；不将截图单项通过当完整发布通过。
+
+最终集中修复验证（2026-10-14）：第四轮38426726365固定32ec277b同输入六平台资产与原完整release:verify exit0，SSH退出/保留、systemd/fallback零提交、Webview426/426、clean-checkout生产VSIX及八场景packaged smoke通过。PR329正式夹具修复已验证，原失败限定历史输入；PR327仍独立draft，修复合入后rebase及正式最新预合并门禁仍是发布前要求，不追认已发布。最终证据full-gate-fourth-result-38426726365.json。

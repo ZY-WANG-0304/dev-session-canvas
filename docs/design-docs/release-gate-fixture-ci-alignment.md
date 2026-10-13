@@ -6,7 +6,7 @@ domains: [执行编排域, VSCode 集成域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-gate-fixture-ci-alignment.md]
-updated_at: 2026-10-12
+updated_at: 2026-10-13
 ---
 
 # 发布门禁夹具与 CI 前置条件对齐
@@ -76,3 +76,6 @@ Fallback 定向运行首次 setup 通过，保留 legacy-detached started receip
 前轮旧升级有一次 Terminal resize 与捕获 probe 不一致超时、一次 commit lease 24084 端口占用，没有完整场景通过；后一次越过 resize 后停在新 root 旧 socket。本轮定向首次通过，完整命令又在 Agent resize 一致性失败；未知原因保留在技术债，本轮只收口确定的测试/CI 对齐。完整门禁仍失败，0.26.1 还需要先收口未知问题，再按其静态发布输入执行预合并/tag verify。
 
 2026-10-12 后续独立修复：旧升级 resize 的受控根因与修复见 `runtime-legacy-resize-convergence.md`。测试改为先建立容器/页面/原会话基线，再共同核对精确卡片目标；标准和受控延迟原生通过，真正漏 resize 仍在原20秒内失败。此前完整命令失败作为历史事实保留，fallback Canvas ready 仍未定位，完整门禁没有重跑通过，本设计验证失败状态保持。
+后续定位（2026-10-12，PR #321合入后）：`docs/design-docs/runtime-timeout-root-cause.md`确认resize固定过渡probe的测试前提缺口，受控原生同类20秒超时和移除产品探针的浏览器对照成立；历史首败期望未采集，不能逐次追认。fallback仅确认卡在插件ready前，两轮正常重开通过而具体首败原因仍未知。本段不更改上述原失败和未执行事实，未实施测试修复，也未放行完整门禁。
+
+2026-10-13 后续主线验证：PR325 合入后的 main `ea0c9b19` 原样完整 npm test exit0，旧升级及全部后续源码 smoke 通过，Webview426/426；结果见 [新主线报告](main-release-readiness-2026-10-13.md)。默认 clean-checkout 另有安装 ETXTBSY 首败，独立串行安装对照完成打包和八组 VSIX smoke；不将其拼接为默认首轮通过，不外推0.26.1预合并/tag门禁。本设计的原基线失败和hash保留，状态继续表示该历史验证失败。

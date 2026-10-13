@@ -204,7 +204,7 @@ Supervisor 中执行与 reader 已退休，不等于存储责任已完成：仍�
 
 ## 11. 共享画布与模式切换（2026-10-11 用户确认）
 
-共享结构及关闭模式隔离已有 Linux 单 root 独立双窗口和 Host 回归证据；2026-10-11 用户在 PR #319 review 后补充的“最后一个开启窗口切换关闭才清理共享会话并退出 Supervisor”规则已有不发生接管时的实现与有限验收。同日用户进一步确认清理期间新开启窗口可以接管；接管规则已确认，但当前 `e79aa66d` 尚未完成协调实现与验收，旧切换及等待登记测试不能代证接管成功。正式方案和有限证据见 `docs/design-docs/runtime-shared-root-canvas-sync.md`。开启 Runtime Persistence 时，同一执行环境和用户存储范围内，包含同一 root 的窗口应共享该 root 画布，包括节点创建、删除、移动、卡片尺寸等结构的实时同步，以及共享 runtime 的输入输出和生命周期变化。关闭时执行由各自 Host 持有，不能因 root 相同而让一个窗口的操作控制另一窗口的独立执行。关闭模式 root 数据保存到当前 workspace storage slot 的私有目录，不读写或监听 global 共享画布；不同 slot 隔离，相同 slot 仍有自己的历史恢复语义。
+共享结构及关闭模式隔离已有 Linux 单 root 独立双窗口和 Host 回归证据；2026-10-11 用户在 PR #319 review 后补充最后窗口清理及清理期间接管规则。PR #319 已实现跨 Host 接管协调并合入 main：四阶段交错通过实际 Host/store 和独立真实 Supervisor 定向验证，Linux 单 root 真实双窗口复验覆盖共享结构、I/O、非最后切换保留及最后无接管退出；没有新增四阶段 UI 暂停验收，也不外推其他平台、真实多 root 或 Remote。正式方案和具名有限证据见 `docs/design-docs/runtime-shared-root-canvas-sync.md`。开启 Runtime Persistence 时，同一执行环境和用户存储范围内，包含同一 root 的窗口应共享该 root 画布，包括节点创建、删除、移动、卡片尺寸等结构的实时同步，以及共享 runtime 的输入输出和生命周期变化。关闭时执行由各自 Host 持有，不能因 root 相同而让一个窗口的操作控制另一窗口的独立执行。关闭模式 root 数据保存到当前 workspace storage slot 的私有目录，不读写或监听 global 共享画布；不同 slot 隔离，相同 slot 仍有自己的历史恢复语义。
 
 ### 切换的生效时机与用户提示
 

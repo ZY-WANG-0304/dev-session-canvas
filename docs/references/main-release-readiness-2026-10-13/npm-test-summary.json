@@ -1,0 +1,95 @@
+{
+  "baseCommit": "ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b",
+  "exitCode": 0,
+  "sourceSmokeAllDefaultScenariosPassed": true,
+  "webviewPassed": 426,
+  "webviewFailed": 0,
+  "retries": 0,
+  "logSha256": "96321932aa18440c74d43989dd6a541e83620f24d23bae27b283a701a340cde3",
+  "markers": [
+    {
+      "line": 5460,
+      "text": "Current native Agent and Terminal output and lifecycle assertions passed."
+    },
+    {
+      "line": 7748,
+      "text": "Owned executions survive canvas reload and workspace recomposition passed."
+    },
+    {
+      "line": 10073,
+      "text": "Snapshot-only Host reload preserves manual Agent recovery without automatic resume passed."
+    },
+    {
+      "line": 12279,
+      "text": "Local execution output survives surface cutover and canvas reread passed."
+    },
+    {
+      "line": 14314,
+      "text": "Missing Agent CLI settles the unstarted node and reports the failure once passed."
+    },
+    {
+      "line": 17370,
+      "text": "Rendered terminal links and original owned execution stop completion passed."
+    },
+    {
+      "line": 19610,
+      "text": "Local PTY exits, restarts and canvas responsiveness during concurrent terminal output passed."
+    },
+    {
+      "line": 21947,
+      "text": "Runtime paged terminal projection smoke passed."
+    },
+    {
+      "line": 32798,
+      "text": "Trusted workspace smoke passed."
+    },
+    {
+      "line": 35352,
+      "text": "Restricted workspace smoke passed."
+    },
+    {
+      "line": 37826,
+      "text": "Legacy Supervisor upgrade smoke (5355e6a) passed."
+    },
+    {
+      "line": 42013,
+      "text": "Real window reopen smoke passed."
+    },
+    {
+      "line": 46434,
+      "text": "Multi-root real window reopen smoke passed."
+    },
+    {
+      "line": 50849,
+      "text": "Single-root to multi-root real window reopen smoke passed."
+    },
+    {
+      "line": 56560,
+      "text": "Two-window shared runtime smoke passed."
+    },
+    {
+      "line": 65220,
+      "text": "Systemd unavailable before submission real window reopen smoke passed."
+    },
+    {
+      "line": 65221,
+      "text": "Systemd unavailable fallback did not submit any systemctl command."
+    },
+    {
+      "line": 71156,
+      "text": "Remote SSH real window reopen smoke passed."
+    },
+    {
+      "line": 71157,
+      "text": "VS Code smoke test passed."
+    },
+    {
+      "line": 71607,
+      "text": "  426 passed (11.8m)"
+    },
+    {
+      "line": 71608,
+      "text": "Playwright webview tests passed."
+    }
+  ]
+}

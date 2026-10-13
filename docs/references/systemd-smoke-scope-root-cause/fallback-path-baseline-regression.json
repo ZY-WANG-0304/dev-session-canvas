@@ -1,0 +1,8 @@
+{
+  "base": "22803dd890855ffbe7620538b04940def097171b",
+  "baseline_sha256": "012e2cba8d9f2219391801a875960e5edd4388073a3b6d52b321cf9174257a3b",
+  "test_sha256": "1eaef59ca251309e8b44a9c5eecd8e78f579d74ea9530d2a5c8b39ed6c9439ea",
+  "exit": 1,
+  "output": "Exit code:   0\nnode:internal/modules/run_main:123\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ '/tmp/dsc-long-userdata-zpB3MY/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/systemd-fallback-real-reopen/user-data'\n- '/tmp/dsc-sdf-test-3589653/user-data'\n\n    at file:///tmp/r327fix/scripts/test/.runner-env-baseline-regression.mjs:140:12 {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: '/tmp/dsc-long-userdata-zpB3MY/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/systemd-fallback-real-reopen/user-data',\n  expected: '/tmp/dsc-sdf-test-3589653/user-data',\n  operator: 'strictEqual',\n  diff: 'simple'\n}\n\nNode.js v22.23.3\n",
+  "interpretation": "Original runner ignores short user-data fixture option; new long-root assertion fails before trying an overlength IPC socket."
+}

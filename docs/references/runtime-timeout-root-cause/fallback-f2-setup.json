@@ -1,0 +1,162 @@
+[
+  {
+    "timestamp": "2026-10-12T14:09:19.778Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:19.780Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:19.780Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:19.788Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:19.872Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "dispose",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:19.873Z",
+    "kind": "surface/disposed",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:20.361Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "from": "panel",
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:20.361Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:20.361Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:20.362Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:20.648Z",
+    "kind": "surface/ready",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "activeSurface": "editor",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5,
+        "frameId": "frame-eb74e1e8-a789-4feb-b2d2-31ecb59df306"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:20.651Z",
+    "kind": "surface/hostMessageQueuedUntilBootstrapAck",
+    "detail": {
+      "surface": "editor",
+      "type": "host/visibilityRestored",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5,
+        "frameId": "frame-eb74e1e8-a789-4feb-b2d2-31ecb59df306"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:20.653Z",
+    "kind": "webview/runtimeDiagnostic",
+    "detail": {
+      "surface": "editor",
+      "current": true,
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5,
+        "frameId": "frame-eb74e1e8-a789-4feb-b2d2-31ecb59df306"
+      },
+      "source": "webview.lifecycle",
+      "message": "execution mouse diagnostics enabled: false",
+      "readyState": "complete"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:20.653Z",
+    "kind": "surface/bootstrapAck",
+    "detail": {
+      "surface": "editor",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5,
+        "frameId": "frame-eb74e1e8-a789-4feb-b2d2-31ecb59df306"
+      }
+    }
+  }
+]

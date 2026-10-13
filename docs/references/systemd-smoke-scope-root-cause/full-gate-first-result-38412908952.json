@@ -1,0 +1,45 @@
+{
+  "temporary_combination_only": true,
+  "run": "38412908952",
+  "workflow_head": "788f0d7f1964cb251d30e3513b29d7104603e042",
+  "input": "dc5178ee41bc1dda3d370a24923559d683eac727",
+  "fix_head": "40364a8511c16453b73d3fe61cf456c983846bbc",
+  "release_head": "42d87b3d59d3147199a3fef9f2ee0b40de4534cf",
+  "native_assets": "success",
+  "steps": {
+    "combined-preflight": {
+      "exit": 0,
+      "log_bytes": 160,
+      "log_sha256": "fa01f229bf38f90968a26d26441a2391a42d34ac2f40702bb36b292749b4e77e"
+    },
+    "combined-release-verify": {
+      "exit": null,
+      "log_bytes": 10137776,
+      "log_sha256": "d8fa335bacd50eeee6696c3658a7374a7a5986fe1b60750d191e63a83f92d2f1"
+    }
+  },
+  "tree": "79bd256bcd7767bf29d91afd23910365a6276982",
+  "actual_release_exit_from_actions_log": 1,
+  "actions_job": 115352592400,
+  "actions_job_conclusion": "failure",
+  "probe_fixture_scene": "Fake systemd-user real window reopen smoke passed at 14:45:33Z",
+  "first_failure": "fallback VSCode main process before extension tests: user-data IPC path 129 bytes > Linux 107; listen EINVAL; exit1",
+  "not_reached": [
+    "fallback backend/no-submit assertions",
+    "SSH exit/retain",
+    "later Webview",
+    "clean checkout VSIX/package install smoke"
+  ],
+  "evidence_excerpt": [
+    "14:45:33.6831311Z Fake systemd-user real window reopen smoke passed.",
+    "14:45:46.7501914Z WARNING: IPC handle is longer than 107 chars, try a shorter --user-data-dir",
+    "14:45:46.7982359Z Error: listen EINVAL: invalid argument …/systemd-fallback-real-reopen/user-data/1.14-main.sock",
+    "14:45:48.3446365Z Exit code: 1"
+  ],
+  "missing_exit_marker_reason": "Temporary bash had implicit errexit; failed pipeline exited before marker. Job/log record exit1; null marker does not represent an unknown workflow result.",
+  "complete_actions_log": {
+    "local_path": "/tmp/r327full-first-completed-job.log",
+    "bytes": 12374905,
+    "sha256": "391a4eb3ffc35397fad00eb689705c8a370818cf627d04c6fa08ff65418be511"
+  }
+}

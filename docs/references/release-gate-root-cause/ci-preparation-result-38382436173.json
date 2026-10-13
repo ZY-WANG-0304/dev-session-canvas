@@ -1,0 +1,18 @@
+{
+  "run": 38382436173,
+  "job": 115245907927,
+  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38382436173",
+  "diagnosticHead": "cc2219501b14cdac625206a6dde38737d01f16d2",
+  "input": "7e659ce6af2f713a64031eeb4daacf705977e851",
+  "diagnostic_only": true,
+  "exitCode": 1,
+  "log": "/tmp/pr327-rca-ci-diagnostic-38382436173.log",
+  "logSha256": "9875dabaac758adac27421671915011f45a67e297c9bff06f229e5562a8ef8c1",
+  "logBytes": 4456845,
+  "summaryArtifact": 11804327025,
+  "summarySha256": "effbf2ebcb60522ead206e9ac5d452fae14cc0bed6dc5487602e8f07e3730597",
+  "firstFailureScenario": "runtime-checkpoint-refresh",
+  "cause": "socket-directory private ownership/permissions rejected before native-assets",
+  "remaining": "actual directory uid/mode and creator not yet observed",
+  "diskFreeBytesAtEnd": 77516996608
+}

@@ -1,0 +1,55 @@
+{
+  "diagnostic_only": true,
+  "input": "08f7b0a52f5af27ced04b00a839f525a92659d63",
+  "rows": [
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts",
+      "kind": "request",
+      "preferredBackends": [
+        "systemd-user",
+        "legacy-detached"
+      ]
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts",
+      "kind": "discovered-before-selection",
+      "result": {
+        "kind": "absent"
+      }
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts",
+      "kind": "probe-environment",
+      "dbus": "disabled",
+      "runtimeDirSet": true,
+      "runtimeBusSocketExists": false,
+      "systemctlShimSet": true
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts",
+      "kind": "probe-callback",
+      "code": 1,
+      "killed": false,
+      "signal": null,
+      "stderrCategory": "Connection refused",
+      "stdoutJson": false,
+      "schemaMatches": false,
+      "nonceMatches": false,
+      "environmentMatches": false,
+      "userMatches": false
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts",
+      "kind": "scope-result",
+      "result": {
+        "kind": "unavailable",
+        "reason": "user-bus-unavailable"
+      }
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts",
+      "kind": "selected",
+      "backend": "legacy-detached"
+    }
+  ]
+}

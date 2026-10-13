@@ -1,0 +1,40 @@
+name: Release Gate Socket Evidence
+
+on:
+  push:
+    branches: [docs-release-gate-root-cause]
+    paths:
+      - .github/workflows/release-gate-root-cause.yml
+      - docs/references/release-gate-root-cause/ci-socket-directory-evidence.mjs
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Preserve diagnostic script
+        run: cp docs/references/release-gate-root-cause/ci-socket-directory-evidence.mjs "$RUNNER_TEMP/ci-socket-directory-evidence.mjs"
+      - name: Checkout original failed release input
+        uses: actions/checkout@v4
+        with:
+          ref: 7e659ce6af2f713a64031eeb4daacf705977e851
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Observe original test pollution and permission-only causal control
+        run: node "$RUNNER_TEMP/ci-socket-directory-evidence.mjs"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: socket-directory-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/socket-directory-evidence.json
+          retention-days: 14

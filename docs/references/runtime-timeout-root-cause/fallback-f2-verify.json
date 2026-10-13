@@ -1,0 +1,132 @@
+[
+  {
+    "timestamp": "2026-10-12T14:09:32.644Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "from": "editor",
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:32.645Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:32.646Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:32.653Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:32.741Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "dispose",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:32.742Z",
+    "kind": "surface/disposed",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:32.747Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:32.748Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:32.748Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:32.748Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:33.045Z",
+    "kind": "surface/ready",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "activeSurface": "editor",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5,
+        "frameId": "frame-2bea39ab-63d6-4dd2-836f-2017041d83d5"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:09:33.050Z",
+    "kind": "surface/hostMessageQueuedUntilBootstrapAck",
+    "detail": {
+      "surface": "editor",
+      "type": "host/visibilityRestored",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5,
+        "frameId": "frame-2bea39ab-63d6-4dd2-836f-2017041d83d5"
+      }
+    }
+  }
+]

@@ -1,0 +1,35 @@
+{
+  "failure": "npm ci esbuild validateBinaryVersion spawnSync ETXTBSY",
+  "stage": "before package and VSIX smoke",
+  "sourceProductOrTestChanged": false,
+  "paths": [
+    {
+      "path": "/tmp/dmr13/clean-vsix.log",
+      "bytes": 2763,
+      "sha256": "e87f991eaa7c016dbfc6a2ee139134230bb717cedcd9967c0b69558eace2e7c6"
+    },
+    {
+      "path": "/tmp/dev-session-canvas-clean-checkout-nHjBJJ/npm-cache/_logs/2026-10-13T02_38_12_207Z-debug-0.log",
+      "bytes": 331399,
+      "sha256": "57a77fcde2dcb9e62f725a64d681422641efdabb8eb9eab192f336c4279b3595"
+    },
+    {
+      "path": "/tmp/dscmainv1013/node_modules/wrangler/node_modules/esbuild/install.js",
+      "bytes": 11773,
+      "sha256": "612294e278914443bdcf81cb17f54afec34dbdd2ebd999a6ee187912320cc315"
+    },
+    {
+      "path": "/home/users/ziyang01.wang-al/.nvm/versions/node/v25.6.0/lib/node_modules/npm/node_modules/@npmcli/arborist/lib/arborist/rebuild.js",
+      "bytes": 11922,
+      "sha256": "512ee69e3071f3724dc4e6b70f9285e7d8041fc1e7ed281b1b4aa52b390f1f74"
+    }
+  ],
+  "note": "npm failure rollback removed wrangler/esbuild install directory; original stderr and npm log retained.",
+  "controlledFollowup": {
+    "name": "clean-vsix-serial-install",
+    "onlyEnvironmentChange": {
+      "npm_config_foreground_scripts": "true"
+    },
+    "note": "npm foreground lifecycle limit is 1; esbuild uses hardlink rename before binary version check, but historical writer is unobserved."
+  }
+}

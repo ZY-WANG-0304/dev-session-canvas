@@ -1,0 +1,162 @@
+[
+  {
+    "timestamp": "2026-10-12T14:07:53.375Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "from": "editor",
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.377Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.377Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.384Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.478Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "dispose",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.479Z",
+    "kind": "surface/disposed",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.485Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.486Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.486Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.486Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.830Z",
+    "kind": "surface/ready",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "activeSurface": "editor",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5,
+        "frameId": "frame-1e3379c2-2b29-4c3b-b4d5-61c6d01fc425"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.832Z",
+    "kind": "surface/hostMessageQueuedUntilBootstrapAck",
+    "detail": {
+      "surface": "editor",
+      "type": "host/visibilityRestored",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5,
+        "frameId": "frame-1e3379c2-2b29-4c3b-b4d5-61c6d01fc425"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.838Z",
+    "kind": "webview/runtimeDiagnostic",
+    "detail": {
+      "surface": "editor",
+      "current": true,
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5,
+        "frameId": "frame-1e3379c2-2b29-4c3b-b4d5-61c6d01fc425"
+      },
+      "source": "webview.lifecycle",
+      "message": "execution mouse diagnostics enabled: false",
+      "readyState": "complete"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T14:07:53.839Z",
+    "kind": "surface/bootstrapAck",
+    "detail": {
+      "surface": "editor",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5,
+        "frameId": "frame-1e3379c2-2b29-4c3b-b4d5-61c6d01fc425"
+      }
+    }
+  }
+]

@@ -1,0 +1,8 @@
+{
+  "base": "22803dd890855ffbe7620538b04940def097171b",
+  "baseline_source_sha256": "14926dbba9ffc5baa7d8afe1bda6036ab373aa3d2f2250bc6ce36a043272c0d9",
+  "test_source_sha256": "8bd2c02aa3ebc02a0322faf373e1a9dba562d70a844f646d8c4e532edf40ee5e",
+  "exit": 1,
+  "output": "node:internal/modules/run_main:123\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ '/usr/bin/systemd-run'\n- '/test node'\n\n    at runCases (file:///tmp/r327fix/scripts/test/.systemd-probe-baseline-regression.mjs:62:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///tmp/r327fix/scripts/test/.systemd-probe-baseline-regression.mjs:135:1 {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: '/usr/bin/systemd-run',\n  expected: '/test node',\n  operator: 'strictEqual',\n  diff: 'simple'\n}\n\nNode.js v22.23.3\n",
+  "interpretation": "Original real default probe cases succeed; shim command assertion rejects original source that still executes systemd-run."
+}

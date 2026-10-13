@@ -37,6 +37,7 @@ const fakeSystemdShimPath = path.join(
   'systemctl.cjs'
 );
 const legacySupervisorBaselineRef = '5355e6a';
+const fakeSystemdProbeShimPath = path.join(smokeFixturesDir, 'fake-systemd', 'systemd-run.cjs');
 const scenarioFilter = parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER);
 
 const scenarios = [
@@ -451,6 +452,7 @@ async function runSystemdUserRealWindowReopenScenario() {
     extraEnv: {
       DEV_SESSION_CANVAS_RUNTIME_HOST_BACKEND_OVERRIDE: 'systemd-user',
       DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM: fakeSystemdShimPath,
+      DEV_SESSION_CANVAS_TEST_SYSTEMD_RUN_SHIM: fakeSystemdProbeShimPath,
       DEV_SESSION_CANVAS_FAKE_SYSTEMD_MODE: 'success'
     }
   });
@@ -461,6 +463,7 @@ async function runSystemdFallbackRealWindowReopenScenario() {
     scenarioName: 'systemd-fallback-real-reopen',
     description: 'Systemd unavailable before submission real window reopen smoke',
     runtimeDirName: 'dsc-vscode-smoke-runtime-systemd-fallback-real-reopen',
+    userDataInRuntimeDir: true,
     expectedRuntimeBackend: 'legacy-detached',
     expectedRuntimeGuarantee: 'best-effort',
     extraEnv: {
@@ -468,6 +471,7 @@ async function runSystemdFallbackRealWindowReopenScenario() {
       DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM: fakeSystemdShimPath,
       DEV_SESSION_CANVAS_FAKE_SYSTEMD_MODE: 'success',
       // A missing user bus is unavailable before submission, unlike a failed systemctl start.
+      DEV_SESSION_CANVAS_TEST_SYSTEMD_RUN_SHIM: '',
       DBUS_SESSION_BUS_ADDRESS: '',
       XDG_RUNTIME_DIR: ''
     }
@@ -497,6 +501,7 @@ async function prepareLocalRealReopenRuntime(options) {
   const runtime = await prepareRuntime({
     debugRoot: path.join(smokeDebugRoot, options.scenarioName),
     runtimeDirName: options.runtimeDirName,
+    userDataInRuntimeDir: options.userDataInRuntimeDir,
     userSettings: {
       'security.workspace.trust.enabled': false
     }

@@ -1,0 +1,15 @@
+{
+  "family": "DSC Screenshot CJK",
+  "upstream": "https://github.com/notofonts/noto-cjk",
+  "version": "2.004",
+  "package": "fonts-noto-cjk 1:20220127+repack1-1",
+  "font_number": 2,
+  "tool": "fonttools 4.61.1",
+  "files": {
+    "cjk-regular.woff": {
+      "source_sha256": "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a",
+      "sha256": "63150de01cec9d99d076b89637aab33ef3098ffa81c1cddd44aa4b283c0bc4f2",
+      "bytes": 12104
+    }
+  }
+}

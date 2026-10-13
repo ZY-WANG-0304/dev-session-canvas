@@ -1,0 +1,268 @@
+{
+  "rawArtifact": "/tmp/dti-r2/legacy-supervisor-upgrade/artifacts/resize-investigation.json",
+  "rawSha256": "1a617f53be3ff07c2824edd9da0ff181ffd51718491edb2438da357ccc6e5a7d",
+  "timeline": [
+    {
+      "phase": "before-resize",
+      "time": 1791812811995,
+      "session": null,
+      "page": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "cols": 67,
+          "rows": 21
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "cols": 67,
+          "rows": 21
+        },
+        {
+          "nodeId": "previous-generation-stream-terminal",
+          "cols": 92,
+          "rows": 28
+        }
+      ]
+    },
+    {
+      "phase": "fixed-target",
+      "time": 1791812812166,
+      "session": null,
+      "page": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "cols": 82,
+          "rows": 27
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "cols": 85,
+          "rows": 28
+        },
+        {
+          "nodeId": "previous-generation-stream-terminal",
+          "cols": 92,
+          "rows": 28
+        }
+      ]
+    },
+    {
+      "phase": "session-wait",
+      "time": 1791812812168,
+      "session": {
+        "sessionId": "1ae8fee6-bdc3-41ea-bd97-4ee7a5210709",
+        "cols": 67,
+        "rows": 21
+      },
+      "page": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "cols": 82,
+          "rows": 27
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "cols": 85,
+          "rows": 28
+        },
+        {
+          "nodeId": "previous-generation-stream-terminal",
+          "cols": 92,
+          "rows": 28
+        }
+      ]
+    },
+    {
+      "phase": "session-wait",
+      "time": 1791812812274,
+      "session": {
+        "sessionId": "1ae8fee6-bdc3-41ea-bd97-4ee7a5210709",
+        "cols": 67,
+        "rows": 21
+      },
+      "page": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "cols": 82,
+          "rows": 27
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "cols": 85,
+          "rows": 28
+        },
+        {
+          "nodeId": "previous-generation-stream-terminal",
+          "cols": 92,
+          "rows": 28
+        }
+      ]
+    },
+    {
+      "phase": "session-wait",
+      "time": 1791812812382,
+      "session": {
+        "sessionId": "1ae8fee6-bdc3-41ea-bd97-4ee7a5210709",
+        "cols": 82,
+        "rows": 27
+      },
+      "page": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "cols": 82,
+          "rows": 27
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "cols": 85,
+          "rows": 28
+        },
+        {
+          "nodeId": "previous-generation-stream-terminal",
+          "cols": 92,
+          "rows": 28
+        }
+      ]
+    },
+    {
+      "phase": "session-wait",
+      "time": 1791812812386,
+      "session": {
+        "sessionId": "0130c797-d60a-4c9f-ae94-34e15b36d817",
+        "cols": 85,
+        "rows": 28
+      },
+      "page": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "cols": 82,
+          "rows": 27
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "cols": 85,
+          "rows": 28
+        },
+        {
+          "nodeId": "previous-generation-stream-terminal",
+          "cols": 92,
+          "rows": 28
+        }
+      ]
+    }
+  ],
+  "hostEvents": [
+    {
+      "timestamp": "2026-10-12T13:46:52.073Z",
+      "kind": "investigation/resizeReceived",
+      "detail": {
+        "kind": "agent",
+        "nodeId": "legacy-upgrade-agent",
+        "cols": 67,
+        "rows": 21,
+        "time": 1791812812073
+      }
+    },
+    {
+      "timestamp": "2026-10-12T13:46:52.073Z",
+      "kind": "investigation/resizeDispatch",
+      "detail": {
+        "kind": "agent",
+        "nodeId": "legacy-upgrade-agent",
+        "cols": 67,
+        "rows": 21,
+        "beforeCols": 92,
+        "beforeRows": 28,
+        "sessionId": "1ae8fee6-bdc3-41ea-bd97-4ee7a5210709",
+        "time": 1791812812073
+      }
+    },
+    {
+      "timestamp": "2026-10-12T13:46:52.077Z",
+      "kind": "investigation/resizeCompleted",
+      "detail": {
+        "kind": "agent",
+        "nodeId": "legacy-upgrade-agent",
+        "cols": 67,
+        "rows": 21,
+        "sessionId": "1ae8fee6-bdc3-41ea-bd97-4ee7a5210709",
+        "time": 1791812812077
+      }
+    },
+    {
+      "timestamp": "2026-10-12T13:46:52.266Z",
+      "kind": "investigation/resizeReceived",
+      "detail": {
+        "kind": "terminal",
+        "nodeId": "legacy-upgrade-terminal",
+        "cols": 85,
+        "rows": 28,
+        "time": 1791812812266
+      }
+    },
+    {
+      "timestamp": "2026-10-12T13:46:52.266Z",
+      "kind": "investigation/resizeDispatch",
+      "detail": {
+        "kind": "terminal",
+        "nodeId": "legacy-upgrade-terminal",
+        "cols": 85,
+        "rows": 28,
+        "beforeCols": 92,
+        "beforeRows": 28,
+        "sessionId": "0130c797-d60a-4c9f-ae94-34e15b36d817",
+        "time": 1791812812266
+      }
+    },
+    {
+      "timestamp": "2026-10-12T13:46:52.271Z",
+      "kind": "investigation/resizeCompleted",
+      "detail": {
+        "kind": "terminal",
+        "nodeId": "legacy-upgrade-terminal",
+        "cols": 85,
+        "rows": 28,
+        "sessionId": "0130c797-d60a-4c9f-ae94-34e15b36d817",
+        "time": 1791812812271
+      }
+    },
+    {
+      "timestamp": "2026-10-12T13:46:52.366Z",
+      "kind": "investigation/resizeReceived",
+      "detail": {
+        "kind": "agent",
+        "nodeId": "legacy-upgrade-agent",
+        "cols": 82,
+        "rows": 27,
+        "time": 1791812812366
+      }
+    },
+    {
+      "timestamp": "2026-10-12T13:46:52.366Z",
+      "kind": "investigation/resizeDispatch",
+      "detail": {
+        "kind": "agent",
+        "nodeId": "legacy-upgrade-agent",
+        "cols": 82,
+        "rows": 27,
+        "beforeCols": 67,
+        "beforeRows": 21,
+        "sessionId": "1ae8fee6-bdc3-41ea-bd97-4ee7a5210709",
+        "time": 1791812812366
+      }
+    },
+    {
+      "timestamp": "2026-10-12T13:46:52.370Z",
+      "kind": "investigation/resizeCompleted",
+      "detail": {
+        "kind": "agent",
+        "nodeId": "legacy-upgrade-agent",
+        "cols": 82,
+        "rows": 27,
+        "sessionId": "1ae8fee6-bdc3-41ea-bd97-4ee7a5210709",
+        "time": 1791812812370
+      }
+    }
+  ],
+  "pageTrace": []
+}

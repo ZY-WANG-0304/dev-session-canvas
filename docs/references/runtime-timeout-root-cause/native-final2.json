@@ -1,0 +1,128 @@
+{
+  "rawArtifact": "/tmp/dti-final2/legacy-supervisor-upgrade/artifacts/resize-investigation.json",
+  "rawSha256": "28c8a4c673641590b4a3d0d48c5a3ee0de269025918e249f170615b038858230",
+  "timeline": [
+    {
+      "phase": "before-resize",
+      "time": 1791814321458,
+      "session": null,
+      "page": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "cols": 67,
+          "rows": 21
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "cols": 67,
+          "rows": 21
+        },
+        {
+          "nodeId": "previous-generation-stream-terminal",
+          "cols": 92,
+          "rows": 28
+        }
+      ]
+    },
+    {
+      "phase": "fixed-target",
+      "time": 1791814321571,
+      "session": null,
+      "page": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "cols": 82,
+          "rows": 27
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "cols": 85,
+          "rows": 28
+        },
+        {
+          "nodeId": "previous-generation-stream-terminal",
+          "cols": 92,
+          "rows": 28
+        }
+      ]
+    },
+    {
+      "phase": "session-wait",
+      "time": 1791814321572,
+      "session": {
+        "sessionId": "a109eeb5-63b5-487f-9fe4-deba79412b3d",
+        "cols": 67,
+        "rows": 21
+      },
+      "page": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "cols": 82,
+          "rows": 27
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "cols": 85,
+          "rows": 28
+        },
+        {
+          "nodeId": "previous-generation-stream-terminal",
+          "cols": 92,
+          "rows": 28
+        }
+      ]
+    },
+    {
+      "phase": "session-wait",
+      "time": 1791814321673,
+      "session": {
+        "sessionId": "a109eeb5-63b5-487f-9fe4-deba79412b3d",
+        "cols": 82,
+        "rows": 27
+      },
+      "page": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "cols": 82,
+          "rows": 27
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "cols": 85,
+          "rows": 28
+        },
+        {
+          "nodeId": "previous-generation-stream-terminal",
+          "cols": 92,
+          "rows": 28
+        }
+      ]
+    },
+    {
+      "phase": "session-wait",
+      "time": 1791814321675,
+      "session": {
+        "sessionId": "43a31563-5d7a-4863-b968-4671bb21e3da",
+        "cols": 85,
+        "rows": 28
+      },
+      "page": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "cols": 82,
+          "rows": 27
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "cols": 85,
+          "rows": 28
+        },
+        {
+          "nodeId": "previous-generation-stream-terminal",
+          "cols": 92,
+          "rows": 28
+        }
+      ]
+    }
+  ]
+}

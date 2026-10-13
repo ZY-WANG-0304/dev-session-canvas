@@ -1,0 +1,78 @@
+{
+  "base": "22803dd890855ffbe7620538b04940def097171b",
+  "date": "2026-10-13",
+  "node": "22.23.3",
+  "sourceSha256": {
+    "tests/vscode-smoke/remote-host-control.cjs": "656a9e734f9feb6d14d601a018aead91349d706ea32ea207d7c065bef439792f",
+    "scripts/test/test-smoke-remote-host.mjs": "611c8c46224a68589f30ef027f03f3b7032b96a68e5891b3cefaaf566b58db63",
+    "tests/vscode-smoke/extension-tests.cjs": "c4e0f56a67e093a384c84951dc19a3cfd20ad52c52d2dc28f4862f49fc93ef50",
+    "scripts/test/test-smoke-wait-boundary.mjs": "07c11f3d0cce0b0da382c97ed3534ae56dcd36863bfc15a28e65f7f657c4a63d",
+    "scripts/test/test-smoke-remote-host-isolation.mjs": "b3bf774664539556f2e217568fb9bc4fa6b02c35f9cfdf33c61574138af98057"
+  },
+  "checks": [
+    {
+      "command": "npm run test:smoke-wait-boundary",
+      "exit": 0,
+      "passed": 36
+    },
+    {
+      "command": "npm run test:smoke-remote-host",
+      "exit": 0,
+      "passed": 18,
+      "originalCasesRetained": 17
+    },
+    {
+      "command": "npm run test:smoke-remote-host-isolation",
+      "exit": 0,
+      "passed": 3,
+      "fullHostSuiteCasesPerInitialState": 18
+    },
+    {
+      "command": "npm run test:smoke-terminal-resize",
+      "exit": 0,
+      "passed": 9
+    },
+    {
+      "command": "npm run test:smoke-reset-fixture",
+      "exit": 0,
+      "passed": 19
+    },
+    {
+      "command": "npm run test:smoke-execution-output",
+      "exit": 0,
+      "passed": 14
+    },
+    {
+      "command": "npm run test:smoke-terminal-history",
+      "exit": 0,
+      "passed": 6
+    },
+    {
+      "command": "npm run typecheck",
+      "exit": 0
+    },
+    {
+      "command": "npm run build (without native asset input)",
+      "exit": 1,
+      "stage": "missing default platform assets, before build"
+    },
+    {
+      "command": "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets npm run build",
+      "exit": 0
+    },
+    {
+      "command": "npm run test:vscode-smoke-runner-env",
+      "exit": 0
+    },
+    {
+      "command": "npm run test:runtime-root-preparation",
+      "exit": 0,
+      "coverage": "global storage 21, preparation client 21, systemd environment 40, preparation 26; root owner storage real private file checks"
+    },
+    {
+      "command": "node --check tests/vscode-smoke/extension-tests.cjs && node --check tests/vscode-smoke/remote-host-control.cjs",
+      "exit": 0
+    }
+  ],
+  "fullReleaseVerify": "not run locally: shared filesystem ~1GB free; use clean CI combined input; not formal PR327 latest gate"
+}

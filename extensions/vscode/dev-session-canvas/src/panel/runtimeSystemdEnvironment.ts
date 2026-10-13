@@ -26,9 +26,19 @@ export async function inspectRuntimeSystemdEnvironment(
     return { kind: 'unknown', reason: 'invalid-probe-input' };
   }
 
+  // The fake systemd smoke controls both the read-only probe and later submission.
+  // Without this explicit test dependency, production always probes the real manager.
+  const shimPath = process.env.DEV_SESSION_CANVAS_TEST_SYSTEMD_RUN_SHIM?.trim();
+  if (shimPath && (!path.isAbsolute(shimPath) || shimPath.includes('\0'))) {
+    return { kind: 'unknown', reason: 'invalid-probe-input' };
+  }
+  const file = shimPath
+    ? process.env.DEV_SESSION_CANVAS_TEST_NODE_PATH?.trim() || process.execPath
+    : '/usr/bin/systemd-run';
+  const prefixArgs = shimPath ? [shimPath] : [];
   const nonce = randomUUID();
   return new Promise(resolve => {
-    execFile('/usr/bin/systemd-run', [
+    execFile(file, [...prefixArgs,
       '--user', '--wait', '--pipe', '--collect', '--quiet', '--no-ask-password',
       `--unit=dsc-root-scope-${nonce}`,
       // Transient job timeout properties vary by manager; these bound service phases, not queue time.

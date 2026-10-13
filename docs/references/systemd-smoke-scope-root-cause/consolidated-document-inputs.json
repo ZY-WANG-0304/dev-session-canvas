@@ -1,0 +1,159 @@
+{
+  "scope": "Only added docs/evidence and meaningful doc corrections imported from merge-base diff; no old product/tree rollback",
+  "imports": [
+    {
+      "pr": 320,
+      "head": "616f057fb490ca0972114edd994946485f998c05",
+      "added_files": {
+        "docs/design-docs/main-validation-2026-10-12.md": {
+          "original_sha256": "486d0120cbefdae4afb8c3795cfd76e48be9ea904cd5bb100fc159904feb58a8",
+          "consolidated_sha256": "65748ab5acf5cde9ff5b4277794edda6cca5a03b35b020b8e2e035b7374a9e3b"
+        },
+        "docs/exec-plans/completed/main-validation-2026-10-12.md": {
+          "original_sha256": "a17b29c73a97ed69d69f9fdc68263ba66e4584fed024aba934f21b731cdb6dbf",
+          "consolidated_sha256": "a17b29c73a97ed69d69f9fdc68263ba66e4584fed024aba934f21b731cdb6dbf"
+        },
+        "docs/references/main-validation-2026-10-12/evidence.json": {
+          "original_sha256": "4c4940c3246dfaedadee271b21f3344cad684e7aba2daaab908e68bd210e8769",
+          "consolidated_sha256": "4c4940c3246dfaedadee271b21f3344cad684e7aba2daaab908e68bd210e8769"
+        }
+      }
+    },
+    {
+      "pr": 322,
+      "head": "d42656f795eda46107adbeaaf91201d3dfe68de6",
+      "added_files": {
+        "docs/design-docs/runtime-timeout-root-cause.md": {
+          "original_sha256": "66662830b9bd92ace7bae97ff2b55e61f4d1912ad13f51b93a9d27434d9f0b29",
+          "consolidated_sha256": "fec36a230b0c6f51bb2ca11f78050225ef7fd7c0a5392aff948bf93ffc7d8f36"
+        },
+        "docs/exec-plans/completed/runtime-timeout-root-cause.md": {
+          "original_sha256": "2fd1043571b677c519ab723b562cf69978779777a75af1c0f1d63b093e02eede",
+          "consolidated_sha256": "2fd1043571b677c519ab723b562cf69978779777a75af1c0f1d63b093e02eede"
+        },
+        "docs/references/runtime-timeout-root-cause/baseline-r1.json": {
+          "original_sha256": "5bbfe2ced6f3cbd3857998a09ab554cd62ceb0f1041df961190307fa170b9e08",
+          "consolidated_sha256": "5bbfe2ced6f3cbd3857998a09ab554cd62ceb0f1041df961190307fa170b9e08"
+        },
+        "docs/references/runtime-timeout-root-cause/baseline-r2.json": {
+          "original_sha256": "30dd4da8f6acffc6dda40ae02fe70834d37f7ab2b4da1e33cfb645bcaab69918",
+          "consolidated_sha256": "30dd4da8f6acffc6dda40ae02fe70834d37f7ab2b4da1e33cfb645bcaab69918"
+        },
+        "docs/references/runtime-timeout-root-cause/baseline-r4.json": {
+          "original_sha256": "398b139df190916936206825b07b717414407e708aab688cc403e820d4101ed4",
+          "consolidated_sha256": "398b139df190916936206825b07b717414407e708aab688cc403e820d4101ed4"
+        },
+        "docs/references/runtime-timeout-root-cause/browser-transient-characterization.patch": {
+          "original_sha256": "b5c647e1ef9d8f1a6f98bd3018543785b09313c357456ab663968d9cb258a93a",
+          "consolidated_sha256": "b5c647e1ef9d8f1a6f98bd3018543785b09313c357456ab663968d9cb258a93a"
+        },
+        "docs/references/runtime-timeout-root-cause/evidence.json": {
+          "original_sha256": "f5356c91ea8711434e76e49090cdeacb909c65456b95140abf7a8410f619813e",
+          "consolidated_sha256": "f5356c91ea8711434e76e49090cdeacb909c65456b95140abf7a8410f619813e"
+        },
+        "docs/references/runtime-timeout-root-cause/fallback-clean-diagnostic.patch": {
+          "original_sha256": "9f11fee9dc0a638e1dc7b5eacab1cc98241b01d6ee34fda0878cd4c0740a120b",
+          "consolidated_sha256": "9f11fee9dc0a638e1dc7b5eacab1cc98241b01d6ee34fda0878cd4c0740a120b"
+        },
+        "docs/references/runtime-timeout-root-cause/fallback-f1-setup.json": {
+          "original_sha256": "81812f14093c23863b3ac721385e489265cdcdf3dc5352789103eb07c6c546d2",
+          "consolidated_sha256": "81812f14093c23863b3ac721385e489265cdcdf3dc5352789103eb07c6c546d2"
+        },
+        "docs/references/runtime-timeout-root-cause/fallback-f1-verify.json": {
+          "original_sha256": "d5d6c49f3ea15e972961068058cb011aaa6571b77019eee38ce7eb817adfea04",
+          "consolidated_sha256": "d5d6c49f3ea15e972961068058cb011aaa6571b77019eee38ce7eb817adfea04"
+        },
+        "docs/references/runtime-timeout-root-cause/fallback-f2-setup.json": {
+          "original_sha256": "26d82d1f7aefa6bf7b97f38e901815ec06c0394d97774635485bd1bc33bd2d34",
+          "consolidated_sha256": "26d82d1f7aefa6bf7b97f38e901815ec06c0394d97774635485bd1bc33bd2d34"
+        },
+        "docs/references/runtime-timeout-root-cause/fallback-f2-verify.json": {
+          "original_sha256": "6c6f158efaf113eb5abc922baae1c3fa0819cc8125999c5fe53536e4c4fa6e29",
+          "consolidated_sha256": "6c6f158efaf113eb5abc922baae1c3fa0819cc8125999c5fe53536e4c4fa6e29"
+        },
+        "docs/references/runtime-timeout-root-cause/fallback-lifecycle-diagnostic.patch": {
+          "original_sha256": "aaae65b46582f939525f99cba9b6cafdc15b39bce407b7ba4d8f7ff9ebce99f3",
+          "consolidated_sha256": "aaae65b46582f939525f99cba9b6cafdc15b39bce407b7ba4d8f7ff9ebce99f3"
+        },
+        "docs/references/runtime-timeout-root-cause/fallback-original-boundary.json": {
+          "original_sha256": "92ea78e8478f377d166e7a7c5e8fc7f39f6788f22a2e116c7244e1aa32ecd9bc",
+          "consolidated_sha256": "92ea78e8478f377d166e7a7c5e8fc7f39f6788f22a2e116c7244e1aa32ecd9bc"
+        },
+        "docs/references/runtime-timeout-root-cause/native-clean-diagnostic.patch": {
+          "original_sha256": "7da20edf9a9a2a1abbc15774187db6ec0a0bb5a771307abdf452b0207fece78b",
+          "consolidated_sha256": "7da20edf9a9a2a1abbc15774187db6ec0a0bb5a771307abdf452b0207fece78b"
+        },
+        "docs/references/runtime-timeout-root-cause/native-control-c8.json": {
+          "original_sha256": "f7b7788543beba600921d378a25e522307b3eca8043f7e573f91e1089df92b2b",
+          "consolidated_sha256": "f7b7788543beba600921d378a25e522307b3eca8043f7e573f91e1089df92b2b"
+        },
+        "docs/references/runtime-timeout-root-cause/native-final2.json": {
+          "original_sha256": "df4bd55d202513beb8b9b63609b75d0870b00600ecda8be48cad5785836474dc",
+          "consolidated_sha256": "df4bd55d202513beb8b9b63609b75d0870b00600ecda8be48cad5785836474dc"
+        },
+        "docs/references/runtime-timeout-root-cause/native-transient-control.patch": {
+          "original_sha256": "0c05d9dff05f905c9351a898f848aa2f180e1a784ec2d357bf26bd2c89fd11d4",
+          "consolidated_sha256": "0c05d9dff05f905c9351a898f848aa2f180e1a784ec2d357bf26bd2c89fd11d4"
+        }
+      }
+    },
+    {
+      "pr": 326,
+      "head": "176e6931657bcb8697c54bad0ae4919da3e13a25",
+      "added_files": {
+        "docs/design-docs/main-release-readiness-2026-10-13.md": {
+          "original_sha256": "0aa50a6ab12ef2878ae2f3cec2acb1e4719352ee0e1fb8e4d389907458c87407",
+          "consolidated_sha256": "23009b1d36369e4fc0608a50e8f2699871775f60bcc957ffbbbd6fc17fc4f44e"
+        },
+        "docs/exec-plans/completed/main-release-readiness-2026-10-13.md": {
+          "original_sha256": "f5d3a201f7a57ce1137a34fbeb26bf7e178abaa6dadbe33136d276731defbe0e",
+          "consolidated_sha256": "f5d3a201f7a57ce1137a34fbeb26bf7e178abaa6dadbe33136d276731defbe0e"
+        },
+        "docs/references/main-release-readiness-2026-10-13/README.md": {
+          "original_sha256": "dc0be4716ebf7151101c4b81cc6dd5b510dbb1f0e2c519cb133379aec3da237d",
+          "consolidated_sha256": "dc0be4716ebf7151101c4b81cc6dd5b510dbb1f0e2c519cb133379aec3da237d"
+        },
+        "docs/references/main-release-readiness-2026-10-13/clean-vsix-install-first-failure.json": {
+          "original_sha256": "dee84dfef4e418fc934db313d90d5ac49c8e6fa7cad9ced65afb51bbf2cbf698",
+          "consolidated_sha256": "dee84dfef4e418fc934db313d90d5ac49c8e6fa7cad9ced65afb51bbf2cbf698"
+        },
+        "docs/references/main-release-readiness-2026-10-13/clean-vsix-install-first-failure.txt": {
+          "original_sha256": "e87f991eaa7c016dbfc6a2ee139134230bb717cedcd9967c0b69558eace2e7c6",
+          "consolidated_sha256": "e87f991eaa7c016dbfc6a2ee139134230bb717cedcd9967c0b69558eace2e7c6"
+        },
+        "docs/references/main-release-readiness-2026-10-13/evidence.json": {
+          "original_sha256": "52e2ab26f726ecab52aaced2b903d97e73e331fb273d5e7d8e43edcd7cd53f15",
+          "consolidated_sha256": "52e2ab26f726ecab52aaced2b903d97e73e331fb273d5e7d8e43edcd7cd53f15"
+        },
+        "docs/references/main-release-readiness-2026-10-13/inputs.json": {
+          "original_sha256": "241b1e69dbe8e95a853c906fac9d39cb65c78aa2787c9228b2f3c89824347b04",
+          "consolidated_sha256": "241b1e69dbe8e95a853c906fac9d39cb65c78aa2787c9228b2f3c89824347b04"
+        },
+        "docs/references/main-release-readiness-2026-10-13/native-build-inputs.json": {
+          "original_sha256": "0eb4ee80ebed9dfe7781565e442a993a5a3cde1c4bacc5209648a6d69499bb62",
+          "consolidated_sha256": "0eb4ee80ebed9dfe7781565e442a993a5a3cde1c4bacc5209648a6d69499bb62"
+        },
+        "docs/references/main-release-readiness-2026-10-13/npm-test-summary.json": {
+          "original_sha256": "8fcf25d6f1a3e90c7d6384e04c2b0d2a5f3a6b1b6ba5df1afd1652ea8bda352b",
+          "consolidated_sha256": "8fcf25d6f1a3e90c7d6384e04c2b0d2a5f3a6b1b6ba5df1afd1652ea8bda352b"
+        },
+        "docs/references/main-release-readiness-2026-10-13/source-artifact-inventory.json": {
+          "original_sha256": "820156b86c19e116ee48e4cb0222cdc8dc087c20c2af986ae38f61e543055e47",
+          "consolidated_sha256": "820156b86c19e116ee48e4cb0222cdc8dc087c20c2af986ae38f61e543055e47"
+        },
+        "docs/references/main-release-readiness-2026-10-13/vsix-artifact-summary.json": {
+          "original_sha256": "ee796d908c14f9ba13b0b99db4c0d739d26b1ad3236b75de60a079d0ca78430f",
+          "consolidated_sha256": "ee796d908c14f9ba13b0b99db4c0d739d26b1ad3236b75de60a079d0ca78430f"
+        },
+        "docs/references/runtime-legacy-resize-convergence/investigation-native-control-c8-provenance.json": {
+          "original_sha256": "7932df25314935ae71ffc4aef807d4fce5d9a2586aac528c693562fc0ef8d594",
+          "consolidated_sha256": "7932df25314935ae71ffc4aef807d4fce5d9a2586aac528c693562fc0ef8d594"
+        },
+        "docs/references/runtime-legacy-resize-convergence/investigation-native-control-c8.json": {
+          "original_sha256": "f7b7788543beba600921d378a25e522307b3eca8043f7e573f91e1089df92b2b",
+          "consolidated_sha256": "f7b7788543beba600921d378a25e522307b3eca8043f7e573f91e1089df92b2b"
+        }
+      }
+    }
+  ]
+}

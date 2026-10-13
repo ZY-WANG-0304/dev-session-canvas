@@ -1,0 +1,117 @@
+{
+  "assetRoot": "/tmp/dsc-release-026-assets",
+  "assets": [
+    {
+      "path": "/tmp/dsc-release-026-assets/darwin-arm64/execution-owner.node",
+      "bytes": 234280,
+      "sha256": "f6cc4db5a99d2cddca08fca5ea1f7b94e1e456f8dc68c1b87bdfd211b7ffd0dc"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/darwin-arm64/manifest.json",
+      "bytes": 3332,
+      "sha256": "7150550a3a3b9278510a3fe9416346a2dda83dd4f5a4acbf5290f3f5341b6701"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/darwin-arm64/spawn-helper",
+      "bytes": 50288,
+      "sha256": "4f57ab027c936e2ea727ab8eacc76cbf12672eadbd19ce43175cbcb4724adf3b"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/darwin-x64/execution-owner.node",
+      "bytes": 205016,
+      "sha256": "44ea26c01b66102b66f53f5baca11f5cdc76624eac8269729371ae0113d08fb6"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/darwin-x64/manifest.json",
+      "bytes": 3323,
+      "sha256": "548372e5922f925ae08d820b89713941dd63b8bafe2dd81f53e9312ea4439d1b"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/darwin-x64/spawn-helper",
+      "bytes": 8776,
+      "sha256": "86b6a1c98f8fddb417e249258b9de9bd6c16dbe71c9cf93c3db8294f1f932ae9"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/linux-arm64-glibc/execution-owner.node",
+      "bytes": 229272,
+      "sha256": "cf7c17647803d78f6f7a92aa95362c1317945cb3cd0bbd5b9e0918808b3c4dac"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/linux-arm64-glibc/manifest.json",
+      "bytes": 1635,
+      "sha256": "8c1d370af1edcfb9bc98d952c76064f8516d18c7c4405326b3cec2cd228d1e2b"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/linux-x64-glibc/execution-owner.node",
+      "bytes": 222880,
+      "sha256": "b99f8083d3351828deb6d12e8edae313805c1ad4550d07429a0c8d5a15aad46c"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/linux-x64-glibc/manifest.json",
+      "bytes": 1633,
+      "sha256": "792d662d708753dc4bbf8570cec37f8db1d8bc71bead2008c2ae9ba8091fd5fa"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/win32-arm64/conpty/OpenConsole.exe",
+      "bytes": 1110560,
+      "sha256": "7fa560be0c9b6c81db5d1b855a4a6e0f3ee5a2ea75d36eebb3ae44443b8d4866"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/win32-arm64/conpty/conpty.dll",
+      "bytes": 106528,
+      "sha256": "b3a9f975c51d5b9b96d290bf784e990e3f85203b063c21614457353f566266ff"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/win32-arm64/conpty.node",
+      "bytes": 429056,
+      "sha256": "6ed97e9ca14a868646a33cd16c1448c0b71032ddc7894d1afec004ee567297d9"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/win32-arm64/manifest.json",
+      "bytes": 3323,
+      "sha256": "0340fc84121b9d7155b51c24883bd3b7878ab785de6b8b8e9fc17ccc4955ebea"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/win32-x64/conpty/OpenConsole.exe",
+      "bytes": 1062472,
+      "sha256": "7f68c840226505004215c0b82d4e502c24b5bc3f4b93c4baaaa19bd679c0def8"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/win32-x64/conpty/conpty.dll",
+      "bytes": 110152,
+      "sha256": "3319b484b80bb53d1f4d0a9eb0ea60fd0f61da69db7280ca43b84215f19245ff"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/win32-x64/conpty.node",
+      "bytes": 438784,
+      "sha256": "4c28a7572aef97cea62858c00faa7bfa697ce76343dbb44501bbc36a19258e3d"
+    },
+    {
+      "path": "/tmp/dsc-release-026-assets/win32-x64/manifest.json",
+      "bytes": 3305,
+      "sha256": "9d6c2e290218f29ea26af5064e8205111bc3d075d13e2c52de655743f8f73623"
+    }
+  ],
+  "buildArtifacts": [
+    {
+      "path": "/tmp/dscmainv1013/extensions/vscode/dev-session-canvas/dist/extension.js",
+      "bytes": 3464519,
+      "sha256": "b490dcba47d0ba49d54010a79a383a219955169df198e56121d4fd7074c14fbf"
+    },
+    {
+      "path": "/tmp/dscmainv1013/extensions/vscode/dev-session-canvas/dist/webview.js",
+      "bytes": 5019359,
+      "sha256": "3d19b88ce18fc2e7973052cee465db9fef7c8a97e3859e34daead9a843734ac3"
+    },
+    {
+      "path": "/tmp/dscmainv1013/extensions/vscode/dev-session-canvas/dist/webview.css",
+      "bytes": 183583,
+      "sha256": "d5c007f2a0617ef2bf2b6d85fdc82f467d5f57cce2089ef5d7fe94094797ac12"
+    },
+    {
+      "path": "/tmp/dscmainv1013/extensions/vscode/dev-session-canvas/dist/execution-candidate-selection.json",
+      "bytes": 138,
+      "sha256": "93d3d6a7b0a9ec35a0306e5f64682c3fc7c6cdacf0df5232cc4a66b1a5a6f144"
+    }
+  ]
+}
