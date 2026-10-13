@@ -16,7 +16,7 @@
 
 0.26.1发布准备PR327的完整verify在SSH重开第三终端completed断言失败，Canvas已ready，原Agent/普通Terminal恢复。调查基于main ea0c9b19。R2自然复现同35秒失败，原setupHost1305563/startTicks248872585清理前持续S/R；runner仅等待本地Electron退出加三秒，不证明远端Host退出，第三终端kill -0循环因此不结束。R1原版、R3诊断正常退出通过，首败单独保留。
 
-用户已批准退出/保留两条确定性场景。正式 runner 用真实客户端异常断连建立原 Host 保留，exit 再仅结束核验身份的旧 Host，retain 观察原身份到业务完成；第三终端按私有独立信号完成，不与 Host 寿命耦合。原 Supervisor/session、恢复/输出/输入、snapshot-only/historyDiscarded 与真实 resize 分别验收。17项控制正反例、9项resize回归及构建通过；原版 native-2 两分支全部通过、cleanup零残留。其后补充的前提保护已在完整0.26.1临时预合并source smoke中通过exit/retain，全部source场景及共享重开回归通过；完整npm test（426项Webview）和clean-checkout生产VSIX/安装后smoke全部通过，临时预合并7d33f664的release:verify退出码0。门禁前提误判已修复；修复合入后PR327仍须按最新main和发布head重新完整验证，当前未合并或发布。
+用户已批准退出/保留两条确定性场景。正式 runner 用真实客户端异常断连建立原 Host 保留，exit 再仅结束核验身份的旧 Host，retain 观察原身份到业务完成；第三终端按私有独立信号完成，不与 Host 寿命耦合。原 Supervisor/session、恢复/输出/输入、snapshot-only/historyDiscarded 与真实 resize 分别验收。17项控制正反例、9项resize回归及构建通过；原版 native-2 两分支全部通过、cleanup零残留。其后补充的前提保护已在完整0.26.1临时预合并source smoke中通过exit/retain，全部source场景及共享重开回归通过；完整npm test（426项Webview）和clean-checkout生产VSIX/安装后smoke全部通过，临时预合并7d33f664的release:verify退出码0。门禁前提误判已修复；PR328已合入main22803dd8；PR327已rebase并接续最新预合并完整验证，结果以PR327描述/checks关联的真实输入为准，发布准备仍未合并或发布。
 
 研究retain-2/retain-3和exit-1/exit-2各两次通过；retain-4的13次/3213ms连续观察支持磁盘注册表短暂旧尺寸为持久化延迟，实时尺寸不回退。调查C1先在ready45秒失败、C2在旧Host信号后诊断误判zombie、研究retain-1helper路径错误、正式native-1客户端argv误拒绝，均保留边界，不能代证产品失败或业务成功。
 
@@ -795,7 +795,7 @@ CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smo
 普通 Canvas 打开没有专门的 ready 截止和启动失败重试/重建，持续启动失败可保持空白；上游快速重开资源积压、单次 fallback 首败未定因继续按 webview-ready-root-cause.md 与 smoke-reopen-ready-timeout.md 跟踪。45 秒是 smoke 容忍预算，不是产品恢复能力。共享画布真实 UI 限 Linux 单 root，接管四阶段由受控 Host/store 和独立 Supervisor 验证；跨平台/Remote SSH/真实多 root、真实 provider、公开市场自动安装依赖与桌面点击需要具名补证。以上不因本地测试通过自动升级为支持承诺。
 
 
-### 本版聚合首败：localhost SSH 离线完成前提（2026-10-13）
+### 历史聚合首败：localhost SSH 离线完成前提（PR328合入前，2026-10-13）
 
 预合并 eba53a28 的标准 release:verify exit1，完整 npm test 停在 remote-ssh-real-reopen。页面 ready 和原 Agent/普通Terminal附着正常，旧升级resize通过；第三个Terminal等待setup process.pid2613433消失而未完成。窗口关闭后旧remote Host仍有日志，server配置三小时重连宽限并保留旧连接，精简首败及输入见docs/references/release-0-26-1-refresh/remote-first-failure.json。超时瞬间没有进程状态采样，不把推断当成完整根因确认，也不借此修改产品退出语义。
 
@@ -803,3 +803,5 @@ CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smo
 
 
 本次独立补充验证已完成：Webview426/426、默认干净npm ci/140文件主VSIX/八场景安装、notifier类型/14文件独立包/companion/en与zh-cn locale均exit0。默认安装ETXTBSY未重现，不等于原根因修复；源码聚合SSH首败仍阻断。12条命令证据固定在docs/references/release-0-26-1-refresh/evidence.json。main无branch protection的只读查询结果不撤销仓库完整verify/review要求，草稿不会触发非草稿release workflow。
+
+2026-10-13接续：PR328的双状态正式修复已合入main22803dd8，PR327 rebase后重跑最新预合并完整门禁。上节旧输入的SSH首败不作为新输入状态，原记录保留；当前门禁结果关联PR327真实head/base/预合并SHA及checks。
