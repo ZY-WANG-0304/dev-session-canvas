@@ -10,14 +10,15 @@
 
 - [x] (2026-10-13) 固定原预合并08f7b0a5、tree884936f9、失败job115263574447和完整日志hash776333b2。
 - [x] (2026-10-13) 从最新main22803dd8创建独立调查worktree，确认PR329未合并、PR327仍独立。
-- [ ] 追踪backend override、发现已有owner、环境scope probe和systemctl测试替代链路。
-- [ ] 在固定原输入干净runner只加入有限观测，复现原场景并捕获具体scope类别。
-- [ ] 用真实函数受控正反条件验证该类别的选择行为，必要时验证候选夹具控制。
-- [ ] 同步结论/限制/技术债，归档证据和计划；移除临时workflow入口，提交调查文档。
+- [x] (2026-10-13) override生效、发现absent；fake-systemctl未覆盖真实scope probe。
+- [x] (2026-10-13) run38401537709复现原断言，scope为user-bus-unavailable，callback Connection refused。
+- [x] (2026-10-13) 40项scope/26项准备受控正反条件通过，保留available/systemd、unavailable/fallback与unknown/no-submit。
+- [x] (2026-10-13) 单变量control run38402006541通过原setup/verify；真实launcher回执/摘要校验通过、选systemd。
+- [x] (2026-10-13) 同步结论/技术债和证据，归档计划与两个workflow版本，移除自动入口。
 
 ## 意外与发现
 
-原systemd-user场景提供DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM与success模式，但root准备的inspectRuntimeSystemdEnvironment执行绝对/usr/bin/systemd-run，不读取该shim。原VSCode日志在该场景记录DBUS_SESSION_BUS_ADDRESS=disabled:及自有XDG_RUNTIME_DIR。环境变量与实际fallback的关系待具体结果确认，不能由这两项静态事实直接断言唯一原因。
+原systemd-user场景提供DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM与success模式，但root准备的inspectRuntimeSystemdEnvironment执行绝对/usr/bin/systemd-run，不读取该shim。原VSCode日志在该场景记录DBUS_SESSION_BUS_ADDRESS=disabled:及自有XDG_RUNTIME_DIR。最初仅有环境变量日志，未直接据此断言唯一原因；后续固定输入trace-only与单变量control分别确认不可用后回退及合法摘要后选systemd。
 
 原完整门禁已越过PR329修复的links/checkpoint，多root和双窗口也通过。当前失败是后续systemd选择不匹配，不扩大为此前两处修复回归或VSCode缺陷。
 
@@ -29,7 +30,7 @@
 
 ## 结果与复盘
 
-当前已发现fake-systemctl替代范围与新增真实环境探测不一致的候选链路。具体实际原因与生产fallback路径尚未验证，不作为正式结论。
+固定输入干净诊断确认真实probe在disabled bus/无bus socket环境返回user-bus-unavailable，随后选择legacy并复现backend断言失败。旧fake-systemctl未覆盖新增scope探测是夹具契约失配；原历史run未记录的scope不补造。单变量原launcher子进程控制已通过setup/verify，nonce/environment/user校验全部保留；两组反向结果确认fake夹具未覆盖新probe的因果链，正式修复尚未实施。
 
 ## 上下文与定向
 
@@ -39,9 +40,9 @@ scripts/smoke/run-vscode-smoke.mjs的runSystemdUserRealWindowReopenScenario用fa
 
 ## 工作计划
 
-先追踪override怎样成为request.preferredBackends，并排除发现已有owner提前返回。为两份源码增加只读有限trace：scope真实结果、exec callback固定错误类别、发现结果及启动选定backend，保持原返回。临时workflow checkout固定输入，安装原依赖，下载原同输入native资产，运行原systemd-user场景。always步骤归档有限trace与exit，恢复源码，不上传整个工件目录。
+先追踪override怎样成为request.preferredBackends，并排除发现已有owner提前返回。诊断阶段为两份源码增加只读有限trace：scope真实结果、exec callback固定错误类别、发现结果及启动选定backend，保持原返回。临时workflow checkout固定输入，安装原依赖，下载原同输入native资产，运行原systemd-user场景。always步骤归档有限trace与exit，恢复源码，不上传整个工件目录。
 
-捕获具体类别后，以相同生产函数受控available/unavailable/unknown正反条件确认fallback与no-submit；如需因果控制，只在独立诊断副本替代探测执行边界、运行相同断言，明确不作原生manager或正式修复证明。最后正式中文文档记录原因与适用限制，技术债接续候选修复时机。
+捕获具体类别后，以相同生产函数受控available/unavailable/unknown正反条件确认fallback与no-submit；如需因果控制，只在独立诊断副本替代探测执行边界、运行相同断言，明确不作原生manager或正式修复证明。最终正式中文文档已记录原因与适用限制，技术债接续候选修复时机。两次运行的有限观测结果及日志hash在references目录，临时workflow已移除。
 
 ## 具体步骤
 
@@ -66,3 +67,7 @@ CI使用gh workflow run指定调查分支，原测试输入checkout08f7b0a5，�
 不新增产品API、配置或正式依赖。诊断只用Node fs、child_process、vm/esbuild、GitHub现有工具和原资产；源码插入记录函数不改变实际观察返回。候选修复仍需明确测试替代与原生systemd验证边界。
 
 修订记录：2026-10-13创建根因调查计划，固定前轮失败输入，明确真实scope探测与fake提交边界并安排干净runner有限观测。
+
+修订记录：2026-10-13登记原场景有限诊断run38401537709与实际bus拒绝原因，受控正反检查通过；新增同输入local-launcher probe因果控制。
+
+修订记录：2026-10-13完成根因调查。原固定输入trace-only run38401537709复现失败且scope user-bus-unavailable；单变量local-launcher control run38402006541的合法摘要、systemd选择与原两阶段断言通过。保留真实manager未验和完整gate未通过边界，临时workflow归档移除，正式源码未修改。

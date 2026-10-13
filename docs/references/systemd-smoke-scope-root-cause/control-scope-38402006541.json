@@ -1,0 +1,56 @@
+{
+  "diagnostic_only": true,
+  "control": "local-launcher replaces systemd-run; response validation unchanged",
+  "input": "08f7b0a52f5af27ced04b00a839f525a92659d63",
+  "rows": [
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts",
+      "kind": "request",
+      "preferredBackends": [
+        "systemd-user",
+        "legacy-detached"
+      ]
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts",
+      "kind": "discovered-before-selection",
+      "result": {
+        "kind": "absent"
+      }
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts",
+      "kind": "probe-environment",
+      "dbus": "disabled",
+      "probeExecutor": "diagnostic-local-launcher",
+      "runtimeDirSet": true,
+      "runtimeBusSocketExists": false,
+      "systemctlShimSet": true
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts",
+      "kind": "probe-callback",
+      "code": 0,
+      "killed": false,
+      "signal": null,
+      "stderrCategory": "empty",
+      "stdoutJson": true,
+      "schemaMatches": true,
+      "nonceMatches": true,
+      "environmentMatches": true,
+      "userMatches": true
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts",
+      "kind": "scope-result",
+      "result": {
+        "kind": "available"
+      }
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts",
+      "kind": "selected",
+      "backend": "systemd-user"
+    }
+  ]
+}

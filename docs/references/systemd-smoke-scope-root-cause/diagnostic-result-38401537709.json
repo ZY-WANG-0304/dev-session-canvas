@@ -1,0 +1,31 @@
+{
+  "diagnostic_only": true,
+  "input": "08f7b0a52f5af27ced04b00a839f525a92659d63",
+  "tree": "884936f9668c6a83fe1d5448350278d8649bc8e5",
+  "diagnosticHead": "a6670bebe8313bc3e1e54b6e91e31d1aa30a858b",
+  "run": 38401537709,
+  "job": 115310135988,
+  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38401537709",
+  "conclusion": "failure",
+  "firstFailure": "Original systemd-user-real-reopen setup agent backend mismatch, expected systemd-user actual legacy-detached",
+  "sourceMutation": "Finite trace only; original probe/response/selection/timeout/assertions unchanged",
+  "summarySha256": "61bcdb4d7e6f9b8d01085a874d03b3163d649d61b995acc3865083c2b600fa63",
+  "logSha256": "60d3acb657f9860abb6d54be13dcb9eb0c04f37719460ced296beddad14c00f3",
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootPreparation.ts": "a2f93ffd24e8e4239f0ea2420393f22076d345ac3758a11c31ee14144cf5dc84",
+    "extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts": "14926dbba9ffc5baa7d8afe1bda6036ab373aa3d2f2250bc6ce36a043272c0d9"
+  },
+  "localChecks": [
+    {
+      "command": "node scripts/test/test-runtime-systemd-environment.mjs",
+      "exit": 0,
+      "controlledCases": 40
+    },
+    {
+      "command": "node scripts/test/test-runtime-root-preparation.mjs",
+      "exit": 0,
+      "controlledCases": 26
+    }
+  ],
+  "historicScopeReason": "Not directly captured in original run38387068827; reproduced with exact input and original finite trace"
+}
