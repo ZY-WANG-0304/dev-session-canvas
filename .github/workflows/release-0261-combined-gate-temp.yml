@@ -42,12 +42,14 @@ jobs:
       - name: Finite font and platform inventory
         if: always()
         run: |
-          fc-match sans-serif
-          fc-match 'Noto Sans CJK SC'
-          fc-match 'Microsoft YaHei'
-          fc-match 'PingFang SC'
-          fc-list :lang=zh family | sort -u > "$RUNNER_TEMP/screenshot-fonts.txt"
-          cat /etc/os-release >> "$RUNNER_TEMP/screenshot-fonts.txt"
+          {
+            fc-match sans-serif
+            fc-match 'Noto Sans CJK SC'
+            fc-match 'Microsoft YaHei'
+            fc-match 'PingFang SC'
+            fc-list :lang=zh family | sort -u
+            cat /etc/os-release
+          } > "$RUNNER_TEMP/screenshot-fonts.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -60,3 +62,4 @@ jobs:
             ${{ runner.temp }}/screenshot-fonts.txt
           if-no-files-found: error
           retention-days: 14
+          include-hidden-files: true
