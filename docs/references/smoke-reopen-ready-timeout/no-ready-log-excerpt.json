@@ -1,0 +1,32 @@
+[
+  {
+    "log": "[real-reopen] phase=setup start"
+  },
+  {
+    "budgetTest": {
+      "phase": "setup",
+      "result": "ready",
+      "elapsedMs": 778
+    }
+  },
+  {
+    "log": "[real-reopen] phase=setup ready-for-exit"
+  },
+  {
+    "log": "Exit code:   0"
+  },
+  {
+    "log": "[real-reopen] phase=verify start"
+  },
+  {
+    "budgetTest": {
+      "phase": "verify",
+      "result": "timeout",
+      "elapsedMs": 45021,
+      "error": "Error: Timed out waiting for the editor Canvas to become ready (45000ms)."
+    }
+  },
+  {
+    "log": "Exit code:   1"
+  }
+]

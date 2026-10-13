@@ -22,7 +22,7 @@ PR #321 后 fallback 的真实窗口重开 verify 曾在 editor Canvas ready 等
 
 ## 决策记录
 
-2026-10-13：从原操作复现，加只读Chrome DevTools Protocol（浏览器调试协议，用于观察iframe网络/异常/DOM）与Host生命周期记录，区分资源失败、JS启动失败、React未commit、发送/传递失败、Host身份拒收。不更改产品等待/恢复/resize，不给测试加sleep放行。控制实验仅证明相应机制，不能伪装成原故障再现。
+2026-10-13：从原操作复现，加只读Chrome DevTools Protocol（浏览器调试协议，用于观察iframe网络/异常/DOM）与Host生命周期记录，区分资源失败、JS启动失败、React未commit、发送/传递失败、Host身份拒收。调查轮不更改smoke显式20秒ready预算、方法/测试命令默认15秒或其他实际调用点的等待，也不改恢复/resize，不给测试加sleep放行。控制实验仅证明相应机制，不能伪装成原故障再现。
 
 ## 结果与复盘
 
@@ -30,7 +30,7 @@ PR #321 后 fallback 的真实窗口重开 verify 曾在 editor Canvas ready 等
 
 ## 上下文与定向
 
-`tests/vscode-smoke/real-reopen-tests.cjs` activateExtension先打开editor再closeAllEditors，verify再openCanvasEditor并等20秒。`CanvasPanelManager.ts`负责surface lifecycle generation/frameId、renderedWebviewLifecycle与ready接收。`getWebviewHtml.ts`注入身份并引用dist/webview.js；`webview/main.tsx`在App useEffect中发送应用ready。`scripts/smoke/run-vscode-smoke.mjs`的systemd-fallback-real-reopen以提交前systemd不可用启动，再在同profile下实际关闭并重开VS Code。
+调查轮的`tests/vscode-smoke/real-reopen-tests.cjs` activateExtension先打开editor再closeAllEditors，verify再openCanvasEditor并显式等20秒；这是历史smoke预算。后续PR #325的[等待预算设计](../../design-docs/smoke-reopen-ready-timeout.md)调整同fixture为最大45秒，ready提前满足即返回。方法/测试命令默认15秒只在实际调用时生效，普通打开没有这条ready截止或对应的超时反馈。`CanvasPanelManager.ts`负责surface lifecycle generation/frameId、renderedWebviewLifecycle与ready接收。`getWebviewHtml.ts`注入身份并引用dist/webview.js；`webview/main.tsx`在App useEffect中发送应用ready。`scripts/smoke/run-vscode-smoke.mjs`的systemd-fallback-real-reopen以提交前systemd不可用启动，再在同profile下实际关闭并重开VS Code。
 
 ## 工作计划
 
@@ -67,3 +67,5 @@ R5第32次active=32、requests=32、waiters=2，旧已关闭页面字体请求30
 原renderer没有Webview.loadLocalResource日志，比正常对照更早停在资源派发之前或之中，不能确定workerReady、inner frame、cache与派发哪个断点。原单次操作没有32请求积累证据，已明确否定直接外推。恢复源码后N1在/tmp/dscgate1012原短workspace、新独立profile完整通过。所有probe/控制均恢复，source SHA256与inputs.json一致，原VSCode worker SHA256=338e0c80993456b866ec1a544933117522600bf25c313c7c7efc94d2ca3fa0dd。
 
 修订：2026-10-13完成本轮可复核调查，记录容量对照及原首败无法归因的限制；未运行完整发布门禁。
+
+修订：2026-10-13，PR #325按review意见澄清历史smoke 20秒与后续最大45秒策略、方法默认15秒及普通打开行为。调查轮未扩大预算的事实与全部原始证据保留；本次仅修正文档，不重跑或改写历史实验。

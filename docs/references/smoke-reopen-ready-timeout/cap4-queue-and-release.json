@@ -1,0 +1,266 @@
+{
+  "blockedWorkerSnapshot": {
+    "observedAt": 1791832025269,
+    "type": "snapshot",
+    "run": 2,
+    "sessionId": "6AF81973EC9AAA361ECC0076BC078528",
+    "contextId": 1,
+    "origin": "vscode-webview://1n4q7chklr1grjihbcrka9auoi3fu8o8as2q78kfm5agkjjiu3bm/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+    "result": {
+      "time": 1791832025268,
+      "url": "vscode-webview://1n4q7chklr1grjihbcrka9auoi3fu8o8as2q78kfm5agkjjiu3bm/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "activeCount": 4,
+      "waiters": 2,
+      "requestCount": 4,
+      "requestIds": [
+        1,
+        2,
+        5,
+        8
+      ],
+      "marks": [
+        {
+          "name": "webview/service-worker/scriptStart",
+          "startTime": 153.69999980926514,
+          "detail": {}
+        }
+      ]
+    }
+  },
+  "workerConsoleEvents": [
+    {
+      "time": 1791832022746,
+      "stage": "host-request",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "clientId": "6d719cb0-4206-4b90-885a-21dc1878a589",
+      "active": 1,
+      "waiters": 0,
+      "requests": 1,
+      "requestId": 1
+    },
+    {
+      "time": 1791832022746,
+      "stage": "host-request",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.js?v%3D77b46ffdff32",
+      "clientId": "6d719cb0-4206-4b90-885a-21dc1878a589",
+      "active": 2,
+      "waiters": 0,
+      "requests": 2,
+      "requestId": 2
+    },
+    {
+      "time": 1791832023793,
+      "stage": "host-request",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348",
+      "clientId": "b3705d6c-84a1-4d42-887e-8ef5ec9e8ddd",
+      "active": 3,
+      "waiters": 0,
+      "requests": 3,
+      "requestId": 5
+    },
+    {
+      "time": 1791832024675,
+      "stage": "acquire-start",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348",
+      "clientId": "35f73164-8d0a-4348-b9aa-5ecf398f773e",
+      "active": 3,
+      "waiters": 0,
+      "requests": 3
+    },
+    {
+      "time": 1791832024675,
+      "stage": "host-request",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348",
+      "clientId": "35f73164-8d0a-4348-b9aa-5ecf398f773e",
+      "active": 4,
+      "waiters": 0,
+      "requests": 4,
+      "requestId": 8
+    },
+    {
+      "time": 1791832024853,
+      "stage": "acquire-start",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "clientId": "6088bed0-cd3c-4b4b-90e5-94abe1a5ec1b",
+      "active": 4,
+      "waiters": 0,
+      "requests": 4
+    },
+    {
+      "time": 1791832024854,
+      "stage": "acquire-start",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.js?v%3D77b46ffdff32",
+      "clientId": "6088bed0-cd3c-4b4b-90e5-94abe1a5ec1b",
+      "active": 4,
+      "waiters": 1,
+      "requests": 4
+    },
+    {
+      "time": 1791832052746,
+      "stage": "host-response",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "clientId": "6d719cb0-4206-4b90-885a-21dc1878a589",
+      "active": 4,
+      "waiters": 2,
+      "requests": 3,
+      "requestId": 1,
+      "status": "timeout"
+    },
+    {
+      "time": 1791832052746,
+      "stage": "released",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "clientId": "6d719cb0-4206-4b90-885a-21dc1878a589",
+      "active": 4,
+      "waiters": 1,
+      "requests": 3,
+      "requestId": 1
+    },
+    {
+      "time": 1791832052746,
+      "stage": "host-request",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "clientId": "6088bed0-cd3c-4b4b-90e5-94abe1a5ec1b",
+      "active": 4,
+      "waiters": 1,
+      "requests": 4,
+      "requestId": 9
+    },
+    {
+      "time": 1791832052747,
+      "stage": "host-response",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.js?v%3D77b46ffdff32",
+      "clientId": "6d719cb0-4206-4b90-885a-21dc1878a589",
+      "active": 4,
+      "waiters": 1,
+      "requests": 3,
+      "requestId": 2,
+      "status": "timeout"
+    },
+    {
+      "time": 1791832052747,
+      "stage": "released",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.js?v%3D77b46ffdff32",
+      "clientId": "6d719cb0-4206-4b90-885a-21dc1878a589",
+      "active": 4,
+      "waiters": 0,
+      "requests": 3,
+      "requestId": 2
+    },
+    {
+      "time": 1791832052747,
+      "stage": "host-request",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.js?v%3D77b46ffdff32",
+      "clientId": "6088bed0-cd3c-4b4b-90e5-94abe1a5ec1b",
+      "active": 4,
+      "waiters": 0,
+      "requests": 4,
+      "requestId": 10
+    },
+    {
+      "time": 1791832052749,
+      "stage": "host-response",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "clientId": "6088bed0-cd3c-4b4b-90e5-94abe1a5ec1b",
+      "active": 4,
+      "waiters": 0,
+      "requests": 3,
+      "requestId": 9,
+      "status": "ok",
+      "valueStatus": 304
+    },
+    {
+      "time": 1791832052749,
+      "stage": "released",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "clientId": "6088bed0-cd3c-4b4b-90e5-94abe1a5ec1b",
+      "active": 3,
+      "waiters": 0,
+      "requests": 3,
+      "requestId": 9
+    },
+    {
+      "time": 1791832052750,
+      "stage": "host-response",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.js?v%3D77b46ffdff32",
+      "clientId": "6088bed0-cd3c-4b4b-90e5-94abe1a5ec1b",
+      "active": 3,
+      "waiters": 0,
+      "requests": 2,
+      "requestId": 10,
+      "status": "ok",
+      "valueStatus": 304
+    },
+    {
+      "time": 1791832052750,
+      "stage": "released",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/webview.js?v%3D77b46ffdff32",
+      "clientId": "6088bed0-cd3c-4b4b-90e5-94abe1a5ec1b",
+      "active": 2,
+      "waiters": 0,
+      "requests": 2,
+      "requestId": 10
+    },
+    {
+      "time": 1791832053223,
+      "stage": "acquire-start",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348",
+      "clientId": "6088bed0-cd3c-4b4b-90e5-94abe1a5ec1b",
+      "active": 2,
+      "waiters": 0,
+      "requests": 2
+    },
+    {
+      "time": 1791832053223,
+      "stage": "host-request",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348",
+      "clientId": "6088bed0-cd3c-4b4b-90e5-94abe1a5ec1b",
+      "active": 3,
+      "waiters": 0,
+      "requests": 3,
+      "requestId": 11
+    },
+    {
+      "time": 1791832053794,
+      "stage": "host-response",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348",
+      "clientId": "b3705d6c-84a1-4d42-887e-8ef5ec9e8ddd",
+      "active": 3,
+      "waiters": 0,
+      "requests": 2,
+      "requestId": 5,
+      "status": "timeout"
+    },
+    {
+      "time": 1791832053795,
+      "stage": "released",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348",
+      "clientId": "b3705d6c-84a1-4d42-887e-8ef5ec9e8ddd",
+      "active": 2,
+      "waiters": 0,
+      "requests": 2,
+      "requestId": 5
+    },
+    {
+      "time": 1791832054676,
+      "stage": "host-response",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348",
+      "clientId": "35f73164-8d0a-4348-b9aa-5ecf398f773e",
+      "active": 2,
+      "waiters": 0,
+      "requests": 1,
+      "requestId": 8,
+      "status": "timeout"
+    },
+    {
+      "time": 1791832054676,
+      "stage": "released",
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-cap4/smoke-host/dist/codicon-B3TTTKGI.ttf?721d4c0a96379d0c13d3d5596893c348",
+      "clientId": "35f73164-8d0a-4348-b9aa-5ecf398f773e",
+      "active": 1,
+      "waiters": 0,
+      "requests": 1,
+      "requestId": 8
+    }
+  ]
+}

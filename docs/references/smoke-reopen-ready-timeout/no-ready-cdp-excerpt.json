@@ -1,0 +1,184 @@
+{
+  "resourceResponses": [
+    {
+      "observedAt": 1791832131312,
+      "run": 4,
+      "sessionId": "1E213798A4F43052DC36AA46521E2298",
+      "method": "Network.responseReceived",
+      "requestId": "636913.8",
+      "timestamp": 2456012.676299,
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-no-ready/smoke-host/dist/webview.css?v%3D5c2dbef678db",
+      "status": 200,
+      "resourceType": "Stylesheet",
+      "fromDiskCache": true,
+      "fromServiceWorker": true
+    },
+    {
+      "observedAt": 1791832131313,
+      "run": 4,
+      "sessionId": "1E213798A4F43052DC36AA46521E2298",
+      "method": "Network.responseReceived",
+      "requestId": "636913.9",
+      "timestamp": 2456012.677777,
+      "url": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-no-ready/smoke-host/dist/webview.js?v%3D20a462b21c0c",
+      "status": 200,
+      "resourceType": "Script",
+      "fromDiskCache": true,
+      "fromServiceWorker": true
+    }
+  ],
+  "firstOuterSnapshot": {
+    "observedAt": 1791832131648,
+    "type": "snapshot",
+    "run": 4,
+    "sessionId": "1E213798A4F43052DC36AA46521E2298",
+    "contextId": 3,
+    "origin": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d",
+    "result": {
+      "time": 1791832131646,
+      "url": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d/index.html?id=710e8b71-ec94-44cf-8c2d-0025b76c9ebb&parentId=1&origin=64bb59ff-0448-4515-9888-aa55ea0f9ec9&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+      "readyState": "complete",
+      "marks": [
+        {
+          "name": "webview/index.html/scriptStart",
+          "startTime": 15.799999713897705,
+          "detail": {
+            "id": "710e8b71-ec94-44cf-8c2d-0025b76c9ebb"
+          }
+        },
+        {
+          "name": "webview/index.html/signalingReady",
+          "startTime": 16.90000009536743,
+          "detail": {
+            "id": "710e8b71-ec94-44cf-8c2d-0025b76c9ebb"
+          }
+        },
+        {
+          "name": "webview/index.html/content/started",
+          "startTime": 41.90000009536743,
+          "detail": {
+            "id": "710e8b71-ec94-44cf-8c2d-0025b76c9ebb"
+          }
+        },
+        {
+          "name": "webview/index.html/content/workerReady",
+          "startTime": 42,
+          "detail": {
+            "id": "710e8b71-ec94-44cf-8c2d-0025b76c9ebb"
+          }
+        },
+        {
+          "name": "webview/index.html/content/innerFrameLoaded",
+          "startTime": 94.2999997138977,
+          "detail": {
+            "id": "710e8b71-ec94-44cf-8c2d-0025b76c9ebb"
+          }
+        },
+        {
+          "name": "webview/index.html/content/wroteInnerContent",
+          "startTime": 104.19999980926514,
+          "detail": {
+            "id": "710e8b71-ec94-44cf-8c2d-0025b76c9ebb"
+          }
+        }
+      ],
+      "workerController": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "registrations": [
+        {
+          "scope": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d/",
+          "active": "activated"
+        }
+      ],
+      "frames": [
+        {
+          "id": "active-frame",
+          "src": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d/fake.html?id=710e8b71-ec94-44cf-8c2d-0025b76c9ebb",
+          "connected": true,
+          "readyState": "complete",
+          "html": "<html lang=\"en\" style=\"--vscode-font-family: system-ui, &quot;Ubuntu&quot;, &quot;Droid Sans&quot;, sans-serif; --vscode-font-weight: normal; --vscode-font-size: 13px; --vscode-editor-font-family: 'Droid Sans Mono', monospace; --vscode-editor-font-weight: normal; --vscode-editor-font-size: 14px; --text-link-decoration: none; --vscode-foreground: #b"
+        }
+      ],
+      "scripts": [
+        {
+          "src": "",
+          "type": "module"
+        }
+      ]
+    }
+  },
+  "firstInnerSnapshot": {
+    "observedAt": 1791832131648,
+    "type": "snapshot",
+    "run": 4,
+    "sessionId": "1E213798A4F43052DC36AA46521E2298",
+    "contextId": 4,
+    "origin": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d",
+    "result": {
+      "time": 1791832131646,
+      "url": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d/index.html?id=710e8b71-ec94-44cf-8c2d-0025b76c9ebb&parentId=1&origin=64bb59ff-0448-4515-9888-aa55ea0f9ec9&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+      "readyState": "complete",
+      "marks": [],
+      "workerController": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "registrations": [
+        {
+          "scope": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d/",
+          "active": "activated"
+        }
+      ],
+      "frames": [],
+      "appChildren": 0,
+      "scripts": [
+        {
+          "src": "",
+          "type": ""
+        },
+        {
+          "src": "",
+          "type": ""
+        },
+        {
+          "src": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-no-ready/smoke-host/dist/webview.js?v%3D20a462b21c0c",
+          "type": ""
+        }
+      ]
+    }
+  },
+  "lastInnerSnapshot": {
+    "observedAt": 1791832177825,
+    "type": "snapshot",
+    "run": 4,
+    "sessionId": "1E213798A4F43052DC36AA46521E2298",
+    "contextId": 4,
+    "origin": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d",
+    "result": {
+      "time": 1791832177824,
+      "url": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d/index.html?id=710e8b71-ec94-44cf-8c2d-0025b76c9ebb&parentId=1&origin=64bb59ff-0448-4515-9888-aa55ea0f9ec9&swVersion=6&extensionId=devsessioncanvas.dev-session-canvas&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app",
+      "readyState": "complete",
+      "marks": [],
+      "workerController": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d/service-worker.js?v=6&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&remoteAuthority=&platform=electron",
+      "registrations": [
+        {
+          "scope": "vscode-webview://1gr1lhsavi4k0042pbr2tvfbtuqboudu3q2kq4jjd6di2hjsha3d/",
+          "active": "activated"
+        }
+      ],
+      "frames": [],
+      "appChildren": 0,
+      "scripts": [
+        {
+          "src": "",
+          "type": ""
+        },
+        {
+          "src": "",
+          "type": ""
+        },
+        {
+          "src": "https://file+.vscode-resource.vscode-cdn.net/tmp/dwr-budget-no-ready/smoke-host/dist/webview.js?v%3D20a462b21c0c",
+          "type": ""
+        }
+      ]
+    }
+  },
+  "exceptions": []
+}

@@ -12,6 +12,18 @@
 - 建议修复时机
 - 关联文档或代码路径
 
+## 2026-10-13：真实窗口重开 ready 预算缓解与上游资源责任
+
+背景与范围：PR #324确认VS Code1.141.0连续重开中未响应资源请求等待30秒、占满32名额后阻塞新CSS/JS；原单次fallback首败仍缺分层证据，不能归因。调查轮20秒是`real-reopen-tests.cjs`显式传入的历史smoke ready预算；PR #325将同fixture改为最大45秒，ready满足后立即返回。`CanvasPanelManager.waitForCanvasReady`未传timeout时默认15秒，测试命令未传有效正数时也默认15秒，仅对实际调用生效；这些时间值均不是所有用户打开Canvas的启动期限。
+
+当前处理：仅容忍上游30秒有限结算加启动余量；不增加固定sleep或重试，不放宽active/visible/ready、原session身份、正文、输入或resize断言。正常ready立即返回，异常最多多等25秒，超过45秒保留失败工件。原版fallback两阶段与容量4对照完整通过，对照第3次ready耗时28.49秒；永久不发送ready在45.02秒按期失败并留存工件。PR #323/#324合入后rebase到main `1fb49b4e`，重新构建及原生fallback两阶段通过；控制实验保留原基线证据，未重复运行。具体验证见`docs/design-docs/smoke-reopen-ready-timeout.md`。
+
+普通打开的现有限制：`extension.ts`的普通打开命令经`revealOrCreate/revealInEditor/revealInPanel → revealSurface`创建/显示Webview，不调用限时`waitForCanvasReady`，没有上述ready截止或对应的启动超时反馈。`getWebviewHtml.ts`的活动HTML以空app容器等待脚本启动；资源恢复后可继续异步加载，持续未启动时可能一直空白。当前没有专门的Canvas启动超时提示、重试按钮或由ready超时触发的自动重建，方法/测试命令默认15秒及smoke最大45秒不会自动提供这些能力。PR #325仅修正预算与文案，不顺带实现新的产品恢复功能。
+
+剩余风险与建议时机：预算缓解没有修复上游销毁client后的请求责任，也不能证明原首败消失；28.49秒对照只验证该测试容忍策略。再次具名失败采集workerReady、inner frame、CSS/JS、worker队列和React/Host消息。普通打开持续空白或需要启动反馈时，另行设计有界反馈、手动重试及自动恢复取舍，并验收既有执行身份和资源生命周期；该现有限制不阻塞本次文案修正。上游修复后重新评估smoke预算。完整发布门禁、其他平台/Remote/VSIX单独验收，下方历史20秒首败与原始工件/hash继续保留。
+
+关联：`docs/design-docs/smoke-reopen-ready-timeout.md`、PR #324与`tests/vscode-smoke/real-reopen-tests.cjs`。
+
 ## 2026-10-13：Canvas ready 原首败与连续重开的上游资源积压
 
 背景与触发：PR #321 后原 fallback verify 在 generation5、active、ready/ack=false 时20秒超时，原会话存活。原renderer没有CSS/JS资源读取日志，缺iframe/worker/Host事件，仍不能定因。调查时main a213b89b上的R2以及恢复源码后的原短workspace N1两阶段均通过，不能覆盖首败。PR #323合入main a6bb190a后本调查分支已rebase；历史实验输入和工件保持，不代证新主线复验。
@@ -20,7 +32,7 @@
 
 影响范围：Linux Native固定VS Code版本的连续快速关闭重开可能阻塞Canvas资源启动；与PTY存活/resize不构成同一因果结论。原首败只有一次关闭重开，没有名额积累证据，故不能把本机制当作其已确认根因。PR #323的resize夹具修复仍独立。
 
-当前处理：保留所有首次失败；五份临时源码与上游副本已恢复，正式等待20秒和身份/正文断言保持；参考诊断patch、阶段记录、负对照快照和hash均repo-local。未调整sleep、容量或重试作为正式修复，未运行完整发布门禁。此记录不解除0.26.1原ready首败的收口要求。
+调查轮处理：保留所有首次失败；五份临时源码与上游副本当时已恢复，真实重开smoke显式20秒预算和身份/正文断言保持；参考诊断patch、阶段记录、负对照快照和hash均repo-local。该轮不以扩大测试预算、调整sleep、容量或重试证明根因已修复，未运行完整发布门禁。后续PR #325采用[同fixture最大45秒的测试容忍策略](../design-docs/smoke-reopen-ready-timeout.md)，ready提前满足即返回；它仍不修复上游请求责任，不给普通打开提供启动超时反馈，也不替换本轮20秒样本或解除原单次ready首败的取证要求。
 
 建议修复时机：下一轮具名ready失败立即采集outer workerReady标记、inner DOM、CSS/JS请求、worker请求与名额、React/Host消息。连续重开积压需在上游取消销毁client的请求或保障结算，再验证stream/cache/body责任；另行立项扩展可控措施，不能提高限额伪装修复。其他平台/版本和Remote单独验收。
 
@@ -32,7 +44,7 @@
 
 本轮已收口：probe 只读容器FitAddon目标、投影未完成事实及原会话identity；修改前等待原会话基线，修改后在共同20秒内核对精确卡片、容器、页面、原Supervisor和输入。标准原生N1/N2与受控fit延迟C3全场景通过；丢弃Agent目标resize的M1按期失败，191次样本仍是页面82×27/原session67×21，工件保存成功。9项helper、协议、50项真实controller/10项Host batch和8项浏览器回归、类型/build通过。见 `docs/design-docs/runtime-legacy-resize-convergence.md`、`docs/exec-plans/completed/runtime-legacy-resize-convergence.md` 和 `docs/references/runtime-legacy-resize-convergence/evidence.json`。
 
-保留边界：fallback editor generation5 的 Canvas ready 首败根因未确认；现有Host diagnostics不能替代iframe资源与脚本执行证据，后续重现时继续单独定位，不改ready条件或20秒预算。本轮未运行完整npm test/发布门禁；定向通过不收口后续窗口、共享、systemd和Remote SSH矩阵。此缺口不阻止已证实的夹具修复交付，但仍阻止宣称整体门禁通过及发布准备完成。
+保留边界：fallback editor generation5 的 Canvas ready 首败根因未确认；现有Host diagnostics不能替代iframe资源与脚本执行证据，后续重现时继续单独定位。PR #323的resize修复轮当时不改ready条件或真实重开smoke显式20秒预算；后续PR #325的[最大45秒策略](../design-docs/smoke-reopen-ready-timeout.md)只调整测试容忍度，不追认首败原因。本轮未运行完整npm test/发布门禁；定向通过不收口后续窗口、共享、systemd和Remote SSH矩阵。此缺口不阻止已证实的夹具修复交付，但仍阻止宣称整体门禁通过及发布准备完成。
 
 ## 2026-10-12：发布门禁夹具与 CI 对齐后的剩余验证边界
 

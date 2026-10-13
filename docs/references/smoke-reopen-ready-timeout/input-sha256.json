@@ -1,0 +1,102 @@
+[
+  {
+    "path": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/real-reopen-tests.cjs",
+    "sha256": "8c94e3a56cab3acc1b216d13268a1fb4125c4e260ed57f8ec51d9edae57bda0c",
+    "bytes": 33611
+  },
+  {
+    "path": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/scripts/smoke/vscode-smoke-runner.mjs",
+    "sha256": "012e2cba8d9f2219391801a875960e5edd4388073a3b6d52b321cf9174257a3b",
+    "bytes": 20723
+  },
+  {
+    "path": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/scripts/smoke/run-vscode-smoke.mjs",
+    "sha256": "0c82ed980de03c27b504eef735890ee586d4195b3169f22f984c6d75aa06a9c5",
+    "bytes": 26665
+  },
+  {
+    "path": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/extensions/vscode/dev-session-canvas/dist/webview.js",
+    "sha256": "18df79829d80ad8f9a0f10317bba996c5f00dabfaccc218f31103b4e8abcdbe2",
+    "bytes": 5018510
+  },
+  {
+    "path": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/extensions/vscode/dev-session-canvas/dist/extension.js",
+    "sha256": "f1fcbece3a29990a687098188f0522537c4dcc2197dd2c53dcc5e1e57e3e72e6",
+    "bytes": 3463953
+  },
+  {
+    "path": "/tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/contrib/webview/browser/pre/service-worker.js",
+    "sha256": "338e0c80993456b866ec1a544933117522600bf25c313c7c7efc94d2ca3fa0dd",
+    "bytes": 9376
+  },
+  {
+    "path": "/tmp/dsc-ready-vscode/.vscode-test/vscode-linux-x64-1.141.0/resources/app/out/vs/workbench/contrib/webview/browser/pre/service-worker.js",
+    "sha256": "338e0c80993456b866ec1a544933117522600bf25c313c7c7efc94d2ca3fa0dd",
+    "bytes": 9376
+  },
+  {
+    "path": "/tmp/dsc-ready-budget/run-controls.mjs",
+    "sha256": "587ba0c36038c0150357c8b683834d0f9198addbcff704bff3fc163bfa2434ba",
+    "bytes": 4448
+  },
+  {
+    "path": "/tmp/dsc-ready-budget/service-worker-cap4.js",
+    "sha256": "52256c678c6cef7e43e55390e91bdc28e2a08c3c0f5f81c13bb3ec361b5018b2",
+    "bytes": 10122
+  },
+  {
+    "path": "/tmp/dsc-ready-budget/build.log",
+    "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+    "bytes": 77
+  },
+  {
+    "path": "/tmp/dsc-ready-budget/native-n1.log",
+    "sha256": "f1037acc3648e8f4ec9f22c2f63a34e710917ba6a662daa15d58f2086d3cfb41",
+    "bytes": 604632
+  },
+  {
+    "path": "/tmp/dsc-ready-budget/control-cap4.log",
+    "sha256": "cbce214c021a42b5da0028fb98f41f85a6c43387ed8873593ae74c0ad9fd17f2",
+    "bytes": 943664
+  },
+  {
+    "path": "/tmp/dsc-ready-budget/control-no-ready.log",
+    "sha256": "7aa11c386eed2c0ba264db3506f99089165b1b969096b5e3966367092d795653",
+    "bytes": 726079
+  },
+  {
+    "path": "/tmp/dsc-ready-budget/cdp/cdp.jsonl",
+    "sha256": "a159c69081685f2c8f3dd77c4993710056828a80c4cc086cf6bfbef9b749f688",
+    "bytes": 1389855
+  },
+  {
+    "path": "/tmp/dsc-ready-budget/worker-stages.json",
+    "sha256": "7956ef3a931c1d2e9bb15d94cddbafb024150356b466f52ca5706a38f48f1f6a",
+    "bytes": 35218
+  },
+  {
+    "path": "/tmp/dwr-budget-no-ready/smoke-host/dist/webview.js",
+    "sha256": "a9b7d8677a757d8c783494e11db101437a796bd111ce79d0ab1aface0ef3ad1f",
+    "bytes": 5018524
+  },
+  {
+    "path": "/tmp/dwr-budget-n1/systemd-fallback-real-reopen/artifacts/real-reopen-flush-result.json",
+    "sha256": "4f17c0c7ba9e8c2b8922c90e11ff5a547bfc81b2b0a3c8977d4d9f3b490413bd",
+    "bytes": 8860
+  },
+  {
+    "path": "/tmp/dwr-budget-cap4/artifacts/real-reopen-flush-result.json",
+    "sha256": "27fb2938fdb5200977cfa9ccecaec2205239190c5f300b602e10018d41d0354d",
+    "bytes": 8580
+  },
+  {
+    "path": "/tmp/dwr-budget-cap4/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs",
+    "sha256": "0bb4c5dc68fd368a999cebf0af862cd8f53904233623ad18c8634af041a9cab5",
+    "bytes": 34350
+  },
+  {
+    "path": "/tmp/dwr-budget-no-ready/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs",
+    "sha256": "7d333c2fec4e73331ae492f63d043ef4a60adfac9a75f69aac19bd886110b8ef",
+    "bytes": 33953
+  }
+]

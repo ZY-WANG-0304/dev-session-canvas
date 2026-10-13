@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/smoke-reopen-ready-timeout.md` | 真实重开smoke最大45秒，区分历史20秒与方法默认15秒；原生/排队正反例通过，普通打开无ready截止及启动超时反馈 | VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | — | 2026-10-13 |
 | `docs/design-docs/webview-ready-root-cause.md` | 确认连续重开的VS Code资源请求积压与32名额排队；原单次ready首败仍未定因 | VSCode 集成域 / 宿主集成层、适配与基础设施层 | 比较中 | 验证中 | `docs/exec-plans/completed/webview-ready-root-cause.md` | 2026-10-13 |
 | `docs/design-docs/runtime-legacy-resize-convergence.md` | 修复旧升级 resize 恢复瞬态取样；标准/受控延迟通过，漏 resize 原生反例按期失败 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/runtime-legacy-resize-convergence.md` | 2026-10-12 |
 | `docs/design-docs/release-gate-fixture-ci-alignment.md` | 对齐关闭模式、checkpoint、提交前 fallback 与旧升级新 root 夹具；冷浏览器准备通过，完整门禁仍在旧升级 Agent resize 超时，fallback ready 首败保留 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 验证失败 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/release-gate-fixture-ci-alignment.md` | 2026-10-12 |

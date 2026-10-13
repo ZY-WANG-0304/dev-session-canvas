@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-13",
+  "baseCommit": "1fb49b4e954c776f800d3fb9eae9695b0d420a61",
+  "validatedImplementationCommit": "658b2595457f375c31b4f0e15a165b40846d512e",
+  "nodeVersion": "22.23.3",
+  "vscodeVersion": "1.141.0",
+  "platform": "Linux x64 / Xvfb",
+  "buildExitCode": 0,
+  "nativeFallbackTwoPhaseExitCode": 0,
+  "systemctlSubmitted": false,
+  "nativeLogExcerpt": [
+    "[real-reopen] phase=setup start",
+    "[real-reopen] phase=setup ready-for-exit",
+    "Exit code:   0",
+    "[real-reopen] phase=verify start",
+    "[real-reopen] phase=verify completed",
+    "Exit code:   0",
+    "Systemd unavailable before submission real window reopen smoke passed.",
+    "VS Code smoke test passed."
+  ],
+  "commands": [
+    "PATH=/tmp/dsc-release-node22/node_modules/node/bin:$PATH DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets npm run build",
+    "PATH=/tmp/dsc-release-node22/node_modules/node/bin:$PATH DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH=/tmp/dsc0261v/.vscode-test DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT=/tmp/dsc-pr325-rebase/native DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=systemd-fallback-real-reopen node scripts/smoke/run-vscode-smoke.mjs"
+  ],
+  "inputsAndArtifacts": [
+    {
+      "path": "/tmp/dsc-pr325-rebase/build.log",
+      "bytes": 77,
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f"
+    },
+    {
+      "path": "/tmp/dsc-pr325-rebase/native.log",
+      "bytes": 739990,
+      "sha256": "c99306a892b063f51a3832f8beddcaff7b00b3c2fa2fff86ec6462205a449ac3"
+    },
+    {
+      "path": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/real-reopen-tests.cjs",
+      "bytes": 33611,
+      "sha256": "8c94e3a56cab3acc1b216d13268a1fb4125c4e260ed57f8ec51d9edae57bda0c"
+    },
+    {
+      "path": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/extensions/vscode/dev-session-canvas/dist/webview.js",
+      "bytes": 5019359,
+      "sha256": "3d19b88ce18fc2e7973052cee465db9fef7c8a97e3859e34daead9a843734ac3"
+    },
+    {
+      "path": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/extensions/vscode/dev-session-canvas/dist/extension.js",
+      "bytes": 3464519,
+      "sha256": "b490dcba47d0ba49d54010a79a383a219955169df198e56121d4fd7074c14fbf"
+    },
+    {
+      "path": "/tmp/dsc-pr325-rebase/native/systemd-fallback-real-reopen/artifacts/real-reopen-flush-result.json",
+      "bytes": 8770,
+      "sha256": "8ddfc94922951aeb8aa3ed169a4fae5900ae298165627773874a69d955892adc"
+    }
+  ],
+  "checks": [
+    "保留三处公共文档中主线已有内容。",
+    "fixture相对rebase前逐字节一致，唯一行为改动仍是20→45秒。",
+    "JSON、文档链接/状态、历史证据与脚本语法检查通过。"
+  ],
+  "limits": [
+    "资源容量4和永久未ready控制实验仍使用原a213b89b基线的历史证据，本次未重跑。",
+    "未执行完整release gate、VSIX、Remote或其他平台矩阵。"
+  ]
+}

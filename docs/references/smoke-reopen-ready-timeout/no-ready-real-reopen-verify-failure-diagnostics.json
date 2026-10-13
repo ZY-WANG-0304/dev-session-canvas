@@ -1,0 +1,1148 @@
+[
+  {
+    "timestamp": "2026-10-12T19:08:50.635Z",
+    "kind": "storage/slotSelected",
+    "detail": {
+      "currentPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "sourcePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "selectionBasis": "current-slot",
+      "migrationRequired": false,
+      "currentSlotName": "1e26493c757362a386dc0bf0a0e7db86",
+      "sourceSlotName": "1e26493c757362a386dc0bf0a0e7db86",
+      "sourceStateHash": "38c5c2c4b528",
+      "sourceWrittenAt": "2026-10-12T19:08:41.541Z",
+      "sourceStateUpdatedAt": "2026-10-12T19:08:41.538Z",
+      "sourceTimestamp": "2026-10-12T19:08:41.541Z",
+      "currentStateHash": "38c5c2c4b528",
+      "currentWrittenAt": "2026-10-12T19:08:41.541Z",
+      "currentStateUpdatedAt": "2026-10-12T19:08:41.538Z",
+      "currentTimestamp": "2026-10-12T19:08:41.541Z"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.642Z",
+    "kind": "state/loadSelected",
+    "detail": {
+      "source": "rootLocalSnapshot",
+      "rootPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/root-local-canvas/cc6ccbc9c9d2fa821a6483bd/canvas-state.json",
+      "storagePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotAvailable": true,
+      "workspaceStateAvailable": false,
+      "resetDueToFilesFeatureModeChange": false,
+      "fileDomainDisabled": true,
+      "snapshotWrittenAt": "2026-10-12T19:08:41.396Z",
+      "snapshotStateHash": "58b68712e7b4",
+      "loadedStateHash": "6b9ee6c69fdb",
+      "stateHash": "58b68712e7b4",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:41.396Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.645Z",
+    "kind": "state/initialized",
+    "detail": {
+      "activeSurface": "editor",
+      "nodeCount": 3,
+      "storagePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "storageSelectionBasis": "current-slot"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.670Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T19:08:50.670Z",
+      "mode": "immediate",
+      "workspaceStateMode": "full",
+      "reason": "state-initialized",
+      "coalescedCount": 0,
+      "stateHash": "6b9ee6c69fdb",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:41.396Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.671Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T19:08:50.670Z",
+      "mode": "immediate",
+      "workspaceStateMode": "full",
+      "reason": "state-initialized",
+      "coalescedCount": 0,
+      "stateHash": "6b9ee6c69fdb",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:41.396Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.708Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "from": "editor",
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.708Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T19:08:50.708Z",
+      "mode": "immediate",
+      "workspaceStateMode": "full",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "82d1165aeef4",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:41.396Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.708Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T19:08:50.708Z",
+      "mode": "immediate",
+      "workspaceStateMode": "full",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "82d1165aeef4",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:41.396Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.709Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.710Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.718Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.763Z",
+    "kind": "execution/operationIgnored",
+    "detail": {
+      "kind": "terminal",
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "stage": "attach",
+      "runtimeSessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.763Z",
+    "kind": "execution/operationIgnored",
+    "detail": {
+      "kind": "terminal",
+      "nodeId": "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b",
+      "stage": "attach",
+      "runtimeSessionId": "60764404-55fb-4dca-8146-8ef4596ccdf7"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.806Z",
+    "kind": "runtime/terminalSourceDisposition",
+    "detail": {
+      "nodeId": "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b",
+      "kind": "terminal",
+      "sessionId": "60764404-55fb-4dca-8146-8ef4596ccdf7",
+      "sourceDisposition": {
+        "kind": "eof"
+      },
+      "finalRevision": 3
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.806Z",
+    "kind": "execution/operationIgnored",
+    "detail": {
+      "kind": "agent",
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "stage": "attach",
+      "runtimeSessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.817Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T19:08:50.817Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "9d51e88aae60",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.799Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.817Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T19:08:50.817Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "9d51e88aae60",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.799Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.817Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "9d51e88aae60",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.799Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.818Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T19:08:50.818Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "2fcef1e42774",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.808Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.818Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T19:08:50.818Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "2fcef1e42774",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.808Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.818Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "2fcef1e42774",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.808Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.818Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T19:08:50.818Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-completed-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "2fcef1e42774",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.808Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.819Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T19:08:50.818Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-completed-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "2fcef1e42774",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.808Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.819Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "runtime-supervisor-completed-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "2fcef1e42774",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.808Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.821Z",
+    "kind": "execution/deleteBoundary",
+    "detail": {
+      "phase": "runtime-delete-requested",
+      "kind": "terminal",
+      "sessionId": "60764404-55fb-4dca-8146-8ef4596ccdf7",
+      "backendKind": "legacy-detached"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.823Z",
+    "kind": "execution/deleteBoundary",
+    "detail": {
+      "phase": "runtime-delete-rpc-dispatch",
+      "kind": "terminal",
+      "sessionId": "60764404-55fb-4dca-8146-8ef4596ccdf7",
+      "backendKind": "legacy-detached"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.824Z",
+    "kind": "runtime/terminalBatchReceived",
+    "detail": {
+      "sessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "kind": "terminal",
+      "batchId": 1,
+      "afterRevision": 4,
+      "revision": 4,
+      "events": 0,
+      "supervisorEmittedAtMs": 1791832130816,
+      "hostReceivedAtMs": 1791832130824
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.824Z",
+    "kind": "runtime/terminalBatchFlushStarted",
+    "detail": {
+      "sessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "kind": "terminal",
+      "batchId": 1,
+      "revision": 4,
+      "hostFlushStartedAtMs": 1791832130824
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.824Z",
+    "kind": "runtime/terminalBatchReceived",
+    "detail": {
+      "sessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "kind": "agent",
+      "batchId": 1,
+      "afterRevision": 4,
+      "revision": 4,
+      "events": 0,
+      "supervisorEmittedAtMs": 1791832130816,
+      "hostReceivedAtMs": 1791832130824
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.824Z",
+    "kind": "runtime/terminalBatchFlushStarted",
+    "detail": {
+      "sessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "kind": "agent",
+      "batchId": 1,
+      "revision": 4,
+      "hostFlushStartedAtMs": 1791832130824
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.825Z",
+    "kind": "runtime/terminalPagedReadOpened",
+    "detail": {
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "kind": "terminal",
+      "sessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+      "checkpointRevision": 0,
+      "headRevision": 4,
+      "hostCachedEvents": 0
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.825Z",
+    "kind": "runtime/terminalPagedReadOpened",
+    "detail": {
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "kind": "agent",
+      "sessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+      "checkpointRevision": 4,
+      "headRevision": 4,
+      "hostCachedEvents": 0
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.827Z",
+    "kind": "runtime/terminalBatchFlushCompleted",
+    "detail": {
+      "sessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "kind": "terminal",
+      "batchId": 1,
+      "revision": 4,
+      "hostFlushStartedAtMs": 1791832130824,
+      "hostFlushCompletedAtMs": 1791832130827
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.830Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T19:08:50.830Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "0a4500cb6541",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.827Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.831Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T19:08:50.830Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "0a4500cb6541",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.827Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.831Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "0a4500cb6541",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.827Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.831Z",
+    "kind": "runtime/terminalBatchConsumed",
+    "detail": {
+      "sessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "kind": "terminal",
+      "batchId": 1,
+      "revision": 4,
+      "supervisorEmittedAtMs": 1791832130816,
+      "hostReceivedAtMs": 1791832130824,
+      "hostConsumedAtMs": 1791832130831
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.831Z",
+    "kind": "runtime/terminalBatchFlushCompleted",
+    "detail": {
+      "sessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "kind": "agent",
+      "batchId": 1,
+      "revision": 4,
+      "hostFlushStartedAtMs": 1791832130824,
+      "hostFlushCompletedAtMs": 1791832130831
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.834Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T19:08:50.834Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "0a4d2a88b883",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.831Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.834Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T19:08:50.834Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "0a4d2a88b883",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.831Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.834Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "runtime-supervisor-live-snapshot",
+      "coalescedCount": 0,
+      "stateHash": "0a4d2a88b883",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.831Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:50.834Z",
+    "kind": "runtime/terminalBatchConsumed",
+    "detail": {
+      "sessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "kind": "agent",
+      "batchId": 1,
+      "revision": 4,
+      "supervisorEmittedAtMs": 1791832130816,
+      "hostReceivedAtMs": 1791832130824,
+      "hostConsumedAtMs": 1791832130834
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.132Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "dispose",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.133Z",
+    "kind": "surface/disposed",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.147Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.147Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T19:08:51.147Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "0a4d2a88b883",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.831Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.148Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T19:08:51.147Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "0a4d2a88b883",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.831Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.148Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "0a4d2a88b883",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:50.831Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.148Z",
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.148Z",
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.149Z",
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 5
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.343Z",
+    "kind": "runtime/terminalBatchReceived",
+    "detail": {
+      "sessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "kind": "agent",
+      "batchId": 2,
+      "afterRevision": 4,
+      "revision": 5,
+      "events": 1,
+      "supervisorEmittedAtMs": 1791832131343,
+      "hostReceivedAtMs": 1791832131343
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.345Z",
+    "kind": "runtime/terminalAvailablePosted",
+    "detail": {
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "kind": "agent",
+      "executionSessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+      "authorityId": "cb39d8a2-0fcb-413d-a3eb-de1127cc6296",
+      "revision": 5,
+      "surface": "editor",
+      "hostPostedAtMs": 1791832131345,
+      "receiptMode": "legacy"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.345Z",
+    "kind": "runtime/terminalBatchFlushStarted",
+    "detail": {
+      "sessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "kind": "agent",
+      "batchId": 2,
+      "revision": 5,
+      "hostFlushStartedAtMs": 1791832131345
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.345Z",
+    "kind": "runtime/terminalBatchReceived",
+    "detail": {
+      "sessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "kind": "terminal",
+      "batchId": 2,
+      "afterRevision": 4,
+      "revision": 5,
+      "events": 1,
+      "supervisorEmittedAtMs": 1791832131343,
+      "hostReceivedAtMs": 1791832131345
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.345Z",
+    "kind": "runtime/terminalAvailablePosted",
+    "detail": {
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "kind": "terminal",
+      "executionSessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+      "authorityId": "4c8ee347-da6e-4645-b7c2-a8b044cc4e66",
+      "revision": 5,
+      "surface": "editor",
+      "hostPostedAtMs": 1791832131345,
+      "receiptMode": "legacy"
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.345Z",
+    "kind": "runtime/terminalBatchFlushStarted",
+    "detail": {
+      "sessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "kind": "terminal",
+      "batchId": 2,
+      "revision": 5,
+      "hostFlushStartedAtMs": 1791832131345
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.346Z",
+    "kind": "runtime/terminalBatchFlushCompleted",
+    "detail": {
+      "sessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "kind": "agent",
+      "batchId": 2,
+      "revision": 5,
+      "hostFlushStartedAtMs": 1791832131345,
+      "hostFlushCompletedAtMs": 1791832131346
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.346Z",
+    "kind": "runtime/terminalBatchConsumed",
+    "detail": {
+      "sessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "kind": "agent",
+      "batchId": 2,
+      "revision": 5,
+      "supervisorEmittedAtMs": 1791832131343,
+      "hostReceivedAtMs": 1791832131343,
+      "hostConsumedAtMs": 1791832131346
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.347Z",
+    "kind": "runtime/terminalBatchFlushCompleted",
+    "detail": {
+      "sessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "kind": "terminal",
+      "batchId": 2,
+      "revision": 5,
+      "hostFlushStartedAtMs": 1791832131345,
+      "hostFlushCompletedAtMs": 1791832131347
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:51.347Z",
+    "kind": "runtime/terminalBatchConsumed",
+    "detail": {
+      "sessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "kind": "terminal",
+      "batchId": 2,
+      "revision": 5,
+      "supervisorEmittedAtMs": 1791832131343,
+      "hostReceivedAtMs": 1791832131345,
+      "hostConsumedAtMs": 1791832131347
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:53.847Z",
+    "kind": "state/persistDeferred",
+    "detail": {
+      "reason": "live-execution-state",
+      "delayMs": 1500,
+      "coalescedCount": 0,
+      "mode": "deferred",
+      "workspaceStateMode": "skip",
+      "stateHash": "5258c7844fb2",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:53.846Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:53.848Z",
+    "kind": "state/persistDeferred",
+    "detail": {
+      "reason": "live-execution-state",
+      "delayMs": 1500,
+      "coalescedCount": 1,
+      "mode": "deferred",
+      "workspaceStateMode": "skip",
+      "stateHash": "8262e3fe4b49",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:53.847Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:55.444Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-12T19:08:55.444Z",
+      "mode": "deferred",
+      "workspaceStateMode": "skip",
+      "reason": "live-execution-state:timer",
+      "coalescedCount": 1,
+      "stateHash": "8262e3fe4b49",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:53.847Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:55.444Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-12T19:08:55.444Z",
+      "mode": "deferred",
+      "workspaceStateMode": "skip",
+      "reason": "live-execution-state:timer",
+      "coalescedCount": 1,
+      "stateHash": "8262e3fe4b49",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:53.847Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-12T19:08:55.444Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+      "mode": "deferred",
+      "reason": "live-execution-state:timer",
+      "coalescedCount": 1,
+      "stateHash": "8262e3fe4b49",
+      "nodeCount": 3,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-12T19:08:53.847Z",
+      "nodeIds": [
+        "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b"
+      ],
+      "rootGroups": []
+    }
+  }
+]

@@ -1,0 +1,215 @@
+{
+  "localExecutions": [],
+  "activeSurface": "editor",
+  "configuration": {
+    "linkOpenMode": "editorPreview",
+    "terminalShellPath": "/usr/bin/bash",
+    "terminalShellResolutionSource": "default-shell",
+    "terminalInheritEnv": true,
+    "terminalShellArgs": []
+  },
+  "sidebar": {
+    "canvasSurface": "visible",
+    "surfaceLocation": "editor",
+    "configuredSurface": "panel",
+    "runtimePersistenceEnabled": true,
+    "notificationBridgeMode": "system",
+    "enabledAttentionSignals": [
+      "bel",
+      "osc9",
+      "osc777",
+      "agentAbnormalExit",
+      "codexAbnormalOutputText"
+    ],
+    "notificationStrongReminderMode": "both",
+    "agentAbnormalOutputTextNotificationMode": "off",
+    "filesFeatureEnabled": false,
+    "filePresentationMode": "lists",
+    "fileNodeDisplayStyle": "minimal",
+    "fileNodeDisplayMode": "icon-path",
+    "filePathDisplayMode": "basename",
+    "terminalShellConfiguredValue": "default",
+    "terminalShellPath": "/usr/bin/bash",
+    "agentCodexCommand": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+    "agentClaudeCommand": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/missing-agent-provider",
+    "nodeCount": 3,
+    "runningExecutionCount": 2,
+    "workspaceTrusted": true,
+    "creatableKinds": [
+      "agent",
+      "terminal",
+      "note"
+    ],
+    "fileFilters": {
+      "includeGlobs": [],
+      "excludeGlobs": []
+    }
+  },
+  "state": {
+    "version": 1,
+    "updatedAt": "2026-10-12T19:08:53.847Z",
+    "nodes": [
+      {
+        "id": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+        "kind": "agent",
+        "title": "Agent 1",
+        "status": "waiting-input",
+        "summary": ">",
+        "position": {
+          "x": 160,
+          "y": 140
+        },
+        "size": {
+          "width": 560,
+          "height": 430
+        },
+        "metadata": {
+          "agent": {
+            "backend": "node-pty",
+            "lifecycle": "waiting-input",
+            "provider": "codex",
+            "launchPreset": "default",
+            "runtimeKind": "pty-cli",
+            "resumeSupported": true,
+            "resumeStrategy": "fake-provider",
+            "shellPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "cwd": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+            "persistenceMode": "live-runtime",
+            "attachmentState": "attached-live",
+            "liveSession": true,
+            "lastCols": 67,
+            "lastRows": 21,
+            "attentionPending": false,
+            "lastBackendLabel": "Codex",
+            "lastLaunchCommandLine": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort",
+            "runtimeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+            "runtimeOwner": {
+              "schema": 1,
+              "environmentKey": "29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649",
+              "userStorageScopeKey": "a0bf6dc4faaa7dd6f5bebda3f56fb37114b27fb28f2f575ad94cfc253a6d180f",
+              "root": {
+                "kind": "folder",
+                "pathPolicy": "canvas-path-v1",
+                "normalizedPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas"
+              },
+              "generation": "terminal-root-owner-linux-v1"
+            },
+            "resumeSessionId": "31d884c7-0c0f-48b3-987d-d42ff12cc9c7",
+            "resumeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+            "terminalProjectionMode": "terminal-stream-v1",
+            "runtimeSessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+            "recentOutput": "[fake-agent] ready pid=625790 session=31d884c7-0c0f-48b3-987d-d42ff12cc9c7\n> sleep 12\nREAL_REOPEN_AGENT\n[fake-agent] sleeping 12s\n[fake-agent] woke after 12s\n> [fake-agent] REAL_REOPEN_AGENT\n>",
+            "outputSequence": 5
+          }
+        }
+      },
+      {
+        "id": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+        "kind": "terminal",
+        "title": "Terminal 2",
+        "status": "live",
+        "summary": "ziyang01.wang-al@hobot:/home/users/ziyang01.wang-al/projects/dev-session-canvas$",
+        "position": {
+          "x": 780,
+          "y": 140
+        },
+        "size": {
+          "width": 540,
+          "height": 420
+        },
+        "metadata": {
+          "terminal": {
+            "backend": "node-pty",
+            "lifecycle": "live",
+            "shellPath": "/usr/bin/bash",
+            "cwd": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+            "persistenceMode": "live-runtime",
+            "attachmentState": "attached-live",
+            "liveSession": true,
+            "lastCols": 64,
+            "lastRows": 20,
+            "attentionPending": false,
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort",
+            "runtimeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+            "runtimeOwner": {
+              "schema": 1,
+              "environmentKey": "29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649",
+              "userStorageScopeKey": "a0bf6dc4faaa7dd6f5bebda3f56fb37114b27fb28f2f575ad94cfc253a6d180f",
+              "root": {
+                "kind": "folder",
+                "pathPolicy": "canvas-path-v1",
+                "normalizedPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas"
+              },
+              "generation": "terminal-root-owner-linux-v1"
+            },
+            "terminalProjectionMode": "terminal-stream-v1",
+            "runtimeSessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+            "recentOutput": "ziyang01.wang-al@hobot:/home/users/ziyang01.wang-al/projects/dev-session-canvas$ echo REAL_REOPEN_TERMINAL_SLEEPING; sleep 12; echo REAL_REOPEN_TERMINAL\nREAL_REOPEN_TERMINAL_SLEEPING\nREAL_REOPEN_TERMINAL\nziyang01.wang-al@hobot:/home/users/ziyang01.wang-al/projects/dev-session-canvas$",
+            "outputSequence": 5
+          }
+        }
+      },
+      {
+        "id": "terminal-3-e3b52753-cb2e-4703-826a-357834616d0b",
+        "kind": "terminal",
+        "title": "Terminal 3",
+        "status": "closed",
+        "summary": "Terminal session ended.",
+        "position": {
+          "x": 1400,
+          "y": 140
+        },
+        "size": {
+          "width": 540,
+          "height": 420
+        },
+        "metadata": {
+          "terminal": {
+            "backend": "node-pty",
+            "lifecycle": "closed",
+            "shellPath": "/usr/bin/bash",
+            "cwd": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+            "persistenceMode": "snapshot-only",
+            "attachmentState": "history-restored",
+            "liveSession": false,
+            "lastCols": 64,
+            "lastRows": 20,
+            "attentionPending": false,
+            "terminalHistoryDiscarded": true,
+            "lastExitCode": 0,
+            "lastExitMessage": "Terminal session ended."
+          }
+        }
+      }
+    ],
+    "edges": [],
+    "groups": [],
+    "nextGroupSequence": 1,
+    "fileReferences": [],
+    "suppressedFileActivityEdgeIds": [],
+    "suppressedAutomaticFileArtifactNodeIds": []
+  },
+  "surfaceMode": {
+    "editor": "active"
+  },
+  "surfaceReady": {
+    "editor": false,
+    "panel": false
+  },
+  "surfaceLifecycle": {
+    "editor": {
+      "generation": 5,
+      "mode": "active",
+      "ready": false,
+      "bootstrapAck": false
+    },
+    "panel": {
+      "generation": 0,
+      "ready": false,
+      "bootstrapAck": false
+    }
+  }
+}

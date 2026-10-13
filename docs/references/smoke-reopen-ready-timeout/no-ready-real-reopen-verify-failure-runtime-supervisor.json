@@ -1,0 +1,184 @@
+{
+  "observedRootSupervisorProcesses": [
+    {
+      "rootPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+      "pid": 625726
+    }
+  ],
+  "pendingRuntimeSupervisorOperationCount": 0,
+  "bindings": [
+    {
+      "runtimeBackend": "legacy-detached",
+      "runtimeSessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+      "runtimeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+      "nodeId": "terminal-2-3cc60215-e2c7-4bf8-a44f-11294c8c073a",
+      "kind": "terminal"
+    },
+    {
+      "runtimeBackend": "legacy-detached",
+      "runtimeSessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+      "runtimeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+      "nodeId": "agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291",
+      "kind": "agent"
+    }
+  ],
+  "registries": {
+    "legacy-detached": {
+      "exists": true,
+      "registry": {
+        "version": 1,
+        "sessions": [
+          {
+            "sessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+            "kind": "agent",
+            "live": true,
+            "lifecycle": "waiting-input",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort",
+            "resumePhaseActive": false,
+            "shellPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "cwd": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+            "cols": 67,
+            "rows": 21,
+            "scrollback": 1000,
+            "output": "[fake-agent] ready pid=625790 session=31d884c7-0c0f-48b3-987d-d42ff12cc9c7\r\n> sleep 12\r\nREAL_REOPEN_AGENT\r\n[fake-agent] sleeping 12s\r\n[fake-agent] woke after 12s\r\n> [fake-agent] REAL_REOPEN_AGENT\r\n> ",
+            "terminalTitle": null,
+            "outputSequence": 5,
+            "terminalAuthorityId": "cb39d8a2-0fcb-413d-a3eb-de1127cc6296",
+            "terminalRevision": 5,
+            "capabilities": {
+              "terminalCurrentStateV1": true,
+              "terminalReadSettlementV1": true
+            },
+            "displayLabel": "Codex",
+            "launchMode": "start",
+            "provider": "codex",
+            "resumeStrategy": "fake-provider",
+            "resumeSessionId": "31d884c7-0c0f-48b3-987d-d42ff12cc9c7",
+            "resumeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291"
+          },
+          {
+            "sessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+            "kind": "terminal",
+            "live": true,
+            "lifecycle": "live",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort",
+            "resumePhaseActive": false,
+            "shellPath": "/usr/bin/bash",
+            "cwd": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+            "cols": 64,
+            "rows": 20,
+            "scrollback": 1000,
+            "output": "\u001b[?2004hziyang01.wang-al@hobot:/home/users/ziyang01.wang-al/projects/dev-session-canvas$ echo REAL_REOPEN_TERMINAL_SLEEPING; sleep 12; echo REAL_REOPEN_TERMINAL\r\n\u001b[?2004l\rREAL_REOPEN_TERMINAL_SLEEPING\r\nREAL_REOPEN_TERMINAL\r\n\u001b[?2004hziyang01.wang-al@hobot:/home/users/ziyang01.wang-al/projects/dev-session-canvas$ ",
+            "terminalTitle": null,
+            "outputSequence": 5,
+            "terminalAuthorityId": "4c8ee347-da6e-4645-b7c2-a8b044cc4e66",
+            "terminalRevision": 5,
+            "capabilities": {
+              "terminalCurrentStateV1": true,
+              "terminalReadSettlementV1": true
+            },
+            "displayLabel": "/usr/bin/bash",
+            "launchMode": "start"
+          }
+        ]
+      },
+      "entries": [
+        {
+          "runtimeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+          "registryPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+          "exists": false
+        },
+        {
+          "runtimeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+          "registryPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+          "exists": false
+        },
+        {
+          "runtimeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+          "registryPath": "/tmp/dwr-budget-no-ready/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/8db9a2dadbbfa724be6fab6d862545df202d4369f0f7915f08ccda3944aa5cb7/runtime-supervisor-generations/terminal-root-owner-linux-v1/runtime-supervisor/registry.json",
+          "exists": true,
+          "registry": {
+            "version": 1,
+            "sessions": [
+              {
+                "sessionId": "62dc3f6e-4688-484e-bfc9-2381a19c83c5",
+                "kind": "agent",
+                "live": true,
+                "lifecycle": "waiting-input",
+                "runtimeBackend": "legacy-detached",
+                "runtimeGuarantee": "best-effort",
+                "resumePhaseActive": false,
+                "shellPath": "/home/users/ziyang01.wang-al/projects/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+                "cwd": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+                "cols": 67,
+                "rows": 21,
+                "scrollback": 1000,
+                "output": "[fake-agent] ready pid=625790 session=31d884c7-0c0f-48b3-987d-d42ff12cc9c7\r\n> sleep 12\r\nREAL_REOPEN_AGENT\r\n[fake-agent] sleeping 12s\r\n[fake-agent] woke after 12s\r\n> [fake-agent] REAL_REOPEN_AGENT\r\n> ",
+                "terminalTitle": null,
+                "outputSequence": 5,
+                "terminalAuthorityId": "cb39d8a2-0fcb-413d-a3eb-de1127cc6296",
+                "terminalRevision": 5,
+                "capabilities": {
+                  "terminalCurrentStateV1": true,
+                  "terminalReadSettlementV1": true
+                },
+                "displayLabel": "Codex",
+                "launchMode": "start",
+                "provider": "codex",
+                "resumeStrategy": "fake-provider",
+                "resumeSessionId": "31d884c7-0c0f-48b3-987d-d42ff12cc9c7",
+                "resumeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-e82fde06-21c0-403e-bfe2-6b88b9433291"
+              },
+              {
+                "sessionId": "4bf3c35e-3154-4f0f-9c8f-5a26674a9d2a",
+                "kind": "terminal",
+                "live": true,
+                "lifecycle": "live",
+                "runtimeBackend": "legacy-detached",
+                "runtimeGuarantee": "best-effort",
+                "resumePhaseActive": false,
+                "shellPath": "/usr/bin/bash",
+                "cwd": "/home/users/ziyang01.wang-al/projects/dev-session-canvas",
+                "cols": 64,
+                "rows": 20,
+                "scrollback": 1000,
+                "output": "\u001b[?2004hziyang01.wang-al@hobot:/home/users/ziyang01.wang-al/projects/dev-session-canvas$ echo REAL_REOPEN_TERMINAL_SLEEPING; sleep 12; echo REAL_REOPEN_TERMINAL\r\n\u001b[?2004l\rREAL_REOPEN_TERMINAL_SLEEPING\r\nREAL_REOPEN_TERMINAL\r\n\u001b[?2004hziyang01.wang-al@hobot:/home/users/ziyang01.wang-al/projects/dev-session-canvas$ ",
+                "terminalTitle": null,
+                "outputSequence": 5,
+                "terminalAuthorityId": "4c8ee347-da6e-4645-b7c2-a8b044cc4e66",
+                "terminalRevision": 5,
+                "capabilities": {
+                  "terminalCurrentStateV1": true,
+                  "terminalReadSettlementV1": true
+                },
+                "displayLabel": "/usr/bin/bash",
+                "launchMode": "start"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "systemd-user": {
+      "exists": false,
+      "registry": {
+        "version": 1,
+        "sessions": []
+      },
+      "entries": [
+        {
+          "runtimeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas",
+          "registryPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+          "exists": false
+        },
+        {
+          "runtimeStoragePath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+          "registryPath": "/tmp/dwr-budget-no-ready/user-data/User/workspaceStorage/1e26493c757362a386dc0bf0a0e7db86/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+          "exists": false
+        }
+      ]
+    }
+  }
+}
