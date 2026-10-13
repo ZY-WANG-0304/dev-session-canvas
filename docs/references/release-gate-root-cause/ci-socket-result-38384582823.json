@@ -1,0 +1,15 @@
+{
+  "run": 38384582823,
+  "job": 115253085935,
+  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38384582823",
+  "diagnosticHead": "dcd28240aec66cc975127b3d01f5a0a5a72b00f7",
+  "input": "7e659ce6af2f713a64031eeb4daacf705977e851",
+  "diagnostic_only": true,
+  "exitCode": 0,
+  "summaryArtifact": 11804876606,
+  "summarySha256": "0d80b6e01e5c2982c5843b53da1b9ed5e0e04785c68e97efabe0b9305388f973",
+  "log": "/tmp/pr327-rca-ci-socket-38384582823.log",
+  "logSha256": "4d833ef2937bba88863923e374247e9f7c4383ffcd6784bfc5e1fc1c9f378c06",
+  "logBytes": 28848,
+  "interpretation": "Fresh real CI directory: absent -> uid1001/mode0755 retained by original 17 tests -> original production check rejected -> chmod0700 same inode -> check accepted. Does not replace formal release gate failure."
+}

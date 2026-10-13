@@ -764,8 +764,10 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 用户授权修正后，测试精确断言 `execution/deleteBoundary` 的 `runtime-delete-requested` 阶段、kind、sessionId 和 backendKind，不泛化过滤诊断。root 缺失 owner 的拒绝用例单独校验请求诊断及零派发，然后清空收集器再验证正常完成。原完整绑定相等、owner 传递、保存先于删除与无终态历史断言全部保留；额外 completedCleanupFailed 等诊断仍使测试失败。Node 22 下完整 `test:runtime-completed-history` 通过，覆盖 Agent/Terminal、legacy/root 及后续 reader 退役场景；只修改测试与文档，没有修改生产删除行为，也不宣称全量 npm test 通过。
 
-## PR327 最新发布门禁两个首败调查（2026-10-13）
+## PR327 发布门禁两个首败：已定位、修复待确认（2026-10-13）
 
-原head42d87b3d/main22803dd8，GitHub预合并7e659ce6与本地ec4afba3树相同。本地local-links-and-stop的缺失文件搜索9592ms接近10000ms等待；原诊断helper在异步取回跨deadline时漏检末批精确匹配事件，受控五例确认。产品链接实际打开，独立原场景与CI通过不改写聚合首败。建议修复时明确末次观察与deadline的契约，覆盖首读/末读/负例，不扩预算。
+原head42d87b3d/main22803dd8，GitHub预合并7e659ce6与本地ec4afba3树相同。本地local-links-and-stop缺失文件搜索9592ms接近10000ms等待；原诊断helper在取回跨deadline时漏检末批精确匹配事件，原Host时序及受控五例确认。建议明确末次观察与deadline契约、覆盖首读/末读/负例，不扩预算。搜索--no-ignore范围已证，但历史文件数/冷缓存/负载贡献未量化。
 
-CI runtime-checkpoint-refresh基础Agent启动返回Root runtime preparation or submission did not complete，页面ready且无execution；底层catch异常未保留。已排除systemd选择和Linuxmanifest/binary差异，同固定输入独立checkpoint通过；实际异常仍需CI阶段取证。发布门禁仍阻塞，不把未知降级为普通非阻塞风险。独立调查设计docs/design-docs/release-gate-root-cause.md与计划docs/exec-plans/active/release-gate-root-cause.md；专用workflow只在临时checkout记录阶段和错误，固定原输入/资产、预算/断言不变，不作为正式修复或最新release gate。
+CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smoke-remote-host.mjs静默socket测试污染真实/tmp/dsc-root-<uid>目录：未指定mode创建、未清理父目录。固定输入完整诊断38382436173捕获原生产socket-directory私有权限拒绝且尚未native-assets；原17测试私有目录两组对照与干净CI38384582823直接stat确认absent→当前uid/0755被拒绝、同inode0700接受。本机已有0700掩盖污染。应让测试使用自有socket目录并自行清理，保留正式地址默认值、原deadline/17用例与生产0700要求；不能通过chmod共享目录或放宽生产检查修复门禁。
+
+正式修复和最新预合并全量门禁仍为发布阻塞，PR327草稿/head不变。通用catch与失败工件缺少有界错误阶段是可观测性后续项，错误类别不得泄露敏感路径/环境。调查设计docs/design-docs/release-gate-root-cause.md与完成计划docs/exec-plans/completed/release-gate-root-cause.md记录run、input、摘要/hash和残余限制；两个临时workflow已归档并移除自动入口。受控因果对照通过不等于完整release:verify通过，历史未记录的stat不补造。
