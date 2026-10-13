@@ -1,7 +1,7 @@
 ---
 title: 从最新主线重新准备 0.26.1
 decision_status: 已选定
-validation_status: 验证失败
+validation_status: 验证中
 domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
@@ -25,7 +25,13 @@ scripts/release/release-preflight.mjs::runFullVerification 对本版运行标准
 
 Linux x64 验证使用 Node22.23.3、VS Code1.141.0、fake Agent 与原生 PTY，六目标资产复用须通过默认 build 的源/依赖/二进制 hash 校验。暖 Chromium 缓存先按 workflow 准备，不称为冷 OS。默认 npm 安装、不设场景 filter、不更改原断言、截图或重试。命令保存 UTC 时间、真实 exit 与日志 hash；失败后独立对照不能追认为首轮或聚合通过。
 
-## 验证状态
+## 当前验证输入
+
+PR #328 已于2026-10-13合入main `22803dd890855ffbe7620538b04940def097171b`。PR #327已rebase到该主线，SSH门禁由已合入的正式runner串行验收旧Host退出与原身份保留，第三终端按独立私有信号完成，原Supervisor/session与真实resize断言保留。该修复没有修改产品退出行为、原超时或本版用户release notes。设计与修复证据见 `remote-host-exit-investigation.md`。
+
+本轮以最新PR head及上述main生成新的临时预合并输入，重新执行标准 `release:preflight`/`release:verify`，验证结果在PR #327描述、checks及保留的独立日志中关联实际输入。当前状态“验证中”包含最新head的线上门禁与review，下面的历史SSH首败不作为新输入结论；上一轮修复临时预合并通过也不代证本轮发布门禁。版本与契约仅保持静态产品范围，不回写测试结果。
+
+## 历史验证状态（PR328合入前）
 
 已提交准备 head `e123d1e73214fc0f79fc0bba508447331d3f7b49`，基准为 `ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b`；验证的临时预合并 commit 为 `eba53a28074cbcc49958f7845ebe5b04411a531a`。基准是准备 head 的祖先，合并树等于该 head tree；旧 Git 不支持 merge-tree --write-tree，采用 commit-tree 明确指定两个父提交。
 
@@ -58,3 +64,5 @@ Linux x64 验证使用 Node22.23.3、VS Code1.141.0、fake Agent 与原生 PTY�
 最终再次 fetch 确认 origin/main 仍为 ea0c9b19，准备分支保留其祖先关系。交付为新草稿发布准备 PR：静态输入已完成，独立 Webview/安装包/notifier 均通过，但完整 verify 的 SSH 首败仍阻断。后续应单独修复或确认远端关闭前提，再在最新 PR 预合并结果重跑完整 release:verify；未通过不得合并/发布。没有操作 PR #326、目标分支或任何 release tag。
 
 本次交付：[草稿PR #327](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/327)，分支release-0-26-1-refresh，目标main。PR保持draft，非草稿release workflow不会启动；完整verify失败的阻塞没有撤销。
+
+2026-10-13修订：PR328已合入，发布分支追赶最新main；正式双状态门禁进入本版新预合并验证，历史首败保留，最新结果与实际输入在PR327关联。
