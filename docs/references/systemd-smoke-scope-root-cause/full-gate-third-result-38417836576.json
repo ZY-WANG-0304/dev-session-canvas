@@ -1,0 +1,45 @@
+{
+  "temporary_combination_only": true,
+  "run": "38417836576",
+  "workflow_head": "d262c02c5b15a4a1398f52b0365de5ad9ad8e1c4",
+  "input": "442822982f802f61cb0a4c8e6a4c103655f4ba50",
+  "fix_head": "11d8bf4445d94752eced09d4ad9fd9d553e8e1ad",
+  "release_head": "42d87b3d59d3147199a3fef9f2ee0b40de4534cf",
+  "native_assets": "success",
+  "steps": {
+    "combined-preflight": {
+      "exit": 0,
+      "log_bytes": 160,
+      "log_sha256": "fa01f229bf38f90968a26d26441a2391a42d34ac2f40702bb36b292749b4e77e"
+    },
+    "combined-release-verify": {
+      "exit": 1,
+      "log_bytes": 12286934,
+      "log_sha256": "a9d58d913c54c7901dc2c4c4e914de8fe11ea08143412e05b0015534d8f5c499"
+    }
+  },
+  "tree": "3077dcde3a290cb20fa43ea62eba8d5fd8989d61",
+  "actions_job": 115369764549,
+  "actions_job_conclusion": "failure",
+  "first_failure": "Webview canvas-shell baseline screenshot:4319 differing pixels;425 passed/1 failed",
+  "passed": [
+    "all six same-input native assets",
+    "static preflight",
+    "unfiltered source smoke",
+    "fake systemd setup/verify",
+    "real unavailable fallback setup/verify and zero systemctl",
+    "SSH exit and retain"
+  ],
+  "not_reached": [
+    "clean-checkout npm ci/VSIX packaging/install smoke"
+  ],
+  "evidence_excerpt": [
+    "15:19:21.5604215Z Fake systemd-user real window reopen smoke passed.",
+    "15:20:15.2646046Z Systemd unavailable before submission real window reopen smoke passed.",
+    "15:20:15.2652888Z Systemd unavailable fallback did not submit any systemctl command.",
+    "15:21:18.7451741Z Remote SSH real window reopen exit smoke passed.",
+    "15:22:21.0327954Z Remote SSH real window reopen retain smoke passed.",
+    "15:32:11.8409217Z 4319 pixels differ; canvas-shell-baseline.png",
+    "15:32:11.8476677Z 425 passed (9.7m)"
+  ]
+}

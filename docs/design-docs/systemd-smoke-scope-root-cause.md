@@ -59,7 +59,7 @@ docs/exec-plans/completed/systemd-smoke-scope-root-cause.md覆盖源码跟踪、
 84项原scope函数受控用例（默认及shim各40项，另4项依赖选择/非法路径）、12项实际launcher/摘要不匹配/非法回执/退出或信号失败/超时及子进程收口/场景作用域、26项原准备流程、runner env、typecheck及指定既有六平台资产build通过。原nonce和摘要校验真实执行，超时归unknown且自有子进程消失。记录见repair-local-checks.json；完整临时组合验证尚未完成，不将本地通过写为完整发布通过。
 
 
-新增scope回归在原main22803dd8源码私有副本exit1：默认真实命令用例通过后，新增shim命令断言明确拒绝仍执行/usr/bin/systemd-run的旧实现。记录见repair-baseline-regression.json。临时组合输入dc5178ee41bc1dda3d370a24923559d683eac727（修复40364a85加发布42d87b3d）/tree79bd256b，run38412908952进行中；永久修复PR不包含临时自动入口。
+新增scope回归在原main22803dd8源码私有副本exit1：默认真实命令用例通过后，新增shim命令断言明确拒绝仍执行/usr/bin/systemd-run的旧实现。记录见repair-baseline-regression.json。临时组合输入dc5178ee41bc1dda3d370a24923559d683eac727（修复40364a85加发布42d87b3d）/tree79bd256b，run38412908952失败于后续fallback短路径夹具，原fake已通过；永久修复PR不包含临时自动入口。
 
 
 ## 完整门禁发现的 fallback 路径夹具缺陷与补齐
@@ -71,4 +71,17 @@ docs/exec-plans/completed/systemd-smoke-scope-root-cause.md覆盖源码跟踪、
 临时workflow修正失败时exit标记收集：显式关闭bash errexit，保留pipefail并立即保存PIPESTATUS[0]，最后按原非零退出。原run marker null保留，以Actions job/log的实际exit1解释，不补造历史marker。
 
 
-第二轮run38414258709也通过fake systemd原两阶段，14:52:49Z复现相同fallback IPC路径警告/EINVAL，证据full-gate-second-result-38414258709.json；新长路径回归对原main源函数exit1，见fallback-path-baseline-regression.json。最新第三轮44282298/run38417836576包含全部probe/路径修复，正在完整验证；源码hash与workflow见repair-combined-input.json和full-combined-gate.workflow.yml。
+第二轮run38414258709也通过fake systemd原两阶段，14:52:49Z复现相同fallback IPC路径警告/EINVAL，证据full-gate-second-result-38414258709.json；新长路径回归对原main源函数exit1，见fallback-path-baseline-regression.json。第三轮44282298/run38417836576包含全部probe/路径修复，systemd/fallback/no-submit及SSH退出/保留通过，Webview425/426，首败为基线截图4319像素差异，clean-checkout未触达；源码hash与workflow见repair-combined-input.json和full-combined-gate.workflow.yml。
+
+
+## 截图字体依赖定位及正式夹具方案
+
+同一44282298输入，干净CI的原截图断言在38423640011和38424281988稳定复现4319像素差异，本地原断言通过。实际diff集中于中文文字，节点几何、边框和英文保持；CI Ubuntu24.04仅WenQuanYi/Unifont中文字体，无Noto CJK。本地基线环境使用Noto Sans CJK（fonts-noto-cjk 20220127）。38424638753只补装CI的fonts-noto-cjk，差异降为24像素，仍失败；不能将此对照写成通过或直接放宽容差。
+
+正式夹具选择在Linux基线截图用例加载随仓库固定的Noto Sans CJK简体中文Regular字符子集，保留SIL OFL许可、原文件hash和生成方式。仅声明该场景实际中文字符的unicode-range，英文仍使用原Segoe UI/sans-serif；只在该截图用例注入且明确等待Regular字体加载。其他截图/交互、生产CSS和字体注入均不改变。相比依赖ubuntu-latest系统字体或放宽容差，固定原基线字体可维持截图断言意义；子集避免引入完整约19MiB字体。原PNG、timeout5000及像素容差不改，必须先验证本地原基线和干净CI。若对照未通过，继续定位，不追认修复成功。
+
+本地固定Regular/Bold曾产生186像素差异，集中于600字重中文；只保留原Regular及浏览器合成字重后，原PNG严格断言通过。该结果限定本地，干净CI继续验证，不将实际Bold字体误当作基线600字重的回退行为。
+
+固定字体CI38425793707仍24像素失败；同源码输入71b6bbcd、同Chromium147.0.7727.15/1217、只将runner换为Ubuntu22.04的38426201759，原严格截图通过。确认既有PNG的基线环境依赖Ubuntu22.04及Noto Regular回退，ubuntu-latest24.04并非等价渲染环境；未断言FreeType或某个系统库是24像素差异的具体实现原因。正式将release-preflight的verify-release-contract和publish-marketplace-release的prepare固定ubuntu-22.04，与固定字符字体共同保障前置验证及tag验证同环境。六平台native构建及其他jobs不改。升级视觉基线OS应作为显式迁移复核，不能隐式跟随latest。
+
+第四轮完整组合32ec277b（修复605ec4ac及发布42d87b3d）/run38426726365重建同输入六平台native资产，原unfiltered release:preflight/release:verify进行中。最新源文件hash及先前三轮结果见repair-combined-input.json；最终结果仍待验。

@@ -812,3 +812,7 @@ CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smo
 
 
 集中修复接续：首轮38412908952已通过原fake systemd两阶段；fallback启动前VSCode因空XDG_RUNTIME_DIR选择129字节user-data IPC路径，超Linux107字节并listen EINVAL。PR329继续补齐fallback短user-data，不改空bus、真实probe、legacy或零提交断言；完整门禁仍失败，SSH/Webview/VSIX未触达。证据与正式方案见systemd-smoke-scope-root-cause.md。
+
+第三轮44282298/run38417836576已过systemd/fallback零提交/SSH退出保留，Webview425/426首败4319像素字体差异；clean-checkout未触达。CI系统Noto对照38424638753仍24像素失败；PR329固定原基线Regular中文字体子集，仅Linux基线用例使用，原PNG/预算/像素断言保持。本地原断言通过，干净CI和最终组合完整结果仍待验，详见systemd-smoke-scope-root-cause.md。
+
+截图单变量结论：固定字体Ubuntu24.04仍24像素；同输入、同Chromium切22.04/run38426201759严格断言通过，正式preflight和tag prepare固定22.04。原失败证据保留，最终同输入六平台+完整release门禁重跑中；不将截图单项通过当完整发布通过。

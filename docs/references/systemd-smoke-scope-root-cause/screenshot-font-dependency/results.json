@@ -1,0 +1,55 @@
+{
+  "input": "442822982f802f61cb0a4c8e6a4c103655f4ba50",
+  "baseline_png_changed": false,
+  "assertion_tolerance_or_timeout_changed": false,
+  "original_ci": {
+    "run": 38424281988,
+    "differing_pixels": 4319,
+    "result": "failure"
+  },
+  "system_font_control": {
+    "run": 38424638753,
+    "only_change": "install fonts-noto-cjk",
+    "differing_pixels": 24,
+    "result": "failure"
+  },
+  "fixed_font_local": {
+    "source_commit": "a8acdefd02d0b1523788f3e416ca99e24996efaa",
+    "result": "original PNG strict assertion passed; regular only",
+    "regular_and_bold_candidate": "186 differing pixels; rejected"
+  },
+  "ci_validation": "fixed font plus Ubuntu22.04 focused control passed; final complete gate pending",
+  "evidence_sha256": {
+    "38425793707-fonts.txt": "2ccd82ff4c4fd7ebe98131258b5b6debce1036860a15f295bc6bda4d168a680a",
+    "38425793707-canvas-shell-baseline-diff.png": "6c5212a5fa9a17cd224b772b9b39af8cc49da9edd7c9c85f3f102df709199fc0",
+    "fixed-font-os-control.workflow.yml": "72399758fc9d8d14e3182441c3eb44588ca460e5eb6158dfe96ab113b9ff9f92",
+    "38424281988-canvas-shell-baseline-diff.png": "b26d0d1e15d0e40fc951783e954a5932044b4d4fa73c22d9edae7627e7d6b719",
+    "38424638753-error-context.md": "354810e847135c95b466af7acd0e76d8add84d983f1ad1d46f723ce4eac65bab",
+    "38424638753-fonts.txt": "f0c631911a394620897850db20aa840ca937a4b63a3efaa1981174da7e82f292",
+    "38426201759.log": "2bc8677bf7a41052a553f1ad2954eddb7e93c519e354976692a92bed6be7f967",
+    "38426201759-fonts.txt": "b84061c353625afd80fdaa0726fcef81a7c1b7678f9ddebb29b0fea6f12c10cf",
+    "38424281988-fonts.txt": "2ccd82ff4c4fd7ebe98131258b5b6debce1036860a15f295bc6bda4d168a680a",
+    "38424638753-canvas-shell-baseline-actual.png": "918e092ad73b8142ee8a1fef638fd5d8f15191dfbe4d2cc3b48e0f164967e367",
+    "38425793707-error-context.md": "1afc39fe76a088c71764dfda7c7af4c8c759cd613a0be0ca02849c2d9affa095",
+    "38425793707-canvas-shell-baseline-actual.png": "918e092ad73b8142ee8a1fef638fd5d8f15191dfbe4d2cc3b48e0f164967e367",
+    "38424281988-canvas-shell-baseline-actual.png": "a5b6f014e1627311c1434712f479001cc4e0dffb7beef23b1e2cc7c05c116323",
+    "38424281988-error-context.md": "3f5390100fcde6c4ccafcb6163ad3319b166ba39e3a52ae50a27e8d06883e727",
+    "38424638753-canvas-shell-baseline-diff.png": "6c5212a5fa9a17cd224b772b9b39af8cc49da9edd7c9c85f3f102df709199fc0"
+  },
+  "fixed_font_ci": {
+    "run": 38425793707,
+    "input": "71b6bbcd922bd33b566f4a51331ec0e85e77682d",
+    "browser": "147.0.7727.15/chromium1217, same as local",
+    "os": "Ubuntu24.04",
+    "result": "failure",
+    "differing_pixels": 24
+  },
+  "fixed_font_ubuntu22_control": {
+    "run": 38426201759,
+    "input": "71b6bbcd922bd33b566f4a51331ec0e85e77682d",
+    "only_change_from_fixed_font_ci": "ubuntu-22.04 runner",
+    "result": "original strict screenshot passed",
+    "native_asset_input_reused_for_focused_control_only": "442822982f802f61cb0a4c8e6a4c103655f4ba50"
+  },
+  "original_png_sha256": "f3797df14a70890625c12f5c21d6bce3e50dda6cd5181de869eddbfb351e8e9e"
+}

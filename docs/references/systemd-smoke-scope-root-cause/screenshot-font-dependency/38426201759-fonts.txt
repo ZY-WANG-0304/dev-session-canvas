@@ -1,0 +1,20 @@
+DejaVuSans.ttf: "DejaVu Sans" "Book"
+DejaVuSans.ttf: "DejaVu Sans" "Book"
+DejaVuSans.ttf: "DejaVu Sans" "Book"
+DejaVuSans.ttf: "DejaVu Sans" "Book"
+Unifont
+WenQuanYi Zen Hei Mono,文泉驛等寬正黑,文泉驿等宽正黑
+WenQuanYi Zen Hei Sharp,文泉驛點陣正黑,文泉驿点阵正黑
+WenQuanYi Zen Hei,文泉驛正黑,文泉驿正黑
+PRETTY_NAME="Ubuntu 22.04.5 LTS"
+NAME="Ubuntu"
+VERSION_ID="22.04"
+VERSION="22.04.5 LTS (Jammy Jellyfish)"
+VERSION_CODENAME=jammy
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=jammy

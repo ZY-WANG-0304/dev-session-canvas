@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/completed/debug-automation-next-six.md
   - docs/exec-plans/completed/remote-ssh-runtime-persistence-automation.md
   - docs/exec-plans/completed/packaged-smoke-reload-lifecycle.md
-updated_at: 2026-10-11
+updated_at: 2026-10-13
 ---
 
 # 开发调试与自动化验证
@@ -143,6 +143,7 @@ updated_at: 2026-10-11
 ### 7.2 适用范围与边界
 
 - 本方案定义的是“仓库源码开发态”的 F5 入口、repo-local 自动化验证和打包产物最小闭环，不等同于 Marketplace 正式安装矩阵或发布后用户态运维方案。
+- Linux基线截图固定原Noto CJK Regular字符字体，限定该用例加载，英文/其他用例/生产字体保持原行为；发布preflight及tag prepare统一Ubuntu22.04。字体及OS对照保留原PNG和严格断言，证据见 `systemd-smoke-scope-root-cause.md`。
 - `test:smoke` 覆盖真实 VS Code Development Host 与远端 runtime persistence 主路径；`test:webview` 只覆盖 Webview bundle 自身的交互与截图，不替代宿主级验证。
 - `test:vsix-smoke` 验证的是“当前 VSIX 打包产物是否能独立启动并通过 trusted smoke”，不是三平台真实安装、升级、卸载或 Marketplace 分发闭环。
 - `Remote - SSH` 下的 F5 仍要求先在本机 UI 侧准备好专用 debug profile；远端 notifier 联调则额外要求提供本机 `localRepoRoot`，用于注入 UI-side notifier 源码目录。

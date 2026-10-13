@@ -12,19 +12,19 @@ jobs:
   native-assets:
     uses: ./.github/workflows/runtime-execution-assets.yml
     with:
-      input_ref: 442822982f802f61cb0a4c8e6a4c103655f4ba50
+      input_ref: 32ec277bd7eb1d177fb9f188a8425e62b36e8f79
 
   verify-release:
     name: Full combined release gate
     needs: native-assets
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
       DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/tm-${{ github.run_id }}
-      DSC_COMBINED_INPUT: 442822982f802f61cb0a4c8e6a4c103655f4ba50
-      DSC_FIX_INPUT: 11d8bf4445d94752eced09d4ad9fd9d553e8e1ad
+      DSC_COMBINED_INPUT: 32ec277bd7eb1d177fb9f188a8425e62b36e8f79
+      DSC_FIX_INPUT: 605ec4acba16acf258dad274c4211aa1fe652d6c
       DSC_RELEASE_INPUT: 42d87b3d59d3147199a3fef9f2ee0b40de4534cf
     steps:
       - name: Require successful six-platform assets
@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: 442822982f802f61cb0a4c8e6a4c103655f4ba50
+          ref: 32ec277bd7eb1d177fb9f188a8425e62b36e8f79
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -96,4 +96,16 @@ jobs:
           name: combined-release-result-${{ github.run_id }}
           path: ${{ runner.temp }}/combined-release-result.json
           if-no-files-found: error
+          retention-days: 14
+      - name: Upload bounded failure visuals
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-release-failure-${{ github.run_id }}
+          path: |
+            .debug/playwright/results/**/canvas-shell-baseline-actual.png
+            .debug/playwright/results/**/canvas-shell-baseline-diff.png
+            .debug/playwright/results/**/error-context.md
+          include-hidden-files: true
+          if-no-files-found: ignore
           retention-days: 14

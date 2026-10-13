@@ -1,14 +1,14 @@
 {
   "temporary_branch": "release-0261-combined-gate-temp",
   "no_pr": true,
-  "run": 38417836576,
-  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38417836576",
+  "run": 38426726365,
+  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38426726365",
   "base": "22803dd890855ffbe7620538b04940def097171b",
-  "fix_input": "11d8bf4445d94752eced09d4ad9fd9d553e8e1ad",
+  "fix_input": "605ec4acba16acf258dad274c4211aa1fe652d6c",
   "release_input": "42d87b3d59d3147199a3fef9f2ee0b40de4534cf",
-  "combined_input": "442822982f802f61cb0a4c8e6a4c103655f4ba50",
-  "tree": "3077dcde3a290cb20fa43ea62eba8d5fd8989d61",
-  "workflow_head": "d262c02c5b15a4a1398f52b0365de5ad9ad8e1c4",
+  "combined_input": "32ec277bd7eb1d177fb9f188a8425e62b36e8f79",
+  "tree": "8a68e17121c3ddb8c7d3c00f98255059529d17aa",
+  "workflow_head": "fbbc62c100b2e77f75b761df70fd64e7af377e0f",
   "status": "in_progress",
   "conclusion": null,
   "scope": "same immutable input for all six native assets and unfiltered release:preflight/release:verify; does not replace latest PR327 premerge gate after fix merge",
@@ -47,6 +47,32 @@
       "first_failure": "fallback VSCode startup IPC path exceeds Unix socket limit; scope fixture already passed",
       "actions_job": 115357653430,
       "actual_release_exit_from_actions_log": 1
+    },
+    {
+      "temporary_branch": "release-0261-combined-gate-temp",
+      "no_pr": true,
+      "run": 38417836576,
+      "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38417836576",
+      "base": "22803dd890855ffbe7620538b04940def097171b",
+      "fix_input": "11d8bf4445d94752eced09d4ad9fd9d553e8e1ad",
+      "release_input": "42d87b3d59d3147199a3fef9f2ee0b40de4534cf",
+      "combined_input": "442822982f802f61cb0a4c8e6a4c103655f4ba50",
+      "tree": "3077dcde3a290cb20fa43ea62eba8d5fd8989d61",
+      "workflow_head": "d262c02c5b15a4a1398f52b0365de5ad9ad8e1c4",
+      "status": "completed",
+      "conclusion": "failure",
+      "scope": "same immutable input for all six native assets and unfiltered release:preflight/release:verify; does not replace latest PR327 premerge gate after fix merge",
+      "tested_source_sha256": {
+        "extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts": "8a9355a332698bbbb728a09a0d47b71a516708c1583e093357b7b123b34765da",
+        "scripts/smoke/run-vscode-smoke.mjs": "a5cbbcbe31d7011f73d3833b9851fc5e66432ac7c31d91940cbdb45bc83b64dd",
+        "scripts/smoke/vscode-smoke-runner.mjs": "cc482a109444558c56d53b84d36ba4c47edeb342f497af7908ad97a0d95a9307",
+        "tests/vscode-smoke/fixtures/fake-systemd/systemd-run.cjs": "27caaaf4f9f51b76ad0d09c0fc0615118a76362c6fe71c1aa4725cafad3787d8",
+        "scripts/test/test-runtime-systemd-environment.mjs": "8bd2c02aa3ebc02a0322faf373e1a9dba562d70a844f646d8c4e532edf40ee5e",
+        "scripts/test/test-smoke-systemd-probe.mjs": "9cd5d9974a3ef232d2ad63b8d0905d41165a37f5a6a8e13e7209ec561925529c",
+        "scripts/test/test-vscode-smoke-runner-env.mjs": "1eaef59ca251309e8b44a9c5eecd8e78f579d74ea9530d2a5c8b39ed6c9439ea"
+      },
+      "result_file": "full-gate-third-result-38417836576.json",
+      "first_failure": "Webview canvas-shell baseline screenshot:4319 differing pixels;425 passed/1 failed"
     }
   ],
   "tested_source_sha256": {
@@ -56,6 +82,10 @@
     "tests/vscode-smoke/fixtures/fake-systemd/systemd-run.cjs": "27caaaf4f9f51b76ad0d09c0fc0615118a76362c6fe71c1aa4725cafad3787d8",
     "scripts/test/test-runtime-systemd-environment.mjs": "8bd2c02aa3ebc02a0322faf373e1a9dba562d70a844f646d8c4e532edf40ee5e",
     "scripts/test/test-smoke-systemd-probe.mjs": "9cd5d9974a3ef232d2ad63b8d0905d41165a37f5a6a8e13e7209ec561925529c",
-    "scripts/test/test-vscode-smoke-runner-env.mjs": "1eaef59ca251309e8b44a9c5eecd8e78f579d74ea9530d2a5c8b39ed6c9439ea"
+    "scripts/test/test-vscode-smoke-runner-env.mjs": "1eaef59ca251309e8b44a9c5eecd8e78f579d74ea9530d2a5c8b39ed6c9439ea",
+    "tests/playwright/webview-harness.spec.mjs": "187afbcb8d8480b42ddf0c884362f889d2d8fe26b44ceb821a023dec6b7606cc",
+    "tests/playwright/fixtures/screenshot-fonts/cjk-regular.woff": "63150de01cec9d99d076b89637aab33ef3098ffa81c1cddd44aa4b283c0bc4f2",
+    ".github/workflows/release-preflight.yml": "2987f87b36cb713ac1359e58f84782484e0090d2dd0c5b858cea2b1cc4cbbad3",
+    ".github/workflows/publish-marketplace-release.yml": "4e65d70ee17de100a237d09098e72bca3f85f7e66544f32a67afa90fe940713c"
   }
 }

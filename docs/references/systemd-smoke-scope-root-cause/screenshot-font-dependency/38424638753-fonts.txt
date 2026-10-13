@@ -1,0 +1,38 @@
+DejaVuSans.ttf: "DejaVu Sans" "Book"
+NotoSansCJK-Regular.ttc: "Noto Sans CJK SC" "Regular"
+DejaVuSans.ttf: "DejaVu Sans" "Book"
+DejaVuSans.ttf: "DejaVu Sans" "Book"
+Noto Sans CJK HK
+Noto Sans CJK JP
+Noto Sans CJK KR
+Noto Sans CJK SC
+Noto Sans CJK TC
+Noto Sans Mono CJK HK
+Noto Sans Mono CJK JP
+Noto Sans Mono CJK KR
+Noto Sans Mono CJK SC
+Noto Sans Mono CJK TC
+Noto Serif CJK HK
+Noto Serif CJK JP
+Noto Serif CJK KR
+Noto Serif CJK SC
+Noto Serif CJK TC
+Unifont
+Unifont Sample
+Unifont\-JP
+WenQuanYi Zen Hei Mono,文泉驛等寬正黑,文泉驿等宽正黑
+WenQuanYi Zen Hei Sharp,文泉驛點陣正黑,文泉驿点阵正黑
+WenQuanYi Zen Hei,文泉驛正黑,文泉驿正黑
+PRETTY_NAME="Ubuntu 24.04.5 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.5 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
