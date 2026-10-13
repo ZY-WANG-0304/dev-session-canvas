@@ -976,6 +976,16 @@ PR336 已接续实现原绑定回调结算、旧 workspace 保存代次和失败
 
 ## 0.26.1 重新准备的验证与用户边界（2026-10-13）
 
-本次从 ea0c9b19 主线重建发布输入，旧 PR #313 已舍弃；过程和结果见 docs/design-docs/release-0-26-1-refresh.md。标准完整 release:verify 尚待本版本执行，0.26.0 历史授权不得代用。此前主线独立 npm ci 的 Wrangler/esbuild ETXTBSY 具体写者未确认，前台生命周期脚本对照通过仅是环境证据；下一正式验证若复现，采集写者与生命周期并发，再决定 PR/tag 两条安装链路是否需要同一调整，不跳过脚本或自动豁免。
+本次从 ea0c9b19 主线重建发布输入，旧 PR #313 已舍弃；过程和结果见 docs/design-docs/release-0-26-1-refresh.md。标准完整 release:verify 已执行并在 localhost SSH 首败，结果见下节；0.26.0 历史授权不得代用。此前主线独立 npm ci 的 Wrangler/esbuild ETXTBSY 具体写者未确认，前台生命周期脚本对照通过仅是环境证据；下一正式验证若复现，采集写者与生命周期并发，再决定 PR/tag 两条安装链路是否需要同一调整，不跳过脚本或自动豁免。
 
 普通 Canvas 打开没有专门的 ready 截止和启动失败重试/重建，持续启动失败可保持空白；上游快速重开资源积压、单次 fallback 首败未定因继续按 webview-ready-root-cause.md 与 smoke-reopen-ready-timeout.md 跟踪。45 秒是 smoke 容忍预算，不是产品恢复能力。共享画布真实 UI 限 Linux 单 root，接管四阶段由受控 Host/store 和独立 Supervisor 验证；跨平台/Remote SSH/真实多 root、真实 provider、公开市场自动安装依赖与桌面点击需要具名补证。以上不因本地测试通过自动升级为支持承诺。
+
+
+### 本版聚合首败：localhost SSH 离线完成前提（2026-10-13）
+
+预合并 eba53a28 的标准 release:verify exit1，完整 npm test 停在 remote-ssh-real-reopen。页面 ready 和原 Agent/普通Terminal附着正常，旧升级resize通过；第三个Terminal等待setup process.pid2613433消失而未完成。窗口关闭后旧remote Host仍有日志，server配置三小时重连宽限并保留旧连接，精简首败及输入见docs/references/release-0-26-1-refresh/remote-first-failure.json。超时瞬间没有进程状态采样，不把推断当成完整根因确认，也不借此修改产品退出语义。
+
+后续先固定原远端Host PID/启动身份，在关闭及超时瞬间核对存活/僵尸/重连责任，再显式设计测试的离线完成触发和关闭边界。修复保持原会话、正文、输入、退出状态和无历史断言，不能通过延长等待、无条件杀远端Host或重跑跳过首败。本发布准备只记录阻塞并补充独立验证，完整verify未通过前不能合并或打发布tag。
+
+
+本次独立补充验证已完成：Webview426/426、默认干净npm ci/140文件主VSIX/八场景安装、notifier类型/14文件独立包/companion/en与zh-cn locale均exit0。默认安装ETXTBSY未重现，不等于原根因修复；源码聚合SSH首败仍阻断。12条命令证据固定在docs/references/release-0-26-1-refresh/evidence.json。main无branch protection的只读查询结果不撤销仓库完整verify/review要求，草稿不会触发非草稿release workflow。
