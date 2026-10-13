@@ -13,7 +13,9 @@
     "wait_boundary": 36,
     "remote_host_control": 18,
     "remote_host_isolation_full_suite": 3,
-    "strict_resize": 9
+    "strict_resize": 9,
+    "fallback_long_debug_root_short_userdata_unix_socket": "passed; real listen with empty bus env",
+    "typecheck_after_fallback": "exit0"
   },
   "limits": [
     "Local build uses existing six-platform asset set; new-input assets rebuilt in temporary full release gate.",
@@ -22,12 +24,14 @@
   ],
   "source_sha256": {
     "extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts": "8a9355a332698bbbb728a09a0d47b71a516708c1583e093357b7b123b34765da",
-    "scripts/smoke/run-vscode-smoke.mjs": "6cd5053809a101b9a92879bf15d1b73cc041897187d42a0b3a3ec233fe61f90a",
+    "scripts/smoke/run-vscode-smoke.mjs": "a5cbbcbe31d7011f73d3833b9851fc5e66432ac7c31d91940cbdb45bc83b64dd",
     "tests/vscode-smoke/fixtures/fake-systemd/systemd-run.cjs": "27caaaf4f9f51b76ad0d09c0fc0615118a76362c6fe71c1aa4725cafad3787d8",
     "scripts/test/test-runtime-systemd-environment.mjs": "8bd2c02aa3ebc02a0322faf373e1a9dba562d70a844f646d8c4e532edf40ee5e",
-    "scripts/test/test-smoke-systemd-probe.mjs": "37f8104bb8e96a23f9dbcd29e5570fd8482c9a1fd6de303b6b166832240ee9bb",
+    "scripts/test/test-smoke-systemd-probe.mjs": "9cd5d9974a3ef232d2ad63b8d0905d41165a37f5a6a8e13e7209ec561925529c",
     "package.json": "cb7b0a1e23e7ddd92692b6c5f62887ca664ebe3ef43690df43dfc39430515c0a",
-    "docs/WORKFLOW.md": "b6c4e619278cf918060f953656446eb9ad2399eb4293ad685625f0f87c3c19dd"
+    "docs/WORKFLOW.md": "b6c4e619278cf918060f953656446eb9ad2399eb4293ad685625f0f87c3c19dd",
+    "scripts/smoke/vscode-smoke-runner.mjs": "cc482a109444558c56d53b84d36ba4c47edeb342f497af7908ad97a0d95a9307",
+    "scripts/test/test-vscode-smoke-runner-env.mjs": "1eaef59ca251309e8b44a9c5eecd8e78f579d74ea9530d2a5c8b39ed6c9439ea"
   },
   "command_corrections": [
     "Attempted non-existent test-runtime-legacy-resize-convergence.mjs (MODULE_NOT_FOUND); correct test-smoke-terminal-resize.mjs then passed 9 checks."

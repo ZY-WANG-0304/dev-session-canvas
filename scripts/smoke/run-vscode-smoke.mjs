@@ -463,6 +463,7 @@ async function runSystemdFallbackRealWindowReopenScenario() {
     scenarioName: 'systemd-fallback-real-reopen',
     description: 'Systemd unavailable before submission real window reopen smoke',
     runtimeDirName: 'dsc-vscode-smoke-runtime-systemd-fallback-real-reopen',
+    userDataInRuntimeDir: true,
     expectedRuntimeBackend: 'legacy-detached',
     expectedRuntimeGuarantee: 'best-effort',
     extraEnv: {
@@ -500,6 +501,7 @@ async function prepareLocalRealReopenRuntime(options) {
   const runtime = await prepareRuntime({
     debugRoot: path.join(smokeDebugRoot, options.scenarioName),
     runtimeDirName: options.runtimeDirName,
+    userDataInRuntimeDir: options.userDataInRuntimeDir,
     userSettings: {
       'security.workspace.trust.enabled': false
     }

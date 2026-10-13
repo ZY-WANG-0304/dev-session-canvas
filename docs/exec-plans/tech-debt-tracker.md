@@ -787,3 +787,6 @@ CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smo
 ## 发布门禁关联修复集中收口（2026-10-13，PR329，验证中）
 
 上述“正式修复未实施”为诊断结束时的历史状态。用户授权继续修复后，PR329纳入PR331最终根因/控制证据、原两个修复及WORKFLOW约定；新增TEST_SYSTEMD_RUN_SHIM明确覆盖fake成功场景前置probe，转发原只读launcher并保留原回执/摘要校验、预算和后端断言。默认真实systemd-run和fallback/unknown规则不变；fallback显式清空依赖并保留零systemctl提交验收。相关回归及临时组合0.26.1完整验证进行中，未追认发布通过。接续计划docs/exec-plans/active/release-gate-consolidated-repair.md。
+
+
+集中修复接续：首轮38412908952已通过原fake systemd两阶段；fallback启动前VSCode因空XDG_RUNTIME_DIR选择129字节user-data IPC路径，超Linux107字节并listen EINVAL。PR329继续补齐fallback短user-data，不改空bus、真实probe、legacy或零提交断言；完整门禁仍失败，SSH/Webview/VSIX未触达。证据与正式方案见systemd-smoke-scope-root-cause.md。

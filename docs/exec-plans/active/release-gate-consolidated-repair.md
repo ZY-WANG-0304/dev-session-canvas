@@ -13,9 +13,12 @@
 - [x] (2026-10-13) 实现fake probe转发、场景作用域；84项scope及12项实际launcher/超时/子进程收口/场景回归通过。
 - [x] (2026-10-13) 本地回归/typecheck/build通过，PR329已推40364a85，PR331最终内容保留后关闭。
 - [ ] (2026-10-13) 临时分支已组合PR327，固定输入dc5178ee/run38412908952进行中；剩余完整结果与证据同步。
+- [ ] 补齐fallback短user-data路径，保留首轮失败，重跑包含全部修复的完整输入。
 - [ ] 保留原失败和最新结果，同步文档/证据及PR状态，归档本计划。
 
 ## 意外与发现
+
+首轮38412908952已过原fake systemd重开，两阶段exit0；新fallback启动前VSCode使用129字节user-data IPC路径，警告107上限并listen EINVAL。补齐fallback短user-data夹具，真实空bus/no-submit保持；临时脚本隐式errexit漏写exit标记，实际job/log exit1保留。
 
 旧fake-systemctl只覆盖提交阶段；新增scope probe使用绝对systemd-run。原组合38387068827失败，固定输入诊断38401537709确认Connection refused/明确不可用后正确回退legacy。单变量38402006541只替换执行者为原只读launcher后原setup/verify通过。该证据解释夹具缺前置依赖，不证明真实manager通过。原工作区docs/WORKFLOW.md已有用户编辑，复制其准确diff到修复worktree并保留原编辑。
 

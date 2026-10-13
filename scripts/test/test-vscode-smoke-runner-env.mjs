@@ -130,6 +130,33 @@ try {
     await fs.rm(debugRoot, { recursive: true, force: true });
   }
 
+  const longRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-long-userdata-'));
+  let shortRuntime;
+  try {
+    const nestedDebugRoot = path.join(longRoot, 'x'.repeat(130), 'systemd-fallback-real-reopen');
+    shortRuntime = await prepareRuntime({ debugRoot: nestedDebugRoot,
+      runtimeDirName: `dsc-sdf-test-${process.pid}`, userDataInRuntimeDir: true,
+      userSettings: { 'security.workspace.trust.enabled': false } });
+    assert.strictEqual(shortRuntime.userDataDir, path.join(shortRuntime.runtimeDir, 'user-data'));
+    assert.ok(Buffer.byteLength(path.join(nestedDebugRoot, 'user-data', '1.14-main.sock')) > 107);
+    assert.ok(Buffer.byteLength(path.join(shortRuntime.userDataDir, '1.14-main.sock')) <= 107);
+    assert.deepStrictEqual(JSON.parse(await fs.readFile(path.join(shortRuntime.userDataDir, 'User', 'settings.json'), 'utf8')),
+      { 'security.workspace.trust.enabled': false }, 'Runtime cleanup must precede relocated user-data creation');
+    const fullEnv = buildVSCodeChildEnv({ ...shortRuntime.environment, DBUS_SESSION_BUS_ADDRESS: '', XDG_RUNTIME_DIR: '' });
+    assert.strictEqual(fullEnv.DBUS_SESSION_BUS_ADDRESS, '');
+    assert.strictEqual(fullEnv.XDG_RUNTIME_DIR, '');
+    if (process.platform === 'linux') {
+      const net = await import('node:net');
+      const socket = path.join(shortRuntime.userDataDir, '1.14-main.sock');
+      const server = net.createServer();
+      await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socket, resolve); });
+      await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  } finally {
+    if (shortRuntime) await fs.rm(shortRuntime.runtimeDir, { recursive: true, force: true });
+    await fs.rm(longRoot, { recursive: true, force: true });
+  }
+
   console.log('vscode smoke runner env sanitization passed');
 } finally {
   if (originalElectronRunAsNode === undefined) {
