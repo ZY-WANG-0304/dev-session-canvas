@@ -12,7 +12,7 @@ jobs:
   native-assets:
     uses: ./.github/workflows/runtime-execution-assets.yml
     with:
-      input_ref: 32260b9fc58df3ed6a5b75d8f3b2b8bdfd78fb6a
+      input_ref: 442822982f802f61cb0a4c8e6a4c103655f4ba50
 
   verify-release:
     name: Full combined release gate
@@ -23,8 +23,8 @@ jobs:
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
       DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/tm-${{ github.run_id }}
-      DSC_COMBINED_INPUT: 32260b9fc58df3ed6a5b75d8f3b2b8bdfd78fb6a
-      DSC_FIX_INPUT: 6f201f52d71e91bd081a71aff88fb3145b654a2d
+      DSC_COMBINED_INPUT: 442822982f802f61cb0a4c8e6a4c103655f4ba50
+      DSC_FIX_INPUT: 11d8bf4445d94752eced09d4ad9fd9d553e8e1ad
       DSC_RELEASE_INPUT: 42d87b3d59d3147199a3fef9f2ee0b40de4534cf
     steps:
       - name: Require successful six-platform assets
@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: 32260b9fc58df3ed6a5b75d8f3b2b8bdfd78fb6a
+          ref: 442822982f802f61cb0a4c8e6a4c103655f4ba50
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:

@@ -1,0 +1,39 @@
+{
+  "temporary_combination_only": true,
+  "run": "38414258709",
+  "workflow_head": "06e70f73e7974f0531e5611f86251b39603ff713",
+  "input": "32260b9fc58df3ed6a5b75d8f3b2b8bdfd78fb6a",
+  "fix_head": "6f201f52d71e91bd081a71aff88fb3145b654a2d",
+  "release_head": "42d87b3d59d3147199a3fef9f2ee0b40de4534cf",
+  "native_assets": "success",
+  "steps": {
+    "combined-preflight": {
+      "exit": 0,
+      "log_bytes": 160,
+      "log_sha256": "fa01f229bf38f90968a26d26441a2391a42d34ac2f40702bb36b292749b4e77e"
+    },
+    "combined-release-verify": {
+      "exit": null,
+      "log_bytes": 9728824,
+      "log_sha256": "767da80573455003dbae835f727e2b7a919fa6757433d51dfcaa1f6acdf8e0ab"
+    }
+  },
+  "tree": "2e1f088cf77e401249bd9689a8fd47547b580122",
+  "actions_job": 115357653430,
+  "actions_job_conclusion": "failure",
+  "actual_release_exit_from_actions_log": 1,
+  "probe_fixture_scene": "passed at 14:52:39Z",
+  "first_failure": "VSCode fallback main IPC 129 bytes exceeds107; listen EINVAL before extension tests",
+  "not_reached": [
+    "fallback backend/no-submit assertions",
+    "SSH exit/retain",
+    "later Webview",
+    "clean-checkout VSIX"
+  ],
+  "evidence_excerpt": [
+    "14:52:39.4494792Z Fake systemd-user real window reopen smoke passed.",
+    "14:52:49.9296798Z WARNING: IPC handle is longer than 107 chars",
+    "14:52:49.9587559Z Error: listen EINVAL …/systemd-fallback-real-reopen/user-data/1.14-main.sock",
+    "14:52:50.8693191Z Exit code: 1"
+  ]
+}

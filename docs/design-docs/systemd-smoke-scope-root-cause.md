@@ -69,3 +69,6 @@ docs/exec-plans/completed/systemd-smoke-scope-root-cause.md覆盖源码跟踪、
 正式夹具补齐：runSystemdFallbackRealWindowReopenScenario单独设置userDataInRuntimeDir；vscode-smoke-runner.mjs的prepareRuntime将其user-data放到既有短临时runtimeDir中（约83字节socket），先清理runtimeDir再创建user-data/settings，其他目录和默认布局保持。真实DBUS_SESSION_BUS_ADDRESS/XDG_RUNTIME_DIR仍为空、probe依赖仍清空、后端legacy和零systemctl提交断言不变。回归在长debugRoot核对短user-data、settings不被后续清理丢失、空bus变量及实际Unix socket可监听；该测试不替代原VSCode完整场景。
 
 临时workflow修正失败时exit标记收集：显式关闭bash errexit，保留pipefail并立即保存PIPESTATUS[0]，最后按原非零退出。原run marker null保留，以Actions job/log的实际exit1解释，不补造历史marker。
+
+
+第二轮run38414258709也通过fake systemd原两阶段，14:52:49Z复现相同fallback IPC路径警告/EINVAL，证据full-gate-second-result-38414258709.json；新长路径回归对原main源函数exit1，见fallback-path-baseline-regression.json。最新第三轮44282298/run38417836576包含全部probe/路径修复，正在完整验证；源码hash与workflow见repair-combined-input.json和full-combined-gate.workflow.yml。
