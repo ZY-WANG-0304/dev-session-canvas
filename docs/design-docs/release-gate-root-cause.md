@@ -51,7 +51,7 @@ tests/vscode-smoke/extension-tests.cjs中的waitForSnapshot和waitForDiagnosticE
 
 先验证确定性回归在原main失败、修复后通过，再运行Remote Host、等待边界、resize、相关smoke辅助测试与构建。完整release:verify需要干净runner和同输入六平台native资产；本机余盘约1GB不足复制完整原生场景依赖，不启动会污染原失败证据的全量本地运行。
 
-正式bugfix PR只包含两处修复、回归与调查证据。另建明确标识“仅验证、禁止合并”的临时组合PR，输入为本修复加PR327发布准备内容，复用未修改的Release Preflight工作流验证0.26.1，记录head/base/预合并SHA、tree、run与结果。该结果不能代替修复合入后PR327最新预合并的正式门禁；不将未合并修复塞进PR327，不合并、打tag或发布。
+当前按用户要求在PR329集中包含原两处修复、新systemd probe夹具、根因证据、回归及WORKFLOW约定。诊断或组合验证使用临时分支，不再新建PR；历史PR330已关闭，PR331最终文档与证据保留到PR329后关闭。输入为本修复加PR327发布准备内容，固定组合SHA重建六平台资产并运行原release:preflight/release:verify，记录head/base/input SHA、tree、run与结果。该结果不能代替修复合入后PR327最新预合并的正式门禁；不将未合并修复塞进PR327，不合并、打tag或发布。
 
 生产root准备错误的阶段可观测性与失败工件收集是后续诊断改进，需返回有界、无敏感路径的错误类别，不能把通用catch转ready或提交后换backend。历史首次失败与调查脚本/结果保留；原基线诊断脚本只用于原输入，不改写其预期来覆盖首败。
 
@@ -66,3 +66,6 @@ run38387068827/job115263574447同预合并08f7b0a5的六平台资产全部成功
 完整gate首败变为systemd-user-real-reopen setup：11:20:01Z的assertExecutionRuntimeMetadata（tests/vscode-smoke/real-reopen-tests.cjs:747）预期systemd-user，实际legacy-detached；11:20:03Z npm test和release:verify退出1。新阻塞单独登记，不能借这些通过声明完整npm test/发布验证通过。源码显示fake-systemctl仅替代后端提交，root准备仍通过真实/usr/bin/systemd-run做执行环境探测；本轮未保存探测原因，不能把缺少user bus当作已经验证的唯一根因。
 
 后续systemd-fallback、SSH Host退出/保留、test:webview及clean-checkout生产VSIX/安装后smoke未触达。有限成功记录、首败、准确input/run和日志range/hash见repair-combined-input.json；原首败记录保持。临时PR330结果归档后关闭，不合并。两处修复在PR329供review，PR327仍草稿且正式最新预合并需修复合入后rebase验证。
+
+
+当前收口补充（2026-10-13）：同输入诊断38401537709及单变量控制38402006541已确认新systemd阻塞来自夹具缺probe依赖；生产明确不可用后回退符合契约。PR329已补齐显式依赖和84项受控/12项实际子进程回归，PR331已关闭且内容保留。临时组合输入dc5178ee41bc1dda3d370a24923559d683eac727/run38412908952正在执行完整验证；不新建PR，不追认完整门禁通过。正式方案和因果边界见systemd-smoke-scope-root-cause.md。

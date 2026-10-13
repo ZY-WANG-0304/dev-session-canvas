@@ -61,6 +61,7 @@ if (process.platform !== 'linux') {
     await check({ supervisorLauncherScriptPath: holdPath }, { kind: 'unknown', reason: 'environment-probe-failed' });
     const timedOutPid = Number(await readFile(pidFile, 'utf8'));
     assert.throws(() => process.kill(timedOutPid, 0), { code: 'ESRCH' }, 'Timed out probe must leave no child');
+    await rm(pidFile); // The next barrier must observe its new child, never the timeout's old PID.
     const nonce = randomUUID();
     const args = ['--user', '--wait', '--pipe', '--collect', '--quiet', '--no-ask-password',
       `--unit=dsc-root-scope-${nonce}`, '--property=TimeoutStartSec=10s', '--property=RuntimeMaxSec=10s',
