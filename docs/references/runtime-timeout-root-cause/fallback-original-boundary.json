@@ -1,0 +1,39 @@
+{
+  "log": "/tmp/dga12/fallback/systemd-fallback-real-reopen/artifacts/vscode-logs/window1/renderer.log",
+  "sha256": "2de9d644b9b0a1740d18e2795ebc1de594c9f8f9f562113c746777056b14d9be",
+  "selectedLines": [
+    {
+      "line": 558,
+      "text": "2026-10-12 02:00:00.604 [debug] Webview(925fb546-05fc-460f-9e5e-c26c2b826cc2): will update content options"
+    },
+    {
+      "line": 561,
+      "text": "2026-10-12 02:00:00.606 [debug] Webview(925fb546-05fc-460f-9e5e-c26c2b826cc2): will update content"
+    },
+    {
+      "line": 575,
+      "text": "2026-10-12 02:00:00.639 [trace] Webview(925fb546-05fc-460f-9e5e-c26c2b826cc2): webview ready"
+    },
+    {
+      "line": 598,
+      "text": "2026-10-12 02:00:00.683 [debug] Webview(800b1d40-98c3-45a4-a21b-3eb52b448064): will update content options"
+    },
+    {
+      "line": 600,
+      "text": "2026-10-12 02:00:00.685 [debug] Webview(800b1d40-98c3-45a4-a21b-3eb52b448064): will update content"
+    },
+    {
+      "line": 607,
+      "text": "2026-10-12 02:00:00.706 [trace] Webview(800b1d40-98c3-45a4-a21b-3eb52b448064): webview ready"
+    },
+    {
+      "line": 851,
+      "text": "2026-10-12 02:00:20.708 [error] Error: Timed out waiting for the editor Canvas to become ready (20000ms)."
+    }
+  ],
+  "originalArtifact": "docs/references/release-gate-fixture-ci-alignment/fallback-first-failure-summary.json",
+  "hostReadyFalse": true,
+  "hostEventsCaptured": false,
+  "iframeNetworkCaptured": false,
+  "reason": "Container-ready is not application webview/ready; exact pre-ready cause remains unknown."
+}

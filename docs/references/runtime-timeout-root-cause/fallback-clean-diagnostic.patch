@@ -1,0 +1,12 @@
+diff --git a/tests/vscode-smoke/real-reopen-tests.cjs b/tests/vscode-smoke/real-reopen-tests.cjs
+index 83219435..b226bf65 100644
+--- a/tests/vscode-smoke/real-reopen-tests.cjs
++++ b/tests/vscode-smoke/real-reopen-tests.cjs
+@@ -351,6 +351,7 @@ async function activateExtension() {
+ async function openCanvasEditor() {
+   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
++  await fs.writeFile(path.join(artifactDir, 'fallback-' + phase + '-lifecycle.json'), JSON.stringify(await vscode.commands.executeCommand(COMMAND_IDS.testGetDiagnosticEvents), null, 2));
+ }
+
+ async function createExecutionNodes() {

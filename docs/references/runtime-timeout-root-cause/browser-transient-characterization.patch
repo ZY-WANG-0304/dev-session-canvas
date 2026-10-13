@@ -1,0 +1,39 @@
+diff --git a/tests/playwright/webview-harness.spec.mjs b/tests/playwright/webview-harness.spec.mjs
+index e1b1249a..6ebdeab8 100644
+--- a/tests/playwright/webview-harness.spec.mjs
++++ b/tests/playwright/webview-harness.spec.mjs
+@@ -17136,6 +17136,34 @@ async function holdXtermParser(page) {
+   });
+ }
+
++for (const executionKind of ['agent', 'terminal']) {
++  test(`${executionKind} diagnosis captures transient restore dimensions before final fit`, async ({ page }) => {
++    const nodeId = `${executionKind}-zoom`;
++    await openHarness(page);
++    const state = createLiveExecutionNodeState(executionKind);
++    await bootstrap(page, state);
++    const before = await waitForExecutionTerminalReady(page, nodeId);
++    await clearPostedMessages(page);
++    await holdXtermParser(page);
++    const target = { cols: before.terminalCols + 12, rows: before.terminalRows + 6 };
++    try {
++      await dispatchExecutionSnapshot(page, { nodeId, kind: executionKind, output: 'DIAGNOSIS-RESTORE\r\n',
++        ...target, liveSession: true });
++      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
++      const fixed = await readProbeNode(page, nodeId, 0);
++      expect(fixed.terminalCols !== before.terminalCols || fixed.terminalRows !== before.terminalRows).toBe(true);
++      expect({ cols: fixed.terminalCols, rows: fixed.terminalRows }).toEqual(target);
++    } finally { await page.evaluate(() => window.__slowSnapshotWrite.release()); }
++    await expect.poll(async () => {
++      const probe = await readProbeNode(page, nodeId, 0);
++      return { cols: probe.terminalCols, rows: probe.terminalRows };
++    }).toEqual({ cols: before.terminalCols, rows: before.terminalRows });
++    const requests = await readPostedMessagesByType(page, 'webview/resizeExecutionSession');
++    console.log(JSON.stringify({ kind: executionKind, transientTarget: target, actualFinal: { cols: before.terminalCols, rows: before.terminalRows }, requests }));
++    expect(requests.some(entry => entry.payload.cols === target.cols && entry.payload.rows === target.rows)).toBe(false);
++  });
++}
++
+ for (const executionKind of ['agent', 'terminal']) {
+   test(`${executionKind} local output credit follows actual writes and cancels when the page unmounts`, async ({ page }) => {
+     const nodeId = `${executionKind}-zoom`;
