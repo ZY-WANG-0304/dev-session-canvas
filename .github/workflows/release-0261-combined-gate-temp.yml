@@ -1,4 +1,4 @@
-name: Temporary 0.26.1 Combined Release Gate
+name: Temporary 0.26.1 Screenshot Diagnosis
 
 on:
   push:
@@ -7,93 +7,56 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  native-assets:
-    uses: ./.github/workflows/runtime-execution-assets.yml
-    with:
-      input_ref: 442822982f802f61cb0a4c8e6a4c103655f4ba50
-
-  verify-release:
-    name: Full combined release gate
-    needs: native-assets
-    if: always()
+  screenshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 15
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
-      DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/tm-${{ github.run_id }}
-      DSC_COMBINED_INPUT: 442822982f802f61cb0a4c8e6a4c103655f4ba50
-      DSC_FIX_INPUT: 11d8bf4445d94752eced09d4ad9fd9d553e8e1ad
-      DSC_RELEASE_INPUT: 42d87b3d59d3147199a3fef9f2ee0b40de4534cf
     steps:
-      - name: Require successful six-platform assets
-        run: test '${{ needs.native-assets.result }}' = success
-      - name: Checkout immutable combined input without temporary workflow
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           ref: 442822982f802f61cb0a4c8e6a4c103655f4ba50
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-      - name: Install locked dependencies
-        run: npm ci
-      - name: Install release verification browser
-        run: npx --no-install playwright install --with-deps chromium
-      - name: Download same-run native assets
-        uses: actions/download-artifact@v4
+      - run: npm ci
+      - run: npx --no-install playwright install --with-deps chromium
+      - uses: actions/download-artifact@v4
         with:
-          pattern: execution-native-*-${{ github.run_id }}
+          pattern: execution-native-*-38417836576
           merge-multiple: true
           path: ${{ runner.temp }}/execution-native-archives
-      - name: Assemble same-input native assets
-        run: |
-          node scripts/build/assemble-execution-distribution-assets.mjs --source "$RUNNER_TEMP/execution-native-archives" --output "$RUNNER_TEMP/execution-native-platform" --input-sha "$DSC_COMBINED_INPUT"
+          run-id: 38417836576
+          github-token: ${{ github.token }}
+      - run: |
+          node scripts/build/assemble-execution-distribution-assets.mjs --source "$RUNNER_TEMP/execution-native-archives" --output "$RUNNER_TEMP/execution-native-platform" --input-sha 442822982f802f61cb0a4c8e6a4c103655f4ba50
           echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$RUNNER_TEMP/execution-native-platform" >> "$GITHUB_ENV"
-      - name: Static release preflight
-        shell: bash
-        run: |
-          set +e
-          set -uo pipefail
-          npm run release:preflight -- --version 0.26.1 2>&1 | tee "$RUNNER_TEMP/combined-preflight.log"
-          status=${PIPESTATUS[0]}
-          echo "$status" > "$RUNNER_TEMP/combined-preflight.exit"
-          exit "$status"
-      - name: Unfiltered full release verification
-        shell: bash
-        run: |
-          set +e
-          set -uo pipefail
-          test -z "${DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER:-}"
-          npm run release:verify -- --version 0.26.1 2>&1 | tee "$RUNNER_TEMP/combined-release-verify.log"
-          status=${PIPESTATUS[0]}
-          echo "$status" > "$RUNNER_TEMP/combined-release-verify.exit"
-          exit "$status"
-      - name: Preserve finite input and result evidence
+      - run: npm run build
+      - name: Original screenshot assertion
+        run: npx --no-install playwright test --grep 'webview bundle emits ready and matches the baseline screenshot'
+      - name: Finite font and platform inventory
         if: always()
-        env:
-          DSC_NATIVE_RESULT: ${{ needs.native-assets.result }}
         run: |
-          python3 - <<'PY'
-          import hashlib, json, os, pathlib, subprocess
-          root = pathlib.Path(os.environ['RUNNER_TEMP'])
-          report = {'temporary_combination_only': True, 'run': os.environ['GITHUB_RUN_ID'], 'workflow_head': os.environ['GITHUB_SHA'], 'input': os.environ['DSC_COMBINED_INPUT'], 'fix_head': os.environ['DSC_FIX_INPUT'], 'release_head': os.environ['DSC_RELEASE_INPUT'], 'native_assets': os.environ['DSC_NATIVE_RESULT'], 'steps': {}}
-          report['tree'] = subprocess.check_output(['git', 'rev-parse', os.environ['DSC_COMBINED_INPUT'] + '^{tree}'], text=True).strip()
-          for name in ['combined-preflight', 'combined-release-verify']:
-              log = root / (name + '.log')
-              code = root / (name + '.exit')
-              report['steps'][name] = {'exit': int(code.read_text()) if code.exists() else None, 'log_bytes': log.stat().st_size if log.exists() else None, 'log_sha256': hashlib.sha256(log.read_bytes()).hexdigest() if log.exists() else None}
-          (root / 'combined-release-result.json').write_text(json.dumps(report, indent=2))
-          print(json.dumps(report, indent=2))
-          PY
-      - name: Upload finite result
+          fc-match sans-serif
+          fc-match 'Noto Sans CJK SC'
+          fc-match 'Microsoft YaHei'
+          fc-match 'PingFang SC'
+          fc-list :lang=zh family | sort -u > "$RUNNER_TEMP/screenshot-fonts.txt"
+          cat /etc/os-release >> "$RUNNER_TEMP/screenshot-fonts.txt"
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: combined-release-result-${{ github.run_id }}
-          path: ${{ runner.temp }}/combined-release-result.json
+          name: screenshot-diagnosis-${{ github.run_id }}
+          path: |
+            .debug/playwright/results/**/canvas-shell-baseline-actual.png
+            .debug/playwright/results/**/canvas-shell-baseline-diff.png
+            .debug/playwright/results/**/error-context.md
+            tests/playwright/webview-harness.spec.mjs-snapshots/canvas-shell-baseline-linux.png
+            ${{ runner.temp }}/screenshot-fonts.txt
           if-no-files-found: error
           retention-days: 14
