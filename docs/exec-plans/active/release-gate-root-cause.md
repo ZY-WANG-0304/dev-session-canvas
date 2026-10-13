@@ -9,7 +9,9 @@
 ## 进度
 
 - [x] (2026-10-13 09:56Z) 从最新 main22803dd8创建独立 docs-release-gate-root-cause 分支，保留 PR327/head42d87b3d及首败日志。
-- [ ] 核对 runtime 准备链的外层异常来源，复现候选环境差异。
+- [x] (2026-10-13 10:27Z) 固定输入完整CI38382436173捕获socket-directory私有权限异常，native-assets未进入。
+- [x] (2026-10-13 10:33Z) 原17个Remote Host测试私有目录对照确认absent变0755、预置0700保持且原生产校验分别拒绝/接受。
+- [ ] 干净CI读取真实socket目录uid/mode/inode，完成因果对照并收口临时workflow。
 - [x] (2026-10-13 10:10Z) 原helper五个受控正负例确认截止漏检，原renderer核对第一次文件搜索9592ms、第二次321ms。
 - [ ] 更新正式调查结论、索引与技术债，检查并提交可复核报告。
 
@@ -19,17 +21,21 @@ CI Canvas 已 ready/bootstrapAck，Agent error 且没有 execution；通用错�
 
 首个诊断run38381854008未创建job：job级env不允许引用runner.temp。将路径登记移到step的GITHUB_ENV后，actionlint1.7.12检查通过；该配置错误未产生runtime证据，不属于原发布首败。
 
+run38382436173捕获socket目录拒绝，尚未native-assets，disk剩余77GB。PR328新Remote Host静默socket测试mkdir真实runtime父目录不指定mode，也未清理父目录；原17用例对照在umask0022下确认目录不存在时留下0755，已有0700时保持同inode。第一版诊断脚本误将总数写为19，原17用例实际已通过；校正脚本汇总校验后两组完整通过，不改原测试。
+
 ## 决策记录
 
 2026-10-13 / Codex：调查与发布分支分开，受控实验只在私有临时目录运行。原因是用户要求定位根因，PR327完整失败必须保留，不能改head或放宽正式断言取得表面通过。
 
+2026-10-13 10:35Z / Codex：完整CI捕获异常后不盲目重试全量，改为干净runner只运行原17用例与原目录校验，读取实际uid/mode与空目录；自己的新空目录chmod仅用于因果对照。正式修复建议隔离测试socket，保持生产拒绝不安全共享目录。
+
 ## 结果与复盘
 
-本地等待漏检与文件搜索接近预算已确认。CI已排除systemd选择及Linuxmanifest/binary差异，原输入独立checkpoint通过；新增固定输入完整诊断workflow捕获准备阶段和catch异常，原发布门禁不变。调查进行中。尚未把 systemd 配置目录失配、资源问题或等待边界候选升级为完整历史根因。
+本地等待漏检与文件搜索接近预算已确认。固定输入完整CI再次checkpoint首败，捕获socket-directory权限拒绝；源码和原17用例受控正反例确认测试创建/保留非私有共享目录。实际干净CI目录uid/mode待取得；历史首败底层异常没有原始记录，不能声称恢复了历史stat。正式产品/test未修复，PR327/head不变。
 
 ## 上下文与定向
 
-扩展入口位于 extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts。live-runtime启动调用 panel/runtimeRootSupervisorPreparation.ts，以IPC向短生命周期launcher发送请求；supervisor/runtimeRootPreparation.ts准备私有存储、确认原owner、选择systemd-user或legacy-detached并提交Supervisor。systemd是Linux用户服务管理器，supervisor/runtimeSupervisorStart.ts写出unit文件后请求真实user manager启动。scripts/smoke/vscode-smoke-runner.mjs隔离HOME/XDG/TMP，需核对用户管理器是否搜索写出目录。tests/vscode-smoke/extension-tests.cjs的waitForDiagnosticEvents等待诊断事件，原异步轮询跨过截止后没有检查末批结果。
+扩展入口位于 extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts。live-runtime启动调用 panel/runtimeRootSupervisorPreparation.ts，以IPC向短生命周期launcher发送请求；supervisor/runtimeRootPreparation.ts准备私有存储、确认原owner、选择后端并提交Supervisor。本测试模式只请求legacy-detached，不选择Linux用户服务管理器systemd。supervisor/runtimeRootOwner.ts的ensureRuntimeRootSocketDirectory验证固定/tmp/dsc-root-<uid>属主和0700权限；scripts/test/test-smoke-remote-host.mjs先创建该目录但无mode/父目录清理，是污染候选。tests/vscode-smoke/extension-tests.cjs的waitForDiagnosticEvents等待诊断事件，原异步轮询跨过截止后没有检查末批结果。
 
 ## 工作计划与里程碑
 
