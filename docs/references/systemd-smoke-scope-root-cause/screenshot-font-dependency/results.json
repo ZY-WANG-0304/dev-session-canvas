@@ -20,20 +20,20 @@
   },
   "ci_validation": "fixed font plus Ubuntu22.04 focused control passed; final complete gate pending",
   "evidence_sha256": {
+    "38424638753-error-context.md.gz": "57d3c0d0db9637b0950b212d0ae5f7d64a2f61a6318b2a35816742bb5e009711",
     "38425793707-fonts.txt": "2ccd82ff4c4fd7ebe98131258b5b6debce1036860a15f295bc6bda4d168a680a",
     "38425793707-canvas-shell-baseline-diff.png": "6c5212a5fa9a17cd224b772b9b39af8cc49da9edd7c9c85f3f102df709199fc0",
     "fixed-font-os-control.workflow.yml": "72399758fc9d8d14e3182441c3eb44588ca460e5eb6158dfe96ab113b9ff9f92",
     "38424281988-canvas-shell-baseline-diff.png": "b26d0d1e15d0e40fc951783e954a5932044b4d4fa73c22d9edae7627e7d6b719",
-    "38424638753-error-context.md": "354810e847135c95b466af7acd0e76d8add84d983f1ad1d46f723ce4eac65bab",
     "38424638753-fonts.txt": "f0c631911a394620897850db20aa840ca937a4b63a3efaa1981174da7e82f292",
-    "38426201759.log": "2bc8677bf7a41052a553f1ad2954eddb7e93c519e354976692a92bed6be7f967",
+    "38424281988-error-context.md.gz": "00daae7ea6574f26bba5b7f7c97f89ccdde4f237ee511dafa20c9c05f8066fe6",
     "38426201759-fonts.txt": "b84061c353625afd80fdaa0726fcef81a7c1b7678f9ddebb29b0fea6f12c10cf",
+    "38426201759.log.gz": "1b4be016057c5f1e67c6f1dff4b894d94044eb2e2655d3b225be0f4c06a4bcbc",
     "38424281988-fonts.txt": "2ccd82ff4c4fd7ebe98131258b5b6debce1036860a15f295bc6bda4d168a680a",
+    "38425793707-error-context.md.gz": "b431d5d132553897422536430d5ef1692b36b974f4a9e535c2b4d95f84b72763",
     "38424638753-canvas-shell-baseline-actual.png": "918e092ad73b8142ee8a1fef638fd5d8f15191dfbe4d2cc3b48e0f164967e367",
-    "38425793707-error-context.md": "1afc39fe76a088c71764dfda7c7af4c8c759cd613a0be0ca02849c2d9affa095",
     "38425793707-canvas-shell-baseline-actual.png": "918e092ad73b8142ee8a1fef638fd5d8f15191dfbe4d2cc3b48e0f164967e367",
     "38424281988-canvas-shell-baseline-actual.png": "a5b6f014e1627311c1434712f479001cc4e0dffb7beef23b1e2cc7c05c116323",
-    "38424281988-error-context.md": "3f5390100fcde6c4ccafcb6163ad3319b166ba39e3a52ae50a27e8d06883e727",
     "38424638753-canvas-shell-baseline-diff.png": "6c5212a5fa9a17cd224b772b9b39af8cc49da9edd7c9c85f3f102df709199fc0"
   },
   "fixed_font_ci": {
@@ -51,5 +51,31 @@
     "result": "original strict screenshot passed",
     "native_asset_input_reused_for_focused_control_only": "442822982f802f61cb0a4c8e6a4c103655f4ba50"
   },
-  "original_png_sha256": "f3797df14a70890625c12f5c21d6bce3e50dda6cd5181de869eddbfb351e8e9e"
+  "original_png_sha256": "f3797df14a70890625c12f5c21d6bce3e50dda6cd5181de869eddbfb351e8e9e",
+  "raw_archives": {
+    "38424638753-error-context.md.gz": {
+      "original_name": "38424638753-error-context.md",
+      "original_sha256": "354810e847135c95b466af7acd0e76d8add84d983f1ad1d46f723ce4eac65bab",
+      "original_bytes": 17841,
+      "encoding": "gzip, preserves exact source bytes"
+    },
+    "38425793707-error-context.md.gz": {
+      "original_name": "38425793707-error-context.md",
+      "original_sha256": "1afc39fe76a088c71764dfda7c7af4c8c759cd613a0be0ca02849c2d9affa095",
+      "original_bytes": 18642,
+      "encoding": "gzip, preserves exact source bytes"
+    },
+    "38424281988-error-context.md.gz": {
+      "original_name": "38424281988-error-context.md",
+      "original_sha256": "3f5390100fcde6c4ccafcb6163ad3319b166ba39e3a52ae50a27e8d06883e727",
+      "original_bytes": 17847,
+      "encoding": "gzip, preserves exact source bytes"
+    },
+    "38426201759.log.gz": {
+      "original_name": "38426201759.log",
+      "original_sha256": "2bc8677bf7a41052a553f1ad2954eddb7e93c519e354976692a92bed6be7f967",
+      "original_bytes": 90350,
+      "encoding": "gzip, preserves exact source bytes"
+    }
+  }
 }
