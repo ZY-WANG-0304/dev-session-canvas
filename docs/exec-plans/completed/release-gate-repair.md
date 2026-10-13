@@ -13,9 +13,10 @@
 - [x] (2026-10-13) 实现自有socket夹具、默认地址回归和三种初始目录状态回归。
 - [x] (2026-10-13) 两份轮询helper修复，36项边界和9项resize严格预算通过。
 - [x] (2026-10-13) 新回归在原main私有副本均exit1，修复后通过；typecheck、原生资产build和相关smoke辅助测试通过。
-- [ ] 从最新main rebase后提交/push并创建独立修复PR。
-- [ ] 创建临时组合输入PR，运行完整Release Preflight并保留真实结果。
-- [ ] 同步证据、技术债与PR描述，归档计划。
+- [x] (2026-10-13) rebase origin/main后提交27616f66，创建独立修复PR329。
+- [x] (2026-10-13) 创建禁止合并的临时组合PR330；静态preflight通过，run38387068827已启动。
+- [x] (2026-10-13) 组合run38387068827结束failure，原checkpoint/links已通过；后续systemd后端不匹配为新发布阻塞，SSH/VSIX未触达。
+- [x] (2026-10-13) 同步有限成功/首败与技术债，归档本两处修复计划；PR329待review，正式发布验证仍未通过。
 
 ## 意外与发现
 
@@ -33,7 +34,7 @@
 
 ## 结果与复盘
 
-两处修复与确定性回归已完成，新回归在原main检测出首读漏检和absent目录污染，修复后36项等待/18项Host/三种目录隔离均通过。9项resize、19项reset、14项output、6项history、typecheck和显式原生资产build通过。首次未指定资产的build在入口拒绝，指定既有六平台资产后通过，未放宽构建契约。完整组合CI和正式PR327门禁尚未通过，不能用上述独立通过代替。
+两处修复与确定性回归已完成，新回归在原main检测出首读漏检和absent目录污染，修复后36项等待/18项Host/三种目录隔离均通过。9项resize、19项reset、14项output、6项history、typecheck和显式原生资产build通过。首次未指定资产的build在入口拒绝，指定既有六平台资产后通过，未放宽构建契约。完整组合CI固定预合并08f7b0a5，六平台资产和原links/checkpoint首败场景均通过，完整npm test仍在后续systemd-user-real-reopen后端不匹配失败；SSH两种Host场景/后续Webview/VSIX未触达。两处修复在PR329交付，新的发布阻塞另登记，正式PR327门禁仍未通过。
 
 ## 上下文与定向
 
@@ -78,3 +79,7 @@ requestSession(storageDir, sessionId, timeoutMs=5000, options={})支持options.s
 修订记录：2026-10-13创建修复计划，承接已完成根因调查与用户授权，明确最终观察语义、隔离回归和组合验证与正式发布边界。
 
 修订记录：2026-10-13完成源代码和回归，本地验证结果及原基线失败hash另存repair-local-checks.json、repair-baseline-regression-result.json，完整门禁仍待组合CI。
+
+修订记录：2026-10-13登记PR329/330与固定组合预合并08f7b0a5；原工作流未变，完整CI运行中。额外runner-env和runtime-root-preparation回归通过。
+
+修订记录：2026-10-13归档两处修复验收，完整组合CI失败仍如实保留；新systemd后端不匹配单独跟踪，禁止追认未触达场景/正式发布门禁通过。

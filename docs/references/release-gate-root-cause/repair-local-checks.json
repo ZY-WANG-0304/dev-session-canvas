@@ -59,6 +59,19 @@
     {
       "command": "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc-release-026-assets npm run build",
       "exit": 0
+    },
+    {
+      "command": "npm run test:vscode-smoke-runner-env",
+      "exit": 0
+    },
+    {
+      "command": "npm run test:runtime-root-preparation",
+      "exit": 0,
+      "coverage": "global storage 21, preparation client 21, systemd environment 40, preparation 26; root owner storage real private file checks"
+    },
+    {
+      "command": "node --check tests/vscode-smoke/extension-tests.cjs && node --check tests/vscode-smoke/remote-host-control.cjs",
+      "exit": 0
     }
   ],
   "fullReleaseVerify": "not run locally: shared filesystem ~1GB free; use clean CI combined input; not formal PR327 latest gate"

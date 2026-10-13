@@ -764,10 +764,13 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 
 用户授权修正后，测试精确断言 `execution/deleteBoundary` 的 `runtime-delete-requested` 阶段、kind、sessionId 和 backendKind，不泛化过滤诊断。root 缺失 owner 的拒绝用例单独校验请求诊断及零派发，然后清空收集器再验证正常完成。原完整绑定相等、owner 传递、保存先于删除与无终态历史断言全部保留；额外 completedCleanupFailed 等诊断仍使测试失败。Node 22 下完整 `test:runtime-completed-history` 通过，覆盖 Agent/Terminal、legacy/root 及后续 reader 退役场景；只修改测试与文档，没有修改生产删除行为，也不宣称全量 npm test 通过。
 
-## PR327 发布门禁两个首败：已定位、修复验证中（2026-10-13）
+## PR327 发布门禁两个首败：两处修复已验，后续 systemd 场景阻塞（2026-10-13）
 
 原head42d87b3d/main22803dd8，GitHub预合并7e659ce6与本地ec4afba3树相同。本地local-links-and-stop缺失文件搜索9592ms接近10000ms等待；原诊断helper在取回跨deadline时漏检末批精确匹配事件，原Host时序及受控五例确认。建议明确末次观察与deadline契约、覆盖首读/末读/负例，不扩预算。搜索--no-ignore范围已证，但历史文件数/冷缓存/负载贡献未量化。
 
 CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smoke-remote-host.mjs静默socket测试污染真实/tmp/dsc-root-<uid>目录：未指定mode创建、未清理父目录。固定输入完整诊断38382436173捕获原生产socket-directory私有权限拒绝且尚未native-assets；原17测试私有目录两组对照与干净CI38384582823直接stat确认absent→当前uid/0755被拒绝、同inode0700接受。本机已有0700掩盖污染。应让测试使用自有socket目录并自行清理，保留正式地址默认值、原deadline/17用例与生产0700要求；不能通过chmod共享目录或放宽生产检查修复门禁。
 
-用户已授权自有socket夹具和末次观察修复，执行计划docs/exec-plans/active/release-gate-repair.md。修复和最新预合并全量门禁仍为发布阻塞，PR327草稿/head不变；临时组合输入验证不能代替修复合入后PR327正式门禁。通用catch与失败工件缺少有界错误阶段是可观测性后续项，错误类别不得泄露敏感路径/环境。调查设计docs/design-docs/release-gate-root-cause.md与完成计划docs/exec-plans/completed/release-gate-root-cause.md记录run、input、摘要/hash和残余限制；两个临时workflow已归档并移除自动入口。受控因果对照通过不等于完整release:verify通过，历史未记录的stat不补造。
+用户已授权自有socket夹具和末次观察修复，执行计划docs/exec-plans/completed/release-gate-repair.md。修复PR329待review/合入，最新预合并全量门禁仍为发布阻塞，PR327草稿/head不变；临时组合输入验证不能代替修复合入后PR327正式门禁。通用catch与失败工件缺少有界错误阶段是可观测性后续项，错误类别不得泄露敏感路径/环境。调查设计docs/design-docs/release-gate-root-cause.md与完成计划docs/exec-plans/completed/release-gate-root-cause.md记录run、input、摘要/hash和残余限制；两个临时workflow已归档并移除自动入口。受控因果对照通过不等于完整release:verify通过，历史未记录的stat不补造。
+
+
+组合PR330/run38387068827的原checkpoint和local-links-and-stop场景已退出0，18项Host/三种目录隔离/36项等待/9项resize及trusted/restricted/本地real-reopen通过，两处修复验收关闭。完整npm test继续在systemd-user-real-reopen setup断言失败：agent runtime backend实际legacy-detached，预期systemd-user（real-reopen-tests.cjs:747）。该新发布阻塞未修复，原因尚未由实际探测结果确认；fake-systemctl只覆盖提交，真实systemd-run仍影响前置环境，建议下轮固定输入记录有界probe类别，复核fixture是否建立其宣称的systemd前提，不放宽backend断言或直接跳过。SSH退出/保留、后续Webview及clean-checkout VSIX本轮未触达，不代证通过。结果及首败见docs/references/release-gate-root-cause/repair-combined-input.json；临时组合PR关闭而不合并，正式PR327需PR329合入后rebase重跑。

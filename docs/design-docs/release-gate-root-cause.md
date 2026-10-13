@@ -1,11 +1,11 @@
 ---
 title: PR327 发布门禁准备失败与诊断等待边界调查
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains: [VSCode 集成域, 执行编排域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/release-gate-root-cause.md, docs/exec-plans/active/release-gate-repair.md]
+related_plans: [docs/exec-plans/completed/release-gate-root-cause.md, docs/exec-plans/completed/release-gate-repair.md]
 updated_at: 2026-10-13
 ---
 
@@ -25,13 +25,13 @@ CI诊断run38382436173在固定原预合并7e659ce6、原六平台native资产�
 
 污染源是PR328新增scripts/test/test-smoke-remote-host.mjs的“Supervisor request has a total deadline even when socket stays silent”：control.runtimePaths把临时storage映射到真实/tmp/dsc-root-<uid>/d-<hash>.sock，测试mkdir父目录未指定mode，且finally仅清理storage，保留共享父目录。npm test先执行该测试再进入test:smoke。干净环境中umask0022使新父目录为0755，后续root准备要求0700而拒绝；本机父目录已为0700，mkdir不改变现存权限，掩盖了问题。原函数受控对照socket-directory-pollution.mjs只将固定socket目录映射到私有夹具：两次原17用例均exit0；absent变0755并被原生产校验拒绝，预置0700保持同inode并通过。
 
-干净GitHub run38384582823固定同原输入，未修改产品或原测试源码，已直接核验真实目录：初始不存在，原17用例exit0后属主等于当前uid、权限0755、目录为空且被保留；原生产校验报同样错误。仅把该次自己新建且身份确认的空目录chmod0700后，同inode的原校验通过，最终rmdir清理。摘要见ci-socket-evidence-38384582823.json，run/job/log hash见ci-socket-result-38384582823.json。该因果对照通过不等于发布完整gate通过。原历史run没有目录stat，不能声称恢复了历史inode/mode；重现、源码顺序与正反对照已确认污染机制。调查机制已验证；用户已授权下述修复，当前“验证中”指修复与组合输入门禁。
+干净GitHub run38384582823固定同原输入，未修改产品或原测试源码，已直接核验真实目录：初始不存在，原17用例exit0后属主等于当前uid、权限0755、目录为空且被保留；原生产校验报同样错误。仅把该次自己新建且身份确认的空目录chmod0700后，同inode的原校验通过，最终rmdir清理。摘要见ci-socket-evidence-38384582823.json，run/job/log hash见ci-socket-result-38384582823.json。该因果对照通过不等于发布完整gate通过。原历史run没有目录stat，不能声称恢复了历史inode/mode；重现、源码顺序与正反对照已确认污染机制。调查机制已验证；用户已授权下述修复，本轮“已验证”指两处修复的回归及同输入原首败场景通过；完整组合发布gate仍失败，见下述新阻塞。
 
 原模式只请求legacy-detached，禁用D-Bus，排除systemd选择候选。CI原六平台全部构建通过，Linuxmanifest/binary与本机逐字节相同；具体诊断失败早于native-assets，因而资产不是该次首败触发点。原固定输入stock VSCode1.141.0独立checkpoint全场景exit0，不代证CI首败或完整gate通过。
 
 ## 验证方法与证据
 
-计划记录docs/exec-plans/completed/release-gate-root-cause.md。diagnostic-wait-boundary.mjs在vm中读取并执行原helper；CI诊断run38382436173固定原预合并和原native资产，运行完整gate，仅临时为准备函数加入阶段和catch错误文件记录，原返回、启动责任、预算和断言保留；它是诊断运行，不是正式最新发布门禁。测试结束恢复临时源码，上传固定摘要，不上传原环境/凭据/SSH私钥或全HOME。源码日志变更发生在隔离checkout，正式修复仍需另行确认。
+计划记录docs/exec-plans/completed/release-gate-root-cause.md。diagnostic-wait-boundary.mjs在vm中读取并执行原helper；CI诊断run38382436173固定原预合并和原native资产，运行完整gate，仅临时为准备函数加入阶段和catch错误文件记录，原返回、启动责任、预算和断言保留；它是诊断运行，不是正式最新发布门禁。测试结束恢复临时源码，上传固定摘要，不上传原环境/凭据/SSH私钥或全HOME。源码日志变更发生在隔离checkout；当时正式修复未获授权，后续用户授权方案见正式方案。
 
 在捕获socket-directory异常后，专用workflow切换为ci-socket-directory-evidence.mjs的有限干净runner对照，固定同原输入，不再重跑全量：必须先确认目录不存在，再执行原17用例、读取实际uid/mode/inode与空目录、调用原生产目录校验；仅对自己新建且身份/内容已确认的空目录chmod0700作因果对照，然后rmdir。该实验变更不是正式修复、不作为最新release gate。若目录事先存在则拒绝实验，不接管未知状态。
 
@@ -56,3 +56,13 @@ tests/vscode-smoke/extension-tests.cjs中的waitForSnapshot和waitForDiagnosticE
 生产root准备错误的阶段可观测性与失败工件收集是后续诊断改进，需返回有界、无敏感路径的错误类别，不能把通用catch转ready或提交后换backend。历史首次失败与调查脚本/结果保留；原基线诊断脚本只用于原输入，不改写其预期来覆盖首败。
 
 修复本地验证已完成：36项等待边界、18项Host控制、三种目录初始状态隔离、9项resize严格截止、19项reset、14项output、6项history、typecheck和指定既有原生资产build通过。新增回归在原main私有副本两者均exit1，分别报告匹配首读被遗漏与不存在目录被创建为0755。结果和源码hash见repair-local-checks.json、repair-baseline-regression-result.json；未运行本地完整release:verify。
+
+临时组合验证PR330（禁止合并）已创建，head b88e4ac40f6ca7ef0bf6207f290922361c587f8f，base 22803dd890855ffbe7620538b04940def097171b，GitHub预合并08f7b0a52f5af27ced04b00a839f525a92659d63、tree 884936f9668c6a83fe1d5448350278d8649bc8e5。Release Preflight run38387068827使用该固定输入，已结束failure；静态preflight通过，完整组合gate失败。独立bugfix PR329的普通Preflight run38386931434明确跳过发布验证。
+
+## 修复验收与新发布阻塞
+
+run38387068827/job115263574447同预合并08f7b0a5的六平台资产全部成功；干净runner的18项Host、三种完整套件目录隔离、36项等待和9项resize通过。原首败local-links-and-stop于11:11:06Z退出0并记录Rendered terminal links and original owned execution stop completion passed；runtime-checkpoint-refresh于11:11:56Z退出0并记录Runtime paged terminal projection smoke passed。trusted/restricted、legacy upgrade及本地real-reopen也通过，证明原故障在本轮输入中已越过。
+
+完整gate首败变为systemd-user-real-reopen setup：11:20:01Z的assertExecutionRuntimeMetadata（tests/vscode-smoke/real-reopen-tests.cjs:747）预期systemd-user，实际legacy-detached；11:20:03Z npm test和release:verify退出1。新阻塞单独登记，不能借这些通过声明完整npm test/发布验证通过。源码显示fake-systemctl仅替代后端提交，root准备仍通过真实/usr/bin/systemd-run做执行环境探测；本轮未保存探测原因，不能把缺少user bus当作已经验证的唯一根因。
+
+后续systemd-fallback、SSH Host退出/保留、test:webview及clean-checkout生产VSIX/安装后smoke未触达。有限成功记录、首败、准确input/run和日志range/hash见repair-combined-input.json；原首败记录保持。临时PR330结果归档后关闭，不合并。两处修复在PR329供review，PR327仍草稿且正式最新预合并需修复合入后rebase验证。
