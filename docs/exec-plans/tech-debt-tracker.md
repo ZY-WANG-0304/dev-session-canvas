@@ -771,3 +771,9 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smoke-remote-host.mjs静默socket测试污染真实/tmp/dsc-root-<uid>目录：未指定mode创建、未清理父目录。固定输入完整诊断38382436173捕获原生产socket-directory私有权限拒绝且尚未native-assets；原17测试私有目录两组对照与干净CI38384582823直接stat确认absent→当前uid/0755被拒绝、同inode0700接受。本机已有0700掩盖污染。应让测试使用自有socket目录并自行清理，保留正式地址默认值、原deadline/17用例与生产0700要求；不能通过chmod共享目录或放宽生产检查修复门禁。
 
 用户已授权自有socket夹具和末次观察修复，执行计划docs/exec-plans/active/release-gate-repair.md。修复和最新预合并全量门禁仍为发布阻塞，PR327草稿/head不变；临时组合输入验证不能代替修复合入后PR327正式门禁。通用catch与失败工件缺少有界错误阶段是可观测性后续项，错误类别不得泄露敏感路径/环境。调查设计docs/design-docs/release-gate-root-cause.md与完成计划docs/exec-plans/completed/release-gate-root-cause.md记录run、input、摘要/hash和残余限制；两个临时workflow已归档并移除自动入口。受控因果对照通过不等于完整release:verify通过，历史未记录的stat不补造。
+
+## 0.26.1 重新准备的验证与用户边界（2026-10-13）
+
+本次从 ea0c9b19 主线重建发布输入，旧 PR #313 已舍弃；过程和结果见 docs/design-docs/release-0-26-1-refresh.md。标准完整 release:verify 尚待本版本执行，0.26.0 历史授权不得代用。此前主线独立 npm ci 的 Wrangler/esbuild ETXTBSY 具体写者未确认，前台生命周期脚本对照通过仅是环境证据；下一正式验证若复现，采集写者与生命周期并发，再决定 PR/tag 两条安装链路是否需要同一调整，不跳过脚本或自动豁免。
+
+普通 Canvas 打开没有专门的 ready 截止和启动失败重试/重建，持续启动失败可保持空白；上游快速重开资源积压、单次 fallback 首败未定因继续按 webview-ready-root-cause.md 与 smoke-reopen-ready-timeout.md 跟踪。45 秒是 smoke 容忍预算，不是产品恢复能力。共享画布真实 UI 限 Linux 单 root，接管四阶段由受控 Host/store 和独立 Supervisor 验证；跨平台/Remote SSH/真实多 root、真实 provider、公开市场自动安装依赖与桌面点击需要具名补证。以上不因本地测试通过自动升级为支持承诺。
