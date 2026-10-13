@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-13",
+  "scope": "PR329 consolidated formal fixture repair; local tests, not full release gate or native user manager",
+  "node": "22.23.3",
+  "base": "22803dd890855ffbe7620538b04940def097171b",
+  "results": {
+    "systemd_scope_controlled": 84,
+    "actual_probe_child_launcher_and_scene_contract": 12,
+    "root_preparation_controlled": 26,
+    "runner_env": "passed",
+    "typecheck": "exit0",
+    "build_with_existing_assets": "exit0",
+    "wait_boundary": 36,
+    "remote_host_control": 18,
+    "remote_host_isolation_full_suite": 3,
+    "strict_resize": 9
+  },
+  "limits": [
+    "Local build uses existing six-platform asset set; new-input assets rebuilt in temporary full release gate.",
+    "Default real systemd-run arguments, response checks and 15s/16KiB bounds unchanged.",
+    "Native user manager is not represented by fake systemd success."
+  ],
+  "source_sha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts": "8a9355a332698bbbb728a09a0d47b71a516708c1583e093357b7b123b34765da",
+    "scripts/smoke/run-vscode-smoke.mjs": "6cd5053809a101b9a92879bf15d1b73cc041897187d42a0b3a3ec233fe61f90a",
+    "tests/vscode-smoke/fixtures/fake-systemd/systemd-run.cjs": "27caaaf4f9f51b76ad0d09c0fc0615118a76362c6fe71c1aa4725cafad3787d8",
+    "scripts/test/test-runtime-systemd-environment.mjs": "4aded7f9dc71c9eeda809f5ca17a3e2f28e396388ff8c6ecfea2c03a9e75c639",
+    "scripts/test/test-smoke-systemd-probe.mjs": "b4576e2f6349aee51843ce5dd2f3fd0dcba6b3b94ebd5ff5b3189e227d81ac4b",
+    "package.json": "cb7b0a1e23e7ddd92692b6c5f62887ca664ebe3ef43690df43dfc39430515c0a",
+    "docs/WORKFLOW.md": "b6c4e619278cf918060f953656446eb9ad2399eb4293ad685625f0f87c3c19dd"
+  },
+  "command_corrections": [
+    "Attempted non-existent test-runtime-legacy-resize-convergence.mjs (MODULE_NOT_FOUND); correct test-smoke-terminal-resize.mjs then passed 9 checks."
+  ]
+}

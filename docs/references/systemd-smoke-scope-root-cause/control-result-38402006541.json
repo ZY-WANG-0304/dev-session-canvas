@@ -1,0 +1,24 @@
+{
+  "diagnostic_only": true,
+  "input": "08f7b0a52f5af27ced04b00a839f525a92659d63",
+  "tree": "884936f9668c6a83fe1d5448350278d8649bc8e5",
+  "diagnosticHead": "34b4f4985a33aecc109e76c27ade68eeb7a2f58e",
+  "run": 38402006541,
+  "job": 115311728708,
+  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38402006541",
+  "conclusion": "success",
+  "singleVariable": "Only probe executor is changed from systemd-run to current Node+original read-only launcher. Nonce/environment/user/schema validation, budgets, backend selection, original fake systemctl and reopen assertions unchanged.",
+  "summarySha256": "bf4a069f64f9d2a905e90bee2e2197014fc1b4dc4042c9d1e858ed76fcc6806b",
+  "logSha256": "81e21af50231c96d8bca60168f7fd302c435cf8e1bca196ba73de83acb211e2a",
+  "successLines": [
+    "2026-10-13T13:04:58.7430009Z Exit code:   0",
+    "2026-10-13T13:05:13.6810753Z Exit code:   0",
+    "2026-10-13T13:05:13.6811704Z Fake systemd-user real window reopen smoke passed."
+  ],
+  "notClaimed": [
+    "real systemd manager verified",
+    "production fix implemented",
+    "complete release gate passed",
+    "historic missing probe callback recovered"
+  ]
+}

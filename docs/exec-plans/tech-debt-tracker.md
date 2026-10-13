@@ -774,3 +774,16 @@ CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smo
 
 
 组合PR330/run38387068827的原checkpoint和local-links-and-stop场景已退出0，18项Host/三种目录隔离/36项等待/9项resize及trusted/restricted/本地real-reopen通过，两处修复验收关闭。完整npm test继续在systemd-user-real-reopen setup断言失败：agent runtime backend实际legacy-detached，预期systemd-user（real-reopen-tests.cjs:747）。该新发布阻塞未修复，原因尚未由实际探测结果确认；fake-systemctl只覆盖提交，真实systemd-run仍影响前置环境，建议下轮固定输入记录有界probe类别，复核fixture是否建立其宣称的systemd前提，不放宽backend断言或直接跳过。SSH退出/保留、后续Webview及clean-checkout VSIX本轮未触达，不代证通过。结果及首败见docs/references/release-gate-root-cause/repair-combined-input.json；临时组合PR关闭而不合并，正式PR327需PR329合入后rebase重跑。
+
+## fake systemd 重开门禁后端不匹配：根因已确认，正式修复未实施（2026-10-13）
+
+组合run38387068827固定08f7b0a5在原links/checkpoint通过后，systemd-user-real-reopen setup失败actual legacy-detached / expected systemd-user。该失败未修复，阻塞完整0.26.1门禁；后续fallback/SSH/Webview/VSIX未触达。fake-systemctl只替代提交，新增root scope probe仍执行真实systemd-run；原环境DBUS disabled:与私有runtime目录已有日志，该初始待验证问题由后续固定输入诊断收口。调查设计docs/design-docs/systemd-smoke-scope-root-cause.md和completed计划记录边界，不放宽backend断言或据此宣布VSCode/产品缺陷。
+
+固定输入诊断38401537709已收敛：preferredBackends含systemd、选择前absent，真实systemd-run code1/Connection refused、原scope返回unavailable/user-bus-unavailable，继而选legacy。旧fake-systemctl没有替代新增scope前置条件，属于夹具假设失配；生产明确不可用后的fallback符合现有契约。单变量control38402006541已通过：同原输入只将probe执行者换成当前Node/原launcher子进程，原nonce/environment/user摘要校验合法，scope available选systemd-user，原setup/verify两阶段退出0。证明旧fake-systemctl未覆盖新增scope前置；生产fallback规则保持正确，不能归为VSCode缺陷。正式修复未实施，发布阻塞仍未修复。
+
+后续建议正式修复fake成功场景的probe测试依赖边界，并保留原摘要校验、原backend断言和预算；真实bus不可用fallback及unknown/no-submit负例独立验收，不把fake通过视作真实manager已验。新证据见docs/references/systemd-smoke-scope-root-cause/，计划docs/exec-plans/completed/systemd-smoke-scope-root-cause.md。两个临时workflow已归档移除；原完整失败不被诊断control通过覆盖。
+
+
+## 发布门禁关联修复集中收口（2026-10-13，PR329，验证中）
+
+上述“正式修复未实施”为诊断结束时的历史状态。用户授权继续修复后，PR329纳入PR331最终根因/控制证据、原两个修复及WORKFLOW约定；新增TEST_SYSTEMD_RUN_SHIM明确覆盖fake成功场景前置probe，转发原只读launcher并保留原回执/摘要校验、预算和后端断言。默认真实systemd-run和fallback/unknown规则不变；fallback显式清空依赖并保留零systemctl提交验收。相关回归及临时组合0.26.1完整验证进行中，未追认发布通过。接续计划docs/exec-plans/active/release-gate-consolidated-repair.md。

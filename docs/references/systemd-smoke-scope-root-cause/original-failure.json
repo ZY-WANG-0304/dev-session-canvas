@@ -1,0 +1,90 @@
+{
+  "input": "08f7b0a52f5af27ced04b00a839f525a92659d63",
+  "tree": "884936f9668c6a83fe1d5448350278d8649bc8e5",
+  "run": 38387068827,
+  "job": 115263574447,
+  "logSha256": "776333b2ae6f71fda7c8a59877b7455cb096e3a7efdcea7e9aa9523a25a4b44e",
+  "excerpt": [
+    {
+      "line": 69096,
+      "text": "2026-10-13T11:19:53.5002499Z   XDG_RUNTIME_DIR: '/tmp/dsc-vscode-smoke-runtime-systemd-user-real-reopen',"
+    },
+    {
+      "line": 69169,
+      "text": "2026-10-13T11:19:53.5117253Z   DEV_SESSION_CANVAS_EXPECTED_RUNTIME_BACKEND: 'systemd-user',"
+    },
+    {
+      "line": 69173,
+      "text": "2026-10-13T11:19:53.5122569Z   DEV_SESSION_CANVAS_RUNTIME_HOST_BACKEND_OVERRIDE: 'systemd-user',"
+    },
+    {
+      "line": 69174,
+      "text": "2026-10-13T11:19:53.5124078Z   DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM: '/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/fixtures/fake-systemd/systemctl.cjs',"
+    },
+    {
+      "line": 69175,
+      "text": "2026-10-13T11:19:53.5125368Z   DEV_SESSION_CANVAS_FAKE_SYSTEMD_MODE: 'success',"
+    },
+    {
+      "line": 69176,
+      "text": "2026-10-13T11:19:53.5125981Z   DBUS_SESSION_BUS_ADDRESS: 'disabled:',"
+    },
+    {
+      "line": 69259,
+      "text": "2026-10-13T11:19:53.6264489Z   DEV_SESSION_CANVAS_RUNTIME_HOST_BACKEND_OVERRIDE: 'systemd-user',"
+    },
+    {
+      "line": 69271,
+      "text": "2026-10-13T11:19:53.6272061Z   DEV_SESSION_CANVAS_FAKE_SYSTEMD_MODE: 'success',"
+    },
+    {
+      "line": 69272,
+      "text": "2026-10-13T11:19:53.6272527Z   DEV_SESSION_CANVAS_EXPECTED_RUNTIME_BACKEND: 'systemd-user',"
+    },
+    {
+      "line": 69337,
+      "text": "2026-10-13T11:19:53.6316881Z   DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM: '/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/fixtures/fake-systemd/systemctl.cjs',"
+    },
+    {
+      "line": 69364,
+      "text": "2026-10-13T11:19:53.6342153Z   DBUS_SESSION_BUS_ADDRESS: 'disabled:',"
+    },
+    {
+      "line": 72216,
+      "text": "2026-10-13T11:20:01.0915934Z AssertionError [ERR_ASSERTION]: agent runtime backend mismatch"
+    },
+    {
+      "line": 72219,
+      "text": "2026-10-13T11:20:01.0945976Z + 'legacy-detached'"
+    },
+    {
+      "line": 72220,
+      "text": "2026-10-13T11:20:01.0946553Z - 'systemd-user'"
+    },
+    {
+      "line": 72222,
+      "text": "2026-10-13T11:20:01.0948827Z \tat assertExecutionRuntimeMetadata (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/systemd-user-real-reopen/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs:747:10)"
+    },
+    {
+      "line": 72225,
+      "text": "2026-10-13T11:20:01.0956684Z Extension host test runner error AssertionError [ERR_ASSERTION]: agent runtime backend mismatch"
+    },
+    {
+      "line": 72228,
+      "text": "2026-10-13T11:20:01.0958451Z + 'legacy-detached'"
+    },
+    {
+      "line": 72229,
+      "text": "2026-10-13T11:20:01.0959004Z - 'systemd-user'"
+    },
+    {
+      "line": 72231,
+      "text": "2026-10-13T11:20:01.0961034Z \tat assertExecutionRuntimeMetadata (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/systemd-user-real-reopen/smoke-host/tests/vscode-smoke/real-reopen-tests.cjs:747:10)"
+    },
+    {
+      "line": 72296,
+      "text": "2026-10-13T11:20:03.2404911Z 完整发布验证失败：npm run test"
+    }
+  ],
+  "unrecorded": "original scope callback/result not captured"
+}
