@@ -18,6 +18,8 @@
 
 待用户确认的修复：Linux localhost fixture记录setupHost真实身份，本地退出后有界观察；仍活时只结束已核对UID、私有server根、extensionHost角色和startTicks的旧Host并确认原进程消失，保留Supervisor与原会话后verify。C3故意不发送正常退出消息，仅结束旧Host2006731后原两阶段全部通过。正式产品/测试/超时未改；此条仍阻塞发布验证收口，修复与最新发布预合并完整verify待做。
 
+同日用户追问后候选方案补齐为退出/保留两条确定性场景，前述结束旧Host动作只属于指定离线的第一条。第二条须确认旧Host原身份保留，验证原会话重连、输出、后续输入/resize及无重复执行，不要求等待旧PID的第三终端已经结束；完成终态另由明确结束条件验收。R2未走完保留分支后续断言，C1先在ready失败，均不能代证第二条通过。双场景提案仍待用户确认。
+
 上游具体丢失层未知：VS Code1.141.0的disconnect确有await；Remote SSH0.128.0 Managed(1) drain只等本地写回调，不等远端确认/Host退出。R3 drain返回unacked=3仍正常通过，不能把计数本身定为丢消息原因。C1受控丢消息先在ready45秒失败、C2只杀Host后诊断误判zombie，均保留单独边界。无需等待三小时或扩大completed35秒换取绿色。关联：`docs/design-docs/remote-host-exit-investigation.md`、`docs/exec-plans/completed/remote-host-exit-investigation.md`、`docs/references/remote-host-exit-investigation/README.md`。
 
 ## 2026-10-13：真实窗口重开 ready 预算缓解与上游资源责任

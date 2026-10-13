@@ -35,11 +35,15 @@ R1 原版通过，R2 日志自然复现原35秒断言失败，R3 可落盘日志
 
 ## 待确认的修复提案
 
-修复限定在 Linux localhost SSH 的 smoke fixture 与 orchestration，不改变产品恢复、resize、ready45秒或 completed35秒预算。setup 成功时把真实远端 Host PID及 Linux startTicks 写入本次私有工件；本地 Electron 退出后先检查它是否已消失。若仍存活，核对 UID、私有 server 根、extensionHost 角色和启动身份，仅对这个旧 Host 制造真实离线，等待原进程消失，再启动 verify。未知身份或无法确认退出须提前失败并保存证据；PID重用不得向新进程发信号。
+2026-10-13 用户进一步询问旧 Host 是否可能不退出，以及门禁是否应覆盖两种情况。建议将候选方案补齐为两条确定性场景，而不是把“远端 Host 必须退出”设为所有重开的前提。此提案尚待确认，当前没有实现。短暂断连时远端 Host 保留等待重连是上游允许的行为；本固定版本配置三小时，不能把它表述为永久不退出的保证。正常关闭的消息递送失败则是另一个尚未定位到具体层的边界。
+
+第一条明确验证旧 Host 退出：修复限定在 Linux localhost SSH 的 smoke fixture 与 orchestration，不改变产品恢复、resize、ready45秒或 completed35秒预算。setup 成功时把真实远端 Host PID及 Linux startTicks 写入本次私有工件；本地 Electron 退出后先检查它是否已消失。在这条指定离线的场景中，若仍存活，核对 UID、私有 server 根、extensionHost 角色和启动身份，仅对这个旧 Host 制造真实离线，等待原进程消失，再启动 verify。未知身份或无法确认退出须提前失败并保存证据；PID重用不得向新进程发信号。
 
 必须保留原 Supervisor、Agent/Terminal sessionId、完成第三终端与丢弃历史断言。不能批量杀 server/Supervisor、结束第三终端或重新创建会话。建议在正常退出的有界观察后，仍存活则对已核实的旧Host发SIGKILL，明确模拟旧Host异常离线，并记录退出来源；C3已验证此动作保留原Supervisor与会话。正常收到 terminate 时不额外发信号。`kill -0` 对 zombie/PID重用也可能误判，因此正式实现还应让第三终端等待**原进程身份已退出**，而不是任意同号 PID 不存在；需要与 Linux identity 屏障一起设计，避免独立放宽判据。
 
-验收包括原版两阶段、受控正常退出消息未送达但旧 Host 被确实结束、拒绝结束旧 Host 时仍失败、PID身份不符拒绝信号、原 Supervisor与会话保留及 fixture 最终零残留。完成定向修复后再对最新发布准备预合并输入跑完整 release:verify；本轮结果不豁免 PR327 的失败门禁。
+第二条明确验证旧 Host 保留：使用隔离的连接中断或退出消息未送达条件，在重连/重开前后确认同一 PID/startTicks 仍在运行，不为了沿用第一条断言而结束它。重连可能复用原 Host，也可能新窗口建立新 Host；记录实际身份，不凭窗口变化要求一定换 PID。验证原 Supervisor和会话身份、重开期间输出、后续输入与resize、共享状态及无重复执行。旧 Host 仍存活时，当前第三终端的kill -0循环应继续运行，不能要求它已completed，也不能把真实live误写为closed。完成终端的终态/历史丢弃应由另一明确的结束条件或独立步骤验证，不能依赖Host消失。R2只证明部分恢复和原Host保留，未走完后续输入/resize等验收，第二条尚未完整验证；C1又先在ready失败，不能宣称此分支已通过。
+
+两条场景都应独立执行并有可确认的前提；一次运行按自然结果任选一条断言不能替代双分支覆盖。第一条拒绝结束旧 Host 时仍应失败，第二条旧 Host保留本身不应被判为产品失败。验收还包括原版两阶段、受控正常退出消息未送达但旧 Host 被确实结束、PID身份不符拒绝信号、原 Supervisor与会话保留及 fixture 最终零残留。结束保留Host的最终清理发生在其业务断言之后，明确属于测试资源回收。完成定向修复后再对最新发布准备预合并输入跑完整 release:verify；本轮结果不豁免 PR327 的失败门禁。
 
 ## 证据与限制
 
