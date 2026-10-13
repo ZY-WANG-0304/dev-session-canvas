@@ -1,0 +1,371 @@
+{
+  "version": "0.26.1",
+  "releasePublished": false,
+  "premerge": {
+    "base": "ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b",
+    "head": "e123d1e73214fc0f79fc0bba508447331d3f7b49",
+    "tree": "f91f1af40a32ad4c2865d2db15ed4de4e368421e",
+    "commit": "eba53a28074cbcc49958f7845ebe5b04411a531a",
+    "construction": "Target is ancestor; merge result tree equals preparation head tree"
+  },
+  "aggregatePassed": false,
+  "firstFailure": "localhost SSH completed terminal waits for original remote Host PID to exit; editor ready; original host exit not observed",
+  "unreachedByAggregate": [
+    "test:webview",
+    "validate:clean-checkout:vsix"
+  ],
+  "independentFollowupsDoNotOverrideAggregate": true,
+  "records": [
+    {
+      "name": "npm-ci",
+      "commit": "ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b",
+      "cwd": "/tmp/dsc261fresh",
+      "command": [
+        "npm",
+        "ci"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261fresh/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:00:13.249443+00:00",
+      "log": "/tmp/d261r/npm-ci.log",
+      "pid": 1068442,
+      "exitCode": 0,
+      "end": "2026-10-13T03:00:32.117941+00:00",
+      "logSha256": "cb1257a74efb8568e544277fedc04d94dfe45d7413a4837659293408e2b1adf4",
+      "logBytes": 942
+    },
+    {
+      "name": "preflight",
+      "commit": "ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b",
+      "cwd": "/tmp/dsc261fresh",
+      "command": [
+        "npm",
+        "run",
+        "release:preflight",
+        "--",
+        "--version",
+        "0.26.1"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261fresh/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:03:12.856527+00:00",
+      "log": "/tmp/d261r/preflight.log",
+      "pid": 1350009,
+      "exitCode": 0,
+      "end": "2026-10-13T03:03:13.249117+00:00",
+      "logSha256": "fa01f229bf38f90968a26d26441a2391a42d34ac2f40702bb36b292749b4e77e",
+      "logBytes": 160
+    },
+    {
+      "name": "npm-ci-merge",
+      "commit": "eba53a28074cbcc49958f7845ebe5b04411a531a",
+      "cwd": "/tmp/dsc261verify",
+      "command": [
+        "npm",
+        "ci"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261verify/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:04:42.346472+00:00",
+      "log": "/tmp/d261r/npm-ci-merge.log",
+      "pid": 1452865,
+      "exitCode": 0,
+      "end": "2026-10-13T03:04:54.329299+00:00",
+      "logSha256": "8ea140861f725341e32e1432c7ee7271ca5bead650865a17a3a32b62a1ab7a2a",
+      "logBytes": 942
+    },
+    {
+      "name": "browser",
+      "commit": "eba53a28074cbcc49958f7845ebe5b04411a531a",
+      "cwd": "/tmp/dsc261verify",
+      "command": [
+        "npx",
+        "--no-install",
+        "playwright",
+        "install",
+        "--with-deps",
+        "chromium"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261verify/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:04:54.332849+00:00",
+      "log": "/tmp/d261r/browser.log",
+      "pid": 1465740,
+      "exitCode": 0,
+      "end": "2026-10-13T03:05:07.423593+00:00",
+      "logSha256": "0f753ab2ef643b78f126b75987d383944602f6d2e6ccfe0a244f18922f443c19",
+      "logBytes": 6022
+    },
+    {
+      "name": "preflight-merge",
+      "commit": "eba53a28074cbcc49958f7845ebe5b04411a531a",
+      "cwd": "/tmp/dsc261verify",
+      "command": [
+        "npm",
+        "run",
+        "release:preflight",
+        "--",
+        "--version",
+        "0.26.1"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261verify/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:05:07.426665+00:00",
+      "log": "/tmp/d261r/preflight-merge.log",
+      "pid": 1481890,
+      "exitCode": 0,
+      "end": "2026-10-13T03:05:07.629731+00:00",
+      "logSha256": "fa01f229bf38f90968a26d26441a2391a42d34ac2f40702bb36b292749b4e77e",
+      "logBytes": 160
+    },
+    {
+      "name": "verify",
+      "commit": "eba53a28074cbcc49958f7845ebe5b04411a531a",
+      "cwd": "/tmp/dsc261verify",
+      "command": [
+        "npm",
+        "run",
+        "release:verify",
+        "--",
+        "--version",
+        "0.26.1"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261verify/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:05:07.632643+00:00",
+      "log": "/tmp/d261r/verify.log",
+      "pid": 1481921,
+      "exitCode": 1,
+      "end": "2026-10-13T03:22:32.705827+00:00",
+      "logSha256": "65bbb5a505c87dd4d128df31fc2f1846809f76b14e3cd119d1d02d7de006d8a7",
+      "logBytes": 9104790
+    },
+    {
+      "name": "webview",
+      "commit": "eba53a28074cbcc49958f7845ebe5b04411a531a",
+      "cwd": "/tmp/dsc261verify",
+      "command": [
+        "npm",
+        "run",
+        "test:webview"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261verify/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:23:54.790035+00:00",
+      "log": "/tmp/d261r/webview.log",
+      "pid": 2779742,
+      "exitCode": 0,
+      "end": "2026-10-13T03:35:56.539299+00:00",
+      "logSha256": "0a08ba46cb5cb770332112f3ca8e730760b87470766392ec4b11a8e64d6f35d3",
+      "logBytes": 63882
+    },
+    {
+      "name": "clean-vsix",
+      "commit": "eba53a28074cbcc49958f7845ebe5b04411a531a",
+      "cwd": "/tmp/dsc261verify",
+      "command": [
+        "npm",
+        "run",
+        "validate:clean-checkout:vsix",
+        "--",
+        "--ref",
+        "HEAD",
+        "--keep-temp"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261verify/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:35:56.542296+00:00",
+      "log": "/tmp/d261r/clean-vsix.log",
+      "pid": 3598990,
+      "exitCode": 0,
+      "end": "2026-10-13T03:42:06.101750+00:00",
+      "logSha256": "0a8332d1285f8aedbeb9c8cc6268f1dab867d09dc47456844a13c318d3a9582f",
+      "logBytes": 4451646
+    },
+    {
+      "name": "notifier-typecheck",
+      "commit": "e123d1e73214fc0f79fc0bba508447331d3f7b49",
+      "cwd": "/tmp/dsc261fresh",
+      "command": [
+        "npm",
+        "run",
+        "typecheck:notifier"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261fresh/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:06:06.268163+00:00",
+      "log": "/tmp/d261r/notifier-typecheck.log",
+      "pid": 1549179,
+      "exitCode": 0,
+      "end": "2026-10-13T03:06:08.272687+00:00",
+      "logSha256": "51e79b2d4543d183bb2c80345d1b51d79120d084acb442260de474e1b082488b",
+      "logBytes": 211
+    },
+    {
+      "name": "notifier-package",
+      "commit": "e123d1e73214fc0f79fc0bba508447331d3f7b49",
+      "cwd": "/tmp/dsc261fresh",
+      "command": [
+        "npm",
+        "run",
+        "-w",
+        "extensions/vscode/dev-session-canvas-notifier",
+        "package:vsix"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261fresh/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:14:42.352151+00:00",
+      "log": "/tmp/d261r/notifier-package.log",
+      "pid": 2140298,
+      "exitCode": 0,
+      "end": "2026-10-13T03:14:46.272443+00:00",
+      "logSha256": "e5d581f197160da24c17108f21dce461ebe6f36ef2fe0ed3f28e05f34ef0c3e5",
+      "logBytes": 1540
+    },
+    {
+      "name": "notifier-companion",
+      "commit": "eba53a28074cbcc49958f7845ebe5b04411a531a",
+      "cwd": "/tmp/dsc261verify",
+      "command": [
+        "npm",
+        "run",
+        "test:notifier-smoke"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261verify/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:42:06.112330+00:00",
+      "log": "/tmp/d261r/notifier-companion.log",
+      "pid": 3955031,
+      "exitCode": 0,
+      "end": "2026-10-13T03:42:28.986349+00:00",
+      "logSha256": "aae25631abb094ded0adb9414f44b2f8f52d70e1fbf29a443766d005b31d2a69",
+      "logBytes": 338771
+    },
+    {
+      "name": "notifier-locale",
+      "commit": "eba53a28074cbcc49958f7845ebe5b04411a531a",
+      "cwd": "/tmp/dsc261verify",
+      "command": [
+        "npm",
+        "run",
+        "test:notifier-locale-smoke"
+      ],
+      "environmentOverrides": {
+        "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET": "/tmp/dsc-release-026-assets",
+        "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/tmp/dsc0261v/.vscode-test",
+        "DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT": "/tmp/d261r/source",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/mh261r",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT": "/tmp/d261r/marketplace",
+        "PLAYWRIGHT_BROWSERS_PATH": "/tmp/dsc261verify/.playwright-browsers"
+      },
+      "foregroundScripts": "default false",
+      "umask": "0077",
+      "start": "2026-10-13T03:42:28.989522+00:00",
+      "log": "/tmp/d261r/notifier-locale.log",
+      "pid": 3975522,
+      "exitCode": 0,
+      "end": "2026-10-13T03:43:07.594494+00:00",
+      "logSha256": "32bf362a78ce3658e4d87cad9891178dc12d38aa3f92386eea31b13f14b4f02c",
+      "logBytes": 567738
+    }
+  ],
+  "summary": {
+    "webview": "426/426, exit0, no retry or baseline updates",
+    "cleanCheckout": "default npm ci, 140-file main VSIX and all eight packaged scenes exit0; ETXTBSY did not recur",
+    "notifier": "typecheck, 14-file independent package, companion and en/zh-cn locale exit0"
+  },
+  "limits": [
+    "Linux x64 native PTY with fake Agent; six-target asset set source-bound but no new full platform matrix",
+    "Main source aggregate failed in localhost SSH; separate package passing does not cover its remote scenario",
+    "No automatic publish, release tag, PR merge or change to lifecycle/timeout/test assertions",
+    "Latest GitHub REST protection read returned HTTP404 Branch not protected; release workflow policy still requires full verify and review"
+  ]
+}
