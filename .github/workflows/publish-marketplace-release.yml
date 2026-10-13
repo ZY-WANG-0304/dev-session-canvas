@@ -56,7 +56,8 @@ jobs:
     name: Prepare GitHub Release Assets
     needs: [resolve-runtime-input, native-assets]
     if: ${{ always() && needs.resolve-runtime-input.result == 'success' && (needs.native-assets.result == 'success' || needs.native-assets.result == 'skipped') }}
-    runs-on: ubuntu-latest
+    # Match the Linux screenshot baseline rendering environment.
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     outputs:
       final_tag: ${{ steps.release.outputs.final_tag }}
