@@ -56,3 +56,5 @@ Linux x64 验证使用 Node22.23.3、VS Code1.141.0、fake Agent 与原生 PTY�
 本地主 VSIX 为 6000207 bytes、140 文件；notifier 为 160414 bytes、14 文件，均保留 0.26.1、Preview、安装依赖和中文资源。它们仅为准备验证包，hash 见相应 artifact JSON，不是正式 Release 资产。完整原日志在/tmp/d261r，首败工件和隔离 checkout 保留；自己创建的浏览器 cache 链接在测试结束后移除，不删除共享缓存。
 
 最终再次 fetch 确认 origin/main 仍为 ea0c9b19，准备分支保留其祖先关系。交付为新草稿发布准备 PR：静态输入已完成，独立 Webview/安装包/notifier 均通过，但完整 verify 的 SSH 首败仍阻断。后续应单独修复或确认远端关闭前提，再在最新 PR 预合并结果重跑完整 release:verify；未通过不得合并/发布。没有操作 PR #326、目标分支或任何 release tag。
+
+本次交付：[草稿PR #327](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/327)，分支release-0-26-1-refresh，目标main。PR保持draft，非草稿release workflow不会启动；完整verify失败的阻塞没有撤销。
