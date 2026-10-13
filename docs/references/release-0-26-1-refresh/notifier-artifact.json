@@ -1,0 +1,29 @@
+{
+  "path": "/tmp/dsc261fresh/extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-0.26.1.vsix",
+  "preparationHead": "e123d1e73214fc0f79fc0bba508447331d3f7b49",
+  "version": "0.26.1",
+  "extensionDependencies": [
+    "devsessioncanvas.dev-session-canvas"
+  ],
+  "bytes": 160414,
+  "sha256": "4a2ac189ebaec270beca1ce746c28fd48f4957b16b6de2de0fa0f74ce77dd6a7",
+  "files": [
+    "extension.vsixmanifest",
+    "[Content_Types].xml",
+    "extension/package.nls.zh-cn.json",
+    "extension/package.nls.json",
+    "extension/package.json",
+    "extension/README.marketplace.zh-CN.md",
+    "extension/readme.md",
+    "extension/LICENSE.txt",
+    "extension/changelog.md",
+    "extension/l10n/bundle.l10n.zh-cn.json",
+    "extension/dist/extension.js",
+    "extension/images/icon.svg",
+    "extension/images/icon.png",
+    "extension/images/activitybar.svg"
+  ],
+  "readmeContainsRelease": true,
+  "releaseArtifact": false,
+  "note": "VSCE normalizes selected Marketplace README to extension/readme.md"
+}

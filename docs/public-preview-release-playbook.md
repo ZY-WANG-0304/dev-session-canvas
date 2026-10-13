@@ -20,7 +20,7 @@
     npm run release:preflight -- --version 0.26.1
     npm run release:verify -- --version 0.26.1
 
-完整verify包含发布脚本回归、完整npm test、HEAD独立npm ci和八场景VSIX安装smoke。按CONTRIBUTING.md提供匹配六目标原生输入的资产；Chromium必须先按workflow准备，再串行运行浏览器测试。另复核notifier typecheck/build/source、companion/英中文locale及独立VSIX的版本、README、安装关系与本地化资源。过程见docs/exec-plans/active/release-0-26-1-refresh.md，具名本地结果记录在docs/design-docs/release-0-26-1-refresh.md；线上PR checks仍须在最新head预合并结果运行。
+完整verify包含发布脚本回归、完整npm test、HEAD独立npm ci和八场景VSIX安装smoke。按CONTRIBUTING.md提供匹配六目标原生输入的资产；Chromium必须先按workflow准备，再串行运行浏览器测试。另复核notifier typecheck/build/source、companion/英中文locale及独立VSIX的版本、README、安装关系与本地化资源。过程见docs/exec-plans/completed/release-0-26-1-refresh.md，具名本地结果记录在docs/design-docs/release-0-26-1-refresh.md；线上PR checks仍须在最新head预合并结果运行。
 
 先前主线独立安装曾遇到Wrangler/esbuild ETXTBSY，只有前台脚本对照通过，具体写者未确认。正式验证不得以对照或重跑覆盖首败，不能跳过安装脚本。本版先执行默认配置；若重现须记录并定位，未通过的完整verify阻断合并。
 
