@@ -973,3 +973,9 @@ PR336 已接续实现原绑定回调结算、旧 workspace 保存代次和失败
 ### PR336 review 两项缺口接续（2026-10-24）
 
 4d455028 的 P1（保存失败后成为最后参与者却跳过删除）与 P2（终态投影清除 live 字段后丢失 pending 保存失败）已在本轮修复：每次共享 departure 重验原绑定删除，Promise 登记保留接纳时的完整身份，首轮已知保存失败在派发删除前传播。新增八项默认行为回归，两个旧输入反例均先红，当前 29 项通过。证据见 `docs/references/runtime-mode-switch-settlement/review-fixes.json`。必须针对更新 head 复审和验 CI；旧 head 的本地/GUI 通过不能替代该复审，也不表示 PR327 已可合并。
+
+## 0.26.1 重新准备的验证与用户边界（2026-10-13）
+
+本次从 ea0c9b19 主线重建发布输入，旧 PR #313 已舍弃；过程和结果见 docs/design-docs/release-0-26-1-refresh.md。标准完整 release:verify 尚待本版本执行，0.26.0 历史授权不得代用。此前主线独立 npm ci 的 Wrangler/esbuild ETXTBSY 具体写者未确认，前台生命周期脚本对照通过仅是环境证据；下一正式验证若复现，采集写者与生命周期并发，再决定 PR/tag 两条安装链路是否需要同一调整，不跳过脚本或自动豁免。
+
+普通 Canvas 打开没有专门的 ready 截止和启动失败重试/重建，持续启动失败可保持空白；上游快速重开资源积压、单次 fallback 首败未定因继续按 webview-ready-root-cause.md 与 smoke-reopen-ready-timeout.md 跟踪。45 秒是 smoke 容忍预算，不是产品恢复能力。共享画布真实 UI 限 Linux 单 root，接管四阶段由受控 Host/store 和独立 Supervisor 验证；跨平台/Remote SSH/真实多 root、真实 provider、公开市场自动安装依赖与桌面点击需要具名补证。以上不因本地测试通过自动升级为支持承诺。
