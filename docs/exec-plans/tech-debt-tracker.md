@@ -805,3 +805,5 @@ CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smo
 本次独立补充验证已完成：Webview426/426、默认干净npm ci/140文件主VSIX/八场景安装、notifier类型/14文件独立包/companion/en与zh-cn locale均exit0。默认安装ETXTBSY未重现，不等于原根因修复；源码聚合SSH首败仍阻断。12条命令证据固定在docs/references/release-0-26-1-refresh/evidence.json。main无branch protection的只读查询结果不撤销仓库完整verify/review要求，草稿不会触发非草稿release workflow。
 
 2026-10-13接续：PR328的双状态正式修复已合入main22803dd8，PR327 rebase后重跑最新预合并完整门禁。上节旧输入的SSH首败不作为新输入状态，原记录保留；当前门禁结果关联PR327真实head/base/预合并SHA及checks。
+
+集中修复接续：首轮38412908952已通过原fake systemd两阶段；fallback启动前VSCode因空XDG_RUNTIME_DIR选择129字节user-data IPC路径，超Linux107字节并listen EINVAL。PR329继续补齐fallback短user-data，不改空bus、真实probe、legacy或零提交断言；完整门禁仍失败，SSH/Webview/VSIX未触达。证据与正式方案见systemd-smoke-scope-root-cause.md。

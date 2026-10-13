@@ -130,19 +130,23 @@ export function resolveVSCodeSmokeDebugRoot(projectRoot) {
 
 export async function prepareRuntime(options) {
   const debugRoot = options.debugRoot;
-  const userDataDir = path.join(debugRoot, 'user-data');
+  const runtimeDir = path.join(os.tmpdir(), options.runtimeDirName ?? 'dsc-vscode-smoke-runtime');
+  // With no XDG_RUNTIME_DIR, VSCode puts its Unix IPC socket under user-data.
+  // Keep that path short for the real missing-bus fixture without changing its bus environment.
+  const userDataDir = path.join(options.userDataInRuntimeDir ? runtimeDir : debugRoot, 'user-data');
   const extensionsDir = path.join(debugRoot, 'extensions');
   const homeDir = path.join(debugRoot, 'home');
   const configDir = path.join(debugRoot, 'config');
   const cacheDir = path.join(debugRoot, 'cache');
   const appDataDir = path.join(debugRoot, 'appdata');
   const localAppDataDir = path.join(debugRoot, 'local-appdata');
-  const runtimeDir = path.join(os.tmpdir(), options.runtimeDirName ?? 'dsc-vscode-smoke-runtime');
   const stateDir = path.join(runtimeDir, 'state');
   const tmpDir = path.join(debugRoot, 'tmp');
   const artifactsDir = path.join(debugRoot, 'artifacts');
 
   await fs.rm(debugRoot, { recursive: true, force: true });
+  await fs.rm(runtimeDir, { recursive: true, force: true });
+  await fs.mkdir(runtimeDir, { recursive: true, mode: 0o700 });
   await fs.mkdir(userDataDir, { recursive: true });
   await fs.mkdir(path.join(userDataDir, 'User'), { recursive: true });
   await fs.mkdir(extensionsDir, { recursive: true });
@@ -152,8 +156,6 @@ export async function prepareRuntime(options) {
   await fs.mkdir(appDataDir, { recursive: true });
   await fs.mkdir(localAppDataDir, { recursive: true });
   await fs.mkdir(path.join(cacheDir, 'mesa'), { recursive: true });
-  await fs.rm(runtimeDir, { recursive: true, force: true });
-  await fs.mkdir(runtimeDir, { recursive: true, mode: 0o700 });
   await fs.mkdir(stateDir, { recursive: true });
   await fs.mkdir(tmpDir, { recursive: true });
   await fs.mkdir(artifactsDir, { recursive: true });

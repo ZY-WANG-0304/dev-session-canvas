@@ -1,15 +1,54 @@
 {
   "temporary_branch": "release-0261-combined-gate-temp",
   "no_pr": true,
-  "run": 38412908952,
-  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38412908952",
+  "run": 38414258709,
+  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38414258709",
   "base": "22803dd890855ffbe7620538b04940def097171b",
-  "fix_input": "40364a8511c16453b73d3fe61cf456c983846bbc",
+  "fix_input": "6f201f52d71e91bd081a71aff88fb3145b654a2d",
   "release_input": "42d87b3d59d3147199a3fef9f2ee0b40de4534cf",
-  "combined_input": "dc5178ee41bc1dda3d370a24923559d683eac727",
-  "tree": "79bd256bcd7767bf29d91afd23910365a6276982",
-  "workflow_head": "788f0d7f1964cb251d30e3513b29d7104603e042",
+  "combined_input": "32260b9fc58df3ed6a5b75d8f3b2b8bdfd78fb6a",
+  "tree": "2e1f088cf77e401249bd9689a8fd47547b580122",
+  "workflow_head": "06e70f73e7974f0531e5611f86251b39603ff713",
   "status": "in_progress",
   "conclusion": null,
-  "scope": "same immutable input for all six native assets and unfiltered release:preflight/release:verify; does not replace latest PR327 premerge gate after fix merge"
+  "scope": "same immutable input for all six native assets and unfiltered release:preflight/release:verify; does not replace latest PR327 premerge gate after fix merge",
+  "previous_runs": [
+    {
+      "temporary_branch": "release-0261-combined-gate-temp",
+      "no_pr": true,
+      "run": 38412908952,
+      "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38412908952",
+      "base": "22803dd890855ffbe7620538b04940def097171b",
+      "fix_input": "40364a8511c16453b73d3fe61cf456c983846bbc",
+      "release_input": "42d87b3d59d3147199a3fef9f2ee0b40de4534cf",
+      "combined_input": "dc5178ee41bc1dda3d370a24923559d683eac727",
+      "tree": "79bd256bcd7767bf29d91afd23910365a6276982",
+      "workflow_head": "788f0d7f1964cb251d30e3513b29d7104603e042",
+      "status": "in_progress",
+      "conclusion": null,
+      "scope": "same immutable input for all six native assets and unfiltered release:preflight/release:verify; does not replace latest PR327 premerge gate after fix merge"
+    }
+  ],
+  "tested_source_comparison": {
+    "extensions/vscode/dev-session-canvas/src/panel/runtimeSystemdEnvironment.ts": {
+      "fix_sha256": "8a9355a332698bbbb728a09a0d47b71a516708c1583e093357b7b123b34765da",
+      "combined_sha256": "8a9355a332698bbbb728a09a0d47b71a516708c1583e093357b7b123b34765da"
+    },
+    "scripts/smoke/run-vscode-smoke.mjs": {
+      "fix_sha256": "6cd5053809a101b9a92879bf15d1b73cc041897187d42a0b3a3ec233fe61f90a",
+      "combined_sha256": "6cd5053809a101b9a92879bf15d1b73cc041897187d42a0b3a3ec233fe61f90a"
+    },
+    "tests/vscode-smoke/fixtures/fake-systemd/systemd-run.cjs": {
+      "fix_sha256": "27caaaf4f9f51b76ad0d09c0fc0615118a76362c6fe71c1aa4725cafad3787d8",
+      "combined_sha256": "27caaaf4f9f51b76ad0d09c0fc0615118a76362c6fe71c1aa4725cafad3787d8"
+    },
+    "scripts/test/test-runtime-systemd-environment.mjs": {
+      "fix_sha256": "8bd2c02aa3ebc02a0322faf373e1a9dba562d70a844f646d8c4e532edf40ee5e",
+      "combined_sha256": "8bd2c02aa3ebc02a0322faf373e1a9dba562d70a844f646d8c4e532edf40ee5e"
+    },
+    "scripts/test/test-smoke-systemd-probe.mjs": {
+      "fix_sha256": "37f8104bb8e96a23f9dbcd29e5570fd8482c9a1fd6de303b6b166832240ee9bb",
+      "combined_sha256": "37f8104bb8e96a23f9dbcd29e5570fd8482c9a1fd6de303b6b166832240ee9bb"
+    }
+  }
 }

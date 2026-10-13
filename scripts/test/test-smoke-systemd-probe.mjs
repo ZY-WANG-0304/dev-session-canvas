@@ -103,6 +103,7 @@ if (process.platform !== 'linux') {
     assert.equal(scenes[1].extraEnv.DEV_SESSION_CANVAS_TEST_SYSTEMD_RUN_SHIM, '');
     assert.equal(scenes[1].extraEnv.DBUS_SESSION_BUS_ADDRESS, '');
     assert.equal(scenes[1].extraEnv.XDG_RUNTIME_DIR, '');
+    assert.equal(scenes[1].userDataInRuntimeDir, true);
     assert.equal(scenes[1].expectedRuntimeBackend, 'legacy-detached');
     passed += 2;
     console.log(`fake systemd probe passed (${passed} actual child/launcher cases; no native manager claim).`);

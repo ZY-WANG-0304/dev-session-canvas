@@ -60,3 +60,12 @@ docs/exec-plans/completed/systemd-smoke-scope-root-cause.md覆盖源码跟踪、
 
 
 新增scope回归在原main22803dd8源码私有副本exit1：默认真实命令用例通过后，新增shim命令断言明确拒绝仍执行/usr/bin/systemd-run的旧实现。记录见repair-baseline-regression.json。临时组合输入dc5178ee41bc1dda3d370a24923559d683eac727（修复40364a85加发布42d87b3d）/tree79bd256b，run38412908952进行中；永久修复PR不包含临时自动入口。
+
+
+## 完整门禁发现的 fallback 路径夹具缺陷与补齐
+
+首轮正式组合run38412908952的fake systemd原setup/verify均exit0，14:45:33Z原成功记录确认probe依赖修复越过原阻塞。后续fallback在VSCode main启动前失败：清空XDG_RUNTIME_DIR使VSCode的mainIPCHandle退回userDataPath/version-main.sock；CI仓库路径下socket共129字节，日志警告超过107并listen EINVAL，进程exit1。不是scope分类、root准备、resize或Webview ready失败。固定VSCode1.141.0的mainImpl.js中mainIPCHandle调用KE，KE在无XDG_RUNTIME_DIR时取userDataPath，直接证实路径选择机制。原失败和未触达项目见full-gate-first-result-38412908952.json。
+
+正式夹具补齐：runSystemdFallbackRealWindowReopenScenario单独设置userDataInRuntimeDir；vscode-smoke-runner.mjs的prepareRuntime将其user-data放到既有短临时runtimeDir中（约83字节socket），先清理runtimeDir再创建user-data/settings，其他目录和默认布局保持。真实DBUS_SESSION_BUS_ADDRESS/XDG_RUNTIME_DIR仍为空、probe依赖仍清空、后端legacy和零systemctl提交断言不变。回归在长debugRoot核对短user-data、settings不被后续清理丢失、空bus变量及实际Unix socket可监听；该测试不替代原VSCode完整场景。
+
+临时workflow修正失败时exit标记收集：显式关闭bash errexit，保留pipefail并立即保存PIPESTATUS[0]，最后按原非零退出。原run marker null保留，以Actions job/log的实际exit1解释，不补造历史marker。
